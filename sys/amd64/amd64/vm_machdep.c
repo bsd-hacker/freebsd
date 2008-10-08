@@ -419,7 +419,8 @@ void
 cpu_reset()
 {
 #ifdef SMP
-	u_int cnt, map;
+	u_int cnt;
+	cpumask_t map;
 
 	if (smp_active) {
 		map = PCPU_GET(other_cpus) & ~stopped_cpus;
@@ -435,7 +436,7 @@ cpu_reset()
 			printf("cpu_reset: Restarting BSP\n");
 
 			/* Restart CPU #0. */
-			atomic_store_rel_int(&started_cpus, 1 << 0);
+			atomic_store_rel_long(&started_cpus, 1 << 0);
 
 			cnt = 0;
 			while (cpu_reset_proxy_active == 0 && cnt < 10000000)

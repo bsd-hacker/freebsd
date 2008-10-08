@@ -70,7 +70,7 @@ pcpu_init(struct pcpu *pcpu, int cpuid, size_t size)
 	KASSERT(cpuid >= 0 && cpuid < MAXCPU,
 	    ("pcpu_init: invalid cpuid %d", cpuid));
 	pcpu->pc_cpuid = cpuid;
-	pcpu->pc_cpumask = 1 << cpuid;
+	pcpu->pc_cpumask = 1ul << cpuid;
 	cpuid_to_pcpu[cpuid] = pcpu;
 	SLIST_INSERT_HEAD(&cpuhead, pcpu, pc_allcpu);
 	cpu_pcpu_init(pcpu, cpuid, size);

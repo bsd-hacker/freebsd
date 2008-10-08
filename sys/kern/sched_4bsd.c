@@ -1067,7 +1067,7 @@ forward_wakeup(int cpunum)
 	me = PCPU_GET(cpumask);
 
 	/* Don't bother if we should be doing it ourself. */
-	if ((me & idle_cpus_mask) && (cpunum == NOCPU || me == (1 << cpunum)))
+	if ((me & idle_cpus_mask) && (cpunum == NOCPU || me == (1ul << cpunum)))
 		return (0);
 
 	dontuse = me | stopped_cpus | hlt_cpus_mask;
@@ -1101,7 +1101,7 @@ forward_wakeup(int cpunum)
 	/* If we only allow a specific CPU, then mask off all the others. */
 	if (cpunum != NOCPU) {
 		KASSERT((cpunum <= mp_maxcpus),("forward_wakeup: bad cpunum."));
-		map &= (1 << cpunum);
+		map &= (1ul << cpunum);
 	} else {
 		/* Try choose an idle die. */
 		if (forward_wakeup_use_htt) {
@@ -1628,7 +1628,7 @@ sched_affinity(struct thread *td)
 
 		td->td_flags |= TDF_NEEDRESCHED;
 		if (td != curthread)
-			ipi_selected(1 << cpu, IPI_AST);
+			ipi_selected(1ul << cpu, IPI_AST);
 		break;
 	default:
 		break;

@@ -207,7 +207,7 @@ ktr_tracepoint(u_int mask, const char *file, int line, const char *format,
 	if ((ktr_mask & mask) == 0)
 		return;
 	cpu = KTR_CPU;
-	if (((1 << cpu) & ktr_cpumask) == 0)
+	if (((1ul << cpu) & ktr_cpumask) == 0)
 		return;
 #if defined(KTR_VERBOSE) || defined(KTR_ALQ)
 	td = curthread;

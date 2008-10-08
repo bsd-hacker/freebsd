@@ -112,7 +112,7 @@ extern inthand_t IDTVEC(fast_syscall), IDTVEC(fast_syscall32);
 #ifdef STOP_NMI
 volatile cpumask_t ipi_nmi_pending;
 
-static void	ipi_nmi_selected(u_int32_t cpus);
+static void	ipi_nmi_selected(cpumask_t cpus);
 #endif 
 
 /*
@@ -733,7 +733,7 @@ start_all_aps(void)
 			panic("AP #%d (PHY# %d) failed!", cpu, apic_id);
 		}
 
-		all_cpus |= (1 << cpu);		/* record AP in CPU map */
+		all_cpus |= (1ul << cpu);	/* record AP in CPU map */
 	}
 
 	/* build our map of 'other' CPUs */
@@ -853,12 +853,12 @@ smp_tlb_shootdown(u_int vector, vm_offset_t addr1, vm_offset_t addr2)
 }
 
 static void
-smp_targeted_tlb_shootdown(u_int mask, u_int vector, vm_offset_t addr1, vm_offset_t addr2)
+smp_targeted_tlb_shootdown(cpumask_t mask, u_int vector, vm_offset_t addr1, vm_offset_t addr2)
 {
 	int ncpu, othercpus;
 
 	othercpus = mp_ncpus - 1;
-	if (mask == (u_int)-1) {
+	if (mask == (cpumask_t)-1) {
 		ncpu = othercpus;
 		if (ncpu < 1)
 			return;
@@ -883,7 +883,7 @@ smp_targeted_tlb_shootdown(u_int mask, u_int vector, vm_offset_t addr1, vm_offse
 	smp_tlb_addr1 = addr1;
 	smp_tlb_addr2 = addr2;
 	atomic_store_rel_int(&smp_tlb_wait, 0);
-	if (mask == (u_int)-1)
+	if (mask == (cpumask_t)-1)
 		ipi_all_but_self(vector);
 	else
 		ipi_selected(mask, vector);
@@ -927,7 +927,7 @@ smp_invlpg_range(vm_offset_t addr1, vm_offset_t addr2)
 }
 
 void
-smp_masked_invltlb(u_int mask)
+smp_masked_invltlb(cpumask_t mask)
 {
 
 	if (smp_started) {
@@ -936,7 +936,7 @@ smp_masked_invltlb(u_int mask)
 }
 
 void
-smp_masked_invlpg(u_int mask, vm_offset_t addr)
+smp_masked_invlpg(cpumask_t mask, vm_offset_t addr)
 {
 
 	if (smp_started) {
@@ -945,7 +945,7 @@ smp_masked_invlpg(u_int mask, vm_offset_t addr)
 }
 
 void
-smp_masked_invlpg_range(u_int mask, vm_offset_t addr1, vm_offset_t addr2)
+smp_masked_invlpg_range(cpumask_t mask, vm_offset_t addr1, vm_offset_t addr2)
 {
 
 	if (smp_started) {
@@ -961,7 +961,7 @@ ipi_bitmap_handler(struct trapframe frame)
 
 	ipi_bitmap = atomic_readandclear_int(&cpu_ipi_pending[cpu]);
 
-	if (ipi_bitmap & (1 << IPI_PREEMPT))
+	if (ipi_bitmap & (1ul << IPI_PREEMPT))
 		sched_preempt(curthread);
 
 	/* Nothing to do for AST */
@@ -971,7 +971,7 @@ ipi_bitmap_handler(struct trapframe frame)
  * send an IPI to a set of cpus.
  */
 void
-ipi_selected(u_int32_t cpus, u_int ipi)
+ipi_selected(cpumask_t cpus, u_int ipi)
 {
 	int cpu;
 	u_int bitmap = 0;
@@ -990,9 +990,9 @@ ipi_selected(u_int32_t cpus, u_int ipi)
 	}
 #endif
 	CTR3(KTR_SMP, "%s: cpus: %x ipi: %x", __func__, cpus, ipi);
-	while ((cpu = ffs(cpus)) != 0) {
+	while ((cpu = ffsl(cpus)) != 0) {
 		cpu--;
-		cpus &= ~(1 << cpu);
+		cpus &= ~(1ul << cpu);
 
 		KASSERT(cpu_apic_ids[cpu] != -1,
 		    ("IPI to non-existent CPU %d", cpu));
@@ -1035,7 +1035,7 @@ ipi_all_but_self(u_int ipi)
 #define	BEFORE_SPIN	1000000
 
 void
-ipi_nmi_selected(u_int32_t cpus)
+ipi_nmi_selected(cpumask_t cpus)
 {
 	int cpu;
 	register_t icrlo;
@@ -1045,11 +1045,11 @@ ipi_nmi_selected(u_int32_t cpus)
 	
 	CTR2(KTR_SMP, "%s: cpus: %x nmi", __func__, cpus);
 
-	atomic_set_int(&ipi_nmi_pending, cpus);
+	atomic_set_long(&ipi_nmi_pending, cpus);
 
-	while ((cpu = ffs(cpus)) != 0) {
+	while ((cpu = ffsl(cpus)) != 0) {
 		cpu--;
-		cpus &= ~(1 << cpu);
+		cpus &= ~(1ul << cpu);
 
 		KASSERT(cpu_apic_ids[cpu] != -1,
 		    ("IPI NMI to non-existent CPU %d", cpu));
@@ -1065,12 +1065,12 @@ ipi_nmi_selected(u_int32_t cpus)
 int
 ipi_nmi_handler(void)
 {
-	int cpumask = PCPU_GET(cpumask);
+	cpumask_t cpumask = PCPU_GET(cpumask);
 
 	if (!(ipi_nmi_pending & cpumask))
 		return 1;
 
-	atomic_clear_int(&ipi_nmi_pending, cpumask);
+	atomic_clear_long(&ipi_nmi_pending, cpumask);
 	cpustop_handler();
 	return 0;
 }
@@ -1085,19 +1085,19 @@ void
 cpustop_handler(void)
 {
 	int cpu = PCPU_GET(cpuid);
-	int cpumask = PCPU_GET(cpumask);
+	cpumask_t cpumask = PCPU_GET(cpumask);
 
 	savectx(&stoppcbs[cpu]);
 
 	/* Indicate that we are stopped */
-	atomic_set_int(&stopped_cpus, cpumask);
+	atomic_set_long(&stopped_cpus, cpumask);
 
 	/* Wait for restart */
 	while (!(started_cpus & cpumask))
 	    ia32_pause();
 
-	atomic_clear_int(&started_cpus, cpumask);
-	atomic_clear_int(&stopped_cpus, cpumask);
+	atomic_clear_long(&started_cpus, cpumask);
+	atomic_clear_long(&stopped_cpus, cpumask);
 
 	if (cpu == 0 && cpustop_restartfunc != NULL) {
 		cpustop_restartfunc();
@@ -1245,7 +1245,7 @@ SYSINIT(cpu_hlt, SI_SUB_SMP, SI_ORDER_ANY, cpu_hlt_setup, NULL);
 int
 mp_grab_cpu_hlt(void)
 {
-	u_int mask = PCPU_GET(cpumask);
+	cpumask_t mask = PCPU_GET(cpumask);
 #ifdef MP_WATCHDOG
 	u_int cpuid = PCPU_GET(cpuid);
 #endif

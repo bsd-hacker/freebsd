@@ -110,7 +110,7 @@ pmc_cpu_is_active(int cpu)
 {
 #ifdef	SMP
 	return (pmc_cpu_is_present(cpu) &&
-	    (hlt_cpus_mask & (1 << cpu)) == 0);
+	    (hlt_cpus_mask & (1ul << cpu)) == 0);
 #else
 	return (1);
 #endif
@@ -137,7 +137,7 @@ int
 pmc_cpu_is_primary(int cpu)
 {
 #ifdef	SMP
-	return ((logical_cpus_mask & (1 << cpu)) == 0);
+	return ((logical_cpus_mask & (1ul << cpu)) == 0);
 #else
 	return (1);
 #endif

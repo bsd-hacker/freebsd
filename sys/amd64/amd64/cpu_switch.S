@@ -80,7 +80,7 @@ ENTRY(cpu_throw)
 	/* release bit from old pm_active */
 	movq	TD_PROC(%rdi), %rdx		/* oldtd->td_proc */
 	movq	P_VMSPACE(%rdx), %rdx		/* proc->p_vmspace */
-	LK btrl	%eax, VM_PMAP+PM_ACTIVE(%rdx)	/* clear old */
+	LK btrq	%rax, VM_PMAP+PM_ACTIVE(%rdx)	/* clear old */
 	movq	TD_PCB(%rsi),%r8		/* newtd->td_proc */
 	movq	PCB_CR3(%r8),%rdx
 	movq	%rdx,%cr3			/* new address space */
@@ -165,13 +165,13 @@ swinact:
 	/* Release bit from old pmap->pm_active */
 	movq	TD_PROC(%rdi), %rcx		/* oldproc */
 	movq	P_VMSPACE(%rcx), %rcx
-	LK btrl	%eax, VM_PMAP+PM_ACTIVE(%rcx)	/* clear old */
+	LK btrq	%rax, VM_PMAP+PM_ACTIVE(%rcx)	/* clear old */
 	SETLK	%rdx, TD_LOCK(%rdi)		/* Release the old thread */
 swact:
 	/* Set bit in new pmap->pm_active */
 	movq	TD_PROC(%rsi),%rdx		/* newproc */
 	movq	P_VMSPACE(%rdx), %rdx
-	LK btsl	%eax, VM_PMAP+PM_ACTIVE(%rdx)	/* set new */
+	LK btsq	%rax, VM_PMAP+PM_ACTIVE(%rdx)	/* set new */
 
 sw1:
 #if defined(SCHED_ULE) && defined(SMP)

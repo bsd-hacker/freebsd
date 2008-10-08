@@ -544,7 +544,7 @@ pmap_bootstrap(vm_paddr_t *firstaddr)
 	PMAP_LOCK_INIT(kernel_pmap);
 	kernel_pmap->pm_pml4 = (pdp_entry_t *) (KERNBASE + KPML4phys);
 	kernel_pmap->pm_root = NULL;
-	kernel_pmap->pm_active = -1;	/* don't allow deactivation */
+	kernel_pmap->pm_active = (cpumask_t)-1;	/* don't allow deactivation */
 	TAILQ_INIT(&kernel_pmap->pm_pvchunk);
 
 	/*
@@ -858,8 +858,7 @@ pmap_cache_bits(int mode, boolean_t is_pde)
 void
 pmap_invalidate_page(pmap_t pmap, vm_offset_t va)
 {
-	u_int cpumask;
-	u_int other_cpus;
+	cpumask_t cpumask, other_cpus;
 
 	sched_pin();
 	if (pmap == kernel_pmap || pmap->pm_active == all_cpus) {
@@ -879,8 +878,7 @@ pmap_invalidate_page(pmap_t pmap, vm_offset_t va)
 void
 pmap_invalidate_range(pmap_t pmap, vm_offset_t sva, vm_offset_t eva)
 {
-	u_int cpumask;
-	u_int other_cpus;
+	cpumask_t cpumask, other_cpus;
 	vm_offset_t addr;
 
 	sched_pin();
@@ -904,8 +902,7 @@ pmap_invalidate_range(pmap_t pmap, vm_offset_t sva, vm_offset_t eva)
 void
 pmap_invalidate_all(pmap_t pmap)
 {
-	u_int cpumask;
-	u_int other_cpus;
+	cpumask_t cpumask, other_cpus;
 
 	sched_pin();
 	if (pmap == kernel_pmap || pmap->pm_active == all_cpus) {
@@ -4739,8 +4736,8 @@ pmap_activate(struct thread *td)
 	oldpmap = PCPU_GET(curpmap);
 #ifdef SMP
 if (oldpmap)	/* XXX FIXME */
-	atomic_clear_int(&oldpmap->pm_active, PCPU_GET(cpumask));
-	atomic_set_int(&pmap->pm_active, PCPU_GET(cpumask));
+	atomic_clear_long(&oldpmap->pm_active, PCPU_GET(cpumask));
+	atomic_set_long(&pmap->pm_active, PCPU_GET(cpumask));
 #else
 if (oldpmap)	/* XXX FIXME */
 	oldpmap->pm_active &= ~PCPU_GET(cpumask);

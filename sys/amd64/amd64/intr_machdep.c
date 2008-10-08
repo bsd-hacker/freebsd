@@ -435,7 +435,7 @@ DB_SHOW_COMMAND(irqs, db_show_irqs)
  */
 
 /* The BSP is always a valid target. */
-static cpumask_t intr_cpus = (1 << 0);
+static cpumask_t intr_cpus = (1ul << 0);
 static int current_cpu;
 
 static void
@@ -450,7 +450,7 @@ intr_assign_next_cpu(struct intsrc *isrc)
 		current_cpu++;
 		if (current_cpu > mp_maxid)
 			current_cpu = 0;
-	} while (!(intr_cpus & (1 << current_cpu)));
+	} while (!(intr_cpus & (1ul << current_cpu)));
 }
 
 /* Attempt to bind the specified IRQ to the specified CPU. */
@@ -479,7 +479,7 @@ intr_add_cpu(u_int cpu)
 		printf("INTR: Adding local APIC %d as a target\n",
 		    cpu_apic_ids[cpu]);
 
-	intr_cpus |= (1 << cpu);
+	intr_cpus |= (1ul << cpu);
 }
 
 /*

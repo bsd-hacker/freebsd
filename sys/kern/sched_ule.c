@@ -540,7 +540,7 @@ struct cpu_search {
 
 #define	CPUMASK_FOREACH(cpu, mask)				\
 	for ((cpu) = 0; (cpu) < sizeof((mask)) * 8; (cpu)++)	\
-		if ((mask) & 1 << (cpu))
+		if ((mask) & 1ul << (cpu))
 
 static __inline int cpu_search(struct cpu_group *cg, struct cpu_search *low,
     struct cpu_search *high, const int match);
@@ -562,14 +562,14 @@ cpu_compare(int cpu, struct cpu_search *low, struct cpu_search *high,
 
 	tdq = TDQ_CPU(cpu);
 	if (match & CPU_SEARCH_LOWEST)
-		if (low->cs_mask & (1 << cpu) &&
+		if (low->cs_mask & (1ul << cpu) &&
 		    tdq->tdq_load < low->cs_load &&
 		    tdq->tdq_lowpri > low->cs_limit) {
 			low->cs_cpu = cpu;
 			low->cs_load = tdq->tdq_load;
 		}
 	if (match & CPU_SEARCH_HIGHEST)
-		if (high->cs_mask & (1 << cpu) &&
+		if (high->cs_mask & (1ul << cpu) &&
 		    tdq->tdq_load >= high->cs_limit && 
 		    tdq->tdq_load > high->cs_load &&
 		    tdq->tdq_transferable) {
@@ -739,7 +739,7 @@ sched_balance_group(struct cpu_group *cg)
 	int low;
 	int i;
 
-	mask = -1;
+	mask = (cpumask_t)-1;
 	for (;;) {
 		sched_both(cg, mask, &low, &high);
 		if (low == high || low == -1 || high == -1)
@@ -751,9 +751,9 @@ sched_balance_group(struct cpu_group *cg)
 		 * to kick out of the set and try again.
 	 	 */
 		if (TDQ_CPU(high)->tdq_transferable == 0)
-			mask &= ~(1 << high);
+			mask &= ~(1ul << high);
 		else
-			mask &= ~(1 << low);
+			mask &= ~(1ul << low);
 	}
 
 	for (i = 0; i < cg->cg_children; i++)
@@ -839,7 +839,7 @@ sched_balance_pair(struct tdq *high, struct tdq *low)
 		 * IPI the target cpu to force it to reschedule with the new
 		 * workload.
 		 */
-		ipi_selected(1 << TDQ_ID(low), IPI_PREEMPT);
+		ipi_selected(1ul << TDQ_ID(low), IPI_PREEMPT);
 	}
 	tdq_unlock_pair(high, low);
 	return (moved);
@@ -894,7 +894,7 @@ tdq_idled(struct tdq *tdq)
 
 	if (smp_started == 0 || steal_idle == 0)
 		return (1);
-	mask = -1;
+	mask = (cpumask_t)-1;
 	mask &= ~PCPU_GET(cpumask);
 	/* We don't want to be preempted while we're iterating. */
 	spinlock_enter();
@@ -909,7 +909,7 @@ tdq_idled(struct tdq *tdq)
 			continue;
 		}
 		steal = TDQ_CPU(cpu);
-		mask &= ~(1 << cpu);
+		mask &= ~(1ul << cpu);
 		tdq_lock_pair(tdq, steal);
 		if (steal->tdq_load < thresh || steal->tdq_transferable == 0) {
 			tdq_unlock_pair(tdq, steal);
@@ -969,7 +969,7 @@ tdq_notify(struct tdq *tdq, struct thread *td)
 			return;
 	}
 	tdq->tdq_ipipending = 1;
-	ipi_selected(1 << cpu, IPI_PREEMPT);
+	ipi_selected(1ul << cpu, IPI_PREEMPT);
 }
 
 /*
@@ -2404,7 +2404,7 @@ sched_affinity(struct thread *td)
 	cpu = ts->ts_cpu;
 	ts->ts_cpu = sched_pickcpu(td, 0);
 	if (cpu != PCPU_GET(cpuid))
-		ipi_selected(1 << cpu, IPI_PREEMPT);
+		ipi_selected(1ul << cpu, IPI_PREEMPT);
 #endif
 }
 

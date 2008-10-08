@@ -888,13 +888,13 @@ mptable_hyperthread_fixup(u_long id_mask)
 	 * already in the table, then kill the fixup.
 	 */
 	for (id = 0; id <= MAX_LAPIC_ID; id++) {
-		if ((id_mask & 1 << id) == 0)
+		if ((id_mask & 1ul << id) == 0)
 			continue;
 		/* First, make sure we are on a logical_cpus boundary. */
 		if (id % logical_cpus != 0)
 			return;
 		for (i = id + 1; i < id + logical_cpus; i++)
-			if ((id_mask & 1 << i) != 0)
+			if ((id_mask & 1ul << i) != 0)
 				return;
 	}
 
@@ -911,7 +911,7 @@ mptable_hyperthread_fixup(u_long id_mask)
 				    i, id);
 			lapic_create(i, 0);
 		}
-		id_mask &= ~(1 << id);
+		id_mask &= ~(1ul << id);
 	}
 }
 #endif /* MPTABLE_FORCE_HTT */
