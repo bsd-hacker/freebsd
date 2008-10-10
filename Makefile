@@ -1,4 +1,4 @@
-# $P4: //depot/user/rpaulo/aird/Makefile#1 $
+# $FreeBSD$
 
 PROG=	aird
 MAN=	aird.1
