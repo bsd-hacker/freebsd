@@ -1,0 +1,93 @@
+.\"
+.\" Copyright (c) 2007 Rui Paulo <rpaulo@fnop.net>
+.\" All rights reserved.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+.\" IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+.\" WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+.\" DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT,
+.\" INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+.\" (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+.\" SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+.\" HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+.\" STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+.\" ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+.\" POSSIBILITY OF SUCH DAMAGE.
+.\"
+.\" $FreeBSD$
+.\"
+.Dd July 30, 2007
+.Dt UBTHIDCTL 1
+.Sh NAME
+.Nm ubthidctl
+.Nd "Bluetooth USB HID-HCI proxy switcher"
+.Sh SYNOPSIS
+.Nm
+.Fl f Ar device
+.Fl a Ar addr
+.Op Fl m Ar mode
+.Nm
+.Fl t Ar tablefile
+.Sh DESCRIPTION
+The
+.Nm
+utility changes Bluetooth controllers from HID (Human Interface Device) 
+to HCI (Host Controller Interface) and vice-versa.
+HCI is the interface used by Bluetooth devices and HID is the interface
+used by some USB devices. The device will reattach every time you switch
+modes.
+.Pp
+Some Bluetooth controllers present themselves to the BIOS as
+an
+.Xr uhid 4
+device.
+This is done so that the user can use a Bluetooth keyboard and a Bluetooth
+mouse with BIOS implementations that already support USB.
+After the operating system boots, it's the system administrator's
+responsibility to switch the device to HCI mode.
+.Pp
+This utility supports two modes of operation.
+In the first one you run the utility with the exact location of the
+device (device entry, address and an optional mode).
+In the other mode, the utility reads a filename with several vendors
+and product identifiers. If your system has a device listed in
+.Pa tablefile
+it will be switched to the appropriate mode automatically.
+.Sh FILES
+.Bl -tag -width indent
+.It Pa /usr/share/misc/ubthidtbl
+The location of the table file.
+.El
+.Sh EXAMPLES
+First mode of operation:
+.Bd -literal -offset indent
+ubthidctl -f /dev/usb3 -a 2
+.Ed
+.Pp
+Second mode of operation:
+.Bd -literal -offset indent
+ubthidctl -t /usr/share/misc/ubthidtbl
+.Ed
+.Sh SEE ALSO
+.Xr ng_ubt 4 ,
+.Xr uhid 4 ,
+.Xr usb 4
+.Sh HISTORY
+The
+.Nm
+utility first appeared in
+.Fx 8.0 .
+.Pp
+It was based on the hid2hci utility for Linux written by
+.An Marcel Holtmann Aq marcel@holtmann.org
+.Sh AUTHORS
+.An Rui Paulo Aq rpaulo@fnop.net

@@ -1,0 +1,15 @@
+#
+# $FreeBSD$
+# 
+# The following table lists the devices that ubthidctl(1) should switch
+# from HID to HCI and vice versa.
+#
+
+# Apple
+HID	0x05ac	0x1000
+
+# Cambridge Silicon Radio
+HID	0x0a12	0x1000
+
+# KYE Systems
+HID	0x0458	0x1000
