@@ -1,0 +1,180 @@
+.\"
+.\" Copyright (c) 2007 Rui Paulo <rpaulo@FreeBSD.org>
+.\" All rights reserved.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+.\" IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+.\" WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+.\" DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT,
+.\" INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+.\" (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+.\" SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+.\" HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+.\" STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+.\" ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+.\" POSSIBILITY OF SUCH DAMAGE.
+.\"
+.\" $P4: //depot/user/rpaulo/aird/aird.1#1 $
+.\"
+.Dd July 30, 2007
+.Dt AIRD 1
+.Sh NAME
+.Nm aird
+.Nd "USB Apple IR receiver daemon"
+.Sh SYNOPSIS
+.Nm
+.Op Fl vd
+.Op Fl p Ar pidfile
+.Op Fl k Ar key
+.Fl f Ar device
+.Op Fl M Ar menu command
+.Op Fl P Ar play command
+.Op Fl F Ar forward command
+.Op Fl B Ar backward command
+.Op Fl U Ar volume up command
+.Op Fl D Ar volume down command
+.Sh DESCRIPTION
+The
+.Nm
+daemon handles Apple IR receiver button events.
+If your system has an USB Apple IR receiver, most likely you'll also
+have an Apple Remote.
+An Apple remote has six (6) buttons: Volume up, Volume down,
+Play/Pause, Forward, Backward and Menu.
+For each button you can assign a command to execute.
+.Pp
+Apple IR receiver modules are found on:
+.Pp
+.Bl -bullet -offset indent -compact
+.It
+MacBook (any generation)
+.It
+MacBook Pro (any generation)
+.It
+Intel iMac
+.It
+Intel MacMini
+.El
+.Pp
+The following program options are available:
+.Bl -tag -width indent
+.It Fl v
+Enable verbose mode.
+.It Fl d
+Toggles the daemon flag.
+.It Fl p Ar pidfile
+Use the specified file to store the process ID.
+.It Fl f Ar device
+Read from the specified device entry. This is mandatory.
+.It Fl k Ar key
+Only accept commands from the remote with the specified
+.Pa key .
+See the
+.Sx EXAMPLES
+section to understand how remote pairing works.
+.El
+.Pp
+The following options specify commands to run upon button down
+events:
+.Bl -tag -width indent
+.It Fl M Ar menu command
+Command to run when the daemon recieves a notification that the
+.Em Menu
+button was pressed.
+.It Fl P Ar play command
+Command to run when the daemon recieves a notification that the
+.Em Play/Pause
+button was pressed.
+.It Fl F Ar forward command
+Command to run when the daemon recieves a notification that the
+.Em Forward
+button was pressed.
+.It Fl B Ar backward command
+Command to run when the daemon recieves a notification that the 
+.Em Backward
+button was pressed.
+.It Fl U Ar volume up command
+Command to run when the daemon recieves a notification that the
+.Em Volume Up
+button was pressed.
+.It Fl D Ar volume down command
+Command to run when the daemon recieves a notification that the
+.Em Volume Down
+button was pressed.
+.El
+.Pp
+Note that lower case options are program options and upper case
+options specify the commands to run upon button down events.
+.Sh FILES
+.Bl -tag -width indent
+.It Pa /var/run/aird.pid
+The default location of the PID file.
+.El
+.Sh EXAMPLES
+To pair a remote controller with your IR receiver, do the following:
+.Bd -literal -offset indent
+aird -f /dev/uhid1 -k 0
+.Ed
+.Pp
+Then press the
+.Pa Menu
+and
+.Pa Forward
+keys at the same time for five seconds. The following will show up:
+.Bd -literal -offset indent
+Your Apple remote pairing key is: 131
+Next time you run aird, pass this number as the -k argument.
+.Ed
+.Pp
+This example shows how to control
+.Xr mpd 1
+with
+.Xr aird 1 .
+You need
+.Xr mpc 1
+and
+.Xr ncmpc 1
+installed.
+Run
+.Xr aird 1
+from your
+.Pa ~/.xinitrc
+startup file like this:
+.Bd -literal -offset indent
+aird -p ~/.aird.pid -f /dev/uhid1 -P "mpc toggle" -F "mpc next" \\
+  -B "mpc prev" -U "mixer vol +2" -D "mixer vol -2"  \\
+  -M "xterm -e ncmpc"
+.Ed
+.Pp
+If you want to stop other users from gaining control of the IR receiver
+and to prevent commands to be executed when someone presses a button
+on the remote control, run
+.Xr aird 1
+only with the
+.Fl f
+argument:
+.Bd -literal -offset indent
+aird -f /dev/uhid1
+.Ed
+.Sh SEE ALSO
+.Xr mpd 1 Pq Pa ports/audio/musicpd ,
+.Xr mpc 1 Pq Pa ports/audio/mpc ,
+.Xr ncmpc 1 Pq Pa ports/audio/ncmpc ,
+.Xr uhid 4 ,
+.Xr usb 4
+.Sh HISTORY
+The
+.Nm
+utility first appeared in
+.Fx 8.0 .
+.Sh AUTHORS
+.An Rui Paulo Aq rpaulo@FreeBSD.org
