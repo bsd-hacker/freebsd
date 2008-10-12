@@ -341,8 +341,10 @@ g_part_bsd_read(struct g_part_table *basetable, struct g_consumer *cp)
 		printf("GEOM: %s: geometry does not match label.\n", pp->name);
 
 	chs = le32dec(buf + 60);
+#if 0
 	if (chs < 1 || chs > msize)
 		goto invalid_label;
+#endif
 	if (chs != msize)
 		printf("GEOM: %s: media size does not match label.\n",
 		    pp->name);

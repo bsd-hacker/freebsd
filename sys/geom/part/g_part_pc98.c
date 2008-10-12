@@ -260,6 +260,8 @@ g_part_pc98_dumpconf(struct g_part_table *table,
 		/* confxml: partition entry information */
 		sbuf_printf(sb, "%s<label>%s</label>\n", indent, name);
 		sbuf_printf(sb, "%s<rawtype>%u</rawtype>\n", indent, type);
+		if (entry->ent.dp_sid & 0x80)
+			sbuf_printf(sb, "%s<attrib>active</attrib>\n", indent);
 	}
 	return (0);
 }
@@ -304,6 +306,7 @@ static int
 g_part_pc98_probe(struct g_part_table *table, struct g_consumer *cp)
 {
 	struct g_provider *pp;
+	struct pc98_partition dp;
 	u_char *buf, *p;
 	int error, index, res, sum;
 	uint16_t magic;
@@ -338,11 +341,14 @@ g_part_pc98_probe(struct g_part_table *table, struct g_consumer *cp)
 
 	for (index = 0; index < NDOSPART; index++) {
 		p = buf + SECSIZE + index * DOSPARTSIZE;
-		if (p[2] != 0 || p[3] != 0)
-			goto out;
-		if (p[1] == 0)
+		pc98_partition_dec(p, &dp);
+		if (dp.dp_mid == 0 || dp.dp_sid == 0)
 			continue;
-		if (le16dec(p + 10) == 0)
+		if (dp.dp_ssect == dp.dp_esect &&
+                    dp.dp_shd == dp.dp_ehd &&
+                    dp.dp_scyl == dp.dp_ecyl)
+			goto out;
+		if (dp.dp_scyl == 0 || dp.dp_ecyl == 0)
 			goto out;
 	}
 
@@ -381,20 +387,7 @@ g_part_pc98_read(struct g_part_table *basetable, struct g_consumer *cp)
 
 	for (index = NDOSPART - 1; index >= 0; index--) {
 		p = buf + SECSIZE + index * DOSPARTSIZE;
-		ent.dp_mid = p[0];
-		ent.dp_sid = p[1];
-		ent.dp_dum1 = p[2];
-		ent.dp_dum2 = p[3];
-		ent.dp_ipl_sct = p[4];
-		ent.dp_ipl_head = p[5];
-		ent.dp_ipl_cyl = le16dec(p + 6);
-		ent.dp_ssect = p[8];
-		ent.dp_shd = p[9];
-		ent.dp_scyl = le16dec(p + 10);
-		ent.dp_esect = p[12];
-		ent.dp_ehd = p[13];
-		ent.dp_ecyl = le16dec(p + 14);
-		bcopy(p + 16, ent.dp_name, sizeof(ent.dp_name));
+		pc98_partition_dec(p, &ent);
 		if (ent.dp_sid == 0)
 			continue;
 
@@ -442,23 +435,9 @@ g_part_pc98_write(struct g_part_table *basetable, struct g_consumer *cp)
 		p = table->table + (index - 1) * DOSPARTSIZE;
 		entry = (baseentry != NULL && index == baseentry->gpe_index)
 		    ? (struct g_part_pc98_entry *)baseentry : NULL;
-		if (entry != NULL && !baseentry->gpe_deleted) {
-			p[0] = entry->ent.dp_mid;
-			p[1] = entry->ent.dp_sid;
-			p[2] = entry->ent.dp_dum1;
-			p[3] = entry->ent.dp_dum2;
-			p[4] = entry->ent.dp_ipl_sct;
-			p[5] = entry->ent.dp_ipl_head;
-			le16enc(p + 6, entry->ent.dp_ipl_cyl);
-			p[8] = entry->ent.dp_ssect;
-			p[9] = entry->ent.dp_shd;
-			le16enc(p + 10, entry->ent.dp_scyl);
-			p[12] = entry->ent.dp_esect;
-			p[13] = entry->ent.dp_ehd;
-			le16enc(p + 14, entry->ent.dp_ecyl);
-			bcopy(entry->ent.dp_name, p + 16,
-			    sizeof(entry->ent.dp_name));
-		} else
+		if (entry != NULL && !baseentry->gpe_deleted)
+			pc98_partition_enc(p, &entry->ent);
+		else
 			bzero(p, DOSPARTSIZE);
 
 		if (entry != NULL)
