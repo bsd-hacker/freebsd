@@ -31,7 +31,7 @@
  */
 
 /*
- *  $FreeBSD$
+ * $FreeBSD$
  */
 
 /*
@@ -641,6 +641,35 @@ cmd_delay(globalstate *gstate)
 }
 
 int
+cmd_pidonly(globalstate *gstate)
+
+{
+    int newval;
+    char tmpbuf[20];
+
+    message_prompt("PID to show: ");
+    newval = readline(tmpbuf, 8, Yes);
+    if ((gstate->pselect.pidonly = newval) <= 0) {
+	gstate->pselect.pidonly = -1;
+	message_error(" Showing all processes");
+    } else {
+	gstate->pselect.pidonly = newval;
+	message_error(" Showing only PID %d", gstate->pselect.pidonly);
+    }
+    return CMD_REFRESH;
+}
+
+int
+cmd_persecond(globalstate *gstate)
+
+{
+    gstate->pselect.persecond = !gstate->pselect.persecond;
+    message_error(" Displaying IO stats per %s.",
+		  gstate->pselect.persecond ? "second" : "delay period");
+    return CMD_REFRESH;
+}
+
+int
 cmd_idle(globalstate *gstate)
 
 {
@@ -688,9 +717,9 @@ int
 cmd_thisprocess(globalstate *gstate)
 
 {
-    gstate->pselect.self = !gstate->pselect.self;
+    gstate->pselect.self = (gstate->pselect.self == -1) ? getpid() : -1;
     message_error(" %sisplaying self.",
-		  gstate->pselect.self ? "D" : "Not d");
+		  (gstate->pselect.self != -1 ) ? "Not d" : "D");
     return CMD_REFRESH;
 }
 
@@ -758,6 +787,10 @@ cmd_order(globalstate *gstate)
     return CMD_OK;
 }
 
+#ifdef nomore
+/*
+ * This can be done via the order function
+ */
 int
 cmd_order_x(globalstate *gstate, char *name, ...)
 
@@ -822,6 +855,7 @@ cmd_order_time(globalstate *gstate)
 {
     return cmd_order_x(gstate, "time");
 }
+#endif
 
 #ifdef ENABLE_KILL
 
@@ -970,11 +1004,14 @@ command command_table[] = {
     { 'H', cmd_threads, "toggle the display of individual threads" },
     { 'j', cmd_jailid, "toggle the displaying of jail ID" },
     { 'J', cmd_jailfilter, "display processes by jail ID" },
+#ifdef nomore
     { 'M', cmd_order_mem, "sort by memory usage" },
     { 'N', cmd_order_pid, "sort by process id" },
     { 'P', cmd_order_cpu, "sort by CPU usage" },
-    { 'S', cmd_system, "toggle the display of system processes" },
     { 'T', cmd_order_time, "sort by CPU time" },
+#endif
+    { 'P', cmd_pidonly, "show only this PID" },
+    { 'S', cmd_system, "toggle the display of system processes" },
     { 'U', cmd_useruid, "toggle the display of usernames or uids" },
     { 'c', cmd_command, "display processes by command name" },
     { 'd', cmd_displays, "change number of displays to show" },
@@ -993,6 +1030,7 @@ command command_table[] = {
     { 'r', cmd_renice, "renice a process" },
 #endif
     { 's', cmd_delay, "change number of seconds to delay between updates" },
+    { 'p', cmd_persecond, "change IO stats per second instead of per delay" },
     { 't', cmd_thisprocess, "toggle the display of this process" },
     { 'u', cmd_user, "display processes for only one user (+ selects all users)" },
     { '\0', NULL, NULL },

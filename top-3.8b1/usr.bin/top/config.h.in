@@ -214,7 +214,7 @@
 #define MODULE "freebsd"
 
 /* Default number of processes to display on non-terminals when topn is all */
-#define NOMINAL_TOPN 40
+#define NOMINAL_TOPN -1
 
 /* Define the major OS revision number. */
 #define OSMAJOR 7

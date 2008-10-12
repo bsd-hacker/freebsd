@@ -31,6 +31,10 @@
  */
 
 /*
+ * $FreeBSD$
+ */
+
+/*
  * Top - a top users display for Unix
  *
  * Definition of the color interface.

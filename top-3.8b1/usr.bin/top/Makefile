@@ -7,7 +7,7 @@ PROG=	top
 SRCS=	commands.c display.c machine.c screen.c top.c \
 	username.c utils.c version.c color.c hash.c
 SRCS+=	sigdesc.h config.h
-CFLAGS+= -DHAVE_GETOPT -DHAVE_STRERROR -DORDER -DSIGWINCH -DHAS_SHOWTHREADS
+CFLAGS+= -DHAVE_GETOPT -DHAVE_STRERROR -DORDER -DTOPSIGWINCH -DHAS_SHOWTHREADS
 CFLAGS+= -I${.CURDIR} -I${TOPDIR} -I. -Wall -g
 
 #
@@ -51,7 +51,7 @@ CPU!=	uname -m
 config.h: config.h.in
 	@${ECHO} Making config.h from config.h.in
 	sed \
-		-e 's/@DEFAULT_TOPN@/30/' \
+		-e 's/@DEFAULT_TOPN@/-1/' \
 		-e 's/@DEFAULT_DELAY@/2/' \
 		-e 's/@HAVE_GETOPT_LONG@/1/' \
 		-e 's/@ENABLE_KILL@/1/' \
@@ -62,7 +62,7 @@ CLEANFILES+= top.1.local
 top.1.local: top.1.in
 	@${ECHO} Making top.1.local from top.1.in
 	@sed \
-		-e 's/@DEFAULT_TOPN@/30/' \
+		-e 's/@DEFAULT_TOPN@/-1/' \
 		-e 's/@DEFAULT_DELAY@/2/' \
 		-e 's/@HAVE_GETOPT_LONG@/1/' \
 		-e 's/@ENABLE_KILL@/1/' \
@@ -70,6 +70,9 @@ top.1.local: top.1.in
 
 CLEANFILES+= top.1
 top.1: top.1.local machine.man
-	cat ${.ALLSRC} > ${.TARGET}
+	L=`grep -n MAN_SUPPLEMENT top.1.local | awk -F: '{ print $$1 }'`; \
+	(head -`expr $$L - 1` top.1.local; \
+	 cat machine.man; \
+	 tail +`expr $$L + 1` top.1.local) > top.1
 
 .include <bsd.prog.mk>

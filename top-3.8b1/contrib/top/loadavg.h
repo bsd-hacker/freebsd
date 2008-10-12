@@ -31,6 +31,10 @@
  */
 
 /*
+ * $FreeBSD$
+ */
+
+/*
  *  Top - a top users display for Berkeley Unix
  *
  *  Defines required to access load average figures.

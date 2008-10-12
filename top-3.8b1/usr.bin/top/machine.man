@@ -1,3 +1,6 @@
+.\"
+.\" $FreeBSD
+.\"
 .SH "FreeBSD NOTES"
 Priorities are shown the same as they exist in process data structures,
 ranging from 0 to 255.  Note that this is not the same as the ps(1) 
@@ -20,8 +23,8 @@ Time sharing user threads
 Idle user threads
 
 .SH "FreeBSD THREADS"
-Starting with FreeBSD 8.0 the display of individual threads can be
-toggled with the synonymous commands
+Starting with FreeBSD 7.1 and 8.0 the display of individual threads
+can be toggled with the synonymous commands
 .B t
 and
 .BR H.

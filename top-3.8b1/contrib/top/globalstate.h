@@ -31,6 +31,10 @@
  */
 
 /*
+ * $FreeBSD$
+ */
+
+/*
  * The global state of top is described in this structure.  It is passed
  * to routines that may need to examine or alter it.
  */

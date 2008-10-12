@@ -30,6 +30,10 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+/*
+ * $FreeBSD$
+ */
+
 /* hash.m4h */
 
 /* Interface definition for hash.c */

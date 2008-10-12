@@ -31,6 +31,10 @@
  */
 
 /*
+ * $FreeBSD$
+ */
+
+/*
  * "getopt" routine customized for top.
  */
 

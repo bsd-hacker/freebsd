@@ -180,6 +180,7 @@ struct handle
 
 /* calculate a per-second rate using milliseconds */
 #define per_second(n, msec)   (((n) * 1000) / (msec))
+#define per_timeperiod(n, msec, timeperiod)   (((n) * timeperiod) / (msec))
 
 /* process state names for the "STATE" column of the display */
 /* the extra nulls in the string "run" are for adding a slash and
@@ -392,12 +393,15 @@ static int show_threads = 0;
 
 /* sorting orders. first is default */
 char *ordernames[] = {
-    "cpu", "size", "res", "time", "pri", "nice", "io", "pid", "jid", NULL
+    "cpu", "size", "res", "time", "pri", "nice", "io", "pid", "jid",
+    "vcsw", "ivcsw", "read", "write", "fault", NULL
 };
 
 /* compare routines */
 int proc_compare(), compare_size(), compare_res(), compare_time(),
-    compare_prio(), compare_nice(), compare_io(), compare_pid(), compare_jid();
+    compare_prio(), compare_nice(), compare_io(), compare_pid(),
+    compare_jid(), compare_vcsw(), compare_ivcsw(),
+    compare_read(), compare_write(), compare_fault();
 
 int (*proc_compares[])() = {
     proc_compare,
@@ -409,6 +413,11 @@ int (*proc_compares[])() = {
     compare_io,
     compare_pid,
     compare_jid,
+    compare_vcsw,
+    compare_ivcsw,
+    compare_read,
+    compare_write,
+    compare_fault,
     NULL
 };
 
@@ -724,6 +733,7 @@ fmt_command(char *buf, int sz, struct kinfo_proc *pp)
     char cmd[MAX_COLS];
     char *bufp;
     char **args;
+    char *ps;
     int argc;
 
 #if OSMAJOR <= 4
@@ -737,7 +747,7 @@ fmt_command(char *buf, int sz, struct kinfo_proc *pp)
         /* get the pargs structure */
         if ((args = kvm_getargv(kd, pp, sz)) != NULL)
         {
-	    /* successfull retrieval: now convert nulls in to spaces */
+	    /* successfull retrieval: now convert nulls and cr/lf in to spaces */
 	    bufp = cmd;
 	    cmd[0] = '\0';
 	    argc = 0;
@@ -746,6 +756,13 @@ fmt_command(char *buf, int sz, struct kinfo_proc *pp)
 		if (cmd[0] != '\0')
 		    strcat(cmd, " ");
 		strcat(cmd, args[argc++]);
+	    }
+
+	    while ((ps = strchr(cmd, '\r')) != NULL) {
+		*ps = ' ';
+	    }
+	    while ((ps = strchr(cmd, '\n')) != NULL) {
+		*ps = ' ';
 	    }
 
 	    /* format cmd as our answer */
@@ -758,45 +775,82 @@ fmt_command(char *buf, int sz, struct kinfo_proc *pp)
 }
 
 int
-fmt_vcsw(char *buf, int sz, struct kinfo_proc *pp)
+fmt_vcsw(char *buf, int sz, struct kinfo_proc *pp, int duration)
 
 {
-    return snprintf(buf, sz, "%6ld", per_second(SP(pp, vcsw), elapsed_msecs));
+    return snprintf(buf, sz, "%6ld", per_timeperiod(SP(pp, vcsw),
+	elapsed_msecs, duration));
+}
+int fmt_vcsw_ps(char *buf, int sz, struct kinfo_proc *pp) {
+	return fmt_vcsw(buf, sz, pp, 1000);
+}
+int fmt_vcsw_pd(char *buf, int sz, struct kinfo_proc *pp) {
+	return fmt_vcsw(buf, sz, pp, elapsed_msecs);
 }
 
 int
-fmt_ivcsw(char *buf, int sz, struct kinfo_proc *pp)
+fmt_ivcsw(char *buf, int sz, struct kinfo_proc *pp, int duration)
 
 {
-    return snprintf(buf, sz, "%6ld", per_second(SP(pp, ivcsw), elapsed_msecs));
+    return snprintf(buf, sz, "%6ld", per_timeperiod(SP(pp, ivcsw), elapsed_msecs, duration));
+}
+int fmt_ivcsw_ps(char *buf, int sz, struct kinfo_proc *pp) {
+	return fmt_ivcsw(buf, sz, pp, 1000);
+}
+int fmt_ivcsw_pd(char *buf, int sz, struct kinfo_proc *pp) {
+	return fmt_ivcsw(buf, sz, pp, elapsed_msecs);
 }
 
 int
-fmt_read(char *buf, int sz, struct kinfo_proc *pp)
+fmt_read(char *buf, int sz, struct kinfo_proc *pp, int duration)
 
 {
-    return snprintf(buf, sz, "%6ld", per_second(SP(pp, inblock), elapsed_msecs));
+    return snprintf(buf, sz, "%6ld", per_timeperiod(SP(pp, inblock), elapsed_msecs, duration));
+}
+int fmt_read_ps(char *buf, int sz, struct kinfo_proc *pp) {
+	return fmt_read(buf, sz, pp, 1000);
+}
+int fmt_read_pd(char *buf, int sz, struct kinfo_proc *pp) {
+	return fmt_read(buf, sz, pp, elapsed_msecs);
 }
 
 int
-fmt_write(char *buf, int sz, struct kinfo_proc *pp)
+fmt_write(char *buf, int sz, struct kinfo_proc *pp, int duration)
 
 {
-    return snprintf(buf, sz, "%6ld", per_second(SP(pp, oublock), elapsed_msecs));
+    return snprintf(buf, sz, "%6ld", per_timeperiod(SP(pp, oublock), elapsed_msecs, duration));
+}
+int fmt_write_ps(char *buf, int sz, struct kinfo_proc *pp) {
+	return fmt_write(buf, sz, pp, 1000);
+}
+int fmt_write_pd(char *buf, int sz, struct kinfo_proc *pp) {
+	return fmt_write(buf, sz, pp, elapsed_msecs);
 }
 
 int
-fmt_fault(char *buf, int sz, struct kinfo_proc *pp)
+fmt_fault(char *buf, int sz, struct kinfo_proc *pp, int duration)
 
 {
-    return snprintf(buf, sz, "%6ld", per_second(SP(pp, majflt), elapsed_msecs));
+    return snprintf(buf, sz, "%6ld", per_timeperiod(SP(pp, majflt), elapsed_msecs, duration));
+}
+int fmt_fault_ps(char *buf, int sz, struct kinfo_proc *pp) {
+	return fmt_fault(buf, sz, pp, 1000);
+}
+int fmt_fault_pd(char *buf, int sz, struct kinfo_proc *pp) {
+	return fmt_fault(buf, sz, pp, elapsed_msecs);
 }
 
 int
-fmt_iototal(char *buf, int sz, struct kinfo_proc *pp)
+fmt_iototal(char *buf, int sz, struct kinfo_proc *pp, int duration)
 
 {
-    return snprintf(buf, sz, "%6ld", per_second(SP(pp, totalio), elapsed_msecs));
+    return snprintf(buf, sz, "%6ld", per_timeperiod(SP(pp, totalio), elapsed_msecs, duration));
+}
+int fmt_iototal_ps(char *buf, int sz, struct kinfo_proc *pp) {
+	return fmt_iototal(buf, sz, pp, 1000);
+}
+int fmt_iototal_pd(char *buf, int sz, struct kinfo_proc *pp) {
+	return fmt_iototal(buf, sz, pp, elapsed_msecs);
 }
 
 int
@@ -815,12 +869,14 @@ enum proc_fields {
 	FIELD_PID = 0, FIELD_JID, FIELD_USERNAME, FIELD_UID,
 	FIELD_THR, FIELD_PRI, FIELD_NICE, FIELD_SIZE, FIELD_RES,
 	FIELD_STATE, FIELD_FLG, FIELD_C, FIELD_TIME, FIELD_CPU,
-	FIELD_COMMAND, FIELD_VCSW, FIELD_IVCSW, FIELD_READ,
-	FIELD_WRITE, FIELD_FAULT, FIELD_TOTAL, FIELD_PERCENT
+	FIELD_COMMAND, FIELD_VCSW_PS, FIELD_IVCSW_PS, FIELD_READ_PS,
+	FIELD_WRITE_PS, FIELD_FAULT_PS, FIELD_TOTAL_PS, FIELD_PERCENT,
+	FIELD_VCSW_PD, FIELD_IVCSW_PD, FIELD_READ_PD,
+	FIELD_WRITE_PD, FIELD_FAULT_PD, FIELD_TOTAL_PD
 
 };
 
-#define MAX_FIELDS 25
+#define MAX_FIELDS 31
 struct proc_field proc_field[MAX_FIELDS] = {
     { "PID", 6, 1, 0, fmt_pid },
     { "JID", 3, 1, 0, fmt_jid },
@@ -837,13 +893,19 @@ struct proc_field proc_field[MAX_FIELDS] = {
     { "TIME", 6, 1, 0, fmt_time },
     { "CPU", 6, 1, 0, fmt_cpu },
     { "COMMAND", 7, 0, 0, fmt_command },
-    { "VCSW", 6, 1, 0, fmt_vcsw },
-    { "IVCSW", 6, 1, 0, fmt_ivcsw },
-    { "READ", 6, 1, 0, fmt_read },
-    { "WRITE", 6, 1, 0, fmt_write },
-    { "FAULT", 6, 1, 0, fmt_fault },
-    { "TOTAL", 6, 1, 0, fmt_iototal },
+    { "VCSW", 6, 1, 0, fmt_vcsw_ps },
+    { "IVCSW", 6, 1, 0, fmt_ivcsw_ps },
+    { "READ", 6, 1, 0, fmt_read_ps },
+    { "WRITE", 6, 1, 0, fmt_write_ps },
+    { "FAULT", 6, 1, 0, fmt_fault_ps },
+    { "TOTAL", 6, 1, 0, fmt_iototal_ps },
     { "PERCENT", 7, 1, 0, fmt_iopct },
+    { "VCSW", 6, 1, 0, fmt_vcsw_pd },
+    { "IVCSW", 6, 1, 0, fmt_ivcsw_pd },
+    { "READ", 6, 1, 0, fmt_read_pd },
+    { "WRITE", 6, 1, 0, fmt_write_pd },
+    { "FAULT", 6, 1, 0, fmt_fault_pd },
+    { "TOTAL", 6, 1, 0, fmt_iototal_pd },
     { NULL, 0, 0, 0, NULL }
 };
 
@@ -1179,6 +1241,7 @@ get_process_info(struct system_info *si,
     /* these are copied out of sel for speed */
     int show_idle;
     int show_self;
+    int show_pidonly;
     int show_system;
     int show_jailfilter;
     int show_uid;
@@ -1230,7 +1293,8 @@ get_process_info(struct system_info *si,
 
     /* set up flags which define what we are going to select */
     show_idle = sel->idle;
-    show_self = 0;
+    show_self = sel->self != -1;
+    show_pidonly = sel->pidonly != -1;
     show_system = sel->system;
     show_uid = sel->uid != -1;
     show_fullcmd = sel->fullcmd;
@@ -1347,6 +1411,8 @@ get_process_info(struct system_info *si,
 		 (PP(pp, stat) == SRUN)) &&
 		(!show_uid || PRUID(pp) == (uid_t)sel->uid) &&
 		(!show_jailfilter || PP(pp, jid) == sel->jailfilter) &&
+		(!show_self || PP(pp, pid) != sel->self) &&
+		(!show_pidonly || PP(pp, pid) == sel->pidonly) &&
 		(show_command == NULL ||
 		 strcasestr(PP(pp, comm), show_command) != NULL))
 	    {
@@ -1368,8 +1434,12 @@ get_process_info(struct system_info *si,
 			PP(parent, runtime) += PP(pp, runtime);
 			PPCPU(parent) += PPCPU(pp);
 		    } else {
-			printf("Cannot happen");
-			exit(0);
+			/*
+			 * XXX - Ignore it for now
+			 * It happens when you have threaded applications
+			 * while not showing idle processes.
+			 */
+			continue;
 			/* This shouldn't happen! */
 			PP(prev_pp, pctcpu) += PP(pp, pctcpu);
 			PP(prev_pp, runtime) += PP(pp, runtime);
@@ -1434,6 +1504,23 @@ format_process_header(struct process_select *sel, caddr_t handle, int count)
 	sel->mode == DISP_CPU ?
 	mode0_display :
 	mode1_display;
+
+    /* Show per second instead of per delay */
+    if (sel->persecond) {
+	field_subst(fi, FIELD_VCSW_PD, FIELD_VCSW_PS);
+	field_subst(fi, FIELD_IVCSW_PD, FIELD_IVCSW_PS);
+	field_subst(fi, FIELD_READ_PD, FIELD_READ_PS);
+	field_subst(fi, FIELD_WRITE_PD, FIELD_WRITE_PS);
+	field_subst(fi, FIELD_FAULT_PD, FIELD_FAULT_PS);
+	field_subst(fi, FIELD_TOTAL_PD, FIELD_TOTAL_PS);
+    } else {
+	field_subst(fi, FIELD_VCSW_PS, FIELD_VCSW_PD);
+	field_subst(fi, FIELD_IVCSW_PS, FIELD_IVCSW_PD);
+	field_subst(fi, FIELD_READ_PS, FIELD_READ_PD);
+	field_subst(fi, FIELD_WRITE_PS, FIELD_WRITE_PD);
+	field_subst(fi, FIELD_FAULT_PS, FIELD_FAULT_PD);
+	field_subst(fi, FIELD_TOTAL_PS, FIELD_TOTAL_PD);
+    }
 
     /* set username field correctly */
     if (!sel->usernames)
@@ -1621,6 +1708,21 @@ static unsigned char sorted_state[] =
 
 #define ORDERKEY_JID \
   if ( (result = PP(p2, jid) - PP(p1, jid)) == 0)
+
+#define ORDERKEY_VCSW \
+  if ( (result = SP(p2, vcsw) - SP(p1, vcsw)) == 0)
+
+#define ORDERKEY_IVCSW \
+  if ( (result = SP(p2, ivcsw) - SP(p1, ivcsw)) == 0)
+
+#define ORDERKEY_READ \
+  if ( (result = SP(p2, inblock) - SP(p1, inblock)) == 0)
+
+#define ORDERKEY_WRITE \
+  if ( (result = SP(p2, oublock) - SP(p1, oublock)) == 0)
+
+#define ORDERKEY_FAULT \
+  if ( (result = SP(p2, majflt) - SP(p1, majflt)) == 0)
 
 /* compare_cpu - the comparison function for sorting by cpu percentage */
 
@@ -1826,7 +1928,107 @@ compare_pid(struct proc **pp1, struct proc **pp2)
     return(result);
 }
 
-/* compare_jid - the comparison function for sorting by jail id */
+/* compare_vcsw - the comparison function for sorting by jail id */
+
+int
+compare_vcsw(struct proc **pp1, struct proc **pp2)
+
+{
+    struct kinfo_proc *p1;
+    struct kinfo_proc *p2;
+    int result;
+
+    /* remove one level of indirection */
+    p1 = *(struct kinfo_proc **) pp1;
+    p2 = *(struct kinfo_proc **) pp2;
+
+    ORDERKEY_VCSW
+    ;
+
+    return(result);
+}
+
+/* compare_ivcsw - the comparison function for sorting by vcsw */
+
+int
+compare_ivcsw(struct proc **pp1, struct proc **pp2)
+
+{
+    struct kinfo_proc *p1;
+    struct kinfo_proc *p2;
+    int result;
+
+    /* remove one level of indirection */
+    p1 = *(struct kinfo_proc **) pp1;
+    p2 = *(struct kinfo_proc **) pp2;
+
+    ORDERKEY_IVCSW
+    ;
+
+    return(result);
+}
+
+/* compare_read - the comparison function for sorting by ivcsw */
+
+int
+compare_read(struct proc **pp1, struct proc **pp2)
+
+{
+    struct kinfo_proc *p1;
+    struct kinfo_proc *p2;
+    int result;
+
+    /* remove one level of indirection */
+    p1 = *(struct kinfo_proc **) pp1;
+    p2 = *(struct kinfo_proc **) pp2;
+
+    ORDERKEY_READ
+    ;
+
+    return(result);
+}
+
+/* compare_write - the comparison function for sorting by read */
+
+int
+compare_write(struct proc **pp1, struct proc **pp2)
+
+{
+    struct kinfo_proc *p1;
+    struct kinfo_proc *p2;
+    int result;
+
+    /* remove one level of indirection */
+    p1 = *(struct kinfo_proc **) pp1;
+    p2 = *(struct kinfo_proc **) pp2;
+
+    ORDERKEY_WRITE
+    ;
+
+    return(result);
+}
+
+/* compare_fault - the comparison function for sorting by write */
+
+int
+compare_fault(struct proc **pp1, struct proc **pp2)
+
+{
+    struct kinfo_proc *p1;
+    struct kinfo_proc *p2;
+    int result;
+
+    /* remove one level of indirection */
+    p1 = *(struct kinfo_proc **) pp1;
+    p2 = *(struct kinfo_proc **) pp2;
+
+    ORDERKEY_FAULT
+    ;
+
+    return(result);
+}
+
+/* compare_jid - the comparison function for sorting by fault */
 
 int
 compare_jid(struct proc **pp1, struct proc **pp2)

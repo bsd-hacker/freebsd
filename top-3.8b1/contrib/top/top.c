@@ -206,7 +206,7 @@ sig_tstop(int i)	/* SIGTSTP handler */
     /* NOTREACHED */
 }
 
-#ifdef SIGWINCH
+#ifdef TOPSIGWINCH
 RETSIGTYPE
 sig_winch(int i)		/* SIGWINCH handler */
 
@@ -232,7 +232,7 @@ hold_signals()
     sigaddset(&signalset, SIGINT);
     sigaddset(&signalset, SIGQUIT);
     sigaddset(&signalset, SIGTSTP);
-#ifdef SIGWINCH
+#ifdef TOPSIGWINCH
     sigaddset(&signalset, SIGWINCH);
 #endif
     sigprocmask(SIG_BLOCK, &signalset, NULL);
@@ -243,7 +243,7 @@ hold_signals()
     sighold(SIGINT);
     sighold(SIGQUIT);
     sighold(SIGTSTP);
-#ifdef SIGWINCH
+#ifdef TOPSIGWINCH
     sighold(SIGWINCH);
     return NULL;
 #endif
@@ -251,7 +251,7 @@ hold_signals()
 
 #ifdef BSD_SIGNALS
     int mask;
-#ifdef SIGWINCH
+#ifdef TOPSIGWINCH
     mask = sigblock(sigmask(SIGINT) | sigmask(SIGQUIT) |
 		    sigmask(SIGTSTP) | sigmask(SIGWINCH));
 #else
@@ -269,7 +269,7 @@ set_signals()
     (void) set_signal(SIGINT, sig_leave);
     (void) set_signal(SIGQUIT, sig_leave);
     (void) set_signal(SIGTSTP, sig_tstop);
-#ifdef SIGWINCH
+#ifdef TOPSIGWINCH
     (void) set_signal(SIGWINCH, sig_winch);
 #endif
 }
@@ -286,7 +286,7 @@ release_signals(void *parm)
     sigrelse(SIGINT);
     sigrelse(SIGQUIT);
     sigrelse(SIGTSTP);
-#ifdef SIGWINCH
+#ifdef TOPSIGWINCH
     sigrelse(SIGWINCH);
 #endif
 #endif
@@ -339,9 +339,9 @@ do_arguments(globalstate *gstate, int ac, char **av)
     optind = 1;
 
 #ifdef HAVE_GETOPT_LONG
-    while ((i = getopt_long(ac, av, "CDEHSIJ:Tabcijnqtuvs:d:U:o:m:P", longopts, NULL)) != -1)
+    while ((i = getopt_long(ac, av, "CDEHSIJ:Tabcijnpqtuvs:d:U:o:m:P", longopts, NULL)) != -1)
 #else
-    while ((i = getopt(ac, av, "CDEHSIJ:Tabcijnqtuvs:d:U:o:m:P")) != EOF)
+    while ((i = getopt(ac, av, "CDEHSIJ:Tabcijnpqtuvs:d:U:o:m:P")) != EOF)
 #endif
     {
 	switch(i)
@@ -468,7 +468,11 @@ do_arguments(globalstate *gstate, int ac, char **av)
 	    break;
 
 	case 't':
-	    gstate->pselect.self = !gstate->pselect.self;
+	    gstate->pselect.self = (gstate->pselect.self == -1) ? getpid() : -1;
+	    break;
+
+	case 'p':
+	    gstate->pselect.persecond = !gstate->pselect.persecond;
 	    break;
 
 	case 'q':		/* be quick about it */
@@ -491,7 +495,7 @@ do_arguments(globalstate *gstate, int ac, char **av)
 	default:
 	    fprintf(stderr,
 "Top version %s\n"
-"Usage: %s [-HIPSTabcijnqu] [-d x] [-s x] [-o field] [-U username] [-J jid] [number]\n",
+"Usage: %s [-HIPSTabCcijnpqu] [-d x] [-s x] [-o field] [-U username] [-J jid] [number]\n",
 		    version_string(), myname);
 	    exit(EX_USAGE);
 	}
@@ -800,6 +804,8 @@ main(int argc, char *argv[])
     /* preset defaults for process selection */
     gstate->pselect.idle = Yes;
     gstate->pselect.self = -1;
+    gstate->pselect.pidonly = -1;
+    gstate->pselect.persecond = No;
     gstate->pselect.threads = No;
     gstate->pselect.jailid = No;
     gstate->pselect.jailfilter = -1;
@@ -928,7 +934,6 @@ main(int argc, char *argv[])
     }
 
     /* check for infinity and for overflowed screen */
-    gstate->topn = gstate->max_topn;
     if (gstate->topn == Infinity)
     {
 	gstate->topn = INT_MAX;

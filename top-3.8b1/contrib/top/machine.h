@@ -108,6 +108,7 @@ struct process_select
 {
     int idle;		/* show idle processes */
     int self;		/* show self */
+    int pidonly;	/* only show this PID */
     int system;		/* show system processes */
     int fullcmd;	/* show full command */
     int usernames;      /* show usernames */
@@ -117,6 +118,7 @@ struct process_select
     int threads;	/* show threads separately */
     int jailid;		/* show jail ID */
     int jailfilter;	/* only this jail ID (unless jailfilter == -1) */
+    int persecond;	/* show IO stats per second */
 };
 
 /* routines defined by the machine dependent module */

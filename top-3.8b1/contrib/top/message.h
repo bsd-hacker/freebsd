@@ -30,6 +30,10 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+/*
+ * $FreeBSD$
+ */
+
 /* interface declaration for display messages */
 /* This is a small subset of the interface from display.c that
    just contains the calls for displaying messages.  Do not include

@@ -399,6 +399,10 @@ memory, given in kilobytes.
 Current state (typically one of \*(lqsleep\*(rq,
 \*(lqrun\*(rq, \*(lqidl\*(rq, \*(lqzomb\*(rq, or \*(lqstop\*(rq).
 .TP
+.B FLG 
+Same as the ps(1) "STAT" column.
+See the explanation of "state" in the man-page of ps(1).
+.TP
 .B TIME
 Number of system and user cpu seconds that the process has used.
 .TP

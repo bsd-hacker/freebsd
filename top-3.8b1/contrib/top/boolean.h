@@ -1,3 +1,7 @@
+/*
+ * $FreeBSD$
+ */
+
 /* My favorite names for boolean values */
 #define  No	0
 #define  Yes	1

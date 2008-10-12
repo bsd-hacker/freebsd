@@ -30,6 +30,10 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+/*
+ * $FreeBSD$
+ */
+
 /* hash.m4c */
 
 /* The file hash.c is generated from hash.m4c via the preprocessor M4 */

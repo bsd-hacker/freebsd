@@ -30,6 +30,10 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+/*
+ * $FreeBSD$
+ */
+
 /* interface for username.c */
 
 #ifndef _USERNAME_H_

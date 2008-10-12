@@ -30,6 +30,10 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+/*
+ * $FreeBSD$
+ */
+
 /* interface declaration for display.c */
 
 #ifndef _DISPLAY_H
