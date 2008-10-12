@@ -30,17 +30,13 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/*
- *  Top users/processes display for Unix
- *  Version 3
- */
+/* interface for username.c */
 
-#include "config.h"
-#include "top.h"
+#ifndef _USERNAME_H_
+#define _USERNAME_H_
 
-char *
-version_string()
+void init_username();
+char *username(int uid);
+int userid(char *username);
 
-{
-    return(PACKAGE_VERSION);
-}
+#endif /* _USERNAME_H_ */

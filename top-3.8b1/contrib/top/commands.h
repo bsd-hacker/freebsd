@@ -30,17 +30,13 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/*
- *  Top users/processes display for Unix
- *  Version 3
- */
+/* call specifications for commands.c */
 
-#include "config.h"
-#include "top.h"
+int command_process(globalstate *gstate, int cmd);
 
-char *
-version_string()
-
-{
-    return(PACKAGE_VERSION);
-}
+/* returns from command routines */
+#define CMD_ERROR  -1
+#define CMD_OK      0
+#define CMD_REFRESH 1
+#define CMD_UNKNOWN 2
+#define CMD_NA      3

@@ -32,15 +32,6 @@
 
 /*
  *  Top users/processes display for Unix
- *  Version 3
  */
 
-#include "config.h"
-#include "top.h"
-
-char *
-version_string()
-
-{
-    return(PACKAGE_VERSION);
-}
+char *version_string();

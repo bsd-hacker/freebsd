@@ -31,16 +31,36 @@
  */
 
 /*
- *  Top users/processes display for Unix
- *  Version 3
+ * The global state of top is described in this structure.  It is passed
+ * to routines that may need to examine or alter it.
  */
 
-#include "config.h"
-#include "top.h"
+#ifndef _GLOBALSTATE_H_
+#define _GLOBALSTATE_H_
 
-char *
-version_string()
+#include "machine.h"
 
-{
-    return(PACKAGE_VERSION);
-}
+typedef struct globalstate {
+    struct timeval now;
+    struct timeval refresh;
+    int fulldraw;
+    int topn;
+    int max_topn;
+    int delay;
+    int displays;
+    int order_index;
+    int show_cpustates;
+    int show_tags;
+    int show_usernames;
+    int use_color;
+    int smart_terminal;
+    int interactive;
+    char *header_text;
+    char *order_name;    /* only used before call to machine_init */
+    char *order_namelist;
+    char *(*get_userid)(int);
+    struct process_select pselect;
+    struct statics *statics;
+} globalstate;
+
+#endif /* _GLOBALSTATE_H_ */

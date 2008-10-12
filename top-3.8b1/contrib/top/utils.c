@@ -1,26 +1,76 @@
 /*
+ * Copyright (c) 1984 through 2008, William LeFebvre
+ * All rights reserved.
+ * 
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ * 
+ *     * Redistributions of source code must retain the above copyright
+ * notice, this list of conditions and the following disclaimer.
+ * 
+ *     * Redistributions in binary form must reproduce the above
+ * copyright notice, this list of conditions and the following disclaimer
+ * in the documentation and/or other materials provided with the
+ * distribution.
+ * 
+ *     * Neither the name of William LeFebvre nor the names of other
+ * contributors may be used to endorse or promote products derived from
+ * this software without specific prior written permission.
+ * 
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/*
+ * $FreeBSD$
+ */
+
+/*
  *  Top users/processes display for Unix
  *  Version 3
- *
- *  This program may be freely redistributed,
- *  but this entire comment MUST remain intact.
- *
- *  Copyright (c) 1984, 1989, William LeFebvre, Rice University
- *  Copyright (c) 1989, 1990, 1992, William LeFebvre, Northwestern University
- *
- * $FreeBSD$
  */
 
 /*
  *  This file contains various handy utilities used by top.
  */
 
-#include "top.h"
 #include "os.h"
+#include <ctype.h>
+#ifdef HAVE_STDARG_H
+#include <stdarg.h>
+#else
+#undef DEBUG
+#endif
+#include "top.h"
+#include "utils.h"
 
-int atoiwi(str)
+static int
+alldigits(char *s)
 
-char *str;
+{
+    int ch;
+
+    while ((ch = *s++) != '\0')
+    {
+	if (!isdigit(ch))
+	{
+	    return 0;
+	}
+    }
+    return 1;
+}
+
+int
+atoiwi(char *str)
 
 {
     register int len;
@@ -34,13 +84,13 @@ char *str;
 	{
 	    return(Infinity);
 	}
-	else if (str[0] == '-')
+	else if (alldigits(str))
 	{
-	    return(Invalid);
+	    return(atoi(str));
 	}
 	else
 	{
-	    return(atoi(str));
+	    return(Invalid);
 	}
     }
     return(0);
@@ -59,9 +109,8 @@ char *str;
 				 * digits.
 				 */
 
-char *itoa(val)
-
-register int val;
+char *
+itoa(int val)
 
 {
     register char *ptr;
@@ -90,18 +139,22 @@ register int val;
  *	a front end to a more general routine for efficiency.
  */
 
-char *itoa7(val)
-
-register int val;
+char *
+itoa_w(int val, int w)
 
 {
-    register char *ptr;
+    char *ptr;
+    char *eptr;
     static char buffer[16];	/* result is built here */
     				/* 16 is sufficient since the largest number
 				   we will ever convert will be 2^32-1,
 				   which is 10 digits. */
 
-    ptr = buffer + sizeof(buffer);
+    if (w > 15)
+    {
+	w = 15;
+    }
+    eptr = ptr = buffer + sizeof(buffer);
     *--ptr = '\0';
     if (val == 0)
     {
@@ -112,25 +165,36 @@ register int val;
 	*--ptr = (val % 10) + '0';
 	val /= 10;
     }
-    while (ptr > buffer + sizeof(buffer) - 7)
+    while (ptr >= eptr - w)
     {
 	*--ptr = ' ';
     }
     return(ptr);
 }
 
+char *
+itoa7(int val)
+
+{
+    return itoa_w(val, 7);
+}
+
 /*
  *  digits(val) - return number of decimal digits in val.  Only works for
- *	positive numbers.  If val <= 0 then digits(val) == 0.
+ *	positive numbers.  If val < 0 then digits(val) == 0, but
+ *      digits(0) == 1.
  */
 
-int digits(val)
-
-int val;
+int
+digits(int val)
 
 {
     register int cnt = 0;
 
+    if (val == 0)
+    {
+	return 1;
+    }
     while (val > 0)
     {
 	cnt++;
@@ -140,14 +204,38 @@ int val;
 }
 
 /*
- *  strecpy(to, from) - copy string "from" into "to" and return a pointer
+ *  printable(char *str) - make the string pointed to by "str" into one that is
+ *	printable (i.e.: all ascii), by converting all non-printable
+ *	characters into '?'.  Replacements are done in place and a pointer
+ *	to the original buffer is returned.
+ */
+
+char *
+printable(char *str)
+
+{
+    register char *ptr;
+    register int ch;
+
+    ptr = str;
+    while ((ch = *ptr) != '\0')
+    {
+	if (!isprint(ch))
+	{
+	    *ptr = '?';
+	}
+	ptr++;
+    }
+    return(str);
+}
+
+/*
+ *  strcpyend(to, from) - copy string "from" into "to" and return a pointer
  *	to the END of the string "to".
  */
 
-char *strecpy(to, from)
-
-register char *to;
-register char *from;
+char *
+strcpyend(char *to, char *from)
 
 {
     while ((*to++ = *from++) != '\0');
@@ -155,13 +243,40 @@ register char *from;
 }
 
 /*
+ * char *
+ * homogenize(char *str)
+ *
+ * Remove unwanted characters from "str" and make everything lower case.
+ * Newly allocated string is returned: the original is not altered.
+ */
+
+char *homogenize(char *str)
+
+{
+    char *ans;
+    char *fr;
+    char *to;
+    int ch;
+
+    to = fr = ans = strdup(str);
+    while ((ch = *fr++) != '\0')
+    {
+	if (isalnum(ch))
+	{
+	    *to++ = tolower(ch);
+	}
+    }
+
+    *to = '\0';
+    return ans;
+}
+
+/*
  * string_index(string, array) - find string in array and return index
  */
 
-int string_index(string, array)
-
-char *string;
-char **array;
+int
+string_index(char *string, char **array)
 
 {
     register int i = 0;
@@ -179,16 +294,54 @@ char **array;
 }
 
 /*
+ * char *string_list(char **strings)
+ *
+ * Create a comma-separated list of the strings in the NULL-terminated
+ * "strings".  Returned string is malloc-ed and should be freed when the
+ * caller is done.  Note that this is not an efficient function.
+ */
+
+char *string_list(char **strings)
+
+{
+    int cnt = 0;
+    char **pp;
+    char *p;
+    char *result = NULL;
+    char *resp = NULL;
+
+    pp = strings;
+    while ((p = *pp++) != NULL)
+    {
+	cnt += strlen(p) + 2;
+    }
+
+    if (cnt > 0)
+    {
+	resp = result = (char *)malloc(cnt);
+	pp = strings;
+	while ((p = *pp++) != NULL)
+	{
+	    resp = strcpyend(resp, p);
+	    if (*pp != NULL)
+	    {
+		resp = strcpyend(resp, ", ");
+	    }
+	}
+    }
+
+    return result;
+}
+
+/*
  * argparse(line, cntp) - parse arguments in string "line", separating them
  *	out into an argv-like array, and setting *cntp to the number of
  *	arguments encountered.  This is a simple parser that doesn't understand
  *	squat about quotes.
  */
 
-char **argparse(line, cntp)
-
-char *line;
-int *cntp;
+char **
+argparse(char *line, int *cntp)
 
 {
     register char *from;
@@ -270,13 +423,8 @@ int *cntp;
  *	useful on BSD mchines for calculating cpu state percentages.
  */
 
-long percentages(cnt, out, new, old, diffs)
-
-int cnt;
-int *out;
-register long *new;
-register long *old;
-long *diffs;
+long
+percentages(int cnt, int *out, long *new, long *old, long *diffs)
 
 {
     register int i;
@@ -312,11 +460,11 @@ long *diffs;
     half_total = total_change / 2l;
 
     /* Do not divide by 0. Causes Floating point exception */
-    if(total_change) {
-        for (i = 0; i < cnt; i++)
-        {
-          *out++ = (int)((*diffs++ * 1000 + half_total) / total_change);
-        }
+    if (total_change != 0) {
+	for (i = 0; i < cnt; i++)
+	{
+	    *out++ = (int)((*diffs++ * 1000 + half_total) / total_change);
+	}
     }
 
     /* return the total in case the caller wants to use it */
@@ -337,17 +485,15 @@ long *diffs;
 /* externs referenced by errmsg */
 
 #ifndef HAVE_STRERROR
-#ifndef SYS_ERRLIST_DECLARED
-#define SYS_ERRLIST_DECLARED
+#if !HAVE_DECL_SYS_ERRLIST
 extern char *sys_errlist[];
 #endif
 
 extern int sys_nerr;
 #endif
 
-char *errmsg(errnum)
-
-int errnum;
+char *
+errmsg(int errnum)
 
 {
 #ifdef HAVE_STRERROR
@@ -359,10 +505,41 @@ int errnum;
 #else
     if (errnum > 0 && errnum < sys_nerr)
     {
-	return((char *)sys_errlist[errnum]);
+	return((char *)(sys_errlist[errnum]));
     }
 #endif
     return("No error");
+}
+
+/* format_percent(v) - format a double as a percentage in a manner that
+ *		does not exceed 5 characters (excluding any trailing
+ *		percent sign).  Since it is possible for the value
+ *		to exceed 100%, we format such values with no fractional
+ *		component to fit within the 5 characters.
+ */
+
+char *
+format_percent(double v)
+
+{
+    static char result[10];
+
+    /* enumerate the possibilities */
+    if (v < 0 || v >= 100000.)
+    {
+	/* we dont want to try extreme values */
+	strcpy(result, "  ???");
+    }
+    else if (v > 99.99)
+    {
+	sprintf(result, "%5.0f", v);
+    }
+    else
+    {
+	sprintf(result, "%5.2f", v);
+    }
+
+    return result;
 }
 
 /* format_time(seconds) - format number of seconds into a suitable
@@ -381,14 +558,10 @@ int errnum;
    exceed 9999.9, we use "???".
  */
 
-char *format_time(seconds)
-
-long seconds;
+char *
+format_time(long seconds)
 
 {
-    register int value;
-    register int digit;
-    register char *ptr;
     static char result[10];
 
     /* sanity protection */
@@ -411,8 +584,7 @@ long seconds;
     {
 	/* standard method produces MMM:SS */
 	/* we avoid printf as must as possible to make this quick */
-	sprintf(result, "%3ld:%02ld",
-	    (long)(seconds / 60), (long)(seconds % 60));
+	sprintf(result, "%3ld:%02ld", seconds / 60l, seconds % 60l);
     }
     return(result);
 }
@@ -442,18 +614,16 @@ long seconds;
 
 #define NUM_STRINGS 8
 
-char *format_k(amt)
-
-int amt;
+char *
+format_k(long amt)
 
 {
     static char retarray[NUM_STRINGS][16];
     static int index = 0;
-    register char *p;
     register char *ret;
     register char tag = 'K';
 
-    p = ret = retarray[index];
+    ret = retarray[index];
     index = (index + 1) % NUM_STRINGS;
 
     if (amt >= 10000)
@@ -467,41 +637,117 @@ int amt;
 	}
     }
 
-    p = strecpy(p, itoa(amt));
-    *p++ = tag;
-    *p = '\0';
+    snprintf(ret, sizeof(retarray[index])-1, "%ld%c", amt, tag);
 
     return(ret);
 }
 
-char *format_k2(amt)
+/*
+ * Time keeping functions.  
+ */
 
-int amt;
+static struct timeval lasttime = { 0, 0 };
+static unsigned int elapsed_msecs = 0;
+
+void
+time_get(struct timeval *tv)
 
 {
-    static char retarray[NUM_STRINGS][16];
-    static int index = 0;
-    register char *p;
-    register char *ret;
-    register char tag = 'K';
+    /* get the current time */
+#ifdef HAVE_GETTIMEOFDAY
+    gettimeofday(tv, NULL);
+#else
+    tv->tv_sec = (long)time(NULL);
+    tv->tv_usec = 0;
+#endif
+}
 
-    p = ret = retarray[index];
-    index = (index + 1) % NUM_STRINGS;
+void
+time_mark(struct timeval *tv)
 
-    if (amt >= 100000)
+{
+    struct timeval thistime;
+    struct timeval timediff;
+
+    /* if the caller didnt provide one then use our own */
+    if (tv == NULL)
     {
-	amt = (amt + 512) / 1024;
-	tag = 'M';
-	if (amt >= 100000)
-	{
-	    amt = (amt + 512) / 1024;
-	    tag = 'G';
-	}
+	tv = &thistime;
     }
 
-    p = strecpy(p, itoa(amt));
-    *p++ = tag;
-    *p = '\0';
+    /* get the current time */
+#ifdef HAVE_GETTIMEOFDAY
+    gettimeofday(tv, NULL);
+#else
+    tv->tv_sec = (long)time(NULL);
+    tv->tv_usec = 0;
+#endif
 
-    return(ret);
+    /* calculate the difference */
+    timediff.tv_sec = tv->tv_sec - lasttime.tv_sec;
+    timediff.tv_usec = tv->tv_usec - lasttime.tv_usec;
+    if (timediff.tv_usec < 0) {
+	timediff.tv_sec--;
+	timediff.tv_usec += 1000000;
+    }
+
+    /* convert to milliseconds */
+    elapsed_msecs = timediff.tv_sec * 1000 + timediff.tv_usec / 1000;
+    if (elapsed_msecs == 0)
+    {
+	elapsed_msecs = 1;
+    }
+
+    /* save for next time */
+    lasttime = *tv;
 }
+
+unsigned int
+time_elapsed()
+
+{
+    return elapsed_msecs;
+}
+
+unsigned int
+diff_per_second(unsigned int x, unsigned int y)
+
+{
+    return (y > x ? UINT_MAX - y + x + 1 : x - y) * 1000 / elapsed_msecs;
+}
+
+static int debug_on = 0;
+
+#ifdef DEBUG
+FILE *debugfile;
+#endif
+
+void
+debug_set(int i)
+
+{
+    debug_on = i;
+#ifdef DEBUG
+    debugfile = fopen("/tmp/top.debug", "w");
+#endif
+}
+
+#ifdef DEBUG
+void
+xdprintf(char *fmt, ...)
+
+{
+    va_list argp;
+
+    va_start(argp, fmt);
+
+    if (debug_on)
+    {
+	vfprintf(debugfile, fmt, argp);
+	fflush(debugfile);
+    }
+
+    va_end(argp);
+}
+#endif
+

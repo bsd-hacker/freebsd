@@ -30,17 +30,15 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/*
- *  Top users/processes display for Unix
- *  Version 3
- */
+/* interface declaration for display messages */
+/* This is a small subset of the interface from display.c that
+   just contains the calls for displaying messages.  Do not include
+   this and display.h at the same time. */
 
-#include "config.h"
-#include "top.h"
+#ifndef _MESSAGE_H
+#define _MESSAGE_H
 
-char *
-version_string()
+void error_message(char *msgfmt, ...);
+void clear_message();
 
-{
-    return(PACKAGE_VERSION);
-}
+#endif /* _MESSAGE_H_ */

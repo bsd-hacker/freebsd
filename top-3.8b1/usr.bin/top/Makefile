@@ -5,10 +5,16 @@ TOPDIR=	${.CURDIR}/../../contrib/top
 
 PROG=	top
 SRCS=	commands.c display.c machine.c screen.c top.c \
-	username.c utils.c version.c
-SRCS+=	sigdesc.h top.local.h
-CFLAGS+= -DHAVE_GETOPT -DHAVE_STRERROR -DORDER
-CFLAGS+= -I${.CURDIR} -I${TOPDIR} -I.
+	username.c utils.c version.c color.c hash.c
+SRCS+=	sigdesc.h config.h
+CFLAGS+= -DHAVE_GETOPT -DHAVE_STRERROR -DORDER -DSIGWINCH -DHAS_SHOWTHREADS
+CFLAGS+= -I${.CURDIR} -I${TOPDIR} -I. -Wall -g
+
+#
+# Uncomment the following line if you want users to be able to set -s
+# (seconds between updates) to zero.
+#
+CFLAGS+= -DZERODELAY
 
 #
 # The table size should be a prime number approximately twice as
@@ -40,8 +46,30 @@ CLEANFILES+= top.local.h top.x
 	-e's,%random%,1,g' \
 	${.IMPSRC} > ${.TARGET}
 
+CLEANFILES+= config.h
+CPU!=	uname -m
+config.h: config.h.in
+	@${ECHO} Making config.h from config.h.in
+	sed \
+		-e 's/@DEFAULT_TOPN@/30/' \
+		-e 's/@DEFAULT_DELAY@/2/' \
+		-e 's/@HAVE_GETOPT_LONG@/1/' \
+		-e 's/@ENABLE_KILL@/1/' \
+		-e "s/@CPU@/${CPU}/" \
+		< config.h.in > config.h
+
+CLEANFILES+= top.1.local
+top.1.local: top.1.in
+	@${ECHO} Making top.1.local from top.1.in
+	@sed \
+		-e 's/@DEFAULT_TOPN@/30/' \
+		-e 's/@DEFAULT_DELAY@/2/' \
+		-e 's/@HAVE_GETOPT_LONG@/1/' \
+		-e 's/@ENABLE_KILL@/1/' \
+		< ${TOPDIR}/top.1.in > top.1.local
+
 CLEANFILES+= top.1
-top.1: top.x top.local.1
+top.1: top.1.local machine.man
 	cat ${.ALLSRC} > ${.TARGET}
 
 .include <bsd.prog.mk>
