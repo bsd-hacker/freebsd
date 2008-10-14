@@ -734,9 +734,10 @@ fmt_command(char *buf, int sz, struct kinfo_proc *pp)
     char *bufp;
     char **args;
     char *ps;
+    char *rawcmd;
     int argc;
 
-#if OSMAJOR <= 4
+#if OSMAJOR > 4
     inmem = (PP(pp, flag) & P_INMEM);
 #else
     inmem = (PP(pp, sflag) & PS_INMEM);
@@ -747,7 +748,9 @@ fmt_command(char *buf, int sz, struct kinfo_proc *pp)
         /* get the pargs structure */
         if ((args = kvm_getargv(kd, pp, sz)) != NULL)
         {
-	    /* successfull retrieval: now convert nulls and cr/lf in to spaces */
+	    /*
+	     * successfull retrieval: now convert nulls and cr/lf in to spaces
+	     */
 	    bufp = cmd;
 	    cmd[0] = '\0';
 	    argc = 0;
@@ -763,6 +766,17 @@ fmt_command(char *buf, int sz, struct kinfo_proc *pp)
 	    }
 	    while ((ps = strchr(cmd, '\n')) != NULL) {
 		*ps = ' ';
+	    }
+
+	    if ((rawcmd = strrchr(args[0], '/')) != NULL)
+		rawcmd++;
+	    else
+		rawcmd = args[0];
+
+	    if (strcmp(rawcmd, pp->ki_comm) != 0) {
+		strcat(cmd, " (");
+		strcat(cmd, pp->ki_comm);
+		strcat(cmd, ")");
 	    }
 
 	    /* format cmd as our answer */
