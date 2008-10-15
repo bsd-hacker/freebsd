@@ -443,16 +443,19 @@ options 	COMPAT_IA32
 # Enable Linux ABI emulation
 #XXX#options 	COMPAT_LINUX
 
-# Enable 32-bit Linux ABI emulation (requires COMPAT_43 and COMPAT_IA32)
+# Enable 32-bit Linux ABI emulation (requires COMPAT_IA32)
 options 	COMPAT_LINUX32
 
 # Enable the linux-like proc filesystem support (requires COMPAT_LINUX32
 # and PSEUDOFS)
 options 	LINPROCFS
 
-#Enable the linux-like sys filesystem support (requires COMPAT_LINUX32
+# Enable the linux-like sys filesystem support (requires COMPAT_LINUX32
 # and PSEUDOFS)
-options		LINSYSFS
+options 	LINSYSFS
+
+# Enable the linux aio support (requires COMPAT_LINUX32 and VFS_AIO)
+options 	LINUXAIO
 
 #
 # SysVR4 ABI emulation

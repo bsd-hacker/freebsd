@@ -111,7 +111,7 @@ cpu		I686_CPU		# aka Pentium Pro(tm)
 # technology which allows to restrict power consumption of the CPU by
 # using group of hw.crusoe.* sysctls.
 #
-# CPU_FASTER_5X86_FPU enables faster FPU exception handler.
+# CPU_FASTER_5X86_FPU enables faster FPU exception handler on Cyrix 5x86.
 #
 # CPU_GEODE is for the SC1100 Geode embedded processor.  This option
 # is necessary because the i8254 timecounter is toast.
@@ -848,9 +848,12 @@ options 	COMPAT_AOUT
 # and PSEUDOFS)
 options 	LINPROCFS
 
-#Enable the linux-like sys filesystem support (requires COMPAT_LINUX
+# Enable the linux-like sys filesystem support (requires COMPAT_LINUX
 # and PSEUDOFS)
-options		LINSYSFS
+options 	LINSYSFS
+
+# Enable the linux aio support (requires COMPAT_LINUX and VFS_AIO)
+options 	LINUXAIO
 
 #
 # SysVR4 ABI emulation

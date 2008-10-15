@@ -141,8 +141,8 @@ static int target_aio_procs = TARGET_AIO_PROCS;
 SYSCTL_INT(_vfs_aio, OID_AUTO, target_aio_procs, CTLFLAG_RW, &target_aio_procs,
 	0, "Preferred number of ready kernel threads for async IO");
 
-static int max_queue_count = MAX_AIO_QUEUE;
-SYSCTL_INT(_vfs_aio, OID_AUTO, max_aio_queue, CTLFLAG_RW, &max_queue_count, 0,
+int max_aio_queue_count = MAX_AIO_QUEUE;
+SYSCTL_INT(_vfs_aio, OID_AUTO, max_aio_queue, CTLFLAG_RW, &max_aio_queue_count, 0,
     "Maximum number of aio requests to queue, globally");
 
 static int num_queue_count = 0;
@@ -174,7 +174,7 @@ static int max_aio_per_proc = MAX_AIO_PER_PROC;
 SYSCTL_INT(_vfs_aio, OID_AUTO, max_aio_per_proc, CTLFLAG_RW, &max_aio_per_proc,
     0, "Maximum active aio requests per process (stored in the process)");
 
-static int max_aio_queue_per_proc = MAX_AIO_QUEUE_PER_PROC;
+int max_aio_queue_per_proc = MAX_AIO_QUEUE_PER_PROC;
 SYSCTL_INT(_vfs_aio, OID_AUTO, max_aio_queue_per_proc, CTLFLAG_RW,
     &max_aio_queue_per_proc, 0,
     "Maximum queued aio requests per process (stored in the process)");
@@ -259,19 +259,6 @@ struct aiothreadlist {
 	struct thread *aiothread;		/* (*) the AIO thread */
 };
 
-/*
- * data-structure for lio signal management
- */
-struct aioliojob {
-	int	lioj_flags;			/* (a) listio flags */
-	int	lioj_count;			/* (a) listio flags */
-	int	lioj_finished_count;		/* (a) listio flags */
-	struct	sigevent lioj_signal;		/* (a) signal on all I/O done */
-	TAILQ_ENTRY(aioliojob) lioj_list;	/* (a) lio list */
-	struct  knlist klist;			/* (a) list of knotes */
-	ksiginfo_t lioj_ksi;			/* (a) Realtime signal info */
-};
-
 #define	LIOJ_SIGNAL		0x1	/* signal on all done (lio) */
 #define	LIOJ_SIGNAL_POSTED	0x2	/* signal has been posted */
 #define LIOJ_KEVENT_POSTED	0x4	/* kevent triggered */
@@ -315,13 +302,10 @@ static struct mtx aio_sock_mtx;
 static TAILQ_HEAD(,aiocblist) aio_jobs;			/* (c) Async job list */
 static struct unrhdr *aiod_unr;
 
-void		aio_init_aioinfo(struct proc *p);
 static void	aio_onceonly(void);
 static int	aio_free_entry(struct aiocblist *aiocbe);
 static void	aio_process(struct aiocblist *aiocbe);
 static int	aio_newproc(int *);
-int		aio_aqueue(struct thread *td, struct aiocb *job,
-			struct aioliojob *lio, int type, int osigev);
 static void	aio_physwakeup(struct buf *bp);
 static void	aio_proc_rundown(void *arg, struct proc *p);
 static void	aio_proc_rundown_exec(void *arg, struct proc *p, struct image_params *imgp);
@@ -1351,7 +1335,7 @@ aio_aqueue(struct thread *td, struct aiocb *job, struct aioliojob *lj,
 	suword(&job->_aiocb_private.error, 0);
 	suword(&job->_aiocb_private.kernelinfo, -1);
 
-	if (num_queue_count >= max_queue_count ||
+	if (num_queue_count >= max_aio_queue_count ||
 	    ki->kaio_count >= ki->kaio_qallowed_count) {
 		suword(&job->_aiocb_private.error, EAGAIN);
 		return (EAGAIN);

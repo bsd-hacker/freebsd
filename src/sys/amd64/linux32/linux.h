@@ -880,6 +880,8 @@ typedef int l_mqd_t;
 	(LINUX_CLONE_VM | LINUX_CLONE_FS | LINUX_CLONE_FILES |	\
 	LINUX_CLONE_SIGHAND | LINUX_CLONE_THREAD)
 
+#include <compat/linux/linux_aio.h>
+
 /* robust futexes */
 struct linux_robust_list {
 	l_uintptr_t			next;

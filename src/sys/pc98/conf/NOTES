@@ -529,6 +529,9 @@ options 	LINPROCFS
 # and PSEUDOFS)
 options 	LINSYSFS
 
+# Enable the linux aio support (requires COMPAT_LINUX and VFS_AIO)
+options 	LINUXAIO
+
 #
 # SysVR4 ABI emulation
 #

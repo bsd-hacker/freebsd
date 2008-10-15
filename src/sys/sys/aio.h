@@ -23,6 +23,12 @@
 #include <sys/types.h>
 #include <sys/signal.h>
 
+#ifdef _KERNEL
+#include <sys/event.h>
+#include <sys/queue.h>
+#include <sys/signalvar.h>
+#endif
+
 /*
  * Returned by aio_cancel:
  */
@@ -134,6 +140,28 @@ struct socket;
 struct sockbuf;
 
 extern void (*aio_swake)(struct socket *, struct sockbuf *);
+
+/* To be used by the Linux AIO module */
+extern int max_aio_queue_count;
+extern int max_aio_queue_per_proc;
+
+/*
+ * data-structure for lio signal management
+ */
+struct aioliojob {
+	int	lioj_flags;			/* (a) listio flags */
+	int	lioj_count;			/* (a) listio flags */
+	int	lioj_finished_count;		/* (a) listio flags */
+	struct	sigevent lioj_signal;		/* (a) signal on all I/O done */
+	TAILQ_ENTRY(aioliojob) lioj_list;	/* (a) lio list */
+	struct  knlist klist;			/* (a) list of knotes */
+	ksiginfo_t lioj_ksi;			/* (a) Realtime signal info */
+};
+
+/* To be used by the Linux AIO module */
+extern void aio_init_aioinfo(struct proc *p);
+extern int aio_aqueue(struct thread *td, struct aiocb *job,
+	struct aioliojob *lio, int type, int osigev);
 
 #endif
 

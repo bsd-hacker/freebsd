@@ -158,6 +158,7 @@ SUBDIR=	${_3dfx} \
 	${_linprocfs} \
 	${_linsysfs} \
 	${_linux} \
+	${_linuxaio} \
 	lmc \
 	lpt \
 	mac_biba \
@@ -410,6 +411,7 @@ _io=		io
 _linprocfs=	linprocfs
 _linsysfs=	linsysfs
 _linux=		linux
+#_linuxaio=	linuxaio
 _mse=		mse
 .if ${MK_NCP} != "no"
 _ncp=		ncp
@@ -552,6 +554,7 @@ _k8temp=	k8temp
 _linprocfs=	linprocfs
 _linsysfs=	linsysfs
 _linux=		linux
+_linuxaio=	linuxaio
 _mly=		mly
 _ndis=		ndis
 _nfe=		nfe
@@ -582,8 +585,8 @@ _zfs=		zfs
 
 .if ${MACHINE_ARCH} == "ia64"
 # Modules not enabled on ia64 (as compared to i386) include:
-#	aac acpi aout apm atspeaker drm ibcs2 linprocfs linux ncv
-#	nsp s3 sbni stg vesa
+#	aac acpi aout apm atspeaker drm ibcs2 linsysfs linprocfs linux
+#	linuxaio ncv nsp s3 sbni stg vesa
 # acpi is not enabled because it is broken as a module on ia64
 _aic=		aic
 #_ar=		ar	not 64-bit clean
