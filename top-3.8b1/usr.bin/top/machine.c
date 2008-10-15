@@ -737,7 +737,7 @@ fmt_command(char *buf, int sz, struct kinfo_proc *pp)
     char *rawcmd;
     int argc;
 
-#if OSMAJOR > 4
+#if OSMAJOR >= 7
     inmem = (PP(pp, flag) & P_INMEM);
 #else
     inmem = (PP(pp, sflag) & PS_INMEM);
@@ -749,7 +749,8 @@ fmt_command(char *buf, int sz, struct kinfo_proc *pp)
         if ((args = kvm_getargv(kd, pp, sz)) != NULL)
         {
 	    /*
-	     * successfull retrieval: now convert nulls and cr/lf in to spaces
+	     * Successful retrieval.
+	     * Now convert nulls and cr/lf in to spaces.
 	     */
 	    bufp = cmd;
 	    cmd[0] = '\0';
