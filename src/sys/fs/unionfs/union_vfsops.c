@@ -560,4 +560,4 @@ static struct vfsops unionfs_vfsops = {
 	.vfs_vget =		unionfs_vget,
 };
 
-VFS_SET(unionfs_vfsops, unionfs, VFCF_LOOPBACK);
+VFS_SET(unionfs_vfsops, unionfs, VFCF_LOOPBACK|VFCF_JAIL);

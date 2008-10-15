@@ -85,7 +85,7 @@ static struct vfsops cd9660_vfsops = {
 	.vfs_unmount =		cd9660_unmount,
 	.vfs_vget =		cd9660_vget,
 };
-VFS_SET(cd9660_vfsops, cd9660, VFCF_READONLY);
+VFS_SET(cd9660_vfsops, cd9660, VFCF_READONLY|VFCF_JAIL);
 MODULE_VERSION(cd9660, 1);
 
 static int iso_mountfs(struct vnode *devvp, struct mount *mp);

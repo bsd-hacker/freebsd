@@ -130,7 +130,7 @@ static struct vfsops udf_vfsops = {
 	.vfs_unmount =		udf_unmount,
 	.vfs_vget =		udf_vget,
 };
-VFS_SET(udf_vfsops, udf, VFCF_READONLY);
+VFS_SET(udf_vfsops, udf, VFCF_READONLY|VFCF_JAIL);
 
 MODULE_VERSION(udf, 1);
 

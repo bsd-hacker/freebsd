@@ -95,7 +95,7 @@ static struct vfsops smbfs_vfsops = {
 };
 
 
-VFS_SET(smbfs_vfsops, smbfs, VFCF_NETWORK);
+VFS_SET(smbfs_vfsops, smbfs, VFCF_NETWORK|VFCF_JAIL);
 
 MODULE_DEPEND(smbfs, netsmb, NSMB_VERSION, NSMB_VERSION, NSMB_VERSION);
 MODULE_DEPEND(smbfs, libiconv, 1, 1, 2);

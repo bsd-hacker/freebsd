@@ -368,4 +368,4 @@ static struct vfsops null_vfsops = {
 	.vfs_vget =		nullfs_vget,
 };
 
-VFS_SET(null_vfsops, nullfs, VFCF_LOOPBACK);
+VFS_SET(null_vfsops, nullfs, VFCF_LOOPBACK|VFCF_JAIL);

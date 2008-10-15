@@ -968,5 +968,5 @@ static struct vfsops msdosfs_vfsops = {
 	.vfs_unmount =		msdosfs_unmount,
 };
 
-VFS_SET(msdosfs_vfsops, msdosfs, 0);
+VFS_SET(msdosfs_vfsops, msdosfs, VFCF_JAIL);
 MODULE_VERSION(msdosfs, 1);
