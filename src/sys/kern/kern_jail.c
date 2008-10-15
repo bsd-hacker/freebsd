@@ -80,6 +80,17 @@ SYSCTL_INT(_security_jail, OID_AUTO, mount_allowed, CTLFLAG_RW,
     &jail_mount_allowed, 0,
     "Processes in jail can mount/unmount jail-friendly file systems");
 
+static int	jail_dev_io_access_allowed = 0;
+SYSCTL_INT(_security_jail, OID_AUTO, dev_io_access_allowed, CTLFLAG_RW,
+    &jail_dev_io_access_allowed, 0,
+    "Processes in all jails can get access to /dev/io if available");
+
+static char	jail_dev_io_access_allowed_hostname[MAXHOSTNAMELEN] = "";
+SYSCTL_STRING(_security_jail, OID_AUTO, dev_io_access_allowed_hostname,
+    CTLFLAG_RW, jail_dev_io_access_allowed_hostname,
+    sizeof(jail_dev_io_access_allowed_hostname),
+    "Hostname of specific jail which can get access to /dev/io if available");
+
 /* allprison, lastprid, and prisoncount are protected by allprison_lock. */
 struct	prisonlist allprison;
 struct	sx allprison_lock;
@@ -751,6 +762,26 @@ prison_priv_check(struct ucred *cred, int priv)
 		 */
 	case PRIV_NETINET_GETCRED:
 		return (0);
+
+		/*
+		 * Allow access to /dev/io in a jail if the non-jailed admin
+		 * requests this and if /dev/io exists in the jail. This
+		 * allows Xorg to probe a card.
+		 */
+	case PRIV_IO:
+		if (jail_dev_io_access_allowed)
+			return (0);
+
+		{
+			char jail_hostname[MAXHOSTNAMELEN];
+
+			getcredhostname(cred, jail_hostname, MAXHOSTNAMELEN);
+			if (strncasecmp(jail_dev_io_access_allowed_hostname,
+			    jail_hostname, MAXHOSTNAMELEN) == 0)
+				return (0);
+		}
+
+		return (EPERM);
 
 	default:
 		/*

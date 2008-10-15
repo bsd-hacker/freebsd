@@ -33,7 +33,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd April 5, 2007
+.Dd March 10, 2008
 .Dt JAIL 8
 .Os
 .Sh NAME
@@ -546,6 +546,38 @@ or clear system file flags; if non-zero, such users are treated as
 privileged, and may manipulate system file flags subject to the usual
 constraints on
 .Va kern.securelevel .
+.It Va security.jail.dev_io_access_allowed
+This MIB entry determines if a privileged user inside
+.Va every
+jail will be able to access
+.Pa /dev/io
+in case
+.Xr devfs 8
+is used to show
+.Pa /dev/io
+in a jail.
+The default value of 0 does not allow access even if
+.Pa /dev/io
+is visible in a jail.
+A value of 1 allowes access in a jail.
+This sysctl should not be used to give this access rights to only one
+specific jail.
+To give access to only one specific jail the sysctl
+.Va security.jail.dev_io_access_allowed_hostname
+should be used instead.
+.It Va security.jail.dev_io_access_allowed_hostname
+This MIB entry determines if a privileged user only inside the
+.Va specified
+jail will be able to access
+.Pa /dev/io
+in case
+.Xr devfs 8
+is used to show
+.Pa /dev/io
+in a jail.
+The string-value of this sysctl is compared case-insensitive with the hostname
+of the jail.
+Access is allowed if the string matches.
 .It Va security.jail.mount_allowed
 This MIB entry determines if a privileged user inside a jail will be
 able to mount and unmount file system types marked as jail-friendly.
