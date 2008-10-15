@@ -4062,7 +4062,14 @@ nfsrv_fsinfo(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 	}
 
 	/* XXX Try to make a guess on the max file size. */
-	VFS_STATFS(vp->v_mount, &sb, curthread);
+	error = VFS_STATFS(vp->v_mount, &sb, curthread);
+	if (error) {
+		/* XXX: CID 1528 */
+		nfsm_reply(NFSX_UNSIGNED);
+		nfsm_srvpostop_attr(getret, &at);
+		error = 0;
+		goto nfsmout;
+	}
 	maxfsize = (u_quad_t)0x80000000 * sb.f_bsize - 1;
 
 	getret = VOP_GETATTR(vp, &at, cred);

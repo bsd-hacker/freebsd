@@ -980,8 +980,12 @@ nfsm_mtofh_xx(struct vnode *d, struct vnode **v, int v3, int *f,
 			return EBADRPC;
 		if (*f)
 			*f = fxdr_unsigned(int, *tl);
-		else if (fxdr_unsigned(int, *tl))
-			nfsm_adv_xx(NFSX_V3FATTR, md, dpos);
+		else if (fxdr_unsigned(int, *tl)) {
+			/* XXX: CID 1076, NFSM_ADV() can be used instead too */
+			t1 = nfsm_adv_xx(NFSX_V3FATTR, md, dpos);
+			if (t1 != 0)
+				return EBADRPC;
+		}
 	}
 	if (*f) {
 		ttvp = *v;
