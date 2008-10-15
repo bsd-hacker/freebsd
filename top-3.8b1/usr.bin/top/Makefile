@@ -49,7 +49,7 @@ CLEANFILES+= top.local.h top.x
 CLEANFILES+= config.h
 CPU!=	uname -m
 config.h: config.h.in
-	@${ECHO} Making ${.TARGET} from ${.ALLSRC}
+	@${ECHO} Making ${.TARGET} from ${.ALLSRC:T}
 	sed \
 		-e 's/@DEFAULT_TOPN@/-1/' \
 		-e 's/@DEFAULT_DELAY@/2/' \
@@ -60,7 +60,7 @@ config.h: config.h.in
 
 CLEANFILES+= top.1.local
 top.1.local: top.1.in
-	@${ECHO} Making ${.TARGET} from ${.ALLSRC}
+	@${ECHO} Making ${.TARGET} from ${.ALLSRC:T}
 	@sed \
 		-e 's/@DEFAULT_TOPN@/-1/' \
 		-e 's/@DEFAULT_DELAY@/2/' \
@@ -70,11 +70,11 @@ top.1.local: top.1.in
 
 CLEANFILES+= top.1
 top.1: top.1.local machine.man
-	@${ECHO} Making ${.TARGET} from ${.ALLSRC}
-	L=`grep -n MAN_SUPPLEMENT ${.CURDIR}/top.1.local | \
+	@${ECHO} Making ${.TARGET} from ${.ALLSRC:T}
+	L=`grep -n MAN_SUPPLEMENT ${.OBJDIR}/top.1.local | \
 		awk -F: '{ print $$1 }'`; \
-	(head -`expr $$L - 1` ${.CURDIR}/top.1.local; \
+	(head -`expr $$L - 1` ${.OBJDIR}/top.1.local; \
 	 cat ${.CURDIR}/machine.man; \
-	 tail +`expr $$L + 1` ${.CURDIR}/top.1.local) > ${.TARGET}
+	 tail +`expr $$L + 1` ${.OBJDIR}/top.1.local) > ${.TARGET}
 
 .include <bsd.prog.mk>
