@@ -73,16 +73,16 @@ usage:
 all:	${ALL}
 pdf-all:${PDF_ALL}
 
-mfiles: ${HFILES:S/^/${.OBJDIR}\//}
+mfiles: ${HFILES:S/^/${.OBJDIR}\/include\//}
 
 DOXYGEN_DEST_PATH=	${.OBJDIR}
 DOXYGEN_LATEX_DEST_PATH=${.OBJDIR}
 DOXYGEN_PDF_DEST_PATH=	${.OBJDIR}
 
-.if exists{${S}/${TARGET_ARCH}/linux}
+.if exists(${S}/${TARGET_ARCH}/linux)
 DOXYGEN_LINUX_PATH=	${S}/${TARGET_ARCH}/linux
 .endif
-.if exists{${S}/${TARGET_ARCH}/linux32}
+.if exists(${S}/${TARGET_ARCH}/linux32)
 DOXYGEN_LINUX_PATH+=	${S}/${TARGET_ARCH}/linux32
 .endif
 
@@ -98,7 +98,7 @@ ${.OBJDIR}/${target}/${target}.tag:
 		env DOXYGEN_INCLUDE_PATH=${.CURDIR} \
 		    DOXYGEN_SRC_PATH=${S}  \
 		    DOXYGEN_DEST_PATH=${DOXYGEN_DEST_PATH} \
-		    DOXYGEN_SRC_INCLUDE_PATH="${S}/sys ${S}/../include ${S}/${TARGET_ARCH}/include" \
+		    DOXYGEN_SRC_INCLUDE_PATH="${S}/sys ${S}/../include ${S}/${TARGET_ARCH}/include ${.OBJDIR}/include" \
 		    DOXYGEN_TARGET_ARCH=${TARGET_ARCH} \
 		    DOXYGEN_LINUX_PATH=${DOXYGEN_LINUX_PATH} \
 		    NOTREVIEWED=${.CURDIR}/notreviewed.dox \
@@ -118,9 +118,10 @@ clean-${target}:
 .endfor
 
 .for file in ${MFILES}
-CLEANDIRS+=     ${.OBJDIR}/${file:T:S/.m$/.h/}
-${.OBJDIR}/${file:T:S/.m$/.h/}: ${S}/${file}
-	cd ${.OBJDIR}; ${AWK} -f $S/tools/makeobjops.awk ${S}/${file} -h
+CLEANDIRS+=     ${.OBJDIR}/include/${file:T:S/.m$/.h/}
+${.OBJDIR}/include/${file:T:S/.m$/.h/}: ${S}/${file}
+	@mkdir -p ${.OBJDIR}/include
+	cd ${.OBJDIR}/include && ${AWK} -f $S/tools/makeobjops.awk ${S}/${file} -h
 .endfor
 
 #

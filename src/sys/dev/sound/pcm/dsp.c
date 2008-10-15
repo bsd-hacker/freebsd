@@ -2178,7 +2178,7 @@ dsp_unit2name(char *buf, size_t len, int unit)
  * @note
  * Calling threads must not hold any snddev_info or pcm_channel locks.
  * 
- * @param dev		device on which the ioctl was issued
+ * @param i_dev		device on which the ioctl was issued
  * @param ai		ioctl request data container
  *
  * @retval 0		success

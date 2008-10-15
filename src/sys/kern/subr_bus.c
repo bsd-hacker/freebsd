@@ -1448,7 +1448,7 @@ devclass_delete_device(devclass_t dc, device_t dev)
  * @param parent	the parent of the new device
  * @param name		the devclass name of the new device or @c NULL
  *			to leave the devclass unspecified
- * @parem unit		the unit number of the new device of @c -1 to
+ * @param unit		the unit number of the new device of @c -1 to
  *			leave the unit number unspecified
  *
  * @returns the new device
