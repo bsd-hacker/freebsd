@@ -1015,7 +1015,7 @@ command command_table[] = {
     { 'U', cmd_useruid, "toggle the display of usernames or uids" },
     { 'c', cmd_command, "display processes by command name" },
     { 'd', cmd_displays, "change number of displays to show" },
-    { 'a', cmd_cmdline, "toggle the display of full command paths" },
+    { 'f', cmd_cmdline, "toggle the display of full command paths" },
     { 'i', cmd_idle, "toggle the displaying of idle processes" },
     { 'I', cmd_idle, NULL },
 #ifdef ENABLE_KILL
