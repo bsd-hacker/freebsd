@@ -67,3 +67,68 @@ add path stderr unhide
 add include $devfsrules_hide_all
 add include $devfsrules_unhide_basic
 add include $devfsrules_unhide_login
+
+[devfsrules_unhide_audio=5]
+add path 'audio*' unhide
+add path 'dsp*' unhide
+add path midistat unhide
+add path 'mixer*' unhide
+add path 'music*' unhide
+add path 'sequencer*' unhide
+add path sndstat unhide
+add path speaker unhide
+
+[devfsrules_unhide_printers=6]
+add path 'lpt*' unhide
+add path 'ulpt*' unhide
+add path 'unlpt*' unhide
+
+[devfsrules_unhide_input=7]
+add path 'atkbd*' unhide
+add path 'kbd*' unhide
+add path 'joy*' unhide
+add path 'psm*' unhide
+add path sysmouse unhide
+add path 'ukbd*' unhide
+add path 'ums*' unhide
+
+[devfsrules_unhide_xorg=8]
+add path agpgart unhide
+#add path console unhide
+add path dri unhide
+add path 'dri*' unhide
+add path io unhide
+add path mem unhide
+#add path pci unhide
+add path tty unhide
+add path ttyv0 unhide
+add path ttyv1 unhide
+add path ttyv8 unhide
+
+[devfsrules_unhide_cddvd=9]
+add path 'da*' unhide
+add path 'cd*' unhide
+add path 'cd*' mode 0666
+add path 'pass*' unhide
+add path 'xpt*' unhide
+add path 'acd*' unhide
+add path 'acd*' mode 0666
+
+[devfsrules_unhide_kmem=10]
+add path kmem unhide
+
+#
+# This allows to run a desktop system in a jail.  Think about what you want to
+# achieve before you use this, it opens up the entire machine to access from
+# this jail to any sophisticated program.
+#
+[devfsrules_jail_desktop=11]
+add include $devfsrules_hide_all
+add include $devfsrules_unhide_basic
+add include $devfsrules_unhide_login
+add include $devfsrules_unhide_audio
+add include $devfsrules_unhide_input
+add include $devfsrules_unhide_xorg
+add include $devfsrules_unhide_cddvd
+add include $devfsrules_unhide_kmem
+
