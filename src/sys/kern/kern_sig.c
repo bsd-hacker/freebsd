@@ -71,6 +71,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysent.h>
 #include <sys/syslog.h>
 #include <sys/sysproto.h>
+#include <sys/time.h>
 #include <sys/timers.h>
 #include <sys/unistd.h>
 #include <sys/wait.h>
@@ -2718,13 +2719,18 @@ sigexit(td, sig)
 		 */
 		if (coredump(td) == 0)
 			sig |= WCOREFLAG;
-		if (kern_logsigexit)
+		if (kern_logsigexit) {
+			struct bintime now;
+
+			getbintime(&now);
 			log(LOG_INFO,
-			    "pid %d (%s), uid %d: exited on signal %d%s\n",
+			    "%zd: pid %d (%s), uid %d: exited on signal %d%s\n",
+			    now.sec,
 			    p->p_pid, p->p_comm,
 			    td->td_ucred ? td->td_ucred->cr_uid : -1,
 			    sig &~ WCOREFLAG,
 			    sig & WCOREFLAG ? " (core dumped)" : "");
+		}
 	} else
 		PROC_UNLOCK(p);
 	exit1(td, W_EXITCODE(0, sig));
