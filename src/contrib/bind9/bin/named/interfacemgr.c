@@ -327,7 +327,7 @@ ns_interface_accepttcp(ns_interface_t *ifp) {
 	 * If/when there a multiple filters listen to the
 	 * result.
 	 */
-	(void)isc_socket_filter(ifp->tcpsocket, "dataready");
+	(void)isc_socket_filter(ifp->tcpsocket, "dnsready");
 
 	result = ns_clientmgr_createclients(ifp->clientmgr,
 					    ifp->ntcptarget, ifp,
