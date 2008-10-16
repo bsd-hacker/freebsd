@@ -276,7 +276,8 @@ main(int argc, char * const argv[])
 				lp->len -= i;
 				continue;
 			}
-			printf("\n%jd %zu failed %d\n", lp->start, i, errno);
+			printf("\n%jd %zu failed: %s (errno %d)\n", lp->start,
+			    i, strerror(errno), errno);
 			new_lump(lp->start, i, lp->state + 1);
 			lp->start += i;
 			lp->len -= i;
