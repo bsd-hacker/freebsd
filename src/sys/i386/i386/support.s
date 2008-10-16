@@ -54,7 +54,7 @@ copyin_vector:
 	.globl	copyout_vector
 copyout_vector:
 	.long	generic_copyout
-#if defined(I586_CPU) && defined(DEV_NPX)
+#if (defined(I586_CPU) || defined(I686_CPU)) && defined(DEV_NPX)
 kernel_fpu_lock:
 	.byte	0xfe
 	.space	3
@@ -202,7 +202,7 @@ do0:
 END(i486_bzero)
 #endif
 
-#if defined(I586_CPU) && defined(DEV_NPX)
+#if (defined(I586_CPU) || defined(I686_CPU)) && defined(DEV_NPX)
 ENTRY(i586_bzero)
 	movl	4(%esp),%edx
 	movl	8(%esp),%ecx
@@ -359,7 +359,7 @@ intreg_i586_bzero:
 	popl	%edi
 	ret
 END(i586_bzero)
-#endif /* I586_CPU && defined(DEV_NPX) */
+#endif /* (I586_CPU || I686_CPU) && defined(DEV_NPX) */
 
 ENTRY(sse2_pagezero)
 	pushl	%ebx
@@ -528,7 +528,7 @@ ENTRY(generic_bcopy)
 	ret
 END(generic_bcopy)
 
-#if defined(I586_CPU) && defined(DEV_NPX)
+#if (defined(I586_CPU) || defined(I686_CPU)) && defined(DEV_NPX)
 ENTRY(i586_bcopy)
 	pushl	%esi
 	pushl	%edi
@@ -676,7 +676,7 @@ small_i586_bcopy:
 	cld
 	ret
 END(i586_bcopy)
-#endif /* I586_CPU && defined(DEV_NPX) */
+#endif /* (I586_CPU || I686_CPU) && defined(DEV_NPX) */
 
 /*
  * Note: memcpy does not support overlapping copies
@@ -764,7 +764,7 @@ ENTRY(generic_copyout)
 	/* bcopy(%esi, %edi, %ebx) */
 	movl	%ebx,%ecx
 
-#if defined(I586_CPU) && defined(DEV_NPX)
+#if (defined(I586_CPU) || defined(I686_CPU)) && defined(DEV_NPX)
 	ALIGN_TEXT
 slow_copyout:
 #endif
@@ -797,7 +797,7 @@ copyout_fault:
 	movl	$EFAULT,%eax
 	ret
 
-#if defined(I586_CPU) && defined(DEV_NPX)
+#if (defined(I586_CPU) || defined(I686_CPU)) && defined(DEV_NPX)
 ENTRY(i586_copyout)
 	/*
 	 * Duplicated from generic_copyout.  Could be done a bit better.
@@ -850,7 +850,7 @@ ENTRY(i586_copyout)
 	addl	$4,%esp
 	jmp	done_copyout
 END(i586_copyout)
-#endif /* I586_CPU && defined(DEV_NPX) */
+#endif /* (I586_CPU || I686_CPU) && defined(DEV_NPX) */
 
 /*
  * copyin(from_user, to_kernel, len) - MP SAFE
@@ -878,7 +878,7 @@ ENTRY(generic_copyin)
 	cmpl	$VM_MAXUSER_ADDRESS,%edx
 	ja	copyin_fault
 
-#if defined(I586_CPU) && defined(DEV_NPX)
+#if (defined(I586_CPU) || defined(I686_CPU)) && defined(DEV_NPX)
 	ALIGN_TEXT
 slow_copyin:
 #endif
@@ -892,7 +892,7 @@ slow_copyin:
 	rep
 	movsb
 
-#if defined(I586_CPU) && defined(DEV_NPX)
+#if (defined(I586_CPU) || defined(I686_CPU)) && defined(DEV_NPX)
 	ALIGN_TEXT
 done_copyin:
 #endif
@@ -913,7 +913,7 @@ copyin_fault:
 	movl	$EFAULT,%eax
 	ret
 
-#if defined(I586_CPU) && defined(DEV_NPX)
+#if (defined(I586_CPU) || defined(I686_CPU)) && defined(DEV_NPX)
 ENTRY(i586_copyin)
 	/*
 	 * Duplicated from generic_copyin.  Could be done a bit better.
@@ -947,9 +947,9 @@ ENTRY(i586_copyin)
 	addl	$8,%esp
 	jmp	done_copyin
 END(i586_copyin)
-#endif /* I586_CPU && defined(DEV_NPX) */
+#endif /* (I586_CPU || I686_CPU) && defined(DEV_NPX) */
 
-#if defined(I586_CPU) && defined(DEV_NPX)
+#if (defined(I586_CPU) || defined(I686_CPU)) && defined(DEV_NPX)
 /* fastmove(src, dst, len)
 	src in %esi
 	dst in %edi
@@ -1155,7 +1155,7 @@ fastmove_tail_fault:
 	movl	$EFAULT,%eax
 	ret
 END(fastmove)
-#endif /* I586_CPU && defined(DEV_NPX) */
+#endif /* (I586_CPU || I686_CPU) && defined(DEV_NPX) */
 
 /*
  * casuword.  Compare and set user word.  Returns -1 or the current value.

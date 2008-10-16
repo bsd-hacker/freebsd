@@ -160,10 +160,10 @@ static	int	npx_attach(device_t dev);
 static	void	npx_identify(driver_t *driver, device_t parent);
 static	int	npx_intr(void *);
 static	int	npx_probe(device_t dev);
-#ifdef I586_CPU_XXX
+#if defined(I586_CPU) || defined(I686_CPU)
 static	long	timezero(const char *funcname,
 		    void (*func)(void *buf, size_t len));
-#endif /* I586_CPU */
+#endif /* I586_CPU || I686_CPU */
 
 int	hw_float;		/* XXX currently just alias for npx_exists */
 
@@ -439,9 +439,9 @@ npx_attach(dev)
 		npx_cleanstate_ready = 1;
 		intr_restore(s);
 	}
-#ifdef I586_CPU_XXX
-	if (cpu_class == CPUCLASS_586 && npx_ex16 && npx_exists &&
-	    timezero("i586_bzero()", i586_bzero) <
+#if defined(I586_CPU) || defined(I686_CPU)
+	if ((cpu_class == CPUCLASS_586 || cpu_class == CPUCLASS_686) &&
+	    npx_ex16 && npx_exists && timezero("i586_bzero()", i586_bzero) <
 	    timezero("bzero()", bzero) * 4 / 5) {
 		if (!(flags & NPX_DISABLE_I586_OPTIMIZED_BCOPY))
 			bcopy_vector = i586_bcopy;
@@ -1021,7 +1021,7 @@ fpurstor(addr)
 		frstor(addr);
 }
 
-#ifdef I586_CPU_XXX
+#if defined(I586_CPU) || defined(I686_CPU)
 static long
 timezero(funcname, func)
 	const char *funcname;
@@ -1049,7 +1049,7 @@ timezero(funcname, func)
 	free(buf, M_TEMP);
 	return (usec);
 }
-#endif /* I586_CPU */
+#endif /* I586_CPU || I686_CPU */
 
 static device_method_t npx_methods[] = {
 	/* Device interface */
