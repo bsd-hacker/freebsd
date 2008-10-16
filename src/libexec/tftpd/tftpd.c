@@ -597,7 +597,7 @@ validate_access(char **filep, int mode)
 	 * Prevent tricksters from getting around the directory restrictions
 	 */
 	if (strstr(filename, "/../"))
-		return (EACCESS);
+		return (EACCES);
 
 	if (*filename == '/') {
 		/*
@@ -614,17 +614,17 @@ validate_access(char **filep, int mode)
 		}
 		/* If directory list is empty, allow access to any file */
 		if (dirp->name == NULL && dirp != dirs)
-			return (EACCESS);
+			return (EACCES);
 		if (stat(filename, &stbuf) < 0)
-			return (errno == ENOENT ? ENOTFOUND : EACCESS);
+			return (errno == ENOENT ? ENOTFOUND : EACCES);
 		if ((stbuf.st_mode & S_IFMT) != S_IFREG)
 			return (ENOTFOUND);
 		if (mode == RRQ) {
 			if ((stbuf.st_mode & S_IROTH) == 0)
-				return (EACCESS);
+				return (EACCES);
 		} else {
 			if ((stbuf.st_mode & S_IWOTH) == 0)
-				return (EACCESS);
+				return (EACCES);
 		}
 	} else {
 		int err;
@@ -636,7 +636,7 @@ validate_access(char **filep, int mode)
 		 */
 
 		if (!strncmp(filename, "../", 3))
-			return (EACCESS);
+			return (EACCES);
 
 		/*
 		 * If the file exists in one of the directories and isn't
@@ -652,7 +652,7 @@ validate_access(char **filep, int mode)
 				if ((stbuf.st_mode & S_IROTH) != 0) {
 					break;
 				}
-				err = EACCESS;
+				err = EACCES;
 			}
 		}
 		if (dirp->name != NULL)
@@ -867,7 +867,7 @@ struct errmsg {
 } errmsgs[] = {
 	{ EUNDEF,	"Undefined error code" },
 	{ ENOTFOUND,	"File not found" },
-	{ EACCESS,	"Access violation" },
+	{ EACCES,	"Access violation" },
 	{ ENOSPACE,	"Disk full or allocation exceeded" },
 	{ EBADOP,	"Illegal TFTP operation" },
 	{ EBADID,	"Unknown transfer ID" },
