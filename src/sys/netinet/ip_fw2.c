@@ -3389,7 +3389,7 @@ done:
 
 pullup_failed:
 	if (V_fw_verbose)
-		printf("ipfw: pullup failed\n");
+		printf("ipfw: pullup failed, packet too short (network problem or malicious packet)\n");
 	return (IP_FW_DENY);
 }
 
