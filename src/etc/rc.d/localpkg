@@ -66,6 +66,8 @@ pkg_stop()
 				(set -T
 				trap 'exit 1' 2
 				${script} stop)
+			elif [ -f "${script}" -o -L "${script}" ]; then
+				echo -n " (skipping ${script##*/}, not executable)"
 			fi
 		done
 		[ -n "${initdone}" ] && echo '.'
