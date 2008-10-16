@@ -350,6 +350,7 @@ smb_co_lock(struct smb_connobj *cp, int flags, struct thread *td)
 	if (smb_co_lockstatus(cp, td) == LK_EXCLUSIVE && 
 	    (flags & LK_CANRECURSE) == 0) {
 		SMBERROR("recursive lock for object %d\n", cp->co_level);
+		panic("rescursive lock for object %p", cp);
 		return 0;
 	}
 	return lockmgr(&cp->co_lock, flags, &cp->co_interlock);
