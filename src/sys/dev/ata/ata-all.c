@@ -600,7 +600,7 @@ ata_getparam(struct ata_device *atadev, int init)
 	if (!(request = ata_alloc_request()))
 	    break;
 	request->dev = atadev->dev;
-	request->timeout = 1;
+	request->timeout = 5;
 	request->retries = 0;
 	request->u.ata.command = command;
 	request->flags = (ATA_R_READ|ATA_R_AT_HEAD|ATA_R_DIRECT|ATA_R_QUIET);
