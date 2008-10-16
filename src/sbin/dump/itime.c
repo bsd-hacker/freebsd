@@ -71,7 +71,10 @@ initdumptimes(void)
 {
 	FILE *df;
 
-	if ((df = fopen(dumpdates, "r")) == NULL) {
+	do {
+		df = fopen(dumpdates, "r");
+	} while ((df == NULL) && (errno == EINTR));
+	if (df == NULL) {
 		if (errno != ENOENT) {
 			msg("WARNING: cannot read %s: %s\n", dumpdates,
 			    strerror(errno));
@@ -81,13 +84,19 @@ initdumptimes(void)
 		 * Dumpdates does not exist, make an empty one.
 		 */
 		msg("WARNING: no file `%s', making an empty one\n", dumpdates);
-		if ((df = fopen(dumpdates, "w")) == NULL) {
+		do {
+			df = fopen(dumpdates, "w");
+		} while ((df == NULL) && (errno == EINTR));
+		if (df == NULL) {
 			msg("WARNING: cannot create %s: %s\n", dumpdates,
 			    strerror(errno));
 			return;
 		}
 		(void) fclose(df);
-		if ((df = fopen(dumpdates, "r")) == NULL) {
+		do {
+			df = fopen(dumpdates, "r");
+		} while ((df == NULL) && (errno == EINTR));
+		if (df == NULL) {
 			quit("cannot read %s even after creating it: %s\n",
 			    dumpdates, strerror(errno));
 			/* NOTREACHED */
@@ -167,7 +176,10 @@ putdumptime(void)
 
 	if(uflag == 0)
 		return;
-	if ((df = fopen(dumpdates, "r+")) == NULL)
+	do {
+		df = fopen(dumpdates, "r+");
+	} while ((df == NULL) && (errno == EINTR));
+	if (df == NULL)
 		quit("cannot rewrite %s: %s\n", dumpdates, strerror(errno));
 	fd = fileno(df);
 	(void) flock(fd, LOCK_EX);

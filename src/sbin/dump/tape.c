@@ -327,7 +327,7 @@ trewind(void)
 				quit("or use no size estimate at all.\n");
 			}
 		}
-		(void) close(slaves[f].fd);
+		while ((close(slaves[f].fd) < 0) && (errno == EINTR)) /* nop */;
 	}
 	while (wait((int *)NULL) >= 0)	/* wait for any signals from slaves */
 		/* void */;
@@ -356,10 +356,10 @@ trewind(void)
 		(void)close(tapefd);
 		return;
 	}
-	(void) close(tapefd);
+	while ((close(tapefd) < 0) && (errno == EINTR)) /* nop */;
 	while ((f = open(tape, 0)) < 0)
 		sleep (10);
-	(void) close(f);
+	while ((close(f) < 0) && (errno == EINTR)) /* nop */;
 }
 
 void
@@ -720,7 +720,8 @@ enslave(void)
 		slaves[i].sent = 0;
 		if (slaves[i].pid == 0) { 	    /* Slave starts up here */
 			for (j = 0; j <= i; j++)
-			        (void) close(slaves[j].fd);
+			        while ((close(slaves[j].fd) < 0)
+					&& (errno == EINTR)) /* nop */;
 			signal(SIGINT, SIG_IGN);    /* Master handles this */
 			doslave(cmd[0], i);
 			Exit(X_FINOK);
@@ -763,8 +764,11 @@ doslave(int cmd, int slave_number)
 	/*
 	 * Need our own seek pointer.
 	 */
-	(void) close(diskfd);
-	if ((diskfd = open(disk, O_RDONLY)) < 0)
+	while ((close(diskfd) < 0) && (errno == EINTR)) /* nop */;
+	do {
+		diskfd = open(disk, O_RDONLY);
+	} while ((diskfd < 0) && (errno == EINTR));
+	if (diskfd < 0)
 		quit("slave couldn't reopen disk: %s\n", strerror(errno));
 
 	/*
@@ -874,7 +878,13 @@ atomic(ssize_t (*func)(), int fd, char *buf, int count)
 {
 	int got, need = count;
 
-	while ((got = (*func)(fd, buf, need)) > 0 && (need -= got) > 0)
-		buf += got;
+	do {
+		do {
+			got = (*func)(fd, buf, need);
+		} while ((got == -1) && (errno == EINTR));
+
+		if ((got > 0) && ((need -= got) > 0))
+			buf += got;
+	} while (got > 0 && need > 0);
 	return (got < 0 ? got : count - need);
 }

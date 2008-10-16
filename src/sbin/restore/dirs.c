@@ -143,11 +143,19 @@ extractdirs(int genmode)
 	if (command != 'r' && command != 'R') {
 		(void *) strcat(dirfile, "-XXXXXX");
 		fd = mkstemp(dirfile);
-	} else
-		fd = open(dirfile, O_RDWR|O_CREAT|O_EXCL, 0666);
-	if (fd == -1 || (df = fdopen(fd, "w")) == NULL) {
+	} else {
+		do {
+			fd = open(dirfile, O_RDWR|O_CREAT|O_EXCL, 0666);
+		} while ((fd == -1) && (errno == EINTR));
+	}
+	if (fd != -1) {
+		do {
+			df = fdopen(fd, "w");
+		} while ((df == NULL) && (errno == EINTR));
+	}
+	if (fd == -1 || df == NULL) {
 		if (fd != -1)
-			close(fd);
+			while ((close(fd) == -1) && (errno == EINTR)) /* nop */;
 		warn("%s: cannot create directory database", dirfile);
 		done(1);
 	}
@@ -156,11 +164,20 @@ extractdirs(int genmode)
 		if (command != 'r' && command != 'R') {
 			(void *) strcat(modefile, "-XXXXXX");
 			fd = mkstemp(modefile);
-		} else
-			fd = open(modefile, O_RDWR|O_CREAT|O_EXCL, 0666);
-		if (fd == -1 || (mf = fdopen(fd, "w")) == NULL) {
+		} else {
+			do {
+				fd = open(modefile, O_RDWR|O_CREAT|O_EXCL, 0666);
+			} while ((fd == -1) && (errno == EINTR));
+		}
+		if (fd != -1) {
+			do {
+				mf = fdopen(fd, "w");
+			} while ((mf == NULL) && (errno == EINTR));
+		}
+		if (fd == -1 || mf == NULL) {
 			if (fd != -1)
-				close(fd);
+				while ((close(fd) == -1) && (errno == EINTR))
+					/* nop */;
 			warn("%s: cannot create modefile", modefile);
 			done(1);
 		}
@@ -442,7 +459,10 @@ rst_seekdir(RST_DIR *dirp, long loc, long base)
 	(void) lseek(dirp->dd_fd, base + (loc & ~(DIRBLKSIZ - 1)), SEEK_SET);
 	dirp->dd_loc = loc & (DIRBLKSIZ - 1);
 	if (dirp->dd_loc != 0)
-		dirp->dd_size = read(dirp->dd_fd, dirp->dd_buf, DIRBLKSIZ);
+		do {
+			dirp->dd_size = read(dirp->dd_fd, dirp->dd_buf,
+			    DIRBLKSIZ);
+		} while ((dirp->dd_size == -1) && (errno == EINTR));
 }
 
 /*
@@ -455,8 +475,10 @@ rst_readdir(RST_DIR *dirp)
 
 	for (;;) {
 		if (dirp->dd_loc == 0) {
-			dirp->dd_size = read(dirp->dd_fd, dirp->dd_buf,
-			    DIRBLKSIZ);
+			do {
+				dirp->dd_size = read(dirp->dd_fd, dirp->dd_buf,
+				    DIRBLKSIZ);
+			} while ((dirp->dd_size == -1) && (errno == EINTR));
 			if (dirp->dd_size <= 0) {
 				dprintf(stderr, "error reading directory\n");
 				return (NULL);
@@ -513,7 +535,7 @@ rst_closedir(void *arg)
 	RST_DIR *dirp;
 
 	dirp = arg;
-	(void)close(dirp->dd_fd);
+	while ((close(dirp->dd_fd) == -1) && (errno == EINTR)) /* nop */;
 	free(dirp);
 	return;
 }
@@ -537,10 +559,13 @@ opendirfile(const char *name)
 	RST_DIR *dirp;
 	int fd;
 
-	if ((fd = open(name, O_RDONLY)) == -1)
+	do {
+		fd = open(name, O_RDONLY);
+	} while ((fd == -1) && (errno == EINTR));
+	if (fd == -1)
 		return (NULL);
 	if ((dirp = malloc(sizeof(RST_DIR))) == NULL) {
-		(void)close(fd);
+		while ((close(fd) == -1) && (errno == EINTR)) /* nop */;
 		return (NULL);
 	}
 	dirp->dd_fd = fd;
@@ -572,7 +597,9 @@ setdirmodes(int flags)
 		fprintf(stderr, "directory mode, owner, and times not set\n");
 		return;
 	}
-	mf = fopen(modefile, "r");
+	do {
+		mf = fopen(modefile, "r");
+	} while ((mf == NULL) && (errno == EINTR));
 	if (mf == NULL) {
 		fprintf(stderr, "fopen: %s\n", strerror(errno));
 		fprintf(stderr, "cannot open mode file %s\n", modefile);
@@ -676,7 +703,10 @@ genliteraldir(char *name, ino_t ino)
 	itp = inotablookup(ino);
 	if (itp == NULL)
 		panic("Cannot find directory inode %d named %s\n", ino, name);
-	if ((ofile = open(name, O_WRONLY | O_CREAT | O_TRUNC, 0666)) < 0) {
+	do {
+		ofile = open(name, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+	} while ((ofile == -1) && (errno == EINTR));
+	if (ofile < 0) {
 		fprintf(stderr, "%s: ", name);
 		(void) fflush(stderr);
 		fprintf(stderr, "cannot create file: %s\n", strerror(errno));
@@ -685,8 +715,12 @@ genliteraldir(char *name, ino_t ino)
 	rst_seekdir(dirp, itp->t_seekpt, itp->t_seekpt);
 	dp = dup(dirp->dd_fd);
 	for (i = itp->t_size; i > 0; i -= BUFSIZ) {
+		int ret_val = 0;
 		size = i < BUFSIZ ? i : BUFSIZ;
-		if (read(dp, buf, (int) size) == -1) {
+		do {
+			ret_val = read(dp, buf, (int) size);
+		} while ((ret_val == -1) && (errno == EINTR));
+		if (ret_val == -1) {
 			fprintf(stderr,
 				"write error extracting inode %d, name %s\n",
 				curfile.ino, curfile.name);
@@ -701,8 +735,8 @@ genliteraldir(char *name, ino_t ino)
 			done(1);
 		}
 	}
-	(void) close(dp);
-	(void) close(ofile);
+	while((close(dp) == -1) && (errno == EINTR)) /* nop */;
+	while((close(ofile) == -1) && (errno == EINTR)) /* nop */;
 	return (GOOD);
 }
 

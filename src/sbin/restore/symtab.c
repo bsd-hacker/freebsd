@@ -446,7 +446,10 @@ dumpsymtable(char *filename, long checkpt)
 	vprintf(stdout, "Check pointing the restore\n");
 	if (Nflag)
 		return;
-	if ((fd = fopen(filename, "w")) == NULL) {
+	do {
+		fd = fopen(filename, "w");
+	} while ((fd == NULL) && (errno == EINTR));
+	if (fd == NULL) {
 		fprintf(stderr, "fopen: %s\n", strerror(errno));
 		panic("cannot create save file %s for symbol table\n",
 			filename);
@@ -529,7 +532,7 @@ initsymtable(char *filename)
 	struct symtableheader hdr;
 	struct stat stbuf;
 	long i;
-	int fd;
+	int fd, ret_val;
 
 	vprintf(stdout, "Initialize symbol table.\n");
 	if (filename == NULL) {
@@ -542,7 +545,10 @@ initsymtable(char *filename)
 		ep->e_flags |= NEW;
 		return;
 	}
-	if ((fd = open(filename, O_RDONLY, 0)) < 0) {
+	do {
+		fd = open(filename, O_RDONLY, 0);
+	} while ((fd == -1) && (errno == EINTR));
+	if (fd < 0) {
 		fprintf(stderr, "open: %s\n", strerror(errno));
 		panic("cannot open symbol table file %s\n", filename);
 	}
@@ -554,8 +560,17 @@ initsymtable(char *filename)
 	base = calloc(sizeof(char), (unsigned)tblsize);
 	if (base == NULL)
 		panic("cannot allocate space for symbol table\n");
-	if (read(fd, base, (int)tblsize) < 0 ||
-	    read(fd, (char *)&hdr, sizeof(struct symtableheader)) < 0) {
+	do {
+		ret_val = read(fd, base, (int)tblsize);
+	} while ((ret_val == -1) && (errno == EINTR));
+	if (ret_val == -1) {
+		fprintf(stderr, "read: %s\n", strerror(errno));
+		panic("cannot read symbol table file %s\n", filename);
+	}
+	do {
+		ret_val = read(fd, (char *)&hdr, sizeof(struct symtableheader));
+	} while ((ret_val == -1) && (errno == EINTR));
+	if (ret_val == -1) {
 		fprintf(stderr, "read: %s\n", strerror(errno));
 		panic("cannot read symbol table file %s\n", filename);
 	}

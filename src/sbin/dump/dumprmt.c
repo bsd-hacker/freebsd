@@ -110,7 +110,10 @@ rmtconnaborted(int sig __unused)
 			int i;
 			char buf[2048];
 
-			if ((i = read(errfd, buf, sizeof(buf) - 1)) > 0) {
+			do {
+				i = read(errfd, buf, sizeof(buf));
+			} while ((i == -1) && (errno == EINTR));
+			if (i - 1 > 0) {
 				buf[i] = '\0';
 				msg("on %s: %s%s", rmtpeer, buf,
 					buf[i - 1] == '\n' ? "" : "\n");
@@ -229,7 +232,9 @@ rmtread(char *buf, int count)
 		/* rmtcall() properly sets errno for us on errors. */
 		return (n);
 	for (i = 0; i < n; i += cc) {
-		cc = read(rmtape, buf+i, n - i);
+		do {
+			cc = read(rmtape, buf+i, n - i);
+		} while ((cc == -1) && (errno == EINTR));
 		if (cc <= 0)
 			rmtconnaborted(0);
 	}
@@ -347,8 +352,12 @@ int
 rmtgetb(void)
 {
 	char c;
+	int ret_val;
 
-	if (read(rmtape, &c, 1) != 1)
+	do {
+		ret_val = read(rmtape, &c, 1);
+	} while ((ret_val == -1) && (errno == EINTR));
+	if (ret_val != 1)
 		rmtconnaborted(0);
 	return (c);
 }

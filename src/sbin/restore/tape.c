@@ -151,11 +151,15 @@ setinput(char *source, int ispipecommand)
 		 * Since input is coming from a pipe we must establish
 		 * our own connection to the terminal.
 		 */
-		terminal = fopen(_PATH_TTY, "r");
+		do {
+			terminal = fopen(_PATH_TTY, "r");
+		} while ((terminal == NULL) && (errno == EINTR));
 		if (terminal == NULL) {
 			(void)fprintf(stderr, "cannot open %s: %s\n",
 			    _PATH_TTY, strerror(errno));
-			terminal = fopen(_PATH_DEVNULL, "r");
+			do {
+				terminal = fopen(_PATH_DEVNULL, "r");
+			} while ((terminal == NULL) && (errno == EINTR));
 			if (terminal == NULL) {
 				(void)fprintf(stderr, "cannot open %s: %s\n",
 				    _PATH_DEVNULL, strerror(errno));
@@ -218,8 +222,11 @@ setup(void)
 #endif
 	if (pipein)
 		mt = 0;
-	else
-		mt = open(magtape, O_RDONLY, 0);
+	else {
+		do {
+			mt = open(magtape, O_RDONLY, 0);
+		} while ((mt == -1) && (errno == EINTR));
+	}
 	if (mt < 0) {
 		fprintf(stderr, "%s: %s\n", magtape, strerror(errno));
 		done(1);
@@ -415,7 +422,9 @@ getpipecmdhdr:
 		mt = rmtopen(magtape, 0);
 	else
 #endif
-		mt = open(magtape, O_RDONLY, 0);
+		do {
+			mt = open(magtape, O_RDONLY, 0);
+		} while ((mt == -1) && (errno == EINTR));
 
 	if (mt == -1) {
 		fprintf(stderr, "Cannot open %s\n", magtape);
@@ -698,9 +707,11 @@ extractfile(char *name)
 			return (GOOD);
 		}
 		if (uflag)
-			(void) unlink(name);
-		if ((ofile = open(name, O_WRONLY | O_CREAT | O_TRUNC,
-		    0600)) < 0) {
+			(void)unlink(name);
+		do {
+			ofile = open(name, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+		} while ((ofile <0) && (errno == EINTR));
+		if (ofile < 0) {
 			fprintf(stderr, "%s: cannot create file: %s\n",
 			    name, strerror(errno));
 			skipfile();
@@ -715,7 +726,7 @@ extractfile(char *name)
 		(void) futimes(ofile, ctimep);
 		(void) futimes(ofile, mtimep);
 		(void) fchflags(ofile, flags);
-		(void) close(ofile);
+		while((close(ofile) == -1) && (errno == EINTR)) /* nop */;
 		return (GOOD);
 	}
 	/* NOTREACHED */
@@ -1199,7 +1210,9 @@ getmore:
 		i = rmtread(&tapebuf[rd], cnt);
 	else
 #endif
-		i = read(mt, &tapebuf[rd], cnt);
+		do {
+			i = read(mt, &tapebuf[rd], cnt);
+		} while ((i == -1) && (errno == EINTR));
 	/*
 	 * Check for mid-tape short read error.
 	 * If found, skip rest of buffer and start with the next.
@@ -1310,7 +1323,9 @@ findtapeblksize(void)
 		i = rmtread(tapebuf, ntrec * TP_BSIZE);
 	else
 #endif
-		i = read(mt, tapebuf, ntrec * TP_BSIZE);
+		do {
+			i = read(mt, tapebuf, ntrec * TP_BSIZE);
+		} while ((i == -1) && (errno == EINTR));
 
 	if (i <= 0) {
 		fprintf(stderr, "tape read error: %s\n", strerror(errno));
@@ -1341,7 +1356,7 @@ closemt(void)
 		rmtclose();
 	else
 #endif
-		(void) close(mt);
+		while((close(mt) == -1) && (errno == EINTR)) /* nop */;
 }
 
 /*

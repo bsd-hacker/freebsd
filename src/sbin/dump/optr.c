@@ -80,7 +80,10 @@ query(const char *question)
 	int	back, errcount;
 	FILE	*mytty;
 
-	if ((mytty = fopen(_PATH_TTY, "r")) == NULL)
+	do {
+		mytty = fopen(_PATH_TTY, "r");
+	} while ((mytty == NULL) && (errno == EINTR));
+	if (mytty == NULL)
 		quit("fopen on %s fails: %s\n", _PATH_TTY, strerror(errno));
 	attnmessage = question;
 	timeout = 0;
