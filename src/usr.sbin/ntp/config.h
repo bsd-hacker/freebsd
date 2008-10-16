@@ -105,7 +105,7 @@
 #define CLOCK_PARSE 1
 
 /* Conrad parallel port radio clock */
-/* #undef CLOCK_PCF */
+#define CLOCK_PCF
 
 /* PCL 720 clock support */
 /* #undef CLOCK_PPS720 */
