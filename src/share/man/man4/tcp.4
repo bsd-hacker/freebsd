@@ -254,11 +254,29 @@ when no advice to the contrary is received from MSS negotiation.
 Maximum
 .Tn TCP
 send window.
+.Pq Va sendbuf_auto
+Automatic send buffer resizing.
+When the the size of the send buffer of a connection is set manually by an
+application,
+the automatic resizing of the send buffer is disabled for this connection.
+.Pq Va sendbuf_inc
+XXX.
+.Pq Va sendbuf_max
+Maximum size of the send buffer with automatic resizing.
 .It Dv TCPCTL_RECVSPACE
 .Pq Va recvspace
 Maximum
 .Tn TCP
 receive window.
+.Pq Va recvbuf_auto
+Automatic send buffer resizing.
+When the the size of the receive buffer of a connection is set manually by an
+application,
+the automatic resizing of the receive buffer is disabled for this connection.
+.Pq Va recvbuf_inc
+XXX.
+.Pq Va recvbuf_max
+Maximum size of the receive buffer with automatic resizing.
 .It Va log_in_vain
 Log any connection attempts to ports where there is not a socket
 accepting connections.
