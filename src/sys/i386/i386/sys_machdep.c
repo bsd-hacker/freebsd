@@ -635,6 +635,12 @@ i386_set_ldt(td, uap, descs)
 	}
 
 	if (!(uap->start == LDT_AUTO_ALLOC && uap->num == 1)) {
+		/* complain a for a while if using old methods */
+		if (ldt_warnings++ < NUM_LDT_WARNINGS) {
+			printf("Warning: pid %d (%s) used static ldt allocation.\n",
+			    td->td_proc->p_pid, td->td_proc->p_comm);
+			printf("See the i386_set_ldt man page for more info\n");
+		}
 		/* verify range of descriptors to modify */
 		largest_ld = uap->start + uap->num;
 		if (uap->start >= MAX_LD ||
