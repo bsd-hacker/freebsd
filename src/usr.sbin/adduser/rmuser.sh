@@ -218,6 +218,45 @@ show_usage() {
 	echo "       one or more user names must be given"
 }
 
+reverse_list()
+{
+	_revlist=
+	for _revfile in $*; do
+		_revlist="$_revfile $_revlist"
+	done
+	echo $_revlist
+}
+
+#
+# plugins
+#	username
+#	execute plugins in rm mode
+#
+plugins() {
+	# If we have some plug-ins, execute them.
+	if [ -d ${plugindir} ]; then
+		slist=""
+		if [ -z "${script_name_sep}" ]; then
+			script_name_sep=" "
+		fi
+		for script in ${plugindir}/*.sh; do
+			slist="${slist}${script_name_sep}${script}"
+		done
+		script_save_sep="$IFS"
+		IFS="${script_name_sep}"
+		for script in `reverse_list ${slist}`; do
+			if [ -x "${script}" ]; then
+				(set -T
+				trap 'exit 1' 2
+				${script} rm $1)
+			elif [ -f "${script}" -o -L "${script}" ]; then
+				echo -n " (skipping ${script##*/}, not executable)"
+			fi
+		done
+		IFS="${script_save_sep}"
+	fi
+}
+
 #### END SUBROUTINE DEFENITION ####
 
 ffile=
@@ -227,6 +266,7 @@ pw_rswitch=
 userlist=
 yflag=
 vflag=
+plugindir=/usr/local/share/adduser
 
 procowner=`/usr/bin/id -u`
 if [ "$procowner" != "0" ]; then
@@ -357,5 +397,6 @@ for _user in $userlist ; do
 	rm_files $_user
 	rm_mail $_user
 	rm_user $_user
+	plugins $_user
 	! verbose && echo "."
 done

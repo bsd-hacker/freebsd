@@ -331,6 +331,29 @@ add_user() {
 			info "Sent welcome message to ($username)."
 		}
 	fi
+
+	# If we have some plug-ins, execute them.
+	if [ -d ${plugindir} ]; then
+		slist=""
+		if [ -z "${script_name_sep}" ]; then
+			script_name_sep=" "
+		fi
+		for script in ${plugindir}/*.sh; do
+			slist="${slist}${script_name_sep}${script}"
+		done
+		script_save_sep="$IFS"
+		IFS="${script_name_sep}"
+		for script in ${slist}; do
+			if [ -x "${script}" ]; then
+				(set -T
+				trap 'exit 1' 2
+				${script} add ${username})
+			elif [ -f "${script}" -o -L "${script}" ]; then
+				echo -n " (skipping ${script##*/}, not executable)"
+			fi
+		done
+		IFS="${script_save_sep}"
+	fi
 }
 
 # get_user
@@ -884,6 +907,7 @@ defaultclass=
 defaultLgroup=
 defaultgroups=
 defaultshell="${DEFAULTSHELL}"
+plugindir=/usr/local/share/adduser
 defaultHomePerm=
 
 # Make sure the user running this program is root. This isn't a security
