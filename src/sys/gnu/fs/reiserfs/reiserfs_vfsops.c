@@ -89,8 +89,10 @@ reiserfs_mount(struct mount *mp, struct thread *td)
 	opts = mp->mnt_optnew;
 
 	/* `fspath' contains the mount point (eg. /mnt/linux); REQUIRED */
-	vfs_getopt(opts, "fspath", (void **)&path, NULL);
-	reiserfs_log(LOG_INFO, "mount point is `%s'\n", path);
+	if (vfs_getopt(opts, "fspath", (void **)&path, NULL) == 0)
+		reiserfs_log(LOG_INFO, "mount point is `%s'\n", path);
+	else
+		reiserfs_log(LOG_WARNING, "mount point is `<unknown>'\n");
 
 	/* `from' contains the device name (eg. /dev/ad0s1); REQUIRED */
 	fspec = NULL;

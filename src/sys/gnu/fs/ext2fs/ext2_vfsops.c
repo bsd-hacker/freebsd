@@ -145,7 +145,10 @@ ext2_mount(mp, td)
 	if (vfs_filteropt(opts, ext2_opts))
 		return (EINVAL);
 
-	vfs_getopt(opts, "fspath", (void **)&path, NULL);
+	/* The fspath has to exist (invariant), but better safe than sorry. */
+	error = vfs_getopt(opts, "fspath", (void **)&path, NULL);
+	if (error != 0)
+		return (error);
 	/* Double-check the length of path.. */
 	if (strlen(path) >= MAXMNTLEN - 1)
 		return (ENAMETOOLONG);
