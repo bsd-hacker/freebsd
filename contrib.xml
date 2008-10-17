@@ -1,0 +1,278 @@
+<freebsd>
+  <branches>
+    <branch name="7">2007-10-11</branch>
+    <branch name="7.0">2007-12-22</branch>
+    <branch name="6">2005-07-11</branch>
+    <branch name="6.0">2005-10-09</branch>
+    <branch name="6.1">2006-04-30</branch>
+    <branch name="6.2">2006-11-14</branch>
+    <branch name="6.3">2007-10-24</branch>
+    <branch name="6.4">2008-10-02</branch>
+  </branches>
+
+  <softwares>
+    <software name="less">
+      <desc><![CDATA[
+	<para><application>less</application> has been updated from
+	      %v1% to %v2%.</para>
+      ]]></desc>
+
+      <versions>
+	<version version="v416">
+	  <import>2007-11-26</import>
+	  <mfv>2007-11-26</mfv>
+	  <mfc branch="7">2007-12-05</mfc>
+	  <mfc branch="6">2007-12-05</mfc>
+	</version>
+	<version version="v415">
+	  <import>2007-11-17</import>
+	  <mfv>2007-11-17</mfv>
+	</version>
+	<version version="v409">
+	  <import>2007-10-13</import>
+	  <mfv>2007-10-13</mfv>
+	  <mfc branch="7">2007-10-18</mfc>
+	  <mfc branch="6">2007-10-16</mfc>
+	</version>
+	<version version="v408">
+	  <import>2007-10-09</import>
+	  <mfv>2007-10-09</mfv>
+	  <mfc branch="6">2007-10-12</mfc>
+	</version>
+	<version version="v406">
+	  <import>2007-06-21</import>
+	  <mfv>2007-06-21</mfv>
+	  <mfc branch="6">2007-07-03</mfc>
+	</version>
+	<version version="v403">
+	  <import>2007-06-04</import>
+	  <mfv>2007-06-04</mfv>
+	</version>
+	<version version="v394">
+	  <import>2006-08-21</import>
+	  <mfv>2006-08-21</mfv>
+	  <mfc branch="6">2006-08-30</mfc>
+	</version>
+	<version version="v381">
+	  <import>2004-04-17</import>
+	  <mfv>2004-04-17</mfv>
+	</version>
+	<version version="v371">
+	  <import>2002-01-08</import>
+	  <mfv>2002-01-08</mfv>
+	</version>
+	<version version="v357">
+	  <import>2000-07-14</import>
+	  <mfv>2000-07-14</mfv>
+	</version>
+	<version version="v354">
+	  <import>2000-05-22</import>
+	</version>
+      </versions>
+    </software>
+
+    <software name="tzdata">
+      <desc><![CDATA[
+	  <para>The timezone database has been updated from
+	  the <application>%v1%</application> release to the
+	  <application>%v2%</application> release.</para>
+      ]]></desc>
+
+      <versions>
+	<version version="tzdata2008h">
+	  <import>2008-10-14</import>
+	  <mfv>2008-10-14</mfv>
+	  <mfc branch="7">2008-10-14</mfc>
+	  <mfc branch="6">2008-10-14</mfc>
+	  <mfc branch="6.4">2008-10-14</mfc>
+	</version>
+	<version version="tzdata2008g">
+	  <import>2008-10-14</import>
+	  <mfv>2008-10-14</mfv>
+	  <mfc branch="7">2008-10-14</mfc>
+	  <mfc branch="6">2008-10-14</mfc>
+	  <mfc branch="6.4">2008-10-14</mfc>
+	</version>
+	<version version="tzdata2008f">
+	  <import>2008-09-16</import>
+	  <mfv>2008-09-16</mfv>
+	  <mfc branch="7">2008-09-16</mfc>
+	  <mfc branch="6">2008-09-16</mfc>
+	</version>
+	<version version="tzdata2008e">
+	  <import>2008-08-08</import>
+	  <mfv>2008-08-08</mfv>
+	  <mfc branch="7">2008-08-08</mfc>
+	  <mfc branch="6">2008-08-15</mfc>
+	</version>
+	<version version="tzdata2008d">
+	  <import>2008-08-08</import>
+	  <mfv>2008-08-08</mfv>
+	  <mfc branch="7">2008-08-08</mfc>
+	  <mfc branch="6">2008-08-15</mfc>
+	</version>
+	<version version="tzdata2008c">
+	  <import>2008-08-08</import>
+	  <mfv>2008-08-08</mfv>
+	  <mfc branch="7">2008-08-08</mfc>
+	  <mfc branch="6">2008-08-15</mfc>
+	</version>
+	<version version="tzdata2008b">
+	  <import>2008-03-25</import>
+	  <mfv>2008-08-08</mfv>
+	  <mfc branch="7">2008-03-25</mfc>
+	  <mfc branch="6">2008-03-25</mfc>
+	</version>
+	<version version="tzdata2008a">
+	  <import>2008-03-09</import>
+	  <mfv>2008-03-09</mfv>
+	  <mfc branch="7">2008-03-09</mfc>
+	  <mfc branch="6">2008-03-09</mfc>
+	</version>
+	<version version="tzdata2007k">
+	  <import>2008-01-01</import>
+	  <mfv>2008-01-01</mfv>
+	  <mfc branch="7">2008-01-06</mfc>
+	  <mfc branch="6">2008-01-06</mfc>
+	  <mfc branch="6.3">2008-01-06</mfc>
+	</version>
+	<version version="tzdata2007j">
+	  <import>2007-12-04</import>
+	  <mfv>2007-12-04</mfv>
+	</version>
+	<version version="tzdata2007i">
+	  <import>2007-11-04</import>
+	  <mfv>2007-11-04</mfv>
+	</version>
+	<version version="tzdata2007h">
+	  <import>2007-10-09</import>
+	  <mfv>2007-10-09</mfv>
+	  <mfc branch="6">2007-10-18</mfc>
+	</version>
+	<version version="tzdata2007g">
+	  <import>2007-08-24</import>
+	  <mfv>2007-08-24</mfv>
+	  <mfc branch="6">2007-09-02</mfc>
+	</version>
+	<version version="tzdata2007f">
+	  <import>2007-05-21</import>
+	  <mfv>2007-05-21</mfv>
+	</version>
+	<version version="tzdata2006n">
+	  <import>2006-05-11</import>
+	  <mfv>2006-05-21</mfv>
+	  <mfc branch="6">2006-10-16</mfc>
+	</version>
+	<version version="tzdata2006g">
+	  <import>2006-05-11</import>
+	  <mfv></mfv>
+	  <mfc branch="6">2005-05-11</mfc>
+	</version>
+	<version version="tzdata2005r">
+	  <import>2005-12-27</import>
+	  <mfv>2005-12-27</mfv>
+	  <mfc branch="6">2005-12-27</mfc>
+	</version>
+	<version version="tzdata2005q">
+	  <import>2005-12-22</import>
+	  <mfv>2005-12-22</mfv>
+	  <mfc branch="6">2005-12-22</mfc>
+	</version>
+	<version version="tzdata2005m">
+	  <import>2005-08-26</import>
+	  <mfv>2005-08-29</mfv>
+	  <mfc branch="6">2005-12-22</mfc>
+	</version>
+	<version version="tzdata2005l">
+	  <import>2005-08-26</import>
+	  <mfv>2005-08-27</mfv>
+	  <mfc branch="6">2005-12-22</mfc>
+	</version>
+	<version version="tzdata2004g">
+	  <import>2004-12-03</import>
+	  <mfv>2004-12-03</mfv>
+	  <mfc branch="6">2004-12-02</mfc>
+	</version>
+	<version version="tzdata2004e">
+	  <import>2004-10-18</import>
+	  <mfv>2004-10-18</mfv>
+	</version>
+	<version version="tzdata2003d">
+	  <import>2003-10-14</import>
+	  <mfv>2003-10-15</mfv>
+	</version>
+	<version version="tzdata2003a">
+	  <import>2003-04-28</import>
+	  <mfv>2003-04-29</mfv>
+	</version>
+	<version version="tzdata2002d">
+	  <import>2002-10-16</import>
+	  <mfv>2002-10-16</mfv>
+	</version>
+	<version version="tzdata2002c">
+	  <import>2002-04-04</import>
+	  <mfv>2002-04-05</mfv>
+	</version>
+	<version version="tzdata2001d">
+	  <import>2001-11-10</import>
+	  <mfv>2001-11-10</mfv>
+	</version>
+	<version version="tzdata2001b">
+	  <import>2001-04-06</import>
+	  <mfv>2001-04-07</mfv>
+	</version>
+	<version version="tzdata2000g">
+	  <import>2000-10-25</import>
+	  <mfv>2000-10-26</mfv>
+	</version>
+	<version version="tzdata2000f">
+	  <import>2000-03-29</import>
+	  <mfv>2000-08-11</mfv>
+	</version>
+	<version version="tzdata2000d">
+	  <import>2000-03-29</import>
+	  <mfv>2000-03-30</mfv>
+	</version>
+	<version version="tzdata1999b">
+	  <import>1999-02-02</import>
+	  <mfv>1999-02-03</mfv>
+	</version>
+	<version version="tzdata1999a">
+	  <import>1999-01-21</import>
+	  <mfv>1999-01-22</mfv>
+	</version>
+	<version version="tzdata1997i">
+	  <import>1997-10-25</import>
+	  <mfv>1997-10-26</mfv>
+	</version>
+	<version version="tzdata1996n">
+	  <import>1996-12-02</import>
+	</version>
+	<version version="tzdata1996l">
+	  <import>1996-12-02</import>
+	  <mfv></mfv>
+	</version>
+	<version version="tzdata96i">
+	  <import>1996-11-19</import>
+	  <mfv></mfv>
+	</version>
+	<version version="tzdata96d">
+	  <import>1996-07-17</import>
+	  <mfv></mfv>
+	</version>
+	<version version="tzdata96c">
+	  <import>1996-03-02</import>
+	  <mfv>1996-03-03</mfv>
+	</version>
+	<version version="tzdata95e">
+	  <import>1995-08-04</import>
+	  <mfv></mfv>
+	</version>
+	<version version="tzdata94f">
+	  <import>1994-09-13</import>
+	  <mfv></mfv>
+	</version>
+      </versions>
+    </software>
+  </softwares>
+</freebsd>

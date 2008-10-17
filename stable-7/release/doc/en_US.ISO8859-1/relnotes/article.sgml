@@ -5,6 +5,9 @@
 <!ENTITY % release PUBLIC "-//FreeBSD//ENTITIES Release Specification//EN">
 %release;
 
+<!ENTITY % contrib PUBLIC "-//FreeBSD//ENTITIES Release Contrib Set//EN">
+%contrib;
+
 <!-- Text constants which probably don't need to be changed.-->
 
 <!ENTITY % include.historic "IGNORE">
@@ -261,6 +264,12 @@
 
   <sect2 id="contrib">
     <title>Contributed Software</title>
+    &contrib.softwares;
+
+  </sect2>
+
+  <sect2 id="excontrib">
+    <title>Expected Contributed Software</title>
 
     <para><application>AMD</application> has been updated from 6.0.10
       to 6.1.5.</para>

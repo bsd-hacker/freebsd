@@ -6,10 +6,11 @@
 PUBLIC "-//FreeBSD//ENTITIES Release Specification//EN"
        "release.ent"
 
+PUBLIC "-//FreeBSD//ENTITIES Release Contrib Set//EN"
+	"../../en_US.ISO8859-1/relnotes/contrib.ent"
+
 PUBLIC "-//FreeBSD//DOCUMENT Release Notes DocBook Language Neutral Stylesheet//EN"
        "release.dsl"
 
 PUBLIC "-//FreeBSD//DOCUMENT Release Notes DocBook Stylesheet//EN"
        "../../en_US.ISO8859-1/share/sgml/release.dsl"
-
-

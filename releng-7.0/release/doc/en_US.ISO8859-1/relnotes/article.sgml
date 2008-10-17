@@ -5,6 +5,9 @@
 <!ENTITY % release PUBLIC "-//FreeBSD//ENTITIES Release Specification//EN">
 %release;
 
+<!ENTITY % contrib PUBLIC "-//FreeBSD//ENTITIES Release Contrib Set//EN">
+%contrib;
+
 <!-- Text constants which probably don't need to be changed.-->
 
 <!-- The marker for MFCs. -->
@@ -1455,6 +1458,12 @@ mdconfig_md1="-t vnode -f /var/foo.img"</programlisting>
 
   <sect2 id="contrib">
     <title>Contributed Software</title>
+    &contrib.softwares;
+
+  </sect2>
+
+  <sect2 id="excontrib">
+    <title>Expected Contributed Software</title>
 
     <para><application>Intel ACPI-CA</application>
       has been updated to 20070320.</para>

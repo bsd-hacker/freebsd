@@ -18,6 +18,12 @@ JADEFLAGS+=	-V %generate-article-toc%
 # SGML content
 SRCS+=	article.sgml
 
+# Contributed software
+SRCS+= contrib.ent
+
+contrib.ent: ${RELN_ROOT}/../../../contrib.xml
+	${PERL} -w ${RELN_ROOT}/../../../contrib-xmltoent.pl
+
 URL_RELPREFIX?=	../../../..
 
 .include "${RELN_ROOT}/share/mk/doc.relnotes.mk"
