@@ -547,7 +547,7 @@ find_next_name(char *filename, int *fd)
 		syslog(LOG_WARNING,
 			"Filename suffix too long (%d characters maximum)",
 			MAXPATHLEN);
-		return (EACCESS);
+		return (EACCES);
 	}
 
 	/* Make sure the new filename is not too long */
@@ -555,7 +555,7 @@ find_next_name(char *filename, int *fd)
 		syslog(LOG_WARNING,
 			"Filename too long (%d characters, %d maximum)",
 			strlen(filename), MAXPATHLEN - len - 5);
-		return (EACCESS);
+		return (EACCES);
 	}
 
 	/* Find the first file which doesn't exist */
