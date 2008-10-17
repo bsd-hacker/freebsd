@@ -122,3 +122,22 @@ struct tftp_stats {
 
 void	stats_init(struct tftp_stats *ts);
 void	printstats(const char *direction, int verbose, struct tftp_stats *ts);
+
+/* FreeBSD TFTP Specific Error codes (defined in arpa/tftp.h) */
+#define	TFTP_EUNDEF	EUNDEF
+#define	TFTP_ENOTFOUND	ENOTFOUND
+#define	TFTP_EACCESS	EACCESS
+#define	TFTP_ENOSPACE	ENOSPACE
+#define	TFTP_EBADOP	EBADOP
+#define	TFTP_EBADID	EBADID
+#define	TFTP_EEXISTS	EEXISTS
+#define	TFTP_ENOUSER	ENOUSER
+#define	TFTP_EOPTNEG	EOPTNEG
+
+/* FreeBSD TFTP Specific Error codes (defined in arpa/tftp.h) */
+#define OP_RRQ		RRQ
+#define OP_WRQ		WRQ
+#define OP_DATA		DATA
+#define OP_ACK		ACK
+#define OP_ERROR	ERROR
+#define OP_OACK		OACK

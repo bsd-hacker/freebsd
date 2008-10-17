@@ -112,7 +112,7 @@ get_field(int peer, char *buffer, ssize_t size)
 	}
 	if (*cp != '\0') {
 		tftp_log(LOG_ERR, "Bad option - no trailing \\0 found");
-		send_error(peer, EBADOP);
+		send_error(peer, TFTP_EBADOP);
 		exit(1);
 	}
 	return (cp - buffer + 1);
@@ -161,12 +161,12 @@ tftp_log(int priority, const char *message, ...)
  * Packet types
  */
 struct packettypes packettypes[] = {
-	{ RRQ,		"RRQ"	},
-	{ WRQ,		"WRQ"	},
-	{ DATA,		"DATA"	},
-	{ ACK,		"ACK"	},
-	{ ERROR,	"ERROR"	},
-	{ OACK,		"OACK"	},
+	{ OP_RRQ,	"RRQ"	},
+	{ OP_WRQ,	"WRQ"	},
+	{ OP_DATA,	"DATA"	},
+	{ OP_ACK,	"ACK"	},
+	{ OP_ERROR,	"ERROR"	},
+	{ OP_OACK,	"OACK"	},
 	{ 0,		NULL	},
 };
 

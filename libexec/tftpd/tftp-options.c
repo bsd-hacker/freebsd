@@ -75,7 +75,7 @@ int options_extra_enabled = 1;
  *   return rubbish.
  * - The handler returns if there is a serious problem with the
  *   values submitted in the option.
- * - Sending the EBADOP packets is done by the handler.
+ * - Sending the TFTP_EBADOP packets is done by the handler.
  */
 
 int
@@ -85,7 +85,7 @@ option_tsize(int peer, struct tftphdr *tp, int mode, struct stat *stbuf)
 	if (options[OPT_TSIZE].o_request == NULL)
 		return (0);
 
-	if (mode == RRQ) 
+	if (mode == OP_RRQ) 
 		asprintf(&options[OPT_TSIZE].o_reply,
 			"%ju", stbuf->st_size);
 	else
@@ -108,7 +108,7 @@ option_timeout(int peer)
 		    "Received bad value for timeout. "
 		    "Should be between %d and %d, received %s",
 		    TIMEOUT_MIN, TIMEOUT_MAX);
-		send_error(peer, EBADOP);
+		send_error(peer, TFTP_EBADOP);
 		if (acting_as_client)
 			return (1);
 		exit(1);
@@ -141,7 +141,7 @@ option_rollover(int peer)
 		    "ignoring request",
 		    options[OPT_ROLLOVER].o_request);
 		if (acting_as_client) {
-			send_error(peer, EBADOP);
+			send_error(peer, TFTP_EBADOP);
 			return (1);
 		}
 		return (0);
@@ -181,7 +181,7 @@ option_blksize(int peer)
 			tftp_log(LOG_ERR,
 			    "Invalid blocksize (%d bytes), aborting",
 			    size);
-			send_error(peer, EBADOP);
+			send_error(peer, TFTP_EBADOP);
 			return (1);
 		} else {
 			tftp_log(LOG_WARNING,
@@ -197,7 +197,7 @@ option_blksize(int peer)
 			    "Invalid blocksize (%d bytes), "
 			    "net.inet.udp.maxdgram sysctl limits it to "
 			    "%d bytes.\n", size, *maxdgram);
-			send_error(peer, EBADOP);
+			send_error(peer, TFTP_EBADOP);
 			return (1);
 		} else {
 			tftp_log(LOG_WARNING,

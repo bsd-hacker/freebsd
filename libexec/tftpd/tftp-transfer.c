@@ -109,7 +109,7 @@ tftp_send(int peer, uint16_t *block, struct tftp_stats *ts)
 					    rp_strerror(n_ack));
 				goto abort;
 			}
-			if (rp->th_opcode == ACK) {
+			if (rp->th_opcode == OP_ACK) {
 				ts->blocks++;
 				if (rp->th_block == *block) {
 					ts->amount += size;
@@ -131,7 +131,7 @@ tftp_send(int peer, uint16_t *block, struct tftp_stats *ts)
 			if (options[OPT_ROLLOVER].o_request == NULL) {
 				tftp_log(LOG_ERR,
 				    "Block rollover but not allowed.");
-				send_error(peer, EBADOP);
+				send_error(peer, TFTP_EBADOP);
 				gettimeofday(&(ts->tstop), NULL);
 				return;
 			}
@@ -198,7 +198,7 @@ tftp_receive(int peer, uint16_t *block, struct tftp_stats *ts,
 			if (options[OPT_ROLLOVER].o_request == NULL) {
 				tftp_log(LOG_ERR,
 				    "Block rollover but not allowed.");
-				send_error(peer, EBADOP);
+				send_error(peer, TFTP_EBADOP);
 				gettimeofday(&(ts->tstop), NULL);
 				return;
 			}
@@ -235,7 +235,7 @@ tftp_receive(int peer, uint16_t *block, struct tftp_stats *ts,
 					    rp_strerror(n_data));
 				goto abort;
 			}
-			if (rp->th_opcode == DATA) {
+			if (rp->th_opcode == OP_DATA) {
 				ts->blocks++;
 
 				if (rp->th_block == *block)
@@ -270,7 +270,7 @@ tftp_receive(int peer, uint16_t *block, struct tftp_stats *ts,
 				if (writesize < 0)
 					send_error(peer, errno + 100);
 				else
-					send_error(peer, ENOSPACE);
+					send_error(peer, TFTP_ENOSPACE);
 				goto abort;
 			}
 		}
@@ -308,7 +308,7 @@ send_ack:
 		if (n_data <= 0)
 			break;
 		if (n_data > 0 &&
-		    rp->th_opcode == DATA &&	/* and got a data block */
+		    rp->th_opcode == OP_DATA &&	/* and got a data block */
 		    *block == rp->th_block)	/* then my last ack was lost */
 			send_ack(peer, *block);	/* resend final ack */
 	}

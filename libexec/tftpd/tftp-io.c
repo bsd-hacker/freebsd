@@ -57,16 +57,16 @@ struct errmsg {
 	int	e_code;
 	const char	*e_msg;
 } errmsgs[] = {
-	{ EUNDEF,	"Undefined error code" },
-	{ ENOTFOUND,	"File not found" },
-	{ EACCESS,	"Access violation" },
-	{ ENOSPACE,	"Disk full or allocation exceeded" },
-	{ EBADOP,	"Illegal TFTP operation" },
-	{ EBADID,	"Unknown transfer ID" },
-	{ EEXISTS,	"File already exists" },
-	{ ENOUSER,	"No such user" },
-	{ EOPTNEG,	"Option negotiation" },
-	{ -1,		NULL }
+	{ TFTP_EUNDEF,		"Undefined error code" },
+	{ TFTP_ENOTFOUND,	"File not found" },
+	{ TFTP_EACCESS,		"Access violation" },
+	{ TFTP_ENOSPACE,	"Disk full or allocation exceeded" },
+	{ TFTP_EBADOP,		"Illegal TFTP operation" },
+	{ TFTP_EBADID,		"Unknown transfer ID" },
+	{ TFTP_EEXISTS,		"File already exists" },
+	{ TFTP_ENOUSER,		"No such user" },
+	{ TFTP_EOPTNEG,		"Option negotiation" },
+	{ -1,			NULL }
 };
 
 #define DROPPACKET(s)							\
@@ -148,14 +148,14 @@ send_error(int peer, int error)
 	DROPPACKET("send_error");
 
 	tp = (struct tftphdr *)buf;
-	tp->th_opcode = htons((u_short)ERROR);
+	tp->th_opcode = htons((u_short)OP_ERROR);
 	tp->th_code = htons((u_short)error);
 	for (pe = errmsgs; pe->e_code >= 0; pe++)
 		if (pe->e_code == error)
 			break;
 	if (pe->e_code < 0) {
 		pe->e_msg = strerror(error - 100);
-		tp->th_code = EUNDEF;   /* set 'undef' errorcode */
+		tp->th_code = TFTP_EUNDEF;   /* set 'undef' errorcode */
 	}
 	strcpy(tp->th_msg, pe->e_msg);
 	length = strlen(pe->e_msg);
@@ -190,7 +190,7 @@ send_wrq(int peer, char *filename, char *mode)
 	DROPPACKETn("send_wrq", 1);
 
 	tp = (struct tftphdr *)buf;
-	tp->th_opcode = htons((u_short)WRQ);
+	tp->th_opcode = htons((u_short)OP_WRQ);
 	size = 2;
 
 	bp = tp->th_stuff;
@@ -238,7 +238,7 @@ send_rrq(int peer, char *filename, char *mode)
 	DROPPACKETn("send_rrq", 1);
 
 	tp = (struct tftphdr *)buf;
-	tp->th_opcode = htons((u_short)RRQ);
+	tp->th_opcode = htons((u_short)OP_RRQ);
 	size = 2;
 
 	bp = tp->th_stuff;
@@ -291,7 +291,7 @@ send_oack(int peer)
 	tp = (struct tftphdr *)buf;
 	bp = buf + 2;
 	size = sizeof(buf) - 2;
-	tp->th_opcode = htons((u_short)OACK);
+	tp->th_opcode = htons((u_short)OP_OACK);
 	for (i = 0; options[i].o_type != NULL; i++) {
 		if (options[i].o_reply != NULL) {
 			n = snprintf(bp, size, "%s%c%s", options[i].o_type,
@@ -334,7 +334,7 @@ send_ack(int fp, uint16_t block)
 	tp = (struct tftphdr *)buf;
 	bp = buf + 2;
 	size = sizeof(buf) - 2;
-	tp->th_opcode = htons((u_short)ACK);
+	tp->th_opcode = htons((u_short)OP_ACK);
 	tp->th_block = htons((u_short)block);
 	size = 4;
 
@@ -365,7 +365,7 @@ send_data(int peer, uint16_t block, char *data, int size)
 
 	pkt = (struct tftphdr *)buf;
 
-	pkt->th_opcode = htons((u_short)DATA);
+	pkt->th_opcode = htons((u_short)OP_DATA);
 	pkt->th_block = htons((u_short)block);
 	memcpy(pkt->th_data, data, size);
 
@@ -449,11 +449,10 @@ receive_packet(int peer, char *data, int size, struct sockaddr_storage *from,
 	}
 
 	pkt->th_opcode = ntohs((u_short)pkt->th_opcode);
-	if (pkt->th_opcode == DATA ||
-	    pkt->th_opcode == ACK)
+	if (pkt->th_opcode == OP_DATA || pkt->th_opcode == OP_ACK)
 		pkt->th_block = ntohs((u_short)pkt->th_block);
 
-	if (pkt->th_opcode == DATA && n > pktsize) {
+	if (pkt->th_opcode == OP_DATA && n > pktsize) {
 		tftp_log(LOG_ERR, "receive_packet: packet too big");
 		return (RP_TOOBIG);
 	}
@@ -465,7 +464,7 @@ receive_packet(int peer, char *data, int size, struct sockaddr_storage *from,
 		return (RP_WRONGSOURCE);
 	}
 
-	if (pkt->th_opcode == ERROR) {
+	if (pkt->th_opcode == OP_ERROR) {
 		tftp_log(LOG_ERR, "Got ERROR packet: %s", pkt->th_msg);
 		return (RP_ERROR);
 	}

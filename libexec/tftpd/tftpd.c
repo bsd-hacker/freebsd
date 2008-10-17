@@ -406,7 +406,7 @@ main(int argc, char *argv[])
 
 	tp = (struct tftphdr *)recvbuffer;
 	tp->th_opcode = ntohs(tp->th_opcode);
-	if (tp->th_opcode == RRQ) {
+	if (tp->th_opcode == OP_RRQ) {
 		if (allow_ro)
 			tftp_rrq(peer, tp->th_stuff, n - 1);
 		else {
@@ -415,7 +415,7 @@ main(int argc, char *argv[])
 			exit(1);
 		}
 	}
-	if (tp->th_opcode == WRQ) {
+	if (tp->th_opcode == OP_WRQ) {
 		if (allow_wo)
 			tftp_wrq(peer, tp->th_stuff, n - 1);
 		else {
@@ -472,7 +472,7 @@ parse_header(int peer, char *recvbuffer, ssize_t size,
 	i = get_field(peer, recvbuffer, size);
 	if (i >= PATH_MAX) {
 		tftp_log(LOG_ERR, "Bad option - filename too long");
-		send_error(peer, EBADOP);
+		send_error(peer, TFTP_EBADOP);
 		exit(1);
 	}
 	*filename = recvbuffer;
@@ -493,7 +493,7 @@ parse_header(int peer, char *recvbuffer, ssize_t size,
 	if (pf->f_mode == NULL) {
 		tftp_log(LOG_ERR,
 		    "Bad option - Unknown transfer mode (%s)", *mode);
-		send_error(peer, EBADOP);
+		send_error(peer, TFTP_EBADOP);
 		exit(1);
 	}
 	tftp_log(LOG_INFO, "Mode: '%s'", *mode);
@@ -526,7 +526,7 @@ tftp_wrq(int peer, char *recvbuffer, ssize_t size)
 			tftp_log(LOG_INFO, "Options found but not enabled");
 	}
 
-	ecode = validate_access(peer, &filename, WRQ);
+	ecode = validate_access(peer, &filename, OP_WRQ);
 	if (ecode == 0) {
 		if (has_options)
 			send_oack(peer);
@@ -567,7 +567,7 @@ tftp_rrq(int peer, char *recvbuffer, ssize_t size)
 			tftp_log(LOG_INFO, "Options found but not enabled");
 	}
 
-	ecode = validate_access(peer, &filename, RRQ);
+	ecode = validate_access(peer, &filename, OP_RRQ);
 	if (ecode == 0) {
 		if (has_options) {
 			int n;
@@ -583,7 +583,7 @@ tftp_rrq(int peer, char *recvbuffer, ssize_t size)
 					    rp_strerror(n));
 				return;
 			}
-			if (rp->th_opcode != ACK) {
+			if (rp->th_opcode != OP_ACK) {
 				if (debug&DEBUG_SIMPLE)
 					tftp_log(LOG_DEBUG,
 					    "Expected ACK, got %s on OACK",
@@ -602,7 +602,8 @@ tftp_rrq(int peer, char *recvbuffer, ssize_t size)
 		 * Avoid storms of naks to a RRQ broadcast for a relative
 		 * bootfile pathname from a diskless Sun.
 		 */
-		if (suppress_naks && *filename != '/' && ecode == ENOTFOUND)
+		if (suppress_naks && *filename != '/' &&
+		    ecode == TFTP_ENOTFOUND)
 			exit(0);
 		tftp_log(LOG_ERR, "Prevent NAK storm");
 		send_error(peer, ecode);
@@ -635,7 +636,7 @@ find_next_name(char *filename, int *fd)
 		syslog(LOG_WARNING,
 			"Filename suffix too long (%d characters maximum)",
 			MAXPATHLEN);
-		return (EACCESS);
+		return (TFTP_EACCESS);
 	}
 
 	/* Make sure the new filename is not too long */
@@ -643,7 +644,7 @@ find_next_name(char *filename, int *fd)
 		syslog(LOG_WARNING,
 			"Filename too long (%zd characters, %zd maximum)",
 			strlen(filename), MAXPATHLEN - len - 5);
-		return (EACCESS);
+		return (TFTP_EACCESS);
 	}
 
 	/* Find the first file which doesn't exist */
@@ -657,7 +658,7 @@ find_next_name(char *filename, int *fd)
 			return 0;
 	}
 
-	return (EEXIST);
+	return (TFTP_EEXISTS);
 }
 
 /*
@@ -685,7 +686,7 @@ validate_access(int peer, char **filep, int mode)
 	 * Prevent tricksters from getting around the directory restrictions
 	 */
 	if (strstr(filename, "/../"))
-		return (EACCESS);
+		return (TFTP_EACCESS);
 
 	if (*filename == '/') {
 		/*
@@ -702,17 +703,17 @@ validate_access(int peer, char **filep, int mode)
 		}
 		/* If directory list is empty, allow access to any file */
 		if (dirp->name == NULL && dirp != dirs)
-			return (EACCESS);
+			return (TFTP_EACCESS);
 		if (stat(filename, &stbuf) < 0)
-			return (errno == ENOENT ? ENOTFOUND : EACCESS);
+			return (errno == ENOENT ? TFTP_ENOTFOUND : TFTP_EACCESS);
 		if ((stbuf.st_mode & S_IFMT) != S_IFREG)
-			return (ENOTFOUND);
-		if (mode == RRQ) {
+			return (TFTP_ENOTFOUND);
+		if (mode == OP_RRQ) {
 			if ((stbuf.st_mode & S_IROTH) == 0)
-				return (EACCESS);
+				return (TFTP_EACCESS);
 		} else {
 			if ((stbuf.st_mode & S_IWOTH) == 0)
-				return (EACCESS);
+				return (TFTP_EACCESS);
 		}
 	} else {
 		int err;
@@ -724,14 +725,14 @@ validate_access(int peer, char **filep, int mode)
 		 */
 
 		if (!strncmp(filename, "../", 3))
-			return (EACCESS);
+			return (TFTP_EACCESS);
 
 		/*
 		 * If the file exists in one of the directories and isn't
 		 * readable, continue looking. However, change the error code
 		 * to give an indication that the file exists.
 		 */
-		err = ENOTFOUND;
+		err = TFTP_ENOTFOUND;
 		for (dirp = dirs; dirp->name != NULL; dirp++) {
 			snprintf(pathname, sizeof(pathname), "%s/%s",
 				dirp->name, filename);
@@ -740,12 +741,12 @@ validate_access(int peer, char **filep, int mode)
 				if ((stbuf.st_mode & S_IROTH) != 0) {
 					break;
 				}
-				err = EACCESS;
+				err = TFTP_EACCESS;
 			}
 		}
 		if (dirp->name != NULL)
 			*filep = filename = pathname;
-		else if (mode == RRQ)
+		else if (mode == OP_RRQ)
 			return (err);
 	}
 
@@ -755,7 +756,7 @@ validate_access(int peer, char **filep, int mode)
 	 */
 	option_tsize(peer, NULL, mode, &stbuf);
 
-	if (mode == RRQ)
+	if (mode == OP_RRQ)
 		fd = open(filename, O_RDONLY);
 	else {
 		if (create_new) {
@@ -773,7 +774,7 @@ validate_access(int peer, char **filep, int mode)
 	}
 	if (fd < 0)
 		return (errno + 100);
-	file = fdopen(fd, (mode == RRQ)? "r":"w");
+	file = fdopen(fd, (mode == OP_RRQ)? "r":"w");
 	if (file == NULL) {
 		close(fd);
 		return (errno + 100);
