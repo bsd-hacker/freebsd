@@ -1286,7 +1286,7 @@ ip_forward(struct mbuf *m, int srcrt)
 	struct mbuf *mcopy;
 	struct in_addr dest;
 	struct route ro;
-	int error, type = 0, code = 0, mtu = 0;
+	int error, type = 0, code = 0, mtu = 0, cached = 0;
 
 	if (m->m_flags & (M_BCAST|M_MCAST) || in_canforward(ip->ip_dst) == 0) {
 		V_ipstat.ips_cantforward++;
@@ -1305,7 +1305,24 @@ ip_forward(struct mbuf *m, int srcrt)
 	}
 #endif
 
+	bzero(&ro, sizeof(ro));
+#ifdef RADIX_MPATH
+	hash = ipv4_flow_alloc(m, &ro);
+	
+	if (ro.ro_rt == NULL) 
+		rtalloc_mpath_fib(&ro, hash, M_GETFIB(m));
+	else
+		cached = 1;
+
+	if (ro->ro_rt != NULL)
+		ia = ifatoia(ro.ro_rt->rt_ifa);
+#else	
+	/*
+	 * I love how we go to all the trouble to look up the
+	 * route and then throw it away KMM
+	 */
 	ia = ip_rtaddr(ip->ip_dst, M_GETFIB(m));
+#endif	
 	if (!srcrt && ia == NULL) {
 		icmp_error(m, ICMP_UNREACH, ICMP_UNREACH_HOST, 0, 0);
 		return;
@@ -1365,7 +1382,6 @@ ip_forward(struct mbuf *m, int srcrt)
 		struct sockaddr_in *sin;
 		struct rtentry *rt;
 
-		bzero(&ro, sizeof(ro));
 		sin = (struct sockaddr_in *)&ro.ro_dst;
 		sin->sin_family = AF_INET;
 		sin->sin_len = sizeof(*sin);
@@ -1390,7 +1406,7 @@ ip_forward(struct mbuf *m, int srcrt)
 				code = ICMP_REDIRECT_HOST;
 			}
 		}
-		if (rt)
+		if (rt && (cached == 0))
 			RTFREE(rt);
 	}
 
@@ -1398,13 +1414,15 @@ ip_forward(struct mbuf *m, int srcrt)
 	 * Try to cache the route MTU from ip_output so we can consider it for
 	 * the ICMP_UNREACH_NEEDFRAG "Next-Hop MTU" field described in RFC1191.
 	 */
-	bzero(&ro, sizeof(ro));
-
 	error = ip_output(m, NULL, &ro, IP_FORWARDING, NULL, NULL);
 
+#ifdef RADIX_MPATH
+	if (cached)
+		ipv4_flow_free(hash);
+#endif	
 	if (error == EMSGSIZE && ro.ro_rt)
 		mtu = ro.ro_rt->rt_rmx.rmx_mtu;
-	if (ro.ro_rt)
+	if (ro.ro_rt && (cached == 0))
 		RTFREE(ro.ro_rt);
 
 	if (error)

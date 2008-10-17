@@ -148,6 +148,9 @@ struct rtentry {
 #ifdef _KERNEL
 	/* XXX ugly, user apps use this definition but don't have a mtx def */
 	struct	mtx rt_mtx;		/* mutex for routing entry */
+#ifdef RADIX_MPATH
+	uint32_t 	rt_flow_head;
+#endif 
 #endif
 };
 

@@ -53,7 +53,7 @@ __FBSDID("$FreeBSD$");
 /*
  * give some jitter to hash, to avoid synchronization between routers
  */
-static u_int32_t hashjitter;
+uint32_t hashjitter;
 
 int
 rn_mpath_capable(struct radix_node_head *rnh)
@@ -298,7 +298,7 @@ rtalloc_mpath_fib(struct route *ro, u_int32_t hash, u_int fibnum)
 		return;
 	}
 	
-	rtfree(ro->ro_rt);
+	RTFREE(ro->ro_rt);
 	ro->ro_rt = (struct rtentry *)rn;
 	RT_LOCK(ro->ro_rt);
 	RT_ADDREF(ro->ro_rt);

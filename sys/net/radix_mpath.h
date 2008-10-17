@@ -58,6 +58,11 @@ int rt_mpath_deldup(struct rtentry *, struct rtentry *);
 int	rn4_mpath_inithead(void **, int);
 int	rn6_mpath_inithead(void **, int);
 
+uint32_t ipv4_flow_alloc(struct mbuf *m, struct route *ro);
+void ipv4_flow_free(uint32_t hash);
+
+uint32_t ipv4_flow_lookup_hash(struct mbuf *m);
+void ipv4_flow_free_all(struct rtentry *rt);
 #endif
 
 #endif /* _NET_RADIX_MPATH_H_ */
