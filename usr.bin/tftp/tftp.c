@@ -134,7 +134,7 @@ xmitfile(int peer, char *port, int fd, char *name, char *mode)
 		printf("Transfer timed out.\n");
 		return;
 	}
-	if (rp->th_opcode == ERROR) {
+	if (rp->th_opcode == OP_ERROR) {
 		printf("Got ERROR, aborted\n");
 		return;
 	}
@@ -143,10 +143,10 @@ xmitfile(int peer, char *port, int fd, char *name, char *mode)
 	 * If the first packet is an OACK instead of an ACK packet,
 	 * handle it different.
 	 */
-	if (rp->th_opcode == OACK) {
+	if (rp->th_opcode == OP_OACK) {
 		if (!options_rfc_enabled) {
 			printf("Got OACK while options are not enabled!\n");
-			send_error(peer, EBADOP);
+			send_error(peer, TFTP_EBADOP);
 			return;
 		}
 
@@ -230,7 +230,7 @@ recvfile(int peer, char *port, int fd, char *name, char *mode)
 		break;
 	}
 
-	if (rp->th_opcode == ERROR) {
+	if (rp->th_opcode == OP_ERROR) {
 		tftp_log(LOG_ERR, "Error code %d: %s", rp->th_code, rp->th_msg);
 		return;
 	}
@@ -246,10 +246,10 @@ recvfile(int peer, char *port, int fd, char *name, char *mode)
 	 * If the first packet is an OACK packet instead of an DATA packet,
 	 * handle it different.
 	 */
-	if (rp->th_opcode == OACK) {
+	if (rp->th_opcode == OP_OACK) {
 		if (!options_rfc_enabled) {
 			printf("Got OACK while options are not enabled!\n");
-			send_error(peer, EBADOP);
+			send_error(peer, TFTP_EBADOP);
 			return;
 		}
 
