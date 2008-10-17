@@ -1,0 +1,371 @@
+<!--
+     The FreeBSD Simplified Chinese Project
+
+     Original revision: 1.883.2.87.2.6
+-->
+<articleinfo>
+  <title>&os;/&arch; &release.current; 发行说明</title>
+
+  <corpauthor>The &os; Project</corpauthor>
+
+  <pubdate>$FreeBSD$</pubdate>
+
+  <copyright>
+    <year>2000</year>
+    <year>2001</year>
+    <year>2002</year>
+    <year>2003</year>
+    <year>2004</year>
+    <year>2005</year>
+    <year>2006</year>
+    <year>2007</year>
+    <holder role="mailto:doc@FreeBSD.org">The &os; Documentation Project</holder>
+  </copyright>
+
+  <legalnotice id="trademarks" role="trademarks">
+    &tm-attrib.freebsd;
+    &tm-attrib.ibm;
+    &tm-attrib.ieee;
+    &tm-attrib.intel;
+    &tm-attrib.sparc;
+    &tm-attrib.general;
+  </legalnotice>
+
+  <abstract>
+    <para>这份 &os; &release.current; 的发行说明， 概括了 &os; 基本系统在
+      &release.branch; 开发线上所做的改动。
+      本文档列举了自前一发行版本以来所有适用的安全公告， 以及对于
+      &os; 内核以及系统附带的应用程序所做的重要修改。
+      对在升级时需要注意的一些问题， 也进行了简略的介绍。</para>
+  </abstract>
+</articleinfo>
+
+<sect1 id="intro">
+  <title>简介</title>
+
+  <para>这篇文档包括了在 &arch.print; 硬件平台上 &os;
+    &release.current; 的发行说明。 它描述了最近刚刚加入、修改或删除了的
+    &os; 特性的说明。 同时，它也将给出如何从先前的 &os; 版本完成升级的说明。</para>
+
+<![ %release.type.current [
+
+  <para>这篇文档所介绍的 &release.type; 软件包，
+    介绍了 &release.branch; 开发分支自 &release.branch;
+    创建以来的进展。 关于这一分支上预编译的、 二进制版本的
+    &release.type; 软件包， 可以在 <ulink url="&release.url;"></ulink>
+    找到。</para>
+
+]]>
+
+<![ %release.type.snapshot [
+
+  <para>这份说明所说的 &release.type; 版本，
+    是在 &release.branch; 开发分支上 &release.prev; 到未来的 &release.next;
+    上的一点。 这一开发分支上预编译的二进制形式的 &release.type;
+    安装包， 可以在 <ulink url="&release.url;"></ulink> 找到。</para>
+
+]]>
+
+<![ %release.type.release [
+
+  <para>这是一份 &os; &release.current; 的
+    &release.type; 发布包。 您可以从 <ulink
+    url="&release.url;"></ulink> 或其他镜像那里得到它的副本。
+    关于这个 (或其他) &release.type; 发布包的更多信息，可以在
+    <ulink url="&url.books.handbook;/">&os; 手册</ulink>
+    中的 <ulink url="&url.books.handbook;/mirrors.html"><quote>如何获得
+    &os;</quote>附录</ulink> 中找到。</para>
+
+]]>
+
+  <para>我们鼓励所有的用户在开始安装 &os; 之前首先参考这一版本所对应的勘误信息。
+    勘误文档将随时更新，以便为用户提供在发布工程后期或该版本发布之后
+    <quote>新发现的</quote> 问题和相关信息。
+    通常，这包括已知的 bug，安全公告，以及对于文档的修订内容。
+    最新的 &os; &release.current; 勘误信息可以从 &os; 网站获得。</para>
+
+</sect1>
+
+<sect1 id="new">
+  <title>最新变动</title>
+
+  <para>这一节描述了
+    &os; 自 &release.prev; 以来最明显的新功能和变化。</para>
+
+  <para>发行说明中的绝大多数条目是在说明自从
+    &release.prev;
+    以来的安全公告、新的驱动程序或硬件支持、新的命令或是选项、
+    重要的错误修补，以及基本系统中来自第三方的软件升级。
+    重要的 ports 和 packages 变动，或关于交付工程的变动也会在这份文档中体现。
+    显而易见地，发行说明不可能涵盖 &os; 版本之间的每一个微小变动；
+    这篇文档主要关注的，仍然是安全公告，用户可以察觉的修改，
+    以及重要的架构改良。</para>
+
+  <sect2 id="security">
+    <title>安全公告</title>
+
+    <para>修正了两个BIND的远程拒绝服务问题（两者分别与DNSSEC和递归DNS查询有关）。更多信息，参看安全公告
+      <ulink url="http://security.FreeBSD.org/advisories/FreeBSD-SA-07:02.bind.asc">FreeBSD-SA-07:02.bind</ulink>.</para>
+
+    <para>现在可以通过 <varname>net.inet6.ip6.rthdr0_allowed</varname> 这个sysctl变量来控制IPv6类型0路由头信息的处理了，默认情况下该值为 <literal>0</literal> （关闭）。更多信息，参看安全公告
+      <ulink url="http://security.FreeBSD.org/advisories/FreeBSD-SA-07:03.ipv6.asc">FreeBSD-SA-07:03.ipv6</ulink>.</para>
+
+    <para>有关 &man.libarchive.3; 和 &man.tar.1; 处理
+      损坏的 &man.tar.5; 文件的问题已经修复。 更多信息，参看安全公告
+      <ulink url="http://security.FreeBSD.org/advisories/FreeBSD-SA-07:05.libarchive.asc">FreeBSD-SA-07:05.libarchive</ulink>.</para>
+
+    <para>OpenSSL中的一个缓冲区溢出（在上一个安全补丁中没有被正确修补）现在被修正了。
+      更多信息，参看安全公告
+      <ulink url="http://security.FreeBSD.org/advisories/FreeBSD-SA-07:08.openssl.asc">FreeBSD-SA-07:08.openssl</ulink>.</para>
+
+    <para>一个可能导致“之前生成”的 &man.random.4; 数据泄露的缺陷被修正。
+      更多信息，参看安全公告
+      <ulink url="http://security.FreeBSD.org/advisories/FreeBSD-SA-07:09.random.asc">FreeBSD-SA-07:09.random</ulink>.</para>
+  </sect2>
+
+  <sect2 id="kernel">
+    <title>对内核的改动</title>
+
+    <para>&man.acpi.4; 现在支持 HPET 时间计数器。</para>
+
+    <para>对消息信号中断（Message Signaled Interrupts/MSI）
+      和扩展消息信号中断（Exteneded Message Signaled Interrupts/MSI-X）
+      的支持被加入内核的PCI支持代码中。</para>
+
+    <!-- Above this line, sort kernel changes by manpage/keyword-->
+
+    <sect3 id="boot">
+      <title>引导区和 loader 的变化</title>
+
+      <para></para>
+
+      <!-- Above this line, order boot loader changes by keyword-->
+
+    </sect3>
+
+    <sect3 id="proc">
+      <title>硬件支持</title>
+
+		 <para>为支持通过ACPI控制笔记本扩展坞的功能，&man.acpi.dock.4; 驱动被加入。</para>
+
+
+      <para arch="i386,amd64">为提供针对 &intel; &core; 处理器的温度监控功能， &man.coretemp.4; 驱动被加入</para>
+
+      <sect4 id="mm">
+				<title>多媒体支持</title>
+
+			  <para>为支持Envy24系列音效芯片，加入&man.snd.envy24.4; 驱动。</para>
+
+			  <para>为支持VIA Envy24HT系列音效芯片，加入&man.snd.envy24ht.4; 驱动。</para>
+
+			  <para>加入了 &man.snd.hda.4; 驱动。遵从Intel HD audio 特性 1.0版本的设备由此得到支持。</para>
+
+			  <para>为支持I2S SPI音效解码芯片的，加入 &man.snd.spicds.4; 驱动。</para>
+
+      </sect4>
+
+      <sect4 id="net-if">
+	<title>网络接口设备支持</title>
+
+	<para>&man.ath.4; 驱动更新到了HAL 版本 0.9.20.3。</para>
+
+	<para>&man.axe.4; 驱动现在支持 &man.altq.4; 了。</para>
+
+	<para>加入 &man.cxgb.4; 驱动。该驱动提供对基于Chelsio T3 和 T3B芯片10 Gb 以太网卡的支持。</para>
+
+	<para>新增了用于支持 Ethernet discard 网络接口的 &man.edsc.4; 驱动程序。</para>
+
+	<para>&man.em.4; 升级到来自Intel的版本 6.7.2。</para>
+
+	<para>加入了 &man.msk.4; 驱动。该驱动支持使用Marvell/SysKonnect Yukon II 千兆以太网控制器的网卡。</para>
+
+	<para arch="amd64,i386">加入了 &man.mxge.4; 驱动，该驱动支持Myricom Myri10GE 10 Gb 以太网卡。查看 &man.mxge.4; 以了解细节。</para>
+
+	<para arch="arm">加入 &man.npe.4; 驱动，以支持 Intel XScale 网络处理器引擎（network processor engine）。</para>
+
+	<para>&man.vge.4; 现在可以支持 &man.altq.4; 了。</para>
+
+	<para>为 802.11 协议栈增加了对 900 MHz
+	  网卡， 以及对 802.11a 四分和对分频道支持的功能。</para>
+
+      </sect4>
+    </sect3>
+
+    <sect3 id="net-proto">
+      <title>网络协议</title>
+
+      <para> &man.if.bridge.4; 驱动现在支持RSTP，快速生成树协议（802.1w）。</para>
+
+      <para>加入从OpenBSD和NetBSD中引入的 &man.lagg.4; 驱动，以支持多种协议和算法，比如链路聚合，线路互备以及网络容错。</para>
+
+      <para>新的 &man.ng.deflate.4; NetGraph 节点类型被加入。这一类型支持了 Deflate PPP 压缩。</para>
+
+      <para>早先的 &man.ng.ppp.4; Netgraph 节点如今名为 MPSAFE.</para>
+
+      <para>新的 &man.ng.pred1.4; NetGraph 节点类被加入以支持 Predictor-1 PPP 压缩。</para>
+
+      <para>导致&os; &release.prev; 不能在 &man.gif.4; 上正确运行IPv6的bug 被修正了。</para>
+
+      <para>sysctl变量<varname>net.link.tap.up_on_open</varname> 加入到 &man.tap.4; 驱动中。当该变量被激活时，新的tap 设备将会在创建时标记为<literal>up</literal>。</para>
+
+    </sect3>
+
+    <sect3 id="disks">
+      <title>磁盘及存储</title>
+
+      <para>升级 &man.mpt.4; 驱动以支持一系列新特性，诸如RAID卷以
+	及RAID成员的状态/设置报告，定期卷重同步状态报告，
+	设置重同步状态频率，卷成员写缓存状态，卷事务队列长度的sysctl开关等。</para>
+
+      <para>现在 &man.mpt.4; 驱动支持 SAS HBA (部分地)，64-bit PCI, 以及大数据传送。</para>
+
+      <para>加入了 scsi_sg 驱动。这一驱动模拟了Linux SCSI SG passthrough 
+	设备API的一个重要子集。这样将允许在Linux仿真下运行的程序（就像
+	原生 &os; 程序那样）访问 <filename>/dev/sg<replaceable>*</replaceable></filename>
+	这样的被Linux所支持的设备。</para>
+
+      <para> &man.twa.4; 驱动现在升级到3ware网站所公布的 3.60.03.006。
+	驱动现在增加了对 AMCC 的 3ware 9650 系列 SATA 控制器的支持。</para>
+
+    </sect3>
+
+    <sect3 id="fs">
+      <title>文件系统</title>
+
+      <para>重新实现了 unionfs 文件系统。相对于上一版本，
+	这次解决了很多崩溃和锁的问题。 同时，
+	本版本还增加了新的 <quote>transparent</quote>
+	与 <quote>masquerade</quote> 类型以在更高层的文件系统
+	union 上自动化创建文件。 您可参阅 &man.mount.unionfs.8;
+	联机手册来了解进一步的信息。</para>
+
+    </sect3>
+
+  </sect2>
+
+  <sect2 id="userland">
+    <title>应用程序变动</title>
+
+    <para> &man.camcontrol.8; 工具现在支持 <command>readcap</command> 命令以显示设备尺寸。</para>
+
+    <para>导致 &man.freebsd-update.8; 不能正确支持SMP内核的bug被修正了</para>
+
+    <para> &man.fdisk.8; 程序现在可以用 <option>-p</option> 参数来以fdisk 配置的格式打出 slice 表。</para>
+
+    <para>&man.freebsd-update.8; 工具现在可以支持以 <command>upgrade</command> 命令来在不同版本的 &os; 间执行二进制升级。</para>
+
+    <para> &man.ftpd.8; 工具现在提供 RFC2389 (FEAT) 和初步的RFC2640 (UTF8)
+	支持。RFC2640支持是可选项，可以用新的<option>-8</option>开关来激活。
+      	可以在 &man.ftpd.8; 手册找到更多信息。</para>
+
+    <para> 加入了&man.ipfwpcap.8; 工具；该工具可以在 &man.divert.4; 套接字上抓包并将数据以
+      &man.pcap.3; （也就是 &man.tcpdump.1;） 格式写入文件或管道中。</para>
+
+    <para> &man.rpc.lockd.8; 和 &man.rpc.statd.8; 程序现在可以通过
+      <option>-p</option> 开关来指明绑定的端口。</para>
+
+    <para>&man.pw.8; 程序现在可以通过 <option>-M</option>开关来设定新建用户时，其家目录的权限。</para>
+
+    <para> &man.top.1; program 现在可以用 <option>-j</option>开关以显示出每个进程的 &man.jail.8; ID 。</para>
+
+    <para> &man.touch.1; 工具现在可以用<option>-A</option>开关，将文件的访问和修改时间修改为指定值 。</para>
+
+    <para> 加入了 &man.wpa.passphrase.8; 工具。该工具以ASCII口令字生成256位的pre-shared（预共享）WPA 密钥。</para>
+
+    <sect3 id="rc-scripts">
+      <title><filename>/etc/rc.d</filename> 脚本</title>
+
+      <para>在别名库不存在或者比别名文件旧的情况下，<filename>sendmail</filename>脚本也可以指定为不重建别名库。
+      如果真想这么做，设置rc.conf中<varname>sendmail_rebuild_aliases</varname>选项的值为"NO"来关闭这个功能。
+      </para>
+
+     <para><filename>/etc/rc.d/nfslocking</filename>脚本在发行版中会被移除。
+     由<filename>/etc/rc.d/lockd</filename>和<filename>/etc/rc.d/statd</filename>取代它。
+     </para>
+
+    </sect3>
+
+  </sect2>
+
+  <sect2 id="contrib">
+    <title>基本系统包含的第三方软件</title>
+
+    <para><application>awk</application>从2005年4月24日版更新到2007年5月1日的发行版。</para>
+
+    <para><application>BIND</application>从9.3.3更新到9.3.4-p1。</para>
+
+    <para><application>BZIP2</application>从1.0.3更新到1.0.4。</para>
+
+    <para>GNU <application>Diffutils</application>从2.7更新到2.8.7。</para>
+
+    <para>GNU版的<application>gzip</application>被从NetBSD移植过来并经过修正的gzip替换。</para>
+
+    <para><application>IPFilter</application>从4.1.13更新到4.1.28。</para>
+
+    <para><application>less</application>从v381更新到v416。</para>
+
+    <para><application>ncurses</application>从5.2-20020615更新到5.6-20061217。
+      新版的ncurses已经提供宽字符的支持。</para>
+
+    <para><application>netcat</application> 从 2005 年 2 月 4 日的 OpenBSD 快照版本，
+      更新到了 OpenBSD 4.1 中附带的版本。</para>
+
+    <para><application>GNU Readline library</application>从5.0更新到5.2 patch2。</para>
+
+    <para><application>sendmail</application>从8.13.8更新到8.14.2。</para>
+
+    <para>timezone数据库从
+      <application>tzdata2006g</application>版更新到
+      <application>tzdata2007k</application>版.</para>
+
+    <para>TrustedBSD <application>OpenBSM</application>从1.0 alpha12更新到1.0。</para>
+  </sect2>
+
+  <sect2 id="ports">
+    <title>Ports/Packages Collection 基础结构</title>
+
+    <para></para>
+
+  </sect2>
+
+  <sect2 id="releng">
+    <title>发行版建造工程和功能集成</title>
+
+    <para>对<application>GNOME</application>桌面环境的支持
+      (<filename role="package">x11/gnome2</filename>)从2.16.1更新到2.20.1。</para>
+
+    <para>对<application>KDE</application>桌面环境的支持
+      (<filename role="package">x11/kde3</filename>)从3.5.4更新到3.5.7。</para>
+
+    <para>对<application>&xorg;</application>窗口系统的支持
+      (<filename role="package">x11/xorg</filename>)从6.9.0更新到7.3.0。</para>
+
+    <para><varname>X11BASE</varname>的默认值由
+      <filename>/usr/X11R6</filename>变更为 <filename>/usr/local</filename>,
+      即<varname>LOCALBASE</varname>的默认值.</para>
+  </sect2>
+
+  <sect2 id="doc">
+    <title>文档</title>
+
+    <para>将 <application>NTP</application>
+      的联机手册更新到了 4.2.0， 以便与 &os; 中包含的版本相适应。</para>
+
+    <para></para>
+
+  </sect2>
+</sect1>
+
+<sect1 id="upgrade">
+  <title>从先前版本的 &os; 升级</title>
+
+  <para>通过源代码升级到 &os; &release.current;，
+    则应使用 &os; 5.3-RELEASE 或更高版本。 使用旧版的系统的用户，
+    如果想要升级到 &release.current;， 则需要首先升级到 &os; 5.3
+    或更新的版本， 然后再升级到 &os; &release.current;。</para>
+
+  <important>
+    <para>很显然，升级 &os; 时，应该首先备份
+      <emphasis>所有</emphasis> 数据和配置文件。</para>
+  </important>
+</sect1>
