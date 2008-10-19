@@ -49,6 +49,9 @@ __FBSDID("$FreeBSD$");
 #define	UART_TAG_XO	9
 
 static struct uart_class *uart_classes[] = {
+#ifdef PC98
+	&uart_i8251_class,
+#endif
 	&uart_ns8250_class,
 	&uart_sab82532_class,
 	&uart_z8530_class,

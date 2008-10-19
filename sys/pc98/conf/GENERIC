@@ -24,7 +24,7 @@ cpu		I686_CPU
 ident		GENERIC
 
 # To statically compile in device wiring instead of /boot/device.hints
-#hints		"GENERIC.hints"		# Default places to look for devices.
+hints		"GENERIC.hints"		# Default places to look for devices.
 
 makeoptions	DEBUG=-g		# Build kernel with gdb(1) debug symbols
 

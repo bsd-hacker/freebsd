@@ -376,6 +376,9 @@ uart_bus_probe(device_t dev, int regshft, int rclk, int rid, int chan)
 	 */
 	sc->sc_bas.bsh = rman_get_bushandle(sc->sc_rres);
 	sc->sc_bas.bst = rman_get_bustag(sc->sc_rres);
+#ifdef PC98
+	sc->sc_bas.type = 0;
+#endif
 	sc->sc_bas.chan = chan;
 	sc->sc_bas.regshft = regshft;
 	sc->sc_bas.rclk = (rclk == 0) ? sc->sc_class->uc_rclk : rclk;

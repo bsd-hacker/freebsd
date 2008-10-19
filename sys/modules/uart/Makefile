@@ -7,11 +7,16 @@ uart_bus_ebus=	uart_bus_ebus.c
 ofw_bus_if=	ofw_bus_if.h
 .endif
 
+.if ${MACHINE} == "pc98"
+uart_dev_i8251=	uart_dev_i8251.c
+.endif
+
 KMOD=	uart
 SRCS=	uart_bus_acpi.c ${uart_bus_ebus} uart_bus_isa.c uart_bus_pccard.c \
 	uart_bus_pci.c uart_bus_puc.c uart_bus_scc.c \
 	uart_core.c uart_dbg.c \
-	uart_dev_ns8250.c uart_dev_sab82532.c uart_dev_z8530.c \
+	${uart_dev_i8251} uart_dev_ns8250.c uart_dev_sab82532.c \
+	uart_dev_z8530.c \
 	uart_if.c uart_if.h uart_subr.c uart_tty.c
 .if ${MACHINE} == "sun4v"
 SRCS+=	uart_cpu_sparc64.c

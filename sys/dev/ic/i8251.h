@@ -69,6 +69,7 @@
 #define	STS8251_FE	0x20	/* framing error */
 #define	STS8251_BI	0x40	/* break detect */
 #define	STS8251_DSR	0x80	/* DSR is asserted */
+#define	STS8251_RCV_ERR	0x78
 
 /* i8251F line status register */
 #define	FLSR_TxEMP	0x01	/* transmit buffer EMPTY */
@@ -77,6 +78,7 @@
 #define	FLSR_OE		0x10	/* overrun error */
 #define	FLSR_PE		0x20	/* perity error */
 #define	FLSR_BI		0x80	/* break detect */
+#define	FLSR_RCV_ERR	0xb0
 
 /* i8251F modem status register */
 #define	MSR_DCD		0x80	/* Current Data Carrier Detect */

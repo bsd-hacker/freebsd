@@ -44,6 +44,7 @@ static struct {
 	u_long iobase;
 	struct uart_class *class;
 } uart_pc98_devs[] = {
+	{ 0x30, &uart_i8251_class },
 	{ 0x238, &uart_ns8250_class },
 	{ 0, NULL }
 };
@@ -76,7 +77,7 @@ uart_cpu_getdev(int devtype, struct uart_devinfo *di)
 	struct uart_class *class;
 	unsigned int i, ivar;
 
-	class = &uart_ns8250_class;
+	class = &uart_ns8250_class;	/* Default is ns8250 class. */
 	if (class == NULL)
 		return (ENXIO);
 
@@ -112,6 +113,7 @@ uart_cpu_getdev(int devtype, struct uart_devinfo *di)
 			continue;
 
 		di->ops = uart_getops(class);
+		di->bas.type = 0;
 		di->bas.chan = 0;
 		di->bas.bst = uart_bus_space_io;
 		if (bus_space_map(di->bas.bst, ivar, uart_getrange(class), 0,

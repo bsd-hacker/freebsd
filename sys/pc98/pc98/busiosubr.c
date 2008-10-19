@@ -309,7 +309,9 @@ int
 i386_memio_compare(bus_space_tag_t t1, bus_space_handle_t bsh1,
 		   bus_space_tag_t t2, bus_space_handle_t bsh2)
 {
+#if 0
 	int i;
+#endif
 
 	if (t1->bs_tag != t2->bs_tag)
 		return (1);
@@ -317,7 +319,10 @@ i386_memio_compare(bus_space_tag_t t1, bus_space_handle_t bsh1,
 		return (1);
 	if (bsh1->bsh_sz != bsh2->bsh_sz)
 		return (1);
-	if (bsh1->bsh_bam.bs_read_1 != bsh2->bsh_bam.bs_read_1)	/* XXX */
+
+	/* XXX The code below are too strict. */
+#if 0
+	if (bsh1->bsh_bam.bs_read_1 != bsh2->bsh_bam.bs_read_1)
 		return (1);
 
 	if (bsh1->bsh_iatsz != bsh2->bsh_iatsz)
@@ -326,6 +331,7 @@ i386_memio_compare(bus_space_tag_t t1, bus_space_handle_t bsh1,
 		if (bsh1->bsh_iat[i] != bsh2->bsh_iat[i])
 			return (1);
 	}
+#endif
 
 	return (0);
 }
