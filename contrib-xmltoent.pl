@@ -167,10 +167,30 @@ if (!defined $branches{$releaseent{"release.current"}}) {
 }
 
 #
-# Find all MFVs which are done in the time that 
+# Changes in software versions are determined as follows:
 #
+# For version N.M and M != 0, compare against branches{N.(M-1)}
+# For version N.0, compare against branches{(N-1)}
+# For version N, compare against branches{(N-1)}
+#
+my $thisversion = $releaseent{"release.current"};
+my $prevversion = "";
 
+# XXX - This fails for 5.2.1
+if ($thisversion =~ /^(\d+)\.(\d+)/) {
+	my $major = $1;
+	my $minor = $2;
+	if ($minor eq "0") {
+		$prevversion = $major - 1;
+	} else {
+		$prevversion = sprintf("%d.%d", $major, $minor - 1);
+	}
+} elsif ($thisversion =~ /^(\d+)$/) {
+	$prevversion = $1 - 1;
+}
 
-print Dumper(%branches);
-print Dumper(%releaseent);
+print "$thisversion - $prevversion\n";
+print "$branches{$thisversion} - $branches{$prevversion}\n";
+#print Dumper(%branches);
+#print Dumper(%releaseent);
 #print Dumper(%softwares);
