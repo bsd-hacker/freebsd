@@ -41,15 +41,15 @@ extern struct thread *ald_thread;
  * Async. Logging Entry
  */
 struct ale {
-	struct ale	*ae_next;	/* Next Entry */
+	//struct ale	*ae_next;	/* Next Entry */
 	char		*ae_data;	/* Entry buffer */
-	int		ae_flags;	/* Entry flags */
+	int		ae_datalen;	/* Length of buffer */
+	//int		ae_flags;	/* Entry flags */
 };
 
-#define	AE_VALID	0x0001		/* Entry has valid data */
- 
+//#define	AE_VALID	0x0001		/* Entry has valid data */
 
-/* waitok options */
+/* flags options */
 #define	ALQ_NOWAIT	0x0001
 #define	ALQ_WAITOK	0x0002
 
@@ -88,7 +88,8 @@ int alq_open(struct alq **, const char *file, struct ucred *cred, int cmode,
  *		The system is shutting down.
  *	0 on success.
  */
-int alq_write(struct alq *alq, void *data, int waitok);
+int alq_write(struct alq *alq, void *data, int flags);
+int alq_writen(struct alq *alq, void *data, int len, int flags);
 
 /*
  * alq_flush:  Flush the queue out to disk
@@ -115,13 +116,14 @@ void alq_close(struct alq *alq);
  *
  * This leaves the queue locked until a subsequent alq_post.
  */
-struct ale *alq_get(struct alq *alq, int waitok);
+struct ale *alq_get(struct alq *alq, int flags);
+struct ale *alq_getn(struct alq *alq, int len, int flags);
 
 /*
  * alq_post:  Schedule the ale retrieved by alq_get for writing.
  *	alq	The queue to post the entry to.
  *	ale	An asynch logging entry returned by alq_get.
  */
-void alq_post(struct alq *, struct ale *);
+void alq_post(struct alq *alq, struct ale *ale);
 
 #endif	/* _SYS_ALQ_H_ */
