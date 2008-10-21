@@ -19,10 +19,11 @@ JADEFLAGS+=	-V %generate-article-toc%
 SRCS+=	article.sgml
 
 # Contributed software
-SRCS+= contrib.ent
+SRCS+=	contrib.ent
+CLEANFILES+= contrib.ent
 
 contrib.ent: ${RELN_ROOT}/../../../contrib.xml
-	${PERL} -w ${RELN_ROOT}/../../../contrib-xmltoent.pl
+	${PERL} -w ${RELN_ROOT}/../../../contrib-xmltoent.pl > contrib.ent
 
 URL_RELPREFIX?=	../../../..
 

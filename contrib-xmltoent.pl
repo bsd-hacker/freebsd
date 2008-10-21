@@ -2,6 +2,7 @@
 
 use XML::Parser;
 use Data::Dumper;
+use POSIX;
 use strict;
 
 my @tree = ();
@@ -12,6 +13,7 @@ my %branches = ();
 my %softwares = ();
 my $software = "";
 my $mfcbranch = "";
+my $mfvbranch = "";
 my $swversion = "";
 
 my %releaseent = ();
@@ -34,6 +36,11 @@ sub xml_start {
 	}
 	if ($element eq "mfc") {
 		$mfcbranch = $values[$treeindex]{branch};
+	}
+	if ($element eq "mfv") {
+		$mfvbranch = "";
+		$mfvbranch = $values[$treeindex]{branch}
+			if (defined $values[$treeindex]{branch});
 	}
 
 }
@@ -89,6 +96,8 @@ sub xml_char {
 						}
 						if ($tree[5] eq "mfv") {
 							$softwares{$software}{versions}{$swversion}{mfv} = $value;
+							$softwares{$software}{versions}{$swversion}{mfc}{$mfvbranch} = $value
+								if ($mfvbranch);
 							return;
 						}
 						if ($tree[5] eq "desc") {
@@ -116,7 +125,7 @@ my $p = new XML::Parser(
 		End     => \&xml_end,
 		Char    => \&xml_char,
 	});
-$p->parsefile("../../../../../contrib.xml");
+$p->parsefile(defined $ARGV[0] ? $ARGV[0] : "../../../../../contrib.xml");
 
 {
 	my %r = (
@@ -144,25 +153,41 @@ $p->parsefile("../../../../../contrib.xml");
 
 #
 # If we are in -current, then release.current doesn't exist yet.
-# In that case copy all MFVs into MFC{release.branch}. The date
+# In that case copy all MFVs into MFC{branchitwasinMFVin}. The date
 # of the new MFC is the date of the release.prev.
 #
 # release.current is then assigned with release.branch.
 #
-# the creation date of branches{release.current} will be
-# branches{release.prev}
+# the creation date of branches{release.current} will be today.
 #
 if (!defined $branches{$releaseent{"release.current"}}) {
 	foreach my $sw (keys(%softwares)) {
 		foreach my $vs (keys(%{$softwares{$sw}{versions}})) {
+			next;
+			# XXX
 			next if (!defined $softwares{$sw}{versions}{$vs}{mfv});
-			$softwares{$sw}{versions}{$vs}{mfc}{$releaseent{"release.branch"}} = $softwares{$sw}{versions}{$vs}{mfv};
+			my $date = $softwares{$sw}{versions}{$vs}{mfv};
+			my $branch = 0;
+
+			foreach my $b (sort(keys(%branches))) {
+				if ($b !~ /\./ &&
+				    $date lt $branches{$b} &&
+				    ($branch eq "0" || $date lt $branches{$branch})) {
+					$branch = $b;
+				}
+			}
+
+			$softwares{$sw}{versions}{$vs}{mfc}{$branch} =
+				$softwares{$sw}{versions}{$vs}{mfv};
 		}
 	}
 
 	$releaseent{"release.current"} = $releaseent{"release.branch"};
-	$branches{$releaseent{"release.current"}} =
-		$branches{$releaseent{"release.prev"}}
+#	$branches{$releaseent{"release.current"}} =
+#		$branches{$releaseent{"release.prev"}}
+	my @lt = localtime();
+	$branches{$releaseent{"release.current"}} = strftime("%Y-%m-%d",
+	    0, 0, 0, $lt[3], $lt[4], $lt[5]);
 
 }
 
@@ -189,8 +214,57 @@ if ($thisversion =~ /^(\d+)\.(\d+)/) {
 	$prevversion = $1 - 1;
 }
 
-print "$thisversion - $prevversion\n";
-print "$branches{$thisversion} - $branches{$prevversion}\n";
-#print Dumper(%branches);
-#print Dumper(%releaseent);
-#print Dumper(%softwares);
+#
+# Now we know the branches to compare, we know the dates between
+# which the changes have to be displayed.
+#
+# Let's find the software which has been updated
+#
+
+my $T1 = $branches{$prevversion};
+my $T2 = $branches{$thisversion};
+my @T1 = split(/\-/, $T1);
+my @T2 = split(/\-/, $T2);
+
+my %updated = ();
+
+#print $releaseent{"release.current"}, " - $thisversion - $prevversion\n";
+#print "$branches{$thisversion} - $branches{$prevversion}\n";
+
+my %versions = ();
+foreach my $sw (sort(keys(%softwares))) {
+	foreach my $vs (sort(keys(%{$softwares{$sw}{versions}}))) {
+		foreach my $branch (sort(keys(%{$softwares{$sw}{versions}{$vs}{mfc}}))) {
+			next if ($branch ne $prevversion &&
+			    $branch ne $thisversion);
+
+			my $date = $softwares{$sw}{versions}{$vs}{mfc}{$branch};
+			next if ($date lt $branches{$prevversion} ||
+			    $date gt $branches{$thisversion});
+#			print "$date - $branch - $vs -> $sw\n";
+			if (!defined $versions{$sw}{f_date} ||
+			    $versions{$sw}{f_date} ge $date) {
+				$versions{$sw}{f_date} = $date;
+				$versions{$sw}{f_version} = $vs;
+			}
+			if (!defined $versions{$sw}{l_date} ||
+			    $versions{$sw}{l_date} le $date) {
+				$versions{$sw}{l_date} = $date;
+				$versions{$sw}{l_version} = $vs;
+			}
+		}
+	}
+}
+
+foreach my $sw (sort(keys(%versions))) {
+	my $a = $softwares{$sw}{desc};
+	print "<!ENTITY contrib.${sw}1 \"$versions{$sw}{f_version}\">\n";
+	print "<!ENTITY contrib.${sw}2 \"$versions{$sw}{l_version}\">\n";
+	print "<!ENTITY contrib.${sw}text \"$softwares{$sw}{desc}\">\n";
+}
+
+print "<!ENTITY contrib.softwares \"";
+foreach my $sw (sort(keys(%versions))) {
+	print "&contrib.${sw}text; ";
+}
+print "\">\n";
