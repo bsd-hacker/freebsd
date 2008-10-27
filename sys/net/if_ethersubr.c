@@ -55,6 +55,7 @@
 #include <net/if_arp.h>
 #include <net/netisr.h>
 #include <net/route.h>
+#include <net/flowtable.h>
 #include <net/if_llc.h>
 #include <net/if_dl.h>
 #include <net/if_types.h>
@@ -160,7 +161,8 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 	u_char esrc[ETHER_ADDR_LEN], edst[ETHER_ADDR_LEN];
 	struct ether_header *eh;
 	struct pf_mtag *t;
-	int loop_copy = 1;
+	struct rtentry_info *ri = NULL;
+	int riset = 0, loop_copy = 1;
 	int hlen;	/* link layer header length */
 
 #ifdef MAC
@@ -168,6 +170,17 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 	if (error)
 		senderr(error);
 #endif
+	/*
+	 * XXX rather hackish interface to ip_output
+	 * to pass an rtentry_info in 
+	 * 
+	 */
+	if (dst == NULL) {
+		ri = (struct rtentry_info *)rt0;
+		dst = (struct sockaddr *)&ri->ri_dst;
+		riset = 1;
+		rt0 = NULL;
+	}
 
 	M_PROFILE(m);
 	if (ifp->if_flags & IFF_MONITOR)
@@ -180,7 +193,11 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 	switch (dst->sa_family) {
 #ifdef INET
 	case AF_INET:
-		error = arpresolve(ifp, rt0, m, dst, edst);
+		error = 0;
+		if (riset && (ri->ri_flags && RTF_DESTEN_VALID))
+			memcpy(edst, ri->ri_desten, ETHER_ADDR_LEN);
+		else
+			error = arpresolve(ifp, rt0, m, dst, edst);
 		if (error)
 			return (error == EWOULDBLOCK ? 0 : error);
 		type = htons(ETHERTYPE_IP);

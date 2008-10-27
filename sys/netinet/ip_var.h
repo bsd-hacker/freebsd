@@ -158,6 +158,7 @@ struct	ipstat {
 #define	IP_SENDTOIF		0x8		/* send on specific ifnet */
 #define IP_ROUTETOIF		SO_DONTROUTE	/* 0x10 bypass routing tables */
 #define IP_ALLOWBROADCAST	SO_BROADCAST	/* 0x20 can send broadcast packets */
+#define	IP_RTINFO		0x80		/* ip_output is passed an rtentry_info */
 
 /*
  * mbuf flag used by ip_fastfwd

@@ -60,6 +60,7 @@ __FBSDID("$FreeBSD$");
 #include <net/if_dl.h>
 #include <net/route.h>
 #include <net/netisr.h>
+#include <net/flowtable.h>
 
 #include <netinet/in.h>
 #include <netinet/in_systm.h>
@@ -211,6 +212,7 @@ SYSCTL_V_INT(V_NET, vnet_inet, _net_inet_ip, OID_AUTO, stealth, CTLFLAG_RW,
 ip_fw_chk_t *ip_fw_chk_ptr = NULL;
 ip_dn_io_t *ip_dn_io_ptr = NULL;
 int fw_one_pass = 1;
+struct flowtable *ipv4_ft;
 
 static void	ip_freef(struct ipqhead *, struct ipq *);
 
@@ -277,6 +279,8 @@ ip_init(void)
 	ipintrq.ifq_maxlen = ipqmaxlen;
 	mtx_init(&ipintrq.ifq_mtx, "ip_inq", NULL, MTX_DEF);
 	netisr_register(NETISR_IP, ip_input, &ipintrq, 0);
+	
+	ipv4_ft = flowtable_alloc(2048, FL_LOCAL_XMIT|FL_PCPU);
 }
 
 void

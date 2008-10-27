@@ -216,6 +216,7 @@ arp_rtrequest(int req, struct rtentry *rt, struct rt_addrinfo *info)
 		 */
 		R_Zalloc(la, struct llinfo_arp *, sizeof(*la));
 		rt->rt_llinfo = (caddr_t)la;
+		rt->rt_llinfo_uptime = time_uptime;
 		if (la == 0) {
 			log(LOG_DEBUG, "%s: malloc failed\n", __func__);
 			break;
@@ -299,6 +300,7 @@ arp_rtrequest(int req, struct rtentry *rt, struct rt_addrinfo *info)
 		callout_stop(&la->la_timer);
 		rt->rt_llinfo = NULL;
 		rt->rt_flags &= ~RTF_LLINFO;
+		rt->rt_llinfo_uptime = time_uptime;
 		RT_REMREF(rt);
 		if (la->la_hold)
 			m_freem(la->la_hold);
