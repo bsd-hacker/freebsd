@@ -16,9 +16,14 @@
 
 #include <net/route.h> 
 #include <net/vnet.h>
+#include <net/flowtable.h>
+#include <net/if.h>
+#include <net/if_var.h>
 
 #include <netinet/in.h>
 #include <netinet/in_systm.h>
+#include <netinet/in_var.h>
+#include <netinet/if_ether.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <netinet/udp.h>
@@ -172,59 +177,141 @@ uint32_t        initval)         /* the previous hash, or an arbitrary value */
 }
 
 
-struct ip_tuple {
-	in_addr_t 	ip_saddr;	/* source address */
-	in_addr_t 	ip_daddr;	/* destination address */
+struct ipv4_tuple {
 	uint16_t 	ip_sport;	/* source port */
 	uint16_t 	ip_dport;	/* destination port */
+	in_addr_t 	ip_saddr;	/* source address */
+	in_addr_t 	ip_daddr;	/* destination address */
 };
 
-union ip_flow {
-	struct ip_tuple ipf_ipt;
+union ipv4_flow {
+	struct ipv4_tuple ipf_ipt;
 	uint32_t 	ipf_key[3];
 };
 
-struct flentry_v4 {
-	uint32_t	fl_fhash;	/* hash flowing forward */
-	uint32_t	fl_ticks;	/* last time this flow was accessed */
-	uint16_t	fl_flags;	/* flow flags */
-	uint8_t		fl_pad;
-	uint8_t		fl_proto;	/* protocol */
-	union ip_flow	fl_flow;
-	struct rtentry *fl_rt;		/* rtentry for flow */
-	uint32_t	fl_refcnt;
-	uint32_t	fl_hash_next;	/* needed for GC */
-	uint32_t	fl_hash_prev;
+struct ipv6_tuple {
+	uint16_t 	ip_sport;	/* source port */
+	uint16_t 	ip_dport;	/* destination port */
+	struct in6_addr	ip_saddr;	/* source address */
+	struct in6_addr	ip_daddr;	/* destination address */
 };
 
-#define	TICKS_PER_MINUTE	(60*hz)
-#define	TICKS_PER_HOUR		(60*TICKS_PER_MINUTE)
-#define	TICKS_PER_DAY		(24*TICKS_PER_HOUR)
+union ipv6_flow {
+	struct ipv6_tuple ipf_ipt;
+	uint32_t 	ipf_key[9];
+};
+
+struct flentry {
+	uint32_t	f_fhash;	/* hash flowing forward */
+	uint16_t	f_flags;	/* flow flags */
+	uint8_t		f_pad;
+	uint8_t		f_proto;	/* protocol */
+	time_t		f_uptime;	/* last time this flow was accessed */
+	struct rtentry *f_rt;		/* rtentry for flow */
+	u_char		f_desten[ETHER_ADDR_LEN];	
+};
+
+struct flentry_v4 {
+	struct flentry	fl_entry;
+	union ipv4_flow	fl_flow;
+};
+
+struct flentry_v6 {
+	struct flentry	fl_entry;
+	union ipv6_flow	fl_flow;
+};
+
+#define	fl_fhash	fl_entry.fl_fhash
+#define	fl_flags	fl_entry.fl_flags
+#define	fl_proto	fl_entry.fl_proto
+#define	fl_uptime	fl_entry.fl_uptime
+#define	fl_rt		fl_entry.fl_rt
+#define	fl_desten		fl_entry.fl_desten
+
+#define	SECS_PER_HOUR		3600
+#define	SECS_PER_DAY		(24*SECS_PER_HOUR)
+
+#define	SYN_IDLE		300
+#define	UDP_IDLE		300
+#define	FIN_WAIT_IDLE		600
+#define	TCP_IDLE		SECS_PER_DAY
 
 
-#define SYN_IDLE		(5*TICKS_PER_MINUTE)
-#define UDP_IDLE		(5*TICKS_PER_MINUTE)
-#define FIN_WAIT_IDLE		(10*TICKS_PER_MINUTE)
-#define TCP_IDLE		TICKS_PER_DAY
+typedef	void fl_lock_t(struct flowtable *, uint32_t);
+typedef void fl_rtalloc_t(struct route *, uint32_t, u_int);
 
+union flentryp {
+	struct flentry_v4	*v4;
+	struct flentry_v6	*v6;
+	struct flentry_v4	*v4_pcpu[MAXCPU];
+	struct flentry_v6	*v6_pcpu[MAXCPU];
+};
 
-static struct flentry_v4 *ipv4_flow_table;
-static int ipv4_flow_table_size;
-static bitstr_t *ipv4_flow_bitstring;
-static int ipv4_flow_allocated;
-struct mtx *ipv4_flow_locks;
-static int ipv4_flow_lock_count;
-extern uint32_t hashjitter;
-static uint32_t ipv4_flow_route_lookup_fail;
-static uint32_t	ipv4_flow_collisions;
-struct callout ipv4_flow_callout;
-static int ipv4_flow_max_count;
+struct flowtable {
+	union flentryp	ft_table;
+	int 		ft_size;
+	bitstr_t 	*ft_masks[MAXCPU];
+	struct mtx	*ft_locks;
+	int 		ft_lock_count;
+	uint32_t	ft_flags;
+	uint32_t	ft_collisions;
+	uint32_t	ft_allocated;
+	uint64_t	ft_hits;
 
+	uint32_t	ft_udp_idle;
+	uint32_t	ft_fin_wait_idle;
+	uint32_t	ft_syn_idle;
+	uint32_t	ft_tcp_idle;
 
-#define FL_ENTRY_INDEX(hash)((hash) % ipv4_flow_table_size)
-#define FL_ENTRY(hash) (&ipv4_flow_table[FL_ENTRY_INDEX((hash))])
-#define FL_ENTRY_LOCK(hash) mtx_lock(&ipv4_flow_locks[(hash)&(ipv4_flow_lock_count - 1)])
-#define FL_ENTRY_UNLOCK(hash) mtx_lock(&ipv4_flow_locks[(hash)&(ipv4_flow_lock_count - 1)])
+	fl_lock_t	*ft_lock;
+	fl_lock_t 	*ft_unlock;
+	fl_rtalloc_t	*ft_rtalloc;
+
+};
+
+extern	uint32_t hashjitter;
+
+static void
+in_rtalloc_ign_wrapper(struct route *ro, uint32_t hash, u_int fib)
+{
+
+	in_rtalloc_ign(ro, 0, fib);
+}
+
+static void
+flowtable_global_lock(struct flowtable *table, uint32_t hash)
+{	
+	int lock_index = (hash)&(table->ft_lock_count - 1);
+
+	mtx_lock(&table->ft_locks[lock_index]);
+}
+
+static void
+flowtable_global_unlock(struct flowtable *table, uint32_t hash)
+{	
+	int lock_index = (hash)&(table->ft_lock_count - 1);
+
+	mtx_unlock(&table->ft_locks[lock_index]);
+}
+
+static void
+flowtable_pcpu_lock(struct flowtable *table, uint32_t hash)
+{
+
+	critical_enter();
+}
+
+static void
+flowtable_pcpu_unlock(struct flowtable *table, uint32_t hash)
+{
+
+	critical_exit();
+}
+
+#define FL_ENTRY_INDEX(table, hash)((hash) % (table)->ft_size)
+#define FL_ENTRY(table, hash) flowtable_entry((table), (hash))
+#define FL_ENTRY_LOCK(table, hash)  (table)->ft_lock((table), (hash))
+#define FL_ENTRY_UNLOCK(table, hash) (table)->ft_unlock((table), (hash))
 
 #define FL_STALE (1<<8)
 
@@ -241,8 +328,9 @@ ipv4_flow_lookup_hash_internal(struct mbuf *m, struct route *ro,
 	struct udphdr *uh;
 	struct sctphdr *sh;
 
-	key[0] = ip->ip_src.s_addr;
-	key[1] = ip->ip_dst.s_addr;	
+	key[0] = 0;
+	key[1] = ip->ip_src.s_addr;
+	key[2] = ip->ip_dst.s_addr;	
 
 	sin = (struct sockaddr_in *)&ro->ro_dst;
 	sin->sin_family = AF_INET;
@@ -254,7 +342,7 @@ ipv4_flow_lookup_hash_internal(struct mbuf *m, struct route *ro,
 		th = (struct tcphdr *)((caddr_t)ip + iphlen);
 		sport = th->th_sport;
 		dport = th->th_dport;
-		*flags = th->th_flags;
+		*flags |= th->th_flags;
 		if (*flags & TH_RST)
 			*flags |= FL_STALE;
 	break;
@@ -269,270 +357,272 @@ ipv4_flow_lookup_hash_internal(struct mbuf *m, struct route *ro,
 		dport = sh->dest_port;
 	break;
 	default:
+		goto noop;
 		/* no port - hence not a protocol we care about */
 		break;;
 	
 	}
-	((uint16_t *)key)[4] = sport;
-	((uint16_t *)key)[5] = dport;
-
 	*protop = proto;
+
+	/*
+	 * If this is a transmit route cache then 
+	 * hash all flows to a given destination to
+	 * the same bucket
+	 */
+	if (*flags & FL_LOCAL_XMIT)
+		proto = sport = dport = 0;
+
+	((uint16_t *)key)[0] = sport;
+	((uint16_t *)key)[1] = dport;
+	
 	return (hashword(key, 3, hashjitter + proto));
+
+noop:
+	*protop = proto;
+	return (0);
 }
 
-uint32_t
-ipv4_flow_lookup_hash(struct mbuf *m)
+static bitstr_t *
+flowtable_mask(struct flowtable *ft)
 {
-	struct route ro;
-	uint32_t key[3];
-	uint16_t flags;
-	uint8_t proto;
+	bitstr_t *mask;
 	
-	bzero(&ro, sizeof(ro));
-	return (ipv4_flow_lookup_hash_internal(m, &ro, key, &flags, &proto));
+	if (ft->ft_flags & FL_PCPU)
+		mask = ft->ft_masks[curcpu];
+	else
+		mask = ft->ft_masks[0];
+
+	return (mask);
 }
 
-static void
-ipv4_flow_insert(uint32_t hash, uint32_t *key, uint8_t proto,
-    struct rtentry *rt, uint16_t flags)
+static struct flentry *
+flowtable_entry(struct flowtable *ft, uint32_t hash)
 {
-	struct flentry_v4 *fle, *fle2;
-	uint32_t *hashkey;
-	
-	fle = FL_ENTRY(hash);
-	hashkey = fle->fl_flow.ipf_key;
-
-	hashkey[0] = key[0];
-	hashkey[1] = key[1];
-	hashkey[2] = key[2];
-
-	bit_set(ipv4_flow_bitstring, FL_ENTRY_INDEX(hash));
-	if (rt->rt_flow_head == 0) {
-		rt->rt_flow_head = hash;
-		fle->fl_hash_next = fle->fl_hash_prev = 0;
+	struct flentry *fle;
+	int index = (ft->ft_size % hash);
+ 
+	if ((ft->ft_flags & FL_IPV6) == 0) {
+		if (ft->ft_flags & FL_PCPU)
+			fle = (struct flentry *)
+			    &ft->ft_table.v4_pcpu[curcpu][index];
+		else
+			fle = (struct flentry *)&ft->ft_table.v4[index];
 	} else {
-		fle->fl_hash_next = rt->rt_flow_head;
-		fle2 = FL_ENTRY(rt->rt_flow_head);
-		rt->rt_flow_head = hash;
-		fle2->fl_hash_prev = hash;
+		if (ft->ft_flags & FL_PCPU)
+			fle = (struct flentry *)
+			    &ft->ft_table.v6_pcpu[curcpu][index];
+		else
+			fle = (struct flentry *)&ft->ft_table.v6[index];
 	}
-	fle->fl_proto = proto;
-	fle->fl_rt = rt;
-	fle->fl_fhash = hash;
-	fle->fl_ticks = ticks;
-	rt->rt_refcnt++;
-	ipv4_flow_allocated++;
+
+	return (fle);
 }
 
-uint32_t
-ipv4_flow_alloc(struct mbuf *m, struct route *ro)
-{
-	uint32_t key[3], hash, *hashkey;
-	struct flentry_v4 *fle;
-	uint16_t flags = 0;
-	uint8_t proto;
-	
-	/*
-	 * Only handle IPv4 for now
-	 *
-	 */
-	hash = ipv4_flow_lookup_hash_internal(m, ro, key, &flags, &proto);
-
-	/*
-	 * Ports are zero - thus not a protocol for which 
-	 * we need to keep state
-	 */
-	if (key[3] == 0)
-		return (hash);
-	
-	FL_ENTRY_LOCK(hash);
-	fle = FL_ENTRY(hash);
-
-	hashkey = fle->fl_flow.ipf_key;
-	
-	if (fle->fl_fhash == 0) {
-		FL_ENTRY_UNLOCK(hash);
-		rtalloc_mpath_fib(ro, hash, M_GETFIB(m));
-		if (ro->ro_rt) {
-			FL_ENTRY_LOCK(hash);
-			ipv4_flow_insert(hash, key, proto, ro->ro_rt, flags);
-			RT_UNLOCK(ro->ro_rt);
-		} else
-			ipv4_flow_route_lookup_fail++;
-	} else if (fle->fl_fhash == hash
-	    && key[0] == hashkey[0] 
-	    && key[1] == hashkey[1]
-	    && key[2] == hashkey[2]
-	    && proto == fle->fl_proto) {
-		fle->fl_ticks = ticks;
-		fle->fl_flags |= flags;
-		fle->fl_refcnt++;
-		ro->ro_rt = fle->fl_rt;
-	} else 
-		ipv4_flow_collisions++;
-		
-	FL_ENTRY_UNLOCK(hash);
-
-	return (hash);
-}
-
-/*
- * Internal helper routine
- * hash - the hash of the entry to free
- * stale - indicates to only free the entry if it is marked stale
- */
-
-static uint32_t
-ipv4_flow_free_internal(uint32_t hash, int staleonly)
-{
-	struct flentry_v4 *fle, *fleprev, *flenext;
-	uint32_t hash_next;
-
-	fle = FL_ENTRY(hash);
-	hash_next = fle->fl_hash_next;
-	
-	if (staleonly && ((fle->fl_flags & FL_STALE) == 0))
-	    return (hash_next);
-	
-	if (fle->fl_hash_next) {
-		flenext = FL_ENTRY(fle->fl_hash_next);
-		flenext->fl_hash_prev = fle->fl_hash_prev;
-	}
-	if (fle->fl_hash_prev) {
-		fleprev = FL_ENTRY(fle->fl_hash_prev);
-		fleprev->fl_hash_next = fle->fl_hash_next;
-	}
-	fle->fl_hash_next = fle->fl_hash_prev = 0;
-	    
-	if (fle->fl_refcnt == 0) {
-		fle->fl_rt->rt_refcnt--;
-		ipv4_flow_allocated--;
-		bit_clear(ipv4_flow_bitstring, FL_ENTRY_INDEX(hash));
-		bzero(fle, sizeof(struct flentry_v4));
-	} else if (!staleonly) 
-		fle->fl_flags |= FL_STALE;
-
-	return (hash_next);
-}
-
-/*
- * drops the refcount on the flow after alloc was called and 
- * checks if the flow has become stale since alloc was called
- *
- */
-void
-ipv4_flow_free(uint32_t hash)
-{
-	struct flentry_v4 *fle;
-	struct rtentry *rt;
-	int stale;
-
-	fle = FL_ENTRY(hash);
-	KASSERT(fle->fl_refcnt > 0,
-	    ("route referenced with flow refcount set to zero"));
-
-	stale = ((fle->fl_flags & FL_STALE) &&
-	    (fle->fl_refcnt == 1));
-
-	rt = fle->fl_rt;
-	if (stale)
-		RT_LOCK(rt);
-	
-	FL_ENTRY_LOCK(hash);
-	fle->fl_refcnt--;
-
-	if (stale) {
- 		ipv4_flow_free_internal(hash, 0);
-		RTFREE_LOCKED(rt);
-	} 
-	FL_ENTRY_UNLOCK(hash);
-}
-
-/*
- *
- * Frees all flows that are linked to this rtentry
- *
- */
-void
-ipv4_flow_free_all(struct rtentry *rt)
-{
-	uint32_t hash_next = rt->rt_flow_head;
-
-	RT_LOCK_ASSERT(rt);
-	while (hash_next) 
-		hash_next = ipv4_flow_free_internal(hash_next, 0);
-}
-
-/*
- * Frees all flows tied to this rt that 
- * have been marked stale
- *
- */
 static int
-ipv4_flow_free_stale(struct radix_node *rn, void *unused)
+flow_stale(struct flowtable *ft, struct flentry *fle)
 {
-	struct rtentry *rt = (struct rtentry *)rn;
-	uint32_t hash_next; 
+	time_t idle_time;
 
-	if (rt->rt_flow_head == 0)
-		return (0);
+	if (fle->f_fhash == 0)
+		return (1);
+	
+	idle_time = time_uptime - fle->f_uptime;
 
-	RT_LOCK(rt);
-	hash_next = rt->rt_flow_head;
-	while (hash_next)
-		hash_next = ipv4_flow_free_internal(hash_next, 1);
-	RT_UNLOCK(rt);
+	if ((fle->f_flags & FL_STALE) ||
+	    ((fle->f_flags & (TH_SYN|TH_ACK|TH_FIN)) == 0
+		&& (idle_time > ft->ft_udp_idle)) ||
+	    ((fle->f_flags & TH_FIN)
+		&& (idle_time > ft->ft_fin_wait_idle)) ||
+	    ((fle->f_flags & (TH_SYN|TH_ACK)) == TH_SYN
+		&& (idle_time > ft->ft_syn_idle)) ||
+	    ((fle->f_flags & (TH_SYN|TH_ACK)) == (TH_SYN|TH_ACK)
+		&& (idle_time > ft->ft_tcp_idle)) ||
+	    ((fle->f_rt->rt_flags & RTF_UP) == 0 || 
+		(fle->f_rt->rt_ifp == NULL)))
+		return (1);
 
 	return (0);
 }
 
-struct radix_node_head *ipv4_flow_rnh_list[100];
 static void
-ipv4_flow_check_stale(struct flentry_v4 *fle,
-    struct radix_node_head **rnh_list, int *rnh_count)
+flowtable_set_hashkey(struct flowtable *ft, struct flentry *fle, uint32_t *key)
 {
-	int count = *rnh_count;
-	uint32_t idle_ticks;
-	struct radix_node_head *rnh;
-	struct rtentry *rt;
-	int i, stale = 0, found = 0;
+	uint32_t *hashkey;
+	int i, nwords;
+
+	if (ft->ft_flags & FL_IPV6) {
+		nwords = 9;
+		hashkey = ((struct flentry_v4 *)fle)->fl_flow.ipf_key;
+	} else {
+		nwords = 3;
+		hashkey = ((struct flentry_v6 *)fle)->fl_flow.ipf_key;
+	}
 	
-	if (ticks > fle->fl_ticks)
-		idle_ticks = ticks - fle->fl_ticks;
-	else
-		idle_ticks = (INT_MAX - fle->fl_ticks) + ticks ;
+	for (i = 0; i < nwords; i++) 
+		hashkey[i] = key[i];
+}
+
+static void
+flowtable_insert(struct flowtable *ft, uint32_t hash, uint32_t *key,
+    uint8_t proto, struct rtentry *rt, u_char *desten, uint16_t flags)
+{
+	struct flentry *fle;
+	struct rtentry *rt0 = NULL;
+	int stale;
+	bitstr_t *mask;
 	
-	if ((fle->fl_flags & FL_STALE) ||
-	    ((fle->fl_flags & (TH_SYN|TH_ACK|TH_FIN)) == 0
-		&& (idle_ticks > UDP_IDLE)) ||
-	    ((fle->fl_flags & TH_FIN)
-		&& (idle_ticks > FIN_WAIT_IDLE)) ||
-	    ((fle->fl_flags & (TH_SYN|TH_ACK)) == TH_SYN
-		&& (idle_ticks > SYN_IDLE)) ||
-	    ((fle->fl_flags & (TH_SYN|TH_ACK)) == (TH_SYN|TH_ACK)
-		&& (idle_ticks > TCP_IDLE)))
-		stale = 1;
-
-	if (stale == 0)
-		return;
-
-	fle->fl_flags |= FL_STALE;
-	rt = fle->fl_rt;
-	rnh = V_rt_tables[rt->rt_fibnum][rt_key(rt)->sa_family];
-
-	for (i = 0; i < count; i++) 
-		if (rnh_list[i] == rnh) {
-			found  = 1;
-			break;
+retry:	
+	FL_ENTRY_LOCK(ft, hash);
+	mask = flowtable_mask(ft);
+	fle = flowtable_entry(ft, hash);
+	if (fle->f_fhash) {
+		if ((stale = flow_stale(ft, fle)) != 0) {
+			fle->f_fhash = 0;
+			rt0 = fle->f_rt;
+			fle->f_rt = NULL;
+			bit_clear(mask, FL_ENTRY_INDEX(ft, hash));
 		}
-	if (found == 0) {
-		rnh_list[count] = rnh;
-		count++;
-		*rnh_count = count;
+		FL_ENTRY_UNLOCK(ft, hash);
+		if (!stale)
+			return;
+		RTFREE(rt0);
+		/*
+		 * We might end up on a different cpu
+		 */
+		goto retry;
+	       
+	}
+	flowtable_set_hashkey(ft, fle, key);
+	bit_set(mask, FL_ENTRY_INDEX(ft, hash));
+
+	fle->f_proto = proto;
+	fle->f_rt = rt;
+	fle->f_fhash = hash;
+	fle->f_uptime = time_uptime;
+	memcpy(fle->f_desten, desten, ETHER_ADDR_LEN);
+	FL_ENTRY_UNLOCK(ft, hash);
+}
+
+void
+route_to_rtentry_info(struct route *ro, u_char *desten, struct rtentry_info *ri)
+{
+	struct sockaddr_in *sin = (struct sockaddr_in *)&ro->ro_dst;
+	struct rtentry *rt = ro->ro_rt;
+	
+	ri->ri_ifp = rt->rt_ifp;
+	ri->ri_ifa = rt->rt_ifa;
+	ri->ri_flags = rt->rt_flags;
+	ri->ri_mtu = rt->rt_rmx.rmx_mtu;
+
+	if (rt->rt_flags & RTF_GATEWAY && !IN_MULTICAST(sin->sin_addr.s_addr))
+		memcpy(&ri->ri_dst, sin, sizeof(struct sockaddr));
+	else
+		memcpy(&ri->ri_dst, rt->rt_gateway, sizeof(struct sockaddr));
+
+	if (desten) {
+		memcpy(ri->ri_desten, desten, ETHER_ADDR_LEN);
+		ri->ri_flags |= RTF_DESTEN_VALID;
 	}
 }
 
+static int
+flowtable_key_equal(struct flentry *fle, uint32_t *key, int flags)
+{
+	uint32_t *hashkey;
+	int i, nwords;
 
+	if (flags & FL_IPV6) {
+		nwords = 9;
+		hashkey = ((struct flentry_v4 *)fle)->fl_flow.ipf_key;
+	} else {
+		nwords = 3;
+		hashkey = ((struct flentry_v6 *)fle)->fl_flow.ipf_key;
+	}
+	
+	for (i = 0; i < nwords; i++) 
+		if (hashkey[i] != key[i])
+			return (0);
+
+	return (1);
+}
+
+int
+flowtable_lookup(struct flowtable *ft, struct mbuf *m,
+    struct rtentry_info *ri)
+{
+	uint32_t key[9], hash;
+	struct flentry *fle;
+	uint16_t flags;
+	uint8_t proto;
+	struct route ro;
+	int cache = 1, error = 0;
+	u_char desten[ETHER_ADDR_LEN];
+
+	flags = ft ? ft->ft_flags : FL_LOCAL_XMIT;
+
+	/*
+	 * The internal hash lookup is the only IPv4 specific bit
+	 * remaining
+	 */
+	hash = ipv4_flow_lookup_hash_internal(m, &ro, key,
+	    &flags, &proto);
+
+	
+	/*
+	 * Ports are zero and this isn't a transmit cache
+	 * - thus not a protocol for which we need to keep 
+	 * statex
+	 * FL_LOCAL_XMIT => key[0] == 0 
+	 */
+	if (hash == 0 || (key[0] == 0 && (ft->ft_flags & FL_LOCAL_XMIT) == 0)) {
+		cache = 0;
+		goto uncached;
+	}
+
+	FL_ENTRY_LOCK(ft, hash);
+	fle = FL_ENTRY(ft, hash);
+	if (fle->f_fhash != hash) {
+		cache = !flow_stale(ft, fle);
+		FL_ENTRY_UNLOCK(ft, hash);
+	} else if (fle->f_fhash == hash
+	    && flowtable_key_equal(fle, key, flags)
+	    && (proto == fle->f_proto)
+	    && (fle->f_rt->rt_flags & RTF_UP)
+	    && (fle->f_uptime > fle->f_rt->rt_llinfo_uptime)) {
+
+		if ((fle->f_rt->rt_flags & RTF_GATEWAY) &&
+		    ((fle->f_rt->rt_gwroute->rt_flags & RTF_UP) == 0))
+			goto uncached;
+
+		fle->f_uptime = time_uptime;
+		fle->f_flags |= flags;
+		fle->f_rt->rt_rmx.rmx_pksent++;
+		route_to_rtentry_info(&ro, fle->f_desten, ri);
+		FL_ENTRY_UNLOCK(ft, hash);
+		return (0);
+	} 
+uncached:
+	ft->ft_rtalloc(&ro, hash, M_GETFIB(m));
+	if (ro.ro_rt == NULL) 
+		error = ENETUNREACH;
+	else {
+		RT_UNLOCK(ro.ro_rt);
+		error = arpresolve(ro.ro_rt->rt_ifp, ro.ro_rt, m,
+		    &ro.ro_dst, desten);
+		route_to_rtentry_info(&ro, error ? NULL : desten, ri);
+
+		if (error == 0 && cache)
+			flowtable_insert(ft, hash, key, proto,
+			    ro.ro_rt, desten, flags);
+		else
+			RTFREE(ro.ro_rt);
+		error = 0;
+	} 
+
+	return (error);
+}
+
+#ifdef notyet
 static __inline int
 bit_fns(bitstr_t *name, int nbits, int lastbit)
 {
@@ -545,60 +635,65 @@ bit_fns(bitstr_t *name, int nbits, int lastbit)
 
 	return (value);
 }
+#endif
 
-
-static int ipv4_flow_last_index;
-static void
-ipv4_flow_timeout(void *arg)
+struct flowtable *
+flowtable_alloc(int nentry, int flags)
 {
-	int i, idx, rnh_count = 0;
-	struct radix_node_head *rnh;
-	
-	/*
-	 * scan 1/4th of the table once a second
-	 */
-	for (i = 0; i < (ipv4_flow_allocated >> 2); i++) {
-		idx = bit_fns(ipv4_flow_bitstring, ipv4_flow_table_size,
-		    ipv4_flow_last_index);
-		if (idx == -1) {
-			ipv4_flow_last_index = 0;
-			break;
+	struct flowtable *ft;
+	int i;
+
+	ft = malloc(sizeof(struct flowtable),
+	    M_RTABLE, M_WAITOK | M_ZERO);
+
+	ft->ft_flags = flags;
+	ft->ft_size = nentry;
+#ifdef RADIX_MPATH
+	ft->ft_rtalloc = rtalloc_mpath_fib;
+#else
+	ft->ft_rtalloc = in_rtalloc_ign_wrapper;
+#endif
+	if (flags & FL_PCPU) {
+		ft->ft_lock = flowtable_pcpu_lock;
+		ft->ft_unlock = flowtable_pcpu_unlock;
+
+		for (i = 0; i < mp_ncpus; i++) {
+			ft->ft_table.v4_pcpu[i] =
+			    malloc(nentry*sizeof(struct flentry_v4),
+				M_RTABLE, M_WAITOK | M_ZERO);
+			ft->ft_masks[i] = bit_alloc(nentry);
 		}
+	} else {
+		ft->ft_lock_count = 2*(powerof2(mp_ncpus) ? mp_ncpus :
+		    (fls(mp_ncpus) << 1));
 		
-		FL_ENTRY_LOCK(idx);
-		ipv4_flow_check_stale(FL_ENTRY(idx), ipv4_flow_rnh_list, &rnh_count);
-		FL_ENTRY_UNLOCK(idx);
+		ft->ft_lock = flowtable_global_lock;
+		ft->ft_unlock = flowtable_global_unlock;
+		ft->ft_table.v4 =
+			    malloc(nentry*sizeof(struct flentry_v4),
+				M_RTABLE, M_WAITOK | M_ZERO);
+		ft->ft_locks = malloc(ft->ft_lock_count*sizeof(struct mtx),
+				M_RTABLE, M_WAITOK | M_ZERO);
+		for (i = 0; i < ft->ft_lock_count; i++)
+			mtx_init(&ft->ft_locks[i], "flow", NULL, MTX_DEF);
+
+		ft->ft_masks[0] = bit_alloc(nentry);
 	}
-	for (i = 0; i < rnh_count; i++) {
-		rnh = ipv4_flow_rnh_list[i];
-		RADIX_NODE_HEAD_LOCK(rnh);
-		rnh->rnh_walktree(rnh, ipv4_flow_free_stale, NULL);
-		RADIX_NODE_HEAD_UNLOCK(rnh);
-	}
 
-	callout_reset(&ipv4_flow_callout, hz, ipv4_flow_timeout, NULL);
-}
-
-static void
-flowtable_init(void *unused) 
-{
-	int i, nentry;
-
-	nentry = ipv4_flow_max_count;
 	/*
-	 * round mp_ncpus up to the next power of 2 and double
-	 * to determine the number of locks
+	 * In the local transmit case the table truly is 
+	 * just a cache - so everything is eligible for
+	 * replacement after 5s of non-use
 	 */
-	ipv4_flow_lock_count = (1 << fls(mp_ncpus)) << 1;
+	if (flags & FL_LOCAL_XMIT)
+		ft->ft_udp_idle = ft->ft_fin_wait_idle =
+		    ft->ft_syn_idle = ft->ft_tcp_idle = 5;
+	else {
+		ft->ft_udp_idle = UDP_IDLE;
+		ft->ft_syn_idle = SYN_IDLE;
+		ft->ft_fin_wait_idle = FIN_WAIT_IDLE;
+		ft->ft_tcp_idle = TCP_IDLE;
+	}
 	
-	ipv4_flow_table_size = nentry;
-	ipv4_flow_table = malloc(nentry*sizeof(struct flentry_v4),
-	    M_RTABLE, M_WAITOK | M_ZERO);
-	ipv4_flow_bitstring = bit_alloc(nentry);
-	ipv4_flow_locks = malloc(ipv4_flow_lock_count*sizeof(struct mtx),
-	    M_RTABLE, M_WAITOK | M_ZERO);
-	for (i = 0; i < ipv4_flow_lock_count; i++)
-		mtx_init(&ipv4_flow_locks[i], "ipv4_flow", NULL, MTX_DEF);
-	
+	return (ft);
 }
-SYSINIT(flowtable, SI_SUB_INIT_IF, SI_ORDER_ANY, flowtable_init, NULL);
