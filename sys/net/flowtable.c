@@ -567,7 +567,8 @@ flowtable_lookup(struct flowtable *ft, struct mbuf *m,
 	u_char desten[ETHER_ADDR_LEN];
 
 	flags = ft ? ft->ft_flags : 0;
-
+	ro.ro_rt = NULL;
+	
 	/*
 	 * The internal hash lookup is the only IPv4 specific bit
 	 * remaining
@@ -624,7 +625,6 @@ uncached:
 	if (ro.ro_rt == NULL) 
 		error = ENETUNREACH;
 	else {
-		RT_UNLOCK(ro.ro_rt);
 		error = arpresolve(ro.ro_rt->rt_ifp, ro.ro_rt, m,
 		    &ro.ro_dst, desten);
 		route_to_rtentry_info(&ro, error ? NULL : desten, ri);
