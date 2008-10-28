@@ -809,9 +809,6 @@ rtexpunge(struct rtentry *rt)
 	KASSERT(rt == RNTORT(rn),
 		("lookup mismatch, rt %p rn %p", rt, rn));
 	rt->rt_flags &= ~RTF_UP;
-#ifdef RADIX_MPATH
-	ipv4_flow_free_all(rt);
-#endif
 
 	/*
 	 * Now search what's left of the subtree for any cloned
@@ -950,9 +947,6 @@ rtrequest1_fib(int req, struct rt_addrinfo *info, struct rtentry **ret_nrt,
 			RT_LOCK(rt);
 			RT_ADDREF(rt);
 			rt->rt_flags &= ~RTF_UP;
-#ifdef RADIX_MPATH
-			ipv4_flow_free_all(rt);
-#endif
 			goto deldone;  /* done with the RTM_DELETE command */
 		}
 
@@ -971,9 +965,6 @@ normal_rtdel:
 		RT_LOCK(rt);
 		RT_ADDREF(rt);
 		rt->rt_flags &= ~RTF_UP;
-#ifdef RADIX_MPATH
-		ipv4_flow_free_all(rt);
-#endif	
 		/*
 		 * Now search what's left of the subtree for any cloned
 		 * routes which might have been formed from this node.

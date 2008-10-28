@@ -272,12 +272,14 @@ struct flowtable {
 static uint32_t hashjitter;
 static int	flowtable_disable;
 
+#ifndef RADIX_MPATH
 static void
 in_rtalloc_ign_wrapper(struct route *ro, uint32_t hash, u_int fib)
 {
 
 	in_rtalloc_ign(ro, 0, fib);
 }
+#endif
 
 static void
 flowtable_global_lock(struct flowtable *table, uint32_t hash)
