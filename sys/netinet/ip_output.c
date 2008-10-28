@@ -562,7 +562,6 @@ passout:
 		 * to pass an rtentry_info in 
 		 * 
 		 */
-		printf("transmitting %p \n", m);		
 		if (ifp->if_output == ether_output)
 			error = (*ifp->if_output)(ifp, m,
 			    NULL, (struct rtentry *)ri);
@@ -606,7 +605,6 @@ passout:
 			 * to pass an rtentry_info in 
 			 * 
 			 */
-			printf("transmitting %p \n", m);
 			if (ifp->if_output == ether_output)
 				error = (*ifp->if_output)(ifp, m,
 				    NULL, (struct rtentry *)ri);
@@ -614,7 +612,6 @@ passout:
 				error = (*ifp->if_output)(ifp, m,
 				    (struct sockaddr *)dst, NULL);
 		} else {
-			printf("freeing fragment %p error = %d\n", m, error);
 			m_freem(m);
 		}
 		
@@ -626,7 +623,6 @@ passout:
 done:
 	return (error);
 bad:
-	printf("freeing %p error = %d \n", m, error);
 	m_freem(m);
 	goto done;
 }
