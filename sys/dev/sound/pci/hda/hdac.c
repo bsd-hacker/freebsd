@@ -83,7 +83,7 @@
 
 #include "mixer_if.h"
 
-#define HDA_DRV_TEST_REV	"20081013_0113"
+#define HDA_DRV_TEST_REV	"20081024_0114"
 
 SND_DECLARE_FILE("$FreeBSD$");
 
@@ -148,6 +148,8 @@ SND_DECLARE_FILE("$FreeBSD$");
 #define HDA_INTEL_82801G	HDA_MODEL_CONSTRUCT(INTEL, 0x27d8)
 #define HDA_INTEL_82801H	HDA_MODEL_CONSTRUCT(INTEL, 0x284b)
 #define HDA_INTEL_82801I	HDA_MODEL_CONSTRUCT(INTEL, 0x293e)
+#define HDA_INTEL_82801J	HDA_MODEL_CONSTRUCT(INTEL, 0x3a3e)
+#define HDA_INTEL_SCH		HDA_MODEL_CONSTRUCT(INTEL, 0x811b)
 #define HDA_INTEL_ALL		HDA_MODEL_CONSTRUCT(INTEL, 0xffff)
 
 /* Nvidia */
@@ -450,6 +452,8 @@ static const struct {
 	{ HDA_INTEL_82801G,  "Intel 82801G" },
 	{ HDA_INTEL_82801H,  "Intel 82801H" },
 	{ HDA_INTEL_82801I,  "Intel 82801I" },
+	{ HDA_INTEL_82801J,  "Intel 82801J" },
+	{ HDA_INTEL_SCH,     "Intel SCH" },
 	{ HDA_NVIDIA_MCP51,  "NVidia MCP51" },
 	{ HDA_NVIDIA_MCP55,  "NVidia MCP55" },
 	{ HDA_NVIDIA_MCP61_1, "NVidia MCP61" },
@@ -1854,7 +1858,7 @@ hdac_probe_codec(struct hdac_codec *codec)
 	nid_t cad = codec->cad;
 
 	HDA_BOOTVERBOSE(
-		device_printf(sc->dev, "Probing codec %d...\n", cad);
+		device_printf(sc->dev, "Probing codec #%d...\n", cad);
 	);
 	vendorid = hdac_command(sc,
 	    HDA_CMD_GET_PARAMETER(cad, 0x0, HDA_PARAM_VENDOR_ID),
@@ -1873,10 +1877,10 @@ hdac_probe_codec(struct hdac_codec *codec)
 		return;
 	}
 
-	device_printf(sc->dev, "<HDA Codec #%d: %s>\n",
+	device_printf(sc->dev, "HDA Codec #%d: %s\n",
 	    cad, hdac_codec_name(codec));
 	HDA_BOOTVERBOSE(
-		device_printf(sc->dev, "<HDA Codec ID: 0x%08x>\n",
+		device_printf(sc->dev, " HDA Codec ID: 0x%08x\n",
 		    hdac_codec_id(codec));
 		device_printf(sc->dev, "       Vendor: 0x%04x\n",
 		    codec->vendor_id);
@@ -3826,7 +3830,7 @@ hdac_attach(device_t dev)
 	uint16_t vendor;
 	uint8_t v;
 
-	device_printf(dev, "<HDA Driver Revision: %s>\n", HDA_DRV_TEST_REV);
+	device_printf(dev, "HDA Driver Revision: %s\n", HDA_DRV_TEST_REV);
 
 	sc = device_get_softc(dev);
 	sc->lock = snd_mtxcreate(device_get_nameunit(dev), HDAC_MTX_NAME);
@@ -4505,6 +4509,24 @@ hdac_vendor_patch_parse(struct hdac_devinfo *devinfo)
 				devinfo->function.audio.quirks &=
 				    ~HDA_QUIRK_EAPDINV;
 		}
+		break;
+	case HDA_CODEC_AD1981HD:
+		/*
+		 * This codec has very unusual design with several
+		 * points inappropriate for the present parser.
+		 */
+		/* Disable recording from mono playback mix. */
+		w = hdac_widget_get(devinfo, 21);
+		if (w != NULL)
+			w->connsenable[3] = 0;
+		/* Disable rear to front mic mixer, use separately. */
+		w = hdac_widget_get(devinfo, 31);
+		if (w != NULL)
+			w->enable = 0;
+		/* Disable playback mixer, use direct bypass. */
+		w = hdac_widget_get(devinfo, 14);
+		if (w != NULL)
+			w->enable = 0;
 		break;
 	}
 }
@@ -7552,6 +7574,21 @@ hdac_detach(device_t dev)
 	return (0);
 }
 
+static int
+hdac_print_child(device_t dev, device_t child)
+{
+	struct hdac_pcm_devinfo *pdevinfo =
+	    (struct hdac_pcm_devinfo *)device_get_ivars(child);
+	int retval;
+
+	retval = bus_print_child_header(dev, child);
+	retval += printf(" at cad %d nid %d",
+	    pdevinfo->devinfo->codec->cad, pdevinfo->devinfo->nid);
+	retval += bus_print_child_footer(dev, child);
+
+	return (retval);
+}
+
 static device_method_t hdac_methods[] = {
 	/* device interface */
 	DEVMETHOD(device_probe,		hdac_probe),
@@ -7559,6 +7596,8 @@ static device_method_t hdac_methods[] = {
 	DEVMETHOD(device_detach,	hdac_detach),
 	DEVMETHOD(device_suspend,	hdac_suspend),
 	DEVMETHOD(device_resume,	hdac_resume),
+	/* Bus interface */
+	DEVMETHOD(bus_print_child,	hdac_print_child),
 	{ 0, 0 }
 };
 
@@ -7581,8 +7620,7 @@ hdac_pcm_probe(device_t dev)
 	    (struct hdac_pcm_devinfo *)device_get_ivars(dev);
 	char buf[128];
 
-	snprintf(buf, sizeof(buf), "HDA codec #%d %s PCM #%d",
-	    pdevinfo->devinfo->codec->cad,
+	snprintf(buf, sizeof(buf), "HDA %s PCM #%d",
 	    hdac_codec_name(pdevinfo->devinfo->codec),
 	    pdevinfo->index);
 	device_set_desc_copy(dev, buf);
@@ -7673,9 +7711,9 @@ hdac_pcm_attach(device_t dev)
 	if (pdevinfo->rec >= 0)
 		pcm_addchan(dev, PCMDIR_REC, &hdac_channel_class, pdevinfo);
 
-	snprintf(status, SND_STATUSLEN, "at %s cad %d %s [%s]",
-	    device_get_nameunit(sc->dev), pdevinfo->devinfo->codec->cad,
-	    PCM_KLDSTRING(snd_hda), HDA_DRV_TEST_REV);
+	snprintf(status, SND_STATUSLEN, "at cad %d nid %d on %s %s",
+	    pdevinfo->devinfo->codec->cad, pdevinfo->devinfo->nid,
+	    device_get_nameunit(sc->dev), PCM_KLDSTRING(snd_hda));
 	pcm_setstatus(dev, status);
 
 	return (0);
