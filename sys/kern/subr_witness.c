@@ -708,8 +708,7 @@ witness_initialize(void *dummy __unused)
 	struct witness *w, *w1;
 	int i;
 
-	MALLOC(w_data, struct witness *,
-	    sizeof (struct witness) * WITNESS_COUNT, M_WITNESS,
+	w_data = malloc(sizeof (struct witness) * WITNESS_COUNT, M_WITNESS,
 	    M_NOWAIT | M_ZERO);
 
 	/*
@@ -1628,13 +1627,7 @@ witness_warn(int flags, struct lock_object *lock, const char *fmt, ...)
 	 */
 	sched_pin();
 	lock_list = PCPU_GET(spinlocks);
-	if (lock_list != NULL) {
-
-		/* Empty list? */
-		if (lock_list->ll_count == 0) {
-			sched_unpin();
-			return (n);
-		}
+	if (lock_list != NULL && lock_list->ll_count != 0) {
 		sched_unpin();
 
 		/*
@@ -1644,18 +1637,17 @@ witness_warn(int flags, struct lock_object *lock, const char *fmt, ...)
 		 * should hold.
 		 */
 		lock1 = &lock_list->ll_children[lock_list->ll_count - 1];
-		if (lock1->li_lock == lock)
-			return (n);
+		if (lock_list->ll_count == 1 && lock_list->ll_next == NULL &&
+		    lock1->li_lock == lock && n == 0)
+			return (0);
 
-		if (n == 0) {
-			va_start(ap, fmt);
-			vprintf(fmt, ap);
-			va_end(ap);
-			printf(" with the following");
-			if (flags & WARN_SLEEPOK)
-				printf(" non-sleepable");
-			printf(" locks held:\n");
-		}
+		va_start(ap, fmt);
+		vprintf(fmt, ap);
+		va_end(ap);
+		printf(" with the following");
+		if (flags & WARN_SLEEPOK)
+			printf(" non-sleepable");
+		printf(" locks held:\n");
 		n += witness_list_locks(&lock_list);
 	} else
 		sched_unpin();
