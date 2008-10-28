@@ -625,7 +625,7 @@ uncached:
 	if (ro.ro_rt == NULL) 
 		error = ENETUNREACH;
 	else {
-		error = arpresolve(ro.ro_rt->rt_ifp, ro.ro_rt, m,
+		error = arpresolve(ro.ro_rt->rt_ifp, ro.ro_rt, NULL,
 		    &ro.ro_dst, desten);
 		route_to_rtentry_info(&ro, error ? NULL : desten, ri);
 
@@ -696,7 +696,7 @@ flowtable_alloc(int nentry, int flags)
 		ft->ft_locks = malloc(ft->ft_lock_count*sizeof(struct mtx),
 				M_RTABLE, M_WAITOK | M_ZERO);
 		for (i = 0; i < ft->ft_lock_count; i++)
-			mtx_init(&ft->ft_locks[i], "flow", NULL, MTX_DEF);
+			mtx_init(&ft->ft_locks[i], "flow", NULL, MTX_DEF|MTX_DUPOK);
 
 		ft->ft_masks[0] = bit_alloc(nentry);
 	}
