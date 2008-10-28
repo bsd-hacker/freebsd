@@ -403,7 +403,7 @@ static struct flentry *
 flowtable_entry(struct flowtable *ft, uint32_t hash)
 {
 	struct flentry *fle;
-	int index = (ft->ft_size % hash);
+	int index = (hash % ft->ft_size);
  
 	if ((ft->ft_flags & FL_IPV6) == 0) {
 		if (ft->ft_flags & FL_PCPU)
@@ -603,6 +603,7 @@ flowtable_lookup(struct flowtable *ft, struct mbuf *m,
 		fle->f_uptime = time_uptime;
 		fle->f_flags |= flags;
 		fle->f_rt->rt_rmx.rmx_pksent++;
+		ro.ro_rt = fle->f_rt;
 		route_to_rtentry_info(&ro, fle->f_desten, ri);
 		FL_ENTRY_UNLOCK(ft, hash);
 		return (0);
