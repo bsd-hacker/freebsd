@@ -280,7 +280,7 @@ ip_init(void)
 	mtx_init(&ipintrq.ifq_mtx, "ip_inq", NULL, MTX_DEF);
 	netisr_register(NETISR_IP, ip_input, &ipintrq, 0);
 	
-	ipv4_ft = flowtable_alloc(2048, FL_LOCAL_XMIT|FL_PCPU);
+	ipv4_ft = flowtable_alloc(2048, FL_PCPU);
 }
 
 void

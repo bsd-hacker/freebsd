@@ -269,7 +269,8 @@ struct flowtable {
 
 };
 
-extern	uint32_t hashjitter;
+static uint32_t hashjitter;
+static int	flowtable_disable;
 
 static void
 in_rtalloc_ign_wrapper(struct route *ro, uint32_t hash, u_int fib)
@@ -337,6 +338,9 @@ ipv4_flow_lookup_hash_internal(struct mbuf *m, struct route *ro,
 	sin->sin_len = sizeof(*sin);
 	sin->sin_addr = ip->ip_dst;
 
+	if (flowtable_disable)
+		return (0);
+	
 	switch (proto) {
 	case IPPROTO_TCP:
 		th = (struct tcphdr *)((caddr_t)ip + iphlen);
@@ -369,7 +373,7 @@ ipv4_flow_lookup_hash_internal(struct mbuf *m, struct route *ro,
 	 * hash all flows to a given destination to
 	 * the same bucket
 	 */
-	if (*flags & FL_LOCAL_XMIT)
+	if ((*flags & FL_HASH_PORTS) == 0)
 		proto = sport = dport = 0;
 
 	((uint16_t *)key)[0] = sport;
@@ -423,9 +427,13 @@ flow_stale(struct flowtable *ft, struct flentry *fle)
 {
 	time_t idle_time;
 
-	if (fle->f_fhash == 0)
+	if ((fle->f_fhash == 0)
+	    || ((fle->f_rt->rt_flags & RTF_UP) == 0)
+	    || (fle->f_uptime <= fle->f_rt->rt_llinfo_uptime)
+	    || ((fle->f_rt->rt_flags & RTF_GATEWAY) &&
+		((fle->f_rt->rt_gwroute->rt_flags & RTF_UP) == 0)))
 		return (1);
-	
+
 	idle_time = time_uptime - fle->f_uptime;
 
 	if ((fle->f_flags & FL_STALE) ||
@@ -553,12 +561,12 @@ flowtable_lookup(struct flowtable *ft, struct mbuf *m,
 	uint32_t key[9], hash;
 	struct flentry *fle;
 	uint16_t flags;
-	uint8_t proto;
+	uint8_t proto = 0;
 	struct route ro;
 	int cache = 1, error = 0;
 	u_char desten[ETHER_ADDR_LEN];
 
-	flags = ft ? ft->ft_flags : FL_LOCAL_XMIT;
+	flags = ft ? ft->ft_flags : 0;
 
 	/*
 	 * The internal hash lookup is the only IPv4 specific bit
@@ -572,19 +580,16 @@ flowtable_lookup(struct flowtable *ft, struct mbuf *m,
 	 * Ports are zero and this isn't a transmit cache
 	 * - thus not a protocol for which we need to keep 
 	 * statex
-	 * FL_LOCAL_XMIT => key[0] == 0 
+	 * FL_HASH_PORTS => key[0] != 0 for TCP || UDP || SCTP
 	 */
-	if (hash == 0 || (key[0] == 0 && (ft->ft_flags & FL_LOCAL_XMIT) == 0)) {
+	if (hash == 0 || (key[0] == 0 && (ft->ft_flags & FL_HASH_PORTS))) {
 		cache = 0;
 		goto uncached;
 	}
 
 	FL_ENTRY_LOCK(ft, hash);
 	fle = FL_ENTRY(ft, hash);
-	if (fle->f_fhash != hash) {
-		cache = !flow_stale(ft, fle);
-		FL_ENTRY_UNLOCK(ft, hash);
-	} else if (fle->f_fhash == hash
+	if (fle->f_fhash == hash
 	    && flowtable_key_equal(fle, key, flags)
 	    && (proto == fle->f_proto)
 	    && (fle->f_rt->rt_flags & RTF_UP)
@@ -601,7 +606,20 @@ flowtable_lookup(struct flowtable *ft, struct mbuf *m,
 		FL_ENTRY_UNLOCK(ft, hash);
 		return (0);
 	} 
+	FL_ENTRY_UNLOCK(ft, hash);
+
 uncached:
+	/*
+	 * This bit of code ends up locking the
+	 * same route 3 times (just like ip_output + ether_output)
+	 * - at lookup
+	 * - in rt_check when called by arpresolve
+	 * - dropping the refcount for the rtentry
+	 *
+	 * This could be consolidated to one if we wrote a variant
+	 * of arpresolve with an rt_check variant that expected to
+	 * receive the route locked
+	 */
 	ft->ft_rtalloc(&ro, hash, M_GETFIB(m));
 	if (ro.ro_rt == NULL) 
 		error = ENETUNREACH;
@@ -642,6 +660,9 @@ flowtable_alloc(int nentry, int flags)
 {
 	struct flowtable *ft;
 	int i;
+
+	if (hashjitter == 0)
+		hashjitter = arc4random();
 
 	ft = malloc(sizeof(struct flowtable),
 	    M_RTABLE, M_WAITOK | M_ZERO);
@@ -685,15 +706,17 @@ flowtable_alloc(int nentry, int flags)
 	 * just a cache - so everything is eligible for
 	 * replacement after 5s of non-use
 	 */
-	if (flags & FL_LOCAL_XMIT)
-		ft->ft_udp_idle = ft->ft_fin_wait_idle =
-		    ft->ft_syn_idle = ft->ft_tcp_idle = 5;
-	else {
+	if (flags & FL_HASH_PORTS) {
 		ft->ft_udp_idle = UDP_IDLE;
 		ft->ft_syn_idle = SYN_IDLE;
 		ft->ft_fin_wait_idle = FIN_WAIT_IDLE;
 		ft->ft_tcp_idle = TCP_IDLE;
+	} else {
+		ft->ft_udp_idle = ft->ft_fin_wait_idle =
+		    ft->ft_syn_idle = ft->ft_tcp_idle = 5;
+		
 	}
+	
 	
 	return (ft);
 }

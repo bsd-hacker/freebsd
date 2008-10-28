@@ -5,7 +5,7 @@
 #include <net/ethernet.h>
 #include <netinet/in.h>
 
-#define FL_LOCAL_XMIT 	(1<<0)	/* per host, don't hash ports */ 
+#define FL_HASH_PORTS 	(1<<0)	/* hash 4-tuple + protocol */
 #define FL_PCPU		(1<<1)	/* pcpu cache */
 #define FL_IPV6		(1<<2)	/* IPv6 table */
 

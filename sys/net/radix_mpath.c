@@ -53,7 +53,7 @@ __FBSDID("$FreeBSD$");
 /*
  * give some jitter to hash, to avoid synchronization between routers
  */
-uint32_t hashjitter;
+static uint32_t hashjitter;
 
 int
 rn_mpath_capable(struct radix_node_head *rnh)
