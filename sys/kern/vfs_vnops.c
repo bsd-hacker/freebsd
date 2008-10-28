@@ -873,6 +873,10 @@ _vn_lock(struct vnode *vp, int flags, char *file, int line)
 	VNASSERT((flags & LK_TYPE_MASK) != 0, vp,
 	    ("vn_lock called with no locktype."));
 	do {
+#ifdef DEBUG_VFS_LOCKS
+		KASSERT(vp->v_holdcnt != 0,
+		    ("vn_lock %p: zero hold count", vp));
+#endif
 		error = VOP_LOCK1(vp, flags, file, line);
 		flags &= ~LK_INTERLOCK;	/* Interlock is always dropped. */
 		KASSERT((flags & LK_RETRY) == 0 || error == 0,
@@ -963,12 +967,17 @@ vn_start_write(vp, mpp, flags)
 		while ((mp->mnt_kern_flag & MNTK_SUSPEND) != 0) {
 			if (flags & V_NOWAIT) {
 				error = EWOULDBLOCK;
+				if (vp != NULL)
+					*mpp = NULL;
 				goto unlock;
 			}
 			error = msleep(&mp->mnt_flag, MNT_MTX(mp),
 			    (PUSER - 1) | (flags & PCATCH), "suspfs", 0);
-			if (error)
+			if (error) {
+				if (vp != NULL)
+					*mpp = NULL;
 				goto unlock;
+			}
 		}
 	}
 	if (flags & V_XSLEEP)
@@ -1024,6 +1033,8 @@ vn_start_secondary_write(vp, mpp, flags)
 	if (flags & V_NOWAIT) {
 		MNT_REL(mp);
 		MNT_IUNLOCK(mp);
+		if (vp != NULL)
+			*mpp = NULL;
 		return (EWOULDBLOCK);
 	}
 	/*
@@ -1034,6 +1045,8 @@ vn_start_secondary_write(vp, mpp, flags)
 	vfs_rel(mp);
 	if (error == 0)
 		goto retry;
+	if (vp != NULL)
+		*mpp = NULL;
 	return (error);
 }
 

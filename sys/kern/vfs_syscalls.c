@@ -2084,7 +2084,8 @@ struct faccessat_args {
 	int	flag;
 }
 #endif
-int faccessat(struct thread *td, struct faccessat_args *uap)
+int
+faccessat(struct thread *td, struct faccessat_args *uap)
 {
 
 	if (uap->flag & ~AT_EACCESS)
@@ -3928,7 +3929,7 @@ unionread:
 		kuio.uio_iov = &kiov;
 		kuio.uio_segflg = UIO_SYSSPACE;
 		kiov.iov_len = uap->count;
-		MALLOC(dirbuf, caddr_t, uap->count, M_TEMP, M_WAITOK);
+		dirbuf = malloc(uap->count, M_TEMP, M_WAITOK);
 		kiov.iov_base = dirbuf;
 		error = VOP_READDIR(vp, &kuio, fp->f_cred, &eofflag,
 			    NULL, NULL);
@@ -3965,7 +3966,7 @@ unionread:
 			if (dp >= edp)
 				error = uiomove(dirbuf, readcnt, &auio);
 		}
-		FREE(dirbuf, M_TEMP);
+		free(dirbuf, M_TEMP);
 	}
 	if (error) {
 		VOP_UNLOCK(vp, 0);
@@ -4016,6 +4017,21 @@ getdirentries(td, uap)
 		long *basep;
 	} */ *uap;
 {
+	long base;
+	int error;
+
+	error = kern_getdirentries(td, uap->fd, uap->buf, uap->count, &base);
+	if (error)
+		return (error);
+	if (uap->basep != NULL)
+		error = copyout(&base, uap->basep, sizeof(long));
+	return (error);
+}
+
+int
+kern_getdirentries(struct thread *td, int fd, char *buf, u_int count,
+    long *basep)
+{
 	struct vnode *vp;
 	struct file *fp;
 	struct uio auio;
@@ -4024,8 +4040,8 @@ getdirentries(td, uap)
 	long loff;
 	int error, eofflag;
 
-	AUDIT_ARG(fd, uap->fd);
-	if ((error = getvnode(td->td_proc->p_fd, uap->fd, &fp)) != 0)
+	AUDIT_ARG(fd, fd);
+	if ((error = getvnode(td->td_proc->p_fd, fd, &fp)) != 0)
 		return (error);
 	if ((fp->f_flag & FREAD) == 0) {
 		fdrop(fp, td);
@@ -4039,14 +4055,14 @@ unionread:
 		error = EINVAL;
 		goto fail;
 	}
-	aiov.iov_base = uap->buf;
-	aiov.iov_len = uap->count;
+	aiov.iov_base = buf;
+	aiov.iov_len = count;
 	auio.uio_iov = &aiov;
 	auio.uio_iovcnt = 1;
 	auio.uio_rw = UIO_READ;
 	auio.uio_segflg = UIO_USERSPACE;
 	auio.uio_td = td;
-	auio.uio_resid = uap->count;
+	auio.uio_resid = count;
 	/* vn_lock(vp, LK_SHARED | LK_RETRY); */
 	vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
 	AUDIT_ARG(vnode, vp, ARG_VNODE1);
@@ -4063,7 +4079,7 @@ unionread:
 		VFS_UNLOCK_GIANT(vfslocked);
 		goto fail;
 	}
-	if (uap->count == auio.uio_resid &&
+	if (count == auio.uio_resid &&
 	    (vp->v_vflag & VV_ROOT) &&
 	    (vp->v_mount->mnt_flag & MNT_UNION)) {
 		struct vnode *tvp = vp;
@@ -4078,10 +4094,8 @@ unionread:
 	}
 	VOP_UNLOCK(vp, 0);
 	VFS_UNLOCK_GIANT(vfslocked);
-	if (uap->basep != NULL) {
-		error = copyout(&loff, uap->basep, sizeof(long));
-	}
-	td->td_retval[0] = uap->count - auio.uio_resid;
+	*basep = loff;
+	td->td_retval[0] = count - auio.uio_resid;
 fail:
 	fdrop(fp, td);
 	return (error);

@@ -896,19 +896,12 @@ findpcb:
 
 dropwithreset:
 	INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
+	INP_INFO_WUNLOCK(&V_tcbinfo);
 
-	/*
-	 * If inp is non-NULL, we call tcp_dropwithreset() holding both inpcb
-	 * and global locks.  However, if NULL, we must hold neither as
-	 * firewalls may acquire the global lock in order to look for a
-	 * matching inpcb.
-	 */
 	if (inp != NULL) {
 		tcp_dropwithreset(m, th, tp, tlen, rstreason);
 		INP_WUNLOCK(inp);
-	}
-	INP_INFO_WUNLOCK(&V_tcbinfo);
-	if (inp == NULL)
+	} else
 		tcp_dropwithreset(m, th, NULL, tlen, rstreason);
 	m = NULL;	/* mbuf chain got consumed. */
 	goto drop;
@@ -925,7 +918,6 @@ drop:
 		free(s, M_TCPLOG);
 	if (m != NULL)
 		m_freem(m);
-	return;
 }
 
 static void
@@ -2499,19 +2491,12 @@ dropafterack:
 
 dropwithreset:
 	KASSERT(headlocked, ("%s: dropwithreset: head not locked", __func__));
+	INP_INFO_WUNLOCK(&V_tcbinfo);
 
-	/*
-	 * If tp is non-NULL, we call tcp_dropwithreset() holding both inpcb
-	 * and global locks.  However, if NULL, we must hold neither as
-	 * firewalls may acquire the global lock in order to look for a
-	 * matching inpcb.
-	 */
 	if (tp != NULL) {
 		tcp_dropwithreset(m, th, tp, tlen, rstreason);
 		INP_WUNLOCK(tp->t_inpcb);
-	}
-	INP_INFO_WUNLOCK(&V_tcbinfo);
-	if (tp == NULL)
+	} else
 		tcp_dropwithreset(m, th, NULL, tlen, rstreason);
 	return;
 
@@ -2529,7 +2514,6 @@ drop:
 	if (headlocked)
 		INP_INFO_WUNLOCK(&V_tcbinfo);
 	m_freem(m);
-	return;
 }
 
 /*
@@ -2588,7 +2572,6 @@ tcp_dropwithreset(struct mbuf *m, struct tcphdr *th, struct tcpcb *tp,
 	return;
 drop:
 	m_freem(m);
-	return;
 }
 
 /*

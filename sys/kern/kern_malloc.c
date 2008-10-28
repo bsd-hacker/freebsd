@@ -679,6 +679,7 @@ malloc_init(void *data)
 
 	mtp = data;
 	mtip = uma_zalloc(mt_zone, M_WAITOK | M_ZERO);
+	
 	mtp->ks_handle = mtip;
 
 	mtx_lock(&malloc_mtx);
