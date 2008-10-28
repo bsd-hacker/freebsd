@@ -466,10 +466,13 @@ sendit:
 
 			error = netisr_queue(NETISR_IP, m);
 			goto done;
-		} else
+		} else {
+			ri->ri_flags &= ~RTF_UP;
 			goto again;	/* Redo the routing table lookup. */
-	}
 
+		}
+	}
+	
 #ifdef IPFIREWALL_FORWARD
 	/* See if local, if yes, send it to netisr with IP_FASTFWD_OURS. */
 	if (m->m_flags & M_FASTFWD_OURS) {
@@ -493,6 +496,7 @@ sendit:
 		bcopy((fwd_tag+1), dst, sizeof(struct sockaddr_in));
 		m->m_flags |= M_SKIP_FIREWALL;
 		m_tag_delete(m, fwd_tag);
+		ri->ri_flags &= ~RTF_UP;
 		goto again;
 	}
 #endif /* IPFIREWALL_FORWARD */
@@ -617,6 +621,7 @@ passout:
 done:
 	return (error);
 bad:
+	printf("freeing %p\n", m);
 	m_freem(m);
 	goto done;
 }
