@@ -531,10 +531,10 @@ route_to_rtentry_info(struct route *ro, u_char *desten, struct rtentry_info *ri)
 	ri->ri_flags = rt->rt_flags;
 	ri->ri_mtu = rt->rt_rmx.rmx_mtu;
 
-	if (rt->rt_flags & RTF_GATEWAY && !IN_MULTICAST(sin->sin_addr.s_addr))
-		memcpy(&ri->ri_dst, sin, sizeof(struct sockaddr));
-	else
+	if ((rt->rt_flags & RTF_GATEWAY) && !IN_MULTICAST(sin->sin_addr.s_addr))
 		memcpy(&ri->ri_dst, rt->rt_gateway, sizeof(struct sockaddr));
+	else
+		memcpy(&ri->ri_dst, sin, sizeof(struct sockaddr));
 
 	((struct sockaddr *)&ri->ri_dst)->sa_family = AF_INET;
 	
