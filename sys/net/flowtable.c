@@ -6,6 +6,7 @@
 #include <sys/kernel.h>  
 #include <sys/bitstring.h>
 #include <sys/vimage.h>
+#include <sys/sysctl.h>
 
 
 #include <sys/callout.h>
@@ -270,7 +271,13 @@ struct flowtable {
 };
 
 static uint32_t hashjitter;
+
+SYSCTL_NODE(_net_inet, OID_AUTO, flowtable, CTLFLAG_RD, NULL, "flowtable");
+
 static int	flowtable_disable;
+SYSCTL_INT(_net_inet_flowtable, OID_AUTO, enable, CTLFLAG_RW,
+    &flowtable_disable, 0, "disable flowtable.");
+
 
 #ifndef RADIX_MPATH
 static void
@@ -723,3 +730,4 @@ flowtable_alloc(int nentry, int flags)
 	
 	return (ft);
 }
+
