@@ -536,7 +536,7 @@ route_to_rtentry_info(struct route *ro, u_char *desten, struct rtentry_info *ri)
 	else
 		memcpy(&ri->ri_dst, rt->rt_gateway, sizeof(struct sockaddr));
 
-	ri->ri_dst.sa_family = AF_INET;
+	((struct sockaddr *)&ri->ri_dst)->sa_family = AF_INET;
 	
 	if (desten) {
 		memcpy(ri->ri_desten, desten, ETHER_ADDR_LEN);
