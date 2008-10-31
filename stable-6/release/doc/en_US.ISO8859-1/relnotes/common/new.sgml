@@ -200,10 +200,10 @@
     <title>Contributed Software</title>
     &contrib.softwares;
 
-  </sect>
+  </sect2>
 
   <sect2 id="excontrib">
-    <title>Contributed Software</title>
+    <title>Expected Contributed Software</title>
 
     <para><application>bzip2</application> has been updated from 1.0.4
       to 1.0.5.</para>

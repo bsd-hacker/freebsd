@@ -22,8 +22,8 @@ SRCS+=	article.sgml
 SRCS+=	contrib.ent
 CLEANFILES+= contrib.ent
 
-contrib.ent: ${RELN_ROOT}/../../../contrib.xml
-	${PERL} -w ${RELN_ROOT}/../../../contrib-xmltoent.pl > contrib.ent
+contrib.ent: ${RELN_ROOT}/../../../contrib.xml ${RELN_ROOT}/share/sgml/release.ent
+	${PERL} -w ${RELN_ROOT}/../../../contrib-xmltoent.pl -x ${RELN_ROOT}/../../../contrib.xml -r ${RELN_ROOT}/share/sgml/release.ent -o contrib.ent
 
 URL_RELPREFIX?=	../../../..
 

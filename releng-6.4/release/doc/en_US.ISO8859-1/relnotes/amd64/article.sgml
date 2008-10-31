@@ -8,6 +8,8 @@
 %release;
 <!ENTITY % sections SYSTEM "../common/relnotes.ent">
 %sections;
+<!ENTITY % contrib SYSTEM "../common/contrib.ent">
+%contrib;
 
 <!-- Architecture-specific customization -->
 

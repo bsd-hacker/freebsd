@@ -1,14 +1,41 @@
+<!-- Dates are retrieved from SVN with TZ=UTC -->
+
 <freebsd>
   <branches>
-    <branch name="7">2007-10-11</branch>
+
+    <branch name="7">2007-10-10</branch>
     <branch name="7.0">2007-12-22</branch>
+
     <branch name="6">2005-07-11</branch>
     <branch name="6.0">2005-10-09</branch>
     <branch name="6.1">2006-04-30</branch>
     <branch name="6.2">2006-11-14</branch>
-    <branch name="6.3">2007-10-24</branch>
+    <branch name="6.3">2007-11-24</branch>
     <branch name="6.4">2008-10-02</branch>
-    <branch name="5">2003-01-15</branch>
+
+    <!-- RELENG_5 is best guess, first occurence in CVS log -->
+    <branch name="5">2000-10-29</branch>
+    <branch name="5.0">2002-12-13</branch>
+    <branch name="5.1">2003-05-31</branch>
+    <branch name="5.2">2003-12-07</branch>
+    <branch name="5.3">2004-10-16</branch>
+    <branch name="5.4">2004-04-20</branch>
+    <branch name="5.5">2006-05-12</branch>
+
+    <branch name="4">2000-03-13</branch>
+    <branch name="4.3">2001-04-21</branch>
+    <branch name="4.4">2001-08-17</branch>
+    <branch name="4.5">2002-02-04</branch>
+    <branch name="4.6">2002-07-03</branch>
+    <branch name="4.7">2002-10-05</branch>
+    <branch name="4.8">2003-03-22</branch>
+    <branch name="4.9">2003-10-22</branch>
+    <branch name="4.10">2004-04-21</branch>
+    <branch name="4.11">2004-12-18</branch>
+
+    <branch name="3">1999-01-21</branch>
+    <branch name="2.1">1995-06-13</branch>
+    <branch name="2.2">1996-11-19</branch>
   </branches>
 
   <softwares>
@@ -99,43 +126,54 @@
 	  <mfv branch="8">2008-09-16</mfv>
 	  <mfc branch="7">2008-09-16</mfc>
 	  <mfc branch="6">2008-09-16</mfc>
+	  <mfc branch="4">2008-09-16</mfc>
 	</version>
 	<version version="tzdata2008e">
 	  <import>2008-08-08</import>
 	  <mfv branch="8">2008-08-08</mfv>
 	  <mfc branch="7">2008-08-08</mfc>
 	  <mfc branch="6">2008-08-15</mfc>
+	  <mfc branch="4">2008-03-25</mfc>
 	</version>
 	<version version="tzdata2008d">
 	  <import>2008-08-08</import>
 	  <mfv branch="8">2008-08-08</mfv>
 	  <mfc branch="7">2008-08-08</mfc>
 	  <mfc branch="6">2008-08-15</mfc>
+	  <mfc branch="4">2008-03-25</mfc>
 	</version>
 	<version version="tzdata2008c">
 	  <import>2008-08-08</import>
 	  <mfv branch="8">2008-08-08</mfv>
 	  <mfc branch="7">2008-08-08</mfc>
 	  <mfc branch="6">2008-08-15</mfc>
+	  <mfc branch="4">2008-03-25</mfc>
 	</version>
 	<version version="tzdata2008b">
 	  <import>2008-03-25</import>
 	  <mfv branch="8">2008-08-08</mfv>
 	  <mfc branch="7">2008-03-25</mfc>
 	  <mfc branch="6">2008-03-25</mfc>
+	  <mfc branch="5">2008-03-25</mfc>
+	  <mfc branch="4">2008-03-25</mfc>
 	</version>
 	<version version="tzdata2008a">
 	  <import>2008-03-09</import>
 	  <mfv branch="8">2008-03-09</mfv>
 	  <mfc branch="7">2008-03-09</mfc>
 	  <mfc branch="6">2008-03-09</mfc>
+	  <mfc branch="5">2008-03-09</mfc>
+	  <mfc branch="4">2008-03-10</mfc>
 	</version>
 	<version version="tzdata2007k">
 	  <import>2008-01-01</import>
 	  <mfv branch="8">2008-01-01</mfv>
 	  <mfc branch="7">2008-01-06</mfc>
+	  <mfc branch="7.0">2008-01-06</mfc>
 	  <mfc branch="6">2008-01-06</mfc>
 	  <mfc branch="6.3">2008-01-06</mfc>
+	  <mfc branch="5">2008-01-06</mfc>
+	  <mfc branch="4">2008-01-07</mfc>
 	</version>
 	<version version="tzdata2007j">
 	  <import>2007-12-04</import>
@@ -149,11 +187,15 @@
 	  <import>2007-10-09</import>
 	  <mfv branch="7">2007-10-09</mfv>
 	  <mfc branch="6">2007-10-18</mfc>
+	  <mfc branch="5">2007-10-18</mfc>
+	  <mfc branch="4">2007-10-18</mfc>
 	</version>
 	<version version="tzdata2007g">
 	  <import>2007-08-24</import>
 	  <mfv branch="7">2007-08-24</mfv>
 	  <mfc branch="6">2007-09-02</mfc>
+	  <mfc branch="5">2007-09-02</mfc>
+	  <mfc branch="4">2007-09-18</mfc>
 	</version>
 	<version version="tzdata2007f">
 	  <import>2007-05-21</import>
@@ -163,76 +205,94 @@
 	  <import>2006-05-11</import>
 	  <mfv branch="7">2006-05-21</mfv>
 	  <mfc branch="6">2006-10-16</mfc>
+	  <mfc branch="5">2006-10-13</mfc>
+	  <mfc branch="4">2006-10-13</mfc>
 	</version>
 	<version version="tzdata2006g">
 	  <import>2006-05-11</import>
-	  <mfv branch="7">x</mfv>
+	  <mfv branch="7">2005-05-11</mfv>
 	  <mfc branch="6">2005-05-11</mfc>
+	  <mfc branch="5">2006-05-12</mfc>
 	</version>
 	<version version="tzdata2005r">
 	  <import>2005-12-27</import>
 	  <mfv branch="7">2005-12-27</mfv>
 	  <mfc branch="6">2005-12-27</mfc>
+	  <mfc branch="5">2005-12-27</mfc>
 	</version>
 	<version version="tzdata2005q">
 	  <import>2005-12-22</import>
 	  <mfv branch="7">2005-12-22</mfv>
 	  <mfc branch="6">2005-12-22</mfc>
+	  <mfc branch="5">2005-12-22</mfc>
 	</version>
 	<version version="tzdata2005m">
 	  <import>2005-08-26</import>
 	  <mfv branch="7">2005-08-29</mfv>
 	  <mfc branch="6">2005-12-22</mfc>
+	  <mfc branch="5">2005-08-29</mfc>
 	</version>
 	<version version="tzdata2005l">
 	  <import>2005-08-26</import>
 	  <mfv branch="7">2005-08-27</mfv>
 	  <mfc branch="6">2005-12-22</mfc>
+	  <mfc branch="5">2005-08-28</mfc>
 	</version>
 	<version version="tzdata2004g">
 	  <import>2004-12-03</import>
 	  <mfv branch="7">2004-12-03</mfv>
 	  <mfc branch="6">2004-12-02</mfc>
+	  <mfc branch="5">2004-12-02</mfc>
+	  <mfc branch="4">2004-12-02</mfc>
 	</version>
 	<version version="tzdata2004e">
 	  <import>2004-10-18</import>
-	  <mfv>2004-10-18</mfv>
+	  <mfv branch="5">2004-10-23</mfv>
+	  <mfc branch="5.3">2004-10-23</mfc>
+	  <mfc branch="4">2004-12-02</mfc>
 	</version>
 	<version version="tzdata2003d">
 	  <import>2003-10-14</import>
-	  <mfv>2003-10-15</mfv>
+	  <mfv branch="5">2003-10-15</mfv>
+	  <mfc branch="4">2003-10-16</mfc>
 	</version>
 	<version version="tzdata2003a">
 	  <import>2003-04-28</import>
-	  <mfv>2003-04-29</mfv>
+	  <mfv branch="5">2003-04-28</mfv>
+	  <mfc branch="4">2003-04-28</mfc>
 	</version>
 	<version version="tzdata2002d">
 	  <import>2002-10-16</import>
-	  <mfv>2002-10-16</mfv>
+	  <mfv branch="5">2002-10-16</mfv>
+	  <mfc branch="4">2002-10-21</mfc>
 	</version>
 	<version version="tzdata2002c">
 	  <import>2002-04-04</import>
-	  <mfv>2002-04-05</mfv>
+	  <mfv branch="5">2002-04-05</mfv>
+	  <mfc branch="4">2002-04-05</mfc>
 	</version>
 	<version version="tzdata2001d">
 	  <import>2001-11-10</import>
-	  <mfv>2001-11-10</mfv>
+	  <mfv branch="5">2001-11-16</mfv>
+	  <mfc branch="4">2001-11-16</mfc>
 	</version>
 	<version version="tzdata2001b">
 	  <import>2001-04-06</import>
-	  <mfv>2001-04-07</mfv>
+	  <mfv branch="5">2001-04-07</mfv>
+	  <mfc branch="4">2001-11-16</mfc>
 	</version>
 	<version version="tzdata2000g">
 	  <import>2000-10-25</import>
-	  <mfv>2000-10-26</mfv>
+	  <mfv branch="4">2000-10-26</mfv>
 	</version>
 	<version version="tzdata2000f">
 	  <import>2000-03-29</import>
-	  <mfv>2000-08-11</mfv>
+	  <mfv branch="4">2000-08-11</mfv>
 	</version>
 	<version version="tzdata2000d">
 	  <import>2000-03-29</import>
-	  <mfv>2000-03-30</mfv>
+	  <mfv branch="4">2000-03-30</mfv>
+	  <mfc branch="3">2000-03-30</mfc>
 	</version>
 	<version version="tzdata1999b">
 	  <import>1999-02-02</import>

@@ -198,6 +198,11 @@
 
   <sect2 id="contrib">
     <title>Contributed Software</title>
+    &contrib.softwares;
+  </sect2>
+
+  <sect2 id="excontrib">
+    <title>Expected Contributed Software</title>
 
     <para><application>bzip2</application> has been updated from 1.0.4
       to 1.0.5.</para>

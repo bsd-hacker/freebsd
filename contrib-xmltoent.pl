@@ -4,6 +4,29 @@ use XML::Parser;
 use Data::Dumper;
 use POSIX;
 use strict;
+use Getopt::Std;
+
+my $CONTRIBXML;
+my $CONTRIBENT;
+my $RELEASEENT;
+my $DEBUG;
+{
+	my %opts;
+	$opts{o} = "contrib.ent";
+	$opts{r} = "relnotes.ent";
+	$opts{x} = "contrib.xml";
+
+	getopts("do:r:x:", \%opts);
+
+	$opts{o} = "/dev/tty" if (!defined $opts{o});
+	$opts{r} = "release.ent" if (!defined $opts{r});
+	$opts{x} = "contrib.xml" if (!defined $opts{x});
+
+	$DEBUG = $opts{d};
+	$CONTRIBENT = $opts{o};
+	$RELEASEENT = $opts{r};
+	$CONTRIBXML = $opts{x};
+}
 
 my @tree = ();
 my @values = ();
@@ -91,10 +114,14 @@ sub xml_char {
 						return if ($treeindex == 4);
 
 						if ($tree[5] eq "import") {
+							die "Already got import of $software - $swversion"
+								if (defined $softwares{$software}{versions}{$swversion}{import});
 							$softwares{$software}{versions}{$swversion}{import} = $value;
 							return;
 						}
 						if ($tree[5] eq "mfv") {
+							die "Already got mfv of $software - $swversion"
+								if (defined $softwares{$software}{versions}{$swversion}{mfv});
 							$softwares{$software}{versions}{$swversion}{mfv} = $value;
 							$softwares{$software}{versions}{$swversion}{mfc}{$mfvbranch} = $value
 								if ($mfvbranch);
@@ -125,7 +152,7 @@ my $p = new XML::Parser(
 		End     => \&xml_end,
 		Char    => \&xml_char,
 	});
-$p->parsefile(defined $ARGV[0] ? $ARGV[0] : "../../../../../contrib.xml");
+$p->parsefile($CONTRIBXML);
 
 {
 	my %r = (
@@ -134,7 +161,7 @@ $p->parsefile(defined $ARGV[0] ? $ARGV[0] : "../../../../../contrib.xml");
 		"release.prev"		=> 1,
 		"release.branch"	=> 1,
 	);
-	open(FIN, "../../share/sgml/release.ent");
+	open(FIN, $RELEASEENT) or die("Cannot open $RELEASEENT for reading");
 	my @lines = <FIN>;
 	close(FIN);
 	chomp(@lines);
@@ -161,34 +188,10 @@ $p->parsefile(defined $ARGV[0] ? $ARGV[0] : "../../../../../contrib.xml");
 # the creation date of branches{release.current} will be today.
 #
 if (!defined $branches{$releaseent{"release.current"}}) {
-	foreach my $sw (keys(%softwares)) {
-		foreach my $vs (keys(%{$softwares{$sw}{versions}})) {
-			next;
-			# XXX
-			next if (!defined $softwares{$sw}{versions}{$vs}{mfv});
-			my $date = $softwares{$sw}{versions}{$vs}{mfv};
-			my $branch = 0;
-
-			foreach my $b (sort(keys(%branches))) {
-				if ($b !~ /\./ &&
-				    $date lt $branches{$b} &&
-				    ($branch eq "0" || $date lt $branches{$branch})) {
-					$branch = $b;
-				}
-			}
-
-			$softwares{$sw}{versions}{$vs}{mfc}{$branch} =
-				$softwares{$sw}{versions}{$vs}{mfv};
-		}
-	}
-
 	$releaseent{"release.current"} = $releaseent{"release.branch"};
-#	$branches{$releaseent{"release.current"}} =
-#		$branches{$releaseent{"release.prev"}}
 	my @lt = localtime();
 	$branches{$releaseent{"release.current"}} = strftime("%Y-%m-%d",
 	    0, 0, 0, $lt[3], $lt[4], $lt[5]);
-
 }
 
 #
@@ -200,6 +203,7 @@ if (!defined $branches{$releaseent{"release.current"}}) {
 #
 my $thisversion = $releaseent{"release.current"};
 my $prevversion = "";
+my $branchversion = $releaseent{"release.current"};
 
 # XXX - This fails for 5.2.1
 if ($thisversion =~ /^(\d+)\.(\d+)/) {
@@ -210,6 +214,7 @@ if ($thisversion =~ /^(\d+)\.(\d+)/) {
 	} else {
 		$prevversion = sprintf("%d.%d", $major, $minor - 1);
 	}
+	$branchversion =~ s/\..*$//;
 } elsif ($thisversion =~ /^(\d+)$/) {
 	$prevversion = $1 - 1;
 }
@@ -228,9 +233,43 @@ my @T2 = split(/\-/, $T2);
 
 my %updated = ();
 
-#print $releaseent{"release.current"}, " - $thisversion - $prevversion\n";
-#print "$branches{$thisversion} - $branches{$prevversion}\n";
+if ($DEBUG) {
+	print "release.current: ", $releaseent{"release.current"}, " - ",
+	    "branchversion - $branchversion - ",
+	    "thisversion: $thisversion - ",
+	    "prevversion: $prevversion\n";
+	print "branches: thisversion: $branches{$thisversion} - ",
+	    "prevversion: $branches{$prevversion} - ",
+	    "branchversion: $branches{$branchversion}\n";
+}
 
+#
+# During the period of $branch{prevversion} and $branch{thisversion},
+# everything commited to $branch{branchversion} is also commited to
+# $branch{thisversion}.
+#
+
+foreach my $sw (sort(keys(%softwares))) {
+	foreach my $vs (sort(keys(%{$softwares{$sw}{versions}}))) {
+		foreach my $branch (sort(keys(%{$softwares{$sw}{versions}{$vs}{mfc}}))) {
+			next if ($branch !~ /^\d+$/);
+			next if ($branch ne $branchversion);
+			my $thisdate =
+			    $softwares{$sw}{versions}{$vs}{mfc}{$branch};
+			my $destversion = "";
+			if ($branches{$prevversion} lt $thisdate &&
+			    $thisdate lt $branches{$thisversion}) {
+				$softwares{$sw}{versions}{$vs}{mfc}{$thisversion} = $thisdate;
+				print "Transfering $sw version $vs from $branch to $thisversion\n"
+					if ($DEBUG);
+			}
+		}
+	}
+}
+
+#
+# Find all the versions between $prevversion and $thisversion
+#
 my %versions = ();
 foreach my $sw (sort(keys(%softwares))) {
 	foreach my $vs (sort(keys(%{$softwares{$sw}{versions}}))) {
@@ -239,9 +278,12 @@ foreach my $sw (sort(keys(%softwares))) {
 			    $branch ne $thisversion);
 
 			my $date = $softwares{$sw}{versions}{$vs}{mfc}{$branch};
-			next if ($date lt $branches{$prevversion} ||
-			    $date gt $branches{$thisversion});
-#			print "$date - $branch - $vs -> $sw\n";
+#			next if ($date lt $branches{$prevversion} ||
+#			    $date gt $branches{$thisversion});
+			if ($DEBUG) {
+				print "Found $sw $vs on $date\n";
+			#	lbetween $date - $branch - $vs -> $sw\n";
+			}
 			if (!defined $versions{$sw}{f_date} ||
 			    $versions{$sw}{f_date} ge $date) {
 				$versions{$sw}{f_date} = $date;
@@ -256,15 +298,28 @@ foreach my $sw (sort(keys(%softwares))) {
 	}
 }
 
-foreach my $sw (sort(keys(%versions))) {
-	my $a = $softwares{$sw}{desc};
-	print "<!ENTITY contrib.${sw}1 \"$versions{$sw}{f_version}\">\n";
-	print "<!ENTITY contrib.${sw}2 \"$versions{$sw}{l_version}\">\n";
-	print "<!ENTITY contrib.${sw}text \"$softwares{$sw}{desc}\">\n";
-}
+#print Dumper(%versions);
+#exit;
 
-print "<!ENTITY contrib.softwares \"";
-foreach my $sw (sort(keys(%versions))) {
-	print "&contrib.${sw}text; ";
+{
+	open(FOUT, ">$CONTRIBENT") or
+		die("Cannot open $CONTRIBENT for writing");
+	foreach my $sw (sort(keys(%versions))) {
+		my $a = $softwares{$sw}{desc};
+		print FOUT <<EOF;
+<!ENTITY contrib.${sw}1 "$versions{$sw}{f_version}">
+<!ENTITY contrib.${sw}2 "$versions{$sw}{l_version}">
+<!ENTITY contrib.${sw}text "$softwares{$sw}{desc}">
+EOF
+	}
+
+	print FOUT "<!ENTITY contrib.softwares \"";
+	my $i = 0;
+	foreach my $sw (sort(keys(%versions))) {
+		print FOUT " " if ($i++ != 0);
+		print FOUT "&contrib.${sw}text;";
+	}
+	print FOUT "<para></para>\n" if ($i == 0);
+	print FOUT "\">\n";
+	close(FOUT);
 }
-print "\">\n";

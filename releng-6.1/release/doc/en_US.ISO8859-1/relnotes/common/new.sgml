@@ -636,8 +636,13 @@ geli_da1s3a_keyfile0_name="/boot/keys/da1s3a.key"</programlisting>
     </sect3>
   </sect2>
 
-  <sect2>
+  <sect2 id="contrib">
     <title>Contributed Software</title>
+    &contrib.softwares;
+  </sect2>
+
+  <sect2 id="excontrib">
+    <title>Expected Contributed Software</title>
 
     <para><application>BIND</application> has been updated from 9.3.1
       to 9.3.2.</para>
