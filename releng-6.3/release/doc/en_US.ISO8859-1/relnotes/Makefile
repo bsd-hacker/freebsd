@@ -11,8 +11,8 @@ SUBDIR+= pc98
 SUBDIR+= powerpc
 SUBDIR+= sparc64
 
-contrib.ent: ${RELN_ROOT}/../../../contrib.xml
-	${PERL} -w ${RELN_ROOT}/../../../contrib-xmltoent.pl
+contrib.ent:
+	cd common; make contrib.ent
 
 .include "${RELN_ROOT}/share/mk/doc.relnotes.mk"
 .include "${DOC_PREFIX}/share/mk/doc.project.mk"
