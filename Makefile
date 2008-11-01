@@ -2,7 +2,7 @@
 
 DIRS=head 
 STABLE=7 6
-RELENG=7.0 6.3 6.2 6.1 6.0
+RELENG=7.0 6.4 6.3 6.2 6.1 6.0
 
 build:
 .for d in ${DIRS} ${STABLE:S/^/stable-/} ${RELENG:S/^/releng-/} 
