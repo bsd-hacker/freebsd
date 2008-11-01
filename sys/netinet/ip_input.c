@@ -1325,6 +1325,9 @@ ip_forward(struct mbuf *m, int srcrt)
 		return;
 #define	RIA(ri)	((struct in_ifaddr *)((ri)->ri_ifa))
 
+	printf("lookup successful\n");
+	
+	
 	ia = RIA(&ri);
 	/*
 	 * Save the IP header and at most 8 bytes of the payload,
@@ -1384,6 +1387,7 @@ ip_forward(struct mbuf *m, int srcrt)
 	if (!srcrt && V_ipsendredirects && ia->ia_ifp == m->m_pkthdr.rcvif) {
 		struct sockaddr_in *sin;
 
+		printf("trying redirect \n");
 		sin = (struct sockaddr_in *)&ri.ri_dst;
 		sin->sin_family = AF_INET;
 		sin->sin_len = sizeof(*sin);
@@ -1406,6 +1410,7 @@ ip_forward(struct mbuf *m, int srcrt)
 	 * Try to cache the route MTU from ip_output so we can consider it for
 	 * the ICMP_UNREACH_NEEDFRAG "Next-Hop MTU" field described in RFC1191.
 	 */
+	printf("passing to ip_output\n");
 	error = ip_output(m, NULL, (struct route *)&ri, IP_FORWARDING|IP_RTINFO,
 	    NULL, NULL);
 
