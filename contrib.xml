@@ -107,12 +107,21 @@
       ]]></desc>
 
       <versions>
+	<version version="tzdata2008i">
+	  <import>2008-10-28</import>
+	  <mfv branch="8">2008-10-28</mfv>
+	  <mfc branch="7">2008-10-28</mfc>
+	  <mfc branch="6">2008-10-28</mfc>
+	  <mfc branch="6.4">2008-10-28</mfc>
+	  <mfc branch="4">2008-10-29</mfc>
+	</version>
 	<version version="tzdata2008h">
 	  <import>2008-10-14</import>
 	  <mfv branch="8">2008-10-14</mfv>
 	  <mfc branch="7">2008-10-14</mfc>
 	  <mfc branch="6">2008-10-14</mfc>
 	  <mfc branch="6.4">2008-10-14</mfc>
+	  <mfc branch="4">2008-10-14</mfc>
 	</version>
 	<version version="tzdata2008g">
 	  <import>2008-10-14</import>
