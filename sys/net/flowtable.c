@@ -534,9 +534,7 @@ route_to_rtentry_info(struct route *ro, u_char *desten, struct rtentry_info *ri)
 	if ((rt->rt_flags & RTF_GATEWAY) && !IN_MULTICAST(sin->sin_addr.s_addr))
 		memcpy(&ri->ri_dst, rt->rt_gateway, sizeof(struct sockaddr));
 	else
-		memcpy(&ri->ri_dst, sin, sizeof(struct sockaddr));
-
-	((struct sockaddr *)&ri->ri_dst)->sa_family = AF_INET;
+		memcpy(&ri->ri_dst, sin, sizeof(struct sockaddr_in));
 	
 	if (desten) {
 		memcpy(ri->ri_desten, desten, ETHER_ADDR_LEN);
@@ -564,6 +562,15 @@ flowtable_key_equal(struct flentry *fle, uint32_t *key, int flags)
 
 	return (1);
 }
+
+static __inline int
+gw_valid(struct flentry *fle)
+{
+	return ((fle->f_rt->rt_flags & RTF_GATEWAY) == 0 ||
+	    ((fle->f_rt->rt_flags & RTF_GATEWAY) && 
+		(fle->f_rt->rt_gwroute->rt_flags & RTF_UP)));
+}
+
 
 int
 flowtable_lookup(struct flowtable *ft, struct mbuf *m,
@@ -605,12 +612,8 @@ flowtable_lookup(struct flowtable *ft, struct mbuf *m,
 	    && flowtable_key_equal(fle, key, flags)
 	    && (proto == fle->f_proto)
 	    && (fle->f_rt->rt_flags & RTF_UP)
-	    && (fle->f_uptime > fle->f_rt->rt_llinfo_uptime)) {
-
-		if ((fle->f_rt->rt_flags & RTF_GATEWAY) &&
-		    ((fle->f_rt->rt_gwroute->rt_flags & RTF_UP) == 0))
-			goto uncached;
-
+	    && (fle->f_uptime > fle->f_rt->rt_llinfo_uptime)
+	    && gw_valid(fle)) {
 		fle->f_uptime = time_uptime;
 		fle->f_flags |= flags;
 		fle->f_rt->rt_rmx.rmx_pksent++;
@@ -637,8 +640,12 @@ uncached:
 	if (ro.ro_rt == NULL) 
 		error = ENETUNREACH;
 	else {
-		error = arpresolve(ro.ro_rt->rt_ifp, ro.ro_rt, NULL,
-		    &ro.ro_dst, desten);
+		if (ro.ro_rt->rt_flags & RTF_GATEWAY)
+			error = arpresolve(ro.ro_rt->rt_ifp, ro.ro_rt,
+			    NULL, ro.ro_rt->rt_gateway, desten);
+		else
+			error = arpresolve(ro.ro_rt->rt_ifp, ro.ro_rt,
+			    NULL, &ro.ro_dst, desten);
 		route_to_rtentry_info(&ro, error ? NULL : desten, ri);
 
 		if (error == 0 && cache)
