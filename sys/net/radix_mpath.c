@@ -298,7 +298,7 @@ rtalloc_mpath_fib(struct route *ro, u_int32_t hash, u_int fibnum)
 		return;
 	}
 	
-	RTFREE(ro->ro_rt);
+	RTFREE_LOCKED(ro->ro_rt);
 	ro->ro_rt = (struct rtentry *)rn;
 	RT_LOCK(ro->ro_rt);
 	RT_ADDREF(ro->ro_rt);
