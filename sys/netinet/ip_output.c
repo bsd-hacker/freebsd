@@ -135,9 +135,9 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 		M_SETFIB(m, inp->inp_inc.inc_fibnum);
 	}
 
-	if (flags & IP_RTINFO) /* ugly interface overload */
+	if (flags & IP_RTINFO) {/* ugly interface overload */
 		ri = (struct rtentry_info *)ro;
-	else {
+	} else {
 		ri = &ipri;
 		bzero(ri, sizeof (*ri));
 		if (ro) 
