@@ -14,6 +14,7 @@
 #include <sys/mbuf.h>
 #include <sys/smp.h>
 #include <sys/socket.h>
+#include <sys/syslog.h>
 
 #include <net/route.h> 
 #include <net/vnet.h>
@@ -531,12 +532,20 @@ route_to_rtentry_info(struct route *ro, u_char *desten, struct rtentry_info *ri)
 	ri->ri_flags = rt->rt_flags;
 	ri->ri_mtu = rt->rt_rmx.rmx_mtu;
 
+	
 	if ((rt->rt_flags & RTF_GATEWAY) && !IN_MULTICAST(sin->sin_addr.s_addr))
 		memcpy(&ri->ri_dst, rt->rt_gateway, sizeof(struct sockaddr));
 	else
 		memcpy(&ri->ri_dst, sin, sizeof(struct sockaddr_in));
 	
 	if (desten) {
+#ifdef INVARIANTS
+		int i;
+		
+		for (i = 0; i < 3; i++)
+			if (((uint16_t *)desten)[i] == 0)
+				panic("bad juju with the MAC addr dude");
+#endif		
 		memcpy(ri->ri_desten, desten, ETHER_ADDR_LEN);
 		ri->ri_flags |= RTF_DESTEN_VALID;
 	}
@@ -594,7 +603,6 @@ flowtable_lookup(struct flowtable *ft, struct mbuf *m,
 	hash = ipv4_flow_lookup_hash_internal(m, &ro, key,
 	    &flags, &proto);
 
-	
 	/*
 	 * Ports are zero and this isn't a transmit cache
 	 * - thus not a protocol for which we need to keep 
@@ -640,6 +648,12 @@ uncached:
 	if (ro.ro_rt == NULL) 
 		error = ENETUNREACH;
 	else {
+#ifdef INVARIANTS		
+		log(LOG_DEBUG, "destination address=%s proto=%d hash=%x "
+		    "rt_flags=%lx",
+		    inet_ntoa(((struct sockaddr_in*)&ro.ro_dst)->sin_addr), proto, hash,
+		    ro.ro_rt->rt_flags);
+#endif
 		if (ro.ro_rt->rt_flags & RTF_GATEWAY)
 			error = arpresolve(ro.ro_rt->rt_ifp, ro.ro_rt,
 			    NULL, ro.ro_rt->rt_gateway, desten);

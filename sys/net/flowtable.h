@@ -18,7 +18,7 @@ struct rtentry_info {
 	int			ri_flags;
 	int			ri_mtu;
 	u_char			ri_desten[ETHER_ADDR_LEN];
-	struct sockaddr_in	ri_dst; /* rt_gateway if RTF_GATEWAY */
+	struct sockaddr		ri_dst; /* rt_gateway if RTF_GATEWAY */
 };
 
 struct rtentry_info6 {
