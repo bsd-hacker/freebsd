@@ -1,0 +1,27 @@
+contrib.xml:
+
+		branchdate	first	last
+head					2008i
+stable-7	2007-10-10	2004g	2008i
+stable-6	2005-07-11	2004g	2008i
+stable-5	2004-08-18	2001b	2008b
+stable-4	2001-11-15	2000d	2008i
+releng-6.0	2005-10-09		2004g
+releng-6.1	2006-04-30		2006g
+releng-6.2	2006-11-14		2006n
+releng-6.3	2007-11-24		2007k
+releng-6.4	2008-10-02		2007i
+releng-7.0	2007-12-22		2007i
+
+
+release.ent:
+		prev	current	branch	next
+head		7.0	8.0	8	8.0
+stable-7	7.0	7.0	7	7.1
+stable-6	6.3	6.3	6	6.4
+releng-7.0	6.0	7.0	7	7.1
+releng-6.4	6.3	6.4	6.4	6.4
+releng-6.3	6.2	6.3	6.3	6.4
+releng-6.2	6.1	6.2	6.2	6.3
+releng-6.1	6.0	6.1	6.1	6.2
+releng-6.0	5.4	6.0	6	6.1
