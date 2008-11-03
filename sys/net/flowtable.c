@@ -334,6 +334,7 @@ ipv4_flow_lookup_hash_internal(struct mbuf *m, struct route *ro,
 	struct ip *ip = mtod(m, struct ip *);
 	uint8_t proto = ip->ip_p;
 	int iphlen = ip->ip_hl << 2;
+	uint32_t hash;
 	struct sockaddr_in *sin;
 	struct tcphdr *th;
 	struct udphdr *uh;
@@ -354,8 +355,8 @@ ipv4_flow_lookup_hash_internal(struct mbuf *m, struct route *ro,
 	switch (proto) {
 	case IPPROTO_TCP:
 		th = (struct tcphdr *)((caddr_t)ip + iphlen);
-		sport = th->th_sport;
-		dport = th->th_dport;
+		sport = ntohs(th->th_sport);
+		dport = ntohs(th->th_dport);
 		*flags |= th->th_flags;
 		if (*flags & TH_RST)
 			*flags |= FL_STALE;
@@ -387,10 +388,13 @@ ipv4_flow_lookup_hash_internal(struct mbuf *m, struct route *ro,
 		proto = sport = dport = 0;
 
 	((uint16_t *)key)[0] = sport;
-	((uint16_t *)key)[1] = dport;
+#if 0	
+	((uint16_t *)key)[1] = dport; 
+#endif	
+	hash = hashword(key, 3, hashjitter + proto);
+	CTR5(KTR_SPARE3, "proto=%d hash=%x key[0]=%x sport=%d dport=%d\n", proto, hash, key[0], sport, dport);
 	
-	return (hashword(key, 3, hashjitter + proto));
-
+	return (hash);
 noop:
 	*protop = proto;
 	return (0);
@@ -596,6 +600,7 @@ flowtable_lookup(struct flowtable *ft, struct mbuf *m,
 	hash = ipv4_flow_lookup_hash_internal(m, &ro, key,
 	    &flags, &proto);
 
+	
 	/*
 	 * Ports are zero and this isn't a transmit cache
 	 * - thus not a protocol for which we need to keep 
