@@ -419,7 +419,11 @@ arpresolve(struct ifnet *ifp, struct rtentry *rt0, struct mbuf *m,
 		 * come from the local interface should have a ll entry.
 		 * It may be incomplete but that's ok.
 		 */
-		rt = arplookup(SIN(dst)->sin_addr.s_addr, 1, 0, fibnum);
+		/*
+		 * Only create a cloned route if one doesn't exist for this
+		 * address
+		 */
+		rt = arplookup(SIN(dst)->sin_addr.s_addr, (rt != NULL), 0, fibnum);
 		if (rt == NULL) {
 			log(LOG_DEBUG,
 			    "arpresolve: can't allocate route for %s\n",
