@@ -266,7 +266,7 @@ rtalloc_mpath_fib(struct route *ro, u_int32_t hash, u_int fibnum)
 	 */
 	if (ro->ro_rt && ro->ro_rt->rt_ifp && (ro->ro_rt->rt_flags & RTF_UP))
 		return;				 /* XXX */
-	ro->ro_rt = rtalloc1_fib(&ro->ro_dst, 1, 0UL, fibnum);
+	ro->ro_rt = rtalloc1_fib(&ro->ro_dst, 1, RTF_CLONING, fibnum);
 
 	/* if the route does not exist or it is not multipath, don't care */
 	if (ro->ro_rt == NULL)
