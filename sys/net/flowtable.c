@@ -388,9 +388,8 @@ ipv4_flow_lookup_hash_internal(struct mbuf *m, struct route *ro,
 		proto = sport = dport = 0;
 
 	((uint16_t *)key)[0] = sport;
-#if 0	
 	((uint16_t *)key)[1] = dport; 
-#endif	
+
 	hash = hashword(key, 3, hashjitter + proto);
 	CTR5(KTR_SPARE3, "proto=%d hash=%x key[0]=%x sport=%d dport=%d\n", proto, hash, key[0], sport, dport);
 	
