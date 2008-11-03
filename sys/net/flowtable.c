@@ -539,13 +539,6 @@ route_to_rtentry_info(struct route *ro, u_char *desten, struct rtentry_info *ri)
 		memcpy(&ri->ri_dst, sin, sizeof(struct sockaddr_in));
 	
 	if (desten) {
-#ifdef INVARIANTS
-		int i;
-		
-		for (i = 0; i < 3; i++)
-			if (((uint16_t *)desten)[i] == 0)
-				panic("bad juju with the MAC addr dude");
-#endif		
 		memcpy(ri->ri_desten, desten, ETHER_ADDR_LEN);
 		ri->ri_flags |= RTF_DESTEN_VALID;
 	}
@@ -648,18 +641,29 @@ uncached:
 	if (ro.ro_rt == NULL) 
 		error = ENETUNREACH;
 	else {
-#ifdef INVARIANTS		
-		log(LOG_DEBUG, "destination address=%s proto=%d hash=%x "
-		    "rt_flags=%lx",
-		    inet_ntoa(((struct sockaddr_in*)&ro.ro_dst)->sin_addr), proto, hash,
-		    ro.ro_rt->rt_flags);
-#endif
 		if (ro.ro_rt->rt_flags & RTF_GATEWAY)
 			error = arpresolve(ro.ro_rt->rt_ifp, ro.ro_rt,
 			    NULL, ro.ro_rt->rt_gateway, desten);
-		else
+		else				
 			error = arpresolve(ro.ro_rt->rt_ifp, ro.ro_rt,
 			    NULL, &ro.ro_dst, desten);
+#ifdef DIAGNOSTICS
+		log(LOG_WARNING, "dst=%s gw=%s proto=%d hash=%x "
+		    "rt_flags=%lx error=%d\n",
+		    inet_ntoa(((struct sockaddr_in*)&ro.ro_dst)->sin_addr),
+		    inet_ntoa(((struct sockaddr_in*)&ro.ro_rt->rt_gateway)->sin_addr),
+		    proto, hash, ro.ro_rt->rt_flags, error);
+
+		if (!error)
+			log(LOG_WARNING, "desten=%x:%x:%x:%x:%x:%x",
+			    desten[0], desten[1], desten[2], desten[3],
+			    desten[4], desten[5]);
+
+		/* XXXX expire needs to be set to zero or some value
+		   greater than uptime :/
+		*/
+		
+#endif
 		route_to_rtentry_info(&ro, error ? NULL : desten, ri);
 
 		if (error == 0 && cache)
