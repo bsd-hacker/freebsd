@@ -38,6 +38,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_ipsec.h"
 #include "opt_mac.h"
 #include "opt_carp.h"
+#include "opt_mpath.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
