@@ -824,3 +824,4 @@
 				    uint32_t idlo, uint32_t idhi, \
 				    size_t cpusetsize, \
 				    const cpuset_t *mask); }
+505	AUE_NULL	UNIMPL	gssd_syscall

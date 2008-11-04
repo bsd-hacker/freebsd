@@ -140,8 +140,10 @@ SYSCTL_STRUCT(_vfs_nfsrv, NFS_NFSRVSTATS, nfsrvstats, CTLFLAG_RW,
 
 static int	nfsrv_access(struct vnode *, int, struct ucred *, int,
 		    struct thread *, int);
+#ifdef NFS_LEGACYRPC
 static void	nfsrvw_coalesce(struct nfsrv_descript *,
 		    struct nfsrv_descript *);
+#endif
 
 /*
  * Clear nameidata fields that are tested in nsfmout cleanup code prior
@@ -214,7 +216,7 @@ nfsrv3_access(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 	fhp = &nfh.fh_generic;
 	nfsm_srvmtofh(fhp);
 	tl = nfsm_dissect_nonblock(u_int32_t *, NFSX_UNSIGNED);
-	error = nfsrv_fhtovp(fhp, 1, &vp, &vfslocked, cred, slp,
+	error = nfsrv_fhtovp(fhp, 1, &vp, &vfslocked, nfsd, slp,
 	    nam, &rdonly, TRUE);
 	if (error) {
 		nfsm_reply(NFSX_UNSIGNED);
@@ -281,7 +283,7 @@ nfsrv_getattr(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 	vfslocked = 0;
 	fhp = &nfh.fh_generic;
 	nfsm_srvmtofh(fhp);
-	error = nfsrv_fhtovp(fhp, 1, &vp, &vfslocked, cred, slp, nam,
+	error = nfsrv_fhtovp(fhp, 1, &vp, &vfslocked, nfsd, slp, nam,
 	    &rdonly, TRUE);
 	if (error) {
 		nfsm_reply(0);
@@ -390,7 +392,7 @@ nfsrv_setattr(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 	/*
 	 * Now that we have all the fields, lets do it.
 	 */
-	error = nfsrv_fhtovp(fhp, 1, &vp, &tvfslocked, cred, slp,
+	error = nfsrv_fhtovp(fhp, 1, &vp, &tvfslocked, nfsd, slp,
 	    nam, &rdonly, TRUE);
 	vfslocked = nfsrv_lockedpair(vfslocked, tvfslocked);
 	if (error) {
@@ -503,7 +505,7 @@ nfsrv_lookup(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 	nd.ni_cnd.cn_cred = cred;
 	nd.ni_cnd.cn_nameiop = LOOKUP;
 	nd.ni_cnd.cn_flags = LOCKLEAF | SAVESTART | MPSAFE;
-	error = nfs_namei(&nd, fhp, len, slp, nam, &md, &dpos,
+	error = nfs_namei(&nd, nfsd, fhp, len, slp, nam, &md, &dpos,
 		&dirp, v3, &dirattr, &dirattr_ret, td, pubflag);
 	vfslocked = NDHASGIANT(&nd);
 
@@ -713,7 +715,7 @@ nfsrv_readlink(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 	uiop->uio_rw = UIO_READ;
 	uiop->uio_segflg = UIO_SYSSPACE;
 	uiop->uio_td = NULL;
-	error = nfsrv_fhtovp(fhp, 1, &vp, &vfslocked, cred, slp,
+	error = nfsrv_fhtovp(fhp, 1, &vp, &vfslocked, nfsd, slp,
 	    nam, &rdonly, TRUE);
 	if (error) {
 		nfsm_reply(2 * NFSX_UNSIGNED);
@@ -809,7 +811,7 @@ nfsrv_read(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 	 * as well.
 	 */
 
-	error = nfsrv_fhtovp(fhp, 1, &vp, &vfslocked, cred, slp,
+	error = nfsrv_fhtovp(fhp, 1, &vp, &vfslocked, nfsd, slp,
 	    nam, &rdonly, TRUE);
 	if (error) {
 		vp = NULL;
@@ -1112,7 +1114,7 @@ nfsrv_write(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 		error = 0;
 		goto nfsmout;
 	}
-	error = nfsrv_fhtovp(fhp, 1, &vp, &tvfslocked, cred, slp,
+	error = nfsrv_fhtovp(fhp, 1, &vp, &tvfslocked, nfsd, slp,
 	    nam, &rdonly, TRUE);
 	vfslocked = nfsrv_lockedpair(vfslocked, tvfslocked);
 	if (error) {
@@ -1226,6 +1228,16 @@ nfsmout:
 	VFS_UNLOCK_GIANT(vfslocked);
 	return(error);
 }
+
+#ifdef NFS_LEGACYRPC
+
+/*
+ * XXX dfr - write gathering isn't supported by the new RPC code since
+ * its really only useful for NFSv2. If there is a real need, we could
+ * attempt to fit it into the filehandle affinity system, e.g. by
+ * looking to see if there are queued write requests that overlap this
+ * one.
+ */
 
 /*
  * For the purposes of write gathering, we must decide if the credential
@@ -1432,7 +1444,7 @@ loop1:
 		cred = nfsd->nd_cr;
 		v3 = (nfsd->nd_flag & ND_NFSV3);
 		forat_ret = aftat_ret = 1;
-		error = nfsrv_fhtovp(&nfsd->nd_fh, 1, &vp, &vfslocked, cred,
+		error = nfsrv_fhtovp(&nfsd->nd_fh, 1, &vp, &vfslocked, nfsd,
 		    slp, nfsd->nd_nam, &rdonly, TRUE);
 		if (!error) {
 		    if (v3)
@@ -1635,6 +1647,8 @@ nfsrvw_coalesce(struct nfsrv_descript *owp, struct nfsrv_descript *nfsd)
 	}
 }
 
+#endif
+
 /*
  * nfs create service
  * now does a truncate to 0 length via. setattr if it already exists
@@ -1698,7 +1712,7 @@ nfsrv_create(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 	 * be valid at all if an error occurs so we have to invalidate it
 	 * prior to calling nfsm_reply ( which might goto nfsmout ).
 	 */
-	error = nfs_namei(&nd, fhp, len, slp, nam, &md, &dpos,
+	error = nfs_namei(&nd, nfsd, fhp, len, slp, nam, &md, &dpos,
 		&dirp, v3, &dirfor, &dirfor_ret, td, FALSE);
 	vfslocked = nfsrv_lockedpair_nd(vfslocked, &nd);
 	if (dirp && !v3) {
@@ -1987,7 +2001,7 @@ nfsrv_mknod(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 	 * nfsmout.
 	 */
 
-	error = nfs_namei(&nd, fhp, len, slp, nam, &md, &dpos,
+	error = nfs_namei(&nd, nfsd, fhp, len, slp, nam, &md, &dpos,
 		&dirp, v3, &dirfor, &dirfor_ret, td, FALSE);
 	vfslocked = nfsrv_lockedpair_nd(vfslocked, &nd);
 	if (error) {
@@ -2168,7 +2182,7 @@ nfsrv_remove(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 	nd.ni_cnd.cn_cred = cred;
 	nd.ni_cnd.cn_nameiop = DELETE;
 	nd.ni_cnd.cn_flags = LOCKPARENT | LOCKLEAF | MPSAFE;
-	error = nfs_namei(&nd, fhp, len, slp, nam, &md, &dpos,
+	error = nfs_namei(&nd, nfsd, fhp, len, slp, nam, &md, &dpos,
 		&dirp, v3,  &dirfor, &dirfor_ret, td, FALSE);
 	vfslocked = nfsrv_lockedpair_nd(vfslocked, &nd);
 	if (dirp && !v3) {
@@ -2295,7 +2309,7 @@ nfsrv_rename(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 	fromnd.ni_cnd.cn_cred = cred;
 	fromnd.ni_cnd.cn_nameiop = DELETE;
 	fromnd.ni_cnd.cn_flags = WANTPARENT | SAVESTART | MPSAFE;
-	error = nfs_namei(&fromnd, ffhp, len, slp, nam, &md,
+	error = nfs_namei(&fromnd, nfsd, ffhp, len, slp, nam, &md,
 		&dpos, &fdirp, v3, &fdirfor, &fdirfor_ret, td, FALSE);
 	vfslocked = nfsrv_lockedpair_nd(vfslocked, &fromnd);
 	if (fdirp && !v3) {
@@ -2318,7 +2332,7 @@ nfsrv_rename(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 	tond.ni_cnd.cn_cred = cred;
 	tond.ni_cnd.cn_nameiop = RENAME;
 	tond.ni_cnd.cn_flags = LOCKPARENT | LOCKLEAF | NOCACHE | SAVESTART | MPSAFE;
-	error = nfs_namei(&tond, tfhp, len2, slp, nam, &md,
+	error = nfs_namei(&tond, nfsd, tfhp, len2, slp, nam, &md,
 		&dpos, &tdirp, v3, &tdirfor, &tdirfor_ret, td, FALSE);
 	vfslocked = nfsrv_lockedpair_nd(vfslocked, &tond);
 	if (tdirp && !v3) {
@@ -2511,7 +2525,7 @@ nfsrv_link(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 	nfsm_srvmtofh(dfhp);
 	nfsm_srvnamesiz(len);
 
-	error = nfsrv_fhtovp(fhp, TRUE, &vp, &tvfslocked, cred, slp,
+	error = nfsrv_fhtovp(fhp, TRUE, &vp, &tvfslocked, nfsd, slp,
 	    nam, &rdonly, TRUE);
 	vfslocked = nfsrv_lockedpair(vfslocked, tvfslocked);
 	if (error) {
@@ -2534,7 +2548,7 @@ nfsrv_link(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 	nd.ni_cnd.cn_cred = cred;
 	nd.ni_cnd.cn_nameiop = CREATE;
 	nd.ni_cnd.cn_flags = LOCKPARENT | MPSAFE | MPSAFE;
-	error = nfs_namei(&nd, dfhp, len, slp, nam, &md, &dpos,
+	error = nfs_namei(&nd, nfsd, dfhp, len, slp, nam, &md, &dpos,
 		&dirp, v3, &dirfor, &dirfor_ret, td, FALSE);
 	vfslocked = nfsrv_lockedpair_nd(vfslocked, &nd);
 	if (dirp && !v3) {
@@ -2663,7 +2677,7 @@ nfsrv_symlink(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 	nd.ni_cnd.cn_cred = cred;
 	nd.ni_cnd.cn_nameiop = CREATE;
 	nd.ni_cnd.cn_flags = LOCKPARENT | SAVESTART | MPSAFE;
-	error = nfs_namei(&nd, fhp, len, slp, nam, &md, &dpos,
+	error = nfs_namei(&nd, nfsd, fhp, len, slp, nam, &md, &dpos,
 		&dirp, v3, &dirfor, &dirfor_ret, td, FALSE);
 	vfslocked = nfsrv_lockedpair_nd(vfslocked, &nd);
 	if (error == 0) {
@@ -2847,7 +2861,7 @@ nfsrv_mkdir(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 	nd.ni_cnd.cn_nameiop = CREATE;
 	nd.ni_cnd.cn_flags = LOCKPARENT | MPSAFE;
 
-	error = nfs_namei(&nd, fhp, len, slp, nam, &md, &dpos,
+	error = nfs_namei(&nd, nfsd, fhp, len, slp, nam, &md, &dpos,
 		&dirp, v3, &dirfor, &dirfor_ret, td, FALSE);
 	vfslocked = nfsrv_lockedpair_nd(vfslocked, &nd);
 	if (dirp && !v3) {
@@ -3005,7 +3019,7 @@ nfsrv_rmdir(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 	nd.ni_cnd.cn_cred = cred;
 	nd.ni_cnd.cn_nameiop = DELETE;
 	nd.ni_cnd.cn_flags = LOCKPARENT | LOCKLEAF | MPSAFE;
-	error = nfs_namei(&nd, fhp, len, slp, nam, &md, &dpos,
+	error = nfs_namei(&nd, nfsd, fhp, len, slp, nam, &md, &dpos,
 		&dirp, v3, &dirfor, &dirfor_ret, td, FALSE);
 	vfslocked = nfsrv_lockedpair_nd(vfslocked, &nd);
 	if (dirp && !v3) {
@@ -3180,7 +3194,7 @@ nfsrv_readdir(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 	if (siz > xfer)
 		siz = xfer;
 	fullsiz = siz;
-	error = nfsrv_fhtovp(fhp, 1, &vp, &vfslocked, cred, slp,
+	error = nfsrv_fhtovp(fhp, 1, &vp, &vfslocked, nfsd, slp,
 	    nam, &rdonly, TRUE);
 	if (!error && vp->v_type != VDIR) {
 		error = ENOTDIR;
@@ -3474,7 +3488,7 @@ nfsrv_readdirplus(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 	if (siz > xfer)
 		siz = xfer;
 	fullsiz = siz;
-	error = nfsrv_fhtovp(fhp, 1, &vp, &vfslocked, cred, slp,
+	error = nfsrv_fhtovp(fhp, 1, &vp, &vfslocked, nfsd, slp,
 	    nam, &rdonly, TRUE);
 	if (!error && vp->v_type != VDIR) {
 		error = ENOTDIR;
@@ -3815,7 +3829,7 @@ nfsrv_commit(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 	off = fxdr_hyper(tl);
 	tl += 2;
 	cnt = fxdr_unsigned(int, *tl);
-	error = nfsrv_fhtovp(fhp, 1, &vp, &tvfslocked, cred, slp,
+	error = nfsrv_fhtovp(fhp, 1, &vp, &tvfslocked, nfsd, slp,
 	    nam, &rdonly, TRUE);
 	vfslocked = nfsrv_lockedpair(vfslocked, tvfslocked);
 	if (error) {
@@ -3961,7 +3975,7 @@ nfsrv_statfs(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 	vfslocked = 0;
 	fhp = &nfh.fh_generic;
 	nfsm_srvmtofh(fhp);
-	error = nfsrv_fhtovp(fhp, 1, &vp, &vfslocked, cred, slp,
+	error = nfsrv_fhtovp(fhp, 1, &vp, &vfslocked, nfsd, slp,
 	    nam, &rdonly, TRUE);
 	if (error) {
 		nfsm_reply(NFSX_UNSIGNED);
@@ -4056,7 +4070,7 @@ nfsrv_fsinfo(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 	fhp = &nfh.fh_generic;
 	vfslocked = 0;
 	nfsm_srvmtofh(fhp);
-	error = nfsrv_fhtovp(fhp, 1, &vp, &vfslocked, cred, slp,
+	error = nfsrv_fhtovp(fhp, 1, &vp, &vfslocked, nfsd, slp,
 	    nam, &rdonly, TRUE);
 	if (error) {
 		nfsm_reply(NFSX_UNSIGNED);
@@ -4081,10 +4095,7 @@ nfsrv_fsinfo(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 	 * There should be filesystem VFS OP(s) to get this information.
 	 * For now, assume ufs.
 	 */
-	if (slp->ns_so->so_type == SOCK_DGRAM)
-		pref = NFS_MAXDGRAMDATA;
-	else
-		pref = NFS_MAXDATA;
+	pref = NFS_SRVMAXDATA(nfsd);
 	sip->fs_rtmax = txdr_unsigned(pref);
 	sip->fs_rtpref = txdr_unsigned(pref);
 	sip->fs_rtmult = txdr_unsigned(NFS_FABLKSIZE);
@@ -4134,7 +4145,7 @@ nfsrv_pathconf(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 	vfslocked = 0;
 	fhp = &nfh.fh_generic;
 	nfsm_srvmtofh(fhp);
-	error = nfsrv_fhtovp(fhp, 1, &vp, &vfslocked, cred, slp,
+	error = nfsrv_fhtovp(fhp, 1, &vp, &vfslocked, nfsd, slp,
 	    nam, &rdonly, TRUE);
 	if (error) {
 		nfsm_reply(NFSX_UNSIGNED);

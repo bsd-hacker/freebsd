@@ -871,5 +871,7 @@
 				    cpuwhich_t which, id_t id, size_t cpusetsize, \
 				    const cpuset_t *mask); }
 
+; 505 is initialised by the kgssapi code, if present.
+505	AUE_NULL	NOSTD	{ int gssd_syscall(char *path); }
 ; Please copy any additions and changes to the following compatability tables:
 ; sys/compat/freebsd32/syscalls.master

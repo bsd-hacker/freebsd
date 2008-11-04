@@ -74,6 +74,8 @@ __FBSDID("$FreeBSD$");
 
 #include <nfs4client/nfs4.h>
 
+#ifdef NFS_LEGACYRPC
+
 #define	TRUE	1
 #define	FALSE	0
 
@@ -1971,3 +1973,5 @@ nfs_up(rep, nmp, td, msg, flags)
 		mtx_unlock(&nmp->nm_mtx);
 #endif
 }
+
+#endif /* NFS_LEGACYRPC */
