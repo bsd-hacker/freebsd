@@ -2936,6 +2936,13 @@ systrace_args(int sysnum, void *params, u_int64_t *uarg, int *n_args)
 		*n_args = 5;
 		break;
 	}
+	/* gssd_syscall */
+	case 505: {
+		struct gssd_syscall_args *p = params;
+		uarg[0] = (intptr_t) p->path; /* char * */
+		*n_args = 1;
+		break;
+	}
 	default:
 		*n_args = 0;
 		break;
@@ -4484,6 +4491,16 @@ systrace_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		case 4:
 			p = "off_t";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* setfib */
+	case 175:
+		switch(ndx) {
+		case 0:
+			p = "int";
 			break;
 		default:
 			break;
@@ -7647,6 +7664,105 @@ systrace_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		case 2:
 			p = "int";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* cpuset */
+	case 484:
+		switch(ndx) {
+		case 0:
+			p = "cpusetid_t *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* cpuset_setid */
+	case 485:
+		switch(ndx) {
+		case 0:
+			p = "cpuwhich_t";
+			break;
+		case 1:
+			p = "id_t";
+			break;
+		case 2:
+			p = "cpusetid_t";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* cpuset_getid */
+	case 486:
+		switch(ndx) {
+		case 0:
+			p = "cpulevel_t";
+			break;
+		case 1:
+			p = "cpuwhich_t";
+			break;
+		case 2:
+			p = "id_t";
+			break;
+		case 3:
+			p = "cpusetid_t *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* cpuset_getaffinity */
+	case 487:
+		switch(ndx) {
+		case 0:
+			p = "cpulevel_t";
+			break;
+		case 1:
+			p = "cpuwhich_t";
+			break;
+		case 2:
+			p = "id_t";
+			break;
+		case 3:
+			p = "size_t";
+			break;
+		case 4:
+			p = "cpuset_t *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* cpuset_setaffinity */
+	case 488:
+		switch(ndx) {
+		case 0:
+			p = "cpulevel_t";
+			break;
+		case 1:
+			p = "cpuwhich_t";
+			break;
+		case 2:
+			p = "id_t";
+			break;
+		case 3:
+			p = "size_t";
+			break;
+		case 4:
+			p = "const cpuset_t *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* gssd_syscall */
+	case 505:
+		switch(ndx) {
+		case 0:
+			p = "char *";
 			break;
 		default:
 			break;
