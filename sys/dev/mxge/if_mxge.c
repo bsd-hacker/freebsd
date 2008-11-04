@@ -95,7 +95,7 @@ static int mxge_flow_control = 1;
 static int mxge_verbose = 0;
 static int mxge_lro_cnt = 8;
 static int mxge_ticks;
-static int mxge_max_slices = 1;
+static int mxge_max_slices = 8;
 static int mxge_rss_hash_type = MXGEFW_RSS_HASH_TYPE_SRC_PORT;
 static int mxge_always_promisc = 0;
 static char *mxge_fw_unaligned = "mxge_ethp_z8e";
