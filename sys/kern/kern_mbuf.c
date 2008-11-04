@@ -409,13 +409,14 @@ mb_ctor_mbuf(void *mem, int size, void *arg, int how)
 	if (flags & M_PKTHDR) {
 		m->m_data = m->m_pktdat;
 		m->m_pkthdr.rcvif = NULL;
-		m->m_pkthdr.len = 0;
 		m->m_pkthdr.header = NULL;
+		m->m_pkthdr.len = 0;
 		m->m_pkthdr.csum_flags = 0;
 		m->m_pkthdr.csum_data = 0;
 		m->m_pkthdr.tso_segsz = 0;
 		m->m_pkthdr.ether_vtag = 0;
 		SLIST_INIT(&m->m_pkthdr.tags);
+		m->m_pkthdr.rss_hash = 0;
 #ifdef MAC
 		/* If the label init fails, fail the alloc */
 		error = mac_mbuf_init(m, how);
