@@ -600,7 +600,8 @@ flowtable_lookup(struct flowtable *ft, struct mbuf *m,
 	hash = ipv4_flow_lookup_hash_internal(m, &ro, key,
 	    &flags, &proto);
 
-	
+	if (m->m_pkthdr.rss_hash == 0)
+		m->m_pkthdr.rss_hash = hash;
 	/*
 	 * Ports are zero and this isn't a transmit cache
 	 * - thus not a protocol for which we need to keep 
@@ -611,7 +612,6 @@ flowtable_lookup(struct flowtable *ft, struct mbuf *m,
 		cache = 0;
 		goto uncached;
 	}
-
 	FL_ENTRY_LOCK(ft, hash);
 	fle = FL_ENTRY(ft, hash);
 	if (fle->f_fhash == hash
