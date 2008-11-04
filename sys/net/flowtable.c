@@ -483,7 +483,7 @@ flowtable_set_hashkey(struct flowtable *ft, struct flentry *fle, uint32_t *key)
 		hashkey[i] = key[i];
 }
 
-static void
+static int
 flowtable_insert(struct flowtable *ft, uint32_t hash, uint32_t *key,
     uint8_t proto, struct rtentry *rt, u_char *desten, uint16_t flags)
 {
@@ -505,7 +505,7 @@ retry:
 		}
 		FL_ENTRY_UNLOCK(ft, hash);
 		if (!stale)
-			return;
+			return (ENOSPC);
 		RTFREE(rt0);
 		/*
 		 * We might end up on a different cpu
@@ -522,6 +522,7 @@ retry:
 	fle->f_uptime = time_uptime;
 	memcpy(fle->f_desten, desten, ETHER_ADDR_LEN);
 	FL_ENTRY_UNLOCK(ft, hash);
+	return (0);
 }
 
 void
@@ -670,10 +671,12 @@ uncached:
 #endif
 		route_to_rtentry_info(&ro, error ? NULL : desten, ri);
 
-		if (error == 0 && cache)
-			flowtable_insert(ft, hash, key, proto,
+		if (error == 0 && cache) {
+			error = flowtable_insert(ft, hash, key, proto,
 			    ro.ro_rt, desten, flags);
-		else
+				
+		} 
+		if (error || !cache)
 			RTFREE(ro.ro_rt);
 		error = 0;
 	} 
