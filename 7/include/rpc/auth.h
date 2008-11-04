@@ -352,5 +352,13 @@ __END_DECLS
 #define AUTH_DH		3		/* for Diffie-Hellman mechanism */
 #define AUTH_DES	AUTH_DH		/* for backward compatibility */
 #define AUTH_KERB	4		/* kerberos style */
+#define RPCSEC_GSS	6		/* RPCSEC_GSS */
+
+/*
+ * Pseudo auth flavors for RPCSEC_GSS.
+ */
+#define	RPCSEC_GSS_KRB5		390003
+#define	RPCSEC_GSS_KRB5I	390004
+#define	RPCSEC_GSS_KRB5P	390005
 
 #endif /* !_RPC_AUTH_H */
