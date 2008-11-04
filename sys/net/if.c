@@ -125,6 +125,8 @@ static void	if_start_deferred(void *context, int pending);
 static void	do_link_state_change(void *, int);
 static int	if_getgroup(struct ifgroupreq *, struct ifnet *);
 static int	if_getgroupmembers(struct ifgroupreq *);
+static int	if_start_mbuf(struct ifnet *ifp, struct mbuf *m);
+
 #ifdef INET6
 /*
  * XXX: declare here to avoid to include many inet6 related files..
@@ -518,7 +520,7 @@ if_attach(struct ifnet *ifp)
 	getmicrotime(&ifp->if_lastchange);
 	ifp->if_data.ifi_epoch = time_uptime;
 	ifp->if_data.ifi_datalen = sizeof(struct if_data);
-
+	ifp->if_start_mbuf = if_start_mbuf;
 #ifdef MAC
 	mac_ifnet_init(ifp);
 	mac_ifnet_create(ifp);
@@ -2795,6 +2797,19 @@ if_start_deferred(void *context, int pending)
 
 	ifp = context;
 	(ifp->if_start)(ifp);
+}
+
+/*
+ * Backwards compatibility interface for drivers 
+ * that have not implemented it
+ */
+static int
+if_start_mbuf(struct ifnet *ifp, struct mbuf *m)
+{
+	int error;
+
+	IFQ_HANDOFF(ifp, m, error);
+	return (error);
 }
 
 int

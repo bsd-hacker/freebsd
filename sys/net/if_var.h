@@ -186,7 +186,9 @@ struct ifnet {
 					/* protected by if_addr_mtx */
 	void	*if_pf_kif;
 	void	*if_lagg;		/* lagg glue */
-	void	*if_pspare[10];		/* multiq/TOE 3; vimage 3; general use 4 */
+	void	*if_pspare[9];		/* multiq/TOE 3; vimage 3; general use 4 */
+	int	(*if_start_mbuf)	/* initiate output routine */
+		(struct ifnet *, struct mbuf *);
 	int	if_ispare[2];		/* general use 2 */
 };
 
