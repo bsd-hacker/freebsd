@@ -64,6 +64,7 @@ SUBDIR=	ac \
 	getpmac \
 	gstat \
 	${_i4b} \
+	${_gssd} \
 	ifmcstat \
 	inetd \
 	iostat \
@@ -232,6 +233,10 @@ _keyserv=	keyserv
 
 .if ${MK_PF} != "no"
 _ftp-proxy=	ftp-proxy
+.endif
+
+.if ${MK_GSSAPI} != no
+_gssd=		gssd
 .endif
 
 .if ${MK_INET6} != "no"
