@@ -285,7 +285,7 @@ static void
 in_rtalloc_ign_wrapper(struct route *ro, uint32_t hash, u_int fib)
 {
 
-	in_rtalloc_ign(ro, 0, fib);
+	in_rtalloc_ign(ro, RTF_CLONING, fib);
 }
 #endif
 
