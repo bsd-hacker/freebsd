@@ -104,13 +104,14 @@ struct mbstat mbstat;
 static void
 tunable_mbinit(void *dummy)
 {
+	TUNABLE_INT_FETCH("kern.ipc.nmbclusters", &nmbclusters);
 
 	/* This has to be done before VM init. */
-	nmbclusters = 1024 + maxusers * 64;
+	if (nmbclusters == 0)
+		nmbclusters = 1024 + maxusers * 64;
 	nmbjumbop = nmbclusters / 2;
 	nmbjumbo9 = nmbjumbop / 2;
 	nmbjumbo16 = nmbjumbo9 / 2;
-	TUNABLE_INT_FETCH("kern.ipc.nmbclusters", &nmbclusters);
 }
 SYSINIT(tunable_mbinit, SI_SUB_TUNABLES, SI_ORDER_ANY, tunable_mbinit, NULL);
 
