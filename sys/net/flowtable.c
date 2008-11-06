@@ -441,6 +441,7 @@ flow_stale(struct flowtable *ft, struct flentry *fle)
 	time_t idle_time;
 
 	if ((fle->f_fhash == 0)
+	    || (fle->f_rt == NULL)
 	    || ((fle->f_rt->rt_flags & RTF_UP) == 0)
 	    || (fle->f_uptime <= fle->f_rt->rt_llinfo_uptime)
 	    || ((fle->f_rt->rt_flags & RTF_GATEWAY) &&
@@ -506,7 +507,8 @@ retry:
 		FL_ENTRY_UNLOCK(ft, hash);
 		if (!stale)
 			return (ENOSPC);
-		RTFREE(rt0);
+		if (rt0)
+			RTFREE(rt0);
 		/*
 		 * We might end up on a different cpu
 		 */
