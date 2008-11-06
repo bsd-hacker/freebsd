@@ -139,6 +139,8 @@ typedef struct
 	int pkt_done;			/* packets completed */
 	int max_desc;			/* max descriptors per xmit */
 	int queue_active;		/* fw currently polling this queue*/
+	int activate;
+	int deactivate;
 	int stall;			/* #times hw queue exhausted */
 	int wake;			/* #times irq re-enabled xmit */
 	int watchdog_req;		/* cache of req */
