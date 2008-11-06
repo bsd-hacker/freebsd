@@ -118,10 +118,10 @@ struct pkthdr {
 	/* variables for hardware checksum */
 	int		 csum_flags;	/* flags regarding checksum */
 	int		 csum_data;	/* data field used by csum routines */
+	uint32_t	 flowid;	/*  flow identifier (not IPv6) */
 	u_int16_t	 tso_segsz;	/* TSO segment size */
 	u_int16_t	 ether_vtag;	/* Ethernet 802.1p+q vlan tag */
 	SLIST_HEAD(packet_tags, m_tag) tags; /* list of packet tags */
-        uint32_t	rss_hash;	/* hash identifying the flow */
 };
 
 /*

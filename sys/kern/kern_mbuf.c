@@ -417,7 +417,7 @@ mb_ctor_mbuf(void *mem, int size, void *arg, int how)
 		m->m_pkthdr.tso_segsz = 0;
 		m->m_pkthdr.ether_vtag = 0;
 		SLIST_INIT(&m->m_pkthdr.tags);
-		m->m_pkthdr.rss_hash = 0;
+		m->m_pkthdr.flowid = 0;
 #ifdef MAC
 		/* If the label init fails, fail the alloc */
 		error = mac_mbuf_init(m, how);

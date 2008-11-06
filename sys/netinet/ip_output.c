@@ -133,6 +133,7 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 	if (inp != NULL) {
 		INP_LOCK_ASSERT(inp);
 		M_SETFIB(m, inp->inp_inc.inc_fibnum);
+		m->m_pkthdr.flowid = inp->inp_connid;
 	}
 
 	if (flags & IP_RTINFO) {/* ugly interface overload */

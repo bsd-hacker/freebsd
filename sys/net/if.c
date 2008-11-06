@@ -125,7 +125,7 @@ static void	if_start_deferred(void *context, int pending);
 static void	do_link_state_change(void *, int);
 static int	if_getgroup(struct ifgroupreq *, struct ifnet *);
 static int	if_getgroupmembers(struct ifgroupreq *);
-static int	if_start_mbuf(struct ifnet *ifp, struct mbuf *m);
+static int	if_transmit(struct ifnet *ifp, struct mbuf *m);
 
 #ifdef INET6
 /*
@@ -520,7 +520,7 @@ if_attach(struct ifnet *ifp)
 	getmicrotime(&ifp->if_lastchange);
 	ifp->if_data.ifi_epoch = time_uptime;
 	ifp->if_data.ifi_datalen = sizeof(struct if_data);
-	ifp->if_start_mbuf = if_start_mbuf;
+	ifp->if_transmit = if_transmit;
 #ifdef MAC
 	mac_ifnet_init(ifp);
 	mac_ifnet_create(ifp);
@@ -2804,7 +2804,7 @@ if_start_deferred(void *context, int pending)
  * that have not implemented it
  */
 static int
-if_start_mbuf(struct ifnet *ifp, struct mbuf *m)
+if_transmit(struct ifnet *ifp, struct mbuf *m)
 {
 	int error;
 

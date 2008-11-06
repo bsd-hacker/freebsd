@@ -2121,15 +2121,19 @@ mxge_start(struct mxge_slice_state *ss)
 }
 
 static int
-mxge_start_mbuf(struct ifnet *ifp, struct mbuf *m)
+mxge_transmit(struct ifnet *ifp, struct mbuf *m)
 {
 	struct ifaltq *ifq;
 	mxge_softc_t *sc = ifp->if_softc;
 	struct mxge_slice_state *ss;
 	int slice, error, len;
 	short mflags;
-
-	slice = m->m_pkthdr.rss_hash & (sc->num_slices - 1);
+	
+	/*
+	 * XXX Andrew - this will only DTRT if num_slices is 
+	 * a power of 2
+	 */
+	slice = m->m_pkthdr.flowid & (sc->num_slices - 1);
 /*	printf("%d & %d = %d\n", m->m_pkthdr.rss_hash, (sc->num_slices - 1), slice);*/
 	ss = &sc->ss[slice];
 	ifq = &ss->tx.ifq;
@@ -2383,7 +2387,7 @@ mxge_rx_done_big(struct mxge_slice_state *ss, uint32_t len, uint32_t csum)
 	m->m_data += MXGEFW_PAD;
 
 	m->m_pkthdr.rcvif = ifp;
-	m->m_pkthdr.rss_hash = ss - sc->ss;
+	m->m_pkthdr.flowid = ss - sc->ss;
 	m->m_len = m->m_pkthdr.len = len;
 	ss->ipackets++;
 	eh = mtod(m, struct ether_header *);
@@ -2445,7 +2449,7 @@ mxge_rx_done_small(struct mxge_slice_state *ss, uint32_t len, uint32_t csum)
 
 	m->m_pkthdr.rcvif = ifp;
 	m->m_len = m->m_pkthdr.len = len;
-	m->m_pkthdr.rss_hash = ss - sc->ss;
+	m->m_pkthdr.flowid = ss - sc->ss;
 	ss->ipackets++;
 	eh = mtod(m, struct ether_header *);
 	if (eh->ether_type == htons(ETHERTYPE_VLAN)) {
@@ -4316,7 +4320,7 @@ mxge_attach(device_t dev)
 	/* ether_ifattach sets mtu to 1500 */
 	if (ifp->if_capabilities & IFCAP_JUMBO_MTU)
 		ifp->if_mtu = 9000;
-	ifp->if_start_mbuf = mxge_start_mbuf;
+	ifp->if_transmit = mxge_transmit;
 
 	mxge_add_sysctls(sc);
 	return 0;

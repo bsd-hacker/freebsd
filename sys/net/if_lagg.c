@@ -1371,7 +1371,7 @@ int
 lagg_enqueue(struct ifnet *ifp, struct mbuf *m)
 {
 
-	return ((ifp->if_start_mbuf)(ifp, m));
+	return ((ifp->if_transmit)(ifp, m));
 }
 
 /*

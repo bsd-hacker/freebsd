@@ -427,7 +427,7 @@ ether_output_frame(struct ifnet *ifp, struct mbuf *m)
 	 * Queue message on interface, update output statistics if
 	 * successful, and start output if interface not yet active.
 	 */
-	return ((ifp->if_start_mbuf)(ifp, m));
+	return ((ifp->if_transmit)(ifp, m));
 }
 
 #if defined(INET) || defined(INET6)
