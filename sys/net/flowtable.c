@@ -12,6 +12,7 @@
 #include <sys/callout.h>
 #include <sys/malloc.h>
 #include <sys/mbuf.h>
+#include <sys/proc.h>
 #include <sys/smp.h>
 #include <sys/socket.h>
 #include <sys/syslog.h>
@@ -417,12 +418,18 @@ flowtable_entry(struct flowtable *ft, uint32_t hash)
 {
 	struct flentry *fle;
 	int index = (hash % ft->ft_size);
- 
+	
+	
 	if ((ft->ft_flags & FL_IPV6) == 0) {
-		if (ft->ft_flags & FL_PCPU)
+		if (ft->ft_flags & FL_PCPU) {
+			if (curthread->td_critnest == 0) {
+				panic("not protected by critical section in lookup");
+			}
+			
+			
 			fle = (struct flentry *)
 			    &ft->ft_table.v4_pcpu[curcpu][index];
-		else
+		} else
 			fle = (struct flentry *)&ft->ft_table.v4[index];
 	} else {
 		if (ft->ft_flags & FL_PCPU)
@@ -759,7 +766,7 @@ flowtable_alloc(int nentry, int flags)
 		ft->ft_tcp_idle = TCP_IDLE;
 	} else {
 		ft->ft_udp_idle = ft->ft_fin_wait_idle =
-		    ft->ft_syn_idle = ft->ft_tcp_idle = 5;
+		    ft->ft_syn_idle = ft->ft_tcp_idle = 30;
 		
 	}
 	
