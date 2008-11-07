@@ -169,7 +169,7 @@ struct inpcb {
 	u_char	inp_ip_ttl;		/* (i) time to live proto */
 	u_char	inp_ip_p;		/* (c) protocol proto */
 	u_char	inp_ip_minttl;		/* (i) minimum TTL or drop */
-	uint32_t inp_ispare1;		/* (x) connection id / queue id */
+	uint32_t inp_connid;		/* (x) connection id / queue id */
 	void	*inp_pspare[2];		/* (x) rtentry / general use */
 
 	/* Local and foreign ports, local and foreign addr. */

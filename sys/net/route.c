@@ -808,7 +808,6 @@ rtexpunge(struct rtentry *rt)
 		("unexpected flags 0x%x", rn->rn_flags));
 	KASSERT(rt == RNTORT(rn),
 		("lookup mismatch, rt %p rn %p", rt, rn));
-
 	rt->rt_flags &= ~RTF_UP;
 
 	/*
@@ -966,7 +965,6 @@ normal_rtdel:
 		RT_LOCK(rt);
 		RT_ADDREF(rt);
 		rt->rt_flags &= ~RTF_UP;
-
 		/*
 		 * Now search what's left of the subtree for any cloned
 		 * routes which might have been formed from this node.

@@ -38,6 +38,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_ipsec.h"
 #include "opt_mac.h"
 #include "opt_carp.h"
+#include "opt_mpath.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -60,6 +61,7 @@ __FBSDID("$FreeBSD$");
 #include <net/if_dl.h>
 #include <net/route.h>
 #include <net/netisr.h>
+#include <net/flowtable.h>
 
 #include <netinet/in.h>
 #include <netinet/in_systm.h>
@@ -211,6 +213,8 @@ SYSCTL_V_INT(V_NET, vnet_inet, _net_inet_ip, OID_AUTO, stealth, CTLFLAG_RW,
 ip_fw_chk_t *ip_fw_chk_ptr = NULL;
 ip_dn_io_t *ip_dn_io_ptr = NULL;
 int fw_one_pass = 1;
+struct flowtable *ipv4_ft;
+struct flowtable *ipv4_forward_ft;
 
 static void	ip_freef(struct ipqhead *, struct ipq *);
 
@@ -277,6 +281,14 @@ ip_init(void)
 	ipintrq.ifq_maxlen = ipqmaxlen;
 	mtx_init(&ipintrq.ifq_mtx, "ip_inq", NULL, MTX_DEF);
 	netisr_register(NETISR_IP, ip_input, &ipintrq, 0);
+	
+	ipv4_ft = flowtable_alloc(2048, FL_PCPU);
+#ifdef RADIX_MPATH
+	ipv4_forward_ft = flowtable_alloc(128*1024, FL_HASH_PORTS);
+#else
+	ipv4_forward_ft = flowtable_alloc(16*1024, 0);
+#endif	
+	
 }
 
 void
@@ -1285,7 +1297,7 @@ ip_forward(struct mbuf *m, int srcrt)
 	struct in_ifaddr *ia = NULL;
 	struct mbuf *mcopy;
 	struct in_addr dest;
-	struct route ro;
+	struct rtentry_info ri;
 	int error, type = 0, code = 0, mtu = 0;
 
 	if (m->m_flags & (M_BCAST|M_MCAST) || in_canforward(ip->ip_dst) == 0) {
@@ -1305,12 +1317,16 @@ ip_forward(struct mbuf *m, int srcrt)
 	}
 #endif
 
-	ia = ip_rtaddr(ip->ip_dst, M_GETFIB(m));
-	if (!srcrt && ia == NULL) {
+	error = flowtable_lookup(ipv4_forward_ft, m, &ri);
+	
+	if (!srcrt && error) {
 		icmp_error(m, ICMP_UNREACH, ICMP_UNREACH_HOST, 0, 0);
 		return;
-	}
-
+	} else if (error)
+		return;
+#define	RIA(ri)	((struct in_ifaddr *)((ri)->ri_ifa))
+	
+	ia = RIA(&ri);
 	/*
 	 * Save the IP header and at most 8 bytes of the payload,
 	 * in case we need to generate an ICMP message to the src.
@@ -1360,53 +1376,42 @@ ip_forward(struct mbuf *m, int srcrt)
 	 * Also, don't send redirect if forwarding using a default route
 	 * or a route modified by a redirect.
 	 */
+
+	/*
+	 * XXX check that this actually still works
+	 *
+	 */
 	dest.s_addr = 0;
 	if (!srcrt && V_ipsendredirects && ia->ia_ifp == m->m_pkthdr.rcvif) {
 		struct sockaddr_in *sin;
-		struct rtentry *rt;
 
-		bzero(&ro, sizeof(ro));
-		sin = (struct sockaddr_in *)&ro.ro_dst;
+		sin = (struct sockaddr_in *)&ri.ri_dst;
 		sin->sin_family = AF_INET;
 		sin->sin_len = sizeof(*sin);
 		sin->sin_addr = ip->ip_dst;
-		in_rtalloc_ign(&ro, RTF_CLONING, M_GETFIB(m));
 
-		rt = ro.ro_rt;
-
-		if (rt && (rt->rt_flags & (RTF_DYNAMIC|RTF_MODIFIED)) == 0 &&
-		    satosin(rt_key(rt))->sin_addr.s_addr != 0) {
-#define	RTA(rt)	((struct in_ifaddr *)(rt->rt_ifa))
+		if ((ri.ri_flags & (RTF_DYNAMIC|RTF_MODIFIED)) == 0 &&
+		    sin->sin_addr.s_addr != 0) {
 			u_long src = ntohl(ip->ip_src.s_addr);
 
-			if (RTA(rt) &&
-			    (src & RTA(rt)->ia_subnetmask) == RTA(rt)->ia_subnet) {
-				if (rt->rt_flags & RTF_GATEWAY)
-					dest.s_addr = satosin(rt->rt_gateway)->sin_addr.s_addr;
-				else
-					dest.s_addr = ip->ip_dst.s_addr;
+			if (RIA(&ri) &&
+			    (src & RIA(&ri)->ia_subnetmask) == RIA(&ri)->ia_subnet) {
 				/* Router requirements says to only send host redirects */
 				type = ICMP_REDIRECT;
 				code = ICMP_REDIRECT_HOST;
 			}
 		}
-		if (rt)
-			RTFREE(rt);
 	}
 
 	/*
 	 * Try to cache the route MTU from ip_output so we can consider it for
 	 * the ICMP_UNREACH_NEEDFRAG "Next-Hop MTU" field described in RFC1191.
 	 */
-	bzero(&ro, sizeof(ro));
+	error = ip_output(m, NULL, (struct route *)&ri, IP_FORWARDING|IP_RTINFO,
+	    NULL, NULL);
 
-	error = ip_output(m, NULL, &ro, IP_FORWARDING, NULL, NULL);
-
-	if (error == EMSGSIZE && ro.ro_rt)
-		mtu = ro.ro_rt->rt_rmx.rmx_mtu;
-	if (ro.ro_rt)
-		RTFREE(ro.ro_rt);
-
+	if (error == EMSGSIZE)
+		mtu = ri.ri_mtu;
 	if (error)
 		V_ipstat.ips_cantforward++;
 	else {

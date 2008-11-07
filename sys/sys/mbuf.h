@@ -118,6 +118,7 @@ struct pkthdr {
 	/* variables for hardware checksum */
 	int		 csum_flags;	/* flags regarding checksum */
 	int		 csum_data;	/* data field used by csum routines */
+	uint32_t	 flowid;	/*  flow identifier (not IPv6) */
 	u_int16_t	 tso_segsz;	/* TSO segment size */
 	u_int16_t	 ether_vtag;	/* Ethernet 802.1p+q vlan tag */
 	SLIST_HEAD(packet_tags, m_tag) tags; /* list of packet tags */
@@ -133,8 +134,8 @@ struct m_ext {
 			    (void *, void *);
 	void		*ext_arg1;	/* optional argument pointer */
 	void		*ext_arg2;	/* optional argument pointer */
-	u_int		 ext_size;	/* size of buffer, for ext_free */
 	volatile u_int	*ref_cnt;	/* pointer to ref count info */
+	u_int		 ext_size;	/* size of buffer, for ext_free */
 	int		 ext_type;	/* type of external storage */
 };
 

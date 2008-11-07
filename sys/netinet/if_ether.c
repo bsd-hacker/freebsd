@@ -216,6 +216,7 @@ arp_rtrequest(int req, struct rtentry *rt, struct rt_addrinfo *info)
 		 */
 		R_Zalloc(la, struct llinfo_arp *, sizeof(*la));
 		rt->rt_llinfo = (caddr_t)la;
+		rt->rt_llinfo_uptime = time_uptime;
 		if (la == 0) {
 			log(LOG_DEBUG, "%s: malloc failed\n", __func__);
 			break;
@@ -299,6 +300,7 @@ arp_rtrequest(int req, struct rtentry *rt, struct rt_addrinfo *info)
 		callout_stop(&la->la_timer);
 		rt->rt_llinfo = NULL;
 		rt->rt_flags &= ~RTF_LLINFO;
+		rt->rt_llinfo_uptime = time_uptime;
 		RT_REMREF(rt);
 		if (la->la_hold)
 			m_freem(la->la_hold);
@@ -417,7 +419,11 @@ arpresolve(struct ifnet *ifp, struct rtentry *rt0, struct mbuf *m,
 		 * come from the local interface should have a ll entry.
 		 * It may be incomplete but that's ok.
 		 */
-		rt = arplookup(SIN(dst)->sin_addr.s_addr, 1, 0, fibnum);
+		/*
+		 * Only create a cloned route if one doesn't exist for this
+		 * address
+		 */
+		rt = arplookup(SIN(dst)->sin_addr.s_addr, (rt != NULL), 0, fibnum);
 		if (rt == NULL) {
 			log(LOG_DEBUG,
 			    "arpresolve: can't allocate route for %s\n",

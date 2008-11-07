@@ -148,6 +148,7 @@ struct rtentry {
 #ifdef _KERNEL
 	/* XXX ugly, user apps use this definition but don't have a mtx def */
 	struct	mtx rt_mtx;		/* mutex for routing entry */
+	time_t  rt_llinfo_uptime;	/* last time the rt_llinfo changed */
 #endif
 };
 
@@ -196,6 +197,7 @@ struct ortentry {
 #define	RTF_BROADCAST	0x400000	/* route represents a bcast address */
 #define	RTF_MULTICAST	0x800000	/* route represents a mcast address */
 					/* 0x1000000 and up unassigned */
+#define	RTF_DESTEN_VALID 0x80000000	/* rtentry_info L2 addr is valid */
 
 /* Mask of RTF flags that are allowed to be modified by RTM_CHANGE. */
 #define RTF_FMASK	\

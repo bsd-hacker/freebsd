@@ -59,6 +59,7 @@ __FBSDID("$FreeBSD$");
 #ifdef RADIX_MPATH
 #include <net/radix_mpath.h>
 #endif
+#include <net/flowtable.h>
 
 #include <netinet/in.h>
 #include <netinet/in_systm.h>
@@ -97,6 +98,9 @@ static void	ip_mloopback
 
 extern	struct protosw inetsw[];
 
+extern struct flowtable *ipv4_ft;
+
+
 /*
  * IP output.  The packet in mbuf chain m contains a skeletal IP
  * header (with len, off, ttl, proto, tos, src, dst).
@@ -120,20 +124,28 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 	struct sockaddr_in *dst = NULL;	/* keep compiler happy */
 	struct in_ifaddr *ia = NULL;
 	int isbroadcast, sw_csum;
-	struct route iproute;
+	struct rtentry_info ipri, *ri;
 	struct in_addr odst;
 #ifdef IPFIREWALL_FORWARD
 	struct m_tag *fwd_tag = NULL;
 #endif
 	M_ASSERTPKTHDR(m);
-
-	if (ro == NULL) {
-		ro = &iproute;
-		bzero(ro, sizeof (*ro));
+	if (inp != NULL) {
+		INP_LOCK_ASSERT(inp);
+		M_SETFIB(m, inp->inp_inc.inc_fibnum);
+		m->m_pkthdr.flowid = inp->inp_connid;
 	}
 
-	if (inp != NULL)
-		INP_LOCK_ASSERT(inp);
+	if (flags & IP_RTINFO) {/* ugly interface overload */
+		ri = (struct rtentry_info *)ro;
+	} else {
+		ri = &ipri;
+		bzero(ri, sizeof (*ri));
+		if (ro) 
+			route_to_rtentry_info(ro, NULL, ri);
+		else if (flowtable_lookup(ipv4_ft, m, ri))
+			return (ENETUNREACH);
+	}
 
 	if (opt) {
 		len = 0;
@@ -163,31 +175,8 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 		hlen = ip->ip_hl << 2;
 	}
 
-	dst = (struct sockaddr_in *)&ro->ro_dst;
+	dst = (struct sockaddr_in *)&ri->ri_dst;
 again:
-	/*
-	 * If there is a cached route,
-	 * check that it is to the same destination
-	 * and is still up.  If not, free it and try again.
-	 * The address family should also be checked in case of sharing the
-	 * cache with IPv6.
-	 */
-	if (ro->ro_rt && ((ro->ro_rt->rt_flags & RTF_UP) == 0 ||
-			  dst->sin_family != AF_INET ||
-			  dst->sin_addr.s_addr != ip->ip_dst.s_addr)) {
-		RTFREE(ro->ro_rt);
-		ro->ro_rt = (struct rtentry *)NULL;
-	}
-#ifdef IPFIREWALL_FORWARD
-	if (ro->ro_rt == NULL && fwd_tag == NULL) {
-#else
-	if (ro->ro_rt == NULL) {
-#endif
-		bzero(dst, sizeof(*dst));
-		dst->sin_family = AF_INET;
-		dst->sin_len = sizeof(*dst);
-		dst->sin_addr = ip->ip_dst;
-	}
 	/*
 	 * If routing to interface only, short circuit routing lookup.
 	 * The use of an all-ones broadcast address implies this; an
@@ -231,7 +220,14 @@ again:
 		 * as this is probably required in all cases for correct
 		 * operation (as it is for ARP).
 		 */
-		if (ro->ro_rt == NULL)
+		if ((ri->ri_flags & RTF_UP) == 0) {
+			error = flowtable_lookup(ipv4_ft, m, ri);
+			if (error)
+				goto bad;
+			
+		}
+#ifdef 	nomore		
+
 #ifdef RADIX_MPATH
 			rtalloc_mpath_fib(ro,
 			    ntohl(ip->ip_src.s_addr ^ ip->ip_dst.s_addr),
@@ -245,13 +241,11 @@ again:
 			error = EHOSTUNREACH;
 			goto bad;
 		}
-		ia = ifatoia(ro->ro_rt->rt_ifa);
-		ifp = ro->ro_rt->rt_ifp;
-		ro->ro_rt->rt_rmx.rmx_pksent++;
-		if (ro->ro_rt->rt_flags & RTF_GATEWAY)
-			dst = (struct sockaddr_in *)ro->ro_rt->rt_gateway;
-		if (ro->ro_rt->rt_flags & RTF_HOST)
-			isbroadcast = (ro->ro_rt->rt_flags & RTF_BROADCAST);
+#endif
+		ia = ifatoia(ri->ri_ifa);
+		ifp = ri->ri_ifp;
+		if (ri->ri_flags & RTF_HOST)
+			isbroadcast = (ri->ri_flags & RTF_BROADCAST);
 		else
 			isbroadcast = in_broadcast(dst->sin_addr, ifp);
 	}
@@ -259,7 +253,7 @@ again:
 	 * Calculate MTU.  If we have a route that is up, use that,
 	 * otherwise use the interface's MTU.
 	 */
-	if (ro->ro_rt != NULL && (ro->ro_rt->rt_flags & (RTF_UP|RTF_HOST))) {
+	if (ri->ri_flags & (RTF_UP|RTF_HOST)) {
 		/*
 		 * This case can happen if the user changed the MTU
 		 * of an interface after enabling IP on it.  Because
@@ -267,9 +261,9 @@ again:
 		 * them, there is no way for one to update all its
 		 * routes when the MTU is changed.
 		 */
-		if (ro->ro_rt->rt_rmx.rmx_mtu > ifp->if_mtu)
-			ro->ro_rt->rt_rmx.rmx_mtu = ifp->if_mtu;
-		mtu = ro->ro_rt->rt_rmx.rmx_mtu;
+		if (ri->ri_mtu > ifp->if_mtu)
+			ri->ri_mtu = ifp->if_mtu;
+		mtu = ri->ri_mtu;
 	} else {
 		mtu = ifp->if_mtu;
 	}
@@ -277,12 +271,6 @@ again:
 		struct in_multi *inm;
 
 		m->m_flags |= M_MCAST;
-		/*
-		 * IP destination address is multicast.  Make sure "dst"
-		 * still points to the address in "ro".  (It may have been
-		 * changed to point to a gateway address, above.)
-		 */
-		dst = (struct sockaddr_in *)&ro->ro_dst;
 		/*
 		 * See if the caller provided any multicast options
 		 */
@@ -430,6 +418,10 @@ again:
 	}
 
 sendit:
+/*
+ * XXX we've broken IPSEC
+ *
+ */
 #ifdef IPSEC
 	switch(ip_ipsec_output(&m, inp, &flags, &error, &ro, &iproute, &dst, &ia, &ifp)) {
 	case 1:
@@ -475,10 +467,13 @@ sendit:
 
 			error = netisr_queue(NETISR_IP, m);
 			goto done;
-		} else
+		} else {
+			ri->ri_flags &= ~RTF_UP;
 			goto again;	/* Redo the routing table lookup. */
-	}
 
+		}
+	}
+	
 #ifdef IPFIREWALL_FORWARD
 	/* See if local, if yes, send it to netisr with IP_FASTFWD_OURS. */
 	if (m->m_flags & M_FASTFWD_OURS) {
@@ -498,10 +493,11 @@ sendit:
 	/* Or forward to some other address? */
 	fwd_tag = m_tag_find(m, PACKET_TAG_IPFORWARD, NULL);
 	if (fwd_tag) {
-		dst = (struct sockaddr_in *)&ro->ro_dst;
+		dst = (struct sockaddr_in *)&ri->ri_dst;
 		bcopy((fwd_tag+1), dst, sizeof(struct sockaddr_in));
 		m->m_flags |= M_SKIP_FIREWALL;
 		m_tag_delete(m, fwd_tag);
+		ri->ri_flags &= ~RTF_UP;
 		goto again;
 	}
 #endif /* IPFIREWALL_FORWARD */
@@ -562,8 +558,17 @@ passout:
 		 */
 		m->m_flags &= ~(M_PROTOFLAGS);
 
-		error = (*ifp->if_output)(ifp, m,
-				(struct sockaddr *)dst, ro->ro_rt);
+		/*
+		 * XXX rather hackish interface to ether_output
+		 * to pass an rtentry_info in 
+		 * 
+		 */
+		if (ifp->if_output == ether_output)
+			error = (*ifp->if_output)(ifp, m,
+			    NULL, (struct rtentry *)ri);
+		else
+			error = (*ifp->if_output)(ifp, m,
+			    (struct sockaddr *)dst, NULL);
 		goto done;
 	}
 
@@ -596,19 +601,27 @@ passout:
 			 */
 			m->m_flags &= ~(M_PROTOFLAGS);
 
-			error = (*ifp->if_output)(ifp, m,
-			    (struct sockaddr *)dst, ro->ro_rt);
-		} else
+			/*
+			 * XXX rather hackish interface to ether_output
+			 * to pass an rtentry_info in 
+			 * 
+			 */
+			if (ifp->if_output == ether_output)
+				error = (*ifp->if_output)(ifp, m,
+				    NULL, (struct rtentry *)ri);
+			else
+				error = (*ifp->if_output)(ifp, m,
+				    (struct sockaddr *)dst, NULL);
+		} else {
 			m_freem(m);
+		}
+		
 	}
 
 	if (error == 0)
 		V_ipstat.ips_fragmented++;
 
 done:
-	if (ro == &iproute && ro->ro_rt) {
-		RTFREE(ro->ro_rt);
-	}
 	return (error);
 bad:
 	m_freem(m);
