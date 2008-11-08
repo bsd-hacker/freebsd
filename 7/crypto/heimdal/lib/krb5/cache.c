@@ -190,6 +190,39 @@ krb5_cc_get_ops(krb5_context context, krb5_ccache id)
 }
 
 /*
+ * Return non-zero if envirnoment that will determine default krb5cc
+ * name has changed.
+ */
+
+static int
+environment_changed(krb5_context context)
+{
+    const char *e;
+
+    /* if the cc name was set, don't change it */
+    if (context->default_cc_name_set)
+	return 0;
+
+    if(issuid())
+	return 0;
+
+    e = getenv("KRB5CCNAME");
+    if (e == NULL) {
+	if (context->default_cc_name_env) {
+	    free(context->default_cc_name_env);
+	    context->default_cc_name_env = NULL;
+	    return 1;
+	}
+    } else {
+	if (context->default_cc_name_env == NULL)
+	    return 1;
+	if (strcmp(e, context->default_cc_name_env) != 0)
+	    return 1;
+    }
+    return 0;
+}
+
+/*
  * Set the default cc name for `context' to `name'.
  */
 
@@ -202,10 +235,14 @@ krb5_cc_set_default_name(krb5_context context, const char *name)
     if (name == NULL) {
 	char *e;
 	e = getenv("KRB5CCNAME");
-	if (e)
+	if (e) {
 	    p = strdup(e);
-	else
+	    if (context->default_cc_name_env)
+		free(context->default_cc_name_env);
+	    context->default_cc_name_env = strdup(e);
+	} else {
 	    asprintf(&p,"FILE:/tmp/krb5cc_%u", (unsigned)getuid());
+	}
     } else
 	p = strdup(name);
 
@@ -227,7 +264,7 @@ krb5_cc_set_default_name(krb5_context context, const char *name)
 const char*
 krb5_cc_default_name(krb5_context context)
 {
-    if (context->default_cc_name == NULL)
+    if (context->default_cc_name == NULL || environment_changed(context))
 	krb5_cc_set_default_name(context, NULL);
 
     return context->default_cc_name;
