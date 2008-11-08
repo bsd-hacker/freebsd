@@ -3116,7 +3116,7 @@ tcp_xmit_timer(struct tcpcb *tp, int rtt)
  */
 void
 tcp_mss_update(struct tcpcb *tp, int offer,
-    struct hc_metrics_lite *metricptr, int *mtuflags)
+    struct hc_metrics_lite *metricptr, int *mtuflags, int *mssval)
 {
 	INIT_VNET_INET(tp->t_inpcb->inp_vnet);
 	int mss;
@@ -3243,6 +3243,11 @@ tcp_mss_update(struct tcpcb *tp, int offer,
 	 */
 	mss = max(mss, 64);
 
+	if (mssval)
+		*mssval = mss;
+	
+	if (tp->t_maxopd <= mss)
+		return;	
 	/*
 	 * maxopd stores the maximum length of data AND options
 	 * in a segment; maxseg is the amount of data in a normal
@@ -3285,7 +3290,7 @@ tcp_mss(struct tcpcb *tp, int offer)
 #endif
 	KASSERT(tp != NULL, ("%s: tp == NULL", __func__));
 	
-	tcp_mss_update(tp, offer, &metrics, &mtuflags);
+	tcp_mss_update(tp, offer, &metrics, &mtuflags, NULL);
 
 	mss = tp->t_maxseg;
 	inp = tp->t_inpcb;

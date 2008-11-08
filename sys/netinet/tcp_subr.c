@@ -1553,7 +1553,8 @@ tcp_mtudisc(struct inpcb *inp, int errno)
 	INIT_VNET_INET(inp->inp_vnet);
 	struct tcpcb *tp;
 	struct socket *so;
-
+	int mss;
+	
 	INP_WLOCK_ASSERT(inp);
 	if ((inp->inp_vflag & INP_TIMEWAIT) ||
 	    (inp->inp_vflag & INP_DROPPED))
@@ -1562,7 +1563,7 @@ tcp_mtudisc(struct inpcb *inp, int errno)
 	tp = intotcpcb(inp);
 	KASSERT(tp != NULL, ("tcp_mtudisc: tp == NULL"));
 
-	tcp_mss_update(tp, -1, NULL, NULL);
+	tcp_mss_update(tp, -1, NULL, NULL, &mss);
   
 	so = inp->inp_socket;
 	SOCKBUF_LOCK(&so->so_snd);
@@ -1578,6 +1579,8 @@ tcp_mtudisc(struct inpcb *inp, int errno)
 	tp->snd_recover = tp->snd_max;
 	if (tp->t_flags & TF_SACK_PERMIT)
 		EXIT_FASTRECOVERY(tp);
+	if (tp->t_maxopd <= mss)
+		return (inp);	
 	tcp_output_send(tp);
 	return (inp);
 }
