@@ -38,7 +38,7 @@
 
 #if defined (__GNUC__)
   #if #cpu(i386) || defined __i386 || defined i386 || defined __i386__ || #cpu(x86_64) || defined __x86_64__
-    #define mb()  __asm__ __volatile__ ("sfence;": : :"memory")
+    #define mb()  __asm__ __volatile__ ("mfence;": : :"memory")
   #elif #cpu(sparc64) || defined sparc64 || defined __sparcv9 
     #define mb()  __asm__ __volatile__ ("membar #MemIssue": : :"memory")
   #elif #cpu(sparc) || defined sparc || defined __sparc__
