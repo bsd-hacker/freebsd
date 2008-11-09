@@ -220,12 +220,12 @@ union ipv6_flow {
 };
 
 struct flentry {
-	uint32_t	f_fhash;	/* hash flowing forward */
+	volatile uint32_t	f_fhash;/* hash flowing forward */
 	uint16_t	f_flags;	/* flow flags */
 	uint8_t		f_pad;
 	uint8_t		f_proto;	/* protocol */
 	time_t		f_uptime;	/* last time this flow was accessed */
-	struct rtentry *f_rt;		/* rtentry for flow */
+	volatile struct rtentry *f_rt;	/* rtentry for flow */
 	u_char		f_desten[ETHER_ADDR_LEN];	
 };
 
@@ -464,7 +464,6 @@ flow_stale(struct flowtable *ft, struct flentry *fle)
 	time_t idle_time;
 
 	if ((fle->f_fhash == 0)
-	    || (fle->f_rt == NULL)
 	    || ((fle->f_rt->rt_flags & RTF_UP) == 0)
 	    || (fle->f_uptime <= fle->f_rt->rt_llinfo_uptime)
 	    || ((fle->f_rt->rt_flags & RTF_GATEWAY) &&
@@ -512,7 +511,8 @@ flowtable_insert(struct flowtable *ft, uint32_t hash, uint32_t *key,
     uint8_t proto, struct rtentry *rt, u_char *desten, uint16_t flags)
 {
 	struct flentry *fle;
-	struct rtentry *rt0 = NULL;
+	volatile struct rtentry *rt0 = NULL;
+	struct rtentry *rt1;
 	int stale;
 	bitstr_t *mask;
 	
@@ -530,8 +530,9 @@ retry:
 		FL_ENTRY_UNLOCK(ft, hash);
 		if (!stale)
 			return (ENOSPC);
-		if (rt0)
-			RTFREE(rt0);
+
+		rt1 = __DEVOLATILE(struct rtentry *, rt0);
+		RTFREE(rt1);
 		/*
 		 * We might end up on a different cpu
 		 */
@@ -614,7 +615,8 @@ flowtable_lookup(struct flowtable *ft, struct mbuf *m,
 	struct route ro;
 	int cache = 1, error = 0;
 	u_char desten[ETHER_ADDR_LEN];
-
+	volatile struct rtentry *rt;
+	
 	flags = ft ? ft->ft_flags : 0;
 	ro.ro_rt = NULL;
 	
@@ -639,16 +641,17 @@ flowtable_lookup(struct flowtable *ft, struct mbuf *m,
 	}
 	FL_ENTRY_LOCK(ft, hash);
 	fle = FL_ENTRY(ft, hash);
+	rt = fle->f_rt;
 	if (fle->f_fhash == hash
 	    && flowtable_key_equal(fle, key, flags)
 	    && (proto == fle->f_proto)
-	    && (fle->f_rt->rt_flags & RTF_UP)
-	    && (fle->f_uptime > fle->f_rt->rt_llinfo_uptime)
+	    && (rt->rt_flags & RTF_UP)
+	    && (fle->f_uptime > rt->rt_llinfo_uptime)
 	    && gw_valid(fle)) {
 		fle->f_uptime = time_uptime;
 		fle->f_flags |= flags;
-		fle->f_rt->rt_rmx.rmx_pksent++;
-		ro.ro_rt = fle->f_rt;
+		rt->rt_rmx.rmx_pksent++;
+		ro.ro_rt = __DEVOLATILE(struct rtentry *, rt);
 		route_to_rtentry_info(&ro, fle->f_desten, ri);
 		FL_ENTRY_UNLOCK(ft, hash);
 		return (0);
@@ -695,7 +698,7 @@ uncached:
 		
 #endif
 		route_to_rtentry_info(&ro, error ? NULL : desten, ri);
-
+		ro.ro_rt->rt_rmx.rmx_pksent++;
 		if (error == 0 && cache) {
 			error = flowtable_insert(ft, hash, key, proto,
 			    ro.ro_rt, desten, flags);
