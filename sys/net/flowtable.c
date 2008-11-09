@@ -596,11 +596,11 @@ flowtable_key_equal(struct flentry *fle, uint32_t *key, int flags)
 }
 
 static __inline int
-gw_valid(struct flentry *fle)
+gw_valid(struct rtentry *rt)
 {
-	return ((fle->f_rt->rt_flags & RTF_GATEWAY) == 0 ||
-	    ((fle->f_rt->rt_flags & RTF_GATEWAY) && 
-		(fle->f_rt->rt_gwroute->rt_flags & RTF_UP)));
+	return ((rt->rt_flags & RTF_GATEWAY) == 0 ||
+	    ((rt->rt_flags & RTF_GATEWAY) && 
+		(rt->rt_gwroute->rt_flags & RTF_UP)));
 }
 
 
@@ -615,7 +615,7 @@ flowtable_lookup(struct flowtable *ft, struct mbuf *m,
 	struct route ro;
 	int cache = 1, error = 0;
 	u_char desten[ETHER_ADDR_LEN];
-	volatile struct rtentry *rt;
+	struct rtentry *rt;
 	
 	flags = ft ? ft->ft_flags : 0;
 	ro.ro_rt = NULL;
@@ -641,17 +641,17 @@ flowtable_lookup(struct flowtable *ft, struct mbuf *m,
 	}
 	FL_ENTRY_LOCK(ft, hash);
 	fle = FL_ENTRY(ft, hash);
-	rt = fle->f_rt;
+	rt = __DEVOLATILE(struct rtentry *, fle->f_rt);
 	if (fle->f_fhash == hash
 	    && flowtable_key_equal(fle, key, flags)
 	    && (proto == fle->f_proto)
 	    && (rt->rt_flags & RTF_UP)
 	    && (fle->f_uptime > rt->rt_llinfo_uptime)
-	    && gw_valid(fle)) {
+	    && gw_valid(rt)) {
 		fle->f_uptime = time_uptime;
 		fle->f_flags |= flags;
 		rt->rt_rmx.rmx_pksent++;
-		ro.ro_rt = __DEVOLATILE(struct rtentry *, rt);
+		ro.ro_rt = rt;
 		route_to_rtentry_info(&ro, fle->f_desten, ri);
 		FL_ENTRY_UNLOCK(ft, hash);
 		return (0);
