@@ -252,6 +252,7 @@ SUBDIR=	${_3dfx} \
 	${_smbfs} \
 	sn \
 	${_snc} \
+	snp \
 	${_sound} \
 	${_speaker} \
 	${_splash} \
@@ -302,6 +303,7 @@ SUBDIR=	${_3dfx} \
 	ural \
 	urio \
 	usb \
+	usb2 \
 	uscanner \
 	uslcom \
 	utopia \

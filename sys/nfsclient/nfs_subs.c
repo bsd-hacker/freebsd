@@ -99,8 +99,10 @@ static enum vtype nv2tov_type[8]= {
 int		nfs_ticks;
 int		nfs_pbuf_freecnt = -1;	/* start out unlimited */
 
+#ifdef NFS_LEGACYRPC
 struct nfs_reqq	nfs_reqq;
 struct mtx nfs_reqq_mtx;
+#endif
 struct nfs_bufq	nfs_bufq;
 static struct mtx nfs_xid_mtx;
 
@@ -430,9 +432,11 @@ nfs_init(struct vfsconf *vfsp)
 	/*
 	 * Initialize reply list and start timer
 	 */
+#ifdef NFS_LEGACYRPC
 	TAILQ_INIT(&nfs_reqq);
-	callout_init(&nfs_callout, CALLOUT_MPSAFE);
 	mtx_init(&nfs_reqq_mtx, "NFS reqq lock", NULL, MTX_DEF);
+	callout_init(&nfs_callout, CALLOUT_MPSAFE);
+#endif
 	mtx_init(&nfs_iod_mtx, "NFS iod lock", NULL, MTX_DEF);
 	mtx_init(&nfs_xid_mtx, "NFS xid lock", NULL, MTX_DEF);
 
@@ -446,10 +450,12 @@ nfs_uninit(struct vfsconf *vfsp)
 {
 	int i;
 
+#ifdef NFS_LEGACYRPC
 	callout_stop(&nfs_callout);
 
 	KASSERT(TAILQ_EMPTY(&nfs_reqq),
 	    ("nfs_uninit: request queue not empty"));
+#endif
 
 	/*
 	 * Tell all nfsiod processes to exit. Clear nfs_iodmax, and wakeup
@@ -730,7 +736,8 @@ nfs_loadattrcache(struct vnode **vpp, struct mbuf **mdp, caddr_t *dposp,
 #include <sys/sysctl.h>
 SYSCTL_DECL(_vfs_nfs);
 static int nfs_acdebug;
-SYSCTL_INT(_vfs_nfs, OID_AUTO, acdebug, CTLFLAG_RW, &nfs_acdebug, 0, "");
+SYSCTL_INT(_vfs_nfs, OID_AUTO, acdebug, CTLFLAG_RW, &nfs_acdebug, 0,
+    "Toggle acdebug (access cache debug) flag");
 #endif
 
 /*

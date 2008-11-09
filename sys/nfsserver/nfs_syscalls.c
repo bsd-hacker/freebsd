@@ -73,6 +73,8 @@ __FBSDID("$FreeBSD$");
 #include <nfsserver/nfsm_subs.h>
 #include <nfsserver/nfsrvcache.h>
 
+#ifdef NFS_LEGACYRPC
+
 static MALLOC_DEFINE(M_NFSSVC, "nfss_srvsock", "Nfs server structure");
 
 MALLOC_DEFINE(M_NFSRVDESC, "nfss_srvdesc", "NFS server socket descriptor");
@@ -89,11 +91,14 @@ static int	notstarted = 1;
 
 static int	nfs_privport = 0;
 SYSCTL_INT(_vfs_nfsrv, NFS_NFSPRIVPORT, nfs_privport, CTLFLAG_RW,
-	    &nfs_privport, 0, "");
+    &nfs_privport, 0,
+    "Only allow clients using a privileged port");
 SYSCTL_INT(_vfs_nfsrv, OID_AUTO, gatherdelay, CTLFLAG_RW,
-	    &nfsrvw_procrastinate, 0, "");
+    &nfsrvw_procrastinate, 0,
+    "Delay value for write gathering");
 SYSCTL_INT(_vfs_nfsrv, OID_AUTO, gatherdelay_v3, CTLFLAG_RW,
-	    &nfsrvw_procrastinate_v3, 0, "");
+    &nfsrvw_procrastinate_v3, 0,
+    "Delay in seconds for NFSv3 write gathering");
 
 static int	nfssvc_addsock(struct file *, struct sockaddr *);
 static void	nfsrv_zapsock(struct nfssvc_sock *slp);
@@ -127,7 +132,7 @@ nfssvc(struct thread *td, struct nfssvc_args *uap)
 {
 	struct file *fp;
 	struct sockaddr *nam;
-	struct nfsd_args nfsdarg;
+	struct nfsd_addsock_args nfsdarg;
 	int error;
 
 	KASSERT(!mtx_owned(&Giant), ("nfssvc(): called with Giant"));
@@ -167,7 +172,7 @@ nfssvc(struct thread *td, struct nfssvc_args *uap)
 		}
 		error = nfssvc_addsock(fp, nam);
 		fdrop(fp, td);
-	} else if (uap->flag & NFSSVC_NFSD) {
+	} else if (uap->flag & NFSSVC_OLDNFSD) {
 		error = nfssvc_nfsd();
 	} else {
 		error = ENXIO;
@@ -724,3 +729,5 @@ nfsrv_init(int terminating)
 	TAILQ_INSERT_TAIL(&nfssvc_sockhead, nfs_cltpsock, ns_chain);
 #endif
 }
+
+#endif /* NFS_LEGACYRPC */

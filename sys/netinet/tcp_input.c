@@ -1501,7 +1501,7 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
 	 *   only accepting RSTs where the sequence number is equal to
 	 *   last_ack_sent.  In all other states (the states in which a
 	 *   RST is more likely), the more permissive check is used.
-	 * If we have multiple segments in flight, the intial reset
+	 * If we have multiple segments in flight, the initial reset
 	 * segment sequence numbers will be to the left of last_ack_sent,
 	 * but they will eventually catch up.
 	 * In any case, it never made sense to trim reset segments to
@@ -2812,7 +2812,8 @@ tcp_xmit_timer(struct tcpcb *tp, int rtt)
  * segment. Outgoing SYN/ACK MSS settings are handled in tcp_mssopt().
  */
 void
-tcp_mss_update(struct tcpcb *tp, int offer, struct hc_metrics_lite *metricptr)
+tcp_mss_update(struct tcpcb *tp, int offer,
+    struct hc_metrics_lite *metricptr, int *mtuflags)
 {
 	INIT_VNET_INET(tp->t_inpcb->inp_vnet);
 	int mss;
@@ -2820,7 +2821,6 @@ tcp_mss_update(struct tcpcb *tp, int offer, struct hc_metrics_lite *metricptr)
 	struct inpcb *inp = tp->t_inpcb;
 	struct hc_metrics_lite metrics;
 	int origoffer = offer;
-	int mtuflags = 0;
 #ifdef INET6
 	int isipv6 = ((inp->inp_vflag & INP_IPV6) != 0) ? 1 : 0;
 	size_t min_protoh = isipv6 ?
@@ -2835,24 +2835,28 @@ tcp_mss_update(struct tcpcb *tp, int offer, struct hc_metrics_lite *metricptr)
 	/* Initialize. */
 #ifdef INET6
 	if (isipv6) {
-		maxmtu = tcp_maxmtu6(&inp->inp_inc, &mtuflags);
+		maxmtu = tcp_maxmtu6(&inp->inp_inc, mtuflags);
 		tp->t_maxopd = tp->t_maxseg = V_tcp_v6mssdflt;
 	} else
 #endif
 	{
-		maxmtu = tcp_maxmtu(&inp->inp_inc, &mtuflags);
+		maxmtu = tcp_maxmtu(&inp->inp_inc, mtuflags);
 		tp->t_maxopd = tp->t_maxseg = V_tcp_mssdflt;
 	}
 
 	/*
 	 * No route to sender, stay with default mss and return.
 	 */
-	if (maxmtu == 0)
+	if (maxmtu == 0) {
+		/*
+		 * In case we return early we need to initialize metrics
+		 * to a defined state as tcp_hc_get() would do for us
+		 * if there was no cache hit.
+		 */
+		if (metricptr != NULL)
+			bzero(metricptr, sizeof(struct hc_metrics_lite));
 		return;
-
-	/* Check the interface for TSO capabilities. */
-	if (mtuflags & CSUM_TSO)
-		tp->t_flags |= TF_TSO;
+	}
 
 	/* What have we got? */
 	switch (offer) {
@@ -2972,12 +2976,13 @@ tcp_mss(struct tcpcb *tp, int offer)
 	struct inpcb *inp;
 	struct socket *so;
 	struct hc_metrics_lite metrics;
+	int mtuflags = 0;
 #ifdef INET6
 	int isipv6;
 #endif
 	KASSERT(tp != NULL, ("%s: tp == NULL", __func__));
 	
-	tcp_mss_update(tp, offer, &metrics);
+	tcp_mss_update(tp, offer, &metrics, &mtuflags);
 
 	mss = tp->t_maxseg;
 	inp = tp->t_inpcb;
@@ -3090,6 +3095,10 @@ tcp_mss(struct tcpcb *tp, int offer)
 		tp->snd_cwnd = mss * V_ss_fltsz_local;
 	else
 		tp->snd_cwnd = mss * V_ss_fltsz;
+
+	/* Check the interface for TSO capabilities. */
+	if (mtuflags & CSUM_TSO)
+		tp->t_flags |= TF_TSO;
 }
 
 /*
