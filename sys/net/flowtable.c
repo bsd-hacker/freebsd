@@ -599,8 +599,9 @@ static __inline int
 gw_valid(struct rtentry *rt)
 {
 	return ((rt->rt_flags & RTF_GATEWAY) == 0 ||
-	    ((rt->rt_flags & RTF_GATEWAY) && 
-		(rt->rt_gwroute->rt_flags & RTF_UP)));
+	    ((rt->rt_flags & RTF_GATEWAY)
+		&& (rt->rt_gwroute != NULL)
+		&& (rt->rt_gwroute->rt_flags & RTF_UP)));
 }
 
 
@@ -642,7 +643,8 @@ flowtable_lookup(struct flowtable *ft, struct mbuf *m,
 	FL_ENTRY_LOCK(ft, hash);
 	fle = FL_ENTRY(ft, hash);
 	rt = __DEVOLATILE(struct rtentry *, fle->f_rt);
-	if (fle->f_fhash == hash
+	if ((rt != NULL)
+	    && fle->f_fhash == hash
 	    && flowtable_key_equal(fle, key, flags)
 	    && (proto == fle->f_proto)
 	    && (rt->rt_flags & RTF_UP)
