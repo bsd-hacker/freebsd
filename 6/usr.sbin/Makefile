@@ -62,6 +62,7 @@ SUBDIR=	ac \
 	getpmac \
 	gstat \
 	${_i4b} \
+	${_gssd} \
 	ifmcstat \
 	inetd \
 	iostat \
@@ -233,6 +234,10 @@ _bluetooth=	bluetooth
 
 .if !defined(NO_CRYPT) && !defined(NO_OPENSSL)
 _keyserv=	keyserv
+.endif
+
+.if ${MK_GSSAPI} != no
+_gssd=		gssd
 .endif
 
 .if !defined(NO_INET6)
