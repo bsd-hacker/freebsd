@@ -348,8 +348,23 @@ struct fhandle {
 typedef struct fhandle	fhandle_t;
 
 /*
+ * Old export arguments without security flavor list
+ */
+struct oexport_args {
+	int	ex_flags;		/* export related flags */
+	uid_t	ex_root;		/* mapping for root uid */
+	struct	xucred ex_anon;		/* mapping for anonymous user */
+	struct	sockaddr *ex_addr;	/* net address to which exported */
+	u_char	ex_addrlen;		/* and the net address length */
+	struct	sockaddr *ex_mask;	/* mask of valid bits in saddr */
+	u_char	ex_masklen;		/* and the smask length */
+	char	*ex_indexfile;		/* index file for WebNFS URLs */
+};
+
+/*
  * Export arguments for local filesystem mount calls.
  */
+#define	MAXSECFLAVORS	5
 struct export_args {
 	int	ex_flags;		/* export related flags */
 	uid_t	ex_root;		/* mapping for root uid */
@@ -359,6 +374,8 @@ struct export_args {
 	struct	sockaddr *ex_mask;	/* mask of valid bits in saddr */
 	u_char	ex_masklen;		/* and the smask length */
 	char	*ex_indexfile;		/* index file for WebNFS URLs */
+	int	ex_numsecflavors;	/* security flavor count */
+	int	ex_secflavors[MAXSECFLAVORS]; /* list of security flavors */
 };
 
 /*
@@ -517,7 +534,8 @@ typedef	int vfs_vget_t(struct mount *mp, ino_t ino, int flags,
 		    struct vnode **vpp);
 typedef	int vfs_fhtovp_t(struct mount *mp, struct fid *fhp, struct vnode **vpp);
 typedef	int vfs_checkexp_t(struct mount *mp, struct sockaddr *nam,
-		    int *extflagsp, struct ucred **credanonp);
+		    int *extflagsp, struct ucred **credanonp,
+		    int *numsecflavors, int **secflavors);
 typedef	int vfs_vptofh_t(struct vnode *vp, struct fid *fhp);
 typedef	int vfs_init_t(struct vfsconf *);
 typedef	int vfs_uninit_t(struct vfsconf *);
@@ -560,8 +578,8 @@ vfs_statfs_t	__vfs_statfs;
 #define VFS_FHTOVP(MP, FIDP, VPP) \
 	(*(MP)->mnt_op->vfs_fhtovp)(MP, FIDP, VPP)
 #define	VFS_VPTOFH(VP, FIDP)	  (*(VP)->v_mount->mnt_op->vfs_vptofh)(VP, FIDP)
-#define VFS_CHECKEXP(MP, NAM, EXFLG, CRED) \
-	(*(MP)->mnt_op->vfs_checkexp)(MP, NAM, EXFLG, CRED)
+#define VFS_CHECKEXP(MP, NAM, EXFLG, CRED, NUMSEC, SEC)	\
+	(*(MP)->mnt_op->vfs_checkexp)(MP, NAM, EXFLG, CRED, NUMSEC, SEC)
 #define VFS_EXTATTRCTL(MP, C, FN, NS, N, P) \
 	(*(MP)->mnt_op->vfs_extattrctl)(MP, C, FN, NS, N, P)
 #define VFS_SYSCTL(MP, OP, REQ) \

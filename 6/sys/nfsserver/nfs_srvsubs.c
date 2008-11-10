@@ -93,10 +93,12 @@ static const nfstype nfsv2_type[9] = { NFNON, NFREG, NFDIR, NFBLK, NFCHR,
 
 int nfsrv_ticks;
 
+#ifdef NFS_LEGACYRPC
 struct nfssvc_sockhead nfssvc_sockhead;
 int nfssvc_sockhead_flag;
 struct nfsd_head nfsd_head;
 int nfsd_head_flag;
+#endif
 
 static int nfs_prev_nfssvc_sy_narg;
 static sy_call_t *nfs_prev_nfssvc_sy_call;
@@ -544,6 +546,7 @@ nfsrv_modevent(module_t mod, int type, void *data)
 		if (nfsrv_ticks < 1)
 			nfsrv_ticks = 1;
 
+#ifdef NFS_LEGACYRPC
 		nfsrv_initcache();	/* Init the server request cache */
 		NFSD_LOCK();
 		nfsrv_init(0);		/* Init server data structures */
@@ -553,6 +556,11 @@ nfsrv_modevent(module_t mod, int type, void *data)
 			callout_init(&nfsrv_callout, 0);
 		NFSD_UNLOCK();
 		nfsrv_timer(0);
+#else
+		NFSD_LOCK();
+		nfsrv_init(0);		/* Init server data structures */
+		NFSD_UNLOCK();
+#endif
 
 		nfs_prev_nfssvc_sy_narg = sysent[SYS_nfssvc].sy_narg;
 		sysent[SYS_nfssvc].sy_narg = 2 | SYF_MPSAFE;
@@ -569,7 +577,9 @@ nfsrv_modevent(module_t mod, int type, void *data)
 		callout_drain(&nfsrv_callout);
 		sysent[SYS_nfssvc].sy_narg = nfs_prev_nfssvc_sy_narg;
 		sysent[SYS_nfssvc].sy_call = nfs_prev_nfssvc_sy_call;
+#ifdef NFS_LEGACYRPC
 		nfsrv_destroycache();	/* Free the server request cache */
+#endif
 		mtx_destroy(&nfsd_mtx);
 		break;
 	default:
@@ -588,6 +598,9 @@ DECLARE_MODULE(nfsserver, nfsserver_mod, SI_SUB_VFS, SI_ORDER_ANY);
 
 /* So that loader and kldload(2) can find us, wherever we are.. */
 MODULE_VERSION(nfsserver, 1);
+#ifndef NFS_LEGACYRPC
+MODULE_DEPEND(nfsserver, krpc, 1, 1, 1);
+#endif
 
 /*
  * Set up nameidata for a lookup() call and do it.
@@ -606,8 +619,9 @@ MODULE_VERSION(nfsserver, 1);
  * released by the caller.
  */
 int
-nfs_namei(struct nameidata *ndp, fhandle_t *fhp, int len,
-    struct nfssvc_sock *slp, struct sockaddr *nam, struct mbuf **mdp,
+nfs_namei(struct nameidata *ndp, struct nfsrv_descript *nfsd,
+    fhandle_t *fhp, int len, struct nfssvc_sock *slp,
+    struct sockaddr *nam, struct mbuf **mdp,
     caddr_t *dposp, struct vnode **retdirp, int v3, struct vattr *retdirattrp,
     int *retdirattr_retp, struct thread *td, int pubflag)
 {
@@ -670,7 +684,7 @@ nfs_namei(struct nameidata *ndp, fhandle_t *fhp, int len,
 	 */
 	mtx_unlock(&Giant);	/* VFS */
 	NFSD_LOCK();
-	error = nfsrv_fhtovp(fhp, FALSE, &dp, ndp->ni_cnd.cn_cred, slp,
+	error = nfsrv_fhtovp(fhp, FALSE, &dp, nfsd, slp,
 	    nam, &rdonly, pubflag);
 	NFSD_UNLOCK();
 	mtx_lock(&Giant);	/* VFS */
@@ -1066,18 +1080,23 @@ nfsm_srvfattr(struct nfsrv_descript *nfsd, struct vattr *vap,
  */
 int
 nfsrv_fhtovp(fhandle_t *fhp, int lockflag, struct vnode **vpp,
-    struct ucred *cred, struct nfssvc_sock *slp, struct sockaddr *nam,
-    int *rdonlyp, int pubflag)
+    struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
+    struct sockaddr *nam, int *rdonlyp, int pubflag)
 {
 	struct thread *td = curthread; /* XXX */
 	struct mount *mp;
 	int i;
-	struct ucred *credanon;
+	struct ucred *cred, *credanon;
 	int error, exflags;
 	int vfslocked;
 #ifdef MNT_EXNORESPORT		/* XXX needs mountd and /etc/exports help yet */
 	struct sockaddr_int *saddr;
 #endif
+	int credflavor;
+	int numsecflavors, *secflavors;
+	int authsys;
+	int v3 = nfsd->nd_flag & ND_NFSV3;
+	int mountreq;
 
 	NFSD_LOCK_ASSERT();
 
@@ -1094,9 +1113,44 @@ nfsrv_fhtovp(fhandle_t *fhp, int lockflag, struct vnode **vpp,
 		return (ESTALE);
 	NFSD_UNLOCK();
 	vfslocked = VFS_LOCK_GIANT(mp);
-	error = VFS_CHECKEXP(mp, nam, &exflags, &credanon);
+	error = VFS_CHECKEXP(mp, nam, &exflags, &credanon,
+	    &numsecflavors, &secflavors);
 	if (error)
 		goto out;
+	if (numsecflavors == 0) {
+		/*
+		 * This can happen if the system is running with an
+		 * old mountd that doesn't pass in a secflavor list.
+		 */
+		numsecflavors = 1;
+		authsys = RPCAUTH_UNIX;
+		secflavors = &authsys;
+	}
+	credflavor = nfsd->nd_credflavor;
+	for (i = 0; i < numsecflavors; i++) {
+		if (secflavors[i] == credflavor)
+			break;
+	}
+	if (i == numsecflavors) {
+		/*
+		 * RFC 2623 section 2.3.2 - allow certain procedures
+		 * used at NFS client mount time even if they have
+		 * weak authentication.
+		 */
+		mountreq = FALSE;
+		if (v3) {
+			if (nfsd->nd_procnum == NFSPROC_FSINFO)
+				mountreq = TRUE;
+		} else {
+			if (nfsd->nd_procnum == NFSPROC_FSSTAT
+			    || nfsd->nd_procnum == NFSPROC_GETATTR)
+				mountreq = TRUE;
+		}
+		if (!mountreq) {
+			error = NFSERR_AUTHERR | AUTH_REJECTCRED;
+			goto out;
+		}
+	}
 	error = VFS_FHTOVP(mp, &fhp->fh_fid, vpp);
 	if (error)
 		goto out;
@@ -1116,6 +1170,7 @@ nfsrv_fhtovp(fhandle_t *fhp, int lockflag, struct vnode **vpp,
 	/*
 	 * Check/setup credentials.
 	 */
+	cred = nfsd->nd_cr;
 	if (cred->cr_uid == 0 || (exflags & MNT_EXPORTANON)) {
 		cred->cr_uid = credanon->cr_uid;
 		for (i = 0; i < credanon->cr_ngroups && i < NGROUPS; i++)
@@ -1155,6 +1210,8 @@ nfs_ispublicfh(fhandle_t *fhp)
 			return (FALSE);
 	return (TRUE);
 }
+
+#ifdef NFS_LEGACYRPC
 
 /*
  * This function compares two net addresses by family and returns TRUE
@@ -1197,6 +1254,8 @@ netaddr_match(int family, union nethostaddr *haddr, struct sockaddr *nam)
 	};
 	return (0);
 }
+
+#endif
 
 /*
  * Map errnos to NFS error numbers. For Version 3 also filter out error
@@ -1389,15 +1448,14 @@ nfsm_clget_xx(u_int32_t **tl, struct mbuf *mb, struct mbuf **mp,
 }
 
 int
-nfsm_srvmtofh_xx(fhandle_t *f, struct nfsrv_descript *nfsd, struct mbuf **md,
-    caddr_t *dpos)
+nfsm_srvmtofh_xx(fhandle_t *f, int v3, struct mbuf **md, caddr_t *dpos)
 {
 	u_int32_t *tl;
 	int fhlen;
 
 	NFSD_LOCK_DONTCARE();
 
-	if (nfsd->nd_flag & ND_NFSV3) {
+	if (v3) {
 		tl = nfsm_dissect_xx_nonblock(NFSX_UNSIGNED, md, dpos);
 		if (tl == NULL)
 			return EBADRPC;

@@ -93,9 +93,11 @@ static enum vtype nv2tov_type[8]= {
 int		nfs_ticks;
 int		nfs_pbuf_freecnt = -1;	/* start out unlimited */
 
+#ifdef NFS_LEGACYRPC
 struct nfs_reqq	nfs_reqq;
 struct mtx nfs_reqq_mtx;
 struct mtx nfs_reply_mtx;
+#endif
 struct nfs_bufq	nfs_bufq;
 
 /*
@@ -419,10 +421,12 @@ nfs_init(struct vfsconf *vfsp)
 	/*
 	 * Initialize reply list and start timer
 	 */
+#ifdef NFS_LEGACYRPC
 	TAILQ_INIT(&nfs_reqq);
 	callout_init(&nfs_callout, 0);
 	mtx_init(&nfs_reqq_mtx, "NFS reqq lock", NULL, MTX_DEF);
 	mtx_init(&nfs_reply_mtx, "Synch NFS reply posting", NULL, MTX_DEF);
+#endif
 
 	nfs_pbuf_freecnt = nswbuf / 2 + 1;
 
@@ -434,10 +438,12 @@ nfs_uninit(struct vfsconf *vfsp)
 {
 	int i;
 
+#ifdef NFS_LEGACYRPC
 	callout_stop(&nfs_callout);
 
 	KASSERT(TAILQ_EMPTY(&nfs_reqq),
 	    ("nfs_uninit: request queue not empty"));
+#endif
 
 	/*
 	 * Tell all nfsiod processes to exit. Clear nfs_iodmax, and wakeup

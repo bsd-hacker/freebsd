@@ -74,6 +74,8 @@ __FBSDID("$FreeBSD$");
 #include <nfsserver/nfsm_subs.h>
 #include <nfsserver/nfsrvcache.h>
 
+#ifdef NFS_LEGACYRPC
+
 static MALLOC_DEFINE(M_NFSSVC, "NFS srvsock", "Nfs server structure");
 
 MALLOC_DEFINE(M_NFSRVDESC, "NFSV3 srvdesc", "NFS server socket descriptor");
@@ -131,7 +133,7 @@ nfssvc(struct thread *td, struct nfssvc_args *uap)
 {
 	struct file *fp;
 	struct sockaddr *nam;
-	struct nfsd_args nfsdarg;
+	struct nfsd_addsock_args nfsdarg;
 	int error;
 
 	KASSERT(!mtx_owned(&Giant), ("nfssvc(): called with Giant"));
@@ -177,7 +179,7 @@ nfssvc(struct thread *td, struct nfssvc_args *uap)
 		}
 		error = nfssvc_addsock(fp, nam, td);
 		fdrop(fp, td);
-	} else if (uap->flag & NFSSVC_NFSD) {
+	} else if (uap->flag & NFSSVC_OLDNFSD) {
 		error = nfssvc_nfsd(td);
 	} else {
 		error = ENXIO;
@@ -754,3 +756,5 @@ nfsrv_init(int terminating)
 	TAILQ_INSERT_TAIL(&nfssvc_sockhead, nfs_cltpsock, ns_chain);
 #endif
 }
+
+#endif /* NFS_LEGACYRPC */

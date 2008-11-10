@@ -57,6 +57,8 @@ __FBSDID("$FreeBSD$");
 #include <nfsserver/nfs.h>
 #include <nfsserver/nfsrvcache.h>
 
+#ifdef NFS_LEGACYRPC
+
 static long numnfsrvcache;
 static long desirednfsrvcache;
 
@@ -383,3 +385,5 @@ nfsrv_cleancache(void)
 	}
 	numnfsrvcache = 0;
 }
+
+#endif /* NFS_LEGACYRPC */
