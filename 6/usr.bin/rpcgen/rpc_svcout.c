@@ -483,6 +483,9 @@ write_program(def, storage)
 		if (mtflag) {
 			f_print(fout, "\tunion {\n");
 			for (proc = vp->procs; proc != NULL; proc = proc->next) {
+				if (streq(proc->res_type, "void")) {
+					continue;
+				}
 				f_print(fout, "\t\t");
 				ptype(proc->res_prefix, proc->res_type, 0);
 				pvname(proc->proc_name, vp->vers_num);
