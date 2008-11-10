@@ -26,6 +26,7 @@
  *	$FreeBSD$
  */
 
+#include <unistd.h>
 #include <sys/queue.h>
 
 typedef OM_uint32 _gss_acquire_cred_t
@@ -282,6 +283,13 @@ typedef OM_uint32 _gss_krb5_compat_des3_mic (
 	       int		       /* flag */
 	      );
 
+typedef OM_uint32 _gss_pname_to_uid
+	      (OM_uint32 *,		/* minor status */
+	       gss_name_t pname,	/* principal name */
+	       gss_OID mech,		/* mechanism to query */
+	       uid_t *uidp		/* pointer to UID for result */
+	      );
+
 struct _gss_mech_switch {
 	SLIST_ENTRY(_gss_mech_switch)	gm_link;
 	gss_OID_desc			gm_mech_oid;
@@ -318,6 +326,7 @@ struct _gss_mech_switch {
 	_gsskrb5_register_acceptor_identity *gm_krb5_register_acceptor_identity;
 	_gss_krb5_copy_ccache		*gm_krb5_copy_ccache;
 	_gss_krb5_compat_des3_mic	*gm_krb5_compat_des3_mic;
+	_gss_pname_to_uid		*gm_pname_to_uid;
 };
 SLIST_HEAD(_gss_mech_switch_list, _gss_mech_switch);
 extern struct _gss_mech_switch_list _gss_mechs;

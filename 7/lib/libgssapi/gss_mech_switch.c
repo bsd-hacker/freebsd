@@ -273,6 +273,7 @@ _gss_load_mech(void)
 			gm_krb5_register_acceptor_identity);
 		OPTSYM(krb5_copy_ccache);
 		OPTSYM(krb5_compat_des3_mic);
+		OPTSYM(pname_to_uid);
 
 		SLIST_INSERT_HEAD(&_gss_mechs, m, gm_link);
 		count++;

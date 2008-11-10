@@ -39,6 +39,7 @@ SRCS=	8003.c \
 	inquire_cred_by_mech.c \
 	inquire_mechs_for_name.c \
 	inquire_names_for_mech.c \
+	pname_to_uid.c \
 	process_context_token.c \
 	release_buffer.c \
 	release_cred.c \

@@ -46,6 +46,7 @@ SRCS+=		gss_add_oid_set_member.c
 SRCS+=		gss_test_oid_set_member.c
 SRCS+=		gss_release_oid_set.c
 SRCS+=		gss_release_buffer.c
+SRCS+=		gss_pname_to_uid.c
 
 MAN=
 MAN+=		gssapi.3
