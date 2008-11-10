@@ -480,6 +480,7 @@ nfs_mountroot(struct mount *mp, struct thread *td)
 		(l >> 24) & 0xff, (l >> 16) & 0xff,
 		(l >>  8) & 0xff, (l >>  0) & 0xff, nd->root_hostnam);
 	printf("NFS ROOT: %s\n", buf);
+	nd->root_args.hostname = buf;
 	if ((error = nfs_mountdiskless(buf, MNT_RDONLY,
 	    &nd->root_saddr, &nd->root_args, td, &vp, mp)) != 0) {
 		return (error);
@@ -529,6 +530,7 @@ nfs_decode_args(struct mount *mp, struct nfsmount *nmp, struct nfs_args *argp)
 	int s;
 	int adjsock;
 	int maxio;
+	char *p;
 
 	s = splnet();
 
@@ -689,6 +691,11 @@ nfs_decode_args(struct mount *mp, struct nfsmount *nmp, struct nfs_args *argp)
 					      PSOCK, "nfscon", 0);
 			}
 	}
+
+	strlcpy(nmp->nm_hostname, argp->hostname, sizeof(nmp->nm_hostname));
+	p = index(nmp->nm_hostname, ':');
+	if (p)
+		*p = '\0';
 }
 
 static const char *nfs_opts[] = { "from", "nfs_args", NULL };

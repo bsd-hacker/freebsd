@@ -197,6 +197,8 @@ static int	nfs_renameit(struct vnode *sdvp, struct componentname *scnp,
 struct proc	*nfs_iodwant[NFS_MAXASYNCDAEMON];
 struct nfsmount *nfs_iodmount[NFS_MAXASYNCDAEMON];
 int		 nfs_numasync = 0;
+vop_advlock_t	*nfs_advlock_p = nfs_dolock;
+vop_reclaim_t	*nfs_reclaim_p = NULL;
 #define	DIRHDSIZ	(sizeof (struct dirent) - (MAXNAMLEN + 1))
 
 SYSCTL_DECL(_vfs_nfs);
@@ -2900,13 +2902,25 @@ done:
 static int
 nfs_advlock(struct vop_advlock_args *ap)
 {
+	struct vnode *vp = ap->a_vp;
+	u_quad_t size;
+	int error;
 
-	if ((VFSTONFS(ap->a_vp->v_mount)->nm_flag & NFSMNT_NOLOCKD) != 0) {
-		struct nfsnode *np = VTONFS(ap->a_vp);
-
-		return (lf_advlock(ap, &(np->n_lockf), np->n_size));
+	error = vn_lock(vp, LK_SHARED, curthread);
+	if (error)
+		return (error);
+	if ((VFSTONFS(vp->v_mount)->nm_flag & NFSMNT_NOLOCKD) != 0) {
+		size = VTONFS(vp)->n_size;
+		VOP_UNLOCK(vp, 0, curthread);
+		error = lf_advlock(ap, &(VTONFS(vp)->n_lockf), size);
+	} else {
+		if (nfs_advlock_p)
+			error = nfs_advlock_p(ap);
+		else
+			error = ENOLCK;
 	}
-	return (nfs_dolock(ap));
+
+	return (error);
 }
 
 /*
