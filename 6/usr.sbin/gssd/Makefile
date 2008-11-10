@@ -8,7 +8,7 @@ CFLAGS+= -I.
 WARNS?= 1
 
 DPADD=	${LIBGSSAPI}
-LDADD=	-lgssapi
+LDADD=	-lgssapi -lkrb5 -lasn1 -lroken -lcrypto -lcrypt -lcom_err
 
 CLEANFILES= gssd_svc.c gssd.h
 

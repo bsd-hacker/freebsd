@@ -236,7 +236,7 @@ _bluetooth=	bluetooth
 _keyserv=	keyserv
 .endif
 
-.if ${MK_GSSAPI} != no
+.if !defined(NO_KERBEROS)
 _gssd=		gssd
 .endif
 

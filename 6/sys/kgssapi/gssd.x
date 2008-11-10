@@ -32,7 +32,7 @@
 %#ifdef _KERNEL
 %#include <kgssapi/gssapi.h>
 %#else
-%#include <gssapi/gssapi.h>
+%#include <gssapi.h>
 %#endif
 
 %extern bool_t xdr_gss_buffer_desc(XDR *xdrs, gss_buffer_desc *buf);

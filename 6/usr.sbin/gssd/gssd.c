@@ -40,7 +40,7 @@ __FBSDID("$FreeBSD$");
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <gssapi/gssapi.h>
+#include <gssapi.h>
 #include <rpc/rpc.h>
 #include <rpc/rpc_com.h>
 
@@ -450,6 +450,7 @@ gssd_release_name_1_svc(release_name_args *argp, release_name_res *result, struc
 bool_t
 gssd_pname_to_uid_1_svc(pname_to_uid_args *argp, pname_to_uid_res *result, struct svc_req *rqstp)
 {
+#if 0
 	gss_name_t name = gssd_find_resource(argp->pname);
 	uid_t uid;
 	char buf[128];
@@ -486,6 +487,11 @@ gssd_pname_to_uid_1_svc(pname_to_uid_args *argp, pname_to_uid_res *result, struc
 	}
 
 	return (TRUE);
+#else
+	memset(result, 0, sizeof(*result));
+	result->major_status = GSS_S_FAILURE;
+	return (TRUE);
+#endif
 }
 
 bool_t
@@ -523,6 +529,7 @@ gssd_acquire_cred_1_svc(acquire_cred_args *argp, acquire_cred_res *result, struc
 bool_t
 gssd_set_cred_option_1_svc(set_cred_option_args *argp, set_cred_option_res *result, struct svc_req *rqstp)
 {
+#if 0
 	gss_cred_id_t cred = gssd_find_resource(argp->cred);
 
 	memset(result, 0, sizeof(*result));
@@ -535,6 +542,11 @@ gssd_set_cred_option_1_svc(set_cred_option_args *argp, set_cred_option_res *resu
 	    &cred, argp->option_name, &argp->option_value);
 
 	return (TRUE);
+#else
+	memset(result, 0, sizeof(*result));
+	result->major_status = GSS_S_FAILURE;
+	return (TRUE);
+#endif
 }
 
 bool_t
