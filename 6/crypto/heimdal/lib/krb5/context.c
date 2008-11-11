@@ -177,6 +177,8 @@ init_context_from_config_file(krb5_context context)
     INIT_FIELD(context, bool, srv_lookup, TRUE, "srv_lookup");
     INIT_FIELD(context, bool, srv_lookup, context->srv_lookup, "dns_lookup_kdc");
     context->default_cc_name = NULL;
+    context->default_cc_name_env = NULL;
+    context->default_cc_name_set = 0;
     return 0;
 }
 
@@ -230,6 +232,8 @@ krb5_free_context(krb5_context context)
 {
     if (context->default_cc_name)
 	free(context->default_cc_name);
+    if (context->default_cc_name_env)
+	free(context->default_cc_name_env);
     free(context->etypes);
     free(context->etypes_des);
     krb5_free_host_realm (context, context->default_realms);
