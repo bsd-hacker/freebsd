@@ -422,8 +422,11 @@ krb5_import(struct krb5_context *kc,
 #define SC_LOCAL_SUBKEY		8
 #define SC_REMOTE_SUBKEY	16
 
+#if __FreeBSD_version >= 700000
 	/*
-	 * Ensure that the token starts with krb5 oid.
+	 * Ensure that the token starts with krb5 oid. FreeBSD 6.x
+	 * doesn't have the libgssapi plugin layer that adds this
+	 * framing.
 	 */
 	if (p[0] != 0x00 || p[1] != krb5_mech_oid.length
 	    || len < krb5_mech_oid.length + 2
@@ -432,6 +435,7 @@ krb5_import(struct krb5_context *kc,
 		return (GSS_S_DEFECTIVE_TOKEN);
 	p += krb5_mech_oid.length + 2;
 	len -= krb5_mech_oid.length + 2;
+#endif
 
 	flags = get_uint32(&p, &len);
 	kc->kc_ac_flags = get_uint32(&p, &len);
