@@ -316,6 +316,7 @@ gssd_accept_sec_context_1_svc(accept_sec_context_args *argp, accept_sec_context_
 	}
 
 	memset(result, 0, sizeof(*result));
+	delegated_cred_handle = GSS_C_NO_CREDENTIAL;
 	result->major_status = gss_accept_sec_context(&result->minor_status,
 	    &ctx, cred, &argp->input_token, argp->input_chan_bindings,
 	    &src_name, &result->mech_type, &result->output_token,
