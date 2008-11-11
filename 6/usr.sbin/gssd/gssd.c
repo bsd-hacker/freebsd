@@ -450,7 +450,6 @@ gssd_release_name_1_svc(release_name_args *argp, release_name_res *result, struc
 bool_t
 gssd_pname_to_uid_1_svc(pname_to_uid_args *argp, pname_to_uid_res *result, struct svc_req *rqstp)
 {
-#if 0
 	gss_name_t name = gssd_find_resource(argp->pname);
 	uid_t uid;
 	char buf[128];
@@ -487,11 +486,6 @@ gssd_pname_to_uid_1_svc(pname_to_uid_args *argp, pname_to_uid_res *result, struc
 	}
 
 	return (TRUE);
-#else
-	memset(result, 0, sizeof(*result));
-	result->major_status = GSS_S_FAILURE;
-	return (TRUE);
-#endif
 }
 
 bool_t
