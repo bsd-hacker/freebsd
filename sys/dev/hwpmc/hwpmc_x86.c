@@ -41,6 +41,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/apicreg.h>
 #include <machine/pmc_mdep.h>
 #include <machine/md_var.h>
+#include <machine/cpufunc.h>
 
 #include <vm/vm.h>
 #include <vm/vm_param.h>
@@ -287,6 +288,29 @@ pmc_intel_initialize(void)
 		break;
 	}
 #endif
+	/*
+	 * Check whether the CPU supports newer Intel Architectural 
+	 * Performance Monitoring v1 or v2 facilities- i.e, Intel
+	 * Core Solo/Duo processors or Intel Core Microarchitecture
+	 * processor
+	 */
+#if	defined(__i386__) || defined(__amd64__)
+	if ((cputype == -1) && ((cpu_id & 0xFF) >= 0xA)) {
+		uint32_t regs[4], pm_version;
+		/*
+		 * Determine the PM facilities
+		 */
+		do_cpuid(0xA, regs);
+		pm_version = regs[0] & 0xFF;
+		if (pm_version == 0x1) {
+			cputype = PMC_CPU_INTEL_CORE;
+		} else if (pm_version == 0x2) {
+			cputype = PMC_CPU_INTEL_CORE2;
+		} else {
+			printf("IPM unknown version %d\n", pm_version);
+		}
+	}
+#endif
 
 	if ((int) cputype == -1) {
 		printf("pmc: Unknown Intel CPU.\n");
@@ -315,6 +339,11 @@ pmc_intel_initialize(void)
 
 	case PMC_CPU_INTEL_PIV:
 		error = pmc_initialize_p4(pmc_mdep);
+		break;
+
+	case PMC_CPU_INTEL_CORE:
+	case PMC_CPU_INTEL_CORE2:
+		error = pmc_initialize_ipm(pmc_mdep);
 		break;
 #endif
 

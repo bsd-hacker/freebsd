@@ -105,7 +105,8 @@ enum pmc_cputype {
 	__PMC_CLASS(P6)		/* Intel Pentium Pro counters */	\
 	__PMC_CLASS(P4)		/* Intel Pentium-IV counters */		\
 	__PMC_CLASS(IAF)	/* Intel Core2/Atom, fixed function */	\
-	__PMC_CLASS(IAP)	/* Intel Core...Atom, programmable */
+	__PMC_CLASS(IAP1)	/* Intel Core...Atom, programmable */	\
+	__PMC_CLASS(IAP2)	/* Intel Core...Atom, programmable */
 
 enum pmc_class {
 #undef  __PMC_CLASS

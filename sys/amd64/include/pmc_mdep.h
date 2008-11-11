@@ -37,11 +37,13 @@
 
 #include <dev/hwpmc/hwpmc_amd.h>
 #include <dev/hwpmc/hwpmc_piv.h>
+#include <dev/hwpmc/hwpmc_ipm.h>
 
 union pmc_md_op_pmcallocate  {
 	struct pmc_md_amd_op_pmcallocate	pm_amd;
 	struct pmc_md_p4_op_pmcallocate		pm_p4;
-	uint64_t				__pad[4];
+	struct pmc_md_ipm_op_pmcallocate	pm_ipm;
+	uint32_t				__pad[7];
 };
 
 /* Logging */
@@ -53,6 +55,7 @@ union pmc_md_op_pmcallocate  {
 union pmc_md_pmc {
 	struct pmc_md_amd_pmc	pm_amd;
 	struct pmc_md_p4_pmc	pm_p4;
+	struct pmc_md_ipm_pmc	pm_ipm;
 };
 
 struct pmc;
