@@ -227,10 +227,14 @@ nfs_rephead(int siz, struct nfsrv_descript *nd, int err,
 	if (err == EBADRPC)
 		return (NULL);
 
+	/* XXXRW: not 100% clear the lock is needed here. */
+	NFSD_LOCK_ASSERT();
+
 	nd->nd_repstat = err;
 	if (err && (nd->nd_flag & ND_NFSV3) == 0)	/* XXX recheck */
 		siz = 0;
 
+	NFSD_UNLOCK();
 	MGET(mreq, M_WAIT, MT_DATA);
 
 	/*
@@ -241,6 +245,7 @@ nfs_rephead(int siz, struct nfsrv_descript *nd, int err,
 		MCLGET(mreq, M_WAIT);
 	}
 	mb = mreq;
+	NFSD_LOCK();
 	bpos = mtod(mb, caddr_t);
 
 	if (err != NFSERR_RETVOID) {
@@ -371,7 +376,9 @@ nfssvc_program(struct svc_req *rqst, SVCXPRT *xprt)
 	}
 	nfsrvstats.srvrpccnt[nd.nd_procnum]++;
 
+	NFSD_LOCK();
 	error = proc(&nd, NULL, curthread, &mrep);
+	NFSD_UNLOCK();
 
 	if (nd.nd_cr)
 		crfree(nd.nd_cr);
