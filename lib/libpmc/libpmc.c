@@ -2265,6 +2265,10 @@ pmc_event_names_of_class(enum pmc_class cl, const char ***eventnames,
 		ev = p6_event_table;
 		count = PMC_EVENT_TABLE_SIZE(p6);
 		break;
+	case PMC_CLASS_IAP2:
+		ev = iap2_event_table;
+		count = PMC_EVENT_TABLE_SIZE(iap2);
+		break;
 	default:
 		errno = EINVAL;
 		return (-1);
@@ -2489,6 +2493,9 @@ pmc_name_of_event(enum pmc_event pe)
 	} else if (pe == PMC_EV_TSC_TSC) {
 		ev = tsc_event_table;
 		evfence = tsc_event_table + PMC_EVENT_TABLE_SIZE(tsc);
+	} else if (pe >= PMC_EV_IAP1_FIRST && pe <= PMC_EV_IAP2_LAST) {
+		ev = iap2_event_table;
+		evfence = iap2_event_table + PMC_EVENT_TABLE_SIZE(iap2);
 	}
 
 	for (; ev != evfence; ev++)
