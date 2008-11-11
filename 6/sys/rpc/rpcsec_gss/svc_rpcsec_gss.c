@@ -77,7 +77,7 @@ __FBSDID("$FreeBSD$");
 #include <rpc/rpc.h>
 #include <rpc/rpcsec_gss.h>
 
-#include "rpcsec_gss_int.h"
+#include <rpc/rpcsec_gss/rpcsec_gss_int.h>
 
 static bool_t   svc_rpc_gss_wrap(SVCAUTH *, struct mbuf **);
 static bool_t   svc_rpc_gss_unwrap(SVCAUTH *, struct mbuf **);

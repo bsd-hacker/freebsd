@@ -16,6 +16,6 @@ MFILES=		kgssapi/kgss_if.m
 S=		${.CURDIR}/../..
 
 gssd.h:		$S/kgssapi/gssd.x
-	rpcgen -hM $S/kgssapi/gssd.x | grep -v pthread.h > gssd.h
+	rpcgen -hM -C $S/kgssapi/gssd.x | grep -v pthread.h > gssd.h
 
 .include <bsd.kmod.mk>

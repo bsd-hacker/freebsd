@@ -36,7 +36,7 @@ __FBSDID("$FreeBSD$");
 #include <kgssapi/gssapi.h>
 #include <kgssapi/gssapi_impl.h>
 
-#include "kcrypto.h"
+#include <kgssapi/krb5/kcrypto.h>
 
 static struct krb5_encryption_class *krb5_encryption_classes[] = {
 	&krb5_des_encryption_class,

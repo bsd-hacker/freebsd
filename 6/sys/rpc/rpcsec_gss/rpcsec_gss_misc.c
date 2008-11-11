@@ -33,7 +33,7 @@ __FBSDID("$FreeBSD$");
 #include <rpc/rpc.h>
 #include <rpc/rpcsec_gss.h>
 
-#include "rpcsec_gss_int.h"
+#include <rpc/rpcsec_gss/rpcsec_gss_int.h>
 
 static rpc_gss_error_t _rpc_gss_error;
 

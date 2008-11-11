@@ -33,10 +33,10 @@ __FBSDID("$FreeBSD$");
 #include <sys/kobj.h>
 #include <sys/malloc.h>
 #include <sys/module.h>
-#include <sys/priv.h>
 #include <sys/syscall.h>
 #include <sys/sysent.h>
 #include <sys/sysproto.h>
+#include <sys/systm.h>
 
 #include <kgssapi/gssapi.h>
 #include <kgssapi/gssapi_impl.h>
@@ -53,7 +53,14 @@ MALLOC_DEFINE(M_GSSAPI, "GSS-API", "GSS-API");
  */
 static int gssd_syscall_offset = SYS_gssd_syscall;
 static struct sysent gssd_syscall_prev_sysent;
+#if __FreeBSD_version < 700000
+static struct sysent gssd_syscall_sysent = {
+	(sizeof(struct gssd_syscall_args) / sizeof(register_t)) | SYF_MPSAFE,
+	(sy_call_t *) gssd_syscall
+};
+#else
 MAKE_SYSENT(gssd_syscall);
+#endif
 static bool_t gssd_syscall_registered = FALSE;
 
 struct kgss_mech_list kgss_mechs;
@@ -92,7 +99,7 @@ gssd_syscall(struct thread *td, struct gssd_syscall_args *uap)
 	char path[MAXPATHLEN];
 	int error;
         
-	error = priv_check(td, PRIV_NFS_DAEMON);
+	error = suser(td);
 	if (error)
 		return (error);
 

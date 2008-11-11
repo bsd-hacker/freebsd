@@ -42,7 +42,7 @@ __FBSDID("$FreeBSD$");
 #include <kgssapi/gssapi_impl.h>
 
 #include "kgss_if.h"
-#include "kcrypto.h"
+#include <kgssapi/krb5/kcrypto.h>
 
 #define GSS_TOKEN_SENT_BY_ACCEPTOR	1
 #define GSS_TOKEN_SEALED		2

@@ -37,7 +37,7 @@ __FBSDID("$FreeBSD$");
 #include <rpc/rpc.h>
 #include <rpc/rpcsec_gss.h>
 
-#include "rpcsec_gss_int.h"
+#include <rpc/rpcsec_gss/rpcsec_gss_int.h>
 
 bool_t
 rpc_gss_mech_to_oid(const char *mech, gss_OID *oid_ret)

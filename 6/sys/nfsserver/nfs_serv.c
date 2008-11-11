@@ -268,7 +268,7 @@ nfsrv_getattr(struct nfsrv_descript *nfsd, struct nfssvc_sock *slp,
 	nfsdbprintf(("%s %d\n", __FILE__, __LINE__));
 	fhp = &nfh.fh_generic;
 	nfsm_srvmtofh(fhp);
-	error = nfsrv_fhtovp(fhp, 1, &vp, &vfslocked, nfsd, slp, nam,
+	error = nfsrv_fhtovp(fhp, 1, &vp, nfsd, slp, nam,
 	    &rdonly, TRUE);
 	if (error) {
 		nfsm_reply(0);

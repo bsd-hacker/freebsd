@@ -39,7 +39,7 @@ __FBSDID("$FreeBSD$");
 #include <kgssapi/gssapi.h>
 #include <kgssapi/gssapi_impl.h>
 
-#include "kcrypto.h"
+#include <kgssapi/krb5/kcrypto.h>
 
 struct aes_state {
 	struct mtx	as_lock;
@@ -97,8 +97,7 @@ aes_set_key(struct krb5_key_state *ks, const void *in)
 	cri[1].cri_key = ks->ks_key;
 	cri[1].cri_next = NULL;
 
-	crypto_newsession(&as->as_session, cri,
-	    CRYPTOCAP_F_HARDWARE | CRYPTOCAP_F_SOFTWARE);
+	crypto_newsession(&as->as_session, cri, 0);
 }
 
 static void

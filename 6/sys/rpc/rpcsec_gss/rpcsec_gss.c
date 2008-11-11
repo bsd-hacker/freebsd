@@ -82,7 +82,7 @@ __FBSDID("$FreeBSD$");
 #include <rpc/rpc.h>
 #include <rpc/rpcsec_gss.h>
 
-#include "rpcsec_gss_int.h"
+#include <rpc/rpcsec_gss/rpcsec_gss_int.h>
 
 static void	rpc_gss_nextverf(AUTH*);
 static bool_t	rpc_gss_marshal(AUTH *, uint32_t, XDR *, struct mbuf *);

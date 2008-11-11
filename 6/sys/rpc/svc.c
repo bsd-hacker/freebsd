@@ -1186,18 +1186,16 @@ svc_thread_start(void *arg)
 {
 
 	svc_run_internal((SVCPOOL *) arg, FALSE);
-	kthread_exit();
+	kthread_exit(0);
 }
 
 static void
 svc_new_thread(SVCPOOL *pool)
 {
-	struct thread *td;
 
 	pool->sp_threadcount++;
-	kthread_add(svc_thread_start, pool,
-	    pool->sp_proc, &td, 0, 0,
-	    "%s: service", pool->sp_name);
+	kthread_create(svc_thread_start, pool,
+	    NULL, 0, 0, "%s: service", pool->sp_name);
 }
 
 void
@@ -1209,7 +1207,7 @@ svc_run(SVCPOOL *pool)
 
 	p = curproc;
 	td = curthread;
-	snprintf(td->td_name, sizeof(td->td_name),
+	snprintf(p->p_comm, sizeof(p->p_comm),
 	    "%s: master", pool->sp_name);
 	pool->sp_state = SVCPOOL_ACTIVE;
 	pool->sp_proc = p;

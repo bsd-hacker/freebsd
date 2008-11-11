@@ -41,7 +41,7 @@ __FBSDID("$FreeBSD$");
 #include <kgssapi/gssapi.h>
 #include <kgssapi/gssapi_impl.h>
 
-#include "kcrypto.h"
+#include <kgssapi/krb5/kcrypto.h>
 
 struct des1_state {
 	struct mtx	ds_lock;
@@ -91,8 +91,7 @@ des1_set_key(struct krb5_key_state *ks, const void *in)
 	cri[0].cri_key = ks->ks_key;
 	cri[0].cri_next = NULL;
 
-	crypto_newsession(&ds->ds_session, cri,
-	    CRYPTOCAP_F_HARDWARE | CRYPTOCAP_F_SOFTWARE);
+	crypto_newsession(&ds->ds_session, cri, 0);
 }
 
 static void

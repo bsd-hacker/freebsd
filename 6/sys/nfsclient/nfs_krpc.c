@@ -221,7 +221,7 @@ nfs_connect(struct nfsmount *nmp, struct nfsreq *rep)
 		pktscale = 2;
 	if (pktscale > 64)
 		pktscale = 64;
-	mtx_lock(&nmp->nm_mtx);
+	mtx_lock(&Giant);
 	if (nmp->nm_sotype == SOCK_DGRAM) {
 		sndreserve = (nmp->nm_wsize + NFS_MAXPKTHDR) * pktscale;
 		rcvreserve = (max(nmp->nm_rsize, nmp->nm_readdirsize) +
@@ -238,7 +238,7 @@ nfs_connect(struct nfsmount *nmp, struct nfsreq *rep)
 		rcvreserve = (nmp->nm_rsize + NFS_MAXPKTHDR +
 		    sizeof (u_int32_t)) * pktscale;
 	}
-	mtx_unlock(&nmp->nm_mtx);
+	mtx_unlock(&Giant);
 
 	client = clnt_reconnect_create(nconf, saddr, NFS_PROG, vers,
 	    sndreserve, rcvreserve);
@@ -253,7 +253,7 @@ nfs_connect(struct nfsmount *nmp, struct nfsreq *rep)
 		retries = INT_MAX;
 	CLNT_CONTROL(client, CLSET_RETRIES, &retries);
 
-	mtx_lock(&nmp->nm_mtx);
+	mtx_lock(&Giant);
 	if (nmp->nm_client) {
 		/*
 		 * Someone else already connected.
@@ -268,19 +268,19 @@ nfs_connect(struct nfsmount *nmp, struct nfsreq *rep)
 	 * unconnected for servers that reply from a port other than NFS_PORT.
 	 */
 	if (!(nmp->nm_flag & NFSMNT_NOCONN)) {
-		mtx_unlock(&nmp->nm_mtx);
+		mtx_unlock(&Giant);
 		CLNT_CONTROL(client, CLSET_CONNECT, &one);
 	} else {
-		mtx_unlock(&nmp->nm_mtx);
+		mtx_unlock(&Giant);
 	}
 
 	/* Restore current thread's credentials. */
 	td->td_ucred = origcred;
 
-	mtx_lock(&nmp->nm_mtx);
+	mtx_lock(&Giant);
 	/* Initialize other non-zero congestion variables */
 	nfs_init_rtt(nmp);
-	mtx_unlock(&nmp->nm_mtx);
+	mtx_unlock(&Giant);
 	return (0);
 }
 
@@ -292,18 +292,18 @@ nfs_disconnect(struct nfsmount *nmp)
 {
 	CLIENT *client;
 
-	mtx_lock(&nmp->nm_mtx);
+	mtx_lock(&Giant);
 	if (nmp->nm_client) {
 		client = nmp->nm_client;
 		nmp->nm_client = NULL;
-		mtx_unlock(&nmp->nm_mtx);
+		mtx_unlock(&Giant);
 #ifdef KGSSAPI
 		rpc_gss_secpurge(client);
 #endif
 		CLNT_CLOSE(client);
 		CLNT_RELEASE(client);
 	} else {
-		mtx_unlock(&nmp->nm_mtx);
+		mtx_unlock(&Giant);
 	}
 }
 
@@ -662,6 +662,28 @@ nfs_msleep(struct thread *td, void *ident, struct mtx *mtx, int priority, char *
 }
 
 /*
+ * NFS wrapper to tsleep(), that shoves a new p_sigmask and restores the
+ * old one after tsleep() returns.
+ */
+int
+nfs_tsleep(struct thread *td, void *ident, int priority, char *wmesg, int timo)
+{
+	sigset_t oldset;
+	int error;
+	struct proc *p;
+	
+	if ((priority & PCATCH) == 0)
+		return tsleep(ident, priority, wmesg, timo);
+	if (td == NULL)
+		td = curthread; /* XXX */
+	nfs_set_sigmask(td, &oldset);
+	error = tsleep(ident, priority, wmesg, timo);
+	nfs_restore_sigmask(td, &oldset);
+	p = td->td_proc;
+	return (error);
+}
+
+/*
  * Test for a termination condition pending on the process.
  * This is used for NFSMNT_INT mounts.
  */
@@ -718,22 +740,22 @@ nfs_down(struct nfsmount *nmp, struct thread *td, const char *msg,
 {
 	if (nmp == NULL)
 		return;
-	mtx_lock(&nmp->nm_mtx);
+	mtx_lock(&Giant);
 	if ((flags & NFSSTA_TIMEO) && !(nmp->nm_state & NFSSTA_TIMEO)) {
 		nmp->nm_state |= NFSSTA_TIMEO;
-		mtx_unlock(&nmp->nm_mtx);
+		mtx_unlock(&Giant);
 		vfs_event_signal(&nmp->nm_mountp->mnt_stat.f_fsid,
 		    VQ_NOTRESP, 0);
 	} else
-		mtx_unlock(&nmp->nm_mtx);
-	mtx_lock(&nmp->nm_mtx);
+		mtx_unlock(&Giant);
+	mtx_lock(&Giant);
 	if ((flags & NFSSTA_LOCKTIMEO) && !(nmp->nm_state & NFSSTA_LOCKTIMEO)) {
 		nmp->nm_state |= NFSSTA_LOCKTIMEO;
-		mtx_unlock(&nmp->nm_mtx);
+		mtx_unlock(&Giant);
 		vfs_event_signal(&nmp->nm_mountp->mnt_stat.f_fsid,
 		    VQ_NOTRESPLOCK, 0);
 	} else
-		mtx_unlock(&nmp->nm_mtx);
+		mtx_unlock(&Giant);
 	nfs_msg(td, nmp->nm_mountp->mnt_stat.f_mntfromname, msg, error);
 }
 
@@ -747,23 +769,23 @@ nfs_up(struct nfsmount *nmp, struct thread *td, const char *msg,
 		nfs_msg(td, nmp->nm_mountp->mnt_stat.f_mntfromname, msg, 0);
 	}
 
-	mtx_lock(&nmp->nm_mtx);
+	mtx_lock(&Giant);
 	if ((flags & NFSSTA_TIMEO) && (nmp->nm_state & NFSSTA_TIMEO)) {
 		nmp->nm_state &= ~NFSSTA_TIMEO;
-		mtx_unlock(&nmp->nm_mtx);
+		mtx_unlock(&Giant);
 		vfs_event_signal(&nmp->nm_mountp->mnt_stat.f_fsid,
 		    VQ_NOTRESP, 1);
 	} else
-		mtx_unlock(&nmp->nm_mtx);
+		mtx_unlock(&Giant);
 	
-	mtx_lock(&nmp->nm_mtx);
+	mtx_lock(&Giant);
 	if ((flags & NFSSTA_LOCKTIMEO) && (nmp->nm_state & NFSSTA_LOCKTIMEO)) {
 		nmp->nm_state &= ~NFSSTA_LOCKTIMEO;
-		mtx_unlock(&nmp->nm_mtx);
+		mtx_unlock(&Giant);
 		vfs_event_signal(&nmp->nm_mountp->mnt_stat.f_fsid,
 		    VQ_NOTRESPLOCK, 1);
 	} else
-		mtx_unlock(&nmp->nm_mtx);
+		mtx_unlock(&Giant);
 }
 
 #endif /* !NFS_LEGACYRPC */

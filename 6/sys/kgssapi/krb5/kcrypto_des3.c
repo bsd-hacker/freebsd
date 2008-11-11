@@ -40,9 +40,7 @@ __FBSDID("$FreeBSD$");
 #include <kgssapi/gssapi.h>
 #include <kgssapi/gssapi_impl.h>
 
-#include "kcrypto.h"
-
-#define DES3_FLAGS	(CRYPTOCAP_F_HARDWARE | CRYPTOCAP_F_SOFTWARE)
+#include <kgssapi/krb5/kcrypto.h>
 
 struct des3_state {
 	struct mtx	ds_lock;
@@ -97,8 +95,7 @@ des3_set_key(struct krb5_key_state *ks, const void *in)
 	cri[1].cri_key = ks->ks_key;
 	cri[1].cri_next = NULL;
 
-	crypto_newsession(&ds->ds_session, cri,
-	    CRYPTOCAP_F_HARDWARE | CRYPTOCAP_F_SOFTWARE);
+	crypto_newsession(&ds->ds_session, cri, 0);
 }
 
 static void

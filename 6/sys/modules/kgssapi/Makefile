@@ -44,12 +44,12 @@ CLEANFILES=	gssd.h gssd_xdr.c gssd_clnt.c
 S=		${.CURDIR}/../..
 
 gssd.h:		$S/kgssapi/gssd.x
-	rpcgen -hM $S/kgssapi/gssd.x | grep -v pthread.h > gssd.h
+	rpcgen -hM -C $S/kgssapi/gssd.x | grep -v pthread.h > gssd.h
 
 gssd_xdr.c:	$S/kgssapi/gssd.x
-	rpcgen -c $S/kgssapi/gssd.x -o gssd_xdr.c
+	rpcgen -c -C $S/kgssapi/gssd.x -o gssd_xdr.c
 
 gssd_clnt.c:	$S/kgssapi/gssd.x
-	rpcgen -lM $S/kgssapi/gssd.x | grep -v string.h > gssd_clnt.c
+	rpcgen -lM -C $S/kgssapi/gssd.x | grep -v string.h > gssd_clnt.c
 
 .include <bsd.kmod.mk>

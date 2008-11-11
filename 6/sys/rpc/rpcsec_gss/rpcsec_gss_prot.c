@@ -49,7 +49,7 @@ __FBSDID("$FreeBSD$");
 #include <rpc/rpc.h>
 #include <rpc/rpcsec_gss.h>
 
-#include "rpcsec_gss_int.h"
+#include <rpc/rpcsec_gss/rpcsec_gss_int.h>
 
 #define MAX_GSS_SIZE	10240	/* XXX */
 

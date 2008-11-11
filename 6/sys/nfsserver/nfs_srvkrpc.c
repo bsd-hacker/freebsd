@@ -48,7 +48,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/vnode.h>
 #include <sys/malloc.h>
 #include <sys/mount.h>
-#include <sys/priv.h>
 #include <sys/proc.h>
 #include <sys/bio.h>
 #include <sys/buf.h>
@@ -121,7 +120,7 @@ static int	nfssvc_nfsd(struct thread *, struct nfsd_nfsd_args *);
 extern u_long sb_max_adj;
 
 int32_t (*nfsrv3_procs[NFS_NPROCS])(struct nfsrv_descript *nd,
-    struct nfssvc_sock *slp, struct mbuf **mreqp) = {
+    struct nfssvc_sock *slp, struct thread *td, struct mbuf **mreqp) = {
 	nfsrv_null,
 	nfsrv_getattr,
 	nfsrv_setattr,
@@ -178,7 +177,7 @@ nfssvc(struct thread *td, struct nfssvc_args *uap)
 
 	KASSERT(!mtx_owned(&Giant), ("nfssvc(): called with Giant"));
 
-	error = priv_check(td, PRIV_NFS_DAEMON);
+	error = suser(td);
 	if (error)
 		return (error);
 	if (uap->flag & NFSSVC_ADDSOCK) {
@@ -316,7 +315,7 @@ nfssvc_program(struct svc_req *rqst, SVCXPRT *xprt)
 {
 	rpcproc_t procnum;
 	int32_t (*proc)(struct nfsrv_descript *nd, struct nfssvc_sock *slp,
-	    struct mbuf **mreqp);
+	    struct thread *td, struct mbuf **mreqp);
 	int flag;
 	struct nfsrv_descript nd;
 	struct mbuf *mreq, *mrep;
@@ -372,7 +371,7 @@ nfssvc_program(struct svc_req *rqst, SVCXPRT *xprt)
 	}
 	nfsrvstats.srvrpccnt[nd.nd_procnum]++;
 
-	error = proc(&nd, NULL, &mrep);
+	error = proc(&nd, NULL, curthread, &mrep);
 
 	if (nd.nd_cr)
 		crfree(nd.nd_cr);
@@ -405,7 +404,10 @@ nfssvc_addsock(struct file *fp, struct thread *td)
 
 	so = fp->f_data;
 
-	siz = sb_max_adj;
+	if (so->so_type == SOCK_STREAM)
+		siz = NFS_MAXPACKET + sizeof (u_long);
+	else
+		siz = NFS_MAXPACKET;
 	error = soreserve(so, siz, siz);
 	if (error) {
 		return (error);

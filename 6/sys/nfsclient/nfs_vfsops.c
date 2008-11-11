@@ -814,6 +814,7 @@ nfs_mount(struct mount *mp, struct thread *td)
 	has_addr_opt = 0;
 	has_fh_opt = 0;
 	has_hostname_opt = 0;
+	error = 0;
 
 	if (vfs_filteropt(mp->mnt_optnew, nfs_opts)) {
 		error = EINVAL;
@@ -1102,7 +1103,7 @@ nfs_mount(struct mount *mp, struct thread *td)
 		}
 	}
 	error = mountnfs(&args, mp, nam, args.hostname, &vp, td->td_ucred);
-
+out:
   	if (!error) {
 		MNT_ILOCK(mp);
 		mp->mnt_kern_flag |= MNTK_LOOKUP_SHARED;
@@ -1211,9 +1212,11 @@ mountnfs(struct nfs_args *argp, struct mount *mp, struct sockaddr *nam,
 
 	nfs_decode_args(mp, nmp, argp);
 
+#ifdef NFS_LEGACYRPC
 	if (nmp->nm_sotype == SOCK_STREAM)
 		mtx_init(&nmp->nm_nfstcpstate.mtx, "NFS/TCP state lock", 
 			 NULL, MTX_DEF);		
+#endif
 
 	/*
 	 * For Connection based sockets (TCP,...) defer the connect until
@@ -1260,8 +1263,10 @@ mountnfs(struct nfs_args *argp, struct mount *mp, struct sockaddr *nam,
 
 	return (0);
 bad:
+#ifdef NFS_LEGACYRPC
 	if (nmp->nm_sotype == SOCK_STREAM)
 		mtx_destroy(&nmp->nm_nfstcpstate.mtx);
+#endif
 	nfs_disconnect(nmp);
 	uma_zfree(nfsmount_zone, nmp);
 	FREE(nam, M_SONAME);
@@ -1303,8 +1308,10 @@ nfs_unmount(struct mount *mp, int mntflags, struct thread *td)
 	nfs_disconnect(nmp);
 	FREE(nmp->nm_nam, M_SONAME);
 
+#ifdef NFS_LEGACYRPC
 	if (nmp->nm_sotype == SOCK_STREAM)
 		mtx_destroy(&nmp->nm_nfstcpstate.mtx);
+#endif
 	
 	uma_zfree(nfsmount_zone, nmp);
 	return (0);

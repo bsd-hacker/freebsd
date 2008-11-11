@@ -39,7 +39,7 @@ __FBSDID("$FreeBSD$");
 #include <kgssapi/gssapi.h>
 #include <kgssapi/gssapi_impl.h>
 
-#include "kcrypto.h"
+#include <kgssapi/krb5/kcrypto.h>
 
 static void
 arcfour_init(struct krb5_key_state *ks)
