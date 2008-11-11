@@ -293,11 +293,11 @@ static void
 read_file(char *fname)
 {
 	FILE *fp;
-	struct file_list *tp, *pf;
+	struct file_list *tp;
 	struct device *dp;
 	struct opt *op;
-	char *wd, *this, *needs, *compilewith, *depends, *clean, *warning;
-	int nreqs, isdup, std, filetype,
+	char *wd, *this, *compilewith, *depends, *clean, *warning;
+	int compile, match, nreqs, devfound, std, filetype,
 	    imp_rule, no_obj, before_depend, mandatory, nowerror;
 
 	fp = fopen(fname, "r");
@@ -306,7 +306,7 @@ read_file(char *fname)
 next:
 	/*
 	 * filename    [ standard | mandatory | optional ]
-	 *	[ dev* | profiling-routine ] [ no-obj ]
+	 *	[ dev* [ | dev* ... ] | profiling-routine ] [ no-obj ]
 	 *	[ compile-with "compile rule" [no-implicit-rule] ]
 	 *      [ dependency "dependency-list"] [ before-depend ]
 	 *	[ clean "file-list"] [ warning "text warning" ]
@@ -331,17 +331,14 @@ next:
 		    fname, this);
 		exit(1);
 	}
-	if ((pf = fl_lookup(this)) && (pf->f_type != INVISIBLE || pf->f_flags))
-		isdup = ISDUP;
-	else
-		isdup = 0;
-	tp = 0;
+	tp = fl_lookup(this);
+	compile = 0;
+	match = 1;
 	nreqs = 0;
 	compilewith = 0;
 	depends = 0;
 	clean = 0;
 	warning = 0;
-	needs = 0;
 	std = mandatory = 0;
 	imp_rule = 0;
 	no_obj = 0;
@@ -365,9 +362,21 @@ next:
 nextparam:
 	next_word(fp, wd);
 	if (wd == 0) {
-		if (isdup)
-			goto next;
-		goto doneparam;
+		compile += match;
+		if (compile && tp == NULL)
+			goto doneparam;
+		goto next;
+	}
+	if (eq(wd, "|")) {
+		if (nreqs == 0) {
+			printf("%s: syntax error describing %s\n",
+			    fname, this);
+			exit(1);
+		}
+		compile += match;
+		match = 1;
+		nreqs = 0;
+		goto nextparam;
 	}
 	if (eq(wd, "no-obj")) {
 		no_obj++;
@@ -443,13 +452,14 @@ nextparam:
 		nowerror = 1;
 		goto nextparam;
 	}
-	if (needs == 0 && nreqs == 1)
-		needs = ns(wd);
-	if (isdup)
-		goto invis;
+	devfound = 0;		/* XXX duplicate device entries */
 	STAILQ_FOREACH(dp, &dtab, d_next)
-		if (eq(dp->d_name, wd))
-			goto nextparam;
+		if (eq(dp->d_name, wd)) {
+			dp->d_done |= DEVDONE;
+			devfound = 1;
+		}
+	if (devfound)
+		goto nextparam;
 	if (mandatory) {
 		printf("%s: mandatory device \"%s\" not found\n",
 		       fname, wd);
@@ -461,27 +471,10 @@ nextparam:
 		exit(1);
 	}
 	SLIST_FOREACH(op, &opt, op_next)
-		if (op->op_value == 0 && opteq(op->op_name, wd)) {
-			if (nreqs == 1) {
-				free(needs);
-				needs = 0;
-			}
+		if (op->op_value == 0 && opteq(op->op_name, wd))
 			goto nextparam;
-		}
-invis:
-	while ((wd = get_word(fp)) != 0)
-		;
-	if (tp == 0)
-		tp = new_fent();
-	tp->f_fn = this;
-	tp->f_type = INVISIBLE;
-	tp->f_needs = needs;
-	tp->f_flags |= isdup;
-	tp->f_compilewith = compilewith;
-	tp->f_depends = depends;
-	tp->f_clean = clean;
-	tp->f_warn = warning;
-	goto next;
+	match = 0;
+	goto nextparam;
 
 doneparam:
 	if (std == 0 && nreqs == 0) {
@@ -497,11 +490,9 @@ doneparam:
 	}
 	if (filetype == PROFILING && profiling == 0)
 		goto next;
-	if (tp == 0)
-		tp = new_fent();
+	tp = new_fent();
 	tp->f_fn = this;
 	tp->f_type = filetype;
-	tp->f_flags &= ~ISDUP;
 	if (imp_rule)
 		tp->f_flags |= NO_IMPLCT_RULE;
 	if (no_obj)
@@ -510,13 +501,10 @@ doneparam:
 		tp->f_flags |= BEFORE_DEPEND;
 	if (nowerror)
 		tp->f_flags |= NOWERROR;
-	tp->f_needs = needs;
 	tp->f_compilewith = compilewith;
 	tp->f_depends = depends;
 	tp->f_clean = clean;
 	tp->f_warn = warning;
-	if (pf && pf->f_type == INVISIBLE)
-		pf->f_flags |= ISDUP;		/* mark as duplicate */
 	goto next;
 }
 
@@ -599,7 +587,7 @@ do_objs(FILE *fp)
 	fprintf(fp, "OBJS=");
 	lpos = 6;
 	STAILQ_FOREACH(tp, &ftab, f_next) {
-		if (tp->f_type == INVISIBLE || tp->f_flags & NO_OBJ)
+		if (tp->f_flags & NO_OBJ)
 			continue;
 		sp = tail(tp->f_fn);
 		cp = sp + (len = strlen(sp)) - 1;
@@ -635,7 +623,7 @@ do_xxfiles(char *tag, FILE *fp)
 	fprintf(fp, "%sFILES=", SUFF);
 	lpos = 8;
 	STAILQ_FOREACH(tp, &ftab, f_next)
-		if (tp->f_type != INVISIBLE && tp->f_type != NODEPEND) {
+		if (tp->f_type != NODEPEND) {
 			len = strlen(tp->f_fn);
 			if (tp->f_fn[len - slen - 1] != '.')
 				continue;
@@ -678,8 +666,6 @@ do_rules(FILE *f)
 	char *compilewith;
 
 	STAILQ_FOREACH(ftp, &ftab, f_next) {
-		if (ftp->f_type == INVISIBLE)
-			continue;
 		if (ftp->f_warn)
 			printf("WARNING: %s\n", ftp->f_warn);
 		cp = (np = ftp->f_fn) + strlen(ftp->f_fn) - 1;
