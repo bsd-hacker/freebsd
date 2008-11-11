@@ -362,7 +362,7 @@ gssd_export_sec_context_1_svc(export_sec_context_args *argp, export_sec_context_
 		result->major_status = gss_export_sec_context(
 			&result->minor_status, &ctx,
 			&result->interprocess_token);
-		result->format = KGSS_HEIMDAL_1_1;
+		result->format = KGSS_HEIMDAL_0_6;
 		gssd_delete_resource(argp->ctx);
 	} else {
 		result->major_status = GSS_S_FAILURE;
