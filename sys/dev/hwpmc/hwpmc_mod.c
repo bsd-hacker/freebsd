@@ -961,12 +961,12 @@ pmc_attach_one_process(struct proc *p, struct pmc *pm)
 
 	/* issue an attach event to a configured log file */
 	if (pm->pm_owner->po_flags & PMC_PO_OWNS_LOGFILE) {
-		pmc_getfilename(p->p_textvp, &fullpath, &freepath);
 		if (p->p_flag & P_KTHREAD) {
 			fullpath = kernelname;
 			freepath = NULL;
 		} else
-			pmclog_process_pmcattach(pm, p->p_pid, fullpath);
+			pmc_getfilename(p->p_textvp, &fullpath, &freepath);	
+		pmclog_process_pmcattach(pm, p->p_pid, fullpath);
 		if (freepath)
 			free(freepath, M_TEMP);
 		if (PMC_IS_SAMPLING_MODE(PMC_TO_MODE(pm)))
@@ -3916,24 +3916,26 @@ pmc_process_samples(int cpu)
 	for (n = 0; n < pmc_nsamples; n++) { /* bound on #iterations */
 
 		ps = psb->ps_read;
+		pm = ps->ps_pmc;
+
 		if (ps->ps_nsamples == PMC_SAMPLE_FREE)
 			break;
+
+                /* Ignore PMCs that have been switched off */
+		if (pm->pm_state != PMC_STATE_RUNNING)
+			goto entrydone;
+		
 		if (ps->ps_nsamples == PMC_SAMPLE_INUSE) {
 			/* Need a rescan at a later time. */
 			atomic_set_rel_int(&pmc_cpumask, (1 << cpu));
 			break;
 		}
 
-		pm = ps->ps_pmc;
 		po = pm->pm_owner;
 
 		KASSERT(PMC_IS_SAMPLING_MODE(PMC_TO_MODE(pm)),
 		    ("[pmc,%d] pmc=%p non-sampling mode=%d", __LINE__,
 			pm, PMC_TO_MODE(pm)));
-
-		/* Ignore PMCs that have been switched off */
-		if (pm->pm_state != PMC_STATE_RUNNING)
-			goto entrydone;
 
 		PMCDBG(SAM,OPS,1,"cpu=%d pm=%p n=%d fl=%x wr=%d rd=%d", cpu,
 		    pm, ps->ps_nsamples, ps->ps_flags,
