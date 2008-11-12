@@ -3246,8 +3246,6 @@ tcp_mss_update(struct tcpcb *tp, int offer,
 	if (mssval)
 		*mssval = mss;
 	
-	if (tp->t_maxopd <= mss)
-		return;	
 	/*
 	 * maxopd stores the maximum length of data AND options
 	 * in a segment; maxseg is the amount of data in a normal
