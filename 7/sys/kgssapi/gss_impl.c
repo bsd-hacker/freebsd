@@ -92,6 +92,7 @@ gssd_syscall(struct thread *td, struct gssd_syscall_args *uap)
         struct netconfig *nconf;
 	char path[MAXPATHLEN];
 	int error;
+	struct timeval tv;
         
 	error = priv_check(td, PRIV_NFS_DAEMON);
 	if (error)
@@ -112,6 +113,9 @@ gssd_syscall(struct thread *td, struct gssd_syscall_args *uap)
         kgss_gssd_handle = clnt_reconnect_create(nconf,
 	    (struct sockaddr *) &sun, GSSD, GSSDVERS,
 	    RPC_MAXDATASIZE, RPC_MAXDATASIZE);
+	tv.tv_sec = 250;
+	tv.tv_usec = 0;
+	CLNT_CONTROL(kgss_gssd_handle, CLSET_TIMEOUT, &tv);
 
 	return (0);
 }
