@@ -930,9 +930,6 @@ cxgb_port_attach(device_t dev)
 	ifp->if_start = cxgb_start;
 
 
-#ifdef IFNET_MULTIQUEUE
-	ifp->if_transmit = cxgb_pcpu_transmit;
-#endif
 	ifp->if_timer = 0;	/* Disable ifnet watchdog */
 	ifp->if_watchdog = NULL;
 
@@ -954,6 +951,8 @@ cxgb_port_attach(device_t dev)
 	}
 
 	ether_ifattach(ifp, p->hw_addr);
+
+	ifp->if_transmit = cxgb_pcpu_transmit;
 	/*
 	 * Only default to jumbo frames on 10GigE
 	 */
