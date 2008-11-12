@@ -106,12 +106,12 @@ SYSCTL_UINT(_hw_cxgb, OID_AUTO, txq_mr_size, CTLFLAG_RDTUN, &cxgb_txq_buf_ring_s
     "size of per-queue mbuf ring");
 
 
-static inline int32_t cxgb_pcpu_calc_cookie(struct ifnet *ifp, struct mbuf *immpkt);
 static void cxgb_pcpu_start_proc(void *arg);
-#ifdef IFNET_MULTIQUEUE
-static int cxgb_pcpu_cookie_to_qidx(struct port_info *, uint32_t cookie);
-#endif
 static int cxgb_tx(struct sge_qset *qs, uint32_t txmax);
+
+#ifdef IFNET_MULTIQUEUE
+static int cxgb_pcpu_cookie_to_qidx(struct port_info *pi, uint32_t cookie);
+#endif
 
 static inline int
 cxgb_pcpu_enqueue_packet_(struct sge_qset *qs, struct mbuf *m)
@@ -119,9 +119,6 @@ cxgb_pcpu_enqueue_packet_(struct sge_qset *qs, struct mbuf *m)
 	struct sge_txq *txq;
 	int err = 0;
 
-#ifndef IFNET_MULTIQUEUE
-	panic("not expecting enqueue without multiqueue");
-#endif	
 	KASSERT(m != NULL, ("null mbuf"));
 	KASSERT(m->m_type == MT_DATA, ("bad mbuf type %d", m->m_type));
 	if (qs->qs_flags & QS_EXITING) {
@@ -149,7 +146,7 @@ cxgb_pcpu_enqueue_packet(struct ifnet *ifp, struct mbuf *m)
 #ifdef IFNET_MULTIQUEUE
 	int32_t calc_cookie;
 
-	calc_cookie = m->m_pkthdr.rss_hash;
+	calc_cookie = m->m_pkthdr.flowid;
 	qidx = cxgb_pcpu_cookie_to_qidx(pi, calc_cookie);
 #else
 	qidx = 0;
@@ -228,134 +225,6 @@ cxgb_dequeue_packet(struct sge_txq *txq, struct mbuf **m_vec)
 	txq->txq_coalesced += coalesced;
 	
 	return (count);
-}
-
-static int32_t
-cxgb_pcpu_get_cookie(struct ifnet *ifp, struct in6_addr *lip, uint16_t lport, struct in6_addr *rip, uint16_t rport, int ipv6)
-{
-	uint32_t base;
-	uint8_t buf[36];
-	int count;
-	int32_t cookie;
-
-	critical_enter();
-	/* 
-	 * Can definitely bypass bcopy XXX
-	 */
-	if (ipv6 == 0) {
-		count = 12;
-		bcopy(rip, &buf[0], 4);
-		bcopy(lip, &buf[4], 4);
-		bcopy(&rport, &buf[8], 2);
-		bcopy(&lport, &buf[10], 2);
-	} else {
-		count = 36;
-		bcopy(rip, &buf[0], 16);
-		bcopy(lip, &buf[16], 16);
-		bcopy(&rport, &buf[32], 2);
-		bcopy(&lport, &buf[34], 2);
-	}
-	
-	base = 0xffffffff;
-	base = update_crc32(base, buf, count);
-	base = sctp_csum_finalize(base);
-
-	/*
-	 * Indirection table is 128 bits
-	 * -> cookie indexes into indirection table which maps connection to queue
-	 * -> RSS map maps queue to CPU
-	 */
-	cookie = (base & (RSS_TABLE_SIZE-1));
-	critical_exit();
-	
-	return (cookie);
-}
-
-static int32_t
-cxgb_pcpu_calc_cookie(struct ifnet *ifp, struct mbuf *immpkt)
-{
-	struct in6_addr lip, rip;
-	uint16_t lport, rport;
-	struct ether_header *eh;
-	int32_t cookie;
-	struct ip *ip;
-	struct ip6_hdr *ip6;
-	struct tcphdr *th;
-	struct udphdr *uh;
-	struct sctphdr *sh;
-	uint8_t *next, proto;
-	int etype;
-
-	if (immpkt == NULL)
-		return -1;
-
-#if 1	
-	/*
-	 * XXX perf test
-	 */
-	return (0);
-#endif	
-	rport = lport = 0;
-	cookie = -1;
-	next = NULL;
-	eh = mtod(immpkt, struct ether_header *);
-	etype = ntohs(eh->ether_type);
-
-	switch (etype) {
-	case ETHERTYPE_IP:
-		ip = (struct ip *)(eh + 1);
-		next = (uint8_t *)(ip + 1);
-		bcopy(&ip->ip_src, &lip, 4);
-		bcopy(&ip->ip_dst, &rip, 4);
-		proto = ip->ip_p;
-		break;
-	case ETHERTYPE_IPV6:
-		ip6 = (struct ip6_hdr *)(eh + 1);
-		next = (uint8_t *)(ip6 + 1);
-		bcopy(&ip6->ip6_src, &lip, sizeof(struct in6_addr));
-		bcopy(&ip6->ip6_dst, &rip, sizeof(struct in6_addr));
-		if (ip6->ip6_nxt == IPPROTO_HOPOPTS) {
-			struct ip6_hbh *hbh;
-
-			hbh = (struct ip6_hbh *)(ip6 + 1);
-			proto = hbh->ip6h_nxt;
-		} else 
-			proto = ip6->ip6_nxt;
-		break;
-	case ETHERTYPE_ARP:
-	default:
-		/*
-		 * Default to queue zero
-		 */
-		proto = cookie = 0;
-	}
-	if (proto) {
-		switch (proto) {
-		case IPPROTO_TCP:
-			th = (struct tcphdr *)next;
-			lport = th->th_sport;
-			rport = th->th_dport;
-			break;
-		case IPPROTO_UDP:
-			uh = (struct udphdr *)next;
-			lport = uh->uh_sport;
-			rport = uh->uh_dport;
-			break;
-		case IPPROTO_SCTP:
-			sh = (struct sctphdr *)next;
-			lport = sh->src_port;
-			rport = sh->dest_port;
-			break;
-		default:
-			/* nothing to do */
-			break;
-		}
-	}
-	
-	if (cookie) 		
-		cookie = cxgb_pcpu_get_cookie(ifp, &lip, lport, &rip, rport, (etype == ETHERTYPE_IPV6));
-
-	return (cookie);
 }
 
 static void
@@ -494,7 +363,7 @@ cxgb_pcpu_start_(struct sge_qset *qs, struct mbuf *immpkt, int tx_flush)
 }
 
 int
-cxgb_pcpu_start(struct ifnet *ifp, struct mbuf *immpkt)
+cxgb_pcpu_transmit(struct ifnet *ifp, struct mbuf *immpkt)
 {
 	uint32_t cookie;
 	int err, qidx, locked, resid;
@@ -509,10 +378,10 @@ cxgb_pcpu_start(struct ifnet *ifp, struct mbuf *immpkt)
 	qidx = resid = err = cookie = locked = 0;
 
 #ifdef IFNET_MULTIQUEUE	
-	if (immpkt && (immpkt->m_pkthdr.rss_hash != 0)) {
-		cookie = immpkt->m_pkthdr.rss_hash;
+	if (immpkt && (immpkt->m_pkthdr.flowid != 0)) {
+		cookie = immpkt->m_pkthdr.flowid;
 		qidx = cxgb_pcpu_cookie_to_qidx(pi, cookie);
-		DPRINTF("hash=0x%x qidx=%d cpu=%d\n", immpkt->m_pkthdr.rss_hash, qidx, curcpu);
+		DPRINTF("hash=0x%x qidx=%d cpu=%d\n", immpkt->m_pkthdr.flowid, qidx, curcpu);
 		qs = &pi->adapter->sge.qs[qidx];
 	} else
 #endif		
@@ -555,7 +424,7 @@ cxgb_start(struct ifnet *ifp)
 	if (IFQ_DRV_IS_EMPTY(&ifp->if_snd))
 		return;
 
-	cxgb_pcpu_start(ifp, NULL);
+	cxgb_pcpu_transmit(ifp, NULL);
 }
 
 static void

@@ -2885,7 +2885,7 @@ process_responses(adapter_t *adap, struct sge_qset *qs, int budget)
 			eop = get_packet(adap, drop_thresh, qs, &rspq->rspq_mbuf, r);
 #endif
 #ifdef IFNET_MULTIQUEUE
-			rspq->rspq_mh.mh_head->m_pkthdr.rss_hash = rss_hash;
+			rspq->rspq_mh.mh_head->m_pkthdr.flowid = rss_hash;
 #endif			
 			ethpad = 2;
 		} else {

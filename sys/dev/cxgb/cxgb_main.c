@@ -215,8 +215,9 @@ SYSCTL_UINT(_hw_cxgb, OID_AUTO, singleq, CTLFLAG_RDTUN, &singleq, 0,
 
 
 /*
- * The driver uses an auto-queue algorithm by default.
- * To disable it and force a single queue-set per port, use singleq = 1.
+ * By default the driver will not update the firmware unless
+ * it was compiled against a newer version
+ * 
  */
 static int force_fw_update = 0;
 TUNABLE_INT("hw.cxgb.force_fw_update", &force_fw_update);
@@ -827,7 +828,9 @@ cxgb_setup_msix(adapter_t *sc, int msix_count)
 				device_printf(sc->dev, "Cannot set up "
 				    "interrupt for message %d\n", rid);
 				return (EINVAL);
+				
 			}
+#if 0			
 #ifdef IFNET_MULTIQUEUE			
 			if (singleq == 0) {
 				int vector = rman_get_start(sc->msix_irq_res[k]);
@@ -835,7 +838,8 @@ cxgb_setup_msix(adapter_t *sc, int msix_count)
 					device_printf(sc->dev, "binding vector=%d to cpu=%d\n", vector, k % mp_ncpus);
 				intr_bind(vector, k % mp_ncpus);
 			}
-#endif			
+#endif
+#endif
 		}
 	}
 
@@ -925,12 +929,10 @@ cxgb_port_attach(device_t dev)
 	ifp->if_ioctl = cxgb_ioctl;
 	ifp->if_start = cxgb_start;
 
-#if 0	
+
 #ifdef IFNET_MULTIQUEUE
-	ifp->if_flags |= IFF_MULTIQ;
-	ifp->if_mq_start = cxgb_pcpu_start;
+	ifp->if_transmit = cxgb_pcpu_transmit;
 #endif
-#endif	
 	ifp->if_timer = 0;	/* Disable ifnet watchdog */
 	ifp->if_watchdog = NULL;
 

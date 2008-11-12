@@ -603,7 +603,7 @@ static inline int offload_running(adapter_t *adapter)
 }
 
 int cxgb_pcpu_enqueue_packet(struct ifnet *ifp, struct mbuf *m);
-int cxgb_pcpu_start(struct ifnet *ifp, struct mbuf *m);
+int cxgb_pcpu_transmit(struct ifnet *ifp, struct mbuf *m);
 void cxgb_pcpu_shutdown_threads(struct adapter *sc);
 void cxgb_pcpu_startup_threads(struct adapter *sc);
 
