@@ -1139,7 +1139,8 @@ nfsrv_fhtovp(fhandle_t *fhp, int lockflag, struct vnode **vpp,
 		 */
 		mountreq = FALSE;
 		if (v3) {
-			if (nfsd->nd_procnum == NFSPROC_FSINFO)
+			if (nfsd->nd_procnum == NFSPROC_FSINFO
+			    || nfsd->nd_procnum == NFSPROC_GETATTR)
 				mountreq = TRUE;
 		} else {
 			if (nfsd->nd_procnum == NFSPROC_FSSTAT
@@ -1147,7 +1148,7 @@ nfsrv_fhtovp(fhandle_t *fhp, int lockflag, struct vnode **vpp,
 				mountreq = TRUE;
 		}
 		if (!mountreq) {
-			error = NFSERR_AUTHERR | AUTH_REJECTCRED;
+			error = NFSERR_AUTHERR | AUTH_TOOWEAK;
 			goto out;
 		}
 	}
