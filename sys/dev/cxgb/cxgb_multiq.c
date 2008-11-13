@@ -27,8 +27,6 @@ POSSIBILITY OF SUCH DAMAGE.
 
 ***************************************************************************/
 
-#define DEBUG_BUFRING
-
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
