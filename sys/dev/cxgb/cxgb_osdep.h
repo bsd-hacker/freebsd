@@ -228,7 +228,7 @@ buf_ring_full(struct buf_ring *mr)
  *
  */
 static __inline void *
-buf_ring_dequeue(struct buf_ring *mr)
+__buf_ring_dequeue(struct buf_ring *mr)
 {
 	uint32_t prod, cons, mask;
 	caddr_t *ring, m;
@@ -236,19 +236,28 @@ buf_ring_dequeue(struct buf_ring *mr)
 	ring = (caddr_t *)mr->br_ring;
 	mask = mr->br_size - 1;
 	cons = mr->br_cons;
-	mb();
 	prod = mr->br_prod;
 	m = NULL;
 	if (cons != prod) {
 		m = ring[cons];
 		ring[cons] = NULL;
 		mr->br_cons = (cons + 1) & mask;
-		mb();
 	}
 	return (m);
 }
 
-#ifdef DEBUG_BUFRING
+static __inline void *
+buf_ring_dequeue(struct buf_ring *mr)
+{
+	void *buf;
+	
+	mtx_lock(&mr->br_lock);
+	buf = __buf_ring_dequeue(mr);
+	mtx_unlock(&mr->br_lock);
+	return (buf);
+}
+	
+#ifdef INVARIANT_SUPPORT
 static __inline void
 __buf_ring_scan(struct buf_ring *mr, void *m, char *file, int line)
 {
