@@ -247,10 +247,6 @@ cxgb_pcpu_reclaim_tx(struct sge_txq *txq)
 	int reclaimable;
 	struct sge_qset *qs = txq_to_qset(txq, TXQ_ETH);
 
-#ifdef notyet
-	KASSERT(qs->qs_cpuid == curcpu, ("cpu qset mismatch cpuid=%d curcpu=%d",
-			qs->qs_cpuid, curcpu));
-#endif
 	mtx_assert(&txq->lock, MA_OWNED);
 	
 	reclaimable = desc_reclaimable(txq);
