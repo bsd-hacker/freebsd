@@ -1283,7 +1283,7 @@ ipm_stop_pmc(int cpu, int ri)
 
 	KASSERT(pd->pm_descr.pd_class == PMC_CLASS_IAP1
 	    || pd->pm_descr.pd_class == PMC_CLASS_IAP2 
-	    || pd->pm_descr.pd_class == PMC_CLASS_IPM_FIXED,
+	    || pd->pm_descr.pd_class == PMC_CLASS_IAF,
 	    ("[ipm,%d] unknown PMC class %d", __LINE__,
 		pd->pm_descr.pd_class));
 
