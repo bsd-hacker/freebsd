@@ -621,7 +621,7 @@ cxgb_tx(struct sge_qset *qs, uint32_t txmax)
 		check_pkt_coalesce(qs);
 		count = cxgb_dequeue_packet(txq, m_vec);
 		if (count == 0) {
-			err = ENOBUFS;
+			err = ENOSPC;
 			break;
 		}
 		ETHER_BPF_MTAP(ifp, m_vec[0]);
@@ -631,28 +631,10 @@ cxgb_tx(struct sge_qset *qs, uint32_t txmax)
 		txq->txq_enqueued += count;
 		m_vec[0] = NULL;
 	}
-#if 0 /* !MULTIQ */
-	if (__predict_false(err)) {
-		if (err == ENOMEM) {
-			ifp->if_drv_flags |= IFF_DRV_OACTIVE;
-			IFQ_LOCK(&ifp->if_snd);
-			IFQ_DRV_PREPEND(&ifp->if_snd, m_vec[0]);
-			IFQ_UNLOCK(&ifp->if_snd);
-		}
-	}
-	else if ((err == 0) &&  (txq->size <= txq->in_use + TX_MAX_DESC) &&
-	    (ifp->if_drv_flags & IFF_DRV_OACTIVE) == 0) {
-		setbit(&qs->txq_stopped, TXQ_ETH);
-		ifp->if_drv_flags |= IFF_DRV_OACTIVE;
-		txq_fills++;
-		err = ENOSPC;
-	}
-#else
 	if ((err == 0) &&  (txq->size <= txq->in_use + TX_MAX_DESC)) {
-		err = ENOSPC;
+		err = ENOBUFS;
 		txq_fills++;
 		setbit(&qs->txq_stopped, TXQ_ETH);
-		ifp->if_drv_flags |= IFF_DRV_OACTIVE;
 	}
 	if (err == ENOMEM) {
 		int i;
@@ -663,7 +645,6 @@ cxgb_tx(struct sge_qset *qs, uint32_t txmax)
 		for (i = 0; i < count; i++)
 			m_freem(m_vec[i]);
 	}
-#endif
 	return (err);
 }
 
