@@ -291,9 +291,9 @@ static uint32_t hashjitter;
 
 SYSCTL_NODE(_net_inet, OID_AUTO, flowtable, CTLFLAG_RD, NULL, "flowtable");
 
-static int	flowtable_disable;
-SYSCTL_INT(_net_inet_flowtable, OID_AUTO, disable, CTLFLAG_RW,
-    &flowtable_disable, 0, "disable flowtable.");
+static int	flowtable_enable = 1;
+SYSCTL_INT(_net_inet_flowtable, OID_AUTO, enable, CTLFLAG_RW,
+    &flowtable_enable, 0, "enable flowtable caching.");
 
 
 #ifndef RADIX_MPATH
@@ -366,7 +366,7 @@ ipv4_flow_lookup_hash_internal(struct mbuf *m, struct route *ro,
 	sin->sin_len = sizeof(*sin);
 	sin->sin_addr = ip->ip_dst;
 
-	if (flowtable_disable)
+	if (flowtable_enable == 0)
 		return (0);
 	
 	switch (proto) {
@@ -438,11 +438,6 @@ flowtable_entry(struct flowtable *ft, uint32_t hash)
 	
 	if ((ft->ft_flags & FL_IPV6) == 0) {
 		if (ft->ft_flags & FL_PCPU) {
-			if (curthread->td_critnest == 0) {
-				panic("not protected by critical section in lookup");
-			}
-			
-			
 			fle = (struct flentry *)
 			    &ft->ft_table.v4_pcpu[curcpu][index];
 		} else
