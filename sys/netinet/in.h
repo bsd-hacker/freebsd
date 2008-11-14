@@ -464,10 +464,11 @@ __END_DECLS
 #define	IP_DUMMYNET_DEL		61   /* delete a dummynet pipe from chain */
 #define	IP_DUMMYNET_FLUSH	62   /* flush dummynet */
 #define	IP_DUMMYNET_GET		64   /* get entire dummynet pipes */
+#define	IP_DUMMYNET_ZERO	65   /* clear single/all dummynet counter(s) */
 
-#define	IP_RECVTTL		65   /* bool; receive IP TTL w/dgram */
 #define	IP_MINTTL		66   /* minimum TTL for packet or drop */
 #define	IP_DONTFRAG		67   /* don't fragment packet */
+#define	IP_RECVTTL		68   /* bool; receive IP TTL w/dgram */
 
 /* IPv4 Source Filter Multicast API [RFC3678] */
 #define	IP_ADD_SOURCE_MEMBERSHIP	70   /* join a source-specific group */

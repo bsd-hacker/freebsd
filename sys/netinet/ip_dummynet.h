@@ -230,6 +230,17 @@ struct dn_flow_queue {
      */
 } ;
 
+struct pls_range {
+    unsigned int start;
+    unsigned int end;
+};
+
+struct pls_range_array {
+    unsigned int size;
+    unsigned int count;
+    struct pls_range *arr;
+};
+
 /*
  * flow_set descriptor. Contains the "template" parameters for the
  * queue configuration, and pointers to the hash table of dn_flow_queue's.
@@ -261,6 +272,8 @@ struct dn_flow_set {
     int weight ;		/* WFQ queue weight */
     int qsize ;			/* queue size in slots or bytes */
     int plr ;			/* pkt loss rate (2^31-1 means 100%) */
+    int pls_index ;		/* index into pls array */
+    struct pls_range_array pls;	/* pkt loss set as an array of pls_range structs */
 
     struct ipfw_flow_id flow_mask ;
 

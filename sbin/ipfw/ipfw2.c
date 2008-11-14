@@ -83,6 +83,9 @@ int
 		comment_only,		/* only print action and comment */
 		verbose;
 
+#define CHARPTR_IS_INT(X) \
+	(((unsigned int)(((unsigned char)(*(X)))) - (unsigned char)'0') < 11)
+
 #define	IP_MASK_ALL	0xffffffff
 /*
  * the following macro returns an error message if we run out of
@@ -127,6 +130,10 @@ int
 	else								\
 		printf("%u", (uint32_t)arg);				\
 } while (0)
+
+#define flush_range_array(PLS) \
+	if((PLS)->arr != NULL) \
+		free((PLS)->arr);
 
 /*
  * _s_x is a structure that stores a string <-> token pairs, used in
@@ -303,6 +310,7 @@ enum tokens {
 	TOK_COMMENT,
 
 	TOK_PLR,
+	TOK_PLS,
 	TOK_NOERROR,
 	TOK_BUCKETS,
 	TOK_DSTIP,
@@ -348,6 +356,7 @@ enum tokens {
 
 struct _s_x dummynet_params[] = {
 	{ "plr",		TOK_PLR },
+	{ "pls",		TOK_PLS },
 	{ "noerror",		TOK_NOERROR },
 	{ "buckets",		TOK_BUCKETS },
 	{ "dst-ip",		TOK_DSTIP },
@@ -622,6 +631,151 @@ _substrcmp2(const char *str1, const char* str2, const char* str3)
 	if (strcmp(str1, str3) != 0)
 		warnx("DEPRECATED: '%s' matched '%s'",
 		    str1, str3);
+	return 0;
+}
+
+/*
+ * Generates a string of the form "1,2,3,6-10,1000,1500-2000" from a specified
+ * range list. If the range list is too large to fit into the provided string
+ * buffer,"..." will be appended to the string to indicate there was more
+ * information that could not be displayed.
+ */
+static void
+gen_pls_str(char *str, u_int len, struct pls_range_array *ranges)
+{
+	struct pls_range *node;
+	u_int i = 0, stroffset = 0, ret = 0, str_truncated = 0;
+
+	for(; i < ranges->count; i++) {
+
+		if(ranges->arr[i].start == ranges->arr[i].end)
+			ret = snprintf(str + stroffset, len - stroffset, "%d,", ranges->arr[i].start);
+		else
+			ret = snprintf(str + stroffset, len - stroffset, "%d-%d,", ranges->arr[i].start, ranges->arr[i].end);
+
+		if(ret >= (len - stroffset)) {
+			str_truncated = 1;
+			break;
+		}
+		
+		stroffset = strlen(str);
+	}
+
+	if(str_truncated) {
+		*(str+len-3) = '.';
+		*(str+len-2) = '.';
+		*(str+len-1) = '.';
+		*(str+len) = '\0';
+	}
+	else
+		/* remove the trailing comma from the list */
+		*(str+stroffset-1) = '\0';
+}
+
+/*
+ * This function parses a string of the form "1,2,6-10,3,1000,2000-1500" and turns it
+ * into an array of pls_range structs. The array is sorted in order of range start
+ * value from lowest to highest, and the range start and end values within a range struct
+ * are ordered from lowest to highest for consistency. In the example above,
+ * the range node list extracted from the parsed string would look like this:
+ *
+ * pls_range1.start = 1, pls_range1.end = 1
+ * pls_range2.start = 2, pls_range2.end = 2
+ * pls_range3.start = 3, pls_range3.end = 3
+ * pls_range4.start = 6, pls_range4.end = 10
+ * pls_range5.start = 1000, pls_range5.end = 1000
+ * pls_range6.start = 1500, pls_range6.end = 2000
+ */
+static int
+parse_pls_str(char *str, struct pls_range_array *ranges)
+{
+	char *ch, *tmpstr;
+	char tmp[16];
+	int i = 0, j = 0, comma_count = 0, arr_index = 0;
+	struct pls_range *current_range = NULL;
+
+	for(i = strlen(str), tmpstr = str; i >= 0; i--) {
+		ch = tmpstr++;
+		if(*ch == ',')
+			comma_count++;
+	}
+
+	ranges->size = comma_count + 1;
+	ranges->arr = (struct pls_range *)malloc(ranges->size * sizeof(struct pls_range));
+	bzero(ranges->arr, ranges->size * sizeof(struct pls_range));
+
+	if(ranges->arr == NULL)
+		return (ENOMEM);
+	
+	for(i = strlen(str), tmpstr = str; i >= 0; i--) {
+		ch = tmpstr++;
+		memset(tmp, '\0', sizeof(tmp));
+		
+		j = 0;
+		
+		/* if the character is a number 0-9 */
+		while(CHARPTR_IS_INT(ch)) {
+			/* read until the number ends */
+			tmp[j++] = *ch;
+			ch = tmpstr++;
+			i--;
+		}
+
+		/*
+		 * if we are at the end of a range, or the end of the string and
+		 * we have a number stored in tmp
+		 */
+		if((*ch == ',' && j > 0) || (i == 0 && j > 0)) {
+			if(ranges->arr[arr_index].start == 0) {
+				ranges->arr[arr_index].start = strtol(tmp, NULL, 10);
+			}
+
+			ranges->arr[arr_index].end = strtol(tmp, NULL, 10);
+			
+			/*
+			 * reorder the start and end of the range if they were
+			 * specified out of order
+			 */
+			if(ranges->arr[arr_index].end < ranges->arr[arr_index].start) {
+				u_int tmp = ranges->arr[arr_index].end;
+				ranges->arr[arr_index].end = ranges->arr[arr_index].start;
+				ranges->arr[arr_index].start = tmp;
+			}
+
+			arr_index++;
+		}
+		else if(*ch == '-' && j > 0) {
+			/*
+			 * we are half way through parsing a range, so let's set
+			 * create a new range and set its start value to the
+			 * first number we parsed in the range
+			 */
+			ranges->arr[arr_index].start = strtol(tmp, NULL, 10);
+		}
+		else {
+			flush_range_array(ranges);
+			return 1; /* failed parsing the string */
+		}
+	}
+
+	ranges->count = arr_index;
+
+	struct pls_range tmp_range;
+	
+	/*
+	 * bubble sort of the list to put them in numerical order of range start
+	 * values
+	 */
+	for(i = 0; i < ranges->count; i++) {
+		for(j = 1; j < ranges->count; j++) {
+			if(ranges->arr[j-1].start > ranges->arr[j].start) {
+				tmp_range = ranges->arr[j-1];
+				ranges->arr[j-1] = ranges->arr[j];
+				ranges->arr[j] = tmp_range;
+			}
+		}
+	}
+
 	return 0;
 }
 
@@ -2254,7 +2408,7 @@ print_flowset_parms(struct dn_flow_set *fs, char *prefix)
 {
 	int l;
 	char qs[30];
-	char plr[30];
+	char pl[30];
 	char red[90];	/* Display RED parameters */
 
 	l = fs->qsize;
@@ -2266,9 +2420,13 @@ print_flowset_parms(struct dn_flow_set *fs, char *prefix)
 	} else
 		sprintf(qs, "%3d sl.", l);
 	if (fs->plr)
-		sprintf(plr, "plr %f", 1.0 * fs->plr / (double)(0x7fffffff));
+		sprintf(pl, "plr %f", 1.0 * fs->plr / (double)(0x7fffffff));
+	else if (fs->pls.count > 0) {
+		sprintf(pl, "pls ");
+		gen_pls_str(pl+strlen(pl), sizeof(pl)-strlen(pl), &(fs->pls));
+	}
 	else
-		plr[0] = '\0';
+		pl[0] = '\0';
 	if (fs->flags_fs & DN_IS_RED)	/* RED parameters */
 		sprintf(red,
 		    "\n\t  %cRED w_q %f min_th %d max_th %d max_p %f",
@@ -2281,7 +2439,7 @@ print_flowset_parms(struct dn_flow_set *fs, char *prefix)
 		sprintf(red, "droptail");
 
 	printf("%s %s%s %d queues (%d buckets) %s\n",
-	    prefix, qs, plr, fs->rq_elements, fs->rq_size, red);
+	    prefix, qs, pl, fs->rq_elements, fs->rq_size, red);
 }
 
 static void
@@ -2309,7 +2467,7 @@ list_pipes(void *data, uint nbytes, int ac, char *av[])
 		/*
 		 * compute length, as pipe have variable size
 		 */
-		l = sizeof(*p) + p->fs.rq_elements * sizeof(*q);
+		l = sizeof(*p) + p->fs.rq_elements * sizeof(*q) + p->fs.pls.count * sizeof(struct pls_range);
 		next = (char *)p + l;
 		nbytes -= l;
 
@@ -2332,11 +2490,21 @@ list_pipes(void *data, uint nbytes, int ac, char *av[])
 
 		sprintf(prefix, "%05d: %s %4d ms ",
 		    p->pipe_nr, buf, p->delay);
+
+		/*
+		 * the pls array data is tucked in between the dn_pipe struct
+		 * and fs queue data because the pointer isn't recalculated
+		 * during the copy from kernel mem into userspace mem, we have
+		 * to manually set the array pointer we work back from the end
+		 * of the pipe's data boundary (calculated above as "next")
+		 */
+		p->fs.pls.arr = next - (p->fs.pls.count * sizeof(struct pls_range)) - (p->fs.rq_elements * sizeof(*q));
+
 		print_flowset_parms(&(p->fs), prefix);
 		if (verbose)
 			printf("   V %20qd\n", p->V >> MY_M);
 
-		q = (struct dn_flow_queue *)(p+1);
+		q = (struct dn_flow_queue *)(next - p->fs.rq_elements * sizeof(*q));
 		list_queues(&(p->fs), q);
 	}
 	for (fs = next; nbytes >= sizeof *fs; fs = next) {
@@ -4113,11 +4281,21 @@ config_pipe(int ac, char **av)
 			ac--; av++;
 			break;
 
+		case TOK_PLS:
+			NEED1("pls needs argument x,y-z\n");
+			if(parse_pls_str(av[0], &(p.fs.pls)))
+				errx(EX_DATAERR, "invalid packet loss set");
+			ac--; av++;
+			break;
+
 		case TOK_QUEUE:
 			NEED1("queue needs queue size\n");
 			end = NULL;
 			p.fs.qsize = strtoul(av[0], &end, 0);
-			if (*end == 'K' || *end == 'k') {
+			if (*end == 'M' || *end == 'm') {
+				p.fs.flags_fs |= DN_QSIZE_IS_BYTES;
+				p.fs.qsize *= 1048576;
+			} else if (*end == 'K' || *end == 'k') {
 				p.fs.flags_fs |= DN_QSIZE_IS_BYTES;
 				p.fs.qsize *= 1024;
 			} else if (*end == 'B' ||
@@ -4373,6 +4551,9 @@ end_mask:
 			limit = 100;
 		if (p.fs.qsize > limit)
 			errx(EX_DATAERR, "2 <= queue size <= %ld", limit);
+	}
+	if (p.fs.pls.count > 0 && p.fs.plr > 0) {
+		errx(EX_DATAERR, "plr and pls options are mutually exclusive");
 	}
 	if (p.fs.flags_fs & DN_IS_RED) {
 		size_t len;
@@ -5764,21 +5945,36 @@ done:
 }
 
 static void
-zero(int ac, char *av[], int optname /* IP_FW_ZERO or IP_FW_RESETLOG */)
+zero(int ac, char *av[], int optname /* IP_FW_ZERO or IP_FW_RESETLOG or IP_DUMMYNET_ZERO */)
 {
 	uint32_t arg, saved_arg;
 	int failed = EX_OK;
-	char const *name = optname == IP_FW_ZERO ?  "ZERO" : "RESETLOG";
+	char const *name;
 	char const *errstr;
+	struct dn_pipe p;
+
+	if(optname == IP_FW_ZERO || optname == IP_DUMMYNET_ZERO)
+		name = "ZERO";
+	else
+		name = "RESETLOG";
 
 	av++; ac--;
 
+	memset(&p, 0, sizeof p);
+
 	if (!ac) {
 		/* clear all entries */
-		if (do_cmd(optname, NULL, 0) < 0)
-			err(EX_UNAVAILABLE, "setsockopt(IP_FW_%s)", name);
+		if (do_pipe)
+			failed = do_cmd(optname, &p, sizeof p);
+		else
+			failed = do_cmd(optname, NULL, 0);
+
+		if (failed < 0)
+			err(EX_UNAVAILABLE, "setsockopt(IP_%s_%s)",
+				do_pipe ? "DUMMYNET" : "FW", name);
+
 		if (!do_quiet)
-			printf("%s.\n", optname == IP_FW_ZERO ?
+			printf("%s.\n", (optname == IP_FW_ZERO || optname == IP_DUMMYNET_ZERO) ?
 			    "Accounting cleared":"Logging counts reset");
 
 		return;
@@ -5796,13 +5992,14 @@ zero(int ac, char *av[], int optname /* IP_FW_ZERO or IP_FW_RESETLOG */)
 				arg |= (1 << 24) | ((use_set - 1) << 16);
 			av++;
 			ac--;
-			if (do_cmd(optname, &arg, sizeof(arg))) {
-				warn("rule %u: setsockopt(IP_FW_%s)",
-				    saved_arg, name);
+			p.pipe_nr = arg;
+			if (do_pipe ? do_cmd(optname, &p, sizeof p) : do_cmd(optname, &arg, sizeof(arg))) {
+				warn("%s %u: setsockopt(IP_%s_%s)", do_pipe ? "pipe" : "rule",
+				    saved_arg, do_pipe ? "DUMMYNET" : "FW", name);
 				failed = EX_UNAVAILABLE;
 			} else if (!do_quiet)
 				printf("Entry %d %s.\n", saved_arg,
-				    optname == IP_FW_ZERO ?
+				    (optname == IP_FW_ZERO || optname == IP_DUMMYNET_ZERO) ?
 					"cleared" : "logging count reset");
 		} else {
 			errx(EX_USAGE, "invalid rule number ``%s''", *av);
@@ -6351,6 +6548,8 @@ ipfw_main(int oldac, char **oldav)
 			delete(ac, av);
 		else if (_substrcmp(*av, "flush") == 0)
 			flush(do_force);
+		else if (do_pipe && _substrcmp(*av, "zero") == 0)
+			zero(ac, av, IP_DUMMYNET_ZERO);
 		else if (_substrcmp(*av, "zero") == 0)
 			zero(ac, av, IP_FW_ZERO);
 		else if (_substrcmp(*av, "resetlog") == 0)
