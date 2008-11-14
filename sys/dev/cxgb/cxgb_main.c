@@ -206,13 +206,12 @@ SYSCTL_UINT(_hw_cxgb, OID_AUTO, ofld_disable, CTLFLAG_RDTUN, &ofld_disable, 0,
 
 /*
  * The driver uses an auto-queue algorithm by default.
- * To disable it and force a single queue-set per port, use singleq = 1.
+ * To disable it and force a single queue-set per port, use multiq = 0
  */
-static int singleq = 0;
-TUNABLE_INT("hw.cxgb.singleq", &singleq);
-SYSCTL_UINT(_hw_cxgb, OID_AUTO, singleq, CTLFLAG_RDTUN, &singleq, 0,
-    "use a single queue-set per port");
-
+static int multiq = 1;
+TUNABLE_INT("hw.cxgb.multiq", &multiq);
+SYSCTL_UINT(_hw_cxgb, OID_AUTO, multiq, CTLFLAG_RDTUN, &multiq, 0,
+    "use min(ncpus/ports, 8) queue-sets per port");
 
 /*
  * By default the driver will not update the firmware unless
@@ -527,7 +526,7 @@ cxgb_controller_attach(device_t dev)
 		sc->cxgb_intr = t3b_intr;
 	}
 
-	if ((sc->flags & USING_MSIX) && !singleq)
+	if ((sc->flags & USING_MSIX) && multiq)
 		port_qsets = min((SGE_QSETS/(sc)->params.nports), mp_ncpus);
 	
 	/* Create a private taskqueue thread for handling driver events */
@@ -832,7 +831,7 @@ cxgb_setup_msix(adapter_t *sc, int msix_count)
 			}
 #if 0			
 #ifdef IFNET_MULTIQUEUE			
-			if (singleq == 0) {
+			if (multiq) {
 				int vector = rman_get_start(sc->msix_irq_res[k]);
 				if (bootverbose)
 					device_printf(sc->dev, "binding vector=%d to cpu=%d\n", vector, k % mp_ncpus);
