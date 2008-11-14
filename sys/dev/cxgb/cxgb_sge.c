@@ -84,9 +84,7 @@ extern int cxgb_pcpu_cache_enable;
 extern int nmbjumbo4;
 extern int nmbjumbo9;
 extern int nmbjumbo16;
-
-
-
+extern int multiq_tx_enable;
 
 #define USE_GTS 0
 
@@ -1273,7 +1271,6 @@ t3_encap(struct sge_qset *qs, struct mbuf **m, int count)
 	KASSERT(txsd->mi.mi_base == NULL,
 	    ("overwriting valid entry mi_base==%p", txsd->mi.mi_base));
 	if (count > 1) {
-		panic("count > 1 not support in CVS\n");
 		if ((err = busdma_map_sg_vec(m, &m0, segs, count)))
 			return (err);
 		nsegs = count;
@@ -3367,6 +3364,10 @@ t3_add_attach_sysctls(adapter_t *sc)
 	    "pcpu_cache_enable",
 	    CTLFLAG_RW, &cxgb_pcpu_cache_enable,
 	    0, "#enable driver local pcpu caches");
+	SYSCTL_ADD_INT(ctx, children, OID_AUTO, 
+	    "multiq_tx_enable",
+	    CTLFLAG_RW, &multiq_tx_enable,
+	    0, "enable transmit by multiple tx queues");
 	SYSCTL_ADD_INT(ctx, children, OID_AUTO, 
 	    "cache_alloc",
 	    CTLFLAG_RD, &cxgb_cached_allocations,

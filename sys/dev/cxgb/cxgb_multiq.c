@@ -87,8 +87,10 @@ __FBSDID("$FreeBSD$");
 #include <sys/mvec.h>
 
 extern int txq_fills;
+int multiq_tx_enable = 1;
+
 extern struct sysctl_oid_list sysctl__hw_cxgb_children;
-static int cxgb_pcpu_tx_coalesce = 0;
+static int cxgb_pcpu_tx_coalesce = 1;
 TUNABLE_INT("hw.cxgb.tx_coalesce", &cxgb_pcpu_tx_coalesce);
 SYSCTL_UINT(_hw_cxgb, OID_AUTO, tx_coalesce, CTLFLAG_RDTUN, &cxgb_pcpu_tx_coalesce, 0,
     "coalesce small packets into a single work request");
@@ -503,6 +505,9 @@ cxgb_pcpu_cookie_to_qidx(struct port_info *pi, uint32_t cookie)
 {
 	int qidx;
 	uint32_t tmp;
+
+	if (multiq_tx_enable == 0)
+		return (pi->first_qset);
 	
 	 /*
 	 * Will probably need to be changed for 4-port XXX
