@@ -208,6 +208,9 @@ extern int
 int	ip_output(struct mbuf *,
 	    struct mbuf *, struct route *, int, struct ip_moptions *,
 	    struct inpcb *);
+int	ip_output_fast(struct mbuf *,
+	    struct mbuf *, struct route *, int, struct ip_moptions *,
+	    struct inpcb *);
 int	ipproto_register(u_char);
 int	ipproto_unregister(u_char);
 struct mbuf *

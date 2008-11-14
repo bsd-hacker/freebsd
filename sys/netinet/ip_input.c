@@ -216,6 +216,7 @@ int fw_one_pass = 1;
 struct flowtable *ipv4_ft;
 struct flowtable *ipv4_forward_ft;
 
+
 static void	ip_freef(struct ipqhead *, struct ipq *);
 
 /*
@@ -1407,7 +1408,7 @@ ip_forward(struct mbuf *m, int srcrt)
 	 * Try to cache the route MTU from ip_output so we can consider it for
 	 * the ICMP_UNREACH_NEEDFRAG "Next-Hop MTU" field described in RFC1191.
 	 */
-	error = ip_output(m, NULL, (struct route *)&ri, IP_FORWARDING|IP_RTINFO,
+	error = ip_output_fast(m, NULL, (struct route *)&ri, IP_FORWARDING|IP_RTINFO,
 	    NULL, NULL);
 
 	if (error == EMSGSIZE)
