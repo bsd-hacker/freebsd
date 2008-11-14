@@ -428,11 +428,8 @@ cxgb_pcpu_start_proc(void *arg)
 	struct thread *td;
 	struct sge_txq *txq = &qs->txq[TXQ_ETH];
 	int idleticks, err = 0;
-#ifdef notyet	
-	struct adapter *sc = qs->port->adapter;
-#endif
-	td = curthread;
 
+	td = curthread;
 	sleep_ticks = max(hz/1000, 1);
 	qs->qs_flags |= QS_RUNNING;
 	thread_lock(td);
