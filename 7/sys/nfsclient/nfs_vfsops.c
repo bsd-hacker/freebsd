@@ -799,7 +799,7 @@ nfs_mount(struct mount *mp, struct thread *td)
 	    .version = NFS_ARGSVERSION,
 	    .addr = NULL,
 	    .addrlen = sizeof (struct sockaddr_in),
-	    .sotype = SOCK_STREAM,
+	    .sotype = SOCK_DGRAM,
 	    .proto = 0,
 	    .fh = NULL,
 	    .fhsize = 0,
