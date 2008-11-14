@@ -1579,11 +1579,14 @@ tcp_mtudisc(struct inpcb *inp, int errno)
 	tp->snd_recover = tp->snd_max;
 	if (tp->t_flags & TF_SACK_PERMIT)
 		EXIT_FASTRECOVERY(tp);
-
-	if ((tp->t_flags & TF_RECURSE) == 0) {
-		tp->t_flags |= TF_RECURSE;
+	/*
+	 * Only call tcp_output if we haven't already called it
+	 * previously on the stack.
+	 */
+	if ((tp->t_flags & TF_RECURSED) == 0) {
+		tp->t_flags |= TF_RECURSED;
 		tcp_output_send(tp);
-		tp->t_flags &= ~TF_RECURSE;
+		tp->t_flags &= ~TF_RECURSED;
 	}
 
 	return (inp);

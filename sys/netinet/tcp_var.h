@@ -127,7 +127,7 @@ struct tcpcb {
 #define	TF_ECN_PERMIT	0x4000000	/* connection ECN-ready */
 #define	TF_ECN_SND_CWR	0x8000000	/* ECN CWR in queue */
 #define	TF_ECN_SND_ECE	0x10000000	/* ECN ECE in queue */
-#define	TF_RECURSE	0x20000000	/* potentially recursing in tcp_output */
+#define	TF_RECURSED	0x20000000	/* single-bit counter for tcp_output */
 	
 	tcp_seq	snd_una;		/* send unacknowledged */
 	tcp_seq	snd_max;		/* highest sequence number sent;
