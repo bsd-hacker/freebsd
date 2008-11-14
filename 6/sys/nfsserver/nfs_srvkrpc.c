@@ -379,22 +379,22 @@ nfssvc_program(struct svc_req *rqst, SVCXPRT *xprt)
 		if (port >= IPPORT_RESERVED &&
 		    nd.nd_procnum != NFSPROC_NULL) {
 #ifdef INET6
-			char b6[INET6_ADDRSTRLEN];
 #if defined(KLD_MODULE)
+			char b6[INET6_ADDRSTRLEN];
 			/* Do not use ip6_sprintf: the nfs module should work without INET6. */
-#define ip6_sprintf(buf, a)						\
-			(sprintf((buf), "%x:%x:%x:%x:%x:%x:%x:%x",	\
+#define ip6_sprintf(a)						\
+			(sprintf(b6, "%x:%x:%x:%x:%x:%x:%x:%x",	\
 			    (a)->s6_addr16[0], (a)->s6_addr16[1],	\
 			    (a)->s6_addr16[2], (a)->s6_addr16[3],	\
 			    (a)->s6_addr16[4], (a)->s6_addr16[5],	\
 			    (a)->s6_addr16[6], (a)->s6_addr16[7]),	\
-			    (buf))
+			    b6)
 #endif
 #endif
 			printf("NFS request from unprivileged port (%s:%d)\n",
 #ifdef INET6
 			    sin->sin_family == AF_INET6 ?
-			    ip6_sprintf(b6, &satosin6(sin)->sin6_addr) :
+			    ip6_sprintf(&satosin6(sin)->sin6_addr) :
 #if defined(KLD_MODULE)
 #undef ip6_sprintf
 #endif
