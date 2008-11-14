@@ -430,7 +430,7 @@ fallback_mount(struct iovec *iov, int iovlen, int mntflags)
 	    .version = NFS_ARGSVERSION,
 	    .addr = NULL,
 	    .addrlen = sizeof (struct sockaddr_in),
-	    .sotype = SOCK_STREAM,
+	    .sotype = SOCK_DGRAM,
 	    .proto = 0,
 	    .fh = NULL,
 	    .fhsize = 0,
