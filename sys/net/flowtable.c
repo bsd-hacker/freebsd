@@ -459,10 +459,13 @@ flow_stale(struct flowtable *ft, struct flentry *fle)
 	time_t idle_time;
 
 	if ((fle->f_fhash == 0)
-	    || ((fle->f_rt->rt_flags & RTF_UP) == 0)
+	    || ((fle->f_rt->rt_flags & RTF_HOST) &&
+		((fle->f_rt->rt_flags & (RTF_UP|RTF_LLINFO))
+		    != (RTF_UP|RTF_LLINFO)))
 	    || (fle->f_uptime <= fle->f_rt->rt_llinfo_uptime)
 	    || ((fle->f_rt->rt_flags & RTF_GATEWAY) &&
-		((fle->f_rt->rt_gwroute->rt_flags & RTF_UP) == 0)))
+		((fle->f_rt->rt_gwroute->rt_flags & (RTF_UP|RTF_LLINFO))
+		    != (RTF_UP|RTF_LLINFO))))
 		return (1);
 
 	idle_time = time_uptime - fle->f_uptime;
@@ -671,6 +674,8 @@ uncached:
 	if (ro.ro_rt == NULL) 
 		error = ENETUNREACH;
 	else {
+		int finsert = 0;
+		
 		if (ro.ro_rt->rt_flags & RTF_GATEWAY)
 			error = arpresolve(ro.ro_rt->rt_ifp, ro.ro_rt,
 			    NULL, ro.ro_rt->rt_gateway, desten);
@@ -696,12 +701,14 @@ uncached:
 #endif
 		route_to_rtentry_info(&ro, error ? NULL : desten, ri);
 		ro.ro_rt->rt_rmx.rmx_pksent++;
-		if (error == 0 && cache) {
+		finsert = (error == 0 && cache
+		    && !(ro.ro_rt->rt_flags & RTF_CLONING));
+		
+		if (finsert) 
 			error = flowtable_insert(ft, hash, key, proto,
 			    ro.ro_rt, desten, flags);
 				
-		} 
-		if (error || !cache)
+		if (error || !finsert)
 			RTFREE(ro.ro_rt);
 		error = 0;
 	} 
