@@ -308,39 +308,35 @@ err_out:
 }
 
 int 
-busdma_map_sg_vec(struct mbuf **m, struct mbuf **mret, bus_dma_segment_t *segs, int count)
+busdma_map_sg_vec(struct mbuf **m, struct mbuf **mret, bus_dma_segment_t *segs, int pkt_count)
 {
 	struct mbuf *m0, **mp;
 	struct mbuf_iovec *mi;
 	struct mbuf_vec *mv;
-	int i;
-	
-	if (count > MAX_MIOVEC_IOV) {
-		if ((m0 = uma_zalloc_arg(zone_clust, NULL, M_NOWAIT)) == NULL) 
-			return (ENOMEM);
-		m0->m_type = EXT_CLIOVEC;
-	} else {
-		if ((m0 = uma_zalloc_arg(zone_miovec, NULL, M_NOWAIT)) == NULL)
-			return (ENOMEM);
-		m0->m_type = EXT_IOVEC;
-	}
+	int i, type;
 
-	m0->m_flags = 0;
-	m0->m_pkthdr.len = m0->m_len = (*m)->m_len; /* not the real length but needs to be non-zero */
+	if ((m0 = mcl_alloc(pkt_count, &type)) == NULL)
+		return (ENOMEM);
+
+	m0->m_type = type;
+	memcpy(m0, *m, sizeof(struct m_hdr) + sizeof(struct pkthdr));
 	mv = mtomv(m0);
-	mv->mv_count = count;
+	mv->mv_count = pkt_count;
 	mv->mv_first = 0;
-	for (mp = m, i = 0, mi = mv->mv_vec; i < count; mp++, segs++, mi++, i++) {
-		if ((*mp)->m_flags & M_PKTHDR && !SLIST_EMPTY(&(*mp)->m_pkthdr.tags)) 
+	for (mp = m, i = 0, mi = mv->mv_vec; i < pkt_count; mp++, segs++, mi++, i++) {
+		if ((*mp)->m_flags & M_PKTHDR
+		    && !SLIST_EMPTY(&(*mp)->m_pkthdr.tags)) 
 			m_tag_delete_chain(*mp, NULL);
 		busdma_map_mbuf_fast(*mp, segs);
 		_mcl_collapse_mbuf(mi, *mp);
 		KASSERT(mi->mi_len, ("empty packet"));
 	}
 
-	for (mp = m, i = 0; i < count; i++, mp++) {
+	for (mp = m, i = 0; i < pkt_count; i++, mp++) {
 		(*mp)->m_next = (*mp)->m_nextpkt = NULL;
-		if (((*mp)->m_flags & (M_EXT|M_NOFREE)) == M_EXT) {
+		
+		if ((((*mp)->m_flags & (M_EXT|M_NOFREE)) == M_EXT) &&
+		    ((*mp)->m_ext.ext_type != EXT_PACKET)){
 			(*mp)->m_flags &= ~M_EXT;
 			cxgb_mbufs_outstanding--;
 			m_free(*mp);
