@@ -1282,7 +1282,7 @@ t3_encap(struct sge_qset *qs, struct mbuf **m, int count)
 	} 
 	KASSERT(m0->m_pkthdr.len, ("empty packet nsegs=%d count=%d", nsegs, count));
 
-	if (!(m0->m_pkthdr.len <= PIO_LEN)) {
+	if ((m0->m_pkthdr.len > PIO_LEN) || (count > 1)) {
 		mi_collapse_mbuf(&txsd->mi, m0);
 		mi = &txsd->mi;
 	}
