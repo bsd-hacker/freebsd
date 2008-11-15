@@ -199,8 +199,6 @@ busdma_map_sg_collapse(struct mbuf **m, bus_dma_segment_t *segs, int *nsegs)
 	struct mbuf_vec *mv;
 	int skipped, freed;
 
-	
-	
 	KASSERT(n->m_pkthdr.len, ("packet has zero header len"));
 		
 	if (n->m_flags & M_PKTHDR && !SLIST_EMPTY(&n->m_pkthdr.tags)) 
@@ -216,7 +214,7 @@ retry:
 
 		return (0);
 	}
-	skipped = freed;
+	skipped = freed = 0;
 	while (n && seg_count < TX_MAX_SEGS) {
 		marray[seg_count] = n;
 		
@@ -314,12 +312,13 @@ busdma_map_sg_vec(struct mbuf **m, struct mbuf **mret, bus_dma_segment_t *segs, 
 	if ((m0 = mcl_alloc(pkt_count, &type)) == NULL)
 		return (ENOMEM);
 
-	m0->m_type = type;
 	memcpy(m0, *m, sizeof(struct m_hdr) + sizeof(struct pkthdr));
+	m0->m_type = type;
 	mv = mtomv(m0);
 	mv->mv_count = pkt_count;
 	mv->mv_first = 0;
-	for (mp = m, i = 0, mi = mv->mv_vec; i < pkt_count; mp++, segs++, mi++, i++) {
+	for (mp = m, i = 0, mi = mv->mv_vec; i < pkt_count;
+	     mp++, segs++, mi++, i++) {
 		if ((*mp)->m_flags & M_PKTHDR
 		    && !SLIST_EMPTY(&(*mp)->m_pkthdr.tags)) 
 			m_tag_delete_chain(*mp, NULL);
@@ -348,6 +347,7 @@ mb_free_ext_fast(struct mbuf_iovec *mi, int type, int idx)
 	int dofree;
 	caddr_t cl;
 
+	cl = mi->mi_base;
 	switch (type) {
 	case EXT_PACKET:
 		cxgb_pack_outstanding--;
@@ -371,7 +371,6 @@ mb_free_ext_fast(struct mbuf_iovec *mi, int type, int idx)
 	if (dofree == 0)
 		return;
 
-	cl = mi->mi_base;
 	switch (type) {
 	case EXT_CLUSTER:
 		cxgb_cache_put(zone_clust, cl);
