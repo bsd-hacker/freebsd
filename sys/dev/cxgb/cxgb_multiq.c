@@ -88,13 +88,9 @@ __FBSDID("$FreeBSD$");
 
 extern int txq_fills;
 int multiq_tx_enable = 1;
+int coalesce_tx_enable = 0;
 
 extern struct sysctl_oid_list sysctl__hw_cxgb_children;
-static int cxgb_pcpu_tx_coalesce = 1;
-TUNABLE_INT("hw.cxgb.tx_coalesce", &cxgb_pcpu_tx_coalesce);
-SYSCTL_UINT(_hw_cxgb, OID_AUTO, tx_coalesce, CTLFLAG_RDTUN, &cxgb_pcpu_tx_coalesce, 0,
-    "coalesce small packets into a single work request");
-
 static int sleep_ticks = 1;
 TUNABLE_INT("hw.cxgb.sleep_ticks", &sleep_ticks);
 SYSCTL_UINT(_hw_cxgb, OID_AUTO, sleep_ticks, CTLFLAG_RDTUN, &sleep_ticks, 0,
@@ -201,7 +197,7 @@ cxgb_dequeue_packet(struct sge_txq *txq, struct mbuf **m_vec)
 		m->m_type, txq->txq_mr.br_cons, txq->txq_mr.br_prod));
 	m_vec[0] = m;
 	if (m->m_pkthdr.tso_segsz > 0 || m->m_pkthdr.len > TX_WR_SIZE_MAX ||
-	    m->m_next != NULL || (cxgb_pcpu_tx_coalesce == 0)) {
+	    m->m_next != NULL || (coalesce_tx_enable == 0)) {
 		return (count);
 	}
 
@@ -387,7 +383,7 @@ cxgb_pcpu_transmit(struct ifnet *ifp, struct mbuf *immpkt)
 
 	if (((sc->tunq_coalesce == 0) ||
 		(buf_ring_count(&txq->txq_mr) >= TX_WR_COUNT_MAX) ||
-		(cxgb_pcpu_tx_coalesce == 0)) && mtx_trylock(&txq->lock)) {
+		(coalesce_tx_enable == 0)) && mtx_trylock(&txq->lock)) {
 		if (cxgb_debug)
 			printf("doing immediate transmit\n");
 		
