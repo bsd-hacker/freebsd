@@ -147,13 +147,17 @@ _mcl_collapse_mbuf(struct mbuf_iovec *mi, struct mbuf *m)
 		mi->mi_type = m->m_ext.ext_type;
 		mi->mi_size = m->m_ext.ext_size;
 		mi->mi_refcnt = m->m_ext.ref_cnt;
-		mi->mi_mbuf = m;
+		if (m->m_ext.ext_type == EXT_PACKET) {
+			mi->mi_mbuf = m;
+			cxgb_pack_outstanding++;
+		}
 	} else {
 		mi->mi_base = (caddr_t)m;
 		mi->mi_data = m->m_data;
 		mi->mi_size = MSIZE;
 		mi->mi_type = EXT_MBUF;
 		mi->mi_refcnt = NULL;
+		cxgb_mbufs_outstanding++;
 	}
 	KASSERT(mi->mi_len != 0, ("miov has len 0"));
 	KASSERT(mi->mi_type > 0, ("mi_type is invalid"));
@@ -193,7 +197,7 @@ busdma_map_sg_collapse(struct mbuf **m, bus_dma_segment_t *segs, int *nsegs)
 	struct mbuf *marray[TX_MAX_SEGS];
 	int i, type, seg_count, defragged = 0, err = 0;
 	struct mbuf_vec *mv;
-	int skipped, freed, outstanding, pack_outstanding, mbuf_outstanding;
+	int skipped, freed;
 
 	
 	
@@ -209,14 +213,10 @@ retry:
 	if (n->m_next == NULL) {
 		busdma_map_mbuf_fast(n, segs);
 		*nsegs = 1;
-		if ((n->m_flags & M_EXT) &&
-		    (n->m_ext.ext_type == EXT_PACKET)) 
-			cxgb_pack_outstanding++;
-		else if ((n->m_flags & M_NOFREE) == 0) 
-			cxgb_mbufs_outstanding++;
+
 		return (0);
 	}
-	skipped = freed = outstanding = pack_outstanding = mbuf_outstanding = 0;
+	skipped = freed;
 	while (n && seg_count < TX_MAX_SEGS) {
 		marray[seg_count] = n;
 		
@@ -274,11 +274,9 @@ retry:
 		if (n->m_len == 0)
 			/* do nothing - free if mbuf or cluster */; 
 		else if ((n->m_flags & M_EXT) == 0) {
-			mbuf_outstanding++;
 			goto skip;
 		} else if ((n->m_flags & M_EXT) &&
 		    (n->m_ext.ext_type == EXT_PACKET)) {
-			pack_outstanding++;
 			goto skip;
 		} else if (n->m_flags & M_NOFREE) 
 			goto skip; 
@@ -298,8 +296,6 @@ retry:
 	*nsegs = seg_count;
 	*m = m0;
 	DPRINTF("pktlen=%d m0=%p *m=%p m=%p\n", m0->m_pkthdr.len, m0, *m, m);
-	cxgb_mbufs_outstanding += mbuf_outstanding;
-	cxgb_pack_outstanding += pack_outstanding;
 	return (0);
 err_out:
 	m_freem(*m);
@@ -334,11 +330,10 @@ busdma_map_sg_vec(struct mbuf **m, struct mbuf **mret, bus_dma_segment_t *segs, 
 
 	for (mp = m, i = 0; i < pkt_count; i++, mp++) {
 		(*mp)->m_next = (*mp)->m_nextpkt = NULL;
-		
+
 		if ((((*mp)->m_flags & (M_EXT|M_NOFREE)) == M_EXT) &&
 		    ((*mp)->m_ext.ext_type != EXT_PACKET)){
 			(*mp)->m_flags &= ~M_EXT;
-			cxgb_mbufs_outstanding--;
 			m_free(*mp);
 		}
 	}
@@ -352,18 +347,23 @@ mb_free_ext_fast(struct mbuf_iovec *mi, int type, int idx)
 {
 	int dofree;
 	caddr_t cl;
-	
-	if (type == EXT_PACKET) {
+
+	switch (type) {
+	case EXT_PACKET:
 		cxgb_pack_outstanding--;
 		m_free(mi->mi_mbuf);
 		return;
+	case EXT_MBUF:
+		cxgb_mbufs_outstanding--;
+		m_free_fast((struct mbuf *)cl);
+		return;
+	default:
+		break;
 	}
-
+	
 	/* Account for lazy ref count assign. */
 	dofree = (mi->mi_refcnt == NULL);
 	if (dofree == 0) {
-		    KASSERT(mi->mi_type != EXT_MBUF,
-			("refcnt must be null for mbuf"));
 		    if (*(mi->mi_refcnt) == 1 ||
 		    atomic_fetchadd_int(mi->mi_refcnt, -1) == 1)
 			    dofree = 1;
@@ -373,11 +373,6 @@ mb_free_ext_fast(struct mbuf_iovec *mi, int type, int idx)
 
 	cl = mi->mi_base;
 	switch (type) {
-	case EXT_MBUF:
-		KASSERT((mi->mi_flags & M_NOFREE) == 0, ("no free set on mbuf"));
-		cxgb_mbufs_outstanding--;
-		m_free_fast((struct mbuf *)cl);
-		break;
 	case EXT_CLUSTER:
 		cxgb_cache_put(zone_clust, cl);
 		break;		
