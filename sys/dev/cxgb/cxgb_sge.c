@@ -1888,12 +1888,6 @@ t3_free_tx_desc(struct sge_txq *q, int reclaimable)
 			 *
 			 */
 			q->port->ifp->if_opackets++;
-#if defined(DIAGNOSTIC) && 0
-			if (m_get_priority(txsd->m[0]) != cidx) 
-				printf("pri=%d cidx=%d\n",
-				    (int)m_get_priority(txsd->m[0]), cidx);
-#endif			
-
 		} else
 			q->txq_skipped++;
 		
