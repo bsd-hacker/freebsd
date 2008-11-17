@@ -206,6 +206,23 @@ SYSCTL_V_INT(V_NET, vnet_inet, _net_inet_ip, OID_AUTO, stealth, CTLFLAG_RW,
     ipstealth, 0, "IP stealth mode, no TTL decrementation on forwarding");
 #endif
 
+static int ipv4_pcpu_flowtable_size = 2048;
+TUNABLE_INT("net.inet.ip.pcpu_flowtable_size", &ipv4_pcpu_flowtable_size);
+SYSCTL_V_INT(V_NET, vnet_inet, _net_inet_ip, OID_AUTO, pcpu_flowtable_size,
+    CTLFLAG_RDTUN, ipv4_pcpu_flowtable_size, 0,
+    "number of entries in the per cpu flow caches");
+
+#ifdef RADIX_MPATH
+static int ipv4_global_flowtable_size = 128*1024;
+#else
+static int ipv4_global_flowtable_size = 16*1024;
+#endif
+TUNABLE_INT("net.inet.ip.global_flowtable_size", &ipv4_global_flowtable_size);
+SYSCTL_V_INT(V_NET, vnet_inet, _net_inet_ip, OID_AUTO, global_flowtable_size,
+    CTLFLAG_RDTUN, ipv4_global_flowtable_size, 0,
+    "number of entries in the global flow cache");
+
+
 /*
  * ipfw_ether and ipfw_bridge hooks.
  * XXX: Temporary until those are converted to pfil_hooks as well.
@@ -215,7 +232,6 @@ ip_dn_io_t *ip_dn_io_ptr = NULL;
 int fw_one_pass = 1;
 struct flowtable *ipv4_ft;
 struct flowtable *ipv4_forward_ft;
-
 
 static void	ip_freef(struct ipqhead *, struct ipq *);
 
@@ -283,13 +299,8 @@ ip_init(void)
 	mtx_init(&ipintrq.ifq_mtx, "ip_inq", NULL, MTX_DEF);
 	netisr_register(NETISR_IP, ip_input, &ipintrq, 0);
 	
-	ipv4_ft = flowtable_alloc(2048, FL_PCPU);
-#ifdef RADIX_MPATH
-	ipv4_forward_ft = flowtable_alloc(128*1024, FL_HASH_PORTS);
-#else
-	ipv4_forward_ft = flowtable_alloc(16*1024, 0);
-#endif	
-	
+	ipv4_ft = flowtable_alloc(ipv4_pcpu_flowtable_size, FL_PCPU);
+	ipv4_forward_ft = flowtable_alloc(ipv4_global_flowtable_size, FL_HASH_PORTS);
 }
 
 void
