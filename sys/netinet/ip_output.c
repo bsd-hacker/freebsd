@@ -663,6 +663,13 @@ ip_output_fast(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 			route_to_rtentry_info(ro, NULL, ri);
 		else if (flowtable_lookup(ipv4_ft, m, ri))
 			return (ENETUNREACH);
+
+		/*
+		 * Rather than reverting to non-standard ARP 
+		 * lookup semantics simply fallback to ip_output_legacy
+		 */
+		if ((ri->ri_flags & RTF_DESTEN_VALID) == 0)
+			return (EINVAL);
 	}
 
 	if (opt) {
@@ -1151,10 +1158,15 @@ int
 ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
     struct ip_moptions *imo, struct inpcb *inp)
 {
+	int error;
+
 	if (flowtable_enable)
-		return (ip_output_fast(m, opt, ro, flags, imo, inp));
-	else
-		return (ip_output_legacy(m, opt, ro, flags, imo, inp));
+		error = ip_output_fast(m, opt, ro, flags, imo, inp);
+	
+	if ((flowtable_enable == 0) || (error == EINVAL)) 
+		error = ip_output_legacy(m, opt, ro, flags, imo, inp);
+
+	return (error);
 }
 
 /*
