@@ -1994,12 +1994,13 @@ Packet loss set.
 Argument
 .Ar packet-loss-set
 is a comma-delimited string of the form 10,30-31,1000 identifying the specific
-packets entering a queue/pipe to drop. In the given example, the 10th, 30th,
-31st and 1000th packet to enter the pipe/queue would be dropped. Clearing the
-counters on a pipe will cause the
+packets entering a queue/pipe to drop.
+In the given example, the 10th, 30th, 31st and 1000th packet to enter the
+pipe/queue would be dropped.
+Clearing the counters on a pipe will cause the
 .Ar packet-loss-set
-to be evaluated again from scratch. Use of this option mutually excludes use of
-the
+to be evaluated again from scratch.
+Use of this option mutually excludes use of the
 .Nm plr
 option.
 .Pp
