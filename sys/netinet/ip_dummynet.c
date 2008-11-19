@@ -64,27 +64,38 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/module.h>
 #include <sys/priv.h>
+#include <sys/kthread.h>
 #include <sys/proc.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
 #include <sys/time.h>
 #include <sys/sysctl.h>
 #include <sys/taskqueue.h>
+#include <sys/alq.h>
+#include <sys/sbuf.h>
+#include <sys/hash.h>
+#include <sys/unistd.h>
+
 #include <net/if.h>
 #include <net/netisr.h>
 #include <net/route.h>
 #include <netinet/in.h>
 #include <netinet/in_systm.h>
 #include <netinet/in_var.h>
+#include <netinet/in_pcb.h>
 #include <netinet/ip.h>
 #include <netinet/ip_fw.h>
 #include <netinet/ip_dummynet.h>
 #include <netinet/ip_var.h>
+#include <netinet/tcp.h>
+#include <netinet/udp.h>
 
 #include <netinet/if_ether.h> /* for struct arpcom */
 
 #include <netinet/ip6.h>       /* for ip6_input, ip6_output prototypes */
 #include <netinet6/ip6_var.h>
+
+#include <machine/in_cksum.h>
 
 /*
  * We keep a private variable for the simulation time, but we could
@@ -154,6 +165,74 @@ static struct callout dn_timeout;
 
 extern	void (*bridge_dn_p)(struct mbuf *, struct ifnet *);
 
+#define DN_LOG(fs, p, q, m, dropped, dir) \
+	if (dn_log_enable) \
+		dn_log((fs), (p), (q), (m), (dropped), (dir));
+
+#define CAST_PTR_INT(X) (*((int*)(X)))
+
+struct log_node {
+	/* log msg creation timestamp */
+	struct timeval	tval;
+	/*
+	 * direction of packet after dummynet finishes processing it
+	 * (defined in ip_dummynet.h DN_TO_IP_OUT, DN_TO_IP_IN, ...)
+	 */
+	int	direction;
+	/*
+	 * pkt dropped yes/no + reason if dropped (see DN_DROP_X defines in
+	 * ip_dummynet.h)
+	 */
+	uint32_t	dropped;
+	/* hash of the pkt which triggered the log msg */
+	uint32_t	hash;
+	/* IP version log_node relates to; either INP_IPV4 or INP_IPV6 */
+	uint8_t		ipver;
+	/* flow set number */
+	int	fs_num;
+	/* flags set on the flow set */
+	uint16_t	fs_flags;
+	/* pipe number */
+	int	p_num;
+	/* current pipe occupancy */
+	int	p_len;
+	/*
+	 * max queue len in either pkts or bytes (depending on whether
+	 * DN_QSIZE_IS_BYTES is set in fs_flags)
+	 */
+	int	q_max_len;
+	/* current queue occupancy in pkts */
+	int	q_len_pkts;
+	/* current queue occupancy in bytes */
+	int	q_len_bytes;
+
+	STAILQ_ENTRY(log_node) nodes;
+};
+
+/*
+ * in_pcb.h defines INP_IPV4 as 0x1 and INP_IPV6 as 0x2,
+ * which we use as an index into this array
+ */
+static char	ipver[3] = {'\0', '4', '6'};
+static int	dn_sysctl_log_enable_handler(SYSCTL_HANDLER_ARGS);
+static int	dn_sysctl_logfile_name_handler(SYSCTL_HANDLER_ARGS);
+static u_int	dn_log_enable = 0;
+static char	dn_logfile[PATH_MAX] = "/var/log/dummynet.log\0";
+STAILQ_HEAD(loghead, log_node) log_queue = STAILQ_HEAD_INITIALIZER(log_queue);
+static struct	mtx dn_log_queue_mtx;
+static int	wait_for_log;
+static struct alq *dn_alq = NULL;
+static volatile uint32_t dn_exit_log_manager_thread = 0;
+static struct thread *dn_log_manager_thr = NULL;
+static struct proc *dn_log_manager_proc = NULL;
+
+#define DN_LOG_FILE_MODE 0644
+#define DN_ALQ_BUFLEN 200000
+#define DN_MAX_LOG_MSG_LEN 60
+
+#define DN_LOG_DISABLE	0
+#define DN_LOG_ENABLE	1
+
 #ifdef SYSCTL_NODE
 SYSCTL_NODE(_net_inet_ip, OID_AUTO, dummynet, CTLFLAG_RW, 0, "Dummynet");
 SYSCTL_INT(_net_inet_ip_dummynet, OID_AUTO, hash_size,
@@ -206,6 +285,12 @@ SYSCTL_LONG(_net_inet_ip_dummynet, OID_AUTO, pipe_slot_limit,
     CTLFLAG_RW, &pipe_slot_limit, 0, "Upper limit in slots for pipe queue.");
 SYSCTL_LONG(_net_inet_ip_dummynet, OID_AUTO, pipe_byte_limit,
     CTLFLAG_RW, &pipe_byte_limit, 0, "Upper limit in bytes for pipe queue.");
+SYSCTL_OID(_net_inet_ip_dummynet, OID_AUTO, log_enable, CTLTYPE_UINT|CTLFLAG_RW,
+    &dn_log_enable, 0, &dn_sysctl_log_enable_handler, "IU",
+    "switch dummynet data logging on/off");
+SYSCTL_PROC(_net_inet_ip_dummynet, OID_AUTO, logfile,
+    CTLTYPE_STRING|CTLFLAG_RW, &dn_logfile, sizeof(dn_logfile),
+    &dn_sysctl_logfile_name_handler, "A", "file to save dummynet log data to");
 #endif
 
 #ifdef DUMMYNET_DEBUG
@@ -451,6 +536,363 @@ heap_free(struct dn_heap *h)
  * --- end of heap management functions ---
  */
 
+static __inline void
+dn_process_log_node(struct log_node * log_node)
+{
+	char dn_log_msg[DN_MAX_LOG_MSG_LEN];
+
+	/* construct our log message */
+	snprintf( dn_log_msg,
+		DN_MAX_LOG_MSG_LEN,
+		"%d,0x%08x,%u.%06u,%u,%u,%d,0x%04x,%d,%d,%d,%d,%d\n",
+		log_node->direction,
+		log_node->hash,
+		(unsigned int)log_node->tval.tv_sec,
+		(unsigned int)log_node->tval.tv_usec,
+		ipver[log_node->ipver],
+		log_node->dropped,
+		log_node->fs_num,
+		log_node->fs_flags,
+		log_node->p_num,
+		log_node->p_len,
+		log_node->q_max_len,
+		log_node->q_len_pkts,
+		log_node->q_len_bytes
+	);
+
+	alq_writen(dn_alq, dn_log_msg, strlen(dn_log_msg), ALQ_WAITOK);
+}
+
+static void
+dn_log_manager_thread(void *arg)
+{
+	struct log_node *log_node, *log_node_temp;
+
+	/* loop until thread is signalled to exit */
+	while (!dn_exit_log_manager_thread) {
+		/*
+		 * sleep until we are signalled to wake because thread has
+		 * been told to exit or until 1 tick has passed
+		 */
+		tsleep(&wait_for_log, PWAIT, "logwait", 1);
+
+		/* Process logs until the queue is empty */
+		do {
+			log_node = NULL;
+
+			/* gain exclusive access to the queue */
+			mtx_lock(&dn_log_queue_mtx);
+
+			/* get the element at the head of the list */
+			if ((log_node = STAILQ_FIRST(&log_queue)) != NULL) {
+				/*
+				 * list wasn't empty, so let's remove the first
+				 * element from the list.
+				 * Note that STAILQ_REMOVE_HEAD doesn't delete
+				 * the log_node struct itself. It just
+				 * disentangles it from the list structure.
+				 * We have a copy of the node's ptr stored
+				 * in log_node.
+				 */
+				STAILQ_REMOVE_HEAD(&log_queue, nodes);
+			}
+			/*
+			 * We've finished making changes to the list. Unlock it
+			 * so the pfil hooks can continue queuing pkt_nodes
+			 */
+			mtx_unlock(&dn_log_queue_mtx);
+
+			/* if we successfully get a log_node from the list */
+			if (log_node != NULL) {
+				dn_process_log_node(log_node);
+				/*
+				 * free the memory that was
+				 * malloc'd in dn_log()
+				 */
+				free(log_node, M_DUMMYNET);
+			}
+
+		} while (log_node != NULL);
+	}
+
+	/* Flush all remaining log_nodes to the log file */
+
+	/* Lock the mutex so we gain exclusive access to the queue */
+	mtx_lock(&dn_log_queue_mtx);
+
+	STAILQ_FOREACH_SAFE(log_node, &log_queue, nodes, log_node_temp) {
+		dn_process_log_node(log_node);
+		STAILQ_REMOVE_HEAD(&log_queue, nodes);
+		free(log_node, M_DUMMYNET);
+	}
+
+	/* Reinit the list to mark it as empty and virgin */
+	STAILQ_INIT(&log_queue);
+
+	/* We've finished making changes to the list. Safe to unlock it. */
+	mtx_unlock(&dn_log_queue_mtx);
+
+	/* kthread_exit calls wakeup on our thread's struct pointer */
+	kthread_exit(0);
+}
+
+static int
+dn_sysctl_logfile_name_handler(SYSCTL_HANDLER_ARGS)
+{
+	struct alq *new_alq;
+
+	if (!req->newptr)
+		goto skip;
+
+	/* if old filename and new filename are different */
+	if (strncmp(dn_logfile, (char *)req->newptr, PATH_MAX)) {
+
+		int error = alq_open(	&new_alq,
+					req->newptr,
+					curthread->td_ucred,
+					DN_LOG_FILE_MODE,
+					DN_ALQ_BUFLEN,
+					0
+		);
+
+		/* bail if unable to create new alq */
+		if (error)
+			return 1;
+
+		/*
+		 * If disabled, dn_alq == NULL so we simply close
+		 * the alq as we've proved it can be opened.
+		 * If enabled, close the existing alq and switch the old for the new
+		 */
+		if (dn_alq == NULL)
+			alq_close(new_alq);
+		else {
+			alq_close(dn_alq);
+			dn_alq = new_alq;
+		}
+	}
+
+skip:
+	return sysctl_handle_string(oidp, arg1, arg2, req);
+}
+
+static int
+dn_manage_logging(uint8_t action)
+{
+	int ret, error = 0;
+	struct timeval tval;
+	struct sbuf *s = NULL;
+
+	/* init an autosizing sbuf that initially holds 200 chars */
+	if ((s = sbuf_new(NULL, NULL, 200, SBUF_AUTOEXTEND)) == NULL)
+		return -1;
+
+	if (action == DN_LOG_ENABLE) {
+
+		/* create our alq */
+		alq_open(	&dn_alq,
+				dn_logfile,
+				curthread->td_ucred,
+				DN_LOG_FILE_MODE,
+				DN_ALQ_BUFLEN,
+				0
+		);
+
+		STAILQ_INIT(&log_queue);
+
+		dn_exit_log_manager_thread = 0;
+
+		ret = kthread_create(   &dn_log_manager_thread,
+					NULL,
+					&dn_log_manager_proc,
+					RFNOWAIT,
+					0,
+					"dn_log_manager_thr"
+		);
+		dn_log_manager_thr =
+			FIRST_THREAD_IN_PROC(dn_log_manager_proc);
+
+		microtime(&tval);
+
+		sbuf_printf(s,
+			"enable_time_secs=%ld\tenable_time_usecs=%06ld\thz=%d\tsysname=%s\tsysver=%u\n",
+			tval.tv_sec,
+			tval.tv_usec,
+			hz,
+			"FreeBSD",
+			__FreeBSD_version
+		);
+
+		sbuf_finish(s);
+		alq_writen(dn_alq, sbuf_data(s), sbuf_len(s), ALQ_WAITOK);
+	}
+	else if (action == DN_LOG_DISABLE && dn_log_manager_thr != NULL) {
+
+		/* tell the log manager thread that it should exit now */
+		dn_exit_log_manager_thread = 1;
+
+		/*
+		 * wake the pkt_manager thread so it realises that
+		 * dn_exit_log_manager_thread = 1 and exits gracefully
+		 */
+		wakeup(&wait_for_log);
+
+		/* wait for the pkt_manager thread to exit */
+		tsleep(dn_log_manager_thr, PWAIT, "thrwait", 0);
+
+		dn_log_manager_thr = NULL;
+
+		microtime(&tval);
+
+		sbuf_printf(s,
+			"disable_time_secs=%ld\tdisable_time_usecs=%06ld",
+			tval.tv_sec,
+			tval.tv_usec
+		);
+
+		sbuf_printf(s, "\n");
+		sbuf_finish(s);
+		alq_writen(dn_alq, sbuf_data(s), sbuf_len(s), ALQ_WAITOK);
+		alq_close(dn_alq);
+		dn_alq = NULL;
+	}
+
+	sbuf_delete(s);
+
+	/*
+	 * XXX: Should be using ret to check if any functions fail
+	 * and set error appropriately
+	 */
+	return error;
+}
+
+static int
+dn_sysctl_log_enable_handler(SYSCTL_HANDLER_ARGS)
+{
+	if (!req->newptr)
+		goto skip;
+	
+	/* if the value passed in isn't DISABLE or ENABLE, return an error */
+	if (CAST_PTR_INT(req->newptr) != DN_LOG_DISABLE &&
+		CAST_PTR_INT(req->newptr) != DN_LOG_ENABLE)
+		return 1;
+	
+	/* if we are changing state (DISABLE to ENABLE or vice versa) */
+	if (CAST_PTR_INT(req->newptr) != dn_log_enable )
+		if (dn_manage_logging(CAST_PTR_INT(req->newptr))) {
+			dn_manage_logging(DN_LOG_DISABLE);
+			return 1;
+		}
+
+skip:
+	return sysctl_handle_int(oidp, arg1, arg2, req);
+}
+
+static uint32_t
+hash_pkt(struct mbuf *m, uint32_t offset)
+{
+	register uint32_t hash = 0;
+
+	while ((m != NULL) && (offset > m->m_len)) {
+		/*
+		 * the IP packet payload does not start in this mbuf
+		 * need to figure out which mbuf it starts in and what offset
+		 * into the mbuf's data region the payload starts at
+		 */
+		offset -= m->m_len;
+		m = m->m_next;
+	}
+
+	while (m != NULL) {
+		/* ensure there is data in the mbuf */
+		if ((m->m_len - offset) > 0) {
+			hash = hash32_buf(	m->m_data + offset,
+						m->m_len - offset,
+						hash
+			);
+                }
+
+		m = m->m_next;
+		offset = 0;
+        }
+
+	return hash;
+}
+
+static void
+dn_log(	struct dn_flow_set *fs,
+	struct dn_pipe *p,
+	struct dn_flow_queue *q,
+	struct mbuf *pkt,
+	u_int dropped,
+	int dir)
+{
+	struct log_node *log_node;
+
+	DUMMYNET_LOCK_ASSERT();
+
+	/* M_NOWAIT flag required here */
+	log_node = malloc(sizeof(struct log_node), M_DUMMYNET, M_NOWAIT);
+
+	if (log_node == NULL)
+		return;
+
+	/* set log_node struct members */
+	microtime(&(log_node->tval));
+	log_node->direction = dir;
+	log_node->dropped = dropped;
+	log_node->ipver = INP_IPV4;
+	log_node->fs_num = (dropped == DN_DROP_NOFS) ?
+				-1 : fs->fs_nr;
+	log_node->fs_flags = (dropped == DN_DROP_NOFS) ?
+				0 : fs->flags_fs;
+	log_node->q_max_len = (dropped == DN_DROP_NOFS) ?
+				-1 : fs->qsize;
+	log_node->p_num = (dropped == DN_DROP_NOFS ||
+				dropped == DN_DROP_NOP4Q) ?
+					-1 : p->pipe_nr;
+	log_node->p_len = (dropped == DN_DROP_NOFS ||
+				dropped == DN_DROP_NOP4Q) ?
+					-1 : p->len;
+	log_node->q_len_pkts = (dropped == DN_DROP_NOFS ||
+					dropped == DN_DROP_NOQ) ?
+						-1 : q->len;
+	log_node->q_len_bytes = (dropped == DN_DROP_NOFS ||
+					dropped == DN_DROP_NOQ) ?
+						-1 : q->len_bytes;
+
+	/*
+	 * calc a hash of the pkt which triggered this log message
+	 * hash is calculated over the IP payload (not IP header) so as to
+	 * be invariant to changes in the IP header
+	 * XXX: Handle IPv6
+	 */
+	struct ip *ip = mtod(pkt, struct ip *);
+	uint32_t ip_hl = (ip->ip_hl << 2);
+
+	if (pkt->m_pkthdr.csum_flags & (CSUM_TCP | CSUM_UDP)) {
+		/*
+		 * This is a TCP or UDP packet without its checksum field
+		 * Manually calculate the checksum so that we generate a correct pkt hash
+		 */
+		if (pkt->m_pkthdr.csum_flags & CSUM_TCP) {
+			struct tcphdr *th = (struct tcphdr *)((caddr_t)ip + ip_hl);
+			th->th_sum  = in_cksum_skip(pkt, ip->ip_len, ip_hl);
+			pkt->m_pkthdr.csum_flags &= ~CSUM_TCP;
+		} else {
+			struct udphdr *uh = (struct udphdr *)((caddr_t)ip + ip_hl);
+			uh->uh_sum  = in_cksum_skip(pkt, ip->ip_len, ip_hl);
+			pkt->m_pkthdr.csum_flags &= ~CSUM_UDP;
+		}
+	}
+
+	log_node->hash = hash_pkt(pkt, ip_hl);
+
+	mtx_lock(&dn_log_queue_mtx);
+	STAILQ_INSERT_TAIL(&log_queue, log_node, nodes);
+	mtx_unlock(&dn_log_queue_mtx);
+}
+
 /*
  * Return the mbuf tag holding the dummynet state.  As an optimization
  * this is assumed to be the first tag on the list.  If this turns out
@@ -504,6 +946,7 @@ transmit_event(struct dn_pipe *pipe, struct mbuf **head, struct mbuf **tail)
 		else
 			*head = m;
 		*tail = m;
+		pipe->len--;
 	}
 	if (*tail != NULL)
 		(*tail)->m_nextpkt = NULL;
@@ -550,6 +993,7 @@ move_pkt(struct mbuf *pkt, struct dn_flow_queue *q, struct dn_pipe *p,
 	p->tail->m_nextpkt = pkt;
     p->tail = pkt;
     p->tail->m_nextpkt = NULL;
+    p->len++;
 }
 
 /*
@@ -1295,34 +1739,43 @@ dummynet_io(struct mbuf **m0, int dir, struct ip_fw_args *fwa)
 	} else
 		fs = locate_flowset(fwa->cookie);
 
-	if (fs == NULL)
+	if (fs == NULL) {
+		DN_LOG(NULL, NULL, NULL, m, DN_DROP_NOFS, dir);
 		goto dropit;	/* This queue/pipe does not exist! */
+	}
 	pipe = fs->pipe;
 	if (pipe == NULL) {	/* Must be a queue, try find a matching pipe. */
 		pipe = locate_pipe(fs->parent_nr);
 		if (pipe != NULL)
 			fs->pipe = pipe;
 		else {
+			DN_LOG(fs, NULL, NULL, m, DN_DROP_NOP4Q, dir);
 			printf("dummynet: no pipe %d for queue %d, drop pkt\n",
 			    fs->parent_nr, fs->fs_nr);
 			goto dropit;
 		}
 	}
 	q = find_queue(fs, &(fwa->f_id));
-	if (q == NULL)
+	if (q == NULL) {
+		DN_LOG(fs, pipe, NULL, m, DN_DROP_NOQ, dir);
 		goto dropit;		/* Cannot allocate queue. */
+	}
 
 	/* Update statistics, then check reasons to drop pkt. */
 	q->tot_bytes += len;
 	q->tot_pkts++;
-	if (fs->plr && random() < fs->plr)
+	if (fs->plr && random() < fs->plr) {
+		DN_LOG(fs, pipe, q, m, DN_DROP_PLR, dir);
 		goto dropit;		/* Random pkt drop. */
+	}
 	else {
 		while (fs->pls_index < fs->pls.count) {
 			if (q->tot_pkts >= fs->pls.arr[fs->pls_index].start) {
 				if (q->tot_pkts <=
-					fs->pls.arr[fs->pls_index].end)
+					fs->pls.arr[fs->pls_index].end) {
+					DN_LOG(fs, pipe, q, m, DN_DROP_PLS, dir);
 					goto dropit; /* Controlled pkt drop. */
+				}
 				else
 					fs->pls_index++;
 			}
@@ -1335,20 +1788,28 @@ dummynet_io(struct mbuf **m0, int dir, struct ip_fw_args *fwa)
 		}
 	}
 	if (fs->flags_fs & DN_QSIZE_IS_BYTES) {
-		if (q->len_bytes > fs->qsize)
+		if (q->len_bytes > fs->qsize) {
+			DN_LOG(fs, pipe, q, m, DN_DROP_QOVERFLOW, dir);
 			goto dropit;	/* Queue size overflow. */
+		}
 	} else {
-		if (q->len >= fs->qsize)
+		if (q->len >= fs->qsize) {
+			DN_LOG(fs, pipe, q, m, DN_DROP_QOVERFLOW, dir);
 			goto dropit;	/* Queue count overflow. */
+		}
 	}
-	if (fs->flags_fs & DN_IS_RED && red_drops(fs, q, len))
+	if (fs->flags_fs & DN_IS_RED && red_drops(fs, q, len)) {
+		DN_LOG(fs, pipe, q, m, DN_DROP_RED, dir);
 		goto dropit;
+	}
 
 	/* XXX expensive to zero, see if we can remove it. */
 	mtag = m_tag_get(PACKET_TAG_DUMMYNET,
 	    sizeof(struct dn_pkt_tag), M_NOWAIT | M_ZERO);
-	if (mtag == NULL)
+	if (mtag == NULL) {
+		DN_LOG(fs, pipe, q, m, DN_DROP_MALLOC, dir);
 		goto dropit;		/* Cannot allocate packet header. */
+	}
 	m_tag_prepend(m, mtag);		/* Attach to mbuf chain. */
 
 	pkt = (struct dn_pkt_tag *)(mtag + 1);
@@ -1368,6 +1829,8 @@ dummynet_io(struct mbuf **m0, int dir, struct ip_fw_args *fwa)
 	q->tail = m;
 	q->len++;
 	q->len_bytes += len;
+
+	DN_LOG(fs, pipe, q, m, DN_NO_DROP, dir);
 
 	if (q->head != m)		/* Flow was not idle, we are done. */
 		goto done;
@@ -2301,6 +2764,7 @@ ip_dn_init(void)
 		printf("DUMMYNET with IPv6 initialized (040826)\n");
 
 	DUMMYNET_LOCK_INIT();
+	mtx_init(&dn_log_queue_mtx, "dummynet__queue_mtx", NULL, MTX_DEF);
 
 	for (i = 0; i < HASHSIZE; i++) {
 		SLIST_INIT(&pipehash[i]);
@@ -2339,6 +2803,7 @@ ip_dn_destroy(void)
 	ip_dn_io_ptr = NULL;
 	ip_dn_ruledel_ptr = NULL;
 
+	dn_manage_logging(DN_LOG_DISABLE);
 	DUMMYNET_LOCK();
 	callout_stop(&dn_timeout);
 	DUMMYNET_UNLOCK();
@@ -2386,4 +2851,5 @@ static moduledata_t dummynet_mod = {
 };
 DECLARE_MODULE(dummynet, dummynet_mod, SI_SUB_PROTO_IFATTACHDOMAIN, SI_ORDER_ANY);
 MODULE_DEPEND(dummynet, ipfw, 2, 2, 2);
+MODULE_DEPEND(idummynet, alq, 1, 1, 1);
 MODULE_VERSION(dummynet, 1);

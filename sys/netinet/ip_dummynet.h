@@ -30,6 +30,33 @@
 #ifndef _IP_DUMMYNET_H
 #define _IP_DUMMYNET_H
 
+/* Packet was not dropped by dummynet */
+#define DN_NO_DROP		0
+
+/* Packet was dropped because there was no corresponding flow set */
+#define DN_DROP_NOFS		1
+
+/* Packet was dropped because there was no corresponding pipe for the queue */
+#define DN_DROP_NOP4Q		2
+
+/* Packet was dropped because we could not allocate a queue for the packet */
+#define DN_DROP_NOQ		3
+
+/* Packet was dropped because PLR was set and this packet won the lucky dip */
+#define DN_DROP_PLR		4
+
+/* Packet was dropped because PLS was set and this packet was selected */
+#define DN_DROP_PLS		5
+
+/* Packet was dropped because the queue it was destined for is full */
+#define DN_DROP_QOVERFLOW	6
+
+/* Packet was dropped because RED was configured on the queue */
+#define DN_DROP_RED		7
+
+/* Packet was dropped because of a malloc failure */
+#define DN_DROP_MALLOC		8
+
 /*
  * Definition of dummynet data structures. In the structures, I decided
  * not to use the macros in <sys/queue.h> in the hope of making the code
@@ -328,6 +355,7 @@ struct dn_pipe {		/* a pipe */
     int bandwidth;		/* really, bytes/tick.	*/
     int	delay ;			/* really, ticks	*/
 
+    u_int len;			/* number of pkts in delay line */
     struct	mbuf *head, *tail ;	/* packets in delay line */
 
     /* WF2Q+ */
