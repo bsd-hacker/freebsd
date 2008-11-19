@@ -241,6 +241,10 @@ void		dummynet_drain(void);
 static ip_dn_io_t dummynet_io;
 static void	dn_rule_delete(void *);
 
+#define flush_range_array(PLS) \
+	if((PLS)->arr != NULL) \
+		free((PLS)->arr, M_DUMMYNET);
+
 /*
  * Heap management functions.
  *
@@ -1313,6 +1317,23 @@ dummynet_io(struct mbuf **m0, int dir, struct ip_fw_args *fwa)
 	q->tot_pkts++;
 	if (fs->plr && random() < fs->plr)
 		goto dropit;		/* Random pkt drop. */
+	else {
+		while (fs->pls_index < fs->pls.count) {
+			if (q->tot_pkts >= fs->pls.arr[fs->pls_index].start) {
+				if (q->tot_pkts <=
+					fs->pls.arr[fs->pls_index].end)
+					goto dropit; /* Controlled pkt drop. */
+				else
+					fs->pls_index++;
+			}
+			else
+				/*
+				 * q->tot_pkts is lower than the start of the
+				 * current range, so let the packet through
+				 */
+				break;
+		}
+	}
 	if (fs->flags_fs & DN_QSIZE_IS_BYTES) {
 		if (q->len_bytes > fs->qsize)
 			goto dropit;	/* Queue size overflow. */
@@ -1492,9 +1513,28 @@ purge_flow_set(struct dn_flow_set *fs, int all)
 			free(fs->w_q_lookup, M_DUMMYNET);
 		if (fs->rq != NULL)
 			free(fs->rq, M_DUMMYNET);
+		flush_range_array(&(fs->pls));
 		/* If this fs is not part of a pipe, free it. */
 		if (fs->pipe == NULL || fs != &(fs->pipe->fs))
 			free(fs, M_DUMMYNET);
+	}
+}
+
+static void
+zero_flow_set(struct dn_flow_set *fs)
+{
+	int i;
+
+	DUMMYNET_LOCK_ASSERT();
+
+	fs->pls_index = 0;
+
+	for (i = 0; i <= fs->rq_size; i++) {
+		if (fs->rq[i] != NULL) {
+			fs->rq[i]->tot_pkts = 0;
+			fs->rq[i]->tot_bytes = 0;
+			fs->rq[i]->drops = 0;
+		}
 	}
 }
 
@@ -1693,12 +1733,31 @@ alloc_hash(struct dn_flow_set *x, struct dn_flow_set *pfs)
     return 0 ;
 }
 
+static int
+set_pls(struct pls_range_array *x, struct pls_range_array *src)
+{
+	flush_range_array(x);
+
+	MALLOC(x->arr, struct pls_range *, src->count * sizeof(struct pls_range), M_DUMMYNET, M_NOWAIT | M_ZERO);
+
+	if(x->arr == NULL)
+		return (ENOMEM);
+
+	x->count = x->size = src->count;
+	copyin(src->arr, x->arr, src->count * sizeof(struct pls_range));
+
+	return 0;
+}
+
+
 static void
 set_fs_parms(struct dn_flow_set *x, struct dn_flow_set *src)
 {
 	x->flags_fs = src->flags_fs;
 	x->qsize = src->qsize;
 	x->plr = src->plr;
+	x->pls_index = 0;
+	set_pls(&(x->pls), &(src->pls));
 	x->flow_mask = src->flow_mask;
 	if (x->flags_fs & DN_QSIZE_IS_BYTES) {
 		if (x->qsize > pipe_byte_limit)
@@ -1985,15 +2044,62 @@ delete_pipe(struct dn_pipe *p)
 }
 
 /*
+ * Zeroes counters of a specified pipe/queue or all pipes/queues.
+ */
+static int
+zero_pipe(struct dn_pipe *p)
+{
+	struct dn_pipe *pipe;
+	struct dn_flow_set *fs;
+	int i;
+
+	DUMMYNET_LOCK();
+
+	if (p->pipe_nr > 0) {
+		pipe = locate_pipe(p->pipe_nr); /* locate pipe */
+		if (pipe == NULL) {
+			DUMMYNET_UNLOCK();
+			return (ENOENT); /* not found */
+		}
+		zero_flow_set(&pipe->fs);
+	} else {
+		/* zero all pipes */
+		for (i = 0; i < HASHSIZE; i++) {
+			SLIST_FOREACH(pipe, &pipehash[i], next) {
+				zero_flow_set(&pipe->fs);
+			}
+			SLIST_FOREACH(fs, &flowsethash[i], next) {
+				zero_flow_set(fs);
+			}
+		}
+	}
+
+	DUMMYNET_UNLOCK();
+
+	return 0 ;
+}
+
+static char *
+dn_copy_pls(struct pls_range_array *src_pls, char *bp)
+{
+	bcopy(src_pls->arr, bp, src_pls->count * sizeof(struct pls_range));
+
+	return (bp + src_pls->count * sizeof(struct pls_range));
+}
+
+/*
  * helper function used to copy data from kernel in DUMMYNET_GET
  */
 static char *
 dn_copy_set(struct dn_flow_set *set, char *bp)
 {
     int i, copied = 0 ;
-    struct dn_flow_queue *q, *qp = (struct dn_flow_queue *)bp;
 
     DUMMYNET_LOCK_ASSERT();
+
+    bp = dn_copy_pls(&(set->pls), bp);
+
+    struct dn_flow_queue *q, *qp = (struct dn_flow_queue *)bp;
 
     for (i = 0 ; i <= set->rq_size ; i++)
 	for (q = set->rq[i] ; q ; q = q->next, qp++ ) {
@@ -2030,10 +2136,12 @@ dn_calc_size(void)
      */
     for (i = 0; i < HASHSIZE; i++) {
 	SLIST_FOREACH(pipe, &pipehash[i], next)
-		size += sizeof(*pipe) +
+		size += sizeof(*pipe) + pipe->fs.pls.count * sizeof(struct
+		pls_range) +
 		    pipe->fs.rq_elements * sizeof(struct dn_flow_queue);
 	SLIST_FOREACH(fs, &flowsethash[i], next)
-		size += sizeof (*fs) +
+		size += sizeof (*fs) + pipe->fs.pls.count * sizeof(struct
+		pls_range) +
 		    fs->rq_elements * sizeof(struct dn_flow_queue);
     }
     return size;
@@ -2170,6 +2278,15 @@ ip_dn_ctl(struct sockopt *sopt)
 	    break ;
 
 	error = delete_pipe(p);
+	break ;
+
+    case IP_DUMMYNET_ZERO :
+	p = &tmp_pipe ;
+	error = sooptcopyin(sopt, p, sizeof *p, sizeof *p);
+	if (error)
+	    break ;
+
+	error = zero_pipe(p);
 	break ;
     }
     return error ;

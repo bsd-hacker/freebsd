@@ -61,7 +61,7 @@
 .Nm
 .Op Fl s Op Ar field
 .Brq Cm pipe | queue
-.Brq Cm delete | list | show
+.Brq Cm delete | zero | list | show
 .Op Ar number ...
 .Pp
 .Nm
@@ -1961,6 +1961,20 @@ Argument
 is a floating-point number between 0 and 1, with 0 meaning no
 loss, 1 meaning 100% loss.
 The loss rate is internally represented on 31 bits.
+.Pp
+.It Cm pls Ar packet-loss-set
+Packet loss set.
+Argument
+.Ar packet-loss-set
+is a comma-delimited string of the form 10,30-31,1000 identifying the specific
+packets entering a queue/pipe to drop. In the given example, the 10th, 30th,
+31st and 1000th packet to enter the pipe/queue would be dropped. Clearing the
+counters on a pipe will cause the
+.Ar packet-loss-set
+to be evaluated again from scratch. Use of this option mutually excludes use of
+the
+.Nm plr
+option.
 .Pp
 .It Cm queue Brq Ar slots | size Ns Cm Kbytes
 Queue size, in
