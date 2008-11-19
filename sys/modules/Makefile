@@ -16,6 +16,7 @@ SUBDIR=	${_3dfx} \
 	${_aic} \
 	aic7xxx \
 	aio \
+	alq \
 	${_amd} \
 	amr \
 	${_an} \
