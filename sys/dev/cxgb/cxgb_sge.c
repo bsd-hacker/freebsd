@@ -1880,8 +1880,10 @@ t3_free_tx_desc(struct sge_txq *q, int reclaimable)
 				bus_dmamap_unload(q->entry_tag, txsd->map);
 				txsd->flags &= ~TX_SW_DESC_MAPPED;
 			}
-			m_freem_iovec(&txsd->mi);	
+			m_freem_iovec(&txsd->mi);
+#ifdef INVARIANTS			
 			buf_ring_scan(&q->txq_mr, txsd->mi.mi_base, __FILE__, __LINE__);
+#endif
 			txsd->mi.mi_base = NULL;
 			/*
 			 * XXX check for cache hit rate here
