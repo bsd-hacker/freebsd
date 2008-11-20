@@ -85,7 +85,6 @@ static struct mtx ald_mtx;
 static LIST_HEAD(, alq) ald_queues;
 static LIST_HEAD(, alq) ald_active;
 static int ald_shutingdown = 0;
-struct thread *ald_thread;
 static struct proc *ald_proc;
 
 #define	ALD_LOCK()	mtx_lock(&ald_mtx)
@@ -179,8 +178,6 @@ ald_daemon(void)
 	int needwakeup;
 	struct alq *alq;
 
-	ald_thread = FIRST_THREAD_IN_PROC(ald_proc);
-
 	EVENTHANDLER_REGISTER(shutdown_pre_sync, ald_shutdown, NULL,
 	    SHUTDOWN_PRI_FIRST);
 
@@ -206,7 +203,7 @@ ald_daemon(void)
 		ALD_LOCK();
 	}
 
-	kthread_exit();
+	kproc_exit(0);
 }
 
 static void
@@ -217,11 +214,14 @@ ald_shutdown(void *arg, int howto)
 	ALD_LOCK();
 	ald_shutingdown = 1;
 
-	/* wake ald_daemon so that it exits*/
+	/*
+	 * Wake ald_daemon so that it exits. It won't be able to do
+	 * anything until we mtx_sleep because we hold the ald_mtx
+	 */
 	wakeup(&ald_active);
 
-	/* wait for ald_daemon to exit */
-	mtx_sleep(ald_thread, &ald_mtx, PWAIT, "aldslp", 0);
+	/* Wait for ald_daemon to exit */
+	mtx_sleep(ald_proc, &ald_mtx, PWAIT, "aldslp", 0);
 
 	while ((alq = LIST_FIRST(&ald_queues)) != NULL) {
 		LIST_REMOVE(alq, aq_link);
@@ -414,7 +414,7 @@ alq_open(struct alq **alqp, const char *file, struct ucred *cred, int cmode,
 		alq->aq_entlen = 0;
 	}
 
-	alq->aq_freebytes = alq->aq_buflen;	
+	alq->aq_freebytes = alq->aq_buflen;
 	alq->aq_entbuf = malloc(alq->aq_buflen, M_ALD, M_WAITOK|M_ZERO);
 
 	alq->aq_writehead = alq->aq_writetail = 0;
@@ -446,7 +446,7 @@ alq_writen(struct alq *alq, void *data, int len, int flags)
 	int activate = 0;
 	int copy = len;
 
-	KASSERT(len > 0 && len < alq->aq_buflen,
+	KASSERT(len > 0 && len <= alq->aq_buflen,
 		("%s: len <= 0 || len > alq->aq_buflen", __func__)
 	);
 
@@ -501,10 +501,10 @@ alq_writen(struct alq *alq, void *data, int len, int flags)
 	if (copy != len) {
 		/*
 		 * wrap the buffer by copying the remainder of our message
-		 * to the start of the buffer and resetting the head ptr
+		 * to the start of the buffer and resetting aq_writehead
 		 */
 		bcopy(data, alq->aq_entbuf, len - copy);
-		alq->aq_writehead = copy;
+		alq->aq_writehead = len - copy;
 	}
 
 	alq->aq_freebytes -= len;
@@ -541,6 +541,10 @@ alq_getn(struct alq *alq, int len, int flags)
 	struct ale *ale;
 	int contigbytes;
 
+	KASSERT(len > 0 && len <= alq->aq_buflen,
+		("%s: len <= 0 || len > alq->aq_buflen", __func__)
+	);
+
 	ale = malloc(	sizeof(struct ale),
 			M_ALD,
 			(flags & ALQ_NOWAIT) ? M_NOWAIT : M_WAITOK
@@ -551,7 +555,14 @@ alq_getn(struct alq *alq, int len, int flags)
 
 	ALQ_LOCK(alq);
 
-	/* determine the number of free contiguous bytes */
+	/*
+	 * Determine the number of free contiguous bytes.
+	 * We ensure elsewhere that if aq_writehead == aq_writetail because
+	 * the buffer is empty, they will both be set to 0 and therefore
+	 * aq_freebytes == aq_buflen and is fully contiguous.
+	 * If they are equal and the buffer is not empty, aq_freebytes will
+	 * be 0 indicating the buffer is full.
+	 */
 	if (alq->aq_writehead <= alq->aq_writetail)
 		contigbytes = alq->aq_freebytes;
 	else
@@ -569,7 +580,7 @@ alq_getn(struct alq *alq, int len, int flags)
 	}
 
 	/*
-	 * ALQ_WAITOK or contigbytes > len,
+	 * ALQ_WAITOK or contigbytes >= len,
 	 * either spin until we have enough free contiguous bytes (former)
 	 * or skip (latter)
 	 */
@@ -583,15 +594,15 @@ alq_getn(struct alq *alq, int len, int flags)
 	}
 
 	/*
-	 * we need to serialise wakups to ensure records remain in order...
-	 * therefore, wakeup the next thread in the queue waiting for
-	 * alq resources to be available
+	 * We need to serialise wakups to ensure records remain in order.
+	 * Therefore, wakeup the next thread in the queue waiting for
+	 * alq resources to be available.
 	 * (technically this is only required if we actually entered the above
 	 * while loop)
 	 */
 	wakeup_one(alq);
 
-	/* bail if we're shutting down */
+	/* Bail if we're shutting down */
 	if (alq->aq_flags & AQ_SHUTDOWN) {
 		ALQ_UNLOCK(alq);
 		return (NULL);
@@ -605,6 +616,10 @@ alq_getn(struct alq *alq, int len, int flags)
 	ale->ae_datalen = len;
 	alq->aq_writehead += len;
 	alq->aq_freebytes -= len;
+
+	/* Wrap aq_writehead if we've filled to the end of the buffer */
+	if (alq->aq_writehead == alq->aq_buflen)
+		alq->aq_writehead = 0;
 
 	return (ale);
 }
