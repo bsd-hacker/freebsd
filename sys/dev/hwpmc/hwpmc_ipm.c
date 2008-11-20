@@ -1325,7 +1325,8 @@ ipm_stop_pmc(int cpu, int ri)
 static int
 ipm_v1_intr(int cpu, struct trapframe *tf)
 {
-	int i, error, retval, ri;
+	int i, error, did_interrupt, ri;
+	uint32_t ipm_evsel;
 	struct pmc *pm;
 	struct ipm_cpu *pc;
 	struct pmc_hw *phw;
@@ -1334,66 +1335,65 @@ ipm_v1_intr(int cpu, struct trapframe *tf)
 	KASSERT(cpu >= 0 && cpu < mp_ncpus,
 	    ("[ipm-v1,%d] CPU %d out of range", __LINE__, cpu));
 
-	retval = 0;
+	did_interrupt = 0;
 	pc = (struct ipm_cpu *) pmc_pcpu[cpu];
 
 	for (i = 0; i < IPM_NPMCS_V1 - 1; i++) {
+		error = 0;
 		ri = i + 1;
 		phw = pc->pc_common.pc_hwpmcs[ri];
+		pm = phw->phw_pmc;
 
-		if ((pm = phw->phw_pmc) == NULL ||
+		if (pm)
+			ipm_evsel = pm->pm_md.pm_ipm.pm_ipm_evsel;
+		else
+			ipm_evsel = rdmsr(IPM_MSR_EVSEL0 + i);
+		did_interrupt = 1;
+		
+		/*
+		 * Stop the PMC
+		 */
+		wrmsr(IPM_MSR_EVSEL0 + i, ipm_evsel & (~IPM_EVSEL_EN));
+		
+		if (pm == NULL ||
 		    pm->pm_state != PMC_STATE_RUNNING ||
 		    !PMC_IS_SAMPLING_MODE(PMC_TO_MODE(pm)) ||
 		    IPM_PMC_STOPPED(pc, ri)) {
 			continue;
 		}
 		
-		if (!IPM_PMC_HAS_OVERFLOWED(i))
-			continue;
-		/*
-		 * Stop the PMC
-		 */
-		wrmsr(IPM_MSR_EVSEL0 + i, 
-		    pm->pm_md.pm_ipm.pm_ipm_evsel & (~IPM_EVSEL_EN));
-
-		retval = 1;
-
-		error = pmc_process_interrupt(cpu, pm, tf,
-		    TRAPF_USERMODE(tf));
-		if (error)
-			IPM_PMC_MARK_STOPPED(pc,ri);
-
+		if (IPM_PMC_HAS_OVERFLOWED(i))
+			error = pmc_process_interrupt(cpu, pm, tf,
+			    TRAPF_USERMODE(tf));
+		
 		/* reload sampling count */
 		v = pm->pm_sc.pm_reloadcount;
 		wrmsr(IPM_MSR_PERFCTR0 + i,
 		    IPM_RELOAD_COUNT_TO_PERFCTR_VALUE(v));
+
+		if (pm->pm_state != PMC_STATE_RUNNING ||
+		    !PMC_IS_SAMPLING_MODE(PMC_TO_MODE(pm)) ||
+		    IPM_PMC_STOPPED(pc, ri)) {
+			continue;
+		}
+		if (error)
+			IPM_PMC_MARK_STOPPED(pc,ri);
+		else 
+			wrmsr(IPM_MSR_EVSEL0 + i, 
+			    ipm_evsel | IPM_EVSEL_EN);
 	}
 
 	/*
 	 * The LAPIC needs to have its PMC interrupt
 	 * unmasked after a PMC interrupt.
 	 */
-	if (retval)
+	if (did_interrupt)
 		pmc_x86_lapic_enable_pmc_interrupt();
 
-	atomic_add_int(retval ? &pmc_stats.pm_intr_processed :
+	atomic_add_int(did_interrupt ? &pmc_stats.pm_intr_processed :
 	    &pmc_stats.pm_intr_ignored, 1);
 
-	/* restart counters */
-	for (i = 0; i < IPM_NPMCS_V1 - 1; i++) {
-		ri = i + 1;
-		phw = pc->pc_common.pc_hwpmcs[ri];
-		if ((pm = phw->phw_pmc) == NULL || 
-		    pm->pm_state != PMC_STATE_RUNNING ||
-		    !PMC_IS_SAMPLING_MODE(PMC_TO_MODE(pm)) ||
-		    IPM_PMC_STOPPED(pc, ri)) {
-			continue;
-		}
-		wrmsr(IPM_MSR_EVSEL0 + i, 
-		    pm->pm_md.pm_ipm.pm_ipm_evsel | IPM_EVSEL_EN);
-	}
-	
-	return (retval);
+	return (did_interrupt);
 }
 
 static int
@@ -1427,18 +1427,17 @@ ipm_v2_intr(int cpu, struct trapframe *tf)
 
 		phw = pc->pc_common.pc_hwpmcs[ri];
 
+		if (!(ipm_v2_pmc_has_overflowed(ovf_status, ri))) {
+			continue;
+		}
+		retval = 1;
+
 		if ((pm = phw->phw_pmc) == NULL ||
 		    pm->pm_state != PMC_STATE_RUNNING ||
 		    !PMC_IS_SAMPLING_MODE(PMC_TO_MODE(pm)) ||
 		    IPM_PMC_STOPPED(pc, ri)) {
 			continue;
 		}
-
-		if (!(ipm_v2_pmc_has_overflowed(ovf_status, ri))) {
-			continue;
-		}
-
-		retval = 1;
 
 		error = pmc_process_interrupt(cpu, pm, tf,
 		    TRAPF_USERMODE(tf));
@@ -1582,8 +1581,11 @@ pmc_initialize_ipm(struct pmc_mdep *pmc_mdep)
 	pmc_mdep->pmd_describe      = ipm_describe;
 	pmc_mdep->pmd_get_msr  	    = ipm_get_msr; /* i386 */	
 	if (ipm_cputype == PMC_CPU_INTEL_CORE) {
+		printf("using v1 intr\n");
+		
 		pmc_mdep->pmd_intr	= ipm_v1_intr;
 	} else {
+		printf("using v2 intr\n");
 		pmc_mdep->pmd_intr	= ipm_v2_intr;
 	}
 
