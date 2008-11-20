@@ -144,6 +144,7 @@ kthread_exit(int ecode)
 	 * Wakeup anyone waiting for us to exit.
 	 */
 	wakeup(p);
+	wakeup(td);
 
 	/* Buh-bye! */
 	exit1(td, W_EXITCODE(ecode, 0));
