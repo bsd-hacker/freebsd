@@ -157,11 +157,17 @@ letting the main function return to its caller.
 The
 .Fa ecode
 argument specifies the exit status of the process.
-While exiting, the function
-.Xr exit1 9
-will initiate a call to
+While exiting, the function will call
 .Xr wakeup 9
-on the process handle.
+on the calling process's handle.
+If another thread/process needs to wait for the calling process to exit,
+.Xr mtx_sleep 9
+can be used in the waiting thread/process with the
+.Fa chan
+argument set to the exiting process's handle.
+This will put the waiting thread/process to sleep until the exiting process
+has made its final call to
+.Fn kproc_exit .
 .Pp
 The
 .Fn kproc_resume ,
@@ -332,9 +338,8 @@ parameter.
 .El
 .Sh SEE ALSO
 .Xr rfork 2 ,
-.Xr exit1 9 ,
 .Xr kthread 9 ,
-.Xr SYSINIT 9 ,
+.Xr mtx_sleep 9 ,
 .Xr wakeup 9
 .Sh HISTORY
 The
