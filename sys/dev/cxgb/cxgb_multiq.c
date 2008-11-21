@@ -127,9 +127,6 @@ cxgb_pcpu_enqueue_packet_(struct sge_qset *qs, struct mbuf *m)
 		txq->txq_drops++;
 		m_freem(m);
 	}
-	if ((qs->txq[TXQ_ETH].flags & TXQ_TRANSMITTING) == 0)
-		wakeup(qs);
-
 	return (err);
 }
 
@@ -415,10 +412,6 @@ cxgb_pcpu_transmit(struct ifnet *ifp, struct mbuf *immpkt)
 			    sc->tunq_coalesce, buf_ring_count(txq->txq_mr), mtx_owned(&txq->lock));
 		err = cxgb_pcpu_enqueue_packet_(qs, immpkt);
 	}
-	
-	if (resid && (txq->flags & TXQ_TRANSMITTING) == 0)
-		wakeup(qs);
-
 	return ((err == ENOSPC) ? 0 : err);
 }
 
