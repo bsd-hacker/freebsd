@@ -234,7 +234,7 @@ buf_ring_peek(struct buf_ring *br)
 {
 
 #ifdef DEBUG_BUFRING
-	if (!mtx_owned(br->br_lock))
+	if ((br->br_lock != NULL) && !mtx_owned(br->br_lock))
 		panic("lock not held on single consumer dequeue");
 #endif	
 	mb();
