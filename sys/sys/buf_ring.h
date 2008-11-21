@@ -233,6 +233,11 @@ static __inline void *
 buf_ring_peek(struct buf_ring *br)
 {
 
+#ifdef DEBUG_BUFRING
+	if (!mtx_owned(br->br_lock))
+		panic("lock not held on single consumer dequeue");
+#endif	
+	mb();
 	return (br->br_ring[br->br_cons_tail]);
 }
 
