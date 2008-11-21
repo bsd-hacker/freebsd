@@ -187,7 +187,7 @@ cxgb_dequeue_packet(struct sge_txq *txq, struct mbuf **m_vec)
 	}
 	sc = qs->port->adapter;
 
-	m = buf_ring_dequeue(txq->txq_mr);
+	m = buf_ring_dequeue_sc(txq->txq_mr);
 	if (m == NULL) 
 		return (0);
 
@@ -209,7 +209,7 @@ cxgb_dequeue_packet(struct sge_txq *txq, struct mbuf **m_vec)
 		    size + m->m_pkthdr.len > TX_WR_SIZE_MAX || m->m_next != NULL)
 			break;
 
-		buf_ring_dequeue(txq->txq_mr);
+		buf_ring_dequeue_sc(txq->txq_mr);
 		size += m->m_pkthdr.len;
 		m_vec[count++] = m;
 
@@ -232,7 +232,7 @@ cxgb_pcpu_free(struct sge_qset *qs)
 	mtx_lock(&txq->lock);
 	while ((m = mbufq_dequeue(&txq->sendq)) != NULL) 
 		m_freem(m);
-	while ((m = buf_ring_dequeue(txq->txq_mr)) != NULL) 
+	while ((m = buf_ring_dequeue_sc(txq->txq_mr)) != NULL) 
 		m_freem(m);
 
 	t3_free_tx_desc_all(txq);

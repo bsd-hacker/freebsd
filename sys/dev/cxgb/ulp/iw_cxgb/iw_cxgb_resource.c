@@ -122,7 +122,7 @@ static int __cxio_init_resource_fifo(struct buf_ring **fifo,
 			buf_ring_enqueue(*fifo, (void *) (uintptr_t)i);
 #if 0
 	for (i = 0; i < skip_low + skip_high; i++)
-		buf_ring_dequeue(*fifo);
+		buf_ring_dequeue_sc(*fifo);
 #endif	
 	return 0;
 }
@@ -219,7 +219,7 @@ static u32 cxio_hal_get_resource(struct buf_ring *fifo, struct mtx *lock)
 	u32 entry;
 	
 	mtx_lock(lock);
-	entry = (u32)(uintptr_t)buf_ring_dequeue(fifo);
+	entry = (u32)(uintptr_t)buf_ring_dequeue_sc(fifo);
 	mtx_unlock(lock);
 	return entry;
 }
