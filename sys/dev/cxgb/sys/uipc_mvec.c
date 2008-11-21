@@ -128,6 +128,8 @@ _mcl_collapse_mbuf(struct mbuf_iovec *mi, struct mbuf *m)
 #ifdef IFNET_MULTIQ		
 		mi->mi_rss_hash = m->m_pkthdr.rss_hash;
 #endif		
+		if(!SLIST_EMPTY(&m->m_pkthdr.tags)) 
+			m_tag_delete_chain(m, NULL);
 	}
 	if (m->m_type != MT_DATA) {
 		mi->mi_data = NULL;
@@ -201,9 +203,6 @@ busdma_map_sg_collapse(struct mbuf **m, bus_dma_segment_t *segs, int *nsegs)
 
 	KASSERT(n->m_pkthdr.len, ("packet has zero header len"));
 		
-	if (n->m_flags & M_PKTHDR && !SLIST_EMPTY(&n->m_pkthdr.tags)) 
-		m_tag_delete_chain(n, NULL);
-
 	if (n->m_pkthdr.len <= PIO_LEN)
 		return (0);
 retry:
@@ -319,9 +318,6 @@ busdma_map_sg_vec(struct mbuf **m, struct mbuf **mret, bus_dma_segment_t *segs, 
 	mv->mv_first = 0;
 	for (mp = m, i = 0, mi = mv->mv_vec; i < pkt_count;
 	     mp++, segs++, mi++, i++) {
-		if ((*mp)->m_flags & M_PKTHDR
-		    && !SLIST_EMPTY(&(*mp)->m_pkthdr.tags)) 
-			m_tag_delete_chain(*mp, NULL);
 		busdma_map_mbuf_fast(*mp, segs);
 		_mcl_collapse_mbuf(mi, *mp);
 		KASSERT(mi->mi_len, ("empty packet"));
