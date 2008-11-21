@@ -187,7 +187,7 @@ struct ifnet {
 	void	*if_pf_kif;
 	void	*if_lagg;		/* lagg glue */
 	void	*if_pspare[8];		/* multiq/TOE 3; vimage 3; general use 4 */
-	int	(*if_qflush)	/* flush any queues */
+	void	(*if_qflush)	/* flush any queues */
 		(struct ifnet *);
 	int	(*if_transmit)	/* initiate output routine */
 		(struct ifnet *, struct mbuf *);
@@ -690,7 +690,7 @@ int	ifioctl(struct socket *, u_long, caddr_t, struct thread *);
 int	ifpromisc(struct ifnet *, int);
 struct	ifnet *ifunit(const char *);
 
-void	ifq_attach(struct ifaltq *);
+void	ifq_attach(struct ifaltq *, struct ifnet *ifp);
 void	ifq_detach(struct ifaltq *);
 
 struct	ifaddr *ifa_ifwithaddr(struct sockaddr *);

@@ -113,7 +113,7 @@ static int	ifconf(u_long, caddr_t);
 static void	if_freemulti(struct ifmultiaddr *);
 static void	if_grow(void);
 static void	if_init(void *);
-static void	if_qflush(struct ifaltq *);
+static void	if_qflush(struct ifnet *);
 static void	if_route(struct ifnet *, int flag, int fam);
 static int	if_setflag(struct ifnet *, int, int, int *, int);
 static void	if_slowtimo(void *);
@@ -481,10 +481,10 @@ if_free_type(struct ifnet *ifp, u_char type)
 };
 
 void
-ifq_attach(struct ifaltq *ifq, char *buf)
+ifq_attach(struct ifaltq *ifq, struct ifnet *ifp)
 {
 	
-	mtx_init(ifq->ifq_mtx, buf, "if send queue", MTX_DEF);
+	mtx_init(&ifq->ifq_mtx, ifp->if_xname, "if send queue", MTX_DEF);
 
 	if (ifq->ifq_maxlen == 0) 
 		ifq->ifq_maxlen = ifqmaxlen;
@@ -499,7 +499,7 @@ ifq_attach(struct ifaltq *ifq, char *buf)
 void
 ifq_detach(struct ifaltq *ifq)
 {
-	mtx_destroy(ifq->ifq_mtx);
+	mtx_destroy(&ifq->ifq_mtx);
 }
 
 /*
@@ -556,7 +556,7 @@ if_attach(struct ifnet *ifp)
 	make_dev_alias(ifdev_byindex(ifp->if_index), "%s%d",
 	    net_cdevsw.d_name, ifp->if_index);
 
-	ifq_attach(&ifp->if_snd, ifp->if_xname);
+	ifq_attach(&ifp->if_snd, ifp);
 
 	/*
 	 * create a Link Level name for this device
