@@ -90,7 +90,7 @@ static int __cxio_init_resource_fifo(struct buf_ring **fifo,
 	u32 rarray[16];
 	mtx_init(fifo_lock, "cxio fifo", NULL, MTX_DEF|MTX_DUPOK);
 
-	*fifo = buf_ring_alloc(nr, M_DEVBUF, M_NOWAIT);
+	*fifo = buf_ring_alloc(nr, M_DEVBUF, M_NOWAIT, fifo_lock);
 	if (*fifo == NULL)
 		return (-ENOMEM);
 #if 0
@@ -149,7 +149,8 @@ static int cxio_init_qpid_fifo(struct cxio_rdev *rdev_p)
 
 	mtx_init(&rdev_p->rscp->qpid_fifo_lock, "qpid fifo", NULL, MTX_DEF);
 
-	rdev_p->rscp->qpid_fifo = buf_ring_alloc(T3_MAX_NUM_QP, M_DEVBUF, M_NOWAIT);
+	rdev_p->rscp->qpid_fifo = buf_ring_alloc(T3_MAX_NUM_QP, M_DEVBUF, M_NOWAIT,
+		&rdev_p->rscp->qpid_fifo_lock);
 	if (rdev_p->rscp->qpid_fifo == NULL)
 		return (-ENOMEM);
 

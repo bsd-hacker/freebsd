@@ -1879,7 +1879,7 @@ t3_free_tx_desc(struct sge_txq *q, int reclaimable)
 				txsd->flags &= ~TX_SW_DESC_MAPPED;
 			}
 			m_freem_iovec(&txsd->mi);
-#ifdef INVARIANTS			
+#if 0
 			buf_ring_scan(&q->txq_mr, txsd->mi.mi_base, __FILE__, __LINE__);
 #endif
 			txsd->mi.mi_base = NULL;
@@ -2277,15 +2277,13 @@ t3_sge_alloc_qset(adapter_t *sc, u_int id, int nports, int irq_vec_idx,
 	for (i = 0; i < SGE_TXQ_PER_SET; i++) {
 		
 		if ((q->txq[i].txq_mr = buf_ring_alloc(cxgb_txq_buf_ring_size,
-			    M_DEVBUF, M_WAITOK)) == NULL) {
+			    M_DEVBUF, M_WAITOK, &q->txq[i].lock)) == NULL) {
 			device_printf(sc->dev, "failed to allocate mbuf ring\n");
 			goto err;
 		}
 	}
-
 	init_qset_cntxt(q, id);
 	q->idx = id;
-	
 	if ((ret = alloc_ring(sc, p->fl_size, sizeof(struct rx_desc),
 		    sizeof(struct rx_sw_desc), &q->fl[0].phys_addr,
 		    &q->fl[0].desc, &q->fl[0].sdesc,
