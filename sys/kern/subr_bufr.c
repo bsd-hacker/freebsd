@@ -40,7 +40,7 @@ __FBSDID("$FreeBSD$");
 
 
 struct buf_ring *
-buf_ring_alloc(int count, struct malloc_type *type, int flags)
+buf_ring_alloc(int count, struct malloc_type *type, int flags, struct mtx *lock)
 {
 	struct buf_ring *br;
 
@@ -50,7 +50,9 @@ buf_ring_alloc(int count, struct malloc_type *type, int flags)
 	    type, flags|M_ZERO);
 	if (br == NULL)
 		return (NULL);
-	
+#ifdef DEBUG_BUFRING
+	br->br_lock = lock;
+#endif	
 	br->br_prod_size = br->br_cons_size = count;
 	br->br_prod_mask = br->br_cons_mask = count-1;
 	br->br_prod_head = br->br_cons_head = 0;
