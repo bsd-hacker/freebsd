@@ -148,7 +148,11 @@ cxgb_pcpu_enqueue_packet(struct ifnet *ifp, struct mbuf *m)
 	qidx = 0;
 #endif	    
 	qs = &pi->adapter->sge.qs[qidx];
-	err = cxgb_pcpu_enqueue_packet_(qs, m);
+	if (ALTQ_IS_ENABLED(&ifp->if_snd)) {
+		IFQ_ENQUEUE(&ifp->if_snd, m, err);
+	} else {
+		err = cxgb_pcpu_enqueue_packet_(qs, m);
+	}
 	return (err);
 }
 
@@ -174,7 +178,15 @@ cxgb_dequeue_packet(struct sge_txq *txq, struct mbuf **m_vec)
 	m_vec[0] = m;
 	return (1);
 #endif
-
+	if (ALTQ_ENABLED(&pi->ifp->if_snd)) {
+		IFQ_DRV_DEQUEUE(&pi->ifp->if_snd, m);
+		if (m == NULL)
+			return (0);
+	
+		m_vec[0] = m;
+		return (1);		
+	}
+	
 	mtx_assert(&txq->lock, MA_OWNED);
 	coalesced = count = size = 0;
 	qs = txq_to_qset(txq, TXQ_ETH);
@@ -294,7 +306,8 @@ cxgb_pcpu_start_(struct sge_qset *qs, struct mbuf *immpkt, int tx_flush)
 		initerr = ENXIO;
 	else if (immpkt) {
 
-		if (!buf_ring_empty(txq->txq_mr)) 
+		if (!buf_ring_empty(txq->txq_mr)
+		    || ALTQ_ENABLED(&pi->ifp->if_snd)) 
 			initerr = cxgb_pcpu_enqueue_packet_(qs, immpkt);
 		else
 			txq->immpkt = immpkt;
