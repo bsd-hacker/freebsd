@@ -1714,9 +1714,15 @@ t3_free_qset(adapter_t *sc, struct sge_qset *q)
 	
 	t3_free_tx_desc_all(&q->txq[TXQ_ETH]);
 	
-	for (i = 0; i < SGE_TXQ_PER_SET; i++) 
+	for (i = 0; i < SGE_TXQ_PER_SET; i++) {
 		if (q->txq[i].txq_mr != NULL) 
 			buf_ring_free(q->txq[i].txq_mr, M_DEVBUF);
+		if (q->txq[i].txq_ifq != NULL) {
+			ifq_detach(q->txq[i].txq_ifq);
+			free(q->txq[i].txq_ifq, M_DEVBUF);
+		}
+	}
+	
 	for (i = 0; i < SGE_RXQ_PER_SET; ++i) {
 		if (q->fl[i].desc) {
 			mtx_lock_spin(&sc->sge.reg_lock);
@@ -2281,6 +2287,13 @@ t3_sge_alloc_qset(adapter_t *sc, u_int id, int nports, int irq_vec_idx,
 			device_printf(sc->dev, "failed to allocate mbuf ring\n");
 			goto err;
 		}
+		if ((q->txq[i].txq_ifq =
+			malloc(sizeof(struct ifaltq), M_DEVBUF, M_NOWAIT|M_ZERO))
+		    == NULL) {
+			device_printf(sc->dev, "failed to allocate ifq\n");
+			goto err;
+		}
+		ifq_attach(q->txq[i].txq_ifq, pi->ifp);
 	}
 	init_qset_cntxt(q, id);
 	q->idx = id;

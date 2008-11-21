@@ -260,7 +260,9 @@ struct sge_txq {
 	 */
 	struct mbuf_head cleanq;	
 	struct buf_ring *txq_mr;
+	struct ifaltq	*txq_ifq;
 	struct mbuf     *immpkt;
+
 	uint32_t        txq_drops;
 	uint32_t        txq_skipped;
 	uint32_t        txq_coalesced;
