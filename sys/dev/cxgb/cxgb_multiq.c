@@ -88,7 +88,7 @@ __FBSDID("$FreeBSD$");
 
 extern int txq_fills;
 int multiq_tx_enable = 1;
-int coalesce_tx_enable = 1;
+int coalesce_tx_enable = 0;
 
 extern struct sysctl_oid_list sysctl__hw_cxgb_children;
 static int sleep_ticks = 1;
@@ -155,16 +155,17 @@ cxgb_pcpu_enqueue_packet(struct ifnet *ifp, struct mbuf *m)
 static int
 cxgb_dequeue_packet(struct sge_txq *txq, struct mbuf **m_vec)
 {
-	struct mbuf *m;
+	struct mbuf *m, *m0;
 	struct sge_qset *qs;
 	int count, size, coalesced;
 	struct adapter *sc;
+
 #ifndef IFNET_MULTIQUEUE
 	struct port_info *pi = txq->port;
 
+	mtx_assert(&txq->lock, MA_OWNED);
 	if (txq->immpkt != NULL)
 		panic("immediate packet set");
-	mtx_assert(&txq->lock, MA_OWNED);
 
 	IFQ_DRV_DEQUEUE(&pi->ifp->if_snd, m);
 	if (m == NULL)
@@ -174,6 +175,7 @@ cxgb_dequeue_packet(struct sge_txq *txq, struct mbuf **m_vec)
 	return (1);
 #endif
 
+	mtx_assert(&txq->lock, MA_OWNED);
 	coalesced = count = size = 0;
 	qs = txq_to_qset(txq, TXQ_ETH);
 	if (qs->qs_flags & QS_EXITING)
@@ -192,9 +194,7 @@ cxgb_dequeue_packet(struct sge_txq *txq, struct mbuf **m_vec)
 		return (0);
 
 	count = 1;
-	KASSERT(m->m_type == MT_DATA,
-	    ("m=%p is bad mbuf type %d from ring cons=%d prod=%d", m,
-		m->m_type, txq->txq_mr.br_cons, txq->txq_mr.br_prod));
+
 	m_vec[0] = m;
 	if (m->m_pkthdr.tso_segsz > 0 || m->m_pkthdr.len > TX_WR_SIZE_MAX ||
 	    m->m_next != NULL || (coalesce_tx_enable == 0)) {
@@ -209,7 +209,11 @@ cxgb_dequeue_packet(struct sge_txq *txq, struct mbuf **m_vec)
 		    size + m->m_pkthdr.len > TX_WR_SIZE_MAX || m->m_next != NULL)
 			break;
 
-		buf_ring_dequeue_sc(txq->txq_mr);
+		m0 = buf_ring_dequeue_sc(txq->txq_mr);
+#ifdef DEBUG_BUFRING
+		if (m0 != m)
+			panic("peek and dequeue don't match");
+#endif		
 		size += m->m_pkthdr.len;
 		m_vec[count++] = m;
 
