@@ -86,14 +86,17 @@ buf_ring_enqueue(struct buf_ring *br, void *buf)
 	uint32_t cons_tail;
 	int success;
 
+	critical_enter();
 	do {
 		prod_head = br->br_prod_head;
 		cons_tail = br->br_cons_tail;
 
 		prod_next = (prod_head + 1) & br->br_prod_mask;
 		
-		if (prod_next == cons_tail)
+		if (prod_next == cons_tail) {
+			critical_exit();
 			return (ENOSPC);
+		}
 		
 		success = atomic_cmpset_int(&br->br_prod_head, prod_head,
 		    prod_next);
@@ -107,32 +110,38 @@ buf_ring_enqueue(struct buf_ring *br, void *buf)
 	/*
 	 * If there are other enqueues in progress
 	 * that preceeded us, we need to wait for them
-	 * to complete - this is only a problem if they
-	 * have been preempted
+	 * to complete 
 	 */   
 	while (br->br_prod_tail != prod_head)
 		cpu_spinwait();
 	br->br_prod_tail = prod_next;
-	
+	critical_exit();
 	return (0);
 }
 
+/*
+ * multi-consumer safe dequeue 
+ *
+ */
 static __inline void *
-buf_ring_dequeue(struct buf_ring *br)
+buf_ring_dequeue_mc(struct buf_ring *br)
 {
 	uint32_t cons_head, cons_next;
 	uint32_t prod_tail;
 	void *buf;
 	int success;
-	
+
+	critical_enter();
 	do {
 		cons_head = br->br_cons_head;
 		prod_tail = br->br_prod_tail;
 
 		cons_next = (cons_head + 1) & br->br_cons_mask;
 		
-		if (cons_head == prod_tail)
+		if (cons_head == prod_tail) {
+			critical_exit();
 			return (NULL);
+		}
 		
 		success = atomic_cmpset_int(&br->br_cons_head, cons_head,
 		    cons_next);
@@ -147,14 +156,53 @@ buf_ring_dequeue(struct buf_ring *br)
 	/*
 	 * If there are other dequeues in progress
 	 * that preceeded us, we need to wait for them
-	 * to complete - this is only a problem if they
-	 * have been preempted
+	 * to complete 
 	 */   
 	while (br->br_cons_tail != cons_head)
 		cpu_spinwait();
 
 	br->br_cons_tail = cons_next;
+	mb();
+	critical_exit();
 
+	return (buf);
+}
+
+/*
+ * Single-Consumer dequeue for uses where dequeue
+ * is protected by a lock
+ */
+static __inline void *
+buf_ring_dequeue_sc(struct buf_ring *br)
+{
+	uint32_t cons_head, cons_next;
+	uint32_t prod_tail;
+	void *buf;
+	
+	critical_enter();
+	cons_head = br->br_cons_head;
+	prod_tail = br->br_prod_tail;
+	
+	cons_next = (cons_head + 1) & br->br_cons_mask;
+		
+	if (cons_head == prod_tail) {
+		critical_exit();
+		return (NULL);
+	}
+	
+	br->br_cons_head = cons_next;
+	buf = br->br_ring[cons_head];
+#ifdef INVARIANTS	
+	br->br_ring[cons_head] = NULL;
+#endif
+	mb();
+	KASSERT(br->br_cons_tail == cons_head,
+	    ("inconsistent list cons_tail=%d cons_head=%d",
+		br->br_cons_tail, cons_head));
+
+	br->br_cons_tail = cons_next;
+	mb();
+	critical_exit();
 	return (buf);
 }
 
