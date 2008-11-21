@@ -408,6 +408,9 @@ ipv4_flow_lookup_hash_internal(struct mbuf *m, struct route *ro,
 	((uint16_t *)key)[1] = dport; 
 
 	hash = hashword(key, 3, hashjitter + proto);
+	if (m->m_pkthdr.flowid == 0)
+		m->m_pkthdr.flowid = hash;
+	
 	CTR5(KTR_SPARE3, "proto=%d hash=%x key[0]=%x sport=%d dport=%d\n", proto, hash, key[0], sport, dport);
 	
 	return (hash);
@@ -465,7 +468,8 @@ flow_stale(struct flowtable *ft, struct flentry *fle)
 	    || (fle->f_uptime <= fle->f_rt->rt_llinfo_uptime)
 	    || ((fle->f_rt->rt_flags & RTF_GATEWAY) &&
 		((fle->f_rt->rt_gwroute->rt_flags & (RTF_UP|RTF_LLINFO))
-		    != (RTF_UP|RTF_LLINFO))))
+		    != (RTF_UP|RTF_LLINFO)))
+	    || (fle->f_rt->rt_ifp == NULL))
 		return (1);
 
 	idle_time = time_uptime - fle->f_uptime;
@@ -602,7 +606,6 @@ gw_valid(struct rtentry *rt)
 		&& (rt->rt_gwroute->rt_flags & RTF_UP)));
 }
 
-
 int
 flowtable_lookup(struct flowtable *ft, struct mbuf *m,
     struct rtentry_info *ri)
@@ -626,8 +629,6 @@ flowtable_lookup(struct flowtable *ft, struct mbuf *m,
 	hash = ipv4_flow_lookup_hash_internal(m, &ro, key,
 	    &flags, &proto);
 
-	if (m->m_pkthdr.flowid == 0)
-		m->m_pkthdr.flowid = hash;
 	/*
 	 * Ports are zero and this isn't a transmit cache
 	 * - thus not a protocol for which we need to keep 
@@ -646,6 +647,7 @@ flowtable_lookup(struct flowtable *ft, struct mbuf *m,
 	    && flowtable_key_equal(fle, key, flags)
 	    && (proto == fle->f_proto)
 	    && (rt->rt_flags & RTF_UP)
+	    && (rt->rt_ifp != NULL)
 	    && (fle->f_uptime > rt->rt_llinfo_uptime)
 	    && gw_valid(rt)) {
 		fle->f_uptime = time_uptime;
@@ -674,7 +676,7 @@ uncached:
 	if (ro.ro_rt == NULL) 
 		error = ENETUNREACH;
 	else {
-		int finsert = 0;
+		int finsert;
 		
 		if (ro.ro_rt->rt_flags & RTF_GATEWAY)
 			error = arpresolve(ro.ro_rt->rt_ifp, ro.ro_rt,
@@ -683,7 +685,8 @@ uncached:
 			error = arpresolve(ro.ro_rt->rt_ifp, ro.ro_rt,
 			    NULL, &ro.ro_dst, desten);
 #ifdef DIAGNOSTICS
-		log(LOG_WARNING, "dst=%s gw=%s proto=%d hash=%x "
+		if (error)
+			log(LOG_WARNING, "dst=%s gw=%s proto=%d hash=%x "
 		    "rt_flags=%lx error=%d\n",
 		    inet_ntoa(((struct sockaddr_in*)&ro.ro_dst)->sin_addr),
 		    inet_ntoa(((struct sockaddr_in*)&ro.ro_rt->rt_gateway)->sin_addr),
