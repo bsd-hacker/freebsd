@@ -3513,22 +3513,19 @@ t3_add_configured_sysctls(adapter_t *sc)
 			SYSCTL_ADD_PROC(ctx, rspqpoidlist, OID_AUTO, "qdump",
 			    CTLTYPE_STRING | CTLFLAG_RD, &qs->rspq,
 			    0, t3_dump_rspq, "A", "dump of the response queue");
+#ifdef DEBUG_BUFRING
 
-
+			SYSCTL_ADD_INT(ctx, txqpoidlist, OID_AUTO,
+			    "buffered_count", CTLFLAG_RD,
+			    &qs->txq[TXQ_ETH].txq_mr->br_count,
+			    0, "#buf ring packets enqueued");
+#endif			
 			SYSCTL_ADD_INT(ctx, txqpoidlist, OID_AUTO, "dropped",
 			    CTLFLAG_RD, &qs->txq[TXQ_ETH].txq_drops,
 			    0, "#tunneled packets dropped");
 			SYSCTL_ADD_INT(ctx, txqpoidlist, OID_AUTO, "sendqlen",
 			    CTLFLAG_RD, &qs->txq[TXQ_ETH].sendq.qlen,
 			    0, "#tunneled packets waiting to be sent");
-#if 0			
-			SYSCTL_ADD_UINT(ctx, txqpoidlist, OID_AUTO, "queue_pidx",
-			    CTLFLAG_RD, (uint32_t *)(uintptr_t)&qs->txq[TXQ_ETH].txq_mr.br_prod,
-			    0, "#tunneled packets queue producer index");
-			SYSCTL_ADD_UINT(ctx, txqpoidlist, OID_AUTO, "queue_cidx",
-			    CTLFLAG_RD, (uint32_t *)(uintptr_t)&qs->txq[TXQ_ETH].txq_mr.br_cons,
-			    0, "#tunneled packets queue consumer index");
-#endif			
 			SYSCTL_ADD_INT(ctx, txqpoidlist, OID_AUTO, "processed",
 			    CTLFLAG_RD, &qs->txq[TXQ_ETH].processed,
 			    0, "#tunneled packets processed by the card");
