@@ -86,6 +86,7 @@ extern int nmbjumbo9;
 extern int nmbjumbo16;
 extern int multiq_tx_enable;
 extern int coalesce_tx_enable;
+extern int wakeup_tx_thread;
 
 #define USE_GTS 0
 
@@ -3376,6 +3377,10 @@ t3_add_attach_sysctls(adapter_t *sc)
 	    "coalesce_tx_enable",
 	    CTLFLAG_RW, &coalesce_tx_enable,
 	    0, "coalesce small packets in work requests - WARNING ALPHA");
+	SYSCTL_ADD_INT(ctx, children, OID_AUTO, 
+	    "wakeup_tx_thread",
+	    CTLFLAG_RW, &wakeup_tx_thread,
+	    0, "wakeup tx thread if no transmitter running");
 	SYSCTL_ADD_INT(ctx, children, OID_AUTO, 
 	    "cache_alloc",
 	    CTLFLAG_RD, &cxgb_cached_allocations,

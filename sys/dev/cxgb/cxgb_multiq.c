@@ -89,6 +89,7 @@ __FBSDID("$FreeBSD$");
 extern int txq_fills;
 int multiq_tx_enable = 1;
 int coalesce_tx_enable = 0;
+int wakeup_tx_thread = 0;
 
 extern struct sysctl_oid_list sysctl__hw_cxgb_children;
 static int sleep_ticks = 1;
@@ -127,6 +128,9 @@ cxgb_pcpu_enqueue_packet_(struct sge_qset *qs, struct mbuf *m)
 		txq->txq_drops++;
 		m_freem(m);
 	}
+	if (wakeup_tx_thread && ((txq->flags & TXQ_TRANSMITTING) == 0))
+		wakeup(qs);
+	
 	return (err);
 }
 
