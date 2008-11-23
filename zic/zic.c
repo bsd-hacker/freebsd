@@ -1,23 +1,25 @@
-static char	elsieid[] = "@(#)zic.c	7.116";
+static const char	elsieid[] = "@(#)zic.c	7.116";
+
+#ifndef lint
+static const char rcsid[] =
+  "$FreeBSD$";
+#endif /* not lint */
 
 #include "private.h"
-#include "locale.h"
 #include "tzfile.h"
+#include <err.h>
+#include <locale.h>
+#include <sys/stat.h>			/* for umask manifest constants */
+#include <sys/types.h>
+#include <unistd.h>
 
-#if HAVE_SYS_STAT_H
-#include "sys/stat.h"
-#endif
-#ifdef S_IRUSR
 #define MKDIR_UMASK (S_IRUSR|S_IWUSR|S_IXUSR|S_IRGRP|S_IXGRP|S_IROTH|S_IXOTH)
-#else
-#define MKDIR_UMASK 0755
-#endif
 
 /*
 ** On some ancient hosts, predicates like `isspace(C)' are defined
 ** only if isascii(C) || C == EOF.  Modern hosts obey the C Standard,
 ** which says they are defined only if C == ((unsigned char) C) || C == EOF.
-** Neither the C Standard nor Posix require that `isascii' exist.
+** Neither the C Standard nor POSIX require that `isascii' exist.
 ** For portability, we check both ancient and modern requirements.
 ** If isascii is not defined, the isascii check succeeds trivially.
 */
@@ -79,12 +81,6 @@ struct zone {
 	time_t		z_untiltime;
 };
 
-extern int	getopt P((int argc, char * const argv[],
-			const char * options));
-extern int	link P((const char * fromname, const char * toname));
-extern char *	optarg;
-extern int	optind;
-
 static void	addtt P((time_t starttime, int type));
 static int	addtype P((long gmtoff, const char * abbr, int isdst,
 				int ttisstd, int ttisgmt));
@@ -127,6 +123,8 @@ static void	rulesub P((struct rule * rp,
 			const char * typep, const char * monthp,
 			const char * dayp, const char * timep));
 static void	setboundaries P((void));
+static void	setgroup P((gid_t *flag, const char *name));
+static void	setuser P((uid_t *flag, const char *name));
 static time_t	tadd P((time_t t1, long t2));
 static void	usage P((void));
 static void	writezone P((const char * name));
@@ -150,7 +148,6 @@ static int		min_year_representable;
 static int		noise;
 static const char *	rfilename;
 static int		rlinenum;
-static const char *	progname;
 static int		timecnt;
 static int		typecnt;
 
@@ -355,13 +352,8 @@ static char *
 memcheck(ptr)
 char * const	ptr;
 {
-	if (ptr == NULL) {
-		const char *e = strerror(errno);
-
-		(void) fprintf(stderr, _("%s: Memory exhausted: %s\n"),
-			progname, e);
-		(void) exit(EXIT_FAILURE);
-	}
+	if (ptr == NULL)
+		errx(EXIT_FAILURE, _("memory exhausted"));
 	return ptr;
 }
 
@@ -442,8 +434,9 @@ const char * const	string;
 static void
 usage P((void))
 {
-	(void) fprintf(stderr, _("%s: usage is %s [ --version ] [ -s ] [ -v ] [ -l localtime ] [ -p posixrules ] \\\n\t[ -d directory ] [ -L leapseconds ] [ -y yearistype ] [ filename ... ]\n"),
-		progname, progname);
+	(void) fprintf(stderr, "%s\n%s\n",
+_("usage: zic [--version] [-s] [-v] [-l localtime] [-p posixrules] [-d directory]"),
+_("           [-L leapseconds] [-y yearistype] [filename ... ]"));
 	(void) exit(EXIT_FAILURE);
 }
 
@@ -453,6 +446,11 @@ static const char *	directory;
 static const char *	leapsec;
 static const char *	yitcommand;
 static int		sflag = FALSE;
+static int		Dflag;
+static uid_t		uflag = (uid_t)-1;
+static gid_t		gflag = (gid_t)-1;
+static mode_t		mflag = (S_IRUSR | S_IRGRP | S_IROTH
+				 | S_IWUSR);
 
 int
 main(argc, argv)
@@ -473,65 +471,67 @@ char *	argv[];
 #endif /* defined TEXTDOMAINDIR */
 	(void) textdomain(TZ_DOMAIN);
 #endif /* HAVE_GETTEXT - 0 */
-	progname = argv[0];
 	for (i = 1; i < argc; ++i)
 		if (strcmp(argv[i], "--version") == 0) {
-			(void) printf("%s\n", elsieid);
-			(void) exit(EXIT_SUCCESS);
+			errx(EXIT_SUCCESS, "%s", elsieid);
 		}
-	while ((c = getopt(argc, argv, "d:l:p:L:vsy:")) != EOF && c != -1)
+	while ((c = getopt(argc, argv, "Dd:g:l:m:p:L:u:vsy:")) != -1)
 		switch (c) {
 			default:
 				usage();
+			case 'D':
+				Dflag = 1;
+				break;
 			case 'd':
 				if (directory == NULL)
 					directory = optarg;
-				else {
-					(void) fprintf(stderr,
-_("%s: More than one -d option specified\n"),
-						progname);
-					(void) exit(EXIT_FAILURE);
-				}
+				else
+					errx(EXIT_FAILURE,
+_("more than one -d option specified"));
+				break;
+			case 'g':
+				setgroup(&gflag, optarg);
 				break;
 			case 'l':
 				if (lcltime == NULL)
 					lcltime = optarg;
-				else {
-					(void) fprintf(stderr,
-_("%s: More than one -l option specified\n"),
-						progname);
-					(void) exit(EXIT_FAILURE);
-				}
+				else
+					errx(EXIT_FAILURE,
+_("more than one -l option specified"));
 				break;
+			case 'm':
+			{
+				void *set = setmode(optarg);
+				if (set == NULL)
+					errx(EXIT_FAILURE,
+_("invalid file mode"));
+				mflag = getmode(set, mflag);
+				free(set);
+				break;
+			}
 			case 'p':
 				if (psxrules == NULL)
 					psxrules = optarg;
-				else {
-					(void) fprintf(stderr,
-_("%s: More than one -p option specified\n"),
-						progname);
-					(void) exit(EXIT_FAILURE);
-				}
+				else
+					errx(EXIT_FAILURE,
+_("more than one -p option specified"));
+				break;
+			case 'u':
+				setuser(&uflag, optarg);
 				break;
 			case 'y':
 				if (yitcommand == NULL)
 					yitcommand = optarg;
-				else {
-					(void) fprintf(stderr,
-_("%s: More than one -y option specified\n"),
-						progname);
-					(void) exit(EXIT_FAILURE);
-				}
+				else
+					errx(EXIT_FAILURE,
+_("more than one -y option specified"));
 				break;
 			case 'L':
 				if (leapsec == NULL)
 					leapsec = optarg;
-				else {
-					(void) fprintf(stderr,
-_("%s: More than one -L option specified\n"),
-						progname);
-					(void) exit(EXIT_FAILURE);
-				}
+				else
+					errx(EXIT_FAILURE,
+_("more than one -L option specified"));
 				break;
 			case 'v':
 				noise = TRUE;
@@ -637,12 +637,8 @@ warning(_("hard link failed, symbolic link used"));
 		}
 #endif
 		if (result != 0) {
-			const char *e = strerror(errno);
-
-			(void) fprintf(stderr,
-				_("%s: Can't link from %s to %s: %s\n"),
-				progname, fromname, toname, e);
-			(void) exit(EXIT_FAILURE);
+			err(EXIT_FAILURE, _("can't link from %s to %s"),
+			    fromname, toname);
 		}
 	}
 	ifree(fromname);
@@ -811,13 +807,8 @@ const char *	name;
 	if (strcmp(name, "-") == 0) {
 		name = _("standard input");
 		fp = stdin;
-	} else if ((fp = fopen(name, "r")) == NULL) {
-		const char *e = strerror(errno);
-
-		(void) fprintf(stderr, _("%s: Can't open %s: %s\n"),
-			progname, name, e);
-		(void) exit(EXIT_FAILURE);
-	}
+	} else if ((fp = fopen(name, "r")) == NULL)
+		err(EXIT_FAILURE, _("can't open %s"), name);
 	wantcont = FALSE;
 	for (num = 1; ; ++num) {
 		eat(name, num);
@@ -860,33 +851,22 @@ const char *	name;
 					break;
 				case LC_LEAP:
 					if (name != leapsec)
-						(void) fprintf(stderr,
-_("%s: Leap line in non leap seconds file %s\n"),
-							progname, name);
+						warnx(
+_("leap line in non leap seconds file %s"), name);
 					else	inleap(fields, nfields);
 					wantcont = FALSE;
 					break;
 				default:	/* "cannot happen" */
-					(void) fprintf(stderr,
-_("%s: panic: Invalid l_value %d\n"),
-						progname, lp->l_value);
-					(void) exit(EXIT_FAILURE);
+					errx(EXIT_FAILURE,
+_("panic: invalid l_value %d"), lp->l_value);
 			}
 		}
 		ifree((char *) fields);
 	}
-	if (ferror(fp)) {
-		(void) fprintf(stderr, _("%s: Error reading %s\n"),
-			progname, filename);
-		(void) exit(EXIT_FAILURE);
-	}
-	if (fp != stdin && fclose(fp)) {
-		const char *e = strerror(errno);
-
-		(void) fprintf(stderr, _("%s: Error closing %s: %s\n"),
-			progname, filename, e);
-		(void) exit(EXIT_FAILURE);
-	}
+	if (ferror(fp))
+		errx(EXIT_FAILURE, _("error reading %s"), filename);
+	if (fp != stdin && fclose(fp))
+		err(EXIT_FAILURE, _("error closing %s"), filename);
 	if (wantcont)
 		error(_("expected continuation line not found"));
 }
@@ -1284,10 +1264,8 @@ const char * const		timep;
 			rp->r_loyear = INT_MAX;
 			break;
 		default:	/* "cannot happen" */
-			(void) fprintf(stderr,
-				_("%s: panic: Invalid l_value %d\n"),
-				progname, lp->l_value);
-			(void) exit(EXIT_FAILURE);
+			errx(EXIT_FAILURE,
+				_("panic: invalid l_value %d"), lp->l_value);
 	} else if (sscanf(cp, scheck(cp, "%d"), &rp->r_loyear) != 1) {
 		error(_("invalid starting year"));
 		return;
@@ -1309,10 +1287,8 @@ const char * const		timep;
 			rp->r_hiyear = rp->r_loyear;
 			break;
 		default:	/* "cannot happen" */
-			(void) fprintf(stderr,
-				_("%s: panic: Invalid l_value %d\n"),
-				progname, lp->l_value);
-			(void) exit(EXIT_FAILURE);
+			errx(EXIT_FAILURE,
+				_("panic: invalid l_value %d"), lp->l_value);
 	} else if (sscanf(cp, scheck(cp, "%d"), &rp->r_hiyear) != 1) {
 		error(_("invalid ending year"));
 		return;
@@ -1476,26 +1452,18 @@ const char * const	name;
 	fullname = erealloc(fullname,
 		(int) (strlen(directory) + 1 + strlen(name) + 1));
 	(void) sprintf(fullname, "%s/%s", directory, name);
-	/*
-	** Remove old file, if any, to snap links.
-	*/
-	if (!itsdir(fullname) && remove(fullname) != 0 && errno != ENOENT) {
-		const char *e = strerror(errno);
 
-		(void) fprintf(stderr, _("%s: Can't remove %s: %s\n"),
-			progname, fullname, e);
-		(void) exit(EXIT_FAILURE);
-	}
+	/*
+	 * Remove old file, if any, to snap links.
+	 */
+	if (!itsdir(fullname) && remove(fullname) != 0 && errno != ENOENT)
+		err(EXIT_FAILURE, _("can't remove %s"), fullname);
+
 	if ((fp = fopen(fullname, "wb")) == NULL) {
 		if (mkdirs(fullname) != 0)
 			(void) exit(EXIT_FAILURE);
-		if ((fp = fopen(fullname, "wb")) == NULL) {
-			const char *e = strerror(errno);
-
-			(void) fprintf(stderr, _("%s: Can't create %s: %s\n"),
-				progname, fullname, e);
-			(void) exit(EXIT_FAILURE);
-		}
+		if ((fp = fopen(fullname, "wb")) == NULL)
+			err(EXIT_FAILURE, _("can't create %s"), fullname);
 	}
 	convert(eitol(typecnt), tzh.tzh_ttisgmtcnt);
 	convert(eitol(typecnt), tzh.tzh_ttisstdcnt);
@@ -1557,11 +1525,15 @@ const char * const	name;
 		(void) putc(ttisstds[i], fp);
 	for (i = 0; i < typecnt; ++i)
 		(void) putc(ttisgmts[i], fp);
-	if (ferror(fp) || fclose(fp)) {
-		(void) fprintf(stderr, _("%s: Error writing %s\n"),
-			progname, fullname);
-		(void) exit(EXIT_FAILURE);
-	}
+	if (ferror(fp) || fclose(fp))
+		errx(EXIT_FAILURE, _("error writing %s"), fullname);
+	if (chmod(fullname, mflag) < 0)
+		err(EXIT_FAILURE, _("cannot change mode of %s to %03o"),
+		    fullname, (unsigned)mflag);
+	if ((uflag != (uid_t)-1 || gflag != (gid_t)-1)
+	    && chown(fullname, uflag, gflag) < 0)
+		err(EXIT_FAILURE, _("cannot change ownership of %s"), 
+		    fullname);
 }
 
 static void
@@ -1923,9 +1895,8 @@ const char * const	type;
 		case 1:
 			return FALSE;
 	}
-	error(_("Wild result from command execution"));
-	(void) fprintf(stderr, _("%s: command was '%s', result was %d\n"),
-		progname, buf, result);
+	error(_("wild result from command execution"));
+	warnx(_("command was '%s', result was %d"), buf, result);
 	for ( ; ; )
 		(void) exit(EXIT_FAILURE);
 }
@@ -2019,7 +1990,10 @@ register char *	cp;
 			else while ((*dp = *cp++) != '"')
 				if (*dp != '\0')
 					++dp;
-				else	error(_("Odd number of quotation marks"));
+				else {
+					error(_("odd number of quotation marks"));
+					exit(EXIT_FAILURE);
+				}
 		} while (*cp != '\0' && *cp != '#' &&
 			(!isascii(*cp) || !isspace((unsigned char) *cp)));
 		if (isascii(*cp) && isspace((unsigned char) *cp))
@@ -2175,7 +2149,7 @@ char * const	argname;
 	register char *	name;
 	register char *	cp;
 
-	if (argname == NULL || *argname == '\0')
+	if (argname == NULL || *argname == '\0' || Dflag)
 		return 0;
 	cp = name = ecpyalloc(argname);
 	while ((cp = strchr(cp + 1, '/')) != 0) {
@@ -2197,16 +2171,11 @@ char * const	argname;
 			** created by some other multiprocessor, so we get
 			** to do extra checking.
 			*/
-			if (mkdir(name, MKDIR_UMASK) != 0) {
-				const char *e = strerror(errno);
-
-				if (errno != EEXIST || !itsdir(name)) {
-					(void) fprintf(stderr,
-_("%s: Can't create directory %s: %s\n"),
-						progname, name, e);
-					ifree(name);
-					return -1;
-				}
+			if (mkdir(name, MKDIR_UMASK) != 0
+				&& (errno != EEXIST || !itsdir(name))) {
+				warn(_("can't create directory %s"), name);
+				ifree(name);
+				return -1;
 			}
 		}
 		*cp = '/';
@@ -2222,13 +2191,62 @@ const int	i;
 	long	l;
 
 	l = i;
-	if ((i < 0 && l >= 0) || (i == 0 && l != 0) || (i > 0 && l <= 0)) {
-		(void) fprintf(stderr,
-			_("%s: %d did not sign extend correctly\n"),
-			progname, i);
-		(void) exit(EXIT_FAILURE);
-	}
+	if ((i < 0 && l >= 0) || (i == 0 && l != 0) || (i > 0 && l <= 0))
+		errx(EXIT_FAILURE, _("%d did not sign extend correctly"), i);
 	return l;
+}
+
+#include <grp.h>
+#include <pwd.h>
+
+static void
+setgroup(flag, name)
+	gid_t *flag;
+	const char *name;
+{
+	struct group *gr;
+
+	if (*flag != (gid_t)-1)
+		errx(EXIT_FAILURE, _("multiple -g flags specified"));
+
+	gr = getgrnam(name);
+	if (gr == 0) {
+		char *ep;
+		unsigned long ul;
+
+		ul = strtoul(name, &ep, 10);
+		if (ul == (unsigned long)(gid_t)ul && *ep == '\0') {
+			*flag = ul;
+			return;
+		}
+		errx(EXIT_FAILURE, _("group `%s' not found"), name);
+	}
+	*flag = gr->gr_gid;
+}
+
+static void
+setuser(flag, name)
+	uid_t *flag;
+	const char *name;
+{
+	struct passwd *pw;
+
+	if (*flag != (gid_t)-1)
+		errx(EXIT_FAILURE, _("multiple -u flags specified"));
+
+	pw = getpwnam(name);
+	if (pw == 0) {
+		char *ep;
+		unsigned long ul;
+
+		ul = strtoul(name, &ep, 10);
+		if (ul == (unsigned long)(gid_t)ul && *ep == '\0') {
+			*flag = ul;
+			return;
+		}
+		errx(EXIT_FAILURE, _("user `%s' not found"), name);
+	}
+	*flag = pw->pw_uid;
 }
 
 /*

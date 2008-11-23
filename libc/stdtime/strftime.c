@@ -1,6 +1,23 @@
+/*
+ * Copyright (c) 1989 The Regents of the University of California.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms are permitted
+ * provided that the above copyright notice and this paragraph are
+ * duplicated in all such forms and that any documentation,
+ * advertising materials, and other materials related to such
+ * distribution and use acknowledge that the software was developed
+ * by the University of California, Berkeley.  The name of the
+ * University may not be used to endorse or promote products derived
+ * from this software without specific prior written permission.
+ * THIS SOFTWARE IS PROVIDED ``AS IS'' AND WITHOUT ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ */
+
 #ifndef lint
 #ifndef NOID
-static char	elsieid[] = "@(#)strftime.c	7.64";
+static const char	elsieid[] = "@(#)strftime.c	7.64";
 /*
 ** Based on the UCB version with the ID appearing below.
 ** This is ANSIish only when "multibyte character == plain character".
@@ -8,109 +25,27 @@ static char	elsieid[] = "@(#)strftime.c	7.64";
 #endif /* !defined NOID */
 #endif /* !defined lint */
 
+#include "namespace.h"
 #include "private.h"
 
-/*
-** Copyright (c) 1989 The Regents of the University of California.
-** All rights reserved.
-**
-** Redistribution and use in source and binary forms are permitted
-** provided that the above copyright notice and this paragraph are
-** duplicated in all such forms and that any documentation,
-** advertising materials, and other materials related to such
-** distribution and use acknowledge that the software was developed
-** by the University of California, Berkeley.  The name of the
-** University may not be used to endorse or promote products derived
-** from this software without specific prior written permission.
-** THIS SOFTWARE IS PROVIDED ``AS IS'' AND WITHOUT ANY EXPRESS OR
-** IMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED
-** WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
-*/
-
-#ifndef LIBC_SCCS
-#ifndef lint
+#if defined(LIBC_SCCS) && !defined(lint)
 static const char	sccsid[] = "@(#)strftime.c	5.4 (Berkeley) 3/14/89";
-#endif /* !defined lint */
-#endif /* !defined LIBC_SCCS */
+#endif /* LIBC_SCCS and not lint */
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
 
 #include "tzfile.h"
-#include "fcntl.h"
-#include "locale.h"
+#include <fcntl.h>
+#include <sys/stat.h>
+#include "un-namespace.h"
+#include "timelocal.h"
 
-struct lc_time_T {
-	const char *	mon[MONSPERYEAR];
-	const char *	month[MONSPERYEAR];
-	const char *	wday[DAYSPERWEEK];
-	const char *	weekday[DAYSPERWEEK];
-	const char *	X_fmt;
-	const char *	x_fmt;
-	const char *	c_fmt;
-	const char *	am;
-	const char *	pm;
-	const char *	date_fmt;
-};
+static char *	_add(const char *, char *, const char *);
+static char *	_conv(int, const char *, char *, const char *);
+static char *	_fmt(const char *, const struct tm *, char *, const char *, int *);
 
-#ifdef LOCALE_HOME
-#include "sys/stat.h"
-static struct lc_time_T		localebuf;
-static struct lc_time_T *	_loc P((void));
-#define Locale	_loc()
-#endif /* defined LOCALE_HOME */
-#ifndef LOCALE_HOME
-#define Locale	(&C_time_locale)
-#endif /* !defined LOCALE_HOME */
-
-static const struct lc_time_T	C_time_locale = {
-	{
-		"Jan", "Feb", "Mar", "Apr", "May", "Jun",
-		"Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
-	}, {
-		"January", "February", "March", "April", "May", "June",
-		"July", "August", "September", "October", "November", "December"
-	}, {
-		"Sun", "Mon", "Tue", "Wed",
-		"Thu", "Fri", "Sat"
-	}, {
-		"Sunday", "Monday", "Tuesday", "Wednesday",
-		"Thursday", "Friday", "Saturday"
-	},
-
-	/* X_fmt */
-	"%H:%M:%S",
-
-	/*
-	** x_fmt
-	** C99 requires this format.
-	** Using just numbers (as here) makes Quakers happier;
-	** it's also compatible with SVR4.
-	*/
-	"%m/%d/%y",
-
-	/*
-	** c_fmt
-	** C99 requires this format.
-	** Previously this code used "%D %X", but we now conform to C99.
-	** Note that
-	**      "%a %b %d %H:%M:%S %Y"
-	** is used by Solaris 2.3.
-	*/
-	"%a %b %e %T %Y",
-
-	/* am */
-	"AM",
-
-	/* pm */
-	"PM",
-
-	/* date_fmt */
-	"%a %b %e %H:%M:%S %Z %Y"
-};
-
-static char *	_add P((const char *, char *, const char *));
-static char *	_conv P((int, const char *, char *, const char *));
-static char *	_fmt P((const char *, const struct tm *, char *, const char *, int *));
-
-size_t strftime P((char *, size_t, const char *, const struct tm *));
+size_t strftime(char * __restrict, size_t, const char * __restrict,
+    const struct tm * __restrict);
 
 extern char *	tzname[];
 
@@ -124,20 +59,38 @@ extern char *	tzname[];
 #define IN_THIS	2
 #define IN_ALL	3
 
+#define PAD_DEFAULT 0
+#define PAD_LESS	1
+#define PAD_SPACE	2
+#define PAD_ZERO	3
+
+static const char* fmt_padding[][4] = {
+	/* DEFAULT,	LESS,	SPACE,	ZERO */
+#define PAD_FMT_MONTHDAY	0
+#define PAD_FMT_HMS			0
+#define PAD_FMT_CENTURY		0
+#define PAD_FMT_SHORTYEAR	0
+#define PAD_FMT_MONTH		0
+#define PAD_FMT_WEEKOFYEAR	0
+#define PAD_FMT_DAYOFMONTH	0
+	{ "%02d",	"%d",	"%2d",	"%02d" },
+#define PAD_FMT_SDAYOFMONTH	1
+#define PAD_FMT_SHMS		1
+	{ "%2d",	"%d",	"%2d",	"%02d" },
+#define	PAD_FMT_DAYOFYEAR	2
+	{ "%03d",	"%d",	"%3d",	"%03d" },
+#define PAD_FMT_YEAR		3
+	{ "%04d",	"%d",	"%4d",	"%04d" }
+};
+
 size_t
-strftime(s, maxsize, format, t)
-char * const		s;
-const size_t		maxsize;
-const char * const	format;
-const struct tm * const	t;
+strftime(char * __restrict s, size_t maxsize, const char * __restrict format,
+    const struct tm * __restrict t)
 {
 	char *	p;
 	int	warn;
 
 	tzset();
-#ifdef LOCALE_HOME
-	localebuf.mon[0] = 0;
-#endif /* defined LOCALE_HOME */
 	warn = IN_NONE;
 	p = _fmt(((format == NULL) ? "%c" : format), t, s, s + maxsize, &warn);
 #ifndef NO_RUN_TIME_WARNINGS_ABOUT_YEAR_2000_PROBLEMS_THANK_YOU
@@ -170,8 +123,14 @@ char *			pt;
 const char * const	ptlim;
 int *			warnp;
 {
+	int Ealternative, Oalternative, PadIndex;
+	struct lc_time_T *tptr = __get_current_time_locale();
+
 	for ( ; *format; ++format) {
 		if (*format == '%') {
+			Ealternative = 0;
+			Oalternative = 0;
+			PadIndex	 = PAD_DEFAULT;
 label:
 			switch (*++format) {
 			case '\0':
@@ -180,26 +139,27 @@ label:
 			case 'A':
 				pt = _add((t->tm_wday < 0 ||
 					t->tm_wday >= DAYSPERWEEK) ?
-					"?" : Locale->weekday[t->tm_wday],
+					"?" : tptr->weekday[t->tm_wday],
 					pt, ptlim);
 				continue;
 			case 'a':
 				pt = _add((t->tm_wday < 0 ||
 					t->tm_wday >= DAYSPERWEEK) ?
-					"?" : Locale->wday[t->tm_wday],
+					"?" : tptr->wday[t->tm_wday],
 					pt, ptlim);
 				continue;
 			case 'B':
 				pt = _add((t->tm_mon < 0 ||
 					t->tm_mon >= MONSPERYEAR) ?
-					"?" : Locale->month[t->tm_mon],
+					"?" : (Oalternative ? tptr->alt_month :
+					tptr->month)[t->tm_mon],
 					pt, ptlim);
 				continue;
 			case 'b':
 			case 'h':
 				pt = _add((t->tm_mon < 0 ||
 					t->tm_mon >= MONSPERYEAR) ?
-					"?" : Locale->mon[t->tm_mon],
+					"?" : tptr->mon[t->tm_mon],
 					pt, ptlim);
 				continue;
 			case 'C':
@@ -211,13 +171,13 @@ label:
 				** (ado, 1993-05-24)
 				*/
 				pt = _conv((t->tm_year + TM_YEAR_BASE) / 100,
-					"%02d", pt, ptlim);
+					fmt_padding[PAD_FMT_CENTURY][PadIndex], pt, ptlim);
 				continue;
 			case 'c':
 				{
 				int warn2 = IN_SOME;
 
-				pt = _fmt(Locale->c_fmt, t, pt, ptlim, warnp);
+				pt = _fmt(tptr->c_fmt, t, pt, ptlim, &warn2);
 				if (warn2 == IN_ALL)
 					warn2 = IN_THIS;
 				if (warn2 > *warnp)
@@ -228,9 +188,14 @@ label:
 				pt = _fmt("%m/%d/%y", t, pt, ptlim, warnp);
 				continue;
 			case 'd':
-				pt = _conv(t->tm_mday, "%02d", pt, ptlim);
+				pt = _conv(t->tm_mday, fmt_padding[PAD_FMT_DAYOFMONTH][PadIndex],
+					pt, ptlim);
 				continue;
 			case 'E':
+				if (Ealternative || Oalternative)
+					break;
+				Ealternative++;
+				goto label;
 			case 'O':
 				/*
 				** C99 locale modifiers.
@@ -240,24 +205,33 @@ label:
 				**	%OS %Ou %OU %OV %Ow %OW %Oy
 				** are supposed to provide alternate
 				** representations.
+				**
+				** FreeBSD extension
+				**      %OB
 				*/
+				if (Ealternative || Oalternative)
+					break;
+				Oalternative++;
 				goto label;
 			case 'e':
-				pt = _conv(t->tm_mday, "%2d", pt, ptlim);
+				pt = _conv(t->tm_mday,
+					fmt_padding[PAD_FMT_SDAYOFMONTH][PadIndex], pt, ptlim);
 				continue;
 			case 'F':
 				pt = _fmt("%Y-%m-%d", t, pt, ptlim, warnp);
 				continue;
 			case 'H':
-				pt = _conv(t->tm_hour, "%02d", pt, ptlim);
+				pt = _conv(t->tm_hour, fmt_padding[PAD_FMT_HMS][PadIndex],
+					pt, ptlim);
 				continue;
 			case 'I':
 				pt = _conv((t->tm_hour % 12) ?
 					(t->tm_hour % 12) : 12,
-					"%02d", pt, ptlim);
+					fmt_padding[PAD_FMT_HMS][PadIndex], pt, ptlim);
 				continue;
 			case 'j':
-				pt = _conv(t->tm_yday + 1, "%03d", pt, ptlim);
+				pt = _conv(t->tm_yday + 1,
+					fmt_padding[PAD_FMT_DAYOFYEAR][PadIndex], pt, ptlim);
 				continue;
 			case 'k':
 				/*
@@ -270,7 +244,8 @@ label:
 				** "%l" have been swapped.
 				** (ado, 1993-05-24)
 				*/
-				pt = _conv(t->tm_hour, "%2d", pt, ptlim);
+				pt = _conv(t->tm_hour, fmt_padding[PAD_FMT_SHMS][PadIndex],
+					pt, ptlim);
 				continue;
 #ifdef KITCHEN_SINK
 			case 'K':
@@ -292,31 +267,35 @@ label:
 				*/
 				pt = _conv((t->tm_hour % 12) ?
 					(t->tm_hour % 12) : 12,
-					"%2d", pt, ptlim);
+					fmt_padding[PAD_FMT_SHMS][PadIndex], pt, ptlim);
 				continue;
 			case 'M':
-				pt = _conv(t->tm_min, "%02d", pt, ptlim);
+				pt = _conv(t->tm_min, fmt_padding[PAD_FMT_HMS][PadIndex],
+					pt, ptlim);
 				continue;
 			case 'm':
-				pt = _conv(t->tm_mon + 1, "%02d", pt, ptlim);
+				pt = _conv(t->tm_mon + 1,
+					fmt_padding[PAD_FMT_MONTH][PadIndex], pt, ptlim);
 				continue;
 			case 'n':
 				pt = _add("\n", pt, ptlim);
 				continue;
 			case 'p':
 				pt = _add((t->tm_hour >= (HOURSPERDAY / 2)) ?
-					Locale->pm :
-					Locale->am,
+					tptr->pm :
+					tptr->am,
 					pt, ptlim);
 				continue;
 			case 'R':
 				pt = _fmt("%H:%M", t, pt, ptlim, warnp);
 				continue;
 			case 'r':
-				pt = _fmt("%I:%M:%S %p", t, pt, ptlim, warnp);
+				pt = _fmt(tptr->ampm_fmt, t, pt, ptlim,
+					warnp);
 				continue;
 			case 'S':
-				pt = _conv(t->tm_sec, "%02d", pt, ptlim);
+				pt = _conv(t->tm_sec, fmt_padding[PAD_FMT_HMS][PadIndex],
+					pt, ptlim);
 				continue;
 			case 's':
 				{
@@ -344,7 +323,7 @@ label:
 			case 'U':
 				pt = _conv((t->tm_yday + DAYSPERWEEK -
 					t->tm_wday) / DAYSPERWEEK,
-					"%02d", pt, ptlim);
+					fmt_padding[PAD_FMT_WEEKOFYEAR][PadIndex], pt, ptlim);
 				continue;
 			case 'u':
 				/*
@@ -433,13 +412,13 @@ label:
 						w = 53;
 #endif /* defined XPG4_1994_04_09 */
 					if (*format == 'V')
-						pt = _conv(w, "%02d",
+						pt = _conv(w, fmt_padding[PAD_FMT_WEEKOFYEAR][PadIndex],
 							pt, ptlim);
 					else if (*format == 'g') {
 						*warnp = IN_ALL;
-						pt = _conv(year % 100, "%02d",
+						pt = _conv(year % 100, fmt_padding[PAD_FMT_SHORTYEAR][PadIndex],
 							pt, ptlim);
-					} else	pt = _conv(year, "%04d",
+					} else	pt = _conv(year, fmt_padding[PAD_FMT_YEAR][PadIndex],
 							pt, ptlim);
 				}
 				continue;
@@ -456,19 +435,19 @@ label:
 					(t->tm_wday ?
 					(t->tm_wday - 1) :
 					(DAYSPERWEEK - 1))) / DAYSPERWEEK,
-					"%02d", pt, ptlim);
+					fmt_padding[PAD_FMT_WEEKOFYEAR][PadIndex], pt, ptlim);
 				continue;
 			case 'w':
 				pt = _conv(t->tm_wday, "%d", pt, ptlim);
 				continue;
 			case 'X':
-				pt = _fmt(Locale->X_fmt, t, pt, ptlim, warnp);
+				pt = _fmt(tptr->X_fmt, t, pt, ptlim, warnp);
 				continue;
 			case 'x':
 				{
 				int	warn2 = IN_SOME;
 
-				pt = _fmt(Locale->x_fmt, t, pt, ptlim, &warn2);
+				pt = _fmt(tptr->x_fmt, t, pt, ptlim, &warn2);
 				if (warn2 == IN_ALL)
 					warn2 = IN_THIS;
 				if (warn2 > *warnp)
@@ -478,10 +457,11 @@ label:
 			case 'y':
 				*warnp = IN_ALL;
 				pt = _conv((t->tm_year + TM_YEAR_BASE) % 100,
-					"%02d", pt, ptlim);
+					fmt_padding[PAD_FMT_SHORTYEAR][PadIndex], pt, ptlim);
 				continue;
 			case 'Y':
-				pt = _conv(t->tm_year + TM_YEAR_BASE, "%04d",
+				pt = _conv(t->tm_year + TM_YEAR_BASE,
+					fmt_padding[PAD_FMT_YEAR][PadIndex],
 					pt, ptlim);
 				continue;
 			case 'Z':
@@ -548,13 +528,28 @@ label:
 				pt = _add(sign, pt, ptlim);
 				diff /= 60;
 				pt = _conv((diff/60)*100 + diff%60,
-					"%04d", pt, ptlim);
+					fmt_padding[PAD_FMT_YEAR][PadIndex], pt, ptlim);
 				}
 				continue;
 			case '+':
-				pt = _fmt(Locale->date_fmt, t, pt, ptlim,
+				pt = _fmt(tptr->date_fmt, t, pt, ptlim,
 					warnp);
 				continue;
+			case '-':
+				if (PadIndex != PAD_DEFAULT)
+					break;
+				PadIndex = PAD_LESS;
+				goto label;
+			case '_':
+				if (PadIndex != PAD_DEFAULT)
+					break;
+				PadIndex = PAD_SPACE;
+				goto label;
+			case '0':
+				if (PadIndex != PAD_DEFAULT)
+					break;
+				PadIndex = PAD_ZERO;
+				goto label;
 			case '%':
 			/*
 			** X311J/88-090 (4.12.3.5): if conversion char is
@@ -595,124 +590,3 @@ const char * const	ptlim;
 		++pt;
 	return pt;
 }
-
-#ifdef LOCALE_HOME
-static struct lc_time_T *
-_loc P((void))
-{
-	static const char	locale_home[] = LOCALE_HOME;
-	static const char	lc_time[] = "LC_TIME";
-	static char *		locale_buf;
-
-	int			fd;
-	int			oldsun;	/* "...ain't got nothin' to do..." */
-	char *			lbuf;
-	char *			name;
-	char *			p;
-	const char **		ap;
-	const char *		plim;
-	char			filename[FILENAME_MAX];
-	struct stat		st;
-	size_t			namesize;
-	size_t			bufsize;
-
-	/*
-	** Use localebuf.mon[0] to signal whether locale is already set up.
-	*/
-	if (localebuf.mon[0])
-		return &localebuf;
-	name = setlocale(LC_TIME, (char *) NULL);
-	if (name == NULL || *name == '\0')
-		goto no_locale;
-	/*
-	** If the locale name is the same as our cache, use the cache.
-	*/
-	lbuf = locale_buf;
-	if (lbuf != NULL && strcmp(name, lbuf) == 0) {
-		p = lbuf;
-		for (ap = (const char **) &localebuf;
-			ap < (const char **) (&localebuf + 1);
-				++ap)
-					*ap = p += strlen(p) + 1;
-		return &localebuf;
-	}
-	/*
-	** Slurp the locale file into the cache.
-	*/
-	namesize = strlen(name) + 1;
-	if (sizeof filename  <
-		((sizeof locale_home) + namesize + (sizeof lc_time)))
-			goto no_locale;
-	oldsun = 0;
-	(void) sprintf(filename, "%s/%s/%s", locale_home, name, lc_time);
-	fd = open(filename, O_RDONLY);
-	if (fd < 0) {
-		/*
-		** Old Sun systems have a different naming and data convention.
-		*/
-		oldsun = 1;
-		(void) sprintf(filename, "%s/%s/%s", locale_home,
-			lc_time, name);
-		fd = open(filename, O_RDONLY);
-		if (fd < 0)
-			goto no_locale;
-	}
-	if (fstat(fd, &st) != 0)
-		goto bad_locale;
-	if (st.st_size <= 0)
-		goto bad_locale;
-	bufsize = namesize + st.st_size;
-	locale_buf = NULL;
-	lbuf = (lbuf == NULL) ?  malloc(bufsize) : realloc(lbuf, bufsize);
-	if (lbuf == NULL)
-		goto bad_locale;
-	(void) strcpy(lbuf, name);
-	p = lbuf + namesize;
-	plim = p + st.st_size;
-	if (read(fd, p, (size_t) st.st_size) != st.st_size)
-		goto bad_lbuf;
-	if (close(fd) != 0)
-		goto bad_lbuf;
-	/*
-	** Parse the locale file into localebuf.
-	*/
-	if (plim[-1] != '\n')
-		goto bad_lbuf;
-	for (ap = (const char **) &localebuf;
-		ap < (const char **) (&localebuf + 1);
-			++ap) {
-				if (p == plim)
-					goto bad_lbuf;
-				*ap = p;
-				while (*p != '\n')
-					++p;
-				*p++ = '\0';
-	}
-	if (oldsun) {
-		/*
-		** SunOS 4 used an obsolescent format; see localdtconv(3).
-		** c_fmt had the ``short format for dates and times together''
-		** (SunOS 4 date, "%a %b %e %T %Z %Y" in the C locale);
-		** date_fmt had the ``long format for dates''
-		** (SunOS 4 strftime %C, "%A, %B %e, %Y" in the C locale).
-		** Discard the latter in favor of the former.
-		*/
-		localebuf.date_fmt = localebuf.c_fmt;
-	}
-	/*
-	** Record the successful parse in the cache.
-	*/
-	locale_buf = lbuf;
-
-	return &localebuf;
-
-bad_lbuf:
-	free(lbuf);
-bad_locale:
-	(void) close(fd);
-no_locale:
-	localebuf = C_time_locale;
-	locale_buf = NULL;
-	return &localebuf;
-}
-#endif /* defined LOCALE_HOME */

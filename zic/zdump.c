@@ -1,4 +1,9 @@
-static char	elsieid[] = "@(#)zdump.c	7.31";
+static const char	elsieid[] = "@(#)zdump.c	7.31";
+
+#ifndef lint
+static const char rcsid[] =
+  "$FreeBSD$";
+#endif /* not lint */
 
 /*
 ** This code has been made independent of the rest of the time
@@ -6,11 +11,13 @@ static char	elsieid[] = "@(#)zdump.c	7.31";
 ** You can use this code to help in verifying other implementations.
 */
 
-#include "stdio.h"	/* for stdout, stderr, perror */
-#include "string.h"	/* for strcpy */
-#include "sys/types.h"	/* for time_t */
-#include "time.h"	/* for struct tm */
-#include "stdlib.h"	/* for exit, malloc, atoi */
+#include <err.h>
+#include <stdio.h>	/* for stdout, stderr */
+#include <stdlib.h>	/* for exit, malloc, atoi */
+#include <string.h>	/* for strcpy */
+#include <sys/types.h>	/* for time_t */
+#include <time.h>	/* for struct tm */
+#include <unistd.h>
 
 #ifndef MAX_STRING_LENGTH
 #define MAX_STRING_LENGTH	1024
@@ -117,18 +124,14 @@ static char	elsieid[] = "@(#)zdump.c	7.31";
 #endif /* !defined P */
 
 extern char **	environ;
-extern int	getopt P((int argc, char * const argv[],
-			  const char * options));
-extern char *	optarg;
-extern int	optind;
 extern char *	tzname[2];
 
 static char *	abbr P((struct tm * tmp));
 static long	delta P((struct tm * newp, struct tm * oldp));
 static time_t	hunt P((char * name, time_t lot, time_t	hit));
 static size_t	longest;
-static char *	progname;
 static void	show P((char * zone, time_t t, int v));
+static void     usage(void);
 
 int
 main(argc, argv)
@@ -157,11 +160,9 @@ char *	argv[];
 #endif /* defined(TEXTDOMAINDIR) */
 	(void) textdomain(TZ_DOMAIN);
 #endif /* HAVE_GETTEXT - 0 */
-	progname = argv[0];
 	for (i = 1; i < argc; ++i)
 		if (strcmp(argv[i], "--version") == 0) {
-			(void) printf("%s\n", elsieid);
-			(void) exit(EXIT_SUCCESS);
+			errx(EXIT_SUCCESS, "%s", elsieid);
 		}
 	vflag = 0;
 	cutoff = NULL;
@@ -169,12 +170,9 @@ char *	argv[];
 		if (c == 'v')
 			vflag = 1;
 		else	cutoff = optarg;
-	if ((c != EOF && c != -1) ||
+	if ((c != -1) ||
 		(optind == argc - 1 && strcmp(argv[optind], "=") == 0)) {
-			(void) fprintf(stderr,
-_("%s: usage is %s [ --version ] [ -v ] [ -c cutoff ] zonename ...\n"),
-				argv[0], argv[0]);
-			(void) exit(EXIT_FAILURE);
+			usage();
 	}
 	if (cutoff != NULL) {
 		int	y;
@@ -201,10 +199,10 @@ _("%s: usage is %s [ --version ] [ -v ] [ -c cutoff ] zonename ...\n"),
 		fakeenv = (char **) malloc((size_t) ((i + 2) *
 			sizeof *fakeenv));
 		if (fakeenv == NULL ||
-			(fakeenv[0] = (char *) malloc(longest + 4)) == NULL) {
-					(void) perror(progname);
-					(void) exit(EXIT_FAILURE);
-		}
+			(fakeenv[0] = (char *) malloc((size_t) (longest +
+				4))) == NULL)
+					errx(EXIT_FAILURE,
+					     _("malloc() failed"));
 		to = 0;
 		(void) strcpy(fakeenv[to++], "TZ=");
 		for (from = 0; environ[from] != NULL; ++from)
@@ -263,16 +261,21 @@ _("%s: usage is %s [ --version ] [ -v ] [ -c cutoff ] zonename ...\n"),
 		t += SECSPERHOUR * HOURSPERDAY;
 		show(argv[i], t, TRUE);
 	}
-	if (fflush(stdout) || ferror(stdout)) {
-		(void) fprintf(stderr, "%s: ", argv[0]);
-		(void) perror(_("Error writing standard output"));
-		(void) exit(EXIT_FAILURE);
-	}
+	if (fflush(stdout) || ferror(stdout))
+		errx(EXIT_FAILURE, _("error writing standard output"));
 	exit(EXIT_SUCCESS);
 
 	/* gcc -Wall pacifier */
 	for ( ; ; )
 		continue;
+}
+
+static void
+usage(void)
+{
+	fprintf(stderr,
+_("usage: zdump [--version] [-v] [-c cutoff] zonename ...\n"));
+	exit(EXIT_FAILURE);
 }
 
 static time_t

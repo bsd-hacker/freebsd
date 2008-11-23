@@ -1,8 +1,13 @@
 #ifndef lint
 #ifndef NOID
-static char	elsieid[] = "@(#)scheck.c	8.15";
+static const char	elsieid[] = "@(#)scheck.c	8.15";
 #endif /* !defined lint */
 #endif /* !defined NOID */
+
+#ifndef lint
+static const char rcsid[] =
+  "$FreeBSD$";
+#endif /* not lint */
 
 /*LINTLIBRARY*/
 

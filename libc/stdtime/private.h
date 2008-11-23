@@ -5,7 +5,22 @@
 /*
 ** This file is in the public domain, so clarified as of
 ** 1996-06-05 by Arthur David Olson (arthur_david_olson@nih.gov).
+**
+** $FreeBSD$
 */
+
+/* Stuff moved from Makefile.inc to reduce clutter */
+#ifndef TM_GMTOFF
+#define TM_GMTOFF	tm_gmtoff
+#define TM_ZONE		tm_zone
+#define STD_INSPIRED	1
+#define PCTS		1
+#define HAVE_LONG_DOUBLE 1
+#define HAVE_STRERROR	1
+#define	HAVE_UNISTD_H	1
+#define	LOCALE_HOME	_PATH_LOCALE
+#define TZDIR		"/usr/share/zoneinfo"
+#endif /* ndef TM_GMTOFF */
 
 /*
 ** This header is for use ONLY with the time conversion code.
@@ -21,7 +36,9 @@
 
 #ifndef lint
 #ifndef NOID
+/*
 static char	privatehid[] = "@(#)private.h	7.53";
+*/
 #endif /* !defined NOID */
 #endif /* !defined lint */
 
@@ -123,39 +140,6 @@ static char	privatehid[] = "@(#)private.h	7.53";
 #define is_digit(c) ((unsigned)(c) - '0' <= 9)
 
 /*
-** Workarounds for compilers/systems.
-*/
-
-/*
-** SunOS 4.1.1 cc lacks prototypes.
-*/
-
-#ifndef P
-#ifdef __STDC__
-#define P(x)	x
-#endif /* defined __STDC__ */
-#ifndef __STDC__
-#define P(x)	()
-#endif /* !defined __STDC__ */
-#endif /* !defined P */
-
-/*
-** SunOS 4.1.1 headers lack EXIT_SUCCESS.
-*/
-
-#ifndef EXIT_SUCCESS
-#define EXIT_SUCCESS	0
-#endif /* !defined EXIT_SUCCESS */
-
-/*
-** SunOS 4.1.1 headers lack EXIT_FAILURE.
-*/
-
-#ifndef EXIT_FAILURE
-#define EXIT_FAILURE	1
-#endif /* !defined EXIT_FAILURE */
-
-/*
 ** SunOS 4.1.1 headers lack FILENAME_MAX.
 */
 
@@ -177,34 +161,16 @@ static char	privatehid[] = "@(#)private.h	7.53";
 #endif /* !defined FILENAME_MAX */
 
 /*
-** SunOS 4.1.1 libraries lack remove.
-*/
-
-#ifndef remove
-extern int	unlink P((const char * filename));
-#define remove	unlink
-#endif /* !defined remove */
-
-/*
-** Some ancient errno.h implementations don't declare errno.
-** But some newer errno.h implementations define it as a macro.
-** Fix the former without affecting the latter.
-*/
-#ifndef errno
-extern int errno;
-#endif /* !defined errno */
-
-/*
 ** Private function declarations.
 */
-char *	icalloc P((int nelem, int elsize));
-char *	icatalloc P((char * old, const char * new));
-char *	icpyalloc P((const char * string));
-char *	imalloc P((int n));
-void *	irealloc P((void * pointer, int size));
-void	icfree P((char * pointer));
-void	ifree P((char * pointer));
-char *	scheck P((const char *string, const char *format));
+char *	icalloc(int nelem, int elsize);
+char *	icatalloc(char * old, const char * new);
+char *	icpyalloc(const char * string);
+char *	imalloc(int n);
+void *	irealloc(void * pointer, int size);
+void	icfree(char * pointer);
+void	ifree(char * pointer);
+char *	scheck(const char *string, const char *format);
 
 
 /*
@@ -283,8 +249,8 @@ char *	scheck P((const char *string, const char *format));
 #if HAVE_INCOMPATIBLE_CTIME_R
 #undef asctime_r
 #undef ctime_r
-char *asctime_r P((struct tm const *, char *));
-char *ctime_r P((time_t const *, char *));
+char *asctime_r(struct tm const *, char *);
+char *ctime_r(time_t const *, char *);
 #endif /* HAVE_INCOMPATIBLE_CTIME_R */
 
 /*

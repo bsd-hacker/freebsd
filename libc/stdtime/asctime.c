@@ -3,15 +3,19 @@
 ** 1996-06-05 by Arthur David Olson (arthur_david_olson@nih.gov).
 */
 
+#include <sys/cdefs.h>
 #ifndef lint
 #ifndef NOID
-static char	elsieid[] = "@(#)asctime.c	7.9";
+static char	elsieid[] __unused = "@(#)asctime.c	7.9";
 #endif /* !defined NOID */
 #endif /* !defined lint */
+__FBSDID("$FreeBSD$");
 
 /*LINTLIBRARY*/
 
+#include "namespace.h"
 #include "private.h"
+#include "un-namespace.h"
 #include "tzfile.h"
 
 /*
@@ -20,8 +24,8 @@ static char	elsieid[] = "@(#)asctime.c	7.9";
 
 char *
 asctime_r(timeptr, buf)
-register const struct tm *	timeptr;
-char *				buf;
+const struct tm *	timeptr;
+char *			buf;
 {
 	static const char	wday_name[][3] = {
 		"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"
@@ -30,8 +34,8 @@ char *				buf;
 		"Jan", "Feb", "Mar", "Apr", "May", "Jun",
 		"Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
 	};
-	register const char *	wn;
-	register const char *	mn;
+	const char *	wn;
+	const char *	mn;
 
 	if (timeptr->tm_wday < 0 || timeptr->tm_wday >= DAYSPERWEEK)
 		wn = "???";
@@ -58,7 +62,7 @@ char *				buf;
 
 char *
 asctime(timeptr)
-register const struct tm *	timeptr;
+const struct tm *	timeptr;
 {
 	/*
 	** Big enough for something such as
