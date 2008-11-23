@@ -56,8 +56,6 @@
   #error "unknown compiler"
 #endif
 
-#define DEBUG_BUFRING 1
-
 #if defined(INVARIANTS) && !defined(DEBUG_BUFRING)
 #define DEBUG_BUFRING 1
 #endif
@@ -245,7 +243,10 @@ buf_ring_peek(struct buf_ring *br)
 		panic("lock not held on single consumer dequeue");
 #endif	
 	mb();
-	return (br->br_ring[br->br_cons_tail]);
+	if (br->br_cons_head == br->br_prod_tail)
+		return (NULL);
+	
+	return (br->br_ring[br->br_cons_head]);
 }
 
 static __inline int
