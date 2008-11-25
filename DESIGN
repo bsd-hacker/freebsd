@@ -1,0 +1,10 @@
+This file contains some design decissions for various things in this branch.
+
+ - Add probes only for locks which are acquired in one functions and released
+   in another function. Locks which are aquired and released in the same
+   function should be easy to pair in the code, wheras inter-function
+   locking is better checked in dtrace.
+ - Probes for locks should be fired after locking and before releasing to
+   prevent races (to provide data/function stability in dtrace, see the
+   output of "dtrace -v ..." and the corresponding dtrace docs).
+
