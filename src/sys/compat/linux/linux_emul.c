@@ -30,6 +30,8 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_compat.h"
+#include "opt_kdtrace.h"
+#include "opt_ktrace.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -38,11 +40,15 @@ __FBSDID("$FreeBSD$");
 #include <sys/lock.h>
 #include <sys/malloc.h>
 #include <sys/mutex.h>
+#include <sys/sdt.h>
 #include <sys/sx.h>
 #include <sys/proc.h>
 #include <sys/syscallsubr.h>
 #include <sys/sysproto.h>
 #include <sys/unistd.h>
+#ifdef KTRACE
+#include <sys/ktrace.h>
+#endif
 
 #ifdef COMPAT_LINUX32
 #include <machine/../linux32/linux.h>
@@ -55,6 +61,55 @@ __FBSDID("$FreeBSD$");
 #include <compat/linux/linux_emul.h>
 #include <compat/linux/linux_futex.h>
 
+/*
+ * In this file we define the provider for the entire linuxulator. All
+ * modules (= files of the linuxulator) use it.
+ *
+ * We define a different name depending on the emulated bitsize, see
+ * ../../<ARCH>/linux*/linux.h, e.g.:
+ * 	native bitsize		= linuxulator
+ * 	amd64, 32bit emulation	= linuxulator32
+ */
+SDT_PROVIDER_DEFINE(LINUX_DTRACE);
+
+/* DTrace probes in this module. */
+SDT_PROBE_DEFINE(LINUX_DTRACE, emul, em_find, entry);
+SDT_PROBE_ARGTYPE(LINUX_DTRACE, emul, em_find, entry, 0, "struct proc *");
+SDT_PROBE_ARGTYPE(LINUX_DTRACE, emul, em_find, entry, 1, "int");
+SDT_PROBE_DEFINE(LINUX_DTRACE, emul, em_find, emul_locked);
+SDT_PROBE_ARGTYPE(LINUX_DTRACE, emul, em_find, emul_locked, 0, "struct mtx *");
+SDT_PROBE_DEFINE(LINUX_DTRACE, emul, em_find, emul_unlock);
+SDT_PROBE_ARGTYPE(LINUX_DTRACE, emul, em_find, emul_unlock, 0, "struct mtx *");
+SDT_PROBE_DEFINE(LINUX_DTRACE, emul, em_find, return);
+SDT_PROBE_ARGTYPE(LINUX_DTRACE, emul, em_find, return, 0,
+    "struct linux_emuldata *");
+SDT_PROBE_DEFINE(LINUX_DTRACE, emul, proc_init, entry);
+SDT_PROBE_ARGTYPE(LINUX_DTRACE, emul, proc_init, entry, 0, "struct thread *");
+SDT_PROBE_ARGTYPE(LINUX_DTRACE, emul, proc_init, entry, 1, "pid_t");
+SDT_PROBE_ARGTYPE(LINUX_DTRACE, emul, proc_init, entry, 2, "int");
+SDT_PROBE_DEFINE(LINUX_DTRACE, emul, proc_init, emul_unlock);
+SDT_PROBE_ARGTYPE(LINUX_DTRACE, emul, proc_init, emul_unlock, 0,
+    "struct mtx *");
+SDT_PROBE_DEFINE(LINUX_DTRACE, emul, proc_init, return);
+SDT_PROBE_DEFINE(LINUX_DTRACE, emul, proc_exit, entry);
+SDT_PROBE_ARGTYPE(LINUX_DTRACE, emul, proc_exit, entry, 0, "struct proc *");
+SDT_PROBE_DEFINE(LINUX_DTRACE, emul, proc_exit, emul_unlock);
+SDT_PROBE_ARGTYPE(LINUX_DTRACE, emul, proc_exit, emul_unlock, 0,
+    "struct mtx *");
+SDT_PROBE_DEFINE(LINUX_DTRACE, emul, proc_exit, reparent);
+SDT_PROBE_ARGTYPE(LINUX_DTRACE, emul, proc_exit, reparent, 0, "pid_t");
+SDT_PROBE_ARGTYPE(LINUX_DTRACE, emul, proc_exit, reparent, 1, "pid_t");
+SDT_PROBE_ARGTYPE(LINUX_DTRACE, emul, proc_exit, reparent, 2, "struct proc *");
+SDT_PROBE_DEFINE(LINUX_DTRACE, emul, proc_exit, child_clear_tid_error);
+SDT_PROBE_ARGTYPE(LINUX_DTRACE, emul, proc_exit, child_clear_tid_error, 0,
+    "int");
+SDT_PROBE_DEFINE(LINUX_DTRACE, emul, proc_exit, return);
+SDT_PROBE_DEFINE(LINUX_DTRACE, emul, proc_exec, entry);
+SDT_PROBE_ARGTYPE(LINUX_DTRACE, emul, proc_exec, entry, 0, "struct proc *");
+SDT_PROBE_ARGTYPE(LINUX_DTRACE, emul, proc_exec, entry, 0,
+    "struct image_params *");
+SDT_PROBE_DEFINE(LINUX_DTRACE, emul, proc_exec, return);
+
 struct sx	emul_shared_lock;
 struct mtx	emul_lock;
 
@@ -64,14 +119,23 @@ em_find(struct proc *p, int locked)
 {
 	struct linux_emuldata *em;
 
-	if (locked == EMUL_DOLOCK)
+	SDT_PROBE(LINUX_DTRACE, emul, em_find, entry, p, locked, 0, 0, 0);
+
+	if (locked == EMUL_DOLOCK) {
 		EMUL_LOCK(&emul_lock);
+		SDT_PROBE(LINUX_DTRACE, emul, em_find, emul_lock, &emul_lock,
+		    0, 0, 0, 0);
+	}
 
 	em = p->p_emuldata;
 
-	if (em == NULL && locked == EMUL_DOLOCK)
+	if (em == NULL && locked == EMUL_DOLOCK) {
+		SDT_PROBE(LINUX_DTRACE, emul, em_find, emul_unlock, &emul_lock,
+		    0, 0, 0, 0);
 		EMUL_UNLOCK(&emul_lock);
+	}
 
+	SDT_PROBE(LINUX_DTRACE, emul, em_find, return, em, 0, 0, 0, 0);
 	return (em);
 }
 
@@ -81,16 +145,24 @@ linux_proc_init(struct thread *td, pid_t child, int flags)
 	struct linux_emuldata *em, *p_em;
 	struct proc *p;
 
+	SDT_PROBE(LINUX_DTRACE, emul, proc_init, entry, td, child, flags, 0, 0);
+
 	if (child != 0) {
-		/* non-exec call */
+		/* fork or create a thread */
+
 		em = malloc(sizeof *em, M_LINUX, M_WAITOK | M_ZERO);
 		em->pid = child;
 		em->pdeath_signal = 0;
 		em->robust_futexes = NULL;
 		if (flags & LINUX_CLONE_THREAD) {
 			/* handled later in the code */
+			SDT_PROBE(LINUX_DTRACE, emul, proc_init, create_thread,
+			    0, 0, 0, 0, 0);
 		} else {
 			struct linux_emuldata_shared *s;
+
+			SDT_PROBE(LINUX_DTRACE, emul, proc_init, fork, 0, 0, 0,
+			    0, 0);
 
 			s = malloc(sizeof *s, M_LINUX, M_WAITOK | M_ZERO);
 			s->refs = 1;
@@ -100,6 +172,10 @@ linux_proc_init(struct thread *td, pid_t child, int flags)
 			em->shared = s;
 		}
 	} else {
+		/* exec */
+
+		SDT_PROBE(LINUX_DTRACE, emul, proc_init, exec, 0, 0, 0, 0, 0);
+
 		/* lookup the old one */
 		em = em_find(td->td_proc, EMUL_DOLOCK);
 		KASSERT(em != NULL, ("proc_init: emuldata not found in exec case.\n"));
@@ -134,8 +210,7 @@ linux_proc_init(struct thread *td, pid_t child, int flags)
 			 * rwlock held
 			 */
 		}
-	}
-	if (child != 0) {
+
 		EMUL_SHARED_WLOCK(&emul_shared_lock);
 		LIST_INSERT_HEAD(&em->shared->threads, em, threads);
 		EMUL_SHARED_WUNLOCK(&emul_shared_lock);
@@ -144,9 +219,13 @@ linux_proc_init(struct thread *td, pid_t child, int flags)
 		KASSERT(p != NULL, ("process not found in proc_init\n"));
 		p->p_emuldata = em;
 		PROC_UNLOCK(p);
-	} else
+	} else {
+		SDT_PROBE(LINUX_DTRACE, emul, proc_init, emul_unlock,
+		    &emul_lock, 0, 0, 0, 0);
 		EMUL_UNLOCK(&emul_lock);
+	}
 
+	SDT_PROBE(LINUX_DTRACE, emul, proc_init, return, 0, 0, 0, 0, 0);
 	return (0);
 }
 
@@ -162,17 +241,25 @@ linux_proc_exit(void *arg __unused, struct proc *p)
 	if (__predict_true(p->p_sysent != &elf_linux_sysvec))
 		return;
 
+	SDT_PROBE(LINUX_DTRACE, emul, proc_exit, entry, p, 0, 0, 0, 0);
+
 	release_futexes(p);
 
 	/* find the emuldata */
 	em = em_find(p, EMUL_DOLOCK);
-
 	KASSERT(em != NULL, ("proc_exit: emuldata not found.\n"));
 
 	/* reparent all procs that are not a thread leader to initproc */
 	if (em->shared->group_pid != p->p_pid) {
+		SDT_PROBE(LINUX_DTRACE, emul, proc_exit, reparent,
+		    em->shared->group_pid, p->p_pid, p, 0, 0);
+
 		child_clear_tid = em->child_clear_tid;
+
+		SDT_PROBE(LINUX_DTRACE, emul, proc_exit, emul_unlock,
+		    &emul_lock, 0, 0, 0, 0);
 		EMUL_UNLOCK(&emul_lock);
+
 		sx_xlock(&proctree_lock);
 		wakeup(initproc);
 		PROC_LOCK(p);
@@ -182,6 +269,9 @@ linux_proc_exit(void *arg __unused, struct proc *p)
 		sx_xunlock(&proctree_lock);
 	} else {
 		child_clear_tid = em->child_clear_tid;
+
+		SDT_PROBE(LINUX_DTRACE, emul, proc_exit, emul_unlock,
+		    &emul_lock, 0, 0, 0, 0);
 		EMUL_UNLOCK(&emul_lock);	
 	}
 
@@ -201,7 +291,13 @@ linux_proc_exit(void *arg __unused, struct proc *p)
 
 		error = copyout(&null, child_clear_tid, sizeof(null));
 		if (error) {
+			SDT_PROBE(LINUX_DTRACE, emul, proc_exit,
+			    child_clear_tid_error, error, 0, 0, 0, 0);
+
 			free(em, M_LINUX);
+
+			SDT_PROBE(LINUX_DTRACE, emul, proc_exit, return, 0, 0,
+			    0, 0, 0);
 			return;
 		}
 
@@ -217,8 +313,11 @@ linux_proc_exit(void *arg __unused, struct proc *p)
 		 * this cannot happen at the moment and if this happens it
 		 * probably means there is a user space bug
 		 */
-		if (error)
+		if (error) {
+			SDT_PROBE(LINUX_DTRACE, emul, proc_exit, futex_failed,
+			    0, 0, 0, 0, 0);
 			printf(LMSG("futex stuff in proc_exit failed.\n"));
+		}
 	}
 
 	/* clean the stuff up */
@@ -240,9 +339,13 @@ linux_proc_exit(void *arg __unused, struct proc *p)
 			psignal(q, em->pdeath_signal);
 		}
 		PROC_UNLOCK(q);
+		SDT_PROBE(LINUX_DTRACE, emul, proc_exit, emul_unlock,
+		    &emul_lock, 0, 0, 0, 0);
 		EMUL_UNLOCK(&emul_lock);
 	}
 	sx_xunlock(&proctree_lock);
+
+	SDT_PROBE(LINUX_DTRACE, emul, proc_exit, return, 0, 0, 0, 0, 0);
 }
 
 /*
@@ -253,38 +356,44 @@ linux_proc_exit(void *arg __unused, struct proc *p)
 void 
 linux_proc_exec(void *arg __unused, struct proc *p, struct image_params *imgp)
 {
-	if (__predict_false(imgp->sysent == &elf_linux_sysvec
-	    && p->p_sysent != &elf_linux_sysvec))
-		linux_proc_init(FIRST_THREAD_IN_PROC(p), p->p_pid, 0);
-	if (__predict_false(imgp->sysent != &elf_linux_sysvec
-	    && p->p_sysent == &elf_linux_sysvec)) {
-		struct linux_emuldata *em;
+	if (__predict_false(imgp->sysent == &elf_linux_sysvec) {
+		SDT_PROBE(LINUX_DTRACE, emul, proc_exec, entry, p, imgp, 0, 0,
+		    0);
 
-		/* 
-		 * XXX:There's a race because here we assign p->p_emuldata NULL
-		 * but the process is still counted as linux one for a short
- 		 * time so some other process might reference it and try to
- 		 * access its p->p_emuldata and panicing on a NULL reference.
-		 */
-		em = em_find(p, EMUL_DONTLOCK);
+		if (p->p_sysent != &elf_linux_sysvec))
+			linux_proc_init(FIRST_THREAD_IN_PROC(p), p->p_pid, 0);
+		else {
+			struct linux_emuldata *em;
 
-		KASSERT(em != NULL, ("proc_exec: emuldata not found.\n"));
+			/* 
+			 * XXX:There's a race because here we assign
+			 * p->p_emuldata NULL but the process is still counted
+			 * as linux one for a short time so some other process
+			 * might reference it and try to access its
+			 * p->p_emuldata and panicing on a NULL reference.
+			 */
+			em = em_find(p, EMUL_DONTLOCK);
+			KASSERT(em != NULL,
+			    ("proc_exec: emuldata not found.\n"));
 
-		EMUL_SHARED_WLOCK(&emul_shared_lock);
-		LIST_REMOVE(em, threads);
+			EMUL_SHARED_WLOCK(&emul_shared_lock);
+			LIST_REMOVE(em, threads);
 
-		PROC_LOCK(p);
-		p->p_emuldata = NULL;
-		PROC_UNLOCK(p);
+			PROC_LOCK(p);
+			p->p_emuldata = NULL;
+			PROC_UNLOCK(p);
 
-		em->shared->refs--;
-		if (em->shared->refs == 0) {
-			EMUL_SHARED_WUNLOCK(&emul_shared_lock);
-			free(em->shared, M_LINUX);
-		} else
-			EMUL_SHARED_WUNLOCK(&emul_shared_lock);
+			em->shared->refs--;
+			if (em->shared->refs == 0) {
+				EMUL_SHARED_WUNLOCK(&emul_shared_lock);
+				free(em->shared, M_LINUX);
+			} else
+				EMUL_SHARED_WUNLOCK(&emul_shared_lock);
 
-		free(em, M_LINUX);
+			free(em, M_LINUX);
+		}
+
+		SDT_PROBE(LINUX_DTRACE, emul, proc_exec, return, 0, 0, 0, 0, 0);
 	}
 }
 
