@@ -1,5 +1,3 @@
-#!/usr/sbin/dtrace -qs
-
 /*-
  * Copyright (c) 2008 Alexander Leidinger <netchild@FreeBSD.org>
  * All rights reserved.
@@ -30,37 +28,29 @@
  * $FreeBSD$
  */
 
+#ifndef _LINUX_DTRACE_H_
+#define _LINUX_DTRACE_H_
+
 /*
- * Check if the emul lock is correctly acquired/released:
- *  - no recursive locking
- *  - no unlocking of already unlocked one
+ * Some wrapper macros to make it more easy to handle the linuxulator
+ * providers and to allow to make the name depend upon the bitsize.
  */
 
-linuxulator*::emul_locked
-/check[probeprov, arg0] > 0/
-{
-	printf("ERROR: recursive lock of emul_lock (%p),", arg0);
-	printf("       or missing SDT probe in kernel. Stack trace follows:");
-	stack();
-}
+#define	LIN_SDT_PROVIDER_DEFINE(x)	SDT_PROVIDER_DEFINE(x)
+#define LIN_SDT_PROVIDER_DECLARE(x)	SDT_PROVIDER_DECLARE(x)
 
-linuxulator*::emul_locked
-{
-	++check[probeprov, arg0];
-}
+#define	_LIN_SDT_PROBE_DEFINE(a, b, c, d)	SDT_PROBE_DEFINE(a, b, c, d)
+#define	LIN_SDT_PROBE_DEFINE(a, b, c)	_LIN_SDT_PROBE_DEFINE(LINUX_DTRACE, a, \
+    b, c)
 
-linuxulator*::emul_unlock
-/check[probeprov, arg0] == 0/
-{
-	printf("ERROR: unlock attemt of unlocked emul_lock (%p),", arg0);
-	printf("       missing SDT probe in kernel, or dtrace program started");
-	printf("       while the emul_lock was already held (race condition).");
-	printf("       Stack trace follows:");
-	stack();
-}
+#define	_LIN_SDT_PROBE_ARGTYPE(a, b, c, d, e, f)	SDT_PROBE_ARGTYPE(a, b,\
+    c, d, e, f)
+#define LIN_SDT_PROBE_ARGTYPE(a, b, c, d, e)	_LIN_SDT_PROBE_ARGTYPE( \
+    LINUX_DTRACE, a, b, c, d, e)
 
-linuxulator*::emul_unlock
-{
-	--check[probeprov, arg0];
-}
+#define	_LIN_SDT_PROBE(a, b, c, d, e, f, g, h, i)	SDT_PROBE(a, b, c, d, \
+    e, f, g, h, i)
+#define	LIN_SDT_PROBE(a, b, c, d, e, f, g, h)	_LIN_SDT_PROBE(LINUX_DTRACE, \
+    a, b, c, d, e, f, g, h)
 
+#endif /* _LINUX_DTRACE_H_ */

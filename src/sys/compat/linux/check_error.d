@@ -30,37 +30,14 @@
  * $FreeBSD$
  */
 
-/*
- * Check if the emul lock is correctly acquired/released:
- *  - no recursive locking
- *  - no unlocking of already unlocked one
- */
+/* Report error conditions. */
 
-linuxulator*::emul_locked
-/check[probeprov, arg0] > 0/
+linuxulator*:emul:proc_exit:child_clear_tid_error,
+linuxulator*:emul:proc_exit:futex_failed,
+linuxulator*:emul:linux_schedtail:copyout_error
 {
-	printf("ERROR: recursive lock of emul_lock (%p),", arg0);
-	printf("       or missing SDT probe in kernel. Stack trace follows:");
+	printf("ERROR: %s in %s:%s:%s\n", probename, probeprov, probemod, probefunc);
 	stack();
-}
-
-linuxulator*::emul_locked
-{
-	++check[probeprov, arg0];
-}
-
-linuxulator*::emul_unlock
-/check[probeprov, arg0] == 0/
-{
-	printf("ERROR: unlock attemt of unlocked emul_lock (%p),", arg0);
-	printf("       missing SDT probe in kernel, or dtrace program started");
-	printf("       while the emul_lock was already held (race condition).");
-	printf("       Stack trace follows:");
-	stack();
-}
-
-linuxulator*::emul_unlock
-{
-	--check[probeprov, arg0];
+	/* ustack(); */	/* needs to be enabled when PID tracing is available in FreeBSD dtrace */
 }
 

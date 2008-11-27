@@ -31,36 +31,39 @@
  */
 
 /*
- * Check if the emul lock is correctly acquired/released:
- *  - no recursive locking
- *  - no unlocking of already unlocked one
+ * Some statistics (all per provider):
+ *  - number of calls to a function per executable binary (not per PID!)
+ *    - allows to see where an optimization would be beneficial for a given
+ *      application
+ *  - graph of CPU time spend in functions per executable binary
+ *    - together with the number of calls to this function this allows
+ *      to determine if a kernel optimization would be beneficial / is
+ *      possible for a given application
+ *  - graph of longest running (CPU-time!) function in total
+ *    - may help finding problem cases in the kernel code
  */
 
-linuxulator*::emul_locked
-/check[probeprov, arg0] > 0/
+linuxulator*:::entry
 {
-	printf("ERROR: recursive lock of emul_lock (%p),", arg0);
-	printf("       or missing SDT probe in kernel. Stack trace follows:");
-	stack();
+	self->time[funcname] = vtimestamp;
+	@calls[probeprov, execname, probefunc] = count();
 }
 
-linuxulator*::emul_locked
+linuxulator*:::return
+/self->time[funcname] != 0/
 {
-	++check[probeprov, arg0];
+	this->timediff = self->time[probefunc] - vtimestamp;
+
+	@stats[probeprov, execname, probefunc] = quantize(this->timediff);
+	@longest[probeprov, probefunc] = max(this->timediff);
+	
+	self->time[probefunc] = 0;
 }
 
-linuxulator*::emul_unlock
-/check[probeprov, arg0] == 0/
+END
 {
-	printf("ERROR: unlock attemt of unlocked emul_lock (%p),", arg0);
-	printf("       missing SDT probe in kernel, or dtrace program started");
-	printf("       while the emul_lock was already held (race condition).");
-	printf("       Stack trace follows:");
-	stack();
-}
-
-linuxulator*::emul_unlock
-{
-	--check[probeprov, arg0];
+	printa("Number of calls per provider/application/kernel function", @calls);
+	printa("CPU-timing statistics per provider/application/kernel function (in ns)", @stats);
+	printa("Longest running (CPU-time!) functions per provider (in ns)", @longest);
 }
 
