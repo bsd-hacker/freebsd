@@ -45,12 +45,12 @@
 
 linuxulator*:::entry
 {
-	self->time[funcname] = vtimestamp;
+	self->time[probefunc] = vtimestamp;
 	@calls[probeprov, execname, probefunc] = count();
 }
 
 linuxulator*:::return
-/self->time[funcname] != 0/
+/self->time[probefunc] != 0/
 {
 	this->timediff = self->time[probefunc] - vtimestamp;
 
