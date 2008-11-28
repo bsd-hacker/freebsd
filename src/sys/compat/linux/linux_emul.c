@@ -31,7 +31,6 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_compat.h"
 #include "opt_kdtrace.h"
-#include "opt_ktrace.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -46,9 +45,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/syscallsubr.h>
 #include <sys/sysproto.h>
 #include <sys/unistd.h>
-#ifdef KTRACE
-#include <sys/ktrace.h>
-#endif
 
 #ifdef COMPAT_LINUX32
 #include <machine/../linux32/linux.h>
