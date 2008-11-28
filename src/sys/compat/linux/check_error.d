@@ -41,3 +41,18 @@ linuxulator*:emul:linux_schedtail:copyout_error
 	/* ustack(); */	/* needs to be enabled when PID tracing is available in FreeBSD dtrace */
 }
 
+linuxulator*:util:linux_driver_get_name_dev:nullcall,
+linuxulator*:util:linux_driver_get_major_minor:nullcall
+{
+	printf("WARNING: %s:%s:%s:%s in application %s, maybe an application error?\n", probename, probeprov, probemod, probefunc, execname);
+	stack();
+	/* ustack(); */ /* needs to be enabled when PID tracing is available in FreeBSD dtrace */
+}
+
+linuxulator*:util:linux_driver_get_major_minor:notfound
+{
+	printf("WARNING: Application %s failed to find %s in %s:%s:%s, this may or may not be a problem.\n", execname, arg0, probename, probeprov, probemod);
+	stack();
+	/* ustack(); */ /* needs to be enabled when PID tracing is available in FreeBSD dtrace */
+}
+
