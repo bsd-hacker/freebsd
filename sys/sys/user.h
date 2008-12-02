@@ -310,7 +310,7 @@ struct kinfo_ofile {
 #endif
 
 struct kinfo_file {
-	int	kf_structsize;			/* Size of kinfo_file. */
+	int	kf_structsize;			/* Variable size of record. */
 	int	kf_type;			/* Descriptor type. */
 	int	kf_fd;				/* Array index. */
 	int	kf_ref_count;			/* Reference count. */
@@ -379,7 +379,7 @@ struct kinfo_ovmentry {
 #endif
 
 struct kinfo_vmentry {
-	int	 kve_structsize;		/* Size of kinfo_vmmapentry. */
+	int	 kve_structsize;		/* Variable size of record. */
 	int	 kve_type;			/* Type of map entry. */
 	uint64_t kve_start;			/* Starting address. */
 	uint64_t kve_end;			/* Finishing address. */
