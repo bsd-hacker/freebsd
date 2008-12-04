@@ -949,7 +949,9 @@ passout:
 			ia6->ia_ifa.if_opackets++;
 			ia6->ia_ifa.if_obytes += m->m_pkthdr.len;
 		}
+		IF_AFDATA_LOCK(ifp);
 		error = nd6_output(ifp, origifp, m, dst, ro->ro_rt);
+		IF_AFDATA_UNLOCK(ifp);
 		goto done;
 	}
 
@@ -1088,7 +1090,9 @@ sendorfree:
 				ia->ia_ifa.if_opackets++;
 				ia->ia_ifa.if_obytes += m->m_pkthdr.len;
 			}
+			IF_AFDATA_LOCK(ifp);
 			error = nd6_output(ifp, origifp, m, dst, ro->ro_rt);
+			IF_AFDATA_UNLOCK(ifp);
 		} else
 			m_freem(m);
 	}

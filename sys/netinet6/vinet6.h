@@ -38,6 +38,7 @@
 #include <sys/types.h>
 
 #include <net/if_var.h>
+#include <net/if_llatbl.h>
 
 #include <netinet/icmp6.h>
 #include <netinet/in.h>
@@ -77,7 +78,7 @@ struct vnet_inet6 {
 
 	int				_nd6_inuse;
 	int				_nd6_allocated;
-	struct llinfo_nd6		_llinfo_nd6;
+	struct llentry			_llinfo_nd6;
 	struct nd_drhead		_nd_defrouter;
 	struct nd_prhead 		_nd_prefix;
 	struct ifnet *			_nd6_defifp;
