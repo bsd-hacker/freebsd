@@ -889,6 +889,7 @@ em_detach(device_t dev)
 	em_free_pci_resources(adapter);
 	bus_generic_detach(dev);
 	if_free(ifp);
+	drbr_free(adapter->br, M_DEVBUF);
 
 	em_free_transmit_structures(adapter);
 	em_free_receive_structures(adapter);
@@ -995,23 +996,22 @@ em_transmit_locked(struct ifnet *ifp, struct mbuf *m)
 	if (((ifp->if_drv_flags & (IFF_DRV_RUNNING|IFF_DRV_OACTIVE)) !=
 	    IFF_DRV_RUNNING)
 	    || (!adapter->link_active)) {
-		if ((error = buf_ring_enqueue(adapter->br, m)))
-			m_freem(m);
+		error = drbr_enqueue(adapter->br, m);
 		return (error);
 	}
 	
 	if (buf_ring_empty(adapter->br) &&
 	    (adapter->num_tx_desc_avail > EM_TX_OP_THRESHOLD)) {
-		if (em_xmit(adapter, &m))
-			if (m && (error = buf_ring_enqueue(adapter->br, m)) != 0) {
-				m_freem(m);
+		if (em_xmit(adapter, &m)) {
+			if (m && (error = drbr_enqueue(adapter->br, m)) != 0) {
 				return (error);
 			}
-		
-	} else if ((error = buf_ring_enqueue(adapter->br, m)) != 0) {
-		m_freem(m);
+		} else{
+			/* Send a copy of the frame to the BPF listener */
+			ETHER_BPF_MTAP(ifp, m);
+		}
+	} else if ((error = drbr_enqueue(adapter->br, m)) != 0)
 		return (error);
-	}
 	
 	if (!buf_ring_empty(adapter->br))
 		em_start_locked(ifp);
@@ -1122,10 +1122,8 @@ em_transmit(struct ifnet *ifp, struct mbuf *m)
 		if (ifp->if_drv_flags & IFF_DRV_RUNNING)
 			error = em_transmit_locked(ifp, m);
 		EM_TX_UNLOCK(adapter);
-	} else  {
-		if ((error = buf_ring_enqueue(adapter->br, m)))
-			m_freem(m);
-	}
+	} else 
+		error = drbr_enqueue(adapter->br, m);
 
 	return (error);
 }
