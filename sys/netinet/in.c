@@ -53,6 +53,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/in_var.h>
 #include <netinet/in_pcb.h>
 #include <netinet/ip_var.h>
+#include <netinet/vinet.h>
 
 static int in_mask2len(struct in_addr *);
 static void in_len2mask(struct in_addr *, int);
@@ -66,17 +67,18 @@ static int	in_ifinit(struct ifnet *,
 	    struct in_ifaddr *, struct sockaddr_in *, int);
 static void	in_purgemaddrs(struct ifnet *);
 
-static int subnetsarelocal = 0;
+#ifdef VIMAGE_GLOBALS
+static int subnetsarelocal;
+static int sameprefixcarponly;
+extern struct inpcbinfo ripcbinfo;
+#endif
+
 SYSCTL_V_INT(V_NET, vnet_inet, _net_inet_ip, OID_AUTO, subnets_are_local,
 	CTLFLAG_RW, subnetsarelocal, 0,
 	"Treat all subnets as directly connected");
-static int sameprefixcarponly = 0;
 SYSCTL_V_INT(V_NET, vnet_inet, _net_inet_ip, OID_AUTO, same_prefix_carp_only,
 	CTLFLAG_RW, sameprefixcarponly, 0,
 	"Refuse to create same prefixes on different interfaces");
-
-extern struct inpcbinfo ripcbinfo;
-extern struct inpcbinfo udbinfo;
 
 /*
  * Return 1 if an internet address is for a ``local'' host
