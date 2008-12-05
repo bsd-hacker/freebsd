@@ -24,15 +24,20 @@
  * SUCH DAMAGE.
  */
 
+#include <dev/usb2/include/usb2_mfunc.h>
+#include <dev/usb2/include/usb2_error.h>
+#include <dev/usb2/include/usb2_standard.h>
+#include <dev/usb2/include/usb2_defs.h>
+
 #include <dev/usb2/core/usb2_core.h>
 #include <dev/usb2/core/usb2_busdma.h>
 #include <dev/usb2/core/usb2_process.h>
 #include <dev/usb2/core/usb2_transfer.h>
+#include <dev/usb2/core/usb2_device.h>
 #include <dev/usb2/core/usb2_util.h>
 
-#include <dev/usb2/include/usb2_mfunc.h>
-#include <dev/usb2/include/usb2_error.h>
-#include <dev/usb2/include/usb2_standard.h>
+#include <dev/usb2/controller/usb2_controller.h>
+#include <dev/usb2/controller/usb2_bus.h>
 
 static void usb2_dma_tag_create(struct usb2_dma_tag *udt, uint32_t size, uint32_t align);
 static void usb2_dma_tag_destroy(struct usb2_dma_tag *udt);
@@ -597,6 +602,12 @@ usb2_pc_load_mem(struct usb2_page_cache *pc, uint32_t size, uint8_t sync)
 			uptag = pc->tag_parent;
 
 			/*
+			 * We have to unload the previous loaded DMA
+			 * pages before trying to load a new one!
+			 */
+			bus_dmamap_unload(pc->tag, pc->map);
+
+			/*
 			 * Try to load memory into DMA.
 			 */
 			err = bus_dmamap_load(
@@ -610,6 +621,12 @@ usb2_pc_load_mem(struct usb2_page_cache *pc, uint32_t size, uint8_t sync)
 				return (1);
 			}
 		} else {
+
+			/*
+			 * We have to unload the previous loaded DMA
+			 * pages before trying to load a new one!
+			 */
+			bus_dmamap_unload(pc->tag, pc->map);
 
 			/*
 			 * Try to load memory into DMA. The callback
@@ -639,6 +656,10 @@ usb2_pc_load_mem(struct usb2_page_cache *pc, uint32_t size, uint8_t sync)
 void
 usb2_pc_cpu_invalidate(struct usb2_page_cache *pc)
 {
+	if (pc->page_offset_end == pc->page_offset_buf) {
+		/* nothing has been loaded into this page cache! */
+		return;
+	}
 	bus_dmamap_sync(pc->tag, pc->map,
 	    BUS_DMASYNC_POSTWRITE | BUS_DMASYNC_POSTREAD);
 	return;
@@ -650,6 +671,10 @@ usb2_pc_cpu_invalidate(struct usb2_page_cache *pc)
 void
 usb2_pc_cpu_flush(struct usb2_page_cache *pc)
 {
+	if (pc->page_offset_end == pc->page_offset_buf) {
+		/* nothing has been loaded into this page cache! */
+		return;
+	}
 	bus_dmamap_sync(pc->tag, pc->map,
 	    BUS_DMASYNC_PREWRITE | BUS_DMASYNC_PREREAD);
 	return;
@@ -953,6 +978,12 @@ usb2_pc_load_mem(struct usb2_page_cache *pc, uint32_t size, uint8_t sync)
 
 	if (size > 0) {
 
+		/*
+		 * We have to unload the previous loaded DMA
+		 * pages before trying to load a new one!
+		 */
+		bus_dmamap_unload(pc->tag, pc->map);
+
 		/* try to load memory into DMA using using no wait option */
 		if (bus_dmamap_load(pc->tag, pc->map, pc->buffer,
 		    size, NULL, BUS_DMA_NOWAIT)) {
@@ -990,6 +1021,10 @@ usb2_pc_cpu_invalidate(struct usb2_page_cache *pc)
 
 	len = pc->page_offset_end - pc->page_offset_buf;
 
+	if (len == 0) {
+		/* nothing has been loaded into this page cache */
+		return;
+	}
 	bus_dmamap_sync(pc->tag, pc->map, 0, len,
 	    BUS_DMASYNC_POSTWRITE | BUS_DMASYNC_POSTREAD);
 	return;
@@ -1005,6 +1040,10 @@ usb2_pc_cpu_flush(struct usb2_page_cache *pc)
 
 	len = pc->page_offset_end - pc->page_offset_buf;
 
+	if (len == 0) {
+		/* nothing has been loaded into this page cache */
+		return;
+	}
 	bus_dmamap_sync(pc->tag, pc->map, 0, len,
 	    BUS_DMASYNC_PREWRITE | BUS_DMASYNC_PREREAD);
 	return;
@@ -1196,9 +1235,9 @@ usb2_bdma_work_loop(struct usb2_xfer_queue *pq)
 
 	if (xfer->error) {
 		/* some error happened */
-		mtx_lock(xfer->usb2_mtx);
+		USB_BUS_LOCK(xfer->udev->bus);
 		usb2_transfer_done(xfer, 0);
-		mtx_unlock(xfer->usb2_mtx);
+		USB_BUS_UNLOCK(xfer->udev->bus);
 		return;
 	}
 	if (!xfer->flags_int.bdma_setup) {
@@ -1270,9 +1309,9 @@ usb2_bdma_work_loop(struct usb2_xfer_queue *pq)
 
 	}
 	if (info->dma_error) {
-		mtx_lock(xfer->usb2_mtx);
+		USB_BUS_LOCK(xfer->udev->bus);
 		usb2_transfer_done(xfer, USB_ERR_DMA_LOAD_FAILED);
-		mtx_unlock(xfer->usb2_mtx);
+		USB_BUS_UNLOCK(xfer->udev->bus);
 		return;
 	}
 	if (info->dma_currframe != info->dma_nframes) {
@@ -1353,12 +1392,10 @@ usb2_bdma_pre_sync(struct usb2_xfer *xfer)
 
 	while (nframes--) {
 
-		if (pc->page_offset_buf != pc->page_offset_end) {
-			if (pc->isread) {
-				usb2_pc_cpu_invalidate(pc);
-			} else {
-				usb2_pc_cpu_flush(pc);
-			}
+		if (pc->isread) {
+			usb2_pc_cpu_invalidate(pc);
+		} else {
+			usb2_pc_cpu_flush(pc);
 		}
 		pc++;
 	}
@@ -1389,11 +1426,8 @@ usb2_bdma_post_sync(struct usb2_xfer *xfer)
 	pc = xfer->frbuffers;
 
 	while (nframes--) {
-
-		if (pc->page_offset_buf != pc->page_offset_end) {
-			if (pc->isread) {
-				usb2_pc_cpu_invalidate(pc);
-			}
+		if (pc->isread) {
+			usb2_pc_cpu_invalidate(pc);
 		}
 		pc++;
 	}

@@ -77,8 +77,7 @@ __FBSDID("$FreeBSD$");
 #endif
 
 #include <dev/ath/if_athvar.h>
-#include <contrib/dev/ath/ah_desc.h>
-#include <contrib/dev/ath/ah_devid.h>		/* XXX for softled */
+#include <dev/ath/ath_hal/ah_devid.h>		/* XXX for softled */
 
 #ifdef ATH_TX99_DIAG
 #include <dev/ath/ath_tx99/ath_tx99.h>
@@ -115,6 +114,7 @@ CTASSERT(ATH_BCBUF <= 8);
 	  (((u_int8_t *)(p))[2] << 16) | (((u_int8_t *)(p))[3] << 24)))
 
 #define	CTRY_XR9	5001		/* Ubiquiti XR9 */
+#define	CTRY_GZ901	5002		/* ZComax GZ-901 */
 
 static struct ieee80211vap *ath_vap_create(struct ieee80211com *,
 		    const char name[IFNAMSIZ], int unit, int opmode,
@@ -131,7 +131,6 @@ static int	ath_media_change(struct ifnet *);
 static void	ath_watchdog(struct ifnet *);
 static int	ath_ioctl(struct ifnet *, u_long, caddr_t);
 static void	ath_fatal_proc(void *, int);
-static void	ath_rxorn_proc(void *, int);
 static void	ath_bmiss_vap(struct ieee80211vap *);
 static void	ath_bmiss_proc(void *, int);
 static int	ath_keyset(struct ath_softc *, const struct ieee80211_key *,
@@ -275,8 +274,10 @@ TUNABLE_INT("hw.ath.debug", &ath_debug);
 	if (sc->sc_debug & ATH_DEBUG_KEYCACHE)			\
 		ath_keyprint(sc, __func__, ix, hk, mac);	\
 } while (0)
-static	void ath_printrxbuf(const struct ath_buf *bf, u_int ix, int);
-static	void ath_printtxbuf(const struct ath_buf *bf, u_int qnum, u_int ix, int done);
+static	void ath_printrxbuf(struct ath_softc *, const struct ath_buf *bf,
+	u_int ix, int);
+static	void ath_printtxbuf(struct ath_softc *, const struct ath_buf *bf,
+	u_int qnum, u_int ix, int done);
 #else
 #define	IFF_DUMPPKTS(sc, m) \
 	((sc->sc_ifp->if_flags & (IFF_DEBUG|IFF_LINK2)) == (IFF_DEBUG|IFF_LINK2))
@@ -409,7 +410,6 @@ ath_attach(u_int16_t devid, struct ath_softc *sc)
 		"%s taskq", ifp->if_xname);
 
 	TASK_INIT(&sc->sc_rxtask, 0, ath_rx_proc, sc);
-	TASK_INIT(&sc->sc_rxorntask, 0, ath_rxorn_proc, sc);
 	TASK_INIT(&sc->sc_bmisstask, 0, ath_bmiss_proc, sc);
 	TASK_INIT(&sc->sc_bstucktask,0, ath_bstuck_proc, sc);
 
@@ -1184,10 +1184,6 @@ ath_intr(void *arg)
 		sc->sc_stats.ast_hardware++;
 		ath_hal_intrset(ah, 0);		/* disable intr's until reset */
 		ath_fatal_proc(sc, 0);
-	} else if (status & HAL_INT_RXORN) {
-		sc->sc_stats.ast_rxorn++;
-		ath_hal_intrset(ah, 0);		/* disable intr's until reset */
-		taskqueue_enqueue(sc->sc_tq, &sc->sc_rxorntask);
 	} else {
 		if (status & HAL_INT_SWBA) {
 			/*
@@ -1234,6 +1230,10 @@ ath_intr(void *arg)
 			ath_hal_mibevent(ah, &sc->sc_halstats);
 			ath_hal_intrset(ah, sc->sc_imask);
 		}
+		if (status & HAL_INT_RXORN) {
+			/* NB: hal marks HAL_INT_FATAL when RXORN is fatal */
+			sc->sc_stats.ast_rxorn++;
+		}
 	}
 }
 
@@ -1263,19 +1263,10 @@ ath_fatal_proc(void *arg, int pending)
 }
 
 static void
-ath_rxorn_proc(void *arg, int pending)
-{
-	struct ath_softc *sc = arg;
-	struct ifnet *ifp = sc->sc_ifp;
-
-	if_printf(ifp, "rx FIFO overrun; resetting\n");
-	ath_reset(ifp);
-}
-
-static void
 ath_bmiss_vap(struct ieee80211vap *vap)
 {
-	struct ath_softc *sc = vap->iv_ic->ic_ifp->if_softc;
+	struct ifnet *ifp = vap->iv_ic->ic_ifp;
+	struct ath_softc *sc = ifp->if_softc;
 	u_int64_t lastrx = sc->sc_lastrx;
 	u_int64_t tsf = ath_hal_gettsf64(sc->sc_ah);
 	u_int bmisstimeout =
@@ -1299,14 +1290,33 @@ ath_bmiss_vap(struct ieee80211vap *vap)
 		sc->sc_stats.ast_bmiss_phantom++;
 }
 
+static int
+ath_hal_gethangstate(struct ath_hal *ah, uint32_t mask, uint32_t *hangs)
+{
+	uint32_t rsize;
+	void *sp;
+
+	if (!ath_hal_getdiagstate(ah, 32, &mask, sizeof(&mask), &sp, &rsize))
+		return 0;
+	KASSERT(rsize == sizeof(uint32_t), ("resultsize %u", rsize));
+	*hangs = *(uint32_t *)sp;
+	return 1;
+}
+
 static void
 ath_bmiss_proc(void *arg, int pending)
 {
 	struct ath_softc *sc = arg;
 	struct ifnet *ifp = sc->sc_ifp;
+	uint32_t hangs;
 
 	DPRINTF(sc, ATH_DEBUG_ANY, "%s: pending %u\n", __func__, pending);
-	ieee80211_beacon_miss(ifp->if_l2com);
+
+	if (ath_hal_gethangstate(sc->sc_ah, 0xff, &hangs) && hangs != 0) {
+		if_printf(ifp, "bb hang detected (0x%x), reseting\n", hangs); 
+		ath_reset(ifp);
+	} else
+		ieee80211_beacon_miss(ifp->if_l2com);
 }
 
 /*
@@ -1349,9 +1359,11 @@ ath_mapchan(const struct ieee80211com *ic,
 
 	if (IEEE80211_IS_CHAN_GSM(chan)) {
 		if (ic->ic_regdomain.country == CTRY_XR9)
-			hc->channel = 2427 + (chan->ic_freq - 907);
+			hc->channel = 1520 + chan->ic_freq;
+		else if (ic->ic_regdomain.country == CTRY_GZ901)
+			hc->channel = 1544 + chan->ic_freq;
 		else
-			hc->channel = 2422 + (922 - chan->ic_freq);
+			hc->channel = 3344 - chan->ic_freq;
 	} else
 		hc->channel = chan->ic_freq;
 #undef N
@@ -4028,7 +4040,7 @@ ath_rx_proc(void *arg, int npending)
 				bf->bf_daddr, PA2DESC(sc, ds->ds_link), rs);
 #ifdef ATH_DEBUG
 		if (sc->sc_debug & ATH_DEBUG_RECV_DESC)
-			ath_printrxbuf(bf, 0, status == HAL_OK);
+			ath_printrxbuf(sc, bf, 0, status == HAL_OK);
 #endif
 		if (status == HAL_EINPROGRESS)
 			break;
@@ -5027,7 +5039,8 @@ ath_tx_processq(struct ath_softc *sc, struct ath_txq *txq)
 		status = ath_hal_txprocdesc(ah, ds, ts);
 #ifdef ATH_DEBUG
 		if (sc->sc_debug & ATH_DEBUG_XMIT_DESC)
-			ath_printtxbuf(bf, txq->axq_qnum, 0, status == HAL_OK);
+			ath_printtxbuf(sc, bf, txq->axq_qnum, 0,
+			    status == HAL_OK);
 #endif
 		if (status == HAL_EINPROGRESS) {
 			ATH_TXQ_UNLOCK(txq);
@@ -5246,7 +5259,7 @@ ath_tx_draintxq(struct ath_softc *sc, struct ath_txq *txq)
 		if (sc->sc_debug & ATH_DEBUG_RESET) {
 			struct ieee80211com *ic = sc->sc_ifp->if_l2com;
 
-			ath_printtxbuf(bf, txq->axq_qnum, ix,
+			ath_printtxbuf(sc, bf, txq->axq_qnum, ix,
 				ath_hal_txprocdesc(ah, bf->bf_desc,
 				    &bf->bf_status.ds_txstat) == HAL_OK);
 			ieee80211_dump_pkt(ic, mtod(bf->bf_m, caddr_t),
@@ -5314,7 +5327,7 @@ ath_draintxq(struct ath_softc *sc)
 	if (sc->sc_debug & ATH_DEBUG_RESET) {
 		struct ath_buf *bf = STAILQ_FIRST(&sc->sc_bbuf);
 		if (bf != NULL && bf->bf_m != NULL) {
-			ath_printtxbuf(bf, sc->sc_bhalq, 0,
+			ath_printtxbuf(sc, bf, sc->sc_bhalq, 0,
 				ath_hal_txprocdesc(ah, bf->bf_desc,
 				    &bf->bf_status.ds_txstat) == HAL_OK);
 			ieee80211_dump_pkt(ifp->if_l2com, mtod(bf->bf_m, caddr_t),
@@ -5355,7 +5368,7 @@ ath_stoprecv(struct ath_softc *sc)
 			HAL_STATUS status = ath_hal_rxprocdesc(ah, ds,
 				bf->bf_daddr, PA2DESC(sc, ds->ds_link), rs);
 			if (status == HAL_OK || (sc->sc_debug & ATH_DEBUG_FATAL))
-				ath_printrxbuf(bf, ix, status == HAL_OK);
+				ath_printrxbuf(sc, bf, ix, status == HAL_OK);
 			ix++;
 		}
 	}
@@ -5936,9 +5949,11 @@ getchannels(struct ath_softc *sc, int *nchans, struct ieee80211_channel chans[],
 			 * We define special country codes to deal with this. 
 			 */
 			if (cc == CTRY_XR9)
-				ichan->ic_freq = 907 + (ichan->ic_freq - 2427);
+				ichan->ic_freq = ichan->ic_freq - 1520;
+			else if (cc == CTRY_GZ901)
+				ichan->ic_freq = ichan->ic_freq - 1544;
 			else
-				ichan->ic_freq = 922 + (2422 - ichan->ic_freq);
+				ichan->ic_freq = 3344 - ichan->ic_freq;
 			ichan->ic_flags |= IEEE80211_CHAN_GSM;
 			ichan->ic_ieee = ieee80211_mhz2ieee(ichan->ic_freq,
 						    ichan->ic_flags);
@@ -6265,9 +6280,11 @@ ath_setcurmode(struct ath_softc *sc, enum ieee80211_phymode mode)
 
 #ifdef ATH_DEBUG
 static void
-ath_printrxbuf(const struct ath_buf *bf, u_int ix, int done)
+ath_printrxbuf(struct ath_softc *sc, const struct ath_buf *bf,
+	u_int ix, int done)
 {
 	const struct ath_rx_status *rs = &bf->bf_status.ds_rxstat;
+	struct ath_hal *ah = sc->sc_ah;
 	const struct ath_desc *ds;
 	int i;
 
@@ -6279,13 +6296,21 @@ ath_printrxbuf(const struct ath_buf *bf, u_int ix, int done)
 		    !done ? "" : (rs->rs_status == 0) ? " *" : " !",
 		    ds->ds_ctl0, ds->ds_ctl1,
 		    ds->ds_hw[0], ds->ds_hw[1]);
+		if (ah->ah_magic == 0x20065416) {
+			printf("        %08x %08x %08x %08x %08x %08x %08x\n",
+			    ds->ds_hw[2], ds->ds_hw[3], ds->ds_hw[4],
+			    ds->ds_hw[5], ds->ds_hw[6], ds->ds_hw[7],
+			    ds->ds_hw[8]);
+		}
 	}
 }
 
 static void
-ath_printtxbuf(const struct ath_buf *bf, u_int qnum, u_int ix, int done)
+ath_printtxbuf(struct ath_softc *sc, const struct ath_buf *bf,
+	u_int qnum, u_int ix, int done)
 {
 	const struct ath_tx_status *ts = &bf->bf_status.ds_txstat;
+	struct ath_hal *ah = sc->sc_ah;
 	const struct ath_desc *ds;
 	int i;
 
@@ -6298,6 +6323,16 @@ ath_printtxbuf(const struct ath_buf *bf, u_int qnum, u_int ix, int done)
 		    !done ? "" : (ts->ts_status == 0) ? " *" : " !",
 		    ds->ds_ctl0, ds->ds_ctl1,
 		    ds->ds_hw[0], ds->ds_hw[1], ds->ds_hw[2], ds->ds_hw[3]);
+		if (ah->ah_magic == 0x20065416) {
+			printf("        %08x %08x %08x %08x %08x %08x %08x %08x\n",
+			    ds->ds_hw[4], ds->ds_hw[5], ds->ds_hw[6],
+			    ds->ds_hw[7], ds->ds_hw[8], ds->ds_hw[9],
+			    ds->ds_hw[10],ds->ds_hw[11]);
+			printf("        %08x %08x %08x %08x %08x %08x %08x %08x\n",
+			    ds->ds_hw[12],ds->ds_hw[13],ds->ds_hw[14],
+			    ds->ds_hw[15],ds->ds_hw[16],ds->ds_hw[17],
+			    ds->ds_hw[18], ds->ds_hw[19]);
+		}
 	}
 }
 #endif /* ATH_DEBUG */
@@ -6308,7 +6343,14 @@ ath_watchdog(struct ifnet *ifp)
 	struct ath_softc *sc = ifp->if_softc;
 
 	if ((ifp->if_drv_flags & IFF_DRV_RUNNING) && !sc->sc_invalid) {
-		if_printf(ifp, "device timeout\n");
+		uint32_t hangs;
+
+		if (ath_hal_gethangstate(sc->sc_ah, 0xffff, &hangs) &&
+		    hangs != 0) {
+			if_printf(ifp, "%s hang detected (0x%x)\n",
+			    hangs & 0xff ? "bb" : "mac", hangs); 
+		} else
+			if_printf(ifp, "device timeout\n");
 		ath_reset(ifp);
 		ifp->if_oerrors++;
 		sc->sc_stats.ast_watchdog++;

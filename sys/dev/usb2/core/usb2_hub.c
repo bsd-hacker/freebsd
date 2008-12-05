@@ -72,6 +72,7 @@ struct uhub_softc {
 	struct usb2_device *sc_udev;	/* USB device */
 	struct usb2_xfer *sc_xfer[2];	/* interrupt xfer */
 	uint8_t	sc_flags;
+#define	UHUB_FLAG_DID_EXPLORE 0x01
 #define	UHUB_FLAG_INTR_STALL 0x02
 	char	sc_name[32];
 };
@@ -511,6 +512,14 @@ uhub_explore(struct usb2_device *udev)
 			/* most likely the HUB is gone */
 			break;
 		}
+		if (!(sc->sc_flags & UHUB_FLAG_DID_EXPLORE)) {
+			/*
+			 * Fake a connect status change so that the
+			 * status gets checked initially!
+			 */
+			sc->sc_st.port_change |=
+			    UPS_C_CONNECT_STATUS;
+		}
 		if (sc->sc_st.port_change & UPS_C_PORT_ENABLED) {
 			err = usb2_req_clear_port_feature(
 			    udev, &Giant, portno, UHF_C_PORT_ENABLE);
@@ -533,7 +542,8 @@ uhub_explore(struct usb2_device *udev)
 					DPRINTFN(0, "port error, giving up "
 					    "port %d\n", portno);
 				} else {
-					sc->sc_st.port_change |= UPS_C_CONNECT_STATUS;
+					sc->sc_st.port_change |=
+					    UPS_C_CONNECT_STATUS;
 					up->restartcnt++;
 				}
 			}
@@ -560,6 +570,11 @@ uhub_explore(struct usb2_device *udev)
 		/* explore succeeded - reset restart counter */
 		up->restartcnt = 0;
 	}
+
+	/* initial status checked */
+	sc->sc_flags |= UHUB_FLAG_DID_EXPLORE;
+
+	/* return success */
 	return (USB_ERR_NORMAL_COMPLETION);
 }
 
@@ -756,9 +771,9 @@ uhub_attach(device_t dev)
 
 	/* start the interrupt endpoint */
 
-	mtx_lock(sc->sc_xfer[0]->priv_mtx);
+	USB_XFER_LOCK(sc->sc_xfer[0]);
 	usb2_transfer_start(sc->sc_xfer[0]);
-	mtx_unlock(sc->sc_xfer[0]->priv_mtx);
+	USB_XFER_UNLOCK(sc->sc_xfer[0]);
 
 	return (0);
 
@@ -1002,7 +1017,7 @@ usb2_intr_schedule_adjust(struct usb2_device *udev, int16_t len, uint8_t slot)
 	struct usb2_bus *bus = udev->bus;
 	struct usb2_hub *hub;
 
-	mtx_assert(&bus->mtx, MA_OWNED);
+	USB_BUS_LOCK_ASSERT(bus, MA_OWNED);
 
 	if (usb2_get_speed(udev) == USB_SPEED_HIGH) {
 		if (slot >= USB_HS_MICRO_FRAMES_MAX) {
@@ -1079,7 +1094,7 @@ usb2_isoc_time_expand(struct usb2_bus *bus, uint16_t isoc_time_curr)
 {
 	uint16_t rem;
 
-	mtx_assert(&bus->mtx, MA_OWNED);
+	USB_BUS_LOCK_ASSERT(bus, MA_OWNED);
 
 	rem = bus->isoc_time_last & (USB_ISOC_TIME_MAX - 1);
 
@@ -1279,7 +1294,7 @@ usb2_needs_explore(struct usb2_bus *bus, uint8_t do_probe)
 		DPRINTF("No bus pointer!\n");
 		return;
 	}
-	mtx_lock(&bus->mtx);
+	USB_BUS_LOCK(bus);
 	if (do_probe) {
 		bus->do_probe = 1;
 	}
@@ -1287,7 +1302,7 @@ usb2_needs_explore(struct usb2_bus *bus, uint8_t do_probe)
 	    &bus->explore_msg[0], &bus->explore_msg[1])) {
 		/* ignore */
 	}
-	mtx_unlock(&bus->mtx);
+	USB_BUS_UNLOCK(bus);
 	return;
 }
 

@@ -47,6 +47,7 @@
 #include <dev/usb2/core/usb2_mbuf.h>
 #include <dev/usb2/core/usb2_dev.h>
 #include <dev/usb2/core/usb2_msctest.h>
+#include <dev/usb2/core/usb2_generic.h>
 
 #include <dev/usb2/quirk/usb2_quirk.h>
 
@@ -66,7 +67,7 @@ static void usb2_clear_stall_proc(struct usb2_proc_msg *_pm);
 static void usb2_check_strings(struct usb2_device *udev);
 static usb2_error_t usb2_fill_iface_data(struct usb2_device *udev, uint8_t iface_index, uint8_t alt_index);
 static void usb2_notify_addq(const char *type, struct usb2_device *udev);
-static void usb2_fifo_free_wrap(struct usb2_device *udev, uint8_t iface_index, uint8_t free_all);
+static void usb2_fifo_free_wrap(struct usb2_device *udev, uint8_t iface_index, uint8_t flag);
 
 /* static structures */
 
@@ -295,9 +296,9 @@ usb2_fill_pipe_data(struct usb2_device *udev, uint8_t iface_index,
 
 	/* clear stall, if any */
 	if (udev->bus->methods->clear_stall) {
-		mtx_lock(&udev->bus->mtx);
+		USB_BUS_LOCK(udev->bus);
 		(udev->bus->methods->clear_stall) (udev, pipe);
-		mtx_unlock(&udev->bus->mtx);
+		USB_BUS_UNLOCK(udev->bus);
 	}
 	return;
 }
@@ -672,7 +673,10 @@ usb2_set_alt_interface_index(struct usb2_device *udev,
 	if (udev->flags.usb2_mode == USB_MODE_DEVICE) {
 		usb2_detach_device(udev, iface_index, 1);
 	}
-	/* free all FIFOs for this interface */
+	/*
+	 * Free all generic FIFOs for this interface, except control
+	 * endpoint FIFOs:
+	 */
 	usb2_fifo_free_wrap(udev, iface_index, 0);
 
 	err = usb2_fill_iface_data(udev, iface_index, alt_index);
@@ -730,7 +734,7 @@ usb2_set_endpoint_stall(struct usb2_device *udev, struct usb2_pipe *pipe,
 		DPRINTF("Invalid endpoint\n");
 		return (0);
 	}
-	mtx_lock(&udev->bus->mtx);
+	USB_BUS_LOCK(udev->bus);
 
 	/* store current stall state */
 	was_stalled = pipe->is_stalled;
@@ -738,7 +742,7 @@ usb2_set_endpoint_stall(struct usb2_device *udev, struct usb2_pipe *pipe,
 	/* check for no change */
 	if (was_stalled && do_stall) {
 		/* if the pipe is already stalled do nothing */
-		mtx_unlock(&udev->bus->mtx);
+		USB_BUS_UNLOCK(udev->bus);
 		DPRINTF("No change\n");
 		return (0);
 	}
@@ -769,7 +773,7 @@ usb2_set_endpoint_stall(struct usb2_device *udev, struct usb2_pipe *pipe,
 		/* start up the current or next transfer, if any */
 		usb2_command_wrapper(&pipe->pipe_q, pipe->pipe_q.curr);
 	}
-	mtx_unlock(&udev->bus->mtx);
+	USB_BUS_UNLOCK(udev->bus);
 	return (0);
 }
 
@@ -1207,15 +1211,15 @@ usb2_suspend_resume(struct usb2_device *udev, uint8_t do_suspend)
 
 	sx_assert(udev->default_sx + 1, SA_LOCKED);
 
-	mtx_lock(&udev->bus->mtx);
+	USB_BUS_LOCK(udev->bus);
 	/* filter the suspend events */
 	if (udev->flags.suspended == do_suspend) {
-		mtx_unlock(&udev->bus->mtx);
+		USB_BUS_UNLOCK(udev->bus);
 		/* nothing to do */
 		return (0);
 	}
 	udev->flags.suspended = do_suspend;
-	mtx_unlock(&udev->bus->mtx);
+	USB_BUS_UNLOCK(udev->bus);
 
 	/* do the suspend or resume */
 
@@ -1243,7 +1247,7 @@ usb2_clear_stall_proc(struct usb2_proc_msg *_pm)
 	struct usb2_device *udev = pm->udev;
 
 	/* Change lock */
-	mtx_unlock(&udev->bus->mtx);
+	USB_BUS_UNLOCK(udev->bus);
 	mtx_lock(udev->default_mtx);
 
 	/* Start clear stall callback */
@@ -1251,7 +1255,7 @@ usb2_clear_stall_proc(struct usb2_proc_msg *_pm)
 
 	/* Change lock */
 	mtx_unlock(udev->default_mtx);
-	mtx_lock(&udev->bus->mtx);
+	USB_BUS_LOCK(udev->bus);
 	return;
 }
 
@@ -1601,18 +1605,16 @@ repeat_set_config:
 				 * Try to figure out if we have an
 				 * auto-install disk there:
 				 */
-				if (usb2_test_autoinstall(udev, 0) == 0) {
+				if (usb2_test_autoinstall(udev, 0, 0) == 0) {
 					DPRINTFN(0, "Found possible auto-install "
 					    "disk (trying next config)\n");
 					config_index++;
 					goto repeat_set_config;
 				}
 			}
-		} else if (UGETW(udev->ddesc.idVendor) == USB_VENDOR_HUAWEI) {
-			if (usb2_test_huawei(udev, 0) == 0) {
-				DPRINTFN(0, "Found Huawei auto-install disk!\n");
-				err = USB_ERR_STALLED;	/* fake an error */
-			}
+		} else if (usb2_test_huawei(udev, &uaa) == 0) {
+			DPRINTFN(0, "Found Huawei auto-install disk!\n");
+			err = USB_ERR_STALLED;	/* fake an error */
 		}
 	} else {
 		err = 0;		/* set success */
@@ -2077,14 +2079,20 @@ usb2_notify_addq(const char *type, struct usb2_device *udev)
 /*------------------------------------------------------------------------*
  *	usb2_fifo_free_wrap
  *
- * The function will free the FIFOs.
+ * This function will free the FIFOs.
+ *
+ * Flag values, if "iface_index" is equal to "USB_IFACE_INDEX_ANY".
+ * 0: Free all FIFOs except generic control endpoints.
+ * 1: Free all FIFOs.
+ *
+ * Flag values, if "iface_index" is not equal to "USB_IFACE_INDEX_ANY".
+ * Not used.
  *------------------------------------------------------------------------*/
 static void
 usb2_fifo_free_wrap(struct usb2_device *udev,
-    uint8_t iface_index, uint8_t free_all)
+    uint8_t iface_index, uint8_t flag)
 {
 	struct usb2_fifo *f;
-	struct usb2_pipe *pipe;
 	uint16_t i;
 
 	/*
@@ -2095,16 +2103,33 @@ usb2_fifo_free_wrap(struct usb2_device *udev,
 		if (f == NULL) {
 			continue;
 		}
-		pipe = f->priv_sc0;
-		if ((pipe == &udev->default_pipe) && (free_all == 0)) {
-			/* don't free UGEN control endpoint yet */
+		/* Check if the interface index matches */
+		if (iface_index == f->iface_index) {
+			if (f->methods != &usb2_ugen_methods) {
+				/*
+				 * Don't free any non-generic FIFOs in
+				 * this case.
+				 */
+				continue;
+			}
+			if ((f->dev_ep_index == 0) &&
+			    (f->fs_xfer == NULL)) {
+				/* no need to free this FIFO */
+				continue;
+			}
+		} else if (iface_index == USB_IFACE_INDEX_ANY) {
+			if ((f->methods == &usb2_ugen_methods) &&
+			    (f->dev_ep_index == 0) && (flag == 0) &&
+			    (f->fs_xfer == NULL)) {
+				/* no need to free this FIFO */
+				continue;
+			}
+		} else {
+			/* no need to free this FIFO */
 			continue;
 		}
-		/* Check if the interface index matches */
-		if ((iface_index == f->iface_index) ||
-		    (iface_index == USB_IFACE_INDEX_ANY)) {
-			usb2_fifo_free(f);
-		}
+		/* free this FIFO */
+		usb2_fifo_free(f);
 	}
 	return;
 }

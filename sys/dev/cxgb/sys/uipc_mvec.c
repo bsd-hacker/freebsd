@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright (c) 2007, Kip Macy kmacy@freebsd.org
+ * Copyright (c) 2007-2008, Kip Macy kmacy@freebsd.org
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -78,7 +78,6 @@ mi_init(void)
 		return;
 	else
 		mi_inited++;
-
 	zone_miovec = uma_zcreate("MBUF IOVEC", MIOVBYTES,
 	    NULL, NULL, NULL, NULL,
 	    UMA_ALIGN_PTR, UMA_ZONE_MAXBUCKET);
@@ -125,8 +124,8 @@ _mcl_collapse_mbuf(struct mbuf_iovec *mi, struct mbuf *m)
 	if (m->m_flags & M_PKTHDR) {
 		mi->mi_ether_vtag = m->m_pkthdr.ether_vtag;
 		mi->mi_tso_segsz = m->m_pkthdr.tso_segsz;
-#ifdef IFNET_MULTIQ		
-		mi->mi_rss_hash = m->m_pkthdr.rss_hash;
+#ifdef IFNET_MULTIQUEUE		
+		mi->mi_rss_hash = m->m_pkthdr.flowid;
 #endif		
 		if(!SLIST_EMPTY(&m->m_pkthdr.tags)) 
 			m_tag_delete_chain(m, NULL);
@@ -151,7 +150,9 @@ _mcl_collapse_mbuf(struct mbuf_iovec *mi, struct mbuf *m)
 		mi->mi_refcnt = m->m_ext.ref_cnt;
 		if (m->m_ext.ext_type == EXT_PACKET) {
 			mi->mi_mbuf = m;
+#ifdef INVARIANTS
 			cxgb_pack_outstanding++;
+#endif
 		}
 	} else {
 		mi->mi_base = (caddr_t)m;
@@ -159,7 +160,9 @@ _mcl_collapse_mbuf(struct mbuf_iovec *mi, struct mbuf *m)
 		mi->mi_size = MSIZE;
 		mi->mi_type = EXT_MBUF;
 		mi->mi_refcnt = NULL;
+#ifdef INVARIANTS
 		cxgb_mbufs_outstanding++;
+#endif		
 	}
 	KASSERT(mi->mi_len != 0, ("miov has len 0"));
 	KASSERT(mi->mi_type > 0, ("mi_type is invalid"));
@@ -200,9 +203,8 @@ busdma_map_sg_collapse(struct mbuf **m, bus_dma_segment_t *segs, int *nsegs)
 	int i, type, seg_count, defragged = 0, err = 0;
 	struct mbuf_vec *mv;
 	int skipped, freed;
-
 	KASSERT(n->m_pkthdr.len, ("packet has zero header len"));
-		
+
 	if (n->m_pkthdr.len <= PIO_LEN)
 		return (0);
 retry:
@@ -210,7 +212,6 @@ retry:
 	if (n->m_next == NULL) {
 		busdma_map_mbuf_fast(n, segs);
 		*nsegs = 1;
-
 		return (0);
 	}
 	skipped = freed = 0;
@@ -301,7 +302,8 @@ err_out:
 }
 
 int 
-busdma_map_sg_vec(struct mbuf **m, struct mbuf **mret, bus_dma_segment_t *segs, int pkt_count)
+busdma_map_sg_vec(struct mbuf **m, struct mbuf **mret,
+    bus_dma_segment_t *segs, int pkt_count)
 {
 	struct mbuf *m0, **mp;
 	struct mbuf_iovec *mi;
@@ -311,7 +313,8 @@ busdma_map_sg_vec(struct mbuf **m, struct mbuf **mret, bus_dma_segment_t *segs, 
 	if ((m0 = mcl_alloc(pkt_count, &type)) == NULL)
 		return (ENOMEM);
 
-	memcpy(m0, *m, sizeof(struct m_hdr) + sizeof(struct pkthdr));
+	memcpy(m0, *m, sizeof(struct m_hdr) +
+	    sizeof(struct pkthdr));
 	m0->m_type = type;
 	mv = mtomv(m0);
 	mv->mv_count = pkt_count;
@@ -324,10 +327,8 @@ busdma_map_sg_vec(struct mbuf **m, struct mbuf **mret, bus_dma_segment_t *segs, 
 	}
 
 	for (mp = m, i = 0; i < pkt_count; i++, mp++) {
-		(*mp)->m_next = (*mp)->m_nextpkt = NULL;
-
-		if ((((*mp)->m_flags & (M_EXT|M_NOFREE)) == M_EXT) &&
-		    ((*mp)->m_ext.ext_type != EXT_PACKET)){
+		if ((((*mp)->m_flags & (M_EXT|M_NOFREE)) == M_EXT)
+		    && ((*mp)->m_ext.ext_type != EXT_PACKET)) {
 			(*mp)->m_flags &= ~M_EXT;
 			m_free(*mp);
 		}
@@ -342,15 +343,19 @@ mb_free_ext_fast(struct mbuf_iovec *mi, int type, int idx)
 {
 	int dofree;
 	caddr_t cl;
-
 	cl = mi->mi_base;
 	switch (type) {
 	case EXT_PACKET:
+#ifdef INVARIANTS
 		cxgb_pack_outstanding--;
+#endif
 		m_free(mi->mi_mbuf);
 		return;
 	case EXT_MBUF:
+		KASSERT((mi->mi_flags & M_NOFREE) == 0, ("no free set on mbuf"));
+#ifdef INVARIANTS
 		cxgb_mbufs_outstanding--;
+#endif
 		m_free_fast((struct mbuf *)cl);
 		return;
 	default:
