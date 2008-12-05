@@ -230,6 +230,7 @@ uma_zone_t uma_zsecond_create(char *name, uma_ctor ctor, uma_dtor dtor,
 #define	UMA_ZONE_SECONDARY	0x0200	/* Zone is a Secondary Zone */
 #define	UMA_ZONE_REFCNT		0x0400	/* Allocate refcnts in slabs */
 #define	UMA_ZONE_MAXBUCKET	0x0800	/* Use largest buckets */
+#define	UMA_ZONE_STRIPEBUCKET	0x2000  /* Stripe buckets across slabs. */
 
 /* Definitions for align */
 #define UMA_ALIGN_PTR	(sizeof(void *) - 1)	/* Alignment fit for ptr */
@@ -508,6 +509,8 @@ void uma_zone_set_freef(uma_zone_t zone, uma_free freef);
  * NOTE: This is blocking and should only be done at startup
  */
 void uma_prealloc(uma_zone_t zone, int itemcnt);
+
+void uma_zone_set_ppera(uma_zone_t zone, int pages);
 
 /*
  * Used to lookup the reference counter allocated for an item

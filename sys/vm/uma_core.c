@@ -239,7 +239,7 @@ static uma_bucket_t bucket_alloc(int, int);
 static void bucket_free(uma_bucket_t);
 static void bucket_zone_drain(void);
 static int uma_zalloc_bucket(uma_zone_t zone, int flags);
-static uma_slab_t uma_zone_slab(uma_zone_t zone, int flags);
+static uma_slab_t uma_zone_slab(uma_zone_t zone, uma_slab_t slab, int flags);
 static void *uma_slab_alloc(uma_zone_t zone, uma_slab_t slab);
 static uma_zone_t uma_kcreate(uma_zone_t zone, size_t size, uma_init uminit,
     uma_fini fini, int align, u_int32_t flags);
@@ -1164,6 +1164,27 @@ zone_large_init(uma_zone_t zone)
 	keg->uk_rsize = keg->uk_size;
 }
 
+void
+uma_zone_set_ppera(uma_zone_t zone, int pages)
+{
+	uma_keg_t keg;
+
+	ZONE_LOCK(zone);
+	keg = zone->uz_keg;
+	if (keg->uk_ppera < pages) {
+		keg->uk_ppera = pages;
+		keg->uk_ipers = (pages * PAGE_SIZE) / keg->uk_rsize;
+		keg->uk_flags |= UMA_ZONE_OFFPAGE | UMA_ZONE_MALLOC;
+		keg->uk_slabzone = slabzone;
+		KASSERT(keg->uk_ipers <= uma_max_ipers,
+		    ("zone_small_init: keg->uk_ipers too high!"));
+		printf("ppera: req pages %d, ipers %d, rsize %d\n",
+		    pages, keg->uk_ipers, keg->uk_rsize);
+	}
+	ZONE_UNLOCK(zone);
+}
+
+
 /*
  * Keg header ctor.  This initializes all fields, locks, etc.  And inserts
  * the keg onto the global keg list.
@@ -1557,7 +1578,7 @@ uma_startup(void *bootmem, int boot_pages)
 	}
 	if (objsize > UMA_SMALLEST_UNIT)
 		objsize--;
-	uma_max_ipers = UMA_SLAB_SIZE / objsize;
+	uma_max_ipers = MAX(UMA_SLAB_SIZE / objsize, 64);
 
 	wsize = UMA_SLAB_SIZE - sizeof(struct uma_slab_refcnt) - UMA_MAX_WASTE;
 	totsize = wsize;
@@ -1937,7 +1958,7 @@ zalloc_start:
 }
 
 static uma_slab_t
-uma_zone_slab(uma_zone_t zone, int flags)
+uma_zone_slab(uma_zone_t zone, uma_slab_t last, int flags)
 {
 	uma_slab_t slab;
 	uma_keg_t keg;
@@ -1969,6 +1990,14 @@ uma_zone_slab(uma_zone_t zone, int flags)
 	slab = NULL;
 
 	for (;;) {
+		/*
+		 * Stripe bucket allocations across slabs.
+		 */
+		if ((keg->uk_flags & UMA_ZONE_STRIPEBUCKET) && last) {
+			if (last->us_freecount != 0 &&
+			    (slab = LIST_NEXT(last, us_link)) != NULL)
+				return (slab);
+		}
 		/*
 		 * Find a slab with some space.  Prefer slabs that are partially
 		 * used over those that are totally full.  This helps to reduce
@@ -2105,11 +2134,14 @@ uma_zalloc_bucket(uma_zone_t zone, int flags)
 	max = MIN(bucket->ub_entries, zone->uz_count);
 	/* Try to keep the buckets totally full */
 	saved = bucket->ub_cnt;
+	slab = NULL;
 	while (bucket->ub_cnt < max &&
-	    (slab = uma_zone_slab(zone, flags)) != NULL) {
+	    (slab = uma_zone_slab(zone, slab, flags)) != NULL) {
 		while (slab->us_freecount && bucket->ub_cnt < max) {
 			bucket->ub_bucket[bucket->ub_cnt++] =
 			    uma_slab_alloc(zone, slab);
+			if (zone->uz_keg->uk_flags & UMA_ZONE_STRIPEBUCKET)
+				continue;
 		}
 
 		/* Don't block on the next fill */
@@ -2191,7 +2223,7 @@ uma_zalloc_internal(uma_zone_t zone, void *udata, int flags)
 #endif
 	ZONE_LOCK(zone);
 
-	slab = uma_zone_slab(zone, flags);
+	slab = uma_zone_slab(zone, NULL, flags);
 	if (slab == NULL) {
 		zone->uz_fails++;
 		ZONE_UNLOCK(zone);
@@ -2446,7 +2478,10 @@ uma_zfree_internal(uma_zone_t zone, void *item, void *udata,
 			slab = (uma_slab_t)mem;
 		}
 	} else {
-		slab = (uma_slab_t)udata;
+		if (udata == NULL)
+			slab = vtoslab((vm_offset_t)item);
+		else
+			slab = (uma_slab_t)udata;
 	}
 
 	/* Do we need to remove from any lists? */

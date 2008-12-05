@@ -213,17 +213,14 @@ m_extadd(struct mbuf *mb, caddr_t buf, u_int size,
 void
 mb_free_ext(struct mbuf *m)
 {
-	int skipmbuf;
+	int mbfree;
 	
 	KASSERT((m->m_flags & M_EXT) == M_EXT, ("%s: M_EXT not set", __func__));
 	KASSERT(m->m_ext.ref_cnt != NULL, ("%s: ref_cnt not set", __func__));
 
 
-	/*
-	 * check if the header is embedded in the cluster
-	 */     
-	skipmbuf = (m->m_flags & M_NOFREE);
-	
+	mbfree = !(m->m_flags & M_NOFREE);
+
 	/* Free attached storage if this mbuf is the only reference to it. */
 	if (*(m->m_ext.ref_cnt) == 1 ||
 	    atomic_fetchadd_int(m->m_ext.ref_cnt, -1) == 1) {
@@ -260,26 +257,21 @@ mb_free_ext(struct mbuf *m)
 			    m->m_ext.ext_arg2);
 			break;
 		default:
-			KASSERT(m->m_ext.ext_type == 0,
-				("%s: unknown ext_type", __func__));
+			if (m->m_ext.ref_cnt != NULL)
+				uma_zfree(zone_ext_refcnt, __DEVOLATILE(u_int *,
+					m->m_ext.ref_cnt));
+			break;
+
+			
 		}
 	}
-	if (skipmbuf)
-		return;
 	
 	/*
 	 * Free this mbuf back to the mbuf zone with all m_ext
 	 * information purged.
 	 */
-	m->m_ext.ext_buf = NULL;
-	m->m_ext.ext_free = NULL;
-	m->m_ext.ext_arg1 = NULL;
-	m->m_ext.ext_arg2 = NULL;
-	m->m_ext.ref_cnt = NULL;
-	m->m_ext.ext_size = 0;
-	m->m_ext.ext_type = 0;
-	m->m_flags &= ~M_EXT;
-	uma_zfree(zone_mbuf, m);
+	if (mbfree)
+		uma_zfree(zone_mbuf, m);
 }
 
 /*
