@@ -981,9 +981,11 @@ em_transmit_locked(struct ifnet *ifp, struct mbuf *m)
 	EM_TX_LOCK_ASSERT(adapter);
 	if (((ifp->if_drv_flags & (IFF_DRV_RUNNING|IFF_DRV_OACTIVE)) !=
 	    IFF_DRV_RUNNING)
-	    || (!adapter->link_active))
-		
-		return (buf_ring_enqueue(adapter->br, m));
+	    || (!adapter->link_active)) {
+		if ((error = buf_ring_enqueue(adapter->br, m)))
+			m_freem(m);
+		return (error);
+	}
 	
 	if (buf_ring_empty(adapter->br) &&
 	    (adapter->num_tx_desc_avail > EM_TX_OP_THRESHOLD)) {
@@ -993,8 +995,10 @@ em_transmit_locked(struct ifnet *ifp, struct mbuf *m)
 				return (error);
 			}
 		
-	} else if ((error = buf_ring_enqueue(adapter->br, m)) != 0)
+	} else if ((error = buf_ring_enqueue(adapter->br, m)) != 0) {
+		m_freem(m);
 		return (error);
+	}
 	
 	if (!buf_ring_empty(adapter->br))
 		em_start_locked(ifp);
@@ -1105,8 +1109,10 @@ em_transmit(struct ifnet *ifp, struct mbuf *m)
 		if (ifp->if_drv_flags & IFF_DRV_RUNNING)
 			error = em_transmit_locked(ifp, m);
 		EM_TX_UNLOCK(adapter);
-	} else 
-		error = buf_ring_enqueue(adapter->br, m);
+	} else  {
+		if ((error = buf_ring_enqueue(adapter->br, m)))
+			m_freem(m);
+	}
 
 	return (error);
 }
@@ -2177,22 +2183,14 @@ em_xmit(struct adapter *adapter, struct mbuf **m_headp)
 		error = bus_dmamap_load_mbuf_sg(adapter->txtag, map,
 		    *m_headp, segs, &nsegs, BUS_DMA_NOWAIT);
 
-		if (error == ENOMEM) {
-			adapter->no_tx_dma_setup++;
-			return (error);
-		} else if (error != 0) {
+		if (error) {
 			adapter->no_tx_dma_setup++;
 			m_freem(*m_headp);
 			*m_headp = NULL;
 			return (error);
 		}
-	} else if (error == ENOMEM) {
-		adapter->no_tx_dma_setup++;
-		return (error);
 	} else if (error != 0) {
 		adapter->no_tx_dma_setup++;
-		m_freem(*m_headp);
-		*m_headp = NULL;
 		return (error);
 	}
 
