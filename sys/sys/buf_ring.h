@@ -34,28 +34,6 @@
 
 #include <machine/cpu.h>
 
-#if defined (__GNUC__)
-  #if #cpu(i386) || defined __i386 || defined i386 || defined __i386__ || #cpu(x86_64) || defined __x86_64__
-    #define mb()  __asm__ __volatile__ ("mfence;": : :"memory")
-    #define wmb()  __asm__ __volatile__ ("sfence;": : :"memory")
-    #define rmb()  __asm__ __volatile__ ("lfence;": : :"memory")
-  #elif #cpu(sparc64) || defined sparc64 || defined __sparcv9 
-    #define mb()  __asm__ __volatile__ ("membar #MemIssue": : :"memory")
-    #define wmb() mb()
-    #define rmb() mb()
-  #elif #cpu(sparc) || defined sparc || defined __sparc__
-    #define mb()  __asm__ __volatile__ ("stbar;": : :"memory")
-    #define wmb() mb()
-    #define rmb() mb()
-#else
-    #define wmb() mb()
-    #define rmb() mb()
-    #define mb() 	/* XXX just to make this compile */
-  #endif
-#else
-  #error "unknown compiler"
-#endif
-
 #if defined(INVARIANTS) && !defined(DEBUG_BUFRING)
 #define DEBUG_BUFRING 1
 #endif
@@ -86,7 +64,6 @@ struct buf_ring {
 	uint64_t	  	_pad1[14];
 #ifdef DEBUG_BUFRING
 	struct mtx		*br_lock;
-	uint32_t		br_count;
 #endif	
 	void			*br_ring[0];
 };
@@ -124,9 +101,7 @@ buf_ring_enqueue(struct buf_ring *br, void *buf)
 #ifdef DEBUG_BUFRING
 	if (br->br_ring[prod_head] != NULL)
 		panic("dangling value in enqueue");
-
-	atomic_add_int(&br->br_count, 1);
-#endif
+#endif	
 	br->br_ring[prod_head] = buf;
 	wmb();
 
@@ -174,7 +149,6 @@ buf_ring_dequeue_mc(struct buf_ring *br)
 	buf = br->br_ring[cons_head];
 #ifdef DEBUG_BUFRING
 	br->br_ring[cons_head] = NULL;
-	atomic_subtract_int(&br->br_count, 1);
 #endif
 	mb();
 	
@@ -220,7 +194,6 @@ buf_ring_dequeue_sc(struct buf_ring *br)
 	mb();
 	
 #ifdef DEBUG_BUFRING
-	atomic_subtract_int(&br->br_count, 1);
 	br->br_ring[cons_head] = NULL;
 	if (!mtx_owned(br->br_lock))
 		panic("lock not held on single consumer dequeue");
@@ -274,7 +247,5 @@ buf_ring_count(struct buf_ring *br)
 struct buf_ring *buf_ring_alloc(int count, struct malloc_type *type, int flags,
     struct mtx *);
 void buf_ring_free(struct buf_ring *br, struct malloc_type *type);
-
-
 
 #endif

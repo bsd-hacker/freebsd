@@ -453,6 +453,7 @@ struct ovfsconf {
 #define	VFCF_LOOPBACK	0x00100000	/* aliases some other mounted FS */
 #define	VFCF_UNICODE	0x00200000	/* stores file names as Unicode */
 #define	VFCF_JAIL	0x00400000	/* can be mounted from within a jail */
+#define	VFCF_DELEGADMIN	0x00800000	/* supports delegated administration */
 
 typedef uint32_t fsctlop_t;
 
@@ -716,6 +717,7 @@ int	vfs_donmount(struct thread *td, int fsflags, struct uio *fsoptions);
 void	vfs_getnewfsid(struct mount *);
 struct cdev *vfs_getrootfsid(struct mount *);
 struct	mount *vfs_getvfs(fsid_t *);      /* return vfs given fsid */
+struct	mount *vfs_busyfs(fsid_t *);
 int	vfs_modevent(module_t, int, void *);
 void	vfs_mount_error(struct mount *, const char *, ...);
 void	vfs_mountroot(void);			/* mount our root filesystem */
