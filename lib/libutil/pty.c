@@ -40,6 +40,7 @@ static char sccsid[] = "@(#)pty.c	8.3 (Berkeley) 5/16/94";
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 
+#include <unistd.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <grp.h>

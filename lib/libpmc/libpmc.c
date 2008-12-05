@@ -59,7 +59,7 @@ static int k8_allocate_pmc(enum pmc_event _pe, char *_ctrspec,
 static int p4_allocate_pmc(enum pmc_event _pe, char *_ctrspec,
     struct pmc_op_pmcallocate *_pmc_config);
 #endif
-#if defined(__i386__) 
+#if defined(__i386__)
 static int p5_allocate_pmc(enum pmc_event _pe, char *_ctrspec,
     struct pmc_op_pmcallocate *_pmc_config);
 static int p6_allocate_pmc(enum pmc_event _pe, char *_ctrspec,
@@ -68,8 +68,6 @@ static int p6_allocate_pmc(enum pmc_event _pe, char *_ctrspec,
 #if defined(__amd64__) || defined(__i386__)
 static int tsc_allocate_pmc(enum pmc_event _pe, char *_ctrspec,
     struct pmc_op_pmcallocate *_pmc_config);
-static int iap2_allocate_pmc(enum pmc_event pe, char *ctrspec,
-    struct pmc_op_pmcallocate *pmc_config);
 #endif
 
 #define PMC_CALL(cmd, params)				\
@@ -172,7 +170,6 @@ PMC_MDEP_TABLE(k8, K8, PMC_CLASS_TSC);
 PMC_MDEP_TABLE(p4, P4, PMC_CLASS_TSC);
 PMC_MDEP_TABLE(p5, P5, PMC_CLASS_TSC);
 PMC_MDEP_TABLE(p6, P6, PMC_CLASS_TSC);
-PMC_MDEP_TABLE(iap2, IAP2, PMC_CLASS_TSC);
 
 static const struct pmc_event_descr tsc_event_table[] =
 {
@@ -210,9 +207,6 @@ PMC_CLASS_TABLE_DESC(p5, P5, p5, p5);
 PMC_CLASS_TABLE_DESC(p6, P6, p6, p6);
 #endif
 #if	defined(__i386__) || defined(__amd64__)
-#if 0
-	PMC_CLASS_TABLE_DESC(iap2, IAP2),
-#endif
 PMC_CLASS_TABLE_DESC(tsc, TSC, tsc, tsc);
 #endif
 
@@ -1621,7 +1615,7 @@ p4_allocate_pmc(enum pmc_event pe, char *ctrspec,
 
 #endif
 
-#if defined(__i386__) 
+#if defined(__i386__)
 
 /*
  * Pentium style PMCs
@@ -1646,49 +1640,11 @@ p5_allocate_pmc(enum pmc_event pe, char *ctrspec,
 	return (-1 || pe || ctrspec || pmc_config); /* shut up gcc */
 }
 
-#endif
 /*
  * Pentium Pro style PMCs.  These PMCs are found in Pentium II, Pentium III,
  * and Pentium M CPUs.
  */
 
-#if defined(__i386__) || defined(__amd64__)
-
-static struct pmc_event_alias iap2_aliases[] = {
-	EV_ALIAS("branches",		"iap2-br-inst-retired-any"),
-	EV_ALIAS("branch-mispredicts",	"iap2-br-inst-retired-mispred"),
-	EV_ALIAS("cycles",		"tsc"),
-	EV_ALIAS("dc-misses",		"iap2-l1d-pend-miss"),
-	EV_ALIAS("ic-misses",		"iap2-l1i-misses"),
-	EV_ALIAS("instructions",	"iap2-instructions-retired"),
-	EV_ALIAS("interrupts",		"iap2-hw-int-rcv"),
-	EV_ALIAS("unhalted-cycles",	"iap2-unhalted-core-cycles"),
-	EV_ALIAS(NULL, NULL)
-};
-
-#define	P6_KW_CMASK	"cmask"
-#define	P6_KW_EDGE	"edge"
-#define	P6_KW_INV	"inv"
-#define	P6_KW_OS	"os"
-#define	P6_KW_UMASK	"umask"
-#define	P6_KW_USR	"usr"
-#define	IPM_KW_CMASK	P6_KW_CMASK
-#define	IPM_KW_EDGE	P6_KW_EDGE
-#define	IPM_KW_INV	P6_KW_INV
-#define	IPM_KW_OS	P6_KW_OS
-#define	IPM_KW_UMASK	P6_KW_UMASK
-#define	IPM_KW_USR	P6_KW_USR
-
-static struct pmc_masks p6_mask_mesi[] = {
-	PMCMASK(m,	0x01),
-	PMCMASK(e,	0x02),
-	PMCMASK(s,	0x04),
-	PMCMASK(i,	0x08),
-	NULLMASK
-};
-#endif
-
-#if defined(__i386__)
 static struct pmc_event_alias p6_aliases[] = {
 	EV_ALIAS("branches",		"p6-br-inst-retired"),
 	EV_ALIAS("branch-mispredicts",	"p6-br-miss-pred-retired"),
@@ -1699,6 +1655,21 @@ static struct pmc_event_alias p6_aliases[] = {
 	EV_ALIAS("interrupts",		"p6-hw-int-rx"),
 	EV_ALIAS("unhalted-cycles",	"p6-cpu-clk-unhalted"),
 	EV_ALIAS(NULL, NULL)
+};
+
+#define	P6_KW_CMASK	"cmask"
+#define	P6_KW_EDGE	"edge"
+#define	P6_KW_INV	"inv"
+#define	P6_KW_OS	"os"
+#define	P6_KW_UMASK	"umask"
+#define	P6_KW_USR	"usr"
+
+static struct pmc_masks p6_mask_mesi[] = {
+	PMCMASK(m,	0x01),
+	PMCMASK(e,	0x02),
+	PMCMASK(s,	0x04),
+	PMCMASK(i,	0x08),
+	NULLMASK
 };
 
 static struct pmc_masks p6_mask_mesihw[] = {
@@ -1791,7 +1762,6 @@ static struct pmc_masks p6_mask_esscir[] = {
 	PMCMASK(sse2-scalar-double,	0x03),
 	NULLMASK
 };
-
 
 /* P6 event parser */
 static int
@@ -1992,246 +1962,7 @@ p6_allocate_pmc(enum pmc_event pe, char *ctrspec,
 
 #endif
 
-
 #if	defined(__i386__) || defined(__amd64__)
-
-#define	ipm_mask_mesi	p6_mask_mesi
-#define	ipm_default_mask_mesi	0x0F	/* mesi */
-
-static struct pmc_masks ipm_mask_cores[] = {
-	PMCMASK(cself,	0x40),
-	PMCMASK(cany,	0xC0),
-	NULLMASK
-};
-#define	ipm_default_mask_cores	0x40 /* this core */
-
-static struct pmc_masks ipm_mask_agents[] = {
-	PMCMASK(aself,	0x00),
-	PMCMASK(aany,	0x20),
-	NULLMASK
-};
-#define	ipm_default_mask_agents	0x00 /* this agent */
-
-static struct pmc_masks ipm_mask_cores_and_agents[] = {
-	PMCMASK(cself,	0x40),
-	PMCMASK(cany,	0xC0),
-	PMCMASK(aself,	0x00),
-	PMCMASK(aany,	0x20),
-	NULLMASK
-};
-#define	ipm_default_mask_cores_and_agents 0x40 /* this core,this agent */
-
-static struct pmc_masks ipm_mask_cores_and_hw[] = {
-	PMCMASK(cself,	0x40),
-	PMCMASK(cany,	0xC0),
-	PMCMASK(nonhw,	0x00),
-	PMCMASK(hw,	0x10),
-	PMCMASK(both,	0x30),
-	NULLMASK
-};
-#define	ipm_default_mask_cores_and_hw 0x70 /* this core,both */
-
-static struct pmc_masks ipm_mask_cores_and_mesi[] = {
-	PMCMASK(cself,	0x40),
-	PMCMASK(cany,	0xC0),
-	PMCMASK(m,	0x01),
-	PMCMASK(e,	0x02),
-	PMCMASK(s,	0x04),
-	PMCMASK(i,	0x08),
-	NULLMASK
-};
-#define	ipm_default_mask_cores_and_mesi	0x4F /* this core,mesi */
-
-static struct pmc_masks ipm_mask_cores_and_hw_and_mesi[] = {
-	PMCMASK(cself,	0x40),
-	PMCMASK(cany,	0xC0),
-	PMCMASK(nonhw,	0x00),
-	PMCMASK(hw,	0x10),
-	PMCMASK(both,	0x30),
-	PMCMASK(m,	0x01),
-	PMCMASK(e,	0x02),
-	PMCMASK(s,	0x04),
-	PMCMASK(i,	0x08),
-	NULLMASK
-};
-#define	ipm_default_mask_cores_and_hw_and_mesi	0x7F /* this core,both,mesi */
-
-static struct pmc_masks ipm_mask_cores_and_snoop_response[] = {
-	PMCMASK(cself,	0x40),
-	PMCMASK(cany,	0xC0),
-	PMCMASK(clean,	0x01),
-	PMCMASK(hit,	0x02),
-	PMCMASK(hitm,	0x08),	
-	NULLMASK
-};
-#define	ipm_default_mask_cores_and_snoop_response 0x41 /*this core,clean */
-
-static struct pmc_masks ipm_mask_cores_and_snoop_type[] = {
-	PMCMASK(cself,	0x40),
-	PMCMASK(cany,	0xC0),
-	PMCMASK(cmp2s,	0x01),
-	PMCMASK(cmp2i,	0x02),	
-	NULLMASK
-};
-#define	ipm_default_mask_cores_and_snoop_type	0x41 /* this core,cmp2s */
-
-/*
- * Intel Performance Monitoring PMCs event parser
- */
-static int
-iap2_allocate_pmc(enum pmc_event pe, char *ctrspec,
-    struct pmc_op_pmcallocate *pmc_config)
-{
-	char *e, *p, *q;
-	uint32_t evmask, default_mask = 0;
-	int count, n, masks = 0;
-	const struct pmc_masks *pmask;
-
-	pmc_config->pm_caps |= PMC_CAP_READ;
-
-	if (pe == PMC_EV_TSC_TSC) {
-		if (ctrspec && *ctrspec != '\0')
-			return -1;
-		return 0;
-	}
-
-	pmc_config->pm_caps |= PMC_CAP_WRITE;
-
-	if (pe == PMC_EV_IAF_INSTRUCTIONS_RETIRED ||
-	    pe == PMC_EV_IAF_UNHALTED_CORE_CYCLES ||
-	    pe == PMC_EV_IAF_UNHALTED_REFERENCE_CYCLES) {
-		while ((p = strsep(&ctrspec, ",")) != NULL) {
-			if (KWMATCH(p, IPM_KW_OS)) {
-				pmc_config->pm_caps |= PMC_CAP_SYSTEM;
-			} else if (KWMATCH(p, IPM_KW_USR)) {
-				pmc_config->pm_caps |= PMC_CAP_USER;
-			} else
-				return -1;
-		}
-		pmc_config->pm_class = PMC_CLASS_IAF;
-		return 0;
-	}
-
-	evmask = 0;
-
-#define	IPMMASKSET(M)					\
-	do {						\
-		pmask = ipm_mask_ ## M;			\
-		default_mask = ipm_default_mask_ ## M;	\
-	} while(0)
-
-	switch(pe) {
-	case PMC_EV_IAP2_L2_ADS:	  case PMC_EV_IAP2_L2_DBUS_BUSY_RD:
-	case PMC_EV_IAP2_L2_NO_REQ:	  case PMC_EV_IAP2_BUS_DATA_RCV:
-	case PMC_EV_IAP2_BUSQ_EMPTY:	  case PMC_EV_IAP2_BUS_IO_WAIT:
-	case PMC_EV_IAP2_L2_M_LINES_IN:
-		masks = 1;
-		IPMMASKSET(cores); 
-		break;
-
-	case PMC_EV_IAP2_BUS_HIT_DRV:	  case PMC_EV_IAP2_BUS_HITM_DRV:
-	case PMC_EV_IAP2_BUS_BNR_DRV:	  case PMC_EV_IAP2_BUS_DRDY_CLOCKS:
-		masks = 1;
-		IPMMASKSET(agents); 
-		break;
-
-	case PMC_EV_IAP2_L1D_CACHE_LD:  case PMC_EV_IAP2_L1D_CACHE_ST:
-	case PMC_EV_IAP2_L1D_CACHE_LOCK:
-		masks = 1;
-		IPMMASKSET(mesi); 
-		break;
-		
-	case PMC_EV_IAP2_L2_LINES_IN:	  case PMC_EV_IAP2_L2_LINES_OUT:
-	case PMC_EV_IAP2_L2_M_LINES_OUT:
-		masks = 2;
-		IPMMASKSET(cores_and_hw); 
-		break;
-
-	case PMC_EV_IAP2_BUS_TRANS_ANY: case PMC_EV_IAP2_SNOOP_STALL_DRV:
-	case PMC_EV_IAP2_BUS_TRANS_MEM: case PMC_EV_IAP2_BUS_TRANS_BURST:
-	case PMC_EV_IAP2_BUS_TRANS_DEF: case PMC_EV_IAP2_BUS_TRANS_IO:
-	case PMC_EV_IAP2_BUS_TRANS_P:	  case PMC_EV_IAP2_BUS_TRANS_PWR:
-	case PMC_EV_IAP2_BUS_TRANS_WB:  case PMC_EV_IAP2_BUS_TRANS_INVAL:
-	case PMC_EV_IAP2_BUS_TRANS_RFO: case PMC_EV_IAP2_BUS_TRANS_IFETCH:
-	case PMC_EV_IAP2_BUS_TRANS_BRD: case PMC_EV_IAP2_BUS_LOCK_CLOCKS:
-	case PMC_EV_IAP2_BUS_REQUEST_OUTSTANDING:
-		masks = 2;
-		IPMMASKSET(cores_and_agents); 
-		break;
-
-	case PMC_EV_IAP2_L2_IFETCH:	  case PMC_EV_IAP2_L2_ST:
-	case PMC_EV_IAP2_L2_LOCK:
-		masks = 2;
-		IPMMASKSET(cores_and_mesi); 
-		break;
-
-	case PMC_EV_IAP2_EXT_SNOOP:
-		masks = 2;
-		IPMMASKSET(cores_and_snoop_response); 
-		break;
-
-	case PMC_EV_IAP2_CMP_SNOOP:
-		masks = 2;
-		IPMMASKSET(cores_and_snoop_type); 
-		break;
-
-	case PMC_EV_IAP2_L2_LD:	  case PMC_EV_IAP2_L2_RQSTS:
-	case PMC_EV_IAP2_L2_REJECT_BUSQ:
-		masks = 3;
-		IPMMASKSET(cores_and_hw_and_mesi); 
-		break;
-
-	default:
-		pmask = NULL;
-		break;
-	}
-
-	/* Parse additional modifiers if present */
-	while ((p = strsep(&ctrspec, ",")) != NULL) {
-		if (KWPREFIXMATCH(p, IPM_KW_CMASK "=")) {
-			q = strchr(p, '=');
-			if (*++q == '\0') /* skip '=' */
-				return -1;
-			count = strtol(q, &e, 0);
-			if (e == q || *e != '\0')
-				return -1;
-			pmc_config->pm_caps |= PMC_CAP_THRESHOLD;
-#if 0			
-			pmc_config->pm_md.pm_ppro.pm_ppro_config |=
-			    P6_EVSEL_TO_CMASK(count);
-#endif
-		} else if (KWMATCH(p, IPM_KW_EDGE)) {
-			pmc_config->pm_caps |= PMC_CAP_EDGE;
-		} else if (KWMATCH(p, IPM_KW_INV)) {
-			pmc_config->pm_caps |= PMC_CAP_INVERT;
-		} else if (KWMATCH(p, IPM_KW_OS)) {
-			pmc_config->pm_caps |= PMC_CAP_SYSTEM;
-		} else if (KWPREFIXMATCH(p, IPM_KW_UMASK "=")) {
-			evmask = 0;
-			if ((n = pmc_parse_mask(pmask, p, &evmask)) < 0)
-				return -1;
-			if (n > masks)
-				return -1;
-			pmc_config->pm_caps |= PMC_CAP_QUALIFIER;
-		} else if (KWMATCH(p, P6_KW_USR)) {
-			pmc_config->pm_caps |= PMC_CAP_USER;
-		} else
-			return -1;
-	}
-
-	if (evmask == 0 && pmask) {
-			evmask = default_mask;
-			pmc_config->pm_caps |= PMC_CAP_QUALIFIER;
-	}
-
-	if (pmc_config->pm_caps & PMC_CAP_QUALIFIER)
-		pmc_config->pm_md.pm_ipm.pm_ipm_config |=
-		    IPM_EVSEL_TO_UMASK(evmask);
-
-	pmc_config->pm_class = PMC_CLASS_IAP2;
-	return 0;
-}
-
 static int
 tsc_allocate_pmc(enum pmc_event pe, char *ctrspec,
     struct pmc_op_pmcallocate *pmc_config)
@@ -2573,10 +2304,6 @@ pmc_event_names_of_class(enum pmc_class cl, const char ***eventnames,
 		ev = p6_event_table;
 		count = PMC_EVENT_TABLE_SIZE(p6);
 		break;
-	case PMC_CLASS_IAP2:
-		ev = iap2_event_table;
-		count = PMC_EVENT_TABLE_SIZE(iap2);
-		break;
 	default:
 		errno = EINVAL;
 		return (-1);
@@ -2739,10 +2466,6 @@ pmc_init(void)
 		PMC_MDEP_INIT(p4);
 		pmc_class_table[n] = &p4_class_table_descr;
 		break;
-	case PMC_CPU_INTEL_CORE:
-	case PMC_CPU_INTEL_CORE2:
-		PMC_MDEP_INIT(iap2);
-		break;
 #endif
 
 
@@ -2858,9 +2581,6 @@ _pmc_name_of_event(enum pmc_event pe, enum pmc_cputype cpu)
 	} else if (pe == PMC_EV_TSC_TSC) {
 		ev = tsc_event_table;
 		evfence = tsc_event_table + PMC_EVENT_TABLE_SIZE(tsc);
-	} else if (pe >= PMC_EV_IAP1_FIRST && pe <= PMC_EV_IAP2_LAST) {
-		ev = iap2_event_table;
-		evfence = iap2_event_table + PMC_EVENT_TABLE_SIZE(iap2);
 	}
 
 	for (; ev != evfence; ev++)

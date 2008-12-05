@@ -83,8 +83,7 @@ union pmc_md_op_pmcallocate  {
 	struct pmc_md_p4_op_pmcallocate		pm_p4;
 	struct pmc_md_pentium_op_pmcallocate	pm_pentium;
 	struct pmc_md_ppro_op_pmcallocate	pm_ppro;
-	struct pmc_md_ipm_op_pmcallocate	pm_ipm;
-	uint32_t				__pad[7];
+	uint64_t				__pad[4];
 };
 
 /* Logging */
@@ -101,7 +100,6 @@ union pmc_md_pmc  {
 	struct pmc_md_p4_pmc	pm_p4;
 	struct pmc_md_pentium_pmc pm_pentium;
 	struct pmc_md_ppro_pmc	pm_ppro;
-	struct pmc_md_ipm_pmc	pm_ipm;
 };
 
 struct pmc;
