@@ -67,6 +67,7 @@
 #include <net/if_var.h>
 #include <net/radix.h>
 #include <net/route.h>
+#include <net/vnet.h>
 
 #if defined(INET) || defined(INET6)
 /*XXX*/
@@ -79,6 +80,7 @@
 #endif
 #ifdef INET
 #include <netinet/if_ether.h>
+#include <netinet/vinet.h>
 #endif
 #ifdef DEV_CARP
 #include <netinet/ip_carp.h>
@@ -117,6 +119,7 @@ static void	if_qflush(struct ifnet *);
 static void	if_route(struct ifnet *, int flag, int fam);
 static int	if_setflag(struct ifnet *, int, int, int *, int);
 static void	if_slowtimo(void *);
+static int	if_transmit(struct ifnet *ifp, struct mbuf *m);
 static void	if_unroute(struct ifnet *, int flag, int fam);
 static void	link_rtrequest(int, struct rtentry *, struct rt_addrinfo *);
 static int	if_rtdel(struct radix_node *, void *);
@@ -126,7 +129,6 @@ static void	if_start_deferred(void *context, int pending);
 static void	do_link_state_change(void *, int);
 static int	if_getgroup(struct ifgroupreq *, struct ifnet *);
 static int	if_getgroupmembers(struct ifgroupreq *);
-static int	if_transmit(struct ifnet *ifp, struct mbuf *m);
 
 #ifdef INET6
 /*
@@ -136,21 +138,20 @@ static int	if_transmit(struct ifnet *ifp, struct mbuf *m);
 extern void	nd6_setmtu(struct ifnet *);
 #endif
 
-int	if_index = 0;
-int	ifqmaxlen = IFQ_MAXLEN;
+#ifdef VIMAGE_GLOBALS
 struct	ifnethead ifnet;	/* depend on static init XXX */
 struct	ifgrouphead ifg_head;
+int	if_index;
+static	int if_indexlim;
+/* Table of ifnet/cdev by index.  Locked with ifnet_lock. */
+static struct ifindex_entry *ifindex_table;
+static struct	knlist ifklist;
+#endif
+
+int	ifqmaxlen = IFQ_MAXLEN;
 struct	mtx ifnet_lock;
 static	if_com_alloc_t *if_com_alloc[256];
 static	if_com_free_t *if_com_free[256];
-
-static int	if_indexlim = 8;
-static struct	knlist ifklist;
-
-/*
- * Table of ifnet/cdev by index.  Locked with ifnet_lock.
- */
-static struct ifindex_entry *ifindex_table = NULL;
 
 static void	filt_netdetach(struct knote *kn);
 static int	filt_netdev(struct knote *kn, long hint);
@@ -193,7 +194,6 @@ ifnet_setbyindex(u_short idx, struct ifnet *ifp)
 struct ifaddr *
 ifaddr_byindex(u_short idx)
 {
-	INIT_VNET_NET(curvnet);
 	struct ifaddr *ifa;
 
 	IFNET_RLOCK();
@@ -358,6 +358,10 @@ static void
 if_init(void *dummy __unused)
 {
 	INIT_VNET_NET(curvnet);
+
+	V_if_index = 0;
+	V_ifindex_table = NULL;
+	V_if_indexlim = 8;
 
 	IFNET_LOCK_INIT();
 	TAILQ_INIT(&V_ifnet);
@@ -733,8 +737,7 @@ if_detach(struct ifnet *ifp)
 	INIT_VNET_NET(ifp->if_vnet);
 	struct ifaddr *ifa;
 	struct radix_node_head	*rnh;
-	int s;
-	int i;
+	int s, i, j;
 	struct domain *dp;
  	struct ifnet *iter;
  	int found = 0;
@@ -806,14 +809,13 @@ if_detach(struct ifnet *ifp)
 	 * to this interface...oh well...
 	 */
 	for (i = 1; i <= AF_MAX; i++) {
-	    int j;
-	    for (j = 0; j < rt_numfibs; j++) {
-		if ((rnh = V_rt_tables[j][i]) == NULL)
-			continue;
-		RADIX_NODE_HEAD_LOCK(rnh);
-		(void) rnh->rnh_walktree(rnh, if_rtdel, ifp);
-		RADIX_NODE_HEAD_UNLOCK(rnh);
-	    }
+		for (j = 0; j < rt_numfibs; j++) {
+			if ((rnh = V_rt_tables[j][i]) == NULL)
+				continue;
+			RADIX_NODE_HEAD_LOCK(rnh);
+			(void) rnh->rnh_walktree(rnh, if_rtdel, ifp);
+			RADIX_NODE_HEAD_UNLOCK(rnh);
+		}
 	}
 
 	/* Announce that the interface is gone. */
@@ -2211,7 +2213,7 @@ again:
 			struct sockaddr *sa = ifa->ifa_addr;
 
 			if (jailed(curthread->td_ucred) &&
-			    prison_if(curthread->td_ucred, sa))
+			    !prison_if(curthread->td_ucred, sa))
 				continue;
 			addrs++;
 #ifdef COMPAT_43
