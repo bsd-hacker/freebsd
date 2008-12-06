@@ -208,7 +208,6 @@ SYSCTL_STRUCT(_kern_ipc, OID_AUTO, mbstat, CTLFLAG_RD, &mbstat, mbstat,
  */
 uma_zone_t	zone_mbuf;
 uma_zone_t	zone_clust;
-uma_zone_t	zone_iclust;
 uma_zone_t	zone_pack;
 uma_zone_t	zone_jumbop;
 uma_zone_t	zone_jumbo9;
@@ -229,10 +228,9 @@ static void	mb_zfini_pack(void *, int);
 
 static void	mb_reclaim(void *);
 static void	mbuf_init(void *);
-
 static void    *mbuf_jumbo_alloc(uma_zone_t, int, u_int8_t *, int);
 static void	mbuf_jumbo_free(void *, int, u_int8_t);
-static void	*mb_alloc_iclust(uma_zone_t, int, u_int8_t *, int);
+
 static MALLOC_DEFINE(M_JUMBOFRAME, "jumboframes", "mbuf jumbo frame buffers");
 
 /* Ensure that MSIZE doesn't break dtom() - it must be a power of 2 */
@@ -257,14 +255,6 @@ mbuf_init(void *dummy)
 	    NULL, NULL,
 #endif
 	    MSIZE - 1, UMA_ZONE_MAXBUCKET);
-
-	zone_iclust = uma_zcreate("mbuf_icluster", MICLBYTES,
-	    NULL, NULL, NULL, NULL, UMA_ALIGN_PTR,
-	    UMA_ZONE_MAXBUCKET | UMA_ZONE_STRIPEBUCKET | UMA_ZONE_NOFREE);
-	uma_zone_set_ppera(zone_iclust,
-	    (MICLBYTES * (PAGE_SIZE / 64)) / PAGE_SIZE);
-	uma_zone_set_allocf(zone_iclust, mb_alloc_iclust);
-	uma_prealloc(zone_iclust, 8192);
 
 	zone_clust = uma_zcreate(MBUF_CLUSTER_MEM_NAME, MCLBYTES,
 	    mb_ctor_clust, mb_dtor_clust,
@@ -427,7 +417,6 @@ mb_ctor_mbuf(void *mem, int size, void *arg, int how)
 		m->m_pkthdr.tso_segsz = 0;
 		m->m_pkthdr.ether_vtag = 0;
 		SLIST_INIT(&m->m_pkthdr.tags);
-		m->m_pkthdr.flowid = 0;
 #ifdef MAC
 		/* If the label init fails, fail the alloc */
 		error = mac_mbuf_init(m, how);
@@ -556,66 +545,6 @@ mb_ctor_clust(void *mem, int size, void *arg, int how)
 
 	return (0);
 }
-
-static MALLOC_DEFINE(M_ICLUST, "iclust", "inline clusters");
-
-void *
-mb_alloc_iclust(uma_zone_t zone, int bytes, u_int8_t *flags, int wait)
-{
-
-	*flags = UMA_SLAB_PRIV;
-	return contigmalloc(bytes, M_ICLUST, 0, 0, ~0, 1, 0);
-}
-
-void
-mb_iclust_free(void *mem, void *arg)
-{
-
-	uma_zfree(zone_iclust, arg);
-}
-
-int
-mb_iclust_init(struct mbuf *m, short type, int flags)
-{
-	int *ref;
-
-	/*
-	 * The mbuf is initialized later.  The caller has the
-	 * responsibility to set up any MAC labels too.
-	 */
-	if (type == MT_NOINIT)
-		return (0);
-	/*
-	 * Initialize header contents.
-	 */
-	m->m_next = NULL;
-	m->m_nextpkt = NULL;
-	m->m_data = m_icldata(m);
-	m->m_len = 0;
-	m->m_flags = flags | M_EXT | M_NOFREE;
-	m->m_type = type;
-	if (flags & M_PKTHDR) {
-		memset(&m->m_pkthdr, 0, sizeof(m->m_pkthdr));
-#ifdef MAC
-		int error;
-		/* If the label init fails, fail the alloc */
-		error = mac_init_mbuf(m, how);
-		if (error)
-			return (error);
-#endif
-	}
-	m->m_ext.ext_buf = m_icldata(m);
-	m->m_ext.ext_free = mb_iclust_free;
-	m->m_ext.ext_arg1 = m;
-	m->m_ext.ext_size = MCLBYTES;
-	m->m_ext.ext_type = EXT_EXTREF;
-	ref = (int *)((uintptr_t)m + (MICLHLEN - sizeof(int)));
-	m->m_ext.ref_cnt = ref;
-	*ref = 1;
-
-	return (0);
-}
-
 
 /*
  * The Mbuf Cluster zone destructor.

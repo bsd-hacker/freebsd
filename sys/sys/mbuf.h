@@ -44,8 +44,6 @@
 #endif
 #endif
 
-#define	M_DPAD_LEN	64
-
 /*
  * Mbufs are of a single size, MSIZE (sys/param.h), which includes overhead.
  * An mbuf may add a single "mbuf cluster" of size MCLBYTES (also in
@@ -59,9 +57,6 @@
 #define	MHLEN		(MLEN - sizeof(struct pkthdr))	/* data len w/pkthdr */
 #define	MINCLSIZE	(MHLEN + 1)	/* smallest amount to put in cluster */
 #define	M_MAXCOMPRESS	(MHLEN / 2)	/* max amount to copy for compression */
-#define	MICLHLEN	(sizeof(struct m_hdr) + sizeof(struct pkthdr) + M_DPAD_LEN + sizeof(((struct mbuf *)0)->m_ext) + sizeof(int))
-#define	MICLDOFF	(roundup2(MICLHLEN, 64))
-#define	MICLBYTES	(MCLBYTES + MICLDOFF)
 
 #ifdef _KERNEL
 /*-
@@ -141,8 +136,8 @@ struct m_ext {
 			    (void *, void *);
 	void		*ext_arg1;	/* optional argument pointer */
 	void		*ext_arg2;	/* optional argument pointer */
-	volatile u_int	*ref_cnt;	/* pointer to ref count info */
 	u_int		 ext_size;	/* size of buffer, for ext_free */
+	volatile u_int	*ref_cnt;	/* pointer to ref count info */
 	int		 ext_type;	/* type of external storage */
 };
 
@@ -357,12 +352,10 @@ extern uma_zone_t	zone_jumbop;
 extern uma_zone_t	zone_jumbo9;
 extern uma_zone_t	zone_jumbo16;
 extern uma_zone_t	zone_ext_refcnt;
-extern uma_zone_t	zone_iclust;
 
 static __inline struct mbuf	*m_getcl(int how, short type, int flags);
 static __inline struct mbuf	*m_get(int how, short type);
 static __inline struct mbuf	*m_gethdr(int how, short type);
-static __inline struct mbuf	*m_geticl(int how, short type, int flags);
 static __inline struct mbuf	*m_getjcl(int how, short type, int flags,
 				    int size);
 static __inline struct mbuf	*m_getclr(int how, short type);	/* XXX */
@@ -372,12 +365,6 @@ static __inline void		*m_cljget(struct mbuf *m, int how, int size);
 static __inline void		 m_chtype(struct mbuf *m, short new_type);
 void				 mb_free_ext(struct mbuf *);
 static __inline struct mbuf	*m_last(struct mbuf *m);
-void				 m_tag_delete_chain(struct mbuf *,
-                                    struct m_tag *);
-
-
-int mb_iclust_init(struct mbuf *m, short type, int flags);
-void mb_iclust_free(void *mem, void *arg);
 
 static __inline int
 m_gettype(int size)
@@ -480,18 +467,7 @@ static __inline struct mbuf *
 m_getcl(int how, short type, int flags)
 {
 	struct mb_args args;
-	struct mbuf *m;
-	
-	/* First try an iclust. */
-	m = uma_zalloc(zone_iclust, how);
-	if (m) {
-		if (type != MT_NOINIT)
-			mb_iclust_init(m, type, flags);
-		return (m);
-	}
-	/*
-	 * Then fallback to the packetzone.
-	 */
+
 	args.flags = flags;
 	args.type = type;
 	return ((struct mbuf *)(uma_zalloc_arg(zone_pack, &args, how)));
@@ -642,50 +618,6 @@ m_last(struct mbuf *m)
 		m = m->m_next;
 	return (m);
 }
-static __inline void *
-m_icldata(struct mbuf *m)
-{
-
-	return ((void *)((uintptr_t)m + MICLDOFF));
-}
-
-static __inline
-struct mbuf *
-m_geticl(int how, short type, int flags)
-{
-	struct mbuf *m;
-
-	m = uma_zalloc(zone_iclust, how);
-	if (m && type != MT_NOINIT)
-		mb_iclust_init(m, type, flags);
-
-	return (m);
-}
-
-/*
- * Determine whether an mbuf can be torn down prior to xmit or not.  This
- * allows the driver to avoid touching the mbuf header when cleaning
- * transmit interrupts.
- */
-static inline int
-m_fasttest(struct mbuf *m)
-{
-	if (m->m_next == NULL && (m->m_flags & M_EXT) != 0 &&
-	    m->m_ext.ext_free == mb_iclust_free && *m->m_ext.ref_cnt == 1) {
-		if (SLIST_FIRST(&m->m_pkthdr.tags) != NULL)
-			m_tag_delete_chain(m, NULL);
-		return (1);
-	}
-	return (0);
-}
-
-static inline void
-m_fastfree(struct mbuf *m)
-{
-
-	uma_zfree(zone_iclust, m);
-}
-
 
 /*
  * mbuf, cluster, and external object allocation macros (for compatibility
@@ -935,6 +867,7 @@ struct mbuf	*m_unshare(struct mbuf *, int how);
 /* Packet tag routines. */
 struct m_tag	*m_tag_alloc(u_int32_t, int, int, int);
 void		 m_tag_delete(struct mbuf *, struct m_tag *);
+void		 m_tag_delete_chain(struct mbuf *, struct m_tag *);
 void		 m_tag_free_default(struct m_tag *);
 struct m_tag	*m_tag_locate(struct mbuf *, u_int32_t, int, struct m_tag *);
 struct m_tag	*m_tag_copy(struct m_tag *, int);
