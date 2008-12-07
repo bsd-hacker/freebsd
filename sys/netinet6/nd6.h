@@ -85,6 +85,9 @@ struct nd_ifinfo {
 				     */
 #define ND6_IFF_DONT_SET_IFROUTE	0x10
 
+#define	ND6_CREATE		0x1
+#define	ND6_EXCLUSIVE		0x2
+
 #ifdef _KERNEL
 #define ND_IFINFO(ifp) \
 	(((struct in6_ifextra *)(ifp)->if_afdata[AF_INET6])->nd_ifinfo)

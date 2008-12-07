@@ -130,20 +130,15 @@ void
 arp_ifscrub(struct ifnet *ifp, uint32_t addr)
 {
 	struct sockaddr_in addr4;
-	struct llentry *lle;
 
 	bzero((void *)&addr4, sizeof(addr4));
 	addr4.sin_len    = sizeof(addr4);
 	addr4.sin_family = AF_INET;
 	addr4.sin_addr.s_addr = addr;
 	IF_AFDATA_LOCK(ifp);
-	lle = lla_lookup(LLTABLE(ifp), (LLE_DELETE | LLE_IFADDR),
+	lla_lookup(LLTABLE(ifp), (LLE_DELETE | LLE_IFADDR),
 	    (struct sockaddr *)&addr4);
 	IF_AFDATA_UNLOCK(ifp);
-#if 0
-	if (lle == NULL)
-		log(LOG_INFO, "arp_ifscrub: interface address is missing from cache\n");
-#endif
 }
 #endif
 
@@ -257,7 +252,6 @@ arpresolve(struct ifnet *ifp, struct rtentry *rt0, struct mbuf *m,
 	int error;
 
 	*lle = NULL;
-
 	if (m != NULL) {
 		if (m->m_flags & M_BCAST) {
 			/* broadcast */
@@ -273,6 +267,7 @@ arpresolve(struct ifnet *ifp, struct rtentry *rt0, struct mbuf *m,
 	}
 
 	flags = (ifp->if_flags & (IFF_NOARP | IFF_STATICARP)) ? 0 : LLE_CREATE;
+	flags |= (m ? LLE_EXCLUSIVE : 0);
 
 	/* XXXXX
 	 * Since this function returns an llentry, the 
@@ -304,14 +299,16 @@ arpresolve(struct ifnet *ifp, struct rtentry *rt0, struct mbuf *m,
 			la->la_preempt--;
 		} 
 		*lle = la;
-		return (0);
+		error = 0;
+		goto done;
 	}
 
 	if (la->la_flags & LLE_STATIC) {   /* should not happen! */
 		log(LOG_DEBUG, "arpresolve: ouch, empty static llinfo for %s\n",
 		    inet_ntoa(SIN(dst)->sin_addr));
 		m_freem(m);
-		return (EINVAL);
+		error = EINVAL;
+		goto done;
 	}
 	/*
 	 * There is an arptab entry, but no ethernet address
@@ -322,6 +319,7 @@ arpresolve(struct ifnet *ifp, struct rtentry *rt0, struct mbuf *m,
 		if (la->la_hold)
 			m_freem(la->la_hold);
 		la->la_hold = m;
+		LLE_DOWNGRADE(la);
 	}
 	/*
 	 * Return EWOULDBLOCK if we have tried less than arp_maxtries. It
@@ -344,7 +342,9 @@ arpresolve(struct ifnet *ifp, struct rtentry *rt0, struct mbuf *m,
 		    IF_LLADDR(ifp));
 	}
 
-	return (EWOULDBLOCK);
+done:
+	LLE_RUNLOCK(la);
+	return (error);
 }
 
 /*
@@ -434,7 +434,7 @@ in_arpinput(struct mbuf *m)
 	struct sockaddr sa;
 	struct in_addr isaddr, itaddr, myaddr;
 	u_int8_t *enaddr = NULL;
-	int op, flag;
+	int op, flags;
 /*
 , rif_len;
 */
@@ -561,9 +561,11 @@ match:
 	sin.sin_len = sizeof(struct sockaddr_in);
 	sin.sin_family = AF_INET;
 	sin.sin_addr = isaddr;
-	flag = (itaddr.s_addr == myaddr.s_addr) ? LLE_CREATE : 0;
+	flags = (itaddr.s_addr == myaddr.s_addr) ? LLE_CREATE : 0;
+	flags |= LLE_EXCLUSIVE;
 	IF_AFDATA_LOCK(ifp); 
-	la = lla_lookup(LLTABLE(ifp), flag, (struct sockaddr *)&sin);
+	la = lla_lookup(LLTABLE(ifp), flags, (struct sockaddr *)&sin);
+	IF_AFDATA_UNLOCK(ifp);
 	if (la != NULL) {
 		/* the following is not an error when doing bridging */
 		if (!bridged && la->lle_tbl->llt_ifp != ifp
@@ -698,8 +700,8 @@ reply:
 		}
 	}
 
-	IF_AFDATA_UNLOCK(ifp);
-
+	if (la)
+		LLE_WUNLOCK(la);
 	if (itaddr.s_addr == myaddr.s_addr &&
 	    IN_LINKLOCAL(ntohl(itaddr.s_addr))) {
 		/* RFC 3927 link-local IPv4; always reply by broadcast. */
@@ -725,7 +727,8 @@ reply:
 	return;
 
 drop:
-	IF_AFDATA_UNLOCK(ifp);
+	if (la)
+		LLE_WUNLOCK(la);
 	m_freem(m);
 }
 #endif
@@ -750,6 +753,7 @@ arp_ifinit(struct ifnet *ifp, struct ifaddr *ifa)
 	if (lle == NULL)
 		log(LOG_INFO, "arp_ifinit: cannot create arp "
 		    "entry for interface address\n");
+	LLE_RUNLOCK(lle);
 	ifa->ifa_rtrequest = NULL;
 }
 

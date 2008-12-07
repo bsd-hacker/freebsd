@@ -1046,7 +1046,8 @@ in_lltable_new(const struct sockaddr *l3addr, u_int flags)
 	 */
 	lle->base.la_expire = time_second; /* mark expired */
 	lle->l3_addr4 = *(const struct sockaddr_in *)l3addr;
-
+	lle->base.lle_refcnt = 1;
+	LLE_LOCK_INIT(&lle->base);
 	return &lle->base;
 }
 
@@ -1083,6 +1084,11 @@ in_lltable_rtcheck(struct ifnet *ifp, const struct sockaddr *l3addr)
 	return 0;
 }
 
+/*
+ * Returns NULL if not found or marked for deletion
+ * if found returns lle read locked
+ *
+ */
 static struct llentry *
 in_lltable_lookup(struct lltable *llt, u_int flags, const struct sockaddr *l3addr)
 {
@@ -1104,7 +1110,22 @@ in_lltable_lookup(struct lltable *llt, u_int flags, const struct sockaddr *l3add
 			break;
 	}
 
-	if (lle == NULL) {
+	if (lle != NULL ) {
+		if (flags & LLE_DELETE) {
+			LLE_WLOCK(lle);
+			lle->la_flags = LLE_DELETED;
+			LLE_WUNLOCK(lle);
+#ifdef INVARIANTS
+			log(LOG_INFO, "ifaddr cache = %p  is deleted\n", lle);	
+#endif
+			lle = NULL;
+		} else 
+			LLE_RLOCK(lle);
+	} else {
+#ifdef INVARIANTS
+		if (flags & LLE_DELETE)
+			log(LOG_INFO, "interface address is missing from cache = %p  in delete\n", lle);	
+#endif
 		if (!(flags & LLE_CREATE))
 			return (NULL);
 		/*
@@ -1114,12 +1135,12 @@ in_lltable_lookup(struct lltable *llt, u_int flags, const struct sockaddr *l3add
 		 */
 		if (!(flags & LLE_IFADDR) &&
 		    in_lltable_rtcheck(ifp, l3addr) != 0)
-			return NULL;
+			goto done;
 
 		lle = in_lltable_new(l3addr, flags);
 		if (lle == NULL) {
 			log(LOG_INFO, "lla_lookup: new lle malloc failed\n");
-			return NULL;
+			goto done;
 		}
 		lle->la_flags = flags & ~LLE_CREATE;
 		if ((flags & (LLE_CREATE | LLE_IFADDR)) == (LLE_CREATE | LLE_IFADDR)) {
@@ -1129,12 +1150,11 @@ in_lltable_lookup(struct lltable *llt, u_int flags, const struct sockaddr *l3add
 
 		lle->lle_tbl  = llt;
 		lle->lle_head = lleh;
+		LLE_RLOCK(lle);
 		LIST_INSERT_HEAD(lleh, lle, lle_next);
-	} else {
-		if (flags & LLE_DELETE)
-			lle->la_flags = LLE_DELETED;
-	}
-	return lle;
+	} 
+done:
+	return (lle);
 }
 
 static int

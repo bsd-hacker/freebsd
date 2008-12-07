@@ -1143,21 +1143,16 @@ in6_purgeaddr(struct ifaddr *ifa)
 {
 	struct ifnet *ifp = ifa->ifa_ifp;
 	struct in6_ifaddr *ia = (struct in6_ifaddr *) ifa;
-	struct llentry *ln = NULL;
 	struct in6_multi_mship *imm;
 
 	/* stop DAD processing */
 	nd6_dad_stop(ifa);
 
 	IF_AFDATA_LOCK(ifp);
-	ln = lla_lookup(LLTABLE6(ifp), (LLE_DELETE | LLE_IFADDR),
+	lla_lookup(LLTABLE6(ifp), (LLE_DELETE | LLE_IFADDR),
 	    (struct sockaddr *)&ia->ia_addr);
-	if (ln == NULL)
-		log(LOG_INFO, "nd6_purgeaddr: interface address is missing from cache\n");
-	else
-		log(LOG_INFO, "nd6_purgeaddr: ifaddr cache = %p  is deleted\n", ln);
 	IF_AFDATA_UNLOCK(ifp);
-
+	
 	/*
 	 * leave from multicast groups we have joined for the interface
 	 */
@@ -1609,13 +1604,14 @@ in6_ifinit(struct ifnet *ifp, struct in6_ifaddr *ia,
 		/* Qing
 		 * we need to report rt_newaddrmsg
 		 */
-		ln = lla_lookup(LLTABLE6(ifp), (LLE_CREATE | LLE_IFADDR),
+		ln = lla_lookup(LLTABLE6(ifp), (LLE_CREATE | LLE_IFADDR | LLE_EXCLUSIVE),
 		    (struct sockaddr *)&ia->ia_addr);
+		IF_AFDATA_UNLOCK(ifp);
 		if (ln) {
 			ln->la_expire = 0;  /* for IPv6 this means permanent */
 			ln->ln_state = ND6_LLINFO_REACHABLE;
+			LLE_WUNLOCK(ln);
 		}
-		IF_AFDATA_UNLOCK(ifp);
 	}
 
 	return (error);
@@ -2119,7 +2115,8 @@ in6_lltable_new(const struct sockaddr *l3addr, u_int flags)
 
 	callout_init(&lle->base.ln_timer_ch, CALLOUT_MPSAFE);
 	lle->l3_addr6 = *(const struct sockaddr_in6 *)l3addr;
-
+	lle->base.lle_refcnt = 1;
+	LLE_LOCK_INIT(&lle->base);
 	return &lle->base;
 }
 

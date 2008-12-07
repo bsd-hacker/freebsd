@@ -37,6 +37,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/socket.h>
 #include <sys/kernel.h>
 #include <sys/mutex.h>
+#include <sys/rwlock.h>
 #include <sys/vimage.h>
 
 #include <vm/uma.h>
@@ -89,13 +90,14 @@ done:
 void
 llentry_free(struct llentry *lle)
 {
-	struct lltable *llt = lle->lle_tbl;
 
+	LLE_WLOCK(lle);
 	LIST_REMOVE(lle, lle_next);
 
 	if (lle->la_hold != NULL)
 		m_freem(lle->la_hold);
-	llt->llt_free(llt, lle);
+
+	LLE_FREE_LOCKED(lle);
 }
 
 /*
