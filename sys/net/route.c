@@ -289,6 +289,10 @@ rtalloc1_fib(struct sockaddr *dst, int report, u_long ignflags,
 retry:
 	if (needlock)
 		RADIX_NODE_HEAD_RLOCK(rnh);
+#ifdef INVARIANTS	
+	else
+		RADIX_NODE_HEAD_LOCK_ASSERT(rnh);
+#endif
 	rn = rnh->rnh_matchaddr(dst, rnh);
 	if (rn && ((rn->rn_flags & RNF_ROOT) == 0)) {
 
@@ -313,26 +317,25 @@ retry:
 		} else {
 			RT_LOCK(newrt);
 			RT_ADDREF(newrt);
-			RADIX_NODE_HEAD_RUNLOCK(rnh);
+			if (needlock)
+				RADIX_NODE_HEAD_RUNLOCK(rnh);
 			goto done;
 		}
 	}
-	
+	/*
+	 * if needresolve is set then we have the exclusive lock
+	 *  and we need to keep it held for the benefit of rtrequest_fib
+	 */
 	if (!needresolve && needlock)
 		RADIX_NODE_HEAD_RUNLOCK(rnh);
 	
-
 	if (needresolve) {
-		
+		RADIX_NODE_HEAD_WLOCK_ASSERT(rnh);
 		/*
-		 * If we find it and it's not the root node, then
-		 * get a reference on the rtentry associated.
+		 * We are apparently adding (report = 0 in delete).
+		 * If it requires that it be cloned, do so.
+		 * (This implies it wasn't a HOST route.)
 		 */
-			/*
-			 * We are apparently adding (report = 0 in delete).
-			 * If it requires that it be cloned, do so.
-			 * (This implies it wasn't a HOST route.)
-			 */
 		err = rtrequest_fib(RTM_RESOLVE, dst, NULL,
 		    NULL, RTF_RNH_LOCKED, &newrt, fibnum);
 		if (err) {
@@ -560,16 +563,16 @@ rtredirect_fib(struct sockaddr *dst,
 			info.rti_info[RTAX_NETMASK] = netmask;
 			info.rti_ifa = ifa;
 			info.rti_flags = flags;
-			if (rt0)
+			if (rt0 != NULL)
 				RT_UNLOCK(rt0);	/* drop lock to avoid LOR with RNH */
 			error = rtrequest1_fib(RTM_ADD, &info, &rt, fibnum);
-			if (rt) {
+			if (rt != NULL) {
 				RT_LOCK(rt);
-				if (rt0)
+				if (rt0 != NULL)
 					EVENTHANDLER_INVOKE(route_redirect_event, rt0, rt, dst);
 				flags = rt->rt_flags;
 			}
-			if (rt0)
+			if (rt0 != NULL)
 				RTFREE(rt0);
 			
 			stat = &V_rtstat.rts_dynamic;
