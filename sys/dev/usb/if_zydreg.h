@@ -1247,8 +1247,6 @@ struct zyd_softc {
 	usbd_interface_handle	sc_iface;
 	struct ifnet		*sc_ifp;
 
-	enum ieee80211_state	sc_state;
-	int			sc_arg;
 	int			sc_flags;
 #define ZYD_FLAG_FWLOADED	(1 << 0)
 #define ZYD_FLAG_DETACHING	(1 << 1)
@@ -1263,7 +1261,6 @@ struct zyd_softc {
 #define ZYD_SCAN_START		0
 #define ZYD_SCAN_END		1
 #define ZYD_SET_CHANNEL		2
-	struct usb_task		sc_task;
 	struct callout		sc_watchdog_ch;
 
 	struct zyd_rf		sc_rf;

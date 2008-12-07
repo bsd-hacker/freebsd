@@ -986,21 +986,21 @@ iwi_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 		ieee80211_state_name[vap->iv_state],
 		ieee80211_state_name[nstate], sc->flags));
 
+	IEEE80211_UNLOCK(ic);
+	IWI_LOCK(sc);
 	switch (nstate) {
 	case IEEE80211_S_INIT:
-		IWI_LOCK(sc);
 		/*
 		 * NB: don't try to do this if iwi_stop_master has
 		 *     shutdown the firmware and disabled interrupts.
 		 */
 		if (vap->iv_state == IEEE80211_S_RUN &&
 		    (sc->flags & IWI_FLAG_FW_INITED))
-			iwi_queue_cmd(sc, IWI_DISASSOC, 1);
-		IWI_UNLOCK(sc);
+			iwi_disassociate(sc, 0);
 		break;
 	case IEEE80211_S_AUTH:
-		iwi_queue_cmd(sc, IWI_AUTH, arg);
-		return EINPROGRESS;
+		iwi_auth_and_assoc(sc, vap);
+		break;
 	case IEEE80211_S_RUN:
 		if (vap->iv_opmode == IEEE80211_M_IBSS &&
 		    vap->iv_state == IEEE80211_S_SCAN) {
@@ -1012,8 +1012,7 @@ iwi_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 			 * AUTH -> RUN transition and we want to do nothing.
 			 * This is all totally bogus and needs to be redone.
 			 */
-			iwi_queue_cmd(sc, IWI_ASSOC, 0);
-			return EINPROGRESS;
+			iwi_auth_and_assoc(sc, vap);
 		}
 		break;
 	case IEEE80211_S_ASSOC:
@@ -1024,11 +1023,13 @@ iwi_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 		 */
 		if (vap->iv_state == IEEE80211_S_AUTH)
 			break;
-		iwi_queue_cmd(sc, IWI_ASSOC, arg);
-		return EINPROGRESS;
+		iwi_auth_and_assoc(sc, vap);
+		break;
 	default:
 		break;
 	}
+	IWI_UNLOCK(sc);
+	IEEE80211_LOCK(ic);
 	return ivp->iwi_newstate(vap, nstate, arg);
 }
 
@@ -3546,8 +3547,6 @@ iwi_ops(void *arg0, int npending)
 		[IWI_CMD_FREE]		= "FREE",
 		[IWI_SCAN_START]	= "SCAN_START",
 		[IWI_SET_CHANNEL]	= "SET_CHANNEL",
-		[IWI_AUTH]		= "AUTH",
-		[IWI_ASSOC]		= "ASSOC",
 		[IWI_DISASSOC]		= "DISASSOC",
 		[IWI_SCAN_CURCHAN]	= "SCAN_CURCHAN",
 		[IWI_SCAN_ALLCHAN]	= "SCAN_ALLCHAN",
@@ -3586,15 +3585,6 @@ again:
 
 	DPRINTF(("%s: %s arg %lu\n", __func__, opnames[cmd], arg));
 	switch (cmd) {
-	case IWI_AUTH:
-	case IWI_ASSOC:
-		if (cmd == IWI_AUTH)
-			vap->iv_state = IEEE80211_S_AUTH;
-		else
-			vap->iv_state = IEEE80211_S_ASSOC;
-		iwi_auth_and_assoc(sc, vap);
-		/* NB: completion done in iwi_notification_intr */
-		break;
 	case IWI_DISASSOC:
 		iwi_disassociate(sc, 0);
 		break;

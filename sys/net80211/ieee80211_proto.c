@@ -97,6 +97,7 @@ const char *ieee80211_wme_acnames[] = {
 };
 
 static void parent_updown(void *, int);
+static void ieee80211_newstate_cb(void *, int);
 static int ieee80211_new_state_locked(struct ieee80211vap *,
 	enum ieee80211_state, int);
 
@@ -176,6 +177,7 @@ ieee80211_proto_vattach(struct ieee80211vap *vap)
 	vap->iv_bmiss_max = IEEE80211_BMISS_MAX;
 	callout_init(&vap->iv_swbmiss, CALLOUT_MPSAFE);
 	callout_init(&vap->iv_mgtsend, CALLOUT_MPSAFE);
+	TASK_INIT(&vap->iv_nstate_task, 0, ieee80211_newstate_cb, vap);
 	/*
 	 * Install default tx rate handling: no fixed rate, lowest
 	 * supported rate for mgmt and multicast frames.  Default
@@ -1109,7 +1111,7 @@ ieee80211_start_locked(struct ieee80211vap *vap)
 			    IEEE80211_MSG_STATE | IEEE80211_MSG_DEBUG,
 			    "%s: up parent %s\n", __func__, parent->if_xname);
 			parent->if_flags |= IFF_UP;
-			taskqueue_enqueue(taskqueue_thread, &ic->ic_parent_task);
+			taskqueue_enqueue(ic->ic_tq, &ic->ic_parent_task);
 			return;
 		}
 	}
@@ -1228,7 +1230,7 @@ ieee80211_stop_locked(struct ieee80211vap *vap)
 			    IEEE80211_MSG_STATE | IEEE80211_MSG_DEBUG,
 			    "down parent %s\n", parent->if_xname);
 			parent->if_flags &= ~IFF_UP;
-			taskqueue_enqueue(taskqueue_thread, &ic->ic_parent_task);
+			taskqueue_enqueue(ic->ic_tq, &ic->ic_parent_task);
 		}
 	}
 }
@@ -1530,15 +1532,31 @@ wakeupwaiting(struct ieee80211vap *vap0)
  * Handle post state change work common to all operating modes.
  */
 static void
-ieee80211_newstate_cb(struct ieee80211vap *vap, 
-	enum ieee80211_state nstate, int arg)
+ieee80211_newstate_cb(void *xvap, int npending)
 {
+	struct ieee80211vap *vap = xvap;
 	struct ieee80211com *ic = vap->iv_ic;
-
-	IEEE80211_LOCK_ASSERT(ic);
+	enum ieee80211_state ostate = vap->iv_state;
+	enum ieee80211_state nstate = vap->iv_nstate;
+	int arg = vap->iv_nstate_arg;
+	int rc;
 
 	IEEE80211_DPRINTF(vap, IEEE80211_MSG_STATE,
 	    "%s: %s arg %d\n", __func__, ieee80211_state_name[nstate], arg);
+
+	IEEE80211_LOCK(ic);
+	rc = vap->iv_newstate(vap, nstate, arg);
+	if (rc != 0 || vap->iv_state != nstate) {
+		if (rc == EINPROGRESS)
+			if_printf(ic->ic_ifp,
+			    "Warning, iv_newstate was deferred again\n");
+		/* State transition failed */
+		goto out;
+	}
+
+	/* No actual transition, skip post processing */
+	if (ostate == nstate)
+		goto out;
 
 	if (nstate == IEEE80211_S_RUN) {
 		/*
@@ -1566,7 +1584,8 @@ ieee80211_newstate_cb(struct ieee80211vap *vap,
 		/* XXX NB: cast for altq */
 		ieee80211_flush_ifq((struct ifqueue *)&ic->ic_ifp->if_snd, vap);
 	}
-	vap->iv_newstate_cb = NULL;
+out:
+	IEEE80211_UNLOCK(ic);
 }
 
 /*
@@ -1723,18 +1742,11 @@ ieee80211_new_state_locked(struct ieee80211vap *vap,
 	default:
 		break;
 	}
-	/* XXX on transition RUN->CAC do we need to set nstate = iv_state? */
-	if (ostate != nstate) {
-		/*
-		 * Arrange for work to happen after state change completes.
-		 * If this happens asynchronously the caller must arrange
-		 * for the com lock to be held.
-		 */
-		vap->iv_newstate_cb = ieee80211_newstate_cb;
-	}
-	rc = vap->iv_newstate(vap, nstate, arg);
-	if (rc == 0 && vap->iv_newstate_cb != NULL)
-		vap->iv_newstate_cb(vap, nstate, arg);
+	/* The state change call to the driver runs in a thread */
+	vap->iv_nstate = nstate;
+	vap->iv_nstate_arg = arg;
+	taskqueue_enqueue(ic->ic_tq, &vap->iv_nstate_task);
+	return (EINPROGRESS);
 done:
 	return rc;
 }

@@ -110,10 +110,7 @@ struct ural_softc {
 	usbd_pipe_handle		sc_rx_pipeh;
 	usbd_pipe_handle		sc_tx_pipeh;
 
-	enum ieee80211_state		sc_state;
-	int				sc_arg;
 	int                             sc_scan_action; /* should be an enum */
-	struct usb_task			sc_task;
 	struct usb_task			sc_scantask;
 
 	struct ural_rx_data		rx_data[RAL_RX_LIST_COUNT];

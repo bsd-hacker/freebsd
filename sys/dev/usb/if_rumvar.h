@@ -105,10 +105,6 @@ struct rum_softc {
 	usbd_pipe_handle		sc_rx_pipeh;
 	usbd_pipe_handle		sc_tx_pipeh;
 
-	enum ieee80211_state		sc_state;
-	int				sc_arg;
-	struct usb_task			sc_task;
-
 	struct usb_task			sc_scantask;
 	int				sc_scan_action;
 #define RUM_SCAN_START	0

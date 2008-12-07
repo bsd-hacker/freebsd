@@ -165,8 +165,8 @@ void		iwn_compute_differential_gain(struct iwn_softc *,
 void		iwn_tune_sensitivity(struct iwn_softc *,
 		    const struct iwn_rx_stats *);
 int		iwn_send_sensitivity(struct iwn_softc *);
-int		iwn_auth(struct iwn_softc *);
-int		iwn_run(struct iwn_softc *);
+int		iwn_auth(struct iwn_softc *, struct ieee80211vap *);
+int		iwn_run(struct iwn_softc *, struct ieee80211vap *);
 int		iwn_scan(struct iwn_softc *);
 int		iwn_config(struct iwn_softc *);
 void		iwn_post_alive(struct iwn_softc *);
@@ -981,20 +981,13 @@ iwn_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 		ieee80211_state_name[vap->iv_state],
 		ieee80211_state_name[nstate]);
 
+	IEEE80211_UNLOCK(ic);
 	IWN_LOCK(sc);
 	callout_stop(&sc->sc_timer_to);
-	IWN_UNLOCK(sc);
 
-	/*
-	 * Some state transitions require issuing a configure request
-	 * to the adapter.  This must be done in a blocking context
-	 * so we toss control to the task q thread where the state
-	 * change will be finished after the command completes.
-	 */
 	if (nstate == IEEE80211_S_AUTH && vap->iv_state != IEEE80211_S_AUTH) {
 		/* !AUTH -> AUTH requires adapter config */
-		error = iwn_queue_cmd(sc, IWN_AUTH, arg, IWN_QUEUE_NORMAL);
-		return (error != 0 ? error : EINPROGRESS);
+		error = iwn_auth(sc, vap);
 	}
 	if (nstate == IEEE80211_S_RUN && vap->iv_state != IEEE80211_S_RUN) {
 		/*
@@ -1002,8 +995,7 @@ iwn_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 		 * which is done with a firmware cmd.  We also defer
 		 * starting the timers until that work is done.
 		 */
-		error = iwn_queue_cmd(sc, IWN_RUN, arg, IWN_QUEUE_NORMAL);
-		return (error != 0 ? error : EINPROGRESS);
+		error = iwn_run(sc, vap);
 	}
 	if (nstate == IEEE80211_S_RUN) {
 		/*
@@ -1011,6 +1003,8 @@ iwn_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 		 */
 		iwn_calib_reset(sc);
 	}
+	IWN_UNLOCK(sc);
+	IEEE80211_LOCK(ic);
 	return ivp->iv_newstate(vap, nstate, arg);
 }
 
@@ -3456,11 +3450,10 @@ iwn_send_sensitivity(struct iwn_softc *sc)
 }
 
 int
-iwn_auth(struct iwn_softc *sc)
+iwn_auth(struct iwn_softc *sc, struct ieee80211vap *vap)
 {
 	struct ifnet *ifp = sc->sc_ifp;
 	struct ieee80211com *ic = ifp->if_l2com;
-	struct ieee80211vap *vap = TAILQ_FIRST(&ic->ic_vaps);	/*XXX*/
 	struct ieee80211_node *ni = vap->iv_bss;
 	struct iwn_node_info node;
 	int error;
@@ -3549,12 +3542,11 @@ iwn_auth(struct iwn_softc *sc)
  * Configure the adapter for associated state.
  */
 int
-iwn_run(struct iwn_softc *sc)
+iwn_run(struct iwn_softc *sc, struct ieee80211vap *vap)
 {
 #define	MS(v,x)	(((v) & x) >> x##_S)
 	struct ifnet *ifp = sc->sc_ifp;
 	struct ieee80211com *ic = ifp->if_l2com;
-	struct ieee80211vap *vap = TAILQ_FIRST(&ic->ic_vaps);	/*XXX*/
 	struct ieee80211_node *ni = vap->iv_bss;
 	struct iwn_node_info node;
 	int error, maxrxampdu, ampdudensity;
@@ -4386,7 +4378,6 @@ iwn_ops(void *arg0, int pending)
 	struct ieee80211com *ic = ifp->if_l2com;
 	struct ieee80211vap *vap;
 	int cmd, arg, error;
-	enum ieee80211_state nstate;
 
 	for (;;) {
 		IWN_CMD_LOCK(sc);
@@ -4440,30 +4431,6 @@ iwn_ops(void *arg0, int pending)
 				//XXX Handle failed scan correctly
 				ieee80211_cancel_scan(vap);
 				return;
-			}
-			break;
-		case IWN_AUTH:
-		case IWN_RUN:
-			if (cmd == IWN_AUTH) {
-				error = iwn_auth(sc);
-				nstate = IEEE80211_S_AUTH;
-			} else {
-				error = iwn_run(sc);
-				nstate = IEEE80211_S_RUN;
-			}
-			if (error == 0) {
-				IWN_UNLOCK(sc);
-				IEEE80211_LOCK(ic);
-				IWN_VAP(vap)->iv_newstate(vap, nstate, arg);
-				if (vap->iv_newstate_cb != NULL)
-					vap->iv_newstate_cb(vap, nstate, arg);
-				IEEE80211_UNLOCK(ic);
-				IWN_LOCK(sc);
-			} else {
-				device_printf(sc->sc_dev,
-				    "%s: %s state change failed, error %d\n",
-				    __func__, ieee80211_state_name[nstate],
-				    error);
 			}
 			break;
 		case IWN_REINIT:
@@ -4559,9 +4526,7 @@ iwn_ops_str(int cmd)
 	case IWN_SCAN_CURCHAN:	return "SCAN_CURCHAN";
 	case IWN_SCAN_STOP:	return "SCAN_STOP";
 	case IWN_SET_CHAN:	return "SET_CHAN";
-	case IWN_AUTH:		return "AUTH";
 	case IWN_SCAN_NEXT:	return "SCAN_NEXT";
-	case IWN_RUN:		return "RUN";
 	case IWN_RADIO_ENABLE:	return "RADIO_ENABLE";
 	case IWN_RADIO_DISABLE:	return "RADIO_DISABLE";
 	case IWN_REINIT:	return "REINIT";

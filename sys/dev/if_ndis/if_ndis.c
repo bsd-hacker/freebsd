@@ -165,8 +165,6 @@ static void ndis_init		(void *);
 static void ndis_stop		(struct ndis_softc *);
 static int ndis_ifmedia_upd	(struct ifnet *);
 static void ndis_ifmedia_sts	(struct ifnet *, struct ifmediareq *);
-static void ndis_auth		(void *, int);
-static void ndis_assoc		(void *, int);
 static int ndis_get_assoc	(struct ndis_softc *, ndis_wlan_bssid_ex **);
 static int ndis_probe_offload	(struct ndis_softc *);
 static int ndis_set_offload	(struct ndis_softc *);
@@ -719,8 +717,6 @@ ndis_attach(dev)
 		taskqueue_start_threads(&sc->ndis_tq, 1, PI_NET, "%s taskq",
 		    device_get_nameunit(dev));
 		TASK_INIT(&sc->ndis_scantask, 0, ndis_scan, sc);
-		TASK_INIT(&sc->ndis_authtask, 0, ndis_auth, sc);
-		TASK_INIT(&sc->ndis_assoctask, 0, ndis_assoc, sc);
 
 		ifp->if_ioctl = ndis_ioctl_80211;
 		ic->ic_ifp = ifp;
@@ -1017,8 +1013,6 @@ ndis_detach(dev)
 
 	if (sc->ndis_80211) {
 		taskqueue_drain(sc->ndis_tq, &sc->ndis_scantask);
-		taskqueue_drain(sc->ndis_tq, &sc->ndis_authtask);
-		taskqueue_drain(sc->ndis_tq, &sc->ndis_assoctask);
 	}
 
 	if (sc->ndis_tickitem != NULL)
@@ -2361,30 +2355,6 @@ ndis_setstate_80211(sc)
 }
 
 static void
-ndis_auth(void *arg, int npending)
-{
-	struct ndis_softc *sc = arg;
-	struct ifnet *ifp = sc->ifp;
-	struct ieee80211com *ic = ifp->if_l2com;
-	struct ieee80211vap *vap = TAILQ_FIRST(&ic->ic_vaps);
-
-	vap->iv_state = IEEE80211_S_AUTH;
-	ndis_auth_and_assoc(sc, vap);
-}
-
-static void
-ndis_assoc(void *arg, int npending)
-{
-	struct ndis_softc *sc = arg;
-	struct ifnet *ifp = sc->ifp;
-	struct ieee80211com *ic = ifp->if_l2com;
-	struct ieee80211vap *vap = TAILQ_FIRST(&ic->ic_vaps);
-
-	vap->iv_state = IEEE80211_S_ASSOC;
-	ndis_auth_and_assoc(sc, vap);
-}
-
-static void
 ndis_auth_and_assoc(sc, vap)
 	struct ndis_softc	*sc;
 	struct ieee80211vap	*vap;
@@ -2597,9 +2567,6 @@ ndis_auth_and_assoc(sc, vap)
 
 	if (rval)
 		device_printf (sc->ndis_dev, "set ssid failed: %d\n", rval);
-
-	if (vap->iv_state == IEEE80211_S_AUTH)
-		ieee80211_new_state(vap, IEEE80211_S_ASSOC, 0);
 
 	return;
 }
@@ -3228,13 +3195,18 @@ ndis_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 		return nvp->newstate(vap, nstate, arg);
 	case IEEE80211_S_ASSOC:
 		if (ostate != IEEE80211_S_AUTH) {
-			taskqueue_enqueue(sc->ndis_tq, &sc->ndis_assoctask);
-			return EINPROGRESS;
+			IEEE80211_UNLOCK(ic);
+			ndis_auth_and_assoc(sc, vap);
+			IEEE80211_LOCK(ic);
 		}
 		break;
 	case IEEE80211_S_AUTH:
-		taskqueue_enqueue(sc->ndis_tq, &sc->ndis_authtask);
-		return EINPROGRESS;
+		IEEE80211_UNLOCK(ic);
+		ndis_auth_and_assoc(sc, vap);
+		if (vap->iv_state == IEEE80211_S_AUTH) /* XXX */
+			ieee80211_new_state(vap, IEEE80211_S_ASSOC, 0);
+		IEEE80211_LOCK(ic);
+		break;
 	default:
 		break;
 	}

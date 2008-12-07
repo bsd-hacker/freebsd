@@ -1278,21 +1278,32 @@ wpi_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 		ieee80211_state_name[vap->iv_state],
 		ieee80211_state_name[nstate], sc->flags));
 
+	IEEE80211_UNLOCK(ic);
+	WPI_LOCK(sc);
 	if (nstate == IEEE80211_S_AUTH) {
-		/* Delay the auth transition until we can update the firmware */
-		error = wpi_queue_cmd(sc, WPI_AUTH, arg, WPI_QUEUE_NORMAL);
-		return (error != 0 ? error : EINPROGRESS);
+		/* The node must be registered in the firmware before auth */
+		error = wpi_auth(sc, vap);
+		if (error != 0) {
+			device_printf(sc->sc_dev,
+			    "%s: could not move to auth state, error %d\n",
+			    __func__, error);
+		}
 	}
 	if (nstate == IEEE80211_S_RUN && vap->iv_state != IEEE80211_S_RUN) {
-		/* set the association id first */
-		error = wpi_queue_cmd(sc, WPI_RUN, arg, WPI_QUEUE_NORMAL);
-		return (error != 0 ? error : EINPROGRESS);
+		error = wpi_run(sc, vap);
+		if (error != 0) {
+			device_printf(sc->sc_dev,
+			    "%s: could not move to run state, error %d\n",
+			    __func__, error);
+		}
 	}
 	if (nstate == IEEE80211_S_RUN) {
 		/* RUN -> RUN transition; just restart the timers */
 		wpi_calib_timeout(sc);
 		/* XXX split out rate control timer */
 	}
+	WPI_UNLOCK(sc);
+	IEEE80211_LOCK(ic);
 	return wvp->newstate(vap, nstate, arg);
 }
 
@@ -3668,39 +3679,6 @@ again:
 			device_printf(sc->sc_dev,
 			    "error %d settting channel\n", error);
 		break;
-
-	case WPI_AUTH:
-		/* The node must be registered in the firmware before auth */
-		error = wpi_auth(sc, vap);
-		WPI_UNLOCK(sc);
-		if (error != 0) {
-			device_printf(sc->sc_dev,
-			    "%s: could not move to auth state, error %d\n",
-			    __func__, error);
-			return;
-		}
-		IEEE80211_LOCK(ic);
-		WPI_VAP(vap)->newstate(vap, IEEE80211_S_AUTH, arg);
-		if (vap->iv_newstate_cb != NULL)
-			vap->iv_newstate_cb(vap, IEEE80211_S_AUTH, arg);
-		IEEE80211_UNLOCK(ic);
-		goto again;
-
-	case WPI_RUN:
-		error = wpi_run(sc, vap);
-		WPI_UNLOCK(sc);
-		if (error != 0) {
-			device_printf(sc->sc_dev,
-			    "%s: could not move to run state, error %d\n",
-			    __func__, error);
-			return;
-		}
-		IEEE80211_LOCK(ic);
-		WPI_VAP(vap)->newstate(vap, IEEE80211_S_RUN, arg);
-		if (vap->iv_newstate_cb != NULL)
-			vap->iv_newstate_cb(vap, IEEE80211_S_RUN, arg);
-		IEEE80211_UNLOCK(ic);
-		goto again;
 	}
 	WPI_UNLOCK(sc);
 

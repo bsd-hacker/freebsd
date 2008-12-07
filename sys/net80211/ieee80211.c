@@ -33,8 +33,9 @@ __FBSDID("$FreeBSD$");
 #include "opt_wlan.h"
 
 #include <sys/param.h>
-#include <sys/systm.h> 
+#include <sys/systm.h>
 #include <sys/kernel.h>
+#include <sys/taskqueue.h>
 
 #include <sys/socket.h>
 
@@ -222,6 +223,12 @@ ieee80211_ifattach(struct ieee80211com *ic)
 
 	IEEE80211_LOCK_INIT(ic, ifp->if_xname);
 	TAILQ_INIT(&ic->ic_vaps);
+
+	/* Create a taskqueue for all state changes */
+	ic->ic_tq = taskqueue_create("ic_taskq", M_WAITOK | M_ZERO,
+	    taskqueue_thread_enqueue, &ic->ic_tq);
+	taskqueue_start_threads(&ic->ic_tq, 1, PI_NET, "%s taskq",
+	    ifp->if_xname);
 	/*
 	 * Fill in 802.11 available channel set, mark all
 	 * available channels as active, and pick a default
@@ -290,6 +297,7 @@ ieee80211_ifdetach(struct ieee80211com *ic)
 	ieee80211_node_detach(ic);
 	ifmedia_removeall(&ic->ic_media);
 
+	taskqueue_free(ic->ic_tq);
 	IEEE80211_LOCK_DESTROY(ic);
 	if_detach(ifp);
 }
@@ -514,6 +522,12 @@ ieee80211_vap_detach(struct ieee80211vap *vap)
 	ieee80211_syncifflag_locked(ic, IFF_PROMISC);
 	ieee80211_syncifflag_locked(ic, IFF_ALLMULTI);
 	IEEE80211_UNLOCK(ic);
+
+	/*
+	 * Flush any deferred vap tasks.
+	 * NB: must be before ether_ifdetach();
+	 */
+	taskqueue_drain(ic->ic_tq, &vap->iv_nstate_task);
 
 	/* XXX can't hold com lock */
 	/* NB: bpfattach is called by ether_ifdetach and claims all taps */

@@ -125,7 +125,6 @@ static int		ural_alloc_tx_list(struct ural_softc *);
 static void		ural_free_tx_list(struct ural_softc *);
 static int		ural_alloc_rx_list(struct ural_softc *);
 static void		ural_free_rx_list(struct ural_softc *);
-static void		ural_task(void *);
 static void		ural_scantask(void *);
 static int		ural_newstate(struct ieee80211vap *,
 			    enum ieee80211_state, int);
@@ -451,7 +450,6 @@ ural_attach(device_t self)
 	mtx_init(&sc->sc_mtx, device_get_nameunit(sc->sc_dev), MTX_NETWORK_LOCK,
 	    MTX_DEF | MTX_RECURSE);
 
-	usb_init_task(&sc->sc_task, ural_task, sc);
 	usb_init_task(&sc->sc_scantask, ural_scantask, sc);
 	callout_init(&sc->watchdog_ch, 0);
 
@@ -539,7 +537,6 @@ ural_detach(device_t self)
 	bpfdetach(ifp);
 	ieee80211_ifdetach(ic);
 
-	usb_rem_task(sc->sc_udev, &sc->sc_task);
 	usb_rem_task(sc->sc_udev, &sc->sc_scantask);
 	callout_stop(&sc->watchdog_ch);
 
@@ -737,85 +734,6 @@ ural_free_rx_list(struct ural_softc *sc)
 }
 
 static void
-ural_task(void *xarg)
-{
-	struct ural_softc *sc = xarg;
-	struct ifnet *ifp = sc->sc_ifp;
-	struct ieee80211com *ic = ifp->if_l2com;
-	struct ieee80211vap *vap = TAILQ_FIRST(&ic->ic_vaps);
-	struct ural_vap *uvp = URAL_VAP(vap);
-	const struct ieee80211_txparam *tp;
-	enum ieee80211_state ostate;
-	struct ieee80211_node *ni;
-	struct mbuf *m;
-
-	ostate = vap->iv_state;
-
-	RAL_LOCK(sc);
-	switch (sc->sc_state) {
-	case IEEE80211_S_INIT:
-		if (ostate == IEEE80211_S_RUN) {
-			/* abort TSF synchronization */
-			ural_write(sc, RAL_TXRX_CSR19, 0);
-
-			/* force tx led to stop blinking */
-			ural_write(sc, RAL_MAC_CSR20, 0);
-		}
-		break;
-
-	case IEEE80211_S_RUN:
-		ni = vap->iv_bss;
-
-		if (vap->iv_opmode != IEEE80211_M_MONITOR) {
-			ural_update_slot(ic->ic_ifp);
-			ural_set_txpreamble(sc);
-			ural_set_basicrates(sc, ic->ic_bsschan);
-			ural_set_bssid(sc, ni->ni_bssid);
-		}
-
-		if (vap->iv_opmode == IEEE80211_M_HOSTAP ||
-		    vap->iv_opmode == IEEE80211_M_IBSS) {
-			m = ieee80211_beacon_alloc(ni, &uvp->bo);
-			if (m == NULL) {
-				device_printf(sc->sc_dev,
-				    "could not allocate beacon\n");
-				return;
-			}
-
-			if (ural_tx_bcn(sc, m, ni) != 0) {
-				device_printf(sc->sc_dev,
-				    "could not send beacon\n");
-				return;
-			}
-		}
-
-		/* make tx led blink on tx (controlled by ASIC) */
-		ural_write(sc, RAL_MAC_CSR20, 1);
-
-		if (vap->iv_opmode != IEEE80211_M_MONITOR)
-			ural_enable_tsf_sync(sc);
-
-		/* enable automatic rate adaptation */
-		tp = &vap->iv_txparms[ieee80211_chan2mode(ic->ic_bsschan)];
-		if (tp->ucastrate == IEEE80211_FIXED_RATE_NONE)
-			ural_amrr_start(sc, ni);
-
-		break;
-
-	default:
-		break;
-	}
-
-	RAL_UNLOCK(sc);
-
-	IEEE80211_LOCK(ic);
-	uvp->newstate(vap, sc->sc_state, sc->sc_arg);
-	if (vap->iv_newstate_cb != NULL)
-		vap->iv_newstate_cb(vap, sc->sc_state, sc->sc_arg);
-	IEEE80211_UNLOCK(ic);
-}
-
-static void
 ural_scantask(void *arg)
 {
 	struct ural_softc *sc = arg;
@@ -846,21 +764,77 @@ ural_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 	struct ural_vap *uvp = URAL_VAP(vap);
 	struct ieee80211com *ic = vap->iv_ic;
 	struct ural_softc *sc = ic->ic_ifp->if_softc;
+	enum ieee80211_state ostate;
+	const struct ieee80211_txparam *tp;
+	struct ieee80211_node *ni;
+	struct mbuf *m;
 
 	callout_stop(&uvp->amrr_ch);
+	ostate = vap->iv_state;
 
-	/* do it in a process context */
-	sc->sc_state = nstate;
-	sc->sc_arg = arg;
+	DPRINTF(("%s: %s -> %s\n", __func__,
+		ieee80211_state_name[vap->iv_state],
+		ieee80211_state_name[nstate]));
 
-	usb_rem_task(sc->sc_udev, &sc->sc_task);
-	if (nstate == IEEE80211_S_INIT) {
-		uvp->newstate(vap, nstate, arg);
-		return 0;
-	} else {
-		usb_add_task(sc->sc_udev, &sc->sc_task, USB_TASKQ_DRIVER);
-		return EINPROGRESS;
+	IEEE80211_UNLOCK(ic);
+	RAL_LOCK(sc);
+	switch (nstate) {
+	case IEEE80211_S_INIT:
+		if (ostate == IEEE80211_S_RUN) {
+			/* abort TSF synchronization */
+			ural_write(sc, RAL_TXRX_CSR19, 0);
+
+			/* force tx led to stop blinking */
+			ural_write(sc, RAL_MAC_CSR20, 0);
+		}
+		break;
+
+	case IEEE80211_S_RUN:
+		ni = vap->iv_bss;
+
+		if (vap->iv_opmode != IEEE80211_M_MONITOR) {
+			ural_update_slot(ic->ic_ifp);
+			ural_set_txpreamble(sc);
+			ural_set_basicrates(sc, ic->ic_bsschan);
+			ural_set_bssid(sc, ni->ni_bssid);
+		}
+
+		if (vap->iv_opmode == IEEE80211_M_HOSTAP ||
+		    vap->iv_opmode == IEEE80211_M_IBSS) {
+			m = ieee80211_beacon_alloc(ni, &uvp->bo);
+			if (m == NULL) {
+				device_printf(sc->sc_dev,
+				    "could not allocate beacon\n");
+				return ENXIO;
+			}
+
+			if (ural_tx_bcn(sc, m, ni) != 0) {
+				device_printf(sc->sc_dev,
+				    "could not send beacon\n");
+				return ENXIO;
+			}
+		}
+
+		/* make tx led blink on tx (controlled by ASIC) */
+		ural_write(sc, RAL_MAC_CSR20, 1);
+
+		if (vap->iv_opmode != IEEE80211_M_MONITOR)
+			ural_enable_tsf_sync(sc);
+
+		/* enable automatic rate adaptation */
+		tp = &vap->iv_txparms[ieee80211_chan2mode(ic->ic_bsschan)];
+		if (tp->ucastrate == IEEE80211_FIXED_RATE_NONE)
+			ural_amrr_start(sc, ni);
+
+		break;
+
+	default:
+		break;
 	}
+	RAL_UNLOCK(sc);
+	IEEE80211_LOCK(ic);
+	uvp->newstate(vap, nstate, arg);
+	return 0;
 }
 
 #define RAL_RXTX_TURNAROUND	5	/* us */

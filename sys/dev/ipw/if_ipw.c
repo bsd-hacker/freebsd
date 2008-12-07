@@ -147,8 +147,8 @@ static int	ipw_reset(struct ipw_softc *);
 static int	ipw_load_ucode(struct ipw_softc *, const char *, int);
 static int	ipw_load_firmware(struct ipw_softc *, const char *, int);
 static int	ipw_config(struct ipw_softc *);
-static void	ipw_assoc_task(void *, int);
-static void	ipw_disassoc_task(void *, int);
+static void	ipw_assoc(struct ieee80211com *, struct ieee80211vap *);
+static void	ipw_disassoc(struct ieee80211com *, struct ieee80211vap *);
 static void	ipw_init_task(void *, int);
 static void	ipw_init(void *);
 static void	ipw_init_locked(struct ipw_softc *);
@@ -511,8 +511,6 @@ ipw_vap_create(struct ieee80211com *ic,
 		return NULL;
 	vap = &ivp->vap;
 
-	TASK_INIT(&ivp->assoc_task, 0, ipw_assoc_task, vap);
-	TASK_INIT(&ivp->disassoc_task, 0, ipw_disassoc_task, vap);
 	TASK_INIT(&ivp->assoc_success_task, 0, ipw_assocsuccess, vap);
 	TASK_INIT(&ivp->assoc_failed_task, 0, ipw_assocfailed, vap);
 	TASK_INIT(&ivp->scandone_task, 0, ipw_scandone, vap);
@@ -894,10 +892,14 @@ ipw_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 	struct ieee80211com *ic = vap->iv_ic;
 	struct ifnet *ifp = ic->ic_ifp;
 	struct ipw_softc *sc = ifp->if_softc;
+	enum ieee80211_state ostate;
 
 	DPRINTF(("%s: %s -> %s flags 0x%x\n", __func__,
 		ieee80211_state_name[vap->iv_state],
 		ieee80211_state_name[nstate], sc->flags));
+
+	ostate = vap->iv_state;
+	IEEE80211_UNLOCK(ic);
 
 	switch (nstate) {
 	case IEEE80211_S_RUN:
@@ -910,39 +912,33 @@ ipw_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 			 * AUTH -> RUN transition and we want to do nothing.
 			 * This is all totally bogus and needs to be redone.
 			 */
-			if (vap->iv_state == IEEE80211_S_SCAN) {
-				taskqueue_enqueue(taskqueue_swi,
-				    &IPW_VAP(vap)->assoc_task);
-				return EINPROGRESS;
-			}
+			if (ostate == IEEE80211_S_SCAN)
+				ipw_assoc(ic, vap);
 		}
 		break;
 
 	case IEEE80211_S_INIT:
 		if (sc->flags & IPW_FLAG_ASSOCIATED)
-			taskqueue_enqueue(taskqueue_swi,
-			    &IPW_VAP(vap)->disassoc_task);
+			ipw_disassoc(ic, vap);
 		break;
 
 	case IEEE80211_S_AUTH:
-		taskqueue_enqueue(taskqueue_swi, &IPW_VAP(vap)->assoc_task);
-		return EINPROGRESS;
+		ipw_assoc(ic, vap);
+		break;
 
 	case IEEE80211_S_ASSOC:
 		/*
 		 * If we are not transitioning from AUTH the resend the
 		 * association request.
 		 */
-		if (vap->iv_state != IEEE80211_S_AUTH) {
-			taskqueue_enqueue(taskqueue_swi,
-			    &IPW_VAP(vap)->assoc_task);
-			return EINPROGRESS;
-		}
+		if (ostate != IEEE80211_S_AUTH)
+			ipw_assoc(ic, vap);
 		break;
 
 	default:
 		break;
 	}
+	IEEE80211_LOCK(ic);
 	return ivp->newstate(vap, nstate, arg);
 }
 
@@ -2263,11 +2259,9 @@ ipw_setchannel(struct ipw_softc *sc, struct ieee80211_channel *chan)
 }
 
 static void
-ipw_assoc_task(void *context, int pending)
+ipw_assoc(struct ieee80211com *ic, struct ieee80211vap *vap)
 {
-	struct ieee80211vap *vap = context;
 	struct ifnet *ifp = vap->iv_ic->ic_ifp;
-	struct ieee80211com *ic = ifp->if_l2com;
 	struct ipw_softc *sc = ifp->if_softc;
 	struct ieee80211_node *ni = vap->iv_bss;
 	struct ipw_security security;
@@ -2358,9 +2352,8 @@ done:
 }
 
 static void
-ipw_disassoc_task(void *context, int pending)
+ipw_disassoc(struct ieee80211com *ic, struct ieee80211vap *vap)
 {
-	struct ieee80211vap *vap = context;
 	struct ifnet *ifp = vap->iv_ic->ic_ifp;
 	struct ieee80211_node *ni = vap->iv_bss;
 	struct ipw_softc *sc = ifp->if_softc;

@@ -1521,8 +1521,10 @@ rum_cfg_newstate(struct rum_softc *sc,
 	mtx_unlock(&sc->sc_mtx);
 	IEEE80211_LOCK(ic);
 	uvp->newstate(vap, nstate, arg);
+	/* XXX Broken!
 	if (vap->iv_newstate_cb != NULL)
 		vap->iv_newstate_cb(vap, nstate, arg);
+	*/
 	IEEE80211_UNLOCK(ic);
 	mtx_lock(&sc->sc_mtx);
 	return;

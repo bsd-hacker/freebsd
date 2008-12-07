@@ -116,6 +116,7 @@ struct ieee80211com {
 	struct ifmedia		ic_media;	/* interface media config */
 	uint8_t			ic_myaddr[IEEE80211_ADDR_LEN];
 	struct callout		ic_inact;	/* inactivity processing */
+	struct taskqueue	*ic_tq;		/* deferred state thread */
 	struct task		ic_parent_task;	/* deferred parent processing */
 
 	uint32_t		ic_flags;	/* state flags */
@@ -300,8 +301,9 @@ struct ieee80211vap {
 	uint32_t		iv_htcaps;	/* HT capabilities */
 	enum ieee80211_opmode	iv_opmode;	/* operation mode */
 	enum ieee80211_state	iv_state;	/* state machine state */
-	void			(*iv_newstate_cb)(struct ieee80211vap *,
-				    enum ieee80211_state, int);
+	enum ieee80211_state	iv_nstate;	/* pending state */
+	int			iv_nstate_arg;	/* pending state arg */
+	struct task		iv_nstate_task;	/* deferred state processing */
 	struct callout		iv_mgtsend;	/* mgmt frame response timer */
 						/* inactivity timer settings */
 	int			iv_inact_init;	/* setting for new station */

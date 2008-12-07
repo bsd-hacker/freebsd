@@ -227,12 +227,10 @@ struct iwi_softc {
 #define	IWI_CMD_FREE		0		/* for marking slots unused */
 #define IWI_SCAN_START		1
 #define IWI_SET_CHANNEL	        2
-#define	IWI_AUTH		3
-#define	IWI_ASSOC		4
-#define	IWI_DISASSOC		5
-#define	IWI_SCAN_CURCHAN	6
-#define	IWI_SCAN_ALLCHAN	7
-#define	IWI_SET_WME		8
+#define	IWI_DISASSOC		3
+#define	IWI_SCAN_CURCHAN	4
+#define	IWI_SCAN_ALLCHAN	5
+#define	IWI_SET_WME		6
 
 	struct iwi_rx_radiotap_header sc_rxtap;
 	int			sc_rxtap_len;

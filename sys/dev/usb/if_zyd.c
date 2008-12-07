@@ -202,7 +202,6 @@ static int	zyd_alloc_rx_list(struct zyd_softc *);
 static void	zyd_free_rx_list(struct zyd_softc *);
 static struct ieee80211_node *zyd_node_alloc(struct ieee80211vap *,
 			    const uint8_t mac[IEEE80211_ADDR_LEN]);
-static void	zyd_task(void *);
 static int	zyd_newstate(struct ieee80211vap *, enum ieee80211_state, int);
 static int	zyd_cmd(struct zyd_softc *, uint16_t, const void *, int,
 		    void *, int, u_int);
@@ -322,7 +321,6 @@ zyd_attach(device_t dev)
 	    MTX_NETWORK_LOCK, MTX_DEF);
 	usb_init_task(&sc->sc_mcasttask, zyd_set_multi, sc);
 	usb_init_task(&sc->sc_scantask, zyd_scantask, sc);
-	usb_init_task(&sc->sc_task, zyd_task, sc);
 	callout_init(&sc->sc_watchdog_ch, 0);
 	STAILQ_INIT(&sc->sc_rqh);
 
@@ -661,18 +659,24 @@ zyd_node_alloc(struct ieee80211vap *vap __unused,
 	return (zn != NULL) ? (&zn->ni) : (NULL);
 }
 
-static void
-zyd_task(void *arg)
+static int
+zyd_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 {
-	int error;
-	struct zyd_softc *sc = arg;
-	struct ifnet *ifp = sc->sc_ifp;
-	struct ieee80211com *ic = ifp->if_l2com;
-	struct ieee80211vap *vap = TAILQ_FIRST(&ic->ic_vaps);
-	struct ieee80211_node *ni = vap->iv_bss;
 	struct zyd_vap *zvp = ZYD_VAP(vap);
+	struct ieee80211com *ic = vap->iv_ic;
+	struct zyd_softc *sc = ic->ic_ifp->if_softc;
+	struct ieee80211_node *ni = vap->iv_bss;
+	int error;
 
-	switch (sc->sc_state) {
+	DPRINTF(sc, ZYD_DEBUG_STATE, "%s: %s -> %s\n", __func__,
+	    ieee80211_state_name[vap->iv_state],
+	    ieee80211_state_name[nstate]);
+
+	usb_rem_task(sc->sc_udev, &sc->sc_scantask);
+	callout_stop(&sc->sc_watchdog_ch);
+
+	IEEE80211_UNLOCK(ic);
+	switch (nstate) {
 	case IEEE80211_S_AUTH:
 		zyd_set_chan(sc, ic->ic_curchan);
 		break;
@@ -684,51 +688,20 @@ zyd_task(void *arg)
 		error = zyd_set_led(sc, ZYD_LED1, 1);
 		if (error != 0)
 			goto fail;
-		
+
 		/* make data LED blink upon Tx */
 		zyd_write32_m(sc, sc->sc_fwbase + ZYD_FW_LINK_STATUS, 1);
-		
+
 		IEEE80211_ADDR_COPY(sc->sc_bssid, ni->ni_bssid);
 		zyd_set_bssid(sc, sc->sc_bssid);
 		break;
 	default:
 		break;
 	}
-
 fail:
 	IEEE80211_LOCK(ic);
-	zvp->newstate(vap, sc->sc_state, sc->sc_arg);
-	if (vap->iv_newstate_cb != NULL)
-		vap->iv_newstate_cb(vap, sc->sc_state, sc->sc_arg);
-	IEEE80211_UNLOCK(ic);
-}
-
-static int
-zyd_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
-{
-	struct zyd_vap *zvp = ZYD_VAP(vap);
-	struct ieee80211com *ic = vap->iv_ic;
-	struct zyd_softc *sc = ic->ic_ifp->if_softc;
-
-	DPRINTF(sc, ZYD_DEBUG_STATE, "%s: %s -> %s\n", __func__,
-	    ieee80211_state_name[vap->iv_state],
-	    ieee80211_state_name[nstate]);
-
-	usb_rem_task(sc->sc_udev, &sc->sc_scantask);
-	usb_rem_task(sc->sc_udev, &sc->sc_task);
-	callout_stop(&sc->sc_watchdog_ch);
-
-	/* do it in a process context */
-	sc->sc_state = nstate;
-	sc->sc_arg = arg;
-
-	if (nstate == IEEE80211_S_INIT) {
-		zvp->newstate(vap, nstate, arg);
-		return (0);
-	} else {
-		usb_add_task(sc->sc_udev, &sc->sc_task, USB_TASKQ_DRIVER);
-		return (EINPROGRESS);
-	}
+	zvp->newstate(vap, nstate, arg);
+	return (0);
 }
 
 static int
@@ -2947,7 +2920,6 @@ zyd_stop(struct zyd_softc *sc, int disable)
 	zyd_write32_m(sc, ZYD_CR_INTERRUPT, 0);
 
 	usb_rem_task(sc->sc_udev, &sc->sc_scantask);
-	usb_rem_task(sc->sc_udev, &sc->sc_task);
 	callout_stop(&sc->sc_watchdog_ch);
 
 	usbd_abort_pipe(sc->sc_ep[ZYD_ENDPT_BIN]);

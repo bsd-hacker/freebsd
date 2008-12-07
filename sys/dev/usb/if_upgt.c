@@ -167,10 +167,9 @@ static void	upgt_stop(struct upgt_softc *, int);
 static void	upgt_setup_rates(struct ieee80211vap *, struct ieee80211com *);
 static int	upgt_set_macfilter(struct upgt_softc *, uint8_t);
 static int	upgt_newstate(struct ieee80211vap *, enum ieee80211_state, int);
-static void	upgt_task(void *);
 static void	upgt_scantask(void *);
 static void	upgt_set_chan(struct upgt_softc *, struct ieee80211_channel *);
-static void	upgt_set_led(struct upgt_softc *, int);
+static void	upgt_set_led(struct upgt_softc *, int, enum ieee80211_state);
 static void	upgt_set_led_blink(void *);
 static void	upgt_tx_task(void *);
 static int	upgt_get_stats(struct upgt_softc *);
@@ -333,7 +332,6 @@ upgt_attach_hook(device_t dev)
 	    MTX_DEF | MTX_RECURSE);
 	usb_init_task(&sc->sc_mcasttask, upgt_set_multi, sc);
 	usb_init_task(&sc->sc_scantask, upgt_scantask, sc);
-	usb_init_task(&sc->sc_task, upgt_task, sc);
 	usb_init_task(&sc->sc_task_tx, upgt_tx_task, sc);
 	callout_init(&sc->sc_led_ch, 0);
 	callout_init(&sc->sc_watchdog_ch, 0);
@@ -451,6 +449,7 @@ upgt_tx_task(void *arg)
 	struct upgt_softc *sc = arg;
 	struct ifnet *ifp = sc->sc_ifp;
 	struct ieee80211com *ic = ifp->if_l2com;
+	struct ieee80211vap *vap = TAILQ_FIRST(&ic->ic_vaps);
 	struct ieee80211_frame *wh;
 	struct ieee80211_key *k;
 	struct upgt_data *data_tx;
@@ -461,7 +460,7 @@ upgt_tx_task(void *arg)
 	int len, i;
 	usbd_status error;
 
-	upgt_set_led(sc, UPGT_LED_BLINK);
+	upgt_set_led(sc, UPGT_LED_BLINK, vap->iv_state);
 
 	UPGT_LOCK(sc);
 	for (i = 0; i < upgt_txbuf; i++) {
@@ -693,53 +692,7 @@ upgt_stop(struct upgt_softc *sc, int disable)
 }
 
 static void
-upgt_task(void *arg)
-{
-	struct upgt_softc *sc = arg;
-	struct ifnet *ifp = sc->sc_ifp;
-	struct ieee80211com *ic = ifp->if_l2com;
-	struct ieee80211vap *vap = TAILQ_FIRST(&ic->ic_vaps);
-	struct upgt_vap *uvp = UPGT_VAP(vap);
-
-	DPRINTF(sc, UPGT_DEBUG_STATE, "%s: %s -> %s\n", __func__,
-	    ieee80211_state_name[vap->iv_state],
-	    ieee80211_state_name[sc->sc_state]);
-	
-	switch (sc->sc_state) {
-	case IEEE80211_S_INIT:
-		/* do not accept any frames if the device is down */
-		UPGT_LOCK(sc);
-		upgt_set_macfilter(sc, sc->sc_state);
-		UPGT_UNLOCK(sc);
-		upgt_set_led(sc, UPGT_LED_OFF);
-		break;
-	case IEEE80211_S_SCAN:
-		upgt_set_chan(sc, ic->ic_curchan);
-		break;
-	case IEEE80211_S_AUTH:
-		upgt_set_chan(sc, ic->ic_curchan);
-		break;
-	case IEEE80211_S_ASSOC:
-		break;
-	case IEEE80211_S_RUN:
-		UPGT_LOCK(sc);
-		upgt_set_macfilter(sc, sc->sc_state);
-		UPGT_UNLOCK(sc);
-		upgt_set_led(sc, UPGT_LED_ON);
-		break;
-	default:
-		break;
-	}
-
-	IEEE80211_LOCK(ic);
-	uvp->newstate(vap, sc->sc_state, sc->sc_arg);
-	if (vap->iv_newstate_cb != NULL)
-		vap->iv_newstate_cb(vap, sc->sc_state, sc->sc_arg);
-	IEEE80211_UNLOCK(ic);
-}
-
-static void
-upgt_set_led(struct upgt_softc *sc, int action)
+upgt_set_led(struct upgt_softc *sc, int action, enum ieee80211_state nstate)
 {
 	struct upgt_data *data_cmd = &sc->cmd_data;
 	struct upgt_lmac_mem *mem;
@@ -781,7 +734,7 @@ upgt_set_led(struct upgt_softc *sc, int action)
 		led->action_tmp_dur = 0;
 		break;
 	case UPGT_LED_BLINK:
-		if (sc->sc_state != IEEE80211_S_RUN)
+		if (nstate != IEEE80211_S_RUN)
 			return;
 		if (sc->sc_led_blink)
 			/* previous blink was not finished */
@@ -1311,19 +1264,35 @@ upgt_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 	struct ieee80211com *ic = vap->iv_ic;
 	struct upgt_softc *sc = ic->ic_ifp->if_softc;
 
-	usb_rem_task(sc->sc_udev, &sc->sc_task);
-
-	/* do it in a process context */
-	sc->sc_state = nstate;
-	sc->sc_arg = arg;
-
-	if (nstate == IEEE80211_S_INIT) {
-		uvp->newstate(vap, nstate, arg);
-		return 0;
-	} else {
-		usb_add_task(sc->sc_udev, &sc->sc_task, USB_TASKQ_DRIVER);
-		return EINPROGRESS;
+	IEEE80211_UNLOCK(ic);
+	switch (nstate) {
+	case IEEE80211_S_INIT:
+		/* do not accept any frames if the device is down */
+		UPGT_LOCK(sc);
+		upgt_set_macfilter(sc, nstate);
+		UPGT_UNLOCK(sc);
+		upgt_set_led(sc, UPGT_LED_OFF, nstate);
+		break;
+	case IEEE80211_S_SCAN:
+		upgt_set_chan(sc, ic->ic_curchan);
+		break;
+	case IEEE80211_S_AUTH:
+		upgt_set_chan(sc, ic->ic_curchan);
+		break;
+	case IEEE80211_S_ASSOC:
+		break;
+	case IEEE80211_S_RUN:
+		UPGT_LOCK(sc);
+		upgt_set_macfilter(sc, nstate);
+		UPGT_UNLOCK(sc);
+		upgt_set_led(sc, UPGT_LED_ON, nstate);
+		break;
+	default:
+		break;
 	}
+	IEEE80211_LOCK(ic);
+	uvp->newstate(vap, nstate, arg);
+	return 0;
 }
 
 static void
@@ -2291,7 +2260,6 @@ upgt_detach(device_t dev)
 	mtx_destroy(&sc->sc_mtx);
 	usb_rem_task(sc->sc_udev, &sc->sc_mcasttask);
 	usb_rem_task(sc->sc_udev, &sc->sc_scantask);
-	usb_rem_task(sc->sc_udev, &sc->sc_task);
 	usb_rem_task(sc->sc_udev, &sc->sc_task_tx);
 	callout_stop(&sc->sc_led_ch);
 	callout_stop(&sc->sc_watchdog_ch);

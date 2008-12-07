@@ -185,12 +185,10 @@ struct iwn_softc {
 #define IWN_SCAN_CURCHAN	(1<<1)
 #define IWN_SCAN_STOP		(1<<2)
 #define IWN_SET_CHAN		(1<<3)
-#define IWN_AUTH		(1<<4)
-#define IWN_SCAN_NEXT		(1<<5)
-#define IWN_RUN			(1<<6)
-#define IWN_RADIO_ENABLE	(1<<7)
-#define IWN_RADIO_DISABLE	(1<<8)
-#define IWN_REINIT		(1<<9)
+#define IWN_SCAN_NEXT		(1<<4)
+#define IWN_RADIO_ENABLE	(1<<5)
+#define IWN_RADIO_DISABLE	(1<<6)
+#define IWN_REINIT		(1<<7)
 #define IWN_CMD_MAXOPS		10
 	/* command queuing request type */
 #define IWN_QUEUE_NORMAL	0

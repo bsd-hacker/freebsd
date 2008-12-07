@@ -78,8 +78,6 @@ struct ipw_tx_radiotap_header {
 
 struct ipw_vap {
 	struct ieee80211vap	vap;
-	struct task		assoc_task;
-	struct task		disassoc_task;
 	struct task		assoc_success_task;
 	struct task		assoc_failed_task;
 	struct task		scandone_task;

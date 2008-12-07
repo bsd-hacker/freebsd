@@ -140,7 +140,6 @@ static int		rum_alloc_tx_list(struct rum_softc *);
 static void		rum_free_tx_list(struct rum_softc *);
 static int		rum_alloc_rx_list(struct rum_softc *);
 static void		rum_free_rx_list(struct rum_softc *);
-static void		rum_task(void *);
 static void		rum_scantask(void *);
 static int		rum_newstate(struct ieee80211vap *,
 			    enum ieee80211_state, int);
@@ -448,7 +447,6 @@ rum_attach(device_t self)
 	mtx_init(&sc->sc_mtx, device_get_nameunit(sc->sc_dev), MTX_NETWORK_LOCK,
 	    MTX_DEF | MTX_RECURSE);
 
-	usb_init_task(&sc->sc_task, rum_task, sc);
 	usb_init_task(&sc->sc_scantask, rum_scantask, sc);
 	callout_init(&sc->watchdog_ch, 0);
 
@@ -556,7 +554,6 @@ rum_detach(device_t self)
 	bpfdetach(ifp);
 	ieee80211_ifdetach(ic);
 
-	usb_rem_task(sc->sc_udev, &sc->sc_task);
 	usb_rem_task(sc->sc_udev, &sc->sc_scantask);
 	callout_stop(&sc->watchdog_ch);
 
@@ -751,24 +748,24 @@ rum_free_rx_list(struct rum_softc *sc)
 	}
 }
 
-static void
-rum_task(void *arg)
+static int
+rum_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 {
-	struct rum_softc *sc = arg;
-	struct ifnet *ifp = sc->sc_ifp;
-	struct ieee80211com *ic = ifp->if_l2com;
-	struct ieee80211vap *vap = TAILQ_FIRST(&ic->ic_vaps);
 	struct rum_vap *rvp = RUM_VAP(vap);
+	struct ieee80211com *ic = vap->iv_ic;
+	struct rum_softc *sc = ic->ic_ifp->if_softc;
 	const struct ieee80211_txparam *tp;
 	enum ieee80211_state ostate;
 	struct ieee80211_node *ni;
 	uint32_t tmp;
 
+	usb_rem_task(sc->sc_udev, &sc->sc_scantask);
+	callout_stop(&rvp->amrr_ch);
 	ostate = vap->iv_state;
 
+	IEEE80211_UNLOCK(ic);
 	RUM_LOCK(sc);
-
-	switch (sc->sc_state) {
+	switch (nstate) {
 	case IEEE80211_S_INIT:
 		if (ostate == IEEE80211_S_RUN) {
 			/* abort TSF synchronization */
@@ -803,38 +800,10 @@ rum_task(void *arg)
 	default:
 		break;
 	}
-
 	RUM_UNLOCK(sc);
-
 	IEEE80211_LOCK(ic);
-	rvp->newstate(vap, sc->sc_state, sc->sc_arg);
-	if (vap->iv_newstate_cb != NULL)
-		vap->iv_newstate_cb(vap, sc->sc_state, sc->sc_arg);
-	IEEE80211_UNLOCK(ic);
-}
-
-static int
-rum_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
-{
-	struct rum_vap *rvp = RUM_VAP(vap);
-	struct ieee80211com *ic = vap->iv_ic;
-	struct rum_softc *sc = ic->ic_ifp->if_softc;
-
-	usb_rem_task(sc->sc_udev, &sc->sc_task);
-	usb_rem_task(sc->sc_udev, &sc->sc_scantask);
-	callout_stop(&rvp->amrr_ch);
-
-	/* do it in a process context */
-	sc->sc_state = nstate;
-	sc->sc_arg = arg;
-
-	if (nstate == IEEE80211_S_INIT) {
-		rvp->newstate(vap, nstate, arg);
-		return 0;
-	} else {
-		usb_add_task(sc->sc_udev, &sc->sc_task, USB_TASKQ_DRIVER);
-		return EINPROGRESS;
-	}
+	rvp->newstate(vap, nstate, arg);
+	return 0;
 }
 
 static void

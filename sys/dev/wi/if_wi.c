@@ -133,10 +133,7 @@ static void wi_rx_intr(struct wi_softc *);
 static void wi_tx_intr(struct wi_softc *);
 static void wi_tx_ex_intr(struct wi_softc *);
 
-static void wi_status_connected(void *, int);
-static void wi_status_disconnected(void *, int);
 static void wi_status_oor(void *, int);
-static void wi_status_assoc_failed(void *, int);
 static void wi_info_intr(struct wi_softc *);
 
 static int  wi_write_txrate(struct wi_softc *, struct ieee80211vap *);
@@ -571,10 +568,6 @@ wi_vap_create(struct ieee80211com *ic,
 	default:
 		break;
 	}
-
-	TASK_INIT(&wvp->wv_connected_task, 0, wi_status_connected, vap);
-	TASK_INIT(&wvp->wv_disconnected_task, 0, wi_status_disconnected, vap);
-	TASK_INIT(&wvp->wv_assoc_failed_task, 0, wi_status_assoc_failed, vap);
 
 	/* complete setup */
 	ieee80211_vap_attach(vap, ieee80211_media_change, wi_media_status);
@@ -1498,43 +1491,11 @@ wi_tx_intr(struct wi_softc *sc)
 }
 
 static void
-wi_status_connected(void *arg, int pending)
-{
-	struct ieee80211vap *vap = arg;
-	struct ieee80211com *ic = vap->iv_ic;
-
-	IEEE80211_LOCK(ic);
-	WI_VAP(vap)->wv_newstate(vap, IEEE80211_S_RUN, 0);
-	if (vap->iv_newstate_cb != NULL)
-		vap->iv_newstate_cb(vap, IEEE80211_S_RUN, 0);
-	IEEE80211_UNLOCK(ic);
-}
-
-static void
-wi_status_disconnected(void *arg, int pending)
-{
-	struct ieee80211vap *vap = arg;
-
-	if (vap->iv_state == IEEE80211_S_RUN) {
-		vap->iv_stats.is_rx_deauth++;
-		ieee80211_new_state(vap, IEEE80211_S_SCAN, 0);
-	}
-}
-
-static void
 wi_status_oor(void *arg, int pending)
 {
 	struct ieee80211com *ic = arg;
 
 	ieee80211_beacon_miss(ic);
-}
-
-static void
-wi_status_assoc_failed(void *arg, int pending)
-{
-	struct ieee80211vap *vap = arg;
-
-	ieee80211_new_state(vap, IEEE80211_S_SCAN, IEEE80211_SCAN_FAIL_TIMEOUT);
 }
 
 static __noinline void
@@ -1543,7 +1504,6 @@ wi_info_intr(struct wi_softc *sc)
 	struct ifnet *ifp = sc->sc_ifp;
 	struct ieee80211com *ic = ifp->if_l2com;
 	struct ieee80211vap *vap = TAILQ_FIRST(&ic->ic_vaps);
-	struct wi_vap *wvp = WI_VAP(vap);
 	int i, fid, len, off;
 	u_int16_t ltbuf[2];
 	u_int16_t stat;
@@ -1563,13 +1523,13 @@ wi_info_intr(struct wi_softc *sc)
 				break;
 			/* fall thru... */
 		case WI_INFO_LINK_STAT_AP_CHG:
-			taskqueue_enqueue(taskqueue_swi, &wvp->wv_connected_task);
+			ieee80211_new_state(vap, IEEE80211_S_RUN, 0);
 			break;
 		case WI_INFO_LINK_STAT_AP_INR:
 			break;
 		case WI_INFO_LINK_STAT_DISCONNECTED:
 			/* we dropped off the net; e.g. due to deauth/disassoc */
-			taskqueue_enqueue(taskqueue_swi, &wvp->wv_disconnected_task);
+			ieee80211_new_state(vap, IEEE80211_S_SCAN, 0);
 			break;
 		case WI_INFO_LINK_STAT_AP_OOR:
 			/* XXX does this need to be per-vap? */
@@ -1577,8 +1537,8 @@ wi_info_intr(struct wi_softc *sc)
 			break;
 		case WI_INFO_LINK_STAT_ASSOC_FAILED:
 			if (vap->iv_opmode == IEEE80211_M_STA)
-				taskqueue_enqueue(taskqueue_swi,
-				    &wvp->wv_assoc_failed_task);
+				ieee80211_new_state(vap, IEEE80211_S_SCAN,
+				    IEEE80211_SCAN_FAIL_TIMEOUT);
 			break;
 		}
 		break;

@@ -409,12 +409,9 @@ struct upgt_softc {
 	int			 sc_debug;
 
 	struct usb_task		 sc_mcasttask;
-	struct usb_task		 sc_task;
 	struct usb_task		 sc_scantask;
 #define UPGT_SET_CHANNEL	 2
 	int			 sc_scan_action;
-	enum ieee80211_state	 sc_state;
-	int			 sc_arg;
 	int			 sc_led_blink;
 	struct callout		 sc_led_ch;
 	uint8_t			 sc_cur_rateset[8];
