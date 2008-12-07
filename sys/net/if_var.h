@@ -77,12 +77,12 @@ struct  ifvlantrunk;
 #ifdef _KERNEL
 #include <sys/mbuf.h>
 #include <sys/eventhandler.h>
+#include <sys/buf_ring.h>
 #endif /* _KERNEL */
 #include <sys/lock.h>		/* XXX */
 #include <sys/mutex.h>		/* XXX */
 #include <sys/event.h>		/* XXX */
 #include <sys/_task.h>
-#include <sys/buf_ring.h>
 
 #define	IF_DUNIT_NONE	-1
 
@@ -542,6 +542,7 @@ do {									\
 } while (0)
 
 
+#ifdef _KERNEL
 static __inline int
 drbr_enqueue(struct buf_ring *br, struct mbuf *m)
 {	
@@ -565,9 +566,7 @@ drbr_free(struct buf_ring *br, struct malloc_type *type)
 
 	buf_ring_free(br, type);
 }
-
-
-
+#endif
 
 /*
  * 72 was chosen below because it is the size of a TCP/IP
