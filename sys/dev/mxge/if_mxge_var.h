@@ -125,6 +125,9 @@ typedef struct
 typedef struct
 {
 	struct mtx mtx;
+#ifdef IFNET_MULTIQUEUE
+	struct buf_ring *br;
+#endif
 	volatile mcp_kreq_ether_send_t *lanai;	/* lanai ptr for sendq	*/
 	volatile uint32_t *send_go;		/* doorbell for sendq */
 	volatile uint32_t *send_stop;		/* doorbell for sendq */
@@ -147,9 +150,7 @@ typedef struct
 	int watchdog_done;		/* cache of done */
 	int watchdog_rx_pause;		/* cache of pause rq recvd */
 	int defrag;
-	struct ifaltq ifq;
 	char mtx_name[16];
-	char ifq_mtx_name[16];
 } mxge_tx_ring_t;
 
 struct lro_entry;
