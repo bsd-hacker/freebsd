@@ -680,12 +680,12 @@ reply:
 			 * over who claims what Ether address.
 			 */
 			if (rt->rt_ifp == ifp) {
-				RTFREE(rt);
+				RTFREE_LOCKED(rt);
 				goto drop;
 			}
 			(void)memcpy(ar_tha(ah), ar_sha(ah), ah->ar_hln);
 			(void)memcpy(ar_sha(ah), enaddr, ah->ar_hln);
-			RTFREE(rt);
+			RTFREE_LOCKED(rt);
 
 			/*
 			 * Also check that the node which sent the ARP packet
@@ -704,10 +704,10 @@ reply:
 				    " from %s via %s, expecting %s\n",
 				    inet_ntoa(isaddr), ifp->if_xname,
 				    rt->rt_ifp->if_xname);
-				RTFREE(rt);
+				RTFREE_LOCKED(rt);
 				goto drop;
 			}
-			RTFREE(rt);
+			RTFREE_LOCKED(rt);
 
 #ifdef DEBUG_PROXY
 			printf("arp: proxying for %s\n",
