@@ -840,8 +840,12 @@ nd6_purge(struct ifnet *ifp)
 		nd6_setdefaultiface(0);
 
 	if (!V_ip6_forwarding && V_ip6_accept_rtadv) { /* XXX: too restrictive? */
-		/* refresh default router list */
+		/* refresh default router list
+		 *
+		 * 
+		 */
 		defrouter_select();
+
 	}
 
 	/* XXXXX
@@ -851,21 +855,11 @@ nd6_purge(struct ifnet *ifp)
 	 * from if_detach() where everything gets purged. So let
 	 * in6_domifdetach() do the actual L2 table purging work.
 	 */
-#if 0
-	/*
-	 * Nuke neighbor cache entries for the ifp.
-	 * Note that rt->rt_ifp may not be the same as ifp,
-	 * due to KAME goto ours hack.  See RTM_RESOLVE case in
-	 * nd6_rtrequest(), and ip6_input().
-	 */
-	IF_AFDATA_LOCK(ifp);
-	lltable_free(LLTABLE6(ifp));
-	IF_AFDATA_UNLOCK(ifp);
-#endif
 }
 
 /* Qing
  * the caller acquires and releases the lock on the lltbls
+ * Returns the llentry locked
  */
 struct llentry *
 nd6_lookup(struct in6_addr *addr6, int flags, struct ifnet *ifp)
@@ -880,6 +874,8 @@ nd6_lookup(struct in6_addr *addr6, int flags, struct ifnet *ifp)
 	sin6.sin6_family = AF_INET6;
 	sin6.sin6_addr = *addr6;
 
+	IF_AFDATA_LOCK_ASSERT(ifp);
+
 	if (flags & ND6_CREATE)
 	    llflags |= LLE_CREATE;
 	if (flags & ND6_EXCLUSIVE)
@@ -890,6 +886,7 @@ nd6_lookup(struct in6_addr *addr6, int flags, struct ifnet *ifp)
 		ln->ln_state = ND6_LLINFO_NOSTATE;
 		callout_init(&ln->ln_timer_ch, 0);
 	}
+	
 	return (ln);
 }
 
@@ -978,7 +975,8 @@ nd6_is_addr_neighbor(struct sockaddr_in6 *addr, struct ifnet *ifp)
 {
 	struct llentry *lle;
 	int rc = 0;
-	
+
+	IF_AFDATA_UNLOCK_ASSERT(ifp);
 	if (nd6_is_new_addr_neighbor(addr, ifp))
 		return (1);
 
@@ -1401,6 +1399,8 @@ nd6_cache_lladdr(struct ifnet *ifp, struct in6_addr *from, char *lladdr,
 	int flags = 0;
 	int newstate = 0;
 
+	IF_AFDATA_LOCK_ASSERT(ifp);
+
 	if (ifp == NULL)
 		panic("ifp == NULL in nd6_cache_lladdr");
 	if (from == NULL)
@@ -1598,16 +1598,27 @@ nd6_cache_lladdr(struct ifnet *ifp, struct in6_addr *from, char *lladdr,
 	 * for those are not autoconfigured hosts, we explicitly avoid such
 	 * cases for safety.
 	 */
-	if (do_update && ln->ln_router && !V_ip6_forwarding && V_ip6_accept_rtadv)
+	if (do_update && ln->ln_router && !V_ip6_forwarding && V_ip6_accept_rtadv) {
+#ifdef notyet
+		/*
+		 * XXX implement the boiler plate
+		 */
+		taskqueue_enqueue(ipv6_taskq, defrouter_select_task);
+#endif
+		/*
+		 * guaranteed recursion
+		 */
 		defrouter_select();
+	}
+	
 done:	
 	if (ln) {
-		if (ln->la_flags & LLE_STATIC)
-			ln = NULL;
 		if (lladdr)
 			LLE_WUNLOCK(ln);
 		else
 			LLE_RUNLOCK(ln);
+		if (ln->la_flags & LLE_STATIC)
+			ln = NULL;
 	}
 	return (ln);
 }
@@ -1680,7 +1691,9 @@ nd6_output(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
 	 * or an anycast address(i.e. not a multicast).
 	 */
 	flags = m ? LLE_EXCLUSIVE : 0;
+	IF_AFDATA_LOCK(rt->rt_ifp);
 	ln = lla_lookup(LLTABLE6(ifp), 0, (struct sockaddr *)dst);
+	IF_AFDATA_UNLOCK(rt->rt_ifp);
 	if ((ln == NULL) && nd6_is_addr_neighbor(dst, ifp))  {
 		/*
 		 * Since nd6_is_addr_neighbor() internally calls nd6_lookup(),
@@ -1688,7 +1701,9 @@ nd6_output(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
 		 * it is tolerable, because this should be a rare case.
 		 */
 		flags = ND6_CREATE | (m ? ND6_EXCLUSIVE : 0);
+		IF_AFDATA_LOCK(rt->rt_ifp);
 		ln = nd6_lookup(&dst->sin6_addr, flags, ifp);
+		IF_AFDATA_UNLOCK(rt->rt_ifp);
 	}
 	if (ln == NULL) {
 		if ((ifp->if_flags & IFF_POINTOPOINT) == 0 &&
@@ -1700,7 +1715,6 @@ nd6_output(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
 			    ip6_sprintf(ip6buf, &dst->sin6_addr), ln, rt);
 			senderr(EIO);	/* XXX: good error? */
 		}
-
 		goto sendpkt;	/* send anyway */
 	}
 
@@ -1785,6 +1799,12 @@ nd6_output(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
 	if ((ND_IFINFO(ifp)->flags & ND6_IFF_IFDISABLED)) {
 		error = ENETDOWN; /* better error? */
 		goto bad;
+	}
+	if (ln) {
+		if (m0)
+			LLE_WUNLOCK(ln);
+		else
+			LLE_RUNLOCK(ln);
 	}
 
 #ifdef MAC

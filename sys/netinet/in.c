@@ -1077,10 +1077,10 @@ in_lltable_rtcheck(struct ifnet *ifp, const struct sockaddr *l3addr)
 		log(LOG_INFO, "IPv4 address: \"%s\" is not on the network\n",
 		    inet_ntoa(((const struct sockaddr_in *)l3addr)->sin_addr));
 		if (rt != NULL)
-			rtfree(rt);
-		return EINVAL;
+			RTFREE_LOCKED(rt);
+		return (EINVAL);
 	}
-	rtfree(rt);
+	RTFREE_LOCKED(rt);
 	return 0;
 }
 
@@ -1110,17 +1110,14 @@ in_lltable_lookup(struct lltable *llt, u_int flags, const struct sockaddr *l3add
 			break;
 	}
 
-	if (lle != NULL ) {
-		if (flags & LLE_DELETE) {
-			LLE_WLOCK(lle);
-			lle->la_flags = LLE_DELETED;
-			LLE_WUNLOCK(lle);
+	if ((lle != NULL) && (flags & LLE_DELETE)) {
+		LLE_WLOCK(lle);
+		lle->la_flags = LLE_DELETED;
+		LLE_WUNLOCK(lle);
 #ifdef INVARIANTS
-			log(LOG_INFO, "ifaddr cache = %p  is deleted\n", lle);	
+		log(LOG_INFO, "ifaddr cache = %p  is deleted\n", lle);	
 #endif
-			lle = NULL;
-		} else 
-			LLE_RLOCK(lle);
+		lle = NULL;
 	} else {
 #ifdef INVARIANTS
 		if (flags & LLE_DELETE)
@@ -1150,9 +1147,14 @@ in_lltable_lookup(struct lltable *llt, u_int flags, const struct sockaddr *l3add
 
 		lle->lle_tbl  = llt;
 		lle->lle_head = lleh;
-		LLE_RLOCK(lle);
 		LIST_INSERT_HEAD(lleh, lle, lle_next);
 	} 
+	if (lle) {
+		if (flags & LLE_EXCLUSIVE)
+			LLE_WLOCK(lle);
+		else
+			LLE_RLOCK(lle);
+	}
 done:
 	return (lle);
 }

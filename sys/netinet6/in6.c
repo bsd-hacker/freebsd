@@ -2215,10 +2215,23 @@ in6_lltable_lookup(struct lltable *llt, u_int flags,
 		lle->lle_head = lleh;
 		LIST_INSERT_HEAD(lleh, lle, lle_next);
 	} else {
-		if (flags & LLE_DELETE)
+		if (flags & LLE_DELETE) {
+			LLE_WLOCK(lle);
 			lle->la_flags = LLE_DELETED;
+			LLE_WUNLOCK(lle);
+#ifdef INVARIANTS
+			log(LOG_INFO, "ifaddr cache = %p  is deleted\n", lle);	
+#endif
+			lle = NULL;
+		}
 	}
-	return lle;
+	if (lle) {
+		if (flags & LLE_EXCLUSIVE)
+			LLE_WLOCK(lle);
+		else
+			LLE_RLOCK(lle);
+	}
+	return (lle);
 }
 
 static int

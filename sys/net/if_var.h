@@ -359,12 +359,14 @@ typedef void (*group_change_event_handler_t)(void *, const char *);
 EVENTHANDLER_DECLARE(group_change_event, group_change_event_handler_t);
 
 #define	IF_AFDATA_LOCK_INIT(ifp)	\
-    mtx_init(&(ifp)->if_afdata_mtx, "if_afdata", NULL, \
-				    (MTX_DEF | MTX_RECURSE))
+    mtx_init(&(ifp)->if_afdata_mtx, "if_afdata", NULL, MTX_DEF)
 #define	IF_AFDATA_LOCK(ifp)	mtx_lock(&(ifp)->if_afdata_mtx)
 #define	IF_AFDATA_TRYLOCK(ifp)	mtx_trylock(&(ifp)->if_afdata_mtx)
 #define	IF_AFDATA_UNLOCK(ifp)	mtx_unlock(&(ifp)->if_afdata_mtx)
 #define	IF_AFDATA_DESTROY(ifp)	mtx_destroy(&(ifp)->if_afdata_mtx)
+
+#define	IF_AFDATA_LOCK_ASSERT(ifp)	mtx_assert(&(ifp)->if_afdata_mtx, MA_OWNED)
+#define	IF_AFDATA_UNLOCK_ASSERT(ifp)	mtx_assert(&(ifp)->if_afdata_mtx, MA_NOTOWNED)
 
 #define	IFF_LOCKGIANT(ifp) do {						\
 	if ((ifp)->if_flags & IFF_NEEDSGIANT)				\
