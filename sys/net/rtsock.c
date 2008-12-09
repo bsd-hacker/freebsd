@@ -43,6 +43,7 @@
 #include <sys/priv.h>
 #include <sys/proc.h>
 #include <sys/protosw.h>
+#include <sys/lock.h>
 #include <sys/rwlock.h>
 #include <sys/signalvar.h>
 #include <sys/socket.h>
