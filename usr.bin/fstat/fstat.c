@@ -535,7 +535,7 @@ vtrans(struct vnode *vp, int i, int flag)
 		} else if (!strcmp("isofs", tagstr)) {
 			if (!isofs_filestat(&vn, &fst))
 				badtype = "error";
-#ifdef ZFS
+#if 0
 		} else if (!strcmp("zfs", tagstr)) {
 			if (!zfs_filestat(&vn, &fst))
 				badtype = "error";

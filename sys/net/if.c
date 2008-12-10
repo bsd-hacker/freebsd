@@ -50,6 +50,8 @@
 #include <sys/socketvar.h>
 #include <sys/protosw.h>
 #include <sys/kernel.h>
+#include <sys/lock.h>
+#include <sys/rwlock.h>
 #include <sys/sockio.h>
 #include <sys/syslog.h>
 #include <sys/sysctl.h>
@@ -1340,8 +1342,6 @@ ifaof_ifpforaddr(struct sockaddr *addr, struct ifnet *ifp)
 done:
 	return (ifa);
 }
-
-#include <net/route.h>
 
 /*
  * Default action when installing a route with a Link Level gateway.

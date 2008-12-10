@@ -15,11 +15,11 @@ CFLAGS+=-D_KVM_VNODE
 
 # XXX This is a hack.
 .if ${MK_CDDL} != "no"
-CFLAGS+= -DZFS
-OBJS+=	zfs/zfs.o
-SUBDIR=	zfs
-zfs/zfs.o: .PHONY
-	@cd ${.CURDIR}/zfs && ${MAKE} zfs.o
+#CFLAGS+= -DZFS
+#OBJS+=	zfs/zfs.o
+#SUBDIR=	zfs
+#zfs/zfs.o: .PHONY
+#	@cd ${.CURDIR}/zfs && ${MAKE} zfs.o
 .endif
 
 .include <bsd.prog.mk>
