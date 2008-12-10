@@ -1872,7 +1872,8 @@ nd6_need_cache(struct ifnet *ifp)
 }
 
 /*
- * the caller of this function needs to lock the interface table
+ * the callers of this function need to be re-worked to drop
+ * the lle lock, drop here for now
  */
 int
 nd6_storelladdr(struct ifnet *ifp, struct rtentry *rt0, struct mbuf *m,
@@ -1919,8 +1920,12 @@ nd6_storelladdr(struct ifnet *ifp, struct rtentry *rt0, struct mbuf *m,
 	/*
 	 * the entry should have been created in nd6_store_lladdr
 	 */
+	IF_AFDATA_LOCK(ifp);
 	ln = lla_lookup(LLTABLE6(ifp), 0, dst);
+	IF_AFDATA_LOCK(ifp);
 	if ((ln == NULL) || !(ln->la_flags & LLE_VALID)) {
+		if (ln)
+			LLE_RUNLOCK(ln);
 		/* this could happen, if we could not allocate memory */
 		m_freem(m);
 		return (1);
@@ -1928,6 +1933,10 @@ nd6_storelladdr(struct ifnet *ifp, struct rtentry *rt0, struct mbuf *m,
 
 	bcopy(&ln->ll_addr, desten, ifp->if_addrlen);
 	*lle = ln;
+	LLE_RUNLOCK(ln);
+	/*
+	 * A *small* use after free race exists here
+	 */
 	return (0);
 }
 
