@@ -1110,11 +1110,12 @@ nd6_nud_hint(struct rtentry *rt, struct in6_addr *dst6, int force)
 {
 	INIT_VNET_INET6(curvnet);
 	struct llentry *ln;
-	struct ifnet *ifp = rt->rt_ifp;
+	struct ifnet *ifp;
 
-	if (dst6 == NULL)
+	if ((dst6 == NULL) || (rt == NULL))
 		return;
 
+	ifp = rt->rt_ifp;
 	IF_AFDATA_LOCK(ifp);
 	ln = nd6_lookup(dst6, ND6_EXCLUSIVE, NULL);
 	IF_AFDATA_UNLOCK(ifp);
