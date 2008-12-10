@@ -561,6 +561,7 @@ passin:
 		LLE_RUNLOCK(lle);
 		goto hbhcheck;
 	}
+	LLE_RUNLOCK(lle);
 
 	if (ip6_forward_rt.ro_rt != NULL &&
 	    (ip6_forward_rt.ro_rt->rt_flags & RTF_UP) != 0 &&
