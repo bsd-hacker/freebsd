@@ -156,7 +156,6 @@ arptimer(void *arg)
 	ifp = lle->lle_tbl->llt_ifp;
 	if ((lle->la_flags & LLE_DELETED) ||
 	    (time_second >= lle->la_expire)) {
-		printf("deleting entry\n");
 		
 		IF_AFDATA_LOCK(ifp);
 		if (!callout_pending(&lle->la_timer)  &&
@@ -256,7 +255,6 @@ arpresolve(struct ifnet *ifp, struct rtentry *rt0, struct mbuf *m,
 	u_int flags;
 	int error, renew;
 
-	log(LOG_DEBUG, "arpesolve called\n");
 	*lle = NULL;
 	if (m != NULL) {
 		if (m->m_flags & M_BCAST) {
@@ -286,7 +284,6 @@ retry:
 			    "arpresolve: can't allocate llinfo for %s\n",
 			    inet_ntoa(SIN(dst)->sin_addr));
 		m_freem(m);
-		log(LOG_DEBUG, "arpesolve: lla_lookup fail\n");
 		return (EINVAL);
 	} 
 
@@ -305,16 +302,11 @@ retry:
 
 			la->la_preempt--;
 		}
-		log(LOG_DEBUG, "arpresolve: success\n");
 		
 		*lle = la;
 		error = 0;
 		goto done;
-	} else
-		log(LOG_DEBUG,
-		    "la=%p valid=%d static=%d expire=%ld uptime=%ld\n", la,
-		    !!(la->la_flags & LLE_VALID), !!(la->la_flags & LLE_STATIC),
-		    la->la_expire, time_uptime);
+	} 
 			    
 	if (la->la_flags & LLE_STATIC) {   /* should not happen! */
 		log(LOG_DEBUG, "arpresolve: ouch, empty static llinfo for %s\n",
@@ -359,9 +351,6 @@ retry:
 		    (rt0->rt_flags & RTF_GATEWAY) ? EHOSTDOWN : EHOSTUNREACH;
 
 	if (renew) {
-		log(LOG_DEBUG,
-		    "arpresolve: kicking off new resolve expire=%ld\n",
-			la->la_expire);
 		LLE_ADDREF(la);
 		la->la_expire = time_uptime;
 		callout_reset(&la->la_timer, hz, arptimer, la);
@@ -563,7 +552,6 @@ in_arpinput(struct mbuf *m)
 	if (!bridged || (ia = TAILQ_FIRST(&V_in_ifaddrhead)) == NULL)
 		goto drop;
 match:
-	log(LOG_DEBUG,"in_arpinput: match\n");
 	if (!enaddr)
 		enaddr = (u_int8_t *)IF_LLADDR(ifp);
 	myaddr = ia->ia_addr.sin_addr;
@@ -602,7 +590,6 @@ match:
 	la = lla_lookup(LLTABLE(ifp), flags, (struct sockaddr *)&sin);
 	IF_AFDATA_UNLOCK(ifp);
 	if (la != NULL) {
-		log(LOG_DEBUG, "in_arpinput: la found\n");
 		/* the following is not an error when doing bridging */
 		if (!bridged && la->lle_tbl->llt_ifp != ifp
 #ifdef DEV_CARP
@@ -620,7 +607,6 @@ match:
 		}
 		if ((la->la_flags & LLE_VALID) &&
 		    bcmp(ar_sha(ah), &la->ll_addr, ifp->if_addrlen)) {
-			log(LOG_DEBUG, "LLE_VALID and match\n");
 			if (la->la_flags & LLE_STATIC) {
 				log(LOG_ERR,
 				    "arp: %*D attempts to modify permanent "
@@ -650,7 +636,6 @@ match:
 		(void)memcpy(&la->ll_addr, ar_sha(ah), ifp->if_addrlen);
 		la->la_flags |= LLE_VALID;
 
-		log(LOG_DEBUG, "in_arpinput: la=%p valid set\n", la);
 		if (!(la->la_flags & LLE_STATIC)) {
 			la->la_expire = time_uptime + arpt_keep;
 			callout_reset(&la->la_timer, hz * V_arpt_keep,
