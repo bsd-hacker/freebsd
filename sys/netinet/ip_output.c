@@ -568,8 +568,10 @@ passout:
 		 */
 		m->m_flags &= ~(M_PROTOFLAGS);
 
+		IF_AFDATA_LOCK(ifp);
 		error = (*ifp->if_output)(ifp, m,
 				(struct sockaddr *)dst, ro->ro_rt);
+		IF_AFDATA_UNLOCK(ifp);
 		goto done;
 	}
 
@@ -602,8 +604,10 @@ passout:
 			 */
 			m->m_flags &= ~(M_PROTOFLAGS);
 
+			IF_AFDATA_LOCK(ifp);
 			error = (*ifp->if_output)(ifp, m,
 			    (struct sockaddr *)dst, ro->ro_rt);
+			IF_AFDATA_UNLOCK(ifp);
 		} else
 			m_freem(m);
 	}

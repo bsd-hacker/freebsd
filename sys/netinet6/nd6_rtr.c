@@ -58,6 +58,7 @@ __FBSDID("$FreeBSD$");
 #include <net/vnet.h>
 
 #include <netinet/in.h>
+#include <net/if_llatbl.h>
 #include <netinet6/in6_var.h>
 #include <netinet6/in6_ifattach.h>
 #include <netinet/ip6.h>
@@ -183,7 +184,9 @@ nd6_rs_input(struct mbuf *m, int off, int icmp6len)
 		goto bad;
 	}
 
+	IF_AFDATA_LOCK(ifp);
 	nd6_cache_lladdr(ifp, &saddr6, lladdr, lladdrlen, ND_ROUTER_SOLICIT, 0);
+	IF_AFDATA_UNLOCK(ifp);
 
  freeit:
 	m_freem(m);
@@ -406,8 +409,10 @@ nd6_ra_input(struct mbuf *m, int off, int icmp6len)
 		goto bad;
 	}
 
+	IF_AFDATA_LOCK(ifp);
 	nd6_cache_lladdr(ifp, &saddr6, lladdr,
 	    lladdrlen, ND_ROUTER_ADVERT, 0);
+	IF_AFDATA_UNLOCK(ifp);
 
 	/*
 	 * Installing a link-layer address might change the state of the
@@ -615,8 +620,7 @@ defrouter_select(void)
 	INIT_VNET_INET6(curvnet);
 	int s = splnet();
 	struct nd_defrouter *dr, *selected_dr = NULL, *installed_dr = NULL;
-	struct rtentry *rt = NULL;
-	struct llinfo_nd6 *ln = NULL;
+	struct llentry *ln = NULL;
 
 	/*
 	 * This function should be called only when acting as an autoconfigured
@@ -648,12 +652,13 @@ defrouter_select(void)
 	 */
 	for (dr = TAILQ_FIRST(&V_nd_defrouter); dr;
 	     dr = TAILQ_NEXT(dr, dr_entry)) {
+		IF_AFDATA_LOCK(dr->ifp);
 		if (selected_dr == NULL &&
-		    (rt = nd6_lookup(&dr->rtaddr, 0, dr->ifp)) &&
-		    (ln = (struct llinfo_nd6 *)rt->rt_llinfo) &&
+		    (ln = nd6_lookup(&dr->rtaddr, 0, dr->ifp)) &&
 		    ND6_IS_LLINFO_PROBREACH(ln)) {
 			selected_dr = dr;
 		}
+		IF_AFDATA_UNLOCK(dr->ifp);
 
 		if (dr->installed && installed_dr == NULL)
 			installed_dr = dr;
@@ -676,12 +681,14 @@ defrouter_select(void)
 			selected_dr = TAILQ_FIRST(&V_nd_defrouter);
 		else
 			selected_dr = TAILQ_NEXT(installed_dr, dr_entry);
-	} else if (installed_dr &&
-	    (rt = nd6_lookup(&installed_dr->rtaddr, 0, installed_dr->ifp)) &&
-	    (ln = (struct llinfo_nd6 *)rt->rt_llinfo) &&
-	    ND6_IS_LLINFO_PROBREACH(ln) &&
-	    rtpref(selected_dr) <= rtpref(installed_dr)) {
-		selected_dr = installed_dr;
+	} else if (installed_dr) {
+		IF_AFDATA_LOCK(installed_dr->ifp);
+		if ((ln = nd6_lookup(&installed_dr->rtaddr, 0, installed_dr->ifp)) &&
+		    ND6_IS_LLINFO_PROBREACH(ln) &&
+		    rtpref(selected_dr) <= rtpref(installed_dr)) {
+			selected_dr = installed_dr;
+		}
+		IF_AFDATA_UNLOCK(installed_dr->ifp);
 	}
 
 	/*
@@ -1323,18 +1330,19 @@ static struct nd_pfxrouter *
 find_pfxlist_reachable_router(struct nd_prefix *pr)
 {
 	struct nd_pfxrouter *pfxrtr;
-	struct rtentry *rt;
-	struct llinfo_nd6 *ln;
+	struct llentry *ln;
 
 	for (pfxrtr = LIST_FIRST(&pr->ndpr_advrtrs); pfxrtr;
 	     pfxrtr = LIST_NEXT(pfxrtr, pfr_entry)) {
-		if ((rt = nd6_lookup(&pfxrtr->router->rtaddr, 0,
+		IF_AFDATA_LOCK(pfxrtr->router->ifp);
+		if ((ln = nd6_lookup(&pfxrtr->router->rtaddr, 0,
 		    pfxrtr->router->ifp)) &&
-		    (ln = (struct llinfo_nd6 *)rt->rt_llinfo) &&
-		    ND6_IS_LLINFO_PROBREACH(ln))
+		    ND6_IS_LLINFO_PROBREACH(ln)) {
+			IF_AFDATA_UNLOCK(pfxrtr->router->ifp);
 			break;	/* found */
+		}
+		IF_AFDATA_UNLOCK(pfxrtr->router->ifp);
 	}
-
 	return (pfxrtr);
 }
 
@@ -1543,6 +1551,7 @@ nd6_prefix_onlink(struct nd_prefix *pr)
 	int error = 0;
 	struct rtentry *rt = NULL;
 	char ip6buf[INET6_ADDRSTRLEN];
+	struct sockaddr_dl null_sdl = {sizeof(null_sdl), AF_LINK};
 
 	/* sanity check */
 	if ((pr->ndpr_stateflags & NDPRF_ONLINK) != 0) {
@@ -1622,8 +1631,17 @@ nd6_prefix_onlink(struct nd_prefix *pr)
 	error = rtrequest(RTM_ADD, (struct sockaddr *)&pr->ndpr_prefix,
 	    ifa->ifa_addr, (struct sockaddr *)&mask6, rtflags, &rt);
 	if (error == 0) {
-		if (rt != NULL) /* this should be non NULL, though */
+		if (rt != NULL) /* this should be non NULL, though */ {
+			RT_LOCK(rt);
+			if (!rt_setgate(rt, rt_key(rt), (struct sockaddr *)&null_sdl)) {
+				((struct sockaddr_dl *)rt->rt_gateway)->sdl_type =
+					rt->rt_ifp->if_type;
+				((struct sockaddr_dl *)rt->rt_gateway)->sdl_index =
+					rt->rt_ifp->if_index;
+			}
 			nd6_rtmsg(RTM_ADD, rt);
+			RT_UNLOCK(rt);
+		}
 		pr->ndpr_stateflags |= NDPRF_ONLINK;
 	} else {
 		char ip6bufg[INET6_ADDRSTRLEN], ip6bufm[INET6_ADDRSTRLEN];

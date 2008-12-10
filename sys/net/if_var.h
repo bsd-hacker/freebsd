@@ -68,6 +68,7 @@ struct	rtentry;
 struct	rt_addrinfo;
 struct	socket;
 struct	ether_header;
+struct	lltable;
 struct	carp_if;
 struct  ifvlantrunk;
 #endif
@@ -169,8 +170,6 @@ struct ifnet {
 
 	void	*if_bridge;		/* bridge glue */
 
-	struct	lltable *lltables;	/* list of L3-L2 resolution tables */
-
 	struct	label *if_label;	/* interface MAC label */
 
 	/* these are only used by IPv6 */
@@ -181,6 +180,7 @@ struct ifnet {
 	struct	task if_starttask;	/* task for IFF_NEEDSGIANT */
 	struct	task if_linktask;	/* task for link change events */
 	struct	mtx if_addr_mtx;	/* mutex to protect address lists */
+
 	LIST_ENTRY(ifnet) if_clones;	/* interfaces of a cloner */
 	TAILQ_HEAD(, ifg_list) if_groups; /* linked list of groups per if */
 					/* protected by if_addr_mtx */
@@ -359,7 +359,8 @@ typedef void (*group_change_event_handler_t)(void *, const char *);
 EVENTHANDLER_DECLARE(group_change_event, group_change_event_handler_t);
 
 #define	IF_AFDATA_LOCK_INIT(ifp)	\
-    mtx_init(&(ifp)->if_afdata_mtx, "if_afdata", NULL, MTX_DEF)
+    mtx_init(&(ifp)->if_afdata_mtx, "if_afdata", NULL, \
+				    (MTX_DEF | MTX_RECURSE))
 #define	IF_AFDATA_LOCK(ifp)	mtx_lock(&(ifp)->if_afdata_mtx)
 #define	IF_AFDATA_TRYLOCK(ifp)	mtx_trylock(&(ifp)->if_afdata_mtx)
 #define	IF_AFDATA_UNLOCK(ifp)	mtx_unlock(&(ifp)->if_afdata_mtx)

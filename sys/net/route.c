@@ -41,6 +41,7 @@
 
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/syslog.h>
 #include <sys/malloc.h>
 #include <sys/mbuf.h>
 #include <sys/socket.h>
@@ -53,6 +54,7 @@
 #include <sys/vimage.h>
 
 #include <net/if.h>
+#include <net/if_dl.h>
 #include <net/route.h>
 
 #ifdef RADIX_MPATH
@@ -420,7 +422,7 @@ rtfree(struct rtentry *rt)
 	 */
 	RT_REMREF(rt);
 	if (rt->rt_refcnt > 0) {
-		printf("%s: %p has %lu refs\n", __func__, rt, rt->rt_refcnt);
+		log(LOG_DEBUG, "%s: %p has %lu refs\t", __func__, rt, rt->rt_refcnt);
 		goto done;
 	}
 
@@ -1500,6 +1502,7 @@ rtinit1(struct ifaddr *ifa, int cmd, int flags, int fibnum)
 	char tempbuf[_SOCKADDR_TMPSIZE];
 	int didwork = 0;
 	int a_failure = 0;
+	static struct sockaddr_dl null_sdl = {sizeof(null_sdl), AF_LINK};
 
 	if (flags & RTF_HOST) {
 		dst = ifa->ifa_dstaddr;
@@ -1604,7 +1607,14 @@ rtinit1(struct ifaddr *ifa, int cmd, int flags, int fibnum)
 		info.rti_ifa = ifa;
 		info.rti_flags = flags | ifa->ifa_flags;
 		info.rti_info[RTAX_DST] = dst;
-		info.rti_info[RTAX_GATEWAY] = ifa->ifa_addr;
+		/* 
+		 * doing this for compatibility reasons
+		 */
+		if (cmd == RTM_ADD)
+			info.rti_info[RTAX_GATEWAY] =
+			    (struct sockaddr *)&null_sdl;
+		else
+			info.rti_info[RTAX_GATEWAY] = ifa->ifa_addr;
 		info.rti_info[RTAX_NETMASK] = netmask;
 		error = rtrequest1_fib(cmd, &info, &rt, fibnum);
 		if (error == 0 && rt != NULL) {
@@ -1628,6 +1638,15 @@ rtinit1(struct ifaddr *ifa, int cmd, int flags, int fibnum)
 				rt->rt_ifa = ifa;
 			}
 #endif
+			/* 
+			 * doing this for compatibility reasons
+			 */
+			if (cmd == RTM_ADD) {
+			    ((struct sockaddr_dl *)rt->rt_gateway)->sdl_type  =
+				rt->rt_ifp->if_type;
+			    ((struct sockaddr_dl *)rt->rt_gateway)->sdl_index =
+				rt->rt_ifp->if_index;
+			}
 			rt_newaddrmsg(cmd, ifa, error, rt);
 			if (cmd == RTM_DELETE) {
 				/*

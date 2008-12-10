@@ -60,6 +60,7 @@
 #include <sys/jail.h>
 #include <sys/vimage.h>
 #include <machine/stdarg.h>
+#include <vm/uma.h>
 
 #include <net/if.h>
 #include <net/if_arp.h>
@@ -70,6 +71,7 @@
 #include <net/radix.h>
 #include <net/route.h>
 #include <net/vnet.h>
+#include <net/if_llatbl.h>
 
 #if defined(INET) || defined(INET6)
 /*XXX*/

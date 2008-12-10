@@ -53,6 +53,7 @@
 #include <sys/vimage.h>
 
 #include <net/if.h>
+#include <net/if_llatbl.h>
 #include <net/netisr.h>
 #include <net/raw_cb.h>
 #include <net/route.h>
@@ -526,6 +527,11 @@ route_output(struct mbuf *m, struct socket *so)
 		if (info.rti_info[RTAX_GATEWAY] == NULL)
 			senderr(EINVAL);
 		saved_nrt = NULL;
+		/* support for new ARP code */
+		if (info.rti_info[RTAX_GATEWAY]->sa_family == AF_LINK) {
+			error = lla_rt_output(rtm, &info);
+			break;
+		}
 		error = rtrequest1_fib(RTM_ADD, &info, &saved_nrt,
 		    so->so_fibnum);
 		if (error == 0 && saved_nrt) {
@@ -541,6 +547,12 @@ route_output(struct mbuf *m, struct socket *so)
 
 	case RTM_DELETE:
 		saved_nrt = NULL;
+		/* support for new ARP code */
+		if (info.rti_info[RTAX_GATEWAY] && 
+		    (info.rti_info[RTAX_GATEWAY]->sa_family == AF_LINK)) {
+			error = lla_rt_output(rtm, &info);
+			break;
+		}
 		error = rtrequest1_fib(RTM_DELETE, &info, &saved_nrt,
 		    so->so_fibnum);
 		if (error == 0) {
@@ -1432,6 +1444,11 @@ sysctl_rtsock(SYSCTL_HANDLER_ARGS)
 				RADIX_NODE_HEAD_UNLOCK(rnh);
 			} else if (af != 0)
 				error = EAFNOSUPPORT;
+		/*
+		 * take care of llinfo entries
+		 */
+		if (w.w_op == NET_RT_FLAGS && (RTF_LLINFO & w.w_arg))
+			error = lltable_sysctl_dumparp(af, w.w_req);
 		break;
 
 	case NET_RT_IFLIST:

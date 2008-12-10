@@ -51,6 +51,7 @@
 #include <net/if_types.h>
 #include <net/bpf.h>
 #include <net/firewire.h>
+#include <net/if_llatbl.h>
 
 #if defined(INET) || defined(INET6)
 #include <netinet/in.h>
@@ -89,6 +90,7 @@ firewire_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 	struct mbuf *mtail;
 	int unicast, dgl, foff;
 	static int next_dgl;
+	struct llentry *lle;
 
 #ifdef MAC
 	error = mac_ifnet_check_transmit(ifp, m);
@@ -144,7 +146,7 @@ firewire_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 		 * doesn't fit into the arp model.
 		 */
 		if (unicast) {
-			error = arpresolve(ifp, rt, m, dst, (u_char *) destfw);
+			error = arpresolve(ifp, rt, m, dst, (u_char *) destfw, &lle);
 			if (error)
 				return (error == EWOULDBLOCK ? 0 : error);
 		}
@@ -174,7 +176,7 @@ firewire_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 	case AF_INET6:
 		if (unicast) {
 			error = nd6_storelladdr(fc->fc_ifp, rt, m, dst,
-			    (u_char *) destfw);
+			    (u_char *) destfw, &lle);
 			if (error)
 				return (error);
 		}

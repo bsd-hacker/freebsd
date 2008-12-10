@@ -445,6 +445,18 @@ delete(char *host, int do_proxy)
 		    !(rtm->rtm_flags & RTF_GATEWAY) &&
 		    valid_type(sdl->sdl_type) )
 			break;	/* found it */
+
+		/* Qing
+		 * why not just remove the RTF_LLINFO in the above
+		 * code instead of another "if", works 
+		 */
+		if (sdl->sdl_family == AF_LINK &&
+		    !(rtm->rtm_flags & RTF_GATEWAY) &&
+		    valid_type(sdl->sdl_type) ) {
+			addr->sin_addr.s_addr = dst->sin_addr.s_addr;
+			break;
+		}
+
 		if (dst->sin_other & SIN_PROXY) {
 			fprintf(stderr, "delete: cannot locate %s\n",host);
 			return (1);
@@ -563,15 +575,9 @@ print_entry(struct sockaddr_dl *sdl,
 		printf(" permanent");
 	if (addr->sin_other & SIN_PROXY)
 		printf(" published (proxy only)");
-	if (rtm->rtm_addrs & RTA_NETMASK) {
-		addr = (struct sockaddr_inarp *)
-			(SA_SIZE(sdl) + (char *)sdl);
-		if (addr->sin_addr.s_addr == 0xffffffff)
-			printf(" published");
-		if (addr->sin_len != 8)
-			printf("(weird)");
-	}
-        switch(sdl->sdl_type) {
+	if (rtm->rtm_flags & RTF_ANNOUNCE)
+		printf(" published");
+	switch(sdl->sdl_type) {
 	case IFT_ETHER:
                 printf(" [ethernet]");
                 break;
