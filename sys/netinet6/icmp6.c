@@ -85,10 +85,10 @@ __FBSDID("$FreeBSD$");
 
 #include <net/if.h>
 #include <net/if_dl.h>
+#include <net/if_llatbl.h>
 #include <net/if_types.h>
 #include <net/route.h>
 #include <net/vnet.h>
-#include <net/if_llatbl.h>
 
 #include <netinet/in.h>
 #include <netinet/in_pcb.h>
@@ -2397,10 +2397,8 @@ icmp6_redirect_input(struct mbuf *m, int off)
 	}
 
 	/* RFC 2461 8.3 */
-	IF_AFDATA_LOCK(ifp);
 	nd6_cache_lladdr(ifp, &redtgt6, lladdr, lladdrlen, ND_REDIRECT,
 	    is_onlink ? ND_REDIRECT_ONLINK : ND_REDIRECT_ROUTER);
-	IF_AFDATA_UNLOCK(ifp);
 
 	if (!is_onlink) {	/* better router case.  perform rtredirect. */
 		/* perform rtredirect */
@@ -2583,17 +2581,16 @@ icmp6_redirect_output(struct mbuf *m0, struct rtentry *rt)
 
 		IF_AFDATA_LOCK(ifp);
 		ln = nd6_lookup(router_ll6, 0, ifp);
-		if (!ln) {
-			IF_AFDATA_UNLOCK(ifp);
+		IF_AFDATA_UNLOCK(ifp);
+		if (!ln)
 			goto nolladdropt;
-		}
+
 		len = sizeof(*nd_opt) + ifp->if_addrlen;
 		len = (len + 7) & ~7;	/* round by 8 */
 		/* safety check */
-		if (len + (p - (u_char *)ip6) > maxlen) {
-			IF_AFDATA_UNLOCK(ifp);
+		if (len + (p - (u_char *)ip6) > maxlen)
 			goto nolladdropt;
-		}
+
 		if (ln->la_flags & LLE_VALID) {
 			nd_opt = (struct nd_opt_hdr *)p;
 			nd_opt->nd_opt_type = ND_OPT_TARGET_LINKADDR;
@@ -2602,7 +2599,7 @@ icmp6_redirect_output(struct mbuf *m0, struct rtentry *rt)
 			bcopy(&ln->ll_addr, lladdr, ifp->if_addrlen);
 			p += len;
 		}
-		IF_AFDATA_UNLOCK(ifp);
+		LLE_RUNLOCK(ln);
 	}
 nolladdropt:;
 

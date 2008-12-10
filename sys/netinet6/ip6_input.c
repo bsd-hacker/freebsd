@@ -554,13 +554,14 @@ passin:
 	IF_AFDATA_LOCK(ifp);
 	lle = lla_lookup(LLTABLE6(ifp), 0,
 	     (struct sockaddr *)&dst6);
+	IF_AFDATA_UNLOCK(ifp);
 	if ((lle != NULL) && (lle->la_flags & LLE_IFADDR)) {
 		ours = 1;
 		deliverifp = ifp;
-		IF_AFDATA_UNLOCK(ifp);
+		LLE_RUNLOCK(lle);
 		goto hbhcheck;
 	}
-	IF_AFDATA_UNLOCK(ifp);
+	LLE_RUNLOCK(lle);
 
 	if (ip6_forward_rt.ro_rt != NULL &&
 	    (ip6_forward_rt.ro_rt->rt_flags & RTF_UP) != 0 &&

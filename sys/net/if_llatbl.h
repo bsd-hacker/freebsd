@@ -28,6 +28,7 @@ __FBSDID("$FreeBSD$");
 #ifndef	_NET_IF_LLATBL_H_
 #define	_NET_IF_LLATBL_H_
 
+#include <sys/_rwlock.h>
 #include <netinet/in.h>
 
 struct ifnet;
@@ -38,8 +39,13 @@ struct rt_addrinfo;
 struct llentry;
 LIST_HEAD(llentries, llentry);
 
+/*
+ * Code referencing llentry must at least hold
+ * a shared lock
+ */
 struct llentry {
 	LIST_ENTRY(llentry)	 lle_next;
+	struct rwlock		 lle_lock;
 	struct lltable		 *lle_tbl;
 	struct llentries	 *lle_head;
 	struct mbuf		 *la_hold;
@@ -51,6 +57,8 @@ struct llentry {
 	int16_t			 ln_state;	/* IPv6 has ND6_LLINFO_NOSTATE == -2 */
 	uint16_t		 ln_router; 
 	time_t			 ln_ntick;
+	int			 lle_refcnt;
+				 
 	union {
 		uint64_t	mac_aligned;
 		uint16_t	mac16[3];
@@ -63,6 +71,53 @@ struct llentry {
 	} lle_timer;
 	/* NB: struct sockaddr must immediately follow */
 };
+
+#define	LLE_WLOCK(lle)		rw_wlock(&(lle)->lle_lock)
+#define	LLE_RLOCK(lle)		rw_rlock(&(lle)->lle_lock)
+#define	LLE_WUNLOCK(lle)	rw_wunlock(&(lle)->lle_lock)
+#define	LLE_RUNLOCK(lle)	rw_runlock(&(lle)->lle_lock)
+#define	LLE_DOWNGRADE(lle)	rw_downgrade(&(lle)->lle_lock)
+#define	LLE_TRY_UPGRADE(lle)	rw_try_upgrade(&(lle)->lle_lock)
+#define	LLE_LOCK_INIT(lle)	rw_init_flags(&(lle)->lle_lock, "lle", RW_DUPOK)
+#define	LLE_WLOCK_ASSERT(lle)	rw_assert(&(lle)->lle_lock, RA_WLOCKED)
+
+#define	LLE_ADDREF(lle) do {					\
+	LLE_WLOCK_ASSERT(lle);					\
+	KASSERT((lle)->lle_refcnt >= 0,				\
+		("negative refcnt %d", (lle)->lle_refcnt));	\
+	(lle)->lle_refcnt++;					\
+} while (0)
+
+#define	LLE_REMREF(lle)	do {					\
+	LLE_WLOCK_ASSERT(lle);					\
+	KASSERT((lle)->rt_refcnt > 0,				\
+		("bogus refcnt %ld", (lle)->rt_refcnt));	\
+	(lle)->rt_refcnt--;					\
+} while (0)
+
+#define	LLE_FREE_LOCKED(lle) do {				\
+	if ((lle)->lle_refcnt <= 1)				\
+		(lle)->lle_tbl->llt_free((lle)->lle_tbl, (lle));\
+	else {							\
+		(lle)->lle_refcnt--;				\
+		LLE_WUNLOCK(lle);				\
+	}							\
+	/* guard against invalid refs */			\
+	lle = 0;						\
+} while (0)
+
+#define	LLE_FREE(lle) do {					\
+	LLE_WLOCK(lle);						\
+	if ((lle)->lle_refcnt <= 1)				\
+		(lle)->lle_tbl->llt_free((lle)->lle_tbl, (lle));\
+	else {							\
+		(lle)->lle_refcnt--;				\
+		LLE_WUNLOCK(lle);				\
+	}							\
+	/* guard against invalid refs */			\
+	lle = 0;						\
+} while (0)
+
 
 #define	ln_timer_ch	lle_timer.ln_timer_ch
 #define	la_timer	lle_timer.la_timer
@@ -105,8 +160,9 @@ MALLOC_DECLARE(M_LLTABLE);
 #define	LLE_VALID	0x0008	/* ll_addr is valid */
 #define	LLE_PROXY	0x0010	/* proxy entry ??? */
 #define	LLE_PUB		0x0020	/* publish entry ??? */
-#define	LLE_CREATE	0x8000	/* create on a lookup miss */
 #define	LLE_DELETE	0x4000	/* delete on a lookup - match LLE_IFADDR */
+#define	LLE_CREATE	0x8000	/* create on a lookup miss */
+#define	LLE_EXCLUSIVE	0x2000	/* return lle xlocked  */
 
 #define LLATBL_HASH(key, mask) \
 	(((((((key >> 8) ^ key) >> 8) ^ key) >> 8) ^ key) & mask)

@@ -128,20 +128,15 @@ void
 arp_ifscrub(struct ifnet *ifp, uint32_t addr)
 {
 	struct sockaddr_in addr4;
-	struct llentry *lle;
 
 	bzero((void *)&addr4, sizeof(addr4));
 	addr4.sin_len    = sizeof(addr4);
 	addr4.sin_family = AF_INET;
 	addr4.sin_addr.s_addr = addr;
 	IF_AFDATA_LOCK(ifp);
-	lle = lla_lookup(LLTABLE(ifp), (LLE_DELETE | LLE_IFADDR),
+	lla_lookup(LLTABLE(ifp), (LLE_DELETE | LLE_IFADDR),
 	    (struct sockaddr *)&addr4);
 	IF_AFDATA_UNLOCK(ifp);
-#if 0
-	if (lle == NULL)
-		log(LOG_INFO, "arp_ifscrub: interface address is missing from cache\n");
-#endif
 }
 #endif
 
@@ -159,15 +154,22 @@ arptimer(void *arg)
 		return;
 	}
 	ifp = lle->lle_tbl->llt_ifp;
-	IF_AFDATA_LOCK(ifp);
 	if ((lle->la_flags & LLE_DELETED) ||
 	    (time_second >= lle->la_expire)) {
+		printf("deleting entry\n");
+		
+		IF_AFDATA_LOCK(ifp);
 		if (!callout_pending(&lle->la_timer)  &&
 		    (callout_active(&lle->la_timer))) {
 			(void)llentry_free(lle);
 		}
+		IF_AFDATA_UNLOCK(ifp);
+	} else {
+		/*
+		 * Still valid, just drop our reference
+		 */
+		LLE_FREE(lle);
 	}
-	IF_AFDATA_UNLOCK(ifp);
 }
 
 
@@ -252,10 +254,10 @@ arpresolve(struct ifnet *ifp, struct rtentry *rt0, struct mbuf *m,
 	INIT_VNET_INET(ifp->if_vnet);
 	struct llentry *la = 0;
 	u_int flags;
-	int error;
+	int error, renew;
 
+	log(LOG_DEBUG, "arpesolve called\n");
 	*lle = NULL;
-
 	if (m != NULL) {
 		if (m->m_flags & M_BCAST) {
 			/* broadcast */
@@ -276,6 +278,7 @@ arpresolve(struct ifnet *ifp, struct rtentry *rt0, struct mbuf *m,
 	 * Since this function returns an llentry, the 
 	 * lock is held by the caller.
 	 */
+retry:
 	la = lla_lookup(LLTABLE(ifp), flags, dst);
 	if (la == NULL) {
 		if (flags & LLE_CREATE)
@@ -283,11 +286,12 @@ arpresolve(struct ifnet *ifp, struct rtentry *rt0, struct mbuf *m,
 			    "arpresolve: can't allocate llinfo for %s\n",
 			    inet_ntoa(SIN(dst)->sin_addr));
 		m_freem(m);
+		log(LOG_DEBUG, "arpesolve: lla_lookup fail\n");
 		return (EINVAL);
 	} 
 
-	if (la->la_flags & LLE_VALID &&
-	    (la->la_flags & LLE_STATIC || la->la_expire > time_uptime)) {
+	if ((la->la_flags & LLE_VALID) &&
+	    ((la->la_flags & LLE_STATIC) || (la->la_expire > time_uptime))) {
 		bcopy(&la->ll_addr, desten, ifp->if_addrlen);
 		/*
 		 * If entry has an expiry time and it is approaching,
@@ -300,26 +304,46 @@ arpresolve(struct ifnet *ifp, struct rtentry *rt0, struct mbuf *m,
 			    &SIN(dst)->sin_addr, IF_LLADDR(ifp));
 
 			la->la_preempt--;
-		} 
+		}
+		log(LOG_DEBUG, "arpresolve: success\n");
+		
 		*lle = la;
-		return (0);
-	}
-
+		error = 0;
+		goto done;
+	} else
+		log(LOG_DEBUG,
+		    "la=%p valid=%d static=%d expire=%ld uptime=%ld\n", la,
+		    !!(la->la_flags & LLE_VALID), !!(la->la_flags & LLE_STATIC),
+		    la->la_expire, time_uptime);
+			    
 	if (la->la_flags & LLE_STATIC) {   /* should not happen! */
 		log(LOG_DEBUG, "arpresolve: ouch, empty static llinfo for %s\n",
 		    inet_ntoa(SIN(dst)->sin_addr));
 		m_freem(m);
-		return (EINVAL);
+		error = EINVAL;
+		goto done;
 	}
+
+	renew = (la->la_asked == 0 || la->la_expire != time_uptime);
 	/*
 	 * There is an arptab entry, but no ethernet address
 	 * response yet.  Replace the held mbuf with this
 	 * latest one.
 	 */
 	if (m) {
+		if ((flags & LLE_EXCLUSIVE) == 0) {
+			flags |= LLE_EXCLUSIVE;
+			LLE_RUNLOCK(la);
+			goto retry;
+		}
 		if (la->la_hold)
 			m_freem(la->la_hold);
 		la->la_hold = m;
+		if (renew == 0 && (flags & LLE_EXCLUSIVE)) {
+			flags &= ~LLE_EXCLUSIVE;
+			LLE_DOWNGRADE(la);
+		}
+		
 	}
 	/*
 	 * Return EWOULDBLOCK if we have tried less than arp_maxtries. It
@@ -333,16 +357,26 @@ arpresolve(struct ifnet *ifp, struct rtentry *rt0, struct mbuf *m,
 		error =
 		    (rt0->rt_flags & RTF_GATEWAY) ? EHOSTDOWN : EHOSTUNREACH;
 
-	if (la->la_asked == 0 || la->la_expire != time_uptime) {
+	if (renew) {
+		log(LOG_DEBUG,
+		    "arpresolve: kicking off new resolve expire=%ld\n",
+			la->la_expire);
+		LLE_ADDREF(la);
 		la->la_expire = time_uptime;
 		callout_reset(&la->la_timer, hz, arptimer, la);
 		la->la_asked++;
-
+		LLE_WUNLOCK(la);
 		arprequest(ifp, NULL, &SIN(dst)->sin_addr,
 		    IF_LLADDR(ifp));
+		return (error);
 	}
 
-	return (EWOULDBLOCK);
+done:
+	if (flags & LLE_EXCLUSIVE)
+		LLE_WUNLOCK(la);
+	else
+		LLE_RUNLOCK(la);
+	return (error);
 }
 
 /*
@@ -432,7 +466,8 @@ in_arpinput(struct mbuf *m)
 	struct sockaddr sa;
 	struct in_addr isaddr, itaddr, myaddr;
 	u_int8_t *enaddr = NULL;
-	int op, flag, lock_owned = 0;
+	int op, flags;
+	struct mbuf *m0;
 /*
 , rif_len;
 */
@@ -527,6 +562,7 @@ in_arpinput(struct mbuf *m)
 	if (!bridged || (ia = TAILQ_FIRST(&V_in_ifaddrhead)) == NULL)
 		goto drop;
 match:
+	log(LOG_DEBUG,"in_arpinput: match\n");
 	if (!enaddr)
 		enaddr = (u_int8_t *)IF_LLADDR(ifp);
 	myaddr = ia->ia_addr.sin_addr;
@@ -559,17 +595,19 @@ match:
 	sin.sin_len = sizeof(struct sockaddr_in);
 	sin.sin_family = AF_INET;
 	sin.sin_addr = isaddr;
-	flag = (itaddr.s_addr == myaddr.s_addr) ? LLE_CREATE : 0;
+	flags = (itaddr.s_addr == myaddr.s_addr) ? LLE_CREATE : 0;
+	flags |= LLE_EXCLUSIVE;
 	IF_AFDATA_LOCK(ifp); 
-	lock_owned = 1;
-	la = lla_lookup(LLTABLE(ifp), flag, (struct sockaddr *)&sin);
+	la = lla_lookup(LLTABLE(ifp), flags, (struct sockaddr *)&sin);
+	IF_AFDATA_UNLOCK(ifp);
 	if (la != NULL) {
+		log(LOG_DEBUG, "in_arpinput: la found\n");
 		/* the following is not an error when doing bridging */
 		if (!bridged && la->lle_tbl->llt_ifp != ifp
 #ifdef DEV_CARP
 		    && (ifp->if_type != IFT_CARP || !carp_match)
 #endif
-								) {
+			) {
 			if (log_arp_wrong_iface)
 				log(LOG_ERR, "arp: %s is on %s "
 				    "but got reply from %*D on %s\n",
@@ -579,9 +617,9 @@ match:
 				    ifp->if_xname);
 			goto reply;
 		}
-
-		if (la->la_flags & LLE_VALID &&
+		if ((la->la_flags & LLE_VALID) &&
 		    bcmp(ar_sha(ah), &la->ll_addr, ifp->if_addrlen)) {
+			log(LOG_DEBUG, "LLE_VALID and match\n");
 			if (la->la_flags & LLE_STATIC) {
 				log(LOG_ERR,
 				    "arp: %*D attempts to modify permanent "
@@ -600,6 +638,7 @@ match:
 				    ifp->if_xname);
 			}
 		}
+		    
 		if (ifp->if_addrlen != ah->ar_hln) {
 			log(LOG_WARNING,
 			    "arp from %*D: addr len: new %d, i/f %d (ignored)",
@@ -610,6 +649,7 @@ match:
 		(void)memcpy(&la->ll_addr, ar_sha(ah), ifp->if_addrlen);
 		la->la_flags |= LLE_VALID;
 
+		log(LOG_DEBUG, "in_arpinput: la=%p valid set\n", la);
 		if (!(la->la_flags & LLE_STATIC)) {
 			la->la_expire = time_uptime + arpt_keep;
 			callout_reset(&la->la_timer, hz * V_arpt_keep,
@@ -618,8 +658,13 @@ match:
 		la->la_asked = 0;
 		la->la_preempt = V_arp_maxtries;
 		if (la->la_hold) {
-			(*ifp->if_output)(ifp, la->la_hold, L3_ADDR(la), NULL);
+			m0 = la->la_hold;
 			la->la_hold = 0;
+			memcpy(&sa, L3_ADDR(la), sizeof(sa));
+			LLE_WUNLOCK(la);
+			
+			(*ifp->if_output)(ifp, m0, &sa, NULL);
+			return;
 		}
 	}
 reply:
@@ -636,7 +681,6 @@ reply:
 				goto drop;
 
 			sin.sin_addr = itaddr;
-
 			/* XXX MRT use table 0 for arp reply  */
 			rt = in_rtalloc1((struct sockaddr *)&sin, 0, 0UL, 0);
 			if (!rt)
@@ -697,11 +741,8 @@ reply:
 		}
 	}
 
-	if (lock_owned != 0) {
-		IF_AFDATA_UNLOCK(ifp);
-		lock_owned = 0;
-	}
-
+	if (la)
+		LLE_WUNLOCK(la);
 	if (itaddr.s_addr == myaddr.s_addr &&
 	    IN_LINKLOCAL(ntohl(itaddr.s_addr))) {
 		/* RFC 3927 link-local IPv4; always reply by broadcast. */
@@ -727,8 +768,8 @@ reply:
 	return;
 
 drop:
-	if (lock_owned != 0)
-		IF_AFDATA_UNLOCK(ifp);
+	if (la)
+		LLE_WUNLOCK(la);
 	m_freem(m);
 }
 #endif
@@ -753,6 +794,7 @@ arp_ifinit(struct ifnet *ifp, struct ifaddr *ifa)
 	if (lle == NULL)
 		log(LOG_INFO, "arp_ifinit: cannot create arp "
 		    "entry for interface address\n");
+	LLE_RUNLOCK(lle);
 	ifa->ifa_rtrequest = NULL;
 }
 

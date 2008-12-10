@@ -71,7 +71,6 @@
 #include <net/radix.h>
 #include <net/route.h>
 #include <net/vnet.h>
-#include <net/if_llatbl.h>
 
 #if defined(INET) || defined(INET6)
 /*XXX*/
@@ -1344,6 +1343,9 @@ ifaof_ifpforaddr(struct sockaddr *addr, struct ifnet *ifp)
 done:
 	return (ifa);
 }
+
+#include <net/route.h>
+#include <net/if_llatbl.h>
 
 /*
  * Default action when installing a route with a Link Level gateway.

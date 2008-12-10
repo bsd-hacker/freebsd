@@ -37,6 +37,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/socket.h>
 #include <sys/kernel.h>
 #include <sys/mutex.h>
+#include <sys/rwlock.h>
 #include <sys/vimage.h>
 
 #include <vm/uma.h>
@@ -89,13 +90,14 @@ done:
 void
 llentry_free(struct llentry *lle)
 {
-	struct lltable *llt = lle->lle_tbl;
 
+	LLE_WLOCK(lle);
 	LIST_REMOVE(lle, lle_next);
 
 	if (lle->la_hold != NULL)
 		m_freem(lle->la_hold);
-	llt->llt_free(llt, lle);
+
+	LLE_FREE_LOCKED(lle);
 }
 
 /*
@@ -186,7 +188,8 @@ lla_rt_output(struct rt_msghdr *rtm, struct rt_addrinfo *info)
 	struct ifnet *ifp;
 	struct lltable *llt;
 	struct llentry *lle;
-	u_int flags = 0;
+	u_int laflags = 0, flags = 0;
+	int error = 0;
 
 	if (dl == NULL || dl->sdl_family != AF_LINK) {
 		log(LOG_INFO, "%s: invalid dl\n", __func__);
@@ -211,10 +214,10 @@ lla_rt_output(struct rt_msghdr *rtm, struct rt_addrinfo *info)
 					log(LOG_INFO, "%s: RTM_ADD publish "
 					    "(proxy only) is invalid\n",
 					    __func__);
-					rtfree(rt);
+					RTFREE(rt);
 					return EINVAL;
 				}
-				rtfree(rt);
+				RTFREE(rt);
 
 				flags |= LLE_PROXY;
 			}
@@ -238,17 +241,21 @@ lla_rt_output(struct rt_msghdr *rtm, struct rt_addrinfo *info)
 	 * XXXXXXXX: 
 	 *   REVISE this approach if possible.
 	 */
-	IFNET_WLOCK();
+	IFNET_RLOCK();
 	SLIST_FOREACH(llt, &lltables, llt_link) {
 		if (llt->llt_af == dst->sa_family &&
 		    llt->llt_ifp == ifp)
 			break;
 	}
-	IFNET_WUNLOCK();
+	IFNET_RUNLOCK();
 	KASSERT(llt != NULL, ("Yep, ugly hacks are bad\n"));
 
+	if (flags && LLE_CREATE)
+		flags |= LLE_EXCLUSIVE;
+	
 	IF_AFDATA_LOCK(ifp);
 	lle = lla_lookup(llt, flags, dst);
+	IF_AFDATA_UNLOCK(ifp);
 	if (lle != NULL) {
 		if (flags & LLE_CREATE) {
 			/* qing: if we delay the delete, then if a subsequent 
@@ -268,31 +275,32 @@ lla_rt_output(struct rt_msghdr *rtm, struct rt_addrinfo *info)
 			/*
 			 * "arp" and "ndp" always sets the (RTF_STATIC | RTF_HOST) flags
 			 */
+
 			if (rtm->rtm_rmx.rmx_expire == 0) {
 				lle->la_flags |= LLE_STATIC;
 				lle->la_expire = 0;
 			} else
 				lle->la_expire = rtm->rtm_rmx.rmx_expire;
+			laflags = lle->la_flags;
+			LLE_WUNLOCK(lle);
 #ifdef INET
 			/*  gratuious ARP */
-			if ((lle->la_flags & LLE_PUB) && 
+			if ((laflags & LLE_PUB) && 
 			    dst->sa_family == AF_INET) {
 				arprequest(ifp, 
 				    &((struct sockaddr_in *)dst)->sin_addr,
 				    &((struct sockaddr_in *)dst)->sin_addr,
-				    ((lle->la_flags & LLE_PROXY) ?
+				    ((laflags & LLE_PROXY) ?
 					(u_char *)IF_LLADDR(ifp) :
 					(u_char *)LLADDR(dl)));
 			}
 #endif
-		}
+		} else
+			LLE_RUNLOCK(lle);
 	} else {
-		if (flags & LLE_DELETE) {
-			IF_AFDATA_UNLOCK(ifp);
-			return EINVAL;
-		}
+		if (flags & LLE_DELETE)
+			error = EINVAL;
 	}
 
-	IF_AFDATA_UNLOCK(ifp);
-	return 0;
+	return (error);
 }

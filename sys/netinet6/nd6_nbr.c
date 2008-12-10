@@ -115,7 +115,7 @@ nd6_ns_input(struct mbuf *m, int off, int icmp6len)
 	struct ifaddr *ifa = NULL;
 	int lladdrlen = 0;
 	int anycast = 0, proxy = 0, tentative = 0;
-	int tlladdr;
+	int tlladdr, error;
 	union nd_opts ndopts;
 	struct sockaddr_dl *proxydl = NULL;
 	char ip6bufs[INET6_ADDRSTRLEN], ip6bufd[INET6_ADDRSTRLEN];
@@ -169,7 +169,8 @@ nd6_ns_input(struct mbuf *m, int off, int icmp6len)
 		src_sa6.sin6_family = AF_INET6;
 		src_sa6.sin6_len = sizeof(src_sa6);
 		src_sa6.sin6_addr = saddr6;
-		if (!nd6_is_addr_neighbor(&src_sa6, ifp)) {
+		error = nd6_is_addr_neighbor(&src_sa6, ifp);
+		if (error) {
 			nd6log((LOG_INFO, "nd6_ns_input: "
 				"NS packet from non-neighbor\n"));
 			goto bad;
@@ -345,10 +346,8 @@ nd6_ns_input(struct mbuf *m, int off, int icmp6len)
 		goto freeit;
 	}
 
-	IF_AFDATA_LOCK(ifp);
 	nd6_cache_lladdr(ifp, &saddr6, lladdr, lladdrlen,
 	    ND_NEIGHBOR_SOLICIT, 0);
-	IF_AFDATA_UNLOCK(ifp);
 
 	nd6_na_output(ifp, &saddr6, &taddr6,
 	    ((anycast || proxy || !tlladdr) ? 0 : ND_NA_FLAG_OVERRIDE) |
@@ -701,8 +700,8 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 	 */
 	IF_AFDATA_LOCK(ifp);
 	ln = nd6_lookup(&taddr6, 0, ifp);
+	IF_AFDATA_UNLOCK(ifp);
 	if (ln == NULL) {
-		IF_AFDATA_UNLOCK(ifp);
 		goto freeit;
 	}
 
@@ -712,7 +711,6 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 		 * discard the packet.
 		 */
 		if (ifp->if_addrlen && lladdr == NULL) {
-			IF_AFDATA_UNLOCK(ifp);
 			goto freeit;
 		}
 
@@ -786,7 +784,6 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 				ln->ln_state = ND6_LLINFO_STALE;
 				nd6_llinfo_settimer(ln, (long)V_nd6_gctimer * hz);
 			}
-			IF_AFDATA_UNLOCK(ifp);
 			goto freeit;
 		} else if (is_override				   /* (2a) */
 			|| (!is_override && (lladdr != NULL && !llchange)) /* (2b) */
@@ -883,8 +880,6 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 			nd6_output(ifp, ifp, m_hold, L3_ADDR_SIN6(ln), NULL);
 		}
 	}
-	IF_AFDATA_UNLOCK(ifp);
-
  freeit:
 	m_freem(m);
 	return;
