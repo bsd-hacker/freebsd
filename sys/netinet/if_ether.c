@@ -325,17 +325,18 @@ retry:
 	}
 
 	renew = (la->la_asked == 0 || la->la_expire != time_uptime);
+
+	if (renew && ((flags & LLE_EXCLUSIVE) == 0)) {
+		flags |= LLE_EXCLUSIVE;
+		LLE_RUNLOCK(la);
+		goto retry;
+	}
 	/*
 	 * There is an arptab entry, but no ethernet address
 	 * response yet.  Replace the held mbuf with this
 	 * latest one.
 	 */
 	if (m) {
-		if ((flags & LLE_EXCLUSIVE) == 0) {
-			flags |= LLE_EXCLUSIVE;
-			LLE_RUNLOCK(la);
-			goto retry;
-		}
 		if (la->la_hold)
 			m_freem(la->la_hold);
 		la->la_hold = m;
