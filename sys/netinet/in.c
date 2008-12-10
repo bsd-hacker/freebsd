@@ -1109,16 +1109,7 @@ in_lltable_lookup(struct lltable *llt, u_int flags, const struct sockaddr *l3add
 		if (bcmp(L3_ADDR(lle), l3addr, sizeof(struct sockaddr_in)) == 0)
 			break;
 	}
-
-	if ((lle != NULL) && (flags & LLE_DELETE)) {
-		LLE_WLOCK(lle);
-		lle->la_flags = LLE_DELETED;
-		LLE_WUNLOCK(lle);
-#ifdef INVARIANTS
-		log(LOG_INFO, "ifaddr cache = %p  is deleted\n", lle);	
-#endif
-		lle = NULL;
-	} else {
+	if (lle == NULL) {
 #ifdef INVARIANTS
 		if (flags & LLE_DELETE)
 			log(LOG_INFO, "interface address is missing from cache = %p  in delete\n", lle);	
@@ -1148,7 +1139,15 @@ in_lltable_lookup(struct lltable *llt, u_int flags, const struct sockaddr *l3add
 		lle->lle_tbl  = llt;
 		lle->lle_head = lleh;
 		LIST_INSERT_HEAD(lleh, lle, lle_next);
-	} 
+	} else if (flags & LLE_DELETE) {
+		LLE_WLOCK(lle);
+		lle->la_flags = LLE_DELETED;
+		LLE_WUNLOCK(lle);
+#ifdef INVARIANTS
+		log(LOG_INFO, "ifaddr cache = %p  is deleted\n", lle);	
+#endif
+		lle = NULL;
+	}
 	if (lle) {
 		if (flags & LLE_EXCLUSIVE)
 			LLE_WLOCK(lle);

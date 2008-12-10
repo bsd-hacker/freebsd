@@ -476,10 +476,8 @@ defrouter_addreq(struct nd_defrouter *new)
 	    (struct sockaddr *)&gate, (struct sockaddr *)&mask,
 	    RTF_GATEWAY, &newrt);
 	if (newrt) {
-		RT_LOCK(newrt);
 		nd6_rtmsg(RTM_ADD, newrt); /* tell user process */
-		RT_REMREF(newrt);
-		RT_UNLOCK(newrt);
+		RTFREE(newrt);
 	}
 	if (error == 0)
 		new->installed = 1;
@@ -1549,6 +1547,7 @@ nd6_prefix_onlink(struct nd_prefix *pr)
 	struct nd_prefix *opr;
 	u_long rtflags;
 	int error = 0;
+	struct radix_node_head *rnh;
 	struct rtentry *rt = NULL;
 	char ip6buf[INET6_ADDRSTRLEN];
 	struct sockaddr_dl null_sdl = {sizeof(null_sdl), AF_LINK};
@@ -1632,6 +1631,8 @@ nd6_prefix_onlink(struct nd_prefix *pr)
 	    ifa->ifa_addr, (struct sockaddr *)&mask6, rtflags, &rt);
 	if (error == 0) {
 		if (rt != NULL) /* this should be non NULL, though */ {
+			rnh = V_rt_tables[rt->rt_fibnum][AF_INET6];
+			RADIX_NODE_HEAD_LOCK(rnh);
 			RT_LOCK(rt);
 			if (!rt_setgate(rt, rt_key(rt), (struct sockaddr *)&null_sdl)) {
 				((struct sockaddr_dl *)rt->rt_gateway)->sdl_type =
@@ -1639,6 +1640,7 @@ nd6_prefix_onlink(struct nd_prefix *pr)
 				((struct sockaddr_dl *)rt->rt_gateway)->sdl_index =
 					rt->rt_ifp->if_index;
 			}
+			RADIX_NODE_HEAD_UNLOCK(rnh);
 			nd6_rtmsg(RTM_ADD, rt);
 			RT_UNLOCK(rt);
 		}

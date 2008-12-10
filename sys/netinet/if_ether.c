@@ -256,7 +256,7 @@ arpresolve(struct ifnet *ifp, struct rtentry *rt0, struct mbuf *m,
 	INIT_VNET_INET(ifp->if_vnet);
 	struct llentry *la = 0;
 	u_int flags;
-	int error;
+	int error, renew;
 
 	log(LOG_DEBUG, "arpesolve called\n");
 	*lle = NULL;
@@ -275,12 +275,12 @@ arpresolve(struct ifnet *ifp, struct rtentry *rt0, struct mbuf *m,
 	}
 
 	flags = (ifp->if_flags & (IFF_NOARP | IFF_STATICARP)) ? 0 : LLE_CREATE;
-	flags |= (m ? LLE_EXCLUSIVE : 0);
 
 	/* XXXXX
 	 * Since this function returns an llentry, the 
 	 * lock is held by the caller.
 	 */
+retry:
 	la = lla_lookup(LLTABLE(ifp), flags, dst);
 	if (la == NULL) {
 		if (flags & LLE_CREATE)
@@ -325,17 +325,27 @@ arpresolve(struct ifnet *ifp, struct rtentry *rt0, struct mbuf *m,
 		error = EINVAL;
 		goto done;
 	}
+
+	renew = (la->la_asked == 0 || la->la_expire != time_uptime);
 	/*
 	 * There is an arptab entry, but no ethernet address
 	 * response yet.  Replace the held mbuf with this
 	 * latest one.
 	 */
 	if (m) {
+		if ((flags & LLE_EXCLUSIVE) == 0) {
+			flags |= LLE_EXCLUSIVE;
+			LLE_RUNLOCK(la);
+			goto retry;
+		}
 		if (la->la_hold)
 			m_freem(la->la_hold);
 		la->la_hold = m;
-		if (!(la->la_asked == 0 || la->la_expire != time_uptime))
+		if (renew == 0) {
+			flags &= ~LLE_EXCLUSIVE;
 			LLE_DOWNGRADE(la);
+		}
+		
 	}
 	/*
 	 * Return EWOULDBLOCK if we have tried less than arp_maxtries. It
@@ -349,7 +359,7 @@ arpresolve(struct ifnet *ifp, struct rtentry *rt0, struct mbuf *m,
 		error =
 		    (rt0->rt_flags & RTF_GATEWAY) ? EHOSTDOWN : EHOSTUNREACH;
 
-	if (la->la_asked == 0 || la->la_expire != time_uptime) {
+	if (renew) {
 		log(LOG_DEBUG,
 		    "arpresolve: kicking off new resolve expire=%ld\n",
 			la->la_expire);
@@ -364,7 +374,10 @@ arpresolve(struct ifnet *ifp, struct rtentry *rt0, struct mbuf *m,
 	}
 
 done:
-	LLE_RUNLOCK(la);
+	if (flags & LLE_EXCLUSIVE)
+		LLE_WUNLOCK(la);
+	else
+		LLE_RUNLOCK(la);
 	return (error);
 }
 
