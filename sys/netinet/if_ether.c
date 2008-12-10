@@ -96,8 +96,6 @@ static int	arp_proxyall;
 SYSCTL_V_INT(V_NET, vnet_inet, _net_link_ether_inet, OID_AUTO, max_age,
     CTLFLAG_RW, arpt_keep, 0, "ARP entry lifetime in seconds");
 
-#define	rt_expire rt_rmx.rmx_expire
-
 static struct	ifqueue arpintrq;
 
 SYSCTL_V_INT(V_NET, vnet_inet, _net_link_ether_inet, OID_AUTO, maxtries,
