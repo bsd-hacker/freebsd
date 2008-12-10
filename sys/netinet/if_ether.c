@@ -339,7 +339,7 @@ retry:
 		if (la->la_hold)
 			m_freem(la->la_hold);
 		la->la_hold = m;
-		if (renew == 0) {
+		if (renew == 0 && (flags & LLE_EXCLUSIVE)) {
 			flags &= ~LLE_EXCLUSIVE;
 			LLE_DOWNGRADE(la);
 		}
