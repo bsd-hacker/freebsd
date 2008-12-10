@@ -16,6 +16,7 @@ MAN=	aac.4 \
 	ahc.4 \
 	ahd.4 \
 	aio.4 \
+	ale.4 \
 	altq.4 \
 	amd.4 \
 	${_amdsmb.4} \
@@ -118,6 +119,7 @@ MAN=	aac.4 \
 	ieee80211.4 \
 	if_bridge.4 \
 	ifmib.4 \
+	igb.4 \
 	iic.4 \
 	iicbb.4 \
 	iicbus.4 \
