@@ -326,7 +326,7 @@ retry:
 
 	renew = (la->la_asked == 0 || la->la_expire != time_uptime);
 
-	if (renew && ((flags & LLE_EXCLUSIVE) == 0)) {
+	if ((renew || m) && ((flags & LLE_EXCLUSIVE) == 0)) {
 		flags |= LLE_EXCLUSIVE;
 		LLE_RUNLOCK(la);
 		goto retry;
