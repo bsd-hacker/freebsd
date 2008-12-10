@@ -1618,7 +1618,7 @@ nd6_cache_lladdr(struct ifnet *ifp, struct in6_addr *from, char *lladdr,
 	
 done:	
 	if (ln) {
-		if (lladdr)
+		if (flags & ND6_EXCLUSIVE)
 			LLE_WUNLOCK(ln);
 		else
 			LLE_RUNLOCK(ln);
@@ -1697,7 +1697,7 @@ nd6_output(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
 	 */
 	flags = m ? LLE_EXCLUSIVE : 0;
 	IF_AFDATA_LOCK(rt->rt_ifp);
-	ln = lla_lookup(LLTABLE6(ifp), 0, (struct sockaddr *)dst);
+	ln = lla_lookup(LLTABLE6(ifp), flags, (struct sockaddr *)dst);
 	IF_AFDATA_UNLOCK(rt->rt_ifp);
 	if ((ln == NULL) && nd6_is_addr_neighbor(dst, ifp))  {
 		/*
@@ -1782,21 +1782,22 @@ nd6_output(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
 		ln->la_hold = m;
 	}
 
+	if (flags & LLE_EXCLUSIVE)
+		LLE_WUNLOCK(ln);
+	else
+		LLE_RUNLOCK(ln);
+	
 	/*
 	 * If there has been no NS for the neighbor after entering the
 	 * INCOMPLETE state, send the first solicitation.
 	 */
 	if (!ND6_LLINFO_PERMANENT(ln) && ln->la_asked == 0) {
 		ln->la_asked++;
+		
 		nd6_llinfo_settimer(ln,
 		    (long)ND_IFINFO(ifp)->retrans * hz / 1000);
 		nd6_ns_output(ifp, NULL, &dst->sin6_addr, ln, 0);
 	}
-	if (m0)
-		LLE_WUNLOCK(ln);
-	else
-		LLE_RUNLOCK(ln);
-	
 	return (0);
 
   sendpkt:
@@ -1806,7 +1807,7 @@ nd6_output(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
 		goto bad;
 	}
 	if (ln) {
-		if (m0)
+		if (flags & LLE_EXCLUSIVE)
 			LLE_WUNLOCK(ln);
 		else
 			LLE_RUNLOCK(ln);
@@ -1824,7 +1825,7 @@ nd6_output(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
 
   bad:
 	if (ln) {
-		if (m0)
+		if (flags & LLE_EXCLUSIVE)
 			LLE_WUNLOCK(ln);
 		else
 			LLE_RUNLOCK(ln);
