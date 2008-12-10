@@ -1882,6 +1882,7 @@ nd6_storelladdr(struct ifnet *ifp, struct rtentry *rt0, struct mbuf *m,
 	struct llentry *ln;
 
 	*lle = NULL;
+	IF_AFDATA_UNLOCK_ASSERT(ifp);
 	if (m->m_flags & M_MCAST) {
 		int i;
 
@@ -1922,7 +1923,7 @@ nd6_storelladdr(struct ifnet *ifp, struct rtentry *rt0, struct mbuf *m,
 	 */
 	IF_AFDATA_LOCK(ifp);
 	ln = lla_lookup(LLTABLE6(ifp), 0, dst);
-	IF_AFDATA_LOCK(ifp);
+	IF_AFDATA_UNLOCK(ifp);
 	if ((ln == NULL) || !(ln->la_flags & LLE_VALID)) {
 		if (ln)
 			LLE_RUNLOCK(ln);
