@@ -184,9 +184,7 @@ nd6_rs_input(struct mbuf *m, int off, int icmp6len)
 		goto bad;
 	}
 
-	IF_AFDATA_LOCK(ifp);
 	nd6_cache_lladdr(ifp, &saddr6, lladdr, lladdrlen, ND_ROUTER_SOLICIT, 0);
-	IF_AFDATA_UNLOCK(ifp);
 
  freeit:
 	m_freem(m);
@@ -409,10 +407,8 @@ nd6_ra_input(struct mbuf *m, int off, int icmp6len)
 		goto bad;
 	}
 
-	IF_AFDATA_LOCK(ifp);
 	nd6_cache_lladdr(ifp, &saddr6, lladdr,
 	    lladdrlen, ND_ROUTER_ADVERT, 0);
-	IF_AFDATA_UNLOCK(ifp);
 
 	/*
 	 * Installing a link-layer address might change the state of the

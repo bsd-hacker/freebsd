@@ -1400,7 +1400,7 @@ nd6_cache_lladdr(struct ifnet *ifp, struct in6_addr *from, char *lladdr,
 	int flags = 0;
 	int newstate = 0;
 
-	IF_AFDATA_LOCK_ASSERT(ifp);
+	IF_AFDATA_UNLOCK_ASSERT(ifp);
 
 	if (ifp == NULL)
 		panic("ifp == NULL in nd6_cache_lladdr");
@@ -1421,9 +1421,13 @@ nd6_cache_lladdr(struct ifnet *ifp, struct in6_addr *from, char *lladdr,
 	 * description on it in NS section (RFC 2461 7.2.3).
 	 */
 	flags |= lladdr ? ND6_EXCLUSIVE : 0;
+	IF_AFDATA_LOCK(ifp);
 	ln = nd6_lookup(from, flags, ifp);
+	if (ln)
+		IF_AFDATA_UNLOCK(ifp);
 	if (ln == NULL) {
 		ln = nd6_lookup(from, flags |ND6_CREATE, ifp);
+		IF_AFDATA_UNLOCK(ifp);
 		is_newentry = 1;
 	} else {
 		/* do nothing if static ndp is set */

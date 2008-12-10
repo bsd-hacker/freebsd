@@ -346,10 +346,8 @@ nd6_ns_input(struct mbuf *m, int off, int icmp6len)
 		goto freeit;
 	}
 
-	IF_AFDATA_LOCK(ifp);
 	nd6_cache_lladdr(ifp, &saddr6, lladdr, lladdrlen,
 	    ND_NEIGHBOR_SOLICIT, 0);
-	IF_AFDATA_UNLOCK(ifp);
 
 	nd6_na_output(ifp, &saddr6, &taddr6,
 	    ((anycast || proxy || !tlladdr) ? 0 : ND_NA_FLAG_OVERRIDE) |
