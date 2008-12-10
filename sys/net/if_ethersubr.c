@@ -290,8 +290,16 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 		senderr(EAFNOSUPPORT);
 	}
 
-	if (lle && (lle->la_flags & LLE_IFADDR) && useloopback)
+	if (lle && (lle->la_flags & LLE_IFADDR) && useloopback) {
+		int csum_flags = 0;
+		if (m->m_pkthdr.csum_flags & CSUM_IP)
+			csum_flags |= (CSUM_IP_CHECKED|CSUM_IP_VALID);
+		if (m->m_pkthdr.csum_flags & CSUM_DELAY_DATA)
+			csum_flags |= (CSUM_DATA_VALID|CSUM_PSEUDO_HDR);
+		m->m_pkthdr.csum_flags |= csum_flags;
+		m->m_pkthdr.csum_data = 0xffff;
 		return (if_simloop(ifp, m, dst->sa_family, 0));
+	}
 
 	/*
 	 * Add local net header.  If no space in first mbuf,
