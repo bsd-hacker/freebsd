@@ -1345,7 +1345,6 @@ done:
 void
 in_delayed_cksum(struct mbuf *m)
 {
-	INIT_VNET_INET(curvnet);
 	struct ip *ip;
 	u_short csum, offset;
 

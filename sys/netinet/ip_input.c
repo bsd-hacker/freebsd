@@ -50,6 +50,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/kernel.h>
+#include <sys/lock.h>
+#include <sys/rwlock.h>
 #include <sys/syslog.h>
 #include <sys/sysctl.h>
 #include <sys/vimage.h>
@@ -91,6 +93,12 @@ __FBSDID("$FreeBSD$");
 
 #ifdef CTASSERT
 CTASSERT(sizeof(struct ip) == 20);
+#endif
+
+#ifndef VIMAGE
+#ifndef VIMAGE_GLOBALS
+struct vnet_inet vnet_inet_0;
+#endif
 #endif
 
 #ifdef VIMAGE_GLOBALS
@@ -172,7 +180,9 @@ SYSCTL_INT(_net_inet_ip, IPCTL_INTRQDROPS, intr_queue_drops, CTLFLAG_RD,
 SYSCTL_V_STRUCT(V_NET, vnet_inet, _net_inet_ip, IPCTL_STATS, stats, CTLFLAG_RW,
     ipstat, ipstat, "IP statistics (struct ipstat, netinet/ip_var.h)");
 
+#ifdef VIMAGE_GLOBALS
 static uma_zone_t ipq_zone;
+#endif
 static struct mtx ipqlock;
 
 #define	IPQ_LOCK()	mtx_lock(&ipqlock)
@@ -203,20 +213,20 @@ SYSCTL_V_INT(V_NET, vnet_inet, _net_inet_ip, OID_AUTO, stealth, CTLFLAG_RW,
     ipstealth, 0, "IP stealth mode, no TTL decrementation on forwarding");
 #endif
 
-static int ipv4_pcpu_flowtable_size = 2048;
-TUNABLE_INT("net.inet.ip.pcpu_flowtable_size", &ipv4_pcpu_flowtable_size);
+static int ip_pcpu_flowtable_size = 2048;
+TUNABLE_INT("net.inet.ip.pcpu_flowtable_size", &ip_pcpu_flowtable_size);
 SYSCTL_V_INT(V_NET, vnet_inet, _net_inet_ip, OID_AUTO, pcpu_flowtable_size,
-    CTLFLAG_RDTUN, ipv4_pcpu_flowtable_size, 0,
+    CTLFLAG_RDTUN, ip_pcpu_flowtable_size, 0,
     "number of entries in the per cpu flow caches");
 
 #ifdef RADIX_MPATH
-static int ipv4_global_flowtable_size = 128*1024;
+static int ip_global_flowtable_size = 128*1024;
 #else
-static int ipv4_global_flowtable_size = 16*1024;
+static int ip_global_flowtable_size = 16*1024;
 #endif
-TUNABLE_INT("net.inet.ip.global_flowtable_size", &ipv4_global_flowtable_size);
+TUNABLE_INT("net.inet.ip.global_flowtable_size", &ip_global_flowtable_size);
 SYSCTL_V_INT(V_NET, vnet_inet, _net_inet_ip, OID_AUTO, global_flowtable_size,
-    CTLFLAG_RDTUN, ipv4_global_flowtable_size, 0,
+    CTLFLAG_RDTUN, ip_global_flowtable_size, 0,
     "number of entries in the global flow cache");
 
 
@@ -226,7 +236,9 @@ SYSCTL_V_INT(V_NET, vnet_inet, _net_inet_ip, OID_AUTO, global_flowtable_size,
  */
 ip_fw_chk_t *ip_fw_chk_ptr = NULL;
 ip_dn_io_t *ip_dn_io_ptr = NULL;
-int fw_one_pass = 1;
+#ifdef VIMAGE_GLOBALS
+int fw_one_pass;
+#endif
 struct flowtable *ipv4_ft;
 struct flowtable *ipv4_forward_ft;
 
@@ -266,6 +278,8 @@ ip_init(void)
 	V_ipport_randomcps = 10;	/* user controlled via sysctl */
 	V_ipport_randomtime = 45;	/* user controlled via sysctl */
 	V_ipport_stoprandom = 0;	/* toggled by ipport_tick */
+
+	V_fw_one_pass = 1;
 
 #ifdef NOTYET
 	/* XXX global static but not instantiated in this file */
@@ -327,8 +341,8 @@ ip_init(void)
 	mtx_init(&ipintrq.ifq_mtx, "ip_inq", NULL, MTX_DEF);
 	netisr_register(NETISR_IP, ip_input, &ipintrq, 0);
 	
-	ipv4_ft = flowtable_alloc(ipv4_pcpu_flowtable_size, FL_PCPU);
-	ipv4_forward_ft = flowtable_alloc(ipv4_global_flowtable_size, FL_HASH_PORTS);
+	ipv4_ft = flowtable_alloc(ip_pcpu_flowtable_size, FL_PCPU);
+	ipv4_forward_ft = flowtable_alloc(ip_global_flowtable_size, FL_HASH_PORTS);
 }
 
 void

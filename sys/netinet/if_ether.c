@@ -637,7 +637,7 @@ match:
 		la->la_flags |= LLE_VALID;
 
 		if (!(la->la_flags & LLE_STATIC)) {
-			la->la_expire = time_uptime + arpt_keep;
+			la->la_expire = time_uptime + V_arpt_keep;
 			callout_reset(&la->la_timer, hz * V_arpt_keep,
 			    arptimer, la);
 		}

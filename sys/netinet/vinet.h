@@ -75,6 +75,9 @@ struct vnet_inet {
 	int	_ip_sendsourcequench;
 	int	_ip_do_randomid;
 	int	_ip_checkinterface;
+	int	_ip_pcpu_flowtable_size;
+	int	_ip_global_flowtable_size;
+
 	u_short	_ip_id;
 
 	uma_zone_t _ipq_zone;
@@ -194,7 +197,15 @@ struct vnet_inet {
 	int	_icmp_rfi;
 	int	_icmp_quotelen;
 	int	_icmpbmcastecho;
+
+	int	_fw_one_pass;
 };
+
+#ifndef VIMAGE
+#ifndef VIMAGE_GLOBALS
+extern struct vnet_inet vnet_inet_0;
+#endif
+#endif
 
 /*
  * Symbol translation macros
@@ -212,6 +223,7 @@ struct vnet_inet {
 #define	V_divcbinfo		VNET_INET(divcbinfo)
 #define	V_drop_redirect		VNET_INET(drop_redirect)
 #define	V_drop_synfin		VNET_INET(drop_synfin)
+#define	V_fw_one_pass		VNET_INET(fw_one_pass)
 #define	V_icmp_may_rst		VNET_INET(icmp_may_rst)
 #define	V_icmp_quotelen		VNET_INET(icmp_quotelen)
 #define	V_icmp_rfi		VNET_INET(icmp_rfi)
@@ -330,16 +342,6 @@ struct vnet_inet {
 #define	V_udpstat		VNET_INET(udpstat)
 #define	V_useloopback		VNET_INET(useloopback)
 
-static __inline uint16_t ip_newid(void);
-extern int ip_do_randomid;
-
-static __inline uint16_t
-ip_newid(void)
-{
-        if (V_ip_do_randomid)
-                return ip_randomid();
-
-        return htons(V_ip_id++);
-}
+#define ip_newid() ((V_ip_do_randomid != 0) ? ip_randomid() : htons(V_ip_id++))
 
 #endif /* !_NETINET_VINET_H_ */

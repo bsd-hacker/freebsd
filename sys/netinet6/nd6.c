@@ -176,10 +176,10 @@ nd6_init(void)
 #endif
 	LIST_INIT(&V_nd_prefix);
 
-	ip6_use_tempaddr = 0;
-	ip6_temp_preferred_lifetime = DEF_TEMP_PREFERRED_LIFETIME;
-	ip6_temp_valid_lifetime = DEF_TEMP_VALID_LIFETIME;
-	ip6_temp_regen_advance = TEMPADDR_REGEN_ADVANCE;
+	V_ip6_use_tempaddr = 0;
+	V_ip6_temp_preferred_lifetime = DEF_TEMP_PREFERRED_LIFETIME;
+	V_ip6_temp_valid_lifetime = DEF_TEMP_VALID_LIFETIME;
+	V_ip6_temp_regen_advance = TEMPADDR_REGEN_ADVANCE;
 
 	all1_sa.sin6_family = AF_INET6;
 	all1_sa.sin6_len = sizeof(struct sockaddr_in6);
