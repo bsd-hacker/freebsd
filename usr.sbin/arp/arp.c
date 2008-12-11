@@ -370,13 +370,6 @@ set(int argc, char **argv)
 		if (addr->sin_addr.s_addr != dst->sin_addr.s_addr)	
 			break;
 		if (sdl->sdl_family == AF_LINK &&
-#if 0
-		    /*
-		     * XXX Qing - how should this be handled?
-		     *
-		     */
-		    (rtm->rtm_flags & RTF_LLINFO) &&
-#endif		    
 		    !(rtm->rtm_flags & RTF_GATEWAY) &&
 		    valid_type(sdl->sdl_type) )
 			break;
@@ -447,21 +440,10 @@ delete(char *host, int do_proxy)
 		sdl = (struct sockaddr_dl *)(SA_SIZE(addr) + (char *)addr);
 		if (addr->sin_addr.s_addr == dst->sin_addr.s_addr &&
 		    sdl->sdl_family == AF_LINK &&
-#if 0
-		    /*
-		     * XXX Qing - how should this be handled?
-		     *
-		     */
-		    (rtm->rtm_flags & RTF_LLINFO) &&
-#endif		    
 		    !(rtm->rtm_flags & RTF_GATEWAY) &&
 		    valid_type(sdl->sdl_type) )
 			break;	/* found it */
 
-		/* Qing
-		 * why not just remove the RTF_LLINFO in the above
-		 * code instead of another "if", works 
-		 */
 		if (sdl->sdl_family == AF_LINK &&
 		    !(rtm->rtm_flags & RTF_GATEWAY) &&
 		    valid_type(sdl->sdl_type) ) {
