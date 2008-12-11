@@ -63,6 +63,7 @@
 #include <net/ethernet.h>
 #include <net/if_bridgevar.h>
 #include <net/if_vlan_var.h>
+#include <net/if_llatbl.h>
 #include <net/pf_mtag.h>
 #include <net/vnet.h>
 
@@ -149,6 +150,8 @@ static int ether_ipfw;
 #endif
 #endif
 
+extern int useloopback;
+
 /*
  * Ethernet output routine.
  * Encapsulate a packet of type family for the local net.
@@ -162,6 +165,7 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 	short type;
 	int error, hdrcmplt = 0;
 	u_char esrc[ETHER_ADDR_LEN], edst[ETHER_ADDR_LEN];
+	struct llentry *lle = NULL;
 	struct ether_header *eh;
 	struct pf_mtag *t;
 	struct rtentry_info *ri = NULL;
@@ -200,7 +204,7 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 		if (riset && (ri->ri_flags && RTF_DESTEN_VALID))
 			memcpy(edst, ri->ri_desten, ETHER_ADDR_LEN);
 		else
-			error = arpresolve(ifp, rt0, m, dst, edst);
+			error = arpresolve(ifp, rt0, m, dst, edst, &lle);
 		if (error)
 			return (error == EWOULDBLOCK ? 0 : error);
 		type = htons(ETHERTYPE_IP);
@@ -235,7 +239,7 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 #endif
 #ifdef INET6
 	case AF_INET6:
-		error = nd6_storelladdr(ifp, rt0, m, dst, (u_char *)edst);
+		error = nd6_storelladdr(ifp, rt0, m, dst, (u_char *)edst, &lle);
 		if (error)
 			return error;
 		type = htons(ETHERTYPE_IPV6);
@@ -301,6 +305,17 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 	default:
 		if_printf(ifp, "can't handle af%d\n", dst->sa_family);
 		senderr(EAFNOSUPPORT);
+	}
+
+	if (lle && (lle->la_flags & LLE_IFADDR) && useloopback) {
+		int csum_flags = 0;
+		if (m->m_pkthdr.csum_flags & CSUM_IP)
+			csum_flags |= (CSUM_IP_CHECKED|CSUM_IP_VALID);
+		if (m->m_pkthdr.csum_flags & CSUM_DELAY_DATA)
+			csum_flags |= (CSUM_DATA_VALID|CSUM_PSEUDO_HDR);
+		m->m_pkthdr.csum_flags |= csum_flags;
+		m->m_pkthdr.csum_data = 0xffff;
+		return (if_simloop(ifp, m, dst->sa_family, 0));
 	}
 
 	/*

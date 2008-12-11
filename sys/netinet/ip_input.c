@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 1982, 1986, 1988, 1993
+s * Copyright (c) 1982, 1986, 1988, 1993
  *	The Regents of the University of California.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -1296,7 +1296,7 @@ ip_rtaddr(struct in_addr dst, u_int fibnum)
 	sin->sin_family = AF_INET;
 	sin->sin_len = sizeof(*sin);
 	sin->sin_addr = dst;
-	in_rtalloc_ign(&sro, RTF_CLONING, fibnum);
+	in_rtalloc_ign(&sro, 0, fibnum);
 
 	if (sro.ro_rt == NULL)
 		return (NULL);
@@ -1429,7 +1429,9 @@ ip_forward(struct mbuf *m, int srcrt)
 		sin->sin_family = AF_INET;
 		sin->sin_len = sizeof(*sin);
 		sin->sin_addr = ip->ip_dst;
-
+#if 0
+		in_rtalloc_ign(&ro, 0, M_GETFIB(m));
+#endif
 		if ((ri.ri_flags & (RTF_DYNAMIC|RTF_MODIFIED)) == 0 &&
 		    sin->sin_addr.s_addr != 0) {
 			u_long src = ntohl(ip->ip_src.s_addr);

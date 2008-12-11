@@ -34,22 +34,6 @@
 
 #define calloc(count, size) malloc((count)*(size), M_DEVBUF, M_WAITOK|M_ZERO)
 	
-
-
-#if defined (__GNUC__)
-  #if #cpu(i386) || defined __i386 || defined i386 || defined __i386__ || #cpu(x86_64) || defined __x86_64__
-    #define mb()  __asm__ __volatile__ ("mfence;": : :"memory")
-  #elif #cpu(sparc64) || defined sparc64 || defined __sparcv9 
-    #define mb()  __asm__ __volatile__ ("membar #MemIssue": : :"memory")
-  #elif #cpu(sparc) || defined sparc || defined __sparc__
-    #define mb()  __asm__ __volatile__ ("stbar;": : :"memory")
-  #else
-    #define mb() 	/* XXX just to make this compile */
-  #endif
-#else
-  #error "unknown compiler"
-#endif
-
 /*
  * Taken from http://burtleburtle.net/bob/c/lookup3.c
  */
@@ -301,7 +285,7 @@ static void
 in_rtalloc_ign_wrapper(struct route *ro, uint32_t hash, u_int fib)
 {
 
-	in_rtalloc_ign(ro, RTF_CLONING, fib);
+	in_rtalloc_ign(ro, 0, fib);
 }
 #endif
 
@@ -463,12 +447,12 @@ flow_stale(struct flowtable *ft, struct flentry *fle)
 
 	if ((fle->f_fhash == 0)
 	    || ((fle->f_rt->rt_flags & RTF_HOST) &&
-		((fle->f_rt->rt_flags & (RTF_UP|RTF_LLINFO))
-		    != (RTF_UP|RTF_LLINFO)))
+		((fle->f_rt->rt_flags & (RTF_UP))
+		    != (RTF_UP)))
 	    || (fle->f_uptime <= fle->f_rt->rt_llinfo_uptime)
 	    || ((fle->f_rt->rt_flags & RTF_GATEWAY) &&
-		((fle->f_rt->rt_gwroute->rt_flags & (RTF_UP|RTF_LLINFO))
-		    != (RTF_UP|RTF_LLINFO)))
+		((fle->f_rt->rt_gwroute->rt_flags & (RTF_UP))
+		    != (RTF_UP)))
 	    || (fle->f_rt->rt_ifp == NULL))
 		return (1);
 
@@ -677,13 +661,14 @@ uncached:
 		error = ENETUNREACH;
 	else {
 		int finsert;
-		
+		struct llentry *lle;
+
 		if (ro.ro_rt->rt_flags & RTF_GATEWAY)
 			error = arpresolve(ro.ro_rt->rt_ifp, ro.ro_rt,
-			    NULL, ro.ro_rt->rt_gateway, desten);
+			    NULL, ro.ro_rt->rt_gateway, desten, &lle);
 		else				
 			error = arpresolve(ro.ro_rt->rt_ifp, ro.ro_rt,
-			    NULL, &ro.ro_dst, desten);
+			    NULL, &ro.ro_dst, desten, &lle);
 #ifdef DIAGNOSTICS
 		if (error)
 			log(LOG_WARNING, "dst=%s gw=%s proto=%d hash=%x "
@@ -704,8 +689,8 @@ uncached:
 #endif
 		route_to_rtentry_info(&ro, error ? NULL : desten, ri);
 		ro.ro_rt->rt_rmx.rmx_pksent++;
-		finsert = (error == 0 && cache
-		    && !(ro.ro_rt->rt_flags & RTF_CLONING));
+		finsert = ((error == 0) && cache);
+
 		
 		if (finsert) 
 			error = flowtable_insert(ft, hash, key, proto,

@@ -59,6 +59,7 @@
 #include <net/if_dl.h>
 #include <net/if_llc.h>
 #include <net/if_types.h>
+#include <net/if_llatbl.h>
 
 #include <net/ethernet.h>
 #include <net/netisr.h>
@@ -244,6 +245,7 @@ iso88025_output(ifp, m, dst, rt0)
 	struct iso88025_header gen_th;
 	struct sockaddr_dl *sdl = NULL;
 	struct rtentry *rt = NULL;
+	struct llentry *lle;
 
 #ifdef MAC
 	error = mac_ifnet_check_transmit(ifp, m);
@@ -289,7 +291,7 @@ iso88025_output(ifp, m, dst, rt0)
 	switch (dst->sa_family) {
 #ifdef INET
 	case AF_INET:
-		error = arpresolve(ifp, rt0, m, dst, edst);
+		error = arpresolve(ifp, rt0, m, dst, edst, &lle);
 		if (error)
 			return (error == EWOULDBLOCK ? 0 : error);
 		snap_type = ETHERTYPE_IP;
@@ -324,7 +326,7 @@ iso88025_output(ifp, m, dst, rt0)
 #endif	/* INET */
 #ifdef INET6
 	case AF_INET6:
-		error = nd6_storelladdr(ifp, rt0, m, dst, (u_char *)edst);
+		error = nd6_storelladdr(ifp, rt0, m, dst, (u_char *)edst, &lle);
 		if (error)
 			return (error);
 		snap_type = ETHERTYPE_IPV6;

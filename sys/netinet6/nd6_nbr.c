@@ -63,6 +63,8 @@ __FBSDID("$FreeBSD$");
 
 #include <netinet/in.h>
 #include <netinet/in_var.h>
+#include <net/if_llatbl.h>
+#define	L3_ADDR_SIN6(le)	((struct sockaddr_in6 *) L3_ADDR(le))
 #include <netinet6/in6_var.h>
 #include <netinet6/in6_ifattach.h>
 #include <netinet/ip6.h>
@@ -113,7 +115,7 @@ nd6_ns_input(struct mbuf *m, int off, int icmp6len)
 	struct ifaddr *ifa = NULL;
 	int lladdrlen = 0;
 	int anycast = 0, proxy = 0, tentative = 0;
-	int tlladdr;
+	int tlladdr, error;
 	union nd_opts ndopts;
 	struct sockaddr_dl *proxydl = NULL;
 	char ip6bufs[INET6_ADDRSTRLEN], ip6bufd[INET6_ADDRSTRLEN];
@@ -167,7 +169,8 @@ nd6_ns_input(struct mbuf *m, int off, int icmp6len)
 		src_sa6.sin6_family = AF_INET6;
 		src_sa6.sin6_len = sizeof(src_sa6);
 		src_sa6.sin6_addr = saddr6;
-		if (!nd6_is_addr_neighbor(&src_sa6, ifp)) {
+		error = nd6_is_addr_neighbor(&src_sa6, ifp);
+		if (error) {
 			nd6log((LOG_INFO, "nd6_ns_input: "
 				"NS packet from non-neighbor\n"));
 			goto bad;
@@ -378,8 +381,8 @@ nd6_ns_input(struct mbuf *m, int off, int icmp6len)
  *  dad - duplicate address detection
  */
 void
-nd6_ns_output(struct ifnet *ifp, const struct in6_addr *daddr6,
-    const struct in6_addr *taddr6, struct llinfo_nd6 *ln, int dad)
+nd6_ns_output(struct ifnet *ifp, const struct in6_addr *daddr6, 
+    const struct in6_addr *taddr6, struct llentry *ln, int dad)
 {
 	INIT_VNET_INET6(ifp->if_vnet);
 	struct mbuf *m;
@@ -470,14 +473,14 @@ nd6_ns_output(struct ifnet *ifp, const struct in6_addr *daddr6,
 		struct ip6_hdr *hip6;		/* hold ip6 */
 		struct in6_addr *hsrc = NULL;
 
-		if (ln && ln->ln_hold) {
+		if (ln && ln->la_hold) {
 			/*
-			 * assuming every packet in ln_hold has the same IP
+			 * assuming every packet in la_hold has the same IP
 			 * header
 			 */
-			hip6 = mtod(ln->ln_hold, struct ip6_hdr *);
+			hip6 = mtod(ln->la_hold, struct ip6_hdr *);
 			/* XXX pullup? */
-			if (sizeof(*hip6) < ln->ln_hold->m_len)
+			if (sizeof(*hip6) < ln->la_hold->m_len)
 				hsrc = &hip6->ip6_src;
 			else
 				hsrc = NULL;
@@ -600,9 +603,7 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 	char *lladdr = NULL;
 	int lladdrlen = 0;
 	struct ifaddr *ifa;
-	struct llinfo_nd6 *ln;
-	struct rtentry *rt;
-	struct sockaddr_dl *sdl;
+	struct llentry *ln;
 	union nd_opts ndopts;
 	char ip6bufs[INET6_ADDRSTRLEN], ip6bufd[INET6_ADDRSTRLEN];
 
@@ -697,31 +698,33 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 	 * If no neighbor cache entry is found, NA SHOULD silently be
 	 * discarded.
 	 */
-	rt = nd6_lookup(&taddr6, 0, ifp);
-	if ((rt == NULL) ||
-	   ((ln = (struct llinfo_nd6 *)rt->rt_llinfo) == NULL) ||
-	   ((sdl = SDL(rt->rt_gateway)) == NULL))
+	IF_AFDATA_LOCK(ifp);
+	ln = nd6_lookup(&taddr6, 0, ifp);
+	IF_AFDATA_UNLOCK(ifp);
+	if (ln == NULL) {
 		goto freeit;
+	}
 
 	if (ln->ln_state == ND6_LLINFO_INCOMPLETE) {
 		/*
 		 * If the link-layer has address, and no lladdr option came,
 		 * discard the packet.
 		 */
-		if (ifp->if_addrlen && lladdr == NULL)
+		if (ifp->if_addrlen && lladdr == NULL) {
 			goto freeit;
+		}
 
 		/*
 		 * Record link-layer address, and update the state.
 		 */
-		sdl->sdl_alen = ifp->if_addrlen;
-		bcopy(lladdr, LLADDR(sdl), ifp->if_addrlen);
+		bcopy(lladdr, &ln->ll_addr, ifp->if_addrlen);
+		ln->la_flags |= LLE_VALID;
 		if (is_solicited) {
 			ln->ln_state = ND6_LLINFO_REACHABLE;
 			ln->ln_byhint = 0;
 			if (!ND6_LLINFO_PERMANENT(ln)) {
 				nd6_llinfo_settimer(ln,
-				    (long)ND_IFINFO(rt->rt_ifp)->reachable * hz);
+				    (long)ND_IFINFO(ln->lle_tbl->llt_ifp)->reachable * hz);
 			}
 		} else {
 			ln->ln_state = ND6_LLINFO_STALE;
@@ -744,8 +747,8 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 		if (lladdr == NULL)
 			llchange = 0;
 		else {
-			if (sdl->sdl_alen) {
-				if (bcmp(lladdr, LLADDR(sdl), ifp->if_addrlen))
+			if (ln->la_flags & LLE_VALID) {
+				if (bcmp(lladdr, &ln->ll_addr, ifp->if_addrlen))
 					llchange = 1;
 				else
 					llchange = 0;
@@ -789,8 +792,8 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 			 * Update link-local address, if any.
 			 */
 			if (lladdr != NULL) {
-				sdl->sdl_alen = ifp->if_addrlen;
-				bcopy(lladdr, LLADDR(sdl), ifp->if_addrlen);
+				bcopy(lladdr, &ln->ll_addr, ifp->if_addrlen);
+				ln->la_flags |= LLE_VALID;
 			}
 
 			/*
@@ -822,9 +825,9 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 			 */
 			struct nd_defrouter *dr;
 			struct in6_addr *in6;
-			int s;
+/*			int s;*/
 
-			in6 = &((struct sockaddr_in6 *)rt_key(rt))->sin6_addr;
+			in6 = &L3_ADDR_SIN6(ln)->sin6_addr;
 
 			/*
 			 * Lock to protect the default router list.
@@ -832,8 +835,10 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 			 * is only called under the network software interrupt
 			 * context.  However, we keep it just for safety.
 			 */
+/* Qing - removing 
 			s = splnet();
-			dr = defrouter_lookup(in6, ifp);
+*/
+			dr = defrouter_lookup(in6, ln->lle_tbl->llt_ifp);
 			if (dr)
 				defrtrlist_del(dr);
 			else if (!V_ip6_forwarding) {
@@ -846,21 +851,25 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 				 */
 				rt6_flush(&ip6->ip6_src, ifp);
 			}
+/* Qing - removing
 			splx(s);
+*/
 		}
 		ln->ln_router = is_router;
 	}
+        /* Qing - do we care ?
 	rt->rt_flags &= ~RTF_REJECT;
-	ln->ln_asked = 0;
-	if (ln->ln_hold) {
+	*/
+	ln->la_asked = 0;
+	if (ln->la_hold) {
 		struct mbuf *m_hold, *m_hold_next;
 
 		/*
-		 * reset the ln_hold in advance, to explicitly
-		 * prevent a ln_hold lookup in nd6_output()
+		 * reset the la_hold in advance, to explicitly
+		 * prevent a la_hold lookup in nd6_output()
 		 * (wouldn't happen, though...)
 		 */
-		for (m_hold = ln->ln_hold;
+		for (m_hold = ln->la_hold, ln->la_hold = NULL;
 		    m_hold; m_hold = m_hold_next) {
 			m_hold_next = m_hold->m_nextpkt;
 			m_hold->m_nextpkt = NULL;
@@ -868,12 +877,9 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 			 * we assume ifp is not a loopback here, so just set
 			 * the 2nd argument as the 1st one.
 			 */
-			nd6_output(ifp, ifp, m_hold,
-			    (struct sockaddr_in6 *)rt_key(rt), rt);
+			nd6_output(ifp, ifp, m_hold, L3_ADDR_SIN6(ln), NULL);
 		}
-		ln->ln_hold = NULL;
 	}
-
  freeit:
 	m_freem(m);
 	return;

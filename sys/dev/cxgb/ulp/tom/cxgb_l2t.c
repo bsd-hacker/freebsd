@@ -166,6 +166,7 @@ t3_l2t_send_slow(struct t3cdev *dev, struct mbuf *m, struct l2t_entry *e)
 {
 	struct rtentry *rt =  e->neigh;
 	struct sockaddr_in sin;
+	struct llentry *lle;
 
 	bzero(&sin, sizeof(struct sockaddr_in));
 	sin.sin_family = AF_INET;
@@ -177,7 +178,7 @@ again:
 	switch (e->state) {
 	case L2T_STATE_STALE:     /* entry is stale, kick off revalidation */
 		arpresolve(rt->rt_ifp, rt, NULL,
-		     (struct sockaddr *)&sin, e->dmac);
+		     (struct sockaddr *)&sin, e->dmac, &lle);
 		mtx_lock(&e->lock);
 		if (e->state == L2T_STATE_STALE)
 			e->state = L2T_STATE_VALID;
@@ -201,7 +202,7 @@ again:
 		 * entries when there's no memory.
 		 */
 		if (arpresolve(rt->rt_ifp, rt, NULL,
-		     (struct sockaddr *)&sin, e->dmac) == 0) {
+		     (struct sockaddr *)&sin, e->dmac, &lle) == 0) {
 			CTR6(KTR_CXGB, "mac=%x:%x:%x:%x:%x:%x\n",
 			    e->dmac[0], e->dmac[1], e->dmac[2], e->dmac[3], e->dmac[4], e->dmac[5]);
 			
@@ -228,6 +229,7 @@ t3_l2t_send_event(struct t3cdev *dev, struct l2t_entry *e)
 	sin.sin_family = AF_INET;
 	sin.sin_len = sizeof(struct sockaddr_in);
 	sin.sin_addr.s_addr = e->addr;
+	struct llentry *lle;
 	
 	if ((m0 = m_gethdr(M_NOWAIT, MT_DATA)) == NULL)
 		return;
@@ -237,7 +239,7 @@ again:
 	switch (e->state) {
 	case L2T_STATE_STALE:     /* entry is stale, kick off revalidation */
 		arpresolve(rt->rt_ifp, rt, NULL,
-		     (struct sockaddr *)&sin, e->dmac);
+		     (struct sockaddr *)&sin, e->dmac, &lle);
 		mtx_lock(&e->lock);
 		if (e->state == L2T_STATE_STALE) {
 			e->state = L2T_STATE_VALID;
@@ -263,7 +265,7 @@ again:
 		 * entries when there's no memory.
 		 */
 		arpresolve(rt->rt_ifp, rt, NULL,
-		    (struct sockaddr *)&sin, e->dmac);
+		    (struct sockaddr *)&sin, e->dmac, &lle);
 
 	}
 	return;
