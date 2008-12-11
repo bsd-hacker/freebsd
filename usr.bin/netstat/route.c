@@ -89,17 +89,23 @@ struct bits {
 	{ RTF_DYNAMIC,	'D' },
 	{ RTF_MODIFIED,	'M' },
 	{ RTF_DONE,	'd' }, /* Completed -- for routing messages only */
-	{ RTF_CLONING,	'C' },
 	{ RTF_XRESOLVE,	'X' },
-	{ RTF_LLINFO,	'L' },
 	{ RTF_STATIC,	'S' },
 	{ RTF_PROTO1,	'1' },
 	{ RTF_PROTO2,	'2' },
-	{ RTF_WASCLONED,'W' },
 	{ RTF_PRCLONING,'c' },
 	{ RTF_PROTO3,	'3' },
 	{ RTF_BLACKHOLE,'B' },
 	{ RTF_BROADCAST,'b' },
+#ifdef RTF_LLINFO
+	{ RTF_LLINFO,	'L' },
+#endif
+#ifdef RTF_WASCLONED
+	{ RTF_WASCLONED,'W' },
+#endif
+#ifdef RTF_CLONING
+	{ RTF_CLONING,	'C' },
+#endif
 	{ 0 , 0 }
 };
 
@@ -316,22 +322,11 @@ static void
 size_cols_rtentry(struct rtentry *rt)
 {
 	static struct ifnet ifnet, *lastif;
-	struct rtentry parent;
 	static char buffer[100];
 	const char *bp;
 	struct sockaddr *sa;
 	sa_u addr, mask;
 	int len;
-
-	/*
-	 * Don't print protocol-cloned routes unless -a.
-	 */
-	if (rt->rt_flags & RTF_WASCLONED && !aflag) {
-		if (kget(rt->rt_parent, parent) != 0)
-			return;
-		if (parent.rt_flags & RTF_PRCLONING)
-			return;
-	}
 
 	bzero(&addr, sizeof(addr));
 	if ((sa = kgetsa(rt_key(rt))))
@@ -761,21 +756,10 @@ static void
 p_rtentry(struct rtentry *rt)
 {
 	static struct ifnet ifnet, *lastif;
-	struct rtentry parent;
 	static char buffer[128];
 	static char prettyname[128];
 	struct sockaddr *sa;
 	sa_u addr, mask;
-
-	/*
-	 * Don't print protocol-cloned routes unless -a.
-	 */
-	if (rt->rt_flags & RTF_WASCLONED && !aflag) {
-		if (kget(rt->rt_parent, parent) != 0)
-			return;
-		if (parent.rt_flags & RTF_PRCLONING)
-			return;
-	}
 
 	bzero(&addr, sizeof(addr));
 	if ((sa = kgetsa(rt_key(rt))))

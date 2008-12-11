@@ -370,7 +370,13 @@ set(int argc, char **argv)
 		if (addr->sin_addr.s_addr != dst->sin_addr.s_addr)	
 			break;
 		if (sdl->sdl_family == AF_LINK &&
+#if 0
+		    /*
+		     * XXX Qing - how should this be handled?
+		     *
+		     */
 		    (rtm->rtm_flags & RTF_LLINFO) &&
+#endif		    
 		    !(rtm->rtm_flags & RTF_GATEWAY) &&
 		    valid_type(sdl->sdl_type) )
 			break;
@@ -441,7 +447,13 @@ delete(char *host, int do_proxy)
 		sdl = (struct sockaddr_dl *)(SA_SIZE(addr) + (char *)addr);
 		if (addr->sin_addr.s_addr == dst->sin_addr.s_addr &&
 		    sdl->sdl_family == AF_LINK &&
+#if 0
+		    /*
+		     * XXX Qing - how should this be handled?
+		     *
+		     */
 		    (rtm->rtm_flags & RTF_LLINFO) &&
+#endif		    
 		    !(rtm->rtm_flags & RTF_GATEWAY) &&
 		    valid_type(sdl->sdl_type) )
 			break;	/* found it */
@@ -490,7 +502,11 @@ search(u_long addr, action_fn *action)
 	mib[2] = 0;
 	mib[3] = AF_INET;
 	mib[4] = NET_RT_FLAGS;
+#ifdef RTF_LLINFO
 	mib[5] = RTF_LLINFO;
+#else
+	mib[5] = 0;
+#endif	
 	if (sysctl(mib, 6, NULL, &needed, NULL, 0) < 0)
 		err(1, "route-sysctl-estimate");
 	if (needed == 0)	/* empty table */
