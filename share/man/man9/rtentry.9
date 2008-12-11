@@ -76,8 +76,11 @@ right (some protocols will put a link-layer address here), or some
 intermediate stop on the way to that destination (if the
 .Dv RTF_GATEWAY
 flag is set).
-.It Vt "u_long rt_flags" ;
+.It Vt "int rt_flags" ;
 See below.
+.It Vt "int rt_refcnt" ;
+Route entries are reference-counted; this field indicates the number
+of external (to the radix tree) references.
 .It Vt "struct ifnet *rt_ifp" ;
 .It Vt "struct ifaddr *rt_ifa" ;
 These two fields represent the
@@ -88,10 +91,6 @@ packet to the destination or set of destinations which this route
 represents.
 .It Vt "struct rt_metrics_lite rt_rmx" ;
 See below.
-.It Vt "long rt_refcnt" ;
-Route entries are reference-counted; this field indicates the number
-of external (to the radix tree) references.
-If the
 .Dv RTF_UP
 flag is not present, the
 .Fn rtfree
@@ -251,4 +250,3 @@ and
 .Va rmx_filler
 fields could be named better.
 .Pp
-
