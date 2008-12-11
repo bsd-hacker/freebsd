@@ -703,8 +703,7 @@ route_output(struct mbuf *m, struct socket *so)
 					RT_UNLOCK(rt);
 					senderr(error);
 				}
-				if (!(rt->rt_flags & RTF_LLINFO))
-					rt->rt_flags |= RTF_GATEWAY;
+				rt->rt_flags |= RTF_GATEWAY;
 			}
 			if (info.rti_ifa != NULL &&
 			    info.rti_ifa != rt->rt_ifa) {
@@ -1447,7 +1446,7 @@ sysctl_rtsock(SYSCTL_HANDLER_ARGS)
 		/*
 		 * take care of llinfo entries
 		 */
-		if (w.w_op == NET_RT_FLAGS && (RTF_LLINFO & w.w_arg))
+		if (w.w_op == NET_RT_FLAGS)
 			error = lltable_sysctl_dumparp(af, w.w_req);
 		break;
 

@@ -1613,16 +1613,7 @@ nd6_prefix_onlink(struct nd_prefix *pr)
 	bzero(&mask6, sizeof(mask6));
 	mask6.sin6_len = sizeof(mask6);
 	mask6.sin6_addr = pr->ndpr_mask;
-	rtflags = ifa->ifa_flags | RTF_CLONING | RTF_UP;
-	if (nd6_need_cache(ifp)) {
-		/* explicitly set in case ifa_flags does not set the flag. */
-		rtflags |= RTF_CLONING;
-	} else {
-		/*
-		 * explicitly clear the cloning bit in case ifa_flags sets it.
-		 */
-		rtflags &= ~RTF_CLONING;
-	}
+	rtflags = ifa->ifa_flags | RTF_UP;
 	error = rtrequest(RTM_ADD, (struct sockaddr *)&pr->ndpr_prefix,
 	    ifa->ifa_addr, (struct sockaddr *)&mask6, rtflags, &rt);
 	if (error == 0) {

@@ -153,27 +153,7 @@ in6_addroute(void *v_arg, void *n_arg, struct radix_node_head *head,
 		rt->rt_rmx.rmx_mtu = IN6_LINKMTU(rt->rt_ifp);
 
 	ret = rn_addroute(v_arg, n_arg, head, treenodes);
-	if (ret == NULL && rt->rt_flags & RTF_HOST) {
-		struct rtentry *rt2;
-		/*
-		 * We are trying to add a host route, but can't.
-		 * Find out if it is because of an
-		 * ARP entry and delete it if so.
-		 */
-		rt2 = rtalloc1((struct sockaddr *)sin6, 0, RTF_CLONING);
-		if (rt2) {
-			if (rt2->rt_flags & RTF_LLINFO &&
-				rt2->rt_flags & RTF_HOST &&
-				rt2->rt_gateway &&
-				rt2->rt_gateway->sa_family == AF_LINK) {
-				rtexpunge(rt2);
-				RTFREE_LOCKED(rt2);
-				ret = rn_addroute(v_arg, n_arg, head,
-					treenodes);
-			} else
-				RTFREE_LOCKED(rt2);
-		}
-	} else if (ret == NULL && rt->rt_flags & RTF_CLONING) {
+	if (ret == NULL) {
 		struct rtentry *rt2;
 		/*
 		 * We are trying to add a net route, but can't.
@@ -187,10 +167,9 @@ in6_addroute(void *v_arg, void *n_arg, struct radix_node_head *head,
 		 *	net route entry, 3ffe:0501:: -> if0.
 		 *	This case should not raise an error.
 		 */
-		rt2 = rtalloc1((struct sockaddr *)sin6, 0, RTF_CLONING);
+		rt2 = rtalloc1((struct sockaddr *)sin6, 0, 0);
 		if (rt2) {
-			if ((rt2->rt_flags & (RTF_CLONING|RTF_HOST|RTF_GATEWAY))
-					== RTF_CLONING
+			if (((rt2->rt_flags & (RTF_HOST|RTF_GATEWAY)) == 0)
 			 && rt2->rt_gateway
 			 && rt2->rt_gateway->sa_family == AF_LINK
 			 && rt2->rt_ifp == rt->rt_ifp) {
@@ -199,7 +178,7 @@ in6_addroute(void *v_arg, void *n_arg, struct radix_node_head *head,
 			RTFREE_LOCKED(rt2);
 		}
 	}
-	return ret;
+	return (ret);
 }
 
 /*
@@ -254,12 +233,6 @@ in6_clsroute(struct radix_node *rn, struct radix_node_head *head)
 
 	if (!(rt->rt_flags & RTF_UP))
 		return;		/* prophylactic measures */
-
-	if ((rt->rt_flags & (RTF_LLINFO | RTF_HOST)) != RTF_HOST)
-		return;
-
-	if ((rt->rt_flags & (RTF_WASCLONED | RTPRF_OURS)) != RTF_WASCLONED)
-		return;
 
 	/*
 	 * As requested by David Greenman:

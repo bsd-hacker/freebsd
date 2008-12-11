@@ -987,10 +987,9 @@ in6_update_ifa(struct ifnet *ifp, struct in6_aliasreq *ifra,
 			}
 		}
 		if (!rt) {
-			/* XXX: we need RTF_CLONING to fake nd6_rtrequest */
 			error = rtrequest(RTM_ADD, (struct sockaddr *)&mltaddr,
 			    (struct sockaddr *)&ia->ia_addr,
-			    (struct sockaddr *)&mltmask, RTF_UP | RTF_CLONING,
+			    (struct sockaddr *)&mltmask, RTF_UP,
 			    (struct rtentry **)0);
 			if (error)
 				goto cleanup;
@@ -1064,7 +1063,7 @@ in6_update_ifa(struct ifnet *ifp, struct in6_aliasreq *ifra,
 		if (!rt) {
 			error = rtrequest(RTM_ADD, (struct sockaddr *)&mltaddr,
 			    (struct sockaddr *)&ia->ia_addr,
-			    (struct sockaddr *)&mltmask, RTF_UP | RTF_CLONING,
+			    (struct sockaddr *)&mltmask, RTF_UP,
 			    (struct rtentry **)0);
 			if (error)
 				goto cleanup;
@@ -1542,7 +1541,6 @@ in6_ifinit(struct ifnet *ifp, struct in6_ifaddr *ia,
 		struct rtentry *rt = NULL, **rtp = NULL;
 
 		if (nd6_need_cache(ifp) != 0) {
-			rtflags |= RTF_LLINFO;
 			rtp = &rt;
 		}
 
@@ -1571,12 +1569,6 @@ in6_ifinit(struct ifnet *ifp, struct in6_ifaddr *ia,
 		}
 		ia->ia_flags |= IFA_ROUTE;
 	}
-	if (plen < 128) {
-		/*
-		 * The RTF_CLONING flag is necessary for in6_is_ifloop_auto().
-		 */
-		ia->ia_ifa.ifa_flags |= RTF_CLONING;
-	}
 #else
 	plen = in6_mask2len(&ia->ia_prefixmask.sin6_addr, NULL); /* XXX */
 	if (!(ia->ia_flags & IFA_ROUTE) && plen == 128 &&
@@ -1585,12 +1577,6 @@ in6_ifinit(struct ifnet *ifp, struct in6_ifaddr *ia,
 				    RTF_UP | RTF_HOST)) != 0)
 			return (error);
 		ia->ia_flags |= IFA_ROUTE;
-	}
-	if (plen < 128) {
-		/*
-		 * The RTF_CLONING flag is necessary for in6_is_ifloop_auto().
-		 */
-		ia->ia_ifa.ifa_flags |= RTF_CLONING;
 	}
 #endif
 
@@ -2287,7 +2273,7 @@ in6_lltable_dump(struct lltable *llt, struct sysctl_req *wr)
 			}
 			ndpc.rtm.rtm_rmx.rmx_expire =
 			    lle->la_flags & LLE_STATIC ? 0 : lle->la_expire;
-			ndpc.rtm.rtm_flags |= RTF_LLINFO | RTF_HOST;
+			ndpc.rtm.rtm_flags |= RTF_HOST;
 			if (lle->la_flags & LLE_STATIC)
 				ndpc.rtm.rtm_flags |= RTF_STATIC;
 			ndpc.rtm.rtm_index = ifp->if_index;
