@@ -121,6 +121,12 @@ extern struct domain inet6domain;
 u_char ip6_protox[IPPROTO_MAX];
 static struct ifqueue ip6intrq;
 
+#ifndef VIMAGE
+#ifndef VIMAGE_GLOBALS
+struct vnet_inet6 vnet_inet6_0;
+#endif
+#endif
+
 #ifdef VIMAGE_GLOBALS
 static int ip6qmaxlen;
 struct in6_ifaddr *in6_ifaddr;
@@ -173,6 +179,8 @@ ip6_init(void)
 #else
 	V_ip6_auto_linklocal = 1;	/* enable by default */
 #endif
+	TUNABLE_INT_FETCH("net.inet6.ip6.auto_linklocal",
+	    &V_ip6_auto_linklocal);
 
 #ifndef IPV6FORWARDING
 #ifdef GATEWAY6
@@ -563,8 +571,8 @@ passin:
 	}
 	LLE_RUNLOCK(lle);
 
-	if (ip6_forward_rt.ro_rt != NULL &&
-	    (ip6_forward_rt.ro_rt->rt_flags & RTF_UP) != 0 &&
+	if (V_ip6_forward_rt.ro_rt != NULL &&
+	    (V_ip6_forward_rt.ro_rt->rt_flags & RTF_UP) != 0 &&
 	    IN6_ARE_ADDR_EQUAL(&ip6->ip6_dst,
 	    &((struct sockaddr_in6 *)(&V_ip6_forward_rt.ro_dst))->sin6_addr))
 		V_ip6stat.ip6s_forward_cachehit++;

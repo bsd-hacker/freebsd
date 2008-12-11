@@ -42,10 +42,12 @@
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
+#include <sys/lock.h>
 #include <sys/malloc.h>
 #include <sys/module.h>
 #include <sys/mbuf.h>
 #include <sys/random.h>
+#include <sys/rwlock.h>
 #include <sys/socket.h>
 #include <sys/sockio.h>
 #include <sys/sysctl.h>
@@ -72,6 +74,7 @@
 #include <netinet/if_ether.h>
 #include <netinet/ip_fw.h>
 #include <netinet/ip_dummynet.h>
+#include <netinet/vinet.h>
 #endif
 #ifdef INET6
 #include <netinet6/nd6.h>
@@ -85,6 +88,7 @@
 #include <netipx/ipx.h>
 #include <netipx/ipx_if.h>
 #endif
+
 int (*ef_inputp)(struct ifnet*, struct ether_header *eh, struct mbuf *m);
 int (*ef_outputp)(struct ifnet *ifp, struct mbuf **mp,
 		struct sockaddr *dst, short *tp, int *hlen);
@@ -149,7 +153,6 @@ static int ether_ipfw;
 #endif
 #endif
 
-extern int useloopback;
 
 /*
  * Ethernet output routine.
@@ -290,7 +293,7 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 		senderr(EAFNOSUPPORT);
 	}
 
-	if (lle && (lle->la_flags & LLE_IFADDR) && useloopback) {
+	if (lle && (lle->la_flags & LLE_IFADDR)) {
 		int csum_flags = 0;
 		if (m->m_pkthdr.csum_flags & CSUM_IP)
 			csum_flags |= (CSUM_IP_CHECKED|CSUM_IP_VALID);
@@ -441,7 +444,7 @@ int
 ether_ipfw_chk(struct mbuf **m0, struct ifnet *dst,
 	struct ip_fw **rule, int shared)
 {
-	INIT_VNET_IPFW(dst->if_vnet);
+	INIT_VNET_INET(dst->if_vnet);
 	struct ether_header *eh;
 	struct ether_header save_eh;
 	struct mbuf *m;
