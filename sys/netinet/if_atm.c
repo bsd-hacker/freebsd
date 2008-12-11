@@ -328,8 +328,6 @@ atmresolve(struct rtentry *rt, struct mbuf *m, struct sockaddr *dst,
 			goto bad;	/* failed */
 		RT_REMREF(rt);		/* don't keep LL references */
 		if ((rt->rt_flags & RTF_GATEWAY) != 0 ||
-		    (rt->rt_flags & RTF_LLINFO) == 0 ||
-		    /* XXX: are we using LLINFO? */
 		    rt->rt_gateway->sa_family != AF_LINK) {
 			RT_UNLOCK(rt);
 			goto bad;
