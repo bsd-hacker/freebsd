@@ -68,7 +68,6 @@ struct	rtentry;
 struct	rt_addrinfo;
 struct	socket;
 struct	ether_header;
-struct	lltable;
 struct	carp_if;
 struct  ifvlantrunk;
 #endif
