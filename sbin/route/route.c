@@ -605,6 +605,14 @@ newroute(argc, argv)
 			case K_NOSTATIC:
 				flags &= ~RTF_STATIC;
 				break;
+#if 0
+			case K_CLONING:
+				flags |= RTF_CLONING;
+				break;
+			case K_LLINFO:
+				flags |= RTF_LLINFO;
+				break;
+#endif
 			case K_LOCK:
 				locking = 1;
 				break;

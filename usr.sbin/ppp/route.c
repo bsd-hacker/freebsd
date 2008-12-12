@@ -158,7 +158,10 @@ static struct bits {
   { RTF_MODIFIED, 'M' },
   { RTF_DONE, 'd' },
   { RTF_XRESOLVE, 'X' },
-    { RTF_STATIC, 'S' },
+#ifdef RTF_CLONING
+  { RTF_CLONING, 'C' },
+#endif
+  { RTF_STATIC, 'S' },
   { RTF_PROTO1, '1' },
   { RTF_PROTO2, '2' },
   { RTF_BLACKHOLE, 'B' },

@@ -48,9 +48,15 @@ static void *route_fd;
 /* if-index allocator */
 static uint32_t next_if_index = 1;
 
+#if 0
+/*
+ * XXX - Qing
+ *
+ */
 /* re-fetch arp table */
 static int update_arp;
 static int in_update_arp;
+#endif
 
 /* OR registrations */
 static u_int ifmib_reg;
@@ -910,9 +916,12 @@ mib_find_ifa(struct in_addr addr)
 	return (NULL);
 }
 
+#if 0
 /*
+ * Qing -- fix
  * Process a new ARP entry
  */
+
 static void
 process_arp(const struct rt_msghdr *rtm, const struct sockaddr_dl *sdl,
     const struct sockaddr_in *sa)
@@ -939,7 +948,7 @@ process_arp(const struct rt_msghdr *rtm, const struct sockaddr_dl *sdl,
 		at->flags &= ~MIBARP_PERM;
 	at->flags |= MIBARP_FOUND;
 }
-
+#endif
 /*
  * Handle a routing socket message.
  */
@@ -1083,6 +1092,11 @@ handle_rtmsg(struct rt_msghdr *rtm)
 
 	  case RTM_GET:
 		mib_extract_addrs(rtm->rtm_addrs, (u_char *)(rtm + 1), addrs);
+#if 0
+		/*
+		 * XXX - Qing fix
+		 *
+		 */
 		if (rtm->rtm_flags & RTF_LLINFO) {
 			if (addrs[RTAX_DST] == NULL ||
 			    addrs[RTAX_GATEWAY] == NULL ||
@@ -1093,14 +1107,22 @@ handle_rtmsg(struct rt_msghdr *rtm)
 			    (struct sockaddr_dl *)(void *)addrs[RTAX_GATEWAY],
 			    (struct sockaddr_in *)(void *)addrs[RTAX_DST]);
 		} else {
+#endif			
 			if (rtm->rtm_errno == 0 && (rtm->rtm_flags & RTF_UP))
 				mib_sroute_process(rtm, addrs[RTAX_GATEWAY],
 				    addrs[RTAX_DST], addrs[RTAX_NETMASK]);
+#if 0
 		}
+#endif		
 		break;
 
 	  case RTM_ADD:
 		mib_extract_addrs(rtm->rtm_addrs, (u_char *)(rtm + 1), addrs);
+#if 0
+		/*
+		 * XXX - Qing fix
+		 *
+		 */
 		if (rtm->rtm_flags & RTF_LLINFO) {
 			if (addrs[RTAX_DST] == NULL ||
 			    addrs[RTAX_GATEWAY] == NULL ||
@@ -1111,15 +1133,18 @@ handle_rtmsg(struct rt_msghdr *rtm)
 			    (struct sockaddr_dl *)(void *)addrs[RTAX_GATEWAY],
 			    (struct sockaddr_in *)(void *)addrs[RTAX_DST]);
 		} else {
+#endif			
 			if (rtm->rtm_errno == 0 && (rtm->rtm_flags & RTF_UP))
 				mib_sroute_process(rtm, addrs[RTAX_GATEWAY],
 				    addrs[RTAX_DST], addrs[RTAX_NETMASK]);
+#if 0
 		}
+#endif		
 		break;
 
 	  case RTM_DELETE:
 		mib_extract_addrs(rtm->rtm_addrs, (u_char *)(rtm + 1), addrs);
-		if (rtm->rtm_errno == 0 && !(rtm->rtm_flags & RTF_LLINFO))
+		if (rtm->rtm_errno == 0)
 			mib_sroute_process(rtm, addrs[RTAX_GATEWAY],
 			    addrs[RTAX_DST], addrs[RTAX_NETMASK]);
 		break;
@@ -1289,7 +1314,10 @@ update_ifa_info(void)
 
 /*
  * Update arp table
- */
+ *
+ * XXX - Qing
+*/
+#if 0
 void
 mib_arp_update(void)
 {
@@ -1305,11 +1333,15 @@ mib_arp_update(void)
 	TAILQ_FOREACH(at, &mibarp_list, link)
 		at->flags &= ~MIBARP_FOUND;
 
+	/*
+	 * XXX - Qing fix
+	 *
+	 */
 	if ((buf = mib_fetch_rtab(AF_INET, NET_RT_FLAGS, RTF_LLINFO, &needed)) == NULL) {
 		in_update_arp = 0;
 		return;
 	}
-
+	
 	next = buf;
 	while (next < buf + needed) {
 		rtm = (struct rt_msghdr *)(void *)next;
@@ -1329,6 +1361,7 @@ mib_arp_update(void)
 	update_arp = 0;
 	in_update_arp = 0;
 }
+#endif
 
 
 /*
@@ -1631,11 +1664,22 @@ mibII_idle(void)
 
 		mib_refresh_iflist();
 		update_ifa_info();
+#if 0
+		/*
+		 * XXX Qing
+		 *
+		 */
 		mib_arp_update();
+#endif		
 		mib_iflist_bad = 0;
 	}
+#if 0
+	/*
+	 * XXX Qing
+	 */
 	if (update_arp)
 		mib_arp_update();
+#endif
 }
 
 

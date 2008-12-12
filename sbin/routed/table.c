@@ -1103,14 +1103,13 @@ flush_kern(void)
 		    || INFO_DST(&info)->sa_family != AF_INET)
 			continue;
 
+#if defined (RTF_LLINFO)		
 		/* ignore ARP table entries on systems with a merged route
 		 * and ARP table.
 		 */
-#if defined(RTF_LLINFO)
 		if (rtm->rtm_flags & RTF_LLINFO)
 			continue;
 #endif
-		
 #if defined(RTF_WASCLONED) && defined(__FreeBSD__)
 		/* ignore cloned routes
 		 */
@@ -1262,12 +1261,14 @@ read_rt(void)
 			trace_act("ignore multicast %s", str);
 			continue;
 		}
+
 #if defined(RTF_LLINFO) 
 		if (m.r.rtm.rtm_flags & RTF_LLINFO) {
 			trace_act("ignore ARP %s", str);
 			continue;
 		}
 #endif
+		
 #if defined(RTF_WASCLONED) && defined(__FreeBSD__)
 		if (m.r.rtm.rtm_flags & RTF_WASCLONED) {
 			trace_act("ignore cloned %s", str);

@@ -347,7 +347,7 @@ size_cols_rtentry(struct rtentry *rt)
 	wid_flags = MAX(len, wid_flags);
 
 	if (addr.u_sa.sa_family == AF_INET || Wflag) {
-		len = snprintf(buffer, sizeof(buffer), "%ld", rt->rt_refcnt);
+		len = snprintf(buffer, sizeof(buffer), "%d", rt->rt_refcnt);
 		wid_refs = MAX(len, wid_refs);
 		len = snprintf(buffer, sizeof(buffer), "%lu", rt->rt_use);
 		wid_use = MAX(len, wid_use);
@@ -772,7 +772,7 @@ p_rtentry(struct rtentry *rt)
 	snprintf(buffer, sizeof(buffer), "%%-%d.%ds ", wid_flags, wid_flags);
 	p_flags(rt->rt_flags, buffer);
 	if (addr.u_sa.sa_family == AF_INET || Wflag) {
-		printf("%*ld %*lu ", wid_refs, rt->rt_refcnt,
+		printf("%*d %*lu ", wid_refs, rt->rt_refcnt,
 				     wid_use, rt->rt_use);
 		if (Wflag) {
 			if (rt->rt_rmx.rmx_mtu != 0)
