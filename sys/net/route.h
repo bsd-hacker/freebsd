@@ -135,15 +135,12 @@ struct rtentry {
 #define	rt_key(r)	(*((struct sockaddr **)(&(r)->rt_nodes->rn_key)))
 #define	rt_mask(r)	(*((struct sockaddr **)(&(r)->rt_nodes->rn_mask)))
 	struct	sockaddr *rt_gateway;	/* value */
-	u_long	rt_flags;		/* up/down?, host/net */
+	int	rt_flags;		/* up/down?, host/net */
+	int	rt_refcnt;		/* # held references */
 	struct	ifnet *rt_ifp;		/* the answer: interface to use */
 	struct	ifaddr *rt_ifa;		/* the answer: interface address to use */
 	struct	rt_metrics_lite rt_rmx;	/* metrics used by rx'ing protocols */
-	long	rt_refcnt;		/* # held references */
-	struct	sockaddr *rt_genmask;	/* for generation of cloned routes */
-	caddr_t	rt_llinfo;		/* pointer to link level info cache */
 	struct	rtentry *rt_gwroute;	/* implied entry for gatewayed routes */
-	struct	rtentry *rt_parent; 	/* cloning parent - UNUSED */
 	u_int	rt_fibnum;		/* which FIB */
 #ifdef _KERNEL
 	/* XXX ugly, user apps use this definition but don't have a mtx def */
@@ -326,14 +323,14 @@ struct rt_addrinfo {
 #define	RT_ADDREF(_rt)	do {					\
 	RT_LOCK_ASSERT(_rt);					\
 	KASSERT((_rt)->rt_refcnt >= 0,				\
-		("negative refcnt %ld", (_rt)->rt_refcnt));	\
+		("negative refcnt %d", (_rt)->rt_refcnt));	\
 	(_rt)->rt_refcnt++;					\
 } while (0)
 
 #define	RT_REMREF(_rt)	do {					\
 	RT_LOCK_ASSERT(_rt);					\
 	KASSERT((_rt)->rt_refcnt > 0,				\
-		("bogus refcnt %ld", (_rt)->rt_refcnt));	\
+		("bogus refcnt %d", (_rt)->rt_refcnt));	\
 	(_rt)->rt_refcnt--;					\
 } while (0)
 

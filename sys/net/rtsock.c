@@ -497,19 +497,6 @@ route_output(struct mbuf *m, struct socket *so)
 	    (info.rti_info[RTAX_GATEWAY] != NULL &&
 	     info.rti_info[RTAX_GATEWAY]->sa_family >= AF_MAX))
 		senderr(EINVAL);
-	if (info.rti_info[RTAX_GENMASK]) {
-		struct radix_node *t;
-		t = rn_addmask((caddr_t) info.rti_info[RTAX_GENMASK], 0, 1);
-		if (t != NULL &&
-		    bcmp((char *)(void *)info.rti_info[RTAX_GENMASK] + 1,
-		    (char *)(void *)t->rn_key + 1,
-		    ((struct sockaddr *)t->rn_key)->sa_len - 1) == 0)
-			info.rti_info[RTAX_GENMASK] =
-			    (struct sockaddr *)t->rn_key;
-		else
-			senderr(ENOBUFS);
-	}
-
 	/*
 	 * Verify that the caller has the appropriate privilege; RTM_GET
 	 * is the only operation the non-superuser is allowed.
@@ -540,7 +527,6 @@ route_output(struct mbuf *m, struct socket *so)
 				&rtm->rtm_rmx, &saved_nrt->rt_rmx);
 			rtm->rtm_index = saved_nrt->rt_ifp->if_index;
 			RT_REMREF(saved_nrt);
-			saved_nrt->rt_genmask = info.rti_info[RTAX_GENMASK];
 			RT_UNLOCK(saved_nrt);
 		}
 		break;
@@ -624,7 +610,7 @@ route_output(struct mbuf *m, struct socket *so)
 			info.rti_info[RTAX_DST] = rt_key(rt);
 			info.rti_info[RTAX_GATEWAY] = rt->rt_gateway;
 			info.rti_info[RTAX_NETMASK] = rt_mask(rt);
-			info.rti_info[RTAX_GENMASK] = rt->rt_genmask;
+			info.rti_info[RTAX_GENMASK] = 0;
 			if (rtm->rtm_addrs & (RTA_IFP | RTA_IFA)) {
 				ifp = rt->rt_ifp;
 				if (ifp) {
@@ -729,8 +715,6 @@ route_output(struct mbuf *m, struct socket *so)
 			rtm->rtm_index = rt->rt_ifp->if_index;
 			if (rt->rt_ifa && rt->rt_ifa->ifa_rtrequest)
 			       rt->rt_ifa->ifa_rtrequest(RTM_ADD, rt, &info);
-			if (info.rti_info[RTAX_GENMASK])
-				rt->rt_genmask = info.rti_info[RTAX_GENMASK];
 			/* FALLTHROUGH */
 		case RTM_LOCK:
 			/* We don't support locks anymore */
@@ -1272,7 +1256,7 @@ sysctl_dumpentry(struct radix_node *rn, void *vw)
 	info.rti_info[RTAX_DST] = rt_key(rt);
 	info.rti_info[RTAX_GATEWAY] = rt->rt_gateway;
 	info.rti_info[RTAX_NETMASK] = rt_mask(rt);
-	info.rti_info[RTAX_GENMASK] = rt->rt_genmask;
+	info.rti_info[RTAX_GENMASK] = 0;
 	if (rt->rt_ifp) {
 		info.rti_info[RTAX_IFP] = rt->rt_ifp->if_addr->ifa_addr;
 		info.rti_info[RTAX_IFA] = rt->rt_ifa->ifa_addr;
