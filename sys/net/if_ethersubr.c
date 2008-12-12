@@ -293,7 +293,7 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 		senderr(EAFNOSUPPORT);
 	}
 
-	if (lle && (lle->la_flags & LLE_IFADDR)) {
+	if (lle != NULL && (lle->la_flags & LLE_IFADDR)) {
 		int csum_flags = 0;
 		if (m->m_pkthdr.csum_flags & CSUM_IP)
 			csum_flags |= (CSUM_IP_CHECKED|CSUM_IP_VALID);
