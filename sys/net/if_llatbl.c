@@ -237,10 +237,7 @@ lla_rt_output(struct rt_msghdr *rtm, struct rt_addrinfo *info)
 		return EINVAL; /* XXX not implemented yet */
 	}
 
-	/*
-	 * XXXXXXXX: 
-	 *   REVISE this approach if possible.
-	 */
+	/* XXX linked list may be too expensive */
 	IFNET_RLOCK();
 	SLIST_FOREACH(llt, &lltables, llt_link) {
 		if (llt->llt_af == dst->sa_family &&
@@ -258,9 +255,10 @@ lla_rt_output(struct rt_msghdr *rtm, struct rt_addrinfo *info)
 	IF_AFDATA_UNLOCK(ifp);
 	if (lle != NULL) {
 		if (flags & LLE_CREATE) {
-			/* qing: if we delay the delete, then if a subsequent 
-			 *  "arp add" on the same host should look up this entry, 
-			 *  reset the LLE_DELETED flag, and reset the expiration timer
+			/*
+			 * If we delay the delete, then a subsequent
+			 * "arp add" should look up this entry, reset the
+			 * LLE_DELETED flag, and reset the expiration timer
 			 */
 			bcopy(LLADDR(dl), &lle->ll_addr, ifp->if_addrlen);
 			lle->la_flags |= LLE_VALID;
@@ -273,7 +271,7 @@ lla_rt_output(struct rt_msghdr *rtm, struct rt_addrinfo *info)
 				lle->ln_state = ND6_LLINFO_REACHABLE;
 #endif
 			/*
-			 * "arp" and "ndp" always sets the (RTF_STATIC | RTF_HOST) flags
+			 * NB: arp and ndp always set (RTF_STATIC | RTF_HOST)
 			 */
 
 			if (rtm->rtm_rmx.rmx_expire == 0) {
@@ -285,8 +283,7 @@ lla_rt_output(struct rt_msghdr *rtm, struct rt_addrinfo *info)
 			LLE_WUNLOCK(lle);
 #ifdef INET
 			/*  gratuious ARP */
-			if ((laflags & LLE_PUB) && 
-			    dst->sa_family == AF_INET) {
+			if ((laflags & LLE_PUB) && dst->sa_family == AF_INET) {
 				arprequest(ifp, 
 				    &((struct sockaddr_in *)dst)->sin_addr,
 				    &((struct sockaddr_in *)dst)->sin_addr,
