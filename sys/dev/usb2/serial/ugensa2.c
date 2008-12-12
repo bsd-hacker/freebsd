@@ -97,10 +97,10 @@ static usb2_callback_t ugensa_bulk_write_clear_stall_callback;
 static usb2_callback_t ugensa_bulk_read_callback;
 static usb2_callback_t ugensa_bulk_read_clear_stall_callback;
 
-static void ugensa_start_read(struct usb2_com_softc *ucom);
-static void ugensa_stop_read(struct usb2_com_softc *ucom);
-static void ugensa_start_write(struct usb2_com_softc *ucom);
-static void ugensa_stop_write(struct usb2_com_softc *ucom);
+static void	ugensa_start_read(struct usb2_com_softc *);
+static void	ugensa_stop_read(struct usb2_com_softc *);
+static void	ugensa_start_write(struct usb2_com_softc *);
+static void	ugensa_stop_write(struct usb2_com_softc *);
 
 static const struct usb2_config
 	ugensa_xfer_config[UGENSA_N_TRANSFER] = {
@@ -333,7 +333,6 @@ ugensa_bulk_write_clear_stall_callback(struct usb2_xfer *xfer)
 		ssc->sc_flags &= ~UGENSA_FLAG_BULK_WRITE_STALL;
 		usb2_transfer_start(xfer_other);
 	}
-	return;
 }
 
 static void
@@ -376,7 +375,6 @@ ugensa_bulk_read_clear_stall_callback(struct usb2_xfer *xfer)
 		ssc->sc_flags &= ~UGENSA_FLAG_BULK_READ_STALL;
 		usb2_transfer_start(xfer_other);
 	}
-	return;
 }
 
 static void
@@ -386,7 +384,6 @@ ugensa_start_read(struct usb2_com_softc *ucom)
 	struct ugensa_sub_softc *ssc = sc->sc_sub + ucom->sc_portno;
 
 	usb2_transfer_start(ssc->sc_xfer[1]);
-	return;
 }
 
 static void
@@ -397,7 +394,6 @@ ugensa_stop_read(struct usb2_com_softc *ucom)
 
 	usb2_transfer_stop(ssc->sc_xfer[3]);
 	usb2_transfer_stop(ssc->sc_xfer[1]);
-	return;
 }
 
 static void
@@ -407,7 +403,6 @@ ugensa_start_write(struct usb2_com_softc *ucom)
 	struct ugensa_sub_softc *ssc = sc->sc_sub + ucom->sc_portno;
 
 	usb2_transfer_start(ssc->sc_xfer[0]);
-	return;
 }
 
 static void
@@ -418,5 +413,4 @@ ugensa_stop_write(struct usb2_com_softc *ucom)
 
 	usb2_transfer_stop(ssc->sc_xfer[2]);
 	usb2_transfer_stop(ssc->sc_xfer[0]);
-	return;
 }
