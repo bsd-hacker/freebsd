@@ -294,8 +294,12 @@ lla_rt_output(struct rt_msghdr *rtm, struct rt_addrinfo *info)
 					(u_char *)LLADDR(dl)));
 			}
 #endif
-		} else
-			LLE_RUNLOCK(lle);
+		} else {
+			if (flags & LLE_EXCLUSIVE)
+				LLE_WUNLOCK(lle);
+			else
+				LLE_RUNLOCK(lle);
+		}
 	} else {
 		if (flags & LLE_DELETE)
 			error = EINVAL;
