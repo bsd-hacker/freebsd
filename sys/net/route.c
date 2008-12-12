@@ -972,10 +972,10 @@ deldone:
 		break;
 	case RTM_RESOLVE:
 		/*
-		 * resolve is only used for route cloning
-		 *
+		 * resolve was only used for route cloning
+		 * here for compat
 		 */
-		senderr(EINVAL);
+		break;
 	case RTM_ADD:
 		if ((flags & RTF_GATEWAY) && !gateway)
 			senderr(EINVAL);
