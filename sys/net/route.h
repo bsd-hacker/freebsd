@@ -140,7 +140,6 @@ struct rtentry {
 	struct	ifnet *rt_ifp;		/* the answer: interface to use */
 	struct	ifaddr *rt_ifa;		/* the answer: interface address to use */
 	struct	rt_metrics_lite rt_rmx;	/* metrics used by rx'ing protocols */
-	struct	rtentry *rt_gwroute;	/* implied entry for gatewayed routes */
 	u_int	rt_fibnum;		/* which FIB */
 #ifdef _KERNEL
 	/* XXX ugly, user apps use this definition but don't have a mtx def */

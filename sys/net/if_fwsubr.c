@@ -81,7 +81,6 @@ firewire_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 {
 	struct fw_com *fc = IFP2FWC(ifp);
 	int error, type;
-	struct rtentry *rt = NULL;
 	struct m_tag *mtag;
 	union fw_encap *enc;
 	struct fw_hwaddr *destfw;
@@ -102,13 +101,6 @@ firewire_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 	   (ifp->if_drv_flags & IFF_DRV_RUNNING))) {
 		error = ENETDOWN;
 		goto bad;
-	}
-
-	if (rt0 != NULL) {
-		error = rt_check(&rt, &rt0, dst);
-		if (error)
-			goto bad;
-		RT_UNLOCK(rt);
 	}
 
 	/*
@@ -146,7 +138,7 @@ firewire_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 		 * doesn't fit into the arp model.
 		 */
 		if (unicast) {
-			error = arpresolve(ifp, rt, m, dst, (u_char *) destfw, &lle);
+			error = arpresolve(ifp, rt0, m, dst, (u_char *) destfw, &lle);
 			if (error)
 				return (error == EWOULDBLOCK ? 0 : error);
 		}
@@ -175,7 +167,7 @@ firewire_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 #ifdef INET6
 	case AF_INET6:
 		if (unicast) {
-			error = nd6_storelladdr(fc->fc_ifp, rt, m, dst,
+			error = nd6_storelladdr(fc->fc_ifp, rt0, m, dst,
 			    (u_char *) destfw, &lle);
 			if (error)
 				return (error);

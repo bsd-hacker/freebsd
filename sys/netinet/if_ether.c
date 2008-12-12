@@ -276,7 +276,9 @@ arpresolve(struct ifnet *ifp, struct rtentry *rt0, struct mbuf *m,
 	 * XXX if caller is required to hold lock, assert it
 	 */
 retry:
+	IF_AFDATA_LOCK(ifp);	
 	la = lla_lookup(LLTABLE(ifp), flags, dst);
+	IF_AFDATA_UNLOCK(ifp);	
 	if (la == NULL) {
 		if (flags & LLE_CREATE)
 			log(LOG_DEBUG,

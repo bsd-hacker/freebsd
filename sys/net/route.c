@@ -783,16 +783,6 @@ rtexpunge(struct rtentry *rt)
 	rt->rt_flags &= ~RTF_UP;
 
 	/*
-	 * Remove any external references we may have.
-	 * This might result in another rtentry being freed if
-	 * we held its last reference.
-	 */
-	if (rt->rt_gwroute) {
-		RTFREE(rt->rt_gwroute);
-		rt->rt_gwroute = NULL;
-	}
-
-	/*
 	 * Give the protocol a chance to keep things in sync.
 	 */
 	if ((ifa = rt->rt_ifa) && ifa->ifa_rtrequest) {
@@ -934,16 +924,6 @@ normal_rtdel:
 		rt->rt_flags &= ~RTF_UP;
 
 		/*
-		 * Remove any external references we may have.
-		 * This might result in another rtentry being freed if
-		 * we held its last reference.
-		 */
-		if (rt->rt_gwroute) {
-			RTFREE(rt->rt_gwroute);
-			rt->rt_gwroute = NULL;
-		}
-
-		/*
 		 * give the protocol a chance to keep things in sync.
 		 */
 		if ((ifa = rt->rt_ifa) && ifa->ifa_rtrequest)
@@ -994,7 +974,7 @@ deldone:
 		rt->rt_fibnum = fibnum;
 		/*
 		 * Add the gateway. Possibly re-malloc-ing the storage for it
-		 * also add the rt_gwroute if possible.
+		 * 
 		 */
 		RT_LOCK(rt);
 		if ((error = rt_setgate(rt, dst, gateway)) != 0) {
@@ -1029,8 +1009,6 @@ deldone:
 		/* do not permit exactly the same dst/mask/gw pair */
 		if (rn_mpath_capable(rnh) &&
 			rt_mpath_conflict(rnh, rt, netmask)) {
-			if (rt->rt_gwroute)
-				RTFREE(rt->rt_gwroute);
 			if (rt->rt_ifa) {
 				IFAFREE(rt->rt_ifa);
 			}
@@ -1048,8 +1026,6 @@ deldone:
 		 * then un-make it (this should be a function)
 		 */
 		if (rn == NULL) {
-			if (rt->rt_gwroute)
-				RTFREE(rt->rt_gwroute);
 			if (rt->rt_ifa)
 				IFAFREE(rt->rt_ifa);
 			Free(rt_key(rt));
@@ -1101,47 +1077,9 @@ rt_setgate(struct rtentry *rt, struct sockaddr *dst, struct sockaddr *gate)
 	    V_rt_tables[rt->rt_fibnum][dst->sa_family];
 	int dlen = SA_SIZE(dst), glen = SA_SIZE(gate);
 
-again:
 	RT_LOCK_ASSERT(rt);
 	RADIX_NODE_HEAD_LOCK_ASSERT(rnh);
 	
-	/*
-	 * Cloning loop avoidance in case of bad configuration.
-	 */
-	if (rt->rt_flags & RTF_GATEWAY) {
-		struct rtentry *gwrt;
-
-		RT_UNLOCK(rt);		/* XXX workaround LOR */
-		gwrt = rtalloc1_fib(gate, 1, RTF_RNH_LOCKED, rt->rt_fibnum);
-		if (gwrt == rt) {
-			RT_REMREF(rt);
-			return (EADDRINUSE); /* failure */
-		}
-		/*
-		 * Try to reacquire the lock on rt, and if it fails,
-		 * clean state and restart from scratch.
-		 */
-		if (!RT_TRYLOCK(rt)) {
-			RTFREE_LOCKED(gwrt);
-			RT_LOCK(rt);
-			goto again;
-		}
-		/*
-		 * If there is already a gwroute, then drop it. If we
-		 * are asked to replace route with itself, then do
-		 * not leak its refcounter.
-		 */
-		if (rt->rt_gwroute != NULL) {
-			if (rt->rt_gwroute == gwrt) {
-				RT_REMREF(rt->rt_gwroute);
-			} else
-				RTFREE(rt->rt_gwroute);
-		}
-
-		if ((rt->rt_gwroute = gwrt) != NULL)
-			RT_UNLOCK(rt->rt_gwroute);
-	}
-
 	/*
 	 * Prepare to store the gateway in rt->rt_gateway.
 	 * Both dst and gateway are stored one after the other in the same
@@ -1424,148 +1362,6 @@ rtinit(struct ifaddr *ifa, int cmd, int flags)
 	if (dst->sa_family == AF_INET)
 		fib = -1;
 	return (rtinit1(ifa, cmd, flags, fib));
-}
-
-/*
- * rt_check() is invoked on each layer 2 output path, prior to
- * encapsulating outbound packets.
- *
- * The function is mostly used to find a routing entry for the gateway,
- * which in some protocol families could also point to the link-level
- * address for the gateway itself (the side effect of revalidating the
- * route to the destination is rather pointless at this stage, we did it
- * already a moment before in the pr_output() routine to locate the ifp
- * and gateway to use).
- *
- * When we remove the layer-3 to layer-2 mapping tables from the
- * routing table, this function can be removed.
- *
- * === On input ===
- *   *dst is the address of the NEXT HOP (which coincides with the
- *	final destination if directly reachable);
- *   *lrt0 points to the cached route to the final destination;
- *   *lrt is not meaningful;
- *	(*lrt0 has no ref held on it by us so REMREF is not needed.
- *	Refs only account for major structural references and not usages,
- * 	which is actually a bit of a problem.)
- *
- * === Operation ===
- * If the route is marked down try to find a new route.  If the route
- * to the gateway is gone, try to setup a new route.  Otherwise,
- * if the route is marked for packets to be rejected, enforce that.
- * Note that rtalloc returns an rtentry with an extra REF that we may
- * need to lose.
- *
- * === On return ===
- *   *dst is unchanged;
- *   *lrt0 points to the (possibly new) route to the final destination
- *   *lrt points to the route to the next hop   [LOCKED]
- *
- * Their values are meaningful ONLY if no error is returned.
- *
- * To follow this you have to remember that:
- * RT_REMREF reduces the reference count by 1 but doesn't check it for 0 (!)
- * RTFREE_LOCKED includes an RT_REMREF (or an rtfree if refs == 1)
- *    and an RT_UNLOCK
- * RTFREE does an RT_LOCK and an RTFREE_LOCKED
- * The gwroute pointer counts as a reference on the rtentry to which it points.
- * so when we add it we use the ref that rtalloc gives us and when we lose it
- * we need to remove the reference.
- * RT_TEMP_UNLOCK does an RT_ADDREF before freeing the lock, and
- * RT_RELOCK locks it (it can't have gone away due to the ref) and
- * drops the ref, possibly freeing it and zeroing the pointer if
- * the ref goes to 0 (unlocking in the process).
- */
-int
-rt_check(struct rtentry **lrt, struct rtentry **lrt0, struct sockaddr *dst)
-{
-	struct rtentry *rt;
-	struct rtentry *rt0;
-	u_int fibnum;
-
-	KASSERT(*lrt0 != NULL, ("rt_check"));
-	rt0 = *lrt0;
-	rt = NULL;
-	fibnum = rt0->rt_fibnum;
-
-	/* NB: the locking here is tortuous... */
-	RT_LOCK(rt0);
-retry:
-	if (rt0 && (rt0->rt_flags & RTF_UP) == 0) {
-		/* Current rt0 is useless, try get a replacement. */
-		RT_UNLOCK(rt0);
-		rt0 = NULL;
-	}
-	if (rt0 == NULL) {
-		rt0 = rtalloc1_fib(dst, 1, 0UL, fibnum);
-		if (rt0 == NULL) {
-			return (EHOSTUNREACH);
-		}
-		RT_REMREF(rt0); /* don't need the reference. */
-	}
-
-	if (rt0->rt_flags & RTF_GATEWAY) {
-		if ((rt = rt0->rt_gwroute) != NULL) {
-			RT_LOCK(rt);		/* NB: gwroute */
-			if ((rt->rt_flags & RTF_UP) == 0) {
-				/* gw route is dud. ignore/lose it */
-				RTFREE_LOCKED(rt); /* unref (&unlock) gwroute */
-				rt = rt0->rt_gwroute = NULL;
-			}
-		}
-		
-		if (rt == NULL) {  /* NOT AN ELSE CLAUSE */
-			RT_TEMP_UNLOCK(rt0); /* MUST return to undo this */
-			rt = rtalloc1_fib(rt0->rt_gateway, 1, 0UL, fibnum);
-			if ((rt == rt0) || (rt == NULL)) {
-				/* the best we can do is not good enough */
-				if (rt) {
-					RT_REMREF(rt); /* assumes ref > 0 */
-					RT_UNLOCK(rt);
-				}
-				RTFREE(rt0); /* lock, unref, (unlock) */
-				return (ENETUNREACH);
-			}
-			/*
-			 * Relock it and lose the added reference.
-			 * All sorts of things could have happenned while we
-			 * had no lock on it, so check for them.
-			 */
-			RT_RELOCK(rt0);
-			if (rt0 == NULL || ((rt0->rt_flags & RTF_UP) == 0))
-				/* Ru-roh.. what we had is no longer any good */
-				goto retry;
-			/* 
-			 * While we were away, someone replaced the gateway.
-			 * Since a reference count is involved we can't just
-			 * overwrite it.
-			 */
-			if (rt0->rt_gwroute) {
-				if (rt0->rt_gwroute != rt) {
-					RTFREE_LOCKED(rt);
-					goto retry;
-				}
-			} else {
-				rt0->rt_gwroute = rt;
-			}
-		}
-		RT_LOCK_ASSERT(rt);
-		RT_UNLOCK(rt0);
-	} else {
-		/* think of rt as having the lock from now on.. */
-		rt = rt0;
-	}
-	/* XXX why are we inspecting rmx_expire? */
-	if ((rt->rt_flags & RTF_REJECT) &&
-	    (rt->rt_rmx.rmx_expire == 0 ||
-	    time_uptime < rt->rt_rmx.rmx_expire)) {
-		RT_UNLOCK(rt);
-		return (rt == rt0 ? EHOSTDOWN : EHOSTUNREACH);
-	}
-
-	*lrt = rt;
-	*lrt0 = rt0;
-	return (0);
 }
 
 /* This must be before ip6_init2(), which is now SI_ORDER_MIDDLE */
