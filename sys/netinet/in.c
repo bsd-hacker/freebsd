@@ -1040,9 +1040,9 @@ in_lltable_new(const struct sockaddr *l3addr, u_int flags)
 		return NULL;
 
 	callout_init(&lle->base.la_timer, CALLOUT_MPSAFE);
-	/* qing
+	/*
 	 * For IPv4 this will trigger "arpresolve" to generate
-	 * an ARP request 
+	 * an ARP request.
 	 */
 	lle->base.la_expire = time_second; /* mark expired */
 	lle->l3_addr4 = *(const struct sockaddr_in *)l3addr;
@@ -1085,9 +1085,8 @@ in_lltable_rtcheck(struct ifnet *ifp, const struct sockaddr *l3addr)
 }
 
 /*
- * Returns NULL if not found or marked for deletion
- * if found returns lle read locked
- *
+ * Return NULL if not found or marked for deletion.
+ * If found return lle read locked.
  */
 static struct llentry *
 in_lltable_lookup(struct lltable *llt, u_int flags, const struct sockaddr *l3addr)
@@ -1148,7 +1147,7 @@ in_lltable_lookup(struct lltable *llt, u_int flags, const struct sockaddr *l3add
 #endif
 		lle = NULL;
 	}
-	if (lle) {
+	if (lle != NULL) {
 		if (flags & LLE_EXCLUSIVE)
 			LLE_WLOCK(lle);
 		else
