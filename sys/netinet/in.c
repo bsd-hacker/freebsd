@@ -1109,7 +1109,7 @@ in_lltable_lookup(struct lltable *llt, u_int flags, const struct sockaddr *l3add
 			break;
 	}
 	if (lle == NULL) {
-#ifdef INVARIANTS
+#ifdef DIAGNOSTICS
 		if (flags & LLE_DELETE)
 			log(LOG_INFO, "interface address is missing from cache = %p  in delete\n", lle);	
 #endif
@@ -1142,7 +1142,7 @@ in_lltable_lookup(struct lltable *llt, u_int flags, const struct sockaddr *l3add
 		LLE_WLOCK(lle);
 		lle->la_flags = LLE_DELETED;
 		LLE_WUNLOCK(lle);
-#ifdef INVARIANTS
+#ifdef DIAGNOSTICS
 		log(LOG_INFO, "ifaddr cache = %p  is deleted\n", lle);	
 #endif
 		lle = NULL;
