@@ -156,12 +156,10 @@ arptimer(void *arg)
 	ifp = lle->lle_tbl->llt_ifp;
 	if ((lle->la_flags & LLE_DELETED) ||
 	    (time_second >= lle->la_expire)) {
-		
 		IF_AFDATA_LOCK(ifp);
-		if (!callout_pending(&lle->la_timer)  &&
-		    (callout_active(&lle->la_timer))) {
-			(void)llentry_free(lle);
-		}
+		if (!callout_pending(&lle->la_timer) &&
+		    callout_active(&lle->la_timer))
+			(void) llentry_free(lle);
 		IF_AFDATA_UNLOCK(ifp);
 	} else {
 		/*
@@ -170,7 +168,6 @@ arptimer(void *arg)
 		LLE_FREE(lle);
 	}
 }
-
 
 /*
  * Broadcast an ARP request. Caller specifies:
@@ -187,6 +184,7 @@ arprequest(struct ifnet *ifp, struct in_addr *sip, struct in_addr  *tip,
 	struct sockaddr sa;
 
 	if (sip == NULL) {
+		/* XXX don't believe this can happen (or explain why) */
 		/*
 		 * The caller did not supply a source address, try to find
 		 * a compatible one among those assigned to this interface.
@@ -275,6 +273,7 @@ arpresolve(struct ifnet *ifp, struct rtentry *rt0, struct mbuf *m,
 	/* XXXXX
 	 * Since this function returns an llentry, the 
 	 * lock is held by the caller.
+	 * XXX if caller is required to hold lock, assert it
 	 */
 retry:
 	la = lla_lookup(LLTABLE(ifp), flags, dst);
@@ -288,7 +287,7 @@ retry:
 	} 
 
 	if ((la->la_flags & LLE_VALID) &&
-	    ((la->la_flags & LLE_STATIC) || (la->la_expire > time_uptime))) {
+	    ((la->la_flags & LLE_STATIC) || la->la_expire > time_uptime)) {
 		bcopy(&la->ll_addr, desten, ifp->if_addrlen);
 		/*
 		 * If entry has an expiry time and it is approaching,
@@ -317,8 +316,7 @@ retry:
 	}
 
 	renew = (la->la_asked == 0 || la->la_expire != time_uptime);
-
-	if ((renew || m) && ((flags & LLE_EXCLUSIVE) == 0)) {
+	if ((renew || m != NULL) && (flags & LLE_EXCLUSIVE) == 0) {
 		flags |= LLE_EXCLUSIVE;
 		LLE_RUNLOCK(la);
 		goto retry;
@@ -328,8 +326,8 @@ retry:
 	 * response yet.  Replace the held mbuf with this
 	 * latest one.
 	 */
-	if (m) {
-		if (la->la_hold)
+	if (m != NULL) {
+		if (la->la_hold != NULL)
 			m_freem(la->la_hold);
 		la->la_hold = m;
 		if (renew == 0 && (flags & LLE_EXCLUSIVE)) {
@@ -360,7 +358,6 @@ retry:
 		    IF_LLADDR(ifp));
 		return (error);
 	}
-
 done:
 	if (flags & LLE_EXCLUSIVE)
 		LLE_WUNLOCK(la);
@@ -458,9 +455,6 @@ in_arpinput(struct mbuf *m)
 	u_int8_t *enaddr = NULL;
 	int op, flags;
 	struct mbuf *m0;
-/*
-, rif_len;
-*/
 	int req_len;
 	int bridged = 0, is_bridge = 0;
 #ifdef DEV_CARP
@@ -499,7 +493,7 @@ in_arpinput(struct mbuf *m)
 	 */
 	LIST_FOREACH(ia, INADDR_HASH(itaddr.s_addr), ia_hash) {
 		if (((bridged && ia->ia_ifp->if_bridge != NULL) ||
-		    (ia->ia_ifp == ifp)) &&
+		    ia->ia_ifp == ifp) &&
 		    itaddr.s_addr == ia->ia_addr.sin_addr.s_addr)
 			goto match;
 #ifdef DEV_CARP
@@ -513,7 +507,7 @@ in_arpinput(struct mbuf *m)
 	}
 	LIST_FOREACH(ia, INADDR_HASH(isaddr.s_addr), ia_hash)
 		if (((bridged && ia->ia_ifp->if_bridge != NULL) ||
-		    (ia->ia_ifp == ifp)) &&
+		    ia->ia_ifp == ifp) &&
 		    isaddr.s_addr == ia->ia_addr.sin_addr.s_addr)
 			goto match;
 
@@ -643,7 +637,7 @@ match:
 		}
 		la->la_asked = 0;
 		la->la_preempt = V_arp_maxtries;
-		if (la->la_hold) {
+		if (la->la_hold != NULL) {
 			m0 = la->la_hold;
 			la->la_hold = 0;
 			memcpy(&sa, L3_ADDR(la), sizeof(sa));
@@ -727,7 +721,7 @@ reply:
 		}
 	}
 
-	if (la)
+	if (la != NULL)
 		LLE_WUNLOCK(la);
 	if (itaddr.s_addr == myaddr.s_addr &&
 	    IN_LINKLOCAL(ntohl(itaddr.s_addr))) {
@@ -754,7 +748,7 @@ reply:
 	return;
 
 drop:
-	if (la)
+	if (la != NULL)
 		LLE_WUNLOCK(la);
 	m_freem(m);
 }
