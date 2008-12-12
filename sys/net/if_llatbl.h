@@ -1,5 +1,7 @@
 /*
- * Copyright (c) 2007 Qing Li, Luigi Rizzo, Alessandro Cerri. All rights reserved.
+ * Copyright (c) 2004 Luigi Rizzo, Alessandro Cerri. All rights reserved.
+ * Copyright (c) 2004-2008 Qing Li. All rights reserved.
+ * Copyright (c) 2008 Kip Macy. All rights reserved.
  * 
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
