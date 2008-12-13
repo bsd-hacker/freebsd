@@ -300,10 +300,9 @@ lla_rt_output(struct rt_msghdr *rtm, struct rt_addrinfo *info)
 			else
 				LLE_RUNLOCK(lle);
 		}
-	} else {
-		if (flags & LLE_DELETE)
-			error = EINVAL;
-	}
+	} else if ((lle == NULL) && (flags & LLE_DELETE))
+		error = EINVAL;
+
 
 	return (error);
 }
