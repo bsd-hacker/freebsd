@@ -154,19 +154,20 @@ arptimer(void *arg)
 		return;
 	}
 	ifp = lle->lle_tbl->llt_ifp;
+	IF_AFDATA_LOCK(ifp);
+	LLE_WLOCK(lle);
 	if ((lle->la_flags & LLE_DELETED) ||
 	    (time_second >= lle->la_expire)) {
-		IF_AFDATA_LOCK(ifp);
 		if (!callout_pending(&lle->la_timer) &&
 		    callout_active(&lle->la_timer))
 			(void) llentry_free(lle);
-		IF_AFDATA_UNLOCK(ifp);
 	} else {
 		/*
 		 * Still valid, just drop our reference
 		 */
-		LLE_FREE(lle);
+		LLE_FREE_LOCKED(lle);
 	}
+	IF_AFDATA_UNLOCK(ifp);
 }
 
 /*
