@@ -117,7 +117,7 @@ nd6_ns_input(struct mbuf *m, int off, int icmp6len)
 	struct ifaddr *ifa = NULL;
 	int lladdrlen = 0;
 	int anycast = 0, proxy = 0, tentative = 0;
-	int tlladdr, error;
+	int tlladdr;
 	union nd_opts ndopts;
 	struct sockaddr_dl *proxydl = NULL;
 	char ip6bufs[INET6_ADDRSTRLEN], ip6bufd[INET6_ADDRSTRLEN];
@@ -171,8 +171,7 @@ nd6_ns_input(struct mbuf *m, int off, int icmp6len)
 		src_sa6.sin6_family = AF_INET6;
 		src_sa6.sin6_len = sizeof(src_sa6);
 		src_sa6.sin6_addr = saddr6;
-		error = nd6_is_addr_neighbor(&src_sa6, ifp);
-		if (error) {
+		if (nd6_is_addr_neighbor(&src_sa6, ifp) == 0) {
 			nd6log((LOG_INFO, "nd6_ns_input: "
 				"NS packet from non-neighbor\n"));
 			goto bad;
