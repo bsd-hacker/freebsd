@@ -1094,6 +1094,7 @@ nd6_free(struct llentry *ln, int gc)
 
 	ifp = ln->lle_tbl->llt_ifp;
 	IF_AFDATA_LOCK(ifp);
+	LLE_WLOCK(ln);
 	llentry_free(ln);
 	IF_AFDATA_UNLOCK(ifp);
 

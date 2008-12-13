@@ -92,8 +92,8 @@ done:
 void
 llentry_free(struct llentry *lle)
 {
-
-	LLE_WLOCK(lle);
+	
+	LLE_WLOCK_ASSERT(lle);
 	LIST_REMOVE(lle, lle_next);
 
 	if (lle->la_hold != NULL)
@@ -121,7 +121,9 @@ lltable_free(struct lltable *llt)
 
 	for (i=0; i < LLTBL_HASHTBL_SIZE; i++) {
 		LIST_FOREACH_SAFE(lle, &llt->lle_head[i], lle_next, next) {
+
 			callout_drain(&lle->la_timer);
+			LLE_WLOCK(lle);
 			llentry_free(lle);
 		}
 	}
