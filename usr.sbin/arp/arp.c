@@ -425,25 +425,39 @@ delete(char *host, int do_proxy)
 	struct sockaddr_inarp *addr, *dst;
 	struct rt_msghdr *rtm;
 	struct sockaddr_dl *sdl;
+	struct sockaddr_dl sdl_m;
 
 	dst = getaddr(host);
 	if (dst == NULL)
 		return (1);
 	dst->sin_other = do_proxy;
+
+	/*
+	 * setup the data structure to notify the kernel
+	 * it is the ARP entry the RTM_GET is interested
+	 * in
+	 */
+	bzero(&sdl_m, sizeof(sdl_m));
+	sdl_m.sdl_len = sizeof(sdl_m);
+	sdl_m.sdl_family = AF_LINK;
+
 	for (;;) {	/* try twice */
-		rtm = rtmsg(RTM_GET, dst, NULL);
+		rtm = rtmsg(RTM_GET, dst, &sdl_m);
 		if (rtm == NULL) {
 			warn("%s", host);
 			return (1);
 		}
 		addr = (struct sockaddr_inarp *)(rtm + 1);
 		sdl = (struct sockaddr_dl *)(SA_SIZE(addr) + (char *)addr);
-		if (addr->sin_addr.s_addr == dst->sin_addr.s_addr &&
-		    sdl->sdl_family == AF_LINK &&
-		    !(rtm->rtm_flags & RTF_GATEWAY) &&
-		    valid_type(sdl->sdl_type) )
-			break;	/* found it */
 
+		/*
+		 * With the new L2/L3 restructure, the route 
+		 * returned is a prefix route. The important
+		 * piece of information from the previous
+		 * RTM_GET is the interface index. In the
+		 * case of ECMP, the kernel will traverse
+		 * the route group for the given entry.
+		 */
 		if (sdl->sdl_family == AF_LINK &&
 		    !(rtm->rtm_flags & RTF_GATEWAY) &&
 		    valid_type(sdl->sdl_type) ) {
