@@ -2204,12 +2204,12 @@ in6_lltable_lookup(struct lltable *llt, u_int flags,
 		LLE_WLOCK(lle);
 		lle->la_flags = LLE_DELETED;
 		LLE_WUNLOCK(lle);
-#ifdef INVARIANTS
+#ifdef DIAGNOSTICS
 		log(LOG_INFO, "ifaddr cache = %p  is deleted\n", lle);	
 #endif	
 		lle = (void *)-1;
 	}
-	if (lle != NULL && lle != (void *)-1) {
+	if (LLE_IS_VALID(lle)) {
 		if (flags & LLE_EXCLUSIVE)
 			LLE_WLOCK(lle);
 		else
