@@ -1145,9 +1145,10 @@ in_lltable_lookup(struct lltable *llt, u_int flags, const struct sockaddr *l3add
 #ifdef DIAGNOSTICS
 		log(LOG_INFO, "ifaddr cache = %p  is deleted\n", lle);	
 #endif
-		lle = NULL;
+		lle = (void *)-1;
+		
 	}
-	if (lle != NULL) {
+	if (lle != NULL && lle != (void *)-1) {
 		if (flags & LLE_EXCLUSIVE)
 			LLE_WLOCK(lle);
 		else
