@@ -1097,6 +1097,7 @@ in_lltable_lookup(struct lltable *llt, u_int flags, const struct sockaddr *l3add
 	struct llentries *lleh;
 	u_int hashkey;
 
+	IF_AFDATA_LOCK_ASSERT(ifp);
 	KASSERT(l3addr->sa_family == AF_INET,
 	    ("sin_family %d", l3addr->sa_family));
 

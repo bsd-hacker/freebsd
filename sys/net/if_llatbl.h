@@ -94,9 +94,9 @@ struct llentry {
 
 #define	LLE_REMREF(lle)	do {					\
 	LLE_WLOCK_ASSERT(lle);					\
-	KASSERT((lle)->rt_refcnt > 0,				\
-		("bogus refcnt %ld", (lle)->rt_refcnt));	\
-	(lle)->rt_refcnt--;					\
+	KASSERT((lle)->lle_refcnt > 1,				\
+		("bogus refcnt %d", (lle)->lle_refcnt));	\
+	(lle)->lle_refcnt--;					\
 } while (0)
 
 #define	LLE_FREE_LOCKED(lle) do {				\

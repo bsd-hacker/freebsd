@@ -1533,7 +1533,7 @@ in6_ifinit(struct ifnet *ifp, struct in6_ifaddr *ia,
 	 * XXX: the logic below rejects assigning multiple addresses on a p2p
 	 * interface that share the same destination.
 	 */
-#if 0 /* QING - verify */
+#if 0 /* QL - verify */
 	plen = in6_mask2len(&ia->ia_prefixmask.sin6_addr, NULL); /* XXX */
 	if (!(ia->ia_flags & IFA_ROUTE) && plen == 128 &&
 	    ia->ia_dstaddr.sin6_family == AF_INET6) {
@@ -1587,7 +1587,7 @@ in6_ifinit(struct ifnet *ifp, struct in6_ifaddr *ia,
 		IF_AFDATA_LOCK(ifp);
 		ia->ia_ifa.ifa_rtrequest = NULL;
 
-		/* Qing
+		/* XXX QL
 		 * we need to report rt_newaddrmsg
 		 */
 		ln = lla_lookup(LLTABLE6(ifp), (LLE_CREATE | LLE_IFADDR | LLE_EXCLUSIVE),
@@ -2162,6 +2162,7 @@ in6_lltable_lookup(struct lltable *llt, u_int flags,
 	struct llentries *lleh;
 	u_int hashkey;
 
+	IF_AFDATA_LOCK_ASSERT(ifp);
 	KASSERT(l3addr->sa_family == AF_INET6,
 	    ("sin_family %d", l3addr->sa_family));
 

@@ -434,13 +434,20 @@ skip1:
  * ND6 timer routine to handle ND6 entries
  */
 void
-nd6_llinfo_settimer(struct llentry *ln, long tick)
+nd6_llinfo_settimer_locked(struct llentry *ln, long tick)
 {
-	LLE_WLOCK(ln);
 	if (tick < 0) {
 		ln->la_expire = 0;
 		ln->ln_ntick = 0;
 		callout_stop(&ln->ln_timer_ch);
+		/*
+		 * XXX - do we know that there is
+		 * callout installed? i.e. are we 
+		 * guaranteed that we're not dropping
+		 * a reference that we did not add?
+		 * KMM 
+		 */
+		LLE_REMREF(ln);
 	} else {
 		ln->la_expire = time_second + tick / hz;
 		LLE_ADDREF(ln);
@@ -454,6 +461,14 @@ nd6_llinfo_settimer(struct llentry *ln, long tick)
 			    nd6_llinfo_timer, ln);
 		}
 	}
+}
+
+void
+nd6_llinfo_settimer(struct llentry *ln, long tick)
+{
+
+	LLE_WLOCK(ln);
+	nd6_llinfo_settimer_locked(ln, tick);
 	LLE_WUNLOCK(ln);
 }
 
@@ -477,12 +492,6 @@ nd6_llinfo_timer(void *arg)
 	CURVNET_SET(ifp->if_vnet);
 	INIT_VNET_INET6(curvnet);
 
-	/*
-	 * llentry is refcounted - we shouldn't need to protect it 
-	 * with IF_AFDATA
-	 */
-	IF_AFDATA_LOCK(ifp);
-
 	if (ln->ln_ntick > 0) {
 		if (ln->ln_ntick > INT_MAX) {
 			ln->ln_ntick -= INT_MAX;
@@ -491,21 +500,17 @@ nd6_llinfo_timer(void *arg)
 			ln->ln_ntick = 0;
 			nd6_llinfo_settimer(ln, ln->ln_ntick);
 		}
-		IF_AFDATA_UNLOCK(ifp);
 		goto done;
 	}
 
 	ndi = ND_IFINFO(ifp);
 	dst = &L3_ADDR_SIN6(ln)->sin6_addr;
-
 	if ((ln->la_flags & LLE_STATIC) || (ln->la_expire > time_second)) {
-		IF_AFDATA_UNLOCK(ifp);
 		goto done;
 	}
 
 	if (ln->la_flags & LLE_DELETED) {
 		(void)nd6_free(ln, 0);
-		IF_AFDATA_UNLOCK(ifp);
 		goto done;
 	}
 
@@ -574,10 +579,9 @@ nd6_llinfo_timer(void *arg)
 		}
 		break;
 	}
-	IF_AFDATA_UNLOCK(ifp);
 	CURVNET_RESTORE();
 done:
-	LLE_FREE_LOCKED(ln);
+	LLE_FREE(ln);
 }
 
 
@@ -1427,6 +1431,7 @@ nd6_cache_lladdr(struct ifnet *ifp, struct in6_addr *from, char *lladdr,
 	if (ln)
 		IF_AFDATA_UNLOCK(ifp);
 	if (ln == NULL) {
+		flags |= LLE_EXCLUSIVE;
 		ln = nd6_lookup(from, flags |ND6_CREATE, ifp);
 		IF_AFDATA_UNLOCK(ifp);
 		is_newentry = 1;
@@ -1436,7 +1441,6 @@ nd6_cache_lladdr(struct ifnet *ifp, struct in6_addr *from, char *lladdr,
 			goto done;
 		is_newentry = 0;
 	}
-
 	if (ln == NULL)
 		return (NULL);
 
@@ -1495,7 +1499,7 @@ nd6_cache_lladdr(struct ifnet *ifp, struct in6_addr *from, char *lladdr,
 			 * we must set the timer now, although it is actually
 			 * meaningless.
 			 */
-			nd6_llinfo_settimer(ln, (long)V_nd6_gctimer * hz);
+			nd6_llinfo_settimer_locked(ln, (long)V_nd6_gctimer * hz);
 
 			if (ln->la_hold) {
 				struct mbuf *m_hold, *m_hold_next;
@@ -1515,12 +1519,12 @@ nd6_cache_lladdr(struct ifnet *ifp, struct in6_addr *from, char *lladdr,
 					 * just set the 2nd argument as the
 					 * 1st one.
 					 */
-					nd6_output(ifp, ifp, m_hold, L3_ADDR_SIN6(ln), NULL);
+					nd6_output_lle(ifp, ifp, m_hold, L3_ADDR_SIN6(ln), NULL, ln);
 				}
 			}
 		} else if (ln->ln_state == ND6_LLINFO_INCOMPLETE) {
 			/* probe right away */
-			nd6_llinfo_settimer((void *)ln, 0);
+			nd6_llinfo_settimer_locked((void *)ln, 0);
 		}
 	}
 
@@ -1660,6 +1664,15 @@ nd6_slowtimo(void *arg)
 	CURVNET_RESTORE();
 }
 
+int
+nd6_output(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
+    struct sockaddr_in6 *dst, struct rtentry *rt0)
+{
+
+	return (nd6_output_lle(ifp, origifp, m0, dst, rt0, NULL));
+}
+
+
 /*
  * Note that I'm not enforcing any global serialization
  * lle state or asked changes here as the logic is too
@@ -1669,17 +1682,22 @@ nd6_slowtimo(void *arg)
  *
  */
 #define senderr(e) { error = (e); goto bad;}
+
 int
-nd6_output(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
-    struct sockaddr_in6 *dst, struct rtentry *rt0)
+nd6_output_lle(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
+    struct sockaddr_in6 *dst, struct rtentry *rt0, struct llentry *lle)
 {
 	INIT_VNET_INET6(curvnet);
 	struct mbuf *m = m0;
 	struct rtentry *rt = rt0;
-	struct llentry *ln = NULL;
+	struct llentry *ln = lle;
 	int error = 0;
 	int flags = 0;
 
+#ifdef INVARIANTS
+	if (lle)
+		LLE_WLOCK_ASSERT(lle);
+#endif
 	if (IN6_IS_ADDR_MULTICAST(&dst->sin6_addr))
 		goto sendpkt;
 
@@ -1696,21 +1714,25 @@ nd6_output(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
 	 * At this point, the destination of the packet must be a unicast
 	 * or an anycast address(i.e. not a multicast).
 	 */
-	flags = m ? LLE_EXCLUSIVE : 0;
-	IF_AFDATA_LOCK(rt->rt_ifp);
-	ln = lla_lookup(LLTABLE6(ifp), flags, (struct sockaddr *)dst);
-	IF_AFDATA_UNLOCK(rt->rt_ifp);
-	if ((ln == NULL) && nd6_is_addr_neighbor(dst, ifp))  {
-		/*
-		 * Since nd6_is_addr_neighbor() internally calls nd6_lookup(),
-		 * the condition below is not very efficient.  But we believe
-		 * it is tolerable, because this should be a rare case.
-		 */
-		flags = ND6_CREATE | (m ? ND6_EXCLUSIVE : 0);
+
+	flags = (m || lle) ? LLE_EXCLUSIVE : 0;
+	if (ln == NULL) {
+	retry:
 		IF_AFDATA_LOCK(rt->rt_ifp);
-		ln = nd6_lookup(&dst->sin6_addr, flags, ifp);
+		ln = lla_lookup(LLTABLE6(ifp), flags, (struct sockaddr *)dst);
 		IF_AFDATA_UNLOCK(rt->rt_ifp);
-	}
+		if ((ln == NULL) && nd6_is_addr_neighbor(dst, ifp))  {
+			/*
+			 * Since nd6_is_addr_neighbor() internally calls nd6_lookup(),
+			 * the condition below is not very efficient.  But we believe
+			 * it is tolerable, because this should be a rare case.
+			 */
+			flags = ND6_CREATE | (m ? ND6_EXCLUSIVE : 0);
+			IF_AFDATA_LOCK(rt->rt_ifp);
+			ln = nd6_lookup(&dst->sin6_addr, flags, ifp);
+			IF_AFDATA_UNLOCK(rt->rt_ifp);
+		}
+	} 
 	if (ln == NULL) {
 		if ((ifp->if_flags & IFF_POINTOPOINT) == 0 &&
 		    !(ND_IFINFO(ifp)->flags & ND6_IFF_PERFORMNUD)) {
@@ -1727,8 +1749,12 @@ nd6_output(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
 	/* We don't have to do link-layer address resolution on a p2p link. */
 	if ((ifp->if_flags & IFF_POINTOPOINT) != 0 &&
 	    ln->ln_state < ND6_LLINFO_REACHABLE) {
+		if ((flags & LLE_EXCLUSIVE) == 0) {
+			flags |= LLE_EXCLUSIVE;
+			goto retry;
+		}
 		ln->ln_state = ND6_LLINFO_STALE;
-		nd6_llinfo_settimer(ln, (long)V_nd6_gctimer * hz);
+		nd6_llinfo_settimer_locked(ln, (long)V_nd6_gctimer * hz);
 	}
 
 	/*
@@ -1739,9 +1765,14 @@ nd6_output(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
 	 * (RFC 2461 7.3.3)
 	 */
 	if (ln->ln_state == ND6_LLINFO_STALE) {
+		if ((flags & LLE_EXCLUSIVE) == 0) {
+			flags |= LLE_EXCLUSIVE;
+			LLE_RUNLOCK(ln);
+			goto retry;
+		}
 		ln->la_asked = 0;
 		ln->ln_state = ND6_LLINFO_DELAY;
-		nd6_llinfo_settimer(ln, (long)V_nd6_delay * hz);
+		nd6_llinfo_settimer_locked(ln, (long)V_nd6_delay * hz);
 	}
 
 	/*
@@ -1761,10 +1792,16 @@ nd6_output(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
 	 */
 	if (ln->ln_state == ND6_LLINFO_NOSTATE)
 		ln->ln_state = ND6_LLINFO_INCOMPLETE;
+
+	if ((flags & LLE_EXCLUSIVE) == 0) {
+		flags |= LLE_EXCLUSIVE;
+		LLE_RUNLOCK(ln);
+		goto retry;
+	}
 	if (ln->la_hold) {
 		struct mbuf *m_hold;
 		int i;
-
+		
 		i = 0;
 		for (m_hold = ln->la_hold; m_hold; m_hold = m_hold->m_nextpkt) {
 			i++;
@@ -1782,11 +1819,16 @@ nd6_output(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
 	} else {
 		ln->la_hold = m;
 	}
-
-	if (flags & LLE_EXCLUSIVE)
-		LLE_WUNLOCK(ln);
-	else
-		LLE_RUNLOCK(ln);
+	/*
+	 * We did the lookup (no lle arg) so we
+	 * need to do the unlock here
+	 */
+	if (lle == NULL) {
+		if (flags & LLE_EXCLUSIVE)
+			LLE_WUNLOCK(ln);
+		else
+			LLE_RUNLOCK(ln);
+	}
 	
 	/*
 	 * If there has been no NS for the neighbor after entering the
@@ -1807,7 +1849,11 @@ nd6_output(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
 		error = ENETDOWN; /* better error? */
 		goto bad;
 	}
-	if (ln) {
+	/*
+	 * ln is valid and the caller did not pass in 
+	 * an llentry
+	 */
+	if (ln && (lle == NULL)) {
 		if (flags & LLE_EXCLUSIVE)
 			LLE_WUNLOCK(ln);
 		else
@@ -1825,7 +1871,11 @@ nd6_output(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
 	return (error);
 
   bad:
-	if (ln) {
+	/*
+	 * ln is valid and the caller did not pass in 
+	 * an llentry
+	 */
+	if (ln && (lle == NULL)) {
 		if (flags & LLE_EXCLUSIVE)
 			LLE_WUNLOCK(ln);
 		else

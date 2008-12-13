@@ -41,6 +41,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/malloc.h>
+#include <sys/lock.h>
+#include <sys/rwlock.h>
 #include <sys/mbuf.h>
 #include <sys/socket.h>
 #include <sys/sockio.h>
@@ -603,7 +605,7 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 	char *lladdr = NULL;
 	int lladdrlen = 0;
 	struct ifaddr *ifa;
-	struct llentry *ln;
+	struct llentry *ln = NULL;
 	union nd_opts ndopts;
 	char ip6bufs[INET6_ADDRSTRLEN], ip6bufd[INET6_ADDRSTRLEN];
 
@@ -699,7 +701,7 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 	 * discarded.
 	 */
 	IF_AFDATA_LOCK(ifp);
-	ln = nd6_lookup(&taddr6, 0, ifp);
+	ln = nd6_lookup(&taddr6, LLE_EXCLUSIVE, ifp);
 	IF_AFDATA_UNLOCK(ifp);
 	if (ln == NULL) {
 		goto freeit;
@@ -723,12 +725,12 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 			ln->ln_state = ND6_LLINFO_REACHABLE;
 			ln->ln_byhint = 0;
 			if (!ND6_LLINFO_PERMANENT(ln)) {
-				nd6_llinfo_settimer(ln,
+				nd6_llinfo_settimer_locked(ln,
 				    (long)ND_IFINFO(ln->lle_tbl->llt_ifp)->reachable * hz);
 			}
 		} else {
 			ln->ln_state = ND6_LLINFO_STALE;
-			nd6_llinfo_settimer(ln, (long)V_nd6_gctimer * hz);
+			nd6_llinfo_settimer_locked(ln, (long)V_nd6_gctimer * hz);
 		}
 		if ((ln->ln_router = is_router) != 0) {
 			/*
@@ -782,7 +784,7 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 			 */
 			if (ln->ln_state == ND6_LLINFO_REACHABLE) {
 				ln->ln_state = ND6_LLINFO_STALE;
-				nd6_llinfo_settimer(ln, (long)V_nd6_gctimer * hz);
+				nd6_llinfo_settimer_locked(ln, (long)V_nd6_gctimer * hz);
 			}
 			goto freeit;
 		} else if (is_override				   /* (2a) */
@@ -805,13 +807,13 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 				ln->ln_state = ND6_LLINFO_REACHABLE;
 				ln->ln_byhint = 0;
 				if (!ND6_LLINFO_PERMANENT(ln)) {
-					nd6_llinfo_settimer(ln,
+					nd6_llinfo_settimer_locked(ln,
 					    (long)ND_IFINFO(ifp)->reachable * hz);
 				}
 			} else {
 				if (lladdr != NULL && llchange) {
 					ln->ln_state = ND6_LLINFO_STALE;
-					nd6_llinfo_settimer(ln,
+					nd6_llinfo_settimer_locked(ln,
 					    (long)V_nd6_gctimer * hz);
 				}
 			}
@@ -825,7 +827,6 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 			 */
 			struct nd_defrouter *dr;
 			struct in6_addr *in6;
-/*			int s;*/
 
 			in6 = &L3_ADDR_SIN6(ln)->sin6_addr;
 
@@ -835,9 +836,6 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 			 * is only called under the network software interrupt
 			 * context.  However, we keep it just for safety.
 			 */
-/* Qing - removing 
-			s = splnet();
-*/
 			dr = defrouter_lookup(in6, ln->lle_tbl->llt_ifp);
 			if (dr)
 				defrtrlist_del(dr);
@@ -851,15 +849,13 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 				 */
 				rt6_flush(&ip6->ip6_src, ifp);
 			}
-/* Qing - removing
-			splx(s);
-*/
 		}
 		ln->ln_router = is_router;
 	}
-        /* Qing - do we care ?
-	rt->rt_flags &= ~RTF_REJECT;
-	*/
+        /* XXX - QL
+	 *  Does this matter?
+	 *  rt->rt_flags &= ~RTF_REJECT;
+	 */
 	ln->la_asked = 0;
 	if (ln->la_hold) {
 		struct mbuf *m_hold, *m_hold_next;
@@ -877,14 +873,20 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 			 * we assume ifp is not a loopback here, so just set
 			 * the 2nd argument as the 1st one.
 			 */
-			nd6_output(ifp, ifp, m_hold, L3_ADDR_SIN6(ln), NULL);
+			nd6_output_lle(ifp, ifp, m_hold, L3_ADDR_SIN6(ln), NULL, ln);
 		}
 	}
  freeit:
+	if (ln)
+		LLE_WUNLOCK(ln);
+
 	m_freem(m);
 	return;
 
  bad:
+	if (ln)
+		LLE_WUNLOCK(ln);
+
 	V_icmp6stat.icp6s_badna++;
 	m_freem(m);
 }

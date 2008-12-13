@@ -313,3 +313,5 @@ device		fwe		# Ethernet over FireWire (non-standard!)
 device		fwip		# IP over FireWire (RFC 2734,3146)
 device		dcons		# Dumb console driver
 device		dcons_crom	# Configuration ROM for dcons
+
+options		ALT_BREAK_TO_DEBUGGER
