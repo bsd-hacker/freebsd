@@ -2207,9 +2207,9 @@ in6_lltable_lookup(struct lltable *llt, u_int flags,
 #ifdef INVARIANTS
 		log(LOG_INFO, "ifaddr cache = %p  is deleted\n", lle);	
 #endif	
-		lle = NULL;
+		lle = (void *)-1;
 	}
-	if (lle) {
+	if (lle != NULL && lle != (void *)-1) {
 		if (flags & LLE_EXCLUSIVE)
 			LLE_WLOCK(lle);
 		else

@@ -857,7 +857,7 @@ nd6_purge(struct ifnet *ifp)
 	 */
 }
 
-/* Qing
+/* 
  * the caller acquires and releases the lock on the lltbls
  * Returns the llentry locked
  */
