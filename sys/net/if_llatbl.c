@@ -255,7 +255,7 @@ lla_rt_output(struct rt_msghdr *rtm, struct rt_addrinfo *info)
 	IF_AFDATA_LOCK(ifp);
 	lle = lla_lookup(llt, flags, dst);
 	IF_AFDATA_UNLOCK(ifp);
-	if (lle != NULL) {
+	if (LLE_IS_VALID(lle)) {
 		if (flags & LLE_CREATE) {
 			/*
 			 * If we delay the delete, then a subsequent

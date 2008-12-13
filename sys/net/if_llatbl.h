@@ -83,6 +83,8 @@ struct llentry {
 #define	LLE_LOCK_INIT(lle)	rw_init_flags(&(lle)->lle_lock, "lle", RW_DUPOK)
 #define	LLE_WLOCK_ASSERT(lle)	rw_assert(&(lle)->lle_lock, RA_WLOCKED)
 
+#define LLE_IS_VALID(lle)	(((lle) != NULL) && ((lle) != (void *)-1))
+
 #define	LLE_ADDREF(lle) do {					\
 	LLE_WLOCK_ASSERT(lle);					\
 	KASSERT((lle)->lle_refcnt >= 0,				\
