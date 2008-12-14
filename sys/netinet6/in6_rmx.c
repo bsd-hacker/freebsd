@@ -124,6 +124,7 @@ in6_addroute(void *v_arg, void *n_arg, struct radix_node_head *head,
 	struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)rt_key(rt);
 	struct radix_node *ret;
 
+	RADIX_NODE_HEAD_WLOCK_ASSERT(head);
 	if (IN6_IS_ADDR_MULTICAST(&sin6->sin6_addr))
 		rt->rt_flags |= RTF_MULTICAST;
 
@@ -167,7 +168,7 @@ in6_addroute(void *v_arg, void *n_arg, struct radix_node_head *head,
 		 *	net route entry, 3ffe:0501:: -> if0.
 		 *	This case should not raise an error.
 		 */
-		rt2 = rtalloc1((struct sockaddr *)sin6, 0, 0);
+		rt2 = rtalloc1((struct sockaddr *)sin6, 0, RTF_RNH_LOCKED);
 		if (rt2) {
 			if (((rt2->rt_flags & (RTF_HOST|RTF_GATEWAY)) == 0)
 			 && rt2->rt_gateway

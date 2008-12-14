@@ -76,6 +76,7 @@ in_addroute(void *v_arg, void *n_arg, struct radix_node_head *head,
 	struct rtentry *rt = (struct rtentry *)treenodes;
 	struct sockaddr_in *sin = (struct sockaddr_in *)rt_key(rt);
 
+	RADIX_NODE_HEAD_WLOCK_ASSERT(head);
 	/*
 	 * A little bit of help for both IP output and input:
 	 *   For host routes, we make sure that RTF_BROADCAST

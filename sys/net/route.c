@@ -748,8 +748,13 @@ rtexpunge(struct rtentry *rt)
 	struct ifaddr *ifa;
 	int error = 0;
 
+	/*
+	 * Find the correct routing tree to use for this Address Family
+	 */
 	rnh = V_rt_tables[rt->rt_fibnum][rt_key(rt)->sa_family];
 	RT_LOCK_ASSERT(rt);
+	if (rnh == NULL)
+		return (EAFNOSUPPORT);
 	RADIX_NODE_HEAD_LOCK_ASSERT(rnh);
 #if 0
 	/*
@@ -759,13 +764,6 @@ rtexpunge(struct rtentry *rt)
 	 */
 	KASSERT(rt->rt_refcnt <= 1, ("bogus refcnt %ld", rt->rt_refcnt));
 #endif
-	/*
-	 * Find the correct routing tree to use for this Address Family
-	 */
-	rnh = V_rt_tables[rt->rt_fibnum][rt_key(rt)->sa_family];
-	if (rnh == NULL)
-		return (EAFNOSUPPORT);
-
 	/*
 	 * Remove the item from the tree; it should be there,
 	 * but when callers invoke us blindly it may not (sigh).
@@ -803,12 +801,6 @@ rtexpunge(struct rtentry *rt)
 	V_rttrash++;
 bad:
 	return (error);
-}
-
-int
-rtrequest1(int req, struct rt_addrinfo *info, struct rtentry **ret_nrt)
-{
-	return (rtrequest1_fib(req, info, ret_nrt, 0));
 }
 
 int

@@ -61,10 +61,6 @@
 #define	WITH_SLICES
 #endif
 
-#if defined(__i386__)
-#define	WITH_LINUX
-#endif
-
 /* device limits */
 #define DEV_NAME_MAX		128	/* The maximum length of a device name	*/
 #define DEV_MAX			100	/* The maximum number of devices we'll deal with */
@@ -169,7 +165,6 @@
 #define VAR_NO_HOME			"noHome"
 #define VAR_NONINTERACTIVE		"nonInteractive"
 #define VAR_NOVELL			"novell"
-#define	VAR_OSF1_ENABLE			"osf1_enable"
 #define	VAR_RPCBIND_ENABLE		"rpcbind_enable"
 #define VAR_NTPDATE_FLAGS		"ntpdate_flags"
 #define VAR_PACKAGE			"package"
@@ -533,9 +528,6 @@ extern int	configSaverTimeout(dialogMenuItem *self);
 extern int	configLinux(dialogMenuItem *self);
 #endif
 extern int	configNTP(dialogMenuItem *self);
-#ifdef __alpha__
-extern int	configOSF1(dialogMenuItem *self);
-#endif
 extern int	configCountry(dialogMenuItem *self);
 extern int	configUsers(dialogMenuItem *self);
 extern int	configRouter(dialogMenuItem *self);

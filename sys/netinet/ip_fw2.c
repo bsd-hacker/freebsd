@@ -128,8 +128,8 @@ struct vnet_ipfw vnet_ipfw_0;
 static u_int32_t set_disable;
 static int fw_verbose;
 static struct callout ipfw_timeout;
-#endif
 static int verbose_limit;
+#endif
 
 static uma_zone_t ipfw_dyn_rule_zone;
 
@@ -190,8 +190,9 @@ SYSCTL_V_INT(V_NET, vnet_ipfw, _net_inet_ip_fw, OID_AUTO, debug, CTLFLAG_RW,
 SYSCTL_V_INT(V_NET, vnet_ipfw, _net_inet_ip_fw, OID_AUTO, verbose,
     CTLFLAG_RW | CTLFLAG_SECURE3,
     fw_verbose, 0, "Log matches to ipfw rules");
-SYSCTL_INT(_net_inet_ip_fw, OID_AUTO, verbose_limit, CTLFLAG_RW,
-    &verbose_limit, 0, "Set upper limit of matches of ipfw rules logged");
+SYSCTL_V_INT(V_NET, vnet_ipfw, _net_inet_ip_fw, OID_AUTO, verbose_limit,
+    CTLFLAG_RW, verbose_limit, 0,
+    "Set upper limit of matches of ipfw rules logged");
 SYSCTL_UINT(_net_inet_ip_fw, OID_AUTO, default_rule, CTLFLAG_RD,
     NULL, IPFW_DEFAULT_RULE, "The default/max possible rule number.");
 SYSCTL_UINT(_net_inet_ip_fw, OID_AUTO, tables_max, CTLFLAG_RD,
@@ -1813,6 +1814,7 @@ add_table_entry(struct ip_fw_chain *ch, uint16_t tbl, in_addr_t addr,
 	INIT_VNET_IPFW(curvnet);
 	struct radix_node_head *rnh;
 	struct table_entry *ent;
+	struct radix_node *rn;
 
 	if (tbl >= IPFW_TABLES_MAX)
 		return (EINVAL);
@@ -1825,8 +1827,10 @@ add_table_entry(struct ip_fw_chain *ch, uint16_t tbl, in_addr_t addr,
 	ent->mask.sin_addr.s_addr = htonl(mlen ? ~((1 << (32 - mlen)) - 1) : 0);
 	ent->addr.sin_addr.s_addr = addr & ent->mask.sin_addr.s_addr;
 	IPFW_WLOCK(ch);
-	if (rnh->rnh_addaddr(&ent->addr, &ent->mask, rnh, (void *)ent) ==
-	    NULL) {
+	RADIX_NODE_HEAD_LOCK(rnh);
+	rn = rnh->rnh_addaddr(&ent->addr, &ent->mask, rnh, (void *)ent);
+	RADIX_NODE_HEAD_UNLOCK(rnh);
+	if (rn == NULL) {
 		IPFW_WUNLOCK(ch);
 		free(ent, M_IPFW_TBL);
 		return (EEXIST);

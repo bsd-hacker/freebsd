@@ -1247,19 +1247,11 @@ DMenu MenuStartup = {
 	dmenuVarCheck, dmenuToggleVariable, NULL, "accounting_enable=YES" },
       { " lpd",		"This host has a printer and wants to run lpd.",
 	dmenuVarCheck, dmenuToggleVariable, NULL, "lpd_enable=YES" },
-#ifdef WITH_LINUX
-      { " Linux",	"This host wants to be able to run Linux binaries.",
-	dmenuVarCheck, configLinux, NULL, VAR_LINUX_ENABLE "=YES" },
-#endif
 #ifdef __i386__
       { " SCO",		"This host wants to be able to run IBCS2 binaries.",
 	dmenuVarCheck, dmenuToggleVariable, NULL, "ibcs2_enable=YES" },
       { " SVR4",	"This host wants to be able to run SVR4 binaries.",
 	dmenuVarCheck, dmenuToggleVariable, NULL, "svr4_enable=YES" },
-#endif
-#ifdef __alpha__
-      { " OSF/1",	"This host wants to be able to run DEC OSF/1 binaries.",
-	dmenuVarCheck, configOSF1, NULL, VAR_OSF1_ENABLE "=YES" },
 #endif
       { " quotas",	"This host wishes to check quotas on startup.",
 	dmenuVarCheck, dmenuToggleVariable, NULL, "check_quotas=YES" },

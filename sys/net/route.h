@@ -405,7 +405,6 @@ void	 rtredirect(struct sockaddr *, struct sockaddr *,
 	    struct sockaddr *, int, struct sockaddr *);
 int	 rtrequest(int, struct sockaddr *,
 	    struct sockaddr *, struct sockaddr *, int, struct rtentry **);
-int	 rtrequest1(int, struct rt_addrinfo *, struct rtentry **);
 
 /* defaults to "all" FIBs */
 int	 rtinit_fib(struct ifaddr *, int, int);
