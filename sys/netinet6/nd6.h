@@ -392,7 +392,10 @@ struct llentry *nd6_cache_lladdr __P((struct ifnet *, struct in6_addr *,
 int nd6_output __P((struct ifnet *, struct ifnet *, struct mbuf *,
 	struct sockaddr_in6 *, struct rtentry *));
 int nd6_output_lle __P((struct ifnet *, struct ifnet *, struct mbuf *,
-	struct sockaddr_in6 *, struct rtentry *, struct llentry *));
+	struct sockaddr_in6 *, struct rtentry *, struct llentry *,
+	struct mbuf **));
+int nd6_output_flush __P((struct ifnet *, struct ifnet *, struct mbuf *,
+	struct sockaddr_in6 *, struct rtentry *));
 int nd6_need_cache __P((struct ifnet *));
 int nd6_storelladdr __P((struct ifnet *, struct rtentry *, struct mbuf *,
 	struct sockaddr *, u_char *, struct llentry **));

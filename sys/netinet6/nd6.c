@@ -1404,6 +1404,8 @@ nd6_cache_lladdr(struct ifnet *ifp, struct in6_addr *from, char *lladdr,
 	int llchange;
 	int flags = 0;
 	int newstate = 0;
+	struct sockaddr_in6 sin6;
+	struct mbuf *chain = NULL;
 
 	IF_AFDATA_UNLOCK_ASSERT(ifp);
 
@@ -1519,8 +1521,10 @@ nd6_cache_lladdr(struct ifnet *ifp, struct in6_addr *from, char *lladdr,
 					 * just set the 2nd argument as the
 					 * 1st one.
 					 */
-					nd6_output_lle(ifp, ifp, m_hold, L3_ADDR_SIN6(ln), NULL, ln);
+					nd6_output_lle(ifp, ifp, m_hold, L3_ADDR_SIN6(ln), NULL, ln, &chain);
 				}
+				if (chain)
+					memcpy(&sin6, L3_ADDR_SIN6(ln), sizeof(sin6));
 			}
 		} else if (ln->ln_state == ND6_LLINFO_INCOMPLETE) {
 			/* probe right away */
@@ -1593,6 +1597,17 @@ nd6_cache_lladdr(struct ifnet *ifp, struct in6_addr *from, char *lladdr,
 		break;
 	}
 
+	if (ln) {
+		if (flags & ND6_EXCLUSIVE)
+			LLE_WUNLOCK(ln);
+		else
+			LLE_RUNLOCK(ln);
+		if (ln->la_flags & LLE_STATIC)
+			ln = NULL;
+	}
+	if (chain)
+		nd6_output_flush(ifp, ifp, chain, &sin6, NULL);
+	
 	/*
 	 * When the link-layer address of a router changes, select the
 	 * best router again.  In particular, when the neighbor entry is newly
@@ -1609,18 +1624,13 @@ nd6_cache_lladdr(struct ifnet *ifp, struct in6_addr *from, char *lladdr,
 	 * cases for safety.
 	 */
 	if (do_update && ln->ln_router && !V_ip6_forwarding && V_ip6_accept_rtadv) {
-#ifdef notyet
-		/*
-		 * XXX implement the boiler plate
-		 */
-		taskqueue_enqueue(ipv6_taskq, defrouter_select_task);
-#endif
 		/*
 		 * guaranteed recursion
 		 */
 		defrouter_select();
 	}
 	
+	return (ln);
 done:	
 	if (ln) {
 		if (flags & ND6_EXCLUSIVE)
@@ -1669,7 +1679,7 @@ nd6_output(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
     struct sockaddr_in6 *dst, struct rtentry *rt0)
 {
 
-	return (nd6_output_lle(ifp, origifp, m0, dst, rt0, NULL));
+	return (nd6_output_lle(ifp, origifp, m0, dst, rt0, NULL, NULL));
 }
 
 
@@ -1685,7 +1695,8 @@ nd6_output(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
 
 int
 nd6_output_lle(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
-    struct sockaddr_in6 *dst, struct rtentry *rt0, struct llentry *lle)
+    struct sockaddr_in6 *dst, struct rtentry *rt0, struct llentry *lle,
+	struct mbuf **tail)
 {
 	INIT_VNET_INET6(curvnet);
 	struct mbuf *m = m0;
@@ -1695,8 +1706,12 @@ nd6_output_lle(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
 	int flags = 0;
 
 #ifdef INVARIANTS
-	if (lle)
+	if (lle) {
+		
 		LLE_WLOCK_ASSERT(lle);
+
+		KASSERT(tail != NULL, (" lle locked but no tail pointer passed"));
+	}
 #endif
 	if (IN6_IS_ADDR_MULTICAST(&dst->sin6_addr))
 		goto sendpkt;
@@ -1715,7 +1730,7 @@ nd6_output_lle(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
 	 * or an anycast address(i.e. not a multicast).
 	 */
 
-	flags = (m || lle) ? LLE_EXCLUSIVE : 0;
+	flags = ((m != NULL) || (lle != NULL)) ? LLE_EXCLUSIVE : 0;
 	if (ln == NULL) {
 	retry:
 		IF_AFDATA_LOCK(rt->rt_ifp);
@@ -1863,6 +1878,13 @@ nd6_output_lle(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
 #ifdef MAC
 	mac_netinet6_nd6_send(ifp, m);
 #endif
+	if (lle != NULL) {
+		if (*tail == NULL)
+			*tail = m;
+		else
+			(*tail)->m_nextpkt = m;
+		return (error);
+	}
 	if ((ifp->if_flags & IFF_LOOPBACK) != 0) {
 		return ((*ifp->if_output)(origifp, m, (struct sockaddr *)dst,
 		    rt));
@@ -1886,6 +1908,37 @@ nd6_output_lle(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
 	return (error);
 }
 #undef senderr
+
+
+int
+nd6_output_flush(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *chain,
+    struct sockaddr_in6 *dst, struct rtentry *rt)
+{
+	struct mbuf *m, *m_head;
+	struct ifnet *outifp;
+	int error = 0;
+
+	m_head = chain;
+	if ((ifp->if_flags & IFF_LOOPBACK) != 0)
+		outifp = origifp;
+	else
+		outifp = ifp;
+	
+	while (m_head) {
+		m = m_head;
+		m_head = m_head->m_nextpkt;
+		error = (*ifp->if_output)(ifp, m, (struct sockaddr *)dst, rt);			       
+	}
+
+	/*
+	 * XXX
+	 * note that intermediate errors are blindly ignored - but this is 
+	 * the same convention as used with nd6_output when called by
+	 * nd6_cache_lladdr
+	 */
+	return (error);
+}	
+
 
 int
 nd6_need_cache(struct ifnet *ifp)

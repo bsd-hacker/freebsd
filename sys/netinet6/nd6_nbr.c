@@ -606,6 +606,8 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 	struct ifaddr *ifa;
 	struct llentry *ln = NULL;
 	union nd_opts ndopts;
+	struct mbuf *chain = NULL;
+	struct sockaddr_in6 sin6;
 	char ip6bufs[INET6_ADDRSTRLEN], ip6bufd[INET6_ADDRSTRLEN];
 
 	if (ip6->ip6_hlim != 255) {
@@ -872,13 +874,18 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 			 * we assume ifp is not a loopback here, so just set
 			 * the 2nd argument as the 1st one.
 			 */
-			nd6_output_lle(ifp, ifp, m_hold, L3_ADDR_SIN6(ln), NULL, ln);
+			nd6_output_lle(ifp, ifp, m_hold, L3_ADDR_SIN6(ln), NULL, ln, &chain);
 		}
 	}
  freeit:
-	if (ln)
+	if (ln) {
+		if (chain)
+			memcpy(&sin6, L3_ADDR_SIN6(ln), sizeof(sin6));
 		LLE_WUNLOCK(ln);
 
+		if (chain)
+			nd6_output_flush(ifp, ifp, chain, &sin6, NULL);
+	}
 	m_freem(m);
 	return;
 
