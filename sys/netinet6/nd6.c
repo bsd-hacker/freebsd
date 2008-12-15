@@ -581,7 +581,7 @@ nd6_llinfo_timer(void *arg)
 	}
 	CURVNET_RESTORE();
 done:
-	if (ln)
+	if (ln != NULL)
 		LLE_FREE(ln);
 }
 
