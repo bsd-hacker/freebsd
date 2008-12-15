@@ -2228,6 +2228,12 @@ in6_lltable_dump(struct lltable *llt, struct sysctl_req *wr)
 	struct {
 		struct rt_msghdr	rtm;
 		struct sockaddr_in6	sin6;
+		/*
+		 * ndp.c assumes that sdl is word aligned
+		 */
+#ifdef __LP64__
+		uint32_t		pad;
+#endif
 		struct sockaddr_dl	sdl;
 	} ndpc;
 	int i, error;
