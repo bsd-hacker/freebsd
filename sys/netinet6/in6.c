@@ -2242,8 +2242,10 @@ in6_lltable_dump(struct lltable *llt, struct sysctl_req *wr)
 	error = 0;
 	for (i = 0; i < LLTBL_HASHTBL_SIZE; i++) {
 		LIST_FOREACH(lle, &llt->lle_head[i], lle_next) {
-			/* skip deleted entries */
-			if (lle->la_flags & LLE_DELETED)
+			struct sockaddr_dl *sdl;
+
+			/* skip deleted or invalid entries */
+			if ((lle->la_flags & (LLE_DELETED|LLE_VALID)) != LLE_VALID)
 				continue;
 			/*
 			 * produce a msg made of:
@@ -2253,7 +2255,6 @@ in6_lltable_dump(struct lltable *llt, struct sysctl_req *wr)
 			 */
 			bzero(&ndpc, sizeof(ndpc));
 			ndpc.rtm.rtm_msglen = sizeof(ndpc);
-
 			ndpc.sin6.sin6_family = AF_INET6;
 			ndpc.sin6.sin6_len = sizeof(ndpc.sin6);
 			bcopy(L3_ADDR(lle), &ndpc.sin6, L3_ADDR_LEN(lle));
@@ -2262,16 +2263,13 @@ in6_lltable_dump(struct lltable *llt, struct sysctl_req *wr)
 			if (lle->la_flags & LLE_PUB)
 				ndpc.rtm.rtm_flags |= RTF_ANNOUNCE;
 
-			if (lle->la_flags & LLE_VALID) { /* valid MAC */
-				struct sockaddr_dl *sdl = &ndpc.sdl;
-
-				sdl->sdl_family = AF_LINK;
-				sdl->sdl_len = sizeof(*sdl);
-				sdl->sdl_alen = ifp->if_addrlen;
-				sdl->sdl_index = ifp->if_index;
-				sdl->sdl_type = ifp->if_type;
-				bcopy(&lle->ll_addr, LLADDR(sdl), ifp->if_addrlen);
-			}
+			sdl = &ndpc.sdl;
+			sdl->sdl_family = AF_LINK;
+			sdl->sdl_len = sizeof(*sdl);
+			sdl->sdl_alen = ifp->if_addrlen;
+			sdl->sdl_index = ifp->if_index;
+			sdl->sdl_type = ifp->if_type;
+			bcopy(&lle->ll_addr, LLADDR(sdl), ifp->if_addrlen);
 			ndpc.rtm.rtm_rmx.rmx_expire =
 			    lle->la_flags & LLE_STATIC ? 0 : lle->la_expire;
 			ndpc.rtm.rtm_flags |= RTF_HOST;
