@@ -531,34 +531,6 @@ configUsers(dialogMenuItem *self)
     return DITEM_SUCCESS;
 }
 
-#ifdef WITH_LINUX
-int
-configLinux(dialogMenuItem *self)
-{
-    WINDOW *w = savescr();
-    int i;
-
-    dialog_clear_norefresh();
-    variable_set2(VAR_LINUX_ENABLE, "YES", 1);
-    Mkdir("/compat/linux");
-    msgNotify("Installing Linux compatibility library...");
-    i = package_add("linux_base-fc");
-    restorescr(w);
-    return i;
-}
-#endif
-
-#ifdef __alpha__
-int
-configOSF1(dialogMenuItem *self)
-{
-
-    variable_set2(VAR_OSF1_ENABLE, "YES", 1);
-    Mkdir("/compat/osf1");
-    return DITEM_SUCCESS;
-}
-#endif
-
 int
 configSecurelevel(dialogMenuItem *self)
 {

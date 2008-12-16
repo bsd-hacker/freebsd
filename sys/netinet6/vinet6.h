@@ -77,7 +77,7 @@ struct vnet_inet6 {
 
 	int				_nd6_inuse;
 	int				_nd6_allocated;
-	struct llinfo_nd6		_llinfo_nd6;
+	int				_nd6_onlink_ns_rfc4861;
 	struct nd_drhead		_nd_defrouter;
 	struct nd_prhead 		_nd_prefix;
 	struct ifnet *			_nd6_defifp;
@@ -89,7 +89,7 @@ struct vnet_inet6 {
 	int				_dad_init;
 
 	int				_icmp6errpps_count;
-	int				_icmp6errppslim_last;
+	struct timeval			_icmp6errppslim_last;
 
 	int 				_ip6_forwarding;
 	int				_ip6_sendredirects;
@@ -109,7 +109,6 @@ struct vnet_inet6 {
 	int				_ip6_keepfaith;
 	int				_ip6stealth;
 	time_t				_ip6_log_time;
-	int				_nd6_onlink_ns_rfc4861;
 
 	int				_pmtu_expire;
 	int				_pmtu_probe;
@@ -155,6 +154,12 @@ struct vnet_inet6 {
 
 	struct ip6_pktopts		_ip6_opts;
 };
+
+#ifndef VIMAGE
+#ifndef VIMAGE_GLOBALS
+extern struct vnet_inet6 vnet_inet6_0;
+#endif
+#endif
 
 #define	INIT_VNET_INET6(vnet) \
 	INIT_FROM_VNET(vnet, VNET_MOD_INET6, struct vnet_inet6, vnet_inet6)

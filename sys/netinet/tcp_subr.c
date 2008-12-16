@@ -155,7 +155,7 @@ SYSCTL_V_PROC(V_NET, vnet_inet, _net_inet_tcp, TCPCTL_MSSDFLT, mssdflt,
 static int
 sysctl_net_inet_tcp_mss_v6_check(SYSCTL_HANDLER_ARGS)
 {
-	INIT_VNET_INET6(curvnet);
+	INIT_VNET_INET(curvnet);
 	int error, new;
 
 	new = V_tcp_v6mssdflt;
@@ -203,7 +203,7 @@ SYSCTL_INT(_net_inet_tcp, OID_AUTO, do_tcpdrain, CTLFLAG_RW, &do_tcpdrain, 0,
     "Enable tcp_drain routine for extra help when low on mbufs");
 
 SYSCTL_V_INT(V_NET, vnet_inet, _net_inet_tcp, OID_AUTO, pcbcount,
-    CTLFLAG_RD, V_tcbinfo.ipi_count, 0, "Number of active PCBs");
+    CTLFLAG_RD, tcbinfo.ipi_count, 0, "Number of active PCBs");
 
 SYSCTL_V_INT(V_NET, vnet_inet, _net_inet_tcp, OID_AUTO, icmp_may_rst,
     CTLFLAG_RW, icmp_may_rst, 0,
@@ -359,6 +359,8 @@ tcp_init(void)
 	V_tcp_inflight_rttthresh = TCPTV_INFLIGHT_RTTTHRESH;
 	tcp_finwait2_timeout = TCPTV_FINWAIT2_TIMEOUT;
 
+	TUNABLE_INT_FETCH("net.inet.tcp.sack.enable", &V_tcp_do_sack);
+
 	INP_INFO_LOCK_INIT(&V_tcbinfo, "tcp");
 	LIST_INIT(&V_tcb);
 	V_tcbinfo.ipi_listhead = &V_tcb;
@@ -432,7 +434,7 @@ tcpip_fillheaders(struct inpcb *inp, void *ip_ptr, void *tcp_ptr)
 
 		ip6 = (struct ip6_hdr *)ip_ptr;
 		ip6->ip6_flow = (ip6->ip6_flow & ~IPV6_FLOWINFO_MASK) |
-			(inp->in6p_flowinfo & IPV6_FLOWINFO_MASK);
+			(inp->inp_flow & IPV6_FLOWINFO_MASK);
 		ip6->ip6_vfc = (ip6->ip6_vfc & ~IPV6_VERSION_MASK) |
 			(IPV6_VERSION & IPV6_VERSION_MASK);
 		ip6->ip6_nxt = IPPROTO_TCP;
@@ -1484,13 +1486,13 @@ tcp6_ctlinput(int cmd, struct sockaddr *sa, void *d)
 static u_char isn_secret[32];
 static int isn_last_reseed;
 static u_int32_t isn_offset, isn_offset_old;
-static MD5_CTX isn_ctx;
 #endif
 
 tcp_seq
 tcp_new_isn(struct tcpcb *tp)
 {
 	INIT_VNET_INET(tp->t_vnet);
+	MD5_CTX isn_ctx;
 	u_int32_t md5_buffer[4];
 	tcp_seq new_isn;
 
@@ -1506,25 +1508,25 @@ tcp_new_isn(struct tcpcb *tp)
 	}
 
 	/* Compute the md5 hash and return the ISN. */
-	MD5Init(&V_isn_ctx);
-	MD5Update(&V_isn_ctx, (u_char *) &tp->t_inpcb->inp_fport, sizeof(u_short));
-	MD5Update(&V_isn_ctx, (u_char *) &tp->t_inpcb->inp_lport, sizeof(u_short));
+	MD5Init(&isn_ctx);
+	MD5Update(&isn_ctx, (u_char *) &tp->t_inpcb->inp_fport, sizeof(u_short));
+	MD5Update(&isn_ctx, (u_char *) &tp->t_inpcb->inp_lport, sizeof(u_short));
 #ifdef INET6
 	if ((tp->t_inpcb->inp_vflag & INP_IPV6) != 0) {
-		MD5Update(&V_isn_ctx, (u_char *) &tp->t_inpcb->in6p_faddr,
+		MD5Update(&isn_ctx, (u_char *) &tp->t_inpcb->in6p_faddr,
 			  sizeof(struct in6_addr));
-		MD5Update(&V_isn_ctx, (u_char *) &tp->t_inpcb->in6p_laddr,
+		MD5Update(&isn_ctx, (u_char *) &tp->t_inpcb->in6p_laddr,
 			  sizeof(struct in6_addr));
 	} else
 #endif
 	{
-		MD5Update(&V_isn_ctx, (u_char *) &tp->t_inpcb->inp_faddr,
+		MD5Update(&isn_ctx, (u_char *) &tp->t_inpcb->inp_faddr,
 			  sizeof(struct in_addr));
-		MD5Update(&V_isn_ctx, (u_char *) &tp->t_inpcb->inp_laddr,
+		MD5Update(&isn_ctx, (u_char *) &tp->t_inpcb->inp_laddr,
 			  sizeof(struct in_addr));
 	}
-	MD5Update(&V_isn_ctx, (u_char *) &V_isn_secret, sizeof(V_isn_secret));
-	MD5Final((u_char *) &md5_buffer, &V_isn_ctx);
+	MD5Update(&isn_ctx, (u_char *) &V_isn_secret, sizeof(V_isn_secret));
+	MD5Final((u_char *) &md5_buffer, &isn_ctx);
 	new_isn = (tcp_seq) md5_buffer[0];
 	V_isn_offset += ISN_STATIC_INCREMENT +
 		(arc4random() & ISN_RANDOM_INCREMENT);
@@ -1657,7 +1659,7 @@ tcp_maxmtu(struct in_conninfo *inc, int *flags)
 		dst->sin_family = AF_INET;
 		dst->sin_len = sizeof(*dst);
 		dst->sin_addr = inc->inc_faddr;
-		in_rtalloc_ign(&sro, RTF_CLONING, inc->inc_fibnum);
+		in_rtalloc_ign(&sro, 0, inc->inc_fibnum);
 	}
 	if (sro.ro_rt != NULL) {
 		ifp = sro.ro_rt->rt_ifp;
@@ -1692,7 +1694,7 @@ tcp_maxmtu6(struct in_conninfo *inc, int *flags)
 		sro6.ro_dst.sin6_family = AF_INET6;
 		sro6.ro_dst.sin6_len = sizeof(struct sockaddr_in6);
 		sro6.ro_dst.sin6_addr = inc->inc6_faddr;
-		rtalloc_ign((struct route *)&sro6, RTF_CLONING);
+		rtalloc_ign((struct route *)&sro6, 0);
 	}
 	if (sro6.ro_rt != NULL) {
 		ifp = sro6.ro_rt->rt_ifp;

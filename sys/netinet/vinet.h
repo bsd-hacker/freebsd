@@ -142,7 +142,6 @@ struct vnet_inet {
 	int	_isn_last_reseed;
 	u_int32_t _isn_offset;
 	u_int32_t _isn_offset_old;
-	MD5_CTX	_isn_ctx;
 
 	struct	inpcbhead _udb;
 	struct	inpcbinfo _udbinfo;
@@ -194,7 +193,15 @@ struct vnet_inet {
 	int	_icmp_rfi;
 	int	_icmp_quotelen;
 	int	_icmpbmcastecho;
+
+	int	_fw_one_pass;
 };
+
+#ifndef VIMAGE
+#ifndef VIMAGE_GLOBALS
+extern struct vnet_inet vnet_inet_0;
+#endif
+#endif
 
 /*
  * Symbol translation macros
@@ -212,6 +219,7 @@ struct vnet_inet {
 #define	V_divcbinfo		VNET_INET(divcbinfo)
 #define	V_drop_redirect		VNET_INET(drop_redirect)
 #define	V_drop_synfin		VNET_INET(drop_synfin)
+#define	V_fw_one_pass		VNET_INET(fw_one_pass)
 #define	V_icmp_may_rst		VNET_INET(icmp_may_rst)
 #define	V_icmp_quotelen		VNET_INET(icmp_quotelen)
 #define	V_icmp_rfi		VNET_INET(icmp_rfi)
@@ -256,7 +264,6 @@ struct vnet_inet {
 #define	V_ipsendredirects	VNET_INET(ipsendredirects)
 #define	V_ipstat		VNET_INET(ipstat)
 #define	V_ipstealth		VNET_INET(ipstealth)
-#define	V_isn_ctx		VNET_INET(isn_ctx)
 #define	V_isn_last_reseed	VNET_INET(isn_last_reseed)
 #define	V_isn_offset		VNET_INET(isn_offset)
 #define	V_isn_offset_old	VNET_INET(isn_offset_old)
@@ -330,16 +337,6 @@ struct vnet_inet {
 #define	V_udpstat		VNET_INET(udpstat)
 #define	V_useloopback		VNET_INET(useloopback)
 
-static __inline uint16_t ip_newid(void);
-extern int ip_do_randomid;
-
-static __inline uint16_t
-ip_newid(void)
-{
-        if (V_ip_do_randomid)
-                return ip_randomid();
-
-        return htons(V_ip_id++);
-}
+#define ip_newid() ((V_ip_do_randomid != 0) ? ip_randomid() : htons(V_ip_id++))
 
 #endif /* !_NETINET_VINET_H_ */

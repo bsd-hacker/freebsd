@@ -77,6 +77,12 @@ typedef unsigned int	phandle_t;
 MALLOC_DECLARE(M_OFWPROP);
 
 /*
+ * Other than in Open Firmware calls, the size of a bus cell seems to be
+ * always the same.
+ */
+typedef u_int32_t pcell_t;
+
+/*
  * Stuff that is used by the Open Firmware code.
  */
 void	set_openfirm_callback(int (*)(void *));

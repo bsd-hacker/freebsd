@@ -38,7 +38,9 @@
 /*
  * Kernel variables for tcp.
  */
+#ifdef VIMAGE_GLOBALS
 extern int	tcp_do_rfc1323;
+#endif
 
 /* TCP segment queue entry */
 struct tseg_qent {
@@ -48,7 +50,9 @@ struct tseg_qent {
 	struct	mbuf	*tqe_m;		/* mbuf contains packet */
 };
 LIST_HEAD(tsegqe_head, tseg_qent);
+#ifdef VIMAGE_GLOBALS
 extern int	tcp_reass_qsize;
+#endif
 extern struct uma_zone *tcp_reass_zone;
 
 struct sackblk {
@@ -513,10 +517,12 @@ SYSCTL_DECL(_net_inet_tcp_sack);
 MALLOC_DECLARE(M_TCPLOG);
 #endif
 
+extern	int tcp_log_in_vain;
+
+#ifdef VIMAGE_GLOBALS
 extern	struct inpcbhead tcb;		/* head of queue of active tcpcb's */
 extern	struct inpcbinfo tcbinfo;
 extern	struct tcpstat tcpstat;	/* tcp statistics */
-extern	int tcp_log_in_vain;
 extern	int tcp_mssdflt;	/* XXX */
 extern	int tcp_minmss;
 extern	int tcp_delack_enabled;
@@ -548,6 +554,7 @@ extern	int tcp_sack_globalholes;
 extern	int tcp_sc_rst_sock_fail;	/* RST on sock alloc failure */
 extern	int tcp_do_ecn;			/* TCP ECN enabled/disabled */
 extern	int tcp_ecn_maxretries;
+#endif /* VIMAGE_GLOBALS */
 
 int	 tcp_addoptions(struct tcpopt *, u_char *);
 struct tcpcb *
