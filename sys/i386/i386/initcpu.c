@@ -82,6 +82,7 @@ u_int	cpu_feature = 0;	/* Feature flags */
 u_int	cpu_feature2 = 0;	/* Feature flags */
 u_int	amd_feature = 0;	/* AMD feature flags */
 u_int	amd_feature2 = 0;	/* AMD feature flags */
+u_int	amd_pminfo = 0;		/* AMD advanced power management info */
 u_int	via_feature_rng = 0;	/* VIA RNG features */
 u_int	via_feature_xcrypt = 0;	/* VIA ACE features */
 u_int	cpu_high = 0;		/* Highest arg to CPUID */
@@ -89,6 +90,7 @@ u_int	cpu_id = 0;		/* Stepping ID */
 u_int	cpu_procinfo = 0;	/* HyperThreading Info / Brand Index / CLFUSH */
 u_int	cpu_procinfo2 = 0;	/* Multicore info */
 char	cpu_vendor[20] = "";	/* CPU Origin code */
+u_int	cpu_vendor_id = 0;	/* CPU vendor ID */
 
 SYSCTL_UINT(_hw, OID_AUTO, via_feature_rng, CTLFLAG_RD,
 	&via_feature_rng, 0, "VIA C3/C7 RNG feature available in CPU");

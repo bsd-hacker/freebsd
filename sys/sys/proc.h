@@ -40,6 +40,7 @@
 
 #include <sys/callout.h>		/* For struct callout. */
 #include <sys/event.h>			/* For struct klist. */
+#include <sys/condvar.h>
 #ifndef _KERNEL
 #include <sys/filedesc.h>
 #endif
@@ -47,6 +48,7 @@
 #include <sys/_lock.h>
 #include <sys/lock_profile.h>
 #include <sys/_mutex.h>
+#include <sys/osd.h>
 #include <sys/priority.h>
 #include <sys/rtprio.h>			/* XXX. */
 #include <sys/runq.h>
@@ -232,6 +234,8 @@ struct thread {
 	u_int		td_profil_ticks; /* (k) Temporary ticks until AST. */
 	char		td_name[MAXCOMLEN + 1];	/* (*) Thread name. */
 	struct file	*td_fpop;	/* (k) file referencing cdev under op */
+	int		td_dbgflags;	/* (c) Userland debugger flags */
+	struct osd	td_osd;		/* (k) Object specific data. */
 #define	td_endzero td_base_pri
 
 /* Copied during fork1() or thread_sched_upcall(). */
@@ -318,10 +322,10 @@ do {									\
 #define	TDF_NEEDSUSPCHK	0x00008000 /* Thread may need to suspend. */
 #define	TDF_NEEDRESCHED	0x00010000 /* Thread needs to yield. */
 #define	TDF_NEEDSIGCHK	0x00020000 /* Thread may need signal delivery. */
-#define	TDF_XSIG	0x00040000 /* Thread is exchanging signal under trace */
+#define	TDF_UNUSED18	0x00040000 /* --available-- */
 #define	TDF_UNUSED19	0x00080000 /* Thread is sleeping on a umtx. */
 #define	TDF_THRWAKEUP	0x00100000 /* Libthr thread must not suspend itself. */
-#define	TDF_DBSUSPEND	0x00200000 /* Thread is suspended by debugger */
+#define	TDF_UNUSED21	0x00200000 /* --available-- */
 #define	TDF_SWAPINREQ	0x00400000 /* Swapin request due to wakeup. */
 #define	TDF_UNUSED23	0x00800000 /* --available-- */
 #define	TDF_SCHED0	0x01000000 /* Reserved for scheduler private use */
@@ -331,6 +335,10 @@ do {									\
 #define	TDF_ALRMPEND	0x10000000 /* Pending SIGVTALRM needs to be posted. */
 #define	TDF_PROFPEND	0x20000000 /* Pending SIGPROF needs to be posted. */
 #define	TDF_MACPEND	0x40000000 /* AST-based MAC event pending. */
+
+/* Userland debug flags */
+#define	TDB_SUSPEND	0x00000001 /* Thread is suspended by debugger */
+#define	TDB_XSIG	0x00000002 /* Thread is exchanging signal under trace */
 
 /*
  * "Private" flags kept in td_pflags:
@@ -533,6 +541,7 @@ struct proc {
 	STAILQ_HEAD(, ktr_request)	p_ktr;	/* (o) KTR event queue. */
 	LIST_HEAD(, mqueue_notifier)	p_mqnotifier; /* (c) mqueue notifiers.*/
 	struct kdtrace_proc	*p_dtrace; /* (*) DTrace-specific data. */
+	struct cv	p_pwait;	/* (*) wait cv for exit/exec */
 };
 
 #define	p_session	p_pgrp->pg_session

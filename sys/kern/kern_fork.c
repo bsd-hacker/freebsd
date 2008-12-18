@@ -54,6 +54,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/mutex.h>
 #include <sys/priv.h>
 #include <sys/proc.h>
+#include <sys/jail.h>
 #include <sys/pioctl.h>
 #include <sys/resourcevar.h>
 #include <sys/sched.h>
@@ -117,10 +118,15 @@ vfork(td, uap)
 	struct thread *td;
 	struct vfork_args *uap;
 {
-	int error;
+	int error, flags;
 	struct proc *p2;
 
-	error = fork1(td, RFFDG | RFPROC | RFPPWAIT | RFMEM, 0, &p2);
+#ifdef XEN
+	flags = RFFDG | RFPROC; /* validate that this is still an issue */
+#else
+	flags = RFFDG | RFPROC | RFPPWAIT | RFMEM;
+#endif		
+	error = fork1(td, flags, 0, &p2);
 	if (error == 0) {
 		td->td_retval[0] = p2->p_pid;
 		td->td_retval[1] = 0;
@@ -447,6 +453,11 @@ again:
 	    __rangeof(struct proc, p_startzero, p_endzero));
 
 	p2->p_ucred = crhold(td->td_ucred);
+
+	/* In case we are jailed tell the prison that we exist. */
+	if (jailed(p2->p_ucred))
+		prison_proc_hold(p2->p_ucred->cr_prison);
+
 	PROC_UNLOCK(p2);
 
 	/*
@@ -743,7 +754,7 @@ again:
 	 */
 	PROC_LOCK(p2);
 	while (p2->p_flag & P_PPWAIT)
-		msleep(p1, &p2->p_mtx, PWAIT, "ppwait", 0);
+		cv_wait(&p2->p_pwait, &p2->p_mtx);
 	PROC_UNLOCK(p2);
 
 	/*

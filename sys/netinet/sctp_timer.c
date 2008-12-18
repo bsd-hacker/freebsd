@@ -49,7 +49,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/sctp_input.h>
 #include <netinet/sctp.h>
 #include <netinet/sctp_uio.h>
-
+#include <netinet/udp.h>
 
 
 void
@@ -561,7 +561,8 @@ sctp_backoff_on_timeout(struct sctp_tcb *stcb,
 	}
 }
 
-void
+#ifndef INVARIANTS
+static void
 sctp_recover_sent_list(struct sctp_tcb *stcb)
 {
 	struct sctp_tmit_chunk *chk, *tp2;
@@ -603,6 +604,8 @@ sctp_recover_sent_list(struct sctp_tcb *stcb)
 		SCTP_PRINTF("chk:%p TSN:%x\n", chk, chk->rec.data.TSN_seq);
 	}
 }
+
+#endif
 
 static int
 sctp_mark_all_for_resend(struct sctp_tcb *stcb,
@@ -679,7 +682,9 @@ sctp_mark_all_for_resend(struct sctp_tcb *stcb,
 	/* Now on to each chunk */
 	num_mk = cnt_mk = 0;
 	tsnfirst = tsnlast = 0;
+#ifndef INVARIANTS
 start_again:
+#endif
 	chk = TAILQ_FIRST(&stcb->asoc.sent_queue);
 	for (; chk != NULL; chk = tp2) {
 		tp2 = TAILQ_NEXT(chk, sctp_next);
@@ -693,8 +698,6 @@ start_again:
 			recovery_cnt++;
 #ifdef INVARIANTS
 			panic("last acked >= chk on sent-Q");
-			/* to keep compiler happy */
-			goto start_again;
 #else
 			SCTP_PRINTF("Recover attempts a restart cnt:%d\n", recovery_cnt);
 			sctp_recover_sent_list(stcb);
@@ -766,8 +769,8 @@ start_again:
 						    (SCTP_RESPONSE_TO_USER_REQ | SCTP_NOTIFY_DATAGRAM_SENT),
 						    &stcb->asoc.sent_queue, SCTP_SO_NOT_LOCKED);
 					}
+					continue;
 				}
-				continue;
 			}
 			if (PR_SCTP_RTX_ENABLED(chk->flags)) {
 				/* Has it been retransmitted tv_sec times? */
@@ -778,8 +781,8 @@ start_again:
 						    (SCTP_RESPONSE_TO_USER_REQ | SCTP_NOTIFY_DATAGRAM_SENT),
 						    &stcb->asoc.sent_queue, SCTP_SO_NOT_LOCKED);
 					}
+					continue;
 				}
-				continue;
 			}
 			if (chk->sent < SCTP_DATAGRAM_RESEND) {
 				sctp_ucount_incr(stcb->asoc.sent_queue_retran_cnt);
@@ -1085,7 +1088,11 @@ sctp_t3rxt_timer(struct sctp_inpcb *inp,
 					 * more, request a RTT update
 					 */
 					if (sctp_send_hb(stcb, 1, net) < 0)
-						return 1;
+						/*
+						 * Less than 0 means we lost
+						 * the assoc
+						 */
+						return (1);
 				}
 			}
 		}
@@ -1143,7 +1150,8 @@ sctp_t3rxt_timer(struct sctp_inpcb *inp,
 		 * manually.
 		 */
 		if (sctp_send_hb(stcb, 1, net) < 0)
-			return 1;
+			/* Return less than 0 means we lost the association */
+			return (1);
 	}
 	/*
 	 * Special case for cookie-echo'ed case, we don't do output but must
@@ -1786,6 +1794,9 @@ sctp_pathmtu_timer(struct sctp_inpcb *inp,
 		}
 		if (net->ro._s_addr) {
 			mtu = SCTP_GATHER_MTU_FROM_ROUTE(net->ro._s_addr, &net->ro._s_addr.sa, net->ro.ro_rt);
+			if (net->port) {
+				mtu -= sizeof(struct udphdr);
+			}
 			if (mtu > next_mtu) {
 				net->mtu = next_mtu;
 			}

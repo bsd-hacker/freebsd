@@ -77,10 +77,10 @@ struct mmcsd_softc {
 	struct disk *disk;
 	struct proc *p;
 	struct bio_queue_head bio_queue;
+	daddr_t eblock, eend;	/* Range remaining after the last erase. */
 	int running;
+	int suspend;
 };
-
-#define	MULTI_BLOCK_BROKEN
 
 /* bus entry points */
 static int mmcsd_probe(device_t dev);
@@ -133,10 +133,13 @@ mmcsd_attach(device_t dev)
 	// d->d_dump = mmcsd_dump;	Need polling mmc layer
 	d->d_name = "mmcsd";
 	d->d_drv1 = sc;
-	d->d_maxsize = MAXPHYS;		/* Maybe ask bridge? */
+	d->d_maxsize = 4*1024*1024;	/* Maximum defined SD card AU size. */
 	d->d_sectorsize = mmc_get_sector_size(dev);
 	d->d_mediasize = mmc_get_media_size(dev) * d->d_sectorsize;
+	d->d_stripeoffset = 0;
+	d->d_stripesize = mmc_get_erase_sector(dev) * d->d_sectorsize;
 	d->d_unit = device_get_unit(dev);
+	d->d_flags = DISKFLAG_CANDELETE;
 	/*
 	 * Display in most natural units.  There's no cards < 1MB.
 	 * The SD standard goes to 2GiB, but the data format supports
@@ -148,7 +151,7 @@ mmcsd_attach(device_t dev)
 	 */
 	mb = d->d_mediasize >> 20;	/* 1MiB == 1 << 20 */
 	unit = 'M';
-	if (mb > 1024) {		/* 1GiB = 1024 MiB */
+	if (mb >= 10240) {		/* 1GiB = 1024 MiB */
 		unit = 'G';
 		mb /= 1024;
 	}
@@ -161,6 +164,8 @@ mmcsd_attach(device_t dev)
 	bioq_init(&sc->bio_queue);
 
 	sc->running = 1;
+	sc->suspend = 0;
+	sc->eblock = sc->eend = 0;
 	kproc_create(&mmcsd_task, sc, &sc->p, 0, 0, "task: mmc/sd card");
 
 	return (0);
@@ -171,24 +176,60 @@ mmcsd_detach(device_t dev)
 {
 	struct mmcsd_softc *sc = device_get_softc(dev);
 
-	/* kill thread */
 	MMCSD_LOCK(sc);
-	sc->running = 0;
-	wakeup(sc);
+	sc->suspend = 0;
+	if (sc->running > 0) {
+		/* kill thread */
+		sc->running = 0;
+		wakeup(sc);
+		/* wait for thread to finish. */
+		while (sc->running != -1)
+			msleep(sc, &sc->sc_mtx, 0, "detach", 0);
+	}
 	MMCSD_UNLOCK(sc);
 
-	/* wait for thread to finish.  XXX probably want timeout.  -sorbo */
-	MMCSD_LOCK(sc);
-	while (sc->running != -1)
-		msleep(sc, &sc->sc_mtx, PRIBIO, "detach", 0);
-	MMCSD_UNLOCK(sc);
-
+	/* Flush the request queue. */
+	bioq_flush(&sc->bio_queue, NULL, ENXIO);
 	/* kill disk */
 	disk_destroy(sc->disk);
-	/* XXX destroy anything in queue */
 
 	MMCSD_LOCK_DESTROY(sc);
 
+	return (0);
+}
+
+static int
+mmcsd_suspend(device_t dev)
+{
+	struct mmcsd_softc *sc = device_get_softc(dev);
+
+	MMCSD_LOCK(sc);
+	sc->suspend = 1;
+	if (sc->running > 0) {
+		/* kill thread */
+		sc->running = 0;
+		wakeup(sc);
+		/* wait for thread to finish. */
+		while (sc->running != -1)
+			msleep(sc, &sc->sc_mtx, 0, "detach", 0);
+	}
+	MMCSD_UNLOCK(sc);
+	return (0);
+}
+
+static int
+mmcsd_resume(device_t dev)
+{
+	struct mmcsd_softc *sc = device_get_softc(dev);
+
+	MMCSD_LOCK(sc);
+	sc->suspend = 0;
+	if (sc->running <= 0) {
+		sc->running = 1;
+		MMCSD_UNLOCK(sc);
+		kproc_create(&mmcsd_task, sc, &sc->p, 0, 0, "task: mmc/sd card");
+	} else
+		MMCSD_UNLOCK(sc);
 	return (0);
 }
 
@@ -211,9 +252,167 @@ mmcsd_strategy(struct bio *bp)
 
 	sc = (struct mmcsd_softc *)bp->bio_disk->d_drv1;
 	MMCSD_LOCK(sc);
-	bioq_disksort(&sc->bio_queue, bp);
-	wakeup(sc);
-	MMCSD_UNLOCK(sc);
+	if (sc->running > 0 || sc->suspend > 0) {
+		bioq_disksort(&sc->bio_queue, bp);
+		MMCSD_UNLOCK(sc);
+		wakeup(sc);
+	} else {
+		MMCSD_UNLOCK(sc);
+		biofinish(bp, NULL, ENXIO);
+	}
+}
+
+static daddr_t
+mmcsd_rw(struct mmcsd_softc *sc, struct bio *bp)
+{
+	daddr_t block, end;
+	struct mmc_command cmd;
+	struct mmc_command stop;
+	struct mmc_request req;
+	struct mmc_data data;
+	device_t dev = sc->dev;
+	int sz = sc->disk->d_sectorsize;
+
+	block = bp->bio_pblkno;
+	end = bp->bio_pblkno + (bp->bio_bcount / sz);
+	while (block < end) {
+		char *vaddr = bp->bio_data +
+		    (block - bp->bio_pblkno) * sz;
+		int numblocks = min(end - block, mmc_get_max_data(dev));
+		memset(&req, 0, sizeof(req));
+    		memset(&cmd, 0, sizeof(cmd));
+		memset(&stop, 0, sizeof(stop));
+		req.cmd = &cmd;
+		cmd.data = &data;
+		if (bp->bio_cmd == BIO_READ) {
+			if (numblocks > 1)
+				cmd.opcode = MMC_READ_MULTIPLE_BLOCK;
+			else
+				cmd.opcode = MMC_READ_SINGLE_BLOCK;
+		} else {
+			if (numblocks > 1)
+				cmd.opcode = MMC_WRITE_MULTIPLE_BLOCK;
+			else
+				cmd.opcode = MMC_WRITE_BLOCK;
+		}
+		cmd.arg = block;
+		if (!mmc_get_high_cap(dev))
+			cmd.arg <<= 9;
+		cmd.flags = MMC_RSP_R1 | MMC_CMD_ADTC;
+		data.data = vaddr;
+		data.mrq = &req;
+		if (bp->bio_cmd == BIO_READ)
+			data.flags = MMC_DATA_READ;
+		else
+			data.flags = MMC_DATA_WRITE;
+		data.len = numblocks * sz;
+		if (numblocks > 1) {
+			data.flags |= MMC_DATA_MULTI;
+			stop.opcode = MMC_STOP_TRANSMISSION;
+			stop.arg = 0;
+			stop.flags = MMC_RSP_R1B | MMC_CMD_AC;
+			req.stop = &stop;
+		}
+//		printf("Len %d  %lld-%lld flags %#x sz %d\n",
+//		    (int)data.len, (long long)block, (long long)end, data.flags, sz);
+		MMCBUS_WAIT_FOR_REQUEST(device_get_parent(dev), dev,
+		    &req);
+		if (req.cmd->error != MMC_ERR_NONE)
+			break;
+		block += numblocks;
+	}
+	return (block);
+}
+
+static daddr_t
+mmcsd_delete(struct mmcsd_softc *sc, struct bio *bp)
+{
+	daddr_t block, end, start, stop;
+	struct mmc_command cmd;
+	struct mmc_request req;
+	device_t dev = sc->dev;
+	int sz = sc->disk->d_sectorsize;
+	int erase_sector;
+
+	block = bp->bio_pblkno;
+	end = bp->bio_pblkno + (bp->bio_bcount / sz);
+	/* Coalesce with part remaining from previous request. */
+	if (block > sc->eblock && block <= sc->eend)
+		block = sc->eblock;
+	if (end >= sc->eblock && end < sc->eend)
+		end = sc->eend;
+	/* Safe round to the erase sector boundaries. */
+	erase_sector = mmc_get_erase_sector(dev);
+	start = block + erase_sector - 1;	 /* Round up. */
+	start -= start % erase_sector;
+	stop = end;				/* Round down. */
+	stop -= end % erase_sector;	 
+	/* We can't erase area smaller then sector, store it for later. */
+	if (start >= stop) {
+		sc->eblock = block;
+		sc->eend = end;
+		return (end);
+	}
+
+	/* Set erase start position. */
+	memset(&req, 0, sizeof(req));
+	memset(&cmd, 0, sizeof(cmd));
+	req.cmd = &cmd;
+	if (mmc_get_card_type(dev) == mode_sd)
+		cmd.opcode = SD_ERASE_WR_BLK_START;
+	else
+		cmd.opcode = MMC_ERASE_GROUP_START;
+	cmd.arg = start;
+	if (!mmc_get_high_cap(dev))
+		cmd.arg <<= 9;
+	cmd.flags = MMC_RSP_R1 | MMC_CMD_AC;
+	MMCBUS_WAIT_FOR_REQUEST(device_get_parent(dev), dev,
+	    &req);
+	if (req.cmd->error != MMC_ERR_NONE) {
+	    printf("erase err1: %d\n", req.cmd->error);
+	    return (block);
+	}
+	/* Set erase stop position. */
+	memset(&req, 0, sizeof(req));
+	memset(&cmd, 0, sizeof(cmd));
+	req.cmd = &cmd;
+	if (mmc_get_card_type(dev) == mode_sd)
+		cmd.opcode = SD_ERASE_WR_BLK_END;
+	else
+		cmd.opcode = MMC_ERASE_GROUP_END;
+	cmd.arg = stop;
+	if (!mmc_get_high_cap(dev))
+		cmd.arg <<= 9;
+	cmd.arg--;
+	cmd.flags = MMC_RSP_R1 | MMC_CMD_AC;
+	MMCBUS_WAIT_FOR_REQUEST(device_get_parent(dev), dev,
+	    &req);
+	if (req.cmd->error != MMC_ERR_NONE) {
+	    printf("erase err2: %d\n", req.cmd->error);
+	    return (block);
+	}
+	/* Erase range. */
+	memset(&req, 0, sizeof(req));
+	memset(&cmd, 0, sizeof(cmd));
+	req.cmd = &cmd;
+	cmd.opcode = MMC_ERASE;
+	cmd.arg = 0;
+	cmd.flags = MMC_RSP_R1B | MMC_CMD_AC;
+	MMCBUS_WAIT_FOR_REQUEST(device_get_parent(dev), dev,
+	    &req);
+	if (req.cmd->error != MMC_ERR_NONE) {
+	    printf("erase err3 %d\n", req.cmd->error);
+	    return (block);
+	}
+	/* Store one of remaining parts for the next call. */
+	if (bp->bio_pblkno >= sc->eblock || block == start) {
+		sc->eblock = stop;	/* Predict next forward. */
+		sc->eend = end;
+	} else {
+		sc->eblock = block;	/* Predict next backward. */
+		sc->eend = start;
+	}
+	return (end);
 }
 
 static void
@@ -223,26 +422,19 @@ mmcsd_task(void *arg)
 	struct bio *bp;
 	int sz;
 	daddr_t block, end;
-	struct mmc_command cmd;
-	struct mmc_command stop;
-	struct mmc_request req;
-	struct mmc_data data;
 	device_t dev;
 
 	dev = sc->dev;
-	while (sc->running) {
+	while (1) {
 		MMCSD_LOCK(sc);
 		do {
-			bp = bioq_first(&sc->bio_queue);
+			if (sc->running == 0)
+				goto out;
+			bp = bioq_takefirst(&sc->bio_queue);
 			if (bp == NULL)
 				msleep(sc, &sc->sc_mtx, PRIBIO, "jobqueue", 0);
-		} while (bp == NULL && sc->running);
-		if (bp)
-			bioq_remove(&sc->bio_queue, bp);
+		} while (bp == NULL);
 		MMCSD_UNLOCK(sc);
-		if (!sc->running)
-			break;
-//		printf("mmc_task: request %p for block %ju\n", bp, bp->bio_pblkno);
 		if (bp->bio_cmd != BIO_READ && mmc_get_read_only(dev)) {
 			bp->bio_error = EROFS;
 			bp->bio_resid = bp->bio_bcount;
@@ -252,56 +444,15 @@ mmcsd_task(void *arg)
 		}
 		MMCBUS_ACQUIRE_BUS(device_get_parent(dev), dev);
 		sz = sc->disk->d_sectorsize;
+		block = bp->bio_pblkno;
 		end = bp->bio_pblkno + (bp->bio_bcount / sz);
-		for (block = bp->bio_pblkno; block < end;) {
-			char *vaddr = bp->bio_data + (block - bp->bio_pblkno) * sz;
-			int numblocks;
-#ifdef MULTI_BLOCK
-			numblocks = end - block;
-#else
-			numblocks = 1;
-#endif
-			memset(&req, 0, sizeof(req));
-			memset(&cmd, 0, sizeof(cmd));
-			memset(&stop, 0, sizeof(stop));
-			req.cmd = &cmd;
-			cmd.data = &data;
-			if (bp->bio_cmd == BIO_READ) {
-				if (numblocks > 1)
-					cmd.opcode = MMC_READ_MULTIPLE_BLOCK;
-				else
-					cmd.opcode = MMC_READ_SINGLE_BLOCK;
-			} else {
-				if (numblocks > 1)
-					cmd.opcode = MMC_WRITE_MULTIPLE_BLOCK;
-				else
-					cmd.opcode = MMC_WRITE_BLOCK;
-			}
-			cmd.arg = block;
-			if (!mmc_get_high_cap(dev))
-				cmd.arg <<= 9;
-			cmd.flags = MMC_RSP_R1 | MMC_CMD_ADTC;
-			data.data = vaddr;
-			data.mrq = &req;
-			if (bp->bio_cmd == BIO_READ)
-				data.flags = MMC_DATA_READ;
-			else
-				data.flags = MMC_DATA_WRITE;
-			data.len = numblocks * sz;
-			if (numblocks > 1) {
-				data.flags |= MMC_DATA_MULTI;
-				stop.opcode = MMC_STOP_TRANSMISSION;
-				stop.arg = 0;
-				stop.flags = MMC_RSP_R1B | MMC_CMD_AC;
-				req.stop = &stop;
-			}
-//			printf("Len %d  %lld-%lld flags %#x sz %d\n",
-//			    (int)data.len, (long long)block, (long long)end, data.flags, sz);
-			MMCBUS_WAIT_FOR_REQUEST(device_get_parent(dev), dev,
-			    &req);
-			if (req.cmd->error != MMC_ERR_NONE)
-				break;
-			block += numblocks;
+		if (bp->bio_cmd == BIO_READ || bp->bio_cmd == BIO_WRITE) {
+			/* Access to the remaining erase block obsoletes it. */
+			if (block < sc->eend && end > sc->eblock)
+				sc->eblock = sc->eend = 0;
+			block = mmcsd_rw(sc, bp);
+		} else if (bp->bio_cmd == BIO_DELETE) {
+			block = mmcsd_delete(sc, bp);
 		}
 		MMCBUS_RELEASE_BUS(device_get_parent(dev), dev);
 		if (block < end) {
@@ -311,12 +462,11 @@ mmcsd_task(void *arg)
 		}
 		biodone(bp);
 	}
-
+out:
 	/* tell parent we're done */
-	MMCSD_LOCK(sc);
 	sc->running = -1;
-	wakeup(sc);
 	MMCSD_UNLOCK(sc);
+	wakeup(sc);
 
 	kproc_exit(0);
 }
@@ -345,6 +495,8 @@ static device_method_t mmcsd_methods[] = {
 	DEVMETHOD(device_probe, mmcsd_probe),
 	DEVMETHOD(device_attach, mmcsd_attach),
 	DEVMETHOD(device_detach, mmcsd_detach),
+	DEVMETHOD(device_suspend, mmcsd_suspend),
+	DEVMETHOD(device_resume, mmcsd_resume),
 	{0, 0},
 };
 

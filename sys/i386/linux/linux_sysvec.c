@@ -245,8 +245,6 @@ elf_linux_fixup(register_t **stack_base, struct image_params *imgp)
 	args = (Elf32_Auxargs *)imgp->auxargs;
 	pos = *stack_base + (imgp->args->argc + imgp->args->envc + 2);
 
-	if (args->trace)
-		AUXARGS_ENTRY(pos, AT_DEBUG, 1);
 	if (args->execfd != -1)
 		AUXARGS_ENTRY(pos, AT_EXECFD, args->execfd);
 	AUXARGS_ENTRY(pos, AT_PHDR, args->phdr);
@@ -323,9 +321,7 @@ linux_rt_sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	frame.sf_ucontext = &fp->sf_sc;
 
 	/* Fill in POSIX parts */
-	frame.sf_si.lsi_signo = sig;
-	frame.sf_si.lsi_code = code;
-	frame.sf_si.lsi_addr = ksi->ksi_addr;
+	ksiginfo_to_lsiginfo(ksi, &frame.sf_si, sig);
 
 	/*
 	 * Build the signal context to be used by sigreturn.
@@ -839,7 +835,8 @@ struct sysentvec linux_sysvec = {
 	.sv_copyout_strings = exec_copyout_strings,
 	.sv_setregs	= exec_linux_setregs,
 	.sv_fixlimit	= NULL,
-	.sv_maxssiz	= NULL
+	.sv_maxssiz	= NULL,
+	.sv_flags	= SV_ABI_LINUX | SV_AOUT | SV_IA32 | SV_ILP32
 };
 
 struct sysentvec elf_linux_sysvec = {
@@ -869,7 +866,8 @@ struct sysentvec elf_linux_sysvec = {
 	.sv_copyout_strings = exec_copyout_strings,
 	.sv_setregs	= exec_linux_setregs,
 	.sv_fixlimit	= NULL,
-	.sv_maxssiz	= NULL
+	.sv_maxssiz	= NULL,
+	.sv_flags	= SV_ABI_LINUX | SV_IA32 | SV_ILP32
 };
 
 static Elf32_Brandinfo linux_brand = {

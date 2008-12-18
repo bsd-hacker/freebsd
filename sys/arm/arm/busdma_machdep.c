@@ -629,6 +629,8 @@ bus_dmamem_alloc(bus_dma_tag_t dmat, void** vaddr, int flags,
 			newmap->allocbuffer = tmpaddr;
 			cpu_idcache_wbinv_range((vm_offset_t)*vaddr, 
 			    dmat->maxsize);
+			cpu_l2cache_wbinv_range((vm_offset_t)*vaddr,
+			    dmat->maxsize);
 			*vaddr = tmpaddr;
 		} else
 			newmap->origbuffer = newmap->allocbuffer = NULL;
@@ -671,9 +673,8 @@ _bus_dmamap_count_pages(bus_dma_tag_t dmat, bus_dmamap_t map, void *buf,
 	bus_addr_t paddr;
 
 	if ((map->pagesneeded == 0)) {
-		CTR4(KTR_BUSDMA, "lowaddr= %d Maxmem= %d, boundary= %d, "
-		    "alignment= %d", dmat->lowaddr, ptoa((vm_paddr_t)Maxmem),
-		    dmat->boundary, dmat->alignment);
+		CTR3(KTR_BUSDMA, "lowaddr= %d, boundary= %d, alignment= %d",
+		    dmat->lowaddr, dmat->boundary, dmat->alignment);
 		CTR2(KTR_BUSDMA, "map= %p, pagesneeded= %d",
 		    map, map->pagesneeded);
 		/*

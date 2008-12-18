@@ -150,7 +150,30 @@
 #define	AMDID2_SVM	0x00000004
 #define	AMDID2_EXT_APIC	0x00000008
 #define	AMDID2_CR8	0x00000010
+#define	AMDID2_ABM	0x00000020
+#define	AMDID2_SSE4A	0x00000040
+#define	AMDID2_MAS	0x00000080
 #define	AMDID2_PREFETCH	0x00000100
+#define	AMDID2_OSVW	0x00000200
+#define	AMDID2_IBS	0x00000400
+#define	AMDID2_SSE5	0x00000800
+#define	AMDID2_SKINIT	0x00001000
+#define	AMDID2_WDT	0x00002000
+
+/*
+ * CPUID instruction 1 eax info
+ */
+#define	CPUID_STEPPING		0x0000000f
+#define	CPUID_MODEL		0x000000f0
+#define	CPUID_FAMILY		0x00000f00
+#define	CPUID_EXT_MODEL		0x000f0000
+#define	CPUID_EXT_FAMILY	0x0ff00000
+#define	AMD64_CPU_MODEL(id) \
+    ((((id) & CPUID_MODEL) >> 4) | \
+    (((id) & CPUID_EXT_MODEL) >> 12))
+#define	AMD64_CPU_FAMILY(id) \
+    ((((id) & CPUID_FAMILY) >> 8) + \
+    (((id) & CPUID_EXT_FAMILY) >> 20))
 
 /*
  * CPUID instruction 1 ebx info
@@ -161,6 +184,19 @@
 #define	CPUID_LOCAL_APIC_ID	0xff000000
 
 /*
+ * AMD extended function 8000_0007h edx info
+ */
+#define	AMDPM_TS		0x00000001
+#define	AMDPM_FID		0x00000002
+#define	AMDPM_VID		0x00000004
+#define	AMDPM_TTP		0x00000008
+#define	AMDPM_TM		0x00000010
+#define	AMDPM_STC		0x00000020
+#define	AMDPM_100MHZ_STEPS	0x00000040
+#define	AMDPM_HW_PSTATE		0x00000080
+#define	AMDPM_TSC_INVARIANT	0x00000100
+
+/*
  * AMD extended function 8000_0008h ecx info
  */
 #define	AMDID_CMP_CORES		0x000000ff
@@ -168,8 +204,8 @@
 /*
  * CPUID manufacturers identifiers
  */
-#define	INTEL_VENDOR_ID	"GenuineIntel"
-#define	AMD_VENDOR_ID	"AuthenticAMD"
+#define	AMD_VENDOR_ID		"AuthenticAMD"
+#define	INTEL_VENDOR_ID		"GenuineIntel"
 
 /*
  * Model-specific registers for the i386 family

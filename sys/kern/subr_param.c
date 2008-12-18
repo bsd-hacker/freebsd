@@ -57,6 +57,13 @@ __FBSDID("$FreeBSD$");
 #  else
 #    define	HZ 100
 #  endif
+#  ifndef HZ_VM
+#    define	HZ_VM 10
+#  endif
+#else
+#  ifndef HZ_VM
+#    define	HZ_VM HZ
+#  endif
 #endif
 #define	NPROC (20 + 16 * maxusers)
 #ifndef NBUF
@@ -65,6 +72,8 @@ __FBSDID("$FreeBSD$");
 #ifndef MAXFILES
 #define	MAXFILES (maxproc * 2)
 #endif
+
+enum VM_GUEST { VM_GUEST_NO, VM_GUEST_VM, VM_GUEST_XEN };
 
 int	hz;
 int	tick;
@@ -79,6 +88,7 @@ int	nswbuf;
 int	maxswzone;			/* max swmeta KVA storage */
 int	maxbcache;			/* max buffer cache KVA storage */
 int	maxpipekva;			/* Limit on pipe KVA */
+int	vm_guest;			/* Running as virtual machine guest? */
 u_long	maxtsiz;			/* max text size */
 u_long	dfldsiz;			/* initial data size limit */
 u_long	maxdsiz;			/* max data size */
@@ -103,6 +113,8 @@ SYSCTL_ULONG(_kern, OID_AUTO, maxssiz, CTLFLAG_RDTUN, &maxssiz, 0,
     "max stack size");
 SYSCTL_ULONG(_kern, OID_AUTO, sgrowsiz, CTLFLAG_RDTUN, &sgrowsiz, 0,
     "amount to grow stack");
+SYSCTL_INT(_kern, OID_AUTO, vm_guest, CTLFLAG_RD, &vm_guest, 0,
+    "Running under a virtual machine?");
 
 /*
  * These have to be allocated somewhere; allocating
@@ -111,15 +123,63 @@ SYSCTL_ULONG(_kern, OID_AUTO, sgrowsiz, CTLFLAG_RDTUN, &sgrowsiz, 0,
  */
 struct	buf *swbuf;
 
+static const char *const vm_bnames[] = {
+	"QEMU",				/* QEMU */
+	"Plex86",			/* Plex86 */
+	"Bochs",			/* Bochs */
+	NULL
+};
+
+static const char *const vm_pnames[] = {
+	"VMware Virtual Platform",	/* VMWare VM */
+	"Virtual Machine",		/* Microsoft VirtualPC */
+	"VirtualBox",			/* Sun xVM VirtualBox */
+	"Parallels Virtual Platform",	/* Parallels VM */
+	NULL
+};
+
+static enum VM_GUEST
+detect_virtual(void)
+{
+	char *sysenv;
+	int i;
+
+	sysenv = getenv("smbios.bios.vendor");
+	if (sysenv != NULL) {
+		for (i = 0; vm_bnames[i] != NULL; i++)
+			if (strcmp(sysenv, vm_bnames[i]) == 0) {
+				freeenv(sysenv);
+				return (VM_GUEST_VM);
+			}
+		freeenv(sysenv);
+	}
+	sysenv = getenv("smbios.system.product");
+	if (sysenv != NULL) {
+		for (i = 0; vm_pnames[i] != NULL; i++)
+			if (strcmp(sysenv, vm_pnames[i]) == 0) {
+				freeenv(sysenv);
+				return (VM_GUEST_VM);
+			}
+		freeenv(sysenv);
+	}
+	return (VM_GUEST_NO);
+}
+
 /*
  * Boot time overrides that are not scaled against main memory
  */
 void
 init_param1(void)
 {
-
-	hz = HZ;
+#ifndef XEN
+	vm_guest = detect_virtual();
+#else
+	vm_guest = VM_GUEST_XEN;
+#endif
+	hz = -1;
 	TUNABLE_INT_FETCH("kern.hz", &hz);
+	if (hz == -1)
+		hz = vm_guest > VM_GUEST_NO ? HZ_VM : HZ;
 	tick = 1000000 / hz;
 
 #ifdef VM_SWZONE_SIZE_MAX

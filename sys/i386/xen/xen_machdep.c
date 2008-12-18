@@ -36,8 +36,10 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/bus.h>
+#include <sys/lock.h>
 #include <sys/mount.h>
 #include <sys/malloc.h>
+#include <sys/mutex.h>
 #include <sys/kernel.h>
 #include <sys/reboot.h>
 #include <sys/sysproto.h>
@@ -61,7 +63,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/xen/xenvar.h>
 #include <machine/xen/xenfunc.h>
 #include <machine/xen/xenpmap.h>
-#include <machine/xen/xenbus.h>
 #include <machine/xen/xenfunc.h>
 #include <xen/interface/memory.h>
 #include <machine/xen/features.h>
@@ -202,21 +203,20 @@ static struct mmu_log xpq_queue_log[MAX_VIRT_CPUS][XPQUEUE_SIZE];
 static int xpq_idx[MAX_VIRT_CPUS];  
 static mmu_update_t xpq_queue[MAX_VIRT_CPUS][XPQUEUE_SIZE];
 
-#define XPQ_QUEUE xpq_queue[vcpu]
-#define XPQ_IDX xpq_idx[vcpu]
-#define SET_VCPU() int vcpu = smp_processor_id()
-
-
-#define XPQ_QUEUE_LOG xpq_queue_log[vcpu]
+#define	XPQ_QUEUE_LOG xpq_queue_log[vcpu]
+#define	XPQ_QUEUE xpq_queue[vcpu]
+#define	XPQ_IDX xpq_idx[vcpu]
+#define	SET_VCPU() int vcpu = smp_processor_id()
 #else
 	
 static mmu_update_t xpq_queue[XPQUEUE_SIZE];
 static struct mmu_log xpq_queue_log[XPQUEUE_SIZE];
 static int xpq_idx = 0;
 
-#define XPQ_QUEUE xpq_queue
-#define XPQ_IDX xpq_idx
-#define SET_VCPU()
+#define	XPQ_QUEUE_LOG xpq_queue_log
+#define	XPQ_QUEUE xpq_queue
+#define	XPQ_IDX xpq_idx
+#define	SET_VCPU()
 #endif /* !SMP */
 
 #define XPQ_IDX_INC atomic_add_int(&XPQ_IDX, 1);
@@ -346,6 +346,8 @@ xen_load_cr3(u_int val)
 void
 xen_restore_flags(u_int eflags)
 {
+	if (eflags > 1)
+		eflags = ((eflags & PSL_I) == 0);
 
 	__restore_flags(eflags);
 }
@@ -369,6 +371,13 @@ void
 xen_sti(void)
 {
 	__sti();
+}
+
+u_int
+xen_rcr2(void)
+{
+
+	return (HYPERVISOR_shared_info->vcpu_info[curcpu].arch.cr2);
 }
 
 void
@@ -810,7 +819,7 @@ void
 initvalues(start_info_t *startinfo)
 { 
 	int l3_pages, l2_pages, l1_pages, offset;
-	vm_offset_t cur_space;
+	vm_offset_t cur_space, cur_space_pt;
 	struct physdev_set_iopl set_iopl;
 	
 	vm_paddr_t KPTphys, IdlePTDma;
@@ -825,15 +834,13 @@ initvalues(start_info_t *startinfo)
 	vm_paddr_t pdir_shadow_ma;
 #endif
 	unsigned long i;
-	int ncpus;
+	int ncpus = MAXCPU;
 
-	nkpt = min(max((startinfo->nr_pages >> NPGPTD_SHIFT), nkpt),
-	    NPGPTD*NPDEPG - KPTDI);
-#ifdef SMP
-	ncpus = MAXCPU;
-#else
-	ncpus = 1;
-#endif	
+	nkpt = min(
+		min(
+			max((startinfo->nr_pages >> NPGPTD_SHIFT), nkpt),
+		    NPGPTD*NPDEPG - KPTDI),
+		    (HYPERVISOR_VIRT_START - KERNBASE) >> PDRSHIFT);
 
 	HYPERVISOR_vm_assist(VMASST_CMD_enable, VMASST_TYPE_4gb_segments);	
 #ifdef notyet
@@ -845,6 +852,39 @@ initvalues(start_info_t *startinfo)
 	xen_start_info = startinfo;
 	xen_phys_machine = (xen_pfn_t *)startinfo->mfn_list;
 
+	IdlePTD = (pd_entry_t *)((uint8_t *)startinfo->pt_base + PAGE_SIZE);
+	l1_pages = 0;
+	
+#ifdef PAE
+	l3_pages = 1;
+	l2_pages = 0;
+	IdlePDPT = (pd_entry_t *)startinfo->pt_base;
+	IdlePDPTma = xpmap_ptom(VTOP(startinfo->pt_base));
+	for (i = (KERNBASE >> 30);
+	     (i < 4) && (IdlePDPT[i] != 0); i++)
+			l2_pages++;
+	/*
+	 * Note that only one page directory has been allocated at this point.
+	 * Thus, if KERNBASE
+	 */
+#if 0
+	for (i = 0; i < l2_pages; i++)
+		IdlePTDma[i] = xpmap_ptom(VTOP(IdlePTD + i*PAGE_SIZE));
+#endif
+	
+	l2_pages = (l2_pages == 0) ? 1 : l2_pages;
+#else	
+	l3_pages = 0;
+	l2_pages = 1;
+#endif
+	for (i = (((KERNBASE>>18) & PAGE_MASK)>>PAGE_SHIFT);
+	     (i<l2_pages*NPDEPG) && (i<(VM_MAX_KERNEL_ADDRESS>>PDRSHIFT)); i++) {
+		
+		if (IdlePTD[i] == 0)
+			break;
+		l1_pages++;
+	}
+	
 	/* number of pages allocated after the pts + 1*/;
 	cur_space = xen_start_info->pt_base +
 	    ((xen_start_info->nr_pt_frames) + 3 )*PAGE_SIZE;
@@ -859,7 +899,24 @@ initvalues(start_info_t *startinfo)
 	bootmem_start = bootmem_current = (char *)cur_space;
 	cur_space += (4 * PAGE_SIZE);
 	bootmem_end = (char *)cur_space;
+
+	/* allocate page for gdt */
+	gdt = (union descriptor *)cur_space;
+	cur_space += PAGE_SIZE*ncpus;
+
+        /* allocate page for ldt */
+	ldt = (union descriptor *)cur_space; cur_space += PAGE_SIZE;
+	cur_space += PAGE_SIZE;
 	
+	HYPERVISOR_shared_info = (shared_info_t *)cur_space;
+	cur_space += PAGE_SIZE;
+
+	xen_store = (struct ringbuf_head *)cur_space;
+	cur_space += PAGE_SIZE;
+
+	console_page = (char *)cur_space;
+	cur_space += PAGE_SIZE;
+
 #ifdef ADD_ISA_HOLE
 	shift_phys_machine(xen_phys_machine, xen_start_info->nr_pages);
 #endif
@@ -936,6 +993,16 @@ initvalues(start_info_t *startinfo)
 	 * Unpin the current PDPT
 	 */
 	xen_pt_unpin(IdlePDPTma);
+	
+	for (i = 0; i < 20; i++) {
+		int startidx = ((KERNBASE >> 18) & PAGE_MASK) >> 3;
+
+		if (IdlePTD[startidx + i] == 0) {
+			l1_pages = i;
+			break;
+		}	
+	}
+
 #endif  /* PAE */
 	
 	/* unmap remaining pages from initial 4MB chunk
@@ -947,7 +1014,7 @@ initvalues(start_info_t *startinfo)
 	}
 	
 	PT_UPDATES_FLUSH();
-  
+
 	memcpy(((uint8_t *)IdlePTDnew) + ((unsigned int)(KERNBASE >> 18)),
 	    ((uint8_t *)IdlePTD) + ((KERNBASE >> 18) & PAGE_MASK),
 	    l1_pages*sizeof(pt_entry_t));
@@ -960,18 +1027,22 @@ initvalues(start_info_t *startinfo)
 	xen_pgdpt_pin(xpmap_ptom(VTOP(IdlePDPTnew)));
 
 	/* allocate remainder of nkpt pages */
-	for (offset = (KERNBASE >> PDRSHIFT), i = l1_pages - 1; i < nkpt;
+	cur_space_pt = cur_space;
+	for (offset = (KERNBASE >> PDRSHIFT), i = l1_pages; i < nkpt;
 	     i++, cur_space += PAGE_SIZE) {
 		pdir = (offset + i) / NPDEPG;
 		curoffset = ((offset + i) % NPDEPG);
-		
+		if (((offset + i) << PDRSHIFT) == VM_MAX_KERNEL_ADDRESS)
+			break;
+
 		/*
 		 * make sure that all the initial page table pages
 		 * have been zeroed
 		 */
-		PT_SET_MA(cur_space, xpmap_ptom(VTOP(cur_space)) | PG_V | PG_RW);
-		bzero((char *)cur_space, PAGE_SIZE);
-		PT_SET_MA(cur_space, (vm_paddr_t)0);
+		PT_SET_MA(cur_space_pt,
+		    xpmap_ptom(VTOP(cur_space)) | PG_V | PG_RW);
+		bzero((char *)cur_space_pt, PAGE_SIZE);
+		PT_SET_MA(cur_space_pt, (vm_paddr_t)0);
 		xen_pt_pin(xpmap_ptom(VTOP(cur_space)));
 		xen_queue_pt_update((vm_paddr_t)(IdlePTDnewma[pdir] +
 			curoffset*sizeof(vm_paddr_t)), 
@@ -994,17 +1065,6 @@ initvalues(start_info_t *startinfo)
 	IdlePDPT = IdlePDPTnew;
 	IdlePDPTma = IdlePDPTnewma;
 	
-	/* allocate page for gdt */
-	gdt = (union descriptor *)cur_space;
-	cur_space += PAGE_SIZE*ncpus;
-
-        /* allocate page for ldt */
-	ldt = (union descriptor *)cur_space; cur_space += PAGE_SIZE;
-	cur_space += PAGE_SIZE;
-	
-	HYPERVISOR_shared_info = (shared_info_t *)cur_space;
-	cur_space += PAGE_SIZE;
-
 	/*
 	 * shared_info is an unsigned long so this will randomly break if
 	 * it is allocated above 4GB - I guess people are used to that
@@ -1015,13 +1075,8 @@ initvalues(start_info_t *startinfo)
 	
 	printk("#4\n");
 
-	xen_store = (struct ringbuf_head *)cur_space;
-	cur_space += PAGE_SIZE;
-	
 	xen_store_ma = (((vm_paddr_t)xen_start_info->store_mfn) << PAGE_SHIFT);
 	PT_SET_MA(xen_store, xen_store_ma | PG_KERNEL);
-	console_page = (char *)cur_space;
-	cur_space += PAGE_SIZE;
 	console_page_ma = (((vm_paddr_t)xen_start_info->console.domU.mfn) << PAGE_SHIFT);
 	PT_SET_MA(console_page, console_page_ma | PG_KERNEL);
 
@@ -1102,220 +1157,6 @@ trap_info_t trap_table[] = {
 };
 
 
-static void 
-shutdown_handler(struct xenbus_watch *watch,
-		 const char **vec, unsigned int len)
-{
-	char *str;
-	struct xenbus_transaction xbt;
-	int err, howto;
-	struct reboot_args uap;
-	
-	howto = 0;
-
- again:
-	err = xenbus_transaction_start(&xbt);
-	if (err)
-		return;
-	str = (char *)xenbus_read(xbt, "control", "shutdown", NULL);
-	/* Ignore read errors and empty reads. */
-	if (XENBUS_IS_ERR_READ(str)) {
-		xenbus_transaction_end(xbt, 1);
-		return;
-	}
-
-	xenbus_write(xbt, "control", "shutdown", "");
-
-	err = xenbus_transaction_end(xbt, 0);
-	if (err == EAGAIN) {
-		free(str, M_DEVBUF);
-		goto again;
-	}
-
-	if (strcmp(str, "reboot") == 0)
-		howto = 0;
-	else if (strcmp(str, "poweroff") == 0)
-		howto |= (RB_POWEROFF | RB_HALT);
-	else if (strcmp(str, "halt") == 0)
-		howto |= RB_HALT;
-	else if (strcmp(str, "suspend") == 0)
-		howto = -1;
-	else {
-		printf("Ignoring shutdown request: %s\n", str);
-		goto done;
-	}
-#ifdef notyet
-	if (howto == -1) {
-		do_suspend(NULL);
-		goto done;
-	}
-#else 
-	if (howto == -1) {
-		printf("suspend not currently supported\n");
-		goto done;
-	}
-#endif
-	uap.opt = howto;
-	reboot(curthread, &uap);
- done:
-	free(str, M_DEVBUF);
-}
-
-static struct xenbus_watch shutdown_watch = {
-	.node = "control/shutdown",
-	.callback = shutdown_handler
-};
-
-
-void setup_shutdown_watcher(void *unused);
-
-
-void
-setup_shutdown_watcher(void *unused)
-{
-	if (register_xenbus_watch(&shutdown_watch))
-		printf("Failed to set shutdown watcher\n");
-}
-
-
-SYSINIT(shutdown, SI_SUB_RUN_SCHEDULER, SI_ORDER_ANY, setup_shutdown_watcher, NULL);
-
-#ifdef notyet
-
-static void 
-xen_suspend(void *ignore)
-{
-	int i, j, k, fpp;
-
-	extern void time_resume(void);
-	extern unsigned long max_pfn;
-	extern unsigned long *pfn_to_mfn_frame_list_list;
-	extern unsigned long *pfn_to_mfn_frame_list[];
-
-#ifdef CONFIG_SMP
-#error "do_suspend must be run cpu 0 - need to create separate thread"
-	cpumask_t prev_online_cpus;
-	int vcpu_prepare(int vcpu);
-#endif
-
-	int err = 0;
-
-	PANIC_IF(smp_processor_id() != 0);
-
-#if defined(CONFIG_SMP) && !defined(CONFIG_HOTPLUG_CPU)
-	if (num_online_cpus() > 1) {
-		printk(KERN_WARNING "Can't suspend SMP guests "
-		       "without CONFIG_HOTPLUG_CPU\n");
-		return -EOPNOTSUPP;
-	}
-#endif
-
-	xenbus_suspend();
-
-#ifdef CONFIG_SMP
-	lock_cpu_hotplug();
-	/*
-	 * Take all other CPUs offline. We hold the hotplug semaphore to
-	 * avoid other processes bringing up CPUs under our feet.
-	 */
-	cpus_clear(prev_online_cpus);
-	while (num_online_cpus() > 1) {
-		for_each_online_cpu(i) {
-			if (i == 0)
-				continue;
-			unlock_cpu_hotplug();
-			err = cpu_down(i);
-			lock_cpu_hotplug();
-			if (err != 0) {
-				printk(KERN_CRIT "Failed to take all CPUs "
-				       "down: %d.\n", err);
-				goto out_reenable_cpus;
-			}
-			cpu_set(i, prev_online_cpus);
-		}
-	}
-#endif /* CONFIG_SMP */
-
-	preempt_disable();
-
-
-	__cli();
-	preempt_enable();
-#ifdef SMP
-	unlock_cpu_hotplug();
-#endif
-	gnttab_suspend();
-
-	pmap_kremove(HYPERVISOR_shared_info);
-
-	xen_start_info->store_mfn = mfn_to_pfn(xen_start_info->store_mfn);
-	xen_start_info->console.domU.mfn = mfn_to_pfn(xen_start_info->console.domU.mfn);
-
-	/*
-	 * We'll stop somewhere inside this hypercall. When it returns,
-	 * we'll start resuming after the restore.
-	 */
-	HYPERVISOR_suspend(VTOMFN(xen_start_info));
-
-	pmap_kenter_ma(HYPERVISOR_shared_info, xen_start_info->shared_info);
-	set_fixmap(FIX_SHARED_INFO, xen_start_info->shared_info);
-
-#if 0
-	memset(empty_zero_page, 0, PAGE_SIZE);
-#endif     
-	HYPERVISOR_shared_info->arch.pfn_to_mfn_frame_list_list =
-		VTOMFN(pfn_to_mfn_frame_list_list);
-  
-	fpp = PAGE_SIZE/sizeof(unsigned long);
-	for (i = 0, j = 0, k = -1; i < max_pfn; i += fpp, j++) {
-		if ((j % fpp) == 0) {
-			k++;
-			pfn_to_mfn_frame_list_list[k] = 
-				VTOMFN(pfn_to_mfn_frame_list[k]);
-			j = 0;
-		}
-		pfn_to_mfn_frame_list[k][j] = 
-			VTOMFN(&phys_to_machine_mapping[i]);
-	}
-	HYPERVISOR_shared_info->arch.max_pfn = max_pfn;
-
-	gnttab_resume();
-
-	irq_resume();
-
-	time_resume();
-
-	__sti();
-
-	xencons_resume();
-
-#ifdef CONFIG_SMP
-	for_each_cpu(i)
-		vcpu_prepare(i);
-
-#endif
-	/* 
-	 * Only resume xenbus /after/ we've prepared our VCPUs; otherwise
-	 * the VCPU hotplug callback can race with our vcpu_prepare
-	 */
-	xenbus_resume();
-
-#ifdef CONFIG_SMP
- out_reenable_cpus:
-	for_each_cpu_mask(i, prev_online_cpus) {
-		j = cpu_up(i);
-		if ((j != 0) && !cpu_online(i)) {
-			printk(KERN_CRIT "Failed to bring cpu "
-			       "%d back up (%d).\n",
-			       i, j);
-			err = j;
-		}
-	}
-#endif
-	return err;
-}
-
-#endif /* notyet */
 /********** CODE WORTH KEEPING ABOVE HERE *****************/ 
 
 void xen_failsafe_handler(void);

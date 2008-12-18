@@ -35,8 +35,8 @@
 
 #include <dev/ofw/openfirm.h>
 #include <dev/ofw/ofw_pci.h>
-
-#include <powerpc/ofw/ofw_pci.h>
+#include <dev/ofw/ofw_bus.h>
+#include <dev/ofw/ofw_bus_subr.h>
 
 #include <dev/pci/pcivar.h>
 #include <dev/pci/pcireg.h>
@@ -46,6 +46,9 @@
 
 static int	ofw_pcib_pci_probe(device_t bus);
 static int	ofw_pcib_pci_attach(device_t bus);
+static phandle_t ofw_pcib_pci_get_node(device_t bus, device_t dev);
+static int	ofw_pcib_pci_route_interrupt(device_t bridge, device_t dev,
+		    int intpin);
 
 static device_method_t ofw_pcib_pci_methods[] = {
 	/* Device interface */
@@ -70,15 +73,30 @@ static device_method_t ofw_pcib_pci_methods[] = {
 	DEVMETHOD(pcib_maxslots,		pcib_maxslots),
 	DEVMETHOD(pcib_read_config,		pcib_read_config),
 	DEVMETHOD(pcib_write_config,	pcib_write_config),
-	DEVMETHOD(pcib_route_interrupt,	pcib_route_interrupt),
+	DEVMETHOD(pcib_route_interrupt,	ofw_pcib_pci_route_interrupt),
+
+	/* ofw_bus interface */
+	DEVMETHOD(ofw_bus_get_node,     ofw_pcib_pci_get_node),
 
 	{0, 0}
 };
 
 static devclass_t pcib_devclass;
 
+struct ofw_pcib_softc {
+        /*
+         * This is here so that we can use pci bridge methods, too - the
+         * generic routines only need the dev, secbus and subbus members
+         * filled.
+         */
+        struct pcib_softc       ops_pcib_sc;
+	phandle_t		ops_node;
+        struct ofw_bus_iinfo    ops_iinfo;
+};
+
+
 DEFINE_CLASS_0(pcib, ofw_pcib_pci_driver, ofw_pcib_pci_methods,
-    sizeof(struct pcib_softc));
+    sizeof(struct ofw_pcib_softc));
 DRIVER_MODULE(ofw_pcib, pci, ofw_pcib_pci_driver, pcib_devclass, 0, 0);
 
 static int
@@ -89,29 +107,72 @@ ofw_pcib_pci_probe(device_t dev)
 	    (pci_get_subclass(dev) != PCIS_BRIDGE_PCI)) {
 		return (ENXIO);
 	}
-	if (ofw_pci_find_node(dev) == 0) {
-		return (ENXIO);
-	}
 
-	device_set_desc(dev, "Open Firmware PCI-PCI bridge");
-	return (-1000);
+	if (ofw_bus_get_node(dev) == 0)
+		return (ENXIO);
+
+	device_set_desc(dev, "OFW PCI-PCI bridge");
+	return (0);
 }
 
 static int
 ofw_pcib_pci_attach(device_t dev)
 {
-	phandle_t	node;
-	uint32_t	busrange[2];
+	struct ofw_pcib_softc *sc;
 
-	node = ofw_pci_find_node(dev);
-	if (OF_getprop(node, "bus-range", busrange, sizeof(busrange)) != 8)
-		return (ENXIO);
+	sc = device_get_softc(dev);
+	sc->ops_pcib_sc.dev = dev;
+	sc->ops_node = ofw_bus_get_node(dev);
+
+	ofw_bus_setup_iinfo(sc->ops_node, &sc->ops_iinfo,
+	    sizeof(cell_t));
 
 	pcib_attach_common(dev);
-
-	ofw_pci_fixup(dev, busrange[0], node);
 
 	device_add_child(dev, "pci", -1);
 
 	return (bus_generic_attach(dev));
 }
+
+static phandle_t
+ofw_pcib_pci_get_node(device_t bridge, device_t dev)
+{
+	/* We have only one child, the PCI bus, so pass it our node */
+
+	return (ofw_bus_get_node(bridge));
+}
+
+static int
+ofw_pcib_pci_route_interrupt(device_t bridge, device_t dev, int intpin)
+{
+	struct ofw_pcib_softc *sc;
+	struct ofw_bus_iinfo *ii;
+	struct ofw_pci_register reg;
+	cell_t pintr, mintr;
+	uint8_t maskbuf[sizeof(reg) + sizeof(pintr)];
+
+	sc = device_get_softc(bridge);
+	ii = &sc->ops_iinfo;
+	if (ii->opi_imapsz > 0) {
+		pintr = intpin;
+		if (ofw_bus_lookup_imap(ofw_bus_get_node(dev), ii, &reg,
+		    sizeof(reg), &pintr, sizeof(pintr), &mintr, sizeof(mintr),
+		    maskbuf)) {
+			/*
+			 * If we've found a mapping, return it and don't map
+			 * it again on higher levels - that causes problems
+			 * in some cases, and never seems to be required.
+			 */
+			return (mintr);
+		}
+	} else if (intpin >= 1 && intpin <= 4) {
+		/*
+		 * When an interrupt map is missing, we need to do the
+		 * standard PCI swizzle and continue mapping at the parent.
+		 */
+		return (pcib_route_interrupt(bridge, dev, intpin));
+	}
+	return (PCIB_ROUTE_INTERRUPT(device_get_parent(device_get_parent(
+	    bridge)), bridge, intpin));
+}
+

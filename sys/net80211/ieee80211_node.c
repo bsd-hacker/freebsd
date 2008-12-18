@@ -135,6 +135,11 @@ ieee80211_node_vattach(struct ieee80211vap *vap)
 	vap->iv_inact_auth = IEEE80211_INACT_AUTH;
 	vap->iv_inact_run = IEEE80211_INACT_RUN;
 	vap->iv_inact_probe = IEEE80211_INACT_PROBE;
+
+	IEEE80211_DPRINTF(vap, IEEE80211_MSG_INACT,
+	    "%s: init %u auth %u run %u probe %u\n", __func__,
+	    vap->iv_inact_init, vap->iv_inact_auth,
+	    vap->iv_inact_run, vap->iv_inact_probe);
 }
 
 void
@@ -187,18 +192,29 @@ ieee80211_node_vdetach(struct ieee80211vap *vap)
 void
 ieee80211_node_authorize(struct ieee80211_node *ni)
 {
+	struct ieee80211vap *vap = ni->ni_vap;
+
 	ni->ni_flags |= IEEE80211_NODE_AUTH;
-	ni->ni_inact_reload = ni->ni_vap->iv_inact_run;
+	ni->ni_inact_reload = vap->iv_inact_run;
 	ni->ni_inact = ni->ni_inact_reload;
+
+	IEEE80211_NOTE(vap, IEEE80211_MSG_INACT, ni,
+	    "%s: inact_reload %u", __func__, ni->ni_inact_reload);
 }
 
 void
 ieee80211_node_unauthorize(struct ieee80211_node *ni)
 {
+	struct ieee80211vap *vap = ni->ni_vap;
+
 	ni->ni_flags &= ~IEEE80211_NODE_AUTH;
-	ni->ni_inact_reload = ni->ni_vap->iv_inact_auth;
+	ni->ni_inact_reload = vap->iv_inact_auth;
 	if (ni->ni_inact > ni->ni_inact_reload)
 		ni->ni_inact = ni->ni_inact_reload;
+
+	IEEE80211_NOTE(vap, IEEE80211_MSG_INACT, ni,
+	    "%s: inact_reload %u inact %u", __func__,
+	    ni->ni_inact_reload, ni->ni_inact);
 }
 
 /*
@@ -582,8 +598,8 @@ gethtadjustflags(struct ieee80211com *ic)
 
 /*
  * Check if the current channel needs to change based on whether
- * any vap's are using HT20/HT40.  This is used sync the state of
- * ic_curchan after a channel width change on a running vap.
+ * any vap's are using HT20/HT40.  This is used to sync the state
+ * of ic_curchan after a channel width change on a running vap.
  */
 void
 ieee80211_sync_curchan(struct ieee80211com *ic)
@@ -687,7 +703,7 @@ ieee80211_sta_join1(struct ieee80211_node *selbs)
 }
 
 int
-ieee80211_sta_join(struct ieee80211vap *vap,
+ieee80211_sta_join(struct ieee80211vap *vap, struct ieee80211_channel *chan,
 	const struct ieee80211_scan_entry *se)
 {
 	struct ieee80211com *ic = vap->iv_ic;
@@ -709,13 +725,14 @@ ieee80211_sta_join(struct ieee80211vap *vap,
 	ni->ni_tstamp.tsf = se->se_tstamp.tsf;
 	ni->ni_intval = se->se_intval;
 	ni->ni_capinfo = se->se_capinfo;
-	ni->ni_chan = se->se_chan;
+	ni->ni_chan = chan;
 	ni->ni_timoff = se->se_timoff;
 	ni->ni_fhdwell = se->se_fhdwell;
 	ni->ni_fhindex = se->se_fhindex;
 	ni->ni_erp = se->se_erp;
 	IEEE80211_RSSI_LPF(ni->ni_avgrssi, se->se_rssi);
 	ni->ni_noise = se->se_noise;
+	ni->ni_flags |= IEEE80211_NODE_ASSOCID;
 
 	if (ieee80211_ies_init(&ni->ni_ies, se->se_ies.data, se->se_ies.len)) {
 		ieee80211_ies_expand(&ni->ni_ies);
@@ -733,6 +750,9 @@ ieee80211_sta_join(struct ieee80211vap *vap,
 	/* NB: must be after ni_chan is setup */
 	ieee80211_setup_rates(ni, se->se_rates, se->se_xrates,
 		IEEE80211_F_DOSORT);
+	if (ieee80211_iserp_rateset(&ni->ni_rates))
+		ni->ni_flags |= IEEE80211_NODE_ERP;
+	node_setuptxparms(ni);
 
 	return ieee80211_sta_join1(ieee80211_ref_node(ni));
 }
@@ -879,13 +899,15 @@ node_cleanup(struct ieee80211_node *ni)
 	 * has happened.  This is probably not needed as the node
 	 * should always be removed from the table so not found but
 	 * do it just in case.
+	 * Likewise clear the ASSOCID flag as these flags are intended
+	 * to be managed in tandem.
 	 */
-	ni->ni_flags &= ~IEEE80211_NODE_AREF;
+	ni->ni_flags &= ~(IEEE80211_NODE_AREF | IEEE80211_NODE_ASSOCID);
 
 	/*
 	 * Drain power save queue and, if needed, clear TIM.
 	 */
-	if (ieee80211_node_saveq_drain(ni) != 0 && vap->iv_set_tim != NULL)
+	if (ieee80211_node_psq_drain(ni) != 0 && vap->iv_set_tim != NULL)
 		vap->iv_set_tim(ni, 0);
 
 	ni->ni_associd = 0;
@@ -924,7 +946,7 @@ node_free(struct ieee80211_node *ni)
 
 	ic->ic_node_cleanup(ni);
 	ieee80211_ies_cleanup(&ni->ni_ies);
-	IEEE80211_NODE_SAVEQ_DESTROY(ni);
+	ieee80211_psq_cleanup(&ni->ni_psq);
 	IEEE80211_NODE_WDSQ_DESTROY(ni);
 	FREE(ni, M_80211_NODE);
 }
@@ -933,15 +955,14 @@ static void
 node_age(struct ieee80211_node *ni)
 {
 	struct ieee80211vap *vap = ni->ni_vap;
-#if 0
-	IEEE80211_NODE_LOCK_ASSERT(&ic->ic_sta);
-#endif
+
+	IEEE80211_NODE_LOCK_ASSERT(&vap->iv_ic->ic_sta);
+
 	/*
 	 * Age frames on the power save queue.
 	 */
-	if (ieee80211_node_saveq_age(ni) != 0 &&
-	    IEEE80211_NODE_SAVEQ_QLEN(ni) == 0 &&
-	    vap->iv_set_tim != NULL)
+	if (ieee80211_node_psq_age(ni) != 0 &&
+	    ni->ni_psq.psq_len == 0 && vap->iv_set_tim != NULL)
 		vap->iv_set_tim(ni, 0);
 	/*
 	 * Age frames on the wds pending queue.
@@ -1012,7 +1033,7 @@ ieee80211_alloc_node(struct ieee80211_node_table *nt,
 	ni->ni_inact_reload = nt->nt_inact_init;
 	ni->ni_inact = ni->ni_inact_reload;
 	ni->ni_ath_defkeyix = 0x7fff;
-	IEEE80211_NODE_SAVEQ_INIT(ni, "unknown");
+	ieee80211_psq_init(&ni->ni_psq, "unknown");
 	IEEE80211_NODE_WDSQ_INIT(ni, "unknown");
 
 	IEEE80211_NODE_LOCK(nt);
@@ -1022,6 +1043,9 @@ ieee80211_alloc_node(struct ieee80211_node_table *nt,
 	ni->ni_vap = vap;
 	ni->ni_ic = ic;
 	IEEE80211_NODE_UNLOCK(nt);
+
+	IEEE80211_NOTE(vap, IEEE80211_MSG_INACT, ni,
+	    "%s: inact_reload %u", __func__, ni->ni_inact_reload);
 
 	return ni;
 }
@@ -1059,7 +1083,7 @@ ieee80211_tmp_node(struct ieee80211vap *vap,
 			IEEE80211_KEYIX_NONE);
 		ni->ni_txpower = bss->ni_txpower;
 		/* XXX optimize away */
-		IEEE80211_NODE_SAVEQ_INIT(ni, "unknown");
+		ieee80211_psq_init(&ni->ni_psq, "unknown");
 		IEEE80211_NODE_WDSQ_INIT(ni, "unknown");
 	} else {
 		/* XXX msg */
@@ -1490,19 +1514,8 @@ ieee80211_find_txnode(struct ieee80211vap *vap,
 	    vap->iv_opmode == IEEE80211_M_WDS ||
 	    IEEE80211_IS_MULTICAST(macaddr))
 		ni = ieee80211_ref_node(vap->iv_bss);
-	else {
+	else
 		ni = ieee80211_find_node_locked(nt, macaddr);
-		if (vap->iv_opmode == IEEE80211_M_HOSTAP && 
-		    (ni != NULL && ni->ni_associd == 0)) {
-			/*
-			 * Station is not associated; don't permit the
-			 * data frame to be sent by returning NULL.  This
-			 * is kinda a kludge but the least intrusive way
-			 * to add this check into all drivers.
-			 */
-			ieee80211_unref_node(&ni);	/* NB: null's ni */
-		}
-	}
 	IEEE80211_NODE_UNLOCK(nt);
 
 	if (ni == NULL) {
@@ -1630,7 +1643,7 @@ ieee80211_node_delucastkey(struct ieee80211_node *ni)
 		IEEE80211_NODE_LOCK(nt);
 	nikey = NULL;
 	status = 1;		/* NB: success */
-	if (!IEEE80211_KEY_UNDEFINED(&ni->ni_ucastkey)) {
+	if (ni->ni_ucastkey.wk_keyix != IEEE80211_KEYIX_NONE) {
 		keyix = ni->ni_ucastkey.wk_rxkeyix;
 		status = ieee80211_crypto_delkey(ni->ni_vap, &ni->ni_ucastkey);
 		if (nt->nt_keyixmap != NULL && keyix < nt->nt_keyixmax) {
@@ -1903,8 +1916,13 @@ restart:
 			m_freem(ni->ni_rxfrag[0]);
 			ni->ni_rxfrag[0] = NULL;
 		}
-		if (ni->ni_inact > 0)
+		if (ni->ni_inact > 0) {
 			ni->ni_inact--;
+			IEEE80211_NOTE(vap, IEEE80211_MSG_INACT, ni,
+			    "%s: inact %u inact_reload %u nrates %u",
+			    __func__, ni->ni_inact, ni->ni_inact_reload,
+			    ni->ni_rates.rs_nrates);
+		}
 		/*
 		 * Special case ourself; we may be idle for extended periods
 		 * of time and regardless reclaiming our state is wrong.
@@ -2119,8 +2137,8 @@ ieee80211_dump_node(struct ieee80211_node_table *nt, struct ieee80211_node *ni)
 		ether_sprintf(ni->ni_bssid),
 		ni->ni_esslen, ni->ni_essid,
 		ni->ni_chan->ic_freq, ni->ni_chan->ic_flags);
-	printf("\tinact %u txrate %u\n",
-		ni->ni_inact, ni->ni_txrate);
+	printf("\tinact %u inact_reload %u txrate %u\n",
+		ni->ni_inact, ni->ni_inact_reload, ni->ni_txrate);
 	printf("\thtcap %x htparam %x htctlchan %u ht2ndchan %u\n",
 		ni->ni_htcap, ni->ni_htparam,
 		ni->ni_htctlchan, ni->ni_ht2ndchan);

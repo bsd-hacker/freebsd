@@ -309,7 +309,7 @@ struct vattr {
 #define IO_SEQSHIFT	16		/* seq heuristic in upper 16 bits */
 
 /*
- *  Modes.  Some values same as Ixxx entries from inode.h for now.
+ *  Flags for accmode_t.
  */
 #define	VEXEC	000100		/* execute/search permission */
 #define	VWRITE	000200		/* write permission */
@@ -584,15 +584,16 @@ int	vn_fullpath_global(struct thread *td, struct vnode *vn,
 	    char **retbuf, char **freebuf);
 int	vn_commname(struct vnode *vn, char *buf, u_int buflen);
 int	vaccess(enum vtype type, mode_t file_mode, uid_t file_uid,
-	    gid_t file_gid, mode_t acc_mode, struct ucred *cred,
+	    gid_t file_gid, accmode_t accmode, struct ucred *cred,
 	    int *privused);
 int	vaccess_acl_posix1e(enum vtype type, uid_t file_uid,
-	    gid_t file_gid, struct acl *acl, mode_t acc_mode,
+	    gid_t file_gid, struct acl *acl, accmode_t accmode,
 	    struct ucred *cred, int *privused);
 void	vattr_null(struct vattr *vap);
 int	vcount(struct vnode *vp);
 void	vdrop(struct vnode *);
 void	vdropl(struct vnode *);
+void	vdestroy(struct vnode *);
 int	vflush(struct mount *mp, int rootrefs, int flags, struct thread *td);
 int	vget(struct vnode *vp, int lockflag, struct thread *td);
 void	vgone(struct vnode *vp);
@@ -658,6 +659,7 @@ int	vop_stdvptofh(struct vop_vptofh_args *ap);
 int	vop_eopnotsupp(struct vop_generic_args *ap);
 int	vop_ebadf(struct vop_generic_args *ap);
 int	vop_einval(struct vop_generic_args *ap);
+int	vop_enoent(struct vop_generic_args *ap);
 int	vop_enotty(struct vop_generic_args *ap);
 int	vop_null(struct vop_generic_args *ap);
 int	vop_panic(struct vop_generic_args *ap);
@@ -722,6 +724,7 @@ extern struct vop_vector default_vnodeops;
 #define VOP_EBADF	((void*)(uintptr_t)vop_ebadf)
 #define VOP_ENOTTY	((void*)(uintptr_t)vop_enotty)
 #define VOP_EINVAL	((void*)(uintptr_t)vop_einval)
+#define VOP_ENOENT	((void*)(uintptr_t)vop_enoent)
 #define VOP_EOPNOTSUPP	((void*)(uintptr_t)vop_eopnotsupp)
 
 /* vfs_hash.c */

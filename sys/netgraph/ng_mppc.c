@@ -200,7 +200,7 @@ ng_mppc_constructor(node_p node)
 	priv_p priv;
 
 	/* Allocate private structure */
-	MALLOC(priv, priv_p, sizeof(*priv), M_NETGRAPH_MPPC, M_NOWAIT | M_ZERO);
+	priv = malloc(sizeof(*priv), M_NETGRAPH_MPPC, M_NOWAIT | M_ZERO);
 	if (priv == NULL)
 		return (ENOMEM);
 
@@ -291,12 +291,12 @@ ng_mppc_rcvmsg(node_p node, item_p item, hook_p lasthook)
 #ifdef NETGRAPH_MPPC_COMPRESSION
 			/* Initialize state buffers for compression */
 			if (d->history != NULL) {
-				FREE(d->history, M_NETGRAPH_MPPC);
+				free(d->history, M_NETGRAPH_MPPC);
 				d->history = NULL;
 			}
 			if ((cfg->bits & MPPC_BIT) != 0) {
-				MALLOC(d->history, u_char *,
-				    isComp ? MPPC_SizeOfCompressionHistory() :
+				d->history = malloc(isComp ?
+				    MPPC_SizeOfCompressionHistory() :
 				    MPPC_SizeOfDecompressionHistory(),
 				    M_NETGRAPH_MPPC, M_NOWAIT);
 				if (d->history == NULL)
@@ -421,12 +421,12 @@ ng_mppc_shutdown(node_p node)
 	/* Take down netgraph node */
 #ifdef NETGRAPH_MPPC_COMPRESSION
 	if (priv->xmit.history != NULL)
-		FREE(priv->xmit.history, M_NETGRAPH_MPPC);
+		free(priv->xmit.history, M_NETGRAPH_MPPC);
 	if (priv->recv.history != NULL)
-		FREE(priv->recv.history, M_NETGRAPH_MPPC);
+		free(priv->recv.history, M_NETGRAPH_MPPC);
 #endif
 	bzero(priv, sizeof(*priv));
-	FREE(priv, M_NETGRAPH_MPPC);
+	free(priv, M_NETGRAPH_MPPC);
 	NG_NODE_SET_PRIVATE(node, NULL);
 	NG_NODE_UNREF(node);		/* let the node escape */
 	return (0);
@@ -492,17 +492,18 @@ ng_mppc_compress(node_p node, struct mbuf **datap)
 		/* Work with contiguous regions of memory. */
 		inlen = m->m_pkthdr.len;
 		inbuf = malloc(inlen, M_NETGRAPH_MPPC, M_NOWAIT);
-		if (inbuf == NULL) {
-			m_freem(m);
-			return (ENOMEM);
-		}
+		if (inbuf == NULL)
+			goto err1;
 		m_copydata(m, 0, inlen, (caddr_t)inbuf);
 
 		outlen = MPPC_MAX_BLOWUP(inlen);
 		outbuf = malloc(outlen, M_NETGRAPH_MPPC, M_NOWAIT);
 		if (outbuf == NULL) {
-			m_freem(m);
 			free(inbuf, M_NETGRAPH_MPPC);
+err1:
+			m_freem(m);
+			MPPC_InitCompressionHistory(d->history);
+			d->flushed = 1;
 			return (ENOMEM);
 		}
 
@@ -538,8 +539,13 @@ ng_mppc_compress(node_p node, struct mbuf **datap)
 		free(outbuf, M_NETGRAPH_MPPC);
 
 		/* Check m_devget() result. */
-		if (m == NULL)
+		if (m == NULL) {
+			if (!d->flushed) {
+				MPPC_InitCompressionHistory(d->history);
+				d->flushed = 1;
+			}
 			return (ENOMEM);
+		}
 	}
 #endif
 
@@ -551,6 +557,18 @@ ng_mppc_compress(node_p node, struct mbuf **datap)
 		/* Set header bits */
 		header |= MPPC_FLAG_ENCRYPTED;
 
+		/* We must own the mbuf chain exclusively to modify it. */
+		m = m_unshare(m, M_DONTWAIT);
+		if (m == NULL) {
+			if (!d->flushed) {
+#ifdef NETGRAPH_MPPC_COMPRESSION
+				MPPC_InitCompressionHistory(d->history);
+#endif
+				d->flushed = 1;
+			}
+			return (ENOMEM);
+		}
+
 		/* Update key if it's time */
 		if ((d->cfg.bits & MPPE_STATELESS) != 0
 		    || (d->cc & MPPE_UPDATE_MASK) == MPPE_UPDATE_FLAG) {
@@ -561,11 +579,6 @@ ng_mppc_compress(node_p node, struct mbuf **datap)
 			   and ng_mppc_updatekey wasn't called to do it also. */
 			rc4_init(&d->rc4, d->key, KEYLEN(d->cfg.bits));
 		}
-
-		/* We must own the mbuf chain exclusively to modify it. */
-		m = m_unshare(m, M_DONTWAIT);
-		if (m == NULL)
-			return (ENOMEM);
 
 		/* Encrypt packet */
 		m1 = m;
@@ -811,21 +824,24 @@ ng_mppc_reset_req(node_p node)
 static void
 ng_mppc_getkey(const u_char *h, u_char *h2, int len)
 {
-	static const u_char pad1[10] =
-	    { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, };
-	static const u_char pad2[10] =
-	    { 0xF2, 0xF2, 0xF2, 0xF2, 0xF2, 0xF2, 0xF2, 0xF2, 0xF2, 0xF2, };
+	static const u_char pad1[40] =
+	    { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+	static const u_char pad2[40] =
+	    { 0xF2, 0xF2, 0xF2, 0xF2, 0xF2, 0xF2, 0xF2, 0xF2, 0xF2, 0xF2,
+	      0xF2, 0xF2, 0xF2, 0xF2, 0xF2, 0xF2, 0xF2, 0xF2, 0xF2, 0xF2,
+	      0xF2, 0xF2, 0xF2, 0xF2, 0xF2, 0xF2, 0xF2, 0xF2, 0xF2, 0xF2,
+	      0xF2, 0xF2, 0xF2, 0xF2, 0xF2, 0xF2, 0xF2, 0xF2, 0xF2, 0xF2 };
 	u_char hash[20];
 	SHA1_CTX c;
-	int k;
 
 	SHA1Init(&c);
 	SHA1Update(&c, h, len);
-	for (k = 0; k < 4; k++)
-		SHA1Update(&c, pad1, sizeof(pad1));
+	SHA1Update(&c, pad1, sizeof(pad1));
 	SHA1Update(&c, h2, len);
-	for (k = 0; k < 4; k++)
-		SHA1Update(&c, pad2, sizeof(pad2));
+	SHA1Update(&c, pad2, sizeof(pad2));
 	SHA1Final(hash, &c);
 	bcopy(hash, h2, len);
 }

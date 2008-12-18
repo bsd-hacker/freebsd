@@ -107,6 +107,8 @@ static device_method_t macio_methods[] = {
         DEVMETHOD(bus_deactivate_resource, macio_deactivate_resource),
         DEVMETHOD(bus_get_resource_list, macio_get_resource_list),	
 
+	DEVMETHOD(bus_child_pnpinfo_str, ofw_bus_gen_child_pnpinfo_str),
+
 	/* ofw_bus interface */
 	DEVMETHOD(ofw_bus_get_devinfo,	macio_get_devinfo),
 	DEVMETHOD(ofw_bus_get_compat,	ofw_bus_gen_get_compat),
@@ -139,6 +141,8 @@ static struct macio_pci_dev {
 	{ 0x0022106b, "KeyLargo I/O Controller" },
 	{ 0x0025106b, "Pangea I/O Controller" },
 	{ 0x003e106b, "Intrepid I/O Controller" },
+	{ 0x0041106b, "K2 KeyLargo I/O Controller" },
+	{ 0x004f106b, "Shasta I/O Controller" },
 	{ 0, NULL }
 };
 
@@ -270,7 +274,7 @@ macio_attach(device_t dev)
 	int error, quirks;
 
 	sc = device_get_softc(dev);
-	root = sc->sc_node = OF_finddevice("mac-io");
+	root = sc->sc_node = ofw_bus_get_node(dev);
 	
 	/*
 	 * Locate the device node and it's base address
@@ -428,6 +432,11 @@ macio_alloc_resource(device_t bus, device_t child, int type, int *rid,
 		break;
 
 	case SYS_RES_IRQ:
+		/* Check for passthrough from subattachments like macgpio */
+		if (device_get_parent(child) != bus)
+			return BUS_ALLOC_RESOURCE(device_get_parent(bus), child,
+			    type, rid, start, end, count, flags);
+
 		rle = resource_list_find(&dinfo->mdi_resources, SYS_RES_IRQ,
 		    *rid);
 		if (rle == NULL) {

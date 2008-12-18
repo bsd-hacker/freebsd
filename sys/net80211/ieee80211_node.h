@@ -117,6 +117,7 @@ struct ieee80211_node {
 #define	IEEE80211_NODE_RIFS	0x004000	/* RIFS enabled */
 #define	IEEE80211_NODE_SGI20	0x008000	/* Short GI in HT20 enabled */
 #define	IEEE80211_NODE_SGI40	0x010000	/* Short GI in HT40 enabled */
+#define	IEEE80211_NODE_ASSOCID	0x020000	/* xmit requires associd */
 	uint16_t		ni_associd;	/* association ID */
 	uint16_t		ni_vlan;	/* vlan tag */
 	uint16_t		ni_txpower;	/* current transmit power */
@@ -185,7 +186,7 @@ struct ieee80211_node {
 	short			ni_inact;	/* inactivity mark count */
 	short			ni_inact_reload;/* inactivity reload value */
 	int			ni_txrate;	/* legacy rate/MCS */
-	struct ifqueue		ni_savedq;	/* ps-poll queue */
+	struct ieee80211_psq	ni_psq;		/* power save queue */
 	struct ieee80211_nodestats ni_stats;	/* per-node statistics */
 
 	struct ieee80211vap	*ni_wdsvap;	/* associated WDS vap */
@@ -282,7 +283,7 @@ void	ieee80211_sync_curchan(struct ieee80211com *);
 void	ieee80211_setcurchan(struct ieee80211com *, struct ieee80211_channel *);
 int	ieee80211_ibss_merge(struct ieee80211_node *);
 struct ieee80211_scan_entry;
-int	ieee80211_sta_join(struct ieee80211vap *,
+int	ieee80211_sta_join(struct ieee80211vap *, struct ieee80211_channel *,
 		const struct ieee80211_scan_entry *);
 void	ieee80211_sta_leave(struct ieee80211_node *);
 void	ieee80211_node_deauth(struct ieee80211_node *, int);

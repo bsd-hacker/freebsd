@@ -29,10 +29,12 @@
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
+#include <sys/lock.h>
 #include <sys/mbuf.h>
 #include <sys/malloc.h>
 #include <sys/ctype.h>
 #include <sys/errno.h>
+#include <sys/rwlock.h>
 #include <sys/socket.h>
 #include <sys/syslog.h>
 
@@ -162,7 +164,7 @@ ng_ipfw_newhook(node_p node, hook_p hook, const char *name)
 		return (EINVAL);
 
 	/* Allocate memory for this hook's private data */
-	MALLOC(hpriv, hpriv_p, sizeof(*hpriv), M_NETGRAPH, M_NOWAIT | M_ZERO);
+	hpriv = malloc(sizeof(*hpriv), M_NETGRAPH, M_NOWAIT | M_ZERO);
 	if (hpriv== NULL)
 		return (ENOMEM);
 
@@ -331,7 +333,7 @@ ng_ipfw_disconnect(hook_p hook)
 {
 	const hpriv_p hpriv = NG_HOOK_PRIVATE(hook);
 
-	FREE(hpriv, M_NETGRAPH);
+	free(hpriv, M_NETGRAPH);
 	NG_HOOK_SET_PRIVATE(hook, NULL);
 
 	return (0);

@@ -52,6 +52,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/mutex.h>
 #include <sys/proc.h>
 #include <sys/pioctl.h>
+#include <sys/jail.h>
 #include <sys/tty.h>
 #include <sys/wait.h>
 #include <sys/vmmeter.h>
@@ -438,7 +439,11 @@ exit1(struct thread *td, int rv)
 		 * since their existence means someone is screwing up.
 		 */
 		if (q->p_flag & P_TRACED) {
+			struct thread *temp;
+
 			q->p_flag &= ~(P_TRACED | P_STOPPED_TRACE);
+			FOREACH_THREAD_IN_PROC(q, temp)
+				temp->td_dbgflags &= ~TDB_SUSPEND;
 			psignal(q, SIGKILL);
 		}
 		PROC_UNLOCK(q);
@@ -448,6 +453,10 @@ exit1(struct thread *td, int rv)
 	PROC_LOCK(p);
 	p->p_xstat = rv;
 	p->p_xthread = td;
+
+	/* In case we are jailed tell the prison that we are gone. */
+	if (jailed(p->p_ucred))
+		prison_proc_free(p->p_ucred->cr_prison);
 
 #ifdef KDTRACE_HOOKS
 	/*
@@ -534,6 +543,7 @@ exit1(struct thread *td, int rv)
 	 * proc lock.
 	 */
 	wakeup(p->p_pptr);
+	cv_broadcast(&p->p_pwait);
 	sched_exit(p->p_pptr, td);
 	PROC_SLOCK(p);
 	p->p_state = PRS_ZOMBIE;
@@ -765,6 +775,7 @@ loop:
 				PROC_UNLOCK(p);
 				tdsignal(t, NULL, SIGCHLD, p->p_ksi);
 				wakeup(t);
+				cv_broadcast(&p->p_pwait);
 				PROC_UNLOCK(t);
 				sx_xunlock(&proctree_lock);
 				return (0);
