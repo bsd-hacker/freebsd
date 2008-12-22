@@ -92,53 +92,69 @@ static usb2_config_td_command_t rum_cfg_amrr_timeout;
 static usb2_config_td_command_t rum_cfg_prepare_beacon;
 static usb2_config_td_command_t rum_cfg_newstate;
 
-static const char *rum_get_rf(uint32_t rev);
-static int rum_ioctl_cb(struct ifnet *ifp, u_long cmd, caddr_t data);
-static void rum_std_command(struct ieee80211com *ic, usb2_config_td_command_t *func);
-static void rum_scan_start_cb(struct ieee80211com *);
-static void rum_scan_end_cb(struct ieee80211com *);
-static void rum_set_channel_cb(struct ieee80211com *);
-static uint16_t rum_cfg_eeprom_read_2(struct rum_softc *sc, uint16_t addr);
-static uint32_t rum_cfg_bbp_disbusy(struct rum_softc *sc);
-static uint32_t rum_cfg_read(struct rum_softc *sc, uint16_t reg);
-static uint8_t rum_cfg_bbp_init(struct rum_softc *sc);
-static uint8_t rum_cfg_bbp_read(struct rum_softc *sc, uint8_t reg);
-static void rum_cfg_amrr_start(struct rum_softc *sc);
-static void rum_cfg_bbp_write(struct rum_softc *sc, uint8_t reg, uint8_t val);
-static void rum_cfg_do_request(struct rum_softc *sc, struct usb2_device_request *req, void *data);
-static void rum_cfg_eeprom_read(struct rum_softc *sc, uint16_t addr, void *buf, uint16_t len);
-static void rum_cfg_load_microcode(struct rum_softc *sc, const uint8_t *ucode, uint16_t size);
-static void rum_cfg_read_eeprom(struct rum_softc *sc);
-static void rum_cfg_read_multi(struct rum_softc *sc, uint16_t reg, void *buf, uint16_t len);
-static void rum_cfg_rf_write(struct rum_softc *sc, uint8_t reg, uint32_t val);
-static void rum_cfg_set_bssid(struct rum_softc *sc, uint8_t *bssid);
-static void rum_cfg_set_macaddr(struct rum_softc *sc, uint8_t *addr);
-static void rum_cfg_write(struct rum_softc *sc, uint16_t reg, uint32_t val);
-static void rum_cfg_write_multi(struct rum_softc *sc, uint16_t reg, void *buf, uint16_t len);
-static void rum_end_of_commands(struct rum_softc *sc);
-static void rum_init_cb(void *arg);
-static void rum_start_cb(struct ifnet *ifp);
-static void rum_watchdog(void *arg);
-static uint8_t rum_get_rssi(struct rum_softc *sc, uint8_t raw);
-static struct ieee80211vap *rum_vap_create(struct ieee80211com *ic, const char name[IFNAMSIZ], int unit, int opmode, int flags, const uint8_t bssid[IEEE80211_ADDR_LEN], const uint8_t mac[IEEE80211_ADDR_LEN]);
-static void rum_vap_delete(struct ieee80211vap *);
-static struct ieee80211_node *rum_node_alloc(struct ieee80211vap *vap, const uint8_t mac[IEEE80211_ADDR_LEN]);
-static void rum_newassoc(struct ieee80211_node *, int);
-static void rum_cfg_disable_tsf_sync(struct rum_softc *sc);
-static void rum_cfg_set_run(struct rum_softc *sc, struct rum_config_copy *cc);
-static void rum_fill_write_queue(struct rum_softc *sc);
-static void rum_tx_clean_queue(struct rum_softc *sc);
-static void rum_tx_freem(struct mbuf *m);
-static void rum_tx_mgt(struct rum_softc *sc, struct mbuf *m, struct ieee80211_node *ni);
-static struct ieee80211vap *rum_get_vap(struct rum_softc *sc);
-static void rum_tx_data(struct rum_softc *sc, struct mbuf *m, struct ieee80211_node *ni);
-static void rum_tx_prot(struct rum_softc *sc, const struct mbuf *m, struct ieee80211_node *ni, uint8_t prot, uint16_t rate);
-static void rum_tx_raw(struct rum_softc *sc, struct mbuf *m, struct ieee80211_node *ni, const struct ieee80211_bpf_params *params);
-static int rum_raw_xmit_cb(struct ieee80211_node *ni, struct mbuf *m, const struct ieee80211_bpf_params *params);
-static void rum_setup_desc_and_tx(struct rum_softc *sc, struct mbuf *m, uint32_t flags, uint16_t xflags, uint16_t rate);
-static int rum_newstate_cb(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg);
-static void rum_update_mcast_cb(struct ifnet *ifp);
-static void rum_update_promisc_cb(struct ifnet *ifp);
+static const char *rum_get_rf(uint32_t);
+static int	rum_ioctl_cb(struct ifnet *, u_long, caddr_t);
+static void	rum_std_command(struct ieee80211com *, usb2_config_td_command_t *);
+static void	rum_scan_start_cb(struct ieee80211com *);
+static void	rum_scan_end_cb(struct ieee80211com *);
+static void	rum_set_channel_cb(struct ieee80211com *);
+static uint16_t	rum_cfg_eeprom_read_2(struct rum_softc *, uint16_t);
+static uint32_t	rum_cfg_bbp_disbusy(struct rum_softc *);
+static uint32_t	rum_cfg_read(struct rum_softc *, uint16_t);
+static uint8_t	rum_cfg_bbp_init(struct rum_softc *);
+static uint8_t	rum_cfg_bbp_read(struct rum_softc *, uint8_t);
+static void	rum_cfg_amrr_start(struct rum_softc *);
+static void	rum_cfg_bbp_write(struct rum_softc *, uint8_t, uint8_t);
+static void	rum_cfg_do_request(struct rum_softc *,
+		    struct usb2_device_request *, void *);
+static void	rum_cfg_eeprom_read(struct rum_softc *, uint16_t, void *,
+		    uint16_t);
+static void	rum_cfg_load_microcode(struct rum_softc *, const uint8_t *,
+		    uint16_t);
+static void	rum_cfg_read_eeprom(struct rum_softc *);
+static void	rum_cfg_read_multi(struct rum_softc *, uint16_t, void *,
+		    uint16_t);
+static void	rum_cfg_rf_write(struct rum_softc *, uint8_t, uint32_t);
+static void	rum_cfg_set_bssid(struct rum_softc *, uint8_t *);
+static void	rum_cfg_set_macaddr(struct rum_softc *, uint8_t *);
+static void	rum_cfg_write(struct rum_softc *, uint16_t, uint32_t);
+static void	rum_cfg_write_multi(struct rum_softc *, uint16_t, void *,
+		    uint16_t);
+static void	rum_end_of_commands(struct rum_softc *);
+static void	rum_init_cb(void *);
+static void	rum_start_cb(struct ifnet *);
+static void	rum_watchdog(void *);
+static uint8_t	rum_get_rssi(struct rum_softc *, uint8_t);
+static struct ieee80211vap *rum_vap_create(struct ieee80211com *,
+		    const char[], int, int, int, const uint8_t[],
+		    const uint8_t[]);
+static void	rum_vap_delete(struct ieee80211vap *);
+static struct ieee80211_node *rum_node_alloc(struct ieee80211vap *,
+		    const uint8_t[]);
+static void	rum_newassoc(struct ieee80211_node *, int);
+static void	rum_cfg_disable_tsf_sync(struct rum_softc *);
+static void	rum_cfg_set_run(struct rum_softc *, struct rum_config_copy *);
+static void	rum_fill_write_queue(struct rum_softc *);
+static void	rum_tx_clean_queue(struct rum_softc *);
+static void	rum_tx_freem(struct mbuf *);
+static void	rum_tx_mgt(struct rum_softc *, struct mbuf *,
+		    struct ieee80211_node *);
+static struct ieee80211vap *rum_get_vap(struct rum_softc *);
+static void	rum_tx_data(struct rum_softc *, struct mbuf *,
+		    struct ieee80211_node *);
+static void	rum_tx_prot(struct rum_softc *, const struct mbuf *,
+		    struct ieee80211_node *, uint8_t, uint16_t);
+static void	rum_tx_raw(struct rum_softc *, struct mbuf *,
+		    struct ieee80211_node *,
+		    const struct ieee80211_bpf_params *);
+static int	rum_raw_xmit_cb(struct ieee80211_node *, struct mbuf *,
+		    const struct ieee80211_bpf_params *);
+static void	rum_setup_desc_and_tx(struct rum_softc *, struct mbuf *,
+		    uint32_t, uint16_t, uint16_t);
+static int	rum_newstate_cb(struct ieee80211vap *,
+		    enum ieee80211_state nstate, int arg);
+static void	rum_update_mcast_cb(struct ifnet *);
+static void	rum_update_promisc_cb(struct ifnet *);
 
 /* various supported device vendors/products */
 static const struct usb2_device_id rum_devs[] = {
@@ -571,7 +587,6 @@ error:
 			bzero(data, length);
 		}
 	}
-	return;
 }
 
 static void
@@ -586,7 +601,6 @@ rum_cfg_eeprom_read(struct rum_softc *sc, uint16_t addr, void *buf, uint16_t len
 	USETW(req.wLength, len);
 
 	rum_cfg_do_request(sc, &req, buf);
-	return;
 }
 
 static uint16_t
@@ -619,7 +633,6 @@ rum_cfg_read_multi(struct rum_softc *sc, uint16_t reg, void *buf, uint16_t len)
 	USETW(req.wLength, len);
 
 	rum_cfg_do_request(sc, &req, buf);
-	return;
 }
 
 static void
@@ -628,7 +641,6 @@ rum_cfg_write(struct rum_softc *sc, uint16_t reg, uint32_t val)
 	uint32_t tmp = htole32(val);
 
 	rum_cfg_write_multi(sc, reg, &tmp, sizeof(tmp));
-	return;
 }
 
 static void
@@ -643,7 +655,6 @@ rum_cfg_write_multi(struct rum_softc *sc, uint16_t reg, void *buf, uint16_t len)
 	USETW(req.wLength, len);
 
 	rum_cfg_do_request(sc, &req, buf);
-	return;
 }
 
 static uint32_t
@@ -680,7 +691,6 @@ rum_cfg_bbp_write(struct rum_softc *sc, uint8_t reg, uint8_t val)
 	}
 	tmp = RT2573_BBP_BUSY | ((reg & 0x7f) << 8) | val;
 	rum_cfg_write(sc, RT2573_PHY_CSR3, tmp);
-	return;
 }
 
 static uint8_t
@@ -725,7 +735,6 @@ rum_cfg_rf_write(struct rum_softc *sc, uint8_t reg, uint32_t val)
 	rum_cfg_write(sc, RT2573_PHY_CSR4, tmp);
 
 	DPRINTFN(16, "RF R[%u] <- 0x%05x\n", reg, val & 0xfffff);
-	return;
 }
 
 static void
@@ -892,7 +901,6 @@ rum_end_of_commands(struct rum_softc *sc)
 
 	/* start write transfer, if not started */
 	usb2_transfer_start(sc->sc_xfer[0]);
-	return;
 }
 
 static void
@@ -917,7 +925,6 @@ rum_config_copy_chan(struct rum_config_copy_chan *cc,
 		if (IEEE80211_IS_CHAN_ANYG(c))
 			cc->chan_is_g = 1;
 	}
-	return;
 }
 
 static void
@@ -965,7 +972,6 @@ rum_config_copy(struct rum_softc *sc,
 		}
 	}
 	sc->sc_flags |= RUM_FLAG_WAIT_COMMAND;
-	return;
 }
 
 static const char *
@@ -1125,7 +1131,6 @@ rum_bulk_read_clear_stall_callback(struct usb2_xfer *xfer)
 		sc->sc_flags &= ~RUM_FLAG_READ_STALL;
 		usb2_transfer_start(xfer_other);
 	}
-	return;
 }
 
 static uint8_t
@@ -1301,7 +1306,6 @@ rum_setup_desc_and_tx(struct rum_softc *sc, struct mbuf *m, uint32_t flags,
 	_IF_ENQUEUE(&sc->sc_tx_queue, mm);
 
 	usb2_transfer_start(sc->sc_xfer[0]);
-	return;
 }
 
 static void
@@ -1384,7 +1388,6 @@ rum_bulk_write_callback(struct usb2_xfer *xfer)
 		ifp->if_oerrors++;
 		break;
 	}
-	return;
 }
 
 static void
@@ -1398,7 +1401,6 @@ rum_bulk_write_clear_stall_callback(struct usb2_xfer *xfer)
 		sc->sc_flags &= ~RUM_FLAG_WRITE_STALL;
 		usb2_transfer_start(xfer_other);
 	}
-	return;
 }
 
 static void
@@ -1417,8 +1419,6 @@ rum_watchdog(void *arg)
 	    hz, &rum_watchdog, sc);
 
 	mtx_unlock(&sc->sc_mtx);
-
-	return;
 }
 
 static void
@@ -1431,8 +1431,6 @@ rum_init_cb(void *arg)
 	    (&sc->sc_config_td, &rum_cfg_pre_init,
 	    &rum_cfg_init, 0, 0);
 	mtx_unlock(&sc->sc_mtx);
-
-	return;
 }
 
 static int
@@ -1482,8 +1480,6 @@ rum_start_cb(struct ifnet *ifp)
 	/* start write transfer, if not started */
 	usb2_transfer_start(sc->sc_xfer[0]);
 	mtx_unlock(&sc->sc_mtx);
-
-	return;
 }
 
 static void
@@ -1527,7 +1523,6 @@ rum_cfg_newstate(struct rum_softc *sc,
 	*/
 	IEEE80211_UNLOCK(ic);
 	mtx_lock(&sc->sc_mtx);
-	return;
 }
 
 static int
@@ -1585,29 +1580,24 @@ rum_std_command(struct ieee80211com *ic, usb2_config_td_command_t *func)
 	    (&sc->sc_config_td, &rum_config_copy, func, 0, 0);
 
 	mtx_unlock(&sc->sc_mtx);
-
-	return;
 }
 
 static void
 rum_scan_start_cb(struct ieee80211com *ic)
 {
 	rum_std_command(ic, &rum_cfg_scan_start);
-	return;
 }
 
 static void
 rum_scan_end_cb(struct ieee80211com *ic)
 {
 	rum_std_command(ic, &rum_cfg_scan_end);
-	return;
 }
 
 static void
 rum_set_channel_cb(struct ieee80211com *ic)
 {
 	rum_std_command(ic, &rum_cfg_set_chan);
-	return;
 }
 
 static void
@@ -1617,7 +1607,6 @@ rum_cfg_scan_start(struct rum_softc *sc,
 	/* abort TSF synchronization */
 	rum_cfg_disable_tsf_sync(sc);
 	rum_cfg_set_bssid(sc, cc->if_broadcastaddr);
-	return;
 }
 
 static void
@@ -1627,7 +1616,6 @@ rum_cfg_scan_end(struct rum_softc *sc,
 	/* enable TSF synchronization */
 	rum_cfg_enable_tsf_sync(sc, cc, 0);
 	rum_cfg_set_bssid(sc, cc->iv_bss.ni_bssid);
-	return;
 }
 
 /*
@@ -1688,8 +1676,6 @@ rum_cfg_select_band(struct rum_softc *sc,
 
 	/* 802.11a uses a 16 microseconds short interframe space */
 	sc->sc_sifs = cc->ic_curchan.chan_is_5ghz ? 16 : 10;
-
-	return;
 }
 
 static void
@@ -1793,7 +1779,6 @@ rum_cfg_set_chan(struct rum_softc *sc,
 	if (usb2_config_td_sleep(&sc->sc_config_td, hz / 100)) {
 		return;
 	}
-	return;
 }
 
 static void
@@ -1831,7 +1816,6 @@ rum_cfg_set_run(struct rum_softc *sc,
 		/* enable automatic rate adaptation */
 		rum_cfg_amrr_start(sc);
 	}
-	return;
 }
 
 static void
@@ -1859,8 +1843,6 @@ rum_cfg_enable_tsf_sync(struct rum_softc *sc,
 		tmp |= RT2573_TSF_MODE(2) | RT2573_GENERATE_BEACON;
 
 	rum_cfg_write(sc, RT2573_TXRX_CSR9, tmp);
-
-	return;
 }
 
 static void
@@ -1871,7 +1853,6 @@ rum_cfg_disable_tsf_sync(struct rum_softc *sc)
 	/* abort TSF synchronization */
 	tmp = rum_cfg_read(sc, RT2573_TXRX_CSR9);
 	rum_cfg_write(sc, RT2573_TXRX_CSR9, tmp & ~0x00ffffff);
-	return;
 }
 
 /*
@@ -1894,8 +1875,6 @@ rum_cfg_enable_mrr(struct rum_softc *sc,
 	tmp |= RT2573_MRR_ENABLED;
 
 	rum_cfg_write(sc, RT2573_TXRX_CSR4, tmp);
-
-	return;
 }
 
 static void
@@ -1912,8 +1891,6 @@ rum_cfg_update_slot(struct rum_softc *sc,
 	rum_cfg_write(sc, RT2573_MAC_CSR9, tmp);
 
 	DPRINTF("setting slot time to %u us\n", slottime);
-
-	return;
 }
 
 static void
@@ -1930,8 +1907,6 @@ rum_cfg_set_txpreamble(struct rum_softc *sc,
 		tmp &= ~RT2573_SHORT_PREAMBLE;
 
 	rum_cfg_write(sc, RT2573_TXRX_CSR4, tmp);
-
-	return;
 }
 
 static void
@@ -1944,8 +1919,6 @@ rum_cfg_set_bssid(struct rum_softc *sc, uint8_t *bssid)
 
 	tmp = (bssid[4]) | (bssid[5] << 8) | (RT2573_ONE_BSSID << 16);
 	rum_cfg_write(sc, RT2573_MAC_CSR5, tmp);
-
-	return;
 }
 
 static void
@@ -1958,8 +1931,6 @@ rum_cfg_set_macaddr(struct rum_softc *sc, uint8_t *addr)
 
 	tmp = addr[4] | (addr[5] << 8) | (0xff << 16);
 	rum_cfg_write(sc, RT2573_MAC_CSR3, tmp);
-
-	return;
 }
 
 static void
@@ -1980,7 +1951,6 @@ rum_cfg_update_promisc(struct rum_softc *sc,
 	DPRINTF("%s promiscuous mode\n",
 	    (cc->if_flags & IFF_PROMISC) ?
 	    "entering" : "leaving");
-	return;
 }
 
 static void
@@ -2058,8 +2028,6 @@ rum_cfg_select_antenna(struct rum_softc *sc,
 	rum_cfg_bbp_write(sc, 77, bbp77);
 
 	rum_cfg_write(sc, RT2573_TXRX_CSR0, tmp);
-
-	return;
 }
 
 static void
@@ -2134,8 +2102,6 @@ rum_cfg_read_eeprom(struct rum_softc *sc)
 
 	/* read default values for BBP registers */
 	rum_cfg_eeprom_read(sc, RT2573_EEPROM_BBP_BASE, sc->sc_bbp_prom, 2 * 16);
-
-	return;
 }
 
 static uint8_t
@@ -2197,7 +2163,6 @@ rum_cfg_pre_init(struct rum_softc *sc,
 	sc->sc_flags |= RUM_FLAG_HL_READY;
 
 	IEEE80211_ADDR_COPY(ic->ic_myaddr, IF_LLADDR(ifp));
-	return;
 }
 
 static void
@@ -2311,7 +2276,6 @@ fail:
 	if (cc) {
 		rum_cfg_stop(sc, cc, 0);
 	}
-	return;
 }
 
 static void
@@ -2343,7 +2307,6 @@ rum_cfg_pre_stop(struct rum_softc *sc,
 
 	/* clean up transmission */
 	rum_tx_clean_queue(sc);
-	return;
 }
 
 static void
@@ -2366,8 +2329,6 @@ rum_cfg_stop(struct rum_softc *sc,
 
 	/* wait a little */
 	usb2_config_td_sleep(&sc->sc_config_td, hz / 10);
-
-	return;
 }
 
 static void
@@ -2392,7 +2353,6 @@ rum_cfg_amrr_start(struct rum_softc *sc)
 	/* enable AMRR timer */
 
 	sc->sc_amrr_timer = 1;
-	return;
 }
 
 static void
@@ -2433,7 +2393,6 @@ rum_cfg_amrr_timeout(struct rum_softc *sc,
 		}
 		ifp->if_oerrors += fail;/* count TX retry-fail as Tx errors */
 	}
-	return;
 }
 
 static void
@@ -2460,8 +2419,6 @@ rum_cfg_load_microcode(struct rum_softc *sc, const uint8_t *ucode, uint16_t size
 	USETW(req.wLength, 0);
 
 	rum_cfg_do_request(sc, &req, NULL);
-
-	return;
 }
 
 static void
@@ -2497,7 +2454,6 @@ rum_cfg_prepare_beacon(struct rum_softc *sc,
 
 	m->m_pkthdr.rcvif = (void *)ieee80211_ref_node(ni);
 	rum_setup_desc_and_tx(sc, m, RT2573_TX_TIMESTAMP, RT2573_TX_HWSEQ | RT2573_TX_BEACON, tp->mgmtrate);
-	return;
 }
 
 static uint8_t
@@ -2626,7 +2582,6 @@ rum_vap_delete(struct ieee80211vap *vap)
 	ieee80211_amrr_cleanup(&rvp->amrr);
 	ieee80211_vap_detach(vap);
 	free(rvp, M_80211_VAP);
-	return;
 }
 
 /* ARGUSED */
@@ -2646,7 +2601,6 @@ rum_newassoc(struct ieee80211_node *ni, int isnew)
 	struct ieee80211vap *vap = ni->ni_vap;
 
 	ieee80211_amrr_node_init(&RUM_VAP(vap)->amrr, &RUM_NODE(ni)->amn, ni);
-	return;
 }
 
 static void
@@ -2675,7 +2629,6 @@ rum_fill_write_queue(struct rum_softc *sc)
 		}
 		rum_tx_data(sc, m, ni);
 	}
-	return;
 }
 
 static void
@@ -2691,7 +2644,6 @@ rum_tx_clean_queue(struct rum_softc *sc)
 		}
 		rum_tx_freem(m);
 	}
-	return;
 }
 
 static void
@@ -2713,7 +2665,6 @@ rum_tx_freem(struct mbuf *m)
 
 		break;
 	}
-	return;
 }
 
 static void
@@ -2755,7 +2706,6 @@ rum_tx_mgt(struct rum_softc *sc, struct mbuf *m, struct ieee80211_node *ni)
 	}
 	m->m_pkthdr.rcvif = (void *)ni;
 	rum_setup_desc_and_tx(sc, m, flags, 0, tp->mgmtrate);
-	return;
 }
 
 static struct ieee80211vap *
@@ -2834,7 +2784,6 @@ rum_tx_data(struct rum_softc *sc, struct mbuf *m,
 	}
 	m->m_pkthdr.rcvif = (void *)ni;
 	rum_setup_desc_and_tx(sc, m, flags, 0, rate);
-	return;
 }
 
 static void
@@ -2881,7 +2830,6 @@ rum_tx_prot(struct rum_softc *sc,
 	}
 	mprot->m_pkthdr.rcvif = (void *)ieee80211_ref_node(ni);
 	rum_setup_desc_and_tx(sc, mprot, flags, 0, protrate);
-	return;
 }
 
 static void
@@ -2913,7 +2861,6 @@ rum_tx_raw(struct rum_softc *sc, struct mbuf *m, struct ieee80211_node *ni,
 	}
 	m->m_pkthdr.rcvif = (void *)ni;
 	rum_setup_desc_and_tx(sc, m, flags, 0, rate);
-	return;
 }
 
 static int
@@ -2946,7 +2893,6 @@ static void
 rum_update_mcast_cb(struct ifnet *ifp)
 {
 	/* not supported */
-	return;
 }
 
 static void
@@ -2959,5 +2905,4 @@ rum_update_promisc_cb(struct ifnet *ifp)
 	    (&sc->sc_config_td, &rum_config_copy,
 	    &rum_cfg_update_promisc, 0, 0);
 	mtx_unlock(&sc->sc_mtx);
-	return;
 }

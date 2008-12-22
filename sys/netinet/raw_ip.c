@@ -46,6 +46,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/priv.h>
 #include <sys/proc.h>
 #include <sys/protosw.h>
+#include <sys/rwlock.h>
 #include <sys/signalvar.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
@@ -279,7 +280,7 @@ rip_input(struct mbuf *m, int off)
 			if (!prison_check_ip4(inp->inp_cred, &ip->ip_dst))
 				continue;
 		}
-		if (last) {
+		if (last != NULL) {
 			struct mbuf *n;
 
 			n = m_copy(m, 0, (int)M_COPYALL);
@@ -309,7 +310,7 @@ rip_input(struct mbuf *m, int off)
 			if (!prison_check_ip4(inp->inp_cred, &ip->ip_dst))
 				continue;
 		}
-		if (last) {
+		if (last != NULL) {
 			struct mbuf *n;
 
 			n = m_copy(m, 0, (int)M_COPYALL);
@@ -963,6 +964,7 @@ rip_pcblist(SYSCTL_HANDLER_ARGS)
 		INP_RLOCK(inp);
 		if (inp->inp_gencnt <= gencnt) {
 			struct xinpcb xi;
+
 			bzero(&xi, sizeof(xi));
 			xi.xi_len = sizeof xi;
 			/* XXX should avoid extra copy */

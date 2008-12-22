@@ -567,7 +567,6 @@ passout:
 		 * to avoid confusing lower layers.
 		 */
 		m->m_flags &= ~(M_PROTOFLAGS);
-
 		error = (*ifp->if_output)(ifp, m,
 				(struct sockaddr *)dst, ro->ro_rt);
 		goto done;
@@ -793,7 +792,6 @@ done:
 void
 in_delayed_cksum(struct mbuf *m)
 {
-	INIT_VNET_INET(curvnet);
 	struct ip *ip;
 	u_short csum, offset;
 

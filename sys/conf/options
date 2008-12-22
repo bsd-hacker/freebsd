@@ -627,6 +627,7 @@ BUS_DEBUG		opt_bus.h
 # options for USB support
 USB_DEBUG		opt_usb.h
 USBVERBOSE		opt_usb.h
+USB_EHCI_BIG_ENDIAN_DESC	opt_usb.h
 U3G_DEBUG		opt_u3g.h
 UKBD_DFLT_KEYMAP	opt_ukbd.h
 UPLCOM_INTR_INTERVAL	opt_uplcom.h
@@ -785,3 +786,4 @@ IEEE80211_AMPDU_AGE	opt_wlan.h
 
 # Virtualize the network stack
 VIMAGE			opt_global.h
+VIMAGE_GLOBALS		opt_global.h

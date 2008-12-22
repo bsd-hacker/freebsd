@@ -50,6 +50,8 @@
 #include <sys/socketvar.h>
 #include <sys/protosw.h>
 #include <sys/kernel.h>
+#include <sys/lock.h>
+#include <sys/rwlock.h>
 #include <sys/sockio.h>
 #include <sys/syslog.h>
 #include <sys/sysctl.h>
@@ -58,6 +60,7 @@
 #include <sys/jail.h>
 #include <sys/vimage.h>
 #include <machine/stdarg.h>
+#include <vm/uma.h>
 
 #include <net/if.h>
 #include <net/if_arp.h>
@@ -87,6 +90,12 @@
 #endif
 
 #include <security/mac/mac_framework.h>
+
+#ifndef VIMAGE
+#ifndef VIMAGE_GLOBALS
+struct vnet_net vnet_net_0;
+#endif
+#endif
 
 SYSCTL_NODE(_net, PF_LINK, link, CTLFLAG_RW, 0, "Link layers");
 SYSCTL_NODE(_net_link, 0, generic, CTLFLAG_RW, 0, "Generic link-management");
@@ -149,7 +158,7 @@ static struct	knlist ifklist;
 #endif
 
 int	ifqmaxlen = IFQ_MAXLEN;
-struct	mtx ifnet_lock;
+struct rwlock ifnet_lock;
 static	if_com_alloc_t *if_com_alloc[256];
 static	if_com_free_t *if_com_free[256];
 
@@ -158,6 +167,19 @@ static int	filt_netdev(struct knote *kn, long hint);
 
 static struct filterops netdev_filtops =
     { 1, NULL, filt_netdetach, filt_netdev };
+
+#ifndef VIMAGE_GLOBALS
+static struct vnet_symmap vnet_net_symmap[] = {
+	VNET_SYMMAP(net, ifnet),
+	VNET_SYMMAP(net, rt_tables),
+	VNET_SYMMAP(net, rtstat),
+	VNET_SYMMAP(net, rttrash),
+	VNET_SYMMAP_END
+};
+
+VNET_MOD_DECLARE(NET, net, vnet_net_iattach, vnet_net_idetach,
+    NONE, vnet_net_symmap)
+#endif
 
 /*
  * System initialization
@@ -169,14 +191,23 @@ MALLOC_DEFINE(M_IFNET, "ifnet", "interface internals");
 MALLOC_DEFINE(M_IFADDR, "ifaddr", "interface address");
 MALLOC_DEFINE(M_IFMADDR, "ether_multi", "link-level multicast address");
 
-struct ifnet *
-ifnet_byindex(u_short idx)
+static struct ifnet *
+ifnet_byindex_locked(u_short idx)
 {
 	INIT_VNET_NET(curvnet);
 	struct ifnet *ifp;
 
-	IFNET_RLOCK();
 	ifp = V_ifindex_table[idx].ife_ifnet;
+	return (ifp);
+}
+
+struct ifnet *
+ifnet_byindex(u_short idx)
+{
+	struct ifnet *ifp;
+
+	IFNET_RLOCK();
+	ifp = ifnet_byindex_locked(idx);
 	IFNET_RUNLOCK();
 	return (ifp);
 }
@@ -197,7 +228,7 @@ ifaddr_byindex(u_short idx)
 	struct ifaddr *ifa;
 
 	IFNET_RLOCK();
-	ifa = ifnet_byindex(idx)->if_addr;
+	ifa = ifnet_byindex_locked(idx)->if_addr;
 	IFNET_RUNLOCK();
 	return (ifa);
 }
@@ -359,6 +390,10 @@ if_init(void *dummy __unused)
 {
 	INIT_VNET_NET(curvnet);
 
+#ifndef VIMAGE_GLOBALS
+	vnet_mod_register(&vnet_net_modinfo);
+#endif
+
 	V_if_index = 0;
 	V_ifindex_table = NULL;
 	V_if_indexlim = 8;
@@ -473,7 +508,7 @@ if_free_type(struct ifnet *ifp, u_char type)
 	ifnet_setbyindex(ifp->if_index, NULL);
 
 	/* XXX: should be locked with if_findindex() */
-	while (V_if_index > 0 && ifnet_byindex(V_if_index) == NULL)
+	while (V_if_index > 0 && ifnet_byindex_locked(V_if_index) == NULL)
 		V_if_index--;
 	IFNET_WUNLOCK();
 
@@ -1085,7 +1120,7 @@ if_rtdel(struct radix_node *rn, void *arg)
 			return (0);
 
 		err = rtrequest_fib(RTM_DELETE, rt_key(rt), rt->rt_gateway,
-				rt_mask(rt), rt->rt_flags,
+				rt_mask(rt), rt->rt_flags|RTF_RNH_LOCKED,
 				(struct rtentry **) NULL, rt->rt_fibnum);
 		if (err) {
 			log(LOG_WARNING, "if_rtdel: error %d\n", err);
@@ -1342,6 +1377,7 @@ done:
 }
 
 #include <net/route.h>
+#include <net/if_llatbl.h>
 
 /*
  * Default action when installing a route with a Link Level gateway.
