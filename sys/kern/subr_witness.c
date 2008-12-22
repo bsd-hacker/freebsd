@@ -125,9 +125,6 @@ __FBSDID("$FreeBSD$");
 #define	KTR_WITNESS	0
 #endif
 
-#define	LI_RECURSEMASK	0x0000ffff	/* Recursion depth of lock instance. */
-#define	LI_EXCLUSIVE	0x00010000	/* Exclusive lock instance. */
-
 /* Define this to check for blessed mutexes */
 #undef BLESSING
 
@@ -1509,6 +1506,13 @@ found:
 		    instance->li_line);
 		panic("share->uexcl");
 	}
+	if ((instance->li_flags & LI_NORELEASE) != 0 && witness_watch > 0) {
+		printf("forbidden unlock of (%s) %s @ %s:%d\n", class->lc_name,
+		    lock->lo_name, file, line);
+		/* XXX notyet
+		panic("lock not allowed to be released");
+		*/
+	}
 
 	/* If we are recursed, unrecurse. */
 	if ((instance->li_flags & LI_RECURSEMASK) > 0) {
@@ -2222,6 +2226,34 @@ witness_assert(struct lock_object *lock, int flags, const char *file, int line)
 
 	}
 #endif	/* INVARIANT_SUPPORT */
+}
+
+void
+witness_setflag(struct lock_object *lock, int flag, int set)
+{
+	struct lock_list_entry *lock_list;
+	struct lock_instance *instance;
+	struct lock_class *class;
+
+	if (lock->lo_witness == NULL || witness_watch == -1 || panicstr != NULL)
+		return;
+	class = LOCK_CLASS(lock);
+	if (class->lc_flags & LC_SLEEPLOCK)
+		lock_list = curthread->td_sleeplocks;
+	else {
+		if (witness_skipspin)
+			return;
+		lock_list = PCPU_GET(spinlocks);
+	}
+	instance = find_instance(lock_list, lock);
+	if (instance == NULL)
+		panic("%s: lock (%s) %s not locked", __func__,
+		    class->lc_name, lock->lo_name);
+
+	if (set)
+		instance->li_flags |= flag;
+	else
+		instance->li_flags &= ~flag;
 }
 
 #ifdef DDB

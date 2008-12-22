@@ -98,6 +98,8 @@ const char *ieee80211_wme_acnames[] = {
 
 static void parent_updown(void *, int);
 static void ieee80211_newstate_cb(void *, int);
+static int ieee80211_newstate_cb_locked(struct ieee80211vap *,
+	enum ieee80211_state, int);
 static int ieee80211_new_state_locked(struct ieee80211vap *,
 	enum ieee80211_state, int);
 
@@ -1536,27 +1538,39 @@ ieee80211_newstate_cb(void *xvap, int npending)
 {
 	struct ieee80211vap *vap = xvap;
 	struct ieee80211com *ic = vap->iv_ic;
-	enum ieee80211_state ostate = vap->iv_state;
 	enum ieee80211_state nstate = vap->iv_nstate;
 	int arg = vap->iv_nstate_arg;
+
+	IEEE80211_LOCK(ic);
+	ieee80211_newstate_cb_locked(vap, nstate, arg);
+	IEEE80211_UNLOCK(ic);
+}
+
+static int
+ieee80211_newstate_cb_locked(struct ieee80211vap *vap,
+	enum ieee80211_state nstate, int arg)
+{
+	struct ieee80211com *ic = vap->iv_ic;
+	enum ieee80211_state ostate = vap->iv_state;
 	int rc;
+
+	IEEE80211_LOCK_ASSERT(ic);
 
 	IEEE80211_DPRINTF(vap, IEEE80211_MSG_STATE,
 	    "%s: %s arg %d\n", __func__, ieee80211_state_name[nstate], arg);
 
-	IEEE80211_LOCK(ic);
 	rc = vap->iv_newstate(vap, nstate, arg);
 	if (rc != 0 || vap->iv_state != nstate) {
 		if (rc == EINPROGRESS)
 			if_printf(ic->ic_ifp,
 			    "Warning, iv_newstate was deferred again\n");
 		/* State transition failed */
-		goto out;
+		return (rc);
 	}
 
 	/* No actual transition, skip post processing */
 	if (ostate == nstate)
-		goto out;
+		return (0);
 
 	if (nstate == IEEE80211_S_RUN) {
 		/*
@@ -1584,8 +1598,7 @@ ieee80211_newstate_cb(void *xvap, int npending)
 		/* XXX NB: cast for altq */
 		ieee80211_flush_ifq((struct ifqueue *)&ic->ic_ifp->if_snd, vap);
 	}
-out:
-	IEEE80211_UNLOCK(ic);
+	return (0);
 }
 
 /*
@@ -1623,6 +1636,7 @@ ieee80211_new_state_locked(struct ieee80211vap *vap,
 	struct ieee80211vap *vp;
 	enum ieee80211_state ostate;
 	int nrunning, nscanning, rc;
+	int forcesync = 0;
 
 	IEEE80211_LOCK_ASSERT(ic);
 
@@ -1738,15 +1752,26 @@ ieee80211_new_state_locked(struct ieee80211vap *vap,
 			/* INIT -> INIT. nothing to do */
 			vap->iv_flags_ext &= ~IEEE80211_FEXT_SCANWAIT;
 		}
+		forcesync = 1;
 		/* fall thru... */
 	default:
 		break;
 	}
-	/* The state change call to the driver runs in a thread */
-	vap->iv_nstate = nstate;
-	vap->iv_nstate_arg = arg;
-	taskqueue_enqueue(ic->ic_tq, &vap->iv_nstate_task);
-	return (EINPROGRESS);
+	if (forcesync) {
+		/*
+		 * Complete the state transition synchronously, asserting that
+		 * the lock is not dropped.
+		 */
+		WITNESS_NOREL(IEEE80211_LOCK_OBJ(ic));
+		rc = ieee80211_newstate_cb_locked(vap, nstate, arg);
+		WITNESS_RELOK(IEEE80211_LOCK_OBJ(ic));
+	} else {
+		/* defer the state change to a thread */
+		vap->iv_nstate = nstate;
+		vap->iv_nstate_arg = arg;
+		taskqueue_enqueue(ic->ic_tq, &vap->iv_nstate_task);
+		return (EINPROGRESS);
+	}
 done:
 	return rc;
 }
