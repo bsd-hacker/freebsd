@@ -70,6 +70,7 @@ struct	socket;
 struct	ether_header;
 struct	carp_if;
 struct  ifvlantrunk;
+struct	route;
 #endif
 
 #include <sys/queue.h>		/* get TAILQ macros */
@@ -148,8 +149,7 @@ struct ifnet {
 	int	if_amcount;		/* number of all-multicast requests */
 /* procedure handles */
 	int	(*if_output)		/* output routine (enqueue) */
-		(struct ifnet *, struct mbuf *, struct sockaddr *,
-		     struct rtentry *);
+		(struct ifnet *, struct mbuf *, struct route *);
 	void	(*if_input)		/* input routine (from h/w driver) */
 		(struct ifnet *, struct mbuf *);
 	void	(*if_start)		/* initiate output routine */
@@ -162,6 +162,10 @@ struct ifnet {
 		(void *);
 	int	(*if_resolvemulti)	/* validate/resolve multicast */
 		(struct ifnet *, struct sockaddr **, struct sockaddr *);
+	void	(*if_qflush)		/* flush any queues */
+		(struct ifnet *);
+	int	(*if_transmit)	/* initiate output routine */
+		(struct ifnet *, struct mbuf *);
 	struct	ifaddr	*if_addr;	/* pointer to link-level address */
 	void	*if_llsoftc;		/* link layer softc */
 	int	if_drv_flags;		/* driver-managed status flags */
@@ -188,10 +192,6 @@ struct ifnet {
 	void	*if_pf_kif;
 	void	*if_lagg;		/* lagg glue */
 	void	*if_pspare[8];		/* TOE 3; vimage 3; general use 4 */
-	void	(*if_qflush)		/* flush any queues */
-		(struct ifnet *);
-	int	(*if_transmit)	/* initiate output routine */
-		(struct ifnet *, struct mbuf *);
 	int	if_ispare[2];		/* general use 2 */
 };
 

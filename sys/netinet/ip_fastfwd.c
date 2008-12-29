@@ -548,11 +548,11 @@ passout:
 		 */
 		ip->ip_len = htons(ip->ip_len);
 		ip->ip_off = htons(ip->ip_off);
+		bcopy(dst, &ro.ro_dst, sizeof(*dst));
 		/*
 		 * Send off the packet via outgoing interface
 		 */
-		error = (*ifp->if_output)(ifp, m,
-				(struct sockaddr *)dst, ro.ro_rt);
+		error = (*ifp->if_output)(ifp, m, &ro);
 	} else {
 		/*
 		 * Handle EMSGSIZE with icmp reply needfrag for TCP MTU discovery
@@ -580,12 +580,12 @@ passout:
 			 * Send off the fragments via outgoing interface
 			 */
 			error = 0;
+			bcopy(dst, &ro.ro_dst, sizeof(*dst));
 			do {
 				m0 = m->m_nextpkt;
 				m->m_nextpkt = NULL;
 
-				error = (*ifp->if_output)(ifp, m,
-					(struct sockaddr *)dst, ro.ro_rt);
+				error = (*ifp->if_output)(ifp, m, &ro);
 				if (error)
 					break;
 			} while ((m = m0) != NULL);

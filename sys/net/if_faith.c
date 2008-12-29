@@ -87,8 +87,7 @@ struct faith_softc {
 };
 
 static int faithioctl(struct ifnet *, u_long, caddr_t);
-int faithoutput(struct ifnet *, struct mbuf *, struct sockaddr *,
-	struct rtentry *);
+int faithoutput(struct ifnet *, struct mbuf *, struct route *);
 static void faithrtrequest(int, struct rtentry *, struct rt_addrinfo *);
 #ifdef INET6
 static int faithprefix(struct in6_addr *);
@@ -188,14 +187,15 @@ faith_clone_destroy(ifp)
 }
 
 int
-faithoutput(ifp, m, dst, rt)
+faithoutput(ifp, m, ro)
 	struct ifnet *ifp;
 	struct mbuf *m;
-	struct sockaddr *dst;
-	struct rtentry *rt;
+	struct route *ro;
 {
 	int isr;
 	u_int32_t af;
+	struct sockaddr *dst = &ro->ro_dst;
+	struct rtentry *rt = ro->ro_rt;
 
 	M_ASSERTPKTHDR(m);
 

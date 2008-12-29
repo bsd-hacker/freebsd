@@ -151,8 +151,7 @@ int	pfsync_insert_net_state(struct pfsync_state *, u_int8_t);
 #ifdef PFSYNC_TDB
 void	pfsync_update_net_tdb(struct pfsync_tdb *);
 #endif
-int	pfsyncoutput(struct ifnet *, struct mbuf *, struct sockaddr *,
-	    struct rtentry *);
+int	pfsyncoutput(struct ifnet *, struct mbuf *, struct route *);
 int	pfsyncioctl(struct ifnet *, u_long, caddr_t);
 void	pfsyncstart(struct ifnet *);
 
@@ -1082,8 +1081,7 @@ done:
 }
 
 int
-pfsyncoutput(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
-	struct rtentry *rt)
+pfsyncoutput(struct ifnet *ifp, struct mbuf *m, struct route *ro)
 {
 	m_freem(m);
 	return (0);

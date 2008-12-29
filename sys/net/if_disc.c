@@ -65,8 +65,7 @@ struct disc_softc {
 	struct ifnet *sc_ifp;
 };
 
-static int	discoutput(struct ifnet *, struct mbuf *,
-		    struct sockaddr *, struct rtentry *);
+static int	discoutput(struct ifnet *, struct mbuf *, struct route *);
 static void	discrtrequest(int, struct rtentry *, struct rt_addrinfo *);
 static int	discioctl(struct ifnet *, u_long, caddr_t);
 static int	disc_clone_create(struct if_clone *, int, caddr_t);
@@ -155,13 +154,13 @@ static moduledata_t disc_mod = {
 DECLARE_MODULE(if_disc, disc_mod, SI_SUB_PSEUDO, SI_ORDER_ANY);
 
 static int
-discoutput(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
-    struct rtentry *rt)
+discoutput(struct ifnet *ifp, struct mbuf *m, struct route *ro)
 {
 	u_int32_t af;
+	struct sockaddr *dst = &ro->ro_dst;
+	
 
 	M_ASSERTPKTHDR(m);
-
 	/* BPF writes need to be handled specially. */
 	if (dst->sa_family == AF_UNSPEC) {
 		bcopy(dst->sa_data, &af, sizeof(af));

@@ -177,8 +177,7 @@ static char *stfnames[] = {"stf0", "stf", "6to4", NULL};
 static int stfmodevent(module_t, int, void *);
 static int stf_encapcheck(const struct mbuf *, int, int, void *);
 static struct in6_ifaddr *stf_getsrcifa6(struct ifnet *);
-static int stf_output(struct ifnet *, struct mbuf *, struct sockaddr *,
-	struct rtentry *);
+static int stf_output(struct ifnet *, struct mbuf *, struct route *);
 static int isrfc1918addr(struct in_addr *);
 static int stf_checkaddr4(struct stf_softc *, struct in_addr *,
 	struct ifnet *);
@@ -403,11 +402,10 @@ stf_getsrcifa6(ifp)
 }
 
 static int
-stf_output(ifp, m, dst, rt)
+stf_output(ifp, m, ro)
 	struct ifnet *ifp;
 	struct mbuf *m;
-	struct sockaddr *dst;
-	struct rtentry *rt;
+	struct route *ro;
 {
 	struct stf_softc *sc;
 	struct sockaddr_in6 *dst6;
@@ -415,6 +413,7 @@ stf_output(ifp, m, dst, rt)
 	struct in_addr in4;
 	caddr_t ptr;
 	struct sockaddr_in *dst4;
+	struct sockaddr *dst;
 	u_int8_t tos;
 	struct ip *ip;
 	struct ip6_hdr *ip6;
@@ -431,6 +430,7 @@ stf_output(ifp, m, dst, rt)
 #endif
 
 	sc = ifp->if_softc;
+	dst = &ro->ro_dst;
 	dst6 = (struct sockaddr_in6 *)dst;
 
 	/* just in case */

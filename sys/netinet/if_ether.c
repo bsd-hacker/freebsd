@@ -182,8 +182,9 @@ arprequest(struct ifnet *ifp, struct in_addr *sip, struct in_addr  *tip,
 {
 	struct mbuf *m;
 	struct arphdr *ah;
-	struct sockaddr sa;
-
+	struct sockaddr *sa;
+	struct route ro;
+	
 	if (sip == NULL) {
 		/* XXX don't believe this can happen (or explain why) */
 		/*
@@ -225,10 +226,13 @@ arprequest(struct ifnet *ifp, struct in_addr *sip, struct in_addr  *tip,
 	bcopy((caddr_t)enaddr, (caddr_t)ar_sha(ah), ah->ar_hln);
 	bcopy((caddr_t)sip, (caddr_t)ar_spa(ah), ah->ar_pln);
 	bcopy((caddr_t)tip, (caddr_t)ar_tpa(ah), ah->ar_pln);
-	sa.sa_family = AF_ARP;
-	sa.sa_len = 2;
+	sa = &ro.ro_dst;
+	sa->sa_family = AF_ARP;
+	sa->sa_len = 2;
+	ro.ro_rt = NULL;
+	ro.ro_lle = NULL;
 	m->m_flags |= M_BCAST;
-	(*ifp->if_output)(ifp, m, &sa, (struct rtentry *)0);
+	(*ifp->if_output)(ifp, m, &ro);
 }
 
 /*
@@ -454,7 +458,8 @@ in_arpinput(struct mbuf *m)
 	struct rtentry *rt;
 	struct ifaddr *ifa;
 	struct in_ifaddr *ia;
-	struct sockaddr sa;
+	struct sockaddr *sa;
+	struct route ro;
 	struct in_addr isaddr, itaddr, myaddr;
 	u_int8_t *enaddr = NULL;
 	int op, flags;
@@ -642,12 +647,14 @@ match:
 		la->la_asked = 0;
 		la->la_preempt = V_arp_maxtries;
 		if (la->la_hold != NULL) {
+			ro.ro_rt = NULL;
+			ro.ro_lle = NULL;
 			m0 = la->la_hold;
 			la->la_hold = 0;
-			memcpy(&sa, L3_ADDR(la), sizeof(sa));
+			memcpy(&ro.ro_dst, L3_ADDR(la), sizeof(ro.ro_dst));
 			LLE_WUNLOCK(la);
 			
-			(*ifp->if_output)(ifp, m0, &sa, NULL);
+			(*ifp->if_output)(ifp, m0, &ro);
 			return;
 		}
 	}
@@ -740,10 +747,13 @@ reply:
 	ah->ar_op = htons(ARPOP_REPLY);
 	ah->ar_pro = htons(ETHERTYPE_IP); /* let's be sure! */
 	m->m_len = sizeof(*ah) + (2 * ah->ar_pln) + (2 * ah->ar_hln);   
-	m->m_pkthdr.len = m->m_len;   
-	sa.sa_family = AF_ARP;
-	sa.sa_len = 2;
-	(*ifp->if_output)(ifp, m, &sa, (struct rtentry *)0);
+	m->m_pkthdr.len = m->m_len;
+	sa = &ro.ro_dst;
+	ro.ro_rt = NULL;
+	ro.ro_lle = NULL;
+	sa->sa_family = AF_ARP;
+	sa->sa_len = 2;
+	(*ifp->if_output)(ifp, m, &ro);
 	return;
 
 drop:

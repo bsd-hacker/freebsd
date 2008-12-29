@@ -132,8 +132,7 @@ void	arc_ifdetach(struct ifnet *);
 void	arc_storelladdr(struct ifnet *, u_int8_t);
 int	arc_isphds(u_int8_t);
 void	arc_input(struct ifnet *, struct mbuf *);
-int	arc_output(struct ifnet *, struct mbuf *,
-	    struct sockaddr *, struct rtentry *);
+int	arc_output(struct ifnet *, struct mbuf *, struct route *);
 int	arc_ioctl(struct ifnet *, int, caddr_t);
 
 void		arc_frag_init(struct ifnet *);

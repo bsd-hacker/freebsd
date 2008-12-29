@@ -76,8 +76,7 @@ struct fw_hwaddr firewire_broadcastaddr = {
 };
 
 static int
-firewire_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
-    struct rtentry *rt0)
+firewire_output(struct ifnet *ifp, struct mbuf *m, struct route *ro)
 {
 	struct fw_com *fc = IFP2FWC(ifp);
 	int error, type;
@@ -89,8 +88,10 @@ firewire_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 	struct mbuf *mtail;
 	int unicast, dgl, foff;
 	static int next_dgl;
-	struct llentry *lle;
-
+	struct llentry *lle = ro->ro_lle;
+	struct rtentry *rt0 = ro->ro_rt;
+	struct sockaddr *dst = &ro->ro_dst;
+	
 #ifdef MAC
 	error = mac_ifnet_check_transmit(ifp, m);
 	if (error)

@@ -107,6 +107,7 @@
 #include <net/if_media.h>
 #include <net/bpf.h>
 #include <net/ethernet.h>
+#include <net/route.h>
 
 #include "opt_inet.h"
 #include "opt_inet6.h"
@@ -164,8 +165,7 @@ struct ng_fec_bundle {
 	int			fec_btype;
 	int			(*fec_if_output) (struct ifnet *,
 						  struct mbuf *,
-						  struct sockaddr *,
-						  struct rtentry *);
+	                                          struct route *);
 };
 
 #define FEC_BTYPE_MAC		0x01
@@ -196,8 +196,7 @@ static void	ng_fec_stop(struct ifnet *ifp);
 static int	ng_fec_ifmedia_upd(struct ifnet *ifp);
 static void	ng_fec_ifmedia_sts(struct ifnet *ifp, struct ifmediareq *ifmr);
 static int	ng_fec_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data);
-static int	ng_fec_output(struct ifnet *ifp, struct mbuf *m0,
-			struct sockaddr *dst, struct rtentry *rt0);
+static int	ng_fec_output(struct ifnet *ifp, struct mbuf *m0, struct route *ro);
 static void	ng_fec_tick(void *arg);
 static int	ng_fec_addport(struct ng_fec_private *priv, char *iface);
 static int	ng_fec_delport(struct ng_fec_private *priv, char *iface);
@@ -922,12 +921,12 @@ ng_fec_input(struct ifnet *ifp, struct mbuf *m0)
  */
 
 static int
-ng_fec_output(struct ifnet *ifp, struct mbuf *m,
-		struct sockaddr *dst, struct rtentry *rt0)
+ng_fec_output(struct ifnet *ifp, struct mbuf *m, struct route *ro)
 {
 	const priv_p priv = (priv_p) ifp->if_softc;
 	struct ng_fec_bundle *b;
 	int error;
+	struct sockaddr *dst = &ro->ro_dst;
 
 	/* Check interface flags */
 	if (!((ifp->if_flags & IFF_UP) &&
@@ -977,7 +976,7 @@ ng_fec_output(struct ifnet *ifp, struct mbuf *m,
 	 * for us.
 	 */
 	priv->if_error = 0;
-	error = (*b->fec_if_output)(ifp, m, dst, rt0);
+	error = (*b->fec_if_output)(ifp, m, ro);
 	if (priv->if_error && !error)
 		error = priv->if_error;
 

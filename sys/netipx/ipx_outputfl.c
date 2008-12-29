@@ -153,8 +153,8 @@ gotif:
 		if (ipx_copy_output) {
 			ipx_watch_output(m0, ifp);
 		}
-		error = (*ifp->if_output)(ifp, m0,
-					(struct sockaddr *)dst, ro->ro_rt);
+		bcopy(dst, &ro->ro_dst, sizeof(struct sockaddr));
+		error = (*ifp->if_output)(ifp, m0, ro);
 		goto done;
 	} else {
 		ipxstat.ipxs_mtutoosmall++;
@@ -189,7 +189,8 @@ ipx_output_type20(struct mbuf *m)
 	int i;
 	struct ifnet *ifp;
 	struct sockaddr_ipx dst;
-
+	struct route ro;
+	
 	/*
 	 * We have to get to the 32 bytes after the ipx header also, so
 	 * that we can fill in the network address of the receiving
@@ -268,8 +269,10 @@ ipx_output_type20(struct mbuf *m)
 
 			m1 = m_copym(m, 0, M_COPYALL, M_DONTWAIT);
 			if(m1) {
-				error = (*ifp->if_output)(ifp, m1,
-					(struct sockaddr *)&dst, NULL);
+				bcopy(&dst, &ro.ro_dst, sizeof(struct sockaddr));
+				ro.ro_rt = NULL;
+				ro.ro_lle = NULL;
+				error = (*ifp->if_output)(ifp, m1, &ro);
 				/* XXX ipxstat.ipxs_localout++; */
 			}
 skip_this: ;

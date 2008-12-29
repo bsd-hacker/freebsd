@@ -6244,8 +6244,9 @@ pf_route(struct mbuf **m, struct pf_rule *r, int dir, struct ifnet *oifp,
 				ip->ip_sum = in_cksum(m0, ip->ip_hl << 2);
 			}
 		}
+		bcopy(dst, &ro->ro_dst, sizeof(*dst));
 		PF_UNLOCK();
-		error = (*ifp->if_output)(ifp, m0, sintosa(dst), ro->ro_rt);
+		error = (*ifp->if_output)(ifp, m0, ro);
 		PF_LOCK();
 		goto done;
 	}
@@ -6281,6 +6282,8 @@ pf_route(struct mbuf **m, struct pf_rule *r, int dir, struct ifnet *oifp,
 	}
 
 	if (ntohs(ip->ip_len) <= ifp->if_mtu) {
+		struct route ro;
+		
 		if ((ifp->if_capabilities & IFCAP_CSUM_IPv4) &&
 		    ifp->if_bridge == NULL) {
 			m0->m_pkthdr.csum_flags |= M_IPV4_CSUM_OUT;
@@ -6294,7 +6297,9 @@ pf_route(struct mbuf **m, struct pf_rule *r, int dir, struct ifnet *oifp,
 			V_tcpstat.tcps_outhwcsum++;
 		else if (m0->m_pkthdr.csum_flags & M_UDPV4_CSUM_OUT)
 			V_udpstat.udps_outhwcsum++;
-		error = (*ifp->if_output)(ifp, m0, sintosa(dst), NULL);
+
+		bcopy(dst, &ro->ro_dst, sizeof(*dst));
+		error = (*ifp->if_output)(ifp, m0, ro);
 		goto done;
 	}
 #endif
@@ -6345,9 +6350,11 @@ pf_route(struct mbuf **m, struct pf_rule *r, int dir, struct ifnet *oifp,
 		m0->m_nextpkt = 0;
 #ifdef __FreeBSD__
 		if (error == 0) {
+			bcopy(dst, &ro->ro_dst, sizeof(*dst));
+			ro->ro_lle = NULL;
+			ro->ro_rt = NULL;
 			PF_UNLOCK();
-			error = (*ifp->if_output)(ifp, m0, sintosa(dst),
-			    NULL);
+			error = (*ifp->if_output)(ifp, m0, ro);
 			PF_LOCK();
 		} else
 #else

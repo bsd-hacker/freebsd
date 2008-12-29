@@ -309,7 +309,7 @@ natm_usr_send(struct socket *so, int flags, struct mbuf *m,
 	ATM_PH_VPI(aph) = npcb->npcb_vpi;
 	ATM_PH_SETVCI(aph, npcb->npcb_vci);
 	ATM_PH_FLAGS(aph) = (proto == PROTO_NATMAAL5) ? ATM_PH_AAL5 : 0;
-	error = atm_output(npcb->npcb_ifp, m, NULL, NULL);
+	error = atm_output(npcb->npcb_ifp, m, NULL);
 	NATM_UNLOCK();
 	return (error);
 }

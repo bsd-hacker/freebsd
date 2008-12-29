@@ -73,6 +73,7 @@ __FBSDID("$FreeBSD$");
 #endif
 #include <net/bpf_zerocopy.h>
 #include <net/bpfdesc.h>
+#include <net/route.h>
 
 #include <netinet/in.h>
 #include <netinet/if_ether.h>
@@ -822,7 +823,8 @@ bpfwrite(struct cdev *dev, struct uio *uio, int ioflag)
 	struct mbuf *m, *mc;
 	struct sockaddr dst;
 	int error, hlen;
-
+	struct route ro;
+	
 	error = devfs_get_cdevpriv((void **)&d);
 	if (error != 0)
 		return (error);
@@ -883,7 +885,10 @@ bpfwrite(struct cdev *dev, struct uio *uio, int ioflag)
 	BPFD_UNLOCK(d);
 #endif
 
-	error = (*ifp->if_output)(ifp, m, &dst, NULL);
+	bcopy(&dst, &ro.ro_dst, sizeof(dst));
+	ro.ro_rt = NULL;
+	ro.ro_lle = NULL;
+	error = (*ifp->if_output)(ifp, m, &ro);
 	if (error)
 		d->bd_wdcount++;
 

@@ -1716,6 +1716,7 @@ nd6_output_lle(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
 	struct llentry *ln = lle;
 	int error = 0;
 	int flags = 0;
+	struct route ro;
 
 #ifdef INVARIANTS
 	if (lle != NULL) {
@@ -1912,11 +1913,13 @@ nd6_output_lle(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
 		}
 		return (error);
 	}
+	ro.ro_lle = NULL;
+	ro.ro_rt = rt0;
+	bcopy(dst, &ro.ro_dst, sizeof(struct sockaddr));
 	if ((ifp->if_flags & IFF_LOOPBACK) != 0) {
-		return ((*ifp->if_output)(origifp, m, (struct sockaddr *)dst,
-		    NULL));
+		return ((*ifp->if_output)(origifp, m, &ro));
 	}
-	error = (*ifp->if_output)(ifp, m, (struct sockaddr *)dst, NULL);
+	error = (*ifp->if_output)(ifp, m, &ro);
 	return (error);
 
   bad:
@@ -1944,7 +1947,9 @@ nd6_output_flush(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *chain,
 	struct mbuf *m, *m_head;
 	struct ifnet *outifp;
 	int error = 0;
-
+	struct route ro;
+	
+	bcopy(dst, &ro.ro_dst, sizeof(struct sockaddr));
 	m_head = chain;
 	if ((ifp->if_flags & IFF_LOOPBACK) != 0)
 		outifp = origifp;
@@ -1954,7 +1959,7 @@ nd6_output_flush(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *chain,
 	while (m_head) {
 		m = m_head;
 		m_head = m_head->m_nextpkt;
-		error = (*ifp->if_output)(ifp, m, (struct sockaddr *)dst, rt);			       
+		error = (*ifp->if_output)(ifp, m, &ro);
 	}
 
 	/*

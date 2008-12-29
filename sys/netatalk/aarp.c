@@ -62,6 +62,7 @@
 
 #include <net/if.h>
 #include <net/if_dl.h>
+#include <net/route.h>
 
 #include <netinet/in.h>
 #undef s_net
@@ -170,8 +171,12 @@ aarpwhohas(struct ifnet *ifp, struct sockaddr_at *sat)
 	struct ether_aarp *ea;
 	struct at_ifaddr *aa;
 	struct llc *llc;
-	struct sockaddr	sa;
-
+	struct sockaddr	*sa;
+	struct route ro;
+	sa = &ro.ro_dst;
+	
+	bzero(&ro, sizeof(ro));
+	
 	AARPTAB_UNLOCK_ASSERT();
 	m = m_gethdr(M_DONTWAIT, MT_DATA);
 	if (m == NULL)
@@ -205,7 +210,7 @@ aarpwhohas(struct ifnet *ifp, struct sockaddr_at *sat)
 		return;
 	}
 
-	eh = (struct ether_header *)sa.sa_data;
+	eh = (struct ether_header *)sa->sa_data;
 
 	if (aa->aa_flags & AFA_PHASE2) {
 		bcopy(atmulticastaddr, eh->ether_dhost,
@@ -240,9 +245,9 @@ aarpwhohas(struct ifnet *ifp, struct sockaddr_at *sat)
 	    ntohs(AA_SAT(aa)->sat_addr.s_net), AA_SAT(aa)->sat_addr.s_node);
 #endif /* NETATALKDEBUG */
 
-	sa.sa_len = sizeof(struct sockaddr);
-	sa.sa_family = AF_UNSPEC;
-	ifp->if_output(ifp, m, &sa, NULL);
+	sa->sa_len = sizeof(struct sockaddr);
+	sa->sa_family = AF_UNSPEC;
+	ifp->if_output(ifp, m, &ro);
 }
 
 int
@@ -340,11 +345,16 @@ at_aarpinput(struct ifnet *ifp, struct mbuf *m)
 	struct aarptab *aat;
 	struct ether_header *eh;
 	struct llc *llc;
-	struct sockaddr_at sat;
-	struct sockaddr sa;
+	struct sockaddr_at *sat;
+	struct sockaddr *sa;
 	struct at_addr spa, tpa, ma;
 	int op;
 	u_short net;
+	struct route ro;
+
+	sa = &ro.ro_dst;
+	sat = (struct sockaddr_at *)&ro.ro_dst;
+	bzero(&ro, sizeof(ro));
 
 	ea = mtod(m, struct ether_aarp *);
 
@@ -366,10 +376,10 @@ at_aarpinput(struct ifnet *ifp, struct mbuf *m)
 
 	if (net != 0) {
 		/* Should be ATADDR_ANYNET? */
-		sat.sat_len = sizeof(struct sockaddr_at);
-		sat.sat_family = AF_APPLETALK;
-		sat.sat_addr.s_net = net;
-		if ((aa = at_ifawithnet(&sat)) == NULL) {
+		sat->sat_len = sizeof(struct sockaddr_at);
+		sat->sat_family = AF_APPLETALK;
+		sat->sat_addr.s_net = net;
+		if ((aa = at_ifawithnet(sat)) == NULL) {
 			m_freem(m);
 			return;
 		}
@@ -452,11 +462,10 @@ at_aarpinput(struct ifnet *ifp, struct mbuf *m)
 			struct mbuf *mhold = aat->aat_hold;
 			aat->aat_hold = NULL;
 			AARPTAB_UNLOCK();
-			sat.sat_len = sizeof(struct sockaddr_at);
-			sat.sat_family = AF_APPLETALK;
-			sat.sat_addr = spa;
-			(*ifp->if_output)(ifp, mhold,
-			    (struct sockaddr *)&sat, NULL); /* XXX */
+			sat->sat_len = sizeof(struct sockaddr_at);
+			sat->sat_family = AF_APPLETALK;
+			sat->sat_addr = spa;
+			(*ifp->if_output)(ifp, mhold, &ro);
 		} else
 			AARPTAB_UNLOCK();
 	} else if ((tpa.s_net == ma.s_net) && (tpa.s_node == ma.s_node)
@@ -483,7 +492,8 @@ at_aarpinput(struct ifnet *ifp, struct mbuf *m)
 	bcopy(IF_LLADDR(ifp), (caddr_t)ea->aarp_sha, sizeof(ea->aarp_sha));
 
 	/* XXX */
-	eh = (struct ether_header *)sa.sa_data;
+	
+	eh = (struct ether_header *)&sa->sa_data;
 	bcopy((caddr_t)ea->aarp_tha, (caddr_t)eh->ether_dhost,
 	    sizeof(eh->ether_dhost));
 
@@ -510,9 +520,10 @@ at_aarpinput(struct ifnet *ifp, struct mbuf *m)
 	ea->aarp_spnode = ma.s_node;
 	ea->aarp_op = htons(AARPOP_RESPONSE);
 
-	sa.sa_len = sizeof(struct sockaddr);
-	sa.sa_family = AF_UNSPEC;
-	(*ifp->if_output)(ifp, m, &sa, NULL); /* XXX */
+	sa = &ro.ro_dst;
+	sa->sa_len = sizeof(struct sockaddr);
+	sa->sa_family = AF_UNSPEC;
+	(*ifp->if_output)(ifp, m, &ro);
 	return;
 }
 
@@ -573,8 +584,11 @@ aarpprobe(void *arg)
 	struct ether_aarp *ea;
 	struct at_ifaddr *aa;
 	struct llc *llc;
-	struct sockaddr sa;
+	struct sockaddr *sa;
+	struct route ro;
 
+	sa = &ro.ro_dst;
+	bzero(&ro, sizeof(ro));
 	/*
 	 * We need to check whether the output ethernet type should be phase
 	 * 1 or 2.  We have the interface that we'll be sending the aarp out.
@@ -626,7 +640,7 @@ aarpprobe(void *arg)
 	bcopy(IF_LLADDR(ifp), (caddr_t)ea->aarp_sha,
 	    sizeof(ea->aarp_sha));
 
-	eh = (struct ether_header *)sa.sa_data;
+	eh = (struct ether_header *)&sa->sa_data;
 
 	if (aa->aa_flags & AFA_PHASE2) {
 		bcopy(atmulticastaddr, eh->ether_dhost,
@@ -659,9 +673,9 @@ aarpprobe(void *arg)
 	    ntohs(AA_SAT(aa)->sat_addr.s_net), AA_SAT(aa)->sat_addr.s_node);
 #endif /* NETATALKDEBUG */
 
-	sa.sa_len = sizeof(struct sockaddr);
-	sa.sa_family = AF_UNSPEC;
-	(*ifp->if_output)(ifp, m, &sa, NULL); /* XXX */
+	sa->sa_len = sizeof(struct sockaddr);
+	sa->sa_family = AF_UNSPEC;
+	(*ifp->if_output)(ifp, m, &ro);
 	aa->aa_probcnt--;
 }
 

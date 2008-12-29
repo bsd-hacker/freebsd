@@ -161,8 +161,7 @@ static int ether_ipfw;
  * packet leaves a multiple of 512 bytes of data in remainder.
  */
 int
-ether_output(struct ifnet *ifp, struct mbuf *m,
-	struct sockaddr *dst, struct rtentry *rt0)
+ether_output(struct ifnet *ifp, struct mbuf *m, struct route *ro)
 {
 	short type;
 	int error, hdrcmplt = 0;
@@ -171,7 +170,10 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 	struct ether_header *eh;
 	struct pf_mtag *t;
 	int loop_copy = 1;
+	struct sockaddr *dst = &ro->ro_dst;
+	struct rtentry *rt0 = ro->ro_rt;
 	int hlen;	/* link layer header length */
+
 
 #ifdef MAC
 	error = mac_ifnet_check_transmit(ifp, m);
