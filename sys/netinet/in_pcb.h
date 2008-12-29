@@ -39,8 +39,6 @@
 #include <sys/_mutex.h>
 #include <sys/_rwlock.h>
 
-#include <net/route.h>
-
 #ifdef _KERNEL
 #include <sys/rwlock.h>
 #endif
@@ -48,6 +46,10 @@
 #define	in6pcb		inpcb	/* for KAME src sync over BSD*'s */
 #define	in6p_sp		inp_sp	/* for KAME src sync over BSD*'s */
 struct inpcbpolicy;
+
+struct rtentry;
+struct llentry;
+struct route;
 
 /*
  * struct inpcb is the common protocol control block structure used in most
@@ -169,8 +171,8 @@ struct inpcb {
 	u_char	inp_ip_minttl;		/* (i) minimum TTL or drop */
 	uint32_t inp_ispare1;		/* (x) connection id / queue id */
 	u_int	inp_refcount;		/* (i) refcount */
-	void	*inp_pspare[1];		/* L2 information */
-	struct rtentry *inp_rt;		/* L3 information */
+	struct llentry	*inp_lle;	/* L2 information */
+	struct rtentry	*inp_rt;	/* L3 information */
 
 	/* Local and foreign ports, local and foreign addr. */
 	struct	in_conninfo inp_inc;	/* (i/p) list for PCB's local port */
