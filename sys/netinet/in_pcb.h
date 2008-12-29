@@ -418,6 +418,7 @@ void 	inp_4tuple_get(struct inpcb *inp, uint32_t *laddr, uint16_t *lp,
 #define	INP_FAITH		0x200	/* accept FAITH'ed connections */
 #define	INP_RECVTTL		0x400	/* receive incoming IP TTL */
 #define	INP_DONTFRAG		0x800	/* don't fragment packet */
+#define	INP_LLE_VALID		0x1000	/* L2 entry is set */
 
 #define IN6P_IPV6_V6ONLY	0x008000 /* restrict AF_INET6 socket for v6 */
 

@@ -62,6 +62,7 @@ __FBSDID("$FreeBSD$");
 
 #include <net/if.h>
 #include <net/if_types.h>
+#include <net/if_llatbl.h>
 #include <net/route.h>
 
 #include <netinet/in.h>
@@ -494,6 +495,11 @@ void
 in_pcbrtalloc(struct inpcb *inp, in_addr_t faddr, struct route *sro)
 {
 	struct sockaddr_in *sin;
+	struct sockaddr *dst;
+	struct llentry *la;
+	struct rtentry *rt;
+	struct ifnet *ifp;
+	int flags = LLE_EXCLUSIVE;
 
 	INP_WLOCK_ASSERT(inp);
 	bzero(sro, sizeof(*sro));
@@ -516,11 +522,39 @@ in_pcbrtalloc(struct inpcb *inp, in_addr_t faddr, struct route *sro)
 #endif		
 	}
 
-	if (sro->ro_rt != NULL) {
-		inp->inp_rt = sro->ro_rt;
-		inp->inp_vflag |= INP_RT_VALID;
+	rt = sro->ro_rt;
+	if (rt == NULL)
+		return;
+	
+	inp->inp_rt = rt;
+	inp->inp_vflag |= INP_RT_VALID;
 
+	if (rt->rt_ifp == NULL)
+		return;
+	
+	ifp = rt->rt_ifp;
+	dst = &sro->ro_dst;
+	if (rt->rt_flags & RTF_GATEWAY)
+		dst = rt->rt_gateway;
+		
+	IF_AFDATA_RLOCK(ifp);	
+	la = lla_lookup(LLTABLE(ifp), flags, dst);
+	IF_AFDATA_RUNLOCK(ifp);
+	if ((la == NULL) && 
+	    (ifp->if_flags & (IFF_NOARP | IFF_STATICARP)) == 0) {
+		flags |= (LLE_CREATE | LLE_EXCLUSIVE);
+		IF_AFDATA_WLOCK(ifp);
+		la = lla_lookup(LLTABLE(ifp), flags, dst);
+		IF_AFDATA_WUNLOCK(ifp);	
 	}
+	if (la == NULL)
+		return;
+	
+	LLE_ADDREF(la);
+	LLE_WUNLOCK(la);
+
+	inp->inp_lle = la;
+	inp->inp_flags |= INP_LLE_VALID;
 }
 
 /*
@@ -905,9 +939,14 @@ in_pcbdisconnect(struct inpcb *inp)
 	INP_WLOCK_ASSERT(inp);
 
 	if (inp->inp_vflag & INP_RT_VALID) {
+		inp->inp_vflag &= ~INP_RT_VALID;
 		RTFREE(inp->inp_rt);
 		inp->inp_rt = NULL;
-		inp->inp_vflag &= ~INP_RT_VALID;
+	}
+	if (inp->inp_flags & INP_LLE_VALID) {
+		inp->inp_flags &= ~INP_LLE_VALID;
+		LLE_FREE(inp->inp_lle);
+		inp->inp_lle = NULL;
 	}
 
 	inp->inp_faddr.s_addr = INADDR_ANY;
@@ -948,11 +987,16 @@ in_pcbfree_internal(struct inpcb *inp)
 	INP_WLOCK_ASSERT(inp);
 
 	if (inp->inp_vflag & INP_RT_VALID) {		
+		inp->inp_vflag &= ~INP_RT_VALID;
 		RTFREE(inp->inp_rt);
 		inp->inp_rt = NULL;
-		inp->inp_vflag &= ~INP_RT_VALID;
 	}
-	
+	if (inp->inp_flags & INP_LLE_VALID) {
+		inp->inp_flags &= ~INP_LLE_VALID;
+		LLE_FREE(inp->inp_lle);
+		inp->inp_lle = NULL;
+	}
+
 #ifdef IPSEC
 	if (inp->inp_sp != NULL)
 		ipsec_delete_pcbpolicy(inp);

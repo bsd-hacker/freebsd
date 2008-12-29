@@ -53,6 +53,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/vimage.h>
 
 #include <net/if.h>
+#include <net/if_llatbl.h>
 #include <net/netisr.h>
 #include <net/pfil.h>
 #include <net/route.h>
@@ -121,7 +122,7 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 	int hlen = sizeof (struct ip);
 	int mtu;
 	int len, error = 0;
-	int neednewroute = 0;
+	int neednewroute = 0, neednewlle = 0;
 	struct sockaddr_in *dst = NULL;	/* keep compiler happy */
 	struct in_ifaddr *ia = NULL;
 	int isbroadcast, sw_csum;
@@ -150,7 +151,13 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 				ro->ro_rt = inp->inp_rt;
 			} else
 				neednewroute = 1;
-		} 
+		}
+		if ((ro == &iproute) && (inp->inp_flags & INP_LLE_VALID)) {
+			if (inp->inp_lle->la_flags & LLE_VALID) {
+				ro->ro_lle = inp->inp_lle;
+			} else
+				neednewlle = 1;
+		}
 	}
 
 	if (opt) {
@@ -625,19 +632,44 @@ passout:
 done:
 	if (ro == &iproute && ro->ro_rt != NULL) {
 		int wlocked;		
-
+		struct llentry *la;
+		
+		wlocked = INP_WLOCKED(inp);
 		if (inp == NULL || (inp->inp_vflag & INP_RT_VALID) == 0)
-			RTFREE(ro->ro_rt);		
+			RTFREE(ro->ro_rt);
 		else if (neednewroute && ro->ro_rt != inp->inp_rt) {
-			wlocked = INP_WLOCKED(inp);
 			if (!wlocked && INP_TRY_UPGRADE(inp) == 0)
 				return (error);
 			RTFREE(inp->inp_rt);
 			inp->inp_rt = ro->ro_rt;
-			if (!wlocked)
-				INP_DOWNGRADE(inp);
+
 		}
+		if (neednewlle) {
+			if (!wlocked && INP_TRY_UPGRADE(inp) == 0)
+				return (error);
+			IF_AFDATA_RLOCK(ifp);	
+			la = lla_lookup(LLTABLE(ifp), LLE_EXCLUSIVE,
+			    (struct sockaddr *)dst);
+			IF_AFDATA_RUNLOCK(ifp);
+			if ((la == NULL) && 
+			    (ifp->if_flags & (IFF_NOARP | IFF_STATICARP)) == 0) {
+				IF_AFDATA_WLOCK(ifp);
+				la = lla_lookup(LLTABLE(ifp),
+				    (LLE_CREATE | LLE_EXCLUSIVE),
+				    (struct sockaddr *)dst);
+				IF_AFDATA_WUNLOCK(ifp);	
+			}
+			if (la != NULL) {
+				LLE_FREE(inp->inp_lle);
+				LLE_ADDREF(la);
+				LLE_WUNLOCK(la);
+				inp->inp_lle = la;
+			}
+		}
+		if (!wlocked)
+			INP_DOWNGRADE(inp);
 	}
+	
 	return (error);
 bad:
 	m_freem(m);
