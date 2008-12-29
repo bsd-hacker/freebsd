@@ -164,9 +164,9 @@ int
 ether_output(struct ifnet *ifp, struct mbuf *m, struct route *ro)
 {
 	short type;
-	int error, hdrcmplt = 0;
+	int error = 0, hdrcmplt = 0;
 	u_char esrc[ETHER_ADDR_LEN], edst[ETHER_ADDR_LEN];
-	struct llentry *lle = NULL;
+	struct llentry *lle = ro->ro_lle;
 	struct ether_header *eh;
 	struct pf_mtag *t;
 	int loop_copy = 1;
@@ -192,7 +192,10 @@ ether_output(struct ifnet *ifp, struct mbuf *m, struct route *ro)
 	switch (dst->sa_family) {
 #ifdef INET
 	case AF_INET:
-		error = arpresolve(ifp, rt0, m, dst, edst, &lle);
+		if (lle != NULL && (lle->la_flags & LLE_VALID))
+			memcpy(edst, &lle->ll_addr.mac16, ETHER_ADDR_LEN);
+		else
+			error = arpresolve(ifp, rt0, m, dst, edst, &lle);
 		if (error)
 			return (error == EWOULDBLOCK ? 0 : error);
 		type = htons(ETHERTYPE_IP);
@@ -227,7 +230,10 @@ ether_output(struct ifnet *ifp, struct mbuf *m, struct route *ro)
 #endif
 #ifdef INET6
 	case AF_INET6:
-		error = nd6_storelladdr(ifp, m, dst, (u_char *)edst, &lle);
+		if (lle != NULL && (lle->la_flags & LLE_VALID))
+			memcpy(edst, &lle->ll_addr.mac16, ETHER_ADDR_LEN);
+		else
+			error = nd6_storelladdr(ifp, m, dst, (u_char *)edst, &lle);
 		if (error)
 			return error;
 		type = htons(ETHERTYPE_IPV6);
