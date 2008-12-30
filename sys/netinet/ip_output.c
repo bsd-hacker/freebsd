@@ -659,12 +659,13 @@ done:
 				    (struct sockaddr *)dst);
 				IF_AFDATA_WUNLOCK(ifp);	
 			}
-			if (la != NULL) {
+			if (la != NULL && (inp->inp_lle != la)) {
 				LLE_FREE(inp->inp_lle);
 				LLE_ADDREF(la);
 				LLE_WUNLOCK(la);
 				inp->inp_lle = la;
-			}
+			} else if (la != NULL)
+				LLE_WUNLOCK(la);
 		}
 		if (!wlocked)
 			INP_DOWNGRADE(inp);
