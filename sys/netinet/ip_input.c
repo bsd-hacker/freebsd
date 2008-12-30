@@ -1350,6 +1350,7 @@ ip_forward(struct mbuf *m, int srcrt)
 	struct in_addr dest;
 	struct route ro;
 	int error, type = 0, code = 0, mtu = 0;
+	int flerror;
 
 	if (m->m_flags & (M_BCAST|M_MCAST) || in_canforward(ip->ip_dst) == 0) {
 		V_ipstat.ips_cantforward++;
@@ -1367,8 +1368,12 @@ ip_forward(struct mbuf *m, int srcrt)
 #ifdef IPSTEALTH
 	}
 #endif
+	flerror = flowtable_lookup(ipv4_forward_ft, m, &ro);
+	if (flerror == 0)
+		ia = ifatoia(ro.ro_rt->rt_ifa);
+	else
+		ia = ip_rtaddr(ip->ip_dst, M_GETFIB(m));
 
-	ia = ip_rtaddr(ip->ip_dst, M_GETFIB(m));
 	if (!srcrt && ia == NULL) {
 		icmp_error(m, ICMP_UNREACH, ICMP_UNREACH_HOST, 0, 0);
 		return;
@@ -1428,13 +1433,16 @@ ip_forward(struct mbuf *m, int srcrt)
 		struct sockaddr_in *sin;
 		struct rtentry *rt;
 
-		bzero(&ro, sizeof(ro));
-		sin = (struct sockaddr_in *)&ro.ro_dst;
-		sin->sin_family = AF_INET;
-		sin->sin_len = sizeof(*sin);
-		sin->sin_addr = ip->ip_dst;
-		in_rtalloc_ign(&ro, 0, M_GETFIB(m));
-
+		if (flerror != 0) {
+			
+			bzero(&ro, sizeof(ro));
+			sin = (struct sockaddr_in *)&ro.ro_dst;
+			sin->sin_family = AF_INET;
+			sin->sin_len = sizeof(*sin);
+			sin->sin_addr = ip->ip_dst;
+			in_rtalloc_ign(&ro, 0, M_GETFIB(m));
+		}
+		
 		rt = ro.ro_rt;
 
 		if (rt && (rt->rt_flags & (RTF_DYNAMIC|RTF_MODIFIED)) == 0 &&
@@ -1453,7 +1461,7 @@ ip_forward(struct mbuf *m, int srcrt)
 				code = ICMP_REDIRECT_HOST;
 			}
 		}
-		if (rt)
+		if (rt && (flerror != 0))
 			RTFREE(rt);
 	}
 
@@ -1461,13 +1469,14 @@ ip_forward(struct mbuf *m, int srcrt)
 	 * Try to cache the route MTU from ip_output so we can consider it for
 	 * the ICMP_UNREACH_NEEDFRAG "Next-Hop MTU" field described in RFC1191.
 	 */
-	bzero(&ro, sizeof(ro));
+	if (flerror != 0)
+		bzero(&ro, sizeof(ro));
 
 	error = ip_output(m, NULL, &ro, IP_FORWARDING, NULL, NULL);
 
 	if (error == EMSGSIZE && ro.ro_rt)
 		mtu = ro.ro_rt->rt_rmx.rmx_mtu;
-	if (ro.ro_rt)
+	if (ro.ro_rt && flerror != 0)
 		RTFREE(ro.ro_rt);
 
 	if (error)
