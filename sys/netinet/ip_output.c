@@ -635,18 +635,18 @@ done:
 		struct llentry *la;
 		
 		wlocked = INP_WLOCKED(inp);
+		if ((neednewlle || neednewroute) &&
+		    !wlocked && INP_TRY_UPGRADE(inp) == 0)
+			return (error);
+		
 		if (inp == NULL || (inp->inp_vflag & INP_RT_VALID) == 0)
 			RTFREE(ro->ro_rt);
 		else if (neednewroute && ro->ro_rt != inp->inp_rt) {
-			if (!wlocked && INP_TRY_UPGRADE(inp) == 0)
-				return (error);
 			RTFREE(inp->inp_rt);
 			inp->inp_rt = ro->ro_rt;
 
 		}
 		if (neednewlle) {
-			if (!wlocked && INP_TRY_UPGRADE(inp) == 0)
-				return (error);
 			IF_AFDATA_RLOCK(ifp);	
 			la = lla_lookup(LLTABLE(ifp), LLE_EXCLUSIVE,
 			    (struct sockaddr *)dst);
@@ -667,7 +667,7 @@ done:
 			} else if (la != NULL)
 				LLE_WUNLOCK(la);
 		}
-		if (!wlocked)
+		if ((neednewlle || neednewroute) && !wlocked)
 			INP_DOWNGRADE(inp);
 	}
 	
