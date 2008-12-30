@@ -36,6 +36,7 @@
 #ifndef _EM_H_DEFINED_
 #define _EM_H_DEFINED_
 
+#define IFNET_MULTIQUEUE
 /* Tunables */
 
 /*
@@ -301,6 +302,9 @@ struct em_dma_alloc {
 /* Our adapter structure */
 struct adapter {
 	struct ifnet	*ifp;
+#ifdef IFNET_MULTIQUEUE
+	struct buf_ring	*br;
+#endif
 	struct e1000_hw	hw;
 
 	/* FreeBSD operating-system-specific structures. */
@@ -482,6 +486,7 @@ typedef struct _DESCRIPTOR_PAIR
 #define	EM_RX_LOCK_DESTROY(_sc)		mtx_destroy(&(_sc)->rx_mtx)
 #define	EM_CORE_LOCK(_sc)		mtx_lock(&(_sc)->core_mtx)
 #define	EM_TX_LOCK(_sc)			mtx_lock(&(_sc)->tx_mtx)
+#define	EM_TX_TRYLOCK(_sc)		mtx_trylock(&(_sc)->tx_mtx)
 #define	EM_RX_LOCK(_sc)			mtx_lock(&(_sc)->rx_mtx)
 #define	EM_CORE_UNLOCK(_sc)		mtx_unlock(&(_sc)->core_mtx)
 #define	EM_TX_UNLOCK(_sc)		mtx_unlock(&(_sc)->tx_mtx)
