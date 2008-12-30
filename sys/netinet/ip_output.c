@@ -631,14 +631,15 @@ passout:
 
 done:
 	if (ro == &iproute && ro->ro_rt != NULL) {
-		int wlocked;		
+		int wlocked = 0;		
 		struct llentry *la;
 		
-		wlocked = INP_WLOCKED(inp);
-		if ((neednewlle || neednewroute) &&
-		    !wlocked && INP_TRY_UPGRADE(inp) == 0)
-			return (error);
-		
+		if (neednewlle || neednewroute) {
+			wlocked = INP_WLOCKED(inp);
+			if (!wlocked && INP_TRY_UPGRADE(inp) == 0)
+				return (error);
+		}
+
 		if (inp == NULL || (inp->inp_vflag & INP_RT_VALID) == 0)
 			RTFREE(ro->ro_rt);
 		else if (neednewroute && ro->ro_rt != inp->inp_rt) {
