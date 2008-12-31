@@ -163,7 +163,7 @@ static int ether_ipfw;
 int
 ether_output(struct ifnet *ifp, struct mbuf *m, struct route *ro)
 {
-	short type;
+	short type = 0;
 	int error = 0, hdrcmplt = 0;
 	u_char esrc[ETHER_ADDR_LEN], edst[ETHER_ADDR_LEN];
 	struct llentry *lle = ro->ro_lle;
@@ -174,13 +174,11 @@ ether_output(struct ifnet *ifp, struct mbuf *m, struct route *ro)
 	struct rtentry *rt0 = ro->ro_rt;
 	int hlen;	/* link layer header length */
 
-
 #ifdef MAC
 	error = mac_ifnet_check_transmit(ifp, m);
 	if (error)
 		senderr(error);
 #endif
-
 	M_PROFILE(m);
 	if (ifp->if_flags & IFF_MONITOR)
 		senderr(ENETDOWN);
@@ -189,6 +187,50 @@ ether_output(struct ifnet *ifp, struct mbuf *m, struct route *ro)
 		senderr(ENETDOWN);
 
 	hlen = ETHER_HDR_LEN;
+
+	/*
+	 * First try to see if we can shortcut most of ether_output
+	 * 1) do we have a valid lle?
+	 * 2) is this not a bridge?
+	 * 3) is carp disabled?
+	 * 4) is netgraph disabled for this device?
+	 * 5) is this not loopback?
+	 */
+	t = pf_find_mtag(m);
+	if (lle != NULL && (lle->la_flags & LLE_VALID) &&
+	    ifp->if_bridge == NULL && ifp->if_carp == NULL &&
+	    IFP2AC(ifp)->ac_netgraph == NULL &&
+	    (t == NULL || t->routed)) {
+
+		switch (dst->sa_family) {
+		case AF_INET:
+			type = htons(ETHERTYPE_IP);
+			break;
+		case AF_INET6:
+			type = htons(ETHERTYPE_IPV6);
+			break;
+		}
+		if (type != 0) {
+			M_PREPEND(m, ETHER_HDR_LEN, M_DONTWAIT);
+			if (m == NULL)
+				senderr(ENOBUFS);
+			eh = mtod(m, struct ether_header *);
+			(void)memcpy(&eh->ether_type, &type,
+			    sizeof(eh->ether_type));
+			(void)memcpy(eh->ether_dhost, &lle->ll_addr.mac16,
+			    sizeof (edst));
+			(void)memcpy(eh->ether_shost, IF_LLADDR(ifp),
+			    sizeof(eh->ether_shost));
+
+		}
+		/* Continue with link-layer output */
+		return ether_output_frame(ifp, m);
+	}
+
+	/*
+	 * The shortcut failed, use default path
+	 *
+	 */
 	switch (dst->sa_family) {
 #ifdef INET
 	case AF_INET:
@@ -340,7 +382,7 @@ ether_output(struct ifnet *ifp, struct mbuf *m, struct route *ro)
 	 * reasons and compatibility with the original behavior.
 	 */
 	if ((ifp->if_flags & IFF_SIMPLEX) && loop_copy &&
-	    ((t = pf_find_mtag(m)) == NULL || !t->routed)) {
+	    (t == NULL || !t->routed)) {
 		int csum_flags = 0;
 
 		if (m->m_pkthdr.csum_flags & CSUM_IP)
