@@ -1348,6 +1348,7 @@ ip_forward(struct mbuf *m, int srcrt)
 	struct in_ifaddr *ia = NULL;
 	struct mbuf *mcopy;
 	struct in_addr dest;
+	struct sockaddr_in *sin;
 	struct route ro;
 	int error, type = 0, code = 0, mtu = 0;
 	int flerror;
@@ -1368,6 +1369,12 @@ ip_forward(struct mbuf *m, int srcrt)
 #ifdef IPSTEALTH
 	}
 #endif
+	bzero(&ro, sizeof(ro));
+	sin = (struct sockaddr_in *)&ro.ro_dst;
+	sin->sin_family = AF_INET;
+	sin->sin_len = sizeof(*sin);
+	sin->sin_addr = ip->ip_dst;
+	
 	flerror = flowtable_lookup(ipv4_forward_ft, m, &ro);
 	if (flerror == 0)
 		ia = ifatoia(ro.ro_rt->rt_ifa);
@@ -1430,22 +1437,15 @@ ip_forward(struct mbuf *m, int srcrt)
 	 */
 	dest.s_addr = 0;
 	if (!srcrt && V_ipsendredirects && ia->ia_ifp == m->m_pkthdr.rcvif) {
-		struct sockaddr_in *sin;
 		struct rtentry *rt;
 
-		if (flerror != 0) {
-			
-			bzero(&ro, sizeof(ro));
-			sin = (struct sockaddr_in *)&ro.ro_dst;
-			sin->sin_family = AF_INET;
-			sin->sin_len = sizeof(*sin);
-			sin->sin_addr = ip->ip_dst;
+		if (flerror != 0)
 			in_rtalloc_ign(&ro, 0, M_GETFIB(m));
-		}
-		
+
 		rt = ro.ro_rt;
 
-		if (rt && (rt->rt_flags & (RTF_DYNAMIC|RTF_MODIFIED)) == 0 &&
+		if (rt != NULL &&
+		    (rt->rt_flags & (RTF_DYNAMIC|RTF_MODIFIED)) == 0 &&
 		    satosin(rt_key(rt))->sin_addr.s_addr != 0) {
 #define	RTA(rt)	((struct in_ifaddr *)(rt->rt_ifa))
 			u_long src = ntohl(ip->ip_src.s_addr);
