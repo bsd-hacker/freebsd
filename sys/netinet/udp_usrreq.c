@@ -962,6 +962,10 @@ udp_output(struct inpcb *inp, struct mbuf *m, struct sockaddr *addr,
 		    sin->sin_addr.s_addr == INADDR_ANY ||
 		    sin->sin_addr.s_addr == INADDR_BROADCAST) {
 			INP_INFO_LOCK_ASSERT(&V_udbinfo);
+
+			if (inp->inp_laddr.s_addr != INADDR_ANY)
+				laddr.s_addr = inp->inp_laddr.s_addr;
+			lport = inp->inp_lport;
 			error = in_pcbconnect_setup(inp, addr, &laddr.s_addr,
 			    &lport, &faddr.s_addr, &fport, NULL,
 			    td->td_ucred);
