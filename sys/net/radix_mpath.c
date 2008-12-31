@@ -81,11 +81,15 @@ u_int32_t
 rn_mpath_count(struct radix_node *rn)
 {
 	u_int32_t i;
-
+	struct rtentry *rt;
+	
 	i = 1;
-	while ((rn = rn_mpath_next(rn)) != NULL)
-		i++;
-	return i;
+	while ((rn = rn_mpath_next(rn)) != NULL) {
+		rt = (struct rtentry *)rn;
+		if ((rt->rt_flags & RTF_SHUTDOWN) == 0)
+			i++;
+	}
+	return (i);
 }
 
 struct rtentry *
@@ -260,7 +264,8 @@ rtalloc_mpath_fib(struct route *ro, u_int32_t hash, u_int fibnum)
 {
 	struct radix_node *rn0, *rn;
 	u_int32_t n;
-
+	struct rtentry *rt;
+	
 	/*
 	 * XXX we don't attempt to lookup cached route again; what should
 	 * be done for sendto(3) case?
@@ -285,6 +290,11 @@ rtalloc_mpath_fib(struct route *ro, u_int32_t hash, u_int fibnum)
 	hash += hashjitter;
 	hash %= n;
 	while (hash-- > 0 && rn) {
+		rt = (struct rtentry *)rn;
+		if (rt->rt_flags & RTF_SHUTDOWN) {
+			hash++;
+			continue;
+		}
 		/* stay within the multipath routes */
 		if (rn->rn_dupedkey && rn->rn_mask != rn->rn_dupedkey->rn_mask)
 			break;
