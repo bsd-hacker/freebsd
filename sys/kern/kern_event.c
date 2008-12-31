@@ -86,6 +86,10 @@ MTX_SYSINIT(kq_global, &kq_global, "kqueue order", MTX_DEF);
 
 TASKQUEUE_DEFINE_THREAD(kqueue);
 
+static void	knlist_mtx_lock(void *arg);
+static void	knlist_mtx_unlock(void *arg);
+static int	knlist_mtx_locked(void *arg);
+
 static int	kevent_copyout(void *arg, struct kevent *kevp, int count);
 static int	kevent_copyin(void *arg, struct kevent *kevp, int count);
 static int	kqueue_register(struct kqueue *kq, struct kevent *kev,
@@ -193,8 +197,14 @@ SYSCTL_INT(_kern, OID_AUTO, kq_calloutmax, CTLFLAG_RW,
 	mtx_assert(&(kq)->kq_lock, MA_NOTOWNED);			\
 } while (0)
 #define KN_LIST_LOCK(kn) do {						\
-	if (kn->kn_knlist != NULL)					\
-		kn->kn_knlist->kl_lock(kn->kn_knlist->kl_lockarg);	\
+		struct knlist *list = kn->kn_knlist;			\
+		                                                        \
+		if (list != NULL){					\
+			if (list->kl_lock != knlist_mtx_lock)		\
+				list->kl_lock(list->kl_lockarg);	\
+			else						\
+				mtx_lock((struct mtx *)list->kl_lockarg); \
+		}							\
 } while (0)
 #define KN_LIST_UNLOCK(kn) do {						\
 	if (kn->kn_knlist != NULL) 					\
@@ -424,8 +434,12 @@ knote_fork(struct knlist *list, int pid)
 
 	if (list == NULL)
 		return;
-	list->kl_lock(list->kl_lockarg);
-
+	
+	if (list->kl_lock != knlist_mtx_lock)
+		list->kl_lock(list->kl_lockarg);
+	else
+		mtx_lock((struct mtx *)list->kl_lockarg);
+	
 	SLIST_FOREACH(kn, &list->kl_list, kn_selnext) {
 		if ((kn->kn_status & KN_INFLUX) == KN_INFLUX)
 			continue;
@@ -476,7 +490,10 @@ knote_fork(struct knlist *list, int pid)
 		KQ_LOCK(kq);
 		kn->kn_status &= ~KN_INFLUX;
 		KQ_UNLOCK_FLUX(kq);
-		list->kl_lock(list->kl_lockarg);
+		if (list->kl_lock != knlist_mtx_lock)
+			list->kl_lock(list->kl_lockarg);
+		else
+			mtx_lock((struct mtx *)list->kl_lockarg);
 	}
 	list->kl_unlock(list->kl_lockarg);
 }
@@ -1618,8 +1635,12 @@ knote(struct knlist *list, long hint, int islocked)
 
 	KNL_ASSERT_LOCK(list, islocked);
 
-	if (!islocked) 
-		list->kl_lock(list->kl_lockarg); 
+	if (!islocked){
+		if (list->kl_lock != knlist_mtx_lock)
+			list->kl_lock(list->kl_lockarg);
+		else
+			mtx_lock((struct mtx *)list->kl_lockarg);
+	}
 
 	/*
 	 * If we unlock the list lock (and set KN_INFLUX), we can eliminate
@@ -1657,8 +1678,14 @@ knlist_add(struct knlist *knl, struct knote *kn, int islocked)
 	KQ_NOTOWNED(kn->kn_kq);
 	KASSERT((kn->kn_status & (KN_INFLUX|KN_DETACHED)) ==
 	    (KN_INFLUX|KN_DETACHED), ("knote not KN_INFLUX and KN_DETACHED"));
-	if (!islocked)
-		knl->kl_lock(knl->kl_lockarg);
+	if (!islocked) {
+		struct knlist *list = kn->kn_knlist;
+
+		if (list->kl_lock != knlist_mtx_lock)
+			list->kl_lock(list->kl_lockarg);
+		else	
+			mtx_lock((struct mtx *)list->kl_lockarg);
+	}
 	SLIST_INSERT_HEAD(&knl->kl_list, kn, kn_selnext);
 	if (!islocked)
 		knl->kl_unlock(knl->kl_lockarg);
@@ -1677,8 +1704,15 @@ knlist_remove_kq(struct knlist *knl, struct knote *kn, int knlislocked, int kqis
 	if (!kqislocked)
 		KASSERT((kn->kn_status & (KN_INFLUX|KN_DETACHED)) == KN_INFLUX,
     ("knlist_remove called w/o knote being KN_INFLUX or already removed"));
-	if (!knlislocked)
-		knl->kl_lock(knl->kl_lockarg);
+	if (!knlislocked) {
+		struct knlist *list = kn->kn_knlist;
+
+		if (list->kl_lock != knlist_mtx_lock)
+			list->kl_lock(list->kl_lockarg);
+		else	
+			mtx_lock((struct mtx *)list->kl_lockarg);
+	}
+	
 	SLIST_REMOVE(&knl->kl_list, kn, knote, kn_selnext);
 	kn->kn_knlist = NULL;
 	if (!knlislocked)
@@ -1721,9 +1755,6 @@ knlist_empty(struct knlist *knl)
 static struct mtx	knlist_lock;
 MTX_SYSINIT(knlist_lock, &knlist_lock, "knlist lock for lockless objects",
 	MTX_DEF);
-static void knlist_mtx_lock(void *arg);
-static void knlist_mtx_unlock(void *arg);
-static int knlist_mtx_locked(void *arg);
 
 static void
 knlist_mtx_lock(void *arg)
@@ -1801,7 +1832,11 @@ knlist_cleardel(struct knlist *knl, struct thread *td, int islocked, int killkn)
 	else {
 		KNL_ASSERT_UNLOCKED(knl);
 again:		/* need to reacquire lock since we have dropped it */
-		knl->kl_lock(knl->kl_lockarg);
+
+		if (knl->kl_lock != knlist_mtx_lock)
+			knl->kl_lock(knl->kl_lockarg);
+		else
+			mtx_lock((struct mtx *)knl->kl_lockarg);
 	}
 
 	SLIST_FOREACH_SAFE(kn, &knl->kl_list, kn_selnext, kn2) {
