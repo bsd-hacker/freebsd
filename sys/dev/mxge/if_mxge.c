@@ -2482,6 +2482,7 @@ mxge_rx_done_big(struct mxge_slice_state *ss, uint32_t len, uint32_t csum)
 
 	m->m_pkthdr.rcvif = ifp;
 	m->m_pkthdr.flowid = ss - sc->ss;
+	m->m_flags |= M_FLOWID;
 	m->m_len = m->m_pkthdr.len = len;
 	ss->ipackets++;
 	eh = mtod(m, struct ether_header *);
@@ -2543,6 +2544,7 @@ mxge_rx_done_small(struct mxge_slice_state *ss, uint32_t len, uint32_t csum)
 
 	m->m_pkthdr.rcvif = ifp;
 	m->m_pkthdr.flowid = ss - sc->ss;
+	m->m_flags |= M_FLOWID;
 	m->m_len = m->m_pkthdr.len = len;
 	ss->ipackets++;
 	eh = mtod(m, struct ether_header *);
