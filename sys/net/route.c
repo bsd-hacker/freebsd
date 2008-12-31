@@ -812,7 +812,8 @@ rn_mpath_delete(int req, struct rt_addrinfo *info,
 	 * if we got multipath routes, we require users to specify
 	 * a matching RTAX_GATEWAY.
 	 */
-	struct rtentry *rto = NULL;
+	struct rtentry *rt, *rto = NULL;
+	register struct radix_node *rn;
 	int error = 0;
 
 	rn = rnh->rnh_matchaddr(dst, rnh);
@@ -820,7 +821,7 @@ rn_mpath_delete(int req, struct rt_addrinfo *info,
 		return (ESRCH);
 	rto = rt = RNTORT(rn);
 	rt = rt_mpath_matchgate(rt, gateway);
-	if (!rt)
+	if (rt == NULL)
 		return (ESRCH);
 	/*
 	 * this is the first entry in the chain
