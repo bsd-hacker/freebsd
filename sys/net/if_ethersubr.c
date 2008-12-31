@@ -197,6 +197,7 @@ ether_output(struct ifnet *ifp, struct mbuf *m, struct route *ro)
 	 * 5) is this not loopback?
 	 */
 	t = pf_find_mtag(m);
+#if 0
 	if (lle != NULL && (lle->la_flags & LLE_VALID) &&
 	    ifp->if_bridge == NULL && ifp->if_carp == NULL &&
 	    IFP2AC(ifp)->ac_netgraph == NULL &&
@@ -226,7 +227,8 @@ ether_output(struct ifnet *ifp, struct mbuf *m, struct route *ro)
 		/* Continue with link-layer output */
 		return ether_output_frame(ifp, m);
 	}
-
+#endif
+	
 	/*
 	 * The shortcut failed, use default path
 	 *
