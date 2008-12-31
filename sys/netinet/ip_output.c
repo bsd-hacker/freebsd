@@ -117,10 +117,6 @@ ip_output_fast(struct mbuf *m, struct route *ro, int flags, int hlen,
 	ifp = ro->ro_rt->rt_ifp;
 	ro->ro_rt->rt_rmx.rmx_pksent++;
 
-	if (ro->ro_rt->rt_flags & RTF_GATEWAY)
-		bcopy(ro->ro_rt->rt_gateway, &ro->ro_dst,
-		    sizeof(struct sockaddr));
-
 	ip = mtod(m, struct ip *);
 	/*
 	 * If the source address is not specified yet, use the address
@@ -189,7 +185,9 @@ ip_output_fast(struct mbuf *m, struct route *ro, int flags, int hlen,
 
 	return ((*ifp->if_output)(ifp, m, ro));
 }
-	
+
+#define	IP_RT_SET 	0x1
+#define	IP_LLE_SET	0x2
 /*
  * IP output.  The packet in mbuf chain m contains a skeletal IP
  * header (with len, off, ttl, proto, tos, src, dst).
@@ -209,11 +207,12 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 	struct mbuf *m0;
 	struct in_ifaddr *ia = NULL;
 	int hlen = sizeof (struct ip);
-	int mtu;
+	int mtu, flerror = ENOENT;
 	int len, error = 0;
 	int neednewroute = 0, neednewlle = 0, nortfree = 0;
 	struct sockaddr_in *dst = NULL;	/* keep compiler happy */
 	int isbroadcast, sw_csum;
+	int stateflags = 0;
 	struct route iproute;
 	struct in_addr odst;
 #ifdef IPFIREWALL_FORWARD
@@ -223,7 +222,8 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 
 	if (ro == NULL) {
 		ro = &iproute;
-		bzero(ro, sizeof (*ro));
+		ro->ro_rt = NULL;
+		ro->ro_lle = NULL;
 	}
 
 	if (inp != NULL) {
@@ -261,6 +261,85 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 
 	dst = (struct sockaddr_in *)&ro->ro_dst;
 again:
+#ifdef IPFIREWALL_FORWARD
+	if (ro->ro_rt == NULL && fwd_tag == NULL) {
+#else
+	if (ro->ro_rt == NULL) {
+#endif
+		bzero(dst, sizeof(*dst));
+		dst->sin_family = AF_INET;
+		dst->sin_len = sizeof(*dst);
+		dst->sin_addr = ip->ip_dst;
+	}
+	if (ro != &iproute) {
+		if (ro->ro_rt != NULL && (ro->ro_rt->rt_flags & RTF_UP))
+			stateflags |= IP_RT_SET;
+		if (ro->ro_lle != NULL && (ro->ro_lle->la_flags & LLE_VALID))
+			stateflags |= IP_LLE_SET;
+		goto skipcachecheck;
+	}
+	
+	if (inp != NULL) {
+		if (inp->inp_flags & (INP_HW_FLOWID|INP_SW_FLOWID)) {
+			m->m_pkthdr.flowid = inp->inp_flowid;
+			m->m_flags |= M_FLOWID;
+		}
+		if (inp->inp_vflag & INP_RT_VALID) {
+			if (inp->inp_rt->rt_flags & RTF_UP) {
+				ro->ro_rt = inp->inp_rt;
+				stateflags |= IP_RT_SET;
+			} else
+				neednewroute = 1;
+		}
+		if (inp->inp_flags & INP_LLE_VALID) {
+			if (inp->inp_lle->la_flags & LLE_VALID) {
+				ro->ro_lle = inp->inp_lle;
+				stateflags |= IP_LLE_SET;
+			} else
+				neednewlle = 1;
+		}
+	}
+	if ((stateflags & (IP_LLE_SET|IP_RT_SET)) != (IP_LLE_SET|IP_RT_SET)) {
+		if ((flerror = flowtable_lookup(ipv4_ft, m, ro)) == 0) {
+			nortfree = 1;
+			stateflags |= IP_RT_SET;
+			if (ro->ro_lle != NULL)
+				stateflags |= IP_LLE_SET;
+		}
+	}
+skipcachecheck: 
+
+	/*
+	 * Check if we can take a huge shortcut
+	 */
+	if ((stateflags & (IP_LLE_SET|IP_RT_SET)) == (IP_LLE_SET|IP_RT_SET) 
+	    && (flags & (IP_SENDONES|IP_ROUTETOIF)) == 0 
+	    && !PFIL_HOOKED(&inet_pfil_hook) 
+	    && !IN_MULTICAST(ntohl(ip->ip_dst.s_addr))) {
+		ifp = ro->ro_rt->rt_ifp;
+
+		dst = (struct sockaddr_in *)ro->ro_rt->rt_gateway;
+		if (ro->ro_rt->rt_flags & RTF_GATEWAY)
+			bcopy(ro->ro_rt->rt_gateway, &ro->ro_dst,
+			    sizeof(struct sockaddr));
+
+		if (ro->ro_rt->rt_flags & RTF_HOST) {
+			if (ro->ro_rt->rt_rmx.rmx_mtu > ifp->if_mtu)
+				ro->ro_rt->rt_rmx.rmx_mtu = ifp->if_mtu;
+			mtu = ro->ro_rt->rt_rmx.rmx_mtu;
+			isbroadcast = (ro->ro_rt->rt_flags & RTF_BROADCAST);
+		} else {
+			isbroadcast = in_broadcast(dst->sin_addr, ifp);
+			mtu = ifp->if_mtu;
+		}
+		
+		if (!isbroadcast && (ip->ip_len <= mtu ||
+		    (m->m_pkthdr.csum_flags & ifp->if_hwassist & CSUM_TSO) != 0
+		    || ((ip->ip_off & IP_DF) == 0
+			&& (ifp->if_hwassist & CSUM_FRAGMENT))))
+			return (ip_output_fast(m, ro, flags, hlen, inp));
+	}
+
 	/*
 	 * If there is a cached route,
 	 * check that it is to the same destination
@@ -276,76 +355,10 @@ again:
 		 * lookup in ip_forward ... perhaps pass in a new flag
 		 *
 		 */
-		RTFREE(ro->ro_rt);
+		if (((inp->inp_vflag & INP_RT_VALID) == 0) &&
+		    flerror != 0)
+			RTFREE(ro->ro_rt);
 		ro->ro_rt = NULL;
-	}
-#ifdef IPFIREWALL_FORWARD
-	if (ro->ro_rt == NULL && fwd_tag == NULL) {
-#else
-	if (ro->ro_rt == NULL) {
-#endif
-		bzero(dst, sizeof(*dst));
-		dst->sin_family = AF_INET;
-		dst->sin_len = sizeof(*dst);
-		dst->sin_addr = ip->ip_dst;
-	}
-	if (ro != &iproute)
-		goto skipcachecheck;
-	if (inp != NULL) {
-		if (inp->inp_flags & (INP_HW_FLOWID|INP_SW_FLOWID)) {
-			m->m_pkthdr.flowid = inp->inp_flowid;
-			m->m_flags |= M_FLOWID;
-		}
-		if (inp->inp_vflag & INP_RT_VALID) {
-			if (inp->inp_rt->rt_flags & RTF_UP) {
-				ro->ro_rt = inp->inp_rt;
-			} else
-				neednewroute = 1;
-		}
-		if (inp->inp_flags & INP_LLE_VALID) {
-			if (inp->inp_lle->la_flags & LLE_VALID) {
-				ro->ro_lle = inp->inp_lle;
-			} else
-				neednewlle = 1;
-		}
-	}
-	if ((ro->ro_rt == NULL) && (ro->ro_lle == NULL)) {
-		if (flowtable_lookup(ipv4_ft, m, ro) == 0)
-			nortfree = 1;
-	}
-skipcachecheck: 
-
-	/*
-	 * Check if we can take a huge shortcut
-	 */
-	if (ro->ro_rt != NULL && (ro->ro_rt->rt_flags & RTF_UP) &&
-	    ro->ro_lle != NULL && (ro->ro_lle->la_flags & LLE_VALID) &&
-	    (flags & (IP_SENDONES|IP_ROUTETOIF)) == 0 &&
-	    !PFIL_HOOKED(&inet_pfil_hook) &&
-	    !IN_MULTICAST(ntohl(ip->ip_dst.s_addr))) {
-		ifp = ro->ro_rt->rt_ifp;
-
-		if (ro->ro_rt->rt_flags & (RTF_UP|RTF_HOST)) {
-			if (ro->ro_rt->rt_rmx.rmx_mtu > ifp->if_mtu)
-				ro->ro_rt->rt_rmx.rmx_mtu = ifp->if_mtu;
-			mtu = ro->ro_rt->rt_rmx.rmx_mtu;
-		} else
-			mtu = ifp->if_mtu;
-
-		if (ro->ro_rt->rt_flags & RTF_GATEWAY)
-			dst = (struct sockaddr_in *)ro->ro_rt->rt_gateway;
-		else
-			dst = (struct sockaddr_in *)&ro->ro_dst;
-		if (ro->ro_rt->rt_flags & RTF_HOST)
-			isbroadcast = (ro->ro_rt->rt_flags & RTF_BROADCAST);
-		else
-			isbroadcast = in_broadcast(dst->sin_addr, ifp);
-
-		if (!isbroadcast && (ip->ip_len <= mtu ||
-		    (m->m_pkthdr.csum_flags & ifp->if_hwassist & CSUM_TSO) != 0
-		    || ((ip->ip_off & IP_DF) == 0
-			&& (ifp->if_hwassist & CSUM_FRAGMENT))))
-			return (ip_output_fast(m, ro, flags, hlen, inp));
 	}
 	
 	/*
