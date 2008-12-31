@@ -176,6 +176,7 @@ main(argc, argv)
 		case K_ADD:
 		case K_DEL:
 		case K_DELETE:
+		case K_SHUTDOWN:
 			newroute(argc, argv);
 			/* NOTREACHED */
 
@@ -1197,7 +1198,9 @@ rtmsg(cmd, flags)
 			so_ifp.sa.sa_len = sizeof(struct sockaddr_dl);
 			rtm_addrs |= RTA_IFP;
 		}
-	} else
+	} else if (cmd == 's')
+		cmd = RTM_SHUTDOWN;
+	else
 		cmd = RTM_DELETE;
 #define rtm m_rtmsg.m_rtm
 	rtm.rtm_type = cmd;
