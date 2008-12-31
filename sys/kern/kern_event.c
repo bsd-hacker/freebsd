@@ -163,16 +163,16 @@ SYSCTL_INT(_kern, OID_AUTO, kq_calloutmax, CTLFLAG_RW,
     &kq_calloutmax, 0, "Maximum number of callouts allocated for kqueue");
 
 /* XXX - ensure not KN_INFLUX?? */
-#define KNOTE_ACTIVATE(kn, islock) do { 				\
-	if ((islock))							\
-		mtx_assert(&(kn)->kn_kq->kq_lock, MA_OWNED);		\
-	else								\
-		KQ_LOCK((kn)->kn_kq);					\
+#define KNOTE_ACTIVATE_LOCKED(kn) do {	 				\
+	mtx_assert(&(kn)->kn_kq->kq_lock, MA_OWNED);			\
 	(kn)->kn_status |= KN_ACTIVE;					\
 	if (((kn)->kn_status & (KN_QUEUED | KN_DISABLED)) == 0)		\
 		knote_enqueue((kn));					\
-	if (!(islock))							\
-		KQ_UNLOCK((kn)->kn_kq);					\
+} while(0)
+#define KNOTE_ACTIVATE(kn) do {		 				\
+	KQ_LOCK((kn)->kn_kq);						\
+	KNOTE_ACTIVATE_LOCKED(kn);					\
+	KQ_UNLOCK((kn)->kn_kq);						\
 } while(0)
 #define KQ_LOCK(kq) do {						\
 	mtx_lock(&(kq)->kq_lock);					\
@@ -357,7 +357,7 @@ filt_procattach(struct knote *kn)
 	 * process, e.g. a child, dies before the kevent is registered.
 	 */
 	if (immediate && filt_proc(kn, NOTE_EXIT))
-		KNOTE_ACTIVATE(kn, 0);
+		KNOTE_ACTIVATE(kn);
 
 	PROC_UNLOCK(p);
 
@@ -456,7 +456,7 @@ knote_fork(struct knlist *list, int pid)
 		if ((kn->kn_sfflags & NOTE_TRACK) == 0) {
 			kn->kn_status |= KN_HASKQLOCK;
 			if (kn->kn_fop->f_event(kn, NOTE_FORK | pid))
-				KNOTE_ACTIVATE(kn, 1);
+				KNOTE_ACTIVATE_LOCKED(kn);
 			kn->kn_status &= ~KN_HASKQLOCK;
 			KQ_UNLOCK(kq);
 			continue;
@@ -484,7 +484,7 @@ knote_fork(struct knlist *list, int pid)
 		kev.udata = kn->kn_kevent.udata;/* preserve udata */
 		error = kqueue_register(kq, &kev, NULL, 0);
 		if (kn->kn_fop->f_event(kn, NOTE_FORK | pid))
-			KNOTE_ACTIVATE(kn, 0);
+			KNOTE_ACTIVATE(kn);
 		if (error)
 			kn->kn_fflags |= NOTE_TRACKERR;
 		KQ_LOCK(kq);
@@ -519,7 +519,7 @@ filt_timerexpire(void *knx)
 	struct callout *calloutp;
 
 	kn->kn_data++;
-	KNOTE_ACTIVATE(kn, 0);	/* XXX - handle locking */
+	KNOTE_ACTIVATE(kn);	/* XXX - handle locking */
 
 	if ((kn->kn_flags & EV_ONESHOT) != EV_ONESHOT) {
 		calloutp = (struct callout *)kn->kn_hook;
@@ -1011,7 +1011,7 @@ findkn:
 		event = kn->kn_fop->f_event(kn, 0);
 		KQ_LOCK(kq);
 		if (event)
-			KNOTE_ACTIVATE(kn, 1);
+			KNOTE_ACTIVATE_LOCKED(kn);
 		kn->kn_status &= ~KN_INFLUX;
 		KN_LIST_UNLOCK(kn);
 	} else if (kev->flags & EV_DELETE) {
@@ -1625,23 +1625,15 @@ kqueue_wakeup(struct kqueue *kq)
  * first.
  */
 void
-knote(struct knlist *list, long hint, int islocked)
+knote_locked(struct knlist *list, long hint)
 {
+
 	struct kqueue *kq;
 	struct knote *kn;
 
 	if (list == NULL)
 		return;
-
-	KNL_ASSERT_LOCK(list, islocked);
-
-	if (!islocked){
-		if (list->kl_lock != knlist_mtx_lock)
-			list->kl_lock(list->kl_lockarg);
-		else
-			mtx_lock((struct mtx *)list->kl_lockarg);
-	}
-
+	
 	/*
 	 * If we unlock the list lock (and set KN_INFLUX), we can eliminate
 	 * the kqueue scheduling, but this will introduce four
@@ -1657,16 +1649,29 @@ knote(struct knlist *list, long hint, int islocked)
 			if ((kn->kn_status & KN_INFLUX) != KN_INFLUX) {
 				kn->kn_status |= KN_HASKQLOCK;
 				if (kn->kn_fop->f_event(kn, hint))
-					KNOTE_ACTIVATE(kn, 1);
+					KNOTE_ACTIVATE_LOCKED(kn);
 				kn->kn_status &= ~KN_HASKQLOCK;
 			}
 			KQ_UNLOCK(kq);
 		}
 		kq = NULL;
 	}
-	if (!islocked)
-		list->kl_unlock(list->kl_lockarg); 
 }
+
+void
+knote(struct knlist *list, long hint)
+{
+	if (list == NULL)
+		return;
+
+	if (list->kl_lock != knlist_mtx_lock)
+		list->kl_lock(list->kl_lockarg);
+	else
+		mtx_lock((struct mtx *)list->kl_lockarg);
+	knote_locked(list, hint);
+	list->kl_unlock(list->kl_lockarg); 
+}
+
 
 /*
  * add a knote to a knlist

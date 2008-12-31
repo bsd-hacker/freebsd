@@ -135,9 +135,15 @@ struct knlist {
 MALLOC_DECLARE(M_KQUEUE);
 #endif
 
-#define KNOTE(list, hist, lock)		knote(list, hist, lock)
-#define KNOTE_LOCKED(list, hint)	knote(list, hint, 1)
-#define KNOTE_UNLOCKED(list, hint)	knote(list, hint, 0)
+#define KNOTE(list, hist, lock) do {			\
+	if (lock)					\
+		knote_locked(list, hist);		\
+	else						\
+		knote(list, hist);			\
+} while (0)
+
+#define KNOTE_LOCKED(list, hint)	knote_locked(list, hint)
+#define KNOTE_UNLOCKED(list, hint)	knote(list, hint)
 
 #define	KNLIST_EMPTY(list)		SLIST_EMPTY(&(list)->kl_list)
 
@@ -204,7 +210,8 @@ struct thread;
 struct proc;
 struct knlist;
 
-extern void	knote(struct knlist *list, long hint, int islocked);
+extern void	knote(struct knlist *list, long hint);
+extern void	knote_locked(struct knlist *list, long hint);
 extern void	knote_fork(struct knlist *list, int pid);
 extern void	knlist_add(struct knlist *knl, struct knote *kn, int islocked);
 extern void	knlist_remove(struct knlist *knl, struct knote *kn, int islocked);
