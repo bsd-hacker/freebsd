@@ -729,9 +729,9 @@ void *data;
 		}
 
 		nat = (nat_t *)data;
-		bzero((char *)n, offsetof(nat_t, nat_age));
+		bzero((char *)n, __offsetof(nat_t, nat_age));
 		bcopy((char *)&nat->nat_age, (char *)&n->nat_age,
-		      sizeof(*n) - offsetof(nat_t, nat_age));
+		      sizeof(*n) - __offsetof(nat_t, nat_age));
 		ipfsync_natorder(0, n);
 		n->nat_sync = sl;
 
