@@ -199,6 +199,9 @@ struct inpcb {
 	} inp_depend6;
 	LIST_ENTRY(inpcb) inp_portlist;	/* (i/p) */
 	struct	inpcbport *inp_phd;	/* (i/p) head of this list */
+	u_int		inp_subset_strategy;
+	u_int		inp_subset_count;
+	u_int		inp_subset_member;
 #define inp_zero_size offsetof(struct inpcb, inp_gencnt)
 	inp_gen_t	inp_gencnt;	/* (c) generation count */
 	struct rwlock	inp_lock;
@@ -493,6 +496,11 @@ struct inpcb *
 struct inpcb *
 	in_pcblookup_hash(struct inpcbinfo *, struct in_addr, u_int,
 	    struct in_addr, u_int, int, struct ifnet *);
+struct inpcb *
+	in_pcblookup_hash_full(struct inpcbinfo *pcbinfo,
+	    struct in_addr faddr, u_int fport_arg, struct in_addr laddr,
+	    u_int lport_arg, u_short ip_id, u_int32_t flowid, int wildcard,
+	    struct ifnet *ifp);
 void	in_pcbnotifyall(struct inpcbinfo *pcbinfo, struct in_addr,
 	    int, struct inpcb *(*)(struct inpcb *, int));
 void	in_pcbref(struct inpcb *);

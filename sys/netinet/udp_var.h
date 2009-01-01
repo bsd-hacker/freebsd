@@ -106,6 +106,7 @@ extern u_long			udp_recvspace;
 extern int			udp_log_in_vain;
 
 void		 udp_ctlinput(int, struct sockaddr *, void *);
+int		 udp_ctloutput(struct socket *so, struct sockopt *sopt);
 void		 udp_init(void);
 void		 udp_input(struct mbuf *, int);
 struct inpcb	*udp_notify(struct inpcb *inp, int errno);

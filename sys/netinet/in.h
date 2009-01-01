@@ -486,6 +486,21 @@ __END_DECLS
 #define	MCAST_BLOCK_SOURCE		84   /* block a source */
 #define	MCAST_UNBLOCK_SOURCE		85   /* unblock a source */
 
+/* Binding subsets. */
+#define	IP_SUBSET			86	/* get/set binding subset */
+
+struct ip_subset {
+	u_int	is_strategy;
+	u_int	is_count;
+	u_int	is_member;
+};
+
+#define	IP_SUBSET_STRATEGY_DISABLED	0
+#define	IP_SUBSET_STRATEGY_FLOW		1
+#define	IP_SUBSET_STRATEGY_RANDOM	2
+#define	IP_SUBSET_STRATEGY_THREADID	3
+#define	IP_SUBSET_STRATEGY_CPU		4
+
 /*
  * Defaults and limits for options
  */

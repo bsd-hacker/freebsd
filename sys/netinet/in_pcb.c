@@ -204,6 +204,7 @@ in_pcballoc(struct socket *so, struct inpcbinfo *pcbinfo)
 	inp->inp_socket = so;
 	inp->inp_cred = crhold(so->so_cred);
 	inp->inp_inc.inc_fibnum = so->so_fibnum;
+	inp->inp_subset_strategy = IP_SUBSET_STRATEGY_DISABLED;
 #ifdef MAC
 	error = mac_inpcb_init(inp, M_NOWAIT);
 	if (error != 0)
@@ -1284,12 +1285,114 @@ in_pcblookup_local(struct inpcbinfo *pcbinfo, struct in_addr laddr,
 #undef INP_LOOKUP_MAPPED_PCB_COST
 
 /*
+ * Implement various subsetting strategies: determine whether a particular
+ * inpcb, implementing a particular strategy, matches the passed tuple or
+ * not.
+ */
+static int
+in_subset_match(struct inpcb *inp, struct in_addr faddr, u_short fport,
+    struct in_addr laddr, u_short lport, u_short ip_id, u_int32_t flowid)
+{
+
+	switch (inp->inp_subset_strategy) {
+	case IP_SUBSET_STRATEGY_FLOW:
+		/*
+		 * If the packet has a flow tag, use that, but otherwise,
+		 * calculate our own flow tag using the IP/port tuple.
+		 */
+		if (flowid != 0) {
+			if ((flowid % inp->inp_subset_count) ==
+			    inp->inp_subset_member)
+				return (1);
+		} else {
+			/*
+			 * XXXRW: This hash is not the hash that you are
+			 * looking for.
+			 */
+			if (((faddr.s_addr ^ laddr.s_addr ^ fport ^ lport) %
+			    inp->inp_subset_count) == inp->inp_subset_member)
+				return (1);
+		}
+		return (0);
+
+	case IP_SUBSET_STRATEGY_RANDOM:
+		/*
+		 * If there is a flow tag, use that and the IP ID as a source
+		 * of entropy.  Otherwise, calculate our own flow tag as
+		 * above and combine with the IP ID.
+		 *
+		 * XXXRW: This hash is also not the hash that you are looking
+		 * for.
+		 */
+		if (flowid != 0) {
+			if (((flowid ^ ip_id) % inp->inp_subset_count) ==
+			    inp->inp_subset_member)
+				return (1);
+		} else {
+			if (((faddr.s_addr ^ laddr.s_addr ^ fport ^ lport ^
+			    ip_id) % inp->inp_subset_count) ==
+			    inp->inp_subset_member)
+				return (1);
+		}
+		return (0);
+
+	case IP_SUBSET_STRATEGY_THREADID:
+		/*
+		 * Experiment: pick the socket to use based on the kernel
+		 * thread ID processing the packet.  This will be fixed for
+		 * particular RSS input queues, so will assign work to a
+		 * particular socket based on which input queue it came from.
+		 * This doesn't attempt to balance the work at all, simply
+		 * ensure that datagrams local to a particular CPU are
+		 * assigned to the same socket consistently.
+		 */
+		if ((curthread->td_tid % inp->inp_subset_count) ==
+		    inp->inp_subset_member)
+			return (1);
+		return (0);
+
+	case IP_SUBSET_STRATEGY_CPU:
+		/*
+		 * Experimental: packets from the same CPU will always get
+		 * assigned to the same socket.  Doesn't attempt to load
+		 * balance or maintain ordering, as source threads may not
+		 * always be on the same CPU.  However, may achieve a more
+		 * even or predictable balance than
+		 * IP_SUBSET_STRATEGY_THREADID.
+		 *
+		 * This might be quite a bit more interesting if sockets had
+		 * a formal affinity themselves, as then we could direct
+		 * datagrams to that explicitly.
+		 */
+		if ((curcpu % inp->inp_subset_count) ==
+		    inp->inp_subset_member)
+			return (1);
+		return (0);
+
+	/* case IP_SUBSET_STRATEGY_FILLSOCK: */
+		/*
+		 * In this theoretical mode, we attempt to fill sockets in
+		 * the order they are matched, and don't move onto the next
+		 * socket unless the previous one is filled.  This requires
+		 * us to peak up a layer and see if there is room for the
+		 * current datagram; this proves somewhat tricky as we need
+		 * to make sure we don't return ICMP when the last one proves
+		 * full, so we don't try to do that yet.
+		 */
+
+	default:
+		panic("in_subset_match: strategy %d",
+		    inp->inp_subset_strategy);
+	}
+}
+
+/*
  * Lookup PCB in hash list.
  */
 struct inpcb *
-in_pcblookup_hash(struct inpcbinfo *pcbinfo, struct in_addr faddr,
-    u_int fport_arg, struct in_addr laddr, u_int lport_arg, int wildcard,
-    struct ifnet *ifp)
+in_pcblookup_hash_full(struct inpcbinfo *pcbinfo, struct in_addr faddr,
+    u_int fport_arg, struct in_addr laddr, u_int lport_arg, u_short ip_id,
+    u_int32_t flowid, int wildcard, struct ifnet *ifp)
 {
 	struct inpcbhead *head;
 	struct inpcb *inp, *tmpinp;
@@ -1309,20 +1412,25 @@ in_pcblookup_hash(struct inpcbinfo *pcbinfo, struct in_addr faddr,
 		if ((inp->inp_vflag & INP_IPV4) == 0)
 			continue;
 #endif
-		if (inp->inp_faddr.s_addr == faddr.s_addr &&
-		    inp->inp_laddr.s_addr == laddr.s_addr &&
-		    inp->inp_fport == fport &&
-		    inp->inp_lport == lport) {
-			/*
-			 * XXX We should be able to directly return
-			 * the inp here, without any checks.
-			 * Well unless both bound with SO_REUSEPORT?
-			 */
-			if (jailed(inp->inp_cred))
-				return (inp);
-			if (tmpinp == NULL)
-				tmpinp = inp;
-		}
+		if (inp->inp_faddr.s_addr != faddr.s_addr ||
+		    inp->inp_laddr.s_addr != laddr.s_addr ||
+		    inp->inp_fport != fport ||
+		    inp->inp_lport != lport)
+			continue;
+		if (inp->inp_subset_strategy != IP_SUBSET_STRATEGY_DISABLED
+		    && !in_subset_match(inp, faddr, fport, laddr, lport,
+		    ip_id, flowid))
+			continue;
+
+		/*
+		 * XXX We should be able to directly return
+		 * the inp here, without any checks.
+		 * Well unless both bound with SO_REUSEPORT?
+		 */
+		if (jailed(inp->inp_cred))
+			return (inp);
+		if (tmpinp == NULL)
+			tmpinp = inp;
 	}
 	if (tmpinp != NULL)
 		return (tmpinp);
@@ -1372,6 +1480,12 @@ in_pcblookup_hash(struct inpcbinfo *pcbinfo, struct in_addr faddr,
 					continue;
 			}
 
+			if (inp->inp_subset_strategy !=
+			    IP_SUBSET_STRATEGY_DISABLED &&
+			    !in_subset_match(inp, faddr, fport, laddr, lport,
+			    ip_id, flowid))
+				continue;
+
 			if (inp->inp_laddr.s_addr == laddr.s_addr) {
 				if (injail)
 					return (inp);
@@ -1403,6 +1517,16 @@ in_pcblookup_hash(struct inpcbinfo *pcbinfo, struct in_addr faddr,
 	} /* if (wildcard == INPLOOKUP_WILDCARD) */
 
 	return (NULL);
+}
+
+struct inpcb *
+in_pcblookup_hash(struct inpcbinfo *pcbinfo, struct in_addr faddr,
+    u_int fport_arg, struct in_addr laddr, u_int lport_arg, int wildcard,
+    struct ifnet *ifp)
+{
+
+	return (in_pcblookup_hash_full(pcbinfo, faddr, fport_arg, laddr,
+	    lport_arg, 0, 0, wildcard, ifp));
 }
 
 /*

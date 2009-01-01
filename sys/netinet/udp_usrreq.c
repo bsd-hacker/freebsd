@@ -526,8 +526,8 @@ udp_input(struct mbuf *m, int off)
 	/*
 	 * Locate pcb for datagram.
 	 */
-	inp = in_pcblookup_hash(&V_udbinfo, ip->ip_src, uh->uh_sport,
-	    ip->ip_dst, uh->uh_dport, 1, ifp);
+	inp = in_pcblookup_hash_full(&V_udbinfo, ip->ip_src, uh->uh_sport,
+	    ip->ip_dst, uh->uh_dport, ip->ip_id, m->m_pkthdr.flowid, 1, ifp);
 	if (inp == NULL) {
 		if (udp_log_in_vain) {
 			char buf[4*sizeof "123"];
@@ -621,6 +621,9 @@ udp_ctlinput(int cmd, struct sockaddr *sa, void *vip)
 	 *
 	 * XXX: We never get this from ICMP, otherwise it makes an excellent
 	 * DoS attack on machines with many connections.
+	 *
+	 * XXXRW: With subsetting, we should deliver this to all matching
+	 * connections for the specific tuple.
 	 */
 	if (cmd == PRC_HOSTDEAD)
 		ip = NULL;
@@ -642,6 +645,67 @@ udp_ctlinput(int cmd, struct sockaddr *sa, void *vip)
 	} else
 		in_pcbnotifyall(&V_udbinfo, faddr, inetctlerrmap[cmd],
 		    udp_notify);
+}
+
+int
+udp_ctloutput(struct socket *so, struct sockopt *sopt)
+{
+	INIT_VNET_INET(so->so_vnet);
+	struct ip_subset is;
+	struct inpcb *inp;
+	int error;
+
+	inp = sotoinpcb(so);
+	KASSERT(inp != NULL, ("udp_ctloutput: inp == NULL"));
+
+	if (sopt->sopt_level != IPPROTO_UDP)
+		return (ip_ctloutput(so, sopt));
+
+	switch (sopt->sopt_dir) {
+	case SOPT_GET:
+		switch (sopt->sopt_name) {
+		case IP_SUBSET:
+			bzero(&is, sizeof(is));
+			INP_RLOCK(inp);
+			is.is_strategy = inp->inp_subset_strategy;
+			is.is_count = inp->inp_subset_count;
+			is.is_member = inp->inp_subset_member;
+			INP_RUNLOCK(inp);
+			return (sooptcopyout(sopt, &is, sizeof(is)));
+		}
+		break;
+
+	case SOPT_SET:
+		switch (sopt->sopt_name) {
+		case IP_SUBSET:
+			error = sooptcopyin(sopt, &is, sizeof(is),
+			    sizeof(is));
+			if (error)
+				return (error);
+			switch (is.is_strategy) {
+			case IP_SUBSET_STRATEGY_DISABLED:
+				break;
+
+			case IP_SUBSET_STRATEGY_FLOW:
+			case IP_SUBSET_STRATEGY_RANDOM:
+				if (is.is_count == 0 ||
+				    is.is_member >= is.is_count)
+					return (EINVAL);
+				break;
+
+			default:
+				return (EINVAL);
+			}
+			INP_WLOCK(inp);
+			inp->inp_subset_strategy = is.is_strategy;
+			inp->inp_subset_count = is.is_count;
+			inp->inp_subset_member = is.is_member;
+			INP_WUNLOCK(inp);
+			return (0);
+		}
+		break;
+	}
+	return (ENOPROTOOPT);
 }
 
 static int
@@ -758,6 +822,11 @@ udp_getcred(SYSCTL_HANDLER_ARGS)
 	error = SYSCTL_IN(req, addrs, sizeof(addrs));
 	if (error)
 		return (error);
+
+	/*
+	 * XXXRW: with IP subsetting, potentially more than one socket may
+	 * match, so we just return the cred for the first one.
+	 */
 	INP_INFO_RLOCK(&V_udbinfo);
 	inp = in_pcblookup_hash(&V_udbinfo, addrs[1].sin_addr, addrs[1].sin_port,
 				addrs[0].sin_addr, addrs[0].sin_port, 1, NULL);
