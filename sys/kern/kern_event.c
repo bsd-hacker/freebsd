@@ -1672,7 +1672,6 @@ knote(struct knlist *list, long hint)
 	list->kl_unlock(list->kl_lockarg); 
 }
 
-
 /*
  * add a knote to a knlist
  */
@@ -1684,12 +1683,10 @@ knlist_add(struct knlist *knl, struct knote *kn, int islocked)
 	KASSERT((kn->kn_status & (KN_INFLUX|KN_DETACHED)) ==
 	    (KN_INFLUX|KN_DETACHED), ("knote not KN_INFLUX and KN_DETACHED"));
 	if (!islocked) {
-		struct knlist *list = kn->kn_knlist;
-
-		if (list->kl_lock != knlist_mtx_lock)
-			list->kl_lock(list->kl_lockarg);
+		if (knl->kl_lock != knlist_mtx_lock)
+			knl->kl_lock(knl->kl_lockarg);
 		else	
-			mtx_lock((struct mtx *)list->kl_lockarg);
+			mtx_lock((struct mtx *)knl->kl_lockarg);
 	}
 	SLIST_INSERT_HEAD(&knl->kl_list, kn, kn_selnext);
 	if (!islocked)
