@@ -404,6 +404,7 @@ MBUF_STRESS_TEST
 MROUTING		opt_mrouting.h
 NCP
 NETATALK		opt_atalk.h
+NETISR2			opt_netisr.h
 NFSLOCKD
 PPP_BSDCOMP		opt_ppp.h
 PPP_DEFLATE		opt_ppp.h

@@ -2192,6 +2192,7 @@ net/if_vlan.c			optional vlan
 net/mppcc.c			optional netgraph_mppc_compression
 net/mppcd.c			optional netgraph_mppc_compression
 net/netisr.c			standard
+net/netisr2.c			optional netisr2
 net/ppp_deflate.c		optional ppp_deflate
 net/ppp_tty.c			optional ppp
 net/pfil.c			optional ether | inet
