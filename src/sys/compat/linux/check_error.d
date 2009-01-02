@@ -13,8 +13,6 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 3. The name of the author may not be used to endorse or promote products
- *    derived from this software without specific prior written permission
  *
  * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
  * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
@@ -30,11 +28,35 @@
  * $FreeBSD$
  */
 
-/* Report error conditions. */
+/*
+ * Report error conditions:
+ *  - emulation errors (unsupportet stuff, unknown stuff, ...)
+ *  - kernel errors (resource shortage, ...)
+ *  - programming errors (errors which can happen, but should not happen)
+ */
 
 linuxulator*:emul:proc_exit:child_clear_tid_error,
 linuxulator*:emul:proc_exit:futex_failed,
-linuxulator*:emul:linux_schedtail:copyout_error
+linuxulator*:emul:linux_schedtail:copyout_error,
+linuxulator*:time:linux_clock_gettime:conversion_error,
+linuxulator*:time:linux_clock_gettime:gettime_error,
+linuxulator*:time:linux_clock_gettime:copyout_error,
+linuxulator*:time:linux_clock_settime:conversion_error,
+linuxulator*:time:linux_clock_settime:settime_error,
+linuxulator*:time:linux_clock_settime:copyout_error,
+linuxulator*:time:linux_clock_getres:conversion_error,
+linuxulator*:time:linux_clock_getres:gettime_error,
+linuxulator*:time:linux_clock_getres:copyout_error,
+linuxulator*:time:linux_nanosleep:conversion_error,
+linuxulator*:time:linux_nanosleep:nanosleep_error,
+linuxulator*:time:linux_nanosleep:copyout_error,
+linuxulator*:time:linux_nanosleep:copyin_error,
+linuxulator*:time:linux_clock_nanosleep:copyin_error,
+linuxulator*:time:linux_clock_nanosleep:conversion_error,
+linuxulator*:time:linux_clock_nanosleep:copyout_error,
+linuxulator*:time:linux_clock_nanosleep:nanosleep_error,
+linuxulator*:sysctl:handle_string:copyout_error,
+linuxulator*:sysctl:linux_sysctl:copyin_error
 {
 	printf("ERROR: %s in %s:%s:%s\n", probename, probeprov, probemod, probefunc);
 	stack();
@@ -42,7 +64,8 @@ linuxulator*:emul:linux_schedtail:copyout_error
 }
 
 linuxulator*:util:linux_driver_get_name_dev:nullcall,
-linuxulator*:util:linux_driver_get_major_minor:nullcall
+linuxulator*:util:linux_driver_get_major_minor:nullcall,
+linuxulator*:time:linux_clock_getres:nullcall
 {
 	printf("WARNING: %s:%s:%s:%s in application %s, maybe an application error?\n", probename, probeprov, probemod, probefunc, execname);
 	stack();
@@ -56,3 +79,30 @@ linuxulator*:util:linux_driver_get_major_minor:notfound
 	/* ustack(); */ /* needs to be enabled when PID tracing is available in FreeBSD dtrace */
 }
 
+linuxulator*:time:linux_to_native_clockid:unknown_clockid
+{
+	printf("INFO: Application %s tried to use unknown clockid %d. Please report this to freebsd-emulation@FreeBSD.org.\n", execname, arg0);
+}
+
+linuxulator*:time:linux_to_native_clockid:unsupported_clockid,
+linuxulator*:time:linux_clock_nanosleep:unsupported_clockid
+{
+	printf("WARNING: Application %s tried to use unsupported clockid (%d), this may or may not be a problem for the application.\nPatches to support this clockid are welcome on the freebsd-emulation@FreeBSD.org mailinglist.\n", execname, arg0);
+}
+
+linuxulator*:time:linux_clock_nanosleep:unsupported_flags
+{
+	printf("WARNING: Application %s tried to use unsupported flags (%d), this may or may not be a problem for the application.\nPatches to support those flags are welcome on the freebsd-emulation@FreeBSD.org mailinglist.\n", execname, arg0);
+}
+
+linuxulator*:sysctl:linux_sysctl:wrong_length
+{
+	printf("ERROR: Application %s issued a sysctl which failed the length restrictions.\nThe length passed is %d, the min length supported is 1 and the max length supported is %d.\n", execname, arg0, arg1);
+	stack();
+	/* ustack(); */
+}
+
+linuxulator*:sysctl:linux_sysctl:unsupported_sysctl
+{
+	printf("ERROR: Application %s issued an unsupported sysctl (%s).\nPatches to support this sysctl are welcome on the freebsd-emulation@FreeBSD.org mailinglist.\n", execname, arg0);
+}

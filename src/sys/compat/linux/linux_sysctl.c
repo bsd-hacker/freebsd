@@ -30,12 +30,15 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_compat.h"
+#include "opt_kdtrace.h"
 
 #include <sys/param.h>
+#include <sys/kernel.h>
 #include <sys/lock.h>
 #include <sys/malloc.h>
 #include <sys/mutex.h>
 #include <sys/proc.h>
+#include <sys/sdt.h>
 #include <sys/sysctl.h>
 #include <sys/systm.h>
 #include <sys/sbuf.h>
@@ -49,6 +52,7 @@ __FBSDID("$FreeBSD$");
 #endif
 
 #include <compat/linux/linux_util.h>
+#include <compat/linux/linux_dtrace.h>
 
 #define	LINUX_CTL_KERN		1
 #define	LINUX_CTL_VM		2
@@ -65,23 +69,59 @@ __FBSDID("$FreeBSD$");
 #define	LINUX_KERN_OSREV	3
 #define	LINUX_KERN_VERSION	4
 
+LIN_SDT_PROVIDER_DECLARE(LINUX_DTRACE);
+LIN_SDT_PROBE_DEFINE(sysctl, handle_string, entry);
+LIN_SDT_PROBE_ARGTYPE(sysctl, handle_string, entry, 0,
+    "struct l___sysctl_args *");
+LIN_SDT_PROBE_ARGTYPE(sysctl, handle_string, entry, 1, "char *");
+LIN_SDT_PROBE_DEFINE(sysctl, handle_string, copyout_error);
+LIN_SDT_PROBE_ARGTYPE(sysctl, handle_string, copyout_error, 0, "int");
+LIN_SDT_PROBE_DEFINE(sysctl, handle_string, return);
+LIN_SDT_PROBE_ARGTYPE(sysctl, handle_string, return, 0, "int");
+LIN_SDT_PROBE_DEFINE(sysctl, linux_sysctl, entry);
+LIN_SDT_PROBE_ARGTYPE(sysctl, linux_sysctl, entry, 0,
+    "struct l___sysctl_args *");
+LIN_SDT_PROBE_DEFINE(sysctl, linux_sysctl, copyin_error);
+LIN_SDT_PROBE_DEFINE(sysctl, linux_sysctl, wrong_length);
+LIN_SDT_PROBE_ARGTYPE(sysctl, linux_sysctl, wrong_length, 0,
+    "int");
+LIN_SDT_PROBE_ARGTYPE(sysctl, linux_sysctl, wrong_length, 1,
+    "int");
+LIN_SDT_PROBE_DEFINE(sysctl, linux_sysctl, unsupported_sysctl);
+LIN_SDT_PROBE_ARGTYPE(sysctl, linux_sysctl, unsupported_sysctl, 0,
+    "char *");
+LIN_SDT_PROBE_DEFINE(sysctl, linux_sysctl, return);
+LIN_SDT_PROBE_ARGTYPE(sysctl, linux_sysctl, return, 0, "int");
+
 static int
 handle_string(struct l___sysctl_args *la, char *value)
 {
 	int error;
+
+	LIN_SDT_PROBE(sysctl, handle_string, entry, la, value, 0, 0, 0);
 
 	if (la->oldval != 0) {
 		l_int len = strlen(value);
 		error = copyout(value, PTRIN(la->oldval), len + 1);
 		if (!error && la->oldlenp != 0)
 			error = copyout(&len, PTRIN(la->oldlenp), sizeof(len));
-		if (error)
+		if (error) {
+			/* XXX: Separate probes for the 2 copyouts? */
+			LIN_SDT_PROBE(sysctl, handle_string, copyout_error,
+			    error, 0, 0, 0, 0);
+			LIN_SDT_PROBE(sysctl, handle_string, return, error,
+			    0, 0, 0, 0);
 			return (error);
+		}
 	}
 
-	if (la->newval != 0)
+	if (la->newval != 0) {
+		LIN_SDT_PROBE(sysctl, handle_string, return, ENOTDIR, 0, 0, 0,
+		    0);
 		return (ENOTDIR);
+	}
 
+	LIN_SDT_PROBE(sysctl, handle_string, return, 0, 0, 0, 0, 0);
 	return (0);
 }
 
@@ -92,17 +132,34 @@ linux_sysctl(struct thread *td, struct linux_sysctl_args *args)
 	struct sbuf *sb;
 	l_int *mib;
 	int error, i;
+	char *sysctl_string;
+
+	LIN_SDT_PROBE(sysctl, linux_sysctl, entry, args->args, 0, 0, 0, 0);
 
 	error = copyin(args->args, &la, sizeof(la));
-	if (error)
+	if (error) {
+		LIN_SDT_PROBE(sysctl, linux_sysctl, copyin_error, error, 0,
+		    0, 0, 0);
+		LIN_SDT_PROBE(sysctl, linux_sysctl, return, error, 0, 0, 0,
+		    0);
 		return (error);
+	}
 
-	if (la.nlen <= 0 || la.nlen > LINUX_CTL_MAXNAME)
+	if (la.nlen <= 0 || la.nlen > LINUX_CTL_MAXNAME) {
+		LIN_SDT_PROBE(sysctl, linux_sysctl, wrong_length, la.nlen,
+		    LINUX_CTL_MAXNAME, 0, 0, 0);
+		LIN_SDT_PROBE(sysctl, linux_sysctl, return, ENOTDIR, 0, 0, 0,
+		    0);
 		return (ENOTDIR);
+	}
 
 	mib = malloc(la.nlen * sizeof(l_int), M_TEMP, M_WAITOK);
 	error = copyin(PTRIN(la.name), mib, la.nlen * sizeof(l_int));
 	if (error) {
+		LIN_SDT_PROBE(sysctl, linux_sysctl, copyin_error, error, 0,
+		    0, 0, 0);
+		LIN_SDT_PROBE(sysctl, linux_sysctl, return, error, 0, 0, 0,
+		    0);
 		free(mib, M_TEMP);
 		return (error);
 	}
@@ -116,6 +173,8 @@ linux_sysctl(struct thread *td, struct linux_sysctl_args *args)
 		case LINUX_KERN_VERSION:
 			error = handle_string(&la, version);
 			free(mib, M_TEMP);
+			LIN_SDT_PROBE(sysctl, linux_sysctl, return, error, 0,
+			    0, 0, 0);
 			return (error);
 		default:
 			break;
@@ -128,16 +187,23 @@ linux_sysctl(struct thread *td, struct linux_sysctl_args *args)
 	sb = sbuf_new(NULL, NULL, 20 + la.nlen * 5, SBUF_AUTOEXTEND);
 	if (sb == NULL) {
 		linux_msg(td, "sysctl is not implemented");
+		LIN_SDT_PROBE(sysctl, linux_sysctl, unsupported_sysctl,
+		    "ENOMEM", 0, 0, 0, 0);
 	} else {
 		sbuf_printf(sb, "sysctl ");
 		for (i = 0; i < la.nlen; i++)
 			sbuf_printf(sb, "%c%d", (i) ? ',' : '{', mib[i]);
 		sbuf_printf(sb, "} is not implemented");
 		sbuf_finish(sb);
-		linux_msg(td, "%s", sbuf_data(sb));
+		sysctl_string = sbuf_data(sb);
+		linux_msg(td, "%s", sysctl_string);
+		LIN_SDT_PROBE(sysctl, linux_sysctl, unsupported_sysctl,
+		    sysctl_string, 0, 0, 0, 0);
 		sbuf_delete(sb);
 	}
 
 	free(mib, M_TEMP);
+
+	LIN_SDT_PROBE(sysctl, linux_sysctl, return, ENOTDIR, 0, 0, 0, 0);
 	return (ENOTDIR);
 }

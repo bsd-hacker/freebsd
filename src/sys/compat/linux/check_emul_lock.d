@@ -13,8 +13,6 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 3. The name of the author may not be used to endorse or promote products
- *    derived from this software without specific prior written permission
  *
  * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
  * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
@@ -34,6 +32,8 @@
  * Check if the emul lock is correctly acquired/released:
  *  - no recursive locking
  *  - no unlocking of already unlocked one
+ *
+ * Print stacktrace if the emul_lock is longer locked than about 10sec or more.
  */
 
 linuxulator*::emul_locked
@@ -47,6 +47,11 @@ linuxulator*::emul_locked
 linuxulator*::emul_locked
 {
 	++check[probeprov, arg0];
+
+	ts = timestamp;
+	spec = speculation();
+	printf("Stacktrace of last lock operation of the emul_lock:\n");
+	stack();
 }
 
 linuxulator*::emul_unlock
@@ -61,6 +66,14 @@ linuxulator*::emul_unlock
 
 linuxulator*::emul_unlock
 {
+	discard(spec);
+	spec = 0;
 	--check[probeprov, arg0];
 }
 
+tick-10s
+/spec != 0 && timestamp - ts >= 9999999000/
+{
+	commit(spec);
+	spec = 0;
+}
