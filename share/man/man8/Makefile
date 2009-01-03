@@ -13,8 +13,7 @@ MAN=	adding_user.8 \
 	rc.subr.8 \
 	rescue.8 \
 	sticky.8 \
-	yp.8 \
-	alias_sctp.8
+	yp.8
 
 MLINKS=	rc.8 rc.atm.8 \
 	rc.8 rc.d.8 \
