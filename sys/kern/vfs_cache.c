@@ -43,6 +43,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/malloc.h>
 #include <sys/mount.h>
 #include <sys/mutex.h>
+#include <sys/rwlock.h>
 #include <sys/namei.h>
 #include <sys/proc.h>
 #include <sys/syscallsubr.h>
@@ -109,11 +110,17 @@ SYSCTL_ULONG(_debug, OID_AUTO, numcachepl, CTLFLAG_RD, &numcachepl, 0, "");
 #endif
 struct	nchstats nchstats;		/* cache effectiveness statistics */
 
-static struct mtx cache_lock;
-MTX_SYSINIT(vfscache, &cache_lock, "Name Cache", MTX_DEF);
+static struct rwlock cache_lock;
+RW_SYSINIT(vfscache, &cache_lock, "Name Cache");
 
-#define	CACHE_LOCK()	mtx_lock(&cache_lock)
-#define	CACHE_UNLOCK()	mtx_unlock(&cache_lock)
+#define	CACHE_RLOCK()	rw_rlock(&cache_lock)
+#define	CACHE_RUNLOCK()	rw_runlock(&cache_lock)
+#define	CACHE_WLOCK()	rw_wlock(&cache_lock)
+#define	CACHE_WUNLOCK()	rw_wunlock(&cache_lock)
+#define	CACHE_TRY_UPGRADE()	rw_try_upgrade(&cache_lock)
+
+#define	CACHE_LOCK()	CACHE_WLOCK()
+#define	CACHE_UNLOCK()	CACHE_WUNLOCK()
 
 /*
  * UMA zones for the VFS cache.
@@ -275,7 +282,7 @@ cache_zap(ncp)
 {
 	struct vnode *vp;
 
-	mtx_assert(&cache_lock, MA_OWNED);
+	rw_assert(&cache_lock, RA_LOCKED);
 	CTR2(KTR_VFS, "cache_zap(%p) vp %p", ncp, ncp->nc_vp);
 	vp = NULL;
 	LIST_REMOVE(ncp, nc_hash);
@@ -329,7 +336,7 @@ cache_lookup(dvp, vpp, cnp)
 		return (0);
 	}
 retry:
-	CACHE_LOCK();
+	CACHE_RLOCK();
 	numcalls++;
 
 	if (cnp->cn_nameptr[0] == '.') {
@@ -344,7 +351,7 @@ retry:
 			dotdothits++;
 			if (dvp->v_dd == NULL ||
 			    (cnp->cn_flags & MAKEENTRY) == 0) {
-				CACHE_UNLOCK();
+				CACHE_RUNLOCK();
 				return (0);
 			}
 			*vpp = dvp->v_dd;
@@ -371,12 +378,16 @@ retry:
 			nummiss++;
 		}
 		nchstats.ncs_miss++;
-		CACHE_UNLOCK();
+		CACHE_RUNLOCK();
 		return (0);
 	}
 
 	/* We don't want to have an entry, so dump it */
 	if ((cnp->cn_flags & MAKEENTRY) == 0) {
+		if (CACHE_TRY_UPGRADE() == 0) {
+			CACHE_RUNLOCK();
+			CACHE_WLOCK();
+		}
 		numposzaps++;
 		nchstats.ncs_badhits++;
 		cache_zap(ncp);
@@ -394,6 +405,10 @@ retry:
 		goto success;
 	}
 
+	if (CACHE_TRY_UPGRADE() == 0) {
+		CACHE_RUNLOCK();
+		CACHE_WLOCK();
+	}
 	/* We found a negative match, and want to create it, so purge */
 	if (cnp->cn_nameiop == CREATE) {
 		numnegzaps++;
@@ -425,7 +440,7 @@ success:
 	 */
 	if (dvp == *vpp) {   /* lookup on "." */
 		VREF(*vpp);
-		CACHE_UNLOCK();
+		CACHE_RUNLOCK();
 		/*
 		 * When we lookup "." we still can be asked to lock it
 		 * differently...
@@ -451,7 +466,7 @@ success:
 		VOP_UNLOCK(dvp, 0);
 	}
 	VI_LOCK(*vpp);
-	CACHE_UNLOCK();
+	CACHE_RUNLOCK();
 	error = vget(*vpp, cnp->cn_lkflags | LK_INTERLOCK, cnp->cn_thread);
 	if (cnp->cn_flags & ISDOTDOT)
 		vn_lock(dvp, ltype | LK_RETRY);
