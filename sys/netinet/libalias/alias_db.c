@@ -141,12 +141,6 @@ __FBSDID("$FreeBSD$");
 
     See HISTORY file for additional revisions.
 */
-/**
- * Modifications to add sctp functionality by David A. Hayes
- *	$Id: alias_db.c 177 2008-07-14 04:33:47Z dhayes $ 
- * All are inclosed in #ifdef _ALIAS_SCTP
- * 
- */
 
 
 #ifdef _KERNEL
@@ -173,9 +167,6 @@ __FBSDID("$FreeBSD$");
 #include <netinet/libalias/alias.h>
 #include <netinet/libalias/alias_local.h>
 #include <netinet/libalias/alias_mod.h>
-#ifdef _ALIAS_SCTP
-#include <netinet/libalias/alias_sctp.h>
-#endif
 #include <net/if.h>
 #else
 #include "alias.h"
@@ -383,7 +374,6 @@ static moduledata_t alias_mod = {
 };
 
 DECLARE_MODULE(alias, alias_mod, SI_SUB_DRIVERS, SI_ORDER_SECOND);
-
 #endif
 
 /* Internal utility routines (used only in alias_db.c)
@@ -421,10 +411,6 @@ static void	ClearFWHole(struct alias_link *);
 static void	ShowAliasStats(struct libalias *);
 static int	InitPacketAliasLog(struct libalias *);
 static void	UninitPacketAliasLog(struct libalias *);
-#ifdef _ALIAS_SCTP
-struct in_addr FindSctpRedirectAddress(struct libalias *la,  struct sctp_nat_msg *sm);
-void SctpShowAliasStats(struct libalias *la);
-#endif
 
 static		u_int
 StartPointIn(struct in_addr alias_addr,
@@ -504,25 +490,17 @@ ShowAliasStats(struct libalias *la)
 /* Used for debugging */
 	if (la->logDesc) {
 		int tot  = la->icmpLinkCount + la->udpLinkCount + 
-#ifdef _ALIAS_SCTP
 		  (la->sctpLinkCount>>1) + /* sctp counts half associations */
-#endif
 			la->tcpLinkCount + la->pptpLinkCount +
 			la->protoLinkCount + la->fragmentIdLinkCount +
 			la->fragmentPtrLinkCount;
 		
 		AliasLog(la->logDesc,
-#ifdef _ALIAS_SCTP
 			 "icmp=%u, udp=%u, tcp=%u, sctp=%u, pptp=%u, proto=%u, frag_id=%u frag_ptr=%u / tot=%u",
-#else
-			 "icmp=%u, udp=%u, tcp=%u, pptp=%u, proto=%u, frag_id=%u frag_ptr=%u / tot=%u",
-#endif
 			 la->icmpLinkCount,
 			 la->udpLinkCount,
 			 la->tcpLinkCount,
-#ifdef _ALIAS_SCTP
 			 la->sctpLinkCount>>1, /* sctp counts half associations */
-#endif
 			 la->pptpLinkCount,
 			 la->protoLinkCount,
 			 la->fragmentIdLinkCount,
@@ -532,13 +510,6 @@ ShowAliasStats(struct libalias *la)
 #endif
 	}
 }
-
-#ifdef _ALIAS_SCTP
-void SctpShowAliasStats(struct libalias *la)
-{
-  ShowAliasStats(la);
-}
-#endif
 
 /* Internal routines for finding, deleting and adding links
 
@@ -1003,10 +974,6 @@ AddLink(struct libalias *la, struct in_addr src_addr,
 		case LINK_TCP:
 			lnk->expire_time = TCP_EXPIRE_INITIAL;
 			break;
-#ifdef _ALIAS_SCTP
-		case LINK_SCTP: /* treat like LINK_ADDR */
-		  break;
-#endif
 		case LINK_PPTP:
 			lnk->flags |= LINK_PERMANENT;	/* no timeout. */
 			break;
@@ -1067,10 +1034,6 @@ AddLink(struct libalias *la, struct in_addr src_addr,
 				return (NULL);
 			}
 			break;
-#ifdef _ALIAS_SCTP
-		case LINK_SCTP: /* treat like LINK_ADDR */
-		  break;
-#endif
 		case LINK_PPTP:
 			la->pptpLinkCount++;
 			break;
@@ -1317,17 +1280,17 @@ _FindLinkIn(struct libalias *la, struct in_addr dst_addr,
 			src_addr = lnk->src_addr;
 			src_port = lnk->src_port;
 		}
-#ifdef _ALIAS_SCTP
-		if(link_type == LINK_SCTP) {
+#ifdef _KERNEL
+		if (link_type == LINK_SCTP) {
 		  lnk->src_addr = src_addr;
 		  lnk->src_port = src_port;
 		  return(lnk);
 		}
 #endif
-		  lnk = ReLink(lnk,
-			       src_addr, dst_addr, alias_addr,
-			       src_port, dst_port, alias_port,
-			       link_type);
+		lnk = ReLink(lnk,
+		    src_addr, dst_addr, alias_addr,
+		    src_port, dst_port, alias_port,
+		    link_type);
 	}
 	return (lnk);
 }
@@ -2323,7 +2286,7 @@ LibAliasRedirectPort(struct libalias *la, struct in_addr src_addr, u_short src_p
 	case IPPROTO_TCP:
 		link_type = LINK_TCP;
 		break;
-#ifdef _ALIAS_SCTP
+#ifdef _KERNEL
 	case IPPROTO_SCTP:
 		link_type = LINK_SCTP;
 		break;
@@ -2547,8 +2510,8 @@ LibAliasInit(struct libalias *la)
 			LIST_INIT(&la->linkTableOut[i]);
 		for (i = 0; i < LINK_TABLE_IN_SIZE; i++)
 			LIST_INIT(&la->linkTableIn[i]);
-#ifdef _ALIAS_SCTP
-		AliasSctpInit(la);//***
+#ifdef _KERNEL
+		AliasSctpInit(la);
 #endif
 		LIBALIAS_LOCK_INIT(la);
 		LIBALIAS_LOCK(la);
@@ -2557,7 +2520,7 @@ LibAliasInit(struct libalias *la)
 		la->deleteAllLinks = 1;
 		CleanupAliasData(la);
 		la->deleteAllLinks = 0;
-#ifdef _ALIAS_SCTP
+#ifdef _KERNEL
 		AliasSctpTerm(la);
 		AliasSctpInit(la);
 #endif
@@ -2569,9 +2532,7 @@ LibAliasInit(struct libalias *la)
 	la->icmpLinkCount = 0;
 	la->udpLinkCount = 0;
 	la->tcpLinkCount = 0;
-#ifdef _ALIAS_SCTP
 	la->sctpLinkCount = 0;
-#endif
 	la->pptpLinkCount = 0;
 	la->protoLinkCount = 0;
 	la->fragmentIdLinkCount = 0;
@@ -2600,7 +2561,7 @@ LibAliasUninit(struct libalias *la)
 {
 
 	LIBALIAS_LOCK(la);
-#ifdef _ALIAS_SCTP
+#ifdef _KERNEL
 	AliasSctpTerm(la);
 #endif
 	la->deleteAllLinks = 1;
@@ -2943,7 +2904,7 @@ LibAliasSetSkinnyPort(struct libalias *la, unsigned int port)
 	la->skinnyPort = port;
 	LIBALIAS_UNLOCK(la);
 }
-#ifdef _ALIAS_SCTP
+
 /**
  * @brief Find the address to redirect incoming packets
  *
@@ -2978,4 +2939,3 @@ FindSctpRedirectAddress(struct libalias *la,  struct sctp_nat_msg *sm)
     return(redir); /* address redirect */
   }
 }
-#endif

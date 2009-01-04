@@ -189,22 +189,6 @@ static void SctpAliasLog(const char *format, ...);
  */
 void SctpShowAliasStats(struct libalias *la);
 
-/** @ingroup external
- * @brief Find the address to redirect incoming packets
- *
- * This function is defined in alias_db.c, since it calls static functions in
- * this file
- *
- * Given a destination port for incoming packets to the NAT, discover what 
- * (if any) internal IP address this packet should be re-directed to
- * 
- * @param la Pointer to the libalias instance
- * @param sm Pointer to the incoming message
- * 
- * @return Address to redirect an incoming INIT to
- */
-struct in_addr FindSctpRedirectAddress(struct libalias *la,  struct sctp_nat_msg *sm);
-
 #ifdef	_KERNEL
 
 MALLOC_DEFINE(M_SCTPNAT, "sctpnat", "sctp nat dbs");
