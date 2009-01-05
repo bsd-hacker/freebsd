@@ -142,7 +142,6 @@ __FBSDID("$FreeBSD$");
     See HISTORY file for additional revisions.
 */
 
-
 #ifdef _KERNEL
 #include <machine/stdarg.h>
 #include <sys/param.h>
@@ -1280,6 +1279,7 @@ _FindLinkIn(struct libalias *la, struct in_addr dst_addr,
 			src_addr = lnk->src_addr;
 			src_port = lnk->src_port;
 		}
+
 		if (link_type == LINK_SCTP) {
 		  lnk->src_addr = src_addr;
 		  lnk->src_port = src_port;
