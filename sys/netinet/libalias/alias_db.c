@@ -1280,13 +1280,11 @@ _FindLinkIn(struct libalias *la, struct in_addr dst_addr,
 			src_addr = lnk->src_addr;
 			src_port = lnk->src_port;
 		}
-#ifdef _KERNEL
 		if (link_type == LINK_SCTP) {
 		  lnk->src_addr = src_addr;
 		  lnk->src_port = src_port;
 		  return(lnk);
 		}
-#endif
 		lnk = ReLink(lnk,
 		    src_addr, dst_addr, alias_addr,
 		    src_port, dst_port, alias_port,
@@ -2286,11 +2284,9 @@ LibAliasRedirectPort(struct libalias *la, struct in_addr src_addr, u_short src_p
 	case IPPROTO_TCP:
 		link_type = LINK_TCP;
 		break;
-#ifdef _KERNEL
 	case IPPROTO_SCTP:
 		link_type = LINK_SCTP;
 		break;
-#endif
 	default:
 #ifdef LIBALIAS_DEBUG
 		fprintf(stderr, "PacketAliasRedirectPort(): ");
