@@ -111,13 +111,6 @@ __FBSDID("$FreeBSD$");
     See HISTORY file for additional revisions.
 */
 
-/**
- * Modifications to add sctp functionality by David A. Hayes
- *	$Id: alias.c 122 2008-06-25 06:50:47Z dhayes $ 
- * All are inclosed in #ifdef _ALIAS_SCTP
- * 
- */
-
 #ifdef _KERNEL
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -144,17 +137,11 @@ __FBSDID("$FreeBSD$");
 #include <netinet/libalias/alias.h>
 #include <netinet/libalias/alias_local.h>
 #include <netinet/libalias/alias_mod.h>
-#ifdef _ALIAS_SCTP
-#include <netinet/libalias/alias_sctp.h>
-#endif
 #else
 #include <err.h>
 #include "alias.h"
 #include "alias_local.h"
 #include "alias_mod.h"
-#ifdef _ALIAS_SCTP
-#include "alias_sctp.h"
-#endif
 #endif
 
 /* 
@@ -1360,7 +1347,7 @@ LibAliasInLocked(struct libalias *la, char *ptr, int maxpacketsize)
 		case IPPROTO_TCP:
 			iresult = TcpAliasIn(la, pip);
 			break;
-#ifdef _ALIAS_SCTP
+#ifdef _KERNEL
 		case IPPROTO_SCTP:
 		  iresult = SctpAlias(la, pip, SN_TO_LOCAL);
 			break;
@@ -1510,7 +1497,7 @@ LibAliasOutLocked(struct libalias *la, char *ptr,	/* valid IP packet */
 		case IPPROTO_TCP:
 			iresult = TcpAliasOut(la, pip, maxpacketsize, create);
 			break;
- #ifdef _ALIAS_SCTP
+#ifdef _KERNEL
 		case IPPROTO_SCTP:
 		  iresult = SctpAlias(la, pip, SN_TO_GLOBAL);
 			break;
