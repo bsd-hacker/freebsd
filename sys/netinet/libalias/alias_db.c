@@ -2901,37 +2901,29 @@ LibAliasSetSkinnyPort(struct libalias *la, unsigned int port)
 	LIBALIAS_UNLOCK(la);
 }
 
-/**
- * @brief Find the address to redirect incoming packets
- *
- * The function is located in alias_db.c due to calls to static functions
- *
- * 
- * @param la pointer to the libalias instance
- * @param sm pointer to the incoming message
- * 
- * @return address to redirect an incoming INIT to
+/*
+ * Find the address to redirect incoming packets
  */
 struct in_addr
 FindSctpRedirectAddress(struct libalias *la,  struct sctp_nat_msg *sm)
 {
-  struct alias_link *lnk;
-  struct in_addr redir;
+	struct alias_link *lnk;
+	struct in_addr redir;
 
-  LIBALIAS_LOCK_ASSERT(la);
-  lnk = FindLinkIn(la, sm->ip_hdr->ip_src, sm->ip_hdr->ip_dst,
-		    sm->sctp_hdr->dest_port,sm->sctp_hdr->dest_port, LINK_SCTP, 1);
-  if (lnk != NULL) {
-    return(lnk->src_addr); /* port redirect */
-  } else {
-    redir = FindOriginalAddress(la,sm->ip_hdr->ip_dst);
-    if (redir.s_addr == la->aliasAddress.s_addr ||
-	redir.s_addr == la->targetAddress.s_addr) { /* No address found */
-      lnk = FindLinkIn(la, sm->ip_hdr->ip_src, sm->ip_hdr->ip_dst,
-		     NO_DEST_PORT, 0, LINK_SCTP, 1);
-      if (lnk != NULL)
-	return(lnk->src_addr); /* redirect proto */
-    }
-    return(redir); /* address redirect */
-  }
+	LIBALIAS_LOCK_ASSERT(la);
+	lnk = FindLinkIn(la, sm->ip_hdr->ip_src, sm->ip_hdr->ip_dst,
+	    sm->sctp_hdr->dest_port,sm->sctp_hdr->dest_port, LINK_SCTP, 1);
+	if (lnk != NULL) {
+		return(lnk->src_addr); /* port redirect */
+	} else {
+		redir = FindOriginalAddress(la,sm->ip_hdr->ip_dst);
+		if (redir.s_addr == la->aliasAddress.s_addr ||
+		    redir.s_addr == la->targetAddress.s_addr) { /* No address found */
+			lnk = FindLinkIn(la, sm->ip_hdr->ip_src, sm->ip_hdr->ip_dst,
+			    NO_DEST_PORT, 0, LINK_SCTP, 1);
+			if (lnk != NULL)
+				return(lnk->src_addr); /* redirect proto */
+		}
+		return(redir); /* address redirect */
+	}
 }
