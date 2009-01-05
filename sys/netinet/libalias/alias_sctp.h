@@ -1,33 +1,8 @@
-/*/* 	$Id$	 */
-//#ifndef lint
-//static char vcid[] = "$Id$";
-//#endif /* lint */
 /**
  * @file alias_sctp.h
  * Copyright (c) 2008, Centre for Advanced Internet Architectures
  * Swinburne University of Technology, Melbourne, Australia
  * (CRICOS number 00111D).
- * 
- * Alias_sctp forms part of the libalias kernel module to handle 
- * Network Address Translation (NAT) for the SCTP protocol.
- *
- *  This software was developed by David A. Hayes
- *  with leadership and advice from Jason But
- *
- * The design is outlined in CAIA technical report number  080618A
- * (D. Hayes and J. But, "Alias_sctp Version 0.1: SCTP NAT implementation in IPFW")
- *
- * Development is part of the CAIA SONATA project,
- * proposed by Jason But and Grenville Armitage:
- * http://caia.swin.edu.au/urp/sonata/
- *
- * 
- * This project has been made possible in part by a grant from
- * the Cisco University Research Program Fund at Community
- * Foundation Silicon Valley.
- *
- *
- *  All rights reserved.
  * 
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted provided that the following conditions
@@ -53,6 +28,24 @@
  *  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  *  OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
+ *
+ * Alias_sctp forms part of the libalias kernel module to handle 
+ * Network Address Translation (NAT) for the SCTP protocol.
+ *
+ *  This software was developed by David A. Hayes
+ *  with leadership and advice from Jason But
+ *
+ * The design is outlined in CAIA technical report number  080618A
+ * (D. Hayes and J. But, "Alias_sctp Version 0.1: SCTP NAT implementation in IPFW")
+ *
+ * Development is part of the CAIA SONATA project,
+ * proposed by Jason But and Grenville Armitage:
+ * http://caia.swin.edu.au/urp/sonata/
+ *
+ * 
+ * This project has been made possible in part by a grant from
+ * the Cisco University Research Program Fund at Community
+ * Foundation Silicon Valley.
  *
  */
 #ifndef _ALIAS_SCTP_H_
