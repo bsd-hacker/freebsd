@@ -4,6 +4,7 @@
 
 SUBDIR=	cache
 SUBDIR+=concat
+SUBDIR+=disk
 .if ${MK_OPENSSL} != "no"
 SUBDIR+=eli
 .endif
@@ -14,6 +15,7 @@ SUBDIR+=multipath
 SUBDIR+=nop
 SUBDIR+=part
 SUBDIR+=raid3
+SUBDIR+=sched
 SUBDIR+=shsec
 SUBDIR+=stripe
 SUBDIR+=virstor
