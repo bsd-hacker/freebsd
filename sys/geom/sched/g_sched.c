@@ -35,6 +35,7 @@
 #include <sys/bio.h>
 #include <sys/sysctl.h>
 #include <sys/malloc.h>
+#include <sys/proc.h>	/* we access curthread */
 #include <geom/geom.h>
 #include "g_gsched.h"
 #include "g_sched.h"
@@ -396,18 +397,103 @@ g_sched_destroy_geom(struct gctl_req *req, struct g_class *mp,
 	return (g_sched_destroy(gp, 0));
 }
 
+/*
+ * The code below patches g_io_request() to call g_new_io_request() first.
+ * We must be careful with the compiler, as it may clobber the
+ * parameters on the stack so they are not preserved for the
+ * continuation of the original function.
+ * Ideally we should write everything in assembler:
+
+	mov 0x8(%esp), %edx	// load bp
+	mov    0x64(%edx),%eax	// load bp->bio_parent
+	test   %eax,%eax
+	jne	1f
+ 	mov    0x30(%edx),%eax	// load bp->bio_caller1
+	test   %eax,%eax
+	jne	1f
+	mov    %fs:0x0,%eax	// pcpu pointer
+	mov    0x34(%eax),%eax	// curthread
+	mov    %eax,0x30(%edx)	// store in bp->bio_caller1
+    1:  // old function
+	push %ebp
+	mov %esp, %ebp
+	push %edi
+	push %esi
+	  jmp x+5
+
+ */
+
+static unsigned char
+g_io_trampoline[] = {
+        0xe8, 0x00, 0x00, 0x00, 0x00,   /* call foo */
+        0x55,                           /* push %ebp */
+        0x89, 0xe5,                     /* mov    %esp,%ebp */
+        0x57,                           /* push %edi */
+        0x56,                           /* push %esi */
+        0xe9, 0x00, 0x00, 0x00, 0x00,   /* jmp x+5 */
+};
+
+static void
+g_new_io_request(const char *ret, struct bio *bp, struct g_consumer *cp)
+{
+
+        /*
+         * Scheduler support: if this is the first element in the geom
+         * chain (we know from bp->bio_parent == NULL), store
+         * the thread that originated the request in bp->bio_caller1,
+         * which should be unused in this particular entry (at least
+         * with the code in 7.1/8.0).
+         */
+        if (bp->bio_parent == NULL && bp->bio_caller1 == NULL)
+		bp->bio_caller1 = (void *)curthread->td_tid;
+}
+
+static int g_io_patched = 0;
+static int
+g_io_patch(void *f, void *p, void *new_f)
+{
+	int found = bcmp(f, (const char *)p + 5, 5);
+	printf("match result %d\n", found);
+        if (found == 0) {
+                int ofs;
+
+		printf("patching function\n");
+                /* link the trampoline to the new function */
+                ofs = (int)new_f - ((int)p + 5);
+                bcopy(&ofs, (char *)p + 1, 4);
+                /* jump back to the original + 5 */
+                ofs = ((int)f + 5) - ((int)p + 15);
+                bcopy(&ofs, (char *)p + 11, 4);
+                /* patch the original address with a jump to the trampoline */
+                *(unsigned char *)f = 0xe9;     /* jump opcode */
+                ofs = (int)p - ((int)f + 5);
+                bcopy(&ofs, (char *)f + 1, 4);
+		g_io_patched = 1;
+        }
+        return 0;
+}
+
 static void
 g_sched_init(struct g_class *mp)
 {
 
 	mtx_init(&g_gsched_mtx, "gsched", NULL, MTX_DEF);
 	LIST_INIT(&gsched_list);
+
+	printf("%s loading...\n", __FUNCTION__);
+	/* patch g_io_request to set the thread */
+	g_io_patch(g_io_request, g_io_trampoline, g_new_io_request);
 }
 
 static void
 g_sched_fini(struct g_class *mp)
 {
 
+	if (g_io_patched) {
+		/* restore the original g_io_request */
+		bcopy(g_io_trampoline + 5, (char *)g_io_request, 5);
+	}
+	printf("%s unloading...\n", __FUNCTION__);
 	KASSERT(LIST_EMPTY(&gsched_list), ("still registered schedulers"));
 	mtx_destroy(&g_gsched_mtx);
 }

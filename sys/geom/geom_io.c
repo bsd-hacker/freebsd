@@ -369,6 +369,7 @@ g_io_request(struct bio *bp, struct g_consumer *cp)
 	bp->bio_error = 0;
 	bp->bio_completed = 0;
 
+#if 0
 	/*
 	 * Scheduler support: if this is the first element in the geom
 	 * chain (we know from bp->bio_parent == NULL), store
@@ -382,6 +383,7 @@ g_io_request(struct bio *bp, struct g_consumer *cp)
 		else
 			bp->bio_caller1 = (void *)curthread->td_tid;
 	}
+#endif
 
 	KASSERT(!(bp->bio_flags & BIO_ONQUEUE),
 	    ("Bio already on queue bp=%p", bp));
