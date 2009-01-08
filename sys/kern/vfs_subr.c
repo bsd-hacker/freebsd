@@ -169,6 +169,9 @@ SYSCTL_LONG(_vfs, OID_AUTO, freevnodes, CTLFLAG_RD, &freevnodes, 0, "");
 static int reassignbufcalls;
 SYSCTL_INT(_vfs, OID_AUTO, reassignbufcalls, CTLFLAG_RW, &reassignbufcalls, 0, "");
 
+static int newvnodes;
+SYSCTL_INT(_vfs, OID_AUTO, newvnodes, CTLFLAG_RD, &newvnodes, 0, "");
+
 /*
  * Cache for the mount type id assigned to NFS.  This is used for
  * special checks in nfs/nfs_nqlease.c and vm/vnode_pager.c.
@@ -922,6 +925,8 @@ getnewvnode(const char *tag, struct mount *mp, struct vop_vector *vops,
 	struct bufobj *bo;
 
 	mtx_lock(&vnode_free_list_mtx);
+	newvnodes++;
+
 	/*
 	 * Lend our context to reclaim vnodes if they've exceeded the max.
 	 */
