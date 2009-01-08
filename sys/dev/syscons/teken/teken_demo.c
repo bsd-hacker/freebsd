@@ -70,7 +70,7 @@ struct pixel {
 };
 
 #define NCOLS	80
-#define NROWS	24
+#define NROWS	25
 struct pixel buffer[NCOLS][NROWS];
 
 static int ptfd;
@@ -279,8 +279,14 @@ main(int argc __unused, char *argv[] __unused)
 		perror("forkpty");
 		exit(1);
 	case 0:
-		setenv("TERM", "xterm-color", 1);
+#ifdef TEKEN_CONS25
+		setenv("TERM", "cons25", 1);
+#else /* !TEKEN_CONS25 */
+		setenv("TERM", "xterm", 1);
+#endif /* TEKEN_CONS25 */
+#ifdef TEKEN_UTF8
 		setenv("LC_CTYPE", "UTF-8", 0);
+#endif /* TEKEN_UTF8 */
 		execlp("zsh", "-zsh", NULL);
 		execlp("bash", "-bash", NULL);
 		execlp("sh", "-sh", NULL);

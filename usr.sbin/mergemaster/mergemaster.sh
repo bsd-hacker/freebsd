@@ -353,14 +353,16 @@ case "${AUTO_UPGRADE}" in
   ;;
 esac
 
-if grep -q nodev ${DESTDIR}/etc/fstab; then
-  echo ''
-  echo "*** You have the deprecated 'nodev' option in ${DESTDIR}/etc/fstab."
-  echo "    This can prevent your system from mounting the filesystem on reboot."
-  echo "    Please update your fstab before continuing."
-  echo "    See fstab(5) for more information."
-  echo ''
-  exit 1
+if [ -e "${DESTDIR}/etc/fstab" ]; then
+  if grep -q nodev ${DESTDIR}/etc/fstab; then
+    echo ''
+    echo "*** You have the deprecated 'nodev' option in ${DESTDIR}/etc/fstab."
+    echo "    This can prevent the filesystem from being mounted on reboot."
+    echo "    Please update your fstab before continuing."
+    echo "    See fstab(5) for more information."
+    echo ''
+    exit 1
+  fi
 fi
 
 echo ''
@@ -369,7 +371,8 @@ echo ''
 #
 case "${DONT_CHECK_PAGER}" in
 '')
-  while ! type "${PAGER%% *}" >/dev/null && [ -n "${PAGER}" ]; do
+check_pager () {
+  while ! type "${PAGER%% *}" >/dev/null; do
     echo " *** Your PAGER environment variable specifies '${PAGER}', but"
     echo "     due to the limited PATH that I use for security reasons,"
     echo "     I cannot execute it.  So, what would you like to do?"
@@ -411,6 +414,10 @@ case "${DONT_CHECK_PAGER}" in
     esac
     echo ''
   done
+}
+  if [ -n "${PAGER}" ]; then
+    check_pager
+  fi
   ;;
 esac
 
@@ -442,7 +449,7 @@ if [ ! -f ${SOURCEDIR}/Makefile.inc1 -a \
 fi
 
 # Setup make to use system files from SOURCEDIR
-MM_MAKE="make -m ${SOURCEDIR}/share/mk"
+MM_MAKE="make ${ARCHSTRING} -m ${SOURCEDIR}/share/mk"
 
 # Check DESTDIR against the mergemaster mtree database to see what
 # files the user changed from the reference files.
@@ -582,14 +589,14 @@ case "${RERUN}" in
       case "${DESTDIR}" in
       '') ;;
       *)
-      ${MM_MAKE} DESTDIR=${DESTDIR} ${ARCHSTRING} distrib-dirs
+        ${MM_MAKE} DESTDIR=${DESTDIR} distrib-dirs
         ;;
       esac
-      ${MM_MAKE} DESTDIR=${TEMPROOT} ${ARCHSTRING} distrib-dirs &&
-      MAKEOBJDIRPREFIX=${TEMPROOT}/usr/obj ${MM_MAKE} ${ARCHSTRING} obj SUBDIR_OVERRIDE=etc &&
-      MAKEOBJDIRPREFIX=${TEMPROOT}/usr/obj ${MM_MAKE} ${ARCHSTRING} all SUBDIR_OVERRIDE=etc &&
-      MAKEOBJDIRPREFIX=${TEMPROOT}/usr/obj ${MM_MAKE} ${ARCHSTRING} \
-	  DESTDIR=${TEMPROOT} distribution;} ||
+      od=${TEMPROOT}/usr/obj
+      ${MM_MAKE} DESTDIR=${TEMPROOT} distrib-dirs &&
+      MAKEOBJDIRPREFIX=$od ${MM_MAKE} _obj SUBDIR_OVERRIDE=etc &&
+      MAKEOBJDIRPREFIX=$od ${MM_MAKE} everything SUBDIR_OVERRIDE=etc &&
+      MAKEOBJDIRPREFIX=$od ${MM_MAKE} DESTDIR=${TEMPROOT} distribution;} ||
     { echo '';
      echo "  *** FATAL ERROR: Cannot 'cd' to ${SOURCEDIR} and install files to";
       echo "      the temproot environment";
@@ -644,7 +651,7 @@ case "${RERUN}" in
 
   # Avoid comparing the following user specified files
   for file in ${IGNORE_FILES}; do
-    test -e ${file} && unlink ${file}
+    test -e ${TEMPROOT}/${file} && unlink ${TEMPROOT}/${file}
   done
   ;; # End of the "RERUN" test
 esac
