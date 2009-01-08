@@ -153,6 +153,10 @@ options 	GEOM_PART_MBR		# MBR partitioning
 options 	GEOM_PART_VTOC8		# SMI VTOC8 disk label
 options 	GEOM_PC98		# NEC PC9800 partitioning
 options 	GEOM_RAID3		# RAID3 functionality.
+options 	GEOM_SCHED		# Disk scheduling in GEOM.
+options 	GEOM_GSCHED_AS		# Geom-based anticipatory.
+options 	GEOM_GS_AS		# Driver-based anticipatory.
+options 	GEOM_GS_RR		# Driver-based round-robin.
 options 	GEOM_SHSEC		# Shared secret.
 options 	GEOM_STRIPE		# Disk striping.
 options 	GEOM_SUNLABEL		# Sun/Solaris partitioning

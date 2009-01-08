@@ -1283,6 +1283,7 @@ geom/geom_mbr_enc.c		optional geom_mbr
 geom/geom_pc98.c		optional geom_pc98
 geom/geom_pc98_enc.c		optional geom_pc98
 geom/geom_slice.c		standard
+geom/geom_sched.c		standard
 geom/geom_subr.c		standard
 geom/geom_sunlabel.c		optional geom_sunlabel
 geom/geom_sunlabel_enc.c	optional geom_sunlabel
@@ -1312,6 +1313,11 @@ geom/part/g_part_vtoc8.c	optional geom_part_vtoc8
 geom/raid3/g_raid3.c		optional geom_raid3
 geom/raid3/g_raid3_ctl.c	optional geom_raid3
 geom/shsec/g_shsec.c		optional geom_shsec
+geom/sched/g_sched.c		optional geom_sched
+geom/sched/g_as.c		optional geom_gsched_as
+geom/sched/g_rr.c		optional geom_gsched_rr
+geom/sched/gs_as.c		optional geom_gs_as
+geom/sched/gs_rr.c		optional geom_gs_rr
 geom/stripe/g_stripe.c		optional geom_stripe
 geom/uzip/g_uzip.c		optional geom_uzip
 geom/virstor/binstream.c	optional geom_virstor
