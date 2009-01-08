@@ -61,7 +61,6 @@ struct gs_rr_queue {
 	int		q_refs;
 	int		q_status;
 	u_long		q_key;
-	struct proc	*q_proc;
 
 	struct bio_queue_head q_bioq;
 	unsigned int	q_service;
@@ -99,13 +98,6 @@ struct gs_rr_softc {
 	struct callout	sc_wait;
 };
 
-static inline u_long
-gs_rr_key(struct thread *tp)
-{
-
-	return (tp != NULL ? tp->td_tid : 0);
-}
-
 /* Return the hash chain for the given key. */
 static inline struct gs_hash *
 gs_rr_hash(struct gs_rr_softc *sc, u_long key)
@@ -119,13 +111,11 @@ gs_rr_hash(struct gs_rr_softc *sc, u_long key)
  * it if necessary.
  */
 static struct gs_rr_queue *
-gs_rr_queue_get(struct gs_rr_softc *sc, struct thread *tp)
+gs_rr_queue_get(struct gs_rr_softc *sc, u_long key)
 {
 	struct gs_hash *bucket;
 	struct gs_rr_queue *qp, *new_qp;
-	u_long key;
 
-	key = gs_rr_key(tp);
 	new_qp = NULL;
 	bucket = gs_rr_hash(sc, key);
 retry:
@@ -159,7 +149,6 @@ retry:
 	new_qp->q_refs = 2;
 
 	new_qp->q_key = key;
-	new_qp->q_proc = tp->td_proc;
 	bioq_init(&new_qp->q_bioq);
 	new_qp->q_budget = G_RR_DEFAULT_BUDGET;
 	LIST_INSERT_HEAD(bucket, new_qp, q_hash);
@@ -238,7 +227,7 @@ gs_rr_start(void *data, struct bio *bp)
 
 	sc = data;
 	/* Get the queue for the thread that issued the request. */
-	qp = gs_rr_queue_get(sc, bp->bio_thread);
+	qp = gs_rr_queue_get(sc, g_sched_classify(bp));
 	if (bioq_first(&qp->q_bioq) == NULL) {
 		/* We're inserting into an empty queue... */
 		if (qp == sc->sc_active) {

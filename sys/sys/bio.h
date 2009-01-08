@@ -42,7 +42,6 @@
 
 struct disk;
 struct bio;
-struct thread;
 
 typedef void bio_task_t(void *);
 
@@ -79,9 +78,6 @@ struct bio {
 
 	bio_task_t *bio_task;		/* Task_queue handler */
 	void	*bio_task_arg;		/* Argument to above */
-
-	struct thread *bio_thread;	/* Thread that issued the request */
-
 #ifdef DIAGNOSTIC
 	void	*_bio_caller1;
 	void	*_bio_caller2;

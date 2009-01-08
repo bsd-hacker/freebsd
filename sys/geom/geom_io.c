@@ -172,7 +172,6 @@ g_clone_bio(struct bio *bp)
 		bp2->bio_offset = bp->bio_offset;
 		bp2->bio_data = bp->bio_data;
 		bp2->bio_attribute = bp->bio_attribute;
-		bp2->bio_thread = bp->bio_thread;
 		bp->bio_children++;
 	}
 #ifdef KTR
@@ -370,9 +369,19 @@ g_io_request(struct bio *bp, struct g_consumer *cp)
 	bp->bio_error = 0;
 	bp->bio_completed = 0;
 
-	/* Pass down the thread that issued the bio. */
-	if (bp->bio_thread == NULL)
-		bp->bio_thread = curthread;
+	/*
+	 * Scheduler support: if this is the first element in the geom
+	 * chain (we know from bp->bio_parent == NULL), store
+	 * the thread that originated the request in bp->bio_caller1,
+	 * which should be unused in this particular entry (at least
+	 * with the code in 7.1/8.0).
+	 */
+	if (bp->bio_parent == NULL) {
+		if (bp->bio_caller1 != NULL)
+			printf("unexpected bio_caller1 %p\n", bp->bio_caller1);
+		else
+			bp->bio_caller1 = (void *)curthread->td_tid;
+	}
 
 	KASSERT(!(bp->bio_flags & BIO_ONQUEUE),
 	    ("Bio already on queue bp=%p", bp));

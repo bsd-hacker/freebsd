@@ -70,6 +70,27 @@ void g_sched_lock(struct g_geom *gp);
 void g_sched_unlock(struct g_geom *gp);
 
 /*
+ * Lookup the identity of the issuer of the original request.
+ * In the current implementation we use the curthread of the
+ * issuer, but different mechanisms may be implemented later
+ * so we do not make assumptions on the return value which for
+ * us is just an opaque identifier.
+ * For the time being we make this inline.
+ */
+static inline
+u_long g_sched_classify(struct bio *bp)
+{
+
+	if (bp == NULL) {
+		printf("g_sched_classify: NULL bio\n");
+		return (0);	/* as good as anything */
+	}
+	while (bp->bio_parent != NULL)
+		bp = bp->bio_parent;
+	return ((u_long)(bp->bio_caller1));
+}
+
+/*
  * Declaration of a scheduler module.
  */
 int g_gsched_modevent(module_t mod, int cmd, void *arg);

@@ -49,7 +49,7 @@
 
 struct g_as_softc {
 	struct g_geom		*sc_geom;
-	struct thread		*sc_curthread;
+	u_long			sc_curkey;
 	int			sc_status;
 	long			sc_batch;
 
@@ -76,7 +76,7 @@ g_as_dispatch(struct g_as_softc *sc)
 	 * scheduler starve other threads while an aggressive one
 	 * is making continuously new requests.
 	 */
-	sc->sc_curthread = NULL;
+	sc->sc_curkey = 0;
 
 	bio = bioq_takefirst(&sc->sc_bioq);
 	if (bio != NULL) {
@@ -130,7 +130,7 @@ g_as_start(void *data, struct bio *bio)
 	 * stop the timer and dispatch it, otherwise do nothing.
 	 */
 	if (sc->sc_status == G_AS_NOWAIT ||
-	    bio->bio_thread == sc->sc_curthread) {
+	    g_sched_classify(bio) == sc->sc_curkey) {
 		callout_stop(&sc->sc_wait);
 		g_as_dispatch(sc);
 	}
@@ -152,7 +152,7 @@ g_as_done(void *data, struct bio *bio)
 		/*
 		 * Start waiting for a new request from curthread.
 		 */
-		sc->sc_curthread = bio->bio_thread;
+		sc->sc_curkey = g_sched_classify(bio);
 		sc->sc_status = G_AS_WAITING;
 		callout_reset(&sc->sc_wait, G_AS_WAIT_EXPIRE,
 		    g_as_wait_timeout, sc);
@@ -172,7 +172,7 @@ g_as_init(struct g_geom *geom)
 
 	sc = g_malloc(sizeof(*sc), M_WAITOK | M_ZERO);
 	sc->sc_geom = geom;
-	sc->sc_curthread = NULL;
+	sc->sc_curkey = 0;
 	sc->sc_status = G_AS_NOWAIT;
 
 	callout_init(&sc->sc_wait, CALLOUT_MPSAFE);

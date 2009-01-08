@@ -50,7 +50,7 @@
 struct gs_as_softc {
 	struct disk		*sc_disk;
 
-	struct thread		*sc_curthread;
+	u_long			sc_curkey;
 	int			sc_status;
 	long			sc_batch;
 
@@ -83,7 +83,7 @@ gs_as_next(void *data, int force)
 	 * scheduler starve other threads while an aggressive one
 	 * is making continuously new requests.
 	 */
-	sc->sc_curthread = NULL;
+	sc->sc_curkey = NULL;
 
 	bio = bioq_takefirst(&sc->sc_bioq);
 	if (bio != NULL) {
@@ -123,7 +123,7 @@ gs_as_wait_timeout(void *data)
 
 	mtx_lock(&dp->d_sched_lock);
 	/*
-	 * We were waiting for a new request for curthread, it did
+	 * We were waiting for a new request for curkey, it did
 	 * not come, just dispatch the next one.
 	 */
 	if (sc->sc_status == G_AS_WAITING)
@@ -148,7 +148,7 @@ gs_as_start(void *data, struct bio *bio)
 	 * stop the timer and dispatch it, otherwise do nothing.
 	 */
 	if (sc->sc_status == G_AS_NOWAIT ||
-	    bio->bio_thread == sc->sc_curthread) {
+	    g_sched_classify(bio) == sc->sc_curkey) {
 		callout_stop(&sc->sc_wait);
 		sc->sc_status = G_AS_NOWAIT;
 	}
@@ -164,7 +164,8 @@ gs_as_done(void *data, struct bio *bio)
 
 	if (sc->sc_status == G_AS_WAITREQ) {
 		next = bioq_first(&sc->sc_bioq);
-		if (next != NULL && next->bio_thread == bio->bio_thread) {
+		if (next != NULL &&
+		    g_sched_classify(next) == g_sched_classify(bio)) {
 			/*
 			 * Don't wait if the current thread already
 			 * has pending requests.  This is not complete,
@@ -177,11 +178,11 @@ gs_as_done(void *data, struct bio *bio)
 		}
 
 		/* Start waiting for a new request from curthread. */
-		sc->sc_curthread = bio->bio_thread;
+		sc->sc_curkey = g_sched_classify(bio);
 		sc->sc_status = G_AS_WAITING;
 		callout_reset(&sc->sc_wait, G_AS_WAIT_EXPIRE,
 		    gs_as_wait_timeout, sc);
-		G_SCHED_DEBUG(2, "gs_as: waiting for %p", sc->sc_curthread);
+		G_SCHED_DEBUG(2, "gs_as: waiting for %lu", sc->sc_curkey);
 
 		return (0);
 	}
@@ -196,7 +197,7 @@ gs_as_init(struct disk *dp)
 
 	sc = g_malloc(sizeof(*sc), M_WAITOK | M_ZERO);
 	sc->sc_disk = dp;
-	sc->sc_curthread = NULL;
+	sc->sc_curkey = 0;
 	sc->sc_status = G_AS_NOWAIT;
 
 	callout_init(&sc->sc_wait, CALLOUT_MPSAFE);

@@ -1,0 +1,25 @@
+#
+# $FreeBSD: src/sys/i386/conf/DISKLESS,v 1.474.2.14 2008/08/29 18:54:35 jhb Exp $
+ 
+include "GENERIC"
+ident	DISKLESS
+
+# Make some environment vars available
+env "DISKLESS.env"
+ 
+# To statically compile in device wiring instead of /boot/device.hints
+hints           "GENERIC.hints"         # Default places to look for devices.
+ 
+# make sure we start with an open firewall
+options         IPFIREWALL
+options         IPFIREWALL_DEFAULT_TO_ACCEPT
+options         IPDIVERT
+options         DUMMYNET
+
+# added against GENERIC
+options BOOTP
+options BOOTP_NFSROOT
+options BOOTP_COMPAT
+options INCLUDE_CONFIG_FILE     # Include this file in kernel
+options         KDB
+options         DDB

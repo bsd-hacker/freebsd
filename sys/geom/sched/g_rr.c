@@ -58,7 +58,6 @@ struct g_rr_queue {
 	int		q_refs;
 	int		q_status;
 	u_long		q_key;
-	struct proc	*q_proc;
 
 	struct bio_queue_head q_bioq;
 	unsigned int	q_service;
@@ -94,13 +93,6 @@ struct g_rr_softc {
 	struct callout	sc_wait;
 };
 
-static inline u_long
-g_rr_key(struct thread *tp)
-{
-
-	return (tp != NULL ? tp->td_tid : 0);
-}
-
 /* Return the hash chain for the given key. */
 static inline struct g_hash *
 g_rr_hash(struct g_rr_softc *sc, u_long key)
@@ -114,13 +106,11 @@ g_rr_hash(struct g_rr_softc *sc, u_long key)
  * it if necessary.
  */
 static struct g_rr_queue *
-g_rr_queue_get(struct g_rr_softc *sc, struct thread *tp)
+g_rr_queue_get(struct g_rr_softc *sc, u_long key)
 {
 	struct g_hash *bucket;
 	struct g_rr_queue *qp;
-	u_long key;
 
-	key = g_rr_key(tp);
 	bucket = g_rr_hash(sc, key);
 	LIST_FOREACH(qp, bucket, q_hash) {
 		if (qp->q_key == key) {
@@ -136,7 +126,6 @@ g_rr_queue_get(struct g_rr_softc *sc, struct thread *tp)
 		qp->q_refs = 2;
 
 		qp->q_key = key;
-		qp->q_proc = tp->td_proc;
 		bioq_init(&qp->q_bioq);
 		qp->q_budget = G_RR_DEFAULT_BUDGET;
 		LIST_INSERT_HEAD(bucket, qp, q_hash);
@@ -265,7 +254,7 @@ g_rr_start(void *data, struct bio *bp)
 
 	sc = data;
 	/* Get the queue for the thread that issued the request. */
-	qp = g_rr_queue_get(sc, bp->bio_thread);
+	qp = g_rr_queue_get(sc, g_sched_classify(bp));
 	if (qp == NULL) {
 		g_io_request(bp, LIST_FIRST(&sc->sc_geom->consumer));
 		return;
