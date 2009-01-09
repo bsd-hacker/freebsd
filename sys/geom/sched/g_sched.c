@@ -452,6 +452,7 @@ static int g_io_patched = 0;
 static int
 g_io_patch(void *f, void *p, void *new_f)
 {
+	return 0;
 	int found = bcmp(f, (const char *)p + 5, 5);
 	printf("match result %d\n", found);
         if (found == 0) {

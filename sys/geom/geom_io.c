@@ -369,7 +369,7 @@ g_io_request(struct bio *bp, struct g_consumer *cp)
 	bp->bio_error = 0;
 	bp->bio_completed = 0;
 
-#if 0
+#if 1
 	/*
 	 * Scheduler support: if this is the first element in the geom
 	 * chain (we know from bp->bio_parent == NULL), store
@@ -377,12 +377,25 @@ g_io_request(struct bio *bp, struct g_consumer *cp)
 	 * which should be unused in this particular entry (at least
 	 * with the code in 7.1/8.0).
 	 */
-	if (bp->bio_parent == NULL) {
-		if (bp->bio_caller1 != NULL)
-			printf("unexpected bio_caller1 %p\n", bp->bio_caller1);
-		else
-			bp->bio_caller1 = (void *)curthread->td_tid;
+{
+	struct bio *top = bp;
+	static int good = 0, req = 0;
+	static int last = 0;
+
+	while (top->bio_parent)
+		top = top->bio_parent;
+	req++;
+	if (top->bio_caller1 == NULL) {
+		top->bio_caller1 = (void *)curthread->td_tid;
+		if (0) printf("new label %p (thr %p) size %d\n",
+			top->bio_caller1, curthread, (int)top->bio_length);
+		good++;
 	}
+	if (ticks > last) {
+		last = last + hz;
+		printf("at %d total %d good %d\n", ticks, req, good);
+	}
+}
 #endif
 
 	KASSERT(!(bp->bio_flags & BIO_ONQUEUE),
