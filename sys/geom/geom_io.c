@@ -377,13 +377,19 @@ g_io_request(struct bio *bp, struct g_consumer *cp)
 	 * which should be unused in this particular entry (at least
 	 * with the code in 7.1/8.0).
 	 */
+	{
+		struct bio *top = bp;
+		while (top->bio_parent)
+			top = top->bio_parent;
+		if (top->bio_caller1 == NULL)
+			top->bio_caller1 = (void *)curthread->td_tid;
+	}
+#if 0
 {
 	struct bio *top = bp;
 	static int good = 0, req = 0;
 	static int last = 0;
 
-	while (top->bio_parent)
-		top = top->bio_parent;
 	req++;
 	if (top->bio_caller1 == NULL) {
 		top->bio_caller1 = (void *)curthread->td_tid;
@@ -396,6 +402,7 @@ g_io_request(struct bio *bp, struct g_consumer *cp)
 		printf("at %d total %d good %d\n", ticks, req, good);
 	}
 }
+#endif
 #endif
 
 	KASSERT(!(bp->bio_flags & BIO_ONQUEUE),
