@@ -60,6 +60,7 @@ struct rt_metrics_lite {
 	u_long	rmx_mtu;	/* MTU for this path */
 	u_long	rmx_expire;	/* lifetime for route, e.g. redirect */
 	u_long	rmx_pksent;	/* packets sent using this route */
+	u_long	rmx_weight;	/* absolute weight */ 
 };
 
 struct rt_metrics {
@@ -73,7 +74,8 @@ struct rt_metrics {
 	u_long	rmx_rtt;	/* estimated round trip time */
 	u_long	rmx_rttvar;	/* estimated rtt variance */
 	u_long	rmx_pksent;	/* packets sent using this route */
-	u_long	rmx_filler[4];	/* will be used for T/TCP later */
+	u_long	rmx_weight;	/* route weight */
+	u_long	rmx_filler[3];	/* will be used for T/TCP later */
 };
 
 /*
@@ -232,7 +234,7 @@ struct rt_msghdr {
 	struct	rt_metrics rtm_rmx; /* metrics themselves */
 };
 
-#define RTM_VERSION	5	/* Up the ante and ignore older versions */
+#define RTM_VERSION	6	/* Up the ante and ignore older versions */
 
 /*
  * Message types.
@@ -268,6 +270,7 @@ struct rt_msghdr {
 #define RTV_SSTHRESH	0x20	/* init or lock _ssthresh */
 #define RTV_RTT		0x40	/* init or lock _rtt */
 #define RTV_RTTVAR	0x80	/* init or lock _rttvar */
+#define RTV_WEIGHT	0x100	/* init or lock _rttvar */
 
 /*
  * Bitmask values for rtm_addrs.
@@ -275,7 +278,7 @@ struct rt_msghdr {
 #define RTA_DST		0x1	/* destination sockaddr present */
 #define RTA_GATEWAY	0x2	/* gateway sockaddr present */
 #define RTA_NETMASK	0x4	/* netmask sockaddr present */
-#define RTA_GENMASK	0x8	/* cloning mask sockaddr present */
+#define RTA_SPARE	0x8	/* unused */
 #define RTA_IFP		0x10	/* interface name sockaddr present */
 #define RTA_IFA		0x20	/* interface addr sockaddr present */
 #define RTA_AUTHOR	0x40	/* sockaddr for author of redirect */
@@ -287,7 +290,7 @@ struct rt_msghdr {
 #define RTAX_DST	0	/* destination sockaddr present */
 #define RTAX_GATEWAY	1	/* gateway sockaddr present */
 #define RTAX_NETMASK	2	/* netmask sockaddr present */
-#define RTAX_GENMASK	3	/* cloning mask sockaddr present */
+#define RTAX_SPARE	3	/* spare field */
 #define RTAX_IFP	4	/* interface name sockaddr present */
 #define RTAX_IFA	5	/* interface addr sockaddr present */
 #define RTAX_AUTHOR	6	/* sockaddr for author of redirect */
@@ -295,11 +298,11 @@ struct rt_msghdr {
 #define RTAX_MAX	8	/* size of array to allocate */
 
 struct rt_addrinfo {
-	int	rti_addrs;
-	struct	sockaddr *rti_info[RTAX_MAX];
-	int	rti_flags;
-	struct	ifaddr *rti_ifa;
-	struct	ifnet *rti_ifp;
+	int		rti_addrs;
+	struct sockaddr	*rti_info[RTAX_MAX];
+	int		rti_flags;
+	struct ifaddr 	*rti_ifa;
+	struct ifnet 	*rti_ifp;
 };
 
 /*

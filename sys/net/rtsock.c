@@ -614,7 +614,6 @@ route_output(struct mbuf *m, struct socket *so)
 			info.rti_info[RTAX_DST] = rt_key(rt);
 			info.rti_info[RTAX_GATEWAY] = rt->rt_gateway;
 			info.rti_info[RTAX_NETMASK] = rt_mask(rt);
-			info.rti_info[RTAX_GENMASK] = 0;
 			if (rtm->rtm_addrs & (RTA_IFP | RTA_IFA)) {
 				ifp = rt->rt_ifp;
 				if (ifp) {
@@ -792,6 +791,7 @@ rt_setmetrics(u_long which, const struct rt_metrics *in,
 	 * of tcp hostcache. The rest is ignored.
 	 */
 	metric(RTV_MTU, rmx_mtu);
+	metric(RTV_WEIGHT, rmx_weight);
 	/* Userland -> kernel timebase conversion. */
 	if (which & RTV_EXPIRE)
 		out->rmx_expire = in->rmx_expire ?
@@ -1260,7 +1260,6 @@ sysctl_dumpentry(struct radix_node *rn, void *vw)
 	info.rti_info[RTAX_DST] = rt_key(rt);
 	info.rti_info[RTAX_GATEWAY] = rt->rt_gateway;
 	info.rti_info[RTAX_NETMASK] = rt_mask(rt);
-	info.rti_info[RTAX_GENMASK] = 0;
 	if (rt->rt_ifp) {
 		info.rti_info[RTAX_IFP] = rt->rt_ifp->if_addr->ifa_addr;
 		info.rti_info[RTAX_IFA] = rt->rt_ifa->ifa_addr;

@@ -80,14 +80,14 @@ rn_mpath_next(struct radix_node *rn)
 u_int32_t
 rn_mpath_count(struct radix_node *rn)
 {
-	u_int32_t i;
+	uint32_t i = 0;
 	struct rtentry *rt;
 	
 	i = 1;
 	while ((rn = rn_mpath_next(rn)) != NULL) {
 		rt = (struct rtentry *)rn;
 		if ((rt->rt_flags & RTF_SHUTDOWN) == 0)
-			i++;
+			i += rt->rt_rmx.rmx_weight;
 	}
 	return (i);
 }
@@ -260,11 +260,12 @@ different:
 }
 
 void
-rtalloc_mpath_fib(struct route *ro, u_int32_t hash, u_int fibnum)
+rtalloc_mpath_fib(struct route *ro, uint32_t hash, u_int fibnum)
 {
 	struct radix_node *rn0, *rn;
 	u_int32_t n;
 	struct rtentry *rt;
+	uint64_t total_weight = 0;
 	
 	/*
 	 * XXX we don't attempt to lookup cached route again; what should
@@ -289,12 +290,15 @@ rtalloc_mpath_fib(struct route *ro, u_int32_t hash, u_int fibnum)
 	/* gw selection by Modulo-N Hash (RFC2991) XXX need improvement? */
 	hash += hashjitter;
 	hash %= n;
-	while (hash-- > 0 && rn) {
+	while (rn) {
 		rt = (struct rtentry *)rn;
-		if (rt->rt_flags & RTF_SHUTDOWN) {
-			hash++;
+		if (rt->rt_flags & RTF_SHUTDOWN)
 			continue;
-		}
+
+		total_weight += rt->rt_rmx.rmx_weight;
+		if (total_weight >= hash)
+			break;
+
 		/* stay within the multipath routes */
 		if (rn->rn_dupedkey && rn->rn_mask != rn->rn_dupedkey->rn_mask)
 			break;

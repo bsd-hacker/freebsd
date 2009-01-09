@@ -805,7 +805,7 @@ bad:
 
 #ifdef RADIX_MPATH
 static int
-rn_mpath_delete(int req, struct rt_addrinfo *info,
+rn_mpath_update(int req, struct rt_addrinfo *info,
     struct radix_node_head *rnh, struct rtentry **ret_nrt)
 {
 	/*
@@ -855,6 +855,9 @@ rn_mpath_delete(int req, struct rt_addrinfo *info,
 		 * use the normal delete code to remove
 		 * the first entry
 		 */
+		if (req != RTM_DELETE) 
+			goto nondelete;
+
 		error = ENOENT;
 		goto done;
 	}
@@ -875,9 +878,12 @@ rn_mpath_delete(int req, struct rt_addrinfo *info,
 		 */
 		V_rttrash++;
 		
-	} else if (req == RTM_SHUTDOWN)
+	}
+	
+nondelete:
+	if (req == RTM_SHUTDOWN)
 		rt->rt_flags |= RTF_SHUTDOWN;
-	else
+	else if (req != RTM_DELETE)
 		panic("unrecognized request %d", req);
 	
 
@@ -934,9 +940,9 @@ rtrequest1_fib(int req, struct rt_addrinfo *info, struct rtentry **ret_nrt,
 	switch (req) {
 	case RTM_DELETE:
 #ifdef RADIX_MPATH
-	case RTM_SHUTDOWN:		
+	case RTM_SHUTDOWN:
 		if (rn_mpath_capable(rnh)) {
-			error = rn_mpath_delete(req, info, rnh, ret_nrt);
+			error = rn_mpath_update(req, info, rnh, ret_nrt);
 			/*
 			 * "bad" holds true for the success case
 			 * as well
@@ -992,11 +998,13 @@ rtrequest1_fib(int req, struct rt_addrinfo *info, struct rtentry **ret_nrt,
 	case RTM_ADD:
 		if ((flags & RTF_GATEWAY) && !gateway)
 			senderr(EINVAL);
-		if (dst && gateway && (dst->sa_family != gateway->sa_family) && 
-		    (gateway->sa_family != AF_UNSPEC) && (gateway->sa_family != AF_LINK))
+		if (dst && gateway && (dst->sa_family != gateway->sa_family) 
+		    && (gateway->sa_family != AF_UNSPEC)
+		    && (gateway->sa_family != AF_LINK))
 			senderr(EINVAL);
 
-		if (info->rti_ifa == NULL && (error = rt_getifa_fib(info, fibnum)))
+		if (info->rti_ifa == NULL &&
+		    (error = rt_getifa_fib(info, fibnum)))
 			senderr(error);
 		ifa = info->rti_ifa;
 		rt = uma_zalloc(rtzone, M_NOWAIT | M_ZERO);
@@ -1037,6 +1045,7 @@ rtrequest1_fib(int req, struct rt_addrinfo *info, struct rtentry **ret_nrt,
 		IFAREF(ifa);
 		rt->rt_ifa = ifa;
 		rt->rt_ifp = ifa->ifa_ifp;
+		rt->rt_rmx.rmx_weight = 1;
 
 #ifdef RADIX_MPATH
 		/* do not permit exactly the same dst/mask/gw pair */
