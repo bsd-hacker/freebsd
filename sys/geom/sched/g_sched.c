@@ -433,7 +433,7 @@ g_io_trampoline[] = {
         0xe9, 0x00, 0x00, 0x00, 0x00,   /* jmp x+5 */
 };
 
-static void
+static int
 g_new_io_request(const char *ret, struct bio *bp, struct g_consumer *cp)
 {
 
@@ -444,15 +444,20 @@ g_new_io_request(const char *ret, struct bio *bp, struct g_consumer *cp)
          * which should be unused in this particular entry (at least
          * with the code in 7.1/8.0).
          */
-        if (bp->bio_parent == NULL && bp->bio_caller1 == NULL)
-		bp->bio_caller1 = (void *)curthread->td_tid;
+	struct bio *top = bp;
+	if (top) {
+                while (top->bio_parent)
+                        top = top->bio_parent;
+                if (top->bio_caller1 == NULL)
+                        top->bio_caller1 = (void *)curthread->td_tid;
+        }
+	return (bp != top);	/* prevent compiler from clobbering bp */
 }
 
 static int g_io_patched = 0;
 static int
 g_io_patch(void *f, void *p, void *new_f)
 {
-	return 0;
 	int found = bcmp(f, (const char *)p + 5, 5);
 	printf("match result %d\n", found);
         if (found == 0) {
