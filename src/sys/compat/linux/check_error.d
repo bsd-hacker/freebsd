@@ -56,7 +56,10 @@ linuxulator*:time:linux_clock_nanosleep:conversion_error,
 linuxulator*:time:linux_clock_nanosleep:copyout_error,
 linuxulator*:time:linux_clock_nanosleep:nanosleep_error,
 linuxulator*:sysctl:handle_string:copyout_error,
-linuxulator*:sysctl:linux_sysctl:copyin_error
+linuxulator*:sysctl:linux_sysctl:copyin_error,
+linuxulator*:mib:linux_sysctl_osname:sysctl_string_error,
+linuxulator*:mib:linux_sysctl_osversion:sysctl_string_error,
+linuxulator*:mib:linux_sysctl_oss_version:sysctl_string_error
 {
 	printf("ERROR: %s in %s:%s:%s\n", probename, probeprov, probemod, probefunc);
 	stack();
