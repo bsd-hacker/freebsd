@@ -24,6 +24,13 @@
  * SUCH DAMAGE.
  */
 
+/*
+ * This code implements a GEOM-based anticipatory disk scheduler.
+ * This version does not track process state or behaviour and it is
+ * just a proof of concept to show how non work-conserving policies
+ * can be implemented within this framework.
+ */ 
+
 #include <sys/cdefs.h>
 
 #include <sys/param.h>
@@ -52,17 +59,18 @@ struct g_as_softc {
 	u_long			sc_curkey;
 	int			sc_status;
 	long			sc_batch;
+	int			sc_wait_ticks;
+	int			sc_max_batch;
 
 	struct callout		sc_wait;
 	struct bio_queue_head	sc_bioq;
 };
 
-#define	G_AS_WAIT_EXPIRE	(hz/200 > 0 ? hz/200 : 2)
-#define	G_AS_MAX_BATCH		0x00800000
-
 /*
- * Dispatch the first queued request.  Here we also update the status
+ * Dispatch the first queued request, and update the status
  * according to the dispatched request.
+ * This is called as a result of a start, on a timeout, or on
+ * a completion event.
  */
 static void
 g_as_dispatch(struct g_as_softc *sc)
@@ -70,37 +78,43 @@ g_as_dispatch(struct g_as_softc *sc)
 	struct bio *bio;
 
 	/*
-	 * Batching means just don't serve too many requests waiting
-	 * for sequential ones, it is not really coupled with the
-	 * threads being served.  Its only purpose is to let not the
-	 * scheduler starve other threads while an aggressive one
-	 * is making continuously new requests.
+	 * Serve the requests at the head of the queue, if any,
+	 * and decide whether or not to do anticipatory scheduling
+	 * for the next round. We anticipate if this request is from
+	 * a new client or the current client has not yet exhausted
+	 * its budget. Otherwise, we will serve the next request
+	 * immediately.
 	 */
-	sc->sc_curkey = 0;
 
 	bio = bioq_takefirst(&sc->sc_bioq);
-	if (bio != NULL) {
-		sc->sc_batch += bio->bio_length;
-		if (sc->sc_batch > G_AS_MAX_BATCH) {
-			/*
-			 * Too many requests served here, don't wait
-			 * for the next.
-			 */
+	if (bio == NULL) {
+		/* stray call or timeout */
+		sc->sc_curkey = 0;
+		sc->sc_batch = 0;
+		sc->sc_status = G_AS_NOWAIT;
+	} else {
+		u_long head_key = g_sched_classify(bio);
+
+		/* pass down the current request */
+		g_io_request(bio, LIST_FIRST(&sc->sc_geom->consumer));
+
+		/*
+		 * Now decide what to do next:
+		 * reset budget if client has changed,
+		 * store the identity of the current client,
+		 * and anticipate if and only if the current
+		 * client is below its allowed budget.
+		 */
+		if (head_key != sc->sc_curkey)
 			sc->sc_batch = 0;
+		sc->sc_curkey = head_key;
+		if (sc->sc_batch > sc->sc_max_batch) {
 			sc->sc_status = G_AS_NOWAIT;
 		} else {
-			/*
-			 * When this request will be served we'll wait
-			 * for a new one from the same thread.
-			 * Of course we are anticipating everything
-			 * here, even writes or asynchronous requests,
-			 * but this is only a prototype.
-			 */
+			sc->sc_batch += bio->bio_length;
 			sc->sc_status = G_AS_WAITREQ;
 		}
-		g_io_request(bio, LIST_FIRST(&sc->sc_geom->consumer));
-	} else
-		sc->sc_status = G_AS_NOWAIT;
+	}
 }
 
 static void
@@ -118,17 +132,31 @@ g_as_wait_timeout(void *data)
 	g_sched_unlock(sc->sc_geom);
 }
 
+/*
+ * This function is called when I have a real disk I/O request coming
+ * from a client (only for schedulable requests).
+ * Queue the request and possibly dispatch it. If not dispatched now,
+ * surely there a timeout or a completion event that will keep things
+ * running.
+ */
 static void
 g_as_start(void *data, struct bio *bio)
 {
 	struct g_as_softc *sc = data;
 
+	/*
+	 * This is an approximated implementation: we do an immediate
+	 * dispatch if the current request is coming from the same client
+	 * who was served last (who was the "privileged" one in terms
+	 * of the scheduling policy). However, the dispatch may actually
+	 * serve a different request if the incoming request is not
+	 * sequential (hence it would cause a seek anyways).
+	 * For this reason, we do an unconditional disksort, and
+	 * then decide to dispatch or wait using the identity
+	 * of the client issuing the request.
+	 */
 	bioq_disksort(&sc->sc_bioq, bio);
 
-	/*
-	 * If the request being submitted is the one we were waiting for
-	 * stop the timer and dispatch it, otherwise do nothing.
-	 */
 	if (sc->sc_status == G_AS_NOWAIT ||
 	    g_sched_classify(bio) == sc->sc_curkey) {
 		callout_stop(&sc->sc_wait);
@@ -136,25 +164,17 @@ g_as_start(void *data, struct bio *bio)
 	}
 }
 
+/*
+ * callback when a request is complete.
+ */
 static void
 g_as_done(void *data, struct bio *bio)
 {
 	struct g_as_softc *sc = data;
-	struct bio *bp2;
-
-	bp2 = bio->bio_parent;
-
-	/* Don't wait when fragments are completed. */
-	if (bp2->bio_children != bp2->bio_inbed + 1)
-		return;
 
 	if (sc->sc_status == G_AS_WAITREQ) {
-		/*
-		 * Start waiting for a new request from curthread.
-		 */
-		sc->sc_curkey = g_sched_classify(bio);
-		sc->sc_status = G_AS_WAITING;
-		callout_reset(&sc->sc_wait, G_AS_WAIT_EXPIRE,
+		sc->sc_status = G_AS_WAITING; /* have pending timer */
+		callout_reset(&sc->sc_wait, sc->sc_wait_ticks,
 		    g_as_wait_timeout, sc);
 	} else {
 		/*
@@ -165,6 +185,11 @@ g_as_done(void *data, struct bio *bio)
 	}
 }
 
+/*
+ * Geom glue. When a new geom is attached, allocate and init a
+ * descriptor. We use a callout queue for timeouts, and a bioq
+ * to store pending requests.
+ */
 static void *
 g_as_init(struct g_geom *geom)
 {
@@ -174,6 +199,8 @@ g_as_init(struct g_geom *geom)
 	sc->sc_geom = geom;
 	sc->sc_curkey = 0;
 	sc->sc_status = G_AS_NOWAIT;
+	sc->sc_wait_ticks = (hz >= 400) ? hz/200 : 2;
+	sc->sc_max_batch = 0x00800000;	/* 8 MB */
 
 	callout_init(&sc->sc_wait, CALLOUT_MPSAFE);
 	bioq_init(&sc->sc_bioq);
@@ -186,6 +213,11 @@ g_as_fini(void *data)
 {
 	struct g_as_softc *sc = data;
 
+	/*
+	 * geom should guarantee that _fini is only called when there
+	 * are no more bio's active (GEOM does not know about the queue,
+	 * but it can count existing bio's associated to the geom).
+	 */
 	KASSERT(bioq_first(&sc->sc_bioq) == NULL,
 	    ("Still requests pending."));
 	callout_drain(&sc->sc_wait);
