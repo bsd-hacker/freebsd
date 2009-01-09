@@ -27,7 +27,7 @@
 .Os
 .Sh NAME
 .Nm gsched
-.Nd "control utility for SCHED GEOM class"
+.Nd "control utility for disk scheduler GEOM class"
 .Sh SYNOPSIS
 .Nm
 .Cm create
@@ -46,13 +46,7 @@
 .Op Fl v
 .Ar prov ...
 .Nm
-.Cm list
-.Nm
-.Cm status
-.Nm
-.Cm load
-.Nm
-.Cm unload
+.Cm { list | status | load | unload }
 .Sh DESCRIPTION
 The
 .Nm
@@ -121,8 +115,8 @@ The following example shows how to create a scheduling provider for disk
 .Pa /dev/da0
 , and how to destroy it.
 .Bd -literal -offset indent
-gnop create -v da0
-gnop destroy -v da0.nop
+gsched create -v da0
+gsched destroy -v da0.nop
 .Ed
 .Pp
 .Ed

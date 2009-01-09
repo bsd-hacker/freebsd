@@ -24,6 +24,14 @@
  * SUCH DAMAGE.
  */
 
+/*
+ * This file implements the glue for device-level pluggable disk schedulers.
+ * The actual scheduling policy is implemented by external modules which
+ * register with this one, e.g. gs_as or gs_rr ...
+ * Functions defined here are exported to geom_disk and to individual
+ * device drivers. XXX to be completed
+ */
+
 #include <sys/cdefs.h>
 
 #include <sys/param.h>
@@ -46,12 +54,17 @@
 
 /* Debug sysctl stuff. */
 SYSCTL_DECL(_kern_geom);
-SYSCTL_NODE(_kern_geom, OID_AUTO, sched, CTLFLAG_RW, 0, "I/O scheduler stuff");
-u_int g_sched_debug;
+SYSCTL_NODE(_kern_geom, OID_AUTO, sched, CTLFLAG_RW, 0,
+	"Disk I/O scheduler");
+u_int g_sched_debug;	/* also used by children modules */
 SYSCTL_UINT(_kern_geom_sched, OID_AUTO, debug, CTLFLAG_RW, &g_sched_debug, 0,
     "Debug level");
 
 /*
+ * The variables below store the list of schedulers registered
+ * with this class. A scheduler registers through the DECLARE_GSCHED_MODULE
+ * macro which in eventually causes the invocation of g_sched_register().
+ *
  * Global mutex, protecting the registered schedulers' list and their
  * gs_refs field.
  */
@@ -102,9 +115,9 @@ g_sched_disk_init(struct disk *dp)
 }
 
 /*
- * Flush the scheduler, assuming that the disk d_sched_lock mutex is
- * held.  This function tries to dispatch all the requests queued in
- * the target scheduler and to wait until they're completed.  Flushing
+ * Flush the scheduler. Called with the disk d_sched_lock mutex held.
+ * This function tries to dispatch all the requests queued in
+ * the target scheduler and to wait until they are completed.  Flushing
  * is implemented avoiding queueing for all the requests arriving while
  * the flush is in progres.
  */
@@ -129,6 +142,11 @@ g_sched_flush_locked(struct disk *dp)
 	dp->d_sched_flags &= ~G_SCHED_FLUSHING;
 }
 
+/*
+ * This function is called by geom_disk when a disk has been detached.
+ * We may have requests still queued, and need to dispose them because
+ * there is no underlying device anymore.
+ */
 void
 g_sched_disk_gone(struct disk *dp)
 {
@@ -145,6 +163,7 @@ g_sched_disk_gone(struct disk *dp)
 			 * an appropriate error.  Need to release the disk
 			 * lock since completion callbacks may reenter the
 			 * scheduler.
+			 * gsp should remain unchanged across the loop.
 			 */
 			biofinish(bp, NULL, ENXIO);
 			mtx_lock(&dp->d_sched_lock);
@@ -159,8 +178,9 @@ g_sched_disk_fini(struct disk *dp)
 
 	g_sched_disk_gone(dp);
 	/*
-	 * Here we assume that no new requests reach the scheduler, since
-	 * the disk is almost already destroyed.
+	 * No new requests can reach the scheduler, as the disk
+	 * is almost already destroyed (almost meaning that no more
+	 * requests should arrive and the queue is empty).
 	 */
 	g_sched_configure(dp, "none");
 	mtx_destroy(&dp->d_sched_lock);
@@ -175,45 +195,36 @@ g_sched_start(struct disk *dp, struct bio *bp)
 	gsp = dp->d_sched;
 
 	/*
-	 * Don't try to queue a request if we have no scheduler for
-	 * this disk, or if the request is not one of the type we care
-	 * about (i.e., it is not a read or write).
+	 * Only queue a request if
+	 * 1. we have a scheduler (gsp != NULL);
+	 * 2. this is a read or write request;
+	 * 3. we are not flushing the scheduler.
+	 * In all other cases, dispatch directly to the driver.
 	 */
-	if (gsp == NULL || (bp->bio_cmd & (BIO_READ | BIO_WRITE)) == 0)
-		goto nosched;
+	if (gsp != NULL && (bp->bio_cmd & (BIO_READ | BIO_WRITE)) != 0 &&
+	    (dp->d_sched_flags & G_SCHED_FLUSHING) == 0) {
+		dp->d_nr_sorted++;
+		gsp->gs_start(dp->d_sched_data, bp);
+		mtx_unlock(&dp->d_sched_lock);
 
-	/*
-	 * When flushing is in progress we don't want the scheduler
-	 * queue to grow, so we dispatch new requests directly to the
-	 * driver.
-	 */
-	if ((dp->d_sched_flags & G_SCHED_FLUSHING) != 0)
-		goto nosched;
+		/*
+		 * Try to immediately start the queue. It is up to
+		 * the scheduler to freeze it if needed (returning NULL
+		 * on the next invocation of gs_next()). In this case
+		 * the scheduler will also be in charge of restarting
+		 * the dispatches to the driver, invoking d_kick()
+		 * directly.
+		 */
+		dp->d_kick(dp);
+	} else {
+		mtx_unlock(&dp->d_sched_lock);
 
-	dp->d_nr_sorted++;
-	gsp->gs_start(dp->d_sched_data, bp);
-	mtx_unlock(&dp->d_sched_lock);
-
-	/*
-	 * Try to immediately start the queue.  It is up to the scheduler
-	 * to freeze it if needed (returning NULL on the next invocation
-	 * of gs_next()).  The scheduler will also be responsible of
-	 * restarting the dispatches to the driver, invoking d_kick()
-	 * directly.
-	 */
-	dp->d_kick(dp);
-	return;
-
-nosched:
-	mtx_unlock(&dp->d_sched_lock);
-
-	/*
-	 * Mark the request as not sorted by the scheduler.  Schedulers
-	 * are supposed to store a non-NULL value in the bio_caller1 field
-	 * (they will need it anyway, unless they're really really simple.)
-	 */
-	bp->bio_caller1 = NULL;
-	dp->d_strategy(bp);
+		/*
+		 * Mark the request as not sorted by the scheduler.
+		 */
+		bp->bio_caller1 = NULL;
+		dp->d_strategy(bp);
+	}
 }
 
 struct bio *
@@ -227,18 +238,14 @@ g_sched_next(struct disk *dp)
 	mtx_lock(&dp->d_sched_lock);
 	gsp = dp->d_sched;
 
-	/* If the disk is not using a scheduler, just always return NULL. */
-	if (gsp == NULL)
-		goto out;
+	if (gsp != NULL) {	/* make sure we have a scheduler */
+		/* Get the next request from the scheduler. */
+		bp = gsp->gs_next(dp->d_sched_data,
+			    (dp->d_sched_flags & G_SCHED_FLUSHING) != 0);
 
-	/* Get the next request from the scheduler. */
-	bp = gsp->gs_next(dp->d_sched_data,
-	    (dp->d_sched_flags & G_SCHED_FLUSHING) != 0);
-
-	KASSERT(bp == NULL || bp->bio_caller1 != NULL,
-	    ("bio_caller1 == NULL"));
-
-out:
+		KASSERT(bp == NULL || bp->bio_caller1 != NULL,
+			    ("bio_caller1 == NULL"));
+	}
 	mtx_unlock(&dp->d_sched_lock);
 
 	return (bp);
@@ -262,22 +269,19 @@ g_sched_done(struct bio *bp)
 	 * Don't call the completion callback if we have no scheduler
 	 * or if the request that completed was not one we sorted.
 	 */
-	if (gsp == NULL || bp->bio_caller1 == NULL)
-		goto out;
+	if (gsp != NULL && bp->bio_caller1 != NULL) {
+		kick = gsp->gs_done(dp->d_sched_data, bp);
 
-	kick = gsp->gs_done(dp->d_sched_data, bp);
-
-	/*
-	 * If flush is in progress and we have no more requests queued,
-	 * wake up the flushing process.
-	 */
-	if (--dp->d_nr_sorted == 0 &&
-	    (dp->d_sched_flags & G_SCHED_FLUSHING) != 0) {
-		G_SCHED_DEBUG(2, "geom_sched: flush complete");
-		wakeup(&dp->d_sched);
+		/*
+		 * If flush is in progress and we have no more requests queued,
+		 * wake up the flushing process.
+		 */
+		if (--dp->d_nr_sorted == 0 &&
+		    (dp->d_sched_flags & G_SCHED_FLUSHING) != 0) {
+			G_SCHED_DEBUG(2, "geom_sched: flush complete");
+			wakeup(&dp->d_sched);
+		}
 	}
-
-out:
 	mtx_unlock(&dp->d_sched_lock);
 
 	if (kick)
@@ -333,13 +337,14 @@ g_sched_unregister(struct g_sched *gsp)
 				G_SCHED_DEBUG(1, "geom_sched: %s still in use",
 				    gsp->gs_name);
 				error = EBUSY;
-			} else if (gsp->gs_refs == 1)
+			} else if (gsp->gs_refs == 1) {
 				/*
 				 * The list reference is the last one
 				 * that can be removed, so it is safe to
 				 * just decrement the counter elsewhere.
 				 */
 				LIST_REMOVE(gsp, gs_list);
+			}
 			goto out;
 		}
 	}

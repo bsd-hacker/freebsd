@@ -24,6 +24,10 @@
  * SUCH DAMAGE.
  */
 
+/*
+ * GEOM-based round robin disk scheduler.
+ */
+
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
@@ -43,7 +47,7 @@
  */
 
 /* Timeout for anticipation. */
-#define	G_RR_WAIT_EXPIRE	(hz/200 > 0 ? hz/200 : 2)
+#define	G_RR_WAIT_EXPIRE	(hz/400 > 0 ? hz/200 : 2)
 
 #define	G_QUEUE_NOWAIT		0	/* Ready to dispatch. */
 #define	G_QUEUE_WAITREQ		1	/* Waiting for a completion. */
@@ -129,6 +133,7 @@ g_rr_queue_get(struct g_rr_softc *sc, u_long key)
 		bioq_init(&qp->q_bioq);
 		qp->q_budget = G_RR_DEFAULT_BUDGET;
 		LIST_INSERT_HEAD(bucket, qp, q_hash);
+		printf("new queue for key %lu\n", key);
 	}
 
 	return (qp);
@@ -177,7 +182,6 @@ g_rr_fini(void *data)
 	KASSERT(TAILQ_EMPTY(&sc->sc_rr_tailq), ("still scheduled queues"));
 	for (i = 0; i < G_RR_HASH_SIZE; i++) {
 		LIST_FOREACH_SAFE(qp, &sc->sc_hash[i], q_hash, qp2) {
-			LIST_REMOVE(qp, q_hash);
 			g_rr_queue_put(qp);
 		}
 	}
@@ -246,6 +250,9 @@ g_rr_dispatch(struct g_rr_softc *sc)
 		g_io_request(bp, LIST_FIRST(&sc->sc_geom->consumer));
 }
 
+/*
+ * Called when a real request for disk I/O arrives.
+ */
 static void
 g_rr_start(void *data, struct bio *bp)
 {
