@@ -47,6 +47,7 @@ sendpipe
 shutdown
 ssthresh
 static
+weight
 x25
 xns
 xresolve

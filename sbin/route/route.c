@@ -549,6 +549,7 @@ set_metric(value, key)
 	caseof(K_SSTHRESH, RTV_SSTHRESH, rmx_ssthresh);
 	caseof(K_RTT, RTV_RTT, rmx_rtt);
 	caseof(K_RTTVAR, RTV_RTTVAR, rmx_rttvar);
+	caseof(K_WEIGHT, RTV_WEIGHT, rmx_weight);
 	}
 	rtm_inits |= flag;
 	if (lockrest || locking)
@@ -574,6 +575,7 @@ newroute(argc, argv)
 	cmd = argv[0];
 	if (*cmd != 'g')
 		shutdown(s, SHUT_RD); /* Don't want to read back our messages */
+
 	while (--argc > 0) {
 		if (**(++argv)== '-') {
 			switch (key = keyword(1 + *argv)) {
@@ -646,11 +648,6 @@ newroute(argc, argv)
 					usage((char *)NULL);
 				(void) getaddr(RTA_IFP, *++argv, 0);
 				break;
-			case K_GENMASK:
-				if (!--argc)
-					usage((char *)NULL);
-				(void) getaddr(RTA_GENMASK, *++argv, 0);
-				break;
 			case K_GATEWAY:
 				if (!--argc)
 					usage((char *)NULL);
@@ -689,6 +686,7 @@ newroute(argc, argv)
 			case K_SSTHRESH:
 			case K_RTT:
 			case K_RTTVAR:
+			case K_WEIGHT:
 				if (!--argc)
 					usage((char *)NULL);
 				set_metric(*++argv, key);
@@ -924,9 +922,6 @@ getaddr(which, s, hpp)
 		break;
 	case RTA_NETMASK:
 		su = &so_mask;
-		break;
-	case RTA_GENMASK:
-		su = &so_genmask;
 		break;
 	case RTA_IFP:
 		su = &so_ifp;
@@ -1191,6 +1186,8 @@ rtmsg(cmd, flags)
 		cmd = RTM_ADD;
 	else if (cmd == 'c')
 		cmd = RTM_CHANGE;
+	else if (cmd == 's')
+		cmd = RTM_SHUTDOWN;
 	else if (cmd == 'g') {
 		cmd = RTM_GET;
 		if (so_ifp.sa.sa_family == 0) {
@@ -1198,9 +1195,7 @@ rtmsg(cmd, flags)
 			so_ifp.sa.sa_len = sizeof(struct sockaddr_dl);
 			rtm_addrs |= RTA_IFP;
 		}
-	} else if (cmd == 's')
-		cmd = RTM_SHUTDOWN;
-	else
+	} else
 		cmd = RTM_DELETE;
 #define rtm m_rtmsg.m_rtm
 	rtm.rtm_type = cmd;
@@ -1210,13 +1205,11 @@ rtmsg(cmd, flags)
 	rtm.rtm_addrs = rtm_addrs;
 	rtm.rtm_rmx = rt_metrics;
 	rtm.rtm_inits = rtm_inits;
-
 	if (rtm_addrs & RTA_NETMASK)
 		mask_addr();
 	NEXTADDR(RTA_DST, so_dst);
 	NEXTADDR(RTA_GATEWAY, so_gate);
 	NEXTADDR(RTA_NETMASK, so_mask);
-	NEXTADDR(RTA_GENMASK, so_genmask);
 	NEXTADDR(RTA_IFP, so_ifp);
 	NEXTADDR(RTA_IFA, so_ifa);
 	rtm.rtm_msglen = l = cp - (char *)&m_rtmsg;
@@ -1466,7 +1459,7 @@ print_getmsg(rtm, msglen)
 #define msec(u)	(((u) + 500) / 1000)		/* usec to msec */
 
 	(void) printf("\n%s\n", "\
- recvpipe  sendpipe  ssthresh  rtt,msec    rttvar  hopcount      mtu     expire");
+ recvpipe  sendpipe  ssthresh  rtt,msec    rttvar  hopcount      mtu  weight expire");
 	printf("%8ld%c ", rtm->rtm_rmx.rmx_recvpipe, lock(RPIPE));
 	printf("%8ld%c ", rtm->rtm_rmx.rmx_sendpipe, lock(SPIPE));
 	printf("%8ld%c ", rtm->rtm_rmx.rmx_ssthresh, lock(SSTHRESH));
@@ -1474,6 +1467,7 @@ print_getmsg(rtm, msglen)
 	printf("%8ld%c ", msec(rtm->rtm_rmx.rmx_rttvar), lock(RTTVAR));
 	printf("%8ld%c ", rtm->rtm_rmx.rmx_hopcount, lock(HOPCOUNT));
 	printf("%8ld%c ", rtm->rtm_rmx.rmx_mtu, lock(MTU));
+	printf("%8ld%c ", rtm->rtm_rmx.rmx_weight, lock(WEIGHT));
 	if (rtm->rtm_rmx.rmx_expire)
 		rtm->rtm_rmx.rmx_expire -= time(0);
 	printf("%8ld%c\n", rtm->rtm_rmx.rmx_expire, lock(EXPIRE));
