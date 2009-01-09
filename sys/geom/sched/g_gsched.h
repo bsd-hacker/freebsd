@@ -24,6 +24,10 @@
  * SUCH DAMAGE.
  */
 
+/*
+ * Prototypes for GEOM-based disk schedulers.
+ */
+
 #ifndef	_G_GSCHED_H_
 #define	_G_GSCHED_H_
 
