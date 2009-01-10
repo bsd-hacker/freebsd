@@ -46,7 +46,6 @@ rttvar
 sa
 sendpipe
 show
-shutdown
 ssthresh
 static
 sticky

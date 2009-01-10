@@ -177,7 +177,6 @@ main(argc, argv)
 		case K_ADD:
 		case K_DEL:
 		case K_DELETE:
-		case K_SHUTDOWN:
 			newroute(argc, argv);
 			/* NOTREACHED */
 
@@ -574,7 +573,7 @@ newroute(argc, argv)
 		errx(EX_NOPERM, "must be root to alter routing table");
 	}
 	cmd = argv[0];
-	if (*cmd != 'g' && cmd != 's')
+	if (*cmd != 'g' && *cmd != 's')
 		shutdown(s, SHUT_RD); /* Don't want to read back our messages */
 
 	while (--argc > 0) {
@@ -1299,9 +1298,9 @@ char metricnames[] =
 "\1mtu";
 char routeflags[] =
 "\1UP\2GATEWAY\3HOST\4REJECT\5DYNAMIC\6MODIFIED\7DONE"
-"\012XRESOLVE\013LLINFO\014STATIC\015BLACKHOLE\016b016"
+"\012XRESOLVE\013LLINFO\014STATIC\015BLACKHOLE"
 "\017PROTO2\020PROTO1\021PRCLONING\022WASCLONED\023PROTO3"
-"\025PINNED\026LOCAL\027BROADCAST\030MULTICAST\035STICKY\036SHUTDOWN";
+"\025PINNED\026LOCAL\027BROADCAST\030MULTICAST\035STICKY";
 char ifnetflags[] =
 "\1UP\2BROADCAST\3DEBUG\4LOOPBACK\5PTP\6b6\7RUNNING\010NOARP"
 "\011PPROMISC\012ALLMULTI\013OACTIVE\014SIMPLEX\015LINK0\016LINK1"
