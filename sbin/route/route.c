@@ -1296,13 +1296,13 @@ char *msgtypes[] = {
 };
 
 char metricnames[] =
-"\011pksent\010rttvar\7rtt\6ssthresh\5sendpipe\4recvpipe\3expire\2hopcount"
+"\011weight\010rttvar\7rtt\6ssthresh\5sendpipe\4recvpipe\3expire"
 "\1mtu";
 char routeflags[] =
 "\1UP\2GATEWAY\3HOST\4REJECT\5DYNAMIC\6MODIFIED\7DONE"
 "\012XRESOLVE\013LLINFO\014STATIC\015BLACKHOLE\016b016"
 "\017PROTO2\020PROTO1\021PRCLONING\022WASCLONED\023PROTO3"
-"\025PINNED\026LOCAL\027BROADCAST\030MULTICAST\035STICK\036SHUTDOWN";
+"\025PINNED\026LOCAL\027BROADCAST\030MULTICAST\035STICKY\036SHUTDOWN";
 char ifnetflags[] =
 "\1UP\2BROADCAST\3DEBUG\4LOOPBACK\5PTP\6b6\7RUNNING\010NOARP"
 "\011PPROMISC\012ALLMULTI\013OACTIVE\014SIMPLEX\015LINK0\016LINK1"
@@ -1471,7 +1471,6 @@ print_getmsg(rtm, msglen)
 	printf("%8ld%c ", rtm->rtm_rmx.rmx_ssthresh, lock(SSTHRESH));
 	printf("%8ld%c ", msec(rtm->rtm_rmx.rmx_rtt), lock(RTT));
 	printf("%8ld%c ", msec(rtm->rtm_rmx.rmx_rttvar), lock(RTTVAR));
-	printf("%8ld%c ", rtm->rtm_rmx.rmx_hopcount, lock(HOPCOUNT));
 	printf("%8ld%c ", rtm->rtm_rmx.rmx_mtu, lock(MTU));
 	printf("%8ld%c ", rtm->rtm_rmx.rmx_weight, lock(WEIGHT));
 	if (rtm->rtm_rmx.rmx_expire)
