@@ -83,7 +83,6 @@ rn_mpath_count(struct radix_node *rn)
 	uint32_t i = 0;
 	struct rtentry *rt;
 	
-	i = 1;
 	while ((rn = rn_mpath_next(rn)) != NULL) {
 		rt = (struct rtentry *)rn;
 		if ((rt->rt_flags & RTF_SHUTDOWN) == 0)
@@ -259,6 +258,9 @@ different:
 	return 0;
 }
 
+static int n_prev;
+static int lookup_count;
+
 void
 rtalloc_mpath_fib(struct route *ro, uint32_t hash, u_int fibnum)
 {
@@ -287,15 +289,26 @@ rtalloc_mpath_fib(struct route *ro, uint32_t hash, u_int fibnum)
 	rn0 = rn = (struct radix_node *)ro->ro_rt;
 	n = rn_mpath_count(rn0);
 
+	if (n != n_prev) {
+		printf("rn_mpath_count=%d\n", n);
+		n_prev = n;
+	}
+	
+	
 	/* gw selection by Modulo-N Hash (RFC2991) XXX need improvement? */
 	hash += hashjitter;
 	hash %= n;
+	if ((lookup_count % 500) == 0)
+		printf("hash=%d ", hash);
 	while (rn) {
 		rt = (struct rtentry *)rn;
 		if (rt->rt_flags & RTF_SHUTDOWN)
 			continue;
 
 		total_weight += rt->rt_rmx.rmx_weight;
+		if ((lookup_count % 500) == 0)
+			printf("rmx_weight=%ld ", rt->rt_rmx.rmx_weight);
+		
 		if (total_weight >= hash)
 			break;
 
@@ -304,7 +317,10 @@ rtalloc_mpath_fib(struct route *ro, uint32_t hash, u_int fibnum)
 			break;
 		rn = rn->rn_dupedkey;
 	}
-
+	if ((lookup_count % 500) == 0)
+		printf("\n");
+	lookup_count++;
+	
 	/* XXX try filling rt_gwroute and avoid unreachable gw  */
 
 	/* if gw selection fails, use the first match (default) */
