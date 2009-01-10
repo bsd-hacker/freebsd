@@ -83,10 +83,12 @@ rn_mpath_count(struct radix_node *rn)
 	uint32_t i = 0;
 	struct rtentry *rt;
 	
-	while ((rn = rn_mpath_next(rn)) != NULL) {
+	while (rn != NULL) {
+		
 		rt = (struct rtentry *)rn;
 		if ((rt->rt_flags & RTF_SHUTDOWN) == 0)
 			i += rt->rt_rmx.rmx_weight;
+		rn = rn_mpath_next(rn);
 	}
 	return (i);
 }
@@ -298,7 +300,7 @@ rtalloc_mpath_fib(struct route *ro, uint32_t hash, u_int fibnum)
 	/* gw selection by Modulo-N Hash (RFC2991) XXX need improvement? */
 	hash += hashjitter;
 	hash %= n;
-	if ((lookup_count % 500) == 0)
+	if ((lookup_count % 50000) == 0)
 		printf("hash=%d ", hash);
 	while (rn) {
 		rt = (struct rtentry *)rn;
@@ -306,7 +308,7 @@ rtalloc_mpath_fib(struct route *ro, uint32_t hash, u_int fibnum)
 			continue;
 
 		total_weight += rt->rt_rmx.rmx_weight;
-		if ((lookup_count % 500) == 0)
+		if ((lookup_count % 50000) == 0)
 			printf("rmx_weight=%ld ", rt->rt_rmx.rmx_weight);
 		
 		if (total_weight >= hash)
@@ -317,7 +319,7 @@ rtalloc_mpath_fib(struct route *ro, uint32_t hash, u_int fibnum)
 			break;
 		rn = rn->rn_dupedkey;
 	}
-	if ((lookup_count % 500) == 0)
+	if ((lookup_count % 50000) == 0)
 		printf("\n");
 	lookup_count++;
 	
