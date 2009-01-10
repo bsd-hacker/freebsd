@@ -655,7 +655,6 @@ route_output(struct mbuf *m, struct socket *so)
 			}
 			(void)rt_msg2(rtm->rtm_type, &info, (caddr_t)rtm, NULL);
 			rtm->rtm_flags = rt->rt_flags;
-			rtm->rtm_use = 0;
 			rt_getmetrics(&rt->rt_rmx, &rtm->rtm_rmx);
 			rtm->rtm_addrs = info.rti_addrs;
 			break;
@@ -709,10 +708,8 @@ route_output(struct mbuf *m, struct socket *so)
 				rt->rt_ifp = info.rti_ifp;
 			}
 			/* Allow some flags to be toggled on change. */
-			if (rtm->rtm_fmask & RTF_FMASK)
-				rt->rt_flags = (rt->rt_flags &
-				    ~rtm->rtm_fmask) |
-				    (rtm->rtm_flags & rtm->rtm_fmask);
+			rt->rt_flags = (rt->rt_flags & ~RTF_FMASK) |
+				    (rtm->rtm_flags & RTF_FMASK);
 			rt_setmetrics(rtm->rtm_inits, &rtm->rtm_rmx,
 					&rt->rt_rmx);
 			rtm->rtm_index = rt->rt_ifp->if_index;
@@ -1273,7 +1270,10 @@ sysctl_dumpentry(struct radix_node *rn, void *vw)
 		struct rt_msghdr *rtm = (struct rt_msghdr *)w->w_tmem;
 
 		rtm->rtm_flags = rt->rt_flags;
-		rtm->rtm_use = rt->rt_rmx.rmx_pksent;
+		/*
+		 * let's be honest about this being a retarded hack
+		 */
+		rtm->rtm_fmask = rt->rt_rmx.rmx_pksent;
 		rt_getmetrics(&rt->rt_rmx, &rtm->rtm_rmx);
 		rtm->rtm_index = rt->rt_ifp->if_index;
 		rtm->rtm_errno = rtm->rtm_pid = rtm->rtm_seq = 0;

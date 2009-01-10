@@ -230,7 +230,6 @@ struct rt_msghdr {
 	int	rtm_seq;	/* for sender to identify action */
 	int	rtm_errno;	/* why failed */
 	int	rtm_fmask;	/* bitmask used in RTM_CHANGE message */
-#define	rtm_use	rtm_fmask	/* deprecated, use rtm_rmx->rmx_pksent */
 	u_long	rtm_inits;	/* which metrics we are initializing */
 	struct	rt_metrics rtm_rmx; /* metrics themselves */
 };
