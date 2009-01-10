@@ -785,7 +785,8 @@ static void
 rt_setmetrics(u_long which, const struct rt_metrics *in,
 	struct rt_metrics_lite *out)
 {
-#define metric(f, e) if (which & (f)) out->e = in->e;
+#define metric(f, e) if (which & (f)) { printf("setting 0x%x", f); out->e = in->e; }								
+	
 	/*
 	 * Only these are stored in the routing entry since introduction
 	 * of tcp hostcache. The rest is ignored.
@@ -805,6 +806,7 @@ rt_getmetrics(const struct rt_metrics_lite *in, struct rt_metrics *out)
 #define metric(e) out->e = in->e;
 	bzero(out, sizeof(*out));
 	metric(rmx_mtu);
+	metric(rmx_weight);
 	/* Kernel -> userland timebase conversion. */
 	out->rmx_expire = in->rmx_expire ?
 	    in->rmx_expire - time_uptime + time_second : 0;

@@ -204,7 +204,7 @@ struct ortentry {
 /* Mask of RTF flags that are allowed to be modified by RTM_CHANGE. */
 #define RTF_FMASK	\
 	(RTF_PROTO1 | RTF_PROTO2 | RTF_PROTO3 | RTF_BLACKHOLE | \
-	 RTF_REJECT | RTF_STATIC)
+	 RTF_REJECT | RTF_STATIC | RTF_SHUTDOWN | RTF_STICKY)
 
 /*
  * Routing statistics.
@@ -271,7 +271,7 @@ struct rt_msghdr {
 #define RTV_SSTHRESH	0x20	/* init or lock _ssthresh */
 #define RTV_RTT		0x40	/* init or lock _rtt */
 #define RTV_RTTVAR	0x80	/* init or lock _rttvar */
-#define RTV_WEIGHT	0x100	/* init or lock _rttvar */
+#define RTV_WEIGHT	0x100	/* init or lock _weight */
 
 /*
  * Bitmask values for rtm_addrs.
