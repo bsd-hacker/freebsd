@@ -196,9 +196,10 @@ struct ortentry {
 #define	RTF_LOCAL	0x200000 	/* route represents a local address */
 #define	RTF_BROADCAST	0x400000	/* route represents a bcast address */
 #define	RTF_MULTICAST	0x800000	/* route represents a mcast address */
-					/* 0x1000000 and up unassigned */
+					/* 0x8000000 and up unassigned */
+#define	RTF_STICKY	 0x10000000	/* always route dst->src */
 #define	RTF_SHUTDOWN	 0x20000000	/* no new connections */
-#define	RTF_RNH_LOCKED	 0x40000000	
+#define	RTF_RNH_LOCKED	 0x40000000
 
 /* Mask of RTF flags that are allowed to be modified by RTM_CHANGE. */
 #define RTF_FMASK	\
