@@ -574,7 +574,7 @@ newroute(argc, argv)
 		errx(EX_NOPERM, "must be root to alter routing table");
 	}
 	cmd = argv[0];
-	if (*cmd != 'g')
+	if (*cmd != 'g' && cmd != 's')
 		shutdown(s, SHUT_RD); /* Don't want to read back our messages */
 
 	while (--argc > 0) {
@@ -747,7 +747,7 @@ newroute(argc, argv)
 		} else
 			break;
 	}
-	if (*cmd == 'g')
+	if (*cmd == 'g' || *cmd == 's')
 		exit(ret != 0);
 	if (!qflag) {
 		oerrno = errno;
@@ -1193,9 +1193,7 @@ rtmsg(cmd, flags)
 		cmd = RTM_ADD;
 	else if (cmd == 'c')
 		cmd = RTM_CHANGE;
-	else if (cmd == 's')
-		cmd = RTM_SHUTDOWN;
-	else if (cmd == 'g') {
+	else if (cmd == 'g' || cmd == 's') {
 		cmd = RTM_GET;
 		if (so_ifp.sa.sa_family == 0) {
 			so_ifp.sa.sa_family = AF_LINK;
