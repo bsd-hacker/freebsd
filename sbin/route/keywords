@@ -33,6 +33,7 @@ mtu
 net
 netmask
 nostatic
+nostick
 osi
 prefixlen
 proto1
@@ -47,6 +48,7 @@ sendpipe
 shutdown
 ssthresh
 static
+sticky
 weight
 x25
 xns

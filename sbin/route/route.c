@@ -638,6 +638,12 @@ newroute(argc, argv)
 			case K_STATIC:
 				flags |= RTF_STATIC;
 				break;
+			case K_STICKY:
+				flags |= RTF_STICKY;
+				break;
+			case K_NOSTICK:
+				flags &= ~RTF_STICKY;
+				break;
 			case K_IFA:
 				if (!--argc)
 					usage((char *)NULL);
