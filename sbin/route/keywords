@@ -45,6 +45,7 @@ rtt
 rttvar
 sa
 sendpipe
+show
 shutdown
 ssthresh
 static

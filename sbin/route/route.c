@@ -169,6 +169,7 @@ main(argc, argv)
 	if (*argv)
 		switch (keyword(*argv)) {
 		case K_GET:
+		case K_SHOW:
 			uid = 0;
 			/* FALLTHROUGH */
 
@@ -1465,7 +1466,7 @@ print_getmsg(rtm, msglen)
 #define msec(u)	(((u) + 500) / 1000)		/* usec to msec */
 
 	(void) printf("\n%s\n", "\
- recvpipe  sendpipe  ssthresh  rtt,msec    mtu           weight    expire");
+ recvpipe  sendpipe  ssthresh  rtt,msec    mtu        weight    expire");
 	printf("%8ld%c ", rtm->rtm_rmx.rmx_recvpipe, lock(RPIPE));
 	printf("%8ld%c ", rtm->rtm_rmx.rmx_sendpipe, lock(SPIPE));
 	printf("%8ld%c ", rtm->rtm_rmx.rmx_ssthresh, lock(SSTHRESH));
