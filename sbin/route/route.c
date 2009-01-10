@@ -1299,10 +1299,10 @@ char metricnames[] =
 "\011pksent\010rttvar\7rtt\6ssthresh\5sendpipe\4recvpipe\3expire\2hopcount"
 "\1mtu";
 char routeflags[] =
-"\1UP\2GATEWAY\3HOST\4REJECT\5DYNAMIC\6MODIFIED\7DONE\010MASK_PRESENT"
-"\011CLONING\012XRESOLVE\013LLINFO\014STATIC\015BLACKHOLE\016b016"
-"\017PROTO2\020PROTO1\021PRCLONING\022WASCLONED\023PROTO3\024CHAINDELETE"
-"\025PINNED\026LOCAL\027BROADCAST\030MULTICAST";
+"\1UP\2GATEWAY\3HOST\4REJECT\5DYNAMIC\6MODIFIED\7DONE"
+"\012XRESOLVE\013LLINFO\014STATIC\015BLACKHOLE\016b016"
+"\017PROTO2\020PROTO1\021PRCLONING\022WASCLONED\023PROTO3"
+"\025PINNED\026LOCAL\027BROADCAST\030MULTICAST\035STICK\036SHUTDOWN";
 char ifnetflags[] =
 "\1UP\2BROADCAST\3DEBUG\4LOOPBACK\5PTP\6b6\7RUNNING\010NOARP"
 "\011PPROMISC\012ALLMULTI\013OACTIVE\014SIMPLEX\015LINK0\016LINK1"
@@ -1465,7 +1465,7 @@ print_getmsg(rtm, msglen)
 #define msec(u)	(((u) + 500) / 1000)		/* usec to msec */
 
 	(void) printf("\n%s\n", "\
- recvpipe  sendpipe  ssthresh  rtt,msec    rttvar  hopcount      mtu  weight expire");
+ recvpipe  sendpipe  ssthresh  rtt,msec    rttvar  mtu    weight    expire");
 	printf("%8ld%c ", rtm->rtm_rmx.rmx_recvpipe, lock(RPIPE));
 	printf("%8ld%c ", rtm->rtm_rmx.rmx_sendpipe, lock(SPIPE));
 	printf("%8ld%c ", rtm->rtm_rmx.rmx_ssthresh, lock(SSTHRESH));
