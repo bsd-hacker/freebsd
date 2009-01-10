@@ -1465,12 +1465,11 @@ print_getmsg(rtm, msglen)
 #define msec(u)	(((u) + 500) / 1000)		/* usec to msec */
 
 	(void) printf("\n%s\n", "\
- recvpipe  sendpipe  ssthresh  rtt,msec    rttvar  mtu    weight    expire");
+ recvpipe  sendpipe  ssthresh  rtt,msec    mtu           weight    expire");
 	printf("%8ld%c ", rtm->rtm_rmx.rmx_recvpipe, lock(RPIPE));
 	printf("%8ld%c ", rtm->rtm_rmx.rmx_sendpipe, lock(SPIPE));
 	printf("%8ld%c ", rtm->rtm_rmx.rmx_ssthresh, lock(SSTHRESH));
 	printf("%8ld%c ", msec(rtm->rtm_rmx.rmx_rtt), lock(RTT));
-	printf("%8ld%c ", msec(rtm->rtm_rmx.rmx_rttvar), lock(RTTVAR));
 	printf("%8ld%c ", rtm->rtm_rmx.rmx_mtu, lock(MTU));
 	printf("%8ld%c ", rtm->rtm_rmx.rmx_weight, lock(WEIGHT));
 	if (rtm->rtm_rmx.rmx_expire)
