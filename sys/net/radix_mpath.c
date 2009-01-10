@@ -299,21 +299,19 @@ rtalloc_mpath_fib(struct route *ro, uint32_t hash, u_int fibnum)
 	
 	/* gw selection by Modulo-N Hash (RFC2991) XXX need improvement? */
 	hash += hashjitter;
-	hash %= n;
 	if ((lookup_count % 50000) == 0)
-		printf("hash=%d ", hash);
-	while (rn) {
+		printf("hash=%u n=%d ", hash, n);
+	hash %= n;
+	while (total_weight < hash && rn) {
 		rt = (struct rtentry *)rn;
 		if (rt->rt_flags & RTF_SHUTDOWN)
 			continue;
 
 		total_weight += rt->rt_rmx.rmx_weight;
 		if ((lookup_count % 50000) == 0)
-			printf("rmx_weight=%ld ", rt->rt_rmx.rmx_weight);
+			printf("rmx_weight=%ld ",
+			    rt->rt_rmx.rmx_weight);
 		
-		if (total_weight >= hash)
-			break;
-
 		/* stay within the multipath routes */
 		if (rn->rn_dupedkey && rn->rn_mask != rn->rn_dupedkey->rn_mask)
 			break;
