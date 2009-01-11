@@ -260,17 +260,14 @@ different:
 	return 0;
 }
 
-static int n_prev;
-static int lookup_count;
-
 void
 rtalloc_mpath_fib(struct route *ro, uint32_t hash, u_int fibnum)
 {
 	struct radix_node *rn0, *rn;
 	u_int32_t n;
 	struct rtentry *rt;
-	uint64_t total_weight = 0;
-	
+	int64_t weight;
+
 	/*
 	 * XXX we don't attempt to lookup cached route again; what should
 	 * be done for sendto(3) case?
@@ -291,48 +288,34 @@ rtalloc_mpath_fib(struct route *ro, uint32_t hash, u_int fibnum)
 	rn0 = rn = (struct radix_node *)ro->ro_rt;
 	n = rn_mpath_count(rn0);
 
-	if (n != n_prev) {
-		printf("rn_mpath_count=%d\n", n);
-		n_prev = n;
-	}
-	
-	
 	/* gw selection by Modulo-N Hash (RFC2991) XXX need improvement? */
 	hash += hashjitter;
-	if ((lookup_count % 50000) == 0)
-		printf("hash=%u n=%d ", hash, n);
 	hash %= n;
-	while (total_weight < hash && rn) {
-		rt = (struct rtentry *)rn;
-		if (rt->rt_flags & RTF_SHUTDOWN)
-			continue;
-
-		total_weight += rt->rt_rmx.rmx_weight;
-		if ((lookup_count % 50000) == 0)
-			printf("rmx_weight=%ld ",
-			    rt->rt_rmx.rmx_weight);
+	for (weight = abs((int32_t)hash), rt = ro->ro_rt;
+	     weight >= rt->rt_rmx.rmx_weight && rn; 
+	     weight -= rt->rt_rmx.rmx_weight) {
 		
 		/* stay within the multipath routes */
 		if (rn->rn_dupedkey && rn->rn_mask != rn->rn_dupedkey->rn_mask)
 			break;
 		rn = rn->rn_dupedkey;
+		rt = (struct rtentry *)rn;
 	}
-	if ((lookup_count % 50000) == 0)
-		printf("\n");
-	lookup_count++;
-	
 	/* XXX try filling rt_gwroute and avoid unreachable gw  */
 
 	/* if gw selection fails, use the first match (default) */
 	if (!rn) {
 		RT_UNLOCK(ro->ro_rt);
+		ro->ro_rt = NULL;
 		return;
 	}
-	
-	RTFREE_LOCKED(ro->ro_rt);
-	ro->ro_rt = (struct rtentry *)rn;
-	RT_LOCK(ro->ro_rt);
-	RT_ADDREF(ro->ro_rt);
+	if (ro->ro_rt != rt) {
+		RTFREE_LOCKED(ro->ro_rt);
+		ro->ro_rt = (struct rtentry *)rn;
+		RT_LOCK(ro->ro_rt);
+		RT_ADDREF(ro->ro_rt);
+
+	} 
 	RT_UNLOCK(ro->ro_rt);
 }
 

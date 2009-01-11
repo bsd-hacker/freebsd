@@ -231,13 +231,10 @@ struct flentry_v6 {
 #define	fl_rt		fl_entry.fl_rt
 #define	fl_lle		fl_entry.fl_lle
 
-#define	SECS_PER_HOUR		3600
-#define	SECS_PER_DAY		(24*SECS_PER_HOUR)
-
-#define	SYN_IDLE		300
-#define	UDP_IDLE		300
-#define	FIN_WAIT_IDLE		600
-#define	TCP_IDLE		SECS_PER_DAY
+#define	SYN_IDLE		120
+#define	UDP_IDLE		60
+#define	FIN_WAIT_IDLE		300
+#define	TCP_IDLE		1200
 
 
 typedef	void fl_lock_t(struct flowtable *, uint32_t);
