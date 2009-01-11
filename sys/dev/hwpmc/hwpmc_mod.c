@@ -3846,6 +3846,9 @@ pmc_process_interrupt(int cpu, struct pmc *pm, struct trapframe *tf,
 
 	error = 0;
 
+	if (inuserspace)
+		return (0);
+	
 	/*
 	 * Allocate space for a sample buffer.
 	 */
