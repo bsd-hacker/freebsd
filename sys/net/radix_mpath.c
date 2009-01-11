@@ -77,17 +77,15 @@ rn_mpath_next(struct radix_node *rn)
 		return NULL;
 }
 
-u_int32_t
+uint32_t
 rn_mpath_count(struct radix_node *rn)
 {
 	uint32_t i = 0;
 	struct rtentry *rt;
 	
 	while (rn != NULL) {
-		
 		rt = (struct rtentry *)rn;
-		if ((rt->rt_flags & RTF_SHUTDOWN) == 0)
-			i += rt->rt_rmx.rmx_weight;
+		i += rt->rt_rmx.rmx_weight;
 		rn = rn_mpath_next(rn);
 	}
 	return (i);
@@ -303,7 +301,7 @@ rtalloc_mpath_fib(struct route *ro, uint32_t hash, u_int fibnum)
 	}
 	/* XXX try filling rt_gwroute and avoid unreachable gw  */
 
-	/* if gw selection fails, use the first match (default) */
+	/* gw selection has failed - there must be only zero weight routes */
 	if (!rn) {
 		RT_UNLOCK(ro->ro_rt);
 		ro->ro_rt = NULL;

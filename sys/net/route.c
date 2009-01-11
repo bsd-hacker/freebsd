@@ -881,9 +881,7 @@ rn_mpath_update(int req, struct rt_addrinfo *info,
 	}
 	
 nondelete:
-	if (req == RTM_SHUTDOWN)
-		rt->rt_flags |= RTF_SHUTDOWN;
-	else if (req != RTM_DELETE)
+	if (req != RTM_DELETE)
 		panic("unrecognized request %d", req);
 	
 
@@ -940,7 +938,6 @@ rtrequest1_fib(int req, struct rt_addrinfo *info, struct rtentry **ret_nrt,
 	switch (req) {
 	case RTM_DELETE:
 #ifdef RADIX_MPATH
-	case RTM_SHUTDOWN:
 		if (rn_mpath_capable(rnh)) {
 			error = rn_mpath_update(req, info, rnh, ret_nrt);
 			/*

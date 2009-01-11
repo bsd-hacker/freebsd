@@ -198,13 +198,13 @@ struct ortentry {
 #define	RTF_MULTICAST	0x800000	/* route represents a mcast address */
 					/* 0x8000000 and up unassigned */
 #define	RTF_STICKY	 0x10000000	/* always route dst->src */
-#define	RTF_SHUTDOWN	 0x20000000	/* no new connections */
-#define	RTF_RNH_LOCKED	 0x40000000
+
+#define	RTF_RNH_LOCKED	 0x40000000	/* radix node head is locked */
 
 /* Mask of RTF flags that are allowed to be modified by RTM_CHANGE. */
 #define RTF_FMASK	\
 	(RTF_PROTO1 | RTF_PROTO2 | RTF_PROTO3 | RTF_BLACKHOLE | \
-	 RTF_REJECT | RTF_STATIC | RTF_SHUTDOWN | RTF_STICKY)
+	 RTF_REJECT | RTF_STATIC | RTF_STICKY)
 
 /*
  * Routing statistics.
@@ -257,7 +257,6 @@ struct rt_msghdr {
 #define	RTM_DELMADDR	0x10	/* mcast group membership being deleted */
 #define	RTM_IFANNOUNCE	0x11	/* iface arrival/departure */
 #define	RTM_IEEE80211	0x12	/* IEEE80211 wireless event */
-#define	RTM_SHUTDOWN	0x13	/* don't use for new connections */
 
 /*
  * Bitmask values for rtm_inits and rmx_locks.
