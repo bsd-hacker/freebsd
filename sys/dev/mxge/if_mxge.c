@@ -144,6 +144,16 @@ static int mxge_close(mxge_softc_t *sc);
 static int mxge_open(mxge_softc_t *sc);
 static void mxge_tick(void *arg);
 
+#if defined(__i386__) || defined(__amd64__)
+static __inline
+void prefetch(void *x) 
+{ 
+        __asm volatile("prefetcht0 %0" :: "m" (*(unsigned long *)x));
+}
+#else
+#define prefetch(x)
+#endif
+
 static int
 mxge_probe(device_t dev)
 {
@@ -2471,6 +2481,8 @@ mxge_rx_done_big(struct mxge_slice_state *ss, uint32_t len, uint32_t csum)
 	old_map = rx->info[idx].map;
 	bus_dmamap_sync(rx->dmat, old_map, BUS_DMASYNC_POSTREAD);
 	bus_dmamap_unload(rx->dmat, old_map);
+	prefetch(rx->info[(idx + 2) & rx->mask].m);
+	prefetch(rx->info[(idx + 3) & rx->mask].m);
 
 	/* swap the bus_dmamap_t's */
 	rx->info[idx].map = rx->extra_map;
@@ -2520,6 +2532,9 @@ mxge_rx_done_small(struct mxge_slice_state *ss, uint32_t len, uint32_t csum)
 	rx = &ss->rx_small;
 	idx = rx->cnt & rx->mask;
 	rx->cnt++;
+	prefetch(rx->info[(idx + 2) & rx->mask].m);
+	prefetch(rx->info[(idx + 3) & rx->mask].m);
+
 	/* save a pointer to the received mbuf */
 	m = rx->info[idx].m;
 	/* try to replace the received mbuf */
@@ -2613,6 +2628,9 @@ mxge_tx_done(struct mxge_slice_state *ss, uint32_t mcp_idx)
 	while (tx->pkt_done != mcp_idx) {
 		idx = tx->done & tx->mask;
 		tx->done++;
+		prefetch(tx->info[(idx + 2) & tx->mask].m);
+		prefetch(tx->info[(idx + 3) & tx->mask].m);
+
 		m = tx->info[idx].m;
 		/* mbuf and DMA map only attached to the first
 		   segment per-mbuf */
