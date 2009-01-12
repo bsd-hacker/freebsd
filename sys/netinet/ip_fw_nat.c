@@ -252,7 +252,7 @@ ipfw_nat(struct ip_fw_args *args, struct cfg_nat *t, struct mbuf *m)
 	struct mbuf *mcl;
 	struct ip *ip;
 	/* XXX - libalias duct tape */
-	int ldt, retval;
+	int ldt, retval, off;
 	char *c;
 
 	ldt = 0;
@@ -261,7 +261,51 @@ ipfw_nat(struct ip_fw_args *args, struct cfg_nat *t, struct mbuf *m)
 	    NULL)
 		goto badnat;
 	ip = mtod(mcl, struct ip *);
-	if (args->eh == NULL) {
+	/* 
+	 * In case of fragments, reassemble the packet 
+	 * before passing it to libalias.
+	 */
+	off = (args->eh == NULL) ? ip->ip_off : ntohs(ip->ip_off);
+	if (off & (IP_MF | IP_OFFMASK)) {
+		struct mbuf *reass;
+
+		/* 
+		 * Ip_reass() expects len & off in host byte order:
+		 * fix them in case we come from layer2.
+		 */
+		if (args->eh != NULL) {
+			ip->ip_len = ntohs(ip->ip_len);
+			ip->ip_off = ntohs(ip->ip_off);
+		}
+
+		/* Reassemble packet. */
+		reass = ip_reass(mcl);
+
+		/*
+		 * IP header checksum fixup after reassembly and leave header
+		 * in network byte order.
+		 */
+		if (reass != NULL) {
+			int hlen;
+			
+			ip = mtod(reass, struct ip *);
+			hlen = ip->ip_hl << 2;
+			ip->ip_len = htons(ip->ip_len);
+			ip->ip_off = htons(ip->ip_off);
+			ip->ip_sum = 0;
+			if (hlen == sizeof(struct ip))
+				ip->ip_sum = in_cksum_hdr(ip);
+			else
+				ip->ip_sum = in_cksum(reass, hlen);
+			if ((mcl = m_megapullup(reass, reass->m_pkthdr.len)) ==
+			    NULL)
+				goto badnat;
+			ip = mtod(mcl, struct ip *);
+		} else {
+			mcl = NULL;
+			goto badnat;
+		}
+	} else if (args->eh == NULL) {
 		ip->ip_len = htons(ip->ip_len);
 		ip->ip_off = htons(ip->ip_off);
 	}
