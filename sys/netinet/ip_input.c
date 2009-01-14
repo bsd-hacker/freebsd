@@ -38,6 +38,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_ipsec.h"
 #include "opt_mac.h"
 #include "opt_carp.h"
+#include "opt_mpath.h"	
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -339,7 +340,7 @@ ip_init(void)
 	netisr_register(NETISR_IP, ip_input, &ipintrq, 0);
 
 	ipv4_ft = flowtable_alloc(ip_pcpu_flowtable_size, FL_PCPU);
-	ipv4_forward_ft = flowtable_alloc(ip_global_flowtable_size, FL_HASH_PORTS);	
+	ipv4_forward_ft = flowtable_alloc(ip_global_flowtable_size, FL_HASH_PORTS|FL_PCPU);
 }
 
 void
