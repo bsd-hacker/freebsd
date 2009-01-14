@@ -883,11 +883,6 @@ extern uint16_t __ahdecl ath_hal_computetxtime(struct ath_hal *,
 		uint16_t rateix, HAL_BOOL shortPreamble);
 
 /*
- * Return if device is public safety.
- */
-extern HAL_BOOL __ahdecl ath_hal_ispublicsafetysku(struct ath_hal *);
-
-/*
  * Return if device is operating in 900 MHz band.
  */
 extern HAL_BOOL ath_hal_isgsmsku(struct ath_hal *);

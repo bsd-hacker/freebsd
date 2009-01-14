@@ -2146,27 +2146,6 @@ ath_hal_getwirelessmodes(struct ath_hal *ah, HAL_CTRY_CODE cc)
 }
 
 /*
- * Return if device is public safety.
- */
-HAL_BOOL
-ath_hal_ispublicsafetysku(struct ath_hal *ah)
-{
-	uint16_t rd = getEepromRD(ah);
-
-	switch (rd) {
-	case FCC4_FCCA:
-	case CTRY_UNITED_STATES_FCC49 | COUNTRY_ERD_FLAG:
-		return AH_TRUE;
-	case DEBUG_REG_DMN:
-	case NO_ENUMRD:
-		if (AH_PRIVATE(ah)->ah_countryCode == CTRY_UNITED_STATES_FCC49)
-			return AH_TRUE;
-		break;
-	}
-	return AH_FALSE;
-}
-
-/*
  * Return if device is actually operating in 900 MHz band.
  */
 HAL_BOOL
