@@ -16,6 +16,10 @@ options         IPFIREWALL_DEFAULT_TO_ACCEPT
 options         IPDIVERT
 options         DUMMYNET
 
+options	KTR
+options	KTR_ENTRIES	65536
+options ALQ
+options KTR_ALQ
 # added against GENERIC
 options BOOTP
 options BOOTP_NFSROOT
