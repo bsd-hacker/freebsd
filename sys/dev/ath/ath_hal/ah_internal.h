@@ -127,7 +127,6 @@ typedef struct {
 	int16_t		rawNoiseFloor;
 	int16_t		noiseFloorAdjust;
 	uint16_t	mainSpur;	/* cached spur value for this cahnnel */
-	uint32_t	regDmnFlags;	/* Flags for channel use in reg */
 	uint32_t	conformanceTestLimit;	/* conformance test limit from reg domain */
 	int8_t		antennaMax;
 } HAL_CHANNEL_INTERNAL;
@@ -499,12 +498,6 @@ extern	u_int ath_hal_getantennareduction(struct ath_hal *,
  * the current regulator domain.
  */
 extern	u_int ath_hal_getctl(struct ath_hal *, HAL_CHANNEL *);
-/*
- * Return whether or not a noise floor check is required
- * based on the current regulatory domain for the specified
- * channel.
- */
-extern	u_int ath_hal_getnfcheckrequired(struct ath_hal *, HAL_CHANNEL *);
 
 /*
  * Map a public channel definition to the corresponding

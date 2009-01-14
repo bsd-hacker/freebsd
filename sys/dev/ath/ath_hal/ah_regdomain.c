@@ -2623,7 +2623,6 @@ ath_hal_init_channels(struct ath_hal *ah,
 				icv.channelFlags = cm->flags;
 				icv.maxRegTxPower = fband->powerDfs;
 				icv.antennaMax = fband->antennaMax;
-				icv.regDmnFlags = rd->flags;
 				icv.conformanceTestLimit = ctl;
 				if (fband->usePassScan & rd->pscan)
 					icv.channelFlags |= CHANNEL_PASSIVE;
@@ -2640,6 +2639,8 @@ ath_hal_init_channels(struct ath_hal *ah,
 					icv.privFlags = 0;
 				if (rd->flags & LIMIT_FRAME_4MS)
 					icv.privFlags |= CHANNEL_4MS_LIMIT;
+				if (rd->flags & NEED_NFC)
+					icv.privFlags |= CHANNEL_NFCREQUIRED;
 
 				ichans[next++] = icv;
 			}
@@ -2815,20 +2816,6 @@ ath_hal_getctl(struct ath_hal *ah, HAL_CHANNEL *chan)
 		}
 	}
 	return ctl;
-}
-
-/*
- * Return whether or not a noise floor check is required in
- * the current regulatory domain for the specified channel.
- */
-HAL_BOOL
-ath_hal_getnfcheckrequired(struct ath_hal *ah, HAL_CHANNEL *chan)
-{
-	HAL_CHANNEL_INTERNAL *ichan;
-
-	if ((ichan = ath_hal_checkchannel(ah, chan)) != AH_NULL)
-		return ((ichan->regDmnFlags & NEED_NFC) ? AH_TRUE : AH_FALSE);
-	return AH_FALSE;
 }
 
 /*

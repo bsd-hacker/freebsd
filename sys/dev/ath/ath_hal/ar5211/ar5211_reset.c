@@ -985,7 +985,7 @@ ar5211CalNoiseFloor(struct ath_hal *ah, HAL_CHANNEL_INTERNAL *chan)
 #define	N(a)	(sizeof (a) / sizeof (a[0]))
 	/* Check for Carrier Wave interference in MKK regulatory zone */
 	if (AH_PRIVATE(ah)->ah_macVersion < AR_SREV_VERSION_OAHU &&
-	    ath_hal_getnfcheckrequired(ah, (HAL_CHANNEL *) chan)) {
+	    (chan->privFlags & CHANNEL_NFCREQUIRED)) {
 		static const uint8_t runtime[3] = { 0, 2, 7 };
 		int16_t nf, nfThresh;
 		int i;
