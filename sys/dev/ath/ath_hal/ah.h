@@ -891,10 +891,4 @@ extern HAL_BOOL __ahdecl ath_hal_ispublicsafetysku(struct ath_hal *);
  * Return if device is operating in 900 MHz band.
  */
 extern HAL_BOOL ath_hal_isgsmsku(struct ath_hal *);
-
-/*
- * Convert between IEEE channel number and channel frequency
- * using the specified channel flags; e.g. CHANNEL_2GHZ.
- */
-extern	int __ahdecl ath_hal_mhz2ieee(struct ath_hal *, u_int mhz, u_int flags);
 #endif /* _ATH_AH_H_ */

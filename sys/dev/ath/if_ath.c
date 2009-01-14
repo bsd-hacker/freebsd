@@ -5729,12 +5729,10 @@ ath_chan_set(struct ath_softc *sc, struct ieee80211_channel *chan)
 	ath_mapchan(ic, &hchan, chan);
 
 	DPRINTF(sc, ATH_DEBUG_RESET,
-	    "%s: %u (%u MHz, hal flags 0x%x) -> %u (%u MHz, hal flags 0x%x)\n",
+	    "%s: %u (%u MHz, hal flags 0x%x) -> (%u MHz, hal flags 0x%x)\n",
 	    __func__,
-	    ath_hal_mhz2ieee(ah, sc->sc_curchan.channel,
-		sc->sc_curchan.channelFlags),
+	    ieee80211_mhz2ieee(chan->ic_freq, chan->ic_flags),
 	    	sc->sc_curchan.channel, sc->sc_curchan.channelFlags,
-	    ath_hal_mhz2ieee(ah, hchan.channel, hchan.channelFlags),
 	        hchan.channel, hchan.channelFlags);
 	if (hchan.channel != sc->sc_curchan.channel ||
 	    hchan.channelFlags != sc->sc_curchan.channelFlags) {
@@ -6221,18 +6219,10 @@ getchannels(struct ath_softc *sc, int *nchans, struct ieee80211_channel chans[],
 	 * Convert HAL channels to ieee80211 ones.
 	 */
 	for (i = 0; i < nhalchans; i++) {
-		HAL_CHANNEL *c = &halchans[i];
+		const HAL_CHANNEL *c = &halchans[i];
 		struct ieee80211_channel *ichan = &chans[i];
 
-		ichan->ic_ieee = ath_hal_mhz2ieee(ah, c->channel,
-					c->channelFlags);
-		if (bootverbose)
-			device_printf(sc->sc_dev, "hal channel %u/%x -> %u "
-			    "maxpow %d minpow %d maxreg %d\n",
-			    c->channel, c->channelFlags, ichan->ic_ieee,
-			    c->maxTxPower, c->minTxPower, c->maxRegTxPower);
 		ichan->ic_freq = c->channel;
-
 		if ((c->channelFlags & CHANNEL_PUREG) == CHANNEL_PUREG) {
 			/*
 			 * Except for AR5211, HAL's PUREG means mixed
@@ -6257,9 +6247,16 @@ getchannels(struct ath_softc *sc, int *nchans, struct ieee80211_channel chans[],
 			else
 				ichan->ic_freq = 3344 - ichan->ic_freq;
 			ichan->ic_flags |= IEEE80211_CHAN_GSM;
-			ichan->ic_ieee = ieee80211_mhz2ieee(ichan->ic_freq,
-						    ichan->ic_flags);
 		}
+
+		ichan->ic_ieee = ieee80211_mhz2ieee(ichan->ic_freq,
+						    ichan->ic_flags);
+		if (bootverbose)
+			device_printf(sc->sc_dev, "hal channel %u/%x -> %u "
+			    "maxpow %d minpow %d maxreg %d\n",
+			    c->channel, c->channelFlags, ichan->ic_ieee,
+			    c->maxTxPower, c->minTxPower, c->maxRegTxPower);
+
 		ichan->ic_maxregpower = c->maxRegTxPower;	/* dBm */
 		/* XXX: old hal's don't provide maxTxPower for some parts */
 		ichan->ic_maxpower = (c->maxTxPower != 0) ?
