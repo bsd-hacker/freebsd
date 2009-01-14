@@ -1073,12 +1073,12 @@ ar5212PerCalibrationN(struct ath_hal *ah,  HAL_CHANNEL *chan, u_int chainMask,
 				AR_PHY_TIMING_CTRL4_IQCORR_ENABLE);
 
 			ahp->ah_bIQCalibration = IQ_CAL_DONE;
-			ichan->iqCalValid = AH_TRUE;
+			ichan->privFlags |= CHANNEL_IQVALID;
 			ichan->iCoff = iCoff;
 			ichan->qCoff = qCoff;
 		}
 	} else if (!IS_CHAN_B(chan) && ahp->ah_bIQCalibration == IQ_CAL_DONE &&
-	    !ichan->iqCalValid) {
+	    (ichan->privFlags & CHANNEL_IQVALID) == 0) {
 		/*
 		 * Start IQ calibration if configured channel has changed.
 		 * Use a magic number of 15 based on default value.
@@ -1574,7 +1574,7 @@ ar5212SetBoardValues(struct ath_hal *ah, HAL_CHANNEL_INTERNAL *chan)
 	}
 	AR_PHY_BIS(ah, 73, 0xFFFFFF01, (falseDectectBackoff << 1) & 0xFE);
 
-	if (chan->iqCalValid) {
+	if (chan->privFlags & CHANNEL_IQVALID) {
 		iCoff = chan->iCoff;
 		qCoff = chan->qCoff;
 	} else {

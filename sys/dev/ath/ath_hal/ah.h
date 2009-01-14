@@ -397,6 +397,7 @@ typedef struct {
 #define CHANNEL_DFS		0x02 /* DFS required on channel */
 #define CHANNEL_4MS_LIMIT	0x04 /* 4msec packet limit on this channel */
 #define	CHANNEL_NFCREQUIRED	0x08 /* channel requires noise floor check */
+#define	CHANNEL_IQVALID		0x10 /* IQ calibration valid */
 
 #define	CHANNEL_A	(CHANNEL_5GHZ|CHANNEL_OFDM)
 #define	CHANNEL_B	(CHANNEL_2GHZ|CHANNEL_CCK)
