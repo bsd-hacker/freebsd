@@ -68,6 +68,38 @@ ar5111WriteRegs(struct ath_hal *ah, u_int modesIndex, u_int freqIndex,
 	HAL_INI_WRITE_ARRAY(ah, ar5212BB_RfGain_5111, freqIndex, writes);
 }
 
+static __inline int
+mappsb(u_int freq, u_int flags)
+{
+	return ((freq * 10) + (((freq % 5) == 2) ? 5 : 0) - 49400) / 5;
+}
+
+/*
+ * Convert MHz frequency to IEEE channel number.
+ */
+static int
+mhz2ieee(u_int freq, u_int flags)
+{
+	HALASSERT((flags & (CHANNEL_2GHZ|CHANNEL_5GHZ)) != 0);
+
+	if (flags & CHANNEL_2GHZ) {
+		if (freq == 2484) {
+			return 14;
+		} else if (freq < 2484) {
+			return ((int)freq - 2407) / 5;
+		} else
+			return 15 + ((freq - 2512) / 20);
+	} else {
+		if (IS_CHAN_IN_PUBLIC_SAFETY_BAND(freq)) {
+			return mappsb(freq, flags);
+		} else if ((flags & CHANNEL_A) && freq <= 5000) {
+			return (freq - 4000) / 5;
+		} else {
+			return (freq - 5000) / 5;
+		}
+	}
+}
+
 /*
  * Take the MHz channel value and set the Channel value
  *
@@ -142,7 +174,7 @@ ar5111SetChannel(struct ath_hal *ah,  HAL_CHANNEL_INTERNAL *chan)
 
 	OS_MARK(ah, AH_MARK_SETCHANNEL, chan->channel);
 
-	chanIEEE = ath_hal_mhz2ieee(ah, chan->channel, chan->channelFlags);
+	chanIEEE = mhz2ieee(chan->channel, chan->channelFlags);
 	if (IS_CHAN_2GHZ(chan)) {
 		const CHAN_INFO_2GHZ* ci =
 			&chan2GHzData[chanIEEE + CI_2GHZ_INDEX_CORRECTION];
