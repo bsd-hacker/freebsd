@@ -510,7 +510,6 @@ struct ata_channel {
     TAILQ_HEAD(, ata_request)   ata_queue;      /* head of ATA queue */
     struct ata_request          *freezepoint;   /* composite freezepoint */
     struct ata_request          *running;       /* currently running request */
-    struct disk			*disks[2];	/* disks, if any */
 };
 
 /* disk bay/enclosure related */
@@ -546,9 +545,6 @@ int ata_pmode(struct ata_params *ap);
 int ata_wmode(struct ata_params *ap);
 int ata_umode(struct ata_params *ap);
 int ata_limit_mode(device_t dev, int mode, int maxmode);
-
-/* ata-disk.c */
-struct ata_request *ata_create_request(struct bio *bp, int full);
 
 /* ata-queue.c: */
 int ata_controlcmd(device_t dev, u_int8_t command, u_int16_t feature, u_int64_t lba, u_int16_t count);

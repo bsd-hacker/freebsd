@@ -42,7 +42,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/rman.h>
 #include <dev/ata/ata-all.h>
 #include <ata_if.h>
-#include <geom/geom_sched.h>
 
 /* prototypes */
 static void ata_completed(void *, int);
@@ -172,25 +171,10 @@ ata_start(device_t dev)
     struct ata_channel *ch = device_get_softc(dev);
     struct ata_request *request;
     struct ata_composite *cptr;
-    struct disk *dp;
-    struct bio *bp;
-    int dependencies = 0, i;
-
-    mtx_lock(&ch->queue_mtx);
-    if (TAILQ_FIRST(&ch->ata_queue) == NULL) {
-	for (i = 0; i < 2; i++) {
-	    dp = ch->disks[i];
-	    while (dp != NULL && (bp = g_sched_next(dp)) != NULL) {
-		request = ata_create_request(bp, 1);
-		if (request != NULL) {
-		    ata_sort_queue(ch, request);
-		    break;
-		}
-	    }
-	}
-    }
+    int dependencies = 0;
 
     /* if we have a request on the queue try to get it running */
+    mtx_lock(&ch->queue_mtx);
     if ((request = TAILQ_FIRST(&ch->ata_queue))) {
 
 	/* we need the locking function to get the lock for this channel */

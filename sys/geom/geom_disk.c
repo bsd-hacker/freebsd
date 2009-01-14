@@ -55,11 +55,9 @@ __FBSDID("$FreeBSD$");
 #include <geom/geom.h>
 #include <geom/geom_disk.h>
 #include <geom/geom_int.h>
-#include <geom/geom_sched.h>
 
 static struct mtx g_disk_done_mtx;
 
-static g_ctl_req_t g_disk_ctlreq;
 static g_access_t g_disk_access;
 static g_init_t g_disk_init;
 static g_fini_t g_disk_fini;
@@ -70,7 +68,6 @@ static g_dumpconf_t g_disk_dumpconf;
 static struct g_class g_disk_class = {
 	.name = "DISK",
 	.version = G_VERSION,
-	.ctlreq = g_disk_ctlreq,
 	.init = g_disk_init,
 	.fini = g_disk_fini,
 	.start = g_disk_start,
@@ -84,19 +81,16 @@ g_disk_init(struct g_class *mp __unused)
 {
 
 	mtx_init(&g_disk_done_mtx, "g_disk_done", NULL, MTX_DEF);
-	g_sched_init();
 }
 
 static void
 g_disk_fini(struct g_class *mp __unused)
 {
 
-	g_sched_fini();
 	mtx_destroy(&g_disk_done_mtx);
 }
 
 DECLARE_GEOM_CLASS(g_disk_class, g_disk);
-MODULE_VERSION(g_disk, 0);
 
 static void __inline
 g_disk_lock_giant(struct disk *dp)
@@ -110,83 +104,6 @@ g_disk_unlock_giant(struct disk *dp)
 {
 	if (dp->d_flags & DISKFLAG_NEEDSGIANT)
 		mtx_unlock(&Giant);
-}
-
-static void
-g_disk_configure(struct gctl_req *req, struct g_class *mp)
-{
-	struct disk *dp;
-	struct g_provider *pp;
-	const char *sched, *name;
-	char param[16];
-	int i, *nargs;
-
-	g_topology_assert();
-
-	nargs = gctl_get_paraml(req, "nargs", sizeof(*nargs));
-	if (nargs == NULL) {
-		gctl_error(req, "No '%s' argument.", "nargs");
-		return;
-	}
-
-	if (*nargs <= 0) {
-		gctl_error(req, "Missing devices.");
-		return;
-	}
-
-	sched = gctl_get_asciiparam(req, "iosched");
-	if (sched == NULL) {
-		gctl_error(req, "No '%s' argument.", "iosched");
-		return;
-	}
-
-	for (i = 0; i < *nargs; i++) {
-		snprintf(param, sizeof(param), "arg%d", i);
-		name = gctl_get_asciiparam(req, param);
-		if (name == NULL) {
-			gctl_error(req, "No '%s' argument.", param);
-			return;
-		}
-
-		if (strncmp(name, "/dev/", strlen("/dev/")) == 0)
-			name += strlen("/dev/");
-
-		pp = g_provider_by_name(name);
-		if (pp == NULL || pp->geom->class != mp) {
-			gctl_error(req, "Provider %s is invalid.", name);
-			return;
-		}
-
-		dp = pp->geom->softc;
-		if (g_sched_configure(dp, sched) != 0) {
-			gctl_error(req, "Could not set scheduler %s.", sched);
-			return;
-		}
-	}
-}
-
-static void
-g_disk_ctlreq(struct gctl_req *req, struct g_class *mp, const char *verb)
-{
-	uint32_t *version;
-
-	g_topology_assert();
-
-	version = gctl_get_paraml(req, "version", sizeof(*version));
-	if (version == NULL) {
-		gctl_error(req, "No '%s' argument.", "version");
-		return;
-	}
-
-	if (*version != G_VERSION) {
-		gctl_error(req, "Userland and kernel parts are out of sync.");
-		return;
-	}
-
-	if (strcmp(verb, "configure") == 0)
-		g_disk_configure(req, mp);
-	else
-		gctl_error(req, "Unknown verb.");
 }
 
 static int
@@ -281,8 +198,6 @@ g_disk_done(struct bio *bp)
 	mtx_lock(&g_disk_done_mtx);
 	bp->bio_completed = bp->bio_length - bp->bio_resid;
 
-	g_sched_done(bp);
-
 	bp2 = bp->bio_parent;
 	if (bp2->bio_error == 0)
 		bp2->bio_error = bp->bio_error;
@@ -373,7 +288,7 @@ g_disk_start(struct bio *bp)
 			bp2->bio_disk = dp;
 			devstat_start_transaction_bio(dp->d_devstat, bp2);
 			g_disk_lock_giant(dp);
-			g_sched_start(dp, bp2);
+			dp->d_strategy(bp2);
 			g_disk_unlock_giant(dp);
 			bp2 = bp3;
 			bp3 = NULL;
@@ -551,7 +466,6 @@ disk_create(struct disk *dp, int version)
 		    dp->d_sectorsize, DEVSTAT_ALL_SUPPORTED,
 		    DEVSTAT_TYPE_DIRECT, DEVSTAT_PRIORITY_MAX);
 	dp->d_geom = NULL;
-	g_sched_disk_init(dp);
 	g_disk_ident_adjust(dp->d_ident, sizeof(dp->d_ident));
 	g_post_event(g_disk_create, dp, M_WAITOK, dp, NULL);
 }
@@ -562,7 +476,6 @@ disk_destroy(struct disk *dp)
 
 	g_cancel_event(dp);
 	dp->d_destroyed = 1;
-	g_sched_disk_fini(dp);
 	if (dp->d_devstat != NULL)
 		devstat_remove_entry(dp->d_devstat);
 	g_post_event(g_disk_destroy, dp, M_WAITOK, NULL);
@@ -573,8 +486,6 @@ disk_gone(struct disk *dp)
 {
 	struct g_geom *gp;
 	struct g_provider *pp;
-
-	g_sched_disk_gone(dp);
 
 	gp = dp->d_geom;
 	if (gp != NULL)

@@ -60,7 +60,6 @@ static void ad_describe(device_t dev);
 static int ad_version(u_int16_t);
 static disk_strategy_t ad_strategy;
 static disk_ioctl_t ad_ioctl;
-static disk_kick_t ad_kick;
 static dumper_t ad_dump;
 
 /*
@@ -149,7 +148,6 @@ ad_attach(device_t dev)
     adp->disk = disk_alloc();
     adp->disk->d_strategy = ad_strategy;
     adp->disk->d_ioctl = ad_ioctl;
-    adp->disk->d_kick = ad_kick;
     adp->disk->d_dump = ad_dump;
     adp->disk->d_name = "ad";
     adp->disk->d_drv1 = dev;
@@ -170,7 +168,6 @@ ad_attach(device_t dev)
     snprintf(adp->disk->d_ident, sizeof(adp->disk->d_ident), "ad:%s",
 	atadev->param.serial);
     disk_create(adp->disk, DISK_VERSION);
-    ch->disks[atadev->unit == ATA_SLAVE] = adp->disk;
     device_add_child(dev, "subdisk", device_get_unit(dev));
     ad_firmware_geom_adjust(dev, adp->disk);
     bus_generic_attach(dev);
@@ -182,7 +179,6 @@ ad_attach(device_t dev)
 static int
 ad_detach(device_t dev)
 {
-    struct ata_channel *ch = device_get_softc(device_get_parent(dev));
     struct ad_softc *adp = device_get_ivars(dev);
     struct ata_device *atadev = device_get_softc(dev);
     device_t *children;
@@ -202,8 +198,6 @@ ad_detach(device_t dev)
 		device_delete_child(dev, children[i]);
 	free(children, M_TEMP);
     }
-
-    ch->disks[atadev->unit == ATA_SLAVE] = NULL;
 
     /* detroy disk from the system so we dont get any further requests */
     disk_destroy(adp->disk);
@@ -272,13 +266,13 @@ ad_spindown(void *priv)
     ata_queue_request(request);
 }
 
-struct ata_request * 
-ata_create_request(struct bio *bp, int full)
+
+static void 
+ad_strategy(struct bio *bp)
 {
-    device_t dev = bp->bio_disk->d_drv1;
+    device_t dev =  bp->bio_disk->d_drv1;
     struct ata_device *atadev = device_get_softc(dev);
     struct ata_request *request;
-    struct ata_channel *ch;
 
     if (atadev->spindown != 0)
 	callout_reset(&atadev->spindown_timer, hz * atadev->spindown,
@@ -287,7 +281,7 @@ ata_create_request(struct bio *bp, int full)
     if (!(request = ata_alloc_request())) {
 	device_printf(dev, "FAILURE - out of memory in start\n");
 	biofinish(bp, NULL, ENOMEM);
-	return NULL;
+	return;
     }
 
     /* setup request */
@@ -350,32 +344,10 @@ ata_create_request(struct bio *bp, int full)
 	device_printf(dev, "FAILURE - unknown BIO operation\n");
 	ata_free_request(request);
 	biofinish(bp, NULL, EIO);
-	return NULL;
+	return;
     }
     request->flags |= ATA_R_ORDERED;
-
-    if (full != 0) {
-	if ((request->parent = device_get_parent(dev)) == NULL) {
-	    ata_free_request(request);
-	    biofinish(bp, NULL, ENXIO);
-	    return NULL;
-	}
-
-	ch = device_get_softc(request->parent);
-	callout_init_mtx(&request->callout, &ch->state_mtx,
-			 CALLOUT_RETURNUNLOCKED);
-    }
-
-    return request;
-}
-
-static void
-ad_strategy(struct bio *bp)
-{
-    struct ata_request *request;
-
-    if ((request = ata_create_request(bp, 0)) != NULL)
-	ata_queue_request(request);
+    ata_queue_request(request);
 }
 
 static void
@@ -395,18 +367,6 @@ static int
 ad_ioctl(struct disk *disk, u_long cmd, void *data, int flag, struct thread *td)
 {
     return ata_device_ioctl(disk->d_drv1, cmd, data);
-}
-
-static void
-ad_kick(struct disk *disk)
-{
-    device_t dev;
-    struct ata_channel *ch;
-
-    dev = disk->d_drv1;
-    ch = device_get_softc(device_get_parent(dev));
-    if (ch != NULL)
-	ata_start(ch->dev);
 }
 
 static int

@@ -53,10 +53,7 @@ typedef	int	disk_ioctl_t(struct disk *, u_long cmd, void *data,
 			int fflag, struct thread *td);
 		/* NB: disk_ioctl_t SHALL be cast'able to d_ioctl_t */
 
-typedef void	disk_kick_t(struct disk *);
-
 struct g_geom;
-struct g_sched;
 struct devstat;
 
 struct disk {
@@ -77,7 +74,6 @@ struct disk {
 	disk_close_t		*d_close;
 	disk_strategy_t		*d_strategy;
 	disk_ioctl_t		*d_ioctl;
-	disk_kick_t		*d_kick;
 	dumper_t		*d_dump;
 
 	/* Info fields from driver to geom_disk.c. Valid when open */
@@ -89,13 +85,6 @@ struct disk {
 	u_int			d_stripeoffset;
 	u_int			d_stripesize;
 	char			d_ident[DISK_IDENT_SIZE];
-
-	/* Scheduler fields */
-	struct mtx		d_sched_lock;
-	u_int			d_sched_flags;
-	u_int			d_nr_sorted;
-	struct g_sched		*d_sched;
-	void			*d_sched_data;
 
 	/* Fields private to the driver */
 	void			*d_drv1;

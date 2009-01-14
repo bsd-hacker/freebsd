@@ -562,8 +562,8 @@ g_io_schedule_down(struct thread *tp __unused)
 			break;
 		}
 		THREAD_NO_SLEEPING();
-		CTR4(KTR_GEOM, "g_down starting bp %p provider %s off %ld "
-		    "len %ld", bp, bp->bio_to->name, bp->bio_offset,
+		CTR4(KTR_GEOM, "g_down starting bp %p provider %s off %lld "
+		    "len %lld", bp, bp->bio_to->name, bp->bio_offset,
 		    bp->bio_length);
 		bp->bio_to->geom->start(bp);
 		THREAD_SLEEPING_OK();
@@ -610,7 +610,7 @@ g_io_schedule_up(struct thread *tp __unused)
 			g_bioq_unlock(&g_bio_run_up);
 			THREAD_NO_SLEEPING();
 			CTR4(KTR_GEOM, "g_up biodone bp %p provider %s off "
-			    "%ld len %ld", bp, bp->bio_to->name,
+			    "%lld len %lld", bp, bp->bio_to->name,
 			    bp->bio_offset, bp->bio_length);
 			biodone(bp);
 			THREAD_SLEEPING_OK();
