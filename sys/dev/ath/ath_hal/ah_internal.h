@@ -120,18 +120,16 @@ typedef struct {
 	int8_t		maxTxPower;
 	int8_t		minTxPower;	/* as above... */
 
-	HAL_BOOL	bssSendHere;
-	uint8_t		gainI;
-	HAL_BOOL	iqCalValid;
-	uint8_t		calValid;		/* bitmask of cal types */
+	uint8_t		iqCalValid;	/* NB: really HAL_BOOL */
+	uint8_t		calValid;	/* bitmask of cal types */
 	int8_t		iCoff;
 	int8_t		qCoff;
 	int16_t		rawNoiseFloor;
 	int16_t		noiseFloorAdjust;
-	int8_t		antennaMax;
-	uint32_t	regDmnFlags;		/* Flags for channel use in reg */
+	uint16_t	mainSpur;	/* cached spur value for this cahnnel */
+	uint32_t	regDmnFlags;	/* Flags for channel use in reg */
 	uint32_t	conformanceTestLimit;	/* conformance test limit from reg domain */
-	uint16_t	mainSpur;		/* cached spur value for this cahnnel */
+	int8_t		antennaMax;
 } HAL_CHANNEL_INTERNAL;
 
 typedef struct {
