@@ -169,6 +169,9 @@ g_clone_bio(struct bio *bp)
 		bp2->bio_parent = bp;
 		bp2->bio_cmd = bp->bio_cmd;
 		bp2->bio_length = bp->bio_length;
+#ifdef BIO_HAS_CLASSIFY_FIELD
+		bp2->bio_classify = bp->bio_classify;
+#endif
 		bp2->bio_offset = bp->bio_offset;
 		bp2->bio_data = bp->bio_data;
 		bp2->bio_attribute = bp->bio_attribute;
@@ -369,14 +372,21 @@ g_io_request(struct bio *bp, struct g_consumer *cp)
 	bp->bio_error = 0;
 	bp->bio_completed = 0;
 
-#if 0
+   {
 	/*
-	 * Scheduler support: if this is the first element in the geom
-	 * chain (we know from bp->bio_parent == NULL), store
-	 * the thread that originated the request in bp->bio_caller1,
-	 * which should be unused in this particular entry (at least
-	 * with the code in 7.1/8.0).
+	 * Scheduler support: add classification info to the bio
+	 * (in linux this is called an 'iocontext', we do not have
+	 * it in FreeBSD yet.
+	 * If there is no dedicated field in the bio, use the
+	 * bp->bio_caller1 field in the root of the bio chain,
+	 * which should be unused (at least in 7.x/8.0).
+	 * If we do not do it here, expect someone else to do it,
+	 * e.g. a wrapper function around g_io_requests.
 	 */
+#ifdef BIO_HAS_CLASSIFY_FIELD
+	if (bio->bio_classify == NULL)
+		bio->bio_classify = (void *)curthread->td_tid;
+#elif defined(USE_PATCHED_KERNEL)
 	{
 		struct bio *top = bp;
 		while (top->bio_parent)
@@ -384,26 +394,8 @@ g_io_request(struct bio *bp, struct g_consumer *cp)
 		if (top->bio_caller1 == NULL)
 			top->bio_caller1 = (void *)curthread->td_tid;
 	}
-#if 0
-{
-	struct bio *top = bp;
-	static int good = 0, req = 0;
-	static int last = 0;
-
-	req++;
-	if (top->bio_caller1 == NULL) {
-		top->bio_caller1 = (void *)curthread->td_tid;
-		if (0) printf("new label %p (thr %p) size %d\n",
-			top->bio_caller1, curthread, (int)top->bio_length);
-		good++;
-	}
-	if (ticks > last) {
-		last = last + hz;
-		printf("at %d total %d good %d\n", ticks, req, good);
-	}
-}
-#endif
-#endif
+#endif	/* no classification set up here */
+    }
 
 	KASSERT(!(bp->bio_flags & BIO_ONQUEUE),
 	    ("Bio already on queue bp=%p", bp));

@@ -86,6 +86,9 @@ struct bio {
 
 	/* XXX: these go away when bio chaining is introduced */
 	daddr_t bio_pblkno;               /* physical block number */
+#ifdef BIO_HAS_CLASSIFY_FIELD
+	void	*bio_classify;
+#endif
 };
 
 /* bio_cmd */
