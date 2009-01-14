@@ -41,7 +41,9 @@ __FBSDID("$FreeBSD$");
 #include <sys/malloc.h>
 #include <sys/priv.h>
 #include <sys/socket.h>
+#include <sys/jail.h>
 #include <sys/kernel.h>
+#include <sys/proc.h>
 #include <sys/sysctl.h>
 #include <sys/vimage.h>
 
@@ -261,13 +263,19 @@ in_control(struct socket *so, u_long cmd, caddr_t data, struct ifnet *ifp,
 		LIST_FOREACH(iap, INADDR_HASH(dst.s_addr), ia_hash)
 			if (iap->ia_ifp == ifp &&
 			    iap->ia_addr.sin_addr.s_addr == dst.s_addr) {
-				ia = iap;
+				if (td == NULL || prison_check_ip4(
+				    td->td_ucred, &dst))
+					ia = iap;
 				break;
 			}
 		if (ia == NULL)
 			TAILQ_FOREACH(ifa, &ifp->if_addrhead, ifa_link) {
 				iap = ifatoia(ifa);
 				if (iap->ia_addr.sin_family == AF_INET) {
+					if (td != NULL &&
+					    !prison_check_ip4(td->td_ucred,
+					    &iap->ia_addr.sin_addr))
+						continue;
 					ia = iap;
 					break;
 				}
@@ -1193,6 +1201,10 @@ in_lltable_dump(struct lltable *llt, struct sysctl_req *wr)
 			/* skip deleted entries */
 			if ((lle->la_flags & (LLE_DELETED|LLE_VALID)) != LLE_VALID)
 				continue;
+			/* Skip if jailed and not a valid IP of the prison. */
+			if (jailed(wr->td->td_ucred) &&
+			    !prison_if(wr->td->td_ucred, L3_ADDR(lle)))
+				continue;
 			/*
 			 * produce a msg made of:
 			 *  struct rt_msghdr;
@@ -1201,6 +1213,10 @@ in_lltable_dump(struct lltable *llt, struct sysctl_req *wr)
 			 */
 			bzero(&arpc, sizeof(arpc));
 			arpc.rtm.rtm_msglen = sizeof(arpc);
+			arpc.rtm.rtm_version = RTM_VERSION;
+			arpc.rtm.rtm_type = RTM_GET;
+			arpc.rtm.rtm_flags = RTF_UP;
+			arpc.rtm.rtm_addrs = RTA_DST | RTA_GATEWAY;
 			arpc.sin.sin_family = AF_INET;
 			arpc.sin.sin_len = sizeof(arpc.sin);
 			arpc.sin.sin_addr.s_addr = SIN(lle)->sin_addr.s_addr;

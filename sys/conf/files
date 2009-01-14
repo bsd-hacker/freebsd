@@ -1609,6 +1609,7 @@ dev/usb2/wlan/usb2_wlan.c	optional usb2_core usb2_wlan
 #
 # USB2 serial and parallel port drivers
 #
+dev/usb2/serial/u3g2.c		optional usb2_core usb2_serial usb2_serial_3g
 dev/usb2/serial/uark2.c		optional usb2_core usb2_serial usb2_serial_ark
 dev/usb2/serial/ubsa2.c		optional usb2_core usb2_serial usb2_serial_bsa
 dev/usb2/serial/ubser2.c	optional usb2_core usb2_serial usb2_serial_bser
@@ -2232,6 +2233,7 @@ net80211/ieee80211_rssadapt.c	optional wlan_rssadapt
 net80211/ieee80211_scan.c	optional wlan
 net80211/ieee80211_scan_sta.c	optional wlan
 net80211/ieee80211_sta.c	optional wlan
+net80211/ieee80211_tdma.c	optional wlan
 net80211/ieee80211_wds.c	optional wlan
 net80211/ieee80211_xauth.c	optional wlan_xauth
 netatalk/aarp.c			optional netatalk
@@ -2537,8 +2539,10 @@ rpc/rpcsec_gss/svc_rpcsec_gss.c	optional krpc kgssapi | nfslockd kgssapi
 security/audit/audit.c		optional audit
 security/audit/audit_arg.c	optional audit
 security/audit/audit_bsm.c	optional audit
+security/audit/audit_bsm_domain.c	optional audit
 security/audit/audit_bsm_errno.c	optional audit
 security/audit/audit_bsm_klib.c	optional audit
+security/audit/audit_bsm_socket_type.c	optional audit
 security/audit/audit_bsm_token.c	optional audit
 security/audit/audit_pipe.c	optional audit
 security/audit/audit_syscalls.c	standard

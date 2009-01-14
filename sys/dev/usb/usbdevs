@@ -151,6 +151,7 @@ vendor PLANTRONICS	0x047f	Plantronics
 vendor KYOCERA		0x0482	Kyocera Wireless Corp.
 vendor STMICRO		0x0483	STMicroelectronics
 vendor FOXCONN		0x0489	Foxconn
+vendor MEIZU		0x0492	Meizu Electronics
 vendor YAMAHA		0x0499	YAMAHA
 vendor COMPAQ		0x049f	Compaq
 vendor HITACHI		0x04a4	Hitachi
@@ -808,6 +809,7 @@ product AKS USBHASP		0x0001	USB-HASP 0.06
 /* Alcor Micro, Inc. products */
 product ALCOR2 KBD_HUB		0x2802	Kbd Hub
 
+product ALCOR TRANSCEND		0x6387	Transcend JetFlash Drive
 product ALCOR MA_KBD_HUB	0x9213	MacAlly Kbd Hub
 product ALCOR AU9814		0x9215	AU9814 Hub
 product ALCOR UMCR_9361		0x9361	USB Multimedia Card Reader
@@ -1655,6 +1657,9 @@ product MCT HUB0100		0x0100	Hub
 product MCT DU_H3SP_USB232	0x0200	D-Link DU-H3SP USB BAY Hub
 product MCT USB232		0x0210	USB-232 Interface
 product MCT SITECOM_USB232	0x0230	Sitecom USB-232 Products
+
+/* Meizu Electronics */
+product MEIZU M6_SL		0x0140	MiniPlayer M6 (SL)
 
 /* Melco, Inc products */
 product MELCO LUATX1		0x0001	LUA-TX Ethernet

@@ -106,6 +106,8 @@ static struct bce_type bce_devs[] = {
 		"HP NC370T Multifunction Gigabit Server Adapter" },
 	{ BRCM_VENDORID, BRCM_DEVICEID_BCM5706,  HP_VENDORID, 0x3106,
 		"HP NC370i Multifunction Gigabit Server Adapter" },
+	{ BRCM_VENDORID, BRCM_DEVICEID_BCM5706,  HP_VENDORID, 0x3070,
+		"HP NC380T PCI Express Dual Port Multifunction Gigabit Server Adapter" },
 	{ BRCM_VENDORID, BRCM_DEVICEID_BCM5706,  PCI_ANY_ID,  PCI_ANY_ID,
 		"Broadcom NetXtreme II BCM5706 1000Base-T" },
 
@@ -116,18 +118,38 @@ static struct bce_type bce_devs[] = {
 		"Broadcom NetXtreme II BCM5706 1000Base-SX" },
 
 	/* BCM5708C controllers and OEM boards. */
+	{ BRCM_VENDORID, BRCM_DEVICEID_BCM5708,  HP_VENDORID, 0x7037,
+		"HP NC373T PCI Express Multifunction Gigabit Server Adapter" },
+	{ BRCM_VENDORID, BRCM_DEVICEID_BCM5708,  HP_VENDORID, 0x7038,
+		"HP NC373i Integrated Multifunction Gigabit Server Adapter" },
 	{ BRCM_VENDORID, BRCM_DEVICEID_BCM5708,  PCI_ANY_ID,  PCI_ANY_ID,
 		"Broadcom NetXtreme II BCM5708 1000Base-T" },
 
 	/* BCM5708S controllers and OEM boards. */
+	{ BRCM_VENDORID, BRCM_DEVICEID_BCM5708S,  HP_VENDORID, 0x1706,
+                "HP NC373m Multifunction Gigabit Server Adapter" },
+	{ BRCM_VENDORID, BRCM_DEVICEID_BCM5708S,  HP_VENDORID, 0x7038,
+                "HP NC373i PCI Express Multifunction Gigabit Server Adapter" },
+	{ BRCM_VENDORID, BRCM_DEVICEID_BCM5708S,  HP_VENDORID, 0x703b,
+                "HP NC373i Integrated Multifunction Gigabit Server Adapter" },
+	{ BRCM_VENDORID, BRCM_DEVICEID_BCM5708S,  HP_VENDORID, 0x703d,
+                "HP NC373F PCI Express Multifunction Gigabit Server Adapter" },
 	{ BRCM_VENDORID, BRCM_DEVICEID_BCM5708S,  PCI_ANY_ID,  PCI_ANY_ID,
 		"Broadcom NetXtreme II BCM5708 1000Base-SX" },
 
 	/* BCM5709C controllers and OEM boards. */
+	{ BRCM_VENDORID, BRCM_DEVICEID_BCM5709,  HP_VENDORID, 0x7055,
+		"HP NC382i Integrated Quad Port PCI Express Gigabit Server Adapter" },
+	{ BRCM_VENDORID, BRCM_DEVICEID_BCM5709,  HP_VENDORID, 0x7059,
+		"HP NC382T PCI Express Dual Port Multifunction Gigabit Server Adapter" },
 	{ BRCM_VENDORID, BRCM_DEVICEID_BCM5709,  PCI_ANY_ID,  PCI_ANY_ID,
 		"Broadcom NetXtreme II BCM5709 1000Base-T" },
 
 	/* BCM5709S controllers and OEM boards. */
+	{ BRCM_VENDORID, BRCM_DEVICEID_BCM5709S,  HP_VENDORID, 0x171d,
+		"HP NC382m Dual Port 1GbE Multifunction BL-c Adapter" },
+	{ BRCM_VENDORID, BRCM_DEVICEID_BCM5709S,  HP_VENDORID, 0x7056,
+		"HP NC382i Integrated Quad Port PCI Express Gigabit Server Adapter" },
 	{ BRCM_VENDORID, BRCM_DEVICEID_BCM5709S,  PCI_ANY_ID,  PCI_ANY_ID,
 		"Broadcom NetXtreme II BCM5709 1000Base-SX" },
 
@@ -2886,7 +2908,6 @@ bce_dma_alloc(device_t dev)
 {
 	struct bce_softc *sc;
 	int i, error, rc = 0;
-	bus_addr_t busaddr;
 	bus_size_t max_size, max_seg_size;
 	int max_segments;
 
@@ -2955,7 +2976,7 @@ bce_dma_alloc(device_t dev)
 	    	sc->status_block,
 	    	BCE_STATUS_BLK_SZ,
 	    	bce_dma_map_addr,
-	    	&busaddr,
+	    	&sc->status_block_paddr,
 	    	BUS_DMA_NOWAIT);
 
 	if (error) {
@@ -2965,7 +2986,6 @@ bce_dma_alloc(device_t dev)
 		goto bce_dma_alloc_exit;
 	}
 
-	sc->status_block_paddr = busaddr;
 	DBPRINT(sc, BCE_INFO, "%s(): status_block_paddr = 0x%jX\n",
 		__FUNCTION__, (uintmax_t) sc->status_block_paddr);
 
@@ -3009,7 +3029,7 @@ bce_dma_alloc(device_t dev)
 	    	sc->stats_block,
 	    	BCE_STATS_BLK_SZ,
 	    	bce_dma_map_addr,
-	    	&busaddr,
+	    	&sc->stats_block_paddr,
 	    	BUS_DMA_NOWAIT);
 
 	if(error) {
@@ -3019,7 +3039,6 @@ bce_dma_alloc(device_t dev)
 		goto bce_dma_alloc_exit;
 	}
 
-	sc->stats_block_paddr = busaddr;
 	DBPRINT(sc, BCE_INFO, "%s(): stats_block_paddr = 0x%jX\n",
 		__FUNCTION__, (uintmax_t) sc->stats_block_paddr);
 
@@ -3077,7 +3096,7 @@ bce_dma_alloc(device_t dev)
 	    		sc->ctx_block[i],
 		    	BCM_PAGE_SIZE,
 		    	bce_dma_map_addr,
-	    		&busaddr,
+	    		&sc->ctx_paddr[i],
 	    		BUS_DMA_NOWAIT);
 
 			if (error) {
@@ -3087,7 +3106,6 @@ bce_dma_alloc(device_t dev)
 				goto bce_dma_alloc_exit;
 			}
 
-			sc->ctx_paddr[i] = busaddr;
 			DBPRINT(sc, BCE_INFO, "%s(): ctx_paddr[%d] = 0x%jX\n",
 				__FUNCTION__, i, (uintmax_t) sc->ctx_paddr[i]);
 		}
@@ -3133,7 +3151,7 @@ bce_dma_alloc(device_t dev)
 	    		sc->tx_bd_chain[i],
 		    	BCE_TX_CHAIN_PAGE_SZ,
 		    	bce_dma_map_addr,
-	    		&busaddr,
+	    		&sc->tx_bd_chain_paddr[i],
 	    		BUS_DMA_NOWAIT);
 
 		if (error) {
@@ -3143,7 +3161,6 @@ bce_dma_alloc(device_t dev)
 			goto bce_dma_alloc_exit;
 		}
 
-		sc->tx_bd_chain_paddr[i] = busaddr;
 		DBPRINT(sc, BCE_INFO, "%s(): tx_bd_chain_paddr[%d] = 0x%jX\n",
 			__FUNCTION__, i, (uintmax_t) sc->tx_bd_chain_paddr[i]);
 	}
@@ -3231,7 +3248,7 @@ bce_dma_alloc(device_t dev)
 	    		sc->rx_bd_chain[i],
 		    	BCE_RX_CHAIN_PAGE_SZ,
 		    	bce_dma_map_addr,
-	    		&busaddr,
+	    		&sc->rx_bd_chain_paddr[i],
 	    		BUS_DMA_NOWAIT);
 
 		if (error) {
@@ -3241,7 +3258,6 @@ bce_dma_alloc(device_t dev)
 			goto bce_dma_alloc_exit;
 		}
 
-		sc->rx_bd_chain_paddr[i] = busaddr;
 		DBPRINT(sc, BCE_INFO, "%s(): rx_bd_chain_paddr[%d] = 0x%jX\n",
 			__FUNCTION__, i, (uintmax_t) sc->rx_bd_chain_paddr[i]);
 	}
@@ -3328,7 +3344,7 @@ bce_dma_alloc(device_t dev)
 	    		sc->pg_bd_chain[i],
 		    	BCE_PG_CHAIN_PAGE_SZ,
 		    	bce_dma_map_addr,
-	    		&busaddr,
+	    		&sc->pg_bd_chain_paddr[i],
 	    		BUS_DMA_NOWAIT);
 
 		if (error) {
@@ -3338,7 +3354,6 @@ bce_dma_alloc(device_t dev)
 			goto bce_dma_alloc_exit;
 		}
 
-		sc->pg_bd_chain_paddr[i] = busaddr;
 		DBPRINT(sc, BCE_INFO, "%s(): pg_bd_chain_paddr[%d] = 0x%jX\n",
 			__FUNCTION__, i, (uintmax_t) sc->pg_bd_chain_paddr[i]);
 	}
