@@ -24,6 +24,11 @@
  * SUCH DAMAGE.
  */
 
+/*
+ * This code implements a round-robin anticipatory scheduler, with
+ * per-client queues.
+ */
+
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
@@ -34,47 +39,47 @@
 #include <sys/module.h>
 #include <sys/proc.h>
 #include <sys/queue.h>
-#include <geom/geom.h>
-#include <geom/geom_sched.h>
+#include <sys/sysctl.h>
+#include "gs_scheduler.h"
+
+/* possible states of the scheduler */
+enum g_rr_state {
+	G_QUEUE_NOWAIT = 0,	/* Ready to dispatch. */
+	G_QUEUE_WAITREQ,	/* Waiting for a completion. */
+	G_QUEUE_WAITING		/* Waiting for a new request. */
+};
+
+struct g_rr_softc;
 
 /*
- * Trivial round robin disk scheduler, with per-thread queues, always
- * anticipating requests from the last served thread.
+ * Per client queue structure.  Each client in the system is
+ * represented by this structure where we store the client's
+ * requests.
  */
-
-/* Timeout for anticipation. */
-#define	G_RR_WAIT_EXPIRE	(hz/200 ? hz/200 : 2)
-
-/* Maximum allowed slice length. */
-#define G_RR_SLICE_EXPIRE	(hz/10)
-
-#define	G_QUEUE_NOWAIT		0	/* Ready to dispatch. */
-#define	G_QUEUE_WAITREQ		1	/* Waiting for a completion. */
-#define G_QUEUE_WAITING		2	/* Waiting for a new request. */
-
-/*
- * Per process (thread) queue structure.  Each process (thread) in the
- * system that accesses the disk managed by an instance of this scheduler
- * has an associated queue.
- */
-struct gs_rr_queue {
+struct g_rr_queue {
 	int		q_refs;
-	int		q_status;
+	enum g_rr_state	q_status;
 	u_long		q_key;
+
+	struct g_rr_softc *q_sc;	/* reference to the parent */
 
 	struct bio_queue_head q_bioq;
 	unsigned int	q_service;
 	unsigned int	q_budget;
 
-	uint64_t	q_slice_end;
+	unsigned int	q_wait_ticks;	/* wait time when doing anticipation */
+	unsigned int	q_slice_duration; /* slice end in bytes */
 
-	LIST_ENTRY(gs_rr_queue) q_hash;
-	TAILQ_ENTRY(gs_rr_queue) q_tailq;
+	int		q_slice_end;	/* slice end in ticks */
+
+	int		q_expire;	/* when will it expire */
+	LIST_ENTRY(g_rr_queue) q_hash;	/* hash table link field */
+	TAILQ_ENTRY(g_rr_queue) q_tailq; /* RR list link field */
 };
 
 /* List types. */
-TAILQ_HEAD(gs_rr_tailq, gs_rr_queue);
-LIST_HEAD(gs_hash, gs_rr_queue);
+TAILQ_HEAD(g_rr_tailq, g_rr_queue);
+LIST_HEAD(g_hash, g_rr_queue);
 
 /* Size of the per-device hash table storing threads. */
 #define	G_RR_HASH_SIZE		32
@@ -83,164 +88,300 @@ LIST_HEAD(gs_hash, gs_rr_queue);
 #define	G_RR_DEFAULT_BUDGET	0x00800000
 
 /*
- * Per device descriptor.  It holds the RR list of queues accessing
- * the disk.
+ * Per device descriptor, holding the Round Robin list of queues
+ * accessing the disk, a reference to the geom, the timer
+ * and the hash table where we store the existing entries.
  */
-struct gs_rr_softc {
-	struct disk	*sc_disk;
+struct g_rr_softc {
+	struct g_geom	*sc_geom;
 
-	struct gs_rr_queue *sc_active;
-	struct gs_rr_tailq sc_rr_tailq;
-
-	struct gs_hash	*sc_hash;
+	/*
+	 * sc_active is the queue we are anticipating for.
+	 * it is never in the Round Robin list even if it
+	 * has requests queued.
+	 */
+	struct g_rr_queue *sc_active;
+	int		sc_nqueues;	/* number of active queues */
+	struct callout	sc_wait;	/* timer for sc_active */
+	struct g_rr_tailq sc_rr_tailq;	/* the round-robin list */
+	struct g_hash	*sc_hash;
 	u_long		sc_hash_mask;
 
-	struct callout	sc_wait;
+	/*
+	 * A queue of pending requests so we can tell the current
+	 * position of the disk head. The queue is implemented as a
+	 * circular array, dynamically allocated.
+	 */
+	struct bio	**sc_pending;
+	int		sc_pending_max;	/* array size */
+	int		sc_pending_first; /* oldest queued request */
+	int		sc_in_flight;	/* requests in the driver */
+
+	/* opportunistically flush buckets in g_rr_done */
+	int		sc_flush_ticks;	/* next time we want to flush */
+	int		sc_flush_bucket;	/* next bucket to flush */
 };
 
+/* descriptor for bounded values */
+struct x_bound {		
+	int	x_min;
+	int	x_cur;
+	const int	x_max;	/* XXX you are not supposed to change this */
+};
+
+/*
+ * parameters, config and stats
+ */
+struct g_rr_params {
+	int	expire_secs;		/* expire seconds for queues */
+	int	units;			/* how many instances */
+	int	queues;			/* total number of queues */
+	int	qrefs;			/* total number of refs to queues */
+
+	struct x_bound queue_depth;	/* max nr. of parallel requests */
+	struct x_bound wait_ms;		/* wait time in milliseconds */
+	struct x_bound slice_ms;	/* slice size in milliseconds */
+	struct x_bound slice_kb;	/* slice size in Kb (1024 bytes) */
+};
+
+static struct g_rr_params me = {
+	.expire_secs =	10,
+	.queue_depth =	{ 1,	8,	50},
+	.wait_ms =	{ 1, 	5,	30},
+	.slice_ms =	{ 1, 	50,	500},
+	.slice_kb =	{ 16, 	8192,	65536},
+};
+
+SYSCTL_DECL(_kern_geom_sched);
+SYSCTL_NODE(_kern_geom_sched, OID_AUTO, rr, CTLFLAG_RW, 0,
+    "GEOM_SCHED ROUND ROBIN stuff");
+SYSCTL_UINT(_kern_geom_sched_rr, OID_AUTO, units, CTLFLAG_RD,
+    &me.units, 0, "Scheduler instances");
+SYSCTL_UINT(_kern_geom_sched_rr, OID_AUTO, queues, CTLFLAG_RD,
+    &me.queues, 0, "Total rr queues");
+SYSCTL_UINT(_kern_geom_sched_rr, OID_AUTO, wait_ms, CTLFLAG_RW,
+    &me.wait_ms.x_cur, 0, "Wait time milliseconds");
+SYSCTL_UINT(_kern_geom_sched_rr, OID_AUTO, slice_ms, CTLFLAG_RW,
+    &me.slice_ms.x_cur, 0, "Slice size milliseconds");
+SYSCTL_UINT(_kern_geom_sched_rr, OID_AUTO, slice_kb, CTLFLAG_RW,
+    &me.slice_kb.x_cur, 0, "Slice size Kbytes");
+SYSCTL_UINT(_kern_geom_sched_rr, OID_AUTO, expire_secs, CTLFLAG_RW,
+    &me.expire_secs, 0, "Expire time in seconds");
+SYSCTL_UINT(_kern_geom_sched_rr, OID_AUTO, queue_depth, CTLFLAG_RW,
+    &me.queue_depth.x_cur, 0, "Maximum simultaneous requests");
+
 /* Return the hash chain for the given key. */
-static inline struct gs_hash *
-gs_rr_hash(struct gs_rr_softc *sc, u_long key)
+static inline struct g_hash *
+g_rr_hash(struct g_rr_softc *sc, u_long key)
 {
 
 	return (&sc->sc_hash[key & sc->sc_hash_mask]);
 }
 
 /*
+ * get a bounded value, optionally convert to a min of t_min ticks
+ */
+static int
+get_bounded(struct x_bound *v, int t_min)
+{
+	int x;
+
+	x = v->x_cur;
+	if (x < v->x_min)
+		x = v->x_min;
+	else if (x > v->x_max)
+		x = v->x_max;
+	if (t_min) {
+		x = x * hz / 1000;	/* convert to ticks */
+		if (x < t_min)
+			x = t_min;
+	}
+	return x;
+}
+
+/*
  * Get a reference to the queue that holds requests for tp, allocating
  * it if necessary.
  */
-static struct gs_rr_queue *
-gs_rr_queue_get(struct gs_rr_softc *sc, u_long key)
+static struct g_rr_queue *
+g_rr_queue_get(struct g_rr_softc *sc, u_long key)
 {
-	struct gs_hash *bucket;
-	struct gs_rr_queue *qp, *new_qp;
+	struct g_hash *bucket;
+	struct g_rr_queue *qp;
 
-	new_qp = NULL;
-	bucket = gs_rr_hash(sc, key);
-retry:
+	bucket = g_rr_hash(sc, key);
 	LIST_FOREACH(qp, bucket, q_hash) {
 		if (qp->q_key == key) {
+			me.qrefs++;
 			qp->q_refs++;
-			if (new_qp != NULL) {
-				/*
-				 * A race occurred, someone else allocated
-				 * the queue.  Use it.
-				 */
-				g_free(new_qp);
-			}
 			return (qp);
 		}
 	}
 
-	if (new_qp == NULL) {
-		/*
-		 * We want allocations that not fail, so release the
-		 * d_sched_lock lock and redo the lookup after the
-		 * allocation.
-		 */
-		mtx_unlock(&sc->sc_disk->d_sched_lock);
-		new_qp = g_malloc(sizeof *qp, M_WAITOK | M_ZERO);
-		mtx_lock(&sc->sc_disk->d_sched_lock);
-		goto retry;
+	qp = malloc(sizeof *qp, M_GEOM_SCHED, M_NOWAIT | M_ZERO);
+
+	if (qp != NULL) {
+		me.qrefs += 2;
+		qp->q_refs = 2; /* One for hash table, one for caller. */
+
+		qp->q_sc = sc;
+		qp->q_key = key;
+		bioq_init(&qp->q_bioq);
+
+		/* compute the slice size in bytes */
+		qp->q_budget = 1024 * get_bounded(&me.slice_kb, 0);
+
+		/* compute the slice size and wait time in ticks */
+		qp->q_slice_duration = get_bounded(&me.slice_ms, 2);
+		qp->q_wait_ticks = get_bounded(&me.wait_ms, 2);
+
+		LIST_INSERT_HEAD(bucket, qp, q_hash);
+		qp->q_sc->sc_nqueues++;
+		me.queues++;
 	}
 
-	/* One for the hash table, one for the caller. */
-	new_qp->q_refs = 2;
-
-	new_qp->q_key = key;
-	bioq_init(&new_qp->q_bioq);
-	new_qp->q_budget = G_RR_DEFAULT_BUDGET;
-	LIST_INSERT_HEAD(bucket, new_qp, q_hash);
-
-	return (new_qp);
+	return (qp);
 }
 
 /*
  * Release a reference to the queue.
  */
 static void
-gs_rr_queue_put(struct gs_rr_queue *qp)
+g_rr_queue_put(struct g_rr_queue *qp)
 {
+
+	qp->q_expire = ticks + me.expire_secs * hz;
 
 	if (--qp->q_refs > 0)
 		return;
 
 	LIST_REMOVE(qp, q_hash);
-	KASSERT(bioq_first(&qp->q_bioq) == NULL, ("released nonempty queue"));
+	KASSERT(bioq_first(&qp->q_bioq) == NULL,
+			("released nonempty queue"));
+	qp->q_sc->sc_nqueues--;
+	me.queues--;
 
-	g_free(qp);
+	free(qp, M_GEOM_SCHED);
 }
 
-static void *
-gs_rr_init(struct disk *dp)
+static inline int
+g_rr_queue_expired(struct g_rr_queue *qp)
 {
-	struct gs_rr_softc *sc;
 
-	sc = g_malloc(sizeof *sc, M_WAITOK | M_ZERO);
-	sc->sc_disk = dp;
-	TAILQ_INIT(&sc->sc_rr_tailq);
-	sc->sc_hash = hashinit(G_RR_HASH_SIZE, M_GEOM, &sc->sc_hash_mask);
-	callout_init(&sc->sc_wait, CALLOUT_MPSAFE);
-
-	return (sc);
-}
-
-static void
-gs_rr_fini(void *data)
-{
-	struct gs_rr_softc *sc;
-	struct gs_rr_queue *qp, *qp2;
-	int i;
-
-	sc = data;
-	callout_drain(&sc->sc_wait);
-	KASSERT(sc->sc_active == NULL, ("still a queue under service"));
-	KASSERT(TAILQ_EMPTY(&sc->sc_rr_tailq), ("still scheduled queues"));
-	for (i = 0; i < G_RR_HASH_SIZE; i++) {
-		LIST_FOREACH_SAFE(qp, &sc->sc_hash[i], q_hash, qp2) {
-			LIST_REMOVE(qp, q_hash);
-			gs_rr_queue_put(qp);
-		}
-	}
-	hashdestroy(sc->sc_hash, M_GEOM, sc->sc_hash_mask);
-	g_free(sc);
+	return (qp->q_service >= qp->q_budget ||
+	    ticks - qp->q_slice_end >= 0);
 }
 
 /*
- * Activate a queue, inserting it into the RR list and preparing it
- * to be served.
+ * called on a request arrival, timeout or completion.
+ * Try to serve a request among those queued.
  */
-static inline void
-gs_rr_activate(struct gs_rr_softc *sc, struct gs_rr_queue *qp)
+static struct bio *
+g_rr_next(void *data)
 {
+	struct g_rr_softc *sc = data;
+	struct g_rr_queue *qp;
+	struct bio *bp, *next;
+	int expired;
 
-	qp->q_service = 0;
-	TAILQ_INSERT_TAIL(&sc->sc_rr_tailq, qp, q_tailq);
+	if (sc->sc_in_flight >= get_bounded(&me.queue_depth, 0))
+		return NULL;
+
+	/* Try with the queue under service first. */
+	qp = sc->sc_active;
+	if (qp != NULL && qp->q_status != G_QUEUE_NOWAIT) {
+		/* Queue is anticipating, ignore request.
+		 * In principle we could check that we are not past
+		 * the timeout, but in that case the timeout will
+		 * fire immediately afterwards so we don't check.
+		 */
+		return NULL;
+	}
+
+	/* No queue under service, look for the first in RR order. */
+	if (qp == NULL)
+		qp = TAILQ_FIRST(&sc->sc_rr_tailq);
+
+	/* If no queue at all, just return */
+	if (qp == NULL)
+		return NULL;
+
+	if (qp != sc->sc_active) {
+		/* Select the new queue for service. */
+		TAILQ_REMOVE(&sc->sc_rr_tailq, qp, q_tailq);
+		sc->sc_active = qp;
+	}
+
+	/* set a timeout for the current slice */
+	if (qp->q_service == 0)
+		qp->q_slice_end = ticks + qp->q_slice_duration;
+	bp = bioq_takefirst(&qp->q_bioq);
+	qp->q_service += bp->bio_length;
+	next = bioq_first(&qp->q_bioq);	/* request remains in the queue */
+
+	/*
+	 * Have we have reached our budget in time or bytes ?
+	 */
+	expired = g_rr_queue_expired(qp);
+ 	if (!expired && next == NULL && bp->bio_cmd == BIO_READ) {
+		/*
+		 * There is budget left, but this was the last request,
+		 * start anticipating.
+		 */
+		qp->q_status = G_QUEUE_WAITREQ;
+	} else if (next != NULL && expired) {
+		/* If it has more requests requeue it. */
+		qp->q_status = G_QUEUE_NOWAIT;
+		qp->q_service = 0;
+		TAILQ_INSERT_TAIL(&sc->sc_rr_tailq, qp, q_tailq);
+		sc->sc_active = NULL;
+	} else if (next == NULL) {
+		/* No more active, release reference. */
+		g_rr_queue_put(qp);
+		sc->sc_active = NULL;
+	}
+
+	sc->sc_in_flight++;
+
+	return bp;
 }
 
-static void
-gs_rr_start(void *data, struct bio *bp)
+/*
+ * Called when a real request for disk I/O arrives.
+ * Locate the queue associated with the client.
+ * If the queue is the one we are anticipating for, reset its timeout;
+ * if the queue is not in the round robin list, insert it in the list.
+ * On any error, do not queue the request and return -1, the caller
+ * will take care of this request.
+ */
+static int
+g_rr_start(void *data, struct bio *bp)
 {
-	struct gs_rr_softc *sc;
-	struct gs_rr_queue *qp;
+	struct g_rr_softc *sc = data;
+	struct g_rr_queue *qp;
 
-	sc = data;
 	/* Get the queue for the thread that issued the request. */
-	qp = gs_rr_queue_get(sc, g_sched_classify(bp));
+	qp = g_rr_queue_get(sc, g_sched_classify(bp));
+	if (qp == NULL)
+		return -1; /* allocation failed, tell upstream */
+
 	if (bioq_first(&qp->q_bioq) == NULL) {
-		/* We're inserting into an empty queue... */
+		/*
+		 * We are inserting into an empty queue; check whether
+		 * this is the one for which we are doing anticipation,
+		 * in which case stop the timer.
+		 * Otherwise insert the queue in the rr list.
+		 */
 		if (qp == sc->sc_active) {
-			/* ... this is a request we were anticipating. */
 			callout_stop(&sc->sc_wait);
 		} else {
 			/*
 			 * ... this is the first request, we need to
-			 * activate the queue.  Take a reference for
-			 * being on the active list.
+			 * activate the queue.
 			 */
 			qp->q_refs++;
-			gs_rr_activate(sc, qp);
+			qp->q_service = 0;
+			TAILQ_INSERT_TAIL(&sc->sc_rr_tailq, qp, q_tailq);
 		}
 	}
 
@@ -248,102 +389,25 @@ gs_rr_start(void *data, struct bio *bp)
 
 	/*
 	 * Each request holds a reference to the queue containing it:
-	 * inherit the "caller" one here.
+	 * inherit the "caller" one.
 	 */
 	bp->bio_caller1 = qp;
 	bioq_disksort(&qp->q_bioq, bp);
-}
 
-static struct bio *
-gs_rr_next(void *data, int force)
-{
-	struct gs_rr_softc *sc;
-	struct gs_rr_queue *qp;
-	struct bio *bp, *next;
-
-	sc = data;
-	/* Try with the queue under service first. */
-	qp = sc->sc_active;
-	if (qp != NULL && force != 0 && bioq_first(&qp->q_bioq) == NULL) {
-		/*
-		 * The current queue is being anticipated, but we're asked
-		 * a forced dispatch...
-		 */
-		callout_stop(&sc->sc_wait);
-		gs_rr_queue_put(qp);
-		qp = NULL;
-		sc->sc_active = NULL;
-	}
-
-	if (qp == NULL) {
-		/* No queue under service, look for the first in RR order. */
-		qp = TAILQ_FIRST(&sc->sc_rr_tailq);
-		if (qp == NULL) {
-			/* No queue at all, just return. */
-			return (NULL);
-		}
-
-		/*
-		 * Select the new queue for service.  The active list
-		 * reference is kept until the queue is either sc_active
-		 * or on the list.
-		 */
-		TAILQ_REMOVE(&sc->sc_rr_tailq, qp, q_tailq);
-		sc->sc_active = qp;
-	} else if (force == 0 && qp->q_status != G_QUEUE_NOWAIT) {
-		/* Queue is anticipating, stop dispatching. */
-		return (NULL);
-	}
-
-	if (qp->q_service == 0) {
-		/*
-		 * Doing this we charge the first seek to the queue;
-		 * even if this is not correct, it should approximate
-		 * the correct behavior.
-		 */
-		qp->q_slice_end = ticks + G_RR_SLICE_EXPIRE;
-	}
-
-	bp = bioq_takefirst(&qp->q_bioq);
-	qp->q_service += bp->bio_length;
-	next = bioq_first(&qp->q_bioq);
- 	if (qp->q_service > qp->q_budget ||
-	    (int64_t)(ticks - qp->q_slice_end) >= 0) {
-		/* Queue exhausted its budget or timed out. */
-		sc->sc_active = NULL;
-		if (next != NULL) {
-			/* If it has more requests requeue it. */
-			qp->q_status = G_QUEUE_NOWAIT;
-			gs_rr_activate(sc, qp);
-		} else {
-			/* No more active. */
-			gs_rr_queue_put(qp);
-		}
-	} else if (next == NULL) {
-		/*
-		 * There is budget left, but this was the last request,
-		 * start anticipating.
-		 */
-		qp->q_status = G_QUEUE_WAITREQ;
-	}
-
-	return (bp);
+	return 0;
 }
 
 /*
  * Callout executed when a queue times out waiting for a new request.
  */
 static void
-gs_rr_wait_timeout(void *data)
+g_rr_wait_timeout(void *data)
 {
-	struct gs_rr_softc *sc;
-	struct gs_rr_queue *qp;
-	struct disk *dp;
+	struct g_rr_softc *sc = data;
+	struct g_geom *geom = sc->sc_geom;
+	struct g_rr_queue *qp;
 
-	sc = data;
-	dp = sc->sc_disk;
-
-	mtx_lock(&dp->d_sched_lock);
+	g_sched_lock(geom);
 	qp = sc->sc_active;
 	/*
 	 * We can race with a start() or a switch of the active
@@ -351,47 +415,120 @@ gs_rr_wait_timeout(void *data)
 	 */
 	if (qp != NULL) {
 		sc->sc_active = NULL;
-
-		/* Put the sc_active ref. */
-		gs_rr_queue_put(qp);
+		/* release reference to the queue. */
+		g_rr_queue_put(qp);
 	}
-	mtx_unlock(&dp->d_sched_lock);
-
-	/* Restart queueing from the driver. */
-	dp->d_kick(dp);
+	g_sched_dispatch(geom);
+	g_sched_unlock(geom);
 }
 
-static int
-gs_rr_done(void *data, struct bio *bp)
+/*
+ * Module glue -- allocate descriptor, initialize the hash table and
+ * the callout structure.
+ */
+static void *
+g_rr_init(struct g_geom *geom)
 {
-	struct gs_rr_softc *sc;
-	struct gs_rr_queue *qp;
-	int ret;
+	struct g_rr_softc *sc;
 
-	ret = 0;
-	sc = data;
+	sc = malloc(sizeof *sc, M_GEOM_SCHED, M_WAITOK | M_ZERO);
+	sc->sc_pending_max = me.queue_depth.x_max;
+	sc->sc_pending =
+		malloc(sc->sc_pending_max * sizeof(struct bio *),
+			M_GEOM_SCHED, M_WAITOK | M_ZERO);
+	sc->sc_geom = geom;
+	sc->sc_flush_ticks = ticks;
+	TAILQ_INIT(&sc->sc_rr_tailq);
+	sc->sc_hash = hashinit(G_RR_HASH_SIZE, M_GEOM_SCHED,
+		&sc->sc_hash_mask);
+	callout_init(&sc->sc_wait, CALLOUT_MPSAFE);
+	me.units++;
+
+	return (sc);
+}
+
+/*
+ * Module glue -- drain the callout structure, destroy the
+ * hash table and its element, and free the descriptor.
+ */
+static void
+g_rr_fini(void *data)
+{
+	struct g_rr_softc *sc = data;
+	struct g_rr_queue *qp, *qp2;
+	int i;
+
+	callout_drain(&sc->sc_wait);
+	KASSERT(sc->sc_active == NULL, ("still a queue under service"));
+	KASSERT(TAILQ_EMPTY(&sc->sc_rr_tailq), ("still scheduled queues"));
+	for (i = 0; i < G_RR_HASH_SIZE; i++) {
+		LIST_FOREACH_SAFE(qp, &sc->sc_hash[i], q_hash, qp2) {
+			g_rr_queue_put(qp);
+		}
+	}
+	hashdestroy(sc->sc_hash, M_GEOM_SCHED, sc->sc_hash_mask);
+	me.units--;
+	free(sc->sc_pending, M_GEOM_SCHED);
+	free(sc, M_GEOM_SCHED);
+}
+
+/*
+ * Flush a bucket, come back in some time
+ */
+static void
+g_rr_flush(struct g_rr_softc *sc)
+{
+	struct g_rr_queue *qp, *qp2;
+	int i;
+
+	i = sc->sc_flush_bucket++;
+	if (sc->sc_flush_bucket >= G_RR_HASH_SIZE)
+		sc->sc_flush_bucket = 0;
+
+	for (i = 0; i < G_RR_HASH_SIZE; i++) {
+		LIST_FOREACH_SAFE(qp, &sc->sc_hash[i], q_hash, qp2) {
+			if (qp->q_refs == 1 && ticks - qp->q_expire > 0)
+				g_rr_queue_put(qp);
+		}
+	}
+
+	sc->sc_flush_ticks = ticks + me.expire_secs * hz;
+}
+
+/*
+ * called when the request under service terimnates.
+ * Take the chance to opportunistically flush stuff.
+ */
+static void
+g_rr_done(void *data, struct bio *bp)
+{
+	struct g_rr_softc *sc = data;
+	struct g_rr_queue *qp;
+
+	sc->sc_in_flight--;
+
 	qp = bp->bio_caller1;
 	if (qp == sc->sc_active && qp->q_status == G_QUEUE_WAITREQ) {
 		/* The queue is trying anticipation, start the timer. */
 		qp->q_status = G_QUEUE_WAITING;
-		callout_reset(&sc->sc_wait, G_RR_WAIT_EXPIRE,
-		    gs_rr_wait_timeout, sc);
+		callout_reset(&sc->sc_wait, qp->q_wait_ticks,
+		    g_rr_wait_timeout, sc);
 	} else
-		ret = 1;
+		g_sched_dispatch(sc->sc_geom);
 
-	/* Put the request ref to the queue. */
-	gs_rr_queue_put(qp);
-
-	return (ret);
+	/* Release a reference to the queue. */
+	g_rr_queue_put(qp);
+        if (ticks - sc->sc_flush_ticks > 0)
+		g_rr_flush(sc);
 }
 
-static struct g_sched gs_rr = {
-	.gs_name = "gs_rr",
-	.gs_init = gs_rr_init,
-	.gs_fini = gs_rr_fini,
-	.gs_start = gs_rr_start,
-	.gs_next = gs_rr_next,
-	.gs_done = gs_rr_done,
+static struct g_gsched g_rr = {
+	.gs_name = "rr",
+	.gs_init = g_rr_init,
+	.gs_fini = g_rr_fini,
+	.gs_start = g_rr_start,
+	.gs_done = g_rr_done,
+	.gs_next = g_rr_next,
 };
 
-DECLARE_GSCHED_MODULE(rr, &gs_rr);
+DECLARE_GSCHED_MODULE(rr, &g_rr);

@@ -25,7 +25,17 @@
  */
 
 /*
- * Prototypes for GEOM-based disk schedulers.
+ * Prototypes for GEOM-based disk scheduling algorithms.
+ *
+ * This file is used by the kernel modules implementing the various
+ * scheduling algorithms. They should provide all the methods
+ * defined in struct g_gsched, and also invoke the macro
+ *	DECLARE_GSCHED_MODULE
+ * which registers the scheduling algorithm with the geom_sched module.
+ *
+ * Note that the various schedulnig algorithms do not need to know anything
+ * about geom, they only need to handle the 'bio' requests they receive,
+ * pass them down when needed, and use the locking interface defined below.
  */
 
 #ifndef	_G_GSCHED_H_
@@ -36,20 +46,19 @@
 #include <sys/kernel.h>
 #include <sys/module.h>
 #include <sys/queue.h>
-#include <geom/sched/g_sched.h>
+#include "g_sched.h"
 
 /*
  * This is the interface exported to scheduling modules.
  */
-/*
- * Geom I/O scheduler descriptor.
- */
-struct g_geom;
+
+struct g_geom;	/* Forward declaration for prototypes */
 
 typedef void *gs_init_t (struct g_geom *geom);
 typedef void gs_fini_t (void *data);
-typedef void gs_start_t (void *data, struct bio *bio);
+typedef int gs_start_t (void *data, struct bio *bio);
 typedef void gs_done_t (void *data, struct bio *bio);
+typedef struct bio *gs_next_t (void *data);
 
 struct g_gsched {
 	const char	*gs_name;
@@ -59,9 +68,12 @@ struct g_gsched {
 	gs_fini_t	*gs_fini;
 	gs_start_t	*gs_start;
 	gs_done_t	*gs_done;
+	gs_next_t	*gs_next;
 
 	LIST_ENTRY(g_gsched) glist;
 };
+
+MALLOC_DECLARE(M_GEOM_SCHED);
 
 /*
  * Locking interface.  When each operation registered with the
@@ -81,32 +93,27 @@ void g_sched_unlock(struct g_geom *gp);
  * us is just an opaque identifier.
  * For the time being we make this inline.
  */
-static inline
-u_long g_sched_classify(struct bio *bp)
-{
+u_long g_sched_classify(struct bio *bp);
 
-	if (bp == NULL) {
-		printf("g_sched_classify: NULL bio\n");
-		return (0);	/* as good as anything */
-	}
-	while (bp->bio_parent != NULL)
-		bp = bp->bio_parent;
-	return ((u_long)(bp->bio_caller1));
-}
+/*
+ * Restart request dispatching.  Must be called with the per-instance
+ * mutex held.
+ */
+void g_sched_dispatch(struct g_geom *geom);
 
 /*
  * Declaration of a scheduler module.
  */
 int g_gsched_modevent(module_t mod, int cmd, void *arg);
 
-#define	DECLARE_GSCHED_MODULE(name, gsched)				\
-	static moduledata_t name##_mod = {				\
-		#name,							\
-		g_gsched_modevent,					\
-		gsched,							\
-	};								\
+#define	DECLARE_GSCHED_MODULE(name, gsched)			\
+	static moduledata_t name##_mod = {			\
+		#name,						\
+		g_gsched_modevent,				\
+		gsched,						\
+	};							\
 	DECLARE_MODULE(name, name##_mod, SI_SUB_DRIVERS, SI_ORDER_ANY);	\
-	MODULE_DEPEND(name, g_sched, 0, 0, 0);
+	MODULE_DEPEND(name, geom_sched, 0, 0, 0);
 
 #endif	/* _KERNEL */
 

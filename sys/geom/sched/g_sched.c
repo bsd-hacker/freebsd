@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2007 Fabio Checconi <fabio@FreeBSD.org>
+ * Copyright (c) 2009 Fabio Checconi <fabio@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -24,6 +24,9 @@
  * SUCH DAMAGE.
  */
 
+/*
+ * The main control module for geom-based disk schedulers
+ */
 #include <sys/cdefs.h>
 
 #include <sys/param.h>
@@ -37,20 +40,16 @@
 #include <sys/malloc.h>
 #include <sys/proc.h>	/* we access curthread */
 #include <geom/geom.h>
-#include "g_gsched.h"
-#include "g_sched.h"
-
-SYSCTL_DECL(_kern_geom);
-SYSCTL_NODE(_kern_geom, OID_AUTO, sched, CTLFLAG_RW, 0, "GEOM_SCHED stuff");
-static u_int g_sched_debug = 0;
-SYSCTL_UINT(_kern_geom_sched, OID_AUTO, debug, CTLFLAG_RW, &g_sched_debug, 0,
-    "Debug level");
+#include "gs_scheduler.h"
+#include "g_sched.h"	/* geom hooks */
 
 static int g_sched_destroy(struct g_geom *gp, boolean_t force);
-static int g_sched_destroy_geom(struct gctl_req *req, struct g_class *mp,
-    struct g_geom *gp);
+static int g_sched_destroy_geom(struct gctl_req *req,
+    struct g_class *mp, struct g_geom *gp);
 static void g_sched_config(struct gctl_req *req, struct g_class *mp,
     const char *verb);
+static struct g_geom *
+g_sched_taste(struct g_class *mp, struct g_provider *pp, int flags __unused);
 static void g_sched_dumpconf(struct sbuf *sb, const char *indent,
     struct g_geom *gp, struct g_consumer *cp, struct g_provider *pp);
 static void g_sched_init(struct g_class *mp);
@@ -60,15 +59,44 @@ struct g_class g_sched_class = {
 	.name = G_SCHED_CLASS_NAME,
 	.version = G_VERSION,
 	.ctlreq = g_sched_config,
+	.taste = g_sched_taste,
 	.destroy_geom = g_sched_destroy_geom,
 	.init = g_sched_init,
 	.fini = g_sched_fini
 };
 
-static struct mtx g_gsched_mtx;
-LIST_HEAD(gsched_list, g_gsched);
-static struct gsched_list gsched_list;
+MALLOC_DEFINE(M_GEOM_SCHED, "GEOM_SCHED", "Geom schedulers data structures");
 
+/*
+ * Global variables describing the state of the geom_sched module.
+ */
+LIST_HEAD(gs_list, g_gsched);	/* type, link field */
+struct geom_sched_vars {
+	struct mtx	gs_mtx;
+	struct gs_list	gs_scheds;	/* list of schedulers */
+	int		gs_sched_count;	/* how many schedulers ? */
+	u_int		gs_debug;
+	int 		gs_patched;	/* g_io_request was patched */
+	char		gs_names[256];	/* names of schedulers */
+};
+
+static struct geom_sched_vars me;
+
+SYSCTL_DECL(_kern_geom);
+SYSCTL_NODE(_kern_geom, OID_AUTO, sched, CTLFLAG_RW, 0,
+    "GEOM_SCHED stuff");
+SYSCTL_UINT(_kern_geom_sched, OID_AUTO, debug, CTLFLAG_RW,
+    &me.gs_debug, 0, "Debug level");
+SYSCTL_UINT(_kern_geom_sched, OID_AUTO, sched_count, CTLFLAG_RD,
+    &me.gs_sched_count, 0, "Number of schedulers");
+SYSCTL_STRING(_kern_geom_sched, OID_AUTO, schedulers, CTLFLAG_RD,
+    &me.gs_names, 0, "Scheduler names");
+
+/*
+ * This module calls the scheduler algorithms with this lock held.
+ * The functions are exposed so the scheduler algorithms can also
+ * protect themselves e.g. when running a callout handler.
+ */
 void
 g_sched_lock(struct g_geom *gp)
 {
@@ -85,6 +113,10 @@ g_sched_unlock(struct g_geom *gp)
 	mtx_unlock(&sc->sc_mtx);
 }
 
+/*
+ * Handle references to the module, which are coming from devices
+ * using this scheduler.
+ */
 static inline void
 g_gsched_ref(struct g_gsched *gsp)
 {
@@ -96,12 +128,19 @@ static inline void
 g_gsched_unref(struct g_gsched *gsp)
 {
 
-	/*
-	 * The last reference to a gsp before releasing it is the one
-	 * of the gsched_list.  Elements are not released nor removed
-	 * from the list until there is an external reference to them.
-	 */
 	atomic_add_int(&gsp->gs_refs, -1);
+}
+
+void
+g_sched_dispatch(struct g_geom *gp)
+{
+	struct g_sched_softc *sc = gp->softc;
+	struct g_gsched *gsp = sc->sc_gsched;
+	struct bio *bp;
+
+	mtx_assert(&sc->sc_mtx, MTX_OWNED);
+	while ((bp = gsp->gs_next(sc->sc_data)) != NULL)
+		g_io_request(bp, LIST_FIRST(&gp->consumer));
 }
 
 static struct g_gsched *
@@ -109,38 +148,65 @@ g_gsched_find(const char *name)
 {
 	struct g_gsched *gsp = NULL;
 
-	mtx_lock(&g_gsched_mtx);
-	LIST_FOREACH(gsp, &gsched_list, glist)
+	mtx_lock(&me.gs_mtx);
+	LIST_FOREACH(gsp, &me.gs_scheds, glist)
 		if (strcmp(name, gsp->gs_name) == 0) {
 			g_gsched_ref(gsp);
 			break;
 		}
-	mtx_unlock(&g_gsched_mtx);
+	mtx_unlock(&me.gs_mtx);
 
 	return gsp;
 }
 
+/*
+ * rebuild the list of scheduler names.
+ * To be called with lock held.
+ */
+static void
+g_gsched_build_names(struct g_gsched *gsp)
+{
+	int pos, l;
+	struct g_gsched *cur;
+
+	pos = 0;
+	LIST_FOREACH(cur, &me.gs_scheds, glist) {
+		l = strlen(cur->gs_name);
+		if (l + pos + 1 + 1 < sizeof(me.gs_names)) {
+			if (pos != 0)
+				me.gs_names[pos++] = ' ';
+			strcpy(me.gs_names + pos, cur->gs_name);
+			pos += l;
+		}
+	}
+	me.gs_names[pos] = '\0';
+}
+
+/*
+ * Register or unregister individual scheduling algorithms.
+ */
 static int
 g_gsched_register(struct g_gsched *gsp)
 {
-	struct g_gsched *tmp;
-	int error;
+	struct g_gsched *cur;
+	int error = 0;
 
-	error = 0;
-	mtx_lock(&g_gsched_mtx);
-	LIST_FOREACH(tmp, &gsched_list, glist)
-		if (strcmp(gsp->gs_name, tmp->gs_name) == 0) {
-			G_SCHED_DEBUG(0, "A scheduler named %s already"
-			    "exists.", gsp->gs_name);
-			error = EEXIST;
-			goto out;
-		}
-
-	LIST_INSERT_HEAD(&gsched_list, gsp, glist);
-	gsp->gs_refs = 1;
-
-out:
-	mtx_unlock(&g_gsched_mtx);
+	mtx_lock(&me.gs_mtx);
+	LIST_FOREACH(cur, &me.gs_scheds, glist) {
+		if (strcmp(gsp->gs_name, cur->gs_name) == 0)
+			break;
+	}
+	if (cur != NULL) {
+		G_SCHED_DEBUG(0, "A scheduler named %s already"
+		    "exists.", gsp->gs_name);
+		error = EEXIST;
+	} else {
+		LIST_INSERT_HEAD(&me.gs_scheds, gsp, glist);
+		gsp->gs_refs = 1;
+		me.gs_sched_count++;
+		g_gsched_build_names(gsp);
+	}
+	mtx_unlock(&me.gs_mtx);
 
 	return (error);
 }
@@ -149,29 +215,46 @@ static int
 g_gsched_unregister(struct g_gsched *gsp)
 {
 	struct g_gsched *cur, *tmp;
-	int error;
+	int error = 0;
+	struct g_geom *gp, *gp_tmp;
 
 	error = 0;
-	mtx_lock(&g_gsched_mtx);
-	LIST_FOREACH_SAFE(cur, &gsched_list, glist, tmp) {
-		if (cur == gsp && gsp->gs_refs != 1) {
+	mtx_lock(&me.gs_mtx);
+
+	/* scan stuff attached here ? */
+	printf("%s, scan attached providers\n", __FUNCTION__);
+        LIST_FOREACH_SAFE(gp, &g_sched_class.geom, geom, gp_tmp) {
+		if (gp->class != &g_sched_class)
+			continue; /* should not happen */
+		g_sched_destroy(gp, 0);
+        }
+
+
+	LIST_FOREACH_SAFE(cur, &me.gs_scheds, glist, tmp) {
+		if (cur != gsp)
+			continue;
+		if (gsp->gs_refs != 1) {
 			G_SCHED_DEBUG(0, "%s still in use.", gsp->gs_name);
 			error = EBUSY;
-			goto out;
-		} else if (cur == gsp && gsp->gs_refs == 1) {
+		} else {
 			LIST_REMOVE(gsp, glist);
-			goto out;
+			me.gs_sched_count--;
+			g_gsched_build_names(gsp);
 		}
+		break;
 	}
+	if (cur == NULL)
+		G_SCHED_DEBUG(0, "%s not registered.", gsp->gs_name);
 
-	G_SCHED_DEBUG(0, "%s not registered.", gsp->gs_name);
-
-out:
-	mtx_unlock(&g_gsched_mtx);
+	mtx_unlock(&me.gs_mtx);
 
 	return (error);
 }
 
+/*
+ * Module event called when a scheduling algorithm module is loaded or
+ * unloaded.
+ */
 int
 g_gsched_modevent(module_t mod, int cmd, void *arg)
 {
@@ -182,23 +265,44 @@ g_gsched_modevent(module_t mod, int cmd, void *arg)
 	switch (cmd) {
 	case MOD_LOAD:
 		error = g_gsched_register(gsp);
+		printf("loaded module %s error %d\n", gsp->gs_name, error);
+		if (error == 0)
+			g_retaste(&g_sched_class);
 		break;
 	case MOD_UNLOAD:
 		error = g_gsched_unregister(gsp);
+		printf("unloading for scheduler %s error %d\n",
+			gsp->gs_name, error);
 		break;
 	};
 
 	return (error);
 }
 
-static void
-g_sched_orphan(struct g_consumer *cp)
+/*
+ * Lookup the identity of the issuer of the original request.
+ * In the current implementation we use the curthread of the
+ * issuer, but different mechanisms may be implemented later
+ * so we do not make assumptions on the return value which for
+ * us is just an opaque identifier.
+ */
+u_long
+g_sched_classify(struct bio *bp)
 {
 
-	g_topology_assert();
-	g_sched_destroy(cp->geom, 1);
+        if (bp == NULL) {
+                printf("g_sched_classify: NULL bio\n");
+                return (0);     /* as good as anything */
+        }
+        while (bp->bio_parent != NULL)
+                bp = bp->bio_parent;
+        return ((u_long)(bp->bio_caller1));
 }
 
+/*
+ * g_sched_done() and g_sched_start() dispatch the geom requests to
+ * the scheduling algorithm in use.
+ */
 static void
 g_sched_done(struct bio *bio)
 {
@@ -238,8 +342,27 @@ g_sched_start(struct bio *bp)
 	cbp->bio_to = pp;
 	G_SCHED_LOGREQ(cbp, "Sending request.");
 	gsp = sc->sc_gsched;
-	gsp->gs_start(sc->sc_data, cbp);
+	/*
+	 * Call the algorithm's gs_start to queue the request in the
+	 * scheduler. If gs_start fails then pass the request down,
+	 * otherwise call g_sched_dispatch() which tries to push
+	 * one or more requests down.
+	 */
+	if (gsp->gs_start(sc->sc_data, cbp))
+		g_io_request(cbp, LIST_FIRST(&gp->consumer));
+	g_sched_dispatch(gp);
 	g_sched_unlock(gp);
+}
+
+/*
+ * The next few functions are the geom glue
+ */
+static void
+g_sched_orphan(struct g_consumer *cp)
+{
+
+	g_topology_assert();
+	g_sched_destroy(cp->geom, 1);
 }
 
 static int
@@ -256,22 +379,22 @@ g_sched_access(struct g_provider *pp, int dr, int dw, int de)
 	return (error);
 }
 
+/*
+ * Create a geom node for the device passed as *pp.
+ * If successful, add a reference to this gsp.
+ */
 static int
 g_sched_create(struct gctl_req *req, struct g_class *mp,
     struct g_provider *pp, struct g_gsched *gsp)
 {
 	struct g_sched_softc *sc;
 	struct g_geom *gp;
-	struct g_provider *newpp;
-	struct g_consumer *cp;
+	struct g_provider *newpp = NULL;
+	struct g_consumer *cp = NULL;
 	char name[64];
 	int error;
 
 	g_topology_assert();
-
-	gp = NULL;
-	newpp = NULL;
-	cp = NULL;
 
 	snprintf(name, sizeof(name), "%s%s", pp->name, G_SCHED_SUFFIX);
 	LIST_FOREACH(gp, &mp->geom, geom) {
@@ -284,7 +407,8 @@ g_sched_create(struct gctl_req *req, struct g_class *mp,
 	gp = g_new_geomf(mp, name);
 	if (gp == NULL) {
 		gctl_error(req, "Cannot create geom %s.", name);
-		return (ENOMEM);
+		error = ENOMEM;
+		goto fail;
 	}
 
 	sc = g_malloc(sizeof(*sc), M_WAITOK | M_ZERO);
@@ -365,14 +489,14 @@ g_sched_destroy(struct g_geom *gp, boolean_t force)
 		return (ENXIO);
 	pp = LIST_FIRST(&gp->provider);
 	if (pp != NULL && (pp->acr != 0 || pp->acw != 0 || pp->ace != 0)) {
-		if (force) {
-			G_SCHED_DEBUG(0, "Device %s is still open, so it "
-			    "can't be definitely removed.", pp->name);
-		} else {
-			G_SCHED_DEBUG(1, "Device %s is still open (r%dw%de%d).",
-			    pp->name, pp->acr, pp->acw, pp->ace);
+		const char *msg = force ?
+			"but we force removal" : "cannot remove";
+
+		G_SCHED_DEBUG( (force ? 0 : 1) ,
+			 "Device %s is still open (r%dw%de%d), %s.",
+			    pp->name, pp->acr, pp->acw, pp->ace, msg);
+		if (!force)
 			return (EBUSY);
-		}
 	} else {
 		G_SCHED_DEBUG(0, "Device %s removed.", gp->name);
 	}
@@ -398,23 +522,44 @@ g_sched_destroy_geom(struct gctl_req *req, struct g_class *mp,
 }
 
 /*
- * The code below patches g_io_request() to call g_new_io_request() first.
+ * Functions related to the classification of requests.
+ * In principle, we need to store in the 'struct bio' a reference
+ * to the issuer of the request and all info that can be useful for
+ * classification, accounting and so on.
+ * In the final version this should be done by adding some extra
+ * field(s) to struct bio, and marking the bio as soon as it is
+ * posted to the geom queue (but not later, as requests are managed
+ * by the g_down thread afterwards).
+ *
+ * XXX TEMPORARY SOLUTION:
+ * The 'struct bio' in 7.x and 6.x does not have a field for storing
+ * the classification info, so we abuse the caller1 field in the
+ * root element of the bio tree. The marking is done at the beginning
+ * of g_io_request() and only if we find that the field is NULL.
+ *
+ * To avoid rebuilding the kernel, this module will patch the
+ * initial part of g_io_request() so it jumps to a trampoline code
+ * that calls the marking function (  g_new_io_request() ) and then
+ * executes the original body of g_io_request().
+ * THIS IS A HACK THAT WILL GO AWAY IN THE FINAL VERSION.
+ *
  * We must be careful with the compiler, as it may clobber the
  * parameters on the stack so they are not preserved for the
  * continuation of the original function.
  * Ideally we should write everything in assembler:
 
-	mov 0x8(%esp), %edx	// load bp
+	mov 0x8(%esp), %eax	// load bp
+    2:	mov %eax, %edx
 	mov    0x64(%edx),%eax	// load bp->bio_parent
 	test   %eax,%eax
-	jne	1f
- 	mov    0x30(%edx),%eax	// load bp->bio_caller1
+	jne	2b		// follow the pointer
+    	mov    0x30(%edx),%eax	// load bp->bio_caller1
 	test   %eax,%eax
-	jne	1f
+	jne	1f		// already set, never mind
 	mov    %fs:0x0,%eax	// pcpu pointer
 	mov    0x34(%eax),%eax	// curthread
 	mov    %eax,0x30(%edx)	// store in bp->bio_caller1
-    1:  // old function
+    1:  // header of the old function
 	push %ebp
 	mov %esp, %ebp
 	push %edi
@@ -423,6 +568,11 @@ g_sched_destroy_geom(struct gctl_req *req, struct g_class *mp,
 
  */
 
+#if !defined(__i386__)
+#error please add the code in g_new_io_request() to the beginning of \
+	/sys/geom/geom_io.c::g_io_request(), and remove this line.
+#else
+/* i386-only code, trampoline + patching support */
 static unsigned char
 g_io_trampoline[] = {
         0xe8, 0x00, 0x00, 0x00, 0x00,   /* call foo */
@@ -438,11 +588,12 @@ g_new_io_request(const char *ret, struct bio *bp, struct g_consumer *cp)
 {
 
         /*
-         * Scheduler support: if this is the first element in the geom
-         * chain (we know from bp->bio_parent == NULL), store
-         * the thread that originated the request in bp->bio_caller1,
-         * which should be unused in this particular entry (at least
-         * with the code in 7.1/8.0).
+         * bio classification: if bio_caller1 is available in the
+         * root of the 'struct bio' tree, store there the thread id
+         * of the thread that originated the request.
+         * More sophisticated classification schemes can be used.
+         * XXX do not change this code without making sure that
+	 * the compiler does not clobber the arguments.
          */
 	struct bio *top = bp;
 	if (top) {
@@ -451,19 +602,19 @@ g_new_io_request(const char *ret, struct bio *bp, struct g_consumer *cp)
                 if (top->bio_caller1 == NULL)
                         top->bio_caller1 = (void *)curthread->td_tid;
         }
-	return (bp != top);	/* prevent compiler from clobbering bp */
+	return (bp != top); /* prevent compiler from clobbering bp */
 }
 
-static int g_io_patched = 0;
 static int
 g_io_patch(void *f, void *p, void *new_f)
 {
 	int found = bcmp(f, (const char *)p + 5, 5);
+
 	printf("match result %d\n", found);
         if (found == 0) {
                 int ofs;
 
-		printf("patching function\n");
+		printf("patching g_io_request\n");
                 /* link the trampoline to the new function */
                 ofs = (int)new_f - ((int)p + 5);
                 bcopy(&ofs, (char *)p + 1, 4);
@@ -474,34 +625,141 @@ g_io_patch(void *f, void *p, void *new_f)
                 *(unsigned char *)f = 0xe9;     /* jump opcode */
                 ofs = (int)p - ((int)f + 5);
                 bcopy(&ofs, (char *)f + 1, 4);
-		g_io_patched = 1;
+		me.gs_patched = 1;
         }
         return 0;
 }
+#endif /* __i386__ */
 
 static void
 g_sched_init(struct g_class *mp)
 {
 
-	mtx_init(&g_gsched_mtx, "gsched", NULL, MTX_DEF);
-	LIST_INIT(&gsched_list);
+	mtx_init(&me.gs_mtx, "gsched", NULL, MTX_DEF);
+	LIST_INIT(&me.gs_scheds);
 
 	printf("%s loading...\n", __FUNCTION__);
+#if defined(__i386__)
 	/* patch g_io_request to set the thread */
 	g_io_patch(g_io_request, g_io_trampoline, g_new_io_request);
+#endif
 }
 
 static void
 g_sched_fini(struct g_class *mp)
 {
 
-	if (g_io_patched) {
-		/* restore the original g_io_request */
+#if defined(__i386__)
+	if (me.gs_patched) {
+		printf("/* restore the original g_io_request */\n");
 		bcopy(g_io_trampoline + 5, (char *)g_io_request, 5);
 	}
+#endif
 	printf("%s unloading...\n", __FUNCTION__);
-	KASSERT(LIST_EMPTY(&gsched_list), ("still registered schedulers"));
-	mtx_destroy(&g_gsched_mtx);
+	KASSERT(LIST_EMPTY(&gs_scheds), ("still registered schedulers"));
+	mtx_destroy(&me.gs_mtx);
+}
+
+/*
+ * We accept a "/dev/" prefix on device names, we want the
+ * provider name that is after that.
+ */
+static const char *dev_prefix = "/dev/";
+
+/*
+ * read the i-th argument for a request
+ */
+static const char *
+g_sched_argi(struct gctl_req *req, int i)
+{
+	const char *name;
+	char param[16];
+	int l = strlen(dev_prefix);
+
+	snprintf(param, sizeof(param), "arg%d", i);
+	name = gctl_get_asciiparam(req, param);
+	if (name == NULL) {
+		gctl_error(req, "No 'arg%d' argument", i);
+		return NULL;
+	}
+	if (strncmp(name, dev_prefix, l) == 0)
+		name += l;
+	return name;
+}
+
+/*
+ * fetch nargs and do appropriate checks.
+ */
+static int
+g_sched_get_nargs(struct gctl_req *req)
+{
+	int *nargs;
+
+	nargs = gctl_get_paraml(req, "nargs", sizeof(*nargs));
+	if (nargs == NULL) {
+		gctl_error(req, "No 'nargs' argument");
+		return 0;
+	}
+	if (*nargs <= 0)
+		gctl_error(req, "Missing device(s).");
+	return *nargs;
+}
+
+/*
+ * Check whether we should add the class on certain volumes when
+ * this geom is created. Right now this is under control of a kenv
+ * variable containing the names of all devices that we care about.
+ */
+static struct g_geom *
+g_sched_taste(struct g_class *mp, struct g_provider *pp, int flags __unused)
+{
+	struct g_gsched *gsp = NULL;	/* the sched. algorithm we want */
+	const char *s;		/* generic string pointer */
+	const char *taste_names;	/* devices we like */
+	int l;
+    
+        g_trace(G_T_TOPOLOGY, "%s(%s, %s)", __func__, mp->name, pp->name);
+        g_topology_assert();
+ 
+        G_SCHED_DEBUG(2, "Tasting %s.", pp->name);
+
+	do {
+		/* do not allow taste on ourselves */
+		if (strcmp(pp->geom->class->name, mp->name) == 0)
+                	break;
+
+		taste_names = getenv("geom.sched.taste");
+		if (taste_names == NULL)
+			break;
+
+		l = strlen(pp->name);
+		for (s = taste_names; *s &&
+		    (s = strstr(s, pp->name)); s++) {
+			/* further checks for an exact match */
+			if ( (s == taste_names || s[-1] == ' ') &&
+			     (s[l] == '\0' || s[l] == ' ') )
+				break;
+		}
+		if (s == NULL)
+			break;
+		printf("attach device %s match [%s]\n",
+			pp->name, s);
+
+		/* look up the provider name in the list */
+		s = getenv("geom.sched.algo");
+		if (s == NULL)
+			s = "rr";
+
+		gsp = g_gsched_find(s);	/* also get a reference */
+		if (gsp == NULL) {
+			printf("Bad '%s' algorithm\n", s);
+			break;
+		}
+
+		g_sched_create(NULL, mp, pp, gsp);
+		g_gsched_unref(gsp);
+	} while (0);
+	return NULL;
 }
 
 static void
@@ -510,8 +768,7 @@ g_sched_ctl_create(struct gctl_req *req, struct g_class *mp)
 	struct g_provider *pp;
 	struct g_gsched *gsp;
 	const char *name;
-	char param[16];
-	int i, *nargs;
+	int i, nargs;
 
 	g_topology_assert();
 
@@ -521,43 +778,32 @@ g_sched_ctl_create(struct gctl_req *req, struct g_class *mp)
 		return;
 	}
 
-	gsp = g_gsched_find(name);
+	gsp = g_gsched_find(name);	/* also get a reference */
 	if (gsp == NULL) {
 		gctl_error(req, "Bad '%s' argument", "sched");
 		return;
 	}
 
-	nargs = gctl_get_paraml(req, "nargs", sizeof(*nargs));
-	if (nargs == NULL) {
-		gctl_error(req, "No '%s' argument", "nargs");
-		goto out;
-	}
+	nargs = g_sched_get_nargs(req);
 
-	if (*nargs <= 0) {
-		gctl_error(req, "Missing device(s).");
-		goto out;
-	}
-
-	for (i = 0; i < *nargs; i++) {
-		snprintf(param, sizeof(param), "arg%d", i);
-		name = gctl_get_asciiparam(req, param);
-		if (name == NULL) {
-			gctl_error(req, "No 'arg%d' argument", i);
-			goto out;
-		}
-		if (strncmp(name, "/dev/", strlen("/dev/")) == 0)
-			name += strlen("/dev/");
+	/*
+	 * Run on the arguments, and break on any error.
+	 * We look for a device name, but skip the /dev/ prefix if any.
+	 */
+	for (i = 0; i < nargs; i++) {
+		name = g_sched_argi(req, i);
+		if (name == NULL)
+			break;
 		pp = g_provider_by_name(name);
 		if (pp == NULL) {
 			G_SCHED_DEBUG(1, "Provider %s is invalid.", name);
 			gctl_error(req, "Provider %s is invalid.", name);
-			goto out;
+			break;
 		}
 		if (g_sched_create(req, mp, pp, gsp) != 0)
 			break;
 	}
 
-out:
 	g_gsched_unref(gsp);
 }
 
@@ -567,43 +813,27 @@ g_sched_ctl_configure(struct gctl_req *req, struct g_class *mp)
 	struct g_sched_softc *sc;
 	struct g_provider *pp;
 	const char *name;
-	char param[16];
-	int i, *nargs;
+	int i, nargs;
 
 	g_topology_assert();
 
-	nargs = gctl_get_paraml(req, "nargs", sizeof(*nargs));
-	if (nargs == NULL) {
-		gctl_error(req, "No '%s' argument", "nargs");
-		return;
-	}
+	nargs = g_sched_get_nargs(req);
 
-	if (*nargs <= 0) {
-		gctl_error(req, "Missing device(s).");
-		return;
-	}
-
-	for (i = 0; i < *nargs; i++) {
-		snprintf(param, sizeof(param), "arg%d", i);
-
-		name = gctl_get_asciiparam(req, param);
-		if (name == NULL) {
-			gctl_error(req, "No 'arg%d' argument", i);
-			return;
-		}
-
-		if (strncmp(name, "/dev/", strlen("/dev/")) == 0)
-			name += strlen("/dev/");
+	for (i = 0; i < nargs; i++) {
+		name = g_sched_argi(req, i);
+		if (name == NULL)
+			break;
 		pp = g_provider_by_name(name);
 		if (pp == NULL || pp->geom->class != mp) {
 			G_SCHED_DEBUG(1, "Provider %s is invalid.", name);
 			gctl_error(req, "Provider %s is invalid.", name);
-			return;
+			break;
 		}
 
 		sc = pp->geom->softc;
+		/* still unimplemented, so we exit! */
 		gctl_error(req, "Reconfiguration not supported yet.");
-		return;
+		break;
 	}
 }
 
@@ -622,23 +852,13 @@ g_sched_find_geom(struct g_class *mp, const char *name)
 static void
 g_sched_ctl_destroy(struct gctl_req *req, struct g_class *mp)
 {
-	int *nargs, *force, error, i;
+	int nargs, *force, error, i;
 	struct g_geom *gp;
 	const char *name;
-	char param[16];
 
 	g_topology_assert();
 
-	nargs = gctl_get_paraml(req, "nargs", sizeof(*nargs));
-	if (nargs == NULL) {
-		gctl_error(req, "No '%s' argument", "nargs");
-		return;
-	}
-
-	if (*nargs <= 0) {
-		gctl_error(req, "Missing device(s).");
-		return;
-	}
+	nargs = g_sched_get_nargs(req);
 
 	force = gctl_get_paraml(req, "force", sizeof(*force));
 	if (force == NULL) {
@@ -646,29 +866,23 @@ g_sched_ctl_destroy(struct gctl_req *req, struct g_class *mp)
 		return;
 	}
 
-	for (i = 0; i < *nargs; i++) {
-		snprintf(param, sizeof(param), "arg%d", i);
-		name = gctl_get_asciiparam(req, param);
-		if (name == NULL) {
-			gctl_error(req, "No 'arg%d' argument", i);
-			return;
-		}
-
-		if (strncmp(name, "/dev/", strlen("/dev/")) == 0)
-			name += strlen("/dev/");
+	for (i = 0; i < nargs; i++) {
+		name = g_sched_argi(req, i);
+		if (name == NULL)
+			break;
 
 		gp = g_sched_find_geom(mp, name);
 		if (gp == NULL) {
 			G_SCHED_DEBUG(1, "Device %s is invalid.", name);
 			gctl_error(req, "Device %s is invalid.", name);
-			return;
+			break;
 		}
 
 		error = g_sched_destroy(gp, *force);
 		if (error != 0) {
 			gctl_error(req, "Cannot destroy device %s (error=%d).",
 			    gp->name, error);
-			return;
+			break;
 		}
 	}
 }
@@ -713,5 +927,4 @@ g_sched_dumpconf(struct sbuf *sb, const char *indent, struct g_geom *gp,
 }
 
 DECLARE_GEOM_CLASS(g_sched_class, g_sched);
-MODULE_VERSION(g_sched, 0);
-
+MODULE_VERSION(geom_sched, 0);

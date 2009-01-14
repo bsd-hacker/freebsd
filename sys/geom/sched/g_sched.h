@@ -27,15 +27,19 @@
 #ifndef	_G_SCHED_H_
 #define	_G_SCHED_H_
 
+/*
+ * header for the geom_sched class (userland library and kernel part)
+ */
+
 #define	G_SCHED_CLASS_NAME	"SCHED"
 #define	G_SCHED_VERSION		0
-#define	G_SCHED_SUFFIX		".sched."
+#define	G_SCHED_SUFFIX		"-sched-"
 
 #ifdef _KERNEL
 #define	G_SCHED_DEBUG(lvl, ...)	do {					\
-	if (g_sched_debug >= (lvl)) {					\
+	if (me.gs_debug >= (lvl)) {					\
 		printf("GEOM_SCHED");					\
-		if (g_sched_debug > 0)					\
+		if (me.gs_debug > 0)					\
 			printf("[%u]", lvl);				\
 		printf(": ");						\
 		printf(__VA_ARGS__);					\
@@ -44,7 +48,7 @@
 } while (0)
 
 #define	G_SCHED_LOGREQ(bp, ...)	do {					\
-	if (g_sched_debug >= 2) {					\
+	if (me.gs_debug >= 2) {						\
 		printf("GEOM_SCHED[2]: ");				\
 		printf(__VA_ARGS__);					\
 		printf(" ");						\
@@ -52,9 +56,6 @@
 		printf("\n");						\
 	}								\
 } while (0)
-
-struct mtx;
-struct g_gsched;
 
 struct g_sched_softc {
 	void		*sc_data;	/* scheduler private data */
