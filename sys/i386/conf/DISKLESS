@@ -17,7 +17,7 @@ options         IPDIVERT
 options         DUMMYNET
 
 options	KTR
-options	KTR_ENTRIES	65536
+options	KTR_ENTRIES=65536
 options ALQ
 options KTR_ALQ
 # added against GENERIC
