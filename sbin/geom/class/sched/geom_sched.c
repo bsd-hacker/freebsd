@@ -37,31 +37,46 @@
 uint32_t lib_version = G_LIB_VERSION;
 uint32_t version = G_SCHED_VERSION;
 
-static char sched[] = "as";
+/*
+ * storage for parameters used by this geom class.
+ * Right now only the scheduler name is used.
+ */
+static char sched[] = "rr";	/* default scheduler */
+
+/*
+ * Adapt to differences in geom library.
+ * in V1 struct g_command misses gc_argname, eld, and G_BOOL is undefined
+ */
+#if G_LIB_VERSION == 1
+#define G_ARGNAME
+#define G_TYPE_BOOL	G_TYPE_NUMBER
+#else
+#define G_ARGNAME	NULL,
+#endif
 
 struct g_command class_commands[] = {
 	{ "create", G_FLAG_VERBOSE | G_FLAG_LOADKLD, NULL,
 	    {
-		{ 's', "sched", sched, G_TYPE_STRING },
+		{ 'a', "sched", sched, G_TYPE_STRING },
 		G_OPT_SENTINEL
 	    },
-	    NULL, "[-v] [-s sched] dev ..."
+	    G_ARGNAME "[-v] [-a sched_name] dev ..."
 	},
 	{ "configure", G_FLAG_VERBOSE, NULL,
 	    {
 		G_OPT_SENTINEL
 	    },
-	    NULL, "[-v] prov ..."
+	    G_ARGNAME "[-v] prov ..."
 	},
 	{ "destroy", G_FLAG_VERBOSE, NULL,
 	    {
 		{ 'f', "force", NULL, G_TYPE_BOOL },
 		G_OPT_SENTINEL
 	    },
-	    NULL, "[-fv] prov ..."
+	    G_ARGNAME "[-fv] prov ..."
 	},
-	{ "reset", G_FLAG_VERBOSE, NULL, G_NULL_OPTS, NULL,
-	    "[-v] prov ..."
+	{ "reset", G_FLAG_VERBOSE, NULL, G_NULL_OPTS,
+	    G_ARGNAME "[-v] prov ..."
 	},
 	G_CMD_SENTINEL
 };
