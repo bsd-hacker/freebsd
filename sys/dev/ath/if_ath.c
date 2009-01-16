@@ -661,7 +661,7 @@ ath_attach(u_int16_t devid, struct ath_softc *sc)
 	sc->sc_hastsfadd = ath_hal_hastsfadjust(ah);
 	if (ath_hal_hasfastframes(ah))
 		ic->ic_caps |= IEEE80211_C_FF;
-	wmodes = ath_hal_getwirelessmodes(ah, ic->ic_regdomain.country);
+	wmodes = ath_hal_getwirelessmodes(ah);
 	if (wmodes & (HAL_MODE_108G|HAL_MODE_TURBO))
 		ic->ic_caps |= IEEE80211_C_TURBOP;
 #ifdef ATH_SUPPORT_TDMA
@@ -7463,7 +7463,7 @@ ath_announce(struct ath_softc *sc)
 #define	HAL_MODE_DUALBAND	(HAL_MODE_11A|HAL_MODE_11B)
 	struct ifnet *ifp = sc->sc_ifp;
 	struct ath_hal *ah = sc->sc_ah;
-	u_int modes, cc;
+	u_int modes;
 
 	if_printf(ifp, "mac %d.%d phy %d.%d",
 		ah->ah_macVersion, ah->ah_macRev,
@@ -7473,8 +7473,7 @@ ath_announce(struct ath_softc *sc)
 	 * to avoid falsely printing revs for inoperable parts.
 	 * Dual-band radio revs are returned in the 5Ghz rev number.
 	 */
-	ath_hal_getcountrycode(ah, &cc);
-	modes = ath_hal_getwirelessmodes(ah, cc);
+	modes = ath_hal_getwirelessmodes(ah);
 	if ((modes & HAL_MODE_DUALBAND) == HAL_MODE_DUALBAND) {
 		if (ah->ah_analog5GhzRev && ah->ah_analog2GhzRev)
 			printf(" 5ghz radio %d.%d 2ghz radio %d.%d",

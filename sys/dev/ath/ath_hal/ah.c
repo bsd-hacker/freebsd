@@ -78,6 +78,15 @@ ath_hal_attach(uint16_t devid, HAL_SOFTC sc,
 	return AH_NULL;
 }
 
+/*
+ * Return the mask of available modes based on the hardware capabilities.
+ */
+u_int
+ath_hal_getwirelessmodes(struct ath_hal*ah)
+{
+	return ath_hal_getWirelessModes(ah);
+}
+
 /* linker set of registered RF backends */
 OS_SET_DECLARE(ah_rfs, struct ath_hal_rf);
 

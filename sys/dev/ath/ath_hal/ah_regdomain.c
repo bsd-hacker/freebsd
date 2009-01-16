@@ -2126,26 +2126,6 @@ ath_hal_getwmodesnreg(struct ath_hal *ah,
 }
 
 /*
- * Return the mask of available modes based on the hardware
- * capabilities and the specified country code.
- */
-
-u_int
-ath_hal_getwirelessmodes(struct ath_hal *ah, HAL_CTRY_CODE cc)
-{
-	COUNTRY_CODE_TO_ENUM_RD *country = AH_NULL;
-	u_int mode = 0;
-	REG_DOMAIN rd;
-	
-	country = findCountry(cc);
-	if (country != AH_NULL) {
-		if (getWmRD(ah, country, ~CHANNEL_2GHZ, &rd))
-			mode = ath_hal_getwmodesnreg(ah, country, &rd);
-	}
-	return mode;
-}
-
-/*
  * Return if device is actually operating in 900 MHz band.
  */
 HAL_BOOL

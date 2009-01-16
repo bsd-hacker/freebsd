@@ -873,7 +873,7 @@ extern	void __ahdecl ath_hal_process_noisefloor(struct ath_hal *ah);
 /*
  * Return bit mask of wireless modes supported by the hardware.
  */
-extern	u_int __ahdecl ath_hal_getwirelessmodes(struct ath_hal*, HAL_CTRY_CODE);
+extern	u_int __ahdecl ath_hal_getwirelessmodes(struct ath_hal*);
 
 /*
  * Calculate the transmit duration of a frame.
