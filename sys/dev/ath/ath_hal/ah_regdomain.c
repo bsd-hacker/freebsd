@@ -2235,7 +2235,6 @@ IS_BIT_SET(int bit, const uint64_t bitmask[])
 HAL_BOOL
 ath_hal_init_channels(struct ath_hal *ah,
 		      HAL_CHANNEL *chans, u_int maxchans, u_int *nchans,
-		      uint8_t *regclassids, u_int maxregids, u_int *nregids,
 		      HAL_CTRY_CODE cc, u_int modeSelect,
 		      HAL_BOOL enableOutdoor, HAL_BOOL enableExtendedChannels)
 {

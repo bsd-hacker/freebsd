@@ -6204,7 +6204,7 @@ getchannels(struct ath_softc *sc, int *nchans, struct ieee80211_channel chans[],
 	}
 	error = 0;
 	if (!ath_hal_init_channels(ah, halchans, IEEE80211_CHAN_MAX, &nhalchans,
-	    NULL, 0, NULL, cc, HAL_MODE_ALL, outdoor, ecm)) {
+	    cc, HAL_MODE_ALL, outdoor, ecm)) {
 		u_int32_t rd;
 		(void) ath_hal_getregdomain(ah, &rd);
 		device_printf(sc->sc_dev, "ath_hal_init_channels failed, "
