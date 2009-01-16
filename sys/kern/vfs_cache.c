@@ -117,10 +117,10 @@ RW_SYSINIT(vfscache, &cache_lock, "Name Cache");
 #define	CACHE_RUNLOCK()	rw_runlock(&cache_lock)
 #define	CACHE_WLOCK()	rw_wlock(&cache_lock)
 #define	CACHE_WUNLOCK()	rw_wunlock(&cache_lock)
+#define	CACHE_UNLOCK()	rw_unlock(&cache_lock)
 #define	CACHE_TRY_UPGRADE()	rw_try_upgrade(&cache_lock)
 
 #define	CACHE_LOCK()	CACHE_WLOCK()
-#define	CACHE_UNLOCK()	CACHE_WUNLOCK()
 
 /*
  * UMA zones for the VFS cache.
@@ -330,7 +330,8 @@ cache_lookup(dvp, vpp, cnp)
 	struct namecache *ncp;
 	u_int32_t hash;
 	int error, ltype;
-
+	int wlocked = 0;
+	
 	if (!doingcache) {
 		cnp->cn_flags &= ~MAKEENTRY;
 		return (0);
@@ -339,6 +340,7 @@ retry:
 	CACHE_RLOCK();
 	numcalls++;
 
+retry2:	
 	if (cnp->cn_nameptr[0] == '.') {
 		if (cnp->cn_namelen == 1) {
 			*vpp = dvp;
@@ -351,7 +353,7 @@ retry:
 			dotdothits++;
 			if (dvp->v_dd == NULL ||
 			    (cnp->cn_flags & MAKEENTRY) == 0) {
-				CACHE_RUNLOCK();
+				CACHE_UNLOCK();
 				return (0);
 			}
 			*vpp = dvp->v_dd;
@@ -378,15 +380,17 @@ retry:
 			nummiss++;
 		}
 		nchstats.ncs_miss++;
-		CACHE_RUNLOCK();
+		CACHE_UNLOCK();
 		return (0);
 	}
 
 	/* We don't want to have an entry, so dump it */
 	if ((cnp->cn_flags & MAKEENTRY) == 0) {
-		if (CACHE_TRY_UPGRADE() == 0) {
+		if (wlocked == 0 && CACHE_TRY_UPGRADE() == 0) {
 			CACHE_RUNLOCK();
 			CACHE_WLOCK();
+			wlocked = 1;
+			goto retry2;
 		}
 		numposzaps++;
 		nchstats.ncs_badhits++;
@@ -405,9 +409,11 @@ retry:
 		goto success;
 	}
 
-	if (CACHE_TRY_UPGRADE() == 0) {
+	if (wlocked == 0 && CACHE_TRY_UPGRADE() == 0) {
 		CACHE_RUNLOCK();
 		CACHE_WLOCK();
+		wlocked = 1;
+		goto retry2;
 	}
 	/* We found a negative match, and want to create it, so purge */
 	if (cnp->cn_nameiop == CREATE) {
@@ -440,7 +446,7 @@ success:
 	 */
 	if (dvp == *vpp) {   /* lookup on "." */
 		VREF(*vpp);
-		CACHE_RUNLOCK();
+		CACHE_UNLOCK();
 		/*
 		 * When we lookup "." we still can be asked to lock it
 		 * differently...
@@ -466,7 +472,7 @@ success:
 		VOP_UNLOCK(dvp, 0);
 	}
 	VI_LOCK(*vpp);
-	CACHE_RUNLOCK();
+	CACHE_UNLOCK();
 	error = vget(*vpp, cnp->cn_lkflags | LK_INTERLOCK, cnp->cn_thread);
 	if (cnp->cn_flags & ISDOTDOT)
 		vn_lock(dvp, ltype | LK_RETRY);
