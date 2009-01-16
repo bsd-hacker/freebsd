@@ -2021,14 +2021,12 @@ isCountryCodeValid(struct ath_hal *ah, HAL_CTRY_CODE cc)
 		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN, "%s: rd %d allowed\n",
 		    __func__, rd);
 		return AH_TRUE;
-#ifdef AH_SUPPORT_11D
 	} else	if ((rd & WORLD_SKU_MASK) == WORLD_SKU_PREFIX) {
 		int i;
 		for (i=0; i < N(allCountries); i++) {
 			if (cc == allCountries[i].countryCode)
 				return AH_TRUE;
 		}
-#endif
 	} else {
 		int i;
 		for (i = 0; i < N(allCountries); i++) {

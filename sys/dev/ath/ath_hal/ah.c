@@ -449,11 +449,7 @@ ath_hal_getcapability(struct ath_hal *ah, HAL_CAPABILITY_TYPE type,
 		}
 		return HAL_ENOTSUPP;
 	case HAL_CAP_11D:
-#ifdef AH_SUPPORT_11D
 		return HAL_OK;
-#else
-		return HAL_ENOTSUPP;
-#endif
 	case HAL_CAP_RXORN_FATAL:	/* HAL_INT_RXORN treated as fatal  */
 		return AH_PRIVATE(ah)->ah_rxornIsFatal ? HAL_OK : HAL_ENOTSUPP;
 	case HAL_CAP_HT:
