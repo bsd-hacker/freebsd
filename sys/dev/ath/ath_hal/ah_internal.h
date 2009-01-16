@@ -126,8 +126,7 @@ typedef struct {
 	int8_t		antennaMax;
 	int16_t		rawNoiseFloor;
 	int16_t		noiseFloorAdjust;
-	uint16_t	mainSpur;	/* cached spur value for this cahnnel */
-	uint32_t	conformanceTestLimit;	/* conformance test limit from reg domain */
+	uint16_t	mainSpur;	/* cached spur value for this channel */
 } HAL_CHANNEL_INTERNAL;
 
 typedef struct {
@@ -184,6 +183,9 @@ typedef struct {
 	uint8_t		halNumAntCfg2GHz;
 	uint8_t		halNumAntCfg5GHz;
 } HAL_CAPABILITIES;
+
+struct regDomainPair;
+struct regDomain;
 
 /*
  * The ``private area'' follows immediately after the ``public area''
@@ -268,6 +270,9 @@ struct ath_hal_private {
 	HAL_CHANNEL_INTERNAL ah_channels[256];	/* calculated channel list */
 	u_int		ah_nchan;		/* valid channels in list */
 	HAL_CHANNEL_INTERNAL *ah_curchan;	/* current channel */
+	const struct regDomainPair *ah_regpair;	/* reg state */
+	const struct regDomain *ah_reg2G;	/* reg state for 2G band */
+	const struct regDomain *ah_reg5G;	/* reg state for 5G band */
 
 	uint8_t    	ah_coverageClass;   	/* coverage class */
 	HAL_BOOL    	ah_regdomainUpdate;     /* regdomain is updated? */

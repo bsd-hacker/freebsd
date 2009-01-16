@@ -466,7 +466,7 @@ enum {
  * THE following table is the mapping of regdomain pairs specified by
  * an 8 bit regdomain value to the individual unitary reg domains
  */
-typedef struct {
+typedef struct regDomainPair {
 	HAL_REG_DOMAIN regDmnEnum;	/* 16 bit reg domain pair */
 	HAL_REG_DOMAIN regDmn5GHz;	/* 5GHz reg domain */
 	HAL_REG_DOMAIN regDmn2GHz;	/* 2GHz reg domain */
@@ -1941,7 +1941,6 @@ chansort(const void *a, const void *b)
 typedef int ath_hal_cmp_t(const void *, const void *);
 static	void ath_hal_sort(void *a, size_t n, size_t es, ath_hal_cmp_t *cmp);
 static COUNTRY_CODE_TO_ENUM_RD* findCountry(HAL_CTRY_CODE countryCode);
-static HAL_BOOL getWmRD(struct ath_hal *ah, COUNTRY_CODE_TO_ENUM_RD *country, uint16_t channelFlag, REG_DOMAIN *rd);
 
 
 static uint16_t
@@ -2167,20 +2166,45 @@ findCountry(HAL_CTRY_CODE countryCode)
 	return AH_NULL;		/* Not found */
 }
 
+static REG_DOMAIN *
+findRegDmn(int regDmn)
+{
+	int i;
+
+	for (i = 0; i < N(regDomains); i++) {
+		if (regDomains[i].regDmnEnum == regDmn)
+			return &regDomains[i];
+	}
+	return AH_NULL;
+}
+
+static REG_DMN_PAIR_MAPPING *
+findRegDmnPair(int regDmnPair)
+{
+	int i;
+
+	if (regDmnPair != NO_ENUMRD) {
+		for (i = 0; i < N(regDomainPairs); i++) {
+			if (regDomainPairs[i].regDmnEnum == regDmnPair)
+				return &regDomainPairs[i];
+		}
+	}
+	return AH_NULL;
+}
+
 /*
  * Calculate a default country based on the EEPROM setting.
  */
 static HAL_CTRY_CODE
 getDefaultCountry(struct ath_hal *ah)
 {
+	REG_DMN_PAIR_MAPPING *regpair;
 	uint16_t rd;
-	int i;
 
 	rd = getEepromRD(ah);
 	if (rd & COUNTRY_ERD_FLAG) {
-		COUNTRY_CODE_TO_ENUM_RD *country = AH_NULL;
+		COUNTRY_CODE_TO_ENUM_RD *country;
 		uint16_t cc = rd & ~COUNTRY_ERD_FLAG;
-		
 		country = findCountry(cc);
 		if (country != AH_NULL)
 			return cc;
@@ -2188,115 +2212,10 @@ getDefaultCountry(struct ath_hal *ah)
 	/*
 	 * Check reg domains that have only one country
 	 */
-	for (i = 0; i < N(regDomainPairs); i++)
-		if (regDomainPairs[i].regDmnEnum == rd) {
-			if (regDomainPairs[i].singleCC != 0)
-				return regDomainPairs[i].singleCC;
-			else
-				i = N(regDomainPairs);
-		}
+	regpair = findRegDmnPair(rd);
+	if (regpair != AH_NULL && regpair->singleCC != 0)
+		return regpair->singleCC;
 	return CTRY_DEFAULT;
-}
-
-static HAL_BOOL
-isValidRegDmn(int regDmn, REG_DOMAIN *rd)
-{
-	int i;
-
-	for (i = 0; i < N(regDomains); i++) {
-		if (regDomains[i].regDmnEnum == regDmn) {
-			if (rd != AH_NULL) {
-				OS_MEMCPY(rd, &regDomains[i],
-					  sizeof(REG_DOMAIN));
-			}
-			return AH_TRUE;
-		}
-	}
-	return AH_FALSE;
-}
-
-static HAL_BOOL
-isValidRegDmnPair(int regDmnPair)
-{
-	int i;
-
-	if (regDmnPair == NO_ENUMRD)
-		return AH_FALSE;
-	for (i = 0; i < N(regDomainPairs); i++) {
-		if (regDomainPairs[i].regDmnEnum == regDmnPair)
-			return AH_TRUE;
-	}
-	return AH_FALSE;
-}
-
-/*
- * Return the Wireless Mode Regulatory Domain based
- * on the country code and the wireless mode.
- */
-static HAL_BOOL
-getWmRD(struct ath_hal *ah, COUNTRY_CODE_TO_ENUM_RD *country,
-	uint16_t channelFlag, REG_DOMAIN *rd)
-{
-	int regDmn;
-	REG_DMN_PAIR_MAPPING *regPair;
-	uint64_t flags;
-
-	if (country->countryCode == CTRY_DEFAULT) {
-		uint16_t rdnum = getEepromRD(ah);
-
-		if ((rdnum & COUNTRY_ERD_FLAG) == 0) {
-			if (isValidRegDmn(rdnum, AH_NULL) ||
-			    isValidRegDmnPair(rdnum))
-				regDmn = rdnum;
-			else
-				regDmn = country->regDmnEnum;
-		} else
-			regDmn = country->regDmnEnum;
-	} else
-		regDmn = country->regDmnEnum;
-	regPair = AH_NULL;
-	flags = NO_REQ;
-	if ((regDmn & MULTI_DOMAIN_MASK) == 0) {
-		int i;
-
-		for (i = 0; i < N(regDomainPairs); i++) {
-			if (regDomainPairs[i].regDmnEnum == regDmn) {
-				regPair = &regDomainPairs[i];
-				break;
-			}
-		}
-		if (regPair == AH_NULL) {
-			HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
-			    "%s: Failed to find reg domain pair %u\n",
-			    __func__, regDmn);
-			return AH_FALSE;
-		}
-		if (channelFlag & CHANNEL_2GHZ) {
-			regDmn = regPair->regDmn2GHz;
-			flags = regPair->flags2GHz;
-		} else {
-			regDmn = regPair->regDmn5GHz;
-			flags = regPair->flags5GHz;
-		}
-	}
-
-	/*
-	 * We either started with a unitary reg domain or we've found the 
-	 * unitary reg domain of the pair
-	 */
-	if (isValidRegDmn(regDmn, rd)) {
-		if (regPair != AH_NULL)
-			rd->pscan &= regPair->pscanMask;
-		if ((country->regDmnEnum & MULTI_DOMAIN_MASK) == 0 &&
-		    flags != NO_REQ)
-			rd->flags = flags;
-		return AH_TRUE;
-	} else {
-		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
-		    "%s: Failed to find unitary reg domain %u\n", __func__,
-		    country->regDmnEnum);
-		return AH_FALSE;
-	}
 }
 
 static HAL_BOOL
@@ -2310,28 +2229,6 @@ IS_BIT_SET(int bit, const uint64_t bitmask[])
 	val = ((uint64_t) 1) << bitnum;
 	return (bitmask[byteOffset] & val) != 0;
 }
-	
-/* Add given regclassid into regclassids array upto max of maxregids */
-static void
-ath_add_regclassid(uint8_t *regclassids, u_int maxregids,
-	u_int *nregids, uint8_t regclassid)
-{
-	int i;
-
-	/* Is regclassid valid? */
-	if (regclassid == 0)
-		return;
-
-	for (i = 0; i < maxregids; i++) {
-		if (regclassids[i] == regclassid)	/* already present */
-			return;
-		if (regclassids[i] == 0) {		/* free slot */
-			regclassids[i] = regclassid;
-			(*nregids)++;
-			return;
-		}
-	}
-}
 
 /*
  * Setup the channel list based on the information in the EEPROM and
@@ -2339,7 +2236,6 @@ ath_add_regclassid(uint8_t *regclassids, u_int maxregids,
  * verification here and setup certain regulatory-related access
  * control data used later on.
  */
-
 HAL_BOOL
 ath_hal_init_channels(struct ath_hal *ah,
 		      HAL_CHANNEL *chans, u_int maxchans, u_int *nchans,
@@ -2352,11 +2248,11 @@ ath_hal_init_channels(struct ath_hal *ah,
 	u_int modesAvail;
 	uint16_t maxChan;
 	COUNTRY_CODE_TO_ENUM_RD *country = AH_NULL;
-	REG_DOMAIN rd5GHz, rd2GHz;
+	REG_DMN_PAIR_MAPPING *regpair;
+	REG_DOMAIN *rd5GHz, *rd2GHz;
 	const struct cmode *cm;
 	HAL_CHANNEL_INTERNAL *ichans = &AH_PRIVATE(ah)->ah_channels[0];
-	int next, b;
-	uint8_t ctl;
+	int next, b, regDmn;
 
 	HALDEBUG(ah, HAL_DEBUG_REGDOMAIN, "%s: cc %u mode 0x%x%s%s\n",
 	    __func__, cc, modeSelect, enableOutdoor? " Enable outdoor" : " ",
@@ -2374,50 +2270,76 @@ ath_hal_init_channels(struct ath_hal *ah,
 		    "%s: invalid EEPROM contents\n",__func__);
 		return AH_FALSE;
 	}
-
 	AH_PRIVATE(ah)->ah_countryCode = getDefaultCountry(ah);
-
-#ifndef AH_SUPPORT_11D
-	if (AH_PRIVATE(ah)->ah_countryCode == CTRY_DEFAULT) {
-#endif
-		/* 
-		 * We now have enough state to validate any country code
-		 * passed in by the caller.
-		 */
-		if (!isCountryCodeValid(ah, cc)) {
-			/* NB: Atheros silently ignores invalid country codes */
-			HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
-			    "%s: invalid country code %d\n", __func__, cc);
-			return AH_FALSE;
-		}
-		AH_PRIVATE(ah)->ah_countryCode = cc & COUNTRY_CODE_MASK;
-#ifndef AH_SUPPORT_11D
+	if (!isCountryCodeValid(ah, cc)) {
+		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
+		    "%s: invalid country code %d\n", __func__, cc);
+		return AH_FALSE;
 	}
-#endif
+	AH_PRIVATE(ah)->ah_countryCode = cc & COUNTRY_CODE_MASK;
 
 	/* Get pointers to the country element and the reg domain elements */
 	country = findCountry(AH_PRIVATE(ah)->ah_countryCode);
-	
 	if (country == AH_NULL) {
 		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN, "NULL Country!, cc= %d\n",
 		    AH_PRIVATE(ah)->ah_countryCode);
 		return AH_FALSE;
 	}
 
-	if (!getWmRD(ah, country, ~CHANNEL_2GHZ, &rd5GHz)) {
-		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
-		    "%s: no unitary 5GHz regdomain for country %u\n",
-		     __func__, AH_PRIVATE(ah)->ah_countryCode);
-		return AH_FALSE;
+	regDmn = country->regDmnEnum;
+	if (country->countryCode == CTRY_DEFAULT) {
+		/*
+		 * Check EEPROM; SKU may be for a country, single
+		 * domain, or multiple domains (WWR).
+		 */
+		uint16_t rdnum = getEepromRD(ah);
+		if ((rdnum & COUNTRY_ERD_FLAG) == 0 &&
+		    (findRegDmn(rdnum) != AH_NULL || findRegDmnPair(rdnum) != AH_NULL))
+			regDmn = rdnum;
 	}
-	if (!getWmRD(ah, country, CHANNEL_2GHZ, &rd2GHz)) {
-		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
-		    "%s: no unitary 2GHz regdomain for country %u\n",
-		    __func__, AH_PRIVATE(ah)->ah_countryCode);
-		return AH_FALSE;
+	/*
+	 * Setup per-band state.
+	 */
+	if ((regDmn & MULTI_DOMAIN_MASK) == 0) {
+		regpair = findRegDmnPair(regDmn);
+		if (regpair == AH_NULL) {
+			HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
+			    "%s: no reg domain pair %u for country %u\n",
+			    __func__, regDmn, AH_PRIVATE(ah)->ah_countryCode);
+			return AH_FALSE;
+		}
+		rd5GHz = findRegDmn(regpair->regDmn5GHz);
+		if (rd5GHz == AH_NULL) {
+			HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
+			    "%s: no 5GHz reg domain %u for country %u\n",
+			    __func__, regpair->regDmn5GHz,
+			    AH_PRIVATE(ah)->ah_countryCode);
+			return AH_FALSE;
+		}
+		rd2GHz = findRegDmn(regpair->regDmn2GHz);
+		if (rd2GHz == AH_NULL) {
+			HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
+			    "%s: no 2GHz reg domain %u for country %u\n",
+			    __func__, regpair->regDmn2GHz,
+			    AH_PRIVATE(ah)->ah_countryCode);
+			return AH_FALSE;
+		}
+	} else {
+		regpair = AH_NULL;
+		rd5GHz = rd2GHz = findRegDmn(regDmn);
+		if (rd2GHz == AH_NULL) {
+			HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
+			    "%s: no unitary reg domain %u for country %u\n",
+			     __func__, regDmn, AH_PRIVATE(ah)->ah_countryCode);
+			return AH_FALSE;
+		}
 	}
+	/* NB: save for use in ath_hal_getctl */
+	AH_PRIVATE(ah)->ah_regpair = regpair;
+	AH_PRIVATE(ah)->ah_reg2G = rd2GHz;
+	AH_PRIVATE(ah)->ah_reg5G = rd5GHz;
 
-	modesAvail = ath_hal_getwmodesnreg(ah, country, &rd5GHz);
+	modesAvail = ath_hal_getwmodesnreg(ah, country, rd5GHz);
 	maxChan = !enableOutdoor ? country->outdoorChanStart : 7000;
 
 	if (maxchans > N(AH_PRIVATE(ah)->ah_channels))
@@ -2426,9 +2348,11 @@ ath_hal_init_channels(struct ath_hal *ah,
 	for (cm = modes; cm < &modes[N(modes)]; cm++) {
 		uint16_t c, c_hi, c_lo;
 		uint64_t *channelBM = AH_NULL;
-		REG_DOMAIN *rd = AH_NULL;
 		REG_DMN_FREQ_BAND *fband = AH_NULL,*freqs;
 		int low_adj, hi_adj, channelSep, lastc;
+		uint32_t rdflags;
+		uint64_t dfsMask;
+		uint64_t pscan;
 
 		if ((cm->mode & modeSelect) == 0) {
 			HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
@@ -2451,10 +2375,22 @@ ath_hal_init_channels(struct ath_hal *ah,
 		}
 		switch (cm->mode) {
 		case HAL_MODE_TURBO:
-			rd = &rd5GHz;
-			channelBM = rd->chan11a_turbo;
+		case HAL_MODE_11A_TURBO:
+			rdflags = rd5GHz->flags;
+			dfsMask = rd5GHz->dfsMask;
+			pscan = rd5GHz->pscan;
+			if (cm->mode == HAL_MODE_TURBO)
+				channelBM = rd5GHz->chan11a_turbo;
+			else
+				channelBM = rd5GHz->chan11a_dyn_turbo;
 			freqs = &regDmn5GhzTurboFreq[0];
-			ctl = rd->conformanceTestLimit | CTL_TURBO;
+			break;
+		case HAL_MODE_11G_TURBO:
+			rdflags = rd2GHz->flags;
+			dfsMask = rd2GHz->dfsMask;
+			pscan = rd2GHz->pscan;
+			channelBM = rd2GHz->chan11g_turbo;
+			freqs = &regDmn2Ghz11gTurboFreq[0];
 			break;
 		case HAL_MODE_11A:
 		case HAL_MODE_11A_HALF_RATE:
@@ -2462,49 +2398,39 @@ ath_hal_init_channels(struct ath_hal *ah,
 		case HAL_MODE_11NA_HT20:
 		case HAL_MODE_11NA_HT40PLUS:
 		case HAL_MODE_11NA_HT40MINUS:
-			rd = &rd5GHz;
+			rdflags = rd5GHz->flags;
+			dfsMask = rd5GHz->dfsMask;
+			pscan = rd5GHz->pscan;
 			if (cm->mode == HAL_MODE_11A_HALF_RATE)
-				channelBM = rd->chan11a_half;
+				channelBM = rd5GHz->chan11a_half;
 			else if (cm->mode == HAL_MODE_11A_QUARTER_RATE)
-				channelBM = rd->chan11a_quarter;
+				channelBM = rd5GHz->chan11a_quarter;
 			else
-				channelBM = rd->chan11a;
+				channelBM = rd5GHz->chan11a;
 			freqs = &regDmn5GhzFreq[0];
-			ctl = rd->conformanceTestLimit;
 			break;
 		case HAL_MODE_11B:
-			rd = &rd2GHz;
-			channelBM = rd->chan11b;
-			freqs = &regDmn2GhzFreq[0];
-			ctl = rd->conformanceTestLimit | CTL_11B;
-			break;
 		case HAL_MODE_11G:
 		case HAL_MODE_11G_HALF_RATE:
 		case HAL_MODE_11G_QUARTER_RATE:
 		case HAL_MODE_11NG_HT20:
 		case HAL_MODE_11NG_HT40PLUS:
 		case HAL_MODE_11NG_HT40MINUS:
-			rd = &rd2GHz;
+			rdflags = rd2GHz->flags;
+			dfsMask = rd2GHz->dfsMask;
+			pscan = rd2GHz->pscan;
 			if (cm->mode == HAL_MODE_11G_HALF_RATE)
-				channelBM = rd->chan11g_half;
+				channelBM = rd2GHz->chan11g_half;
 			else if (cm->mode == HAL_MODE_11G_QUARTER_RATE)
-				channelBM = rd->chan11g_quarter;
+				channelBM = rd2GHz->chan11g_quarter;
+			else if (cm->mode == HAL_MODE_11B)
+				channelBM = rd2GHz->chan11b;
 			else
-				channelBM = rd->chan11g;
-			freqs = &regDmn2Ghz11gFreq[0];
-			ctl = rd->conformanceTestLimit | CTL_11G;
-			break;
-		case HAL_MODE_11G_TURBO:
-			rd = &rd2GHz;
-			channelBM = rd->chan11g_turbo;
-			freqs = &regDmn2Ghz11gTurboFreq[0];
-			ctl = rd->conformanceTestLimit | CTL_108G;
-			break;
-		case HAL_MODE_11A_TURBO:
-			rd = &rd5GHz;
-			channelBM = rd->chan11a_dyn_turbo;
-			freqs = &regDmn5GhzTurboFreq[0];
-			ctl = rd->conformanceTestLimit | CTL_108G;
+				channelBM = rd2GHz->chan11g;
+			if (cm->mode == HAL_MODE_11B)
+				freqs = &regDmn2GhzFreq[0];
+			else
+				freqs = &regDmn2Ghz11gFreq[0];
 			break;
 		default:
 			HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
@@ -2529,9 +2455,6 @@ ath_hal_init_channels(struct ath_hal *ah,
 				continue;
 			fband = &freqs[b];
 			lastc = 0;
-
-			ath_add_regclassid(regclassids, maxregids, 
-					nregids, fband->regClassId);
 
 			for (c = fband->lowChannel + low_adj;
 			     c <= fband->highChannel + hi_adj;
@@ -2562,13 +2485,6 @@ ath_hal_init_channels(struct ath_hal *ah,
 					    "Skipping ecm channel\n");
 					continue;
 				}
-				/* XXX needs to be in ath_hal_checkchannel */
-				if ((rd->flags & NO_HOSTAP) && 
-				    (AH_PRIVATE(ah)->ah_opmode == HAL_M_HOSTAP)) {
-					HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
-					    "Skipping HOSTAP channel\n");
-					continue;
-				}
 				/*
 				 * Make sure that channel separation
 				 * meets the requirement.
@@ -2582,13 +2498,12 @@ ath_hal_init_channels(struct ath_hal *ah,
 				icv.channelFlags = cm->flags;
 				icv.maxRegTxPower = fband->powerDfs;
 				icv.antennaMax = fband->antennaMax;
-				icv.conformanceTestLimit = ctl;
-				if (fband->usePassScan & rd->pscan)
+				if (fband->usePassScan & pscan)
 					icv.channelFlags |= CHANNEL_PASSIVE;
 				else
 					icv.channelFlags &= ~CHANNEL_PASSIVE;
 				lastc = c;
-				if (fband->useDfs & rd->dfsMask) {
+				if (fband->useDfs & dfsMask) {
 					/* DFS and HT40 don't mix */
 					if (cm->mode == HAL_MODE_11NA_HT40PLUS ||
 					    cm->mode == HAL_MODE_11NA_HT40MINUS)
@@ -2596,9 +2511,9 @@ ath_hal_init_channels(struct ath_hal *ah,
 					icv.privFlags = CHANNEL_DFS;
 				} else
 					icv.privFlags = 0;
-				if (rd->flags & LIMIT_FRAME_4MS)
+				if (rdflags & LIMIT_FRAME_4MS)
 					icv.privFlags |= CHANNEL_4MS_LIMIT;
-				if (rd->flags & NEED_NFC)
+				if (rdflags & NEED_NFC)
 					icv.privFlags |= CHANNEL_NFCREQUIRED;
 
 				ichans[next++] = icv;
@@ -2675,8 +2590,7 @@ ath_hal_checkchannel(struct ath_hal *ah, const HAL_CHANNEL *c)
 		if ((cc->privFlags & CHANNEL_INTERFERENCE) &&
 		    (cc->channelFlags & CHANNEL_DFS))
 			return AH_NULL;
-		else
-			return cc;
+		return cc;
 	}
 
 	/* binary search based on known sorting order */
@@ -2691,8 +2605,7 @@ ath_hal_checkchannel(struct ath_hal *ah, const HAL_CHANNEL *c)
 				if ((cc->privFlags & CHANNEL_INTERFERENCE) &&
 				    (cc->channelFlags & CHANNEL_DFS))
 					return AH_NULL;
-				else
-					return cc;
+				return cc;
 			}
 			d = flags - (cc->channelFlags & CHAN_FLAGS);
 		}
@@ -2719,61 +2632,50 @@ ath_hal_checkchannel(struct ath_hal *ah, const HAL_CHANNEL *c)
 u_int
 ath_hal_getantennareduction(struct ath_hal *ah, HAL_CHANNEL *chan, u_int twiceGain)
 {
-	HAL_CHANNEL_INTERNAL *ichan=AH_NULL;
+	HAL_CHANNEL_INTERNAL *ichan = ath_hal_checkchannel(ah, chan);
 	int8_t antennaMax;
 
-	if ((ichan = ath_hal_checkchannel(ah, chan)) != AH_NULL) {
-		antennaMax = twiceGain - ichan->antennaMax*2;
-		return (antennaMax < 0) ? 0 : antennaMax;
-	} else {
+	if (ichan == AH_NULL) {
 		/* Failed to find the correct index - may be a debug channel */
 		return 0;
 	}
+	antennaMax = twiceGain - ichan->antennaMax*2;
+	return (antennaMax < 0) ? 0 : antennaMax;
 }
-
-
-/* XXX - maybe move ctl decision into channel set area or
- into the tables so no decision is needed in the code */
 
 #define isWwrSKU(_ah) \
 	((getEepromRD((_ah)) & WORLD_SKU_MASK) == WORLD_SKU_PREFIX || \
 	  getEepromRD(_ah) == WORLD)
 
-
 /*
- * Return the test group from the specified channel from
+ * Return the test group for the specified channel from
  * the regulatory table.
- *
- * TODO: CTL for 11B CommonMode when regulatory domain is unknown
  */
 u_int
 ath_hal_getctl(struct ath_hal *ah, HAL_CHANNEL *chan)
 {
-	u_int ctl = NO_CTL;
-	HAL_CHANNEL_INTERNAL *ichan;
+	u_int ctl;
 
-	/* Special CTL to signify WWR SKU without a known country */
-	if (AH_PRIVATE(ah)->ah_countryCode == CTRY_DEFAULT && isWwrSKU(ah)) {
-		if (IS_CHAN_B(chan)) {
-			ctl = SD_NO_CTL | CTL_11B;
-		} else if (IS_CHAN_G(chan)) {
-			ctl = SD_NO_CTL | CTL_11G;
-		} else if (IS_CHAN_108G(chan)) {
-			ctl = SD_NO_CTL | CTL_108G;
-		} else if (IS_CHAN_T(chan)) {
-			ctl = SD_NO_CTL | CTL_TURBO;
-		} else {
-			ctl = SD_NO_CTL | CTL_11A;
-		}
-	} else {
-		if ((ichan = ath_hal_checkchannel(ah, chan)) != AH_NULL) {
-			ctl = ichan->conformanceTestLimit;
-			/* limit 11G OFDM power */
-			if (IS_CHAN_PUREG(chan) &&
-			    (ctl & CTL_MODE_M) == CTL_11B)
-				ctl = (ctl &~ CTL_MODE_M) | CTL_11G;
-		}
-	}
+	if (AH_PRIVATE(ah)->ah_regpair == AH_NULL ||
+	    (AH_PRIVATE(ah)->ah_countryCode == CTRY_DEFAULT && isWwrSKU(ah))) {
+		/* Special CTL to signify WWR SKU without a known country */
+		ctl = SD_NO_CTL;
+	} else if (IS_CHAN_2GHZ(chan))
+		ctl = AH_PRIVATE(ah)->ah_reg2G->conformanceTestLimit;
+	else
+		ctl = AH_PRIVATE(ah)->ah_reg5G->conformanceTestLimit;
+
+	if (IS_CHAN_B(chan))
+		return ctl | CTL_11B;
+	if (IS_CHAN_G(chan))
+		return ctl | CTL_11G;
+	if (IS_CHAN_108G(chan))
+		return ctl | CTL_108G;
+	if (IS_CHAN_T(chan))
+		return ctl | CTL_TURBO;
+	if (IS_CHAN_A(chan))
+		return ctl | CTL_11A;
+	HALASSERT(AH_FALSE);
 	return ctl;
 }
 
