@@ -6186,14 +6186,14 @@ ath_newassoc(struct ieee80211_node *ni, int isnew)
 
 static int
 getchannels(struct ath_softc *sc, int *nchans, struct ieee80211_channel chans[],
-	int cc, int ecm, int outdoor)
+	int cc, int ecm)
 {
 	struct ath_hal *ah = sc->sc_ah;
 	HAL_CHANNEL *halchans;
 	int i, nhalchans, error;
 
-	DPRINTF(sc, ATH_DEBUG_REGDOMAIN, "%s: cc %u outdoor %u ecm %u\n",
-	    __func__, cc, outdoor, ecm);
+	DPRINTF(sc, ATH_DEBUG_REGDOMAIN, "%s: cc %u ecm %u\n",
+	    __func__, cc, ecm);
 
 	halchans = malloc(IEEE80211_CHAN_MAX * sizeof(HAL_CHANNEL),
 			M_TEMP, M_NOWAIT | M_ZERO);
@@ -6204,11 +6204,11 @@ getchannels(struct ath_softc *sc, int *nchans, struct ieee80211_channel chans[],
 	}
 	error = 0;
 	if (!ath_hal_init_channels(ah, halchans, IEEE80211_CHAN_MAX, &nhalchans,
-	    cc, HAL_MODE_ALL, outdoor, ecm)) {
+	    cc, HAL_MODE_ALL, ecm)) {
 		u_int32_t rd;
 		(void) ath_hal_getregdomain(ah, &rd);
 		device_printf(sc->sc_dev, "ath_hal_init_channels failed, "
-		    "rd %d cc %u outdoor %u ecm %u\n", rd, cc, outdoor, ecm);
+		    "rd %d cc %u ecm %u\n", rd, cc, ecm);
 		error = EINVAL;
 		goto done;
 	}
@@ -6308,16 +6308,14 @@ ath_setregdomain(struct ieee80211com *ic, struct ieee80211_regdomain *rd,
 	ath_hal_setregdomain(ah, regdomain);
 
 	error = getchannels(sc, &nchans, chans, cc,
-	     rd->ecm ? AH_TRUE : AH_FALSE,
-	     rd->location != 'I' ? AH_TRUE : AH_FALSE);
+	     rd->ecm ? AH_TRUE : AH_FALSE);
 	if (error != 0) {
 		/*
 		 * Restore previous state.
 		 */
 		ath_hal_setregdomain(ah, ord);
 		(void) getchannels(sc, NULL, NULL, ic->ic_regdomain.country,
-		     ic->ic_regdomain.ecm ? AH_TRUE : AH_FALSE,
-		     ic->ic_regdomain.location != 'I' ? AH_TRUE : AH_FALSE);
+		     ic->ic_regdomain.ecm ? AH_TRUE : AH_FALSE);
 		return error;
 	}
 	return 0;
@@ -6338,13 +6336,12 @@ ath_getradiocaps(struct ieee80211com *ic,
 
 	ath_hal_setregdomain(ah, 0);
 	/* XXX not quite right but close enough for now */
-	getchannels(sc, nchans, chans, CTRY_DEBUG, AH_TRUE, AH_FALSE);
+	getchannels(sc, nchans, chans, CTRY_DEBUG, AH_TRUE);
 
 	/* NB: restore previous state */
 	ath_hal_setregdomain(ah, ord);
 	(void) getchannels(sc, NULL, NULL, ic->ic_regdomain.country,
-	     ic->ic_regdomain.ecm ? AH_TRUE : AH_FALSE,
-	     ic->ic_regdomain.location != 'I' ? AH_TRUE : AH_FALSE);
+	     ic->ic_regdomain.ecm ? AH_TRUE : AH_FALSE);
 }
 
 static void
@@ -6380,7 +6377,7 @@ ath_getchannels(struct ath_softc *sc)
 	 * Convert HAL channels to ieee80211 ones.
 	 */
 	error = getchannels(sc, &ic->ic_nchans, ic->ic_channels,
-	    CTRY_DEFAULT, AH_TRUE, AH_FALSE);
+	    CTRY_DEFAULT, AH_TRUE);
 	(void) ath_hal_getregdomain(ah, &sc->sc_eerd);
 	ath_hal_getcountrycode(ah, &sc->sc_eecc);	/* NB: cannot fail */
 	if (error) {

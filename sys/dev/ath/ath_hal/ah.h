@@ -861,7 +861,7 @@ extern	struct ath_hal * __ahdecl ath_hal_attach(uint16_t devid, HAL_SOFTC,
 extern	HAL_BOOL __ahdecl ath_hal_init_channels(struct ath_hal *,
 		HAL_CHANNEL *chans, u_int maxchans, u_int *nchans,
 		HAL_CTRY_CODE cc, u_int modeSelect,
-		HAL_BOOL enableOutdoor, HAL_BOOL enableExtendedChannels);
+		HAL_BOOL enableExtendedChannels);
 
 /*
  * Calibrate noise floor data following a channel scan or similar.
