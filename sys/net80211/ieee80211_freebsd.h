@@ -461,11 +461,16 @@ struct ieee80211_deauth_event {
 
 struct ieee80211_country_event {
 	uint8_t		iev_addr[6];
-	uint8_t		iev_cc[2];	/* ISO country code */
+	uint8_t		iev_cc[2];	/* ISO 3166 country code string */
 };
 
 struct ieee80211_radio_event {
 	uint8_t		iev_state;	/* 1 on, 0 off */
+};
+
+struct ieee80211_reghint_event {
+	uint16_t	iev_sku;	/* SKU */
+	uint16_t	iev_cc;		/* ISO 3166 country code */
 };
 
 #define	RTM_IEEE80211_ASSOC	100	/* station associate (bss mode) */
@@ -485,6 +490,7 @@ struct ieee80211_radio_event {
 #define	RTM_IEEE80211_AUTH	114	/* station authenticate (ap mode) */
 #define	RTM_IEEE80211_COUNTRY	115	/* discovered country code (sta mode) */
 #define	RTM_IEEE80211_RADIO	116	/* RF kill switch state change */
+#define	RTM_IEEE80211_REGHINT	117	/* regulatory hint from system */
 
 /*
  * Structure prepended to raw packets sent through the bpf

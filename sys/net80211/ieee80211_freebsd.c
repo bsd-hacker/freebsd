@@ -682,6 +682,18 @@ ieee80211_notify_country(struct ieee80211vap *vap,
 }
 
 void
+ieee80211_notify_reghint(struct ieee80211com *ic, int sku, int cc)
+{
+	struct ifnet *ifp = ic->ic_ifp;
+	struct ieee80211_reghint_event iev;
+
+	memset(&iev, 0, sizeof(iev));
+	iev.iev_sku = sku;
+	iev.iev_cc = cc;
+	rt_ieee80211msg(ifp, RTM_IEEE80211_REGHINT, &iev, sizeof(iev));
+}
+
+void
 ieee80211_notify_radio(struct ieee80211com *ic, int state)
 {
 	struct ifnet *ifp = ic->ic_ifp;
