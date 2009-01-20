@@ -44,12 +44,14 @@ __FBSDID("$FreeBSD$");
 #include <net80211/ieee80211_regdomain.h>
 
 static void
-null_getradiocaps(struct ieee80211com *ic, int *n, struct ieee80211_channel *c)
+null_getradiocaps(struct ieee80211com *ic, int maxchan,
+	int *n, struct ieee80211_channel *c)
 {
 	/* just feed back the current channel list */
-	*n = ic->ic_nchans;
-	memcpy(c, ic->ic_channels,
-	    ic->ic_nchans*sizeof(struct ieee80211_channel));
+	*n = ic->ic_nchans;		/* XXX return count copied? */
+	if (maxchan > ic->ic_nchans)
+		maxchan = ic->ic_nchans;
+	memcpy(c, ic->ic_channels, maxchan*sizeof(struct ieee80211_channel));
 }
 
 static int
@@ -69,7 +71,7 @@ ieee80211_regdomain_attach(struct ieee80211com *ic)
 		ic->ic_regdomain.location = ' ';		/* both */
 		ic->ic_regdomain.isocc[0] = 'U';		/* XXX */
 		ic->ic_regdomain.isocc[1] = 'S';		/* XXX */
-		/* XXX? too late to setup default channel list */
+		/* NB: driver calls ieee80211_init_channels or similar */
 	}
 	ic->ic_getradiocaps = null_getradiocaps;
 	ic->ic_setregdomain = null_setregdomain;
