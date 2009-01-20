@@ -299,13 +299,13 @@ struct ieee80211req_maclist {
 };
 
 /*
- * Set the active channel list.  Note this list is
- * intersected with the available channel list in
- * calculating the set of channels actually used in
- * scanning.
+ * Set the active channel list by IEEE channel #: each channel
+ * to be marked active is set in a bit vector.  Note this list is
+ * intersected with the available channel list in calculating
+ * the set of channels actually used in scanning.
  */
 struct ieee80211req_chanlist {
-	uint8_t		ic_channels[IEEE80211_CHAN_BYTES];
+	uint8_t		ic_channels[32];	/* NB: can be variable length */
 };
 
 /*

@@ -1571,17 +1571,21 @@ static __noinline int
 ieee80211_ioctl_setchanlist(struct ieee80211vap *vap, struct ieee80211req *ireq)
 {
 	struct ieee80211com *ic = vap->iv_ic;
-	struct ieee80211req_chanlist list;
-	u_char chanlist[IEEE80211_CHAN_BYTES];
-	int i, nchan, error;
+	uint8_t *chanlist, *list;
+	int i, nchan, maxchan, error;
 
-	if (ireq->i_len != sizeof(list))
-		return EINVAL;
-	error = copyin(ireq->i_data, &list, sizeof(list));
+	if (ireq->i_len > sizeof(ic->ic_chan_active))
+		ireq->i_len = sizeof(ic->ic_chan_active);
+	list = malloc(ireq->i_len + IEEE80211_CHAN_BYTES, M_TEMP,
+	    M_NOWAIT | M_ZERO);
+	if (list == NULL)
+		return ENOMEM;
+	error = copyin(ireq->i_data, list, ireq->i_len);
 	if (error)
 		return error;
-	memset(chanlist, 0, sizeof(chanlist));
 	nchan = 0;
+	chanlist = list + ireq->i_len;		/* NB: zero'd already */
+	maxchan = ireq->i_len * NBBY;
 	for (i = 0; i < ic->ic_nchans; i++) {
 		const struct ieee80211_channel *c = &ic->ic_channels[i];
 		/*
@@ -1589,7 +1593,7 @@ ieee80211_ioctl_setchanlist(struct ieee80211vap *vap, struct ieee80211req *ireq)
 		 * available channels so users can do things like specify
 		 * 1-255 to get all available channels.
 		 */
-		if (isset(list.ic_channels, c->ic_ieee)) {
+		if (c->ic_ieee < maxchan && isset(list, c->ic_ieee)) {
 			setbit(chanlist, c->ic_ieee);
 			nchan++;
 		}
@@ -1599,8 +1603,9 @@ ieee80211_ioctl_setchanlist(struct ieee80211vap *vap, struct ieee80211req *ireq)
 	if (ic->ic_bsschan != IEEE80211_CHAN_ANYC &&	/* XXX */
 	    isclr(chanlist, ic->ic_bsschan->ic_ieee))
 		ic->ic_bsschan = IEEE80211_CHAN_ANYC;
-	memcpy(ic->ic_chan_active, chanlist, sizeof(ic->ic_chan_active));
+	memcpy(ic->ic_chan_active, chanlist, IEEE80211_CHAN_BYTES);
 	ieee80211_scan_flush(vap);
+	free(list, M_TEMP);
 	return ENETRESET;
 }
 
