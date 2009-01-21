@@ -1762,9 +1762,9 @@ ieee80211_new_state_locked(struct ieee80211vap *vap,
 		 * Complete the state transition synchronously, asserting that
 		 * the lock is not dropped.
 		 */
-		WITNESS_NOREL(IEEE80211_LOCK_OBJ(ic));
+		WITNESS_NORELEASE(IEEE80211_LOCK_OBJ(ic));
 		rc = ieee80211_newstate_cb_locked(vap, nstate, arg);
-		WITNESS_RELOK(IEEE80211_LOCK_OBJ(ic));
+		WITNESS_RELEASEOK(IEEE80211_LOCK_OBJ(ic));
 	} else {
 		/* defer the state change to a thread */
 		vap->iv_nstate = nstate;
