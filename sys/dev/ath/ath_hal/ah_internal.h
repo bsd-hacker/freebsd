@@ -192,7 +192,6 @@ typedef struct {
 	uint8_t		halNumAntCfg5GHz;
 } HAL_CAPABILITIES;
 
-struct regDomainPair;
 struct regDomain;
 
 /*
@@ -277,9 +276,8 @@ struct ath_hal_private {
 	HAL_REG_DOMAIN	ah_currentRD;		/* EEPROM regulatory domain */
 	HAL_CHANNEL_INTERNAL ah_channels[256];	/* calculated channel list */
 	u_int		ah_nchan;		/* valid channels in list */
-	const struct regDomainPair *ah_regpair;	/* reg state */
-	const struct regDomain *ah_reg2G;	/* reg state for 2G band */
-	const struct regDomain *ah_reg5G;	/* reg state for 5G band */
+	const struct regDomain *ah_rd2GHz;	/* reg state for 2G band */
+	const struct regDomain *ah_rd5GHz;	/* reg state for 5G band */
 
 	uint8_t    	ah_coverageClass;   	/* coverage class */
 	HAL_BOOL    	ah_regdomainUpdate;     /* regdomain is updated? */
@@ -519,13 +517,9 @@ ath_hal_getantennareduction(struct ath_hal *ah,
 
 /*
  * Return the test group for the specific channel based on
- * the current regulator domain.
+ * the current regulatory setup.
  */
-static OS_INLINE u_int
-ath_hal_getctl(struct ath_hal *ah, const HAL_CHANNEL_INTERNAL *chan)
-{
-	return chan->ctl;
-}
+u_int	ath_hal_getctl(struct ath_hal *, const HAL_CHANNEL_INTERNAL *);
 
 /*
  * Map a public channel definition to the corresponding

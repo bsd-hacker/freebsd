@@ -2191,22 +2191,6 @@ ath_hal_getchannels(struct ath_hal *ah,
 	return status;
 }
 
-static uint8_t
-getctl(const struct ieee80211_channel *c, uint8_t ctl)
-{
-	if (IEEE80211_IS_CHAN_B(c))
-		return ctl | CTL_11B;
-	if (IEEE80211_IS_CHAN_G(c))
-		return ctl | CTL_11G;
-	if (IEEE80211_IS_CHAN_108G(c))
-		return ctl | CTL_108G;
-	if (IEEE80211_IS_CHAN_ST(c))
-		return ctl | CTL_TURBO;
-	if (IEEE80211_IS_CHAN_A(c))
-		return ctl | CTL_11A;
-	return ctl;
-}
-
 /*
  * Setup the channel list based on the information in the EEPROM.
  */
@@ -2241,10 +2225,6 @@ ath_hal_init_channels(struct ath_hal *ah,
 			ic->maxTxPower = c->ic_maxpower;
 			ic->minTxPower = c->ic_minpower;
 			ic->antennaMax = c->ic_maxantgain;
-			ic->ctl = getctl(c,
-			    IEEE80211_IS_CHAN_2GHZ(c) ?
-				rd2GHz->conformanceTestLimit :
-				rd5GHz->conformanceTestLimit);
 
 			c->ic_devdata = i;
 
@@ -2264,7 +2244,9 @@ ath_hal_init_channels(struct ath_hal *ah,
 			    c->ic_maxantgain, ic->ctl);
 		}
 		AH_PRIVATE(ah)->ah_nchan = *nchans;
-		/* XXX copy private setting to public area */
+		AH_PRIVATE(ah)->ah_rd2GHz = rd2GHz;
+		AH_PRIVATE(ah)->ah_rd5GHz = rd5GHz;
+
 		ah->ah_countryCode = country->countryCode;
 		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN, "%s: cc %u\n",
 		    __func__, ah->ah_countryCode);
@@ -2288,6 +2270,8 @@ ath_hal_set_channels(struct ath_hal *ah,
 	int i;
 
 	if (nchans > N(AH_PRIVATE(ah)->ah_channels)) {
+		HALDEBUG(ah, HAL_DEBUG_ANY, "%s: too many channels, %u > %u\n",
+		    __func__, nchans, N(AH_PRIVATE(ah)->ah_channels));
 		return HAL_EINVAL;
 	}
 	status = getregstate(ah, cc, regDmn, &country, &rd2GHz, &rd5GHz);
@@ -2305,9 +2289,7 @@ ath_hal_set_channels(struct ath_hal *ah,
 		ic->maxTxPower = c->ic_maxpower;
 		ic->minTxPower = c->ic_minpower;
 		ic->antennaMax = c->ic_maxantgain;
-		ic->ctl = getctl(c, IEEE80211_IS_CHAN_2GHZ(c) ?
-		    rd2GHz->conformanceTestLimit :
-		    rd5GHz->conformanceTestLimit);
+
 		c->ic_devdata = i;
 
 		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
@@ -2318,7 +2300,9 @@ ath_hal_set_channels(struct ath_hal *ah,
 		    ic->antennaMax, ic->ctl);
 	}
 	AH_PRIVATE(ah)->ah_nchan = nchans;
-	/* XXX copy private setting to public area */
+	AH_PRIVATE(ah)->ah_rd2GHz = rd2GHz;
+	AH_PRIVATE(ah)->ah_rd5GHz = rd5GHz;
+
 	ah->ah_countryCode = country->countryCode;
 	HALDEBUG(ah, HAL_DEBUG_REGDOMAIN, "%s: cc %u\n",
 	    __func__, ah->ah_countryCode);
@@ -2351,4 +2335,37 @@ ath_hal_checkchannel(struct ath_hal *ah, const HAL_CHANNEL *c)
 	   __func__, c->channel, c->channelFlags);
 	return AH_NULL;
 #undef CHAN_FLAGS
+}
+
+#define isWwrSKU(_ah) \
+	((getEepromRD((_ah)) & WORLD_SKU_MASK) == WORLD_SKU_PREFIX || \
+	  getEepromRD(_ah) == WORLD)
+
+/*
+ * Return the test group for the specific channel based on
+ * the current regulatory setup.
+ */
+u_int
+ath_hal_getctl(struct ath_hal *ah, const HAL_CHANNEL_INTERNAL *c)
+{
+	u_int ctl;
+
+	if (AH_PRIVATE(ah)->ah_rd2GHz == AH_PRIVATE(ah)->ah_rd5GHz ||
+	    (ah->ah_countryCode == CTRY_DEFAULT && isWwrSKU(ah)))
+		ctl = SD_NO_CTL;
+	else if (IS_CHAN_2GHZ(c))
+		ctl = AH_PRIVATE(ah)->ah_rd2GHz->conformanceTestLimit;
+	else
+		ctl = AH_PRIVATE(ah)->ah_rd5GHz->conformanceTestLimit;
+	if (IS_CHAN_B(c))
+		return ctl | CTL_11B;
+	if (IS_CHAN_G(c))
+		return ctl | CTL_11G;
+	if (IS_CHAN_108G(c))
+		return ctl | CTL_108G;
+	if (IS_CHAN_TURBO(c))
+		return ctl | CTL_TURBO;
+	if (IS_CHAN_A(c))
+		return ctl | CTL_11A;
+	return ctl;
 }
