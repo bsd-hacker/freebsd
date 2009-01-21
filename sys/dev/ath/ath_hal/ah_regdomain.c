@@ -272,12 +272,11 @@ enum {					/* conformance test limits */
  */
 enum {
 	NO_REQ			= 0x00000000,	/* NB: must be zero */
-	DISALLOW_ADHOC_11A	= 0x00000001,
-	DISALLOW_ADHOC_11A_TURB	= 0x00000002,
-	NEED_NFC		= 0x00000004,
-	ADHOC_PER_11D		= 0x00000008,  /* Start Ad-Hoc mode */
-	ADHOC_NO_11A		= 0x00000010,
-	LIMIT_FRAME_4MS 	= 0x00000020, 	/* 4msec limit on frame length*/
+	DISALLOW_ADHOC_11A	= 0x00000001,	/* adhoc not allowed in 5GHz */
+	DISALLOW_ADHOC_11A_TURB	= 0x00000002,	/* not allowed w/ 5GHz turbo */
+	NEED_NFC		= 0x00000004,	/* need noise floor check */
+	ADHOC_PER_11D		= 0x00000008,	/* must receive 11d beacon */
+	LIMIT_FRAME_4MS 	= 0x00000020,	/* 4msec tx burst limit */
 	NO_HOSTAP		= 0x00000040,	/* No HOSTAP mode opereation */
 };
 
@@ -1495,7 +1494,7 @@ static REG_DOMAIN regDomains[] = {
 	 .conformanceTestLimit	= NO_CTL,
 	 .dfsMask		= DFS_FCC3 | DFS_ETSI,
 	 .pscan			= PSCAN_WWR,
-	 .flags			= ADHOC_NO_11A,
+	 .flags			= DISALLOW_ADHOC_11A,
 	 .chan11a		= BM5(W1_5260_5320,
 				      W1_5180_5240,
 				      W1_5170_5230,
@@ -1523,7 +1522,7 @@ static REG_DOMAIN regDomains[] = {
 	 .conformanceTestLimit	= NO_CTL,
 	 .dfsMask		= DFS_FCC3 | DFS_ETSI,
 	 .pscan			= PSCAN_WWR,
-	 .flags			= ADHOC_NO_11A,
+	 .flags			= DISALLOW_ADHOC_11A,
 	 .chan11a		= BM5(W1_5260_5320,
 				      W1_5180_5240,
 				      W1_5170_5230,
@@ -1581,7 +1580,7 @@ static REG_DOMAIN regDomains[] = {
 	 .conformanceTestLimit	= NO_CTL,
 	 .dfsMask		= DFS_FCC3 | DFS_ETSI,
 	 .pscan			= PSCAN_WWR,
-	 .flags			= ADHOC_NO_11A,
+	 .flags			= DISALLOW_ADHOC_11A,
 	 .chan11a		= BM4(W2_5260_5320,
 				      W2_5180_5240,
 				      F2_5745_5805,
@@ -1605,7 +1604,7 @@ static REG_DOMAIN regDomains[] = {
 	 .conformanceTestLimit	= NO_CTL,
 	 .dfsMask		= DFS_FCC3 | DFS_ETSI,
 	 .pscan			= PSCAN_WWR,
-	 .flags			= ADHOC_NO_11A,
+	 .flags			= DISALLOW_ADHOC_11A,
 	 .chan11a		= BM3(W1_5260_5320, W2_5180_5240, F6_5745_5825),
 	 .chan11b		= BM7(W1_2412_2412,
 				      W1_2437_2442,
@@ -1627,7 +1626,7 @@ static REG_DOMAIN regDomains[] = {
 	 .conformanceTestLimit	= NO_CTL,
 	 .dfsMask		= DFS_FCC3 | DFS_ETSI,
 	 .pscan			= PSCAN_WWR,
-	 .flags			= ADHOC_NO_11A,
+	 .flags			= DISALLOW_ADHOC_11A,
 	 .chan11a		= BM4(W1_5260_5320,
 				      W1_5180_5240,
 				      W1_5745_5825,
@@ -1651,7 +1650,7 @@ static REG_DOMAIN regDomains[] = {
 	 .conformanceTestLimit	= NO_CTL,
 	 .dfsMask		= DFS_FCC3 | DFS_ETSI,
 	 .pscan			= PSCAN_WWR,
-	 .flags			= ADHOC_NO_11A,
+	 .flags			= DISALLOW_ADHOC_11A,
 	 .chan11a		= BM4(W1_5260_5320,
 				      W1_5180_5240,
 				      W1_5745_5825,
@@ -2129,6 +2128,14 @@ getchannels(struct ath_hal *ah,
 						continue;
 					ic->ic_flags |= IEEE80211_CHAN_DFS;
 				}
+				if (IEEE80211_IS_CHAN_5GHZ(ic) &&
+				    (rdflags & DISALLOW_ADHOC_11A))
+					ic->ic_flags |= IEEE80211_CHAN_NOADHOC;
+				if (IEEE80211_IS_CHAN_STURBO(ic) &&
+				    (rdflags & DISALLOW_ADHOC_11A_TURB))
+					ic->ic_flags |= IEEE80211_CHAN_NOADHOC;
+				if (rdflags & NO_HOSTAP)
+					ic->ic_flags |= IEEE80211_CHAN_NOHOSTAP;
 				if (rdflags & LIMIT_FRAME_4MS)
 					ic->ic_flags |= IEEE80211_CHAN_4MSXMIT;
 				if (rdflags & NEED_NFC)
