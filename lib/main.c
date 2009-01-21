@@ -106,10 +106,9 @@ run_tests(int i)
 	signal(SIGHUP, run_test_handler);
 	signal(SIGINT, exit_handler);
 	atexit(callcleanup);
-	arc4random_stir();
+	setup(i);
 	if ((strcmp(getprogname(), "run") != 0) && (op->nodelay == 0))
 		sleep(random_int(1,10));
-	setup(i);
 	start = time(NULL);
 	while (done_testing == 0 &&
 			(time(NULL) - start) < op->run_time) {
