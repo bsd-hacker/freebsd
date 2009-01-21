@@ -39,7 +39,7 @@ static int16_t ar5416GetNf(struct ath_hal *, HAL_CHANNEL_INTERNAL *);
  * Determine if calibration is supported by device and channel flags
  */
 static OS_INLINE HAL_BOOL
-ar5416IsCalSupp(struct ath_hal *ah, HAL_CHANNEL *chan, HAL_CAL_TYPE calType) 
+ar5416IsCalSupp(struct ath_hal *ah, const HAL_CHANNEL *chan, HAL_CAL_TYPE calType) 
 {
 	struct ar5416PerCal *cal = &AH5416(ah)->ah_cal;
 
@@ -279,7 +279,7 @@ ar5416InitCal(struct ath_hal *ah, HAL_CHANNEL *chan)
  * Reset the calibration valid bit in channel.
  */
 HAL_BOOL
-ar5416ResetCalValid(struct ath_hal *ah, HAL_CHANNEL *chan)
+ar5416ResetCalValid(struct ath_hal *ah, const HAL_CHANNEL *chan)
 {
 	struct ar5416PerCal *cal = &AH5416(ah)->ah_cal;
 	HAL_CHANNEL_INTERNAL *ichan = ath_hal_checkchannel(ah, chan);

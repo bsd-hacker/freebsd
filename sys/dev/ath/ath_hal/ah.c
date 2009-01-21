@@ -272,7 +272,7 @@ typedef enum {
 } WIRELESS_MODE;
 
 static WIRELESS_MODE
-ath_hal_chan2wmode(struct ath_hal *ah, const HAL_CHANNEL *chan)
+ath_hal_chan2wmode(struct ath_hal *ah, const HAL_CHANNEL_INTERNAL *chan)
 {
 	if (IS_CHAN_CCK(chan))
 		return WIRELESS_MODE_11b;
@@ -294,7 +294,7 @@ static const uint8_t CLOCK_RATE[]  = { 40,  80,   22,  44,   88  };
 u_int
 ath_hal_mac_clks(struct ath_hal *ah, u_int usecs)
 {
-	const HAL_CHANNEL *c = (const HAL_CHANNEL *) AH_PRIVATE(ah)->ah_curchan;
+	const HAL_CHANNEL_INTERNAL *c = AH_PRIVATE(ah)->ah_curchan;
 	u_int clks;
 
 	/* NB: ah_curchan may be null when called attach time */
@@ -314,7 +314,7 @@ ath_hal_mac_clks(struct ath_hal *ah, u_int usecs)
 u_int
 ath_hal_mac_usec(struct ath_hal *ah, u_int clks)
 {
-	const HAL_CHANNEL *c = (const HAL_CHANNEL *) AH_PRIVATE(ah)->ah_curchan;
+	const HAL_CHANNEL_INTERNAL *c = AH_PRIVATE(ah)->ah_curchan;
 	u_int usec;
 
 	/* NB: ah_curchan may be null when called attach time */
@@ -704,7 +704,7 @@ static const int16_t NOISE_FLOOR[] = { -96, -93,  -98, -96,  -93 };
  *     implement the ah_getChanNoise method.
  */
 int16_t
-ath_hal_getChanNoise(struct ath_hal *ah, HAL_CHANNEL *chan)
+ath_hal_getChanNoise(struct ath_hal *ah, const HAL_CHANNEL *chan)
 {
 	HAL_CHANNEL_INTERNAL *ichan;
 
@@ -716,7 +716,7 @@ ath_hal_getChanNoise(struct ath_hal *ah, HAL_CHANNEL *chan)
 		return 0;
 	}
 	if (ichan->rawNoiseFloor == 0) {
-		WIRELESS_MODE mode = ath_hal_chan2wmode(ah, chan);
+		WIRELESS_MODE mode = ath_hal_chan2wmode(ah, ichan);
 
 		HALASSERT(mode < WIRELESS_MODE_MAX);
 		return NOISE_FLOOR[mode] + ath_hal_getNfAdjust(ah, ichan);
@@ -751,7 +751,7 @@ ath_hal_process_noisefloor(struct ath_hal *ah)
 		c = &AH_PRIVATE(ah)->ah_channels[i];
 		if (c->rawNoiseFloor >= 0)
 			continue;
-		mode = ath_hal_chan2wmode(ah, (HAL_CHANNEL *) c);
+		mode = ath_hal_chan2wmode(ah, c);
 		HALASSERT(mode < WIRELESS_MODE_MAX);
 		nf = c->rawNoiseFloor + NOISE_FLOOR[mode] +
 			ath_hal_getNfAdjust(ah, c);

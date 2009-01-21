@@ -136,7 +136,7 @@ extern	HAL_BOOL ar5210ChipReset(struct ath_hal *, HAL_CHANNEL *);
 extern	HAL_BOOL ar5210PerCalibration(struct ath_hal *, HAL_CHANNEL *, HAL_BOOL *);
 extern	HAL_BOOL ar5210PerCalibrationN(struct ath_hal *ah, HAL_CHANNEL *chan,
 		u_int chainMask, HAL_BOOL longCal, HAL_BOOL *isCalDone);
-extern	HAL_BOOL ar5210ResetCalValid(struct ath_hal *ah, HAL_CHANNEL *chan);
+extern	HAL_BOOL ar5210ResetCalValid(struct ath_hal *ah, const HAL_CHANNEL *);
 extern	int16_t ar5210GetNoiseFloor(struct ath_hal *);
 extern	int16_t ar5210GetNfAdjust(struct ath_hal *,
 		const HAL_CHANNEL_INTERNAL *);
@@ -273,6 +273,7 @@ extern	HAL_INT ar5210SetInterrupts(struct ath_hal *, HAL_INT ints);
 extern	const HAL_RATE_TABLE *ar5210GetRateTable(struct ath_hal *, u_int mode);
 
 extern	HAL_BOOL ar5210AniControl(struct ath_hal *, HAL_ANI_CMD, int );
-extern	void ar5210AniPoll(struct ath_hal *, const HAL_NODE_STATS *, HAL_CHANNEL *);
+extern	void ar5210AniPoll(struct ath_hal *, const HAL_NODE_STATS *,
+		const HAL_CHANNEL *);
 extern	void ar5210MibEvent(struct ath_hal *, const HAL_NODE_STATS *);
 #endif /* _ATH_AR5210_H_ */

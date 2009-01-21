@@ -20,6 +20,10 @@
 #include "opt_ah.h"
 
 #include "ah.h"
+
+#include <net80211/_ieee80211.h>
+#include <net80211/ieee80211_regdomain.h>
+
 #include "ah_internal.h"
 #include "ah_eeprom.h"
 #include "ah_devid.h"
@@ -70,160 +74,6 @@ typedef uint64_t chanbmask_t[BMLEN];
 	  W0(_fg) | W0(_fh) ,	\
 	  W1(_fa) | W1(_fb) | W1(_fc) | W1(_fd) | W1(_fe) | W1(_ff) |	\
 	  W1(_fg) | W1(_fh) }
-
-/*
- * Country/Region Codes
- * Numbering from ISO 3166
- */
-enum {
-    CTRY_ALBANIA              = 8,       /* Albania */
-    CTRY_ALGERIA              = 12,      /* Algeria */
-    CTRY_ARGENTINA            = 32,      /* Argentina */
-    CTRY_ARMENIA              = 51,      /* Armenia */
-    CTRY_AUSTRALIA            = 36,      /* Australia */
-    CTRY_AUSTRIA              = 40,      /* Austria */
-    CTRY_AZERBAIJAN           = 31,      /* Azerbaijan */
-    CTRY_BAHRAIN              = 48,      /* Bahrain */
-    CTRY_BELARUS              = 112,     /* Belarus */
-    CTRY_BELGIUM              = 56,      /* Belgium */
-    CTRY_BELIZE               = 84,      /* Belize */
-    CTRY_BOLIVIA              = 68,      /* Bolivia */
-    CTRY_BRAZIL               = 76,      /* Brazil */
-    CTRY_BRUNEI_DARUSSALAM    = 96,      /* Brunei Darussalam */
-    CTRY_BULGARIA             = 100,     /* Bulgaria */
-    CTRY_CANADA               = 124,     /* Canada */
-    CTRY_CHILE                = 152,     /* Chile */
-    CTRY_CHINA                = 156,     /* People's Republic of China */
-    CTRY_COLOMBIA             = 170,     /* Colombia */
-    CTRY_COSTA_RICA           = 188,     /* Costa Rica */
-    CTRY_CROATIA              = 191,     /* Croatia */
-    CTRY_CYPRUS               = 196,
-    CTRY_CZECH                = 203,     /* Czech Republic */
-    CTRY_DENMARK              = 208,     /* Denmark */
-    CTRY_DOMINICAN_REPUBLIC   = 214,     /* Dominican Republic */
-    CTRY_ECUADOR              = 218,     /* Ecuador */
-    CTRY_EGYPT                = 818,     /* Egypt */
-    CTRY_EL_SALVADOR          = 222,     /* El Salvador */
-    CTRY_ESTONIA              = 233,     /* Estonia */
-    CTRY_FAEROE_ISLANDS       = 234,     /* Faeroe Islands */
-    CTRY_FINLAND              = 246,     /* Finland */
-    CTRY_FRANCE               = 250,     /* France */
-    CTRY_FRANCE2              = 255,     /* France2 */
-    CTRY_GEORGIA              = 268,     /* Georgia */
-    CTRY_GERMANY              = 276,     /* Germany */
-    CTRY_GREECE               = 300,     /* Greece */
-    CTRY_GUATEMALA            = 320,     /* Guatemala */
-    CTRY_HONDURAS             = 340,     /* Honduras */
-    CTRY_HONG_KONG            = 344,     /* Hong Kong S.A.R., P.R.C. */
-    CTRY_HUNGARY              = 348,     /* Hungary */
-    CTRY_ICELAND              = 352,     /* Iceland */
-    CTRY_INDIA                = 356,     /* India */
-    CTRY_INDONESIA            = 360,     /* Indonesia */
-    CTRY_IRAN                 = 364,     /* Iran */
-    CTRY_IRAQ                 = 368,     /* Iraq */
-    CTRY_IRELAND              = 372,     /* Ireland */
-    CTRY_ISRAEL               = 376,     /* Israel */
-    CTRY_ITALY                = 380,     /* Italy */
-    CTRY_JAMAICA              = 388,     /* Jamaica */
-    CTRY_JAPAN                = 392,     /* Japan */
-    CTRY_JAPAN1               = 393,     /* Japan (JP1) */
-    CTRY_JAPAN2               = 394,     /* Japan (JP0) */
-    CTRY_JAPAN3               = 395,     /* Japan (JP1-1) */
-    CTRY_JAPAN4               = 396,     /* Japan (JE1) */
-    CTRY_JAPAN5               = 397,     /* Japan (JE2) */
-    CTRY_JAPAN6               = 399,     /* Japan (JP6) */
-
-    CTRY_JAPAN7		      = 4007,	 /* Japan (J7) */
-    CTRY_JAPAN8		      = 4008,	 /* Japan (J8) */
-    CTRY_JAPAN9		      = 4009,	 /* Japan (J9) */
-
-    CTRY_JAPAN10	      = 4010,	 /* Japan (J10) */
-    CTRY_JAPAN11	      = 4011,	 /* Japan (J11) */
-    CTRY_JAPAN12	      = 4012,	 /* Japan (J12) */
-
-    CTRY_JAPAN13	      = 4013,	 /* Japan (J13) */
-    CTRY_JAPAN14	      = 4014,	 /* Japan (J14) */
-    CTRY_JAPAN15	      = 4015,	 /* Japan (J15) */
-
-    CTRY_JAPAN16	      = 4016,	 /* Japan (J16) */
-    CTRY_JAPAN17	      = 4017,	 /* Japan (J17) */
-    CTRY_JAPAN18	      = 4018,	 /* Japan (J18) */
-
-    CTRY_JAPAN19	      = 4019,	 /* Japan (J19) */
-    CTRY_JAPAN20	      = 4020,	 /* Japan (J20) */
-    CTRY_JAPAN21	      = 4021,	 /* Japan (J21) */
-
-    CTRY_JAPAN22	      = 4022,	 /* Japan (J22) */
-    CTRY_JAPAN23	      = 4023,	 /* Japan (J23) */
-    CTRY_JAPAN24	      = 4024,	 /* Japan (J24) */
- 
-    CTRY_JORDAN               = 400,     /* Jordan */
-    CTRY_KAZAKHSTAN           = 398,     /* Kazakhstan */
-    CTRY_KENYA                = 404,     /* Kenya */
-    CTRY_KOREA_NORTH          = 408,     /* North Korea */
-    CTRY_KOREA_ROC            = 410,     /* South Korea */
-    CTRY_KOREA_ROC2           = 411,     /* South Korea */
-    CTRY_KOREA_ROC3           = 412,     /* South Korea */
-    CTRY_KUWAIT               = 414,     /* Kuwait */
-    CTRY_LATVIA               = 428,     /* Latvia */
-    CTRY_LEBANON              = 422,     /* Lebanon */
-    CTRY_LIBYA                = 434,     /* Libya */
-    CTRY_LIECHTENSTEIN        = 438,     /* Liechtenstein */
-    CTRY_LITHUANIA            = 440,     /* Lithuania */
-    CTRY_LUXEMBOURG           = 442,     /* Luxembourg */
-    CTRY_MACAU                = 446,     /* Macau */
-    CTRY_MACEDONIA            = 807,     /* the Former Yugoslav Republic of Macedonia */
-    CTRY_MALAYSIA             = 458,     /* Malaysia */
-    CTRY_MALTA		      = 470,	 /* Malta */
-    CTRY_MEXICO               = 484,     /* Mexico */
-    CTRY_MONACO               = 492,     /* Principality of Monaco */
-    CTRY_MOROCCO              = 504,     /* Morocco */
-    CTRY_NETHERLANDS          = 528,     /* Netherlands */
-    CTRY_NEW_ZEALAND          = 554,     /* New Zealand */
-    CTRY_NICARAGUA            = 558,     /* Nicaragua */
-    CTRY_NORWAY               = 578,     /* Norway */
-    CTRY_OMAN                 = 512,     /* Oman */
-    CTRY_PAKISTAN             = 586,     /* Islamic Republic of Pakistan */
-    CTRY_PANAMA               = 591,     /* Panama */
-    CTRY_PARAGUAY             = 600,     /* Paraguay */
-    CTRY_PERU                 = 604,     /* Peru */
-    CTRY_PHILIPPINES          = 608,     /* Republic of the Philippines */
-    CTRY_POLAND               = 616,     /* Poland */
-    CTRY_PORTUGAL             = 620,     /* Portugal */
-    CTRY_PUERTO_RICO          = 630,     /* Puerto Rico */
-    CTRY_QATAR                = 634,     /* Qatar */
-    CTRY_ROMANIA              = 642,     /* Romania */
-    CTRY_RUSSIA               = 643,     /* Russia */
-    CTRY_SAUDI_ARABIA         = 682,     /* Saudi Arabia */
-    CTRY_SINGAPORE            = 702,     /* Singapore */
-    CTRY_SLOVAKIA             = 703,     /* Slovak Republic */
-    CTRY_SLOVENIA             = 705,     /* Slovenia */
-    CTRY_SOUTH_AFRICA         = 710,     /* South Africa */
-    CTRY_SPAIN                = 724,     /* Spain */
-    CTRY_SR9                  = 5000,    /* Ubiquiti SR9 (900MHz/GSM) */
-    CTRY_SWEDEN               = 752,     /* Sweden */
-    CTRY_SWITZERLAND          = 756,     /* Switzerland */
-    CTRY_SYRIA                = 760,     /* Syria */
-    CTRY_TAIWAN               = 158,     /* Taiwan */
-    CTRY_THAILAND             = 764,     /* Thailand */
-    CTRY_TRINIDAD_Y_TOBAGO    = 780,     /* Trinidad y Tobago */
-    CTRY_TUNISIA              = 788,     /* Tunisia */
-    CTRY_TURKEY               = 792,     /* Turkey */
-    CTRY_UAE                  = 784,     /* U.A.E. */
-    CTRY_UKRAINE              = 804,     /* Ukraine */
-    CTRY_UNITED_KINGDOM       = 826,     /* United Kingdom */
-    CTRY_UNITED_STATES        = 840,     /* United States */
-    CTRY_UNITED_STATES_FCC49  = 842,     /* United States (Public Safety)*/
-    CTRY_URUGUAY              = 858,     /* Uruguay */
-    CTRY_UZBEKISTAN           = 860,     /* Uzbekistan */
-    CTRY_VENEZUELA            = 862,     /* Venezuela */
-    CTRY_VIET_NAM             = 704,     /* Viet Nam */
-    CTRY_XR9                  = 5001,    /* Ubiquiti XR9 (900MHz/GSM) */
-    CTRY_GZ901                = 5002,    /* Zcomax GZ-901 (900MHz/GSM) */
-    CTRY_YEMEN                = 887,     /* Yemen */
-    CTRY_ZIMBABWE             = 716      /* Zimbabwe */
-};
-
 
 /*
  * Mask to check whether a domain is a multidomain or a single domain
@@ -403,9 +253,6 @@ enum {
 
 	NULL1		= 0x0198,
 	WORLD		= 0x0199,
-	SR9_WORLD	= 0x0298,
-	XR9_WORLD	= 0x0299,
-	GZ901_WORLD	= 0x029a,
 	DEBUG_REG_DMN	= 0x01ff,
 };
 
@@ -482,44 +329,44 @@ typedef struct regDomainPair {
 }  REG_DMN_PAIR_MAPPING;
 
 static REG_DMN_PAIR_MAPPING regDomainPairs[] = {
-	{NO_ENUMRD,	DEBUG_REG_DMN,	DEBUG_REG_DMN, NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
-	{NULL1_WORLD,	NULL1,		WORLD,		NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
-	{NULL1_ETSIB,	NULL1,		ETSIB,		NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
-	{NULL1_ETSIC,	NULL1,		ETSIC,		NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
+	{NO_ENUMRD,	DEBUG_REG_DMN,	DEBUG_REG_DMN, NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{NULL1_WORLD,	NULL1,		WORLD,		NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{NULL1_ETSIB,	NULL1,		ETSIB,		NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{NULL1_ETSIC,	NULL1,		ETSIC,		NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
 
-	{FCC2_FCCA,	FCC2,		FCCA,		NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
-	{FCC2_WORLD,	FCC2,		WORLD,		NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
-	{FCC2_ETSIC,	FCC2,		ETSIC,		NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
-	{FCC3_FCCA,	FCC3,		FCCA,		NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
-	{FCC3_WORLD,	FCC3,		WORLD,		NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
-	{FCC4_FCCA,	FCC4,		FCCA,		DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB, NO_REQ, PSCAN_DEFER, 0 },
-	{FCC5_FCCB,	FCC5,		FCCB,		NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
+	{FCC2_FCCA,	FCC2,		FCCA,		NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{FCC2_WORLD,	FCC2,		WORLD,		NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{FCC2_ETSIC,	FCC2,		ETSIC,		NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{FCC3_FCCA,	FCC3,		FCCA,		NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{FCC3_WORLD,	FCC3,		WORLD,		NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{FCC4_FCCA,	FCC4,		FCCA,		DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{FCC5_FCCB,	FCC5,		FCCB,		NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
 
-	{ETSI1_WORLD,	ETSI1,		WORLD,		DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB, NO_REQ, PSCAN_DEFER, 0 },
-	{ETSI2_WORLD,	ETSI2,		WORLD,		DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB, NO_REQ, PSCAN_DEFER, 0 },
-	{ETSI3_WORLD,	ETSI3,		WORLD,		DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB, NO_REQ, PSCAN_DEFER, 0 },
-	{ETSI4_WORLD,	ETSI4,		WORLD,		DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB, NO_REQ, PSCAN_DEFER, 0 },
-	{ETSI5_WORLD,	ETSI5,		WORLD,		DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB, NO_REQ, PSCAN_DEFER, 0 },
-	{ETSI6_WORLD,	ETSI6,		WORLD,		DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB, NO_REQ, PSCAN_DEFER, 0 },
+	{ETSI1_WORLD,	ETSI1,		WORLD,		DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{ETSI2_WORLD,	ETSI2,		WORLD,		DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{ETSI3_WORLD,	ETSI3,		WORLD,		DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{ETSI4_WORLD,	ETSI4,		WORLD,		DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{ETSI5_WORLD,	ETSI5,		WORLD,		DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{ETSI6_WORLD,	ETSI6,		WORLD,		DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
 
-	{ETSI3_ETSIA,	ETSI3,		WORLD,		DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB, NO_REQ, PSCAN_DEFER, 0 },
-	{FRANCE_RES,	ETSI3,		WORLD,		NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
+	{ETSI3_ETSIA,	ETSI3,		WORLD,		DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{FRANCE_RES,	ETSI3,		WORLD,		NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
 
-	{FCC1_WORLD,	FCC1,		WORLD,		NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
-	{FCC1_FCCA,	FCC1,		FCCA,		NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
-	{APL1_WORLD,	APL1,		WORLD,		NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
-	{APL2_WORLD,	APL2,		WORLD,		NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
-	{APL3_WORLD,	APL3,		WORLD,		NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
-	{APL4_WORLD,	APL4,		WORLD,		NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
-	{APL5_WORLD,	APL5,		WORLD,		NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
-	{APL6_WORLD,	APL6,		WORLD,		NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
-	{APL8_WORLD,	APL8,		WORLD,		NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
-	{APL9_WORLD,	APL9,		WORLD,		NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
+	{FCC1_WORLD,	FCC1,		WORLD,		NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{FCC1_FCCA,	FCC1,		FCCA,		NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{APL1_WORLD,	APL1,		WORLD,		NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{APL2_WORLD,	APL2,		WORLD,		NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{APL3_WORLD,	APL3,		WORLD,		NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{APL4_WORLD,	APL4,		WORLD,		NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{APL5_WORLD,	APL5,		WORLD,		NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{APL6_WORLD,	APL6,		WORLD,		NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{APL8_WORLD,	APL8,		WORLD,		NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{APL9_WORLD,	APL9,		WORLD,		NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
 
-	{APL3_FCCA,	APL3,		FCCA,		NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
-	{APL1_ETSIC,	APL1,		ETSIC,		NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
-	{APL2_ETSIC,	APL2,		ETSIC,		NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
-	{APL2_APLD,	APL2,		APLD,		NO_REQ, NO_REQ, PSCAN_DEFER,  },
+	{APL3_FCCA,	APL3,		FCCA,		NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{APL1_ETSIC,	APL1,		ETSIC,		NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{APL2_ETSIC,	APL2,		ETSIC,		NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{APL2_APLD,	APL2,		APLD,		NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
 
 	{MKK1_MKKA,	MKK1,		MKKA,		DISALLOW_ADHOC_11A_TURB | NEED_NFC | LIMIT_FRAME_4MS, NEED_NFC, PSCAN_MKK1 | PSCAN_MKKA, CTRY_JAPAN },
 	{MKK1_MKKB,	MKK1,		MKKA,		DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB | NEED_NFC| LIMIT_FRAME_4MS, NEED_NFC, PSCAN_MKK1 | PSCAN_MKKA | PSCAN_MKKA_G, CTRY_JAPAN1 },
@@ -532,19 +379,19 @@ static REG_DMN_PAIR_MAPPING regDomainPairs[] = {
 	{MKK2_MKKA,	MKK2,		MKKA,		DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB | NEED_NFC| LIMIT_FRAME_4MS, NEED_NFC, PSCAN_MKK2 | PSCAN_MKKA | PSCAN_MKKA_G, CTRY_JAPAN3 },
 
 	/* MKK3 */
-	{MKK3_MKKA,	MKK3,	MKKA,	DISALLOW_ADHOC_11A_TURB | NEED_NFC | LIMIT_FRAME_4MS, NEED_NFC , PSCAN_MKKA, 0 },
+	{MKK3_MKKA,	MKK3,	MKKA,	DISALLOW_ADHOC_11A_TURB | NEED_NFC | LIMIT_FRAME_4MS, NEED_NFC , PSCAN_MKKA, CTRY_DEFAULT },
 	{MKK3_MKKB,	MKK3,		MKKA,		DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB | NEED_NFC | LIMIT_FRAME_4MS, NEED_NFC, PSCAN_MKKA | PSCAN_MKKA_G, CTRY_JAPAN7 },
-	{MKK3_MKKA1,	MKK3,	MKKA,	DISALLOW_ADHOC_11A_TURB | NEED_NFC | LIMIT_FRAME_4MS, NEED_NFC, PSCAN_MKKA1 | PSCAN_MKKA1_G, 0 },
+	{MKK3_MKKA1,	MKK3,	MKKA,	DISALLOW_ADHOC_11A_TURB | NEED_NFC | LIMIT_FRAME_4MS, NEED_NFC, PSCAN_MKKA1 | PSCAN_MKKA1_G, CTRY_DEFAULT },
 	{MKK3_MKKA2,MKK3,		MKKA,		DISALLOW_ADHOC_11A_TURB | NEED_NFC | LIMIT_FRAME_4MS, NEED_NFC, PSCAN_MKKA2 | PSCAN_MKKA2_G, CTRY_JAPAN8 },
 	{MKK3_MKKC,	MKK3,		MKKC,		DISALLOW_ADHOC_11A_TURB | NEED_NFC | LIMIT_FRAME_4MS, NEED_NFC, NO_PSCAN, CTRY_JAPAN9 },
-	{MKK3_FCCA,	MKK3,	FCCA,	DISALLOW_ADHOC_11A_TURB | NEED_NFC | LIMIT_FRAME_4MS, NEED_NFC, NO_PSCAN, 0 },
+	{MKK3_FCCA,	MKK3,	FCCA,	DISALLOW_ADHOC_11A_TURB | NEED_NFC | LIMIT_FRAME_4MS, NEED_NFC, NO_PSCAN, CTRY_DEFAULT },
 
 	/* MKK4 */
 	{MKK4_MKKB,	MKK4,		MKKA,		DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB | NEED_NFC | LIMIT_FRAME_4MS, NEED_NFC, PSCAN_MKK3 | PSCAN_MKKA | PSCAN_MKKA_G, CTRY_JAPAN10 },
-	{MKK4_MKKA1,	MKK4,	MKKA,	DISALLOW_ADHOC_11A_TURB | NEED_NFC | LIMIT_FRAME_4MS, NEED_NFC, PSCAN_MKK3 | PSCAN_MKKA1 | PSCAN_MKKA1_G, 0 },
+	{MKK4_MKKA1,	MKK4,	MKKA,	DISALLOW_ADHOC_11A_TURB | NEED_NFC | LIMIT_FRAME_4MS, NEED_NFC, PSCAN_MKK3 | PSCAN_MKKA1 | PSCAN_MKKA1_G, CTRY_DEFAULT },
 	{MKK4_MKKA2,	MKK4,		MKKA,		DISALLOW_ADHOC_11A_TURB | NEED_NFC | LIMIT_FRAME_4MS, NEED_NFC, PSCAN_MKK3 |PSCAN_MKKA2 | PSCAN_MKKA2_G, CTRY_JAPAN11 },
 	{MKK4_MKKC,	MKK4,		MKKC,		DISALLOW_ADHOC_11A_TURB | NEED_NFC | LIMIT_FRAME_4MS, NEED_NFC, PSCAN_MKK3, CTRY_JAPAN12 },
-	{MKK4_FCCA,	MKK4,	FCCA,	DISALLOW_ADHOC_11A_TURB | NEED_NFC | LIMIT_FRAME_4MS, NEED_NFC, PSCAN_MKK3, 0 },
+	{MKK4_FCCA,	MKK4,	FCCA,	DISALLOW_ADHOC_11A_TURB | NEED_NFC | LIMIT_FRAME_4MS, NEED_NFC, PSCAN_MKK3, CTRY_DEFAULT },
 
 	/* MKK5 */
 	{MKK5_MKKB,	MKK5,		MKKA,		DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB | NEED_NFC | LIMIT_FRAME_4MS, NEED_NFC, PSCAN_MKK3 | PSCAN_MKKA | PSCAN_MKKA_G, CTRY_JAPAN13 },
@@ -566,24 +413,21 @@ static REG_DMN_PAIR_MAPPING regDomainPairs[] = {
 	{MKK8_MKKA2,MKK8,		MKKA,		DISALLOW_ADHOC_11A_TURB | NEED_NFC | LIMIT_FRAME_4MS, NEED_NFC, PSCAN_MKK1 | PSCAN_MKK3 | PSCAN_MKKA2 | PSCAN_MKKA2_G, CTRY_JAPAN23 },
 	{MKK8_MKKC,	MKK8,		MKKC,		DISALLOW_ADHOC_11A_TURB | NEED_NFC | LIMIT_FRAME_4MS, NEED_NFC, PSCAN_MKK1 | PSCAN_MKK3 , CTRY_JAPAN24 },
 
-	{MKK9_MKKA,	MKK9,	MKKA,	DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB | NEED_NFC | LIMIT_FRAME_4MS, NEED_NFC, PSCAN_MKK3 | PSCAN_MKKA | PSCAN_MKKA_G, 0 },
-	{MKK10_MKKA,	MKK10,	MKKA,	DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB | NEED_NFC | LIMIT_FRAME_4MS, NEED_NFC, PSCAN_MKK3 | PSCAN_MKKA | PSCAN_MKKA_G, 0 },
+	{MKK9_MKKA,	MKK9,	MKKA,	DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB | NEED_NFC | LIMIT_FRAME_4MS, NEED_NFC, PSCAN_MKK3 | PSCAN_MKKA | PSCAN_MKKA_G, CTRY_DEFAULT },
+	{MKK10_MKKA,	MKK10,	MKKA,	DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB | NEED_NFC | LIMIT_FRAME_4MS, NEED_NFC, PSCAN_MKK3 | PSCAN_MKKA | PSCAN_MKKA_G, CTRY_DEFAULT },
 
 		/* These are super domains */
-	{WOR0_WORLD,	WOR0_WORLD,	WOR0_WORLD,	NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
-	{WOR1_WORLD,	WOR1_WORLD,	WOR1_WORLD,	DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB, NO_REQ, PSCAN_DEFER, 0 },
-	{WOR2_WORLD,	WOR2_WORLD,	WOR2_WORLD,	DISALLOW_ADHOC_11A_TURB, NO_REQ, PSCAN_DEFER, 0 },
-	{WOR3_WORLD,	WOR3_WORLD,	WOR3_WORLD,	NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
-	{WOR4_WORLD,	WOR4_WORLD,	WOR4_WORLD,	DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB, NO_REQ, PSCAN_DEFER, 0 },
-	{WOR5_ETSIC,	WOR5_ETSIC,	WOR5_ETSIC,	DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB, NO_REQ, PSCAN_DEFER, 0 },
-	{WOR01_WORLD,	WOR01_WORLD,	WOR01_WORLD,	NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
-	{WOR02_WORLD,	WOR02_WORLD,	WOR02_WORLD,	NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
-	{EU1_WORLD,	EU1_WORLD,	EU1_WORLD,	NO_REQ, NO_REQ, PSCAN_DEFER, 0 },
-	{WOR9_WORLD,	WOR9_WORLD,	WOR9_WORLD,	DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB, NO_REQ, PSCAN_DEFER, 0 },
-	{WORA_WORLD,	WORA_WORLD,	WORA_WORLD,	DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB, NO_REQ, PSCAN_DEFER, 0 },
-	{SR9_WORLD,	NULL1,		SR9_WORLD,	NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_SR9 },
-	{XR9_WORLD,	NULL1,		XR9_WORLD,	NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_XR9 },
-	{GZ901_WORLD,	NULL1,		GZ901_WORLD,	NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_GZ901 },
+	{WOR0_WORLD,	WOR0_WORLD,	WOR0_WORLD,	NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{WOR1_WORLD,	WOR1_WORLD,	WOR1_WORLD,	DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{WOR2_WORLD,	WOR2_WORLD,	WOR2_WORLD,	DISALLOW_ADHOC_11A_TURB, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{WOR3_WORLD,	WOR3_WORLD,	WOR3_WORLD,	NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{WOR4_WORLD,	WOR4_WORLD,	WOR4_WORLD,	DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{WOR5_ETSIC,	WOR5_ETSIC,	WOR5_ETSIC,	DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{WOR01_WORLD,	WOR01_WORLD,	WOR01_WORLD,	NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{WOR02_WORLD,	WOR02_WORLD,	WOR02_WORLD,	NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{EU1_WORLD,	EU1_WORLD,	EU1_WORLD,	NO_REQ, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{WOR9_WORLD,	WOR9_WORLD,	WOR9_WORLD,	DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
+	{WORA_WORLD,	WORA_WORLD,	WORA_WORLD,	DISALLOW_ADHOC_11A | DISALLOW_ADHOC_11A_TURB, NO_REQ, PSCAN_DEFER, CTRY_DEFAULT },
 };
 
 /* 
@@ -600,162 +444,149 @@ static REG_DMN_PAIR_MAPPING regDomainPairs[] = {
 #define	SUPER_DOMAIN_MASK	0x0fff
 #define	COUNTRY_CODE_MASK	0x3fff
 
-#define	YES	AH_TRUE
-#define	NO	AH_FALSE
-
 typedef struct {
 	HAL_CTRY_CODE		countryCode;	   
 	HAL_REG_DOMAIN		regDmnEnum;
-	HAL_BOOL		allow11aTurbo;
-	HAL_BOOL		allow11gTurbo;
-	HAL_BOOL		allow11ng20;
-	HAL_BOOL		allow11ng40;
-	HAL_BOOL		allow11na20;
-	HAL_BOOL		allow11na40;
 } COUNTRY_CODE_TO_ENUM_RD;
 
 static COUNTRY_CODE_TO_ENUM_RD allCountries[] = {
-    {CTRY_DEBUG,       NO_ENUMRD,	YES, YES, YES,YES, YES,YES },
-    {CTRY_DEFAULT,     DEF_REGDMN,	YES, YES, YES,YES, YES,YES },
-    {CTRY_ALBANIA,     NULL1_WORLD,	 NO, YES, YES, NO,  NO, NO },
-    {CTRY_ALGERIA,     NULL1_WORLD,	 NO, YES, YES, NO,  NO, NO },
-    {CTRY_ARGENTINA,   APL3_WORLD,	 NO,  NO,  NO, NO,  NO, NO },
-    {CTRY_ARMENIA,     ETSI4_WORLD,	 NO, YES, YES,YES,  NO, NO },
-    {CTRY_AUSTRALIA,   FCC2_WORLD,      YES, YES, YES,YES, YES,YES },
-    {CTRY_AUSTRIA,     ETSI1_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_AZERBAIJAN,  ETSI4_WORLD,     YES, YES, YES,YES, YES,YES },
-    {CTRY_BAHRAIN,     APL6_WORLD,	 NO, YES, YES,YES, YES, NO },
-    {CTRY_BELARUS,     NULL1_WORLD,	 NO, YES, YES,YES, YES, NO },
-    {CTRY_BELGIUM,     ETSI1_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_BELIZE,      APL1_ETSIC,	YES, YES, YES,YES, YES,YES },
-    {CTRY_BOLIVIA,     APL1_ETSIC,	YES, YES, YES,YES, YES,YES },
-    {CTRY_BRAZIL,      FCC3_WORLD,	 NO,  NO, YES, NO, YES, NO },
-    {CTRY_BRUNEI_DARUSSALAM,APL1_WORLD, YES, YES, YES,YES, YES,YES },
-    {CTRY_BULGARIA,    ETSI6_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_CANADA,      FCC2_FCCA,	YES, YES, YES,YES, YES,YES },
-    {CTRY_CHILE,       APL6_WORLD,	YES, YES, YES,YES, YES,YES },
-    {CTRY_CHINA,       APL1_WORLD,	YES, YES, YES,YES, YES,YES },
-    {CTRY_COLOMBIA,    FCC1_FCCA,        NO, YES, YES,YES, YES, NO },
-    {CTRY_COSTA_RICA,  NULL1_WORLD,      NO, YES, YES,YES, YES, NO },
-    {CTRY_CROATIA,     ETSI3_WORLD,	 NO, YES, YES,YES, YES, NO },
-    {CTRY_CYPRUS,      ETSI1_WORLD,	YES, YES, YES,YES, YES,YES },
-    {CTRY_CZECH,       ETSI1_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_DENMARK,     ETSI1_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_DOMINICAN_REPUBLIC,FCC1_FCCA,	YES, YES, YES,YES, YES,YES },
-    {CTRY_ECUADOR,     NULL1_WORLD,	 NO,  NO,  NO, NO,  NO, NO },
-    {CTRY_EGYPT,       ETSI3_WORLD,	 NO, YES, YES,YES, YES, NO },
-    {CTRY_EL_SALVADOR, NULL1_WORLD,	 NO, YES, YES,YES,  NO, NO },
-    {CTRY_ESTONIA,     ETSI1_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_FINLAND,     ETSI1_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_FRANCE,      ETSI1_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_FRANCE2,     ETSI3_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_GEORGIA,     ETSI4_WORLD,	YES, YES, YES,YES, YES,YES },
-    {CTRY_GERMANY,     ETSI1_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_GREECE,      ETSI1_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_GUATEMALA,   FCC1_FCCA,	YES, YES, YES,YES, YES,YES },
-    {CTRY_GZ901,       GZ901_WORLD,      NO,  NO,  NO, NO,  NO, NO },
-    {CTRY_HONDURAS,    NULL1_WORLD,	 NO,  YES, YES,YES, YES, NO },
-    {CTRY_HONG_KONG,   FCC2_WORLD,	YES, YES, YES,YES, YES,YES },
-    {CTRY_HUNGARY,     ETSI1_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_ICELAND,     ETSI1_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_INDIA,       APL6_WORLD,	 NO, YES, YES,YES, YES, NO },
-    {CTRY_INDONESIA,   APL1_WORLD,	 NO, YES, YES,YES, YES, NO },
-    {CTRY_IRAN,        APL1_WORLD,	YES, YES, YES,YES, YES,YES },
-    {CTRY_IRELAND,     ETSI1_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_ISRAEL,      NULL1_WORLD,	 NO, YES, YES,YES, YES, NO },
-    {CTRY_ITALY,       ETSI1_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_JAPAN,       MKK1_MKKA,	 NO,  NO, YES, NO, YES, NO },
-    {CTRY_JAPAN1,      MKK1_MKKB,	 NO,  NO,  NO, NO,  NO, NO },
-    {CTRY_JAPAN2,      MKK1_FCCA,	 NO,  NO,  NO, NO,  NO, NO },
-    {CTRY_JAPAN3,      MKK2_MKKA,	 NO,  NO,  NO, NO,  NO, NO },
-    {CTRY_JAPAN4,      MKK1_MKKA1,	 NO,  NO,  NO, NO,  NO, NO },
-    {CTRY_JAPAN5,      MKK1_MKKA2,	 NO,  NO,  NO, NO,  NO, NO },
-    {CTRY_JAPAN6,      MKK1_MKKC,	 NO,  NO,  NO, NO,  NO, NO },
+	{ CTRY_DEBUG,       NO_ENUMRD },
+	{ CTRY_DEFAULT,     DEF_REGDMN },
+	{ CTRY_ALBANIA,     NULL1_WORLD },
+	{ CTRY_ALGERIA,     NULL1_WORLD },
+	{ CTRY_ARGENTINA,   APL3_WORLD },
+	{ CTRY_ARMENIA,     ETSI4_WORLD },
+	{ CTRY_AUSTRALIA,   FCC2_WORLD },
+	{ CTRY_AUSTRIA,     ETSI1_WORLD },
+	{ CTRY_AZERBAIJAN,  ETSI4_WORLD },
+	{ CTRY_BAHRAIN,     APL6_WORLD },
+	{ CTRY_BELARUS,     NULL1_WORLD },
+	{ CTRY_BELGIUM,     ETSI1_WORLD },
+	{ CTRY_BELIZE,      APL1_ETSIC },
+	{ CTRY_BOLIVIA,     APL1_ETSIC },
+	{ CTRY_BRAZIL,      FCC3_WORLD },
+	{ CTRY_BRUNEI_DARUSSALAM,APL1_WORLD },
+	{ CTRY_BULGARIA,    ETSI6_WORLD },
+	{ CTRY_CANADA,      FCC2_FCCA },
+	{ CTRY_CHILE,       APL6_WORLD },
+	{ CTRY_CHINA,       APL1_WORLD },
+	{ CTRY_COLOMBIA,    FCC1_FCCA },
+	{ CTRY_COSTA_RICA,  NULL1_WORLD },
+	{ CTRY_CROATIA,     ETSI3_WORLD },
+	{ CTRY_CYPRUS,      ETSI1_WORLD },
+	{ CTRY_CZECH,       ETSI1_WORLD },
+	{ CTRY_DENMARK,     ETSI1_WORLD },
+	{ CTRY_DOMINICAN_REPUBLIC,FCC1_FCCA },
+	{ CTRY_ECUADOR,     NULL1_WORLD },
+	{ CTRY_EGYPT,       ETSI3_WORLD },
+	{ CTRY_EL_SALVADOR, NULL1_WORLD },
+	{ CTRY_ESTONIA,     ETSI1_WORLD },
+	{ CTRY_FINLAND,     ETSI1_WORLD },
+	{ CTRY_FRANCE,      ETSI1_WORLD },
+	{ CTRY_FRANCE2,     ETSI3_WORLD },
+	{ CTRY_GEORGIA,     ETSI4_WORLD },
+	{ CTRY_GERMANY,     ETSI1_WORLD },
+	{ CTRY_GREECE,      ETSI1_WORLD },
+	{ CTRY_GUATEMALA,   FCC1_FCCA },
+	{ CTRY_HONDURAS,    NULL1_WORLD },
+	{ CTRY_HONG_KONG,   FCC2_WORLD },
+	{ CTRY_HUNGARY,     ETSI1_WORLD },
+	{ CTRY_ICELAND,     ETSI1_WORLD },
+	{ CTRY_INDIA,       APL6_WORLD },
+	{ CTRY_INDONESIA,   APL1_WORLD },
+	{ CTRY_IRAN,        APL1_WORLD },
+	{ CTRY_IRELAND,     ETSI1_WORLD },
+	{ CTRY_ISRAEL,      NULL1_WORLD },
+	{ CTRY_ITALY,       ETSI1_WORLD },
+	{ CTRY_JAPAN,       MKK1_MKKA },
+	{ CTRY_JAPAN1,      MKK1_MKKB },
+	{ CTRY_JAPAN2,      MKK1_FCCA },
+	{ CTRY_JAPAN3,      MKK2_MKKA },
+	{ CTRY_JAPAN4,      MKK1_MKKA1 },
+	{ CTRY_JAPAN5,      MKK1_MKKA2 },
+	{ CTRY_JAPAN6,      MKK1_MKKC },
 
-    {CTRY_JAPAN7,      MKK3_MKKB,	 NO,  NO,  NO, NO,  NO, NO },
-    {CTRY_JAPAN8,      MKK3_MKKA2,	 NO,  NO,  NO, NO,  NO, NO },
-    {CTRY_JAPAN9,      MKK3_MKKC,	 NO,  NO,  NO, NO,  NO, NO },
+	{ CTRY_JAPAN7,      MKK3_MKKB },
+	{ CTRY_JAPAN8,      MKK3_MKKA2 },
+	{ CTRY_JAPAN9,      MKK3_MKKC },
 
-    {CTRY_JAPAN10,     MKK4_MKKB,	 NO,  NO,  NO, NO,  NO, NO },
-    {CTRY_JAPAN11,     MKK4_MKKA2,	 NO,  NO,  NO, NO,  NO, NO },
-    {CTRY_JAPAN12,     MKK4_MKKC,	 NO,  NO,  NO, NO,  NO, NO },
+	{ CTRY_JAPAN10,     MKK4_MKKB },
+	{ CTRY_JAPAN11,     MKK4_MKKA2 },
+	{ CTRY_JAPAN12,     MKK4_MKKC },
 
-    {CTRY_JAPAN13,     MKK5_MKKB,	 NO,  NO,  NO, NO,  NO, NO },
-    {CTRY_JAPAN14,     MKK5_MKKA2,	 NO,  NO,  NO, NO,  NO, NO },
-    {CTRY_JAPAN15,     MKK5_MKKC,	 NO,  NO,  NO, NO,  NO, NO },
+	{ CTRY_JAPAN13,     MKK5_MKKB },
+	{ CTRY_JAPAN14,     MKK5_MKKA2 },
+	{ CTRY_JAPAN15,     MKK5_MKKC },
 
-    {CTRY_JAPAN16,     MKK6_MKKB,	 NO,  NO,  NO, NO,  NO, NO },
-    {CTRY_JAPAN17,     MKK6_MKKA2,	 NO,  NO,  NO, NO,  NO, NO },
-    {CTRY_JAPAN18,     MKK6_MKKC,	 NO,  NO,  NO, NO,  NO, NO },
+	{ CTRY_JAPAN16,     MKK6_MKKB },
+	{ CTRY_JAPAN17,     MKK6_MKKA2 },
+	{ CTRY_JAPAN18,     MKK6_MKKC },
 
-    {CTRY_JAPAN19,     MKK7_MKKB,	 NO,  NO,  NO, NO,  NO, NO },
-    {CTRY_JAPAN20,     MKK7_MKKA2,	 NO,  NO, YES, NO, YES, NO },
-    {CTRY_JAPAN21,     MKK7_MKKC,	 NO,  NO,  NO, NO,  NO, NO },
+	{ CTRY_JAPAN19,     MKK7_MKKB },
+	{ CTRY_JAPAN20,     MKK7_MKKA2 },
+	{ CTRY_JAPAN21,     MKK7_MKKC },
 
-    {CTRY_JAPAN22,     MKK8_MKKB,	 NO,  NO,  NO, NO,  NO, NO },
-    {CTRY_JAPAN23,     MKK8_MKKA2,	 NO,  NO,  NO, NO,  NO, NO },
-    {CTRY_JAPAN24,     MKK8_MKKC,	 NO,  NO,  NO, NO,  NO, NO },
+	{ CTRY_JAPAN22,     MKK8_MKKB },
+	{ CTRY_JAPAN23,     MKK8_MKKA2 },
+	{ CTRY_JAPAN24,     MKK8_MKKC },
 
-    {CTRY_JORDAN,      APL4_WORLD,	 NO, YES, YES,YES, YES, NO },
-    {CTRY_KAZAKHSTAN,  NULL1_WORLD,	 NO, YES, YES,YES,  NO, NO },
-    {CTRY_KOREA_NORTH, APL2_WORLD,	YES, YES, YES,YES, YES,YES },
-    {CTRY_KOREA_ROC,   APL2_WORLD,	 NO,  NO, YES, NO, YES, NO },
-    {CTRY_KOREA_ROC2,  APL2_WORLD,	 NO,  NO, YES, NO, YES, NO },
-    {CTRY_KOREA_ROC3,  APL9_WORLD,	 NO,  NO, YES, NO, YES, NO },
-    {CTRY_KUWAIT,      NULL1_WORLD,	 NO, YES, YES,YES, YES, NO },
-    {CTRY_LATVIA,      ETSI1_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_LEBANON,     NULL1_WORLD,	 NO, YES, YES,YES, YES, NO },
-    {CTRY_LIECHTENSTEIN,ETSI1_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_LITHUANIA,   ETSI1_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_LUXEMBOURG,  ETSI1_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_MACAU,       FCC2_WORLD,	YES, YES, YES,YES, YES,YES },
-    {CTRY_MACEDONIA,   NULL1_WORLD,	 NO, YES, YES,YES,  NO, NO },
-    {CTRY_MALAYSIA,    APL8_WORLD,	 NO,  NO, YES, NO, YES, NO },
-    {CTRY_MALTA,       ETSI1_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_MEXICO,      FCC1_FCCA,	YES, YES, YES,YES, YES,YES },
-    {CTRY_MONACO,      ETSI4_WORLD,	YES, YES, YES,YES, YES,YES },
-    {CTRY_MOROCCO,     NULL1_WORLD,	 NO, YES, YES,YES,  NO, NO },
-    {CTRY_NETHERLANDS, ETSI1_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_NEW_ZEALAND, FCC2_ETSIC,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_NORWAY,      ETSI1_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_OMAN,        APL6_WORLD,	 NO, YES, YES,YES, YES, NO },
-    {CTRY_PAKISTAN,    NULL1_WORLD,	 NO, YES, YES,YES,  NO, NO },
-    {CTRY_PANAMA,      FCC1_FCCA,	YES, YES, YES,YES, YES,YES },
-    {CTRY_PERU,        APL1_WORLD,	 NO, YES, YES,YES, YES, NO },
-    {CTRY_PHILIPPINES, FCC3_WORLD,	YES, YES, YES,YES, YES,YES },
-    {CTRY_POLAND,      ETSI1_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_PORTUGAL,    ETSI1_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_PUERTO_RICO, FCC1_FCCA,	YES, YES, YES,YES, YES,YES },
-    {CTRY_QATAR,       NULL1_WORLD,	 NO, YES, YES,YES,  NO, NO },
-    {CTRY_ROMANIA,     NULL1_WORLD,	 NO, YES, YES,YES,  NO, NO },
-    {CTRY_RUSSIA,      NULL1_WORLD,	 NO, YES, YES,YES,  NO, NO },
-    {CTRY_SAUDI_ARABIA,FCC2_WORLD,	 NO, YES, YES,YES, YES, NO },
-    {CTRY_SINGAPORE,   APL6_WORLD,	YES, YES, YES,YES, YES,YES },
-    {CTRY_SLOVAKIA,    ETSI1_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_SLOVENIA,    ETSI1_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_SOUTH_AFRICA,FCC3_WORLD,	 NO, YES, YES,YES, YES, NO },
-    {CTRY_SPAIN,       ETSI1_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_SR9,         SR9_WORLD,        NO,  NO,  NO, NO,  NO, NO },
-    {CTRY_SWEDEN,      ETSI1_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_SWITZERLAND, ETSI1_WORLD,	 NO, YES, YES,YES, YES,YES },
-    {CTRY_SYRIA,       NULL1_WORLD,	 NO, YES, YES,YES, YES, NO },
-    {CTRY_TAIWAN,      APL3_FCCA,	YES, YES, YES,YES, YES,YES },
-    {CTRY_THAILAND,    NULL1_WORLD,	 NO, YES, YES,YES,  NO, NO },
-    {CTRY_TRINIDAD_Y_TOBAGO,ETSI4_WORLD, NO, YES, YES,YES, YES, NO },
-    {CTRY_TUNISIA,     ETSI3_WORLD,	 NO, YES, YES,YES, YES, NO },
-    {CTRY_TURKEY,      ETSI3_WORLD,	 NO, YES, YES,YES, YES, NO },
-    {CTRY_UKRAINE,     NULL1_WORLD,	 NO, YES, YES,YES,  NO, NO },
-    {CTRY_UAE,         NULL1_WORLD,	 NO, YES, YES,YES,  NO, NO },
-    {CTRY_UNITED_KINGDOM, ETSI1_WORLD,	 NO, YES, YES,YES, YES, NO },
-    {CTRY_UNITED_STATES, FCC1_FCCA,	YES, YES, YES,YES, YES,YES },
-    {CTRY_UNITED_STATES_FCC49,FCC4_FCCA,YES, YES, YES,YES, YES,YES },
-    {CTRY_URUGUAY,     FCC1_WORLD,	 NO, YES, YES,YES, YES, NO },
-    {CTRY_UZBEKISTAN,  FCC3_FCCA,	YES, YES, YES,YES, YES,YES },
-    {CTRY_VENEZUELA,   APL2_ETSIC,	 NO, YES, YES,YES, YES, NO },
-    {CTRY_VIET_NAM,    NULL1_WORLD,	 NO, YES, YES,YES,  NO, NO },
-    {CTRY_XR9,         XR9_WORLD,        NO,  NO,  NO, NO,  NO, NO },
-    {CTRY_YEMEN,       NULL1_WORLD,	 NO, YES, YES,YES,  NO, NO },
-    {CTRY_ZIMBABWE,    NULL1_WORLD,	 NO, YES, YES,YES,  NO, NO }
+	{ CTRY_JORDAN,      APL4_WORLD },
+	{ CTRY_KAZAKHSTAN,  NULL1_WORLD },
+	{ CTRY_KOREA_NORTH, APL2_WORLD },
+	{ CTRY_KOREA_ROC,   APL2_WORLD },
+	{ CTRY_KOREA_ROC2,  APL2_WORLD },
+	{ CTRY_KOREA_ROC3,  APL9_WORLD },
+	{ CTRY_KUWAIT,      NULL1_WORLD },
+	{ CTRY_LATVIA,      ETSI1_WORLD },
+	{ CTRY_LEBANON,     NULL1_WORLD },
+	{ CTRY_LIECHTENSTEIN,ETSI1_WORLD },
+	{ CTRY_LITHUANIA,   ETSI1_WORLD },
+	{ CTRY_LUXEMBOURG,  ETSI1_WORLD },
+	{ CTRY_MACAU,       FCC2_WORLD },
+	{ CTRY_MACEDONIA,   NULL1_WORLD },
+	{ CTRY_MALAYSIA,    APL8_WORLD },
+	{ CTRY_MALTA,       ETSI1_WORLD },
+	{ CTRY_MEXICO,      FCC1_FCCA },
+	{ CTRY_MONACO,      ETSI4_WORLD },
+	{ CTRY_MOROCCO,     NULL1_WORLD },
+	{ CTRY_NETHERLANDS, ETSI1_WORLD },
+	{ CTRY_NEW_ZEALAND, FCC2_ETSIC },
+	{ CTRY_NORWAY,      ETSI1_WORLD },
+	{ CTRY_OMAN,        APL6_WORLD },
+	{ CTRY_PAKISTAN,    NULL1_WORLD },
+	{ CTRY_PANAMA,      FCC1_FCCA },
+	{ CTRY_PERU,        APL1_WORLD },
+	{ CTRY_PHILIPPINES, FCC3_WORLD },
+	{ CTRY_POLAND,      ETSI1_WORLD },
+	{ CTRY_PORTUGAL,    ETSI1_WORLD },
+	{ CTRY_PUERTO_RICO, FCC1_FCCA },
+	{ CTRY_QATAR,       NULL1_WORLD },
+	{ CTRY_ROMANIA,     NULL1_WORLD },
+	{ CTRY_RUSSIA,      NULL1_WORLD },
+	{ CTRY_SAUDI_ARABIA,FCC2_WORLD },
+	{ CTRY_SINGAPORE,   APL6_WORLD },
+	{ CTRY_SLOVAKIA,    ETSI1_WORLD },
+	{ CTRY_SLOVENIA,    ETSI1_WORLD },
+	{ CTRY_SOUTH_AFRICA,FCC3_WORLD },
+	{ CTRY_SPAIN,       ETSI1_WORLD },
+	{ CTRY_SWEDEN,      ETSI1_WORLD },
+	{ CTRY_SWITZERLAND, ETSI1_WORLD },
+	{ CTRY_SYRIA,       NULL1_WORLD },
+	{ CTRY_TAIWAN,      APL3_FCCA },
+	{ CTRY_THAILAND,    NULL1_WORLD },
+	{ CTRY_TRINIDAD_Y_TOBAGO,ETSI4_WORLD },
+	{ CTRY_TUNISIA,     ETSI3_WORLD },
+	{ CTRY_TURKEY,      ETSI3_WORLD },
+	{ CTRY_UKRAINE,     NULL1_WORLD },
+	{ CTRY_UAE,         NULL1_WORLD },
+	{ CTRY_UNITED_KINGDOM, ETSI1_WORLD },
+	{ CTRY_UNITED_STATES, FCC1_FCCA },
+	{ CTRY_UNITED_STATES_FCC49,FCC4_FCCA },
+	{ CTRY_URUGUAY,     FCC1_WORLD },
+	{ CTRY_UZBEKISTAN,  FCC3_FCCA },
+	{ CTRY_VENEZUELA,   APL2_ETSIC },
+	{ CTRY_VIET_NAM,    NULL1_WORLD },
+	{ CTRY_ZIMBABWE,    NULL1_WORLD }
 };
 
 /* Bit masks for DFS per regdomain */
@@ -1158,29 +989,6 @@ static REG_DMN_FREQ_BAND regDmn2Ghz11gFreq[] = {
 #define	WG1_2472_2472	AFTER(WG2_2467_2467)
 	{ 2472, 2472, 20, 0, 20, 5, NO_DFS, NO_PSCAN | IS_ECM_CHAN },
 #define	WG2_2472_2472	AFTER(WG1_2472_2472)
-
-	/*
-	 * Mapping for 900MHz cards like Ubiquiti SR9 and XR9
-	 * and ZComax GZ-901.
-	 */
-	{ 2422, 2437, 30, 0,  5, 5, NO_DFS, PSCAN_FCC },
-#define	S1_907_922_5	AFTER(WG2_2472_2472)
-	{ 2422, 2437, 30, 0, 10, 5, NO_DFS, PSCAN_FCC },
-#define	S1_907_922_10	AFTER(S1_907_922_5)
-	{ 2427, 2432, 30, 0, 20, 5, NO_DFS, PSCAN_FCC },
-#define	S1_912_917	AFTER(S1_907_922_10)
-	{ 2427, 2442, 30, 0,  5, 5, NO_DFS, PSCAN_FCC },
-#define	S2_907_922_5	AFTER(S1_912_917)
-	{ 2427, 2442, 30, 0, 10, 5, NO_DFS, PSCAN_FCC },
-#define	S2_907_922_10	AFTER(S2_907_922_5)
-	{ 2432, 2437, 30, 0, 20, 5, NO_DFS, PSCAN_FCC },
-#define	S2_912_917	AFTER(S2_907_922_10)
-	{ 2452, 2467, 30, 0,  5, 5, NO_DFS, PSCAN_FCC },
-#define	S1_908_923_5	AFTER(S2_912_917)
-	{ 2457, 2467, 30, 0, 10, 5, NO_DFS, PSCAN_FCC },
-#define	S1_913_918_10	AFTER(S1_908_923_5)
-	{ 2457, 2467, 30, 0, 20, 5, NO_DFS, PSCAN_FCC },
-#define	S1_913_918	AFTER(S1_913_918_10)
 };
 
 /*
@@ -1864,30 +1672,6 @@ static REG_DOMAIN regDomains[] = {
 				      WG1_2467_2467),
 	 .chan11g_turbo		= BM1(T3_2437_2437)},
 
-	{.regDmnEnum		= SR9_WORLD,
-	 .conformanceTestLimit	= NO_CTL,
-	 .pscan			= PSCAN_FCC | PSCAN_FCC_T,
-	 .chan11g		= BM1(S1_912_917),
-	 .chan11g_half		= BM1(S1_907_922_10),
-	 .chan11g_quarter	= BM1(S1_907_922_5),
-	},
-
-	{.regDmnEnum		= XR9_WORLD,
-	 .conformanceTestLimit	= NO_CTL,
-	 .pscan			= PSCAN_FCC | PSCAN_FCC_T,
-	 .chan11g		= BM1(S2_912_917),
-	 .chan11g_half		= BM1(S2_907_922_10),
-	 .chan11g_quarter	= BM1(S2_907_922_5),
-	},
-
-	{.regDmnEnum		= GZ901_WORLD,
-	 .conformanceTestLimit	= NO_CTL,
-	 .pscan			= PSCAN_FCC | PSCAN_FCC_T,
-	 .chan11g		= BM1(S1_913_918),
-	 .chan11g_half		= BM1(S1_913_918_10),
-	 .chan11g_quarter	= BM1(S1_908_923_5),
-	},
-
 	{.regDmnEnum		= NULL1,
 	 .conformanceTestLimit	= NO_CTL,
 	}
@@ -1917,25 +1701,7 @@ static const struct cmode modes[] = {
 	{ HAL_MODE_11NA_HT40MINUS,	CHANNEL_A_HT40MINUS},
 };
 
-static int
-chansort(const void *a, const void *b)
-{
-#define CHAN_FLAGS	(CHANNEL_ALL|CHANNEL_HALF|CHANNEL_QUARTER)
-	const HAL_CHANNEL_INTERNAL *ca = a;
-	const HAL_CHANNEL_INTERNAL *cb = b;
-
-	return (ca->channel == cb->channel) ?
-		(ca->channelFlags & CHAN_FLAGS) -
-			(cb->channelFlags & CHAN_FLAGS) :
-		ca->channel - cb->channel;
-#undef CHAN_FLAGS
-}
-typedef int ath_hal_cmp_t(const void *, const void *);
-static	void ath_hal_sort(void *a, size_t n, size_t es, ath_hal_cmp_t *cmp);
-static COUNTRY_CODE_TO_ENUM_RD* findCountry(HAL_CTRY_CODE countryCode);
-
-
-static uint16_t
+static OS_INLINE uint16_t
 getEepromRD(struct ath_hal *ah)
 {
 	return AH_PRIVATE(ah)->ah_currentRD &~ WORLDWIDE_ROAMING_FLAG;
@@ -1983,159 +1749,6 @@ isEepromValid(struct ath_hal *ah)
 }
 
 /*
- * Returns whether or not the specified country code
- * is allowed by the EEPROM setting
- */
-static HAL_BOOL
-isCountryCodeValid(struct ath_hal *ah, HAL_CTRY_CODE cc)
-{
-	uint16_t rd;
-
-	/* Default setting requires no checks */
-	if (cc == CTRY_DEFAULT)
-		return AH_TRUE;
-#ifdef AH_DEBUG_COUNTRY
-	if (cc == CTRY_DEBUG)
-		return AH_TRUE;
-#endif
-	rd = getEepromRD(ah);
-	HALDEBUG(ah, HAL_DEBUG_REGDOMAIN, "%s: EEPROM regdomain 0x%x\n",
-	    __func__, rd);
-
-	if (rd & COUNTRY_ERD_FLAG) {
-		/* EEP setting is a country - config shall match */
-		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
-		    "%s: EEPROM setting is country code %u\n", __func__,
-		    rd &~ COUNTRY_ERD_FLAG);
-		return (cc == (rd & ~COUNTRY_ERD_FLAG));
-	} else if (rd == DEBUG_REG_DMN || rd == NO_ENUMRD) {
-		/* Set to Debug or AllowAnyCountry mode - allow any setting */
-		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN, "%s: rd %d allowed\n",
-		    __func__, rd);
-		return AH_TRUE;
-	} else	if ((rd & WORLD_SKU_MASK) == WORLD_SKU_PREFIX) {
-		int i;
-		for (i=0; i < N(allCountries); i++) {
-			if (cc == allCountries[i].countryCode)
-				return AH_TRUE;
-		}
-	} else {
-		int i;
-		for (i = 0; i < N(allCountries); i++) {
-			if (cc == allCountries[i].countryCode &&
-			    allCountries[i].regDmnEnum == rd)
-				return AH_TRUE;
-		}
-	}
-	return AH_FALSE;
-}
-
-/*
- * Return the mask of available modes based on the hardware
- * capabilities and the specified country code and reg domain.
- */
-static u_int
-ath_hal_getwmodesnreg(struct ath_hal *ah,
-    const COUNTRY_CODE_TO_ENUM_RD *country, const REG_DOMAIN *rd5GHz)
-{
-#define	HAL_MODE_11G_ALL \
-	(HAL_MODE_11G | HAL_MODE_11G_TURBO | HAL_MODE_11G_QUARTER_RATE | \
-	 HAL_MODE_11G_HALF_RATE)
-#define	HAL_MODE_11A_ALL \
-	(HAL_MODE_11A | HAL_MODE_11A_TURBO | HAL_MODE_TURBO | \
-	 HAL_MODE_11A_QUARTER_RATE | HAL_MODE_11A_HALF_RATE)
-	u_int modesAvail;
-
-	/* Get modes that HW is capable of */
-	modesAvail = ath_hal_getWirelessModes(ah);
-
-	HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
-	    "%s: wireless modes 0x%x cc %u rd %u\n",
-	    __func__, modesAvail, country->countryCode, country->regDmnEnum);
-
-	/* Check country regulations for allowed modes */
-	if (isChanBitMaskZero(rd5GHz->chan11a) &&
-	    (modesAvail & HAL_MODE_11A_ALL)) {
-		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
-		    "%s: disallow all 11a\n", __func__);
-		modesAvail &= ~HAL_MODE_11A_ALL;
-	}
-	if ((modesAvail & (HAL_MODE_11A_TURBO | HAL_MODE_TURBO)) &&
-	    !country->allow11aTurbo) {
-		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
-		    "%s: disallow 11aTurbo\n", __func__);
-		modesAvail &= ~(HAL_MODE_11A_TURBO | HAL_MODE_TURBO);
-	}
-	if ((modesAvail & HAL_MODE_11G_TURBO) && !country->allow11gTurbo) {
-		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
-		    "%s: disallow 11gTurbo\n", __func__);
-		modesAvail &= ~HAL_MODE_11G_TURBO;
-	}
-
-	/* Check 11n operation */
-	if ((modesAvail & HAL_MODE_11NG_HT20) && !country->allow11ng20) {
-		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
-		    "%s: disallow 11g HT20\n", __func__);
-		modesAvail &= ~HAL_MODE_11NG_HT20;
-	}
-	if ((modesAvail & HAL_MODE_11NA_HT20) && !country->allow11na20) {
-		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
-		    "%s: disallow 11a HT20\n", __func__);
-		modesAvail &= ~HAL_MODE_11NA_HT20;
-	}
-	if ((modesAvail & HAL_MODE_11NG_HT40PLUS) && !country->allow11ng40) {
-		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
-		    "%s: disallow 11g HT40+\n", __func__);
-		modesAvail &= ~HAL_MODE_11NG_HT40PLUS;
-	}
-	if ((modesAvail & HAL_MODE_11NG_HT40MINUS) && !country->allow11ng40) {
-		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
-		    "%s: disallow 11g HT40-\n", __func__);
-		modesAvail &= ~HAL_MODE_11NG_HT40MINUS;
-	}
-	if ((modesAvail & HAL_MODE_11NA_HT40PLUS) && !country->allow11na40) {
-		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
-		    "%s: disallow 11a HT40+\n", __func__);
-		modesAvail &= ~HAL_MODE_11NA_HT40PLUS;
-	}
-	if ((modesAvail & HAL_MODE_11NA_HT40MINUS) && !country->allow11na40) {
-		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
-		    "%s: disallow 11a HT40-\n", __func__);
-		modesAvail &= ~HAL_MODE_11NA_HT40MINUS;
-	}
-
-	return modesAvail;
-#undef HAL_MODE_11A_ALL
-#undef HAL_MODE_11G_ALL
-}
-
-/*
- * Return if device is actually operating in 900 MHz band.
- */
-HAL_BOOL
-ath_hal_isgsmsku(struct ath_hal *ah)
-{
-	uint16_t rd = getEepromRD(ah);
-
-	switch (rd) {
-	case SR9_WORLD:
-	case XR9_WORLD:
-	case GZ901_WORLD:
-	case CTRY_SR9 | COUNTRY_ERD_FLAG:
-	case CTRY_XR9 | COUNTRY_ERD_FLAG:
-	case CTRY_GZ901 | COUNTRY_ERD_FLAG:
-		return AH_TRUE;
-	case DEBUG_REG_DMN:
-	case NO_ENUMRD:
-		return AH_PRIVATE(ah)->ah_countryCode == CTRY_SR9
-		       || AH_PRIVATE(ah)->ah_countryCode == CTRY_XR9
-		       || AH_PRIVATE(ah)->ah_countryCode == CTRY_GZ901
-		       ;
-	}
-	return AH_FALSE;
-}
-
-/*
  * Find the pointer to the country element in the country table
  * corresponding to the country code
  */
@@ -2148,7 +1761,7 @@ findCountry(HAL_CTRY_CODE countryCode)
 		if (allCountries[i].countryCode == countryCode)
 			return &allCountries[i];
 	}
-	return AH_NULL;		/* Not found */
+	return AH_NULL;
 }
 
 static REG_DOMAIN *
@@ -2198,9 +1811,7 @@ getDefaultCountry(struct ath_hal *ah)
 	 * Check reg domains that have only one country
 	 */
 	regpair = findRegDmnPair(rd);
-	if (regpair != AH_NULL && regpair->singleCC != 0)
-		return regpair->singleCC;
-	return CTRY_DEFAULT;
+	return (regpair != AH_NULL) ? regpair->singleCC : CTRY_DEFAULT;
 }
 
 static HAL_BOOL
@@ -2215,118 +1826,152 @@ IS_BIT_SET(int bit, const uint64_t bitmask[])
 	return (bitmask[byteOffset] & val) != 0;
 }
 
-/*
- * Setup the channel list based on the information in the EEPROM and
- * any supplied country code.  Note that we also do a bunch of EEPROM
- * verification here and setup certain regulatory-related access
- * control data used later on.
- */
-HAL_BOOL
-ath_hal_init_channels(struct ath_hal *ah,
-		      HAL_CHANNEL *chans, u_int maxchans, u_int *nchans,
-		      HAL_CTRY_CODE cc, u_int modeSelect,
-		      HAL_BOOL enableExtendedChannels)
+static HAL_STATUS
+getregstate(struct ath_hal *ah, HAL_CTRY_CODE cc, HAL_REG_DOMAIN regDmn,
+    COUNTRY_CODE_TO_ENUM_RD **pcountry,
+    REG_DOMAIN **prd2GHz, REG_DOMAIN **prd5GHz)
 {
-#define CHANNEL_HALF_BW		10
-#define CHANNEL_QUARTER_BW	5
-	u_int modesAvail;
-	COUNTRY_CODE_TO_ENUM_RD *country = AH_NULL;
-	REG_DMN_PAIR_MAPPING *regpair;
+	COUNTRY_CODE_TO_ENUM_RD *country;
 	REG_DOMAIN *rd5GHz, *rd2GHz;
-	const struct cmode *cm;
-	HAL_CHANNEL_INTERNAL *ichans = &AH_PRIVATE(ah)->ah_channels[0];
-	int next, b, regDmn;
 
-	HALDEBUG(ah, HAL_DEBUG_REGDOMAIN, "%s: cc %u mode 0x%x%s\n",
-	    __func__, cc, modeSelect, 
-	    enableExtendedChannels ? " Enable ecm" : "");
-
-	/*
-	 * Validate the EEPROM setting and setup defaults
-	 */
-	if (!isEepromValid(ah)) {
+	if (cc == CTRY_DEFAULT && regDmn == SKU_NONE) {
 		/*
-		 * Don't return any channels if the EEPROM has an
-		 * invalid regulatory domain/country code setting.
+		 * Validate the EEPROM setting and setup defaults
 		 */
-		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
-		    "%s: invalid EEPROM contents\n",__func__);
-		return AH_FALSE;
-	}
-	AH_PRIVATE(ah)->ah_countryCode = getDefaultCountry(ah);
-	if (!isCountryCodeValid(ah, cc)) {
-		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
-		    "%s: invalid country code %d\n", __func__, cc);
-		return AH_FALSE;
-	}
-	AH_PRIVATE(ah)->ah_countryCode = cc & COUNTRY_CODE_MASK;
+		if (!isEepromValid(ah)) {
+			/*
+			 * Don't return any channels if the EEPROM has an
+			 * invalid regulatory domain/country code setting.
+			 */
+			HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
+			    "%s: invalid EEPROM contents\n",__func__);
+			return HAL_EEBADREG;
+		}
 
-	/* Get pointers to the country element and the reg domain elements */
-	country = findCountry(AH_PRIVATE(ah)->ah_countryCode);
-	if (country == AH_NULL) {
-		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN, "NULL Country!, cc= %d\n",
-		    AH_PRIVATE(ah)->ah_countryCode);
-		return AH_FALSE;
+		cc = getDefaultCountry(ah);
+		country = findCountry(cc);
+		if (country == AH_NULL) {
+			HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
+			    "NULL Country!, cc %d\n", cc);
+			return HAL_EEBADCC;
+		}
+		regDmn = country->regDmnEnum;
+		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN, "%s: EEPROM cc %u rd 0x%x\n",
+		    __func__, cc, regDmn);
+
+		if (country->countryCode == CTRY_DEFAULT) {
+			/*
+			 * Check EEPROM; SKU may be for a country, single
+			 * domain, or multiple domains (WWR).
+			 */
+			uint16_t rdnum = getEepromRD(ah);
+			if ((rdnum & COUNTRY_ERD_FLAG) == 0 &&
+			    (findRegDmn(rdnum) != AH_NULL ||
+			     findRegDmnPair(rdnum) != AH_NULL)) {
+				regDmn = rdnum;
+				HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
+				    "%s: EEPROM rd 0x%x\n", __func__, rdnum);
+			}
+		}
+	} else {
+		country = findCountry(cc);
+		if (country == AH_NULL) {
+			HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
+			    "unknown country, cc %d\n", cc);
+			return HAL_EINVAL;
+		}
+		if (regDmn == SKU_NONE)
+			regDmn = country->regDmnEnum;
+		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN, "%s: cc %u rd 0x%x\n",
+		    __func__, cc, regDmn);
 	}
 
-	regDmn = country->regDmnEnum;
-	if (country->countryCode == CTRY_DEFAULT) {
-		/*
-		 * Check EEPROM; SKU may be for a country, single
-		 * domain, or multiple domains (WWR).
-		 */
-		uint16_t rdnum = getEepromRD(ah);
-		if ((rdnum & COUNTRY_ERD_FLAG) == 0 &&
-		    (findRegDmn(rdnum) != AH_NULL || findRegDmnPair(rdnum) != AH_NULL))
-			regDmn = rdnum;
-	}
 	/*
 	 * Setup per-band state.
 	 */
 	if ((regDmn & MULTI_DOMAIN_MASK) == 0) {
-		regpair = findRegDmnPair(regDmn);
+		REG_DMN_PAIR_MAPPING *regpair = findRegDmnPair(regDmn);
 		if (regpair == AH_NULL) {
 			HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
 			    "%s: no reg domain pair %u for country %u\n",
-			    __func__, regDmn, AH_PRIVATE(ah)->ah_countryCode);
-			return AH_FALSE;
+			    __func__, regDmn, country->countryCode);
+			return HAL_EINVAL;
 		}
 		rd5GHz = findRegDmn(regpair->regDmn5GHz);
 		if (rd5GHz == AH_NULL) {
 			HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
 			    "%s: no 5GHz reg domain %u for country %u\n",
-			    __func__, regpair->regDmn5GHz,
-			    AH_PRIVATE(ah)->ah_countryCode);
-			return AH_FALSE;
+			    __func__, regpair->regDmn5GHz, country->countryCode);
+			return HAL_EINVAL;
 		}
 		rd2GHz = findRegDmn(regpair->regDmn2GHz);
 		if (rd2GHz == AH_NULL) {
 			HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
 			    "%s: no 2GHz reg domain %u for country %u\n",
-			    __func__, regpair->regDmn2GHz,
-			    AH_PRIVATE(ah)->ah_countryCode);
-			return AH_FALSE;
+			    __func__, regpair->regDmn2GHz, country->countryCode);
+			return HAL_EINVAL;
 		}
 	} else {
-		regpair = AH_NULL;
 		rd5GHz = rd2GHz = findRegDmn(regDmn);
 		if (rd2GHz == AH_NULL) {
 			HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
 			    "%s: no unitary reg domain %u for country %u\n",
-			     __func__, regDmn, AH_PRIVATE(ah)->ah_countryCode);
-			return AH_FALSE;
+			    __func__, regDmn, country->countryCode);
+			return HAL_EINVAL;
 		}
 	}
-	/* NB: save for use in ath_hal_getctl */
-	AH_PRIVATE(ah)->ah_regpair = regpair;
-	AH_PRIVATE(ah)->ah_reg2G = rd2GHz;
-	AH_PRIVATE(ah)->ah_reg5G = rd5GHz;
+	if (pcountry != AH_NULL)
+		*pcountry = country;
+	if (prd2GHz != AH_NULL)
+		*prd2GHz = rd2GHz;
+	if (prd5GHz != AH_NULL)
+		*prd5GHz = rd5GHz;
+	return HAL_OK;
+}
 
-	modesAvail = ath_hal_getwmodesnreg(ah, country, rd5GHz);
+/*
+ * Construct the channel list for the specified regulatory config.
+ */
+static HAL_STATUS
+getchannels(struct ath_hal *ah,
+    struct ieee80211_channel chans[], u_int maxchans, int *nchans,
+    u_int modeSelect, HAL_CTRY_CODE cc, HAL_REG_DOMAIN regDmn,
+    HAL_BOOL enableExtendedChannels,
+    COUNTRY_CODE_TO_ENUM_RD **pcountry,
+    REG_DOMAIN **prd2GHz, REG_DOMAIN **prd5GHz)
+{
+#define CHANNEL_HALF_BW		10
+#define CHANNEL_QUARTER_BW	5
+#define	HAL_MODE_11A_ALL \
+	(HAL_MODE_11A | HAL_MODE_11A_TURBO | HAL_MODE_TURBO | \
+	 HAL_MODE_11A_QUARTER_RATE | HAL_MODE_11A_HALF_RATE)
+	REG_DOMAIN *rd5GHz, *rd2GHz;
+	u_int modesAvail;
+	const struct cmode *cm;
+	struct ieee80211_channel *ic;
+	int next, b;
+	HAL_STATUS status;
 
-	if (maxchans > N(AH_PRIVATE(ah)->ah_channels))
-		maxchans = N(AH_PRIVATE(ah)->ah_channels);
+	HALDEBUG(ah, HAL_DEBUG_REGDOMAIN, "%s: cc %u regDmn 0x%x mode 0x%x%s\n",
+	    __func__, cc, regDmn, modeSelect, 
+	    enableExtendedChannels ? " ecm" : "");
+
+	status = getregstate(ah, cc, regDmn, pcountry, &rd2GHz, &rd5GHz);
+	if (status != HAL_OK)
+		return status;
+
+	/* get modes that HW is capable of */
+	modesAvail = ath_hal_getWirelessModes(ah);
+	/* optimize work below if no 11a channels */
+	if (isChanBitMaskZero(rd5GHz->chan11a) &&
+	    (modesAvail & HAL_MODE_11A_ALL)) {
+		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
+		    "%s: disallow all 11a\n", __func__);
+		modesAvail &= ~HAL_MODE_11A_ALL;
+	}
+
 	next = 0;
+	ic = &chans[0];
 	for (cm = modes; cm < &modes[N(modes)]; cm++) {
 		uint16_t c, c_hi, c_lo;
 		uint64_t *channelBM = AH_NULL;
@@ -2441,8 +2086,6 @@ ath_hal_init_channels(struct ath_hal *ah,
 			for (c = fband->lowChannel + low_adj;
 			     c <= fband->highChannel + hi_adj;
 			     c += fband->channelSep) {
-				HAL_CHANNEL_INTERNAL icv;
-				
 				if (!(c_lo <= c && c <= c_hi)) {
 					HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
 					    "%s: c %u out of range [%u..%u]\n",
@@ -2469,217 +2112,236 @@ ath_hal_init_channels(struct ath_hal *ah,
 				    (c-lastc) < channelSep)
 					continue;
 
-				OS_MEMZERO(&icv, sizeof(icv));
-				icv.channel = c;
-				icv.channelFlags = cm->flags;
-				icv.maxRegTxPower = fband->powerDfs;
-				icv.antennaMax = fband->antennaMax;
+				OS_MEMZERO(ic, sizeof(*ic));
+				ic->ic_freq = c;
+				ic->ic_flags = cm->flags;
+				ic->ic_maxregpower = fband->powerDfs;
+				ic->ic_maxantgain = fband->antennaMax;
 				if (fband->usePassScan & pscan)
-					icv.channelFlags |= CHANNEL_PASSIVE;
+					ic->ic_flags |= IEEE80211_CHAN_PASSIVE;
 				else
-					icv.channelFlags &= ~CHANNEL_PASSIVE;
+					ic->ic_flags &= ~IEEE80211_CHAN_PASSIVE;
 				lastc = c;
 				if (fband->useDfs & dfsMask) {
 					/* DFS and HT40 don't mix */
 					if (cm->mode == HAL_MODE_11NA_HT40PLUS ||
 					    cm->mode == HAL_MODE_11NA_HT40MINUS)
 						continue;
-					icv.privFlags = CHANNEL_DFS;
-				} else
-					icv.privFlags = 0;
+					ic->ic_flags |= IEEE80211_CHAN_DFS;
+				}
 				if (rdflags & LIMIT_FRAME_4MS)
-					icv.privFlags |= CHANNEL_4MS_LIMIT;
+					ic->ic_flags |= IEEE80211_CHAN_4MSXMIT;
 				if (rdflags & NEED_NFC)
-					icv.privFlags |= CHANNEL_NFCREQUIRED;
+					ic->ic_flags |= CHANNEL_NFCREQUIRED;
 
-				ichans[next++] = icv;
+				/* retrieve power limits */
+				{ HAL_CHANNEL_INTERNAL hc;
+				  hc.channel = ic->ic_freq;
+				  hc.channelFlags = ic->ic_flags;
+				  if (ath_hal_getpowerlimits(ah, &hc)) {
+					ic->ic_maxpower = hc.maxTxPower;
+					ic->ic_minpower = hc.minTxPower;
+				  }
+				}
+
+				ic++, next++;
 			}
 		}
 	}
 done:
-	if (next != 0) {
-		int i;
-
-		/* XXX maxchans set above so this cannot happen? */
-		if (next > N(AH_PRIVATE(ah)->ah_channels)) {
-			HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
-			    "%s: too many channels %u; truncating to %u\n",
-			    __func__, next,
-			    (int) N(AH_PRIVATE(ah)->ah_channels));
-			next = N(AH_PRIVATE(ah)->ah_channels);
-		}
-
-		/*
-		 * Keep a private copy of the channel list so we can
-		 * constrain future requests to only these channels
-		 */
-		ath_hal_sort(ichans, next, sizeof(HAL_CHANNEL_INTERNAL),
-		    chansort);
-		AH_PRIVATE(ah)->ah_nchan = next;
-
-		/*
-		 * Copy the channel list to the public channel list
-		 */
-		for (i = 0; i < next; i++) {
-			chans[i].channel = ichans[i].channel;
-			chans[i].channelFlags = ichans[i].channelFlags;
-			chans[i].privFlags = ichans[i].privFlags;
-			chans[i].maxRegTxPower = ichans[i].maxRegTxPower;
-		}
-		/*
-		 * Retrieve power limits.
-		 */
-		ath_hal_getpowerlimits(ah, chans, next);
-		for (i = 0; i < next; i++) {
-			ichans[i].maxTxPower = chans[i].maxTxPower;
-			ichans[i].minTxPower = chans[i].minTxPower;
-		}
-	}
 	*nchans = next;
-	/* XXX copy private setting to public area */
-	ah->ah_countryCode = AH_PRIVATE(ah)->ah_countryCode;
-	return (next != 0);
+	return HAL_OK;
+#undef HAL_MODE_11A_ALL
 #undef CHANNEL_HALF_BW
 #undef CHANNEL_QUARTER_BW
 }
 
+HAL_STATUS
+ath_hal_getchannels(struct ath_hal *ah,
+    struct ieee80211_channel chans[], u_int maxchans, int *nchans,
+    u_int modeSelect, HAL_CTRY_CODE cc, HAL_REG_DOMAIN regDmn,
+    HAL_BOOL enableExtendedChannels)
+{
+	HAL_STATUS status;
+	struct ieee80211_channel *c;
+	int i;
+
+	status = getchannels(ah, chans, maxchans, nchans, modeSelect,
+	    cc, regDmn, enableExtendedChannels, AH_NULL, AH_NULL, AH_NULL);
+	if (status == HAL_OK) {
+		for (i = 0; i < *nchans; i++) {
+			c = &chans[i];
+			if (IEEE80211_IS_CHAN_PUREG(c)) {
+				/*
+				 * Except for AR5211, PUREG means mixed
+				 * DSSS and OFDM; convert to "just G".
+				 */
+				c->ic_flags &= ~IEEE80211_CHAN_PUREG;
+				c->ic_flags |= IEEE80211_CHAN_G;
+			}
+		}
+	}
+	return status;
+}
+
+static uint8_t
+getctl(const struct ieee80211_channel *c, uint8_t ctl)
+{
+	if (IEEE80211_IS_CHAN_B(c))
+		return ctl | CTL_11B;
+	if (IEEE80211_IS_CHAN_G(c))
+		return ctl | CTL_11G;
+	if (IEEE80211_IS_CHAN_108G(c))
+		return ctl | CTL_108G;
+	if (IEEE80211_IS_CHAN_ST(c))
+		return ctl | CTL_TURBO;
+	if (IEEE80211_IS_CHAN_A(c))
+		return ctl | CTL_11A;
+	return ctl;
+}
+
 /*
- * Return whether or not the specified channel is ok to use
- * based on the current regulatory domain constraints and 
- * DFS interference.
+ * Setup the channel list based on the information in the EEPROM.
+ */
+HAL_STATUS
+ath_hal_init_channels(struct ath_hal *ah,
+    struct ieee80211_channel chans[], u_int maxchans, int *nchans,
+    u_int modeSelect, HAL_CTRY_CODE cc, HAL_REG_DOMAIN regDmn,
+    HAL_BOOL enableExtendedChannels)
+{
+	COUNTRY_CODE_TO_ENUM_RD *country;
+	REG_DOMAIN *rd5GHz, *rd2GHz;
+	HAL_STATUS status;
+
+	if (maxchans > N(AH_PRIVATE(ah)->ah_channels))
+		maxchans = N(AH_PRIVATE(ah)->ah_channels);
+	status = getchannels(ah, chans, maxchans, nchans, modeSelect,
+	    cc, regDmn, enableExtendedChannels, &country, &rd2GHz, &rd5GHz);
+	if (status == HAL_OK) {
+		struct ieee80211_channel *c;
+		HAL_CHANNEL_INTERNAL *ic;
+		int i;
+
+		for (i = 0; i < *nchans; i++) {
+			c = &chans[i];
+			ic = &AH_PRIVATE(ah)->ah_channels[i];
+
+			OS_MEMZERO(ic, sizeof(*ic));
+			ic->channel = c->ic_freq;
+			ic->channelFlags = c->ic_flags;
+			ic->devdata = i;	/* XXX */
+			ic->maxRegTxPower = c->ic_maxregpower;
+			ic->maxTxPower = c->ic_maxpower;
+			ic->minTxPower = c->ic_minpower;
+			ic->antennaMax = c->ic_maxantgain;
+			ic->ctl = getctl(c,
+			    IEEE80211_IS_CHAN_2GHZ(c) ?
+				rd2GHz->conformanceTestLimit :
+				rd5GHz->conformanceTestLimit);
+
+			c->ic_devdata = i;
+
+			if (IEEE80211_IS_CHAN_PUREG(c)) {
+				/*
+				 * Except for AR5211, PUREG means mixed
+				 * DSSS and OFDM; convert to "just G".
+				 */
+				c->ic_flags &= ~IEEE80211_CHAN_PUREG;
+				c->ic_flags |= IEEE80211_CHAN_G;
+			}
+			HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
+			    "[%3u] freq %u/0x%x txpow reg/max/min %u/%u/%u"
+			    " antmax %u ctl 0x%x\n",
+			    i, c->ic_freq, c->ic_flags,
+			    c->ic_maxregpower, c->ic_maxpower, c->ic_minpower,
+			    c->ic_maxantgain, ic->ctl);
+		}
+		AH_PRIVATE(ah)->ah_nchan = *nchans;
+		/* XXX copy private setting to public area */
+		ah->ah_countryCode = country->countryCode;
+		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN, "%s: cc %u\n",
+		    __func__, ah->ah_countryCode);
+	}
+	return (*nchans != 0) ? HAL_OK : HAL_ENOMEM;	/* XXX ENOMEM */
+}
+
+/*
+ * Set the channel list.
+ */
+HAL_STATUS
+ath_hal_set_channels(struct ath_hal *ah,
+    struct ieee80211_channel chans[], int nchans,
+    HAL_CTRY_CODE cc, HAL_REG_DOMAIN regDmn)
+{
+	COUNTRY_CODE_TO_ENUM_RD *country;
+	REG_DOMAIN *rd5GHz, *rd2GHz;
+	struct ieee80211_channel *c;
+	HAL_CHANNEL_INTERNAL *ic;
+	HAL_STATUS status;
+	int i;
+
+	if (nchans > N(AH_PRIVATE(ah)->ah_channels)) {
+		return HAL_EINVAL;
+	}
+	status = getregstate(ah, cc, regDmn, &country, &rd2GHz, &rd5GHz);
+	if (status != HAL_OK)
+		return status;
+	for (i = 0; i < nchans; i++) {
+		c = &chans[i];
+		ic = &AH_PRIVATE(ah)->ah_channels[i];
+
+		OS_MEMZERO(ic, sizeof(*ic));
+		ic->channel = c->ic_freq;
+		ic->channelFlags = c->ic_flags;
+		ic->devdata = i;	/* XXX */
+		ic->maxRegTxPower = c->ic_maxregpower;
+		ic->maxTxPower = c->ic_maxpower;
+		ic->minTxPower = c->ic_minpower;
+		ic->antennaMax = c->ic_maxantgain;
+		ic->ctl = getctl(c, IEEE80211_IS_CHAN_2GHZ(c) ?
+		    rd2GHz->conformanceTestLimit :
+		    rd5GHz->conformanceTestLimit);
+		c->ic_devdata = i;
+
+		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
+		    "[%3u] channel %u/0x%x txpow reg/max/min %u/%u/%u"
+		    " antmax %u ctl 0x%x\n",
+		    i, ic->channel, ic->channelFlags,
+		    ic->maxRegTxPower, ic->maxTxPower, ic->minTxPower,
+		    ic->antennaMax, ic->ctl);
+	}
+	AH_PRIVATE(ah)->ah_nchan = nchans;
+	/* XXX copy private setting to public area */
+	ah->ah_countryCode = country->countryCode;
+	HALDEBUG(ah, HAL_DEBUG_REGDOMAIN, "%s: cc %u\n",
+	    __func__, ah->ah_countryCode);
+
+	return HAL_OK;
+}
+
+/*
+ * Return the internal channel corresponding to a public channel.
  */
 HAL_CHANNEL_INTERNAL *
 ath_hal_checkchannel(struct ath_hal *ah, const HAL_CHANNEL *c)
 {
 #define CHAN_FLAGS	(CHANNEL_ALL|CHANNEL_HALF|CHANNEL_QUARTER)
-	HAL_CHANNEL_INTERNAL *base, *cc;
+	HAL_CHANNEL_INTERNAL *cc;
 	/* NB: be wary of user-specified channel flags */
 	int flags = c->channelFlags & CHAN_FLAGS;
-	int n, lim, d;
 
-	/*
-	 * Check current channel to avoid the lookup.
-	 */
-	cc = AH_PRIVATE(ah)->ah_curchan;
-	if (cc != AH_NULL && cc->channel == c->channel &&
-	    (cc->channelFlags & CHAN_FLAGS) == flags) {
-		if ((cc->privFlags & CHANNEL_INTERFERENCE) &&
-		    (cc->channelFlags & CHANNEL_DFS))
-			return AH_NULL;
+	if (c->devdata > N(AH_PRIVATE(ah)->ah_channels)) {
+		/* XXX should not happen */
+		HALDEBUG(ah, HAL_DEBUG_ANY, "%s: bad mapping, devdata %u\n",
+		   __func__, c->devdata);
+		return AH_NULL;
+	}
+	cc = &AH_PRIVATE(ah)->ah_channels[c->devdata];
+	if (cc->channel == c->channel &&
+	    (cc->channelFlags & CHAN_FLAGS) == flags)
 		return cc;
-	}
-
-	/* binary search based on known sorting order */
-	base = AH_PRIVATE(ah)->ah_channels;
-	n = AH_PRIVATE(ah)->ah_nchan;
-	/* binary search based on known sorting order */
-	for (lim = n; lim != 0; lim >>= 1) {
-		cc = &base[lim>>1];
-		d = c->channel - cc->channel;
-		if (d == 0) {
-			if ((cc->channelFlags & CHAN_FLAGS) == flags) {
-				if ((cc->privFlags & CHANNEL_INTERFERENCE) &&
-				    (cc->channelFlags & CHANNEL_DFS))
-					return AH_NULL;
-				return cc;
-			}
-			d = flags - (cc->channelFlags & CHAN_FLAGS);
-		}
-		if (d > 0) {
-			base = cc + 1;
-			lim--;
-		}
-	}
-	HALDEBUG(ah, HAL_DEBUG_REGDOMAIN, "%s: no match for %u/0x%x\n",
+	HALDEBUG(ah, HAL_DEBUG_ANY, "%s: no match for %u/0x%x\n",
 	   __func__, c->channel, c->channelFlags);
 	return AH_NULL;
 #undef CHAN_FLAGS
-}
-
-/*
- * Return the max allowed antenna gain and apply any regulatory
- * domain specific changes.
- *
- * NOTE: a negative reduction is possible in RD's that only
- * measure radiated power (e.g., ETSI) which would increase
- * that actual conducted output power (though never beyond
- * the calibrated target power).
- */
-u_int
-ath_hal_getantennareduction(struct ath_hal *ah, HAL_CHANNEL *chan, u_int twiceGain)
-{
-	HAL_CHANNEL_INTERNAL *ichan = ath_hal_checkchannel(ah, chan);
-	int8_t antennaMax;
-
-	if (ichan == AH_NULL) {
-		/* Failed to find the correct index - may be a debug channel */
-		return 0;
-	}
-	antennaMax = twiceGain - ichan->antennaMax*2;
-	return (antennaMax < 0) ? 0 : antennaMax;
-}
-
-#define isWwrSKU(_ah) \
-	((getEepromRD((_ah)) & WORLD_SKU_MASK) == WORLD_SKU_PREFIX || \
-	  getEepromRD(_ah) == WORLD)
-
-/*
- * Return the test group for the specified channel from
- * the regulatory table.
- */
-u_int
-ath_hal_getctl(struct ath_hal *ah, HAL_CHANNEL *chan)
-{
-	u_int ctl;
-
-	if (AH_PRIVATE(ah)->ah_regpair == AH_NULL ||
-	    (AH_PRIVATE(ah)->ah_countryCode == CTRY_DEFAULT && isWwrSKU(ah))) {
-		/* Special CTL to signify WWR SKU without a known country */
-		ctl = SD_NO_CTL;
-	} else if (IS_CHAN_2GHZ(chan))
-		ctl = AH_PRIVATE(ah)->ah_reg2G->conformanceTestLimit;
-	else
-		ctl = AH_PRIVATE(ah)->ah_reg5G->conformanceTestLimit;
-
-	if (IS_CHAN_B(chan))
-		return ctl | CTL_11B;
-	if (IS_CHAN_G(chan))
-		return ctl | CTL_11G;
-	if (IS_CHAN_108G(chan))
-		return ctl | CTL_108G;
-	if (IS_CHAN_T(chan))
-		return ctl | CTL_TURBO;
-	if (IS_CHAN_A(chan))
-		return ctl | CTL_11A;
-	HALASSERT(AH_FALSE);
-	return ctl;
-}
-
-/*
- * Insertion sort.
- */
-#define swap(_a, _b, _size) {			\
-	uint8_t *s = _b;			\
-	int i = _size;				\
-	do {					\
-		uint8_t tmp = *_a;		\
-		*_a++ = *s;			\
-		*s++ = tmp;			\
-	} while (--i);				\
-	_a -= _size;				\
-}
-
-static void
-ath_hal_sort(void *a, size_t n, size_t size, ath_hal_cmp_t *cmp)
-{
-	uint8_t *aa = a;
-	uint8_t *ai, *t;
-
-	for (ai = aa+size; --n >= 1; ai += size)
-		for (t = ai; t > aa; t -= size) {
-			uint8_t *u = t - size;
-			if (cmp(u, t) <= 0)
-				break;
-			swap(u, t, size);
-		}
 }

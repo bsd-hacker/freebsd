@@ -108,26 +108,34 @@ OS_DATA_SET(ah_rfs, _name##_rf)
 struct ath_hal_rf *ath_hal_rfprobe(struct ath_hal *ah, HAL_STATUS *ecode);
 
 /*
- * Internal form of a HAL_CHANNEL.  Note that the structure
- * must be defined such that you can cast references to a
- * HAL_CHANNEL so don't shuffle the first two members.
+ * Internal per-channel state.  These are found
+ * using ic_devdata in the ieee80211_channel.
  */
 typedef struct {
 	uint32_t	channelFlags;
 	uint16_t	channel;	/* NB: must be first for casting */
-	uint8_t		privFlags;
+	uint16_t	devdata;	/* XXX temp */
 	int8_t		maxRegTxPower;
 	int8_t		maxTxPower;
-	int8_t		minTxPower;	/* as above... */
+	int8_t		minTxPower;
+	uint8_t		antennaMax;
 
+	uint8_t		privFlags;
+	uint8_t		ctl;		/* conformance test limit */
 	uint8_t		calValid;	/* bitmask of cal types */
 	int8_t		iCoff;
 	int8_t		qCoff;
-	int8_t		antennaMax;
+	uint8_t		pad;		/* NB: hole */
 	int16_t		rawNoiseFloor;
 	int16_t		noiseFloorAdjust;
 	uint16_t	mainSpur;	/* cached spur value for this channel */
 } HAL_CHANNEL_INTERNAL;
+
+/* privFlags */
+#define CHANNEL_INTERFERENCE   	0x01 /* Software use: channel interference 
+				        used for as AR as well as RADAR 
+				        interference detection */
+#define	CHANNEL_IQVALID		0x02 /* IQ calibration valid */
 
 typedef struct {
 	uint32_t	halChanSpreadSupport 		: 1,
@@ -226,7 +234,7 @@ struct ath_hal_private {
 				uint32_t gpio, uint32_t val);
 	void		(*ah_gpioSetIntr)(struct ath_hal*, u_int, uint32_t);
 	HAL_BOOL	(*ah_getChipPowerLimits)(struct ath_hal *,
-				HAL_CHANNEL *, uint32_t);
+				HAL_CHANNEL_INTERNAL *);
 	int16_t		(*ah_getNfAdjust)(struct ath_hal *,
 				const HAL_CHANNEL_INTERNAL*);
 	void		(*ah_getNoiseFloor)(struct ath_hal *,
@@ -255,6 +263,7 @@ struct ath_hal_private {
 
 
 	HAL_OPMODE	ah_opmode;		/* operating mode from reset */
+	HAL_CHANNEL_INTERNAL *ah_curchan;	/* operating channel */
 	HAL_CAPABILITIES ah_caps;		/* device capabilities */
 	uint32_t	ah_diagreg;		/* user-specified AR_DIAG_SW */
 	int16_t		ah_powerLimit;		/* tx power cap */
@@ -265,11 +274,9 @@ struct ath_hal_private {
 	/*
 	 * State for regulatory domain handling.
 	 */
-	HAL_REG_DOMAIN	ah_currentRD;		/* Current regulatory domain */
-	HAL_CTRY_CODE	ah_countryCode;		/* current country code */
+	HAL_REG_DOMAIN	ah_currentRD;		/* EEPROM regulatory domain */
 	HAL_CHANNEL_INTERNAL ah_channels[256];	/* calculated channel list */
 	u_int		ah_nchan;		/* valid channels in list */
-	HAL_CHANNEL_INTERNAL *ah_curchan;	/* current channel */
 	const struct regDomainPair *ah_regpair;	/* reg state */
 	const struct regDomain *ah_reg2G;	/* reg state for 2G band */
 	const struct regDomain *ah_reg5G;	/* reg state for 5G band */
@@ -308,8 +315,8 @@ struct ath_hal_private {
 	AH_PRIVATE(_ah)->ah_gpioGet(_ah, _gpio, _val)
 #define	ath_hal_gpioSetIntr(_ah, _gpio, _ilevel) \
 	AH_PRIVATE(_ah)->ah_gpioSetIntr(_ah, _gpio, _ilevel)
-#define	ath_hal_getpowerlimits(_ah, _chans, _nchan) \
-	AH_PRIVATE(_ah)->ah_getChipPowerLimits(_ah, _chans, _nchan)
+#define	ath_hal_getpowerlimits(_ah, _chan) \
+	AH_PRIVATE(_ah)->ah_getChipPowerLimits(_ah, _chan)
 #define ath_hal_getNfAdjust(_ah, _c) \
 	AH_PRIVATE(_ah)->ah_getNfAdjust(_ah, _c)
 #define	ath_hal_getNoiseFloor(_ah, _nfArray) \
@@ -328,7 +335,7 @@ struct ath_hal_private {
 #define	ath_hal_eepromDiag(_ah, _request, _a, _asize, _r, _rsize) \
 	AH_PRIVATE(_ah)->ah_eepromDiag(_ah, _request, _a, _asize,  _r, _rsize)
 
-#if !defined(_NET_IF_IEEE80211_H_) && !defined(_NET80211__IEEE80211_H_)
+#ifndef _NET_IF_IEEE80211_H_
 /*
  * Stuff that would naturally come from _ieee80211.h
  */
@@ -344,7 +351,9 @@ struct ath_hal_private {
 #define	IEEE80211_MTU				1500
 #define	IEEE80211_MAX_LEN			(2300 + IEEE80211_CRC_LEN + \
     (IEEE80211_WEP_IVLEN + IEEE80211_WEP_KIDLEN + IEEE80211_WEP_CRCLEN))
+#endif /* _NET_IF_IEEE80211_H_ */
 
+#ifndef _NET80211__IEEE80211_H_
 enum {
 	IEEE80211_T_DS,			/* direct sequence spread spectrum */
 	IEEE80211_T_FH,			/* frequency hopping */
@@ -492,16 +501,31 @@ isBigEndian(void)
  */
 
 /*
- * Return the max allowed antenna gain based on the current
- * regulatory domain.
+ * Return the max allowed antenna gain and apply any regulatory
+ * domain specific changes.
+ *
+ * NOTE: a negative reduction is possible in RD's that only
+ * measure radiated power (e.g., ETSI) which would increase
+ * that actual conducted output power (though never beyond
+ * the calibrated target power).
  */
-extern	u_int ath_hal_getantennareduction(struct ath_hal *,
-		HAL_CHANNEL *, u_int twiceGain);
+static OS_INLINE u_int
+ath_hal_getantennareduction(struct ath_hal *ah,
+    const HAL_CHANNEL_INTERNAL *chan, u_int twiceGain)
+{
+	int8_t antennaMax = twiceGain - chan->antennaMax*2;
+	return (antennaMax < 0) ? 0 : antennaMax;
+}
+
 /*
  * Return the test group for the specific channel based on
  * the current regulator domain.
  */
-extern	u_int ath_hal_getctl(struct ath_hal *, HAL_CHANNEL *);
+static OS_INLINE u_int
+ath_hal_getctl(struct ath_hal *ah, const HAL_CHANNEL_INTERNAL *chan)
+{
+	return chan->ctl;
+}
 
 /*
  * Map a public channel definition to the corresponding
@@ -728,7 +752,7 @@ extern	void ath_hal_setupratetable(struct ath_hal *ah, HAL_RATE_TABLE *rt);
 /*
  * Common routine for implementing getChanNoise api.
  */
-extern	int16_t ath_hal_getChanNoise(struct ath_hal *ah, HAL_CHANNEL *chan);
+extern	int16_t ath_hal_getChanNoise(struct ath_hal *ah, const HAL_CHANNEL* );
 
 /*
  * Initialization support.

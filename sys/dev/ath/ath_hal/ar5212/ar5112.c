@@ -757,7 +757,7 @@ ar5112GetMinPower(struct ath_hal *ah, const EXPN_DATA_PER_CHANNEL_5112 *data)
 }
 	
 static HAL_BOOL
-ar5112GetChannelMaxMinPower(struct ath_hal *ah, HAL_CHANNEL *chan,
+ar5112GetChannelMaxMinPower(struct ath_hal *ah, const HAL_CHANNEL_INTERNAL *chan,
 	int16_t *maxPow, int16_t *minPow)
 {
 	const HAL_EEPROM *ee = AH_PRIVATE(ah)->ah_eeprom;

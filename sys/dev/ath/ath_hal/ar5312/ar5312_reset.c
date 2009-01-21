@@ -584,7 +584,7 @@ ar5312Reset(struct ath_hal *ah, HAL_OPMODE opmode,
 	AH_PRIVATE(ah)->ah_opmode = opmode;	/* record operating mode */
 
 	if (bChannelChange) {
-		if (!(ichan->privFlags & CHANNEL_DFS)) 
+		if (!(ichan->channelFlags & CHANNEL_DFS)) 
 			ichan->privFlags &= ~CHANNEL_INTERFERENCE;
 		chan->channelFlags = ichan->channelFlags;
 		chan->privFlags = ichan->privFlags;

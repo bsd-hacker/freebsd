@@ -561,7 +561,8 @@ ar5210AniControl(struct ath_hal *ah, HAL_ANI_CMD cmd, int param)
 }
 
 void
-ar5210AniPoll(struct ath_hal *ah, const HAL_NODE_STATS *stats, HAL_CHANNEL *chan)
+ar5210AniPoll(struct ath_hal *ah, const HAL_NODE_STATS *stats,
+	const HAL_CHANNEL *chan)
 {
 }
 

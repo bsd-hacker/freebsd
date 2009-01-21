@@ -157,9 +157,8 @@ extern	HAL_BOOL ar5211ChipReset(struct ath_hal *, uint16_t);
 extern	HAL_BOOL ar5211PerCalibration(struct ath_hal *, HAL_CHANNEL *, HAL_BOOL *);
 extern	HAL_BOOL ar5211PerCalibrationN(struct ath_hal *ah, HAL_CHANNEL *chan,
 		u_int chainMask, HAL_BOOL longCal, HAL_BOOL *isCalDone);
-extern	HAL_BOOL ar5211ResetCalValid(struct ath_hal *ah, HAL_CHANNEL *chan);
+extern	HAL_BOOL ar5211ResetCalValid(struct ath_hal *ah, const HAL_CHANNEL *);
 extern	HAL_BOOL ar5211SetTxPowerLimit(struct ath_hal *, uint32_t limit);
-extern	HAL_BOOL ar5211SetTransmitPower(struct ath_hal *, HAL_CHANNEL *);
 extern	HAL_BOOL ar5211CalNoiseFloor(struct ath_hal *, HAL_CHANNEL_INTERNAL *);
 extern	HAL_BOOL ar5211SetAntennaSwitchInternal(struct ath_hal *,
 		HAL_ANT_SETTING, const HAL_CHANNEL *);
@@ -303,6 +302,7 @@ extern	HAL_INT ar5211SetInterrupts(struct ath_hal *, HAL_INT ints);
 extern	const HAL_RATE_TABLE *ar5211GetRateTable(struct ath_hal *, u_int mode);
 
 extern	HAL_BOOL ar5211AniControl(struct ath_hal *, HAL_ANI_CMD, int );
-extern	void ar5211AniPoll(struct ath_hal *, const HAL_NODE_STATS *, HAL_CHANNEL *);
+extern	void ar5211AniPoll(struct ath_hal *, const HAL_NODE_STATS *,
+		const HAL_CHANNEL *);
 extern	void ar5211MibEvent(struct ath_hal *, const HAL_NODE_STATS *);
 #endif /* _ATH_AR5211_H_ */

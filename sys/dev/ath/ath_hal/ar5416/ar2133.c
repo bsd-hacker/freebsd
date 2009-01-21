@@ -51,8 +51,6 @@ extern  void ar5416ModifyRfBuffer(uint32_t *rfBuf, uint32_t reg32,
 HAL_BOOL ar2133GetChipPowerLimits(struct ath_hal *ah, HAL_CHANNEL 
 	*chans, uint32_t nchans);
 	
-static HAL_BOOL ar2133GetChannelMaxMinPower(struct ath_hal *, HAL_CHANNEL *, 
-		int16_t *maxPow,int16_t *minPow);
 int16_t ar2133GetNfAdjust(struct ath_hal *ah, const HAL_CHANNEL_INTERNAL *c);
 
 static void
@@ -267,8 +265,8 @@ ar2133GetMinPower(struct ath_hal *ah, EXPN_DATA_PER_CHANNEL_5112 *data)
 #endif
 
 static HAL_BOOL
-ar2133GetChannelMaxMinPower(struct ath_hal *ah, HAL_CHANNEL *chan, int16_t *maxPow,
-                int16_t *minPow)
+ar2133GetChannelMaxMinPower(struct ath_hal *ah, const HAL_CHANNEL_INTERNAL *chan,
+	int16_t *maxPow, int16_t *minPow)
 {
 #if 0
     struct ath_hal_5212 *ahp = AH5212(ah);

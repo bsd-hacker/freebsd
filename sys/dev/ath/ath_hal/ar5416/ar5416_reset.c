@@ -454,13 +454,8 @@ ar5416Reset(struct ath_hal *ah, HAL_OPMODE opmode,
 	AH_PRIVATE(ah)->ah_opmode = opmode;	/* record operating mode */
 
 	if (bChannelChange) {
-		if (!(ichan->privFlags & CHANNEL_DFS)) 
+		if (!(ichan->channelFlags & CHANNEL_DFS)) 
 			ichan->privFlags &= ~CHANNEL_INTERFERENCE;
-		chan->channelFlags = ichan->channelFlags;
-		chan->privFlags = ichan->privFlags;
-		chan->maxRegTxPower = ichan->maxRegTxPower;
-		chan->maxTxPower = ichan->maxTxPower;
-		chan->minTxPower = ichan->minTxPower;
 	}
 
 	HALDEBUG(ah, HAL_DEBUG_RESET, "%s: done\n", __func__);
@@ -559,7 +554,7 @@ ar5416ChannelChange(struct ath_hal *ah, HAL_CHANNEL *chan)
 
 	/* Copy over internal channel flags to public hal channel */
 
-	if (!(ichan->privFlags & CHANNEL_DFS)) 
+	if (!(ichan->channelFlags & CHANNEL_DFS)) 
 		ichan->privFlags &= ~CHANNEL_INTERFERENCE;
 	chan->channelFlags = ichan->channelFlags;
 	chan->privFlags = ichan->privFlags;
@@ -1426,37 +1421,28 @@ ar5416SetTxPowerLimit(struct ath_hal *ah, uint32_t limit)
 }
 
 HAL_BOOL
-ar5416GetChipPowerLimits(struct ath_hal *ah, HAL_CHANNEL *chans, uint32_t nchans)
+ar5416GetChipPowerLimits(struct ath_hal *ah, HAL_CHANNEL_INTERNAL *chan)
 {
 	struct ath_hal_5212 *ahp = AH5212(ah);
 	int16_t minPower, maxPower;
-	HAL_CHANNEL *chan;
-	int i;
 
 	/*
 	 * Get Pier table max and min powers.
 	 */
-	for (i = 0; i < nchans; i++) {
-		chan = &chans[i];
-		if (ahp->ah_rfHal->getChannelMaxMinPower(ah, chan, &maxPower, &minPower)) {
-			/* NB: rf code returns 1/4 dBm units, convert */
-			chan->maxTxPower = maxPower / 2;
-			chan->minTxPower = minPower / 2;
-		} else {
-			HALDEBUG(ah, HAL_DEBUG_ANY,
-			    "%s: no min/max power for %u/0x%x\n",
-			    __func__, chan->channel, chan->channelFlags);
-			chan->maxTxPower = AR5416_MAX_RATE_POWER;
-			chan->minTxPower = 0;
-		}
+	if (ahp->ah_rfHal->getChannelMaxMinPower(ah, chan, &maxPower, &minPower)) {
+		/* NB: rf code returns 1/4 dBm units, convert */
+		chan->maxTxPower = maxPower / 2;
+		chan->minTxPower = minPower / 2;
+	} else {
+		HALDEBUG(ah, HAL_DEBUG_ANY,
+		    "%s: no min/max power for %u/0x%x\n",
+		    __func__, chan->channel, chan->channelFlags);
+		chan->maxTxPower = AR5416_MAX_RATE_POWER;
+		chan->minTxPower = 0;
 	}
-#ifdef AH_DEBUG
-	for (i=0; i<nchans; i++) {
-		HALDEBUG(ah, HAL_DEBUG_RESET,
-		    "Chan %d: MaxPow = %d MinPow = %d\n",
-		    chans[i].channel,chans[i].maxTxPower, chans[i].minTxPower);
-	}
-#endif
+	HALDEBUG(ah, HAL_DEBUG_RESET,
+	    "Chan %d: MaxPow = %d MinPow = %d\n",
+	    chan->channel, chan->maxTxPower, chan->minTxPower);
 	return AH_TRUE;
 }
 
@@ -1505,7 +1491,7 @@ ar5416SetTransmitPower(struct ath_hal *ah, HAL_CHANNEL_INTERNAL *chan, uint16_t 
 
     /* Setup info for the actual eeprom */
     ath_hal_memzero(ratesArray, sizeof(ratesArray));
-    cfgCtl = ath_hal_getctl(ah, (HAL_CHANNEL *)chan);
+    cfgCtl = ath_hal_getctl(ah, chan);
     powerLimit = chan->maxRegTxPower * 2;
     twiceAntennaReduction = chan->antennaMax;
     twiceMaxRegulatoryPower = AH_MIN(MAX_RATE_POWER, AH_PRIVATE(ah)->ah_powerLimit); 

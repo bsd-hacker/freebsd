@@ -238,10 +238,8 @@ ar5210Reset(struct ath_hal *ah, HAL_OPMODE opmode,
 		FAIL(HAL_EIO);
 	}
 	if (bChannelChange) {
-		if (!(ichan->privFlags & CHANNEL_DFS)) 
+		if (!(ichan->channelFlags & CHANNEL_DFS)) 
 			ichan->privFlags &= ~CHANNEL_INTERFERENCE;
-		chan->channelFlags = ichan->channelFlags;
-		chan->privFlags = ichan->privFlags;
 	}
 
 	/* Activate the PHY */
@@ -573,7 +571,7 @@ ar5210PerCalibration(struct ath_hal *ah, HAL_CHANNEL *chan, HAL_BOOL *isIQdone)
 }
 
 HAL_BOOL
-ar5210ResetCalValid(struct ath_hal *ah, HAL_CHANNEL *chan)
+ar5210ResetCalValid(struct ath_hal *ah, const HAL_CHANNEL *chan)
 {
 	return AH_TRUE;
 }

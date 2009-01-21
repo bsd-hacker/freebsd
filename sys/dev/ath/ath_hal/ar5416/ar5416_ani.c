@@ -123,7 +123,6 @@ ar5416GetAniChannelIndex(struct ath_hal *ah, HAL_CHANNEL_INTERNAL *chan)
 		if (asp->c.channel == 0) {
 			asp->c.channel = chan->channel;
 			asp->c.channelFlags = chan->channelFlags;
-			asp->c.privFlags = chan->privFlags;
 			asp->isSetup = AH_FALSE;
 			if (IS_CHAN_2GHZ(chan))
 				asp->params = &ahp->ah_aniParams24;
@@ -831,7 +830,7 @@ updateMIBStats(struct ath_hal *ah, struct ar5212AniState *aniState)
  */
 void
 ar5416AniPoll(struct ath_hal *ah, const HAL_NODE_STATS *stats,
-		HAL_CHANNEL *chan)
+		const HAL_CHANNEL *chan)
 {
 	struct ath_hal_5212 *ahp = AH5212(ah);
 	struct ar5212AniState *aniState = ahp->ah_curani;

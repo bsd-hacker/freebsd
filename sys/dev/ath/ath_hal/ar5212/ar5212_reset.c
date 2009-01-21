@@ -42,10 +42,11 @@ void		ar5212SetDeltaSlope(struct ath_hal *, HAL_CHANNEL *);
 HAL_BOOL	ar5212SetTransmitPower(struct ath_hal *ah,
 		HAL_CHANNEL_INTERNAL *chan, uint16_t *rfXpdGain);
 static HAL_BOOL ar5212SetRateTable(struct ath_hal *, 
-		   HAL_CHANNEL *, int16_t tpcScaleReduction, int16_t powerLimit,
+		   HAL_CHANNEL_INTERNAL *, int16_t tpcScaleReduction,
+		   int16_t powerLimit,
 		   HAL_BOOL commit, int16_t *minPower, int16_t *maxPower);
 static void ar5212CorrectGainDelta(struct ath_hal *, int twiceOfdmCckDelta);
-static void ar5212GetTargetPowers(struct ath_hal *, HAL_CHANNEL *,
+static void ar5212GetTargetPowers(struct ath_hal *, HAL_CHANNEL_INTERNAL *,
 		   const TRGT_POWER_INFO *pPowerInfo, uint16_t numChannels,
 		   TRGT_POWER_INFO *pNewPower);
 static uint16_t ar5212GetMaxEdgePower(uint16_t channel,
@@ -611,7 +612,7 @@ ar5212Reset(struct ath_hal *ah, HAL_OPMODE opmode,
 		ath_hal_eepromGet(ah, AR_EEP_ANTGAINMAX_2, &twiceAntennaGain);
 	}
 	twiceAntennaReduction =
-		ath_hal_getantennareduction(ah, chan, twiceAntennaGain);
+		ath_hal_getantennareduction(ah, ichan, twiceAntennaGain);
 
 	/* TPC for self-generated frames */
 
@@ -669,13 +670,8 @@ ar5212Reset(struct ath_hal *ah, HAL_OPMODE opmode,
 	AH_PRIVATE(ah)->ah_opmode = opmode;	/* record operating mode */
 
 	if (bChannelChange) {
-		if (!(ichan->privFlags & CHANNEL_DFS)) 
+		if (!(ichan->channelFlags & CHANNEL_DFS)) 
 			ichan->privFlags &= ~CHANNEL_INTERFERENCE;
-		chan->channelFlags = ichan->channelFlags;
-		chan->privFlags = ichan->privFlags;
-		chan->maxRegTxPower = ichan->maxRegTxPower;
-		chan->maxTxPower = ichan->maxTxPower;
-		chan->minTxPower = ichan->minTxPower;
 	}
 
 	HALDEBUG(ah, HAL_DEBUG_RESET, "%s: done\n", __func__);
@@ -790,13 +786,8 @@ ar5212ChannelChange(struct ath_hal *ah, HAL_CHANNEL *chan)
 	/* Start Noise Floor Cal */
 	OS_REG_SET_BIT(ah, AR_PHY_AGC_CONTROL, AR_PHY_AGC_CONTROL_NF);
 
-	if (!(ichan->privFlags & CHANNEL_DFS)) 
+	if (!(ichan->channelFlags & CHANNEL_DFS)) 
 		ichan->privFlags &= ~CHANNEL_INTERFERENCE;
-	chan->channelFlags = ichan->channelFlags;
-	chan->privFlags = ichan->privFlags;
-	chan->maxRegTxPower = ichan->maxRegTxPower;
-	chan->maxTxPower = ichan->maxTxPower;
-	chan->minTxPower = ichan->minTxPower;
 	return AH_TRUE;
 }
 
@@ -972,8 +963,8 @@ ar5212ChipReset(struct ath_hal *ah, HAL_CHANNEL *chan)
  * changes.
  */
 HAL_BOOL
-ar5212PerCalibrationN(struct ath_hal *ah,  HAL_CHANNEL *chan, u_int chainMask,
-	HAL_BOOL longCal, HAL_BOOL *isCalDone)
+ar5212PerCalibrationN(struct ath_hal *ah,  HAL_CHANNEL *chan,
+	u_int chainMask, HAL_BOOL longCal, HAL_BOOL *isCalDone)
 {
 #define IQ_CAL_TRIES    10
 	struct ath_hal_5212 *ahp = AH5212(ah);
@@ -1115,13 +1106,14 @@ ar5212PerCalibrationN(struct ath_hal *ah,  HAL_CHANNEL *chan, u_int chainMask,
 }
 
 HAL_BOOL
-ar5212PerCalibration(struct ath_hal *ah,  HAL_CHANNEL *chan, HAL_BOOL *isIQdone)
+ar5212PerCalibration(struct ath_hal *ah,  HAL_CHANNEL *chan,
+	HAL_BOOL *isIQdone)
 {
 	return ar5212PerCalibrationN(ah, chan, 0x1, AH_TRUE, isIQdone);
 }
 
 HAL_BOOL
-ar5212ResetCalValid(struct ath_hal *ah, HAL_CHANNEL *chan)
+ar5212ResetCalValid(struct ath_hal *ah, const HAL_CHANNEL *chan)
 {
 	/* XXX */
 	return AH_TRUE;
@@ -1889,7 +1881,7 @@ ar5212SetTransmitPower(struct ath_hal *ah, HAL_CHANNEL_INTERNAL *chan,
 		tpcInDb = tpcScaleReductionTable[AH_PRIVATE(ah)->ah_tpScale];
 	else
 		tpcInDb = 0;
-	if (!ar5212SetRateTable(ah, (HAL_CHANNEL *) chan, tpcInDb, powerLimit,
+	if (!ar5212SetRateTable(ah, chan, tpcInDb, powerLimit,
 				AH_TRUE, &minPower, &maxPower)) {
 		HALDEBUG(ah, HAL_DEBUG_ANY, "%s: unable to set rate table\n",
 		    __func__);
@@ -1994,9 +1986,9 @@ ar5212SetTransmitPower(struct ath_hal *ah, HAL_CHANNEL_INTERNAL *chan,
  * operating channel and mode.
  */
 static HAL_BOOL
-ar5212SetRateTable(struct ath_hal *ah, HAL_CHANNEL *chan,
-		   int16_t tpcScaleReduction, int16_t powerLimit, HAL_BOOL commit,
-                   int16_t *pMinPower, int16_t *pMaxPower)
+ar5212SetRateTable(struct ath_hal *ah, HAL_CHANNEL_INTERNAL *chan,
+	int16_t tpcScaleReduction, int16_t powerLimit, HAL_BOOL commit,
+	int16_t *pMinPower, int16_t *pMaxPower)
 {
 	struct ath_hal_5212 *ahp = AH5212(ah);
 	const HAL_EEPROM *ee = AH_PRIVATE(ah)->ah_eeprom;
@@ -2211,32 +2203,31 @@ ar5212SetRateTable(struct ath_hal *ah, HAL_CHANNEL *chan,
 }
 
 HAL_BOOL
-ar5212GetChipPowerLimits(struct ath_hal *ah, HAL_CHANNEL *chans, uint32_t nchans)
+ar5212GetChipPowerLimits(struct ath_hal *ah, HAL_CHANNEL_INTERNAL *chan)
 {
 	struct ath_hal_5212 *ahp = AH5212(ah);
+#if 0
 	static const uint16_t tpcScaleReductionTable[5] =
 		{ 0, 3, 6, 9, MAX_RATE_POWER };
-	int16_t minPower, maxPower, tpcInDb, powerLimit;
-	HAL_CHANNEL *chan;
-	int i;
+	int16_t tpcInDb, powerLimit;
+#endif
+	int16_t minPower, maxPower;
 
 	/*
 	 * Get Pier table max and min powers.
 	 */
-	for (i = 0; i < nchans; i++) {
-		chan = &chans[i];
-		if (ahp->ah_rfHal->getChannelMaxMinPower(ah, chan, &maxPower, &minPower)) {
-			/* NB: rf code returns 1/4 dBm units, convert */
-			chan->maxTxPower = maxPower / 2;
-			chan->minTxPower = minPower / 2;
-		} else {
-			HALDEBUG(ah, HAL_DEBUG_ANY,
-			    "%s: no min/max power for %u/0x%x\n",
-			    __func__, chan->channel, chan->channelFlags);
-			chan->maxTxPower = MAX_RATE_POWER;
-			chan->minTxPower = 0;
-		}
+	if (ahp->ah_rfHal->getChannelMaxMinPower(ah, chan, &maxPower, &minPower)) {
+		/* NB: rf code returns 1/4 dBm units, convert */
+		chan->maxTxPower = maxPower / 2;
+		chan->minTxPower = minPower / 2;
+	} else {
+		HALDEBUG(ah, HAL_DEBUG_ANY,
+		    "%s: no min/max power for %u/0x%x\n",
+		    __func__, chan->channel, chan->channelFlags);
+		chan->maxTxPower = MAX_RATE_POWER;
+		chan->minTxPower = 0;
 	}
+#if 0
 	/*
 	 * Now adjust to reflect any global scale and/or CTL's.
 	 * (XXX is that correct?)
@@ -2246,25 +2237,21 @@ ar5212GetChipPowerLimits(struct ath_hal *ah, HAL_CHANNEL *chans, uint32_t nchans
 		tpcInDb = tpcScaleReductionTable[AH_PRIVATE(ah)->ah_tpScale];
 	else
 		tpcInDb = 0;
-	for (i=0; i<nchans; i++) {
-		chan = &chans[i];
-		if (!ar5212SetRateTable(ah, (HAL_CHANNEL *) chan, tpcInDb, powerLimit,
-					AH_FALSE, &minPower, &maxPower)) {
-			HALDEBUG(ah, HAL_DEBUG_ANY,
-			    "%s: unable to find max/min power\n",__func__);
-			return AH_FALSE;
-		}
-		if (maxPower < chan->maxTxPower)
-			chan->maxTxPower = maxPower;
-		if (minPower < chan->minTxPower)
-			chan->minTxPower = minPower;
+	if (!ar5212SetRateTable(ah, chan, tpcInDb, powerLimit,
+				AH_FALSE, &minPower, &maxPower)) {
+		HALDEBUG(ah, HAL_DEBUG_ANY,
+		    "%s: unable to find max/min power\n",__func__);
+		return AH_FALSE;
 	}
+	if (maxPower < chan->maxTxPower)
+		chan->maxTxPower = maxPower;
+	if (minPower < chan->minTxPower)
+		chan->minTxPower = minPower;
 #ifdef AH_DEBUG
-	for (i=0; i<nchans; i++) {
-		HALDEBUG(ah, HAL_DEBUG_RESET,
-		    "Chan %d: MaxPow = %d MinPow = %d\n",
-		    chans[i].channel,chans[i].maxTxPower, chans[i].minTxPower);
-	}
+	HALDEBUG(ah, HAL_DEBUG_RESET,
+	    "Chan %d: MaxPow = %d MinPow = %d\n",
+	    chan->channel, chan->maxTxPower, chans->minTxPower);
+#endif
 #endif
 	return AH_TRUE;
 }
@@ -2434,7 +2421,7 @@ interpolate(uint16_t target, uint16_t srcLeft, uint16_t srcRight,
  * channel, and number of channels
  */
 static void
-ar5212GetTargetPowers(struct ath_hal *ah, HAL_CHANNEL *chan,
+ar5212GetTargetPowers(struct ath_hal *ah, HAL_CHANNEL_INTERNAL *chan,
 	const TRGT_POWER_INFO *powInfo,
 	uint16_t numChannels, TRGT_POWER_INFO *pNewPower)
 {

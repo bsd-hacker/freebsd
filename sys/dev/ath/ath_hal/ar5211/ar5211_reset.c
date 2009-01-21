@@ -113,9 +113,11 @@ static HAL_BOOL ar5211SetRf6and7(struct ath_hal *, HAL_CHANNEL *chan);
 static HAL_BOOL ar5211SetBoardValues(struct ath_hal *, HAL_CHANNEL *chan);
 static void ar5211SetPowerTable(struct ath_hal *,
 		PCDACS_EEPROM *pSrcStruct, uint16_t channel);
+static HAL_BOOL ar5211SetTransmitPower(struct ath_hal *,
+		const HAL_CHANNEL_INTERNAL *);
 static void ar5211SetRateTable(struct ath_hal *,
 		RD_EDGES_POWER *pRdEdgesPower, TRGT_POWER_INFO *pPowerInfo,
-		uint16_t numChannels, HAL_CHANNEL *chan);
+		uint16_t numChannels, const HAL_CHANNEL_INTERNAL *chan);
 static uint16_t ar5211GetScaledPower(uint16_t channel, uint16_t pcdacValue,
 		const PCDACS_EEPROM *pSrcStruct);
 static HAL_BOOL ar5211FindValueInList(uint16_t channel, uint16_t pcdacValue,
@@ -236,10 +238,8 @@ uint32_t softLedCfg, softLedState;
 			for (i = 0; i < AR_NUM_DCU; i++)
 				saveFrameSeqCount[i] = OS_REG_READ(ah, AR_DSEQNUM(i));
 		}
-		if (!(ichan->privFlags & CHANNEL_DFS)) 
+		if (!(ichan->channelFlags & CHANNEL_DFS)) 
 			ichan->privFlags &= ~CHANNEL_INTERFERENCE;
-		chan->channelFlags = ichan->channelFlags;
-		chan->privFlags = ichan->privFlags;
 	}
 
 	/*
@@ -416,7 +416,7 @@ uint32_t softLedCfg, softLedState;
 	}
 
 	/* Setup the transmit power values. */
-	if (!ar5211SetTransmitPower(ah, chan)) {
+	if (!ar5211SetTransmitPower(ah, ichan)) {
 		HALDEBUG(ah, HAL_DEBUG_ANY,
 		    "%s: error init'ing transmit power\n", __func__);
 		FAIL(HAL_EIO);
@@ -764,7 +764,7 @@ ar5211PerCalibration(struct ath_hal *ah, HAL_CHANNEL *chan, HAL_BOOL *isIQdone)
 }
 
 HAL_BOOL
-ar5211ResetCalValid(struct ath_hal *ah, HAL_CHANNEL *chan)
+ar5211ResetCalValid(struct ath_hal *ah, const HAL_CHANNEL *chan)
 {
 	/* XXX */
 	return AH_TRUE;
@@ -1017,7 +1017,7 @@ ar5211CalNoiseFloor(struct ath_hal *ah, HAL_CHANNEL_INTERNAL *chan)
 #define	N(a)	(sizeof (a) / sizeof (a[0]))
 	/* Check for Carrier Wave interference in MKK regulatory zone */
 	if (AH_PRIVATE(ah)->ah_macVersion < AR_SREV_VERSION_OAHU &&
-	    (chan->privFlags & CHANNEL_NFCREQUIRED)) {
+	    (chan->channelFlags & CHANNEL_NFCREQUIRED)) {
 		static const uint8_t runtime[3] = { 0, 2, 7 };
 		int16_t nf, nfThresh;
 		int i;
@@ -1363,8 +1363,8 @@ ar5211SetTxPowerLimit(struct ath_hal *ah, uint32_t limit)
  * Sets the transmit power in the baseband for the given
  * operating channel and mode.
  */
-HAL_BOOL
-ar5211SetTransmitPower(struct ath_hal *ah, HAL_CHANNEL *chan)
+static HAL_BOOL
+ar5211SetTransmitPower(struct ath_hal *ah, const HAL_CHANNEL_INTERNAL *chan)
 {
 	HAL_EEPROM *ee = AH_PRIVATE(ah)->ah_eeprom;
 	TRGT_POWER_INFO *pi;
@@ -1541,10 +1541,10 @@ ar5211SetPowerTable(struct ath_hal *ah, PCDACS_EEPROM *pSrcStruct, uint16_t chan
  * Set the transmit power in the baseband for the given
  * operating channel and mode.
  */
-void
+static void
 ar5211SetRateTable(struct ath_hal *ah, RD_EDGES_POWER *pRdEdgesPower,
 	TRGT_POWER_INFO *pPowerInfo, uint16_t numChannels,
-	HAL_CHANNEL *chan)
+	const HAL_CHANNEL_INTERNAL *chan)
 {
 	HAL_EEPROM *ee = AH_PRIVATE(ah)->ah_eeprom;
 	struct ath_hal_5211 *ahp = AH5211(ah);

@@ -63,6 +63,8 @@ typedef enum {
 	HAL_ENOTSUPP	= 13,	/* Hardware revision not supported */
 	HAL_ESELFTEST	= 14,	/* Hardware self-test failed */
 	HAL_EINPROGRESS	= 15,	/* Operation incomplete */
+	HAL_EEBADREG	= 16,	/* EEPROM invalid regulatory contents */
+	HAL_EEBADCC	= 17,	/* EEPROM invalid country code */
 } HAL_STATUS;
 
 typedef enum {
@@ -362,19 +364,17 @@ typedef enum {
 	HAL_RFGAIN_NEED_CHANGE		= 2
 } HAL_RFGAIN;
 
-/*
- * Channels are specified by frequency.
- */
+typedef uint16_t HAL_CTRY_CODE;		/* country code */
+typedef uint16_t HAL_REG_DOMAIN;		/* regulatory domain code */
+
 typedef struct {
-	uint32_t	channelFlags;	/* see below */
-	uint16_t	channel;	/* setting in Mhz */
-	uint8_t		privFlags;
-	int8_t		maxRegTxPower;	/* max regulatory tx power in dBm */
-	int8_t		maxTxPower;	/* max true tx power in 0.5 dBm */
-	int8_t		minTxPower;	/* min true tx power in 0.5 dBm */
+	uint32_t	channelFlags;
+	uint16_t	channel;	/* NB: must be first for casting */
+	uint16_t	devdata;	/* XXX temp */
 } HAL_CHANNEL;
 
 /* channelFlags */
+#define	CHANNEL_NFCREQUIRED 0x01 /* channel requires noise floor check */
 #define	CHANNEL_CW_INT	0x00002	/* CW interference detected on channel */
 #define	CHANNEL_TURBO	0x00010	/* Turbo Channel */
 #define	CHANNEL_CCK	0x00020	/* CCK channel */
@@ -389,15 +389,8 @@ typedef struct {
 #define	CHANNEL_HT20	0x10000 /* 11n 20MHZ channel */ 
 #define	CHANNEL_HT40PLUS 0x20000 /* 11n 40MHZ channel w/ ext chan above */
 #define	CHANNEL_HT40MINUS 0x40000 /* 11n 40MHZ channel w/ ext chan below */
-
-/* privFlags */
-#define CHANNEL_INTERFERENCE   	0x01 /* Software use: channel interference 
-				        used for as AR as well as RADAR 
-				        interference detection */
-#define CHANNEL_DFS		0x02 /* DFS required on channel */
-#define CHANNEL_4MS_LIMIT	0x04 /* 4msec packet limit on this channel */
-#define	CHANNEL_NFCREQUIRED	0x08 /* channel requires noise floor check */
-#define	CHANNEL_IQVALID		0x10 /* IQ calibration valid */
+#define CHANNEL_DFS	0x80000 /* DFS required on channel */
+#define CHANNEL_4MS_LIMIT 0x00100000 /* 4msec packet limit on this channel */
 
 #define	CHANNEL_A	(CHANNEL_5GHZ|CHANNEL_OFDM)
 #define	CHANNEL_B	(CHANNEL_2GHZ|CHANNEL_CCK)
@@ -434,14 +427,6 @@ typedef struct {
 	uint32_t	fcs_bad;
 	uint32_t	beacons;
 } HAL_MIB_STATS;
-
-typedef uint16_t HAL_CTRY_CODE;		/* country code */
-typedef uint16_t HAL_REG_DOMAIN;		/* regulatory domain code */
-
-enum {
-	CTRY_DEBUG	= 0x1ff,		/* debug country code */
-	CTRY_DEFAULT	= 0			/* default country code */
-};
 
 enum {
 	HAL_MODE_11A	= 0x001,		/* 11a channels */
@@ -666,16 +651,18 @@ struct ath_hal {
 
 	/* Reset functions */
 	HAL_BOOL  __ahdecl(*ah_reset)(struct ath_hal *, HAL_OPMODE,
-				HAL_CHANNEL *, HAL_BOOL bChannelChange,
-				HAL_STATUS *status);
+				HAL_CHANNEL *,
+				HAL_BOOL bChannelChange, HAL_STATUS *status);
 	HAL_BOOL  __ahdecl(*ah_phyDisable)(struct ath_hal *);
 	HAL_BOOL  __ahdecl(*ah_disable)(struct ath_hal *);
 	void	  __ahdecl(*ah_setPCUConfig)(struct ath_hal *);
-	HAL_BOOL  __ahdecl(*ah_perCalibration)(struct ath_hal*, HAL_CHANNEL *,
-			HAL_BOOL *);
-	HAL_BOOL  __ahdecl(*ah_perCalibrationN)(struct ath_hal *, HAL_CHANNEL *,
-			u_int chainMask, HAL_BOOL longCal, HAL_BOOL *isCalDone);
-	HAL_BOOL  __ahdecl(*ah_resetCalValid)(struct ath_hal *, HAL_CHANNEL *);
+	HAL_BOOL  __ahdecl(*ah_perCalibration)(struct ath_hal*,
+			HAL_CHANNEL *, HAL_BOOL *);
+	HAL_BOOL  __ahdecl(*ah_perCalibrationN)(struct ath_hal *,
+			HAL_CHANNEL *, u_int chainMask,
+			HAL_BOOL longCal, HAL_BOOL *isCalDone);
+	HAL_BOOL  __ahdecl(*ah_resetCalValid)(struct ath_hal *,
+			const HAL_CHANNEL *);
 	HAL_BOOL  __ahdecl(*ah_setTxPowerLimit)(struct ath_hal *, uint32_t);
 
 	/* Transmit functions */
@@ -736,7 +723,8 @@ struct ath_hal {
 				struct ath_desc *next, uint64_t tsf,
 				struct ath_rx_status *);
 	void	  __ahdecl(*ah_rxMonitor)(struct ath_hal *,
-				const HAL_NODE_STATS *, HAL_CHANNEL *);
+				const HAL_NODE_STATS *,
+				const HAL_CHANNEL *);
 	void	  __ahdecl(*ah_procMibEvent)(struct ath_hal *,
 				const HAL_NODE_STATS *);
 
@@ -805,7 +793,8 @@ struct ath_hal {
 	HAL_BOOL  __ahdecl(*ah_setPowerMode)(struct ath_hal*,
 				HAL_POWER_MODE mode, int setChip);
 	HAL_POWER_MODE __ahdecl(*ah_getPowerMode)(struct ath_hal*);
-	int16_t   __ahdecl(*ah_getChanNoise)(struct ath_hal *, HAL_CHANNEL *);
+	int16_t   __ahdecl(*ah_getChanNoise)(struct ath_hal *,
+				const HAL_CHANNEL *);
 
 	/* Beacon Management Functions */
 	void	  __ahdecl(*ah_setBeaconTimers)(struct ath_hal*,
@@ -848,20 +837,48 @@ extern	struct ath_hal * __ahdecl ath_hal_attach(uint16_t devid, HAL_SOFTC,
 		HAL_BUS_TAG, HAL_BUS_HANDLE, HAL_STATUS* status);
 
 /*
- * Return a list of channels available for use with the hardware.
- * The list is based on what the hardware is capable of, the specified
- * country code, the modeSelect mask, and whether or not outdoor
- * channels are to be permitted.
+ * Regulatory interfaces.  Drivers should use ath_hal_init_channels to
+ * request a set of channels for a particular country code and/or
+ * regulatory domain.  If CTRY_DEFAULT and SKU_NONE are specified then
+ * this list is constructed according to the contents of the EEPROM.
+ * ath_hal_getchannels acts similarly but does not alter the operating
+ * state; this can be used to collect information for a particular
+ * regulatory configuration.  Finally ath_hal_set_channels installs a
+ * channel list constructed outside the driver.  The HAL will adopt the
+ * channel list and setup internal state according to the specified
+ * regulatory configuration (e.g. conformance test limits).
  *
- * The channel list is returned in the supplied array.  maxchans
- * defines the maximum size of this array.  nchans contains the actual
- * number of channels returned.  If a problem occurred or there were
- * no channels that met the criteria then AH_FALSE is returned.
+ * For all interfaces the channel list is returned in the supplied array.
+ * maxchans defines the maximum size of this array.  nchans contains the
+ * actual number of channels returned.  If a problem occurred then a
+ * status code != HAL_OK is returned.
  */
-extern	HAL_BOOL __ahdecl ath_hal_init_channels(struct ath_hal *,
-		HAL_CHANNEL *chans, u_int maxchans, u_int *nchans,
-		HAL_CTRY_CODE cc, u_int modeSelect,
-		HAL_BOOL enableExtendedChannels);
+struct ieee80211_channel;
+
+/*
+ * Return a list of channels according to the specified regulatory.
+ */
+extern	HAL_STATUS __ahdecl ath_hal_getchannels(struct ath_hal *,
+    struct ieee80211_channel *chans, u_int maxchans, int *nchans,
+    u_int modeSelect, HAL_CTRY_CODE cc, HAL_REG_DOMAIN regDmn,
+    HAL_BOOL enableExtendedChannels);
+
+/*
+ * Return a list of channels and install it as the current operating
+ * regulatory list.
+ */
+extern	HAL_STATUS __ahdecl ath_hal_init_channels(struct ath_hal *,
+    struct ieee80211_channel *chans, u_int maxchans, int *nchans,
+    u_int modeSelect, HAL_CTRY_CODE cc, HAL_REG_DOMAIN rd,
+    HAL_BOOL enableExtendedChannels);
+
+/*
+ * Install the list of channels as the current operating regulatory
+ * and setup related state according to the country code and sku.
+ */
+extern	HAL_STATUS __ahdecl ath_hal_set_channels(struct ath_hal *,
+    struct ieee80211_channel *chans, int nchans,
+    HAL_CTRY_CODE cc, HAL_REG_DOMAIN regDmn);
 
 /*
  * Calibrate noise floor data following a channel scan or similar.
@@ -880,9 +897,4 @@ extern	u_int __ahdecl ath_hal_getwirelessmodes(struct ath_hal*);
 extern uint16_t __ahdecl ath_hal_computetxtime(struct ath_hal *,
 		const HAL_RATE_TABLE *rates, uint32_t frameLen,
 		uint16_t rateix, HAL_BOOL shortPreamble);
-
-/*
- * Return if device is operating in 900 MHz band.
- */
-extern HAL_BOOL ath_hal_isgsmsku(struct ath_hal *);
 #endif /* _ATH_AH_H_ */

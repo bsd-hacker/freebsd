@@ -102,7 +102,7 @@ extern	HAL_BOOL ar5416AniSetParams(struct ath_hal *,
 		const struct ar5212AniParams *, const struct ar5212AniParams *);
 extern	void ar5416ProcessMibIntr(struct ath_hal *, const HAL_NODE_STATS *);
 extern	void ar5416AniPoll(struct ath_hal *, const HAL_NODE_STATS *,
-			     HAL_CHANNEL *);
+			     const HAL_CHANNEL *);
 extern	void ar5416AniReset(struct ath_hal *, HAL_CHANNEL_INTERNAL *,
 		HAL_OPMODE, int);
 
@@ -168,7 +168,7 @@ extern	HAL_BOOL ar5416ChipReset(struct ath_hal *ah, HAL_CHANNEL *);
 extern	HAL_BOOL ar5416SetResetReg(struct ath_hal *, uint32_t type);
 extern	HAL_BOOL ar5416SetTxPowerLimit(struct ath_hal *ah, uint32_t limit);
 extern	HAL_BOOL ar5416GetChipPowerLimits(struct ath_hal *ah,
-		HAL_CHANNEL *chans, uint32_t nchans);
+		HAL_CHANNEL_INTERNAL *chan);
 extern	void ar5416GetChannelCenters(struct ath_hal *,
 		HAL_CHANNEL_INTERNAL *chan, CHAN_CENTERS *centers);
 

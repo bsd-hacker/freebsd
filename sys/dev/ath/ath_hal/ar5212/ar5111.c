@@ -649,7 +649,7 @@ ar5212GetLowerUpperPcdacs(uint16_t pcdac, uint16_t channel,
 }
 
 static HAL_BOOL
-ar5111GetChannelMaxMinPower(struct ath_hal *ah, HAL_CHANNEL *chan,
+ar5111GetChannelMaxMinPower(struct ath_hal *ah, const HAL_CHANNEL_INTERNAL *chan,
 	int16_t *maxPow, int16_t *minPow)
 {
 	/* XXX - Get 5111 power limits! */
