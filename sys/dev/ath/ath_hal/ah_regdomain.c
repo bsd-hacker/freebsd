@@ -436,12 +436,8 @@ static REG_DMN_PAIR_MAPPING regDomainPairs[] = {
  */
 
 #define DEF_REGDMN		FCC1_FCCA
-#define	DEF_DMN_5		FCC1
-#define	DEF_DMN_2		FCCA
 #define	COUNTRY_ERD_FLAG        0x8000
 #define WORLDWIDE_ROAMING_FLAG  0x4000
-#define	SUPER_DOMAIN_MASK	0x0fff
-#define	COUNTRY_CODE_MASK	0x3fff
 
 typedef struct {
 	HAL_CTRY_CODE		countryCode;	   
@@ -2203,55 +2199,55 @@ ath_hal_init_channels(struct ath_hal *ah,
 	COUNTRY_CODE_TO_ENUM_RD *country;
 	REG_DOMAIN *rd5GHz, *rd2GHz;
 	HAL_STATUS status;
+	struct ieee80211_channel *c;
+	HAL_CHANNEL_INTERNAL *ic;
+	int i;
 
 	if (maxchans > N(AH_PRIVATE(ah)->ah_channels))
 		maxchans = N(AH_PRIVATE(ah)->ah_channels);
 	status = getchannels(ah, chans, maxchans, nchans, modeSelect,
 	    cc, regDmn, enableExtendedChannels, &country, &rd2GHz, &rd5GHz);
-	if (status == HAL_OK) {
-		struct ieee80211_channel *c;
-		HAL_CHANNEL_INTERNAL *ic;
-		int i;
+	if (status != HAL_OK)
+		return status;
+	for (i = 0; i < *nchans; i++) {
+		c = &chans[i];
+		ic = &AH_PRIVATE(ah)->ah_channels[i];
 
-		for (i = 0; i < *nchans; i++) {
-			c = &chans[i];
-			ic = &AH_PRIVATE(ah)->ah_channels[i];
+		OS_MEMZERO(ic, sizeof(*ic));
+		ic->channel = c->ic_freq;
+		ic->channelFlags = c->ic_flags;
+		ic->devdata = i;	/* XXX */
+		ic->maxRegTxPower = c->ic_maxregpower;
+		ic->maxTxPower = c->ic_maxpower;
+		ic->minTxPower = c->ic_minpower;
+		ic->antennaMax = c->ic_maxantgain;
 
-			OS_MEMZERO(ic, sizeof(*ic));
-			ic->channel = c->ic_freq;
-			ic->channelFlags = c->ic_flags;
-			ic->devdata = i;	/* XXX */
-			ic->maxRegTxPower = c->ic_maxregpower;
-			ic->maxTxPower = c->ic_maxpower;
-			ic->minTxPower = c->ic_minpower;
-			ic->antennaMax = c->ic_maxantgain;
+		c->ic_devdata = i;
 
-			c->ic_devdata = i;
-
-			if (IEEE80211_IS_CHAN_PUREG(c)) {
-				/*
-				 * Except for AR5211, PUREG means mixed
-				 * DSSS and OFDM; convert to "just G".
-				 */
-				c->ic_flags &= ~IEEE80211_CHAN_PUREG;
-				c->ic_flags |= IEEE80211_CHAN_G;
-			}
-			HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
-			    "[%3u] freq %u/0x%x txpow reg/max/min %u/%u/%u"
-			    " antmax %u ctl 0x%x\n",
-			    i, c->ic_freq, c->ic_flags,
-			    c->ic_maxregpower, c->ic_maxpower, c->ic_minpower,
-			    c->ic_maxantgain, ic->ctl);
+		if (IEEE80211_IS_CHAN_PUREG(c)) {
+			/*
+			 * Except for AR5211, PUREG means mixed
+			 * DSSS and OFDM; convert to "just G".
+			 */
+			c->ic_flags &= ~IEEE80211_CHAN_PUREG;
+			c->ic_flags |= IEEE80211_CHAN_G;
 		}
-		AH_PRIVATE(ah)->ah_nchan = *nchans;
-		AH_PRIVATE(ah)->ah_rd2GHz = rd2GHz;
-		AH_PRIVATE(ah)->ah_rd5GHz = rd5GHz;
-
-		ah->ah_countryCode = country->countryCode;
-		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN, "%s: cc %u\n",
-		    __func__, ah->ah_countryCode);
+		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
+		    "[%3u] freq %u/0x%x txpow reg/max/min %u/%u/%u"
+		    " antmax %u ctl 0x%x\n",
+		    i, c->ic_freq, c->ic_flags,
+		    c->ic_maxregpower, c->ic_maxpower, c->ic_minpower,
+		    c->ic_maxantgain, ic->ctl);
 	}
-	return (*nchans != 0) ? HAL_OK : HAL_ENOMEM;	/* XXX ENOMEM */
+	AH_PRIVATE(ah)->ah_nchan = *nchans;
+	AH_PRIVATE(ah)->ah_rd2GHz = rd2GHz;
+	AH_PRIVATE(ah)->ah_rd5GHz = rd5GHz;
+
+	ah->ah_countryCode = country->countryCode;
+	HALDEBUG(ah, HAL_DEBUG_REGDOMAIN, "%s: cc %u\n",
+	    __func__, ah->ah_countryCode);
+
+	return HAL_OK;
 }
 
 /*
