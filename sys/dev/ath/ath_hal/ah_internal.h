@@ -260,7 +260,6 @@ struct ath_hal_private {
 	uint16_t	ah_analog5GhzRev;	/* 2GHz radio revision */
 	uint16_t	ah_analog2GhzRev;	/* 5GHz radio revision */
 
-
 	HAL_OPMODE	ah_opmode;		/* operating mode from reset */
 	HAL_CHANNEL_INTERNAL *ah_curchan;	/* operating channel */
 	HAL_CAPABILITIES ah_caps;		/* device capabilities */
@@ -280,7 +279,6 @@ struct ath_hal_private {
 	const struct regDomain *ah_rd5GHz;	/* reg state for 5G band */
 
 	uint8_t    	ah_coverageClass;   	/* coverage class */
-	HAL_BOOL    	ah_regdomainUpdate;     /* regdomain is updated? */
 	/*
 	 * RF Silent handling; setup according to the EEPROM.
 	 */
