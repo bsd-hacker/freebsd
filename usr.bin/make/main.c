@@ -126,6 +126,7 @@ Boolean		is_posix;	/* .POSIX target seen */
 Boolean		mfAutoDeps;	/* .MAKEFILEDEPS target seen */
 Boolean		beSilent;	/* -s flag */
 Boolean		beVerbose;	/* -v flag */
+Boolean		beQuiet;	/* -Q flag */
 Boolean		compatMake;	/* -B argument */
 int		debug;		/* -d flag */
 Boolean		ignoreErrors;	/* -i flag */
@@ -370,7 +371,7 @@ MainParseArgs(int argc, char **argv)
 rearg:
 	optind = 1;	/* since we're called more than once */
 	optreset = 1;
-#define OPTFLAGS "ABC:D:E:I:PSV:Xd:ef:ij:km:npqrstvx:"
+#define OPTFLAGS "ABC:D:E:I:PSV:Xd:ef:ij:km:nQpqrstvx:"
 	for (;;) {
 		if ((optind < argc) && strcmp(argv[optind], "--") == 0) {
 			found_dd = TRUE;
@@ -516,6 +517,11 @@ rearg:
 			printGraphOnly = TRUE;
 			debug |= DEBUG_GRAPH1;
 			break;
+		case 'Q':
+			beQuiet = TRUE;
+			beVerbose = FALSE;
+			MFLAGS_append("-Q", NULL);
+			break;
 		case 'q':
 			queryFlag = TRUE;
 			/* Kind of nonsensical, wot? */
@@ -535,6 +541,7 @@ rearg:
 			break;
 		case 'v':
 			beVerbose = TRUE;
+			beQuiet = FALSE;
 			MFLAGS_append("-v", NULL);
 			break;
 		case 'x':
@@ -1029,6 +1036,16 @@ main(int argc, char **argv)
 #ifdef MAKE_VERSION
 	Var_SetGlobal("MAKE_VERSION", MAKE_VERSION);
 #endif
+	Var_SetGlobal(".newline", "\n");	/* handy for :@ loops */
+	{
+		char tmp[64];
+
+		snprintf(tmp, sizeof(tmp), "%u", getpid());
+		Var_SetGlobal(".MAKE.PID", tmp);
+		snprintf(tmp, sizeof(tmp), "%u", getppid());
+		Var_SetGlobal(".MAKE.PPID", tmp);
+	}
+	Job_SetPrefix();
 
 	/*
 	 * First snag things out of the MAKEFLAGS environment

@@ -110,11 +110,6 @@ struct lock_class {
 #define	LA_RECURSED	0x00000008	/* Lock is recursed. */
 #define	LA_NOTRECURSED	0x00000010	/* Lock is not recursed. */
 
-/* WITNESS lock instance flags */
-#define	LI_RECURSEMASK	0x0000ffff	/* Recursion depth of lock instance. */
-#define	LI_EXCLUSIVE	0x00010000	/* Exclusive lock instance. */
-#define	LI_NORELEASE	0x00020000	/* Lock not allowed to be released. */
-
 #ifdef _KERNEL
 /*
  * If any of WITNESS, INVARIANTS, or KTR_LOCK KTR tracing has been enabled,
@@ -221,7 +216,8 @@ int	witness_warn(int, struct lock_object *, const char *, ...);
 void	witness_assert(struct lock_object *, int, const char *, int);
 void	witness_display_spinlock(struct lock_object *, struct thread *);
 int	witness_line(struct lock_object *);
-void	witness_setflag(struct lock_object *, int, int);
+void	witness_norelease(struct lock_object *);
+void	witness_releaseok(struct lock_object *);
 const char *witness_file(struct lock_object *);
 void	witness_thread_exit(struct thread *);
 
@@ -273,11 +269,11 @@ void	witness_thread_exit(struct thread *);
 #define	WITNESS_RESTORE(lock, n) 					\
 	witness_restore((lock), __CONCAT(n, __wf), __CONCAT(n, __wl))
 
-#define	WITNESS_NOREL(lock)						\
-	witness_setflag(&(lock)->lock_object, LI_NORELEASE, 1)
+#define	WITNESS_NORELEASE(lock)						\
+	witness_norelease(&(lock)->lock_object)
 
-#define	WITNESS_RELOK(lock)						\
-	witness_setflag(&(lock)->lock_object, LI_NORELEASE, 0)
+#define	WITNESS_RELEASEOK(lock)						\
+	witness_releaseok(&(lock)->lock_object)
 
 #define	WITNESS_FILE(lock) 						\
 	witness_file(lock)
@@ -299,8 +295,8 @@ void	witness_thread_exit(struct thread *);
 #define	WITNESS_SAVE_DECL(n)
 #define	WITNESS_SAVE(lock, n)
 #define	WITNESS_RESTORE(lock, n)
-#define	WITNESS_NOREL(lock)
-#define	WITNESS_RELOK(lock)
+#define	WITNESS_NORELEASE(lock)
+#define	WITNESS_RELEASEOK(lock)
 #define	WITNESS_FILE(lock) ("?")
 #define	WITNESS_LINE(lock) (0)
 #endif	/* WITNESS */

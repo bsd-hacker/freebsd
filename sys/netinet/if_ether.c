@@ -156,12 +156,12 @@ arptimer(void *arg)
 	ifp = lle->lle_tbl->llt_ifp;
 	IF_AFDATA_LOCK(ifp);
 	LLE_WLOCK(lle);
-	if ((lle->la_flags & LLE_DELETED) ||
-	    (time_second >= lle->la_expire)) {
-		if (!callout_pending(&lle->la_timer) &&
-		    callout_active(&lle->la_timer))
-			(void) llentry_free(lle);
-	} else {
+	if (((lle->la_flags & LLE_DELETED)
+		|| (time_second >= lle->la_expire))
+	    && (!callout_pending(&lle->la_timer) &&
+		callout_active(&lle->la_timer)))
+		(void) llentry_free(lle);
+	else {
 		/*
 		 * Still valid, just drop our reference
 		 */
@@ -758,23 +758,24 @@ arp_ifinit(struct ifnet *ifp, struct ifaddr *ifa)
 {
 	struct llentry *lle;
 
-	if (ntohl(IA_SIN(ifa)->sin_addr.s_addr) != INADDR_ANY)
+	if (ntohl(IA_SIN(ifa)->sin_addr.s_addr) != INADDR_ANY) {
 		arprequest(ifp, &IA_SIN(ifa)->sin_addr,
 				&IA_SIN(ifa)->sin_addr, IF_LLADDR(ifp));
-	/* 
-	 * interface address is considered static entry
-	 * because the output of the arp utility shows
-	 * that L2 entry as permanent
-	 */
-	IF_AFDATA_LOCK(ifp);
-	lle = lla_lookup(LLTABLE(ifp), (LLE_CREATE | LLE_IFADDR | LLE_STATIC),
-	    (struct sockaddr *)IA_SIN(ifa));
-	IF_AFDATA_UNLOCK(ifp);
-	if (lle == NULL)
-		log(LOG_INFO, "arp_ifinit: cannot create arp "
-		    "entry for interface address\n");
-	else
-		LLE_RUNLOCK(lle);
+		/* 
+		 * interface address is considered static entry
+		 * because the output of the arp utility shows
+		 * that L2 entry as permanent
+		 */
+		IF_AFDATA_LOCK(ifp);
+		lle = lla_lookup(LLTABLE(ifp), (LLE_CREATE | LLE_IFADDR | LLE_STATIC),
+				 (struct sockaddr *)IA_SIN(ifa));
+		IF_AFDATA_UNLOCK(ifp);
+		if (lle == NULL)
+			log(LOG_INFO, "arp_ifinit: cannot create arp "
+			    "entry for interface address\n");
+		else
+			LLE_RUNLOCK(lle);
+	}
 	ifa->ifa_rtrequest = NULL;
 }
 

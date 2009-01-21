@@ -1156,7 +1156,7 @@ bufobj_invalbuf(struct bufobj *bo, int flags, int slpflag, int slptimeo)
 	/*
 	 * Destroy the copy in the VM cache, too.
 	 */
-	if (bo->bo_object != NULL) {
+	if (bo->bo_object != NULL && (flags & (V_ALT | V_NORMAL)) == 0) {
 		VM_OBJECT_LOCK(bo->bo_object);
 		vm_object_page_remove(bo->bo_object, 0, 0,
 			(flags & V_SAVE) ? TRUE : FALSE);
@@ -4206,18 +4206,15 @@ vfs_read_dirent(struct vop_readdir_args *ap, struct dirent *dp, off_t off)
 
 /*
  * Mark for update the access time of the file if the filesystem
- * supports VA_MARK_ATIME.  This functionality is used by execve
+ * supports VOP_MARKATIME.  This functionality is used by execve
  * and mmap, so we want to avoid the synchronous I/O implied by
  * directly setting va_atime for the sake of efficiency.
  */
 void
 vfs_mark_atime(struct vnode *vp, struct ucred *cred)
 {
-	struct vattr atimeattr;
 
 	if ((vp->v_mount->mnt_flag & (MNT_NOATIME | MNT_RDONLY)) == 0) {
-		VATTR_NULL(&atimeattr);
-		atimeattr.va_vaflags |= VA_MARK_ATIME;
-		(void)VOP_SETATTR(vp, &atimeattr, cred);
+		(void)VOP_MARKATIME(vp);
 	}
 }

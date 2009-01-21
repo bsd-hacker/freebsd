@@ -228,6 +228,7 @@ MAN=	aac.4 \
 	ng_eiface.4 \
 	ng_etf.4 \
 	ng_ether.4 \
+	ng_ether_echo.4 \
 	ng_fec.4 \
 	ng_frame_relay.4 \
 	ng_gif.4 \
@@ -315,6 +316,7 @@ MAN=	aac.4 \
 	screen.4 \
 	scsi.4 \
 	sctp.4 \
+	sdhci.4 \
 	sem.4 \
 	ses.4 \
 	sf.4 \

@@ -125,6 +125,10 @@ __FBSDID("$FreeBSD$");
 #define	KTR_WITNESS	0
 #endif
 
+#define	LI_RECURSEMASK	0x0000ffff	/* Recursion depth of lock instance. */
+#define	LI_EXCLUSIVE	0x00010000	/* Exclusive lock instance. */
+#define	LI_NORELEASE	0x00020000	/* Lock not allowed to be released. */
+
 /* Define this to check for blessed mutexes */
 #undef BLESSING
 
@@ -364,6 +368,7 @@ static struct witness_lock_order_data	*witness_lock_order_get(
 					    struct witness *parent,
 					    struct witness *child);
 static void	witness_list_lock(struct lock_instance *instance);
+static void	witness_setflag(struct lock_object *lock, int flag, int set);
 
 #ifdef KDB
 #define	witness_debugger(c)	_witness_debugger(c, __func__)
@@ -1509,9 +1514,7 @@ found:
 	if ((instance->li_flags & LI_NORELEASE) != 0 && witness_watch > 0) {
 		printf("forbidden unlock of (%s) %s @ %s:%d\n", class->lc_name,
 		    lock->lo_name, file, line);
-		/* XXX notyet
-		panic("lock not allowed to be released");
-		*/
+		panic("lock marked norelease");
 	}
 
 	/* If we are recursed, unrecurse. */
@@ -2228,7 +2231,7 @@ witness_assert(struct lock_object *lock, int flags, const char *file, int line)
 #endif	/* INVARIANT_SUPPORT */
 }
 
-void
+static void
 witness_setflag(struct lock_object *lock, int flag, int set)
 {
 	struct lock_list_entry *lock_list;
@@ -2254,6 +2257,20 @@ witness_setflag(struct lock_object *lock, int flag, int set)
 		instance->li_flags |= flag;
 	else
 		instance->li_flags &= ~flag;
+}
+
+void
+witness_norelease(struct lock_object *lock)
+{
+
+	witness_setflag(lock, LI_NORELEASE, 1);
+}
+
+void
+witness_releaseok(struct lock_object *lock)
+{
+
+	witness_setflag(lock, LI_NORELEASE, 0);
 }
 
 #ifdef DDB

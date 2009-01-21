@@ -68,6 +68,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/errno.h>
+#include <sys/jail.h>
 #include <sys/malloc.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
@@ -329,6 +330,9 @@ in6_control(struct socket *so, u_long cmd, caddr_t data,
 			error = in6_setscope(&sa6->sin6_addr, ifp, NULL);
 		if (error != 0)
 			return (error);
+		if (td != NULL && !prison_check_ip6(td->td_ucred,
+		    &sa6->sin6_addr))
+			return (EADDRNOTAVAIL);
 		ia = in6ifa_ifpwithaddr(ifp, &sa6->sin6_addr);
 	} else
 		ia = NULL;
@@ -1533,52 +1537,29 @@ in6_ifinit(struct ifnet *ifp, struct in6_ifaddr *ia,
 	 * XXX: the logic below rejects assigning multiple addresses on a p2p
 	 * interface that share the same destination.
 	 */
-#if 0 /* QL - verify */
 	plen = in6_mask2len(&ia->ia_prefixmask.sin6_addr, NULL); /* XXX */
-	if (!(ia->ia_flags & IFA_ROUTE) && plen == 128 &&
-	    ia->ia_dstaddr.sin6_family == AF_INET6) {
+	if (!(ia->ia_flags & IFA_ROUTE) && plen == 128) {
+		struct sockaddr *dstaddr;
 		int rtflags = RTF_UP | RTF_HOST;
-		struct rtentry *rt = NULL, **rtp = NULL;
 
-		if (nd6_need_cache(ifp) != 0) {
-			rtp = &rt;
-		}
+		/* 
+		 * use the interface address if configuring an
+		 * interface address with a /128 prefix len
+		 */
+		if (ia->ia_dstaddr.sin6_family == AF_INET6)
+			dstaddr = (struct sockaddr *)&ia->ia_dstaddr;
+		else
+			dstaddr = (struct sockaddr *)&ia->ia_addr;
 
 		error = rtrequest(RTM_ADD,
-		    (struct sockaddr *)&ia->ia_dstaddr,
+		    (struct sockaddr *)dstaddr,
 		    (struct sockaddr *)&ia->ia_addr,
 		    (struct sockaddr *)&ia->ia_prefixmask,
-		    ia->ia_flags | rtflags, rtp);
+		    ia->ia_flags | rtflags, NULL);
 		if (error != 0)
 			return (error);
-		if (rt != NULL) {
-			struct llinfo_nd6 *ln;
-
-			RT_LOCK(rt);
-			ln = (struct llinfo_nd6 *)rt->rt_llinfo;
-			if (ln != NULL) {
-				/*
-				 * Set the state to STALE because we don't
-				 * have to perform address resolution on this
-				 * link.
-				 */
-				ln->ln_state = ND6_LLINFO_STALE;
-			}
-			RT_REMREF(rt);
-			RT_UNLOCK(rt);
-		}
 		ia->ia_flags |= IFA_ROUTE;
 	}
-#else
-	plen = in6_mask2len(&ia->ia_prefixmask.sin6_addr, NULL); /* XXX */
-	if (!(ia->ia_flags & IFA_ROUTE) && plen == 128 &&
-	    ia->ia_dstaddr.sin6_family == AF_INET6) {
-		if ((error = rtinit(&(ia->ia_ifa), (int)RTM_ADD,
-				    RTF_UP | RTF_HOST)) != 0)
-			return (error);
-		ia->ia_flags |= IFA_ROUTE;
-	}
-#endif
 
 	/* Add ownaddr as loopback rtentry, if necessary (ex. on p2p link). */
 	if (newhost) {
@@ -2171,9 +2152,11 @@ in6_lltable_lookup(struct lltable *llt, u_int flags,
 	hashkey = sin6->sin6_addr.s6_addr32[3];
 	lleh = &llt->lle_head[LLATBL_HASH(hashkey, LLTBL_HASHMASK)];
 	LIST_FOREACH(lle, lleh, lle_next) {
+		struct sockaddr_in6 *sa6 = (struct sockaddr_in6 *)L3_ADDR(lle);
 		if (lle->la_flags & LLE_DELETED)
 			continue;
-		if (bcmp(L3_ADDR(lle), l3addr, l3addr->sa_len) == 0)
+		if (bcmp(&sa6->sin6_addr, &sin6->sin6_addr, 
+			 sizeof(struct in6_addr)) == 0)
 			break;
 	}
 
@@ -2257,6 +2240,10 @@ in6_lltable_dump(struct lltable *llt, struct sysctl_req *wr)
 			/* skip deleted or invalid entries */
 			if ((lle->la_flags & (LLE_DELETED|LLE_VALID)) != LLE_VALID)
 				continue;
+			/* Skip if jailed and not a valid IP of the prison. */
+			if (jailed(wr->td->td_ucred) &&
+			    !prison_if(wr->td->td_ucred, L3_ADDR(lle)))
+				continue;
 			/*
 			 * produce a msg made of:
 			 *  struct rt_msghdr;
@@ -2265,6 +2252,10 @@ in6_lltable_dump(struct lltable *llt, struct sysctl_req *wr)
 			 */
 			bzero(&ndpc, sizeof(ndpc));
 			ndpc.rtm.rtm_msglen = sizeof(ndpc);
+			ndpc.rtm.rtm_version = RTM_VERSION;
+			ndpc.rtm.rtm_type = RTM_GET;
+			ndpc.rtm.rtm_flags = RTF_UP;
+			ndpc.rtm.rtm_addrs = RTA_DST | RTA_GATEWAY;
 			ndpc.sin6.sin6_family = AF_INET6;
 			ndpc.sin6.sin6_len = sizeof(ndpc.sin6);
 			bcopy(L3_ADDR(lle), &ndpc.sin6, L3_ADDR_LEN(lle));
@@ -2282,7 +2273,7 @@ in6_lltable_dump(struct lltable *llt, struct sysctl_req *wr)
 			bcopy(&lle->ll_addr, LLADDR(sdl), ifp->if_addrlen);
 			ndpc.rtm.rtm_rmx.rmx_expire =
 			    lle->la_flags & LLE_STATIC ? 0 : lle->la_expire;
-			ndpc.rtm.rtm_flags |= RTF_HOST;
+			ndpc.rtm.rtm_flags |= (RTF_HOST | RTF_LLDATA);
 			if (lle->la_flags & LLE_STATIC)
 				ndpc.rtm.rtm_flags |= RTF_STATIC;
 			ndpc.rtm.rtm_index = ifp->if_index;
