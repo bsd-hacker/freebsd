@@ -107,6 +107,10 @@
       ]]></desc>
 
       <versions>
+	<version version="tzdata2009a">
+	  <import>2009-01-22</import>
+	  <mfv branch="8">2009-01-22</mfv>
+	</version>
 	<version version="tzdata2008i">
 	  <import>2008-10-28</import>
 	  <mfv branch="8">2008-10-28</mfv>
