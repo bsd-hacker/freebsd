@@ -102,12 +102,13 @@ struct ar5416PerCal {
 	}								\
 } while (0)
 
-HAL_BOOL ar5416InitCal(struct ath_hal *ah, HAL_CHANNEL *chan);
-HAL_BOOL ar5416PerCalibration(struct ath_hal *,  HAL_CHANNEL *,
+HAL_BOOL ar5416InitCal(struct ath_hal *, const struct ieee80211_channel *);
+HAL_BOOL ar5416PerCalibration(struct ath_hal *,  struct ieee80211_channel *,
 	    HAL_BOOL *isIQdone);
-HAL_BOOL ar5416PerCalibrationN(struct ath_hal *ah, HAL_CHANNEL *chan,
+HAL_BOOL ar5416PerCalibrationN(struct ath_hal *, struct ieee80211_channel *,
 	    u_int chainMask, HAL_BOOL longCal, HAL_BOOL *isCalDone);
-HAL_BOOL ar5416ResetCalValid(struct ath_hal *ah,  const HAL_CHANNEL *);
+HAL_BOOL ar5416ResetCalValid(struct ath_hal *,
+	    const struct ieee80211_channel *);
 
 void	ar5416IQCalCollect(struct ath_hal *ah);
 void	ar5416IQCalibration(struct ath_hal *ah, uint8_t numChains);

@@ -27,6 +27,8 @@
 #define	AH_MIN(a,b)	((a)<(b)?(a):(b))
 #define	AH_MAX(a,b)	((a)>(b)?(a):(b))
 
+#include <net80211/_ieee80211.h>
+
 #ifndef NBBY
 #define	NBBY	8			/* number of bits/byte */
 #endif
@@ -112,30 +114,20 @@ struct ath_hal_rf *ath_hal_rfprobe(struct ath_hal *ah, HAL_STATUS *ecode);
  * using ic_devdata in the ieee80211_channel.
  */
 typedef struct {
-	uint32_t	channelFlags;
-	uint16_t	channel;	/* NB: must be first for casting */
-	uint16_t	devdata;	/* XXX temp */
-	int8_t		maxRegTxPower;
-	int8_t		maxTxPower;
-	int8_t		minTxPower;
-	uint8_t		antennaMax;
-
-	uint8_t		privFlags;
-	uint8_t		ctl;		/* conformance test limit */
+	uint16_t	channel;
+	uint8_t		privFlags;	/* XXX remove */
+#define	CHANNEL_IQVALID	0x01		/* IQ calibration valid */
 	uint8_t		calValid;	/* bitmask of cal types */
 	int8_t		iCoff;
 	int8_t		qCoff;
-	uint8_t		pad;		/* NB: hole */
 	int16_t		rawNoiseFloor;
 	int16_t		noiseFloorAdjust;
 	uint16_t	mainSpur;	/* cached spur value for this channel */
 } HAL_CHANNEL_INTERNAL;
 
+#define	CHANNEL_NFCREQUIRED 0x01	/* channel requires noise floor check */
+
 /* privFlags */
-#define CHANNEL_INTERFERENCE   	0x01 /* Software use: channel interference 
-				        used for as AR as well as RADAR 
-				        interference detection */
-#define	CHANNEL_IQVALID		0x02 /* IQ calibration valid */
 
 typedef struct {
 	uint32_t	halChanSpreadSupport 		: 1,
@@ -233,7 +225,7 @@ struct ath_hal_private {
 				uint32_t gpio, uint32_t val);
 	void		(*ah_gpioSetIntr)(struct ath_hal*, u_int, uint32_t);
 	HAL_BOOL	(*ah_getChipPowerLimits)(struct ath_hal *,
-				HAL_CHANNEL_INTERNAL *);
+				struct ieee80211_channel *);
 	int16_t		(*ah_getNfAdjust)(struct ath_hal *,
 				const HAL_CHANNEL_INTERNAL*);
 	void		(*ah_getNoiseFloor)(struct ath_hal *,
@@ -261,7 +253,7 @@ struct ath_hal_private {
 	uint16_t	ah_analog2GhzRev;	/* 5GHz radio revision */
 
 	HAL_OPMODE	ah_opmode;		/* operating mode from reset */
-	HAL_CHANNEL_INTERNAL *ah_curchan;	/* operating channel */
+	const struct ieee80211_channel *ah_curchan;/* operating channel */
 	HAL_CAPABILITIES ah_caps;		/* device capabilities */
 	uint32_t	ah_diagreg;		/* user-specified AR_DIAG_SW */
 	int16_t		ah_powerLimit;		/* tx power cap */
@@ -417,42 +409,10 @@ typedef enum {
 #define	HAL_BIN_WIDTH_TURBO_100HZ	6250
 #define	HAL_MAX_BINS_ALLOWED		28
 
-/*
- * A    = 5GHZ|OFDM
- * T    = 5GHZ|OFDM|TURBO
- *
- * IS_CHAN_A(T) will return TRUE.  This is probably
- * not the default behavior we want.  We should migrate to a better mask --
- * perhaps CHANNEL_ALL.
- *
- * For now, IS_CHAN_G() masks itself with CHANNEL_108G.
- *
- */
-
-#define	IS_CHAN_A(_c)	(((_c)->channelFlags & CHANNEL_A) == CHANNEL_A)
-#define	IS_CHAN_B(_c)	(((_c)->channelFlags & CHANNEL_B) == CHANNEL_B)
-#define	IS_CHAN_G(_c)	(((_c)->channelFlags & (CHANNEL_108G|CHANNEL_G)) == CHANNEL_G)
-#define	IS_CHAN_108G(_c)(((_c)->channelFlags & CHANNEL_108G) == CHANNEL_108G)
-#define	IS_CHAN_T(_c)	(((_c)->channelFlags & CHANNEL_T) == CHANNEL_T)
-#define	IS_CHAN_PUREG(_c) \
-	(((_c)->channelFlags & CHANNEL_PUREG) == CHANNEL_PUREG)
-
-#define	IS_CHAN_TURBO(_c)	(((_c)->channelFlags & CHANNEL_TURBO) != 0)
-#define	IS_CHAN_CCK(_c)		(((_c)->channelFlags & CHANNEL_CCK) != 0)
-#define	IS_CHAN_OFDM(_c)	(((_c)->channelFlags & CHANNEL_OFDM) != 0)
-#define	IS_CHAN_5GHZ(_c)	(((_c)->channelFlags & CHANNEL_5GHZ) != 0)
-#define	IS_CHAN_2GHZ(_c)	(((_c)->channelFlags & CHANNEL_2GHZ) != 0)
-#define	IS_CHAN_PASSIVE(_c)	(((_c)->channelFlags & CHANNEL_PASSIVE) != 0)
-#define	IS_CHAN_HALF_RATE(_c)	(((_c)->channelFlags & CHANNEL_HALF) != 0)
-#define	IS_CHAN_QUARTER_RATE(_c) (((_c)->channelFlags & CHANNEL_QUARTER) != 0)
+#define	IS_CHAN_5GHZ(_c)	((_c)->channel > 4900)
+#define	IS_CHAN_2GHZ(_c)	(!IS_CHAN_5GHZ(_c))
 
 #define	IS_CHAN_IN_PUBLIC_SAFETY_BAND(_c) ((_c) > 4940 && (_c) < 4990)
-
-#define	CHANNEL_HT40		(CHANNEL_HT40PLUS | CHANNEL_HT40MINUS)
-#define	CHANNEL_HT		(CHANNEL_HT20 | CHANNEL_HT40)
-#define	IS_CHAN_HT(_c)		(((_c)->channelFlags & CHANNEL_HT) != 0)
-#define	IS_CHAN_HT20(_c)	(((_c)->channelFlags & CHANNEL_HT) == CHANNEL_HT20)
-#define	IS_CHAN_HT40(_c)	(((_c)->channelFlags & CHANNEL_HT40) != 0)
 
 /*
  * Deduce if the host cpu has big- or litt-endian byte order.
@@ -499,25 +459,15 @@ isBigEndian(void)
 /*
  * Return the max allowed antenna gain and apply any regulatory
  * domain specific changes.
- *
- * NOTE: a negative reduction is possible in RD's that only
- * measure radiated power (e.g., ETSI) which would increase
- * that actual conducted output power (though never beyond
- * the calibrated target power).
  */
-static OS_INLINE u_int
-ath_hal_getantennareduction(struct ath_hal *ah,
-    const HAL_CHANNEL_INTERNAL *chan, u_int twiceGain)
-{
-	int8_t antennaMax = twiceGain - chan->antennaMax*2;
-	return (antennaMax < 0) ? 0 : antennaMax;
-}
+u_int	ath_hal_getantennareduction(struct ath_hal *ah,
+	    const struct ieee80211_channel *chan, u_int twiceGain);
 
 /*
  * Return the test group for the specific channel based on
  * the current regulatory setup.
  */
-u_int	ath_hal_getctl(struct ath_hal *, const HAL_CHANNEL_INTERNAL *);
+u_int	ath_hal_getctl(struct ath_hal *, const struct ieee80211_channel *);
 
 /*
  * Map a public channel definition to the corresponding
@@ -525,8 +475,8 @@ u_int	ath_hal_getctl(struct ath_hal *, const HAL_CHANNEL_INTERNAL *);
  * whether or not the specified channel is ok to use
  * based on the current regulatory domain constraints.
  */
-extern	HAL_CHANNEL_INTERNAL *ath_hal_checkchannel(struct ath_hal *,
-		const HAL_CHANNEL *);
+HAL_CHANNEL_INTERNAL *ath_hal_checkchannel(struct ath_hal *,
+		const struct ieee80211_channel *);
 
 /* system-configurable parameters */
 extern	int ath_hal_dma_beacon_response_time;	/* in TU's */
@@ -744,7 +694,7 @@ extern	void ath_hal_setupratetable(struct ath_hal *ah, HAL_RATE_TABLE *rt);
 /*
  * Common routine for implementing getChanNoise api.
  */
-extern	int16_t ath_hal_getChanNoise(struct ath_hal *ah, const HAL_CHANNEL* );
+int16_t	ath_hal_getChanNoise(struct ath_hal *, const struct ieee80211_channel *);
 
 /*
  * Initialization support.

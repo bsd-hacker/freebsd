@@ -565,7 +565,7 @@ ar5211AniControl(struct ath_hal *ah, HAL_ANI_CMD cmd, int param)
 
 void
 ar5211AniPoll(struct ath_hal *ah, const HAL_NODE_STATS *stats,
-	const HAL_CHANNEL *chan)
+	const struct ieee80211_channel *chan)
 {
 }
 
@@ -604,8 +604,7 @@ ar5211GetAntennaSwitch(struct ath_hal *ah)
 HAL_BOOL
 ar5211SetAntennaSwitch(struct ath_hal *ah, HAL_ANT_SETTING settings)
 {
-	const HAL_CHANNEL *chan =
-		(const HAL_CHANNEL *) AH_PRIVATE(ah)->ah_curchan;
+	const struct ieee80211_channel *chan = AH_PRIVATE(ah)->ah_curchan;
 
 	if (chan == AH_NULL) {
 		AH5211(ah)->ah_diversityControl = settings;

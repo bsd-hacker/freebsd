@@ -263,7 +263,7 @@ ar5212ResetTxQueue(struct ath_hal *ah, u_int q)
 {
 	struct ath_hal_5212 *ahp = AH5212(ah);
 	HAL_CAPABILITIES *pCap = &AH_PRIVATE(ah)->ah_caps;
-	HAL_CHANNEL_INTERNAL *chan = AH_PRIVATE(ah)->ah_curchan;
+	const struct ieee80211_channel *chan = AH_PRIVATE(ah)->ah_curchan;
 	HAL_TX_QUEUE_INFO *qi;
 	uint32_t cwMin, chanCwMin, value, qmisc, dmisc;
 
@@ -286,7 +286,7 @@ ar5212ResetTxQueue(struct ath_hal *ah, u_int q)
 		 * Select cwmin according to channel type.
 		 * NB: chan can be NULL during attach
 		 */
-		if (chan && IS_CHAN_B(chan))
+		if (chan && IEEE80211_IS_CHAN_B(chan))
 			chanCwMin = INIT_CWMIN_11B;
 		else
 			chanCwMin = INIT_CWMIN;

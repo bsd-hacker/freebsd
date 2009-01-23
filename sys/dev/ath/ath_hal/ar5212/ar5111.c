@@ -68,45 +68,13 @@ ar5111WriteRegs(struct ath_hal *ah, u_int modesIndex, u_int freqIndex,
 	HAL_INI_WRITE_ARRAY(ah, ar5212BB_RfGain_5111, freqIndex, writes);
 }
 
-static __inline int
-mappsb(u_int freq, u_int flags)
-{
-	return ((freq * 10) + (((freq % 5) == 2) ? 5 : 0) - 49400) / 5;
-}
-
-/*
- * Convert MHz frequency to IEEE channel number.
- */
-static int
-mhz2ieee(u_int freq, u_int flags)
-{
-	HALASSERT((flags & (CHANNEL_2GHZ|CHANNEL_5GHZ)) != 0);
-
-	if (flags & CHANNEL_2GHZ) {
-		if (freq == 2484) {
-			return 14;
-		} else if (freq < 2484) {
-			return ((int)freq - 2407) / 5;
-		} else
-			return 15 + ((freq - 2512) / 20);
-	} else {
-		if (IS_CHAN_IN_PUBLIC_SAFETY_BAND(freq)) {
-			return mappsb(freq, flags);
-		} else if ((flags & CHANNEL_A) && freq <= 5000) {
-			return (freq - 4000) / 5;
-		} else {
-			return (freq - 5000) / 5;
-		}
-	}
-}
-
 /*
  * Take the MHz channel value and set the Channel value
  *
  * ASSUMES: Writes enabled to analog bus
  */
 static HAL_BOOL
-ar5111SetChannel(struct ath_hal *ah,  HAL_CHANNEL_INTERNAL *chan)
+ar5111SetChannel(struct ath_hal *ah, const struct ieee80211_channel *chan)
 {
 #define CI_2GHZ_INDEX_CORRECTION 19
 	uint32_t refClk, reg32, data2111;
@@ -172,10 +140,10 @@ ar5111SetChannel(struct ath_hal *ah,  HAL_CHANNEL_INTERNAL *chan)
 		{ 1, 0x46, 180 } 	/* 2732  26 */
 	};
 
-	OS_MARK(ah, AH_MARK_SETCHANNEL, chan->channel);
+	OS_MARK(ah, AH_MARK_SETCHANNEL, chan->ic_freq);
 
-	chanIEEE = mhz2ieee(chan->channel, chan->channelFlags);
-	if (IS_CHAN_2GHZ(chan)) {
+	chanIEEE = chan->ic_ieee;
+	if (IEEE80211_IS_CHAN_2GHZ(chan)) {
 		const CHAN_INFO_2GHZ* ci =
 			&chan2GHzData[chanIEEE + CI_2GHZ_INDEX_CORRECTION];
 		uint32_t txctl;
@@ -185,7 +153,7 @@ ar5111SetChannel(struct ath_hal *ah,  HAL_CHANNEL_INTERNAL *chan)
 			 | (ci->refClkSel << 4);
 		chan5111 = ci->channel5111;
 		txctl = OS_REG_READ(ah, AR_PHY_CCK_TX_CTRL);
-		if (chan->channel == 2484) {
+		if (chan->ic_freq == 2484) {
 			/* Enable channel spreading for channel 14 */
 			OS_REG_WRITE(ah, AR_PHY_CCK_TX_CTRL,
 				txctl | AR_PHY_CCK_TX_CTRL_JAPAN);
@@ -246,7 +214,7 @@ ar5111GetRfBank(struct ath_hal *ah, int bank)
  * REQUIRES: Access to the analog rf device
  */
 static HAL_BOOL
-ar5111SetRfRegs(struct ath_hal *ah, HAL_CHANNEL_INTERNAL *chan,
+ar5111SetRfRegs(struct ath_hal *ah, const struct ieee80211_channel *chan,
 	uint16_t modesIndex, uint16_t *rfXpdGain)
 {
 	struct ath_hal_5212 *ahp = AH5212(ah);
@@ -257,19 +225,18 @@ ar5111SetRfRegs(struct ath_hal *ah, HAL_CHANNEL_INTERNAL *chan,
 	int i, regWrites = 0;
 
 	/* Setup rf parameters */
-	switch (chan->channelFlags & CHANNEL_ALL) {
-	case CHANNEL_A:
-	case CHANNEL_T:
-		if (4000 < chan->channel && chan->channel < 5260) {
+	switch (chan->ic_flags & IEEE80211_CHAN_ALL) {
+	case IEEE80211_CHAN_A:
+		if (4000 < chan->ic_freq && chan->ic_freq < 5260) {
 			tempOB = ee->ee_ob1;
 			tempDB = ee->ee_db1;
-		} else if (5260 <= chan->channel && chan->channel < 5500) {
+		} else if (5260 <= chan->ic_freq && chan->ic_freq < 5500) {
 			tempOB = ee->ee_ob2;
 			tempDB = ee->ee_db2;
-		} else if (5500 <= chan->channel && chan->channel < 5725) {
+		} else if (5500 <= chan->ic_freq && chan->ic_freq < 5725) {
 			tempOB = ee->ee_ob3;
 			tempDB = ee->ee_db3;
-		} else if (chan->channel >= 5725) {
+		} else if (chan->ic_freq >= 5725) {
 			tempOB = ee->ee_ob4;
 			tempDB = ee->ee_db4;
 		} else {
@@ -283,7 +250,7 @@ ar5111SetRfRegs(struct ath_hal *ah, HAL_CHANNEL_INTERNAL *chan,
 		rfPwdXpd = !ee->ee_xpd[headerInfo11A];
 		gainI = ee->ee_gainI[headerInfo11A];
 		break;
-	case CHANNEL_B:
+	case IEEE80211_CHAN_B:
 		tempOB = ee->ee_obFor24;
 		tempDB = ee->ee_dbFor24;
 		ob2GHz = ee->ee_ob2GHz[0];
@@ -294,7 +261,8 @@ ar5111SetRfRegs(struct ath_hal *ah, HAL_CHANNEL_INTERNAL *chan,
 		rfPwdXpd = !ee->ee_xpd[headerInfo11B];
 		gainI = ee->ee_gainI[headerInfo11B];
 		break;
-	case CHANNEL_G:
+	case IEEE80211_CHAN_G:
+	case IEEE80211_CHAN_PUREG:	/* NB: really 108G */
 		tempOB = ee->ee_obFor24g;
 		tempDB = ee->ee_dbFor24g;
 		ob2GHz = ee->ee_ob2GHz[1];
@@ -307,7 +275,7 @@ ar5111SetRfRegs(struct ath_hal *ah, HAL_CHANNEL_INTERNAL *chan,
 		break;
 	default:
 		HALDEBUG(ah, HAL_DEBUG_ANY, "%s: invalid channel flags 0x%x\n",
-		    __func__, chan->channelFlags);
+		    __func__, chan->ic_flags);
 		return AH_FALSE;
 	}
 
@@ -317,7 +285,7 @@ ar5111SetRfRegs(struct ath_hal *ah, HAL_CHANNEL_INTERNAL *chan,
 	/* Bank 0 Write */
 	for (i = 0; i < N(ar5212Bank0_5111); i++)
 		rfReg[i] = ar5212Bank0_5111[i][modesIndex];
-	if (IS_CHAN_2GHZ(chan)) {
+	if (IEEE80211_IS_CHAN_2GHZ(chan)) {
 		ar5212ModifyRfBuffer(rfReg, ob2GHz, 3, 119, 0);
 		ar5212ModifyRfBuffer(rfReg, db2GHz, 3, 122, 0);
 	}
@@ -335,7 +303,7 @@ ar5111SetRfRegs(struct ath_hal *ah, HAL_CHANNEL_INTERNAL *chan,
 	/* Bank 6 Write */
 	for (i = 0; i < N(ar5212Bank6_5111); i++)
 		rfReg[i] = ar5212Bank6_5111[i][modesIndex];
-	if (IS_CHAN_A(chan)) {		/* NB: CHANNEL_A | CHANNEL_T */
+	if (IEEE80211_IS_CHAN_A(chan)) {	/* NB: CHANNEL_A | CHANNEL_T */
 		ar5212ModifyRfBuffer(rfReg, ee->ee_cornerCal.pd84, 1, 51, 3);
 		ar5212ModifyRfBuffer(rfReg, ee->ee_cornerCal.pd90, 1, 45, 3);
 	}
@@ -352,11 +320,11 @@ ar5111SetRfRegs(struct ath_hal *ah, HAL_CHANNEL_INTERNAL *chan,
 	ar5212ModifyRfBuffer(rfReg, gainI, 6, 29, 0);   
 	ar5212ModifyRfBuffer(rfReg, rfPloSel, 1, 4, 0);   
 
-	if (IS_CHAN_QUARTER_RATE(chan) || IS_CHAN_HALF_RATE(chan)) {
+	if (IEEE80211_IS_CHAN_QUARTER(chan) || IEEE80211_IS_CHAN_HALF(chan)) {
         	uint32_t	rfWaitI, rfWaitS, rfMaxTime;
 
         	rfWaitS = 0x1f;
-        	rfWaitI = (IS_CHAN_HALF_RATE(chan)) ?  0x10 : 0x1f;
+        	rfWaitI = (IEEE80211_IS_CHAN_HALF(chan)) ?  0x10 : 0x1f;
         	rfMaxTime = 3;
         	ar5212ModifyRfBuffer(rfReg, rfWaitS, 5, 19, 0);
         	ar5212ModifyRfBuffer(rfReg, rfWaitI, 5, 24, 0);
@@ -415,7 +383,8 @@ interpolate(uint16_t target, uint16_t srcLeft, uint16_t srcRight,
  */
 static HAL_BOOL
 ar5111SetPowerTable(struct ath_hal *ah,
-	int16_t *pMinPower, int16_t *pMaxPower, HAL_CHANNEL_INTERNAL *chan,
+	int16_t *pMinPower, int16_t *pMaxPower,
+	const struct ieee80211_channel *chan,
 	uint16_t *rfXpdGain)
 {
 	struct ath_hal_5212 *ahp = AH5212(ah);
@@ -436,27 +405,27 @@ ar5111SetPowerTable(struct ath_hal *ah,
 	PCDACS_EEPROM eepromPcdacs;
 
 	/* setup the pcdac struct to point to the correct info, based on mode */
-	switch (chan->channelFlags & CHANNEL_ALL) {
-	case CHANNEL_A:
-	case CHANNEL_T:
+	switch (chan->ic_flags & IEEE80211_CHAN_ALLTURBO) {
+	case IEEE80211_CHAN_A:
+	case IEEE80211_CHAN_ST:
 		eepromPcdacs.numChannels     = ee->ee_numChannels11a;
 		eepromPcdacs.pChannelList    = ee->ee_channels11a;
 		eepromPcdacs.pDataPerChannel = ee->ee_dataPerChannel11a;
 		break;
-	case CHANNEL_B:
+	case IEEE80211_CHAN_B:
 		eepromPcdacs.numChannels     = ee->ee_numChannels2_4;
 		eepromPcdacs.pChannelList    = ee->ee_channels11b;
 		eepromPcdacs.pDataPerChannel = ee->ee_dataPerChannel11b;
 		break;
-	case CHANNEL_G:
-	case CHANNEL_108G:
+	case IEEE80211_CHAN_G:
+	case IEEE80211_CHAN_108G:
 		eepromPcdacs.numChannels     = ee->ee_numChannels2_4;
 		eepromPcdacs.pChannelList    = ee->ee_channels11g;
 		eepromPcdacs.pDataPerChannel = ee->ee_dataPerChannel11g;
 		break;
 	default:
 		HALDEBUG(ah, HAL_DEBUG_ANY, "%s: invalid channel flags 0x%x\n",
-		    __func__, chan->channelFlags);
+		    __func__, chan->ic_flags);
 		return AH_FALSE;
 	}
 
@@ -476,7 +445,7 @@ ar5111SetPowerTable(struct ath_hal *ah,
 
 	/* Fill out the power values for this channel */
 	for (j = 0; j < pcdacStruct.numPcdacValues; j++ )
-		pScaledUpDbm[j] = ar5212GetScaledPower(chan->channel,
+		pScaledUpDbm[j] = ar5212GetScaledPower(chan->ic_freq,
 			pPcdacValues[j], pSrcStruct);
 
 	/* Now scale the pcdac values to fit in the 64 entry power table */
@@ -649,7 +618,8 @@ ar5212GetLowerUpperPcdacs(uint16_t pcdac, uint16_t channel,
 }
 
 static HAL_BOOL
-ar5111GetChannelMaxMinPower(struct ath_hal *ah, const HAL_CHANNEL_INTERNAL *chan,
+ar5111GetChannelMaxMinPower(struct ath_hal *ah,
+	const struct ieee80211_channel *chan,
 	int16_t *maxPow, int16_t *minPow)
 {
 	/* XXX - Get 5111 power limits! */

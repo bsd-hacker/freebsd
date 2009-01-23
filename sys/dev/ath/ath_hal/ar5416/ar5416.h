@@ -92,7 +92,8 @@ extern	void ar5416Detach(struct ath_hal *ah);
 extern	HAL_BOOL ar5416FillCapabilityInfo(struct ath_hal *ah);
 
 #define	IS_5GHZ_FAST_CLOCK_EN(_ah, _c) \
-	(IS_CHAN_5GHZ(_c) && ath_hal_eepromGetFlag(ah, AR_EEP_FSTCLK_5G))
+	(IEEE80211_IS_CHAN_5GHZ(_c) && \
+	 ath_hal_eepromGetFlag(ah, AR_EEP_FSTCLK_5G))
 
 extern	void ar5416AniAttach(struct ath_hal *, const struct ar5212AniParams *,
 		const struct ar5212AniParams *, HAL_BOOL ena);
@@ -102,8 +103,8 @@ extern	HAL_BOOL ar5416AniSetParams(struct ath_hal *,
 		const struct ar5212AniParams *, const struct ar5212AniParams *);
 extern	void ar5416ProcessMibIntr(struct ath_hal *, const HAL_NODE_STATS *);
 extern	void ar5416AniPoll(struct ath_hal *, const HAL_NODE_STATS *,
-			     const HAL_CHANNEL *);
-extern	void ar5416AniReset(struct ath_hal *, HAL_CHANNEL_INTERNAL *,
+			     const struct ieee80211_channel *);
+extern	void ar5416AniReset(struct ath_hal *, const struct ieee80211_channel *,
 		HAL_OPMODE, int);
 
 extern	void ar5416SetBeaconTimers(struct ath_hal *, const HAL_BEACON_TIMERS *);
@@ -160,17 +161,19 @@ extern	HAL_STATUS ar5416ProcRxDesc(struct ath_hal *ah, struct ath_desc *,
 		struct ath_rx_status *);
 
 extern	HAL_BOOL ar5416Reset(struct ath_hal *ah, HAL_OPMODE opmode,
-		HAL_CHANNEL *chan, HAL_BOOL bChannelChange, HAL_STATUS *status);
+		struct ieee80211_channel *chan,
+		HAL_BOOL bChannelChange, HAL_STATUS *status);
 extern	HAL_BOOL ar5416PhyDisable(struct ath_hal *ah);
 extern	HAL_RFGAIN ar5416GetRfgain(struct ath_hal *ah);
 extern	HAL_BOOL ar5416Disable(struct ath_hal *ah);
-extern	HAL_BOOL ar5416ChipReset(struct ath_hal *ah, HAL_CHANNEL *);
+extern	HAL_BOOL ar5416ChipReset(struct ath_hal *ah,
+		const struct ieee80211_channel *);
 extern	HAL_BOOL ar5416SetResetReg(struct ath_hal *, uint32_t type);
 extern	HAL_BOOL ar5416SetTxPowerLimit(struct ath_hal *ah, uint32_t limit);
 extern	HAL_BOOL ar5416GetChipPowerLimits(struct ath_hal *ah,
-		HAL_CHANNEL_INTERNAL *chan);
+		struct ieee80211_channel *chan);
 extern	void ar5416GetChannelCenters(struct ath_hal *,
-		HAL_CHANNEL_INTERNAL *chan, CHAN_CENTERS *centers);
+		const struct ieee80211_channel *chan, CHAN_CENTERS *centers);
 
 extern	HAL_BOOL ar5416StopTxDma(struct ath_hal *ah, u_int q);
 extern	HAL_BOOL ar5416SetupTxDesc(struct ath_hal *ah, struct ath_desc *ds,

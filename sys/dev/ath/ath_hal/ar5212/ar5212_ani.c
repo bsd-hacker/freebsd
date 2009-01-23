@@ -100,38 +100,24 @@ disableAniMIBCounters(struct ath_hal *ah)
 
 /*
  * This routine returns the index into the aniState array that
- * corresponds to the channel in *chan.  If no match is found and the
- * array is still not fully utilized, a new entry is created for the
- * channel.  We assume the attach function has already initialized the
- * ah_ani values and only the channel field needs to be set.
+ * corresponds to the channel in chan.
  */
-static int
-ar5212GetAniChannelIndex(struct ath_hal *ah, HAL_CHANNEL_INTERNAL *chan)
+static struct ar5212AniState *
+ar5212GetAniState(struct ath_hal *ah,
+	const struct ieee80211_channel *chan)
 {
-#define N(a)     (sizeof(a) / sizeof(a[0]))
 	struct ath_hal_5212 *ahp = AH5212(ah);
-	int i;
+	/* XXX bounds check ic_devdata */
+	struct ar5212AniState *asp = &ahp->ah_ani[chan->ic_devdata];
 
-	for (i = 0; i < N(ahp->ah_ani); i++) {
-		struct ar5212AniState *asp = &ahp->ah_ani[i];
-		if (asp->c.channel == chan->channel)
-			return i;
-		if (asp->c.channel == 0) {
-			asp->c.channel = chan->channel;
-			asp->c.channelFlags = chan->channelFlags;
-			asp->isSetup = AH_FALSE;
-			if (IS_CHAN_2GHZ(chan))
-				asp->params = &ahp->ah_aniParams24;
-			else
-				asp->params = &ahp->ah_aniParams5;
-			return i;
-		}
+	if (asp->params == AH_NULL) {
+		if (IEEE80211_IS_CHAN_2GHZ(chan))
+			asp->params = &ahp->ah_aniParams24;
+		else
+			asp->params = &ahp->ah_aniParams5;
+		asp->isSetup = AH_FALSE;
 	}
-	/* XXX statistic */
-	HALDEBUG(ah, HAL_DEBUG_ANY,
-	    "No more channel states left. Using channel 0\n");
-	return 0;		/* XXX gotta return something valid */
-#undef N
+	return asp;
 }
 
 /*
@@ -420,7 +406,7 @@ static void
 ar5212AniOfdmErrTrigger(struct ath_hal *ah)
 {
 	struct ath_hal_5212 *ahp = AH5212(ah);
-	HAL_CHANNEL_INTERNAL *chan = AH_PRIVATE(ah)->ah_curchan;
+	const struct ieee80211_channel *chan = AH_PRIVATE(ah)->ah_curchan;
 	struct ar5212AniState *aniState;
 	const struct ar5212AniParams *params;
 
@@ -503,8 +489,7 @@ ar5212AniOfdmErrTrigger(struct ath_hal *ah)
 			 * weak signal detection and zero firstepLevel to
 			 * maximize CCK sensitivity 
 			 */
-			/* XXX can optimize */
-			if (IS_CHAN_B(chan) || IS_CHAN_G(chan)) {
+			if (IEEE80211_IS_CHAN_CCK(chan)) {
 				if (!aniState->ofdmWeakSigDetectOff) {
 					HALDEBUG(ah, HAL_DEBUG_ANI,
 					    "%s: rssi %d OWSD off\n",
@@ -531,7 +516,7 @@ static void
 ar5212AniCckErrTrigger(struct ath_hal *ah)
 {
 	struct ath_hal_5212 *ahp = AH5212(ah);
-	HAL_CHANNEL_INTERNAL *chan = AH_PRIVATE(ah)->ah_curchan;
+	const struct ieee80211_channel *chan = AH_PRIVATE(ah)->ah_curchan;
 	struct ar5212AniState *aniState;
 	const struct ar5212AniParams *params;
 
@@ -571,7 +556,8 @@ ar5212AniCckErrTrigger(struct ath_hal *ah)
 			 * CCK sensitivity in 11b/g mode.
 			 */
 			/* XXX can optimize */
-			if (IS_CHAN_B(chan) || IS_CHAN_G(chan)) {
+			if (IEEE80211_IS_CHAN_B(chan) ||
+			    IEEE80211_IS_CHAN_G(chan)) {
 				if (aniState->firstepLevel > 0) {
 					HALDEBUG(ah, HAL_DEBUG_ANI,
 					    "%s: rssi %d zero ST (was %u)\n",
@@ -612,21 +598,16 @@ ar5212AniRestart(struct ath_hal *ah, struct ar5212AniState *aniState)
 /*
  * Restore/reset the ANI parameters and reset the statistics.
  * This routine must be called for every channel change.
- *
- * NOTE: This is where ah_curani is set; other ani code assumes
- *       it is setup to reflect the current channel.
  */
 void
-ar5212AniReset(struct ath_hal *ah, HAL_CHANNEL_INTERNAL *chan,
+ar5212AniReset(struct ath_hal *ah, const struct ieee80211_channel *chan,
 	HAL_OPMODE opmode, int restore)
 {
 	struct ath_hal_5212 *ahp = AH5212(ah);
 	struct ar5212AniState *aniState;
 	uint32_t rxfilter;
-	int index;
 
-	index = ar5212GetAniChannelIndex(ah, chan);
-	aniState = &ahp->ah_ani[index];
+	aniState = ar5212GetAniState(ah, chan);
 	ahp->ah_curani = aniState;
 #if 0
 	ath_hal_printf(ah,"%s: chan %u/0x%x restore %d setup %d opmode %u\n",
@@ -635,7 +616,7 @@ ar5212AniReset(struct ath_hal *ah, HAL_CHANNEL_INTERNAL *chan,
 #else
 	HALDEBUG(ah, HAL_DEBUG_ANI,
 	    "%s: chan %u/0x%x restore %d setup %d opmode %u\n",
-	    __func__, chan->channel, chan->channelFlags, restore,
+	    __func__, chan->ic_freq, chan->ic_flags, restore,
 	    aniState->isSetup, opmode);
 #endif
 	OS_MARK(ah, AH_MARK_ANI_RESET, opmode);
@@ -952,7 +933,7 @@ updateMIBStats(struct ath_hal *ah, struct ar5212AniState *aniState)
  */
 void
 ar5212AniPoll(struct ath_hal *ah, const HAL_NODE_STATS *stats,
-		const HAL_CHANNEL *chan)
+		const struct ieee80211_channel *chan)
 {
 	struct ath_hal_5212 *ahp = AH5212(ah);
 	struct ar5212AniState *aniState = ahp->ah_curani;

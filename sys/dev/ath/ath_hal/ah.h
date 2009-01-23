@@ -367,54 +367,6 @@ typedef enum {
 typedef uint16_t HAL_CTRY_CODE;		/* country code */
 typedef uint16_t HAL_REG_DOMAIN;		/* regulatory domain code */
 
-typedef struct {
-	uint32_t	channelFlags;
-	uint16_t	channel;	/* NB: must be first for casting */
-	uint16_t	devdata;	/* XXX temp */
-} HAL_CHANNEL;
-
-/* channelFlags */
-#define	CHANNEL_NFCREQUIRED 0x01 /* channel requires noise floor check */
-#define	CHANNEL_CW_INT	0x00002	/* CW interference detected on channel */
-#define	CHANNEL_TURBO	0x00010	/* Turbo Channel */
-#define	CHANNEL_CCK	0x00020	/* CCK channel */
-#define	CHANNEL_OFDM	0x00040	/* OFDM channel */
-#define	CHANNEL_2GHZ	0x00080	/* 2 GHz spectrum channel */
-#define	CHANNEL_5GHZ	0x00100	/* 5 GHz spectrum channel */
-#define	CHANNEL_PASSIVE	0x00200	/* Only passive scan allowed in the channel */
-#define	CHANNEL_DYN	0x00400	/* dynamic CCK-OFDM channel */
-#define	CHANNEL_STURBO	0x02000	/* Static turbo, no 11a-only usage */
-#define	CHANNEL_HALF    0x04000 /* Half rate channel */
-#define	CHANNEL_QUARTER 0x08000 /* Quarter rate channel */
-#define	CHANNEL_HT20	0x10000 /* 11n 20MHZ channel */ 
-#define	CHANNEL_HT40PLUS 0x20000 /* 11n 40MHZ channel w/ ext chan above */
-#define	CHANNEL_HT40MINUS 0x40000 /* 11n 40MHZ channel w/ ext chan below */
-#define CHANNEL_DFS	0x80000 /* DFS required on channel */
-#define CHANNEL_4MS_LIMIT 0x00100000 /* 4msec packet limit on this channel */
-
-#define	CHANNEL_A	(CHANNEL_5GHZ|CHANNEL_OFDM)
-#define	CHANNEL_B	(CHANNEL_2GHZ|CHANNEL_CCK)
-#define	CHANNEL_PUREG	(CHANNEL_2GHZ|CHANNEL_OFDM)
-#ifdef notdef
-#define	CHANNEL_G	(CHANNEL_2GHZ|CHANNEL_DYN)
-#else
-#define	CHANNEL_G	(CHANNEL_2GHZ|CHANNEL_OFDM)
-#endif
-#define	CHANNEL_T	(CHANNEL_5GHZ|CHANNEL_OFDM|CHANNEL_TURBO)
-#define CHANNEL_ST	(CHANNEL_T|CHANNEL_STURBO)
-#define	CHANNEL_108G	(CHANNEL_2GHZ|CHANNEL_OFDM|CHANNEL_TURBO)
-#define	CHANNEL_108A	CHANNEL_T
-#define	CHANNEL_G_HT20		(CHANNEL_G|CHANNEL_HT20)
-#define	CHANNEL_A_HT20		(CHANNEL_A|CHANNEL_HT20)
-#define	CHANNEL_G_HT40PLUS	(CHANNEL_G|CHANNEL_HT40PLUS)
-#define	CHANNEL_G_HT40MINUS	(CHANNEL_G|CHANNEL_HT40MINUS)
-#define	CHANNEL_A_HT40PLUS	(CHANNEL_A|CHANNEL_HT40PLUS)
-#define	CHANNEL_A_HT40MINUS	(CHANNEL_A|CHANNEL_HT40MINUS)
-#define	CHANNEL_ALL \
-	(CHANNEL_OFDM | CHANNEL_CCK| CHANNEL_2GHZ | CHANNEL_5GHZ | \
-	 CHANNEL_TURBO | CHANNEL_HT20 | CHANNEL_HT40PLUS | CHANNEL_HT40MINUS)
-#define	CHANNEL_ALL_NOTURBO 	(CHANNEL_ALL &~ CHANNEL_TURBO)
-
 #define HAL_ANTENNA_MIN_MODE  0
 #define HAL_ANTENNA_FIXED_A   1
 #define HAL_ANTENNA_FIXED_B   2
@@ -616,6 +568,7 @@ typedef struct {
 struct ath_desc;
 struct ath_tx_status;
 struct ath_rx_status;
+struct ieee80211_channel;
 
 /*
  * Hardware Access Layer (HAL) API.
@@ -651,18 +604,18 @@ struct ath_hal {
 
 	/* Reset functions */
 	HAL_BOOL  __ahdecl(*ah_reset)(struct ath_hal *, HAL_OPMODE,
-				HAL_CHANNEL *,
+				struct ieee80211_channel *,
 				HAL_BOOL bChannelChange, HAL_STATUS *status);
 	HAL_BOOL  __ahdecl(*ah_phyDisable)(struct ath_hal *);
 	HAL_BOOL  __ahdecl(*ah_disable)(struct ath_hal *);
 	void	  __ahdecl(*ah_setPCUConfig)(struct ath_hal *);
 	HAL_BOOL  __ahdecl(*ah_perCalibration)(struct ath_hal*,
-			HAL_CHANNEL *, HAL_BOOL *);
+			struct ieee80211_channel *, HAL_BOOL *);
 	HAL_BOOL  __ahdecl(*ah_perCalibrationN)(struct ath_hal *,
-			HAL_CHANNEL *, u_int chainMask,
+			struct ieee80211_channel *, u_int chainMask,
 			HAL_BOOL longCal, HAL_BOOL *isCalDone);
 	HAL_BOOL  __ahdecl(*ah_resetCalValid)(struct ath_hal *,
-			const HAL_CHANNEL *);
+			const struct ieee80211_channel *);
 	HAL_BOOL  __ahdecl(*ah_setTxPowerLimit)(struct ath_hal *, uint32_t);
 
 	/* Transmit functions */
@@ -724,7 +677,7 @@ struct ath_hal {
 				struct ath_rx_status *);
 	void	  __ahdecl(*ah_rxMonitor)(struct ath_hal *,
 				const HAL_NODE_STATS *,
-				const HAL_CHANNEL *);
+				const struct ieee80211_channel *);
 	void	  __ahdecl(*ah_procMibEvent)(struct ath_hal *,
 				const HAL_NODE_STATS *);
 
@@ -794,7 +747,7 @@ struct ath_hal {
 				HAL_POWER_MODE mode, int setChip);
 	HAL_POWER_MODE __ahdecl(*ah_getPowerMode)(struct ath_hal*);
 	int16_t   __ahdecl(*ah_getChanNoise)(struct ath_hal *,
-				const HAL_CHANNEL *);
+				const struct ieee80211_channel *);
 
 	/* Beacon Management Functions */
 	void	  __ahdecl(*ah_setBeaconTimers)(struct ath_hal*,

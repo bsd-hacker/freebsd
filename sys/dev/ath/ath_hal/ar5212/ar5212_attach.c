@@ -652,12 +652,12 @@ HAL_BOOL
 ar5212GetChannelEdges(struct ath_hal *ah,
 	uint16_t flags, uint16_t *low, uint16_t *high)
 {
-	if (flags & CHANNEL_5GHZ) {
+	if (flags & IEEE80211_CHAN_5GHZ) {
 		*low = 4915;
 		*high = 6100;
 		return AH_TRUE;
 	}
-	if ((flags & CHANNEL_2GHZ) &&
+	if ((flags & IEEE80211_CHAN_2GHZ) &&
 	    (ath_hal_eepromGetFlag(ah, AR_EEP_BMODE) ||
 	     ath_hal_eepromGetFlag(ah, AR_EEP_GMODE))) {
 		*low = 2312;

@@ -1678,22 +1678,30 @@ struct cmode {
 };
 
 static const struct cmode modes[] = {
-	{ HAL_MODE_TURBO,	CHANNEL_ST},	/* NB: 11a Static Turbo */
-	{ HAL_MODE_11A,		CHANNEL_A},
-	{ HAL_MODE_11B,		CHANNEL_B},
-	{ HAL_MODE_11G,		CHANNEL_G},
-	{ HAL_MODE_11G_TURBO,	CHANNEL_108G},
-	{ HAL_MODE_11A_TURBO,	CHANNEL_108A},
-	{ HAL_MODE_11A_QUARTER_RATE,	CHANNEL_A | CHANNEL_QUARTER},
-	{ HAL_MODE_11A_HALF_RATE,	CHANNEL_A | CHANNEL_HALF},
-	{ HAL_MODE_11G_QUARTER_RATE,	CHANNEL_G | CHANNEL_QUARTER},
-	{ HAL_MODE_11G_HALF_RATE,	CHANNEL_G | CHANNEL_HALF},
-	{ HAL_MODE_11NG_HT20,	CHANNEL_G_HT20},
-	{ HAL_MODE_11NG_HT40PLUS,	CHANNEL_G_HT40PLUS},
-	{ HAL_MODE_11NG_HT40MINUS,	CHANNEL_G_HT40MINUS},
-	{ HAL_MODE_11NA_HT20,	CHANNEL_A_HT20},
-	{ HAL_MODE_11NA_HT40PLUS,	CHANNEL_A_HT40PLUS},
-	{ HAL_MODE_11NA_HT40MINUS,	CHANNEL_A_HT40MINUS},
+	{ HAL_MODE_TURBO,	IEEE80211_CHAN_ST },
+	{ HAL_MODE_11A,		IEEE80211_CHAN_A },
+	{ HAL_MODE_11B,		IEEE80211_CHAN_B },
+	{ HAL_MODE_11G,		IEEE80211_CHAN_G },
+	{ HAL_MODE_11G_TURBO,	IEEE80211_CHAN_108G },
+	{ HAL_MODE_11A_TURBO,	IEEE80211_CHAN_108A },
+	{ HAL_MODE_11A_QUARTER_RATE,
+	  IEEE80211_CHAN_A | IEEE80211_CHAN_QUARTER },
+	{ HAL_MODE_11A_HALF_RATE,
+	  IEEE80211_CHAN_A | IEEE80211_CHAN_HALF },
+	{ HAL_MODE_11G_QUARTER_RATE,
+	  IEEE80211_CHAN_G | IEEE80211_CHAN_QUARTER },
+	{ HAL_MODE_11G_HALF_RATE,
+	  IEEE80211_CHAN_G | IEEE80211_CHAN_HALF },
+	{ HAL_MODE_11NG_HT20,	IEEE80211_CHAN_2GHZ | IEEE80211_CHAN_HT20 },
+	{ HAL_MODE_11NG_HT40PLUS,
+	  IEEE80211_CHAN_2GHZ | IEEE80211_CHAN_HT40U },
+	{ HAL_MODE_11NG_HT40MINUS,
+	  IEEE80211_CHAN_2GHZ | IEEE80211_CHAN_HT40D },
+	{ HAL_MODE_11NA_HT20,	IEEE80211_CHAN_5GHZ | IEEE80211_CHAN_HT20 },
+	{ HAL_MODE_11NA_HT40PLUS,
+	  IEEE80211_CHAN_5GHZ | IEEE80211_CHAN_HT40U },
+	{ HAL_MODE_11NA_HT40MINUS,
+	  IEEE80211_CHAN_5GHZ | IEEE80211_CHAN_HT40D },
 };
 
 static OS_INLINE uint16_t
@@ -1917,10 +1925,8 @@ getregstate(struct ath_hal *ah, HAL_CTRY_CODE cc, HAL_REG_DOMAIN regDmn,
 	}
 	if (pcountry != AH_NULL)
 		*pcountry = country;
-	if (prd2GHz != AH_NULL)
-		*prd2GHz = rd2GHz;
-	if (prd5GHz != AH_NULL)
-		*prd5GHz = rd5GHz;
+	*prd2GHz = rd2GHz;
+	*prd5GHz = rd5GHz;
 	return HAL_OK;
 }
 
@@ -2111,19 +2117,17 @@ getchannels(struct ath_hal *ah,
 				ic->ic_freq = c;
 				ic->ic_flags = cm->flags;
 				ic->ic_maxregpower = fband->powerDfs;
+				ath_hal_getpowerlimits(ah, ic);
 				ic->ic_maxantgain = fband->antennaMax;
 				if (fband->usePassScan & pscan)
 					ic->ic_flags |= IEEE80211_CHAN_PASSIVE;
 				else
 					ic->ic_flags &= ~IEEE80211_CHAN_PASSIVE;
 				lastc = c;
-				if (fband->useDfs & dfsMask) {
-					/* DFS and HT40 don't mix */
-					if (cm->mode == HAL_MODE_11NA_HT40PLUS ||
-					    cm->mode == HAL_MODE_11NA_HT40MINUS)
-						continue;
+				/* NB: DFS and HT40 don't mix */
+				if ((fband->useDfs & dfsMask) &&
+				    !IEEE80211_IS_CHAN_HT40(ic))
 					ic->ic_flags |= IEEE80211_CHAN_DFS;
-				}
 				if (IEEE80211_IS_CHAN_5GHZ(ic) &&
 				    (rdflags & DISALLOW_ADHOC_11A))
 					ic->ic_flags |= IEEE80211_CHAN_NOADHOC;
@@ -2137,54 +2141,75 @@ getchannels(struct ath_hal *ah,
 				if (rdflags & NEED_NFC)
 					ic->ic_flags |= CHANNEL_NFCREQUIRED;
 
-				/* retrieve power limits */
-				{ HAL_CHANNEL_INTERNAL hc;
-				  hc.channel = ic->ic_freq;
-				  hc.channelFlags = ic->ic_flags;
-				  if (ath_hal_getpowerlimits(ah, &hc)) {
-					ic->ic_maxpower = hc.maxTxPower;
-					ic->ic_minpower = hc.minTxPower;
-				  }
-				}
-
 				ic++, next++;
 			}
 		}
 	}
 done:
 	*nchans = next;
+	/* NB: pcountry set above by getregstate */
+	if (prd2GHz != AH_NULL)
+		*prd2GHz = rd2GHz;
+	if (prd5GHz != AH_NULL)
+		*prd5GHz = rd5GHz;
 	return HAL_OK;
 #undef HAL_MODE_11A_ALL
 #undef CHANNEL_HALF_BW
 #undef CHANNEL_QUARTER_BW
 }
 
+/*
+ * Retrieve a channel list without affecting runtime state.
+ */
 HAL_STATUS
 ath_hal_getchannels(struct ath_hal *ah,
     struct ieee80211_channel chans[], u_int maxchans, int *nchans,
     u_int modeSelect, HAL_CTRY_CODE cc, HAL_REG_DOMAIN regDmn,
     HAL_BOOL enableExtendedChannels)
 {
-	HAL_STATUS status;
-	struct ieee80211_channel *c;
-	int i;
-
-	status = getchannels(ah, chans, maxchans, nchans, modeSelect,
+	return getchannels(ah, chans, maxchans, nchans, modeSelect,
 	    cc, regDmn, enableExtendedChannels, AH_NULL, AH_NULL, AH_NULL);
-	if (status == HAL_OK) {
-		for (i = 0; i < *nchans; i++) {
-			c = &chans[i];
-			if (IEEE80211_IS_CHAN_PUREG(c)) {
-				/*
-				 * Except for AR5211, PUREG means mixed
-				 * DSSS and OFDM; convert to "just G".
-				 */
-				c->ic_flags &= ~IEEE80211_CHAN_PUREG;
-				c->ic_flags |= IEEE80211_CHAN_G;
+}
+
+/*
+ * Setup the internal/private channel state given a table of
+ * net80211 channels.  We collapse entries for the same frequency
+ * and record the frequency for doing noise floor processing
+ * where we don't have net80211 channel context.
+ */
+static HAL_BOOL
+assignPrivateChannels(struct ath_hal *ah,
+	struct ieee80211_channel chans[], int nchans)
+{
+	HAL_CHANNEL_INTERNAL *ic;
+	int i, j, next;
+
+	next = 0;
+	for (i = 0; i < nchans; i++) {
+		for (j = i-1; j >= 0; j--)
+			if (chans[j].ic_freq == chans[i].ic_freq) {
+				chans[i].ic_devdata = chans[j].ic_devdata;
+				break;
 			}
+		if (j < 0) {
+			/* new entry, assign a private channel entry */
+			if (next >= N(AH_PRIVATE(ah)->ah_channels)) {
+				HALDEBUG(ah, HAL_DEBUG_ANY,
+				    "%s: too many channels, max %u\n",
+				    __func__, N(AH_PRIVATE(ah)->ah_channels));
+				return AH_FALSE;
+			}
+			ic = &AH_PRIVATE(ah)->ah_channels[next];
+			OS_MEMZERO(ic, sizeof(*ic));
+			ic->channel = chans[i].ic_freq;
+			chans[i].ic_devdata = next;
+			next++;
 		}
 	}
-	return status;
+	AH_PRIVATE(ah)->ah_nchan = next;
+	HALDEBUG(ah, HAL_DEBUG_ANY, "%s: %u public, %u private channels\n",
+	    __func__, nchans, next);
+	return AH_TRUE;
 }
 
 /*
@@ -2199,55 +2224,19 @@ ath_hal_init_channels(struct ath_hal *ah,
 	COUNTRY_CODE_TO_ENUM_RD *country;
 	REG_DOMAIN *rd5GHz, *rd2GHz;
 	HAL_STATUS status;
-	struct ieee80211_channel *c;
-	HAL_CHANNEL_INTERNAL *ic;
-	int i;
 
-	if (maxchans > N(AH_PRIVATE(ah)->ah_channels))
-		maxchans = N(AH_PRIVATE(ah)->ah_channels);
 	status = getchannels(ah, chans, maxchans, nchans, modeSelect,
 	    cc, regDmn, enableExtendedChannels, &country, &rd2GHz, &rd5GHz);
-	if (status != HAL_OK)
-		return status;
-	for (i = 0; i < *nchans; i++) {
-		c = &chans[i];
-		ic = &AH_PRIVATE(ah)->ah_channels[i];
+	if (status == HAL_OK && assignPrivateChannels(ah, chans, *nchans)) {
+		AH_PRIVATE(ah)->ah_rd2GHz = rd2GHz;
+		AH_PRIVATE(ah)->ah_rd5GHz = rd5GHz;
 
-		OS_MEMZERO(ic, sizeof(*ic));
-		ic->channel = c->ic_freq;
-		ic->channelFlags = c->ic_flags;
-		ic->devdata = i;	/* XXX */
-		ic->maxRegTxPower = c->ic_maxregpower;
-		ic->maxTxPower = c->ic_maxpower;
-		ic->minTxPower = c->ic_minpower;
-		ic->antennaMax = c->ic_maxantgain;
-
-		c->ic_devdata = i;
-
-		if (IEEE80211_IS_CHAN_PUREG(c)) {
-			/*
-			 * Except for AR5211, PUREG means mixed
-			 * DSSS and OFDM; convert to "just G".
-			 */
-			c->ic_flags &= ~IEEE80211_CHAN_PUREG;
-			c->ic_flags |= IEEE80211_CHAN_G;
-		}
-		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
-		    "[%3u] freq %u/0x%x txpow reg/max/min %u/%u/%u"
-		    " antmax %u ctl 0x%x\n",
-		    i, c->ic_freq, c->ic_flags,
-		    c->ic_maxregpower, c->ic_maxpower, c->ic_minpower,
-		    c->ic_maxantgain, ic->ctl);
-	}
-	AH_PRIVATE(ah)->ah_nchan = *nchans;
-	AH_PRIVATE(ah)->ah_rd2GHz = rd2GHz;
-	AH_PRIVATE(ah)->ah_rd5GHz = rd5GHz;
-
-	ah->ah_countryCode = country->countryCode;
-	HALDEBUG(ah, HAL_DEBUG_REGDOMAIN, "%s: cc %u\n",
-	    __func__, ah->ah_countryCode);
-
-	return HAL_OK;
+		ah->ah_countryCode = country->countryCode;
+		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN, "%s: cc %u\n",
+		    __func__, ah->ah_countryCode);
+	} else
+		status = HAL_EINVAL;
+	return status;
 }
 
 /*
@@ -2260,77 +2249,45 @@ ath_hal_set_channels(struct ath_hal *ah,
 {
 	COUNTRY_CODE_TO_ENUM_RD *country;
 	REG_DOMAIN *rd5GHz, *rd2GHz;
-	struct ieee80211_channel *c;
-	HAL_CHANNEL_INTERNAL *ic;
 	HAL_STATUS status;
-	int i;
 
-	if (nchans > N(AH_PRIVATE(ah)->ah_channels)) {
-		HALDEBUG(ah, HAL_DEBUG_ANY, "%s: too many channels, %u > %u\n",
-		    __func__, nchans, N(AH_PRIVATE(ah)->ah_channels));
-		return HAL_EINVAL;
-	}
 	status = getregstate(ah, cc, regDmn, &country, &rd2GHz, &rd5GHz);
-	if (status != HAL_OK)
-		return status;
-	for (i = 0; i < nchans; i++) {
-		c = &chans[i];
-		ic = &AH_PRIVATE(ah)->ah_channels[i];
+	if (status == HAL_OK && assignPrivateChannels(ah, chans, nchans)) {
+		AH_PRIVATE(ah)->ah_rd2GHz = rd2GHz;
+		AH_PRIVATE(ah)->ah_rd5GHz = rd5GHz;
 
-		OS_MEMZERO(ic, sizeof(*ic));
-		ic->channel = c->ic_freq;
-		ic->channelFlags = c->ic_flags;
-		ic->devdata = i;	/* XXX */
-		ic->maxRegTxPower = c->ic_maxregpower;
-		ic->maxTxPower = c->ic_maxpower;
-		ic->minTxPower = c->ic_minpower;
-		ic->antennaMax = c->ic_maxantgain;
-
-		c->ic_devdata = i;
-
-		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
-		    "[%3u] channel %u/0x%x txpow reg/max/min %u/%u/%u"
-		    " antmax %u ctl 0x%x\n",
-		    i, ic->channel, ic->channelFlags,
-		    ic->maxRegTxPower, ic->maxTxPower, ic->minTxPower,
-		    ic->antennaMax, ic->ctl);
-	}
-	AH_PRIVATE(ah)->ah_nchan = nchans;
-	AH_PRIVATE(ah)->ah_rd2GHz = rd2GHz;
-	AH_PRIVATE(ah)->ah_rd5GHz = rd5GHz;
-
-	ah->ah_countryCode = country->countryCode;
-	HALDEBUG(ah, HAL_DEBUG_REGDOMAIN, "%s: cc %u\n",
-	    __func__, ah->ah_countryCode);
-
-	return HAL_OK;
+		ah->ah_countryCode = country->countryCode;
+		HALDEBUG(ah, HAL_DEBUG_REGDOMAIN, "%s: cc %u\n",
+		    __func__, ah->ah_countryCode);
+	} else
+		status = HAL_EINVAL;
+	return status;
 }
 
 /*
  * Return the internal channel corresponding to a public channel.
  */
 HAL_CHANNEL_INTERNAL *
-ath_hal_checkchannel(struct ath_hal *ah, const HAL_CHANNEL *c)
+ath_hal_checkchannel(struct ath_hal *ah, const struct ieee80211_channel *c)
 {
-#define CHAN_FLAGS	(CHANNEL_ALL|CHANNEL_HALF|CHANNEL_QUARTER)
-	HAL_CHANNEL_INTERNAL *cc;
-	/* NB: be wary of user-specified channel flags */
-	int flags = c->channelFlags & CHAN_FLAGS;
-
-	if (c->devdata > N(AH_PRIVATE(ah)->ah_channels)) {
-		/* XXX should not happen */
-		HALDEBUG(ah, HAL_DEBUG_ANY, "%s: bad mapping, devdata %u\n",
-		   __func__, c->devdata);
-		return AH_NULL;
+	/* XXX should not happen */
+	if (c->ic_devdata < AH_PRIVATE(ah)->ah_nchan) {
+		HAL_CHANNEL_INTERNAL *cc =
+		    &AH_PRIVATE(ah)->ah_channels[c->ic_devdata];
+		if (c->ic_freq == cc->channel)
+			return cc;
 	}
-	cc = &AH_PRIVATE(ah)->ah_channels[c->devdata];
-	if (cc->channel == c->channel &&
-	    (cc->channelFlags & CHAN_FLAGS) == flags)
-		return cc;
-	HALDEBUG(ah, HAL_DEBUG_ANY, "%s: no match for %u/0x%x\n",
-	   __func__, c->channel, c->channelFlags);
+	if (c->ic_devdata >= AH_PRIVATE(ah)->ah_nchan) {
+		HALDEBUG(ah, HAL_DEBUG_ANY,
+		    "%s: bad mapping, devdata %u nchans %u\n",
+		   __func__, c->ic_devdata, AH_PRIVATE(ah)->ah_nchan);
+	} else {
+		HALDEBUG(ah, HAL_DEBUG_ANY,
+		    "%s: no match for %u/0x%x devdata %u channel %u\n",
+		   __func__, c->ic_freq, c->ic_flags, c->ic_devdata,
+		   AH_PRIVATE(ah)->ah_channels[c->ic_devdata].channel);
+	}
 	return AH_NULL;
-#undef CHAN_FLAGS
 }
 
 #define isWwrSKU(_ah) \
@@ -2342,26 +2299,43 @@ ath_hal_checkchannel(struct ath_hal *ah, const HAL_CHANNEL *c)
  * the current regulatory setup.
  */
 u_int
-ath_hal_getctl(struct ath_hal *ah, const HAL_CHANNEL_INTERNAL *c)
+ath_hal_getctl(struct ath_hal *ah, const struct ieee80211_channel *c)
 {
 	u_int ctl;
 
 	if (AH_PRIVATE(ah)->ah_rd2GHz == AH_PRIVATE(ah)->ah_rd5GHz ||
 	    (ah->ah_countryCode == CTRY_DEFAULT && isWwrSKU(ah)))
 		ctl = SD_NO_CTL;
-	else if (IS_CHAN_2GHZ(c))
+	else if (IEEE80211_IS_CHAN_2GHZ(c))
 		ctl = AH_PRIVATE(ah)->ah_rd2GHz->conformanceTestLimit;
 	else
 		ctl = AH_PRIVATE(ah)->ah_rd5GHz->conformanceTestLimit;
-	if (IS_CHAN_B(c))
+	if (IEEE80211_IS_CHAN_B(c))
 		return ctl | CTL_11B;
-	if (IS_CHAN_G(c))
+	if (IEEE80211_IS_CHAN_G(c))
 		return ctl | CTL_11G;
-	if (IS_CHAN_108G(c))
+	if (IEEE80211_IS_CHAN_108G(c))
 		return ctl | CTL_108G;
-	if (IS_CHAN_TURBO(c))
+	if (IEEE80211_IS_CHAN_TURBO(c))
 		return ctl | CTL_TURBO;
-	if (IS_CHAN_A(c))
+	if (IEEE80211_IS_CHAN_A(c))
 		return ctl | CTL_11A;
 	return ctl;
+}
+
+/*
+ * Return the max allowed antenna gain and apply any regulatory
+ * domain specific changes.
+ *
+ * NOTE: a negative reduction is possible in RD's that only
+ * measure radiated power (e.g., ETSI) which would increase
+ * that actual conducted output power (though never beyond
+ * the calibrated target power).
+ */
+u_int
+ath_hal_getantennareduction(struct ath_hal *ah,
+    const struct ieee80211_channel *chan, u_int twiceGain)
+{
+	int8_t antennaMax = twiceGain - chan->ic_maxantgain*2;
+	return (antennaMax < 0) ? 0 : antennaMax;
 }

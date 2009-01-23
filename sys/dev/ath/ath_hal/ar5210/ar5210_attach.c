@@ -31,7 +31,7 @@
 static	HAL_BOOL ar5210GetChannelEdges(struct ath_hal *,
 		uint16_t flags, uint16_t *low, uint16_t *high);
 static	HAL_BOOL ar5210GetChipPowerLimits(struct ath_hal *ah,
-		HAL_CHANNEL_INTERNAL *chan);
+		struct ieee80211_channel *chan);
 
 static const struct ath_hal_private ar5210hal = {{
 	.ah_magic			= AR5210_MAGIC,
@@ -302,7 +302,7 @@ static HAL_BOOL
 ar5210GetChannelEdges(struct ath_hal *ah,
 	uint16_t flags, uint16_t *low, uint16_t *high)
 {
-	if (flags & CHANNEL_5GHZ) {
+	if (flags & IEEE80211_CHAN_5GHZ) {
 		*low = 5120;
 		*high = 5430;
 		return AH_TRUE;
@@ -312,14 +312,14 @@ ar5210GetChannelEdges(struct ath_hal *ah,
 }
 
 static HAL_BOOL
-ar5210GetChipPowerLimits(struct ath_hal *ah, HAL_CHANNEL_INTERNAL *chan)
+ar5210GetChipPowerLimits(struct ath_hal *ah, struct ieee80211_channel *chan)
 {
 	/* XXX fill in, this is just a placeholder */
 	HALDEBUG(ah, HAL_DEBUG_ATTACH,
 	    "%s: no min/max power for %u/0x%x\n",
-	    __func__, chan->channel, chan->channelFlags);
-	chan->maxTxPower = AR5210_MAX_RATE_POWER;
-	chan->minTxPower = 0;
+	    __func__, chan->ic_freq, chan->ic_flags);
+	chan->ic_maxpower = AR5210_MAX_RATE_POWER;
+	chan->ic_minpower = 0;
 	return AH_TRUE;
 }
 
