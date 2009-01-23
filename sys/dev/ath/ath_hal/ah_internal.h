@@ -330,14 +330,12 @@ struct ath_hal_private {
  */
 #define	IEEE80211_ADDR_LEN		6
 
-#define	IEEE80211_WEP_KEYLEN			5	/* 40bit */
 #define	IEEE80211_WEP_IVLEN			3	/* 24bit */
 #define	IEEE80211_WEP_KIDLEN			1	/* 1 octet */
 #define	IEEE80211_WEP_CRCLEN			4	/* CRC-32 */
 
 #define	IEEE80211_CRC_LEN			4
 
-#define	IEEE80211_MTU				1500
 #define	IEEE80211_MAX_LEN			(2300 + IEEE80211_CRC_LEN + \
     (IEEE80211_WEP_IVLEN + IEEE80211_WEP_KIDLEN + IEEE80211_WEP_CRCLEN))
 #endif /* _NET_IF_IEEE80211_H_ */
