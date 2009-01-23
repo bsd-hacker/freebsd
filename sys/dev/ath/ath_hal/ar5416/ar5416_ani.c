@@ -102,28 +102,6 @@ disableAniMIBCounters(struct ath_hal *ah)
 	OS_REG_WRITE(ah, AR_PHY_ERR_MASK_2, 0);
 }
 
-/*
- * This routine returns the index into the aniState array that
- * corresponds to the channel in chan.
- */
-static struct ar5212AniState *
-ar5416GetAniState(struct ath_hal *ah,
-	const struct ieee80211_channel *chan)
-{
-	struct ath_hal_5212 *ahp = AH5212(ah);
-	/* XXX bounds check ic_devdata */
-	struct ar5212AniState *asp = &ahp->ah_ani[chan->ic_devdata];
-
-	if (asp->params == AH_NULL) {
-		if (IEEE80211_IS_CHAN_2GHZ(chan))
-			asp->params = &ahp->ah_aniParams24;
-		else
-			asp->params = &ahp->ah_aniParams5;
-		asp->isSetup = AH_FALSE;
-	}
-	return asp;
-}
-
 static void
 setPhyErrBase(struct ath_hal *ah, struct ar5212AniParams *params)
 {
@@ -523,20 +501,29 @@ ar5416AniReset(struct ath_hal *ah, const struct ieee80211_channel *chan,
 	HAL_OPMODE opmode, int restore)
 {
 	struct ath_hal_5212 *ahp = AH5212(ah);
-	struct ar5212AniState *aniState;
+	HAL_CHANNEL_INTERNAL *ichan = ath_hal_checkchannel(ah, chan);
+	/* XXX bounds check ic_devdata */
+	struct ar5212AniState *aniState = &ahp->ah_ani[chan->ic_devdata];
 	uint32_t rxfilter;
 
-	aniState = ar5416GetAniState(ah, chan);
+	if ((ichan->privFlags & CHANNEL_ANI_INIT) == 0) {
+		OS_MEMZERO(aniState, sizeof(*aniState));
+		if (IEEE80211_IS_CHAN_2GHZ(chan))
+			aniState->params = &ahp->ah_aniParams24;
+		else
+			aniState->params = &ahp->ah_aniParams5;
+		ichan->privFlags |= CHANNEL_ANI_INIT;
+		HALASSERT((ichan->privFlags & CHANNEL_ANI_SETUP) == 0);
+	}
 	ahp->ah_curani = aniState;
 #if 0
-	ath_hal_printf(ah,"%s: chan %u/0x%x restore %d setup %d opmode %u\n",
-	    __func__, chan->ic_freq, chan->ic_flags, restore,
-	    aniState->isSetup, opmode);
+	ath_hal_printf(ah,"%s: chan %u/0x%x restore %d opmode %u%s\n",
+	    __func__, chan->ic_freq, chan->ic_flags, restore, opmode,
+	    ichan->privFlags & CHANNEL_ANI_SETUP ? " setup" : "");
 #else
-	HALDEBUG(ah, HAL_DEBUG_ANI,
-	    "%s: chan %u/0x%x restore %d setup %d opmode %u\n",
-	    __func__, chan->ic_freq, chan->ic_flags, restore,
-	    aniState->isSetup, opmode);
+	HALDEBUG(ah, HAL_DEBUG_ANI, "%s: chan %u/0x%x restore %d opmode %u%s\n",
+	    __func__, chan->ic_freq, chan->ic_flags, restore, opmode,
+	    ichan->privFlags & CHANNEL_ANI_SETUP ? " setup" : "");
 #endif
 	OS_MARK(ah, AH_MARK_ANI_RESET, opmode);
 
@@ -558,7 +545,7 @@ ar5416AniReset(struct ath_hal *ah, const struct ieee80211_channel *chan,
 	 * XXX if ANI follows hardware, we don't care what mode we're
 	 * XXX in, we should keep the ani parameters
 	 */
-	if (restore && aniState->isSetup) {
+	if (restore && (ichan->privFlags & CHANNEL_ANI_SETUP)) {
 		ar5416AniControl(ah, HAL_ANI_NOISE_IMMUNITY_LEVEL,
 				 aniState->noiseImmunityLevel);
 		ar5416AniControl(ah, HAL_ANI_SPUR_IMMUNITY_LEVEL,
@@ -576,7 +563,7 @@ ar5416AniReset(struct ath_hal *ah, const struct ieee80211_channel *chan,
 			AH_TRUE);
 		ar5416AniControl(ah, HAL_ANI_CCK_WEAK_SIGNAL_THR, AH_FALSE);
 		ar5416AniControl(ah, HAL_ANI_FIRSTEP_LEVEL, 0);
-		aniState->isSetup = AH_TRUE;
+		ichan->privFlags |= CHANNEL_ANI_SETUP;
 	}
 	ar5416AniRestart(ah, aniState);
 

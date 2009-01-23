@@ -2203,6 +2203,11 @@ assignPrivateChannels(struct ath_hal *ah,
 				return AH_FALSE;
 			}
 			ic = &AH_PRIVATE(ah)->ah_channels[next];
+			/*
+			 * NB: This clears privFlags which means ancillary
+			 *     code like ANI and IQ calibration will be
+			 *     restarted and re-setup any per-channel state.
+			 */
 			OS_MEMZERO(ic, sizeof(*ic));
 			ic->channel = chans[i].ic_freq;
 			chans[i].ic_devdata = next;

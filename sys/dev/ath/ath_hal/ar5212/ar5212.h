@@ -188,7 +188,6 @@ struct ar5212AniState {
 	uint32_t	listenTime;
 
 	/* NB: intentionally ordered so data exported to user space is first */
-	HAL_BOOL	isSetup;	/* has state to do a restore */
 	uint32_t	txFrameCount;	/* Last txFrameCount */
 	uint32_t	rxFrameCount;	/* Last rx Frame count */
 	uint32_t	cycleCount;	/* Last cycleCount

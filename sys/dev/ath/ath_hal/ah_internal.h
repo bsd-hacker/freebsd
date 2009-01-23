@@ -114,9 +114,11 @@ struct ath_hal_rf *ath_hal_rfprobe(struct ath_hal *ah, HAL_STATUS *ecode);
  * using ic_devdata in the ieee80211_channel.
  */
 typedef struct {
-	uint16_t	channel;
-	uint8_t		privFlags;	/* XXX remove */
-#define	CHANNEL_IQVALID	0x01		/* IQ calibration valid */
+	uint16_t	channel;	/* XXX remove */
+	uint8_t		privFlags;
+#define	CHANNEL_IQVALID		0x01	/* IQ calibration valid */
+#define	CHANNEL_ANI_INIT	0x02	/* ANI state initialized */
+#define	CHANNEL_ANI_SETUP	0x04	/* ANI state setup */
 	uint8_t		calValid;	/* bitmask of cal types */
 	int8_t		iCoff;
 	int8_t		qCoff;
@@ -125,9 +127,8 @@ typedef struct {
 	uint16_t	mainSpur;	/* cached spur value for this channel */
 } HAL_CHANNEL_INTERNAL;
 
-#define	CHANNEL_NFCREQUIRED 0x01	/* channel requires noise floor check */
-
-/* privFlags */
+/* channel requires noise floor check */
+#define	CHANNEL_NFCREQUIRED	IEEE80211_CHAN_PRIV0
 
 typedef struct {
 	uint32_t	halChanSpreadSupport 		: 1,
