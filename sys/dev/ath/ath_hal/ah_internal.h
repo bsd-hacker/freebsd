@@ -110,6 +110,17 @@ OS_DATA_SET(ah_rfs, _name##_rf)
 struct ath_hal_rf *ath_hal_rfprobe(struct ath_hal *ah, HAL_STATUS *ecode);
 
 /*
+ * Maximum number of internal channels.  Entries are per unique
+ * frequency so this might be need to be increased to handle all
+ * usage cases; typically no more than 32 are really needed but
+ * dynamically allocating the data structures is a bit painful
+ * right now.
+ */
+#ifndef AH_MAXCHAN
+#define	AH_MAXCHAN	96
+#endif
+
+/*
  * Internal per-channel state.  These are found
  * using ic_devdata in the ieee80211_channel.
  */
@@ -266,8 +277,8 @@ struct ath_hal_private {
 	 * State for regulatory domain handling.
 	 */
 	HAL_REG_DOMAIN	ah_currentRD;		/* EEPROM regulatory domain */
-	HAL_CHANNEL_INTERNAL ah_channels[256];	/* calculated channel list */
-	u_int		ah_nchan;		/* valid channels in list */
+	HAL_CHANNEL_INTERNAL ah_channels[AH_MAXCHAN]; /* private chan state */
+	u_int		ah_nchan;		/* valid items in ah_channels */
 	const struct regDomain *ah_rd2GHz;	/* reg state for 2G band */
 	const struct regDomain *ah_rd5GHz;	/* reg state for 5G band */
 

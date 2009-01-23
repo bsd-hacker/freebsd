@@ -319,7 +319,7 @@ struct ath_hal_5212 {
 	struct ar5212AniParams ah_aniParams24;	/* 2.4GHz parameters */
 	struct ar5212AniParams ah_aniParams5;	/* 5GHz parameters */
 	struct ar5212AniState	*ah_curani;	/* cached last reference */
-	struct ar5212AniState	ah_ani[64];	/* per-channel state */
+	struct ar5212AniState	ah_ani[AH_MAXCHAN]; /* per-channel state */
 
 	/*
 	 * Transmit power state.  Note these are maintained
