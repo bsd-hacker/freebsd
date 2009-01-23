@@ -342,22 +342,6 @@ struct ath_hal_private {
     (IEEE80211_WEP_IVLEN + IEEE80211_WEP_KIDLEN + IEEE80211_WEP_CRCLEN))
 #endif /* _NET_IF_IEEE80211_H_ */
 
-#ifndef _NET80211__IEEE80211_H_
-enum {
-	IEEE80211_T_DS,			/* direct sequence spread spectrum */
-	IEEE80211_T_FH,			/* frequency hopping */
-	IEEE80211_T_OFDM,		/* frequency division multiplexing */
-	IEEE80211_T_TURBO,		/* high rate DS */
-	IEEE80211_T_HT,			/* HT - full GI */
-};
-#define	IEEE80211_T_CCK	IEEE80211_T_DS	/* more common nomenclatur */
-#endif /* _NET_IF_IEEE80211_H_ */
-
-/* NB: these are defined privately until XR support is announced */
-enum {
-	ATHEROS_T_XR	= IEEE80211_T_HT+1,	/* extended range */
-};
-
 #define HAL_TXQ_USE_LOCKOUT_BKOFF_DIS	0x00000001
 
 #define INIT_AIFS		2
