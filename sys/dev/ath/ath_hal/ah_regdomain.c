@@ -1205,7 +1205,7 @@ static REG_DOMAIN regDomains[] = {
 	 .pscan			= PSCAN_MKK2,
 	 .flags			= DISALLOW_ADHOC_11A_TURB,
 	 .chan11a		= BM3(F1_4920_4980, F1_5040_5080, F1_5170_5230),
-	.chan11a_half		= BM4(F1_4915_4925,
+	 .chan11a_half		= BM4(F1_4915_4925,
 				      F1_4935_4945,
 				      F1_5035_5040,
 				      F1_5055_5055),
