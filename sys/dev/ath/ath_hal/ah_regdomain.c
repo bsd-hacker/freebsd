@@ -2102,7 +2102,14 @@ getchannels(struct ath_hal *ah,
 				if ((fband->usePassScan & IS_ECM_CHAN) &&
 				    !enableExtendedChannels) {
 					HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
-					    "Skipping ecm channel\n");
+					    "skip ecm channel\n");
+					continue;
+				}
+				if ((fband->useDfs & dfsMask) && 
+				    (cm->flags & IEEE80211_CHAN_HT40)) {
+					/* NB: DFS and HT40 don't mix */
+					HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
+					    "skip HT40 chan, DFS required\n");
 					continue;
 				}
 				/*
@@ -2112,6 +2119,7 @@ getchannels(struct ath_hal *ah,
 				if (lastc && channelSep &&
 				    (c-lastc) < channelSep)
 					continue;
+				lastc = c;
 
 				OS_MEMZERO(ic, sizeof(*ic));
 				ic->ic_freq = c;
@@ -2121,17 +2129,12 @@ getchannels(struct ath_hal *ah,
 				ic->ic_maxantgain = fband->antennaMax;
 				if (fband->usePassScan & pscan)
 					ic->ic_flags |= IEEE80211_CHAN_PASSIVE;
-				else
-					ic->ic_flags &= ~IEEE80211_CHAN_PASSIVE;
-				lastc = c;
-				/* NB: DFS and HT40 don't mix */
-				if ((fband->useDfs & dfsMask) &&
-				    !IEEE80211_IS_CHAN_HT40(ic))
+				if (fband->useDfs & dfsMask)
 					ic->ic_flags |= IEEE80211_CHAN_DFS;
 				if (IEEE80211_IS_CHAN_5GHZ(ic) &&
 				    (rdflags & DISALLOW_ADHOC_11A))
 					ic->ic_flags |= IEEE80211_CHAN_NOADHOC;
-				if (IEEE80211_IS_CHAN_STURBO(ic) &&
+				if (IEEE80211_IS_CHAN_TURBO(ic) &&
 				    (rdflags & DISALLOW_ADHOC_11A_TURB))
 					ic->ic_flags |= IEEE80211_CHAN_NOADHOC;
 				if (rdflags & NO_HOSTAP)
