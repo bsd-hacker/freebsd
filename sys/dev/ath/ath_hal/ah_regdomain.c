@@ -2272,31 +2272,34 @@ ath_hal_set_channels(struct ath_hal *ah,
 	return status;
 }
 
+#ifdef AH_DEBUG
 /*
  * Return the internal channel corresponding to a public channel.
+ * NB: normally this routine is inline'd (see ah_internal.h)
  */
 HAL_CHANNEL_INTERNAL *
 ath_hal_checkchannel(struct ath_hal *ah, const struct ieee80211_channel *c)
 {
-	/* XXX should not happen */
-	if (c->ic_devdata < AH_PRIVATE(ah)->ah_nchan) {
-		HAL_CHANNEL_INTERNAL *cc =
-		    &AH_PRIVATE(ah)->ah_channels[c->ic_devdata];
-		if (c->ic_freq == cc->channel)
-			return cc;
-	}
+	HAL_CHANNEL_INTERNAL *cc = &AH_PRIVATE(ah)->ah_channels[c->ic_devdata];
+
+	if (c->ic_devdata < AH_PRIVATE(ah)->ah_nchan &&
+	    c->ic_freq == cc->channel)
+		return cc;
 	if (c->ic_devdata >= AH_PRIVATE(ah)->ah_nchan) {
 		HALDEBUG(ah, HAL_DEBUG_ANY,
 		    "%s: bad mapping, devdata %u nchans %u\n",
 		   __func__, c->ic_devdata, AH_PRIVATE(ah)->ah_nchan);
+		HALASSERT(c->ic_devdata < AH_PRIVATE(ah)->ah_nchan);
 	} else {
 		HALDEBUG(ah, HAL_DEBUG_ANY,
 		    "%s: no match for %u/0x%x devdata %u channel %u\n",
 		   __func__, c->ic_freq, c->ic_flags, c->ic_devdata,
 		   AH_PRIVATE(ah)->ah_channels[c->ic_devdata].channel);
+		HALASSERT(c->ic_freq == cc->channel);
 	}
 	return AH_NULL;
 }
+#endif /* AH_DEBUG */
 
 #define isWwrSKU(_ah) \
 	((getEepromRD((_ah)) & WORLD_SKU_MASK) == WORLD_SKU_PREFIX || \

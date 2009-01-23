@@ -437,32 +437,6 @@ isBigEndian(void)
 #define	OS_REG_CLR_BIT(_a, _r, _f) \
 	OS_REG_WRITE(_a, _r, OS_REG_READ(_a, _r) &~ (_f))
 
-/* 
- * Regulatory domain support.
- */
-
-/*
- * Return the max allowed antenna gain and apply any regulatory
- * domain specific changes.
- */
-u_int	ath_hal_getantennareduction(struct ath_hal *ah,
-	    const struct ieee80211_channel *chan, u_int twiceGain);
-
-/*
- * Return the test group for the specific channel based on
- * the current regulatory setup.
- */
-u_int	ath_hal_getctl(struct ath_hal *, const struct ieee80211_channel *);
-
-/*
- * Map a public channel definition to the corresponding
- * internal data structure.  This implicitly specifies
- * whether or not the specified channel is ok to use
- * based on the current regulatory domain constraints.
- */
-HAL_CHANNEL_INTERNAL *ath_hal_checkchannel(struct ath_hal *,
-		const struct ieee80211_channel *);
-
 /* system-configurable parameters */
 extern	int ath_hal_dma_beacon_response_time;	/* in TU's */
 extern	int ath_hal_sw_beacon_response_time;	/* in TU's */
@@ -520,6 +494,46 @@ extern	void ath_hal_assert_failed(const char* filename,
 #else
 #define	HALASSERT(_x)
 #endif /* AH_ASSERT */
+
+/* 
+ * Regulatory domain support.
+ */
+
+/*
+ * Return the max allowed antenna gain and apply any regulatory
+ * domain specific changes.
+ */
+u_int	ath_hal_getantennareduction(struct ath_hal *ah,
+	    const struct ieee80211_channel *chan, u_int twiceGain);
+
+/*
+ * Return the test group for the specific channel based on
+ * the current regulatory setup.
+ */
+u_int	ath_hal_getctl(struct ath_hal *, const struct ieee80211_channel *);
+
+/*
+ * Map a public channel definition to the corresponding
+ * internal data structure.  This implicitly specifies
+ * whether or not the specified channel is ok to use
+ * based on the current regulatory domain constraints.
+ */
+#ifndef AH_DEBUG
+static OS_INLINE HAL_CHANNEL_INTERNAL *
+ath_hal_checkchannel(struct ath_hal *ah, const struct ieee80211_channel *c)
+{
+	HAL_CHANNEL_INTERNAL *cc;
+
+	HALASSERT(c->ic_devdata < AH_PRIVATE(ah)->ah_nchan);
+	cc = &AH_PRIVATE(ah)->ah_channels[c->ic_devdata];
+	HALASSERT(c->ic_freq == cc->channel);
+	return cc;
+}
+#else
+/* NB: non-inline version that checks state */
+HAL_CHANNEL_INTERNAL *ath_hal_checkchannel(struct ath_hal *,
+		const struct ieee80211_channel *);
+#endif /* AH_DEBUG */
 
 /*
  * Convert between microseconds and core system clocks.
