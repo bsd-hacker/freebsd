@@ -3,7 +3,7 @@
 ** 2006-07-17 by Arthur David Olson.
 */
 
-static const char	elsieid[] = "@(#)zic.c	8.17";
+static const char	elsieid[] = "@(#)zic.c	8.18";
 
 #ifndef lint
 static const char rcsid[] =
@@ -154,7 +154,7 @@ static void	setboundaries(void);
 static void	setgroup(gid_t *flag, const char *name);
 static void	setuser(uid_t *flag, const char *name);
 static zic_t	tadd(zic_t t1, long t2);
-static void	usage(void);
+static void	usage(FILE *stream, int status);
 static void	writezone(const char * name, const char * string);
 static int	yearistype(int year, const char * type);
 
@@ -447,12 +447,15 @@ const char * const	string;
 }
 
 static void
-usage(void)
+usage(FILE *stream, int status)
   {
-	(void) fprintf(stderr, _("usage is zic \
-[ --version ] [ -v ] [ -l localtime ] [ -p posixrules ] \\\n\
-\t[ -d directory ] [ -L leapseconds ] [ -y yearistype ] [ filename ... ]\n"));
-	exit(EXIT_FAILURE);
+	(void) fprintf(stream, _("usage is %s \
+[ --version ] [--help] [ -v ] [ -l localtime ] [ -p posixrules ] \\\n\
+\t[ -d directory ] [ -L leapseconds ] [ -y yearistype ] [ filename ... ]\n\
+\n\
+Report bugs to tz@elsie.nci.nih.gov.\n"),
+	    progname);
+	exit(status);
 }
 
 static const char *	psxrules;
@@ -493,6 +496,8 @@ char *	argv[];
 	for (i = 1; i < argc; ++i)
 		if (strcmp(argv[i], "--version") == 0) {
 			errx(EXIT_SUCCESS, "%s", elsieid);
+		} else if (strcmp(argv[i], "--help") == 0) {
+			usage(stderr, EXIT_FAILURE);
 		}
 	while ((c = getopt(argc, argv, "Dd:g:l:m:p:L:u:vsy:")) != -1)
 		switch (c) {
@@ -560,7 +565,7 @@ _("more than one -L option specified"));
 				break;
 		}
 	if (optind == argc - 1 && strcmp(argv[optind], "=") == 0)
-		usage();	/* usage message by request */
+		usage(stderr, EXIT_FAILURE);	/* usage message by request */
 	if (directory == NULL)
 		directory = TZDIR;
 	if (yitcommand == NULL)

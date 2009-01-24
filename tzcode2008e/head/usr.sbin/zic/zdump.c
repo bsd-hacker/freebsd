@@ -2,7 +2,7 @@
 #ifndef lint
 static const char rcsid[] =
   "$FreeBSD$";
-static const char	elsieid[] = "@(#)zdump.c	8.6";
+static const char	elsieid[] = "@(#)zdump.c	8.8";
 #endif /* not lint */
 
 /*
@@ -148,7 +148,7 @@ static size_t	longest;
 static char *	progname;
 static int	warned;
 
-static void	usage(void);
+static void	usage(const char *progname, FILE *stream, int status);
 static char *	abbr(struct tm * tmp);
 static void	abbrok(const char * abbrp, const char * zone);
 static long	delta(struct tm * newp, struct tm * oldp);
@@ -233,6 +233,17 @@ const char * const	zone;
 		progname, zone, abbrp, wp);
 	warned = TRUE;
 }
+ 
+static void
+usage(const char *progname, FILE *stream, int status)
+{
+	(void) fprintf(stream,
+_("%s: usage is %s [ --version ] [ --help ] [ -v ] [ -c [loyear,]hiyear ] zonename ...\n\
+\n\
+Report bugs to tz@elsie.nci.nih.gov.\n"),
+		       progname, progname);
+	exit(status);
+}
 
 int
 main(argc, argv)
@@ -268,6 +279,8 @@ char *	argv[];
 	for (i = 1; i < argc; ++i)
 		if (strcmp(argv[i], "--version") == 0) {
 			errx(EXIT_SUCCESS, "%s", elsieid);
+		} else if (strcmp(argv[i], "--help") == 0) {
+			usage(progname, stdout, EXIT_SUCCESS);
 		}
 	vflag = 0;
 	cutarg = NULL;
@@ -277,7 +290,7 @@ char *	argv[];
 		else	cutarg = optarg;
 	if ((c != -1) ||
 		(optind == argc - 1 && strcmp(argv[optind], "=") == 0)) {
-			usage();
+			usage(progname, stdout, EXIT_FAILURE);
 	}
 	if (vflag) {
 		if (cutarg != NULL) {
@@ -348,13 +361,9 @@ char *	argv[];
 			(void) strncpy(buf, abbr(&tm), (sizeof buf) - 1);
 		}
 		for ( ; ; ) {
-			if (t >= cuthitime)
+			if (t >= cuthitime || t >= cuthitime - SECSPERHOUR * 12)
 				break;
 			newt = t + SECSPERHOUR * 12;
-			if (newt >= cuthitime)
-				break;
-			if (newt <= t)
-				break;
 			newtmp = localtime(&newt);
 			if (newtmp != NULL)
 				newtm = *newtmp;
@@ -463,14 +472,6 @@ const long	y;
 		}
 	}
 	return t;
-}
-
-static void
-usage(void)
-{
-	fprintf(stderr,
-_("usage: zdump [--version] [-v] [-c [loyear,]hiyear] zonename ...\n"));
-	exit(EXIT_FAILURE);
 }
 
 static time_t
