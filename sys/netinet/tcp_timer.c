@@ -119,7 +119,7 @@ int	tcp_maxpersistidle;
 	/* max idle time in persist */
 int	tcp_maxidle;
 
-#define	INP_CPU(inp)	((inp)->inp_flowid % mp_maxid)
+#define	INP_CPU(inp)	min(curcpu, ((inp)->inp_flowid % mp_maxid))
 
 /*
  * Tcp protocol timeout routine called every 500 ms.
