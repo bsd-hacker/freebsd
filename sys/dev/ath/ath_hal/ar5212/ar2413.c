@@ -77,27 +77,27 @@ ar2413WriteRegs(struct ath_hal *ah, u_int modesIndex, u_int freqIndex,
 static HAL_BOOL
 ar2413SetChannel(struct ath_hal *ah, const struct ieee80211_channel *chan)
 {
+	uint16_t freq = ath_hal_gethwchannel(ah, chan);
 	uint32_t channelSel  = 0;
 	uint32_t bModeSynth  = 0;
 	uint32_t aModeRefSel = 0;
 	uint32_t reg32       = 0;
-	uint16_t freq;
 
-	OS_MARK(ah, AH_MARK_SETCHANNEL, chan->ic_freq);
+	OS_MARK(ah, AH_MARK_SETCHANNEL, freq);
 
-	if (chan->ic_freq < 4800) {
+	if (freq < 4800) {
 		uint32_t txctl;
 
-		if (((chan->ic_freq - 2192) % 5) == 0) {
-			channelSel = ((chan->ic_freq - 672) * 2 - 3040)/10;
+		if (((freq - 2192) % 5) == 0) {
+			channelSel = ((freq - 672) * 2 - 3040)/10;
 			bModeSynth = 0;
-		} else if (((chan->ic_freq - 2224) % 5) == 0) {
-			channelSel = ((chan->ic_freq - 704) * 2 - 3040) / 10;
+		} else if (((freq - 2224) % 5) == 0) {
+			channelSel = ((freq - 704) * 2 - 3040) / 10;
 			bModeSynth = 1;
 		} else {
 			HALDEBUG(ah, HAL_DEBUG_ANY,
 			    "%s: invalid channel %u MHz\n",
-			    __func__, chan->ic_freq);
+			    __func__, freq);
 			return AH_FALSE;
 		}
 
@@ -105,7 +105,7 @@ ar2413SetChannel(struct ath_hal *ah, const struct ieee80211_channel *chan)
 		channelSel = ath_hal_reverseBits(channelSel, 8);
 
 		txctl = OS_REG_READ(ah, AR_PHY_CCK_TX_CTRL);
-		if (chan->ic_freq == 2484) {
+		if (freq == 2484) {
 			/* Enable channel spreading for channel 14 */
 			OS_REG_WRITE(ah, AR_PHY_CCK_TX_CTRL,
 				txctl | AR_PHY_CCK_TX_CTRL_JAPAN);
@@ -113,26 +113,26 @@ ar2413SetChannel(struct ath_hal *ah, const struct ieee80211_channel *chan)
 			OS_REG_WRITE(ah, AR_PHY_CCK_TX_CTRL,
 				txctl &~ AR_PHY_CCK_TX_CTRL_JAPAN);
 		}
-	} else if (((chan->ic_freq % 5) == 2) && (chan->ic_freq <= 5435)) {
-		freq = chan->ic_freq - 2; /* Align to even 5MHz raster */
+	} else if (((freq % 5) == 2) && (freq <= 5435)) {
+		freq = freq - 2; /* Align to even 5MHz raster */
 		channelSel = ath_hal_reverseBits(
 			(uint32_t)(((freq - 4800)*10)/25 + 1), 8);
             	aModeRefSel = ath_hal_reverseBits(0, 2);
-	} else if ((chan->ic_freq % 20) == 0 && chan->ic_freq >= 5120) {
+	} else if ((freq % 20) == 0 && freq >= 5120) {
 		channelSel = ath_hal_reverseBits(
-			((chan->ic_freq - 4800) / 20 << 2), 8);
+			((freq - 4800) / 20 << 2), 8);
 		aModeRefSel = ath_hal_reverseBits(3, 2);
-	} else if ((chan->ic_freq % 10) == 0) {
+	} else if ((freq % 10) == 0) {
 		channelSel = ath_hal_reverseBits(
-			((chan->ic_freq - 4800) / 10 << 1), 8);
+			((freq - 4800) / 10 << 1), 8);
 		aModeRefSel = ath_hal_reverseBits(2, 2);
-	} else if ((chan->ic_freq % 5) == 0) {
+	} else if ((freq % 5) == 0) {
 		channelSel = ath_hal_reverseBits(
-			(chan->ic_freq - 4800) / 5, 8);
+			(freq - 4800) / 5, 8);
 		aModeRefSel = ath_hal_reverseBits(1, 2);
 	} else {
 		HALDEBUG(ah, HAL_DEBUG_ANY, "%s: invalid channel %u MHz\n",
-		    __func__, chan->ic_freq);
+		    __func__, freq);
 		return AH_FALSE;
 	}
 
@@ -170,8 +170,7 @@ ar2413SetRfRegs(struct ath_hal *ah,
 	struct ar2413State *priv = AR2413(ah);
 	int regWrites = 0;
 
-	HALDEBUG(ah, HAL_DEBUG_RFPARAM,
-	    "%s: chan 0x%x flag 0x%x modesIndex 0x%x\n",
+	HALDEBUG(ah, HAL_DEBUG_RFPARAM, "%s: chan %u/0x%x modesIndex %u\n",
 	    __func__, chan->ic_freq, chan->ic_flags, modesIndex);
 
 	HALASSERT(priv);
@@ -499,6 +498,7 @@ ar2413SetPowerTable(struct ath_hal *ah,
 	const struct ieee80211_channel *chan, 
 	uint16_t *rfXpdGain)
 {
+	uint16_t freq = ath_hal_gethwchannel(ah, chan);
 	struct ath_hal_5212 *ahp = AH5212(ah);
 	const HAL_EEPROM *ee = AH_PRIVATE(ah)->ah_eeprom;
 	const RAW_DATA_STRUCT_2413 *pRawDataset = AH_NULL;
@@ -513,7 +513,7 @@ ar2413SetPowerTable(struct ath_hal *ah,
 #endif
 
 	HALDEBUG(ah, HAL_DEBUG_RFPARAM, "%s: chan 0x%x flag 0x%x\n",
-	    __func__, chan->ic_freq, chan->ic_flags);
+	    __func__, freq, chan->ic_flags);
 
 	if (IEEE80211_IS_CHAN_G(chan) || IEEE80211_IS_CHAN_108G(chan))
 		pRawDataset = &ee->ee_rawDataset2413[headerInfo11G];
@@ -528,7 +528,7 @@ ar2413SetPowerTable(struct ath_hal *ah,
 					  AR_PHY_TPCRG5_PD_GAIN_OVERLAP);
     
 	numPdGainsUsed = ar2413getGainBoundariesAndPdadcsForPowers(ah,
-		chan->ic_freq, pRawDataset, pdGainOverlap_t2,
+		freq, pRawDataset, pdGainOverlap_t2,
 		&minCalPower2413_t2,gainBoundaries, rfXpdGain, pdadcValues);
 	HALASSERT(1 <= numPdGainsUsed && numPdGainsUsed <= 3);
 
@@ -639,6 +639,7 @@ ar2413GetChannelMaxMinPower(struct ath_hal *ah,
 	const struct ieee80211_channel *chan,
 	int16_t *maxPow, int16_t *minPow)
 {
+	uint16_t freq = chan->ic_freq;		/* NB: never mapped */
 	const HAL_EEPROM *ee = AH_PRIVATE(ah)->ah_eeprom;
 	const RAW_DATA_STRUCT_2413 *pRawDataset = AH_NULL;
 	const RAW_DATA_PER_CHANNEL_2413 *data = AH_NULL;
@@ -663,9 +664,9 @@ ar2413GetChannelMaxMinPower(struct ath_hal *ah,
 	if (numChannels < 1)
 		return(AH_FALSE);
 
-	if ((chan->ic_freq < data[0].channelValue) ||
-	    (chan->ic_freq > data[numChannels-1].channelValue)) {
-		if (chan->ic_freq < data[0].channelValue) {
+	if ((freq < data[0].channelValue) ||
+	    (freq > data[numChannels-1].channelValue)) {
+		if (freq < data[0].channelValue) {
 			*maxPow = ar2413GetMaxPower(ah, &data[0]);
 			*minPow = ar2413GetMinPower(ah, &data[0]);
 			return(AH_TRUE);
@@ -677,19 +678,19 @@ ar2413GetChannelMaxMinPower(struct ath_hal *ah,
 	}
 
 	/* Linearly interpolate the power value now */
-	for (last=0,i=0; (i<numChannels) && (chan->ic_freq > data[i].channelValue);
+	for (last=0,i=0; (i<numChannels) && (freq > data[i].channelValue);
 	     last = i++);
 	totalD = data[i].channelValue - data[last].channelValue;
 	if (totalD > 0) {
 		totalF = ar2413GetMaxPower(ah, &data[i]) - ar2413GetMaxPower(ah, &data[last]);
-		*maxPow = (int8_t) ((totalF*(chan->ic_freq-data[last].channelValue) + 
+		*maxPow = (int8_t) ((totalF*(freq-data[last].channelValue) + 
 				     ar2413GetMaxPower(ah, &data[last])*totalD)/totalD);
 		totalMin = ar2413GetMinPower(ah, &data[i]) - ar2413GetMinPower(ah, &data[last]);
-		*minPow = (int8_t) ((totalMin*(chan->ic_freq-data[last].channelValue) +
+		*minPow = (int8_t) ((totalMin*(freq-data[last].channelValue) +
 				     ar2413GetMinPower(ah, &data[last])*totalD)/totalD);
 		return(AH_TRUE);
 	} else {
-		if (chan->ic_freq == data[i].channelValue) {
+		if (freq == data[i].channelValue) {
 			*maxPow = ar2413GetMaxPower(ah, &data[i]);
 			*minPow = ar2413GetMinPower(ah, &data[i]);
 			return(AH_TRUE);

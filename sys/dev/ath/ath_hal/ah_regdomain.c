@@ -2175,6 +2175,26 @@ ath_hal_getchannels(struct ath_hal *ah,
 }
 
 /*
+ * Handle frequency mapping from 900Mhz range to 2.4GHz range
+ * for GSM radios.  This is done when we need the h/w frequency
+ * and the channel is marked IEEE80211_CHAN_GSM.
+ */
+static int
+ath_hal_mapgsm(int sku, int freq)
+{
+	if (sku == SKU_XR9)
+		return 1520 + freq;
+	if (sku == SKU_GZ901)
+		return 1544 + freq;
+	if (sku == SKU_SR9)
+		return 3344 - freq;
+	HALDEBUG(AH_NULL, HAL_DEBUG_ANY,
+	    "%s: cannot map freq %u unknown gsm sku %u\n",
+	    __func__, freq, sku);
+	return freq;
+}
+
+/*
  * Setup the internal/private channel state given a table of
  * net80211 channels.  We collapse entries for the same frequency
  * and record the frequency for doing noise floor processing
@@ -2182,16 +2202,17 @@ ath_hal_getchannels(struct ath_hal *ah,
  */
 static HAL_BOOL
 assignPrivateChannels(struct ath_hal *ah,
-	struct ieee80211_channel chans[], int nchans)
+	struct ieee80211_channel chans[], int nchans, int sku)
 {
 	HAL_CHANNEL_INTERNAL *ic;
-	int i, j, next;
+	int i, j, next, freq;
 
 	next = 0;
 	for (i = 0; i < nchans; i++) {
+		struct ieee80211_channel *c = &chans[i];
 		for (j = i-1; j >= 0; j--)
-			if (chans[j].ic_freq == chans[i].ic_freq) {
-				chans[i].ic_devdata = chans[j].ic_devdata;
+			if (chans[j].ic_freq == c->ic_freq) {
+				c->ic_devdata = chans[j].ic_devdata;
 				break;
 			}
 		if (j < 0) {
@@ -2202,6 +2223,19 @@ assignPrivateChannels(struct ath_hal *ah,
 				    __func__, N(AH_PRIVATE(ah)->ah_channels));
 				return AH_FALSE;
 			}
+			/*
+			 * Handle frequency mapping for 900MHz devices.
+			 * The hardware uses 2.4GHz frequencies that are
+			 * down-converted.  The 802.11 layer uses the
+			 * true frequencies.
+			 */
+			freq = IEEE80211_IS_CHAN_GSM(c) ?
+			    ath_hal_mapgsm(sku, c->ic_freq) : c->ic_freq;
+
+			HALDEBUG(ah, HAL_DEBUG_REGDOMAIN,
+			    "%s: private[%3u] %u/0x%x -> channel %u\n",
+			    __func__, next, c->ic_freq, c->ic_flags, freq);
+
 			ic = &AH_PRIVATE(ah)->ah_channels[next];
 			/*
 			 * NB: This clears privFlags which means ancillary
@@ -2209,8 +2243,8 @@ assignPrivateChannels(struct ath_hal *ah,
 			 *     restarted and re-setup any per-channel state.
 			 */
 			OS_MEMZERO(ic, sizeof(*ic));
-			ic->channel = chans[i].ic_freq;
-			chans[i].ic_devdata = next;
+			ic->channel = freq;
+			c->ic_devdata = next;
 			next++;
 		}
 	}
@@ -2235,7 +2269,8 @@ ath_hal_init_channels(struct ath_hal *ah,
 
 	status = getchannels(ah, chans, maxchans, nchans, modeSelect,
 	    cc, regDmn, enableExtendedChannels, &country, &rd2GHz, &rd5GHz);
-	if (status == HAL_OK && assignPrivateChannels(ah, chans, *nchans)) {
+	if (status == HAL_OK &&
+	    assignPrivateChannels(ah, chans, *nchans, AH_PRIVATE(ah)->ah_currentRD)) {
 		AH_PRIVATE(ah)->ah_rd2GHz = rd2GHz;
 		AH_PRIVATE(ah)->ah_rd5GHz = rd5GHz;
 
@@ -2253,14 +2288,33 @@ ath_hal_init_channels(struct ath_hal *ah,
 HAL_STATUS
 ath_hal_set_channels(struct ath_hal *ah,
     struct ieee80211_channel chans[], int nchans,
-    HAL_CTRY_CODE cc, HAL_REG_DOMAIN regDmn)
+    HAL_CTRY_CODE cc, HAL_REG_DOMAIN rd)
 {
 	COUNTRY_CODE_TO_ENUM_RD *country;
 	REG_DOMAIN *rd5GHz, *rd2GHz;
 	HAL_STATUS status;
 
-	status = getregstate(ah, cc, regDmn, &country, &rd2GHz, &rd5GHz);
-	if (status == HAL_OK && assignPrivateChannels(ah, chans, nchans)) {
+	switch (rd) {
+	case SKU_SR9:
+	case SKU_XR9:
+	case SKU_GZ901:
+		/*
+		 * Map 900MHz sku's.  The frequencies will be mapped
+		 * according to the sku to compensate for the down-converter.
+		 * We use the FCC for these sku's as the mapped channel
+		 * list is known compatible (will need to change if/when
+		 * vendors do different mapping in different locales).
+		 */
+		status = getregstate(ah, CTRY_DEFAULT, SKU_FCC,
+		    &country, &rd2GHz, &rd5GHz);
+		break;
+	default:
+		status = getregstate(ah, cc, rd,
+		    &country, &rd2GHz, &rd5GHz);
+		rd = AH_PRIVATE(ah)->ah_currentRD;
+		break;
+	}
+	if (status == HAL_OK && assignPrivateChannels(ah, chans, nchans, rd)) {
 		AH_PRIVATE(ah)->ah_rd2GHz = rd2GHz;
 		AH_PRIVATE(ah)->ah_rd5GHz = rd5GHz;
 
@@ -2283,7 +2337,7 @@ ath_hal_checkchannel(struct ath_hal *ah, const struct ieee80211_channel *c)
 	HAL_CHANNEL_INTERNAL *cc = &AH_PRIVATE(ah)->ah_channels[c->ic_devdata];
 
 	if (c->ic_devdata < AH_PRIVATE(ah)->ah_nchan &&
-	    c->ic_freq == cc->channel)
+	    (c->ic_freq == cc->channel || IEEE80211_IS_CHAN_GSM(c)))
 		return cc;
 	if (c->ic_devdata >= AH_PRIVATE(ah)->ah_nchan) {
 		HALDEBUG(ah, HAL_DEBUG_ANY,
@@ -2294,8 +2348,8 @@ ath_hal_checkchannel(struct ath_hal *ah, const struct ieee80211_channel *c)
 		HALDEBUG(ah, HAL_DEBUG_ANY,
 		    "%s: no match for %u/0x%x devdata %u channel %u\n",
 		   __func__, c->ic_freq, c->ic_flags, c->ic_devdata,
-		   AH_PRIVATE(ah)->ah_channels[c->ic_devdata].channel);
-		HALASSERT(c->ic_freq == cc->channel);
+		   cc->channel);
+		HALASSERT(c->ic_freq == cc->channel || IEEE80211_IS_CHAN_GSM(c));
 	}
 	return AH_NULL;
 }

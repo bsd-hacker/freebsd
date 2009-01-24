@@ -728,6 +728,7 @@ static HAL_BOOL
 setupPowerSettings(struct ath_hal *ah, const struct ieee80211_channel *chan,
 	uint8_t cp[17])
 {
+	uint16_t freq = ath_hal_gethwchannel(ah, chan);
 	const HAL_EEPROM_v1 *ee = AH_PRIVATE(ah)->ah_eeprom;
 	uint8_t gainFRD, gainF36, gainF48, gainF54;
 	uint8_t dBmRD, dBm36, dBm48, dBm54, dontcare;
@@ -738,9 +739,9 @@ setupPowerSettings(struct ath_hal *ah, const struct ieee80211_channel *chan,
 	cp[15] = (ee->ee_biasCurrents >> 4) & 0x7;
 	cp[16] = ee->ee_biasCurrents & 0x7;
 
-	if (chan->ic_freq < 5170 || chan->ic_freq > 5320) {
+	if (freq < 5170 || freq > 5320) {
 		HALDEBUG(ah, HAL_DEBUG_ANY, "%s: invalid channel %u\n",
-		    __func__, chan->ic_freq);
+		    __func__, freq);
 		return AH_FALSE;
 	}
 
@@ -760,7 +761,7 @@ setupPowerSettings(struct ath_hal *ah, const struct ieee80211_channel *chan,
 #endif
 		return AH_FALSE;
 	}
-	group = ((chan->ic_freq - 5170) / 10);
+	group = ((freq - 5170) / 10);
 
 	if (group > 11) {
 		/* Pull 5.29 into the 5.27 group */
@@ -916,10 +917,11 @@ ar5210SetTransmitPower(struct ath_hal *ah, const struct ieee80211_channel *chan)
 static HAL_BOOL
 ar5210SetChannel(struct ath_hal *ah, struct ieee80211_channel *chan)
 {
+	uint16_t freq = ath_hal_gethwchannel(ah, chan);
 	uint32_t data;
 
 	/* Set the Channel */
-	data = ath_hal_reverseBits((chan->ic_freq - 5120)/10, 5);
+	data = ath_hal_reverseBits((freq - 5120)/10, 5);
 	data = (data << 1) | 0x41;
 	OS_REG_WRITE(ah, AR_PHY(0x27), data);
 	OS_REG_WRITE(ah, AR_PHY(0x30), 0);

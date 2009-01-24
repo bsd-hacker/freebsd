@@ -125,7 +125,7 @@ struct ath_hal_rf *ath_hal_rfprobe(struct ath_hal *ah, HAL_STATUS *ecode);
  * using ic_devdata in the ieee80211_channel.
  */
 typedef struct {
-	uint16_t	channel;	/* XXX remove */
+	uint16_t	channel;	/* h/w frequency, NB: may be mapped */
 	uint8_t		privFlags;
 #define	CHANNEL_IQVALID		0x01	/* IQ calibration valid */
 #define	CHANNEL_ANI_INIT	0x02	/* ANI state initialized */
@@ -140,6 +140,13 @@ typedef struct {
 
 /* channel requires noise floor check */
 #define	CHANNEL_NFCREQUIRED	IEEE80211_CHAN_PRIV0
+
+/* all full-width channels */
+#define	IEEE80211_CHAN_ALLFULL \
+	(IEEE80211_CHAN_ALL - (IEEE80211_CHAN_HALF | IEEE80211_CHAN_QUARTER))
+#define	IEEE80211_CHAN_ALLTURBOFULL \
+	(IEEE80211_CHAN_ALLTURBO - \
+	 (IEEE80211_CHAN_HALF | IEEE80211_CHAN_QUARTER))
 
 typedef struct {
 	uint32_t	halChanSpreadSupport 		: 1,
@@ -535,7 +542,7 @@ ath_hal_checkchannel(struct ath_hal *ah, const struct ieee80211_channel *c)
 
 	HALASSERT(c->ic_devdata < AH_PRIVATE(ah)->ah_nchan);
 	cc = &AH_PRIVATE(ah)->ah_channels[c->ic_devdata];
-	HALASSERT(c->ic_freq == cc->channel);
+	HALASSERT(c->ic_freq == cc->channel || IEEE80211_IS_CHAN_GSM(c));
 	return cc;
 }
 #else
@@ -543,6 +550,17 @@ ath_hal_checkchannel(struct ath_hal *ah, const struct ieee80211_channel *c)
 HAL_CHANNEL_INTERNAL *ath_hal_checkchannel(struct ath_hal *,
 		const struct ieee80211_channel *);
 #endif /* AH_DEBUG */
+
+/*
+ * Return the h/w frequency for a channel.  This may be
+ * different from ic_freq if this is a GSM device that
+ * takes 2.4GHz frequencies and down-converts them.
+ */
+static OS_INLINE uint16_t
+ath_hal_gethwchannel(struct ath_hal *ah, const struct ieee80211_channel *c)
+{
+	return ath_hal_checkchannel(ah, c)->channel;
+}
 
 /*
  * Convert between microseconds and core system clocks.

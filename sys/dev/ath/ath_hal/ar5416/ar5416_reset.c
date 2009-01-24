@@ -816,6 +816,7 @@ ar5416SetDeltaSlope(struct ath_hal *ah, const struct ieee80211_channel *chan)
 static void
 ar5416SpurMitigate(struct ath_hal *ah, const struct ieee80211_channel *chan)
 {
+    uint16_t freq = ath_hal_gethwchannel(ah, chan);
     static const int pilot_mask_reg[4] = { AR_PHY_TIMING7, AR_PHY_TIMING8,
                 AR_PHY_PILOT_MASK_01_30, AR_PHY_PILOT_MASK_31_60 };
     static const int chan_mask_reg[4] = { AR_PHY_TIMING9, AR_PHY_TIMING10,
@@ -849,7 +850,7 @@ ar5416SpurMitigate(struct ath_hal *ah, const struct ieee80211_channel *chan)
         cur_bb_spur = ath_hal_getSpurChan(ah, i, is2GHz);
         if (AR_NO_SPUR == cur_bb_spur)
             break;
-        cur_bb_spur = cur_bb_spur - (chan->ic_freq * 10);
+        cur_bb_spur = cur_bb_spur - (freq * 10);
         if ((cur_bb_spur > -95) && (cur_bb_spur < 95)) {
             bb_spur = cur_bb_spur;
             break;
@@ -2813,8 +2814,10 @@ void
 ar5416GetChannelCenters(struct ath_hal *ah,
 	const struct ieee80211_channel *chan, CHAN_CENTERS *centers)
 {
-	centers->ctl_center = chan->ic_freq;
-	centers->synth_center = chan->ic_freq;
+	uint16_t freq = ath_hal_gethwchannel(ah, chan);
+
+	centers->ctl_center = freq;
+	centers->synth_center = freq;
 	/*
 	 * In 20/40 phy mode, the center frequency is
 	 * "between" the control and extension channels.
@@ -2828,6 +2831,6 @@ ar5416GetChannelCenters(struct ath_hal *ah,
 		centers->ext_center =
 		    centers->synth_center - HT40_CHANNEL_CENTER_SHIFT;
 	} else {
-		centers->ext_center = chan->ic_freq;
+		centers->ext_center = freq;
 	}
 }

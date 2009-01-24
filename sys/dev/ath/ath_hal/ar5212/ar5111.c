@@ -77,6 +77,7 @@ static HAL_BOOL
 ar5111SetChannel(struct ath_hal *ah, const struct ieee80211_channel *chan)
 {
 #define CI_2GHZ_INDEX_CORRECTION 19
+	uint16_t freq = ath_hal_gethwchannel(ah, chan);
 	uint32_t refClk, reg32, data2111;
 	int16_t chan5111, chanIEEE;
 
@@ -140,7 +141,7 @@ ar5111SetChannel(struct ath_hal *ah, const struct ieee80211_channel *chan)
 		{ 1, 0x46, 180 } 	/* 2732  26 */
 	};
 
-	OS_MARK(ah, AH_MARK_SETCHANNEL, chan->ic_freq);
+	OS_MARK(ah, AH_MARK_SETCHANNEL, freq);
 
 	chanIEEE = chan->ic_ieee;
 	if (IEEE80211_IS_CHAN_2GHZ(chan)) {
@@ -153,7 +154,7 @@ ar5111SetChannel(struct ath_hal *ah, const struct ieee80211_channel *chan)
 			 | (ci->refClkSel << 4);
 		chan5111 = ci->channel5111;
 		txctl = OS_REG_READ(ah, AR_PHY_CCK_TX_CTRL);
-		if (chan->ic_freq == 2484) {
+		if (freq == 2484) {
 			/* Enable channel spreading for channel 14 */
 			OS_REG_WRITE(ah, AR_PHY_CCK_TX_CTRL,
 				txctl | AR_PHY_CCK_TX_CTRL_JAPAN);
@@ -217,6 +218,7 @@ static HAL_BOOL
 ar5111SetRfRegs(struct ath_hal *ah, const struct ieee80211_channel *chan,
 	uint16_t modesIndex, uint16_t *rfXpdGain)
 {
+	uint16_t freq = ath_hal_gethwchannel(ah, chan);
 	struct ath_hal_5212 *ahp = AH5212(ah);
 	const HAL_EEPROM *ee = AH_PRIVATE(ah)->ah_eeprom;
 	uint16_t rfXpdGainFixed, rfPloSel, rfPwdXpd, gainI;
@@ -224,19 +226,22 @@ ar5111SetRfRegs(struct ath_hal *ah, const struct ieee80211_channel *chan,
 	uint32_t ob2GHz, db2GHz, rfReg[N(ar5212Bank6_5111)];
 	int i, regWrites = 0;
 
+	HALDEBUG(ah, HAL_DEBUG_RFPARAM, "%s: chan %u/0x%x modesIndex %u\n",
+	    __func__, chan->ic_freq, chan->ic_flags, modesIndex);
+
 	/* Setup rf parameters */
-	switch (chan->ic_flags & IEEE80211_CHAN_ALL) {
+	switch (chan->ic_flags & IEEE80211_CHAN_ALLFULL) {
 	case IEEE80211_CHAN_A:
-		if (4000 < chan->ic_freq && chan->ic_freq < 5260) {
+		if (4000 < freq && freq < 5260) {
 			tempOB = ee->ee_ob1;
 			tempDB = ee->ee_db1;
-		} else if (5260 <= chan->ic_freq && chan->ic_freq < 5500) {
+		} else if (5260 <= freq && freq < 5500) {
 			tempOB = ee->ee_ob2;
 			tempDB = ee->ee_db2;
-		} else if (5500 <= chan->ic_freq && chan->ic_freq < 5725) {
+		} else if (5500 <= freq && freq < 5725) {
 			tempOB = ee->ee_ob3;
 			tempDB = ee->ee_db3;
-		} else if (chan->ic_freq >= 5725) {
+		} else if (freq >= 5725) {
 			tempOB = ee->ee_ob4;
 			tempDB = ee->ee_db4;
 		} else {
@@ -387,6 +392,7 @@ ar5111SetPowerTable(struct ath_hal *ah,
 	const struct ieee80211_channel *chan,
 	uint16_t *rfXpdGain)
 {
+	uint16_t freq = ath_hal_gethwchannel(ah, chan);
 	struct ath_hal_5212 *ahp = AH5212(ah);
 	const HAL_EEPROM *ee = AH_PRIVATE(ah)->ah_eeprom;
 	FULL_PCDAC_STRUCT pcdacStruct;
@@ -405,7 +411,7 @@ ar5111SetPowerTable(struct ath_hal *ah,
 	PCDACS_EEPROM eepromPcdacs;
 
 	/* setup the pcdac struct to point to the correct info, based on mode */
-	switch (chan->ic_flags & IEEE80211_CHAN_ALLTURBO) {
+	switch (chan->ic_flags & IEEE80211_CHAN_ALLTURBOFULL) {
 	case IEEE80211_CHAN_A:
 	case IEEE80211_CHAN_ST:
 		eepromPcdacs.numChannels     = ee->ee_numChannels11a;
@@ -445,7 +451,7 @@ ar5111SetPowerTable(struct ath_hal *ah,
 
 	/* Fill out the power values for this channel */
 	for (j = 0; j < pcdacStruct.numPcdacValues; j++ )
-		pScaledUpDbm[j] = ar5212GetScaledPower(chan->ic_freq,
+		pScaledUpDbm[j] = ar5212GetScaledPower(freq,
 			pPcdacValues[j], pSrcStruct);
 
 	/* Now scale the pcdac values to fit in the 64 entry power table */

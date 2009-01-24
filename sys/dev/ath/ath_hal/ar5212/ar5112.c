@@ -77,27 +77,27 @@ ar5112WriteRegs(struct ath_hal *ah, u_int modesIndex, u_int freqIndex,
 static HAL_BOOL
 ar5112SetChannel(struct ath_hal *ah, const struct ieee80211_channel *chan)
 {
+	uint16_t freq = ath_hal_gethwchannel(ah, chan);
 	uint32_t channelSel  = 0;
 	uint32_t bModeSynth  = 0;
 	uint32_t aModeRefSel = 0;
 	uint32_t reg32       = 0;
-	uint16_t freq;
 
-	OS_MARK(ah, AH_MARK_SETCHANNEL, chan->ic_freq);
+	OS_MARK(ah, AH_MARK_SETCHANNEL, freq);
 
-	if (chan->ic_freq < 4800) {
+	if (freq < 4800) {
 		uint32_t txctl;
 
-		if (((chan->ic_freq - 2192) % 5) == 0) {
-			channelSel = ((chan->ic_freq - 672) * 2 - 3040)/10;
+		if (((freq - 2192) % 5) == 0) {
+			channelSel = ((freq - 672) * 2 - 3040)/10;
 			bModeSynth = 0;
-		} else if (((chan->ic_freq - 2224) % 5) == 0) {
-			channelSel = ((chan->ic_freq - 704) * 2 - 3040) / 10;
+		} else if (((freq - 2224) % 5) == 0) {
+			channelSel = ((freq - 704) * 2 - 3040) / 10;
 			bModeSynth = 1;
 		} else {
 			HALDEBUG(ah, HAL_DEBUG_ANY,
 			    "%s: invalid channel %u MHz\n",
-			    __func__, chan->ic_freq);
+			    __func__, freq);
 			return AH_FALSE;
 		}
 
@@ -105,7 +105,7 @@ ar5112SetChannel(struct ath_hal *ah, const struct ieee80211_channel *chan)
 		channelSel = ath_hal_reverseBits(channelSel, 8);
 
 		txctl = OS_REG_READ(ah, AR_PHY_CCK_TX_CTRL);
-		if (chan->ic_freq == 2484) {
+		if (freq == 2484) {
 			/* Enable channel spreading for channel 14 */
 			OS_REG_WRITE(ah, AR_PHY_CCK_TX_CTRL,
 				txctl | AR_PHY_CCK_TX_CTRL_JAPAN);
@@ -113,26 +113,26 @@ ar5112SetChannel(struct ath_hal *ah, const struct ieee80211_channel *chan)
 			OS_REG_WRITE(ah, AR_PHY_CCK_TX_CTRL,
 				txctl &~ AR_PHY_CCK_TX_CTRL_JAPAN);
 		}
-	} else if (((chan->ic_freq % 5) == 2) && (chan->ic_freq <= 5435)) {
-		freq = chan->ic_freq - 2; /* Align to even 5MHz raster */
+	} else if (((freq % 5) == 2) && (freq <= 5435)) {
+		freq = freq - 2; /* Align to even 5MHz raster */
 		channelSel = ath_hal_reverseBits(
 			(uint32_t)(((freq - 4800)*10)/25 + 1), 8);
             	aModeRefSel = ath_hal_reverseBits(0, 2);
-	} else if ((chan->ic_freq % 20) == 0 && chan->ic_freq >= 5120) {
+	} else if ((freq % 20) == 0 && freq >= 5120) {
 		channelSel = ath_hal_reverseBits(
-			((chan->ic_freq - 4800) / 20 << 2), 8);
+			((freq - 4800) / 20 << 2), 8);
 		aModeRefSel = ath_hal_reverseBits(3, 2);
-	} else if ((chan->ic_freq % 10) == 0) {
+	} else if ((freq % 10) == 0) {
 		channelSel = ath_hal_reverseBits(
-			((chan->ic_freq - 4800) / 10 << 1), 8);
+			((freq - 4800) / 10 << 1), 8);
 		aModeRefSel = ath_hal_reverseBits(2, 2);
-	} else if ((chan->ic_freq % 5) == 0) {
+	} else if ((freq % 5) == 0) {
 		channelSel = ath_hal_reverseBits(
-			(chan->ic_freq - 4800) / 5, 8);
+			(freq - 4800) / 5, 8);
 		aModeRefSel = ath_hal_reverseBits(1, 2);
 	} else {
 		HALDEBUG(ah, HAL_DEBUG_ANY, "%s: invalid channel %u MHz\n",
-		    __func__, chan->ic_freq);
+		    __func__, freq);
 		return AH_FALSE;
 	}
 
@@ -184,6 +184,7 @@ ar5112SetRfRegs(struct ath_hal *ah,
 	for (i = 0; i < N(ar5212Bank##_ix##_5112); i++)			    \
 		(_priv)->Bank##_ix##Data[i] = ar5212Bank##_ix##_5112[i][_col];\
 } while (0)
+	uint16_t freq = ath_hal_gethwchannel(ah, chan);
 	struct ath_hal_5212 *ahp = AH5212(ah);
 	const HAL_EEPROM *ee = AH_PRIVATE(ah)->ah_eeprom;
 	uint16_t rfXpdSel, gainI;
@@ -195,19 +196,22 @@ ar5112SetRfRegs(struct ath_hal *ah,
 
 	HALASSERT(priv);
 
+	HALDEBUG(ah, HAL_DEBUG_RFPARAM, "%s: chan %u/0x%x modesIndex %u\n",
+	    __func__, chan->ic_freq, chan->ic_flags, modesIndex);
+
 	/* Setup rf parameters */
-	switch (chan->ic_flags & IEEE80211_CHAN_ALL) {
+	switch (chan->ic_flags & IEEE80211_CHAN_ALLFULL) {
 	case IEEE80211_CHAN_A:
-		if (chan->ic_freq > 4000 && chan->ic_freq < 5260) {
+		if (freq > 4000 && freq < 5260) {
 			ob5GHz = ee->ee_ob1;
 			db5GHz = ee->ee_db1;
-		} else if (chan->ic_freq >= 5260 && chan->ic_freq < 5500) {
+		} else if (freq >= 5260 && freq < 5500) {
 			ob5GHz = ee->ee_ob2;
 			db5GHz = ee->ee_db2;
-		} else if (chan->ic_freq >= 5500 && chan->ic_freq < 5725) {
+		} else if (freq >= 5500 && freq < 5725) {
 			ob5GHz = ee->ee_ob3;
 			db5GHz = ee->ee_db3;
-		} else if (chan->ic_freq >= 5725) {
+		} else if (freq >= 5725) {
 			ob5GHz = ee->ee_ob4;
 			db5GHz = ee->ee_db4;
 		} else {
@@ -342,6 +346,7 @@ ar5112SetPowerTable(struct ath_hal *ah,
 	const struct ieee80211_channel *chan,
 	uint16_t *rfXpdGain)
 {
+	uint16_t freq = ath_hal_gethwchannel(ah, chan);
 	struct ath_hal_5212 *ahp = AH5212(ah);
 	const HAL_EEPROM *ee = AH_PRIVATE(ah)->ah_eeprom;
 	uint32_t numXpdGain = IS_RADX112_REV2(ah) ? 2 : 1;
@@ -368,7 +373,7 @@ ar5112SetPowerTable(struct ath_hal *ah,
 	uint16_t    xgainList[2];
 	uint16_t    xpdMask;
 
-	switch (chan->ic_flags & IEEE80211_CHAN_ALLTURBO) {
+	switch (chan->ic_flags & IEEE80211_CHAN_ALLTURBOFULL) {
 	case IEEE80211_CHAN_A:
 	case IEEE80211_CHAN_ST:
 		pPowerExpn = &ee->ee_modePowerArray5112[headerInfo11A];
@@ -417,7 +422,7 @@ ar5112SetPowerTable(struct ath_hal *ah,
 		}
 	}
 
-	ar5212GetLowerUpperIndex(chan->ic_freq, &pPowerExpn->pChannels[0],
+	ar5212GetLowerUpperIndex(freq, &pPowerExpn->pChannels[0],
 		pPowerExpn->numChannels, &chan_idx_L, &chan_idx_R);
 
 	kk = 0;
@@ -475,7 +480,7 @@ ar5112SetPowerTable(struct ath_hal *ah,
 	if (xgainList[1] == 0xDEAD) {
 		for (jj = 0; jj < 64; jj++) {
 			pwr_table0[jj] = interpolate_signed(
-				chan->ic_freq, chan_L, chan_R,
+				freq, chan_L, chan_R,
 				powTableLXPD[0][jj], powTableLXPD[kk][jj]);
 		}
 		Pmin = getPminAndPcdacTableFromPowerTable(&pwr_table0[0],
@@ -488,10 +493,10 @@ ar5112SetPowerTable(struct ath_hal *ah,
 	} else {
 		for (jj = 0; jj < 64; jj++) {
 			pwr_table0[jj] = interpolate_signed(
-				chan->ic_freq, chan_L, chan_R,
+				freq, chan_L, chan_R,
 				powTableLXPD[0][jj], powTableLXPD[kk][jj]);
 			pwr_table1[jj] = interpolate_signed(
-				chan->ic_freq, chan_L, chan_R,
+				freq, chan_L, chan_R,
 				powTableHXPD[0][jj], powTableHXPD[kk][jj]);
 		}
 		if (numXpdGain == 2) {
@@ -762,6 +767,7 @@ ar5112GetChannelMaxMinPower(struct ath_hal *ah,
 	const struct ieee80211_channel *chan,
 	int16_t *maxPow, int16_t *minPow)
 {
+	uint16_t freq = chan->ic_freq;		/* NB: never mapped */
 	const HAL_EEPROM *ee = AH_PRIVATE(ah)->ah_eeprom;
 	int numChannels=0,i,last;
 	int totalD, totalF,totalMin;
@@ -791,9 +797,9 @@ ar5112GetChannelMaxMinPower(struct ath_hal *ah,
 	if (numChannels < 1)
 		return(AH_FALSE);
 
-	if ((chan->ic_freq < data[0].channelValue) ||
-	    (chan->ic_freq > data[numChannels-1].channelValue)) {
-		if (chan->ic_freq < data[0].channelValue) {
+	if ((freq < data[0].channelValue) ||
+	    (freq > data[numChannels-1].channelValue)) {
+		if (freq < data[0].channelValue) {
 			*maxPow = data[0].maxPower_t4;
 			*minPow = ar5112GetMinPower(ah, &data[0]);
 			return(AH_TRUE);
@@ -806,18 +812,18 @@ ar5112GetChannelMaxMinPower(struct ath_hal *ah,
 
 	/* Linearly interpolate the power value now */
 	for (last=0,i=0;
-	     (i<numChannels) && (chan->ic_freq > data[i].channelValue);
+	     (i<numChannels) && (freq > data[i].channelValue);
 	     last=i++);
 	totalD = data[i].channelValue - data[last].channelValue;
 	if (totalD > 0) {
 		totalF = data[i].maxPower_t4 - data[last].maxPower_t4;
-		*maxPow = (int8_t) ((totalF*(chan->ic_freq-data[last].channelValue) + data[last].maxPower_t4*totalD)/totalD);
+		*maxPow = (int8_t) ((totalF*(freq-data[last].channelValue) + data[last].maxPower_t4*totalD)/totalD);
 
 		totalMin = ar5112GetMinPower(ah,&data[i]) - ar5112GetMinPower(ah, &data[last]);
-		*minPow = (int8_t) ((totalMin*(chan->ic_freq-data[last].channelValue) + ar5112GetMinPower(ah, &data[last])*totalD)/totalD);
+		*minPow = (int8_t) ((totalMin*(freq-data[last].channelValue) + ar5112GetMinPower(ah, &data[last])*totalD)/totalD);
 		return (AH_TRUE);
 	} else {
-		if (chan->ic_freq == data[i].channelValue) {
+		if (freq == data[i].channelValue) {
 			*maxPow = data[i].maxPower_t4;
 			*minPow = ar5112GetMinPower(ah, &data[i]);
 			return(AH_TRUE);

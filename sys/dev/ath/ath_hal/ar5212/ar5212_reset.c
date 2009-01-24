@@ -309,7 +309,7 @@ ar5212Reset(struct ath_hal *ah, HAL_OPMODE opmode,
 			AR_PHY_ADC_CTL_OFF_PWDADC);
 
 		/* TX_PWR_ADJ */
-		if (chan->ic_freq == 2484) {
+		if (ichan->channel == 2484) {
 			cckOfdmPwrDelta = SCALE_OC_DELTA(
 			    ee->ee_cckOfdmPwrDelta -
 			    ee->ee_scaledCh14FilterCckDelta);
@@ -356,7 +356,7 @@ ar5212Reset(struct ath_hal *ah, HAL_OPMODE opmode,
 
 	if (IS_5413(ah) || IS_2417(ah)) {
 		uint32_t newReg = 1;
-		if (IS_DISABLE_FAST_ADC_CHAN(chan->ic_freq))
+		if (IS_DISABLE_FAST_ADC_CHAN(ichan->channel))
 			newReg = 0;
 		/* As it's a clock changing register, only write when the value needs to be changed */
 		if (OS_REG_READ(ah, AR_PHY_FAST_ADC) != newReg)
@@ -1154,7 +1154,7 @@ getNoiseFloorThresh(struct ath_hal *ah, const struct ieee80211_channel *chan,
 
 	HALASSERT(ah->ah_magic == AR5212_MAGIC);
 
-	switch (chan->ic_flags & IEEE80211_CHAN_ALL) {
+	switch (chan->ic_flags & IEEE80211_CHAN_ALLFULL) {
 	case IEEE80211_CHAN_A:
 		*nft = ee->ee_noiseFloorThresh[headerInfo11A];
 		break;
@@ -1360,7 +1360,7 @@ ar5212SetAntennaSwitchInternal(struct ath_hal *ah, HAL_ANT_SETTING settings,
 	HALASSERT(ah->ah_magic == AR5212_MAGIC);
 	HALASSERT(ahp->ah_phyPowerOn);
 
-	switch (chan->ic_flags & IEEE80211_CHAN_ALL) {
+	switch (chan->ic_flags & IEEE80211_CHAN_ALLFULL) {
 	case IEEE80211_CHAN_A:
 		ix = 0;
 		break;
@@ -1436,11 +1436,12 @@ ar5212SetAntennaSwitchInternal(struct ath_hal *ah, HAL_ANT_SETTING settings,
 HAL_BOOL
 ar5212IsSpurChannel(struct ath_hal *ah, const struct ieee80211_channel *chan)
 {
-    uint32_t clockFreq =
-	((IS_5413(ah) || IS_RAD5112_ANY(ah) || IS_2417(ah)) ? 40 : 32);
-    return ( ((chan->ic_freq % clockFreq) != 0)
-          && (((chan->ic_freq % clockFreq) < 10)
-         || (((chan->ic_freq) % clockFreq) > 22)) );
+	uint16_t freq = ath_hal_gethwchannel(ah, chan);
+	uint32_t clockFreq =
+	    ((IS_5413(ah) || IS_RAD5112_ANY(ah) || IS_2417(ah)) ? 40 : 32);
+	return ( ((freq % clockFreq) != 0)
+              && (((freq % clockFreq) < 10)
+             || (((freq) % clockFreq) > 22)) );
 }
 
 /*
@@ -1466,7 +1467,7 @@ ar5212SetBoardValues(struct ath_hal *ah, const struct ieee80211_channel *chan)
 
 	HALASSERT(ah->ah_magic == AR5212_MAGIC);
 
-	switch (chan->ic_flags & IEEE80211_CHAN_ALLTURBO) {
+	switch (chan->ic_flags & IEEE80211_CHAN_ALLTURBOFULL) {
 	case IEEE80211_CHAN_A:
 	case IEEE80211_CHAN_ST:
 		arrayMode = headerInfo11A;
@@ -1607,7 +1608,7 @@ ar5212SetSpurMitigation(struct ath_hal *ah,
 		return;
 	}
 
-	curChanAsSpur = CHAN_TO_SPUR(is2GHz, chan->ic_freq);
+	curChanAsSpur = CHAN_TO_SPUR(is2GHz, ichan->channel);
 
 	if (ichan->mainSpur) {
 		/* Pull out the saved spur value */
@@ -1770,6 +1771,7 @@ ar5212SetDeltaSlope(struct ath_hal *ah, const struct ieee80211_channel *chan)
 {
 #define COEF_SCALE_S 24
 #define INIT_CLOCKMHZSCALED	0x64000000
+	uint16_t freq = ath_hal_gethwchannel(ah, chan);
 	unsigned long coef_scaled, coef_exp, coef_man, ds_coef_exp, ds_coef_man;
 	unsigned long clockMhzScaled = INIT_CLOCKMHZSCALED;
 
@@ -1787,7 +1789,7 @@ ar5212SetDeltaSlope(struct ath_hal *ah, const struct ieee80211_channel *chan)
 	 * ALGO -> coef = 1e8/fcarrier*fclock/40;
 	 * scaled coef to provide precision for this floating calculation 
 	 */
-	coef_scaled = clockMhzScaled / chan->ic_freq;
+	coef_scaled = clockMhzScaled / freq;
 
 	/*
 	 * ALGO -> coef_exp = 14-floor(log2(coef)); 
@@ -1849,6 +1851,7 @@ ar5212SetTransmitPower(struct ath_hal *ah,
 	static const uint16_t tpcScaleReductionTable[5] =
 		{ 0, 3, 6, 9, MAX_RATE_POWER };
 	struct ath_hal_5212 *ahp = AH5212(ah);
+	uint16_t freq = ath_hal_gethwchannel(ah, chan);
 	const HAL_EEPROM *ee = AH_PRIVATE(ah)->ah_eeprom;
 	int16_t minPower, maxPower, tpcInDb, powerLimit;
 	int i;
@@ -1901,7 +1904,7 @@ ar5212SetTransmitPower(struct ath_hal *ah,
 		    IEEE80211_IS_CHAN_G(chan)) {
 			uint16_t cckOfdmPwrDelta;
 
-			if (chan->ic_freq == 2484) 
+			if (freq == 2484) 
 				cckOfdmPwrDelta = SCALE_OC_DELTA(
 					ee->ee_cckOfdmPwrDelta - 
 					ee->ee_scaledCh14FilterCckDelta);
@@ -1973,6 +1976,7 @@ ar5212SetRateTable(struct ath_hal *ah, const struct ieee80211_channel *chan,
 	int16_t *pMinPower, int16_t *pMaxPower)
 {
 	struct ath_hal_5212 *ahp = AH5212(ah);
+	uint16_t freq = ath_hal_gethwchannel(ah, chan);
 	const HAL_EEPROM *ee = AH_PRIVATE(ah)->ah_eeprom;
 	uint16_t *rpow = ahp->ah_ratesArray;
 	uint16_t twiceMaxEdgePower = MAX_RATE_POWER;
@@ -2002,7 +2006,7 @@ ar5212SetRateTable(struct ath_hal *ah, const struct ieee80211_channel *chan,
 		if (ee->ee_ctl[i] == cfgCtl ||
 		    cfgCtl == ((ee->ee_ctl[i] & CTL_MODE_M) | SD_NO_CTL)) {
 			rep = &ee->ee_rdEdgesPower[i * NUM_EDGES];
-			twiceMinEdgePower = ar5212GetMaxEdgePower(chan->ic_freq, rep);
+			twiceMinEdgePower = ar5212GetMaxEdgePower(freq, rep);
 			if ((cfgCtl & ~CTL_MODE_M) == SD_NO_CTL) {
 				/* Find the minimum of all CTL edge powers that apply to this channel */
 				twiceMaxEdgePower = AH_MIN(twiceMaxEdgePower, twiceMinEdgePower);
@@ -2024,7 +2028,7 @@ ar5212SetRateTable(struct ath_hal *ah, const struct ieee80211_channel *chan,
 			if (ee->ee_ctl[i] == cfgCtl ||
 			    cfgCtl == ((ee->ee_ctl[i] & CTL_MODE_M) | SD_NO_CTL)) {
 				rep = &ee->ee_rdEdgesPower[i * NUM_EDGES];
-				twiceMinEdgePowerCck = ar5212GetMaxEdgePower(chan->ic_freq, rep);
+				twiceMinEdgePowerCck = ar5212GetMaxEdgePower(freq, rep);
 				if ((cfgCtl & ~CTL_MODE_M) == SD_NO_CTL) {
 					/* Find the minimum of all CTL edge powers that apply to this channel */
 					twiceMaxEdgePowerCck = AH_MIN(twiceMaxEdgePowerCck, twiceMinEdgePowerCck);
@@ -2405,6 +2409,7 @@ ar5212GetTargetPowers(struct ath_hal *ah, const struct ieee80211_channel *chan,
 	const TRGT_POWER_INFO *powInfo,
 	uint16_t numChannels, TRGT_POWER_INFO *pNewPower)
 {
+	uint16_t freq = ath_hal_gethwchannel(ah, chan);
 	/* temp array for holding target power channels */
 	uint16_t tempChannelList[NUM_TEST_FREQUENCIES];
 	uint16_t clo, chi, ixlo, ixhi;
@@ -2414,7 +2419,7 @@ ar5212GetTargetPowers(struct ath_hal *ah, const struct ieee80211_channel *chan,
 	for (i = 0; i < numChannels; i++)
 		tempChannelList[i] = powInfo[i].testChannel;
 
-	ar5212GetLowerUpperValues(chan->ic_freq, tempChannelList,
+	ar5212GetLowerUpperValues(freq, tempChannelList,
 		numChannels, &clo, &chi);
 
 	/* Get the indices for the channel */
@@ -2433,13 +2438,13 @@ ar5212GetTargetPowers(struct ath_hal *ah, const struct ieee80211_channel *chan,
 	 * Get the lower and upper channels, target powers,
 	 * and interpolate between them.
 	 */
-	pNewPower->twicePwr6_24 = interpolate(chan->ic_freq, clo, chi,
+	pNewPower->twicePwr6_24 = interpolate(freq, clo, chi,
 		powInfo[ixlo].twicePwr6_24, powInfo[ixhi].twicePwr6_24);
-	pNewPower->twicePwr36 = interpolate(chan->ic_freq, clo, chi,
+	pNewPower->twicePwr36 = interpolate(freq, clo, chi,
 		powInfo[ixlo].twicePwr36, powInfo[ixhi].twicePwr36);
-	pNewPower->twicePwr48 = interpolate(chan->ic_freq, clo, chi,
+	pNewPower->twicePwr48 = interpolate(freq, clo, chi,
 		powInfo[ixlo].twicePwr48, powInfo[ixhi].twicePwr48);
-	pNewPower->twicePwr54 = interpolate(chan->ic_freq, clo, chi,
+	pNewPower->twicePwr54 = interpolate(freq, clo, chi,
 		powInfo[ixlo].twicePwr54, powInfo[ixhi].twicePwr54);
 }
 

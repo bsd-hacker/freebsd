@@ -1420,32 +1420,6 @@ ath_bmiss_proc(void *arg, int pending)
 		ieee80211_beacon_miss(ifp->if_l2com);
 }
 
-static int
-mapgsm(int sku, int freq)
-{
-	if (sku == SKU_XR9)
-		return 1520 + freq;
-	if (sku == SKU_GZ901)
-		return 1544 + freq;
-	if (sku == SKU_SR9)
-		return 3344 - freq;
-	/* XXX whine */
-	return freq;
-}
-
-static int
-unmapgsm(int sku, int freq)
-{
-	if (sku == SKU_XR9)
-		return freq - 1520;
-	if (sku == SKU_GZ901)
-		return freq - 1544;
-	if (sku == SKU_SR9)
-		return 3344 - freq;
-	/* XXX whine */
-	return freq;
-}
-
 /*
  * Handle TKIP MIC setup to deal hardware that doesn't do MIC
  * calcs together with WME.  If necessary disable the crypto
@@ -6147,41 +6121,15 @@ ath_setregdomain(struct ieee80211com *ic, struct ieee80211_regdomain *reg,
 {
 	struct ath_softc *sc = ic->ic_ifp->if_softc;
 	struct ath_hal *ah = sc->sc_ah;
-	HAL_CTRY_CODE cc = reg->country;
-	HAL_REG_DOMAIN rd = reg->regdomain;
 	HAL_STATUS status;
-	int i;
 
-	switch (rd) {
-	case SKU_SR9:
-	case SKU_XR9:
-	case SKU_GZ901:
-		/*
-		 * Map 900MHz sku's and their channel list. The hal
-		 * doesn't know the sku (or need to know them); it's
-		 * just so we know to remap the frequencies to hide
-		 * the details of the h/w frequency converter. We tell
-		 * the hal this is the FCC as the mapped channel list
-		 * is known compatible.
-		 */
-		for (i = 0; i < nchans; i++)
-			chans[i].ic_freq = mapgsm(rd, chans[i].ic_freq);
-		rd = SKU_FCC;
-		cc = CTRY_DEFAULT;
-		break;
-	}
 	DPRINTF(sc, ATH_DEBUG_REGDOMAIN,
-	    "%s: rd %u cc %u location %c%s (mapped rd %u cc %u)\n",
+	    "%s: rd %u cc %u location %c%s\n",
 	    __func__, reg->regdomain, reg->country, reg->location,
-	    reg->ecm ? " ecm" : "", rd, cc);
+	    reg->ecm ? " ecm" : "");
 
-	status = ath_hal_set_channels(ah, chans, nchans, cc, rd);
-	if (rd != reg->regdomain) {
-		/* blech, undo mapping */
-		for (i = 0; i < nchans; i++)
-			chans[i].ic_freq =
-			    unmapgsm(reg->regdomain, chans[i].ic_freq);
-	}
+	status = ath_hal_set_channels(ah, chans, nchans,
+	    reg->country, reg->regdomain);
 	if (status != HAL_OK) {
 		DPRINTF(sc, ATH_DEBUG_REGDOMAIN, "%s: failed, status %u\n",
 		    __func__, status);

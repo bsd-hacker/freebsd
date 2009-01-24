@@ -895,7 +895,7 @@ getNoiseFloorThresh(struct ath_hal *ah, const struct ieee80211_channel *chan,
 {
 	HAL_EEPROM *ee = AH_PRIVATE(ah)->ah_eeprom;
 
-	switch (chan->ic_flags & IEEE80211_CHAN_ALL) {
+	switch (chan->ic_flags & IEEE80211_CHAN_ALLFULL) {
 	case IEEE80211_CHAN_A:
 		*nft = ee->ee_noiseFloorThresh[0];
 		break;
@@ -1033,6 +1033,7 @@ static HAL_BOOL
 ar5211SetRf6and7(struct ath_hal *ah, const struct ieee80211_channel *chan)
 {
 #define	N(a)	(sizeof (a) / sizeof (a[0]))
+	uint16_t freq = ath_hal_gethwchannel(ah, chan);
 	HAL_EEPROM *ee = AH_PRIVATE(ah)->ah_eeprom;
 	struct ath_hal_5211 *ahp = AH5211(ah);
 	uint16_t rfXpdGain, rfPloSel, rfPwdXpd;
@@ -1047,18 +1048,18 @@ ar5211SetRf6and7(struct ath_hal *ah, const struct ieee80211_channel *chan)
 	 *	 during the read.
 	 * For readability, this should be changed to an enum or #define
 	 */
-	switch (chan->ic_flags & IEEE80211_CHAN_ALL) {
+	switch (chan->ic_flags & IEEE80211_CHAN_ALLFULL) {
 	case IEEE80211_CHAN_A:
-		if (chan->ic_freq > 4000 && chan->ic_freq < 5260) {
+		if (freq > 4000 && freq < 5260) {
 			tempOB = ee->ee_ob1;
 			tempDB = ee->ee_db1;
-		} else if (chan->ic_freq >= 5260 && chan->ic_freq < 5500) {
+		} else if (freq >= 5260 && freq < 5500) {
 			tempOB = ee->ee_ob2;
 			tempDB = ee->ee_db2;
-		} else if (chan->ic_freq >= 5500 && chan->ic_freq < 5725) {
+		} else if (freq >= 5500 && freq < 5725) {
 			tempOB = ee->ee_ob3;
 			tempDB = ee->ee_db3;
-		} else if (chan->ic_freq >= 5725) {
+		} else if (freq >= 5725) {
 			tempOB = ee->ee_ob4;
 			tempDB = ee->ee_db4;
 		} else {
@@ -1145,7 +1146,7 @@ ar5211SetAntennaSwitchInternal(struct ath_hal *ah, HAL_ANT_SETTING settings,
 	uint32_t antSwitchA, antSwitchB;
 	int ix;
 
-	switch (chan->ic_flags & IEEE80211_CHAN_ALL) {
+	switch (chan->ic_flags & IEEE80211_CHAN_ALLFULL) {
 	case IEEE80211_CHAN_A:		ix = 0; break;
 	case IEEE80211_CHAN_B:		ix = 1; break;
 	case IEEE80211_CHAN_PUREG:	ix = 2; break;
@@ -1205,7 +1206,7 @@ ar5211SetBoardValues(struct ath_hal *ah, const struct ieee80211_channel *chan)
 	struct ath_hal_5211 *ahp = AH5211(ah);
 	int arrayMode, falseDectectBackoff;
 
-	switch (chan->ic_flags & IEEE80211_CHAN_ALL) {
+	switch (chan->ic_flags & IEEE80211_CHAN_ALLFULL) {
 	case IEEE80211_CHAN_A:
 		arrayMode = 0;
 		OS_REG_RMW_FIELD(ah, AR_PHY_FRAME_CTL,
@@ -1274,7 +1275,8 @@ ar5211SetBoardValues(struct ath_hal *ah, const struct ieee80211_channel *chan)
 		    IEEE80211_IS_CHAN_OFDM(chan))
 			falseDectectBackoff += CB22_FALSE_DETECT_BACKOFF;
 	} else {
-		uint32_t remainder = chan->ic_freq % 32;
+		uint16_t freq = ath_hal_gethwchannel(ah, chan);
+		uint32_t remainder = freq % 32;
 
 		if (remainder && (remainder < 10 || remainder > 22))
 			falseDectectBackoff += ee->ee_falseDetectBackoff[arrayMode];
@@ -1310,6 +1312,7 @@ ar5211SetTxPowerLimit(struct ath_hal *ah, uint32_t limit)
 static HAL_BOOL
 ar5211SetTransmitPower(struct ath_hal *ah, const struct ieee80211_channel *chan)
 {
+	uint16_t freq = ath_hal_gethwchannel(ah, chan);
 	HAL_EEPROM *ee = AH_PRIVATE(ah)->ah_eeprom;
 	TRGT_POWER_INFO *pi;
 	RD_EDGES_POWER *rep;
@@ -1318,7 +1321,7 @@ ar5211SetTransmitPower(struct ath_hal *ah, const struct ieee80211_channel *chan)
 	int i;
 
 	/* setup the pcdac struct to point to the correct info, based on mode */
-	switch (chan->ic_flags & IEEE80211_CHAN_ALL) {
+	switch (chan->ic_flags & IEEE80211_CHAN_ALLFULL) {
 	case IEEE80211_CHAN_A:
 		eepromPcdacs.numChannels = ee->ee_numChannels11a;
 		eepromPcdacs.pChannelList= ee->ee_channels11a;
@@ -1346,7 +1349,7 @@ ar5211SetTransmitPower(struct ath_hal *ah, const struct ieee80211_channel *chan)
 		return AH_FALSE;
 	}
 
-	ar5211SetPowerTable(ah, &eepromPcdacs, chan->ic_freq);
+	ar5211SetPowerTable(ah, &eepromPcdacs, freq);
 
 	rep = AH_NULL;
 	/* Match CTL to EEPROM value */
@@ -1491,6 +1494,7 @@ ar5211SetRateTable(struct ath_hal *ah, RD_EDGES_POWER *pRdEdgesPower,
 	TRGT_POWER_INFO *pPowerInfo, uint16_t numChannels,
 	const struct ieee80211_channel *chan)
 {
+	uint16_t freq = ath_hal_gethwchannel(ah, chan);
 	HAL_EEPROM *ee = AH_PRIVATE(ah)->ah_eeprom;
 	struct ath_hal_5211 *ahp = AH5211(ah);
 	static uint16_t ratesArray[NUM_RATES];
@@ -1530,7 +1534,7 @@ ar5211SetRateTable(struct ath_hal *ah, RD_EDGES_POWER *pRdEdgesPower,
 		}
 		numEdges = i;
 
-		ar5211GetLowerUpperValues(chan->ic_freq, tempChannelList,
+		ar5211GetLowerUpperValues(freq, tempChannelList,
 			numEdges, &lowerChannel, &upperChannel);
 		/* Get the index for this channel */
 		for (i = 0; i < numEdges; i++)
@@ -1539,7 +1543,7 @@ ar5211SetRateTable(struct ath_hal *ah, RD_EDGES_POWER *pRdEdgesPower,
 		HALASSERT(i != numEdges);
 
 		if ((lowerChannel == upperChannel &&
-		     lowerChannel == chan->ic_freq) ||
+		     lowerChannel == freq) ||
 		    pRdEdgesPower[i].flag) {
 			twiceMaxEdgePower = pRdEdgesPower[i].twice_rdEdgePower;
 			HALASSERT(twiceMaxEdgePower > 0);
@@ -1550,7 +1554,7 @@ ar5211SetRateTable(struct ath_hal *ah, RD_EDGES_POWER *pRdEdgesPower,
 	for (i = 0; i < numChannels; i++)
 		tempChannelList[i] = pPowerInfo[i].testChannel;
 
-	ar5211GetLowerUpperValues(chan->ic_freq, tempChannelList,
+	ar5211GetLowerUpperValues(freq, tempChannelList,
 		numChannels, &lowerChannel, &upperChannel);
 
 	/* get the index for the channel */
@@ -1604,7 +1608,7 @@ ar5211SetRateTable(struct ath_hal *ah, RD_EDGES_POWER *pRdEdgesPower,
 			}
 		}
 
-		twicePower = ar5211GetInterpolatedValue(chan->ic_freq,
+		twicePower = ar5211GetInterpolatedValue(freq,
 			lowerChannel, upperChannel, lowerPower, upperPower, 0);
 
 		/* Reduce power by band edge restrictions */
