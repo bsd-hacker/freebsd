@@ -115,7 +115,6 @@ struct vm_page {
 	u_short	flags;			/* see below */
 	uint8_t	order;			/* index of the buddy queue */
 	uint8_t pool;
-	u_short cow;			/* page cow mapping count */
 	u_int wire_count;		/* wired down maps refs (P) */
 	short hold_count;		/* page hold count */
 	u_short oflags;			/* page flags (O) */
@@ -335,9 +334,6 @@ int vm_page_bits (int, int);
 void vm_page_zero_invalid(vm_page_t m, boolean_t setvalid);
 void vm_page_free_toq(vm_page_t m);
 void vm_page_zero_idle_wakeup(void);
-void vm_page_cowfault (vm_page_t);
-int vm_page_cowsetup(vm_page_t);
-void vm_page_cowclear (vm_page_t);
 
 /*
  *	vm_page_sleep_if_busy:
