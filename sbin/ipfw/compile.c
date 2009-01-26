@@ -17,11 +17,12 @@
  *
  * NEW command line interface for IP firewall facility
  *
- * $FreeBSD$
+ * $FreeBSD: head/sbin/ipfw/ipfw2.c 187716 2009-01-26 14:26:35Z luigi $
  */
 
 #include "ipfw2.h"
 
+#if 0
 int
 		do_value_as_ip,		/* show table value as IP */
 		do_resolv,		/* Would try to resolve all */
@@ -40,7 +41,7 @@ int
 		comment_only,		/* only print action and comment */
 		verbose;
 
-struct _s_x f_tcpflags[] = {
+static struct _s_x f_tcpflags[] = {
 	{ "syn", TH_SYN },
 	{ "fin", TH_FIN },
 	{ "ack", TH_ACK },
@@ -51,7 +52,7 @@ struct _s_x f_tcpflags[] = {
 	{ NULL,	0 }
 };
 
-struct _s_x f_tcpopts[] = {
+static struct _s_x f_tcpopts[] = {
 	{ "mss",	IP_FW_TCPOPT_MSS },
 	{ "maxseg",	IP_FW_TCPOPT_MSS },
 	{ "window",	IP_FW_TCPOPT_WINDOW },
@@ -67,7 +68,7 @@ struct _s_x f_tcpopts[] = {
  * IP options span the range 0 to 255 so we need to remap them
  * (though in fact only the low 5 bits are significant).
  */
-struct _s_x f_ipopts[] = {
+static struct _s_x f_ipopts[] = {
 	{ "ssrr",	IP_FW_IPOPT_SSRR},
 	{ "lsrr",	IP_FW_IPOPT_LSRR},
 	{ "rr",		IP_FW_IPOPT_RR},
@@ -76,7 +77,7 @@ struct _s_x f_ipopts[] = {
 	{ NULL,	0 }
 };
 
-struct _s_x f_iptos[] = {
+static struct _s_x f_iptos[] = {
 	{ "lowdelay",	IPTOS_LOWDELAY},
 	{ "throughput",	IPTOS_THROUGHPUT},
 	{ "reliability", IPTOS_RELIABILITY},
@@ -87,7 +88,7 @@ struct _s_x f_iptos[] = {
 	{ NULL,	0 }
 };
 
-struct _s_x limit_masks[] = {
+static struct _s_x limit_masks[] = {
 	{"all",		DYN_SRC_ADDR|DYN_SRC_PORT|DYN_DST_ADDR|DYN_DST_PORT},
 	{"src-addr",	DYN_SRC_ADDR},
 	{"src-port",	DYN_SRC_PORT},
@@ -100,7 +101,7 @@ struct _s_x limit_masks[] = {
  * we use IPPROTO_ETHERTYPE as a fake protocol id to call the print routines
  * This is only used in this code.
  */
-struct _s_x ether_types[] = {
+static struct _s_x ether_types[] = {
     /*
      * Note, we cannot use "-:&/" in the names because they are field
      * separators in the type specifications. Also, we use s = NULL as
@@ -174,8 +175,9 @@ struct _s_x nat_params[] = {
 	{ "redirect_proto",	TOK_REDIR_PROTO },
  	{ NULL, 0 }	/* terminator */
 };
+#endif
 
-struct _s_x rule_actions[] = {
+static struct _s_x rule_actions[] = {
 	{ "accept",		TOK_ACCEPT },
 	{ "pass",		TOK_ACCEPT },
 	{ "allow",		TOK_ACCEPT },
@@ -204,6 +206,7 @@ struct _s_x rule_actions[] = {
 	{ NULL, 0 }	/* terminator */
 };
 
+#if 0
 struct _s_x rule_action_params[] = {
 	{ "altq",		TOK_ALTQ },
 	{ "log",		TOK_LOG },
@@ -291,7 +294,9 @@ struct _s_x rule_options[] = {
 	{ NULL, 0 }	/* terminator */
 };
 
-void *
+#define	TABLEARG	"tablearg"
+
+static void *
 safe_calloc(size_t number, size_t size)
 {
 	void *ret = calloc(number, size);
@@ -301,7 +306,7 @@ safe_calloc(size_t number, size_t size)
 	return ret;
 }
 
-void *
+static void *
 safe_realloc(void *ptr, size_t size)
 {
 	void *ret = realloc(ptr, size);
@@ -314,7 +319,7 @@ safe_realloc(void *ptr, size_t size)
 /*
  * conditionally runs the command.
  */
-int
+static int
 do_cmd(int optname, void *optval, uintptr_t optlen)
 {
 	static int s = -1;	/* the socket */
@@ -344,7 +349,7 @@ do_cmd(int optname, void *optval, uintptr_t optlen)
  * match_token takes a table and a string, returns the value associated
  * with the string (-1 in case of failure).
  */
-int
+static int
 match_token(struct _s_x *table, char *string)
 {
 	struct _s_x *pt;
@@ -360,7 +365,7 @@ match_token(struct _s_x *table, char *string)
  * match_value takes a table and a value, returns the string associated
  * with the value (NULL in case of failure).
  */
-char const *
+static char const *
 match_value(struct _s_x *p, int value)
 {
 	for (; p->s != NULL; p++)
@@ -378,7 +383,7 @@ match_value(struct _s_x *p, int value)
  * This function will be removed in the future through the usual
  * deprecation process.
  */
-int
+static int
 _substrcmp(const char *str1, const char* str2)
 {
 	
@@ -487,8 +492,8 @@ print_newports(ipfw_insn_u16 *cmd, int proto, int opcode)
 		sep = ",";
 	}
 }
+#endif
 
-#if 0
 /*
  * Like strtol, but also translates service names into port numbers
  * for some protocols.
@@ -552,7 +557,6 @@ strtoport(char *s, char **end, int base, int proto)
 	}
 	return 0;	/* not found */
 }
-#endif
 
 /*
  * Map between current altq queue id numbers and names.
@@ -561,6 +565,7 @@ static int altq_fetched = 0;
 static TAILQ_HEAD(, pf_altq) altq_entries = 
 	TAILQ_HEAD_INITIALIZER(altq_entries);
 
+#if 0
 static void
 altq_set_enabled(int enabled)
 {
@@ -579,6 +584,7 @@ altq_set_enabled(int enabled)
 	}
 	close(pffd);
 }
+#endif
 
 static void
 altq_fetch(void)
@@ -620,7 +626,6 @@ altq_fetch(void)
 	close(pffd);
 }
 
-#if 0
 static u_int32_t
 altq_name_to_qid(const char *name)
 {
@@ -634,8 +639,8 @@ altq_name_to_qid(const char *name)
 		errx(EX_DATAERR, "altq has no queue named `%s'", name);
 	return altq->qid;
 }
-#endif
 
+#if 0
 static const char *
 altq_qid_to_name(u_int32_t qid)
 {
@@ -649,8 +654,9 @@ altq_qid_to_name(u_int32_t qid)
 		return NULL;
 	return altq->qname;
 }
+#endif
 
-#if 0
+
 static void
 fill_altq_qid(u_int32_t *qid, const char *av)
 {
@@ -703,9 +709,9 @@ fill_newports(ipfw_insn_u16 *cmd, char *av, int proto)
 	}
 	return (i);
 }
-#endif
 
-struct _s_x icmpcodes[] = {
+#if 0
+static struct _s_x icmpcodes[] = {
       { "net",			ICMP_UNREACH_NET },
       { "host",			ICMP_UNREACH_HOST },
       { "protocol",		ICMP_UNREACH_PROTOCOL },
@@ -724,8 +730,8 @@ struct _s_x icmpcodes[] = {
       { "precedence-cutoff",	ICMP_UNREACH_PRECEDENCE_CUTOFF },
       { NULL, 0 }
 };
+#endif
 
-#if 0
 static void
 fill_reject_code(u_short *codep, char *str)
 {
@@ -740,8 +746,8 @@ fill_reject_code(u_short *codep, char *str)
 	*codep = val;
 	return;
 }
-#endif
 
+#if 0
 static void
 print_reject_code(uint16_t code)
 {
@@ -753,15 +759,15 @@ print_reject_code(uint16_t code)
 		printf("unreach %u", code);
 }
 
-struct _s_x icmp6codes[] = {
+static struct _s_x icmp6codes[] = {
       { "no-route",		ICMP6_DST_UNREACH_NOROUTE },
       { "admin-prohib",		ICMP6_DST_UNREACH_ADMIN },
       { "address",		ICMP6_DST_UNREACH_ADDR },
       { "port",			ICMP6_DST_UNREACH_NOPORT },
       { NULL, 0 }
 };
+#endif
 
-#if 0
 static void
 fill_unreach6_code(u_short *codep, char *str)
 {
@@ -776,8 +782,8 @@ fill_unreach6_code(u_short *codep, char *str)
 	*codep = val;
 	return;
 }
-#endif
 
+#if 0
 static void
 print_unreach6_code(uint16_t code)
 {
@@ -788,6 +794,7 @@ print_unreach6_code(uint16_t code)
 	else
 		printf("unreach6 %u", code);
 }
+#endif
 
 /*
  * Returns the number of bits set (from left) in a contiguous bitmask,
@@ -814,6 +821,7 @@ contigmask(uint8_t *p, int len)
 	return i;
 }
 
+#if 0
 /*
  * print flags set/clear in the two bitmasks passed as parameters.
  * There is a specialized check for f_tcpflags.
@@ -951,8 +959,8 @@ print_mac(uint8_t *addr, uint8_t *mask)
 			printf("/%d", l);
 	}
 }
+#endif
 
-#if 0
 static void
 fill_icmptypes(ipfw_insn_u32 *cmd, char *av)
 {
@@ -976,8 +984,7 @@ fill_icmptypes(ipfw_insn_u32 *cmd, char *av)
 	cmd->o.opcode = O_ICMPTYPE;
 	cmd->o.len |= F_INSN_SIZE(ipfw_insn_u32);
 }
-#endif
-
+#if 0
 static void
 print_icmptypes(ipfw_insn_u32 *cmd)
 {
@@ -1046,8 +1053,8 @@ print_ip6(ipfw_insn_ip6 *cmd, char const *s)
                printf(",");
        }
 }
+#endif
 
-#if 0
 static void
 fill_icmp6types(ipfw_insn_icmp6 *cmd, char *av)
 {
@@ -1073,8 +1080,7 @@ fill_icmp6types(ipfw_insn_icmp6 *cmd, char *av)
        cmd->o.opcode = O_ICMP6TYPE;
        cmd->o.len |= F_INSN_SIZE(ipfw_insn_icmp6);
 }
-#endif
-
+#if 0
 
 static void
 print_icmp6types(ipfw_insn_u32 *cmd)
@@ -1106,7 +1112,7 @@ print_flow6id( ipfw_insn_u32 *cmd)
        }
 }
 
-#if 0
+#endif
 /* structure and define for the extension header in ipv6 */
 static struct _s_x ext6hdrcodes[] = {
        { "frag",       EXT_FRAGMENT },
@@ -1176,8 +1182,8 @@ fill_ext6hdr( ipfw_insn *cmd, char *av)
        cmd->len |= F_INSN_SIZE( ipfw_insn );
        return 1;
 }
-#endif
 
+#if 0
 static void
 print_ext6hdr( ipfw_insn *cmd )
 {
@@ -1263,7 +1269,7 @@ show_prerequisites(int *flags, int want, int cmd __unused)
 	*flags |= want;
 }
 
-void
+static void
 show_ipfw(struct ip_fw *rule, int pcwidth, int bcwidth)
 {
 	static int twidth = 0;
@@ -2556,7 +2562,7 @@ exit(0);
 }
 
 
-int
+static int
 lookup_host (char *host, struct in_addr *ipaddr)
 {
 	struct hostent *he;
@@ -2568,8 +2574,8 @@ lookup_host (char *host, struct in_addr *ipaddr)
 	}
 	return(0);
 }
+#endif
 
-#if 0
 /*
  * fills the addr and mask fields in the instruction as appropriate from av.
  * Update length as appropriate.
@@ -2780,7 +2786,6 @@ lookup_host6 (char *host, struct in6_addr *ip6addr)
 	}
 	return(0);
 }
-#endif
 
 
 /* n2mask sets n bits of the mask */
@@ -2803,7 +2808,6 @@ n2mask(struct in6_addr *mask, int n)
 }
  
 
-#if 0
 /*
  * fill the addr and mask fields in the instruction as appropriate from av.
  * Update length as appropriate.
@@ -2993,7 +2997,6 @@ add_dstip6(ipfw_insn *cmd, char *av)
 	return cmd;
 }
 
-
 /*
  * helper function to process a set of flags and set bits in the
  * appropriate masks.
@@ -3027,9 +3030,9 @@ fill_flags(ipfw_insn *cmd, enum ipfw_opcodes opcode,
         cmd->len =  (cmd->len & (F_NOT | F_OR)) | 1;
         cmd->arg1 = (set & 0xff) | ( (clear & 0xff) << 8);
 }
-#endif
 
 
+#if 0
 static void
 delete(int ac, char *av[])
 {
@@ -3090,9 +3093,8 @@ delete(int ac, char *av[])
 	if (exitval != EX_OK)
 		exit(exitval);
 }
+#endif
 
-
-#if 0
 /*
  * fill the interface structure. We do not check the name as we can
  * create interfaces dynamically, so checking them at insert time
@@ -3115,8 +3117,8 @@ fill_iface(ipfw_insn_if *cmd, char *arg)
 	} else if (!inet_aton(arg, &cmd->p.ip))
 		errx(EX_DATAERR, "bad ip address ``%s''", arg);
 }
-#endif
 
+#if 0
 /* 
  * Search for interface with name "ifn", and fill n accordingly:
  *
@@ -4254,8 +4256,8 @@ end_mask:
 	if (i)
 		err(1, "setsockopt(%s)", "IP_DUMMYNET_CONFIGURE");
 }
+#endif
 
-#if 0
 static void
 get_mac_addr_mask(const char *p, uint8_t *addr, uint8_t *mask)
 {
@@ -4552,9 +4554,7 @@ add_dst(ipfw_insn *cmd, char *av, u_char proto)
 	free(host);
 	return ret;
 }
-#endif
 
-#if 0
 /*
  * Parse arguments and assemble the microinstructions which make up a rule.
  * Rules are added into the 'rulebuf' and then copied in the correct order
@@ -4567,7 +4567,7 @@ add_dst(ipfw_insn *cmd, char *av, u_char proto)
  * various match patterns, log/altq actions, and the actual action.
  *
  */
-static void
+void
 add(int ac, char *av[])
 {
 	/*
@@ -5574,774 +5574,4 @@ done:
 		err(EX_UNAVAILABLE, "getsockopt(%s)", "IP_FW_ADD");
 	if (!do_quiet)
 		show_ipfw(rule, 0, 0);
-}
-#endif
-
-static void
-zero(int ac, char *av[], int optname /* IP_FW_ZERO or IP_FW_RESETLOG */)
-{
-	uint32_t arg, saved_arg;
-	int failed = EX_OK;
-	char const *name = optname == IP_FW_ZERO ?  "ZERO" : "RESETLOG";
-	char const *errstr;
-
-	av++; ac--;
-
-	if (!ac) {
-		/* clear all entries */
-		if (do_cmd(optname, NULL, 0) < 0)
-			err(EX_UNAVAILABLE, "setsockopt(IP_FW_%s)", name);
-		if (!do_quiet)
-			printf("%s.\n", optname == IP_FW_ZERO ?
-			    "Accounting cleared":"Logging counts reset");
-
-		return;
-	}
-
-	while (ac) {
-		/* Rule number */
-		if (isdigit(**av)) {
-			arg = strtonum(*av, 0, 0xffff, &errstr);
-			if (errstr)
-				errx(EX_DATAERR,
-				    "invalid rule number %s\n", *av);
-			saved_arg = arg;
-			if (use_set)
-				arg |= (1 << 24) | ((use_set - 1) << 16);
-			av++;
-			ac--;
-			if (do_cmd(optname, &arg, sizeof(arg))) {
-				warn("rule %u: setsockopt(IP_FW_%s)",
-				    saved_arg, name);
-				failed = EX_UNAVAILABLE;
-			} else if (!do_quiet)
-				printf("Entry %d %s.\n", saved_arg,
-				    optname == IP_FW_ZERO ?
-					"cleared" : "logging count reset");
-		} else {
-			errx(EX_USAGE, "invalid rule number ``%s''", *av);
-		}
-	}
-	if (failed != EX_OK)
-		exit(failed);
-}
-
-static void
-flush(int force)
-{
-	int cmd = do_pipe ? IP_DUMMYNET_FLUSH : IP_FW_FLUSH;
-
-	if (!force && !do_quiet) { /* need to ask user */
-		int c;
-
-		printf("Are you sure? [yn] ");
-		fflush(stdout);
-		do {
-			c = toupper(getc(stdin));
-			while (c != '\n' && getc(stdin) != '\n')
-				if (feof(stdin))
-					return; /* and do not flush */
-		} while (c != 'Y' && c != 'N');
-		printf("\n");
-		if (c == 'N')	/* user said no */
-			return;
-	}
-	/* `ipfw set N flush` - is the same that `ipfw delete set N` */
-	if (use_set) {
-		uint32_t arg = ((use_set - 1) & 0xffff) | (1 << 24);
-		if (do_cmd(IP_FW_DEL, &arg, sizeof(arg)) < 0)
-			err(EX_UNAVAILABLE, "setsockopt(IP_FW_DEL)");
-	} else if (do_cmd(cmd, NULL, 0) < 0)
-		err(EX_UNAVAILABLE, "setsockopt(IP_%s_FLUSH)",
-		    do_pipe ? "DUMMYNET" : "FW");
-	if (!do_quiet)
-		printf("Flushed all %s.\n", do_pipe ? "pipes" : "rules");
-}
-
-/*
- * Free a the (locally allocated) copy of command line arguments.
- */
-static void
-free_args(int ac, char **av)
-{
-	int i;
-
-	for (i=0; i < ac; i++)
-		free(av[i]);
-	free(av);
-}
-
-static void table_list(ipfw_table_entry ent, int need_header);
-
-/*
- * This one handles all table-related commands
- * 	ipfw table N add addr[/masklen] [value]
- * 	ipfw table N delete addr[/masklen]
- * 	ipfw table {N | all} flush
- * 	ipfw table {N | all} list
- */
-static void
-table_handler(int ac, char *av[])
-{
-	ipfw_table_entry ent;
-	int do_add;
-	int is_all;
-	size_t len;
-	char *p;
-	uint32_t a;
-	uint32_t tables_max;
-
-	len = sizeof(tables_max);
-	if (sysctlbyname("net.inet.ip.fw.tables_max", &tables_max, &len,
-		NULL, 0) == -1) {
-#ifdef IPFW_TABLES_MAX
-		warn("Warn: Failed to get the max tables number via sysctl. "
-		     "Using the compiled in defaults. \nThe reason was");
-		tables_max = IPFW_TABLES_MAX;
-#else
-		errx(1, "Failed sysctlbyname(\"net.inet.ip.fw.tables_max\")");
-#endif
-	}
-
-	ac--; av++;
-	if (ac && isdigit(**av)) {
-		ent.tbl = atoi(*av);
-		is_all = 0;
-		ac--; av++;
-	} else if (ac && _substrcmp(*av, "all") == 0) {
-		ent.tbl = 0;
-		is_all = 1;
-		ac--; av++;
-	} else
-		errx(EX_USAGE, "table number or 'all' keyword required");
-	if (ent.tbl >= tables_max)
-		errx(EX_USAGE, "The table number exceeds the maximum allowed "
-			"value (%d)", tables_max - 1);
-	NEED1("table needs command");
-	if (is_all && _substrcmp(*av, "list") != 0
-		   && _substrcmp(*av, "flush") != 0)
-		errx(EX_USAGE, "table number required");
-
-	if (_substrcmp(*av, "add") == 0 ||
-	    _substrcmp(*av, "delete") == 0) {
-		do_add = **av == 'a';
-		ac--; av++;
-		if (!ac)
-			errx(EX_USAGE, "IP address required");
-		p = strchr(*av, '/');
-		if (p) {
-			*p++ = '\0';
-			ent.masklen = atoi(p);
-			if (ent.masklen > 32)
-				errx(EX_DATAERR, "bad width ``%s''", p);
-		} else
-			ent.masklen = 32;
-		if (lookup_host(*av, (struct in_addr *)&ent.addr) != 0)
-			errx(EX_NOHOST, "hostname ``%s'' unknown", *av);
-		ac--; av++;
-		if (do_add && ac) {
-			unsigned int tval;
-			/* isdigit is a bit of a hack here.. */
-			if (strchr(*av, (int)'.') == NULL && isdigit(**av))  {
-				ent.value = strtoul(*av, NULL, 0);
-			} else {
-		        	if (lookup_host(*av, (struct in_addr *)&tval) == 0) {
-					/* The value must be stored in host order	 *
-					 * so that the values < 65k can be distinguished */
-		       			ent.value = ntohl(tval); 
-				} else {
-					errx(EX_NOHOST, "hostname ``%s'' unknown", *av);
-				}
-			}
-		} else
-			ent.value = 0;
-		if (do_cmd(do_add ? IP_FW_TABLE_ADD : IP_FW_TABLE_DEL,
-		    &ent, sizeof(ent)) < 0) {
-			/* If running silent, don't bomb out on these errors. */
-			if (!(do_quiet && (errno == (do_add ? EEXIST : ESRCH))))
-				err(EX_OSERR, "setsockopt(IP_FW_TABLE_%s)",
-				    do_add ? "ADD" : "DEL");
-			/* In silent mode, react to a failed add by deleting */
-			if (do_add) {
-				do_cmd(IP_FW_TABLE_DEL, &ent, sizeof(ent));
-				if (do_cmd(IP_FW_TABLE_ADD,
-				    &ent, sizeof(ent)) < 0)
-					err(EX_OSERR,
-				            "setsockopt(IP_FW_TABLE_ADD)");
-			}
-		}
-	} else if (_substrcmp(*av, "flush") == 0) {
-		a = is_all ? tables_max : (ent.tbl + 1);
-		do {
-			if (do_cmd(IP_FW_TABLE_FLUSH, &ent.tbl,
-			    sizeof(ent.tbl)) < 0)
-				err(EX_OSERR, "setsockopt(IP_FW_TABLE_FLUSH)");
-		} while (++ent.tbl < a);
-	} else if (_substrcmp(*av, "list") == 0) {
-		a = is_all ? tables_max : (ent.tbl + 1);
-		do {
-			table_list(ent, is_all);
-		} while (++ent.tbl < a);
-	} else
-		errx(EX_USAGE, "invalid table command %s", *av);
-}
-
-static void
-table_list(ipfw_table_entry ent, int need_header)
-{
-	ipfw_table *tbl;
-	socklen_t l;
-	uint32_t a;
-
-	a = ent.tbl;
-	l = sizeof(a);
-	if (do_cmd(IP_FW_TABLE_GETSIZE, &a, (uintptr_t)&l) < 0)
-		err(EX_OSERR, "getsockopt(IP_FW_TABLE_GETSIZE)");
-
-	/* If a is zero we have nothing to do, the table is empty. */
-	if (a == 0)
-		return;
-
-	l = sizeof(*tbl) + a * sizeof(ipfw_table_entry);
-	tbl = safe_calloc(1, l);
-	tbl->tbl = ent.tbl;
-	if (do_cmd(IP_FW_TABLE_LIST, tbl, (uintptr_t)&l) < 0)
-		err(EX_OSERR, "getsockopt(IP_FW_TABLE_LIST)");
-	if (tbl->cnt && need_header)
-		printf("---table(%d)---\n", tbl->tbl);
-	for (a = 0; a < tbl->cnt; a++) {
-		unsigned int tval;
-		tval = tbl->ent[a].value;
-		if (do_value_as_ip) {
-			char tbuf[128];
-			strncpy(tbuf, inet_ntoa(*(struct in_addr *)
-				&tbl->ent[a].addr), 127);
-			/* inet_ntoa expects network order */
-			tval = htonl(tval);
-			printf("%s/%u %s\n", tbuf, tbl->ent[a].masklen,
-				inet_ntoa(*(struct in_addr *)&tval));
-		} else {
-			printf("%s/%u %u\n",
-				inet_ntoa(*(struct in_addr *)&tbl->ent[a].addr),
-				tbl->ent[a].masklen, tval);
-		}
-	}
-	free(tbl);
-}
-
-static void
-show_nat(int ac, char **av)
-{
-	struct cfg_nat *n;
-	struct cfg_redir *e;
-	int cmd, i, nbytes, do_cfg, do_rule, frule, lrule, nalloc, size;
-	int nat_cnt, redir_cnt, r;
-	uint8_t *data, *p;
-	char *endptr;
-
-	do_rule = 0;
-	nalloc = 1024;
-	size = 0;
-	data = NULL;
-	frule = 0;
-	lrule = IPFW_DEFAULT_RULE; /* max ipfw rule number */
-	ac--; av++;
-
-	if (test_only)
-		return;
-
-	/* Parse parameters. */
-	for (cmd = IP_FW_NAT_GET_LOG, do_cfg = 0; ac != 0; ac--, av++) {
-		if (!strncmp(av[0], "config", strlen(av[0]))) {
-			cmd = IP_FW_NAT_GET_CONFIG, do_cfg = 1; 
-			continue;
-		}
-		/* Convert command line rule #. */
-		frule = lrule = strtoul(av[0], &endptr, 10);
-		if (*endptr == '-')
-			lrule = strtoul(endptr+1, &endptr, 10);
-		if (lrule == 0)			
-			err(EX_USAGE, "invalid rule number: %s", av[0]);
-		do_rule = 1;
-	}
-
-	nbytes = nalloc;
-	while (nbytes >= nalloc) {
-		nalloc = nalloc * 2;
-		nbytes = nalloc;
-		data = safe_realloc(data, nbytes);
-		if (do_cmd(cmd, data, (uintptr_t)&nbytes) < 0)
-			err(EX_OSERR, "getsockopt(IP_FW_GET_%s)",
-			    (cmd == IP_FW_NAT_GET_LOG) ? "LOG" : "CONFIG");
-	}
-	if (nbytes == 0)
-		exit(0);
-	if (do_cfg) {
-		nat_cnt = *((int *)data);
-		for (i = sizeof(nat_cnt); nat_cnt; nat_cnt--) {
-			n = (struct cfg_nat *)&data[i];
-			if (frule <= n->id && lrule >= n->id)
-				print_nat_config(&data[i]);
-			i += sizeof(struct cfg_nat);
-			for (redir_cnt = 0; redir_cnt < n->redir_cnt; redir_cnt++) {
-				e = (struct cfg_redir *)&data[i];
-				i += sizeof(struct cfg_redir) + e->spool_cnt * 
-				    sizeof(struct cfg_spool);
-			}
-		}
-	} else {
-		for (i = 0; 1; i += LIBALIAS_BUF_SIZE + sizeof(int)) {
-			p = &data[i];
-			if (p == data + nbytes)
-				break;
-			bcopy(p, &r, sizeof(int));
-			if (do_rule) {
-				if (!(frule <= r && lrule >= r))
-					continue;
-			}
-			printf("nat %u: %s\n", r, p+sizeof(int));
-		}
-	}
-}
-
-/*
- * Called with the arguments, including program name because getopt
- * wants it to be present.
- * Returns 0 if successful, 1 if empty command, errx() in case of errors.
- */
-static int
-ipfw_main(int oldac, char **oldav)
-{
-	int ch, ac, save_ac;
-	const char *errstr;
-	char **av, **save_av;
-	int do_acct = 0;		/* Show packet/byte count */
-
-#define WHITESP		" \t\f\v\n\r"
-	if (oldac < 2)
-		return 1;	/* need at least one argument */
-	if (oldac == 2) {
-		/*
-		 * If we are called with a single string, try to split it into
-		 * arguments for subsequent parsing.
-		 * But first, remove spaces after a ',', by copying the string
-		 * in-place.
-		 */
-		char *arg = oldav[1];	/* The string is the first arg. */
-		int l = strlen(arg);
-		int copy = 0;		/* 1 if we need to copy, 0 otherwise */
-		int i, j;
-		for (i = j = 0; i < l; i++) {
-			if (arg[i] == '#')	/* comment marker */
-				break;
-			if (copy) {
-				arg[j++] = arg[i];
-				copy = !index("," WHITESP, arg[i]);
-			} else {
-				copy = !index(WHITESP, arg[i]);
-				if (copy)
-					arg[j++] = arg[i];
-			}
-		}
-		if (!copy && j > 0)	/* last char was a 'blank', remove it */
-			j--;
-		l = j;			/* the new argument length */
-		arg[j++] = '\0';
-		if (l == 0)		/* empty string! */
-			return 1;
-
-		/*
-		 * First, count number of arguments. Because of the previous
-		 * processing, this is just the number of blanks plus 1.
-		 */
-		for (i = 0, ac = 1; i < l; i++)
-			if (index(WHITESP, arg[i]) != NULL)
-				ac++;
-
-		/*
-		 * Allocate the argument list, including one entry for
-		 * the program name because getopt expects it.
-		 */
-		av = safe_calloc(ac + 1, sizeof(char *));
-
-		/*
-		 * Second, copy arguments from arg[] to av[]. For each one,
-		 * j is the initial character, i is the one past the end.
-		 */
-		for (ac = 1, i = j = 0; i < l; i++)
-			if (index(WHITESP, arg[i]) != NULL || i == l-1) {
-				if (i == l-1)
-					i++;
-				av[ac] = safe_calloc(i-j+1, 1);
-				bcopy(arg+j, av[ac], i-j);
-				ac++;
-				j = i + 1;
-			}
-	} else {
-		/*
-		 * If an argument ends with ',' join with the next one.
-		 */
-		int first, i, l;
-
-		av = safe_calloc(oldac, sizeof(char *));
-		for (first = i = ac = 1, l = 0; i < oldac; i++) {
-			char *arg = oldav[i];
-			int k = strlen(arg);
-
-			l += k;
-			if (arg[k-1] != ',' || i == oldac-1) {
-				/* Time to copy. */
-				av[ac] = safe_calloc(l+1, 1);
-				for (l=0; first <= i; first++) {
-					strcat(av[ac]+l, oldav[first]);
-					l += strlen(oldav[first]);
-				}
-				ac++;
-				l = 0;
-				first = i+1;
-			}
-		}
-	}
-
-	av[0] = strdup(oldav[0]);	/* copy progname from the caller */
-	/* Set the force flag for non-interactive processes */
-	if (!do_force)
-		do_force = !isatty(STDIN_FILENO);
-
-	/* Save arguments for final freeing of memory. */
-	save_ac = ac;
-	save_av = av;
-
-	optind = optreset = 1;	/* restart getopt() */
-	while ((ch = getopt(ac, av, "abcdefhinNqs:STtv")) != -1)
-		switch (ch) {
-		case 'a':
-			do_acct = 1;
-			break;
-
-		case 'b':
-			comment_only = 1;
-			do_compact = 1;
-			break;
-
-		case 'c':
-			do_compact = 1;
-			break;
-
-		case 'd':
-			do_dynamic = 1;
-			break;
-
-		case 'e':
-			do_expired = 1;
-			break;
-
-		case 'f':
-			do_force = 1;
-			break;
-
-		case 'h': /* help */
-			free_args(save_ac, save_av);
-			help();
-			break;	/* NOTREACHED */
-
-		case 'i':
-			do_value_as_ip = 1;
-			break;
-
-		case 'n':
-			test_only = 1;
-			break;
-
-		case 'N':
-			do_resolv = 1;
-			break;
-
-		case 'q':
-			do_quiet = 1;
-			break;
-
-		case 's': /* sort */
-			do_sort = atoi(optarg);
-			break;
-
-		case 'S':
-			show_sets = 1;
-			break;
-
-		case 't':
-			do_time = 1;
-			break;
-
-		case 'T':
-			do_time = 2;	/* numeric timestamp */
-			break;
-
-		case 'v': /* verbose */
-			verbose = 1;
-			break;
-
-		default:
-			free_args(save_ac, save_av);
-			return 1;
-		}
-
-	ac -= optind;
-	av += optind;
-	NEED1("bad arguments, for usage summary ``ipfw''");
-
-	/*
-	 * An undocumented behaviour of ipfw1 was to allow rule numbers first,
-	 * e.g. "100 add allow ..." instead of "add 100 allow ...".
-	 * In case, swap first and second argument to get the normal form.
-	 */
-	if (ac > 1 && isdigit(*av[0])) {
-		char *p = av[0];
-
-		av[0] = av[1];
-		av[1] = p;
-	}
-
-	/*
-	 * Optional: pipe, queue or nat.
-	 */
-	do_nat = 0;
-	do_pipe = 0;
-	if (!strncmp(*av, "nat", strlen(*av)))
- 	        do_nat = 1;
- 	else if (!strncmp(*av, "pipe", strlen(*av)))
-		do_pipe = 1;
-	else if (_substrcmp(*av, "queue") == 0)
-		do_pipe = 2;
-	else if (!strncmp(*av, "set", strlen(*av))) {
-		if (ac > 1 && isdigit(av[1][0])) {
-			use_set = strtonum(av[1], 0, RESVD_SET, &errstr);
-			if (errstr)
-				errx(EX_DATAERR,
-				    "invalid set number %s\n", av[1]);
-			ac -= 2; av += 2; use_set++;
-		}
-	}
-
-	if (do_pipe || do_nat) {
-		ac--;
-		av++;
-	}
-	NEED1("missing command");
-
-	/*
-	 * For pipes, queues and nats we normally say 'nat|pipe NN config'
-	 * but the code is easier to parse as 'nat|pipe config NN'
-	 * so we swap the two arguments.
-	 */
-	if ((do_pipe || do_nat) && ac > 1 && isdigit(*av[0])) {
-		char *p = av[0];
-
-		av[0] = av[1];
-		av[1] = p;
-	}
-
-	int try_next = 0;
-	if (use_set == 0) {
-		if (_substrcmp(*av, "add") == 0)
-			add(ac, av);
-		else if (do_nat && _substrcmp(*av, "show") == 0)
- 			show_nat(ac, av);
-		else if (do_pipe && _substrcmp(*av, "config") == 0)
-			config_pipe(ac, av);
-		else if (do_nat && _substrcmp(*av, "config") == 0)
- 			config_nat(ac, av);
-		else if (_substrcmp(*av, "set") == 0)
-			sets_handler(ac, av);
-		else if (_substrcmp(*av, "table") == 0)
-			table_handler(ac, av);
-		else if (_substrcmp(*av, "enable") == 0)
-			sysctl_handler(ac, av, 1);
-		else if (_substrcmp(*av, "disable") == 0)
-			sysctl_handler(ac, av, 0);
-		else
-			try_next = 1;
-	}
-
-	if (use_set || try_next) {
-		if (_substrcmp(*av, "delete") == 0)
-			delete(ac, av);
-		else if (_substrcmp(*av, "flush") == 0)
-			flush(do_force);
-		else if (_substrcmp(*av, "zero") == 0)
-			zero(ac, av, IP_FW_ZERO);
-		else if (_substrcmp(*av, "resetlog") == 0)
-			zero(ac, av, IP_FW_RESETLOG);
-		else if (_substrcmp(*av, "print") == 0 ||
-		         _substrcmp(*av, "list") == 0)
-			list(ac, av, do_acct);
-		else if (_substrcmp(*av, "show") == 0)
-			list(ac, av, 1 /* show counters */);
-		else
-			errx(EX_USAGE, "bad command `%s'", *av);
-	}
-
-	/* Free memory allocated in the argument parsing. */
-	free_args(save_ac, save_av);
-	return 0;
-}
-
-
-static void
-ipfw_readfile(int ac, char *av[])
-{
-#define MAX_ARGS	32
-	char	buf[BUFSIZ];
-	char *progname = av[0];		/* original program name */
-	const char *cmd = NULL;		/* preprocessor name, if any */
-	const char *filename = av[ac-1]; /* file to read */
-	int	c, lineno=0;
-	FILE	*f = NULL;
-	pid_t	preproc = 0;
-
-	while ((c = getopt(ac, av, "cfNnp:qS")) != -1) {
-		switch(c) {
-		case 'c':
-			do_compact = 1;
-			break;
-
-		case 'f':
-			do_force = 1;
-			break;
-
-		case 'N':
-			do_resolv = 1;
-			break;
-
-		case 'n':
-			test_only = 1;
-			break;
-
-		case 'p':
-			/*
-			 * ipfw -p cmd [args] filename
-			 *
-			 * We are done with getopt(). All arguments
-			 * except the filename go to the preprocessor,
-			 * so we need to do the following:
-			 * - check that a filename is actually present;
-			 * - advance av by optind-1 to skip arguments
-			 *   already processed;
-			 * - decrease ac by optind, to remove the args
-			 *   already processed and the final filename;
-			 * - set the last entry in av[] to NULL so
-			 *   popen() can detect the end of the array;
-			 * - set optind=ac to let getopt() terminate.
-			 */
-			if (optind == ac)
-				errx(EX_USAGE, "no filename argument");
-			cmd = optarg;
-			av[ac-1] = NULL;
-			av += optind - 1;
-			ac -= optind;
-			optind = ac;
-			break;
-
-		case 'q':
-			do_quiet = 1;
-			break;
-
-		case 'S':
-			show_sets = 1;
-			break;
-
-		default:
-			errx(EX_USAGE, "bad arguments, for usage"
-			     " summary ``ipfw''");
-		}
-
-	}
-
-	if (cmd == NULL && ac != optind + 1) {
-		fprintf(stderr, "ac %d, optind %d\n", ac, optind);
-		errx(EX_USAGE, "extraneous filename arguments");
-	}
-
-	if ((f = fopen(filename, "r")) == NULL)
-		err(EX_UNAVAILABLE, "fopen: %s", filename);
-
-	if (cmd != NULL) {			/* pipe through preprocessor */
-		int pipedes[2];
-
-		if (pipe(pipedes) == -1)
-			err(EX_OSERR, "cannot create pipe");
-
-		preproc = fork();
-		if (preproc == -1)
-			err(EX_OSERR, "cannot fork");
-
-		if (preproc == 0) {
-			/*
-			 * Child, will run the preprocessor with the
-			 * file on stdin and the pipe on stdout.
-			 */
-			if (dup2(fileno(f), 0) == -1
-			    || dup2(pipedes[1], 1) == -1)
-				err(EX_OSERR, "dup2()");
-			fclose(f);
-			close(pipedes[1]);
-			close(pipedes[0]);
-			execvp(cmd, av);
-			err(EX_OSERR, "execvp(%s) failed", cmd);
-		} else { /* parent, will reopen f as the pipe */
-			fclose(f);
-			close(pipedes[1]);
-			if ((f = fdopen(pipedes[0], "r")) == NULL) {
-				int savederrno = errno;
-
-				(void)kill(preproc, SIGTERM);
-				errno = savederrno;
-				err(EX_OSERR, "fdopen()");
-			}
-		}
-	}
-
-	while (fgets(buf, BUFSIZ, f)) {		/* read commands */
-		char linename[10];
-		char *args[2];
-
-		lineno++;
-		sprintf(linename, "Line %d", lineno);
-		setprogname(linename); /* XXX */
-		args[0] = progname;
-		args[1] = buf;
-		ipfw_main(2, args);
-	}
-	fclose(f);
-	if (cmd != NULL) {
-		int status;
-
-		if (waitpid(preproc, &status, 0) == -1)
-			errx(EX_OSERR, "waitpid()");
-		if (WIFEXITED(status) && WEXITSTATUS(status) != EX_OK)
-			errx(EX_UNAVAILABLE,
-			    "preprocessor exited with status %d",
-			    WEXITSTATUS(status));
-		else if (WIFSIGNALED(status))
-			errx(EX_UNAVAILABLE,
-			    "preprocessor exited with signal %d",
-			    WTERMSIG(status));
-	}
-}
-
-int
-main(int ac, char *av[])
-{
-	/*
-	 * If the last argument is an absolute pathname, interpret it
-	 * as a file to be preprocessed.
-	 */
-
-	if (ac > 1 && av[ac - 1][0] == '/' && access(av[ac - 1], R_OK) == 0)
-		ipfw_readfile(ac, av);
-	else {
-		if (ipfw_main(ac, av))
-			show_usage();
-	}
-	return EX_OK;
 }
