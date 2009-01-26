@@ -142,7 +142,7 @@ extern struct _s_x f_tcpopts[];
 extern struct _s_x f_ipopts[];
 extern struct _s_x f_iptos[];
 extern struct _s_x limit_masks[];
-extern struct _s_x icmp6codes[];
+//extern struct _s_x icmp6codes[];
 
 /*
  * we use IPPROTO_ETHERTYPE as a fake protocol id to call the print routines
@@ -300,4 +300,11 @@ void show_ipfw(struct ip_fw *rule, int pcwidth, int bcwidth);
 
 /* compile.c */
 void add(int ac, char *av[]);
+int contigmask(uint8_t *p, int len);
+void n2mask(struct in6_addr *mask, int n);
+
+
+/* ipv6.v */
+void fill_unreach6_code(u_short *codep, char *str);
+void print_unreach6_code(uint16_t code);
 

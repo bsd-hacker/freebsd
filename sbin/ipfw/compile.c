@@ -18,6 +18,8 @@
  * NEW command line interface for IP firewall facility
  *
  * $FreeBSD: head/sbin/ipfw/ipfw2.c 187716 2009-01-26 14:26:35Z luigi $
+ *
+ * main compiler functions
  */
 
 #include "ipfw2.h"
@@ -86,15 +88,6 @@ static struct _s_x f_iptos[] = {
 	{ "ecntransport", IPTOS_ECN_ECT0},
 	{ "ip tos option", 0},
 	{ NULL,	0 }
-};
-
-static struct _s_x limit_masks[] = {
-	{"all",		DYN_SRC_ADDR|DYN_SRC_PORT|DYN_DST_ADDR|DYN_DST_PORT},
-	{"src-addr",	DYN_SRC_ADDR},
-	{"src-port",	DYN_SRC_PORT},
-	{"dst-addr",	DYN_DST_ADDR},
-	{"dst-port",	DYN_DST_PORT},
-	{NULL,		0}
 };
 
 /*
@@ -393,34 +386,6 @@ _substrcmp(const char *str1, const char* str2)
 	if (strlen(str1) != strlen(str2))
 		warnx("DEPRECATED: '%s' matched '%s' as a sub-string",
 		    str1, str2);
-	return 0;
-}
-
-/*
- * _substrcmp2 takes three strings and returns 1 if the first two do not match,
- * and 0 if they match exactly or the second string is a sub-string
- * of the first.  A warning is printed to stderr in the case that the
- * first string does not match the third.
- *
- * This function exists to warn about the bizzare construction
- * strncmp(str, "by", 2) which is used to allow people to use a shotcut
- * for "bytes".  The problem is that in addition to accepting "by",
- * "byt", "byte", and "bytes", it also excepts "by_rabid_dogs" and any
- * other string beginning with "by".
- *
- * This function will be removed in the future through the usual
- * deprecation process.
- */
-static int
-_substrcmp2(const char *str1, const char* str2, const char* str3)
-{
-	
-	if (strncmp(str1, str2, strlen(str2)) != 0)
-		return 1;
-
-	if (strcmp(str1, str3) != 0)
-		warnx("DEPRECATED: '%s' matched '%s'",
-		    str1, str3);
 	return 0;
 }
 
@@ -766,7 +731,6 @@ static struct _s_x icmp6codes[] = {
       { "port",			ICMP6_DST_UNREACH_NOPORT },
       { NULL, 0 }
 };
-#endif
 
 static void
 fill_unreach6_code(u_short *codep, char *str)
@@ -783,7 +747,6 @@ fill_unreach6_code(u_short *codep, char *str)
 	return;
 }
 
-#if 0
 static void
 print_unreach6_code(uint16_t code)
 {
@@ -807,7 +770,7 @@ print_unreach6_code(uint16_t code)
  * the first bit on the wire is bit 0 of the first byte.
  * len is the max length in bits.
  */
-static int
+int
 contigmask(uint8_t *p, int len)
 {
 	int i, n;
@@ -2787,26 +2750,6 @@ lookup_host6 (char *host, struct in6_addr *ip6addr)
 	return(0);
 }
 
-
-/* n2mask sets n bits of the mask */
-static void
-n2mask(struct in6_addr *mask, int n)
-{
-	static int	minimask[9] =
-	    { 0x00, 0x80, 0xc0, 0xe0, 0xf0, 0xf8, 0xfc, 0xfe, 0xff };
-	u_char		*p;
-
-	memset(mask, 0, sizeof(struct in6_addr));
-	p = (u_char *) mask;
-	for (; n > 0; p++, n -= 8) {
-		if (n >= 8)
-			*p = 0xff;
-		else
-			*p = minimask[n];
-	}
-	return;
-}
- 
 
 /*
  * fill the addr and mask fields in the instruction as appropriate from av.

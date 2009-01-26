@@ -130,51 +130,6 @@ struct _s_x ether_types[] = {
 
 static void show_usage(void);
 
-struct _s_x dummynet_params[] = {
-	{ "plr",		TOK_PLR },
-	{ "noerror",		TOK_NOERROR },
-	{ "buckets",		TOK_BUCKETS },
-	{ "dst-ip",		TOK_DSTIP },
-	{ "src-ip",		TOK_SRCIP },
-	{ "dst-port",		TOK_DSTPORT },
-	{ "src-port",		TOK_SRCPORT },
-	{ "proto",		TOK_PROTO },
-	{ "weight",		TOK_WEIGHT },
-	{ "all",		TOK_ALL },
-	{ "mask",		TOK_MASK },
-	{ "droptail",		TOK_DROPTAIL },
-	{ "red",		TOK_RED },
-	{ "gred",		TOK_GRED },
-	{ "bw",			TOK_BW },
-	{ "bandwidth",		TOK_BW },
-	{ "delay",		TOK_DELAY },
-	{ "pipe",		TOK_PIPE },
-	{ "queue",		TOK_QUEUE },
-	{ "flow-id",		TOK_FLOWID},
-	{ "dst-ipv6",		TOK_DSTIP6},
-	{ "dst-ip6",		TOK_DSTIP6},
-	{ "src-ipv6",		TOK_SRCIP6},
-	{ "src-ip6",		TOK_SRCIP6},
-	{ "dummynet-params",	TOK_NULL },
-	{ NULL, 0 }	/* terminator */
-};
-
-struct _s_x nat_params[] = {
-	{ "ip",	                TOK_IP },
-	{ "if",	                TOK_IF },
- 	{ "log",                TOK_ALOG },
- 	{ "deny_in",	        TOK_DENY_INC },
- 	{ "same_ports",	        TOK_SAME_PORTS },
- 	{ "unreg_only",	        TOK_UNREG_ONLY },
- 	{ "reset",	        TOK_RESET_ADDR },
- 	{ "reverse",	        TOK_ALIAS_REV },	
- 	{ "proxy_only",	        TOK_PROXY_ONLY },
-	{ "redirect_addr",	TOK_REDIR_ADDR },
-	{ "redirect_port",	TOK_REDIR_PORT },
-	{ "redirect_proto",	TOK_REDIR_PROTO },
- 	{ NULL, 0 }	/* terminator */
-};
-
 struct _s_x rule_actions[] = {
 	{ "accept",		TOK_ACCEPT },
 	{ "pass",		TOK_ACCEPT },
@@ -419,6 +374,7 @@ _substrcmp2(const char *str1, const char* str2, const char* str3)
 	return 0;
 }
 
+#if 0
 /*
  * prints one port, symbolic or numeric
  */
@@ -446,6 +402,7 @@ print_port(int proto, uint16_t port)
 			printf("%d", port);
 	}
 }
+#endif
 
 struct _s_x _port_name[] = {
 	{"dst-port",	O_IP_DSTPORT},
@@ -459,6 +416,7 @@ struct _s_x _port_name[] = {
 	{NULL,		0}
 };
 
+#if 0
 /*
  * Print the values in a list 16-bit items of the types above.
  * XXX todo: add support for mask.
@@ -488,7 +446,6 @@ print_newports(ipfw_insn_u16 *cmd, int proto, int opcode)
 	}
 }
 
-#if 0
 /*
  * Like strtol, but also translates service names into port numbers
  * for some protocols.
@@ -557,7 +514,9 @@ strtoport(char *s, char **end, int base, int proto)
 /*
  * Map between current altq queue id numbers and names.
  */
+#if 0
 static int altq_fetched = 0;
+#endif
 static TAILQ_HEAD(, pf_altq) altq_entries = 
 	TAILQ_HEAD_INITIALIZER(altq_entries);
 
@@ -580,6 +539,7 @@ altq_set_enabled(int enabled)
 	close(pffd);
 }
 
+#if 0
 static void
 altq_fetch(void)
 {
@@ -620,7 +580,6 @@ altq_fetch(void)
 	close(pffd);
 }
 
-#if 0
 static u_int32_t
 altq_name_to_qid(const char *name)
 {
@@ -636,6 +595,7 @@ altq_name_to_qid(const char *name)
 }
 #endif
 
+#if 0
 static const char *
 altq_qid_to_name(u_int32_t qid)
 {
@@ -649,6 +609,7 @@ altq_qid_to_name(u_int32_t qid)
 		return NULL;
 	return altq->qname;
 }
+#endif
 
 #if 0
 static void
@@ -740,7 +701,6 @@ fill_reject_code(u_short *codep, char *str)
 	*codep = val;
 	return;
 }
-#endif
 
 static void
 print_reject_code(uint16_t code)
@@ -752,6 +712,7 @@ print_reject_code(uint16_t code)
 	else
 		printf("unreach %u", code);
 }
+#endif
 
 struct _s_x icmp6codes[] = {
       { "no-route",		ICMP6_DST_UNREACH_NOROUTE },
@@ -776,7 +737,6 @@ fill_unreach6_code(u_short *codep, char *str)
 	*codep = val;
 	return;
 }
-#endif
 
 static void
 print_unreach6_code(uint16_t code)
@@ -952,7 +912,6 @@ print_mac(uint8_t *addr, uint8_t *mask)
 	}
 }
 
-#if 0
 static void
 fill_icmptypes(ipfw_insn_u32 *cmd, char *av)
 {
@@ -976,7 +935,6 @@ fill_icmptypes(ipfw_insn_u32 *cmd, char *av)
 	cmd->o.opcode = O_ICMPTYPE;
 	cmd->o.len |= F_INSN_SIZE(ipfw_insn_u32);
 }
-#endif
 
 static void
 print_icmptypes(ipfw_insn_u32 *cmd)
@@ -1047,7 +1005,6 @@ print_ip6(ipfw_insn_ip6 *cmd, char const *s)
        }
 }
 
-#if 0
 static void
 fill_icmp6types(ipfw_insn_icmp6 *cmd, char *av)
 {
@@ -1073,7 +1030,6 @@ fill_icmp6types(ipfw_insn_icmp6 *cmd, char *av)
        cmd->o.opcode = O_ICMP6TYPE;
        cmd->o.len |= F_INSN_SIZE(ipfw_insn_icmp6);
 }
-#endif
 
 
 static void
@@ -1106,7 +1062,6 @@ print_flow6id( ipfw_insn_u32 *cmd)
        }
 }
 
-#if 0
 /* structure and define for the extension header in ipv6 */
 static struct _s_x ext6hdrcodes[] = {
        { "frag",       EXT_FRAGMENT },
@@ -1176,7 +1131,6 @@ fill_ext6hdr( ipfw_insn *cmd, char *av)
        cmd->len |= F_INSN_SIZE( ipfw_insn );
        return 1;
 }
-#endif
 
 static void
 print_ext6hdr( ipfw_insn *cmd )
@@ -1867,6 +1821,7 @@ show_ipfw(struct ip_fw *rule, int pcwidth, int bcwidth)
 		printf(" // %s", comment);
 	printf("\n");
 }
+#endif
 
 static void
 show_dyn_ipfw(ipfw_dyn_rule *d, int pcwidth, int bcwidth)
@@ -2784,7 +2739,7 @@ lookup_host6 (char *host, struct in6_addr *ip6addr)
 
 
 /* n2mask sets n bits of the mask */
-static void
+void
 n2mask(struct in6_addr *mask, int n)
 {
 	static int	minimask[9] =
