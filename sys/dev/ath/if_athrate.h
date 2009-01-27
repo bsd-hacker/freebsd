@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2004-2008 Sam Leffler, Errno Consulting
+ * Copyright (c) 2004-2009 Sam Leffler, Errno Consulting
  * Copyright (c) 2004 Video54 Technologies, Inc.
  * All rights reserved.
  *
