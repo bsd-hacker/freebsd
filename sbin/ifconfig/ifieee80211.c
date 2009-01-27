@@ -120,6 +120,13 @@
 #define	IEEE80211_NODE_RIFS	0x4000		/* RIFS enabled */
 #endif
 
+/* NB: defined in ieee80211_var.h but we don't want to include that */
+#define	IEEE80211_C_BITS \
+	"\20\1STA\7FF\10TURBOP\11IBSS\12PMGT" \
+	"\13HOSTAP\14AHDEMO\15SWRETRY\16TXPMGT\17SHSLOT\20SHPREAMBLE" \
+	"\21MONITOR\22DFS\30WPA1\31WPA2\32BURST\33WME\34WDS\36BGSCAN" \
+	"\37TXFRAG\40TDMA"
+
 #define	MAXCHAN	1536		/* max 1.5K channels */
 
 #define	MAXCOL	78
@@ -1765,6 +1772,19 @@ chanlookup(const struct ieee80211_channel chans[], int nchans,
 	return NULL;
 }
 
+static int
+chanfind(const struct ieee80211_channel chans[], int nchans, int flags)
+{
+	int i;
+
+	for (i = 0; i < nchans; i++) {
+		const struct ieee80211_channel *c = &chans[i];
+		if ((c->ic_flags & flags) == flags)
+			return 1;
+	}
+	return 0;
+}
+
 static void
 regdomain_addchans(struct ieee80211req_chaninfo *ci,
 	const netband_head *bands,
@@ -1775,9 +1795,15 @@ regdomain_addchans(struct ieee80211req_chaninfo *ci,
 	const struct netband *nb;
 	const struct freqband *b;
 	struct ieee80211_channel *c, *prev;
-	int freq, channelSep;
+	int freq, channelSep, hasHalfChans, hasQuarterChans;
 
 	channelSep = (chanFlags & IEEE80211_CHAN_2GHZ) ? 0 : 40;
+	hasHalfChans = chanfind(avail->ic_chans, avail->ic_nchans,
+	    IEEE80211_CHAN_HALF |
+	       (chanFlags & (IEEE80211_CHAN_2GHZ | IEEE80211_CHAN_5GHZ)));
+	hasQuarterChans = chanfind(avail->ic_chans, avail->ic_nchans,
+	    IEEE80211_CHAN_QUARTER |
+	        (chanFlags & (IEEE80211_CHAN_2GHZ | IEEE80211_CHAN_5GHZ)));
 	LIST_FOREACH(nb, bands, next) {
 		b = nb->band;
 		if (verbose) {
@@ -1808,8 +1834,7 @@ regdomain_addchans(struct ieee80211req_chaninfo *ci,
 				}
 				continue;
 			}
-			if ((flags & IEEE80211_CHAN_HALF) &&
-			    (chanFlags & IEEE80211_CHAN_HALF) == 0) {
+			if ((flags & IEEE80211_CHAN_HALF) && !hasHalfChans) {
 				if (verbose)
 					printf("%u: skip, device does not "
 					    "support half-rate channel\n",
@@ -1817,7 +1842,7 @@ regdomain_addchans(struct ieee80211req_chaninfo *ci,
 				continue;
 			}
 			if ((flags & IEEE80211_CHAN_QUARTER) &&
-			    (chanFlags & IEEE80211_CHAN_QUARTER) == 0) {
+			    !hasQuarterChans) {
 				if (verbose)
 					printf("%u: skip, device does not "
 					    "support quarter-rate channel\n",
@@ -1925,26 +1950,12 @@ regdomain_makechannels(
 		if (!LIST_EMPTY(&rd->bands_11b))
 			regdomain_addchans(ci, &rd->bands_11b, reg,
 			    IEEE80211_CHAN_B, &dc->dc_chaninfo);
-		if (!LIST_EMPTY(&rd->bands_11g)) {
+		if (!LIST_EMPTY(&rd->bands_11g))
 			regdomain_addchans(ci, &rd->bands_11g, reg,
 			    IEEE80211_CHAN_G, &dc->dc_chaninfo);
-			regdomain_addchans(ci, &rd->bands_11g, reg,
-			    IEEE80211_CHAN_G | IEEE80211_CHAN_HALF,
-			    &dc->dc_chaninfo);
-			regdomain_addchans(ci, &rd->bands_11g, reg,
-			    IEEE80211_CHAN_G | IEEE80211_CHAN_QUARTER,
-			    &dc->dc_chaninfo);
-		}
-		if (!LIST_EMPTY(&rd->bands_11a)) {
+		if (!LIST_EMPTY(&rd->bands_11a))
 			regdomain_addchans(ci, &rd->bands_11a, reg,
 			    IEEE80211_CHAN_A, &dc->dc_chaninfo);
-			regdomain_addchans(ci, &rd->bands_11a, reg,
-			    IEEE80211_CHAN_A | IEEE80211_CHAN_HALF,
-			    &dc->dc_chaninfo);
-			regdomain_addchans(ci, &rd->bands_11a, reg,
-			    IEEE80211_CHAN_A | IEEE80211_CHAN_QUARTER,
-			    &dc->dc_chaninfo);
-		}
 		if (!LIST_EMPTY(&rd->bands_11na)) {
 			regdomain_addchans(ci, &rd->bands_11na, reg,
 			    IEEE80211_CHAN_A | IEEE80211_CHAN_HT20,
