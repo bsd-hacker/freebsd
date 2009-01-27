@@ -206,6 +206,9 @@ enum ISOCountryCode {
 	CTRY_ZIMBABWE		= 716,	/* Zimbabwe */
 
 	/* NB: from here down not listed in 3166; they come from Atheros */
+	CTRY_DEBUG		= 0x1ff, /* debug */
+	CTRY_DEFAULT		= 0,	 /* default */
+
 	CTRY_UNITED_STATES_FCC49 = 842,	/* United States (Public Safety)*/
 	CTRY_KOREA_ROC3		= 412,	/* South Korea */
 
@@ -258,9 +261,6 @@ enum RegdomainCode {
 };
 
 #if defined(__KERNEL__) || defined(_KERNEL)
-#define CTRY_DEBUG                0x1ff   /* debug */
-#define CTRY_DEFAULT              0       /* default */
-
 struct ieee80211com;
 void	ieee80211_regdomain_attach(struct ieee80211com *);
 void	ieee80211_regdomain_detach(struct ieee80211com *);
