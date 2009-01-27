@@ -1780,9 +1780,13 @@ regdomain_addchans(struct ieee80211req_chaninfo *ci,
 	channelSep = (chanFlags & IEEE80211_CHAN_2GHZ) ? 0 : 40;
 	LIST_FOREACH(nb, bands, next) {
 		b = nb->band;
-		if (verbose)
-			printf("%s: chanFlags 0x%x bandFlags 0x%x\n",
-			    __func__, chanFlags, nb->flags | b->flags);
+		if (verbose) {
+			printf("%s:", __func__);
+			printb(" chanFlags", chanFlags, IEEE80211_CHAN_BITS);
+			printb(" bandFlags", nb->flags | b->flags,
+			    IEEE80211_CHAN_BITS);
+			putchar('\n');
+		}
 		prev = NULL;
 		for (freq = b->freqStart; freq <= b->freqEnd; freq += b->chanSep) {
 			uint32_t flags = nb->flags | b->flags;
@@ -1796,9 +1800,12 @@ regdomain_addchans(struct ieee80211req_chaninfo *ci,
 			 */
 			if (chanlookup(avail->ic_chans, avail->ic_nchans, freq, chanFlags) == NULL &&
 			    (flags & IEEE80211_CHAN_GSM) == 0) {
-				if (verbose)
-					printf("%u: skip, flags 0x%x not "
-					    "available\n", freq, chanFlags);
+				if (verbose) {
+					printf("%u: skip, ", freq);
+					printb("flags", chanFlags,
+					    IEEE80211_CHAN_BITS);
+					printf(" not available\n");
+				}
 				continue;
 			}
 			if ((flags & IEEE80211_CHAN_HALF) &&
@@ -1864,10 +1871,12 @@ regdomain_addchans(struct ieee80211req_chaninfo *ci,
 				c->ic_maxregpower = nb->maxPowerDFS;
 			else
 				c->ic_maxregpower = nb->maxPower;
-			if (verbose)
-				printf("[%3d] add freq %u flags 0x%x power %u\n",
-				    ci->ic_nchans-1, c->ic_freq, c->ic_flags,
-				    c->ic_maxregpower);
+			if (verbose) {
+				printf("[%3d] add freq %u ",
+				    ci->ic_nchans-1, c->ic_freq);
+				printb("flags", c->ic_flags, IEEE80211_CHAN_BITS);
+				printf(" power %u\n", c->ic_maxregpower);
+			}
 			/* NB: kernel fills in other fields */
 			prev = c;
 		}
@@ -3058,23 +3067,16 @@ get_chaninfo(const struct ieee80211_channel *c, int precise,
 	buf[0] = '\0';
 	if (IEEE80211_IS_CHAN_FHSS(c))
 		strlcat(buf, " FHSS", bsize);
-	if (IEEE80211_IS_CHAN_A(c)) {
-		if (IEEE80211_IS_CHAN_HALF(c))
-			strlcat(buf, " 11a/10Mhz", bsize);
-		else if (IEEE80211_IS_CHAN_QUARTER(c))
-			strlcat(buf, " 11a/5Mhz", bsize);
-		else
-			strlcat(buf, " 11a", bsize);
-	}
-	if (IEEE80211_IS_CHAN_ANYG(c)) {
-		if (IEEE80211_IS_CHAN_HALF(c))
-			strlcat(buf, " 11g/10Mhz", bsize);
-		else if (IEEE80211_IS_CHAN_QUARTER(c))
-			strlcat(buf, " 11g/5Mhz", bsize);
-		else
-			strlcat(buf, " 11g", bsize);
-	} else if (IEEE80211_IS_CHAN_B(c))
+	if (IEEE80211_IS_CHAN_A(c))
+		strlcat(buf, " 11a", bsize);
+	else if (IEEE80211_IS_CHAN_ANYG(c))
+		strlcat(buf, " 11g", bsize);
+	else if (IEEE80211_IS_CHAN_B(c))
 		strlcat(buf, " 11b", bsize);
+	if (IEEE80211_IS_CHAN_HALF(c))
+		strlcat(buf, "/10Mhz", bsize);
+	if (IEEE80211_IS_CHAN_QUARTER(c))
+		strlcat(buf, "/5Mhz", bsize);
 	if (IEEE80211_IS_CHAN_TURBO(c))
 		strlcat(buf, " Turbo", bsize);
 	if (precise) {
@@ -3277,28 +3279,18 @@ list_keys(int s)
 {
 }
 
-#define	IEEE80211_C_BITS \
-	"\20\1STA\7FF\10TURBOP\11IBSS\12PMGT" \
-	"\13HOSTAP\14AHDEMO\15SWRETRY\16TXPMGT\17SHSLOT\20SHPREAMBLE" \
-	"\21MONITOR\22DFS\30WPA1\31WPA2\32BURST\33WME\34WDS\36BGSCAN" \
-	"\37TXFRAG"
-
-#define	IEEE80211_CRYPTO_BITS \
-	"\20\1WEP\2TKIP\3AES\4AES_CCM\5TKIPMIC\6CKIP\12PMGT"
-
-#define	IEEE80211_HTCAP_BITS \
-	"\20\1LDPC\2CHWIDTH40\5GREENFIELD\6SHORTGI20\7SHORTGI40\10TXSTBC" \
-	"\21AMPDU\22AMSDU\23HT"
-
 static void
 list_capabilities(int s)
 {
 	struct ieee80211_devcaps_req *dc;
 
-	dc = malloc(IEEE80211_DEVCAPS_SIZE(1));
+	if (verbose)
+		dc = malloc(IEEE80211_DEVCAPS_SIZE(MAXCHAN));
+	else
+		dc = malloc(IEEE80211_DEVCAPS_SIZE(1));
 	if (dc == NULL)
 		errx(1, "no space for device capabilities");
-	dc->dc_chaninfo.ic_nchans = 1;
+	dc->dc_chaninfo.ic_nchans = verbose ? MAXCHAN : 1;
 	getdevcaps(s, dc);
 	printb("drivercaps", dc->dc_drivercaps, IEEE80211_C_BITS);
 	if (dc->dc_cryptocaps != 0 || verbose) {
@@ -3310,6 +3302,10 @@ list_capabilities(int s)
 		printb("htcaps", dc->dc_htcaps, IEEE80211_HTCAP_BITS);
 	}
 	putchar('\n');
+	if (verbose) {
+		chaninfo = &dc->dc_chaninfo;	/* XXX */
+		print_channels(s, &dc->dc_chaninfo, 1/*allchans*/, verbose);
+	}
 	free(dc);
 }
 
