@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008 Sam Leffler, Errno Consulting
+ * Copyright (c) 2009 Sam Leffler, Errno Consulting
  * Copyright (c) 2008 Atheros Communications, Inc.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
