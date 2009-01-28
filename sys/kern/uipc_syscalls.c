@@ -42,6 +42,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/condvar.h>
 #include <sys/kernel.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
@@ -1676,14 +1677,6 @@ getsockaddr(namp, uaddr, len)
 	return (error);
 }
 
-#include <sys/condvar.h>
-
-struct sendfile_sync {
-	struct mtx	mtx;
-	struct cv	cv;
-	unsigned 	count;
-};
-
 /*
  * Detach mapped page and release resources back to the system.
  */
@@ -1867,8 +1860,7 @@ kern_sendfile(struct thread *td, struct sendfile_args *uap,
 		mnw = 1;
 
 	if (uap->flags & SF_SYNC) {
-		sfs = malloc(sizeof *sfs, M_TEMP, M_WAITOK);
-		memset(sfs, 0, sizeof *sfs);
+		sfs = malloc(sizeof *sfs, M_TEMP, M_WAITOK | M_ZERO);
 		mtx_init(&sfs->mtx, "sendfile", MTX_DEF, 0);
 		cv_init(&sfs->cv, "sendfile");
 	}

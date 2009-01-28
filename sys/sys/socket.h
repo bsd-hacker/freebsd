@@ -465,6 +465,8 @@ struct msghdr {
 #endif
 #if __BSD_VISIBLE
 #define	MSG_NOSIGNAL	0x20000		/* do not generate SIGPIPE on EOF */
+#define	MSG_AZCS	0x100000	/* asynchronous zero-copy send */
+#define	MSG_SZCS	0x200000	/* synchronous zero-copy send */
 #endif
 
 /*

@@ -105,6 +105,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/condvar.h>
 #include <sys/fcntl.h>
 #include <sys/limits.h>
 #include <sys/lock.h>
@@ -176,14 +177,11 @@ SYSCTL_INT(_kern_ipc, OID_AUTO, numopensockets, CTLFLAG_RD,
     &numopensockets, 0, "Number of open sockets");
 #ifdef ZERO_COPY_SOCKETS
 /* These aren't static because they're used in other files. */
-int so_zero_copy_send = 1;
 int so_zero_copy_receive = 1;
 SYSCTL_NODE(_kern_ipc, OID_AUTO, zero_copy, CTLFLAG_RD, 0,
     "Zero copy controls");
 SYSCTL_INT(_kern_ipc_zero_copy, OID_AUTO, receive, CTLFLAG_RW,
     &so_zero_copy_receive, 0, "Enable zero copy receive");
-SYSCTL_INT(_kern_ipc_zero_copy, OID_AUTO, send, CTLFLAG_RW,
-    &so_zero_copy_send, 0, "Enable zero copy send");
 #endif /* ZERO_COPY_SOCKETS */
 
 /*
@@ -831,7 +829,7 @@ struct so_zerocopy_stats so_zerocp_stats = {0,0,0};
  */
 static int
 sosend_copyin(struct uio *uio, struct mbuf **retmp, int atomic, long *space,
-    int flags)
+    int flags, struct sendfile_sync *sfs)
 {
 	struct mbuf *m, **mp, *top;
 	long len, resid;
@@ -857,13 +855,13 @@ sosend_copyin(struct uio *uio, struct mbuf **retmp, int atomic, long *space,
 				m->m_pkthdr.rcvif = NULL;
 			} else
 				m = m_get(M_WAITOK, MT_DATA);
-			if (so_zero_copy_send &&
+			if ((flags & (MSG_AZCS | MSG_SZCS)) != 0 &&
 			    resid>=PAGE_SIZE &&
 			    *space>=PAGE_SIZE &&
 			    uio->uio_iov->iov_len>=PAGE_SIZE) {
 				so_zerocp_stats.size_ok++;
 				so_zerocp_stats.align_ok++;
-				cow_send = socow_setup(m, uio);
+				cow_send = socow_setup(m, uio, sfs);
 				len = cow_send;
 			}
 			if (!cow_send) {
@@ -934,6 +932,7 @@ int
 sosend_dgram(struct socket *so, struct sockaddr *addr, struct uio *uio,
     struct mbuf *top, struct mbuf *control, int flags, struct thread *td)
 {
+	struct sendfile_sync *sfs = NULL;
 	long space, resid;
 	int clen = 0, error, dontroute;
 #ifdef ZERO_COPY_SOCKETS
@@ -963,6 +962,11 @@ sosend_dgram(struct socket *so, struct sockaddr *addr, struct uio *uio,
 		goto out;
 	}
 
+	if (flags & MSG_SZCS) {
+		sfs = malloc(sizeof *sfs, M_TEMP, M_WAITOK | M_ZERO);
+		mtx_init(&sfs->mtx, "sendfile", MTX_DEF, 0);
+		cv_init(&sfs->cv, "sendfile");
+	}
 	dontroute =
 	    (flags & MSG_DONTROUTE) && (so->so_options & SO_DONTROUTE) == 0;
 	if (td != NULL)
@@ -1025,7 +1029,7 @@ sosend_dgram(struct socket *so, struct sockaddr *addr, struct uio *uio,
 			top->m_flags |= M_EOR;
 	} else {
 #ifdef ZERO_COPY_SOCKETS
-		error = sosend_copyin(uio, &top, atomic, &space, flags);
+		error = sosend_copyin(uio, &top, atomic, &space, flags, sfs);
 		if (error)
 			goto out;
 #else
@@ -1088,6 +1092,15 @@ out:
 		m_freem(top);
 	if (control != NULL)
 		m_freem(control);
+	if (sfs != NULL) {
+		mtx_lock(&sfs->mtx);
+		if (sfs->count != 0)
+			cv_wait(&sfs->cv, &sfs->mtx);
+		KASSERT(sfs->count == 0, ("sendfile sync still busy"));
+		cv_destroy(&sfs->cv);
+		mtx_destroy(&sfs->mtx);
+		free(sfs, M_TEMP);
+	}
 	return (error);
 }
 
@@ -1108,6 +1121,7 @@ int
 sosend_generic(struct socket *so, struct sockaddr *addr, struct uio *uio,
     struct mbuf *top, struct mbuf *control, int flags, struct thread *td)
 {
+	struct sendfile_sync *sfs = NULL;
 	long space, resid;
 	int clen = 0, error, dontroute;
 	int atomic = sosendallatonce(so) || top;
@@ -1131,6 +1145,11 @@ sosend_generic(struct socket *so, struct sockaddr *addr, struct uio *uio,
 		goto out;
 	}
 
+	if (flags & MSG_SZCS) {
+		sfs = malloc(sizeof(*sfs), M_TEMP, M_WAITOK | M_ZERO);
+		mtx_init(&sfs->mtx, "sendfile", MTX_DEF, 0);
+		cv_init(&sfs->cv, "sendfile");
+	}
 	dontroute =
 	    (flags & MSG_DONTROUTE) && (so->so_options & SO_DONTROUTE) == 0 &&
 	    (so->so_proto->pr_flags & PR_ATOMIC);
@@ -1213,7 +1232,7 @@ restart:
 			} else {
 #ifdef ZERO_COPY_SOCKETS
 				error = sosend_copyin(uio, &top, atomic,
-				    &space, flags);
+				    &space, flags, sfs);
 				if (error != 0)
 					goto release;
 #else
@@ -1283,6 +1302,15 @@ out:
 		m_freem(top);
 	if (control != NULL)
 		m_freem(control);
+	if (sfs != NULL) {
+		mtx_lock(&sfs->mtx);
+		if (sfs->count != 0)
+			cv_wait(&sfs->cv, &sfs->mtx);
+		KASSERT(sfs->count == 0, ("sendfile sync still busy"));
+		cv_destroy(&sfs->cv);
+		mtx_destroy(&sfs->mtx);
+		free(sfs, M_TEMP);
+	}
 	return (error);
 }
 

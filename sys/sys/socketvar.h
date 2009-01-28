@@ -39,6 +39,7 @@
 #include <sys/_lock.h>
 #include <sys/_mutex.h>
 #include <sys/_sx.h>
+#include <sys/condvar.h>
 #include <sys/sockbuf.h>
 #include <sys/sockstate.h>
 #ifdef _KERNEL
@@ -286,6 +287,12 @@ struct accept_filter {
 	SLIST_ENTRY(accept_filter) accf_next;
 };
 
+struct sendfile_sync {
+	struct mtx	mtx;
+	struct cv	cv;
+	unsigned 	count;
+};
+
 #ifdef MALLOC_DECLARE
 MALLOC_DECLARE(M_ACCF);
 MALLOC_DECLARE(M_PCB);
@@ -314,7 +321,8 @@ int	sobind(struct socket *so, struct sockaddr *nam, struct thread *td);
 int	soclose(struct socket *so);
 int	soconnect(struct socket *so, struct sockaddr *nam, struct thread *td);
 int	soconnect2(struct socket *so1, struct socket *so2);
-int	socow_setup(struct mbuf *m0, struct uio *uio);
+int	socow_setup(struct mbuf *m0, struct uio *uio,
+	    struct sendfile_sync *sfs);
 int	socreate(int dom, struct socket **aso, int type, int proto,
 	    struct ucred *cred, struct thread *td);
 int	sodisconnect(struct socket *so);

@@ -63,39 +63,12 @@ struct netsend_cow_stats {
 	int fail_not_mapped;
 	int fail_sf_buf;
 	int success;
-	int iodone;
 };
 
 static struct netsend_cow_stats socow_stats;
 
-static void socow_iodone(void *addr, void *args);
-
-static void
-socow_iodone(void *addr, void *args)
-{	
-	struct sf_buf *sf;
-	vm_page_t pp;
-
-	sf = args;
-	pp = sf_buf_page(sf);
-	sf_buf_free(sf);
-	/* remove COW mapping  */
-	vm_page_lock_queues();
-	vm_page_cowclear(pp);
-	vm_page_unwire(pp, 0);
-	/*
-	 * Check for the object going away on us. This can
-	 * happen since we don't hold a reference to it.
-	 * If so, we're responsible for freeing the page.
-	 */
-	if (pp->wire_count == 0 && pp->object == NULL)
-		vm_page_free(pp);
-	vm_page_unlock_queues();
-	socow_stats.iodone++;
-}
-
 int
-socow_setup(struct mbuf *m0, struct uio *uio)
+socow_setup(struct mbuf *m0, struct uio *uio, struct sendfile_sync *sfs)
 {
 	struct sf_buf *sf;
 	vm_page_t pp;
@@ -125,19 +98,10 @@ socow_setup(struct mbuf *m0, struct uio *uio)
 		return(0);
 	}
 
-	/* 
-	 * set up COW
-	 */
-	vm_page_lock_queues();
-	if (vm_page_cowsetup(pp) != 0) {
-		vm_page_unhold(pp);
-		vm_page_unlock_queues();
-		return (0);
-	}
-
 	/*
 	 * wire the page for I/O
 	 */
+	vm_page_lock_queues();
 	vm_page_wire(pp);
 	vm_page_unhold(pp);
 	vm_page_unlock_queues();
@@ -148,7 +112,6 @@ socow_setup(struct mbuf *m0, struct uio *uio)
 	sf = sf_buf_alloc(pp, SFB_CATCH);
 	if (!sf) {
 		vm_page_lock_queues();
-		vm_page_cowclear(pp);
 		vm_page_unwire(pp, 0);
 		/*
 		 * Check for the object going away on us. This can
@@ -164,12 +127,17 @@ socow_setup(struct mbuf *m0, struct uio *uio)
 	/* 
 	 * attach to mbuf
 	 */
-	MEXTADD(m0, sf_buf_kva(sf), PAGE_SIZE, socow_iodone,
-	    (void*)sf_buf_kva(sf), sf, M_RDONLY, EXT_SFBUF);
+	MEXTADD(m0, sf_buf_kva(sf), PAGE_SIZE, sf_buf_mext,
+	    sfs, sf, M_RDONLY, EXT_SFBUF);
 	m0->m_len = PAGE_SIZE - offset;
 	m0->m_data = (caddr_t)sf_buf_kva(sf) + offset;
 	socow_stats.success++;
 
+	if (sfs != NULL) {
+		mtx_lock(&sfs->mtx);
+		sfs->count++;
+		mtx_unlock(&sfs->mtx);
+	}
 	iov = uio->uio_iov;
 	iov->iov_base = (char *)iov->iov_base + m0->m_len;
 	iov->iov_len -= m0->m_len;
