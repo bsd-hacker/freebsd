@@ -188,9 +188,9 @@ static void	axe_cfg_ax88178_init(struct axe_softc *);
 static void	axe_cfg_ax88772_init(struct axe_softc *);
 static int	axe_get_phyno(struct axe_softc *, int);
 
-static const struct usb2_config axe_config[AXE_ENDPT_MAX] = {
+static const struct usb2_config axe_config[AXE_N_TRANSFER] = {
 
-	[0] = {
+	[AXE_BULK_DT_WR] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_OUT,
@@ -200,7 +200,7 @@ static const struct usb2_config axe_config[AXE_ENDPT_MAX] = {
 		.mh.timeout = 10000,	/* 10 seconds */
 	},
 
-	[1] = {
+	[AXE_BULK_DT_RD] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
@@ -213,7 +213,7 @@ static const struct usb2_config axe_config[AXE_ENDPT_MAX] = {
 		.mh.timeout = 0,	/* no timeout */
 	},
 
-	[2] = {
+	[AXE_BULK_CS_WR] = {
 		.type = UE_CONTROL,
 		.endpoint = 0x00,	/* Control pipe */
 		.direction = UE_DIR_ANY,
@@ -224,7 +224,7 @@ static const struct usb2_config axe_config[AXE_ENDPT_MAX] = {
 		.mh.interval = 50,	/* 50ms */
 	},
 
-	[3] = {
+	[AXE_BULK_CS_RD] = {
 		.type = UE_CONTROL,
 		.endpoint = 0x00,	/* Control pipe */
 		.direction = UE_DIR_ANY,
@@ -235,7 +235,7 @@ static const struct usb2_config axe_config[AXE_ENDPT_MAX] = {
 		.mh.interval = 50,	/* 50ms */
 	},
 
-	[4] = {
+	[AXE_INTR_DT_RD] = {
 		.type = UE_INTERRUPT,
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
@@ -244,7 +244,7 @@ static const struct usb2_config axe_config[AXE_ENDPT_MAX] = {
 		.mh.callback = &axe_intr_callback,
 	},
 
-	[5] = {
+	[AXE_INTR_CS_RD] = {
 		.type = UE_CONTROL,
 		.endpoint = 0x00,	/* Control pipe */
 		.direction = UE_DIR_ANY,
@@ -629,9 +629,6 @@ axe_attach(device_t dev)
 	int32_t error;
 	uint8_t iface_index;
 
-	if (sc == NULL) {
-		return (ENOMEM);
-	}
 	sc->sc_udev = uaa->device;
 	sc->sc_dev = dev;
 	sc->sc_unit = device_get_unit(dev);
@@ -648,7 +645,7 @@ axe_attach(device_t dev)
 
 	iface_index = AXE_IFACE_IDX;
 	error = usb2_transfer_setup(uaa->device, &iface_index,
-	    sc->sc_xfer, axe_config, AXE_ENDPT_MAX,
+	    sc->sc_xfer, axe_config, AXE_N_TRANSFER,
 	    sc, &sc->sc_mtx);
 	if (error) {
 		device_printf(dev, "allocating USB "
@@ -843,7 +840,6 @@ axe_cfg_first_time_setup(struct axe_softc *sc,
 		    sc->sc_name);
 		goto done;
 	}
-	sc->sc_evilhack = ifp;
 
 	ifp->if_softc = sc;
 	if_initname(ifp, "axe", sc->sc_unit);
@@ -913,7 +909,7 @@ axe_detach(device_t dev)
 	mtx_unlock(&sc->sc_mtx);
 
 	/* stop all USB transfers first */
-	usb2_transfer_unsetup(sc->sc_xfer, AXE_ENDPT_MAX);
+	usb2_transfer_unsetup(sc->sc_xfer, AXE_N_TRANSFER);
 
 	/* get rid of any late children */
 	bus_generic_detach(dev);
@@ -935,7 +931,7 @@ static void
 axe_intr_clear_stall_callback(struct usb2_xfer *xfer)
 {
 	struct axe_softc *sc = xfer->priv_sc;
-	struct usb2_xfer *xfer_other = sc->sc_xfer[4];
+	struct usb2_xfer *xfer_other = sc->sc_xfer[AXE_INTR_DT_RD];
 
 	if (usb2_clear_stall_callback(xfer, xfer_other)) {
 		DPRINTF("stall cleared\n");
@@ -956,7 +952,7 @@ axe_intr_callback(struct usb2_xfer *xfer)
 
 	case USB_ST_SETUP:
 		if (sc->sc_flags & AXE_FLAG_INTR_STALL) {
-			usb2_transfer_start(sc->sc_xfer[5]);
+			usb2_transfer_start(sc->sc_xfer[AXE_INTR_CS_RD]);
 		} else {
 			xfer->frlengths[0] = xfer->max_data_length;
 			usb2_start_hardware(xfer);
@@ -967,7 +963,7 @@ axe_intr_callback(struct usb2_xfer *xfer)
 		if (xfer->error != USB_ERR_CANCELLED) {
 			/* start clear stall */
 			sc->sc_flags |= AXE_FLAG_INTR_STALL;
-			usb2_transfer_start(sc->sc_xfer[5]);
+			usb2_transfer_start(sc->sc_xfer[AXE_INTR_CS_RD]);
 		}
 		return;
 	}
@@ -977,7 +973,7 @@ static void
 axe_bulk_read_clear_stall_callback(struct usb2_xfer *xfer)
 {
 	struct axe_softc *sc = xfer->priv_sc;
-	struct usb2_xfer *xfer_other = sc->sc_xfer[1];
+	struct usb2_xfer *xfer_other = sc->sc_xfer[AXE_BULK_DT_RD];
 
 	if (usb2_clear_stall_callback(xfer, xfer_other)) {
 		DPRINTF("stall cleared\n");
@@ -1083,7 +1079,7 @@ axe_bulk_read_callback(struct usb2_xfer *xfer)
 tr_setup:
 
 		if (sc->sc_flags & AXE_FLAG_READ_STALL) {
-			usb2_transfer_start(sc->sc_xfer[3]);
+			usb2_transfer_start(sc->sc_xfer[AXE_BULK_CS_RD]);
 		} else {
 			xfer->frlengths[0] = xfer->max_data_length;
 			usb2_start_hardware(xfer);
@@ -1116,7 +1112,7 @@ tr_setup:
 		if (xfer->error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
 			sc->sc_flags |= AXE_FLAG_READ_STALL;
-			usb2_transfer_start(sc->sc_xfer[3]);
+			usb2_transfer_start(sc->sc_xfer[AXE_BULK_CS_RD]);
 		}
 		DPRINTF("bulk read error, %s\n",
 		    usb2_errstr(xfer->error));
@@ -1129,7 +1125,7 @@ static void
 axe_bulk_write_clear_stall_callback(struct usb2_xfer *xfer)
 {
 	struct axe_softc *sc = xfer->priv_sc;
-	struct usb2_xfer *xfer_other = sc->sc_xfer[0];
+	struct usb2_xfer *xfer_other = sc->sc_xfer[AXE_BULK_DT_WR];
 
 	if (usb2_clear_stall_callback(xfer, xfer_other)) {
 		DPRINTF("stall cleared\n");
@@ -1160,7 +1156,7 @@ axe_bulk_write_callback(struct usb2_xfer *xfer)
 	case USB_ST_SETUP:
 
 		if (sc->sc_flags & AXE_FLAG_WRITE_STALL) {
-			usb2_transfer_start(sc->sc_xfer[2]);
+			usb2_transfer_start(sc->sc_xfer[AXE_BULK_CS_WR]);
 			goto done;
 		}
 		if ((sc->sc_flags & AXE_FLAG_LINK) == 0) {
@@ -1238,7 +1234,7 @@ done:
 		if (xfer->error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
 			sc->sc_flags |= AXE_FLAG_WRITE_STALL;
-			usb2_transfer_start(sc->sc_xfer[2]);
+			usb2_transfer_start(sc->sc_xfer[AXE_BULK_CS_WR]);
 		}
 		ifp->if_oerrors++;
 		return;
@@ -1294,9 +1290,9 @@ axe_start_transfers(struct axe_softc *sc)
 		/*
 		 * start the USB transfers, if not already started:
 		 */
-		usb2_transfer_start(sc->sc_xfer[4]);
-		usb2_transfer_start(sc->sc_xfer[1]);
-		usb2_transfer_start(sc->sc_xfer[0]);
+		usb2_transfer_start(sc->sc_xfer[AXE_INTR_DT_RD]);
+		usb2_transfer_start(sc->sc_xfer[AXE_BULK_DT_RD]);
+		usb2_transfer_start(sc->sc_xfer[AXE_BULK_DT_WR]);
 	}
 }
 
@@ -1502,12 +1498,12 @@ axe_cfg_pre_stop(struct axe_softc *sc,
 	/*
 	 * stop all the transfers, if not already stopped:
 	 */
-	usb2_transfer_stop(sc->sc_xfer[0]);
-	usb2_transfer_stop(sc->sc_xfer[1]);
-	usb2_transfer_stop(sc->sc_xfer[2]);
-	usb2_transfer_stop(sc->sc_xfer[3]);
-	usb2_transfer_stop(sc->sc_xfer[4]);
-	usb2_transfer_stop(sc->sc_xfer[5]);
+	usb2_transfer_stop(sc->sc_xfer[AXE_BULK_DT_WR]);
+	usb2_transfer_stop(sc->sc_xfer[AXE_BULK_DT_RD]);
+	usb2_transfer_stop(sc->sc_xfer[AXE_BULK_CS_WR]);
+	usb2_transfer_stop(sc->sc_xfer[AXE_BULK_CS_RD]);
+	usb2_transfer_stop(sc->sc_xfer[AXE_INTR_DT_RD]);
+	usb2_transfer_stop(sc->sc_xfer[AXE_INTR_CS_RD]);
 }
 
 static void

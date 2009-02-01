@@ -42,6 +42,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/socket.h>
 #include <sys/sockio.h>
 #include <sys/systm.h>
+#include <sys/taskqueue.h>
  
 #include <net/if.h>
 #include <net/if_dl.h>
@@ -714,6 +715,8 @@ ieee80211_ioctl_getdevcaps(struct ieee80211com *ic,
 	dc->dc_htcaps = ic->ic_htcaps;
 	ci = &dc->dc_chaninfo;
 	ic->ic_getradiocaps(ic, maxchans, &ci->ic_nchans, ci->ic_chans);
+	KASSERT(ci->ic_nchans <= maxchans,
+	    ("nchans %d maxchans %d", ci->ic_nchans, maxchans));
 	ieee80211_sort_channels(ci->ic_chans, ci->ic_nchans);
 	error = copyout(dc, ireq->i_data, IEEE80211_DEVCAPS_SPACE(dc));
 	free(dc, M_TEMP);
@@ -3261,6 +3264,8 @@ ieee80211_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 			ieee80211_stop_locked(vap);
 		}
 		IEEE80211_UNLOCK(ic);
+		/* Wait for parent ioctl handler if it was queued */
+		taskqueue_drain(taskqueue_thread, &ic->ic_parent_task);
 		break;
 	case SIOCADDMULTI:
 	case SIOCDELMULTI:

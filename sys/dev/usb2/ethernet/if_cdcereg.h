@@ -35,7 +35,6 @@
 #ifndef _USB_IF_CDCEREG_H_
 #define	_USB_IF_CDCEREG_H_
 
-#define	CDCE_N_TRANSFER	3		/* units */
 #define	CDCE_IND_SIZE_MAX 32		/* bytes */
 #define	CDCE_512X4_IFQ_MAXLEN MAX((2*CDCE_512X4_FRAMES_MAX), IFQ_MAXLEN)
 
@@ -54,8 +53,15 @@ struct cdce_mq {			/* mini-queue */
 	uint16_t ifq_len;
 };
 
+enum {
+	CDCE_BULK_A,
+	CDCE_BULK_B,
+	CDCE_INTR,
+	CDCE_N_TRANSFER = 3,
+};
+
 struct cdce_softc {
-	void   *sc_evilhack;		/* XXX this pointer must be first */
+	struct ifnet *sc_ifp;
 
 	union cdce_eth_tx sc_tx;
 	union cdce_eth_rx sc_rx;
@@ -64,7 +70,6 @@ struct cdce_softc {
 	struct cdce_mq sc_rx_mq;
 	struct cdce_mq sc_tx_mq;
 
-	struct ifnet *sc_ifp;
 	struct usb2_xfer *sc_xfer[CDCE_N_TRANSFER];
 	struct usb2_device *sc_udev;
 	device_t sc_dev;

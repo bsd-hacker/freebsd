@@ -33,18 +33,16 @@
  * libteken: terminal emulation library.
  *
  * This library converts an UTF-8 stream of bytes to terminal drawing
- * commands. It implements commands similar to xterm-color.
+ * commands.
+ *
+ * Configuration switches:
+ * - TEKEN_UTF8: Enable/disable UTF-8 handling.
+ * - TEKEN_XTERM: Enable xterm-style emulation, instead of cons25.
  */
 
-#if 0
-/*
- * XXX: Disable UTF-8 support for now. It requires UTF-8 keyboard input
- * and rendering, which we do not yet support.
- */
-#define	TEKEN_UTF8
-#endif
-/* Emulate cons25-like behaviour. */
-#define	TEKEN_CONS25
+#if defined(__FreeBSD__) && defined(_KERNEL)
+#include "opt_teken.h"
+#endif /* __FreeBSD__ && _KERNEL */
 
 #ifdef TEKEN_UTF8
 typedef uint32_t teken_char_t;
@@ -119,6 +117,10 @@ typedef struct {
 	tf_respond_t	*tf_respond;
 } teken_funcs_t;
 
+#if defined(TEKEN_XTERM) && defined(TEKEN_UTF8)
+typedef teken_char_t teken_scs_t(teken_char_t);
+#endif /* TEKEN_XTERM && TEKEN_UTF8 */
+
 /*
  * Terminal state.
  */
@@ -148,12 +150,18 @@ struct __teken {
 	teken_span_t	 t_originreg;
 
 #define	T_NUMCOL	160
-	unsigned int	t_tabstops[T_NUMCOL / (sizeof(unsigned int) * 8)];
+	unsigned int	 t_tabstops[T_NUMCOL / (sizeof(unsigned int) * 8)];
 
 #ifdef TEKEN_UTF8
-	unsigned int	t_utf8_left;
-	teken_char_t	t_utf8_partial;
+	unsigned int	 t_utf8_left;
+	teken_char_t	 t_utf8_partial;
 #endif /* TEKEN_UTF8 */
+
+#if defined(TEKEN_XTERM) && defined(TEKEN_UTF8)
+	unsigned int	 t_curscs;
+	teken_scs_t	*t_saved_curscs;
+	teken_scs_t	*t_scs[2];
+#endif /* TEKEN_XTERM && TEKEN_UTF8 */
 };
 
 /* Initialize teken structure. */

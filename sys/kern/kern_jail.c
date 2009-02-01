@@ -812,7 +812,7 @@ prison_proc_free(struct prison *pr)
  * Returns 0 on success, 1 on error.  Address returned in NBO.
  */
 int
-prison_getip4(struct ucred *cred, struct in_addr *ia)
+prison_get_ip4(struct ucred *cred, struct in_addr *ia)
 {
 
 	KASSERT(cred != NULL, ("%s: cred is NULL", __func__));
@@ -958,7 +958,7 @@ prison_check_ip4(struct ucred *cred, struct in_addr *ia)
  * Returns 0 on success, 1 on error.
  */
 int
-prison_getip6(struct ucred *cred, struct in6_addr *ia6)
+prison_get_ip6(struct ucred *cred, struct in6_addr *ia6)
 {
 
 	KASSERT(cred != NULL, ("%s: cred is NULL", __func__));
@@ -1529,8 +1529,9 @@ sysctl_jail_list(SYSCTL_HANDLER_ARGS)
 	return (error);
 }
 
-SYSCTL_OID(_security_jail, OID_AUTO, list, CTLTYPE_STRUCT | CTLFLAG_RD,
-    NULL, 0, sysctl_jail_list, "S", "List of active jails");
+SYSCTL_OID(_security_jail, OID_AUTO, list,
+    CTLTYPE_STRUCT | CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, 0,
+    sysctl_jail_list, "S", "List of active jails");
 
 static int
 sysctl_jail_jailed(SYSCTL_HANDLER_ARGS)
@@ -1542,8 +1543,9 @@ sysctl_jail_jailed(SYSCTL_HANDLER_ARGS)
 
 	return (error);
 }
-SYSCTL_PROC(_security_jail, OID_AUTO, jailed, CTLTYPE_INT | CTLFLAG_RD,
-    NULL, 0, sysctl_jail_jailed, "I", "Process in jail?");
+SYSCTL_PROC(_security_jail, OID_AUTO, jailed,
+    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, 0,
+    sysctl_jail_jailed, "I", "Process in jail?");
 
 #ifdef DDB
 DB_SHOW_COMMAND(jails, db_show_jails)

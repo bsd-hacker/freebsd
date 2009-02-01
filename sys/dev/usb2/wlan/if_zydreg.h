@@ -1210,18 +1210,6 @@ struct zyd_rf {
 	uint8_t	width;
 };
 
-enum {
-	ZYD_TR_BULK_DT_WR,
-	ZYD_TR_BULK_DT_RD,
-	ZYD_TR_BULK_CS_WR,
-	ZYD_TR_BULK_CS_RD,
-	ZYD_TR_INTR_DT_WR,
-	ZYD_TR_INTR_DT_RD,
-	ZYD_TR_INTR_CS_WR,
-	ZYD_TR_INTR_CS_RD,
-	ZYD_N_TRANSFER,
-};
-
 struct zyd_ifq {
 	struct mbuf *ifq_head;
 	struct mbuf *ifq_tail;
@@ -1284,8 +1272,20 @@ struct zyd_config_copy {
 	uint8_t	if_broadcastaddr[IEEE80211_ADDR_LEN];
 };
 
+enum {
+	ZYD_BULK_DT_WR,
+	ZYD_BULK_DT_RD,
+	ZYD_BULK_CS_WR,
+	ZYD_BULK_CS_RD,
+	ZYD_INTR_DT_WR,
+	ZYD_INTR_DT_RD,
+	ZYD_INTR_CS_WR,
+	ZYD_INTR_CS_RD,
+	ZYD_N_TRANSFER = 8,
+};
+
 struct zyd_softc {
-	void   *sc_evilhack;		/* XXX this pointer must be first */
+	struct ifnet *sc_ifp;
 
 	struct zyd_rf sc_rf;
 	struct usb2_callout sc_watchdog;
@@ -1299,7 +1299,6 @@ struct zyd_softc {
 	struct zyd_ifq sc_tx_queue;
 	struct cv sc_intr_cv;
 
-	struct ifnet *sc_ifp;
 	struct usb2_device *sc_udev;
 	struct usb2_xfer *sc_xfer[ZYD_N_TRANSFER];
 	const struct ieee80211_rate_table *sc_rates;

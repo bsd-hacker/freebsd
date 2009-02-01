@@ -30,6 +30,7 @@ static void teken_subr_cursor_up(teken_t *, unsigned int);
 static void teken_subr_erase_line(teken_t *, unsigned int);
 static void teken_subr_regular_character(teken_t *, teken_char_t);
 static void teken_subr_reset_to_initial_state(teken_t *);
+static void teken_subr_save_cursor(teken_t *);
 
 static inline int
 teken_tab_isset(teken_t *t, unsigned int col)
@@ -198,7 +199,13 @@ static void
 teken_subr_backspace(teken_t *t)
 {
 
-#ifdef TEKEN_CONS25
+#ifdef TEKEN_XTERM
+	if (t->t_cursor.tp_col == 0)
+		return;
+
+	t->t_cursor.tp_col--;
+	t->t_stateflags &= ~TS_WRAPPED;
+#else /* !TEKEN_XTERM */
 	if (t->t_cursor.tp_col == 0) {
 		if (t->t_cursor.tp_row == t->t_originreg.ts_begin)
 			return;
@@ -207,13 +214,7 @@ teken_subr_backspace(teken_t *t)
 	} else {
 		t->t_cursor.tp_col--;
 	}
-#else /* !TEKEN_CONS25 */
-	if (t->t_cursor.tp_col == 0)
-		return;
-
-	t->t_cursor.tp_col--;
-	t->t_stateflags &= ~TS_WRAPPED;
-#endif /* TEKEN_CONS25 */
+#endif /* TEKEN_XTERM */
 
 	teken_funcs_cursor(t);
 }
@@ -528,6 +529,48 @@ teken_subr_erase_line(teken_t *t, unsigned int mode)
 }
 
 static void
+teken_subr_g0_scs_special_graphics(teken_t *t __unused)
+{
+
+	teken_scs_set(t, 0, teken_scs_special_graphics);
+}
+
+static void
+teken_subr_g0_scs_uk_national(teken_t *t __unused)
+{
+
+	teken_scs_set(t, 0, teken_scs_uk_national);
+}
+
+static void
+teken_subr_g0_scs_us_ascii(teken_t *t __unused)
+{
+
+	teken_scs_set(t, 0, teken_scs_us_ascii);
+}
+
+static void
+teken_subr_g1_scs_special_graphics(teken_t *t __unused)
+{
+
+	teken_scs_set(t, 1, teken_scs_special_graphics);
+}
+
+static void
+teken_subr_g1_scs_uk_national(teken_t *t __unused)
+{
+
+	teken_scs_set(t, 1, teken_scs_uk_national);
+}
+
+static void
+teken_subr_g1_scs_us_ascii(teken_t *t __unused)
+{
+
+	teken_scs_set(t, 1, teken_scs_us_ascii);
+}
+
+static void
 teken_subr_horizontal_position_absolute(teken_t *t, unsigned int col)
 {
 
@@ -542,10 +585,7 @@ teken_subr_horizontal_position_absolute(teken_t *t, unsigned int col)
 static void
 teken_subr_horizontal_tab(teken_t *t)
 {
-#ifdef TEKEN_CONS25
-
-	teken_subr_cursor_forward_tabulation(t, 1);
-#else /* !TEKEN_CONS25 */
+#ifdef TEKEN_XTERM
 	teken_rect_t tr;
 
 	tr.tr_begin = t->t_cursor;
@@ -556,7 +596,10 @@ teken_subr_horizontal_tab(teken_t *t)
 	/* Blank region that we skipped. */
 	if (tr.tr_end.tp_col > tr.tr_begin.tp_col)
 		teken_funcs_fill(t, &tr, BLANK, &t->t_curattr);
-#endif /* TEKEN_CONS25 */
+#else /* !TEKEN_XTERM */
+
+	teken_subr_cursor_forward_tabulation(t, 1);
+#endif /* TEKEN_XTERM */
 }
 
 static void
@@ -664,7 +707,10 @@ teken_subr_newline(teken_t *t)
 static void
 teken_subr_newpage(teken_t *t)
 {
-#ifdef TEKEN_CONS25
+#ifdef TEKEN_XTERM
+
+	teken_subr_newline(t);
+#else /* !TEKEN_XTERM */
 	teken_rect_t tr;
 
 	tr.tr_begin.tp_row = tr.tr_begin.tp_col = 0;
@@ -673,10 +719,7 @@ teken_subr_newpage(teken_t *t)
 
 	t->t_cursor.tp_row = t->t_cursor.tp_col = 0;
 	teken_funcs_cursor(t);
-#else /* !TEKEN_CONS25 */
-
-	teken_subr_newline(t);
-#endif /* TEKEN_CONS25 */
+#endif /* TEKEN_XTERM */
 }
 
 static void
@@ -740,28 +783,15 @@ static void
 teken_subr_regular_character(teken_t *t, teken_char_t c)
 {
 	int width;
+	
+	c = teken_scs_process(t, c);
 
 	/* XXX: Don't process zero-width characters yet. */
 	width = teken_wcwidth(c);
 	if (width <= 0)
 		return;
 
-#ifdef TEKEN_CONS25
-	teken_subr_do_putchar(t, &t->t_cursor, c, width);
-	t->t_cursor.tp_col += width;
-
-	if (t->t_cursor.tp_col >= t->t_winsize.tp_col) {
-		if (t->t_cursor.tp_row == t->t_scrollreg.ts_end - 1) {
-			/* Perform scrolling. */
-			teken_subr_do_scroll(t, 1);
-		} else {
-			/* No scrolling needed. */
-			if (t->t_cursor.tp_row < t->t_winsize.tp_row - 1)
-				t->t_cursor.tp_row++;
-		}
-		t->t_cursor.tp_col = 0;
-	}
-#else /* !TEKEN_CONS25 */
+#ifdef TEKEN_XTERM
 	if (t->t_cursor.tp_col == t->t_winsize.tp_col - 1 &&
 	    (t->t_stateflags & (TS_WRAPPED|TS_AUTOWRAP)) ==
 	    (TS_WRAPPED|TS_AUTOWRAP)) {
@@ -806,7 +836,22 @@ teken_subr_regular_character(teken_t *t, teken_char_t c)
 			t->t_stateflags &= ~TS_WRAPPED;
 		}
 	}
-#endif /* TEKEN_CONS25 */
+#else /* !TEKEN_XTERM */
+	teken_subr_do_putchar(t, &t->t_cursor, c, width);
+	t->t_cursor.tp_col += width;
+
+	if (t->t_cursor.tp_col >= t->t_winsize.tp_col) {
+		if (t->t_cursor.tp_row == t->t_scrollreg.ts_end - 1) {
+			/* Perform scrolling. */
+			teken_subr_do_scroll(t, 1);
+		} else {
+			/* No scrolling needed. */
+			if (t->t_cursor.tp_row < t->t_winsize.tp_row - 1)
+				t->t_cursor.tp_row++;
+		}
+		t->t_cursor.tp_col = 0;
+	}
+#endif /* TEKEN_XTERM */
 
 	teken_funcs_cursor(t);
 }
@@ -877,11 +922,15 @@ static void
 teken_subr_do_reset(teken_t *t)
 {
 
-	t->t_curattr = t->t_saved_curattr = t->t_defattr;
+	t->t_curattr = t->t_defattr;
 	t->t_cursor.tp_row = t->t_cursor.tp_col = 0;
-	t->t_saved_cursor = t->t_cursor;
 	t->t_stateflags = TS_AUTOWRAP;
 
+	teken_scs_set(t, 0, teken_scs_us_ascii);
+	teken_scs_set(t, 1, teken_scs_us_ascii);
+	teken_scs_switch(t, 0);
+
+	teken_subr_save_cursor(t);
 	teken_tab_default(t);
 }
 
@@ -902,6 +951,7 @@ teken_subr_restore_cursor(teken_t *t)
 	t->t_cursor = t->t_saved_cursor;
 	t->t_curattr = t->t_saved_curattr;
 	t->t_stateflags &= ~TS_WRAPPED;
+	teken_scs_restore(t);
 	teken_funcs_cursor(t);
 }
 
@@ -924,13 +974,7 @@ teken_subr_save_cursor(teken_t *t)
 
 	t->t_saved_cursor = t->t_cursor;
 	t->t_saved_curattr = t->t_curattr;
-}
-
-static void
-teken_subr_scs(teken_t *t __unused)
-{
-
-	teken_printf("scs???\n");
+	teken_scs_save(t);
 }
 
 static void

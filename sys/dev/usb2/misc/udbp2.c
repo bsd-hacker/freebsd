@@ -320,9 +320,6 @@ udbp_attach(device_t dev)
 	struct udbp_softc *sc = device_get_softc(dev);
 	int error;
 
-	if (sc == NULL) {
-		return (ENOMEM);
-	}
 	device_set_usb2_desc(dev);
 
 	snprintf(sc->sc_name, sizeof(sc->sc_name),

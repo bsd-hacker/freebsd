@@ -17,8 +17,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#define	URAL_N_TRANSFER 4
-
 struct ural_node {
 	struct ieee80211_node ni;
 	struct ieee80211_amrr_node amn;
@@ -113,8 +111,16 @@ struct ural_ifq {
 	uint16_t ifq_len;
 };
 
+enum {
+	URAL_BULK_DT_WR,
+	URAL_BULK_DT_RD,
+	URAL_BULK_CS_WR,
+	URAL_BULK_CS_RD,
+	URAL_N_TRANSFER = 4,
+};
+
 struct ural_softc {
-	void   *sc_evilhack;		/* XXX this pointer must be first */
+	struct ifnet *sc_ifp;
 
 	struct ural_ifq sc_tx_queue;
 	struct usb2_config_td sc_config_td;
@@ -127,7 +133,6 @@ struct ural_softc {
 	struct ural_tx_radiotap_header sc_txtap;
 
 	struct usb2_xfer *sc_xfer[URAL_N_TRANSFER];
-	struct ifnet *sc_ifp;
 	struct usb2_device *sc_udev;
 	const struct ieee80211_rate_table *sc_rates;
 

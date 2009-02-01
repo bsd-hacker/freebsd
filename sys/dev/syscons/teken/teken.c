@@ -49,20 +49,26 @@ static FILE *df;
 #endif /* __FreeBSD__ && _KERNEL */
 
 #include "teken.h"
+
 #ifdef TEKEN_UTF8
 #include "teken_wcwidth.h"
 #else /* !TEKEN_UTF8 */
-static inline int
-teken_wcwidth(teken_char_t c __unused)
-{
-
-#ifdef TEKEN_CONS25
-	return (1);
-#else /* !TEKEN_CONS25 */
-	return (c <= 0x1B) ? -1 : 1;
-#endif /* TEKEN_CONS25 */
-}
+#ifdef TEKEN_XTERM
+#define	teken_wcwidth(c)	((c <= 0x1B) ? -1 : 1)
+#else /* !TEKEN_XTERM */
+#define	teken_wcwidth(c)	(1)
+#endif /* TEKEN_XTERM */
 #endif /* TEKEN_UTF8 */
+
+#if defined(TEKEN_XTERM) && defined(TEKEN_UTF8)
+#include "teken_scs.h"
+#else /* !(TEKEN_XTERM && TEKEN_UTF8) */
+#define	teken_scs_process(t, c)	(c)
+#define	teken_scs_restore(t)
+#define	teken_scs_save(t)
+#define	teken_scs_set(t, g, ts)
+#define	teken_scs_switch(t, g)
+#endif /* TEKEN_XTERM && TEKEN_UTF8 */
 
 /* Private flags for teken_format_t. */
 #define	TF_REVERSE	0x08
@@ -72,11 +78,11 @@ teken_wcwidth(teken_char_t c __unused)
 #define	TS_INSERT	0x02	/* Insert mode. */
 #define	TS_AUTOWRAP	0x04	/* Autowrap. */
 #define	TS_ORIGIN	0x08	/* Origin mode. */
-#ifdef TEKEN_CONS25
-#define	TS_WRAPPED	0x00	/* Simple line wrapping. */
-#else /* !TEKEN_CONS25 */
+#ifdef TEKEN_XTERM
 #define	TS_WRAPPED	0x10	/* Next character should be printed on col 0. */
-#endif /* TEKEN_CONS25 */
+#else /* !TEKEN_XTERM */
+#define	TS_WRAPPED	0x00	/* Simple line wrapping. */
+#endif /* TEKEN_XTERM */
 
 /* Character that blanks a cell. */
 #define	BLANK	' '
@@ -229,6 +235,14 @@ teken_input_char(teken_t *t, teken_char_t c)
 	case '\x0C':
 		teken_subr_newpage(t);
 		break;
+#if defined(TEKEN_XTERM) && defined(TEKEN_UTF8)
+	case '\x0E':
+		teken_scs_switch(t, 1);
+		break;
+	case '\x0F':
+		teken_scs_switch(t, 0);
+		break;
+#endif /* TEKEN_XTERM && TEKEN_UTF8 */
 	case '\r':
 		teken_subr_carriage_return(t);
 		break;

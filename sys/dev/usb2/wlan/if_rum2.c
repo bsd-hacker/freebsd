@@ -375,7 +375,7 @@ static const struct rfprog rum_rf5225[] = {
 };
 
 static const struct usb2_config rum_config[RUM_N_TRANSFER] = {
-	[0] = {
+	[RUM_BULK_DT_WR] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_OUT,
@@ -385,7 +385,7 @@ static const struct usb2_config rum_config[RUM_N_TRANSFER] = {
 		.mh.timeout = 5000,	/* ms */
 	},
 
-	[1] = {
+	[RUM_BULK_DT_RD] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
@@ -394,7 +394,7 @@ static const struct usb2_config rum_config[RUM_N_TRANSFER] = {
 		.mh.callback = &rum_bulk_read_callback,
 	},
 
-	[2] = {
+	[RUM_BULK_CS_WR] = {
 		.type = UE_CONTROL,
 		.endpoint = 0x00,	/* Control pipe */
 		.direction = UE_DIR_ANY,
@@ -404,7 +404,7 @@ static const struct usb2_config rum_config[RUM_N_TRANSFER] = {
 		.mh.interval = 50,	/* 50ms */
 	},
 
-	[3] = {
+	[RUM_BULK_CS_RD] = {
 		.type = UE_CONTROL,
 		.endpoint = 0x00,	/* Control pipe */
 		.direction = UE_DIR_ANY,
@@ -461,9 +461,6 @@ rum_attach(device_t dev)
 	int error;
 	uint8_t iface_index;
 
-	if (sc == NULL) {
-		return (ENOMEM);
-	}
 	device_set_usb2_desc(dev);
 
 	mtx_init(&sc->sc_mtx, "rum lock", MTX_NETWORK_LOCK,
@@ -789,7 +786,6 @@ rum_cfg_first_time_setup(struct rum_softc *sc,
 		DPRINTFN(0, "could not if_alloc()!\n");
 		goto done;
 	}
-	sc->sc_evilhack = ifp;
 	sc->sc_ifp = ifp;
 	ic = ifp->if_l2com;
 
@@ -897,7 +893,7 @@ rum_end_of_commands(struct rum_softc *sc)
 	sc->sc_flags &= ~RUM_FLAG_WAIT_COMMAND;
 
 	/* start write transfer, if not started */
-	usb2_transfer_start(sc->sc_xfer[0]);
+	usb2_transfer_start(sc->sc_xfer[RUM_BULK_DT_WR]);
 }
 
 static void
@@ -1075,7 +1071,7 @@ rum_bulk_read_callback(struct usb2_xfer *xfer)
 tr_setup:
 
 		if (sc->sc_flags & RUM_FLAG_READ_STALL) {
-			usb2_transfer_start(sc->sc_xfer[3]);
+			usb2_transfer_start(sc->sc_xfer[RUM_BULK_CS_RD]);
 		} else {
 			xfer->frlengths[0] = xfer->max_data_length;
 			usb2_start_hardware(xfer);
@@ -1110,7 +1106,7 @@ tr_setup:
 		if (xfer->error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
 			sc->sc_flags |= RUM_FLAG_READ_STALL;
-			usb2_transfer_start(sc->sc_xfer[3]);
+			usb2_transfer_start(sc->sc_xfer[RUM_BULK_CS_RD]);
 		}
 		return;
 
@@ -1121,7 +1117,7 @@ static void
 rum_bulk_read_clear_stall_callback(struct usb2_xfer *xfer)
 {
 	struct rum_softc *sc = xfer->priv_sc;
-	struct usb2_xfer *xfer_other = sc->sc_xfer[1];
+	struct usb2_xfer *xfer_other = sc->sc_xfer[RUM_BULK_DT_RD];
 
 	if (usb2_clear_stall_callback(xfer, xfer_other)) {
 		DPRINTF("stall cleared\n");
@@ -1302,7 +1298,7 @@ rum_setup_desc_and_tx(struct rum_softc *sc, struct mbuf *m, uint32_t flags,
 	/* start write transfer, if not started */
 	_IF_ENQUEUE(&sc->sc_tx_queue, mm);
 
-	usb2_transfer_start(sc->sc_xfer[0]);
+	usb2_transfer_start(sc->sc_xfer[RUM_BULK_DT_WR]);
 }
 
 static void
@@ -1322,7 +1318,7 @@ rum_bulk_write_callback(struct usb2_xfer *xfer)
 
 	case USB_ST_SETUP:
 		if (sc->sc_flags & RUM_FLAG_WRITE_STALL) {
-			usb2_transfer_start(sc->sc_xfer[2]);
+			usb2_transfer_start(sc->sc_xfer[RUM_BULK_CS_WR]);
 			break;
 		}
 		if (sc->sc_flags & RUM_FLAG_WAIT_COMMAND) {
@@ -1380,7 +1376,7 @@ rum_bulk_write_callback(struct usb2_xfer *xfer)
 		if (xfer->error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
 			sc->sc_flags |= RUM_FLAG_WRITE_STALL;
-			usb2_transfer_start(sc->sc_xfer[2]);
+			usb2_transfer_start(sc->sc_xfer[RUM_BULK_CS_WR]);
 		}
 		ifp->if_oerrors++;
 		break;
@@ -1391,7 +1387,7 @@ static void
 rum_bulk_write_clear_stall_callback(struct usb2_xfer *xfer)
 {
 	struct rum_softc *sc = xfer->priv_sc;
-	struct usb2_xfer *xfer_other = sc->sc_xfer[0];
+	struct usb2_xfer *xfer_other = sc->sc_xfer[RUM_BULK_DT_WR];
 
 	if (usb2_clear_stall_callback(xfer, xfer_other)) {
 		DPRINTF("stall cleared\n");
@@ -1473,7 +1469,7 @@ rum_start_cb(struct ifnet *ifp)
 
 	mtx_lock(&sc->sc_mtx);
 	/* start write transfer, if not started */
-	usb2_transfer_start(sc->sc_xfer[0]);
+	usb2_transfer_start(sc->sc_xfer[RUM_BULK_DT_WR]);
 	mtx_unlock(&sc->sc_mtx);
 }
 
@@ -2234,8 +2230,8 @@ rum_cfg_init(struct rum_softc *sc,
 		/*
 		 * start the USB transfers, if not already started:
 		 */
-		usb2_transfer_start(sc->sc_xfer[1]);
-		usb2_transfer_start(sc->sc_xfer[0]);
+		usb2_transfer_start(sc->sc_xfer[RUM_BULK_DT_RD]);
+		usb2_transfer_start(sc->sc_xfer[RUM_BULK_DT_WR]);
 
 		/*
 		 * start IEEE802.11 layer
@@ -2293,10 +2289,10 @@ rum_cfg_pre_stop(struct rum_softc *sc,
 	/*
 	 * stop all the transfers, if not already stopped:
 	 */
-	usb2_transfer_stop(sc->sc_xfer[0]);
-	usb2_transfer_stop(sc->sc_xfer[1]);
-	usb2_transfer_stop(sc->sc_xfer[2]);
-	usb2_transfer_stop(sc->sc_xfer[3]);
+	usb2_transfer_stop(sc->sc_xfer[RUM_BULK_DT_WR]);
+	usb2_transfer_stop(sc->sc_xfer[RUM_BULK_DT_RD]);
+	usb2_transfer_stop(sc->sc_xfer[RUM_BULK_CS_WR]);
+	usb2_transfer_stop(sc->sc_xfer[RUM_BULK_CS_RD]);
 
 	/* clean up transmission */
 	rum_tx_clean_queue(sc);

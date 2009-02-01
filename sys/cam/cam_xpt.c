@@ -4177,7 +4177,10 @@ xpt_path_string(struct cam_path *path, char *str, size_t str_len)
 {
 	struct sbuf sb;
 
-	mtx_assert(path->bus->sim->mtx, MA_OWNED);
+#ifdef INVARIANTS
+	if (path != NULL && path->bus != NULL && path->bus->sim != NULL)
+		mtx_assert(path->bus->sim->mtx, MA_OWNED);
+#endif
 
 	sbuf_new(&sb, str, str_len, 0);
 
@@ -5191,6 +5194,11 @@ xpt_scan_bus(struct cam_periph *periph, union ccb *request_ccb)
 		/* Save some state for use while we probe for devices */
 		scan_info = (xpt_scan_bus_info *)
 		    malloc(sizeof(xpt_scan_bus_info), M_CAMXPT, M_NOWAIT);
+		if (scan_info == NULL) {
+			request_ccb->ccb_h.status = CAM_RESRC_UNAVAIL;
+			xpt_done(request_ccb);
+			return;
+		}
 		scan_info->request_ccb = request_ccb;
 		scan_info->cpi = &work_ccb->cpi;
 
@@ -6137,7 +6145,7 @@ probedone(struct cam_periph *periph, union ccb *done_ccb)
 		}
 		xpt_release_ccb(done_ccb);
 		softc->action = PROBE_TUR_FOR_NEGOTIATION;
-		xpt_schedule(periph, done_ccb->ccb_h.pinfo.priority);
+		xpt_schedule(periph, priority);
 		return;
 	}
 
