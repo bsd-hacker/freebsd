@@ -411,6 +411,8 @@ static void	ShowAliasStats(struct libalias *);
 static int	InitPacketAliasLog(struct libalias *);
 static void	UninitPacketAliasLog(struct libalias *);
 
+void SctpShowAliasStats(struct libalias *la);
+
 static		u_int
 StartPointIn(struct in_addr alias_addr,
     u_short alias_port,
@@ -509,6 +511,13 @@ ShowAliasStats(struct libalias *la)
 #endif
 	}
 }
+
+void SctpShowAliasStats(struct libalias *la)
+{
+
+	ShowAliasStats(la);
+}
+
 
 /* Internal routines for finding, deleting and adding links
 
