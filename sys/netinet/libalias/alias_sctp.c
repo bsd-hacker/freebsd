@@ -1163,7 +1163,7 @@ sctp_PktParser(struct libalias *la, int direction, struct ip *pip,
 
 		/* Is this the end of the packet ? */
 		if (bytes_left == 0)
-			return(SN_PARSE_OK);
+			return (*passoc == NULL)?(SN_PARSE_ERROR_LOOKUP):(SN_PARSE_OK);
 
 		/* Are there enough bytes in packet to at least retrieve length of next chunk ? */
 		if (bytes_left < SN_MIN_CHUNK_SIZE)
