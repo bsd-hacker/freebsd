@@ -714,6 +714,7 @@ struct vnet_ipfw {
 	u_int64_t _norule_counter;
 	struct callout _ipfw_timeout;
 	eventhandler_tag _ifaddr_event_tag;
+	int _nat_reass;
 };
 
 #ifndef VIMAGE
@@ -758,6 +759,7 @@ extern struct vnet_ipfw vnet_ipfw_0;
 #define	V_norule_counter	VNET_IPFW(norule_counter)
 #define	V_ipfw_timeout		VNET_IPFW(ipfw_timeout)
 #define	V_ifaddr_event_tag	VNET_IPFW(ifaddr_event_tag)
+#define V_nat_reass             VNET_IPFW(nat_reass)
 
 #endif /* _KERNEL */
 #endif /* _IPFW2_H */
