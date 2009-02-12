@@ -64,6 +64,7 @@ struct alq {
 	//struct ale	*aq_first;	/* First ent */
 	//struct ale	*aq_entfree;	/* First free ent */
 	//struct ale	*aq_entvalid;	/* First ent valid for writing */
+	void (*doio_debugcallback)(void);
 	LIST_ENTRY(alq)	aq_act;		/* List of active queues */
 	LIST_ENTRY(alq)	aq_link;	/* List of all queues */
 };
@@ -267,7 +268,7 @@ alq_doio(struct alq *alq)
 	int iov;
 	int vfslocked;
 
-	KASSERT(alq->aq_freebytes != alq->aq_buflen,
+	KASSERT((alq->aq_freebytes != alq->aq_buflen),
 		("%s: queue emtpy!", __func__)
 	);
 
@@ -300,6 +301,10 @@ alq_doio(struct alq *alq)
 	}
 
 	alq->aq_flags |= AQ_FLUSHING;
+
+	if (alq->doio_debugcallback != NULL)
+		alq->doio_debugcallback();
+
 	ALQ_UNLOCK(alq);
 
 	auio.uio_iov = &aiov[0];
@@ -343,6 +348,9 @@ alq_doio(struct alq *alq)
 	if (alq->aq_freebytes == alq->aq_buflen)
 		alq->aq_writehead = alq->aq_writetail = 0;
 
+	if (alq->doio_debugcallback != NULL)
+		alq->doio_debugcallback();
+
 	if (alq->aq_flags & AQ_WANTED) {
 		alq->aq_flags &= ~AQ_WANTED;
 		return (1);
@@ -377,8 +385,8 @@ alq_open(struct alq **alqp, const char *file, struct ucred *cred, int cmode,
 	int error;
 	int vfslocked;
 
-	KASSERT(size > 0, ("%s: size <= 0", __func__));
-	KASSERT(count >= 0, ("%s: count < 0", __func__));
+	KASSERT((size > 0), ("%s: size <= 0", __func__));
+	KASSERT((count >= 0), ("%s: count < 0", __func__));
 
 	*alqp = NULL;
 	td = curthread;
@@ -419,6 +427,8 @@ alq_open(struct alq **alqp, const char *file, struct ucred *cred, int cmode,
 
 	alq->aq_writehead = alq->aq_writetail = 0;
 
+	alq->doio_debugcallback = NULL;
+
 	if ((error = ald_add(alq)) != 0)
 		return (error);
 	*alqp = alq;
@@ -434,7 +444,7 @@ int
 alq_write(struct alq *alq, void *data, int flags)
 {
 	/* should only be called in fixed length message (legacy) mode */
-	KASSERT(alq->aq_entmax > 0 && alq->aq_entlen > 0,
+	KASSERT((alq->aq_entmax > 0 && alq->aq_entlen > 0),
 		("%s: fixed length write on variable length queue", __func__)
 	);
 	return (alq_writen(alq, data, alq->aq_entlen, flags));
@@ -446,7 +456,7 @@ alq_writen(struct alq *alq, void *data, int len, int flags)
 	int activate = 0;
 	int copy = len;
 
-	KASSERT(len > 0 && len <= alq->aq_buflen,
+	KASSERT((len > 0 && len <= alq->aq_buflen),
 		("%s: len <= 0 || len > alq->aq_buflen", __func__)
 	);
 
@@ -509,7 +519,8 @@ alq_writen(struct alq *alq, void *data, int len, int flags)
 
 	alq->aq_freebytes -= len;
 
-	if ((alq->aq_flags & AQ_ACTIVE) == 0) {
+	if (((alq->aq_flags & AQ_ACTIVE) == 0) &&
+		((flags & ALQ_NOACTIVATE) == 0)) {
 		alq->aq_flags |= AQ_ACTIVE;
 		activate = 1;
 	}
@@ -529,7 +540,7 @@ struct ale *
 alq_get(struct alq *alq, int flags)
 {
 	/* should only be called in fixed length message (legacy) mode */
-	KASSERT(alq->aq_entmax > 0 && alq->aq_entlen > 0,
+	KASSERT((alq->aq_entmax > 0 && alq->aq_entlen > 0),
 		("%s: fixed length get on variable length queue", __func__)
 	);
 	return (alq_getn(alq, alq->aq_entlen, flags));
@@ -541,7 +552,7 @@ alq_getn(struct alq *alq, int len, int flags)
 	struct ale *ale;
 	int contigbytes;
 
-	KASSERT(len > 0 && len <= alq->aq_buflen,
+	KASSERT((len > 0 && len <= alq->aq_buflen),
 		("%s: len <= 0 || len > alq->aq_buflen", __func__)
 	);
 
@@ -625,11 +636,12 @@ alq_getn(struct alq *alq, int len, int flags)
 }
 
 void
-alq_post(struct alq *alq, struct ale *ale)
+alq_post(struct alq *alq, struct ale *ale, int flags)
 {
 	int activate;
 
-	if ((alq->aq_flags & AQ_ACTIVE) == 0) {
+	if (((alq->aq_flags & AQ_ACTIVE) == 0) &&
+		((flags & ALQ_NOACTIVATE) == 0)) {
 		alq->aq_flags |= AQ_ACTIVE;
 		activate = 1;
 	} else
