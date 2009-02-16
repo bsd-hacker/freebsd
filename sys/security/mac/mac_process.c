@@ -364,8 +364,10 @@ mac_proc_vm_revoke_recurse(struct thread *td, struct ucred *cred,
 				vme->max_protection = 0;
 				vme->protection = 0;
 			}
+			vm_object_lock_all(vme->object.vm_object);
 			pmap_protect(map->pmap, vme->start, vme->end,
 			    vme->protection & ~revokeperms);
+			vm_object_unlock_all(vme->object.vm_object);
 			vm_map_simplify_entry(map, vme);
 		}
 		VFS_UNLOCK_GIANT(vfslocked);

@@ -2309,7 +2309,6 @@ vfs_setdirty_locked_object(struct buf *bp)
 		vm_offset_t boffset;
 		vm_offset_t eoffset;
 
-		vm_page_lock_queues();
 		/*
 		 * test the pages to see if they have been modified directly
 		 * by users through the VM system.
@@ -2335,7 +2334,6 @@ vfs_setdirty_locked_object(struct buf *bp)
 		}
 		eoffset = ((i + 1) << PAGE_SHIFT) - (bp->b_offset & PAGE_MASK);
 
-		vm_page_unlock_queues();
 		/*
 		 * Fit it to the buffer.
 		 */
@@ -3162,7 +3160,6 @@ bufdone_finish(struct buf *bp)
 		vm_object_t obj;
 		int iosize;
 		struct vnode *vp = bp->b_vp;
-		boolean_t are_queues_locked;
 
 		obj = bp->b_bufobj->bo_object;
 
@@ -3199,11 +3196,6 @@ bufdone_finish(struct buf *bp)
 		    !(bp->b_ioflags & BIO_ERROR)) {
 			bp->b_flags |= B_CACHE;
 		}
-		if (bp->b_iocmd == BIO_READ) {
-			vm_page_lock_queues();
-			are_queues_locked = TRUE;
-		} else
-			are_queues_locked = FALSE;
 		for (i = 0; i < bp->b_npages; i++) {
 			int bogusflag = 0;
 			int resid;
@@ -3272,8 +3264,6 @@ bufdone_finish(struct buf *bp)
 			foff = (foff + PAGE_SIZE) & ~(off_t)PAGE_MASK;
 			iosize -= resid;
 		}
-		if (are_queues_locked)
-			vm_page_unlock_queues();
 		vm_object_pip_wakeupn(obj, 0);
 		VM_OBJECT_UNLOCK(obj);
 	}
@@ -3341,7 +3331,6 @@ vfs_page_set_valid(struct buf *bp, vm_ooffset_t off, vm_page_t m)
 {
 	vm_ooffset_t soff, eoff;
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
 	/*
 	 * Start and end offsets in buffer.  eoff - soff may not cross a
 	 * page boundry or cross the end of the buffer.  The end of the
@@ -3466,7 +3455,6 @@ vfs_clean_pages(struct buf *bp)
 	KASSERT(bp->b_offset != NOOFFSET,
 	    ("vfs_clean_pages: no buffer offset"));
 	VM_OBJECT_LOCK(bp->b_bufobj->bo_object);
-	vm_page_lock_queues();
 	for (i = 0; i < bp->b_npages; i++) {
 		m = bp->b_pages[i];
 		noff = (foff + PAGE_SIZE) & ~(off_t)PAGE_MASK;
@@ -3478,7 +3466,6 @@ vfs_clean_pages(struct buf *bp)
 		/* vm_page_clear_dirty(m, foff & PAGE_MASK, eoff - foff); */
 		foff = noff;
 	}
-	vm_page_unlock_queues();
 	VM_OBJECT_UNLOCK(bp->b_bufobj->bo_object);
 }
 
@@ -3509,7 +3496,6 @@ vfs_bio_set_validclean(struct buf *bp, int base, int size)
 	n = PAGE_SIZE - (base & PAGE_MASK);
 
 	VM_OBJECT_LOCK(bp->b_bufobj->bo_object);
-	vm_page_lock_queues();
 	for (i = base / PAGE_SIZE; size > 0 && i < bp->b_npages; ++i) {
 		m = bp->b_pages[i];
 		if (n > size)
@@ -3519,7 +3505,6 @@ vfs_bio_set_validclean(struct buf *bp, int base, int size)
 		size -= n;
 		n = PAGE_SIZE;
 	}
-	vm_page_unlock_queues();
 	VM_OBJECT_UNLOCK(bp->b_bufobj->bo_object);
 }
 

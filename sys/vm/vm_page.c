@@ -566,6 +566,8 @@ vm_page_sleep(vm_page_t m, const char *msg)
 void
 vm_page_dirty(vm_page_t m)
 {
+
+	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 	KASSERT((m->flags & PG_CACHED) == 0,
 	    ("vm_page_dirty: page in cache!"));
 	KASSERT(!VM_PAGE_IS_FREE(m),
@@ -1594,7 +1596,7 @@ vm_page_try_to_free(vm_page_t m)
 	    (m->oflags & VPO_BUSY) || (m->flags & PG_UNMANAGED)) {
 		return (0);
 	}
-	pmap_remove_all(m);
+	pmap_remove_all(m);	/* XXX */
 	if (m->dirty)
 		return (0);
 	vm_page_free(m);
@@ -1741,6 +1743,7 @@ vm_page_dontneed(vm_page_t m)
 	int head;
 
 	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 	dnw = ++dnweight;
 
 	/*
@@ -1870,7 +1873,6 @@ vm_page_set_validclean(vm_page_t m, int base, int size)
 	int frag;
 	int endoff;
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
 	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 	if (size == 0)	/* handle degenerate case */
 		return;
@@ -1929,6 +1931,7 @@ void
 vm_page_clear_dirty(vm_page_t m, int base, int size)
 {
 
+	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);	/* XXX */
 	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
 	m->dirty &= ~vm_page_bits(base, size);
 }
@@ -2028,6 +2031,8 @@ vm_page_is_valid(vm_page_t m, int base, int size)
 void
 vm_page_test_dirty(vm_page_t m)
 {
+
+	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 	if ((m->dirty != VM_PAGE_BITS_ALL) && pmap_is_modified(m)) {
 		vm_page_dirty(m);
 	}
@@ -2118,6 +2123,7 @@ vm_page_cowsetup(vm_page_t m)
 {
 
 	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);	/* XXX */
 	if (m->cow == USHRT_MAX - 1)
 		return (EBUSY);
 	m->cow++;

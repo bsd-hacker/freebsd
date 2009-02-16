@@ -238,7 +238,7 @@ db_set_watchpoints()
 	    for (watch = db_watchpoint_list;
 	         watch != 0;
 	         watch = watch->link)
-		pmap_protect(watch->map->pmap,
+		pmap_protect(watch->map->pmap,	/* XXX */
 			     trunc_page(watch->loaddr),
 			     round_page(watch->hiaddr),
 			     VM_PROT_READ);
