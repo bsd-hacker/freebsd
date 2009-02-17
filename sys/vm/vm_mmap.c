@@ -869,10 +869,10 @@ RestartScan:
 				 */
 				if (m != NULL && m->valid != 0) {
 					mincoreinfo = MINCORE_INCORE;
-					vm_page_lock_queues();
 					if (m->dirty ||
 						pmap_is_modified(m))
 						mincoreinfo |= MINCORE_MODIFIED_OTHER;
+					vm_page_lock_queues();
 					if ((m->flags & PG_REFERENCED) ||
 						pmap_ts_referenced(m)) {
 						vm_page_flag_set(m, PG_REFERENCED);
