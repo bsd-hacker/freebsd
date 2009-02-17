@@ -116,8 +116,11 @@ retry:
 		 * object chain's first object, a physical page from a
 		 * backing object may be mapped read only.
 		 */
-		if (uobject->backing_object != NULL)
+		if (uobject->backing_object != NULL) {
+			vm_object_lock_all(uobject->backing_object);
 			pmap_remove(map->pmap, uaddr, uaddr + PAGE_SIZE);
+			vm_object_unlock_all(uobject->backing_object);
+		}
 		vm_page_lock_queues();
 	}
 	vm_page_insert(kern_pg, uobject, upindex);

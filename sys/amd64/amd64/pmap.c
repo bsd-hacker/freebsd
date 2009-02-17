@@ -252,10 +252,13 @@ static void pmap_insert_entry(pmap_t pmap, vm_offset_t va, vm_page_t m);
 static boolean_t pmap_try_insert_pv_entry(pmap_t pmap, vm_offset_t va,
     vm_page_t m);
 
-static vm_page_t pmap_allocpde(pmap_t pmap, vm_offset_t va, int flags);
-static vm_page_t pmap_allocpte(pmap_t pmap, vm_offset_t va, int flags);
+static vm_page_t pmap_allocpde(pmap_t pmap, vm_offset_t va, vm_object_t object,
+    int flags);
+static vm_page_t pmap_allocpte(pmap_t pmap, vm_offset_t va, vm_object_t object,
+    int flags);
 
-static vm_page_t _pmap_allocpte(pmap_t pmap, vm_pindex_t ptepindex, int flags);
+static vm_page_t _pmap_allocpte(pmap_t pmap, vm_pindex_t ptepindex,
+    vm_object_t object, int flags);
 static int _pmap_unwire_pte_hold(pmap_t pmap, vm_offset_t va, vm_page_t m,
                 vm_page_t* free);
 static int pmap_unuse_pt(pmap_t, vm_offset_t, pd_entry_t, vm_page_t *);
@@ -1452,7 +1455,8 @@ pmap_pinit(pmap_t pmap)
  * race conditions.
  */
 static vm_page_t
-_pmap_allocpte(pmap_t pmap, vm_pindex_t ptepindex, int flags)
+_pmap_allocpte(pmap_t pmap, vm_pindex_t ptepindex, vm_object_t object,
+    int flags)
 {
 	vm_page_t m, pdppg, pdpg;
 
@@ -1468,7 +1472,9 @@ _pmap_allocpte(pmap_t pmap, vm_pindex_t ptepindex, int flags)
 		if (flags & M_WAITOK) {
 			PMAP_UNLOCK(pmap);
 			vm_page_unlock_queues();
+			vm_object_unlock_all(object);
 			VM_WAIT;
+			vm_object_lock_all(object);
 			vm_page_lock_queues();
 			PMAP_LOCK(pmap);
 		}
@@ -1512,7 +1518,7 @@ _pmap_allocpte(pmap_t pmap, vm_pindex_t ptepindex, int flags)
 		if ((*pml4 & PG_V) == 0) {
 			/* Have to allocate a new pdp, recurse */
 			if (_pmap_allocpte(pmap, NUPDE + NUPDPE + pml4index,
-			    flags) == NULL) {
+			    object, flags) == NULL) {
 				--m->wire_count;
 				vm_page_free(m);
 				return (NULL);
@@ -1544,7 +1550,7 @@ _pmap_allocpte(pmap_t pmap, vm_pindex_t ptepindex, int flags)
 		if ((*pml4 & PG_V) == 0) {
 			/* Have to allocate a new pd, recurse */
 			if (_pmap_allocpte(pmap, NUPDE + pdpindex,
-			    flags) == NULL) {
+			    object, flags) == NULL) {
 				--m->wire_count;
 				vm_page_free(m);
 				return (NULL);
@@ -1557,7 +1563,7 @@ _pmap_allocpte(pmap_t pmap, vm_pindex_t ptepindex, int flags)
 			if ((*pdp & PG_V) == 0) {
 				/* Have to allocate a new pd, recurse */
 				if (_pmap_allocpte(pmap, NUPDE + pdpindex,
-				    flags) == NULL) {
+				    object, flags) == NULL) {
 					--m->wire_count;
 					vm_page_free(m);
 					return (NULL);
@@ -1579,7 +1585,7 @@ _pmap_allocpte(pmap_t pmap, vm_pindex_t ptepindex, int flags)
 }
 
 static vm_page_t
-pmap_allocpde(pmap_t pmap, vm_offset_t va, int flags)
+pmap_allocpde(pmap_t pmap, vm_offset_t va, vm_object_t object, int flags)
 {
 	vm_pindex_t pdpindex, ptepindex;
 	pdp_entry_t *pdpe;
@@ -1598,7 +1604,7 @@ retry:
 		/* Allocate a pd page. */
 		ptepindex = pmap_pde_pindex(va);
 		pdpindex = ptepindex >> NPDPEPGSHIFT;
-		pdpg = _pmap_allocpte(pmap, NUPDE + pdpindex, flags);
+		pdpg = _pmap_allocpte(pmap, NUPDE + pdpindex, object, flags);
 		if (pdpg == NULL && (flags & M_WAITOK))
 			goto retry;
 	}
@@ -1606,7 +1612,7 @@ retry:
 }
 
 static vm_page_t
-pmap_allocpte(pmap_t pmap, vm_offset_t va, int flags)
+pmap_allocpte(pmap_t pmap, vm_offset_t va, vm_object_t object, int flags)
 {
 	vm_pindex_t ptepindex;
 	pd_entry_t *pd;
@@ -1652,7 +1658,7 @@ retry:
 		 * Here if the pte page isn't mapped, or if it has been
 		 * deallocated.
 		 */
-		m = _pmap_allocpte(pmap, ptepindex, flags);
+		m = _pmap_allocpte(pmap, ptepindex, object, flags);
 		if (m == NULL && (flags & M_WAITOK))
 			goto retry;
 	}
@@ -1869,6 +1875,7 @@ pmap_collect(pmap_t locked_pmap, struct vpgqueues *vpq)
 	vm_offset_t va;
 	vm_page_t m, free;
 
+	mtx_assert(&vm_page_queue_mtx, MA_OWNED);	/* XXX */
 	TAILQ_FOREACH(m, &vpq->pl, pageq) {
 		if (m->hold_count || m->busy)
 			continue;
@@ -1920,11 +1927,10 @@ free_pv_entry(pmap_t pmap, pv_entry_t pv)
 	struct pv_chunk *pc;
 	int idx, field, bit;
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
 	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
 	PV_STAT(pv_entry_frees++);
 	PV_STAT(pv_entry_spare++);
-	pv_entry_count--;
+	atomic_subtract_int(&pv_entry_count, 1);
 	pc = pv_to_chunk(pv);
 	idx = pv - &pc->pc_pventry[0];
 	field = idx / 64;
@@ -1964,9 +1970,8 @@ get_pv_entry(pmap_t pmap, int try)
 	vm_page_t m;
 
 	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
 	PV_STAT(pv_entry_allocs++);
-	pv_entry_count++;
+	atomic_add_int(&pv_entry_count, 1);
 	if (pv_entry_count > pv_entry_high_water)
 		if (ratecheck(&lastprint, &printinterval))
 			printf("Approaching the limit on PV entries, consider "
@@ -2001,7 +2006,7 @@ retry:
 	    VM_ALLOC_WIRED);
 	if (m == NULL) {
 		if (try) {
-			pv_entry_count--;
+			atomic_subtract_int(&pv_entry_count, 1);
 			PV_STAT(pc_chunk_tryfail++);
 			return (NULL);
 		}
@@ -2047,7 +2052,6 @@ pmap_pvh_remove(struct md_page *pvh, pmap_t pmap, vm_offset_t va)
 {
 	pv_entry_t pv;
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
 	TAILQ_FOREACH(pv, &pvh->pv_list, pv_list) {
 		if (pmap == PV_PMAP(pv) && va == pv->pv_va) {
 			TAILQ_REMOVE(&pvh->pv_list, pv, pv_list);
@@ -2070,7 +2074,6 @@ pmap_pv_demote_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa)
 	vm_offset_t va_last;
 	vm_page_t m;
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
 	KASSERT((pa & PDRMASK) == 0,
 	    ("pmap_pv_demote_pde: pa is not 2mpage aligned"));
 
@@ -2083,6 +2086,7 @@ pmap_pv_demote_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa)
 	pv = pmap_pvh_remove(pvh, pmap, va);
 	KASSERT(pv != NULL, ("pmap_pv_demote_pde: pv not found"));
 	m = PHYS_TO_VM_PAGE(pa);
+	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 	TAILQ_INSERT_TAIL(&m->md.pv_list, pv, pv_list);
 	/* Instantiate the remaining NPTEPG - 1 pv entries. */
 	va_last = va + NBPDR - PAGE_SIZE;
@@ -2108,7 +2112,6 @@ pmap_pv_promote_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa)
 	vm_offset_t va_last;
 	vm_page_t m;
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
 	KASSERT((pa & PDRMASK) == 0,
 	    ("pmap_pv_promote_pde: pa is not 2mpage aligned"));
 
@@ -2121,6 +2124,7 @@ pmap_pv_promote_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa)
 	 */
 	m = PHYS_TO_VM_PAGE(pa);
 	va = trunc_2mpage(va);
+	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 	pv = pmap_pvh_remove(&m->md, pmap, va);
 	KASSERT(pv != NULL, ("pmap_pv_promote_pde: pv not found"));
 	pvh = pa_to_pvh(pa);
@@ -2130,6 +2134,7 @@ pmap_pv_promote_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa)
 	do {
 		m++;
 		va += PAGE_SIZE;
+		VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 		pmap_pvh_free(&m->md, pmap, va);
 	} while (va < va_last);
 }
@@ -2154,7 +2159,7 @@ pmap_remove_entry(pmap_t pmap, vm_page_t m, vm_offset_t va)
 {
 	struct md_page *pvh;
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 	pmap_pvh_free(&m->md, pmap, va);
 	if (TAILQ_EMPTY(&m->md.pv_list)) {
 		pvh = pa_to_pvh(VM_PAGE_TO_PHYS(m));
@@ -2172,8 +2177,7 @@ pmap_insert_entry(pmap_t pmap, vm_offset_t va, vm_page_t m)
 {
 	pv_entry_t pv;
 
-	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 	pv = get_pv_entry(pmap, FALSE);
 	pv->pv_va = va;
 	TAILQ_INSERT_TAIL(&m->md.pv_list, pv, pv_list);
@@ -2187,8 +2191,7 @@ pmap_try_insert_pv_entry(pmap_t pmap, vm_offset_t va, vm_page_t m)
 {
 	pv_entry_t pv;
 
-	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 	if (pv_entry_count < pv_entry_high_water && 
 	    (pv = get_pv_entry(pmap, TRUE)) != NULL) {
 		pv->pv_va = va;
@@ -2207,7 +2210,6 @@ pmap_pv_insert_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa)
 	struct md_page *pvh;
 	pv_entry_t pv;
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
 	if (pv_entry_count < pv_entry_high_water && 
 	    (pv = get_pv_entry(pmap, TRUE)) != NULL) {
 		pv->pv_va = va;
@@ -2601,7 +2603,7 @@ pmap_remove_all(vm_page_t m)
 
 	KASSERT((m->flags & PG_FICTITIOUS) == 0,
 	    ("pmap_remove_all: page %p is fictitious", m));
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 	pvh = pa_to_pvh(VM_PAGE_TO_PHYS(m));
 	while ((pv = TAILQ_FIRST(&pvh->pv_list)) != NULL) {
 		va = pv->pv_va;
@@ -2969,7 +2971,7 @@ pmap_enter(pmap_t pmap, vm_offset_t va, vm_prot_t access, vm_page_t m,
 	 * resident, we are creating it here.
 	 */
 	if (va < VM_MAXUSER_ADDRESS) {
-		mpte = pmap_allocpte(pmap, va, M_WAITOK);
+		mpte = pmap_allocpte(pmap, va, m->object, M_WAITOK);
 	}
 
 	pde = pmap_pde(pmap, va);
@@ -3124,9 +3126,9 @@ pmap_enter_pde(pmap_t pmap, vm_offset_t va, vm_page_t m, vm_prot_t prot)
 	pd_entry_t *pde, newpde;
 	vm_page_t free, mpde;
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
-	if ((mpde = pmap_allocpde(pmap, va, M_NOWAIT)) == NULL) {
+	if ((mpde = pmap_allocpde(pmap, va, NULL, M_NOWAIT)) == NULL) {
 		CTR2(KTR_PMAP, "pmap_enter_pde: failure for va %#lx"
 		    " in pmap %p", va, pmap);
 		return (FALSE);
@@ -3249,7 +3251,7 @@ pmap_enter_quick_locked(pmap_t pmap, vm_offset_t va, vm_page_t m,
 	KASSERT(va < kmi.clean_sva || va >= kmi.clean_eva ||
 	    (m->flags & (PG_FICTITIOUS | PG_UNMANAGED)) != 0,
 	    ("pmap_enter_quick_locked: managed mapping within the clean submap"));
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
 
 	/*
@@ -3283,7 +3285,7 @@ pmap_enter_quick_locked(pmap_t pmap, vm_offset_t va, vm_page_t m,
 				mpte->wire_count++;
 			} else {
 				mpte = _pmap_allocpte(pmap, ptepindex,
-				    M_NOWAIT);
+				    NULL, M_NOWAIT);
 				if (mpte == NULL)
 					return (mpte);
 			}
@@ -3412,7 +3414,7 @@ retry:
 		PMAP_LOCK(pmap);
 		for (va = addr; va < addr + size; va += NBPDR) {
 			while ((pdpg =
-			    pmap_allocpde(pmap, va, M_NOWAIT)) == NULL) {
+			    pmap_allocpde(pmap, va, NULL, M_NOWAIT)) == NULL) {
 				PMAP_UNLOCK(pmap);
 				vm_page_busy(p);
 				VM_OBJECT_UNLOCK(object);
@@ -3519,7 +3521,6 @@ pmap_copy(pmap_t dst_pmap, pmap_t src_pmap, vm_offset_t dst_addr, vm_size_t len,
 	if (!pmap_is_current(src_pmap))
 		return;
 
-	vm_page_lock_queues();
 	if (dst_pmap < src_pmap) {
 		PMAP_LOCK(dst_pmap);
 		PMAP_LOCK(src_pmap);
@@ -3563,7 +3564,7 @@ pmap_copy(pmap_t dst_pmap, pmap_t src_pmap, vm_offset_t dst_addr, vm_size_t len,
 			continue;
 			
 		if (srcptepaddr & PG_PS) {
-			dstmpde = pmap_allocpde(dst_pmap, addr, M_NOWAIT);
+			dstmpde = pmap_allocpde(dst_pmap, addr, NULL, M_NOWAIT);
 			if (dstmpde == NULL)
 				break;
 			pde = (pd_entry_t *)
@@ -3595,7 +3596,7 @@ pmap_copy(pmap_t dst_pmap, pmap_t src_pmap, vm_offset_t dst_addr, vm_size_t len,
 			 * we only virtual copy managed pages
 			 */
 			if ((ptetemp & PG_MANAGED) != 0) {
-				dstmpte = pmap_allocpte(dst_pmap, addr,
+				dstmpte = pmap_allocpte(dst_pmap, addr, NULL,
 				    M_NOWAIT);
 				if (dstmpte == NULL)
 					break;
@@ -3629,7 +3630,6 @@ pmap_copy(pmap_t dst_pmap, pmap_t src_pmap, vm_offset_t dst_addr, vm_size_t len,
 			src_pte++;
 		}
 	}
-	vm_page_unlock_queues();
 	PMAP_UNLOCK(src_pmap);
 	PMAP_UNLOCK(dst_pmap);
 }	
@@ -3709,7 +3709,7 @@ pmap_page_exists_quick(pmap_t pmap, vm_page_t m)
 	if (m->flags & PG_FICTITIOUS)
 		return FALSE;
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 	TAILQ_FOREACH(pv, &m->md.pv_list, pv_list) {
 		if (PV_PMAP(pv) == pmap) {
 			return TRUE;
@@ -3745,6 +3745,7 @@ pmap_page_wired_mappings(vm_page_t m)
 	count = 0;
 	if ((m->flags & PG_FICTITIOUS) != 0)
 		return (count);
+	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 	count = pmap_pvh_wired_mappings(&m->md, count);
 	return (pmap_pvh_wired_mappings(pa_to_pvh(VM_PAGE_TO_PHYS(m)), count));
 }
@@ -3761,7 +3762,6 @@ pmap_pvh_wired_mappings(struct md_page *pvh, int count)
 	pt_entry_t *pte;
 	pv_entry_t pv;
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
 	TAILQ_FOREACH(pv, &pvh->pv_list, pv_list) {
 		pmap = PV_PMAP(pv);
 		PMAP_LOCK(pmap);
@@ -3784,7 +3784,7 @@ pmap_page_is_mapped(vm_page_t m)
 
 	if ((m->flags & (PG_FICTITIOUS | PG_UNMANAGED)) != 0)
 		return (FALSE);
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 	if (TAILQ_EMPTY(&m->md.pv_list)) {
 		pvh = pa_to_pvh(VM_PAGE_TO_PHYS(m));
 		return (!TAILQ_EMPTY(&pvh->pv_list));
@@ -3805,6 +3805,7 @@ pmap_remove_pages(pmap_t pmap)
 {
 	pd_entry_t *pde;
 	pt_entry_t *pte, tpte;
+	vm_object_t locked_object;
 	vm_page_t free = NULL;
 	vm_page_t m, mpte, mt;
 	pv_entry_t pv;
@@ -3819,6 +3820,8 @@ pmap_remove_pages(pmap_t pmap)
 		printf("warning: pmap_remove_pages called with non-current pmap\n");
 		return;
 	}
+	locked_object = NULL;
+restart:
 	vm_page_lock_queues();
 	PMAP_LOCK(pmap);
 	TAILQ_FOREACH_SAFE(pc, &pmap->pm_pvchunk, pc_list, npc) {
@@ -3865,6 +3868,18 @@ pmap_remove_pages(pmap_t pmap)
 				KASSERT(m < &vm_page_array[vm_page_array_size],
 					("pmap_remove_pages: bad tpte %#jx",
 					(uintmax_t)tpte));
+				if (m->object != locked_object) {
+					if (locked_object != NULL)
+						VM_OBJECT_UNLOCK(locked_object);
+					locked_object = m->object;
+					if (!VM_OBJECT_TRYLOCK(locked_object)) {
+						pmap_invalidate_all(pmap);
+						vm_page_unlock_queues();
+						PMAP_UNLOCK(pmap);
+						VM_OBJECT_LOCK(locked_object);
+						goto restart;
+					}
+				}
 
 				pte_clear(pte);
 
@@ -3882,7 +3897,7 @@ pmap_remove_pages(pmap_t pmap)
 				/* Mark free */
 				PV_STAT(pv_entry_frees++);
 				PV_STAT(pv_entry_spare++);
-				pv_entry_count--;
+				atomic_subtract_int(&pv_entry_count, 1);
 				pc->pc_map[field] |= bitmask;
 				if ((tpte & PG_PS) != 0) {
 					pmap->pm_stats.resident_count -= NBPDR / PAGE_SIZE;
@@ -3916,6 +3931,10 @@ pmap_remove_pages(pmap_t pmap)
 				}
 			}
 		}
+		if (locked_object != NULL) {
+			VM_OBJECT_UNLOCK(locked_object);
+			locked_object = NULL;
+		}
 		if (allfree) {
 			PV_STAT(pv_entry_spare -= _NPCPV);
 			PV_STAT(pc_chunk_count--);
@@ -3945,6 +3964,7 @@ pmap_is_modified(vm_page_t m)
 
 	if (m->flags & PG_FICTITIOUS)
 		return (FALSE);
+	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 	if (pmap_is_modified_pvh(&m->md))
 		return (TRUE);
 	return (pmap_is_modified_pvh(pa_to_pvh(VM_PAGE_TO_PHYS(m))));
@@ -3963,7 +3983,6 @@ pmap_is_modified_pvh(struct md_page *pvh)
 	pmap_t pmap;
 	boolean_t rv;
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
 	rv = FALSE;
 	TAILQ_FOREACH(pv, &pvh->pv_list, pv_list) {
 		pmap = PV_PMAP(pv);
@@ -4017,7 +4036,7 @@ pmap_remove_write(vm_page_t m)
 	if ((m->flags & PG_FICTITIOUS) != 0 ||
 	    (m->flags & PG_WRITEABLE) == 0)
 		return;
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 	pvh = pa_to_pvh(VM_PAGE_TO_PHYS(m));
 	TAILQ_FOREACH_SAFE(pv, &pvh->pv_list, pv_list, next_pv) {
 		va = pv->pv_va;
@@ -4075,7 +4094,7 @@ pmap_ts_referenced(vm_page_t m)
 
 	if (m->flags & PG_FICTITIOUS)
 		return (rtval);
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 	pvh = pa_to_pvh(VM_PAGE_TO_PHYS(m));
 	TAILQ_FOREACH_SAFE(pv, &pvh->pv_list, pv_list, pvn) {
 		va = pv->pv_va;
@@ -4147,7 +4166,7 @@ pmap_clear_modify(vm_page_t m)
 
 	if ((m->flags & PG_FICTITIOUS) != 0)
 		return;
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 	pvh = pa_to_pvh(VM_PAGE_TO_PHYS(m));
 	TAILQ_FOREACH_SAFE(pv, &pvh->pv_list, pv_list, next_pv) {
 		va = pv->pv_va;
@@ -4212,7 +4231,7 @@ pmap_clear_reference(vm_page_t m)
 
 	if ((m->flags & PG_FICTITIOUS) != 0)
 		return;
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 	pvh = pa_to_pvh(VM_PAGE_TO_PHYS(m));
 	TAILQ_FOREACH_SAFE(pv, &pvh->pv_list, pv_list, next_pv) {
 		va = pv->pv_va;
@@ -4696,7 +4715,7 @@ pmap_mincore(pmap_t pmap, vm_offset_t addr)
 			/*
 			 * Modified by someone else
 			 */
-			vm_page_lock_queues();
+			vm_page_lock_queues();	/* XXX */
 			if (m->dirty || pmap_is_modified(m))
 				val |= MINCORE_MODIFIED_OTHER;
 			vm_page_unlock_queues();
@@ -4710,7 +4729,7 @@ pmap_mincore(pmap_t pmap, vm_offset_t addr)
 			/*
 			 * Referenced by someone else
 			 */
-			vm_page_lock_queues();
+			vm_page_lock_queues();	/* XXX */
 			if ((m->flags & PG_REFERENCED) ||
 			    pmap_ts_referenced(m)) {
 				val |= MINCORE_REFERENCED_OTHER;

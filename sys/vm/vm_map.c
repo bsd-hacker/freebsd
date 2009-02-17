@@ -1576,7 +1576,6 @@ vm_map_pmap_enter(vm_map_t map, vm_offset_t addr, vm_prot_t prot,
 	vm_offset_t start;
 	vm_page_t p, p_start;
 	vm_pindex_t psize, tmpidx;
-	boolean_t are_queues_locked;
 
 	if ((prot & (VM_PROT_READ | VM_PROT_EXECUTE)) == 0 || object == NULL)
 		return;
@@ -1600,7 +1599,6 @@ vm_map_pmap_enter(vm_map_t map, vm_offset_t addr, vm_prot_t prot,
 		psize = object->size - pindex;
 	}
 
-	are_queues_locked = FALSE;
 	start = 0;
 	p_start = NULL;
 
@@ -1635,25 +1633,15 @@ vm_map_pmap_enter(vm_map_t map, vm_offset_t addr, vm_prot_t prot,
 				p_start = p;
 			}
 		} else if (p_start != NULL) {
-			if (!are_queues_locked) {
-				are_queues_locked = TRUE;
-				vm_page_lock_queues();
-			}
 			pmap_enter_object(map->pmap, start, addr +
 			    ptoa(tmpidx), p_start, prot);
 			p_start = NULL;
 		}
 	}
 	if (p_start != NULL) {
-		if (!are_queues_locked) {
-			are_queues_locked = TRUE;
-			vm_page_lock_queues();
-		}
 		pmap_enter_object(map->pmap, start, addr + ptoa(psize),
 		    p_start, prot);
 	}
-	if (are_queues_locked)
-		vm_page_unlock_queues();
 unlock_return:
 	VM_OBJECT_UNLOCK(object);
 }
@@ -1722,12 +1710,15 @@ vm_map_protect(vm_map_t map, vm_offset_t start, vm_offset_t end,
 		 * here.
 		 */
 		if (current->protection != old_prot) {
+			vm_object_lock_all(current->object.vm_object);
+
 #define MASK(entry)	(((entry)->eflags & MAP_ENTRY_COW) ? ~VM_PROT_WRITE : \
 							VM_PROT_ALL)
 			pmap_protect(map->pmap, current->start,
 			    current->end,
 			    current->protection & MASK(current));
 #undef	MASK
+			vm_object_unlock_all(current->object.vm_object);
 		}
 		vm_map_simplify_entry(map, current);
 		current = current->next;
@@ -2335,9 +2326,6 @@ vm_map_sync(
 		}
 	}
 
-	if (invalidate)
-		pmap_remove(map->pmap, start, end);
-
 	/*
 	 * Make a second pass, cleaning/uncaching pages from the indicated
 	 * objects as we go.
@@ -2361,6 +2349,11 @@ vm_map_sync(
 			vm_map_unlock_read(smap);
 		} else {
 			object = current->object.vm_object;
+		}
+		if (invalidate) {
+			vm_object_lock_all(object);
+			pmap_remove(map->pmap, start, start + size);
+			vm_object_unlock_all(object);
 		}
 		vm_object_reference(object);
 		last_timestamp = map->timestamp;
@@ -2524,7 +2517,12 @@ vm_map_delete(vm_map_t map, vm_offset_t start, vm_offset_t end,
 			vm_map_entry_unwire(map, entry);
 		}
 
-		pmap_remove(map->pmap, entry->start, entry->end);
+		if ((entry->eflags & MAP_ENTRY_IS_SUB_MAP) == 0) {
+			vm_object_lock_all(entry->object.vm_object);
+			pmap_remove(map->pmap, entry->start, entry->end);
+			vm_object_unlock_all(entry->object.vm_object);
+		} else
+			panic("vm_map_delete: submap");	/* XXX */
 
 		/*
 		 * Delete the entry (which may delete the object) only after
@@ -2631,10 +2629,14 @@ vm_map_copy_entry(
 		 * write-protected.
 		 */
 		if ((src_entry->eflags & MAP_ENTRY_NEEDS_COPY) == 0) {
+			vm_object_lock_all(src_entry->object.vm_object);
+
 			pmap_protect(src_map->pmap,
 			    src_entry->start,
 			    src_entry->end,
 			    src_entry->protection & ~VM_PROT_WRITE);
+
+			vm_object_unlock_all(src_entry->object.vm_object);
 		}
 
 		/*
@@ -2663,8 +2665,10 @@ vm_map_copy_entry(
 			dst_entry->offset = 0;
 		}
 
+		vm_object_lock_all(dst_entry->object.vm_object);
 		pmap_copy(dst_map->pmap, src_map->pmap, dst_entry->start,
 		    dst_entry->end - dst_entry->start, src_entry->start);
+		vm_object_unlock_all(dst_entry->object.vm_object);
 	} else {
 		/*
 		 * Of course, wired down pages can't be set copy-on-write.
@@ -2808,10 +2812,12 @@ vmspace_fork(struct vmspace *vm1)
 			/*
 			 * Update the physical map
 			 */
+			vm_object_lock_all(new_entry->object.vm_object);
 			pmap_copy(new_map->pmap, old_map->pmap,
 			    new_entry->start,
 			    (old_entry->end - old_entry->start),
 			    old_entry->start);
+			vm_object_unlock_all(new_entry->object.vm_object);
 			break;
 
 		case VM_INHERIT_COPY:

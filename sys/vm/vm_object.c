@@ -2010,6 +2010,32 @@ vm_object_coalesce(vm_object_t prev_object, vm_ooffset_t prev_offset,
 	return (TRUE);
 }
 
+/*
+ *
+ */
+void
+vm_object_lock_all(vm_object_t object)
+{
+
+	while (object != NULL) {
+		VM_OBJECT_LOCK(object);
+		object = object->backing_object;
+	}
+}
+
+/*
+ *
+ */
+void
+vm_object_unlock_all(vm_object_t object)
+{
+
+	while (object != NULL) {
+		VM_OBJECT_UNLOCK(object);
+		object = object->backing_object;
+	}
+}
+
 void
 vm_object_set_writeable_dirty(vm_object_t object)
 {

@@ -919,7 +919,7 @@ vnode_locked:
 		vm_page_zero_invalid(fs.m, TRUE);
 		printf("Warning: page %p partially invalid on fault\n", fs.m);
 	}
-	VM_OBJECT_UNLOCK(fs.object);
+	vm_object_lock_all(fs.object->backing_object);
 
 	/*
 	 * Put this page into the physical map.  We had to do the unlock above
@@ -928,6 +928,7 @@ vnode_locked:
 	 * won't find it (yet).
 	 */
 	pmap_enter(fs.map->pmap, vaddr, fault_type, fs.m, prot, wired);
+	vm_object_unlock_all(fs.object);
 	if (((fault_flags & VM_FAULT_WIRE_MASK) == 0) && (wired == 0)) {
 		vm_fault_prefault(fs.map->pmap, vaddr, fs.entry);
 	}
@@ -1024,12 +1025,8 @@ vm_fault_prefault(pmap_t pmap, vm_offset_t addra, vm_map_entry_t entry)
 		}
 		if (((m->valid & VM_PAGE_BITS_ALL) == VM_PAGE_BITS_ALL) &&
 			(m->busy == 0) &&
-		    (m->flags & PG_FICTITIOUS) == 0) {
-
-			vm_page_lock_queues();
+		    (m->flags & PG_FICTITIOUS) == 0)
 			pmap_enter_quick(pmap, addr, m, entry->protection);
-			vm_page_unlock_queues();
-		}
 		VM_OBJECT_UNLOCK(lobject);
 	}
 }

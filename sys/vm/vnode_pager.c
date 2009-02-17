@@ -415,11 +415,9 @@ vnode_pager_setsize(vp, nsize)
 			 * bits.  This would prevent bogus_page
 			 * replacement from working properly.
 			 */
-			vm_page_lock_queues();
 			vm_page_set_validclean(m, base, size);
 			if (m->dirty != 0)
 				m->dirty = VM_PAGE_BITS_ALL;
-			vm_page_unlock_queues();
 		} else if ((nsize & PAGE_MASK) &&
 		    __predict_false(object->cache != NULL)) {
 			vm_page_cache_free(object, OFF_TO_IDX(nsize),
@@ -545,23 +543,19 @@ vnode_pager_input_smlfs(object, m)
 				break;
 
 			VM_OBJECT_LOCK(object);
-			vm_page_lock_queues();
 			vm_page_set_validclean(m, (i * bsize) & PAGE_MASK, bsize);
-			vm_page_unlock_queues();
 			VM_OBJECT_UNLOCK(object);
 		} else {
 			VM_OBJECT_LOCK(object);
-			vm_page_lock_queues();
 			vm_page_set_validclean(m, (i * bsize) & PAGE_MASK, bsize);
-			vm_page_unlock_queues();
 			VM_OBJECT_UNLOCK(object);
 			bzero((caddr_t)sf_buf_kva(sf) + i * bsize, bsize);
 		}
 	}
 	sf_buf_free(sf);
-	vm_page_lock_queues();
+	VM_OBJECT_LOCK(object);
 	pmap_clear_modify(m);
-	vm_page_unlock_queues();
+	VM_OBJECT_UNLOCK(object);
 	if (error) {
 		return VM_PAGER_ERROR;
 	}
@@ -630,10 +624,8 @@ vnode_pager_input_old(object, m)
 
 		VM_OBJECT_LOCK(object);
 	}
-	vm_page_lock_queues();
 	pmap_clear_modify(m);
 	vm_page_undirty(m);
-	vm_page_unlock_queues();
 	if (!error)
 		m->valid = VM_PAGE_BITS_ALL;
 	return error ? VM_PAGER_ERROR : VM_PAGER_OK;
