@@ -1066,10 +1066,7 @@ swap_pager_getpages(vm_object_t object, vm_page_t *m, int count, int reqpage)
 	 */
 	VM_OBJECT_LOCK(object);
 	while ((mreq->oflags & VPO_SWAPINPROG) != 0) {
-		mreq->oflags |= VPO_WANTED;
-		vm_page_lock_queues();
-		vm_page_flag_set(mreq, PG_REFERENCED);
-		vm_page_unlock_queues();
+		mreq->oflags |= VPO_REFERENCED | VPO_WANTED;
 		PCPU_INC(cnt.v_intrans);
 		if (msleep(mreq, VM_OBJECT_MTX(object), PSWP, "swread", hz*20)) {
 			printf(

@@ -551,17 +551,17 @@ vm_pageout_object_deactivate_pages(pmap, first_object, desired)
 			}
 			actcount = pmap_ts_referenced(p);
 			if (actcount) {
-				vm_page_flag_set(p, PG_REFERENCED);
-			} else if (p->flags & PG_REFERENCED) {
+				p->oflags |= VPO_REFERENCED;
+			} else if (p->oflags & VPO_REFERENCED) {
 				actcount = 1;
 			}
 			if ((p->queue != PQ_ACTIVE) &&
-				(p->flags & PG_REFERENCED)) {
+			    (p->oflags & VPO_REFERENCED)) {
 				vm_page_activate(p);
 				p->act_count += actcount;
-				vm_page_flag_clear(p, PG_REFERENCED);
+				p->oflags &= ~VPO_REFERENCED;
 			} else if (p->queue == PQ_ACTIVE) {
-				if ((p->flags & PG_REFERENCED) == 0) {
+				if ((p->oflags & VPO_REFERENCED) == 0) {
 					p->act_count -= min(p->act_count, ACT_DECLINE);
 					if (!remove_mode && (vm_pageout_algorithm || (p->act_count == 0))) {
 						pmap_remove_all(p);
@@ -571,7 +571,7 @@ vm_pageout_object_deactivate_pages(pmap, first_object, desired)
 					}
 				} else {
 					vm_page_activate(p);
-					vm_page_flag_clear(p, PG_REFERENCED);
+					p->oflags &= ~VPO_REFERENCED;
 					if (p->act_count < (ACT_MAX - ACT_ADVANCE))
 						p->act_count += ACT_ADVANCE;
 					vm_page_requeue(p);
@@ -785,7 +785,7 @@ rescan0:
 		 * references.
 		 */
 		if (object->ref_count == 0) {
-			vm_page_flag_clear(m, PG_REFERENCED);
+			m->oflags &= ~VPO_REFERENCED;
 			pmap_clear_reference(m);
 
 		/*
@@ -797,7 +797,7 @@ rescan0:
 		 * level VM system not knowing anything about existing 
 		 * references.
 		 */
-		} else if (((m->flags & PG_REFERENCED) == 0) &&
+		} else if ((m->oflags & VPO_REFERENCED) == 0 &&
 			(actcount = pmap_ts_referenced(m))) {
 			vm_page_activate(m);
 			VM_OBJECT_UNLOCK(object);
@@ -811,8 +811,8 @@ rescan0:
 		 * "activation count" higher than normal so that we will less 
 		 * likely place pages back onto the inactive queue again.
 		 */
-		if ((m->flags & PG_REFERENCED) != 0) {
-			vm_page_flag_clear(m, PG_REFERENCED);
+		if ((m->oflags & VPO_REFERENCED) != 0) {
+			m->oflags &= ~VPO_REFERENCED;
 			actcount = pmap_ts_referenced(m);
 			vm_page_activate(m);
 			VM_OBJECT_UNLOCK(object);
@@ -1091,7 +1091,7 @@ unlock_and_continue:
 		 */
 		actcount = 0;
 		if (object->ref_count != 0) {
-			if (m->flags & PG_REFERENCED) {
+			if (m->oflags & VPO_REFERENCED) {
 				actcount += 1;
 			}
 			actcount += pmap_ts_referenced(m);
@@ -1105,7 +1105,7 @@ unlock_and_continue:
 		/*
 		 * Since we have "tested" this bit, we need to clear it now.
 		 */
-		vm_page_flag_clear(m, PG_REFERENCED);
+		m->oflags &= ~VPO_REFERENCED;
 
 		/*
 		 * Only if an object is currently being used, do we use the
@@ -1329,8 +1329,8 @@ vm_pageout_page_stats()
 		}
 
 		actcount = 0;
-		if (m->flags & PG_REFERENCED) {
-			vm_page_flag_clear(m, PG_REFERENCED);
+		if (m->oflags & VPO_REFERENCED) {
+			m->oflags &= ~VPO_REFERENCED;
 			actcount += 1;
 		}
 

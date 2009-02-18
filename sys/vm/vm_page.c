@@ -542,10 +542,8 @@ vm_page_sleep(vm_page_t m, const char *msg)
 {
 
 	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
-	if (!mtx_owned(&vm_page_queue_mtx))
-		vm_page_lock_queues();
-	vm_page_flag_set(m, PG_REFERENCED);
-	vm_page_unlock_queues();
+	if (mtx_owned(&vm_page_queue_mtx))
+		vm_page_unlock_queues();
 
 	/*
 	 * It's possible that while we sleep, the page will get
@@ -554,7 +552,7 @@ vm_page_sleep(vm_page_t m, const char *msg)
 	 * such that even if m->object changes, we can re-lock
 	 * it.
 	 */
-	m->oflags |= VPO_WANTED;
+	m->oflags |= VPO_REFERENCED | VPO_WANTED;
 	msleep(m, VM_OBJECT_MTX(m->object), PVM, msg, 0);
 }
 
@@ -1760,7 +1758,7 @@ vm_page_dontneed(vm_page_t m)
 	 * Clear any references to the page.  Otherwise, the page daemon will
 	 * immediately reactivate the page.
 	 */
-	vm_page_flag_clear(m, PG_REFERENCED);
+	m->oflags &= ~VPO_REFERENCED;
 	pmap_clear_reference(m);
 
 	if (m->dirty == 0 && pmap_is_modified(m))

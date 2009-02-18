@@ -1896,7 +1896,7 @@ pmap_collect(pmap_t locked_pmap, struct vpgqueues *vpq)
 			KASSERT((tpte & PG_W) == 0,
 			    ("pmap_collect: wired pte %#lx", tpte));
 			if (tpte & PG_A)
-				vm_page_flag_set(m, PG_REFERENCED);
+				m->oflags |= VPO_REFERENCED;	/* XXX */
 			if ((tpte & (PG_M | PG_RW)) == (PG_M | PG_RW))
 				vm_page_dirty(m);
 			free = NULL;
@@ -2370,8 +2370,10 @@ pmap_remove_pde(pmap_t pmap, pd_entry_t *pdq, vm_offset_t sva,
 		    va < eva; va += PAGE_SIZE, m++) {
 			if ((oldpde & (PG_M | PG_RW)) == (PG_M | PG_RW))
 				vm_page_dirty(m);
-			if (oldpde & PG_A)
-				vm_page_flag_set(m, PG_REFERENCED);
+			if (oldpde & PG_A) {
+				VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
+				m->oflags |= VPO_REFERENCED;
+			}
 			if (TAILQ_EMPTY(&m->md.pv_list) &&
 			    TAILQ_EMPTY(&pvh->pv_list))
 				vm_page_flag_clear(m, PG_WRITEABLE);
@@ -2419,8 +2421,10 @@ pmap_remove_pte(pmap_t pmap, pt_entry_t *ptq, vm_offset_t va,
 		m = PHYS_TO_VM_PAGE(oldpte & PG_FRAME);
 		if ((oldpte & (PG_M | PG_RW)) == (PG_M | PG_RW))
 			vm_page_dirty(m);
-		if (oldpte & PG_A)
-			vm_page_flag_set(m, PG_REFERENCED);
+		if (oldpte & PG_A) {
+			VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
+			m->oflags |= VPO_REFERENCED;
+		}
 		pmap_remove_entry(pmap, m, va);
 	}
 	return (pmap_unuse_pt(pmap, va, ptepde, free));
@@ -2625,7 +2629,7 @@ pmap_remove_all(vm_page_t m)
 		if (tpte & PG_W)
 			pmap->pm_stats.wired_count--;
 		if (tpte & PG_A)
-			vm_page_flag_set(m, PG_REFERENCED);
+			m->oflags |= VPO_REFERENCED;
 
 		/*
 		 * Update the vm_page_t clean and reference bits.
@@ -2667,7 +2671,7 @@ retry:
 			/*
 			 * In contrast to the analogous operation on a 4KB page
 			 * mapping, the mapping's PG_A flag is not cleared and
-			 * the page's PG_REFERENCED flag is not set.  The
+			 * the page's VPO_REFERENCED flag is not set.  The
 			 * reason is that pmap_demote_pde() expects that a 2MB
 			 * page mapping with a stored page table page has PG_A
 			 * set.
@@ -2716,7 +2720,6 @@ pmap_protect(pmap_t pmap, vm_offset_t sva, vm_offset_t eva, vm_prot_t prot)
 
 	anychanged = 0;
 
-	vm_page_lock_queues();
 	PMAP_LOCK(pmap);
 	for (; sva < eva; sva = va_next) {
 
@@ -2787,7 +2790,9 @@ retry:
 				m = NULL;
 				if (pbits & PG_A) {
 					m = PHYS_TO_VM_PAGE(pbits & PG_FRAME);
-					vm_page_flag_set(m, PG_REFERENCED);
+					VM_OBJECT_LOCK_ASSERT(m->object,
+					    MA_OWNED);
+					m->oflags |= VPO_REFERENCED;
 					pbits &= ~PG_A;
 				}
 				if ((pbits & (PG_M | PG_RW)) == (PG_M | PG_RW)) {
@@ -2815,7 +2820,6 @@ retry:
 	}
 	if (anychanged)
 		pmap_invalidate_all(pmap);
-	vm_page_unlock_queues();
 	PMAP_UNLOCK(pmap);
 }
 
@@ -3084,8 +3088,11 @@ validate:
 			invlva = FALSE;
 			origpte = pte_load_store(pte, newpte);
 			if (origpte & PG_A) {
-				if (origpte & PG_MANAGED)
-					vm_page_flag_set(om, PG_REFERENCED);
+				if (origpte & PG_MANAGED) {
+					VM_OBJECT_LOCK_ASSERT(om->object,
+					    MA_OWNED);
+					om->oflags |= VPO_REFERENCED;
+				}
 				if (opa != VM_PAGE_TO_PHYS(m) || ((origpte &
 				    PG_NX) == 0 && (newpte & PG_NX)))
 					invlva = TRUE;
@@ -4715,10 +4722,10 @@ pmap_mincore(pmap_t pmap, vm_offset_t addr)
 			/*
 			 * Modified by someone else
 			 */
-			vm_page_lock_queues();	/* XXX */
+			VM_OBJECT_LOCK(m->object);	/* XXX */
 			if (m->dirty || pmap_is_modified(m))
 				val |= MINCORE_MODIFIED_OTHER;
-			vm_page_unlock_queues();
+			VM_OBJECT_UNLOCK(m->object);
 		}
 		/*
 		 * Referenced by us
@@ -4729,13 +4736,13 @@ pmap_mincore(pmap_t pmap, vm_offset_t addr)
 			/*
 			 * Referenced by someone else
 			 */
-			vm_page_lock_queues();	/* XXX */
-			if ((m->flags & PG_REFERENCED) ||
+			VM_OBJECT_LOCK(m->object);	/* XXX */
+			if ((m->oflags & VPO_REFERENCED) ||
 			    pmap_ts_referenced(m)) {
 				val |= MINCORE_REFERENCED_OTHER;
-				vm_page_flag_set(m, PG_REFERENCED);
+				m->oflags |= VPO_REFERENCED;
 			}
-			vm_page_unlock_queues();
+			VM_OBJECT_UNLOCK(m->object);
 		}
 	} 
 	return val;

@@ -872,13 +872,11 @@ RestartScan:
 					if (m->dirty ||
 						pmap_is_modified(m))
 						mincoreinfo |= MINCORE_MODIFIED_OTHER;
-					vm_page_lock_queues();
-					if ((m->flags & PG_REFERENCED) ||
+					if ((m->oflags & VPO_REFERENCED) ||
 						pmap_ts_referenced(m)) {
-						vm_page_flag_set(m, PG_REFERENCED);
+						m->oflags |= VPO_REFERENCED;
 						mincoreinfo |= MINCORE_REFERENCED_OTHER;
 					}
-					vm_page_unlock_queues();
 				}
 				VM_OBJECT_UNLOCK(current->object.vm_object);
 			}
