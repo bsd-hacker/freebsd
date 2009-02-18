@@ -113,6 +113,17 @@
 #define	APIC_THERMAL_INT (APIC_LOCAL_INTS + 1)
 
 #define	APIC_IPI_INTS	(APIC_LOCAL_INTS + 2)
+#ifdef XEN
+#define	IPI_RENDEZVOUS		(2)	/* Inter-CPU rendezvous. */
+#define	IPI_INVLTLB		(3)	/* TLB Shootdown IPIs */
+#define	IPI_INVLPG		(4)
+#define	IPI_INVLRNG		(5)
+#define	IPI_INVLCACHE		(6)
+#define	IPI_LAZYPMAP		(7)	/* Lazy pmap release. */
+/* Vector to handle bitmap based IPIs */
+#define	IPI_BITMAP_VECTOR	(8)
+
+#else
 #define	IPI_RENDEZVOUS	(APIC_IPI_INTS)		/* Inter-CPU rendezvous. */
 #define	IPI_INVLTLB	(APIC_IPI_INTS + 1)	/* TLB Shootdown IPIs */
 #define	IPI_INVLPG	(APIC_IPI_INTS + 2)
@@ -121,6 +132,7 @@
 #define	IPI_LAZYPMAP	(APIC_IPI_INTS + 5)	/* Lazy pmap release. */
 /* Vector to handle bitmap based IPIs */
 #define	IPI_BITMAP_VECTOR	(APIC_IPI_INTS + 6) 
+#endif
 
 /* IPIs handled by IPI_BITMAPED_VECTOR  (XXX ups is there a better place?) */
 #define	IPI_AST		0 	/* Generate software trap. */
@@ -175,14 +187,17 @@ inthand_t
 	IDTVEC(apic_isr7), IDTVEC(spuriousint), IDTVEC(timerint);
 
 extern vm_paddr_t lapic_paddr;
+extern int apic_cpuids[];
 
-u_int	apic_alloc_vector(u_int irq);
-u_int	apic_alloc_vectors(u_int *irqs, u_int count, u_int align);
-void	apic_disable_vector(u_int vector);
-void	apic_enable_vector(u_int vector);
-void	apic_free_vector(u_int vector, u_int irq);
-u_int	apic_idt_to_irq(u_int vector);
+u_int	apic_alloc_vector(u_int apic_id, u_int irq);
+u_int	apic_alloc_vectors(u_int apic_id, u_int *irqs, u_int count,
+	    u_int align);
+void	apic_disable_vector(u_int apic_id, u_int vector);
+void	apic_enable_vector(u_int apic_id, u_int vector);
+void	apic_free_vector(u_int apic_id, u_int vector, u_int irq);
+u_int	apic_idt_to_irq(u_int apic_id, u_int vector);
 void	apic_register_enumerator(struct apic_enumerator *enumerator);
+u_int	apic_cpuid(u_int apic_id);
 void	*ioapic_create(vm_paddr_t addr, int32_t apic_id, int intbase);
 int	ioapic_disable_pin(void *cookie, u_int pin);
 int	ioapic_get_vector(void *cookie, u_int pin);
@@ -199,6 +214,7 @@ void	lapic_create(u_int apic_id, int boot_cpu);
 void	lapic_disable(void);
 void	lapic_dump(const char *str);
 void	lapic_eoi(void);
+u_int	lapic_error(void);
 int	lapic_id(void);
 void	lapic_init(vm_paddr_t addr);
 int	lapic_intr_pending(u_int vector);

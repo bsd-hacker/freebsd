@@ -147,7 +147,7 @@ vop_close {
 
 vop_access {
 	IN struct vnode *vp;
-	IN int mode;
+	IN accmode_t accmode;
 	IN struct ucred *cred;
 	IN struct thread *td;
 };
@@ -171,6 +171,11 @@ vop_setattr {
 	IN struct ucred *cred;
 };
 
+%% markatime	vp	L L L
+
+vop_markatime {
+	IN struct vnode *vp;
+};
 
 %% read		vp	L L L
 
@@ -216,7 +221,7 @@ vop_ioctl {
 };
 
 
-%% poll	vp	U U U
+%% poll		vp	U U U
 
 vop_poll {
 	IN struct vnode *vp;
@@ -589,9 +594,19 @@ vop_setlabel {
 };
 
 
-%% setlabel	vp	= = =
+%% vptofh	vp	= = =
 
 vop_vptofh {
 	IN struct vnode *vp;
 	IN struct fid *fhp;
+};
+
+%% vptocnp		vp	L L L
+%% vptocnp		vpp	- U -
+
+vop_vptocnp {
+	IN struct vnode *vp;
+	OUT struct vnode **vpp;
+	INOUT char *buf;
+	INOUT int *buflen;
 };

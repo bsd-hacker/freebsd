@@ -98,6 +98,7 @@ static vop_create_t	ufs_create;
 static vop_getattr_t	ufs_getattr;
 static vop_link_t	ufs_link;
 static int ufs_makeinode(int mode, struct vnode *, struct vnode **, struct componentname *);
+static vop_markatime_t	ufs_markatime;
 static vop_mkdir_t	ufs_mkdir;
 static vop_mknod_t	ufs_mknod;
 static vop_open_t	ufs_open;
@@ -301,14 +302,14 @@ static int
 ufs_access(ap)
 	struct vop_access_args /* {
 		struct vnode *a_vp;
-		int  a_mode;
+		accmode_t a_accmode;
 		struct ucred *a_cred;
 		struct thread *a_td;
 	} */ *ap;
 {
 	struct vnode *vp = ap->a_vp;
 	struct inode *ip = VTOI(vp);
-	mode_t mode = ap->a_mode;
+	accmode_t accmode = ap->a_accmode;
 	int error;
 #ifdef QUOTA
 	int relocked;
@@ -322,7 +323,7 @@ ufs_access(ap)
 	 * unless the file is a socket, fifo, or a block or
 	 * character device resident on the filesystem.
 	 */
-	if (mode & VWRITE) {
+	if (accmode & VWRITE) {
 		switch (vp->v_type) {
 		case VDIR:
 		case VLNK:
@@ -330,7 +331,18 @@ ufs_access(ap)
 			if (vp->v_mount->mnt_flag & MNT_RDONLY)
 				return (EROFS);
 #ifdef QUOTA
+			/*
+			 * Inode is accounted in the quotas only if struct
+			 * dquot is attached to it. VOP_ACCESS() is called
+			 * from vn_open_cred() and provides a convenient
+			 * point to call getinoquota().
+			 */
 			if (VOP_ISLOCKED(vp) != LK_EXCLUSIVE) {
+
+				/*
+				 * Upgrade vnode lock, since getinoquota()
+				 * requires exclusive lock to modify inode.
+				 */
 				relocked = 1;
 				vhold(vp);
 				vn_lock(vp, LK_UPGRADE | LK_RETRY);
@@ -357,7 +369,7 @@ relock:
 	}
 
 	/* If immutable bit set, nobody gets to write it. */
-	if ((mode & VWRITE) && (ip->i_flags & (IMMUTABLE | SF_SNAPSHOT)))
+	if ((accmode & VWRITE) && (ip->i_flags & (IMMUTABLE | SF_SNAPSHOT)))
 		return (EPERM);
 
 #ifdef UFS_ACL
@@ -368,11 +380,11 @@ relock:
 		switch (error) {
 		case EOPNOTSUPP:
 			error = vaccess(vp->v_type, ip->i_mode, ip->i_uid,
-			    ip->i_gid, ap->a_mode, ap->a_cred, NULL);
+			    ip->i_gid, ap->a_accmode, ap->a_cred, NULL);
 			break;
 		case 0:
 			error = vaccess_acl_posix1e(vp->v_type, ip->i_uid,
-			    ip->i_gid, acl, ap->a_mode, ap->a_cred, NULL);
+			    ip->i_gid, acl, ap->a_accmode, ap->a_cred, NULL);
 			break;
 		default:
 			printf(
@@ -384,13 +396,13 @@ relock:
 			 * EPERM for safety.
 			 */
 			error = vaccess(vp->v_type, ip->i_mode, ip->i_uid,
-			    ip->i_gid, ap->a_mode, ap->a_cred, NULL);
+			    ip->i_gid, ap->a_accmode, ap->a_cred, NULL);
 		}
 		uma_zfree(acl_zone, acl);
 	} else
 #endif /* !UFS_ACL */
 		error = vaccess(vp->v_type, ip->i_mode, ip->i_uid, ip->i_gid,
-		    ap->a_mode, ap->a_cred, NULL);
+		    ap->a_accmode, ap->a_cred, NULL);
 	return (error);
 }
 
@@ -479,17 +491,6 @@ ufs_setattr(ap)
 	    (vap->va_blocksize != VNOVAL) || (vap->va_rdev != VNOVAL) ||
 	    ((int)vap->va_bytes != VNOVAL) || (vap->va_gen != VNOVAL)) {
 		return (EINVAL);
-	}
-	/*
-	 * Mark for update the file's access time for vfs_mark_atime().
-	 * We are doing this here to avoid some of the checks done
-	 * below -- this operation is done by request of the kernel and
-	 * should bypass some security checks.  Things like read-only
-	 * checks get handled by other levels (e.g., ffs_update()).
-	 */
-	if (vap->va_vaflags & VA_MARK_ATIME) {
-		ip->i_flag |= IN_ACCESS;
-		return (0);
 	}
 	if (vap->va_flags != VNOVAL) {
 		if (vp->v_mount->mnt_flag & MNT_RDONLY)
@@ -649,6 +650,25 @@ ufs_setattr(ap)
 		error = ufs_chmod(vp, (int)vap->va_mode, cred, td);
 	}
 	return (error);
+}
+
+/*
+ * Mark this file's access time for update for vfs_mark_atime().  This
+ * is called from execve() and mmap().
+ */
+static int
+ufs_markatime(ap)
+	struct vop_markatime_args /* {
+		struct vnode *a_vp;
+	} */ *ap;
+{
+	struct vnode *vp = ap->a_vp;
+	struct inode *ip = VTOI(vp);
+
+	VI_LOCK(vp);
+	ip->i_flag |= IN_ACCESS;
+	VI_UNLOCK(vp);
+	return (0);
 }
 
 /*
@@ -1890,7 +1910,7 @@ ufs_readdir(ap)
 			auio.uio_iovcnt = 1;
 			auio.uio_segflg = UIO_SYSSPACE;
 			aiov.iov_len = count;
-			MALLOC(dirbuf, caddr_t, count, M_TEMP, M_WAITOK);
+			dirbuf = malloc(count, M_TEMP, M_WAITOK);
 			aiov.iov_base = dirbuf;
 			error = VOP_READ(ap->a_vp, &auio, 0, ap->a_cred);
 			if (error == 0) {
@@ -1911,7 +1931,7 @@ ufs_readdir(ap)
 				if (dp >= edp)
 					error = uiomove(dirbuf, readcnt, uio);
 			}
-			FREE(dirbuf, M_TEMP);
+			free(dirbuf, M_TEMP);
 		}
 #	else
 		error = VOP_READ(ap->a_vp, uio, 0, ap->a_cred);
@@ -1933,7 +1953,7 @@ ufs_readdir(ap)
 		     dp < dpEnd;
 		     dp = (struct dirent *)((caddr_t) dp + dp->d_reclen))
 			ncookies++;
-		MALLOC(cookies, u_long *, ncookies * sizeof(u_long), M_TEMP,
+		cookies = malloc(ncookies * sizeof(u_long), M_TEMP,
 		    M_WAITOK);
 		for (dp = dpStart, cookiep = cookies;
 		     dp < dpEnd;
@@ -2002,7 +2022,7 @@ ufs_strategy(ap)
 			bp->b_error = error;
 			bp->b_ioflags |= BIO_ERROR;
 			bufdone(bp);
-			return (error);
+			return (0);
 		}
 		if ((long)bp->b_blkno == -1)
 			vfs_bio_clrbuf(bp);
@@ -2457,6 +2477,7 @@ struct vop_vector ufs_vnodeops = {
 	.vop_inactive =		ufs_inactive,
 	.vop_link =		ufs_link,
 	.vop_lookup =		vfs_cache_lookup,
+	.vop_markatime =	ufs_markatime,
 	.vop_mkdir =		ufs_mkdir,
 	.vop_mknod =		ufs_mknod,
 	.vop_open =		ufs_open,
@@ -2496,6 +2517,7 @@ struct vop_vector ufs_fifoops = {
 	.vop_getattr =		ufs_getattr,
 	.vop_inactive =		ufs_inactive,
 	.vop_kqfilter =		ufsfifo_kqfilter,
+	.vop_markatime =	ufs_markatime,
 	.vop_print =		ufs_print,
 	.vop_read =		VOP_PANIC,
 	.vop_reclaim =		ufs_reclaim,

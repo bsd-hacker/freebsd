@@ -72,7 +72,6 @@ cd9660_inactive(ap)
 	if (prtactive && vrefcnt(vp) != 0)
 		vprint("cd9660_inactive: pushing active", vp);
 
-	ip->i_flag = 0;
 	/*
 	 * If we are done with the inode, reclaim it
 	 * so that it can be reused immediately.
@@ -93,7 +92,6 @@ cd9660_reclaim(ap)
 	} */ *ap;
 {
 	struct vnode *vp = ap->a_vp;
-	struct iso_node *ip = VTOI(vp);
 
 	if (prtactive && vrefcnt(vp) != 0)
 		vprint("cd9660_reclaim: pushing active", vp);
@@ -109,9 +107,7 @@ cd9660_reclaim(ap)
 	/*
 	 * Purge old data structures associated with the inode.
 	 */
-	if (ip->i_mnt->im_devvp)
-		vrele(ip->i_mnt->im_devvp);
-	FREE(vp->v_data, M_ISOFSNODE);
+	free(vp->v_data, M_ISOFSNODE);
 	vp->v_data = NULL;
 	return (0);
 }
@@ -242,7 +238,7 @@ cd9660_tstamp_conv7(pi,pu,ftype)
 	minute = pi[4];
 	second = pi[5];
 	if(ftype != ISO_FTYPE_HIGH_SIERRA)
-		tz = pi[6];
+		tz = ((signed char *)pi)[6]; /* Timezone value is signed. */
 	else
 		/* original high sierra misses timezone data */
 		tz = 0;

@@ -33,17 +33,10 @@
 #ifndef _NET_VNET_H_
 #define _NET_VNET_H_
 
-#ifdef VIMAGE
 #include "opt_route.h"
 
-#include <sys/proc.h>
-#include <sys/protosw.h>
-#include <sys/socket.h>
-
-#include <net/if.h>
 #include <net/if_var.h>
 #include <net/route.h>
-#include <net/raw_cb.h>
 
 struct vnet_net {
 	int	_if_index;
@@ -66,6 +59,10 @@ struct vnet_net {
 	int	_ether_ipfw;
 };
 
+#ifndef VIMAGE
+#ifndef VIMAGE_GLOBALS
+extern struct vnet_net vnet_net_0;
+#endif
 #endif
 
 /*

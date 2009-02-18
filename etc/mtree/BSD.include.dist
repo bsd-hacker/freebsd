@@ -120,6 +120,10 @@
         ..
         usb
         ..
+        usb2
+            include
+            ..
+        ..
         utopia
         ..
         vkbd
@@ -250,8 +254,6 @@
     objc
     ..
     openssl
-    ..
-    pccard
     ..
     protocols
     ..

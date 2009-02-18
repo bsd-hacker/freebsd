@@ -93,6 +93,10 @@ static int	ufs_extattr_set(struct vnode *vp, int attrnamespace,
 		    struct thread *td);
 static int	ufs_extattr_rm(struct vnode *vp, int attrnamespace,
 		    const char *name, struct ucred *cred, struct thread *td);
+static int	ufs_extattr_autostart_locked(struct mount *mp,
+		    struct thread *td);
+static int	ufs_extattr_start_locked(struct ufsmount *ump,
+		    struct thread *td);
 
 /*
  * Per-FS attribute lock protecting attribute operations.
@@ -208,24 +212,22 @@ ufs_extattr_start(struct mount *mp, struct thread *td)
 	ump = VFSTOUFS(mp);
 
 	ufs_extattr_uepm_lock(ump, td);
+	error = ufs_extattr_start_locked(ump, td);
+	ufs_extattr_uepm_unlock(ump, td);
+	return (error);
+}
 
-	if (!(ump->um_extattr.uepm_flags & UFS_EXTATTR_UEPM_INITIALIZED)) {
-		error = EOPNOTSUPP;
-		goto unlock;
-	}
-	if (ump->um_extattr.uepm_flags & UFS_EXTATTR_UEPM_STARTED) {
-		error = EBUSY;
-		goto unlock;
-	}
+static int
+ufs_extattr_start_locked(struct ufsmount *ump, struct thread *td)
+{
+	if (!(ump->um_extattr.uepm_flags & UFS_EXTATTR_UEPM_INITIALIZED))
+		return (EOPNOTSUPP);
+	if (ump->um_extattr.uepm_flags & UFS_EXTATTR_UEPM_STARTED)
+		return (EBUSY);
 
 	ump->um_extattr.uepm_flags |= UFS_EXTATTR_UEPM_STARTED;
-
 	ump->um_extattr.uepm_ucred = crhold(td->td_ucred);
-
-unlock:
-	ufs_extattr_uepm_unlock(ump, td);
-
-	return (error);
+	return (0);
 }
 
 #ifdef UFS_EXTATTR_AUTOSTART
@@ -365,7 +367,7 @@ ufs_extattr_iterate_directory(struct ufsmount *ump, struct vnode *dvp,
 	if (dvp->v_type != VDIR)
 		return (ENOTDIR);
 
-	MALLOC(dirbuf, char *, DIRBLKSIZ, M_TEMP, M_WAITOK);
+	dirbuf = malloc(DIRBLKSIZ, M_TEMP, M_WAITOK);
 
 	auio.uio_iov = &aiov;
 	auio.uio_iovcnt = 1;
@@ -436,7 +438,7 @@ ufs_extattr_iterate_directory(struct ufsmount *ump, struct vnode *dvp,
 				break;
 		}
 	}
-	FREE(dirbuf, M_TEMP);
+	free(dirbuf, M_TEMP);
 	
 	return (0);
 }
@@ -447,6 +449,19 @@ ufs_extattr_iterate_directory(struct ufsmount *ump, struct vnode *dvp,
  */
 int
 ufs_extattr_autostart(struct mount *mp, struct thread *td)
+{
+	struct ufsmount *ump;
+	int error;
+
+	ump = VFSTOUFS(mp);
+	ufs_extattr_uepm_lock(ump, td);
+	error = ufs_extattr_autostart_locked(mp, td);
+	ufs_extattr_uepm_unlock(ump, td);
+	return (error);
+}
+
+static int
+ufs_extattr_autostart_locked(struct mount *mp, struct thread *td)
 {
 	struct vnode *rvp, *attr_dvp, *attr_system_dvp, *attr_user_dvp;
 	struct ufsmount *ump = VFSTOUFS(mp);
@@ -491,7 +506,7 @@ ufs_extattr_autostart(struct mount *mp, struct thread *td)
 		goto return_vput_attr_dvp;
 	}
 
-	error = ufs_extattr_start(mp, td);
+	error = ufs_extattr_start_locked(ump, td);
 	if (error) {
 		printf("ufs_extattr_autostart: ufs_extattr_start failed (%d)\n",
 		    error);
@@ -588,8 +603,8 @@ ufs_extattr_enable(struct ufsmount *ump, int attrnamespace,
 	if (backing_vnode->v_type != VREG)
 		return (EINVAL);
 
-	MALLOC(attribute, struct ufs_extattr_list_entry *,
-	    sizeof(struct ufs_extattr_list_entry), M_UFS_EXTATTR, M_WAITOK);
+	attribute = malloc(sizeof(struct ufs_extattr_list_entry),
+	    M_UFS_EXTATTR, M_WAITOK);
 	if (attribute == NULL)
 		return (ENOMEM);
 
@@ -658,7 +673,7 @@ unlock_free_exit:
 	VOP_UNLOCK(backing_vnode, 0);
 
 free_exit:
-	FREE(attribute, M_UFS_EXTATTR);
+	free(attribute, M_UFS_EXTATTR);
 	return (error);
 }
 
@@ -687,7 +702,7 @@ ufs_extattr_disable(struct ufsmount *ump, int attrnamespace,
 	error = vn_close(uele->uele_backing_vnode, FREAD|FWRITE,
 	    td->td_ucred, td);
 
-	FREE(uele, M_UFS_EXTATTR);
+	free(uele, M_UFS_EXTATTR);
 
 	return (error);
 }

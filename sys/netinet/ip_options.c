@@ -63,6 +63,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/ip_options.h>
 #include <netinet/ip_icmp.h>
 #include <machine/in_cksum.h>
+#include <netinet/vinet.h>
 
 #include <sys/socketvar.h>
 
@@ -104,7 +105,7 @@ ip_dooptions(struct mbuf *m, int pass)
 	struct in_ifaddr *ia;
 	int opt, optlen, cnt, off, code, type = ICMP_PARAMPROB, forward = 0;
 	struct in_addr *sin, dst;
-	n_time ntime;
+	uint32_t ntime;
 	struct	sockaddr_in ipaddr = { sizeof(ipaddr), AF_INET };
 
 	/* Ignore or reject packets with IP options. */
@@ -319,7 +320,7 @@ dropit:
 				break;
 
 			case IPOPT_TS_TSANDADDR:
-				if (off + sizeof(n_time) +
+				if (off + sizeof(uint32_t) +
 				    sizeof(struct in_addr) > optlen) {
 					code = &cp[IPOPT_OFFSET] - (u_char *)ip;
 					goto bad;
@@ -336,7 +337,7 @@ dropit:
 				break;
 
 			case IPOPT_TS_PRESPEC:
-				if (off + sizeof(n_time) +
+				if (off + sizeof(uint32_t) +
 				    sizeof(struct in_addr) > optlen) {
 					code = &cp[IPOPT_OFFSET] - (u_char *)ip;
 					goto bad;
@@ -354,8 +355,8 @@ dropit:
 				goto bad;
 			}
 			ntime = iptime();
-			(void)memcpy(cp + off, &ntime, sizeof(n_time));
-			cp[IPOPT_OFFSET] += sizeof(n_time);
+			(void)memcpy(cp + off, &ntime, sizeof(uint32_t));
+			cp[IPOPT_OFFSET] += sizeof(uint32_t);
 		}
 	}
 	if (forward && V_ipforwarding) {

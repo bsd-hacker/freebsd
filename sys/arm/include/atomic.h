@@ -47,6 +47,10 @@
 #include <machine/sysarch.h>
 #endif
 
+#define	mb()
+#define	wmb()
+#define	rmb()
+
 #ifndef I32_bit
 #define I32_bit (1 << 7)        /* IRQ disable */
 #endif
@@ -340,7 +344,8 @@ atomic_readandclear_32(volatile u_int32_t *p)
 
 #define atomic_clear_ptr		atomic_clear_32
 #define atomic_set_ptr			atomic_set_32
-#define atomic_cmpset_ptr		atomic_cmpset_32
+#define	atomic_cmpset_ptr(dst, old, new)	\
+    atomic_cmpset_32((volatile u_int *)(dst), (u_int)(old), (u_int)(new))
 #define atomic_cmpset_rel_ptr		atomic_cmpset_ptr
 #define atomic_cmpset_acq_ptr		atomic_cmpset_ptr
 #define atomic_store_ptr		atomic_store_32

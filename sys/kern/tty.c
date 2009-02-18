@@ -37,6 +37,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/cons.h>
 #include <sys/fcntl.h>
 #include <sys/file.h>
+#include <sys/filedesc.h>
 #include <sys/filio.h>
 #ifdef COMPAT_43TTY
 #include <sys/ioctl_compat.h>
@@ -73,6 +74,10 @@ static struct sx tty_list_sx;
 SX_SYSINIT(tty_list, &tty_list_sx, "tty list");
 static unsigned int tty_list_count = 0;
 
+/* Character device of /dev/console. */
+static struct cdev	*dev_console;
+static const char	*dev_console_filename;
+
 /*
  * Flags that are supported and stored by this implementation.
  */
@@ -86,7 +91,7 @@ static unsigned int tty_list_count = 0;
 			HUPCL|CLOCAL|CCTS_OFLOW|CRTS_IFLOW|CDTR_IFLOW|\
 			CDSR_OFLOW|CCAR_OFLOW)
 
-#define TTY_CALLOUT(tp,d) ((tp)->t_dev != (d))
+#define	TTY_CALLOUT(tp,d) ((d) != (tp)->t_dev && (d) != dev_console)
 
 /*
  * Set TTY buffer sizes.
@@ -118,6 +123,10 @@ static int
 tty_drain(struct tty *tp)
 {
 	int error;
+
+	if (ttyhook_hashook(tp, getc_inject))
+		/* buffer is inaccessible */
+		return (0);
 
 	while (ttyoutq_bytesused(&tp->t_outq) > 0) {
 		ttydevsw_outwakeup(tp);
@@ -282,11 +291,12 @@ ttydev_open(struct cdev *dev, int oflags, int devtype, struct thread *td)
 		}
 	}
 
-	if (TTY_CALLOUT(tp, dev)) {
+	if (dev == dev_console)
+		tp->t_flags |= TF_OPENED_CONS;
+	else if (TTY_CALLOUT(tp, dev))
 		tp->t_flags |= TF_OPENED_OUT;
-	} else {
+	else
 		tp->t_flags |= TF_OPENED_IN;
-	}
 
 done:	tp->t_flags &= ~TF_OPENCLOSE;
 	ttydev_leave(tp);
@@ -302,11 +312,25 @@ ttydev_close(struct cdev *dev, int fflag, int devtype, struct thread *td)
 	tty_lock(tp);
 
 	/*
+	 * Don't actually close the device if it is being used as the
+	 * console.
+	 */
+	MPASS((tp->t_flags & TF_OPENED) != TF_OPENED);
+	if (dev == dev_console)
+		tp->t_flags &= ~TF_OPENED_CONS;
+	else
+		tp->t_flags &= ~(TF_OPENED_IN|TF_OPENED_OUT);
+
+	if (tp->t_flags & TF_OPENED) {
+		tty_unlock(tp);
+		return (0);
+	}
+
+	/*
 	 * This can only be called once. The callin and the callout
 	 * devices cannot be opened at the same time.
 	 */
-	MPASS((tp->t_flags & TF_OPENED) != TF_OPENED);
-	tp->t_flags &= ~(TF_OPENED|TF_EXCLUDE|TF_STOPPED);
+	tp->t_flags &= ~(TF_EXCLUDE|TF_STOPPED);
 
 	/* Properly wake up threads that are stuck - revoke(). */
 	tp->t_revokecnt++;
@@ -414,15 +438,28 @@ ttydev_write(struct cdev *dev, struct uio *uio, int ioflag)
 
 	if (tp->t_termios.c_lflag & TOSTOP) {
 		error = tty_wait_background(tp, curthread, SIGTTOU);
-		if (error) {
-			tty_unlock(tp);
-			return (error);
-		}
+		if (error)
+			goto done;
 	}
 
-	error = ttydisc_write(tp, uio, ioflag);
-	tty_unlock(tp);
+	if (ioflag & IO_NDELAY && tp->t_flags & TF_BUSY_OUT) {
+		/* Allow non-blocking writes to bypass serialization. */
+		error = ttydisc_write(tp, uio, ioflag);
+	} else {
+		/* Serialize write() calls. */
+		while (tp->t_flags & TF_BUSY_OUT) {
+			error = tty_wait(tp, &tp->t_bgwait);
+			if (error)
+				goto done;
+		}
+ 
+ 		tp->t_flags |= TF_BUSY_OUT;
+		error = ttydisc_write(tp, uio, ioflag);
+ 		tp->t_flags &= ~TF_BUSY_OUT;
+		cv_broadcast(&tp->t_bgwait);
+	}
 
+done:	tty_unlock(tp);
 	return (error);
 }
 
@@ -794,7 +831,7 @@ ttydevsw_defparam(struct tty *tp, struct termios *t)
 {
 
 	/* Use a fake baud rate, we're not a real device. */
-	t->c_ispeed = t->c_ospeed = TTYDEF_SPEED_PSEUDO;
+	t->c_ispeed = t->c_ospeed = TTYDEF_SPEED;
 
 	return (0);
 }
@@ -862,20 +899,17 @@ tty_alloc(struct ttydevsw *tsw, void *sc, struct mtx *mutex)
 
 	tty_init_termios(tp);
 
-	cv_init(&tp->t_inwait, "tty input");
-	cv_init(&tp->t_outwait, "tty output");
-	cv_init(&tp->t_bgwait, "tty background");
-	cv_init(&tp->t_dcdwait, "tty dcd");
-
-	ttyinq_init(&tp->t_inq);
-	ttyoutq_init(&tp->t_outq);
+	cv_init(&tp->t_inwait, "ttyin");
+	cv_init(&tp->t_outwait, "ttyout");
+	cv_init(&tp->t_bgwait, "ttybg");
+	cv_init(&tp->t_dcdwait, "ttydcd");
 
 	/* Allow drivers to use a custom mutex to lock the TTY. */
 	if (mutex != NULL) {
 		tp->t_mtx = mutex;
 	} else {
 		tp->t_mtx = &tp->t_mtxobj;
-		mtx_init(&tp->t_mtxobj, "tty lock", NULL, MTX_DEF);
+		mtx_init(&tp->t_mtxobj, "ttymtx", NULL, MTX_DEF);
 	}
 
 	knlist_init(&tp->t_inpoll.si_note, tp->t_mtx, NULL, NULL, NULL);
@@ -1036,7 +1070,7 @@ sysctl_kern_ttys(SYSCTL_HANDLER_ARGS)
 	return (error);
 }
 
-SYSCTL_PROC(_kern, OID_AUTO, ttys, CTLTYPE_OPAQUE|CTLFLAG_RD,
+SYSCTL_PROC(_kern, OID_AUTO, ttys, CTLTYPE_OPAQUE|CTLFLAG_RD|CTLFLAG_MPSAFE,
 	0, 0, sysctl_kern_ttys, "S,xtty", "List of TTYs");
 
 /*
@@ -1185,11 +1219,7 @@ tty_wait(struct tty *tp, struct cv *cv)
 	int error;
 	int revokecnt = tp->t_revokecnt;
 
-#if 0
-	/* XXX: /dev/console also picks up Giant. */
 	tty_lock_assert(tp, MA_OWNED|MA_NOTRECURSED);
-#endif
-	tty_lock_assert(tp, MA_OWNED);
 	MPASS(!tty_gone(tp));
 
 	error = cv_wait_sig(cv, tp->t_mtx);
@@ -1211,11 +1241,7 @@ tty_timedwait(struct tty *tp, struct cv *cv, int hz)
 	int error;
 	int revokecnt = tp->t_revokecnt;
 
-#if 0
-	/* XXX: /dev/console also picks up Giant. */
 	tty_lock_assert(tp, MA_OWNED|MA_NOTRECURSED);
-#endif
-	tty_lock_assert(tp, MA_OWNED);
 	MPASS(!tty_gone(tp));
 
 	error = cv_timedwait_sig(cv, tp->t_mtx, hz);
@@ -1658,6 +1684,10 @@ tty_hiwat_in_unblock(struct tty *tp)
 		ttydevsw_inwakeup(tp);
 }
 
+/*
+ * TTY hooks interface.
+ */
+
 static int
 ttyhook_defrint(struct tty *tp, char c, int flags)
 {
@@ -1669,18 +1699,24 @@ ttyhook_defrint(struct tty *tp, char c, int flags)
 }
 
 int
-ttyhook_register(struct tty **rtp, struct thread *td, int fd,
+ttyhook_register(struct tty **rtp, struct proc *p, int fd,
     struct ttyhook *th, void *softc)
 {
 	struct tty *tp;
 	struct file *fp;
 	struct cdev *dev;
 	struct cdevsw *cdp;
+	struct filedesc *fdp;
 	int error;
 
 	/* Validate the file descriptor. */
-	if (fget(td, fd, &fp) != 0)
-		return (EINVAL);
+	if ((fdp = p->p_fd) == NULL)
+		return (EBADF);
+	FILEDESC_SLOCK(fdp);
+	if ((fp = fget_locked(fdp, fd)) == NULL || fp->f_ops == &badfileops) {
+		FILEDESC_SUNLOCK(fdp);
+		return (EBADF);
+	}
 	
 	/* Make sure the vnode is bound to a character device. */
 	error = EINVAL;
@@ -1719,7 +1755,7 @@ ttyhook_register(struct tty **rtp, struct thread *td, int fd,
 
 done3:	tty_unlock(tp);
 done2:	dev_relthread(dev);
-done1:	fdrop(fp, td);
+done1:	FILEDESC_SUNLOCK(fdp);
 	return (error);
 }
 
@@ -1741,6 +1777,85 @@ ttyhook_unregister(struct tty *tp)
 	tty_rel_free(tp);
 }
 
+/*
+ * /dev/console handling.
+ */
+
+static int
+ttyconsdev_open(struct cdev *dev, int oflags, int devtype, struct thread *td)
+{
+	struct tty *tp;
+
+	/* System has no console device. */
+	if (dev_console_filename == NULL)
+		return (ENXIO);
+
+	/* Look up corresponding TTY by device name. */
+	sx_slock(&tty_list_sx);
+	TAILQ_FOREACH(tp, &tty_list, t_list) {
+		if (strcmp(dev_console_filename, tty_devname(tp)) == 0) {
+			dev_console->si_drv1 = tp;
+			break;
+		}
+	}
+	sx_sunlock(&tty_list_sx);
+
+	/* System console has no TTY associated. */
+	if (dev_console->si_drv1 == NULL)
+		return (ENXIO);
+	
+	return (ttydev_open(dev, oflags, devtype, td));
+}
+
+static int
+ttyconsdev_write(struct cdev *dev, struct uio *uio, int ioflag)
+{
+
+	log_console(uio);
+
+	return (ttydev_write(dev, uio, ioflag));
+}
+
+/*
+ * /dev/console is a little different than normal TTY's.  When opened,
+ * it determines which TTY to use.  When data gets written to it, it
+ * will be logged in the kernel message buffer.
+ */
+static struct cdevsw ttyconsdev_cdevsw = {
+	.d_version	= D_VERSION,
+	.d_open		= ttyconsdev_open,
+	.d_close	= ttydev_close,
+	.d_read		= ttydev_read,
+	.d_write	= ttyconsdev_write,
+	.d_ioctl	= ttydev_ioctl,
+	.d_kqfilter	= ttydev_kqfilter,
+	.d_poll		= ttydev_poll,
+	.d_mmap		= ttydev_mmap,
+	.d_name		= "ttyconsdev",
+	.d_flags	= D_TTY,
+};
+
+static void
+ttyconsdev_init(void *unused)
+{
+
+	dev_console = make_dev(&ttyconsdev_cdevsw, 0, UID_ROOT, GID_WHEEL,
+	    0600, "console");
+}
+
+SYSINIT(tty, SI_SUB_DRIVERS, SI_ORDER_FIRST, ttyconsdev_init, NULL);
+
+void
+ttyconsdev_select(const char *name)
+{
+
+	dev_console_filename = name;
+}
+
+/*
+ * Debugging routines.
+ */
+
 #include "opt_ddb.h"
 #ifdef DDB
 #include <ddb/ddb.h>
@@ -1751,33 +1866,39 @@ static struct {
 	char val;
 } ttystates[] = {
 #if 0
-	{ TF_NOPREFIX,	'N' },
+	{ TF_NOPREFIX,		'N' },
 #endif
-	{ TF_INITLOCK,	'I' },
-	{ TF_CALLOUT,	'C' },
+	{ TF_INITLOCK,		'I' },
+	{ TF_CALLOUT,		'C' },
 
 	/* Keep these together -> 'Oi' and 'Oo'. */
-	{ TF_OPENED,	'O' },
-	{ TF_OPENED_IN,	'i' },
-	{ TF_OPENED_OUT,'o' },
+	{ TF_OPENED,		'O' },
+	{ TF_OPENED_IN,		'i' },
+	{ TF_OPENED_OUT,	'o' },
+	{ TF_OPENED_CONS,	'c' },
 
-	{ TF_GONE,	'G' },
-	{ TF_OPENCLOSE,	'B' },
-	{ TF_ASYNC,	'Y' },
-	{ TF_LITERAL,	'L' },
+	{ TF_GONE,		'G' },
+	{ TF_OPENCLOSE,		'B' },
+	{ TF_ASYNC,		'Y' },
+	{ TF_LITERAL,		'L' },
 
 	/* Keep these together -> 'Hi' and 'Ho'. */
-	{ TF_HIWAT,	'H' },
-	{ TF_HIWAT_IN,	'i' },
-	{ TF_HIWAT_OUT,	'o' },
+	{ TF_HIWAT,		'H' },
+	{ TF_HIWAT_IN,		'i' },
+	{ TF_HIWAT_OUT,		'o' },
 
-	{ TF_STOPPED,	'S' },
-	{ TF_EXCLUDE,	'X' },
-	{ TF_BYPASS,	'l' },
-	{ TF_ZOMBIE,	'Z' },
-	{ TF_HOOK,	's' },
+	{ TF_STOPPED,		'S' },
+	{ TF_EXCLUDE,		'X' },
+	{ TF_BYPASS,		'l' },
+	{ TF_ZOMBIE,		'Z' },
+	{ TF_HOOK,		's' },
 
-	{ 0,	       '\0' },
+	/* Keep these together -> 'bi' and 'bo'. */
+	{ TF_BUSY,		'b' },
+	{ TF_BUSY_IN,		'i' },
+	{ TF_BUSY_OUT,		'o' },
+
+	{ 0,			'\0'},
 };
 
 #define	TTY_FLAG_BITS \
@@ -1925,7 +2046,7 @@ DB_SHOW_ALL_COMMAND(ttys, db_show_all_ttys)
 		    osiz,
 		    tp->t_outq.to_end - tp->t_outq.to_begin,
 		    osiz - tp->t_outlow,
-		    tp->t_column,
+		    MIN(tp->t_column, 99999),
 		    tp->t_session ? tp->t_session->s_sid : 0,
 		    tp->t_pgrp ? tp->t_pgrp->pg_id : 0);
 

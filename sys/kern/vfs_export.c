@@ -46,6 +46,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/mbuf.h>
 #include <sys/mount.h>
 #include <sys/mutex.h>
+#include <sys/rwlock.h>
 #include <sys/refcount.h>
 #include <sys/socket.h>
 #include <sys/systm.h>
@@ -68,6 +69,8 @@ struct netcred {
 	struct	radix_node netc_rnodes[2];
 	int	netc_exflags;
 	struct	ucred netc_anon;
+	int	netc_numsecflavors;
+	int	netc_secflavors[MAXSECFLAVORS];
 };
 
 /*
@@ -120,6 +123,9 @@ vfs_hang_addrlist(struct mount *mp, struct netexport *nep,
 		np->netc_anon.cr_ngroups = argp->ex_anon.cr_ngroups;
 		bcopy(argp->ex_anon.cr_groups, np->netc_anon.cr_groups,
 		    sizeof(np->netc_anon.cr_groups));
+		np->netc_numsecflavors = argp->ex_numsecflavors;
+		bcopy(argp->ex_secflavors, np->netc_secflavors,
+		    sizeof(np->netc_secflavors));
 		refcount_init(&np->netc_anon.cr_ref, 1);
 		MNT_ILOCK(mp);
 		mp->mnt_flag |= MNT_DEFEXPORTED;
@@ -203,6 +209,9 @@ vfs_hang_addrlist(struct mount *mp, struct netexport *nep,
 	np->netc_anon.cr_ngroups = argp->ex_anon.cr_ngroups;
 	bcopy(argp->ex_anon.cr_groups, np->netc_anon.cr_groups,
 	    sizeof(np->netc_anon.cr_groups));
+	np->netc_numsecflavors = argp->ex_numsecflavors;
+	bcopy(argp->ex_secflavors, np->netc_secflavors,
+	    sizeof(np->netc_secflavors));
 	refcount_init(&np->netc_anon.cr_ref, 1);
 	return (0);
 out:
@@ -235,6 +244,7 @@ vfs_free_addrlist(struct netexport *nep)
 		if ((rnh = nep->ne_rtable[i])) {
 			RADIX_NODE_HEAD_LOCK(rnh);
 			(*rnh->rnh_walktree) (rnh, vfs_free_netcred, rnh);
+			RADIX_NODE_HEAD_UNLOCK(rnh);
 			RADIX_NODE_HEAD_DESTROY(rnh);
 			free(rnh, M_RTABLE);
 			nep->ne_rtable[i] = NULL;	/* not SMP safe XXX */
@@ -252,6 +262,10 @@ vfs_export(struct mount *mp, struct export_args *argp)
 {
 	struct netexport *nep;
 	int error;
+
+	if (argp->ex_numsecflavors < 0
+	    || argp->ex_numsecflavors >= MAXSECFLAVORS)
+		return (EINVAL);
 
 	nep = mp->mnt_export;
 	error = 0;
@@ -330,7 +344,7 @@ vfs_setpublicfs(struct mount *mp, struct netexport *nep,
 		if (nfs_pub.np_valid) {
 			nfs_pub.np_valid = 0;
 			if (nfs_pub.np_index != NULL) {
-				FREE(nfs_pub.np_index, M_TEMP);
+				free(nfs_pub.np_index, M_TEMP);
 				nfs_pub.np_index = NULL;
 			}
 		}
@@ -361,7 +375,7 @@ vfs_setpublicfs(struct mount *mp, struct netexport *nep,
 	 * If an indexfile was specified, pull it in.
 	 */
 	if (argp->ex_indexfile != NULL) {
-		MALLOC(nfs_pub.np_index, char *, MAXNAMLEN + 1, M_TEMP,
+		nfs_pub.np_index = malloc(MAXNAMLEN + 1, M_TEMP,
 		    M_WAITOK);
 		error = copyinstr(argp->ex_indexfile, nfs_pub.np_index,
 		    MAXNAMLEN, (size_t *)0);
@@ -377,7 +391,7 @@ vfs_setpublicfs(struct mount *mp, struct netexport *nep,
 			}
 		}
 		if (error) {
-			FREE(nfs_pub.np_index, M_TEMP);
+			free(nfs_pub.np_index, M_TEMP);
 			return (error);
 		}
 	}
@@ -389,7 +403,7 @@ vfs_setpublicfs(struct mount *mp, struct netexport *nep,
 
 /*
  * Used by the filesystems to determine if a given network address
- * (passed in 'nam') is present in thier exports list, returns a pointer
+ * (passed in 'nam') is present in their exports list, returns a pointer
  * to struct netcred so that the filesystem can examine it for
  * access rights (read/write/etc).
  */
@@ -413,10 +427,10 @@ vfs_export_lookup(struct mount *mp, struct sockaddr *nam)
 			saddr = nam;
 			rnh = nep->ne_rtable[saddr->sa_family];
 			if (rnh != NULL) {
-				RADIX_NODE_HEAD_LOCK(rnh);
+				RADIX_NODE_HEAD_RLOCK(rnh);
 				np = (struct netcred *)
 				    (*rnh->rnh_matchaddr)(saddr, rnh);
-				RADIX_NODE_HEAD_UNLOCK(rnh);
+				RADIX_NODE_HEAD_RUNLOCK(rnh);
 				if (np && np->netc_rnodes->rn_flags & RNF_ROOT)
 					np = NULL;
 			}
@@ -441,7 +455,7 @@ vfs_export_lookup(struct mount *mp, struct sockaddr *nam)
 
 int 
 vfs_stdcheckexp(struct mount *mp, struct sockaddr *nam, int *extflagsp,
-    struct ucred **credanonp)
+    struct ucred **credanonp, int *numsecflavors, int **secflavors)
 {
 	struct netcred *np;
 
@@ -452,6 +466,10 @@ vfs_stdcheckexp(struct mount *mp, struct sockaddr *nam, int *extflagsp,
 		return (EACCES);
 	*extflagsp = np->netc_exflags;
 	*credanonp = &np->netc_anon;
+	if (numsecflavors)
+		*numsecflavors = np->netc_numsecflavors;
+	if (secflavors)
+		*secflavors = np->netc_secflavors;
 	return (0);
 }
 

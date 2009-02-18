@@ -37,6 +37,8 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include "opt_kdtrace.h"
+
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/bus.h>
@@ -49,9 +51,18 @@ __FBSDID("$FreeBSD$");
 #include <sys/malloc.h>
 #include <sys/mutex.h>
 #include <sys/proc.h>
+#include <sys/sdt.h>
 #include <sys/sleepqueue.h>
 #include <sys/sysctl.h>
 #include <sys/smp.h>
+
+SDT_PROVIDER_DEFINE(callout_execute);
+SDT_PROBE_DEFINE(callout_execute, kernel, , callout_start);
+SDT_PROBE_ARGTYPE(callout_execute, kernel, , callout_start, 0,
+    "struct callout *");
+SDT_PROBE_DEFINE(callout_execute, kernel, , callout_end); 
+SDT_PROBE_ARGTYPE(callout_execute, kernel, , callout_end, 0,
+    "struct callout *");
 
 static int avg_depth;
 SYSCTL_INT(_debug, OID_AUTO, to_avg_depth, CTLFLAG_RD, &avg_depth, 0,
@@ -233,7 +244,7 @@ callout_tick(void)
 	need_softclock = 0;
 	cc = CC_SELF();
 	mtx_lock_spin_flags(&cc->cc_lock, MTX_QUIET);
-	for (; cc->cc_softticks < ticks; cc->cc_softticks++) {
+	for (; (cc->cc_softticks - ticks) < 0; cc->cc_softticks++) {
 		bucket = cc->cc_softticks & callwheelmask;
 		if (!TAILQ_EMPTY(&cc->cc_callwheel[bucket])) {
 			need_softclock = 1;
@@ -395,7 +406,11 @@ softclock(void *arg)
 				binuptime(&bt1);
 #endif
 				THREAD_NO_SLEEPING();
+				SDT_PROBE(callout_execute, kernel, ,
+				    callout_start, c, 0, 0, 0, 0);
 				c_func(c_arg);
+				SDT_PROBE(callout_execute, kernel, ,
+				    callout_end, c, 0, 0, 0, 0);
 				THREAD_SLEEPING_OK();
 #ifdef DIAGNOSTIC
 				binuptime(&bt2);
@@ -414,6 +429,7 @@ softclock(void *arg)
 					lastfunc = c_func;
 				}
 #endif
+				CTR1(KTR_CALLOUT, "callout %p finished", c);
 				if ((c_flags & CALLOUT_RETURNUNLOCKED) == 0)
 					class->lc_unlock(c_lock);
 			skip:

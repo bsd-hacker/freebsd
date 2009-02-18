@@ -23,6 +23,7 @@ MAN=	aac.4 \
 	ahc.4 \
 	ahd.4 \
 	aio.4 \
+	ale.4 \
 	altq.4 \
 	amd.4 \
 	${_amdsmb.4} \
@@ -227,6 +228,7 @@ MAN=	aac.4 \
 	ng_eiface.4 \
 	ng_etf.4 \
 	ng_ether.4 \
+	ng_ether_echo.4 \
 	ng_fec.4 \
 	ng_frame_relay.4 \
 	ng_gif.4 \
@@ -314,6 +316,7 @@ MAN=	aac.4 \
 	screen.4 \
 	scsi.4 \
 	sctp.4 \
+	sdhci.4 \
 	sem.4 \
 	ses.4 \
 	sf.4 \
@@ -415,6 +418,7 @@ MAN=	aac.4 \
 	uplcom.4 \
 	ural.4 \
 	urio.4 \
+	${_urtw.4} \
 	usb.4 \
 	uscanner.4 \
 	uslcom.4 \
@@ -446,7 +450,10 @@ MAN=	aac.4 \
 	zero.4 \
 	zyd.4
 
-MLINKS=	agp.4 agpgart.4
+MLINKS=	ae.4 if_ae.4
+MLINKS+=age.4 if_age.4
+MLINKS+=agp.4 agpgart.4
+MLINKS+=ale.4 if_ale.4
 MLINKS+=altq.4 ALTQ.4
 MLINKS+=an.4 if_an.4
 MLINKS+=ata.4 acd.4 \
@@ -469,6 +476,7 @@ MLINKS+=edsc.4 if_edsc.4
 MLINKS+=ef.4 if_ef.4
 MLINKS+=em.4 if_em.4
 MLINKS+=en.4 if_en.4
+MLINKS+=enc.4 if_enc.4
 MLINKS+=et.4 if_et.4
 MLINKS+=faith.4 if_faith.4
 MLINKS+=fatm.4 if_fatm.4
@@ -489,20 +497,24 @@ MLINKS+=hme.4 if_hme.4
 MLINKS+=${_hptrr.4} ${_rr232x.4}
 MLINKS+=idt.4 if_idt.4
 MLINKS+=if_bridge.4 bridge.4
+MLINKS+=igb.4 if_igb.4
 MLINKS+=ip.4 rawip.4
 MLINKS+=ipfirewall.4 ipaccounting.4 \
 	ipfirewall.4 ipacct.4 \
 	ipfirewall.4 ipfw.4
 MLINKS+=ipw.4 if_ipw.4
 MLINKS+=iwi.4 if_iwi.4
+MLINKS+=iwn.4 if_iwn.4
 MLINKS+=ixgb.4 if_ixgb.4
 MLINKS+=ixgbe.4 if_ixgbe.4
+MLINKS+=jme.4 if_jme.4
 MLINKS+=kue.4 if_kue.4
 MLINKS+=lagg.4 trunk.4
 MLINKS+=le.4 if_le.4
 MLINKS+=lge.4 if_lge.4
 MLINKS+=lo.4 loop.4
 MLINKS+=lp.4 plip.4
+MLINKS+=malo.4 if_malo.4
 MLINKS+=md.4 vn.4
 MLINKS+=mem.4 kmem.4
 MLINKS+=mn.4 if_mn.4
@@ -553,8 +565,11 @@ MLINKS+=tl.4 if_tl.4
 MLINKS+=tun.4 if_tun.4
 MLINKS+=tx.4 if_tx.4
 MLINKS+=txp.4 if_txp.4
+MLINKS+=u3g.4 u3gstub.4
 MLINKS+=udav.4 if_udav.4
+MLINKS+=upgt.4 if_upgt.4
 MLINKS+=ural.4 if_ural.4
+MLINKS+=${_urtw.4} ${_if_urtw.4}
 MLINKS+=vge.4 if_vge.4
 MLINKS+=vlan.4 if_vlan.4
 MLINKS+=vpo.4 imm.4
@@ -565,6 +580,7 @@ MLINKS+=wi.4 if_wi.4
 MLINKS+=${_wpi.4} ${_if_wpi.4}
 MLINKS+=xe.4 if_xe.4
 MLINKS+=xl.4 if_xl.4
+MLINKS+=zyd.4 if_zyd.4
 
 .if ${MACHINE_ARCH} == "amd64" || ${MACHINE_ARCH} == "i386"
 _acpi_aiboost.4=acpi_aiboost.4
@@ -587,6 +603,7 @@ _if_ndis.4=	if_ndis.4
 _if_nfe.4=	if_nfe.4
 _if_nve.4=	if_nve.4
 _if_nxge.4=	if_nxge.4
+_if_urtw.4=	if_urtw.4
 _if_wpi.4=	if_wpi.4
 _ipmi.4=	ipmi.4
 _io.4=		io.4
@@ -600,6 +617,7 @@ _nxge.4=	nxge.4
 _rr232x.4=	rr232x.4
 _speaker.4=	speaker.4
 _spkr.4=	spkr.4
+_urtw.4=	urtw.4
 _wpi.4=		wpi.4
 .endif
 

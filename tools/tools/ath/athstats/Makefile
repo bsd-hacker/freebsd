@@ -1,23 +1,28 @@
 # $FreeBSD$
 
 PROG=	athstats
-BINDIR=	/usr/local/bin
-NO_MAN=
 
 SRCS=	main.c statfoo.c athstats.c
 
 .include <bsd.prog.mk>
 
-CFLAGS+= -I.
+SRCDIR=	${.CURDIR}/../../../..
+
 CLEANFILES+= opt_ah.h ah_osdep.h
 
-CFLAGS+=-I../../../../sys/contrib/dev/ath
-CFLAGS+=-I../../../../sys/net80211
-CFLAGS+=-I../../../../sys/dev/ath
+CFLAGS+=-DATH_SUPPORT_ANI
+CFLAGS+=-DATH_SUPPORT_TDMA
+
+CFLAGS+=-I${.CURDIR}
+CFLAGS+=-I${SRCDIR}/sys/net80211
+
+.include <../Makefile.inc>
 
 athstats.o: opt_ah.h ah_osdep.h
 
 opt_ah.h:
 	touch opt_ah.h
 ah_osdep.h:
-	touch ah_osdep.h
+	echo 'typedef void *HAL_SOFTC;' >ah_osdep.h
+	echo 'typedef int HAL_BUS_TAG;' >>ah_osdep.h
+	echo 'typedef void *HAL_BUS_HANDLE;' >>ah_osdep.h

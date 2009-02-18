@@ -814,7 +814,7 @@ handle_sign:
 			else if (lflag)
 				num = va_arg(ap, long);
 			else if (zflag)
-				num = va_arg(ap, size_t);
+				num = va_arg(ap, ssize_t);
 			else if (hflag)
 				num = (short)va_arg(ap, int);
 			else if (cflag)
@@ -959,7 +959,7 @@ sysctl_kern_msgbuf(SYSCTL_HANDLER_ARGS)
 }
 
 SYSCTL_PROC(_kern, OID_AUTO, msgbuf, CTLTYPE_STRING | CTLFLAG_RD,
-    0, 0, sysctl_kern_msgbuf, "A", "Contents of kernel message buffer");
+    NULL, 0, sysctl_kern_msgbuf, "A", "Contents of kernel message buffer");
 
 static int msgbuf_clearflag;
 

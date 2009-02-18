@@ -98,6 +98,7 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_inet.h"
+#include "opt_inet6.h"
 #include "opt_mac.h"
 #include "opt_zero.h"
 #include "opt_compat.h"
@@ -136,9 +137,8 @@ __FBSDID("$FreeBSD$");
 
 #ifdef COMPAT_IA32
 #include <sys/mount.h>
+#include <sys/sysent.h>
 #include <compat/freebsd32/freebsd32.h>
-
-extern struct sysentvec ia32_freebsd_sysvec;
 #endif
 
 static int	soreceive_rcvoob(struct socket *so, struct uio *uio,
@@ -236,10 +236,13 @@ SYSCTL_PROC(_kern_ipc, OID_AUTO, maxsockets, CTLTYPE_INT|CTLFLAG_RW,
     "Maximum number of sockets avaliable");
 
 /*
- * Initialise maxsockets.
+ * Initialise maxsockets.  This SYSINIT must be run after
+ * tunable_mbinit().
  */
-static void init_maxsockets(void *ignored)
+static void
+init_maxsockets(void *ignored)
 {
+
 	TUNABLE_INT_FETCH("kern.ipc.maxsockets", &maxsockets);
 	maxsockets = imax(maxsockets, imax(maxfiles, nmbclusters));
 }
@@ -344,12 +347,8 @@ socreate(int dom, struct socket **aso, int type, int proto,
 	    prp->pr_usrreqs->pru_attach == pru_attach_notsupp)
 		return (EPROTONOSUPPORT);
 
-	if (jailed(cred) && jail_socket_unixiproute_only &&
-	    prp->pr_domain->dom_family != PF_LOCAL &&
-	    prp->pr_domain->dom_family != PF_INET &&
-	    prp->pr_domain->dom_family != PF_ROUTE) {
+	if (prison_check_af(cred, prp->pr_domain->dom_family) != 0)
 		return (EPROTONOSUPPORT);
-	}
 
 	if (prp->pr_type != type)
 		return (EPROTOTYPE);
@@ -1852,7 +1851,7 @@ soreceive_dgram(struct socket *so, struct sockaddr **psa, struct uio *uio,
     struct mbuf **mp0, struct mbuf **controlp, int *flagsp)
 {
 	struct mbuf *m, *m2;
-	int flags, len, error, offset;
+	int flags, len, error;
 	struct protosw *pr = so->so_proto;
 	struct mbuf *nextrecord;
 
@@ -2002,7 +2001,6 @@ soreceive_dgram(struct socket *so, struct sockaddr **psa, struct uio *uio,
 	}
 	KASSERT(m->m_type == MT_DATA, ("soreceive_dgram: !data"));
 
-	offset = 0;
 	while (m != NULL && uio->uio_resid > 0) {
 		len = uio->uio_resid;
 		if (len > m->m_len)
@@ -2218,6 +2216,9 @@ sosetopt(struct socket *so, struct sockopt *sopt)
 			if ((so->so_proto->pr_domain->dom_family == PF_INET) ||
 			    (so->so_proto->pr_domain->dom_family == PF_ROUTE)) {
 				so->so_fibnum = optval;
+				/* Note: ignore error */
+				if (so->so_proto && so->so_proto->pr_ctloutput)
+					(*so->so_proto->pr_ctloutput)(so, sopt);
 			} else {
 				so->so_fibnum = 0;
 			}
@@ -2277,7 +2278,7 @@ sosetopt(struct socket *so, struct sockopt *sopt)
 		case SO_SNDTIMEO:
 		case SO_RCVTIMEO:
 #ifdef COMPAT_IA32
-			if (curthread->td_proc->p_sysent == &ia32_freebsd_sysvec) {
+			if (SV_CURPROC_FLAG(SV_ILP32)) {
 				struct timeval32 tv32;
 
 				error = sooptcopyin(sopt, &tv32, sizeof tv32,
@@ -2458,7 +2459,7 @@ integer:
 			tv.tv_sec = optval / hz;
 			tv.tv_usec = (optval % hz) * tick;
 #ifdef COMPAT_IA32
-			if (curthread->td_proc->p_sysent == &ia32_freebsd_sysvec) {
+			if (SV_CURPROC_FLAG(SV_ILP32)) {
 				struct timeval32 tv32;
 
 				CP(tv, tv32, tv_sec);

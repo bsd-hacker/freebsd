@@ -270,7 +270,7 @@ hash_insert(priv_p priv, struct flow_hash_entry  *hsh, struct flow_rec *r,
 	sin.sin_family = AF_INET;
 	sin.sin_addr = fle->f.r.r_dst;
 	/* XXX MRT 0 as a default.. need the m here to get fib */
-	rt = rtalloc1_fib((struct sockaddr *)&sin, 0, RTF_CLONING, 0);
+	rt = rtalloc1_fib((struct sockaddr *)&sin, 0, 0, 0);
 	if (rt != NULL) {
 		fle->f.fle_o_ifx = rt->rt_ifp->if_index;
 
@@ -295,7 +295,7 @@ hash_insert(priv_p priv, struct flow_hash_entry  *hsh, struct flow_rec *r,
 	sin.sin_family = AF_INET;
 	sin.sin_addr = fle->f.r.r_src;
 	/* XXX MRT 0 as a default  revisit.  need the mbuf for fib*/
-	rt = rtalloc1_fib((struct sockaddr *)&sin, 0, RTF_CLONING, 0);
+	rt = rtalloc1_fib((struct sockaddr *)&sin, 0, 0, 0);
 	if (rt != NULL) {
 		if (rt_mask(rt))
 			fle->f.src_mask = bitcount32(((struct sockaddr_in *)
@@ -331,8 +331,7 @@ ng_netflow_cache_init(priv_p priv)
 	uma_zone_set_max(priv->zone, CACHESIZE);
 
 	/* Allocate hash. */
-	MALLOC(priv->hash, struct flow_hash_entry *,
-	    NBUCKETS * sizeof(struct flow_hash_entry),
+	priv->hash = malloc(NBUCKETS * sizeof(struct flow_hash_entry),
 	    M_NETFLOW_HASH, M_WAITOK | M_ZERO);
 
 	if (priv->hash == NULL) {
@@ -382,7 +381,7 @@ ng_netflow_cache_flush(priv_p priv)
 
 	/* Free hash memory. */
 	if (priv->hash)
-		FREE(priv->hash, M_NETFLOW_HASH);
+		free(priv->hash, M_NETFLOW_HASH);
 
 	mtx_destroy(&priv->export_mtx);
 }

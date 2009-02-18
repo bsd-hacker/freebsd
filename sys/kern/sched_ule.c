@@ -61,6 +61,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/umtx.h>
 #include <sys/vmmeter.h>
 #include <sys/cpuset.h>
+#include <sys/sbuf.h>
 #ifdef KTRACE
 #include <sys/uio.h>
 #include <sys/ktrace.h>
@@ -85,6 +86,10 @@ dtrace_vtime_switch_func_t	dtrace_vtime_switch_func;
 
 #define	KTR_ULE	0
 
+#define	TS_NAME_LEN (MAXCOMLEN + sizeof(" td ") + sizeof(__XSTRING(UINT_MAX)))
+#define	TDQ_NAME_LEN	(sizeof("sched lock ") + sizeof(__XSTRING(MAXCPU)))
+#define	TDQ_LOADNAME_LEN	(PCPU_NAME_LEN + sizeof(" load"))
+
 /*
  * Thread scheduler specific section.  All fields are protected
  * by the thread lock.
@@ -100,6 +105,9 @@ struct td_sched {
 	int		ts_ltick;	/* Last tick that we were running on */
 	int		ts_ftick;	/* First tick that we were running on */
 	int		ts_ticks;	/* Tick count */
+#ifdef KTR
+	char		ts_name[TS_NAME_LEN];
+#endif
 };
 /* flags kept in ts_flags */
 #define	TSF_BOUND	0x0001		/* Thread can not migrate. */
@@ -215,7 +223,10 @@ struct tdq {
 	struct runq	tdq_realtime;		/* real-time run queue. */
 	struct runq	tdq_timeshare;		/* timeshare run queue. */
 	struct runq	tdq_idle;		/* Queue of IDLE threads. */
-	char		tdq_name[sizeof("sched lock") + 6];
+	char		tdq_name[TDQ_NAME_LEN];
+#ifdef KTR
+	char		tdq_loadname[TDQ_LOADNAME_LEN];
+#endif
 } __aligned(64);
 
 /* Idle thread states and config. */
@@ -223,7 +234,7 @@ struct tdq {
 #define	TDQ_IDLE	2
 
 #ifdef SMP
-struct cpu_group *cpu_top;
+struct cpu_group *cpu_top;		/* CPU topology */
 
 #define	SCHED_AFFINITY_DEFAULT	(max(1, hz / 1000))
 #define	SCHED_AFFINITY(ts, t)	((ts)->ts_rltick > ticks - ((t) * affinity))
@@ -293,6 +304,9 @@ static inline struct tdq *sched_setcpu(struct thread *, int, int);
 static inline struct mtx *thread_block_switch(struct thread *);
 static inline void thread_unblock_switch(struct thread *, struct mtx *);
 static struct mtx *sched_switch_migrate(struct tdq *, struct thread *, int);
+static int sysctl_kern_sched_topology_spec(SYSCTL_HANDLER_ARGS);
+static int sysctl_kern_sched_topology_spec_internal(struct sbuf *sb, 
+    struct cpu_group *cg, int indent);
 #endif
 
 static void sched_setup(void *dummy);
@@ -485,7 +499,7 @@ tdq_load_add(struct tdq *tdq, struct thread *td)
 	tdq->tdq_load++;
 	if ((td->td_proc->p_flag & P_NOLOAD) == 0)
 		tdq->tdq_sysload++;
-	CTR2(KTR_SCHED, "cpu %d load: %d", TDQ_ID(tdq), tdq->tdq_load);
+	KTR_COUNTER0(KTR_SCHED, "load", tdq->tdq_loadname, tdq->tdq_load);
 }
 
 /*
@@ -504,7 +518,7 @@ tdq_load_rem(struct tdq *tdq, struct thread *td)
 	tdq->tdq_load--;
 	if ((td->td_proc->p_flag & P_NOLOAD) == 0)
 		tdq->tdq_sysload--;
-	CTR1(KTR_SCHED, "load: %d", tdq->tdq_load);
+	KTR_COUNTER0(KTR_SCHED, "load", tdq->tdq_loadname, tdq->tdq_load);
 }
 
 /*
@@ -942,7 +956,7 @@ tdq_idled(struct tdq *tdq)
 static void
 tdq_notify(struct tdq *tdq, struct thread *td)
 {
-	int cpri;
+	struct thread *ctd;
 	int pri;
 	int cpu;
 
@@ -950,10 +964,10 @@ tdq_notify(struct tdq *tdq, struct thread *td)
 		return;
 	cpu = td->td_sched->ts_cpu;
 	pri = td->td_priority;
-	cpri = pcpu_find(cpu)->pc_curthread->td_priority;
-	if (!sched_shouldpreempt(pri, cpri, 1))
+	ctd = pcpu_find(cpu)->pc_curthread;
+	if (!sched_shouldpreempt(pri, ctd->td_priority, 1))
 		return;
-	if (TD_IS_IDLETHREAD(td)) {
+	if (TD_IS_IDLETHREAD(ctd)) {
 		/*
 		 * If the idle thread is still 'running' it's probably
 		 * waiting on us to release the tdq spinlock already.  No
@@ -1233,6 +1247,10 @@ tdq_setup(struct tdq *tdq)
 	    "sched lock %d", (int)TDQ_ID(tdq));
 	mtx_init(&tdq->tdq_lock, tdq->tdq_name, "sched lock",
 	    MTX_SPIN | MTX_RECURSE);
+#ifdef KTR
+	snprintf(tdq->tdq_loadname, sizeof(tdq->tdq_loadname),
+	    "CPU %d load", (int)TDQ_ID(tdq));
+#endif
 }
 
 #ifdef SMP
@@ -1555,9 +1573,14 @@ sched_thread_priority(struct thread *td, u_char prio)
 	struct tdq *tdq;
 	int oldpri;
 
-	CTR6(KTR_SCHED, "sched_prio: %p(%s) prio %d newprio %d by %p(%s)",
-	    td, td->td_name, td->td_priority, prio, curthread,
-	    curthread->td_name);
+	KTR_POINT3(KTR_SCHED, "thread", sched_tdname(td), "prio",
+	    "prio:%d", td->td_priority, "new prio:%d", prio,
+	    KTR_ATTR_LINKED, sched_tdname(curthread));
+	if (td != curthread && prio > td->td_priority) {
+		KTR_POINT3(KTR_SCHED, "thread", sched_tdname(curthread),
+		    "lend prio", "prio:%d", td->td_priority, "new prio:%d",
+		    prio, KTR_ATTR_LINKED, sched_tdname(td));
+	} 
 	ts = td->td_sched;
 	THREAD_LOCK_ASSERT(td, MA_OWNED);
 	if (td->td_priority == prio)
@@ -1986,6 +2009,9 @@ sched_fork_thread(struct thread *td, struct thread *child)
 	ts2->ts_slptime = ts->ts_slptime;
 	ts2->ts_runtime = ts->ts_runtime;
 	ts2->ts_slice = 1;	/* Attempt to quickly learn interactivity. */
+#ifdef KTR
+	bzero(ts2->ts_name, sizeof(ts2->ts_name));
+#endif
 }
 
 /*
@@ -2008,10 +2034,9 @@ void
 sched_exit(struct proc *p, struct thread *child)
 {
 	struct thread *td;
-	
-	CTR3(KTR_SCHED, "sched_exit: %p(%s) prio %d",
-	    child, child->td_name, child->td_priority);
 
+	KTR_STATE1(KTR_SCHED, "thread", sched_tdname(child), "proc exit",
+	    "prio:td", child->td_priority);
 	PROC_LOCK_ASSERT(p, MA_OWNED);
 	td = FIRST_THREAD_IN_PROC(p);
 	sched_exit_thread(td, child);
@@ -2027,9 +2052,8 @@ void
 sched_exit_thread(struct thread *td, struct thread *child)
 {
 
-	CTR3(KTR_SCHED, "sched_exit_thread: %p(%s) prio %d",
-	    child, child->td_name, child->td_priority);
-
+	KTR_STATE1(KTR_SCHED, "thread", sched_tdname(child), "thread exit",
+	    "prio:td", child->td_priority);
 	/*
 	 * Give the child's runtime to the parent without returning the
 	 * sleep time as a penalty to the parent.  This causes shells that
@@ -2287,9 +2311,12 @@ sched_add(struct thread *td, int flags)
 #ifdef SMP
 	int cpu;
 #endif
-	CTR5(KTR_SCHED, "sched_add: %p(%s) prio %d by %p(%s)",
-	    td, td->td_name, td->td_priority, curthread,
-	    curthread->td_name);
+
+	KTR_STATE2(KTR_SCHED, "thread", sched_tdname(td), "runq add",
+	    "prio:%d", td->td_priority, KTR_ATTR_LINKED,
+	    sched_tdname(curthread));
+	KTR_POINT1(KTR_SCHED, "thread", sched_tdname(curthread), "wokeup",
+	    KTR_ATTR_LINKED, sched_tdname(td));
 	THREAD_LOCK_ASSERT(td, MA_OWNED);
 	/*
 	 * Recalculate the priority before we select the target cpu or
@@ -2333,9 +2360,8 @@ sched_rem(struct thread *td)
 {
 	struct tdq *tdq;
 
-	CTR5(KTR_SCHED, "sched_rem: %p(%s) prio %d by %p(%s)",
-	    td, td->td_name, td->td_priority, curthread,
-	    curthread->td_name);
+	KTR_STATE1(KTR_SCHED, "thread", sched_tdname(td), "runq rem",
+	    "prio:%d", td->td_priority);
 	tdq = TDQ_CPU(td->td_sched->ts_cpu);
 	TDQ_LOCK_ASSERT(tdq, MA_OWNED);
 	MPASS(td->td_lock == TDQ_LOCKPTR(tdq));
@@ -2601,6 +2627,102 @@ sched_fork_exit(struct thread *td)
 	    &TDQ_LOCKPTR(tdq)->lock_object, 0, 0, __FILE__, __LINE__);
 }
 
+/*
+ * Create on first use to catch odd startup conditons.
+ */
+char *
+sched_tdname(struct thread *td)
+{
+#ifdef KTR
+	struct td_sched *ts;
+
+	ts = td->td_sched;
+	if (ts->ts_name[0] == '\0')
+		snprintf(ts->ts_name, sizeof(ts->ts_name),
+		    "%s tid %d", td->td_name, td->td_tid);
+	return (ts->ts_name);
+#else
+	return (td->td_name);
+#endif
+}
+
+#ifdef SMP
+
+/*
+ * Build the CPU topology dump string. Is recursively called to collect
+ * the topology tree.
+ */
+static int
+sysctl_kern_sched_topology_spec_internal(struct sbuf *sb, struct cpu_group *cg,
+    int indent)
+{
+	int i, first;
+
+	sbuf_printf(sb, "%*s<group level=\"%d\" cache-level=\"%d\">\n", indent,
+	    "", indent, cg->cg_level);
+	sbuf_printf(sb, "%*s <cpu count=\"%d\" mask=\"0x%x\">", indent, "",
+	    cg->cg_count, cg->cg_mask);
+	first = TRUE;
+	for (i = 0; i < MAXCPU; i++) {
+		if ((cg->cg_mask & (1 << i)) != 0) {
+			if (!first)
+				sbuf_printf(sb, ", ");
+			else
+				first = FALSE;
+			sbuf_printf(sb, "%d", i);
+		}
+	}
+	sbuf_printf(sb, "</cpu>\n");
+
+	sbuf_printf(sb, "%*s <flags>", indent, "");
+	if (cg->cg_flags != 0) {
+		if ((cg->cg_flags & CG_FLAG_HTT) != 0)
+			sbuf_printf(sb, "<flag name=\"HTT\">HTT group</flag>\n");
+		if ((cg->cg_flags & CG_FLAG_THREAD) != 0)
+			sbuf_printf(sb, "<flag name=\"THREAD\">SMT group</flag>\n");
+	}
+	sbuf_printf(sb, "</flags>\n");
+
+	if (cg->cg_children > 0) {
+		sbuf_printf(sb, "%*s <children>\n", indent, "");
+		for (i = 0; i < cg->cg_children; i++)
+			sysctl_kern_sched_topology_spec_internal(sb, 
+			    &cg->cg_child[i], indent+2);
+		sbuf_printf(sb, "%*s </children>\n", indent, "");
+	}
+	sbuf_printf(sb, "%*s</group>\n", indent, "");
+	return (0);
+}
+
+/*
+ * Sysctl handler for retrieving topology dump. It's a wrapper for
+ * the recursive sysctl_kern_smp_topology_spec_internal().
+ */
+static int
+sysctl_kern_sched_topology_spec(SYSCTL_HANDLER_ARGS)
+{
+	struct sbuf *topo;
+	int err;
+
+	KASSERT(cpu_top != NULL, ("cpu_top isn't initialized"));
+
+	topo = sbuf_new(NULL, NULL, 500, SBUF_AUTOEXTEND);
+	if (topo == NULL)
+		return (ENOMEM);
+
+	sbuf_printf(topo, "<groups>\n");
+	err = sysctl_kern_sched_topology_spec_internal(topo, cpu_top, 1);
+	sbuf_printf(topo, "</groups>\n");
+
+	if (err == 0) {
+		sbuf_finish(topo);
+		err = SYSCTL_OUT(req, sbuf_data(topo), sbuf_len(topo));
+	}
+	sbuf_delete(topo);
+	return (err);
+}
+#endif
+
 SYSCTL_NODE(_kern, OID_AUTO, sched, CTLFLAG_RW, 0, "Scheduler");
 SYSCTL_STRING(_kern_sched, OID_AUTO, name, CTLFLAG_RD, "ULE", 0,
     "Scheduler name");
@@ -2630,6 +2752,11 @@ SYSCTL_INT(_kern_sched, OID_AUTO, steal_idle, CTLFLAG_RW, &steal_idle, 0,
     "Attempts to steal work from other cores before idling");
 SYSCTL_INT(_kern_sched, OID_AUTO, steal_thresh, CTLFLAG_RW, &steal_thresh, 0,
     "Minimum load on remote cpu before we'll steal");
+
+/* Retrieve SMP topology */
+SYSCTL_PROC(_kern_sched, OID_AUTO, topology_spec, CTLTYPE_STRING |
+    CTLFLAG_RD, NULL, 0, sysctl_kern_sched_topology_spec, "A", 
+    "XML dump of detected CPU topology");
 #endif
 
 /* ps compat.  All cpu percentages from ULE are weighted. */

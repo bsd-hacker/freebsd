@@ -17,7 +17,6 @@
 #
 # $FreeBSD$
 
-machine	arm
 ident		EP80219
 
 options 	PHYSADDR=0xa0000000
@@ -29,6 +28,7 @@ options 	STARTUP_PAGETABLE_ADDR=0xa0000000
 include	"../xscale/i80321/std.ep80219"
 #To statically compile in device wiring instead of /boot/device.hints
 #hints		"GENERIC.hints"		#Default places to look for devices.
+makeoptions	MODULES_OVERRIDE=""
 
 makeoptions	DEBUG=-g		#Build kernel with gdb(1) debug symbols
 makeoptions	CONF_CFLAGS=-mcpu=xscale
@@ -58,7 +58,6 @@ options 	SYSVSEM			#SYSV-style semaphores
 options 	_KPOSIX_PRIORITY_SCHEDULING #Posix P1003_1B real-time extensions
 options 	KBD_INSTALL_CDEV	# install a CDEV entry in /dev
 options   	GEOM_PART_GPT    # GUID Partition Tables.
-options   	GEOM_MBR    # DOS/MBR partitioning
 options   	GEOM_LABEL    # Providers labelization.
 
 options	BOOTP
@@ -69,7 +68,6 @@ options	BOOTP_COMPAT
 #options	PREEMPTION
 device		loop
 device		ether
-device		mem			# Memory and kernel memory devices
 #device		saarm
 device		miibus
 device		fxp

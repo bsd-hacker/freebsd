@@ -1695,6 +1695,22 @@ linux_sethostname(struct thread *td, struct linux_sethostname_args *args)
 }
 
 int
+linux_setdomainname(struct thread *td, struct linux_setdomainname_args *args)
+{
+	int name[2];
+
+#ifdef DEBUG
+	if (ldebug(setdomainname))
+		printf(ARGS(setdomainname, "*, %i"), args->len);
+#endif
+
+	name[0] = CTL_KERN;
+	name[1] = KERN_NISDOMAINNAME;
+	return (userland_sysctl(td, name, 2, 0, 0, 0, args->name,
+	    args->len, 0, 0));
+}
+
+int
 linux_exit_group(struct thread *td, struct linux_exit_group_args *args)
 {
 	struct linux_emuldata *em, *td_em, *tmp_em;

@@ -18,14 +18,16 @@ __FBSDID("$FreeBSD$");
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/interrupt.h>
+#include <sys/pcpu.h>
 
 #include <machine/cpufunc.h>
 #include <machine/intr_machdep.h>
 #include <machine/xen/xen-os.h>
-#include <machine/xen/xen_intr.h>
+#include <xen/xen_intr.h>
 #include <machine/xen/synch_bitops.h>
-#include <machine/xen/evtchn.h>
-#include <machine/xen/hypervisor.h>
+#include <xen/evtchn.h>
+#include <xen/hypervisor.h>
+#include <sys/smp.h>
 
 
 
@@ -74,6 +76,7 @@ static struct mtx irq_mapping_update_lock;
 static struct xenpic *xp;
 struct xenpic_intsrc {
 	struct intsrc     xp_intsrc;
+	void		  *xp_cookie;
 	uint8_t           xp_vector;
 	boolean_t	  xp_masked;
 };
@@ -99,27 +102,58 @@ enum {
 	IRQT_VIRQ,
 	IRQT_IPI,
 	IRQT_LOCAL_PORT,
-	IRQT_CALLER_PORT
+	IRQT_CALLER_PORT,
+	_IRQT_COUNT
+	
 };
 
+
+#define _IRQT_BITS 4
+#define _EVTCHN_BITS 12
+#define _INDEX_BITS (32 - _IRQT_BITS - _EVTCHN_BITS)
+
 /* Constructor for packed IRQ information. */
-#define mk_irq_info(type, index, evtchn)				\
-	(((uint32_t)(type) << 24) | ((uint32_t)(index) << 16) | (uint32_t)(evtchn))
+static inline uint32_t
+mk_irq_info(uint32_t type, uint32_t index, uint32_t evtchn)
+{
+
+	return ((type << (32 - _IRQT_BITS)) | (index << _EVTCHN_BITS) | evtchn);
+}
+
+/* Constructor for packed IRQ information. */
+
 /* Convenient shorthand for packed representation of an unbound IRQ. */
 #define IRQ_UNBOUND	mk_irq_info(IRQT_UNBOUND, 0, 0)
-/* Accessor macros for packed IRQ information. */
-#define evtchn_from_irq(irq) ((uint16_t)(irq_info[irq]))
-#define index_from_irq(irq)  ((uint8_t)(irq_info[irq] >> 16))
-#define type_from_irq(irq)   ((uint8_t)(irq_info[irq] >> 24))
+
+/*
+ * Accessors for packed IRQ information.
+ */
+
+static inline unsigned int evtchn_from_irq(int irq)
+{
+	return irq_info[irq] & ((1U << _EVTCHN_BITS) - 1);
+}
+
+static inline unsigned int index_from_irq(int irq)
+{
+	return (irq_info[irq] >> _EVTCHN_BITS) & ((1U << _INDEX_BITS) - 1);
+}
+
+static inline unsigned int type_from_irq(int irq)
+{
+	return irq_info[irq] >> (32 - _IRQT_BITS);
+}
+
 
 /* IRQ <-> VIRQ mapping. */ 
-DEFINE_PER_CPU(int, virq_to_irq[NR_VIRQS]) = {[0 ... NR_VIRQS-1] = -1}; 
  
 /* IRQ <-> IPI mapping. */ 
-#ifndef NR_IPIS 
+#ifndef NR_IPIS
+#ifdef SMP
+#error "NR_IPIS not defined"
+#endif
 #define NR_IPIS 1 
 #endif 
-DEFINE_PER_CPU(int, ipi_to_irq[NR_IPIS]) = {[0 ... NR_IPIS-1] = -1}; 
 
 /* Bitmap indicating which PIRQs require Xen to be notified on unmask. */
 static unsigned long pirq_needs_unmask_notify[NR_PIRQS/sizeof(unsigned long)];
@@ -129,9 +163,9 @@ static int irq_bindcount[NR_IRQS];
 
 #define VALID_EVTCHN(_chn) ((_chn) != 0)
 
-#ifdef CONFIG_SMP
+#ifdef SMP
 
-static u8 cpu_evtchn[NR_EVENT_CHANNELS];
+static uint8_t cpu_evtchn[NR_EVENT_CHANNELS];
 static unsigned long cpu_evtchn_mask[NR_CPUS][NR_EVENT_CHANNELS/BITS_PER_LONG];
 
 #define active_evtchns(cpu,sh,idx)		\
@@ -222,8 +256,10 @@ evtchn_do_upcall(struct trapframe *frame)
 void
 ipi_pcpu(unsigned int cpu, int vector) 
 { 
-        int irq = per_cpu(ipi_to_irq, cpu)[vector]; 
+        int irq;
 
+	irq = per_cpu(ipi_to_irq, cpu)[vector]; 
+	
         notify_remote_via_irq(irq); 
 } 
 
@@ -260,6 +296,7 @@ bind_caller_port_to_irq(unsigned int caller_port)
         }
 
         irq_bindcount[irq]++;
+	unmask_evtchn(caller_port);
 
  out:
         mtx_unlock_spin(&irq_mapping_update_lock);
@@ -285,6 +322,7 @@ bind_local_port_to_irq(unsigned int local_port)
         evtchn_to_irq[local_port] = irq;
         irq_info[irq] = mk_irq_info(IRQT_LOCAL_PORT, 0, local_port);
         irq_bindcount[irq]++;
+	unmask_evtchn(local_port);
 
  out:
         mtx_unlock_spin(&irq_mapping_update_lock);
@@ -326,11 +364,14 @@ static int
 bind_virq_to_irq(unsigned int virq, unsigned int cpu)
 {
 	struct evtchn_bind_virq bind_virq;
-	int evtchn, irq;
+	int evtchn = 0, irq;
 
 	mtx_lock_spin(&irq_mapping_update_lock);
 
 	if ((irq = per_cpu(virq_to_irq, cpu)[virq]) == -1) {
+		if ((irq = find_unbound_irq()) < 0)
+			goto out;
+
 		bind_virq.virq = virq;
 		bind_virq.vcpu = cpu;
 		PANIC_IF(HYPERVISOR_event_channel_op(EVTCHNOP_bind_virq,
@@ -338,7 +379,6 @@ bind_virq_to_irq(unsigned int virq, unsigned int cpu)
 
 		evtchn = bind_virq.port;
 
-		irq = find_unbound_irq();
 		evtchn_to_irq[evtchn] = irq;
 		irq_info[irq] = mk_irq_info(IRQT_VIRQ, virq, evtchn);
 
@@ -348,18 +388,23 @@ bind_virq_to_irq(unsigned int virq, unsigned int cpu)
 	}
 
 	irq_bindcount[irq]++;
-
+	unmask_evtchn(evtchn);
+out:
 	mtx_unlock_spin(&irq_mapping_update_lock);
 
 	return irq;
 }
 
-static int 
+
+extern int bind_ipi_to_irq(unsigned int ipi, unsigned int cpu);
+
+int 
 bind_ipi_to_irq(unsigned int ipi, unsigned int cpu)
 {
 	struct evtchn_bind_ipi bind_ipi;
-	int evtchn, irq;
-	
+	int irq;
+	int evtchn = 0;
+
 	mtx_lock_spin(&irq_mapping_update_lock);
 	
 	if ((irq = per_cpu(ipi_to_irq, cpu)[ipi]) == -1) {
@@ -370,7 +415,6 @@ bind_ipi_to_irq(unsigned int ipi, unsigned int cpu)
 		PANIC_IF(HYPERVISOR_event_channel_op(EVTCHNOP_bind_ipi, &bind_ipi) != 0);
 		evtchn = bind_ipi.port;
 
-		irq = find_unbound_irq();
 		evtchn_to_irq[evtchn] = irq;
 		irq_info[irq] = mk_irq_info(IRQT_IPI, ipi, evtchn);
 
@@ -378,8 +422,8 @@ bind_ipi_to_irq(unsigned int ipi, unsigned int cpu)
 
 		bind_evtchn_to_cpu(evtchn, cpu);
 	}
-
 	irq_bindcount[irq]++;
+	unmask_evtchn(evtchn);
 out:
 	
 	mtx_unlock_spin(&irq_mapping_update_lock);
@@ -427,20 +471,25 @@ bind_caller_port_to_irqhandler(unsigned int caller_port,
 			  driver_intr_t handler,
 			  void *arg,
 			  unsigned long irqflags,
-                          void **cookiep)
+                          unsigned int *irqp)
 {
 	unsigned int irq;
-	int retval;
+	int error;
 
 	irq = bind_caller_port_to_irq(caller_port);
 	intr_register_source(&xp->xp_pins[irq].xp_intsrc);
-	retval = intr_add_handler(devname, irq, NULL, handler, arg, irqflags, cookiep);
-	if (retval != 0) {
+	error = intr_add_handler(devname, irq, NULL, handler, arg, irqflags,
+	    &xp->xp_pins[irq].xp_cookie);
+
+	if (error) {
 		unbind_from_irq(irq);
-		return -retval;
+		return (error);
 	}
 
-	return irq;
+	if (irqp)
+		*irqp = irq;
+
+	return (0);
 }
 
 int 
@@ -450,43 +499,50 @@ bind_listening_port_to_irqhandler(
 			  driver_intr_t handler,
 			  void *arg,
 			  unsigned long irqflags,
-                          void **cookiep)
+                          unsigned int *irqp)
 {
 	unsigned int irq;
-	int retval;
+	int error;
 
 	irq = bind_listening_port_to_irq(remote_domain);
 	intr_register_source(&xp->xp_pins[irq].xp_intsrc);
-	retval = intr_add_handler(devname, irq, NULL, handler, arg, irqflags, cookiep);
-	if (retval != 0) {
+	error = intr_add_handler(devname, irq, NULL, handler, arg, irqflags,
+	    &xp->xp_pins[irq].xp_cookie);
+	if (error) {
 		unbind_from_irq(irq);
-		return -retval;
+		return (error);
 	}
-
-	return irq;
+	if (irqp)
+		*irqp = irq;
+	
+	return (0);
 }
 
 int 
 bind_interdomain_evtchn_to_irqhandler(
-	                unsigned int remote_domain,
-	                unsigned int remote_port,
-			const char *devname,
-			driver_filter_t filter,
-			driver_intr_t handler,
-			unsigned long irqflags)
+	                    unsigned int remote_domain,
+			    unsigned int remote_port,
+			    const char *devname,
+			    driver_filter_t filter,
+			    driver_intr_t handler,
+			    unsigned long irqflags,
+			    unsigned int *irqp)
 {
 	unsigned int irq;
-	int retval;
+	int error;
 
 	irq = bind_interdomain_evtchn_to_irq(remote_domain, remote_port);
 	intr_register_source(&xp->xp_pins[irq].xp_intsrc);
-	retval = intr_add_handler(devname, irq, filter, handler, NULL, irqflags, NULL);
-	if (retval != 0) {
+	error = intr_add_handler(devname, irq, filter, handler, NULL,
+	    irqflags, &xp->xp_pins[irq].xp_cookie);
+	if (error) {
 		unbind_from_irq(irq);
-		return -retval;
+		return (error);
 	}
 
-	return irq;
+	if (irqp)
+		*irqp = irq;
+	return (0);
 }
 
 int 
@@ -495,48 +551,56 @@ bind_virq_to_irqhandler(unsigned int virq,
 			const char *devname,
 			driver_filter_t filter,
 			driver_intr_t handler,
-			unsigned long irqflags)
+                        void *arg,
+                        unsigned long irqflags,
+                        unsigned int *irqp)
 {
 	unsigned int irq;
-	int retval;
+	int error;
 
 	irq = bind_virq_to_irq(virq, cpu);
 	intr_register_source(&xp->xp_pins[irq].xp_intsrc);
-	retval = intr_add_handler(devname, irq, filter, handler, NULL, irqflags, NULL);
-	if (retval != 0) {
+	error = intr_add_handler(devname, irq, filter, handler,
+	    arg, irqflags, &xp->xp_pins[irq].xp_cookie);
+	if (error) {
 		unbind_from_irq(irq);
-		return -retval;
+		return (error);
 	}
 
-	return irq;
+	if (irqp)
+		*irqp = irq;
+	return (0);
 }
 
 int 
 bind_ipi_to_irqhandler(unsigned int ipi,
 		       unsigned int cpu,
 		       const char *devname,
-		       driver_intr_t handler,
-		       unsigned long irqflags)
+		       driver_filter_t filter,
+                       unsigned long irqflags,
+                       unsigned int *irqp)
 {
 	unsigned int irq;
-	int retval;
-
+	int error;
+	
 	irq = bind_ipi_to_irq(ipi, cpu);
 	intr_register_source(&xp->xp_pins[irq].xp_intsrc);
-	retval = intr_add_handler(devname, irq, NULL, handler, NULL, irqflags, NULL);
-	if (retval != 0) {
+	error = intr_add_handler(devname, irq, filter, NULL,
+	    NULL, irqflags, &xp->xp_pins[irq].xp_cookie);
+	if (error) {
 		unbind_from_irq(irq);
-		return -retval;
+		return (error);
 	}
 
-	return irq;
+	if (irqp)
+		*irqp = irq;
+	return (0);
 }
 
 void
-unbind_from_irqhandler(unsigned int irq, void *dev_id)
+unbind_from_irqhandler(unsigned int irq)
 {
-	if (dev_id)
-		intr_remove_handler(dev_id); /* XXX */
+	intr_remove_handler(xp->xp_pins[irq].xp_cookie);
 	unbind_from_irq(irq);
 }
 
@@ -760,6 +824,8 @@ notify_remote_via_irq(int irq)
 
 	if (VALID_EVTCHN(evtchn))
 		notify_remote_via_evtchn(evtchn);
+	else
+		panic("invalid evtchn");
 }
 
 /* required for support of physical devices */
@@ -810,6 +876,9 @@ xenpic_pirq_enable_intr(struct intsrc *isrc)
 	bind_pirq.flags = probing_irq(irq) ? 0 : BIND_PIRQ__WILL_SHARE;
 	
 	if (HYPERVISOR_event_channel_op(EVTCHNOP_bind_pirq, &bind_pirq) != 0) {
+#ifndef XEN_PRIVILEGED_GUEST
+		panic("unexpected pirq call");
+#endif
 		if (!probing_irq(irq)) /* Some failures are expected when probing. */
 			printf("Failed to obtain physical IRQ %d\n", irq);
 		mtx_unlock_spin(&irq_mapping_update_lock);
@@ -1036,8 +1105,11 @@ evtchn_init(void *dummy __unused)
 	int i, cpu;
 	struct xenpic_intsrc *pin, *tpin;
 
-	/* No VIRQ or IPI bindings. */
-	for (cpu = 0; cpu < NR_CPUS; cpu++) {
+
+	init_evtchn_cpu_bindings();
+	
+         /* No VIRQ or IPI bindings. */
+	for (cpu = 0; cpu < mp_ncpus; cpu++) {
 		for (i = 0; i < NR_VIRQS; i++)
 			per_cpu(virq_to_irq, cpu)[i] = -1;
 		for (i = 0; i < NR_IPIS; i++)
@@ -1104,7 +1176,7 @@ evtchn_init(void *dummy __unused)
 	}
 }
 
-SYSINIT(evtchn_init, SI_SUB_INTR, SI_ORDER_ANY, evtchn_init, NULL);
+SYSINIT(evtchn_init, SI_SUB_INTR, SI_ORDER_MIDDLE, evtchn_init, NULL);
     /*
      * irq_mapping_update_lock: in order to allow an interrupt to occur in a critical
      * 	        section, to set pcpu->ipending (etc...) properly, we

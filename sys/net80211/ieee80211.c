@@ -1,6 +1,6 @@
 /*-
  * Copyright (c) 2001 Atsushi Onoe
- * Copyright (c) 2002-2008 Sam Leffler, Errno Consulting
+ * Copyright (c) 2002-2009 Sam Leffler, Errno Consulting
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -118,7 +118,7 @@ ieee80211_chan_init(struct ieee80211com *ic)
 	struct ieee80211_channel *c;
 	int i;
 
-	KASSERT(0 < ic->ic_nchans && ic->ic_nchans < IEEE80211_CHAN_MAX,
+	KASSERT(0 < ic->ic_nchans && ic->ic_nchans <= IEEE80211_CHAN_MAX,
 		("invalid number of channels specified: %u", ic->ic_nchans));
 	memset(ic->ic_chan_avail, 0, sizeof(ic->ic_chan_avail));
 	memset(ic->ic_modecaps, 0, sizeof(ic->ic_modecaps));
@@ -126,8 +126,21 @@ ieee80211_chan_init(struct ieee80211com *ic)
 	for (i = 0; i < ic->ic_nchans; i++) {
 		c = &ic->ic_channels[i];
 		KASSERT(c->ic_flags != 0, ("channel with no flags"));
-		KASSERT(c->ic_ieee < IEEE80211_CHAN_MAX,
-			("channel with bogus ieee number %u", c->ic_ieee));
+		/*
+		 * Help drivers that work only with frequencies by filling
+		 * in IEEE channel #'s if not already calculated.  Note this
+		 * mimics similar work done in ieee80211_setregdomain when
+		 * changing regulatory state.
+		 */
+		if (c->ic_ieee == 0)
+			c->ic_ieee = ieee80211_mhz2ieee(c->ic_freq,c->ic_flags);
+		if (IEEE80211_IS_CHAN_HT40(c) && c->ic_extieee == 0)
+			c->ic_extieee = ieee80211_mhz2ieee(c->ic_freq +
+			    (IEEE80211_IS_CHAN_HT40U(c) ? 20 : -20),
+			    c->ic_flags);
+		/* default max tx power to max regulatory */
+		if (c->ic_maxpower == 0)
+			c->ic_maxpower = 2*c->ic_maxregpower;
 		setbit(ic->ic_chan_avail, c->ic_ieee);
 		/*
 		 * Identify mode capabilities.
@@ -171,6 +184,7 @@ ieee80211_chan_init(struct ieee80211com *ic)
 	DEFAULTRATES(IEEE80211_MODE_11A,	 ieee80211_rateset_11a);
 	DEFAULTRATES(IEEE80211_MODE_TURBO_A,	 ieee80211_rateset_11a);
 	DEFAULTRATES(IEEE80211_MODE_TURBO_G,	 ieee80211_rateset_11g);
+	DEFAULTRATES(IEEE80211_MODE_STURBO_A,	 ieee80211_rateset_11a);
 
 	/*
 	 * Set auto mode to reset active channel state and any desired channel.
@@ -275,9 +289,9 @@ ieee80211_ifdetach(struct ieee80211com *ic)
 	struct ifnet *ifp = ic->ic_ifp;
 	struct ieee80211vap *vap;
 
-	/* XXX ieee80211_stop_all? */
 	while ((vap = TAILQ_FIRST(&ic->ic_vaps)) != NULL)
 		ieee80211_vap_destroy(vap);
+	ieee80211_waitfor_parent(ic);
 
 	ieee80211_sysctl_detach(ic);
 	ieee80211_regdomain_detach(ic);
@@ -350,11 +364,6 @@ ieee80211_vap_setup(struct ieee80211com *ic, struct ieee80211vap *vap,
 	vap->iv_opmode = opmode;
 	vap->iv_caps |= ieee80211_opcap[opmode];
 	switch (opmode) {
-	case IEEE80211_M_STA:
-		/* auto-enable s/w beacon miss support */
-		if (flags & IEEE80211_CLONE_NOBEACONS)
-			vap->iv_flags_ext |= IEEE80211_FEXT_SWBMISS;
-		break;
 	case IEEE80211_M_WDS:
 		/*
 		 * WDS links must specify the bssid of the far end.
@@ -369,7 +378,25 @@ ieee80211_vap_setup(struct ieee80211com *ic, struct ieee80211vap *vap,
 		if (flags & IEEE80211_CLONE_WDSLEGACY)
 			vap->iv_flags_ext |= IEEE80211_FEXT_WDSLEGACY;
 		break;
+#ifdef IEEE80211_SUPPORT_TDMA
+	case IEEE80211_M_AHDEMO:
+		if (flags & IEEE80211_CLONE_TDMA) {
+			/* NB: checked before clone operation allowed */
+			KASSERT(ic->ic_caps & IEEE80211_C_TDMA,
+			    ("not TDMA capable, ic_caps 0x%x", ic->ic_caps));
+			/*
+			 * Propagate TDMA capability to mark vap; this
+			 * cannot be removed and is used to distinguish
+			 * regular ahdemo operation from ahdemo+tdma.
+			 */
+			vap->iv_caps |= IEEE80211_C_TDMA;
+		}
+		break;
+#endif
 	}
+	/* auto-enable s/w beacon miss support */
+	if (flags & IEEE80211_CLONE_NOBEACONS)
+		vap->iv_flags_ext |= IEEE80211_FEXT_SWBMISS;
 	/*
 	 * Enable various functionality by default if we're
 	 * capable; the driver can override us if it knows better.
@@ -445,7 +472,8 @@ ieee80211_vap_attach(struct ieee80211vap *vap,
 	    vap->iv_opmode == IEEE80211_M_STA, media_change, media_stat);
 	ieee80211_media_status(ifp, &imr);
 	/* NB: strip explicit mode; we're actually in autoselect */
-	ifmedia_set(&vap->iv_media, imr.ifm_active &~ IFM_MMASK);
+	ifmedia_set(&vap->iv_media,
+	    imr.ifm_active &~ (IFM_MMASK | IFM_IEEE80211_TURBO));
 	if (maxrate)
 		ifp->if_baudrate = IF_Mbps(maxrate);
 
@@ -505,7 +533,6 @@ ieee80211_vap_detach(struct ieee80211vap *vap)
 	 */
 	ieee80211_stop_locked(vap);
 
-	/* XXX accumulate iv_stats in ic_stats? */
 	TAILQ_REMOVE(&ic->ic_vaps, vap, iv_next);
 	ieee80211_syncflag_locked(ic, IEEE80211_F_WME);
 	ieee80211_syncflag_locked(ic, IEEE80211_F_TURBOP);
@@ -830,16 +857,16 @@ addmedia(struct ifmedia *media, int caps, int addsta, int mode, int mword)
 	ifmedia_add(media, \
 		IFM_MAKEWORD(IFM_IEEE80211, (_s), (_o), 0), 0, NULL)
 	static const u_int mopts[IEEE80211_MODE_MAX] = { 
-		IFM_AUTO,
-		IFM_IEEE80211_11A,
-		IFM_IEEE80211_11B,
-		IFM_IEEE80211_11G,
-		IFM_IEEE80211_FH,
-		IFM_IEEE80211_11A | IFM_IEEE80211_TURBO,
-		IFM_IEEE80211_11G | IFM_IEEE80211_TURBO,
-		IFM_IEEE80211_11A | IFM_IEEE80211_TURBO,
-		IFM_IEEE80211_11NA,
-		IFM_IEEE80211_11NG,
+	    [IEEE80211_MODE_AUTO]	= IFM_AUTO,
+	    [IEEE80211_MODE_11A]	= IFM_IEEE80211_11A,
+	    [IEEE80211_MODE_11B]	= IFM_IEEE80211_11B,
+	    [IEEE80211_MODE_11G]	= IFM_IEEE80211_11G,
+	    [IEEE80211_MODE_FH]		= IFM_IEEE80211_FH,
+	    [IEEE80211_MODE_TURBO_A]	= IFM_IEEE80211_11A|IFM_IEEE80211_TURBO,
+	    [IEEE80211_MODE_TURBO_G]	= IFM_IEEE80211_11G|IFM_IEEE80211_TURBO,
+	    [IEEE80211_MODE_STURBO_A]	= IFM_IEEE80211_11A|IFM_IEEE80211_TURBO,
+	    [IEEE80211_MODE_11NA]	= IFM_IEEE80211_11NA,
+	    [IEEE80211_MODE_11NG]	= IFM_IEEE80211_11NG,
 	};
 	u_int mopt;
 
@@ -969,7 +996,8 @@ ieee80211_media_init(struct ieee80211com *ic)
 		ieee80211com_media_change, ieee80211com_media_status);
 	/* NB: strip explicit mode; we're actually in autoselect */
 	ifmedia_set(&ic->ic_media,
-		media_status(ic->ic_opmode, ic->ic_curchan) &~ IFM_MMASK);
+	    media_status(ic->ic_opmode, ic->ic_curchan) &~
+		(IFM_MMASK | IFM_IEEE80211_TURBO));
 	if (maxrate)
 		ifp->if_baudrate = IF_Mbps(maxrate);
 
@@ -1065,8 +1093,7 @@ ieee80211_announce_channels(struct ieee80211com *ic)
 }
 
 static int
-media2mode(const struct ieee80211com *ic,
-	const struct ifmedia_entry *ime, enum ieee80211_phymode *mode)
+media2mode(const struct ifmedia_entry *ime, uint32_t flags, uint16_t *mode)
 {
 	switch (IFM_MODE(ime->ifm_media)) {
 	case IFM_IEEE80211_11A:
@@ -1099,7 +1126,7 @@ media2mode(const struct ieee80211com *ic,
 	 */
 	if (ime->ifm_media & IFM_IEEE80211_TURBO) {
 		if (*mode == IEEE80211_MODE_11A) {
-			if (ic->ic_flags & IEEE80211_F_TURBOP)
+			if (flags & IEEE80211_F_TURBOP)
 				*mode = IEEE80211_MODE_TURBO_A;
 			else
 				*mode = IEEE80211_MODE_STURBO_A;
@@ -1113,51 +1140,12 @@ media2mode(const struct ieee80211com *ic,
 }
 
 /*
- * Handle a media change request on the underlying
- * interface; we accept mode changes only.
+ * Handle a media change request on the underlying interface.
  */
 int
 ieee80211com_media_change(struct ifnet *ifp)
 {
-	struct ieee80211com *ic = ifp->if_l2com;
-	struct ifmedia_entry *ime = ic->ic_media.ifm_cur;
-	enum ieee80211_phymode newphymode;
-	int error = 0;
-
-	/*
-	 * First, identify the phy mode.
-	 */
-	if (!media2mode(ic, ime, &newphymode))
-		return EINVAL;
-	/* NB: mode must be supported, no need to check */
-
-	/*
-	 * Handle phy mode change.
-	 */
-	IEEE80211_LOCK(ic);
-	if (ic->ic_curmode != newphymode) {		/* change phy mode */
-		struct ieee80211vap *vap;
-
-		(void) ieee80211_setmode(ic, newphymode);
-		/*
-		 * Propagate new state to each vap.
-		 */
-		TAILQ_FOREACH(vap, &ic->ic_vaps, iv_next) {
-		}
-	}
-	IEEE80211_UNLOCK(ic);
-	return error;
-}
-
-static int
-findrate(const struct ieee80211com *ic, enum ieee80211_phymode m, int r)
-{
-	int i, nrates;
-
-	for (i = 0, nrates = ic->ic_sup_rates[m].rs_nrates; i < nrates; i++)
-		if ((ic->ic_sup_rates[m].rs_rates[i] & IEEE80211_RATE_VAL) == r)
-			return i;
-	return -1;
+	return EINVAL;
 }
 
 /*
@@ -1168,26 +1156,12 @@ ieee80211_media_change(struct ifnet *ifp)
 {
 	struct ieee80211vap *vap = ifp->if_softc;
 	struct ifmedia_entry *ime = vap->iv_media.ifm_cur;
-	struct ieee80211com *ic = vap->iv_ic;
-	int newrate;
+	uint16_t newmode;
 
-	/* XXX this won't work unless ic_curmode is != IEEE80211_MODE_AUTO */
-	if (ic->ic_curmode == IEEE80211_MODE_AUTO)
+	if (!media2mode(ime, vap->iv_flags, &newmode))
 		return EINVAL;
-	if (IFM_SUBTYPE(ime->ifm_media) != IFM_AUTO) {
-		/*
-		 * NB: this can only be used to specify a legacy rate.
-		 */
-		newrate = ieee80211_media2rate(ime->ifm_media);
-		if (newrate == 0)
-			return EINVAL;
-		if (findrate(ic, ic->ic_curmode, newrate) == -1)
-			return EINVAL;
-	} else {
-		newrate = IEEE80211_FIXED_RATE_NONE;
-	}
-	if (newrate != vap->iv_txparms[ic->ic_curmode].ucastrate) {
-		vap->iv_txparms[ic->ic_curmode].ucastrate = newrate;
+	if (vap->iv_des_mode != newmode) {
+		vap->iv_des_mode = newmode;
 		return ENETRESET;
 	}
 	return 0;

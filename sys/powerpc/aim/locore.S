@@ -111,11 +111,14 @@ openfirmware_entry:
 srsave:
 	.long	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 
+	.text
+	.globl	btext
+btext:
+
 /*
  * This symbol is here for the benefit of kvm_mkdb, and is supposed to
  * mark the start of kernel text.
  */
-	.text
 	.globl	kernel_text
 kernel_text:
 
@@ -126,14 +129,6 @@ kernel_text:
 	.text
 	.globl	__start
 __start:
-#ifdef	FIRMWORKSBUGS
-	mfmsr	0
-	andi.	0,0,PSL_IR|PSL_DR
-	beq	1f
-
-	bl	ofwr_init
-1:
-#endif
 	li	8,0
 	li	9,0x100
 	mtctr	9
@@ -151,7 +146,6 @@ __start:
 
 	lis	8,openfirmware_entry@ha
 	stw	5,openfirmware_entry@l(8) /* save client interface handler */
-	mr	3,5
 
 	lis	1,(tmpstk+TMPSTKSZ-16)@ha
 	addi	1,1,(tmpstk+TMPSTKSZ-16)@l
@@ -169,7 +163,7 @@ __start:
 	mfsprg3 0
 	stw	0,16(9)			/* ofmsr[4] = sprg3 */
 	
-	bl	OF_init
+	bl	OF_initial_setup
 
 	lis	4,end@ha
 	addi	4,4,end@l

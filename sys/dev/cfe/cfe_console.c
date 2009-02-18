@@ -62,7 +62,6 @@ static struct ttydevsw cfe_ttydevsw = {
 };
 
 static int			conhandle = -1;
-static struct tty		*cfe_tp = NULL;
 /* XXX does cfe have to poll? */
 static int			polltime;
 static struct callout_handle	cfe_timeouthandle
@@ -173,8 +172,7 @@ static void
 cfe_cninit(struct consdev *cp)
 {
 
-	sprintf(cp->cn_name, "cfecons");
-	cp->cn_tp = cfe_tp;
+	strcpy(cp->cn_name, "cfecons");
 }
 
 static void

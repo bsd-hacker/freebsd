@@ -530,6 +530,12 @@ const struct puc_cfg puc_pci_devices[] = {
 	    PUC_PORT_8S, 0x18, 0, 8,
 	},
 
+	{   0x1393, 0x1682, 0xffff, 0,
+	    "Moxa Technologies, CP-168EL/PCIe",
+	    DEFAULT_RCLK * 8,
+	    PUC_PORT_8S, 0x18, 0, 8,
+	},
+
 	{   0x13a8, 0x0158, 0xffff, 0,
 	    "Cronyx Omega2-PCI",
 	    DEFAULT_RCLK * 8,
@@ -579,6 +585,12 @@ const struct puc_cfg puc_pci_devices[] = {
 	    PUC_PORT_4S, 0x10, 4, 0,
 	},
 
+	{   0x1409, 0x7268, 0xffff, 0,
+	    "Sunix SUN1888",
+	    0,
+	    PUC_PORT_2P, 0x10, 0, 8,
+	},
+
 	{   0x1409, 0x7168, 0xffff, 0,
 	    NULL,
 	    DEFAULT_RCLK * 8,
@@ -595,6 +607,12 @@ const struct puc_cfg puc_pci_devices[] = {
 	 * As sold by Kouwell <URL:http://www.kouwell.com/>.
 	 * I/O Flex PCI I/O Card Model-223 with 4 serial and 1 parallel ports.
 	 */
+
+	{   0x1415, 0x9501, 0x131f, 0x2050,
+	    "SIIG Cyber 4 PCI 16550",
+	    DEFAULT_RCLK * 10,
+	    PUC_PORT_4S, 0x10, 0, 8,
+	},
 
 	{   0x1415, 0x9501, 0x131f, 0x2051,
 	    "SIIG Cyber 4S PCI 16C650 (20x family)",
@@ -624,6 +642,12 @@ const struct puc_cfg puc_pci_devices[] = {
 	    "Oxford Semiconductor OX16PCI952 UARTs",
 	    DEFAULT_RCLK,
 	    PUC_PORT_2S, 0x10, 4, 0,
+	},
+
+	{   0x1415, 0x9538, 0xffff, 0,
+	    "Oxford Semiconductor OX16PCI958 UARTs",
+	    DEFAULT_RCLK * 10,
+	    PUC_PORT_8S, 0x18, 0, 8,
 	},
 
 	{   0x14d2, 0x8010, 0xffff, 0,

@@ -5070,8 +5070,8 @@ ng_rcvmsg(node_p node, struct ng_mesg *msg,
   if (rptr != NULL)
     *rptr = resp;
   else if (resp != NULL)
-    FREE(resp, M_NETGRAPH);
-  FREE(msg, M_NETGRAPH);
+    free(resp, M_NETGRAPH);
+  free(msg, M_NETGRAPH);
 # endif
 
   return error;
@@ -5643,10 +5643,11 @@ fbsd_detach(device_t dev)
   return 0; /* no error */
   }
 
-static void
+static int
 fbsd_shutdown(device_t dev)
   {
   shutdown_card(device_get_softc(dev));
+  return 0;
   }
 
 static int

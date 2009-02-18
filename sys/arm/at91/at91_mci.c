@@ -11,16 +11,17 @@
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
  *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
- * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
- * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
- * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * THIS SOFTWARE IS PROVIDED BY AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL AUTHOR OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
  */
 
 #include <sys/cdefs.h>
@@ -66,6 +67,9 @@ __FBSDID("$FreeBSD$");
 struct at91_mci_softc {
 	void *intrhand;			/* Interrupt handle */
 	device_t dev;
+	int sc_cap;
+#define	CAP_HAS_4WIRE		1	/* Has 4 wire bus */
+#define	CAP_NEEDS_BOUNCE	2	/* broken hardware needing bounce */
 	int flags;
 #define CMD_STARTED	1
 #define STOP_STARTED	2
@@ -76,7 +80,6 @@ struct at91_mci_softc {
 	bus_dmamap_t map;
 	int mapped;
 	struct mmc_host host;
-	int wire4;
 	int bus_busy;
 	struct mmc_request *req;
 	struct mmc_command *curcmd;
@@ -166,6 +169,7 @@ at91_mci_attach(device_t dev)
 	device_t child;
 
 	sc->dev = dev;
+	sc->sc_cap = CAP_NEEDS_BOUNCE;
 	err = at91_mci_activate(dev);
 	if (err)
 		goto out;
@@ -176,7 +180,7 @@ at91_mci_attach(device_t dev)
 	 * Allocate DMA tags and maps
 	 */
 	err = bus_dma_tag_create(bus_get_dma_tag(dev), 1, 0,
-	    BUS_SPACE_MAXADDR_32BIT, US_SPACE_MAXADDR, NULL, NULL, MAXPHYS, 1,
+	    BUS_SPACE_MAXADDR_32BIT, BUS_SPACE_MAXADDR, NULL, NULL, MAXPHYS, 1,
 	    MAXPHYS, BUS_DMA_ALLOCNOW, NULL, NULL, &sc->dmatag);
 	if (err != 0)
 		goto out;
@@ -198,9 +202,12 @@ at91_mci_attach(device_t dev)
 		goto out;
 	}
 	sc->host.f_min = 375000;
-	sc->host.f_max = 30000000;
+	sc->host.f_max = at91_master_clock / 2;	/* Typically 30MHz */
 	sc->host.host_ocr = MMC_OCR_320_330 | MMC_OCR_330_340;
-	sc->host.caps = MMC_CAP_4_BIT_DATA;
+	if (sc->sc_cap & CAP_HAS_4WIRE)
+		sc->host.caps = MMC_CAP_4_BIT_DATA;
+	else
+		sc->host.caps = 0;
 	child = device_add_child(dev, "mmc", 0);
 	device_set_ivars(dev, &sc->host);
 	err = bus_generic_attach(dev);
@@ -273,7 +280,6 @@ at91_mci_getaddr(void *arg, bus_dma_segment_t *segs, int nsegs, int error)
 static int
 at91_mci_update_ios(device_t brdev, device_t reqdev)
 {
-	uint32_t at91_master_clock = AT91C_MASTER_CLOCK;
 	struct at91_mci_softc *sc;
 	struct mmc_host *host;
 	struct mmc_ios *ios;
@@ -293,11 +299,12 @@ at91_mci_update_ios(device_t brdev, device_t reqdev)
 		else
 			clkdiv = (at91_master_clock / ios->clock) / 2;
 	}
-	if (ios->bus_width == bus_width_4 && sc->wire4)
+	if (ios->bus_width == bus_width_4)
 		WR4(sc, MCI_SDCR, RD4(sc, MCI_SDCR) | MCI_SDCR_SDCBUS);
 	else
 		WR4(sc, MCI_SDCR, RD4(sc, MCI_SDCR) & ~MCI_SDCR_SDCBUS);
 	WR4(sc, MCI_MR, (RD4(sc, MCI_MR) & ~MCI_MR_CLKDIV) | clkdiv);
+	/* Do we need a settle time here? */
 	/* XXX We need to turn the device on/off here with a GPIO pin */
 	return (0);
 }
@@ -310,7 +317,6 @@ at91_mci_start_cmd(struct at91_mci_softc *sc, struct mmc_command *cmd)
 	int i;
 	struct mmc_data *data;
 	struct mmc_request *req;
-	size_t block_size = 1 << 9;	// Fixed, per mmc/sd spec for 2GB cards
 	void *vaddr;
 	bus_addr_t paddr;
 
@@ -352,19 +358,21 @@ at91_mci_start_cmd(struct at91_mci_softc *sc, struct mmc_command *cmd)
 	// Set block size and turn on PDC mode for dma xfer and disable
 	// PDC until we're ready.
 	mr = RD4(sc, MCI_MR) & ~MCI_MR_BLKLEN;
-	WR4(sc, MCI_MR, mr | (block_size << 16) | MCI_MR_PDCMODE);
+	WR4(sc, MCI_MR, mr | (data->len << 16) | MCI_MR_PDCMODE);
 	WR4(sc, PDC_PTCR, PDC_PTCR_RXTDIS | PDC_PTCR_TXTDIS);
 	if (cmdr & MCI_CMDR_TRCMD_START) {
 		if (cmdr & MCI_CMDR_TRDIR)
 			vaddr = cmd->data->data;
 		else {
-			if (data->len != BBSZ)
-				panic("Write multiblock write support");
-			vaddr = sc->bounce_buffer;
-			src = (uint32_t *)cmd->data->data;
-			dst = (uint32_t *)vaddr;
-			for (i = 0; i < data->len / 4; i++)
-				dst[i] = bswap32(src[i]);
+			if (sc->sc_cap & CAP_NEEDS_BOUNCE) {
+				vaddr = sc->bounce_buffer;
+				src = (uint32_t *)cmd->data->data;
+				dst = (uint32_t *)vaddr;
+				for (i = 0; i < data->len / 4; i++)
+					dst[i] = bswap32(src[i]);
+			}
+			else
+				vaddr = cmd->data->data;
 		}
 		data->xfer_len = 0;
 		if (bus_dmamap_load(sc->dmatag, sc->map, vaddr, data->len,
@@ -495,10 +503,12 @@ at91_mci_read_done(struct at91_mci_softc *sc)
 	bus_dmamap_sync(sc->dmatag, sc->map, BUS_DMASYNC_POSTREAD);
 	bus_dmamap_unload(sc->dmatag, sc->map);
 	sc->mapped--;
-	walker = (uint32_t *)cmd->data->data;
-	len = cmd->data->len / 4;
-	for (i = 0; i < len; i++)
-		walker[i] = bswap32(walker[i]);
+	if (sc->sc_cap & CAP_NEEDS_BOUNCE) {
+		walker = (uint32_t *)cmd->data->data;
+		len = cmd->data->len / 4;
+		for (i = 0; i < len; i++)
+			walker[i] = bswap32(walker[i]);
+	}
 	// Finish up the sequence...
 	WR4(sc, MCI_IDR, MCI_SR_ENDRX);
 	WR4(sc, MCI_IER, MCI_SR_RXBUFF);
@@ -642,6 +652,12 @@ at91_mci_read_ivar(device_t bus, device_t child, int which, u_char *result)
 	case MMCBR_IVAR_VDD:
 		*(int *)result = sc->host.ios.vdd;
 		break;
+	case MMCBR_IVAR_CAPS:
+		*(int *)result = sc->host.caps;
+		break;
+	case MMCBR_IVAR_MAX_DATA:
+		*(int *)result = 1;
+		break;
 	}
 	return (0);
 }
@@ -679,9 +695,11 @@ at91_mci_write_ivar(device_t bus, device_t child, int which, uintptr_t value)
 		sc->host.ios.vdd = value;
 		break;
 	/* These are read-only */
+	case MMCBR_IVAR_CAPS:
 	case MMCBR_IVAR_HOST_OCR:
 	case MMCBR_IVAR_F_MIN:
 	case MMCBR_IVAR_F_MAX:
+	case MMCBR_IVAR_MAX_DATA:
 		return (EINVAL);
 	}
 	return (0);

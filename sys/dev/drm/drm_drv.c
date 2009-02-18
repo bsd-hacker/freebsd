@@ -152,6 +152,10 @@ int drm_probe(device_t dev, drm_pci_id_list_t *idlist)
 	device = pci_get_device(dev);
 #endif
 
+	if (pci_get_class(dev) != PCIC_DISPLAY
+	    || pci_get_subclass(dev) != PCIS_DISPLAY_VGA)
+		return ENXIO;
+
 	id_entry = drm_find_description(vendor, device, idlist);
 	if (id_entry != NULL) {
 		device_set_desc(dev, id_entry->name);
@@ -537,7 +541,7 @@ int drm_open(struct cdev *kdev, int flags, int fmt, DRM_STRUCTPROC *p)
 	struct drm_device *dev = NULL;
 	int retcode = 0;
 
-	dev = DRIVER_SOFTC(minor(kdev));
+	dev = DRIVER_SOFTC(dev2unit(kdev));
 
 	DRM_DEBUG("open_count = %d\n", dev->open_count);
 

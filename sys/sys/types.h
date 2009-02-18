@@ -205,6 +205,11 @@ typedef	__mode_t	mode_t;		/* permissions */
 #define	_MODE_T_DECLARED
 #endif
 
+#ifndef _ACCMODE_T_DECLARED
+typedef	__accmode_t	accmode_t;	/* access permissions */
+#define	_ACCMODE_T_DECLARED
+#endif
+
 #ifndef _NLINK_T_DECLARED
 typedef	__nlink_t	nlink_t;	/* link count */
 #define	_NLINK_T_DECLARED
@@ -312,17 +317,9 @@ typedef	struct vm_page	*vm_page_t;
  * minor() gives a cookie instead of an index since we don't want to
  * change the meanings of bits 0-15 or waste time and space shifting
  * bits 16-31 for devices that don't use them.
- *
- * XXX: In the kernel we must name it umajor() and uminor(), because
- * minor() is still in use by <sys/conf.h>.
  */
-#ifdef _KERNEL
-#define	umajor(x)	((int)(((u_int)(x) >> 8)&0xff)) /* major number */
-#define	uminor(x)	((int)((x)&0xffff00ff))		/* minor number */
-#else /* !_KERNEL */
-#define	major(x)	((int)(((u_int)(x) >> 8)&0xff)) /* major number */
+#define	major(x)	((int)(((u_int)(x) >> 8)&0xff))	/* major number */
 #define	minor(x)	((int)((x)&0xffff00ff))		/* minor number */
-#endif /* _KERNEL */
 #define	makedev(x,y)	((dev_t)(((x) << 8) | (y)))	/* create dev_t */
 
 /*

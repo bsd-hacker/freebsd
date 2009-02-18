@@ -352,6 +352,10 @@ swcr_encdec(struct cryptodesc *crd, struct swcr_data *sw, caddr_t buf,
 				k += blks;
 				i -= blks;
 			}
+			if (k == iov->iov_len) {
+				iov++;
+				k = 0;
+			}
 		}
 
 		return 0; /* Done with iovec encryption/decryption */
@@ -429,12 +433,17 @@ swcr_authprepare(struct auth_hash *axf, struct swcr_data *sw, u_char *key,
 		break;
 	case CRYPTO_MD5_KPDK:
 	case CRYPTO_SHA1_KPDK:
+	{
+		/* We need a buffer that can hold an md5 and a sha1 result. */
+		u_char buf[SHA1_RESULTLEN];
+
 		sw->sw_klen = klen;
 		bcopy(key, sw->sw_octx, klen);
 		axf->Init(sw->sw_ictx);
 		axf->Update(sw->sw_ictx, key, klen);
-		axf->Final(NULL, sw->sw_ictx);
+		axf->Final(buf, sw->sw_ictx);
 		break;
+	}
 	default:
 		printf("%s: CRD_F_KEY_EXPLICIT flag given, but algorithm %d "
 		    "doesn't use keys.\n", __func__, axf->type);
@@ -523,7 +532,7 @@ swcr_compdec(struct cryptodesc *crd, struct swcr_data *sw,
 	 * copy in a buffer.
 	 */
 
-	MALLOC(data, u_int8_t *, crd->crd_len, M_CRYPTO_DATA,  M_NOWAIT);
+	data = malloc(crd->crd_len, M_CRYPTO_DATA,  M_NOWAIT);
 	if (data == NULL)
 		return (EINVAL);
 	crypto_copydata(flags, buf, crd->crd_skip, crd->crd_len, data);
@@ -533,7 +542,7 @@ swcr_compdec(struct cryptodesc *crd, struct swcr_data *sw,
 	else
 		result = cxf->decompress(data, crd->crd_len, &out);
 
-	FREE(data, M_CRYPTO_DATA);
+	free(data, M_CRYPTO_DATA);
 	if (result == 0)
 		return EINVAL;
 
@@ -545,7 +554,7 @@ swcr_compdec(struct cryptodesc *crd, struct swcr_data *sw,
 	if (crd->crd_flags & CRD_F_COMP) {
 		if (result > crd->crd_len) {
 			/* Compression was useless, we lost time */
-			FREE(out, M_CRYPTO_DATA);
+			free(out, M_CRYPTO_DATA);
 			return 0;
 		}
 	}
@@ -576,7 +585,7 @@ swcr_compdec(struct cryptodesc *crd, struct swcr_data *sw,
 			}
 		}
 	}
-	FREE(out, M_CRYPTO_DATA);
+	free(out, M_CRYPTO_DATA);
 	return 0;
 }
 
@@ -635,7 +644,7 @@ swcr_newsession(device_t dev, u_int32_t *sid, struct cryptoini *cri)
 	*sid = i;
 
 	while (cri) {
-		MALLOC(*swd, struct swcr_data *, sizeof(struct swcr_data),
+		*swd = malloc(sizeof(struct swcr_data),
 		    M_CRYPTO_DATA, M_NOWAIT|M_ZERO);
 		if (*swd == NULL) {
 			swcr_freesession(dev, i);
@@ -873,7 +882,7 @@ swcr_freesession(device_t dev, u_int64_t tid)
 			break;
 		}
 
-		FREE(swd, M_CRYPTO_DATA);
+		free(swd, M_CRYPTO_DATA);
 	}
 	return 0;
 }
@@ -977,7 +986,7 @@ done:
 }
 
 static void
-swcr_identify(device_t *dev, device_t parent)
+swcr_identify(driver_t *drv, device_t parent)
 {
 	/* NB: order 10 is so we get attached after h/w devices */
 	if (device_find_child(parent, "cryptosoft", -1) == NULL &&
@@ -1031,12 +1040,13 @@ swcr_attach(device_t dev)
 	return 0;
 }
 
-static void
+static int
 swcr_detach(device_t dev)
 {
 	crypto_unregister_all(swcr_id);
 	if (swcr_sessions != NULL)
-		FREE(swcr_sessions, M_CRYPTO_DATA);
+		free(swcr_sessions, M_CRYPTO_DATA);
+	return 0;
 }
 
 static device_method_t swcr_methods[] = {

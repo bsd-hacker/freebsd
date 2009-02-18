@@ -109,7 +109,7 @@ ng_hci_constructor(node_p node)
 {
 	ng_hci_unit_p	unit = NULL;
 
-	MALLOC(unit, ng_hci_unit_p, sizeof(*unit), M_NETGRAPH_HCI,
+	unit = malloc(sizeof(*unit), M_NETGRAPH_HCI,
 		M_NOWAIT | M_ZERO);
 	if (unit == NULL)
 		return (ENOMEM);
@@ -170,7 +170,7 @@ ng_hci_shutdown(node_p node)
 	NG_BT_MBUFQ_DESTROY(&unit->cmdq);
 
 	bzero(unit, sizeof(*unit));
-	FREE(unit, M_NETGRAPH_HCI);
+	free(unit, M_NETGRAPH_HCI);
 
 	return (0);
 } /* ng_hci_shutdown */
@@ -728,7 +728,7 @@ ng_hci_drv_rcvdata(hook_p hook, item_p item)
 
 		if ((unit->state & NG_HCI_UNIT_READY) != NG_HCI_UNIT_READY ||
 		    unit->sco == NULL || NG_HOOK_NOT_VALID(unit->sco)) {
-			NG_HCI_WARN(
+			NG_HCI_INFO(
 "%s: %s - could not forward HCI SCO data packet, state=%#x, hook=%p\n",
 				__func__, NG_NODE_NAME(unit->node), 
 				unit->state, unit->sco);

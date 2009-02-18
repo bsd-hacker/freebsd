@@ -288,33 +288,39 @@ static struct {
 	char val;
 } ttystates[] = {
 #if 0
-	{ TF_NOPREFIX,	'N' },
+	{ TF_NOPREFIX,		'N' },
 #endif
-	{ TF_INITLOCK,	'I' },
-	{ TF_CALLOUT,	'C' },
+	{ TF_INITLOCK,		'I' },
+	{ TF_CALLOUT,		'C' },
 
 	/* Keep these together -> 'Oi' and 'Oo'. */
-	{ TF_OPENED,	'O' },
-	{ TF_OPENED_IN,	'i' },
-	{ TF_OPENED_OUT,'o' },
+	{ TF_OPENED,		'O' },
+	{ TF_OPENED_IN,		'i' },
+	{ TF_OPENED_OUT,	'o' },
+	{ TF_OPENED_CONS,	'c' },
 
-	{ TF_GONE,	'G' },
-	{ TF_OPENCLOSE,	'B' },
-	{ TF_ASYNC,	'Y' },
-	{ TF_LITERAL,	'L' },
+	{ TF_GONE,		'G' },
+	{ TF_OPENCLOSE,		'B' },
+	{ TF_ASYNC,		'Y' },
+	{ TF_LITERAL,		'L' },
 
 	/* Keep these together -> 'Hi' and 'Ho'. */
-	{ TF_HIWAT,	'H' },
-	{ TF_HIWAT_IN,	'i' },
-	{ TF_HIWAT_OUT,	'o' },
+	{ TF_HIWAT,		'H' },
+	{ TF_HIWAT_IN,		'i' },
+	{ TF_HIWAT_OUT,		'o' },
 
-	{ TF_STOPPED,	'S' },
-	{ TF_EXCLUDE,	'X' },
-	{ TF_BYPASS,	'l' },
-	{ TF_ZOMBIE,	'Z' },
-	{ TF_HOOK,	's' },
+	{ TF_STOPPED,		'S' },
+	{ TF_EXCLUDE,		'X' },
+	{ TF_BYPASS,		'l' },
+	{ TF_ZOMBIE,		'Z' },
+	{ TF_HOOK,		's' },
 
-	{ 0,	       '\0' },
+	/* Keep these together -> 'bi' and 'bo'. */
+	{ TF_BUSY,		'b' },
+	{ TF_BUSY_IN,		'i' },
+	{ TF_BUSY_OUT,		'o' },
+
+	{ 0,			'\0'},
 };
 
 static void
@@ -334,7 +340,7 @@ ttyprt(struct xtty *xt)
 	    xt->xt_insize, xt->xt_incc, xt->xt_inlc,
 	    (xt->xt_insize - xt->xt_inlow), xt->xt_outsize,
 	    xt->xt_outcc, (xt->xt_outsize - xt->xt_outlow),
-	    xt->xt_column, xt->xt_sid, xt->xt_pgid);
+	    MIN(xt->xt_column, 99999), xt->xt_sid, xt->xt_pgid);
 	for (i = j = 0; ttystates[i].flag; i++)
 		if (xt->xt_flags & ttystates[i].flag) {
 			putchar(ttystates[i].val);

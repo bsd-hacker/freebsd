@@ -607,7 +607,7 @@ coda_access(struct vop_access_args *ap)
 	/* true args */
 	struct vnode *vp = ap->a_vp;
 	struct cnode *cp = VTOC(vp);
-	int mode = ap->a_mode;
+	accmode_t accmode = ap->a_accmode;
 	struct ucred *cred = ap->a_cred;
 	struct thread *td = ap->a_td;
 	/* locals */
@@ -624,7 +624,7 @@ coda_access(struct vop_access_args *ap)
 		 * Bogus hack - all will be marked as successes.
 		 */
 		MARK_INT_SAT(CODA_ACCESS_STATS);
-		return (((mode & VREAD) && !(mode & (VWRITE | VEXEC)))
+		return (((accmode & VREAD) && !(accmode & (VWRITE | VEXEC)))
 		    ? 0 : EACCES);
 	}
 
@@ -636,11 +636,11 @@ coda_access(struct vop_access_args *ap)
 	 */
 	if (coda_access_cache && VALID_ACCCACHE(cp) &&
 	    (cred->cr_uid == cp->c_cached_uid) &&
-	    (mode & cp->c_cached_mode) == mode) {
+	    (accmode & cp->c_cached_mode) == accmode) {
 		MARK_INT_SAT(CODA_ACCESS_STATS);
 		return (0);
 	}
-	error = venus_access(vtomi(vp), &cp->c_fid, mode, cred, td->td_proc);
+	error = venus_access(vtomi(vp), &cp->c_fid, accmode, cred, td->td_proc);
 	if (error == 0 && coda_access_cache) {
 		/*-
 		 * When we have a new successful request, we consider three
@@ -658,10 +658,10 @@ coda_access(struct vop_access_args *ap)
 		 */
 		cp->c_flags |= C_ACCCACHE;
 		if (cp->c_cached_uid != cred->cr_uid) {
-			cp->c_cached_mode = mode;
+			cp->c_cached_mode = accmode;
 			cp->c_cached_uid = cred->cr_uid;
 		} else
-			cp->c_cached_mode |= mode;
+			cp->c_cached_mode |= accmode;
 	}
 	return (error);
 }
@@ -1506,7 +1506,7 @@ coda_readdir(struct vop_readdir_args *ap)
 	 */
 	CODADEBUG(CODA_READDIR, myprintf(("indirect readdir: fid = %s, "
 	    "refcnt = %d\n", coda_f2s(&cp->c_fid), vp->v_usecount)););
-	vn_lock(cp->c_ovp, LK_EXCLUSIVE | LK_RETRY);
+	vn_lock(cp->c_ovp, LK_SHARED | LK_RETRY);
 	error = VOP_READDIR(cp->c_ovp, uiop, cred, eofflag, ncookies,
 	    cookies);
 	VOP_UNLOCK(cp->c_ovp, 0);

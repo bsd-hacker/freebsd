@@ -14,35 +14,40 @@ font.h				optional	sc			\
 	no-obj no-implicit-rule before-depend				\
 	clean	"font.h ${SC_DFLT_FONT}-8x14 ${SC_DFLT_FONT}-8x16 ${SC_DFLT_FONT}-8x8"
 #
-hal.o				optional	ath_hal			\
-	dependency	"$S/contrib/dev/ath/public/powerpc-be-elf.hal.o.uu"	\
-	compile-with	"uudecode < $S/contrib/dev/ath/public/powerpc-be-elf.hal.o.uu" \
-	no-implicit-rule
-opt_ah.h			optional	ath_hal			\
-	dependency	"$S/contrib/dev/ath/public/powerpc-be-elf.opt_ah.h"	\
-	compile-with	"rm -f opt_ah.h; cp $S/contrib/dev/ath/public/powerpc-be-elf.opt_ah.h opt_ah.h" \
-	no-obj no-implicit-rule before-depend				\
-	clean		"opt_ah.h"
-#
 
 crypto/blowfish/bf_enc.c	optional	crypto | ipsec
 crypto/des/des_enc.c		optional	crypto | ipsec | netsmb
 dev/bm/if_bm.c			optional	bm powermac
+dev/adb/adb_bus.c		optional	adb
+dev/adb/adb_kbd.c		optional	adb
+dev/adb/adb_mouse.c		optional	adb
+dev/adb/adb_hb_if.m		optional	adb
+dev/adb/adb_if.m		optional	adb
+dev/cfi/cfi_bus_lbc.c		optional	cfi
 dev/fb/fb.c			optional	sc
 dev/hwpmc/hwpmc_powerpc.c	optional	hwpmc
 dev/kbd/kbd.c			optional	sc
 dev/ofw/openfirm.c		optional	aim
 dev/ofw/openfirmio.c		optional	aim
 dev/ofw/ofw_bus_if.m		optional	aim
+dev/ofw/ofw_if.m		optional	aim
 dev/ofw/ofw_bus_subr.c		optional	aim
 dev/ofw/ofw_console.c		optional	aim
 dev/ofw/ofw_disk.c		optional	ofwd aim
+dev/ofw/ofw_iicbus.c		optional	iicbus aim
+dev/ofw/ofw_standard.c		optional	aim
 dev/powermac_nvram/powermac_nvram.c optional	powermac_nvram powermac
 dev/quicc/quicc_bfe_ocp.c	optional	quicc mpc85xx
 dev/scc/scc_bfe_macio.c		optional	scc powermac
+dev/sound/macio/aoa.c		optional	snd_davbus | snd_ai2s powermac
+dev/sound/macio/davbus.c	optional	snd_davbus powermac
+dev/sound/macio/i2s.c		optional	snd_ai2s powermac
+dev/sound/macio/snapper.c	optional	snd_ai2s iicbus powermac
+dev/sound/macio/tumbler.c	optional	snd_ai2s iicbus powermac
 dev/syscons/scgfbrndr.c		optional	sc
-dev/syscons/scterm-sc.c		optional	sc
+dev/syscons/scterm-teken.c	optional	sc
 dev/syscons/scvtb.c		optional	sc
+dev/syscons/teken/teken.c	optional sc
 dev/tsec/if_tsec.c		optional	tsec
 dev/tsec/if_tsec_ocp.c		optional	tsec mpc85xx
 dev/uart/uart_bus_ocp.c		optional	uart mpc85xx
@@ -85,7 +90,6 @@ powerpc/booke/interrupt.c	optional	e500
 powerpc/booke/locore.S		optional	e500 no-obj
 powerpc/booke/machdep.c		optional	e500
 powerpc/booke/pmap.c		optional	e500
-powerpc/booke/support.S		optional	e500
 powerpc/booke/swtch.S		optional	e500
 powerpc/booke/trap.c		optional	e500
 powerpc/booke/uio_machdep.c	optional	e500
@@ -99,6 +103,7 @@ powerpc/fpu/fpu_implode.c	optional	fpu_emu
 powerpc/fpu/fpu_mul.c		optional	fpu_emu
 powerpc/fpu/fpu_sqrt.c		optional	fpu_emu
 powerpc/fpu/fpu_subr.c		optional	fpu_emu
+powerpc/mpc85xx/lbc.c		optional	mpc85xx
 powerpc/mpc85xx/mpc85xx.c	optional	mpc85xx
 powerpc/mpc85xx/nexus.c		optional	mpc85xx
 powerpc/mpc85xx/ocpbus.c	optional	mpc85xx
@@ -113,10 +118,14 @@ powerpc/powermac/ata_dbdma.c	optional	powermac ata
 powerpc/powermac/dbdma.c	optional	powermac pci
 powerpc/powermac/grackle.c	optional	powermac pci
 powerpc/powermac/hrowpic.c	optional	powermac pci
+powerpc/powermac/kiic.c		optional	powermac kiic
 powerpc/powermac/macio.c	optional	powermac pci
 powerpc/powermac/openpic_macio.c optional	powermac pci
 powerpc/powermac/pswitch.c	optional	powermac pswitch
 powerpc/powermac/uninorth.c	optional	powermac pci
+powerpc/powermac/cuda.c		optional	powermac cuda
+powerpc/powermac/pmu.c		optional	powermac pmu 
+powerpc/powermac/macgpio.c	optional	powermac pci 
 powerpc/powerpc/atomic.S	standard
 powerpc/powerpc/autoconf.c	standard
 powerpc/powerpc/bcopy.c		standard

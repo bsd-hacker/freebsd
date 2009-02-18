@@ -46,16 +46,6 @@ ukbdmap.h			optional	ukbd_dflt_keymap	\
 	no-obj no-implicit-rule before-depend				\
 	clean		"ukbdmap.h"
 #
-hal.o				optional	ath_hal			\
-	dependency	"$S/contrib/dev/ath/public/i386-elf.hal.o.uu"	\
-	compile-with	"uudecode < $S/contrib/dev/ath/public/i386-elf.hal.o.uu" \
-	no-implicit-rule
-opt_ah.h			optional	ath_hal			\
-	dependency	"$S/contrib/dev/ath/public/i386-elf.opt_ah.h"	\
-	compile-with	"rm -f opt_ah.h; cp $S/contrib/dev/ath/public/i386-elf.opt_ah.h opt_ah.h" \
-	no-obj no-implicit-rule before-depend				\
-	clean		"opt_ah.h"
-#
 nvenetlib.o			optional	nve pci			\
 	dependency	"$S/contrib/dev/nve/i386/nvenetlib.o.bz2.uu"	\
 	compile-with	"uudecode $S/contrib/dev/nve/i386/nvenetlib.o.bz2.uu ; bzip2 -df nvenetlib.o.bz2" \
@@ -128,15 +118,15 @@ crypto/via/padlock.c		optional padlock
 crypto/via/padlock_cipher.c	optional padlock
 crypto/via/padlock_hash.c	optional padlock
 dev/advansys/adv_isa.c		optional adv isa
-dev/agp/agp_ali.c			optional agp
-dev/agp/agp_amd.c			optional agp
-dev/agp/agp_amd64.c			optional agp
-dev/agp/agp_ati.c			optional agp
-dev/agp/agp_i810.c			optional agp
-dev/agp/agp_intel.c			optional agp
+dev/agp/agp_ali.c		optional agp
+dev/agp/agp_amd.c		optional agp
+dev/agp/agp_amd64.c		optional agp
+dev/agp/agp_ati.c		optional agp
+dev/agp/agp_i810.c		optional agp
+dev/agp/agp_intel.c		optional agp
 dev/agp/agp_nvidia.c		optional agp
-dev/agp/agp_sis.c			optional agp
-dev/agp/agp_via.c			optional agp
+dev/agp/agp_sis.c		optional agp
+dev/agp/agp_via.c		optional agp
 dev/aic/aic_isa.c		optional aic isa
 dev/arcmsr/arcmsr.c		optional arcmsr pci
 dev/ar/if_ar.c			optional ar
@@ -186,9 +176,12 @@ dev/hptrr/hptrr_os_bsd.c	optional hptrr
 dev/hptrr/hptrr_osm_bsd.c	optional hptrr
 dev/hptrr/hptrr_config.c	optional hptrr
 dev/hwpmc/hwpmc_amd.c		optional hwpmc
+dev/hwpmc/hwpmc_intel.c		optional hwpmc
+dev/hwpmc/hwpmc_core.c		optional hwpmc
 dev/hwpmc/hwpmc_pentium.c	optional hwpmc
 dev/hwpmc/hwpmc_piv.c		optional hwpmc
 dev/hwpmc/hwpmc_ppro.c		optional hwpmc
+dev/hwpmc/hwpmc_tsc.c		optional hwpmc
 dev/hwpmc/hwpmc_x86.c		optional hwpmc
 dev/ichwd/ichwd.c		optional ichwd
 dev/if_ndis/if_ndis.c		optional ndis
@@ -206,7 +199,7 @@ dev/ipmi/ipmi_smbios.c		optional ipmi
 dev/ipmi/ipmi_ssif.c		optional ipmi smbus
 dev/ipmi/ipmi_pci.c		optional ipmi pci
 dev/k8temp/k8temp.c		optional k8temp
-dev/kbd/kbd.c			optional atkbd | sc | ukbd
+dev/kbd/kbd.c			optional atkbd | sc | ukbd | usb2_input_kbd
 dev/le/if_le_isa.c		optional le isa
 dev/mem/memutil.c		optional mem
 dev/mse/mse.c			optional mse
@@ -227,10 +220,11 @@ dev/sio/sio_puc.c		optional sio puc
 dev/speaker/spkr.c		optional speaker
 dev/sr/if_sr_isa.c		optional sr isa
 dev/syscons/apm/apm_saver.c	optional apm_saver apm
-dev/syscons/scterm-sc.c		optional sc
+dev/syscons/scterm-teken.c	optional sc
 dev/syscons/scvesactl.c		optional sc vga vesa
 dev/syscons/scvgarndr.c		optional sc vga
 dev/syscons/scvtb.c		optional sc
+dev/syscons/teken/teken.c	optional sc
 dev/uart/uart_cpu_i386.c	optional uart
 dev/acpica/acpi_if.m		standard
 dev/wpi/if_wpi.c		optional wpi

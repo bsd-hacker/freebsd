@@ -33,7 +33,7 @@
 #define _XEN_XENFUNC_H_
 
 #include <machine/xen/xen-os.h>
-#include <machine/xen/hypervisor.h>
+#include <xen/hypervisor.h>
 #include <machine/xen/xenpmap.h>
 #include <machine/segments.h>
 #include <sys/pcpu.h>
@@ -66,8 +66,6 @@ void _xen_machphys_update(vm_paddr_t, vm_paddr_t, char *file, int line);
 #endif	
 
 void xen_update_descriptor(union descriptor *, union descriptor *);
-
-void ap_cpu_initclocks(void);
 
 extern struct mtx balloon_lock;
 #if 0

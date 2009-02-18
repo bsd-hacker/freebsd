@@ -18,11 +18,21 @@ stop_cmd=":"
 
 defaultroute_start()
 {
-	# Return without waiting if we don't have dhcp interfaces.
-	# Once we can test that the link is actually up, we should
-	# remove this test and always wait.
+	local output carrier nocarrier
+
+	# Return without waiting if we don't have dhcp interfaces or
+	# if none of the dhcp interfaces is plugged in.
 	dhcp_interfaces=`list_net_interfaces dhcp`
-	[ -z "`list_net_interfaces dhcp`" ] && return
+	[ -z "${dhcp_interfaces}" ] && return
+	carrier=false
+	for _if in ${dhcp_interfaces}; do
+		output=`/sbin/ifconfig ${_if}` 
+		nocarrier=`expr "${output}" : '.*[[:blank:]]status: \(no carrier\)'`
+		[ -z "${nocarrier}" ] && carrier=true
+	done
+	if ! ${carrier}; then
+		return
+	fi
 
 	# Wait for a default route
 	delay=${if_up_delay}
@@ -30,18 +40,20 @@ defaultroute_start()
 		defif=`get_default_if -inet`
 		if [ -n "${defif}" ]; then
 			if [ ${delay} -ne ${if_up_delay} ]; then
-				echo "($defif)"
+				echo -n "($defif)"
 			fi
 			break
 		fi
 		if [ ${delay} -eq ${if_up_delay} ]; then
-			echo -n "Waiting ${delay}s for an interface to come up: "
+			echo -n "Waiting ${delay}s for the default route interface: "
 		else
 			echo -n .
 		fi
 		sleep 1
 		delay=`expr $delay - 1`
 	done
+
+	echo
 }
 
 load_rc_config $name

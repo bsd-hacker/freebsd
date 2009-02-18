@@ -51,7 +51,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/systm.h> 
 #include <sys/sysctl.h>
-#include <sys/module.h>
 #include <sys/kernel.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
@@ -78,7 +77,7 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/ath/if_athvar.h>
 #include <dev/ath/ath_rate/amrr/amrr.h>
-#include <contrib/dev/ath/ah_desc.h>
+#include <dev/ath/ath_hal/ah_desc.h>
 
 static	int ath_rateinterval = 1000;		/* rate ctl interval (ms)  */
 static	int ath_rate_max_success_threshold = 10;
@@ -277,8 +276,7 @@ static void
 ath_rate_ctl_start(struct ath_softc *sc, struct ieee80211_node *ni)
 {
 #define	RATE(_ix)	(ni->ni_rates.rs_rates[(_ix)] & IEEE80211_RATE_VAL)
-	struct ath_node *an = ATH_NODE(ni);
-	const struct ieee80211_txparam *tp = an->an_tp;
+	const struct ieee80211_txparam *tp = ni->ni_txparms;
 	int srate;
 
 	KASSERT(ni->ni_rates.rs_nrates > 0, ("no rates"));
@@ -319,49 +317,6 @@ ath_rate_ctl_start(struct ath_softc *sc, struct ieee80211_node *ni)
 	 */
 	ath_rate_update(sc, ni, srate < 0 ? 0 : srate);
 #undef RATE
-}
-
-static void
-ath_rate_cb(void *arg, struct ieee80211_node *ni)
-{
-	struct ath_softc *sc = arg;
-
-	ath_rate_update(sc, ni, 0);
-}
-
-/*
- * Reset the rate control state for each 802.11 state transition.
- */
-void
-ath_rate_newstate(struct ieee80211vap *vap, enum ieee80211_state state)
-{
-	struct ieee80211com *ic = vap->iv_ic;
-	struct ath_softc *sc = ic->ic_ifp->if_softc;
-	struct ieee80211_node *ni;
-
-	if (state == IEEE80211_S_INIT)
-		return;
-	if (vap->iv_opmode == IEEE80211_M_STA) {
-		/*
-		 * Reset local xmit state; this is really only
-		 * meaningful when operating in station mode.
-		 */
-		ni = vap->iv_bss;
-		if (state == IEEE80211_S_RUN) {
-			ath_rate_ctl_start(sc, ni);
-		} else {
-			ath_rate_update(sc, ni, 0);
-		}
-	} else {
-		/*
-		 * When operating as a station the node table holds
-		 * the AP's that were discovered during scanning.
-		 * For any other operating mode we want to reset the
-		 * tx rate state of each node.
-		 */
-		ieee80211_iterate_nodes(&ic->ic_sta, ath_rate_cb, sc);
-		ath_rate_update(sc, vap->iv_bss, 0);
-	}
 }
 
 /* 
@@ -478,29 +433,3 @@ ath_rate_detach(struct ath_ratectrl *arc)
 
 	free(asc, M_DEVBUF);
 }
-
-/*
- * Module glue.
- */
-static int
-amrr_modevent(module_t mod, int type, void *unused)
-{
-	switch (type) {
-	case MOD_LOAD:
-		if (bootverbose)
-			printf("ath_rate: <AMRR rate control algorithm> version 0.1\n");
-		return 0;
-	case MOD_UNLOAD:
-		return 0;
-	}
-	return EINVAL;
-}
-
-static moduledata_t amrr_mod = {
-	"ath_rate",
-	amrr_modevent,
-	0
-};
-DECLARE_MODULE(ath_rate, amrr_mod, SI_SUB_DRIVERS, SI_ORDER_FIRST);
-MODULE_VERSION(ath_rate, 1);
-MODULE_DEPEND(ath_rate, wlan, 1, 1, 1);

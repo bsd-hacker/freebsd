@@ -253,7 +253,7 @@ iwn_attach(device_t dev)
 	struct iwn_softc *sc = (struct iwn_softc *)device_get_softc(dev);
 	struct ieee80211com *ic;
 	struct ifnet *ifp;
-	int i, error;
+	int i, error, result;
 
 	sc->sc_dev = dev;
 
@@ -282,6 +282,9 @@ iwn_attach(device_t dev)
 	sc->sc_st = rman_get_bustag(sc->mem);
 	sc->sc_sh = rman_get_bushandle(sc->mem);
 	sc->irq_rid = 0;
+	if ((result = pci_msi_count(dev)) == 1 &&
+	    pci_alloc_msi(dev, &result) == 0)
+		sc->irq_rid = 1;
 	sc->irq = bus_alloc_resource_any(dev, SYS_RES_IRQ, &sc->irq_rid,
 					 RF_ACTIVE | RF_SHAREABLE);
 	if (sc->irq == NULL) {
@@ -487,6 +490,8 @@ iwn_cleanup(device_t dev)
 	if (sc->irq != NULL) {
 		bus_teardown_intr(dev, sc->irq, sc->sc_ih);
 		bus_release_resource(dev, SYS_RES_IRQ, sc->irq_rid, sc->irq);
+		if (sc->irq_rid == 1)
+			pci_release_msi(dev);
 	}
 	if (sc->mem != NULL)
 		bus_release_resource(dev, SYS_RES_MEMORY, sc->mem_rid, sc->mem);
@@ -1437,7 +1442,6 @@ iwn_rx_intr(struct iwn_softc *sc, struct iwn_rx_desc *desc,
 	if (len < sizeof (struct ieee80211_frame)) {
 		DPRINTF(sc, IWN_DEBUG_RECV, "%s: frame too short: %d\n",
 		    __func__, len);
-		ic->ic_stats.is_rx_tooshort++;
 		ifp->if_ierrors++;
 		return;
 	}
@@ -1447,7 +1451,6 @@ iwn_rx_intr(struct iwn_softc *sc, struct iwn_rx_desc *desc,
 	if (mnew == NULL) {
 		DPRINTF(sc, IWN_DEBUG_ANY, "%s: no mbuf to restock ring\n",
 		    __func__);
-		ic->ic_stats.is_rx_nobuf++;
 		ifp->if_ierrors++;
 		return;
 	}
@@ -1458,7 +1461,6 @@ iwn_rx_intr(struct iwn_softc *sc, struct iwn_rx_desc *desc,
 		device_printf(sc->sc_dev,
 		    "%s: bus_dmamap_load failed, error %d\n", __func__, error);
 		m_freem(mnew);
-		ic->ic_stats.is_rx_nobuf++;	/* XXX need stat */
 		ifp->if_ierrors++;
 		return;
 	}
@@ -3641,11 +3643,6 @@ iwn_run(struct iwn_softc *sc)
 		    "%s: could not setup MRR for node %d, error %d\n",
 		    __func__, node.id, error);
 		return error;
-	}
-
-	if (ic->ic_opmode == IEEE80211_M_STA) {
-		/* fake a join to init the tx rate */
-		iwn_newassoc(ni, 1);
 	}
 
 	error = iwn_init_sensitivity(sc);

@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2002, 2005-2008 Marcel Moolenaar
+ * Copyright (c) 2002, 2005-2009 Marcel Moolenaar
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -110,23 +110,6 @@ static struct g_class g_part_class = {
 
 DECLARE_GEOM_CLASS(g_part_class, g_part);
 
-enum g_part_ctl {
-	G_PART_CTL_NONE,
-	G_PART_CTL_ADD,
-	G_PART_CTL_BOOTCODE,
-	G_PART_CTL_COMMIT,
-	G_PART_CTL_CREATE,
-	G_PART_CTL_DELETE,
-	G_PART_CTL_DESTROY,
-	G_PART_CTL_MODIFY,
-	G_PART_CTL_MOVE,
-	G_PART_CTL_RECOVER,
-	G_PART_CTL_RESIZE,
-	G_PART_CTL_SET,
-	G_PART_CTL_UNDO,
-	G_PART_CTL_UNSET
-};
-
 /*
  * Support functions.
  */
@@ -182,10 +165,8 @@ g_part_geometry(struct g_part_table *table, struct g_consumer *cp,
 	u_int heads, sectors;
 	int idx;
 
-	if (g_getattr("GEOM::fwsectors", cp, &sectors) != 0 ||
-	    sectors < 1 || sectors > 63 ||
-	    g_getattr("GEOM::fwheads", cp, &heads) != 0 ||
-	    heads < 1 || heads > 255) {
+	if (g_getattr("GEOM::fwsectors", cp, &sectors) != 0 || sectors == 0 ||
+	    g_getattr("GEOM::fwheads", cp, &heads) != 0 || heads == 0) {
 		table->gpt_fixgeom = 0;
 		table->gpt_heads = 0;
 		table->gpt_sectors = 0;
@@ -246,7 +227,8 @@ g_part_new_entry(struct g_part_table *table, int index, quad_t start,
 			LIST_INSERT_HEAD(&table->gpt_entry, entry, gpe_entry);
 		else
 			LIST_INSERT_AFTER(last, entry, gpe_entry);
-	}
+	} else
+		entry->gpe_offset = 0;
 	entry->gpe_start = start;
 	entry->gpe_end = end;
 	return (entry);
@@ -259,11 +241,14 @@ g_part_new_provider(struct g_geom *gp, struct g_part_table *table,
 	char buf[32];
 	struct g_consumer *cp;
 	struct g_provider *pp;
+	off_t offset;
 
 	cp = LIST_FIRST(&gp->consumer);
 	pp = cp->provider;
 
-	entry->gpe_offset = entry->gpe_start * pp->sectorsize;
+	offset = entry->gpe_start * pp->sectorsize;
+	if (entry->gpe_offset < offset)
+		entry->gpe_offset = offset;
 
 	if (entry->gpe_pp == NULL) {
 		entry->gpe_pp = g_new_providerf(gp, "%s%s", gp->name,
@@ -273,6 +258,7 @@ g_part_new_provider(struct g_geom *gp, struct g_part_table *table,
 	entry->gpe_pp->index = entry->gpe_index - 1;	/* index is 1-based. */
 	entry->gpe_pp->mediasize = (entry->gpe_end - entry->gpe_start + 1) *
 	    pp->sectorsize;
+	entry->gpe_pp->mediasize -= entry->gpe_offset - offset;
 	entry->gpe_pp->sectorsize = pp->sectorsize;
 	entry->gpe_pp->flags = pp->flags & G_PF_CANDELETE;
 	if (pp->stripesize > 0) {
@@ -535,8 +521,8 @@ g_part_ctl_bootcode(struct gctl_req *req, struct g_part_parms *gpp)
 		error = ENODEV;
 		goto fail;
 	}
-	if (gpp->gpp_codesize != sz) {
-		error = EINVAL;
+	if (gpp->gpp_codesize > sz) {
+		error = EFBIG;
 		goto fail;
 	}
 
@@ -714,14 +700,6 @@ g_part_ctl_create(struct gctl_req *req, struct g_part_parms *gpp)
 	}
 	error = g_getattr("PART::depth", cp, &attr);
 	table->gpt_depth = (!error) ? attr + 1 : 0;
-
-	/* If we're nested, get the absolute sector offset on disk. */
-	if (table->gpt_depth) {
-		error = g_getattr("PART::offset", cp, &attr);
-		if (error)
-			goto fail;
-		table->gpt_offset = attr;
-	}
 
 	/*
 	 * Synthesize a disk geometry. Some partitioning schemes
@@ -1346,7 +1324,7 @@ g_part_ctlreq(struct gctl_req *req, struct g_class *mp, const char *verb)
 
 	/* Obtain permissions if possible/necessary. */
 	close_on_error = 0;
-	table = NULL;	/* Suppress uninit. warning. */
+	table = NULL;
 	if (modifies && (gpp.gpp_parms & G_PART_PARM_GEOM)) {
 		table = gpp.gpp_geom->softc;
 		if (table != NULL && !table->gpt_opened) {
@@ -1362,7 +1340,16 @@ g_part_ctlreq(struct gctl_req *req, struct g_class *mp, const char *verb)
 		}
 	}
 
-	error = EDOOFUS;	/* Prevent bogus  uninit. warning. */
+	/* Allow the scheme to check or modify the parameters. */
+	if (table != NULL) {
+		error = G_PART_PRECHECK(table, ctlreq, &gpp);
+		if (error) {
+			gctl_error(req, "%d pre-check failed", error);
+			goto out;
+		}
+	} else
+		error = EDOOFUS;	/* Prevent bogus uninit. warning. */
+
 	switch (ctlreq) {
 	case G_PART_CTL_NONE:
 		panic("%s", __func__);
@@ -1418,6 +1405,7 @@ g_part_ctlreq(struct gctl_req *req, struct g_class *mp, const char *verb)
 		}
 	}
 
+ out:
 	if (error && close_on_error) {
 		g_access(LIST_FIRST(&gpp.gpp_geom->consumer), -1, -1, -1);
 		table->gpt_opened = 0;
@@ -1491,14 +1479,6 @@ g_part_taste(struct g_class *mp, struct g_provider *pp, int flags __unused)
 		goto fail;
 
 	table = gp->softc;
-
-	/* If we're nested, get the absolute sector offset on disk. */
-	if (table->gpt_depth) {
-		error = g_getattr("PART::offset", cp, &attr);
-		if (error)
-			goto fail;
-		table->gpt_offset = attr;
-	}
 
 	/*
 	 * Synthesize a disk geometry. Some partitioning schemes
@@ -1581,6 +1561,10 @@ g_part_dumpconf(struct sbuf *sb, const char *indent, struct g_geom *gp,
 		entry = pp->private;
 		if (entry == NULL)
 			return;
+		sbuf_printf(sb, "%s<start>%ju</start>\n", indent,
+		    (uintmax_t)entry->gpe_start);
+		sbuf_printf(sb, "%s<end>%ju</end>\n", indent,
+		    (uintmax_t)entry->gpe_end);
 		sbuf_printf(sb, "%s<index>%u</index>\n", indent,
 		    entry->gpe_index);
 		sbuf_printf(sb, "%s<type>%s</type>\n", indent,
@@ -1686,8 +1670,8 @@ g_part_start(struct bio *bp)
 			return;
 		if (g_handleattr_int(bp, "PART::depth", table->gpt_depth))
 			return;
-		if (g_handleattr_int(bp, "PART::offset",
-		    table->gpt_offset + entry->gpe_start))
+		if (g_handleattr_str(bp, "PART::scheme",
+		    table->gpt_scheme->name))
 			return;
 		if (!strcmp("GEOM::kerneldump", bp->bio_attribute)) {
 			/*

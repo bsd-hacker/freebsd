@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2007-2008 Sam Leffler, Errno Consulting
+ * Copyright (c) 2007-2009 Sam Leffler, Errno Consulting
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -57,6 +57,9 @@ __FBSDID("$FreeBSD$");
 #include <net80211/ieee80211_var.h>
 #include <net80211/ieee80211_adhoc.h>
 #include <net80211/ieee80211_input.h>
+#ifdef IEEE80211_SUPPORT_TDMA
+#include <net80211/ieee80211_tdma.h>
+#endif
 
 #define	IEEE80211_RATE2MBS(r)	(((r) & IEEE80211_RATE_VAL) / 2)
 
@@ -65,6 +68,8 @@ static	int adhoc_newstate(struct ieee80211vap *, enum ieee80211_state, int);
 static int adhoc_input(struct ieee80211_node *, struct mbuf *,
 	int rssi, int noise, uint32_t rstamp);
 static void adhoc_recv_mgmt(struct ieee80211_node *, struct mbuf *,
+	int subtype, int rssi, int noise, uint32_t rstamp);
+static void ahdemo_recv_mgmt(struct ieee80211_node *, struct mbuf *,
 	int subtype, int rssi, int noise, uint32_t rstamp);
 
 void
@@ -89,8 +94,29 @@ adhoc_vattach(struct ieee80211vap *vap)
 {
 	vap->iv_newstate = adhoc_newstate;
 	vap->iv_input = adhoc_input;
-	vap->iv_recv_mgmt = adhoc_recv_mgmt;
+	if (vap->iv_opmode == IEEE80211_M_IBSS)
+		vap->iv_recv_mgmt = adhoc_recv_mgmt;
+	else
+		vap->iv_recv_mgmt = ahdemo_recv_mgmt;
 	vap->iv_opdetach = adhoc_vdetach;
+#ifdef IEEE80211_SUPPORT_TDMA
+	/*
+	 * Throw control to tdma support.  Note we do this
+	 * after setting up our callbacks so it can piggyback
+	 * on top of us.
+	 */
+	if (vap->iv_caps & IEEE80211_C_TDMA)
+		ieee80211_tdma_vattach(vap);
+#endif
+}
+
+static void
+sta_leave(void *arg, struct ieee80211_node *ni)
+{
+	struct ieee80211vap *vap = arg;
+
+	if (ni->ni_vap == vap && ni != vap->iv_bss)
+		ieee80211_node_leave(ni);
 }
 
 /*
@@ -99,9 +125,7 @@ adhoc_vattach(struct ieee80211vap *vap)
 static int
 adhoc_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 {
-#ifdef IEEE80211_DEBUG
 	struct ieee80211com *ic = vap->iv_ic;
-#endif
 	struct ieee80211_node *ni;
 	enum ieee80211_state ostate;
 
@@ -131,8 +155,11 @@ adhoc_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 		break;
 	case IEEE80211_S_SCAN:
 		switch (ostate) {
-		case IEEE80211_S_INIT:
 		case IEEE80211_S_RUN:		/* beacon miss */
+			/* purge station table; entries are stale */
+			ieee80211_iterate_nodes(&ic->ic_sta, sta_leave, vap);
+			/* fall thru... */
+		case IEEE80211_S_INIT:
 			if (vap->iv_des_chan != IEEE80211_CHAN_ANYC &&
 			    !IEEE80211_IS_CHAN_RADAR(vap->iv_des_chan)) {
 				/*
@@ -203,14 +230,20 @@ adhoc_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 		 */
 		if (ni->ni_authmode != IEEE80211_AUTH_8021X)
 			ieee80211_node_authorize(ni);
+		/*
+		 * Fake association when joining an existing bss.
+		 */
+		if (!IEEE80211_ADDR_EQ(ni->ni_macaddr, vap->iv_myaddr) &&
+		    ic->ic_newassoc != NULL)
+			ic->ic_newassoc(ni, ostate != IEEE80211_S_RUN);
 		break;
 	case IEEE80211_S_SLEEP:
 		ieee80211_sta_pwrsave(vap, 0);
 		break;
 	default:
 	invalid:
-		IEEE80211_DPRINTF(vap, IEEE80211_MSG_ANY,
-		    "%s: invalid state transition %s -> %s\n", __func__,
+		IEEE80211_DPRINTF(vap, IEEE80211_MSG_STATE,
+		    "%s: unexpected state transition %s -> %s\n", __func__,
 		    ieee80211_state_name[ostate], ieee80211_state_name[nstate]);
 		break;
 	}
@@ -345,6 +378,19 @@ adhoc_input(struct ieee80211_node *ni, struct mbuf *m,
 		if (type == IEEE80211_FC0_TYPE_DATA &&
 		    ni == vap->iv_bss &&
 		    !IEEE80211_ADDR_EQ(wh->i_addr2, ni->ni_macaddr)) {
+			/*
+			 * Beware of frames that come in too early; we
+			 * can receive broadcast frames and creating sta
+			 * entries will blow up because there is no bss
+			 * channel yet.
+			 */
+			if (vap->iv_state != IEEE80211_S_RUN) {
+				IEEE80211_DISCARD(vap, IEEE80211_MSG_INPUT,
+				    wh, "data", "not in RUN state (%s)",
+				    ieee80211_state_name[vap->iv_state]);
+				vap->iv_stats.is_rx_badstate++;
+				goto err;
+			}
 			/*
 			 * Fake up a node for this newly
 			 * discovered member of the IBSS.
@@ -544,7 +590,7 @@ adhoc_input(struct ieee80211_node *ni, struct mbuf *m,
 			m = ieee80211_decap_amsdu(ni, m);
 			if (m == NULL)
 				return IEEE80211_FC0_TYPE_DATA;
-		} else if ((ni->ni_ath_flags & IEEE80211_NODE_FF) &&
+		} else if (IEEE80211_ATH_CAP(vap, ni, IEEE80211_NODE_FF) &&
 #define	FF_LLC_SIZE	(sizeof(struct ether_header) + sizeof(struct llc))
 		    m->m_pkthdr.len >= 3*FF_LLC_SIZE) {
 			struct llc *llc;
@@ -609,9 +655,7 @@ adhoc_input(struct ieee80211_node *ni, struct mbuf *m,
 		}
 		if (bpf_peers_present(vap->iv_rawbpf))
 			bpf_mtap(vap->iv_rawbpf, m);
-		/* NB: only IBSS mode gets mgt frames */
-		if (vap->iv_opmode == IEEE80211_M_IBSS)
-			vap->iv_recv_mgmt(ni, m, subtype, rssi, noise, rstamp);
+		vap->iv_recv_mgmt(ni, m, subtype, rssi, noise, rstamp);
 		m_freem(m);
 		return IEEE80211_FC0_TYPE_MGT;
 
@@ -735,11 +779,16 @@ adhoc_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
 
 	case IEEE80211_FC0_SUBTYPE_PROBE_REQ:
 		if (vap->iv_state != IEEE80211_S_RUN) {
+			IEEE80211_DISCARD(vap, IEEE80211_MSG_INPUT,
+			    wh, NULL, "wrong state %s",
+			    ieee80211_state_name[vap->iv_state]);
 			vap->iv_stats.is_rx_mgtdiscard++;
 			return;
 		}
 		if (IEEE80211_IS_MULTICAST(wh->i_addr2)) {
 			/* frame must be directed */
+			IEEE80211_DISCARD(vap, IEEE80211_MSG_INPUT,
+			    wh, NULL, "%s", "not unicast");
 			vap->iv_stats.is_rx_mgtdiscard++;	/* XXX stat */
 			return;
 		}
@@ -798,6 +847,9 @@ adhoc_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
 		const struct ieee80211_action *ia;
 
 		if (vap->iv_state != IEEE80211_S_RUN) {
+			IEEE80211_DISCARD(vap, IEEE80211_MSG_INPUT,
+			    wh, NULL, "wrong state %s",
+			    ieee80211_state_name[vap->iv_state]);
 			vap->iv_stats.is_rx_mgtdiscard++;
 			return;
 		}
@@ -857,6 +909,8 @@ adhoc_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
 	case IEEE80211_FC0_SUBTYPE_REASSOC_RESP:
 	case IEEE80211_FC0_SUBTYPE_DEAUTH:
 	case IEEE80211_FC0_SUBTYPE_DISASSOC:
+		IEEE80211_DISCARD(vap, IEEE80211_MSG_INPUT,
+		     wh, NULL, "%s", "not handled");
 		vap->iv_stats.is_rx_mgtdiscard++;
 		return;
 
@@ -869,3 +923,20 @@ adhoc_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
 }
 #undef IEEE80211_VERIFY_LENGTH
 #undef IEEE80211_VERIFY_ELEMENT
+
+static void
+ahdemo_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
+	int subtype, int rssi, int noise, uint32_t rstamp)
+{
+	struct ieee80211vap *vap = ni->ni_vap;
+	struct ieee80211com *ic = ni->ni_ic;
+
+	/*
+	 * Process management frames when scanning; useful for doing
+	 * a site-survey.
+	 */
+	if (ic->ic_flags & IEEE80211_F_SCAN)
+		adhoc_recv_mgmt(ni, m0, subtype, rssi, noise, rstamp);
+	else
+		vap->iv_stats.is_rx_mgtdiscard++;
+}

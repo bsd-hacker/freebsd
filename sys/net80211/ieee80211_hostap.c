@@ -355,7 +355,7 @@ hostap_deliver_data(struct ieee80211vap *vap,
 		if (mcopy != NULL) {
 			int len, err;
 			len = mcopy->m_pkthdr.len;
-			IFQ_HANDOFF(ifp, mcopy, err);
+			err = ifp->if_transmit(ifp, mcopy);
 			if (err) {
 				/* NB: IFQ_HANDOFF reclaims mcopy */
 			} else {
@@ -752,7 +752,7 @@ hostap_input(struct ieee80211_node *ni, struct mbuf *m,
 			m = ieee80211_decap_amsdu(ni, m);
 			if (m == NULL)
 				return IEEE80211_FC0_TYPE_DATA;
-		} else if ((ni->ni_ath_flags & IEEE80211_NODE_FF) &&
+		} else if (IEEE80211_ATH_CAP(vap, ni, IEEE80211_NODE_FF) &&
 #define	FF_LLC_SIZE	(sizeof(struct ether_header) + sizeof(struct llc))
 		    m->m_pkthdr.len >= 3*FF_LLC_SIZE) {
 			struct llc *llc;
@@ -902,7 +902,7 @@ hostap_auth_open(struct ieee80211_node *ni, struct ieee80211_frame *wh,
 		 * open auth is attempted.
 		 */
 		if (ni->ni_challenge != NULL) {
-			FREE(ni->ni_challenge, M_80211_NODE);
+			free(ni->ni_challenge, M_80211_NODE);
 			ni->ni_challenge = NULL;
 		}
 		/* XXX hack to workaround calling convention */
@@ -928,6 +928,11 @@ hostap_auth_open(struct ieee80211_node *ni, struct ieee80211_frame *wh,
 	 * after the transaction completes.
 	 */
 	ni->ni_flags |= IEEE80211_NODE_AREF;
+	/*
+	 * Mark the node as requiring a valid association id
+	 * before outbound traffic is permitted.
+	 */
+	ni->ni_flags |= IEEE80211_NODE_ASSOCID;
 
 	if (vap->iv_acl != NULL &&
 	    vap->iv_acl->iac_getpolicy(vap) == IEEE80211_MACCMD_POLICY_RADIUS) {
@@ -1054,6 +1059,11 @@ hostap_auth_shared(struct ieee80211_node *ni, struct ieee80211_frame *wh,
 		 * after the transaction completes.
 		 */
 		ni->ni_flags |= IEEE80211_NODE_AREF;
+		/*
+		 * Mark the node as requiring a valid associatio id
+		 * before outbound traffic is permitted.
+		 */
+		ni->ni_flags |= IEEE80211_NODE_ASSOCID;
 		IEEE80211_RSSI_LPF(ni->ni_avgrssi, rssi);
 		ni->ni_noise = noise;
 		ni->ni_rstamp = rstamp;
@@ -1986,7 +1996,7 @@ hostap_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
 			return;
 		/* discard challenge after association */
 		if (ni->ni_challenge != NULL) {
-			FREE(ni->ni_challenge, M_80211_NODE);
+			free(ni->ni_challenge, M_80211_NODE);
 			ni->ni_challenge = NULL;
 		}
 		/* NB: 802.11 spec says to ignore station's privacy bit */
@@ -2171,7 +2181,7 @@ hostap_recv_pspoll(struct ieee80211_node *ni, struct mbuf *m0)
 {
 	struct ieee80211vap *vap = ni->ni_vap;
 	struct ieee80211_frame_min *wh;
-	struct ifnet *ifp = vap->iv_ifp;
+	struct ifnet *ifp;
 	struct mbuf *m;
 	uint16_t aid;
 	int qlen;
@@ -2208,7 +2218,7 @@ hostap_recv_pspoll(struct ieee80211_node *ni, struct mbuf *m0)
 	}
 
 	/* Okay, take the first queued packet and put it out... */
-	IEEE80211_NODE_SAVEQ_DEQUEUE(ni, m, qlen);
+	m = ieee80211_node_psq_dequeue(ni, &qlen);
 	if (m == NULL) {
 		IEEE80211_NOTE_MAC(vap, IEEE80211_MSG_POWER, wh->i_addr2,
 		    "%s", "recv ps-poll, but queue empty");
@@ -2234,6 +2244,11 @@ hostap_recv_pspoll(struct ieee80211_node *ni, struct mbuf *m0)
 			vap->iv_set_tim(ni, 0);
 	}
 	m->m_flags |= M_PWR_SAV;		/* bypass PS handling */
+
+	if (m->m_flags & M_ENCAP)
+		ifp = vap->iv_ic->ic_ifp;
+	else
+		ifp = vap->iv_ifp;
 	IF_ENQUEUE(&ifp->if_snd, m);
 	if_start(ifp);
 }

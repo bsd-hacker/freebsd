@@ -1,6 +1,6 @@
 /*-
  * Copyright (c) 2001 Atsushi Onoe
- * Copyright (c) 2002-2008 Sam Leffler, Errno Consulting
+ * Copyright (c) 2002-2009 Sam Leffler, Errno Consulting
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -64,8 +64,9 @@ void	ieee80211_syncflag_ext(struct ieee80211vap *, int flag);
 	((ni)->ni_vap->iv_input(ni, m, rssi, noise, rstamp))
 int	ieee80211_input_all(struct ieee80211com *, struct mbuf *,
 		int, int, uint32_t);
-int	ieee80211_mgmt_output(struct ieee80211_node *, struct mbuf *, int);
 struct ieee80211_bpf_params;
+int	ieee80211_mgmt_output(struct ieee80211_node *, struct mbuf *, int,
+		struct ieee80211_bpf_params *);
 int	ieee80211_raw_xmit(struct ieee80211_node *, struct mbuf *,
 		const struct ieee80211_bpf_params *);
 int	ieee80211_output(struct ifnet *, struct mbuf *,
@@ -259,6 +260,7 @@ ieee80211_gettid(const struct ieee80211_frame *wh)
 	return tid;
 }
 
+void	ieee80211_waitfor_parent(struct ieee80211com *);
 void	ieee80211_start_locked(struct ieee80211vap *);
 void	ieee80211_init(void *);
 void	ieee80211_start_all(struct ieee80211com *);
@@ -290,6 +292,7 @@ struct ieee80211_beacon_offsets {
 	uint8_t		*bo_cfp;	/* start of CFParms element */
 	uint8_t		*bo_tim;	/* start of atim/dtim */
 	uint8_t		*bo_wme;	/* start of WME parameters */
+	uint8_t		*bo_tdma;	/* start of TDMA parameters */
 	uint8_t		*bo_tim_trailer;/* start of fixed-size trailer */
 	uint16_t	bo_tim_len;	/* atim/dtim length in bytes */
 	uint16_t	bo_tim_trailer_len;/* tim trailer length in bytes */
@@ -324,6 +327,7 @@ enum {
 	IEEE80211_BEACON_APPIE	= 5,	/* Application IE's */
 	IEEE80211_BEACON_CFP	= 6,	/* CFParms */
 	IEEE80211_BEACON_CSA	= 7,	/* Channel Switch Announcement */
+	IEEE80211_BEACON_TDMA	= 9,	/* TDMA Info */
 };
 int	ieee80211_beacon_update(struct ieee80211_node *,
 		struct ieee80211_beacon_offsets *, struct mbuf *, int mcast);

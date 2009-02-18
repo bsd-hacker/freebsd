@@ -72,6 +72,7 @@ __FBSDID("$FreeBSD$");
 
 #include <netinet6/ip6_ipsec.h>
 #include <netinet6/ip6_var.h>
+#include <netinet6/vinet6.h>
 
 extern	struct protosw inet6sw[];
 
@@ -340,9 +341,7 @@ ip6_ipsec_mtu(struct mbuf *m)
 				   &ipsecerror);
 	if (sp != NULL) {
 		/* count IPsec header size */
-		ipsechdr = ipsec4_hdrsiz(m,
-					 IPSEC_DIR_OUTBOUND,
-					 NULL);
+		ipsechdr = ipsec_hdrsiz(m, IPSEC_DIR_OUTBOUND, NULL);
 
 		/*
 		 * find the correct route for outer IPv4

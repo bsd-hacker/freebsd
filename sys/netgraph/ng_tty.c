@@ -73,6 +73,7 @@
 #include <sys/syslog.h>
 #include <sys/tty.h>
 #include <sys/ttycom.h>
+#include <sys/proc.h>
 
 #include <net/if.h>
 #include <net/if_var.h>
@@ -94,8 +95,6 @@ struct ngt_softc {
 };
 typedef struct ngt_softc *sc_p;
 
-static int ngt_unit;
-
 /* Flags */
 #define FLG_DEBUG		0x0002
 
@@ -115,7 +114,6 @@ static th_getc_poll_t		ngt_getc_poll;
 static th_rint_t		ngt_rint;
 static th_rint_bypass_t		ngt_rint_bypass;
 static th_rint_poll_t		ngt_rint_poll;
-static th_close_t		ngt_close;
 
 static struct ttyhook ngt_hook = {
 	.th_getc_inject = ngt_getc_inject,
@@ -123,7 +121,6 @@ static struct ttyhook ngt_hook = {
 	.th_rint = ngt_rint,
 	.th_rint_bypass = ngt_rint_bypass,
 	.th_rint_poll = ngt_rint_poll,
-	.th_close = ngt_close,
 };
 
 /* Netgraph node type descriptor */
@@ -157,10 +154,9 @@ static int
 ngt_constructor(node_p node)
 {
 	sc_p sc;
-	char name[sizeof(NG_TTY_NODE_TYPE) + 8];
 
 	/* Allocate private structure */
-	MALLOC(sc, sc_p, sizeof(*sc), M_NETGRAPH, M_NOWAIT | M_ZERO);
+	sc = malloc(sizeof(*sc), M_NETGRAPH, M_NOWAIT | M_ZERO);
 	if (sc == NULL)
 		return (ENOMEM);
 
@@ -170,14 +166,6 @@ ngt_constructor(node_p node)
 	mtx_init(&sc->outq.ifq_mtx, "ng_tty node+queue", NULL, MTX_DEF);
 	IFQ_SET_MAXLEN(&sc->outq, IFQ_MAXLEN);
 
-	atomic_add_int(&ngt_unit, 1);
-	snprintf(name, sizeof(name), "%s%d", typestruct.name, ngt_unit);
-
-	/* Assign node its name */
-	if (ng_name_node(node, name))
-		log(LOG_WARNING, "%s: can't name node %s\n",
-		    __func__, name);
-	/* Done */
 	return (0);
 }
 
@@ -250,7 +238,7 @@ ngt_shutdown(node_p node)
 	IF_DRAIN(&sc->outq);
 	mtx_destroy(&(sc)->outq.ifq_mtx);
 	NG_NODE_UNREF(sc->node);
-	FREE(sc, M_NETGRAPH);
+	free(sc, M_NETGRAPH);
 
 	return (0);
 }
@@ -261,7 +249,7 @@ ngt_shutdown(node_p node)
 static int
 ngt_rcvmsg(node_p node, item_p item, hook_p lasthook)
 {
-	struct thread *td = curthread;	/* XXX */
+	struct proc *p;
 	const sc_p sc = NG_NODE_PRIVATE(node);
 	struct ng_mesg *msg, *resp = NULL;
 	int error = 0;
@@ -273,8 +261,15 @@ ngt_rcvmsg(node_p node, item_p item, hook_p lasthook)
 		case NGM_TTY_SET_TTY:
 			if (sc->tp != NULL)
 				return (EBUSY);
-			error = ttyhook_register(&sc->tp, td, *(int *)msg->data,
+			
+			p = pfind(((int *)msg->data)[0]);
+			if (p == NULL || (p->p_flag & P_WEXIT))
+				return (ESRCH);
+			_PHOLD(p);
+			PROC_UNLOCK(p);
+			error = ttyhook_register(&sc->tp, p, ((int *)msg->data)[1],
 			    &ngt_hook, sc);
+			PRELE(p);
 			if (error != 0)
 				return (error);
 			break;
@@ -516,14 +511,5 @@ ngt_rint_poll(struct tty *tp)
 {
 	/* We can always accept input */
 	return (1);
-}
-
-static void
-ngt_close(struct tty *tp)
-{
-	sc_p sc = ttyhook_softc(tp);
-
-	/* Must be queued to drop the tty lock */
-	ng_rmnode_flags(sc->node, NG_QUEUE);
 }
 

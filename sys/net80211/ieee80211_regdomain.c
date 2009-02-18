@@ -44,12 +44,14 @@ __FBSDID("$FreeBSD$");
 #include <net80211/ieee80211_regdomain.h>
 
 static void
-null_getradiocaps(struct ieee80211com *ic, int *n, struct ieee80211_channel *c)
+null_getradiocaps(struct ieee80211com *ic, int maxchan,
+	int *n, struct ieee80211_channel *c)
 {
 	/* just feed back the current channel list */
-	*n = ic->ic_nchans;
-	memcpy(c, ic->ic_channels,
-	    ic->ic_nchans*sizeof(struct ieee80211_channel));
+	if (maxchan > ic->ic_nchans)
+		maxchan = ic->ic_nchans;
+	memcpy(c, ic->ic_channels, maxchan*sizeof(struct ieee80211_channel));
+	*n = maxchan;
 }
 
 static int
@@ -69,7 +71,7 @@ ieee80211_regdomain_attach(struct ieee80211com *ic)
 		ic->ic_regdomain.location = ' ';		/* both */
 		ic->ic_regdomain.isocc[0] = 'U';		/* XXX */
 		ic->ic_regdomain.isocc[1] = 'S';		/* XXX */
-		/* XXX? too late to setup default channel list */
+		/* NB: driver calls ieee80211_init_channels or similar */
 	}
 	ic->ic_getradiocaps = null_getradiocaps;
 	ic->ic_setregdomain = null_setregdomain;
@@ -327,12 +329,23 @@ ieee80211_setregdomain(struct ieee80211vap *vap,
 	int error, i;
 
 	if (reg->rd.location != 'I' && reg->rd.location != 'O' &&
-	    reg->rd.location != ' ')
+	    reg->rd.location != ' ') {
+		IEEE80211_DPRINTF(vap, IEEE80211_MSG_IOCTL,
+		    "%s: invalid location 0x%x\n", __func__, reg->rd.location);
 		return EINVAL;
-	if (reg->rd.isocc[0] == '\0' || reg->rd.isocc[1] == '\0')
+	}
+	if (reg->rd.isocc[0] == '\0' || reg->rd.isocc[1] == '\0') {
+		IEEE80211_DPRINTF(vap, IEEE80211_MSG_IOCTL,
+		    "%s: invalid iso cc 0x%x:0x%x\n", __func__,
+		    reg->rd.isocc[0], reg->rd.isocc[1]);
 		return EINVAL;
-	if (reg->chaninfo.ic_nchans >= IEEE80211_CHAN_MAX)
+	}
+	if (reg->chaninfo.ic_nchans > IEEE80211_CHAN_MAX) {
+		IEEE80211_DPRINTF(vap, IEEE80211_MSG_IOCTL,
+		    "%s: too many channels %u, max %u\n", __func__,
+		    reg->chaninfo.ic_nchans, IEEE80211_CHAN_MAX);
 		return EINVAL;
+	}
 	/*
 	 * Calculate freq<->IEEE mapping and default max tx power
 	 * for channels not setup.  The driver can override these
@@ -340,10 +353,18 @@ ieee80211_setregdomain(struct ieee80211vap *vap,
 	 */
 	for (i = 0; i < reg->chaninfo.ic_nchans; i++) {
 		c = &reg->chaninfo.ic_chans[i];
-		if (c->ic_freq == 0 || c->ic_flags == 0)
+		if (c->ic_freq == 0 || c->ic_flags == 0) {
+			IEEE80211_DPRINTF(vap, IEEE80211_MSG_IOCTL,
+			    "%s: invalid channel spec at [%u]\n", __func__, i);
 			return EINVAL;
-		if (c->ic_maxregpower == 0)
+		}
+		if (c->ic_maxregpower == 0) {
+			IEEE80211_DPRINTF(vap, IEEE80211_MSG_IOCTL,
+			    "%s: invalid channel spec, zero maxregpower, "
+			    "freq %u flags 0x%x\n", __func__,
+			    c->ic_freq, c->ic_flags);
 			return EINVAL;
+		}
 		if (c->ic_ieee == 0)
 			c->ic_ieee = ieee80211_mhz2ieee(c->ic_freq,c->ic_flags);
 		if (IEEE80211_IS_CHAN_HT40(c) && c->ic_extieee == 0)
@@ -354,16 +375,20 @@ ieee80211_setregdomain(struct ieee80211vap *vap,
 			c->ic_maxpower = 2*c->ic_maxregpower;
 	}
 	IEEE80211_LOCK(ic);
+	/* XXX bandaid; a running vap will likely crash */
+	if (!allvapsdown(ic)) {
+		IEEE80211_UNLOCK(ic);
+		IEEE80211_DPRINTF(vap, IEEE80211_MSG_IOCTL,
+		    "%s: reject: vaps are running\n", __func__);
+		return EBUSY;
+	}
 	error = ic->ic_setregdomain(ic, &reg->rd,
 	    reg->chaninfo.ic_nchans, reg->chaninfo.ic_chans);
 	if (error != 0) {
 		IEEE80211_UNLOCK(ic);
+		IEEE80211_DPRINTF(vap, IEEE80211_MSG_IOCTL,
+		    "%s: driver rejected request, error %u\n", __func__, error);
 		return error;
-	}
-	/* XXX bandaid; a running vap will likely crash */
-	if (!allvapsdown(ic)) {
-		IEEE80211_UNLOCK(ic);
-		return EBUSY;
 	}
 	/*
 	 * Commit: copy in new channel table and reset media state.
@@ -403,8 +428,9 @@ ieee80211_setregdomain(struct ieee80211vap *vap,
 	ieee80211_scan_flush(vap);
 	ieee80211_dfs_reset(ic);
 	if (vap->iv_des_chan != IEEE80211_CHAN_ANYC) {
+		c = ieee80211_find_channel(ic, desfreq, desflags);
 		/* NB: may be NULL if not present in new channel list */
-		vap->iv_des_chan = ieee80211_find_channel(ic, desfreq, desflags);
+		vap->iv_des_chan = (c != NULL) ? c : IEEE80211_CHAN_ANYC;
 	}
 	IEEE80211_UNLOCK(ic);
 

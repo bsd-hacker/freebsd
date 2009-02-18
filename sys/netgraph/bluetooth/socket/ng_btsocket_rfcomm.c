@@ -405,7 +405,7 @@ ng_btsocket_rfcomm_attach(struct socket *so, int proto, struct thread *td)
 	}
 
 	/* Allocate the PCB */
-        MALLOC(pcb, ng_btsocket_rfcomm_pcb_p, sizeof(*pcb),
+        pcb = malloc(sizeof(*pcb),
 		M_NETGRAPH_BTSOCKET_RFCOMM, M_NOWAIT | M_ZERO);
         if (pcb == NULL)
                 return (ENOMEM);
@@ -518,13 +518,9 @@ ng_btsocket_rfcomm_connect(struct socket *so, struct sockaddr *nam,
 		return (EDESTADDRREQ);
 
 	/*
-	 * XXX FIXME - This is FUBAR. socreate() will call soalloc(1), i.e.
-	 * soalloc() is allowed to sleep in MALLOC. This creates "could sleep"
-	 * WITNESS warnings. To work around this problem we will create L2CAP
-	 * socket first and then check if we actually need it. Note that we 
-	 * will not check for errors in socreate() because if we failed to 
-	 * create L2CAP socket at this point we still might have already open
-	 * session.
+	 * Note that we will not check for errors in socreate() because
+	 * if we failed to create L2CAP socket at this point we still
+	 * might have already open session.
 	 */
 
 	error = socreate(PF_BLUETOOTH, &l2so, SOCK_SEQPACKET,
@@ -751,7 +747,7 @@ ng_btsocket_rfcomm_detach(struct socket *so)
 
 	mtx_destroy(&pcb->pcb_mtx);
 	bzero(pcb, sizeof(*pcb));
-	FREE(pcb, M_NETGRAPH_BTSOCKET_RFCOMM);
+	free(pcb, M_NETGRAPH_BTSOCKET_RFCOMM);
 
 	soisdisconnected(so);
 	so->so_pcb = NULL;
@@ -857,13 +853,9 @@ ng_btsocket_rfcomm_listen(struct socket *so, int backlog, struct thread *td)
 	mtx_unlock(&pcb->pcb_mtx);
 
 	/*
-	 * XXX FIXME - This is FUBAR. socreate() will call soalloc(1), i.e.
-	 * soalloc() is allowed to sleep in MALLOC. This creates "could sleep"
-	 * WITNESS warnings. To work around this problem we will create L2CAP
-	 * socket first and then check if we actually need it. Note that we 
-	 * will not check for errors in socreate() because if we failed to 
-	 * create L2CAP socket at this point we still might have already open
-	 * session.
+	 * Note that we will not check for errors in socreate() because
+	 * if we failed to create L2CAP socket at this point we still
+	 * might have already open session.
 	 */
 
 	socreate_error = socreate(PF_BLUETOOTH, &l2so, SOCK_SEQPACKET,
@@ -1069,7 +1061,7 @@ ng_btsocket_rfcomm_sessions_task(void *ctx, int pending)
 
 			mtx_destroy(&s->session_mtx);
 			bzero(s, sizeof(*s));
-			FREE(s, M_NETGRAPH_BTSOCKET_RFCOMM);
+			free(s, M_NETGRAPH_BTSOCKET_RFCOMM);
 		} else
 			mtx_unlock(&s->session_mtx);
 
@@ -1270,7 +1262,7 @@ ng_btsocket_rfcomm_session_create(ng_btsocket_rfcomm_session_p *sp,
 	mtx_assert(&ng_btsocket_rfcomm_sessions_mtx, MA_OWNED);
 
 	/* Allocate the RFCOMM session */
-        MALLOC(s, ng_btsocket_rfcomm_session_p, sizeof(*s),
+        s = malloc(sizeof(*s),
 		M_NETGRAPH_BTSOCKET_RFCOMM, M_NOWAIT | M_ZERO);
         if (s == NULL)
                 return (ENOMEM);
@@ -1390,7 +1382,7 @@ bad:
 
 	mtx_destroy(&s->session_mtx);
 	bzero(s, sizeof(*s));
-	FREE(s, M_NETGRAPH_BTSOCKET_RFCOMM);
+	free(s, M_NETGRAPH_BTSOCKET_RFCOMM);
 
 	return (error);
 } /* ng_btsocket_rfcomm_session_create */

@@ -34,6 +34,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_inet.h"
 #include "opt_ipfw.h"
 #include "opt_mac.h"
+#include "opt_sctp.h"
 #ifndef INET
 #error "IPDIVERT requires INET."
 #endif
@@ -52,6 +53,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/priv.h>
 #include <sys/proc.h>
 #include <sys/protosw.h>
+#include <sys/rwlock.h>
 #include <sys/signalvar.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
@@ -74,6 +76,10 @@ __FBSDID("$FreeBSD$");
 #include <netinet/ip_divert.h>
 #include <netinet/ip_var.h>
 #include <netinet/ip_fw.h>
+#include <netinet/vinet.h>
+#ifdef SCTP
+#include <netinet/sctp_crc32.h>
+#endif
 
 #include <security/mac/mac_framework.h>
 
@@ -112,8 +118,10 @@ __FBSDID("$FreeBSD$");
  */
 
 /* Internal variables. */
+#ifdef VIMAGE_GLOBALS
 static struct inpcbhead divcb;
 static struct inpcbinfo divcbinfo;
+#endif
 
 static u_long	div_sendspace = DIVSNDQ;	/* XXX sysctl ? */
 static u_long	div_recvspace = DIVRCVQ;	/* XXX sysctl ? */
@@ -164,7 +172,7 @@ div_init(void)
 	V_divcbinfo.ipi_zone = uma_zcreate("divcb", sizeof(struct inpcb),
 	    NULL, NULL, div_inpcb_init, div_inpcb_fini, UMA_ALIGN_PTR,
 	    UMA_ZONE_NOFREE);
-	uma_zone_set_max(divcbinfo.ipi_zone, maxsockets);
+	uma_zone_set_max(V_divcbinfo.ipi_zone, maxsockets);
 	EVENTHANDLER_REGISTER(maxsockets_change, div_zone_change,
 		NULL, EVENTHANDLER_PRI_ANY);
 }
@@ -218,7 +226,14 @@ divert_packet(struct mbuf *m, int incoming)
 		m->m_pkthdr.csum_flags &= ~CSUM_DELAY_DATA;
 		ip->ip_len = htons(ip->ip_len);
 	}
-
+#ifdef SCTP
+	if (m->m_pkthdr.csum_flags & CSUM_SCTP) {
+		ip->ip_len = ntohs(ip->ip_len);
+		sctp_delayed_cksum(m);
+		m->m_pkthdr.csum_flags &= ~CSUM_SCTP;
+		ip->ip_len = htons(ip->ip_len);
+	}
+#endif
 	/*
 	 * Record receive interface address, if any.
 	 * But only for incoming packets.
@@ -320,6 +335,7 @@ div_output(struct socket *so, struct mbuf *m, struct sockaddr_in *sin,
 	 */
 	m->m_pkthdr.rcvif = NULL;
 	m->m_nextpkt = NULL;
+	M_SETFIB(m, so->so_fibnum);
 
 	if (control)
 		m_freem(control);		/* XXX */
@@ -578,6 +594,7 @@ div_ctlinput(int cmd, struct sockaddr *sa, void *vip)
 static int
 div_pcblist(SYSCTL_HANDLER_ARGS)
 {
+	INIT_VNET_INET(curvnet);
 	int error, i, n;
 	struct inpcb *inp, **inp_list;
 	inp_gen_t gencnt;

@@ -64,6 +64,7 @@
 #include <net/if_dl.h>
 #include <net/if_types.h>
 #include <net/if_vlan_var.h>
+#include <net/vnet.h>
 
 #define VLANNAME	"vlan"
 #define	VLAN_DEF_HWIDTH	4
@@ -745,6 +746,7 @@ vlan_clone_create(struct if_clone *ifc, char *name, size_t len, caddr_t params)
 			ether_ifdetach(ifp);
 			vlan_unconfig(ifp);
 			if_free_type(ifp, IFT_ETHER);
+			ifc_free_unit(ifc, unit);
 			free(ifv, M_VLAN);
 
 			return (error);
@@ -868,7 +870,7 @@ vlan_start(struct ifnet *ifp)
 		 * Send it, precisely as ether_output() would have.
 		 * We are already running at splimp.
 		 */
-		IFQ_HANDOFF(p, m, error);
+		error = (p->if_transmit)(p, m);
 		if (!error)
 			ifp->if_opackets++;
 		else
@@ -1300,7 +1302,6 @@ vlan_trunk_capabilities(struct ifnet *ifp)
 static int
 vlan_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 {
-	struct ifaddr *ifa;
 	struct ifnet *p;
 	struct ifreq *ifr;
 	struct ifvlan *ifv;
@@ -1308,7 +1309,6 @@ vlan_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	int error = 0;
 
 	ifr = (struct ifreq *)data;
-	ifa = (struct ifaddr *)data;
 	ifv = ifp->if_softc;
 
 	switch (cmd) {

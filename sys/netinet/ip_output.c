@@ -33,10 +33,12 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_ipfw.h"
+#include "opt_inet.h"
 #include "opt_ipsec.h"
 #include "opt_mac.h"
 #include "opt_mbuf_stress_test.h"
 #include "opt_mpath.h"
+#include "opt_sctp.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -59,6 +61,7 @@ __FBSDID("$FreeBSD$");
 #ifdef RADIX_MPATH
 #include <net/radix_mpath.h>
 #endif
+#include <net/vnet.h>
 
 #include <netinet/in.h>
 #include <netinet/in_systm.h>
@@ -67,6 +70,11 @@ __FBSDID("$FreeBSD$");
 #include <netinet/in_var.h>
 #include <netinet/ip_var.h>
 #include <netinet/ip_options.h>
+#include <netinet/vinet.h>
+#ifdef SCTP
+#include <netinet/sctp.h>
+#include <netinet/sctp_crc32.h>
+#endif
 
 #ifdef IPSEC
 #include <netinet/ip_ipsec.h>
@@ -83,12 +91,20 @@ __FBSDID("$FreeBSD$");
 				  (ntohl(a.s_addr)>>8)&0xFF,\
 				  (ntohl(a.s_addr))&0xFF, y);
 
+#ifdef VIMAGE_GLOBALS
 u_short ip_id;
+#endif
 
 #ifdef MBUF_STRESS_TEST
 int mbuf_frag_size = 0;
 SYSCTL_INT(_net_inet_ip, OID_AUTO, mbuf_frag_size, CTLFLAG_RW,
 	&mbuf_frag_size, 0, "Fragment outgoing mbufs to this size");
+#endif
+
+#if defined(IP_NONLOCALBIND)
+static int ip_nonlocalok = 0;
+SYSCTL_INT(_net_inet_ip, OID_AUTO, nonlocalok,
+	CTLFLAG_RW|CTLFLAG_SECURE, &ip_nonlocalok, 0, "");
 #endif
 
 static void	ip_mloopback
@@ -132,8 +148,10 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 		bzero(ro, sizeof (*ro));
 	}
 
-	if (inp != NULL)
+	if (inp != NULL) {
+		M_SETFIB(m, inp->inp_inc.inc_fibnum);
 		INP_LOCK_ASSERT(inp);
+	}
 
 	if (opt) {
 		len = 0;
@@ -472,7 +490,10 @@ sendit:
 			}
 			m->m_pkthdr.csum_flags |=
 			    CSUM_IP_CHECKED | CSUM_IP_VALID;
-
+#ifdef SCTP
+			if (m->m_pkthdr.csum_flags & CSUM_SCTP)
+				m->m_pkthdr.csum_flags |= CSUM_SCTP_VALID;
+#endif
 			error = netisr_queue(NETISR_IP, m);
 			goto done;
 		} else
@@ -489,6 +510,10 @@ sendit:
 			    CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
 			m->m_pkthdr.csum_data = 0xffff;
 		}
+#ifdef SCTP
+		if (m->m_pkthdr.csum_flags & CSUM_SCTP)
+			m->m_pkthdr.csum_flags |= CSUM_SCTP_VALID;
+#endif
 		m->m_pkthdr.csum_flags |=
 			    CSUM_IP_CHECKED | CSUM_IP_VALID;
 
@@ -523,6 +548,12 @@ passout:
 		in_delayed_cksum(m);
 		sw_csum &= ~CSUM_DELAY_DATA;
 	}
+#ifdef SCTP
+	if (sw_csum & CSUM_SCTP) {
+		sctp_delayed_cksum(m);
+		sw_csum &= ~CSUM_SCTP;
+	}
+#endif
 	m->m_pkthdr.csum_flags &= ifp->if_hwassist;
 
 	/*
@@ -561,7 +592,6 @@ passout:
 		 * to avoid confusing lower layers.
 		 */
 		m->m_flags &= ~(M_PROTOFLAGS);
-
 		error = (*ifp->if_output)(ifp, m,
 				(struct sockaddr *)dst, ro->ro_rt);
 		goto done;
@@ -658,7 +688,13 @@ ip_fragment(struct ip *ip, struct mbuf **m_frag, int mtu,
 		in_delayed_cksum(m0);
 		m0->m_pkthdr.csum_flags &= ~CSUM_DELAY_DATA;
 	}
-
+#ifdef SCTP
+	if (m0->m_pkthdr.csum_flags & CSUM_SCTP &&
+	    (if_hwassist_flags & CSUM_IP_FRAGS) == 0) {
+		sctp_delayed_cksum(m0);
+		m0->m_pkthdr.csum_flags &= ~CSUM_SCTP;
+	}
+#endif
 	if (len > PAGE_SIZE) {
 		/* 
 		 * Fragment large datagrams such that each segment 
@@ -822,6 +858,11 @@ ip_ctloutput(struct socket *so, struct sockopt *sopt)
 
 	error = optval = 0;
 	if (sopt->sopt_level != IPPROTO_IP) {
+		if ((sopt->sopt_level == SOL_SOCKET) &&
+		    (sopt->sopt_name == SO_SETFIB)) {
+			inp->inp_inc.inc_fibnum = so->so_fibnum;
+			return (0);
+		}
 		return (EINVAL);
 	}
 
@@ -856,6 +897,14 @@ ip_ctloutput(struct socket *so, struct sockopt *sopt)
 			return (error);
 		}
 
+#if defined(IP_NONLOCALBIND)
+		case IP_NONLOCALOK:
+			if (! ip_nonlocalok) {
+				error = ENOPROTOOPT;
+				break;
+			}
+			/* FALLTHROUGH */
+#endif
 		case IP_TOS:
 		case IP_TTL:
 		case IP_MINTTL:
@@ -882,7 +931,7 @@ ip_ctloutput(struct socket *so, struct sockopt *sopt)
 				break;
 
 			case IP_MINTTL:
-				if (optval > 0 && optval <= MAXTTL)
+				if (optval >= 0 && optval <= MAXTTL)
 					inp->inp_ip_minttl = optval;
 				else
 					error = EINVAL;
@@ -927,6 +976,11 @@ ip_ctloutput(struct socket *so, struct sockopt *sopt)
 			case IP_DONTFRAG:
 				OPTSET(INP_DONTFRAG);
 				break;
+#if defined(IP_NONLOCALBIND)
+			case IP_NONLOCALOK:
+				OPTSET(INP_NONLOCALOK);
+				break;
+#endif
 			}
 			break;
 #undef OPTSET
@@ -996,7 +1050,7 @@ ip_ctloutput(struct socket *so, struct sockopt *sopt)
 			if ((error = soopt_mcopyin(sopt, m)) != 0) /* XXX */
 				break;
 			req = mtod(m, caddr_t);
-			error = ipsec4_set_policy(inp, sopt->sopt_name, req,
+			error = ipsec_set_policy(inp, sopt->sopt_name, req,
 			    m->m_len, (sopt->sopt_td != NULL) ?
 			    sopt->sopt_td->td_ucred : NULL);
 			m_freem(m);
@@ -1117,7 +1171,7 @@ ip_ctloutput(struct socket *so, struct sockopt *sopt)
 				req = mtod(m, caddr_t);
 				len = m->m_len;
 			}
-			error = ipsec4_get_policy(sotoinpcb(so), req, len, &m);
+			error = ipsec_get_policy(sotoinpcb(so), req, len, &m);
 			if (error == 0)
 				error = soopt_mcopyout(sopt, m); /* XXX */
 			if (error == 0)

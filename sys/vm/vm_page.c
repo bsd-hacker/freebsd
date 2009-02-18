@@ -106,6 +106,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/lock.h>
 #include <sys/kernel.h>
+#include <sys/limits.h>
 #include <sys/malloc.h>
 #include <sys/mutex.h>
 #include <sys/proc.h>
@@ -291,7 +292,7 @@ vm_page_startup(vm_offset_t vaddr)
 	bzero((void *)mapped, end - new_end);
 	uma_startup((void *)mapped, boot_pages);
 
-#if defined(__amd64__) || defined(__i386__)
+#if defined(__amd64__) || defined(__i386__) || defined(__arm__)
 	/*
 	 * Allocate a bitmap to indicate that a random physical page
 	 * needs to be included in a minidump.
@@ -2112,13 +2113,16 @@ vm_page_cowclear(vm_page_t m)
 	 */ 
 }
 
-void
+int
 vm_page_cowsetup(vm_page_t m)
 {
 
 	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	if (m->cow == USHRT_MAX - 1)
+		return (EBUSY);
 	m->cow++;
 	pmap_remove_write(m);
+	return (0);
 }
 
 #include "opt_ddb.h"

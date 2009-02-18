@@ -77,7 +77,7 @@ struct crom_src_buf {
 	struct crom_chunk hw;
 };
 
-int firewire_debug=0, try_bmr=1, hold_count=3;
+int firewire_debug=0, try_bmr=1, hold_count=0;
 SYSCTL_INT(_debug, OID_AUTO, firewire_debug, CTLFLAG_RW, &firewire_debug, 0,
 	"FireWire driver debug flag");
 SYSCTL_NODE(_hw, OID_AUTO, firewire, CTLFLAG_RD, 0, "FireWire Subsystem");
@@ -430,6 +430,31 @@ firewire_attach(device_t dev)
 
 	fwdev_makedev(sc);
 
+	fc->crom_src_buf = (struct crom_src_buf *)malloc(
+				sizeof(struct crom_src_buf),
+				M_FW, M_NOWAIT | M_ZERO);
+	if (fc->crom_src_buf == NULL) {
+		device_printf(fc->dev, "%s: Malloc Failure crom src buff\n", __func__);
+		return ENOMEM;
+	}
+	fc->topology_map = (struct fw_topology_map *)malloc(
+				sizeof(struct fw_topology_map),
+				M_FW, M_NOWAIT | M_ZERO);
+	if (fc->topology_map == NULL) {
+		device_printf(fc->dev, "%s: Malloc Failure topology map\n", __func__);
+		free(fc->crom_src_buf, M_FW);
+		return ENOMEM;
+	}
+	fc->speed_map = (struct fw_speed_map *)malloc(
+				sizeof(struct fw_speed_map),
+				M_FW, M_NOWAIT | M_ZERO);
+	if (fc->speed_map == NULL) {
+		device_printf(fc->dev, "%s: Malloc Failure speed map\n", __func__);
+		free(fc->crom_src_buf, M_FW);
+		free(fc->topology_map, M_FW);
+		return ENOMEM;
+	}
+
 	mtx_init(&fc->wait_lock, "fwwait", NULL, MTX_DEF);
 	mtx_init(&fc->tlabel_lock, "fwtlabel", NULL, MTX_DEF);
 	CALLOUT_INIT(&fc->timeout_callout);
@@ -451,7 +476,9 @@ firewire_attach(device_t dev)
 	bus_generic_attach(dev);
 
 	/* bus_reset */
+	FW_GLOCK(fc);
 	fw_busreset(fc, FWBUSNOTREADY);
+	FW_GUNLOCK(fc);
 	fc->ibr(fc);
 
 	return 0;
@@ -642,11 +669,6 @@ fw_init_crom(struct firewire_comm *fc)
 {
 	struct crom_src *src;
 
-	fc->crom_src_buf = (struct crom_src_buf *)
-		malloc(sizeof(struct crom_src_buf), M_FW, M_WAITOK | M_ZERO);
-	if (fc->crom_src_buf == NULL)
-		return;
-
 	src = &fc->crom_src_buf->src;
 	bzero(src, sizeof(struct crom_src));
 
@@ -663,7 +685,7 @@ fw_init_crom(struct firewire_comm *fc)
 	src->businfo.cyc_clk_acc = 100;
 	src->businfo.max_rec = fc->maxrec;
 	src->businfo.max_rom = MAXROM_4;
-	src->businfo.generation = 1;
+	src->businfo.generation = 0;
 	src->businfo.link_spd = fc->speed;
 
 	src->businfo.eui64.hi = fc->eui.hi;
@@ -681,9 +703,6 @@ fw_reset_crom(struct firewire_comm *fc)
 	struct crom_src_buf *buf;
 	struct crom_src *src;
 	struct crom_chunk *root;
-
-	if (fc->crom_src_buf == NULL)
-		fw_init_crom(fc);
 
 	buf =  fc->crom_src_buf;
 	src = fc->crom_src;
@@ -715,18 +734,18 @@ fw_busreset(struct firewire_comm *fc, uint32_t new_status)
 	struct firewire_dev_comm *fdc;
 	struct crom_src *src;
 	device_t *devlistp;
-	void *newrom;
 	int i, devcnt;
 
-	switch(fc->status){
-	case FWBUSMGRELECT:
+	FW_GLOCK_ASSERT(fc);
+	if (fc->status == FWBUSMGRELECT)
 		callout_stop(&fc->bmr_callout);
-		break;
-	default:
-		break;
-	}
+
 	fc->status = new_status;
 	fw_reset_csr(fc);
+
+	if (fc->status == FWBUSNOTREADY)
+		fw_init_crom(fc);
+
 	fw_reset_crom(fc);
 
 	if (device_get_children(fc->bdev, &devlistp, &devcnt) == 0) {
@@ -739,19 +758,19 @@ fw_busreset(struct firewire_comm *fc, uint32_t new_status)
 		free(devlistp, M_TEMP);
 	}
 
-	newrom = malloc(CROMSIZE, M_FW, M_NOWAIT | M_ZERO);
 	src = &fc->crom_src_buf->src;
-	crom_load(src, (uint32_t *)newrom, CROMSIZE);
-	if (bcmp(newrom, fc->config_rom, CROMSIZE) != 0) {
-		/* bump generation and reload */
-		src->businfo.generation ++;
-		/* generation must be between 0x2 and 0xF */
-		if (src->businfo.generation < 2)
-			src->businfo.generation ++;
-		crom_load(src, (uint32_t *)newrom, CROMSIZE);
-		bcopy(newrom, (void *)fc->config_rom, CROMSIZE);
-	}
-	free(newrom, M_FW);
+	/*
+	 * If the old config rom needs to be overwritten,
+	 * bump the businfo.generation indicator to 
+	 * indicate that we need to be reprobed
+	 */
+	if (bcmp(src, fc->config_rom, CROMSIZE) != 0) {
+		/* generation is a 2 bit field */
+		/* valid values are only from 0 - 3 */
+		src->businfo.generation = 1;
+		bcopy(src, (void *)fc->config_rom, CROMSIZE);
+	} else
+		src->businfo.generation = 0;
 }
 
 /* Call once after reboot */
@@ -807,13 +826,7 @@ void fw_init(struct firewire_comm *fc)
 		fc->ir[i]->maxq = FWMAXQUEUE;
 		fc->it[i]->maxq = FWMAXQUEUE;
 	}
-/* Initialize csr registers */
-	fc->topology_map = (struct fw_topology_map *)malloc(
-				sizeof(struct fw_topology_map),
-				M_FW, M_NOWAIT | M_ZERO);
-	fc->speed_map = (struct fw_speed_map *)malloc(
-				sizeof(struct fw_speed_map),
-				M_FW, M_NOWAIT | M_ZERO);
+
 	CSRARC(fc, TOPO_MAP) = 0x3f1 << 16;
 	CSRARC(fc, TOPO_MAP + 4) = 1;
 	CSRARC(fc, SPED_MAP) = 0x3f1 << 16;
@@ -1490,7 +1503,8 @@ fw_explore_node(struct fw_device *dfwdev)
 	uint32_t *csr;
 	struct csrhdr *hdr;
 	struct bus_info *binfo;
-	int err, node, spd;
+	int err, node;
+	uint32_t speed_test = 0;
 
 	fc = dfwdev->fc;
 	csr = dfwdev->csrrom;
@@ -1498,8 +1512,12 @@ fw_explore_node(struct fw_device *dfwdev)
 
 	/* First quad */
 	err = fw_explore_read_quads(dfwdev, CSRROMOFF, &csr[0], 1);
-	if (err)
+	if (err) {
+		device_printf(fc->bdev, "%s: node%d: explore_read_quads failure\n",
+		    __func__, node);
+		dfwdev->status = FWDEVINVAL;
 		return (-1);
+	}
 	hdr = (struct csrhdr *)&csr[0];
 	if (hdr->info_len != 4) {
 		if (firewire_debug)
@@ -1519,7 +1537,18 @@ fw_explore_node(struct fw_device *dfwdev)
 			    node, binfo->bus_name);
 		return (-1);
 	}
-	spd = fc->speed_map->speed[fc->nodeid][node];
+
+	if (firewire_debug)
+		device_printf(fc->bdev, "%s: node(%d) BUS INFO BLOCK:\n"
+					"irmc(%d) cmc(%d) isc(%d) bmc(%d) pmc(%d) "
+					"cyc_clk_acc(%d) max_rec(%d) max_rom(%d) "
+					"generation(%d) link_spd(%d)\n",
+					__func__, node,
+					binfo->irmc, binfo->cmc, binfo->isc,
+					binfo->bmc, binfo->pmc, binfo->cyc_clk_acc,
+					binfo->max_rec, binfo->max_rom,
+					binfo->generation, binfo->link_spd);
+
 	STAILQ_FOREACH(fwdev, &fc->devices, link)
 		if (FW_EUI64_EQUAL(fwdev->eui, binfo->eui64))
 			break;
@@ -1534,6 +1563,40 @@ fw_explore_node(struct fw_device *dfwdev)
 		}
 		fwdev->fc = fc;
 		fwdev->eui = binfo->eui64;
+		/*
+		 * Pre-1394a-2000 didn't have link_spd in
+		 * the Bus Info block, so try and use the 
+		 * speed map value.
+		 * 1394a-2000 compliant devices only use
+		 * the Bus Info Block link spd value, so
+		 * ignore the speed map alltogether. SWB
+		 */
+		if ( binfo->link_spd == FWSPD_S100 /* 0 */) {
+			device_printf(fc->bdev, "%s"
+				"Pre 1394a-2000 detected\n",
+				__func__);
+			fwdev->speed = fc->speed_map->speed[fc->nodeid][node];
+		} else
+			fwdev->speed = binfo->link_spd;
+		/*
+		 * Test this speed with a read to the CSRROM.
+		 * If it fails, slow down the speed and retry.
+		 */
+		while (fwdev->speed > 0) {
+			err = fw_explore_read_quads(fwdev, CSRROMOFF,
+            				&speed_test, 1);
+			if (err)
+				fwdev->speed--;
+			else
+				break;
+				
+		}
+		if (fwdev->speed != binfo->link_spd)
+			device_printf(fc->bdev, "%s: fwdev->speed(%s)"
+						" set lower than binfo->link_spd(%s)\n",
+						__func__,
+						linkspeed[fwdev->speed],
+						linkspeed[binfo->link_spd]);
 		/* inesrt into sorted fwdev list */
 		pfwdev = NULL;
 		STAILQ_FOREACH(tfwdev, &fc->devices, link) {
@@ -1549,17 +1612,16 @@ fw_explore_node(struct fw_device *dfwdev)
 			STAILQ_INSERT_AFTER(&fc->devices, pfwdev, fwdev, link);
 
 		device_printf(fc->bdev, "New %s device ID:%08x%08x\n",
-		    linkspeed[spd],
+		    linkspeed[fwdev->speed],
 		    fwdev->eui.hi, fwdev->eui.lo);
 	}
 	fwdev->dst = node;
 	fwdev->status = FWDEVINIT;
-	fwdev->speed = spd;
 
 	/* unchanged ? */
 	if (bcmp(&csr[0], &fwdev->csrrom[0], sizeof(uint32_t) * 5) == 0) {
 		if (firewire_debug)
-			printf("node%d: crom unchanged\n", node);
+			device_printf(fc->dev, "node%d: crom unchanged\n", node);
 		return (0);
 	}
 

@@ -163,7 +163,7 @@ linux_getcwd_scandir(lvpp, uvpp, bpp, bufp, td)
 	cn.cn_nameptr = "..";
 	cn.cn_namelen = 2;
 	cn.cn_consume = 0;
-	cn.cn_lkflags = LK_EXCLUSIVE;
+	cn.cn_lkflags = LK_SHARED;
 	
 	/*
 	 * At this point, lvp is locked and will be unlocked by the lookup.
@@ -307,7 +307,7 @@ linux_getcwd_common (lvp, rvp, bpp, bufp, limit, flags, td)
 	struct vnode *uvp = NULL;
 	char *bp = NULL;
 	int error;
-	int perms = VEXEC;
+	accmode_t accmode = VEXEC;
 
 	if (rvp == NULL) {
 		rvp = fdp->fd_rdir;
@@ -352,10 +352,10 @@ linux_getcwd_common (lvp, rvp, bpp, bufp, limit, flags, td)
 		 * whether or not caller cares.
 		 */
 		if (flags & GETCWD_CHECK_ACCESS) {
-			error = VOP_ACCESS(lvp, perms, td->td_ucred, td);
+			error = VOP_ACCESS(lvp, accmode, td->td_ucred, td);
 			if (error)
 				goto out;
-			perms = VEXEC|VREAD;
+			accmode = VEXEC|VREAD;
 		}
 		
 		/*

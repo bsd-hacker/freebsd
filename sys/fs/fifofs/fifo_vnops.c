@@ -149,12 +149,12 @@ fifo_cleanup(struct vnode *vp)
 {
 	struct fifoinfo *fip = vp->v_fifoinfo;
 
-	ASSERT_VOP_LOCKED(vp, "fifo_cleanup");
+	ASSERT_VOP_ELOCKED(vp, "fifo_cleanup");
 	if (fip->fi_readers == 0 && fip->fi_writers == 0) {
 		vp->v_fifoinfo = NULL;
 		(void)soclose(fip->fi_readsock);
 		(void)soclose(fip->fi_writesock);
-		FREE(fip, M_VNODE);
+		free(fip, M_VNODE);
 	}
 }
 
@@ -185,7 +185,7 @@ fifo_open(ap)
 	if (fp == NULL)
 		return (EINVAL);
 	if ((fip = vp->v_fifoinfo) == NULL) {
-		MALLOC(fip, struct fifoinfo *, sizeof(*fip), M_VNODE, M_WAITOK);
+		fip = malloc(sizeof(*fip), M_VNODE, M_WAITOK);
 		error = socreate(AF_LOCAL, &rso, SOCK_STREAM, 0, cred, td);
 		if (error)
 			goto fail1;
@@ -422,8 +422,11 @@ fifo_close(ap)
 	struct vnode *vp = ap->a_vp;
 	struct fifoinfo *fip = vp->v_fifoinfo;
 
-	ASSERT_VOP_LOCKED(vp, "fifo_close");
-	KASSERT(fip != NULL, ("fifo_close: no v_fifoinfo"));
+	ASSERT_VOP_ELOCKED(vp, "fifo_close");
+	if (fip == NULL) {
+		printf("fifo_close: no v_fifoinfo %p\n", vp);
+		return (0);
+	}
 	if (ap->a_fflag & FREAD) {
 		fip->fi_readers--;
 		if (fip->fi_readers == 0)
@@ -465,6 +468,7 @@ fifo_print(ap)
 		struct vnode *a_vp;
 	} */ *ap;
 {
+	printf("    ");
 	fifo_printinfo(ap->a_vp);
 	printf("\n");
 	return (0);

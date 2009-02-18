@@ -187,10 +187,6 @@ ogetpagesize(td, uap)
  * memory-based, such as a video framebuffer, can be mmap'd.  Otherwise
  * there would be no cache coherency between a descriptor and a VM mapping
  * both to the same character device.
- *
- * Block devices can be mmap'd no matter what they represent.  Cache coherency
- * is maintained as long as you do not write directly to the underlying
- * character device.
  */
 #ifndef _SYS_SYSPROTO_H_
 struct mmap_args {
@@ -556,6 +552,7 @@ munmap(td, uap)
 	vm_offset_t addr;
 	vm_size_t size, pageoff;
 	vm_map_t map;
+	vm_map_entry_t freelist;
 
 	addr = (vm_offset_t) uap->addr;
 	size = uap->len;
@@ -575,6 +572,7 @@ munmap(td, uap)
 	map = &td->td_proc->p_vmspace->vm_map;
 	if (addr < vm_map_min(map) || addr + size > vm_map_max(map))
 		return (EINVAL);
+	freelist = NULL;
 	vm_map_lock(map);
 #ifdef HWPMC_HOOKS
 	/*
@@ -597,8 +595,9 @@ munmap(td, uap)
 	}
 #endif
 	/* returns nothing but KERN_SUCCESS anyway */
-	vm_map_delete(map, addr, addr + size);
+	vm_map_delete(map, addr, addr + size, &freelist);
 	vm_map_unlock(map);
+	vm_map_entry_free_freelist(map, freelist);
 	return (0);
 }
 
@@ -1164,7 +1163,7 @@ vm_mmap_vnode(struct thread *td, vm_size_t objsize,
 	mp = vp->v_mount;
 	cred = td->td_ucred;
 	vfslocked = VFS_LOCK_GIANT(mp);
-	if ((error = vget(vp, LK_EXCLUSIVE, td)) != 0) {
+	if ((error = vget(vp, LK_SHARED, td)) != 0) {
 		VFS_UNLOCK_GIANT(vfslocked);
 		return (error);
 	}
@@ -1181,7 +1180,7 @@ vm_mmap_vnode(struct thread *td, vm_size_t objsize,
 		if (obj->handle != vp) {
 			vput(vp);
 			vp = (struct vnode*)obj->handle;
-			vget(vp, LK_EXCLUSIVE, td);
+			vget(vp, LK_SHARED, td);
 		}
 		type = OBJT_VNODE;
 		handle = vp;

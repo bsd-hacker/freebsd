@@ -121,7 +121,7 @@ static int
 nwfs_access(ap)
 	struct vop_access_args /* {
 		struct vnode *a_vp;
-		int  a_mode;
+		accmode_t a_accmode;
 		struct ucred *a_cred;
 		struct thread *td;
 	} */ *ap;
@@ -131,7 +131,7 @@ nwfs_access(ap)
 	struct nwmount *nmp = VTONWFS(vp);
 
 	NCPVNDEBUG("\n");
-	if ((ap->a_mode & VWRITE) && (vp->v_mount->mnt_flag & MNT_RDONLY)) {
+	if ((ap->a_accmode & VWRITE) && (vp->v_mount->mnt_flag & MNT_RDONLY)) {
 		switch (vp->v_type) {
 		    case VREG: case VDIR: case VLNK:
 			return (EROFS);
@@ -142,7 +142,7 @@ nwfs_access(ap)
 	mpmode = vp->v_type == VREG ? nmp->m.file_mode :
 	    nmp->m.dir_mode;
         return (vaccess(vp->v_type, mpmode, nmp->m.uid,
-            nmp->m.gid, ap->a_mode, ap->a_cred, NULL));
+            nmp->m.gid, ap->a_accmode, ap->a_cred, NULL));
 }
 /*
  * nwfs_open vnode op
@@ -627,7 +627,6 @@ nwfs_mkdir(ap)
 	struct componentname *cnp = ap->a_cnp;
 	int len=cnp->cn_namelen;
 	struct ncp_open_info no;
-	struct nwnode *np;
 	struct vnode *newvp = (struct vnode *)0;
 	ncpfid fid;
 	int error = 0;
@@ -651,7 +650,6 @@ nwfs_mkdir(ap)
 		fid.f_id = no.fattr.dirEntNum;
 		error = nwfs_nget(VTOVFS(dvp), fid, &no.fattr, dvp, &newvp);
 		if (!error) {
-			np = VTONW(newvp);
 			newvp->v_type = VDIR;
 			*ap->a_vpp = newvp;
 		}
@@ -786,7 +784,6 @@ static int nwfs_strategy (ap)
 	struct buf *bp=ap->a_bp;
 	struct ucred *cr;
 	struct thread *td;
-	int error = 0;
 
 	NCPVNDEBUG("\n");
 	if (bp->b_flags & B_ASYNC)
@@ -803,8 +800,8 @@ static int nwfs_strategy (ap)
 	 * otherwise just do it ourselves.
 	 */
 	if ((bp->b_flags & B_ASYNC) == 0 )
-		error = nwfs_doio(ap->a_vp, bp, cr, td);
-	return (error);
+		(void)nwfs_doio(ap->a_vp, bp, cr, td);
+	return (0);
 }
 
 

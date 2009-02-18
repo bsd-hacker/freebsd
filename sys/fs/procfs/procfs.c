@@ -70,17 +70,13 @@ procfs_doprocfile(PFS_FILL_ARGS)
 	char *fullpath = "unknown";
 	char *freepath = NULL;
 	struct vnode *textvp;
-	int err;
 
+	PROC_LOCK(p);
 	textvp = p->p_textvp;
-	VI_LOCK(textvp);
-	vholdl(textvp);
-	err = vn_lock(textvp, LK_EXCLUSIVE | LK_INTERLOCK);
-	vdrop(textvp);
-	if (err)
-		return (err);
+	vhold(textvp);
+	PROC_UNLOCK(p);
 	vn_fullpath(td, textvp, &fullpath, &freepath);
-	VOP_UNLOCK(textvp, 0);
+	vdrop(textvp);
 	sbuf_printf(sb, "%s", fullpath);
 	if (freepath)
 		free(freepath, M_TEMP);
@@ -103,7 +99,6 @@ procfs_docurproc(PFS_FILL_ARGS)
 int
 procfs_attr(PFS_ATTR_ARGS)
 {
-	PROC_LOCK_ASSERT(p, MA_OWNED);
 
 	/* XXX inefficient, split into separate functions */
 	if (strcmp(pn->pn_name, "ctl") == 0 ||
@@ -116,11 +111,12 @@ procfs_attr(PFS_ATTR_ARGS)
 	    strcmp(pn->pn_name, "fpregs") == 0)
 		vap->va_mode = 0600;
 
-	if ((p->p_flag & P_SUGID) && pn->pn_type != pfstype_procdir)
-		vap->va_mode = 0;
+	if (p != NULL) {
+		PROC_LOCK_ASSERT(p, MA_OWNED);
 
-	vap->va_uid = p->p_ucred->cr_uid;
-	vap->va_gid = p->p_ucred->cr_gid;
+		if ((p->p_flag & P_SUGID) && pn->pn_type != pfstype_procdir)
+			vap->va_mode = 0;
+	}
 
 	return (0);
 }
