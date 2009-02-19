@@ -1471,11 +1471,9 @@ _pmap_allocpte(pmap_t pmap, vm_pindex_t ptepindex, vm_object_t object,
 	    VM_ALLOC_WIRED | VM_ALLOC_ZERO)) == NULL) {
 		if (flags & M_WAITOK) {
 			PMAP_UNLOCK(pmap);
-			vm_page_unlock_queues();
 			vm_object_unlock_all(object);
 			VM_WAIT;
 			vm_object_lock_all(object);
-			vm_page_lock_queues();
 			PMAP_LOCK(pmap);
 		}
 
@@ -1907,7 +1905,7 @@ pmap_collect(pmap_t locked_pmap, struct vpgqueues *vpq)
 			if (TAILQ_EMPTY(&m->md.pv_list)) {
 				pvh = pa_to_pvh(VM_PAGE_TO_PHYS(m));
 				if (TAILQ_EMPTY(&pvh->pv_list))
-					vm_page_flag_clear(m, PG_WRITEABLE);
+					m->oflags &= ~VPO_WRITEABLE;	/* XXX */
 			}
 			free_pv_entry(pmap, pv);
 			if (pmap != locked_pmap)
@@ -1949,7 +1947,8 @@ free_pv_entry(pmap_t pmap, pv_entry_t pv)
 	TAILQ_REMOVE(&pmap->pm_pvchunk, pc, pc_list);
 	m = PHYS_TO_VM_PAGE(DMAP_TO_PHYS((vm_offset_t)pc));
 	dump_drop_page(m->phys_addr);
-	vm_page_unwire(m, 0);
+	m->wire_count--;
+	atomic_subtract_int(&cnt.v_wire_count, 1);
 	vm_page_free(m);
 }
 
@@ -2164,7 +2163,7 @@ pmap_remove_entry(pmap_t pmap, vm_page_t m, vm_offset_t va)
 	if (TAILQ_EMPTY(&m->md.pv_list)) {
 		pvh = pa_to_pvh(VM_PAGE_TO_PHYS(m));
 		if (TAILQ_EMPTY(&pvh->pv_list))
-			vm_page_flag_clear(m, PG_WRITEABLE);
+			m->oflags &= ~VPO_WRITEABLE;
 	}
 }
 
@@ -2375,8 +2374,10 @@ pmap_remove_pde(pmap_t pmap, pd_entry_t *pdq, vm_offset_t sva,
 				m->oflags |= VPO_REFERENCED;
 			}
 			if (TAILQ_EMPTY(&m->md.pv_list) &&
-			    TAILQ_EMPTY(&pvh->pv_list))
-				vm_page_flag_clear(m, PG_WRITEABLE);
+			    TAILQ_EMPTY(&pvh->pv_list)) {
+				VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
+				m->oflags &= ~VPO_WRITEABLE;
+			}
 		}
 	}
 	if (pmap == kernel_pmap) {
@@ -2473,7 +2474,6 @@ pmap_remove(pmap_t pmap, vm_offset_t sva, vm_offset_t eva)
 
 	anyvalid = 0;
 
-	vm_page_lock_queues();
 	PMAP_LOCK(pmap);
 
 	/*
@@ -2576,7 +2576,6 @@ pmap_remove(pmap_t pmap, vm_offset_t sva, vm_offset_t eva)
 out:
 	if (anyvalid)
 		pmap_invalidate_all(pmap);
-	vm_page_unlock_queues();	
 	PMAP_UNLOCK(pmap);
 	pmap_free_zero_pages(free);
 }
@@ -2644,7 +2643,7 @@ pmap_remove_all(vm_page_t m)
 		free_pv_entry(pmap, pv);
 		PMAP_UNLOCK(pmap);
 	}
-	vm_page_flag_clear(m, PG_WRITEABLE);
+	m->oflags &= ~VPO_WRITEABLE;
 }
 
 /*
@@ -2967,7 +2966,6 @@ pmap_enter(pmap_t pmap, vm_offset_t va, vm_prot_t access, vm_page_t m,
 
 	mpte = NULL;
 
-	vm_page_lock_queues();
 	PMAP_LOCK(pmap);
 
 	/*
@@ -3065,7 +3063,8 @@ validate:
 	newpte = (pt_entry_t)(pa | PG_V);
 	if ((prot & VM_PROT_WRITE) != 0) {
 		newpte |= PG_RW;
-		vm_page_flag_set(m, PG_WRITEABLE);
+		VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
+		m->oflags |= VPO_WRITEABLE;
 	}
 	if ((prot & VM_PROT_EXECUTE) == 0)
 		newpte |= pg_nx;
@@ -3117,7 +3116,6 @@ validate:
 	    pg_ps_enabled && vm_reserv_level_iffullpop(m) == 0)
 		pmap_promote_pde(pmap, pde, va);
 
-	vm_page_unlock_queues();
 	PMAP_UNLOCK(pmap);
 }
 
@@ -3913,7 +3911,7 @@ restart:
 					if (TAILQ_EMPTY(&pvh->pv_list)) {
 						for (mt = m; mt < &m[NBPDR / PAGE_SIZE]; mt++)
 							if (TAILQ_EMPTY(&mt->md.pv_list))
-								vm_page_flag_clear(mt, PG_WRITEABLE);
+								mt->oflags &= ~VPO_WRITEABLE;
 					}
 					mpte = pmap_lookup_pt_page(pmap, pv->pv_va);
 					if (mpte != NULL) {
@@ -3932,7 +3930,7 @@ restart:
 					if (TAILQ_EMPTY(&m->md.pv_list)) {
 						pvh = pa_to_pvh(VM_PAGE_TO_PHYS(m));
 						if (TAILQ_EMPTY(&pvh->pv_list))
-							vm_page_flag_clear(m, PG_WRITEABLE);
+							m->oflags &= ~VPO_WRITEABLE;
 					}
 					pmap_unuse_pt(pmap, pv->pv_va, *pde, &free);
 				}
@@ -3949,7 +3947,8 @@ restart:
 			TAILQ_REMOVE(&pmap->pm_pvchunk, pc, pc_list);
 			m = PHYS_TO_VM_PAGE(DMAP_TO_PHYS((vm_offset_t)pc));
 			dump_drop_page(m->phys_addr);
-			vm_page_unwire(m, 0);
+			m->wire_count--;
+			atomic_subtract_int(&cnt.v_wire_count, 1);
 			vm_page_free(m);
 		}
 	}
@@ -4041,7 +4040,7 @@ pmap_remove_write(vm_page_t m)
 	vm_offset_t va;
 
 	if ((m->flags & PG_FICTITIOUS) != 0 ||
-	    (m->flags & PG_WRITEABLE) == 0)
+	    (m->oflags & VPO_WRITEABLE) == 0)
 		return;
 	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 	pvh = pa_to_pvh(VM_PAGE_TO_PHYS(m));
@@ -4073,7 +4072,7 @@ retry:
 		}
 		PMAP_UNLOCK(pmap);
 	}
-	vm_page_flag_clear(m, PG_WRITEABLE);
+	m->oflags &= ~VPO_WRITEABLE;
 }
 
 /*

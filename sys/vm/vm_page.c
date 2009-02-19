@@ -699,7 +699,7 @@ vm_page_insert(vm_page_t m, vm_object_t object, vm_pindex_t pindex)
 	 * Since we are inserting a new and possibly dirty page,
 	 * update the object's OBJ_MIGHTBEDIRTY flag.
 	 */
-	if (m->flags & PG_WRITEABLE)
+	if (m->oflags & VPO_WRITEABLE)
 		vm_object_set_writeable_dirty(object);
 }
 
@@ -1949,7 +1949,6 @@ vm_page_set_invalid(vm_page_t m, int base, int size)
 
 	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 	bits = vm_page_bits(base, size);
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
 	if (m->valid == VM_PAGE_BITS_ALL && bits != 0)
 		pmap_remove_all(m);
 	m->valid &= ~bits;

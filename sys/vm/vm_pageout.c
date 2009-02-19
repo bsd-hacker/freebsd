@@ -449,7 +449,7 @@ vm_pageout_flush(vm_page_t *mc, int count, int flags)
 		vm_page_t mt = mc[i];
 
 		KASSERT(pageout_status[i] == VM_PAGER_PEND ||
-		    (mt->flags & PG_WRITEABLE) == 0,
+		    (mt->oflags & VPO_WRITEABLE) == 0,
 		    ("vm_pageout_flush: page %p is not write protected", mt));
 		switch (pageout_status[i]) {
 		case VM_PAGER_OK:
@@ -840,7 +840,7 @@ rescan0:
 			 * to the page, removing all access will be cheaper
 			 * overall.
 			 */
-			if ((m->flags & PG_WRITEABLE) != 0)
+			if ((m->oflags & VPO_WRITEABLE) != 0)
 				pmap_remove_all(m);
 		} else {
 			vm_page_dirty(m);

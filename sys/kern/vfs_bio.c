@@ -1287,9 +1287,7 @@ brelse(struct buf *bp)
 					(PAGE_SIZE - poffset) : resid;
 
 				KASSERT(presid >= 0, ("brelse: extra page"));
-				vm_page_lock_queues();
 				vm_page_set_invalid(m, poffset, presid);
-				vm_page_unlock_queues();
 				if (had_bogus)
 					printf("avoided corruption bug in bogus_page/brelse code\n");
 			}
@@ -3393,7 +3391,6 @@ retry:
 			goto retry;
 	}
 	bogus = 0;
-	vm_page_lock_queues();
 	for (i = 0; i < bp->b_npages; i++) {
 		m = bp->b_pages[i];
 
@@ -3426,7 +3423,6 @@ retry:
 		}
 		foff = (foff + PAGE_SIZE) & ~(off_t)PAGE_MASK;
 	}
-	vm_page_unlock_queues();
 	VM_OBJECT_UNLOCK(obj);
 	if (bogus)
 		pmap_qenter(trunc_page((vm_offset_t)bp->b_data),
