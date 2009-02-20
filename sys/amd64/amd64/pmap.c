@@ -3936,10 +3936,6 @@ restart:
 				}
 			}
 		}
-		if (locked_object != NULL) {
-			VM_OBJECT_UNLOCK(locked_object);
-			locked_object = NULL;
-		}
 		if (allfree) {
 			PV_STAT(pv_entry_spare -= _NPCPV);
 			PV_STAT(pc_chunk_count--);
@@ -3952,6 +3948,8 @@ restart:
 			vm_page_free(m);
 		}
 	}
+	if (locked_object != NULL)
+		VM_OBJECT_UNLOCK(locked_object);
 	pmap_invalidate_all(pmap);
 	vm_page_unlock_queues();
 	PMAP_UNLOCK(pmap);
