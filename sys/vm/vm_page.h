@@ -125,16 +125,16 @@ struct vm_page {
 	/* so, on normal X86 kernels, they must be at least 8 bits wide */
 #if PAGE_SIZE == 4096
 	u_char	valid;			/* map of valid DEV_BSIZE chunks (O) */
-	u_char	dirty;			/* map of dirty DEV_BSIZE chunks */
+	u_char	dirty;			/* map of dirty DEV_BSIZE chunks (O) */
 #elif PAGE_SIZE == 8192
 	u_short	valid;			/* map of valid DEV_BSIZE chunks (O) */
-	u_short	dirty;			/* map of dirty DEV_BSIZE chunks */
+	u_short	dirty;			/* map of dirty DEV_BSIZE chunks (O) */
 #elif PAGE_SIZE == 16384
 	u_int valid;			/* map of valid DEV_BSIZE chunks (O) */
-	u_int dirty;			/* map of dirty DEV_BSIZE chunks */
+	u_int dirty;			/* map of dirty DEV_BSIZE chunks (O) */
 #elif PAGE_SIZE == 32768
 	u_long valid;			/* map of valid DEV_BSIZE chunks (O) */
-	u_long dirty;			/* map of dirty DEV_BSIZE chunks */
+	u_long dirty;			/* map of dirty DEV_BSIZE chunks (O) */
 #endif
 };
 
