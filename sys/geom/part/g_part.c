@@ -29,6 +29,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/bio.h>
+#include <sys/disk.h>
 #include <sys/diskmbr.h>
 #include <sys/endian.h>
 #include <sys/kernel.h>
@@ -87,6 +88,7 @@ static g_taste_t g_part_taste;
 
 static g_access_t g_part_access;
 static g_dumpconf_t g_part_dumpconf;
+static g_ioctl_t g_part_ioctl;
 static g_orphan_t g_part_orphan;
 static g_spoiled_t g_part_spoiled;
 static g_start_t g_part_start;
@@ -103,6 +105,7 @@ static struct g_class g_part_class = {
 	/* Geom methods. */
 	.access = g_part_access,
 	.dumpconf = g_part_dumpconf,
+	.ioctl = g_part_ioctl,
 	.orphan = g_part_orphan,
 	.spoiled = g_part_spoiled,
 	.start = g_part_start,
@@ -566,6 +569,8 @@ g_part_ctl_commit(struct gctl_req *req, struct g_part_parms *gpp)
 		return (EPERM);
 	}
 
+	g_topology_unlock();
+
 	cp = LIST_FIRST(&gp->consumer);
 	if ((table->gpt_smhead | table->gpt_smtail) != 0) {
 		pp = cp->provider;
@@ -594,6 +599,7 @@ g_part_ctl_commit(struct gctl_req *req, struct g_part_parms *gpp)
 	}
 
 	if (table->gpt_scheme == &g_part_null_scheme) {
+		g_topology_lock();
 		g_access(cp, -1, -1, -1);
 		g_part_wither(gp, ENXIO);
 		return (0);
@@ -614,10 +620,13 @@ g_part_ctl_commit(struct gctl_req *req, struct g_part_parms *gpp)
 	}
 	table->gpt_created = 0;
 	table->gpt_opened = 0;
+
+	g_topology_lock();
 	g_access(cp, -1, -1, -1);
 	return (0);
 
 fail:
+	g_topology_lock();
 	gctl_error(req, "%d", error);
 	return (error);
 }
@@ -700,14 +709,6 @@ g_part_ctl_create(struct gctl_req *req, struct g_part_parms *gpp)
 	}
 	error = g_getattr("PART::depth", cp, &attr);
 	table->gpt_depth = (!error) ? attr + 1 : 0;
-
-	/* If we're nested, get the absolute sector offset on disk. */
-	if (table->gpt_depth) {
-		error = g_getattr("PART::offset", cp, &attr);
-		if (error)
-			goto fail;
-		table->gpt_offset = attr;
-	}
 
 	/*
 	 * Synthesize a disk geometry. Some partitioning schemes
@@ -1488,14 +1489,6 @@ g_part_taste(struct g_class *mp, struct g_provider *pp, int flags __unused)
 
 	table = gp->softc;
 
-	/* If we're nested, get the absolute sector offset on disk. */
-	if (table->gpt_depth) {
-		error = g_getattr("PART::offset", cp, &attr);
-		if (error)
-			goto fail;
-		table->gpt_offset = attr;
-	}
-
 	/*
 	 * Synthesize a disk geometry. Some partitioning schemes
 	 * depend on it and since some file systems need it even
@@ -1607,6 +1600,31 @@ g_part_dumpconf(struct sbuf *sb, const char *indent, struct g_geom *gp,
 	}
 }
 
+static int
+g_part_ioctl(struct g_provider *pp, u_long cmd, void *data, int fflag,
+    struct thread *td)
+{
+	struct g_geom *gp;
+	struct g_part_table *table;
+	struct g_part_entry *entry;
+	int error;
+
+	gp = pp->geom;
+	table = gp->softc;
+	entry = pp->private;
+
+	switch (cmd) {
+	case DIOCGPROVIDERALIAS:
+		error = G_PART_DEVALIAS(table, entry, data, MAXPATHLEN);
+		break;
+	default:
+		error = ENOTTY;
+		break;
+	}
+
+	return (error);
+}
+
 static void
 g_part_orphan(struct g_consumer *cp)
 {
@@ -1685,9 +1703,6 @@ g_part_start(struct bio *bp)
 		if (g_handleattr_int(bp, "PART::isleaf", table->gpt_isleaf))
 			return;
 		if (g_handleattr_int(bp, "PART::depth", table->gpt_depth))
-			return;
-		if (g_handleattr_int(bp, "PART::offset",
-		    table->gpt_offset + entry->gpe_start))
 			return;
 		if (g_handleattr_str(bp, "PART::scheme",
 		    table->gpt_scheme->name))

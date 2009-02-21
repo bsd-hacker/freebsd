@@ -54,12 +54,15 @@ struct g_part_ebr_table {
 struct g_part_ebr_entry {
 	struct g_part_entry	base;
 	struct dos_partition	ent;
+	int	alias;
 };
 
 static int g_part_ebr_add(struct g_part_table *, struct g_part_entry *,
     struct g_part_parms *);
 static int g_part_ebr_create(struct g_part_table *, struct g_part_parms *);
 static int g_part_ebr_destroy(struct g_part_table *, struct g_part_parms *);
+static int g_part_ebr_devalias(struct g_part_table *, struct g_part_entry *,
+    char *, size_t);
 static void g_part_ebr_dumpconf(struct g_part_table *, struct g_part_entry *,
     struct sbuf *, const char *);
 static int g_part_ebr_dumpto(struct g_part_table *, struct g_part_entry *);
@@ -81,6 +84,7 @@ static kobj_method_t g_part_ebr_methods[] = {
 	KOBJMETHOD(g_part_add,		g_part_ebr_add),
 	KOBJMETHOD(g_part_create,	g_part_ebr_create),
 	KOBJMETHOD(g_part_destroy,	g_part_ebr_destroy),
+	KOBJMETHOD(g_part_devalias,	g_part_ebr_devalias),
 	KOBJMETHOD(g_part_dumpconf,	g_part_ebr_dumpconf),
 	KOBJMETHOD(g_part_dumpto,	g_part_ebr_dumpto),
 	KOBJMETHOD(g_part_modify,	g_part_ebr_modify),
@@ -214,6 +218,7 @@ g_part_ebr_add(struct g_part_table *basetable, struct g_part_entry *baseentry,
 
 	KASSERT(baseentry->gpe_start <= start, (__func__));
 	KASSERT(baseentry->gpe_end >= start + size - 1, (__func__));
+	baseentry->gpe_index = (start / sectors) + 1;
 	baseentry->gpe_offset = (off_t)(start + sectors) * pp->sectorsize;
 	baseentry->gpe_start = start;
 	baseentry->gpe_end = start + size - 1;
@@ -253,6 +258,7 @@ g_part_ebr_create(struct g_part_table *basetable, struct g_part_parms *gpp)
 		return (ENXIO);
 
 	msize = pp->mediasize / pp->sectorsize;
+	basetable->gpt_entries = msize / basetable->gpt_sectors;
 	basetable->gpt_first = 0;
 	basetable->gpt_last = msize - (msize % basetable->gpt_sectors) - 1;
 	return (0);
@@ -264,6 +270,25 @@ g_part_ebr_destroy(struct g_part_table *basetable, struct g_part_parms *gpp)
 
 	/* Wipe the first sector to clear the partitioning. */
 	basetable->gpt_smhead |= 1;
+	return (0);
+}
+
+static int
+g_part_ebr_devalias(struct g_part_table *table, struct g_part_entry *baseentry,
+    char *buf, size_t bufsz)
+{
+	struct g_part_ebr_entry *entry;
+	size_t len;
+
+	entry = (struct g_part_ebr_entry *)baseentry;
+	if (entry->alias == 0)
+		return (ENOENT);
+
+	len = strlcpy(buf, table->gpt_gp->name, bufsz);
+	if (len == 0)
+		return (EINVAL);
+
+	snprintf(buf + len - 1, bufsz - len, "%d", entry->alias);
 	return (0);
 }
 
@@ -413,12 +438,13 @@ g_part_ebr_read(struct g_part_table *basetable, struct g_consumer *cp)
 	u_char *buf;
 	off_t ofs, msize;
 	u_int lba;
-	int error, index;
+	int alias, error, index;
 
 	pp = cp->provider;
 	table = (struct g_part_ebr_table *)basetable;
 	msize = pp->mediasize / pp->sectorsize;
 
+	alias = 5;
 	lba = 0;
 	while (1) {
 		ofs = (off_t)lba * pp->sectorsize;
@@ -445,6 +471,7 @@ g_part_ebr_read(struct g_part_table *basetable, struct g_consumer *cp)
 		    pp->sectorsize;
 		entry = (struct g_part_ebr_entry *)baseentry;
 		entry->ent = ent[0];
+		entry->alias = alias++;
 
 		if (ent[1].dp_typ == 0)
 			break;
@@ -561,9 +588,9 @@ g_part_ebr_write(struct g_part_table *basetable, struct g_consumer *cp)
 		le32enc(p + 8, entry->ent.dp_start);
 		le32enc(p + 12, entry->ent.dp_size);
  
-		do {
-			next = LIST_NEXT(baseentry, gpe_entry);
-		} while (next != NULL && next->gpe_deleted);
+		next = LIST_NEXT(baseentry, gpe_entry);
+		while (next != NULL && next->gpe_deleted)
+			next = LIST_NEXT(next, gpe_entry);
 
 		p += DOSPARTSIZE;
 		if (next != NULL)

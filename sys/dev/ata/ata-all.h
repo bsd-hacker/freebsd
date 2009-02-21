@@ -212,7 +212,7 @@
 #define         ATA_AHCI_P_CMD_NOOP     0x00000000
 #define         ATA_AHCI_P_CMD_ACTIVE   0x10000000
 #define         ATA_AHCI_P_CMD_PARTIAL  0x20000000
-#define         ATA_AHCI_P_CMD_SLUMPER  0x60000000
+#define         ATA_AHCI_P_CMD_SLUMBER  0x60000000
 
 #define ATA_AHCI_P_TFD                  0x120
 #define ATA_AHCI_P_SIG                  0x124
@@ -500,6 +500,7 @@ struct ata_resource {
 struct ata_channel {
     device_t                    dev;            /* device handle */
     int                         unit;           /* physical channel */
+    int                         attached;       /* channel is attached */
     struct ata_resource         r_io[ATA_MAX_RES];/* I/O resources */
     struct resource             *r_irq;         /* interrupt of this channel */
     void                        *ih;            /* interrupt handle */
@@ -554,7 +555,7 @@ int ata_detach(device_t dev);
 int ata_reinit(device_t dev);
 int ata_suspend(device_t dev);
 int ata_resume(device_t dev);
-int ata_interrupt(void *data);
+void ata_interrupt(void *data);
 int ata_device_ioctl(device_t dev, u_long cmd, caddr_t data);
 int ata_getparam(struct ata_device *atadev, int init);
 int ata_identify(device_t dev);

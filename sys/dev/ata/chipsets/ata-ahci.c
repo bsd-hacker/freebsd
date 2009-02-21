@@ -62,6 +62,7 @@ static int ata_ahci_pm_write(device_t dev, int port, int reg, u_int32_t result);
 static u_int32_t ata_ahci_softreset(device_t dev, int port);
 static void ata_ahci_dmasetprd(void *xsc, bus_dma_segment_t *segs, int nsegs, int error);
 static int ata_ahci_setup_fis(struct ata_ahci_cmd_tab *ctp, struct ata_request *equest);
+static void ata_ahci_dmainit(device_t dev);
 
 /*
  * AHCI v1.x compliant SATA chipset support functions
@@ -128,8 +129,8 @@ ata_ahci_chipinit(device_t dev)
 	    (ATA_INL(ctlr->r_res2, ATA_AHCI_CAP) & ATA_AHCI_NPMASK) + 1);
 
     ctlr->reset = ata_ahci_reset;
-    ctlr->dmainit = ata_ahci_dmainit;
-    ctlr->allocate = ata_ahci_allocate;
+    ctlr->ch_attach = ata_ahci_ch_attach;
+    ctlr->ch_detach = ata_ahci_ch_detach;
     ctlr->setmode = ata_sata_setmode;
     ctlr->suspend = ata_ahci_suspend;
     ctlr->resume = ata_ahci_ctlr_reset;
@@ -197,11 +198,13 @@ ata_ahci_suspend(device_t dev)
 
 
 int
-ata_ahci_allocate(device_t dev)
+ata_ahci_ch_attach(device_t dev)
 {
     struct ata_pci_controller *ctlr = device_get_softc(device_get_parent(dev));
     struct ata_channel *ch = device_get_softc(dev);
     int offset = ch->unit << 7;
+
+    ata_ahci_dmainit(dev);
 
     /* set the SATA resources */
     ch->r_io[ATA_SSTATUS].res = ctlr->r_res2;
@@ -222,6 +225,30 @@ ata_ahci_allocate(device_t dev)
     ch->hw.pm_write = ata_ahci_pm_write;
 
     return 0;
+}
+
+int
+ata_ahci_ch_detach(device_t dev)
+{
+    struct ata_pci_controller *ctlr = device_get_softc(device_get_parent(dev));
+    struct ata_channel *ch = device_get_softc(dev);
+    int offset = ch->unit << 7;
+
+    /* Disable port interrupts. */
+    ATA_OUTL(ctlr->r_res2, ATA_AHCI_P_IE + offset, 0);
+    /* Reset command register. */
+    ATA_OUTL(ctlr->r_res2, ATA_AHCI_P_CMD + offset, 0);
+
+    /* Allow everything including partial and slumber modes. */
+    ATA_IDX_OUTL(ch, ATA_SCONTROL, 0);
+    /* Request slumber mode transition and give some time to get there. */
+    ATA_OUTL(ctlr->r_res2, ATA_AHCI_P_CMD + offset, ATA_AHCI_P_CMD_SLUMBER);
+    DELAY(100);
+    /* Disable PHY. */
+    ATA_IDX_OUTL(ch, ATA_SCONTROL, ATA_SC_DET_DISABLE);
+
+    ata_dmafini(dev);
+    return (0);
 }
 
 static int
@@ -642,7 +669,7 @@ ata_ahci_softreset(device_t dev, int port)
 	device_printf(dev, "setting SRST failed ??\n");
 	//return -1;
 
-    ata_udelay(5000);
+    ata_udelay(50);
 
     /* pull reset inactive -> device softreset */
     bzero(ctp->cfis, 64);
@@ -667,6 +694,9 @@ ata_ahci_reset(device_t dev)
     u_int64_t work;
     u_int32_t signature;
     int offset = ch->unit << 7;
+
+    /* Disable port interrupts */
+    ATA_OUTL(ctlr->r_res2, ATA_AHCI_P_IE + offset, 0);
 
     /* setup work areas */
     work = ch->dma.work_bus + ATA_AHCI_CL_OFFSET;
@@ -762,7 +792,7 @@ ata_ahci_dmasetprd(void *xsc, bus_dma_segment_t *segs, int nsegs, int error)
     args->nsegs = nsegs;
 }
 
-void
+static void
 ata_ahci_dmainit(device_t dev)
 {
     struct ata_pci_controller *ctlr = device_get_softc(device_get_parent(dev));

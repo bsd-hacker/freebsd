@@ -147,7 +147,7 @@ ata_attach(device_t dev)
 	return ENXIO;
     }
     if ((error = bus_setup_intr(dev, ch->r_irq, ATA_INTR_FLAGS, NULL,
-				(driver_intr_t *)ata_interrupt, ch, &ch->ih))) {
+				ata_interrupt, ch, &ch->ih))) {
 	device_printf(dev, "unable to setup interrupt\n");
 	return error;
     }
@@ -186,6 +186,11 @@ ata_detach(device_t dev)
     bus_teardown_intr(dev, ch->r_irq, ch->ih);
     bus_release_resource(dev, SYS_RES_IRQ, ATA_IRQ_RID, ch->r_irq);
     ch->r_irq = NULL;
+
+    /* free DMA resources if DMA HW present*/
+    if (ch->dma.free)
+	ch->dma.free(dev);
+
     mtx_destroy(&ch->state_mtx);
     mtx_destroy(&ch->queue_mtx);
     return 0;
@@ -304,11 +309,10 @@ ata_suspend(device_t dev)
 int
 ata_resume(device_t dev)
 {
-    struct ata_channel *ch;
     int error;
 
     /* check for valid device */
-    if (!dev || !(ch = device_get_softc(dev)))
+    if (!dev || !device_get_softc(dev))
 	return ENXIO;
 
     /* reinit the devices, we dont know what mode/state they are in */
@@ -319,7 +323,7 @@ ata_resume(device_t dev)
     return error;
 }
 
-int
+void
 ata_interrupt(void *data)
 {
     struct ata_channel *ch = (struct ata_channel *)data;
@@ -354,11 +358,10 @@ ata_interrupt(void *data)
 	    mtx_unlock(&ch->state_mtx);
 	    ATA_LOCKING(ch->dev, ATA_LF_UNLOCK);
 	    ata_finish(request);
-	    return 1;
+	    return;
 	}
     } while (0);
     mtx_unlock(&ch->state_mtx);
-    return 0;
 }
 
 /*
@@ -382,30 +385,32 @@ ata_ioctl(struct cdev *dev, u_long cmd, caddr_t data,
 
     case IOCATAREINIT:
 	if (*value >= devclass_get_maxunit(ata_devclass) ||
-	    !(device = devclass_get_device(ata_devclass, *value)))
+	    !(device = devclass_get_device(ata_devclass, *value)) ||
+	    !device_is_attached(device))
 	    return ENXIO;
 	error = ata_reinit(device);
 	break;
 
     case IOCATAATTACH:
 	if (*value >= devclass_get_maxunit(ata_devclass) ||
-	    !(device = devclass_get_device(ata_devclass, *value)))
+	    !(device = devclass_get_device(ata_devclass, *value)) ||
+	    !device_is_attached(device))
 	    return ENXIO;
-	/* XXX SOS should enable channel HW on controller */
-	error = ata_attach(device);
+	error = DEVICE_ATTACH(device);
 	break;
 
     case IOCATADETACH:
 	if (*value >= devclass_get_maxunit(ata_devclass) ||
-	    !(device = devclass_get_device(ata_devclass, *value)))
+	    !(device = devclass_get_device(ata_devclass, *value)) ||
+	    !device_is_attached(device))
 	    return ENXIO;
-	error = ata_detach(device);
-	/* XXX SOS should disable channel HW on controller */
+	error = DEVICE_DETACH(device);
 	break;
 
     case IOCATADEVICES:
 	if (devices->channel >= devclass_get_maxunit(ata_devclass) ||
-	    !(device = devclass_get_device(ata_devclass, devices->channel)))
+	    !(device = devclass_get_device(ata_devclass, devices->channel)) ||
+	    !device_is_attached(device))
 	    return ENXIO;
 	bzero(devices->name[0], 32);
 	bzero(&devices->params[0], sizeof(struct ata_params));

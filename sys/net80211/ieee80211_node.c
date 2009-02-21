@@ -237,6 +237,10 @@ node_setuptxparms(struct ieee80211_node *ni)
 		/* NB: 108A/108G should be handled as 11a/11g respectively */
 		if (IEEE80211_IS_CHAN_ST(ni->ni_chan))
 			mode = IEEE80211_MODE_STURBO_A;
+		else if (IEEE80211_IS_CHAN_HALF(ni->ni_chan))
+			mode = IEEE80211_MODE_HALF;
+		else if (IEEE80211_IS_CHAN_QUARTER(ni->ni_chan))
+			mode = IEEE80211_MODE_QUARTER;
 		else if (IEEE80211_IS_CHAN_A(ni->ni_chan))
 			mode = IEEE80211_MODE_11A;
 		else if (ni->ni_flags & IEEE80211_NODE_ERP)
@@ -1315,6 +1319,8 @@ ieee80211_fakeup_adhoc_node(struct ieee80211vap *vap,
 
 		/* XXX no rate negotiation; just dup */
 		ni->ni_rates = vap->iv_bss->ni_rates;
+		if (ieee80211_iserp_rateset(&ni->ni_rates))
+			ni->ni_flags |= IEEE80211_NODE_ERP;
 		if (vap->iv_opmode == IEEE80211_M_AHDEMO) {
 			/*
 			 * In adhoc demo mode there are no management
@@ -1390,6 +1396,8 @@ ieee80211_add_neighbor(struct ieee80211vap *vap,
 		struct ieee80211com *ic = vap->iv_ic;
 
 		ieee80211_init_neighbor(ni, wh, sp);
+		if (ieee80211_iserp_rateset(&ni->ni_rates))
+			ni->ni_flags |= IEEE80211_NODE_ERP;
 		node_setuptxparms(ni);
 		if (ic->ic_newassoc != NULL)
 			ic->ic_newassoc(ni, 1);
