@@ -740,7 +740,6 @@ vm_object_page_clean(vm_object_t object, vm_pindex_t start, vm_pindex_t end, int
 		tend = end;
 	}
 
-	vm_page_lock_queues();
 	/*
 	 * If the caller is smart and only msync()s a range he knows is
 	 * dirty, we may be able to avoid an object scan.  This results in
@@ -802,7 +801,6 @@ vm_object_page_clean(vm_object_t object, vm_pindex_t start, vm_pindex_t end, int
 		 * return immediately.
 		 */
 		if (tscan >= tend && (tstart || tend < object->size)) {
-			vm_page_unlock_queues();
 			vm_object_clear_flag(object, OBJ_CLEANING);
 			return;
 		}
@@ -889,7 +887,6 @@ again:
 				goto again;
 		}
 	}
-	vm_page_unlock_queues();
 #if 0
 	VOP_FSYNC(vp, (pagerflags & VM_PAGER_PUT_SYNC)?MNT_WAIT:0, curproc);
 #endif
@@ -911,10 +908,8 @@ vm_object_page_collect_flush(vm_object_t object, vm_page_t p, int curgeneration,
 	vm_page_t mab[vm_pageout_page_count];
 	vm_page_t ma[vm_pageout_page_count];
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
 	pi = p->pindex;
 	while (vm_page_sleep_if_busy(p, TRUE, "vpcwai")) {
-		vm_page_lock_queues();
 		if (object->generation != curgeneration) {
 			return(0);
 		}
@@ -980,7 +975,9 @@ vm_object_page_collect_flush(vm_object_t object, vm_page_t p, int curgeneration,
 	}
 	runlen = maxb + maxf + 1;
 
+	vm_page_lock_queues();
 	vm_pageout_flush(ma, runlen, pagerflags);
+	vm_page_unlock_queues();
 	for (i = 0; i < runlen; i++) {
 		if (ma[i]->valid & ma[i]->dirty) {
 			pmap_remove_write(ma[i]);
