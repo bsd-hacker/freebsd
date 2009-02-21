@@ -192,7 +192,7 @@ ald_daemon(void)
 			mtx_sleep(&ald_active, &ald_mtx, PWAIT, "aldslp", 0);
 
 		/* Don't shutdown until all active alq's are flushed */
-		if (ald_shutingdown && alq != NULL) {
+		if (ald_shutingdown && alq == NULL) {
 			ALD_UNLOCK();
 			break;
 		}
