@@ -569,9 +569,7 @@ lookupvpg:
 		if (vm_page_sleep_if_busy(vpg, FALSE, "tmfsmw"))
 			goto lookupvpg;
 		vm_page_busy(vpg);
-		vm_page_lock_queues();
 		vm_page_undirty(vpg);
-		vm_page_unlock_queues();
 		VM_OBJECT_UNLOCK(vobj);
 		error = uiomove_fromphys(&vpg, offset, tlen, uio);
 	} else {
@@ -605,12 +603,12 @@ nocache:
 out:
 	if (vobj != NULL)
 		VM_OBJECT_LOCK(vobj);
-	vm_page_lock_queues();
 	if (error == 0) {
 		vm_page_set_validclean(tpg, offset, tlen);
 		vm_page_zero_invalid(tpg, TRUE);
 		vm_page_dirty(tpg);
 	}
+	vm_page_lock_queues();
 	vm_page_unwire(tpg, TRUE);
 	vm_page_unlock_queues();
 	vm_page_wakeup(tpg);
