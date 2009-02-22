@@ -486,11 +486,13 @@ ata_ahci_issue_cmd(device_t dev, u_int16_t flags, int timeout)
     ATA_OUTL(ctlr->r_res2, ATA_AHCI_P_IS + offset,
 	     ATA_INL(ctlr->r_res2, ATA_AHCI_P_IS + offset));
 
-    if (bootverbose)
-	device_printf(dev, "ahci_issue_cmd time=%dms cnt=%dms status=%08x\n",
-		      timeout, count, status);
-    if (timeout && (count >= timeout))
+    if (timeout && (count >= timeout)) {
+	if (bootverbose) {
+	    device_printf(dev, "ahci_issue_cmd timeout: %d of %dms, status=%08x\n",
+		      count, timeout, status);
+	}
 	return EIO;
+    }
 
     return 0;
 }
@@ -624,7 +626,7 @@ ata_ahci_start(device_t dev)
 }
 
 static int
-ata_ahci_wait_ready(device_t dev)
+ata_ahci_wait_ready(device_t dev, int t)
 {
     struct ata_pci_controller *ctlr = device_get_softc(device_get_parent(dev));
     struct ata_channel *ch = device_get_softc(dev);
@@ -634,8 +636,8 @@ ata_ahci_wait_ready(device_t dev)
     while (ATA_INL(ctlr->r_res2, ATA_AHCI_P_TFD + offset) &
 	(ATA_S_BUSY | ATA_S_DRQ)) {
 	    DELAY(1000);
-	    if (timeout++ > 1000) {
-		device_printf(dev, "port is not ready\n");
+	    if (timeout++ > t) {
+		device_printf(dev, "port is not ready (timeout %dms)\n", t);
 		return (-1);
 	    }
     } 
@@ -653,6 +655,9 @@ ata_ahci_softreset(device_t dev, int port)
     struct ata_ahci_cmd_tab *ctp =
 	(struct ata_ahci_cmd_tab *)(ch->dma.work + ATA_AHCI_CT_OFFSET);
 
+    if (bootverbose)
+	device_printf(dev, "software reset port %d...\n", port);
+
     /* kick controller into sane state */
     ata_ahci_stop(dev);
     ata_ahci_clo(dev);
@@ -665,9 +670,10 @@ ata_ahci_softreset(device_t dev, int port)
     //ctp->cfis[7] = ATA_D_LBA | ATA_D_IBM;
     ctp->cfis[15] = (ATA_A_4BIT | ATA_A_RESET);
 
-    if (ata_ahci_issue_cmd(dev, ATA_AHCI_CMD_RESET | ATA_AHCI_CMD_CLR_BUSY,100))
-	device_printf(dev, "setting SRST failed ??\n");
-	//return -1;
+    if (ata_ahci_issue_cmd(dev, ATA_AHCI_CMD_RESET | ATA_AHCI_CMD_CLR_BUSY,100)) {
+	device_printf(dev, "software reset set timeout\n");
+	return (-1);
+    }
 
     ata_udelay(50);
 
@@ -680,8 +686,10 @@ ata_ahci_softreset(device_t dev, int port)
     if (ata_ahci_issue_cmd(dev, 0, 0))
 	return -1;
 
-    if (ata_ahci_wait_ready(dev))
+    if (ata_ahci_wait_ready(dev, 1000)) {
+	device_printf(dev, "software reset clear timeout\n");
 	return (-1);
+    }
 
     return ATA_INL(ctlr->r_res2, ATA_AHCI_P_SIG + offset);
 }
@@ -694,6 +702,9 @@ ata_ahci_reset(device_t dev)
     u_int64_t work;
     u_int32_t signature;
     int offset = ch->unit << 7;
+
+    if (bootverbose)
+        device_printf(dev, "AHCI reset...\n");
 
     /* Disable port interrupts */
     ATA_OUTL(ctlr->r_res2, ATA_AHCI_P_IE + offset, 0);
@@ -718,7 +729,7 @@ ata_ahci_reset(device_t dev)
 
     if (!ata_sata_phy_reset(dev)) {
 	if (bootverbose)
-	    device_printf(dev, "phy reset found no device\n");
+	    device_printf(dev, "AHCI reset done: phy reset found no device\n");
 	ch->devices = 0;
 
 	/* enable wanted port interrupts */
@@ -738,7 +749,7 @@ ata_ahci_reset(device_t dev)
 	      ATA_AHCI_P_IX_PS | ATA_AHCI_P_IX_DHR));
 
     /* Wait for initial TFD from device. */
-    ata_ahci_wait_ready(dev);
+    ata_ahci_wait_ready(dev, 10000);
 
     /* only probe for PortMultiplier if HW has support */
     if (ATA_INL(ctlr->r_res2, ATA_AHCI_CAP) & ATA_AHCI_CAP_SPM) {
@@ -754,24 +765,24 @@ ata_ahci_reset(device_t dev)
     if (bootverbose)
 	device_printf(dev, "SIGNATURE: %08x\n", signature);
 
-    switch (signature) {
-    case 0x00000101:
+    switch (signature >> 16) {
+    case 0x0000:
 	ch->devices = ATA_ATA_MASTER;
 	break;
-    case 0x96690101:
+    case 0x9669:
 	ch->devices = ATA_PORTMULTIPLIER;
 	ata_pm_identify(dev);
 	break;
-    case 0xeb140101:
+    case 0xeb14:
 	ch->devices = ATA_ATAPI_MASTER;
 	break;
     default: /* SOS XXX */
 	if (bootverbose)
-	    device_printf(dev, "No signature, asuming disk device\n");
+	    device_printf(dev, "Unknown signature, asuming disk device\n");
 	ch->devices = ATA_ATA_MASTER;
     }
     if (bootverbose)
-        device_printf(dev, "ahci_reset devices=%08x\n", ch->devices);
+        device_printf(dev, "AHCI reset done: devices=%08x\n", ch->devices);
 }
 
 static void

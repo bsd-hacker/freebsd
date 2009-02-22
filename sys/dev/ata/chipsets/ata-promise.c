@@ -637,7 +637,6 @@ ata_promise_mio_status(device_t dev)
 {
     struct ata_pci_controller *ctlr = device_get_softc(device_get_parent(dev));
     struct ata_channel *ch = device_get_softc(dev);
-    struct ata_connect_task *tp;
     u_int32_t fake_reg, stat_reg, vector, status;
 
     switch (ctlr->chip->cfg2) {
@@ -663,31 +662,17 @@ ata_promise_mio_status(device_t dev)
     ATA_OUTL(ctlr->r_res2, stat_reg, status & (0x00000011 << ch->unit));
 
     /* check for and handle disconnect events */
-    if ((status & (0x00000001 << ch->unit)) &&
-	(tp = (struct ata_connect_task *)
-	      malloc(sizeof(struct ata_connect_task),
-		     M_ATA, M_NOWAIT | M_ZERO))) {
-
+    if (status & (0x00000001 << ch->unit)) {
 	if (bootverbose)
 	    device_printf(dev, "DISCONNECT requested\n");
-	tp->action = ATA_C_DETACH;
-	tp->dev = dev;
-	TASK_INIT(&tp->task, 0, ata_sata_phy_event, tp);
-	taskqueue_enqueue(taskqueue_thread, &tp->task);
+	taskqueue_enqueue(taskqueue_thread, &ch->conntask);
     }
 
     /* check for and handle connect events */
-    if ((status & (0x00000010 << ch->unit)) &&
-	(tp = (struct ata_connect_task *)
-	      malloc(sizeof(struct ata_connect_task),
-		     M_ATA, M_NOWAIT | M_ZERO))) {
-
+    if (status & (0x00000010 << ch->unit)) {
 	if (bootverbose)
 	    device_printf(dev, "CONNECT requested\n");
-	tp->action = ATA_C_ATTACH;
-	tp->dev = dev;
-	TASK_INIT(&tp->task, 0, ata_sata_phy_event, tp);
-	taskqueue_enqueue(taskqueue_thread, &tp->task);
+	taskqueue_enqueue(taskqueue_thread, &ch->conntask);
     }
 
     /* do we have any device action ? */
@@ -823,15 +808,15 @@ ata_promise_mio_reset(device_t dev)
 		if (1 | bootverbose)
         	    device_printf(dev, "SIGNATURE: %08x\n", signature);
 
-		switch (signature) {
-		case 0x00000101:
+		switch (signature >> 16) {
+		case 0x0000:
 		    ch->devices = ATA_ATA_MASTER;
 		    break;
-		case 0x96690101:
+		case 0x9669:
 		    ch->devices = ATA_PORTMULTIPLIER;
 		    ata_pm_identify(dev);
 		    break;
-		case 0xeb140101:
+		case 0xeb14:
 		    ch->devices = ATA_ATAPI_MASTER;
 		    break;
 		default: /* SOS XXX */
