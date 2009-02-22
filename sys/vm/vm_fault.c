@@ -1210,7 +1210,6 @@ vm_fault_copy_entry(dst_map, src_map, dst_entry, src_entry)
 		pmap_copy_page(src_m, dst_m);
 		VM_OBJECT_UNLOCK(object);
 		dst_m->valid = VM_PAGE_BITS_ALL;
-		VM_OBJECT_UNLOCK(dst_object);
 
 		/*
 		 * Enter it in the pmap as a read and/or execute access.
@@ -1221,7 +1220,6 @@ vm_fault_copy_entry(dst_map, src_map, dst_entry, src_entry)
 		/*
 		 * Mark it no longer busy, and put it on the active list.
 		 */
-		VM_OBJECT_LOCK(dst_object);
 		vm_page_lock_queues();
 		vm_page_activate(dst_m);
 		vm_page_unlock_queues();
