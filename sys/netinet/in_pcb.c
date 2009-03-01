@@ -489,6 +489,39 @@ in_pcbbind_setup(struct inpcb *inp, struct sockaddr *nam, in_addr_t *laddrp,
 	return (0);
 }
 
+void
+in_pcbrtalloc(struct inpcb *inp, in_addr_t faddr, struct route *sro)
+{
+	struct sockaddr_in *sin;
+
+	INP_WLOCK_ASSERT(inp);
+	bzero(sro, sizeof(*sro));
+	sin = (struct sockaddr_in *)&sro->ro_dst;
+	sin->sin_family = AF_INET;
+	sin->sin_len = sizeof(struct sockaddr_in);
+	sin->sin_addr.s_addr = faddr;
+	/*
+	 * If route is known our src addr is taken from the i/f,
+	 * else punt.
+	 *
+	 * Find out route to destination.
+	 */
+	if ((inp->inp_socket->so_options & SO_DONTROUTE) == 0) {
+#ifdef RADIX_MPATH
+		rtalloc_mpath_fib(sro, ntohl(faddr->s_addr),
+		    inp->inp_inc.inc_fibnum);
+#else		
+		in_rtalloc_ign(sro, 0, inp->inp_inc.inc_fibnum);
+#endif		
+	}
+
+	if (sro->ro_rt != NULL) {
+		inp->inp_rt = sro->ro_rt;
+		inp->inp_vflag |= INP_RT_VALID;
+
+	}
+}
+
 /*
  * Connect from a socket to a specified address.
  * Both address and port must be specified in argument sin.
@@ -501,6 +534,7 @@ in_pcbconnect(struct inpcb *inp, struct sockaddr *nam, struct ucred *cred)
 	u_short lport, fport;
 	in_addr_t laddr, faddr;
 	int anonport, error;
+	struct route sro;
 
 	INP_INFO_WLOCK_ASSERT(inp->inp_pcbinfo);
 	INP_WLOCK_ASSERT(inp);
@@ -524,6 +558,7 @@ in_pcbconnect(struct inpcb *inp, struct sockaddr *nam, struct ucred *cred)
 		}
 	}
 
+	in_pcbrtalloc(inp, faddr, &sro);
 	/* Commit the remaining changes. */
 	inp->inp_lport = lport;
 	inp->inp_laddr.s_addr = laddr;
@@ -861,6 +896,12 @@ in_pcbdisconnect(struct inpcb *inp)
 	INP_INFO_WLOCK_ASSERT(inp->inp_pcbinfo);
 	INP_WLOCK_ASSERT(inp);
 
+	if (inp->inp_vflag & INP_RT_VALID) {
+		RTFREE(inp->inp_rt);
+		inp->inp_rt = NULL;
+		inp->inp_vflag &= ~INP_RT_VALID;
+	}
+
 	inp->inp_faddr.s_addr = INADDR_ANY;
 	inp->inp_fport = 0;
 	in_pcbrehash(inp);
@@ -900,6 +941,12 @@ in_pcbfree(struct inpcb *inp)
 	INP_INFO_WLOCK_ASSERT(ipi);
 	INP_WLOCK_ASSERT(inp);
 
+	if (inp->inp_vflag & INP_RT_VALID) {		
+		RTFREE(inp->inp_rt);
+		inp->inp_rt = NULL;
+		inp->inp_vflag &= ~INP_RT_VALID;
+	}
+	
 #ifdef IPSEC
 	ipsec4_delete_pcbpolicy(inp);
 #endif /*IPSEC*/
