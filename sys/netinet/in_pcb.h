@@ -160,7 +160,8 @@ struct inpcb {
 	u_char	inp_ip_ttl;		/* (i) time to live proto */
 	u_char	inp_ip_p;		/* (c) protocol proto */
 	u_char	inp_ip_minttl;		/* (i) minimum TTL or drop */
-	u_int	inp_refcount;		/* (i) refcount */
+	uint16_t inp_connid;            /* (x) connection id / queue id */
+	uint16_t inp_refcount;		/* (i) refcount */
 	struct  ucred   *inp_cred;      /* (c) cache of socket cred */
 	void	*inp_pspare[1];		/* L2 information */
 	struct rtentry *inp_rt;		/* L3 information */

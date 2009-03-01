@@ -478,7 +478,9 @@ findpcb:
 		goto dropwithreset;
 	}
 	INP_WLOCK(inp);
-
+	if (inp->inp_connid == 0)
+		inp->inp_connid = M_GETFLOWID(m);
+	
 #ifdef IPSEC
 #ifdef INET6
 	if (isipv6 && ipsec6_in_reject(m, inp)) {

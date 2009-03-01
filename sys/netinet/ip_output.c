@@ -129,6 +129,7 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 
 	if (inp != NULL) {
 		M_SETFIB(m, inp->inp_inc.inc_fibnum);
+		M_SETFLOWID(m, inp->inp_connid);
 		INP_LOCK_ASSERT(inp);
 		if ((ro == &iproute) && (inp->inp_vflag & INP_RT_VALID)) {
 			if (inp->inp_rt->rt_flags & RTF_UP) {

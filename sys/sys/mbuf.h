@@ -962,14 +962,24 @@ m_tag_find(struct mbuf *m, int type, struct m_tag *start)
 #define M_FIBSHIFT    28
 #define M_FIBMASK	0x0F
 
+#define	M_FLOWIDSHIFT	16
+
 /* get the fib from an mbuf and if it is not set, return the default */
 #define M_GETFIB(_m) \
     ((((_m)->m_flags & M_FIB) >> M_FIBSHIFT) & M_FIBMASK)
 
 #define M_SETFIB(_m, _fib) do {						\
 	_m->m_flags &= ~M_FIB;					   	\
-	_m->m_flags |= (((_fib) << M_FIBSHIFT) & M_FIB);  \
+	_m->m_flags |= (((_fib) << M_FIBSHIFT) & M_FIB);  		\
 } while (0) 
+
+#define M_GETFLOWID(_m) \
+    ((_m)->m_pkthdr.csum_flags >> M_FLOWIDSHIFT)
+
+#define M_SETFLOWID(_m, _flowid) do {					\
+	_m->m_pkthdr.csum_flags |= ((_flowid) << M_FLOWIDSHIFT);  	\
+} while (0) 
+
 
 #endif /* _KERNEL */
 
