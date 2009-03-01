@@ -336,7 +336,7 @@ fddi_output(ifp, m, dst, rt0)
 		}
 	}
 
-	IFQ_HANDOFF(ifp, m, error);
+	error = (ifp->if_transmit)(ifp, m);
 	if (error)
 		ifp->if_oerrors++;
 
