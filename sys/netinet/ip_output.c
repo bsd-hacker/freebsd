@@ -117,6 +117,90 @@ static void	ip_mloopback
 extern	struct protosw inetsw[];
 extern struct flowtable *ipv4_ft;
 
+static int
+ip_output_fast(struct mbuf *m, struct route *ro, int flags, int hlen,
+    struct inpcb *inp)
+{
+	struct ifnet *ifp = NULL;	/* keep compiler happy */	
+	struct ip *ip;
+	struct in_ifaddr *ia = NULL;
+	int sw_csum;
+
+	ia = ifatoia(ro->ro_rt->rt_ifa);
+	ifp = ro->ro_rt->rt_ifp;
+	ro->ro_rt->rt_rmx.rmx_pksent++;
+
+	ip = mtod(m, struct ip *);
+	/*
+	 * If the source address is not specified yet, use the address
+	 * of the outoing interface.
+	 */
+	if (ip->ip_src.s_addr == INADDR_ANY) {
+		/* Interface may have no addresses. */
+		if (ia != NULL) {
+			ip->ip_src = IA_SIN(ia)->sin_addr;
+		}
+	}
+
+#ifdef IPSEC
+	switch(ip_ipsec_output(&m, inp, &flags, &error, &ro, &iproute, &dst, &ia, &ifp)) {
+	case 1:
+		m_freem(m);
+		return (0);
+	case -1:
+		return (0);
+	case 0:
+	default:
+		break;	/* Continue with packet processing. */
+	}
+	/* Update variables that are affected by ipsec4_output(). */
+	ip = mtod(m, struct ip *);
+	hlen = ip->ip_hl << 2;
+#endif /* IPSEC */
+
+	m->m_pkthdr.csum_flags |= CSUM_IP;
+	sw_csum = m->m_pkthdr.csum_flags & ~ifp->if_hwassist;
+	if (sw_csum & CSUM_DELAY_DATA) {
+		in_delayed_cksum(m);
+		sw_csum &= ~CSUM_DELAY_DATA;
+	}
+	m->m_pkthdr.csum_flags &= ifp->if_hwassist;
+	
+	ip->ip_len = htons(ip->ip_len);
+	ip->ip_off = htons(ip->ip_off);
+	ip->ip_sum = 0;
+	if (sw_csum & CSUM_DELAY_IP)
+		ip->ip_sum = in_cksum(m, hlen);
+
+	/*
+	 * Record statistics for this interface address.
+	 * With CSUM_TSO the byte/packet count will be slightly
+	 * incorrect because we count the IP+TCP headers only
+	 * once instead of for every generated packet.
+	 */
+	if (!(flags & IP_FORWARDING) && ia) {
+		if (m->m_pkthdr.csum_flags & CSUM_TSO)
+			ia->ia_ifa.if_opackets +=
+			    m->m_pkthdr.len / m->m_pkthdr.tso_segsz;
+		else
+			ia->ia_ifa.if_opackets++;
+		ia->ia_ifa.if_obytes += m->m_pkthdr.len;
+	}
+#ifdef MBUF_STRESS_TEST
+	if (mbuf_frag_size && m->m_pkthdr.len > mbuf_frag_size)
+		m = m_fragment(m, M_DONTWAIT, mbuf_frag_size);
+#endif
+	/*
+	 * Reset layer specific mbuf flags
+	 * to avoid confusing lower layers.
+	 */
+	m->m_flags &= ~(M_PROTOFLAGS);
+
+	return ((*ifp->if_output)(ifp, m, ro));
+}
+
+#define	IP_RT_SET 	0x1
+#define	IP_LLE_SET	0x2
 /*
  * IP output.  The packet in mbuf chain m contains a skeletal IP
  * header (with len, off, ttl, proto, tos, src, dst).
@@ -134,16 +218,16 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 	struct ip *ip;
 	struct ifnet *ifp = NULL;	/* keep compiler happy */
 	struct mbuf *m0;
+	struct in_ifaddr *ia = NULL;
 	int hlen = sizeof (struct ip);
-	int mtu;
+	int mtu, flerror = ENOENT;
 	int len, error = 0;
 	int neednewroute = 0, neednewlle = 0, nortfree = 0;
 	struct sockaddr_in *dst = NULL;	/* keep compiler happy */
-	struct in_ifaddr *ia = NULL;
 	int isbroadcast, sw_csum;
+	int stateflags = 0;
 	struct route iproute;
 	struct in_addr odst;
-	struct sockaddr_in *sin;
 #ifdef IPFIREWALL_FORWARD
 	struct m_tag *fwd_tag = NULL;
 #endif
@@ -151,39 +235,15 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 
 	if (ro == NULL) {
 		ro = &iproute;
-		bzero(ro, sizeof (*ro));
+		ro->ro_rt = NULL;
+		ro->ro_lle = NULL;
 	}
 
 	if (inp != NULL) {
 		M_SETFIB(m, inp->inp_inc.inc_fibnum);
 		INP_LOCK_ASSERT(inp);
-		if (inp->inp_flags & (INP_HW_FLOWID|INP_SW_FLOWID)) {
-			m->m_pkthdr.flowid = inp->inp_flowid;
-			m->m_flags |= M_FLOWID;
-		}
-		if ((ro == &iproute) && (inp->inp_vflag & INP_RT_VALID)) {
-			if (inp->inp_rt->rt_flags & RTF_UP) {
-				sin = (struct sockaddr_in *)&ro->ro_dst;
-				sin->sin_family = AF_INET;
-				sin->sin_len = sizeof(struct sockaddr_in);
-				sin->sin_addr.s_addr = inp->inp_faddr.s_addr;
-				ro->ro_rt = inp->inp_rt;
-			} else
-				neednewroute = 1;
-		}
-		if ((ro == &iproute) && (inp->inp_flags & INP_LLE_VALID)) {
-			if (inp->inp_lle->la_flags & LLE_VALID) {
-				ro->ro_lle = inp->inp_lle;
-			} else
-				neednewlle = 1;
-		}
-	}
-	if ((ro == &iproute) && (ro->ro_rt == NULL) && (ro->ro_lle == NULL)) {
-		if (flowtable_lookup(ipv4_ft, m, ro) == 0)
-			nortfree = 1;
 	}
 	
-
 	if (opt) {
 		len = 0;
 		m = ip_insertoptions(m, opt, &len);
@@ -214,21 +274,6 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 
 	dst = (struct sockaddr_in *)&ro->ro_dst;
 again:
-	/*
-	 * If there is a cached route,
-	 * check that it is to the same destination
-	 * and is still up.  If not, free it and try again.
-	 * The address family should also be checked in case of sharing the
-	 * cache with IPv6.
-	 */
-	if (ro->ro_rt && ((ro->ro_rt->rt_flags & RTF_UP) == 0 ||
-			  dst->sin_family != AF_INET ||
-			  dst->sin_addr.s_addr != ip->ip_dst.s_addr)) {
-		if ((nortfree == 0) &&
-		    (inp == NULL || (ro->ro_rt != inp->inp_rt)))
-			RTFREE(ro->ro_rt);
-		ro->ro_rt = (struct rtentry *)NULL;
-	}
 #ifdef IPFIREWALL_FORWARD
 	if (ro->ro_rt == NULL && fwd_tag == NULL) {
 #else
@@ -239,6 +284,96 @@ again:
 		dst->sin_len = sizeof(*dst);
 		dst->sin_addr = ip->ip_dst;
 	}
+	if (ro != &iproute) {
+		if (ro->ro_rt != NULL && (ro->ro_rt->rt_flags & RTF_UP))
+			stateflags |= IP_RT_SET;
+		if (ro->ro_lle != NULL && (ro->ro_lle->la_flags & LLE_VALID))
+			stateflags |= IP_LLE_SET;
+		goto skipcachecheck;
+	}
+	
+	if (inp != NULL) {
+		if (inp->inp_flags & (INP_HW_FLOWID|INP_SW_FLOWID)) {
+			m->m_pkthdr.flowid = inp->inp_flowid;
+			m->m_flags |= M_FLOWID;
+		}
+		if (inp->inp_vflag & INP_RT_VALID) {
+			if (inp->inp_rt->rt_flags & RTF_UP) {
+				ro->ro_rt = inp->inp_rt;
+				stateflags |= IP_RT_SET;
+			} else
+				neednewroute = 1;
+		}
+		if (inp->inp_flags & INP_LLE_VALID) {
+			if (inp->inp_lle->la_flags & LLE_VALID) {
+				ro->ro_lle = inp->inp_lle;
+				stateflags |= IP_LLE_SET;
+			} else
+				neednewlle = 1;
+		}
+	}
+	if ((stateflags & (IP_LLE_SET|IP_RT_SET)) != (IP_LLE_SET|IP_RT_SET)) {
+		if ((flerror = flowtable_lookup(ipv4_ft, m, ro)) == 0) {
+			nortfree = 1;
+			stateflags |= IP_RT_SET;
+			if (ro->ro_lle != NULL)
+				stateflags |= IP_LLE_SET;
+		}
+	}
+skipcachecheck: 
+
+	/*
+	 * Check if we can take a huge shortcut
+	 */
+	if ((stateflags & (IP_LLE_SET|IP_RT_SET)) == (IP_LLE_SET|IP_RT_SET) 
+	    && (flags & (IP_SENDONES|IP_ROUTETOIF)) == 0 
+	    && !PFIL_HOOKED(&inet_pfil_hook) 
+	    && !IN_MULTICAST(ntohl(ip->ip_dst.s_addr))) {
+		ifp = ro->ro_rt->rt_ifp;
+
+		dst = (struct sockaddr_in *)ro->ro_rt->rt_gateway;
+		if (ro->ro_rt->rt_flags & RTF_GATEWAY)
+			bcopy(ro->ro_rt->rt_gateway, &ro->ro_dst,
+			    sizeof(struct sockaddr));
+
+		if (ro->ro_rt->rt_flags & RTF_HOST) {
+			if (ro->ro_rt->rt_rmx.rmx_mtu > ifp->if_mtu)
+				ro->ro_rt->rt_rmx.rmx_mtu = ifp->if_mtu;
+			mtu = ro->ro_rt->rt_rmx.rmx_mtu;
+			isbroadcast = (ro->ro_rt->rt_flags & RTF_BROADCAST);
+		} else {
+			isbroadcast = in_broadcast(dst->sin_addr, ifp);
+			mtu = ifp->if_mtu;
+		}
+		
+		if (!isbroadcast && (ip->ip_len <= mtu ||
+		    (m->m_pkthdr.csum_flags & ifp->if_hwassist & CSUM_TSO) != 0
+		    || ((ip->ip_off & IP_DF) == 0
+			&& (ifp->if_hwassist & CSUM_FRAGMENT))))
+			return (ip_output_fast(m, ro, flags, hlen, inp));
+	}
+
+	/*
+	 * If there is a cached route,
+	 * check that it is to the same destination
+	 * and is still up.  If not, free it and try again.
+	 * The address family should also be checked in case of sharing the
+	 * cache with IPv6.
+	 */
+	if (ro->ro_rt != NULL && ((ro->ro_rt->rt_flags & RTF_UP) == 0 ||
+			  dst->sin_family != AF_INET ||
+			  dst->sin_addr.s_addr != ip->ip_dst.s_addr)) {
+		/*
+		 * XXX need to check that ro->ro_rt isn't coming from a flow
+		 * lookup in ip_forward ... perhaps pass in a new flag
+		 *
+		 */
+		if (((inp->inp_vflag & INP_RT_VALID) == 0) &&
+		    flerror != 0)
+			RTFREE(ro->ro_rt);
+		ro->ro_rt = NULL;
+	}
+	
 	/*
 	 * If routing to interface only, short circuit routing lookup.
 	 * The use of an all-ones broadcast address implies this; an
