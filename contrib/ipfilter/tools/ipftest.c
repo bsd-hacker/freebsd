@@ -9,6 +9,9 @@
 #include "ipt.h"
 #include <sys/ioctl.h>
 #include <sys/file.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <net/route.h>
 
 #if !defined(lint)
 static const char sccsid[] = "@(#)ipt.c	1.19 6/3/96 (C) 1993-2000 Darren Reed";
@@ -282,16 +285,20 @@ char *argv[];
 			printf("--------------");
 		} else if ((opts & (OPT_BRIEF|OPT_NAT)) == (OPT_NAT|OPT_BRIEF))
 			printpacket(ip);
-		if (dir && (ifp != NULL) && IP_V(ip) && (m != NULL))
+		if (dir && (ifp != NULL) && IP_V(ip) && (m != NULL)) {
+			struct route ro;
+			bzero(&ro, sizeof(ro));
 #if  defined(__sgi) && (IRIX < 60500)
 			(*ifp->if_output)(ifp, (void *)m, NULL);
 #else
 # if TRU64 >= 1885
 			(*ifp->if_output)(ifp, (void *)m, NULL, 0, 0);
 # else
-			(*ifp->if_output)(ifp, (void *)m, NULL, 0);
+			(*ifp->if_output)(ifp, (void *)m, &ro);
 # endif
 #endif
+		}
+		
 		if ((opts & (OPT_BRIEF|OPT_NAT)) != (OPT_NAT|OPT_BRIEF))
 			putchar('\n');
 		dir = 0;

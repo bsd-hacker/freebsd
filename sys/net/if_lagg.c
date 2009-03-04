@@ -50,6 +50,7 @@ __FBSDID("$FreeBSD$");
 #include <net/if_types.h>
 #include <net/if_var.h>
 #include <net/bpf.h>
+#include <net/route.h>
 
 #ifdef INET
 #include <netinet/in.h>
@@ -92,8 +93,7 @@ static struct mbuf *lagg_input(struct ifnet *, struct mbuf *);
 static void	lagg_linkstate(struct lagg_softc *);
 static void	lagg_port_state(struct ifnet *, int);
 static int	lagg_port_ioctl(struct ifnet *, u_long, caddr_t);
-static int	lagg_port_output(struct ifnet *, struct mbuf *,
-		    struct sockaddr *, struct rtentry *);
+static int	lagg_port_output(struct ifnet *, struct mbuf *, struct route *ro);
 static void	lagg_port_ifdetach(void *arg __unused, struct ifnet *);
 static int	lagg_port_checkstacking(struct lagg_softc *);
 static void	lagg_port2req(struct lagg_port *, struct lagg_reqport *);
@@ -675,11 +675,11 @@ fallback:
 }
 
 static int
-lagg_port_output(struct ifnet *ifp, struct mbuf *m,
-	struct sockaddr *dst, struct rtentry *rt0)
+lagg_port_output(struct ifnet *ifp, struct mbuf *m, struct route *ro)
 {
 	struct lagg_port *lp = ifp->if_lagg;
 	struct ether_header *eh;
+	struct sockaddr *dst = &ro->ro_dst;
 	short type = 0;
 
 	switch (dst->sa_family) {
@@ -696,7 +696,7 @@ lagg_port_output(struct ifnet *ifp, struct mbuf *m,
 	 */
 	switch (ntohs(type)) {
 		case ETHERTYPE_PAE:	/* EAPOL PAE/802.1x */
-			return ((*lp->lp_output)(ifp, m, dst, rt0));
+			return ((*lp->lp_output)(ifp, m, ro));
 	}
 
 	/* drop any other frames */

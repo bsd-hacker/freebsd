@@ -128,8 +128,7 @@ static void	tuncreate(const char *name, struct cdev *dev);
 static int	tunifioctl(struct ifnet *, u_long, caddr_t);
 static int	tuninit(struct ifnet *);
 static int	tunmodevent(module_t, int, void *);
-static int	tunoutput(struct ifnet *, struct mbuf *, struct sockaddr *,
-		    struct rtentry *rt);
+static int	tunoutput(struct ifnet *, struct mbuf *, struct route *ro);
 static void	tunstart(struct ifnet *);
 
 static int	tun_clone_create(struct if_clone *, int, caddr_t);
@@ -590,14 +589,14 @@ static int
 tunoutput(
 	struct ifnet *ifp,
 	struct mbuf *m0,
-	struct sockaddr *dst,
-	struct rtentry *rt)
-{
+	struct route *ro)
+{	
 	struct tun_softc *tp = ifp->if_softc;
 	u_short cached_tun_flags;
 	int error;
 	u_int32_t af;
-
+	struct sockaddr *dst = &ro->ro_dst;
+	
 	TUNDEBUG (ifp, "tunoutput\n");
 
 #ifdef MAC

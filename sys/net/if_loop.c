@@ -96,8 +96,7 @@
 
 int		loioctl(struct ifnet *, u_long, caddr_t);
 static void	lortrequest(int, struct rtentry *, struct rt_addrinfo *);
-int		looutput(struct ifnet *ifp, struct mbuf *m,
-		    struct sockaddr *dst, struct rtentry *rt);
+int		looutput(struct ifnet *ifp, struct mbuf *m, struct route *ro);
 static int	lo_clone_create(struct if_clone *, int, caddr_t);
 static void	lo_clone_destroy(struct ifnet *);
 
@@ -176,13 +175,14 @@ static moduledata_t loop_mod = {
 DECLARE_MODULE(loop, loop_mod, SI_SUB_PROTO_IFATTACHDOMAIN, SI_ORDER_ANY);
 
 int
-looutput(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
-    struct rtentry *rt)
+looutput(struct ifnet *ifp, struct mbuf *m, struct route *ro)
 {
 	u_int32_t af;
 #ifdef MAC
 	int error;
 #endif
+	struct sockaddr *dst = &ro->ro_dst;
+	struct rtentry *rt = ro->ro_rt;
 
 	M_ASSERTPKTHDR(m); /* check if we have the packet header */
 

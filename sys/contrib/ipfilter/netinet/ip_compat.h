@@ -1825,7 +1825,7 @@ typedef	struct	tcpiphdr	tcpiphdr_t;
 #endif
 
 #ifndef offsetof
-# define offsetof(t,m) (int)((&((t *)0L)->m))
+# define offsetof(t,m) (size_t)((&((t *)0L)->m))
 #endif
 
 /*

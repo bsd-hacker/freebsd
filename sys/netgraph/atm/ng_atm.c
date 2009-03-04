@@ -515,7 +515,7 @@ ng_atm_rcvdata(hook_p hook, item_p item)
 	ATM_PH_SETVCI(aph, vcc->vci);
 	ATM_PH_FLAGS(aph) = 0;
 
-	if ((error = atm_output(priv->ifp, m, NULL, NULL)) == 0)
+	if ((error = atm_output(priv->ifp, m, NULL)) == 0)
 		priv->out_packets++;
 	else
 		priv->out_errors++;

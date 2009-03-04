@@ -232,11 +232,10 @@ iso88025_ioctl(struct ifnet *ifp, int command, caddr_t data)
  * ISO88025 encapsulation
  */
 int
-iso88025_output(ifp, m, dst, rt0)
+iso88025_output(ifp, m, ro)
 	struct ifnet *ifp;
 	struct mbuf *m;
-	struct sockaddr *dst;
-	struct rtentry *rt0;
+	struct route *ro;
 {
 	u_int16_t snap_type = 0;
 	int loop_copy = 0, error = 0, rif_len = 0;
@@ -245,12 +244,16 @@ iso88025_output(ifp, m, dst, rt0)
 	struct iso88025_header gen_th;
 	struct sockaddr_dl *sdl = NULL;
 	struct llentry *lle;
+	struct sockaddr *dst;
+	struct rtentry *rt0;
 
 #ifdef MAC
 	error = mac_ifnet_check_transmit(ifp, m);
 	if (error)
 		senderr(error);
 #endif
+	rt0 = ro->ro_rt;
+	dst = &ro->ro_dst;
 
 	if (ifp->if_flags & IFF_MONITOR)
 		senderr(ENETDOWN);
@@ -628,8 +631,9 @@ iso88025_input(ifp, m)
 		case LLC_TEST:
 		case LLC_TEST_P:
 		{
-			struct sockaddr sa;
+			struct sockaddr *sa;
 			struct arpcom *ac;
+			struct route ro;
 			struct iso88025_sockaddr_data *th2;
 			int i;
 			u_char c;
@@ -646,8 +650,9 @@ iso88025_input(ifp, m)
 				bcopy((caddr_t)IF_LLADDR(ifp),
 				      (caddr_t)th->iso88025_dhost,
 					ISO88025_ADDR_LEN);
-			sa.sa_family = AF_UNSPEC;
-			sa.sa_len = sizeof(sa);
+			sa = &ro.ro_dst;
+			sa->sa_family = AF_UNSPEC;
+			sa->sa_len = sizeof(*sa);
 			th2 = (struct iso88025_sockaddr_data *)sa.sa_data;
 			for (i = 0; i < ISO88025_ADDR_LEN; i++) {
 				th2->ether_shost[i] = c = th->iso88025_dhost[i];
@@ -657,7 +662,7 @@ iso88025_input(ifp, m)
 			}
 			th2->ac = TR_AC;
 			th2->fc = TR_LLC_FRAME;
-			ifp->if_output(ifp, m, &sa, NULL);
+			ifp->if_output(ifp, m, &ro);
 			return;
 		}
 		default:

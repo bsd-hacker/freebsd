@@ -1594,8 +1594,7 @@ static void core_watchdog(softc_t *);
 static int lmc_raw_ioctl(struct ifnet *, u_long, caddr_t);
 static int lmc_ifnet_ioctl(struct ifnet *, u_long, caddr_t);
 static void lmc_ifnet_start(struct ifnet *);
-static int lmc_raw_output(struct ifnet *, struct mbuf *,
- struct sockaddr *, struct rtentry *);
+static int lmc_raw_output(struct ifnet *, struct mbuf *, struct route *ro);
 static void lmc_ifnet_watchdog(struct ifnet *);
 # ifdef __OpenBSD__
 static int ifmedia_change(struct ifnet *);

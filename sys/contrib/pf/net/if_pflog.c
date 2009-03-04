@@ -112,8 +112,7 @@ __FBSDID("$FreeBSD$");
 #endif
 
 void	pflogattach(int);
-int	pflogoutput(struct ifnet *, struct mbuf *, struct sockaddr *,
-	    	       struct rtentry *);
+int	pflogoutput(struct ifnet *, struct mbuf *, struct route *);
 int	pflogioctl(struct ifnet *, u_long, caddr_t);
 void	pflogstart(struct ifnet *);
 #ifdef __FreeBSD__
@@ -286,8 +285,7 @@ pflogstart(struct ifnet *ifp)
 }
 
 int
-pflogoutput(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
-	struct rtentry *rt)
+pflogoutput(struct ifnet *ifp, struct mbuf *m, struct route *ro)
 {
 	m_freem(m);
 	return (0);

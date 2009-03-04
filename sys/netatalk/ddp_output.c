@@ -239,5 +239,7 @@ ddp_route(struct mbuf *m, struct route *ro)
 		return (if_simloop(ifp, m, gate.sat_family, 0));
 
 	/* XXX */
-	return ((*ifp->if_output)(ifp, m, (struct sockaddr *)&gate, NULL));
+	bcopy(&gate, &ro->ro_dst, sizeof(struct sockaddr));
+	return ((*ifp->if_output)(ifp, m, ro));
 }
+

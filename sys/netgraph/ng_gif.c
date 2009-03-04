@@ -461,10 +461,10 @@ ng_gif_rcvdata(hook_p hook, item_p item)
 static int
 ng_gif_rcv_lower(node_p node, struct mbuf *m)
 {
-	struct sockaddr	dst;
 	const priv_p priv = NG_NODE_PRIVATE(node);
+	struct route ro;
 
-	bzero(&dst, sizeof(dst));
+	bzero(&ro, sizeof(struct route));
 
 	/* Make sure header is fully pulled up */
 	if (m->m_pkthdr.len < sizeof(sa_family_t)) {
@@ -476,7 +476,7 @@ ng_gif_rcv_lower(node_p node, struct mbuf *m)
 		return (ENOBUFS);
 	}
 
-	dst.sa_family = *mtod(m, sa_family_t *);
+	ro.ro_dst.sa_family = *mtod(m, sa_family_t *);
 	m_adj(m, sizeof(sa_family_t));
 
 	/* Send it on its way */
@@ -485,7 +485,7 @@ ng_gif_rcv_lower(node_p node, struct mbuf *m)
 	 * fourth argument (rt) to in{,6}_gif_output which ignore it.
 	 * If this changes ng_gif will probably break.
 	 */
-	return gif_output(priv->ifp, m, &dst, NULL);
+	return (gif_output(priv->ifp, m, &ro));
 }
 
 /*

@@ -101,8 +101,7 @@ u_int8_t  arcbroadcastaddr = 0;
  * Assumes that ifp is actually pointer to arccom structure.
  */
 int
-arc_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
-    struct rtentry *rt0)
+arc_output(struct ifnet *ifp, struct mbuf *m, struct route *ro)
 {
 	struct arc_header	*ah;
 	int			error;
@@ -110,7 +109,9 @@ arc_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 	int			loop_copy = 0;
 	int			isphds;
 	struct llentry		*lle;
-
+	struct sockaddr 	*dst = &ro->ro_dst;
+	struct rtentry 		*rt0 = ro->ro_rt;
+	
 	if (!((ifp->if_flags & IFF_UP) &&
 	    (ifp->if_drv_flags & IFF_DRV_RUNNING)))
 		return(ENETDOWN); /* m, m1 aren't initialized yet */

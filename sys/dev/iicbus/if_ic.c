@@ -102,9 +102,7 @@ static int icprobe(device_t);
 static int icattach(device_t);
 
 static int icioctl(struct ifnet *, u_long, caddr_t);
-static int icoutput(struct ifnet *, struct mbuf *, struct sockaddr *,
-		struct rtentry *);
-
+static int icoutput(struct ifnet *, struct mbuf *, struct route *);
 static int icintr(device_t, int, char *);
 
 static device_method_t ic_methods[] = {
@@ -353,8 +351,7 @@ icintr(device_t dev, int event, char *ptr)
  * icoutput()
  */
 static int
-icoutput(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
-    struct rtentry *rt)
+icoutput(struct ifnet *ifp, struct mbuf *m, struct route *ro)
 {
 	struct ic_softc *sc = ifp->if_softc;
 	device_t icdev = sc->ic_dev;
@@ -363,6 +360,7 @@ icoutput(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 	struct mbuf *mm;
 	u_char *cp;
 	u_int32_t hdr;
+	struct sockaddr *dst = &ro->ro_dst;
 
 	/* BPF writes need to be handled specially. */ 
 	if (dst->sa_family == AF_UNSPEC)

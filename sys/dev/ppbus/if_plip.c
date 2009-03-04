@@ -99,6 +99,7 @@ __FBSDID("$FreeBSD$");
 #include <net/if.h>
 #include <net/if_types.h>
 #include <net/netisr.h>
+#include <net/route.h>
 
 #include <netinet/in.h>
 #include <netinet/in_var.h>
@@ -172,8 +173,7 @@ static u_char *ctxmith;
 /* Functions for the lp# interface */
 static int lpinittables(void);
 static int lpioctl(struct ifnet *, u_long, caddr_t);
-static int lpoutput(struct ifnet *, struct mbuf *, struct sockaddr *,
-	struct rtentry *);
+static int lpoutput(struct ifnet *, struct mbuf *, struct route *);
 static void lpstop(struct lp_data *);
 static void lp_intr(void *);
 static int lp_module_handler(module_t, int, void *);
@@ -677,8 +677,7 @@ lpoutbyte(u_char byte, int spin, device_t ppbus)
 }
 
 static int
-lpoutput(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
-    struct rtentry *rt)
+lpoutput(struct ifnet *ifp, struct mbuf *m, struct route *ro)
 {
 	struct lp_data *sc = ifp->if_softc;
 	device_t dev = sc->sc_dev;

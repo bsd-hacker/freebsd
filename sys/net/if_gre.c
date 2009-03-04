@@ -109,8 +109,7 @@ struct gre_softc_head gre_softc_list;
 static int	gre_clone_create(struct if_clone *, int, caddr_t);
 static void	gre_clone_destroy(struct ifnet *);
 static int	gre_ioctl(struct ifnet *, u_long, caddr_t);
-static int	gre_output(struct ifnet *, struct mbuf *, struct sockaddr *,
-		    struct rtentry *rt);
+static int	gre_output(struct ifnet *, struct mbuf *, struct route *);
 
 IFC_SIMPLE_DECLARE(gre, 0);
 
@@ -239,8 +238,7 @@ gre_clone_destroy(ifp)
  * given by sc->g_proto. See also RFC 1701 and RFC 2004
  */
 static int
-gre_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
-	   struct rtentry *rt)
+gre_output(struct ifnet *ifp, struct mbuf *m, struct route *ro)
 {
 #ifdef INET6
 	INIT_VNET_INET(ifp->if_vnet);
@@ -255,6 +253,7 @@ gre_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 	struct mobile_h mob_h;
 	u_int32_t af;
 	int extra = 0;
+	struct sockaddr *dst = &ro->ro_dst;
 
 	/*
 	 * gre may cause infinite recursion calls when misconfigured.

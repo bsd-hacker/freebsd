@@ -206,8 +206,7 @@ static void	carp_send_arp(struct carp_softc *);
 static void	carp_master_down(void *);
 static void	carp_master_down_locked(struct carp_softc *);
 static int	carp_ioctl(struct ifnet *, u_long, caddr_t);
-static int	carp_looutput(struct ifnet *, struct mbuf *, struct sockaddr *,
-		    struct rtentry *);
+static int	carp_looutput(struct ifnet *, struct mbuf *, struct route *);
 static void	carp_start(struct ifnet *);
 static void	carp_setrun(struct carp_softc *, sa_family_t);
 static void	carp_set_state(struct carp_softc *, int);
@@ -2010,10 +2009,11 @@ carp_ioctl(struct ifnet *ifp, u_long cmd, caddr_t addr)
  * XXX: this is looutput. We should eventually use it from there.
  */
 static int
-carp_looutput(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
-    struct rtentry *rt)
+carp_looutput(struct ifnet *ifp, struct mbuf *m, struct route *ro)
 {
 	u_int32_t af;
+	struct sockaddr *dst = &ro->ro_dst;
+	struct rtentry *rt = ro->ro_rt;
 
 	M_ASSERTPKTHDR(m); /* check if we have the packet header */
 

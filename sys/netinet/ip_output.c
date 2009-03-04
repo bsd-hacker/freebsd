@@ -625,8 +625,8 @@ passout:
 		 * to avoid confusing lower layers.
 		 */
 		m->m_flags &= ~(M_PROTOFLAGS);
-		error = (*ifp->if_output)(ifp, m,
-				(struct sockaddr *)dst, ro->ro_rt);
+		bcopy(dst, &ro->ro_dst, sizeof(struct sockaddr));
+		error = (*ifp->if_output)(ifp, m, ro);
 		goto done;
 	}
 
@@ -658,9 +658,8 @@ passout:
 			 * to avoid confusing upper layers.
 			 */
 			m->m_flags &= ~(M_PROTOFLAGS);
-
-			error = (*ifp->if_output)(ifp, m,
-			    (struct sockaddr *)dst, ro->ro_rt);
+			bcopy(dst, &ro->ro_dst, sizeof(struct sockaddr));
+			error = (*ifp->if_output)(ifp, m, ro);
 		} else
 			m_freem(m);
 	}

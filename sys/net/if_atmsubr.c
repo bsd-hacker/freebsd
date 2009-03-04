@@ -122,8 +122,7 @@ MALLOC_DEFINE(M_IFATM, "ifatm", "atm interface internals");
  *		rt0 must also be NULL.
  */
 int
-atm_output(struct ifnet *ifp, struct mbuf *m0, struct sockaddr *dst,
-    struct rtentry *rt0)
+atm_output(struct ifnet *ifp, struct mbuf *m0, struct route *ro)
 {
 	u_int16_t etype = 0;			/* if using LLC/SNAP */
 	int error = 0, sz;
@@ -132,6 +131,8 @@ atm_output(struct ifnet *ifp, struct mbuf *m0, struct sockaddr *dst,
 	struct atmllc *atmllc;
 	struct atmllc *llc_hdr = NULL;
 	u_int32_t atm_flags;
+	struct sockaddr *dst = &ro->ro_dst;
+	struct rtentry *rt0 = ro->ro_rt;
 
 #ifdef MAC
 	error = mac_ifnet_check_transmit(ifp, m);

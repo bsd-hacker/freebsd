@@ -165,8 +165,7 @@ struct	iso88025_addr {
 void	iso88025_ifattach	(struct ifnet *, const u_int8_t *, int);
 void	iso88025_ifdetach	(struct ifnet *, int);
 int	iso88025_ioctl		(struct ifnet *, int , caddr_t );
-int	iso88025_output		(struct ifnet *, struct mbuf *, struct sockaddr *,
-				 struct rtentry *);
+int	iso88025_output		(struct ifnet *, struct mbuf *, struct route *ro);
 void	iso88025_input		(struct ifnet *, struct mbuf *);
 
 #endif

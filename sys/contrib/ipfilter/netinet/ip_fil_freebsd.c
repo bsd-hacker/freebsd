@@ -1045,8 +1045,8 @@ frdest_t *fdp;
 
 		if (!ip->ip_sum)
 			ip->ip_sum = in_cksum(m, hlen);
-		error = (*ifp->if_output)(ifp, m, (struct sockaddr *)dst,
-					  ro->ro_rt);
+		bcopy(dst, &ro->ro_dst, sizeof(dst));
+		error = (*ifp->if_output)(ifp, m, ro);
 		goto done;
 	}
 	/*
@@ -1122,12 +1122,12 @@ frdest_t *fdp;
 	ip->ip_sum = 0;
 	ip->ip_sum = in_cksum(m0, hlen);
 sendorfree:
+	bcopy(dst, &ro->ro_dst, sizeof(dst));
 	for (m = m0; m; m = m0) {
 		m0 = m->m_act;
 		m->m_act = 0;
 		if (error == 0)
-			error = (*ifp->if_output)(ifp, m,
-			    (struct sockaddr *)dst, ro->ro_rt);
+			error = (*ifp->if_output)(ifp, m, ro);
 		else
 			FREE_MB_T(m);
 	}

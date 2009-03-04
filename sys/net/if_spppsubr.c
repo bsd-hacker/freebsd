@@ -262,9 +262,7 @@ static const u_short interactive_ports[8] = {
 	struct ifnet *ifp = SP2IFP(sp);				\
 	int debug = ifp->if_flags & IFF_DEBUG
 
-static int sppp_output(struct ifnet *ifp, struct mbuf *m,
-		       struct sockaddr *dst, struct rtentry *rt);
-
+static int sppp_output(struct ifnet *ifp, struct mbuf *m, struct route *ro);
 static void sppp_cisco_send(struct sppp *sp, int type, long par1, long par2);
 static void sppp_cisco_input(struct sppp *sp, struct mbuf *m);
 
@@ -785,8 +783,7 @@ sppp_ifstart(struct ifnet *ifp)
  * Enqueue transmit packet.
  */
 static int
-sppp_output(struct ifnet *ifp, struct mbuf *m,
-	    struct sockaddr *dst, struct rtentry *rt)
+sppp_output(struct ifnet *ifp, struct mbuf *m, struct route *ro)
 {
 	struct sppp *sp = IFP2SP(ifp);
 	struct ppp_header *h;
@@ -796,6 +793,7 @@ sppp_output(struct ifnet *ifp, struct mbuf *m,
 	int ipproto = PPP_IP;
 #endif
 	int debug = ifp->if_flags & IFF_DEBUG;
+	struct sockaddr *dst = &ro->ro_dst;
 
 	s = splimp();
 	SPPP_LOCK(sp);

@@ -216,8 +216,7 @@ null_update_promisc(struct ifnet *ifp)
 }
 
 static int
-null_output(struct ifnet *ifp, struct mbuf *m,
-	struct sockaddr *dst, struct rtentry *rt0)
+null_output(struct ifnet *ifp, struct mbuf *m, struct route *ro)
 {
 	if_printf(ifp, "discard raw packet\n");
 	m_freem(m);

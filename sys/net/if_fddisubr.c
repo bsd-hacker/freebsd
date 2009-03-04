@@ -97,8 +97,7 @@ static const u_char fddibroadcastaddr[FDDI_ADDR_LEN] =
 
 static int fddi_resolvemulti(struct ifnet *, struct sockaddr **,
 			      struct sockaddr *);
-static int fddi_output(struct ifnet *, struct mbuf *, struct sockaddr *,
-		       struct rtentry *); 
+static int fddi_output(struct ifnet *, struct mbuf *, struct route *);
 static void fddi_input(struct ifnet *ifp, struct mbuf *m);
 
 #define	senderr(e)	do { error = (e); goto bad; } while (0)
@@ -111,17 +110,18 @@ static void fddi_input(struct ifnet *ifp, struct mbuf *m);
  * Assumes that ifp is actually pointer to arpcom structure.
  */
 static int
-fddi_output(ifp, m, dst, rt0)
+fddi_output(ifp, m, ro)
 	struct ifnet *ifp;
 	struct mbuf *m;
-	struct sockaddr *dst;
-	struct rtentry *rt0;
+	struct route *ro;
 {
 	u_int16_t type;
 	int loop_copy = 0, error = 0, hdrcmplt = 0;
  	u_char esrc[FDDI_ADDR_LEN], edst[FDDI_ADDR_LEN];
 	struct fddi_header *fh;
 	struct llentry *lle;
+	struct sockaddr *dst = &ro->ro_dst;
+	struct rtentry *rt0 = ro->ro_rt;
 
 #ifdef MAC
 	error = mac_ifnet_check_transmit(ifp, m);

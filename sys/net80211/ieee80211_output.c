@@ -44,6 +44,7 @@ __FBSDID("$FreeBSD$");
 #include <net/if_llc.h>
 #include <net/if_media.h>
 #include <net/if_vlan_var.h>
+#include <net/route.h>
 
 #include <net80211/ieee80211_var.h>
 #include <net80211/ieee80211_regdomain.h>
@@ -289,13 +290,13 @@ ieee80211_start(struct ifnet *ifp)
  * will go away when the virtual ap support comes in.
  */
 int
-ieee80211_output(struct ifnet *ifp, struct mbuf *m,
-	struct sockaddr *dst, struct rtentry *rt0)
+ieee80211_output(struct ifnet *ifp, struct mbuf *m, struct route *ro)
 {
 #define senderr(e) do { error = (e); goto bad;} while (0)
 	struct ieee80211_node *ni = NULL;
 	struct ieee80211vap *vap;
 	struct ieee80211_frame *wh;
+	struct sockaddr *dst = &ro->ro_dst;
 	int error;
 
 	if (ifp->if_drv_flags & IFF_DRV_OACTIVE) {
@@ -316,7 +317,7 @@ ieee80211_output(struct ifnet *ifp, struct mbuf *m,
 	 * a raw 802.11 frame.
 	 */
 	if (dst->sa_family != AF_IEEE80211)
-		return vap->iv_output(ifp, m, dst, rt0);
+		return vap->iv_output(ifp, m, ro);
 #ifdef MAC
 	error = mac_check_ifnet_transmit(ifp, m);
 	if (error)

@@ -369,17 +369,19 @@ gif_start(struct ifnet *ifp)
 {
 	struct gif_softc *sc;
 	struct mbuf *m;
+	struct route ro;
 
 	sc = ifp->if_softc;
-
+	bcopy(sc->gif_pdst, &ro.ro_dst, sizeof(sc->gif_pdst));
+	ro.ro_rt = NULL;
+	ro.ro_lle = NULL;
 	ifp->if_drv_flags |= IFF_DRV_OACTIVE;
 	for (;;) {
 		IFQ_DEQUEUE(&ifp->if_snd, m);
 		if (m == 0)
 			break;
 
-		gif_output(ifp, m, sc->gif_pdst, NULL);
-
+		gif_output(ifp, m, &ro);
 	}
 	ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
 
@@ -387,11 +389,10 @@ gif_start(struct ifnet *ifp)
 }
 
 int
-gif_output(ifp, m, dst, rt)
+gif_output(ifp, m, ro)
 	struct ifnet *ifp;
 	struct mbuf *m;
-	struct sockaddr *dst;
-	struct rtentry *rt;	/* added in net2 */
+	struct route *ro;
 {
 	INIT_VNET_GIF(ifp->if_vnet);
 	struct gif_softc *sc = ifp->if_softc;
@@ -399,6 +400,7 @@ gif_output(ifp, m, dst, rt)
 	int error = 0;
 	int gif_called;
 	u_int32_t af;
+	struct sockaddr *dst = &ro->ro_dst;
 
 #ifdef MAC
 	error = mac_ifnet_check_transmit(ifp, m);
