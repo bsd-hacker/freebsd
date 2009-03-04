@@ -169,7 +169,7 @@ struct inpcb {
 	u_char	inp_ip_ttl;		/* (i) time to live proto */
 	u_char	inp_ip_p;		/* (c) protocol proto */
 	u_char	inp_ip_minttl;		/* (i) minimum TTL or drop */
-	uint32_t inp_ispare1;		/* (x) connection id / queue id */
+	uint32_t inp_flowid;		/* (x) flow id / queue id */
 	u_int	inp_refcount;		/* (i) refcount */
 	struct llentry	*inp_lle;	/* L2 information */
 	struct rtentry	*inp_rt;	/* L3 information */
@@ -420,6 +420,8 @@ void 	inp_4tuple_get(struct inpcb *inp, uint32_t *laddr, uint16_t *lp,
 #define	INP_DONTFRAG		0x800	/* don't fragment packet */
 #define	INP_NONLOCALOK		0x1000	/* Allow bind to spoof any address */
 #define	INP_LLE_VALID		0x2000	/* L2 entry is set */
+#define	INP_SW_FLOWID		0x2000	/* software generated flow id */
+#define	INP_HW_FLOWID		0x4000	/* hardware generated flow id */
 
 #define IN6P_IPV6_V6ONLY	0x008000 /* restrict AF_INET6 socket for v6 */
 

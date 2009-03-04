@@ -402,11 +402,7 @@ ipv4_flow_lookup_hash_internal(struct mbuf *m, struct route *ro,
 
 skipports:
 	hash = hashword(key, 3, hashjitter + proto);
-#ifdef notyet
 	if (m != NULL && (m->m_flags & M_FLOWID) == 0)
-#else
-	if (m != NULL && m->m_pkthdr.flowid != 0)
-#endif
 		m->m_pkthdr.flowid = hash;
 	
 	CTR5(KTR_SPARE3, "proto=%d hash=%x key[0]=%x sport=%d dport=%d\n", proto, hash, key[0], sport, dport);
