@@ -60,6 +60,7 @@ __FBSDID("$FreeBSD$");
 #include <net/netisr.h>
 #include <net/pfil.h>
 #include <net/route.h>
+#include <net/flowtable.h>
 #ifdef RADIX_MPATH
 #include <net/radix_mpath.h>
 #endif
@@ -114,6 +115,7 @@ static void	ip_mloopback
 
 
 extern	struct protosw inetsw[];
+extern struct flowtable *ipv4_ft;
 
 /*
  * IP output.  The packet in mbuf chain m contains a skeletal IP
@@ -135,7 +137,7 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 	int hlen = sizeof (struct ip);
 	int mtu;
 	int len, error = 0;
-	int neednewroute = 0, neednewlle = 0;
+	int neednewroute = 0, neednewlle = 0, nortfree = 0;
 	struct sockaddr_in *dst = NULL;	/* keep compiler happy */
 	struct in_ifaddr *ia = NULL;
 	int isbroadcast, sw_csum;
@@ -172,6 +174,11 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 				neednewlle = 1;
 		}
 	}
+	if ((ro == &iproute) && (ro->ro_rt == NULL) && (ro->ro_lle == NULL)) {
+		if (flowtable_lookup(ipv4_ft, m, ro) == 0)
+			nortfree = 1;
+	}
+	
 
 	if (opt) {
 		len = 0;
@@ -213,7 +220,8 @@ again:
 	if (ro->ro_rt && ((ro->ro_rt->rt_flags & RTF_UP) == 0 ||
 			  dst->sin_family != AF_INET ||
 			  dst->sin_addr.s_addr != ip->ip_dst.s_addr)) {
-		if (inp == NULL || (ro->ro_rt != inp->inp_rt))
+		if ((nortfree == 0) &&
+		    (inp == NULL || (ro->ro_rt != inp->inp_rt)))
 			RTFREE(ro->ro_rt);
 		ro->ro_rt = (struct rtentry *)NULL;
 	}
@@ -667,12 +675,12 @@ done:
 				return (error);
 		}
 
-		if (inp == NULL || (inp->inp_vflag & INP_RT_VALID) == 0)
+		if ((nortfree == 0) &&
+		    (inp == NULL || (inp->inp_vflag & INP_RT_VALID) == 0))
 			RTFREE(ro->ro_rt);
 		else if (neednewroute && ro->ro_rt != inp->inp_rt) {
 			RTFREE(inp->inp_rt);
 			inp->inp_rt = ro->ro_rt;
-
 		}
 		if (neednewlle) {
 			IF_AFDATA_RLOCK(ifp);	
