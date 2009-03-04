@@ -65,6 +65,7 @@ __FBSDID("$FreeBSD$");
 #include <net/if_types.h>
 #include <net/if_llatbl.h>
 #include <net/route.h>
+#include <net/flowtable.h>
 
 #include <netinet/in.h>
 #include <netinet/in_pcb.h>
@@ -88,6 +89,7 @@ __FBSDID("$FreeBSD$");
 
 #include <security/mac/mac_framework.h>
 
+extern struct flowtable *ipv4_ft;
 #ifdef VIMAGE_GLOBALS
 /*
  * These configure the range of local port addresses assigned to
@@ -643,11 +645,14 @@ in_pcbladdr(struct inpcb *inp, struct in_addr *faddr, struct in_addr *laddr,
 	 * If route is known our src addr is taken from the i/f,
 	 * else punt.
 	 *
+	 * XXX need to account for fibnum
 	 * Find out route to destination.
 	 */
 	if ((inp->inp_socket->so_options & SO_DONTROUTE) == 0)
+		flowtable_lookup(ipv4_ft, NULL, &sro);
+#if 0	
 		in_rtalloc_ign(&sro, 0, inp->inp_inc.inc_fibnum);
-
+#endif
 	/*
 	 * If we found a route, use the address corresponding to
 	 * the outgoing interface.
@@ -811,8 +816,6 @@ in_pcbladdr(struct inpcb *inp, struct in_addr *faddr, struct in_addr *laddr,
 	}
 
 done:
-	if (sro.ro_rt != NULL)
-		RTFREE(sro.ro_rt);
 	return (error);
 }
 

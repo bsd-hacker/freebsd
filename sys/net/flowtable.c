@@ -334,26 +334,32 @@ ipv4_flow_lookup_hash_internal(struct mbuf *m, struct route *ro,
     uint32_t *key, uint16_t *flags, uint8_t *protop)
 {
 	uint16_t sport = 0, dport = 0;
-	struct ip *ip = mtod(m, struct ip *);
-	uint8_t proto = ip->ip_p;
-	int iphlen = ip->ip_hl << 2;
+	struct ip *ip;
+	uint8_t proto = 0;
+	int iphlen;
 	uint32_t hash;
 	struct sockaddr_in *sin;
 	struct tcphdr *th;
 	struct udphdr *uh;
 	struct sctphdr *sh;
 
-	key[0] = 0;
-	key[1] = ip->ip_src.s_addr;
-	key[2] = ip->ip_dst.s_addr;	
-
-	sin = (struct sockaddr_in *)&ro->ro_dst;
-	sin->sin_family = AF_INET;
-	sin->sin_len = sizeof(*sin);
-	sin->sin_addr = ip->ip_dst;
-
 	if (flowtable_enable == 0)
 		return (0);
+
+	sin = (struct sockaddr_in *)&ro->ro_dst;
+	KASSERT(sin->sin_family == AF_INET,
+	    ("bad address passed"));
+	key[0] = 0;
+	key[1] = 0;
+	key[2] = sin->sin_addr.s_addr;
+
+	if (m == NULL || (*flags & FL_HASH_PORTS) == 0)
+		goto skipports;
+
+	ip = mtod(m, struct ip *);
+	proto = ip->ip_p;
+	iphlen = ip->ip_hl << 2; /* XXX options? */
+	key[1] = ip->ip_src.s_addr;
 	
 	switch (proto) {
 	case IPPROTO_TCP:
@@ -394,8 +400,13 @@ ipv4_flow_lookup_hash_internal(struct mbuf *m, struct route *ro,
 	((uint16_t *)key)[0] = sport;
 	((uint16_t *)key)[1] = dport; 
 
+skipports:
 	hash = hashword(key, 3, hashjitter + proto);
-	if (m->m_pkthdr.flowid == 0)
+#ifdef notyet
+	if (m != NULL && (m->m_flags & M_FLOWID) == 0)
+#else
+	if (m != NULL && m->m_pkthdr.flowid != 0)
+#endif
 		m->m_pkthdr.flowid = hash;
 	
 	CTR5(KTR_SPARE3, "proto=%d hash=%x key[0]=%x sport=%d dport=%d\n", proto, hash, key[0], sport, dport);
@@ -564,7 +575,7 @@ flowtable_lookup(struct flowtable *ft, struct mbuf *m, struct route *ro)
 	struct flentry *fle;
 	uint16_t flags;
 	uint8_t proto = 0;
-	int cache = 1, error = 0;
+	int cache = 1, error = 0, fib = 0;
 	struct rtentry *rt;
 	struct llentry *lle;
 
@@ -620,7 +631,10 @@ uncached:
 	 * of arpresolve with an rt_check variant that expected to
 	 * receive the route locked
 	 */
-	ft->ft_rtalloc(ro, hash, M_GETFIB(m));
+	if (m != NULL)
+		fib = M_GETFIB(m);
+
+	ft->ft_rtalloc(ro, hash, fib);
 	if (ro->ro_rt == NULL) 
 		error = ENETUNREACH;
 	else {
