@@ -232,13 +232,10 @@ struct flentry_v6 {
 #define	fl_rt		fl_entry.fl_rt
 #define	fl_lle		fl_entry.fl_lle
 
-#define	SECS_PER_HOUR		3600
-#define	SECS_PER_DAY		(24*SECS_PER_HOUR)
-
-#define	SYN_IDLE		300
-#define	UDP_IDLE		300
-#define	FIN_WAIT_IDLE		600
-#define	TCP_IDLE		SECS_PER_DAY
+#define	SYN_IDLE		120
+#define	UDP_IDLE		60
+#define	FIN_WAIT_IDLE		300
+#define	TCP_IDLE		1200
 
 
 typedef	void fl_lock_t(struct flowtable *, uint32_t);
@@ -331,13 +328,14 @@ flowtable_pcpu_unlock(struct flowtable *table, uint32_t hash)
 
 static uint32_t
 ipv4_flow_lookup_hash_internal(struct mbuf *m, struct route *ro,
-    uint32_t *key, uint16_t *flags, uint8_t *protop)
+    uint32_t *key, uint16_t *flags, uint8_t *protop, uint32_t *hash,
+    uint32_t *hash_noports)
 {
 	uint16_t sport = 0, dport = 0;
 	struct ip *ip;
 	uint8_t proto = 0;
 	int iphlen;
-	uint32_t hash;
+	uint32_t rh;
 	struct sockaddr_in *sin;
 	struct tcphdr *th;
 	struct udphdr *uh;
@@ -353,14 +351,16 @@ ipv4_flow_lookup_hash_internal(struct mbuf *m, struct route *ro,
 	key[1] = 0;
 	key[2] = sin->sin_addr.s_addr;
 
-	if (m == NULL || (*flags & FL_HASH_PORTS) == 0)
+	if (m == NULL) 
 		goto skipports;
-
 	ip = mtod(m, struct ip *);
 	proto = ip->ip_p;
 	iphlen = ip->ip_hl << 2; /* XXX options? */
 	key[1] = ip->ip_src.s_addr;
-	
+
+	if ((*flags & FL_HASH_PORTS) == 0)
+		goto skipports;
+
 	switch (proto) {
 	case IPPROTO_TCP:
 		th = (struct tcphdr *)((caddr_t)ip + iphlen);
@@ -387,30 +387,27 @@ ipv4_flow_lookup_hash_internal(struct mbuf *m, struct route *ro,
 		break;;
 	
 	}
-	*protop = proto;
-
-	/*
-	 * If this is a transmit route cache then 
-	 * hash all flows to a given destination to
-	 * the same bucket
-	 */
-	if ((*flags & FL_HASH_PORTS) == 0)
-		proto = sport = dport = 0;
-
-	((uint16_t *)key)[0] = sport;
-	((uint16_t *)key)[1] = dport; 
 
 skipports:
-	hash = hashword(key, 3, hashjitter + proto);
+	rh = hashword(key, 3, hashjitter + proto);
+	*hash_noports = rh;
+	*hash = 0;
+	if ((*flags & FL_HASH_PORTS) && sport) {
+		((uint16_t *)key)[0] = sport;
+		((uint16_t *)key)[1] = dport; 
+		rh = hashword(key, 3, hashjitter + proto);
+		*hash = rh;
+	}
 	if (m != NULL && (m->m_flags & M_FLOWID) == 0)
-		m->m_pkthdr.flowid = hash;
-	
-	CTR5(KTR_SPARE3, "proto=%d hash=%x key[0]=%x sport=%d dport=%d\n", proto, hash, key[0], sport, dport);
-	
-	return (hash);
+		m->m_pkthdr.flowid = rh;
+
+	CTR5(KTR_SPARE3, "proto=%d hash=%x key[0]=%x sport=%d dport=%d\n",
+	    proto, *hash, key[0], sport, dport);
+
+	return (0);
 noop:
 	*protop = proto;
-	return (0);
+	return (ENOENT);
 }
 
 static bitstr_t *
@@ -567,7 +564,7 @@ flowtable_key_equal(struct flentry *fle, uint32_t *key, int flags)
 int
 flowtable_lookup(struct flowtable *ft, struct mbuf *m, struct route *ro)
 {
-	uint32_t key[9], hash;
+	uint32_t key[9], hash, hash_noports;
 	struct flentry *fle;
 	uint16_t flags;
 	uint8_t proto = 0;
@@ -578,13 +575,14 @@ flowtable_lookup(struct flowtable *ft, struct mbuf *m, struct route *ro)
 	flags = ft ? ft->ft_flags : 0;
 	ro->ro_rt = NULL;
 	ro->ro_lle = NULL;
-
+	hash = hash_noports = 0;
+	
 	/*
 	 * The internal hash lookup is the only IPv4 specific bit
 	 * remaining
 	 */
-	hash = ipv4_flow_lookup_hash_internal(m, ro, key,
-	    &flags, &proto);
+	error = ipv4_flow_lookup_hash_internal(m, ro, key,
+	    &flags, &proto, &hash, &hash_noports);
 
 	/*
 	 * Ports are zero and this isn't a transmit cache
@@ -592,10 +590,13 @@ flowtable_lookup(struct flowtable *ft, struct mbuf *m, struct route *ro)
 	 * statex
 	 * FL_HASH_PORTS => key[0] != 0 for TCP || UDP || SCTP
 	 */
-	if (hash == 0 || (key[0] == 0 && (ft->ft_flags & FL_HASH_PORTS))) {
+	if (error == ENOENT || (key[0] == 0 && (ft->ft_flags & FL_HASH_PORTS))) {
 		cache = 0;
 		goto uncached;
 	}
+	if ((ft->ft_flags & FL_HASH_PORTS) == 0)
+		goto skipports;
+
 	FL_ENTRY_LOCK(ft, hash);
 	fle = FL_ENTRY(ft, hash);
 	rt = __DEVOLATILE(struct rtentry *, fle->f_rt);
@@ -615,6 +616,27 @@ flowtable_lookup(struct flowtable *ft, struct mbuf *m, struct route *ro)
 	} 
 	FL_ENTRY_UNLOCK(ft, hash);
 
+skipports:
+	key[0] = 0;
+	FL_ENTRY_LOCK(ft, hash_noports);
+	fle = FL_ENTRY(ft, hash_noports);
+	rt = __DEVOLATILE(struct rtentry *, fle->f_rt);
+	lle = __DEVOLATILE(struct llentry *, fle->f_lle);
+	if ((rt != NULL)
+	    && fle->f_fhash == hash_noports
+	    && flowtable_key_equal(fle, key, flags)
+	    && (proto == fle->f_proto)
+	    && (rt->rt_flags & RTF_UP)
+	    && (rt->rt_ifp != NULL)) {
+		fle->f_uptime = time_uptime;
+		fle->f_flags |= flags;
+		ro->ro_rt = rt;
+		ro->ro_lle = lle;
+		FL_ENTRY_UNLOCK(ft, hash_noports);
+		return (0);
+	} 
+	FL_ENTRY_UNLOCK(ft, hash_noports);
+	
 uncached:
 	/*
 	 * This bit of code ends up locking the
@@ -639,6 +661,18 @@ uncached:
 		struct sockaddr *l3addr;
 		struct rtentry *rt = ro->ro_rt;
 		struct ifnet *ifp = rt->rt_ifp;
+
+		if (rt->rt_flags & RTF_STICKY) {
+			RTFREE(rt);
+			hash = hash_noports;
+			ft->ft_rtalloc(ro, hash, fib);
+			if (ro->ro_rt == NULL) {
+				error = ENETUNREACH;
+				goto done;
+			}
+			rt = ro->ro_rt;
+			ifp = rt->rt_ifp;
+		}
 
 		if (rt->rt_flags & RTF_GATEWAY)
 			l3addr = rt->rt_gateway;
@@ -671,7 +705,7 @@ uncached:
 		}
 		error = 0;
 	} 
-
+done:
 	return (error);
 }
 
@@ -720,7 +754,7 @@ flowtable_alloc(int nentry, int flags)
 			ft->ft_masks[i] = bit_alloc(nentry);
 		}
 	} else {
-		ft->ft_lock_count = 2*(powerof2(mp_ncpus) ? mp_ncpus :
+		ft->ft_lock_count = 8*(powerof2(mp_ncpus) ? mp_ncpus :
 		    (fls(mp_ncpus) << 1));
 		
 		ft->ft_lock = flowtable_global_lock;

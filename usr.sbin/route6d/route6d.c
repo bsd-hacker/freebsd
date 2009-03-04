@@ -2661,10 +2661,6 @@ rt_entry(rtm, again)
 		sin6_mask = (struct sockaddr_in6 *)rtmp;
 		rtmp += ROUNDUP(sin6_mask->sin6_len);
 	}
-	if (rtm->rtm_addrs & RTA_GENMASK) {
-		sin6_genmask = (struct sockaddr_in6 *)rtmp;
-		rtmp += ROUNDUP(sin6_genmask->sin6_len);
-	}
 	if (rtm->rtm_addrs & RTA_IFP) {
 		sin6_ifp = (struct sockaddr_in6 *)rtmp;
 		rtmp += ROUNDUP(sin6_ifp->sin6_len);

@@ -169,6 +169,7 @@ main(argc, argv)
 	if (*argv)
 		switch (keyword(*argv)) {
 		case K_GET:
+		case K_SHOW:
 			uid = 0;
 			/* FALLTHROUGH */
 
@@ -548,6 +549,7 @@ set_metric(value, key)
 	caseof(K_SSTHRESH, RTV_SSTHRESH, rmx_ssthresh);
 	caseof(K_RTT, RTV_RTT, rmx_rtt);
 	caseof(K_RTTVAR, RTV_RTTVAR, rmx_rttvar);
+	caseof(K_WEIGHT, RTV_WEIGHT, rmx_weight);
 	}
 	rtm_inits |= flag;
 	if (lockrest || locking)
@@ -571,8 +573,9 @@ newroute(argc, argv)
 		errx(EX_NOPERM, "must be root to alter routing table");
 	}
 	cmd = argv[0];
-	if (*cmd != 'g')
+	if (*cmd != 'g' && *cmd != 's')
 		shutdown(s, SHUT_RD); /* Don't want to read back our messages */
+
 	while (--argc > 0) {
 		if (**(++argv)== '-') {
 			switch (key = keyword(1 + *argv)) {
@@ -635,6 +638,12 @@ newroute(argc, argv)
 			case K_STATIC:
 				flags |= RTF_STATIC;
 				break;
+			case K_STICKY:
+				flags |= RTF_STICKY;
+				break;
+			case K_NOSTICK:
+				flags &= ~RTF_STICKY;
+				break;
 			case K_IFA:
 				if (!--argc)
 					usage((char *)NULL);
@@ -644,11 +653,6 @@ newroute(argc, argv)
 				if (!--argc)
 					usage((char *)NULL);
 				(void) getaddr(RTA_IFP, *++argv, 0);
-				break;
-			case K_GENMASK:
-				if (!--argc)
-					usage((char *)NULL);
-				(void) getaddr(RTA_GENMASK, *++argv, 0);
 				break;
 			case K_GATEWAY:
 				if (!--argc)
@@ -688,6 +692,7 @@ newroute(argc, argv)
 			case K_SSTHRESH:
 			case K_RTT:
 			case K_RTTVAR:
+			case K_WEIGHT:
 				if (!--argc)
 					usage((char *)NULL);
 				set_metric(*++argv, key);
@@ -741,7 +746,7 @@ newroute(argc, argv)
 		} else
 			break;
 	}
-	if (*cmd == 'g')
+	if (*cmd == 'g' || *cmd == 's')
 		exit(ret != 0);
 	if (!qflag) {
 		oerrno = errno;
@@ -924,9 +929,6 @@ getaddr(which, s, hpp)
 		break;
 	case RTA_NETMASK:
 		su = &so_mask;
-		break;
-	case RTA_GENMASK:
-		su = &so_genmask;
 		break;
 	case RTA_IFP:
 		su = &so_ifp;
@@ -1191,7 +1193,7 @@ rtmsg(cmd, flags)
 		cmd = RTM_ADD;
 	else if (cmd == 'c')
 		cmd = RTM_CHANGE;
-	else if (cmd == 'g') {
+	else if (cmd == 'g' || cmd == 's') {
 		cmd = RTM_GET;
 		if (so_ifp.sa.sa_family == 0) {
 			so_ifp.sa.sa_family = AF_LINK;
@@ -1208,13 +1210,11 @@ rtmsg(cmd, flags)
 	rtm.rtm_addrs = rtm_addrs;
 	rtm.rtm_rmx = rt_metrics;
 	rtm.rtm_inits = rtm_inits;
-
 	if (rtm_addrs & RTA_NETMASK)
 		mask_addr();
 	NEXTADDR(RTA_DST, so_dst);
 	NEXTADDR(RTA_GATEWAY, so_gate);
 	NEXTADDR(RTA_NETMASK, so_mask);
-	NEXTADDR(RTA_GENMASK, so_genmask);
 	NEXTADDR(RTA_IFP, so_ifp);
 	NEXTADDR(RTA_IFA, so_ifa);
 	rtm.rtm_msglen = l = cp - (char *)&m_rtmsg;
@@ -1295,13 +1295,13 @@ char *msgtypes[] = {
 };
 
 char metricnames[] =
-"\011pksent\010rttvar\7rtt\6ssthresh\5sendpipe\4recvpipe\3expire\2hopcount"
+"\011weight\010rttvar\7rtt\6ssthresh\5sendpipe\4recvpipe\3expire"
 "\1mtu";
 char routeflags[] =
-"\1UP\2GATEWAY\3HOST\4REJECT\5DYNAMIC\6MODIFIED\7DONE\010MASK_PRESENT"
-"\011CLONING\012XRESOLVE\013LLINFO\014STATIC\015BLACKHOLE\016b016"
-"\017PROTO2\020PROTO1\021PRCLONING\022WASCLONED\023PROTO3\024CHAINDELETE"
-"\025PINNED\026LOCAL\027BROADCAST\030MULTICAST";
+"\1UP\2GATEWAY\3HOST\4REJECT\5DYNAMIC\6MODIFIED\7DONE"
+"\012XRESOLVE\013LLINFO\014STATIC\015BLACKHOLE"
+"\017PROTO2\020PROTO1\021PRCLONING\022WASCLONED\023PROTO3"
+"\025PINNED\026LOCAL\027BROADCAST\030MULTICAST\035STICKY";
 char ifnetflags[] =
 "\1UP\2BROADCAST\3DEBUG\4LOOPBACK\5PTP\6b6\7RUNNING\010NOARP"
 "\011PPROMISC\012ALLMULTI\013OACTIVE\014SIMPLEX\015LINK0\016LINK1"
@@ -1464,14 +1464,13 @@ print_getmsg(rtm, msglen)
 #define msec(u)	(((u) + 500) / 1000)		/* usec to msec */
 
 	(void) printf("\n%s\n", "\
- recvpipe  sendpipe  ssthresh  rtt,msec    rttvar  hopcount      mtu     expire");
+ recvpipe  sendpipe  ssthresh  rtt,msec    mtu        weight    expire");
 	printf("%8ld%c ", rtm->rtm_rmx.rmx_recvpipe, lock(RPIPE));
 	printf("%8ld%c ", rtm->rtm_rmx.rmx_sendpipe, lock(SPIPE));
 	printf("%8ld%c ", rtm->rtm_rmx.rmx_ssthresh, lock(SSTHRESH));
 	printf("%8ld%c ", msec(rtm->rtm_rmx.rmx_rtt), lock(RTT));
-	printf("%8ld%c ", msec(rtm->rtm_rmx.rmx_rttvar), lock(RTTVAR));
-	printf("%8ld%c ", rtm->rtm_rmx.rmx_hopcount, lock(HOPCOUNT));
 	printf("%8ld%c ", rtm->rtm_rmx.rmx_mtu, lock(MTU));
+	printf("%8ld%c ", rtm->rtm_rmx.rmx_weight, lock(WEIGHT));
 	if (rtm->rtm_rmx.rmx_expire)
 		rtm->rtm_rmx.rmx_expire -= time(0);
 	printf("%8ld%c\n", rtm->rtm_rmx.rmx_expire, lock(EXPIRE));

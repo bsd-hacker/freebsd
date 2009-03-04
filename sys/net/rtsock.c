@@ -601,7 +601,6 @@ route_output(struct mbuf *m, struct socket *so)
 			info.rti_info[RTAX_DST] = rt_key(rt);
 			info.rti_info[RTAX_GATEWAY] = rt->rt_gateway;
 			info.rti_info[RTAX_NETMASK] = rt_mask(rt);
-			info.rti_info[RTAX_GENMASK] = 0;
 			if (rtm->rtm_addrs & (RTA_IFP | RTA_IFA)) {
 				ifp = rt->rt_ifp;
 				if (ifp) {
@@ -637,7 +636,6 @@ route_output(struct mbuf *m, struct socket *so)
 			}
 			(void)rt_msg2(rtm->rtm_type, &info, (caddr_t)rtm, NULL);
 			rtm->rtm_flags = rt->rt_flags;
-			rtm->rtm_use = 0;
 			rt_getmetrics(&rt->rt_rmx, &rtm->rtm_rmx);
 			rtm->rtm_addrs = info.rti_addrs;
 			break;
@@ -691,10 +689,8 @@ route_output(struct mbuf *m, struct socket *so)
 				rt->rt_ifp = info.rti_ifp;
 			}
 			/* Allow some flags to be toggled on change. */
-			if (rtm->rtm_fmask & RTF_FMASK)
-				rt->rt_flags = (rt->rt_flags &
-				    ~rtm->rtm_fmask) |
-				    (rtm->rtm_flags & rtm->rtm_fmask);
+			rt->rt_flags = (rt->rt_flags & ~RTF_FMASK) |
+				    (rtm->rtm_flags & RTF_FMASK);
 			rt_setmetrics(rtm->rtm_inits, &rtm->rtm_rmx,
 					&rt->rt_rmx);
 			rtm->rtm_index = rt->rt_ifp->if_index;
@@ -767,12 +763,14 @@ static void
 rt_setmetrics(u_long which, const struct rt_metrics *in,
 	struct rt_metrics_lite *out)
 {
-#define metric(f, e) if (which & (f)) out->e = in->e;
+#define metric(f, e) if (which & (f)) { printf("setting 0x%x", f); out->e = in->e; }								
+	
 	/*
 	 * Only these are stored in the routing entry since introduction
 	 * of tcp hostcache. The rest is ignored.
 	 */
 	metric(RTV_MTU, rmx_mtu);
+	metric(RTV_WEIGHT, rmx_weight);
 	/* Userland -> kernel timebase conversion. */
 	if (which & RTV_EXPIRE)
 		out->rmx_expire = in->rmx_expire ?
@@ -786,6 +784,7 @@ rt_getmetrics(const struct rt_metrics_lite *in, struct rt_metrics *out)
 #define metric(e) out->e = in->e;
 	bzero(out, sizeof(*out));
 	metric(rmx_mtu);
+	metric(rmx_weight);
 	/* Kernel -> userland timebase conversion. */
 	out->rmx_expire = in->rmx_expire ?
 	    in->rmx_expire - time_uptime + time_second : 0;
@@ -1245,7 +1244,6 @@ sysctl_dumpentry(struct radix_node *rn, void *vw)
 	info.rti_info[RTAX_DST] = rt_key(rt);
 	info.rti_info[RTAX_GATEWAY] = rt->rt_gateway;
 	info.rti_info[RTAX_NETMASK] = rt_mask(rt);
-	info.rti_info[RTAX_GENMASK] = 0;
 	if (rt->rt_ifp) {
 		info.rti_info[RTAX_IFP] = rt->rt_ifp->if_addr->ifa_addr;
 		info.rti_info[RTAX_IFA] = rt->rt_ifa->ifa_addr;
@@ -1257,7 +1255,10 @@ sysctl_dumpentry(struct radix_node *rn, void *vw)
 		struct rt_msghdr *rtm = (struct rt_msghdr *)w->w_tmem;
 
 		rtm->rtm_flags = rt->rt_flags;
-		rtm->rtm_use = rt->rt_rmx.rmx_pksent;
+		/*
+		 * let's be honest about this being a retarded hack
+		 */
+		rtm->rtm_fmask = rt->rt_rmx.rmx_pksent;
 		rt_getmetrics(&rt->rt_rmx, &rtm->rtm_rmx);
 		rtm->rtm_index = rt->rt_ifp->if_index;
 		rtm->rtm_errno = rtm->rtm_pid = rtm->rtm_seq = 0;
