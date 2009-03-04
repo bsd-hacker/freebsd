@@ -39,8 +39,6 @@
 #include <sys/_mutex.h>
 #include <sys/_rwlock.h>
 
-#include <net/route.h>
-
 #ifdef _KERNEL
 #include <sys/rwlock.h>
 #endif
@@ -48,6 +46,10 @@
 #define	in6pcb		inpcb	/* for KAME src sync over BSD*'s */
 #define	in6p_sp		inp_sp	/* for KAME src sync over BSD*'s */
 struct inpcbpolicy;
+
+struct rtentry;
+struct llentry;
+struct route;
 
 /*
  * struct inpcb is the common protocol control block structure used in most
@@ -169,7 +171,8 @@ struct inpcb {
 	u_char	inp_ip_minttl;		/* (i) minimum TTL or drop */
 	uint32_t inp_ispare1;		/* (x) connection id / queue id */
 	u_int	inp_refcount;		/* (i) refcount */
-	void	*inp_pspare[2];		/* (x) rtentry / general use */
+	struct llentry	*inp_lle;	/* L2 information */
+	struct rtentry	*inp_rt;	/* L3 information */
 
 	/* Local and foreign ports, local and foreign addr. */
 	struct	in_conninfo inp_inc;	/* (i/p) list for PCB's local port */
@@ -324,6 +327,9 @@ struct inpcbinfo {
 #define	INP_RLOCK_ASSERT(inp)	rw_assert(&(inp)->inp_lock, RA_RLOCKED)
 #define	INP_WLOCK_ASSERT(inp)	rw_assert(&(inp)->inp_lock, RA_WLOCKED)
 #define	INP_UNLOCK_ASSERT(inp)	rw_assert(&(inp)->inp_lock, RA_UNLOCKED)
+#define	INP_TRY_UPGRADE(inp)	rw_try_upgrade(&(inp)->inp_lock)
+#define	INP_DOWNGRADE(inp)	rw_downgrade(&(inp)->inp_lock)
+#define	INP_WLOCKED(inp)	rw_wowned(&(inp)->inp_lock)
 
 #ifdef _KERNEL
 /*
@@ -395,6 +401,7 @@ void 	inp_4tuple_get(struct inpcb *inp, uint32_t *laddr, uint16_t *lp,
 #define	INP_ONESBCAST	0x10		/* send all-ones broadcast */
 #define	INP_DROPPED	0x20		/* protocol drop flag */
 #define	INP_SOCKREF	0x40		/* strong socket reference */
+#define	INP_RT_VALID	0x80		/* rtentry is set */
 
 /*
  * Flags for inp_flag.
@@ -412,7 +419,7 @@ void 	inp_4tuple_get(struct inpcb *inp, uint32_t *laddr, uint16_t *lp,
 #define	INP_RECVTTL		0x400	/* receive incoming IP TTL */
 #define	INP_DONTFRAG		0x800	/* don't fragment packet */
 #define	INP_NONLOCALOK		0x1000	/* Allow bind to spoof any address */
-					/* - requires options IP_NONLOCALBIND */
+#define	INP_LLE_VALID		0x2000	/* L2 entry is set */
 
 #define IN6P_IPV6_V6ONLY	0x008000 /* restrict AF_INET6 socket for v6 */
 
@@ -489,6 +496,7 @@ void	in_pcbdisconnect(struct inpcb *);
 void	in_pcbdrop(struct inpcb *);
 void	in_pcbfree(struct inpcb *);
 int	in_pcbinshash(struct inpcb *);
+void	in_pcbrtalloc(struct inpcb *inp, in_addr_t faddr, struct route *sro);
 struct inpcb *
 	in_pcblookup_local(struct inpcbinfo *,
 	    struct in_addr, u_short, int, struct ucred *);

@@ -1075,6 +1075,7 @@ tcp_connect(struct tcpcb *tp, struct sockaddr *nam, struct thread *td)
 	struct socket *so = inp->inp_socket;
 	INIT_VNET_INET(so->so_vnet);
 	struct in_addr laddr;
+	struct route sro;
 	u_short lport;
 	int error;
 
@@ -1103,6 +1104,7 @@ tcp_connect(struct tcpcb *tp, struct sockaddr *nam, struct thread *td)
 	inp->inp_laddr = laddr;
 	in_pcbrehash(inp);
 
+	in_pcbrtalloc(inp, inp->inp_faddr.s_addr, &sro);
 	/*
 	 * Compute window scaling to request:
 	 * Scale to fit into sweet spot.  See tcp_syncache.c.

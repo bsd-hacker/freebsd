@@ -669,6 +669,8 @@ struct ifmultiaddr {
 };
 
 #ifdef _KERNEL
+#define LLTABLE(ifp)	((struct lltable *)(ifp)->if_afdata[AF_INET])
+
 #define	IFAFREE(ifa)					\
 	do {						\
 		IFA_LOCK(ifa);				\

@@ -46,8 +46,9 @@
  * in their control blocks, e.g. inpcb.
  */
 struct route {
-	struct	rtentry *ro_rt;
 	struct	sockaddr ro_dst;
+	struct	rtentry *ro_rt;
+	struct	llentry	*ro_lle;
 };
 
 /*
