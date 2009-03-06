@@ -60,6 +60,7 @@ EOF
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/sysctl.h>
+#include <sys/param.h>
 #include <sys/user.h>
 #include <sys/signal.h>
 #include <fcntl.h>
