@@ -1,4 +1,4 @@
-!/bin/sh
+#!/bin/sh
 
 #
 # Copyright (c) 2008-2009 Peter Holm
