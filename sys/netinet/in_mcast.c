@@ -39,6 +39,8 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include "opt_route.h"
+
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
@@ -118,6 +120,13 @@ static int	inp_join_group(struct inpcb *, struct sockopt *);
 static int	inp_leave_group(struct inpcb *, struct sockopt *);
 static int	inp_set_multicast_if(struct inpcb *, struct sockopt *);
 static int	inp_set_source_filters(struct inpcb *, struct sockopt *);
+
+SYSCTL_NODE(_net_inet_ip, OID_AUTO, mcast, CTLFLAG_RW, 0, "IPv4 multicast");
+
+int in_mcast_loop = IP_DEFAULT_MULTICAST_LOOP;
+SYSCTL_INT(_net_inet_ip_mcast, OID_AUTO, loop, CTLFLAG_RW | CTLFLAG_TUN,
+    &in_mcast_loop, 0, "Loopback multicast datagrams by default");
+TUNABLE_INT("net.inet.ip.mcast.loop", &in_mcast_loop);
 
 /*
  * Resize the ip_moptions vector to the next power-of-two minus 1.
@@ -693,7 +702,7 @@ inp_findmoptions(struct inpcb *inp)
 	imo->imo_multicast_addr.s_addr = INADDR_ANY;
 	imo->imo_multicast_vif = -1;
 	imo->imo_multicast_ttl = IP_DEFAULT_MULTICAST_TTL;
-	imo->imo_multicast_loop = IP_DEFAULT_MULTICAST_LOOP;
+	imo->imo_multicast_loop = in_mcast_loop;
 	imo->imo_num_memberships = 0;
 	imo->imo_max_memberships = IP_MIN_MEMBERSHIPS;
 	imo->imo_membership = immp;

@@ -1075,13 +1075,13 @@ ffs_unmount(mp, mntflags, td)
 			vn_start_write(NULL, &mp, V_WAIT);
 		}
 	}
-	if (mp->mnt_flag & MNT_SOFTDEP) {
-		if ((error = softdep_flushfiles(mp, flags, td)) != 0)
-			goto fail;
-	} else {
-		if ((error = ffs_flushfiles(mp, flags, td)) != 0)
-			goto fail;
-	}
+	if (mp->mnt_flag & MNT_SOFTDEP)
+		error = softdep_flushfiles(mp, flags, td);
+	else
+		error = ffs_flushfiles(mp, flags, td);
+	if (error != 0 && error != ENXIO)
+		goto fail;
+
 	UFS_LOCK(ump);
 	if (fs->fs_pendingblocks != 0 || fs->fs_pendinginodes != 0) {
 		printf("%s: unmount pending error: blocks %jd files %d\n",
@@ -1094,7 +1094,7 @@ ffs_unmount(mp, mntflags, td)
 	if (fs->fs_ronly == 0) {
 		fs->fs_clean = fs->fs_flags & (FS_UNCLEAN|FS_NEEDSFSCK) ? 0 : 1;
 		error = ffs_sbupdate(ump, MNT_WAIT, 0);
-		if (error) {
+		if (error && error != ENXIO) {
 			fs->fs_clean = 0;
 			goto fail;
 		}

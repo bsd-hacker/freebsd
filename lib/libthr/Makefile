@@ -8,12 +8,10 @@
 # (for system call stubs) to CFLAGS below.  -DSYSLIBC_SCCS affects just the
 # system call stubs.
 
+SHLIBDIR?= /lib
+
 .include <bsd.own.mk>
 MK_SSP=	no
-
-.if ${SHLIBDIR} == "/usr/lib"
-SHLIBDIR= /lib
-.endif
 
 LIB=thr
 SHLIB_MAJOR= 3
@@ -51,6 +49,10 @@ SYMLINKS+=lib${LIB}.so ${LIBDIR}/libpthread.so
 .endif
 .if ${MK_PROFILE} != "no"
 SYMLINKS+=lib${LIB}_p.a ${LIBDIR}/libpthread_p.a
+.endif
+
+.if !defined(WITHOUT_SYSCALL_COMPAT)
+CFLAGS+=-DSYSCALL_COMPAT
 .endif
 
 .include <bsd.lib.mk>

@@ -2402,7 +2402,7 @@ device		ohci
 # EHCI controller
 device		ehci
 # SL811 Controller
-device 		slhci
+#device 		slhci
 # General USB code (mandatory for USB)
 device		usb
 #
@@ -2410,8 +2410,6 @@ device		usb
 device		udbp
 # USB Fm Radio
 device		ufm
-# Generic USB device driver
-device		ugen
 # Human Interface Device (anything with buttons and dials)
 device		uhid
 # USB keyboard

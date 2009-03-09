@@ -7445,22 +7445,26 @@ outof_here:
 	}
 }
 
-static void
+void
 sctp_remove_from_wheel(struct sctp_tcb *stcb,
     struct sctp_association *asoc,
-    struct sctp_stream_out *strq)
+    struct sctp_stream_out *strq,
+    int holds_lock)
 {
 	/* take off and then setup so we know it is not on the wheel */
-	SCTP_TCB_SEND_LOCK(stcb);
+	if (holds_lock == 0)
+		SCTP_TCB_SEND_LOCK(stcb);
 	if (TAILQ_FIRST(&strq->outqueue)) {
 		/* more was added */
-		SCTP_TCB_SEND_UNLOCK(stcb);
+		if (holds_lock == 0)
+			SCTP_TCB_SEND_UNLOCK(stcb);
 		return;
 	}
 	TAILQ_REMOVE(&asoc->out_wheel, strq, next_spoke);
 	strq->next_spoke.tqe_next = NULL;
 	strq->next_spoke.tqe_prev = NULL;
-	SCTP_TCB_SEND_UNLOCK(stcb);
+	if (holds_lock == 0)
+		SCTP_TCB_SEND_UNLOCK(stcb);
 }
 
 static void
@@ -9083,7 +9087,7 @@ sctp_fill_outqueue(struct sctp_tcb *stcb,
 						}
 					}
 				}
-				sctp_remove_from_wheel(stcb, asoc, strq);
+				sctp_remove_from_wheel(stcb, asoc, strq, 0);
 			}
 			if ((giveup) || bail) {
 				break;
@@ -10032,7 +10036,7 @@ again_one_more_time:
 							SCTP_STAT_INCR_COUNTER64(sctps_fragusrmsgs);
 					}
 					if ((mtu == 0) || (r_mtu == 0) || (one_chunk)) {
-						if (one_chunk) {
+						if ((one_chunk) && (stcb->asoc.total_flight == 0)) {
 							data_list[0]->window_probe = 1;
 							net->window_probe = 1;
 						}

@@ -559,7 +559,8 @@ ath_attach(u_int16_t devid, struct ath_softc *sc)
 	 */
 	sc->sc_softled = (devid == AR5212_DEVID_IBM || devid == AR5211_DEVID);
 	if (sc->sc_softled) {
-		ath_hal_gpioCfgOutput(ah, sc->sc_ledpin);
+		ath_hal_gpioCfgOutput(ah, sc->sc_ledpin,
+		    HAL_GPIO_MUX_MAC_NETWORK_LED);
 		ath_hal_gpioset(ah, sc->sc_ledpin, !sc->sc_ledon);
 	}
 
@@ -1218,7 +1219,8 @@ ath_resume(struct ath_softc *sc)
 			ieee80211_resume_all(ic);
 	}
 	if (sc->sc_softled) {
-		ath_hal_gpioCfgOutput(ah, sc->sc_ledpin);
+		ath_hal_gpioCfgOutput(ah, sc->sc_ledpin,
+		    HAL_GPIO_MUX_MAC_NETWORK_LED);
 		ath_hal_gpioset(ah, sc->sc_ledpin, !sc->sc_ledon);
 	}
 }
@@ -6653,7 +6655,8 @@ ath_sysctl_softled(SYSCTL_HANDLER_ARGS)
 	if (softled != sc->sc_softled) {
 		if (softled) {
 			/* NB: handle any sc_ledpin change */
-			ath_hal_gpioCfgOutput(sc->sc_ah, sc->sc_ledpin);
+			ath_hal_gpioCfgOutput(sc->sc_ah, sc->sc_ledpin,
+			    HAL_GPIO_MUX_MAC_NETWORK_LED);
 			ath_hal_gpioset(sc->sc_ah, sc->sc_ledpin,
 				!sc->sc_ledon);
 		}
@@ -6675,7 +6678,8 @@ ath_sysctl_ledpin(SYSCTL_HANDLER_ARGS)
 	if (ledpin != sc->sc_ledpin) {
 		sc->sc_ledpin = ledpin;
 		if (sc->sc_softled) {
-			ath_hal_gpioCfgOutput(sc->sc_ah, sc->sc_ledpin);
+			ath_hal_gpioCfgOutput(sc->sc_ah, sc->sc_ledpin,
+			    HAL_GPIO_MUX_MAC_NETWORK_LED);
 			ath_hal_gpioset(sc->sc_ah, sc->sc_ledpin,
 				!sc->sc_ledon);
 		}
@@ -6857,6 +6861,22 @@ ath_sysctl_intmit(SYSCTL_HANDLER_ARGS)
 	return !ath_hal_setintmit(sc->sc_ah, intmit) ? EINVAL : 0;
 }
 
+#ifdef ATH_SUPPORT_TDMA
+static int
+ath_sysctl_setcca(SYSCTL_HANDLER_ARGS)
+{
+	struct ath_softc *sc = arg1;
+	int setcca, error;
+
+	setcca = sc->sc_setcca;
+	error = sysctl_handle_int(oidp, &setcca, 0, req);
+	if (error || !req->newptr)
+		return error;
+	sc->sc_setcca = (setcca != 0);
+	return 0;
+}
+#endif /* ATH_SUPPORT_TDMA */
+
 static void
 ath_sysctlattach(struct ath_softc *sc)
 {
@@ -6970,6 +6990,9 @@ ath_sysctlattach(struct ath_softc *sc)
 		SYSCTL_ADD_INT(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
 			"superframe", CTLFLAG_RD, &sc->sc_tdmabintval, 0,
 			"TDMA calculated super frame");
+		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
+			"setcca", CTLTYPE_INT | CTLFLAG_RW, sc, 0,
+			ath_sysctl_setcca, "I", "enable CCA control");
 	}
 #endif
 }
@@ -7267,34 +7290,12 @@ bad:
 static void
 ath_announce(struct ath_softc *sc)
 {
-#define	HAL_MODE_DUALBAND	(HAL_MODE_11A|HAL_MODE_11B)
 	struct ifnet *ifp = sc->sc_ifp;
 	struct ath_hal *ah = sc->sc_ah;
-	u_int modes;
 
-	if_printf(ifp, "mac %d.%d phy %d.%d",
-		ah->ah_macVersion, ah->ah_macRev,
-		ah->ah_phyRev >> 4, ah->ah_phyRev & 0xf);
-	/*
-	 * Print radio revision(s).  We check the wireless modes
-	 * to avoid falsely printing revs for inoperable parts.
-	 * Dual-band radio revs are returned in the 5Ghz rev number.
-	 */
-	modes = ath_hal_getwirelessmodes(ah);
-	if ((modes & HAL_MODE_DUALBAND) == HAL_MODE_DUALBAND) {
-		if (ah->ah_analog5GhzRev && ah->ah_analog2GhzRev)
-			printf(" 5ghz radio %d.%d 2ghz radio %d.%d",
-				ah->ah_analog5GhzRev >> 4,
-				ah->ah_analog5GhzRev & 0xf,
-				ah->ah_analog2GhzRev >> 4,
-				ah->ah_analog2GhzRev & 0xf);
-		else
-			printf(" radio %d.%d", ah->ah_analog5GhzRev >> 4,
-				ah->ah_analog5GhzRev & 0xf);
-	} else
-		printf(" radio %d.%d", ah->ah_analog5GhzRev >> 4,
-			ah->ah_analog5GhzRev & 0xf);
-	printf("\n");
+	if_printf(ifp, "AR%s mac %d.%d RF%s phy %d.%d\n",
+		ath_hal_mac_name(ah), ah->ah_macVersion, ah->ah_macRev,
+		ath_hal_rf_name(ah), ah->ah_phyRev >> 4, ah->ah_phyRev & 0xf);
 	if (bootverbose) {
 		int i;
 		for (i = 0; i <= WME_AC_VO; i++) {
@@ -7310,7 +7311,6 @@ ath_announce(struct ath_softc *sc)
 		if_printf(ifp, "using %u rx buffers\n", ath_rxbuf);
 	if (ath_txbuf != ATH_TXBUF)
 		if_printf(ifp, "using %u tx buffers\n", ath_txbuf);
-#undef HAL_MODE_DUALBAND
 }
 
 #ifdef ATH_SUPPORT_TDMA
@@ -7442,7 +7442,8 @@ ath_tdma_config(struct ath_softc *sc, struct ieee80211vap *vap)
 	ath_hal_intrset(ah, 0);
 
 	ath_beaconq_config(sc);			/* setup h/w beacon q */
-	ath_hal_setcca(ah, AH_FALSE);		/* disable CCA */
+	if (sc->sc_setcca)
+		ath_hal_setcca(ah, AH_FALSE);	/* disable CCA */
 	ath_tdma_bintvalsetup(sc, tdma);	/* calculate beacon interval */
 	ath_tdma_settimers(sc, sc->sc_tdmabintval,
 		sc->sc_tdmabintval | HAL_BEACON_RESET_TSF);

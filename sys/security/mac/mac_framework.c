@@ -17,6 +17,9 @@
  * This software was enhanced by SPARTA ISSO under SPAWAR contract 
  * N66001-04-C-6019 ("SEFOS").
  *
+ * This software was developed at the University of Cambridge Computer
+ * Laboratory with support from a grant from Google, Inc.
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
@@ -85,22 +88,15 @@ __FBSDID("$FreeBSD$");
 #include <security/mac/mac_policy.h>
 
 /*
- * DTrace SDT provider for MAC.
+ * DTrace SDT providers for MAC.
  */
 SDT_PROVIDER_DEFINE(mac);
+SDT_PROVIDER_DEFINE(mac_framework);
 
-SDT_PROBE_DEFINE(mac, kernel, policy, modevent);
-SDT_PROBE_ARGTYPE(mac, kernel, policy, modevent, 0, "int");
-SDT_PROBE_ARGTYPE(mac, kernel, policy, modevent, 1,
+SDT_PROBE_DEFINE2(mac, kernel, policy, modevent, "int",
     "struct mac_policy_conf *mpc");
-
-SDT_PROBE_DEFINE(mac, kernel, policy, register);
-SDT_PROBE_ARGTYPE(mac, kernel, policy, register, 0,
-    "struct mac_policy_conf *");
-
-SDT_PROBE_DEFINE(mac, kernel, policy, unregister);
-SDT_PROBE_ARGTYPE(mac, kernel, policy, unregister, 0,
-    "struct mac_policy_conf *");
+SDT_PROBE_DEFINE1(mac, kernel, policy, register, "struct mac_policy_conf *");
+SDT_PROBE_DEFINE1(mac, kernel, policy, unregister, "struct mac_policy_conf *");
 
 /*
  * Root sysctl node for all MAC and MAC policy controls.

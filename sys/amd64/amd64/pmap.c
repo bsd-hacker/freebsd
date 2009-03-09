@@ -594,7 +594,6 @@ pmap_init_pat(void)
 	if (!(cpu_feature & CPUID_PAT))
 		panic("no PAT??");
 
-#ifdef PAT_WORKS
 	/*
 	 * Leave the indices 0-3 at the default of WB, WT, UC, and UC-.
 	 * Program 4 and 5 as WP and WC.
@@ -604,23 +603,6 @@ pmap_init_pat(void)
 	pat_msr &= ~(PAT_MASK(4) | PAT_MASK(5));
 	pat_msr |= PAT_VALUE(4, PAT_WRITE_PROTECTED) |
 	    PAT_VALUE(5, PAT_WRITE_COMBINING);
-#else
-	/*
-	 * Due to some Intel errata, we can only safely use the lower 4
-	 * PAT entries.  Thus, just replace PAT Index 2 with WC instead
-	 * of UC-.
-	 *
-	 *   Intel Pentium III Processor Specification Update
-	 * Errata E.27 (Upper Four PAT Entries Not Usable With Mode B
-	 * or Mode C Paging)
-	 *
-	 *   Intel Pentium IV  Processor Specification Update
-	 * Errata N46 (PAT Index MSB May Be Calculated Incorrectly)
-	 */
-	pat_msr = rdmsr(MSR_PAT);
-	pat_msr &= ~PAT_MASK(2);
-	pat_msr |= PAT_VALUE(2, PAT_WRITE_COMBINING);
-#endif
 	wrmsr(MSR_PAT, pat_msr);
 }
 
@@ -783,10 +765,9 @@ pmap_cache_bits(int mode, boolean_t is_pde)
 			break;
 		}
 	}
-	
+
 	/* Map the caching mode to a PAT index. */
 	switch (mode) {
-#ifdef PAT_WORKS
 	case PAT_UNCACHEABLE:
 		pat_index = 3;
 		break;
@@ -805,25 +786,9 @@ pmap_cache_bits(int mode, boolean_t is_pde)
 	case PAT_WRITE_PROTECTED:
 		pat_index = 4;
 		break;
-#else
-	case PAT_UNCACHED:
-	case PAT_UNCACHEABLE:
-	case PAT_WRITE_PROTECTED:
-		pat_index = 3;
-		break;
-	case PAT_WRITE_THROUGH:
-		pat_index = 1;
-		break;
-	case PAT_WRITE_BACK:
-		pat_index = 0;
-		break;
-	case PAT_WRITE_COMBINING:
-		pat_index = 2;
-		break;
-#endif
 	default:
 		panic("Unknown caching mode %d\n", mode);
-	}	
+	}
 
 	/* Map the 3-bit index value into the PAT, PCD, and PWT bits. */
 	cache_bits = 0;
@@ -3288,17 +3253,12 @@ pmap_enter_quick_locked(pmap_t pmap, vm_offset_t va, vm_page_t m,
 					return (mpte);
 			}
 		}
+		pte = (pt_entry_t *)PHYS_TO_DMAP(VM_PAGE_TO_PHYS(mpte));
+		pte = &pte[pmap_pte_index(va)];
 	} else {
 		mpte = NULL;
+		pte = vtopte(va);
 	}
-
-	/*
-	 * This call to vtopte makes the assumption that we are
-	 * entering the page into the current pmap.  In order to support
-	 * quick entry into any pmap, one would likely use pmap_pte.
-	 * But that isn't as quick as vtopte.
-	 */
-	pte = vtopte(va);
 	if (*pte) {
 		if (mpte != NULL) {
 			mpte->wire_count--;
@@ -3516,9 +3476,6 @@ pmap_copy(pmap_t dst_pmap, pmap_t src_pmap, vm_offset_t dst_addr, vm_size_t len,
 	if (dst_addr != src_addr)
 		return;
 
-	if (!pmap_is_current(src_pmap))
-		return;
-
 	vm_page_lock_queues();
 	if (dst_pmap < src_pmap) {
 		PMAP_LOCK(dst_pmap);
@@ -3580,14 +3537,16 @@ pmap_copy(pmap_t dst_pmap, pmap_t src_pmap, vm_offset_t dst_addr, vm_size_t len,
 			continue;
 		}
 
-		srcmpte = PHYS_TO_VM_PAGE(srcptepaddr & PG_FRAME);
+		srcptepaddr &= PG_FRAME;
+		srcmpte = PHYS_TO_VM_PAGE(srcptepaddr);
 		KASSERT(srcmpte->wire_count > 0,
 		    ("pmap_copy: source page table page is unused"));
 
 		if (va_next > end_addr)
 			va_next = end_addr;
 
-		src_pte = vtopte(addr);
+		src_pte = (pt_entry_t *)PHYS_TO_DMAP(srcptepaddr);
+		src_pte = &src_pte[pmap_pte_index(addr)];
 		while (addr < va_next) {
 			pt_entry_t ptetemp;
 			ptetemp = *src_pte;
@@ -3837,7 +3796,9 @@ pmap_remove_pages(pmap_t pmap)
 				if ((tpte & PG_PS) != 0)
 					pte = pde;
 				else {
-					pte = vtopte(pv->pv_va);
+					pte = (pt_entry_t *)PHYS_TO_DMAP(tpte &
+					    PG_FRAME);
+					pte = &pte[pmap_pte_index(pv->pv_va)];
 					tpte = *pte & ~PG_PTE_PAT;
 				}
 
@@ -4530,7 +4491,7 @@ pmap_change_attr_locked(vm_offset_t va, vm_size_t size, int mode)
 			if (!pmap_demote_pde(kernel_pmap, pde, tmpva))
 				return (ENOMEM);
 		}
-		pte = vtopte(tmpva);
+		pte = pmap_pde_to_pte(pde, tmpva);
 		if (*pte == 0)
 			return (EINVAL);
 		tmpva += PAGE_SIZE;
@@ -4606,7 +4567,7 @@ pmap_change_attr_locked(vm_offset_t va, vm_size_t size, int mode)
 		} else {
 			if (cache_bits_pte < 0)
 				cache_bits_pte = pmap_cache_bits(mode, 0);
-			pte = vtopte(tmpva);
+			pte = pmap_pde_to_pte(pde, tmpva);
 			if ((*pte & PG_PTE_CACHE) != cache_bits_pte) {
 				pmap_pte_attr(pte, cache_bits_pte);
 				if (!changed)
