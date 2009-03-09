@@ -159,10 +159,10 @@ acd_reinit(device_t dev)
     struct ata_channel *ch = device_get_softc(device_get_parent(dev));
     struct ata_device *atadev = device_get_softc(dev);
 
-    if (((atadev->unit == ATA_MASTER) && !(ch->devices & ATA_ATAPI_MASTER)) ||
-	((atadev->unit == ATA_SLAVE) && !(ch->devices & ATA_ATAPI_SLAVE))) {
-	return 1;   
-    }
+    /* if detach pending, return error */
+    if (!(ch->devices & (ATA_ATAPI_MASTER << atadev->unit)))
+	return 1;
+
     ATA_SETMODE(device_get_parent(dev), dev);
     return 0;
 }
@@ -219,7 +219,10 @@ acd_geom_ioctl(struct g_provider *pp, u_long cmd, void *addr, int fflag, struct 
 	case CDIOCRESET:
 	    acd_test_ready(dev);
 	    break;
-	   
+
+	case DIOCGPROVIDERALIAS:
+	    break;
+
 	default:
 	    acd_read_toc(dev);
 	    acd_prevent_allow(dev, 1);

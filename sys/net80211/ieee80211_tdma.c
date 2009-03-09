@@ -82,6 +82,12 @@ __FBSDID("$FreeBSD$");
 #ifndef TDMA_TXRATE_STURBO_A_DEFAULT
 #define	TDMA_TXRATE_STURBO_A_DEFAULT	2*24
 #endif
+#ifndef TDMA_TXRATE_HALF_DEFAULT
+#define	TDMA_TXRATE_HALF_DEFAULT	2*12
+#endif
+#ifndef TDMA_TXRATE_QUARTER_DEFAULT
+#define	TDMA_TXRATE_QUARTER_DEFAULT	2*6
+#endif
 #ifndef TDMA_TXRATE_11NA_DEFAULT
 #define	TDMA_TXRATE_11NA_DEFAULT	(4 | IEEE80211_RATE_MCS)
 #endif
@@ -148,6 +154,8 @@ ieee80211_tdma_vattach(struct ieee80211vap *vap)
 	settxparms(vap, IEEE80211_MODE_STURBO_A, TDMA_TXRATE_STURBO_A_DEFAULT);
 	settxparms(vap, IEEE80211_MODE_11NA, TDMA_TXRATE_11NA_DEFAULT);
 	settxparms(vap, IEEE80211_MODE_11NG, TDMA_TXRATE_11NG_DEFAULT);
+	settxparms(vap, IEEE80211_MODE_HALF, TDMA_TXRATE_HALF_DEFAULT);
+	settxparms(vap, IEEE80211_MODE_QUARTER, TDMA_TXRATE_QUARTER_DEFAULT);
 
 	setackpolicy(vap->iv_ic, 1);	/* disable ACK's */
 
@@ -232,11 +240,14 @@ tdma_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 	if (status == 0 && 
 	    nstate == IEEE80211_S_RUN && ostate != IEEE80211_S_RUN &&
 	    (vap->iv_flags_ext & IEEE80211_FEXT_SWBMISS) &&
-	    ts->tdma_slot != 0) {
+	    ts->tdma_slot != 0 &&
+	    vap->iv_des_chan == IEEE80211_CHAN_ANYC) {
 		/*
 		 * Start s/w beacon miss timer for slave devices w/o
-		 * hardware support.  The 2x is a fudge for our doing
-		 * this in software.
+		 * hardware support.  Note we do this only if we're
+		 * not locked to a channel (i.e. roam to follow the
+		 * master). The 2x is a fudge for our doing this in
+		 * software.
 		 */
 		vap->iv_swbmiss_period = IEEE80211_TU_TO_TICKS(
 		    2 * vap->iv_bmissthreshold * ts->tdma_bintval *

@@ -99,8 +99,8 @@ ata_pci_attach(device_t dev)
     else
 	ctlr->channels = 1;
     ctlr->ichannels = -1;
-    ctlr->allocate = ata_pci_allocate;
-    ctlr->dmainit = ata_pci_dmainit;
+    ctlr->ch_attach = ata_pci_ch_attach;
+    ctlr->ch_detach = ata_pci_ch_detach;
     ctlr->dev = dev;
 
     /* if needed try to enable busmastering */
@@ -344,7 +344,7 @@ ata_generic_chipinit(device_t dev)
 }
 
 int
-ata_pci_allocate(device_t dev)
+ata_pci_ch_attach(device_t dev)
 {
     struct ata_pci_controller *ctlr = device_get_softc(device_get_parent(dev));
     struct ata_channel *ch = device_get_softc(dev);
@@ -360,6 +360,8 @@ ata_pci_allocate(device_t dev)
 	bus_release_resource(dev, SYS_RES_IOPORT, ATA_IOADDR_RID, io);
 	return ENXIO;
     }
+
+    ata_pci_dmainit(dev);
 
     for (i = ATA_DATA; i <= ATA_COMMAND; i ++) {
 	ch->r_io[i].res = io;
@@ -378,6 +380,21 @@ ata_pci_allocate(device_t dev)
 
     ata_pci_hw(dev);
     return 0;
+}
+
+int
+ata_pci_ch_detach(device_t dev)
+{
+    struct ata_channel *ch = device_get_softc(dev);
+
+    ata_pci_dmafini(dev);
+
+    bus_release_resource(dev, SYS_RES_IOPORT, ATA_CTLADDR_RID,
+	ch->r_io[ATA_CONTROL].res);
+    bus_release_resource(dev, SYS_RES_IOPORT, ATA_IOADDR_RID,
+	ch->r_io[ATA_IDX_ADDR].res);
+
+    return (0);
 }
 
 int
@@ -476,6 +493,12 @@ ata_pci_dmainit(device_t dev)
     ch->dma.reset = ata_pci_dmareset;
 }
 
+void
+ata_pci_dmafini(device_t dev)
+{
+
+    ata_dmafini(dev);
+}
 
 static device_method_t ata_pci_methods[] = {
     /* device interface */
@@ -527,15 +550,13 @@ ata_pcichannel_attach(device_t dev)
     struct ata_channel *ch = device_get_softc(dev);
     int error;
 
-    /* take care of green memory */
-    bzero(ch, sizeof(struct ata_channel));
+    if (ch->attached)
+	return (0);
+    ch->attached = 1;
 
     ch->unit = (intptr_t)device_get_ivars(dev);
 
-    if (ctlr->dmainit)
-	ctlr->dmainit(dev);
-
-    if ((error = ctlr->allocate(dev)))
+    if ((error = ctlr->ch_attach(dev)))
 	return error;
 
     return ata_attach(dev);
@@ -544,17 +565,21 @@ ata_pcichannel_attach(device_t dev)
 static int
 ata_pcichannel_detach(device_t dev)
 {
+    struct ata_pci_controller *ctlr = device_get_softc(device_get_parent(dev));
     struct ata_channel *ch = device_get_softc(dev);
     int error;
+
+    if (!ch->attached)
+	return (0);
+    ch->attached = 0;
 
     if ((error = ata_detach(dev)))
 	return error;
 
-    ch->dma.free(dev);
+    if (ctlr->ch_detach)
+	return (ctlr->ch_detach(dev));
 
-    /* XXX SOS free resources for io and ctlio ?? */
-
-    return 0;
+    return (0);
 }
 
 static int

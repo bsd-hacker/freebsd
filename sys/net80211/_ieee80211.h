@@ -43,6 +43,8 @@ enum ieee80211_phytype {
 	IEEE80211_T_OFDM,		/* frequency division multiplexing */
 	IEEE80211_T_TURBO,		/* high rate OFDM, aka turbo mode */
 	IEEE80211_T_HT,			/* high throughput */
+	IEEE80211_T_OFDM_HALF,		/* 1/2 rate OFDM */
+	IEEE80211_T_OFDM_QUARTER,	/* 1/4 rate OFDM */
 };
 #define	IEEE80211_T_CCK	IEEE80211_T_DS	/* more common nomenclature */
 
@@ -64,8 +66,10 @@ enum ieee80211_phymode {
 	IEEE80211_MODE_STURBO_A	= 7,	/* 5GHz, OFDM, 2x clock, static */
 	IEEE80211_MODE_11NA	= 8,	/* 5GHz, w/ HT */
 	IEEE80211_MODE_11NG	= 9,	/* 2GHz, w/ HT */
+	IEEE80211_MODE_HALF	= 10,	/* OFDM, 1/2x clock */
+	IEEE80211_MODE_QUARTER	= 11,	/* OFDM, 1/4x clock */
 };
-#define	IEEE80211_MODE_MAX	(IEEE80211_MODE_11NG+1)
+#define	IEEE80211_MODE_MAX	(IEEE80211_MODE_QUARTER+1)
 
 /*
  * Operating mode.  Devices do not necessarily support

@@ -31,9 +31,7 @@ SUBDIR=	${_3dfx} \
 	${_asr} \
 	ata \
 	ath \
-	aue \
 	${_auxio} \
-	axe \
 	bce \
 	bfe \
 	bge \
@@ -48,7 +46,6 @@ SUBDIR=	${_3dfx} \
 	${_cbb} \
 	cd9660 \
 	cd9660_iconv \
-	cdce \
 	${_ce} \
 	${_ciss} \
 	${_cm} \
@@ -64,7 +61,6 @@ SUBDIR=	${_3dfx} \
 	${_cryptodev} \
 	${_cs} \
 	${_ctau} \
-	cue \
 	cxgb \
 	${_cyclic} \
 	dc \
@@ -77,7 +73,6 @@ SUBDIR=	${_3dfx} \
 	${_dtrace} \
 	dummynet \
 	${_ed} \
-	ehci \
 	${_elink} \
 	${_em} \
 	en \
@@ -146,7 +141,6 @@ SUBDIR=	${_3dfx} \
 	${_k8temp} \
 	kbdmux \
 	krpc \
-	kue \
 	le \
 	lge \
 	libalias \
@@ -206,7 +200,6 @@ SUBDIR=	${_3dfx} \
 	${_nwfs} \
 	${_nxge} \
 	${_opensolaris} \
-	ohci \
 	${_padlock} \
 	patm \
 	${_pccard} \
@@ -233,8 +226,6 @@ SUBDIR=	${_3dfx} \
 	re \
 	reiserfs \
 	rl \
-	rue \
-	rum \
 	${_s3} \
 	${_safe} \
 	${_sbni} \
@@ -244,7 +235,6 @@ SUBDIR=	${_3dfx} \
 	sdhci \
 	sem \
 	sf \
-	slhci \
 	sis \
 	sk \
 	${_smbfs} \
@@ -272,43 +262,13 @@ SUBDIR=	${_3dfx} \
 	twe \
 	tx \
 	txp \
-	u3g \
-	uark \
 	uart \
-	ubsa \
 	ubsec \
-	ucom \
-	udav \
-	udbp \
 	udf \
 	udf_iconv \
-	ufm \
 	${_ufs} \
-	ufoma \
-	uftdi \
-	ugen \
-	uhci \
-	uhid \
-	uipaq \
-	ukbd \
-	ulpt \
-	umass \
-	umct \
-	umodem \
-	ums \
 	unionfs \
-	${_upgt} \
-	uplcom \
-	ural \
-	urio \
-	${_urtw} \
-	usb \
-	usb2 \
-	uscanner \
-	uslcom \
 	utopia \
-	uvisor \
-	uvscom \
 	${_vesa} \
 	vge \
 	vkbd \
@@ -332,7 +292,6 @@ SUBDIR=	${_3dfx} \
 	xl \
 	${_zfs} \
 	zlib \
-	zyd
 
 .if ${MACHINE_ARCH} != "powerpc"
 _syscons=	syscons
@@ -441,8 +400,6 @@ _stg=		stg
 _streams=	streams
 _svr4=		svr4
 _tmpfs=		tmpfs
-_upgt=		upgt
-_urtw=		urtw
 _wi=		wi
 _xe=		xe
 .if ${MK_ZFS} != "no" || defined(ALL_MODULES)
@@ -573,8 +530,6 @@ _speaker=	speaker
 _sppp=		sppp
 _tmpfs=		tmpfs
 _twa=		twa
-_upgt=		upgt
-_urtw=		urtw
 _wi=		wi
 _wpi=		wpi
 _wpifw=		wpifw
@@ -625,7 +580,6 @@ _an=		an
 _bm=		bm
 _nvram=		powermac_nvram
 _smbfs=		smbfs
-_upgt=		upgt
 .endif
 
 .if ${MACHINE_ARCH} == "sparc64"
@@ -634,7 +588,6 @@ _em=		em
 _i2c=		i2c
 _igb=		igb
 _sound=		sound
-_upgt=		upgt
 .if ${MK_ZFS} != "no" || defined(ALL_MODULES)
 _zfs=		zfs
 .endif

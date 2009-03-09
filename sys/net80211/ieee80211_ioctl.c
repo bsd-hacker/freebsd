@@ -675,19 +675,22 @@ static __noinline int
 ieee80211_ioctl_getroam(struct ieee80211vap *vap,
 	const struct ieee80211req *ireq)
 {
-	if (ireq->i_len != sizeof(vap->iv_roamparms))
-		return EINVAL;
-	return copyout(vap->iv_roamparms, ireq->i_data,
-	    sizeof(vap->iv_roamparms));
+	size_t len = ireq->i_len;
+	/* NB: accept short requests for backwards compat */
+	if (len > sizeof(vap->iv_roamparms))
+		len = sizeof(vap->iv_roamparms);
+	return copyout(vap->iv_roamparms, ireq->i_data, len);
 }
 
 static __noinline int
 ieee80211_ioctl_gettxparams(struct ieee80211vap *vap,
 	const struct ieee80211req *ireq)
 {
-	if (ireq->i_len != sizeof(vap->iv_txparms))
-		return EINVAL;
-	return copyout(vap->iv_txparms, ireq->i_data, sizeof(vap->iv_txparms));
+	size_t len = ireq->i_len;
+	/* NB: accept short requests for backwards compat */
+	if (len > sizeof(vap->iv_txparms))
+		len = sizeof(vap->iv_txparms);
+	return copyout(vap->iv_txparms, ireq->i_data, len);
 }
 
 static __noinline int
@@ -1758,17 +1761,19 @@ static struct ieee80211_channel *
 findchannel(struct ieee80211com *ic, int ieee, int mode)
 {
 	static const u_int chanflags[IEEE80211_MODE_MAX] = {
-		0,			/* IEEE80211_MODE_AUTO */
-		IEEE80211_CHAN_A,	/* IEEE80211_MODE_11A */
-		IEEE80211_CHAN_B,	/* IEEE80211_MODE_11B */
-		IEEE80211_CHAN_G,	/* IEEE80211_MODE_11G */
-		IEEE80211_CHAN_FHSS,	/* IEEE80211_MODE_FH */
-		IEEE80211_CHAN_108A,	/* IEEE80211_MODE_TURBO_A */
-		IEEE80211_CHAN_108G,	/* IEEE80211_MODE_TURBO_G */
-		IEEE80211_CHAN_STURBO,	/* IEEE80211_MODE_STURBO_A */
-		/* NB: handled specially below */
-		IEEE80211_CHAN_A,	/* IEEE80211_MODE_11NA */
-		IEEE80211_CHAN_G,	/* IEEE80211_MODE_11NG */
+	    [IEEE80211_MODE_AUTO]	= 0,
+	    [IEEE80211_MODE_11A]	= IEEE80211_CHAN_A,
+	    [IEEE80211_MODE_11B]	= IEEE80211_CHAN_B,
+	    [IEEE80211_MODE_11G]	= IEEE80211_CHAN_G,
+	    [IEEE80211_MODE_FH]		= IEEE80211_CHAN_FHSS,
+	    [IEEE80211_MODE_TURBO_A]	= IEEE80211_CHAN_108A,
+	    [IEEE80211_MODE_TURBO_G]	= IEEE80211_CHAN_108G,
+	    [IEEE80211_MODE_STURBO_A]	= IEEE80211_CHAN_STURBO,
+	    [IEEE80211_MODE_HALF]	= IEEE80211_CHAN_HALF,
+	    [IEEE80211_MODE_QUARTER]	= IEEE80211_CHAN_QUARTER,
+	    /* NB: handled specially below */
+	    [IEEE80211_MODE_11NA]	= IEEE80211_CHAN_A,
+	    [IEEE80211_MODE_11NG]	= IEEE80211_CHAN_G,
 	};
 	u_int modeflags;
 	int i;
@@ -2082,62 +2087,40 @@ ieee80211_ioctl_settxparams(struct ieee80211vap *vap,
 	struct ieee80211_txparams_req parms;	/* XXX stack use? */
 	struct ieee80211_txparam *src, *dst;
 	const struct ieee80211_rateset *rs;
-	int error, i, changed;
+	int error, mode, changed, is11n, nmodes;
 
-	if (ireq->i_len != sizeof(parms))
+	/* NB: accept short requests for backwards compat */
+	if (ireq->i_len > sizeof(parms))
 		return EINVAL;
-	error = copyin(ireq->i_data, &parms, sizeof(parms));
+	error = copyin(ireq->i_data, &parms, ireq->i_len);
 	if (error != 0)
 		return error;
+	nmodes = ireq->i_len / sizeof(struct ieee80211_txparam);
 	changed = 0;
 	/* validate parameters and check if anything changed */
-	for (i = IEEE80211_MODE_11A; i < IEEE80211_MODE_11NA; i++) {
-		if (isclr(ic->ic_modecaps, i))
+	for (mode = IEEE80211_MODE_11A; mode < nmodes; mode++) {
+		if (isclr(ic->ic_modecaps, mode))
 			continue;
-		src = &parms.params[i];
-		dst = &vap->iv_txparms[i];
-		rs = &ic->ic_sup_rates[i];
+		src = &parms.params[mode];
+		dst = &vap->iv_txparms[mode];
+		rs = &ic->ic_sup_rates[mode];	/* NB: 11n maps to legacy */
+		is11n = (mode == IEEE80211_MODE_11NA ||
+			 mode == IEEE80211_MODE_11NG);
 		if (src->ucastrate != dst->ucastrate) {
-			if (!checkrate(rs, src->ucastrate))
+			if (!checkrate(rs, src->ucastrate) &&
+			    (!is11n || !checkmcs(src->ucastrate)))
 				return EINVAL;
 			changed++;
 		}
 		if (src->mcastrate != dst->mcastrate) {
-			if (!checkrate(rs, src->mcastrate))
+			if (!checkrate(rs, src->mcastrate) &&
+			    (!is11n || !checkmcs(src->mcastrate)))
 				return EINVAL;
 			changed++;
 		}
 		if (src->mgmtrate != dst->mgmtrate) {
-			if (!checkrate(rs, src->mgmtrate))
-				return EINVAL;
-			changed++;
-		}
-		if (src->maxretry != dst->maxretry)	/* NB: no bounds */
-			changed++;
-	}
-	/* 11n parameters are handled differently */
-	for (; i < IEEE80211_MODE_MAX; i++) {
-		if (isclr(ic->ic_modecaps, i))
-			continue;
-		src = &parms.params[i];
-		dst = &vap->iv_txparms[i];
-		rs = &ic->ic_sup_rates[i == IEEE80211_MODE_11NA ?
-		    IEEE80211_MODE_11A : IEEE80211_MODE_11G];
-		if (src->ucastrate != dst->ucastrate) {
-			if (!checkmcs(src->ucastrate) &&
-			    !checkrate(rs, src->ucastrate))
-				return EINVAL;
-			changed++;
-		}
-		if (src->mcastrate != dst->mcastrate) {
-			if (!checkmcs(src->mcastrate) &&
-			    !checkrate(rs, src->mcastrate))
-				return EINVAL;
-			changed++;
-		}
-		if (src->mgmtrate != dst->mgmtrate) {
-			if (!checkmcs(src->mgmtrate) &&
-			    !checkrate(rs, src->mgmtrate))
+			if (!checkrate(rs, src->mgmtrate) &&
+			    (!is11n || !checkmcs(src->mgmtrate)))
 				return EINVAL;
 			changed++;
 		}
@@ -2149,9 +2132,9 @@ ieee80211_ioctl_settxparams(struct ieee80211vap *vap,
 		 * Copy new parameters in place and notify the
 		 * driver so it can push state to the device.
 		 */
-		for (i = IEEE80211_MODE_11A; i < IEEE80211_MODE_MAX; i++) {
-			if (isset(ic->ic_modecaps, i))
-				vap->iv_txparms[i] = parms.params[i];
+		for (mode = IEEE80211_MODE_11A; mode < nmodes; mode++) {
+			if (isset(ic->ic_modecaps, mode))
+				vap->iv_txparms[mode] = parms.params[mode];
 		}
 		/* XXX could be more intelligent,
 		   e.g. don't reset if setting not being used */
