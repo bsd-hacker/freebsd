@@ -71,16 +71,24 @@ typedef const enum {
 } fgcolor_t;
 
 static int
-sbuf_printf_color(struct sbuf *s, fgcolor_t c, const char *fmt, ...)
+alqtest_printf(struct sbuf *s, fgcolor_t c, const char *fmt, ...)
 {
-	va_list ap;
 	int ret;
+	va_list ap1, ap2;
+
+	va_start(ap1, fmt);
+	va_copy(ap2, ap1);
+
+	printf("\033[%dm", c);
+	vprintf(fmt, ap1);
+	printf("\033[0m");
 
 	sbuf_printf(s, "\033[%dm", c);
-	va_start(ap, fmt);
-	ret = sbuf_vprintf(s, fmt, ap);
-	va_end(ap);
+	ret = sbuf_vprintf(s, fmt, ap2);
 	sbuf_printf(s, "\033[0m");
+
+	va_end(ap2);
+	va_end(ap1);
 
 	return (ret);
 }
@@ -96,21 +104,31 @@ alqtest_randchar(void)
 	return (char)c;
 }
 
-static void
+static uint32_t
+alqtest_rand(uint32_t lower, uint32_t upper)
+{
+	uint32_t n;
+
+	while ( (n = arc4random() % (upper+1)) < lower);
+
+	return n;
+}
+
+/*static void
 alqtest_doio_callback(void)
 {
 	printf("doing io baby!\n");
-}
+}*/
 
 static int
 alqtest_writen(struct sbuf *s, struct sbuf *debug)
 {
 	struct alq *testalq;
 	const int buflen = 100;
-	int i = 0, ret = 0, errors = 0;
+	int i = 0, n = 0, ret = 0, errors = 0;
 	char buf[buflen+1];
 
-	sbuf_printf(s, "- variable length message writing\n");
+	alqtest_printf(s, 0, "- variable length message writing\n");
 
 	/* test variable length message writing */
 	ret = alq_open(	&testalq,
@@ -121,31 +139,34 @@ alqtest_writen(struct sbuf *s, struct sbuf *debug)
 			0
 	);
 
-	testalq->doio_debugcallback = &alqtest_doio_callback;
+	/*testalq->doio_debugcallback = &alqtest_doio_callback;*/
 
 	for (i = 0; i < sizeof(buf); i++)
 		buf[i] = alqtest_randchar();
 
-	sbuf_printf(s, "-- msglen==1,buflen=%d\n", buflen);
+	alqtest_printf(s, 0, "-- msglen==1,buflen=%d\n", buflen);
 	alq_writen(testalq, buf, 1, ALQ_WAITOK | ALQ_NOACTIVATE);
 
 	if ((buflen-1 != testalq->aq_freebytes) &&
 		(1 != testalq->aq_writehead) &&
 			(0 != testalq->aq_writetail)) {
 		errors++;
-		sbuf_printf(	debug,
+		alqtest_printf(	debug,
+				0,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_freebytes",
 				buflen-1,
 				testalq->aq_freebytes
 		);
-		sbuf_printf(	debug,
+		alqtest_printf(	debug,
+				0,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_writehead",
 				1,
 				testalq->aq_writehead
 		);
-		sbuf_printf(	debug,
+		alqtest_printf(	debug,
+				0,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_writetail",
 				0,
@@ -153,32 +174,164 @@ alqtest_writen(struct sbuf *s, struct sbuf *debug)
 		);
 	}
 
-	sbuf_printf(s, "-- msglen==%d,buflen=%d\n", buflen, buflen);
-	alq_writen(testalq, buf, buflen, ALQ_WAITOK);
+	alq_flush(testalq);
 
-	if ((0 != testalq->aq_freebytes) &&
+	if ((buflen != testalq->aq_freebytes) &&
 		(0 != testalq->aq_writehead) &&
 			(0 != testalq->aq_writetail)) {
 		errors++;
-		sbuf_printf(	debug,
+		alqtest_printf(	debug,
+				0,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_freebytes",
-				0,
+				buflen,
 				testalq->aq_freebytes
 		);
-		sbuf_printf(	debug,
+		alqtest_printf(	debug,
+				0,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_writehead",
 				0,
 				testalq->aq_writehead
 		);
-		sbuf_printf(	debug,
+		alqtest_printf(	debug,
+				0,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_writetail",
 				0,
 				testalq->aq_writetail
 		);
 	}
+
+	alqtest_printf(s, 0, "-- msglen==%d,buflen=%d\n", buflen, buflen);
+	alq_writen(testalq, buf, buflen, ALQ_WAITOK | ALQ_NOACTIVATE);
+
+	if ((0 != testalq->aq_freebytes) &&
+		(0 != testalq->aq_writehead) &&
+			(0 != testalq->aq_writetail)) {
+		errors++;
+		alqtest_printf(	debug,
+				0,
+				"alq->%-15s\texpected=%d\tactual=%d\n",
+				"aq_freebytes",
+				0,
+				testalq->aq_freebytes
+		);
+		alqtest_printf(	debug,
+				0,
+				"alq->%-15s\texpected=%d\tactual=%d\n",
+				"aq_writehead",
+				0,
+				testalq->aq_writehead
+		);
+		alqtest_printf(	debug,
+				0,
+				"alq->%-15s\texpected=%d\tactual=%d\n",
+				"aq_writetail",
+				0,
+				testalq->aq_writetail
+		);
+	}
+
+	alq_flush(testalq);
+
+	if ((buflen != testalq->aq_freebytes) &&
+		(0 != testalq->aq_writehead) &&
+			(0 != testalq->aq_writetail)) {
+		errors++;
+		alqtest_printf(	debug,
+				0,
+				"alq->%-15s\texpected=%d\tactual=%d\n",
+				"aq_freebytes",
+				buflen,
+				testalq->aq_freebytes
+		);
+		alqtest_printf(	debug,
+				0,
+				"alq->%-15s\texpected=%d\tactual=%d\n",
+				"aq_writehead",
+				0,
+				testalq->aq_writehead
+		);
+		alqtest_printf(	debug,
+				0,
+				"alq->%-15s\texpected=%d\tactual=%d\n",
+				"aq_writetail",
+				0,
+				testalq->aq_writetail
+		);
+	}
+
+#define NMSGS	100
+
+	alqtest_printf(	s,
+			0,
+			"-- nmsgs==%d,buflen=%d,msglen==[1,%d],flags==ALQ_WAITOK|ALQ_NOACTIVATE\n",
+			NMSGS,
+			buflen,
+			buflen
+	);
+
+	for (i = 0; i < NMSGS; i++) {
+		n = alqtest_rand(1,buflen);
+		alqtest_printf(	s,
+				0,
+				"--- msg==%d,msglen==%d\n",
+				i,
+				n
+		);
+		alq_writen(testalq, buf, n, ALQ_WAITOK|ALQ_NOACTIVATE);
+
+		alq_flush(testalq);
+	
+		if ((buflen != testalq->aq_freebytes) &&
+			(0 != testalq->aq_writehead) &&
+				(0 != testalq->aq_writetail)) {
+			errors++;
+			alqtest_printf(	debug,
+					0,
+					"alq->%-15s\texpected=%d\tactual=%d\n",
+					"aq_freebytes",
+					buflen,
+					testalq->aq_freebytes
+			);
+			alqtest_printf(	debug,
+					0,
+					"alq->%-15s\texpected=%d\tactual=%d\n",
+					"aq_writehead",
+					0,
+					testalq->aq_writehead
+			);
+			alqtest_printf(	debug,
+					0,
+					"alq->%-15s\texpected=%d\tactual=%d\n",
+					"aq_writetail",
+					0,
+					testalq->aq_writetail
+			);
+		}
+	}
+
+	alqtest_printf(	s,
+			0,
+			"-- nmsgs==%d,buflen=%d,msglen==[1,%d],flags==ALQ_WAITOK\n",
+			NMSGS,
+			buflen,
+			buflen
+	);
+
+	for (i = 0; i < NMSGS; i++) {
+		n = alqtest_rand(1,buflen);
+		alqtest_printf(	s,
+				0,
+				"--- msg==%d,msglen==%d\n",
+				i,
+				n
+		);
+		alq_writen(testalq, buf, n, ALQ_WAITOK);
+	}
+
+	alq_flush(testalq);
 
 	alq_close(testalq);
 
@@ -192,7 +345,7 @@ alqtest_open(struct sbuf *s, struct sbuf *debug)
 	const int buflen = 100;
 	int ret = 0, errors = 0;
 
-	sbuf_printf(s, "- variable length message queue creation\n");
+	alqtest_printf(s, 0, "- variable length message queue creation\n");
 
 	/* test variable length message queue creation */
 	ret = alq_open(	&testalq,
@@ -205,7 +358,8 @@ alqtest_open(struct sbuf *s, struct sbuf *debug)
 
 	if (0 != testalq->aq_entmax) {
 		errors++;
-		sbuf_printf(	debug,
+		alqtest_printf(	debug,
+				0,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_entmax",
 				0,
@@ -215,7 +369,8 @@ alqtest_open(struct sbuf *s, struct sbuf *debug)
 
 	if (0 != testalq->aq_entlen) {
 		errors++;
-		sbuf_printf(	debug,
+		alqtest_printf(	debug,
+				0,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_entlen",
 				0,
@@ -225,7 +380,8 @@ alqtest_open(struct sbuf *s, struct sbuf *debug)
 
 	if (buflen != testalq->aq_freebytes) {
 		errors++;
-		sbuf_printf(	debug,
+		alqtest_printf(	debug,
+				0,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_freebytes",
 				buflen,
@@ -235,7 +391,8 @@ alqtest_open(struct sbuf *s, struct sbuf *debug)
 
 	if (buflen != testalq->aq_buflen) {
 		errors++;
-		sbuf_printf(	debug,
+		alqtest_printf(	debug,
+				0,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_buflen",
 				buflen,
@@ -245,7 +402,8 @@ alqtest_open(struct sbuf *s, struct sbuf *debug)
 
 	if (0 != testalq->aq_writehead) {
 		errors++;
-		sbuf_printf(	debug,
+		alqtest_printf(	debug,
+				0,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_writehead",
 				0,
@@ -255,7 +413,8 @@ alqtest_open(struct sbuf *s, struct sbuf *debug)
 
 	if (0 != testalq->aq_writetail) {
 		errors++;
-		sbuf_printf(	debug,
+		alqtest_printf(	debug,
+				0,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_writetail",
 				0,
@@ -265,7 +424,8 @@ alqtest_open(struct sbuf *s, struct sbuf *debug)
 
 	if (0 != testalq->aq_flags) {
 		errors++;
-		sbuf_printf(	debug,
+		alqtest_printf(	debug,
+				0,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_flags",
 				0,
@@ -284,15 +444,15 @@ run_test(struct sbuf *s, const char *test_banner, testfunc test)
 	struct sbuf *debug = NULL;
 
 	if ((debug = sbuf_new(NULL, NULL, 1024, SBUF_AUTOEXTEND)) != NULL) {
-		sbuf_printf(s, "########################################\n");
-		sbuf_printf_color(s, GREEN, "%s\n", test_banner);
+		alqtest_printf(s, 0, "########################################\n");
+		alqtest_printf(s, GREEN, "%s\n", test_banner);
 		if (test(s, debug)) {
 			sbuf_finish(debug);
-			sbuf_printf_color(s, RED, "!!ERROR(S) FOUND!!\n");
-			sbuf_printf(s, "%s", sbuf_data(debug));
-			sbuf_printf_color(s, RED, "!!ERROR(S) FOUND!!\n");
+			alqtest_printf(s, RED, "!!ERROR(S) FOUND!!\n");
+			alqtest_printf(s, 0, "%s", sbuf_data(debug));
+			alqtest_printf(s, RED, "!!ERROR(S) FOUND!!\n");
 		}
-		sbuf_printf(s, "########################################\n\n");
+		alqtest_printf(s, 0, "########################################\n\n");
 		sbuf_delete(debug);
 	}
 }
@@ -306,13 +466,13 @@ alqtest_thread(void *arg)
 	/* loop until thread is signalled to exit */
 	while (run_test_thread && runs < NUM_TEST_RUNS) {
 		if ((s = sbuf_new(NULL, NULL, 1024, SBUF_AUTOEXTEND)) != NULL) {
-			sbuf_printf(s, "TEST RUN: %ld\n", ++runs);
+			alqtest_printf(s, 0, "TEST RUN: %ld\n", ++runs);
 
 			run_test(s, "alq_open", &alqtest_open);
 			run_test(s, "alq_writen", &alqtest_writen);
 
 			sbuf_finish(s);
-			printf("%s", sbuf_data(s));
+			/*printf("%s", sbuf_data(s));*/
 			sbuf_delete(s);
 		}
 	}

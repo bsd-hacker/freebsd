@@ -270,6 +270,7 @@ alq_shutdown(struct alq *alq)
 		alq->aq_flags |= AQ_WANTED;
 		msleep_spin(alq, &alq->aq_mtx, "aldclose", 0);
 	}
+
 	ALQ_UNLOCK(alq);
 
 	vn_close(alq->aq_vp, FWRITE, alq->aq_cred, curthread);
@@ -290,6 +291,7 @@ alq_doio(struct alq *alq)
 	int totlen;
 	int iov;
 	int vfslocked;
+	int prev_writehead = alq->aq_writehead;
 
 	KASSERT((ALQ_HAS_PENDING_DATA(alq)),
 		("%s: queue emtpy!", __func__)
@@ -298,35 +300,38 @@ alq_doio(struct alq *alq)
 	vp = alq->aq_vp;
 	td = curthread;
 	totlen = 0;
-	iov = 0;
+	iov = 1;
 
 	bzero(&aiov, sizeof(aiov));
 	bzero(&auio, sizeof(auio));
 
 	/* Start the write from the location of our buffer tail pointer. */
-	aiov[iov].iov_base = alq->aq_entbuf + alq->aq_writetail;
+	aiov[0].iov_base = alq->aq_entbuf + alq->aq_writetail;
 
 	if (alq->aq_writetail < alq->aq_writehead) {
 		/* Buffer not wrapped */
-		totlen = aiov[iov].iov_len =  alq->aq_writehead -
-							alq->aq_writetail;
+		totlen = aiov[0].iov_len = alq->aq_writehead - alq->aq_writetail;
 	} else {
 		/*
 		 * Buffer wrapped, requires 2 aiov entries:
 		 * - first is from writetail to end of buffer
 		 * - second is from start of buffer to writehead
 		 */
-		aiov[iov].iov_len =  alq->aq_buflen - alq->aq_writetail;
+		aiov[0].iov_len = alq->aq_buflen - alq->aq_writetail;
 		iov++;
-		aiov[iov].iov_base = alq->aq_entbuf;
-		aiov[iov].iov_len =  alq->aq_writehead;
+		aiov[1].iov_base = alq->aq_entbuf;
+		aiov[1].iov_len =  alq->aq_writehead;
 		totlen = aiov[0].iov_len + aiov[1].iov_len;
 	}
 
 	alq->aq_flags |= AQ_FLUSHING;
 
+	/*printf("pre: alq->aq_writehead=%d,alq->aq_writetail=%d,totlen=%d,iov=%d\n", alq->aq_writehead, alq->aq_writetail, totlen, iov);*/
+
 	if (alq->doio_debugcallback != NULL)
 		alq->doio_debugcallback();
+
+	/*printf("flushing %d bytes\n", totlen);*/
 
 	ALQ_UNLOCK(alq);
 
@@ -334,7 +339,7 @@ alq_doio(struct alq *alq)
 	auio.uio_offset = 0;
 	auio.uio_segflg = UIO_SYSSPACE;
 	auio.uio_rw = UIO_WRITE;
-	auio.uio_iovcnt = iov + 1;
+	auio.uio_iovcnt = iov;
 	auio.uio_resid = totlen;
 	auio.uio_td = td;
 
@@ -359,8 +364,14 @@ alq_doio(struct alq *alq)
 	ALQ_LOCK(alq);
 	alq->aq_flags &= ~AQ_FLUSHING;
 
+	/*printf("finished flushing %d bytes\n", totlen);*/
+
 	/* Adjust writetail as required, taking into account wrapping. */
-	alq->aq_writetail += (iov == 2) ? aiov[1].iov_len : totlen;
+	if (iov == 2)
+		alq->aq_writetail = prev_writehead;
+	else
+		alq->aq_writetail = (alq->aq_writetail + totlen) % alq->aq_buflen;
+
 	alq->aq_freebytes += totlen;
 
 	/*
@@ -370,6 +381,12 @@ alq_doio(struct alq *alq)
 	 */
 	if (!ALQ_HAS_PENDING_DATA(alq))
 		alq->aq_writehead = alq->aq_writetail = 0;
+
+	/*printf("post: alq->aq_writehead=%d,alq->aq_writetail=%d,totlen=%d,iov=%d\n", alq->aq_writehead, alq->aq_writetail, totlen, iov);*/
+
+	KASSERT((alq->aq_writetail >= 0 && alq->aq_writetail < alq->aq_buflen),
+		("%s: aq_writetail < 0 || aq_writetail >= aq_buflen", __func__)
+	);
 
 	if (alq->doio_debugcallback != NULL)
 		alq->doio_debugcallback();
@@ -480,7 +497,7 @@ alq_writen(struct alq *alq, void *data, int len, int flags)
 	int copy = len;
 
 	KASSERT((len > 0 && len <= alq->aq_buflen),
-		("%s: len <= 0 || len > alq->aq_buflen", __func__)
+		("%s: len <= 0 || len > aq_buflen", __func__)
 	);
 
 	ALQ_LOCK(alq);
@@ -516,7 +533,7 @@ alq_writen(struct alq *alq, void *data, int len, int flags)
 
 	/* Bail if we're shutting down. */
 	if (alq->aq_flags & AQ_SHUTDOWN) {
-	    ALQ_UNLOCK(alq);
+		ALQ_UNLOCK(alq);
 		return (EWOULDBLOCK);
 	}
 
@@ -539,6 +556,10 @@ alq_writen(struct alq *alq, void *data, int len, int flags)
 		bcopy(data, alq->aq_entbuf, len - copy);
 		alq->aq_writehead = len - copy;
 	}
+
+	KASSERT((alq->aq_writehead >= 0 && alq->aq_writehead < alq->aq_buflen),
+		("%s: aq_writehead < 0 || aq_writehead >= aq_buflen", __func__)
+	);
 
 	alq->aq_freebytes -= len;
 
@@ -657,6 +678,10 @@ alq_getn(struct alq *alq, int len, int flags)
 	if (alq->aq_writehead == alq->aq_buflen)
 		alq->aq_writehead = 0;
 
+	KASSERT((alq->aq_writehead >= 0 && alq->aq_writehead < alq->aq_buflen),
+		("%s: aq_writehead < 0 || aq_writehead >= aq_buflen", __func__)
+	);
+
 	return (ale);
 }
 
@@ -696,7 +721,11 @@ alq_flush(struct alq *alq)
 
 	ALD_UNLOCK();
 
-	if (ALQ_HAS_PENDING_DATA(alq))
+	/*
+	 * Pull the lever iff there is data to flush and we're
+	 * not already in the middle of a flush operation.
+	 */
+	if (ALQ_HAS_PENDING_DATA(alq) && (alq->aq_flags & AQ_FLUSHING) == 0)
 		needwakeup = alq_doio(alq);
 
 	ALQ_UNLOCK(alq);
