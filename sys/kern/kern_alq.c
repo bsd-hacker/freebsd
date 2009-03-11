@@ -61,10 +61,6 @@ struct alq {
 	struct mtx	aq_mtx;		/* Queue lock */
 	struct vnode	*aq_vp;		/* Open vnode handle */
 	struct ucred	*aq_cred;	/* Credentials of the opening thread */
-	//struct ale	*aq_first;	/* First ent */
-	//struct ale	*aq_entfree;	/* First free ent */
-	//struct ale	*aq_entvalid;	/* First ent valid for writing */
-	void (*doio_debugcallback)(void);
 	LIST_ENTRY(alq)	aq_act;		/* List of active queues */
 	LIST_ENTRY(alq)	aq_link;	/* List of all queues */
 };
@@ -291,7 +287,6 @@ alq_doio(struct alq *alq)
 	int totlen;
 	int iov;
 	int vfslocked;
-	int prev_writehead = alq->aq_writehead;
 
 	KASSERT((ALQ_HAS_PENDING_DATA(alq)),
 		("%s: queue emtpy!", __func__)
@@ -311,6 +306,9 @@ alq_doio(struct alq *alq)
 	if (alq->aq_writetail < alq->aq_writehead) {
 		/* Buffer not wrapped */
 		totlen = aiov[0].iov_len = alq->aq_writehead - alq->aq_writetail;
+	} else if (alq->aq_writehead == 0) {
+		/* Buffer not wrapped (special case to avoid an empty iov) */
+		totlen = aiov[0].iov_len = alq->aq_buflen - alq->aq_writetail;;
 	} else {
 		/*
 		 * Buffer wrapped, requires 2 aiov entries:
@@ -325,14 +323,6 @@ alq_doio(struct alq *alq)
 	}
 
 	alq->aq_flags |= AQ_FLUSHING;
-
-	/*printf("pre: alq->aq_writehead=%d,alq->aq_writetail=%d,totlen=%d,iov=%d\n", alq->aq_writehead, alq->aq_writetail, totlen, iov);*/
-
-	if (alq->doio_debugcallback != NULL)
-		alq->doio_debugcallback();
-
-	/*printf("flushing %d bytes\n", totlen);*/
-
 	ALQ_UNLOCK(alq);
 
 	auio.uio_iov = &aiov[0];
@@ -364,14 +354,8 @@ alq_doio(struct alq *alq)
 	ALQ_LOCK(alq);
 	alq->aq_flags &= ~AQ_FLUSHING;
 
-	/*printf("finished flushing %d bytes\n", totlen);*/
-
 	/* Adjust writetail as required, taking into account wrapping. */
-	if (iov == 2)
-		alq->aq_writetail = prev_writehead;
-	else
-		alq->aq_writetail = (alq->aq_writetail + totlen) % alq->aq_buflen;
-
+	alq->aq_writetail = (alq->aq_writetail + totlen) % alq->aq_buflen;
 	alq->aq_freebytes += totlen;
 
 	/*
@@ -382,14 +366,9 @@ alq_doio(struct alq *alq)
 	if (!ALQ_HAS_PENDING_DATA(alq))
 		alq->aq_writehead = alq->aq_writetail = 0;
 
-	/*printf("post: alq->aq_writehead=%d,alq->aq_writetail=%d,totlen=%d,iov=%d\n", alq->aq_writehead, alq->aq_writetail, totlen, iov);*/
-
 	KASSERT((alq->aq_writetail >= 0 && alq->aq_writetail < alq->aq_buflen),
 		("%s: aq_writetail < 0 || aq_writetail >= aq_buflen", __func__)
 	);
-
-	if (alq->doio_debugcallback != NULL)
-		alq->doio_debugcallback();
 
 	if (alq->aq_flags & AQ_WANTED) {
 		alq->aq_flags &= ~AQ_WANTED;
@@ -467,8 +446,6 @@ alq_open(struct alq **alqp, const char *file, struct ucred *cred, int cmode,
 
 	alq->aq_writehead = alq->aq_writetail = 0;
 
-	alq->doio_debugcallback = NULL;
-
 	if ((error = ald_add(alq)) != 0)
 		return (error);
 	*alqp = alq;
@@ -544,9 +521,12 @@ alq_writen(struct alq *alq, void *data, int len, int flags)
 	if ((alq->aq_buflen - alq->aq_writehead) < len)
 		copy = alq->aq_buflen - alq->aq_writehead;
 
-	/* Copy (part of) message to the buffer. */
+	/* Copy message (or part thereof if wrap required) to the buffer. */
 	bcopy(data, alq->aq_entbuf + alq->aq_writehead, copy);
 	alq->aq_writehead += copy;
+
+	if (alq->aq_writehead == alq->aq_buflen)
+		alq->aq_writehead = 0;
 
 	if (copy != len) {
 		/*

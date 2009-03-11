@@ -144,29 +144,26 @@ alqtest_writen(struct sbuf *s, struct sbuf *debug)
 	for (i = 0; i < sizeof(buf); i++)
 		buf[i] = alqtest_randchar();
 
-	alqtest_printf(s, 0, "-- msglen==1,buflen=%d\n", buflen);
-	alq_writen(testalq, buf, 1, ALQ_WAITOK | ALQ_NOACTIVATE);
+	alqtest_printf(s, 0, "-- nmsgs==1,msglen==1,buflen=%d,flags==ALQ_WAITOK|ALQ_NOACTIVATE\n", buflen);
+	alq_writen(testalq, buf, 1, ALQ_WAITOK|ALQ_NOACTIVATE);
 
 	if ((buflen-1 != testalq->aq_freebytes) &&
 		(1 != testalq->aq_writehead) &&
 			(0 != testalq->aq_writetail)) {
 		errors++;
-		alqtest_printf(	debug,
-				0,
+		sbuf_printf(	debug,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_freebytes",
 				buflen-1,
 				testalq->aq_freebytes
 		);
-		alqtest_printf(	debug,
-				0,
+		sbuf_printf(	debug,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_writehead",
 				1,
 				testalq->aq_writehead
 		);
-		alqtest_printf(	debug,
-				0,
+		sbuf_printf(	debug,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_writetail",
 				0,
@@ -180,22 +177,19 @@ alqtest_writen(struct sbuf *s, struct sbuf *debug)
 		(0 != testalq->aq_writehead) &&
 			(0 != testalq->aq_writetail)) {
 		errors++;
-		alqtest_printf(	debug,
-				0,
+		sbuf_printf(	debug,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_freebytes",
 				buflen,
 				testalq->aq_freebytes
 		);
-		alqtest_printf(	debug,
-				0,
+		sbuf_printf(	debug,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_writehead",
 				0,
 				testalq->aq_writehead
 		);
-		alqtest_printf(	debug,
-				0,
+		sbuf_printf(	debug,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_writetail",
 				0,
@@ -203,29 +197,26 @@ alqtest_writen(struct sbuf *s, struct sbuf *debug)
 		);
 	}
 
-	alqtest_printf(s, 0, "-- msglen==%d,buflen=%d\n", buflen, buflen);
+	alqtest_printf(s, 0, "-- nmsgs==1,msglen==%d,buflen=%d,flags==ALQ_WAITOK|ALQ_NOACTIVATE\n", buflen, buflen);
 	alq_writen(testalq, buf, buflen, ALQ_WAITOK | ALQ_NOACTIVATE);
 
 	if ((0 != testalq->aq_freebytes) &&
 		(0 != testalq->aq_writehead) &&
 			(0 != testalq->aq_writetail)) {
 		errors++;
-		alqtest_printf(	debug,
-				0,
+		sbuf_printf(	debug,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_freebytes",
 				0,
 				testalq->aq_freebytes
 		);
-		alqtest_printf(	debug,
-				0,
+		sbuf_printf(	debug,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_writehead",
 				0,
 				testalq->aq_writehead
 		);
-		alqtest_printf(	debug,
-				0,
+		sbuf_printf(	debug,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_writetail",
 				0,
@@ -239,22 +230,19 @@ alqtest_writen(struct sbuf *s, struct sbuf *debug)
 		(0 != testalq->aq_writehead) &&
 			(0 != testalq->aq_writetail)) {
 		errors++;
-		alqtest_printf(	debug,
-				0,
+		sbuf_printf(	debug,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_freebytes",
 				buflen,
 				testalq->aq_freebytes
 		);
-		alqtest_printf(	debug,
-				0,
+		sbuf_printf(	debug,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_writehead",
 				0,
 				testalq->aq_writehead
 		);
-		alqtest_printf(	debug,
-				0,
+		sbuf_printf(	debug,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_writetail",
 				0,
@@ -274,8 +262,7 @@ alqtest_writen(struct sbuf *s, struct sbuf *debug)
 
 	for (i = 0; i < NMSGS; i++) {
 		n = alqtest_rand(1,buflen);
-		alqtest_printf(	s,
-				0,
+		sbuf_printf(	debug,
 				"--- msg==%d,msglen==%d\n",
 				i,
 				n
@@ -283,27 +270,24 @@ alqtest_writen(struct sbuf *s, struct sbuf *debug)
 		alq_writen(testalq, buf, n, ALQ_WAITOK|ALQ_NOACTIVATE);
 
 		alq_flush(testalq);
-	
+
 		if ((buflen != testalq->aq_freebytes) &&
 			(0 != testalq->aq_writehead) &&
 				(0 != testalq->aq_writetail)) {
 			errors++;
-			alqtest_printf(	debug,
-					0,
+			sbuf_printf(	debug,
 					"alq->%-15s\texpected=%d\tactual=%d\n",
 					"aq_freebytes",
 					buflen,
 					testalq->aq_freebytes
 			);
-			alqtest_printf(	debug,
-					0,
+			sbuf_printf(	debug,
 					"alq->%-15s\texpected=%d\tactual=%d\n",
 					"aq_writehead",
 					0,
 					testalq->aq_writehead
 			);
-			alqtest_printf(	debug,
-					0,
+			sbuf_printf(	debug,
 					"alq->%-15s\texpected=%d\tactual=%d\n",
 					"aq_writetail",
 					0,
@@ -322,8 +306,7 @@ alqtest_writen(struct sbuf *s, struct sbuf *debug)
 
 	for (i = 0; i < NMSGS; i++) {
 		n = alqtest_rand(1,buflen);
-		alqtest_printf(	s,
-				0,
+		sbuf_printf(	s,
 				"--- msg==%d,msglen==%d\n",
 				i,
 				n
@@ -358,8 +341,7 @@ alqtest_open(struct sbuf *s, struct sbuf *debug)
 
 	if (0 != testalq->aq_entmax) {
 		errors++;
-		alqtest_printf(	debug,
-				0,
+		sbuf_printf(	debug,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_entmax",
 				0,
@@ -369,8 +351,7 @@ alqtest_open(struct sbuf *s, struct sbuf *debug)
 
 	if (0 != testalq->aq_entlen) {
 		errors++;
-		alqtest_printf(	debug,
-				0,
+		sbuf_printf(	debug,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_entlen",
 				0,
@@ -380,8 +361,7 @@ alqtest_open(struct sbuf *s, struct sbuf *debug)
 
 	if (buflen != testalq->aq_freebytes) {
 		errors++;
-		alqtest_printf(	debug,
-				0,
+		sbuf_printf(	debug,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_freebytes",
 				buflen,
@@ -391,8 +371,7 @@ alqtest_open(struct sbuf *s, struct sbuf *debug)
 
 	if (buflen != testalq->aq_buflen) {
 		errors++;
-		alqtest_printf(	debug,
-				0,
+		sbuf_printf(	debug,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_buflen",
 				buflen,
@@ -402,8 +381,7 @@ alqtest_open(struct sbuf *s, struct sbuf *debug)
 
 	if (0 != testalq->aq_writehead) {
 		errors++;
-		alqtest_printf(	debug,
-				0,
+		sbuf_printf(	debug,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_writehead",
 				0,
@@ -413,8 +391,7 @@ alqtest_open(struct sbuf *s, struct sbuf *debug)
 
 	if (0 != testalq->aq_writetail) {
 		errors++;
-		alqtest_printf(	debug,
-				0,
+		sbuf_printf(	debug,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_writetail",
 				0,
@@ -424,8 +401,7 @@ alqtest_open(struct sbuf *s, struct sbuf *debug)
 
 	if (0 != testalq->aq_flags) {
 		errors++;
-		alqtest_printf(	debug,
-				0,
+		sbuf_printf(	debug,
 				"alq->%-15s\texpected=%d\tactual=%d\n",
 				"aq_flags",
 				0,
