@@ -37,7 +37,7 @@
 #include "libusb20.h"
 #include "libusb20_desc.h"
 #include "libusb20_int.h"
-#include "libusb20_compat01.h"
+#include "usb.h"
 
 /*
  * The two following macros were taken from the original LibUSB v0.1
@@ -816,7 +816,11 @@ usb_reset(usb_dev_handle * dev)
 	if (err)
 		return (-1);
 
-	return (0);
+	/*
+	 * Be compatible with LibUSB from sourceforge and close the
+	 * handle after reset!
+	 */
+	return (usb_close(dev));
 }
 
 const char *
