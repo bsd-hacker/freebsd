@@ -225,7 +225,7 @@ struct netisr_workstream {
 	 * Each protocol has per-workstream data.
 	 */
 	struct netisr_work	nws_work[NETISR_MAXPROT];
-};
+} __aligned(64);
 
 /*
  * Kernel process associated with worker threads.
