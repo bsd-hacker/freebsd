@@ -439,7 +439,7 @@ balloon_init_watcher(void *arg)
 		printf("Failed to set balloon watcher\n");
 
 }
-SYSINIT(balloon_init_watcher, SI_SUB_CONFIGURE, SI_ORDER_ANY,
+SYSINIT(balloon_init_watcher, SI_SUB_PSEUDO, SI_ORDER_ANY,
     balloon_init_watcher, NULL);
 
 static void 
