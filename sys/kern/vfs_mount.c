@@ -1353,11 +1353,18 @@ static int root_mount_complete;
  * Hold root mount.
  */
 struct root_hold_token *
-root_mount_hold(const char *identifier)
+root_mount_hold(const char *identifier, int how)
 {
 	struct root_hold_token *h;
 
-	h = malloc(sizeof *h, M_DEVBUF, M_ZERO | M_WAITOK);
+	if (root_mounted())
+		return (NULL);
+
+	h = malloc(sizeof *h, M_DEVBUF, M_ZERO | how);
+	if (h == NULL) {
+		printf("Unable to alloc root hold token for %s\n", identifier);
+		return (NULL);
+	}
 	h->who = identifier;
 	mtx_lock(&mountlist_mtx);
 	LIST_INSERT_HEAD(&root_holds, h, list);
@@ -1372,6 +1379,8 @@ void
 root_mount_rel(struct root_hold_token *h)
 {
 
+	if (h == NULL)
+		return;
 	mtx_lock(&mountlist_mtx);
 	LIST_REMOVE(h, list);
 	wakeup(&root_holds);
@@ -1386,6 +1395,8 @@ static void
 root_mount_prepare(void)
 {
 	struct root_hold_token *h;
+	struct timeval lastfail;
+	int curfail = 0;
 
 	for (;;) {
 		DROP_GIANT();
@@ -1396,10 +1407,12 @@ root_mount_prepare(void)
 			mtx_unlock(&mountlist_mtx);
 			break;
 		}
-		printf("Root mount waiting for:");
-		LIST_FOREACH(h, &root_holds, list)
-			printf(" %s", h->who);
-		printf("\n");
+		if (ppsratecheck(&lastfail, &curfail, 1)) {
+			printf("Root mount waiting for:");
+			LIST_FOREACH(h, &root_holds, list)
+				printf(" %s", h->who);
+			printf("\n");
+		}
 		msleep(&root_holds, &mountlist_mtx, PZERO | PDROP, "roothold",
 		    hz);
 	}

@@ -27,7 +27,8 @@
 #ifndef _USB2_DEVICE_H_
 #define	_USB2_DEVICE_H_
 
-struct usb2_symlink;
+struct usb2_symlink;		/* UGEN */
+struct usb_device;		/* linux compat */
 
 #define	USB_DEFAULT_XFER_MAX 2
 
@@ -86,10 +87,10 @@ struct usb2_device_flags {
  * in this structure is protected by the USB BUS lock.
  */
 struct usb2_power_save {
-	int	last_xfer_time;		/* copy of "ticks" */
-	uint32_t type_refs[4];		/* transfer reference count */
-	uint32_t read_refs;		/* data read references */
-	uint32_t write_refs;		/* data write references */
+	usb2_ticks_t last_xfer_time;	/* copy of "ticks" */
+	usb2_size_t type_refs[4];	/* transfer reference count */
+	usb2_size_t read_refs;		/* data read references */
+	usb2_size_t write_refs;		/* data write references */
 	uint8_t	suspended;		/* set if USB device is suspended */
 };
 
@@ -114,21 +115,20 @@ struct usb2_device {
 	struct usb2_device *parent_hub;
 	struct usb2_config_descriptor *cdesc;	/* full config descr */
 	struct usb2_hub *hub;		/* only if this is a hub */
+#if USB_HAVE_COMPAT_LINUX
 	struct usb_device *linux_dev;
+#endif
 	struct usb2_xfer *default_xfer[USB_DEFAULT_XFER_MAX];
 	struct usb2_temp_data *usb2_template_ptr;
 	struct usb2_pipe *pipe_curr;	/* current clear stall pipe */
+#if USB_HAVE_UGEN
 	struct usb2_fifo *fifo[USB_FIFO_MAX];
-
-	char ugen_name[20];			/* name of ugenX.X device */
 	struct usb2_symlink *ugen_symlink;	/* our generic symlink */
-
 	LIST_HEAD(,usb2_fs_privdata) pd_list;
+	char	ugen_name[20];		/* name of ugenX.X device */
+#endif
+	usb2_ticks_t plugtime;		/* copy of "ticks" */
 
-	uint32_t plugtime;		/* copy of "ticks" */
-
-	uint16_t ep_rd_opened;		/* bitmask of endpoints opened */
-	uint16_t ep_wr_opened;		/*  from the device nodes. */
 	uint16_t refcount;
 #define	USB_DEV_REF_MAX 0xffff
 
@@ -155,9 +155,11 @@ struct usb2_device {
 	struct usb2_endpoint_descriptor default_ep_desc;	/* for pipe 0 */
 	struct usb2_device_descriptor ddesc;	/* device descriptor */
 
+#if USB_HAVE_STRINGS
 	char	serial[64];		/* serial number */
 	char	manufacturer[64];	/* manufacturer string */
 	char	product[64];		/* product string */
+#endif
 };
 
 /* globals */

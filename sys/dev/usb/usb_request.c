@@ -26,7 +26,6 @@
  * SUCH DAMAGE.
  */
 
-#include <dev/usb/usb_defs.h>
 #include <dev/usb/usb_mfunc.h>
 #include <dev/usb/usb_error.h>
 #include <dev/usb/usb.h>
@@ -229,15 +228,15 @@ tr_setup:
  *------------------------------------------------------------------------*/
 usb2_error_t
 usb2_do_request_flags(struct usb2_device *udev, struct mtx *mtx,
-    struct usb2_device_request *req, void *data, uint32_t flags,
-    uint16_t *actlen, uint32_t timeout)
+    struct usb2_device_request *req, void *data, uint16_t flags,
+    uint16_t *actlen, usb2_timeout_t timeout)
 {
 	struct usb2_xfer *xfer;
 	const void *desc;
 	int err = 0;
-	uint32_t start_ticks;
-	uint32_t delta_ticks;
-	uint32_t max_ticks;
+	usb2_ticks_t start_ticks;
+	usb2_ticks_t delta_ticks;
+	usb2_ticks_t max_ticks;
 	uint16_t length;
 	uint16_t temp;
 
@@ -265,6 +264,10 @@ usb2_do_request_flags(struct usb2_device *udev, struct mtx *mtx,
 	if (actlen) {
 		*actlen = 0;
 	}
+#if (USB_HAVE_USER_IO == 0)
+	if (flags & USB_USER_DATA_PTR)
+		return (USB_ERR_INVAL);
+#endif
 	if (udev->flags.usb2_mode == USB_MODE_DEVICE) {
 		DPRINTF("USB device mode\n");
 		(usb2_temp_get_desc_p) (udev, req, &desc, &temp);
@@ -278,13 +281,14 @@ usb2_do_request_flags(struct usb2_device *udev, struct mtx *mtx,
 			*actlen = length;
 		}
 		if (length > 0) {
+#if USB_HAVE_USER_IO
 			if (flags & USB_USER_DATA_PTR) {
 				if (copyout(desc, data, length)) {
 					return (USB_ERR_INVAL);
 				}
-			} else {
+			} else
+#endif
 				bcopy(desc, data, length);
-			}
 		}
 		return (0);		/* success */
 	}
@@ -340,6 +344,7 @@ usb2_do_request_flags(struct usb2_device *udev, struct mtx *mtx,
 
 		if (temp > 0) {
 			if (!(req->bmRequestType & UT_READ)) {
+#if USB_HAVE_USER_IO
 				if (flags & USB_USER_DATA_PTR) {
 					USB_XFER_UNLOCK(xfer);
 					err = usb2_copy_in_user(xfer->frbuffers + 1,
@@ -349,9 +354,10 @@ usb2_do_request_flags(struct usb2_device *udev, struct mtx *mtx,
 						err = USB_ERR_INVAL;
 						break;
 					}
-				} else {
-					usb2_copy_in(xfer->frbuffers + 1, 0, data, temp);
-				}
+				} else
+#endif
+					usb2_copy_in(xfer->frbuffers + 1,
+					    0, data, temp);
 			}
 			xfer->nframes = 2;
 		} else {
@@ -409,6 +415,7 @@ usb2_do_request_flags(struct usb2_device *udev, struct mtx *mtx,
 		}
 		if (temp > 0) {
 			if (req->bmRequestType & UT_READ) {
+#if USB_HAVE_USER_IO
 				if (flags & USB_USER_DATA_PTR) {
 					USB_XFER_UNLOCK(xfer);
 					err = usb2_copy_out_user(xfer->frbuffers + 1,
@@ -418,10 +425,10 @@ usb2_do_request_flags(struct usb2_device *udev, struct mtx *mtx,
 						err = USB_ERR_INVAL;
 						break;
 					}
-				} else {
+				} else
+#endif
 					usb2_copy_out(xfer->frbuffers + 1,
 					    0, data, temp);
-				}
 			}
 		}
 		/*
@@ -480,8 +487,8 @@ done:
  *------------------------------------------------------------------------*/
 usb2_error_t
 usb2_do_request_proc(struct usb2_device *udev, struct usb2_process *pproc,
-    struct usb2_device_request *req, void *data, uint32_t flags,
-    uint16_t *actlen, uint32_t timeout)
+    struct usb2_device_request *req, void *data, uint16_t flags,
+    uint16_t *actlen, usb2_timeout_t timeout)
 {
 	usb2_error_t err;
 	uint16_t len;

@@ -24,7 +24,6 @@
  * SUCH DAMAGE.
  */
 
-#include <dev/usb/usb_defs.h>
 #include <dev/usb/usb_mfunc.h>
 #include <dev/usb/usb_error.h>
 #include <dev/usb/usb.h>
@@ -212,7 +211,7 @@ tr_repeat:
 	    (iface->subdev != NULL) &&
 	    device_is_attached(iface->subdev)) {
 #if 0
-		DEVMETHOD(usb2_handle_request, NULL);	/* dummy */
+		DEVMETHOD(usb_handle_request, NULL);	/* dummy */
 #endif
 		error = USB_HANDLE_REQUEST(iface->subdev,
 		    &req, ppdata, plen,

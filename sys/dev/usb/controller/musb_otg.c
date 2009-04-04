@@ -39,7 +39,6 @@
 #include <dev/usb/usb.h>
 #include <dev/usb/usb_mfunc.h>
 #include <dev/usb/usb_error.h>
-#include <dev/usb/usb_defs.h>
 
 #define	USB_DEBUG_VAR musbotgdebug
 
@@ -64,7 +63,7 @@
    USB_P2U(&(((struct musbotg_softc *)0)->sc_bus))))
 
 #define	MUSBOTG_PC2SC(pc) \
-   MUSBOTG_BUS2SC((pc)->tag_parent->info->bus)
+   MUSBOTG_BUS2SC(USB_DMATAG_TO_XROOT((pc)->tag_parent)->bus)
 
 #if USB_DEBUG
 static int musbotgdebug = 0;
@@ -1133,8 +1132,8 @@ musbotg_setup_standard_chain(struct usb2_xfer *xfer)
 
 	temp.td = NULL;
 	temp.td_next = xfer->td_start[0];
-	temp.setup_alt_next = xfer->flags_int.short_frames_ok;
 	temp.offset = 0;
+	temp.setup_alt_next = xfer->flags_int.short_frames_ok;
 
 	sc = MUSBOTG_BUS2SC(xfer->xroot->bus);
 	ep_no = (xfer->endpoint & UE_ADDR);
@@ -1181,7 +1180,13 @@ musbotg_setup_standard_chain(struct usb2_xfer *xfer)
 		x++;
 
 		if (x == xfer->nframes) {
-			temp.setup_alt_next = 0;
+			if (xfer->flags_int.control_xfr) {
+				if (xfer->flags_int.control_act) {
+					temp.setup_alt_next = 0;
+				}
+			} else {
+				temp.setup_alt_next = 0;
+			}
 		}
 		if (temp.len == 0) {
 
@@ -1206,23 +1211,24 @@ musbotg_setup_standard_chain(struct usb2_xfer *xfer)
 		}
 	}
 
-	/* always setup a valid "pc" pointer for status and sync */
-	temp.pc = xfer->frbuffers + 0;
+	/* check for control transfer */
+	if (xfer->flags_int.control_xfr) {
 
-	/* check if we should append a status stage */
-
-	if (xfer->flags_int.control_xfr &&
-	    !xfer->flags_int.control_act) {
-
-		/*
-		 * Send a DATA1 message and invert the current
-		 * endpoint direction.
-		 */
-		temp.func = &musbotg_setup_status;
+		/* always setup a valid "pc" pointer for status and sync */
+		temp.pc = xfer->frbuffers + 0;
 		temp.len = 0;
 		temp.short_pkt = 0;
+		temp.setup_alt_next = 0;
 
-		musbotg_setup_standard_chain_sub(&temp);
+		/* check if we should append a status stage */
+		if (!xfer->flags_int.control_act) {
+			/*
+			 * Send a DATA1 message and invert the current
+			 * endpoint direction.
+			 */
+			temp.func = &musbotg_setup_status;
+			musbotg_setup_standard_chain_sub(&temp);
+		}
 	}
 	/* must have at least one frame! */
 	td = temp.td;

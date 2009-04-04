@@ -41,7 +41,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/usb.h>
 #include <dev/usb/usb_mfunc.h>
 #include <dev/usb/usb_error.h>
-#include <dev/usb/usb_defs.h>
 
 #define	USB_DEBUG_VAR uhcidebug
 
@@ -60,8 +59,9 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/controller/uhci.h>
 
 #define	alt_next next
-#define	UHCI_BUS2SC(bus) ((uhci_softc_t *)(((uint8_t *)(bus)) - \
-   USB_P2U(&(((uhci_softc_t *)0)->sc_bus))))
+#define	UHCI_BUS2SC(bus) \
+   ((uhci_softc_t *)(((uint8_t *)(bus)) - \
+    ((uint8_t *)&(((uhci_softc_t *)0)->sc_bus))))
 
 #if USB_DEBUG
 static int uhcidebug = 0;
@@ -124,7 +124,7 @@ struct uhci_std_temp {
 	uint16_t max_frame_size;
 	uint8_t	shortpkt;
 	uint8_t	setup_alt_next;
-	uint8_t	short_frames_ok;
+	uint8_t	last_frame;
 };
 
 extern struct usb2_bus_methods uhci_bus_methods;
@@ -1253,30 +1253,33 @@ uhci_check_transfer_sub(struct usb2_xfer *xfer)
 	td_self = td->td_self;
 	td_alt_next = td->alt_next;
 
-	if ((td->td_token ^ td_token) & htole32(UHCI_TD_SET_DT(1))) {
+	if (xfer->flags_int.control_xfr)
+		goto skip;	/* don't touch the DT value! */
 
-		/*
-	         * The data toggle is wrong and
-	         * we need to switch it !
-	         */
+	if (!((td->td_token ^ td_token) & htole32(UHCI_TD_SET_DT(1))))
+		goto skip;	/* data toggle has correct value */
 
-		while (1) {
+	/*
+	 * The data toggle is wrong and we need to toggle it !
+	 */
+	while (1) {
 
-			td->td_token ^= htole32(UHCI_TD_SET_DT(1));
-			usb2_pc_cpu_flush(td->page_cache);
+		td->td_token ^= htole32(UHCI_TD_SET_DT(1));
+		usb2_pc_cpu_flush(td->page_cache);
 
-			if (td == xfer->td_transfer_last) {
-				/* last transfer */
-				break;
-			}
-			td = td->obj_next;
+		if (td == xfer->td_transfer_last) {
+			/* last transfer */
+			break;
+		}
+		td = td->obj_next;
 
-			if (td->alt_next != td_alt_next) {
-				/* next frame */
-				break;
-			}
+		if (td->alt_next != td_alt_next) {
+			/* next frame */
+			break;
 		}
 	}
+skip:
+
 	/* update the QH */
 	qh->qh_e_next = td_self;
 	usb2_pc_cpu_flush(qh->page_cache);
@@ -1631,10 +1634,8 @@ restart:
 		precompute = 0;
 
 		/* setup alt next pointer, if any */
-		if (temp->short_frames_ok) {
-			if (temp->setup_alt_next) {
-				td_alt_next = td_next;
-			}
+		if (temp->last_frame) {
+			td_alt_next = NULL;
 		} else {
 			/* we use this field internally */
 			td_alt_next = td_next;
@@ -1673,8 +1674,8 @@ uhci_setup_standard_chain(struct usb2_xfer *xfer)
 
 	temp.td = NULL;
 	temp.td_next = td;
+	temp.last_frame = 0;
 	temp.setup_alt_next = xfer->flags_int.short_frames_ok;
-	temp.short_frames_ok = xfer->flags_int.short_frames_ok;
 
 	uhci_mem_layout_init(&temp.ml, xfer);
 
@@ -1707,7 +1708,14 @@ uhci_setup_standard_chain(struct usb2_xfer *xfer)
 			temp.len = xfer->frlengths[0];
 			temp.ml.buf_pc = xfer->frbuffers + 0;
 			temp.shortpkt = temp.len ? 1 : 0;
-
+			/* check for last frame */
+			if (xfer->nframes == 1) {
+				/* no STATUS stage yet, SETUP is last */
+				if (xfer->flags_int.control_act) {
+					temp.last_frame = 1;
+					temp.setup_alt_next = 0;
+				}
+			}
 			uhci_setup_standard_chain_sub(&temp);
 		}
 		x = 1;
@@ -1725,7 +1733,16 @@ uhci_setup_standard_chain(struct usb2_xfer *xfer)
 		x++;
 
 		if (x == xfer->nframes) {
-			temp.setup_alt_next = 0;
+			if (xfer->flags_int.control_xfr) {
+				/* no STATUS stage yet, DATA is last */
+				if (xfer->flags_int.control_act) {
+					temp.last_frame = 1;
+					temp.setup_alt_next = 0;
+				}
+			} else {
+				temp.last_frame = 1;
+				temp.setup_alt_next = 0;
+			}
 		}
 		/*
 		 * Keep previous data toggle,
@@ -1780,11 +1797,14 @@ uhci_setup_standard_chain(struct usb2_xfer *xfer)
 		temp.len = 0;
 		temp.ml.buf_pc = NULL;
 		temp.shortpkt = 0;
+		temp.last_frame = 1;
+		temp.setup_alt_next = 0;
 
 		uhci_setup_standard_chain_sub(&temp);
 	}
 	td = temp.td;
 
+	/* Ensure that last TD is terminating: */
 	td->td_next = htole32(UHCI_PTR_T);
 
 	/* set interrupt bit */
@@ -2626,7 +2646,7 @@ uhci_root_ctrl_done(struct usb2_xfer *xfer,
 		USETW(sc->sc_hub_desc.stat.wStatus, 0);
 		break;
 	case C(UR_SET_ADDRESS, UT_WRITE_DEVICE):
-		if (value >= USB_MAX_DEVICES) {
+		if (value >= UHCI_MAX_DEVICES) {
 			std->err = USB_ERR_IOERROR;
 			goto done;
 		}

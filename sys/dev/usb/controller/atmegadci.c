@@ -40,7 +40,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/usb.h>
 #include <dev/usb/usb_mfunc.h>
 #include <dev/usb/usb_error.h>
-#include <dev/usb/usb_defs.h>
 
 #define	USB_DEBUG_VAR atmegadci_debug
 
@@ -60,10 +59,10 @@ __FBSDID("$FreeBSD$");
 
 #define	ATMEGA_BUS2SC(bus) \
    ((struct atmegadci_softc *)(((uint8_t *)(bus)) - \
-   USB_P2U(&(((struct atmegadci_softc *)0)->sc_bus))))
+    ((uint8_t *)&(((struct atmegadci_softc *)0)->sc_bus))))
 
 #define	ATMEGA_PC2SC(pc) \
-   ATMEGA_BUS2SC((pc)->tag_parent->info->bus)
+   ATMEGA_BUS2SC(USB_DMATAG_TO_XROOT((pc)->tag_parent)->bus)
 
 #if USB_DEBUG
 static int atmegadci_debug = 0;
@@ -792,8 +791,8 @@ atmegadci_setup_standard_chain(struct usb2_xfer *xfer)
 
 	temp.td = NULL;
 	temp.td_next = xfer->td_start[0];
-	temp.setup_alt_next = xfer->flags_int.short_frames_ok;
 	temp.offset = 0;
+	temp.setup_alt_next = xfer->flags_int.short_frames_ok;
 
 	sc = ATMEGA_BUS2SC(xfer->xroot->bus);
 	ep_no = (xfer->endpoint & UE_ADDR);
@@ -807,6 +806,12 @@ atmegadci_setup_standard_chain(struct usb2_xfer *xfer)
 			temp.len = xfer->frlengths[0];
 			temp.pc = xfer->frbuffers + 0;
 			temp.short_pkt = temp.len ? 1 : 0;
+			/* check for last frame */
+			if (xfer->nframes == 1) {
+				/* no STATUS stage yet, SETUP is last */
+				if (xfer->flags_int.control_act)
+					temp.setup_alt_next = 0;
+			}
 
 			atmegadci_setup_standard_chain_sub(&temp);
 		}
@@ -838,7 +843,13 @@ atmegadci_setup_standard_chain(struct usb2_xfer *xfer)
 		x++;
 
 		if (x == xfer->nframes) {
-			temp.setup_alt_next = 0;
+			if (xfer->flags_int.control_xfr) {
+				if (xfer->flags_int.control_act) {
+					temp.setup_alt_next = 0;
+				}
+			} else {
+				temp.setup_alt_next = 0;
+			}
 		}
 		if (temp.len == 0) {
 
@@ -863,45 +874,42 @@ atmegadci_setup_standard_chain(struct usb2_xfer *xfer)
 		}
 	}
 
-	/* always setup a valid "pc" pointer for status and sync */
-	temp.pc = xfer->frbuffers + 0;
+	if (xfer->flags_int.control_xfr) {
 
-	/* check if we need to sync */
-	if (need_sync && xfer->flags_int.control_xfr) {
-
-		/* we need a SYNC point after TX */
-		temp.func = &atmegadci_data_tx_sync;
+		/* always setup a valid "pc" pointer for status and sync */
+		temp.pc = xfer->frbuffers + 0;
 		temp.len = 0;
 		temp.short_pkt = 0;
+		temp.setup_alt_next = 0;
 
-		atmegadci_setup_standard_chain_sub(&temp);
-	}
-	/* check if we should append a status stage */
-	if (xfer->flags_int.control_xfr &&
-	    !xfer->flags_int.control_act) {
-
-		/*
-		 * Send a DATA1 message and invert the current
-		 * endpoint direction.
-		 */
-		if (xfer->endpoint & UE_DIR_IN) {
-			temp.func = &atmegadci_data_rx;
-			need_sync = 0;
-		} else {
-			temp.func = &atmegadci_data_tx;
-			need_sync = 1;
-		}
-		temp.len = 0;
-		temp.short_pkt = 0;
-
-		atmegadci_setup_standard_chain_sub(&temp);
+		/* check if we need to sync */
 		if (need_sync) {
 			/* we need a SYNC point after TX */
 			temp.func = &atmegadci_data_tx_sync;
-			temp.len = 0;
-			temp.short_pkt = 0;
+			atmegadci_setup_standard_chain_sub(&temp);
+		}
+
+		/* check if we should append a status stage */
+		if (!xfer->flags_int.control_act) {
+
+			/*
+			 * Send a DATA1 message and invert the current
+			 * endpoint direction.
+			 */
+			if (xfer->endpoint & UE_DIR_IN) {
+				temp.func = &atmegadci_data_rx;
+				need_sync = 0;
+			} else {
+				temp.func = &atmegadci_data_tx;
+				need_sync = 1;
+			}
 
 			atmegadci_setup_standard_chain_sub(&temp);
+			if (need_sync) {
+				/* we need a SYNC point after TX */
+				temp.func = &atmegadci_data_tx_sync;
+				atmegadci_setup_standard_chain_sub(&temp);
+			}
 		}
 	}
 	/* must have at least one frame! */

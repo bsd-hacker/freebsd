@@ -38,7 +38,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/usb.h>
 #include <dev/usb/usb_mfunc.h>
 #include <dev/usb/usb_error.h>
-#include <dev/usb/usb_defs.h>
 
 #define	USB_DEBUG_VAR ohcidebug
 
@@ -56,8 +55,9 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/usb_bus.h>
 #include <dev/usb/controller/ohci.h>
 
-#define	OHCI_BUS2SC(bus) ((ohci_softc_t *)(((uint8_t *)(bus)) - \
-   USB_P2U(&(((ohci_softc_t *)0)->sc_bus))))
+#define	OHCI_BUS2SC(bus) \
+   ((ohci_softc_t *)(((uint8_t *)(bus)) - \
+    ((uint8_t *)&(((ohci_softc_t *)0)->sc_bus))))
 
 #if USB_DEBUG
 static int ohcidebug = 0;
@@ -115,7 +115,7 @@ struct ohci_std_temp {
 	uint16_t max_frame_size;
 	uint8_t	shortpkt;
 	uint8_t	setup_alt_next;
-	uint8_t	short_frames_ok;
+	uint8_t last_frame;
 };
 
 static struct ohci_hcca *
@@ -1020,6 +1020,23 @@ ohci_check_transfer_sub(struct usb2_xfer *xfer)
 		usb2_pc_cpu_flush(ed->page_cache);
 
 		DPRINTFN(13, "xfer=%p following alt next\n", xfer);
+
+		/*
+		 * Make sure that the OHCI re-scans the schedule by
+		 * writing the BLF and CLF bits:
+		 */
+
+		if (xfer->xroot->udev->pwr_save.suspended) {
+			/* nothing to do */
+		} else if (xfer->pipe->methods == &ohci_device_bulk_methods) {
+			ohci_softc_t *sc = OHCI_BUS2SC(xfer->xroot->bus);
+
+			OWRITE4(sc, OHCI_COMMAND_STATUS, OHCI_BLF);
+		} else if (xfer->pipe->methods == &ohci_device_ctrl_methods) {
+			ohci_softc_t *sc = OHCI_BUS2SC(xfer->xroot->bus);
+
+			OWRITE4(sc, OHCI_COMMAND_STATUS, OHCI_CLF);
+		}
 	}
 }
 
@@ -1034,7 +1051,6 @@ static uint8_t
 ohci_check_transfer(struct usb2_xfer *xfer)
 {
 	ohci_ed_t *ed;
-	uint32_t ed_flags;
 	uint32_t ed_headp;
 	uint32_t ed_tailp;
 
@@ -1043,12 +1059,10 @@ ohci_check_transfer(struct usb2_xfer *xfer)
 	ed = xfer->qh_start[xfer->flags_int.curr_dma_set];
 
 	usb2_pc_cpu_invalidate(ed->page_cache);
-	ed_flags = le32toh(ed->ed_flags);
 	ed_headp = le32toh(ed->ed_headp);
 	ed_tailp = le32toh(ed->ed_tailp);
 
-	if ((ed_flags & OHCI_ED_SKIP) ||
-	    (ed_headp & OHCI_HALTED) ||
+	if ((ed_headp & OHCI_HALTED) ||
 	    (((ed_headp ^ ed_tailp) & (~0xF)) == 0)) {
 		if (xfer->pipe->methods == &ohci_device_isoc_methods) {
 			/* isochronous transfer */
@@ -1336,9 +1350,12 @@ restart:
 		temp->td_flags &= ~htole32(OHCI_TD_TOGGLE_MASK);
 
 		if (average == 0) {
-
+			/*
+			 * The buffer start and end phys addresses should be
+			 * 0x0 for a zero length packet.
+			 */
 			td->td_cbp = 0;
-			td->td_be = ~0;
+			td->td_be = 0;
 			td->len = 0;
 
 		} else {
@@ -1379,10 +1396,9 @@ restart:
 		precompute = 0;
 
 		/* setup alt next pointer, if any */
-		if (temp->short_frames_ok) {
-			if (temp->setup_alt_next) {
-				td_alt_next = td_next;
-			}
+		if (temp->last_frame) {
+			/* no alternate next */
+			td_alt_next = NULL;
 		} else {
 			/* we use this field internally */
 			td_alt_next = td_next;
@@ -1411,7 +1427,7 @@ ohci_setup_standard_chain(struct usb2_xfer *xfer, ohci_ed_t **ed_last)
 	    xfer->address, UE_GET_ADDR(xfer->endpoint),
 	    xfer->sumlen, usb2_get_speed(xfer->xroot->udev));
 
-	temp.average = xfer->max_usb2_frame_size;
+	temp.average = xfer->max_hc_frame_size;
 	temp.max_frame_size = xfer->max_frame_size;
 
 	/* toggle the DMA set we are using */
@@ -1425,8 +1441,8 @@ ohci_setup_standard_chain(struct usb2_xfer *xfer, ohci_ed_t **ed_last)
 
 	temp.td = NULL;
 	temp.td_next = td;
+	temp.last_frame = 0;
 	temp.setup_alt_next = xfer->flags_int.short_frames_ok;
-	temp.short_frames_ok = xfer->flags_int.short_frames_ok;
 
 	methods = xfer->pipe->methods;
 
@@ -1441,7 +1457,14 @@ ohci_setup_standard_chain(struct usb2_xfer *xfer, ohci_ed_t **ed_last)
 			temp.len = xfer->frlengths[0];
 			temp.pc = xfer->frbuffers + 0;
 			temp.shortpkt = temp.len ? 1 : 0;
-
+			/* check for last frame */
+			if (xfer->nframes == 1) {
+				/* no STATUS stage yet, SETUP is last */
+				if (xfer->flags_int.control_act) {
+					temp.last_frame = 1;
+					temp.setup_alt_next = 0;
+				}
+			}
 			ohci_setup_standard_chain_sub(&temp);
 
 			/*
@@ -1482,7 +1505,16 @@ ohci_setup_standard_chain(struct usb2_xfer *xfer, ohci_ed_t **ed_last)
 		x++;
 
 		if (x == xfer->nframes) {
-			temp.setup_alt_next = 0;
+			if (xfer->flags_int.control_xfr) {
+				/* no STATUS stage yet, DATA is last */
+				if (xfer->flags_int.control_act) {
+					temp.last_frame = 1;
+					temp.setup_alt_next = 0;
+				}
+			} else {
+				temp.last_frame = 1;
+				temp.setup_alt_next = 0;
+			}
 		}
 		if (temp.len == 0) {
 
@@ -1523,11 +1555,14 @@ ohci_setup_standard_chain(struct usb2_xfer *xfer, ohci_ed_t **ed_last)
 		temp.len = 0;
 		temp.pc = NULL;
 		temp.shortpkt = 0;
+		temp.last_frame = 1;
+		temp.setup_alt_next = 0;
 
 		ohci_setup_standard_chain_sub(&temp);
 	}
 	td = temp.td;
 
+	/* Ensure that last TD is terminating: */
 	td->td_next = htole32(OHCI_TD_NEXT_END);
 	td->td_flags &= ~htole32(OHCI_TD_INTR_MASK);
 	td->td_flags |= htole32(OHCI_TD_SET_DI(1));
@@ -2256,7 +2291,7 @@ ohci_root_ctrl_done(struct usb2_xfer *xfer,
 		USETW(sc->sc_hub_desc.stat.wStatus, 0);
 		break;
 	case C(UR_SET_ADDRESS, UT_WRITE_DEVICE):
-		if (value >= USB_MAX_DEVICES) {
+		if (value >= OHCI_MAX_DEVICES) {
 			std->err = USB_ERR_IOERROR;
 			goto done;
 		}
@@ -2529,7 +2564,7 @@ ohci_xfer_setup(struct usb2_setup_params *parm)
 
 		nitd = 0;
 		ntd = ((2 * xfer->nframes) + 1	/* STATUS */
-		    + (xfer->max_data_length / xfer->max_usb2_frame_size));
+		    + (xfer->max_data_length / xfer->max_hc_frame_size));
 		nqh = 1;
 
 	} else if (parm->methods == &ohci_device_bulk_methods) {
@@ -2539,7 +2574,7 @@ ohci_xfer_setup(struct usb2_setup_params *parm)
 
 		nitd = 0;
 		ntd = ((2 * xfer->nframes)
-		    + (xfer->max_data_length / xfer->max_usb2_frame_size));
+		    + (xfer->max_data_length / xfer->max_hc_frame_size));
 		nqh = 1;
 
 	} else if (parm->methods == &ohci_device_intr_methods) {
@@ -2549,7 +2584,7 @@ ohci_xfer_setup(struct usb2_setup_params *parm)
 
 		nitd = 0;
 		ntd = ((2 * xfer->nframes)
-		    + (xfer->max_data_length / xfer->max_usb2_frame_size));
+		    + (xfer->max_data_length / xfer->max_hc_frame_size));
 		nqh = 1;
 
 	} else if (parm->methods == &ohci_device_isoc_methods) {

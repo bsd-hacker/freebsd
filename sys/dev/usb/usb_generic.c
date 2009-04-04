@@ -24,7 +24,6 @@
  * SUCH DAMAGE.
  */
 
-#include <dev/usb/usb_defs.h>
 #include <dev/usb/usb_mfunc.h>
 #include <dev/usb/usb.h>
 #include <dev/usb/usb_ioctl.h>
@@ -47,6 +46,8 @@
 
 #include <dev/usb/usb_controller.h>
 #include <dev/usb/usb_bus.h>
+
+#if USB_HAVE_UGEN
 
 /* defines */
 
@@ -417,6 +418,8 @@ ugen_default_read_callback(struct usb2_xfer *xfer)
 
 	default:			/* Error */
 		if (xfer->error != USB_ERR_CANCELLED) {
+			/* send a zero length packet to userland */
+			usb2_fifo_put_data(f, xfer->frbuffers, 0, 0, 1);
 			f->flag_stall = 1;
 			f->fifo_zlp = 0;
 			usb2_transfer_start(f->xfer[1]);
@@ -429,7 +432,7 @@ static void
 ugen_default_write_callback(struct usb2_xfer *xfer)
 {
 	struct usb2_fifo *f = xfer->priv_sc;
-	uint32_t actlen;
+	usb2_frlength_t actlen;
 
 	DPRINTFN(4, "actlen=%u, aframes=%u\n", xfer->actlen, xfer->aframes);
 
@@ -501,8 +504,8 @@ static void
 ugen_isoc_read_callback(struct usb2_xfer *xfer)
 {
 	struct usb2_fifo *f = xfer->priv_sc;
-	uint32_t offset;
-	uint16_t n;
+	usb2_frlength_t offset;
+	usb2_frcount_t n;
 
 	DPRINTFN(4, "actlen=%u, aframes=%u\n", xfer->actlen, xfer->aframes);
 
@@ -540,9 +543,9 @@ static void
 ugen_isoc_write_callback(struct usb2_xfer *xfer)
 {
 	struct usb2_fifo *f = xfer->priv_sc;
-	uint32_t actlen;
-	uint32_t offset;
-	uint16_t n;
+	usb2_frlength_t actlen;
+	usb2_frlength_t offset;
+	usb2_frcount_t n;
 
 	DPRINTFN(4, "actlen=%u, aframes=%u\n", xfer->actlen, xfer->aframes);
 
@@ -798,12 +801,14 @@ usb2_gen_fill_deviceinfo(struct usb2_fifo *f, struct usb2_device_info *di)
 	di->udi_bus = device_get_unit(udev->bus->bdev);
 	di->udi_addr = udev->address;
 	di->udi_index = udev->device_index;
+#if USB_HAVE_STRINGS
 	strlcpy(di->udi_serial, udev->serial,
 	    sizeof(di->udi_serial));
 	strlcpy(di->udi_vendor, udev->manufacturer,
 	    sizeof(di->udi_vendor));
 	strlcpy(di->udi_product, udev->product,
 	    sizeof(di->udi_product));
+#endif
 	usb2_printBCD(di->udi_release, sizeof(di->udi_release),
 	    UGETW(udev->ddesc.bcdDevice));
 	di->udi_vendorNo = UGETW(udev->ddesc.idVendor);
@@ -1021,10 +1026,10 @@ ugen_fs_copy_in(struct usb2_fifo *f, uint8_t ep_index)
 	struct usb2_fs_endpoint fs_ep;
 	void *uaddr;			/* userland pointer */
 	void *kaddr;
-	uint32_t offset;
+	usb2_frlength_t offset;
+	usb2_frlength_t rem;
+	usb2_frcount_t n;
 	uint32_t length;
-	uint32_t n;
-	uint32_t rem;
 	int error;
 	uint8_t isread;
 
@@ -1198,21 +1203,21 @@ ugen_fs_copy_out(struct usb2_fifo *f, uint8_t ep_index)
 	struct usb2_fs_endpoint *fs_ep_uptr;	/* userland ptr */
 	void *uaddr;			/* userland ptr */
 	void *kaddr;
-	uint32_t offset;
+	usb2_frlength_t offset;
+	usb2_frlength_t rem;
+	usb2_frcount_t n;
 	uint32_t length;
 	uint32_t temp;
-	uint32_t n;
-	uint32_t rem;
 	int error;
 	uint8_t isread;
 
-	if (ep_index >= f->fs_ep_max) {
+	if (ep_index >= f->fs_ep_max)
 		return (EINVAL);
-	}
+
 	xfer = f->fs_xfer[ep_index];
-	if (xfer == NULL) {
+	if (xfer == NULL)
 		return (EINVAL);
-	}
+
 	mtx_lock(f->priv_mtx);
 	if (usb2_transfer_pending(xfer)) {
 		mtx_unlock(f->priv_mtx);
@@ -1615,10 +1620,10 @@ ugen_get_frame_size(struct usb2_fifo *f, void *addr)
 static int
 ugen_set_buffer_size(struct usb2_fifo *f, void *addr)
 {
-	uint32_t t;
+	usb2_frlength_t t;
 
-	if (*(int *)addr < 1024)
-		t = 1024;
+	if (*(int *)addr < 0)
+		t = 0;		/* use "wMaxPacketSize" */
 	else if (*(int *)addr < (256 * 1024))
 		t = *(int *)addr;
 	else
@@ -2182,3 +2187,4 @@ ugen_default_fs_callback(struct usb2_xfer *xfer)
 		break;
 	}
 }
+#endif	/* USB_HAVE_UGEN */

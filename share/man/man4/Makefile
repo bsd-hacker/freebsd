@@ -26,6 +26,7 @@ MAN=	aac.4 \
 	ale.4 \
 	altq.4 \
 	amd.4 \
+	${_amdtemp.4} \
 	${_amdsmb.4} \
 	amr.4 \
 	an.4 \
@@ -94,7 +95,6 @@ MAN=	aac.4 \
 	fd.4 \
 	fdc.4 \
 	firewire.4 \
-	fla.4 \
 	fpa.4 \
 	fwe.4 \
 	fwip.4 \
@@ -155,7 +155,6 @@ MAN=	aac.4 \
 	ixgbe.4 \
 	jme.4 \
 	joy.4 \
-	${_k8temp.4} \
 	kbdmux.4 \
 	keyboard.4 \
 	kld.4 \
@@ -421,7 +420,6 @@ MAN=	aac.4 \
 	urio.4 \
 	${_urtw.4} \
 	usb.4 \
-	uscanner.4 \
 	uslcom.4 \
 	utopia.4 \
 	uvisor.4 \
@@ -593,6 +591,7 @@ _acpi_panasonic.4=acpi_panasonic.4
 _acpi_sony.4=	acpi_sony.4
 _acpi_toshiba.4=acpi_toshiba.4
 _amdsmb.4=	amdsmb.4
+_amdtemp.4=	amdtemp.4
 _asmc.4=	asmc.4
 _coretemp.4=	coretemp.4
 _cpuctl.4=	cpuctl.4
@@ -610,7 +609,6 @@ _ipmi.4=	ipmi.4
 _io.4=		io.4
 _linux.4=	linux.4
 _ndis.4=	ndis.4
-_k8temp.4=	k8temp.4
 _nfe.4=		nfe.4
 _nfsmb.4=	nfsmb.4
 _nve.4=		nve.4

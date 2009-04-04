@@ -86,7 +86,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/usb_error.h>
 #include <dev/usb/usb_cdc.h>
 #include <dev/usb/usb_ioctl.h>
-#include <dev/usb/usb_defs.h>
 
 #define	USB_DEBUG_VAR umodem_debug
 
@@ -769,7 +768,7 @@ umodem_set_comm_feature(struct usb2_device *udev, uint8_t iface_no,
 	USETW(req.wLength, UCDC_ABSTRACT_STATE_LENGTH);
 	USETW(ast.wState, state);
 
-	return (usb2_do_request(udev, &Giant, &req, &ast));
+	return (usb2_do_request(udev, NULL, &req, &ast));
 }
 
 static int

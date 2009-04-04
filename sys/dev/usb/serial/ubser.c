@@ -80,7 +80,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/usb_mfunc.h>
 #include <dev/usb/usb_error.h>
 #include <dev/usb/usb_cdc.h>
-#include <dev/usb/usb_defs.h>
 
 #define	USB_DEBUG_VAR ubser_debug
 
@@ -244,8 +243,8 @@ ubser_attach(device_t dev)
 	req.wIndex[0] = sc->sc_iface_no;
 	req.wIndex[1] = 0;
 	USETW(req.wLength, 1);
-	error = usb2_do_request_flags
-	    (uaa->device, &Giant, &req, &sc->sc_numser,
+	error = usb2_do_request_flags(uaa->device, NULL,
+	    &req, &sc->sc_numser,
 	    0, NULL, USB_DEFAULT_TIMEOUT);
 
 	if (error || (sc->sc_numser == 0)) {
