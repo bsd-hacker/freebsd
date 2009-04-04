@@ -27,7 +27,7 @@
  * $FreeBSD$
  *
  */
-#ifndef _SYS_ALQ_H_
+#ifndef	_SYS_ALQ_H_
 #define	_SYS_ALQ_H_
 
 /*
@@ -49,7 +49,7 @@ struct ale {
 /* flags options */
 #define	ALQ_NOWAIT	0x0001
 #define	ALQ_WAITOK	0x0002
-#define ALQ_NOACTIVATE	0x0004
+#define	ALQ_NOACTIVATE	0x0004
 
 /* Suggested mode for file creation. */
 #define	ALQ_DEFAULT_CMODE	0600
