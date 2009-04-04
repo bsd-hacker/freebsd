@@ -42,13 +42,9 @@ extern struct thread *ald_thread;
  * Async. Logging Entry
  */
 struct ale {
-	//struct ale	*ae_next;	/* Next Entry */
 	char		*ae_data;	/* Entry buffer */
 	int		ae_datalen;	/* Length of buffer */
-	//int		ae_flags;	/* Entry flags */
 };
-
-//#define	AE_VALID	0x0001		/* Entry has valid data */
 
 /* flags options */
 #define	ALQ_NOWAIT	0x0001
@@ -66,7 +62,8 @@ struct ale {
  *	file	The filename to open for logging.
  *	cred	Credential to authorize open and I/O with.
  *	cmode	Creation mode for file, if new.
- *	size	The size of each entry in the queue.
+ *	size	The size of each entry in the queue, or the size of the queue
+ *		itself in bytes if count=0 (variable length queues).
  *	count	The number of items in the buffer, this should be large enough
  *		to store items over the period of a disk write.
  * Returns:
