@@ -351,15 +351,17 @@ i8251_set_icr(struct uart_bas *bas, u_int8_t icr)
 static void
 i8251_clrint(struct uart_bas *bas)
 {
-	u_int8_t iir;
+	u_int8_t iir, lsr;
 
 	if (GET_SUBTYPE(bas) & COM_SUB_I8251F) {
 		iir = uart_getreg(bas, serf_iir);
 		while ((iir & IIR_NOPEND) == 0) {
 			iir &= IIR_IMASK;
-			if (iir == IIR_RLS)
-				(void)uart_getreg(bas, serf_lsr);
-			else if (iir == IIR_RXRDY || iir == IIR_RXTOUT)
+			if (iir == IIR_RLS) {
+				lsr = uart_getreg(bas, serf_lsr);
+				if (lsr & (FLSR_BI | FLSR_PE))
+					(void)uart_getreg(bas, serf_data);
+			} else if (iir == IIR_RXRDY || iir == IIR_RXTOUT)
 				(void)uart_getreg(bas, serf_data);
 			else if (iir == IIR_MLSC)
 				(void)uart_getreg(bas, serf_msr);
@@ -1052,7 +1054,8 @@ i8251_bus_ipend(struct uart_softc *sc)
 		if ((lsr & STS8251_TxRDY) && sc->sc_txbusy)
 			ipend |= SER_INT_TXIDLE;
 	}
-
+	if (ipend == 0)
+		i8251_clrint(bas);
 	uart_unlock(sc->sc_hwmtx);
 
 	return ((sc->sc_leaving) ? 0 : ipend);
