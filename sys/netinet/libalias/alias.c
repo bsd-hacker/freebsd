@@ -1346,7 +1346,7 @@ LibAliasInLocked(struct libalias *la, pkt_t ptr, int maxpacketsize)
 			break;
 #ifdef _KERNEL
 		case IPPROTO_SCTP:
-		  iresult = SctpAlias(la, pip, SN_TO_LOCAL);
+		  iresult = SctpAlias(la, ptr, SN_TO_LOCAL);
 			break;
 #endif
  		case IPPROTO_GRE: {
@@ -1497,7 +1497,7 @@ LibAliasOutLocked(struct libalias *la, pkt_t ptr,	/* valid IP packet */
 			break;
 #ifdef _KERNEL
 		case IPPROTO_SCTP:
-		  iresult = SctpAlias(la, pip, SN_TO_GLOBAL);
+		  iresult = SctpAlias(la, ptr, SN_TO_GLOBAL);
 			break;
 #endif
 		case IPPROTO_GRE: {

@@ -230,7 +230,9 @@ struct libalias {
  */
 void AliasSctpInit(struct libalias *la);
 void AliasSctpTerm(struct libalias *la);
-int SctpAlias(struct libalias *la, struct ip *ip, int direction);
+#ifdef _KERNEL
+int SctpAlias(struct libalias *la, struct mbuf **ptr, int direction);
+#endif
 
 /*
  * We do not calculate TCP checksums when libalias is a kernel

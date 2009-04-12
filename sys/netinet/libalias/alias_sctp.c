@@ -78,6 +78,7 @@
 #include <machine/stdarg.h>
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/mbuf.h>
 #include <sys/kernel.h>
 #include <sys/module.h>
 #include <sys/syslog.h>
@@ -100,7 +101,7 @@
  * ----------------------------------------------------------------------
  */
 /* Packet Parsing Functions */
-static int sctp_PktParser(struct libalias *la, int direction, struct ip *pip,
+static int sctp_PktParser(struct libalias *la, int direction, pkt_t ptr,
     struct sctp_nat_msg *sm, struct sctp_nat_assoc **passoc);
 static int GetAsconfVtags(struct libalias *la, struct sctp_nat_msg *sm,
     uint32_t *l_vtag, uint32_t *g_vtag, int direction);
@@ -705,15 +706,16 @@ void AliasSctpTerm(struct libalias *la)
  * - Return the appropriate result to libalias
  *
  * @param la Pointer to the relevant libalias instance
- * @param pip Pointer to IP packet to process
+ * @param ptr Pointer to IP packet to process
  * @param direction SN_TO_LOCAL | SN_TO_GLOBAL
  * 
  * @return  PKT_ALIAS_OK | PKT_ALIAS_IGNORE | PKT_ALIAS_ERROR
  */
 int
-SctpAlias(struct libalias *la, struct ip *pip, int direction)
+SctpAlias(struct libalias *la, pkt_t ptr, int direction)
 {
 	int rtnval;
+	struct ip *pip;
 	struct sctp_nat_msg msg;
 	struct sctp_nat_assoc *assoc = NULL;
 
@@ -725,7 +727,8 @@ SctpAlias(struct libalias *la, struct ip *pip, int direction)
 	sctp_CheckTimers(la); /* Check timers */ 
 
 	/* Parse the packet */
-	rtnval = sctp_PktParser(la, direction, pip, &msg, &assoc); //using *char (change to mbuf when get code from paolo)
+	rtnval = sctp_PktParser(la, direction, ptr, &msg, &assoc); 
+	PULLUP_IPHDR(pip, ptr);
 	switch (rtnval) {
 	case SN_PARSE_OK:
 		break;
@@ -1011,17 +1014,17 @@ TxAbortErrorM(struct libalias *la, struct sctp_nat_msg *sm, struct sctp_nat_asso
  *
  * @param la Pointer to the relevant libalias instance
  * @param direction SN_TO_LOCAL | SN_TO_GLOBAL 
- * @param pip 
+ * @param ptr 
  * @param sm Pointer to sctp message information
  * @param passoc Pointer to the association this SCTP Message belongs to
  * 
  * @return SN_PARSE_OK | SN_PARSE_ERROR_*
  */
 static int
-sctp_PktParser(struct libalias *la, int direction, struct ip *pip,
+sctp_PktParser(struct libalias *la, int direction, pkt_t ptr,
     struct sctp_nat_msg *sm, struct sctp_nat_assoc **passoc)
-//sctp_PktParser(int direction, struct mbuf *ipak, int ip_hdr_len,struct sctp_nat_msg *sm, struct sctp_nat_assoc *assoc)
 {
+	struct ip *pip;
 	struct sctphdr *sctp_hdr;
 	struct sctp_chunkhdr *chunk_hdr;
 	struct sctp_paramhdr *param_hdr;
@@ -1041,7 +1044,7 @@ sctp_PktParser(struct libalias *la, int direction, struct ip *pip,
 	 * Also, I am only interested in the content of INIT and ADDIP chunks
 	 */
 
-	// no mbuf stuff from Paolo yet so ...
+        PULLUP_SCTPHDR(pip, ptr);
 	sm->ip_hdr = pip;
 	/* remove ip header length from the bytes_left */
 	bytes_left = ntohs(pip->ip_len) - (pip->ip_hl << 2);

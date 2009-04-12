@@ -128,6 +128,11 @@ typedef struct mbuf ** pkt_t;
             (ic->icmp_ip.ip_hl << 2) - sizeof(struct ip) + 8;   \
         PULLUP_SIZE(pip, ptr, s);               \
 } while (0)
+
+#define PULLUP_SCTPHDR(pip, ptr) do {           \
+        pip = mtod(*ptr, struct ip *);                          \
+        PULLUP_SIZE(pip, ptr, (pip->ip_hl << 2) + sizeof(struct sctphdr)); \
+} while (0)
 #else
 typedef char * pkt_t;
 
@@ -136,6 +141,7 @@ typedef char * pkt_t;
 #define PULLUP_TCPHDR(pip, ptr) pip = (struct ip *)ptr
 #define PULLUP_ICMPHDR(pip, ptr) pip = (struct ip *)ptr
 #define PULLUP_ICMPIP64HDR(pip, ptr) pip = (struct ip *)ptr
+#define PULLUP_SCTPHDR(pip, ptr) pip = (struct ip *)ptr
 #endif
 
 /* Initialization and control functions. */
