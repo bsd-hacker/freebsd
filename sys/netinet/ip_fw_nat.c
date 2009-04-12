@@ -249,18 +249,16 @@ bad:
 static int
 ipfw_nat(struct ip_fw_args *args, struct cfg_nat *t, struct mbuf *m)
 {
-	struct mbuf *mcl;
 	struct ip *ip;
 	/* XXX - libalias duct tape */
 	int ldt, retval;
-	char *c;
 
 	ldt = 0;
 	retval = 0;
-	if ((mcl = m_megapullup(m, m->m_pkthdr.len)) ==
+	if ((m = m_pullup(m, sizeof(struct ip))) ==
 	    NULL)
 		goto badnat;
-	ip = mtod(mcl, struct ip *);
+	ip = mtod(m, struct ip *);
 	if (args->eh == NULL) {
 		ip->ip_len = htons(ip->ip_len);
 		ip->ip_off = htons(ip->ip_off);
@@ -314,32 +312,28 @@ ipfw_nat(struct ip_fw_args *args, struct cfg_nat *t, struct mbuf *m)
 	 * it can handle delayed checksum and tso)
 	 */
 
-	if (mcl->m_pkthdr.rcvif == NULL && 
-	    mcl->m_pkthdr.csum_flags & 
+	if (m->m_pkthdr.rcvif == NULL && 
+	    m->m_pkthdr.csum_flags & 
 	    CSUM_DELAY_DATA)
 		ldt = 1;
 
-	c = mtod(mcl, char *);
 	if (args->oif == NULL)
-		retval = LibAliasIn(t->lib, c, 
-			mcl->m_len + M_TRAILINGSPACE(mcl));
+		retval = LibAliasIn(t->lib, &m, IP_MAXPACKET);
 	else
-		retval = LibAliasOut(t->lib, c, 
-			mcl->m_len + M_TRAILINGSPACE(mcl));
+		retval = LibAliasOut(t->lib, &m, IP_MAXPACKET);
 	if (retval == PKT_ALIAS_RESPOND) {
 	  m->m_flags |= M_SKIP_FIREWALL;
 	  retval = PKT_ALIAS_OK;
 	}
-	if (retval != PKT_ALIAS_OK &&
-	    retval != PKT_ALIAS_FOUND_HEADER_FRAGMENT) {
-		/* XXX - should i add some logging? */
-		m_free(mcl);
+	if (retval != PKT_ALIAS_OK) {
+		m_free(m);
 	badnat:
 		args->m = NULL;
 		return (IP_FW_DENY);
 	}
-	mcl->m_pkthdr.len = mcl->m_len = 
-	    ntohs(ip->ip_len);
+	m = m_pullup(m, sizeof(struct ip));
+	ip = mtod(m, struct ip *);
+	m->m_pkthdr.len = ntohs(ip->ip_len);
 
 	/* 
 	 * XXX - libalias checksum offload 
@@ -350,6 +344,10 @@ ipfw_nat(struct ip_fw_args *args, struct cfg_nat *t, struct mbuf *m)
 	    ip->ip_p == IPPROTO_TCP) {
 		struct tcphdr 	*th; 
 
+		if ((m = m_pullup(m, (ip->ip_hl << 2) +
+			sizeof(struct tcphdr))) == NULL)
+			goto badnat;
+		ip = mtod(m, struct ip *);
 		th = (struct tcphdr *)(ip + 1);
 		if (th->th_x2) 
 			ldt = 1;
@@ -369,6 +367,9 @@ ipfw_nat(struct ip_fw_args *args, struct cfg_nat *t, struct mbuf *m)
 					
 		switch (ip->ip_p) {
 		case IPPROTO_TCP:
+			if ((m = m_pullup(m, (ip->ip_hl << 2) + sizeof(struct tcphdr))) == NULL)
+				goto badnat;
+			ip = mtod(m, struct ip *);
 			th = (struct tcphdr *)(ip + 1);
 			/* 
 			 * Maybe it was set in 
@@ -376,13 +377,16 @@ ipfw_nat(struct ip_fw_args *args, struct cfg_nat *t, struct mbuf *m)
 			 */
 			th->th_x2 = 0;
 			th->th_sum = cksum;
-			mcl->m_pkthdr.csum_data = 
+			m->m_pkthdr.csum_data = 
 			    offsetof(struct tcphdr, th_sum);
 			break;
 		case IPPROTO_UDP:
+			if ((m = m_pullup(m, (ip->ip_hl << 2) + sizeof(struct udphdr))) == NULL)
+				goto badnat;
+			ip = mtod(m, struct ip *);
 			uh = (struct udphdr *)(ip + 1);
 			uh->uh_sum = cksum;
-			mcl->m_pkthdr.csum_data = 
+			m->m_pkthdr.csum_data = 
 			    offsetof(struct udphdr, uh_sum);
 			break;						
 		}
@@ -390,10 +394,10 @@ ipfw_nat(struct ip_fw_args *args, struct cfg_nat *t, struct mbuf *m)
 		 * No hw checksum offloading: do it 
 		 * by ourself. 
 		 */
-		if ((mcl->m_pkthdr.csum_flags & 
+		if ((m->m_pkthdr.csum_flags & 
 		     CSUM_DELAY_DATA) == 0) {
-			in_delayed_cksum(mcl);
-			mcl->m_pkthdr.csum_flags &= 
+			in_delayed_cksum(m);
+			m->m_pkthdr.csum_flags &= 
 			    ~CSUM_DELAY_DATA;
 		}
 		ip->ip_len = htons(ip->ip_len);
@@ -404,7 +408,7 @@ ipfw_nat(struct ip_fw_args *args, struct cfg_nat *t, struct mbuf *m)
 		ip->ip_off = ntohs(ip->ip_off);
 	}
 
-	args->m = mcl;
+	args->m = m;
 	return (IP_FW_NAT);
 }
 

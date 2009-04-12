@@ -675,7 +675,6 @@ ng_nat_rcvdata(hook_p hook, item_p item )
 	struct mbuf	*m;
 	struct ip	*ip;
 	int rval, error = 0;
-	char *c;
 
 	/* We have no required hooks. */
 	if (!(priv->flags & NGNAT_CONNECTED)) {
@@ -689,7 +688,8 @@ ng_nat_rcvdata(hook_p hook, item_p item )
 
 	m = NGI_M(item);
 
-	if ((m = m_megapullup(m, m->m_pkthdr.len)) == NULL) {
+	m = m_pullup(m, sizeof(struct ip));
+	if (m == NULL) {
 		NGI_M(item) = NULL;	/* avoid double free */
 		NG_FREE_ITEM(item);
 		return (ENOBUFS);
@@ -697,21 +697,19 @@ ng_nat_rcvdata(hook_p hook, item_p item )
 
 	NGI_M(item) = m;
 
-	c = mtod(m, char *);
 	ip = mtod(m, struct ip *);
 
 	KASSERT(m->m_pkthdr.len == ntohs(ip->ip_len),
 	    ("ng_nat: ip_len != m_pkthdr.len"));
 
 	if (hook == priv->in) {
-		rval = LibAliasIn(priv->lib, c, m->m_len + M_TRAILINGSPACE(m));
-		if (rval != PKT_ALIAS_OK &&
-		    rval != PKT_ALIAS_FOUND_HEADER_FRAGMENT) {
+		rval = LibAliasIn(priv->lib, &m, IP_MAXPACKET);
+		if (rval != PKT_ALIAS_OK) {
 			NG_FREE_ITEM(item);
 			return (EINVAL);
 		}
 	} else if (hook == priv->out) {
-		rval = LibAliasOut(priv->lib, c, m->m_len + M_TRAILINGSPACE(m));
+		rval = LibAliasOut(priv->lib, &m, IP_MAXPACKET);
 		if (rval != PKT_ALIAS_OK) {
 			NG_FREE_ITEM(item);
 			return (EINVAL);
@@ -719,7 +717,16 @@ ng_nat_rcvdata(hook_p hook, item_p item )
 	} else
 		panic("ng_nat: unknown hook!\n");
 
-	m->m_pkthdr.len = m->m_len = ntohs(ip->ip_len);
+	if ((m = m_pullup(m, sizeof(struct ip))) == NULL) {
+		NGI_M(item) = NULL;     /* avoid double free */
+		NG_FREE_ITEM(item);
+		return (ENOBUFS);
+	}
+
+	NGI_M(item) = m;
+
+	ip = mtod(m, struct ip *);
+	m->m_pkthdr.len = ntohs(ip->ip_len);
 
 	if ((ip->ip_off & htons(IP_OFFMASK)) == 0 &&
 	    ip->ip_p == IPPROTO_TCP) {

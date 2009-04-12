@@ -81,6 +81,63 @@ struct libalias;
  */
 struct alias_link;
 
+#ifdef _KERNEL
+typedef struct mbuf ** pkt_t;
+
+#define _MTOD(p, foo) (p != NULL) ? mtod(p, foo) : NULL
+
+#define PULLUP_SIZE(pip, ptr, s) do {           \
+	*ptr = m_pullup((*ptr), s);     	\
+        (pip) = _MTOD(*ptr, struct ip *);       \
+} while (0)
+
+#define PULLUP_IPHDR(pip, ptr) do {			                \
+        PULLUP_SIZE(pip, ptr, sizeof(struct ip));                       \
+        if (pip != NULL && ((pip->ip_hl << 2) > sizeof(struct ip)))     \
+                PULLUP_SIZE(pip, ptr, (pip->ip_hl << 2));               \
+} while (0)
+
+#define PULLUP_UDPHDR(pip, ptr) do {					\
+		pip = mtod(*ptr, struct ip *);				\
+		PULLUP_SIZE(pip, ptr, (pip->ip_hl << 2) + sizeof(struct udphdr)); \
+	} while (0)
+
+#define PULLUP_TCPHDR(pip, ptr) do {            \
+        struct tcphdr *th;                      \
+        pip = mtod(*ptr, struct ip *);          \
+        PULLUP_SIZE(pip, ptr, (pip->ip_hl << 2) + sizeof(struct tcphdr)); \
+        if (pip != NULL) { \
+                th = (struct tcphdr *)&(((char *)pip)[pip->ip_hl << 2]);  \
+                if ((th->th_off << 2) > sizeof(struct tcphdr)) \
+                        PULLUP_SIZE(pip, ptr, ((pip->ip_hl + th->th_off) << \
+                           2)); \
+        } \
+} while (0)
+
+#define PULLUP_ICMPHDR(pip, ptr) do {           \
+	pip = mtod(*ptr, struct ip *);				\
+        PULLUP_SIZE(pip, ptr, (pip->ip_hl << 2) + sizeof(struct icmp)); \
+} while (0)
+
+#define PULLUP_ICMPIP64HDR(pip, ptr) do {      \
+	int s;				\
+	struct icmp *ic;			\
+        pip = mtod(*ptr, struct ip *);          \
+	ic = (struct icmp *)&(((char *)pip)[pip->ip_hl << 2]); \
+        s = (pip->ip_hl << 2) + sizeof(struct icmp) +   \
+            (ic->icmp_ip.ip_hl << 2) - sizeof(struct ip) + 8;   \
+        PULLUP_SIZE(pip, ptr, s);               \
+} while (0)
+#else
+typedef char * pkt_t;
+
+#define PULLUP_IPHDR(pip, ptr) pip = (struct ip *)ptr
+#define PULLUP_UDPHDR(pip, ptr) pip = (struct ip *)ptr
+#define PULLUP_TCPHDR(pip, ptr) pip = (struct ip *)ptr
+#define PULLUP_ICMPHDR(pip, ptr) pip = (struct ip *)ptr
+#define PULLUP_ICMPIP64HDR(pip, ptr) pip = (struct ip *)ptr
+#endif
+
 /* Initialization and control functions. */
 struct libalias *LibAliasInit(struct libalias *);
 void		LibAliasSetAddress(struct libalias *, struct in_addr _addr);
@@ -91,10 +148,19 @@ unsigned int
 void		LibAliasUninit(struct libalias *);
 
 /* Packet Handling functions. */
+#ifdef _KERNEL
+int		LibAliasIn (struct libalias *, struct mbuf **_ptr, int _maxpacketsize);
+int		LibAliasOut(struct libalias *, struct mbuf **_ptr, int _maxpacketsize);
+int		LibAliasOutTry(struct libalias *, struct mbuf **_ptr, 
+    int _maxpacketsize, int _create);
+int		LibAliasUnaliasOut(struct libalias *, struct mbuf **_ptr, 
+    int _maxpacketsize);
+#else
 int		LibAliasIn (struct libalias *, char *_ptr, int _maxpacketsize);
 int		LibAliasOut(struct libalias *, char *_ptr, int _maxpacketsize);
 int		LibAliasOutTry(struct libalias *, char *_ptr, int _maxpacketsize, int _create);
 int		LibAliasUnaliasOut(struct libalias *, char *_ptr, int _maxpacketsize);
+#endif
 
 /* Port and address redirection functions. */
 
