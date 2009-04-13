@@ -41,7 +41,7 @@
 #include <dev/usb/usb_controller.h>
 #include <dev/usb/usb_bus.h>
 
-/* function prototypes */
+/* function prototypes  */
 
 static device_probe_t usb2_probe;
 static device_attach_t usb2_attach;
@@ -49,7 +49,6 @@ static device_detach_t usb2_detach;
 
 static void	usb2_attach_sub(device_t, struct usb2_bus *);
 static void	usb2_post_init(void *);
-static void	usb2_bus_roothub(struct usb2_proc_msg *pm);
 
 /* static variables */
 
@@ -115,7 +114,7 @@ usb2_attach(device_t dev)
 	}
 
 	/* delay vfs_mountroot until the bus is explored */
-	bus->bus_roothold = root_mount_hold(device_get_nameunit(dev), M_WAITOK);
+	bus->bus_roothold = root_mount_hold(device_get_nameunit(dev));
 
 	if (usb2_post_init_called) {
 		mtx_lock(&Giant);
@@ -166,10 +165,6 @@ usb2_detach(device_t dev)
 	usb2_proc_free(&bus->giant_callback_proc);
 	usb2_proc_free(&bus->non_giant_callback_proc);
 
-	/* Get rid of USB roothub process */
-
-	usb2_proc_free(&bus->roothub_proc);
-
 	/* Get rid of USB explore process */
 
 	usb2_proc_free(&bus->explore_proc);
@@ -209,7 +204,6 @@ usb2_bus_explore(struct usb2_proc_msg *pm)
 		 * First update the USB power state!
 		 */
 		usb2_bus_powerd(bus);
-
 		/*
 		 * Explore the Root USB HUB. This call can sleep,
 		 * exiting Giant, which is actually Giant.
@@ -254,8 +248,8 @@ usb2_bus_detach(struct usb2_proc_msg *pm)
 	 * Free USB Root device, but not any sub-devices, hence they
 	 * are freed by the caller of this function:
 	 */
-	usb2_detach_device(udev, USB_IFACE_INDEX_ANY, 0);
-	usb2_free_device(udev);
+	usb2_free_device(udev,
+	    USB_UNCFG_FLAG_FREE_EP0);
 
 	mtx_unlock(&Giant);
 	USB_BUS_LOCK(bus);
@@ -277,7 +271,7 @@ usb2_power_wdog(void *arg)
 
 	usb2_bus_power_update(bus);
 
-	return;
+	USB_BUS_LOCK(bus);
 }
 
 /*------------------------------------------------------------------------*
@@ -328,6 +322,20 @@ usb2_bus_attach(struct usb2_proc_msg *pm)
 	USB_BUS_UNLOCK(bus);
 	mtx_lock(&Giant);		/* XXX not required by USB */
 
+	/* default power_mask value */
+	bus->hw_power_state =
+	  USB_HW_POWER_CONTROL |
+	  USB_HW_POWER_BULK |
+	  USB_HW_POWER_INTERRUPT |
+	  USB_HW_POWER_ISOC |
+	  USB_HW_POWER_NON_ROOT_HUB;
+
+	/* make sure power is set at least once */
+
+	if (bus->methods->set_hw_power != NULL) {
+		(bus->methods->set_hw_power) (bus);
+	}
+
 	/* Allocate the Root USB device */
 
 	child = usb2_alloc_device(bus->bdev, bus, NULL, 0, 0, 1,
@@ -356,11 +364,8 @@ usb2_bus_attach(struct usb2_proc_msg *pm)
 	/* set softc - we are ready */
 	device_set_softc(dev, bus);
 
-	/* start watchdog - this function will unlock the BUS lock ! */
+	/* start watchdog */
 	usb2_power_wdog(bus);
-
-	/* need to return locked */
-	USB_BUS_LOCK(bus);
 }
 
 /*------------------------------------------------------------------------*
@@ -393,12 +398,7 @@ usb2_attach_sub(device_t dev, struct usb2_bus *bus)
 	bus->attach_msg[1].hdr.pm_callback = &usb2_bus_attach;
 	bus->attach_msg[1].bus = bus;
 
-	bus->roothub_msg[0].hdr.pm_callback = &usb2_bus_roothub;
-	bus->roothub_msg[0].bus = bus;
-	bus->roothub_msg[1].hdr.pm_callback = &usb2_bus_roothub;
-	bus->roothub_msg[1].bus = bus;
-
-	/* Create USB explore, roothub and callback processes */
+	/* Create USB explore and callback processes */
 
 	if (usb2_proc_create(&bus->giant_callback_proc,
 	    &bus->bus_mtx, pname, USB_PRI_MED)) {
@@ -408,10 +408,6 @@ usb2_attach_sub(device_t dev, struct usb2_bus *bus)
 	    &bus->bus_mtx, pname, USB_PRI_HIGH)) {
 		printf("WARNING: Creation of USB non-Giant "
 		    "callback process failed.\n");
-	} else if (usb2_proc_create(&bus->roothub_proc,
-	    &bus->bus_mtx, pname, USB_PRI_HIGH)) {
-		printf("WARNING: Creation of USB roothub "
-		    "process failed.\n");
 	} else if (usb2_proc_create(&bus->explore_proc,
 	    &bus->bus_mtx, pname, USB_PRI_MED)) {
 		printf("WARNING: Creation of USB explore "
@@ -534,7 +530,7 @@ usb2_bus_mem_alloc_all(struct usb2_bus *bus, bus_dma_tag_t dmat,
 	    NULL, MTX_DEF | MTX_RECURSE);
 
 	usb2_callout_init_mtx(&bus->power_wdog,
-	    &bus->bus_mtx, CALLOUT_RETURNUNLOCKED);
+	    &bus->bus_mtx, 0);
 
 	TAILQ_INIT(&bus->intr_q.head);
 
@@ -586,39 +582,4 @@ usb2_bus_mem_free_all(struct usb2_bus *bus, usb2_bus_mem_cb_t *cb)
 #endif
 
 	mtx_destroy(&bus->bus_mtx);
-}
-
-/*------------------------------------------------------------------------*
- *	usb2_bus_roothub
- *
- * This function is used to execute roothub control requests on the
- * roothub and is called from the roothub process.
- *------------------------------------------------------------------------*/
-static void
-usb2_bus_roothub(struct usb2_proc_msg *pm)
-{
-	struct usb2_bus *bus;
-
-	bus = ((struct usb2_bus_msg *)pm)->bus;
-
-	USB_BUS_LOCK_ASSERT(bus, MA_OWNED);
-
-	(bus->methods->roothub_exec) (bus);
-}
-
-/*------------------------------------------------------------------------*
- *	usb2_bus_roothub_exec
- *
- * This function is used to schedule the "roothub_done" bus callback
- * method. The bus lock must be locked when calling this function.
- *------------------------------------------------------------------------*/
-void
-usb2_bus_roothub_exec(struct usb2_bus *bus)
-{
-	USB_BUS_LOCK_ASSERT(bus, MA_OWNED);
-
-	if (usb2_proc_msignal(&bus->roothub_proc,
-	    &bus->roothub_msg[0], &bus->roothub_msg[1])) {
-		/* ignore */
-	}
 }

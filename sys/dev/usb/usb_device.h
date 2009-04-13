@@ -32,6 +32,18 @@ struct usb_device;		/* linux compat */
 
 #define	USB_DEFAULT_XFER_MAX 2
 
+/* "usb2_parse_config()" commands */
+
+#define	USB_CFG_ALLOC 0
+#define	USB_CFG_FREE 1
+#define	USB_CFG_INIT 2
+
+/* "usb2_unconfigure()" flags */
+
+#define	USB_UNCFG_FLAG_NONE 0x00
+#define	USB_UNCFG_FLAG_FREE_SUBDEV 0x01		/* subdevices are freed */
+#define	USB_UNCFG_FLAG_FREE_EP0	0x02		/* endpoint zero is freed */
+
 struct usb2_clear_stall_msg {
 	struct usb2_proc_msg hdr;
 	struct usb2_device *udev;
@@ -44,7 +56,6 @@ struct usb2_clear_stall_msg {
 struct usb2_pipe {
 	struct usb2_xfer_queue pipe_q;	/* queue of USB transfers */
 
-	struct usb2_xfer *xfer_block;	/* blocking USB transfer */
 	struct usb2_endpoint_descriptor *edesc;
 	struct usb2_pipe_methods *methods;	/* set by HC driver */
 
@@ -79,7 +90,6 @@ struct usb2_device_flags {
 					 * strings */
 	uint8_t	remote_wakeup:1;	/* set if remote wakeup is enabled */
 	uint8_t	uq_bus_powered:1;	/* set if BUS powered quirk is present */
-	uint8_t	uq_power_claim:1;	/* set if power claim quirk is present */
 };
 
 /*
@@ -104,12 +114,10 @@ struct usb2_device {
 	struct sx default_sx[2];
 	struct mtx default_mtx[1];
 	struct cv default_cv[2];
-	struct usb2_interface ifaces[USB_IFACE_MAX];
+	struct usb2_interface *ifaces;
 	struct usb2_pipe default_pipe;	/* Control Endpoint 0 */
-	struct cdev *default_dev;	/* Control Endpoint 0 device node */
-	struct usb2_pipe pipes[USB_EP_MAX];
+	struct usb2_pipe *pipes;
 	struct usb2_power_save pwr_save;/* power save data */
-
 	struct usb2_bus *bus;		/* our USB BUS */
 	device_t parent_dev;		/* parent device */
 	struct usb2_device *parent_hub;
@@ -124,6 +132,7 @@ struct usb2_device {
 #if USB_HAVE_UGEN
 	struct usb2_fifo *fifo[USB_FIFO_MAX];
 	struct usb2_symlink *ugen_symlink;	/* our generic symlink */
+	struct cdev *default_dev;	/* Control Endpoint 0 device node */
 	LIST_HEAD(,usb2_fs_privdata) pd_list;
 	char	ugen_name[20];		/* name of ugenX.X device */
 #endif
@@ -147,6 +156,8 @@ struct usb2_device {
 	uint8_t	hs_port_no;		/* high-speed HUB port number */
 	uint8_t	driver_added_refcount;	/* our driver added generation count */
 	uint8_t	power_mode;		/* see USB_POWER_XXX */
+	uint8_t ifaces_max;		/* number of interfaces present */
+	uint8_t pipes_max;		/* number of pipes present */
 
 	/* the "flags" field is write-protected by "bus->mtx" */
 
@@ -185,10 +196,8 @@ usb2_error_t	usb2_set_endpoint_stall(struct usb2_device *udev,
 		    struct usb2_pipe *pipe, uint8_t do_stall);
 usb2_error_t	usb2_suspend_resume(struct usb2_device *udev,
 		    uint8_t do_suspend);
-void	usb2_detach_device(struct usb2_device *udev, uint8_t iface_index,
-	    uint8_t free_subdev);
 void	usb2_devinfo(struct usb2_device *udev, char *dst_ptr, uint16_t dst_len);
-void	usb2_free_device(struct usb2_device *udev);
+void	usb2_free_device(struct usb2_device *, uint8_t);
 void	*usb2_find_descriptor(struct usb2_device *udev, void *id,
 	    uint8_t iface_index, uint8_t type, uint8_t type_mask,
 	    uint8_t subtype, uint8_t subtype_mask);

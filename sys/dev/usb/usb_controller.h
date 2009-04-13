@@ -31,7 +31,7 @@
 
 #define	USB_BUS_DMA_TAG_MAX 8
 
-/* structure prototypes */
+/* structure prototypes  */
 
 struct usb2_bus;
 struct usb2_page;
@@ -108,20 +108,15 @@ struct usb2_pipe_methods {
 
 	/* Mandatory USB Device and Host mode callbacks: */
 
-	void    (*open) (struct usb2_xfer *xfer);
-	void    (*close) (struct usb2_xfer *xfer);
+	usb2_callback_t *open;
+	usb2_callback_t *close;
 
-	void    (*enter) (struct usb2_xfer *xfer);
-	void    (*start) (struct usb2_xfer *xfer);
+	usb2_callback_t *enter;
+	usb2_callback_t *start;
 
 	/* Optional */
 
 	void   *info;
-
-	/* Flags */
-
-	uint8_t	enter_is_cancelable:1;
-	uint8_t	start_is_cancelable:1;
 };
 
 /*
@@ -190,7 +185,6 @@ struct usb2_temp_setup {
 void	usb2_bus_mem_flush_all(struct usb2_bus *bus, usb2_bus_mem_cb_t *cb);
 uint8_t	usb2_bus_mem_alloc_all(struct usb2_bus *bus, bus_dma_tag_t dmat, usb2_bus_mem_cb_t *cb);
 void	usb2_bus_mem_free_all(struct usb2_bus *bus, usb2_bus_mem_cb_t *cb);
-void	usb2_bus_roothub_exec(struct usb2_bus *bus);
 uint16_t usb2_isoc_time_expand(struct usb2_bus *bus, uint16_t isoc_time_curr);
 uint16_t usb2_fs_isoc_schedule_isoc_time_expand(struct usb2_device *udev, struct usb2_fs_isoc_schedule **pp_start, struct usb2_fs_isoc_schedule **pp_end, uint16_t isoc_time);
 uint8_t	usb2_fs_isoc_schedule_alloc(struct usb2_fs_isoc_schedule *fss, uint8_t *pstart, uint16_t len);

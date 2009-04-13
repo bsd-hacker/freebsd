@@ -25,8 +25,7 @@
  */
 
 /*
- * Including this file is mandatory for all USB related c-files in the
- * kernel.
+ * Including this file is mandatory for all USB related c-files in the kernel.
  */
 
 #ifndef _USB2_CORE_H_
@@ -110,6 +109,30 @@
  */
 #ifndef USB_DEBUG
 #define	USB_DEBUG 1
+#endif
+
+/*
+ * The following macro defines if USB transaction translator support
+ * shall be supported for the USB HUB and USB controller drivers.
+ */
+#ifndef	USB_HAVE_TT_SUPPORT
+#define	USB_HAVE_TT_SUPPORT 1
+#endif
+
+/*
+ * The following macro defines if the USB power daemon shall
+ * be supported in the USB core.
+ */
+#ifndef	USB_HAVE_POWERD
+#define	USB_HAVE_POWERD 1
+#endif
+
+/*
+ * The following macro defines if the USB autoinstall detection shall
+ * be supported in the USB core.
+ */
+#ifndef USB_HAVE_MSCTEST
+#define	USB_HAVE_MSCTEST 1
 #endif
 
 #ifndef USB_TD_GET_PROC
@@ -277,7 +300,7 @@ typedef uint32_t usb2_ticks_t;		/* system defined */
 #endif
 
 #ifndef USB_HAVE_POWER_MASK_T
-typedef uint32_t usb2_power_mask_t;	/* see "USB_HW_POWER_XXX" */
+typedef uint16_t usb2_power_mask_t;	/* see "USB_HW_POWER_XXX" */
 #endif
 
 /* structures */
@@ -361,10 +384,10 @@ struct usb2_xfer_flags_int {
 };
 
 /*
- * The following structure defines the symmetric part of an USB config
- * structure.
+ * The following structure define an USB configuration, that basically
+ * is used when setting up an USB transfer.
  */
-struct usb2_config_sub {
+struct usb2_config {
 	usb2_callback_t *callback;	/* USB transfer callback */
 	usb2_frlength_t bufsize;	/* total pipe buffer size in bytes */
 	usb2_frcount_t frames;		/* maximum number of USB frames */
@@ -372,20 +395,13 @@ struct usb2_config_sub {
 #define	USB_DEFAULT_INTERVAL	0
 	usb2_timeout_t timeout;		/* transfer timeout in milliseconds */
 	struct usb2_xfer_flags flags;	/* transfer flags */
-};
-
-/*
- * The following structure define an USB configuration, that basically
- * is used when setting up an USB transfer.
- */
-struct usb2_config {
-	struct usb2_config_sub mh;	/* parameters for USB_MODE_HOST */
-	struct usb2_config_sub md;	/* parameters for USB_MODE_DEVICE */
 	uint8_t	type;			/* pipe type */
 	uint8_t	endpoint;		/* pipe number */
 	uint8_t	direction;		/* pipe direction */
 	uint8_t	ep_index;		/* pipe index match to use */
 	uint8_t	if_index;		/* "ifaces" index to use */
+	uint8_t usb_mode;		/* see "USB_MODE_XXX", 
+					 * "USB_MODE_MAX" means any mode! */
 };
 
 /*
