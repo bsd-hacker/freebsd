@@ -80,10 +80,11 @@ struct proto_handler {
 	u_int pri;                                              /* Handler priority. */
         int16_t dir;                                            /* Flow direction. */
 	uint8_t proto;                                          /* Working protocol. */	
+	uint8_t legacy;						/* Does it handle mbuf or not? */
 	int (*fingerprint)(struct libalias *,                   /* Fingerprint * function. */
 	    struct alias_data *);                
 	int (*protohandler)(struct libalias *,                  /* Aliasing * function. */
-	    struct ip *, struct alias_data *);                 
+	    pkt_t, struct alias_data *);                 
 	LIST_ENTRY(proto_handler) entries;
 };
 
@@ -114,7 +115,7 @@ int             LibAliasAttachHandlers(struct proto_handler *);
 int             LibAliasDetachHandlers(struct proto_handler *);
 int             detach_handler(struct proto_handler *);
 int             find_handler(int8_t, int8_t, struct libalias *, 
-			   struct ip *, struct alias_data *);
+		    pkt_t, struct alias_data *);
 struct proto_handler *first_handler(void);
 
 /* Functions used with dll module. */

@@ -761,7 +761,9 @@ UdpAliasIn(struct libalias *la, pkt_t ptr)
 		proxy_port = GetProxyPort(lnk);
 
 		/* Walk out chain. */		
-		error = find_handler(IN, UDP, la, pip, &ad);
+		error = find_handler(IN, UDP, la, ptr, &ad);
+		PULLUP_UDPHDR(pip, ptr);
+		ud = (struct udphdr *)ip_next(pip);	
 		/* If we cannot figure out the packet, ignore it. */
 		if (error < 0)
 			return (PKT_ALIAS_IGNORED);
@@ -886,7 +888,9 @@ UdpAliasOut(struct libalias *la, pkt_t ptr, int maxpacketsize, int create)
 		alias_port = GetAliasPort(lnk);
 
 		/* Walk out chain. */		
-		error = find_handler(OUT, UDP, la, pip, &ad);
+		error = find_handler(OUT, UDP, la, ptr, &ad);
+		PULLUP_UDPHDR(pip, ptr);
+		ud = (struct udphdr *)ip_next(pip);
 
 /* If UDP checksum is not zero, adjust since source port is */
 /* being aliased and source address is being altered        */
@@ -954,7 +958,9 @@ TcpAliasIn(struct libalias *la, pkt_t ptr)
 		};
 
 		/* Walk out chain. */		
-		error = find_handler(IN, TCP, la, pip, &ad);
+		error = find_handler(IN, TCP, la, ptr, &ad);
+		PULLUP_TCPHDR(pip, ptr);
+                tc = (struct tcphdr *)ip_next(pip);
 
 		alias_address = GetAliasAddress(lnk);
 		original_address = GetOriginalAddress(lnk);
@@ -1118,7 +1124,9 @@ TcpAliasOut(struct libalias *la, pkt_t ptr, int maxpacketsize, int create)
 		TcpMonitorOut(tc->th_flags, lnk);
 		
 		/* Walk out chain. */		
-		error = find_handler(OUT, TCP, la, pip, &ad);
+		error = find_handler(OUT, TCP, la, ptr, &ad);
+                PULLUP_TCPHDR(pip, ptr);
+                tc = (struct tcphdr *)ip_next(pip);
 
 /* Adjust TCP checksum since source port is being aliased */
 /* and source address is being altered                    */
@@ -1362,7 +1370,8 @@ LibAliasInLocked(struct libalias *la, pkt_t ptr, int maxpacketsize)
 			};
 			
 			/* Walk out chain. */		
-			error = find_handler(IN, IP, la, pip, &ad);
+			error = find_handler(IN, IP, la, ptr, &ad);
+			PULLUP_IPHDR(pip, ptr);
 			if (error ==  0)
 				iresult = PKT_ALIAS_OK;
 			else
@@ -1512,7 +1521,8 @@ LibAliasOutLocked(struct libalias *la, pkt_t ptr,	/* valid IP packet */
 				.maxpktsize = 0                  
 			};
 			/* Walk out chain. */		
-			error = find_handler(OUT, IP, la, pip, &ad);
+			error = find_handler(OUT, IP, la, ptr, &ad);
+			PULLUP_IPHDR(pip, ptr);
 			if (error == 0)
  				iresult = PKT_ALIAS_OK;
  			else

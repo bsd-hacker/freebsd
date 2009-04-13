@@ -44,6 +44,8 @@ __FBSDID("$FreeBSD$");
 #ifdef _KERNEL
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/mbuf.h>
+#include <sys/systm.h>
 #include <sys/kernel.h>
 #include <sys/module.h>
 #else
@@ -59,9 +61,11 @@ __FBSDID("$FreeBSD$");
 #include <netinet/udp.h>
 
 #ifdef _KERNEL
+#include <netinet/libalias/alias.h>
 #include <netinet/libalias/alias_local.h>
 #include <netinet/libalias/alias_mod.h>
 #else
+#include "alias.h"
 #include "alias_local.h"
 #include "alias_mod.h"
 #endif
@@ -71,11 +75,12 @@ __FBSDID("$FreeBSD$");
 
 static int
 AliasHandleUdpNbt(struct libalias *, struct ip *, struct alias_link *, 
-		  struct in_addr *, u_short);
+  struct in_addr *, u_short);
 
 static int
 AliasHandleUdpNbtNS(struct libalias *, struct ip *, struct alias_link *,
-		    struct in_addr *, u_short *, struct in_addr *, u_short *);
+    struct in_addr *, u_short *, struct in_addr *, u_short *);
+
 static int 
 fingerprint1(struct libalias *la, struct alias_data *ah)
 {
@@ -90,9 +95,16 @@ fingerprint1(struct libalias *la, struct alias_data *ah)
 }
 
 static int 
-protohandler1(struct libalias *la, struct ip *pip, struct alias_data *ah)
+protohandler1(struct libalias *la, pkt_t ptr, struct alias_data *ah)
 {
-	
+        struct ip *pip; 
+ 
+#ifdef _KERNEL
+        if (ptr == NULL)
+                pip = (struct ip *)la->buf;
+        else
+#endif
+        PULLUP_IPHDR(pip, ptr);
 	return (AliasHandleUdpNbt(la, pip, ah->lnk, ah->aaddr, *ah->aport));
 }
 
@@ -110,18 +122,32 @@ fingerprint2(struct libalias *la, struct alias_data *ah)
 }
 
 static int 
-protohandler2in(struct libalias *la, struct ip *pip, struct alias_data *ah)
+protohandler2in(struct libalias *la, pkt_t ptr, struct alias_data *ah)
 {
-	
+        struct ip *pip; 
+ 
+#ifdef _KERNEL
+        if (ptr == NULL)
+                pip = (struct ip *)la->buf;
+        else
+#endif
+        PULLUP_IPHDR(pip, ptr);
 	AliasHandleUdpNbtNS(la, pip, ah->lnk, ah->aaddr, ah->aport,
- 			    ah->oaddr, ah->dport);
+ 	    ah->oaddr, ah->dport);
 	return (0);
 }
 
 static int 
-protohandler2out(struct libalias *la, struct ip *pip, struct alias_data *ah)
+protohandler2out(struct libalias *la, pkt_t ptr, struct alias_data *ah)
 {
-	
+        struct ip *pip; 
+ 
+#ifdef _KERNEL
+        if (ptr == NULL)
+                pip = (struct ip *)la->buf;
+        else
+#endif
+        PULLUP_IPHDR(pip, ptr);
 	return (AliasHandleUdpNbtNS(la, pip, ah->lnk, &pip->ip_src, ah->sport,
  	    ah->aaddr, ah->aport));
 }
@@ -132,6 +158,7 @@ struct proto_handler handlers[] = {
 	  .pri = 130, 
 	  .dir = IN|OUT, 
 	  .proto = UDP, 
+	  .legacy = 1,
 	  .fingerprint = &fingerprint1, 
 	  .protohandler = &protohandler1
 	}, 
@@ -139,6 +166,7 @@ struct proto_handler handlers[] = {
 	  .pri = 140, 
 	  .dir = IN, 
 	  .proto = UDP, 
+	  .legacy = 1,
 	  .fingerprint = &fingerprint2, 
 	  .protohandler = &protohandler2in
 	}, 
@@ -146,6 +174,7 @@ struct proto_handler handlers[] = {
 	  .pri = 140, 
 	  .dir = OUT, 
 	  .proto = UDP, 
+	  .legacy = 1,
 	  .fingerprint = &fingerprint2, 
 	  .protohandler = &protohandler2out
 	}, 

@@ -178,6 +178,9 @@ struct libalias {
 	 * avoid races in libalias: every public function has to use it.
 	 */
 	struct mtx mutex;
+
+	/* for legacy modules that can't handle mbufs yet */
+	caddr_t	buf;
 #endif
 };
 

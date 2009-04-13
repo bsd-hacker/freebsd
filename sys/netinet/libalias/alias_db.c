@@ -2495,6 +2495,14 @@ LibAliasInit(struct libalias *la)
 		la = calloc(sizeof *la, 1);
 		if (la == NULL)
 			return (la);
+#ifdef _KERNEL
+	la->buf = malloc(IP_MAXPACKET+1);
+	if (la->buf == NULL) {
+		free (la);
+		return (NULL);
+	}
+#endif
+
 
 #ifndef	_KERNEL		/* kernel cleans up on module unload */
 		if (LIST_EMPTY(&instancehead))
@@ -2568,6 +2576,7 @@ LibAliasUninit(struct libalias *la)
 	LIBALIAS_LOCK(la);
 #ifdef _KERNEL
 	AliasSctpTerm(la);
+	free (la->buf);
 #endif
 	la->deleteAllLinks = 1;
 	CleanupAliasData(la);

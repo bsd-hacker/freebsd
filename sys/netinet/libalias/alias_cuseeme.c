@@ -31,6 +31,8 @@ __FBSDID("$FreeBSD$");
 
 #ifdef _KERNEL
 #include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/mbuf.h>
 #include <sys/kernel.h>
 #include <sys/module.h>
 #else
@@ -49,6 +51,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/libalias/alias_local.h>
 #include <netinet/libalias/alias_mod.h>
 #else
+#include "alias.h"
 #include "alias_local.h"
 #include "alias_mod.h"
 #endif
@@ -75,17 +78,31 @@ fingerprint(struct libalias *la, struct alias_data *ah)
 }
 
 static int 
-protohandlerin(struct libalias *la, struct ip *pip, struct alias_data *ah)
+protohandlerin(struct libalias *la, pkt_t ptr, struct alias_data *ah)
 {
-	
+	struct ip *pip;
+
+#ifdef _KERNEL
+	if (ptr == NULL)
+		pip = (struct ip *)la->buf;
+	else
+#endif
+	PULLUP_IPHDR(pip, ptr);
 	AliasHandleCUSeeMeIn(la, pip, *ah->oaddr);
 	return (0);
 }
 
 static int 
-protohandlerout(struct libalias *la, struct ip *pip, struct alias_data *ah)
+protohandlerout(struct libalias *la, pkt_t ptr, struct alias_data *ah)
 {
-	
+        struct ip *pip;
+
+#ifdef _KERNEL 
+        if (ptr == NULL)
+                pip = (struct ip *)la->buf;
+        else
+#endif
+	PULLUP_IPHDR(pip, ptr);
 	AliasHandleCUSeeMeOut(la, pip, ah->lnk);
 	return (0);
 }
@@ -96,6 +113,7 @@ struct proto_handler handlers[] = {
 	  .pri = 120, 
 	  .dir = OUT, 
 	  .proto = UDP, 
+	  .legacy = 1,
 	  .fingerprint = &fingerprint, 
 	  .protohandler = &protohandlerout
 	}, 
@@ -103,6 +121,7 @@ struct proto_handler handlers[] = {
 	  .pri = 120, 
 	  .dir = IN, 
 	  .proto = UDP, 
+	  .legacy = 1,
 	  .fingerprint = &fingerprint, 
 	  .protohandler = &protohandlerin
 	}, 

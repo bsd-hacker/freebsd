@@ -30,6 +30,8 @@ __FBSDID("$FreeBSD$");
 #ifdef _KERNEL
 #include <sys/libkern.h>
 #include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/mbuf.h>
 #include <sys/lock.h>
 #include <sys/rwlock.h>
 #else
@@ -44,9 +46,11 @@ __FBSDID("$FreeBSD$");
 #include <netinet/ip.h>
 
 #ifdef _KERNEL
+#include <netinet/libalias/alias.h>
 #include <netinet/libalias/alias_local.h>
 #include <netinet/libalias/alias_mod.h>
 #else
+#include "alias.h"
 #include "alias_local.h"
 #include "alias_mod.h"
 #endif
@@ -219,7 +223,7 @@ detach_handler(struct proto_handler *_p)
 }
 
 int
-find_handler(int8_t dir, int8_t proto, struct libalias *la, __unused struct ip *pip, 
+find_handler(int8_t dir, int8_t proto, struct libalias *la, pkt_t ptr, 
     struct alias_data *ad)
 {
 	struct proto_handler *p;
@@ -230,7 +234,16 @@ find_handler(int8_t dir, int8_t proto, struct libalias *la, __unused struct ip *
 	LIST_FOREACH(p, &handler_chain, entries) {
 		if ((p->dir & dir) && (p->proto & proto))
 			if (p->fingerprint(la, ad) == 0) {
-				error = p->protohandler(la, pip, ad);
+#ifdef _KERNEL
+				if (p->legacy) {
+					m_copydata(*ptr, 0, m_length(*ptr, NULL), la->buf);
+					error = p->protohandler(la, NULL, ad);
+					m_copyback(*ptr, 0, ((struct ip *)la->buf)->ip_len,
+					    la->buf);
+					break;
+				}
+#endif
+				error = p->protohandler(la, ptr, ad);
 				break;
 			}
 	}

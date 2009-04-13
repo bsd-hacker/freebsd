@@ -101,6 +101,8 @@ __FBSDID("$FreeBSD$");
 #ifdef _KERNEL
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/mbuf.h>
+#include <sys/systm.h>
 #include <sys/kernel.h>
 #include <sys/module.h>
 #else
@@ -120,6 +122,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/libalias/alias_local.h>
 #include <netinet/libalias/alias_mod.h>
 #else
+#include "alias.h"
 #include "alias_local.h"
 #include "alias_mod.h"
 #endif
@@ -150,9 +153,16 @@ fingerprint(struct libalias *la, struct alias_data *ah)
 }
 
 static int 
-protohandler(struct libalias *la, struct ip *pip, struct alias_data *ah)
+protohandler(struct libalias *la, pkt_t ptr, struct alias_data *ah)
 {
-	
+        struct ip *pip; 
+ 
+#ifdef _KERNEL
+        if (ptr == NULL)
+                pip = (struct ip *)la->buf;
+        else
+#endif
+        PULLUP_IPHDR(pip, ptr);
 	if (ntohs(*ah->dport) == TFTP_PORT_NUMBER)
 		FindRtspOut(la, pip->ip_src, pip->ip_dst,
  			    *ah->sport, *ah->aport, IPPROTO_UDP);
@@ -165,6 +175,7 @@ struct proto_handler handlers[] = {
 	  .pri = 100, 
 	  .dir = OUT, 
 	  .proto = TCP|UDP,
+	  .legacy = 1,
 	  .fingerprint = &fingerprint, 
 	  .protohandler = &protohandler
 	}, 

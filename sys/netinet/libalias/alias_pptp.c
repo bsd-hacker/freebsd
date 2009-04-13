@@ -42,6 +42,8 @@ __FBSDID("$FreeBSD$");
 /* Includes */
 #ifdef _KERNEL
 #include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/mbuf.h>
 #include <sys/limits.h>
 #include <sys/kernel.h>
 #include <sys/module.h>
@@ -98,25 +100,46 @@ fingerprintgre(struct libalias *la, struct alias_data *ah)
 }
 
 static int 
-protohandlerin(struct libalias *la, struct ip *pip, struct alias_data *ah)
+protohandlerin(struct libalias *la, pkt_t ptr, struct alias_data *ah)
 {
-	
+        struct ip *pip; 
+ 
+#ifdef _KERNEL
+        if (ptr == NULL)
+                pip = (struct ip *)la->buf;
+        else
+#endif
+        PULLUP_IPHDR(pip, ptr);
 	AliasHandlePptpIn(la, pip, ah->lnk);
 	return (0);
 }
 
 static int 
-protohandlerout(struct libalias *la, struct ip *pip, struct alias_data *ah)
+protohandlerout(struct libalias *la, pkt_t ptr, struct alias_data *ah)
 {
-	
+        struct ip *pip; 
+ 
+#ifdef _KERNEL
+        if (ptr == NULL)
+                pip = (struct ip *)la->buf;
+        else
+#endif
+        PULLUP_IPHDR(pip, ptr);
 	AliasHandlePptpOut(la, pip, ah->lnk);
 	return (0);
 }
 
 static int 
-protohandlergrein(struct libalias *la, struct ip *pip, struct alias_data *ah)
+protohandlergrein(struct libalias *la, pkt_t ptr, struct alias_data *ah)
 {
-
+        struct ip *pip; 
+ 
+#ifdef _KERNEL
+        if (ptr == NULL)
+                pip = (struct ip *)la->buf;
+        else
+#endif
+        PULLUP_IPHDR(pip, ptr);
 	if (la->packetAliasMode & PKT_ALIAS_PROXY_ONLY ||
 	    AliasHandlePptpGreIn(la, pip) == 0)
 		return (0);
@@ -124,9 +147,16 @@ protohandlergrein(struct libalias *la, struct ip *pip, struct alias_data *ah)
 }
 
 static int 
-protohandlergreout(struct libalias *la, struct ip *pip, struct alias_data *ah)
+protohandlergreout(struct libalias *la, pkt_t ptr, struct alias_data *ah)
 {
-
+        struct ip *pip; 
+ 
+#ifdef _KERNEL
+        if (ptr == NULL)
+                pip = (struct ip *)la->buf;
+        else
+#endif
+        PULLUP_IPHDR(pip, ptr);
 	if (AliasHandlePptpGreOut(la, pip) == 0)
 		return (0);
 	return (-1);
@@ -138,6 +168,7 @@ struct proto_handler handlers[] = {
 	  .pri = 200, 
 	  .dir = IN, 
 	  .proto = TCP, 
+	  .legacy = 1,
 	  .fingerprint = &fingerprint, 
 	  .protohandler = &protohandlerin
 	},
@@ -145,6 +176,7 @@ struct proto_handler handlers[] = {
 	  .pri = 210, 
 	  .dir = OUT, 
 	  .proto = TCP, 
+	  .legacy = 1,
 	  .fingerprint = &fingerprint, 
 	  .protohandler = &protohandlerout
 	},
@@ -157,6 +189,7 @@ struct proto_handler handlers[] = {
 	  .pri = INT_MAX, 
 	  .dir = IN, 
 	  .proto = IP, 
+	  .legacy = 1,
 	  .fingerprint = &fingerprintgre, 
 	  .protohandler = &protohandlergrein
 	},
@@ -164,6 +197,7 @@ struct proto_handler handlers[] = {
 	  .pri = INT_MAX, 
 	  .dir = OUT, 
 	  .proto = IP, 
+	  .legacy = 1,
 	  .fingerprint = &fingerprintgre, 
 	  .protohandler = &protohandlergreout
 	}, 
