@@ -238,7 +238,7 @@ find_handler(int8_t dir, int8_t proto, struct libalias *la, pkt_t ptr,
 				if (p->legacy) {
 					m_copydata(*ptr, 0, m_length(*ptr, NULL), la->buf);
 					error = p->protohandler(la, NULL, ad);
-					m_copyback(*ptr, 0, ((struct ip *)la->buf)->ip_len,
+					m_copyback(*ptr, 0, ntohs(((struct ip *)la->buf)->ip_len),
 					    la->buf);
 					break;
 				}
