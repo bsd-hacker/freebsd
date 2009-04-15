@@ -75,10 +75,10 @@ static void
 AliasHandlePptpIn(struct libalias *, struct ip *, struct alias_link *);
 
 static int
-AliasHandlePptpGreOut(struct libalias *, struct ip *);
+AliasHandlePptpGreOut(struct libalias *, pkt_t);
 
 static int
-AliasHandlePptpGreIn(struct libalias *, struct ip *);
+AliasHandlePptpGreIn(struct libalias *, pkt_t);
 
 static int 
 fingerprint(struct libalias *la, struct alias_data *ah)
@@ -132,16 +132,9 @@ protohandlerout(struct libalias *la, pkt_t ptr, struct alias_data *ah)
 static int 
 protohandlergrein(struct libalias *la, pkt_t ptr, struct alias_data *ah)
 {
-        struct ip *pip; 
  
-#ifdef _KERNEL
-        if (ptr == NULL)
-                pip = (struct ip *)la->buf;
-        else
-#endif
-        PULLUP_IPHDR(pip, ptr);
 	if (la->packetAliasMode & PKT_ALIAS_PROXY_ONLY ||
-	    AliasHandlePptpGreIn(la, pip) == 0)
+	    AliasHandlePptpGreIn(la, ptr) == 0)
 		return (0);
 	return (-1);
 }
@@ -149,15 +142,8 @@ protohandlergrein(struct libalias *la, pkt_t ptr, struct alias_data *ah)
 static int 
 protohandlergreout(struct libalias *la, pkt_t ptr, struct alias_data *ah)
 {
-        struct ip *pip; 
  
-#ifdef _KERNEL
-        if (ptr == NULL)
-                pip = (struct ip *)la->buf;
-        else
-#endif
-        PULLUP_IPHDR(pip, ptr);
-	if (AliasHandlePptpGreOut(la, pip) == 0)
+	if (AliasHandlePptpGreOut(la, ptr) == 0)
 		return (0);
 	return (-1);
 }
@@ -189,7 +175,7 @@ struct proto_handler handlers[] = {
 	  .pri = INT_MAX, 
 	  .dir = IN, 
 	  .proto = IP, 
-	  .legacy = 1,
+	  .legacy = 0,
 	  .fingerprint = &fingerprintgre, 
 	  .protohandler = &protohandlergrein
 	},
@@ -197,7 +183,7 @@ struct proto_handler handlers[] = {
 	  .pri = INT_MAX, 
 	  .dir = OUT, 
 	  .proto = IP, 
-	  .legacy = 1,
+	  .legacy = 0,
 	  .fingerprint = &fingerprintgre, 
 	  .protohandler = &protohandlergreout
 	}, 
@@ -506,11 +492,14 @@ AliasVerifyPptp(struct ip *pip, u_int16_t * ptype)
 }
 
 static int
-AliasHandlePptpGreOut(struct libalias *la, struct ip *pip)
+AliasHandlePptpGreOut(struct libalias *la, pkt_t ptr)
 {
+	struct ip *pip;
 	GreHdr *gr;
 	struct alias_link *lnk;
 
+	PULLUP_IPHDR(pip, ptr);
+	PULLUP_SIZE(pip, ptr, (pip->ip_len << 2) + sizeof(GreHdr));
 	gr = (GreHdr *) ip_next(pip);
 
 	/* Check GRE header bits. */
@@ -530,11 +519,14 @@ AliasHandlePptpGreOut(struct libalias *la, struct ip *pip)
 }
 
 static int
-AliasHandlePptpGreIn(struct libalias *la, struct ip *pip)
+AliasHandlePptpGreIn(struct libalias *la, pkt_t ptr)
 {
+	struct ip *pip;
 	GreHdr *gr;
 	struct alias_link *lnk;
 
+	PULLUP_IPHDR(pip, ptr);
+	PULLUP_SIZE(pip, ptr, (pip->ip_len << 2) + sizeof(GreHdr));
 	gr = (GreHdr *) ip_next(pip);
 
 	/* Check GRE header bits. */
