@@ -61,7 +61,7 @@ __FBSDID("$FreeBSD$");
 #endif
 
 static void
-AliasHandleDummy(struct libalias *la, struct ip *ip, struct alias_data *ah);
+AliasHandleDummy(struct libalias *la, pkt_t ptr, struct alias_data *ah);
 
 static int 
 fingerprint(struct libalias *la, struct alias_data *ah)
@@ -92,15 +92,8 @@ fingerprint(struct libalias *la, struct alias_data *ah)
 static int 
 protohandler(struct libalias *la, pkt_t ptr, struct alias_data *ah)
 {
-        struct ip *pip;
 
-#ifdef _KERNEL
-        if (ptr == NULL)
-                pip = (struct ip *)la->buf;
-        else
-#endif
-        PULLUP_IPHDR(pip, ptr);
-	AliasHandleDummy(la, pip, ah);
+	AliasHandleDummy(la, ptr, ah);
 	return (0);
 }
 
@@ -117,7 +110,7 @@ struct proto_handler handlers [] = {
 	  .pri = 666, 
 	  .dir = IN|OUT, 
 	  .proto = UDP|TCP, 
-	  .legacy = 1,
+	  .legacy = 0,
 	  .fingerprint = &fingerprint, 
 	  .protohandler = &protohandler
 	}, 
@@ -158,8 +151,7 @@ MODULE_DEPEND(alias_dummy, libalias, 1, 1, 1);
 #endif
 
 static void
-AliasHandleDummy(struct libalias *la, struct ip *ip, struct alias_data *ah)
+AliasHandleDummy(struct libalias *la, pkt_t ptr, struct alias_data *ah)
 {
 	; /* Dummy. */
 }
-
