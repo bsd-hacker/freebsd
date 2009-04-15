@@ -59,12 +59,12 @@ __FBSDID("$FreeBSD$");
 #define CUSEEME_PORT_NUMBER 7648
 
 static void
-AliasHandleCUSeeMeOut(struct libalias *la, struct ip *pip, 
-		      struct alias_link *lnk);
+AliasHandleCUSeeMeOut(struct libalias *la, pkt_t ptr, 
+      struct alias_link *lnk);
 
 static void
 AliasHandleCUSeeMeIn(struct libalias *la, struct ip *pip, 
-		     struct in_addr original_addr);
+     struct in_addr original_addr);
 
 static int 
 fingerprint(struct libalias *la, struct alias_data *ah)
@@ -95,15 +95,8 @@ protohandlerin(struct libalias *la, pkt_t ptr, struct alias_data *ah)
 static int 
 protohandlerout(struct libalias *la, pkt_t ptr, struct alias_data *ah)
 {
-        struct ip *pip;
 
-#ifdef _KERNEL 
-        if (ptr == NULL)
-                pip = (struct ip *)la->buf;
-        else
-#endif
-	PULLUP_IPHDR(pip, ptr);
-	AliasHandleCUSeeMeOut(la, pip, ah->lnk);
+	AliasHandleCUSeeMeOut(la, ptr, ah->lnk);
 	return (0);
 }
 
@@ -113,7 +106,7 @@ struct proto_handler handlers[] = {
 	  .pri = 120, 
 	  .dir = OUT, 
 	  .proto = UDP, 
-	  .legacy = 1,
+	  .legacy = 0,
 	  .fingerprint = &fingerprint, 
 	  .protohandler = &protohandlerout
 	}, 
@@ -192,14 +185,20 @@ struct client_info {
 };
 
 static void
-AliasHandleCUSeeMeOut(struct libalias *la, struct ip *pip, struct alias_link *lnk)
+AliasHandleCUSeeMeOut(struct libalias *la, pkt_t ptr, struct alias_link *lnk)
 {
-	struct udphdr *ud = ip_next(pip);
+	struct ip *pip;
+	struct udphdr *ud;
 
+	PULLUP_UDPHDR(pip, ptr);
+	ud = ip_next(pip);
 	if (ntohs(ud->uh_ulen) - sizeof(struct udphdr) >= sizeof(struct cu_header)) {
 		struct cu_header *cu;
 		struct alias_link *cu_lnk;
 
+		PULLUP_SIZE(pip, ptr, (pip->ip_hl << 2) + sizeof(struct udphdr) + 
+		    sizeof(struct cu_header));
+		ud = ip_next(pip);
 		cu = udp_next(ud);
 		if (cu->addr)
 			cu->addr = (u_int32_t) GetAliasAddress(lnk).s_addr;
