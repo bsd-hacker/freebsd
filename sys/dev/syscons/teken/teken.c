@@ -49,16 +49,26 @@ static FILE *df;
 #endif /* __FreeBSD__ && _KERNEL */
 
 #include "teken.h"
+
 #ifdef TEKEN_UTF8
 #include "teken_wcwidth.h"
 #else /* !TEKEN_UTF8 */
-static inline int
-teken_wcwidth(teken_char_t c)
-{
-
-	return (c <= 0x1B) ? -1 : 1;
-}
+#ifdef TEKEN_XTERM
+#define	teken_wcwidth(c)	((c <= 0x1B) ? -1 : 1)
+#else /* !TEKEN_XTERM */
+#define	teken_wcwidth(c)	(1)
+#endif /* TEKEN_XTERM */
 #endif /* TEKEN_UTF8 */
+
+#if defined(TEKEN_XTERM) && defined(TEKEN_UTF8)
+#include "teken_scs.h"
+#else /* !(TEKEN_XTERM && TEKEN_UTF8) */
+#define	teken_scs_process(t, c)	(c)
+#define	teken_scs_restore(t)
+#define	teken_scs_save(t)
+#define	teken_scs_set(t, g, ts)
+#define	teken_scs_switch(t, g)
+#endif /* TEKEN_XTERM && TEKEN_UTF8 */
 
 /* Private flags for teken_format_t. */
 #define	TF_REVERSE	0x08
@@ -68,7 +78,11 @@ teken_wcwidth(teken_char_t c)
 #define	TS_INSERT	0x02	/* Insert mode. */
 #define	TS_AUTOWRAP	0x04	/* Autowrap. */
 #define	TS_ORIGIN	0x08	/* Origin mode. */
+#ifdef TEKEN_XTERM
 #define	TS_WRAPPED	0x10	/* Next character should be printed on col 0. */
+#else /* !TEKEN_XTERM */
+#define	TS_WRAPPED	0x00	/* Simple line wrapping. */
+#endif /* TEKEN_XTERM */
 
 /* Character that blanks a cell. */
 #define	BLANK	' '
@@ -218,6 +232,17 @@ teken_input_char(teken_t *t, teken_char_t c)
 	case '\x0B':
 		teken_subr_newline(t);
 		break;
+	case '\x0C':
+		teken_subr_newpage(t);
+		break;
+#if defined(TEKEN_XTERM) && defined(TEKEN_UTF8)
+	case '\x0E':
+		teken_scs_switch(t, 1);
+		break;
+	case '\x0F':
+		teken_scs_switch(t, 0);
+		break;
+#endif /* TEKEN_XTERM && TEKEN_UTF8 */
 	case '\r':
 		teken_subr_carriage_return(t);
 		break;
@@ -304,6 +329,27 @@ teken_set_cursor(teken_t *t, const teken_pos_t *p)
 	t->t_cursor = *p;
 }
 
+const teken_attr_t *
+teken_get_curattr(teken_t *t)
+{
+
+	return (&t->t_curattr);
+}
+
+void
+teken_set_curattr(teken_t *t, const teken_attr_t *a)
+{
+
+	t->t_curattr = *a;
+}
+
+const teken_attr_t *
+teken_get_defattr(teken_t *t)
+{
+
+	return (&t->t_defattr);
+}
+
 void
 teken_set_defattr(teken_t *t, const teken_attr_t *a)
 {
@@ -314,8 +360,6 @@ teken_set_defattr(teken_t *t, const teken_attr_t *a)
 void
 teken_set_winsize(teken_t *t, const teken_pos_t *p)
 {
-
-	teken_assert(p->tp_col <= T_NUMCOL);
 
 	t->t_winsize = *p;
 	/* XXX: bounds checking with cursor/etc! */

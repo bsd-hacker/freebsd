@@ -95,16 +95,10 @@ static default_attr user_default = {
     SC_NORM_REV_ATTR,
 };
 
-static default_attr kernel_default = {
-    SC_KERNEL_CONS_ATTR,
-    SC_KERNEL_CONS_REV_ATTR,
-};
-
 static	int		sc_console_unit = -1;
 static	int		sc_saver_keyb_only = 1;
 static  scr_stat    	*sc_console;
 static  struct consdev	*sc_consptr;
-static	void		*kernel_console_ts;
 static	scr_stat	main_console;
 static	struct tty 	*main_devs[MAXCONS];
 
@@ -179,7 +173,6 @@ static void scshutdown(void *arg, int howto);
 static u_int scgetc(sc_softc_t *sc, u_int flags);
 #define SCGETC_CN	1
 #define SCGETC_NONBLOCK	2
-static int sccngetch(int flags);
 static void sccnupdate(scr_stat *scp);
 static scr_stat *alloc_scp(sc_softc_t *sc, int vty);
 static void init_scp(sc_softc_t *sc, int vty, scr_stat *scp);
@@ -323,7 +316,7 @@ sctty_outwakeup(struct tty *tp)
 	len = ttydisc_getc(tp, buf, sizeof buf);
 	if (len == 0)
 	    break;
-	sc_puts(scp, buf, len);
+	sc_puts(scp, buf, len, 0);
     }
 }
 
@@ -373,22 +366,8 @@ sc_attach_unit(int unit, int flags)
 	/* assert(sc_console != NULL) */
 	flags |= SC_KERNEL_CONSOLE;
 	scmeminit(NULL);
-
-	scinit(unit, flags);
-
-	if (sc_console->tsw->te_size > 0) {
-	    /* assert(sc_console->ts != NULL); */
-	    kernel_console_ts = sc_console->ts;
-	    sc_console->ts = malloc(sc_console->tsw->te_size,
-				    M_DEVBUF, M_WAITOK);
-	    bcopy(kernel_console_ts, sc_console->ts, sc_console->tsw->te_size);
-    	    (*sc_console->tsw->te_default_attr)(sc_console,
-						user_default.std_color,
-						user_default.rev_color);
-	}
-    } else {
-	scinit(unit, flags);
     }
+    scinit(unit, flags);
 
     sc = sc_get_softc(unit, flags & SC_KERNEL_CONSOLE);
     sc->config = flags;
@@ -1507,7 +1486,6 @@ sc_cnputc(struct consdev *cd, int c)
 {
     u_char buf[1];
     scr_stat *scp = sc_console;
-    void *save;
 #ifndef SC_NO_HISTORY
 #if 0
     struct tty *tp;
@@ -1543,12 +1521,8 @@ sc_cnputc(struct consdev *cd, int c)
     }
 #endif /* !SC_NO_HISTORY */
 
-    save = scp->ts;
-    if (kernel_console_ts != NULL)
-	scp->ts = kernel_console_ts;
     buf[0] = c;
-    sc_puts(scp, buf, 1);
-    scp->ts = save;
+    sc_puts(scp, buf, 1, 1);
 
     s = spltty();	/* block sckbdevent and scrn_timer */
     sccnupdate(scp);
@@ -1557,12 +1531,6 @@ sc_cnputc(struct consdev *cd, int c)
 
 static int
 sc_cngetc(struct consdev *cd)
-{
-    return sccngetch(SCGETC_NONBLOCK);
-}
-
-static int
-sccngetch(int flags)
 {
     static struct fkeytab fkey;
     static int fkeycp;
@@ -1604,7 +1572,7 @@ sccngetch(int flags)
     kbdd_ioctl(scp->sc->kbd, KDSKBMODE, (caddr_t)&scp->kbd_mode);
 
     kbdd_poll(scp->sc->kbd, TRUE);
-    c = scgetc(scp->sc, SCGETC_CN | flags);
+    c = scgetc(scp->sc, SCGETC_CN | SCGETC_NONBLOCK);
     kbdd_poll(scp->sc->kbd, FALSE);
 
     scp->kbd_mode = cur_mode;
@@ -2492,7 +2460,7 @@ exchange_scr(sc_softc_t *sc)
 }
 
 void
-sc_puts(scr_stat *scp, u_char *buf, int len)
+sc_puts(scr_stat *scp, u_char *buf, int len, int kernel)
 {
     int need_unlock = 0;
 
@@ -2507,7 +2475,7 @@ sc_puts(scr_stat *scp, u_char *buf, int len)
 		need_unlock = 1;
 		mtx_lock_spin(&scp->scr_lock);
 	}
-	(*scp->tsw->te_puts)(scp, buf, len);
+	(*scp->tsw->te_puts)(scp, buf, len, kernel);
 	if (need_unlock)
 		mtx_unlock_spin(&scp->scr_lock);
     }
@@ -2754,8 +2722,8 @@ scinit(int unit, int flags)
 	    if (sc_init_emulator(scp, SC_DFLT_TERM))
 		sc_init_emulator(scp, "*");
 	    (*scp->tsw->te_default_attr)(scp,
-					 kernel_default.std_color,
-					 kernel_default.rev_color);
+					 user_default.std_color,
+					 user_default.rev_color);
 	} else {
 	    /* assert(sc_malloc) */
 	    sc->dev = malloc(sizeof(struct tty *)*sc->vtys, M_DEVBUF,
@@ -3277,7 +3245,7 @@ next_code:
 			    sc_draw_cursor_image(scp);
 			}
 			tp = SC_DEV(sc, scp->index);
-			if (tty_opened(tp))
+			if (!kdb_active && tty_opened(tp))
 			    sctty_outwakeup(tp);
 #endif
 		    }

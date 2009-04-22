@@ -2,7 +2,7 @@
  * Copyright (c) 1999 Poul-Henning Kamp.
  * Copyright (c) 2008 Bjoern A. Zeeb.
  * All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
@@ -119,14 +119,14 @@ struct	sx allprison_lock;
 int	lastprid = 0;
 int	prisoncount = 0;
 
-static void		 init_prison(void *);
-static void		 prison_complete(void *context, int pending);
-static int		 sysctl_jail_list(SYSCTL_HANDLER_ARGS);
+static void init_prison(void *);
+static void prison_complete(void *context, int pending);
+static int sysctl_jail_list(SYSCTL_HANDLER_ARGS);
 #ifdef INET
-static int		_prison_check_ip4(struct prison *, struct in_addr *);
+static int _prison_check_ip4(struct prison *pr, struct in_addr *ia);
 #endif
 #ifdef INET6
-static int		_prison_check_ip6(struct prison *, struct in6_addr *);
+static int _prison_check_ip6(struct prison *pr, struct in6_addr *ia6);
 #endif
 
 static void
@@ -177,7 +177,7 @@ qcmp_v6(const void *ip1, const void *ip2)
 	ia6b = (const struct in6_addr *)ip2;
 
 	rc = 0;
-	for (i=0; rc == 0 && i < sizeof(struct in6_addr); i++) {
+	for (i = 0; rc == 0 && i < sizeof(struct in6_addr); i++) {
 		if (ia6a->s6_addr[i] > ia6b->s6_addr[i])
 			rc = 1;
 		else if (ia6a->s6_addr[i] < ia6b->s6_addr[i])
@@ -217,7 +217,7 @@ prison_check_conflicting_ips(struct prison *p)
 		if ((p->pr_ip4s >= 1 && pr->pr_ip4s > 1) ||
 		    (p->pr_ip4s > 1 && pr->pr_ip4s >= 1)) {
 			for (i = 0; i < p->pr_ip4s; i++) {
-				if (_prison_check_ip4(pr, &p->pr_ip4[i]))
+				if (_prison_check_ip4(pr, &p->pr_ip4[i]) == 0)
 					return (EINVAL);
 			}
 		}
@@ -226,7 +226,7 @@ prison_check_conflicting_ips(struct prison *p)
 		if ((p->pr_ip6s >= 1 && pr->pr_ip6s > 1) ||
 		    (p->pr_ip6s > 1 && pr->pr_ip6s >= 1)) {
 			for (i = 0; i < p->pr_ip6s; i++) {
-				if (_prison_check_ip6(pr, &p->pr_ip6[i]))
+				if (_prison_check_ip6(pr, &p->pr_ip6[i]) == 0)
 					return (EINVAL);
 			}
 		}
@@ -240,7 +240,7 @@ static int
 jail_copyin_ips(struct jail *j)
 {
 #ifdef INET
-	struct in_addr  *ip4;
+	struct in_addr *ip4;
 #endif
 #ifdef INET6
 	struct in6_addr *ip6;
@@ -329,11 +329,9 @@ jail_copyin_ips(struct jail *j)
 e_free_ip:
 #ifdef INET6
 	free(ip6, M_PRISON);
-	j->ip6 = NULL;
 #endif
 #ifdef INET
 	free(ip4, M_PRISON);
-	j->ip4 = NULL;
 #endif
 	return (error);
 }
@@ -350,7 +348,7 @@ jail_handle_ips(struct jail *j)
 	 * Finish conversion for older versions, copyin and setup IPs.
 	 */
 	switch (j->version) {
-	case 0:	
+	case 0:
 	{
 #ifdef INET
 		/* FreeBSD single IPv4 jails. */
@@ -596,6 +594,7 @@ e_killmtx:
 	return (error);
 }
 
+
 /*
  * struct jail_attach_args {
  *	int jid;
@@ -809,12 +808,13 @@ prison_proc_free(struct prison *pr)
  * Pass back primary IPv4 address of this jail.
  *
  * If not jailed return success but do not alter the address.  Caller has to
- * make sure to intialize it correctly (INADDR_ANY).
+ * make sure to initialize it correctly (e.g. INADDR_ANY).
  *
- * Returns 0 on success, 1 on error.  Address returned in NBO.
+ * Returns 0 on success, EAFNOSUPPORT if the jail doesn't allow IPv4.
+ * Address returned in NBO.
  */
 int
-prison_getip4(struct ucred *cred, struct in_addr *ia)
+prison_get_ip4(struct ucred *cred, struct in_addr *ia)
 {
 
 	KASSERT(cred != NULL, ("%s: cred is NULL", __func__));
@@ -823,9 +823,8 @@ prison_getip4(struct ucred *cred, struct in_addr *ia)
 	if (!jailed(cred))
 		/* Do not change address passed in. */
 		return (0);
-
 	if (cred->cr_prison->pr_ip4 == NULL)
-		return (1);
+		return (EAFNOSUPPORT);
 
 	ia->s_addr = cred->cr_prison->pr_ip4[0].s_addr;
 	return (0);
@@ -835,8 +834,9 @@ prison_getip4(struct ucred *cred, struct in_addr *ia)
  * Make sure our (source) address is set to something meaningful to this
  * jail.
  *
- * Returns 0 on success, 1 on error.  Address passed in in NBO and returned
- * in NBO.
+ * Returns 0 if not jailed or if address belongs to jail, EADDRNOTAVAIL if
+ * the address doesn't belong, or EAFNOSUPPORT if the jail doesn't allow IPv4.
+ * Address passed in in NBO and returned in NBO.
  */
 int
 prison_local_ip4(struct ucred *cred, struct in_addr *ia)
@@ -849,7 +849,7 @@ prison_local_ip4(struct ucred *cred, struct in_addr *ia)
 	if (!jailed(cred))
 		return (0);
 	if (cred->cr_prison->pr_ip4 == NULL)
-		return (1);
+		return (EAFNOSUPPORT);
 
 	ia0.s_addr = ntohl(ia->s_addr);
 	if (ia0.s_addr == INADDR_LOOPBACK) {
@@ -857,25 +857,23 @@ prison_local_ip4(struct ucred *cred, struct in_addr *ia)
 		return (0);
 	}
 
-	/*
-	 * In case there is only 1 IPv4 address, bind directly.
-	 */
-	if (ia0.s_addr == INADDR_ANY && cred->cr_prison->pr_ip4s == 1) {
-		ia->s_addr = cred->cr_prison->pr_ip4[0].s_addr;
+	if (ia0.s_addr == INADDR_ANY) {
+		/*
+		 * In case there is only 1 IPv4 address, bind directly.
+		 */
+		if (cred->cr_prison->pr_ip4s == 1)
+			ia->s_addr = cred->cr_prison->pr_ip4[0].s_addr;
 		return (0);
 	}
 
-	if (ia0.s_addr == INADDR_ANY || prison_check_ip4(cred, ia))
-		return (0);
-
-	return (1);
+	return (_prison_check_ip4(cred->cr_prison, ia));
 }
 
 /*
  * Rewrite destination address in case we will connect to loopback address.
  *
- * Returns 0 on success, 1 on error.  Address passed in in NBO and returned
- * in NBO.
+ * Returns 0 on success, EAFNOSUPPORT if the jail doesn't allow IPv4.
+ * Address passed in in NBO and returned in NBO.
  */
 int
 prison_remote_ip4(struct ucred *cred, struct in_addr *ia)
@@ -887,7 +885,8 @@ prison_remote_ip4(struct ucred *cred, struct in_addr *ia)
 	if (!jailed(cred))
 		return (0);
 	if (cred->cr_prison->pr_ip4 == NULL)
-		return (1);
+		return (EAFNOSUPPORT);
+
 	if (ntohl(ia->s_addr) == INADDR_LOOPBACK) {
 		ia->s_addr = cred->cr_prison->pr_ip4[0].s_addr;
 		return (0);
@@ -900,23 +899,22 @@ prison_remote_ip4(struct ucred *cred, struct in_addr *ia)
 }
 
 /*
- * Check if given address belongs to the jail referenced by cred.
+ * Check if given address belongs to the jail referenced by cred/prison.
  *
- * Returns 1 if address belongs to jail, 0 if not.  Address passed in in NBO.
+ * Returns 0 if not jailed or if address belongs to jail, EADDRNOTAVAIL if
+ * the address doesn't belong, or EAFNOSUPPORT if the jail doesn't allow IPv4.
+ * Address passed in in NBO.
  */
 static int
 _prison_check_ip4(struct prison *pr, struct in_addr *ia)
 {
 	int i, a, z, d;
 
-	if (pr->pr_ip4 == NULL)
-		return (0);
-
 	/*
 	 * Check the primary IP.
 	 */
 	if (pr->pr_ip4[0].s_addr == ia->s_addr)
-		return (1);
+		return (0);
 
 	/*
 	 * All the other IPs are sorted so we can do a binary search.
@@ -931,9 +929,10 @@ _prison_check_ip4(struct prison *pr, struct in_addr *ia)
 		else if (d < 0)
 			a = i + 1;
 		else
-			return (1);
+			return (0);
 	}
-	return (0);
+
+	return (EADDRNOTAVAIL);
 }
 
 int
@@ -944,7 +943,9 @@ prison_check_ip4(struct ucred *cred, struct in_addr *ia)
 	KASSERT(ia != NULL, ("%s: ia is NULL", __func__));
 
 	if (!jailed(cred))
-		return (1);
+		return (0);
+	if (cred->cr_prison->pr_ip4 == NULL)
+		return (EAFNOSUPPORT);
 
 	return (_prison_check_ip4(cred->cr_prison, ia));
 }
@@ -955,12 +956,12 @@ prison_check_ip4(struct ucred *cred, struct in_addr *ia)
  * Pass back primary IPv6 address for this jail.
  *
  * If not jailed return success but do not alter the address.  Caller has to
- * make sure to intialize it correctly (IN6ADDR_ANY_INIT).
+ * make sure to initialize it correctly (e.g. IN6ADDR_ANY_INIT).
  *
- * Returns 0 on success, 1 on error.
+ * Returns 0 on success, EAFNOSUPPORT if the jail doesn't allow IPv6.
  */
 int
-prison_getip6(struct ucred *cred, struct in6_addr *ia6)
+prison_get_ip6(struct ucred *cred, struct in6_addr *ia6)
 {
 
 	KASSERT(cred != NULL, ("%s: cred is NULL", __func__));
@@ -969,7 +970,8 @@ prison_getip6(struct ucred *cred, struct in6_addr *ia6)
 	if (!jailed(cred))
 		return (0);
 	if (cred->cr_prison->pr_ip6 == NULL)
-		return (1);
+		return (EAFNOSUPPORT);
+
 	bcopy(&cred->cr_prison->pr_ip6[0], ia6, sizeof(struct in6_addr));
 	return (0);
 }
@@ -980,7 +982,8 @@ prison_getip6(struct ucred *cred, struct in6_addr *ia6)
  * v6only should be set based on (inp->inp_flags & IN6P_IPV6_V6ONLY != 0)
  * when needed while binding.
  *
- * Returns 0 on success, 1 on error.
+ * Returns 0 if not jailed or if address belongs to jail, EADDRNOTAVAIL if
+ * the address doesn't belong, or EAFNOSUPPORT if the jail doesn't allow IPv6.
  */
 int
 prison_local_ip6(struct ucred *cred, struct in6_addr *ia6, int v6only)
@@ -992,32 +995,32 @@ prison_local_ip6(struct ucred *cred, struct in6_addr *ia6, int v6only)
 	if (!jailed(cred))
 		return (0);
 	if (cred->cr_prison->pr_ip6 == NULL)
-		return (1);
+		return (EAFNOSUPPORT);
+
 	if (IN6_IS_ADDR_LOOPBACK(ia6)) {
 		bcopy(&cred->cr_prison->pr_ip6[0], ia6,
 		    sizeof(struct in6_addr));
 		return (0);
 	}
 
-	/*
-	 * In case there is only 1 IPv6 address, and v6only is true, then
-	 * bind directly.
-	 */
-	if (v6only != 0 && IN6_IS_ADDR_UNSPECIFIED(ia6) &&
-	    cred->cr_prison->pr_ip6s == 1) {
-		bcopy(&cred->cr_prison->pr_ip6[0], ia6,
-		    sizeof(struct in6_addr));
+	if (IN6_IS_ADDR_UNSPECIFIED(ia6)) {
+		/*
+		 * In case there is only 1 IPv6 address, and v6only is true,
+		 * then bind directly.
+		 */
+		if (v6only != 0 && cred->cr_prison->pr_ip6s == 1)
+			bcopy(&cred->cr_prison->pr_ip6[0], ia6,
+			    sizeof(struct in6_addr));
 		return (0);
 	}
-	if (IN6_IS_ADDR_UNSPECIFIED(ia6) || prison_check_ip6(cred, ia6))
-		return (0);
-	return (1);
+
+	return (_prison_check_ip6(cred->cr_prison, ia6));
 }
 
 /*
  * Rewrite destination address in case we will connect to loopback address.
  *
- * Returns 0 on success, 1 on error.
+ * Returns 0 on success, EAFNOSUPPORT if the jail doesn't allow IPv6.
  */
 int
 prison_remote_ip6(struct ucred *cred, struct in6_addr *ia6)
@@ -1029,7 +1032,8 @@ prison_remote_ip6(struct ucred *cred, struct in6_addr *ia6)
 	if (!jailed(cred))
 		return (0);
 	if (cred->cr_prison->pr_ip6 == NULL)
-		return (1);
+		return (EAFNOSUPPORT);
+
 	if (IN6_IS_ADDR_LOOPBACK(ia6)) {
 		bcopy(&cred->cr_prison->pr_ip6[0], ia6,
 		    sizeof(struct in6_addr));
@@ -1043,23 +1047,21 @@ prison_remote_ip6(struct ucred *cred, struct in6_addr *ia6)
 }
 
 /*
- * Check if given address belongs to the jail referenced by cred.
+ * Check if given address belongs to the jail referenced by cred/prison.
  *
- * Returns 1 if address belongs to jail, 0 if not.
+ * Returns 0 if not jailed or if address belongs to jail, EADDRNOTAVAIL if
+ * the address doesn't belong, or EAFNOSUPPORT if the jail doesn't allow IPv6.
  */
 static int
 _prison_check_ip6(struct prison *pr, struct in6_addr *ia6)
 {
 	int i, a, z, d;
 
-	if (pr->pr_ip6 == NULL)
-		return (0);
-
 	/*
 	 * Check the primary IP.
 	 */
 	if (IN6_ARE_ADDR_EQUAL(&pr->pr_ip6[0], ia6))
-		return (1);
+		return (0);
 
 	/*
 	 * All the other IPs are sorted so we can do a binary search.
@@ -1074,9 +1076,10 @@ _prison_check_ip6(struct prison *pr, struct in6_addr *ia6)
 		else if (d < 0)
 			a = i + 1;
 		else
-			return (1);
+			return (0);
 	}
-	return (0);
+
+	return (EADDRNOTAVAIL);
 }
 
 int
@@ -1087,18 +1090,63 @@ prison_check_ip6(struct ucred *cred, struct in6_addr *ia6)
 	KASSERT(ia6 != NULL, ("%s: ia6 is NULL", __func__));
 
 	if (!jailed(cred))
-		return (1);
+		return (0);
+	if (cred->cr_prison->pr_ip6 == NULL)
+		return (EAFNOSUPPORT);
 
 	return (_prison_check_ip6(cred->cr_prison, ia6));
 }
 #endif
 
 /*
+ * Check if a jail supports the given address family.
+ *
+ * Returns 0 if not jailed or the address family is supported, EAFNOSUPPORT
+ * if not.
+ */
+int
+prison_check_af(struct ucred *cred, int af)
+{
+	int error;
+
+	KASSERT(cred != NULL, ("%s: cred is NULL", __func__));
+
+
+	if (!jailed(cred))
+		return (0);
+
+	error = 0;
+	switch (af)
+	{
+#ifdef INET
+	case AF_INET:
+		if (cred->cr_prison->pr_ip4 == NULL)
+			error = EAFNOSUPPORT;
+		break;
+#endif
+#ifdef INET6
+	case AF_INET6:
+		if (cred->cr_prison->pr_ip6 == NULL)
+			error = EAFNOSUPPORT;
+		break;
+#endif
+	case AF_LOCAL:
+	case AF_ROUTE:
+		break;
+	default:
+		if (jail_socket_unixiproute_only)
+			error = EAFNOSUPPORT;
+	}
+	return (error);
+}
+
+/*
  * Check if given address belongs to the jail referenced by cred (wrapper to
  * prison_check_ip[46]).
  *
- * Returns 1 if address belongs to jail, 0 if not.  IPv4 Address passed in in
- * NBO.
+ * Returns 0 if not jailed or if address belongs to jail, EADDRNOTAVAIL if
+ * the address doesn't belong, or EAFNOSUPPORT if the jail doesn't allow
+ * the address family.  IPv4 Address passed in in NBO.
  */
 int
 prison_if(struct ucred *cred, struct sockaddr *sa)
@@ -1109,35 +1157,31 @@ prison_if(struct ucred *cred, struct sockaddr *sa)
 #ifdef INET6
 	struct sockaddr_in6 *sai6;
 #endif
-	int ok;
+	int error;
 
 	KASSERT(cred != NULL, ("%s: cred is NULL", __func__));
 	KASSERT(sa != NULL, ("%s: sa is NULL", __func__));
 
-	ok = 0;
-	switch(sa->sa_family)
+	error = 0;
+	switch (sa->sa_family)
 	{
 #ifdef INET
 	case AF_INET:
 		sai = (struct sockaddr_in *)sa;
-		if (prison_check_ip4(cred, &sai->sin_addr))
-			ok = 1;
+		error = prison_check_ip4(cred, &sai->sin_addr);
 		break;
-
 #endif
 #ifdef INET6
 	case AF_INET6:
 		sai6 = (struct sockaddr_in6 *)sa;
-		if (prison_check_ip6(cred, (struct in6_addr *)&sai6->sin6_addr))
-			ok = 1;
+		error = prison_check_ip6(cred, &sai6->sin6_addr);
 		break;
-
 #endif
 	default:
-		if (!jail_socket_unixiproute_only)
-			ok = 1;
+		if (jailed(cred) && jail_socket_unixiproute_only)
+			error = EAFNOSUPPORT;
 	}
-	return (ok);
+	return (error);
 }
 
 /*
@@ -1531,8 +1575,9 @@ sysctl_jail_list(SYSCTL_HANDLER_ARGS)
 	return (error);
 }
 
-SYSCTL_OID(_security_jail, OID_AUTO, list, CTLTYPE_STRUCT | CTLFLAG_RD,
-    NULL, 0, sysctl_jail_list, "S", "List of active jails");
+SYSCTL_OID(_security_jail, OID_AUTO, list,
+    CTLTYPE_STRUCT | CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, 0,
+    sysctl_jail_list, "S", "List of active jails");
 
 static int
 sysctl_jail_jailed(SYSCTL_HANDLER_ARGS)
@@ -1544,8 +1589,9 @@ sysctl_jail_jailed(SYSCTL_HANDLER_ARGS)
 
 	return (error);
 }
-SYSCTL_PROC(_security_jail, OID_AUTO, jailed, CTLTYPE_INT | CTLFLAG_RD,
-    NULL, 0, sysctl_jail_jailed, "I", "Process in jail?");
+SYSCTL_PROC(_security_jail, OID_AUTO, jailed,
+    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, 0,
+    sysctl_jail_jailed, "I", "Process in jail?");
 
 #ifdef DDB
 DB_SHOW_COMMAND(jails, db_show_jails)

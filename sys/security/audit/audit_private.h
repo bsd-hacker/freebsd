@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 1999-2005 Apple Inc.
+ * Copyright (c) 1999-2009 Apple Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -118,18 +118,34 @@ struct socket_au_info {
 	u_short		so_lport;	/* Local port. */
 };
 
+/*
+ * The following is used for A_OLDSETQCTRL and AU_OLDGETQCTRL and a 64-bit
+ * userland.
+ */
+struct au_qctrl64 {
+	u_int64_t	aq64_hiwater;
+	u_int64_t	aq64_lowater;
+	u_int64_t	aq64_bufsz;
+	u_int64_t	aq64_delay;
+	u_int64_t	aq64_minfree;
+};
+typedef	struct au_qctrl64	au_qctrl64_t;
+
 union auditon_udata {
 	char			*au_path;
-	long			au_cond;
-	long			au_flags;
-	long			au_policy;
+	int			au_cond;
+	int			au_flags;
+	int			au_policy;
 	int			au_trigger;
+	int64_t			au_cond64;
+	int64_t			au_policy64;
 	au_evclass_map_t	au_evclass;
 	au_mask_t		au_mask;
 	auditinfo_t		au_auinfo;
 	auditpinfo_t		au_aupinfo;
 	auditpinfo_addr_t	au_aupinfo_addr;
 	au_qctrl_t		au_qctrl;
+	au_qctrl64_t		au_qctrl64;
 	au_stat_t		au_stat;
 	au_fstat_t		au_fstat;
 	auditinfo_addr_t	au_kau_info;
@@ -275,8 +291,8 @@ extern struct mtx		audit_mtx;
 extern struct cv		audit_watermark_cv;
 extern struct cv		audit_worker_cv;
 extern struct kaudit_queue	audit_q;
-extern size_t			audit_q_len;
-extern size_t			audit_pre_q_len;
+extern int			audit_q_len;
+extern int			audit_pre_q_len;
 extern int			audit_in_failure;
 
 /*
@@ -306,10 +322,10 @@ void		 au_evclassmap_insert(au_event_t event, au_class_t class);
 au_class_t	 au_event_class(au_event_t event);
 au_event_t	 audit_ctlname_to_sysctlevent(int name[], uint64_t valid_arg);
 au_event_t	 audit_flags_and_error_to_openevent(int oflags, int error);
-int		 audit_msgctl_to_event(int cmd);
-int		 audit_semctl_to_event(int cmr);
+au_event_t	 audit_msgctl_to_event(int cmd);
+au_event_t	 audit_semctl_to_event(int cmr);
 void		 audit_canon_path(struct thread *td, char *path, char *cpath);
-int		 auditon_command_event(int cmd);
+au_event_t	 auditon_command_event(int cmd);
 
 /*
  * Audit trigger events notify user space of kernel audit conditions

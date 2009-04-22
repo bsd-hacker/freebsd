@@ -34,6 +34,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_inet.h"
 #include "opt_ipfw.h"
 #include "opt_mac.h"
+#include "opt_sctp.h"
 #ifndef INET
 #error "IPDIVERT requires INET."
 #endif
@@ -76,6 +77,9 @@ __FBSDID("$FreeBSD$");
 #include <netinet/ip_var.h>
 #include <netinet/ip_fw.h>
 #include <netinet/vinet.h>
+#ifdef SCTP
+#include <netinet/sctp_crc32.h>
+#endif
 
 #include <security/mac/mac_framework.h>
 
@@ -182,7 +186,7 @@ div_input(struct mbuf *m, int off)
 {
 	INIT_VNET_INET(curvnet);
 
-	V_ipstat.ips_noproto++;
+	IPSTAT_INC(ips_noproto);
 	m_freem(m);
 }
 
@@ -222,7 +226,14 @@ divert_packet(struct mbuf *m, int incoming)
 		m->m_pkthdr.csum_flags &= ~CSUM_DELAY_DATA;
 		ip->ip_len = htons(ip->ip_len);
 	}
-
+#ifdef SCTP
+	if (m->m_pkthdr.csum_flags & CSUM_SCTP) {
+		ip->ip_len = ntohs(ip->ip_len);
+		sctp_delayed_cksum(m);
+		m->m_pkthdr.csum_flags &= ~CSUM_SCTP;
+		ip->ip_len = htons(ip->ip_len);
+	}
+#endif
 	/*
 	 * Record receive interface address, if any.
 	 * But only for incoming packets.
@@ -233,18 +244,22 @@ divert_packet(struct mbuf *m, int incoming)
 	divsrc.sin_port = divert_cookie(mtag);	/* record matching rule */
 	if (incoming) {
 		struct ifaddr *ifa;
+		struct ifnet *ifp;
 
 		/* Sanity check */
 		M_ASSERTPKTHDR(m);
 
 		/* Find IP address for receive interface */
-		TAILQ_FOREACH(ifa, &m->m_pkthdr.rcvif->if_addrhead, ifa_link) {
+		ifp = m->m_pkthdr.rcvif;
+		IF_ADDR_LOCK(ifp);
+		TAILQ_FOREACH(ifa, &ifp->if_addrhead, ifa_link) {
 			if (ifa->ifa_addr->sa_family != AF_INET)
 				continue;
 			divsrc.sin_addr =
 			    ((struct sockaddr_in *) ifa->ifa_addr)->sin_addr;
 			break;
 		}
+		IF_ADDR_UNLOCK(ifp);
 	}
 	/*
 	 * Record the incoming interface name whenever we have one.
@@ -296,8 +311,8 @@ divert_packet(struct mbuf *m, int incoming)
 	INP_INFO_RUNLOCK(&V_divcbinfo);
 	if (sa == NULL) {
 		m_freem(m);
-		V_ipstat.ips_noproto++;
-		V_ipstat.ips_delivered--;
+		IPSTAT_INC(ips_noproto);
+		IPSTAT_DEC(ips_delivered);
         }
 }
 
@@ -383,7 +398,7 @@ div_output(struct socket *so, struct mbuf *m, struct sockaddr_in *sin,
 			ip->ip_off = ntohs(ip->ip_off);
 
 			/* Send packet to output processing */
-			V_ipstat.ips_rawout++;			/* XXX */
+			IPSTAT_INC(ips_rawout);			/* XXX */
 
 #ifdef MAC
 			mac_inpcb_create_mbuf(inp, m);
@@ -559,7 +574,7 @@ div_send(struct socket *so, int flags, struct mbuf *m, struct sockaddr *nam,
 	/* Packet must have a header (but that's about it) */
 	if (m->m_len < sizeof (struct ip) &&
 	    (m = m_pullup(m, sizeof (struct ip))) == 0) {
-		V_ipstat.ips_toosmall++;
+		IPSTAT_INC(ips_toosmall);
 		m_freem(m);
 		return EINVAL;
 	}

@@ -3126,9 +3126,7 @@ retry:
 			}
 
 			p = vm_page_lookup(object, pindex);
-			vm_page_lock_queues();
 			vm_page_wakeup(p);
-			vm_page_unlock_queues();
 		}
 
 		ptepa = VM_PAGE_TO_PHYS(p);
@@ -3713,14 +3711,17 @@ pmap_remove_write(vm_page_t m)
 retry:
 		oldpte = *pte;
 		if ((oldpte & PG_RW) != 0) {
+			vm_paddr_t newpte = oldpte & ~(PG_RW | PG_M);
+			
 			/*
 			 * Regardless of whether a pte is 32 or 64 bits
 			 * in size, PG_RW and PG_M are among the least
 			 * significant 32 bits.
 			 */
-			if (!atomic_cmpset_int((u_int *)pte, oldpte,
-			    oldpte & ~(PG_RW | PG_M)))
+			PT_SET_VA_MA(pte, newpte, TRUE);
+			if (*pte != newpte)
 				goto retry;
+			
 			if ((oldpte & PG_M) != 0)
 				vm_page_dirty(m);
 			pmap_invalidate_page(pmap, pv->pv_va);
@@ -4098,6 +4099,72 @@ pmap_align_superpage(vm_object_t object, vm_ooffset_t offset,
 	else
 		*addr = ((*addr + PDRMASK) & ~PDRMASK) + superpage_offset;
 }
+
+#ifdef XEN
+
+void
+pmap_suspend()
+{
+	pmap_t pmap;
+	int i, pdir, offset;
+	vm_paddr_t pdirma;
+	mmu_update_t mu[4];
+
+	/*
+	 * We need to remove the recursive mapping structure from all
+	 * our pmaps so that Xen doesn't get confused when it restores
+	 * the page tables. The recursive map lives at page directory
+	 * index PTDPTDI. We assume that the suspend code has stopped
+	 * the other vcpus (if any).
+	 */
+	LIST_FOREACH(pmap, &allpmaps, pm_list) {
+		for (i = 0; i < 4; i++) {
+			/*
+			 * Figure out which page directory (L2) page
+			 * contains this bit of the recursive map and
+			 * the offset within that page of the map
+			 * entry
+			 */
+			pdir = (PTDPTDI + i) / NPDEPG;
+			offset = (PTDPTDI + i) % NPDEPG;
+			pdirma = pmap->pm_pdpt[pdir] & PG_FRAME;
+			mu[i].ptr = pdirma + offset * sizeof(pd_entry_t);
+			mu[i].val = 0;
+		}
+		HYPERVISOR_mmu_update(mu, 4, NULL, DOMID_SELF);
+	}
+}
+
+void
+pmap_resume()
+{
+	pmap_t pmap;
+	int i, pdir, offset;
+	vm_paddr_t pdirma;
+	mmu_update_t mu[4];
+
+	/*
+	 * Restore the recursive map that we removed on suspend.
+	 */
+	LIST_FOREACH(pmap, &allpmaps, pm_list) {
+		for (i = 0; i < 4; i++) {
+			/*
+			 * Figure out which page directory (L2) page
+			 * contains this bit of the recursive map and
+			 * the offset within that page of the map
+			 * entry
+			 */
+			pdir = (PTDPTDI + i) / NPDEPG;
+			offset = (PTDPTDI + i) % NPDEPG;
+			pdirma = pmap->pm_pdpt[pdir] & PG_FRAME;
+			mu[i].ptr = pdirma + offset * sizeof(pd_entry_t);
+			mu[i].val = (pmap->pm_pdpt[i] & PG_FRAME) | PG_V;
+		}
+		HYPERVISOR_mmu_update(mu, 4, NULL, DOMID_SELF);
+	}
+}
+
+#endif
 
 #if defined(PMAP_DEBUG)
 pmap_pid_dump(int pid)

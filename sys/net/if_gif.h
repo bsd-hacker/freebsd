@@ -100,11 +100,13 @@ struct etherip_header {
 #define ETHERIP_VER_VERS_MASK   0x0f
 #define ETHERIP_VER_RSVD_MASK   0xf0
 #define ETHERIP_VERSION         0x03
+/* mbuf adjust factor to force 32-bit alignment of IP header */
+#define	ETHERIP_ALIGN		2
 
 /* Prototypes */
 void gif_input(struct mbuf *, int, struct ifnet *);
 int gif_output(struct ifnet *, struct mbuf *, struct sockaddr *,
-	       struct rtentry *);
+	       struct route *);
 int gif_ioctl(struct ifnet *, u_long, caddr_t);
 int gif_set_tunnel(struct ifnet *, struct sockaddr *, struct sockaddr *);
 void gif_delete_tunnel(struct ifnet *);

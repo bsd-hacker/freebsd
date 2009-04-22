@@ -424,11 +424,6 @@ cpu_set_upcall(struct thread *td, struct thread *td0)
 	 * Set registers for trampoline to user mode.  Leave space for the
 	 * return address on stack.  These are the kernel mode register values.
 	 */
-#ifdef PAE
-	pcb2->pcb_cr3 = vtophys(vmspace_pmap(td->td_proc->p_vmspace)->pm_pdpt);
-#else
-	pcb2->pcb_cr3 = vtophys(vmspace_pmap(td->td_proc->p_vmspace)->pm_pdir);
-#endif
 	pcb2->pcb_edi = 0;
 	pcb2->pcb_esi = (int)fork_return;		    /* trampoline arg */
 	pcb2->pcb_ebp = 0;
@@ -439,6 +434,7 @@ cpu_set_upcall(struct thread *td, struct thread *td0)
 	pcb2->pcb_gs = rgs();
 	/*
 	 * If we didn't copy the pcb, we'd need to do the following registers:
+	 * pcb2->pcb_cr3:	cloned above.
 	 * pcb2->pcb_dr*:	cloned above.
 	 * pcb2->pcb_savefpu:	cloned above.
 	 * pcb2->pcb_flags:	cloned above.
@@ -616,7 +612,10 @@ cpu_reset_real()
 
 	disable_intr();
 #ifdef XEN
-	HYPERVISOR_shutdown(SHUTDOWN_poweroff);
+	if (smp_processor_id() == 0)
+		HYPERVISOR_shutdown(SHUTDOWN_reboot);
+	else
+		HYPERVISOR_shutdown(SHUTDOWN_poweroff);
 #endif 
 #ifdef CPU_ELAN
 	if (elan_mmcr != NULL)

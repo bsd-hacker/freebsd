@@ -103,9 +103,9 @@ static int icattach(device_t);
 
 static int icioctl(struct ifnet *, u_long, caddr_t);
 static int icoutput(struct ifnet *, struct mbuf *, struct sockaddr *,
-		struct rtentry *);
+               struct route *);
 
-static void icintr(device_t, int, char *);
+static int icintr(device_t, int, char *);
 
 static device_method_t ic_methods[] = {
 	/* device interface */
@@ -153,7 +153,7 @@ ic_alloc_buffers(struct ic_softc *sc, int mtu)
 static int
 icprobe(device_t dev)
 {
-	return (0);
+	return (BUS_PROBE_NOWILDCARD);
 }
 
 /*
@@ -272,7 +272,7 @@ icioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 /*
  * icintr()
  */
-static void
+static int
 icintr(device_t dev, int event, char *ptr)
 {
 	struct ic_softc *sc = (struct ic_softc *)device_get_softc(dev);
@@ -346,7 +346,7 @@ icintr(device_t dev, int event, char *ptr)
 	}
 
 	mtx_unlock(&sc->ic_lock);
-	return;
+	return (0);
 }
 
 /*
@@ -354,7 +354,7 @@ icintr(device_t dev, int event, char *ptr)
  */
 static int
 icoutput(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
-    struct rtentry *rt)
+    struct route *ro)
 {
 	struct ic_softc *sc = ifp->if_softc;
 	device_t icdev = sc->ic_dev;

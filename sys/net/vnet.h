@@ -33,16 +33,7 @@
 #ifndef _NET_VNET_H_
 #define _NET_VNET_H_
 
-#include "opt_route.h"
-
-#include <sys/param.h>
-#include <sys/systm.h>
-#include <sys/protosw.h>
-
-#include <net/if.h>
 #include <net/if_var.h>
-#include <net/route.h>
-#include <net/raw_cb.h>
 
 struct vnet_net {
 	int	_if_index;
@@ -56,6 +47,7 @@ struct vnet_net {
 	struct	rtstat _rtstat;
 	struct	radix_node_head *_rt_tables[RT_MAXFIBS][AF_MAX+1];
 	int	_rttrash;
+	uma_zone_t _rtzone;
 
 	struct	ifnet *_loif;
 	LIST_HEAD(, lo_softc) _lo_list;
@@ -64,6 +56,9 @@ struct vnet_net {
 
 	int	_ether_ipfw;
 };
+
+/* Size guard. See sys/vimage.h. */
+VIMAGE_CTASSERT(SIZEOF_vnet_net, sizeof(struct vnet_net));
 
 #ifndef VIMAGE
 #ifndef VIMAGE_GLOBALS
@@ -92,5 +87,6 @@ extern struct vnet_net vnet_net_0;
 #define	V_rt_tables	VNET_NET(rt_tables)
 #define	V_rtstat	VNET_NET(rtstat)
 #define	V_rttrash	VNET_NET(rttrash)
+#define	V_rtzone	VNET_NET(rtzone)
 
 #endif /* !_NET_VNET_H_ */

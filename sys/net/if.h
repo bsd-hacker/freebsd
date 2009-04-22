@@ -149,7 +149,6 @@ struct if_data {
 #define	IFF_PPROMISC	0x20000		/* (n) user-requested promisc mode */
 #define	IFF_MONITOR	0x40000		/* (n) user-requested monitor mode */
 #define	IFF_STATICARP	0x80000		/* (n) static ARP */
-#define	IFF_NEEDSGIANT	0x100000	/* (i) hold Giant over if_start calls */
 
 /*
  * Old names for driver flags so that user space tools can continue to use
@@ -163,8 +162,7 @@ struct if_data {
 /* flags set internally only: */
 #define	IFF_CANTCHANGE \
 	(IFF_BROADCAST|IFF_POINTOPOINT|IFF_DRV_RUNNING|IFF_DRV_OACTIVE|\
-	    IFF_SIMPLEX|IFF_MULTICAST|IFF_ALLMULTI|IFF_SMART|IFF_PROMISC|\
-	    IFF_NEEDSGIANT)
+	    IFF_SIMPLEX|IFF_MULTICAST|IFF_ALLMULTI|IFF_SMART|IFF_PROMISC)
 
 /*
  * Values for if_link_state.
@@ -452,8 +450,6 @@ __END_DECLS
 #endif
 
 #ifdef _KERNEL
-struct thread;
-
 /* XXX - this should go away soon. */
 #include <net/if_var.h>
 #endif

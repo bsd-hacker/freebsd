@@ -94,7 +94,6 @@ __FBSDID("$FreeBSD$");
 
 #include <security/mac/mac_framework.h>
 
-static uma_zone_t tcptw_zone;
 static int	maxtcptw;
 
 /*
@@ -104,6 +103,7 @@ static int	maxtcptw;
  * tcbinfo lock, which must be held over queue iteration and modification.
  */
 #ifdef VIMAGE_GLOBALS
+static uma_zone_t tcptw_zone;
 static TAILQ_HEAD(, tcptw)	twq_2msl;
 int	nolocaltimewait;
 #endif
@@ -142,7 +142,7 @@ sysctl_maxtcptw(SYSCTL_HANDLER_ARGS)
 	if (error == 0 && req->newptr)
 		if (new >= 32) {
 			maxtcptw = new;
-			uma_zone_set_max(tcptw_zone, maxtcptw);
+			uma_zone_set_max(V_tcptw_zone, maxtcptw);
 		}
 	return (error);
 }
@@ -160,7 +160,7 @@ tcp_tw_zone_change(void)
 {
 
 	if (maxtcptw == 0)
-		uma_zone_set_max(tcptw_zone, tcptw_auto_size());
+		uma_zone_set_max(V_tcptw_zone, tcptw_auto_size());
 }
 
 void
@@ -168,13 +168,13 @@ tcp_tw_init(void)
 {
 	INIT_VNET_INET(curvnet);
 
-	tcptw_zone = uma_zcreate("tcptw", sizeof(struct tcptw),
+	V_tcptw_zone = uma_zcreate("tcptw", sizeof(struct tcptw),
 	    NULL, NULL, NULL, NULL, UMA_ALIGN_PTR, UMA_ZONE_NOFREE);
 	TUNABLE_INT_FETCH("net.inet.tcp.maxtcptw", &maxtcptw);
 	if (maxtcptw == 0)
-		uma_zone_set_max(tcptw_zone, tcptw_auto_size());
+		uma_zone_set_max(V_tcptw_zone, tcptw_auto_size());
 	else
-		uma_zone_set_max(tcptw_zone, maxtcptw);
+		uma_zone_set_max(V_tcptw_zone, maxtcptw);
 	TAILQ_INIT(&V_twq_2msl);
 }
 
@@ -204,7 +204,7 @@ tcp_twstart(struct tcpcb *tp)
 		return;
 	}
 
-	tw = uma_zalloc(tcptw_zone, M_NOWAIT);
+	tw = uma_zalloc(V_tcptw_zone, M_NOWAIT);
 	if (tw == NULL) {
 		tw = tcp_tw_2msl_scan(1);
 		if (tw == NULL) {
@@ -265,17 +265,17 @@ tcp_twstart(struct tcpcb *tp)
 	if (acknow)
 		tcp_twrespond(tw, TH_ACK);
 	inp->inp_ppcb = tw;
-	inp->inp_vflag |= INP_TIMEWAIT;
+	inp->inp_flags |= INP_TIMEWAIT;
 	tcp_tw_2msl_reset(tw, 0);
 
 	/*
 	 * If the inpcb owns the sole reference to the socket, then we can
 	 * detach and free the socket as it is not needed in time wait.
 	 */
-	if (inp->inp_vflag & INP_SOCKREF) {
+	if (inp->inp_flags & INP_SOCKREF) {
 		KASSERT(so->so_state & SS_PROTOREF,
 		    ("tcp_twstart: !SS_PROTOREF"));
-		inp->inp_vflag &= ~INP_SOCKREF;
+		inp->inp_flags &= ~INP_SOCKREF;
 		INP_WUNLOCK(inp);
 		ACCEPT_LOCK();
 		SOCK_LOCK(so);
@@ -333,11 +333,6 @@ tcp_twcheck(struct inpcb *inp, struct tcpopt *to, struct tcphdr *th,
 	struct tcptw *tw;
 	int thflags;
 	tcp_seq seq;
-#ifdef INET6
-	int isipv6 = (mtod(m, struct ip *)->ip_v == 6) ? 1 : 0;
-#else
-	const int isipv6 = 0;
-#endif
 
 	/* tcbinfo lock required for tcp_twclose(), tcp_tw_2msl_reset(). */
 	INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
@@ -417,46 +412,6 @@ tcp_twcheck(struct inpcb *inp, struct tcpopt *to, struct tcphdr *th,
 	if (thflags != TH_ACK || tlen != 0 ||
 	    th->th_seq != tw->rcv_nxt || th->th_ack != tw->snd_nxt)
 		tcp_twrespond(tw, TH_ACK);
-	goto drop;
-
-	/*
-	 * Generate a RST, dropping incoming segment.
-	 * Make ACK acceptable to originator of segment.
-	 * Don't bother to respond if destination was broadcast/multicast.
-	 */
-	if (m->m_flags & (M_BCAST|M_MCAST))
-		goto drop;
-	if (isipv6) {
-#ifdef INET6
-		struct ip6_hdr *ip6;
-
-		/* IPv6 anycast check is done at tcp6_input() */
-		ip6 = mtod(m, struct ip6_hdr *);
-		if (IN6_IS_ADDR_MULTICAST(&ip6->ip6_dst) ||
-		    IN6_IS_ADDR_MULTICAST(&ip6->ip6_src))
-			goto drop;
-#endif
-	} else {
-		struct ip *ip;
-
-		ip = mtod(m, struct ip *);
-		if (IN_MULTICAST(ntohl(ip->ip_dst.s_addr)) ||
-		    IN_MULTICAST(ntohl(ip->ip_src.s_addr)) ||
-		    ip->ip_src.s_addr == htonl(INADDR_BROADCAST) ||
-		    in_broadcast(ip->ip_dst, m->m_pkthdr.rcvif))
-			goto drop;
-	}
-	if (thflags & TH_ACK) {
-		tcp_respond(NULL,
-		    mtod(m, void *), th, m, 0, th->th_ack, TH_RST);
-	} else {
-		seq = th->th_seq + (thflags & TH_SYN ? 1 : 0);
-		tcp_respond(NULL,
-		    mtod(m, void *), th, m, seq, 0, TH_RST|TH_ACK);
-	}
-	INP_WUNLOCK(inp);
-	return (0);
-
 drop:
 	INP_WUNLOCK(inp);
 	m_freem(m);
@@ -480,7 +435,7 @@ tcp_twclose(struct tcptw *tw, int reuse)
 	 *     notify the socket layer.
 	 */
 	inp = tw->tw_inpcb;
-	KASSERT((inp->inp_vflag & INP_TIMEWAIT), ("tcp_twclose: !timewait"));
+	KASSERT((inp->inp_flags & INP_TIMEWAIT), ("tcp_twclose: !timewait"));
 	KASSERT(intotw(inp) == tw, ("tcp_twclose: inp_ppcb != tw"));
 	INP_INFO_WLOCK_ASSERT(&V_tcbinfo);	/* tcp_tw_2msl_stop(). */
 	INP_WLOCK_ASSERT(inp);
@@ -498,8 +453,8 @@ tcp_twclose(struct tcptw *tw, int reuse)
 		 * in which case another reference exists (XXXRW: think
 		 * about this more), and we don't need to take action.
 		 */
-		if (inp->inp_vflag & INP_SOCKREF) {
-			inp->inp_vflag &= ~INP_SOCKREF;
+		if (inp->inp_flags & INP_SOCKREF) {
+			inp->inp_flags &= ~INP_SOCKREF;
 			INP_WUNLOCK(inp);
 			ACCEPT_LOCK();
 			SOCK_LOCK(so);
@@ -517,12 +472,12 @@ tcp_twclose(struct tcptw *tw, int reuse)
 		}
 	} else
 		in_pcbfree(inp);
-	V_tcpstat.tcps_closed++;
+	TCPSTAT_INC(tcps_closed);
 	crfree(tw->tw_cred);
 	tw->tw_cred = NULL;
 	if (reuse)
 		return;
-	uma_zfree(tcptw_zone, tw);
+	uma_zfree(V_tcptw_zone, tw);
 }
 
 int
@@ -612,10 +567,10 @@ tcp_twrespond(struct tcptw *tw, int flags)
 		    NULL, inp);
 	}
 	if (flags & TH_ACK)
-		V_tcpstat.tcps_sndacks++;
+		TCPSTAT_INC(tcps_sndacks);
 	else
-		V_tcpstat.tcps_sndctrl++;
-	V_tcpstat.tcps_sndtotal++;
+		TCPSTAT_INC(tcps_sndctrl);
+	TCPSTAT_INC(tcps_sndtotal);
 	return (error);
 }
 

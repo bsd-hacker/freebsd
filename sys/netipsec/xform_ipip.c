@@ -41,6 +41,7 @@
  */
 #include "opt_inet.h"
 #include "opt_inet6.h"
+#include "opt_route.h"
 #include "opt_enc.h"
 
 #include <sys/param.h>
@@ -107,6 +108,16 @@ SYSCTL_V_STRUCT(V_NET, vnet_ipsec, _net_inet_ipip, IPSECCTL_STATS,
 #define	M_IPSEC	(M_AUTHIPHDR|M_AUTHIPDGM|M_DECRYPTED)
 
 static void _ipip_input(struct mbuf *m, int iphlen, struct ifnet *gifp);
+static int ipe4_iattach(const void *);
+
+#ifndef VIMAGE_GLOBALS
+static const vnet_modinfo_t vnet_ipip_modinfo = {
+	.vmi_id		= VNET_MOD_IPIP,
+	.vmi_name	= "ipsec_ipip",
+	.vmi_dependson	= VNET_MOD_IPSEC,
+	.vmi_iattach	= ipe4_iattach
+};
+#endif /* !VIMAGE_GLOBALS */
 
 #ifdef INET6
 /*
@@ -660,22 +671,24 @@ static struct xformsw ipe4_xformsw = {
 };
 
 extern struct domain inetdomain;
-static struct protosw ipe4_protosw =
-{ SOCK_RAW,	&inetdomain,	IPPROTO_IPV4,	PR_ATOMIC|PR_ADDR|PR_LASTHDR,
-  ip4_input,
-		0, 		0,		rip_ctloutput,
-  0,
-  0,		0,		0,		0,
-  &rip_usrreqs
+static struct protosw ipe4_protosw = {
+	.pr_type =	SOCK_RAW,
+	.pr_domain =	&inetdomain,
+	.pr_protocol =	IPPROTO_IPV4,
+	.pr_flags =	PR_ATOMIC|PR_ADDR|PR_LASTHDR,
+	.pr_input =	ip4_input,
+	.pr_ctloutput =	rip_ctloutput,
+	.pr_usrreqs =	&rip_usrreqs
 };
 #ifdef INET6
-static struct ip6protosw ipe6_protosw =
-{ SOCK_RAW,	&inetdomain,	IPPROTO_IPV6,	PR_ATOMIC|PR_ADDR|PR_LASTHDR,
-  ip4_input6,
-		0,	 	0,		rip_ctloutput,
-  0,
-  0,		0,		0,		0,
-  &rip_usrreqs
+static struct ip6protosw ipe6_protosw = {
+	.pr_type =	SOCK_RAW,
+	.pr_domain =	&inetdomain,
+	.pr_protocol =	IPPROTO_IPV6,
+	.pr_flags =	PR_ATOMIC|PR_ADDR|PR_LASTHDR,
+	.pr_input =	ip4_input6,
+	.pr_ctloutput =	rip_ctloutput,
+	.pr_usrreqs =	&rip_usrreqs
 };
 #endif
 
@@ -694,11 +707,18 @@ ipe4_encapcheck(const struct mbuf *m, int off, int proto, void *arg)
 	return ((m->m_flags & M_IPSEC) != 0 ? 1 : 0);
 }
 
+static int
+ipe4_iattach(const void *unused __unused)
+{
+	INIT_VNET_IPSEC(curvnet);
+
+	V_ipip_allow = 0;
+	return (0);
+}
+
 static void
 ipe4_attach(void)
 {
-
-	V_ipip_allow = 0;
 
 	xform_register(&ipe4_xformsw);
 	/* attach to encapsulation framework */
@@ -708,6 +728,11 @@ ipe4_attach(void)
 #ifdef INET6
 	(void) encap_attach_func(AF_INET6, -1,
 		ipe4_encapcheck, (struct protosw *)&ipe6_protosw, NULL);
+#endif
+#ifndef VIMAGE_GLOBALS
+	vnet_mod_register(&vnet_ipip_modinfo);
+#else
+	ipe4_iattach(NULL);
 #endif
 }
 SYSINIT(ipe4_xform_init, SI_SUB_PROTO_DOMAIN, SI_ORDER_MIDDLE, ipe4_attach, NULL);

@@ -62,12 +62,12 @@ static int g_part_apm_add(struct g_part_table *, struct g_part_entry *,
     struct g_part_parms *);
 static int g_part_apm_create(struct g_part_table *, struct g_part_parms *);
 static int g_part_apm_destroy(struct g_part_table *, struct g_part_parms *);
-static int g_part_apm_dumpconf(struct g_part_table *, struct g_part_entry *,
+static void g_part_apm_dumpconf(struct g_part_table *, struct g_part_entry *,
     struct sbuf *, const char *);
 static int g_part_apm_dumpto(struct g_part_table *, struct g_part_entry *);
 static int g_part_apm_modify(struct g_part_table *, struct g_part_entry *,
     struct g_part_parms *);
-static char *g_part_apm_name(struct g_part_table *, struct g_part_entry *,
+static const char *g_part_apm_name(struct g_part_table *, struct g_part_entry *,
     char *, size_t);
 static int g_part_apm_probe(struct g_part_table *, struct g_consumer *);
 static int g_part_apm_read(struct g_part_table *, struct g_consumer *);
@@ -216,6 +216,11 @@ g_part_apm_create(struct g_part_table *basetable, struct g_part_parms *gpp)
 {
 	struct g_provider *pp;
 	struct g_part_apm_table *table;
+	uint32_t last;
+
+	/* We don't nest, which means that our depth should be 0. */
+	if (basetable->gpt_depth != 0)
+		return (ENXIO);
 
 	table = (struct g_part_apm_table *)basetable;
 	pp = gpp->gpp_provider;
@@ -223,12 +228,15 @@ g_part_apm_create(struct g_part_table *basetable, struct g_part_parms *gpp)
 	    pp->mediasize < (2 + 2 * basetable->gpt_entries) * pp->sectorsize)
 		return (ENOSPC);
 
+	/* APM uses 32-bit LBAs. */
+	last = MIN(pp->mediasize / pp->sectorsize, 0xffffffff) - 1;
+
 	basetable->gpt_first = 2 + basetable->gpt_entries;
-	basetable->gpt_last = (pp->mediasize / pp->sectorsize) - 1;
+	basetable->gpt_last = last;
 
 	table->ddr.ddr_sig = APM_DDR_SIG;
 	table->ddr.ddr_blksize = pp->sectorsize;
-	table->ddr.ddr_blkcount = basetable->gpt_last + 1;
+	table->ddr.ddr_blkcount = last + 1;
 
 	table->self.ent_sig = APM_ENT_SIG;
 	table->self.ent_pmblkcnt = basetable->gpt_entries + 1;
@@ -248,7 +256,7 @@ g_part_apm_destroy(struct g_part_table *basetable, struct g_part_parms *gpp)
 	return (0);
 }
 
-static int
+static void
 g_part_apm_dumpconf(struct g_part_table *table, struct g_part_entry *baseentry,
     struct sbuf *sb, const char *indent)
 {
@@ -273,7 +281,6 @@ g_part_apm_dumpconf(struct g_part_table *table, struct g_part_entry *baseentry,
 	} else {
 		/* confxml: scheme information */
 	}
-	return (0);
 }
 
 static int
@@ -311,7 +318,7 @@ g_part_apm_modify(struct g_part_table *basetable,
 	return (0);
 }
 
-static char *
+static const char *
 g_part_apm_name(struct g_part_table *table, struct g_part_entry *baseentry,
     char *buf, size_t bufsz)
 {

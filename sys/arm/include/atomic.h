@@ -264,22 +264,23 @@ atomic_clear_32(volatile uint32_t *address, uint32_t clearmask)
 static __inline uint32_t
 atomic_fetchadd_32(volatile uint32_t *p, uint32_t v)
 {
-	uint32_t start, ras_start = ARM_RAS_START;
+	uint32_t start, tmp, ras_start = ARM_RAS_START;
 
 	__asm __volatile("1:\n"
 	    "adr	%1, 1b\n"
 	    "str	%1, [%0]\n"
 	    "adr	%1, 2f\n"
 	    "str	%1, [%0, #4]\n"
-	    "ldr	%1, [%2]\n"
-	    "add	%1, %1, %3\n"
-	    "str	%0, [%2]\n"
+	    "ldr	%1, [%3]\n"
+	    "mov	%2, %1\n"
+	    "add	%2, %2, %4\n"
+	    "str	%2, [%3]\n"
 	    "2:\n"
-	    "mov	%3, #0\n"
-	    "str	%3, [%0]\n"
-	    "mov	%3, #0xffffffff\n"
-	    "str	%3, [%0, #4]\n"
-	    : "+r" (ras_start), "=r" (start), "+r" (p), "+r" (v)
+	    "mov	%2, #0\n"
+	    "str	%2, [%0]\n"
+	    "mov	%2, #0xffffffff\n"
+	    "str	%2, [%0, #4]\n"
+	    : "+r" (ras_start), "=r" (start), "=r" (tmp), "+r" (p), "+r" (v)
 	    : : "memory");
 	return (start);
 }
@@ -344,7 +345,8 @@ atomic_readandclear_32(volatile u_int32_t *p)
 
 #define atomic_clear_ptr		atomic_clear_32
 #define atomic_set_ptr			atomic_set_32
-#define atomic_cmpset_ptr		atomic_cmpset_32
+#define	atomic_cmpset_ptr(dst, old, new)	\
+    atomic_cmpset_32((volatile u_int *)(dst), (u_int)(old), (u_int)(new))
 #define atomic_cmpset_rel_ptr		atomic_cmpset_ptr
 #define atomic_cmpset_acq_ptr		atomic_cmpset_ptr
 #define atomic_store_ptr		atomic_store_32

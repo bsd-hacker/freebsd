@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2007-2008 Sam Leffler, Errno Consulting
+ * Copyright (c) 2007-2009 Sam Leffler, Errno Consulting
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -125,6 +125,12 @@ isatherosoui(const uint8_t *frm)
 }
 
 static __inline int
+istdmaoui(const uint8_t *frm)
+{
+	return frm[1] > 3 && LE_READ_4(frm+2) == ((TDMA_OUI_TYPE<<24)|TDMA_OUI);
+}
+
+static __inline int
 ishtcapoui(const uint8_t *frm)
 {
 	return frm[1] > 3 && LE_READ_4(frm+2) == ((BCM_OUI_HTCAP<<24)|BCM_OUI);
@@ -142,14 +148,11 @@ struct mbuf *ieee80211_defrag(struct ieee80211_node *,
 		struct mbuf *, int);
 struct mbuf *ieee80211_decap(struct ieee80211vap *, struct mbuf *, int);
 struct mbuf *ieee80211_decap1(struct mbuf *, int *);
-struct mbuf *ieee80211_decap_fastframe(struct ieee80211_node *,
-		struct mbuf *);
 int	ieee80211_setup_rates(struct ieee80211_node *ni,
 		const uint8_t *rates, const uint8_t *xrates, int flags);
 void ieee80211_send_error(struct ieee80211_node *,
 		const uint8_t mac[IEEE80211_ADDR_LEN], int subtype, int arg);
 int	ieee80211_alloc_challenge(struct ieee80211_node *);
-void	ieee80211_parse_ath(struct ieee80211_node *, uint8_t *);
 int	ieee80211_parse_beacon(struct ieee80211_node *, struct mbuf *,
 		struct ieee80211_scanparams *);
 int	ieee80211_parse_action(struct ieee80211_node *, struct mbuf *);

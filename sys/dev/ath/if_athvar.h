@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2002-2008 Sam Leffler, Errno Consulting
+ * Copyright (c) 2002-2009 Sam Leffler, Errno Consulting
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -71,10 +71,6 @@
 #define	ATH_KEYMAX	128		/* max key cache size we handle */
 #define	ATH_KEYBYTES	(ATH_KEYMAX/NBBY)	/* storage space in bytes */
 
-#define	ATH_FF_TXQMIN	2		/* min txq depth for staging */
-#define	ATH_FF_TXQMAX	50		/* maximum # of queued frames allowed */
-#define	ATH_FF_STAGEMAX	5		/* max waiting period for staged frame*/
-
 struct taskqueue;
 struct kthread;
 struct ath_buf;
@@ -106,10 +102,9 @@ struct ath_node {
 
 struct ath_buf {
 	STAILQ_ENTRY(ath_buf)	bf_list;
-	TAILQ_ENTRY(ath_buf)	bf_stagelist;	/* stage queue list */
-	u_int32_t		bf_age;		/* age when placed on stageq */
 	int			bf_nseg;
-	int			bf_txflags;	/* tx descriptor flags */
+	uint16_t		bf_txflags;	/* tx descriptor flags */
+	uint16_t		bf_flags;	/* status flags (below) */
 	struct ath_desc		*bf_desc;	/* virtual addr of desc */
 	struct ath_desc_status	bf_status;	/* tx/rx status */
 	bus_addr_t		bf_daddr;	/* physical addr of desc */
@@ -121,6 +116,8 @@ struct ath_buf {
 	bus_dma_segment_t	bf_segs[ATH_MAX_SCATTER];
 };
 typedef STAILQ_HEAD(, ath_buf) ath_bufhead;
+
+#define	ATH_BUF_BUSY	0x00000002	/* (tx) desc owned by h/w */
 
 /*
  * DMA state for tx/rx descriptors.
@@ -148,19 +145,15 @@ struct ath_descdma {
 struct ath_txq {
 	u_int			axq_qnum;	/* hardware q number */
 #define	ATH_TXQ_SWQ	(HAL_NUM_TX_QUEUES+1)	/* qnum for s/w only queue */
+	u_int			axq_ac;		/* WME AC */
+	u_int			axq_flags;
+#define	ATH_TXQ_PUTPENDING	0x0001		/* ath_hal_puttxbuf pending */
 	u_int			axq_depth;	/* queue depth (stat only) */
 	u_int			axq_intrcnt;	/* interrupt count */
 	u_int32_t		*axq_link;	/* link ptr in last TX desc */
 	STAILQ_HEAD(, ath_buf)	axq_q;		/* transmit queue */
 	struct mtx		axq_lock;	/* lock on q and link */
 	char			axq_name[12];	/* e.g. "ath0_txq4" */
-	/*
-	 * Fast-frame state.  The staging queue holds awaiting
-	 * a fast-frame pairing.  Buffers on this queue are
-	 * assigned an ``age'' and flushed when they wait too long.
-	 */
-	TAILQ_HEAD(axq_headtype, ath_buf) axq_stageq;
-	u_int32_t		axq_curage;	/* queue age */
 };
 
 #define	ATH_TXQ_LOCK_INIT(_sc, _tq) do { \
@@ -176,7 +169,6 @@ struct ath_txq {
 #define ATH_TXQ_INSERT_TAIL(_tq, _elm, _field) do { \
 	STAILQ_INSERT_TAIL(&(_tq)->axq_q, (_elm), _field); \
 	(_tq)->axq_depth++; \
-	(_tq)->axq_curage++; \
 } while (0)
 #define ATH_TXQ_REMOVE_HEAD(_tq, _field) do { \
 	STAILQ_REMOVE_HEAD(&(_tq)->axq_q, _field); \
@@ -249,19 +241,19 @@ struct ath_softc {
 				sc_stagbeacons:1,/* use staggered beacons */
 				sc_wmetkipmic:1,/* can do WME+TKIP MIC */
 				sc_resume_up: 1,/* on resume, start all vaps */
+				sc_tdma	    : 1,/* TDMA in use */
+				sc_setcca   : 1,/* set/clr CCA with TDMA */
 				sc_resetcal : 1;/* reset cal state next trip */
 	uint32_t		sc_eerd;	/* regdomain from EEPROM */
 	uint32_t		sc_eecc;	/* country code from EEPROM */
 						/* rate tables */
-#define	IEEE80211_MODE_HALF	(IEEE80211_MODE_MAX+0)
-#define	IEEE80211_MODE_QUARTER	(IEEE80211_MODE_MAX+1)
-	const HAL_RATE_TABLE	*sc_rates[IEEE80211_MODE_MAX+2];
+	const HAL_RATE_TABLE	*sc_rates[IEEE80211_MODE_MAX];
 	const HAL_RATE_TABLE	*sc_currates;	/* current rate table */
 	enum ieee80211_phymode	sc_curmode;	/* current phy mode */
 	HAL_OPMODE		sc_opmode;	/* current operating mode */
 	u_int16_t		sc_curtxpow;	/* current tx power limit */
 	u_int16_t		sc_curaid;	/* current association id */
-	HAL_CHANNEL		sc_curchan;	/* current h/w channel */
+	struct ieee80211_channel *sc_curchan;	/* current installed channel */
 	u_int8_t		sc_curbssid[IEEE80211_ADDR_LEN];
 	u_int8_t		sc_rixmap[256];	/* IEEE to h/w rate table ix */
 	struct {
@@ -316,6 +308,8 @@ struct ath_softc {
 	struct ath_txq		sc_txq[HAL_NUM_TX_QUEUES];
 	struct ath_txq		*sc_ac2q[5];	/* WME AC -> h/w q map */ 
 	struct task		sc_txtask;	/* tx int processing */
+	int			sc_wd_timer;	/* count down for wd timer */
+	struct callout		sc_wd_ch;	/* tx watchdog timer */
 
 	struct ath_descdma	sc_bdma;	/* beacon descriptors */
 	ath_bufhead		sc_bbuf;	/* beacon buffers */
@@ -338,6 +332,15 @@ struct ath_softc {
 	int			sc_lastlongcal;	/* last long cal completed */
 	int			sc_lastcalreset;/* last cal reset done */
 	HAL_NODE_STATS		sc_halstats;	/* station-mode rssi stats */
+	u_int			sc_tdmadbaprep;	/* TDMA DBA prep time */
+	u_int			sc_tdmaswbaprep;/* TDMA SWBA prep time */
+	u_int			sc_tdmaswba;	/* TDMA SWBA counter */
+	u_int32_t		sc_tdmabintval;	/* TDMA beacon interval (TU) */
+	u_int32_t		sc_tdmaguard;	/* TDMA guard time (usec) */
+	u_int			sc_tdmaslotlen;	/* TDMA slot length (usec) */
+	struct ath_rx_status	*sc_tdmars;	/* TDMA status of last rx */
+	u_int32_t		sc_avgtsfdeltap;/* TDMA slot adjust (+) */
+	u_int32_t		sc_avgtsfdeltam;/* TDMA slot adjust (-) */
 };
 
 #define	ATH_LOCK_INIT(_sc) \
@@ -375,6 +378,8 @@ void	ath_intr(void *);
 	((*(_ah)->ah_detach)((_ah)))
 #define	ath_hal_reset(_ah, _opmode, _chan, _outdoor, _pstatus) \
 	((*(_ah)->ah_reset)((_ah), (_opmode), (_chan), (_outdoor), (_pstatus)))
+#define	ath_hal_macversion(_ah) \
+	(((_ah)->ah_macVersion << 4) | ((_ah)->ah_macRev))
 #define	ath_hal_getratetable(_ah, _mode) \
 	((*(_ah)->ah_getRateTable)((_ah), (_mode)))
 #define	ath_hal_getmac(_ah, _mac) \
@@ -417,8 +422,10 @@ void	ath_intr(void *);
 	((*(_ah)->ah_waitForBeaconDone)((_ah), (_bf)->bf_daddr))
 #define	ath_hal_putrxbuf(_ah, _bufaddr) \
 	((*(_ah)->ah_setRxDP)((_ah), (_bufaddr)))
+/* NB: common across all chips */
+#define	AR_TSF_L32	0x804c	/* MAC local clock lower 32 bits */
 #define	ath_hal_gettsf32(_ah) \
-	((*(_ah)->ah_getTsf32)((_ah)))
+	OS_REG_READ(_ah, AR_TSF_L32)
 #define	ath_hal_gettsf64(_ah) \
 	((*(_ah)->ah_getTsf64)((_ah)))
 #define	ath_hal_resettsf(_ah) \
@@ -439,22 +446,18 @@ void	ath_intr(void *);
 	((*(_ah)->ah_setChannel)((_ah), (_chan)))
 #define	ath_hal_calibrate(_ah, _chan, _iqcal) \
 	((*(_ah)->ah_perCalibration)((_ah), (_chan), (_iqcal)))
-#if HAL_ABI_VERSION >= 0x08111000
 #define	ath_hal_calibrateN(_ah, _chan, _lcal, _isdone) \
 	((*(_ah)->ah_perCalibrationN)((_ah), (_chan), 0x1, (_lcal), (_isdone)))
 #define	ath_hal_calreset(_ah, _chan) \
 	((*(_ah)->ah_resetCalValid)((_ah), (_chan)))
-#else
-#define	ath_hal_calibrateN(_ah, _chan, _lcal, _isdone) \
-	ath_hal_calibrate(_ah, _chan, _isdone)
-#define	ath_hal_calreset(_ah, _chan)	(0)
-#endif
 #define	ath_hal_setledstate(_ah, _state) \
 	((*(_ah)->ah_setLedState)((_ah), (_state)))
 #define	ath_hal_beaconinit(_ah, _nextb, _bperiod) \
 	((*(_ah)->ah_beaconInit)((_ah), (_nextb), (_bperiod)))
 #define	ath_hal_beaconreset(_ah) \
 	((*(_ah)->ah_resetStationBeaconTimers)((_ah)))
+#define	ath_hal_beaconsettimers(_ah, _bt) \
+	((*(_ah)->ah_setBeaconTimers)((_ah), (_bt)))
 #define	ath_hal_beacontimers(_ah, _bs) \
 	((*(_ah)->ah_setStationBeaconTimers)((_ah), (_bs)))
 #define	ath_hal_setassocid(_ah, _bss, _associd) \
@@ -486,6 +489,10 @@ void	ath_intr(void *);
 	((*(_ah)->ah_getTxQueueProps)((_ah), (_q), (_qi)))
 #define	ath_hal_settxqueueprops(_ah, _q, _qi) \
 	((*(_ah)->ah_setTxQueueProps)((_ah), (_q), (_qi)))
+/* NB: common across all chips */
+#define	AR_Q_TXE	0x0840	/* MAC Transmit Queue enable */
+#define	ath_hal_txqenabled(_ah, _qnum) \
+	(OS_REG_READ(_ah, AR_Q_TXE) & (1<<(_qnum)))
 #define	ath_hal_getrfgain(_ah) \
 	((*(_ah)->ah_getRfGain)((_ah)))
 #define	ath_hal_getdefantenna(_ah) \
@@ -516,19 +523,8 @@ void	ath_intr(void *);
 	(ath_hal_getcapability(_ah, HAL_CAP_CIPHER, _cipher, NULL) == HAL_OK)
 #define	ath_hal_getregdomain(_ah, _prd) \
 	(ath_hal_getcapability(_ah, HAL_CAP_REG_DMN, 0, (_prd)) == HAL_OK)
-#if HAL_ABI_VERSION < 0x08090100
-/* XXX wrong for anything but amd64 and i386 */
-#if defined(__LP64__)
-#define	ath_hal_setregdomain(_ah, _rd) \
-	(*(uint16_t *)(((uint8_t *)&(_ah)[1]) + 176) = (_rd))
-#else
-#define	ath_hal_setregdomain(_ah, _rd) \
-	(*(uint16_t *)(((uint8_t *)&(_ah)[1]) + 128) = (_rd))
-#endif
-#else
 #define	ath_hal_setregdomain(_ah, _rd) \
 	ath_hal_setcapability(_ah, HAL_CAP_REG_DMN, 0, _rd, NULL)
-#endif
 #define	ath_hal_getcountrycode(_ah, _pcc) \
 	(*(_pcc) = (_ah)->ah_countryCode)
 #define	ath_hal_gettkipmic(_ah) \
@@ -627,31 +623,6 @@ void	ath_intr(void *);
 	ath_hal_setcapability(_ah, HAL_CAP_INTMIT, 1, _v, NULL)
 #define	ath_hal_getchannoise(_ah, _c) \
 	((*(_ah)->ah_getChanNoise)((_ah), (_c)))
-#if HAL_ABI_VERSION < 0x05122200
-#define	HAL_TXQ_TXOKINT_ENABLE	TXQ_FLAG_TXOKINT_ENABLE
-#define	HAL_TXQ_TXERRINT_ENABLE	TXQ_FLAG_TXERRINT_ENABLE
-#define	HAL_TXQ_TXDESCINT_ENABLE TXQ_FLAG_TXDESCINT_ENABLE
-#define	HAL_TXQ_TXEOLINT_ENABLE	TXQ_FLAG_TXEOLINT_ENABLE
-#define	HAL_TXQ_TXURNINT_ENABLE	TXQ_FLAG_TXURNINT_ENABLE
-#endif
-#if HAL_ABI_VERSION < 0x06102501
-#define	ath_hal_ispublicsafetysku(ah) \
-	(((ah)->ah_regdomain == 0 && (ah)->ah_countryCode == 842) || \
-	 (ah)->ah_regdomain == 0x12)
-#endif
-#if HAL_ABI_VERSION < 0x06122400
-/* XXX yech, can't get to regdomain so just hack a compat shim */
-#define	ath_hal_isgsmsku(ah) \
-	((ah)->ah_countryCode == 843)
-#endif
-#if HAL_ABI_VERSION < 0x07050400
-/* compat shims so code compilers--it won't work though */
-#define	CHANNEL_HT20		0x10000
-#define	CHANNEL_HT40PLUS 	0x20000
-#define	CHANNEL_HT40MINUS 	0x40000
-#define	HAL_MODE_11NG_HT20	0x008000
-#define HAL_MODE_11NA_HT20  	0x010000
-#endif
 
 #define	ath_hal_setuprxdesc(_ah, _ds, _size, _intreq) \
 	((*(_ah)->ah_setupRxDesc)((_ah), (_ds), (_size), (_intreq)))
@@ -674,8 +645,8 @@ void	ath_intr(void *);
 #define	ath_hal_gettxintrtxqs(_ah, _txqs) \
 	((*(_ah)->ah_getTxIntrQueue)((_ah), (_txqs)))
 
-#define ath_hal_gpioCfgOutput(_ah, _gpio) \
-        ((*(_ah)->ah_gpioCfgOutput)((_ah), (_gpio)))
+#define ath_hal_gpioCfgOutput(_ah, _gpio, _type) \
+        ((*(_ah)->ah_gpioCfgOutput)((_ah), (_gpio), (_type)))
 #define ath_hal_gpioset(_ah, _gpio, _b) \
         ((*(_ah)->ah_gpioSet)((_ah), (_gpio), (_b)))
 #define ath_hal_gpioget(_ah, _gpio) \

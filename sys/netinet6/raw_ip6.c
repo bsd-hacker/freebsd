@@ -64,6 +64,7 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_ipsec.h"
 #include "opt_inet6.h"
+#include "opt_route.h"
 
 #include <sys/param.h>
 #include <sys/errno.h>
@@ -179,10 +180,8 @@ rip6_input(struct mbuf **mp, int *offp, int proto)
 		if (!IN6_IS_ADDR_UNSPECIFIED(&in6p->in6p_faddr) &&
 		    !IN6_ARE_ADDR_EQUAL(&in6p->in6p_faddr, &ip6->ip6_src))
 			continue;
-		if (jailed(in6p->inp_cred)) {
-			if (!prison_check_ip6(in6p->inp_cred, &ip6->ip6_dst))
-				continue;
-		}
+		if (prison_check_ip6(in6p->inp_cred, &ip6->ip6_dst) != 0)
+			continue;
 		INP_RLOCK(in6p);
 		if (in6p->in6p_cksum != -1) {
 			V_rip6stat.rip6s_isum++;
@@ -411,11 +410,9 @@ rip6_output(m, va_alist)
 			error = EADDRNOTAVAIL;
 		goto bad;
 	}
-	if (jailed(in6p->inp_cred))
-		if (prison_getip6(in6p->inp_cred, in6a) != 0) {
-			error = EPERM;
-			goto bad;
-		}
+	error = prison_get_ip6(in6p->inp_cred, in6a);
+	if (error != 0)
+		goto bad;
 	ip6->ip6_src = *in6a;
 
 	if (oifp && scope_ambiguous) {
@@ -480,7 +477,7 @@ rip6_output(m, va_alist)
 	if (so->so_proto->pr_protocol == IPPROTO_ICMPV6) {
 		if (oifp)
 			icmp6_ifoutstat_inc(oifp, type, code);
-		V_icmp6stat.icp6s_outhist[type]++;
+		ICMP6STAT_INC(icp6s_outhist[type]);
 	} else
 		V_rip6stat.rip6s_opackets++;
 
@@ -678,8 +675,8 @@ rip6_bind(struct socket *so, struct sockaddr *nam, struct thread *td)
 
 	if (nam->sa_len != sizeof(*addr))
 		return (EINVAL);
-	if (!prison_check_ip6(td->td_ucred, &addr->sin6_addr))
-		return (EADDRNOTAVAIL);
+	if ((error = prison_check_ip6(td->td_ucred, &addr->sin6_addr)) != 0)
+		return (error);
 	if (TAILQ_EMPTY(&V_ifnet) || addr->sin6_family != AF_INET6)
 		return (EADDRNOTAVAIL);
 	if ((error = sa6_embedscope(addr, V_ip6_use_defzone)) != 0)

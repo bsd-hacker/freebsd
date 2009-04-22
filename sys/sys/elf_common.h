@@ -48,6 +48,17 @@ typedef struct {
 	u_int32_t	n_type;		/* Type of this note. */
 } Elf_Note;
 
+/*
+ * The header for GNU-style hash sections.
+ */
+
+typedef struct {
+	u_int32_t	gh_nbuckets;	/* Number of hash buckets. */
+	u_int32_t	gh_symndx;	/* First visible symbol in .dynsym. */
+	u_int32_t	gh_maskwords;	/* #maskwords used in bloom filter. */
+	u_int32_t	gh_shift2;	/* Bloom filter shift count. */
+} Elf_GNU_Hash_Header;
+
 /* Indexes into the e_ident array.  Keep synced with
    http://www.sco.com/developers/gabi/latest/ch4.eheader.html */
 #define	EI_MAG0		0	/* Magic number, byte 0. */
@@ -267,6 +278,7 @@ typedef struct {
 #define	SHT_SUNW_dof		0x6ffffff4
 #define	SHT_SUNW_cap		0x6ffffff5
 #define	SHT_SUNW_SIGNATURE	0x6ffffff6
+#define	SHT_GNU_HASH		0x6ffffff6
 #define	SHT_SUNW_ANNOTATE	0x6ffffff7
 #define	SHT_SUNW_DEBUGSTR	0x6ffffff8
 #define	SHT_SUNW_DEBUG		0x6ffffff9
@@ -415,6 +427,7 @@ typedef struct {
  * built, these entries will need to be adjusted.
  */
 #define	DT_ADDRRNGLO	0x6ffffe00
+#define	DT_GNU_HASH	0x6ffffef5	/* GNU-style hash table */
 #define	DT_CONFIG	0x6ffffefa	/* configuration information */
 #define	DT_DEPAUDIT	0x6ffffefb	/* dependency auditing */
 #define	DT_AUDIT	0x6ffffefc	/* object auditing */
@@ -453,6 +466,12 @@ typedef struct {
 #define	DF_STATIC_TLS	0x0010	/* Indicates that the shared object or
 				   executable contains code using a static
 				   thread-local storage scheme. */
+
+/* Values for DT_FLAGS_1 */
+#define	DF_1_BIND_NOW	0x00000001	/* Same as DF_BIND_NOW */
+#define	DF_1_GLOBAL	0x00000002	/* Set the RTLD_GLOBAL for object */
+#define	DF_1_NODELETE	0x00000008	/* Set the RTLD_NODELETE for object */
+#define	DF_1_ORIGIN	0x00000080	/* Process $ORIGIN */
 
 /* Values for n_type.  Used in core files. */
 #define	NT_PRSTATUS	1	/* Process status. */

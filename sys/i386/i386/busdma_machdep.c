@@ -98,6 +98,7 @@ struct bounce_zone {
 	int		active_bpages;
 	int		total_bounced;
 	int		total_deferred;
+	int		map_count;
 	bus_size_t	alignment;
 	bus_size_t	boundary;
 	bus_addr_t	lowaddr;
@@ -141,8 +142,8 @@ static bus_addr_t add_bounce_page(bus_dma_tag_t dmat, bus_dmamap_t map,
 				   vm_offset_t vaddr, bus_size_t size);
 static void free_bounce_page(bus_dma_tag_t dmat, struct bounce_page *bpage);
 int run_filter(bus_dma_tag_t dmat, bus_addr_t paddr);
-int _bus_dmamap_count_pages(bus_dma_tag_t dmat, bus_dmamap_t map, void *buf,
-			    bus_size_t buflen, int flags);
+int _bus_dmamap_count_pages(bus_dma_tag_t dmat, bus_dmamap_t map, pmap_t pmap,
+    void *buf, bus_size_t buflen, int flags);
 
 #ifdef XEN
 #undef pmap_kextract
@@ -431,7 +432,7 @@ bus_dmamap_create(bus_dma_tag_t dmat, int flags, bus_dmamap_t *mapp)
 		else
 			maxpages = MIN(MAX_BPAGES, Maxmem -atop(dmat->lowaddr));
 		if ((dmat->flags & BUS_DMA_MIN_ALLOC_COMP) == 0
-		 || (dmat->map_count > 0 && bz->total_bpages < maxpages)) {
+		 || (bz->map_count > 0 && bz->total_bpages < maxpages)) {
 			int pages;
 
 			pages = MAX(atop(dmat->maxsize), 1);
@@ -447,6 +448,7 @@ bus_dmamap_create(bus_dma_tag_t dmat, int flags, bus_dmamap_t *mapp)
 				error = 0;
 			}
 		}
+		bz->map_count++;
 	} else {
 		*mapp = NULL;
 	}
@@ -470,6 +472,8 @@ bus_dmamap_destroy(bus_dma_tag_t dmat, bus_dmamap_t map)
 			    __func__, dmat, EBUSY);
 			return (EBUSY);
 		}
+		if (dmat->bounce_zone)
+			dmat->bounce_zone->map_count--;
 		free(map, M_DEVBUF);
 	}
 	dmat->map_count--;
@@ -573,8 +577,8 @@ bus_dmamem_free(bus_dma_tag_t dmat, void *vaddr, bus_dmamap_t map)
 }
 
 int
-_bus_dmamap_count_pages(bus_dma_tag_t dmat, bus_dmamap_t map, void *buf,
-			bus_size_t buflen, int flags)
+_bus_dmamap_count_pages(bus_dma_tag_t dmat, bus_dmamap_t map, pmap_t pmap,
+    void *buf, bus_size_t buflen, int flags)
 {
 	vm_offset_t vaddr;
 	vm_offset_t vendaddr;
@@ -594,7 +598,10 @@ _bus_dmamap_count_pages(bus_dma_tag_t dmat, bus_dmamap_t map, void *buf,
 		vendaddr = (vm_offset_t)buf + buflen;
 
 		while (vaddr < vendaddr) {
-			paddr = pmap_kextract(vaddr);
+			if (pmap)
+				paddr = pmap_extract(pmap, vaddr);
+			else
+				paddr = pmap_kextract(vaddr);
 			if (((dmat->flags & BUS_DMA_COULD_BOUNCE) != 0) &&
 			    run_filter(dmat, paddr) != 0) {
 				map->pagesneeded++;
@@ -656,7 +663,7 @@ _bus_dmamap_load_buffer(bus_dma_tag_t dmat,
 		map = &nobounce_dmamap;
 
 	if ((dmat->flags & BUS_DMA_COULD_BOUNCE) != 0) {
-		error = _bus_dmamap_count_pages(dmat, map, buf, buflen, flags);
+		error = _bus_dmamap_count_pages(dmat, map, pmap, buf, buflen, flags);
 		if (error)
 			return (error);
 	}
@@ -1007,6 +1014,7 @@ alloc_bounce_zone(bus_dma_tag_t dmat)
 	bz->lowaddr = dmat->lowaddr;
 	bz->alignment = dmat->alignment;
 	bz->boundary = dmat->boundary;
+	bz->map_count = 0;
 	snprintf(bz->zoneid, 8, "zone%d", busdma_zonecount);
 	busdma_zonecount++;
 	snprintf(bz->lowaddrid, 18, "%#jx", (uintmax_t)bz->lowaddr);
@@ -1146,6 +1154,11 @@ add_bounce_page(bus_dma_tag_t dmat, bus_dmamap_t map, vm_offset_t vaddr,
 	bz->active_bpages++;
 	mtx_unlock(&bounce_lock);
 
+	if (dmat->flags & BUS_DMA_KEEP_PG_OFFSET) {
+		/* Page offset needs to be preserved. */
+		bpage->vaddr |= vaddr & PAGE_MASK;
+		bpage->busaddr |= vaddr & PAGE_MASK;
+	}
 	bpage->datavaddr = vaddr;
 	bpage->datacount = size;
 	STAILQ_INSERT_TAIL(&(map->bpages), bpage, links);
@@ -1161,6 +1174,15 @@ free_bounce_page(bus_dma_tag_t dmat, struct bounce_page *bpage)
 	bz = dmat->bounce_zone;
 	bpage->datavaddr = 0;
 	bpage->datacount = 0;
+	if (dmat->flags & BUS_DMA_KEEP_PG_OFFSET) {
+		/*
+		 * Reset the bounce page to start at offset 0.  Other uses
+		 * of this bounce page may need to store a full page of
+		 * data and/or assume it starts on a page boundary.
+		 */
+		bpage->vaddr &= ~PAGE_MASK;
+		bpage->busaddr &= ~PAGE_MASK;
+	}
 
 	mtx_lock(&bounce_lock);
 	STAILQ_INSERT_HEAD(&bz->bounce_page_list, bpage, links);

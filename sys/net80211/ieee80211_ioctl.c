@@ -1,6 +1,6 @@
 /*-
  * Copyright (c) 2001 Atsushi Onoe
- * Copyright (c) 2002-2008 Sam Leffler, Errno Consulting
+ * Copyright (c) 2002-2009 Sam Leffler, Errno Consulting
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -42,6 +42,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/socket.h>
 #include <sys/sockio.h>
 #include <sys/systm.h>
+#include <sys/taskqueue.h>
  
 #include <net/if.h>
 #include <net/if_dl.h>
@@ -583,21 +584,6 @@ ieee80211_ioctl_getmaccmd(struct ieee80211vap *vap, struct ieee80211req *ireq)
 	return (acl == NULL ? EINVAL : acl->iac_getioctl(vap, ireq));
 }
 
-/*
- * Return the current ``state'' of an Atheros capbility.
- * If associated in station mode report the negotiated
- * setting. Otherwise report the current setting.
- */
-static int
-getathcap(struct ieee80211vap *vap, int cap)
-{
-	if (vap->iv_opmode == IEEE80211_M_STA &&
-	    vap->iv_state == IEEE80211_S_RUN)
-		return IEEE80211_ATH_CAP(vap, vap->iv_bss, cap) != 0;
-	else
-		return (vap->iv_flags & cap) != 0;
-}
-
 static __noinline int
 ieee80211_ioctl_getcurchan(struct ieee80211vap *vap, struct ieee80211req *ireq)
 {
@@ -671,19 +657,22 @@ static __noinline int
 ieee80211_ioctl_getroam(struct ieee80211vap *vap,
 	const struct ieee80211req *ireq)
 {
-	if (ireq->i_len != sizeof(vap->iv_roamparms))
-		return EINVAL;
-	return copyout(vap->iv_roamparms, ireq->i_data,
-	    sizeof(vap->iv_roamparms));
+	size_t len = ireq->i_len;
+	/* NB: accept short requests for backwards compat */
+	if (len > sizeof(vap->iv_roamparms))
+		len = sizeof(vap->iv_roamparms);
+	return copyout(vap->iv_roamparms, ireq->i_data, len);
 }
 
 static __noinline int
 ieee80211_ioctl_gettxparams(struct ieee80211vap *vap,
 	const struct ieee80211req *ireq)
 {
-	if (ireq->i_len != sizeof(vap->iv_txparms))
-		return EINVAL;
-	return copyout(vap->iv_txparms, ireq->i_data, sizeof(vap->iv_txparms));
+	size_t len = ireq->i_len;
+	/* NB: accept short requests for backwards compat */
+	if (len > sizeof(vap->iv_txparms))
+		len = sizeof(vap->iv_txparms);
+	return copyout(vap->iv_txparms, ireq->i_data, len);
 }
 
 static __noinline int
@@ -692,21 +681,29 @@ ieee80211_ioctl_getdevcaps(struct ieee80211com *ic,
 {
 	struct ieee80211_devcaps_req *dc;
 	struct ieee80211req_chaninfo *ci;
-	int error;
+	int maxchans, error;
 
-	if (ireq->i_len != sizeof(struct ieee80211_devcaps_req))
+	maxchans = 1 + ((ireq->i_len - sizeof(struct ieee80211_devcaps_req)) /
+	    sizeof(struct ieee80211_channel));
+	/* NB: require 1 so we know ic_nchans is accessible */
+	if (maxchans < 1)
 		return EINVAL;
-	dc = (struct ieee80211_devcaps_req *) malloc(
-	    sizeof(struct ieee80211_devcaps_req), M_TEMP, M_NOWAIT | M_ZERO);
+	/* constrain max request size, 2K channels is ~24Kbytes */
+	if (maxchans > 2048)
+		maxchans = 2048;
+	dc = (struct ieee80211_devcaps_req *)
+	    malloc(IEEE80211_DEVCAPS_SIZE(maxchans), M_TEMP, M_NOWAIT | M_ZERO);
 	if (dc == NULL)
 		return ENOMEM;
 	dc->dc_drivercaps = ic->ic_caps;
 	dc->dc_cryptocaps = ic->ic_cryptocaps;
 	dc->dc_htcaps = ic->ic_htcaps;
 	ci = &dc->dc_chaninfo;
-	ic->ic_getradiocaps(ic, &ci->ic_nchans, ci->ic_chans);
+	ic->ic_getradiocaps(ic, maxchans, &ci->ic_nchans, ci->ic_chans);
+	KASSERT(ci->ic_nchans <= maxchans,
+	    ("nchans %d maxchans %d", ci->ic_nchans, maxchans));
 	ieee80211_sort_channels(ci->ic_chans, ci->ic_nchans);
-	error = copyout(dc, ireq->i_data, sizeof(*dc));
+	error = copyout(dc, ireq->i_data, IEEE80211_DEVCAPS_SPACE(dc));
 	free(dc, M_TEMP);
 	return error;
 }
@@ -734,6 +731,30 @@ ieee80211_ioctl_getstavlan(struct ieee80211vap *vap, struct ieee80211req *ireq)
 	error = copyout(&vlan, ireq->i_data, sizeof(vlan));
 	ieee80211_free_node(ni);
 	return error;
+}
+
+/*
+ * Dummy ioctl get handler so the linker set is defined.
+ */
+static int
+dummy_ioctl_get(struct ieee80211vap *vap, struct ieee80211req *ireq)
+{
+	return ENOSYS;
+}
+IEEE80211_IOCTL_GET(dummy, dummy_ioctl_get);
+
+static int
+ieee80211_ioctl_getdefault(struct ieee80211vap *vap, struct ieee80211req *ireq)
+{
+	ieee80211_ioctl_getfunc * const *get;
+	int error;
+
+	SET_FOREACH(get, ieee80211_ioctl_getset) {
+		error = (*get)(vap, ireq);
+		if (error != ENOSYS)
+			return error;
+	}
+	return EINVAL;
 }
 
 /*
@@ -938,12 +959,6 @@ ieee80211_ioctl_get80211(struct ieee80211vap *vap, u_long cmd,
 	case IEEE80211_IOC_PUREG:
 		ireq->i_val = (vap->iv_flags & IEEE80211_F_PUREG) != 0;
 		break;
-	case IEEE80211_IOC_FF:
-		ireq->i_val = getathcap(vap, IEEE80211_F_FF);
-		break;
-	case IEEE80211_IOC_TURBOP:
-		ireq->i_val = getathcap(vap, IEEE80211_F_TURBOP);
-		break;
 	case IEEE80211_IOC_BGSCAN:
 		ireq->i_val = (vap->iv_flags & IEEE80211_F_BGSCAN) != 0;
 		break;
@@ -1090,7 +1105,7 @@ ieee80211_ioctl_get80211(struct ieee80211vap *vap, u_long cmd,
 			    (vap->iv_flags_ext & IEEE80211_FEXT_RIFS) != 0;
 		break;
 	default:
-		error = EINVAL;
+		error = ieee80211_ioctl_getdefault(vap, ireq);
 		break;
 	}
 	return error;
@@ -1554,17 +1569,21 @@ static __noinline int
 ieee80211_ioctl_setchanlist(struct ieee80211vap *vap, struct ieee80211req *ireq)
 {
 	struct ieee80211com *ic = vap->iv_ic;
-	struct ieee80211req_chanlist list;
-	u_char chanlist[IEEE80211_CHAN_BYTES];
-	int i, nchan, error;
+	uint8_t *chanlist, *list;
+	int i, nchan, maxchan, error;
 
-	if (ireq->i_len != sizeof(list))
-		return EINVAL;
-	error = copyin(ireq->i_data, &list, sizeof(list));
+	if (ireq->i_len > sizeof(ic->ic_chan_active))
+		ireq->i_len = sizeof(ic->ic_chan_active);
+	list = malloc(ireq->i_len + IEEE80211_CHAN_BYTES, M_TEMP,
+	    M_NOWAIT | M_ZERO);
+	if (list == NULL)
+		return ENOMEM;
+	error = copyin(ireq->i_data, list, ireq->i_len);
 	if (error)
 		return error;
-	memset(chanlist, 0, sizeof(chanlist));
 	nchan = 0;
+	chanlist = list + ireq->i_len;		/* NB: zero'd already */
+	maxchan = ireq->i_len * NBBY;
 	for (i = 0; i < ic->ic_nchans; i++) {
 		const struct ieee80211_channel *c = &ic->ic_channels[i];
 		/*
@@ -1572,7 +1591,7 @@ ieee80211_ioctl_setchanlist(struct ieee80211vap *vap, struct ieee80211req *ireq)
 		 * available channels so users can do things like specify
 		 * 1-255 to get all available channels.
 		 */
-		if (isset(list.ic_channels, c->ic_ieee)) {
+		if (c->ic_ieee < maxchan && isset(list, c->ic_ieee)) {
 			setbit(chanlist, c->ic_ieee);
 			nchan++;
 		}
@@ -1582,8 +1601,9 @@ ieee80211_ioctl_setchanlist(struct ieee80211vap *vap, struct ieee80211req *ireq)
 	if (ic->ic_bsschan != IEEE80211_CHAN_ANYC &&	/* XXX */
 	    isclr(chanlist, ic->ic_bsschan->ic_ieee))
 		ic->ic_bsschan = IEEE80211_CHAN_ANYC;
-	memcpy(ic->ic_chan_active, chanlist, sizeof(ic->ic_chan_active));
+	memcpy(ic->ic_chan_active, chanlist, IEEE80211_CHAN_BYTES);
 	ieee80211_scan_flush(vap);
+	free(list, M_TEMP);
 	return ENETRESET;
 }
 
@@ -1733,17 +1753,19 @@ static struct ieee80211_channel *
 findchannel(struct ieee80211com *ic, int ieee, int mode)
 {
 	static const u_int chanflags[IEEE80211_MODE_MAX] = {
-		0,			/* IEEE80211_MODE_AUTO */
-		IEEE80211_CHAN_A,	/* IEEE80211_MODE_11A */
-		IEEE80211_CHAN_B,	/* IEEE80211_MODE_11B */
-		IEEE80211_CHAN_G,	/* IEEE80211_MODE_11G */
-		IEEE80211_CHAN_FHSS,	/* IEEE80211_MODE_FH */
-		IEEE80211_CHAN_108A,	/* IEEE80211_MODE_TURBO_A */
-		IEEE80211_CHAN_108G,	/* IEEE80211_MODE_TURBO_G */
-		IEEE80211_CHAN_STURBO,	/* IEEE80211_MODE_STURBO_A */
-		/* NB: handled specially below */
-		IEEE80211_CHAN_A,	/* IEEE80211_MODE_11NA */
-		IEEE80211_CHAN_G,	/* IEEE80211_MODE_11NG */
+	    [IEEE80211_MODE_AUTO]	= 0,
+	    [IEEE80211_MODE_11A]	= IEEE80211_CHAN_A,
+	    [IEEE80211_MODE_11B]	= IEEE80211_CHAN_B,
+	    [IEEE80211_MODE_11G]	= IEEE80211_CHAN_G,
+	    [IEEE80211_MODE_FH]		= IEEE80211_CHAN_FHSS,
+	    [IEEE80211_MODE_TURBO_A]	= IEEE80211_CHAN_108A,
+	    [IEEE80211_MODE_TURBO_G]	= IEEE80211_CHAN_108G,
+	    [IEEE80211_MODE_STURBO_A]	= IEEE80211_CHAN_STURBO,
+	    [IEEE80211_MODE_HALF]	= IEEE80211_CHAN_HALF,
+	    [IEEE80211_MODE_QUARTER]	= IEEE80211_CHAN_QUARTER,
+	    /* NB: handled specially below */
+	    [IEEE80211_MODE_11NA]	= IEEE80211_CHAN_A,
+	    [IEEE80211_MODE_11NG]	= IEEE80211_CHAN_G,
 	};
 	u_int modeflags;
 	int i;
@@ -1849,6 +1871,7 @@ setcurchan(struct ieee80211vap *vap, struct ieee80211_channel *c)
 			vap->iv_bss->ni_chan = ic->ic_curchan;
 		} else
 			ic->ic_curchan = vap->iv_des_chan;
+			ic->ic_rt = ieee80211_get_ratetable(ic->ic_curchan);
 	} else {
 		/*
 		 * Need to go through the state machine in case we
@@ -1864,6 +1887,7 @@ setcurchan(struct ieee80211vap *vap, struct ieee80211_channel *c)
 			 * there is immediate feedback; e.g. via ifconfig.
 			 */
 			ic->ic_curchan = vap->iv_des_chan;
+			ic->ic_rt = ieee80211_get_ratetable(ic->ic_curchan);
 		}
 	}
 	return error;
@@ -1981,17 +2005,34 @@ ieee80211_ioctl_setregdomain(struct ieee80211vap *vap,
 	const struct ieee80211req *ireq)
 {
 	struct ieee80211_regdomain_req *reg;
-	int error;
+	int nchans, error;
 
-	if (ireq->i_len != sizeof(struct ieee80211_regdomain_req))
+	nchans = 1 + ((ireq->i_len - sizeof(struct ieee80211_regdomain_req)) /
+	    sizeof(struct ieee80211_channel));
+	if (!(1 <= nchans && nchans <= IEEE80211_CHAN_MAX)) {
+		IEEE80211_DPRINTF(vap, IEEE80211_MSG_IOCTL,
+		    "%s: bad # chans, i_len %d nchans %d\n", __func__,
+		    ireq->i_len, nchans);
 		return EINVAL;
-	reg = (struct ieee80211_regdomain_req *) malloc(
-	    sizeof(struct ieee80211_regdomain_req), M_TEMP, M_NOWAIT);
-	if (reg == NULL)
+	}
+	reg = (struct ieee80211_regdomain_req *)
+	    malloc(IEEE80211_REGDOMAIN_SIZE(nchans), M_TEMP, M_NOWAIT);
+	if (reg == NULL) {
+		IEEE80211_DPRINTF(vap, IEEE80211_MSG_IOCTL,
+		    "%s: no memory, nchans %d\n", __func__, nchans);
 		return ENOMEM;
-	error = copyin(ireq->i_data, reg, sizeof(*reg));
-	if (error == 0)
-		error = ieee80211_setregdomain(vap, reg);
+	}
+	error = copyin(ireq->i_data, reg, IEEE80211_REGDOMAIN_SIZE(nchans));
+	if (error == 0) {
+		/* NB: validate inline channel count against storage size */
+		if (reg->chaninfo.ic_nchans != nchans) {
+			IEEE80211_DPRINTF(vap, IEEE80211_MSG_IOCTL,
+			    "%s: chan cnt mismatch, %d != %d\n", __func__,
+				reg->chaninfo.ic_nchans, nchans);
+			error = EINVAL;
+		} else
+			error = ieee80211_setregdomain(vap, reg);
+	}
 	free(reg, M_TEMP);
 
 	return (error == 0 ? ENETRESET : error);
@@ -2040,62 +2081,40 @@ ieee80211_ioctl_settxparams(struct ieee80211vap *vap,
 	struct ieee80211_txparams_req parms;	/* XXX stack use? */
 	struct ieee80211_txparam *src, *dst;
 	const struct ieee80211_rateset *rs;
-	int error, i, changed;
+	int error, mode, changed, is11n, nmodes;
 
-	if (ireq->i_len != sizeof(parms))
+	/* NB: accept short requests for backwards compat */
+	if (ireq->i_len > sizeof(parms))
 		return EINVAL;
-	error = copyin(ireq->i_data, &parms, sizeof(parms));
+	error = copyin(ireq->i_data, &parms, ireq->i_len);
 	if (error != 0)
 		return error;
+	nmodes = ireq->i_len / sizeof(struct ieee80211_txparam);
 	changed = 0;
 	/* validate parameters and check if anything changed */
-	for (i = IEEE80211_MODE_11A; i < IEEE80211_MODE_11NA; i++) {
-		if (isclr(ic->ic_modecaps, i))
+	for (mode = IEEE80211_MODE_11A; mode < nmodes; mode++) {
+		if (isclr(ic->ic_modecaps, mode))
 			continue;
-		src = &parms.params[i];
-		dst = &vap->iv_txparms[i];
-		rs = &ic->ic_sup_rates[i];
+		src = &parms.params[mode];
+		dst = &vap->iv_txparms[mode];
+		rs = &ic->ic_sup_rates[mode];	/* NB: 11n maps to legacy */
+		is11n = (mode == IEEE80211_MODE_11NA ||
+			 mode == IEEE80211_MODE_11NG);
 		if (src->ucastrate != dst->ucastrate) {
-			if (!checkrate(rs, src->ucastrate))
+			if (!checkrate(rs, src->ucastrate) &&
+			    (!is11n || !checkmcs(src->ucastrate)))
 				return EINVAL;
 			changed++;
 		}
 		if (src->mcastrate != dst->mcastrate) {
-			if (!checkrate(rs, src->mcastrate))
+			if (!checkrate(rs, src->mcastrate) &&
+			    (!is11n || !checkmcs(src->mcastrate)))
 				return EINVAL;
 			changed++;
 		}
 		if (src->mgmtrate != dst->mgmtrate) {
-			if (!checkrate(rs, src->mgmtrate))
-				return EINVAL;
-			changed++;
-		}
-		if (src->maxretry != dst->maxretry)	/* NB: no bounds */
-			changed++;
-	}
-	/* 11n parameters are handled differently */
-	for (; i < IEEE80211_MODE_MAX; i++) {
-		if (isclr(ic->ic_modecaps, i))
-			continue;
-		src = &parms.params[i];
-		dst = &vap->iv_txparms[i];
-		rs = &ic->ic_sup_rates[i == IEEE80211_MODE_11NA ?
-		    IEEE80211_MODE_11A : IEEE80211_MODE_11G];
-		if (src->ucastrate != dst->ucastrate) {
-			if (!checkmcs(src->ucastrate) &&
-			    !checkrate(rs, src->ucastrate))
-				return EINVAL;
-			changed++;
-		}
-		if (src->mcastrate != dst->mcastrate) {
-			if (!checkmcs(src->mcastrate) &&
-			    !checkrate(rs, src->mcastrate))
-				return EINVAL;
-			changed++;
-		}
-		if (src->mgmtrate != dst->mgmtrate) {
-			if (!checkmcs(src->mgmtrate) &&
-			    !checkrate(rs, src->mgmtrate))
+			if (!checkrate(rs, src->mgmtrate) &&
+			    (!is11n || !checkmcs(src->mgmtrate)))
 				return EINVAL;
 			changed++;
 		}
@@ -2107,9 +2126,9 @@ ieee80211_ioctl_settxparams(struct ieee80211vap *vap,
 		 * Copy new parameters in place and notify the
 		 * driver so it can push state to the device.
 		 */
-		for (i = IEEE80211_MODE_11A; i < IEEE80211_MODE_MAX; i++) {
-			if (isset(ic->ic_modecaps, i))
-				vap->iv_txparms[i] = parms.params[i];
+		for (mode = IEEE80211_MODE_11A; mode < nmodes; mode++) {
+			if (isset(ic->ic_modecaps, mode))
+				vap->iv_txparms[mode] = parms.params[mode];
 		}
 		/* XXX could be more intelligent,
 		   e.g. don't reset if setting not being used */
@@ -2451,6 +2470,30 @@ isvapht(const struct ieee80211vap *vap)
 	    IEEE80211_IS_CHAN_HT(bss->ni_chan);
 }
 
+/*
+ * Dummy ioctl set handler so the linker set is defined.
+ */
+static int
+dummy_ioctl_set(struct ieee80211vap *vap, struct ieee80211req *ireq)
+{
+	return ENOSYS;
+}
+IEEE80211_IOCTL_SET(dummy, dummy_ioctl_set);
+
+static int
+ieee80211_ioctl_setdefault(struct ieee80211vap *vap, struct ieee80211req *ireq)
+{
+	ieee80211_ioctl_setfunc * const *set;
+	int error;
+
+	SET_FOREACH(set, ieee80211_ioctl_setset) {
+		error = (*set)(vap, ireq);
+		if (error != ENOSYS)
+			return error;
+	}
+	return EINVAL;
+}
+
 static __noinline int
 ieee80211_ioctl_set80211(struct ieee80211vap *vap, u_long cmd, struct ieee80211req *ireq)
 {
@@ -2685,6 +2728,7 @@ ieee80211_ioctl_set80211(struct ieee80211vap *vap, u_long cmd, struct ieee80211r
 			break;
 		case 3:
 			if ((vap->iv_caps & IEEE80211_C_WPA) != IEEE80211_C_WPA)
+				return EOPNOTSUPP;
 			flags |= IEEE80211_F_WPA1 | IEEE80211_F_WPA2;
 			break;
 		default:	/*  Can't set any -> error */
@@ -2825,24 +2869,6 @@ ieee80211_ioctl_set80211(struct ieee80211vap *vap, u_long cmd, struct ieee80211r
 		/* NB: reset only if we're operating on an 11g channel */
 		if (isvap11g(vap))
 			error = ENETRESET;
-		break;
-	case IEEE80211_IOC_FF:
-		if (ireq->i_val) {
-			if ((vap->iv_caps & IEEE80211_C_FF) == 0)
-				return EOPNOTSUPP;
-			vap->iv_flags |= IEEE80211_F_FF;
-		} else
-			vap->iv_flags &= ~IEEE80211_F_FF;
-		error = ERESTART;
-		break;
-	case IEEE80211_IOC_TURBOP:
-		if (ireq->i_val) {
-			if ((vap->iv_caps & IEEE80211_C_TURBOP) == 0)
-				return EOPNOTSUPP;
-			vap->iv_flags |= IEEE80211_F_TURBOP;
-		} else
-			vap->iv_flags &= ~IEEE80211_F_TURBOP;
-		error = ENETRESET;
 		break;
 	case IEEE80211_IOC_BGSCAN:
 		if (ireq->i_val) {
@@ -3106,7 +3132,7 @@ ieee80211_ioctl_set80211(struct ieee80211vap *vap, u_long cmd, struct ieee80211r
 			error = ERESTART;
 		break;
 	default:
-		error = EINVAL;
+		error = ieee80211_ioctl_setdefault(vap, ireq);
 		break;
 	}
 	/*
@@ -3213,6 +3239,8 @@ ieee80211_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 			ieee80211_stop_locked(vap);
 		}
 		IEEE80211_UNLOCK(ic);
+		/* Wait for parent ioctl handler if it was queued */
+		ieee80211_waitfor_parent(ic);
 		break;
 	case SIOCADDMULTI:
 	case SIOCDELMULTI:

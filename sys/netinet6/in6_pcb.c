@@ -119,7 +119,7 @@ in6_pcbbind(register struct inpcb *inp, struct sockaddr *nam,
 	struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)NULL;
 	struct inpcbinfo *pcbinfo = inp->inp_pcbinfo;
 	u_short	lport = 0;
-	int wild = 0, reuseport = (so->so_options & SO_REUSEPORT);
+	int error, wild = 0, reuseport = (so->so_options & SO_REUSEPORT);
 
 	INP_INFO_WLOCK_ASSERT(pcbinfo);
 	INP_WLOCK_ASSERT(inp);
@@ -130,9 +130,11 @@ in6_pcbbind(register struct inpcb *inp, struct sockaddr *nam,
 		return (EINVAL);
 	if ((so->so_options & (SO_REUSEADDR|SO_REUSEPORT)) == 0)
 		wild = INPLOOKUP_WILDCARD;
-	if (nam) {
-		int error;
-
+	if (nam == NULL) {
+		if ((error = prison_local_ip6(cred, &inp->in6p_laddr,
+		    ((inp->inp_flags & IN6P_IPV6_V6ONLY) != 0))) != 0)
+			return (error);
+	} else {
 		sin6 = (struct sockaddr_in6 *)nam;
 		if (nam->sa_len != sizeof(*sin6))
 			return (EINVAL);
@@ -145,9 +147,9 @@ in6_pcbbind(register struct inpcb *inp, struct sockaddr *nam,
 		if ((error = sa6_embedscope(sin6, V_ip6_use_defzone)) != 0)
 			return(error);
 
-		if (prison_local_ip6(cred, &sin6->sin6_addr,
-		    ((inp->inp_flags & IN6P_IPV6_V6ONLY) != 0)) != 0)
-			return (EINVAL);
+		if ((error = prison_local_ip6(cred, &sin6->sin6_addr,
+		    ((inp->inp_flags & IN6P_IPV6_V6ONLY) != 0))) != 0)
+			return (error);
 
 		lport = sin6->sin6_port;
 		if (IN6_IS_ADDR_MULTICAST(&sin6->sin6_addr)) {
@@ -195,7 +197,7 @@ in6_pcbbind(register struct inpcb *inp, struct sockaddr *nam,
 				    &sin6->sin6_addr, lport,
 				    INPLOOKUP_WILDCARD, cred);
 				if (t &&
-				    ((t->inp_vflag & INP_TIMEWAIT) == 0) &&
+				    ((t->inp_flags & INP_TIMEWAIT) == 0) &&
 				    (so->so_type != SOCK_STREAM ||
 				     IN6_IS_ADDR_UNSPECIFIED(&t->in6p_faddr)) &&
 				    (!IN6_IS_ADDR_UNSPECIFIED(&sin6->sin6_addr) ||
@@ -213,7 +215,7 @@ in6_pcbbind(register struct inpcb *inp, struct sockaddr *nam,
 					    sin.sin_addr, lport,
 					    INPLOOKUP_WILDCARD, cred);
 					if (t &&
-					    ((t->inp_vflag &
+					    ((t->inp_flags &
 					      INP_TIMEWAIT) == 0) &&
 					    (so->so_type != SOCK_STREAM ||
 					     ntohl(t->inp_faddr.s_addr) ==
@@ -223,12 +225,9 @@ in6_pcbbind(register struct inpcb *inp, struct sockaddr *nam,
 						return (EADDRINUSE);
 				}
 			}
-			if (prison_local_ip6(cred, &sin6->sin6_addr,
-			    ((inp->inp_flags & IN6P_IPV6_V6ONLY) != 0)) != 0)
-				return (EADDRNOTAVAIL);
 			t = in6_pcblookup_local(pcbinfo, &sin6->sin6_addr,
 			    lport, wild, cred);
-			if (t && (reuseport & ((t->inp_vflag & INP_TIMEWAIT) ?
+			if (t && (reuseport & ((t->inp_flags & INP_TIMEWAIT) ?
 			    intotw(t)->tw_so_options :
 			    t->inp_socket->so_options)) == 0)
 				return (EADDRINUSE);
@@ -239,7 +238,7 @@ in6_pcbbind(register struct inpcb *inp, struct sockaddr *nam,
 				in6_sin6_2_sin(&sin, sin6);
 				t = in_pcblookup_local(pcbinfo, sin.sin_addr,
 				    lport, wild, cred);
-				if (t && t->inp_vflag & INP_TIMEWAIT) {
+				if (t && t->inp_flags & INP_TIMEWAIT) {
 					if ((reuseport &
 					    intotw(t)->tw_so_options) == 0 &&
 					    (ntohl(t->inp_laddr.s_addr) !=
@@ -258,13 +257,9 @@ in6_pcbbind(register struct inpcb *inp, struct sockaddr *nam,
 		}
 		inp->in6p_laddr = sin6->sin6_addr;
 	}
-	if (prison_local_ip6(cred, &inp->in6p_laddr,
-	    ((inp->inp_flags & IN6P_IPV6_V6ONLY) != 0)) != 0)
-		return (EINVAL);
 	if (lport == 0) {
-		int e;
-		if ((e = in6_pcbsetport(&inp->in6p_laddr, inp, cred)) != 0)
-			return (e);
+		if ((error = in6_pcbsetport(&inp->in6p_laddr, inp, cred)) != 0)
+			return (error);
 	} else {
 		inp->inp_lport = lport;
 		if (in_pcbinshash(inp) != 0) {
@@ -320,8 +315,8 @@ in6_pcbladdr(register struct inpcb *inp, struct sockaddr *nam,
 		if (IN6_IS_ADDR_UNSPECIFIED(&sin6->sin6_addr))
 			sin6->sin6_addr = in6addr_loopback;
 	}
-	if (prison_remote_ip6(inp->inp_cred, &sin6->sin6_addr) != 0)
-		return (EADDRNOTAVAIL);
+	if ((error = prison_remote_ip6(inp->inp_cred, &sin6->sin6_addr)) != 0)
+		return (error);
 
 	/*
 	 * XXX: in6_selectsrc might replace the bound local address
@@ -885,7 +880,8 @@ in6_pcblookup_hash(struct inpcbinfo *pcbinfo, struct in6_addr *faddr,
 
 			injail = jailed(inp->inp_cred);
 			if (injail) {
-				if (!prison_check_ip6(inp->inp_cred, laddr))
+				if (prison_check_ip6(inp->inp_cred,
+				    laddr) != 0)
 					continue;
 			} else {
 				if (local_exact != NULL)

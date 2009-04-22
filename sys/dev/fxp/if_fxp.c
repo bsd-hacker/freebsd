@@ -255,7 +255,7 @@ static int		fxp_serial_ifmedia_upd(struct ifnet *ifp);
 static void		fxp_serial_ifmedia_sts(struct ifnet *ifp,
 			    struct ifmediareq *ifmr);
 static int		fxp_miibus_readreg(device_t dev, int phy, int reg);
-static void		fxp_miibus_writereg(device_t dev, int phy, int reg,
+static int		fxp_miibus_writereg(device_t dev, int phy, int reg,
 			    int value);
 static void		fxp_load_ucode(struct fxp_softc *sc);
 static int		sysctl_int_range(SYSCTL_HANDLER_ARGS,
@@ -293,7 +293,6 @@ static driver_t fxp_driver = {
 static devclass_t fxp_devclass;
 
 DRIVER_MODULE(fxp, pci, fxp_driver, fxp_devclass, 0, 0);
-DRIVER_MODULE(fxp, cardbus, fxp_driver, fxp_devclass, 0, 0);
 DRIVER_MODULE(miibus, fxp, miibus_driver, miibus_devclass, 0, 0);
 
 static struct resource_spec fxp_res_spec_mem[] = {
@@ -1486,7 +1485,8 @@ fxp_encap(struct fxp_softc *sc, struct mbuf **m_head)
 		 * checksum in the first frame driver should compute it.
 		 */
 		ip->ip_sum = 0;
-		ip->ip_len = htons(ifp->if_mtu);
+		ip->ip_len = htons(m->m_pkthdr.tso_segsz + (ip->ip_hl << 2) +
+		    (tcp->th_off << 2));
 		tcp->th_sum = in_pseudo(ip->ip_src.s_addr, ip->ip_dst.s_addr,
 		    htons(IPPROTO_TCP + (tcp->th_off << 2) +
 		    m->m_pkthdr.tso_segsz));
@@ -2545,7 +2545,8 @@ fxp_new_rfabuf(struct fxp_softc *sc, struct fxp_rx *rxp)
 		return (error);
 	}
 
-	bus_dmamap_unload(sc->fxp_mtag, rxp->rx_map);
+	if (rxp->rx_mbuf != NULL)
+		bus_dmamap_unload(sc->fxp_mtag, rxp->rx_map);
 	tmp_map = sc->spare_map;
 	sc->spare_map = rxp->rx_map;
 	rxp->rx_map = tmp_map;
@@ -2641,7 +2642,7 @@ fxp_miibus_readreg(device_t dev, int phy, int reg)
 	return (value & 0xffff);
 }
 
-static void
+static int
 fxp_miibus_writereg(device_t dev, int phy, int reg, int value)
 {
 	struct fxp_softc *sc = device_get_softc(dev);
@@ -2657,6 +2658,7 @@ fxp_miibus_writereg(device_t dev, int phy, int reg, int value)
 
 	if (count <= 0)
 		device_printf(dev, "fxp_miibus_writereg: timed out\n");
+	return (0);
 }
 
 static int

@@ -155,8 +155,6 @@ struct ses_softc {
 #define	SES_FLAG_OPEN		0x02
 #define	SES_FLAG_INITIALIZED	0x04
 
-#define SESUNIT(x)       (dev2unit((x)))
-
 static	d_open_t	sesopen;
 static	d_close_t	sesclose;
 static	d_ioctl_t	sesioctl;
@@ -227,9 +225,10 @@ sescleanup(struct cam_periph *periph)
 
 	softc = (struct ses_softc *)periph->softc;
 
-	destroy_dev(softc->ses_dev);
-
 	xpt_print(periph->path, "removing device entry\n");
+	cam_periph_unlock(periph);
+	destroy_dev(softc->ses_dev);
+	cam_periph_lock(periph);
 	free(softc, M_SCSISES);
 }
 

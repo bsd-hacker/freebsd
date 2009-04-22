@@ -60,6 +60,7 @@
 #define	PCIM_CMD_PERRESPEN	0x0040
 #define	PCIM_CMD_SERRESPEN	0x0100
 #define	PCIM_CMD_BACKTOBACK	0x0200
+#define	PCIM_CMD_INTxDIS	0x0400
 #define	PCIR_STATUS	0x06
 #define	PCIM_STATUS_CAPPRESENT	0x0010
 #define	PCIM_STATUS_66CAPABLE	0x0020
@@ -112,12 +113,14 @@
 #define	PCIY_SECDEV	0x0f	/* Secure Device */
 #define	PCIY_EXPRESS	0x10	/* PCI Express */
 #define	PCIY_MSIX	0x11	/* MSI-X */
+#define	PCIY_SATA	0x12	/* SATA */
+#define	PCIY_PCIAF	0x13	/* PCI Advanced Features */
 
 /* config registers for header type 0 devices */
 
 #define	PCIR_BARS	0x10
 #define	PCIR_BAR(x)		(PCIR_BARS + (x) * 4)
-#define	PCI_MAX_BAR_0		5	/* Number of standard bars */
+#define	PCIR_MAX_BAR_0		5
 #define	PCI_RID2BAR(rid)	(((rid) - PCIR_BARS) / 4)
 #define	PCI_BAR_IO(x)		(((x) & PCIM_BAR_SPACE) == PCIM_BAR_IO_SPACE)
 #define	PCI_BAR_MEM(x)		(((x) & PCIM_BAR_SPACE) == PCIM_BAR_MEM_SPACE)
@@ -129,7 +132,7 @@
 #define	PCIM_BAR_MEM_1MB	2	/* Locate below 1MB in PCI <= 2.1 */
 #define	PCIM_BAR_MEM_64		4
 #define	PCIM_BAR_MEM_PREFETCH	0x00000008
-#define	PCIM_BAR_MEM_BASE	0xfffffff0
+#define	PCIM_BAR_MEM_BASE	0xfffffffffffffff0ULL
 #define	PCIM_BAR_IO_RESERVED	0x00000002
 #define	PCIM_BAR_IO_BASE	0xfffffffc
 #define	PCIR_CIS	0x28
@@ -158,6 +161,7 @@
 
 /* config registers for header type 1 (PCI-to-PCI bridge) devices */
 
+#define	PCIR_MAX_BAR_1	1
 #define	PCIR_SECSTAT_1	0x1e
 
 #define	PCIR_PRIBUS_1	0x18
@@ -188,6 +192,7 @@
 
 /* config registers for header type 2 (CardBus) devices */
 
+#define	PCIR_MAX_BAR_2	0
 #define	PCIR_CAP_PTR_2	0x14
 #define	PCIR_SECSTAT_2	0x16
 
@@ -591,8 +596,36 @@
 #define	PCIM_EXP_TYPE_UPSTREAM_PORT	0x0050
 #define	PCIM_EXP_TYPE_DOWNSTREAM_PORT	0x0060
 #define	PCIM_EXP_TYPE_PCI_BRIDGE	0x0070
+#define	PCIM_EXP_TYPE_PCIE_BRIDGE	0x0080
+#define	PCIM_EXP_TYPE_ROOT_INT_EP	0x0090
+#define	PCIM_EXP_TYPE_ROOT_EC		0x00a0
 #define	PCIM_EXP_FLAGS_SLOT		0x0100
 #define	PCIM_EXP_FLAGS_IRQ		0x3e00
+#define	PCIR_EXPRESS_DEVICE_CAP	0x4
+#define	PCIM_EXP_CAP_MAX_PAYLOAD	0x0007
+#define	PCIR_EXPRESS_DEVICE_CTL	0x8
+#define	PCIM_EXP_CTL_MAX_PAYLOAD	0x00e0
+#define	PCIM_EXP_CTL_MAX_READ_REQUEST	0x7000
+#define	PCIR_EXPRESS_DEVICE_STA	0xa
+#define	PCIR_EXPRESS_LINK_CAP	0xc
+#define	PCIM_LINK_CAP_MAX_SPEED		0x0000000f
+#define	PCIM_LINK_CAP_MAX_WIDTH		0x000003f0
+#define	PCIM_LINK_CAP_ASPM		0x00000c00
+#define	PCIM_LINK_CAP_L0S_EXIT		0x00007000
+#define	PCIM_LINK_CAP_L1_EXIT		0x00038000
+#define	PCIM_LINK_CAP_PORT		0xff000000
+#define	PCIR_EXPRESS_LINK_CTL	0x10
+#define	PCIR_EXPRESS_LINK_STA	0x12
+#define	PCIM_LINK_STA_SPEED		0x000f
+#define	PCIM_LINK_STA_WIDTH		0x03f0
+#define	PCIM_LINK_STA_TRAINING_ERROR	0x0400
+#define	PCIM_LINK_STA_TRAINING		0x0800
+#define	PCIM_LINK_STA_SLOT_CLOCK	0x1000
+#define	PCIR_EXPRESS_SLOT_CAP	0x14
+#define	PCIR_EXPRESS_SLOT_CTL	0x18
+#define	PCIR_EXPRESS_SLOT_STA	0x1a
+#define	PCIR_EXPRESS_ROOT_CTL	0x1c
+#define	PCIR_EXPRESS_ROOT_STA	0x20
 
 /* MSI-X definitions */
 #define	PCIR_MSIX_CTRL		0x2
@@ -609,3 +642,12 @@
 #define	PCIM_MSIX_BIR_BAR_20		4
 #define	PCIM_MSIX_BIR_BAR_24		5
 #define	PCIM_MSIX_VCTRL_MASK		0x1
+
+/* PCI Advanced Features definitions */
+#define	PCIR_PCIAF_CAP		0x3
+#define	PCIM_PCIAFCAP_TP	0x01
+#define	PCIM_PCIAFCAP_FLR	0x02
+#define	PCIR_PCIAF_CTRL		0x4
+#define	PCIR_PCIAFCTRL_FLR	0x01
+#define	PCIR_PCIAF_STATUS	0x5
+#define	PCIR_PCIAFSTATUS_TP	0x01

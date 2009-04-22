@@ -75,6 +75,7 @@
 #include <net/if_types.h>
 #include <net/bpf.h>
 #include <net/netisr.h>
+#include <net/route.h>
 
 #include <netinet/in.h>
 
@@ -121,7 +122,7 @@ typedef struct ng_iface_private *priv_p;
 static void	ng_iface_start(struct ifnet *ifp);
 static int	ng_iface_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data);
 static int	ng_iface_output(struct ifnet *ifp, struct mbuf *m0,
-			struct sockaddr *dst, struct rtentry *rt0);
+    			struct sockaddr *dst, struct route *ro);
 static void	ng_iface_bpftap(struct ifnet *ifp,
 			struct mbuf *m, sa_family_t family);
 static int	ng_iface_send(struct ifnet *ifp, struct mbuf *m,
@@ -354,8 +355,9 @@ ng_iface_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 
 static int
 ng_iface_output(struct ifnet *ifp, struct mbuf *m,
-		struct sockaddr *dst, struct rtentry *rt0)
+    		struct sockaddr *dst, struct route *ro)
 {
+	struct m_tag *mtag;
 	uint32_t af;
 	int error;
 
@@ -365,6 +367,23 @@ ng_iface_output(struct ifnet *ifp, struct mbuf *m,
 		m_freem(m);
 		return (ENETDOWN);
 	}
+
+	/* Protect from deadly infinite recursion. */
+	while ((mtag = m_tag_locate(m, MTAG_NGIF, MTAG_NGIF_CALLED, NULL))) {
+		if (*(struct ifnet **)(mtag + 1) == ifp) {
+			log(LOG_NOTICE, "Loop detected on %s\n", ifp->if_xname);
+			m_freem(m);
+			return (EDEADLK);
+		}
+	}
+	mtag = m_tag_alloc(MTAG_NGIF, MTAG_NGIF_CALLED, sizeof(struct ifnet *),
+	    M_NOWAIT);
+	if (mtag == NULL) {
+		m_freem(m);
+		return (ENOMEM);
+	}
+	*(struct ifnet **)(mtag + 1) = ifp;
+	m_tag_prepend(m, mtag);
 
 	/* BPF writes need to be handled specially. */
 	if (dst->sa_family == AF_UNSPEC) {
@@ -649,6 +668,7 @@ ng_iface_rcvmsg(node_p node, item_p item, hook_p lasthook)
 			struct ifaddr *ifa;
 
 			/* Return the first configured IP address */
+			IF_ADDR_LOCK(ifp);
 			TAILQ_FOREACH(ifa, &ifp->if_addrhead, ifa_link) {
 				struct ng_cisco_ipaddr *ips;
 
@@ -666,6 +686,7 @@ ng_iface_rcvmsg(node_p node, item_p item, hook_p lasthook)
 						ifa->ifa_netmask)->sin_addr;
 				break;
 			}
+			IF_ADDR_UNLOCK(ifp);
 
 			/* No IP addresses on this interface? */
 			if (ifa == NULL)

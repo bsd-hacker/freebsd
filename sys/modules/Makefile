@@ -18,21 +18,19 @@ SUBDIR=	${_3dfx} \
 	aic7xxx \
 	aio \
 	${_amd} \
+	${_amdtemp} \
 	ale \
 	amr \
 	${_an} \
 	${_aout} \
 	${_apm} \
-	${_ar} \
 	${_arcmsr} \
 	${_arcnet} \
 	${_asmc} \
 	${_asr} \
 	ata \
 	ath \
-	aue \
 	${_auxio} \
-	axe \
 	bce \
 	bfe \
 	bge \
@@ -47,7 +45,6 @@ SUBDIR=	${_3dfx} \
 	${_cbb} \
 	cd9660 \
 	cd9660_iconv \
-	cdce \
 	${_ce} \
 	${_ciss} \
 	${_cm} \
@@ -63,7 +60,6 @@ SUBDIR=	${_3dfx} \
 	${_cryptodev} \
 	${_cs} \
 	${_ctau} \
-	cue \
 	cxgb \
 	${_cyclic} \
 	dc \
@@ -76,7 +72,6 @@ SUBDIR=	${_3dfx} \
 	${_dtrace} \
 	dummynet \
 	${_ed} \
-	ehci \
 	${_elink} \
 	${_em} \
 	en \
@@ -142,10 +137,8 @@ SUBDIR=	${_3dfx} \
 	${_ixgb} \
 	jme \
 	joy \
-	${_k8temp} \
 	kbdmux \
 	krpc \
-	kue \
 	le \
 	lge \
 	libalias \
@@ -194,6 +187,7 @@ SUBDIR=	${_3dfx} \
 	nfsclient \
 	nfslockd \
 	nfsserver \
+	nfssvc \
 	nge \
 	nmdm \
 	${_nsp} \
@@ -205,7 +199,6 @@ SUBDIR=	${_3dfx} \
 	${_nwfs} \
 	${_nxge} \
 	${_opensolaris} \
-	ohci \
 	${_padlock} \
 	patm \
 	${_pccard} \
@@ -226,14 +219,11 @@ SUBDIR=	${_3dfx} \
 	puc \
 	ral \
 	${_random} \
-	${_ray} \
 	rc4 \
 	${_rdma} \
 	re \
 	reiserfs \
 	rl \
-	rue \
-	rum \
 	${_s3} \
 	${_safe} \
 	${_sbni} \
@@ -243,7 +233,6 @@ SUBDIR=	${_3dfx} \
 	sdhci \
 	sem \
 	sf \
-	slhci \
 	sis \
 	sk \
 	${_smbfs} \
@@ -254,11 +243,11 @@ SUBDIR=	${_3dfx} \
 	${_speaker} \
 	${_splash} \
 	${_sppp} \
-	${_sr} \
 	ste \
 	${_stg} \
 	stge \
 	${_streams} \
+	${_svr4} \
 	sym \
 	${_syscons} \
 	sysvipc \
@@ -270,42 +259,14 @@ SUBDIR=	${_3dfx} \
 	twe \
 	tx \
 	txp \
-	u3g \
-	uark \
 	uart \
-	ubsa \
 	ubsec \
-	ucom \
-	udav \
-	udbp \
 	udf \
 	udf_iconv \
-	ufm \
 	${_ufs} \
-	ufoma \
-	uftdi \
-	ugen \
-	uhci \
-	uhid \
-	uipaq \
-	ukbd \
-	ulpt \
-	umass \
-	umct \
-	umodem \
-	ums \
 	unionfs \
-	${_upgt} \
-	uplcom \
-	ural \
-	urio \
 	usb \
-	usb2 \
-	uscanner \
-	uslcom \
 	utopia \
-	uvisor \
-	uvscom \
 	${_vesa} \
 	vge \
 	vkbd \
@@ -329,7 +290,6 @@ SUBDIR=	${_3dfx} \
 	xl \
 	${_zfs} \
 	zlib \
-	zyd
 
 .if ${MACHINE_ARCH} != "powerpc"
 _syscons=	syscons
@@ -370,7 +330,6 @@ _amd=		amd
 _an=		an
 _aout=		aout
 _apm=		apm
-_ar=		ar
 _arcnet=	arcnet
 _bktr=		bktr
 _cardbus=	cardbus
@@ -423,7 +382,6 @@ _opensolaris=	opensolaris
 _pccard=	pccard
 _pcfclock=	pcfclock
 _pst=		pst
-_ray=		ray
 _rdma=		rdma
 _safe=		safe
 _sbni=		sbni
@@ -433,11 +391,10 @@ _sound=		sound
 _speaker=	speaker
 _splash=	splash
 _sppp=		sppp
-_sr=		sr
 _stg=		stg
 _streams=	streams
+_svr4=		svr4
 _tmpfs=		tmpfs
-_upgt=		upgt
 _wi=		wi
 _xe=		xe
 .if ${MK_ZFS} != "no" || defined(ALL_MODULES)
@@ -447,6 +404,7 @@ _zfs=		zfs
 _aac=		aac
 _acpi=		acpi
 _ahb=		ahb
+_amdtemp=	amdtemp
 _arcmsr=	arcmsr
 _asmc=		asmc
 _asr=		asr
@@ -473,7 +431,6 @@ _iwifw=		iwifw
 _iwn=		iwn
 _iwnfw=		iwnfw
 _ixgb=		ixgb
-_k8temp=	k8temp
 _mly=		mly
 _nfe=		nfe
 _nve=		nve
@@ -502,6 +459,7 @@ _aac=		aac
 _acpi=		acpi
 _agp=		agp
 _an=		an
+_amdtemp=	amdtemp
 _arcmsr=	arcmsr
 _asmc=		asmc
 _cardbus=	cardbus
@@ -540,7 +498,6 @@ _ipwfw=		ipwfw
 _iwn=		iwn
 _iwnfw=		iwnfw
 _ixgb=		ixgb
-_k8temp=	k8temp
 _linprocfs=	linprocfs
 _linsysfs=	linsysfs
 _linux=		linux
@@ -553,6 +510,11 @@ _nxge=		nxge
 .if ${MK_CDDL} != "no" || defined(ALL_MODULES)
 _opensolaris=	opensolaris
 .endif
+.if ${MK_CRYPT} != "no" || defined(ALL_MODULES)
+.if exists(${.CURDIR}/../crypto/via)
+_padlock=	padlock
+.endif
+.endif
 _pccard=	pccard
 _rdma=		rdma	
 _safe=		safe
@@ -563,7 +525,6 @@ _speaker=	speaker
 _sppp=		sppp
 _tmpfs=		tmpfs
 _twa=		twa
-_upgt=		upgt
 _wi=		wi
 _wpi=		wpi
 _wpifw=		wpifw
@@ -578,7 +539,6 @@ _zfs=		zfs
 #	nsp s3 sbni stg vesa
 # acpi is not enabled because it is broken as a module on ia64
 _aic=		aic
-#_ar=		ar	not 64-bit clean
 _an=		an
 _arcnet=	arcnet
 _asr=		asr
@@ -603,7 +563,6 @@ _smbfs=		smbfs
 _sound=		sound
 _splash=	splash
 _sppp=		sppp
-#_sr=		sr		not 64bit clean
 _streams=	streams
 _wi=		wi
 _xe=		xe
@@ -614,7 +573,7 @@ _an=		an
 _bm=		bm
 _nvram=		powermac_nvram
 _smbfs=		smbfs
-_upgt=		upgt
+_sound=		sound
 .endif
 
 .if ${MACHINE_ARCH} == "sparc64"
@@ -622,8 +581,10 @@ _auxio=		auxio
 _em=		em
 _i2c=		i2c
 _igb=		igb
+.if ${MK_CDDL} != "no" || defined(ALL_MODULES)
+_opensolaris=	opensolaris
+.endif
 _sound=		sound
-_upgt=		upgt
 .if ${MK_ZFS} != "no" || defined(ALL_MODULES)
 _zfs=		zfs
 .endif

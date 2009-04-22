@@ -153,14 +153,10 @@ restart:
 #ifdef MAC
 			error = mac_vnode_check_create(cred, ndp->ni_dvp,
 			    &ndp->ni_cnd, vap);
-			if (error == 0) {
+			if (error == 0)
 #endif
-				VOP_LEASE(ndp->ni_dvp, td, cred, LEASE_WRITE);
 				error = VOP_CREATE(ndp->ni_dvp, &ndp->ni_vp,
 						   &ndp->ni_cnd, vap);
-#ifdef MAC
-			}
-#endif
 			vput(ndp->ni_dvp);
 			vn_finished_write(mp);
 			if (error) {
@@ -188,6 +184,8 @@ restart:
 		ndp->ni_cnd.cn_flags = ISOPEN |
 		    ((fmode & O_NOFOLLOW) ? NOFOLLOW : FOLLOW) |
 		    LOCKLEAF | MPSAFE | AUDITVNODE1;
+		if (!(fmode & FWRITE))
+			ndp->ni_cnd.cn_flags |= LOCKSHARED;
 		if ((error = namei(ndp)) != 0)
 			return (error);
 		if (!mpsafe)
@@ -240,7 +238,7 @@ restart:
 	if (fmode & FWRITE)
 		vp->v_writecount++;
 	*flagp = fmode;
-	ASSERT_VOP_ELOCKED(vp, "vn_open_cred");
+	ASSERT_VOP_LOCKED(vp, "vn_open_cred");
 	if (!mpsafe)
 		VFS_UNLOCK_GIANT(vfslocked);
 	return (0);
@@ -285,12 +283,18 @@ vn_close(vp, flags, file_cred, td)
 	struct thread *td;
 {
 	struct mount *mp;
-	int error;
+	int error, lock_flags;
+
+	if (!(flags & FWRITE) && vp->v_mount != NULL &&
+	    vp->v_mount->mnt_kern_flag & MNTK_EXTENDED_SHARED)
+		lock_flags = LK_SHARED;
+	else
+		lock_flags = LK_EXCLUSIVE;
 
 	VFS_ASSERT_GIANT(vp->v_mount);
 
 	vn_start_write(vp, &mp, V_WAIT);
-	vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
+	vn_lock(vp, lock_flags | LK_RETRY);
 	if (flags & FWRITE) {
 		VNASSERT(vp->v_writecount > 0, vp, 
 		    ("vn_close: negative writecount"));
@@ -375,14 +379,8 @@ vn_rdwr(rw, vp, base, len, offset, segflg, ioflg, active_cred, file_cred,
 			    != 0)
 				return (error);
 			vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
-		} else {
-			/*
-			 * XXX This should be LK_SHARED but I don't trust VFS
-			 * enough to leave it like that until it has been
-			 * reviewed further.
-			 */
-			vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
-		}
+		} else
+			vn_lock(vp, LK_SHARED | LK_RETRY);
 
 	}
 	ASSERT_VOP_LOCKED(vp, "IO_NODELOCKED with no vp lock held");
@@ -513,7 +511,6 @@ vn_read(fp, uio, active_cred, flags, td)
 	if (fp->f_flag & O_DIRECT)
 		ioflag |= IO_DIRECT;
 	vfslocked = VFS_LOCK_GIANT(vp->v_mount);
-	VOP_LEASE(vp, td, fp->f_cred, LEASE_READ);
 	/*
 	 * According to McKusick the vn lock was protecting f_offset here.
 	 * It is now protected by the FOFFSET_LOCKED flag.
@@ -590,7 +587,6 @@ vn_write(fp, uio, active_cred, flags, td)
 	if (vp->v_type != VCHR &&
 	    (error = vn_start_write(vp, &mp, V_WAIT | PCATCH)) != 0)
 		goto unlock;
-	VOP_LEASE(vp, td, fp->f_cred, LEASE_WRITE);
 	vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
 	if ((flags & FOF_OFFSET) == 0)
 		uio->uio_offset = fp->f_offset;
@@ -634,7 +630,6 @@ vn_truncate(fp, length, active_cred, td)
 		VFS_UNLOCK_GIANT(vfslocked);
 		return (error);
 	}
-	VOP_LEASE(vp, td, active_cred, LEASE_WRITE);
 	vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
 	if (vp->v_type == VDIR) {
 		error = EISDIR;
@@ -1284,5 +1279,37 @@ vn_extattr_rm(struct vnode *vp, int ioflg, int attrnamespace,
 		VOP_UNLOCK(vp, 0);
 	}
 
+	return (error);
+}
+
+int
+vn_vget_ino(struct vnode *vp, ino_t ino, int lkflags, struct vnode **rvp)
+{
+	struct mount *mp;
+	int ltype, error;
+
+	mp = vp->v_mount;
+	ltype = VOP_ISLOCKED(vp);
+	KASSERT(ltype == LK_EXCLUSIVE || ltype == LK_SHARED,
+	    ("vn_vget_ino: vp not locked"));
+	for (;;) {
+		error = vfs_busy(mp, MBF_NOWAIT);
+		if (error == 0)
+			break;
+		VOP_UNLOCK(vp, 0);
+		pause("vn_vget", 1);
+		vn_lock(vp, ltype | LK_RETRY);
+		if (vp->v_iflag & VI_DOOMED)
+			return (ENOENT);
+	}
+	VOP_UNLOCK(vp, 0);
+	error = VFS_VGET(mp, ino, lkflags, rvp);
+	vfs_unbusy(mp);
+	vn_lock(vp, ltype | LK_RETRY);
+	if (vp->v_iflag & VI_DOOMED) {
+		if (error == 0)
+			vput(*rvp);
+		error = ENOENT;
+	}
 	return (error);
 }

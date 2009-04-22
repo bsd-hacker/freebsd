@@ -32,6 +32,8 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include "opt_route.h"
+
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/malloc.h>
@@ -231,9 +233,8 @@ in6_get_hw_ifid(struct ifnet *ifp, struct in6_addr *in6)
 	static u_int8_t allone[8] =
 		{ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 
-	for (ifa = ifp->if_addrlist.tqh_first;
-	     ifa;
-	     ifa = ifa->ifa_list.tqe_next) {
+	IF_ADDR_LOCK(ifp);
+	TAILQ_FOREACH(ifa, &ifp->if_addrhead, ifa_link) {
 		if (ifa->ifa_addr->sa_family != AF_LINK)
 			continue;
 		sdl = (struct sockaddr_dl *)ifa->ifa_addr;
@@ -244,6 +245,7 @@ in6_get_hw_ifid(struct ifnet *ifp, struct in6_addr *in6)
 
 		goto found;
 	}
+	IF_ADDR_UNLOCK(ifp);
 
 	return -1;
 
@@ -267,18 +269,24 @@ found:
 			addrlen = 8;
 
 		/* look at IEEE802/EUI64 only */
-		if (addrlen != 8 && addrlen != 6)
+		if (addrlen != 8 && addrlen != 6) {
+			IF_ADDR_UNLOCK(ifp);
 			return -1;
+		}
 
 		/*
 		 * check for invalid MAC address - on bsdi, we see it a lot
 		 * since wildboar configures all-zero MAC on pccard before
 		 * card insertion.
 		 */
-		if (bcmp(addr, allzero, addrlen) == 0)
+		if (bcmp(addr, allzero, addrlen) == 0) {
+			IF_ADDR_UNLOCK(ifp);
 			return -1;
-		if (bcmp(addr, allone, addrlen) == 0)
+		}
+		if (bcmp(addr, allone, addrlen) == 0) {
+			IF_ADDR_UNLOCK(ifp);
 			return -1;
+		}
 
 		/* make EUI64 address */
 		if (addrlen == 8)
@@ -296,10 +304,14 @@ found:
 		break;
 
 	case IFT_ARCNET:
-		if (addrlen != 1)
+		if (addrlen != 1) {
+			IF_ADDR_UNLOCK(ifp);
 			return -1;
-		if (!addr[0])
+		}
+		if (!addr[0]) {
+			IF_ADDR_UNLOCK(ifp);
 			return -1;
+		}
 
 		bzero(&in6->s6_addr[8], 8);
 		in6->s6_addr[15] = addr[0];
@@ -321,15 +333,19 @@ found:
 		 * identifier source (can be renumbered).
 		 * we don't do this.
 		 */
+		IF_ADDR_UNLOCK(ifp);
 		return -1;
 
 	default:
+		IF_ADDR_UNLOCK(ifp);
 		return -1;
 	}
 
 	/* sanity check: g bit must not indicate "group" */
-	if (EUI64_GROUP(in6))
+	if (EUI64_GROUP(in6)) {
+		IF_ADDR_UNLOCK(ifp);
 		return -1;
+	}
 
 	/* convert EUI64 into IPv6 interface identifier */
 	EUI64_TO_IFID(in6);
@@ -340,9 +356,11 @@ found:
 	 */
 	if ((in6->s6_addr[8] & ~(EUI64_GBIT | EUI64_UBIT)) == 0x00 &&
 	    bcmp(&in6->s6_addr[9], allzero, 7) == 0) {
+		IF_ADDR_UNLOCK(ifp);
 		return -1;
 	}
 
+	IF_ADDR_UNLOCK(ifp);
 	return 0;
 }
 
@@ -748,17 +766,14 @@ in6_ifdetach(struct ifnet *ifp)
 	nd6_purge(ifp);
 
 	/* nuke any of IPv6 addresses we have */
-	for (ifa = ifp->if_addrlist.tqh_first; ifa; ifa = next) {
-		next = ifa->ifa_list.tqe_next;
+	TAILQ_FOREACH_SAFE(ifa, &ifp->if_addrhead, ifa_link, next) {
 		if (ifa->ifa_addr->sa_family != AF_INET6)
 			continue;
 		in6_purgeaddr(ifa);
 	}
 
 	/* undo everything done by in6_ifattach(), just in case */
-	for (ifa = ifp->if_addrlist.tqh_first; ifa; ifa = next) {
-		next = ifa->ifa_list.tqe_next;
-
+	TAILQ_FOREACH_SAFE(ifa, &ifp->if_addrhead, ifa_link, next) {
 		if (ifa->ifa_addr->sa_family != AF_INET6
 		 || !IN6_IS_ADDR_LINKLOCAL(&satosin6(&ifa->ifa_addr)->sin6_addr)) {
 			continue;
@@ -778,7 +793,7 @@ in6_ifdetach(struct ifnet *ifp)
 		if ((ia->ia_flags & IFA_ROUTE) &&
 		    (rt = rtalloc1((struct sockaddr *)&ia->ia_addr, 0, 0UL))) {
 			rtflags = rt->rt_flags;
-			rtfree(rt);
+			RTFREE_LOCKED(rt);
 			rtrequest(RTM_DELETE, (struct sockaddr *)&ia->ia_addr,
 			    (struct sockaddr *)&ia->ia_addr,
 			    (struct sockaddr *)&ia->ia_prefixmask,
@@ -786,7 +801,9 @@ in6_ifdetach(struct ifnet *ifp)
 		}
 
 		/* remove from the linked list */
-		TAILQ_REMOVE(&ifp->if_addrlist, (struct ifaddr *)ia, ifa_list);
+		IF_ADDR_LOCK(ifp);
+		TAILQ_REMOVE(&ifp->if_addrhead, (struct ifaddr *)ia, ifa_link);
+		IF_ADDR_UNLOCK(ifp);
 		IFAFREE(&ia->ia_ifa);
 
 		/* also remove from the IPv6 address chain(itojun&jinmei) */
@@ -904,14 +921,8 @@ in6_purgemaddrs(struct ifnet *ifp)
 	struct in6_multi *in6m;
 	struct in6_multi *oin6m;
 
-#ifdef DIAGNOSTIC
-	printf("%s: purging ifp %p\n", __func__, ifp);
-#endif
-
-	IFF_LOCKGIANT(ifp);
 	LIST_FOREACH_SAFE(in6m, &in6_multihead, in6m_entry, oin6m) {
 		if (in6m->in6m_ifp == ifp)
 			in6_delmulti(in6m);
 	}
-	IFF_UNLOCKGIANT(ifp);
 }

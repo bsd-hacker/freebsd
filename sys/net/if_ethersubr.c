@@ -34,6 +34,7 @@
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_ipx.h"
+#include "opt_route.h"
 #include "opt_mac.h"
 #include "opt_netgraph.h"
 #include "opt_carp.h"
@@ -162,17 +163,22 @@ static int ether_ipfw;
  */
 int
 ether_output(struct ifnet *ifp, struct mbuf *m,
-	struct sockaddr *dst, struct rtentry *rt0)
+	struct sockaddr *dst, struct route *ro)
 {
 	short type;
-	int error, hdrcmplt = 0;
+	int error = 0, hdrcmplt = 0;
 	u_char esrc[ETHER_ADDR_LEN], edst[ETHER_ADDR_LEN];
 	struct llentry *lle = NULL;
+	struct rtentry *rt0 = NULL;
 	struct ether_header *eh;
 	struct pf_mtag *t;
 	int loop_copy = 1;
 	int hlen;	/* link layer header length */
 
+	if (ro != NULL) {
+		lle = ro->ro_lle;
+		rt0 = ro->ro_rt;
+	}
 #ifdef MAC
 	error = mac_ifnet_check_transmit(ifp, m);
 	if (error)
@@ -190,7 +196,10 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 	switch (dst->sa_family) {
 #ifdef INET
 	case AF_INET:
-		error = arpresolve(ifp, rt0, m, dst, edst, &lle);
+		if (lle != NULL && (lle->la_flags & LLE_VALID))
+			memcpy(edst, &lle->ll_addr.mac16, sizeof(edst));
+		else
+			error = arpresolve(ifp, rt0, m, dst, edst, &lle);
 		if (error)
 			return (error == EWOULDBLOCK ? 0 : error);
 		type = htons(ETHERTYPE_IP);
@@ -225,7 +234,10 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 #endif
 #ifdef INET6
 	case AF_INET6:
-		error = nd6_storelladdr(ifp, m, dst, (u_char *)edst, &lle);
+		if (lle != NULL && (lle->la_flags & LLE_VALID))
+			memcpy(edst, &lle->ll_addr.mac16, sizeof(edst));
+		else
+			error = nd6_storelladdr(ifp, m, dst, (u_char *)edst, &lle);
 		if (error)
 			return error;
 		type = htons(ETHERTYPE_IPV6);
@@ -299,6 +311,8 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 			csum_flags |= (CSUM_IP_CHECKED|CSUM_IP_VALID);
 		if (m->m_pkthdr.csum_flags & CSUM_DELAY_DATA)
 			csum_flags |= (CSUM_DATA_VALID|CSUM_PSEUDO_HDR);
+		if (m->m_pkthdr.csum_flags & CSUM_SCTP)
+			csum_flags |= CSUM_SCTP_VALID;
 		m->m_pkthdr.csum_flags |= csum_flags;
 		m->m_pkthdr.csum_data = 0xffff;
 		return (if_simloop(ifp, m, dst->sa_family, 0));
@@ -339,6 +353,8 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 			csum_flags |= (CSUM_IP_CHECKED|CSUM_IP_VALID);
 		if (m->m_pkthdr.csum_flags & CSUM_DELAY_DATA)
 			csum_flags |= (CSUM_DATA_VALID|CSUM_PSEUDO_HDR);
+		if (m->m_pkthdr.csum_flags & CSUM_SCTP)
+			csum_flags |= CSUM_SCTP_VALID;
 
 		if (m->m_flags & M_BCAST) {
 			struct mbuf *n;

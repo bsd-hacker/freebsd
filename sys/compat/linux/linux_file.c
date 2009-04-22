@@ -345,7 +345,7 @@ getdents_common(struct thread *td, struct linux_getdents64_args *args,
 		/* readdir(2) case. Always struct dirent. */
 		if (is64bit)
 			return (EINVAL);
-		nbytes = sizeof(linux_dirent);
+		nbytes = sizeof(*linux_dirent);
 		justone = 1;
 	} else
 		justone = 0;
@@ -372,7 +372,7 @@ getdents_common(struct thread *td, struct linux_getdents64_args *args,
 	buflen = min(buflen, MAXBSIZE);
 	buf = malloc(buflen, M_TEMP, M_WAITOK);
 	lbuf = malloc(LINUX_MAXRECLEN, M_TEMP, M_WAITOK | M_ZERO);
-	vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
+	vn_lock(vp, LK_SHARED | LK_RETRY);
 
 again:
 	aiov.iov_base = buf;
@@ -1109,6 +1109,9 @@ linux_mount(struct thread *td, struct linux_mount_args *args)
 	} else if (strcmp(fstypename, "proc") == 0) {
 		strcpy(fstypename, "linprocfs");
 		fsdata = NULL;
+	} else if (strcmp(fstypename, "vfat") == 0) {
+		strcpy(fstypename, "msdosfs");
+		fsdata = NULL;
 	} else {
 		return (ENODEV);
 	}
@@ -1134,6 +1137,12 @@ linux_mount(struct thread *td, struct linux_mount_args *args)
 		error = kernel_vmount(fsflags,
 			"fstype", fstypename,
 			"fspath", mntonname,
+			NULL);
+	} else if (strcmp(fstypename, "msdosfs") == 0) {
+		error = kernel_vmount(fsflags,
+			"fstype", fstypename,
+			"fspath", mntonname,
+			"from", mntfromname,
 			NULL);
 	} else
 		error = EOPNOTSUPP;

@@ -122,9 +122,13 @@ struct pkthdr {
 	int		 csum_flags;	/* flags regarding checksum */
 	int		 csum_data;	/* data field used by csum routines */
 	u_int16_t	 tso_segsz;	/* TSO segment size */
-	u_int16_t	 ether_vtag;	/* Ethernet 802.1p+q vlan tag */
+	union {
+		u_int16_t vt_vtag;	/* Ethernet 802.1p+q vlan tag */
+		u_int16_t vt_nrecs;	/* # of IGMPv3 records in this chain */
+	} PH_vt;
 	SLIST_HEAD(packet_tags, m_tag) tags; /* list of packet tags */
 };
+#define ether_vtag	PH_vt.vt_vtag
 
 /*
  * Description of external storage mapped into mbuf; valid only if M_EXT is
@@ -195,6 +199,7 @@ struct mbuf {
 #define	M_PROTO6	0x00080000 /* protocol-specific */
 #define	M_PROTO7	0x00100000 /* protocol-specific */
 #define	M_PROTO8	0x00200000 /* protocol-specific */
+#define	M_FLOWID	0x00400000 /* flowid is valid */
 /*
  * For RELENG_{6,7} steal these flags for limited multiple routing table
  * support. In RELENG_8 and beyond, use just one flag and a tag.
@@ -241,11 +246,13 @@ struct mbuf {
 #define	CSUM_IP_FRAGS		0x0008		/* will csum IP fragments */
 #define	CSUM_FRAGMENT		0x0010		/* will do IP fragmentation */
 #define	CSUM_TSO		0x0020		/* will do TSO */
+#define	CSUM_SCTP		0x0040		/* will csum SCTP */
 
 #define	CSUM_IP_CHECKED		0x0100		/* did csum IP */
 #define	CSUM_IP_VALID		0x0200		/*   ... the csum is valid */
 #define	CSUM_DATA_VALID		0x0400		/* csum_data field is valid */
 #define	CSUM_PSEUDO_HDR		0x0800		/* csum_data has pseudo hdr */
+#define	CSUM_SCTP_VALID		0x1000		/* SCTP checksum is valid */
 
 #define	CSUM_DELAY_DATA		(CSUM_TCP | CSUM_UDP)
 #define	CSUM_DELAY_IP		(CSUM_IP)	/* XXX add ipv6 here too? */

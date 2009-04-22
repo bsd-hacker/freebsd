@@ -43,6 +43,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/mutex.h>
 #include <sys/socketvar.h>
 #include <sys/systm.h>
+#include <sys/vimage.h>
 #include <vm/uma.h>
 
 /*
@@ -64,6 +65,8 @@ static void domainfinalize(void *);
 SYSINIT(domainfin, SI_SUB_PROTO_IFATTACHDOMAIN, SI_ORDER_FIRST, domainfinalize,
     NULL);
 
+static vnet_attach_fn net_init_domain;
+
 static struct callout pffast_callout;
 static struct callout pfslow_callout;
 
@@ -72,7 +75,7 @@ static void	pfslowtimo(void *);
 
 struct domain *domains;		/* registered protocol domains */
 int domain_init_status = 0;
-struct mtx dom_mtx;		/* domain list lock */
+static struct mtx dom_mtx;		/* domain list lock */
 MTX_SYSINIT(domain, &dom_mtx, "domain list", MTX_DEF);
 
 /*
@@ -99,6 +102,14 @@ struct pr_usrreqs nousrreqs = {
 	.pru_soreceive =	pru_soreceive_notsupp,
 	.pru_sopoll =		pru_sopoll_notsupp,
 };
+
+#ifndef VIMAGE_GLOBALS
+vnet_modinfo_t vnet_domain_modinfo = {
+	.vmi_id		= VNET_MOD_DOMAIN,
+	.vmi_name	= "domain",
+	.vmi_iattach	= net_init_domain
+};
+#endif
 
 static void
 protosw_init(struct protosw *pr)
@@ -159,9 +170,10 @@ protosw_init(struct protosw *pr)
  * Note: you cant unload it again because a socket may be using it.
  * XXX can't fail at this time.
  */
-static void
-net_init_domain(struct domain *dp)
+static int
+net_init_domain(const void *arg)
 {
+	const struct domain *dp = arg;
 	struct protosw *pr;
 
 	if (dp->dom_init)
@@ -175,6 +187,7 @@ net_init_domain(struct domain *dp)
 	max_datalen = MHLEN - max_hdr;
 	if (max_datalen < 1)
 		panic("%s: max_datalen < 1", __func__);
+	return (0);
 }
 
 /*
@@ -210,7 +223,11 @@ net_add_domain(void *data)
 		    "domainfinalize()\n", dp->dom_name);
 #endif
 	mtx_unlock(&dom_mtx);
+#ifndef VIMAGE_GLOBALS
+	vnet_mod_register_multi(&vnet_domain_modinfo, dp, dp->dom_name);
+#else
 	net_init_domain(dp);
+#endif
 }
 
 static void
@@ -338,13 +355,13 @@ found:
 	 * Protect us against races when two protocol registrations for
 	 * the same protocol happen at the same time.
 	 */
-	mtx_lock(&Giant);
+	mtx_lock(&dom_mtx);
 
 	/* The new protocol must not yet exist. */
 	for (pr = dp->dom_protosw; pr < dp->dom_protoswNPROTOSW; pr++) {
 		if ((pr->pr_type == npr->pr_type) &&
 		    (pr->pr_protocol == npr->pr_protocol)) {
-			mtx_unlock(&Giant);
+			mtx_unlock(&dom_mtx);
 			return (EEXIST);	/* XXX: Check only protocol? */
 		}
 		/* While here, remember the first free spacer. */
@@ -354,7 +371,7 @@ found:
 
 	/* If no free spacer is found we can't add the new protocol. */
 	if (fpr == NULL) {
-		mtx_unlock(&Giant);
+		mtx_unlock(&dom_mtx);
 		return (ENOMEM);
 	}
 
@@ -362,7 +379,7 @@ found:
 	bcopy(npr, fpr, sizeof(*fpr));
 
 	/* Job is done, no more protection required. */
-	mtx_unlock(&Giant);
+	mtx_unlock(&dom_mtx);
 
 	/* Initialize and activate the protocol. */
 	protosw_init(fpr);
@@ -398,13 +415,13 @@ found:
 	dpr = NULL;
 
 	/* Lock out everyone else while we are manipulating the protosw. */
-	mtx_lock(&Giant);
+	mtx_lock(&dom_mtx);
 
 	/* The protocol must exist and only once. */
 	for (pr = dp->dom_protosw; pr < dp->dom_protoswNPROTOSW; pr++) {
 		if ((pr->pr_type == type) && (pr->pr_protocol == protocol)) {
 			if (dpr != NULL) {
-				mtx_unlock(&Giant);
+				mtx_unlock(&dom_mtx);
 				return (EMLINK);   /* Should not happen! */
 			} else
 				dpr = pr;
@@ -413,7 +430,7 @@ found:
 
 	/* Protocol does not exist. */
 	if (dpr == NULL) {
-		mtx_unlock(&Giant);
+		mtx_unlock(&dom_mtx);
 		return (EPROTONOSUPPORT);
 	}
 
@@ -426,7 +443,6 @@ found:
 	dpr->pr_output = NULL;
 	dpr->pr_ctlinput = NULL;
 	dpr->pr_ctloutput = NULL;
-	dpr->pr_ousrreq = NULL;
 	dpr->pr_init = NULL;
 	dpr->pr_fasttimo = NULL;
 	dpr->pr_slowtimo = NULL;
@@ -434,7 +450,7 @@ found:
 	dpr->pr_usrreqs = &nousrreqs;
 
 	/* Job is done, not more protection required. */
-	mtx_unlock(&Giant);
+	mtx_unlock(&dom_mtx);
 
 	return (0);
 }

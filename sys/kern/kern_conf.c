@@ -312,18 +312,8 @@ no_strategy(struct bio *bp)
 static int
 no_poll(struct cdev *dev __unused, int events, struct thread *td __unused)
 {
-	/*
-	 * Return true for read/write.  If the user asked for something
-	 * special, return POLLNVAL, so that clients have a way of
-	 * determining reliably whether or not the extended
-	 * functionality is present without hard-coding knowledge
-	 * of specific filesystem implementations.
-	 * Stay in sync with vop_nopoll().
-	 */
-	if (events & ~POLLSTANDARD)
-		return (POLLNVAL);
 
-	return (events & (POLLIN | POLLOUT | POLLRDNORM | POLLWRNORM));
+	return (poll_no_poll(events));
 }
 
 #define no_dump		(dumper_t *)enodev
@@ -523,23 +513,21 @@ notify_destroy(struct cdev *dev)
 }
 
 static struct cdev *
-newdev(struct cdevsw *csw, int y, struct cdev *si)
+newdev(struct cdevsw *csw, int unit, struct cdev *si)
 {
 	struct cdev *si2;
-	dev_t	udev;
 
 	mtx_assert(&devmtx, MA_OWNED);
-	udev = y;
 	if (csw->d_flags & D_NEEDMINOR) {
 		/* We may want to return an existing device */
 		LIST_FOREACH(si2, &csw->d_devs, si_list) {
-			if (si2->si_drv0 == udev) {
+			if (dev2unit(si2) == unit) {
 				dev_free_devlocked(si);
 				return (si2);
 			}
 		}
 	}
-	si->si_drv0 = udev;
+	si->si_drv0 = unit;
 	si->si_devsw = csw;
 	LIST_INSERT_HEAD(&csw->d_devs, si, si_list);
 	return (si);
@@ -871,24 +859,7 @@ destroy_dev(struct cdev *dev)
 const char *
 devtoname(struct cdev *dev)
 {
-	char *p;
-	struct cdevsw *csw;
-	int mynor;
 
-	if (dev->si_name[0] == '#' || dev->si_name[0] == '\0') {
-		p = dev->si_name;
-		csw = dev_refthread(dev);
-		if (csw != NULL) {
-			sprintf(p, "(%s)", csw->d_name);
-			dev_relthread(dev);
-		}
-		p += strlen(p);
-		mynor = dev2unit(dev);
-		if (mynor < 0 || mynor > 255)
-			sprintf(p, "/%#x", (u_int)mynor);
-		else
-			sprintf(p, "/%d", mynor);
-	}
 	return (dev->si_name);
 }
 
@@ -1052,7 +1023,7 @@ clone_cleanup(struct clonedevs **cdp)
 		if (!(cp->cdp_flags & CDP_SCHED_DTR)) {
 			cp->cdp_flags |= CDP_SCHED_DTR;
 			KASSERT(dev->si_flags & SI_NAMED,
-				("Driver has goofed in cloning underways udev %x", dev->si_drv0));
+				("Driver has goofed in cloning underways udev %x unit %x", dev2udev(dev), dev2unit(dev)));
 			destroy_devl(dev);
 		}
 	}

@@ -164,9 +164,11 @@ ata_macio_probe(device_t dev)
 	ch = &sc->sc_ch.sc_ch;
 
 	if (strcmp(name,"ata-4") == 0) {
+		device_set_desc(dev,"Apple MacIO Ultra ATA Controller");
 		sc->rev = 4;
 		sc->max_mode = ATA_UDMA4;
 	} else {
+		device_set_desc(dev,"Apple MacIO ATA Controller");
 		sc->rev = 3;
 		sc->max_mode = ATA_WDMA2;
 	}
@@ -256,6 +258,10 @@ ata_macio_setmode(device_t parent, device_t dev)
         int cycle_tick = 0, act_tick = 0, inact_tick = 0, half_tick;
 
 	mode = ata_limit_mode(dev, mode, sc->max_mode);
+
+	/* XXX Some controllers don't work correctly with ATAPI DMA */
+	if (atadev->param.config & ATA_PROTO_ATAPI)
+		mode = ata_limit_mode(dev, mode, ATA_PIO_MAX);
 
 	if (ata_controlcmd(dev, ATA_SETFEATURES, ATA_SF_SETXFER, 0, mode))
 		return;

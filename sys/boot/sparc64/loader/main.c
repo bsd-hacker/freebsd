@@ -383,7 +383,7 @@ __elfN(exec)(struct preloaded_file *fp)
 		return (error);
 
 	printf("jumping to kernel entry at %#lx.\n", e->e_entry);
-#if LOADER_DEBUG
+#ifdef LOADER_DEBUG
 	pmap_print_tlb_sun4u();
 #endif
 
@@ -434,9 +434,10 @@ dtlb_va_to_pa_sun4u(vm_offset_t va)
 			continue;
 		reg = dtlb_get_data_sun4u(i);
 		wrpr(pstate, pstate, 0);
+		reg >>= TD_PA_SHIFT;
 		if (cpu_impl >= CPU_IMPL_ULTRASPARCIII)
-			return ((reg & TD_PA_CH_MASK) >> TD_PA_SHIFT);
-		return ((reg & TD_PA_SF_MASK) >> TD_PA_SHIFT);
+			return (reg & TD_PA_CH_MASK);
+		return (reg & TD_PA_SF_MASK);
 	}
 	wrpr(pstate, pstate, 0);
 	return (-1);
@@ -456,9 +457,10 @@ itlb_va_to_pa_sun4u(vm_offset_t va)
 			continue;
 		reg = itlb_get_data_sun4u(i);
 		wrpr(pstate, pstate, 0);
+		reg >>= TD_PA_SHIFT;
 		if (cpu_impl >= CPU_IMPL_ULTRASPARCIII)
-			return ((reg & TD_PA_CH_MASK) >> TD_PA_SHIFT);
-		return ((reg & TD_PA_SF_MASK) >> TD_PA_SHIFT);
+			return (reg & TD_PA_CH_MASK);
+		return (reg & TD_PA_SF_MASK);
 	}
 	wrpr(pstate, pstate, 0);
 	return (-1);
@@ -472,7 +474,7 @@ dtlb_enter_sun4u(u_long vpn, u_long data)
 	reg = rdpr(pstate);
 	wrpr(pstate, reg & ~PSTATE_IE, 0);
 	stxa(AA_DMMU_TAR, ASI_DMMU,
-	     TLB_TAR_VA(vpn) | TLB_TAR_CTX(TLB_CTX_KERNEL));
+	    TLB_TAR_VA(vpn) | TLB_TAR_CTX(TLB_CTX_KERNEL));
 	stxa(0, ASI_DTLB_DATA_IN_REG, data);
 	membar(Sync);
 	wrpr(pstate, reg, 0);
@@ -497,9 +499,9 @@ itlb_enter_sun4u(u_long vpn, u_long data)
 				continue;
 
 			stxa(AA_IMMU_TAR, ASI_IMMU,
-			     TLB_TAR_VA(vpn) | TLB_TAR_CTX(TLB_CTX_KERNEL));
+			    TLB_TAR_VA(vpn) | TLB_TAR_CTX(TLB_CTX_KERNEL));
 			stxa(TLB_DAR_SLOT(i), ASI_ITLB_DATA_ACCESS_REG, data);
-			flush(KERNBASE);
+			flush(PROMBASE);
 			break;
 		}
 		wrpr(pstate, reg, 0);
@@ -509,9 +511,9 @@ itlb_enter_sun4u(u_long vpn, u_long data)
 	}
 
 	stxa(AA_IMMU_TAR, ASI_IMMU,
-	     TLB_TAR_VA(vpn) | TLB_TAR_CTX(TLB_CTX_KERNEL));
+	    TLB_TAR_VA(vpn) | TLB_TAR_CTX(TLB_CTX_KERNEL));
 	stxa(0, ASI_ITLB_DATA_IN_REG, data);
-	flush(KERNBASE);
+	flush(PROMBASE);
 	wrpr(pstate, reg, 0);
 }
 
@@ -837,7 +839,7 @@ exit(int code)
 }
 
 #ifdef LOADER_DEBUG
-static const char *page_sizes[] = {
+static const char *const page_sizes[] = {
 	"  8k", " 64k", "512k", "  4m"
 };
 
@@ -846,7 +848,7 @@ pmap_print_tte_sun4u(tte_t tag, tte_t tte)
 {
 
 	printf("%s %s ",
-	    page_sizes[(tte & TD_SIZE_MASK) >> TD_SIZE_SHIFT],
+	    page_sizes[(tte >> TD_SIZE_SHIFT) & TD_SIZE_MASK],
 	    tag & TD_G ? "G" : " ");
 	printf(tte & TD_W ? "W " : "  ");
 	printf(tte & TD_P ? "\e[33mP\e[0m " : "  ");

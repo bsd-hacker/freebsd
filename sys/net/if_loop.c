@@ -38,6 +38,8 @@
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_ipx.h"
+#include "opt_route.h"
+#include "opt_mac.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -82,6 +84,8 @@
 #include <netatalk/at_var.h>
 #endif
 
+#include <security/mac/mac_framework.h>
+
 #ifdef TINY_LOMTU
 #define	LOMTU	(1024+512)
 #elif defined(LARGE_LOMTU)
@@ -90,16 +94,30 @@
 #define LOMTU	16384
 #endif
 
+#define	LO_CSUM_FEATURES	(CSUM_IP | CSUM_TCP | CSUM_UDP | CSUM_SCTP)
+#define	LO_CSUM_SET		(CSUM_DATA_VALID | CSUM_PSEUDO_HDR | \
+				    CSUM_IP_CHECKED | CSUM_IP_VALID | \
+				    CSUM_SCTP_VALID)
+
 int		loioctl(struct ifnet *, u_long, caddr_t);
 static void	lortrequest(int, struct rtentry *, struct rt_addrinfo *);
 int		looutput(struct ifnet *ifp, struct mbuf *m,
-		    struct sockaddr *dst, struct rtentry *rt);
+		    struct sockaddr *dst, struct route *ro);
 static int	lo_clone_create(struct if_clone *, int, caddr_t);
 static void	lo_clone_destroy(struct ifnet *);
+static int	vnet_loif_iattach(const void *);
 
 #ifdef VIMAGE_GLOBALS
 struct ifnet *loif;			/* Used externally */
 #endif
+
+#ifndef VIMAGE_GLOBALS
+static const vnet_modinfo_t vnet_loif_modinfo = {
+	.vmi_id		= VNET_MOD_LOIF,
+	.vmi_name	= "loif",
+	.vmi_iattach	= vnet_loif_iattach
+};
+#endif /* !VIMAGE_GLOBALS */
 
 IFC_SIMPLE_DECLARE(lo, 1);
 
@@ -134,11 +152,22 @@ lo_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 	ifp->if_ioctl = loioctl;
 	ifp->if_output = looutput;
 	ifp->if_snd.ifq_maxlen = ifqmaxlen;
+	ifp->if_capabilities = ifp->if_capenable = IFCAP_HWCSUM;
+	ifp->if_hwassist = LO_CSUM_FEATURES;
 	if_attach(ifp);
 	bpfattach(ifp, DLT_NULL, sizeof(u_int32_t));
 	if (V_loif == NULL)
 		V_loif = ifp;
 
+	return (0);
+}
+
+static int vnet_loif_iattach(const void *unused __unused)
+{
+	INIT_VNET_NET(curvnet);
+
+	V_loif = NULL;
+	if_clone_attach(&lo_cloner);
 	return (0);
 }
 
@@ -149,8 +178,11 @@ loop_modevent(module_t mod, int type, void *data)
 
 	switch (type) {
 	case MOD_LOAD:
-		V_loif = NULL;
-		if_clone_attach(&lo_cloner);
+#ifndef VIMAGE_GLOBALS
+		vnet_mod_register(&vnet_loif_modinfo);
+#else
+		vnet_loif_iattach(NULL);
+#endif
 		break;
 
 	case MOD_UNLOAD:
@@ -173,11 +205,25 @@ DECLARE_MODULE(loop, loop_mod, SI_SUB_PROTO_IFATTACHDOMAIN, SI_ORDER_ANY);
 
 int
 looutput(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
-    struct rtentry *rt)
+    struct route *ro)
 {
 	u_int32_t af;
+	struct rtentry *rt = NULL;
+#ifdef MAC
+	int error;
+#endif
 
 	M_ASSERTPKTHDR(m); /* check if we have the packet header */
+
+	if (ro != NULL)
+		rt = ro->ro_rt;
+#ifdef MAC
+	error = mac_ifnet_check_transmit(ifp, m);
+	if (error) {
+		m_freem(m);
+		return (error);
+	}
+#endif
 
 	if (rt && rt->rt_flags & (RTF_REJECT|RTF_BLACKHOLE)) {
 		m_freem(m);
@@ -197,6 +243,11 @@ looutput(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 #if 1	/* XXX */
 	switch (dst->sa_family) {
 	case AF_INET:
+		if (ifp->if_capenable & IFCAP_RXCSUM) {
+			m->m_pkthdr.csum_data = 0xffff;
+			m->m_pkthdr.csum_flags = LO_CSUM_SET;
+		}
+		m->m_pkthdr.csum_flags &= ~LO_CSUM_FEATURES;
 	case AF_INET6:
 	case AF_IPX:
 	case AF_APPLETALK:
@@ -229,6 +280,10 @@ if_simloop(struct ifnet *ifp, struct mbuf *m, int af, int hlen)
 	M_ASSERTPKTHDR(m);
 	m_tag_delete_nonpersistent(m);
 	m->m_pkthdr.rcvif = ifp;
+
+#ifdef MAC
+	mac_ifnet_create_mbuf(ifp, m);
+#endif
 
 	/*
 	 * Let BPF see incoming packet in the following manner:
@@ -329,7 +384,7 @@ loioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 {
 	struct ifaddr *ifa;
 	struct ifreq *ifr = (struct ifreq *)data;
-	int error = 0;
+	int error = 0, mask;
 
 	switch (cmd) {
 	case SIOCSIFADDR:
@@ -370,6 +425,18 @@ loioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		break;
 
 	case SIOCSIFFLAGS:
+		break;
+
+	case SIOCSIFCAP:
+		mask = ifp->if_capenable ^ ifr->ifr_reqcap;
+		if ((mask & IFCAP_RXCSUM) != 0)
+			ifp->if_capenable ^= IFCAP_RXCSUM;
+		if ((mask & IFCAP_TXCSUM) != 0)
+			ifp->if_capenable ^= IFCAP_TXCSUM;
+		if (ifp->if_capenable & IFCAP_TXCSUM)
+			ifp->if_hwassist = LO_CSUM_FEATURES;
+		else
+			ifp->if_hwassist = 0;
 		break;
 
 	default:

@@ -2398,8 +2398,7 @@ mls_vnode_check_getacl(struct ucred *cred, struct vnode *vp,
 
 static int
 mls_vnode_check_getextattr(struct ucred *cred, struct vnode *vp,
-    struct label *vplabel, int attrnamespace, const char *name,
-    struct uio *uio)
+    struct label *vplabel, int attrnamespace, const char *name)
 {
 	struct mac_mls *subj, *obj;
 
@@ -2516,11 +2515,11 @@ mls_vnode_check_open(struct ucred *cred, struct vnode *vp,
 	obj = SLOT(vplabel);
 
 	/* XXX privilege override for admin? */
-	if (accmode & (VREAD | VEXEC | VSTAT)) {
+	if (accmode & (VREAD | VEXEC | VSTAT_PERMS)) {
 		if (!mls_dominate_effective(subj, obj))
 			return (EACCES);
 	}
-	if (accmode & (VWRITE | VAPPEND | VADMIN)) {
+	if (accmode & VMODIFY_PERMS) {
 		if (!mls_dominate_effective(obj, subj))
 			return (EACCES);
 	}
@@ -2739,8 +2738,7 @@ mls_vnode_check_setacl(struct ucred *cred, struct vnode *vp,
 
 static int
 mls_vnode_check_setextattr(struct ucred *cred, struct vnode *vp,
-    struct label *vplabel, int attrnamespace, const char *name,
-    struct uio *uio)
+    struct label *vplabel, int attrnamespace, const char *name)
 {
 	struct mac_mls *subj, *obj;
 
@@ -3162,25 +3160,5 @@ static struct mac_policy_ops mls_ops =
 	.mpo_vnode_setlabel_extattr = mls_vnode_setlabel_extattr,
 };
 
-#define	MLS_OBJECTS	(MPC_OBJECT_CRED |				\
-			 /* MPC_OBJECT_PROC | */			\
-			 MPC_OBJECT_VNODE |				\
-			 MPC_OBJECT_INPCB |				\
-			 MPC_OBJECT_SOCKET |				\
-			 MPC_OBJECT_DEVFS |				\
-			 MPC_OBJECT_MBUF |				\
-			 MPC_OBJECT_IPQ |				\
-			 MPC_OBJECT_IFNET |				\
-			 MPC_OBJECT_BPFDESC |				\
-			 MPC_OBJECT_PIPE |				\
-			 MPC_OBJECT_MOUNT |				\
-			 MPC_OBJECT_POSIXSEM |				\
-			 /* MPC_OBJECT_POSIXSHM | */			\
-			 MPC_OBJECT_SYSVMSG |				\
-			 MPC_OBJECT_SYSVMSQ |				\
-			 MPC_OBJECT_SYSVSEM |				\
-			 MPC_OBJECT_SYSVSHM |				\
-			 MPC_OBJECT_SYNCACHE)
-
 MAC_POLICY_SET(&mls_ops, mac_mls, "TrustedBSD MAC/MLS",
-    MPC_LOADTIME_FLAG_NOTLATE, &mls_slot, MLS_OBJECTS);
+    MPC_LOADTIME_FLAG_NOTLATE, &mls_slot);

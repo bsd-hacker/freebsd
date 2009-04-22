@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2007-2008 Sam Leffler, Errno Consulting
+ * Copyright (c) 2007-2009 Sam Leffler, Errno Consulting
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -57,6 +57,12 @@ __FBSDID("$FreeBSD$");
 #include <net80211/ieee80211_var.h>
 #include <net80211/ieee80211_adhoc.h>
 #include <net80211/ieee80211_input.h>
+#ifdef IEEE80211_SUPPORT_SUPERG
+#include <net80211/ieee80211_superg.h>
+#endif
+#ifdef IEEE80211_SUPPORT_TDMA
+#include <net80211/ieee80211_tdma.h>
+#endif
 
 #define	IEEE80211_RATE2MBS(r)	(((r) & IEEE80211_RATE_VAL) / 2)
 
@@ -96,6 +102,24 @@ adhoc_vattach(struct ieee80211vap *vap)
 	else
 		vap->iv_recv_mgmt = ahdemo_recv_mgmt;
 	vap->iv_opdetach = adhoc_vdetach;
+#ifdef IEEE80211_SUPPORT_TDMA
+	/*
+	 * Throw control to tdma support.  Note we do this
+	 * after setting up our callbacks so it can piggyback
+	 * on top of us.
+	 */
+	if (vap->iv_caps & IEEE80211_C_TDMA)
+		ieee80211_tdma_vattach(vap);
+#endif
+}
+
+static void
+sta_leave(void *arg, struct ieee80211_node *ni)
+{
+	struct ieee80211vap *vap = arg;
+
+	if (ni->ni_vap == vap && ni != vap->iv_bss)
+		ieee80211_node_leave(ni);
 }
 
 /*
@@ -134,8 +158,11 @@ adhoc_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 		break;
 	case IEEE80211_S_SCAN:
 		switch (ostate) {
-		case IEEE80211_S_INIT:
 		case IEEE80211_S_RUN:		/* beacon miss */
+			/* purge station table; entries are stale */
+			ieee80211_iterate_nodes(&ic->ic_sta, sta_leave, vap);
+			/* fall thru... */
+		case IEEE80211_S_INIT:
 			if (vap->iv_des_chan != IEEE80211_CHAN_ANYC &&
 			    !IEEE80211_IS_CHAN_RADAR(vap->iv_des_chan)) {
 				/*
@@ -355,6 +382,19 @@ adhoc_input(struct ieee80211_node *ni, struct mbuf *m,
 		    ni == vap->iv_bss &&
 		    !IEEE80211_ADDR_EQ(wh->i_addr2, ni->ni_macaddr)) {
 			/*
+			 * Beware of frames that come in too early; we
+			 * can receive broadcast frames and creating sta
+			 * entries will blow up because there is no bss
+			 * channel yet.
+			 */
+			if (vap->iv_state != IEEE80211_S_RUN) {
+				IEEE80211_DISCARD(vap, IEEE80211_MSG_INPUT,
+				    wh, "data", "not in RUN state (%s)",
+				    ieee80211_state_name[vap->iv_state]);
+				vap->iv_stats.is_rx_badstate++;
+				goto err;
+			}
+			/*
 			 * Fake up a node for this newly
 			 * discovered member of the IBSS.
 			 */
@@ -553,32 +593,13 @@ adhoc_input(struct ieee80211_node *ni, struct mbuf *m,
 			m = ieee80211_decap_amsdu(ni, m);
 			if (m == NULL)
 				return IEEE80211_FC0_TYPE_DATA;
-		} else if (IEEE80211_ATH_CAP(vap, ni, IEEE80211_NODE_FF) &&
-#define	FF_LLC_SIZE	(sizeof(struct ether_header) + sizeof(struct llc))
-		    m->m_pkthdr.len >= 3*FF_LLC_SIZE) {
-			struct llc *llc;
-
-			/*
-			 * Check for fast-frame tunnel encapsulation.
-			 */
-			if (m->m_len < FF_LLC_SIZE &&
-			    (m = m_pullup(m, FF_LLC_SIZE)) == NULL) {
-				IEEE80211_DISCARD_MAC(vap, IEEE80211_MSG_ANY,
-				    ni->ni_macaddr, "fast-frame",
-				    "%s", "m_pullup(llc) failed");
-				vap->iv_stats.is_rx_tooshort++;
+		} else {
+#ifdef IEEE80211_SUPPORT_SUPERG
+			m = ieee80211_decap_fastframe(vap, ni, m);
+			if (m == NULL)
 				return IEEE80211_FC0_TYPE_DATA;
-			}
-			llc = (struct llc *)(mtod(m, uint8_t *) + 
-				sizeof(struct ether_header));
-			if (llc->llc_snap.ether_type == htons(ATH_FF_ETH_TYPE)) {
-				m_adj(m, FF_LLC_SIZE);
-				m = ieee80211_decap_fastframe(ni, m);
-				if (m == NULL)
-					return IEEE80211_FC0_TYPE_DATA;
-			}
+#endif
 		}
-#undef FF_LLC_SIZE
 		if (dir == IEEE80211_FC1_DIR_DSTODS && ni->ni_wdsvap != NULL)
 			ieee80211_deliver_data(ni->ni_wdsvap, ni, m);
 		else

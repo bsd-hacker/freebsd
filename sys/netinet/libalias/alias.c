@@ -115,6 +115,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/mbuf.h>
+#include <sys/sysctl.h>
 #else
 #include <sys/types.h>
 #include <stdlib.h>
@@ -141,6 +142,17 @@ __FBSDID("$FreeBSD$");
 #include "alias.h"
 #include "alias_local.h"
 #include "alias_mod.h"
+#endif
+
+/* 
+ * Define libalias SYSCTL Node
+ */
+#ifdef SYSCTL_NODE
+
+SYSCTL_DECL(_net_inet);
+SYSCTL_DECL(_net_inet_ip);
+SYSCTL_NODE(_net_inet_ip, OID_AUTO, alias, CTLFLAG_RW, NULL, "Libalias sysctl API");
+
 #endif
 
 static __inline int
@@ -730,7 +742,7 @@ UdpAliasIn(struct libalias *la, struct ip *pip)
 		u_short alias_port;
 		u_short proxy_port;
 		int accumulate;
-		int r = 0, error;
+		int error;
 		struct alias_data ad = {
 			.lnk = lnk, 
 			.oaddr = &original_address, 
@@ -750,6 +762,9 @@ UdpAliasIn(struct libalias *la, struct ip *pip)
 
 		/* Walk out chain. */		
 		error = find_handler(IN, UDP, la, pip, &ad);
+		/* If we cannot figure out the packet, ignore it. */
+		if (error < 0)
+			return (PKT_ALIAS_IGNORED);
 
 /* If UDP checksum is not zero, then adjust since destination port */
 /* is being unaliased and destination address is being altered.    */
@@ -789,13 +804,7 @@ UdpAliasIn(struct libalias *la, struct ip *pip)
 		    &original_address, &pip->ip_dst, 2);
 		pip->ip_dst = original_address;
 
-		/*
-		 * If we cannot figure out the packet, ignore it.
-		 */
-		if (r < 0)
-			return (PKT_ALIAS_IGNORED);
-		else
-			return (PKT_ALIAS_OK);
+		return (PKT_ALIAS_OK);
 	}
 	return (PKT_ALIAS_IGNORED);
 }
@@ -1214,7 +1223,6 @@ FragmentOut(struct libalias *la, struct in_addr *ip_src, u_short *ip_sum)
 (prototypes in alias.h)
 */
 
-// XXX ip free
 int
 LibAliasSaveFragment(struct libalias *la, char *ptr)
 {
@@ -1234,7 +1242,6 @@ LibAliasSaveFragment(struct libalias *la, char *ptr)
 	return (iresult);
 }
 
-// XXX ip free
 char           *
 LibAliasGetFragment(struct libalias *la, char *ptr)
 {
@@ -1256,7 +1263,6 @@ LibAliasGetFragment(struct libalias *la, char *ptr)
 	return (fptr);
 }
 
-// XXX ip free
 void
 LibAliasFragmentIn(struct libalias *la, char *ptr,	/* Points to correctly
 							 * de-aliased header
@@ -1335,6 +1341,11 @@ LibAliasInLocked(struct libalias *la, char *ptr, int maxpacketsize)
 		case IPPROTO_TCP:
 			iresult = TcpAliasIn(la, pip);
 			break;
+#ifdef _KERNEL
+		case IPPROTO_SCTP:
+		  iresult = SctpAlias(la, pip, SN_TO_LOCAL);
+			break;
+#endif
  		case IPPROTO_GRE: {
 			int error;
 			struct alias_data ad = {
@@ -1477,10 +1488,15 @@ LibAliasOutLocked(struct libalias *la, char *ptr,	/* valid IP packet */
 		case IPPROTO_UDP:
 			iresult = UdpAliasOut(la, pip, maxpacketsize, create);
 			break;
-			case IPPROTO_TCP:
+		case IPPROTO_TCP:
 			iresult = TcpAliasOut(la, pip, maxpacketsize, create);
 			break;
- 		case IPPROTO_GRE: {
+#ifdef _KERNEL
+		case IPPROTO_SCTP:
+		  iresult = SctpAlias(la, pip, SN_TO_GLOBAL);
+			break;
+#endif
+		case IPPROTO_GRE: {
 			int error;
 			struct alias_data ad = {
 				.lnk = NULL, 

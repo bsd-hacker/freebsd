@@ -7,7 +7,6 @@
  * ----------------------------------------------------------------------------
  *
  * $FreeBSD$
- *
  */
 
 #ifndef _SYS_JAIL_H_
@@ -32,7 +31,7 @@ struct jail {
 	struct in_addr	*ip4;
 	struct in6_addr	*ip6;
 };
-#define	JAIL_API_VERSION 2
+#define	JAIL_API_VERSION	2
 
 /*
  * For all xprison structs, always keep the pr_version an int and
@@ -54,8 +53,8 @@ struct xprison {
 	int		 pr_state;
 	cpusetid_t	 pr_cpusetid;
 	char		 pr_path[MAXPATHLEN];
-	char 		 pr_host[MAXHOSTNAMELEN];
-	char 		 pr_name[MAXHOSTNAMELEN];
+	char		 pr_host[MAXHOSTNAMELEN];
+	char		 pr_name[MAXHOSTNAMELEN];
 	uint32_t	 pr_ip4s;
 	uint32_t	 pr_ip6s;
 #if 0
@@ -128,8 +127,8 @@ struct prison {
 	char		 pr_path[MAXPATHLEN];		/* (c) chroot path */
 	struct cpuset	*pr_cpuset;			/* (p) cpuset */
 	struct vnode	*pr_root;			/* (c) vnode to rdir */
-	char 		 pr_host[MAXHOSTNAMELEN];	/* (p) jail hostname */
-	char 		 pr_name[MAXHOSTNAMELEN];	/* (c) admin jail name */
+	char		 pr_host[MAXHOSTNAMELEN];	/* (p) jail hostname */
+	char		 pr_name[MAXHOSTNAMELEN];	/* (c) admin jail name */
 	void		*pr_linux;			/* (p) linux abi */
 	int		 pr_securelevel;		/* (p) securelevel */
 	struct task	 pr_task;			/* (d) destroy task */
@@ -181,34 +180,19 @@ void prison_hold(struct prison *pr);
 void prison_hold_locked(struct prison *pr);
 void prison_proc_hold(struct prison *);
 void prison_proc_free(struct prison *);
-int prison_getip4(struct ucred *cred, struct in_addr *ia);
+int prison_get_ip4(struct ucred *cred, struct in_addr *ia);
 int prison_local_ip4(struct ucred *cred, struct in_addr *ia);
 int prison_remote_ip4(struct ucred *cred, struct in_addr *ia);
 int prison_check_ip4(struct ucred *cred, struct in_addr *ia);
 #ifdef INET6
-int prison_getip6(struct ucred *, struct in6_addr *);
+int prison_get_ip6(struct ucred *, struct in6_addr *);
 int prison_local_ip6(struct ucred *, struct in6_addr *, int);
 int prison_remote_ip6(struct ucred *, struct in6_addr *);
 int prison_check_ip6(struct ucred *, struct in6_addr *);
 #endif
+int prison_check_af(struct ucred *cred, int af);
 int prison_if(struct ucred *cred, struct sockaddr *sa);
 int prison_priv_check(struct ucred *cred, int priv);
-
-/*
- * Kernel jail services.
- */
-struct prison_service;
-typedef int (*prison_create_t)(struct prison_service *psrv, struct prison *pr);
-typedef int (*prison_destroy_t)(struct prison_service *psrv, struct prison *pr);
-
-struct prison_service *prison_service_register(const char *name,
-    prison_create_t create, prison_destroy_t destroy);
-void prison_service_deregister(struct prison_service *psrv);
-
-void prison_service_data_set(struct prison_service *psrv, struct prison *pr,
-    void *data);
-void *prison_service_data_get(struct prison_service *psrv, struct prison *pr);
-void *prison_service_data_del(struct prison_service *psrv, struct prison *pr);
 
 #endif /* _KERNEL */
 #endif /* !_SYS_JAIL_H_ */

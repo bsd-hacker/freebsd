@@ -53,10 +53,14 @@ __FBSDID("$FreeBSD$");
 
 /* local prototypes */
 static int ata_serverworks_chipinit(device_t dev);
-static int ata_serverworks_allocate(device_t dev);
+static int ata_serverworks_ch_attach(device_t dev);
+static int ata_serverworks_ch_detach(device_t dev);
 static void ata_serverworks_tf_read(struct ata_request *request);
 static void ata_serverworks_tf_write(struct ata_request *request);
 static void ata_serverworks_setmode(device_t dev, int mode);
+#ifdef __powerpc__
+static int ata_serverworks_status(device_t dev);
+#endif
 
 /* misc defines */
 #define SWKS_33		0
@@ -97,6 +101,23 @@ ata_serverworks_probe(device_t dev)
     return 0;
 }
 
+#ifdef __powerpc__
+static int
+ata_serverworks_status(device_t dev)
+{
+    struct ata_channel *ch = device_get_softc(dev);
+
+    /*
+     * We need to do a 4-byte read on the status reg before the values
+     * will report correctly
+     */
+
+    ATA_IDX_INL(ch,ATA_STATUS);
+
+    return ata_pci_status(dev);
+}
+#endif
+
 static int
 ata_serverworks_chipinit(device_t dev)
 {
@@ -113,7 +134,8 @@ ata_serverworks_chipinit(device_t dev)
 	    return ENXIO;
 
 	ctlr->channels = ctlr->chip->cfg2;
-	ctlr->allocate = ata_serverworks_allocate;
+	ctlr->ch_attach = ata_serverworks_ch_attach;
+	ctlr->ch_detach = ata_serverworks_ch_detach;
 	ctlr->setmode = ata_sata_setmode;
 	return 0;
     }
@@ -144,12 +166,14 @@ ata_serverworks_chipinit(device_t dev)
 }
 
 static int
-ata_serverworks_allocate(device_t dev)
+ata_serverworks_ch_attach(device_t dev)
 {
     struct ata_pci_controller *ctlr = device_get_softc(device_get_parent(dev));
     struct ata_channel *ch = device_get_softc(dev);
     int ch_offset;
     int i;
+
+    ata_pci_dmainit(dev);
 
     ch_offset = ch->unit * 0x100;
 
@@ -182,11 +206,22 @@ ata_serverworks_allocate(device_t dev)
     ata_pci_hw(dev);
     ch->hw.tf_read = ata_serverworks_tf_read;
     ch->hw.tf_write = ata_serverworks_tf_write;
+#ifdef __powerpc__
+    ch->hw.status = ata_serverworks_status;
+#endif
 
     /* chip does not reliably do 64K DMA transfers */
     ch->dma.max_iosize = 64 * DEV_BSIZE;
 
     return 0;
+}
+
+static int
+ata_serverworks_ch_detach(device_t dev)
+{
+
+    ata_pci_dmafini(dev);
+    return (0);
 }
 
 static void

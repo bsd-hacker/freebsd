@@ -167,14 +167,16 @@ agp_amd64_attach(device_t dev)
 {
 	struct agp_amd64_softc *sc = device_get_softc(dev);
 	struct agp_gatt *gatt;
+	uint32_t devid;
 	int i, n, error;
 
-	for (i = 0, n = 0; i < PCI_SLOTMAX && n < AMD64_MAX_MCTRL; i++)
-		if (pci_cfgregread(0, i, 3, 0, 4) == 0x11031022) {
+	for (i = 0, n = 0; i < PCI_SLOTMAX && n < AMD64_MAX_MCTRL; i++) {
+		devid = pci_cfgregread(0, i, 3, 0, 4);
+		if (devid == 0x11031022 || devid == 0x12031022) {
 			sc->mctrl[n] = i;
 			n++;
 		}
-
+	}
 	if (n == 0)
 		return (ENXIO);
 
@@ -331,11 +333,11 @@ agp_amd64_set_aperture(device_t dev, uint32_t aperture)
 }
 
 static int
-agp_amd64_bind_page(device_t dev, int offset, vm_offset_t physical)
+agp_amd64_bind_page(device_t dev, vm_offset_t offset, vm_offset_t physical)
 {
 	struct agp_amd64_softc *sc = device_get_softc(dev);
 
-	if (offset < 0 || offset >= (sc->gatt->ag_entries << AGP_PAGE_SHIFT))
+	if (offset >= (sc->gatt->ag_entries << AGP_PAGE_SHIFT))
 		return (EINVAL);
 
 	sc->gatt->ag_virtual[offset >> AGP_PAGE_SHIFT] =
@@ -345,11 +347,11 @@ agp_amd64_bind_page(device_t dev, int offset, vm_offset_t physical)
 }
 
 static int
-agp_amd64_unbind_page(device_t dev, int offset)
+agp_amd64_unbind_page(device_t dev, vm_offset_t offset)
 {
 	struct agp_amd64_softc *sc = device_get_softc(dev);
 
-	if (offset < 0 || offset >= (sc->gatt->ag_entries << AGP_PAGE_SHIFT))
+	if (offset >= (sc->gatt->ag_entries << AGP_PAGE_SHIFT))
 		return (EINVAL);
 
 	sc->gatt->ag_virtual[offset >> AGP_PAGE_SHIFT] = 0;

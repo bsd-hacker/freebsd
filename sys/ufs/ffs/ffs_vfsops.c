@@ -622,10 +622,13 @@ ffs_mountfs(devvp, mp, td)
 	struct g_consumer *cp;
 	struct mount *nmp;
 
-	dev = devvp->v_rdev;
+	bp = NULL;
+	ump = NULL;
 	cred = td ? td->td_ucred : NOCRED;
-
 	ronly = (mp->mnt_flag & MNT_RDONLY) != 0;
+
+	dev = devvp->v_rdev;
+	dev_ref(dev);
 	DROP_GIANT();
 	g_topology_lock();
 	error = g_vfs_open(devvp, &cp, "ffs", ronly ? 0 : 1);
@@ -640,7 +643,7 @@ ffs_mountfs(devvp, mp, td)
 	PICKUP_GIANT();
 	VOP_UNLOCK(devvp, 0);
 	if (error)
-		return (error);
+		goto out;
 	if (devvp->v_rdev->si_iosize_max != 0)
 		mp->mnt_iosize_max = devvp->v_rdev->si_iosize_max;
 	if (mp->mnt_iosize_max > MAXPHYS)
@@ -649,8 +652,6 @@ ffs_mountfs(devvp, mp, td)
 	devvp->v_bufobj.bo_private = cp;
 	devvp->v_bufobj.bo_ops = &ffs_ops;
 
-	bp = NULL;
-	ump = NULL;
 	fs = NULL;
 	sblockloc = 0;
 	/*
@@ -882,7 +883,8 @@ ffs_mountfs(devvp, mp, td)
 	 * Initialize filesystem stat information in mount struct.
 	 */
 	MNT_ILOCK(mp);
-	mp->mnt_kern_flag |= MNTK_MPSAFE | MNTK_LOOKUP_SHARED;
+	mp->mnt_kern_flag |= MNTK_MPSAFE | MNTK_LOOKUP_SHARED |
+	    MNTK_EXTENDED_SHARED;
 	MNT_IUNLOCK(mp);
 #ifdef UFS_EXTATTR
 #ifdef UFS_EXTATTR_AUTOSTART
@@ -921,6 +923,7 @@ out:
 		free(ump, M_UFSMNT);
 		mp->mnt_data = NULL;
 	}
+	dev_rel(dev);
 	return (error);
 }
 
@@ -1030,6 +1033,9 @@ ffs_unmount(mp, mntflags, td)
 	struct ufsmount *ump = VFSTOUFS(mp);
 	struct fs *fs;
 	int error, flags, susp;
+#ifdef UFS_EXTATTR
+	int e_restart;
+#endif
 
 	flags = 0;
 	fs = ump->um_fs;
@@ -1043,8 +1049,10 @@ ffs_unmount(mp, mntflags, td)
 		if (error != EOPNOTSUPP)
 			printf("ffs_unmount: ufs_extattr_stop returned %d\n",
 			    error);
+		e_restart = 0;
 	} else {
 		ufs_extattr_uepm_destroy(&ump->um_extattr);
+		e_restart = 1;
 	}
 #endif
 	if (susp) {
@@ -1068,13 +1076,13 @@ ffs_unmount(mp, mntflags, td)
 			vn_start_write(NULL, &mp, V_WAIT);
 		}
 	}
-	if (mp->mnt_flag & MNT_SOFTDEP) {
-		if ((error = softdep_flushfiles(mp, flags, td)) != 0)
-			goto fail;
-	} else {
-		if ((error = ffs_flushfiles(mp, flags, td)) != 0)
-			goto fail;
-	}
+	if (mp->mnt_flag & MNT_SOFTDEP)
+		error = softdep_flushfiles(mp, flags, td);
+	else
+		error = ffs_flushfiles(mp, flags, td);
+	if (error != 0 && error != ENXIO)
+		goto fail;
+
 	UFS_LOCK(ump);
 	if (fs->fs_pendingblocks != 0 || fs->fs_pendinginodes != 0) {
 		printf("%s: unmount pending error: blocks %jd files %d\n",
@@ -1087,7 +1095,7 @@ ffs_unmount(mp, mntflags, td)
 	if (fs->fs_ronly == 0) {
 		fs->fs_clean = fs->fs_flags & (FS_UNCLEAN|FS_NEEDSFSCK) ? 0 : 1;
 		error = ffs_sbupdate(ump, MNT_WAIT, 0);
-		if (error) {
+		if (error && error != ENXIO) {
 			fs->fs_clean = 0;
 			goto fail;
 		}
@@ -1102,6 +1110,7 @@ ffs_unmount(mp, mntflags, td)
 	g_topology_unlock();
 	PICKUP_GIANT();
 	vrele(ump->um_devvp);
+	dev_rel(ump->um_dev);
 	mtx_destroy(UFS_MTX(ump));
 	if (mp->mnt_gjprovider != NULL) {
 		free(mp->mnt_gjprovider, M_UFSMNT);
@@ -1121,6 +1130,15 @@ fail:
 		vfs_write_resume(mp);
 		vn_start_write(NULL, &mp, V_WAIT);
 	}
+#ifdef UFS_EXTATTR
+	if (e_restart) {
+		ufs_extattr_uepm_init(&ump->um_extattr);
+#ifdef UFS_EXTATTR_AUTOSTART
+		(void) ufs_extattr_autostart(mp, td);
+#endif
+	}
+#endif
+
 	return (error);
 }
 
@@ -1423,10 +1441,9 @@ ffs_vgetf(mp, ino, flags, vpp, ffs_flags)
 		return (error);
 	}
 	/*
-	 * FFS supports recursive and shared locking.
+	 * FFS supports recursive locking.
 	 */
 	VN_LOCK_AREC(vp);
-	VN_LOCK_ASHARE(vp);
 	vp->v_data = ip;
 	vp->v_bufobj.bo_bsize = fs->fs_bsize;
 	ip->i_vnode = vp;
@@ -1434,6 +1451,7 @@ ffs_vgetf(mp, ino, flags, vpp, ffs_flags)
 	ip->i_fs = fs;
 	ip->i_dev = dev;
 	ip->i_number = ino;
+	ip->i_ea_refs = 0;
 #ifdef QUOTA
 	{
 		int i;
@@ -1447,7 +1465,6 @@ ffs_vgetf(mp, ino, flags, vpp, ffs_flags)
 		vp->v_vflag |= VV_FORCEINSMQ;
 	error = insmntque(vp, mp);
 	if (error != 0) {
-		uma_zfree(uma_inode, ip);
 		*vpp = NULL;
 		return (error);
 	}
@@ -1499,6 +1516,10 @@ ffs_vgetf(mp, ino, flags, vpp, ffs_flags)
 	/*
 	 * Finish inode initialization.
 	 */
+	if (vp->v_type != VFIFO) {
+		/* FFS supports shared locking for all files except fifos. */
+		VN_LOCK_ASHARE(vp);
+	}
 
 	/*
 	 * Set up a generation number for this inode if it does not
@@ -1824,7 +1845,9 @@ ffs_bufwrite(struct buf *bp)
 		    ("bufwrite: needs chained iodone (%p)", bp->b_iodone));
 
 		/* get a new block */
-		newbp = geteblk(bp->b_bufsize);
+		newbp = geteblk(bp->b_bufsize, GB_NOWAIT_BD);
+		if (newbp == NULL)
+			goto normal_write;
 
 		/*
 		 * set it to be identical to the old block.  We have to
@@ -1864,6 +1887,7 @@ ffs_bufwrite(struct buf *bp)
 	}
 
 	/* Let the normal bufwrite do the rest for us */
+normal_write:
 	return (bufwrite(bp));
 }
 
@@ -1898,7 +1922,7 @@ ffs_geom_strategy(struct bufobj *bo, struct buf *bp)
 					}
 				}
 				bp->b_runningbufspace = bp->b_bufsize;
-				atomic_add_int(&runningbufspace,
+				atomic_add_long(&runningbufspace,
 					       bp->b_runningbufspace);
 			} else {
 				error = ffs_copyonwrite(vp, bp);

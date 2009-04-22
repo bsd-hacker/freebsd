@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2005-2008 Sam Leffler, Errno Consulting
+ * Copyright (c) 2005-2009 Sam Leffler, Errno Consulting
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -42,7 +42,7 @@
  * a callback when scanning on a ``passive channel'' when the
  * IEEE80211_FEXT_PROBECHAN flag is set.
  *
- * A scan operation involves constructing a set of channels to inspec
+ * A scan operation involves constructing a set of channels to inspect
  * (the scan set), visiting each channel and collecting information
  * (e.g. what bss are present), and then analyzing the results to make
  * decisions like which bss to join.  This process needs to be as fast
@@ -209,6 +209,7 @@ struct ieee80211_scanparams {
 	uint8_t		*htcap;
 	uint8_t		*htinfo;
 	uint8_t		*ath;
+	uint8_t		*tdma;
 };
 
 /*

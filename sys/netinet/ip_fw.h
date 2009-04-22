@@ -139,7 +139,8 @@ enum ipfw_opcodes {		/* arguments (4 byte each)	*/
 	O_FORWARD_IP,		/* fwd sockaddr			*/
 	O_FORWARD_MAC,		/* fwd mac			*/
 	O_NAT,                  /* nope                         */
-
+	O_REASS,                /* none                         */
+	
 	/*
 	 * More opcodes.
 	 */
@@ -574,6 +575,7 @@ enum {
 	IP_FW_NETGRAPH,
 	IP_FW_NGTEE,
 	IP_FW_NAT,
+	IP_FW_REASS,
 };
 
 /* flags for divert mtag */
@@ -682,6 +684,7 @@ typedef int ipfw_nat_t(struct ip_fw_args *, struct cfg_nat *, struct mbuf *);
 typedef int ipfw_nat_cfg_t(struct sockopt *);
 #endif
 
+struct eventhandler_entry;
 /*
  * Stack virtualization support.
  */
@@ -692,9 +695,10 @@ struct vnet_ipfw {
 	int	_fw_deny_unknown_exthdrs;
 	int	_fw_verbose;
 	int	_verbose_limit;
-	int	_fw_debug;
+	int	_fw_debug;		/* actually unused */
 	int	_autoinc_step;
 	ipfw_dyn_rule **_ipfw_dyn_v;
+	uma_zone_t _ipfw_dyn_rule_zone;
 	struct ip_fw_chain _layer3_chain;
 	u_int32_t _dyn_buckets;
 	u_int32_t _curr_dyn_buckets;
@@ -713,7 +717,7 @@ struct vnet_ipfw {
 	u_int32_t _dyn_max;
 	u_int64_t _norule_counter;
 	struct callout _ipfw_timeout;
-	eventhandler_tag _ifaddr_event_tag;
+	struct eventhandler_entry *_ifaddr_event_tag;
 };
 
 #ifndef VIMAGE
@@ -739,6 +743,7 @@ extern struct vnet_ipfw vnet_ipfw_0;
 #define	V_fw_debug		VNET_IPFW(fw_debug)
 #define	V_autoinc_step		VNET_IPFW(autoinc_step)
 #define	V_ipfw_dyn_v		VNET_IPFW(ipfw_dyn_v)
+#define	V_ipfw_dyn_rule_zone	VNET_IPFW(ipfw_dyn_rule_zone)
 #define	V_layer3_chain		VNET_IPFW(layer3_chain)
 #define	V_dyn_buckets		VNET_IPFW(dyn_buckets)
 #define	V_curr_dyn_buckets	VNET_IPFW(curr_dyn_buckets)

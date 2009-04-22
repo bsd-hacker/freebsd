@@ -164,9 +164,11 @@ OF_interpret(const char *cmd, int nreturns, ...)
 	int status;
 
 	status = OFW_INTERPRET(ofw_obj, cmd, nreturns, slots);
+	if (status == -1)
+		return (status);
 
 	va_start(ap, nreturns);
-	while (i < 1 + nreturns)
+	while (i < nreturns)
 		*va_arg(ap, cell_t *) = slots[i++];
 	va_end(ap);
 
@@ -217,6 +219,23 @@ ssize_t
 OF_getprop(phandle_t package, const char *propname, void *buf, size_t buflen)
 {
 	return (OFW_GETPROP(ofw_obj, package, propname, buf, buflen));
+}
+
+/*
+ * Resursively search the node and its parent for the given property, working
+ * downward from the node to the device tree root.  Returns the value of the
+ * first match.
+ */
+ssize_t
+OF_searchprop(phandle_t node, char *propname, void *buf, size_t len)
+{
+	ssize_t rv;
+
+	for (; node != 0; node = OF_parent(node)) {
+		if ((rv = OF_getprop(node, propname, buf, len)) != -1)
+			return (rv);
+	}
+	return (-1);
 }
 
 /*

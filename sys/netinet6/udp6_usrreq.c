@@ -166,7 +166,7 @@ udp6_append(struct inpcb *inp, struct mbuf *n, int off,
 		m_freem(n);
 		if (opts)
 			m_freem(opts);
-		V_udpstat.udps_fullsock++;
+		UDPSTAT_INC(udps_fullsock);
 	} else
 		sorwakeup_locked(so);
 }
@@ -202,7 +202,7 @@ udp6_input(struct mbuf **mp, int *offp, int proto)
 		return (IPPROTO_DONE);
 #endif
 
-	V_udpstat.udps_ipackets++;
+	UDPSTAT_INC(udps_ipackets);
 
 	/*
 	 * Destination port of 0 is illegal, based on RFC768.
@@ -214,7 +214,7 @@ udp6_input(struct mbuf **mp, int *offp, int proto)
 	ulen = ntohs((u_short)uh->uh_ulen);
 
 	if (plen != ulen) {
-		V_udpstat.udps_badlen++;
+		UDPSTAT_INC(udps_badlen);
 		goto badunlocked;
 	}
 
@@ -222,11 +222,11 @@ udp6_input(struct mbuf **mp, int *offp, int proto)
 	 * Checksum extended UDP header and data.
 	 */
 	if (uh->uh_sum == 0) {
-		V_udpstat.udps_nosum++;
+		UDPSTAT_INC(udps_nosum);
 		goto badunlocked;
 	}
 	if (in6_cksum(m, IPPROTO_UDP, off, ulen) != 0) {
-		V_udpstat.udps_badsum++;
+		UDPSTAT_INC(udps_badsum);
 		goto badunlocked;
 	}
 
@@ -287,8 +287,24 @@ udp6_input(struct mbuf **mp, int *offp, int proto)
 
 				if ((n = m_copy(m, 0, M_COPYALL)) != NULL) {
 					INP_RLOCK(last);
-					udp6_append(last, n, off, &fromsa);
-					INP_RUNLOCK(last);
+					if (last->inp_ppcb != NULL) {
+						/*
+						 * Engage the tunneling
+						 * protocol we will have to
+						 * leave the info_lock up,
+						 * since we are hunting
+						 * through multiple UDP's.
+						 * 
+						 */
+						udp_tun_func_t tunnel_func;
+
+						tunnel_func = (udp_tun_func_t)last->inp_ppcb;
+						tunnel_func(n, off, last);
+						INP_RUNLOCK(last);
+					} else {
+						udp6_append(last, n, off, &fromsa);
+						INP_RUNLOCK(last);
+					}
 				}
 			}
 			last = inp;
@@ -311,12 +327,23 @@ udp6_input(struct mbuf **mp, int *offp, int proto)
 			 * to send an ICMP Port Unreachable for a broadcast
 			 * or multicast datgram.)
 			 */
-			V_udpstat.udps_noport++;
-			V_udpstat.udps_noportmcast++;
+			UDPSTAT_INC(udps_noport);
+			UDPSTAT_INC(udps_noportmcast);
 			goto badheadlocked;
 		}
 		INP_RLOCK(last);
 		INP_INFO_RUNLOCK(&V_udbinfo);
+		if (last->inp_ppcb != NULL) {
+			/*
+			 * Engage the tunneling protocol.
+			 */
+			udp_tun_func_t tunnel_func;
+
+			tunnel_func = (udp_tun_func_t)inp->inp_ppcb;
+			tunnel_func(m, off, last);
+			INP_RUNLOCK(last);
+			return (IPPROTO_DONE);
+		}
 		udp6_append(last, m, off, &fromsa);
 		INP_RUNLOCK(last);
 		return (IPPROTO_DONE);
@@ -338,10 +365,10 @@ udp6_input(struct mbuf **mp, int *offp, int proto)
 			    ip6_sprintf(ip6bufs, &ip6->ip6_src),
 			    ntohs(uh->uh_sport));
 		}
-		V_udpstat.udps_noport++;
+		UDPSTAT_INC(udps_noport);
 		if (m->m_flags & M_MCAST) {
 			printf("UDP6: M_MCAST is set in a unicast packet.\n");
-			V_udpstat.udps_noportmcast++;
+			UDPSTAT_INC(udps_noportmcast);
 			goto badheadlocked;
 		}
 		INP_INFO_RUNLOCK(&V_udbinfo);
@@ -354,6 +381,17 @@ udp6_input(struct mbuf **mp, int *offp, int proto)
 	}
 	INP_RLOCK(inp);
 	INP_INFO_RUNLOCK(&V_udbinfo);
+	if (inp->inp_ppcb != NULL) {
+		/*
+		 * Engage the tunneling protocol.
+		 */
+		udp_tun_func_t tunnel_func;
+
+		tunnel_func = (udp_tun_func_t)inp->inp_ppcb;
+		tunnel_func(m, off, inp);
+		INP_RUNLOCK(inp);
+		return (IPPROTO_DONE);
+	}
 	udp6_append(inp, m, off, &fromsa);
 	INP_RUNLOCK(inp);
 	return (IPPROTO_DONE);
@@ -681,7 +719,7 @@ udp6_output(struct inpcb *inp, struct mbuf *m, struct sockaddr *addr6,
 
 		flags = 0;
 
-		V_udpstat.udps_opackets++;
+		UDPSTAT_INC(udps_opackets);
 		error = ip6_output(m, optp, NULL, flags, inp->in6p_moptions,
 		    NULL, inp);
 		break;
@@ -845,52 +883,43 @@ udp6_connect(struct socket *so, struct sockaddr *nam, struct thread *td)
 {
 	INIT_VNET_INET(so->so_vnet);
 	struct inpcb *inp;
+	struct sockaddr_in6 *sin6;
 	int error;
 
 	inp = sotoinpcb(so);
+	sin6 = (struct sockaddr_in6 *)nam;
 	KASSERT(inp != NULL, ("udp6_connect: inp == NULL"));
 
 	INP_INFO_WLOCK(&V_udbinfo);
 	INP_WLOCK(inp);
-	if ((inp->inp_flags & IN6P_IPV6_V6ONLY) == 0) {
-		struct sockaddr_in6 *sin6_p;
+	if ((inp->inp_flags & IN6P_IPV6_V6ONLY) == 0 &&
+	    IN6_IS_ADDR_V4MAPPED(&sin6->sin6_addr)) {
+		struct sockaddr_in sin;
 
-		sin6_p = (struct sockaddr_in6 *)nam;
-		if (IN6_IS_ADDR_V4MAPPED(&sin6_p->sin6_addr)) {
-			struct sockaddr_in sin;
-
-			if (inp->inp_faddr.s_addr != INADDR_ANY) {
-				error = EISCONN;
-				goto out;
-			}
-			in6_sin6_2_sin(&sin, sin6_p);
-			if (td && jailed(td->td_ucred))
-				if (prison_remote_ip4(td->td_ucred,
-				    &sin.sin_addr) != 0) {
-					error = EAFNOSUPPORT;
-					goto out;
-				}
-			error = in_pcbconnect(inp, (struct sockaddr *)&sin,
-			    td->td_ucred);
-			if (error == 0) {
-				inp->inp_vflag |= INP_IPV4;
-				inp->inp_vflag &= ~INP_IPV6;
-				soisconnected(so);
-			}
+		if (inp->inp_faddr.s_addr != INADDR_ANY) {
+			error = EISCONN;
 			goto out;
 		}
+		in6_sin6_2_sin(&sin, sin6);
+		error = prison_remote_ip4(td->td_ucred, &sin.sin_addr);
+		if (error != 0)
+			goto out;
+		error = in_pcbconnect(inp, (struct sockaddr *)&sin,
+		    td->td_ucred);
+		if (error == 0) {
+			inp->inp_vflag |= INP_IPV4;
+			inp->inp_vflag &= ~INP_IPV6;
+			soisconnected(so);
+		}
+		goto out;
 	}
 	if (!IN6_IS_ADDR_UNSPECIFIED(&inp->in6p_faddr)) {
 		error = EISCONN;
 		goto out;
 	}
-	if (td && jailed(td->td_ucred)) {
-		struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)nam;
-		if (prison_remote_ip6(td->td_ucred, &sin6->sin6_addr) != 0) {
-			error = EAFNOSUPPORT;
-			goto out;
-		}
-	}
+	error = prison_remote_ip6(td->td_ucred, &sin6->sin6_addr);
+	if (error != 0)
+		goto out;
 	error = in6_pcbconnect(inp, nam, td->td_ucred);
 	if (error == 0) {
 		if ((inp->inp_flags & IN6P_IPV6_V6ONLY) == 0) {

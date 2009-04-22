@@ -560,7 +560,7 @@ linux_vfork(struct thread *td, struct linux_vfork_args *args)
 	/* wait for the children to exit, ie. emulate vfork */
 	PROC_LOCK(p2);
 	while (p2->p_flag & P_PPWAIT)
-	   	msleep(td->td_proc, &p2->p_mtx, PWAIT, "ppwait", 0);
+		cv_wait(&p2->p_pwait, &p2->p_mtx);
 	PROC_UNLOCK(p2);
 
 	return (0);
@@ -716,8 +716,8 @@ linux_clone(struct thread *td, struct linux_clone_args *args)
 				    sd.sd_long, sd.sd_def32, sd.sd_gran);
 #endif
 			td2->td_pcb->pcb_gsbase = (register_t)info.base_addr;
-			td2->td_pcb->pcb_gs32sd = sd;
-			td2->td_pcb->pcb_gs = GSEL(GUGS32_SEL, SEL_UPL);
+/* XXXKIB		td2->td_pcb->pcb_gs32sd = sd; */
+			td2->td_frame->tf_gs = GSEL(GUGS32_SEL, SEL_UPL);
 			td2->td_pcb->pcb_flags |= PCB_GS32BIT | PCB_32BIT;
 		}
 	}
@@ -749,7 +749,7 @@ linux_clone(struct thread *td, struct linux_clone_args *args)
 		/* wait for the children to exit, ie. emulate vfork */
 		PROC_LOCK(p2);
 		while (p2->p_flag & P_PPWAIT)
-			msleep(td->td_proc, &p2->p_mtx, PWAIT, "ppwait", 0);
+			cv_wait(&p2->p_pwait, &p2->p_mtx);
 		PROC_UNLOCK(p2);
 	}
 
@@ -1359,12 +1359,9 @@ linux_set_thread_area(struct thread *td,
 		    sd.sd_gran);
 #endif
 
-	critical_enter();
 	td->td_pcb->pcb_gsbase = (register_t)info.base_addr;
-	td->td_pcb->pcb_gs32sd = *PCPU_GET(gs32p) = sd;
 	td->td_pcb->pcb_flags |= PCB_32BIT | PCB_GS32BIT;
-	wrmsr(MSR_KGSBASE, td->td_pcb->pcb_gsbase);
-	critical_exit();
+	update_gdt_gsbase(td, info.base_addr);
 
 	return (0);
 }

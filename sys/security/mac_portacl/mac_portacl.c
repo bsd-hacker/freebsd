@@ -341,10 +341,12 @@ sysctl_rules(SYSCTL_HANDLER_ARGS)
 	int error;
 
 	new_string = NULL;
-	if (req->newptr == NULL) {
+	if (req->newptr != NULL) {
 		new_string = malloc(MAC_RULE_STRING_LEN, M_PORTACL,
 		    M_WAITOK | M_ZERO);
+		mtx_lock(&rule_mtx);
 		strcpy(new_string, rule_string);
+		mtx_unlock(&rule_mtx);
 		string = new_string;
 	} else
 		string = rule_string;
@@ -490,4 +492,4 @@ static struct mac_policy_ops portacl_ops =
 };
 
 MAC_POLICY_SET(&portacl_ops, mac_portacl, "TrustedBSD MAC/portacl",
-    MPC_LOADTIME_FLAG_UNLOADOK, NULL, 0);
+    MPC_LOADTIME_FLAG_UNLOADOK, NULL);

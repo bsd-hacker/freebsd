@@ -2631,8 +2631,7 @@ lomac_vnode_check_setacl(struct ucred *cred, struct vnode *vp,
 
 static int
 lomac_vnode_check_setextattr(struct ucred *cred, struct vnode *vp,
-    struct label *vplabel, int attrnamespace, const char *name,
-    struct uio *uio)
+    struct label *vplabel, int attrnamespace, const char *name)
 {
 	struct mac_lomac *subj, *obj;
 
@@ -3052,25 +3051,5 @@ static struct mac_policy_ops lomac_ops =
 	.mpo_vnode_setlabel_extattr = lomac_vnode_setlabel_extattr,
 };
 
-#define	LOMAC_OBJECTS	(MPC_OBJECT_CRED |				\
-			 /* MPC_OBJECT_PROC | */			\
-			 MPC_OBJECT_VNODE |				\
-			 MPC_OBJECT_INPCB |				\
-			 MPC_OBJECT_SOCKET |				\
-			 MPC_OBJECT_DEVFS |				\
-			 MPC_OBJECT_MBUF |				\
-			 MPC_OBJECT_IPQ |				\
-			 MPC_OBJECT_IFNET |				\
-			 MPC_OBJECT_BPFDESC |				\
-			 MPC_OBJECT_PIPE |				\
-			 MPC_OBJECT_MOUNT |				\
-			 /* MPC_OBJECT_POSIXSEM | */			\
-			 /* MPC_OBJECT_POSIXSHM | */			\
-			 /* MPC_OBJECT_SYSVMSG | */			\
-			 /* MPC_OBJECT_SYSVMSQ | */			\
-			 /* MPC_OBJECT_SYSVSEM | */			\
-			 /* MPC_OBJECT_SYSVSHM | */			\
-			 MPC_OBJECT_SYNCACHE)
-
 MAC_POLICY_SET(&lomac_ops, mac_lomac, "TrustedBSD MAC/LOMAC",
-    MPC_LOADTIME_FLAG_NOTLATE, &lomac_slot, LOMAC_OBJECTS);
+    MPC_LOADTIME_FLAG_NOTLATE, &lomac_slot);

@@ -76,6 +76,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/module.h>
 #else
+#include <ctype.h>
 #include <errno.h>
 #include <sys/types.h>
 #include <stdio.h>
@@ -103,7 +104,7 @@ AliasHandleFtpOut(struct libalias *, struct ip *, struct alias_link *,
 		  int maxpacketsize);
 
 static int 
-fingerprint(struct libalias *la, struct ip *pip, struct alias_data *ah)
+fingerprint(struct libalias *la, struct alias_data *ah)
 {
 
 	if (ah->dport == NULL || ah->sport == NULL || ah->lnk == NULL || 

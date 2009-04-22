@@ -130,6 +130,7 @@
 #define IPI_IS_BITMAPED(x) ((x) <= IPI_BITMAP_LAST)
 
 #define	IPI_STOP	(APIC_IPI_INTS + 7)	/* Stop CPU until restarted. */
+#define	IPI_SUSPEND	(APIC_IPI_INTS + 8)	/* Suspend CPU until restarted. */
 
 /*
  * The spurious interrupt can share the priority class with the IPIs since
@@ -176,14 +177,17 @@ inthand_t
 	IDTVEC(apic_isr7), IDTVEC(spuriousint), IDTVEC(timerint);
 
 extern vm_paddr_t lapic_paddr;
+extern int apic_cpuids[];
 
-u_int	apic_alloc_vector(u_int irq);
-u_int	apic_alloc_vectors(u_int *irqs, u_int count, u_int align);
-void	apic_disable_vector(u_int vector);
-void	apic_enable_vector(u_int vector);
-void	apic_free_vector(u_int vector, u_int irq);
-u_int	apic_idt_to_irq(u_int vector);
+u_int	apic_alloc_vector(u_int apic_id, u_int irq);
+u_int	apic_alloc_vectors(u_int apic_id, u_int *irqs, u_int count,
+	    u_int align);
+void	apic_disable_vector(u_int apic_id, u_int vector);
+void	apic_enable_vector(u_int apic_id, u_int vector);
+void	apic_free_vector(u_int apic_id, u_int vector, u_int irq);
+u_int	apic_idt_to_irq(u_int apic_id, u_int vector);
 void	apic_register_enumerator(struct apic_enumerator *enumerator);
+u_int	apic_cpuid(u_int apic_id);
 void	*ioapic_create(vm_paddr_t addr, int32_t apic_id, int intbase);
 int	ioapic_disable_pin(void *cookie, u_int pin);
 int	ioapic_get_vector(void *cookie, u_int pin);

@@ -92,6 +92,9 @@ static const char rcsid[] = "@(#)$Id: ip_fil_freebsd.c,v 2.53.2.50 2007/09/20 12
 #include <netinet/udp.h>
 #include <netinet/tcpip.h>
 #include <netinet/ip_icmp.h>
+#if defined(__FreeBSD_version) && (__FreeBSD_version >= 800056)
+# include <netinet/vinet.h>
+#endif
 #ifndef _KERNEL
 # include "netinet/ipf.h"
 #endif
@@ -112,9 +115,6 @@ static const char rcsid[] = "@(#)$Id: ip_fil_freebsd.c,v 2.53.2.50 2007/09/20 12
 #include "netinet/ip_scan.h"
 #endif
 #include "netinet/ip_pool.h"
-#if defined(__FreeBSD_version) && (__FreeBSD_version >= 800056)
-# include <netinet/vinet.h>
-#endif
 #if defined(__FreeBSD_version) && (__FreeBSD_version >= 300000)
 # include <sys/malloc.h>
 #endif
@@ -1046,7 +1046,7 @@ frdest_t *fdp;
 		if (!ip->ip_sum)
 			ip->ip_sum = in_cksum(m, hlen);
 		error = (*ifp->if_output)(ifp, m, (struct sockaddr *)dst,
-					  ro->ro_rt);
+					  ro);
 		goto done;
 	}
 	/*
@@ -1127,7 +1127,7 @@ sendorfree:
 		m->m_act = 0;
 		if (error == 0)
 			error = (*ifp->if_output)(ifp, m,
-			    (struct sockaddr *)dst, ro->ro_rt);
+			    (struct sockaddr *)dst, ro);
 		else
 			FREE_MB_T(m);
 	}

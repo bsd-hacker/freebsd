@@ -609,10 +609,6 @@ acpi_cpu_generic_cx_probe(struct acpi_cpu_softc *sc)
 	    sc->cpu_cx_count++;
 	}
     }
-
-    /* Update the largest cx_count seen so far */
-    if (sc->cpu_cx_count > cpu_cx_count)
-	cpu_cx_count = sc->cpu_cx_count;
 }
 
 /*
@@ -752,6 +748,8 @@ acpi_cpu_startup(void *arg)
 	for (i = 0; i < cpu_ndevices; i++) {
 	    sc = device_get_softc(cpu_devices[i]);
 	    acpi_cpu_generic_cx_probe(sc);
+	    if (sc->cpu_cx_count > cpu_cx_count)
+		    cpu_cx_count = sc->cpu_cx_count;
 	}
 
 	/*
@@ -1082,6 +1080,10 @@ acpi_cpu_quirks(void)
 	 *
 	 * Also, make sure that all interrupts cause a "Stop Break"
 	 * event to exit from C2 state.
+	 * Also, BRLD_EN_BM (ACPI_BITREG_BUS_MASTER_RLD in ACPI-speak)
+	 * should be set to zero, otherwise it causes C2 to short-sleep.
+	 * PIIX4 doesn't properly support C3 and bus master activity
+	 * need not break out of C2.
 	 */
 	case PCI_REVISION_A_STEP:
 	case PCI_REVISION_B_STEP:
@@ -1094,9 +1096,15 @@ acpi_cpu_quirks(void)
 	    val = pci_read_config(acpi_dev, PIIX4_DEVACTB_REG, 4);
 	    if ((val & PIIX4_STOP_BREAK_MASK) != PIIX4_STOP_BREAK_MASK) {
 		ACPI_DEBUG_PRINT((ACPI_DB_INFO,
-		    "PIIX4: enabling IRQs to generate Stop Break\n"));
+		    "acpi_cpu: PIIX4: enabling IRQs to generate Stop Break\n"));
 	    	val |= PIIX4_STOP_BREAK_MASK;
 		pci_write_config(acpi_dev, PIIX4_DEVACTB_REG, val, 4);
+	    }
+	    AcpiGetRegister(ACPI_BITREG_BUS_MASTER_RLD, &val);
+	    if (val) {
+		ACPI_DEBUG_PRINT((ACPI_DB_INFO,
+		    "acpi_cpu: PIIX4: reset BRLD_EN_BM\n"));
+		AcpiSetRegister(ACPI_BITREG_BUS_MASTER_RLD, 0);
 	    }
 	    break;
 	default:

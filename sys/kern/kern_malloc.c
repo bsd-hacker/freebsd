@@ -1,7 +1,7 @@
 /*-
  * Copyright (c) 1987, 1991, 1993
  *	The Regents of the University of California.
- * Copyright (c) 2005-2006 Robert N. M. Watson
+ * Copyright (c) 2005-2009 Robert N. M. Watson
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -329,12 +329,12 @@ malloc(unsigned long size, struct malloc_type *mtp, int flags)
 	int indx;
 	caddr_t va;
 	uma_zone_t zone;
-	uma_keg_t keg;
 #if defined(DIAGNOSTIC) || defined(DEBUG_REDZONE)
 	unsigned long osize = size;
 #endif
 
 #ifdef INVARIANTS
+	KASSERT(mtp->ks_magic == M_MAGIC, ("malloc: bad malloc type magic"));
 	/*
 	 * Check that exactly one of M_WAITOK or M_NOWAIT is specified.
 	 */
@@ -378,18 +378,16 @@ malloc(unsigned long size, struct malloc_type *mtp, int flags)
 			size = (size & ~KMEM_ZMASK) + KMEM_ZBASE;
 		indx = kmemsize[size >> KMEM_ZSHIFT];
 		zone = kmemzones[indx].kz_zone;
-		keg = zone->uz_keg;
 #ifdef MALLOC_PROFILE
 		krequests[size >> KMEM_ZSHIFT]++;
 #endif
 		va = uma_zalloc(zone, flags);
 		if (va != NULL)
-			size = keg->uk_size;
+			size = zone->uz_size;
 		malloc_type_zone_allocated(mtp, va == NULL ? 0 : size, indx);
 	} else {
 		size = roundup(size, PAGE_SIZE);
 		zone = NULL;
-		keg = NULL;
 		va = uma_large_malloc(size, flags);
 		malloc_type_allocated(mtp, va == NULL ? 0 : size);
 	}
@@ -422,6 +420,8 @@ free(void *addr, struct malloc_type *mtp)
 	uma_slab_t slab;
 	u_long size;
 
+	KASSERT(mtp->ks_magic == M_MAGIC, ("free: bad malloc type magic"));
+
 	/* free(NULL, ...) does nothing */
 	if (addr == NULL)
 		return;
@@ -437,8 +437,6 @@ free(void *addr, struct malloc_type *mtp)
 	redzone_check(addr);
 	addr = redzone_addr_ntor(addr);
 #endif
-
-	size = 0;
 
 	slab = vtoslab((vm_offset_t)addr & (~UMA_SLAB_MASK));
 
@@ -484,6 +482,9 @@ realloc(void *addr, unsigned long size, struct malloc_type *mtp, int flags)
 	uma_slab_t slab;
 	unsigned long alloc;
 	void *newaddr;
+
+	KASSERT(mtp->ks_magic == M_MAGIC,
+	    ("realloc: bad malloc type magic"));
 
 	/* realloc(NULL, ...) is equivalent to malloc(...) */
 	if (addr == NULL)
@@ -678,6 +679,9 @@ malloc_init(void *data)
 	KASSERT(cnt.v_page_count != 0, ("malloc_register before vm_init"));
 
 	mtp = data;
+	KASSERT(mtp->ks_magic == M_MAGIC,
+	    ("malloc_init: bad malloc type magic"));
+
 	mtip = uma_zalloc(mt_zone, M_WAITOK | M_ZERO);
 	mtp->ks_handle = mtip;
 
@@ -699,7 +703,10 @@ malloc_uninit(void *data)
 	int i;
 
 	mtp = data;
+	KASSERT(mtp->ks_magic == M_MAGIC,
+	    ("malloc_uninit: bad malloc type magic"));
 	KASSERT(mtp->ks_handle != NULL, ("malloc_deregister: cookie NULL"));
+
 	mtx_lock(&malloc_mtx);
 	mtip = mtp->ks_handle;
 	mtp->ks_handle = NULL;

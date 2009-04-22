@@ -103,6 +103,8 @@ struct vnet_ipsec vnet_ipsec_0;
 #endif
 #endif
 
+static int ipsec_iattach(const void *);
+
 #ifdef VIMAGE_GLOBALS
 /* NB: name changed so netstat doesn't use it. */
 struct ipsecstat ipsec4stat;
@@ -228,10 +230,7 @@ SYSCTL_V_STRUCT(V_NET, vnet_ipsec, _net_inet6_ipsec6, IPSECCTL_STATS,
 	"IPsec IPv6 statistics.");
 #endif /* INET6 */
 
-static int ipsec4_setspidx_inpcb __P((struct mbuf *, struct inpcb *));
-#ifdef INET6
-static int ipsec6_setspidx_inpcb __P((struct mbuf *, struct inpcb *));
-#endif
+static int ipsec_setspidx_inpcb __P((struct mbuf *, struct inpcb *));
 static int ipsec_setspidx __P((struct mbuf *, struct secpolicyindex *, int));
 static void ipsec4_get_ulp __P((struct mbuf *m, struct secpolicyindex *, int));
 static int ipsec4_setspidx_ipaddr __P((struct mbuf *, struct secpolicyindex *));
@@ -241,13 +240,18 @@ static int ipsec6_setspidx_ipaddr __P((struct mbuf *, struct secpolicyindex *));
 #endif
 static void ipsec_delpcbpolicy __P((struct inpcbpolicy *));
 static struct secpolicy *ipsec_deepcopy_policy __P((struct secpolicy *src));
-static int ipsec_set_policy __P((struct secpolicy **pcb_sp,
-	int optname, caddr_t request, size_t len, struct ucred *cred));
-static int ipsec_get_policy __P((struct secpolicy *pcb_sp, struct mbuf **mp));
 static void vshiftl __P((unsigned char *, int, int));
-static size_t ipsec_hdrsiz __P((struct secpolicy *));
 
 MALLOC_DEFINE(M_IPSEC_INPCB, "inpcbpolicy", "inpcb-resident ipsec policy");
+
+#ifndef VIMAGE_GLOBALS
+static const vnet_modinfo_t vnet_ipsec_modinfo = {
+	.vmi_id		= VNET_MOD_IPSEC,
+	.vmi_name	= "ipsec",
+	.vmi_dependson	= VNET_MOD_INET,	/* XXX revisit - INET6 ? */
+	.vmi_iattach	= ipsec_iattach
+};
+#endif /* !VIMAGE_GLOBALS */
 
 void
 ipsec_init(void)
@@ -358,7 +362,7 @@ static struct secpolicy *
 ipsec_getpolicybysock(struct mbuf *m, u_int dir, struct inpcb *inp, int *error)
 {
 	INIT_VNET_IPSEC(curvnet);
-	struct inpcbpolicy *pcbsp = NULL;
+	struct inpcbpolicy *pcbsp;
 	struct secpolicy *currsp = NULL;	/* Policy on socket. */
 	struct secpolicy *sp;
 
@@ -369,20 +373,11 @@ ipsec_getpolicybysock(struct mbuf *m, u_int dir, struct inpcb *inp, int *error)
 		("invalid direction %u", dir));
 
 	/* Set spidx in pcb. */
-	if (inp->inp_vflag & INP_IPV6PROTO) {
-#ifdef INET6
-		*error = ipsec6_setspidx_inpcb(m, inp);
-		pcbsp = inp->inp_sp;
-#else
-		*error = EINVAL;		/* Should not happen. */
-#endif
-	} else {
-		*error = ipsec4_setspidx_inpcb(m, inp);
-		pcbsp = inp->inp_sp;
-	}
+	*error = ipsec_setspidx_inpcb(m, inp);
 	if (*error)
 		return (NULL);
 
+	pcbsp = inp->inp_sp;
 	IPSEC_ASSERT(pcbsp != NULL, ("null pcbsp"));
 	switch (dir) {
 	case IPSEC_DIR_INBOUND:
@@ -538,7 +533,7 @@ ipsec4_checkpolicy(struct mbuf *m, u_int dir, u_int flag, int *error,
 }
 
 static int
-ipsec4_setspidx_inpcb(struct mbuf *m, struct inpcb *inp)
+ipsec_setspidx_inpcb(struct mbuf *m, struct inpcb *inp)
 {
 	int error;
 
@@ -560,33 +555,6 @@ ipsec4_setspidx_inpcb(struct mbuf *m, struct inpcb *inp)
 	}
 	return (error);
 }
-
-#ifdef INET6
-static int
-ipsec6_setspidx_inpcb(struct mbuf *m, struct inpcb *inp)
-{
-	int error;
-
-	IPSEC_ASSERT(inp != NULL, ("null inp"));
-	IPSEC_ASSERT(inp->inp_sp != NULL, ("null inp_sp"));
-	IPSEC_ASSERT(inp->inp_sp->sp_out != NULL && inp->inp_sp->sp_in != NULL,
-		("null sp_in || sp_out"));
-
-	error = ipsec_setspidx(m, &inp->inp_sp->sp_in->spidx, 1);
-	if (error == 0) {
-		inp->inp_sp->sp_in->spidx.dir = IPSEC_DIR_INBOUND;
-		inp->inp_sp->sp_out->spidx = inp->inp_sp->sp_in->spidx;
-		inp->inp_sp->sp_out->spidx.dir = IPSEC_DIR_OUTBOUND;
-	} else {
-		bzero(&inp->inp_sp->sp_in->spidx,
-		    sizeof(inp->inp_sp->sp_in->spidx));
-		bzero(&inp->inp_sp->sp_out->spidx,
-		    sizeof(inp->inp_sp->sp_in->spidx));
-	}
-
-	return (error);
-}
-#endif
 
 /*
  * Configure security policy index (src/dst/proto/sport/dport)
@@ -1036,8 +1004,8 @@ fail:
 
 /* Set policy and IPsec request if present. */
 static int
-ipsec_set_policy(struct secpolicy **pcb_sp, int optname, caddr_t request,
-    size_t len, struct ucred *cred)
+ipsec_set_policy_internal(struct secpolicy **pcb_sp, int optname,
+    caddr_t request, size_t len, struct ucred *cred)
 {
 	INIT_VNET_IPSEC(curvnet);
 	struct sadb_x_policy *xpl;
@@ -1056,7 +1024,7 @@ ipsec_set_policy(struct secpolicy **pcb_sp, int optname, caddr_t request,
 		kdebug_sadb_x_policy((struct sadb_ext *)xpl));
 
 	/* Check policy type. */
-	/* ipsec_set_policy() accepts IPSEC, ENTRUST and BYPASS. */
+	/* ipsec_set_policy_internal() accepts IPSEC, ENTRUST and BYPASS. */
 	if (xpl->sadb_x_policy_type == IPSEC_POLICY_DISCARD
 	 || xpl->sadb_x_policy_type == IPSEC_POLICY_NONE)
 		return (EINVAL);
@@ -1084,30 +1052,8 @@ ipsec_set_policy(struct secpolicy **pcb_sp, int optname, caddr_t request,
 	return (0);
 }
 
-static int
-ipsec_get_policy(struct secpolicy *pcb_sp, struct mbuf **mp)
-{
-	INIT_VNET_IPSEC(curvnet);
-
-	/* Sanity check. */
-	if (pcb_sp == NULL || mp == NULL)
-		return (EINVAL);
-
-	*mp = key_sp2msg(pcb_sp);
-	if (!*mp) {
-		ipseclog((LOG_DEBUG, "%s: No more memory.\n", __func__));
-		return (ENOBUFS);
-	}
-
-	(*mp)->m_type = MT_DATA;
-	KEYDEBUG(KEYDEBUG_IPSEC_DUMP,
-		printf("%s:\n", __func__); kdebug_mbuf(*mp));
-
-	return (0);
-}
-
 int
-ipsec4_set_policy(struct inpcb *inp, int optname, caddr_t request,
+ipsec_set_policy(struct inpcb *inp, int optname, caddr_t request,
     size_t len, struct ucred *cred)
 {
 	INIT_VNET_IPSEC(curvnet);
@@ -1135,11 +1081,11 @@ ipsec4_set_policy(struct inpcb *inp, int optname, caddr_t request,
 		return (EINVAL);
 	}
 
-	return (ipsec_set_policy(pcb_sp, optname, request, len, cred));
+	return (ipsec_set_policy_internal(pcb_sp, optname, request, len, cred));
 }
 
 int
-ipsec4_get_policy(struct inpcb *inp, caddr_t request, size_t len,
+ipsec_get_policy(struct inpcb *inp, caddr_t request, size_t len,
     struct mbuf **mp)
 {
 	INIT_VNET_IPSEC(curvnet);
@@ -1168,7 +1114,21 @@ ipsec4_get_policy(struct inpcb *inp, caddr_t request, size_t len,
 		return (EINVAL);
 	}
 
-	return (ipsec_get_policy(pcb_sp, mp));
+	/* Sanity check. Should be an IPSEC_ASSERT. */
+	if (pcb_sp == NULL)
+		return (EINVAL);
+
+	*mp = key_sp2msg(pcb_sp);
+	if (!*mp) {
+		ipseclog((LOG_DEBUG, "%s: No more memory.\n", __func__));
+		return (ENOBUFS);
+	}
+
+	(*mp)->m_type = MT_DATA;
+	KEYDEBUG(KEYDEBUG_IPSEC_DUMP,
+		printf("%s:\n", __func__); kdebug_mbuf(*mp));
+
+	return (0);
 }
 
 /* Delete policy in PCB. */
@@ -1191,73 +1151,6 @@ ipsec_delete_pcbpolicy(struct inpcb *inp)
 
 	return (0);
 }
-
-#ifdef INET6
-int
-ipsec6_set_policy(struct inpcb *inp, int optname, caddr_t request,
-    size_t len, struct ucred *cred)
-{
-	INIT_VNET_IPSEC(curvnet);
-	struct sadb_x_policy *xpl;
-	struct secpolicy **pcb_sp;
-
-	/* Sanity check. */
-	if (inp == NULL || request == NULL)
-		return (EINVAL);
-	if (len < sizeof(*xpl))
-		return (EINVAL);
-	xpl = (struct sadb_x_policy *)request;
-
-	/* Select direction. */
-	switch (xpl->sadb_x_policy_dir) {
-	case IPSEC_DIR_INBOUND:
-		pcb_sp = &inp->inp_sp->sp_in;
-		break;
-	case IPSEC_DIR_OUTBOUND:
-		pcb_sp = &inp->inp_sp->sp_out;
-		break;
-	default:
-		ipseclog((LOG_ERR, "%s: invalid direction=%u\n", __func__,
-			xpl->sadb_x_policy_dir));
-		return (EINVAL);
-	}
-
-	return (ipsec_set_policy(pcb_sp, optname, request, len, cred));
-}
-
-int
-ipsec6_get_policy(struct inpcb *inp, caddr_t request, size_t len,
-    struct mbuf **mp)
-{
-	INIT_VNET_IPSEC(curvnet);
-	struct sadb_x_policy *xpl;
-	struct secpolicy *pcb_sp;
-
-	/* Sanity check. */
-	if (inp == NULL || request == NULL || mp == NULL)
-		return (EINVAL);
-	IPSEC_ASSERT(inp->inp_sp != NULL, ("null inp_sp"));
-	if (len < sizeof(*xpl))
-		return (EINVAL);
-	xpl = (struct sadb_x_policy *)request;
-
-	/* Select direction. */
-	switch (xpl->sadb_x_policy_dir) {
-	case IPSEC_DIR_INBOUND:
-		pcb_sp = inp->inp_sp->sp_in;
-		break;
-	case IPSEC_DIR_OUTBOUND:
-		pcb_sp = inp->inp_sp->sp_out;
-		break;
-	default:
-		ipseclog((LOG_ERR, "%s: invalid direction=%u\n", __func__,
-			xpl->sadb_x_policy_dir));
-		return (EINVAL);
-	}
-
-	return (ipsec_get_policy(pcb_sp, mp));
-}
-#endif
 
 /*
  * Return current level.
@@ -1437,15 +1330,9 @@ ipsec_in_reject(struct secpolicy *sp, struct mbuf *m)
 	return (0);		/* Valid. */
 }
 
-/*
- * Check AH/ESP integrity.
- * This function is called from tcp_input(), udp_input(),
- * and {ah,esp}4_input for tunnel mode.
- */
-int
-ipsec4_in_reject(struct mbuf *m, struct inpcb *inp)
+static int
+ipsec46_in_reject(struct mbuf *m, struct inpcb *inp)
 {
-	INIT_VNET_IPSEC(curvnet);
 	struct secpolicy *sp;
 	int error;
 	int result;
@@ -1464,13 +1351,29 @@ ipsec4_in_reject(struct mbuf *m, struct inpcb *inp)
 
 	if (sp != NULL) {
 		result = ipsec_in_reject(sp, m);
-		if (result)
-			V_ipsec4stat.ips_in_polvio++;
 		KEY_FREESP(&sp);
 	} else {
 		result = 0;	/* XXX Should be panic?
 				 * -> No, there may be error. */
 	}
+	return (result);
+}
+
+/*
+ * Check AH/ESP integrity.
+ * This function is called from tcp_input(), udp_input(),
+ * and {ah,esp}4_input for tunnel mode.
+ */
+int
+ipsec4_in_reject(struct mbuf *m, struct inpcb *inp)
+{
+	INIT_VNET_IPSEC(curvnet);
+	int result;
+
+	result = ipsec46_in_reject(m, inp);
+	if (result)
+		V_ipsec4stat.ips_in_polvio++;
+
 	return (result);
 }
 
@@ -1484,31 +1387,12 @@ int
 ipsec6_in_reject(struct mbuf *m, struct inpcb *inp)
 {
 	INIT_VNET_IPSEC(curvnet);
-	struct secpolicy *sp = NULL;
-	int error;
 	int result;
 
-	/* Sanity check. */
-	if (m == NULL)
-		return (0);	/* XXX Should be panic? */
+	result = ipsec46_in_reject(m, inp);
+	if (result)
+		V_ipsec6stat.ips_in_polvio++;
 
-	/* Get SP for this packet.
-	 * When we are called from ip_forward(), we call
-	 * ipsec_getpolicybyaddr() with IP_FORWARDING flag.
-	 */
-	if (inp == NULL)
-		sp = ipsec_getpolicybyaddr(m, IPSEC_DIR_INBOUND, IP_FORWARDING, &error);
-	else
-		sp = ipsec_getpolicybysock(m, IPSEC_DIR_INBOUND, inp, &error);
-
-	if (sp != NULL) {
-		result = ipsec_in_reject(sp, m);
-		if (result)
-			V_ipsec6stat.ips_in_polvio++;
-		KEY_FREESP(&sp);
-	} else {
-		result = 0;
-	}
 	return (result);
 }
 #endif
@@ -1519,7 +1403,7 @@ ipsec6_in_reject(struct mbuf *m, struct inpcb *inp)
  * NOTE: SP passed is freed in this function.
  */
 static size_t
-ipsec_hdrsiz(struct secpolicy *sp)
+ipsec_hdrsiz_internal(struct secpolicy *sp)
 {
 	INIT_VNET_IPSEC(curvnet);
 	struct ipsecrequest *isr;
@@ -1577,9 +1461,12 @@ ipsec_hdrsiz(struct secpolicy *sp)
 	return (size);
 }
 
-/* This function is called from ip_forward() and ipsec4_hdrsize_tcp(). */
+/* 
+ * This function is called from ipsec_hdrsiz_tcp(), ip_ipsec_mtu(),
+ * disabled ip6_ipsec_mtu() and ip6_forward().
+ */
 size_t
-ipsec4_hdrsiz(struct mbuf *m, u_int dir, struct inpcb *inp)
+ipsec_hdrsiz(struct mbuf *m, u_int dir, struct inpcb *inp)
 {
 	INIT_VNET_IPSEC(curvnet);
 	struct secpolicy *sp;
@@ -1598,7 +1485,7 @@ ipsec4_hdrsiz(struct mbuf *m, u_int dir, struct inpcb *inp)
 		sp = ipsec_getpolicybysock(m, dir, inp, &error);
 
 	if (sp != NULL) {
-		size = ipsec_hdrsiz(sp);
+		size = ipsec_hdrsiz_internal(sp);
 		KEYDEBUG(KEYDEBUG_IPSEC_DATA,
 			printf("%s: size:%lu.\n", __func__,
 				(unsigned long)size));
@@ -1611,40 +1498,6 @@ ipsec4_hdrsiz(struct mbuf *m, u_int dir, struct inpcb *inp)
 	}
 	return (size);
 }
-
-#ifdef INET6
-/* This function is called from ipsec6_hdrsize_tcp(),
- * and maybe from ip6_forward().
- */
-size_t
-ipsec6_hdrsiz(struct mbuf *m, u_int dir, struct inpcb *inp)
-{
-	INIT_VNET_IPSEC(curvnet);
-	struct secpolicy *sp;
-	int error;
-	size_t size;
-
-	IPSEC_ASSERT(m != NULL, ("null mbuf"));
-	IPSEC_ASSERT(inp == NULL || inp->inp_socket != NULL,
-		("socket w/o inpcb"));
-
-	/* Get SP for this packet. */
-	/* XXX Is it right to call with IP_FORWARDING. */
-	if (inp == NULL)
-		sp = ipsec_getpolicybyaddr(m, dir, IP_FORWARDING, &error);
-	else
-		sp = ipsec_getpolicybysock(m, dir, inp, &error);
-
-	if (sp == NULL)
-		return (0);
-	size = ipsec_hdrsiz(sp);
-	KEYDEBUG(KEYDEBUG_IPSEC_DATA,
-		printf("%s: size:%lu.\n", __func__, (unsigned long)size));
-	KEY_FREESP(&sp);
-
-	return (size);
-}
-#endif /*INET6*/
 
 /*
  * Check the variable replay window.
@@ -1916,8 +1769,23 @@ static void
 ipsec_attach(void)
 {
 
+#ifndef VIMAGE_GLOBALS
+	vnet_mod_register(&vnet_ipsec_modinfo);
+#else
+	ipsec_iattach(NULL);
+#endif
+
+}
+
+static int
+ipsec_iattach(const void *unused __unused)
+{
+	INIT_VNET_IPSEC(curvnet);
+
 	SECPOLICY_LOCK_INIT(&V_ip4_def_policy);
 	V_ip4_def_policy.refcnt = 1;			/* NB: disallow free. */
+
+	return (0);
 }
 SYSINIT(ipsec, SI_SUB_PROTO_DOMAIN, SI_ORDER_FIRST, ipsec_attach, NULL);
 

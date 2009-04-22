@@ -51,13 +51,13 @@ __FBSDID("$FreeBSD$");
 #include <sys/ucred.h>
 #include <sys/vimage.h>
 
+#define _NET_IF_VAR_H_	/* we don't want if_var.h, only if.h */
 #include <net/if.h>
 #include <net/route.h>
 #include <net/pfil.h>
 
 #include <netinet/in.h>
 #include <netinet/in_systm.h>
-#include <netinet/in_var.h>
 #include <netinet/ip.h>
 #include <netinet/ip_var.h>
 #include <netinet/ip_fw.h>
@@ -200,6 +200,9 @@ again:
 	case IP_FW_NAT:
 		goto again;		/* continue with packet */
 
+	case IP_FW_REASS:
+		goto again;
+
 	default:
 		KASSERT(0, ("%s: unknown retval", __func__));
 	}
@@ -329,6 +332,9 @@ again:
 	case IP_FW_NAT:
 		goto again;		/* continue with packet */
 		
+	case IP_FW_REASS:
+		goto again;	
+	
 	default:
 		KASSERT(0, ("%s: unknown retval", __func__));
 	}

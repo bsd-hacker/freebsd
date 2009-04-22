@@ -73,11 +73,13 @@ static void	amd64_mrinit(struct mem_range_softc *sc);
 static int	amd64_mrset(struct mem_range_softc *sc,
 		    struct mem_range_desc *mrd, int *arg);
 static void	amd64_mrAPinit(struct mem_range_softc *sc);
+static void	amd64_mrreinit(struct mem_range_softc *sc);
 
 static struct mem_range_ops amd64_mrops = {
 	amd64_mrinit,
 	amd64_mrset,
-	amd64_mrAPinit
+	amd64_mrAPinit,
+	amd64_mrreinit
 };
 
 /* XXX for AP startup hook */
@@ -668,6 +670,30 @@ amd64_mrAPinit(struct mem_range_softc *sc)
 	wrmsr(MSR_MTRRdefType, mtrrdef);
 }
 
+/*
+ * Re-initialise running CPU(s) MTRRs to match the ranges in the descriptor
+ * list.
+ *
+ * XXX Must be called with interrupts enabled.
+ */
+static void
+amd64_mrreinit(struct mem_range_softc *sc)
+{
+#ifdef SMP
+	/*
+	 * We should use ipi_all_but_self() to call other CPUs into a
+	 * locking gate, then call a target function to do this work.
+	 * The "proper" solution involves a generalised locking gate
+	 * implementation, not ready yet.
+	 */
+	smp_rendezvous(NULL, (void *)amd64_mrAPinit, NULL, sc);
+#else
+	disable_intr();				/* disable interrupts */
+	amd64_mrAPinit(sc);
+	enable_intr();
+#endif
+}
+
 static void
 amd64_mem_drvinit(void *unused)
 {
@@ -678,9 +704,17 @@ amd64_mem_drvinit(void *unused)
 		return;
 	if ((cpu_id & 0xf00) != 0x600 && (cpu_id & 0xf00) != 0xf00)
 		return;
-	if (cpu_vendor_id != CPU_VENDOR_INTEL &&
-	    cpu_vendor_id != CPU_VENDOR_AMD)
+	switch (cpu_vendor_id) {
+	case CPU_VENDOR_INTEL:
+	case CPU_VENDOR_AMD:
+		break;
+	case CPU_VENDOR_CENTAUR:
+		if (cpu_exthigh >= 0x80000008)
+			break;
+		/* FALLTHROUGH */
+	default:
 		return;
+	}
 	mem_range_softc.mr_op = &amd64_mrops;
 }
 SYSINIT(amd64memdev, SI_SUB_DRIVERS, SI_ORDER_FIRST, amd64_mem_drvinit, NULL);

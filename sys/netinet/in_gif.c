@@ -102,7 +102,7 @@ in_gif_output(struct ifnet *ifp, int family, struct mbuf *m)
 	struct sockaddr_in *sin_dst = (struct sockaddr_in *)sc->gif_pdst;
 	struct ip iphdr;	/* capsule IP header, host byte ordered */
 	struct etherip_header eiphdr;
-	int proto, error;
+	int error, len, proto;
 	u_int8_t tos;
 
 	GIF_LOCK_ASSERT(sc);
@@ -186,13 +186,27 @@ in_gif_output(struct ifnet *ifp, int family, struct mbuf *m)
 		       &iphdr.ip_tos, &tos);
 
 	/* prepend new IP header */
-	M_PREPEND(m, sizeof(struct ip), M_DONTWAIT);
-	if (m && m->m_len < sizeof(struct ip))
-		m = m_pullup(m, sizeof(struct ip));
+	len = sizeof(struct ip);
+#ifndef __NO_STRICT_ALIGNMENT
+	if (family == AF_LINK)
+		len += ETHERIP_ALIGN;
+#endif
+	M_PREPEND(m, len, M_DONTWAIT);
+	if (m != NULL && m->m_len < len)
+		m = m_pullup(m, len);
 	if (m == NULL) {
 		printf("ENOBUFS in in_gif_output %d\n", __LINE__);
 		return ENOBUFS;
 	}
+#ifndef __NO_STRICT_ALIGNMENT
+	if (family == AF_LINK) {
+		len = mtod(m, vm_offset_t) & 3;
+		KASSERT(len == 0 || len == ETHERIP_ALIGN,
+		    ("in_gif_output: unexpected misalignment"));
+		m->m_data += len;
+		m->m_len -= ETHERIP_ALIGN;
+	}
+#endif
 	bcopy(&iphdr, mtod(m, struct ip *), sizeof(struct ip));
 
 	M_SETFIB(m, sc->gif_fibnum);
@@ -259,14 +273,14 @@ in_gif_input(struct mbuf *m, int off)
 	sc = (struct gif_softc *)encap_getarg(m);
 	if (sc == NULL) {
 		m_freem(m);
-		V_ipstat.ips_nogif++;
+		IPSTAT_INC(ips_nogif);
 		return;
 	}
 
 	gifp = GIF2IFP(sc);
 	if (gifp == NULL || (gifp->if_flags & IFF_UP) == 0) {
 		m_freem(m);
-		V_ipstat.ips_nogif++;
+		IPSTAT_INC(ips_nogif);
 		return;
 	}
 
@@ -326,7 +340,7 @@ in_gif_input(struct mbuf *m, int off)
  		break;	
 
 	default:
-		V_ipstat.ips_nogif++;
+		IPSTAT_INC(ips_nogif);
 		m_freem(m);
 		return;
 	}

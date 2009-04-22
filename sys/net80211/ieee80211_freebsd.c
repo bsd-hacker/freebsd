@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2003-2008 Sam Leffler, Errno Consulting
+ * Copyright (c) 2003-2009 Sam Leffler, Errno Consulting
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -43,6 +43,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/socket.h>
 
 #include <net/if.h>
+#include <net/if_dl.h>
 #include <net/if_clone.h>
 #include <net/if_media.h>
 #include <net/if_types.h>
@@ -124,10 +125,20 @@ wlan_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 		    ieee80211_opmode_name[cp.icp_opmode]);
 		return EOPNOTSUPP;
 	}
+	if ((cp.icp_flags & IEEE80211_CLONE_TDMA) &&
+#ifdef IEEE80211_SUPPORT_TDMA
+	    (ic->ic_caps & IEEE80211_C_TDMA) == 0
+#else
+	    (1)
+#endif
+	) {
+		if_printf(ifp, "TDMA not supported\n");
+		return EOPNOTSUPP;
+	}
 	vap = ic->ic_vap_create(ic, ifc->ifc_name, unit,
 			cp.icp_opmode, cp.icp_flags, cp.icp_bssid,
 			cp.icp_flags & IEEE80211_CLONE_MACADDR ?
-			    cp.icp_macaddr : ic->ic_myaddr);
+			    cp.icp_macaddr : (const uint8_t *)IF_LLADDR(ifp));
 	return (vap == NULL ? EIO : 0);
 }
 
@@ -178,6 +189,15 @@ SYSCTL_PROC(_net_wlan, OID_AUTO, addba_backoff, CTLFLAG_RW,
 extern int ieee80211_addba_maxtries;
 SYSCTL_INT(_net_wlan, OID_AUTO, addba_maxtries, CTLFLAG_RW,
 	&ieee80211_addba_maxtries, 0, "max ADDBA requests sent before backoff");
+#ifdef IEEE80211_SUPPORT_SUPERG
+extern int ieee80211_ffppsmin;
+SYSCTL_INT(_net_wlan, OID_AUTO, ffppsmin, CTLFLAG_RW,
+	&ieee80211_ffppsmin, 0, "min packet rate before fast-frame staging");
+extern int ieee80211_ffagemax;
+SYSCTL_PROC(_net_wlan, OID_AUTO, ffagemax, CTLFLAG_RW,
+	&ieee80211_ffagemax, 0, ieee80211_sysctl_msecs_ticks, "I",
+	"max hold time for fast-frame staging (ms)");
+#endif /* IEEE80211_SUPPORT_SUPERG */
 
 static int
 ieee80211_sysctl_inact(SYSCTL_HANDLER_ARGS)

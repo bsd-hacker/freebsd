@@ -35,6 +35,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_mac.h"
+#include "opt_route.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -52,6 +53,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/rwlock.h>
 #include <sys/queue.h>
 #include <sys/sysctl.h>
+#include <sys/vimage.h>
 
 #include <net/if.h>
 #include <net/if_arc.h>
@@ -75,7 +77,6 @@ __FBSDID("$FreeBSD$");
 #include <netinet6/vinet6.h>
 
 #include <sys/limits.h>
-#include <sys/vimage.h>
 
 #include <security/mac/mac_framework.h>
 
@@ -83,7 +84,6 @@ __FBSDID("$FreeBSD$");
 #define ND6_RECALC_REACHTM_INTERVAL (60 * 120) /* 2 hours */
 
 #define SIN6(s) ((struct sockaddr_in6 *)s)
-#define SDL(s) ((struct sockaddr_dl *)s)
 
 #ifdef VIMAGE_GLOBALS
 int nd6_prune;
@@ -374,7 +374,7 @@ nd6_options(union nd_opts *ndopts)
 			 * Message validation requires that all included
 			 * options have a length that is greater than zero.
 			 */
-			V_icmp6stat.icp6s_nd_badopt++;
+			ICMP6STAT_INC(icp6s_nd_badopt);
 			bzero(ndopts, sizeof(*ndopts));
 			return -1;
 		}
@@ -418,7 +418,7 @@ nd6_options(union nd_opts *ndopts)
 skip1:
 		i++;
 		if (i > V_nd6_maxndopt) {
-			V_icmp6stat.icp6s_nd_toomanyopt++;
+			ICMP6STAT_INC(icp6s_nd_toomanyopt);
 			nd6log((LOG_INFO, "too many loop in nd opt\n"));
 			break;
 		}
@@ -727,8 +727,8 @@ regen_tmpaddr(struct in6_ifaddr *ia6)
 	struct in6_ifaddr *public_ifa6 = NULL;
 
 	ifp = ia6->ia_ifa.ifa_ifp;
-	for (ifa = ifp->if_addrlist.tqh_first; ifa;
-	     ifa = ifa->ifa_list.tqe_next) {
+	IF_ADDR_LOCK(ifp);
+	TAILQ_FOREACH(ifa, &ifp->if_addrhead, ifa_link) {
 		struct in6_ifaddr *it6;
 
 		if (ifa->ifa_addr->sa_family != AF_INET6)
@@ -771,13 +771,16 @@ regen_tmpaddr(struct in6_ifaddr *ia6)
 		int e;
 
 		if ((e = in6_tmpifadd(public_ifa6, 0, 0)) != 0) {
+			IF_ADDR_UNLOCK(ifp);
 			log(LOG_NOTICE, "regen_tmpaddr: failed to create a new"
 			    " tmp addr,errno=%d\n", e);
 			return (-1);
 		}
+		IF_ADDR_UNLOCK(ifp);
 		return (0);
 	}
 
+	IF_ADDR_UNLOCK(ifp);
 	return (-1);
 }
 
@@ -1939,7 +1942,7 @@ nd6_output_lle(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *m0,
 
 int
 nd6_output_flush(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *chain,
-    struct sockaddr_in6 *dst, struct rtentry *rt)
+    struct sockaddr_in6 *dst, struct route *ro)
 {
 	struct mbuf *m, *m_head;
 	struct ifnet *outifp;
@@ -1954,7 +1957,7 @@ nd6_output_flush(struct ifnet *ifp, struct ifnet *origifp, struct mbuf *chain,
 	while (m_head) {
 		m = m_head;
 		m_head = m_head->m_nextpkt;
-		error = (*ifp->if_output)(ifp, m, (struct sockaddr *)dst, rt);			       
+		error = (*ifp->if_output)(ifp, m, (struct sockaddr *)dst, ro);			       
 	}
 
 	/*

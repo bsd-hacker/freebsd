@@ -1595,7 +1595,7 @@ static int lmc_raw_ioctl(struct ifnet *, u_long, caddr_t);
 static int lmc_ifnet_ioctl(struct ifnet *, u_long, caddr_t);
 static void lmc_ifnet_start(struct ifnet *);
 static int lmc_raw_output(struct ifnet *, struct mbuf *,
- struct sockaddr *, struct rtentry *);
+ struct sockaddr *, struct route *);
 static void lmc_ifnet_watchdog(struct ifnet *);
 # ifdef __OpenBSD__
 static int ifmedia_change(struct ifnet *);
@@ -1642,7 +1642,7 @@ static void detach_card(softc_t *);
 #ifdef __FreeBSD__
 static int fbsd_probe(device_t);
 static int fbsd_detach(device_t);
-static void fbsd_shutdown(device_t);
+static int fbsd_shutdown(device_t);
 static int fbsd_attach(device_t);
 #endif /* __FreeBSD__ */
 

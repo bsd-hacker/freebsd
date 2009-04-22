@@ -189,6 +189,7 @@ struct tcpcb {
 	void	*t_pspare[3];		/* toe usrreqs / toepcb * / congestion algo / vimage / 1 general use */
 	struct toe_usrreqs *t_tu;       /* offload operations vector */
 	void	*t_toe;			/* TOE pcb pointer */
+	int	t_bytes_acked;		/* # bytes acked during current RTT */
 };
 
 /*
@@ -457,6 +458,11 @@ struct	tcpstat {
 	u_long	tcps_ecn_rcwnd;		/* # times ECN reduced the cwnd */
 };
 
+#ifdef _KERNEL
+#define	TCPSTAT_ADD(name, val)	V_tcpstat.name += (val)
+#define	TCPSTAT_INC(name)	TCPSTAT_ADD(name, 1)
+#endif
+
 /*
  * TCB structure exported to user-land via sysctl(3).
  * Evil hack: declare only if in_pcb.h and sys/socketvar.h have been
@@ -539,6 +545,8 @@ extern	int tcp_insecure_rst;
 extern	int tcp_do_autorcvbuf;
 extern	int tcp_autorcvbuf_inc;
 extern	int tcp_autorcvbuf_max;
+extern	int tcp_do_rfc3465;
+extern	int tcp_abc_l_var;
 
 extern	int tcp_do_tso;
 extern	int tcp_do_autosndbuf;

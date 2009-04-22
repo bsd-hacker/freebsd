@@ -112,6 +112,7 @@ struct bounce_zone {
 	int		active_bpages;
 	int		total_bounced;
 	int		total_deferred;
+	int		map_count;
 	bus_size_t	alignment;
 	bus_size_t	boundary;
 	bus_addr_t	lowaddr;
@@ -523,7 +524,7 @@ bus_dmamap_create(bus_dma_tag_t dmat, int flags, bus_dmamap_t *mapp)
 		 */
 		maxpages = MAX_BPAGES;
 		if ((dmat->flags & BUS_DMA_MIN_ALLOC_COMP) == 0
-		 || (dmat->map_count > 0 && bz->total_bpages < maxpages)) {
+		 || (bz->map_count > 0 && bz->total_bpages < maxpages)) {
 			int pages;
 
 			pages = MAX(atop(dmat->maxsize), 1);
@@ -539,6 +540,7 @@ bus_dmamap_create(bus_dma_tag_t dmat, int flags, bus_dmamap_t *mapp)
 				error = 0;
 			}
 		}
+		bz->map_count++;
 	}
 	CTR4(KTR_BUSDMA, "%s: tag %p tag flags 0x%x error %d",
 	    __func__, dmat, dmat->flags, error);
@@ -560,6 +562,8 @@ bus_dmamap_destroy(bus_dma_tag_t dmat, bus_dmamap_t map)
 		    __func__, dmat, EBUSY);
 		return (EBUSY);
 	}
+	if (dmat->bounce_zone)
+		dmat->bounce_zone->map_count--;
         dmat->map_count--;
 	CTR2(KTR_BUSDMA, "%s: tag %p error 0", __func__, dmat);
         return (0);
@@ -665,8 +669,8 @@ bus_dmamem_free(bus_dma_tag_t dmat, void *vaddr, bus_dmamap_t map)
 }
 
 static int
-_bus_dmamap_count_pages(bus_dma_tag_t dmat, bus_dmamap_t map, void *buf,
-			bus_size_t buflen, int flags)
+_bus_dmamap_count_pages(bus_dma_tag_t dmat, bus_dmamap_t map, pmap_t pmap,
+    void *buf, bus_size_t buflen, int flags)
 {
 	vm_offset_t vaddr;
 	vm_offset_t vendaddr;
@@ -685,7 +689,10 @@ _bus_dmamap_count_pages(bus_dma_tag_t dmat, bus_dmamap_t map, void *buf,
 		vendaddr = (vm_offset_t)buf + buflen;
 
 		while (vaddr < vendaddr) {
-			paddr = pmap_kextract(vaddr);
+			if (pmap != NULL)
+				paddr = pmap_extract(pmap, vaddr);
+			else
+				paddr = pmap_kextract(vaddr);
 			if (((dmat->flags & BUS_DMA_COULD_BOUNCE) != 0) &&
 			    run_filter(dmat, paddr) != 0)
 				map->pagesneeded++;
@@ -741,7 +748,8 @@ bus_dmamap_load_buffer(bus_dma_tag_t dmat, bus_dma_segment_t *segs,
 	bmask = ~(dmat->boundary - 1);
 
 	if ((dmat->flags & BUS_DMA_COULD_BOUNCE) != 0) {
-		error = _bus_dmamap_count_pages(dmat, map, buf, buflen, flags);
+		error = _bus_dmamap_count_pages(dmat, map, pmap, buf, buflen,
+		    flags);
 		if (error)
 			return (error);
 	}
@@ -1144,6 +1152,7 @@ _bus_dmamap_sync_bp(bus_dma_tag_t dmat, bus_dmamap_t map, bus_dmasync_op_t op)
 				cpu_l2cache_wb_range(bpage->vaddr,
 				    bpage->datacount);
 			}
+			dmat->bounce_zone->total_bounced++;
 		}
 		if (op & BUS_DMASYNC_POSTREAD) {
 			if (bpage->vaddr_nocache == 0) {
@@ -1155,6 +1164,7 @@ _bus_dmamap_sync_bp(bus_dma_tag_t dmat, bus_dmamap_t map, bus_dmasync_op_t op)
 			bcopy((void *)(bpage->vaddr_nocache != 0 ? 
 	       		    bpage->vaddr_nocache : bpage->vaddr),
 			    (void *)bpage->datavaddr, bpage->datacount);
+			dmat->bounce_zone->total_bounced++;
 		}
 	}
 }
@@ -1166,7 +1176,7 @@ _bus_dma_buf_is_in_bp(bus_dmamap_t map, void *buf, int len)
 
 	STAILQ_FOREACH(bpage, &map->bpages, links) {
 		if ((vm_offset_t)buf >= bpage->datavaddr &&
-		    (vm_offset_t)buf + len < bpage->datavaddr + 
+		    (vm_offset_t)buf + len <= bpage->datavaddr + 
 		    bpage->datacount)
 			return (1);
 	}
@@ -1275,6 +1285,7 @@ alloc_bounce_zone(bus_dma_tag_t dmat)
 	bz->lowaddr = dmat->lowaddr;
 	bz->alignment = dmat->alignment;
 	bz->boundary = dmat->boundary;
+	bz->map_count = 0;
 	snprintf(bz->zoneid, 8, "zone%d", busdma_zonecount);
 	busdma_zonecount++;
 	snprintf(bz->lowaddrid, 18, "%#jx", (uintmax_t)bz->lowaddr);
@@ -1415,6 +1426,11 @@ add_bounce_page(bus_dma_tag_t dmat, bus_dmamap_t map, vm_offset_t vaddr,
 	bz->active_bpages++;
 	mtx_unlock(&bounce_lock);
 
+	if (dmat->flags & BUS_DMA_KEEP_PG_OFFSET) {
+		/* Page offset needs to be preserved. */
+		bpage->vaddr |= vaddr & PAGE_MASK;
+		bpage->busaddr |= vaddr & PAGE_MASK;
+	}
 	bpage->datavaddr = vaddr;
 	bpage->datacount = size;
 	STAILQ_INSERT_TAIL(&(map->bpages), bpage, links);
@@ -1430,6 +1446,15 @@ free_bounce_page(bus_dma_tag_t dmat, struct bounce_page *bpage)
 	bz = dmat->bounce_zone;
 	bpage->datavaddr = 0;
 	bpage->datacount = 0;
+	if (dmat->flags & BUS_DMA_KEEP_PG_OFFSET) {
+		/*
+		 * Reset the bounce page to start at offset 0.  Other uses
+		 * of this bounce page may need to store a full page of
+		 * data and/or assume it starts on a page boundary.
+		 */
+		bpage->vaddr &= ~PAGE_MASK;
+		bpage->busaddr &= ~PAGE_MASK;
+	}
 
 	mtx_lock(&bounce_lock);
 	STAILQ_INSERT_HEAD(&bz->bounce_page_list, bpage, links);

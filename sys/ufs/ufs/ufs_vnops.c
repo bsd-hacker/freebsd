@@ -98,6 +98,7 @@ static vop_create_t	ufs_create;
 static vop_getattr_t	ufs_getattr;
 static vop_link_t	ufs_link;
 static int ufs_makeinode(int mode, struct vnode *, struct vnode **, struct componentname *);
+static vop_markatime_t	ufs_markatime;
 static vop_mkdir_t	ufs_mkdir;
 static vop_mknod_t	ufs_mknod;
 static vop_open_t	ufs_open;
@@ -373,7 +374,7 @@ relock:
 
 #ifdef UFS_ACL
 	if ((vp->v_mount->mnt_flag & MNT_ACLS) != 0) {
-		acl = uma_zalloc(acl_zone, M_WAITOK);
+		acl = acl_alloc(M_WAITOK);
 		error = VOP_GETACL(vp, ACL_TYPE_ACCESS, acl, ap->a_cred,
 		    ap->a_td);
 		switch (error) {
@@ -397,7 +398,7 @@ relock:
 			error = vaccess(vp->v_type, ip->i_mode, ip->i_uid,
 			    ip->i_gid, ap->a_accmode, ap->a_cred, NULL);
 		}
-		uma_zfree(acl_zone, acl);
+		acl_free(acl);
 	} else
 #endif /* !UFS_ACL */
 		error = vaccess(vp->v_type, ip->i_mode, ip->i_uid, ip->i_gid,
@@ -490,17 +491,6 @@ ufs_setattr(ap)
 	    (vap->va_blocksize != VNOVAL) || (vap->va_rdev != VNOVAL) ||
 	    ((int)vap->va_bytes != VNOVAL) || (vap->va_gen != VNOVAL)) {
 		return (EINVAL);
-	}
-	/*
-	 * Mark for update the file's access time for vfs_mark_atime().
-	 * We are doing this here to avoid some of the checks done
-	 * below -- this operation is done by request of the kernel and
-	 * should bypass some security checks.  Things like read-only
-	 * checks get handled by other levels (e.g., ffs_update()).
-	 */
-	if (vap->va_vaflags & VA_MARK_ATIME) {
-		ip->i_flag |= IN_ACCESS;
-		return (0);
 	}
 	if (vap->va_flags != VNOVAL) {
 		if (vp->v_mount->mnt_flag & MNT_RDONLY)
@@ -660,6 +650,25 @@ ufs_setattr(ap)
 		error = ufs_chmod(vp, (int)vap->va_mode, cred, td);
 	}
 	return (error);
+}
+
+/*
+ * Mark this file's access time for update for vfs_mark_atime().  This
+ * is called from execve() and mmap().
+ */
+static int
+ufs_markatime(ap)
+	struct vop_markatime_args /* {
+		struct vnode *a_vp;
+	} */ *ap;
+{
+	struct vnode *vp = ap->a_vp;
+	struct inode *ip = VTOI(vp);
+
+	VI_LOCK(vp);
+	ip->i_flag |= IN_ACCESS;
+	VI_UNLOCK(vp);
+	return (0);
 }
 
 /*
@@ -1027,6 +1036,7 @@ ufs_rename(ap)
 	struct direct newdir;
 	int doingdirectory = 0, oldparent = 0, newparent = 0;
 	int error = 0, ioflag;
+	ino_t fvp_ino;
 
 #ifdef INVARIANTS
 	if ((tcnp->cn_flags & HASBUF) == 0 ||
@@ -1137,6 +1147,7 @@ abortit:
 	 * call to checkpath().
 	 */
 	error = VOP_ACCESS(fvp, VWRITE, tcnp->cn_cred, tcnp->cn_thread);
+	fvp_ino = ip->i_number;
 	VOP_UNLOCK(fvp, 0);
 	if (oldparent != dp->i_number)
 		newparent = dp->i_number;
@@ -1145,7 +1156,7 @@ abortit:
 			goto bad;
 		if (xp != NULL)
 			vput(tvp);
-		error = ufs_checkpath(ip, dp, tcnp->cn_cred);
+		error = ufs_checkpath(fvp_ino, dp, tcnp->cn_cred);
 		if (error)
 			goto out;
 		if ((tcnp->cn_flags & SAVESTART) == 0)
@@ -1498,8 +1509,8 @@ ufs_mkdir(ap)
 #ifdef UFS_ACL
 	acl = dacl = NULL;
 	if ((dvp->v_mount->mnt_flag & MNT_ACLS) != 0) {
-		acl = uma_zalloc(acl_zone, M_WAITOK);
-		dacl = uma_zalloc(acl_zone, M_WAITOK);
+		acl = acl_alloc(M_WAITOK);
+		dacl = acl_alloc(M_WAITOK);
 
 		/*
 		 * Retrieve default ACL from parent, if any.
@@ -1529,16 +1540,16 @@ ufs_mkdir(ap)
 			 */
 			ip->i_mode = dmode;
 			DIP_SET(ip, i_mode, dmode);
-			uma_zfree(acl_zone, acl);
-			uma_zfree(acl_zone, dacl);
+			acl_free(acl);
+			acl_free(dacl);
 			dacl = acl = NULL;
 			break;
 		
 		default:
 			UFS_VFREE(tvp, ip->i_number, dmode);
 			vput(tvp);
-			uma_zfree(acl_zone, acl);
-			uma_zfree(acl_zone, dacl);
+			acl_free(acl);
+			acl_free(dacl);
 			return (error);
 		}
 	} else {
@@ -1608,13 +1619,13 @@ ufs_mkdir(ap)
 			break;
 
 		default:
-			uma_zfree(acl_zone, acl);
-			uma_zfree(acl_zone, dacl);
+			acl_free(acl);
+			acl_free(dacl);
 			dacl = acl = NULL;
 			goto bad;
 		}
-		uma_zfree(acl_zone, acl);
-		uma_zfree(acl_zone, dacl);
+		acl_free(acl);
+		acl_free(dacl);
 		dacl = acl = NULL;
 	}
 #endif /* !UFS_ACL */
@@ -1680,9 +1691,9 @@ bad:
 	} else {
 #ifdef UFS_ACL
 		if (acl != NULL)
-			uma_zfree(acl_zone, acl);
+			acl_free(acl);
 		if (dacl != NULL)
-			uma_zfree(acl_zone, dacl);
+			acl_free(dacl);
 #endif
 		dp->i_effnlink--;
 		dp->i_nlink--;
@@ -2316,7 +2327,7 @@ ufs_makeinode(mode, dvp, vpp, cnp)
 #ifdef UFS_ACL
 	acl = NULL;
 	if ((dvp->v_mount->mnt_flag & MNT_ACLS) != 0) {
-		acl = uma_zalloc(acl_zone, M_WAITOK);
+		acl = acl_alloc(M_WAITOK);
 
 		/*
 		 * Retrieve default ACL for parent, if any.
@@ -2351,14 +2362,14 @@ ufs_makeinode(mode, dvp, vpp, cnp)
 			 */
 			ip->i_mode = mode;
 			DIP_SET(ip, i_mode, mode);
-			uma_zfree(acl_zone, acl);
+			acl_free(acl);
 			acl = NULL;
 			break;
 	
 		default:
 			UFS_VFREE(tvp, ip->i_number, mode);
 			vput(tvp);
-			uma_zfree(acl_zone, acl);
+			acl_free(acl);
 			acl = NULL;
 			return (error);
 		}
@@ -2424,10 +2435,10 @@ ufs_makeinode(mode, dvp, vpp, cnp)
 			break;
 
 		default:
-			uma_zfree(acl_zone, acl);
+			acl_free(acl);
 			goto bad;
 		}
-		uma_zfree(acl_zone, acl);
+		acl_free(acl);
 	}
 #endif /* !UFS_ACL */
 	ufs_makedirentry(ip, cnp, &newdir);
@@ -2468,6 +2479,7 @@ struct vop_vector ufs_vnodeops = {
 	.vop_inactive =		ufs_inactive,
 	.vop_link =		ufs_link,
 	.vop_lookup =		vfs_cache_lookup,
+	.vop_markatime =	ufs_markatime,
 	.vop_mkdir =		ufs_mkdir,
 	.vop_mknod =		ufs_mknod,
 	.vop_open =		ufs_open,
@@ -2507,6 +2519,7 @@ struct vop_vector ufs_fifoops = {
 	.vop_getattr =		ufs_getattr,
 	.vop_inactive =		ufs_inactive,
 	.vop_kqfilter =		ufsfifo_kqfilter,
+	.vop_markatime =	ufs_markatime,
 	.vop_print =		ufs_print,
 	.vop_read =		VOP_PANIC,
 	.vop_reclaim =		ufs_reclaim,

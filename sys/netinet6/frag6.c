@@ -109,14 +109,16 @@ frag6_init(void)
 {
 	INIT_VNET_INET6(curvnet);
 
+	V_ip6q.ip6q_next = V_ip6q.ip6q_prev = &V_ip6q;
 	V_ip6_maxfragpackets = nmbclusters / 4;
 	V_ip6_maxfrags = nmbclusters / 4;
-	EVENTHANDLER_REGISTER(nmbclusters_change,
-	    frag6_change, NULL, EVENTHANDLER_PRI_ANY);
+
+	if (!IS_DEFAULT_VNET(curvnet))
+		return;
 
 	IP6Q_LOCK_INIT();
-
-	V_ip6q.ip6q_next = V_ip6q.ip6q_prev = &V_ip6q;
+	EVENTHANDLER_REGISTER(nmbclusters_change,
+	    frag6_change, NULL, EVENTHANDLER_PRI_ANY);
 }
 
 /*
@@ -751,22 +753,6 @@ frag6_slowtimo(void)
 	}
 	VNET_LIST_RUNLOCK();
 	IP6Q_UNLOCK();
-
-#if 0
-	/*
-	 * Routing changes might produce a better route than we last used;
-	 * make sure we notice eventually, even if forwarding only for one
-	 * destination and the cache is never replaced.
-	 */
-	if (V_ip6_forward_rt.ro_rt) {
-		RTFREE(V_ip6_forward_rt.ro_rt);
-		V_ip6_forward_rt.ro_rt = 0;
-	}
-	if (ipsrcchk_rt.ro_rt) {
-		RTFREE(ipsrcchk_rt.ro_rt);
-		ipsrcchk_rt.ro_rt = 0;
-	}
-#endif
 }
 
 /*

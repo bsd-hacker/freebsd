@@ -339,8 +339,6 @@ kern_statfs(struct thread *td, char *path, enum uio_seg pathseg,
 out:
 	vfs_unbusy(mp);
 	VFS_UNLOCK_GIANT(vfslocked);
-	if (mtx_owned(&Giant))
-		printf("statfs(%d): %s: %d\n", vfslocked, path, error);
 	return (error);
 }
 
@@ -395,14 +393,16 @@ kern_fstatfs(struct thread *td, int fd, struct statfs *buf)
 		vfs_ref(mp);
 	VOP_UNLOCK(vp, 0);
 	fdrop(fp, td);
-	if (vp->v_iflag & VI_DOOMED) {
+	if (mp == NULL) {
 		error = EBADF;
 		goto out;
 	}
 	error = vfs_busy(mp, 0);
 	vfs_rel(mp);
-	if (error)
-		goto out;
+	if (error) {
+		VFS_UNLOCK_GIANT(vfslocked);
+		return (error);
+	}
 #ifdef MAC
 	error = mac_mount_check_stat(td->td_ucred, mp);
 	if (error)
@@ -758,7 +758,7 @@ fchdir(td, uap)
 	VREF(vp);
 	fdrop(fp, td);
 	vfslocked = VFS_LOCK_GIANT(vp->v_mount);
-	vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
+	vn_lock(vp, LK_SHARED | LK_RETRY);
 	AUDIT_ARG(vnode, vp, ARG_VNODE1);
 	error = change_dir(vp, td);
 	while (!error && (mp = vp->v_mountedhere) != NULL) {
@@ -766,7 +766,7 @@ fchdir(td, uap)
 		if (vfs_busy(mp, 0))
 			continue;
 		tvfslocked = VFS_LOCK_GIANT(mp);
-		error = VFS_ROOT(mp, LK_EXCLUSIVE, &tdp, td);
+		error = VFS_ROOT(mp, LK_SHARED, &tdp, td);
 		vfs_unbusy(mp);
 		if (error) {
 			VFS_UNLOCK_GIANT(tvfslocked);
@@ -1161,7 +1161,6 @@ kern_openat(struct thread *td, int fd, char *path, enum uio_seg pathseg,
 	if (flags & O_TRUNC) {
 		if ((error = vn_start_write(vp, &mp, V_WAIT | PCATCH)) != 0)
 			goto bad;
-		VOP_LEASE(vp, td, td->td_ucred, LEASE_WRITE);
 		VATTR_NULL(&vat);
 		vat.va_size = 0;
 		vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
@@ -1353,7 +1352,6 @@ restart:
 		    &nd.ni_cnd, &vattr);
 #endif
 	if (!error) {
-		VOP_LEASE(nd.ni_dvp, td, td->td_ucred, LEASE_WRITE);
 		if (whiteout)
 			error = VOP_WHITEOUT(nd.ni_dvp, &nd.ni_cnd, CREATE);
 		else {
@@ -1460,7 +1458,6 @@ restart:
 	if (error)
 		goto out;
 #endif
-	VOP_LEASE(nd.ni_dvp, td, td->td_ucred, LEASE_WRITE);
 	error = VOP_MKNOD(nd.ni_dvp, &nd.ni_vp, &nd.ni_cnd, &vattr);
 	if (error == 0)
 		vput(nd.ni_vp);
@@ -1606,8 +1603,6 @@ kern_linkat(struct thread *td, int fd1, int fd2, char *path1, char *path2,
 			error = EEXIST;
 		} else if ((error = vn_lock(vp, LK_EXCLUSIVE | LK_RETRY))
 		    == 0) {
-			VOP_LEASE(nd.ni_dvp, td, td->td_ucred, LEASE_WRITE);
-			VOP_LEASE(vp, td, td->td_ucred, LEASE_WRITE);
 			error = can_hardlink(vp, td->td_ucred);
 			if (error == 0)
 #ifdef MAC
@@ -1727,7 +1722,6 @@ restart:
 	if (error)
 		goto out2;
 #endif
-	VOP_LEASE(nd.ni_dvp, td, td->td_ucred, LEASE_WRITE);
 	error = VOP_SYMLINK(nd.ni_dvp, &nd.ni_vp, &nd.ni_cnd, &vattr, syspath);
 	if (error == 0)
 		vput(nd.ni_vp);
@@ -1787,7 +1781,6 @@ restart:
 			return (error);
 		goto restart;
 	}
-	VOP_LEASE(nd.ni_dvp, td, td->td_ucred, LEASE_WRITE);
 	error = VOP_WHITEOUT(nd.ni_dvp, &nd.ni_cnd, DELETE);
 	NDFREE(&nd, NDF_ONLY_PNBUF);
 	vput(nd.ni_dvp);
@@ -1893,7 +1886,6 @@ restart:
 		if (error)
 			goto out;
 #endif
-		VOP_LEASE(nd.ni_dvp, td, td->td_ucred, LEASE_WRITE);
 		error = VOP_REMOVE(nd.ni_dvp, vp, &nd.ni_cnd);
 #ifdef MAC
 out:
@@ -2341,6 +2333,15 @@ int
 kern_statat(struct thread *td, int flag, int fd, char *path,
     enum uio_seg pathseg, struct stat *sbp)
 {
+
+	return (kern_statat_vnhook(td, flag, fd, path, pathseg, sbp, NULL));
+}
+
+int
+kern_statat_vnhook(struct thread *td, int flag, int fd, char *path,
+    enum uio_seg pathseg, struct stat *sbp,
+    void (*hook)(struct vnode *vp, struct stat *sbp))
+{
 	struct nameidata nd;
 	struct stat sb;
 	int error, vfslocked;
@@ -2360,12 +2361,12 @@ kern_statat(struct thread *td, int flag, int fd, char *path,
 		SDT_PROBE(vfs, , stat, mode, path, sb.st_mode, 0, 0, 0);
 		if (S_ISREG(sb.st_mode))
 			SDT_PROBE(vfs, , stat, reg, path, pathseg, 0, 0, 0);
+		if (__predict_false(hook != NULL))
+			hook(nd.ni_vp, &sb);
 	}
 	NDFREE(&nd, NDF_ONLY_PNBUF);
 	vput(nd.ni_vp);
 	VFS_UNLOCK_GIANT(vfslocked);
-	if (mtx_owned(&Giant))
-		printf("stat(%d): %s\n", vfslocked, path);
 	if (error)
 		return (error);
 	*sbp = sb;
@@ -2658,7 +2659,6 @@ setfflags(td, vp, flags)
 
 	if ((error = vn_start_write(vp, &mp, V_WAIT | PCATCH)) != 0)
 		return (error);
-	VOP_LEASE(vp, td, td->td_ucred, LEASE_WRITE);
 	vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
 	VATTR_NULL(&vattr);
 	vattr.va_flags = flags;
@@ -2786,7 +2786,6 @@ setfmode(td, vp, mode)
 
 	if ((error = vn_start_write(vp, &mp, V_WAIT | PCATCH)) != 0)
 		return (error);
-	VOP_LEASE(vp, td, td->td_ucred, LEASE_WRITE);
 	vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
 	VATTR_NULL(&vattr);
 	vattr.va_mode = mode & ALLPERMS;
@@ -2949,7 +2948,6 @@ setfown(td, vp, uid, gid)
 
 	if ((error = vn_start_write(vp, &mp, V_WAIT | PCATCH)) != 0)
 		return (error);
-	VOP_LEASE(vp, td, td->td_ucred, LEASE_WRITE);
 	vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
 	VATTR_NULL(&vattr);
 	vattr.va_uid = uid;
@@ -3163,7 +3161,6 @@ setutimes(td, vp, ts, numtimes, nullflag)
 
 	if ((error = vn_start_write(vp, &mp, V_WAIT | PCATCH)) != 0)
 		return (error);
-	VOP_LEASE(vp, td, td->td_ucred, LEASE_WRITE);
 	vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
 	setbirthtime = 0;
 	if (numtimes < 3 && !VOP_GETATTR(vp, &vattr, td->td_ucred) &&
@@ -3394,7 +3391,6 @@ kern_truncate(struct thread *td, char *path, enum uio_seg pathseg, off_t length)
 		return (error);
 	}
 	NDFREE(&nd, NDF_ONLY_PNBUF);
-	VOP_LEASE(vp, td, td->td_ucred, LEASE_WRITE);
 	vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
 	if (vp->v_type == VDIR)
 		error = EISDIR;
@@ -3638,13 +3634,6 @@ kern_renameat(struct thread *td, int oldfd, char *old, int newfd, char *new,
 #endif
 out:
 	if (!error) {
-		VOP_LEASE(tdvp, td, td->td_ucred, LEASE_WRITE);
-		if (fromnd.ni_dvp != tdvp) {
-			VOP_LEASE(fromnd.ni_dvp, td, td->td_ucred, LEASE_WRITE);
-		}
-		if (tvp) {
-			VOP_LEASE(tvp, td, td->td_ucred, LEASE_WRITE);
-		}
 		error = VOP_RENAME(fromnd.ni_dvp, fromnd.ni_vp, &fromnd.ni_cnd,
 				   tond.ni_dvp, tond.ni_vp, &tond.ni_cnd);
 		NDFREE(&fromnd, NDF_ONLY_PNBUF);
@@ -3770,7 +3759,6 @@ restart:
 	if (error)
 		goto out;
 #endif
-	VOP_LEASE(nd.ni_dvp, td, td->td_ucred, LEASE_WRITE);
 	error = VOP_MKDIR(nd.ni_dvp, &nd.ni_vp, &nd.ni_cnd, &vattr);
 #ifdef MAC
 out:
@@ -3863,8 +3851,6 @@ restart:
 			return (error);
 		goto restart;
 	}
-	VOP_LEASE(nd.ni_dvp, td, td->td_ucred, LEASE_WRITE);
-	VOP_LEASE(vp, td, td->td_ucred, LEASE_WRITE);
 	error = VOP_RMDIR(nd.ni_dvp, nd.ni_vp, &nd.ni_cnd);
 	vn_finished_write(mp);
 out:
@@ -3934,7 +3920,7 @@ unionread:
 	auio.uio_segflg = UIO_USERSPACE;
 	auio.uio_td = td;
 	auio.uio_resid = uap->count;
-	vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
+	vn_lock(vp, LK_SHARED | LK_RETRY);
 	loff = auio.uio_offset = fp->f_offset;
 #ifdef MAC
 	error = mac_vnode_check_readdir(td->td_ucred, vp);
@@ -4093,8 +4079,7 @@ unionread:
 	auio.uio_segflg = UIO_USERSPACE;
 	auio.uio_td = td;
 	auio.uio_resid = count;
-	/* vn_lock(vp, LK_SHARED | LK_RETRY); */
-	vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
+	vn_lock(vp, LK_SHARED | LK_RETRY);
 	AUDIT_ARG(vnode, vp, ARG_VNODE1);
 	loff = auio.uio_offset = fp->f_offset;
 #ifdef MAC
@@ -4454,7 +4439,6 @@ fhopen(td, uap)
 			vrele(vp);
 			goto out;
 		}
-		VOP_LEASE(vp, td, td->td_ucred, LEASE_WRITE);
 		vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);	/* XXX */
 #ifdef MAC
 		/*
