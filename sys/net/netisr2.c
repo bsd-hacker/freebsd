@@ -28,12 +28,12 @@
 __FBSDID("$FreeBSD$");
 
 /*
- * netisr2 is a work dispatch service, allowing synchronous and asynchronous
- * processing of packets by protocol handlers.  Each protocol registers a
- * handler, and callers pass the protocol identifier and packet to the netisr
- * dispatch routines to cause them to be processed.  Processing may occur
- * synchonously via direct dispatch, or asynchronously via queued dispatch in
- * a worker thread.
+ * netisr2 is a packet dispatch service, allowing synchronous (directly
+ * dispatched) and asynchronous (deferred dispatch) processing of packets by
+ * registered protocol handlers.  Callers pass a protocol identifier and
+ * packet to netisr2, along with a direct dispatch hint, and work will either
+ * be immediately processed with the registered handler, or passed to a
+ * kernel worker thread for deferred dispatch.
  *
  * Maintaining ordering for protocol streams is a critical design concern.
  * Enforcing ordering limits the opportunity for concurrency, but maintains
@@ -42,38 +42,22 @@ __FBSDID("$FreeBSD$");
  * associated with a particular stream on the same CPU over time in order to
  * avoid acquiring locks associated with the connection on different CPUs,
  * keep connection data in one cache, and to generally encourage associated
- * user threads to live on the same CPU as the stream.
+ * user threads to live on the same CPU as the stream.  It's also desirable
+ * to avoid lock migration and contention where locks are associated with
+ * more than one flow.
  *
- * We handle three cases:
+ * There are two cases:
  *
- * - The protocol is unable to determine an a priori ordering based on a
- *   cheap inspection of packet contents, so we either globally order (run in
- *   a single worker) or source order (run in the context of a particular
- *   source).
+ * - The packet has a flow ID, query the protocol to map it to a CPU and
+ *   execute there if not direct dispatching.
  *
- * - The protocol exposes ordering information in the form of a generated
- *   flow identifier, and relies on netisr2 to assign this work to a CPU.  We
- *   can execute the handler in the source thread, or we can assign it to a
- *   CPU based on hashing flows to CPUs.
+ * - The packet has no flowid, query the protocol to generate a flow ID, then
+ *   query a CPU and execute there if not direct dispatching.
  *
- * - The protocol exposes ordering and affinity information in the form of a
- *   CPU identifier.  We can execute the handler in the source thread, or we
- *   can dispatch it to the worker for that CPU.
- *
- * When CPU and flow affinities are returned by protocols, they also express
- * an affinity strength, which is used by netisr2 to decide whether or not to
- * directly dispatch a packet on a CPU other than the one it has an affinity
- * for.
- *
- * We guarantee that if two packets come from the same source have the same
- * flowid or CPU affinity, and have the same affinity strength, they will
- * remain in order with respect to each other.  We guarantee that if the
- * returned affinity is strong, the packet will only be processed on the
- * requested CPU or CPU associated with the requested flow.
- *
- * Protocols that provide flowids but not affinity should attempt to provide
- * a uniform distribution over the flowid space in order to balance work
- * effectively.
+ * We guarantee that if two packets from the same source have the same
+ * protocol, and the source provides an ordering, that ordering will be
+ * maintained *unless* the policy is changing between queued and direct
+ * dispatch in which case minor re-ordering might occur.
  *
  * Some possible sources of flow identifiers for packets:
  * - Hardware-generated hash from RSS
@@ -106,37 +90,36 @@ __FBSDID("$FreeBSD$");
 #include <net/netisr.h>
 #include <net/netisr2.h>
 
-#ifdef NETISR_LOCKING
 /*-
  * Synchronize use and modification of the registered netisr data structures;
  * acquire a read lock while modifying the set of registered protocols to
  * prevent partially registered or unregistered protocols from being run.
  *
- * We make this optional so that we can measure the performance impact of
- * providing consistency against run-time registration and deregristration,
- * which is a very uncommon event.
+ * We make per-packet use optional so that we can measure the performance
+ * impact of providing consistency against run-time registration and
+ * deregristration, which is a very uncommon event.
  *
  * The following data structures and fields are protected by this lock:
  *
  * - The np array, including all fields of struct netisr_proto.
  * - The nws array, including all fields of struct netisr_worker.
  * - The nws_array array.
+ *
+ * XXXRW: This should use an rmlock.
  */
 static struct rwlock	netisr_rwlock;
 #define	NETISR_LOCK_INIT()	rw_init(&netisr_rwlock, "netisr")
+#ifdef NETISR_LOCKING
 #define	NETISR_LOCK_ASSERT()	rw_assert(&netisr_rwlock, RW_LOCKED)
 #define	NETISR_RLOCK()		rw_rlock(&netisr_rwlock)
 #define	NETISR_RUNLOCK()	rw_runlock(&netisr_rwlock)
-#define	NETISR_WLOCK()		rw_wlock(&netisr_rwlock)
-#define	NETISR_WUNLOCK()	rw_wunlock(&netisr_rwlock)
 #else
-#define	NETISR_LOCK_INIT()
 #define	NETISR_LOCK_ASSERT()
 #define	NETISR_RLOCK()
 #define	NETISR_RUNLOCK()
-#define	NETISR_WLOCK()
-#define	NETISR_WUNLOCK()
 #endif
+#define	NETISR_WLOCK()		rw_wlock(&netisr_rwlock)
+#define	NETISR_WUNLOCK()	rw_wunlock(&netisr_rwlock)
 
 SYSCTL_NODE(_net, OID_AUTO, isr2, CTLFLAG_RW, 0, "netisr2");
 
@@ -147,7 +130,8 @@ SYSCTL_INT(_net_isr2, OID_AUTO, direct, CTLFLAG_RW, &netisr_direct, 0,
 /*
  * Allow the administrator to limit the number of threads (CPUs) to use for
  * netisr2.  Notice that we don't check netisr_maxthreads before creating the
- * thread for CPU 0, so in practice we ignore values <= 1.
+ * thread for CPU 0, so in practice we ignore values <= 1.  This must be set
+ * as a tunable, no run-time reconfiguration yet.
  */
 static int	netisr_maxthreads = MAXCPU;	/* Bound number of threads. */
 TUNABLE_INT("net.isr2.maxthreads", &netisr_maxthreads);
@@ -157,15 +141,13 @@ SYSCTL_INT(_net_isr2, OID_AUTO, maxthreads, CTLFLAG_RD, &netisr_maxthreads,
 /*
  * Each protocol is described by an instance of netisr_proto, which holds all
  * global per-protocol information.  This data structure is set up by
- * netisr_register().  Currently, no flags are required, as all handlers are
- * MPSAFE in the netisr2 system.  Protocols provide zero or one of the two
- * lookup interfaces, but not both.
+ * netisr_register().
  */
 struct netisr_proto {
-	netisr_t	*np_func;			/* Protocol handler. */
-	netisr_lookup_flow_t	*np_lookup_flow;	/* Flow generation. */
-	netisr_lookup_cpu_t	*np_lookup_cpu;		/* CPU affinity. */
-	const char	*np_name;			/* Protocol name. */
+	const char		*np_name;	/* Protocol name. */
+	netisr_t		*np_func;	/* Protocol handler. */
+	netisr_m2flow_t		*np_m2flow;	/* mbuf -> flow ID. */
+	netisr_flow2cpu_t	*np_flow2cpu;	/* Flow ID -> CPU ID. */
 };
 
 #define	NETISR_MAXPROT		32		/* Compile-time limit. */
@@ -195,7 +177,7 @@ struct netisr_work {
 	u_int		 nw_watermark;
 
 	/*
-	 * Statistics.
+	 * Statistics -- written unlocked, but mostly from curcpu.
 	 */
 	u_int		 nw_dispatched; /* Number of direct dispatches. */
 	u_int		 nw_dropped;	/* Number of drops. */
@@ -225,7 +207,7 @@ struct netisr_workstream {
 	 * Each protocol has per-workstream data.
 	 */
 	struct netisr_work	nws_work[NETISR_MAXPROT];
-} __aligned(64);
+} __aligned(CACHE_LINE_SIZE);
 
 /*
  * Kernel process associated with worker threads.
@@ -273,8 +255,8 @@ static u_int				 nws_count;
  * the protocol is installed.
  */
 void
-netisr2_register(u_int proto, netisr_t func, netisr_lookup_cpu_t lookup_cpu,
-    netisr_lookup_flow_t lookup_flow, const char *name, u_int max)
+netisr2_register(u_int proto, const char *name, netisr_t func,
+    netisr_m2flow_t m2flow, netisr_flow2cpu_t flow2cpu, u_int max)
 {
 	struct netisr_work *npwp;
 	int i;
@@ -282,28 +264,29 @@ netisr2_register(u_int proto, netisr_t func, netisr_lookup_cpu_t lookup_cpu,
 	NETISR_WLOCK();
 	KASSERT(proto < NETISR_MAXPROT,
 	    ("netisr2_register(%d, %s): too many protocols", proto, name));
-	KASSERT(np[proto].np_func == NULL,
-	    ("netisr2_register(%d, %s): func present", proto, name));
-	KASSERT(np[proto].np_lookup_cpu == NULL,
-	    ("netisr2_register(%d, %s): lookup_cpu present", proto, name));
-	KASSERT(np[proto].np_lookup_flow == NULL,
-	    ("netisr2_register(%d, %s): lookup_flow present", proto, name));
 	KASSERT(np[proto].np_name == NULL,
 	    ("netisr2_register(%d, %s): name present", proto, name));
+	KASSERT(np[proto].np_func == NULL,
+	    ("netisr2_register(%d, %s): func present", proto, name));
+	KASSERT(np[proto].np_m2flow == NULL,
+	    ("netisr2_register(%d, %s): m2flow present", proto, name));
+	KASSERT(np[proto].np_flow2cpu == NULL,
+	    ("netisr2_register(%d, %s): flow2cpu present", proto, name));
 
-	KASSERT(func != NULL, ("netisr2_register: func NULL"));
-	KASSERT((lookup_flow == NULL && lookup_cpu == NULL) ||
-	    (lookup_flow != NULL && lookup_cpu == NULL) ||
-	    (lookup_flow == NULL && lookup_cpu != NULL),
-	    ("netisr2_register(%d, %s): flow and cpu set", proto, name));
+	KASSERT(name != NULL, ("netisr2_register: name NULL for %d", proto));
+	KASSERT(func != NULL, ("netisr2_register: func NULL for %s", name));
+	KASSERT(m2flow != NULL, ("netisr2_register: m2flow NULL for %s",
+	    name));
+	KASSERT(flow2cpu != NULL, ("netisr2_registeR: flow2cpu NULL for %s",
+	    name));
 
 	/*
 	 * Initialize global and per-workstream protocol state.
 	 */
-	np[proto].np_func = func;
-	np[proto].np_lookup_cpu = lookup_cpu;
-	np[proto].np_lookup_flow = lookup_flow;
 	np[proto].np_name = name;
+	np[proto].np_func = func;
+	np[proto].np_m2flow = m2flow;
+	np[proto].np_flow2cpu = flow2cpu;
 	for (i = 0; i < MAXCPU; i++) {
 		npwp = &nws[i].nws_work[proto];
 		bzero(npwp, sizeof(*npwp));
@@ -350,10 +333,10 @@ netisr2_deregister(u_int proto)
 	KASSERT(np[proto].np_func != NULL,
 	    ("netisr_deregister(%d): protocol not registered", proto));
 
-	np[proto].np_func = NULL;
 	np[proto].np_name = NULL;
-	np[proto].np_lookup_cpu = NULL;
-	np[proto].np_lookup_flow = NULL;
+	np[proto].np_func = NULL;
+	np[proto].np_m2flow = NULL;
+	np[proto].np_flow2cpu = NULL;
 	for (i = 0; i < MAXCPU; i++) {
 		npwp = &nws[i].nws_work[proto];
 		netisr2_drain_proto(npwp);
@@ -363,30 +346,13 @@ netisr2_deregister(u_int proto)
 }
 
 /*
- * Naively map a flow ID into a CPU ID.  For now we use a rather poor hash to
- * reduce 32 bits down to a much smaller number of bits.  We should attempt
- * to be much more adaptive to the actual CPU count.
- *
- * XXXRW: This needs to be entirely rewritten.
+ * Provide a simple flow -> CPU mapping for protocols with strong ordering
+ * requirements but no built-in notion of affinity.
  */
 u_int
 netisr2_flowid2cpuid(u_int flowid)
 {
 
-	NETISR_LOCK_ASSERT();
-
-	/*
-	 * Most systems have less than 256 CPUs, so combine the various bytes
-	 * in the flowid so that we get all the entropy down to a single
-	 * byte.  We could be doing a much better job here.  On systems with
-	 * fewer CPUs, we slide the top nibble into the bottom nibble.
-	 */
-	flowid = ((flowid & 0xff000000) >> 24) ^
-	    ((flowid & 0x00ff0000) >> 16) ^ ((flowid & 0x0000ff00) >> 8) ^
-	    (flowid & 0x000000ff);
-#if MAXCPU <= 16
-	flowid = ((flowid & 0xf0) >> 4) ^ (flowid & 0x0f);
-#endif
 	return (nws_array[flowid % nws_count]);
 }
 
@@ -406,34 +372,21 @@ netisr2_flowid2cpuid(u_int flowid)
  * (i.e., out of mbufs and a rewrite is required).
  */
 static struct mbuf *
-netisr2_selectcpu(u_int proto, struct mbuf *m, u_int *cpuidp,
-    u_int *strengthp)
+netisr2_selectcpu(struct netisr_proto *npp, struct mbuf *m, u_int *cpuidp)
 {
-	u_int flowid;
 
 	NETISR_LOCK_ASSERT();
 
-	KASSERT(nws_count > 0, ("netisr2_workstream_lookup: nws_count"));
-
-	*cpuidp = 0;
-	*strengthp = 0;
-	if (np[proto].np_lookup_cpu != NULL)
-		return (np[proto].np_lookup_cpu(m, cpuidp, strengthp));
-	else if (np[proto].np_lookup_flow != NULL) {
-		m = np[proto].np_lookup_flow(m, &flowid, strengthp);
+	if (!(m->m_flags & M_FLOWID)) {
+		m = npp->np_m2flow(m);
 		if (m == NULL)
 			return (NULL);
-		*cpuidp = netisr2_flowid2cpuid(flowid);
-		return (m);
-	} else {
-		/*
-		 * XXXRW: Pin protocols without a CPU or flow assignment
-		 * preference to an arbitrary CPU.  This needs refinement.
-		 */
-		*cpuidp = netisr2_flowid2cpuid(proto);
-		*strengthp = NETISR2_AFFINITY_WEAK;
-		return (m);
+		KASSERT(m->m_flags & M_FLOWID, ("netisr2_selectcpu: protocol"
+		    " %s failed to return flowid on mbuf",
+		    npp->np_name));
 	}
+	*cpuidp = npp->np_flow2cpu(m->m_pkthdr.flowid);
+	return (m);
 }
 
 /*
@@ -464,7 +417,7 @@ netisr2_process_workstream_proto(struct netisr_workstream *nwsp, int proto)
 		return;
 
 	/*
-	 * Create a local copy of the work queue, and clear the global queue.
+	 * Move the global work queue to a thread-local work queue.
 	 *
 	 * Notice that this means the effective maximum length of the queue
 	 * is actually twice that of the maximum queue length specified in
@@ -556,28 +509,6 @@ netisr2_worker(void *arg)
 	}
 }
 
-/*
- * Internal routines for dispatch and queue.
- */
-static void
-netisr2_dispatch_internal(u_int proto, struct mbuf *m, u_int cpuid)
-{
-	struct netisr_workstream *nwsp;
-	struct netisr_work *npwp;
-
-	KASSERT(cpuid == curcpu, ("netisr2_dispatch_internal: wrong CPU"));
-
-	NETISR_LOCK_ASSERT();
-
-	nwsp = &nws[cpuid];
-	npwp = &nwsp->nws_work[proto];
-	NWS_LOCK(nwsp);
-	npwp->nw_dispatched++;
-	npwp->nw_handled++;
-	NWS_UNLOCK(nwsp);
-	np[proto].np_func(m);
-}
-
 static int
 netisr2_queue_internal(u_int proto, struct mbuf *m, u_int cpuid)
 {
@@ -588,11 +519,11 @@ netisr2_queue_internal(u_int proto, struct mbuf *m, u_int cpuid)
 	NETISR_LOCK_ASSERT();
 
 	dosignal = 0;
+	error = 0;
 	nwsp = &nws[cpuid];
 	npwp = &nwsp->nws_work[proto];
 	NWS_LOCK(nwsp);
 	if (npwp->nw_len < npwp->nw_max) {
-		error = 0;
 		m->m_nextpkt = NULL;
 		if (npwp->nw_head == NULL) {
 			npwp->nw_head = m;
@@ -604,168 +535,86 @@ netisr2_queue_internal(u_int proto, struct mbuf *m, u_int cpuid)
 		npwp->nw_len++;
 		if (npwp->nw_len > npwp->nw_watermark)
 			npwp->nw_watermark = npwp->nw_len;
-		npwp->nw_queued++;
 		nwsp->nws_pendingwork++;
 		if (!(nwsp->nws_flags & NWS_SIGNALED)) {
 			nwsp->nws_flags |= NWS_SIGNALED;
 			dosignal = 1;	/* Defer until unlocked. */
 		}
-	} else {
+		error = 0;
+	} else
 		error = ENOBUFS;
-		npwp->nw_dropped++;
-	}
 	NWS_UNLOCK(nwsp);
 	if (dosignal)
 		NWS_SIGNAL(nwsp);
-	return (error);
-}
-
-/*
- * Variations on dispatch and queue in which the protocol determines where
- * work is placed.
- *
- * XXXRW: The fact that the strength of affinity is only available by making
- * a call to determine affinity means that we always pay the price of hashing
- * the headers.  If the protocol declared ahead of time the strength of the
- * affinity it required, such as at netisr2 registration time, we could skip
- * the hash generation when we knew we wanted to direct dispatch.
- */
-int
-netisr2_dispatch(u_int proto, struct mbuf *m)
-{
-	u_int cpuid, strength;
-	int error;
-
-	error = 0;
-	sched_pin();
-	NETISR_RLOCK();
-	m = netisr2_selectcpu(proto, m, &cpuid, &strength);
-	if (m == NULL) {
-		error = ENOBUFS;
-		goto out;
-	}
-	switch (strength) {
-	case NETISR2_AFFINITY_STRONG:
-		if (curcpu != cpuid) {
-			error = netisr2_queue_internal(proto, m, cpuid);
-			break;
-		}
-		/* FALLSTHROUGH */
-
-	case NETISR2_AFFINITY_WEAK:
-		if (netisr_direct) {
-			cpuid = curcpu;
-			netisr2_dispatch_internal(proto, m, cpuid);
-		} else
-			error = netisr2_queue_internal(proto, m, cpuid);
-		break;
-	}
-out:
-	NETISR_RUNLOCK();
-	sched_unpin();
-	if (error && m != NULL)
-		m_freem(m);
+	if (error)
+		npwp->nw_dropped++;
+	else
+		npwp->nw_queued++;
 	return (error);
 }
 
 int
 netisr2_queue(u_int proto, struct mbuf *m)
 {
-	u_int cpuid, strength;
-	int error;
+	u_int cpuid, error;
+
+	KASSERT(proto < NETISR_MAXPROT,
+	    ("netisr2_dispatch: invalid proto %d", proto));
 
 	NETISR_RLOCK();
-	m = netisr2_selectcpu(proto, m, &cpuid, &strength);
-	if (m == NULL) {
+	KASSERT(np[proto].np_func != NULL,
+	    ("netisr2_dispatch: invalid proto %d", proto));
+
+	m = netisr2_selectcpu(&np[proto], m, &cpuid);
+	if (m != NULL)
+		error = netisr2_queue_internal(proto, m, cpuid);
+	else
 		error = ENOBUFS;
-		goto out;
-	}
-	error = netisr2_queue_internal(proto, m, cpuid);
-out:
-	NETISR_RUNLOCK();
-	if (error && m != NULL)
-		m_freem(m);
-	return (error);
-}
-
-/*
- * Variations on dispatch and queue in which the caller specifies an explicit
- * CPU affinity.
- */
-int
-netisr2_dispatch_cpu(u_int proto, struct mbuf *m, u_int cpuid)
-{
-	int error;
-
-	sched_pin();
-	NETISR_RLOCK();
-	if (cpuid == curcpu) {
-		netisr2_dispatch_internal(proto, m, cpuid);
-		error = 0;
-	} else
-		error = netisr2_queue_internal(proto, m, cpuid);
-	NETISR_RUNLOCK();
-	sched_unpin();
-	return (error);
-}
-
-int
-netisr2_queue_cpu(u_int proto, struct mbuf *m, u_int cpuid)
-{
-	int error;
-
-	NETISR_RLOCK();
-	error = netisr2_queue_internal(proto, m, cpuid);
 	NETISR_RUNLOCK();
 	return (error);
 }
 
-/*
- * Variations on dispatch and queue in which the caller specifies an explicit
- * flow identifier.
- */
 int
-netisr2_dispatch_flow(u_int proto, struct mbuf *m, u_int flowid)
+netisr2_dispatch(u_int proto, struct mbuf *m)
 {
-	u_int cpuid;
-	int error;
+	struct netisr_workstream *nwsp;
+	struct netisr_work *npwp;
 
-	sched_pin();
-	NETISR_RLOCK();
-	cpuid = netisr2_flowid2cpuid(flowid);
-	if (cpuid == curcpu) {
-		netisr2_dispatch_internal(proto, m, cpuid);
-		error = 0;
-	} else
-		error = netisr2_queue_internal(proto, m, cpuid);
-	NETISR_RUNLOCK();
-	sched_unpin();
-	return (error);
-}
-
-int
-netisr2_queue_flow(u_int proto, struct mbuf *m, u_int flowid)
-{
-	u_int cpuid;
-	int error;
+	if (!netisr_direct)
+		return (netisr2_queue(proto, m));
+	KASSERT(proto < NETISR_MAXPROT,
+	    ("netisr2_dispatch: invalid proto %d", proto));
 
 	NETISR_RLOCK();
-	cpuid = netisr2_flowid2cpuid(flowid);
-	error = netisr2_queue_internal(proto, m, cpuid);
+	KASSERT(np[proto].np_func != NULL,
+	    ("netisr2_dispatch: invalid proto %d", proto));
+
+	/*
+	 * Borrow current CPU's stats, even if there's no worker.
+	 */
+	nwsp = &nws[curcpu];
+	npwp = &nwsp->nws_work[proto];
+	npwp->nw_dispatched++;
+	npwp->nw_handled++;
+	np[proto].np_func(m);
 	NETISR_RUNLOCK();
-	return (error);
+	return (0);
 }
 
 /*
  * Initialize the netisr subsystem.  We rely on BSS and static initialization
- * of most fields in global data structures.  Start a worker thread for the
- * boot CPU.
+ * of most fields in global data structures.
+ *
+ * Start a worker thread for the boot CPU so that we can support network
+ * traffic immediately in case the netowrk stack is used before additional
+ * CPUs are started (for example, diskless boot).
  */
 static void
 netisr2_init(void *arg)
 {
 	struct netisr_workstream *nwsp;
-	int cpuid, error;
+	u_int cpuid;
+	int error;
 
 	KASSERT(curcpu == 0, ("netisr2_init: not on CPU 0"));
 
