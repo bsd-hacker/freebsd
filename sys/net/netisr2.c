@@ -250,6 +250,37 @@ static u_int				 nws_count;
 #define	NWS_WAIT(s)		cv_wait(&(s)->nws_cv, &(s)->nws_mtx)
 
 /*
+ * Utility routines for protocols that implement their own mapping of flows
+ * to CPUs.
+ */
+u_int
+netisr2_get_cpucount(void)
+{
+
+	return (nws_count);
+}
+
+u_int
+netisr2_get_cpuid(u_int cpunumber)
+{
+
+	return (nws_array[cpunumber]);
+}
+
+/*
+ * The default implementation of (source, flow ID) -> CPU ID mapping.
+ * Non-static so that protocols can use it to map their own work to specific
+ * CPUs in a manner consistent to netisr2 for affinity purposes.
+ */
+u_int
+netisr2_default_flow2cpu(uintptr_t source, u_int flowid)
+{
+
+	return (netisr2_get_cpuid((source ^ flowid) %
+	    netisr2_get_cpucount()));
+}
+
+/*
  * Register a new netisr handler, which requires initializing per-protocol
  * fields for each workstream.  All netisr2 work is briefly suspended while
  * the protocol is installed.
@@ -275,10 +306,6 @@ netisr2_register(u_int proto, const char *name, netisr_t func,
 
 	KASSERT(name != NULL, ("netisr2_register: name NULL for %d", proto));
 	KASSERT(func != NULL, ("netisr2_register: func NULL for %s", name));
-	KASSERT(m2flow != NULL, ("netisr2_register: m2flow NULL for %s",
-	    name));
-	KASSERT(flow2cpu != NULL, ("netisr2_registeR: flow2cpu NULL for %s",
-	    name));
 
 	/*
 	 * Initialize global and per-workstream protocol state.
@@ -286,7 +313,10 @@ netisr2_register(u_int proto, const char *name, netisr_t func,
 	np[proto].np_name = name;
 	np[proto].np_func = func;
 	np[proto].np_m2flow = m2flow;
-	np[proto].np_flow2cpu = flow2cpu;
+	if (flow2cpu != NULL)
+		np[proto].np_flow2cpu = flow2cpu;
+	else
+		np[proto].np_flow2cpu = netisr2_default_flow2cpu;
 	for (i = 0; i < MAXCPU; i++) {
 		npwp = &nws[i].nws_work[proto];
 		bzero(npwp, sizeof(*npwp));
@@ -346,17 +376,6 @@ netisr2_deregister(u_int proto)
 }
 
 /*
- * Provide a simple flow -> CPU mapping for protocols with strong ordering
- * requirements but no built-in notion of affinity.
- */
-u_int
-netisr2_flowid2cpuid(u_int flowid)
-{
-
-	return (nws_array[flowid % nws_count]);
-}
-
-/*
  * Look up the correct stream for a requested flowid.  There are two cases:
  * one in which the caller has requested execution on the current CPU (i.e.,
  * source ordering is sufficient, perhaps because the underlying hardware has
@@ -372,12 +391,13 @@ netisr2_flowid2cpuid(u_int flowid)
  * (i.e., out of mbufs and a rewrite is required).
  */
 static struct mbuf *
-netisr2_selectcpu(struct netisr_proto *npp, struct mbuf *m, u_int *cpuidp)
+netisr2_selectcpu(struct netisr_proto *npp, uintptr_t source, struct mbuf *m,
+    u_int *cpuidp)
 {
 
 	NETISR_LOCK_ASSERT();
 
-	if (!(m->m_flags & M_FLOWID)) {
+	if (!(m->m_flags & M_FLOWID) && npp->np_m2flow != NULL) {
 		m = npp->np_m2flow(m);
 		if (m == NULL)
 			return (NULL);
@@ -385,7 +405,10 @@ netisr2_selectcpu(struct netisr_proto *npp, struct mbuf *m, u_int *cpuidp)
 		    " %s failed to return flowid on mbuf",
 		    npp->np_name));
 	}
-	*cpuidp = npp->np_flow2cpu(m->m_pkthdr.flowid);
+	if (m->m_flags & M_FLOWID)
+		*cpuidp = npp->np_flow2cpu(source, m->m_pkthdr.flowid);
+	else
+		*cpuidp = npp->np_flow2cpu(source, 0);
 	return (m);
 }
 
@@ -554,7 +577,7 @@ netisr2_queue_internal(u_int proto, struct mbuf *m, u_int cpuid)
 }
 
 int
-netisr2_queue(u_int proto, struct mbuf *m)
+netisr2_queue(u_int proto, uintptr_t source, struct mbuf *m)
 {
 	u_int cpuid, error;
 
@@ -565,7 +588,7 @@ netisr2_queue(u_int proto, struct mbuf *m)
 	KASSERT(np[proto].np_func != NULL,
 	    ("netisr2_dispatch: invalid proto %d", proto));
 
-	m = netisr2_selectcpu(&np[proto], m, &cpuid);
+	m = netisr2_selectcpu(&np[proto], source, m, &cpuid);
 	if (m != NULL)
 		error = netisr2_queue_internal(proto, m, cpuid);
 	else
@@ -575,13 +598,13 @@ netisr2_queue(u_int proto, struct mbuf *m)
 }
 
 int
-netisr2_dispatch(u_int proto, struct mbuf *m)
+netisr2_dispatch(u_int proto, uintptr_t source, struct mbuf *m)
 {
 	struct netisr_workstream *nwsp;
 	struct netisr_work *npwp;
 
 	if (!netisr_direct)
-		return (netisr2_queue(proto, m));
+		return (netisr2_queue(proto, source, m));
 	KASSERT(proto < NETISR_MAXPROT,
 	    ("netisr2_dispatch: invalid proto %d", proto));
 
