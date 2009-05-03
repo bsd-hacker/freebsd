@@ -148,6 +148,7 @@ options 	GEOM_NOP		# Test class.
 options 	GEOM_PART_APM		# Apple partitioning
 options 	GEOM_PART_BSD		# BSD disklabel
 options 	GEOM_PART_EBR		# Extended Boot Records
+options 	GEOM_PART_EBR_COMPAT	# Backward compatible partition names
 options 	GEOM_PART_GPT		# GPT partitioning
 options 	GEOM_PART_MBR		# MBR partitioning
 options 	GEOM_PART_PC98		# PC-9800 disk partitioning
@@ -552,6 +553,9 @@ options 	LIBMCHAIN
 # libalias library, performing NAT
 options		LIBALIAS
 
+# flowtable cache
+options		FLOWTABLE
+
 #
 # SCTP is a NEW transport protocol defined by
 # RFC2960 updated by RFC3309 and RFC3758.. and
@@ -723,7 +727,7 @@ device		loop
 device		ether
 
 #  The `vlan' device implements the VLAN tagging of Ethernet frames
-#  according to IEEE 802.1Q.  It requires `device miibus'.
+#  according to IEEE 802.1Q.
 device		vlan
 
 #  The `wlan' device provides generic code to support 802.11
@@ -764,10 +768,6 @@ device		arcnet
 #  The `sppp' device serves a similar role for certain types
 #  of synchronous PPP links (like `cx', `ar').
 device		sppp
-
-#  The `sl' device implements the Serial Line IP (SLIP) service.
-#  The `ppp' device implements the Point-to-Point Protocol.
-
 
 #  The `bpf' device enables the Berkeley Packet Filter.  Be
 #  aware of the legal and administrative consequences of enabling this
@@ -835,15 +835,6 @@ device		enc
 
 # Link aggregation interface.
 device		lagg
-
-#
-# The PPP_BSDCOMP option enables support for compress(1) style entire
-# packet compression, the PPP_DEFLATE is for zlib/gzip style compression.
-# PPP_FILTER enables code for filtering the ppp data stream and selecting
-# events for resetting the demand dial activity timer - requires bpf.
-# See pppd(8) for more details.
-#
-
 
 #
 # Internet family options:
@@ -1942,7 +1933,7 @@ device		xl		# 3Com 3c90x (``Boomerang'', ``Cyclone'')
 device		de		# DEC/Intel DC21x4x (``Tulip'')
 device		em		# Intel Pro/1000 Gigabit Ethernet
 device		igb		# Intel Pro/1000 PCIE Gigabit Ethernet
-#device		ixgbe		# Intel Pro/10Gbe PCIE Ethernet
+device		ixgbe		# Intel Pro/10Gbe PCIE Ethernet
 device		le		# AMD Am7900 LANCE and Am79C9xx PCnet
 device		mxge		# Myricom Myri-10G 10GbE NIC
 device		nxge		# Neterion Xframe 10GbE Server/Storage Adapter
@@ -2426,8 +2417,6 @@ device		umodem
 device		ums
 # Diamond Rio 500 MP3 player
 device		urio
-# USB scanners
-device		uscanner
 #
 # USB serial support
 device		ucom
@@ -2485,14 +2474,17 @@ device		rue
 device		udav
 
 #
-# ZyDas ZD1211/ZD1211B wireless ethernet driver
-device		zyd
+# Ralink Technology RT2501USB/RT2601USB wireless driver
+device		rum
 #
-# Ralink Technology RT2500USB chispet driver
+# Atheros AR5523 wireless driver
+device		uath
+#
+# Ralink Technology RT2500USB wireless driver
 device		ural
 #
-# Ralink Technology RT2501USB/RT2601USB chispet driver
-device		rum
+# ZyDas ZD1211/ZD1211B wireless driver
+device		zyd
 
 # 
 # debugging options for the USB subsystem
@@ -2678,7 +2670,6 @@ options 	SC_DEBUG_LEVEL=5	# Syscons debug level
 options 	SC_RENDER_DEBUG	# syscons rendering debugging
 
 options 	SHOW_BUSYBUFS	# List buffers that prevent root unmount
-options 	SLIP_IFF_OPTS
 options 	VFS_BIO_DEBUG	# VFS buffer I/O debugging
 
 options 	KSTACK_MAX_PAGES=32 # Maximum pages to give the kernel stack

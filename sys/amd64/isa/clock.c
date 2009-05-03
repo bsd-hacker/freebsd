@@ -53,6 +53,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/module.h>
 #include <sys/sched.h>
+#include <sys/smp.h>
 #include <sys/sysctl.h>
 
 #include <machine/clock.h>
@@ -62,6 +63,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/apicvar.h>
 #include <machine/ppireg.h>
 #include <machine/timerreg.h>
+#include <machine/smp.h>
 
 #include <isa/rtc.h>
 #ifdef DEV_ISA
@@ -112,6 +114,35 @@ static struct timecounter i8254_timecounter = {
 	0			/* quality */
 };
 
+int
+hardclockintr(struct trapframe *frame)
+{
+
+	if (PCPU_GET(cpuid) == 0)
+		hardclock(TRAPF_USERMODE(frame), TRAPF_PC(frame));
+	else
+		hardclock_cpu(TRAPF_USERMODE(frame));
+	return (FILTER_HANDLED);
+}
+
+int
+statclockintr(struct trapframe *frame)
+{
+
+	if (profprocs != 0)
+		profclock(TRAPF_USERMODE(frame), TRAPF_PC(frame));
+	statclock(TRAPF_USERMODE(frame));
+	return (FILTER_HANDLED);
+}
+
+int
+profclockintr(struct trapframe *frame)
+{
+
+	profclock(TRAPF_USERMODE(frame), TRAPF_PC(frame));
+	return (FILTER_HANDLED);
+}
+
 static int
 clkintr(struct trapframe *frame)
 {
@@ -128,7 +159,14 @@ clkintr(struct trapframe *frame)
 		mtx_unlock_spin(&clock_lock);
 	}
 	KASSERT(!using_lapic_timer, ("clk interrupt enabled with lapic timer"));
-	hardclock(TRAPF_USERMODE(frame), TRAPF_PC(frame));
+#ifdef SMP
+	if (smp_started)
+		ipi_all_but_self(IPI_HARDCLOCK);
+#endif
+	if (PCPU_GET(cpuid) == 0)
+		hardclock(TRAPF_USERMODE(frame), TRAPF_PC(frame));
+	else
+		hardclock_cpu(TRAPF_USERMODE(frame));
 	return (FILTER_HANDLED);
 }
 
@@ -209,10 +247,19 @@ rtcintr(struct trapframe *frame)
 		if (profprocs != 0) {
 			if (--pscnt == 0)
 				pscnt = psdiv;
+#ifdef SMP
+			if (pscnt != psdiv && smp_started)
+				ipi_all_but_self(IPI_PROFCLOCK);
+#endif
 			profclock(TRAPF_USERMODE(frame), TRAPF_PC(frame));
 		}
-		if (pscnt == psdiv)
+		if (pscnt == psdiv) {
+#ifdef SMP
+			if (smp_started)
+				ipi_all_but_self(IPI_STATCLOCK);
+#endif
 			statclock(TRAPF_USERMODE(frame));
+		}
 	}
 	return(flag ? FILTER_HANDLED : FILTER_STRAY);
 }
@@ -373,6 +420,17 @@ set_i8254_freq(u_int freq, int intr_freq)
 		outb(TIMER_CNTR0, i8254_real_max_count & 0xff);
 		outb(TIMER_CNTR0, i8254_real_max_count >> 8);
 	}
+	mtx_unlock_spin(&clock_lock);
+}
+
+static void
+i8254_restore(void)
+{
+
+	mtx_lock_spin(&clock_lock);
+	outb(TIMER_MODE, TIMER_SEL0 | TIMER_RATEGEN | TIMER_16BIT);
+	outb(TIMER_CNTR0, i8254_real_max_count & 0xff);
+	outb(TIMER_CNTR0, i8254_real_max_count >> 8);
 	mtx_unlock_spin(&clock_lock);
 }
 
@@ -558,6 +616,14 @@ attimer_attach(device_t dev)
 	return(0);
 }
 
+static int
+attimer_resume(device_t dev)
+{
+
+	i8254_restore();
+	return(0);
+}
+
 static device_method_t attimer_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,		attimer_probe),
@@ -565,7 +631,7 @@ static device_method_t attimer_methods[] = {
 	DEVMETHOD(device_detach,	bus_generic_detach),
 	DEVMETHOD(device_shutdown,	bus_generic_shutdown),
 	DEVMETHOD(device_suspend,	bus_generic_suspend),
-	DEVMETHOD(device_resume,	bus_generic_resume),
+	DEVMETHOD(device_resume,	attimer_resume),
 	{ 0, 0 }
 };
 

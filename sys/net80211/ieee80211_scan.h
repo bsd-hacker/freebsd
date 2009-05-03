@@ -42,7 +42,7 @@
  * a callback when scanning on a ``passive channel'' when the
  * IEEE80211_FEXT_PROBECHAN flag is set.
  *
- * A scan operation involves constructing a set of channels to inspec
+ * A scan operation involves constructing a set of channels to inspect
  * (the scan set), visiting each channel and collecting information
  * (e.g. what bss are present), and then analyzing the results to make
  * decisions like which bss to join.  This process needs to be as fast
@@ -90,6 +90,7 @@ struct ieee80211_scan_ssid {
  */
 struct ieee80211_scan_state {
 	struct ieee80211vap *ss_vap;
+	struct ieee80211com *ss_ic;
 	const struct ieee80211_scanner *ss_ops;	/* policy hookup, see below */
 	void		*ss_priv;		/* scanner private state */
 	uint16_t	ss_flags;

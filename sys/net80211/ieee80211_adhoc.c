@@ -57,6 +57,9 @@ __FBSDID("$FreeBSD$");
 #include <net80211/ieee80211_var.h>
 #include <net80211/ieee80211_adhoc.h>
 #include <net80211/ieee80211_input.h>
+#ifdef IEEE80211_SUPPORT_SUPERG
+#include <net80211/ieee80211_superg.h>
+#endif
 #ifdef IEEE80211_SUPPORT_TDMA
 #include <net80211/ieee80211_tdma.h>
 #endif
@@ -71,6 +74,7 @@ static void adhoc_recv_mgmt(struct ieee80211_node *, struct mbuf *,
 	int subtype, int rssi, int noise, uint32_t rstamp);
 static void ahdemo_recv_mgmt(struct ieee80211_node *, struct mbuf *,
 	int subtype, int rssi, int noise, uint32_t rstamp);
+static void adhoc_recv_ctl(struct ieee80211_node *, struct mbuf *, int subtype);
 
 void
 ieee80211_adhoc_attach(struct ieee80211com *ic)
@@ -98,6 +102,7 @@ adhoc_vattach(struct ieee80211vap *vap)
 		vap->iv_recv_mgmt = adhoc_recv_mgmt;
 	else
 		vap->iv_recv_mgmt = ahdemo_recv_mgmt;
+	vap->iv_recv_ctl = adhoc_recv_ctl;
 	vap->iv_opdetach = adhoc_vdetach;
 #ifdef IEEE80211_SUPPORT_TDMA
 	/*
@@ -336,7 +341,8 @@ adhoc_input(struct ieee80211_node *ni, struct mbuf *m,
 	if ((wh->i_fc[0] & IEEE80211_FC0_VERSION_MASK) !=
 	    IEEE80211_FC0_VERSION_0) {
 		IEEE80211_DISCARD_MAC(vap, IEEE80211_MSG_ANY,
-		    ni->ni_macaddr, NULL, "wrong version %x", wh->i_fc[0]);
+		    ni->ni_macaddr, NULL, "wrong version, fc %02x:%02x",
+		    wh->i_fc[0], wh->i_fc[1]);
 		vap->iv_stats.is_rx_badversion++;
 		goto err;
 	}
@@ -590,32 +596,13 @@ adhoc_input(struct ieee80211_node *ni, struct mbuf *m,
 			m = ieee80211_decap_amsdu(ni, m);
 			if (m == NULL)
 				return IEEE80211_FC0_TYPE_DATA;
-		} else if (IEEE80211_ATH_CAP(vap, ni, IEEE80211_NODE_FF) &&
-#define	FF_LLC_SIZE	(sizeof(struct ether_header) + sizeof(struct llc))
-		    m->m_pkthdr.len >= 3*FF_LLC_SIZE) {
-			struct llc *llc;
-
-			/*
-			 * Check for fast-frame tunnel encapsulation.
-			 */
-			if (m->m_len < FF_LLC_SIZE &&
-			    (m = m_pullup(m, FF_LLC_SIZE)) == NULL) {
-				IEEE80211_DISCARD_MAC(vap, IEEE80211_MSG_ANY,
-				    ni->ni_macaddr, "fast-frame",
-				    "%s", "m_pullup(llc) failed");
-				vap->iv_stats.is_rx_tooshort++;
+		} else {
+#ifdef IEEE80211_SUPPORT_SUPERG
+			m = ieee80211_decap_fastframe(vap, ni, m);
+			if (m == NULL)
 				return IEEE80211_FC0_TYPE_DATA;
-			}
-			llc = (struct llc *)(mtod(m, uint8_t *) + 
-				sizeof(struct ether_header));
-			if (llc->llc_snap.ether_type == htons(ATH_FF_ETH_TYPE)) {
-				m_adj(m, FF_LLC_SIZE);
-				m = ieee80211_decap_fastframe(ni, m);
-				if (m == NULL)
-					return IEEE80211_FC0_TYPE_DATA;
-			}
+#endif
 		}
-#undef FF_LLC_SIZE
 		if (dir == IEEE80211_FC1_DIR_DSTODS && ni->ni_wdsvap != NULL)
 			ieee80211_deliver_data(ni->ni_wdsvap, ni, m);
 		else
@@ -653,16 +640,15 @@ adhoc_input(struct ieee80211_node *ni, struct mbuf *m,
 			vap->iv_stats.is_rx_mgtdiscard++; /* XXX */
 			goto out;
 		}
-		if (bpf_peers_present(vap->iv_rawbpf))
-			bpf_mtap(vap->iv_rawbpf, m);
 		vap->iv_recv_mgmt(ni, m, subtype, rssi, noise, rstamp);
-		m_freem(m);
-		return IEEE80211_FC0_TYPE_MGT;
+		goto out;
 
 	case IEEE80211_FC0_TYPE_CTL:
 		vap->iv_stats.is_rx_ctl++;
 		IEEE80211_NODE_STAT(ni, rx_ctrl);
+		vap->iv_recv_ctl(ni, m, subtype);
 		goto out;
+
 	default:
 		IEEE80211_DISCARD(vap, IEEE80211_MSG_ANY,
 		    wh, "bad", "frame type 0x%x", type);
@@ -673,7 +659,7 @@ err:
 	ifp->if_ierrors++;
 out:
 	if (m != NULL) {
-		if (bpf_peers_present(vap->iv_rawbpf) && need_tap)
+		if (need_tap && bpf_peers_present(vap->iv_rawbpf))
 			bpf_mtap(vap->iv_rawbpf, m);
 		m_freem(m);
 	}
@@ -939,4 +925,9 @@ ahdemo_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
 		adhoc_recv_mgmt(ni, m0, subtype, rssi, noise, rstamp);
 	else
 		vap->iv_stats.is_rx_mgtdiscard++;
+}
+
+static void
+adhoc_recv_ctl(struct ieee80211_node *ni, struct mbuf *m0, int subtype)
+{
 }

@@ -82,7 +82,9 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_compat.h"
+#include "opt_ddb.h"
 #include "opt_kstack_pages.h"
+#include "opt_msgbuf.h"
 
 #include <sys/cdefs.h>
 #include <sys/types.h>
@@ -137,6 +139,10 @@ __FBSDID("$FreeBSD$");
 #include <powerpc/mpc85xx/ocpbus.h>
 #include <powerpc/mpc85xx/mpc85xx.h>
 
+#ifdef DDB
+extern vm_offset_t ksym_start, ksym_end;
+#endif
+
 #ifdef  DEBUG
 #define debugf(fmt, args...) printf(fmt, ##args)
 #else
@@ -175,6 +181,9 @@ int cacheline_size = 32;
 
 SYSCTL_INT(_machdep, CPU_CACHELINE, cacheline_size,
 	   CTLFLAG_RD, &cacheline_size, 0, "");
+
+int hw_direct_map = 0;
+int ppc64 = 0;
 
 static void cpu_e500_startup(void *);
 SYSINIT(cpu, SI_SUB_CPU, SI_ORDER_FIRST, cpu_e500_startup, NULL);
@@ -352,6 +361,10 @@ e500_init(u_int32_t startkernel, u_int32_t endkernel, void *mdp)
 			boothowto = MD_FETCH(kmdp, MODINFOMD_HOWTO, int);
 			kern_envp = MD_FETCH(kmdp, MODINFOMD_ENVP, char *);
 			end = MD_FETCH(kmdp, MODINFOMD_KERNEND, vm_offset_t);
+#ifdef DDB
+			ksym_start = MD_FETCH(kmdp, MODINFOMD_SSYM, uintptr_t);
+			ksym_end = MD_FETCH(kmdp, MODINFOMD_ESYM, uintptr_t);
+#endif
 		}
 	} else {
 		/*
@@ -373,8 +386,14 @@ e500_init(u_int32_t startkernel, u_int32_t endkernel, void *mdp)
 	for (i = 0; i < bootinfo->bi_mem_reg_no; i++, mr++) {
 		if (i == MEM_REGIONS)
 			break;
-		availmem_regions[i].mr_start = mr->mem_base;
-		availmem_regions[i].mr_size = mr->mem_size;
+		if (mr->mem_base < 1048576) {
+			availmem_regions[i].mr_start = 1048576;
+			availmem_regions[i].mr_size = mr->mem_size -
+			    (1048576 - mr->mem_base);
+		} else {
+			availmem_regions[i].mr_start = mr->mem_base;
+			availmem_regions[i].mr_size = mr->mem_size;
+		}
 	}
 	availmem_regions_sz = i;
 

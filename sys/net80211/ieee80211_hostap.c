@@ -57,6 +57,9 @@ __FBSDID("$FreeBSD$");
 #include <net80211/ieee80211_var.h>
 #include <net80211/ieee80211_hostap.h>
 #include <net80211/ieee80211_input.h>
+#ifdef IEEE80211_SUPPORT_SUPERG
+#include <net80211/ieee80211_superg.h>
+#endif
 #include <net80211/ieee80211_wds.h>
 
 #define	IEEE80211_RATE2MBS(r)	(((r) & IEEE80211_RATE_VAL) / 2)
@@ -69,6 +72,7 @@ static void hostap_deliver_data(struct ieee80211vap *,
 	    struct ieee80211_node *, struct mbuf *);
 static void hostap_recv_mgmt(struct ieee80211_node *, struct mbuf *,
 	    int subtype, int rssi, int noise, uint32_t rstamp);
+static void hostap_recv_ctl(struct ieee80211_node *, struct mbuf *, int);
 static void hostap_recv_pspoll(struct ieee80211_node *, struct mbuf *);
 
 void
@@ -93,6 +97,7 @@ hostap_vattach(struct ieee80211vap *vap)
 	vap->iv_newstate = hostap_newstate;
 	vap->iv_input = hostap_input;
 	vap->iv_recv_mgmt = hostap_recv_mgmt;
+	vap->iv_recv_ctl = hostap_recv_ctl;
 	vap->iv_opdetach = hostap_vdetach;
 	vap->iv_deliver_data = hostap_deliver_data;
 }
@@ -470,7 +475,8 @@ hostap_input(struct ieee80211_node *ni, struct mbuf *m,
 	if ((wh->i_fc[0] & IEEE80211_FC0_VERSION_MASK) !=
 	    IEEE80211_FC0_VERSION_0) {
 		IEEE80211_DISCARD_MAC(vap, IEEE80211_MSG_ANY,
-		    ni->ni_macaddr, NULL, "wrong version %x", wh->i_fc[0]);
+		    ni->ni_macaddr, NULL, "wrong version, fc %02x:%02x",
+		    wh->i_fc[0], wh->i_fc[1]);
 		vap->iv_stats.is_rx_badversion++;
 		goto err;
 	}
@@ -752,32 +758,13 @@ hostap_input(struct ieee80211_node *ni, struct mbuf *m,
 			m = ieee80211_decap_amsdu(ni, m);
 			if (m == NULL)
 				return IEEE80211_FC0_TYPE_DATA;
-		} else if (IEEE80211_ATH_CAP(vap, ni, IEEE80211_NODE_FF) &&
-#define	FF_LLC_SIZE	(sizeof(struct ether_header) + sizeof(struct llc))
-		    m->m_pkthdr.len >= 3*FF_LLC_SIZE) {
-			struct llc *llc;
-
-			/*
-			 * Check for fast-frame tunnel encapsulation.
-			 */
-			if (m->m_len < FF_LLC_SIZE &&
-			    (m = m_pullup(m, FF_LLC_SIZE)) == NULL) {
-				IEEE80211_DISCARD_MAC(vap, IEEE80211_MSG_ANY,
-				    ni->ni_macaddr, "fast-frame",
-				    "%s", "m_pullup(llc) failed");
-				vap->iv_stats.is_rx_tooshort++;
+		} else {
+#ifdef IEEE80211_SUPPORT_SUPERG
+			m = ieee80211_decap_fastframe(vap, ni, m);
+			if (m == NULL)
 				return IEEE80211_FC0_TYPE_DATA;
-			}
-			llc = (struct llc *)(mtod(m, uint8_t *) + 
-				sizeof(struct ether_header));
-			if (llc->llc_snap.ether_type == htons(ATH_FF_ETH_TYPE)) {
-				m_adj(m, FF_LLC_SIZE);
-				m = ieee80211_decap_fastframe(ni, m);
-				if (m == NULL)
-					return IEEE80211_FC0_TYPE_DATA;
-			}
+#endif
 		}
-#undef FF_LLC_SIZE
 		if (dir == IEEE80211_FC1_DIR_DSTODS && ni->ni_wdsvap != NULL)
 			ieee80211_deliver_data(ni->ni_wdsvap, ni, m);
 		else
@@ -847,23 +834,13 @@ hostap_input(struct ieee80211_node *ni, struct mbuf *m,
 			wh = mtod(m, struct ieee80211_frame *);
 			wh->i_fc[1] &= ~IEEE80211_FC1_WEP;
 		}
-		if (bpf_peers_present(vap->iv_rawbpf))
-			bpf_mtap(vap->iv_rawbpf, m);
 		vap->iv_recv_mgmt(ni, m, subtype, rssi, noise, rstamp);
-		m_freem(m);
-		return IEEE80211_FC0_TYPE_MGT;
+		goto out;
 
 	case IEEE80211_FC0_TYPE_CTL:
 		vap->iv_stats.is_rx_ctl++;
 		IEEE80211_NODE_STAT(ni, rx_ctrl);
-		switch (subtype) {
-		case IEEE80211_FC0_SUBTYPE_PS_POLL:
-			hostap_recv_pspoll(ni, m);
-			break;
-		case IEEE80211_FC0_SUBTYPE_BAR:
-			ieee80211_recv_bar(ni, m);
-			break;
-		}
+		vap->iv_recv_ctl(ni, m, subtype);
 		goto out;
 	default:
 		IEEE80211_DISCARD(vap, IEEE80211_MSG_ANY,
@@ -875,7 +852,7 @@ err:
 	ifp->if_ierrors++;
 out:
 	if (m != NULL) {
-		if (bpf_peers_present(vap->iv_rawbpf) && need_tap)
+		if (need_tap && bpf_peers_present(vap->iv_rawbpf))
 			bpf_mtap(vap->iv_rawbpf, m);
 		m_freem(m);
 	}
@@ -1967,8 +1944,10 @@ hostap_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
 					wpa = frm;
 				else if (iswmeinfo(frm))
 					wme = frm;
+#ifdef IEEE80211_SUPPORT_SUPERG
 				else if (isatherosoui(frm))
 					ath = frm;
+#endif
 				else if (vap->iv_flags_ext & IEEE80211_FEXT_HTCOMPAT) {
 					if (ishtcapoui(frm) && htcap == NULL)
 						htcap = frm;
@@ -2052,6 +2031,10 @@ hostap_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
 			ieee80211_ht_updatehtcap(ni, htcap);
 		} else if (ni->ni_flags & IEEE80211_NODE_HT)
 			ieee80211_ht_node_cleanup(ni);
+#ifdef IEEE80211_SUPPORT_SUPERG
+		else if (ni->ni_ath_flags & IEEE80211_NODE_ATH)
+			ieee80211_ff_node_cleanup(ni);
+#endif
 		/*
 		 * Allow AMPDU operation only with unencrypted traffic
 		 * or AES-CCM; the 11n spec only specifies these ciphers
@@ -2106,6 +2089,7 @@ hostap_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
 				ni->ni_flags |= IEEE80211_NODE_QOS;
 			} else
 				ni->ni_flags &= ~IEEE80211_NODE_QOS;
+#ifdef IEEE80211_SUPPORT_SUPERG
 			if (ath != NULL) {
 				setie(ath_ie, ath - sfrm);
 				/* 
@@ -2113,6 +2097,7 @@ hostap_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
 				 */
 				ieee80211_parse_ath(ni, ni->ni_ies.ath_ie);
 			} else
+#endif
 				ni->ni_ath_flags = 0;
 #undef setie
 		} else {
@@ -2169,6 +2154,19 @@ hostap_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
 		IEEE80211_DISCARD(vap, IEEE80211_MSG_ANY,
 		     wh, "mgt", "subtype 0x%x not handled", subtype);
 		vap->iv_stats.is_rx_badsubtype++;
+		break;
+	}
+}
+
+static void
+hostap_recv_ctl(struct ieee80211_node *ni, struct mbuf *m, int subtype)
+{
+	switch (subtype) {
+	case IEEE80211_FC0_SUBTYPE_PS_POLL:
+		hostap_recv_pspoll(ni, m);
+		break;
+	case IEEE80211_FC0_SUBTYPE_BAR:
+		ieee80211_recv_bar(ni, m);
 		break;
 	}
 }
