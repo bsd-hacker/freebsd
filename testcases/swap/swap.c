@@ -48,7 +48,6 @@ setup(int nb)
 	int pct;
 	unsigned long mem;
 	int64_t  swapinfo = 0;
-	unsigned long s;
 	struct rlimit rlp;
 
 	if (nb == 0) {
@@ -69,7 +68,10 @@ setup(int nb)
 		if (op->hog >= 3)
 			pct = random_int(100, 110);
 
-		s = size = swapinfo / 100 * pct + mem;
+		if (swapinfo == 0)
+			size = mem / 100 * pct;
+		else
+			size = swapinfo / 100 * pct + mem;
 
 		size = size / op->incarnations;
 
@@ -84,7 +86,7 @@ setup(int nb)
 
 		if (op->verbose > 1 && nb == 0)
 			printf("setup: pid %d, %d%%. Total %luMb\n",
-				getpid(), pct, size / 1024 / 1024 *  op->incarnations);
+				getpid(), pct, size / 1024 / 1024 * op->incarnations);
 	} else
 		size = getval();
 	return (0);
