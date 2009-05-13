@@ -132,10 +132,15 @@ SYSCTL_INT(_net_isr2, OID_AUTO, direct, CTLFLAG_RW, &netisr_direct, 0,
  * thread for CPU 0, so in practice we ignore values <= 1.  This must be set
  * as a tunable, no run-time reconfiguration yet.
  */
-static int	netisr_maxthreads = MAXCPU;	/* Bound number of threads. */
+static int	netisr_maxthreads = 1;		/* Max number of threads. */
 TUNABLE_INT("net.isr2.maxthreads", &netisr_maxthreads);
 SYSCTL_INT(_net_isr2, OID_AUTO, maxthreads, CTLFLAG_RD, &netisr_maxthreads,
     0, "Use at most this many CPUs for netisr2 processing");
+
+static int	netisr_bindthreads = 0;		/* Bind threads to CPUs. */
+TUNABLE_INT("net.isr2.bindthreads", &netisr_bindthreads);
+SYSCTL_INT(_net_isr2, OID_AUTO, bindthreads, CTLFLAG_RD, &netisr_bindthreads,
+    0, "Bind netisr2 threads to CPUs.");
 
 /*
  * Each protocol is described by an instance of netisr_proto, which holds all
@@ -511,7 +516,7 @@ swi_net(void *arg)
 	 * On first execution, force the ithread to the desired CPU.  There
 	 * should be a better way to do this.
 	 */
-	if (!(nwsp->nws_swi_flags & NWS_SWI_BOUND)) {
+	if (netisr_bindthreads && !(nwsp->nws_swi_flags & NWS_SWI_BOUND)) {
 		thread_lock(curthread);
 		sched_bind(curthread, nwsp->nws_cpu);
 		thread_unlock(curthread);
