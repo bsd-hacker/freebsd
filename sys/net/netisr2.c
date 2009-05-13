@@ -69,7 +69,6 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/bus.h>
-#include <sys/condvar.h>
 #include <sys/kernel.h>
 #include <sys/kthread.h>
 #include <sys/interrupt.h>
@@ -196,11 +195,12 @@ struct netisr_work {
  * Currently, #workstreams must equal #CPUs.
  */
 struct netisr_workstream {
-	struct thread	*nws_thread;		/* Thread serving stream. */
+	struct intr_event *nws_intr_event;	/* Handler for stream. */
+	void		*nws_swi_cookie;	/* swi(9) cookie for stream. */
 	struct mtx	 nws_mtx;		/* Synchronize work. */
-	struct cv	 nws_cv;		/* Wake up worker. */
 	u_int		 nws_cpu;		/* CPU pinning. */
 	u_int		 nws_flags;		/* Wakeup flags. */
+	u_int		 nws_swi_flags;		/* Flags used in swi. */
 
 	u_int		 nws_pendingwork;	/* Across all protos. */
 	/*
@@ -208,11 +208,6 @@ struct netisr_workstream {
 	 */
 	struct netisr_work	nws_work[NETISR_MAXPROT];
 } __aligned(CACHE_LINE_SIZE);
-
-/*
- * Kernel process associated with worker threads.
- */
-static struct proc			*netisr2_proc;
 
 /*
  * Per-CPU workstream data, indexed by CPU ID.
@@ -239,15 +234,19 @@ static u_int				 nws_count;
 #define	NWS_SIGNALED	0x00000002	/* Signal issued. */
 
 /*
+ * Flags used internally to the SWI handler -- no locking required.
+ */
+#define	NWS_SWI_BOUND	0x00000001	/* SWI bound to CPU. */
+
+/*
  * Synchronization for each workstream: a mutex protects all mutable fields
- * in each stream, including per-protocol state (mbuf queues).  The CV will
- * be used to wake up the worker if asynchronous dispatch is required.
+ * in each stream, including per-protocol state (mbuf queues).  The SWI is
+ * woken up if asynchronous dispatch is required.
  */
 #define	NWS_LOCK(s)		mtx_lock(&(s)->nws_mtx)
 #define	NWS_LOCK_ASSERT(s)	mtx_assert(&(s)->nws_mtx, MA_OWNED)
 #define	NWS_UNLOCK(s)		mtx_unlock(&(s)->nws_mtx)
-#define	NWS_SIGNAL(s)		cv_signal(&(s)->nws_cv)
-#define	NWS_WAIT(s)		cv_wait(&(s)->nws_cv, &(s)->nws_mtx)
+#define	NWS_SIGNAL(s)		swi_sched((s)->nws_swi_cookie, 0)
 
 /*
  * Utility routines for protocols that implement their own mapping of flows
@@ -498,38 +497,33 @@ netisr2_process_workstream(struct netisr_workstream *nwsp, int proto)
 }
 
 /*
- * Worker thread that waits for and processes packets in a set of workstreams
- * that it owns.  Each thread has one cv, which is uses for all workstreams
- * it handles.
+ * SWI handler for netisr2 -- processes prackets in a set of workstreams that
+ * it owns.
  */
 static void
-netisr2_worker(void *arg)
+swi_net(void *arg)
 {
 	struct netisr_workstream *nwsp;
 
 	nwsp = arg;
 
-	thread_lock(curthread);
-	sched_prio(curthread, SWI_NET * RQ_PPQ + PI_SOFT);
-	sched_bind(curthread, nwsp->nws_cpu);
-	thread_unlock(curthread);
-
 	/*
-	 * Main work loop.  In the future we will want to support stopping
-	 * workers, as well as re-balancing work, in which case we'll need to
-	 * also handle state transitions.
-	 *
-	 * XXXRW: netisr_rwlock.
+	 * On first execution, force the ithread to the desired CPU.  There
+	 * should be a better way to do this.
 	 */
-	NWS_LOCK(nwsp);
-	while (1) {
-		while (nwsp->nws_pendingwork == 0) {
-			nwsp->nws_flags &= ~(NWS_SIGNALED | NWS_RUNNING);
-			NWS_WAIT(nwsp);
-			nwsp->nws_flags |= NWS_RUNNING;
-		}
-		netisr2_process_workstream(nwsp, NETISR_ALLPROT);
+	if (!(nwsp->nws_swi_flags & NWS_SWI_BOUND)) {
+		thread_lock(curthread);
+		sched_bind(curthread, nwsp->nws_cpu);
+		thread_unlock(curthread);
+		nwsp->nws_swi_flags |= NWS_SWI_BOUND;
 	}
+
+	NWS_LOCK(nwsp);
+	nwsp->nws_flags |= NWS_RUNNING;
+	while (nwsp->nws_pendingwork != 0)
+		netisr2_process_workstream(nwsp, NETISR_ALLPROT);
+	nwsp->nws_flags &= ~(NWS_SIGNALED | NWS_RUNNING);
+	NWS_UNLOCK(nwsp);
 }
 
 static int
@@ -624,6 +618,26 @@ netisr2_dispatch(u_int proto, uintptr_t source, struct mbuf *m)
 	return (0);
 }
 
+static void
+netisr2_start_swi(u_int cpuid, struct pcpu *pc)
+{
+	char swiname[12];
+	struct netisr_workstream *nwsp;
+	int error;
+
+	nwsp = &nws[cpuid];
+	mtx_init(&nwsp->nws_mtx, "netisr2_mtx", NULL, MTX_DEF);
+	nwsp->nws_cpu = cpuid;
+	snprintf(swiname, sizeof(swiname), "netisr2: %d", cpuid);
+	error = swi_add(&nwsp->nws_intr_event, swiname, swi_net, nwsp,
+	    SWI_NET, INTR_MPSAFE, &nwsp->nws_swi_cookie);
+	if (error)
+		panic("netisr2_init: swi_add %d", error);
+	pc->pc_netisr2 = nwsp->nws_intr_event;
+	nws_array[nws_count] = nwsp->nws_cpu;
+	nws_count++;
+}
+
 /*
  * Initialize the netisr subsystem.  We rely on BSS and static initialization
  * of most fields in global data structures.
@@ -635,30 +649,16 @@ netisr2_dispatch(u_int proto, uintptr_t source, struct mbuf *m)
 static void
 netisr2_init(void *arg)
 {
-	struct netisr_workstream *nwsp;
-	u_int cpuid;
-	int error;
 
 	KASSERT(curcpu == 0, ("netisr2_init: not on CPU 0"));
 
 	NETISR_LOCK_INIT();
-
-	KASSERT(PCPU_GET(netisr2) == NULL, ("netisr2_init: pc_netisr2"));
-
-	cpuid = curcpu;
-	nwsp = &nws[cpuid];
-	mtx_init(&nwsp->nws_mtx, "netisr2_mtx", NULL, MTX_DEF);
-	cv_init(&nwsp->nws_cv, "netisr2_cv");
-	nwsp->nws_cpu = cpuid;
-	error = kproc_kthread_add(netisr2_worker, nwsp, &netisr2_proc,
-	    &nwsp->nws_thread, 0, 0, "netisr2", "netisr2: cpu%d", cpuid);
-	PCPU_SET(netisr2, nwsp->nws_thread);
-	if (error)
-		panic("netisr2_init: kproc_kthread_add %d", error);
-	nws_array[nws_count] = nwsp->nws_cpu;
-	nws_count++;
 	if (netisr_maxthreads < 1)
 		netisr_maxthreads = 1;
+	if (netisr_maxthreads > MAXCPU)
+		netisr_maxthreads = MAXCPU;
+
+	netisr2_start_swi(curcpu, pcpu_find(curcpu));
 }
 SYSINIT(netisr2_init, SI_SUB_SOFTINTR, SI_ORDER_FIRST, netisr2_init, NULL);
 
@@ -669,9 +669,7 @@ SYSINIT(netisr2_init, SI_SUB_SOFTINTR, SI_ORDER_FIRST, netisr2_init, NULL);
 static void
 netisr2_start(void *arg)
 {
-	struct netisr_workstream *nwsp;
 	struct pcpu *pc;
-	int error;
 
 	SLIST_FOREACH(pc, &cpuhead, pc_allcpu) {
 		if (nws_count >= netisr_maxthreads)
@@ -682,18 +680,7 @@ netisr2_start(void *arg)
 		/* Worker will already be present for boot CPU. */
 		if (pc->pc_netisr2 != NULL)
 			continue;
-		nwsp = &nws[pc->pc_cpuid];
-		mtx_init(&nwsp->nws_mtx, "netisr2_mtx", NULL, MTX_DEF);
-		cv_init(&nwsp->nws_cv, "netisr2_cv");
-		nwsp->nws_cpu = pc->pc_cpuid;
-		error = kproc_kthread_add(netisr2_worker, nwsp,
-		    &netisr2_proc, &nwsp->nws_thread, 0, 0, "netisr2",
-		    "netisr2: cpu%d", pc->pc_cpuid);
-		pc->pc_netisr2 = nwsp->nws_thread;
-		if (error)
-			panic("netisr2_start: kproc_kthread_add %d", error);
-		nws_array[nws_count] = pc->pc_cpuid;
-		nws_count++;
+		netisr2_start_swi(pc->pc_cpuid, pc);
 	}
 }
 SYSINIT(netisr2_start, SI_SUB_SMP, SI_ORDER_MIDDLE, netisr2_start, NULL);
@@ -709,7 +696,7 @@ DB_SHOW_COMMAND(netisr2, db_show_netisr2)
 	    "Proto", "Len", "WMark", "Max", "Disp", "Drop", "Queue", "Handle");
 	for (cpu = 0; cpu < MAXCPU; cpu++) {
 		nwsp = &nws[cpu];
-		if (nwsp->nws_thread == NULL)
+		if (nwsp->nws_intr_event == NULL)
 			continue;
 		first = 1;
 		for (proto = 0; proto < NETISR_MAXPROT; proto++) {
