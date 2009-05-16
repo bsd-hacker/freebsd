@@ -69,15 +69,19 @@ void	netisr2_register(u_int proto, const char *name, netisr_t func,
 	    netisr_m2flow_t m2flow, netisr_flow2cpu_t flow2cpu, u_int max);
 
 /*
- * Deregister a protocol handler.
+ * Unregister a protocol handler.
  */
-void	netisr2_deregister(u_int proto);
+void	netisr2_unregister(u_int proto);
 
 /*
  * Process a packet destined for a protocol, and attempt direct dispatch.
  */
+//int	netisr_dispatch(u_int proto, struct mbuf *m);
+//int	netisr_queue(u_int proto, struct mbuf *m);
 int	netisr2_dispatch(u_int proto, uintptr_t source, struct mbuf *m);
+int	netisr2_dispatch_if(u_int proto, struct ifnet *ifp, struct mbuf *m);
 int	netisr2_queue(u_int proto, uintptr_t source, struct mbuf *m);
+int	netisr2_queue_if(u_int proto, struct ifnet *ifp, struct mbuf *m);
 
 /*
  * Provide a default implementation of "map a flow ID to a cpu ID".

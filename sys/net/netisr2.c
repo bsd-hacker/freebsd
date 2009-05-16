@@ -352,20 +352,20 @@ netisr2_drain_proto(struct netisr_work *npwp)
 /*
  * Remove the registration of a network protocol, which requires clearing
  * per-protocol fields across all workstreams, including freeing all mbufs in
- * the queues at time of deregister.  All work in netisr2 is briefly
+ * the queues at time of unregister.  All work in netisr2 is briefly
  * suspended while this takes place.
  */
 void
-netisr2_deregister(u_int proto)
+netisr2_unregister(u_int proto)
 {
 	struct netisr_work *npwp;
 	int i;
 
 	NETISR_WLOCK();
 	KASSERT(proto < NETISR_MAXPROT,
-	    ("netisr_deregister(%d): protocol too big", proto));
+	    ("netisr_unregister(%d): protocol too big", proto));
 	KASSERT(np[proto].np_func != NULL,
-	    ("netisr_deregister(%d): protocol not registered", proto));
+	    ("netisr_unregister(%d): protocol not registered", proto));
 
 	np[proto].np_name = NULL;
 	np[proto].np_func = NULL;
@@ -401,6 +401,14 @@ netisr2_selectcpu(struct netisr_proto *npp, uintptr_t source, struct mbuf *m,
 
 	NETISR_LOCK_ASSERT();
 
+	/*
+	 * In the event we have only one worker, shortcut and deliver to it
+	 * without further ado.
+	 */
+	if (nws_count == 1) {
+		*cpuidp = nws_array[0];
+		return (m);
+	}
 	if (!(m->m_flags & M_FLOWID) && npp->np_m2flow != NULL) {
 		m = npp->np_m2flow(m);
 		if (m == NULL)
@@ -597,6 +605,20 @@ netisr2_queue(u_int proto, uintptr_t source, struct mbuf *m)
 }
 
 int
+netisr2_queue_if(u_int proto, struct ifnet *ifp, struct mbuf *m)
+{
+
+	return (netisr2_queue(proto, (uintptr_t)ifp, m));
+}
+
+int
+netisr_queue(int proto, struct mbuf *m)
+{
+
+	return (netisr2_queue_if(proto, m->m_pkthdr.rcvif, m));
+}
+
+int
 netisr2_dispatch(u_int proto, uintptr_t source, struct mbuf *m)
 {
 	struct netisr_workstream *nwsp;
@@ -621,6 +643,20 @@ netisr2_dispatch(u_int proto, uintptr_t source, struct mbuf *m)
 	np[proto].np_func(m);
 	NETISR_RUNLOCK();
 	return (0);
+}
+
+int
+netisr2_dispatch_if(u_int proto, struct ifnet *ifp, struct mbuf *m)
+{
+
+	return (netisr2_dispatch(proto, (uintptr_t)ifp, m));
+}
+
+void
+netisr_dispatch(int proto, struct mbuf *m)
+{
+
+	(void)netisr2_dispatch_if(proto, m->m_pkthdr.rcvif, m);
 }
 
 static void

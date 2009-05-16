@@ -28,6 +28,7 @@
  */
 
 #include "opt_device_polling.h"
+#include "opt_netisr.h"
 
 #include <sys/param.h>
 #include <sys/bus.h>
@@ -149,6 +150,7 @@ netisr_processqueue(struct netisr *ni)
 /*
  * Call the netisr directly instead of queueing the packet, if possible.
  */
+#ifndef NETISR2
 void
 netisr_dispatch(int num, struct mbuf *m)
 {
@@ -209,6 +211,7 @@ netisr_queue(int num, struct mbuf *m)
 	schednetisr(num);
 	return (0);
 }
+#endif /* !NETISR2 */
 
 static void
 swi_net(void *dummy)
