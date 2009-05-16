@@ -50,6 +50,8 @@
  * $FreeBSD$
  */
 
+#include "opt_netisr.h"
+
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/malloc.h>
@@ -60,6 +62,7 @@
 #include <net/if.h>
 #include <net/route.h>
 #include <net/netisr.h>
+#include <net/netisr2.h>
 
 #include <netatalk/at.h>
 #include <netatalk/at_var.h>
@@ -263,9 +266,18 @@ ddp_init(void)
 	mtx_init(&atintrq2.ifq_mtx, "at2_inq", NULL, MTX_DEF);
 	mtx_init(&aarpintrq.ifq_mtx, "aarp_inq", NULL, MTX_DEF);
 	DDP_LIST_LOCK_INIT();
+#ifdef NETISR2
+	netisr2_register(NETISR_ATALK1, "atalk1", at1intr, NULL, NULL,
+	    IFQ_MAXLEN);
+	netisr2_register(NETISR_ATALK2, "atalk2", at2intr, NULL, NULL,
+	    IFQ_MAXLEN);
+	netisr2_register(NETISR_AARP, "aarp", aarpintr, NULL, NULL,
+	    IFQ_MAXLEN);
+#else
 	netisr_register(NETISR_ATALK1, at1intr, &atintrq1, 0);
 	netisr_register(NETISR_ATALK2, at2intr, &atintrq2, 0);
 	netisr_register(NETISR_AARP, aarpintr, &aarpintrq, 0);
+#endif
 }
 
 #if 0

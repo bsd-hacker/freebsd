@@ -51,6 +51,7 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_mac.h"
+#include "opt_netisr.h"
 #include "opt_route.h"
 
 #include <sys/param.h>
@@ -68,6 +69,7 @@ __FBSDID("$FreeBSD$");
 
 #include <net/if.h>
 #include <net/netisr.h>
+#include <net/netisr2.h>
 #include <net/route.h>
 #include <net/vnet.h>
 
@@ -3548,7 +3550,12 @@ igmp_sysinit(void)
 
 	m_raopt = igmp_ra_alloc();
 
+#ifdef NETISR2
+	netisr2_register(NETISR_IGMP, "igmp", igmp_intr, NULL, NULL,
+	    IFQ_MAXLEN);
+#else
 	netisr_register(NETISR_IGMP, igmp_intr, &igmpoq, 0);
+#endif
 }
 
 static void
@@ -3557,7 +3564,11 @@ igmp_sysuninit(void)
 
 	CTR1(KTR_IGMPV3, "%s: tearing down", __func__);
 
+#ifdef NETISR2
+	netisr2_unregister(NETISR_IGMP);
+#else
 	netisr_unregister(NETISR_IGMP);
+#endif
 	mtx_destroy(&igmpoq.ifq_mtx);
 
 	m_free(m_raopt);

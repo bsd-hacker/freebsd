@@ -66,6 +66,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_ipsec.h"
+#include "opt_netisr.h"
 #include "opt_route.h"
 
 #include <sys/param.h>
@@ -88,6 +89,7 @@ __FBSDID("$FreeBSD$");
 #include <net/if_dl.h>
 #include <net/route.h>
 #include <net/netisr.h>
+#include <net/netisr2.h>
 #include <net/pfil.h>
 #include <net/vnet.h>
 
@@ -297,7 +299,12 @@ ip6_init(void)
 
 	ip6intrq.ifq_maxlen = V_ip6qmaxlen; /* XXX */
 	mtx_init(&ip6intrq.ifq_mtx, "ip6_inq", NULL, MTX_DEF);
+#ifdef NETISR2
+	netisr2_register(NETISR_IPV6, "ipv4", ip6_input, NULL, NULL,
+	    V_ip6qmaxlen);
+#else
 	netisr_register(NETISR_IPV6, ip6_input, &ip6intrq, 0);
+#endif
 }
 
 static int

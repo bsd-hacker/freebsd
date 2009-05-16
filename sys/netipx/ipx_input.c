@@ -62,6 +62,8 @@
  *	@(#)ipx_input.c
  */
 
+#include "opt_netisr.h"
+
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
@@ -77,6 +79,7 @@ __FBSDID("$FreeBSD$");
 #include <net/if.h>
 #include <net/route.h>
 #include <net/netisr.h>
+#include <net/netisr2.h>
 
 #include <netipx/ipx.h>
 #include <netipx/spx.h>
@@ -153,7 +156,11 @@ ipx_init(void)
 
 	ipxintrq.ifq_maxlen = ipxqmaxlen;
 	mtx_init(&ipxintrq.ifq_mtx, "ipx_inq", NULL, MTX_DEF);
+#ifdef NETISR2
+	netisr2_register(NETISR_IPX, "ipx", ipxintr, NULL, NULL, ipxqmaxlen);
+#else
 	netisr_register(NETISR_IPX, ipxintr, &ipxintrq, 0);
+#endif
 }
 
 /*

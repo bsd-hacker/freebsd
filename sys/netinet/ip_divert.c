@@ -42,6 +42,7 @@ __FBSDID("$FreeBSD$");
 #error "IPDIVERT requires IPFIREWALL"
 #endif
 #endif
+#include "opt_netisr.h"
 
 #include <sys/param.h>
 #include <sys/kernel.h>
@@ -66,6 +67,7 @@ __FBSDID("$FreeBSD$");
 
 #include <net/if.h>
 #include <net/netisr.h> 
+#include <net/netisr2.h> 
 #include <net/route.h>
 
 #include <netinet/in.h>
@@ -468,7 +470,11 @@ div_output(struct socket *so, struct mbuf *m, struct sockaddr_in *sin,
 		SOCK_UNLOCK(so);
 #endif
 		/* Send packet to input processing via netisr */
+#ifdef NETISR2
+		netisr2_queue(NETISR_IP, (uintptr_t)so, m);
+#else
 		netisr_queue(NETISR_IP, m);
+#endif
 	}
 
 	return error;

@@ -35,6 +35,8 @@
  * protocol layer for access to native mode ATM
  */
 
+#include "opt_netisr.h"
+
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
@@ -47,6 +49,7 @@ __FBSDID("$FreeBSD$");
 
 #include <net/if.h>
 #include <net/netisr.h>
+#include <net/netisr2.h>
 
 #include <netinet/in.h>
 
@@ -105,7 +108,12 @@ natm_init(void)
 	natmintrq.ifq_maxlen = natmqmaxlen;
 	NATM_LOCK_INIT();
 	mtx_init(&natmintrq.ifq_mtx, "natm_inq", NULL, MTX_DEF);
+#ifdef NETISR2
+	netisr2_register(NETISR_NATM, "natm", natmintr, NULL, NULL,
+	    natmqmaxlen);
+#else
 	netisr_register(NETISR_NATM, natmintr, &natmintrq, 0);
+#endif
 }
 
 DOMAIN_SET(natm);

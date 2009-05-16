@@ -38,6 +38,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_ipsec.h"
 #include "opt_route.h"
 #include "opt_mac.h"
+#include "opt_netisr.h"
 #include "opt_carp.h"
 
 #include <sys/param.h>
@@ -63,6 +64,7 @@ __FBSDID("$FreeBSD$");
 #include <net/if_dl.h>
 #include <net/route.h>
 #include <net/netisr.h>
+#include <net/netisr2.h>
 #include <net/vnet.h>
 #include <net/flowtable.h>
 
@@ -348,7 +350,11 @@ ip_init(void)
 	IPQ_LOCK_INIT();
 	ipintrq.ifq_maxlen = ipqmaxlen;
 	mtx_init(&ipintrq.ifq_mtx, "ip_inq", NULL, MTX_DEF);
+#ifdef NETISR2
+	netisr2_register(NETISR_IP, "ipv4", ip_input, NULL, NULL, ipqmaxlen);
+#else
 	netisr_register(NETISR_IP, ip_input, &ipintrq, 0);
+#endif
 
 	ip_ft = flowtable_alloc(ip_output_flowtable_size, FL_PCPU);
 }

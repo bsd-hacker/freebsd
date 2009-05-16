@@ -34,6 +34,7 @@
 #include "opt_route.h"
 #include "opt_inet.h"
 #include "opt_inet6.h"
+#include "opt_netisr.h"
 
 #include <sys/param.h>
 #include <sys/domain.h>
@@ -57,6 +58,7 @@
 #include <net/if_dl.h>
 #include <net/if_llatbl.h>
 #include <net/netisr.h>
+#include <net/netisr2.h>
 #include <net/raw_cb.h>
 #include <net/route.h>
 #include <net/vnet.h>
@@ -128,7 +130,12 @@ rts_init(void)
 	if (TUNABLE_INT_FETCH("net.route.netisr_maxqlen", &tmp))
 		rtsintrq.ifq_maxlen = tmp;
 	mtx_init(&rtsintrq.ifq_mtx, "rts_inq", NULL, MTX_DEF);
+#ifdef NETISR2
+	netisr2_register(NETISR_ROUTE, "route", rts_input, NULL, NULL,
+	    rtsintrq.ifq_maxlen);
+#else
 	netisr_register(NETISR_ROUTE, rts_input, &rtsintrq, 0);
+#endif
 }
 SYSINIT(rtsock, SI_SUB_PROTO_DOMAIN, SI_ORDER_THIRD, rts_init, 0);
 
@@ -1224,7 +1231,11 @@ rt_dispatch(struct mbuf *m, const struct sockaddr *sa)
 		*(unsigned short *)(tag + 1) = sa->sa_family;
 		m_tag_prepend(m, tag);
 	}
+#ifdef NETISR2
+	netisr2_queue(NETISR_ROUTE, 0, m);	/* mbuf is free'd on failure. */
+#else
 	netisr_queue(NETISR_ROUTE, m);	/* mbuf is free'd on failure. */
+#endif
 }
 
 /*

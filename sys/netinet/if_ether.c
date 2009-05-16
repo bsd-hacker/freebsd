@@ -41,6 +41,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_inet.h"
 #include "opt_route.h"
 #include "opt_mac.h"
+#include "opt_netisr.h"
 #include "opt_carp.h"
 
 #include <sys/param.h>
@@ -60,6 +61,7 @@ __FBSDID("$FreeBSD$");
 #include <net/if_types.h>
 #include <net/route.h>
 #include <net/netisr.h>
+#include <net/netisr2.h>
 #include <net/if_llc.h>
 #include <net/ethernet.h>
 #include <net/vnet.h>
@@ -823,6 +825,10 @@ arp_init(void)
 
 	arpintrq.ifq_maxlen = 50;
 	mtx_init(&arpintrq.ifq_mtx, "arp_inq", NULL, MTX_DEF);
+#ifdef NETISR2
+	netisr2_register(NETISR_ARP, "arp", arpintr, NULL, NULL, 50);
+#else
 	netisr_register(NETISR_ARP, arpintr, &arpintrq, 0);
+#endif
 }
 SYSINIT(arp, SI_SUB_PROTO_DOMAIN, SI_ORDER_ANY, arp_init, 0);
