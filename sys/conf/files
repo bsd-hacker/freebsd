@@ -1620,6 +1620,7 @@ kern/kern_module.c		standard
 kern/kern_mtxpool.c		standard
 kern/kern_mutex.c		standard
 kern/kern_ntptime.c		standard
+kern/kern_osd.c			standard
 kern/kern_physio.c		standard
 kern/kern_pmc.c			standard
 kern/kern_poll.c		optional device_polling
@@ -1627,6 +1628,7 @@ kern/kern_priv.c		standard
 kern/kern_proc.c		standard
 kern/kern_prot.c		standard
 kern/kern_resource.c		standard
+kern/kern_rmlock.c		standard
 kern/kern_rwlock.c		standard
 kern/kern_sema.c		standard
 kern/kern_shutdown.c		standard
@@ -1754,6 +1756,7 @@ libkern/iconv_xlat16.c		optional libiconv
 libkern/index.c			standard
 libkern/inet_ntoa.c		standard
 libkern/mcount.c		optional profiling-routine
+libkern/memmove.c		standard
 libkern/qsort.c			standard
 libkern/qsort_r.c		standard
 libkern/random.c		standard
