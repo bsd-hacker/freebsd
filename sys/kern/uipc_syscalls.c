@@ -1823,7 +1823,7 @@ kern_sendfile(struct thread *td, struct sendfile_args *uap,
 	if ((error = fgetvp_read(td, uap->fd, &vp)) != 0)
 		goto out;
 	vfslocked = VFS_LOCK_GIANT(vp->v_mount);
-	vn_lock(vp, LK_EXCLUSIVE | LK_RETRY, td);
+	vn_lock(vp, LK_SHARED | LK_RETRY, td);
 	if (vp->v_type == VREG) {
 		obj = vp->v_object;
 		if (obj != NULL) {
