@@ -45,13 +45,16 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/proc.h>
 #include <sys/sysctl.h>
+#include <sys/syslog.h>
 #include <sys/vimage.h>
 
 #include <net/if.h>
 #include <net/if_var.h>
+#include <net/if_dl.h>
 #include <net/if_llatbl.h>
 #include <net/if_types.h>
 #include <net/route.h>
+#include <net/vnet.h>
 
 #include <netinet/in.h>
 #include <netinet/in_var.h>
@@ -728,6 +731,9 @@ in_ifinit(struct ifnet *ifp, struct in_ifaddr *ia, struct sockaddr_in *sin,
 	INIT_VNET_INET(ifp->if_vnet);
 	register u_long i = ntohl(sin->sin_addr.s_addr);
 	struct sockaddr_in oldaddr;
+	struct rtentry *rt = NULL;
+	struct rt_addrinfo info;
+	static struct sockaddr_dl null_sdl = {sizeof(null_sdl), AF_LINK};
 	int s = splimp(), flags = RTF_UP, error = 0;
 
 	oldaddr = ia->ia_addr;
@@ -816,6 +822,32 @@ in_ifinit(struct ifnet *ifp, struct in_ifaddr *ia, struct sockaddr_in *sin,
 	if ((error = in_addprefix(ia, flags)) != 0)
 		return (error);
 
+	if (ia->ia_addr.sin_addr.s_addr == INADDR_ANY)
+		return (0);
+
+	/*
+	 * add a loopback route to self
+	 */
+	if (!(ifp->if_flags & (IFF_LOOPBACK | IFF_POINTOPOINT))) {
+		bzero(&info, sizeof(info));
+		info.rti_ifp = V_loif;
+		info.rti_flags = ia->ia_flags | RTF_HOST | RTF_STATIC;
+		info.rti_info[RTAX_DST] = (struct sockaddr *)&ia->ia_addr;
+		info.rti_info[RTAX_GATEWAY] = (struct sockaddr *)&null_sdl;
+		error = rtrequest1_fib(RTM_ADD, &info, &rt, 0);
+
+		if (error == 0 && rt != NULL) {
+			RT_LOCK(rt);
+			((struct sockaddr_dl *)rt->rt_gateway)->sdl_type  =
+				rt->rt_ifp->if_type;
+			((struct sockaddr_dl *)rt->rt_gateway)->sdl_index =
+				rt->rt_ifp->if_index;
+			RT_REMREF(rt);
+			RT_UNLOCK(rt);
+		} else if (error != 0)
+			log(LOG_INFO, "in_ifinit: insertion failed\n");
+	}
+
 	return (error);
 }
 
@@ -895,9 +927,28 @@ in_scrubprefix(struct in_ifaddr *target)
 	struct in_ifaddr *ia;
 	struct in_addr prefix, mask, p;
 	int error;
+	struct rt_addrinfo info;
+	struct sockaddr_dl null_sdl;
 
 	if ((target->ia_flags & IFA_ROUTE) == 0)
 		return (0);
+
+	if ((target->ia_addr.sin_addr.s_addr != INADDR_ANY) &&
+	    !(target->ia_ifp->if_flags & (IFF_LOOPBACK | IFF_POINTOPOINT))) {
+		bzero(&null_sdl, sizeof(null_sdl));
+		null_sdl.sdl_len = sizeof(null_sdl);
+		null_sdl.sdl_family = AF_LINK;
+		null_sdl.sdl_type = V_loif->if_type;
+		null_sdl.sdl_index = V_loif->if_index;
+		bzero(&info, sizeof(info));
+		info.rti_flags = target->ia_flags | RTF_HOST | RTF_STATIC;
+		info.rti_info[RTAX_DST] = (struct sockaddr *)&target->ia_addr;
+		info.rti_info[RTAX_GATEWAY] = (struct sockaddr *)&null_sdl;
+		error = rtrequest1_fib(RTM_DELETE, &info, NULL, 0);
+
+		if (error != 0)
+			log(LOG_INFO, "in_scrubprefix: deletion failed\n");
+	}
 
 	if (rtinitflags(target))
 		prefix = target->ia_dstaddr.sin_addr;
@@ -1027,7 +1078,6 @@ in_ifdetach(struct ifnet *ifp)
 	in_purgemaddrs(ifp);
 }
 
-#include <sys/syslog.h>
 #include <net/if_dl.h>
 #include <netinet/if_ether.h>
 
