@@ -334,6 +334,7 @@ wakeup(void *ident)
 
 	sleepq_lock(ident);
 	wakeup_swapper = sleepq_broadcast(ident, SLEEPQ_SLEEP, -1, 0);
+	sleepq_release(ident);
 	if (wakeup_swapper)
 		kick_proc0();
 }
