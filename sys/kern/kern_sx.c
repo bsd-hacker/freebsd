@@ -51,16 +51,16 @@ __FBSDID("$FreeBSD$");
 #include <sys/sx.h>
 #include <sys/systm.h>
 
+#if defined(SMP) && !defined(NO_ADAPTIVE_SX)
+#define	ADAPTIVE_SX
+#endif
+
 #ifdef ADAPTIVE_SX
 #include <machine/cpu.h>
 #endif
 
 #ifdef DDB
 #include <ddb/ddb.h>
-#endif
-
-#if !defined(SMP) && defined(ADAPTIVE_SX)
-#error "You must have SMP to enable the ADAPTIVE_SX option"
 #endif
 
 CTASSERT(((SX_ADAPTIVESPIN | SX_RECURSE) & LO_CLASSFLAGS) ==
