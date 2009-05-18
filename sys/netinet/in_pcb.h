@@ -163,13 +163,15 @@ struct inpcb {
 	struct	ucred	*inp_cred;	/* (c) cache of socket cred */
 	u_int32_t inp_flow;		/* (i) IPv6 flow information */
 	int	inp_flags;		/* (i) generic IP/datagram flags */
+	int	inp_flags2;		/* (i) generic IP/datagram flags #2*/
 	u_char	inp_vflag;		/* (i) IP version flag (v4/v6) */
 	u_char	inp_ip_ttl;		/* (i) time to live proto */
 	u_char	inp_ip_p;		/* (c) protocol proto */
 	u_char	inp_ip_minttl;		/* (i) minimum TTL or drop */
 	uint32_t inp_ispare1;		/* (x) connection id / queue id */
 	u_int	inp_refcount;		/* (i) refcount */
-	void	*inp_pspare[2];		/* (x) rtentry / general use */
+	struct llentry	*inp_lle;	/* cached L2 information */
+	struct rtentry	*inp_rt;	/* cached L3 information */
 
 	/* Local and foreign ports, local and foreign addr. */
 	struct	in_conninfo inp_inc;	/* (i/p) list for PCB's local port */
@@ -320,7 +322,10 @@ struct inpcbinfo {
 #define INP_TRY_WLOCK(inp)	rw_try_wlock(&(inp)->inp_lock)
 #define INP_RUNLOCK(inp)	rw_runlock(&(inp)->inp_lock)
 #define INP_WUNLOCK(inp)	rw_wunlock(&(inp)->inp_lock)
-#define INP_LOCK_ASSERT(inp)	rw_assert(&(inp)->inp_lock, RA_LOCKED)
+#define	INP_TRY_UPGRADE(inp)	rw_try_upgrade(&(inp)->inp_lock)
+#define	INP_DOWNGRADE(inp)	rw_downgrade(&(inp)->inp_lock)
+#define	INP_WLOCKED(inp)	rw_wowned(&(inp)->inp_lock)
+#define	INP_LOCK_ASSERT(inp)	rw_assert(&(inp)->inp_lock, RA_LOCKED)
 #define	INP_RLOCK_ASSERT(inp)	rw_assert(&(inp)->inp_lock, RA_RLOCKED)
 #define	INP_WLOCK_ASSERT(inp)	rw_assert(&(inp)->inp_lock, RA_WLOCKED)
 #define	INP_UNLOCK_ASSERT(inp)	rw_assert(&(inp)->inp_lock, RA_UNLOCKED)
@@ -384,16 +389,14 @@ void 	inp_4tuple_get(struct inpcb *inp, uint32_t *laddr, uint16_t *lp,
 	(ntohs((lport)) & (mask))
 
 /*
- * Flags for inp_vflags -- historically version flags only, but now quite a
- * bit more due to an overflow of inp_flag, leading to some locking ambiguity
- * as some bits are stable from initial allocation, and others may change.
+ * Flags for inp_vflags -- historically version flags only
  */
 #define	INP_IPV4	0x1
 #define	INP_IPV6	0x2
 #define	INP_IPV6PROTO	0x4		/* opened under IPv6 protocol */
 
 /*
- * Flags for inp_flag.
+ * Flags for inp_flags.
  */
 #define	INP_RECVOPTS		0x01	/* receive incoming IP options */
 #define	INP_RECVRETOPTS		0x02	/* receive IP options for reply */
@@ -448,6 +451,12 @@ void 	inp_4tuple_get(struct inpcb *inp, uint32_t *laddr, uint16_t *lp,
 	 * socket AF version is {newer than,or include}
 	 * actual datagram AF version
 	 */
+
+/*
+ * Flags for inp_flags2.
+ */
+#define	INP_LLE_VALID		0x00000001 /* cached lle is valid */	
+#define	INP_RT_VALID		0x00000002 /* cached rtentry is valid */
 
 #define	INPLOOKUP_WILDCARD	1
 #define	sotoinpcb(so)	((struct inpcb *)(so)->so_pcb)

@@ -99,6 +99,7 @@ __FBSDID("$FreeBSD$");
 #include <net/if.h>
 #include <net/if_types.h>
 #include <net/netisr.h>
+#include <net/route.h>
 
 #include <netinet/in.h>
 #include <netinet/in_var.h>
@@ -168,7 +169,7 @@ static u_char *ctxmith;
 static int lpinittables(void);
 static int lpioctl(struct ifnet *, u_long, caddr_t);
 static int lpoutput(struct ifnet *, struct mbuf *, struct sockaddr *,
-	struct rtentry *);
+       struct route *);
 static void lp_intr(void *);
 
 #define DEVTOSOFTC(dev) \
@@ -603,8 +604,8 @@ lpoutbyte (u_char byte, int spin, device_t ppbus)
 }
 
 static int
-lpoutput (struct ifnet *ifp, struct mbuf *m,
-	  struct sockaddr *dst, struct rtentry *rt)
+lpoutput(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
+    struct route *ro)
 {
     device_t dev = UNITODEVICE(ifp->if_dunit);
     device_t ppbus = device_get_parent(dev);

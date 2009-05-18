@@ -206,6 +206,38 @@ ieee80211_chan_init(struct ieee80211com *ic)
 #undef DEFAULTRATES
 }
 
+static void
+null_update_mcast(struct ifnet *ifp)
+{
+	if_printf(ifp, "need multicast update callback\n");
+}
+
+static void
+null_update_promisc(struct ifnet *ifp)
+{
+	if_printf(ifp, "need promiscuous mode update callback\n");
+}
+
+static int
+null_output(struct ifnet *ifp, struct mbuf *m,
+	struct sockaddr *dst, struct route *ro)
+{
+	if_printf(ifp, "discard raw packet\n");
+	m_freem(m);
+	return EIO;
+}
+
+static void
+null_input(struct ifnet *ifp, struct mbuf *m)
+{
+	if_printf(ifp, "if_input should not be called\n");
+	m_freem(m);
+}
+
+/*
+ * Attach/setup the common net80211 state.  Called by
+ * the driver on attach to prior to creating any vap's.
+ */
 void
 ieee80211_ifattach(struct ieee80211com *ic)
 {

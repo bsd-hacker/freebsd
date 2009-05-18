@@ -79,7 +79,7 @@ struct ieee80211_bpf_params;
 int	ieee80211_raw_xmit(struct ieee80211_node *, struct mbuf *,
 		const struct ieee80211_bpf_params *);
 int	ieee80211_output(struct ifnet *, struct mbuf *,
-		struct sockaddr *, struct rtentry *);
+               struct sockaddr *, struct route *ro);
 int	ieee80211_send_nulldata(struct ieee80211_node *);
 int	ieee80211_send_mgmt(struct ieee80211com *, struct ieee80211_node *,
 		int, int);

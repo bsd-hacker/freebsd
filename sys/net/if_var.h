@@ -70,6 +70,7 @@ struct	socket;
 struct	ether_header;
 struct	carp_if;
 struct  ifvlantrunk;
+struct	route;
 #endif
 
 #include <sys/queue.h>		/* get TAILQ macros */
@@ -149,7 +150,7 @@ struct ifnet {
 /* procedure handles */
 	int	(*if_output)		/* output routine (enqueue) */
 		(struct ifnet *, struct mbuf *, struct sockaddr *,
-		     struct rtentry *);
+		     struct route *);
 	void	(*if_input)		/* input routine (from h/w driver) */
 		(struct ifnet *, struct mbuf *);
 	void	(*if_start)		/* initiate output routine */
@@ -571,6 +572,12 @@ drbr_enqueue(struct ifnet *ifp, struct buf_ring *br, struct mbuf *m)
 	int len = m->m_pkthdr.len;
 	int mflags = m->m_flags;
 
+#ifdef ALTQ
+	if (ALTQ_IS_ENABLED(&ifp->if_snd)) {
+		IFQ_ENQUEUE(&ifp->if_snd, m, error);
+		return (error);
+	}
+#endif
 	if ((error = buf_ring_enqueue(br, m)) == ENOBUFS) {
 		br->br_drops++;
 		_IF_DROP(&ifp->if_snd);
@@ -591,8 +598,31 @@ drbr_free(struct buf_ring *br, struct malloc_type *type)
 
 	buf_ring_free(br, type);
 }
-#endif
 
+static __inline struct mbuf *
+drbr_dequeue(struct ifnet *ifp, struct buf_ring *br)
+{
+#ifdef ALTQ
+	struct mbuf *m;
+
+	if (ALTQ_IS_ENABLED(&ifp->if_snd)) {	
+		IFQ_DRV_DEQUEUE(&ifp->if_snd, m);
+		return (m);
+	}
+#endif
+	return (buf_ring_dequeue_sc(br));
+}
+
+static __inline int
+drbr_empty(struct ifnet *ifp, struct buf_ring *br)
+{
+#ifdef ALTQ
+	if (ALTQ_IS_ENABLED(&ifp->if_snd))
+		return (IFQ_DRV_IS_EMPTY(&ifp->if_snd));
+#endif
+	return (buf_ring_empty(br));
+}
+#endif
 /*
  * 72 was chosen below because it is the size of a TCP/IP
  * header (40) + the minimum mss (32).

@@ -294,6 +294,153 @@ struct ieee80211com {
 				    struct ieee80211_tx_ampdu *);
 };
 
+struct ieee80211_aclator;
+struct ieee80211_tdma_state;
+
+struct ieee80211vap {
+	struct ifmedia		iv_media;	/* interface media config */
+	struct ifnet		*iv_ifp;	/* associated device */
+	struct bpf_if		*iv_rawbpf;	/* packet filter structure */
+	struct sysctl_ctx_list	*iv_sysctl;	/* dynamic sysctl context */
+	struct sysctl_oid	*iv_oid;	/* net.wlan.X sysctl oid */
+
+	TAILQ_ENTRY(ieee80211vap) iv_next;	/* list of vap instances */
+	struct ieee80211com	*iv_ic;		/* back ptr to common state */
+	uint32_t		iv_debug;	/* debug msg flags */
+	struct ieee80211_stats	iv_stats;	/* statistics */
+
+	uint8_t			iv_myaddr[IEEE80211_ADDR_LEN];
+	uint32_t		iv_flags;	/* state flags */
+	uint32_t		iv_flags_ext;	/* extended state flags */
+	uint32_t		iv_flags_ven;	/* vendor state flags */
+	uint32_t		iv_caps;	/* capabilities */
+	uint32_t		iv_htcaps;	/* HT capabilities */
+	enum ieee80211_opmode	iv_opmode;	/* operation mode */
+	enum ieee80211_state	iv_state;	/* state machine state */
+	void			(*iv_newstate_cb)(struct ieee80211vap *,
+				    enum ieee80211_state, int);
+	struct callout		iv_mgtsend;	/* mgmt frame response timer */
+						/* inactivity timer settings */
+	int			iv_inact_init;	/* setting for new station */
+	int			iv_inact_auth;	/* auth but not assoc setting */
+	int			iv_inact_run;	/* authorized setting */
+	int			iv_inact_probe;	/* inactive probe time */
+
+	int			iv_des_nssid;	/* # desired ssids */
+	struct ieee80211_scan_ssid iv_des_ssid[1];/* desired ssid table */
+	uint8_t			iv_des_bssid[IEEE80211_ADDR_LEN];
+	struct ieee80211_channel *iv_des_chan;	/* desired channel */
+	uint16_t		iv_des_mode;	/* desired mode */
+	int			iv_nicknamelen;	/* XXX junk */
+	uint8_t			iv_nickname[IEEE80211_NWID_LEN];
+	u_int			iv_bgscanidle;	/* bg scan idle threshold */
+	u_int			iv_bgscanintvl;	/* bg scan min interval */
+	u_int			iv_scanvalid;	/* scan cache valid threshold */
+	u_int			iv_scanreq_duration;
+	u_int			iv_scanreq_mindwell;
+	u_int			iv_scanreq_maxdwell;
+	uint16_t		iv_scanreq_flags;/* held scan request params */
+	uint8_t			iv_scanreq_nssid;
+	struct ieee80211_scan_ssid iv_scanreq_ssid[IEEE80211_SCAN_MAX_SSID];
+	/* sta-mode roaming state */
+	enum ieee80211_roamingmode iv_roaming;	/* roaming mode */
+	struct ieee80211_roamparam iv_roamparms[IEEE80211_MODE_MAX];
+
+	uint8_t			iv_bmissthreshold;
+	uint8_t			iv_bmiss_count;	/* current beacon miss count */
+	int			iv_bmiss_max;	/* max bmiss before scan */
+	uint16_t		iv_swbmiss_count;/* beacons in last period */
+	uint16_t		iv_swbmiss_period;/* s/w bmiss period */
+	struct callout		iv_swbmiss;	/* s/w beacon miss timer */
+
+	int			iv_ampdu_rxmax;	/* A-MPDU rx limit (bytes) */
+	int			iv_ampdu_density;/* A-MPDU density */
+	int			iv_ampdu_limit;	/* A-MPDU tx limit (bytes) */
+	int			iv_amsdu_limit;	/* A-MSDU tx limit (bytes) */
+	u_int			iv_ampdu_mintraffic[WME_NUM_AC];
+
+	uint32_t		*iv_aid_bitmap;	/* association id map */
+	uint16_t		iv_max_aid;
+	uint16_t		iv_sta_assoc;	/* stations associated */
+	uint16_t		iv_ps_sta;	/* stations in power save */
+	uint16_t		iv_ps_pending;	/* ps sta's w/ pending frames */
+	uint16_t		iv_txseq;	/* mcast xmit seq# space */
+	uint16_t		iv_tim_len;	/* ic_tim_bitmap size (bytes) */
+	uint8_t			*iv_tim_bitmap;	/* power-save stations w/ data*/
+	uint8_t			iv_dtim_period;	/* DTIM period */
+	uint8_t			iv_dtim_count;	/* DTIM count from last bcn */
+						/* set/unset aid pwrsav state */
+	int			iv_csa_count;	/* count for doing CSA */
+
+	struct ieee80211_node	*iv_bss;	/* information for this node */
+	struct ieee80211_txparam iv_txparms[IEEE80211_MODE_MAX];
+	uint16_t		iv_rtsthreshold;
+	uint16_t		iv_fragthreshold;
+	int			iv_inact_timer;	/* inactivity timer wait */
+	/* application-specified IE's to attach to mgt frames */
+	struct ieee80211_appie	*iv_appie_beacon;
+	struct ieee80211_appie	*iv_appie_probereq;
+	struct ieee80211_appie	*iv_appie_proberesp;
+	struct ieee80211_appie	*iv_appie_assocreq;
+	struct ieee80211_appie	*iv_appie_assocresp;
+	struct ieee80211_appie	*iv_appie_wpa;
+	uint8_t			*iv_wpa_ie;
+	uint8_t			*iv_rsn_ie;
+	uint16_t		iv_max_keyix;	/* max h/w key index */
+	ieee80211_keyix		iv_def_txkey;	/* default/group tx key index */
+	struct ieee80211_key	iv_nw_keys[IEEE80211_WEP_NKID];
+	int			(*iv_key_alloc)(struct ieee80211vap *,
+				    struct ieee80211_key *,
+				    ieee80211_keyix *, ieee80211_keyix *);
+	int			(*iv_key_delete)(struct ieee80211vap *, 
+				    const struct ieee80211_key *);
+	int			(*iv_key_set)(struct ieee80211vap *,
+				    const struct ieee80211_key *,
+				    const uint8_t mac[IEEE80211_ADDR_LEN]);
+	void			(*iv_key_update_begin)(struct ieee80211vap *);
+	void			(*iv_key_update_end)(struct ieee80211vap *);
+
+	const struct ieee80211_authenticator *iv_auth; /* authenticator glue */
+	void			*iv_ec;		/* private auth state */
+
+	const struct ieee80211_aclator *iv_acl;	/* acl glue */
+	void			*iv_as;		/* private aclator state */
+
+	struct ieee80211_tdma_state *iv_tdma;	/* tdma state */
+
+	/* operate-mode detach hook */
+	void			(*iv_opdetach)(struct ieee80211vap *);
+	/* receive processing */
+	int			(*iv_input)(struct ieee80211_node *,
+				    struct mbuf *, int rssi, int noise,
+				    uint32_t rstamp);
+	void			(*iv_recv_mgmt)(struct ieee80211_node *,
+				    struct mbuf *, int, int, int, uint32_t);
+	void			(*iv_deliver_data)(struct ieee80211vap *,
+				    struct ieee80211_node *, struct mbuf *);
+#if 0
+	/* send processing */
+	int			(*iv_send_mgmt)(struct ieee80211_node *,
+				     int, int);
+#endif
+	/* beacon miss processing */
+	void			(*iv_bmiss)(struct ieee80211vap *);
+	/* reset device state after 802.11 parameter/state change */
+	int			(*iv_reset)(struct ieee80211vap *, u_long);
+	/* [schedule] beacon frame update */
+	void			(*iv_update_beacon)(struct ieee80211vap *, int);
+	/* power save handling */
+	void			(*iv_update_ps)(struct ieee80211vap *, int);
+	int			(*iv_set_tim)(struct ieee80211_node *, int);
+	/* state machine processing */
+	int			(*iv_newstate)(struct ieee80211vap *,
+				    enum ieee80211_state, int);
+	/* 802.3 output method for raw frame xmit */
+	int			(*iv_output)(struct ifnet *, struct mbuf *,
+				    struct sockaddr *, struct route *);
+};
+MALLOC_DECLARE(M_80211_VAP);
+
 #define	IEEE80211_ADDR_EQ(a1,a2)	(memcmp(a1,a2,IEEE80211_ADDR_LEN) == 0)
 #define	IEEE80211_ADDR_COPY(dst,src)	memcpy(dst,src,IEEE80211_ADDR_LEN)
 

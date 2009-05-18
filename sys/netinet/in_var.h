@@ -81,6 +81,8 @@ struct	in_aliasreq {
 #ifdef	_KERNEL
 extern	u_char	inetctlerrmap[];
 
+#define LLTABLE(ifp)	((struct lltable *)(ifp)->if_afdata[AF_INET])
+
 /*
  * Hash table for IP addresses.
  */
