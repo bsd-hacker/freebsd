@@ -23,6 +23,9 @@ device		uart_ns8250
 options 	GEOM_BSD
 options 	GEOM_MBR
 
-# KSE support went from being default to a kernel option
-options 	KSE
 options		VIMAGE_GLOBALS
+# enable support for native hardware
+options 	NATIVE
+device		atpic
+
+options		FLOWTABLE

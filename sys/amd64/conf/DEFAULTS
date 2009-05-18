@@ -16,9 +16,9 @@ device		io		# I/O device
 device		uart_ns8250
 
 # Default partitioning schemes
-options 	GEOM_BSD
-options 	GEOM_MBR
-
-# KSE support went from being default to a kernel option
-options 	KSE
 options		VIMAGE_GLOBALS
+options 	GEOM_PART_BSD
+options 	GEOM_PART_MBR
+
+options		FLOWTABLE
+

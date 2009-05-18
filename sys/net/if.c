@@ -129,7 +129,6 @@ static void	if_freemulti(struct ifmultiaddr *);
 static void	if_grow(void);
 static void	if_init(void *);
 static void	if_check(void *);
-static void	if_qflush(struct ifnet *);
 static void	if_route(struct ifnet *, int flag, int fam);
 static int	if_setflag(struct ifnet *, int, int, int *, int);
 static void	if_slowtimo(void *);
@@ -598,8 +597,15 @@ if_attach(struct ifnet *ifp)
 	getmicrotime(&ifp->if_lastchange);
 	ifp->if_data.ifi_epoch = time_uptime;
 	ifp->if_data.ifi_datalen = sizeof(struct if_data);
-	ifp->if_transmit = if_transmit;
-	ifp->if_qflush = if_qflush;
+	KASSERT((ifp->if_transmit == NULL && ifp->if_qflush == NULL) ||
+	    (ifp->if_transmit != NULL && ifp->if_qflush != NULL),
+	    ("transmit and qflush must both either be set or both be NULL"));
+
+	if (ifp->if_transmit == NULL) {
+		ifp->if_transmit = if_transmit;
+		ifp->if_qflush = if_qflush;
+	}
+	
 #ifdef MAC
 	mac_ifnet_init(ifp);
 	mac_ifnet_create(ifp);
@@ -1497,7 +1503,6 @@ if_unroute(struct ifnet *ifp, int flag, int fam)
 		if (fam == PF_UNSPEC || (fam == ifa->ifa_addr->sa_family))
 			pfctlinput(PRC_IFDOWN, ifa->ifa_addr);
 	ifp->if_qflush(ifp);
-	
 #ifdef DEV_CARP
 	if (ifp->if_carp)
 		carp_carpdev_state(ifp->if_carp);
@@ -1626,7 +1631,7 @@ if_up(struct ifnet *ifp)
 /*
  * Flush an interface queue.
  */
-static void
+void
 if_qflush(struct ifnet *ifp)
 {
 	struct mbuf *m, *n;

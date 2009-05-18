@@ -405,6 +405,7 @@ VLAN_ARRAY		opt_vlan.h
 XBONEHACK
 KRPC
 NFSLOCKD
+FLOWTABLE		opt_route.h
 
 #
 # SCTP
