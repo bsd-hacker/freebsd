@@ -496,7 +496,9 @@ _callout_stop_safe(c, safe)
 		else {
 			use_lock = 1;
 			class = LOCK_CLASS(c->c_lock);
+#ifdef notyet			
 			class->lc_assert(c->c_lock, LA_XLOCKED);
+#endif
 		}
 	} else
 		use_lock = 0;
@@ -564,7 +566,7 @@ again:
 				sleepq_add(&callout_wait,
 				    &callout_lock.lock_object, "codrain",
 				    SLEEPQ_SLEEP, 0);
-				sleepq_wait(&callout_wait);
+				sleepq_wait(&callout_wait, 0);
 				sq_locked = 0;
 
 				/* Reacquire locks previously released. */

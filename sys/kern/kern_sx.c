@@ -402,8 +402,7 @@ _sx_downgrade(struct sx *sx, const char *file, int line)
 	if (x & SX_LOCK_SHARED_WAITERS)
 		wakeup_swapper = sleepq_broadcast(&sx->lock_object, SLEEPQ_SX,
 		    -1, SQ_SHARED_QUEUE);
-	else
-		sleepq_release(&sx->lock_object);
+	sleepq_release(&sx->lock_object);
 
 	LOCK_LOG_LOCK("XDOWNGRADE", &sx->lock_object, 0, 0, file, line);
 
@@ -557,9 +556,9 @@ _sx_xlock_hard(struct sx *sx, uintptr_t tid, int opts, const char *file,
 		    SLEEPQ_SX | ((opts & SX_INTERRUPTIBLE) ?
 		    SLEEPQ_INTERRUPTIBLE : 0), SQ_EXCLUSIVE_QUEUE);
 		if (!(opts & SX_INTERRUPTIBLE))
-			sleepq_wait(&sx->lock_object);
+			sleepq_wait(&sx->lock_object, 0);
 		else
-			error = sleepq_wait_sig(&sx->lock_object);
+			error = sleepq_wait_sig(&sx->lock_object, 0);
 
 		if (error) {
 			if (LOCK_LOG_TEST(&sx->lock_object, 0))
@@ -630,6 +629,7 @@ _sx_xunlock_hard(struct sx *sx, uintptr_t tid, const char *file, int line)
 	atomic_store_rel_ptr(&sx->sx_lock, x);
 	wakeup_swapper = sleepq_broadcast(&sx->lock_object, SLEEPQ_SX, -1,
 	    queue);
+	sleepq_release(&sx->lock_object);
 	if (wakeup_swapper)
 		kick_proc0();
 }
@@ -779,9 +779,9 @@ _sx_slock_hard(struct sx *sx, int opts, const char *file, int line)
 		    SLEEPQ_SX | ((opts & SX_INTERRUPTIBLE) ?
 		    SLEEPQ_INTERRUPTIBLE : 0), SQ_SHARED_QUEUE);
 		if (!(opts & SX_INTERRUPTIBLE))
-			sleepq_wait(&sx->lock_object);
+			sleepq_wait(&sx->lock_object, 0);
 		else
-			error = sleepq_wait_sig(&sx->lock_object);
+			error = sleepq_wait_sig(&sx->lock_object, 0);
 
 		if (error) {
 			if (LOCK_LOG_TEST(&sx->lock_object, 0))
@@ -879,6 +879,7 @@ _sx_sunlock_hard(struct sx *sx, const char *file, int line)
 			    "exclusive queue", __func__, sx);
 		wakeup_swapper = sleepq_broadcast(&sx->lock_object, SLEEPQ_SX,
 		    -1, SQ_EXCLUSIVE_QUEUE);
+		sleepq_release(&sx->lock_object);
 		if (wakeup_swapper)
 			kick_proc0();
 		break;

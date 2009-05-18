@@ -329,7 +329,7 @@ do {									\
 #define	TDF_SINTR	0x00000008 /* Sleep is interruptible. */
 #define	TDF_TIMEOUT	0x00000010 /* Timing out during sleep. */
 #define	TDF_IDLETD	0x00000020 /* This is a per-CPU idle thread. */
-#define	TDF_SELECT	0x00000040 /* Selecting; wakeup/waiting danger. */
+#define	TDF_SELECT	0x00000040 /* Thread can be swapped. */
 #define	TDF_SLEEPABORT	0x00000080 /* sleepq_abort was called. */
 #define	TDF_UNUSEDx100	0x00000100 /* --available-- */
 #define	TDF_UBORROWING	0x00000200 /* Thread is borrowing user pri. */
@@ -346,7 +346,7 @@ do {									\
 #define	TDF_THRWAKEUP	0x00100000 /* Libthr thread must not suspend itself. */
 #define	TDF_DBSUSPEND	0x00200000 /* Thread is suspended by debugger */
 #define	TDF_SWAPINREQ	0x00400000 /* Swapin request due to wakeup. */
-#define	TDF_UNUSED23	0x00800000 /* --available-- */
+#define	TDF_CANSWAP	0x00800000 /* --available-- */
 #define	TDF_SCHED0	0x01000000 /* Reserved for scheduler private use */
 #define	TDF_SCHED1	0x02000000 /* Reserved for scheduler private use */
 #define	TDF_SCHED2	0x04000000 /* Reserved for scheduler private use */
@@ -778,7 +778,7 @@ MALLOC_DECLARE(M_ZOMBIE);
 } while (0)
 
 /* Check whether a thread is safe to be swapped out. */
-#define	thread_safetoswapout(td) (TD_IS_SLEEPING(td) || TD_IS_SUSPENDED(td))
+#define	thread_safetoswapout(td)	((td)->td_flags & TDF_CANSWAP)
 
 /* Control whether or not it is safe for curthread to sleep. */
 #define	THREAD_NO_SLEEPING() do {					\

@@ -134,7 +134,7 @@ _cv_wait(struct cv *cvp, struct lock_object *lock)
 		if (class->lc_flags & LC_SLEEPABLE)
 			sleepq_lock(cvp);
 	}
-	sleepq_wait(cvp);
+	sleepq_wait(cvp, 0);
 
 #ifdef KTRACE
 	if (KTRPOINT(td, KTR_CSW))
@@ -191,7 +191,7 @@ _cv_wait_unlock(struct cv *cvp, struct lock_object *lock)
 	class->lc_unlock(lock);
 	if (class->lc_flags & LC_SLEEPABLE)
 		sleepq_lock(cvp);
-	sleepq_wait(cvp);
+	sleepq_wait(cvp, 0);
 
 #ifdef KTRACE
 	if (KTRPOINT(td, KTR_CSW))
@@ -252,7 +252,7 @@ _cv_wait_sig(struct cv *cvp, struct lock_object *lock)
 		if (class->lc_flags & LC_SLEEPABLE)
 			sleepq_lock(cvp);
 	}
-	rval = sleepq_wait_sig(cvp);
+	rval = sleepq_wait_sig(cvp, 0);
 
 #ifdef KTRACE
 	if (KTRPOINT(td, KTR_CSW))
@@ -317,7 +317,7 @@ _cv_timedwait(struct cv *cvp, struct lock_object *lock, int timo)
 		if (class->lc_flags & LC_SLEEPABLE)
 			sleepq_lock(cvp);
 	}
-	rval = sleepq_timedwait(cvp);
+	rval = sleepq_timedwait(cvp, 0);
 
 #ifdef KTRACE
 	if (KTRPOINT(td, KTR_CSW))
@@ -386,7 +386,7 @@ _cv_timedwait_sig(struct cv *cvp, struct lock_object *lock, int timo)
 		if (class->lc_flags & LC_SLEEPABLE)
 			sleepq_lock(cvp);
 	}
-	rval = sleepq_timedwait_sig(cvp);
+	rval = sleepq_timedwait_sig(cvp, 0);
 
 #ifdef KTRACE
 	if (KTRPOINT(td, KTR_CSW))
@@ -433,13 +433,19 @@ cv_broadcastpri(struct cv *cvp, int pri)
 {
 	int wakeup_swapper;
 
+	/*
+	 * XXX sleepq_broadcast pri argument changed from -1 meaning
+	 * no pri to 0 meaning no pri.
+	 */
+	if (pri == -1)
+		pri = 0;
 	wakeup_swapper = 0;
 	sleepq_lock(cvp);
 	if (cvp->cv_waiters > 0) {
 		cvp->cv_waiters = 0;
 		wakeup_swapper = sleepq_broadcast(cvp, SLEEPQ_CONDVAR, pri, 0);
-	} else
-		sleepq_release(cvp);
+	}
+	sleepq_release(cvp);
 	if (wakeup_swapper)
 		kick_proc0();
 }

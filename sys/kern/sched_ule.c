@@ -195,6 +195,7 @@ static int preempt_thresh = PRI_MIN_KERN;
 #else 
 static int preempt_thresh = 0;
 #endif
+static int static_boost = 1;
 
 /*
  * tdq - per processor runqs and statistics.  All fields are protected by the
@@ -1985,12 +1986,16 @@ sched_nice(struct proc *p, int nice)
  * Record the sleep time for the interactivity scorer.
  */
 void
-sched_sleep(struct thread *td)
+sched_sleep(struct thread *td, int prio)
 {
 
 	THREAD_LOCK_ASSERT(td, MA_OWNED);
 
 	td->td_slptick = ticks;
+	if (TD_IS_SUSPENDED(td) || prio <= PSOCK)
+		td->td_flags |= TDF_CANSWAP;
+	if (static_boost && prio)
+		sched_prio(td, prio);
 }
 
 /*
@@ -2005,6 +2010,7 @@ sched_wakeup(struct thread *td)
 
 	THREAD_LOCK_ASSERT(td, MA_OWNED);
 	ts = td->td_sched;
+	td->td_flags &= ~TDF_CANSWAP;
 	/*
 	 * If we slept for more than a tick update our interactivity and
 	 * priority.
@@ -2746,6 +2752,8 @@ SYSCTL_INT(_kern_sched, OID_AUTO, interact, CTLFLAG_RW, &sched_interact, 0,
      "Interactivity score threshold");
 SYSCTL_INT(_kern_sched, OID_AUTO, preempt_thresh, CTLFLAG_RW, &preempt_thresh,
      0,"Min priority for preemption, lower priorities have greater precedence");
+SYSCTL_INT(_kern_sched, OID_AUTO, static_boost, CTLFLAG_RW, &static_boost,
+     0,"Controls whether static kernel priorities are assigned to sleeping threads.");
 #ifdef SMP
 SYSCTL_INT(_kern_sched, OID_AUTO, pick_pri, CTLFLAG_RW, &pick_pri, 0,
     "Pick the target cpu based on priority rather than load.");
