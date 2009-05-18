@@ -56,6 +56,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/vimage.h>
 
 #include <net/if.h>
+#include <net/if_llatbl.h>
 #include <net/netisr.h>
 #include <net/pfil.h>
 #include <net/route.h>
@@ -137,11 +138,13 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 	int mtu;
 	int len, error = 0;
 	int nortfree = 0;
+	int neednewroute = 0, neednewlle = 0;
 	struct sockaddr_in *dst = NULL;	/* keep compiler happy */
 	struct in_ifaddr *ia = NULL;
 	int isbroadcast, sw_csum;
 	struct route iproute;
 	struct in_addr odst;
+	struct sockaddr_in *sin;
 #ifdef IPFIREWALL_FORWARD
 	struct m_tag *fwd_tag = NULL;
 #endif
@@ -201,7 +204,7 @@ again:
 	if (ro->ro_rt && ((ro->ro_rt->rt_flags & RTF_UP) == 0 ||
 			  dst->sin_family != AF_INET ||
 			  dst->sin_addr.s_addr != ip->ip_dst.s_addr)) {
-		if (!nortfree)
+		if (!nortfree && (inp == NULL || (ro->ro_rt != inp->inp_rt)))
 			RTFREE(ro->ro_rt);
 		ro->ro_rt = (struct rtentry *)NULL;
 	}
@@ -406,6 +409,22 @@ again:
 		if (ia != NULL) {
 			ip->ip_src = IA_SIN(ia)->sin_addr;
 		}
+		if ((ro == &iproute) && (inp->inp_flags2 & INP_RT_VALID)) {
+                       if (inp->inp_rt->rt_flags & RTF_UP) {
+                               sin = (struct sockaddr_in *)&ro->ro_dst;
+                               sin->sin_family = AF_INET;
+                               sin->sin_len = sizeof(struct sockaddr_in);
+                               sin->sin_addr.s_addr = inp->inp_faddr.s_addr;
+                               ro->ro_rt = inp->inp_rt;
+                       } else
+                               neednewroute = 1;
+               }
+               if ((ro == &iproute) && (inp->inp_flags2 & INP_LLE_VALID)) {
+                       if (inp->inp_lle->la_flags & LLE_VALID) {
+                               ro->ro_lle = inp->inp_lle;
+                       } else
+                               neednewlle = 1;
+               }
 	}
 
 	/*
@@ -642,7 +661,45 @@ passout:
 
 done:
 	if (ro == &iproute && ro->ro_rt && !nortfree) {
-		RTFREE(ro->ro_rt);
+		int wlocked = 0;		
+		struct llentry *la;
+		
+		if (neednewlle || neednewroute) {
+			wlocked = INP_WLOCKED(inp);
+			if (!wlocked && INP_TRY_UPGRADE(inp) == 0)
+				return (error);
+		}
+
+		if ((nortfree == 0) &&
+		    (inp == NULL || (inp->inp_vflag & INP_RT_VALID) == 0))
+			RTFREE(ro->ro_rt);
+		else if (neednewroute && ro->ro_rt != inp->inp_rt) {
+			RTFREE(inp->inp_rt);
+			inp->inp_rt = ro->ro_rt;
+		}
+		if (neednewlle) {
+			IF_AFDATA_RLOCK(ifp);	
+			la = lla_lookup(LLTABLE(ifp), LLE_EXCLUSIVE,
+			    (struct sockaddr *)dst);
+			IF_AFDATA_RUNLOCK(ifp);
+			if ((la == NULL) && 
+			    (ifp->if_flags & (IFF_NOARP | IFF_STATICARP)) == 0) {
+				IF_AFDATA_WLOCK(ifp);
+				la = lla_lookup(LLTABLE(ifp),
+				    (LLE_CREATE | LLE_EXCLUSIVE),
+				    (struct sockaddr *)dst);
+				IF_AFDATA_WUNLOCK(ifp);	
+			}
+			if (la != NULL && (inp->inp_lle != la)) {
+				LLE_FREE(inp->inp_lle);
+				LLE_ADDREF(la);
+				LLE_WUNLOCK(la);
+				inp->inp_lle = la;
+			} else if (la != NULL)
+				LLE_WUNLOCK(la);
+		}
+		if ((neednewlle || neednewroute) && !wlocked)
+			INP_DOWNGRADE(inp);
 	}
 	return (error);
 bad:

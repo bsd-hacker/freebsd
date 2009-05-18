@@ -64,6 +64,7 @@ __FBSDID("$FreeBSD$");
 #include <net/if.h>
 #include <net/if_var.h>
 #include <net/if_types.h>
+#include <net/if_llatbl.h>
 #include <net/route.h>
 
 #include <netinet/in.h>
@@ -498,6 +499,76 @@ in_pcbbind_setup(struct inpcb *inp, struct sockaddr *nam, in_addr_t *laddrp,
 	return (0);
 }
 
+void
+in_pcbrtalloc(struct inpcb *inp, in_addr_t faddr, struct route *sro)
+{
+	struct sockaddr_in *sin;
+	struct sockaddr *dst;
+	struct llentry *la;
+	struct rtentry *rt;
+	struct ifnet *ifp;
+	int flags = LLE_EXCLUSIVE;
+	struct route iproute;
+	
+	INP_WLOCK_ASSERT(inp);
+	if (sro == NULL)
+		sro = &iproute;
+
+	bzero(sro, sizeof(*sro));
+	sin = (struct sockaddr_in *)&sro->ro_dst;
+	sin->sin_family = AF_INET;
+	sin->sin_len = sizeof(struct sockaddr_in);
+	sin->sin_addr.s_addr = faddr;
+	/*
+	 * If route is known our src addr is taken from the i/f,
+	 * else punt.
+	 *
+	 * Find out route to destination.
+	 */
+	if ((inp->inp_socket->so_options & SO_DONTROUTE) == 0) {
+#ifdef RADIX_MPATH
+		rtalloc_mpath_fib(sro, ntohl(faddr->s_addr),
+		    inp->inp_inc.inc_fibnum);
+#else		
+		in_rtalloc_ign(sro, 0, inp->inp_inc.inc_fibnum);
+#endif		
+	}
+
+	rt = sro->ro_rt;
+	if (rt == NULL)
+		return;
+	
+	inp->inp_rt = rt;
+	inp->inp_flags2 |= INP_RT_VALID;
+
+	if (rt->rt_ifp == NULL)
+		return;
+	
+	ifp = rt->rt_ifp;
+	dst = &sro->ro_dst;
+	if (rt->rt_flags & RTF_GATEWAY)
+		dst = rt->rt_gateway;
+		
+	IF_AFDATA_RLOCK(ifp);	
+	la = lla_lookup(LLTABLE(ifp), flags, dst);
+	IF_AFDATA_RUNLOCK(ifp);
+	if ((la == NULL) && 
+	    (ifp->if_flags & (IFF_NOARP | IFF_STATICARP)) == 0) {
+		flags |= (LLE_CREATE | LLE_EXCLUSIVE);
+		IF_AFDATA_WLOCK(ifp);
+		la = lla_lookup(LLTABLE(ifp), flags, dst);
+		IF_AFDATA_WUNLOCK(ifp);	
+	}
+	if (la == NULL)
+		return;
+	
+	LLE_ADDREF(la);
+	LLE_WUNLOCK(la);
+
+	inp->inp_lle = la;
+	inp->inp_flags2 |= INP_LLE_VALID;
+}
+
 /*
  * Connect from a socket to a specified address.
  * Both address and port must be specified in argument sin.
@@ -533,6 +604,7 @@ in_pcbconnect(struct inpcb *inp, struct sockaddr *nam, struct ucred *cred)
 		}
 	}
 
+	in_pcbrtalloc(inp, faddr, NULL);
 	/* Commit the remaining changes. */
 	inp->inp_lport = lport;
 	inp->inp_laddr.s_addr = laddr;
@@ -871,6 +943,17 @@ in_pcbdisconnect(struct inpcb *inp)
 	INP_INFO_WLOCK_ASSERT(inp->inp_pcbinfo);
 	INP_WLOCK_ASSERT(inp);
 
+	if (inp->inp_flags2 & INP_RT_VALID) {
+		inp->inp_flags2 &= ~INP_RT_VALID;
+		RTFREE(inp->inp_rt);
+		inp->inp_rt = NULL;
+	}
+	if (inp->inp_flags2 & INP_LLE_VALID) {
+		inp->inp_flags2 &= ~INP_LLE_VALID;
+		LLE_FREE(inp->inp_lle);
+		inp->inp_lle = NULL;
+	}
+
 	inp->inp_faddr.s_addr = INADDR_ANY;
 	inp->inp_fport = 0;
 	in_pcbrehash(inp);
@@ -907,6 +990,17 @@ in_pcbfree_internal(struct inpcb *inp)
 
 	INP_INFO_WLOCK_ASSERT(ipi);
 	INP_WLOCK_ASSERT(inp);
+
+	if (inp->inp_flags2 & INP_RT_VALID) {		
+		inp->inp_flags2 &= ~INP_RT_VALID;
+		RTFREE(inp->inp_rt);
+		inp->inp_rt = NULL;
+	}
+	if (inp->inp_flags2 & INP_LLE_VALID) {
+		inp->inp_flags2 &= ~INP_LLE_VALID;
+		LLE_FREE(inp->inp_lle);
+		inp->inp_lle = NULL;
+	}
 
 #ifdef IPSEC
 	if (inp->inp_sp != NULL)

@@ -1104,6 +1104,7 @@ tcp_connect(struct tcpcb *tp, struct sockaddr *nam, struct thread *td)
 	inp->inp_laddr = laddr;
 	in_pcbrehash(inp);
 
+	in_pcbrtalloc(inp, inp->inp_faddr.s_addr, NULL);
 	/*
 	 * Compute window scaling to request:
 	 * Scale to fit into sweet spot.  See tcp_syncache.c.
