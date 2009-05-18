@@ -63,7 +63,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/mbuf.h>
 #include <sys/mutex.h>
 #include <sys/proc.h>
-#include <sys/rwlock.h>
+#include <sys/rmlock.h>
 #include <sys/sched.h>
 #include <sys/smp.h>
 #include <sys/socket.h>
@@ -93,22 +93,18 @@ __FBSDID("$FreeBSD$");
  * - The np array, including all fields of struct netisr_proto.
  * - The nws array, including all fields of struct netisr_worker.
  * - The nws_array array.
- *
- * XXXRW: This should use an rmlock.
  */
-static struct rwlock	netisr_rwlock;
-#define	NETISR_LOCK_INIT()	rw_init(&netisr_rwlock, "netisr")
-#ifdef NETISR_LOCKING
-#define	NETISR_LOCK_ASSERT()	rw_assert(&netisr_rwlock, RW_LOCKED)
-#define	NETISR_RLOCK()		rw_rlock(&netisr_rwlock)
-#define	NETISR_RUNLOCK()	rw_runlock(&netisr_rwlock)
+static struct rmlock	netisr_rmlock;
+#define	NETISR_LOCK_INIT()	rm_init(&netisr_rmlock, "netisr", 0)
+#if 0
+#define	NETISR_LOCK_ASSERT()	rm_assert(&netisr_rmlock, RW_LOCKED)
 #else
 #define	NETISR_LOCK_ASSERT()
-#define	NETISR_RLOCK()
-#define	NETISR_RUNLOCK()
 #endif
-#define	NETISR_WLOCK()		rw_wlock(&netisr_rwlock)
-#define	NETISR_WUNLOCK()	rw_wunlock(&netisr_rwlock)
+#define	NETISR_RLOCK(tracker)	rm_rlock(&netisr_rmlock, (tracker))
+#define	NETISR_RUNLOCK(tracker)	rm_runlock(&netisr_rmlock, (tracker))
+#define	NETISR_WLOCK()		rm_wlock(&netisr_rmlock)
+#define	NETISR_WUNLOCK()	rm_wunlock(&netisr_rmlock)
 
 SYSCTL_NODE(_net, OID_AUTO, isr2, CTLFLAG_RW, 0, "netisr2");
 
@@ -277,7 +273,7 @@ u_int
 netisr2_default_flow2cpu(u_int flowid)
 {
 
-	return (netisr2_get_cpuid(flowid % nws_count));
+	return (nws_array[flowid % nws_count]);
 }
 
 /*
@@ -388,6 +384,7 @@ void
 netisr2_getqdrops(const struct netisr_handler *nhp, u_int64_t *qdropp)
 {
 	struct netisr_work *npwp;
+	struct rm_priotracker tracker;
 #ifdef INVARIANTS
 	const char *name;
 #endif
@@ -400,7 +397,7 @@ netisr2_getqdrops(const struct netisr_handler *nhp, u_int64_t *qdropp)
 #endif
 	KASSERT(proto < NETISR_MAXPROT,
 	    ("netisr_getqdrops(%d): protocol too big for %s", proto, name));
-	NETISR_RLOCK();
+	NETISR_RLOCK(&tracker);
 	KASSERT(np[proto].np_handler != NULL,
 	    ("netisr_getqdrops(%d): protocol not registered for %s", proto,
 	    name));
@@ -409,7 +406,7 @@ netisr2_getqdrops(const struct netisr_handler *nhp, u_int64_t *qdropp)
 		npwp = &nws[i].nws_work[proto];
 		*qdropp += npwp->nw_qdrops;
 	}
-	NETISR_RUNLOCK();
+	NETISR_RUNLOCK(&tracker);
 }
 
 /*
@@ -418,6 +415,7 @@ netisr2_getqdrops(const struct netisr_handler *nhp, u_int64_t *qdropp)
 void
 netisr2_getqlimit(const struct netisr_handler *nhp, u_int *qlimitp)
 {
+	struct rm_priotracker tracker;
 #ifdef INVARIANTS
 	const char *name;
 #endif
@@ -429,12 +427,12 @@ netisr2_getqlimit(const struct netisr_handler *nhp, u_int *qlimitp)
 #endif
 	KASSERT(proto < NETISR_MAXPROT,
 	    ("netisr_getqlimit(%d): protocol too big for %s", proto, name));
-	NETISR_RLOCK();
+	NETISR_RLOCK(&tracker);
 	KASSERT(np[proto].np_handler != NULL,
 	    ("netisr_getqlimit(%d): protocol not registered for %s", proto,
 	    name));
 	*qlimitp = np[proto].np_qlimit;
-	NETISR_RUNLOCK();
+	NETISR_RUNLOCK(&tracker);
 }
 
 /*
@@ -684,18 +682,19 @@ netisr2_process_workstream(struct netisr_workstream *nwsp, int proto)
 static void
 swi_net(void *arg)
 {
+	struct rm_priotracker tracker;
 	struct netisr_workstream *nwsp;
 
 	nwsp = arg;
 
-	NETISR_RLOCK();
+	NETISR_RLOCK(&tracker);
 	NWS_LOCK(nwsp);
 	nwsp->nws_flags |= NWS_RUNNING;
 	while (nwsp->nws_pendingwork != 0)
 		netisr2_process_workstream(nwsp, NETISR_ALLPROT);
 	nwsp->nws_flags &= ~(NWS_SIGNALED | NWS_RUNNING);
 	NWS_UNLOCK(nwsp);
-	NETISR_RUNLOCK();
+	NETISR_RUNLOCK(&tracker);
 }
 
 static int
@@ -745,12 +744,13 @@ netisr2_queue_internal(u_int proto, struct mbuf *m, u_int cpuid)
 int
 netisr2_queue_src(u_int proto, uintptr_t source, struct mbuf *m)
 {
+	struct rm_priotracker tracker;
 	u_int cpuid, error;
 
 	KASSERT(proto < NETISR_MAXPROT,
 	    ("netisr2_queue_src: invalid proto %d", proto));
 
-	NETISR_RLOCK();
+	NETISR_RLOCK(&tracker);
 	KASSERT(np[proto].np_handler != NULL,
 	    ("netisr2_queue_src: invalid proto %d", proto));
 
@@ -759,7 +759,7 @@ netisr2_queue_src(u_int proto, uintptr_t source, struct mbuf *m)
 		error = netisr2_queue_internal(proto, m, cpuid);
 	else
 		error = ENOBUFS;
-	NETISR_RUNLOCK();
+	NETISR_RUNLOCK(&tracker);
 	return (error);
 }
 
@@ -782,6 +782,7 @@ netisr_queue(int proto, struct mbuf *m)
 int
 netisr2_dispatch_src(u_int proto, uintptr_t source, struct mbuf *m)
 {
+	struct rm_priotracker tracker;
 	struct netisr_workstream *nwsp;
 	struct netisr_work *npwp;
 
@@ -790,7 +791,7 @@ netisr2_dispatch_src(u_int proto, uintptr_t source, struct mbuf *m)
 
 	KASSERT(proto < NETISR_MAXPROT,
 	    ("netisr2_dispatch_src: invalid proto %u", proto));
-	NETISR_RLOCK();
+	NETISR_RLOCK(&tracker);
 	KASSERT(np[proto].np_handler != NULL,
 	    ("netisr2_dispatch_src: invalid proto %u", proto));
 
@@ -802,7 +803,7 @@ netisr2_dispatch_src(u_int proto, uintptr_t source, struct mbuf *m)
 	npwp->nw_dispatched++;
 	npwp->nw_handled++;
 	np[proto].np_handler(m);
-	NETISR_RUNLOCK();
+	NETISR_RUNLOCK(&tracker);
 	return (0);
 }
 
