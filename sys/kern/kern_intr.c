@@ -79,7 +79,6 @@ struct	intr_entropy {
 
 struct	intr_event *clk_intr_event;
 struct	intr_event *tty_intr_event;
-void	*softclock_ih;
 void	*vm_ih;
 
 static MALLOC_DEFINE(M_ITHREAD, "ithread", "Interrupt Threads");
@@ -957,9 +956,18 @@ swi_add(struct intr_event **eventp, const char *name, driver_intr_t handler,
 		if (eventp != NULL)
 			*eventp = ie;
 	}
-	return (intr_event_add_handler(ie, name, NULL, handler, arg,
-		    (pri * RQ_PPQ) + PI_SOFT, flags, cookiep));
-		    /* XXKSE.. think of a better way to get separate queues */
+	error = intr_event_add_handler(ie, name, NULL, handler, arg,
+	    (pri * RQ_PPQ) + PI_SOFT, flags, cookiep);
+	if (error)
+		return (error);
+	if (pri == SWI_CLOCK) {
+		struct proc *p;
+		p = ie->ie_thread->it_thread->td_proc;
+		PROC_LOCK(p);
+		p->p_flag |= P_NOLOAD;
+		PROC_UNLOCK(p);
+	}
+	return (0);
 }
 
 /*
@@ -1591,17 +1599,9 @@ DB_SHOW_COMMAND(intr, db_show_intr)
 static void
 start_softintr(void *dummy)
 {
-	struct proc *p;
 
-	if (swi_add(&clk_intr_event, "clock", softclock, NULL, SWI_CLOCK,
-		INTR_MPSAFE, &softclock_ih) ||
-	    swi_add(NULL, "vm", swi_vm, NULL, SWI_VM, INTR_MPSAFE, &vm_ih))
-		panic("died while creating standard software ithreads");
-
-	p = clk_intr_event->ie_thread->it_thread->td_proc;
-	PROC_LOCK(p);
-	p->p_flag |= P_NOLOAD;
-	PROC_UNLOCK(p);
+	if (swi_add(NULL, "vm", swi_vm, NULL, SWI_VM, INTR_MPSAFE, &vm_ih))
+		panic("died while creating vm swi ithread");
 }
 SYSINIT(start_softintr, SI_SUB_SOFTINTR, SI_ORDER_FIRST, start_softintr,
     NULL);
