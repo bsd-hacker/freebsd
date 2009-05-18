@@ -34,20 +34,25 @@
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_ipx.h"
+#include "opt_route.h"
 #include "opt_mac.h"
 #include "opt_netgraph.h"
 #include "opt_carp.h"
+#include "opt_mbuf_profiling.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
+#include <sys/lock.h>
 #include <sys/malloc.h>
 #include <sys/module.h>
 #include <sys/mbuf.h>
 #include <sys/random.h>
+#include <sys/rwlock.h>
 #include <sys/socket.h>
 #include <sys/sockio.h>
 #include <sys/sysctl.h>
+#include <sys/vimage.h>
 
 #include <net/if.h>
 #include <net/if_arp.h>
@@ -60,7 +65,9 @@
 #include <net/ethernet.h>
 #include <net/if_bridgevar.h>
 #include <net/if_vlan_var.h>
+#include <net/if_llatbl.h>
 #include <net/pf_mtag.h>
+#include <net/vnet.h>
 
 #if defined(INET) || defined(INET6)
 #include <netinet/in.h>
@@ -68,6 +75,7 @@
 #include <netinet/if_ether.h>
 #include <netinet/ip_fw.h>
 #include <netinet/ip_dummynet.h>
+#include <netinet/vinet.h>
 #endif
 #ifdef INET6
 #include <netinet6/nd6.h>
@@ -81,6 +89,7 @@
 #include <netipx/ipx.h>
 #include <netipx/ipx_if.h>
 #endif
+
 int (*ef_inputp)(struct ifnet*, struct ether_header *eh, struct mbuf *m);
 int (*ef_outputp)(struct ifnet *ifp, struct mbuf **mp,
 		struct sockaddr *dst, short *tp, int *hlen);
@@ -98,6 +107,11 @@ extern u_char	aarp_org_code[3];
 #endif /* NETATALK */
 
 #include <security/mac/mac_framework.h>
+
+#ifdef CTASSERT
+CTASSERT(sizeof (struct ether_header) == ETHER_ADDR_LEN * 2 + 2);
+CTASSERT(sizeof (struct ether_addr) == ETHER_ADDR_LEN);
+#endif
 
 /* netgraph node hooks for ng_ether(4) */
 void	(*ng_ether_input_p)(struct ifnet *ifp, struct mbuf **mp);
@@ -135,8 +149,11 @@ MALLOC_DEFINE(M_ARPCOM, "arpcom", "802.* interface internals");
 int
 ether_ipfw_chk(struct mbuf **m0, struct ifnet *dst,
 	struct ip_fw **rule, int shared);
+#ifdef VIMAGE_GLOBALS
 static int ether_ipfw;
 #endif
+#endif
+
 
 /*
  * Ethernet output routine.
@@ -151,17 +168,19 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 	short type;
 	int error, hdrcmplt = 0;
 	u_char esrc[ETHER_ADDR_LEN], edst[ETHER_ADDR_LEN];
+	struct llentry *lle = NULL;
 	struct ether_header *eh;
 	struct pf_mtag *t;
 	int loop_copy = 1;
 	int hlen;	/* link layer header length */
 
 #ifdef MAC
-	error = mac_check_ifnet_transmit(ifp, m);
+	error = mac_ifnet_check_transmit(ifp, m);
 	if (error)
 		senderr(error);
 #endif
 
+	M_PROFILE(m);
 	if (ifp->if_flags & IFF_MONITOR)
 		senderr(ENETDOWN);
 	if (!((ifp->if_flags & IFF_UP) &&
@@ -172,7 +191,7 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 	switch (dst->sa_family) {
 #ifdef INET
 	case AF_INET:
-		error = arpresolve(ifp, rt0, m, dst, edst);
+		error = arpresolve(ifp, rt0, m, dst, edst, &lle);
 		if (error)
 			return (error == EWOULDBLOCK ? 0 : error);
 		type = htons(ETHERTYPE_IP);
@@ -207,7 +226,7 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 #endif
 #ifdef INET6
 	case AF_INET6:
-		error = nd6_storelladdr(ifp, rt0, m, dst, (u_char *)edst);
+		error = nd6_storelladdr(ifp, m, dst, (u_char *)edst, &lle);
 		if (error)
 			return error;
 		type = htons(ETHERTYPE_IPV6);
@@ -275,6 +294,19 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 		senderr(EAFNOSUPPORT);
 	}
 
+	if (lle != NULL && (lle->la_flags & LLE_IFADDR)) {
+		int csum_flags = 0;
+		if (m->m_pkthdr.csum_flags & CSUM_IP)
+			csum_flags |= (CSUM_IP_CHECKED|CSUM_IP_VALID);
+		if (m->m_pkthdr.csum_flags & CSUM_DELAY_DATA)
+			csum_flags |= (CSUM_DATA_VALID|CSUM_PSEUDO_HDR);
+		if (m->m_pkthdr.csum_flags & CSUM_SCTP)
+			csum_flags |= CSUM_SCTP_VALID;
+		m->m_pkthdr.csum_flags |= csum_flags;
+		m->m_pkthdr.csum_data = 0xffff;
+		return (if_simloop(ifp, m, dst->sa_family, 0));
+	}
+
 	/*
 	 * Add local net header.  If no space in first mbuf,
 	 * allocate another.
@@ -310,6 +342,8 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 			csum_flags |= (CSUM_IP_CHECKED|CSUM_IP_VALID);
 		if (m->m_pkthdr.csum_flags & CSUM_DELAY_DATA)
 			csum_flags |= (CSUM_DATA_VALID|CSUM_PSEUDO_HDR);
+		if (m->m_pkthdr.csum_flags & CSUM_SCTP)
+			csum_flags |= CSUM_SCTP_VALID;
 
 		if (m->m_flags & M_BCAST) {
 			struct mbuf *n;
@@ -383,11 +417,11 @@ bad:			if (m != NULL)
 int
 ether_output_frame(struct ifnet *ifp, struct mbuf *m)
 {
-	int error;
 #if defined(INET) || defined(INET6)
+	INIT_VNET_NET(ifp->if_vnet);
 	struct ip_fw *rule = ip_dn_claim_rule(m);
 
-	if (IPFW_LOADED && ether_ipfw != 0) {
+	if (IPFW_LOADED && V_ether_ipfw != 0) {
 		if (ether_ipfw_chk(&m, ifp, &rule, 0) == 0) {
 			if (m) {
 				m_freem(m);
@@ -402,8 +436,7 @@ ether_output_frame(struct ifnet *ifp, struct mbuf *m)
 	 * Queue message on interface, update output statistics if
 	 * successful, and start output if interface not yet active.
 	 */
-	IFQ_HANDOFF(ifp, m, error);
-	return (error);
+	return ((ifp->if_transmit)(ifp, m));
 }
 
 #if defined(INET) || defined(INET6)
@@ -416,13 +449,14 @@ int
 ether_ipfw_chk(struct mbuf **m0, struct ifnet *dst,
 	struct ip_fw **rule, int shared)
 {
+	INIT_VNET_INET(dst->if_vnet);
 	struct ether_header *eh;
 	struct ether_header save_eh;
 	struct mbuf *m;
 	int i;
 	struct ip_fw_args args;
 
-	if (*rule != NULL && fw_one_pass)
+	if (*rule != NULL && V_fw_one_pass)
 		return 1; /* dummynet packet, already partially processed */
 
 	/*
@@ -570,7 +604,7 @@ ether_input(struct ifnet *ifp, struct mbuf *m)
 	 * Tag the mbuf with an appropriate MAC label before any other
 	 * consumers can get to it.
 	 */
-	mac_create_mbuf_from_ifnet(ifp, m);
+	mac_ifnet_create_mbuf(ifp, m);
 #endif
 
 	/*
@@ -708,11 +742,12 @@ ether_demux(struct ifnet *ifp, struct mbuf *m)
 	KASSERT(ifp != NULL, ("%s: NULL interface pointer", __func__));
 
 #if defined(INET) || defined(INET6)
+	INIT_VNET_NET(ifp->if_vnet);
 	/*
 	 * Allow dummynet and/or ipfw to claim the frame.
 	 * Do not do this for PROMISC frames in case we are re-entered.
 	 */
-	if (IPFW_LOADED && ether_ipfw != 0 && !(m->m_flags & M_PROMISC)) {
+	if (IPFW_LOADED && V_ether_ipfw != 0 && !(m->m_flags & M_PROMISC)) {
 		struct ip_fw *rule = ip_dn_claim_rule(m);
 
 		if (ether_ipfw_chk(&m, NULL, &rule, 0) == 0) {
@@ -929,8 +964,8 @@ ether_ifdetach(struct ifnet *ifp)
 SYSCTL_DECL(_net_link);
 SYSCTL_NODE(_net_link, IFT_ETHER, ether, CTLFLAG_RW, 0, "Ethernet");
 #if defined(INET) || defined(INET6)
-SYSCTL_INT(_net_link_ether, OID_AUTO, ipfw, CTLFLAG_RW,
-	    &ether_ipfw,0,"Pass ether pkts through firewall");
+SYSCTL_V_INT(V_NET, vnet_net, _net_link_ether, OID_AUTO, ipfw, CTLFLAG_RW,
+	     ether_ipfw, 0, "Pass ether pkts through firewall");
 #endif
 
 #if 0
@@ -1113,7 +1148,7 @@ ether_resolvemulti(struct ifnet *ifp, struct sockaddr **llsa,
 		sin = (struct sockaddr_in *)sa;
 		if (!IN_MULTICAST(ntohl(sin->sin_addr.s_addr)))
 			return EADDRNOTAVAIL;
-		MALLOC(sdl, struct sockaddr_dl *, sizeof *sdl, M_IFMADDR,
+		sdl = malloc(sizeof *sdl, M_IFMADDR,
 		       M_NOWAIT|M_ZERO);
 		if (sdl == NULL)
 			return ENOMEM;
@@ -1142,7 +1177,7 @@ ether_resolvemulti(struct ifnet *ifp, struct sockaddr **llsa,
 		}
 		if (!IN6_IS_ADDR_MULTICAST(&sin6->sin6_addr))
 			return EADDRNOTAVAIL;
-		MALLOC(sdl, struct sockaddr_dl *, sizeof *sdl, M_IFMADDR,
+		sdl = malloc(sizeof *sdl, M_IFMADDR,
 		       M_NOWAIT|M_ZERO);
 		if (sdl == NULL)
 			return (ENOMEM);

@@ -25,3 +25,4 @@ options 	GEOM_MBR
 
 # KSE support went from being default to a kernel option
 options 	KSE
+options		VIMAGE_GLOBALS

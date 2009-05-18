@@ -306,7 +306,7 @@ static struct witness_order_list_entry order_lists[] = {
 	 * Routing
 	 */
 	{ "so_rcv", &lock_class_mtx_sleep },
-	{ "radix node head", &lock_class_mtx_sleep },
+	{ "radix node head", &lock_class_rw },
 	{ "rtentry", &lock_class_mtx_sleep },
 	{ "ifaddr", &lock_class_mtx_sleep },
 	{ NULL, NULL },
@@ -321,6 +321,8 @@ static struct witness_order_list_entry order_lists[] = {
 	/*
 	 * UNIX Domain Sockets
 	 */
+	{ "unp_global_rwlock", &lock_class_rw },
+	{ "unp_list_lock", &lock_class_mtx_sleep },
 	{ "unp", &lock_class_mtx_sleep },
 	{ "so_snd", &lock_class_mtx_sleep },
 	{ NULL, NULL },
@@ -429,6 +431,7 @@ static struct witness_order_list_entry order_lists[] = {
 	{ "process slock", &lock_class_mtx_spin },
 	{ "sleepq chain", &lock_class_mtx_spin },
 	{ "umtx lock", &lock_class_mtx_spin },
+	{ "rm_spinlock", &lock_class_mtx_spin },
 	{ "turnstile chain", &lock_class_mtx_spin },
 	{ "turnstile lock", &lock_class_mtx_spin },
 	{ "sched lock", &lock_class_mtx_spin },
@@ -443,6 +446,7 @@ static struct witness_order_list_entry order_lists[] = {
 	/*
 	 * leaf locks
 	 */
+	{ "intrcnt", &lock_class_mtx_spin },
 	{ "icu", &lock_class_mtx_spin },
 #if defined(SMP) && defined(__sparc64__)
 	{ "ipi", &lock_class_mtx_spin },

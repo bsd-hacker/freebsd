@@ -106,6 +106,7 @@ __FBSDID("$FreeBSD$");
 #include <nfsclient/nfsm_subs.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <netinet/in.h>
 #include <netinet/in_var.h>
 

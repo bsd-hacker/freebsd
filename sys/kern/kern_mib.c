@@ -209,6 +209,9 @@ SYSCTL_STRING(_hw, HW_MACHINE_ARCH, machine_arch, CTLFLAG_RD,
 
 char hostname[MAXHOSTNAMELEN];
 
+struct mtx hostname_mtx;
+MTX_SYSINIT(hostname_mtx, &hostname_mtx, "hostname", MTX_DEF);
+
 static int
 sysctl_hostname(SYSCTL_HANDLER_ARGS)
 {

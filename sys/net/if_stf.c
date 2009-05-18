@@ -93,6 +93,7 @@
 #include <machine/cpu.h>
 
 #include <sys/malloc.h>
+#include <sys/vimage.h>
 
 #include <net/if.h>
 #include <net/if_clone.h>
@@ -106,6 +107,7 @@
 #include <netinet/ip.h>
 #include <netinet/ip_var.h>
 #include <netinet/in_var.h>
+#include <netinet/vinet.h>
 
 #include <netinet/ip6.h>
 #include <netinet6/ip6_var.h>
@@ -374,6 +376,7 @@ static struct in6_ifaddr *
 stf_getsrcifa6(ifp)
 	struct ifnet *ifp;
 {
+	INIT_VNET_INET(ifp->if_vnet);
 	struct ifaddr *ia;
 	struct in_ifaddr *ia4;
 	struct sockaddr_in6 *sin6;
@@ -420,7 +423,7 @@ stf_output(ifp, m, dst, rt)
 	int error;
 
 #ifdef MAC
-	error = mac_check_ifnet_transmit(ifp, m);
+	error = mac_ifnet_check_transmit(ifp, m);
 	if (error) {
 		m_freem(m);
 		return (error);
@@ -583,6 +586,7 @@ stf_checkaddr4(sc, in, inifp)
 	struct in_addr *in;
 	struct ifnet *inifp;	/* incoming interface */
 {
+	INIT_VNET_INET(curvnet);
 	struct in_ifaddr *ia4;
 
 	/*
@@ -606,7 +610,7 @@ stf_checkaddr4(sc, in, inifp)
 	/*
 	 * reject packets with broadcast
 	 */
-	for (ia4 = TAILQ_FIRST(&in_ifaddrhead);
+	for (ia4 = TAILQ_FIRST(&V_in_ifaddrhead);
 	     ia4;
 	     ia4 = TAILQ_NEXT(ia4, ia_link))
 	{
@@ -703,7 +707,7 @@ in_stf_input(m, off)
 	ifp = STF2IFP(sc);
 
 #ifdef MAC
-	mac_create_mbuf_from_ifnet(ifp, m);
+	mac_ifnet_create_mbuf(ifp, m);
 #endif
 
 	/*

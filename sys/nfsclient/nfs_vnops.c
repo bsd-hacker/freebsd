@@ -60,6 +60,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/stat.h>
 #include <sys/sysctl.h>
 #include <sys/signalvar.h>
+#include <sys/vimage.h>
 
 #include <vm/vm.h>
 #include <vm/vm_object.h>
@@ -80,8 +81,10 @@ __FBSDID("$FreeBSD$");
 #include <nfsclient/nfsm_subs.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <netinet/in.h>
 #include <netinet/in_var.h>
+#include <netinet/vinet.h>
 
 /* Defs */
 #define	TRUE	1
@@ -1411,15 +1414,18 @@ again:
 	if (v3) {
 		tl = nfsm_build(u_int32_t *, NFSX_UNSIGNED);
 		if (fmode & O_EXCL) {
+			CURVNET_SET(VFSTONFS(dvp->v_mount)->nm_so->so_vnet);
 			*tl = txdr_unsigned(NFSV3CREATE_EXCLUSIVE);
 			tl = nfsm_build(u_int32_t *, NFSX_V3CREATEVERF);
 #ifdef INET
-			if (!TAILQ_EMPTY(&in_ifaddrhead))
-				*tl++ = IA_SIN(TAILQ_FIRST(&in_ifaddrhead))->sin_addr.s_addr;
+			INIT_VNET_INET(curvnet);
+			if (!TAILQ_EMPTY(&V_in_ifaddrhead))
+				*tl++ = IA_SIN(TAILQ_FIRST(&V_in_ifaddrhead))->sin_addr.s_addr;
 			else
 #endif
 				*tl++ = create_verf;
 			*tl = ++create_verf;
+			CURVNET_RESTORE();
 		} else {
 			*tl = txdr_unsigned(NFSV3CREATE_UNCHECKED);
 			nfsm_v3attrbuild(vap, FALSE);

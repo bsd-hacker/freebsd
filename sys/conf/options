@@ -373,6 +373,7 @@ IPSEC			opt_ipsec.h
 IPSEC_DEBUG		opt_ipsec.h
 IPSEC_FILTERTUNNEL	opt_ipsec.h
 IPDIVERT
+MBUF_PROFILING
 DUMMYNET		opt_ipdn.h
 IPFILTER		opt_ipfilter.h
 IPFILTER_LOG		opt_ipfilter.h
@@ -395,6 +396,7 @@ NETATALK		opt_atalk.h
 PPP_BSDCOMP		opt_ppp.h
 PPP_DEFLATE		opt_ppp.h
 PPP_FILTER		opt_ppp.h
+RADIX_MPATH		opt_mpath.h
 SLIP_IFF_OPTS		opt_slip.h
 TCPDEBUG
 TCP_SIGNATURE		opt_inet.h
@@ -770,3 +772,7 @@ XFS
 
 # Interrupt filtering
 INTR_FILTER             opt_global.h
+
+# Virtualize the network stack
+VIMAGE			opt_global.h
+VIMAGE_GLOBALS		opt_global.h

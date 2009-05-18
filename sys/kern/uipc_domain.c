@@ -145,7 +145,8 @@ net_init_domain(struct domain *dp)
 	if (dp->dom_init)
 		(*dp->dom_init)();
 	for (pr = dp->dom_protosw; pr < dp->dom_protoswNPROTOSW; pr++)
-		protosw_init(pr);
+	    protosw_init(pr);
+
 	/*
 	 * update global information about maximums
 	 */
@@ -404,7 +405,6 @@ found:
 	dpr->pr_output = NULL;
 	dpr->pr_ctlinput = NULL;
 	dpr->pr_ctloutput = NULL;
-	dpr->pr_ousrreq = NULL;
 	dpr->pr_init = NULL;
 	dpr->pr_fasttimo = NULL;
 	dpr->pr_slowtimo = NULL;

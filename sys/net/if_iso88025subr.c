@@ -55,10 +55,13 @@
 #include <sys/sockio.h> 
 
 #include <net/if.h>
+#include <net/if_arp.h>
 #include <net/if_dl.h>
 #include <net/if_llc.h>
 #include <net/if_types.h>
+#include <net/if_llatbl.h>
 
+#include <net/ethernet.h>
 #include <net/netisr.h>
 #include <net/route.h>
 #include <net/bpf.h>
@@ -241,10 +244,10 @@ iso88025_output(ifp, m, dst, rt0)
 	struct iso88025_header *th;
 	struct iso88025_header gen_th;
 	struct sockaddr_dl *sdl = NULL;
-	struct rtentry *rt = NULL;
+	struct llentry *lle;
 
 #ifdef MAC
-	error = mac_check_ifnet_transmit(ifp, m);
+	error = mac_ifnet_check_transmit(ifp, m);
 	if (error)
 		senderr(error);
 #endif
@@ -258,14 +261,8 @@ iso88025_output(ifp, m, dst, rt0)
 
 	/* Calculate routing info length based on arp table entry */
 	/* XXX any better way to do this ? */
-	if (rt0 != NULL) {
-		error = rt_check(&rt, &rt0, dst);
-		if (error)
-			goto bad;
-		RT_UNLOCK(rt);
-	}
 
-	if (rt && (sdl = (struct sockaddr_dl *)rt->rt_gateway))
+	if (rt0 && (sdl = (struct sockaddr_dl *)rt0->rt_gateway))
 		if (SDL_ISO88025(sdl)->trld_rcf != 0)
 			rif_len = TR_RCF_RIFLEN(SDL_ISO88025(sdl)->trld_rcf);
 
@@ -287,7 +284,7 @@ iso88025_output(ifp, m, dst, rt0)
 	switch (dst->sa_family) {
 #ifdef INET
 	case AF_INET:
-		error = arpresolve(ifp, rt0, m, dst, edst);
+		error = arpresolve(ifp, rt0, m, dst, edst, &lle);
 		if (error)
 			return (error == EWOULDBLOCK ? 0 : error);
 		snap_type = ETHERTYPE_IP;
@@ -322,7 +319,7 @@ iso88025_output(ifp, m, dst, rt0)
 #endif	/* INET */
 #ifdef INET6
 	case AF_INET6:
-		error = nd6_storelladdr(ifp, rt0, m, dst, (u_char *)edst);
+		error = nd6_storelladdr(ifp, m, dst, (u_char *)edst, &lle);
 		if (error)
 			return (error);
 		snap_type = ETHERTYPE_IPV6;
@@ -336,9 +333,7 @@ iso88025_output(ifp, m, dst, rt0)
 		bcopy((caddr_t)&(satoipx_addr(dst).x_host), (caddr_t)edst,
 		      ISO88025_ADDR_LEN);
 
-		M_PREPEND(m, 3, M_TRYWAIT);
-		if (m == 0)
-			senderr(ENOBUFS);
+		M_PREPEND(m, 3, M_WAIT);
 		m = m_pullup(m, 3);
 		if (m == 0)
 			senderr(ENOBUFS);
@@ -503,7 +498,7 @@ iso88025_input(ifp, m)
 	}
 
 #ifdef MAC
-	mac_create_mbuf_from_ifnet(ifp, m);
+	mac_ifnet_create_mbuf(ifp, m);
 #endif
 
 	/*
@@ -697,7 +692,9 @@ iso88025_resolvemulti (ifp, llsa, sa)
 	struct sockaddr *sa;
 {
 	struct sockaddr_dl *sdl;
+#ifdef INET
 	struct sockaddr_in *sin;
+#endif
 #ifdef INET6
 	struct sockaddr_in6 *sin6;
 #endif
@@ -722,7 +719,7 @@ iso88025_resolvemulti (ifp, llsa, sa)
 		if (!IN_MULTICAST(ntohl(sin->sin_addr.s_addr))) {
 			return (EADDRNOTAVAIL);
 		}
-		MALLOC(sdl, struct sockaddr_dl *, sizeof *sdl, M_IFMADDR,
+		sdl = malloc(sizeof *sdl, M_IFMADDR,
 		       M_NOWAIT|M_ZERO);
 		if (sdl == NULL)
 			return (ENOMEM);
@@ -752,7 +749,7 @@ iso88025_resolvemulti (ifp, llsa, sa)
 		if (!IN6_IS_ADDR_MULTICAST(&sin6->sin6_addr)) {
 			return (EADDRNOTAVAIL);
 		}
-		MALLOC(sdl, struct sockaddr_dl *, sizeof *sdl, M_IFMADDR,
+		sdl = malloc(sizeof *sdl, M_IFMADDR,
 		       M_NOWAIT|M_ZERO);
 		if (sdl == NULL)
 			return (ENOMEM);

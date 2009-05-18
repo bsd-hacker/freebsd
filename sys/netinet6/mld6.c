@@ -79,8 +79,10 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/callout.h>
 #include <sys/malloc.h>
+#include <sys/vimage.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 
 #include <netinet/in.h>
 #include <netinet/in_var.h>
@@ -90,6 +92,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet6/scope6_var.h>
 #include <netinet/icmp6.h>
 #include <netinet6/mld6_var.h>
+#include <netinet6/vinet6.h>
 
 /*
  * Protocol constants
@@ -103,7 +106,9 @@ __FBSDID("$FreeBSD$");
  */
 #define MLD_UNSOLICITED_REPORT_INTERVAL	10
 
+#ifdef VIMAGE_GLOBALS
 static struct ip6_pktopts ip6_opts;
+#endif
 
 static void mld6_sendpkt(struct in6_multi *, int, const struct in6_addr *);
 static void mld_starttimer(struct in6_multi *);
@@ -114,6 +119,7 @@ static u_long mld_timerresid(struct in6_multi *);
 void
 mld6_init(void)
 {
+	INIT_VNET_INET6(curvnet);
 	static u_int8_t hbh_buf[8];
 	struct ip6_hbh *hbh = (struct ip6_hbh *)hbh_buf;
 	u_int16_t rtalert_code = htons((u_int16_t)IP6OPT_RTALERT_MLD);
@@ -128,8 +134,8 @@ mld6_init(void)
 	hbh_buf[5] = IP6OPT_RTALERT_LEN - 2;
 	bcopy((caddr_t)&rtalert_code, &hbh_buf[6], sizeof(u_int16_t));
 
-	ip6_initpktopts(&ip6_opts);
-	ip6_opts.ip6po_hbh = hbh;
+	ip6_initpktopts(&V_ip6_opts);
+	V_ip6_opts.ip6po_hbh = hbh;
 }
 
 static void
@@ -267,6 +273,7 @@ mld6_stop_listening(struct in6_multi *in6m)
 void
 mld6_input(struct mbuf *m, int off)
 {
+	INIT_VNET_INET6(curvnet);
 	struct ip6_hdr *ip6 = mtod(m, struct ip6_hdr *);
 	struct mld_hdr *mldh;
 	struct ifnet *ifp = m->m_pkthdr.rcvif;
@@ -282,7 +289,7 @@ mld6_input(struct mbuf *m, int off)
 #else
 	IP6_EXTHDR_GET(mldh, struct mld_hdr *, m, off, sizeof(*mldh));
 	if (mldh == NULL) {
-		icmp6stat.icp6s_tooshort++;
+		V_icmp6stat.icp6s_tooshort++;
 		return;
 	}
 #endif
@@ -437,6 +444,7 @@ mld6_input(struct mbuf *m, int off)
 static void
 mld6_sendpkt(struct in6_multi *in6m, int type, const struct in6_addr *dst)
 {
+	INIT_VNET_INET6(curvnet);
 	struct mbuf *mh, *md;
 	struct mld_hdr *mldh;
 	struct ip6_hdr *ip6;
@@ -510,9 +518,9 @@ mld6_sendpkt(struct in6_multi *in6m, int type, const struct in6_addr *dst)
 	im6o.im6o_multicast_loop = (ip6_mrouter != NULL);
 
 	/* increment output statictics */
-	icmp6stat.icp6s_outhist[type]++;
+	V_icmp6stat.icp6s_outhist[type]++;
 
-	ip6_output(mh, &ip6_opts, NULL, 0, &im6o, &outif, NULL);
+	ip6_output(mh, &V_ip6_opts, NULL, 0, &im6o, &outif, NULL);
 	if (outif) {
 		icmp6_ifstat_inc(outif, ifs6_out_msg);
 		switch (type) {

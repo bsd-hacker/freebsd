@@ -64,18 +64,18 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/lock.h>
 #include <sys/module.h>
-#include <sys/mutex.h>
 #include <sys/priv.h>
 #include <sys/proc.h>
+#include <sys/rwlock.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
 #include <sys/time.h>
 #include <sys/sysctl.h>
 #include <sys/taskqueue.h>
-#include <net/if.h>	/* IFNAMSIZ, struct ifaddr, ifq head */
+#include <net/if.h>	/* IFNAMSIZ, struct ifaddr, ifq head, lock.h mutex.h */
 #include <net/netisr.h>
 #include <netinet/in.h>
-#include <netinet/ip.h>	/* ip_len, ip_off */
+#include <netinet/ip.h>		/* ip_len, ip_off */
 #include <netinet/ip_fw.h>
 #include <netinet/ip_dummynet.h>
 #include <netinet/ip_var.h>	/* ip_output(), IP_FORWARDING */
@@ -160,7 +160,7 @@ SYSCTL_DECL(_net_inet_ip);
 SYSCTL_NODE(_net_inet_ip, OID_AUTO, dummynet, CTLFLAG_RW, 0, "Dummynet");
 SYSCTL_INT(_net_inet_ip_dummynet, OID_AUTO, hash_size,
     CTLFLAG_RW, &dn_hash_size, 0, "Default hash table size");
-#if 0 /* curr_time is 64 bit */
+#if 0	/* curr_time is 64 bit */
 SYSCTL_LONG(_net_inet_ip_dummynet, OID_AUTO, curr_time,
     CTLFLAG_RD, &curr_time, 0, "Current tick");
 #endif
@@ -1159,8 +1159,7 @@ red_drops(struct dn_flow_set *fs, struct dn_flow_queue *q, int len)
 		 * XXX check wraps...
 		 */
 		if (q->avg) {
-			u_int t = ((uint32_t)curr_time - q->q_time) /
-			    fs->lookup_step;
+			u_int t = (curr_time - q->q_time) / fs->lookup_step;
 
 			q->avg = (t < fs->lookup_depth) ?
 			    SCALE_MUL(q->avg, fs->w_q_lookup[t]) : 0;
@@ -1355,7 +1354,7 @@ dummynet_io(struct mbuf **m0, int dir, struct ip_fw_args *fwa)
 	if (q->head != m)		/* Flow was not idle, we are done. */
 		goto done;
 
-	if (q->q_time < (uint32_t)curr_time)
+	if (q->q_time < curr_time)
 		q->numbytes = io_fast ? fs->pipe->bandwidth : 0;
 	q->q_time = curr_time;
 

@@ -378,12 +378,8 @@ struct adapter {
 	struct task     link_task;
 	struct task     rxtx_task;
 	struct taskqueue *tq;           /* private task queue */
-
-#ifdef IGB_HW_VLAN_SUPPORT
 	eventhandler_tag vlan_attach;
 	eventhandler_tag vlan_detach;
-#endif
-
 	/* Management and WOL features */
 	int		wol;
 	int		has_manage;

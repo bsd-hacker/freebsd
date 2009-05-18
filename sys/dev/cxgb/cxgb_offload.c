@@ -56,11 +56,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/taskqueue.h>
 #include <sys/proc.h>
 
-#ifdef CONFIG_DEFINED
 #include <cxgb_include.h>
-#else
-#include <dev/cxgb/cxgb_include.h>
-#endif
 
 #include <net/route.h>
 
@@ -98,6 +94,9 @@ register_tdev(struct t3cdev *tdev)
 static inline void
 unregister_tdev(struct t3cdev *tdev)
 {
+	if (!inited)
+		return;
+
 	mtx_lock(&cxgb_db_lock);
 	TAILQ_REMOVE(&ofld_dev_list, tdev, entry);
 	mtx_unlock(&cxgb_db_lock);	

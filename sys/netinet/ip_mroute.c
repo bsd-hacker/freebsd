@@ -80,6 +80,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/syslog.h>
 #include <sys/systm.h>
 #include <sys/time.h>
+#include <sys/vimage.h>
 #include <net/if.h>
 #include <net/netisr.h>
 #include <net/route.h>
@@ -95,6 +96,8 @@ __FBSDID("$FreeBSD$");
 #include <netinet/pim.h>
 #include <netinet/pim_var.h>
 #include <netinet/udp.h>
+#include <netinet/vinet.h>
+
 #ifdef INET6
 #include <netinet/ip6.h>
 #include <netinet6/in6_var.h>
@@ -421,6 +424,7 @@ mfc_find(in_addr_t o, in_addr_t g)
 static int
 X_ip_mrouter_set(struct socket *so, struct sockopt *sopt)
 {
+    INIT_VNET_INET(curvnet);
     int	error, optval;
     vifi_t	vifi;
     struct	vifctl vifc;
@@ -428,7 +432,7 @@ X_ip_mrouter_set(struct socket *so, struct sockopt *sopt)
     struct	bw_upcall bw_upcall;
     uint32_t	i;
 
-    if (so != ip_mrouter && sopt->sopt_name != MRT_INIT)
+    if (so != V_ip_mrouter && sopt->sopt_name != MRT_INIT)
 	return EPERM;
 
     error = 0;
@@ -645,6 +649,7 @@ ip_mrouter_reset(void)
 static void
 if_detached_event(void *arg __unused, struct ifnet *ifp)
 {
+    INIT_VNET_INET(curvnet);
     vifi_t vifi;
     int i;
     struct mfc *mfc;
@@ -654,7 +659,7 @@ if_detached_event(void *arg __unused, struct ifnet *ifp)
     struct rtdetq *npq;
 
     MROUTER_LOCK();
-    if (ip_mrouter == NULL) {
+    if (V_ip_mrouter == NULL) {
 	MROUTER_UNLOCK();
     }
 
@@ -708,6 +713,8 @@ if_detached_event(void *arg __unused, struct ifnet *ifp)
 static int
 ip_mrouter_init(struct socket *so, int version)
 {
+    INIT_VNET_INET(curvnet);
+
     if (mrtdebug)
 	log(LOG_DEBUG, "ip_mrouter_init: so_type = %d, pr_protocol = %d\n",
 	    so->so_type, so->so_proto->pr_protocol);
@@ -720,7 +727,7 @@ ip_mrouter_init(struct socket *so, int version)
 
     MROUTER_LOCK();
 
-    if (ip_mrouter != NULL) {
+    if (V_ip_mrouter != NULL) {
 	MROUTER_UNLOCK();
 	return EADDRINUSE;
     }
@@ -738,7 +745,7 @@ ip_mrouter_init(struct socket *so, int version)
 	expire_bw_upcalls_send, NULL);
     callout_reset(&bw_meter_ch, BW_METER_PERIOD, expire_bw_meter_process, NULL);
 
-    ip_mrouter = so;
+    V_ip_mrouter = so;
 
     MROUTER_UNLOCK();
 
@@ -754,6 +761,7 @@ ip_mrouter_init(struct socket *so, int version)
 static int
 X_ip_mrouter_done(void)
 {
+    INIT_VNET_INET(curvnet);
     vifi_t vifi;
     int i;
     struct ifnet *ifp;
@@ -763,7 +771,7 @@ X_ip_mrouter_done(void)
 
     MROUTER_LOCK();
 
-    if (ip_mrouter == NULL) {
+    if (V_ip_mrouter == NULL) {
 	MROUTER_UNLOCK();
 	return EINVAL;
     }
@@ -771,7 +779,7 @@ X_ip_mrouter_done(void)
     /*
      * Detach/disable hooks to the reset of the system.
      */
-    ip_mrouter = NULL;
+    V_ip_mrouter = NULL;
     mrt_api_config = 0;
 
     VIF_LOCK();
@@ -1285,6 +1293,7 @@ static int
 X_ip_mforward(struct ip *ip, struct ifnet *ifp, struct mbuf *m,
     struct ip_moptions *imo)
 {
+    INIT_VNET_INET(curvnet);
     struct mfc *rt;
     int error;
     vifi_t vifi;
@@ -1449,7 +1458,7 @@ X_ip_mforward(struct ip *ip, struct ifnet *ifp, struct mbuf *m,
 	    mrtstat.mrts_upcalls++;
 
 	    k_igmpsrc.sin_addr = ip->ip_src;
-	    if (socket_send(ip_mrouter, mm, &k_igmpsrc) < 0) {
+	    if (socket_send(V_ip_mrouter, mm, &k_igmpsrc) < 0) {
 		log(LOG_WARNING, "ip_mforward: ip_mrouter socket queue full\n");
 		++mrtstat.mrts_upq_sockfull;
 fail1:
@@ -1589,6 +1598,7 @@ expire_upcalls(void *unused)
 static int
 ip_mdq(struct mbuf *m, struct ifnet *ifp, struct mfc *rt, vifi_t xmt_vif)
 {
+    INIT_VNET_INET(curvnet);
     struct ip  *ip = mtod(m, struct ip *);
     vifi_t vifi;
     int plen = ip->ip_len;
@@ -1668,7 +1678,7 @@ ip_mdq(struct mbuf *m, struct ifnet *ifp, struct mfc *rt, vifi_t xmt_vif)
 		mrtstat.mrts_upcalls++;
 
 		k_igmpsrc.sin_addr = im->im_src;
-		if (socket_send(ip_mrouter, mm, &k_igmpsrc) < 0) {
+		if (socket_send(V_ip_mrouter, mm, &k_igmpsrc) < 0) {
 		    log(LOG_WARNING,
 			"ip_mforward: ip_mrouter socket queue full\n");
 		    ++mrtstat.mrts_upq_sockfull;
@@ -1800,6 +1810,7 @@ send_packet(struct vif *vifp, struct mbuf *m)
 static int
 X_ip_rsvp_vif(struct socket *so, struct sockopt *sopt)
 {
+    INIT_VNET_INET(curvnet);
     int error, vifi;
 
     if (so->so_type != SOCK_RAW || so->so_proto->pr_protocol != IPPROTO_RSVP)
@@ -1829,7 +1840,7 @@ X_ip_rsvp_vif(struct socket *so, struct sockopt *sopt)
 	 */
 	if (!viftable[vifi].v_rsvp_on) {
 	    viftable[vifi].v_rsvp_on = 1;
-	    rsvp_on++;
+	    V_rsvp_on++;
 	}
     } else { /* must be VIF_OFF */
 	/*
@@ -1844,7 +1855,7 @@ X_ip_rsvp_vif(struct socket *so, struct sockopt *sopt)
 	 */
 	if (viftable[vifi].v_rsvp_on) {
 	    viftable[vifi].v_rsvp_on = 0;
-	    rsvp_on--;
+	    V_rsvp_on--;
 	}
     }
     VIF_UNLOCK();
@@ -1854,6 +1865,7 @@ X_ip_rsvp_vif(struct socket *so, struct sockopt *sopt)
 static void
 X_ip_rsvp_force_done(struct socket *so)
 {
+    INIT_VNET_INET(curvnet);
     int vifi;
 
     /* Don't bother if it is not the right type of socket. */
@@ -1873,7 +1885,7 @@ X_ip_rsvp_force_done(struct socket *so)
 	     */
 	    if (viftable[vifi].v_rsvp_on) {
 		viftable[vifi].v_rsvp_on = 0;
-		rsvp_on--;
+		V_rsvp_on--;
 	    }
 	}
     }
@@ -1884,19 +1896,20 @@ X_ip_rsvp_force_done(struct socket *so)
 static void
 X_rsvp_input(struct mbuf *m, int off)
 {
+    INIT_VNET_INET(curvnet);
     int vifi;
     struct ip *ip = mtod(m, struct ip *);
     struct sockaddr_in rsvp_src = { sizeof rsvp_src, AF_INET };
     struct ifnet *ifp;
 
     if (rsvpdebug)
-	printf("rsvp_input: rsvp_on %d\n",rsvp_on);
+	printf("rsvp_input: rsvp_on %d\n", V_rsvp_on);
 
     /* Can still get packets with rsvp_on = 0 if there is a local member
      * of the group to which the RSVP packet is addressed.  But in this
      * case we want to throw the packet away.
      */
-    if (!rsvp_on) {
+    if (!V_rsvp_on) {
 	m_freem(m);
 	return;
     }
@@ -1928,7 +1941,7 @@ X_rsvp_input(struct mbuf *m, int off)
 	 * then use it.  Otherwise, drop packet since there
 	 * is no specific socket for this vif.
 	 */
-	if (ip_rsvpd != NULL) {
+	if (V_ip_rsvpd != NULL) {
 	    if (rsvpdebug)
 		printf("rsvp_input: Sending packet up old-style socket\n");
 	    rip_input(m, off);  /* xxx */
@@ -2285,6 +2298,7 @@ bw_meter_prepare_upcall(struct bw_meter *x, struct timeval *nowp)
 static void
 bw_upcalls_send(void)
 {
+    INIT_VNET_INET(curvnet);
     struct mbuf *m;
     int len = bw_upcalls_n * sizeof(bw_upcalls[0]);
     struct sockaddr_in k_igmpsrc = { sizeof k_igmpsrc, AF_INET };
@@ -2323,7 +2337,7 @@ bw_upcalls_send(void)
      * XXX do we need to set the address in k_igmpsrc ?
      */
     mrtstat.mrts_upcalls++;
-    if (socket_send(ip_mrouter, m, &k_igmpsrc) < 0) {
+    if (socket_send(V_ip_mrouter, m, &k_igmpsrc) < 0) {
 	log(LOG_WARNING, "bw_upcalls_send: ip_mrouter socket queue full\n");
 	++mrtstat.mrts_upq_sockfull;
     }
@@ -2645,6 +2659,7 @@ static int
 pim_register_send_upcall(struct ip *ip, struct vif *vifp,
     struct mbuf *mb_copy, struct mfc *rt)
 {
+    INIT_VNET_INET(curvnet);
     struct mbuf *mb_first;
     int len = ntohs(ip->ip_len);
     struct igmpmsg *im;
@@ -2677,7 +2692,7 @@ pim_register_send_upcall(struct ip *ip, struct vif *vifp,
 
     mrtstat.mrts_upcalls++;
 
-    if (socket_send(ip_mrouter, mb_first, &k_igmpsrc) < 0) {
+    if (socket_send(V_ip_mrouter, mb_first, &k_igmpsrc) < 0) {
 	if (mrtdebug & DEBUG_PIM)
 	    log(LOG_WARNING,
 		"mcast: pim_register_send_upcall: ip_mrouter socket queue full");
@@ -2699,6 +2714,7 @@ static int
 pim_register_send_rp(struct ip *ip, struct vif *vifp, struct mbuf *mb_copy,
     struct mfc *rt)
 {
+    INIT_VNET_INET(curvnet);
     struct mbuf *mb_first;
     struct ip *ip_outer;
     struct pim_encap_pimhdr *pimhdr;
@@ -3028,6 +3044,8 @@ pim_input_to_daemon:
 static int
 ip_mroute_modevent(module_t mod, int type, void *unused)
 {
+    INIT_VNET_INET(curvnet);
+
     switch (type) {
     case MOD_LOAD:
 	MROUTER_LOCK_INIT();
@@ -3094,7 +3112,7 @@ ip_mroute_modevent(module_t mod, int type, void *unused)
 	 * just loaded and then unloaded w/o starting up a user
 	 * process we still need to cleanup.
 	 */
-	if (ip_mrouter
+	if (V_ip_mrouter
 #ifdef INET6
 	    || ip6_mrouter
 #endif

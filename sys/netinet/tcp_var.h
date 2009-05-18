@@ -38,7 +38,9 @@
 /*
  * Kernel variables for tcp.
  */
+#ifdef VIMAGE_GLOBALS
 extern int	tcp_do_rfc1323;
+#endif
 
 /* TCP segment queue entry */
 struct tseg_qent {
@@ -48,7 +50,9 @@ struct tseg_qent {
 	struct	mbuf	*tqe_m;		/* mbuf contains packet */
 };
 LIST_HEAD(tsegqe_head, tseg_qent);
+#ifdef VIMAGE_GLOBALS
 extern int	tcp_reass_qsize;
+#endif
 extern struct uma_zone *tcp_reass_zone;
 
 struct sackblk {
@@ -185,6 +189,7 @@ struct tcpcb {
 	void	*t_pspare[3];		/* toe usrreqs / toepcb * / congestion algo / vimage / 1 general use */
 	struct toe_usrreqs *t_tu;       /* offload operations vector */
 	void	*t_toe;			/* TOE pcb pointer */
+	int	t_bytes_acked;		/* # bytes acked during current RTT */
 };
 
 /*
@@ -213,6 +218,9 @@ struct tcpcb {
 #define	TF_FORCEDATA	0x800000	/* force out a byte */
 #define	TF_TSO		0x1000000	/* TSO enabled on this connection */
 #define	TF_TOE		0x2000000	/* this connection is offloaded */
+#define	TF_ECN_PERMIT	0x4000000	/* connection ECN-ready */
+#define	TF_ECN_SND_CWR	0x8000000	/* ECN CWR in queue */
+#define	TF_ECN_SND_ECE	0x10000000	/* ECN ECE in queue */
 
 #define IN_FASTRECOVERY(tp)	(tp->t_flags & TF_FASTRECOVERY)
 #define ENTER_FASTRECOVERY(tp)	tp->t_flags |= TF_FASTRECOVERY
@@ -441,6 +449,13 @@ struct	tcpstat {
 	u_long  tcps_sack_rcv_blocks;	    /* SACK blocks (options) received */
 	u_long  tcps_sack_send_blocks;	    /* SACK blocks (options) sent     */
 	u_long  tcps_sack_sboverflow; 	    /* times scoreboard overflowed */
+	
+	/* ECN related stats */
+	u_long	tcps_ecn_ce;		/* ECN Congestion Experienced */
+	u_long	tcps_ecn_ect0;		/* ECN Capable Transport */
+	u_long	tcps_ecn_ect1;		/* ECN Capable Transport */
+	u_long	tcps_ecn_shs;		/* ECN successful handshakes */
+	u_long	tcps_ecn_rcwnd;		/* # times ECN reduced the cwnd */
 };
 
 /*
@@ -503,12 +518,12 @@ SYSCTL_DECL(_net_inet_tcp_sack);
 MALLOC_DECLARE(M_TCPLOG);
 #endif
 
-struct sockopt;
+extern	int tcp_log_in_vain;
 
+#ifdef VIMAGE_GLOBALS
 extern	struct inpcbhead tcb;		/* head of queue of active tcpcb's */
 extern	struct inpcbinfo tcbinfo;
 extern	struct tcpstat tcpstat;	/* tcp statistics */
-extern	int tcp_log_in_vain;
 extern	int tcp_mssdflt;	/* XXX */
 extern	int tcp_minmss;
 extern	int tcp_delack_enabled;
@@ -517,8 +532,32 @@ extern	int path_mtu_discovery;
 extern	int ss_fltsz;
 extern	int ss_fltsz_local;
 
+extern	int blackhole;
+extern	int drop_synfin;
+extern	int tcp_do_rfc3042;
+extern	int tcp_do_rfc3390;
+extern	int tcp_insecure_rst;
+extern	int tcp_do_autorcvbuf;
+extern	int tcp_autorcvbuf_inc;
+extern	int tcp_autorcvbuf_max;
+extern	int tcp_do_rfc3465;
+extern	int tcp_abc_l_var;
+
+extern	int tcp_do_tso;
+extern	int tcp_do_autosndbuf;
+extern	int tcp_autosndbuf_inc;
+extern	int tcp_autosndbuf_max;
+
+extern	int nolocaltimewait;
+
 extern	int tcp_do_sack;		/* SACK enabled/disabled */
+extern	int tcp_sack_maxholes;
+extern	int tcp_sack_globalmaxholes;
+extern	int tcp_sack_globalholes;
 extern	int tcp_sc_rst_sock_fail;	/* RST on sock alloc failure */
+extern	int tcp_do_ecn;			/* TCP ECN enabled/disabled */
+extern	int tcp_ecn_maxretries;
+#endif /* VIMAGE_GLOBALS */
 
 int	 tcp_addoptions(struct tcpopt *, u_char *);
 struct tcpcb *
@@ -544,6 +583,7 @@ void	 tcp_reass_init(void);
 void	 tcp_input(struct mbuf *, int);
 u_long	 tcp_maxmtu(struct in_conninfo *, int *);
 u_long	 tcp_maxmtu6(struct in_conninfo *, int *);
+void	 tcp_mss_update(struct tcpcb *, int, struct hc_metrics_lite *, int *);
 void	 tcp_mss(struct tcpcb *, int);
 int	 tcp_mssopt(struct in_conninfo *);
 struct inpcb *

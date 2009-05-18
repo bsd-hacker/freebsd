@@ -39,6 +39,8 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include "opt_route.h"
+
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
@@ -48,10 +50,12 @@ __FBSDID("$FreeBSD$");
 #include <sys/socket.h>
 #include <sys/socketvar.h>
 #include <sys/sysctl.h>
+#include <sys/vimage.h>
 
 #include <net/if.h>
 #include <net/if_dl.h>
 #include <net/route.h>
+#include <net/vnet.h>
 
 #include <netinet/in.h>
 #include <netinet/in_systm.h>
@@ -59,6 +63,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/in_var.h>
 #include <netinet/ip_var.h>
 #include <netinet/igmp_var.h>
+#include <netinet/vinet.h>
 
 #ifndef __SOCKUNION_DECLARED
 union sockunion {
@@ -85,7 +90,9 @@ static MALLOC_DEFINE(M_IPMSOURCE, "in_msource", "IPv4 multicast source filter");
  * ip_output() to send IGMP packets while holding the lock; this probably is
  * not quite desirable.
  */
+#ifdef VIMAGE_GLOBALS
 struct in_multihead in_multihead;	/* XXX BSS initialization */
+#endif
 struct mtx in_multi_mtx;
 MTX_SYSINIT(in_multi_mtx, &in_multi_mtx, "in_multi_mtx", MTX_DEF | MTX_RECURSE);
 
@@ -113,8 +120,13 @@ static int	inp_join_group(struct inpcb *, struct sockopt *);
 static int	inp_leave_group(struct inpcb *, struct sockopt *);
 static int	inp_set_multicast_if(struct inpcb *, struct sockopt *);
 static int	inp_set_source_filters(struct inpcb *, struct sockopt *);
-static struct ifnet *
-		ip_multicast_if(struct in_addr *a);
+
+SYSCTL_NODE(_net_inet_ip, OID_AUTO, mcast, CTLFLAG_RW, 0, "IPv4 multicast");
+
+int in_mcast_loop = IP_DEFAULT_MULTICAST_LOOP;
+SYSCTL_INT(_net_inet_ip_mcast, OID_AUTO, loop, CTLFLAG_RW | CTLFLAG_TUN,
+    &in_mcast_loop, 0, "Loopback multicast datagrams by default");
+TUNABLE_INT("net.inet.ip.mcast.loop", &in_mcast_loop);
 
 /*
  * Resize the ip_moptions vector to the next power-of-two minus 1.
@@ -190,7 +202,7 @@ imo_join_source(struct ip_moptions *imo, size_t gidx, sockunion_t *src)
 		return (EADDRNOTAVAIL);
 
 	/* Do not sleep with inp lock held. */
-	MALLOC(nims, struct in_msource *, sizeof(struct in_msource),
+	nims = malloc(sizeof(struct in_msource),
 	    M_IPMSOURCE, M_NOWAIT | M_ZERO);
 	if (nims == NULL)
 		return (ENOBUFS);
@@ -221,7 +233,7 @@ imo_leave_source(struct ip_moptions *imo, size_t gidx, sockunion_t *src)
 		return (EADDRNOTAVAIL);
 
 	TAILQ_REMOVE(&imf->imf_sources, ims, ims_next);
-	FREE(ims, M_IPMSOURCE);
+	free(ims, M_IPMSOURCE);
 	imf->imf_nsources--;
 
 	return (0);
@@ -312,6 +324,7 @@ imo_match_source(struct ip_moptions *imo, size_t gidx, struct sockaddr *src)
 struct in_multi *
 in_addmulti(struct in_addr *ap, struct ifnet *ifp)
 {
+	INIT_VNET_INET(ifp->if_vnet);
 	struct in_multi *inm;
 
 	inm = NULL;
@@ -373,7 +386,7 @@ in_addmulti(struct in_addr *ap, struct ifnet *ifp)
 		ninm->inm_ifma = ifma;
 		ninm->inm_refcount = 1;
 		ifma->ifma_protospec = ninm;
-		LIST_INSERT_HEAD(&in_multihead, ninm, inm_link);
+		LIST_INSERT_HEAD(&V_in_multihead, ninm, inm_link);
 
 		igmp_joingroup(ninm);
 
@@ -464,6 +477,8 @@ in_delmulti_locked(struct in_multi *inm)
 static int
 inp_change_source_filter(struct inpcb *inp, struct sockopt *sopt)
 {
+	INIT_VNET_NET(curvnet);
+	INIT_VNET_INET(curvnet);
 	struct group_source_req		 gsr;
 	sockunion_t			*gsa, *ssa;
 	struct ifnet			*ifp;
@@ -532,7 +547,7 @@ inp_change_source_filter(struct inpcb *inp, struct sockopt *sopt)
 		    ssa->sin.sin_len != sizeof(struct sockaddr_in))
 			return (EINVAL);
 
-		if (gsr.gsr_interface == 0 || if_index < gsr.gsr_interface)
+		if (gsr.gsr_interface == 0 || V_if_index < gsr.gsr_interface)
 			return (EADDRNOTAVAIL);
 
 		ifp = ifnet_byindex(gsr.gsr_interface);
@@ -687,7 +702,7 @@ inp_findmoptions(struct inpcb *inp)
 	imo->imo_multicast_addr.s_addr = INADDR_ANY;
 	imo->imo_multicast_vif = -1;
 	imo->imo_multicast_ttl = IP_DEFAULT_MULTICAST_TTL;
-	imo->imo_multicast_loop = IP_DEFAULT_MULTICAST_LOOP;
+	imo->imo_multicast_loop = in_mcast_loop;
 	imo->imo_num_memberships = 0;
 	imo->imo_max_memberships = IP_MIN_MEMBERSHIPS;
 	imo->imo_membership = immp;
@@ -732,7 +747,7 @@ inp_freemoptions(struct ip_moptions *imo)
 			TAILQ_FOREACH_SAFE(ims, &imf->imf_sources,
 			    ims_next, tims) {
 				TAILQ_REMOVE(&imf->imf_sources, ims, ims_next);
-				FREE(ims, M_IPMSOURCE);
+				free(ims, M_IPMSOURCE);
 				imf->imf_nsources--;
 			}
 			KASSERT(imf->imf_nsources == 0,
@@ -753,6 +768,7 @@ inp_freemoptions(struct ip_moptions *imo)
 static int
 inp_get_source_filters(struct inpcb *inp, struct sockopt *sopt)
 {
+	INIT_VNET_NET(curvnet);
 	struct __msfilterreq	 msfr;
 	sockunion_t		*gsa;
 	struct ifnet		*ifp;
@@ -776,7 +792,7 @@ inp_get_source_filters(struct inpcb *inp, struct sockopt *sopt)
 	if (error)
 		return (error);
 
-	if (msfr.msfr_ifindex == 0 || if_index < msfr.msfr_ifindex)
+	if (msfr.msfr_ifindex == 0 || V_if_index < msfr.msfr_ifindex)
 		return (EINVAL);
 
 	ifp = ifnet_byindex(msfr.msfr_ifindex);
@@ -814,8 +830,7 @@ inp_get_source_filters(struct inpcb *inp, struct sockopt *sopt)
 		 * has asked for, but we always tell userland how big the
 		 * buffer really needs to be.
 		 */
-		MALLOC(tss, struct sockaddr_storage *,
-		    sizeof(struct sockaddr_storage) * msfr.msfr_nsrcs,
+		tss = malloc(sizeof(struct sockaddr_storage) * msfr.msfr_nsrcs,
 		    M_TEMP, M_NOWAIT);
 		if (tss == NULL) {
 			error = ENOBUFS;
@@ -833,7 +848,7 @@ inp_get_source_filters(struct inpcb *inp, struct sockopt *sopt)
 	if (tss != NULL) {
 		error = copyout(tss, msfr.msfr_srcs,
 		    sizeof(struct sockaddr_storage) * msfr.msfr_nsrcs);
-		FREE(tss, M_TEMP);
+		free(tss, M_TEMP);
 	}
 
 	if (error)
@@ -850,6 +865,7 @@ inp_get_source_filters(struct inpcb *inp, struct sockopt *sopt)
 int
 inp_getmoptions(struct inpcb *inp, struct sockopt *sopt)
 {
+	INIT_VNET_INET(curvnet);
 	struct ip_mreqn		 mreqn;
 	struct ip_moptions	*imo;
 	struct ifnet		*ifp;
@@ -956,6 +972,8 @@ inp_getmoptions(struct inpcb *inp, struct sockopt *sopt)
 static int
 inp_join_group(struct inpcb *inp, struct sockopt *sopt)
 {
+	INIT_VNET_NET(curvnet);
+	INIT_VNET_INET(curvnet);
 	struct group_source_req		 gsr;
 	sockunion_t			*gsa, *ssa;
 	struct ifnet			*ifp;
@@ -1021,13 +1039,13 @@ inp_join_group(struct inpcb *inp, struct sockopt *sopt)
 		 * reject the IPv4 multicast join.
 		 */
 		if (mreqs.imr_interface.s_addr != INADDR_ANY) {
-			ifp = ip_multicast_if(&mreqs.imr_interface);
+			INADDR_TO_IFP(mreqs.imr_interface, ifp);
 		} else {
 			struct route ro;
 
 			ro.ro_rt = NULL;
 			*(struct sockaddr_in *)&ro.ro_dst = gsa->sin;
-			in_rtalloc_ign(&ro, RTF_CLONING,
+			in_rtalloc_ign(&ro, 0,
 			   inp->inp_inc.inc_fibnum);
 			if (ro.ro_rt != NULL) {
 				ifp = ro.ro_rt->rt_ifp;
@@ -1037,7 +1055,7 @@ inp_join_group(struct inpcb *inp, struct sockopt *sopt)
 			} else {
 				struct in_ifaddr *ia;
 				struct ifnet *mfp = NULL;
-				TAILQ_FOREACH(ia, &in_ifaddrhead, ia_link) {
+				TAILQ_FOREACH(ia, &V_in_ifaddrhead, ia_link) {
 					mfp = ia->ia_ifp;
 					if (!(mfp->if_flags & IFF_LOOPBACK) &&
 					     (mfp->if_flags & IFF_MULTICAST)) {
@@ -1090,7 +1108,7 @@ inp_join_group(struct inpcb *inp, struct sockopt *sopt)
 		/*
 		 * Obtain the ifp.
 		 */
-		if (gsr.gsr_interface == 0 || if_index < gsr.gsr_interface)
+		if (gsr.gsr_interface == 0 || V_if_index < gsr.gsr_interface)
 			return (EADDRNOTAVAIL);
 		ifp = ifnet_byindex(gsr.gsr_interface);
 
@@ -1212,6 +1230,8 @@ out_locked:
 static int
 inp_leave_group(struct inpcb *inp, struct sockopt *sopt)
 {
+	INIT_VNET_NET(curvnet);
+	INIT_VNET_INET(curvnet);
 	struct group_source_req		 gsr;
 	struct ip_mreq_source		 mreqs;
 	sockunion_t			*gsa, *ssa;
@@ -1299,7 +1319,7 @@ inp_leave_group(struct inpcb *inp, struct sockopt *sopt)
 				return (EINVAL);
 		}
 
-		if (gsr.gsr_interface == 0 || if_index < gsr.gsr_interface)
+		if (gsr.gsr_interface == 0 || V_if_index < gsr.gsr_interface)
 			return (EADDRNOTAVAIL);
 
 		ifp = ifnet_byindex(gsr.gsr_interface);
@@ -1367,7 +1387,7 @@ inp_leave_group(struct inpcb *inp, struct sockopt *sopt)
 	if (imo->imo_mfilters != NULL) {
 		TAILQ_FOREACH_SAFE(ims, &imf->imf_sources, ims_next, tims) {
 			TAILQ_REMOVE(&imf->imf_sources, ims, ims_next);
-			FREE(ims, M_IPMSOURCE);
+			free(ims, M_IPMSOURCE);
 			imf->imf_nsources--;
 		}
 		KASSERT(imf->imf_nsources == 0,
@@ -1400,6 +1420,7 @@ out_locked:
 static int
 inp_set_multicast_if(struct inpcb *inp, struct sockopt *sopt)
 {
+	INIT_VNET_NET(curvnet);
 	struct in_addr		 addr;
 	struct ip_mreqn		 mreqn;
 	struct ifnet		*ifp;
@@ -1416,7 +1437,7 @@ inp_set_multicast_if(struct inpcb *inp, struct sockopt *sopt)
 		if (error)
 			return (error);
 
-		if (mreqn.imr_ifindex < 0 || if_index < mreqn.imr_ifindex)
+		if (mreqn.imr_ifindex < 0 || V_if_index < mreqn.imr_ifindex)
 			return (EINVAL);
 
 		if (mreqn.imr_ifindex == 0) {
@@ -1438,7 +1459,7 @@ inp_set_multicast_if(struct inpcb *inp, struct sockopt *sopt)
 		if (addr.s_addr == INADDR_ANY) {
 			ifp = NULL;
 		} else {
-			ifp = ip_multicast_if(&addr);
+			INADDR_TO_IFP(addr, ifp);
 			if (ifp == NULL)
 				return (EADDRNOTAVAIL);
 		}
@@ -1468,6 +1489,7 @@ inp_set_multicast_if(struct inpcb *inp, struct sockopt *sopt)
 static int
 inp_set_source_filters(struct inpcb *inp, struct sockopt *sopt)
 {
+	INIT_VNET_NET(curvnet);
 	struct __msfilterreq	 msfr;
 	sockunion_t		*gsa;
 	struct ifnet		*ifp;
@@ -1497,7 +1519,7 @@ inp_set_source_filters(struct inpcb *inp, struct sockopt *sopt)
 
 	gsa->sin.sin_port = 0;	/* ignore port */
 
-	if (msfr.msfr_ifindex == 0 || if_index < msfr.msfr_ifindex)
+	if (msfr.msfr_ifindex == 0 || V_if_index < msfr.msfr_ifindex)
 		return (EADDRNOTAVAIL);
 
 	ifp = ifnet_byindex(msfr.msfr_ifindex);
@@ -1526,7 +1548,7 @@ inp_set_source_filters(struct inpcb *inp, struct sockopt *sopt)
 	 */
 	TAILQ_FOREACH_SAFE(ims, &imf->imf_sources, ims_next, tims) {
 		TAILQ_REMOVE(&imf->imf_sources, ims, ims_next);
-		FREE(ims, M_IPMSOURCE);
+		free(ims, M_IPMSOURCE);
 		imf->imf_nsources--;
 	}
 	KASSERT(imf->imf_nsources == 0,
@@ -1560,13 +1582,12 @@ inp_set_source_filters(struct inpcb *inp, struct sockopt *sopt)
 		 * that we may copy them with a single copyin. This
 		 * allows us to deal with page faults up-front.
 		 */
-		MALLOC(kss, struct sockaddr_storage *,
-		    sizeof(struct sockaddr_storage) * msfr.msfr_nsrcs,
+		kss = malloc(sizeof(struct sockaddr_storage) * msfr.msfr_nsrcs,
 		    M_TEMP, M_WAITOK);
 		error = copyin(msfr.msfr_srcs, kss,
 		    sizeof(struct sockaddr_storage) * msfr.msfr_nsrcs);
 		if (error) {
-			FREE(kss, M_TEMP);
+			free(kss, M_TEMP);
 			return (error);
 		}
 
@@ -1606,7 +1627,7 @@ inp_set_source_filters(struct inpcb *inp, struct sockopt *sopt)
 				break;
 		}
 		if (error) {
-			FREE(kss, M_TEMP);
+			free(kss, M_TEMP);
 			return (error);
 		}
 
@@ -1615,8 +1636,7 @@ inp_set_source_filters(struct inpcb *inp, struct sockopt *sopt)
 		 * entries we are about to allocate, in case we
 		 * abruptly need to free them.
 		 */
-		MALLOC(pnims, struct in_msource **,
-		    sizeof(struct in_msource *) * msfr.msfr_nsrcs,
+		pnims = malloc(sizeof(struct in_msource *) * msfr.msfr_nsrcs,
 		    M_TEMP, M_WAITOK | M_ZERO);
 
 		/*
@@ -1627,18 +1647,17 @@ inp_set_source_filters(struct inpcb *inp, struct sockopt *sopt)
 		pkss = kss;
 		nims = NULL;
 		for (i = 0; i < msfr.msfr_nsrcs; i++, pkss++) {
-			MALLOC(nims, struct in_msource *,
-			    sizeof(struct in_msource) * msfr.msfr_nsrcs,
-			    M_IPMSOURCE, M_WAITOK | M_ZERO);
+			nims = malloc(sizeof(struct in_msource) *
+			    msfr.msfr_nsrcs, M_IPMSOURCE, M_WAITOK | M_ZERO);
 			pnims[i] = nims;
 		}
 		if (i < msfr.msfr_nsrcs) {
 			for (j = 0; j < i; j++) {
 				if (pnims[j] != NULL)
-					FREE(pnims[j], M_IPMSOURCE);
+					free(pnims[j], M_IPMSOURCE);
 			}
-			FREE(pnims, M_TEMP);
-			FREE(kss, M_TEMP);
+			free(pnims, M_TEMP);
+			free(kss, M_TEMP);
 			return (ENOBUFS);
 		}
 
@@ -1657,8 +1676,8 @@ inp_set_source_filters(struct inpcb *inp, struct sockopt *sopt)
 			    ims_next);
 			imf->imf_nsources++;
 		}
-		FREE(pnims, M_TEMP);
-		FREE(kss, M_TEMP);
+		free(pnims, M_TEMP);
+		free(kss, M_TEMP);
 	}
 
 	/*
@@ -1823,23 +1842,3 @@ inp_setmoptions(struct inpcb *inp, struct sockopt *sopt)
 
 	return (error);
 }
-
-/*
- * Following RFC1724 section 3.3, 0.0.0.0/8 is interpreted as interface index.
- */
-static struct ifnet *
-ip_multicast_if(struct in_addr *a)
-{
-	int ifindex;
-	struct ifnet *ifp;
-
-	if (ntohl(a->s_addr) >> 24 == 0) {
-		ifindex = ntohl(a->s_addr) & 0xffffff;
-		if (ifindex < 0 || if_index < ifindex)
-			return (NULL);
-		ifp = ifnet_byindex(ifindex);
-	} else
-		INADDR_TO_IFP(*a, ifp);
-	return (ifp);
-}
-

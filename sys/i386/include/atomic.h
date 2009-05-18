@@ -32,6 +32,47 @@
 #error this file needs sys/cdefs.h as a prerequisite
 #endif
 
+#if defined(_KERNEL)
+#include <machine/cpufunc.h>
+#include <machine/specialreg.h>
+#define	mb()	__asm __volatile(			\
+	"testl	%0,cpu_feature				\n\
+	je	2f					\n\
+	mfence						\n\
+1:							\n\
+	.section .text.offpath				\n\
+2:	lock						\n\
+	addl	$0,cpu_feature				\n\
+	jmp	1b					\n\
+	.text						\n\
+"							\
+	: : "i"(CPUID_SSE2) : "memory")
+#define	wmb()	__asm __volatile(			\
+	"testl	%0,cpu_feature				\n\
+	je	2f					\n\
+	sfence						\n\
+1:							\n\
+	.section .text.offpath				\n\
+2:	lock						\n\
+	addl	$0,cpu_feature				\n\
+	jmp	1b					\n\
+	.text						\n\
+"							\
+	: : "i"(CPUID_XMM) : "memory")
+#define	rmb()	__asm __volatile(			\
+	"testl	%0,cpu_feature				\n\
+	je	2f					\n\
+	lfence						\n\
+1:							\n\
+	.section .text.offpath				\n\
+2:	lock						\n\
+	addl	$0,cpu_feature				\n\
+	jmp	1b					\n\
+	.text						\n\
+"							\
+	: : "i"(CPUID_SSE2) : "memory")
+#endif
+
 /*
  * Various simple operations on memory, each of which is atomic in the
  * presence of interrupts and multiple processors.

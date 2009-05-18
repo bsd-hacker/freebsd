@@ -46,6 +46,7 @@
  */
 #define	NETISR_POLL	0		/* polling callback, must be first */
 #define	NETISR_IP	2		/* same as AF_INET */
+#define	NETISR_IGMP	3		/* IGMPv3 output queue */
 #define	NETISR_ROUTE	14		/* routing socket */
 #define	NETISR_AARP	15		/* Appletalk ARP */
 #define	NETISR_ATALK2	16		/* Appletalk phase 2 */
@@ -83,7 +84,7 @@ typedef void netisr_t (struct mbuf *);
   
 void	netisr_dispatch(int, struct mbuf *);
 int	netisr_queue(int, struct mbuf *);
-#define	NETISR_MPSAFE	0x0001		/* ISR does not need Giant */
+#define	NETISR_FORCEQUEUE	0x0002		/* Force queued dispatch. */
 void	netisr_register(int, netisr_t *, struct ifqueue *, int);
 void	netisr_unregister(int);
 

@@ -35,6 +35,7 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_ddb.h"
+#include "opt_inet.h"
 #include "opt_ipsec.h"
 #include "opt_inet6.h"
 #include "opt_mac.h"
@@ -52,6 +53,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/jail.h>
 #include <sys/kernel.h>
 #include <sys/sysctl.h>
+#include <sys/vimage.h>
 
 #ifdef DDB
 #include <ddb/ddb.h>
@@ -60,6 +62,7 @@ __FBSDID("$FreeBSD$");
 #include <vm/uma.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_types.h>
 #include <net/route.h>
 
@@ -70,9 +73,11 @@ __FBSDID("$FreeBSD$");
 #include <netinet/tcp_var.h>
 #include <netinet/udp.h>
 #include <netinet/udp_var.h>
+#include <netinet/vinet.h>
 #ifdef INET6
 #include <netinet/ip6.h>
 #include <netinet6/ip6_var.h>
+#include <netinet6/vinet6.h>
 #endif /* INET6 */
 
 
@@ -83,32 +88,34 @@ __FBSDID("$FreeBSD$");
 
 #include <security/mac/mac_framework.h>
 
+#ifdef VIMAGE_GLOBALS
 /*
  * These configure the range of local port addresses assigned to
  * "unspecified" outgoing connections/packets/whatever.
  */
-int	ipport_lowfirstauto  = IPPORT_RESERVED - 1;	/* 1023 */
-int	ipport_lowlastauto = IPPORT_RESERVEDSTART;	/* 600 */
-int	ipport_firstauto = IPPORT_HIFIRSTAUTO;		/* 49152 */
-int	ipport_lastauto  = IPPORT_HILASTAUTO;		/* 65535 */
-int	ipport_hifirstauto = IPPORT_HIFIRSTAUTO;	/* 49152 */
-int	ipport_hilastauto  = IPPORT_HILASTAUTO;		/* 65535 */
+int	ipport_lowfirstauto;
+int	ipport_lowlastauto;
+int	ipport_firstauto;
+int	ipport_lastauto;
+int	ipport_hifirstauto;
+int	ipport_hilastauto;
 
 /*
  * Reserved ports accessible only to root. There are significant
  * security considerations that must be accounted for when changing these,
  * but the security benefits can be great. Please be careful.
  */
-int	ipport_reservedhigh = IPPORT_RESERVED - 1;	/* 1023 */
-int	ipport_reservedlow = 0;
+int	ipport_reservedhigh;
+int	ipport_reservedlow;
 
 /* Variables dealing with random ephemeral port allocation. */
-int	ipport_randomized = 1;	/* user controlled via sysctl */
-int	ipport_randomcps = 10;	/* user controlled via sysctl */
-int	ipport_randomtime = 45;	/* user controlled via sysctl */
-int	ipport_stoprandom = 0;	/* toggled by ipport_tick */
+int	ipport_randomized;
+int	ipport_randomcps;
+int	ipport_randomtime;
+int	ipport_stoprandom;
 int	ipport_tcpallocs;
 int	ipport_tcplastcount;
+#endif
 
 #define RANGECHK(var, min, max) \
 	if ((var) < (min)) { (var) = (min); } \
@@ -117,16 +124,17 @@ int	ipport_tcplastcount;
 static int
 sysctl_net_ipport_check(SYSCTL_HANDLER_ARGS)
 {
+	INIT_VNET_INET(curvnet);
 	int error;
 
 	error = sysctl_handle_int(oidp, oidp->oid_arg1, oidp->oid_arg2, req);
 	if (error == 0) {
-		RANGECHK(ipport_lowfirstauto, 1, IPPORT_RESERVED - 1);
-		RANGECHK(ipport_lowlastauto, 1, IPPORT_RESERVED - 1);
-		RANGECHK(ipport_firstauto, IPPORT_RESERVED, IPPORT_MAX);
-		RANGECHK(ipport_lastauto, IPPORT_RESERVED, IPPORT_MAX);
-		RANGECHK(ipport_hifirstauto, IPPORT_RESERVED, IPPORT_MAX);
-		RANGECHK(ipport_hilastauto, IPPORT_RESERVED, IPPORT_MAX);
+		RANGECHK(V_ipport_lowfirstauto, 1, IPPORT_RESERVED - 1);
+		RANGECHK(V_ipport_lowlastauto, 1, IPPORT_RESERVED - 1);
+		RANGECHK(V_ipport_firstauto, IPPORT_RESERVED, IPPORT_MAX);
+		RANGECHK(V_ipport_lastauto, IPPORT_RESERVED, IPPORT_MAX);
+		RANGECHK(V_ipport_hifirstauto, IPPORT_RESERVED, IPPORT_MAX);
+		RANGECHK(V_ipport_hilastauto, IPPORT_RESERVED, IPPORT_MAX);
 	}
 	return (error);
 }
@@ -135,30 +143,37 @@ sysctl_net_ipport_check(SYSCTL_HANDLER_ARGS)
 
 SYSCTL_NODE(_net_inet_ip, IPPROTO_IP, portrange, CTLFLAG_RW, 0, "IP Ports");
 
-SYSCTL_PROC(_net_inet_ip_portrange, OID_AUTO, lowfirst, CTLTYPE_INT|CTLFLAG_RW,
-	   &ipport_lowfirstauto, 0, &sysctl_net_ipport_check, "I", "");
-SYSCTL_PROC(_net_inet_ip_portrange, OID_AUTO, lowlast, CTLTYPE_INT|CTLFLAG_RW,
-	   &ipport_lowlastauto, 0, &sysctl_net_ipport_check, "I", "");
-SYSCTL_PROC(_net_inet_ip_portrange, OID_AUTO, first, CTLTYPE_INT|CTLFLAG_RW,
-	   &ipport_firstauto, 0, &sysctl_net_ipport_check, "I", "");
-SYSCTL_PROC(_net_inet_ip_portrange, OID_AUTO, last, CTLTYPE_INT|CTLFLAG_RW,
-	   &ipport_lastauto, 0, &sysctl_net_ipport_check, "I", "");
-SYSCTL_PROC(_net_inet_ip_portrange, OID_AUTO, hifirst, CTLTYPE_INT|CTLFLAG_RW,
-	   &ipport_hifirstauto, 0, &sysctl_net_ipport_check, "I", "");
-SYSCTL_PROC(_net_inet_ip_portrange, OID_AUTO, hilast, CTLTYPE_INT|CTLFLAG_RW,
-	   &ipport_hilastauto, 0, &sysctl_net_ipport_check, "I", "");
-SYSCTL_INT(_net_inet_ip_portrange, OID_AUTO, reservedhigh,
-	   CTLFLAG_RW|CTLFLAG_SECURE, &ipport_reservedhigh, 0, "");
-SYSCTL_INT(_net_inet_ip_portrange, OID_AUTO, reservedlow,
-	   CTLFLAG_RW|CTLFLAG_SECURE, &ipport_reservedlow, 0, "");
-SYSCTL_INT(_net_inet_ip_portrange, OID_AUTO, randomized, CTLFLAG_RW,
-	   &ipport_randomized, 0, "Enable random port allocation");
-SYSCTL_INT(_net_inet_ip_portrange, OID_AUTO, randomcps, CTLFLAG_RW,
-	   &ipport_randomcps, 0, "Maximum number of random port "
-	   "allocations before switching to a sequental one");
-SYSCTL_INT(_net_inet_ip_portrange, OID_AUTO, randomtime, CTLFLAG_RW,
-	   &ipport_randomtime, 0, "Minimum time to keep sequental port "
-	   "allocation before switching to a random one");
+SYSCTL_V_PROC(V_NET, vnet_inet, _net_inet_ip_portrange, OID_AUTO,
+	lowfirst, CTLTYPE_INT|CTLFLAG_RW, ipport_lowfirstauto, 0,
+	&sysctl_net_ipport_check, "I", "");
+SYSCTL_V_PROC(V_NET, vnet_inet, _net_inet_ip_portrange, OID_AUTO,
+	lowlast, CTLTYPE_INT|CTLFLAG_RW, ipport_lowlastauto, 0,
+	&sysctl_net_ipport_check, "I", "");
+SYSCTL_V_PROC(V_NET, vnet_inet, _net_inet_ip_portrange, OID_AUTO,
+	first, CTLTYPE_INT|CTLFLAG_RW, ipport_firstauto, 0,
+	&sysctl_net_ipport_check, "I", "");
+SYSCTL_V_PROC(V_NET, vnet_inet, _net_inet_ip_portrange, OID_AUTO,
+	last, CTLTYPE_INT|CTLFLAG_RW, ipport_lastauto, 0,
+	&sysctl_net_ipport_check, "I", "");
+SYSCTL_V_PROC(V_NET, vnet_inet, _net_inet_ip_portrange, OID_AUTO,
+	hifirst, CTLTYPE_INT|CTLFLAG_RW, ipport_hifirstauto, 0,	
+	&sysctl_net_ipport_check, "I", "");
+SYSCTL_V_PROC(V_NET, vnet_inet, _net_inet_ip_portrange, OID_AUTO,
+	hilast, CTLTYPE_INT|CTLFLAG_RW, ipport_hilastauto, 0,
+	&sysctl_net_ipport_check, "I", "");
+SYSCTL_V_INT(V_NET, vnet_inet, _net_inet_ip_portrange, OID_AUTO,
+	reservedhigh, CTLFLAG_RW|CTLFLAG_SECURE, ipport_reservedhigh, 0, "");
+SYSCTL_V_INT(V_NET, vnet_inet, _net_inet_ip_portrange, OID_AUTO, reservedlow,
+	CTLFLAG_RW|CTLFLAG_SECURE, ipport_reservedlow, 0, "");
+SYSCTL_V_INT(V_NET, vnet_inet, _net_inet_ip_portrange, OID_AUTO, randomized,
+	CTLFLAG_RW, ipport_randomized, 0, "Enable random port allocation");
+SYSCTL_V_INT(V_NET, vnet_inet, _net_inet_ip_portrange, OID_AUTO, randomcps,
+	CTLFLAG_RW, ipport_randomcps, 0, "Maximum number of random port "
+	"allocations before switching to a sequental one");
+SYSCTL_V_INT(V_NET, vnet_inet, _net_inet_ip_portrange, OID_AUTO, randomtime,
+	CTLFLAG_RW, ipport_randomtime, 0,
+	"Minimum time to keep sequental port "
+	"allocation before switching to a random one");
 
 /*
  * in_pcb.c: manage the Protocol Control Blocks.
@@ -175,6 +190,9 @@ SYSCTL_INT(_net_inet_ip_portrange, OID_AUTO, randomtime, CTLFLAG_RW,
 int
 in_pcballoc(struct socket *so, struct inpcbinfo *pcbinfo)
 {
+#ifdef INET6
+	INIT_VNET_INET6(curvnet);
+#endif
 	struct inpcb *inp;
 	int error;
 
@@ -189,18 +207,18 @@ in_pcballoc(struct socket *so, struct inpcbinfo *pcbinfo)
 	inp->inp_cred = crhold(so->so_cred);
 	inp->inp_inc.inc_fibnum = so->so_fibnum;
 #ifdef MAC
-	error = mac_init_inpcb(inp, M_NOWAIT);
+	error = mac_inpcb_init(inp, M_NOWAIT);
 	if (error != 0)
 		goto out;
 	SOCK_LOCK(so);
-	mac_create_inpcb_from_socket(so, inp);
+	mac_inpcb_create(so, inp);
 	SOCK_UNLOCK(so);
 #endif
 #ifdef IPSEC
 	error = ipsec_init_policy(so, &inp->inp_sp);
 	if (error != 0) {
 #ifdef MAC
-		mac_destroy_inpcb(inp);
+		mac_inpcb_destroy(inp);
 #endif
 		goto out;
 	}
@@ -208,7 +226,7 @@ in_pcballoc(struct socket *so, struct inpcbinfo *pcbinfo)
 #ifdef INET6
 	if (INP_SOCKAF(so) == AF_INET6) {
 		inp->inp_vflag |= INP_IPV6PROTO;
-		if (ip6_v6only)
+		if (V_ip6_v6only)
 			inp->inp_flags |= IN6P_IPV6_V6ONLY;
 	}
 #endif
@@ -216,11 +234,12 @@ in_pcballoc(struct socket *so, struct inpcbinfo *pcbinfo)
 	pcbinfo->ipi_count++;
 	so->so_pcb = (caddr_t)inp;
 #ifdef INET6
-	if (ip6_auto_flowlabel)
+	if (V_ip6_auto_flowlabel)
 		inp->inp_flags |= IN6P_AUTOFLOWLABEL;
 #endif
 	INP_WLOCK(inp);
 	inp->inp_gencnt = ++pcbinfo->ipi_gencnt;
+	inp->inp_refcount = 1;	/* Reference from the inpcbinfo */
 #if defined(IPSEC) || defined(MAC)
 out:
 	if (error != 0) {
@@ -270,6 +289,7 @@ int
 in_pcbbind_setup(struct inpcb *inp, struct sockaddr *nam, in_addr_t *laddrp,
     u_short *lportp, struct ucred *cred)
 {
+	INIT_VNET_INET(inp->inp_vnet);
 	struct socket *so = inp->inp_socket;
 	unsigned short *lastport;
 	struct sockaddr_in *sin;
@@ -287,7 +307,7 @@ in_pcbbind_setup(struct inpcb *inp, struct sockaddr *nam, in_addr_t *laddrp,
 	INP_INFO_LOCK_ASSERT(pcbinfo);
 	INP_LOCK_ASSERT(inp);
 
-	if (TAILQ_EMPTY(&in_ifaddrhead)) /* XXX broken! */
+	if (TAILQ_EMPTY(&V_in_ifaddrhead)) /* XXX broken! */
 		return (EADDRNOTAVAIL);
 	laddr.s_addr = *laddrp;
 	if (nam != NULL && laddr.s_addr != INADDR_ANY)
@@ -332,7 +352,16 @@ in_pcbbind_setup(struct inpcb *inp, struct sockaddr *nam, in_addr_t *laddrp,
 		} else if (sin->sin_addr.s_addr != INADDR_ANY) {
 			sin->sin_port = 0;		/* yech... */
 			bzero(&sin->sin_zero, sizeof(sin->sin_zero));
-			if (ifa_ifwithaddr((struct sockaddr *)sin) == 0)
+			/*
+			 * Is the address a local IP address? 
+			 * If INP_NONLOCALOK is set, then the socket may be bound
+			 * to any endpoint address, local or not.
+			 */
+			if (
+#if defined(IP_NONLOCALBIND)
+			    ((inp->inp_flags & INP_NONLOCALOK) == 0) &&
+#endif
+			    (ifa_ifwithaddr((struct sockaddr *)sin) == 0))
 				return (EADDRNOTAVAIL);
 		}
 		laddr = sin->sin_addr;
@@ -341,8 +370,8 @@ in_pcbbind_setup(struct inpcb *inp, struct sockaddr *nam, in_addr_t *laddrp,
 			struct tcptw *tw;
 
 			/* GROSS */
-			if (ntohs(lport) <= ipport_reservedhigh &&
-			    ntohs(lport) >= ipport_reservedlow &&
+			if (ntohs(lport) <= V_ipport_reservedhigh &&
+			    ntohs(lport) >= V_ipport_reservedlow &&
 			    priv_check_cred(cred, PRIV_NETINET_RESERVEDPORT,
 			    0))
 				return (EACCES);
@@ -397,24 +426,24 @@ in_pcbbind_setup(struct inpcb *inp, struct sockaddr *nam, in_addr_t *laddrp,
 	if (*lportp != 0)
 		lport = *lportp;
 	if (lport == 0) {
-		u_short first, last;
+		u_short first, last, aux;
 		int count;
 
 		if (inp->inp_flags & INP_HIGHPORT) {
-			first = ipport_hifirstauto;	/* sysctl */
-			last  = ipport_hilastauto;
+			first = V_ipport_hifirstauto;	/* sysctl */
+			last  = V_ipport_hilastauto;
 			lastport = &pcbinfo->ipi_lasthi;
 		} else if (inp->inp_flags & INP_LOWPORT) {
 			error = priv_check_cred(cred,
 			    PRIV_NETINET_RESERVEDPORT, 0);
 			if (error)
 				return error;
-			first = ipport_lowfirstauto;	/* 1023 */
-			last  = ipport_lowlastauto;	/* 600 */
+			first = V_ipport_lowfirstauto;	/* 1023 */
+			last  = V_ipport_lowlastauto;	/* 600 */
 			lastport = &pcbinfo->ipi_lastlow;
 		} else {
-			first = ipport_firstauto;	/* sysctl */
-			last  = ipport_lastauto;
+			first = V_ipport_firstauto;	/* sysctl */
+			last  = V_ipport_lastauto;
 			lastport = &pcbinfo->ipi_lastport;
 		}
 		/*
@@ -423,8 +452,8 @@ in_pcbbind_setup(struct inpcb *inp, struct sockaddr *nam, in_addr_t *laddrp,
 		 * use random port allocation only if the user allows it AND
 		 * ipport_tick() allows it.
 		 */
-		if (ipport_randomized &&
-			(!ipport_stoprandom || pcbinfo == &udbinfo))
+		if (V_ipport_randomized &&
+			(!V_ipport_stoprandom || pcbinfo == &V_udbinfo))
 			dorandom = 1;
 		else
 			dorandom = 0;
@@ -435,53 +464,34 @@ in_pcbbind_setup(struct inpcb *inp, struct sockaddr *nam, in_addr_t *laddrp,
 		if (first == last)
 			dorandom = 0;
 		/* Make sure to not include UDP packets in the count. */
-		if (pcbinfo != &udbinfo)
-			ipport_tcpallocs++;
+		if (pcbinfo != &V_udbinfo)
+			V_ipport_tcpallocs++;
 		/*
 		 * Instead of having two loops further down counting up or down
 		 * make sure that first is always <= last and go with only one
 		 * code path implementing all logic.
-		 *
-		 * We split the two cases (up and down) so that the direction
-		 * is not being tested on each round of the loop.
 		 */
 		if (first > last) {
-			/*
-			 * counting down
-			 */
-			if (dorandom)
-				*lastport = first -
-					    (arc4random() % (first - last));
-			count = first - last;
-
-			do {
-				if (count-- < 0)	/* completely used? */
-					return (EADDRNOTAVAIL);
-				--*lastport;
-				if (*lastport > first || *lastport < last)
-					*lastport = first;
-				lport = htons(*lastport);
-			} while (in_pcblookup_local(pcbinfo, laddr, lport,
-			    wild, cred));
-		} else {
-			/*
-			 * counting up
-			 */
-			if (dorandom)
-				*lastport = first +
-					    (arc4random() % (last - first));
-			count = last - first;
-
-			do {
-				if (count-- < 0)	/* completely used? */
-					return (EADDRNOTAVAIL);
-				++*lastport;
-				if (*lastport < first || *lastport > last)
-					*lastport = first;
-				lport = htons(*lastport);
-			} while (in_pcblookup_local(pcbinfo, laddr, lport,
-			    wild, cred));
+			aux = first;
+			first = last;
+			last = aux;
 		}
+
+		if (dorandom)
+			*lastport = first +
+				    (arc4random() % (last - first));
+
+		count = last - first;
+
+		do {
+			if (count-- < 0)	/* completely used? */
+				return (EADDRNOTAVAIL);
+			++*lastport;
+			if (*lastport < first || *lastport > last)
+				*lastport = first;
+			lport = htons(*lastport);
+		} while (in_pcblookup_local(pcbinfo, laddr,
+		    lport, wild, cred));
 	}
 	*laddrp = laddr.s_addr;
 	*lportp = lport;
@@ -568,7 +578,7 @@ in_pcbladdr(struct inpcb *inp, struct in_addr *faddr, struct in_addr *laddr,
 	 * Find out route to destination.
 	 */
 	if ((inp->inp_socket->so_options & SO_DONTROUTE) == 0)
-		in_rtalloc_ign(&sro, RTF_CLONING, inp->inp_inc.inc_fibnum);
+		in_rtalloc_ign(&sro, 0, inp->inp_inc.inc_fibnum);
 
 	/*
 	 * If we found a route, use the address corresponding to
@@ -758,6 +768,7 @@ in_pcbconnect_setup(struct inpcb *inp, struct sockaddr *nam,
     in_addr_t *laddrp, u_short *lportp, in_addr_t *faddrp, u_short *fportp,
     struct inpcb **oinpp, struct ucred *cred)
 {
+	INIT_VNET_INET(inp->inp_vnet);
 	struct sockaddr_in *sin = (struct sockaddr_in *)nam;
 	struct in_ifaddr *ia;
 	struct inpcb *oinp;
@@ -785,7 +796,7 @@ in_pcbconnect_setup(struct inpcb *inp, struct sockaddr *nam,
 	faddr = sin->sin_addr;
 	fport = sin->sin_port;
 
-	if (!TAILQ_EMPTY(&in_ifaddrhead)) {
+	if (!TAILQ_EMPTY(&V_in_ifaddrhead)) {
 		/*
 		 * If the destination address is INADDR_ANY,
 		 * use the primary local address.
@@ -795,15 +806,15 @@ in_pcbconnect_setup(struct inpcb *inp, struct sockaddr *nam,
 		 */
 		if (faddr.s_addr == INADDR_ANY) {
 			faddr =
-			    IA_SIN(TAILQ_FIRST(&in_ifaddrhead))->sin_addr;
+			    IA_SIN(TAILQ_FIRST(&V_in_ifaddrhead))->sin_addr;
 			if (cred != NULL &&
 			    (error = prison_get_ip4(cred, &faddr)) != 0)
 				return (error);
 		} else if (faddr.s_addr == (u_long)INADDR_BROADCAST &&
-		    (TAILQ_FIRST(&in_ifaddrhead)->ia_ifp->if_flags &
+		    (TAILQ_FIRST(&V_in_ifaddrhead)->ia_ifp->if_flags &
 		    IFF_BROADCAST))
 			faddr = satosin(&TAILQ_FIRST(
-			    &in_ifaddrhead)->ia_broadaddr)->sin_addr;
+			    &V_in_ifaddrhead)->ia_broadaddr)->sin_addr;
 	}
 	if (laddr.s_addr == INADDR_ANY) {
 		error = in_pcbladdr(inp, &faddr, &laddr, cred);
@@ -823,7 +834,7 @@ in_pcbconnect_setup(struct inpcb *inp, struct sockaddr *nam,
 			imo = inp->inp_moptions;
 			if (imo->imo_multicast_ifp != NULL) {
 				ifp = imo->imo_multicast_ifp;
-				TAILQ_FOREACH(ia, &in_ifaddrhead, ia_link)
+				TAILQ_FOREACH(ia, &V_in_ifaddrhead, ia_link)
 					if (ia->ia_ifp == ifp)
 						break;
 				if (ia == NULL)
@@ -866,14 +877,10 @@ in_pcbdisconnect(struct inpcb *inp)
 }
 
 /*
- * Historically, in_pcbdetach() included the functionality now found in
- * in_pcbfree() and in_pcbdrop().  They are now broken out to reflect the
- * more complex life cycle of TCP.
- *
- * in_pcbdetach() is responsibe for disconnecting the socket from an inpcb.
+ * in_pcbdetach() is responsibe for disassociating a socket from an inpcb.
  * For most protocols, this will be invoked immediately prior to calling
- * in_pcbfree().  However, for TCP the inpcb may significantly outlive the
- * socket, in which case in_pcbfree() may be deferred.
+ * in_pcbfree().  However, with TCP the inpcb may significantly outlive the
+ * socket, in which case in_pcbfree() is deferred.
  */
 void
 in_pcbdetach(struct inpcb *inp)
@@ -886,15 +893,17 @@ in_pcbdetach(struct inpcb *inp)
 }
 
 /*
- * in_pcbfree() is responsible for freeing an already-detached inpcb, as well
- * as removing it from any global inpcb lists it might be on.
+ * in_pcbfree_internal() frees an inpcb that has been detached from its
+ * socket, and whose reference count has reached 0.  It will also remove the
+ * inpcb from any global lists it might remain on.
  */
-void
-in_pcbfree(struct inpcb *inp)
+static void
+in_pcbfree_internal(struct inpcb *inp)
 {
 	struct inpcbinfo *ipi = inp->inp_pcbinfo;
 
 	KASSERT(inp->inp_socket == NULL, ("%s: inp_socket != NULL", __func__));
+	KASSERT(inp->inp_refcount == 0, ("%s: refcount !0", __func__));
 
 	INP_INFO_WLOCK_ASSERT(ipi);
 	INP_WLOCK_ASSERT(inp);
@@ -919,10 +928,81 @@ in_pcbfree(struct inpcb *inp)
 	crfree(inp->inp_cred);
 
 #ifdef MAC
-	mac_destroy_inpcb(inp);
+	mac_inpcb_destroy(inp);
 #endif
 	INP_WUNLOCK(inp);
 	uma_zfree(ipi->ipi_zone, inp);
+}
+
+/*
+ * in_pcbref() bumps the reference count on an inpcb in order to maintain
+ * stability of an inpcb pointer despite the inpcb lock being released.  This
+ * is used in TCP when the inpcbinfo lock needs to be acquired or upgraded,
+ * but where the inpcb lock is already held.
+ *
+ * While the inpcb will not be freed, releasing the inpcb lock means that the
+ * connection's state may change, so the caller should be careful to
+ * revalidate any cached state on reacquiring the lock.  Drop the reference
+ * using in_pcbrele().
+ */
+void
+in_pcbref(struct inpcb *inp)
+{
+
+	INP_WLOCK_ASSERT(inp);
+
+	KASSERT(inp->inp_refcount > 0, ("%s: refcount 0", __func__));
+
+	inp->inp_refcount++;
+}
+
+/*
+ * Drop a refcount on an inpcb elevated using in_pcbref(); because a call to
+ * in_pcbfree() may have been made between in_pcbref() and in_pcbrele(), we
+ * return a flag indicating whether or not the inpcb remains valid.  If it is
+ * valid, we return with the inpcb lock held.
+ */
+int
+in_pcbrele(struct inpcb *inp)
+{
+#ifdef INVARIANTS
+	struct inpcbinfo *ipi = inp->inp_pcbinfo;
+#endif
+
+	KASSERT(inp->inp_refcount > 0, ("%s: refcount 0", __func__));
+
+	INP_INFO_WLOCK_ASSERT(ipi);
+	INP_WLOCK_ASSERT(inp);
+
+	inp->inp_refcount--;
+	if (inp->inp_refcount > 0)
+		return (0);
+	in_pcbfree_internal(inp);
+	return (1);
+}
+
+/*
+ * Unconditionally schedule an inpcb to be freed by decrementing its
+ * reference count, which should occur only after the inpcb has been detached
+ * from its socket.  If another thread holds a temporary reference (acquired
+ * using in_pcbref()) then the free is deferred until that reference is
+ * released using in_pcbrele(), but the inpcb is still unlocked.
+ */
+void
+in_pcbfree(struct inpcb *inp)
+{
+#ifdef INVARIANTS
+	struct inpcbinfo *ipi = inp->inp_pcbinfo;
+#endif
+
+	KASSERT(inp->inp_socket == NULL, ("%s: inp_socket != NULL",
+	    __func__));
+
+	INP_INFO_WLOCK_ASSERT(ipi);
+	INP_WLOCK_ASSERT(inp);
+
+	if (!in_pcbrele(inp))
+		INP_WUNLOCK(inp);
 }
 
 /*
@@ -974,7 +1054,7 @@ in_sockaddr(in_port_t port, struct in_addr *addr_p)
 {
 	struct sockaddr_in *sin;
 
-	MALLOC(sin, struct sockaddr_in *, sizeof *sin, M_SONAME,
+	sin = malloc(sizeof *sin, M_SONAME,
 		M_WAITOK | M_ZERO);
 	sin->sin_family = AF_INET;
 	sin->sin_len = sizeof(*sin);
@@ -1369,7 +1449,7 @@ in_pcbinshash(struct inpcb *inp)
 	 * If none exists, malloc one and tack it on.
 	 */
 	if (phd == NULL) {
-		MALLOC(phd, struct inpcbport *, sizeof(struct inpcbport), M_PCB, M_NOWAIT);
+		phd = malloc(sizeof(struct inpcbport), M_PCB, M_NOWAIT);
 		if (phd == NULL) {
 			return (ENOBUFS); /* XXX */
 		}
@@ -1474,28 +1554,82 @@ in_pcbsosetlabel(struct socket *so)
 void
 ipport_tick(void *xtp)
 {
+	VNET_ITERATOR_DECL(vnet_iter);
 
-	if (ipport_tcpallocs <= ipport_tcplastcount + ipport_randomcps) {
-		if (ipport_stoprandom > 0)
-			ipport_stoprandom--;
-	} else
-		ipport_stoprandom = ipport_randomtime;
-	ipport_tcplastcount = ipport_tcpallocs;
+	VNET_LIST_RLOCK();
+	VNET_FOREACH(vnet_iter) {
+		CURVNET_SET(vnet_iter);	/* XXX appease INVARIANTS here */
+		INIT_VNET_INET(vnet_iter);
+		if (V_ipport_tcpallocs <=
+		    V_ipport_tcplastcount + V_ipport_randomcps) {
+			if (V_ipport_stoprandom > 0)
+				V_ipport_stoprandom--;
+		} else
+			V_ipport_stoprandom = V_ipport_randomtime;
+		V_ipport_tcplastcount = V_ipport_tcpallocs;
+		CURVNET_RESTORE();
+	}
+	VNET_LIST_RUNLOCK();
 	callout_reset(&ipport_tick_callout, hz, ipport_tick, NULL);
 }
 
 void
+inp_wlock(struct inpcb *inp)
+{
+
+	INP_WLOCK(inp);
+}
+
+void
+inp_wunlock(struct inpcb *inp)
+{
+
+	INP_WUNLOCK(inp);
+}
+
+void
+inp_rlock(struct inpcb *inp)
+{
+
+	INP_RLOCK(inp);
+}
+
+void
+inp_runlock(struct inpcb *inp)
+{
+
+	INP_RUNLOCK(inp);
+}
+
+#ifdef INVARIANTS
+void
+inp_lock_assert(struct inpcb *inp)
+{
+
+	INP_WLOCK_ASSERT(inp);
+}
+
+void
+inp_unlock_assert(struct inpcb *inp)
+{
+
+	INP_UNLOCK_ASSERT(inp);
+}
+#endif
+
+void
 inp_apply_all(void (*func)(struct inpcb *, void *), void *arg)
 {
+	INIT_VNET_INET(curvnet);
 	struct inpcb *inp;
 
-	INP_INFO_RLOCK(&tcbinfo);
-	LIST_FOREACH(inp, tcbinfo.ipi_listhead, inp_list) {
+	INP_INFO_RLOCK(&V_tcbinfo);
+	LIST_FOREACH(inp, V_tcbinfo.ipi_listhead, inp_list) {
 		INP_WLOCK(inp);
 		func(inp, arg);
 		INP_WUNLOCK(inp);
 	}
-	INP_INFO_RUNLOCK(&tcbinfo);
+	INP_INFO_RUNLOCK(&V_tcbinfo);
 }
 
 struct socket *
@@ -1553,65 +1687,6 @@ so_sototcpcb(struct socket *so)
 
 	return (sototcpcb(so));
 }
-
-void
-inp_wlock(struct inpcb *inp)
-{
-
-	INP_WLOCK(inp);
-}
-
-void
-inp_wunlock(struct inpcb *inp)
-{
-
-	INP_WUNLOCK(inp);
-}
-
-void
-inp_rlock(struct inpcb *inp)
-{
-
-	INP_RLOCK(inp);
-}
-
-void
-inp_runlock(struct inpcb *inp)
-{
-
-	INP_RUNLOCK(inp);
-}
-
-#ifdef INVARIANTS
-void
-inp_wlock_assert(struct inpcb *inp)
-{
-
-	INP_WLOCK_ASSERT(inp);
-}
-
-void
-inp_rlock_assert(struct inpcb *inp)
-{
-
-	INP_RLOCK_ASSERT(inp);
-}
-
-void
-inp_lock_assert(struct inpcb *inp)
-{
-
-	INP_LOCK_ASSERT(inp);
-}
-
-void
-inp_unlock_assert(struct inpcb *inp)
-{
-
-	INP_UNLOCK_ASSERT(inp);
-}
-
-#endif
 
 #ifdef DDB
 static void

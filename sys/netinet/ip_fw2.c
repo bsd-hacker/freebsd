@@ -45,9 +45,12 @@ __FBSDID("$FreeBSD$");
 #include "opt_inet6.h"
 #include "opt_ipsec.h"
 #include "opt_mac.h"
+#include "opt_route.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/condvar.h>
+#include <sys/eventhandler.h>
 #include <sys/malloc.h>
 #include <sys/mbuf.h>
 #include <sys/kernel.h>
@@ -56,16 +59,19 @@ __FBSDID("$FreeBSD$");
 #include <sys/module.h>
 #include <sys/priv.h>
 #include <sys/proc.h>
+#include <sys/rwlock.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
 #include <sys/sysctl.h>
 #include <sys/syslog.h>
 #include <sys/ucred.h>
+#include <sys/vimage.h>
 #include <net/ethernet.h> /* for ETHERTYPE_IP */
 #include <net/if.h>
 #include <net/radix.h>
 #include <net/route.h>
 #include <net/pf_mtag.h>
+#include <net/vnet.h>
 
 #define	IPFW_INTERNAL	/* Access to protected data structures in ip_fw.h. */
 
@@ -84,6 +90,8 @@ __FBSDID("$FreeBSD$");
 #include <netinet/udp.h>
 #include <netinet/udp_var.h>
 #include <netinet/sctp.h>
+#include <netinet/vinet.h>
+
 #include <netgraph/ng_ipfw.h>
 
 #include <netinet/ip6.h>
@@ -98,6 +106,12 @@ __FBSDID("$FreeBSD$");
 #include <security/mac/mac_framework.h>
 #endif
 
+#ifndef VIMAGE
+#ifndef VIMAGE_GLOBALS
+struct vnet_ipfw vnet_ipfw_0;
+#endif
+#endif
+
 /*
  * set_disable contains one bit per set value (0..31).
  * If the bit is set, all rules with the corresponding set
@@ -106,10 +120,12 @@ __FBSDID("$FreeBSD$");
  * and CANNOT be disabled.
  * Rules in set RESVD_SET can only be deleted explicitly.
  */
+#ifdef VIMAGE_GLOBALS
 static u_int32_t set_disable;
 static int fw_verbose;
 static struct callout ipfw_timeout;
 static int verbose_limit;
+#endif
 
 static uma_zone_t ipfw_dyn_rule_zone;
 
@@ -129,7 +145,9 @@ struct ip_fw_ugid {
 /*
  * list of rules for layer 3
  */
+#ifdef VIMAGE_GLOBALS
 struct ip_fw_chain layer3_chain;
+#endif
 
 MALLOC_DEFINE(M_IPFW, "IpFw/IpAcct", "IpFw/IpAcct chain's");
 MALLOC_DEFINE(M_IPFW_TBL, "ipfw_tbl", "IpFw tables");
@@ -146,26 +164,28 @@ struct table_entry {
 	u_int32_t		value;
 };
 
-static int autoinc_step = 100; /* bounded to 1..1000 in add_rule() */
+#ifdef VIMAGE_GLOBALS
+static int autoinc_step;
+#endif
 
 extern int ipfw_chg_hook(SYSCTL_HANDLER_ARGS);
 
 #ifdef SYSCTL_NODE
 SYSCTL_NODE(_net_inet_ip, OID_AUTO, fw, CTLFLAG_RW, 0, "Firewall");
-SYSCTL_PROC(_net_inet_ip_fw, OID_AUTO, enable,
-    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_SECURE3, &fw_enable, 0,
+SYSCTL_V_PROC(V_NET, vnet_ipfw, _net_inet_ip_fw, OID_AUTO, enable,
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_SECURE3, fw_enable, 0,
     ipfw_chg_hook, "I", "Enable ipfw");
-SYSCTL_INT(_net_inet_ip_fw, OID_AUTO, autoinc_step, CTLFLAG_RW,
-    &autoinc_step, 0, "Rule number autincrement step");
-SYSCTL_INT(_net_inet_ip_fw, OID_AUTO, one_pass,
-    CTLFLAG_RW | CTLFLAG_SECURE3,
-    &fw_one_pass, 0,
+SYSCTL_V_INT(V_NET, vnet_ipfw, _net_inet_ip_fw, OID_AUTO, autoinc_step,
+    CTLFLAG_RW, autoinc_step, 0, "Rule number autincrement step");
+SYSCTL_V_INT(V_NET, vnet_inet, _net_inet_ip_fw, OID_AUTO, one_pass,
+    CTLFLAG_RW | CTLFLAG_SECURE3, fw_one_pass, 0,
     "Only do a single pass through ipfw when using dummynet(4)");
-SYSCTL_INT(_net_inet_ip_fw, OID_AUTO, verbose,
+SYSCTL_V_INT(V_NET, vnet_ipfw, _net_inet_ip_fw, OID_AUTO, verbose,
     CTLFLAG_RW | CTLFLAG_SECURE3,
-    &fw_verbose, 0, "Log matches to ipfw rules");
-SYSCTL_INT(_net_inet_ip_fw, OID_AUTO, verbose_limit, CTLFLAG_RW,
-    &verbose_limit, 0, "Set upper limit of matches of ipfw rules logged");
+    fw_verbose, 0, "Log matches to ipfw rules");
+SYSCTL_V_INT(V_NET, vnet_ipfw, _net_inet_ip_fw, OID_AUTO, verbose_limit,
+    CTLFLAG_RW, verbose_limit, 0,
+    "Set upper limit of matches of ipfw rules logged");
 SYSCTL_UINT(_net_inet_ip_fw, OID_AUTO, default_rule, CTLFLAG_RD,
     NULL, IPFW_DEFAULT_RULE, "The default/max possible rule number.");
 SYSCTL_UINT(_net_inet_ip_fw, OID_AUTO, tables_max, CTLFLAG_RD,
@@ -208,9 +228,11 @@ SYSCTL_UINT(_net_inet_ip_fw, OID_AUTO, tables_max, CTLFLAG_RD,
  * obey the 'randomized match', and we do not do multiple
  * passes through the firewall. XXX check the latter!!!
  */
-static ipfw_dyn_rule **ipfw_dyn_v = NULL;
-static u_int32_t dyn_buckets = 256; /* must be power of 2 */
-static u_int32_t curr_dyn_buckets = 256; /* must be power of 2 */
+#ifdef VIMAGE_GLOBALS
+static ipfw_dyn_rule **ipfw_dyn_v;
+static u_int32_t dyn_buckets;
+static u_int32_t curr_dyn_buckets;
+#endif
 
 static struct mtx ipfw_dyn_mtx;		/* mutex guarding dynamic rules */
 #define	IPFW_DYN_LOCK_INIT() \
@@ -223,12 +245,13 @@ static struct mtx ipfw_dyn_mtx;		/* mutex guarding dynamic rules */
 /*
  * Timeouts for various events in handing dynamic rules.
  */
-static u_int32_t dyn_ack_lifetime = 300;
-static u_int32_t dyn_syn_lifetime = 20;
-static u_int32_t dyn_fin_lifetime = 1;
-static u_int32_t dyn_rst_lifetime = 1;
-static u_int32_t dyn_udp_lifetime = 10;
-static u_int32_t dyn_short_lifetime = 5;
+#ifdef VIMAGE_GLOBALS
+static u_int32_t dyn_ack_lifetime;
+static u_int32_t dyn_syn_lifetime;
+static u_int32_t dyn_fin_lifetime;
+static u_int32_t dyn_rst_lifetime;
+static u_int32_t dyn_udp_lifetime;
+static u_int32_t dyn_short_lifetime;
 
 /*
  * Keepalives are sent if dyn_keepalive is set. They are sent every
@@ -238,40 +261,42 @@ static u_int32_t dyn_short_lifetime = 5;
  * than dyn_keepalive_period.
  */
 
-static u_int32_t dyn_keepalive_interval = 20;
-static u_int32_t dyn_keepalive_period = 5;
-static u_int32_t dyn_keepalive = 1;	/* do send keepalives */
+static u_int32_t dyn_keepalive_interval;
+static u_int32_t dyn_keepalive_period;
+static u_int32_t dyn_keepalive;
 
 static u_int32_t static_count;	/* # of static rules */
 static u_int32_t static_len;	/* size in bytes of static rules */
-static u_int32_t dyn_count;		/* # of dynamic rules */
-static u_int32_t dyn_max = 4096;	/* max # of dynamic rules */
+static u_int32_t dyn_count;	/* # of dynamic rules */
+static u_int32_t dyn_max;	/* max # of dynamic rules */
+#endif /* VIMAGE_GLOBALS */
 
 #ifdef SYSCTL_NODE
-SYSCTL_INT(_net_inet_ip_fw, OID_AUTO, dyn_buckets, CTLFLAG_RW,
-    &dyn_buckets, 0, "Number of dyn. buckets");
-SYSCTL_INT(_net_inet_ip_fw, OID_AUTO, curr_dyn_buckets, CTLFLAG_RD,
-    &curr_dyn_buckets, 0, "Current Number of dyn. buckets");
-SYSCTL_INT(_net_inet_ip_fw, OID_AUTO, dyn_count, CTLFLAG_RD,
-    &dyn_count, 0, "Number of dyn. rules");
-SYSCTL_INT(_net_inet_ip_fw, OID_AUTO, dyn_max, CTLFLAG_RW,
-    &dyn_max, 0, "Max number of dyn. rules");
-SYSCTL_INT(_net_inet_ip_fw, OID_AUTO, static_count, CTLFLAG_RD,
-    &static_count, 0, "Number of static rules");
-SYSCTL_INT(_net_inet_ip_fw, OID_AUTO, dyn_ack_lifetime, CTLFLAG_RW,
-    &dyn_ack_lifetime, 0, "Lifetime of dyn. rules for acks");
-SYSCTL_INT(_net_inet_ip_fw, OID_AUTO, dyn_syn_lifetime, CTLFLAG_RW,
-    &dyn_syn_lifetime, 0, "Lifetime of dyn. rules for syn");
-SYSCTL_INT(_net_inet_ip_fw, OID_AUTO, dyn_fin_lifetime, CTLFLAG_RW,
-    &dyn_fin_lifetime, 0, "Lifetime of dyn. rules for fin");
-SYSCTL_INT(_net_inet_ip_fw, OID_AUTO, dyn_rst_lifetime, CTLFLAG_RW,
-    &dyn_rst_lifetime, 0, "Lifetime of dyn. rules for rst");
-SYSCTL_INT(_net_inet_ip_fw, OID_AUTO, dyn_udp_lifetime, CTLFLAG_RW,
-    &dyn_udp_lifetime, 0, "Lifetime of dyn. rules for UDP");
-SYSCTL_INT(_net_inet_ip_fw, OID_AUTO, dyn_short_lifetime, CTLFLAG_RW,
-    &dyn_short_lifetime, 0, "Lifetime of dyn. rules for other situations");
-SYSCTL_INT(_net_inet_ip_fw, OID_AUTO, dyn_keepalive, CTLFLAG_RW,
-    &dyn_keepalive, 0, "Enable keepalives for dyn. rules");
+SYSCTL_V_INT(V_NET, vnet_ipfw, _net_inet_ip_fw, OID_AUTO, dyn_buckets,
+    CTLFLAG_RW, dyn_buckets, 0, "Number of dyn. buckets");
+SYSCTL_V_INT(V_NET, vnet_ipfw, _net_inet_ip_fw, OID_AUTO, curr_dyn_buckets,
+    CTLFLAG_RD, curr_dyn_buckets, 0, "Current Number of dyn. buckets");
+SYSCTL_V_INT(V_NET, vnet_ipfw, _net_inet_ip_fw, OID_AUTO, dyn_count,
+    CTLFLAG_RD, dyn_count, 0, "Number of dyn. rules");
+SYSCTL_V_INT(V_NET, vnet_ipfw, _net_inet_ip_fw, OID_AUTO, dyn_max,
+    CTLFLAG_RW, dyn_max, 0, "Max number of dyn. rules");
+SYSCTL_V_INT(V_NET, vnet_ipfw, _net_inet_ip_fw, OID_AUTO, static_count,
+    CTLFLAG_RD, static_count, 0, "Number of static rules");
+SYSCTL_V_INT(V_NET, vnet_ipfw, _net_inet_ip_fw, OID_AUTO, dyn_ack_lifetime,
+    CTLFLAG_RW, dyn_ack_lifetime, 0, "Lifetime of dyn. rules for acks");
+SYSCTL_V_INT(V_NET, vnet_ipfw, _net_inet_ip_fw, OID_AUTO, dyn_syn_lifetime,
+    CTLFLAG_RW, dyn_syn_lifetime, 0, "Lifetime of dyn. rules for syn");
+SYSCTL_V_INT(V_NET, vnet_ipfw, _net_inet_ip_fw, OID_AUTO, dyn_fin_lifetime,
+    CTLFLAG_RW, dyn_fin_lifetime, 0, "Lifetime of dyn. rules for fin");
+SYSCTL_V_INT(V_NET, vnet_ipfw, _net_inet_ip_fw, OID_AUTO, dyn_rst_lifetime,
+    CTLFLAG_RW, dyn_rst_lifetime, 0, "Lifetime of dyn. rules for rst");
+SYSCTL_V_INT(V_NET, vnet_ipfw, _net_inet_ip_fw, OID_AUTO, dyn_udp_lifetime,
+    CTLFLAG_RW, dyn_udp_lifetime, 0, "Lifetime of dyn. rules for UDP");
+SYSCTL_V_INT(V_NET, vnet_ipfw, _net_inet_ip_fw, OID_AUTO, dyn_short_lifetime,
+    CTLFLAG_RW, dyn_short_lifetime, 0,
+    "Lifetime of dyn. rules for other situations");
+SYSCTL_V_INT(V_NET, vnet_ipfw, _net_inet_ip_fw, OID_AUTO, dyn_keepalive,
+    CTLFLAG_RW, dyn_keepalive, 0, "Enable keepalives for dyn. rules");
 #endif /* SYSCTL_NODE */
 
 #ifdef INET6
@@ -286,8 +311,9 @@ static struct sysctl_ctx_list ip6_fw_sysctl_ctx;
 static struct sysctl_oid *ip6_fw_sysctl_tree;
 #endif /* INET6 */
 
-static int fw_deny_unknown_exthdrs = 1;
-
+#ifdef VIMAGE_GLOBALS
+static int fw_deny_unknown_exthdrs;
+#endif
 
 /*
  * L3HDR maps an ipv4 pointer into a layer3 header pointer of type T
@@ -498,7 +524,7 @@ verify_path(struct in_addr src, struct ifnet *ifp, u_int fib)
 	dst->sin_family = AF_INET;
 	dst->sin_len = sizeof(*dst);
 	dst->sin_addr = src;
-	in_rtalloc_ign(&ro, RTF_CLONING, fib);
+	in_rtalloc_ign(&ro, 0, fib);
 
 	if (ro.ro_rt == NULL)
 		return 0;
@@ -557,12 +583,13 @@ flow6id_match( int curr_flow, ipfw_insn_u32 *cmd )
 static int
 search_ip6_addr_net (struct in6_addr * ip6_addr)
 {
+	INIT_VNET_NET(curvnet);
 	struct ifnet *mdc;
 	struct ifaddr *mdc2;
 	struct in6_ifaddr *fdm;
 	struct in6_addr copia;
 
-	TAILQ_FOREACH(mdc, &ifnet, if_link)
+	TAILQ_FOREACH(mdc, &V_ifnet, if_link)
 		TAILQ_FOREACH(mdc2, &mdc->if_addrlist, ifa_list) {
 			if (mdc2->ifa_addr->sa_family == AF_INET6) {
 				fdm = (struct in6_ifaddr *)mdc2;
@@ -589,7 +616,7 @@ verify_path6(struct in6_addr *src, struct ifnet *ifp)
 	dst->sin6_len = sizeof(*dst);
 	dst->sin6_addr = *src;
 	/* XXX MRT 0 for ipv6 at this time */
-	rtalloc_ign((struct route *)&ro, RTF_CLONING);
+	rtalloc_ign((struct route *)&ro, 0);
 
 	if (ro.ro_rt == NULL)
 		return 0;
@@ -734,7 +761,9 @@ send_reject6(struct ip_fw_args *args, int code, u_int hlen, struct ip6_hdr *ip6)
 
 #endif /* INET6 */
 
+#ifdef VIMAGE_GLOBALS
 static u_int64_t norule_counter;	/* counter for ipfw_log(NULL...) */
+#endif
 
 #define SNPARGS(buf, len) buf + len, sizeof(buf) > len ? sizeof(buf) - len : 0
 #define SNP(buf) buf, sizeof(buf)
@@ -748,6 +777,7 @@ ipfw_log(struct ip_fw *f, u_int hlen, struct ip_fw_args *args,
     struct mbuf *m, struct ifnet *oif, u_short offset, uint32_t tablearg,
     struct ip *ip)
 {
+	INIT_VNET_IPFW(curvnet);
 	struct ether_header *eh = args->eh;
 	char *action;
 	int limit_reached = 0;
@@ -757,11 +787,11 @@ ipfw_log(struct ip_fw *f, u_int hlen, struct ip_fw_args *args,
 	proto[0] = '\0';
 
 	if (f == NULL) {	/* bogus pkt */
-		if (verbose_limit != 0 && norule_counter >= verbose_limit)
+		if (V_verbose_limit != 0 && V_norule_counter >= V_verbose_limit)
 			return;
-		norule_counter++;
-		if (norule_counter == verbose_limit)
-			limit_reached = verbose_limit;
+		V_norule_counter++;
+		if (V_norule_counter == V_verbose_limit)
+			limit_reached = V_verbose_limit;
 		action = "Refuse";
 	} else {	/* O_LOG is the first action, find the real one */
 		ipfw_insn *cmd = ACTION_PTR(f);
@@ -1018,6 +1048,7 @@ ipfw_log(struct ip_fw *f, u_int hlen, struct ip_fw_args *args,
 static __inline int
 hash_packet(struct ipfw_flow_id *id)
 {
+	INIT_VNET_IPFW(curvnet);
 	u_int32_t i;
 
 #ifdef INET6
@@ -1026,7 +1057,7 @@ hash_packet(struct ipfw_flow_id *id)
 	else
 #endif /* INET6 */
 	i = (id->dst_ip) ^ (id->src_ip) ^ (id->dst_port) ^ (id->src_port);
-	i &= (curr_dyn_buckets - 1);
+	i &= (V_curr_dyn_buckets - 1);
 	return i;
 }
 
@@ -1044,12 +1075,12 @@ hash_packet(struct ipfw_flow_id *id)
 		q->parent->count--;					\
 	DEB(printf("ipfw: unlink entry 0x%08x %d -> 0x%08x %d, %d left\n",\
 		(q->id.src_ip), (q->id.src_port),			\
-		(q->id.dst_ip), (q->id.dst_port), dyn_count-1 ); )	\
+		(q->id.dst_ip), (q->id.dst_port), V_dyn_count-1 ); )	\
 	if (prev != NULL)						\
 		prev->next = q = q->next;				\
 	else								\
 		head = q = q->next;					\
-	dyn_count--;							\
+	V_dyn_count--;							\
 	uma_zfree(ipfw_dyn_rule_zone, old_q); }
 
 #define TIME_LEQ(a,b)       ((int)((a)-(b)) <= 0)
@@ -1069,6 +1100,7 @@ hash_packet(struct ipfw_flow_id *id)
 static void
 remove_dyn_rule(struct ip_fw *rule, ipfw_dyn_rule *keep_me)
 {
+	INIT_VNET_IPFW(curvnet);
 	static u_int32_t last_remove = 0;
 
 #define FORCE (keep_me == NULL)
@@ -1078,7 +1110,7 @@ remove_dyn_rule(struct ip_fw *rule, ipfw_dyn_rule *keep_me)
 
 	IPFW_DYN_LOCK_ASSERT();
 
-	if (ipfw_dyn_v == NULL || dyn_count == 0)
+	if (V_ipfw_dyn_v == NULL || V_dyn_count == 0)
 		return;
 	/* do not expire more than once per second, it is useless */
 	if (!FORCE && last_remove == time_uptime)
@@ -1091,8 +1123,8 @@ remove_dyn_rule(struct ip_fw *rule, ipfw_dyn_rule *keep_me)
 	 * them in a second pass.
 	 */
 next_pass:
-	for (i = 0 ; i < curr_dyn_buckets ; i++) {
-		for (prev=NULL, q = ipfw_dyn_v[i] ; q ; ) {
+	for (i = 0 ; i < V_curr_dyn_buckets ; i++) {
+		for (prev=NULL, q = V_ipfw_dyn_v[i] ; q ; ) {
 			/*
 			 * Logic can become complex here, so we split tests.
 			 */
@@ -1119,7 +1151,7 @@ next_pass:
 					goto next;
 			}
              if (q->dyn_type != O_LIMIT_PARENT || !q->count) {
-                     UNLINK_DYN_RULE(prev, ipfw_dyn_v[i], q);
+                     UNLINK_DYN_RULE(prev, V_ipfw_dyn_v[i], q);
                      continue;
              }
 next:
@@ -1139,6 +1171,7 @@ static ipfw_dyn_rule *
 lookup_dyn_rule_locked(struct ipfw_flow_id *pkt, int *match_direction,
     struct tcphdr *tcp)
 {
+	INIT_VNET_IPFW(curvnet);
 	/*
 	 * stateful ipfw extensions.
 	 * Lookup into dynamic session queue
@@ -1152,14 +1185,14 @@ lookup_dyn_rule_locked(struct ipfw_flow_id *pkt, int *match_direction,
 
 	IPFW_DYN_LOCK_ASSERT();
 
-	if (ipfw_dyn_v == NULL)
+	if (V_ipfw_dyn_v == NULL)
 		goto done;	/* not found */
 	i = hash_packet( pkt );
-	for (prev=NULL, q = ipfw_dyn_v[i] ; q != NULL ; ) {
+	for (prev=NULL, q = V_ipfw_dyn_v[i] ; q != NULL ; ) {
 		if (q->dyn_type == O_LIMIT_PARENT && q->count)
 			goto next;
 		if (TIME_LEQ( q->expire, time_uptime)) { /* expire entry */
-			UNLINK_DYN_RULE(prev, ipfw_dyn_v[i], q);
+			UNLINK_DYN_RULE(prev, V_ipfw_dyn_v[i], q);
 			continue;
 		}
 		if (pkt->proto == q->id.proto &&
@@ -1209,8 +1242,8 @@ next:
 
 	if ( prev != NULL) { /* found and not in front */
 		prev->next = q->next;
-		q->next = ipfw_dyn_v[i];
-		ipfw_dyn_v[i] = q;
+		q->next = V_ipfw_dyn_v[i];
+		V_ipfw_dyn_v[i] = q;
 	}
 	if (pkt->proto == IPPROTO_TCP) { /* update state according to flags */
 		u_char flags = pkt->flags & (TH_FIN|TH_SYN|TH_RST);
@@ -1220,7 +1253,7 @@ next:
 		q->state |= (dir == MATCH_FORWARD ) ? flags : (flags << 8);
 		switch (q->state) {
 		case TH_SYN:				/* opening */
-			q->expire = time_uptime + dyn_syn_lifetime;
+			q->expire = time_uptime + V_dyn_syn_lifetime;
 			break;
 
 		case BOTH_SYN:			/* move to established */
@@ -1243,13 +1276,13 @@ next:
 				}
 			    }
 			}
-			q->expire = time_uptime + dyn_ack_lifetime;
+			q->expire = time_uptime + V_dyn_ack_lifetime;
 			break;
 
 		case BOTH_SYN | BOTH_FIN:	/* both sides closed */
-			if (dyn_fin_lifetime >= dyn_keepalive_period)
-				dyn_fin_lifetime = dyn_keepalive_period - 1;
-			q->expire = time_uptime + dyn_fin_lifetime;
+			if (V_dyn_fin_lifetime >= V_dyn_keepalive_period)
+				V_dyn_fin_lifetime = V_dyn_keepalive_period - 1;
+			q->expire = time_uptime + V_dyn_fin_lifetime;
 			break;
 
 		default:
@@ -1261,16 +1294,16 @@ next:
 			if ( (q->state & ((TH_RST << 8)|TH_RST)) == 0)
 				printf("invalid state: 0x%x\n", q->state);
 #endif
-			if (dyn_rst_lifetime >= dyn_keepalive_period)
-				dyn_rst_lifetime = dyn_keepalive_period - 1;
-			q->expire = time_uptime + dyn_rst_lifetime;
+			if (V_dyn_rst_lifetime >= V_dyn_keepalive_period)
+				V_dyn_rst_lifetime = V_dyn_keepalive_period - 1;
+			q->expire = time_uptime + V_dyn_rst_lifetime;
 			break;
 		}
 	} else if (pkt->proto == IPPROTO_UDP) {
-		q->expire = time_uptime + dyn_udp_lifetime;
+		q->expire = time_uptime + V_dyn_udp_lifetime;
 	} else {
 		/* other protocols */
-		q->expire = time_uptime + dyn_short_lifetime;
+		q->expire = time_uptime + V_dyn_short_lifetime;
 	}
 done:
 	if (match_direction)
@@ -1295,6 +1328,7 @@ lookup_dyn_rule(struct ipfw_flow_id *pkt, int *match_direction,
 static void
 realloc_dynamic_table(void)
 {
+	INIT_VNET_IPFW(curvnet);
 	IPFW_DYN_LOCK_ASSERT();
 
 	/*
@@ -1303,21 +1337,21 @@ realloc_dynamic_table(void)
 	 * default to 1024.
 	 */
 
-	if (dyn_buckets > 65536)
-		dyn_buckets = 1024;
-	if ((dyn_buckets & (dyn_buckets-1)) != 0) { /* not a power of 2 */
-		dyn_buckets = curr_dyn_buckets; /* reset */
+	if (V_dyn_buckets > 65536)
+		V_dyn_buckets = 1024;
+	if ((V_dyn_buckets & (V_dyn_buckets-1)) != 0) { /* not a power of 2 */
+		V_dyn_buckets = V_curr_dyn_buckets; /* reset */
 		return;
 	}
-	curr_dyn_buckets = dyn_buckets;
-	if (ipfw_dyn_v != NULL)
-		free(ipfw_dyn_v, M_IPFW);
+	V_curr_dyn_buckets = V_dyn_buckets;
+	if (V_ipfw_dyn_v != NULL)
+		free(V_ipfw_dyn_v, M_IPFW);
 	for (;;) {
-		ipfw_dyn_v = malloc(curr_dyn_buckets * sizeof(ipfw_dyn_rule *),
+		V_ipfw_dyn_v = malloc(V_curr_dyn_buckets * sizeof(ipfw_dyn_rule *),
 		       M_IPFW, M_NOWAIT | M_ZERO);
-		if (ipfw_dyn_v != NULL || curr_dyn_buckets <= 2)
+		if (V_ipfw_dyn_v != NULL || V_curr_dyn_buckets <= 2)
 			break;
-		curr_dyn_buckets /= 2;
+		V_curr_dyn_buckets /= 2;
 	}
 }
 
@@ -1334,15 +1368,16 @@ realloc_dynamic_table(void)
 static ipfw_dyn_rule *
 add_dyn_rule(struct ipfw_flow_id *id, u_int8_t dyn_type, struct ip_fw *rule)
 {
+	INIT_VNET_IPFW(curvnet);
 	ipfw_dyn_rule *r;
 	int i;
 
 	IPFW_DYN_LOCK_ASSERT();
 
-	if (ipfw_dyn_v == NULL ||
-	    (dyn_count == 0 && dyn_buckets != curr_dyn_buckets)) {
+	if (V_ipfw_dyn_v == NULL ||
+	    (V_dyn_count == 0 && V_dyn_buckets != V_curr_dyn_buckets)) {
 		realloc_dynamic_table();
-		if (ipfw_dyn_v == NULL)
+		if (V_ipfw_dyn_v == NULL)
 			return NULL; /* failed ! */
 	}
 	i = hash_packet(id);
@@ -1364,21 +1399,21 @@ add_dyn_rule(struct ipfw_flow_id *id, u_int8_t dyn_type, struct ip_fw *rule)
 	}
 
 	r->id = *id;
-	r->expire = time_uptime + dyn_syn_lifetime;
+	r->expire = time_uptime + V_dyn_syn_lifetime;
 	r->rule = rule;
 	r->dyn_type = dyn_type;
 	r->pcnt = r->bcnt = 0;
 	r->count = 0;
 
 	r->bucket = i;
-	r->next = ipfw_dyn_v[i];
-	ipfw_dyn_v[i] = r;
-	dyn_count++;
+	r->next = V_ipfw_dyn_v[i];
+	V_ipfw_dyn_v[i] = r;
+	V_dyn_count++;
 	DEB(printf("ipfw: add dyn entry ty %d 0x%08x %d -> 0x%08x %d, total %d\n",
 	   dyn_type,
 	   (r->id.src_ip), (r->id.src_port),
 	   (r->id.dst_ip), (r->id.dst_port),
-	   dyn_count ); )
+	   V_dyn_count ); )
 	return r;
 }
 
@@ -1389,15 +1424,16 @@ add_dyn_rule(struct ipfw_flow_id *id, u_int8_t dyn_type, struct ip_fw *rule)
 static ipfw_dyn_rule *
 lookup_dyn_parent(struct ipfw_flow_id *pkt, struct ip_fw *rule)
 {
+	INIT_VNET_IPFW(curvnet);
 	ipfw_dyn_rule *q;
 	int i;
 
 	IPFW_DYN_LOCK_ASSERT();
 
-	if (ipfw_dyn_v) {
+	if (V_ipfw_dyn_v) {
 		int is_v6 = IS_IP6_FLOW_ID(pkt);
 		i = hash_packet( pkt );
-		for (q = ipfw_dyn_v[i] ; q != NULL ; q=q->next)
+		for (q = V_ipfw_dyn_v[i] ; q != NULL ; q=q->next)
 			if (q->dyn_type == O_LIMIT_PARENT &&
 			    rule== q->rule &&
 			    pkt->proto == q->id.proto &&
@@ -1414,7 +1450,7 @@ lookup_dyn_parent(struct ipfw_flow_id *pkt, struct ip_fw *rule)
 				 pkt->dst_ip == q->id.dst_ip)
 			    )
 			) {
-				q->expire = time_uptime + dyn_short_lifetime;
+				q->expire = time_uptime + V_dyn_short_lifetime;
 				DEB(printf("ipfw: lookup_dyn_parent found 0x%p\n",q);)
 				return q;
 			}
@@ -1432,6 +1468,7 @@ static int
 install_state(struct ip_fw *rule, ipfw_insn_limit *cmd,
     struct ip_fw_args *args, uint32_t tablearg)
 {
+	INIT_VNET_IPFW(curvnet);
 	static int last_log;
 	ipfw_dyn_rule *q;
 	struct in_addr da;
@@ -1461,11 +1498,11 @@ install_state(struct ip_fw *rule, ipfw_insn_limit *cmd,
 		return (0);
 	}
 
-	if (dyn_count >= dyn_max)
+	if (V_dyn_count >= V_dyn_max)
 		/* Run out of slots, try to remove any expired rule. */
 		remove_dyn_rule(NULL, (ipfw_dyn_rule *)1);
 
-	if (dyn_count >= dyn_max) {
+	if (V_dyn_count >= V_dyn_max) {
 		if (last_log != time_uptime) {
 			last_log = time_uptime;
 			printf("ipfw: %s: Too many dynamic rules\n", __func__);
@@ -1527,7 +1564,7 @@ install_state(struct ip_fw *rule, ipfw_insn_limit *cmd,
 			/* See if we can remove some expired rule. */
 			remove_dyn_rule(rule, parent);
 			if (parent->count >= conn_limit) {
-				if (fw_verbose && last_log != time_uptime) {
+				if (V_fw_verbose && last_log != time_uptime) {
 					last_log = time_uptime;
 #ifdef INET6
 					/*
@@ -1593,6 +1630,7 @@ static struct mbuf *
 send_pkt(struct mbuf *replyto, struct ipfw_flow_id *id, u_int32_t seq,
     u_int32_t ack, int flags)
 {
+	INIT_VNET_INET(curvnet);
 	struct mbuf *m;
 	struct ip *ip;
 	struct tcphdr *tcp;
@@ -1605,9 +1643,9 @@ send_pkt(struct mbuf *replyto, struct ipfw_flow_id *id, u_int32_t seq,
 	M_SETFIB(m, id->fib);
 #ifdef MAC
 	if (replyto != NULL)
-		mac_create_mbuf_netlayer(replyto, m);
+		mac_netinet_firewall_reply(replyto, m);
 	else
-		mac_create_mbuf_from_firewall(m);
+		mac_netinet_firewall_send(m);
 #else
 	(void)replyto;		/* don't warn about unused arg */
 #endif
@@ -1670,7 +1708,7 @@ send_pkt(struct mbuf *replyto, struct ipfw_flow_id *id, u_int32_t seq,
 	/*
 	 * now fill fields left out earlier
 	 */
-	ip->ip_ttl = ip_defttl;
+	ip->ip_ttl = V_ip_defttl;
 	ip->ip_len = m->m_pkthdr.len;
 	m->m_flags |= M_SKIP_FIREWALL;
 	return (m);
@@ -1769,6 +1807,7 @@ static int
 add_table_entry(struct ip_fw_chain *ch, uint16_t tbl, in_addr_t addr,
     uint8_t mlen, uint32_t value)
 {
+	INIT_VNET_IPFW(curvnet);
 	struct radix_node_head *rnh;
 	struct table_entry *ent;
 	struct radix_node *rn;
@@ -1970,6 +2009,7 @@ check_uidgid(ipfw_insn_u32 *insn, int proto, struct ifnet *oif,
     u_int16_t src_port, struct ip_fw_ugid *ugp, int *ugid_lookupp,
     struct inpcb *inp)
 {
+	INIT_VNET_INET(curvnet);
 	struct inpcbinfo *pi;
 	int wildcard;
 	struct inpcb *pcb;
@@ -1998,10 +2038,10 @@ check_uidgid(ipfw_insn_u32 *insn, int proto, struct ifnet *oif,
 		return (0);
 	if (proto == IPPROTO_TCP) {
 		wildcard = 0;
-		pi = &tcbinfo;
+		pi = &V_tcbinfo;
 	} else if (proto == IPPROTO_UDP) {
 		wildcard = INPLOOKUP_WILDCARD;
-		pi = &udbinfo;
+		pi = &V_udbinfo;
 	} else
 		return 0;
 	match = 0;
@@ -2083,6 +2123,9 @@ check_uidgid(ipfw_insn_u32 *insn, int proto, struct ifnet *oif,
 int
 ipfw_chk(struct ip_fw_args *args)
 {
+	INIT_VNET_INET(curvnet);
+	INIT_VNET_IPFW(curvnet);
+
 	/*
 	 * Local variables holding state during the processing of a packet:
 	 *
@@ -2185,7 +2228,7 @@ ipfw_chk(struct ip_fw_args *args)
 	 */
 	int dyn_dir = MATCH_UNKNOWN;
 	ipfw_dyn_rule *q = NULL;
-	struct ip_fw_chain *chain = &layer3_chain;
+	struct ip_fw_chain *chain = &V_layer3_chain;
 	struct m_tag *mtag;
 
 	/*
@@ -2205,7 +2248,6 @@ ipfw_chk(struct ip_fw_args *args)
 		return (IP_FW_PASS);	/* accept */
 
 	dst_ip.s_addr = 0;		/* make sure it is initialized */
-	src_ip.s_addr = 0;		/* make sure it is initialized */
 	pktlen = m->m_pkthdr.len;
 	args->f_id.fib = M_GETFIB(m); /* note mbuf not altered) */
 	proto = args->f_id.proto = 0;	/* mark f_id invalid */
@@ -2217,15 +2259,15 @@ ipfw_chk(struct ip_fw_args *args)
  * pointer might become stale after other pullups (but we never use it
  * this way).
  */
-#define PULLUP_TO(_len, p, T)						\
+#define PULLUP_TO(len, p, T)						\
 do {									\
-	int x = (_len) + sizeof(T);					\
+	int x = (len) + sizeof(T);					\
 	if ((m)->m_len < x) {						\
 		args->m = m = m_pullup(m, x);				\
 		if (m == NULL)						\
 			goto pullup_failed;				\
 	}								\
-	p = (mtod(m, char *) + (_len));					\
+	p = (mtod(m, char *) + (len));					\
 } while (0)
 
 	/*
@@ -2291,7 +2333,7 @@ do {									\
 					printf("IPFW2: IPV6 - Unknown Routing "
 					    "Header type(%d)\n",
 					    ((struct ip6_rthdr *)ulp)->ip6r_type);
-					if (fw_deny_unknown_exthdrs)
+					if (V_fw_deny_unknown_exthdrs)
 					    return (IP_FW_DENY);
 					break;
 				}
@@ -2315,7 +2357,7 @@ do {									\
 				if (offset == 0) {
 					printf("IPFW2: IPV6 - Invalid Fragment "
 					    "Header\n");
-					if (fw_deny_unknown_exthdrs)
+					if (V_fw_deny_unknown_exthdrs)
 					    return (IP_FW_DENY);
 					break;
 				}
@@ -2387,7 +2429,7 @@ do {									\
 			default:
 				printf("IPFW2: IPV6 - Unknown Extension "
 				    "Header(%d), ext_hd=%x\n", proto, ext_hd);
-				if (fw_deny_unknown_exthdrs)
+				if (V_fw_deny_unknown_exthdrs)
 				    return (IP_FW_DENY);
 				PULLUP_TO(hlen, ulp, struct ip6_ext);
 				break;
@@ -2468,7 +2510,7 @@ do {									\
 		 * XXX should not happen here, but optimized out in
 		 * the caller.
 		 */
-		if (fw_one_pass) {
+		if (V_fw_one_pass) {
 			IPFW_RUNLOCK(chain);
 			return (IP_FW_PASS);
 		}
@@ -2513,7 +2555,7 @@ do {									\
 		int l, cmdlen, skip_or; /* skip rest of OR block */
 
 again:
-		if (set_disable & (1 << f->set) )
+		if (V_set_disable & (1 << f->set) )
 			continue;
 
 		skip_or = 0;
@@ -2899,7 +2941,7 @@ check_body:
 			}
 
 			case O_LOG:
-				if (fw_verbose)
+				if (V_fw_verbose)
 					ipfw_log(f, hlen, args, m,
 					    oif, offset, tablearg, ip);
 				match = 1;
@@ -3218,7 +3260,6 @@ check_body:
 				    IP_FW_DIVERT : IP_FW_TEE;
 				goto done;
 			}
-
 			case O_COUNT:
 			case O_SKIPTO:
 				f->pcnt++;	/* update stats */
@@ -3311,16 +3352,16 @@ check_body:
 				goto next_rule;
 
 			case O_NAT: {
-				struct cfg_nat *t;
-				int nat_id;
+                        	struct cfg_nat *t;
+                        	int nat_id;
 
-				if (IPFW_NAT_LOADED) {
+ 				if (IPFW_NAT_LOADED) {
 					args->rule = f; /* Report matching rule. */
 					t = ((ipfw_insn_nat *)cmd)->nat;
 					if (t == NULL) {
 						nat_id = (cmd->arg1 == IP_FW_TABLEARG) ?
 						    tablearg : cmd->arg1;
-						LOOKUP_NAT(layer3_chain, nat_id, t);
+						LOOKUP_NAT(V_layer3_chain, nat_id, t);
 						if (t == NULL) {
 							retval = IP_FW_DENY;
 							goto done;
@@ -3367,7 +3408,7 @@ done:
 	return (retval);
 
 pullup_failed:
-	if (fw_verbose)
+	if (V_fw_verbose)
 		printf("ipfw: pullup failed\n");
 	return (IP_FW_DENY);
 }
@@ -3395,6 +3436,7 @@ flush_rule_ptrs(struct ip_fw_chain *chain)
 static int
 add_rule(struct ip_fw_chain *chain, struct ip_fw *input_rule)
 {
+	INIT_VNET_IPFW(curvnet);
 	struct ip_fw *rule, *f, *prev;
 	int l = RULESIZE(input_rule);
 
@@ -3425,10 +3467,10 @@ add_rule(struct ip_fw_chain *chain, struct ip_fw *input_rule)
 	 * If rulenum is 0, find highest numbered rule before the
 	 * default rule, and add autoinc_step
 	 */
-	if (autoinc_step < 1)
-		autoinc_step = 1;
-	else if (autoinc_step > 1000)
-		autoinc_step = 1000;
+	if (V_autoinc_step < 1)
+		V_autoinc_step = 1;
+	else if (V_autoinc_step > 1000)
+		V_autoinc_step = 1000;
 	if (rule->rulenum == 0) {
 		/*
 		 * locate the highest numbered rule before default
@@ -3438,8 +3480,8 @@ add_rule(struct ip_fw_chain *chain, struct ip_fw *input_rule)
 				break;
 			rule->rulenum = f->rulenum;
 		}
-		if (rule->rulenum < IPFW_DEFAULT_RULE - autoinc_step)
-			rule->rulenum += autoinc_step;
+		if (rule->rulenum < IPFW_DEFAULT_RULE - V_autoinc_step)
+			rule->rulenum += V_autoinc_step;
 		input_rule->rulenum = rule->rulenum;
 	}
 
@@ -3460,11 +3502,11 @@ add_rule(struct ip_fw_chain *chain, struct ip_fw *input_rule)
 	}
 	flush_rule_ptrs(chain);
 done:
-	static_count++;
-	static_len += l;
+	V_static_count++;
+	V_static_len += l;
 	IPFW_WUNLOCK(chain);
 	DEB(printf("ipfw: installed rule %d, static count now %d\n",
-		rule->rulenum, static_count);)
+		rule->rulenum, V_static_count);)
 	return (0);
 }
 
@@ -3480,6 +3522,7 @@ static struct ip_fw *
 remove_rule(struct ip_fw_chain *chain, struct ip_fw *rule,
     struct ip_fw *prev)
 {
+	INIT_VNET_IPFW(curvnet);
 	struct ip_fw *n;
 	int l = RULESIZE(rule);
 
@@ -3493,8 +3536,8 @@ remove_rule(struct ip_fw_chain *chain, struct ip_fw *rule,
 		chain->rules = n;
 	else
 		prev->next = n;
-	static_count--;
-	static_len -= l;
+	V_static_count--;
+	V_static_len -= l;
 
 	rule->next = chain->reap;
 	chain->reap = rule;
@@ -3694,6 +3737,7 @@ clear_counters(struct ip_fw *rule, int log_only)
 static int
 zero_entry(struct ip_fw_chain *chain, u_int32_t arg, int log_only)
 {
+	INIT_VNET_IPFW(curvnet);
 	struct ip_fw *rule;
 	char *msg;
 
@@ -3708,7 +3752,7 @@ zero_entry(struct ip_fw_chain *chain, u_int32_t arg, int log_only)
 
 	IPFW_WLOCK(chain);
 	if (rulenum == 0) {
-		norule_counter = 0;
+		V_norule_counter = 0;
 		for (rule = chain->rules; rule; rule = rule->next) {
 			/* Skip rules from another set. */
 			if (cmd == 1 && rule->set != set)
@@ -3741,7 +3785,7 @@ zero_entry(struct ip_fw_chain *chain, u_int32_t arg, int log_only)
 	}
 	IPFW_WUNLOCK(chain);
 
-	if (fw_verbose) {
+	if (V_fw_verbose) {
 		int lev = LOG_SECURITY | LOG_NOTICE;
 
 		if (rulenum)
@@ -4066,6 +4110,7 @@ bad_size:
 static size_t
 ipfw_getrules(struct ip_fw_chain *chain, void *buf, size_t space)
 {
+	INIT_VNET_IPFW(curvnet);
 	char *bp = buf;
 	char *ep = bp + space;
 	struct ip_fw *rule;
@@ -4086,24 +4131,25 @@ ipfw_getrules(struct ip_fw_chain *chain, void *buf, size_t space)
 		if (bp + i <= ep) {
 			bcopy(rule, bp, i);
 			/*
-			 * XXX HACK. Store the disable mask in the "next" pointer
-			 * in a wild attempt to keep the ABI the same.
+			 * XXX HACK. Store the disable mask in the "next"
+			 * pointer in a wild attempt to keep the ABI the same.
 			 * Why do we do this on EVERY rule?
 			 */
-			bcopy(&set_disable, &(((struct ip_fw *)bp)->next_rule),
-			    sizeof(set_disable));
+			bcopy(&V_set_disable,
+			    &(((struct ip_fw *)bp)->next_rule),
+			    sizeof(V_set_disable));
 			if (((struct ip_fw *)bp)->timestamp)
 				((struct ip_fw *)bp)->timestamp += boot_seconds;
 			bp += i;
 		}
 	}
 	IPFW_RUNLOCK(chain);
-	if (ipfw_dyn_v) {
+	if (V_ipfw_dyn_v) {
 		ipfw_dyn_rule *p, *last = NULL;
 
 		IPFW_DYN_LOCK();
-		for (i = 0 ; i < curr_dyn_buckets; i++)
-			for (p = ipfw_dyn_v[i] ; p != NULL; p = p->next) {
+		for (i = 0 ; i < V_curr_dyn_buckets; i++)
+			for (p = V_ipfw_dyn_v[i] ; p != NULL; p = p->next) {
 				if (bp + sizeof *p <= ep) {
 					ipfw_dyn_rule *dst =
 						(ipfw_dyn_rule *)bp;
@@ -4147,6 +4193,7 @@ static int
 ipfw_ctl(struct sockopt *sopt)
 {
 #define	RULE_MAXSIZE	(256*sizeof(u_int32_t))
+	INIT_VNET_IPFW(curvnet);
 	int error;
 	size_t size;
 	struct ip_fw *buf, *rule;
@@ -4182,9 +4229,9 @@ ipfw_ctl(struct sockopt *sopt)
 		 * change between calculating the size and returning the
 		 * data in which case we'll just return what fits.
 		 */
-		size = static_len;	/* size of static rules */
-		if (ipfw_dyn_v)		/* add size of dyn.rules */
-			size += (dyn_count * sizeof(ipfw_dyn_rule));
+		size = V_static_len;	/* size of static rules */
+		if (V_ipfw_dyn_v)		/* add size of dyn.rules */
+			size += (V_dyn_count * sizeof(ipfw_dyn_rule));
 
 		/*
 		 * XXX todo: if the user passes a short length just to know
@@ -4193,7 +4240,7 @@ ipfw_ctl(struct sockopt *sopt)
 		 */
 		buf = malloc(size, M_TEMP, M_WAITOK);
 		error = sooptcopyout(sopt, buf,
-				ipfw_getrules(&layer3_chain, buf, size));
+				ipfw_getrules(&V_layer3_chain, buf, size));
 		free(buf, M_TEMP);
 		break;
 
@@ -4211,12 +4258,12 @@ ipfw_ctl(struct sockopt *sopt)
 		 * the old list without the need for a lock.
 		 */
 
-		IPFW_WLOCK(&layer3_chain);
-		layer3_chain.reap = NULL;
-		free_chain(&layer3_chain, 0 /* keep default rule */);
-		rule = layer3_chain.reap;
-		layer3_chain.reap = NULL;
-		IPFW_WUNLOCK(&layer3_chain);
+		IPFW_WLOCK(&V_layer3_chain);
+		V_layer3_chain.reap = NULL;
+		free_chain(&V_layer3_chain, 0 /* keep default rule */);
+		rule = V_layer3_chain.reap;
+		V_layer3_chain.reap = NULL;
+		IPFW_WUNLOCK(&V_layer3_chain);
 		if (rule != NULL)
 			reap_rules(rule);
 		break;
@@ -4228,7 +4275,7 @@ ipfw_ctl(struct sockopt *sopt)
 		if (error == 0)
 			error = check_ipfw_struct(rule, sopt->sopt_valsize);
 		if (error == 0) {
-			error = add_rule(&layer3_chain, rule);
+			error = add_rule(&V_layer3_chain, rule);
 			size = RULESIZE(rule);
 			if (!error && sopt->sopt_dir == SOPT_GET)
 				error = sooptcopyout(sopt, rule, size);
@@ -4255,10 +4302,10 @@ ipfw_ctl(struct sockopt *sopt)
 			break;
 		size = sopt->sopt_valsize;
 		if (size == sizeof(u_int32_t))	/* delete or reassign */
-			error = del_entry(&layer3_chain, rulenum[0]);
+			error = del_entry(&V_layer3_chain, rulenum[0]);
 		else if (size == 2*sizeof(u_int32_t)) /* set enable/disable */
-			set_disable =
-			    (set_disable | rulenum[0]) & ~rulenum[1] &
+			V_set_disable =
+			    (V_set_disable | rulenum[0]) & ~rulenum[1] &
 			    ~(1<<RESVD_SET); /* set RESVD_SET always enabled */
 		else
 			error = EINVAL;
@@ -4273,7 +4320,7 @@ ipfw_ctl(struct sockopt *sopt)
 		    if (error)
 			break;
 		}
-		error = zero_entry(&layer3_chain, rulenum[0],
+		error = zero_entry(&V_layer3_chain, rulenum[0],
 			sopt->sopt_name == IP_FW_RESETLOG);
 		break;
 
@@ -4285,7 +4332,7 @@ ipfw_ctl(struct sockopt *sopt)
 			    sizeof(ent), sizeof(ent));
 			if (error)
 				break;
-			error = add_table_entry(&layer3_chain, ent.tbl,
+			error = add_table_entry(&V_layer3_chain, ent.tbl,
 			    ent.addr, ent.masklen, ent.value);
 		}
 		break;
@@ -4298,7 +4345,7 @@ ipfw_ctl(struct sockopt *sopt)
 			    sizeof(ent), sizeof(ent));
 			if (error)
 				break;
-			error = del_table_entry(&layer3_chain, ent.tbl,
+			error = del_table_entry(&V_layer3_chain, ent.tbl,
 			    ent.addr, ent.masklen);
 		}
 		break;
@@ -4311,9 +4358,9 @@ ipfw_ctl(struct sockopt *sopt)
 			    sizeof(tbl), sizeof(tbl));
 			if (error)
 				break;
-			IPFW_WLOCK(&layer3_chain);
-			error = flush_table(&layer3_chain, tbl);
-			IPFW_WUNLOCK(&layer3_chain);
+			IPFW_WLOCK(&V_layer3_chain);
+			error = flush_table(&V_layer3_chain, tbl);
+			IPFW_WUNLOCK(&V_layer3_chain);
 		}
 		break;
 
@@ -4324,9 +4371,9 @@ ipfw_ctl(struct sockopt *sopt)
 			if ((error = sooptcopyin(sopt, &tbl, sizeof(tbl),
 			    sizeof(tbl))))
 				break;
-			IPFW_RLOCK(&layer3_chain);
-			error = count_table(&layer3_chain, tbl, &cnt);
-			IPFW_RUNLOCK(&layer3_chain);
+			IPFW_RLOCK(&V_layer3_chain);
+			error = count_table(&V_layer3_chain, tbl, &cnt);
+			IPFW_RUNLOCK(&V_layer3_chain);
 			if (error)
 				break;
 			error = sooptcopyout(sopt, &cnt, sizeof(cnt));
@@ -4350,9 +4397,9 @@ ipfw_ctl(struct sockopt *sopt)
 			}
 			tbl->size = (size - sizeof(*tbl)) /
 			    sizeof(ipfw_table_entry);
-			IPFW_RLOCK(&layer3_chain);
-			error = dump_table(&layer3_chain, tbl);
-			IPFW_RUNLOCK(&layer3_chain);
+			IPFW_RLOCK(&V_layer3_chain);
+			error = dump_table(&V_layer3_chain, tbl);
+			IPFW_RUNLOCK(&V_layer3_chain);
 			if (error) {
 				free(tbl, M_TEMP);
 				break;
@@ -4367,7 +4414,7 @@ ipfw_ctl(struct sockopt *sopt)
 			error = ipfw_nat_cfg_ptr(sopt);
 		else {
 			printf("IP_FW_NAT_CFG: %s\n",
-				"ipfw_nat not present, please load it");
+			    "ipfw_nat not present, please load it");
 			error = EINVAL;
 		}
 		break;
@@ -4377,7 +4424,7 @@ ipfw_ctl(struct sockopt *sopt)
 			error = ipfw_nat_del_ptr(sopt);
 		else {
 			printf("IP_FW_NAT_DEL: %s\n",
-				"ipfw_nat not present, please load it");
+			    "ipfw_nat not present, please load it");
 			error = EINVAL;
 		}
 		break;
@@ -4387,7 +4434,7 @@ ipfw_ctl(struct sockopt *sopt)
 			error = ipfw_nat_get_cfg_ptr(sopt);
 		else {
 			printf("IP_FW_NAT_GET_CFG: %s\n",
-				"ipfw_nat not present, please load it");
+			    "ipfw_nat not present, please load it");
 			error = EINVAL;
 		}
 		break;
@@ -4397,7 +4444,7 @@ ipfw_ctl(struct sockopt *sopt)
 			error = ipfw_nat_get_log_ptr(sopt);
 		else {
 			printf("IP_FW_NAT_GET_LOG: %s\n",
-				"ipfw_nat not present, please load it");
+			    "ipfw_nat not present, please load it");
 			error = EINVAL;
 		}
 		break;
@@ -4431,7 +4478,7 @@ ipfw_tick(void * __unused unused)
 	int i;
 	ipfw_dyn_rule *q;
 
-	if (dyn_keepalive == 0 || ipfw_dyn_v == NULL || dyn_count == 0)
+	if (V_dyn_keepalive == 0 || V_ipfw_dyn_v == NULL || V_dyn_count == 0)
 		goto done;
 
 	/*
@@ -4443,15 +4490,15 @@ ipfw_tick(void * __unused unused)
 	m0 = NULL;
 	mtailp = &m0;
 	IPFW_DYN_LOCK();
-	for (i = 0 ; i < curr_dyn_buckets ; i++) {
-		for (q = ipfw_dyn_v[i] ; q ; q = q->next ) {
+	for (i = 0 ; i < V_curr_dyn_buckets ; i++) {
+		for (q = V_ipfw_dyn_v[i] ; q ; q = q->next ) {
 			if (q->dyn_type == O_LIMIT_PARENT)
 				continue;
 			if (q->id.proto != IPPROTO_TCP)
 				continue;
 			if ( (q->state & BOTH_SYN) != BOTH_SYN)
 				continue;
-			if (TIME_LEQ( time_uptime+dyn_keepalive_interval,
+			if (TIME_LEQ(time_uptime + V_dyn_keepalive_interval,
 			    q->expire))
 				continue;	/* too early */
 			if (TIME_LEQ(q->expire, time_uptime))
@@ -4474,14 +4521,37 @@ ipfw_tick(void * __unused unused)
 		ip_output(m, NULL, NULL, 0, NULL, NULL);
 	}
 done:
-	callout_reset(&ipfw_timeout, dyn_keepalive_period*hz, ipfw_tick, NULL);
+	callout_reset(&V_ipfw_timeout, V_dyn_keepalive_period * hz,
+		      ipfw_tick, NULL);
 }
 
 int
 ipfw_init(void)
 {
+	INIT_VNET_IPFW(curvnet);
 	struct ip_fw default_rule;
 	int error;
+
+	V_autoinc_step = 100;	/* bounded to 1..1000 in add_rule() */
+
+	V_ipfw_dyn_v = NULL;
+	V_dyn_buckets = 256;	/* must be power of 2 */
+	V_curr_dyn_buckets = 256; /* must be power of 2 */
+
+	V_dyn_ack_lifetime = 300;
+	V_dyn_syn_lifetime = 20;
+	V_dyn_fin_lifetime = 1;
+	V_dyn_rst_lifetime = 1;
+	V_dyn_udp_lifetime = 10;
+	V_dyn_short_lifetime = 5;
+
+	V_dyn_keepalive_interval = 20;
+	V_dyn_keepalive_period = 5;
+	V_dyn_keepalive = 1;	/* do send keepalives */
+
+	V_dyn_max = 4096;	/* max # of dynamic rules */
+
+	V_fw_deny_unknown_exthdrs = 1;
 
 #ifdef INET6
 	/* Setup IPv6 fw sysctl tree. */
@@ -4491,20 +4561,20 @@ ipfw_init(void)
 	    CTLFLAG_RW | CTLFLAG_SECURE, 0, "Firewall");
 	SYSCTL_ADD_PROC(&ip6_fw_sysctl_ctx, SYSCTL_CHILDREN(ip6_fw_sysctl_tree),
 	    OID_AUTO, "enable", CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_SECURE3,
-	    &fw6_enable, 0, ipfw_chg_hook, "I", "Enable ipfw+6");
+	    &V_fw6_enable, 0, ipfw_chg_hook, "I", "Enable ipfw+6");
 	SYSCTL_ADD_INT(&ip6_fw_sysctl_ctx, SYSCTL_CHILDREN(ip6_fw_sysctl_tree),
 	    OID_AUTO, "deny_unknown_exthdrs", CTLFLAG_RW | CTLFLAG_SECURE,
-	    &fw_deny_unknown_exthdrs, 0,
+	    &V_fw_deny_unknown_exthdrs, 0,
 	    "Deny packets with unknown IPv6 Extension Headers");
 #endif
 
-	layer3_chain.rules = NULL;
-	IPFW_LOCK_INIT(&layer3_chain);
+	V_layer3_chain.rules = NULL;
+	IPFW_LOCK_INIT(&V_layer3_chain);
 	ipfw_dyn_rule_zone = uma_zcreate("IPFW dynamic rule",
 	    sizeof(ipfw_dyn_rule), NULL, NULL, NULL, NULL,
 	    UMA_ALIGN_PTR, 0);
 	IPFW_DYN_LOCK_INIT();
-	callout_init(&ipfw_timeout, CALLOUT_MPSAFE);
+	callout_init(&V_ipfw_timeout, CALLOUT_MPSAFE);
 
 	bzero(&default_rule, sizeof default_rule);
 
@@ -4520,17 +4590,17 @@ ipfw_init(void)
 #endif
 				O_DENY;
 
-	error = add_rule(&layer3_chain, &default_rule);
+	error = add_rule(&V_layer3_chain, &default_rule);
 	if (error != 0) {
 		printf("ipfw2: error %u initializing default rule "
 			"(support disabled)\n", error);
 		IPFW_DYN_LOCK_DESTROY();
-		IPFW_LOCK_DESTROY(&layer3_chain);
+		IPFW_LOCK_DESTROY(&V_layer3_chain);
 		uma_zdestroy(ipfw_dyn_rule_zone);
 		return (error);
 	}
 
-	ip_fw_default_rule = layer3_chain.rules;
+	ip_fw_default_rule = V_layer3_chain.rules;
 	printf("ipfw2 "
 #ifdef INET6
 		"(+ipv6) "
@@ -4557,30 +4627,30 @@ ipfw_init(void)
 		default_rule.cmd[0].opcode == O_ACCEPT ? "accept" : "deny");
 
 #ifdef IPFIREWALL_VERBOSE
-	fw_verbose = 1;
+	V_fw_verbose = 1;
 #endif
 #ifdef IPFIREWALL_VERBOSE_LIMIT
-	verbose_limit = IPFIREWALL_VERBOSE_LIMIT;
+	V_verbose_limit = IPFIREWALL_VERBOSE_LIMIT;
 #endif
-	if (fw_verbose == 0)
+	if (V_fw_verbose == 0)
 		printf("disabled\n");
-	else if (verbose_limit == 0)
+	else if (V_verbose_limit == 0)
 		printf("unlimited\n");
 	else
 		printf("limited to %d packets/entry by default\n",
-		    verbose_limit);
+		    V_verbose_limit);
 
-	error = init_tables(&layer3_chain);
+	error = init_tables(&V_layer3_chain);
 	if (error) {
 		IPFW_DYN_LOCK_DESTROY();
-		IPFW_LOCK_DESTROY(&layer3_chain);
+		IPFW_LOCK_DESTROY(&V_layer3_chain);
 		uma_zdestroy(ipfw_dyn_rule_zone);
 		return (error);
 	}
 	ip_fw_ctl_ptr = ipfw_ctl;
 	ip_fw_chk_ptr = ipfw_chk;
-	callout_reset(&ipfw_timeout, hz, ipfw_tick, NULL);	
-	LIST_INIT(&layer3_chain.nat);
+	callout_reset(&V_ipfw_timeout, hz, ipfw_tick, NULL);	
+	LIST_INIT(&V_layer3_chain.nat);
 	return (0);
 }
 
@@ -4591,20 +4661,20 @@ ipfw_destroy(void)
 
 	ip_fw_chk_ptr = NULL;
 	ip_fw_ctl_ptr = NULL;
-	callout_drain(&ipfw_timeout);
-	IPFW_WLOCK(&layer3_chain);
-	flush_tables(&layer3_chain);
-	layer3_chain.reap = NULL;
-	free_chain(&layer3_chain, 1 /* kill default rule */);
-	reap = layer3_chain.reap, layer3_chain.reap = NULL;
-	IPFW_WUNLOCK(&layer3_chain);
+	callout_drain(&V_ipfw_timeout);
+	IPFW_WLOCK(&V_layer3_chain);
+	flush_tables(&V_layer3_chain);
+	V_layer3_chain.reap = NULL;
+	free_chain(&V_layer3_chain, 1 /* kill default rule */);
+	reap = V_layer3_chain.reap, V_layer3_chain.reap = NULL;
+	IPFW_WUNLOCK(&V_layer3_chain);
 	if (reap != NULL)
 		reap_rules(reap);
 	IPFW_DYN_LOCK_DESTROY();
 	uma_zdestroy(ipfw_dyn_rule_zone);
-	if (ipfw_dyn_v != NULL)
-		free(ipfw_dyn_v, M_IPFW);
-	IPFW_LOCK_DESTROY(&layer3_chain);
+	if (V_ipfw_dyn_v != NULL)
+		free(V_ipfw_dyn_v, M_IPFW);
+	IPFW_LOCK_DESTROY(&V_layer3_chain);
 
 #ifdef INET6
 	/* Free IPv6 fw sysctl tree. */

@@ -46,6 +46,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/mbuf.h>
 #include <sys/mount.h>
 #include <sys/mutex.h>
+#include <sys/rwlock.h>
 #include <sys/refcount.h>
 #include <sys/socket.h>
 #include <sys/systm.h>
@@ -235,6 +236,7 @@ vfs_free_addrlist(struct netexport *nep)
 		if ((rnh = nep->ne_rtable[i])) {
 			RADIX_NODE_HEAD_LOCK(rnh);
 			(*rnh->rnh_walktree) (rnh, vfs_free_netcred, rnh);
+			RADIX_NODE_HEAD_UNLOCK(rnh);
 			RADIX_NODE_HEAD_DESTROY(rnh);
 			free(rnh, M_RTABLE);
 			nep->ne_rtable[i] = NULL;	/* not SMP safe XXX */

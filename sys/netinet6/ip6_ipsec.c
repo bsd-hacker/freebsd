@@ -42,6 +42,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/socket.h>
 #include <sys/socketvar.h>
 #include <sys/sysctl.h>
+#include <sys/vimage.h>
 
 #include <net/if.h>
 #include <net/route.h>
@@ -50,6 +51,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/in_systm.h>
 #include <netinet/in_var.h>
 #include <netinet/ip.h>
+#include <netinet/ip6.h>
 #include <netinet/in_pcb.h>
 #include <netinet/ip_var.h>
 #include <netinet/ip_options.h>
@@ -70,6 +72,7 @@ __FBSDID("$FreeBSD$");
 
 #include <netinet6/ip6_ipsec.h>
 #include <netinet6/ip6_var.h>
+#include <netinet6/vinet6.h>
 
 extern	struct protosw inet6sw[];
 
@@ -101,6 +104,8 @@ int
 ip6_ipsec_fwd(struct mbuf *m)
 {
 #ifdef IPSEC
+	INIT_VNET_INET6(curvnet);
+	INIT_VNET_IPSEC(curvnet);
 	struct m_tag *mtag;
 	struct tdb_ident *tdbi;
 	struct secpolicy *sp;
@@ -128,7 +133,7 @@ ip6_ipsec_fwd(struct mbuf *m)
 	KEY_FREESP(&sp);
 	splx(s);
 	if (error) {
-		ip6stat.ip6s_cantforward++;
+		V_ip6stat.ip6s_cantforward++;
 		return 1;
 	}
 #endif /* IPSEC */
@@ -146,6 +151,7 @@ int
 ip6_ipsec_input(struct mbuf *m, int nxt)
 {
 #ifdef IPSEC
+	INIT_VNET_IPSEC(curvnet);
 	struct m_tag *mtag;
 	struct tdb_ident *tdbi;
 	struct secpolicy *sp;
@@ -335,9 +341,7 @@ ip6_ipsec_mtu(struct mbuf *m)
 				   &ipsecerror);
 	if (sp != NULL) {
 		/* count IPsec header size */
-		ipsechdr = ipsec4_hdrsiz(m,
-					 IPSEC_DIR_OUTBOUND,
-					 NULL);
+		ipsechdr = ipsec_hdrsiz(m, IPSEC_DIR_OUTBOUND, NULL);
 
 		/*
 		 * find the correct route for outer IPv4

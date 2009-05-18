@@ -54,8 +54,10 @@
 #include <sys/queue.h>
 #include <sys/types.h>
 #include <sys/malloc.h>
+#include <sys/vimage.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_clone.h>
 #include <net/if_types.h>
 #include <net/netisr.h>
@@ -76,6 +78,7 @@
 #include <netinet6/in6_var.h>
 #include <netinet/ip6.h>
 #include <netinet6/ip6_var.h>
+#include <netinet6/vinet6.h>
 #endif
 
 #define FAITHNAME	"faith"
@@ -323,11 +326,12 @@ static int
 faithprefix(in6)
 	struct in6_addr *in6;
 {
+	INIT_VNET_INET6(curvnet);
 	struct rtentry *rt;
 	struct sockaddr_in6 sin6;
 	int ret;
 
-	if (ip6_keepfaith == 0)
+	if (V_ip6_keepfaith == 0)
 		return 0;
 
 	bzero(&sin6, sizeof(sin6));

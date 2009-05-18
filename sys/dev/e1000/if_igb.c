@@ -63,6 +63,7 @@
 #include <net/bpf.h>
 #include <net/ethernet.h>
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_arp.h>
 #include <net/if_dl.h>
 #include <net/if_media.h>
@@ -192,10 +193,8 @@ static void	igb_print_hw_stats(struct adapter *);
 static void	igb_update_link_status(struct adapter *);
 static int	igb_get_buf(struct rx_ring *, int);
 
-#ifdef IGB_HW_VLAN_SUPPORT
 static void	igb_register_vlan(void *, struct ifnet *, u16);
 static void	igb_unregister_vlan(void *, struct ifnet *, u16);
-#endif
 
 static int	igb_xmit(struct tx_ring *, struct mbuf **);
 static int	igb_dma_malloc(struct adapter *, bus_size_t,
@@ -281,7 +280,7 @@ TUNABLE_INT("hw.igb.enable_aim", &igb_enable_aim);
 static int igb_low_latency = IGB_LOW_LATENCY;
 TUNABLE_INT("hw.igb.low_latency", &igb_low_latency);
 static int igb_ave_latency = IGB_AVE_LATENCY;
-TUNABLE_INT("hw.igb.ave_latency", &igb_ave_latency);
+TUNABLE_INT("hw.igb.ave_latency", &igb_low_latency);
 static int igb_bulk_latency = IGB_BULK_LATENCY;
 TUNABLE_INT("hw.igb.bulk_latency", &igb_bulk_latency);
                 
@@ -572,13 +571,11 @@ igb_attach(device_t dev)
 	if (eeprom_data)
 		adapter->wol = E1000_WUFC_MAG;
 
-#ifdef IGB_HW_VLAN_SUPPORT
 	/* Register for VLAN events */
 	adapter->vlan_attach = EVENTHANDLER_REGISTER(vlan_config,
 	     igb_register_vlan, 0, EVENTHANDLER_PRI_FIRST);
 	adapter->vlan_detach = EVENTHANDLER_REGISTER(vlan_unconfig,
 	     igb_unregister_vlan, 0, EVENTHANDLER_PRI_FIRST);
-#endif
 
 	/* Tell the stack that the interface is not active */
 	adapter->ifp->if_drv_flags &= ~(IFF_DRV_RUNNING | IFF_DRV_OACTIVE);
@@ -639,13 +636,11 @@ igb_detach(device_t dev)
 		igb_enable_wakeup(dev);
 	}
 
-#ifdef IGB_HW_VLAN_SUPPORT
 	/* Unregister VLAN events */
 	if (adapter->vlan_attach != NULL)
 		EVENTHANDLER_DEREGISTER(vlan_config, adapter->vlan_attach);
 	if (adapter->vlan_detach != NULL)
 		EVENTHANDLER_DEREGISTER(vlan_unconfig, adapter->vlan_detach);
-#endif
 
 	ether_ifdetach(adapter->ifp);
 
@@ -809,7 +804,9 @@ igb_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 {
 	struct adapter	*adapter = ifp->if_softc;
 	struct ifreq *ifr = (struct ifreq *)data;
+#ifdef INET
 	struct ifaddr *ifa = (struct ifaddr *)data;
+#endif
 	int error = 0;
 
 	if (adapter->in_detach)
@@ -817,6 +814,7 @@ igb_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 
 	switch (command) {
 	case SIOCSIFADDR:
+#ifdef INET
 		if (ifa->ifa_addr->sa_family == AF_INET) {
 			/*
 			 * XXX
@@ -833,6 +831,7 @@ igb_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 			}
 			arp_ifinit(ifp, ifa);
 		} else
+#endif
 			error = ether_ioctl(ifp, command, data);
 		break;
 	case SIOCSIFMTU:
@@ -921,12 +920,10 @@ igb_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 			ifp->if_capenable ^= IFCAP_VLAN_HWTAGGING;
 			reinit = 1;
 		}
-#ifdef IGB_HW_VLAN_SUPPORT
 		if (mask & IFCAP_VLAN_HWFILTER) {
 			ifp->if_capenable ^= IFCAP_VLAN_HWFILTER;
 			reinit = 1;
 		}
-#endif
 		if (reinit && (ifp->if_drv_flags & IFF_DRV_RUNNING))
 			igb_init(adapter);
 		VLAN_CAPABILITIES(ifp);
@@ -1128,15 +1125,14 @@ igb_init_locked(struct adapter *adapter)
 
 	E1000_WRITE_REG(&adapter->hw, E1000_VET, ETHERTYPE_VLAN);
 
-#ifndef IGB_HW_VLAN_SUPPORT
 	/* Vlan's enabled but HW Filtering off */
-	if (ifp->if_capenable & IFCAP_VLAN_HWTAGGING) {
+	if ((ifp->if_capenable & IFCAP_VLAN_HWTAGGING) &&
+	    ((ifp->if_capenable & IFCAP_VLAN_HWFILTER) == 0)) {
 		u32 ctrl;
 		ctrl = E1000_READ_REG(&adapter->hw, E1000_CTRL);
 		ctrl |= E1000_CTRL_VME;
 		E1000_WRITE_REG(&adapter->hw, E1000_CTRL, ctrl);
 	}
-#endif
 
 	/* Set hardware offload abilities */
 	ifp->if_hwassist = 0;
@@ -2499,15 +2495,10 @@ igb_setup_interface(device_t dev, struct adapter *adapter)
 	 * Tell the upper layer(s) what we support.
 	 */
 	ifp->if_data.ifi_hdrlen = sizeof(struct ether_vlan_header);
-	ifp->if_capabilities |= IFCAP_VLAN_HWTAGGING;
+	ifp->if_capabilities |= IFCAP_VLAN_HWTAGGING | IFCAP_VLAN_HWFILTER;
 	ifp->if_capabilities |= IFCAP_VLAN_MTU;
-	ifp->if_capenable |= IFCAP_VLAN_HWTAGGING;
+	ifp->if_capenable |= IFCAP_VLAN_HWTAGGING | IFCAP_VLAN_HWFILTER;
 	ifp->if_capenable |= IFCAP_VLAN_MTU;
-
-#ifdef IGB_HW_VLAN_SUPPORT
-	ifp->if_capabilities |= IFCAP_VLAN_HWFILTER;
-	ifp->if_capenable |= IFCAP_VLAN_HWFILTER;
-#endif
 
 	/*
 	 * Specify the media types supported by this adapter and register
@@ -4071,7 +4062,6 @@ igb_rx_checksum(u32 staterr, struct mbuf *mp)
 	return;
 }
 
-#ifdef IGB_HW_VLAN_SUPPORT
 /*
  * This routine is run via an vlan
  * config EVENT
@@ -4140,7 +4130,6 @@ igb_unregister_vlan(void *unused, struct ifnet *ifp, u16 vtag)
 		    adapter->max_frame_size);
 	}
 }
-#endif /* IGB_HW_VLAN_SUPPORT */
 
 static void
 igb_enable_intr(struct adapter *adapter)

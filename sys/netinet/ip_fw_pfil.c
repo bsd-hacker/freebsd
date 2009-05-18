@@ -43,14 +43,21 @@ __FBSDID("$FreeBSD$");
 #include <sys/mbuf.h>
 #include <sys/module.h>
 #include <sys/kernel.h>
+#include <sys/lock.h>
+#include <sys/rwlock.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
 #include <sys/sysctl.h>
+#include <sys/ucred.h>
+#include <sys/vimage.h>
 
+#define _NET_IF_VAR_H_	/* we don't want if_var.h, only if.h */
 #include <net/if.h>
+#include <net/route.h>
 #include <net/pfil.h>
 
 #include <netinet/in.h>
+#include <netinet/in_systm.h>
 #include <netinet/ip.h>
 #include <netinet/ip_var.h>
 #include <netinet/ip_fw.h>
@@ -61,9 +68,11 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/in_cksum.h>
 
+#ifdef VIMAGE_GLOBALS
 int fw_enable = 1;
 #ifdef INET6
 int fw6_enable = 1;
+#endif
 #endif
 
 int ipfw_chg_hook(SYSCTL_HANDLER_ARGS);
@@ -426,8 +435,10 @@ ipfw_hook(void)
 	if (pfh_inet == NULL)
 		return ENOENT;
 
-	pfil_add_hook(ipfw_check_in, NULL, PFIL_IN | PFIL_WAITOK, pfh_inet);
-	pfil_add_hook(ipfw_check_out, NULL, PFIL_OUT | PFIL_WAITOK, pfh_inet);
+	(void)pfil_add_hook(ipfw_check_in, NULL, PFIL_IN | PFIL_WAITOK,
+	    pfh_inet);
+	(void)pfil_add_hook(ipfw_check_out, NULL, PFIL_OUT | PFIL_WAITOK,
+	    pfh_inet);
 
 	return 0;
 }
@@ -441,8 +452,10 @@ ipfw_unhook(void)
 	if (pfh_inet == NULL)
 		return ENOENT;
 
-	pfil_remove_hook(ipfw_check_in, NULL, PFIL_IN | PFIL_WAITOK, pfh_inet);
-	pfil_remove_hook(ipfw_check_out, NULL, PFIL_OUT | PFIL_WAITOK, pfh_inet);
+	(void)pfil_remove_hook(ipfw_check_in, NULL, PFIL_IN | PFIL_WAITOK,
+	    pfh_inet);
+	(void)pfil_remove_hook(ipfw_check_out, NULL, PFIL_OUT | PFIL_WAITOK,
+	    pfh_inet);
 
 	return 0;
 }
@@ -457,8 +470,10 @@ ipfw6_hook(void)
 	if (pfh_inet6 == NULL)
 		return ENOENT;
 
-	pfil_add_hook(ipfw_check_in, NULL, PFIL_IN | PFIL_WAITOK, pfh_inet6);
-	pfil_add_hook(ipfw_check_out, NULL, PFIL_OUT | PFIL_WAITOK, pfh_inet6);
+	(void)pfil_add_hook(ipfw_check_in, NULL, PFIL_IN | PFIL_WAITOK,
+	    pfh_inet6);
+	(void)pfil_add_hook(ipfw_check_out, NULL, PFIL_OUT | PFIL_WAITOK,
+	    pfh_inet6);
 
 	return 0;
 }
@@ -472,8 +487,10 @@ ipfw6_unhook(void)
 	if (pfh_inet6 == NULL)
 		return ENOENT;
 
-	pfil_remove_hook(ipfw_check_in, NULL, PFIL_IN | PFIL_WAITOK, pfh_inet6);
-	pfil_remove_hook(ipfw_check_out, NULL, PFIL_OUT | PFIL_WAITOK, pfh_inet6);
+	(void)pfil_remove_hook(ipfw_check_in, NULL, PFIL_IN | PFIL_WAITOK,
+	    pfh_inet6);
+	(void)pfil_remove_hook(ipfw_check_out, NULL, PFIL_OUT | PFIL_WAITOK,
+	    pfh_inet6);
 
 	return 0;
 }
@@ -482,6 +499,7 @@ ipfw6_unhook(void)
 int
 ipfw_chg_hook(SYSCTL_HANDLER_ARGS)
 {
+	INIT_VNET_IPFW(curvnet);
 	int enable = *(int *)arg1;
 	int error;
 
@@ -494,14 +512,14 @@ ipfw_chg_hook(SYSCTL_HANDLER_ARGS)
 	if (enable == *(int *)arg1)
 		return (0);
 
-	if (arg1 == &fw_enable) {
+	if (arg1 == &V_fw_enable) {
 		if (enable)
 			error = ipfw_hook();
 		else
 			error = ipfw_unhook();
 	}
 #ifdef INET6
-	if (arg1 == &fw6_enable) {
+	if (arg1 == &V_fw6_enable) {
 		if (enable)
 			error = ipfw6_hook();
 		else

@@ -134,7 +134,7 @@ atm_output(struct ifnet *ifp, struct mbuf *m0, struct sockaddr *dst,
 	u_int32_t atm_flags;
 
 #ifdef MAC
-	error = mac_check_ifnet_transmit(ifp, m);
+	error = mac_ifnet_check_transmit(ifp, m);
 	if (error)
 		senderr(error);
 #endif
@@ -153,22 +153,11 @@ atm_output(struct ifnet *ifp, struct mbuf *m0, struct sockaddr *dst,
 		case AF_INET:
 		case AF_INET6:
 		{
-			struct rtentry *rt = NULL;
-			/*  
-			 * check route
-			 */
-			if (rt0 != NULL) {
-				error = rt_check(&rt, &rt0, dst);
-				if (error)
-					goto bad;
-				RT_UNLOCK(rt);
-			}
-
 			if (dst->sa_family == AF_INET6)
 			        etype = ETHERTYPE_IPV6;
 			else
 			        etype = ETHERTYPE_IP;
-			if (!atmresolve(rt, m, dst, &atmdst)) {
+			if (!atmresolve(rt0, m, dst, &atmdst)) {
 				m = NULL; 
 				/* XXX: atmresolve already free'd it */
 				senderr(EHOSTUNREACH);
@@ -261,7 +250,7 @@ atm_input(struct ifnet *ifp, struct atm_pseudohdr *ah, struct mbuf *m,
 		return;
 	}
 #ifdef MAC
-	mac_create_mbuf_from_ifnet(ifp, m);
+	mac_ifnet_create_mbuf(ifp, m);
 #endif
 	ifp->if_ibytes += m->m_pkthdr.len;
 

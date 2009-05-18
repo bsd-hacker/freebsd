@@ -33,19 +33,10 @@ $FreeBSD$
 #ifndef _CXGB_OFFLOAD_H
 #define _CXGB_OFFLOAD_H
 
-#ifdef CONFIG_DEFINED
 #include <common/cxgb_version.h>
 #include <cxgb_config.h>
-#include <ulp/tom/cxgb_l2t.h>
 #include <common/cxgb_tcb.h>
 #include <t3cdev.h>
-#else
-#include <dev/cxgb/common/cxgb_version.h>
-#include <dev/cxgb/cxgb_config.h>
-#include <dev/cxgb/ulp/tom/cxgb_l2t.h>
-#include <dev/cxgb/common/cxgb_tcb.h>
-#include <dev/cxgb/t3cdev.h>
-#endif
 
 MALLOC_DECLARE(M_CXGB);
 
@@ -79,6 +70,7 @@ void cxgb_remove_clients(struct t3cdev *tdev);
 typedef int (*cxgb_cpl_handler_func)(struct t3cdev *dev,
 				      struct mbuf *m, void *ctx);
 
+struct l2t_entry;
 struct cxgb_client {
 	char 			*name;
 	void 			(*add) (struct t3cdev *);

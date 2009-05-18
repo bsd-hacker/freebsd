@@ -219,7 +219,7 @@ struct ip6_rthdr {
 	/* followed by routing type specific data */
 } __packed;
 
-/* Type 0 Routing header */
+/* Type 0 Routing header, deprecated by RFC 5095. */
 struct ip6_rthdr0 {
 	u_int8_t  ip6r0_nxt;		/* next header */
 	u_int8_t  ip6r0_len;		/* length in units of 8 octets */
@@ -275,24 +275,24 @@ do {									\
 	if (((m)->m_flags & M_LOOP) &&					\
 	    ((m)->m_len < (off) + (hlen)) &&				\
 	    (((m) = m_pullup((m), (off) + (hlen))) == NULL)) {		\
-		ip6stat.ip6s_exthdrtoolong++;				\
+		V_ip6stat.ip6s_exthdrtoolong++;				\
 		return ret;						\
 	} else if ((m)->m_flags & M_EXT) {				\
 		if ((m)->m_len < (off) + (hlen)) {			\
-			ip6stat.ip6s_exthdrtoolong++;			\
+			V_ip6stat.ip6s_exthdrtoolong++;			\
 			m_freem(m);					\
 			return ret;					\
 		}							\
 	} else {							\
 		if ((m)->m_len < (off) + (hlen)) {			\
-			ip6stat.ip6s_exthdrtoolong++;			\
+			V_ip6stat.ip6s_exthdrtoolong++;			\
 			m_freem(m);					\
 			return ret;					\
 		}							\
 	}								\
     } else {								\
 	if ((m)->m_len < (off) + (hlen)) {				\
-		ip6stat.ip6s_tooshort++;				\
+		V_ip6stat.ip6s_tooshort++;				\
 		in6_ifstat_inc(m->m_pkthdr.rcvif, ifs6_in_truncated);	\
 		m_freem(m);						\
 		return ret;						\
@@ -346,6 +346,7 @@ do {									\
 		}							\
 	}								\
 } while (/*CONSTCOND*/ 0)
+
 #endif /*_KERNEL*/
 
 #endif /* not _NETINET_IP6_H_ */

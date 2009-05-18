@@ -38,6 +38,7 @@
 #ifdef	_KERNEL
 #include <sys/lock.h>
 #include <sys/mutex.h>
+#include <sys/rwlock.h>
 #include <sys/systm.h>
 #include <sys/malloc.h>
 #include <sys/domain.h>
@@ -47,6 +48,13 @@
 #include <sys/syslog.h>
 #include <net/radix.h>
 #endif
+
+#include "opt_mpath.h"
+
+#ifdef RADIX_MPATH
+#include <net/radix_mpath.h>
+#endif
+
 
 static int	rn_walktree_from(struct radix_node_head *h, void *a, void *m,
 		    walktree_f_t *f, void *w);
@@ -630,6 +638,21 @@ rn_addroute(v_arg, n_arg, head, treenodes)
 	saved_tt = tt = rn_insert(v, head, &keyduplicated, treenodes);
 	if (keyduplicated) {
 		for (t = tt; tt; t = tt, tt = tt->rn_dupedkey) {
+#ifdef RADIX_MPATH
+			/* permit multipath, if enabled for the family */
+			if (rn_mpath_capable(head) && netmask == tt->rn_mask) {
+				/*
+				 * go down to the end of multipaths, so that
+				 * new entry goes into the end of rn_dupedkey
+				 * chain.
+				 */
+				do {
+					t = tt;
+					tt = tt->rn_dupedkey;
+				} while (tt && t->rn_mask == tt->rn_mask);
+				break;
+			}
+#endif
 			if (tt->rn_mask == netmask)
 				return (0);
 			if (netmask == 0 ||
@@ -1064,6 +1087,7 @@ rn_walktree(h, f, w)
 	 * while applying the function f to it, so we need to calculate
 	 * the successor node in advance.
 	 */
+
 	/* First time through node, go left */
 	while (rn->rn_bit >= 0)
 		rn = rn->rn_left;

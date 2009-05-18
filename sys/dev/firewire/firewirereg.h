@@ -47,6 +47,7 @@ typedef	struct proc fw_proc;
 #endif
 
 #include <sys/uio.h>
+#include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/taskqueue.h>
 

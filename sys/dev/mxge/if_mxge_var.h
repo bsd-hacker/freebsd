@@ -1,6 +1,6 @@
 /*******************************************************************************
 
-Copyright (c) 2006-2009, Myricom Inc.
+Copyright (c) 2006-2007, Myricom Inc.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -125,7 +125,12 @@ typedef struct
 typedef struct
 {
 	struct mtx mtx;
+#ifdef IFNET_MULTIQUEUE
+	struct buf_ring *br;
+#endif
 	volatile mcp_kreq_ether_send_t *lanai;	/* lanai ptr for sendq	*/
+	volatile uint32_t *send_go;		/* doorbell for sendq */
+	volatile uint32_t *send_stop;		/* doorbell for sendq */
 	mcp_kreq_ether_send_t *req_list;	/* host shadow of sendq */
 	char *req_bytes;
 	bus_dma_segment_t *seg_list;
@@ -136,6 +141,9 @@ typedef struct
 	int done;			/* transmits completed	*/
 	int pkt_done;			/* packets completed */
 	int max_desc;			/* max descriptors per xmit */
+	int queue_active;		/* fw currently polling this queue*/
+	int activate;
+	int deactivate;
 	int stall;			/* #times hw queue exhausted */
 	int wake;			/* #times irq re-enabled xmit */
 	int watchdog_req;		/* cache of req */
@@ -182,6 +190,11 @@ struct mxge_slice_state {
 	mcp_irq_data_t *fw_stats;
 	volatile uint32_t *irq_claim;
 	u_long ipackets;
+	u_long opackets;
+	u_long obytes;
+	u_long omcasts;
+	u_long oerrors;
+	int if_drv_flags;
 	struct lro_head lro_active;
 	struct lro_head lro_free;
 	int lro_queued;
@@ -263,10 +276,7 @@ struct mxge_softc {
 #define MXGE_PCI_VENDOR_MYRICOM 	0x14c1
 #define MXGE_PCI_DEVICE_Z8E 	0x0008
 #define MXGE_PCI_DEVICE_Z8E_9 	0x0009
-#define MXGE_PCI_REV_Z8E	0
-#define MXGE_PCI_REV_Z8ES	1
 #define MXGE_XFP_COMPLIANCE_BYTE	131
-#define MXGE_SFP_COMPLIANCE_BYTE	  3
 
 #define MXGE_HIGHPART_TO_U32(X) \
 (sizeof (X) == 8) ? ((uint32_t)((uint64_t)(X) >> 32)) : (0)
@@ -282,18 +292,22 @@ struct mxge_media_type
 /* implement our own memory barriers, since bus_space_barrier
    cannot handle write-combining regions */
 
+#if __FreeBSD_version < 800053
+
 #if defined (__GNUC__)
   #if #cpu(i386) || defined __i386 || defined i386 || defined __i386__ || #cpu(x86_64) || defined __x86_64__
-    #define mb()  __asm__ __volatile__ ("sfence;": : :"memory")
+    #define wmb()  __asm__ __volatile__ ("sfence;": : :"memory")
   #elif #cpu(sparc64) || defined sparc64 || defined __sparcv9 
-    #define mb()  __asm__ __volatile__ ("membar #MemIssue": : :"memory")
+    #define wmb()  __asm__ __volatile__ ("membar #MemIssue": : :"memory")
   #elif #cpu(sparc) || defined sparc || defined __sparc__
-    #define mb()  __asm__ __volatile__ ("stbar;": : :"memory")
+    #define wmb()  __asm__ __volatile__ ("stbar;": : :"memory")
   #else
-    #define mb() 	/* XXX just to make this compile */
+    #define wmb() 	/* XXX just to make this compile */
   #endif
 #else
   #error "unknown compiler"
+#endif
+
 #endif
 
 static inline void

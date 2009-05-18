@@ -1,6 +1,6 @@
 /**************************************************************************
 
-Copyright (c) 2007-2008, Chelsio Inc.
+Copyright (c) 2007-2009, Chelsio Inc.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -43,12 +43,12 @@ $FreeBSD$
 #include <sys/socket.h>
 #include <sys/sockio.h>
 #include <sys/condvar.h>
+#include <sys/buf_ring.h>
 
 #include <net/ethernet.h>
 #include <net/if.h>
 #include <net/if_media.h>
 #include <net/if_dl.h>
-#include <netinet/tcp_lro.h>
 
 #include <machine/bus.h>
 #include <machine/resource.h>
@@ -57,17 +57,12 @@ $FreeBSD$
 #include <dev/pci/pcireg.h>
 #include <dev/pci/pcivar.h>
 
-
-#ifdef CONFIG_DEFINED
 #include <cxgb_osdep.h>
 #include <t3cdev.h>
-#include <ulp/toecore/cxgb_toedev.h>
 #include <sys/mbufq.h>
-#else
-#include <dev/cxgb/cxgb_osdep.h>
-#include <dev/cxgb/t3cdev.h>
-#include <dev/cxgb/sys/mbufq.h>
-#include <dev/cxgb/ulp/toecore/cxgb_toedev.h>
+
+#ifdef LRO_SUPPORTED
+#include <netinet/tcp_lro.h>
 #endif
 
 #define USE_SX
@@ -126,9 +121,11 @@ struct port_info {
 	uint8_t		txpkt_intf;
 	uint8_t         first_qset;
 	uint32_t	nqsets;
-	
+	int		link_fault;
+
 	uint8_t		hw_addr[ETHER_ADDR_LEN];
 	struct task	timer_reclaim_task;
+	struct task	link_fault_task;
 	struct cdev     *port_cdev;
 
 #define PORT_LOCK_NAME_LEN 32
@@ -165,10 +162,12 @@ enum { TXQ_ETH = 0,
 #define WR_LEN (WR_FLITS * 8)
 #define PIO_LEN (WR_LEN - sizeof(struct cpl_tx_pkt_lso))
 
+#ifdef LRO_SUPPORTED
 struct lro_state {
 	unsigned short enabled;
 	struct lro_ctrl ctrl;
 };
+#endif
 
 #define RX_BUNDLE_SIZE 8
 
@@ -219,7 +218,7 @@ struct sge_fl {
 	uint32_t	gen;
 	bus_addr_t	phys_addr;
 	uint32_t	cntxt_id;
-	uint64_t	empty;
+	uint32_t	empty;
 	bus_dma_tag_t	desc_tag;
 	bus_dmamap_t	desc_map;
 	bus_dma_tag_t   entry_tag;
@@ -264,8 +263,10 @@ struct sge_txq {
 	 * mbuf touches
 	 */
 	struct mbuf_head cleanq;	
-	struct buf_ring txq_mr;
+	struct buf_ring *txq_mr;
+	struct ifaltq	*txq_ifq;
 	struct mbuf     *immpkt;
+
 	uint32_t        txq_drops;
 	uint32_t        txq_skipped;
 	uint32_t        txq_coalesced;
@@ -297,7 +298,9 @@ enum {
 struct sge_qset {
 	struct sge_rspq		rspq;
 	struct sge_fl		fl[SGE_RXQ_PER_SET];
+#ifdef LRO_SUPPORTED
 	struct lro_state        lro;
+#endif
 	struct sge_txq		txq[SGE_TXQ_PER_SET];
 	uint32_t                txq_stopped;       /* which Tx queues are stopped */
 	uint64_t                port_stats[SGE_PSTAT_MAX];
@@ -529,6 +532,8 @@ int t3_os_pci_restore_state(struct adapter *adapter);
 void t3_os_link_changed(adapter_t *adapter, int port_id, int link_status,
 			int speed, int duplex, int fc);
 void t3_os_phymod_changed(struct adapter *adap, int port_id);
+void t3_os_link_fault(adapter_t *adapter, int port_id, int state);
+void t3_os_link_fault_handler(adapter_t *adapter, int port_id);
 void t3_sge_err_intr_handler(adapter_t *adapter);
 int t3_offload_tx(struct t3cdev *, struct mbuf *);
 void t3_os_ext_intr_handler(adapter_t *adapter);
@@ -607,7 +612,7 @@ static inline int offload_running(adapter_t *adapter)
 }
 
 int cxgb_pcpu_enqueue_packet(struct ifnet *ifp, struct mbuf *m);
-int cxgb_pcpu_start(struct ifnet *ifp, struct mbuf *m);
+int cxgb_pcpu_transmit(struct ifnet *ifp, struct mbuf *m);
 void cxgb_pcpu_shutdown_threads(struct adapter *sc);
 void cxgb_pcpu_startup_threads(struct adapter *sc);
 

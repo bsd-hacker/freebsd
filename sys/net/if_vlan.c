@@ -41,6 +41,7 @@
  * and ask it to send them.
  */
 
+#include "opt_route.h"
 #include "opt_vlan.h"
 
 #include <sys/param.h>
@@ -55,6 +56,7 @@
 #include <sys/sockio.h>
 #include <sys/sysctl.h>
 #include <sys/systm.h>
+#include <sys/vimage.h>
 
 #include <net/bpf.h>
 #include <net/ethernet.h>
@@ -63,6 +65,8 @@
 #include <net/if_dl.h>
 #include <net/if_types.h>
 #include <net/if_vlan_var.h>
+#include <net/route.h>
+#include <net/vnet.h>
 
 #define VLANNAME	"vlan"
 #define	VLAN_DEF_HWIDTH	4
@@ -421,6 +425,8 @@ vlan_setmulti(struct ifnet *ifp)
 	sc = ifp->if_softc;
 	ifp_p = PARENT(sc);
 
+	CURVNET_SET_QUIET(ifp_p->if_vnet);
+
 	bzero((char *)&sdl, sizeof(sdl));
 	sdl.sdl_len = sizeof(sdl);
 	sdl.sdl_family = AF_LINK;
@@ -455,6 +461,7 @@ vlan_setmulti(struct ifnet *ifp)
 			return (error);
 	}
 
+	CURVNET_RESTORE();
 	return (0);
 }
 
@@ -572,13 +579,14 @@ MODULE_DEPEND(if_vlan, miibus, 1, 1, 1);
 static struct ifnet *
 vlan_clone_match_ethertag(struct if_clone *ifc, const char *name, int *tag)
 {
+	INIT_VNET_NET(curvnet);
 	const char *cp;
 	struct ifnet *ifp;
 	int t = 0;
 
 	/* Check for <etherif>.<vlan> style interface names. */
 	IFNET_RLOCK();
-	TAILQ_FOREACH(ifp, &ifnet, if_link) {
+	TAILQ_FOREACH(ifp, &V_ifnet, if_link) {
 		if (ifp->if_type != IFT_ETHER)
 			continue;
 		if (strncmp(ifp->if_xname, name, strlen(ifp->if_xname)) != 0)
@@ -864,7 +872,7 @@ vlan_start(struct ifnet *ifp)
 		 * Send it, precisely as ether_output() would have.
 		 * We are already running at splimp.
 		 */
-		IFQ_HANDOFF(p, m, error);
+		error = (p->if_transmit)(p, m);
 		if (!error)
 			ifp->if_opackets++;
 		else

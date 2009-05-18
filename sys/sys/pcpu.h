@@ -54,6 +54,9 @@ struct rm_queue {
 	struct rm_queue* volatile rmq_prev;
 };
 
+#define	PCPU_NAME_LEN (sizeof("CPU ") + sizeof(__XSTRING(MAXCPU) + 1))
+
+
 /*
  * This structure maps out the global data that needs to be kept on a
  * per-cpu basis.  The members are accessed via the PCPU_GET/SET/PTR
@@ -77,7 +80,9 @@ struct pcpu {
 	int		pc_ktr_idx;		/* Index into trace table */
 	char		*pc_ktr_buf;
 #endif
-	PCPU_MD_FIELDS;
+#ifdef KTR
+	char		pc_name[PCPU_NAME_LEN];	/* String name for KTR. */
+#endif
 	struct vmmeter	pc_cnt;			/* VM stats counters */
 	long		pc_cp_time[CPUSTATES];	/* statclock ticks */
 	struct device	*pc_device;
@@ -88,6 +93,18 @@ struct pcpu {
 	 * linker sets.
 	 */
 	struct rm_queue  pc_rm_queue; 
+
+	/*
+	 * Keep MD fields last, so that CPU-specific variations on a
+	 * single architecture don't result in offset variations of
+	 * the machine-independent fields of the pcpu. Even though
+	 * the pcpu structure is private to the kernel, some ports
+	 * (e.g. lsof, part of gtop) define _KERNEL and include this
+	 * header. While strictly speaking this is wrong, there's no
+	 * reason not to keep the offsets of the MI fields contants.
+	 * If only to make kernel debugging easier...
+	 */
+	PCPU_MD_FIELDS;
 };
 
 #ifdef _KERNEL

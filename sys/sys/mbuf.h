@@ -115,6 +115,9 @@ struct pkthdr {
 	/* variables for ip and tcp reassembly */
 	void		*header;	/* pointer to packet header */
 	int		 len;		/* total packet length */
+	uint32_t	 flowid;	/* packet's 4-tuple system 
+					 * flow identifier
+					 */
 	/* variables for hardware checksum */
 	int		 csum_flags;	/* flags regarding checksum */
 	int		 csum_data;	/* data field used by csum routines */
@@ -131,7 +134,7 @@ struct m_ext {
 	caddr_t		 ext_buf;	/* start of buffer */
 	void		(*ext_free)	/* free routine if not the usual */
 			    (void *, void *);
-	void		*ext_args;	/* optional argument pointer */
+        void		*ext_args;	/* optional argument pointer */
 	u_int		 ext_size;	/* size of buffer, for ext_free */
 	volatile u_int	*ref_cnt;	/* pointer to ref count info */
 	int		 ext_type;	/* type of external storage */
@@ -191,6 +194,7 @@ struct mbuf {
 #define	M_PROTO6	0x00080000 /* protocol-specific */
 #define	M_PROTO7	0x00100000 /* protocol-specific */
 #define	M_PROTO8	0x00200000 /* protocol-specific */
+#define	M_FLOWID	0x00400000 /* flowid is valid */
 /*
  * For RELENG_{6,7} steal these flags for limited multiple routing table
  * support. In RELENG_8 and beyond, use just one flag and a tag.
@@ -237,11 +241,13 @@ struct mbuf {
 #define	CSUM_IP_FRAGS		0x0008		/* will csum IP fragments */
 #define	CSUM_FRAGMENT		0x0010		/* will do IP fragmentation */
 #define	CSUM_TSO		0x0020		/* will do TSO */
+#define	CSUM_SCTP		0x0040		/* will do SCTP */
 
 #define	CSUM_IP_CHECKED		0x0100		/* did csum IP */
 #define	CSUM_IP_VALID		0x0200		/*   ... the csum is valid */
 #define	CSUM_DATA_VALID		0x0400		/* csum_data field is valid */
 #define	CSUM_PSEUDO_HDR		0x0800		/* csum_data has pseudo hdr */
+#define CSUM_SCTP_VALID         0x1000          /* SCTP checksum is valid */ 
 
 #define	CSUM_DELAY_DATA		(CSUM_TCP | CSUM_UDP)
 #define	CSUM_DELAY_IP		(CSUM_IP)	/* XXX add ipv6 here too? */
@@ -295,11 +301,11 @@ struct mbstat {
  *
  * The flag to use is as follows:
  * - M_DONTWAIT or M_NOWAIT from an interrupt handler to not block allocation.
- * - M_WAIT or M_WAITOK or M_TRYWAIT from wherever it is safe to block.
+ * - M_WAIT or M_WAITOK from wherever it is safe to block.
  *
  * M_DONTWAIT/M_NOWAIT means that we will not block the thread explicitly and
  * if we cannot allocate immediately we may return NULL, whereas
- * M_WAIT/M_WAITOK/M_TRYWAIT means that if we cannot allocate resources we
+ * M_WAIT/M_WAITOK means that if we cannot allocate resources we
  * will block until they are available, and thus never return NULL.
  *
  * XXX Eventually just phase this out to use M_WAITOK/M_NOWAIT.
@@ -317,7 +323,7 @@ struct mbstat {
 #define	MBUF_MEM_NAME		"mbuf"
 #define	MBUF_CLUSTER_MEM_NAME	"mbuf_cluster"
 #define	MBUF_PACKET_MEM_NAME	"mbuf_packet"
-#define	MBUF_JUMBOP_MEM_NAME	"mbuf_jumbo_pagesize"
+#define	MBUF_JUMBOP_MEM_NAME	"mbuf_jumbo_page"
 #define	MBUF_JUMBO9_MEM_NAME	"mbuf_jumbo_9k"
 #define	MBUF_JUMBO16_MEM_NAME	"mbuf_jumbo_16k"
 #define	MBUF_TAG_MEM_NAME	"mbuf_tag"
@@ -501,8 +507,11 @@ m_getjcl(int how, short type, int flags, int size)
 static __inline void
 m_free_fast(struct mbuf *m)
 {
-	KASSERT(SLIST_EMPTY(&m->m_pkthdr.tags), ("doing fast free of mbuf with tags"));
-
+#ifdef INVARIANTS
+	if (m->m_flags & M_PKTHDR)
+		KASSERT(SLIST_EMPTY(&m->m_pkthdr.tags), ("doing fast free of mbuf with tags"));
+#endif
+	
 	uma_zfree_arg(zone_mbuf, m, (void *)MB_NOTAGS);
 }
 
@@ -588,7 +597,7 @@ m_cljset(struct mbuf *m, void *cl, int type)
 	}
 
 	m->m_data = m->m_ext.ext_buf = cl;
-	m->m_ext.ext_free = m->m_ext.ext_args = NULL;
+	m->m_ext.ext_free = m->m_ext.ext_args;
 	m->m_ext.ext_size = size;
 	m->m_ext.ext_type = type;
 	m->m_ext.ref_cnt = uma_find_refcnt(zone, cl);
@@ -620,8 +629,8 @@ m_last(struct mbuf *m)
 #define	MGET(m, how, type)	((m) = m_get((how), (type)))
 #define	MGETHDR(m, how, type)	((m) = m_gethdr((how), (type)))
 #define	MCLGET(m, how)		m_clget((m), (how))
-#define	MEXTADD(m, buf, size, free, args, flags, type) 			\
-    m_extadd((m), (caddr_t)(buf), (size), (free), (args), (flags), (type))
+#define	MEXTADD(m, buf, size, free, args, flags, type)		\
+    m_extadd((m), (caddr_t)(buf), (size), (free),(args),(flags), (type))
 #define	m_getm(m, len, how, type)					\
     m_getm2((m), (len), (how), (type), M_PKTHDR)
 
@@ -636,7 +645,7 @@ m_last(struct mbuf *m)
 
 /* Check if the supplied mbuf has a packet header, or else panic. */
 #define	M_ASSERTPKTHDR(m)						\
-	KASSERT(m != NULL && m->m_flags & M_PKTHDR,			\
+	KASSERT((m) != NULL && (m)->m_flags & M_PKTHDR,			\
 	    ("%s: no mbuf packet header!", __func__))
 
 /*
@@ -972,5 +981,13 @@ m_tag_find(struct mbuf *m, int type, struct m_tag *start)
 } while (0) 
 
 #endif /* _KERNEL */
+
+#ifdef MBUF_PROFILING
+ void m_profile(struct mbuf *m);
+ #define M_PROFILE(m) m_profile(m)
+#else
+ #define M_PROFILE(m)
+#endif
+
 
 #endif /* !_SYS_MBUF_H_ */

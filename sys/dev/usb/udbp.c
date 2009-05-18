@@ -87,6 +87,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/errno.h>
 #include <sys/sysctl.h>
 #include <net/if.h>
+#include <net/if_var.h>
 #include <machine/bus.h>
 
 #include <dev/usb/usb.h>

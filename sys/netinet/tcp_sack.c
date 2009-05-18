@@ -89,12 +89,14 @@ __FBSDID("$FreeBSD$");
 #include <sys/socketvar.h>
 #include <sys/syslog.h>
 #include <sys/systm.h>
+#include <sys/vimage.h>
 
 #include <machine/cpu.h>	/* before tcp_seq.h, for tcp_random18() */
 
 #include <vm/uma.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/route.h>
 
 #include <netinet/in.h>
@@ -118,30 +120,33 @@ __FBSDID("$FreeBSD$");
 #ifdef TCPDEBUG
 #include <netinet/tcp_debug.h>
 #endif /* TCPDEBUG */
+#include <netinet/vinet.h>
 
 #include <machine/in_cksum.h>
 
 extern struct uma_zone *sack_hole_zone;
 
-SYSCTL_NODE(_net_inet_tcp, OID_AUTO, sack, CTLFLAG_RW, 0, "TCP SACK");
-int tcp_do_sack = 1;
-SYSCTL_INT(_net_inet_tcp_sack, OID_AUTO, enable, CTLFLAG_RW,
-    &tcp_do_sack, 0, "Enable/Disable TCP SACK support");
-TUNABLE_INT("net.inet.tcp.sack.enable", &tcp_do_sack);
+#ifdef VIMAGE_GLOBALS
+int tcp_do_sack;
+int tcp_sack_maxholes;
+int tcp_sack_globalmaxholes;
+int tcp_sack_globalholes;
+#endif
 
-static int tcp_sack_maxholes = 128;
-SYSCTL_INT(_net_inet_tcp_sack, OID_AUTO, maxholes, CTLFLAG_RW,
-    &tcp_sack_maxholes, 0, 
+SYSCTL_NODE(_net_inet_tcp, OID_AUTO, sack, CTLFLAG_RW, 0, "TCP SACK");
+SYSCTL_V_INT(V_NET, vnet_inet, _net_inet_tcp_sack, OID_AUTO, enable,
+    CTLFLAG_RW, tcp_do_sack, 0, "Enable/Disable TCP SACK support");
+
+SYSCTL_V_INT(V_NET, vnet_inet, _net_inet_tcp_sack, OID_AUTO, maxholes,
+    CTLFLAG_RW, tcp_sack_maxholes, 0, 
     "Maximum number of TCP SACK holes allowed per connection");
 
-static int tcp_sack_globalmaxholes = 65536;
-SYSCTL_INT(_net_inet_tcp_sack, OID_AUTO, globalmaxholes, CTLFLAG_RW,
-    &tcp_sack_globalmaxholes, 0, 
+SYSCTL_V_INT(V_NET, vnet_inet, _net_inet_tcp_sack, OID_AUTO, globalmaxholes,
+    CTLFLAG_RW, tcp_sack_globalmaxholes, 0, 
     "Global maximum number of TCP SACK holes");
 
-static int tcp_sack_globalholes = 0;
-SYSCTL_INT(_net_inet_tcp_sack, OID_AUTO, globalholes, CTLFLAG_RD,
-    &tcp_sack_globalholes, 0,
+SYSCTL_V_INT(V_NET, vnet_inet, _net_inet_tcp_sack, OID_AUTO, globalholes,
+    CTLFLAG_RD, tcp_sack_globalholes, 0,
     "Global number of TCP SACK holes currently allocated");
 
 /*
@@ -252,11 +257,12 @@ tcp_clean_sackreport(struct tcpcb *tp)
 static struct sackhole *
 tcp_sackhole_alloc(struct tcpcb *tp, tcp_seq start, tcp_seq end)
 {
+	INIT_VNET_INET(tp->t_inpcb->inp_vnet);
 	struct sackhole *hole;
 
-	if (tp->snd_numholes >= tcp_sack_maxholes ||
-	    tcp_sack_globalholes >= tcp_sack_globalmaxholes) {
-		tcpstat.tcps_sack_sboverflow++;
+	if (tp->snd_numholes >= V_tcp_sack_maxholes ||
+	    V_tcp_sack_globalholes >= V_tcp_sack_globalmaxholes) {
+		V_tcpstat.tcps_sack_sboverflow++;
 		return NULL;
 	}
 
@@ -269,7 +275,7 @@ tcp_sackhole_alloc(struct tcpcb *tp, tcp_seq start, tcp_seq end)
 	hole->rxmit = start;
 
 	tp->snd_numholes++;
-	tcp_sack_globalholes++;
+	V_tcp_sack_globalholes++;
 
 	return hole;
 }
@@ -280,14 +286,15 @@ tcp_sackhole_alloc(struct tcpcb *tp, tcp_seq start, tcp_seq end)
 static void
 tcp_sackhole_free(struct tcpcb *tp, struct sackhole *hole)
 {
+	INIT_VNET_INET(tp->t_vnet);
 
 	uma_zfree(sack_hole_zone, hole);
 
 	tp->snd_numholes--;
-	tcp_sack_globalholes--;
+	V_tcp_sack_globalholes--;
 
 	KASSERT(tp->snd_numholes >= 0, ("tp->snd_numholes >= 0"));
-	KASSERT(tcp_sack_globalholes >= 0, ("tcp_sack_globalholes >= 0"));
+	KASSERT(V_tcp_sack_globalholes >= 0, ("tcp_sack_globalholes >= 0"));
 }
 
 /*

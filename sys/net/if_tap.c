@@ -132,7 +132,7 @@ static struct filterops	tap_write_filterops = {
 
 static struct cdevsw	tap_cdevsw = {
 	.d_version =	D_VERSION,
-	.d_flags =	D_PSEUDO | D_NEEDGIANT,
+	.d_flags =	D_PSEUDO | D_NEEDGIANT | D_NEEDMINOR,
 	.d_open =	tapopen,
 	.d_close =	tapclose,
 	.d_read =	tapread,
@@ -190,7 +190,7 @@ tap_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 	/* find any existing device, or allocate new unit number */
 	i = clone_create(&tapclones, &tap_cdevsw, &unit, &dev, extra);
 	if (i) {
-		dev = make_dev(&tap_cdevsw, unit2minor(unit | extra),
+		dev = make_dev(&tap_cdevsw, unit | extra,
 		     UID_ROOT, GID_WHEEL, 0600, "%s%d", ifc->ifc_name, unit);
 		if (dev != NULL) {
 			dev_ref(dev);
@@ -381,7 +381,7 @@ tapclone(void *arg, struct ucred *cred, char *name, int namelen, struct cdev **d
 			name = devname;
 		}
 
-		*dev = make_dev(&tap_cdevsw, unit2minor(unit | extra),
+		*dev = make_dev(&tap_cdevsw, unit | extra,
 		     UID_ROOT, GID_WHEEL, 0600, "%s", name);
 		if (*dev != NULL) {
 			dev_ref(*dev);
@@ -412,7 +412,7 @@ tapcreate(struct cdev *dev)
 	dev->si_flags &= ~SI_CHEAPCLONE;
 
 	/* allocate driver storage and create device */
-	MALLOC(tp, struct tap_softc *, sizeof(*tp), M_TAP, M_WAITOK | M_ZERO);
+	tp = malloc(sizeof(*tp), M_TAP, M_WAITOK | M_ZERO);
 	mtx_init(&tp->tap_mtx, "tap_mtx", NULL, MTX_DEF);
 	mtx_lock(&tapmtx);
 	SLIST_INSERT_HEAD(&taphead, tp, tap_next);
@@ -429,7 +429,7 @@ tapcreate(struct cdev *dev)
 
 	unit &= TAPMAXUNIT;
 
-	TAPDEBUG("tapcreate(%s%d). minor = %#x\n", name, unit, minor(dev));
+	TAPDEBUG("tapcreate(%s%d). minor = %#x\n", name, unit, dev2unit(dev));
 
 	/* generate fake MAC address: 00 bd xx xx xx unit_no */
 	macaddr_hi = htons(0x00bd);
@@ -465,7 +465,7 @@ tapcreate(struct cdev *dev)
 	knlist_init(&tp->tap_rsel.si_note, NULL, NULL, NULL, NULL);
 
 	TAPDEBUG("interface %s is created. minor = %#x\n", 
-		ifp->if_xname, minor(dev));
+		ifp->if_xname, dev2unit(dev));
 } /* tapcreate */
 
 
@@ -511,7 +511,7 @@ tapopen(struct cdev *dev, int flag, int mode, struct thread *td)
 		ifp->if_flags |= IFF_UP;
 	splx(s);
 
-	TAPDEBUG("%s is open. minor = %#x\n", ifp->if_xname, minor(dev));
+	TAPDEBUG("%s is open. minor = %#x\n", ifp->if_xname, dev2unit(dev));
 
 	return (0);
 } /* tapopen */
@@ -564,7 +564,7 @@ tapclose(struct cdev *dev, int foo, int bar, struct thread *td)
 	mtx_unlock(&tp->tap_mtx);
 
 	TAPDEBUG("%s is closed. minor = %#x\n", 
-		ifp->if_xname, minor(dev));
+		ifp->if_xname, dev2unit(dev));
 
 	return (0);
 } /* tapclose */
@@ -856,7 +856,7 @@ tapread(struct cdev *dev, struct uio *uio, int flag)
 	struct mbuf		*m = NULL;
 	int			 error = 0, len, s;
 
-	TAPDEBUG("%s reading, minor = %#x\n", ifp->if_xname, minor(dev));
+	TAPDEBUG("%s reading, minor = %#x\n", ifp->if_xname, dev2unit(dev));
 
 	mtx_lock(&tp->tap_mtx);
 	if ((tp->tap_flags & TAP_READY) != TAP_READY) {
@@ -864,7 +864,7 @@ tapread(struct cdev *dev, struct uio *uio, int flag)
 
 		/* Unlocked read. */
 		TAPDEBUG("%s not ready. minor = %#x, tap_flags = 0x%x\n",
-			ifp->if_xname, minor(dev), tp->tap_flags);
+			ifp->if_xname, dev2unit(dev), tp->tap_flags);
 
 		return (EHOSTDOWN);
 	}
@@ -906,7 +906,7 @@ tapread(struct cdev *dev, struct uio *uio, int flag)
 
 	if (m != NULL) {
 		TAPDEBUG("%s dropping mbuf, minor = %#x\n", ifp->if_xname, 
-			minor(dev));
+			dev2unit(dev));
 		m_freem(m);
 	}
 
@@ -928,14 +928,14 @@ tapwrite(struct cdev *dev, struct uio *uio, int flag)
 	struct mbuf		*m;
 
 	TAPDEBUG("%s writting, minor = %#x\n", 
-		ifp->if_xname, minor(dev));
+		ifp->if_xname, dev2unit(dev));
 
 	if (uio->uio_resid == 0)
 		return (0);
 
 	if ((uio->uio_resid < 0) || (uio->uio_resid > TAPMRU)) {
 		TAPDEBUG("%s invalid packet len = %d, minor = %#x\n",
-			ifp->if_xname, uio->uio_resid, minor(dev));
+			ifp->if_xname, uio->uio_resid, dev2unit(dev));
 
 		return (EIO);
 	}
@@ -988,19 +988,19 @@ tappoll(struct cdev *dev, int events, struct thread *td)
 	int			 s, revents = 0;
 
 	TAPDEBUG("%s polling, minor = %#x\n", 
-		ifp->if_xname, minor(dev));
+		ifp->if_xname, dev2unit(dev));
 
 	s = splimp();
 	if (events & (POLLIN | POLLRDNORM)) {
 		if (ifp->if_snd.ifq_len > 0) {
 			TAPDEBUG("%s have data in queue. len = %d, " \
 				"minor = %#x\n", ifp->if_xname,
-				ifp->if_snd.ifq_len, minor(dev));
+				ifp->if_snd.ifq_len, dev2unit(dev));
 
 			revents |= (events & (POLLIN | POLLRDNORM));
 		} else {
 			TAPDEBUG("%s waiting for data, minor = %#x\n",
-				ifp->if_xname, minor(dev));
+				ifp->if_xname, dev2unit(dev));
 
 			selrecord(td, &tp->tap_rsel);
 		}
@@ -1030,19 +1030,19 @@ tapkqfilter(struct cdev *dev, struct knote *kn)
 	switch (kn->kn_filter) {
 	case EVFILT_READ:
 		TAPDEBUG("%s kqfilter: EVFILT_READ, minor = %#x\n",
-			ifp->if_xname, minor(dev));
+			ifp->if_xname, dev2unit(dev));
 		kn->kn_fop = &tap_read_filterops;
 		break;
 
 	case EVFILT_WRITE:
 		TAPDEBUG("%s kqfilter: EVFILT_WRITE, minor = %#x\n",
-			ifp->if_xname, minor(dev));
+			ifp->if_xname, dev2unit(dev));
 		kn->kn_fop = &tap_write_filterops;
 		break;
 
 	default:
 		TAPDEBUG("%s kqfilter: invalid filter, minor = %#x\n",
-			ifp->if_xname, minor(dev));
+			ifp->if_xname, dev2unit(dev));
 		splx(s);
 		return (EINVAL);
 		/* NOT REACHED */
@@ -1072,11 +1072,11 @@ tapkqread(struct knote *kn, long hint)
 	s = splimp();
 	if ((kn->kn_data = ifp->if_snd.ifq_len) > 0) {
 		TAPDEBUG("%s have data in queue. len = %d, minor = %#x\n",
-			ifp->if_xname, ifp->if_snd.ifq_len, minor(dev));
+			ifp->if_xname, ifp->if_snd.ifq_len, dev2unit(dev));
 		ret = 1;
 	} else {
 		TAPDEBUG("%s waiting for data, minor = %#x\n",
-			ifp->if_xname, minor(dev));
+			ifp->if_xname, dev2unit(dev));
 		ret = 0;
 	}
 	splx(s);

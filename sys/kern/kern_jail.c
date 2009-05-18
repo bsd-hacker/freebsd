@@ -56,6 +56,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysctl.h>
 #include <sys/vnode.h>
 #include <net/if.h>
+#include <net/if_var.h>
 #include <netinet/in.h>
 #ifdef DDB
 #include <ddb/ddb.h>

@@ -160,6 +160,7 @@ struct inpcb {
 	void	*inp_ppcb;		/* (i) pointer to per-protocol pcb */
 	struct	inpcbinfo *inp_pcbinfo;	/* (c) PCB list info */
 	struct	socket *inp_socket;	/* (i) back pointer to socket */
+	struct	ucred	*inp_cred;	/* (c) cache of socket cred */
 	u_int32_t inp_flow;		/* (i) IPv6 flow information */
 	int	inp_flags;		/* (i) generic IP/datagram flags */
 	u_char	inp_vflag;		/* (i) IP version flag (v4/v6) */
@@ -167,8 +168,8 @@ struct inpcb {
 	u_char	inp_ip_p;		/* (c) protocol proto */
 	u_char	inp_ip_minttl;		/* (i) minimum TTL or drop */
 	uint32_t inp_ispare1;		/* (x) connection id / queue id */
-	void	*inp_pspare;		/* (x) rtentry / general use */
-	struct	ucred	*inp_cred;	/* (c) cache of socket cred */
+	u_int	inp_refcount;		/* (i) refcount */
+	void	*inp_pspare[2];		/* (x) rtentry / general use */
 
 	/* Local and foreign ports, local and foreign addr. */
 	struct	in_conninfo inp_inc;	/* (i/p) list for PCB's local port */
@@ -338,11 +339,6 @@ void inp_runlock(struct inpcb *);
 #ifdef INVARIANTS
 void inp_lock_assert(struct inpcb *);
 void inp_unlock_assert(struct inpcb *);
-void inp_wlock_assert(struct inpcb *);
-void inp_wunlock_assert(struct inpcb *);
-void inp_rlock_assert(struct inpcb *);
-void inp_runlock_assert(struct inpcb *);
-
 #else
 static __inline void
 inp_lock_assert(struct inpcb *inp __unused)
@@ -353,27 +349,6 @@ static __inline void
 inp_unlock_assert(struct inpcb *inp __unused)
 {
 }
-
-static __inline void
-inp_wlock_assert(struct inpcb *inp __unused)
-{
-}
-
-static __inline void
-inp_wunlock_assert(struct inpcb *inp __unused)
-{
-}
-
-static __inline void
-inp_rlock_assert(struct inpcb *inp __unused)
-{
-}
-
-static __inline void
-inp_runlock_assert(struct inpcb *inp __unused)
-{
-}
-
 
 #endif
 
@@ -420,34 +395,37 @@ void 	inp_4tuple_get(struct inpcb *inp, uint32_t *laddr, uint16_t *lp,
 /*
  * Flags for inp_flag.
  */
-#define	INP_RECVOPTS		0x00000001 /* receive incoming IP options */
-#define	INP_RECVRETOPTS		0x00000002 /* receive IP options for reply */
-#define	INP_RECVDSTADDR		0x00000004 /* receive IP dst address */
-#define	INP_HDRINCL		0x00000008 /* user supplies entire IP header */
-#define	INP_HIGHPORT		0x00000010 /* user wants "high" port binding */
-#define	INP_LOWPORT		0x00000020 /* user wants "low" port binding */
-#define	INP_ANONPORT		0x00000040 /* port chosen for user */
-#define	INP_RECVIF		0x00000080 /* receive incoming interface */
-#define	INP_MTUDISC		0x00000100 /* user can do MTU discovery */
-#define	INP_FAITH		0x00000200 /* accept FAITH'ed connections */
-#define	INP_RECVTTL		0x00000400 /* receive incoming IP TTL */
-#define	INP_DONTFRAG		0x00000800 /* don't fragment packet */
-#define	INP_NONLOCALOK		0x00001000 /* Allow bind to spoof any address */
+#define	INP_RECVOPTS		0x01	/* receive incoming IP options */
+#define	INP_RECVRETOPTS		0x02	/* receive IP options for reply */
+#define	INP_RECVDSTADDR		0x04	/* receive IP dst address */
+#define	INP_HDRINCL		0x08	/* user supplies entire IP header */
+#define	INP_HIGHPORT		0x10	/* user wants "high" port binding */
+#define	INP_LOWPORT		0x20	/* user wants "low" port binding */
+#define	INP_ANONPORT		0x40	/* port chosen for user */
+#define	INP_RECVIF		0x80	/* receive incoming interface */
+#define	INP_MTUDISC		0x100	/* user can do MTU discovery */
+#define	INP_FAITH		0x200	/* accept FAITH'ed connections */
+#define	INP_RECVTTL		0x400	/* receive incoming IP TTL */
+#define	INP_DONTFRAG		0x800	/* don't fragment packet */
+#define	INP_NONLOCALOK		0x1000	/* Allow bind to spoof any address */
 					/* - requires options IP_NONLOCALBIND */
 #define	INP_INHASHLIST		0x00002000 /* in_pcbinshash() has been called */
-#define	IN6P_IPV6_V6ONLY	0x00008000 /* restrict AF_INET6 socket for v6 */
-#define	IN6P_PKTINFO		0x00010000 /* receive IP6 dst and I/F */
-#define	IN6P_HOPLIMIT		0x00020000 /* receive hoplimit */
-#define	IN6P_HOPOPTS		0x00040000 /* receive hop-by-hop options */
-#define	IN6P_DSTOPTS		0x00080000 /* receive dst options after rthdr */
-#define	IN6P_RTHDR		0x00100000 /* receive routing header */
-#define	IN6P_RTHDRDSTOPTS	0x00200000 /* receive dstoptions before rthdr */
-#define	IN6P_TCLASS		0x00400000 /* receive traffic class value */
-#define	IN6P_AUTOFLOWLABEL	0x00800000 /* attach flowlabel automatically */
+#define IN6P_IPV6_V6ONLY	0x008000 /* restrict AF_INET6 socket for v6 */
+
+#define	IN6P_PKTINFO		0x010000 /* receive IP6 dst and I/F */
+#define	IN6P_HOPLIMIT		0x020000 /* receive hoplimit */
+#define	IN6P_HOPOPTS		0x040000 /* receive hop-by-hop options */
+#define	IN6P_DSTOPTS		0x080000 /* receive dst options after rthdr */
+#define	IN6P_RTHDR		0x100000 /* receive routing header */
+#define	IN6P_RTHDRDSTOPTS	0x200000 /* receive dstoptions before rthdr */
+#define	IN6P_TCLASS		0x400000 /* receive traffic class value */
+#define	IN6P_AUTOFLOWLABEL	0x800000 /* attach flowlabel automatically */
 #define	INP_TIMEWAIT		0x01000000 /* in TIMEWAIT, ppcb is tcptw */
 #define	INP_ONESBCAST		0x02000000 /* send all-ones broadcast */
 #define	INP_DROPPED		0x04000000 /* protocol drop flag */
 #define	INP_SOCKREF		0x08000000 /* strong socket reference */
+#define	INP_SW_FLOWID           0x10000000 /* software generated flow id */
+#define	INP_HW_FLOWID           0x20000000 /* hardware generated flow id */
 #define	IN6P_RFC2292		0x40000000 /* used RFC2292 API on the socket */
 #define	IN6P_MTU		0x80000000 /* receive path MTU */
 
@@ -480,6 +458,7 @@ void 	inp_4tuple_get(struct inpcb *inp, uint32_t *laddr, uint16_t *lp,
 #define	INP_CHECK_SOCKAF(so, af)	(INP_SOCKAF(so) == af)
 
 #ifdef _KERNEL
+#ifdef VIMAGE_GLOBALS
 extern int	ipport_reservedhigh;
 extern int	ipport_reservedlow;
 extern int	ipport_lowfirstauto;
@@ -489,8 +468,12 @@ extern int	ipport_lastauto;
 extern int	ipport_hifirstauto;
 extern int	ipport_hilastauto;
 extern int	ipport_randomized;
+extern int	ipport_randomcps;
+extern int	ipport_randomtime;
 extern int	ipport_stoprandom;
 extern int	ipport_tcpallocs;
+#endif
+
 extern struct callout ipport_tick_callout;
 
 void	in_pcbpurgeif0(struct inpcbinfo *, struct ifnet *);
@@ -515,7 +498,9 @@ struct inpcb *
 	    struct in_addr, u_int, int, struct ifnet *);
 void	in_pcbnotifyall(struct inpcbinfo *pcbinfo, struct in_addr,
 	    int, struct inpcb *(*)(struct inpcb *, int));
+void	in_pcbref(struct inpcb *);
 void	in_pcbrehash(struct inpcb *);
+int	in_pcbrele(struct inpcb *);
 void	in_pcbsetsolabel(struct socket *so);
 int	in_getpeeraddr(struct socket *so, struct sockaddr **nam);
 int	in_getsockaddr(struct socket *so, struct sockaddr **nam);

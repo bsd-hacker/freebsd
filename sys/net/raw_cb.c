@@ -31,6 +31,8 @@
  * $FreeBSD$
  */
 
+#include "opt_route.h"
+
 #include <sys/param.h>
 #include <sys/domain.h>
 #include <sys/lock.h>
@@ -42,8 +44,12 @@
 #include <sys/socketvar.h>
 #include <sys/sysctl.h>
 #include <sys/systm.h>
+#include <sys/vimage.h>
 
+#include <net/if.h>
 #include <net/raw_cb.h>
+#include <net/route.h>
+#include <net/vnet.h>
 
 /*
  * Routines to manage the raw protocol control blocks.
@@ -55,7 +61,9 @@
  */
 
 struct mtx rawcb_mtx;
+#ifdef VIMAGE_GLOBALS
 struct rawcb_list_head rawcb_list;
+#endif
 
 SYSCTL_NODE(_net, OID_AUTO, raw, CTLFLAG_RW, 0, "Raw socket infrastructure");
 
@@ -74,6 +82,7 @@ SYSCTL_ULONG(_net_raw, OID_AUTO, recvspace, CTLFLAG_RW, &raw_recvspace, 0,
 int
 raw_attach(struct socket *so, int proto)
 {
+	INIT_VNET_NET(so->so_vnet);
 	struct rawcb *rp = sotorawcb(so);
 	int error;
 
@@ -92,7 +101,7 @@ raw_attach(struct socket *so, int proto)
 	rp->rcb_proto.sp_family = so->so_proto->pr_domain->dom_family;
 	rp->rcb_proto.sp_protocol = proto;
 	mtx_lock(&rawcb_mtx);
-	LIST_INSERT_HEAD(&rawcb_list, rp, list);
+	LIST_INSERT_HEAD(&V_rawcb_list, rp, list);
 	mtx_unlock(&rawcb_mtx);
 	return (0);
 }

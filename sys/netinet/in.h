@@ -293,8 +293,7 @@ __END_DECLS
  *
  * The value IP_PORTRANGE_HIGH changes the range of candidate port numbers
  * into the "high" range.  These are reserved for client outbound connections
- * which do not want to be filtered by any firewalls.  Note that by default
- * this is the same as IP_PORTRANGE_DEFAULT.
+ * which do not want to be filtered by any firewalls.
  *
  * The value IP_PORTRANGE_LOW changes the range to the "low" are
  * that is (by convention) restricted to privileged processes.  This
@@ -331,8 +330,13 @@ __END_DECLS
 #define	IPPORT_RESERVED		1024
 
 /*
- * Default local port range, used by both IP_PORTRANGE_DEFAULT
- * and IP_PORTRANGE_HIGH.
+ * Default local port range, used by IP_PORTRANGE_DEFAULT
+ */
+#define IPPORT_EPHEMERALFIRST	10000
+#define IPPORT_EPHEMERALLAST	65535 
+ 
+/*
+ * Dynamic port range, used by IP_PORTRANGE_HIGH.
  */
 #define	IPPORT_HIFIRSTAUTO	49152
 #define	IPPORT_HILASTAUTO	65535
@@ -437,6 +441,8 @@ __END_DECLS
 #define	IP_FAITH		22   /* bool; accept FAITH'ed connections */
 
 #define	IP_ONESBCAST		23   /* bool: send all-ones broadcast */
+#define	IP_NONLOCALOK		24   /* bool: allow bind to spoof non-local addresses;
+					requires kernel compile option IP_NONLOCALBIND */
 
 #define	IP_FW_TABLE_ADD		40   /* add entry */
 #define	IP_FW_TABLE_DEL		41   /* delete entry */
@@ -495,7 +501,14 @@ __END_DECLS
  */
 #define	IP_MIN_MEMBERSHIPS	31
 #define	IP_MAX_MEMBERSHIPS	4095
-#define	IP_MAX_SOURCE_FILTER	1024	/* # of filters per socket, per group */
+#define	IP_MAX_SOURCE_FILTER	1024	/* XXX to be unused */
+
+/*
+ * Default resource limits for IPv4 multicast source filtering.
+ * These may be modified by sysctl.
+ */
+#define	IP_MAX_GROUP_SRC_FILTER		512	/* sources per group */
+#define	IP_MAX_SOCK_SRC_FILTER		128	/* sources per socket/group */
 
 /*
  * Argument structure for IP_ADD_MEMBERSHIP and IP_DROP_MEMBERSHIP.
@@ -578,6 +591,7 @@ int	getsourcefilter(int, uint32_t, struct sockaddr *, socklen_t,
 /*
  * Filter modes; also used to represent per-socket filter mode internally.
  */
+#define	MCAST_UNDEFINED	0	/* fmode: not yet defined */
 #define	MCAST_INCLUDE	1	/* fmode: include these source(s) */
 #define	MCAST_EXCLUDE	2	/* fmode: exclude these source(s) */
 
@@ -725,6 +739,7 @@ void	 in_ifdetach(struct ifnet *);
 
 #define	in_hosteq(s, t)	((s).s_addr == (t).s_addr)
 #define	in_nullhost(x)	((x).s_addr == INADDR_ANY)
+#define	in_allhosts(x)	((x).s_addr == htonl(INADDR_ALLHOSTS_GROUP))
 
 #define	satosin(sa)	((struct sockaddr_in *)(sa))
 #define	sintosa(sin)	((struct sockaddr *)(sin))

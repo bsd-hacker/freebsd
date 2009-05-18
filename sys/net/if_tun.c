@@ -43,6 +43,7 @@
 #include <sys/uio.h>
 #include <sys/malloc.h>
 #include <sys/random.h>
+#include <sys/vimage.h>
 
 #include <net/if.h>
 #include <net/if_clone.h>
@@ -56,6 +57,7 @@
 #include <net/if_tun.h>
 
 #include <sys/queue.h>
+#include <sys/condvar.h>
 
 #include <security/mac/mac_framework.h>
 
@@ -92,6 +94,7 @@ struct tun_softc {
 	struct  sigio *tun_sigio;	/* information for async I/O */
 	struct	selinfo	tun_rsel;	/* read select */
 	struct mtx	tun_mtx;	/* protect mutable softc fields */
+	struct cv	tun_cv;		/* protect against ref'd dev destroy */
 };
 #define TUN2IFP(sc)	((sc)->tun_ifp)
 
@@ -162,7 +165,7 @@ static struct filterops tun_write_filterops = {
 
 static struct cdevsw tun_cdevsw = {
 	.d_version =	D_VERSION,
-	.d_flags =	D_PSEUDO | D_NEEDGIANT,
+	.d_flags =	D_PSEUDO | D_NEEDGIANT | D_NEEDMINOR,
 	.d_open =	tunopen,
 	.d_close =	tunclose,
 	.d_read =	tunread,
@@ -183,7 +186,7 @@ tun_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 	i = clone_create(&tunclones, &tun_cdevsw, &unit, &dev, 0);
 	if (i) {
 		/* No preexisting struct cdev *, create one */
-		dev = make_dev(&tun_cdevsw, unit2minor(unit),
+		dev = make_dev(&tun_cdevsw, unit,
 		    UID_UUCP, GID_DIALER, 0600, "%s%d", ifc->ifc_name, unit);
 		if (dev != NULL) {
 			dev_ref(dev);
@@ -224,6 +227,7 @@ tunclone(void *arg, struct ucred *cred, char *name, int namelen,
 	else
 		append_unit = 0;
 
+	CURVNET_SET(TD_TO_VNET(curthread));
 	/* find any existing device, or allocate new unit number */
 	i = clone_create(&tunclones, &tun_cdevsw, &u, dev, 0);
 	if (i) {
@@ -233,7 +237,7 @@ tunclone(void *arg, struct ucred *cred, char *name, int namelen,
 			name = devname;
 		}
 		/* No preexisting struct cdev *, create one */
-		*dev = make_dev(&tun_cdevsw, unit2minor(u),
+		*dev = make_dev(&tun_cdevsw, u,
 		    UID_UUCP, GID_DIALER, 0600, "%s", name);
 		if (*dev != NULL) {
 			dev_ref(*dev);
@@ -242,6 +246,7 @@ tunclone(void *arg, struct ucred *cred, char *name, int namelen,
 	}
 
 	if_clone_create(name, namelen, NULL);
+	CURVNET_RESTORE();
 }
 
 static void
@@ -250,9 +255,13 @@ tun_destroy(struct tun_softc *tp)
 	struct cdev *dev;
 
 	/* Unlocked read. */
-	KASSERT((tp->tun_flags & TUN_OPEN) == 0,
-	    ("tununits is out of sync - unit %d", TUN2IFP(tp)->if_dunit));
+	mtx_lock(&tp->tun_mtx);
+	if ((tp->tun_flags & TUN_OPEN) != 0)
+		cv_wait_unlock(&tp->tun_cv, &tp->tun_mtx);
+	else
+		mtx_unlock(&tp->tun_mtx);
 
+	CURVNET_SET(TUN2IFP(tp)->if_vnet);
 	dev = tp->tun_dev;
 	bpfdetach(TUN2IFP(tp));
 	if_detach(TUN2IFP(tp));
@@ -260,7 +269,9 @@ tun_destroy(struct tun_softc *tp)
 	destroy_dev(dev);
 	knlist_destroy(&tp->tun_rsel.si_note);
 	mtx_destroy(&tp->tun_mtx);
+	cv_destroy(&tp->tun_cv);
 	free(tp, M_TUN);
+	CURVNET_RESTORE();
 }
 
 static void
@@ -358,8 +369,9 @@ tuncreate(const char *name, struct cdev *dev)
 
 	dev->si_flags &= ~SI_CHEAPCLONE;
 
-	MALLOC(sc, struct tun_softc *, sizeof(*sc), M_TUN, M_WAITOK | M_ZERO);
+	sc = malloc(sizeof(*sc), M_TUN, M_WAITOK | M_ZERO);
 	mtx_init(&sc->tun_mtx, "tun_mtx", NULL, MTX_DEF);
+	cv_init(&sc->tun_cv, "tun_condvar");
 	sc->tun_flags = TUN_INITED;
 	sc->tun_dev = dev;
 	mtx_lock(&tunmtx);
@@ -386,7 +398,7 @@ tuncreate(const char *name, struct cdev *dev)
 	bpfattach(ifp, DLT_NULL, sizeof(u_int32_t));
 	dev->si_drv1 = sc;
 	TUNDEBUG(ifp, "interface %s is created, minor = %#x\n",
-	    ifp->if_xname, minor(dev));
+	    ifp->if_xname, dev2unit(dev));
 }
 
 static int
@@ -421,6 +433,7 @@ tunopen(struct cdev *dev, int flag, int mode, struct thread *td)
 	tp->tun_flags |= TUN_OPEN;
 	mtx_unlock(&tp->tun_mtx);
 	ifp = TUN2IFP(tp);
+	if_link_state_change(ifp, LINK_STATE_UP);
 	TUNDEBUG(ifp, "open\n");
 
 	return (0);
@@ -443,14 +456,15 @@ tunclose(struct cdev *dev, int foo, int bar, struct thread *td)
 	mtx_lock(&tp->tun_mtx);
 	tp->tun_flags &= ~TUN_OPEN;
 	tp->tun_pid = 0;
+	mtx_unlock(&tp->tun_mtx);
 
 	/*
 	 * junk all pending output
 	 */
+	CURVNET_SET(ifp->if_vnet);
 	s = splimp();
 	IFQ_PURGE(&ifp->if_snd);
 	splx(s);
-	mtx_unlock(&tp->tun_mtx);
 
 	if (ifp->if_flags & IFF_UP) {
 		s = splimp();
@@ -476,19 +490,27 @@ tunclose(struct cdev *dev, int foo, int bar, struct thread *td)
 		ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
 		splx(s);
 	}
+	if_link_state_change(ifp, LINK_STATE_DOWN);
+	CURVNET_RESTORE();
 
+	mtx_lock(&tp->tun_mtx);
 	funsetown(&tp->tun_sigio);
 	selwakeuppri(&tp->tun_rsel, PZERO + 1);
 	KNOTE_UNLOCKED(&tp->tun_rsel.si_note, 0);
 	TUNDEBUG (ifp, "closed\n");
+
+	cv_broadcast(&tp->tun_cv);
+	mtx_unlock(&tp->tun_mtx);
 	return (0);
 }
 
 static int
 tuninit(struct ifnet *ifp)
 {
+#ifdef INET
 	struct tun_softc *tp = ifp->if_softc;
 	struct ifaddr *ifa;
+#endif
 	int error = 0;
 
 	TUNDEBUG(ifp, "tuninit\n");
@@ -579,7 +601,7 @@ tunoutput(
 	TUNDEBUG (ifp, "tunoutput\n");
 
 #ifdef MAC
-	error = mac_check_ifnet_transmit(ifp, m0);
+	error = mac_ifnet_check_transmit(ifp, m0);
 	if (error) {
 		m_freem(m0);
 		return (error);
@@ -648,7 +670,7 @@ tunoutput(
 		}
 	}
 
-	IFQ_HANDOFF(ifp, m0, error);
+	error = (ifp->if_transmit)(ifp, m0);
 	if (error) {
 		ifp->if_collisions++;
 		return (ENOBUFS);
@@ -875,7 +897,7 @@ tunwrite(struct cdev *dev, struct uio *uio, int flag)
 
 	m->m_pkthdr.rcvif = ifp;
 #ifdef MAC
-	mac_create_mbuf_from_ifnet(ifp, m);
+	mac_ifnet_create_mbuf(ifp, m);
 #endif
 
 	/* Could be unlocked read? */
@@ -924,7 +946,9 @@ tunwrite(struct cdev *dev, struct uio *uio, int flag)
 		random_harvest(m, 16, 3, 0, RANDOM_NET);
 	ifp->if_ibytes += m->m_pkthdr.len;
 	ifp->if_ipackets++;
+	CURVNET_SET(ifp->if_vnet);
 	netisr_dispatch(isr, m);
+	CURVNET_RESTORE();
 	return (0);
 }
 
@@ -978,19 +1002,19 @@ tunkqfilter(struct cdev *dev, struct knote *kn)
 	switch(kn->kn_filter) {
 	case EVFILT_READ:
 		TUNDEBUG(ifp, "%s kqfilter: EVFILT_READ, minor = %#x\n",
-		    ifp->if_xname, minor(dev));
+		    ifp->if_xname, dev2unit(dev));
 		kn->kn_fop = &tun_read_filterops;
 		break;
 
 	case EVFILT_WRITE:
 		TUNDEBUG(ifp, "%s kqfilter: EVFILT_WRITE, minor = %#x\n",
-		    ifp->if_xname, minor(dev));
+		    ifp->if_xname, dev2unit(dev));
 		kn->kn_fop = &tun_write_filterops;
 		break;
 	
 	default:
 		TUNDEBUG(ifp, "%s kqfilter: invalid filter, minor = %#x\n",
-		    ifp->if_xname, minor(dev));
+		    ifp->if_xname, dev2unit(dev));
 		splx(s);
 		return(EINVAL);
 	}
@@ -1017,12 +1041,12 @@ tunkqread(struct knote *kn, long hint)
 	if ((kn->kn_data = ifp->if_snd.ifq_len) > 0) {
 		TUNDEBUG(ifp,
 		    "%s have data in the queue.  Len = %d, minor = %#x\n",
-		    ifp->if_xname, ifp->if_snd.ifq_len, minor(dev));
+		    ifp->if_xname, ifp->if_snd.ifq_len, dev2unit(dev));
 		ret = 1;
 	} else {
 		TUNDEBUG(ifp,
 		    "%s waiting for data, minor = %#x\n", ifp->if_xname,
-		    minor(dev));
+		    dev2unit(dev));
 		ret = 0;
 	}
 	splx(s);

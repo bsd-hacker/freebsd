@@ -44,13 +44,8 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm.h>
 #include <vm/pmap.h>
 
-#ifdef CONFIG_DEFINED
 #include <cxgb_include.h>
 #include <sys/mvec.h>
-#else
-#include <dev/cxgb/cxgb_include.h>
-#include <dev/cxgb/sys/mvec.h>
-#endif
 
 extern int cxgb_use_16k_clusters;
 int cxgb_pcpu_cache_enable = 1;
@@ -308,33 +303,3 @@ free:
 		uma_zfree(zone, vec[i]);
 }
 	
-struct buf_ring *
-buf_ring_alloc(int count, int flags)
-{
-	struct buf_ring *br;
-
-	KASSERT(powerof2(count), ("buf ring must be size power of 2"));
-	
-	br = malloc(sizeof(struct buf_ring), M_DEVBUF, flags|M_ZERO);
-	if (br == NULL)
-		return (NULL);
-	
-	br->br_ring = malloc(sizeof(caddr_t)*count, M_DEVBUF, flags|M_ZERO);
-	if (br->br_ring == NULL) {
-		free(br, M_DEVBUF);
-		return (NULL);
-	}
-	
-	mtx_init(&br->br_lock, "buf ring", NULL, MTX_DUPOK|MTX_DEF);
-	br->br_size = count;
-	br->br_prod = br->br_cons = 0;
-
-	return (br);
-}
-
-void
-buf_ring_free(struct buf_ring *br)
-{
-	free(br->br_ring, M_DEVBUF);
-	free(br, M_DEVBUF);
-}

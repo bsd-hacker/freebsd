@@ -89,15 +89,14 @@ struct protosw {
 	pr_output_t *pr_output;		/* output to protocol (from above) */
 	pr_ctlinput_t *pr_ctlinput;	/* control input (from below) */
 	pr_ctloutput_t *pr_ctloutput;	/* control output (from above) */
-/* user-protocol hook */
-	pr_usrreq_t	*pr_ousrreq;
 /* utility hooks */
 	pr_init_t *pr_init;
 	pr_fasttimo_t *pr_fasttimo;	/* fast timeout (200ms) */
 	pr_slowtimo_t *pr_slowtimo;	/* slow timeout (500ms) */
 	pr_drain_t *pr_drain;		/* flush any excess space possible */
 
-	struct	pr_usrreqs *pr_usrreqs;	/* supersedes pr_usrreq() */
+	struct	pr_usrreqs *pr_usrreqs;	/* user-protocol hook */
+
 };
 /*#endif*/
 
@@ -201,7 +200,6 @@ struct uio;
  * See uipc_domain.c:net_init_domain()
  */
 struct pr_usrreqs {
-	double	__Break_the_struct_layout_for_now;
 	void	(*pru_abort)(struct socket *so);
 	int	(*pru_accept)(struct socket *so, struct sockaddr **nam);
 	int	(*pru_attach)(struct socket *so, int proto, struct thread *td);

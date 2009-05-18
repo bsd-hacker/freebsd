@@ -79,6 +79,7 @@
 #include <netinet/ip_gre.h>
 #include <netinet/ip_var.h>
 #include <netinet/ip_encap.h>
+#include <netinet/vinet.h>
 #else
 #error "Huh? if_gre without inet?"
 #endif
@@ -241,6 +242,9 @@ static int
 gre_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 	   struct rtentry *rt)
 {
+#ifdef INET6
+	INIT_VNET_INET(ifp->if_vnet);
+#endif
 	int error = 0;
 	struct gre_softc *sc = ifp->if_softc;
 	struct greip *gh;
@@ -805,6 +809,7 @@ gre_compute_route(struct gre_softc *sc)
 	 * toggle last bit, so our interface is not found, but a less
 	 * specific route. I'd rather like to specify a shorter mask,
 	 * but this is not possible. Should work though. XXX
+	 * XXX MRT Use a different FIB for the tunnel to solve this problem.
 	 */
 	if ((GRE2IFP(sc)->if_flags & IFF_LINK1) == 0) {
 		((struct sockaddr_in *)&ro->ro_dst)->sin_addr.s_addr ^=

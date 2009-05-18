@@ -84,15 +84,19 @@ extern	u_char	inetctlerrmap[];
 /*
  * Hash table for IP addresses.
  */
-extern	LIST_HEAD(in_ifaddrhashhead, in_ifaddr) *in_ifaddrhashtbl;
-extern	TAILQ_HEAD(in_ifaddrhead, in_ifaddr) in_ifaddrhead;
+TAILQ_HEAD(in_ifaddrhead, in_ifaddr);
+LIST_HEAD(in_ifaddrhashhead, in_ifaddr);
+#ifdef VIMAGE_GLOBALS
+extern	struct in_ifaddrhashhead *in_ifaddrhashtbl;
+extern	struct in_ifaddrhead in_ifaddrhead;
 extern	u_long in_ifaddrhmask;			/* mask for hash table */
+#endif
 
 #define INADDR_NHASH_LOG2       9
 #define INADDR_NHASH		(1 << INADDR_NHASH_LOG2)
 #define INADDR_HASHVAL(x)	fnv_32_buf((&(x)), sizeof(x), FNV1_32_INIT)
 #define INADDR_HASH(x) \
-	(&in_ifaddrhashtbl[INADDR_HASHVAL(x) & in_ifaddrhmask])
+	(&V_in_ifaddrhashtbl[INADDR_HASHVAL(x) & V_in_ifaddrhmask])
 
 /*
  * Macro for finding the internet address structure (in_ifaddr)
@@ -130,12 +134,21 @@ do { \
 	/* struct ifnet *ifp; */ \
 	/* struct in_ifaddr *ia; */ \
 { \
-	for ((ia) = TAILQ_FIRST(&in_ifaddrhead); \
+	for ((ia) = TAILQ_FIRST(&V_in_ifaddrhead); \
 	    (ia) != NULL && (ia)->ia_ifp != (ifp); \
 	    (ia) = TAILQ_NEXT((ia), ia_link)) \
 		continue; \
 }
 #endif
+
+/*
+ * IP datagram reassembly.
+ */
+#define	IPREASS_NHASH_LOG2	6
+#define	IPREASS_NHASH		(1 << IPREASS_NHASH_LOG2)
+#define	IPREASS_HMASK		(IPREASS_NHASH - 1)
+#define	IPREASS_HASH(x,y) \
+	(((((x) & 0xF) | ((((x) >> 8) & 0xF) << 4)) ^ (y)) & IPREASS_HMASK)
 
 /*
  * This information should be part of the ifnet structure but we don't wish
@@ -218,7 +231,10 @@ SYSCTL_DECL(_net_inet_ip);
 SYSCTL_DECL(_net_inet_raw);
 #endif
 
-extern LIST_HEAD(in_multihead, in_multi) in_multihead;
+LIST_HEAD(in_multihead, in_multi);
+#ifdef VIMAGE_GLOBALS
+extern struct in_multihead in_multihead;
+#endif
 
 /*
  * Lock macros for IPv4 layer multicast address lists.  IPv4 lock goes
@@ -283,7 +299,7 @@ do { \
 	/* struct in_multi *inm; */ \
 do { \
 	IN_MULTI_LOCK_ASSERT(); \
-	(step).i_inm = LIST_FIRST(&in_multihead); \
+	(step).i_inm = LIST_FIRST(&V_in_multihead); \
 	IN_NEXT_MULTI((step), (inm)); \
 } while(0)
 
@@ -305,6 +321,9 @@ void	ip_input(struct mbuf *);
 int	in_ifadown(struct ifaddr *ifa, int);
 void	in_ifscrub(struct ifnet *, struct in_ifaddr *);
 struct	mbuf	*ip_fastforward(struct mbuf *);
+void	*in_domifattach(struct ifnet *);
+void	in_domifdetach(struct ifnet *, void *);
+
 
 /* XXX */
 void	 in_rtalloc_ign(struct route *ro, u_long ignflags, u_int fibnum);

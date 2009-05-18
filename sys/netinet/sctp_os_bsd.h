@@ -38,6 +38,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_compat.h"
 #include "opt_inet6.h"
 #include "opt_inet.h"
+#include "opt_route.h"
 #include "opt_sctp.h"
 
 #include <sys/param.h>
@@ -61,15 +62,14 @@ __FBSDID("$FreeBSD$");
 #include <sys/random.h>
 #include <sys/limits.h>
 #include <sys/queue.h>
-#if defined(__FreeBSD__) && __FreeBSD_version >= 800044
 #include <sys/vimage.h>
-#endif
 #include <machine/cpu.h>
 
 #include <net/if.h>
 #include <net/if_types.h>
 #include <net/if_var.h>
 #include <net/route.h>
+#include <net/vnet.h>
 
 #include <netinet/in.h>
 #include <netinet/in_systm.h>
@@ -79,7 +79,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/ip_var.h>
 #include <netinet/ip_icmp.h>
 #include <netinet/icmp_var.h>
-
+#include <netinet/vinet.h>
 
 #ifdef IPSEC
 #include <netipsec/ipsec.h>
@@ -98,6 +98,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet6/ip6protosw.h>
 #include <netinet6/nd6.h>
 #include <netinet6/scope6_var.h>
+#include <netinet6/vinet6.h>
 #endif				/* INET6 */
 
 
@@ -154,16 +155,8 @@ MALLOC_DECLARE(SCTP_M_SOCKOPT);
 #define MOD_IPSEC ipsec
 
 /* then define the macro(s) that hook into the vimage macros */
-#if defined(__FreeBSD__) && __FreeBSD_version >= 800044 && defined(VIMAGE)
-#if 0
-#define VSYMNAME(__MODULE) vnet_ ## __MODULE
-#define MODULE_GLOBAL(__MODULE, __SYMBOL) VSYM(VSYMNAME(__MODULE), __SYMBOL)
-#else
 #define MODULE_GLOBAL(__MODULE, __SYMBOL) V_ ## __SYMBOL
-#endif
-#else
-#define MODULE_GLOBAL(__MODULE, __SYMBOL) (__SYMBOL)
-#endif
+
 /*
  *
  */
@@ -203,7 +196,7 @@ MALLOC_DECLARE(SCTP_M_SOCKOPT);
 #define SCTP_PRINTF(params...)	printf(params)
 
 #ifdef SCTP_LTRACE_CHUNKS
-#define SCTP_LTRACE_CHK(a, b, c, d) if(SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_LTRACE_CHUNK_ENABLE) CTR6(KTR_SUBSYS, "SCTP:%d[%d]:%x-%x-%x-%x", SCTP_LOG_CHUNK_PROC, 0, a, b, c, d)
+#define SCTP_LTRACE_CHK(a, b, c, d) if(SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_LTRACE_CHUNK_ENABLE) SCTP_CTR6(KTR_SUBSYS, "SCTP:%d[%d]:%x-%x-%x-%x", SCTP_LOG_CHUNK_PROC, 0, a, b, c, d)
 #else
 #define SCTP_LTRACE_CHK(a, b, c, d)
 #endif
@@ -248,17 +241,17 @@ MALLOC_DECLARE(SCTP_M_SOCKOPT);
  */
 #define SCTP_MALLOC(var, type, size, name) \
     do { \
-	MALLOC(var, type, size, name, M_NOWAIT); \
+	var = (type)malloc(size, name, M_NOWAIT); \
     } while (0)
 
-#define SCTP_FREE(var, type)	FREE(var, type)
+#define SCTP_FREE(var, type)	free(var, type)
 
 #define SCTP_MALLOC_SONAME(var, type, size) \
     do { \
-	MALLOC(var, type, size, M_SONAME, M_WAITOK | M_ZERO); \
+	var = (type)malloc(size, M_SONAME, M_WAITOK | M_ZERO); \
     } while (0)
 
-#define SCTP_FREE_SONAME(var)	FREE(var, M_SONAME)
+#define SCTP_FREE_SONAME(var)	free(var, M_SONAME)
 
 #define SCTP_PROCESS_STRUCT struct proc *
 

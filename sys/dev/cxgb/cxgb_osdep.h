@@ -1,6 +1,6 @@
 /**************************************************************************
 
-Copyright (c) 2007-2008, Chelsio Inc.
+Copyright (c) 2007, Chelsio Inc.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -35,19 +35,19 @@ $FreeBSD$
 #include <sys/ctype.h>
 #include <sys/endian.h>
 #include <sys/bus.h>
+#include <sys/taskqueue.h>
 
 #include <sys/lock.h>
 #include <sys/mutex.h>
+#include <sys/socket.h>
+
+#include <net/if.h>
+#include <net/if_var.h>
 
 #include <dev/mii/mii.h>
 
-#ifdef CONFIG_DEFINED
 #include <common/cxgb_version.h>
 #include <cxgb_config.h>
-#else
-#include <dev/cxgb/common/cxgb_version.h>
-#include <dev/cxgb/cxgb_config.h>
-#endif
 
 #ifndef _CXGB_OSDEP_H_
 #define _CXGB_OSDEP_H_
@@ -92,7 +92,6 @@ struct t3_mbuf_hdr {
 #define m_get_socket(m) ((m)->m_pkthdr.header)
 
 #define	KTR_CXGB	KTR_SPARE2
-void cxgb_log_tcb(struct adapter *sc, unsigned int tid);
 
 #define MT_DONTFREE  128
 
@@ -113,6 +112,38 @@ void cxgb_log_tcb(struct adapter *sc, unsigned int tid);
 #else
 #define if_name(ifp) (ifp)->if_xname
 #define M_SANITY(m, n)
+#endif
+
+#if __FreeBSD_version >= 701000
+#include "opt_inet.h"
+#ifdef INET
+#define LRO_SUPPORTED
+#endif
+#define TOE_SUPPORTED
+#endif
+
+#if __FreeBSD_version < 800054
+#if defined (__GNUC__)
+  #if #cpu(i386) || defined __i386 || defined i386 || defined __i386__ || #cpu(x86_64) || defined __x86_64__
+    #define mb()  __asm__ __volatile__ ("mfence;": : :"memory")
+    #define wmb()  __asm__ __volatile__ ("sfence;": : :"memory")
+    #define rmb()  __asm__ __volatile__ ("lfence;": : :"memory")
+  #elif #cpu(sparc64) || defined sparc64 || defined __sparcv9 
+    #define mb()  __asm__ __volatile__ ("membar #MemIssue": : :"memory")
+    #define wmb() mb()
+    #define rmb() mb()
+  #elif #cpu(sparc) || defined sparc || defined __sparc__
+    #define mb()  __asm__ __volatile__ ("stbar;": : :"memory")
+    #define wmb() mb()
+    #define rmb() mb()
+#else
+    #define wmb() mb()
+    #define rmb() mb()
+    #define mb() 	/* XXX just to make this compile */
+  #endif
+#else
+  #error "unknown compiler"
+#endif
 #endif
 
 #define __read_mostly __attribute__((__section__(".data.read_mostly")))
@@ -154,9 +185,6 @@ void cxgb_log_tcb(struct adapter *sc, unsigned int tid);
 
 
 #if defined(__i386__) || defined(__amd64__)
-#define mb()    __asm volatile("mfence":::"memory")
-#define rmb()   __asm volatile("lfence":::"memory")
-#define wmb()   __asm volatile("sfence" ::: "memory")
 #define smp_mb() mb()
 
 #define L1_CACHE_BYTES 128
@@ -169,7 +197,7 @@ void prefetch(void *x)
 extern void kdb_backtrace(void);
 
 #define WARN_ON(condition) do { \
-	if (__predict_false((condition)!=0)) {	\
+       if (__predict_false((condition)!=0)) {  \
                 log(LOG_WARNING, "BUG: warning at %s:%d/%s()\n", __FILE__, __LINE__, __FUNCTION__); \
                 kdb_backtrace(); \
         } \
@@ -177,162 +205,10 @@ extern void kdb_backtrace(void);
 
 
 #else /* !i386 && !amd64 */
-#define mb()
-#define rmb()
-#define wmb()
 #define smp_mb()
 #define prefetch(x)
 #define L1_CACHE_BYTES 32
 #endif
-
-struct buf_ring {
-	caddr_t          *br_ring;
-	volatile uint32_t br_cons;
-	volatile uint32_t br_prod;
-	int               br_size;
-	struct mtx        br_lock;
-};
-
-struct buf_ring *buf_ring_alloc(int count, int flags);
-void buf_ring_free(struct buf_ring *);
-
-static __inline int
-buf_ring_count(struct buf_ring *mr)
-{
-	int size = mr->br_size;
-	uint32_t mask = size - 1;
-	
-	return ((size + mr->br_prod - mr->br_cons) & mask);
-}
-
-static __inline int
-buf_ring_empty(struct buf_ring *mr)
-{
-	return (mr->br_cons == mr->br_prod);
-}
-
-static __inline int
-buf_ring_full(struct buf_ring *mr)
-{
-	uint32_t mask;
-
-	mask = mr->br_size - 1;
-	return (mr->br_cons == ((mr->br_prod + 1) & mask));
-}
-
-/*
- * The producer and consumer are independently locked
- * this relies on the consumer providing his own serialization
- *
- */
-static __inline void *
-buf_ring_dequeue(struct buf_ring *mr)
-{
-	uint32_t prod, cons, mask;
-	caddr_t *ring, m;
-	
-	ring = (caddr_t *)mr->br_ring;
-	mask = mr->br_size - 1;
-	cons = mr->br_cons;
-	mb();
-	prod = mr->br_prod;
-	m = NULL;
-	if (cons != prod) {
-		m = ring[cons];
-		ring[cons] = NULL;
-		mr->br_cons = (cons + 1) & mask;
-		mb();
-	}
-	return (m);
-}
-
-#ifdef DEBUG_BUFRING
-static __inline void
-__buf_ring_scan(struct buf_ring *mr, void *m, char *file, int line)
-{
-	int i;
-
-	for (i = 0; i < mr->br_size; i++)
-		if (m == mr->br_ring[i])
-			panic("%s:%d m=%p present prod=%d cons=%d idx=%d", file,
-			    line, m, mr->br_prod, mr->br_cons, i);
-}
-
-static __inline void
-buf_ring_scan(struct buf_ring *mr, void *m, char *file, int line)
-{
-	mtx_lock(&mr->br_lock);
-	__buf_ring_scan(mr, m, file, line);
-	mtx_unlock(&mr->br_lock);
-}
-
-#else
-static __inline void
-__buf_ring_scan(struct buf_ring *mr, void *m, char *file, int line)
-{
-}
-
-static __inline void
-buf_ring_scan(struct buf_ring *mr, void *m, char *file, int line)
-{
-}
-#endif
-
-static __inline int
-__buf_ring_enqueue(struct buf_ring *mr, void *m, char *file, int line)
-{
-	
-	uint32_t prod, cons, mask;
-	int err;
-	
-	mask = mr->br_size - 1;
-	prod = mr->br_prod;
-	mb();
-	cons = mr->br_cons;
-	__buf_ring_scan(mr, m, file, line);
-	if (((prod + 1) & mask) != cons) {
-		KASSERT(mr->br_ring[prod] == NULL, ("overwriting entry"));
-		mr->br_ring[prod] = m;
-		mb();
-		mr->br_prod = (prod + 1) & mask;
-		err = 0;
-	} else
-		err = ENOBUFS;
-
-	return (err);
-}
-
-static __inline int
-buf_ring_enqueue_(struct buf_ring *mr, void *m, char *file, int line)
-{
-	int err;
-	
-	mtx_lock(&mr->br_lock);
-	err = __buf_ring_enqueue(mr, m, file, line);
-	mtx_unlock(&mr->br_lock);
-
-	return (err);
-}
-
-#define buf_ring_enqueue(mr, m) buf_ring_enqueue_((mr), (m), __FILE__, __LINE__)
-
-
-static __inline void *
-buf_ring_peek(struct buf_ring *mr)
-{
-	int prod, cons, mask;
-	caddr_t *ring, m;
-	
-	ring = (caddr_t *)mr->br_ring;
-	mask = mr->br_size - 1;
-	cons = mr->br_cons;
-	prod = mr->br_prod;
-	m = NULL;
-	if (cons != prod)
-		m = ring[cons];
-
-	return (m);
-}
 
 #define DBG_RX          (1 << 0)
 static const int debug_flags = DBG_RX;

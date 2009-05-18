@@ -25,12 +25,13 @@ ident		GENERIC
 #hints		"GENERIC.hints"		# Default places to look for devices.
 
 makeoptions	DEBUG=-g		# Build kernel with gdb(1) debug symbols
+makeoptions	MODULES_OVERRIDE="mxge zlib geom opensolaris zfs cxgb fxp nfe"
 
 options 	SCHED_ULE		# ULE scheduler
 options 	PREEMPTION		# Enable kernel thread preemption
 options 	INET			# InterNETworking
 options 	INET6			# IPv6 communications protocols
-options 	SCTP			# Stream Control Transmission Protocol 
+#options 	SCTP			# Stream Control Transmission Protocol 
 options 	FFS			# Berkeley Fast Filesystem
 options 	SOFTUPDATES		# Enable FFS soft updates support
 options 	UFS_ACL			# Support for access control lists
@@ -65,6 +66,11 @@ options 	STOP_NMI		# Stop CPUS using NMI instead of IPI
 options 	AUDIT			# Security event auditing
 #options 	KDTRACE_FRAME		# Ensure frames are compiled in
 #options 	KDTRACE_HOOKS		# Kernel DTrace hooks
+#options 	INVARIANTS		# Enable calls of extra sanity checking
+#options 	INVARIANT_SUPPORT	# Extra sanity checks of internal structures, required by INVARIANTS
+#options 	WITNESS			# Enable checks to detect deadlocks and cycles
+#options 	WITNESS_SKIPSPIN	# Don't run witness on spinlocks for speed
+
 
 # Make an SMP-capable kernel by default
 options 	SMP			# Symmetric MultiProcessor Kernel
@@ -171,7 +177,6 @@ device		uart		# Generic UART driver
 device		ppc
 device		ppbus		# Parallel port bus (required)
 device		lpt		# Printer
-device		plip		# TCP/IP over parallel
 device		ppi		# Parallel port interface device
 #device		vpo		# Requires scbus and da
 
@@ -181,80 +186,19 @@ device		ppi		# Parallel port interface device
 #device		puc
 
 # PCI Ethernet NICs.
-device		de		# DEC/Intel DC21x4x (``Tulip'')
 device		em		# Intel PRO/1000 Gigabit Ethernet Family
 device		igb		# Intel PRO/1000 PCIE Server Gigabit Family
-device		ixgbe		# Intel PRO/10GbE PCIE Ethernet Family
-device		le		# AMD Am7900 LANCE and Am79C9xx PCnet
-device		txp		# 3Com 3cR990 (``Typhoon'')
-device		vx		# 3Com 3c590, 3c595 (``Vortex'')
-
 # PCI Ethernet NICs that use the common MII bus controller code.
 # NOTE: Be sure to keep the 'device miibus' line in order to use these NICs!
-device		miibus		# MII bus support
-device		age		# Attansic/Atheros L1 Gigabit Ethernet
-device		ale		# Atheros AR8121/AR8113/AR8114 Ethernet
-device		bce		# Broadcom BCM5706/BCM5708 Gigabit Ethernet
-device		bfe		# Broadcom BCM440x 10/100 Ethernet
-device		bge		# Broadcom BCM570xx Gigabit Ethernet
-device		dc		# DEC/Intel 21143 and various workalikes
-device		et		# Agere ET1310 10/100/Gigabit Ethernet
-device		fxp		# Intel EtherExpress PRO/100B (82557, 82558)
-device		jme		# JMicron JMC250 Gigabit/JMC260 Fast Ethernet
-device		lge		# Level 1 LXT1001 gigabit Ethernet
-device		msk		# Marvell/SysKonnect Yukon II Gigabit Ethernet
-device		nfe		# nVidia nForce MCP on-board Ethernet
-device		nge		# NatSemi DP83820 gigabit Ethernet
-#device		nve		# nVidia nForce MCP on-board Ethernet Networking
-device		pcn		# AMD Am79C97x PCI 10/100 (precedence over 'le')
-device		re		# RealTek 8139C+/8169/8169S/8110S
-device		rl		# RealTek 8129/8139
-device		sf		# Adaptec AIC-6915 (``Starfire'')
-device		sis		# Silicon Integrated Systems SiS 900/SiS 7016
-device		sk		# SysKonnect SK-984x & SK-982x gigabit Ethernet
-device		ste		# Sundance ST201 (D-Link DFE-550TX)
-device		ti		# Alteon Networks Tigon I/II gigabit Ethernet
-device		tl		# Texas Instruments ThunderLAN
-device		tx		# SMC EtherPower II (83c170 ``EPIC'')
-device		vge		# VIA VT612x gigabit Ethernet
-device		vr		# VIA Rhine, Rhine II
-device		wb		# Winbond W89C840F
-device		xl		# 3Com 3c90x (``Boomerang'', ``Cyclone'')
-
-# ISA Ethernet NICs.  pccard NICs included.
-device		cs		# Crystal Semiconductor CS89x0 NIC
-# 'device ed' requires 'device miibus'
-device		ed		# NE[12]000, SMC Ultra, 3c503, DS8390 cards
-device		ex		# Intel EtherExpress Pro/10 and Pro/10+
-device		ep		# Etherlink III based cards
-device		fe		# Fujitsu MB8696x based cards
-device		sn		# SMC's 9000 series of Ethernet chips
-device		xe		# Xircom pccard Ethernet
-
-# Wireless NIC cards
-device		wlan		# 802.11 support
-device		wlan_wep	# 802.11 WEP support
-device		wlan_ccmp	# 802.11 CCMP support
-device		wlan_tkip	# 802.11 TKIP support
-device		wlan_amrr	# AMRR transmit rate control algorithm
-device		wlan_scan_ap	# 802.11 AP mode scanning
-device		wlan_scan_sta	# 802.11 STA mode scanning
-device		an		# Aironet 4500/4800 802.11 wireless NICs.
-device		ath		# Atheros pci/cardbus NIC's
-device		ath_hal		# Atheros HAL (Hardware Access Layer)
-options		AH_SUPPORT_AR5416	# enable AR5416 tx/rx descriptors
-device		ath_rate_sample	# SampleRate tx rate control for ath
-device		awi		# BayStack 660 and others
-device		ral		# Ralink Technology RT2500 wireless NICs.
-device		wi		# WaveLAN/Intersil/Symbol 802.11 wireless NICs.
+#device		miibus		# MII bus support
 
 # Pseudo devices.
 device		loop		# Network loopback
 device		random		# Entropy device
 device		ether		# Ethernet support
-device		sl		# Kernel SLIP
-device		ppp		# Kernel PPP
-device		tun		# Packet tunnel.
+#device		sl		# Kernel SLIP
+#device		ppp		# Kernel PPP
+#device		tun		# Packet tunnel.
 device		pty		# Pseudo-ttys (telnet etc)
 device		md		# Memory "disks"
 device		gif		# IPv6 and IPv4 tunneling
@@ -267,43 +211,38 @@ device		firmware	# firmware assist module
 device		bpf		# Berkeley packet filter
 
 # USB support
-device		uhci		# UHCI PCI->USB interface
-device		ohci		# OHCI PCI->USB interface
-device		ehci		# EHCI PCI->USB interface (USB 2.0)
-device		usb		# USB Bus (required)
+#device		uhci		# UHCI PCI->USB interface
+#device		ohci		# OHCI PCI->USB interface
+#device		ehci		# EHCI PCI->USB interface (USB 2.0)
+#device		usb		# USB Bus (required)
 #device		udbp		# USB Double Bulk Pipe devices
-device		ugen		# Generic
-device		uhid		# "Human Interface Devices"
-device		ukbd		# Keyboard
-device		ulpt		# Printer
-device		umass		# Disks/Mass storage - Requires scbus and da
-device		ums		# Mouse
-device		ural		# Ralink Technology RT2500USB wireless NICs
-device		urio		# Diamond Rio 500 MP3 player
-device		uscanner	# Scanners
+#device		ugen		# Generic
+#device		uhid		# "Human Interface Devices"
+#device		ukbd		# Keyboard
+#device		ulpt		# Printer
+#device		umass		# Disks/Mass storage - Requires scbus and da
+#device		ums		# Mouse
+#device		ural		# Ralink Technology RT2500USB wireless NICs
+#device		urio		# Diamond Rio 500 MP3 player
+#device		uscanner	# Scanners
 # USB Serial devices
-device		ucom		# Generic com ttys
-device		uark		# Technologies ARK3116 based serial adapters
-device		ubsa		# Belkin F5U103 and compatible serial adapters
-device		ubser		# BWCT console serial adapters
-device		uftdi		# For FTDI usb serial adapters
-device		uipaq		# Some WinCE based devices
-device		uplcom		# Prolific PL-2303 serial adapters
-device		uslcom		# SI Labs CP2101/CP2102 serial adapters
-device		uvisor		# Visor and Palm devices
-device		uvscom		# USB serial support for DDI pocket's PHS
-# USB Ethernet, requires miibus
-device		aue		# ADMtek USB Ethernet
-device		axe		# ASIX Electronics USB Ethernet
-device		cdce		# Generic USB over Ethernet
-device		cue		# CATC USB Ethernet
-device		kue		# Kawasaki LSI USB Ethernet
-device		rue		# RealTek RTL8150 USB Ethernet
+#device		ucom		# Generic com ttys
+#device		uark		# Technologies ARK3116 based serial adapters
+#device		ubsa		# Belkin F5U103 and compatible serial adapters
+#device		ubser		# BWCT console serial adapters
+#device		uftdi		# For FTDI usb serial adapters
+#device		uipaq		# Some WinCE based devices
+#device		uplcom		# Prolific PL-2303 serial adapters
+#device		uslcom		# SI Labs CP2101/CP2102 serial adapters
+#device		uvisor		# Visor and Palm devices
+#device		uvscom		# USB serial support for DDI pocket's PHS
+
 
 # FireWire support
-device		firewire	# FireWire bus code
-device		sbp		# SCSI over FireWire (Requires scbus and da)
-device		fwe		# Ethernet over FireWire (non-standard!)
-device		fwip		# IP over FireWire (RFC 2734,3146)
-device		dcons		# Dumb console driver
-device		dcons_crom	# Configuration ROM for dcons
+#device		firewire	# FireWire bus code
+#device		sbp		# SCSI over FireWire (Requires scbus and da)
+#device		fwe		# Ethernet over FireWire (non-standard!)
+#device		fwip		# IP over FireWire (RFC 2734,3146)
+#device		dcons		# Dumb console driver
+#device		dcons_crom	# Configuration ROM for dcons
+

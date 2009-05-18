@@ -36,24 +36,32 @@ __FBSDID("$FreeBSD$");
 #include "opt_mrouting.h"
 #include "opt_ipsec.h"
 #include "opt_inet6.h"
+#include "opt_route.h"
 #include "opt_pf.h"
 #include "opt_carp.h"
 #include "opt_sctp.h"
+#include "opt_mpath.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
 #include <sys/socket.h>
 #include <sys/domain.h>
+#include <sys/proc.h>
 #include <sys/protosw.h>
 #include <sys/queue.h>
 #include <sys/sysctl.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/route.h>
+#ifdef RADIX_MPATH
+#include <net/radix_mpath.h>
+#endif
 
 #include <netinet/in.h>
 #include <netinet/in_systm.h>
+#include <netinet/in_var.h>
 #include <netinet/ip.h>
 #include <netinet/ip_var.h>
 #include <netinet/ip_icmp.h>
@@ -189,6 +197,7 @@ struct protosw inetsw[] = {
 	.pr_flags =		PR_ATOMIC|PR_ADDR|PR_LASTHDR,
 	.pr_input =		icmp_input,
 	.pr_ctloutput =		rip_ctloutput,
+	.pr_init =		icmp_init,
 	.pr_usrreqs =		&rip_usrreqs
 },
 {
@@ -352,9 +361,15 @@ struct domain inetdomain = {
 	.dom_name =		"internet",
 	.dom_protosw =		inetsw,
 	.dom_protoswNPROTOSW =	&inetsw[sizeof(inetsw)/sizeof(inetsw[0])],
+#ifdef RADIX_MPATH
+	.dom_rtattach =		rn4_mpath_inithead,
+#else
 	.dom_rtattach =		in_inithead,
+#endif
 	.dom_rtoffset =		32,
-	.dom_maxrtkey =		sizeof(struct sockaddr_in)
+	.dom_maxrtkey =		sizeof(struct sockaddr_in),
+	.dom_ifattach =		in_domifattach,
+	.dom_ifdetach =		in_domifdetach
 };
 
 DOMAIN_SET(inet);

@@ -34,6 +34,9 @@
 #define	_NETINET_IP_VAR_H_
 
 #include <sys/queue.h>
+#ifdef _KERNEL
+#include <sys/vimage.h>
+#endif
 
 /*
  * Overlay for ip header used by other protocols (tcp, udp).
@@ -172,19 +175,22 @@ struct inpcb;
 struct route;
 struct sockopt;
 
+#ifdef VIMAGE_GLOBALS
 extern struct	ipstat	ipstat;
 extern u_short	ip_id;			/* ip packet ctr, for ids */
+extern int	ip_do_randomid;
 extern int	ip_defttl;		/* default IP ttl */
 extern int	ipforwarding;		/* ip forwarding */
 #ifdef IPSTEALTH
 extern int	ipstealth;		/* stealth forwarding */
 #endif
-extern u_char	ip_protox[];
+extern int rsvp_on;
 extern struct socket *ip_rsvpd;		/* reservation protocol daemon */
 extern struct socket *ip_mrouter;	/* multicast routing daemon */
+#endif
+extern u_char	ip_protox[];
 extern int	(*legal_vif_num)(int);
 extern u_long	(*ip_mcast_src)(int);
-extern int rsvp_on;
 extern struct	pr_usrreqs rip_usrreqs;
 
 void	inp_freemoptions(struct ip_moptions *);
@@ -230,18 +236,6 @@ extern void	(*rsvp_input_p)(struct mbuf *m, int off);
 extern	struct pfil_head inet_pfil_hook;	/* packet filter hooks */
 
 void	in_delayed_cksum(struct mbuf *m);
-
-static __inline uint16_t ip_newid(void);
-extern int ip_do_randomid;
-
-static __inline uint16_t
-ip_newid(void)
-{
-	if (ip_do_randomid)
-		return ip_randomid();
-
-	return htons(ip_id++);
-}
 
 #endif /* _KERNEL */
 

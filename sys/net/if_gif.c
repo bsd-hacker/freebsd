@@ -49,9 +49,11 @@
 #include <sys/proc.h>
 #include <sys/protosw.h>
 #include <sys/conf.h>
+#include <sys/vimage.h>
 #include <machine/cpu.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_clone.h>
 #include <net/if_types.h>
 #include <net/netisr.h>
@@ -93,7 +95,24 @@
  */
 static struct mtx gif_mtx;
 static MALLOC_DEFINE(M_GIF, "gif", "Generic Tunnel Interface");
+
+#ifndef VIMAGE
+#ifndef VIMAGE_GLOBALS
+struct vnet_gif vnet_gif_0;
+#endif
+#endif
+
+#ifdef VIMAGE_GLOBALS
 static LIST_HEAD(, gif_softc) gif_softc_list;
+static int max_gif_nesting;
+static int parallel_tunnels;
+#ifdef INET
+int ip_gif_ttl;
+#endif
+#ifdef INET6
+int ip6_gif_hlim;
+#endif
+#endif
 
 void	(*ng_gif_input_p)(struct ifnet *ifp, struct mbuf **mp, int af);
 void	(*ng_gif_input_orphan_p)(struct ifnet *ifp, struct mbuf *m, int af);
@@ -122,22 +141,22 @@ SYSCTL_NODE(_net_link, IFT_GIF, gif, CTLFLAG_RW, 0,
  */
 #define MAX_GIF_NEST 1
 #endif
-static int max_gif_nesting = MAX_GIF_NEST;
-SYSCTL_INT(_net_link_gif, OID_AUTO, max_nesting, CTLFLAG_RW,
-    &max_gif_nesting, 0, "Max nested tunnels");
+SYSCTL_V_INT(V_NET, vnet_gif, _net_link_gif, OID_AUTO, max_nesting,
+    CTLFLAG_RW, max_gif_nesting, 0, "Max nested tunnels");
+
+#ifdef INET6
+SYSCTL_DECL(_net_inet6_ip6);
+SYSCTL_V_INT(V_NET, vnet_gif, _net_inet6_ip6, IPV6CTL_GIF_HLIM,
+    gifhlim, CTLFLAG_RW, ip6_gif_hlim, 0, "");
+#endif
 
 /*
  * By default, we disallow creation of multiple tunnels between the same
  * pair of addresses.  Some applications require this functionality so
  * we allow control over this check here.
  */
-#ifdef XBONEHACK
-static int parallel_tunnels = 1;
-#else
-static int parallel_tunnels = 0;
-#endif
-SYSCTL_INT(_net_link_gif, OID_AUTO, parallel_tunnels, CTLFLAG_RW,
-    &parallel_tunnels, 0, "Allow parallel tunnels?");
+SYSCTL_V_INT(V_NET, vnet_gif, _net_link_gif, OID_AUTO, parallel_tunnels,
+    CTLFLAG_RW, parallel_tunnels, 0, "Allow parallel tunnels?");
 
 /* copy from src/sys/net/if_ethersubr.c */
 static const u_char etherbroadcastaddr[ETHER_ADDR_LEN] =
@@ -153,6 +172,7 @@ gif_clone_create(ifc, unit, params)
 	int unit;
 	caddr_t params;
 {
+	INIT_VNET_GIF(curvnet);
 	struct gif_softc *sc;
 
 	sc = malloc(sizeof(struct gif_softc), M_GIF, M_WAITOK | M_ZERO);
@@ -187,7 +207,7 @@ gif_clone_create(ifc, unit, params)
 		(*ng_gif_attach_p)(GIF2IFP(sc));
 
 	mtx_lock(&gif_mtx);
-	LIST_INSERT_HEAD(&gif_softc_list, sc, gif_list);
+	LIST_INSERT_HEAD(&V_gif_softc_list, sc, gif_list);
 	mtx_unlock(&gif_mtx);
 
 	return (0);
@@ -197,7 +217,9 @@ static void
 gif_clone_destroy(ifp)
 	struct ifnet *ifp;
 {
+#if defined(INET) || defined(INET6)
 	int err;
+#endif
 	struct gif_softc *sc = ifp->if_softc;
 
 	mtx_lock(&gif_mtx);
@@ -239,19 +261,28 @@ gifmodevent(mod, type, data)
 	switch (type) {
 	case MOD_LOAD:
 		mtx_init(&gif_mtx, "gif_mtx", NULL, MTX_DEF);
-		LIST_INIT(&gif_softc_list);
-		if_clone_attach(&gif_cloner);
 
-#ifdef INET6
-		ip6_gif_hlim = GIF_HLIM;
+		LIST_INIT(&V_gif_softc_list);
+		V_max_gif_nesting = MAX_GIF_NEST;
+#ifdef XBONEHACK
+		V_parallel_tunnels = 1;
+#else
+		V_parallel_tunnels = 0;
 #endif
+#ifdef INET
+		V_ip_gif_ttl = GIF_TTL;
+#endif
+#ifdef INET6
+		V_ip6_gif_hlim = GIF_HLIM;
+#endif
+		if_clone_attach(&gif_cloner);
 
 		break;
 	case MOD_UNLOAD:
 		if_clone_detach(&gif_cloner);
 		mtx_destroy(&gif_mtx);
 #ifdef INET6
-		ip6_gif_hlim = 0;
+		V_ip6_gif_hlim = 0;
 #endif
 		break;
 	default:
@@ -363,6 +394,7 @@ gif_output(ifp, m, dst, rt)
 	struct sockaddr *dst;
 	struct rtentry *rt;	/* added in net2 */
 {
+	INIT_VNET_GIF(ifp->if_vnet);
 	struct gif_softc *sc = ifp->if_softc;
 	struct m_tag *mtag;
 	int error = 0;
@@ -370,7 +402,7 @@ gif_output(ifp, m, dst, rt)
 	u_int32_t af;
 
 #ifdef MAC
-	error = mac_check_ifnet_transmit(ifp, m);
+	error = mac_ifnet_check_transmit(ifp, m);
 	if (error) {
 		m_freem(m);
 		goto end;
@@ -398,7 +430,7 @@ gif_output(ifp, m, dst, rt)
 		mtag = m_tag_locate(m, MTAG_GIF, MTAG_GIF_CALLED, mtag);
 		gif_called++;
 	}
-	if (gif_called > max_gif_nesting) {
+	if (gif_called > V_max_gif_nesting) {
 		log(LOG_NOTICE,
 		    "gif_output: recursively called too many times(%d)\n",
 		    gif_called);
@@ -492,7 +524,7 @@ gif_input(m, af, ifp)
 	m->m_pkthdr.rcvif = ifp;
 
 #ifdef MAC
-	mac_create_mbuf_from_ifnet(ifp, m);
+	mac_ifnet_create_mbuf(ifp, m);
 #endif
 
 	if (bpf_peers_present(ifp->if_bpf)) {
@@ -853,13 +885,14 @@ gif_set_tunnel(ifp, src, dst)
 	struct sockaddr *src;
 	struct sockaddr *dst;
 {
+	INIT_VNET_GIF(ifp->if_vnet);
 	struct gif_softc *sc = ifp->if_softc;
 	struct gif_softc *sc2;
 	struct sockaddr *osrc, *odst, *sa;
 	int error = 0; 
 
 	mtx_lock(&gif_mtx);
-	LIST_FOREACH(sc2, &gif_softc_list, gif_list) {
+	LIST_FOREACH(sc2, &V_gif_softc_list, gif_list) {
 		if (sc2 == sc)
 			continue;
 		if (!sc2->gif_pdst || !sc2->gif_psrc)
@@ -874,7 +907,7 @@ gif_set_tunnel(ifp, src, dst)
 		 * Disallow parallel tunnels unless instructed
 		 * otherwise.
 		 */
-		if (!parallel_tunnels &&
+		if (!V_parallel_tunnels &&
 		    bcmp(sc2->gif_pdst, dst, dst->sa_len) == 0 &&
 		    bcmp(sc2->gif_psrc, src, src->sa_len) == 0) {
 			error = EADDRNOTAVAIL;

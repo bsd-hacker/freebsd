@@ -82,10 +82,12 @@ __FBSDID("$FreeBSD$");
 #include <sys/priv.h>
 #include <sys/proc.h>
 #include <sys/jail.h>
+#include <sys/vimage.h>
 
 #include <vm/uma.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_types.h>
 #include <net/route.h>
 
@@ -95,11 +97,14 @@ __FBSDID("$FreeBSD$");
 #include <netinet/tcp_var.h>
 #include <netinet/ip6.h>
 #include <netinet/ip_var.h>
+#include <netinet/vinet.h>
+
 #include <netinet6/ip6_var.h>
 #include <netinet6/nd6.h>
 #include <netinet/in_pcb.h>
 #include <netinet6/in6_pcb.h>
 #include <netinet6/scope6_var.h>
+#include <netinet6/vinet6.h>
 
 #include <security/mac/mac_framework.h>
 
@@ -109,6 +114,8 @@ int
 in6_pcbbind(register struct inpcb *inp, struct sockaddr *nam,
     struct ucred *cred)
 {
+	INIT_VNET_INET6(inp->inp_vnet);
+	INIT_VNET_INET(inp->inp_vnet);
 	struct socket *so = inp->inp_socket;
 	struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)NULL;
 	struct inpcbinfo *pcbinfo = inp->inp_pcbinfo;
@@ -118,7 +125,7 @@ in6_pcbbind(register struct inpcb *inp, struct sockaddr *nam,
 	INP_INFO_WLOCK_ASSERT(pcbinfo);
 	INP_WLOCK_ASSERT(inp);
 
-	if (!in6_ifaddr) /* XXX broken! */
+	if (!V_in6_ifaddr) /* XXX broken! */
 		return (EADDRNOTAVAIL);
 	if (inp->inp_lport || !IN6_IS_ADDR_UNSPECIFIED(&inp->in6p_laddr))
 		return (EINVAL);
@@ -138,7 +145,7 @@ in6_pcbbind(register struct inpcb *inp, struct sockaddr *nam,
 		if (nam->sa_family != AF_INET6)
 			return (EAFNOSUPPORT);
 
-		if ((error = sa6_embedscope(sin6, ip6_use_defzone)) != 0)
+		if ((error = sa6_embedscope(sin6, V_ip6_use_defzone)) != 0)
 			return(error);
 
 		if ((error = prison_local_ip6(cred, &sin6->sin6_addr,
@@ -179,8 +186,8 @@ in6_pcbbind(register struct inpcb *inp, struct sockaddr *nam,
 			struct inpcb *t;
 
 			/* GROSS */
-			if (ntohs(lport) <= ipport_reservedhigh &&
-			    ntohs(lport) >= ipport_reservedlow &&
+			if (ntohs(lport) <= V_ipport_reservedhigh &&
+			    ntohs(lport) >= V_ipport_reservedlow &&
 			    priv_check_cred(cred, PRIV_NETINET_RESERVEDPORT,
 			    0))
 				return (EACCES);
@@ -280,6 +287,7 @@ int
 in6_pcbladdr(register struct inpcb *inp, struct sockaddr *nam,
     struct in6_addr **plocal_addr6)
 {
+	INIT_VNET_INET6(inp->inp_vnet);
 	register struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)nam;
 	int error = 0;
 	struct ifnet *ifp = NULL;
@@ -295,12 +303,12 @@ in6_pcbladdr(register struct inpcb *inp, struct sockaddr *nam,
 	if (sin6->sin6_port == 0)
 		return (EADDRNOTAVAIL);
 
-	if (sin6->sin6_scope_id == 0 && !ip6_use_defzone)
+	if (sin6->sin6_scope_id == 0 && !V_ip6_use_defzone)
 		scope_ambiguous = 1;
-	if ((error = sa6_embedscope(sin6, ip6_use_defzone)) != 0)
+	if ((error = sa6_embedscope(sin6, V_ip6_use_defzone)) != 0)
 		return(error);
 
-	if (in6_ifaddr) {
+	if (V_in6_ifaddr) {
 		/*
 		 * If the destination address is UNSPECIFIED addr,
 		 * use the loopback addr, e.g ::1.
@@ -411,7 +419,7 @@ in6_sockaddr(in_port_t port, struct in6_addr *addr_p)
 {
 	struct sockaddr_in6 *sin6;
 
-	MALLOC(sin6, struct sockaddr_in6 *, sizeof *sin6, M_SONAME, M_WAITOK);
+	sin6 = malloc(sizeof *sin6, M_SONAME, M_WAITOK);
 	bzero(sin6, sizeof *sin6);
 	sin6->sin6_family = AF_INET6;
 	sin6->sin6_len = sizeof(*sin6);
@@ -434,7 +442,7 @@ in6_v4mapsin6_sockaddr(in_port_t port, struct in_addr *addr_p)
 	sin.sin_port = port;
 	sin.sin_addr = *addr_p;
 
-	MALLOC(sin6_p, struct sockaddr_in6 *, sizeof *sin6_p, M_SONAME,
+	sin6_p = malloc(sizeof *sin6_p, M_SONAME,
 		M_WAITOK);
 	in6_sin_2_v4mapsin6(&sin, sin6_p);
 

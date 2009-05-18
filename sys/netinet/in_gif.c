@@ -45,10 +45,11 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/sysctl.h>
 #include <sys/protosw.h>
-
 #include <sys/malloc.h>
+#include <sys/vimage.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/route.h>
 
 #include <netinet/in.h>
@@ -59,6 +60,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/in_var.h>
 #include <netinet/ip_encap.h>
 #include <netinet/ip_ecn.h>
+#include <netinet/vinet.h>
 
 #ifdef INET6
 #include <netinet/ip6.h>
@@ -85,13 +87,16 @@ struct protosw in_gif_protosw = {
 	.pr_usrreqs =		&rip_usrreqs
 };
 
-static int ip_gif_ttl = GIF_TTL;
-SYSCTL_INT(_net_inet_ip, IPCTL_GIF_TTL, gifttl, CTLFLAG_RW,
-	&ip_gif_ttl,	0, "");
+#ifdef VIMAGE_GLOBALS
+extern int ip_gif_ttl;
+#endif
+SYSCTL_V_INT(V_NET, vnet_gif, _net_inet_ip, IPCTL_GIF_TTL, gifttl,
+	CTLFLAG_RW, ip_gif_ttl,	0, "");
 
 int
 in_gif_output(struct ifnet *ifp, int family, struct mbuf *m)
 {
+	INIT_VNET_GIF(ifp->if_vnet);
 	struct gif_softc *sc = ifp->if_softc;
 	struct sockaddr_in *dst = (struct sockaddr_in *)&sc->gif_ro.ro_dst;
 	struct sockaddr_in *sin_src = (struct sockaddr_in *)sc->gif_psrc;
@@ -176,7 +181,7 @@ in_gif_output(struct ifnet *ifp, int family, struct mbuf *m)
 	}
 	iphdr.ip_p = proto;
 	/* version will be set in ip_output() */
-	iphdr.ip_ttl = ip_gif_ttl;
+	iphdr.ip_ttl = V_ip_gif_ttl;
 	iphdr.ip_len = m->m_pkthdr.len + sizeof(struct ip);
 	ip_ecn_ingress((ifp->if_flags & IFF_LINK1) ? ECN_ALLOWED : ECN_NOCARE,
 		       &iphdr.ip_tos, &tos);
@@ -255,6 +260,7 @@ in_gif_output(struct ifnet *ifp, int family, struct mbuf *m)
 void
 in_gif_input(struct mbuf *m, int off)
 {
+	INIT_VNET_INET(curvnet);
 	struct ifnet *gifp = NULL;
 	struct gif_softc *sc;
 	struct ip *ip;
@@ -268,14 +274,14 @@ in_gif_input(struct mbuf *m, int off)
 	sc = (struct gif_softc *)encap_getarg(m);
 	if (sc == NULL) {
 		m_freem(m);
-		ipstat.ips_nogif++;
+		V_ipstat.ips_nogif++;
 		return;
 	}
 
 	gifp = GIF2IFP(sc);
 	if (gifp == NULL || (gifp->if_flags & IFF_UP) == 0) {
 		m_freem(m);
-		ipstat.ips_nogif++;
+		V_ipstat.ips_nogif++;
 		return;
 	}
 
@@ -335,7 +341,7 @@ in_gif_input(struct mbuf *m, int off)
  		break;	
 
 	default:
-		ipstat.ips_nogif++;
+		V_ipstat.ips_nogif++;
 		m_freem(m);
 		return;
 	}
@@ -349,6 +355,7 @@ in_gif_input(struct mbuf *m, int off)
 static int
 gif_validate4(const struct ip *ip, struct gif_softc *sc, struct ifnet *ifp)
 {
+	INIT_VNET_INET(curvnet);
 	struct sockaddr_in *src, *dst;
 	struct in_ifaddr *ia4;
 
@@ -368,7 +375,7 @@ gif_validate4(const struct ip *ip, struct gif_softc *sc, struct ifnet *ifp)
 		return 0;
 	}
 	/* reject packets with broadcast on source */
-	TAILQ_FOREACH(ia4, &in_ifaddrhead, ia_link) {
+	TAILQ_FOREACH(ia4, &V_in_ifaddrhead, ia_link) {
 		if ((ia4->ia_ifa.ifa_ifp->if_flags & IFF_BROADCAST) == 0)
 			continue;
 		if (ip->ip_src.s_addr == ia4->ia_broadaddr.sin_addr.s_addr)

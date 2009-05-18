@@ -274,7 +274,8 @@ ppp_modevent(module_t mod, int type, void *data)
 		LIST_INIT(&ppp_softc_list);
 		if_clone_attach(&ppp_cloner);
 
-		netisr_register(NETISR_PPP, (netisr_t *)pppintr, NULL, 0);
+		netisr_register(NETISR_PPP, (netisr_t *)pppintr, NULL,
+		    NETISR_FORCEQUEUE);
 		/*
 		 * XXX layering violation - if_ppp can work over any lower
 		 * level transport that cares to attach to it.
@@ -347,7 +348,7 @@ pppalloc(pid)
     sc->sc_relinq = NULL;
     bzero((char *)&sc->sc_stats, sizeof(sc->sc_stats));
 #ifdef VJC
-    MALLOC(sc->sc_comp, struct slcompress *, sizeof(struct slcompress),
+    sc->sc_comp = malloc(sizeof(struct slcompress),
 	   M_DEVBUF, M_NOWAIT);
     if (sc->sc_comp)
 	sl_compress_init(sc->sc_comp, -1);
@@ -613,7 +614,7 @@ pppioctl(sc, cmd, data, flag, td)
 	}
 	newcodelen = nbp->bf_len * sizeof(struct bpf_insn);
 	if (newcodelen != 0) {
-	    MALLOC(newcode, struct bpf_insn *, newcodelen, M_DEVBUF, M_WAITOK);
+	    newcode = malloc(newcodelen, M_DEVBUF, M_WAITOK);
 	    if (newcode == 0) {
 		error = EINVAL;		/* or sumpin */
 		break;
@@ -815,7 +816,7 @@ pppoutput(ifp, m0, dst, rtp)
     int len;
 
 #ifdef MAC
-    error = mac_check_ifnet_transmit(ifp, m0);
+    error = mac_ifnet_check_transmit(ifp, m0);
     if (error)
 	goto bad;
 #endif
@@ -1212,8 +1213,7 @@ pppintr()
     int s;
     struct mbuf *m;
 
-    GIANT_REQUIRED;
-
+    mtx_lock(&Giant);
     PPP_LIST_LOCK();
     LIST_FOREACH(sc, &ppp_softc_list, sc_list) {
 	s = splimp();
@@ -1231,12 +1231,13 @@ pppintr()
 	    if (m == NULL)
 		break;
 #ifdef MAC
-	    mac_create_mbuf_from_ifnet(PPP2IFP(sc), m);
+	    mac_ifnet_create_mbuf(PPP2IFP(sc), m);
 #endif
 	    ppp_inproc(sc, m);
 	}
     }
     PPP_LIST_UNLOCK();
+    mtx_unlock(&Giant);
 }
 
 #ifdef PPP_COMPRESS
@@ -1509,7 +1510,7 @@ ppp_inproc(sc, m)
 	    }
 	}
 #ifdef MAC
-	mac_copy_mbuf(m, mp);
+	mac_mbuf_copy(m, mp);
 #endif
 	cp = mtod(mp, u_char *);
 	cp[0] = adrs;
@@ -1563,7 +1564,7 @@ ppp_inproc(sc, m)
 	MGETHDR(mp, M_DONTWAIT, MT_DATA);
 	if (mp != NULL) {
 #ifdef MAC
-	    mac_copy_mbuf(m, mp);
+	    mac_mbuf_copy(m, mp);
 #endif
 	    m_copydata(m, 0, ilen, mtod(mp, caddr_t));
 	    m_freem(m);

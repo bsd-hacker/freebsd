@@ -176,6 +176,12 @@ int sysctl_handle_intptr(SYSCTL_HANDLER_ARGS);
 int sysctl_handle_string(SYSCTL_HANDLER_ARGS);
 int sysctl_handle_opaque(SYSCTL_HANDLER_ARGS);
 
+#ifdef VIMAGE
+int sysctl_handle_v_int(SYSCTL_HANDLER_ARGS);
+int sysctl_handle_v_string(SYSCTL_HANDLER_ARGS);
+int sysctl_handle_v_opaque(SYSCTL_HANDLER_ARGS);
+#endif
+
 /*
  * These functions are used to add/remove an oid from the mib.
  */
@@ -220,6 +226,27 @@ TAILQ_HEAD(sysctl_ctx_list, sysctl_ctx_entry);
 		nbr, kind, a1, a2, #name, handler, fmt, 0, __DESCR(descr) }; \
 	DATA_SET(sysctl_set, sysctl__##parent##_##name)
 
+#ifdef VIMAGE
+#define	SYSCTL_V_OID(subs, mod, parent, nbr, name, kind, a1, a2,	\
+	    handler, fmt, descr)					\
+	static struct sysctl_oid sysctl__##parent##_##name = {		\
+		&sysctl_##parent##_children, { 0 }, nbr, kind,		\
+		(void *) offsetof(struct mod, _##a1), a2, #name,	\
+		handler, fmt, 0, __DESCR(descr), subs, V_MOD_##mod };	\
+	DATA_SET(sysctl_set, sysctl__##parent##_##name)
+#else
+#ifdef VIMAGE_GLOBALS
+#define	SYSCTL_V_OID(subs, mod, parent, nbr, name, kind, a1, a2,	\
+	    handler, fmt, descr)					\
+	SYSCTL_OID(parent, nbr, name, kind, &a1, a2, handler, fmt, descr)
+#else
+#define	SYSCTL_V_OID(subs, mod, parent, nbr, name, kind, a1, a2,	\
+	    handler, fmt, descr)					\
+	SYSCTL_OID(parent, nbr, name, kind, & mod ## _0._ ## a1, a2,	\
+	    handler, fmt, descr)
+#endif
+#endif
+
 #define SYSCTL_ADD_OID(ctx, parent, nbr, name, kind, a1, a2, handler, fmt, descr) \
 	sysctl_add_oid(ctx, parent, nbr, name, kind, a1, a2, handler, fmt, __DESCR(descr))
 
@@ -239,6 +266,22 @@ TAILQ_HEAD(sysctl_ctx_list, sysctl_ctx_entry);
 	SYSCTL_OID(parent, nbr, name, CTLTYPE_STRING|(access), \
 		arg, len, sysctl_handle_string, "A", descr)
 
+#ifdef VIMAGE
+#define	SYSCTL_V_STRING(subs, mod, parent, nbr, name, access, sym, len, descr) \
+	SYSCTL_V_OID(subs, mod, parent, nbr, name, CTLTYPE_STRING|(access), \
+		sym, len, sysctl_handle_v_string, "A", descr)
+#else
+#ifdef VIMAGE_GLOBALS
+#define	SYSCTL_V_STRING(subs, mod, parent, nbr, name, access, sym, len, descr) \
+	SYSCTL_OID(parent, nbr, name, CTLTYPE_STRING|(access), \
+		&sym, len, sysctl_handle_string, "A", descr)
+#else
+#define	SYSCTL_V_STRING(subs, mod, parent, nbr, name, access, sym, len, descr) \
+	SYSCTL_OID(parent, nbr, name, CTLTYPE_STRING|(access), \
+		& mod ## _0._ ## sym, len, sysctl_handle_string, "A", descr)
+#endif
+#endif
+
 #define SYSCTL_ADD_STRING(ctx, parent, nbr, name, access, arg, len, descr)  \
 	sysctl_add_oid(ctx, parent, nbr, name, CTLTYPE_STRING|(access),	    \
 	arg, len, sysctl_handle_string, "A", __DESCR(descr))
@@ -248,6 +291,22 @@ TAILQ_HEAD(sysctl_ctx_list, sysctl_ctx_entry);
 	SYSCTL_OID(parent, nbr, name, CTLTYPE_INT|CTLFLAG_MPSAFE|(access), \
 		ptr, val, sysctl_handle_int, "I", descr)
 
+#ifdef VIMAGE
+#define	SYSCTL_V_INT(subs, mod, parent, nbr, name, access, sym, val, descr) \
+	SYSCTL_V_OID(subs, mod, parent, nbr, name, CTLTYPE_INT|(access), \
+		sym, val, sysctl_handle_v_int, "I", descr)
+#else
+#ifdef VIMAGE_GLOBALS
+#define	SYSCTL_V_INT(subs, mod, parent, nbr, name, access, sym, val, descr) \
+	SYSCTL_OID(parent, nbr, name, CTLTYPE_INT|(access), \
+		&sym, val, sysctl_handle_int, "I", descr)
+#else
+#define	SYSCTL_V_INT(subs, mod, parent, nbr, name, access, sym, val, descr) \
+	SYSCTL_OID(parent, nbr, name, CTLTYPE_INT|(access), \
+		& mod ## _0._ ## sym, val, sysctl_handle_int, "I", descr)
+#endif
+#endif
+
 #define SYSCTL_ADD_INT(ctx, parent, nbr, name, access, ptr, val, descr)	    \
 	sysctl_add_oid(ctx, parent, nbr, name, CTLTYPE_INT|CTLFLAG_MPSAFE|(access),	    \
 	ptr, val, sysctl_handle_int, "I", __DESCR(descr))
@@ -256,6 +315,22 @@ TAILQ_HEAD(sysctl_ctx_list, sysctl_ctx_entry);
 #define SYSCTL_UINT(parent, nbr, name, access, ptr, val, descr) \
 	SYSCTL_OID(parent, nbr, name, CTLTYPE_UINT|CTLFLAG_MPSAFE|(access), \
 		ptr, val, sysctl_handle_int, "IU", descr)
+
+#ifdef VIMAGE
+#define	SYSCTL_V_UINT(subs, mod, parent, nbr, name, access, sym, val, descr) \
+	SYSCTL_V_OID(subs, mod, parent, nbr, name, CTLTYPE_UINT|(access), \
+		sym, val, sysctl_handle_v_int, "IU", descr)
+#else
+#ifdef VIMAGE_GLOBALS
+#define	SYSCTL_V_UINT(subs, mod, parent, nbr, name, access, sym, val, descr) \
+	SYSCTL_OID(parent, nbr, name, CTLTYPE_UINT|(access), \
+		&sym, val, sysctl_handle_int, "IU", descr)
+#else
+#define	SYSCTL_V_UINT(subs, mod, parent, nbr, name, access, sym, val, descr) \
+	SYSCTL_OID(parent, nbr, name, CTLTYPE_UINT|(access), \
+		& mod ## _0._ ## sym, val, sysctl_handle_int, "IU", descr)
+#endif
+#endif
 
 #define SYSCTL_ADD_UINT(ctx, parent, nbr, name, access, ptr, val, descr)    \
 	sysctl_add_oid(ctx, parent, nbr, name, CTLTYPE_UINT|CTLFLAG_MPSAFE|(access),	    \
@@ -319,6 +394,28 @@ TAILQ_HEAD(sysctl_ctx_list, sysctl_ctx_entry);
 		ptr, sizeof(struct type), sysctl_handle_opaque, \
 		"S," #type, descr)
 
+#ifdef VIMAGE
+#define	SYSCTL_V_STRUCT(subs, mod, parent, nbr, name, access, sym, \
+	    type, descr) \
+	SYSCTL_V_OID(subs, mod, parent, nbr, name, CTLTYPE_OPAQUE|(access), \
+		sym, sizeof(struct type), sysctl_handle_v_opaque, \
+		"S," #type, descr)
+#else
+#ifdef VIMAGE_GLOBALS
+#define	SYSCTL_V_STRUCT(subs, mod, parent, nbr, name, access, sym, \
+	    type, descr) \
+	SYSCTL_OID(parent, nbr, name, CTLTYPE_OPAQUE|(access), \
+		&sym, sizeof(struct type), sysctl_handle_opaque, \
+		"S," #type, descr)
+#else
+#define	SYSCTL_V_STRUCT(subs, mod, parent, nbr, name, access, sym, \
+	    type, descr) \
+	SYSCTL_OID(parent, nbr, name, CTLTYPE_OPAQUE|(access), \
+		& mod ## _0._ ## sym, sizeof(struct type), \
+		sysctl_handle_opaque, "S," #type, descr)
+#endif
+#endif
+
 #define SYSCTL_ADD_STRUCT(ctx, parent, nbr, name, access, ptr, type, descr) \
 	sysctl_add_oid(ctx, parent, nbr, name, CTLTYPE_OPAQUE|(access),	    \
 	ptr, sizeof(struct type), sysctl_handle_opaque, "S," #type, __DESCR(descr))
@@ -327,6 +424,11 @@ TAILQ_HEAD(sysctl_ctx_list, sysctl_ctx_entry);
 #define SYSCTL_PROC(parent, nbr, name, access, ptr, arg, handler, fmt, descr) \
 	SYSCTL_OID(parent, nbr, name, (access), \
 		ptr, arg, handler, fmt, descr)
+
+#define SYSCTL_V_PROC(subs, mod, parent, nbr, name, access, sym, arg, \
+		handler, fmt, descr) \
+	SYSCTL_V_OID(subs, mod, parent, nbr, name, (access), \
+		sym, arg, handler, fmt, descr)
 
 #define SYSCTL_ADD_PROC(ctx, parent, nbr, name, access, ptr, arg, handler, fmt, descr) \
 	sysctl_add_oid(ctx, parent, nbr, name, (access),			    \

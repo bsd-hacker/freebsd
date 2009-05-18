@@ -38,11 +38,12 @@
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_ipx.h"
+#include "opt_route.h"
+#include "opt_mac.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
-#include <sys/malloc.h>
 #include <sys/mbuf.h>
 #include <sys/module.h>
 #include <machine/bus.h>
@@ -50,14 +51,16 @@
 #include <sys/socket.h>
 #include <sys/sockio.h>
 #include <sys/sysctl.h>
+#include <sys/vimage.h>
 
 #include <net/if.h>
+#include <net/if_var.h>
 #include <net/if_clone.h>
 #include <net/if_types.h>
 #include <net/netisr.h>
 #include <net/route.h>
 #include <net/bpf.h>
-#include <net/bpfdesc.h>
+#include <net/vnet.h>
 
 #ifdef	INET
 #include <netinet/in.h>
@@ -82,6 +85,8 @@
 #include <netatalk/at_var.h>
 #endif
 
+#include <security/mac/mac_framework.h>
+
 #ifdef TINY_LOMTU
 #define	LOMTU	(1024+512)
 #elif defined(LARGE_LOMTU)
@@ -90,13 +95,6 @@
 #define LOMTU	16384
 #endif
 
-#define LONAME	"lo"
-
-struct lo_softc {
-	struct	ifnet *sc_ifp;
-	LIST_ENTRY(lo_softc) sc_next;
-};
-
 int		loioctl(struct ifnet *, u_long, caddr_t);
 static void	lortrequest(int, struct rtentry *, struct rt_addrinfo *);
 int		looutput(struct ifnet *ifp, struct mbuf *m,
@@ -104,46 +102,36 @@ int		looutput(struct ifnet *ifp, struct mbuf *m,
 static int	lo_clone_create(struct if_clone *, int, caddr_t);
 static void	lo_clone_destroy(struct ifnet *);
 
-struct ifnet *loif = NULL;			/* Used externally */
-
-static MALLOC_DEFINE(M_LO, LONAME, "Loopback Interface");
-
-static struct mtx lo_mtx;
-static LIST_HEAD(lo_list, lo_softc) lo_list;
+#ifdef VIMAGE_GLOBALS
+struct ifnet *loif;			/* Used externally */
+#endif
 
 IFC_SIMPLE_DECLARE(lo, 1);
 
 static void
 lo_clone_destroy(struct ifnet *ifp)
 {
-	struct lo_softc *sc;
-	
-	sc = ifp->if_softc;
+#ifdef INVARIANTS
+	INIT_VNET_NET(ifp->if_vnet);
+#endif
 
 	/* XXX: destroying lo0 will lead to panics. */
-	KASSERT(loif != ifp, ("%s: destroying lo0", __func__));
+	KASSERT(V_loif != ifp, ("%s: destroying lo0", __func__));
 
-	mtx_lock(&lo_mtx);
-	LIST_REMOVE(sc, sc_next);
-	mtx_unlock(&lo_mtx);
 	bpfdetach(ifp);
 	if_detach(ifp);
 	if_free(ifp);
-	free(sc, M_LO);
 }
 
 static int
 lo_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 {
+	INIT_VNET_NET(curvnet);
 	struct ifnet *ifp;
-	struct lo_softc *sc;
 
-	MALLOC(sc, struct lo_softc *, sizeof(*sc), M_LO, M_WAITOK | M_ZERO);
-	ifp = sc->sc_ifp = if_alloc(IFT_LOOP);
-	if (ifp == NULL) {
-		free(sc, M_LO);
+	ifp = if_alloc(IFT_LOOP);
+	if (ifp == NULL)
 		return (ENOSPC);
-	}
 
 	if_initname(ifp, ifc->ifc_name, unit);
 	ifp->if_mtu = LOMTU;
@@ -151,14 +139,10 @@ lo_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 	ifp->if_ioctl = loioctl;
 	ifp->if_output = looutput;
 	ifp->if_snd.ifq_maxlen = ifqmaxlen;
-	ifp->if_softc = sc;
 	if_attach(ifp);
 	bpfattach(ifp, DLT_NULL, sizeof(u_int32_t));
-	mtx_lock(&lo_mtx);
-	LIST_INSERT_HEAD(&lo_list, sc, sc_next);
-	mtx_unlock(&lo_mtx);
-	if (loif == NULL)
-		loif = ifp;
+	if (V_loif == NULL)
+		V_loif = ifp;
 
 	return (0);
 }
@@ -166,10 +150,11 @@ lo_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 static int
 loop_modevent(module_t mod, int type, void *data)
 {
+	INIT_VNET_NET(curvnet);
+
 	switch (type) {
 	case MOD_LOAD:
-		mtx_init(&lo_mtx, "lo_mtx", NULL, MTX_DEF);
-		LIST_INIT(&lo_list);
+		V_loif = NULL;
 		if_clone_attach(&lo_cloner);
 		break;
 
@@ -196,8 +181,19 @@ looutput(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
     struct rtentry *rt)
 {
 	u_int32_t af;
+#ifdef MAC
+	int error;
+#endif
 
 	M_ASSERTPKTHDR(m); /* check if we have the packet header */
+
+#ifdef MAC
+	error = mac_ifnet_check_transmit(ifp, m);
+	if (error) {
+		m_freem(m);
+		return (error);
+	}
+#endif
 
 	if (rt && rt->rt_flags & (RTF_REJECT|RTF_BLACKHOLE)) {
 		m_freem(m);
@@ -243,11 +239,16 @@ looutput(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 int
 if_simloop(struct ifnet *ifp, struct mbuf *m, int af, int hlen)
 {
+	INIT_VNET_NET(ifp->if_vnet);
 	int isr;
 
 	M_ASSERTPKTHDR(m);
 	m_tag_delete_nonpersistent(m);
 	m->m_pkthdr.rcvif = ifp;
+
+#ifdef MAC
+	mac_ifnet_create_mbuf(ifp, m);
+#endif
 
 	/*
 	 * Let BPF see incoming packet in the following manner:
@@ -264,15 +265,15 @@ if_simloop(struct ifnet *ifp, struct mbuf *m, int af, int hlen)
 			bpf_mtap(ifp->if_bpf, m);
 		}
 	} else {
-		if (bpf_peers_present(loif->if_bpf)) {
-			if ((m->m_flags & M_MCAST) == 0 || loif == ifp) {
+		if (bpf_peers_present(V_loif->if_bpf)) {
+			if ((m->m_flags & M_MCAST) == 0 || V_loif == ifp) {
 				/* XXX beware sizeof(af) != 4 */
-				u_int32_t af1 = af;	
+				u_int32_t af1 = af;
 
 				/*
 				 * We need to prepend the address family.
 				 */
-				bpf_mtap2(loif->if_bpf, &af1, sizeof(af1), m);
+				bpf_mtap2(V_loif->if_bpf, &af1, sizeof(af1), m);
 			}
 		}
 	}
