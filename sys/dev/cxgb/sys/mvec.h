@@ -113,9 +113,9 @@ struct mbuf_iovec {
 
 #define MIOVBYTES           512
 #define MAX_MBUF_IOV        ((MHLEN-8)/sizeof(struct mbuf_iovec))
-#define MAX_MIOVEC_IOV      ((MIOVBYTES-sizeof(struct m_hdr)-sizeof(struct pkthdr)-8)/sizeof(struct mbuf_iovec))
-#define MAX_CL_IOV          ((MCLBYTES-sizeof(struct m_hdr)-sizeof(struct pkthdr)-8)/sizeof(struct mbuf_iovec))
-#define MAX_PAGE_IOV        ((MJUMPAGESIZE-sizeof(struct m_hdr)-sizeof(struct pkthdr)-8)/sizeof(struct mbuf_iovec))
+#define MAX_MIOVEC_IOV      ((MIOVBYTES-MBUF_HEADER_SIZE-sizeof(struct pkthdr)-8)/sizeof(struct mbuf_iovec))
+#define MAX_CL_IOV          ((MCLBYTES-MBUF_HEADER_SIZE-sizeof(struct pkthdr)-8)/sizeof(struct mbuf_iovec))
+#define MAX_PAGE_IOV        ((MJUMPAGESIZE-MBUF_HEADER_SIZE-sizeof(struct pkthdr)-8)/sizeof(struct mbuf_iovec))
 
 struct mbuf_vec {
 	uint16_t mv_first;     /* first valid cluster        */
@@ -250,7 +250,7 @@ m_freem_iovec(struct mbuf_iovec *mi)
 		KASSERT((mi->mi_flags & M_NOFREE) == 0, ("no free set on mbuf"));
 		KASSERT(m->m_next == NULL, ("freeing chain"));
 		cxgb_mbufs_outstanding--;
-		m_free_fast(m);
+		m_free_fast(zone_mbuf, m);
 		break;
 	case EXT_PACKET:
 		cxgb_pack_outstanding--;
@@ -270,7 +270,6 @@ m_freem_iovec(struct mbuf_iovec *mi)
 	case EXT_NET_DRV:
 	case EXT_MOD_TYPE:
 	case EXT_DISPOSABLE:
-	case EXT_EXTREF:
 		mb_free_ext_fast(mi, mi->mi_type, -1);
 		break;
 	default:

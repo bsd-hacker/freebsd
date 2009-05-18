@@ -517,7 +517,7 @@ refill_fl(adapter_t *sc, struct sge_fl *q, int n)
 	struct refill_fl_cb_arg cb_arg;
 	caddr_t cl;
 	int err, count = 0;
-	int header_size = sizeof(struct m_hdr) + sizeof(struct pkthdr) + sizeof(struct m_ext_) + sizeof(uint32_t);
+	int header_size = sizeof(struct mbuf) + sizeof(uint32_t);
 	
 	cb_arg.error = 0;
 	while (n--) {
@@ -2362,7 +2362,7 @@ t3_sge_alloc_qset(adapter_t *sc, u_int id, int nports, int irq_vec_idx,
 	q->rspq.size = p->rspq_size;
 
 
-	header_size = sizeof(struct m_hdr) + sizeof(struct pkthdr) + sizeof(struct m_ext_) + sizeof(uint32_t);
+	header_size = sizeof(struct mbuf) + sizeof(uint32_t);
 	q->txq[TXQ_ETH].stop_thres = nports *
 	    flits_to_desc(sgl_len(TX_MAX_SEGS + 1) + 3);
 
@@ -2537,26 +2537,15 @@ init_cluster_mbuf(caddr_t cl, int flags, int type, uma_zone_t zone)
 	struct mbuf *m;
 	int header_size;
 	
-	header_size = sizeof(struct m_hdr) + sizeof(struct pkthdr) +
-	    sizeof(struct m_ext_) + sizeof(uint32_t);
-	
+	header_size = sizeof(struct mbuf);
 	bzero(cl, header_size);
 	m = (struct mbuf *)cl;
 	
 	cxgb_ext_inited++;
 	SLIST_INIT(&m->m_pkthdr.tags);
-	m->m_type = MT_DATA;
-	m->m_flags = flags | M_NOFREE | M_EXT;
-	m->m_data = cl + header_size;
-	m->m_ext.ext_buf = cl;
-	m->m_ext.ref_cnt = (uint32_t *)(cl + header_size - sizeof(uint32_t));
-	m->m_ext.ext_size = m_getsizefromtype(type);
-	m->m_ext.ext_free = ext_free_handler;
-	m->m_ext.ext_arg1 = cl;
-	m->m_ext.ext_arg2 = (void *)(uintptr_t)type;
-	m->m_ext.ext_type = EXT_EXTREF;
-	*(m->m_ext.ref_cnt) = 1;
-	DPRINTF("data=%p ref_cnt=%p\n", m->m_data, m->m_ext.ref_cnt); 
+	m_extadd(m, cl + header_size,
+	    m_getsizefromtype(type), ext_free_handler, cl, NULL,
+	    flags | M_NOFREE | M_EXT, EXT_NET_DRV);
 }
 
 

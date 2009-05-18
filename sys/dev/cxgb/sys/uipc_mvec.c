@@ -147,7 +147,6 @@ _mcl_collapse_mbuf(struct mbuf_iovec *mi, struct mbuf *m)
 		mi->mi_base = m->m_ext.ext_buf;
 		mi->mi_type = m->m_ext.ext_type;
 		mi->mi_size = m->m_ext.ext_size;
-		mi->mi_refcnt = m->m_ext.ref_cnt;
 		if (m->m_ext.ext_type == EXT_PACKET) {
 			mi->mi_mbuf = m;
 #ifdef INVARIANTS
@@ -256,7 +255,7 @@ retry:
 		goto err_out;
 	}
 	
-	memcpy(m0, *m, sizeof(struct m_hdr) + sizeof(struct pkthdr));
+	memcpy(m0, *m, MBUF_HEADER_SIZE + sizeof(struct pkthdr));
 	m0->m_type = type;
 	KASSERT(m0->m_pkthdr.len, ("empty packet being marshalled"));
 	mv = mtomv(m0);
@@ -313,8 +312,7 @@ busdma_map_sg_vec(struct mbuf **m, struct mbuf **mret,
 	if ((m0 = mcl_alloc(pkt_count, &type)) == NULL)
 		return (ENOMEM);
 
-	memcpy(m0, *m, sizeof(struct m_hdr) +
-	    sizeof(struct pkthdr));
+	memcpy(m0, *m, MBUF_HEADER_SIZE + sizeof(struct pkthdr));
 	m0->m_type = type;
 	mv = mtomv(m0);
 	mv->mv_count = pkt_count;
@@ -357,7 +355,7 @@ mb_free_ext_fast(struct mbuf_iovec *mi, int type, int idx)
 #ifdef INVARIANTS
 		cxgb_mbufs_outstanding--;
 #endif
-		m_free_fast((struct mbuf *)cl);
+		m_free_fast(zone_mbuf, (struct mbuf *)cl);
 		return;
 	default:
 		break;
@@ -391,10 +389,6 @@ mb_free_ext_fast(struct mbuf_iovec *mi, int type, int idx)
 	case EXT_MOD_TYPE:
 	case EXT_DISPOSABLE:
 		*(mi->mi_refcnt) = 0;
-		uma_zfree(zone_ext_refcnt, __DEVOLATILE(u_int *,
-			mi->mi_ext.ref_cnt));
-		/* FALLTHROUGH */
-	case EXT_EXTREF:
 		KASSERT(mi->mi_ext.ext_free != NULL,
 		    ("%s: ext_free not set", __func__));
 #if __FreeBSD_version >= 800016

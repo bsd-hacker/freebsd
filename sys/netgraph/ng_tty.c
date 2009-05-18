@@ -667,6 +667,55 @@ done:
 /*
  * Handle loading and unloading for this node type
  */
+static size_t
+ngt_rint_bypass(struct tty *tp, const void *buf, size_t len)
+{
+	sc_p sc = ttyhook_softc(tp);
+	node_p node = sc->node;
+	struct mbuf *m, *mb;
+	size_t total = 0;
+	int error = 0, length;
+
+	tty_lock_assert(tp, MA_OWNED);
+
+	if (sc->hook == NULL)
+		return (0);
+
+	m = m_getm2(NULL, len, M_DONTWAIT, MT_DATA, M_PKTHDR);
+	if (m == NULL) {
+		if (sc->flags & FLG_DEBUG)
+			log(LOG_ERR,
+			    "%s: can't get mbuf\n", NG_NODE_NAME(node));
+		return (0);
+	}
+	m->m_pkthdr.rcvif = NULL;
+
+	for (mb = m; mb != NULL; mb = mb->m_next) {
+		length = min(M_TRAILINGSPACE(mb), len - total);
+
+		memcpy(mtod(m, char *), (const char *)buf + total, length);
+		mb->m_len = length;
+		total += length;
+		m->m_pkthdr.len += length;
+	}
+	if (sc->m != NULL) {
+		/*
+		 * Odd, we have changed from non-bypass to bypass. It is
+		 * unlikely but not impossible, flush the data first.
+		 */
+		sc->m->m_data = M_START(sc->m);
+		NG_SEND_DATA_ONLY(error, sc->hook, sc->m);
+		sc->m = NULL;
+	}
+	NG_SEND_DATA_ONLY(error, sc->hook, m);
+
+	return (total);
+}
+
+/*
+ * Receive data coming from the device one char at a time, when it is not in
+ * bypass mode.
+ */
 static int
 ngt_mod_event(module_t mod, int event, void *data)
 {
@@ -694,9 +743,17 @@ ngt_mod_event(module_t mod, int event, void *data)
 		mtx_unlock(&Giant);
 		break;
 
-	default:
-		error = EOPNOTSUPP;
-		break;
+	/* Add char to mbuf */
+	*mtod(m, u_char *) = c;
+	m->m_data++;
+	m->m_len++;
+	m->m_pkthdr.len++;
+
+	/* Ship off mbuf if it's time */
+	if (sc->hotchar == -1 || c == sc->hotchar || m->m_len >= MHLEN) {
+		m->m_data = M_START(m);
+		sc->m = NULL;
+		NG_SEND_DATA_ONLY(error, sc->hook, m);	/* Will queue */
 	}
 	return (error);
 }
