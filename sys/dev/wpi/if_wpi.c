@@ -971,16 +971,15 @@ wpi_alloc_rx_ring(struct wpi_softc *sc, struct wpi_rx_ring *ring)
 			error = ENOMEM;
 			goto fail;
 		}
-		/* map page */
-		error = bus_dmamap_load(ring->data_dmat, data->map,
-		    mtod(m, caddr_t), MJUMPAGESIZE,
-		    wpi_dma_map_addr, &paddr, BUS_DMA_NOWAIT);
-		if (error != 0 && error != EFBIG) {
-			device_printf(sc->sc_dev,
-			    "%s: bus_dmamap_load failed, error %d\n",
-			    __func__, error);
-			m_freem(m);
-			error = ENOMEM;	/* XXX unique code */
+
+		/* attach RxBuffer to mbuf */
+		MEXTADD(data->m, rbuf->vaddr, WPI_RBUF_SIZE,wpi_free_rbuf,
+		    rbuf->vaddr, rbuf, 0, EXT_NET_DRV);
+
+		if ((data->m->m_flags & M_EXT) == 0) {
+			m_freem(data->m);
+			data->m = NULL;
+			error = ENOBUFS;
 			goto fail;
 		}
 		bus_dmamap_sync(ring->data_dmat, data->map, 
@@ -1489,7 +1488,27 @@ wpi_rx_intr(struct wpi_softc *sc, struct wpi_rx_desc *desc,
 	data->m = mnew;
 	/* update Rx descriptor */
 	ring->desc[ring->cur] = htole32(paddr);
+		/* attach Rx buffer to mbuf */
+		MEXTADD(mnew, rbuf->vaddr, WPI_RBUF_SIZE, wpi_free_rbuf,
+		    rbuf->vaddr, rbuf, 0, EXT_NET_DRV);
+		SLIST_REMOVE_HEAD(&sc->rxq.freelist, next);
+		data->m = mnew;
 
+		/* update Rx descriptor */
+		ring->desc[ring->cur] = htole32(rbuf->paddr);
+	} else {
+		/* no free rbufs, copy frame */
+		m = m_dup(m, M_DONTWAIT);
+		if (m == NULL) {
+			/* no free mbufs either, drop frame */
+			ifp->if_ierrors++;
+			return;
+		}
+	}
+
+#ifndef WPI_CURRENT
+	if (sc->sc_drvbpf != NULL) {
+#else
 	if (bpf_peers_present(sc->sc_drvbpf)) {
 		struct wpi_rx_radiotap_header *tap = &sc->sc_rxtap;
 

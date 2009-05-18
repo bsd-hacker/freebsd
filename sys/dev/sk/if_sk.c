@@ -1052,6 +1052,14 @@ sk_jumbo_newbuf(sc_if, idx)
 	m = m_getjcl(M_DONTWAIT, MT_DATA, M_PKTHDR, MJUM9BYTES);
 	if (m == NULL)
 		return (ENOBUFS);
+	buf = sk_jalloc(sc_if);
+	if (buf == NULL) {
+		m_freem(m);
+		return (ENOBUFS);
+	}
+	/* Attach the buffer to the mbuf */
+	MEXTADD(m, buf, SK_JLEN, sk_jfree, (struct sk_if_softc *)sc_if, buf, 0,
+	    EXT_NET_DRV);
 	if ((m->m_flags & M_EXT) == 0) {
 		m_freem(m);
 		return (ENOBUFS);
