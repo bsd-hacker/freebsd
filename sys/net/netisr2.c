@@ -465,7 +465,7 @@ netisr2_setqlimit(const struct netisr_handler *nhp, u_int qlimit)
 	    ("netisr_setqlimit(%d): protocol not registered for %s", proto,
 	    name));
 
-	np[proto].np_qlimit = nhp->nh_qlimit;
+	np[proto].np_qlimit = qlimit;
 	for (i = 0; i < MAXCPU; i++) {
 		npwp = &nws[i].nws_work[proto];
 		npwp->nw_qlimit = qlimit;
