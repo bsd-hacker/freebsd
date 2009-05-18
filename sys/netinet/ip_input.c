@@ -167,9 +167,11 @@ SYSCTL_V_INT(V_NET, vnet_inet, _net_inet_ip, OID_AUTO,
 struct pfil_head inet_pfil_hook;	/* Packet filter hooks */
 
 #ifdef NETISR2
+static struct mbuf	*ip_input_m2flow(struct mbuf *m, uintptr_t source);
 static struct netisr_handler ip_nh = {
 	.nh_name = "ip",
 	.nh_handler = ip_input,
+	.nh_m2flow = ip_input_m2flow,
 	.nh_proto = NETISR_IP,
 	.nh_qlimit = IFQ_MAXLEN,
 	.nh_policy = NETISR_POLICY_FLOW,
@@ -299,6 +301,11 @@ sysctl_netinet_intr_queue_drops(SYSCTL_HANDLER_ARGS)
 SYSCTL_PROC(_net_inet_ip, IPCTL_INTRQDROPS, intr_queue_drops,
     CTLTYPE_INT|CTLFLAG_RD, 0, 0, sysctl_netinet_intr_queue_drops, "I",
     "Number of packets dropped from the IP input queue");
+
+static int ip_m2flow_enable = 1;
+SYSCTL_INT(_net_inet_ip, OID_AUTO, m2flow_enable, CTLFLAG_RW,
+    &ip_m2flow_enable, 0,
+    "Enable software flow ID calculation for parallel netisr distribution");
 #endif
 
 /*
@@ -415,6 +422,57 @@ ip_fini(void *xtp)
 
 	callout_stop(&ipport_tick_callout);
 }
+
+#ifdef NETISR2
+/*
+ * Calculate a flow ID for an IP packet if one isn't already present; this is
+ * a subset of the work done by ip_input() necessary to validate and read the
+ * IP header.  We only do stats on the packet if we drop it -- otherwise, the
+ * normal input routine manages its statistics.
+ */
+static struct mbuf *
+ip_input_m2flow(struct mbuf *m, uintptr_t source)
+{
+	struct ip *ip;
+	int hlen;
+
+	M_ASSERTPKTHDR(m);
+	KASSERT(!(m->m_flags & M_FLOWID),
+	    ("ip_input_m2flow: M_FLOWID already set"));
+
+	if (!ip_m2flow_enable)
+		return (m);
+
+	if (m->m_pkthdr.len < sizeof(struct ip)) {
+		IPSTAT_INC(ips_tooshort);
+		goto bad;
+	}
+	if (m->m_len < sizeof (struct ip) &&
+	    (m = m_pullup(m, sizeof(struct ip))) == NULL) {
+		IPSTAT_INC(ips_total);
+		IPSTAT_INC(ips_toosmall);
+		return (NULL);
+	}
+	ip = mtod(m, struct ip *);
+	if (ip->ip_v != IPVERSION) {
+		IPSTAT_INC(ips_badvers);
+		goto bad;
+	}
+	hlen = ip->ip_hl << 2;
+	if (hlen < sizeof(struct ip)) {
+		IPSTAT_INC(ips_badhlen);
+		goto bad;
+	}
+	m->m_flags |= M_FLOWID;
+	m->m_pkthdr.flowid = ip->ip_src.s_addr ^ ip->ip_dst.s_addr;
+	return (m);
+
+bad:
+	IPSTAT_INC(ips_total);
+	m_freem(m);
+	return (NULL);
+}
+#endif
 
 /*
  * Ip input routine.  Checksum and byte swap header.  If fragmented
