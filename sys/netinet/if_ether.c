@@ -98,8 +98,6 @@ static int	arp_proxyall;
 SYSCTL_V_INT(V_NET, vnet_inet, _net_link_ether_inet, OID_AUTO, max_age,
     CTLFLAG_RW, arpt_keep, 0, "ARP entry lifetime in seconds");
 
-static struct	ifqueue arpintrq;
-
 SYSCTL_V_INT(V_NET, vnet_inet, _net_link_ether_inet, OID_AUTO, maxtries,
 	CTLFLAG_RW, arp_maxtries, 0,
 	"ARP resolution attempts before returning error");
@@ -118,6 +116,18 @@ static void	arpintr(struct mbuf *);
 static void	arptimer(void *);
 #ifdef INET
 static void	in_arpinput(struct mbuf *);
+#endif
+
+#ifdef NETISR2
+static const struct netisr_handler arp_nh = {
+	.nh_name = "arp",
+	.nh_handler = arpintr,
+	.nh_proto = NETISR_ARP,
+	.nh_qlimit = 50,
+	.nh_policy = NETISR_POLICY_SOURCE,
+};
+#else
+static struct	ifqueue arpintrq;
 #endif
 
 #ifndef VIMAGE_GLOBALS
@@ -823,11 +833,11 @@ arp_init(void)
 	arp_iattach(NULL);
 #endif
 
+#ifdef NETISR2
+	netisr2_register(&arp_nh);
+#else
 	arpintrq.ifq_maxlen = 50;
 	mtx_init(&arpintrq.ifq_mtx, "arp_inq", NULL, MTX_DEF);
-#ifdef NETISR2
-	netisr2_register(NETISR_ARP, "arp", arpintr, NULL, NULL, 50);
-#else
 	netisr_register(NETISR_ARP, arpintr, &arpintrq, 0);
 #endif
 }

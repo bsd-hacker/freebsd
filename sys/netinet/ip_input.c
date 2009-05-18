@@ -166,18 +166,29 @@ SYSCTL_V_INT(V_NET, vnet_inet, _net_inet_ip, OID_AUTO,
 
 struct pfil_head inet_pfil_hook;	/* Packet filter hooks */
 
+#ifdef NETISR2
+static struct netisr_handler ip_nh = {
+	.nh_name = "ip",
+	.nh_handler = ip_input,
+	.nh_proto = NETISR_IP,
+	.nh_qlimit = IFQ_MAXLEN,
+	.nh_policy = NETISR_POLICY_FLOW,
+};
+#else
 static struct	ifqueue ipintrq;
 static int	ipqmaxlen = IFQ_MAXLEN;
-
-extern	struct domain inetdomain;
-extern	struct protosw inetsw[];
-u_char	ip_protox[IPPROTO_MAX];
 
 SYSCTL_INT(_net_inet_ip, IPCTL_INTRQMAXLEN, intr_queue_maxlen, CTLFLAG_RW,
     &ipintrq.ifq_maxlen, 0, "Maximum size of the IP input queue");
 SYSCTL_INT(_net_inet_ip, IPCTL_INTRQDROPS, intr_queue_drops, CTLFLAG_RD,
     &ipintrq.ifq_drops, 0,
     "Number of packets dropped from the IP input queue");
+#endif
+
+extern	struct domain inetdomain;
+extern	struct protosw inetsw[];
+u_char	ip_protox[IPPROTO_MAX];
+
 
 SYSCTL_V_STRUCT(V_NET, vnet_inet, _net_inet_ip, IPCTL_STATS, stats, CTLFLAG_RW,
     ipstat, ipstat, "IP statistics (struct ipstat, netinet/ip_var.h)");
@@ -248,6 +259,46 @@ static void vnet_inet_register()
 }
  
 SYSINIT(inet, SI_SUB_PROTO_BEGIN, SI_ORDER_FIRST, vnet_inet_register, 0);
+#endif
+
+#ifdef NETISR2
+static int
+sysctl_netinet_intr_queue_maxlen(SYSCTL_HANDLER_ARGS)
+{
+	int error, qlimit;
+
+	netisr2_getqlimit(&ip_nh, &qlimit);
+	error = sysctl_handle_int(oidp, &qlimit, 0, req);
+	if (error || !req->newptr)
+		return (error);
+	if (qlimit < 1)
+		return (EINVAL);
+	return (netisr2_setqlimit(&ip_nh, qlimit));
+}
+SYSCTL_PROC(_net_inet_ip, IPCTL_INTRQMAXLEN, intr_queue_maxlen,
+    CTLTYPE_INT|CTLFLAG_RW, 0, 0, sysctl_netinet_intr_queue_maxlen, "I",
+    "Maximum size of the IP input queue");
+
+static int
+sysctl_netinet_intr_queue_drops(SYSCTL_HANDLER_ARGS)
+{
+	u_int64_t qdrops_long;
+	int error, qdrops;
+
+	netisr2_getqdrops(&ip_nh, &qdrops_long);
+	qdrops = qdrops_long;
+	error = sysctl_handle_int(oidp, &qdrops, 0, req);
+	if (error || !req->newptr)
+		return (error);
+	if (qdrops != 0)
+		return (EINVAL);
+	netisr2_clearqdrops(&ip_nh);
+	return (0);
+
+}
+SYSCTL_PROC(_net_inet_ip, IPCTL_INTRQDROPS, intr_queue_drops,
+    CTLTYPE_INT|CTLFLAG_RD, 0, 0, sysctl_netinet_intr_queue_drops, "I",
+    "Number of packets dropped from the IP input queue");
 #endif
 
 /*
@@ -348,14 +399,13 @@ ip_init(void)
 
 	/* Initialize various other remaining things. */
 	IPQ_LOCK_INIT();
+#ifdef NETISR2
+	netisr2_register(&ip_nh);
+#else
 	ipintrq.ifq_maxlen = ipqmaxlen;
 	mtx_init(&ipintrq.ifq_mtx, "ip_inq", NULL, MTX_DEF);
-#ifdef NETISR2
-	netisr2_register(NETISR_IP, "ipv4", ip_input, NULL, NULL, ipqmaxlen);
-#else
 	netisr_register(NETISR_IP, ip_input, &ipintrq, 0);
 #endif
-
 	ip_ft = flowtable_alloc(ip_output_flowtable_size, FL_PCPU);
 }
 

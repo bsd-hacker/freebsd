@@ -122,8 +122,18 @@ struct mtx		ipxpcb_list_mtx;
 struct ipxpcbhead	ipxpcb_list;
 struct ipxpcbhead	ipxrawpcb_list;
 
+#ifdef NETISR2
+static const struct netisr_handler ipx_nh = {
+	.nh_name = "ipx",
+	.nh_handler = ipxintr,
+	.nh_proto = NETISR_IPX,
+	.nh_qlimit = IFQ_MAXLEN,
+	.nh_policy = NETISR_POLICY_SOURCE,
+};
+#else
 static int ipxqmaxlen = IFQ_MAXLEN;
 static	struct ifqueue ipxintrq;
+#endif
 
 long	ipx_pexseq;		/* Locked with ipxpcb_list_mtx. */
 
@@ -154,11 +164,12 @@ ipx_init(void)
 	ipx_hostmask.sipx_addr.x_net = ipx_broadnet;
 	ipx_hostmask.sipx_addr.x_host = ipx_broadhost;
 
+#ifdef NETISR2
+	ipx_nh.nh_qlimit = ipxqmaxlen;
+	netisr2_register(&ipx_nh);
+#else
 	ipxintrq.ifq_maxlen = ipxqmaxlen;
 	mtx_init(&ipxintrq.ifq_mtx, "ipx_inq", NULL, MTX_DEF);
-#ifdef NETISR2
-	netisr2_register(NETISR_IPX, "ipx", ipxintr, NULL, NULL, ipxqmaxlen);
-#else
 	netisr_register(NETISR_IPX, ipxintr, &ipxintrq, 0);
 #endif
 }

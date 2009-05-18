@@ -151,6 +151,21 @@ static int	vnet_igmp_iattach(const void *);
 static int	vnet_igmp_idetach(const void *);
 #endif /* VIMAGE */
 
+#ifdef NETISR2
+static const struct netisr_handler igmp_nh = {
+	.nh_name = "igmp",
+	.nh_handler = igmp_intr,
+	.nh_proto = NETISR_IGMP,
+	.nh_qlimit = IFQ_MAXLEN,
+	.nh_policy = NETISR_POLICY_SOURCE,
+};
+#else
+/*
+ * Global netisr output queue.
+ */
+struct ifqueue		 igmpoq;
+#endif
+
 /*
  * System-wide globals.
  *
@@ -195,11 +210,6 @@ struct mtx		 igmp_mtx;
 
 struct mbuf		*m_raopt;		 /* Router Alert option */
 MALLOC_DEFINE(M_IGMP, "igmp", "igmp state");
-
-/*
- * Global netisr output queue.
- */
-struct ifqueue		 igmpoq;
 
 /*
  * VIMAGE-wide globals.
@@ -3545,15 +3555,13 @@ igmp_sysinit(void)
 
 	IGMP_LOCK_INIT();
 
-	mtx_init(&igmpoq.ifq_mtx, "igmpoq_mtx", NULL, MTX_DEF);
-	IFQ_SET_MAXLEN(&igmpoq, IFQ_MAXLEN);
-
 	m_raopt = igmp_ra_alloc();
 
 #ifdef NETISR2
-	netisr2_register(NETISR_IGMP, "igmp", igmp_intr, NULL, NULL,
-	    IFQ_MAXLEN);
+	netisr2_register(&igmp_nh);
 #else
+	mtx_init(&igmpoq.ifq_mtx, "igmpoq_mtx", NULL, MTX_DEF);
+	IFQ_SET_MAXLEN(&igmpoq, IFQ_MAXLEN);
 	netisr_register(NETISR_IGMP, igmp_intr, &igmpoq, 0);
 #endif
 }
@@ -3565,11 +3573,11 @@ igmp_sysuninit(void)
 	CTR1(KTR_IGMPV3, "%s: tearing down", __func__);
 
 #ifdef NETISR2
-	netisr2_unregister(NETISR_IGMP);
+	netisr2_unregister(&igmp_nh);
 #else
 	netisr_unregister(NETISR_IGMP);
-#endif
 	mtx_destroy(&igmpoq.ifq_mtx);
+#endif
 
 	m_free(m_raopt);
 	m_raopt = NULL;

@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2004-2005 Robert N. M. Watson
+ * Copyright (c) 2004-2009 Robert N. M. Watson
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -73,7 +73,34 @@
 static u_long	ddp_sendspace = DDP_MAXSZ; /* Max ddp size + 1 (ddp_type) */
 static u_long	ddp_recvspace = 10 * (587 + sizeof(struct sockaddr_at));
 
+#ifdef NETISR2
+static const struct netisr_handler atalk1_nh = {
+	.nh_name = "atalk1",
+	.nh_handler = at1intr,
+	.nh_proto = NETISR_ATALK1,
+	.nh_qlimit = IFQ_MAXLEN,
+	.nh_policy = NETISR_POLICY_SOURCE,
+};
+
+static const struct netisr_handler atalk2_nh = {
+	.nh_name = "atalk2",
+	.nh_handler = at2intr,
+	.nh_proto = NETISR_ATALK2,
+	.nh_qlimit = IFQ_MAXLEN,
+	.nh_policy = NETISR_POLICY_SOURCE,
+};
+
+static const struct netisr_handler aarp_nh = {
+	.nh_name = "aarp",
+	.nh_handler = aarpintr,
+	.nh_proto = NETISR_AARP,
+	.nh_qlimit = IFQ_MAXLEN,
+	.nh_policy = NETISR_POLICY_SOURCE,
+};
+#else
 static struct ifqueue atintrq1, atintrq2, aarpintrq;
+#endif
+
 
 static int
 ddp_attach(struct socket *so, int proto, struct thread *td)
@@ -259,21 +286,18 @@ void
 ddp_init(void)
 {
 
+	DDP_LIST_LOCK_INIT();
+#ifdef NETISR2
+	netisr2_register(&atalk1_nh);
+	netisr2_register(&atalk2_nh);
+	netisr2_register(&aarp_nh);
+#else
 	atintrq1.ifq_maxlen = IFQ_MAXLEN;
 	atintrq2.ifq_maxlen = IFQ_MAXLEN;
 	aarpintrq.ifq_maxlen = IFQ_MAXLEN;
 	mtx_init(&atintrq1.ifq_mtx, "at1_inq", NULL, MTX_DEF);
 	mtx_init(&atintrq2.ifq_mtx, "at2_inq", NULL, MTX_DEF);
 	mtx_init(&aarpintrq.ifq_mtx, "aarp_inq", NULL, MTX_DEF);
-	DDP_LIST_LOCK_INIT();
-#ifdef NETISR2
-	netisr2_register(NETISR_ATALK1, "atalk1", at1intr, NULL, NULL,
-	    IFQ_MAXLEN);
-	netisr2_register(NETISR_ATALK2, "atalk2", at2intr, NULL, NULL,
-	    IFQ_MAXLEN);
-	netisr2_register(NETISR_AARP, "aarp", aarpintr, NULL, NULL,
-	    IFQ_MAXLEN);
-#else
 	netisr_register(NETISR_ATALK1, at1intr, &atintrq1, 0);
 	netisr_register(NETISR_ATALK2, at2intr, &atintrq2, 0);
 	netisr_register(NETISR_AARP, aarpintr, &aarpintrq, 0);

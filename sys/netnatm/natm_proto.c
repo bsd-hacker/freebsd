@@ -91,8 +91,19 @@ static struct domain natmdomain = {
 	.dom_protoswNPROTOSW =	&natmsw[sizeof(natmsw)/sizeof(natmsw[0])],
 };
 
+#ifdef NETISR2
+static struct netisr_handler natm_nh = {
+	.nh_name = "natm",
+	.nh_handler = natmintr,
+	.nh_proto = NETISR_NATM,
+	.nh_qlimit = 1000 /* IFQ_MAXLEN */,
+	.nh_policy = NETISR_POLICY_SOURCE,
+};
+#else
 static int natmqmaxlen = 1000 /* IFQ_MAXLEN */;	/* max # of packets on queue */
 static struct ifqueue natmintrq;
+#endif
+
 #ifdef NATM_STAT
 u_int natm_sodropcnt;		/* # mbufs dropped due to full sb */
 u_int natm_sodropbytes;		/* # of bytes dropped */
@@ -104,14 +115,13 @@ static void
 natm_init(void)
 {
 	LIST_INIT(&natm_pcbs);
+	NATM_LOCK_INIT();
+#ifdef NETISR2
+	netisr2_register(&natm_nh);
+#else
 	bzero(&natmintrq, sizeof(natmintrq));
 	natmintrq.ifq_maxlen = natmqmaxlen;
-	NATM_LOCK_INIT();
 	mtx_init(&natmintrq.ifq_mtx, "natm_inq", NULL, MTX_DEF);
-#ifdef NETISR2
-	netisr2_register(NETISR_NATM, "natm", natmintr, NULL, NULL,
-	    natmqmaxlen);
-#else
 	netisr_register(NETISR_NATM, natmintr, &natmintrq, 0);
 #endif
 }

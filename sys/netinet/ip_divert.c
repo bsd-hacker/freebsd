@@ -471,7 +471,7 @@ div_output(struct socket *so, struct mbuf *m, struct sockaddr_in *sin,
 #endif
 		/* Send packet to input processing via netisr */
 #ifdef NETISR2
-		netisr2_queue(NETISR_IP, (uintptr_t)so, m);
+		netisr2_queue_src(NETISR_IP, (uintptr_t)so, m);
 #else
 		netisr_queue(NETISR_IP, m);
 #endif

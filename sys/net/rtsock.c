@@ -92,11 +92,13 @@ MTX_SYSINIT(rtsock, &rtsock_mtx, "rtsock route_cb lock", MTX_DEF);
 #define	RTSOCK_UNLOCK()	mtx_unlock(&rtsock_mtx)
 #define	RTSOCK_LOCK_ASSERT()	mtx_assert(&rtsock_mtx, MA_OWNED)
 
-static struct	ifqueue rtsintrq;
-
 SYSCTL_NODE(_net, OID_AUTO, route, CTLFLAG_RD, 0, "");
+
+#ifndef NETISR2
+static struct	ifqueue rtsintrq;
 SYSCTL_INT(_net_route, OID_AUTO, netisr_maxqlen, CTLFLAG_RW,
     &rtsintrq.ifq_maxlen, 0, "maximum routing socket dispatch queue length");
+#endif
 
 struct walkarg {
 	int	w_tmemsize;
@@ -121,19 +123,47 @@ static void	rt_getmetrics(const struct rt_metrics_lite *in,
 			struct rt_metrics *out);
 static void	rt_dispatch(struct mbuf *, const struct sockaddr *);
 
+#ifdef NETISR2
+static struct netisr_handler rtsock_nh = {
+	.nh_name = "rtsock",
+	.nh_handler = rts_input,
+	.nh_proto = NETISR_ROUTE,
+	.nh_qlimit = 256,
+	.nh_policy = NETISR_POLICY_SOURCE,
+};
+
+static int
+sysctl_route_netisr_maxqlen(SYSCTL_HANDLER_ARGS)
+{
+	int error, qlimit;
+
+	netisr2_getqlimit(&rtsock_nh, &qlimit);
+	error = sysctl_handle_int(oidp, &qlimit, 0, req);
+        if (error || !req->newptr)
+                return (error);
+	if (qlimit < 1)
+		return (EINVAL);
+	return (netisr2_setqlimit(&rtsock_nh, qlimit));
+}
+SYSCTL_PROC(_net_route, OID_AUTO, netisr_maxqlen, CTLTYPE_INT|CTLFLAG_RW,
+    0, 0, sysctl_route_netisr_maxqlen, "I",
+    "maximum routing socket dispatch queue length");
+#endif
+
 static void
 rts_init(void)
 {
 	int tmp;
 
+#ifdef NETISR2
+	if (TUNABLE_INT_FETCH("net.route.netisr_maxqlen", &tmp))
+		rtsock_nh.nh_qlimit = tmp;
+	netisr2_register(&rtsock_nh);
+#else
+	mtx_init(&rtsintrq.ifq_mtx, "rts_inq", NULL, MTX_DEF);
 	rtsintrq.ifq_maxlen = 256;
 	if (TUNABLE_INT_FETCH("net.route.netisr_maxqlen", &tmp))
 		rtsintrq.ifq_maxlen = tmp;
-	mtx_init(&rtsintrq.ifq_mtx, "rts_inq", NULL, MTX_DEF);
-#ifdef NETISR2
-	netisr2_register(NETISR_ROUTE, "route", rts_input, NULL, NULL,
-	    rtsintrq.ifq_maxlen);
-#else
 	netisr_register(NETISR_ROUTE, rts_input, &rtsintrq, 0);
 #endif
 }
@@ -1231,11 +1261,7 @@ rt_dispatch(struct mbuf *m, const struct sockaddr *sa)
 		*(unsigned short *)(tag + 1) = sa->sa_family;
 		m_tag_prepend(m, tag);
 	}
-#ifdef NETISR2
-	netisr2_queue(NETISR_ROUTE, 0, m);	/* mbuf is free'd on failure. */
-#else
 	netisr_queue(NETISR_ROUTE, m);	/* mbuf is free'd on failure. */
-#endif
 }
 
 /*
