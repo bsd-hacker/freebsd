@@ -887,13 +887,11 @@ devfs_open(struct vop_open_args *ap)
 
 	VOP_UNLOCK(vp, 0, td);
 
-	if (fp != NULL) {
-		FILE_LOCK(fp);
-		fp->f_data = dev;
-		FILE_UNLOCK(fp);
-	}
 	fpop = td->td_fpop;
 	td->td_fpop = fp;
+	if (fp != NULL) {
+		fp->f_data = dev;
+	}
 	if(!(dsw->d_flags & D_NEEDGIANT)) {
 		DROP_GIANT();
 		if (dsw->d_fdopen != NULL)
@@ -923,11 +921,9 @@ devfs_open(struct vop_open_args *ap)
 	if(fp == NULL)
 		return (error);
 #endif
-	FILE_LOCK(fp);
 	KASSERT(fp->f_ops == &badfileops,
 	     ("Could not vnode bypass device on fdops %p", fp->f_ops));
-	fp->f_ops = &devfs_ops_f;
-	FILE_UNLOCK(fp);
+	finit(fp, fp->f_flag, DTYPE_VNODE, dev, &devfs_ops_f);
 	return (error);
 }
 
