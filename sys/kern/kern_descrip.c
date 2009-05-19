@@ -123,11 +123,23 @@ static void	fdused(struct filedesc *fdp, int fd);
 #define OFILESIZE (sizeof(struct file *) + sizeof(char))
 
 /*
+ * Storage to hold unused ofiles that need to be reclaimed.
+ */
+struct freetable {
+	struct file	**ft_table;
+	SLIST_ENTRY(freetable) ft_next;
+};
+
+/*
  * Basic allocation of descriptors:
  * one of the above, plus arrays for NDFILE descriptors.
  */
 struct filedesc0 {
 	struct	filedesc fd_fd;
+	/*
+	 * ofiles which need to be reclaimed on free.
+	 */
+	SLIST_HEAD(,freetable) fd_free;
 	/*
 	 * These arrays are used when the number of open files is
 	 * <= NDFILE, and are then pointed to by the pointers above.
@@ -1282,7 +1294,10 @@ out:
 static void
 fdgrowtable(struct filedesc *fdp, int nfd)
 {
+	struct filedesc0 *fdp0;
+	struct freetable *fo;
 	struct file **ntable;
+	struct file **otable;
 	char *nfileflags;
 	int nnfiles, onfiles;
 	NDSLOTTYPE *nmap;
@@ -1301,7 +1316,7 @@ fdgrowtable(struct filedesc *fdp, int nfd)
 
 	/* allocate a new table and (if required) new bitmaps */
 	FILEDESC_XUNLOCK(fdp);
-	MALLOC(ntable, struct file **, nnfiles * OFILESIZE,
+	ntable = malloc((nnfiles * OFILESIZE) + sizeof(struct freetable),
 	    M_FILEDESC, M_ZERO | M_WAITOK);
 	nfileflags = (char *)&ntable[nnfiles];
 	if (NDSLOTS(nnfiles) > NDSLOTS(onfiles))
@@ -1325,10 +1340,20 @@ fdgrowtable(struct filedesc *fdp, int nfd)
 	}
 	bcopy(fdp->fd_ofiles, ntable, onfiles * sizeof(*ntable));
 	bcopy(fdp->fd_ofileflags, nfileflags, onfiles);
-	if (onfiles > NDFILE)
-		free(fdp->fd_ofiles, M_FILEDESC);
-	fdp->fd_ofiles = ntable;
+	otable = fdp->fd_ofiles;
 	fdp->fd_ofileflags = nfileflags;
+	fdp->fd_ofiles = ntable;
+	/*
+	 * We must preserve ofiles until the process exits because we can't
+	 * be certain that no threads have references to the old table via
+	 * _fget().
+	 */
+	if (onfiles > NDFILE) {
+		fo = (struct freetable *)&otable[onfiles];
+		fdp0 = (struct filedesc0 *)fdp;
+		fo->ft_table = otable;
+		SLIST_INSERT_HEAD(&fdp0->fd_free, fo, ft_next);
+	}
 	if (NDSLOTS(nnfiles) > NDSLOTS(onfiles)) {
 		bcopy(fdp->fd_map, nmap, NDSLOTS(onfiles) * sizeof(*nmap));
 		if (NDSLOTS(onfiles) > NDSLOTS(NDFILE))
@@ -1526,6 +1551,8 @@ fdhold(struct proc *p)
 static void
 fddrop(struct filedesc *fdp)
 {
+	struct filedesc0 *fdp0;
+	struct freetable *ft;
 	int i;
 
 	mtx_lock(&fdesc_mtx);
@@ -1535,7 +1562,12 @@ fddrop(struct filedesc *fdp)
 		return;
 
 	FILEDESC_LOCK_DESTROY(fdp);
-	FREE(fdp, M_FILEDESC);
+	fdp0 = (struct filedesc0 *)fdp;
+	while ((ft = SLIST_FIRST(&fdp0->fd_free)) != NULL) {
+		SLIST_REMOVE_HEAD(&fdp0->fd_free, ft_next);
+		free(ft->ft_table, M_FILEDESC);
+	}
+	free(fdp, M_FILEDESC);
 }
 
 /*
@@ -2036,6 +2068,38 @@ finit(struct file *fp, u_int flag, short type, void *data, struct fileops *ops)
 	atomic_store_rel_ptr((volatile uintptr_t *)&fp->f_ops, (uintptr_t)ops);
 }
 
+struct file *
+fget_unlocked(struct filedesc *fdp, int fd)
+{
+	struct file *fp;
+	u_int count;
+
+	if (fd < 0 || fd >= fdp->fd_nfiles)
+		return (NULL);
+	/*
+	 * Fetch the descriptor locklessly.  We avoid fdrop() races by
+	 * never raising a refcount above 0.  To accomplish this we have
+	 * to use a cmpset loop rather than an atomic_add.  The descriptor
+	 * must be re-verified once we acquire a reference to be certain
+	 * that the identity is still correct and we did not lose a race
+	 * due to preemption.
+	 */
+	for (;;) {
+		fp = fdp->fd_ofiles[fd];
+		if (fp == NULL)
+			break;
+		count = fp->f_count;
+		if (count == 0)
+			continue;
+		if (atomic_cmpset_int(&fp->f_count, count, count + 1) != 1)
+			continue;
+		if (fp == ((struct file *volatile*)fdp->fd_ofiles)[fd])
+			break;
+		fdrop(fp, curthread);
+	}
+
+	return (fp);
+}
 
 /*
  * Extract the file pointer associated with the specified descriptor for the
@@ -2043,19 +2107,12 @@ finit(struct file *fp, u_int flag, short type, void *data, struct fileops *ops)
  *
  * If the descriptor doesn't exist, EBADF is returned.
  *
- * If the descriptor exists but doesn't match 'flags' then return EBADF for
- * read attempts and EINVAL for write attempts.
- *
- * If 'hold' is set (non-zero) the file's refcount will be bumped on return.
- * It should be dropped with fdrop().  If it is not set, then the refcount
- * will not be bumped however the thread's filedesc struct will be returned
- * locked (for fgetsock).
- *
  * If an error occured the non-zero error is returned and *fpp is set to
- * NULL.  Otherwise *fpp is set and zero is returned.
+ * NULL.  Otherwise *fpp is held and set and zero is returned.  Caller is
+ * responsible for fdrop().
  */
 static __inline int
-_fget(struct thread *td, int fd, struct file **fpp, int flags, int hold)
+_fget(struct thread *td, int fd, struct file **fpp, int flags)
 {
 	struct filedesc *fdp;
 	struct file *fp;
@@ -2063,28 +2120,21 @@ _fget(struct thread *td, int fd, struct file **fpp, int flags, int hold)
 	*fpp = NULL;
 	if (td == NULL || (fdp = td->td_proc->p_fd) == NULL)
 		return (EBADF);
-	FILEDESC_SLOCK(fdp);
-	if ((fp = fget_locked(fdp, fd)) == NULL || fp->f_ops == &badfileops) {
-		FILEDESC_SUNLOCK(fdp);
+	if ((fp = fget_unlocked(fdp, fd)) == NULL)
+		return (EBADF);
+	if (fp->f_ops == &badfileops) {
+		fdrop(fp, td);
 		return (EBADF);
 	}
-
 	/*
 	 * FREAD and FWRITE failure return EBADF as per POSIX.
 	 *
 	 * Only one flag, or 0, may be specified.
 	 */
-	if (flags == FREAD && (fp->f_flag & FREAD) == 0) {
-		FILEDESC_SUNLOCK(fdp);
+	if ((flags == FREAD && (fp->f_flag & FREAD) == 0) ||
+	    (flags == FWRITE && (fp->f_flag & FWRITE) == 0)) {
+		fdrop(fp, td);
 		return (EBADF);
-	}
-	if (flags == FWRITE && (fp->f_flag & FWRITE) == 0) {
-		FILEDESC_SUNLOCK(fdp);
-		return (EBADF);
-	}
-	if (hold) {
-		fhold(fp);
-		FILEDESC_SUNLOCK(fdp);
 	}
 	*fpp = fp;
 	return (0);
@@ -2094,21 +2144,21 @@ int
 fget(struct thread *td, int fd, struct file **fpp)
 {
 
-	return(_fget(td, fd, fpp, 0, 1));
+	return(_fget(td, fd, fpp, 0));
 }
 
 int
 fget_read(struct thread *td, int fd, struct file **fpp)
 {
 
-	return(_fget(td, fd, fpp, FREAD, 1));
+	return(_fget(td, fd, fpp, FREAD));
 }
 
 int
 fget_write(struct thread *td, int fd, struct file **fpp)
 {
 
-	return(_fget(td, fd, fpp, FWRITE, 1));
+	return(_fget(td, fd, fpp, FWRITE));
 }
 
 /*
@@ -2125,7 +2175,7 @@ _fgetvp(struct thread *td, int fd, struct vnode **vpp, int flags)
 	int error;
 
 	*vpp = NULL;
-	if ((error = _fget(td, fd, &fp, flags, 0)) != 0)
+	if ((error = _fget(td, fd, &fp, flags)) != 0)
 		return (error);
 	if (fp->f_vnode == NULL) {
 		error = EINVAL;
@@ -2133,7 +2183,8 @@ _fgetvp(struct thread *td, int fd, struct vnode **vpp, int flags)
 		*vpp = fp->f_vnode;
 		vref(*vpp);
 	}
-	FILEDESC_SUNLOCK(td->td_proc->p_fd);
+	fdrop(fp, td);
+
 	return (error);
 }
 
@@ -2180,7 +2231,7 @@ fgetsock(struct thread *td, int fd, struct socket **spp, u_int *fflagp)
 	*spp = NULL;
 	if (fflagp != NULL)
 		*fflagp = 0;
-	if ((error = _fget(td, fd, &fp, 0, 0)) != 0)
+	if ((error = _fget(td, fd, &fp, 0)) != 0)
 		return (error);
 	if (fp->f_type != DTYPE_SOCKET) {
 		error = ENOTSOCK;
@@ -2192,7 +2243,8 @@ fgetsock(struct thread *td, int fd, struct socket **spp, u_int *fflagp)
 		soref(*spp);
 		SOCK_UNLOCK(*spp);
 	}
-	FILEDESC_SUNLOCK(td->td_proc->p_fd);
+	fdrop(fp, td);
+
 	return (error);
 }
 
@@ -3123,7 +3175,7 @@ filelistinit(void *dummy)
 {
 
 	file_zone = uma_zcreate("Files", sizeof(struct file), NULL, NULL,
-	    NULL, NULL, UMA_ALIGN_PTR, 0);
+	    NULL, NULL, UMA_ALIGN_PTR, UMA_ZONE_NOFREE);
 	mtx_init(&sigio_lock, "sigio lock", NULL, MTX_DEF);
 	mtx_init(&fdesc_mtx, "fdesc", NULL, MTX_DEF);
 }
