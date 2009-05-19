@@ -107,19 +107,25 @@ static struct rmlock	netisr_rmlock;
 SYSCTL_NODE(_net, OID_AUTO, isr2, CTLFLAG_RW, 0, "netisr2");
 
 /*-
- * Three direct dispatch policies are supported:
+ * Four direct dispatch policies are supported:
  *
  * - Always defer: all work is scheduled for a netisr, regardless of context.
+ *   (direct_enable == 0)
  *
  * - Always direct: if the executing context allows direct dispatch, always
  *   direct dispatch.
+ *   (direct_enable != 0 && direct_force != 0)
  *
  * - Hybrid: if the executing context allows direct dispatch, and we're
  *   running on the CPU the work would be done on, then direct dispatch if it
  *   wouldn't violate ordering constraints on the workstream.
+ *   (direct_enable != 0 && direct_force == 0 && hybridxcpu_enable == 0)
  *
- * These policies are captured using two sysctls -- direct_enable allows
- * direct dispatch, and direct_force forces direct dispatch if enabled.
+ * - Hybrid with cross-CPU dispatch: if the executing context allows direct
+ *   dispatch, then direct dispatch if it wouldn't violate ordering
+ *   constraints on the workstream.
+ *   (direct_enable != 0 && direct_force == 0 && hybridxcpu_enable != 0)
+ *
  * Notice that changing the global policy could lead to short periods of
  * disordered processing, but this is considered acceptable as compared to
  * the complexity of enforcing ordering during policy changes.
@@ -131,6 +137,10 @@ SYSCTL_INT(_net_isr2, OID_AUTO, direct_force, CTLFLAG_RW,
 static int	netisr_direct_enable = 1;	/* Enable direct dispatch. */
 SYSCTL_INT(_net_isr2, OID_AUTO, direct_enable, CTLFLAG_RW,
     &netisr_direct_enable, 0, "Enable direct dispatch");
+
+static int	netisr_hybridxcpu_enable = 1;	/* Enable cross-CPU dispatch. */
+SYSCTL_INT(_net_isr2, OID_AUTO, hybridxcpu_enable, CTLFLAG_RW,
+    &netisr_hybridxcpu_enable, 0, "Enable cross-CPU hybrid direct dispatch.");
 
 /*
  * Allow the administrator to limit the number of threads (CPUs) to use for
@@ -206,6 +216,7 @@ struct netisr_work {
 	 */
 	u_int64_t	 nw_dispatched; /* Number of direct dispatches. */
 	u_int64_t	 nw_hybrid_dispatched; /* "" hybrid dispatches. */
+	u_int64_t	 nw_hybrid_xcpudispatched; /* "" cross-CPU hybrid. */
 	u_int64_t	 nw_qdrops;	/* "" drops. */
 	u_int64_t	 nw_queued;	/* "" enqueues. */
 	u_int64_t	 nw_handled;	/* "" handled in worker. */
@@ -880,7 +891,7 @@ netisr2_dispatch_src(u_int proto, uintptr_t source, struct mbuf *m)
 		return (ENOBUFS);
 	}
 	sched_pin();
-	if (cpuid != curcpu)
+	if (!netisr_hybridxcpu_enable && (cpuid != curcpu))
 		goto queue_fallback;
 	nwsp = &nws[cpuid];
 	npwp = &nwsp->nws_work[proto];
@@ -915,7 +926,10 @@ netisr2_dispatch_src(u_int proto, uintptr_t source, struct mbuf *m)
 	NWS_LOCK(nwsp);
 	nwsp->nws_flags &= ~NWS_DISPATCHING;
 	npwp->nw_handled++;
-	npwp->nw_hybrid_dispatched++;
+	if (curcpu == cpuid)
+		npwp->nw_hybrid_dispatched++;
+	else
+		npwp->nw_hybrid_xcpudispatched++;
 
 	/*
 	 * If other work was enqueued by another thread while we were direct
@@ -1042,8 +1056,8 @@ DB_SHOW_COMMAND(netisr2, db_show_netisr2)
 	int cpu, first, proto;
 
 	db_printf("%3s %5s %6s %5s %5s %5s %8s %8s %8s %8s %8s\n", "CPU",
-	    "Pend", "Proto", "Len", "WMark", "Max", "Disp", "HDisp", "Drop",
-	    "Queue", "Handle");
+	    "Pend", "Proto", "Len", "WMark", "Max", "Disp", "HDisp",
+	    "XHDisp", "Drop", "Queue");
 	for (cpu = 0; cpu < MAXCPU; cpu++) {
 		nwsp = &nws[cpu];
 		if (nwsp->nws_intr_event == NULL)
@@ -1063,7 +1077,8 @@ DB_SHOW_COMMAND(netisr2, db_show_netisr2)
 			    np[proto].np_name, nwp->nw_len,
 			    nwp->nw_watermark, nwp->nw_qlimit,
 			    nwp->nw_dispatched, nwp->nw_hybrid_dispatched,
-			    nwp->nw_qdrops, nwp->nw_queued, nwp->nw_handled);
+			    nwp->nw_hybrid_xcpudispatched, nwp->nw_qdrops,
+			    nwp->nw_queued);
 		}
 	}
 }
