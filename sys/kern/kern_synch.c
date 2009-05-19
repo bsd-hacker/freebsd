@@ -350,7 +350,7 @@ wakeup_one(void *ident)
 	int wakeup_swapper;
 
 	sleepq_lock(ident);
-	wakeup_swapper = sleepq_signal(ident, SLEEPQ_SLEEP, -1, 0);
+	wakeup_swapper = sleepq_signal(ident, SLEEPQ_SLEEP, 0, 0);
 	sleepq_release(ident);
 	if (wakeup_swapper)
 		kick_proc0();

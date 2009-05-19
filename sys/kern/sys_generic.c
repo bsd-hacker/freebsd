@@ -1306,7 +1306,7 @@ void
 selwakeup(sip)
 	struct selinfo *sip;
 {
-	doselwakeup(sip, -1);
+	doselwakeup(sip, 0);
 }
 
 /* Wake up a selecting thread, and set its priority. */

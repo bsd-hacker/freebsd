@@ -417,7 +417,7 @@ cv_signal(struct cv *cvp)
 	sleepq_lock(cvp);
 	if (cvp->cv_waiters > 0) {
 		cvp->cv_waiters--;
-		wakeup_swapper = sleepq_signal(cvp, SLEEPQ_CONDVAR, -1, 0);
+		wakeup_swapper = sleepq_signal(cvp, SLEEPQ_CONDVAR, 0, 0);
 	}
 	sleepq_release(cvp);
 	if (wakeup_swapper)
@@ -433,12 +433,6 @@ cv_broadcastpri(struct cv *cvp, int pri)
 {
 	int wakeup_swapper;
 
-	/*
-	 * XXX sleepq_broadcast pri argument changed from -1 meaning
-	 * no pri to 0 meaning no pri.
-	 */
-	if (pri == -1)
-		pri = 0;
 	wakeup_swapper = 0;
 	sleepq_lock(cvp);
 	if (cvp->cv_waiters > 0) {
