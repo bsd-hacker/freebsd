@@ -102,6 +102,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/mutex.h>
 #include <sys/priv.h>
 #include <sys/proc.h>
+#include <sys/sbuf.h>
 #include <sys/stack.h>
 #include <sys/sysctl.h>
 #include <sys/systm.h>
@@ -322,7 +323,7 @@ static void	adopt(struct witness *parent, struct witness *child);
 #ifdef BLESSING
 static int	blessed(struct witness *, struct witness *);
 #endif
-static int	depart(struct witness *w);
+static void	depart(struct witness *w);
 static struct witness	*enroll(const char *description,
 			    struct lock_class *lock_class);
 static struct lock_instance	*find_instance(struct lock_list_entry *list,
@@ -1687,7 +1688,7 @@ found:
 	return (w);
 }
 
-static int
+static void
 depart(struct witness *w)
 {
 	struct witness_list *list;
@@ -1806,7 +1807,6 @@ adopt(struct witness *parent, struct witness *child)
 static void
 itismychild(struct witness *parent, struct witness *child)
 {
-	struct witness_list *list;
 
 	MPASS(child != NULL && parent != NULL);
 	if (witness_cold == 0)
@@ -2680,6 +2680,6 @@ _witness_debugger(int cond, const char *msg)
 	if (witness_trace && cond)
 		kdb_backtrace();
 	if (witness_kdb && cond)
-		kdb_enter(KDB_WHY_WITNESS, msg);
+		kdb_enter_why(KDB_WHY_WITNESS, msg);
 }
 #endif

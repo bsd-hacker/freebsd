@@ -112,18 +112,6 @@ struct lock_class {
 #define	LA_NOTRECURSED	0x00000010	/* Lock is not recursed. */
 
 #ifdef _KERNEL
-/*
- * Lock instances.  A lock instance is the data associated with a lock while
- * it is held by witness.  For example, a lock instance will hold the
- * recursion count of a lock.  Lock instances are held in lists.  Spin locks
- * are held in a per-cpu list while sleep locks are held in per-thread list.
- */
-struct lock_instance {
-	struct	lock_object *li_lock;
-	const	char *li_file;		/* File and line of last acquire. */
-	int	li_line;
-	u_int	li_flags;		/* Recursion count and LI_* flags. */
-};
 
 /*
  * A simple list type used to build the list of locks held by a thread
@@ -135,13 +123,9 @@ struct lock_instance {
  * when we traverse the list we read children[count-1] as the first entry
  * down to children[0] as the final entry.
  */
-#define	LOCK_NCHILDREN	3
 
-struct lock_list_entry {
-	struct	lock_list_entry *ll_next;
-	struct	lock_instance ll_children[LOCK_NCHILDREN];
-	u_int	ll_count;
-};
+struct lock_list_entry;
+struct thread;
 
 /*
  * If any of WITNESS, INVARIANTS, or KTR_LOCK KTR tracing has been enabled,
