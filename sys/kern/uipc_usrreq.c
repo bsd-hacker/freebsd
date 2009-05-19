@@ -1763,7 +1763,6 @@ unp_internalize(struct mbuf **controlp, struct thread *td)
 			for (i = 0; i < oldfds; i++) {
 				fp = fdescp->fd_ofiles[*fdp++];
 				*rp++ = fp;
-				fhold(fp);
 				unp_internalize_fp(fp);
 			}
 			FILEDESC_SUNLOCK(fdescp);
@@ -1883,6 +1882,7 @@ unp_internalize_fp(struct file *fp)
 		unp->unp_file = fp;
 		unp->unp_msgcount++;
 	}
+	fhold(fp);
 	unp_rights++;
 	UNP_GLOBAL_WUNLOCK();
 }
@@ -1912,8 +1912,7 @@ unp_accessable(struct file *fp)
 {
 	struct unpcb *unp;
 
-	unp = fptounp(fp);
-	if (fp == NULL)
+	if ((unp = fptounp(fp)) == NULL)
 		return;
 	if (unp->unp_gcflag & UNPGC_REF)
 		return;
@@ -1938,8 +1937,8 @@ unp_gc_process(struct unpcb *unp)
 	 * queue as indicated by msgcount, and this must equal the file
 	 * reference count.  Note that when msgcount is 0 the file is NULL.
 	 */
-	if (unp->unp_msgcount != 0 && fp->f_count != 0 &&
-	    fp->f_count == unp->unp_msgcount) {
+	if ((unp->unp_gcflag & UNPGC_REF) == 0 && fp &&
+	    unp->unp_msgcount != 0 && fp->f_count == unp->unp_msgcount) {
 		unp->unp_gcflag |= UNPGC_DEAD;
 		unp_unreachable++;
 		return;
@@ -1987,7 +1986,7 @@ unp_gc(__unused void *arg, int pending)
 	 */
 	for (head = heads; *head != NULL; head++)
 		LIST_FOREACH(unp, *head, unp_link)
-			unp->unp_gcflag &= ~(UNPGC_REF|UNPGC_DEAD);
+			unp->unp_gcflag = 0;
 	/*
 	 * Scan marking all reachable sockets with UNPGC_REF.  Once a socket
 	 * is reachable all of the sockets it references are reachable.
@@ -2018,19 +2017,13 @@ unp_gc(__unused void *arg, int pending)
 		LIST_FOREACH(unp, *head, unp_link)
 			if (unp->unp_gcflag & UNPGC_DEAD) {
 				unref[i++] = unp->unp_file;
+				fhold(unp->unp_file);
 				KASSERT(unp->unp_file != NULL,
 				    ("unp_gc: Invalid unpcb."));
 				KASSERT(i <= unp_unreachable,
 				    ("unp_gc: incorrect unreachable count."));
 			}
 	UNP_GLOBAL_RUNLOCK();
-
-	/*
-	 * All further operation is now done on a local list.  We first ref
-	 * all sockets to avoid closing them until all are flushed.
-	 */
-	for (i = 0; i < unp_unreachable; i++)
-		fhold(unref[i]);
 
 	/*
 	 * Now flush all sockets, free'ing rights.  This will free the
