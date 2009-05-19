@@ -334,6 +334,7 @@ vm_thread_new(struct thread *td, int pages)
 	 * Allocate an object for the kstack.
 	 */
 	ksobj = vm_object_allocate(OBJT_DEFAULT, pages);
+	
 	/*
 	 * Get a kernel virtual address for this thread's kstack.
 	 */
@@ -641,10 +642,8 @@ faultin(p)
 		FOREACH_THREAD_IN_PROC(p, td)
 			vm_thread_swapin(td);
 		PROC_LOCK(p);
-		PROC_SLOCK(p);
 		swapclear(p);
 		p->p_swtick = ticks;
-		PROC_SUNLOCK(p);
 
 		wakeup(&p->p_flag);
 
@@ -695,7 +694,6 @@ loop:
 			continue;
 		}
 		swtime = (ticks - p->p_swtick) / hz;
-		PROC_SLOCK(p);
 		FOREACH_THREAD_IN_PROC(p, td) {
 			/*
 			 * An otherwise runnable thread of a process
@@ -721,7 +719,6 @@ loop:
 			}
 			thread_unlock(td);
 		}
-		PROC_SUNLOCK(p);
 		PROC_UNLOCK(p);
 	}
 	sx_sunlock(&allproc_lock);
@@ -838,7 +835,7 @@ retry:
 		if (p->p_lock != 0 ||
 		    (p->p_flag & (P_STOPPED_SINGLE|P_TRACED|P_SYSTEM|P_WEXIT)
 		    ) != 0) {
-			goto nextproc2;
+			goto nextproc;
 		}
 		/*
 		 * only aiod changes vmspace, however it will be
@@ -846,7 +843,7 @@ retry:
 		 * for P_SYSTEM
 		 */
 		if ((p->p_flag & (P_INMEM|P_SWAPPINGOUT|P_SWAPPINGIN)) != P_INMEM)
-			goto nextproc2;
+			goto nextproc;
 
 		switch (p->p_state) {
 		default:
@@ -855,7 +852,6 @@ retry:
 			break;
 
 		case PRS_NORMAL:
-			PROC_SLOCK(p);
 			/*
 			 * do not swapout a realtime process
 			 * Check all the thread groups..
@@ -917,17 +913,14 @@ retry:
 				 (minslptime > swap_idle_threshold2))) {
 				if (swapout(p) == 0)
 					didswap++;
-				PROC_SUNLOCK(p);
 				PROC_UNLOCK(p);
 				vm_map_unlock(&vm->vm_map);
 				vmspace_free(vm);
 				sx_sunlock(&allproc_lock);
 				goto retry;
 			}
-nextproc:			
-			PROC_SUNLOCK(p);
 		}
-nextproc2:
+nextproc:
 		PROC_UNLOCK(p);
 		vm_map_unlock(&vm->vm_map);
 nextproc1:
@@ -950,7 +943,6 @@ swapclear(p)
 	struct thread *td;
 
 	PROC_LOCK_ASSERT(p, MA_OWNED);
-	PROC_SLOCK_ASSERT(p, MA_OWNED);
 
 	FOREACH_THREAD_IN_PROC(p, td) {
 		thread_lock(td);
@@ -981,7 +973,6 @@ swapout(p)
 	struct thread *td;
 
 	PROC_LOCK_ASSERT(p, MA_OWNED);
-	PROC_SLOCK_ASSERT(p, MA_OWNED | MA_NOTRECURSED);
 #if defined(SWAP_DEBUG)
 	printf("swapping out %d\n", p->p_pid);
 #endif
@@ -1016,7 +1007,6 @@ swapout(p)
 	}
 	td = FIRST_THREAD_IN_PROC(p);
 	++td->td_ru.ru_nswap;
-	PROC_SUNLOCK(p);
 	PROC_UNLOCK(p);
 
 	/*
@@ -1029,7 +1019,6 @@ swapout(p)
 
 	PROC_LOCK(p);
 	p->p_flag &= ~P_SWAPPINGOUT;
-	PROC_SLOCK(p);
 	p->p_swtick = ticks;
 	return (0);
 }

@@ -368,7 +368,7 @@ schedcpu(void)
 	realstathz = stathz ? stathz : hz;
 	sx_slock(&allproc_lock);
 	FOREACH_PROC_IN_SYSTEM(p) {
-		PROC_SLOCK(p);
+		PROC_LOCK(p);
 		FOREACH_THREAD_IN_PROC(p, td) {
 			awake = 0;
 			thread_lock(td);
@@ -448,7 +448,7 @@ schedcpu(void)
 			resetpriority_thread(td);
 			thread_unlock(td);
 		}
-		PROC_SUNLOCK(p);
+		PROC_UNLOCK(p);
 	}
 	sx_sunlock(&allproc_lock);
 }
@@ -629,7 +629,7 @@ sched_exit(struct proc *p, struct thread *td)
 
 	CTR3(KTR_SCHED, "sched_exit: %p(%s) prio %d",
 	    td, td->td_proc->p_comm, td->td_priority);
-	PROC_SLOCK_ASSERT(p, MA_OWNED);
+	PROC_LOCK_ASSERT(p, MA_OWNED);
 	sched_exit_thread(FIRST_THREAD_IN_PROC(p), td);
 }
 
@@ -670,7 +670,6 @@ sched_nice(struct proc *p, int nice)
 	struct thread *td;
 
 	PROC_LOCK_ASSERT(p, MA_OWNED);
-	PROC_SLOCK_ASSERT(p, MA_OWNED);
 	p->p_nice = nice;
 	FOREACH_THREAD_IN_PROC(p, td) {
 		thread_lock(td);

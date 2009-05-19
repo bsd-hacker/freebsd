@@ -1971,7 +1971,6 @@ sched_nice(struct proc *p, int nice)
 	struct thread *td;
 
 	PROC_LOCK_ASSERT(p, MA_OWNED);
-	PROC_SLOCK_ASSERT(p, MA_OWNED);
 
 	p->p_nice = nice;
 	FOREACH_THREAD_IN_PROC(p, td) {
@@ -2132,7 +2131,7 @@ sched_exit(struct proc *p, struct thread *child)
 	CTR3(KTR_SCHED, "sched_exit: %p(%s) prio %d",
 	    child, child->td_proc->p_comm, child->td_priority);
 
-	PROC_SLOCK_ASSERT(p, MA_OWNED);
+	PROC_LOCK_ASSERT(p, MA_OWNED);
 	td = FIRST_THREAD_IN_PROC(p);
 	sched_exit_thread(td, child);
 }
