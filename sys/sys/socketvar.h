@@ -353,6 +353,8 @@ int	sosend_generic(struct socket *so, struct sockaddr *addr,
 int	soshutdown(struct socket *so, int how);
 void	sotoxsocket(struct socket *so, struct xsocket *xso);
 void	sowakeup(struct socket *so, struct sockbuf *sb);
+int	selsocket(struct socket *so, int events, struct timeval *tv,
+	    struct thread *td);
 
 /*
  * Accept filter functions (duh).
