@@ -427,7 +427,7 @@ sleepq_catch_signals(void *wchan, int pri)
 	 */
 	if (TD_ON_SLEEPQ(td)) {
 		sq = sleepq_lookup(wchan);
-		if (sleepq_resume_thread(sq, td, -1)) {
+		if (sleepq_resume_thread(sq, td, 0)) {
 #ifdef INVARIANTS
 			/*
 			 * This thread hasn't gone to sleep yet, so it
@@ -475,7 +475,7 @@ sleepq_switch(void *wchan, int pri)
 	if (td->td_flags & TDF_TIMEOUT) {
 		MPASS(TD_ON_SLEEPQ(td));
 		sq = sleepq_lookup(wchan);
-		if (sleepq_resume_thread(sq, td, -1)) {
+		if (sleepq_resume_thread(sq, td, 0)) {
 #ifdef INVARIANTS
 			/*
 			 * This thread hasn't gone to sleep yet, so it
@@ -638,6 +638,10 @@ sleepq_timedwait_sig(void *wchan, int pri)
 	return (rvalt);
 }
 
+#ifdef INVARIANTS
+extern void kdb_backtrace(void);
+#endif
+
 /*
  * Removes a thread from a sleep queue and makes it
  * runnable.
@@ -691,6 +695,12 @@ sleepq_resume_thread(struct sleepqueue *sq, struct thread *td, int pri)
 	TD_CLR_SLEEPING(td);
 
 	/* Adjust priority if requested. */
+#ifdef INVARIANTS
+	if (!(pri == 0 || (pri >= PRI_MIN && pri <= PRI_MAX))) {
+		kdb_backtrace();
+		printf("pri=%d\n", pri);
+	}
+#endif	
 	MPASS(pri == 0 || (pri >= PRI_MIN && pri <= PRI_MAX));
 	if (pri != 0 && td->td_priority > pri)
 		sched_prio(td, pri);
@@ -827,7 +837,7 @@ sleepq_timeout(void *arg)
 		sq = sleepq_lookup(wchan);
 		MPASS(sq != NULL);
 		td->td_flags |= TDF_TIMEOUT;
-		wakeup_swapper = sleepq_resume_thread(sq, td, -1);
+		wakeup_swapper = sleepq_resume_thread(sq, td, 0);
 		thread_unlock(td);
 		if (wakeup_swapper)
 			kick_proc0();
@@ -899,7 +909,7 @@ sleepq_remove(struct thread *td, void *wchan)
 	thread_lock(td);
 	MPASS(sq != NULL);
 	MPASS(td->td_wchan == wchan);
-	wakeup_swapper = sleepq_resume_thread(sq, td, -1);
+	wakeup_swapper = sleepq_resume_thread(sq, td, 0);
 	thread_unlock(td);
 	sleepq_release(wchan);
 	if (wakeup_swapper)
@@ -945,7 +955,7 @@ sleepq_abort(struct thread *td, int intrval)
 	MPASS(sq != NULL);
 
 	/* Thread is asleep on sleep queue sq, so wake it up. */
-	return (sleepq_resume_thread(sq, td, -1));
+	return (sleepq_resume_thread(sq, td, 0));
 }
 
 #ifdef DDB
