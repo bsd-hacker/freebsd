@@ -84,15 +84,13 @@ __FBSDID("$FreeBSD$");
  * acquire a read lock while modifying the set of registered protocols to
  * prevent partially registered or unregistered protocols from being run.
  *
- * We make per-packet use optional so that we can measure the performance
- * impact of providing consistency against run-time registration and
- * deregristration, which is a very uncommon event.
- *
  * The following data structures and fields are protected by this lock:
  *
  * - The np array, including all fields of struct netisr_proto.
  * - The nws array, including all fields of struct netisr_worker.
  * - The nws_array array.
+ *
+ * XXXRW: rmlocks don't support assertions.
  */
 static struct rmlock	netisr_rmlock;
 #define	NETISR_LOCK_INIT()	rm_init(&netisr_rmlock, "netisr", 0)
@@ -108,9 +106,31 @@ static struct rmlock	netisr_rmlock;
 
 SYSCTL_NODE(_net, OID_AUTO, isr2, CTLFLAG_RW, 0, "netisr2");
 
-static int	netisr_direct = 1;	/* Enable direct dispatch. */
-SYSCTL_INT(_net_isr2, OID_AUTO, direct, CTLFLAG_RW,
-    &netisr_direct, 0, "Direct dispatch");
+/*-
+ * Three direct dispatch policies are supported:
+ *
+ * - Always defer: all work is scheduled for a netisr, regardless of context.
+ *
+ * - Always direct: if the executing context allows direct dispatch, always
+ *   direct dispatch.
+ *
+ * - Hybrid: if the executing context allows direct dispatch, and we're
+ *   running on the CPU the work would be done on, then direct dispatch if it
+ *   wouldn't violate ordering constraints on the workstream.
+ *
+ * These policies are captured using two sysctls -- direct_enable allows
+ * direct dispatch, and direct_force forces direct dispatch if enabled.
+ * Notice that changing the global policy could lead to short periods of
+ * disordered processing, but this is considered acceptable as compared to
+ * the complexity of enforcing ordering during policy changes.
+ */
+static int	netisr_direct_force = 1;	/* Always direct dispatch. */
+SYSCTL_INT(_net_isr2, OID_AUTO, direct_force, CTLFLAG_RW,
+    &netisr_direct_force, 0, "Force direct dispatch");
+
+static int	netisr_direct_enable = 1;	/* Enable direct dispatch. */
+SYSCTL_INT(_net_isr2, OID_AUTO, direct_enable, CTLFLAG_RW,
+    &netisr_direct_enable, 0, "Enable direct dispatch");
 
 /*
  * Allow the administrator to limit the number of threads (CPUs) to use for
@@ -130,10 +150,14 @@ TUNABLE_INT("net.isr2.bindthreads", &netisr_bindthreads);
 SYSCTL_INT(_net_isr2, OID_AUTO, bindthreads, CTLFLAG_RD,
     &netisr_bindthreads, 0, "Bind netisr2 threads to CPUs.");
 
-#define	NETISR_MAXQLIMIT	10240
-static int	netisr_maxqlimit = NETISR_MAXQLIMIT;
-TUNABLE_INT("net.isr2.bindthreads", &netisr_bindthreads);
-SYSCTL_INT(_net_isr2, OID_AUTO, maxqlimit, CTLFLAG_RD,
+/*
+ * Limit per-workstream queues to at most net.isr2.maxqlimit, both for
+ * initial configuration and later modification using netisr2_setqlimit().
+ */
+#define	NETISR_DEFAULT_MAXQLIMIT	10240
+static int	netisr_maxqlimit = NETISR_DEFAULT_MAXQLIMIT;
+TUNABLE_INT("net.isr2.maxqlimit", &netisr_maxqlimit);
+SYSCTL_INT(_net_isr2, OID_AUTO, maxqlimit, CTLFLAG_RW,
     &netisr_maxqlimit, 0,
     "Maximum netisr2 per-protocol, per-CPU queue depth.");
 
@@ -181,9 +205,10 @@ struct netisr_work {
 	 * Statistics -- written unlocked, but mostly from curcpu.
 	 */
 	u_int64_t	 nw_dispatched; /* Number of direct dispatches. */
-	u_int64_t	 nw_qdrops;	/* Number of drops. */
-	u_int64_t	 nw_queued;	/* Number of enqueues. */
-	u_int64_t	 nw_handled;	/* Number passed into handler. */
+	u_int64_t	 nw_hybrid_dispatched; /* "" hybrid dispatches. */
+	u_int64_t	 nw_qdrops;	/* "" drops. */
+	u_int64_t	 nw_queued;	/* "" enqueues. */
+	u_int64_t	 nw_handled;	/* "" handled in worker. */
 };
 
 /*
@@ -232,7 +257,8 @@ static u_int				 nws_count;
  * Per-workstream flags.
  */
 #define	NWS_RUNNING	0x00000001	/* Currently running in a thread. */
-#define	NWS_SIGNALED	0x00000002	/* Signal issued. */
+#define	NWS_DISPATCHING	0x00000002	/* Currently being direct-dispatched. */
+#define	NWS_SCHEDULED	0x00000004	/* Signal issued. */
 
 /*
  * Synchronization for each workstream: a mutex protects all mutable fields
@@ -328,9 +354,6 @@ netisr2_register(const struct netisr_handler *nhp)
 	    "%s", name));
 	KASSERT(nhp->nh_qlimit != 0,
 	    ("netisr2_register: nh_qlimit 0 for %s", name));
-	KASSERT(nhp->nh_qlimit <= netisr_maxqlimit,
-	    ("netisr2_register: nh_qlimit (%u) above max %u for %s",
-	    nhp->nh_qlimit, netisr_maxqlimit, name));
 
 	/*
 	 * Initialize global and per-workstream protocol state.
@@ -339,7 +362,13 @@ netisr2_register(const struct netisr_handler *nhp)
 	np[proto].np_handler = nhp->nh_handler;
 	np[proto].np_m2flow = nhp->nh_m2flow;
 	np[proto].np_m2cpu = nhp->nh_m2cpu;
-	np[proto].np_qlimit = nhp->nh_qlimit;
+	if (nhp->nh_qlimit > netisr_maxqlimit) {
+		printf("netisr2_register: %s requested queue limit %u "
+		    "capped to net.isr2.maxqlimit %u\n", name,
+		    nhp->nh_qlimit, netisr_maxqlimit);
+		np[proto].np_qlimit = netisr_maxqlimit;
+	} else
+		np[proto].np_qlimit = nhp->nh_qlimit;
 	np[proto].np_policy = nhp->nh_policy;
 	for (i = 0; i < MAXCPU; i++) {
 		npwp = &nws[i].nws_work[proto];
@@ -670,6 +699,8 @@ netisr2_process_workstream(struct netisr_workstream *nwsp, int proto)
 
 	KASSERT(nwsp->nws_flags & NWS_RUNNING,
 	    ("netisr2_process_workstream: not running"));
+	KASSERT(!(nwsp->nws_flags & NWS_DISPATCHING),
+	    ("netisr2_process_workstream: dispatching"));
 	if (proto == NETISR_ALLPROT) {
 		for (i = 0; i < NETISR_MAXPROT; i++)
 			netisr2_process_workstream_proto(nwsp, i);
@@ -679,7 +710,9 @@ netisr2_process_workstream(struct netisr_workstream *nwsp, int proto)
 
 /*
  * SWI handler for netisr2 -- processes prackets in a set of workstreams that
- * it owns.
+ * it owns, woken up by calls to NWS_SIGNAL().  If this workstream is already
+ * being direct dispatched, go back to sleep and wait for the dispatching
+ * thread to wake us up again.
  */
 static void
 swi_net(void *arg)
@@ -691,12 +724,50 @@ swi_net(void *arg)
 
 	NETISR_RLOCK(&tracker);
 	NWS_LOCK(nwsp);
+	KASSERT(!(nwsp->nws_flags & NWS_RUNNING), ("swi_net: running"));
+	if (nwsp->nws_flags & NWS_DISPATCHING)
+		goto out;
 	nwsp->nws_flags |= NWS_RUNNING;
+	nwsp->nws_flags &= ~NWS_SCHEDULED;
 	while (nwsp->nws_pendingwork != 0)
 		netisr2_process_workstream(nwsp, NETISR_ALLPROT);
-	nwsp->nws_flags &= ~(NWS_SIGNALED | NWS_RUNNING);
+	nwsp->nws_flags &= ~NWS_RUNNING;
+out:
 	NWS_UNLOCK(nwsp);
 	NETISR_RUNLOCK(&tracker);
+}
+
+static int
+netisr2_queue_workstream(struct netisr_workstream *nwsp,
+    struct netisr_work *npwp, struct mbuf *m, int *dosignalp)
+{
+
+	NWS_LOCK_ASSERT(nwsp);
+
+	*dosignalp = 0;
+	if (npwp->nw_len < npwp->nw_qlimit) {
+		m->m_nextpkt = NULL;
+		if (npwp->nw_head == NULL) {
+			npwp->nw_head = m;
+			npwp->nw_tail = m;
+		} else {
+			npwp->nw_tail->m_nextpkt = m;
+			npwp->nw_tail = m;
+		}
+		npwp->nw_len++;
+		if (npwp->nw_len > npwp->nw_watermark)
+			npwp->nw_watermark = npwp->nw_len;
+		nwsp->nws_pendingwork++;
+		if (!(nwsp->nws_flags & (NWS_SCHEDULED | NWS_RUNNING))) {
+			nwsp->nws_flags |= NWS_SCHEDULED;
+			*dosignalp = 1;	/* Defer until unlocked. */
+		}
+		npwp->nw_queued++;
+		return (0);
+	} else {
+		npwp->nw_qdrops++;
+		return (ENOBUFS);
+	}
 }
 
 static int
@@ -713,33 +784,10 @@ netisr2_queue_internal(u_int proto, struct mbuf *m, u_int cpuid)
 	nwsp = &nws[cpuid];
 	npwp = &nwsp->nws_work[proto];
 	NWS_LOCK(nwsp);
-	if (npwp->nw_len < npwp->nw_qlimit) {
-		m->m_nextpkt = NULL;
-		if (npwp->nw_head == NULL) {
-			npwp->nw_head = m;
-			npwp->nw_tail = m;
-		} else {
-			npwp->nw_tail->m_nextpkt = m;
-			npwp->nw_tail = m;
-		}
-		npwp->nw_len++;
-		if (npwp->nw_len > npwp->nw_watermark)
-			npwp->nw_watermark = npwp->nw_len;
-		nwsp->nws_pendingwork++;
-		if (!(nwsp->nws_flags & NWS_SIGNALED)) {
-			nwsp->nws_flags |= NWS_SIGNALED;
-			dosignal = 1;	/* Defer until unlocked. */
-		}
-		error = 0;
-	} else
-		error = ENOBUFS;
+	error = netisr2_queue_workstream(nwsp, npwp, m, &dosignal);
 	NWS_UNLOCK(nwsp);
 	if (dosignal)
 		NWS_SIGNAL(nwsp);
-	if (error)
-		npwp->nw_qdrops++;
-	else
-		npwp->nw_queued++;
 	return (error);
 }
 
@@ -781,14 +829,23 @@ netisr_queue(int proto, struct mbuf *m)
 	return (netisr2_queue(proto, m));
 }
 
+/*
+ * Dispatch a packet for netisr2 processing, direct dispatch permitted by
+ * calling context.
+ */
 int
 netisr2_dispatch_src(u_int proto, uintptr_t source, struct mbuf *m)
 {
 	struct rm_priotracker tracker;
 	struct netisr_workstream *nwsp;
 	struct netisr_work *npwp;
+	int dosignal, error;
+	u_int cpuid;
 
-	if (!netisr_direct)
+	/*
+	 * If direct dispatch is entirely disabled, fall back on queueing.
+	 */
+	if (!netisr_direct_enable)
 		return (netisr2_queue_src(proto, source, m));
 
 	KASSERT(proto < NETISR_MAXPROT,
@@ -798,15 +855,92 @@ netisr2_dispatch_src(u_int proto, uintptr_t source, struct mbuf *m)
 	    ("netisr2_dispatch_src: invalid proto %u", proto));
 
 	/*
-	 * Borrow current CPU's stats, even if there's no worker.
+	 * If direct dispatch is forced, then unconditionally dispatch
+	 * without a formal CPU selection.  Borrow the current CPU's stats,
+	 * even if there's no worker on it.
 	 */
-	nwsp = &nws[curcpu];
+	if (netisr_direct_force) {
+		nwsp = &nws[curcpu];
+		npwp = &nwsp->nws_work[proto];
+		npwp->nw_dispatched++;
+		npwp->nw_handled++;
+		np[proto].np_handler(m);
+		NETISR_RUNLOCK(&tracker);
+		return (0);
+	}
+
+	/*
+	 * Otherwise, we execute in a hybrid mode where we will try to direct
+	 * dispatch if we're on the right CPU and the netisr worker isn't
+	 * already running.
+	 */
+	m = netisr2_selectcpu(&np[proto], source, m, &cpuid);
+	if (m == NULL) {
+		NETISR_RUNLOCK(&tracker);
+		return (ENOBUFS);
+	}
+	sched_pin();
+	if (cpuid != curcpu)
+		goto queue_fallback;
+	nwsp = &nws[cpuid];
 	npwp = &nwsp->nws_work[proto];
-	npwp->nw_dispatched++;
-	npwp->nw_handled++;
+
+	/*-
+	 * We are willing to direct dispatch only if three conditions hold:
+	 *
+	 * (1) The netisr worker isn't already running,
+	 * (2) Another thread isn't already directly dispatching, and
+	 * (3) The netisr hasn't already been woken up.
+	 */
+	NWS_LOCK(nwsp);
+	if (nwsp->nws_flags & (NWS_RUNNING | NWS_DISPATCHING | NWS_SCHEDULED)) {
+		error = netisr2_queue_workstream(nwsp, npwp, m, &dosignal);
+		NWS_UNLOCK(nws);
+		if (dosignal)
+			NWS_SIGNAL(nwsp);
+		sched_unpin();
+		NETISR_RUNLOCK(&tracker);
+		return (error);
+	}
+
+	/*
+	 * The current thread is now effectively the netisr worker, so set
+	 * the dispatching flag to prevent concurrent processing of the
+	 * stream from another thread (even the netisr worker), which could
+	 * otherwise lead to effective misordering of the stream.
+	 */
+	nwsp->nws_flags |= NWS_DISPATCHING;
+	NWS_UNLOCK(nwsp);
 	np[proto].np_handler(m);
+	NWS_LOCK(nwsp);
+	nwsp->nws_flags &= ~NWS_DISPATCHING;
+	npwp->nw_handled++;
+	npwp->nw_hybrid_dispatched++;
+
+	/*
+	 * If other work was enqueued by another thread while we were direct
+	 * dispatching, we need to signal the netisr worker to do that work.
+	 * In the future, we might want to do some of that work in the
+	 * current thread, rather than trigger further context switches.  If
+	 * so, we'll want to establish a reasonable bound on the work done in
+	 * the "borrowed" context.
+	 */
+	if (nwsp->nws_pendingwork != 0) {
+		nwsp->nws_flags |= NWS_SCHEDULED;
+		dosignal = 1;
+	} else
+		dosignal = 0;
+	NWS_UNLOCK(nwsp);
+	if (dosignal)
+		NWS_SIGNAL(nwsp);
 	NETISR_RUNLOCK(&tracker);
 	return (0);
+
+queue_fallback:
+	error = netisr2_queue_internal(proto, m, cpuid);
+	sched_unpin();
+	NETISR_RUNLOCK(&tracker);
+	return (error);
 }
 
 int
@@ -907,8 +1041,9 @@ DB_SHOW_COMMAND(netisr2, db_show_netisr2)
 	struct netisr_work *nwp;
 	int cpu, first, proto;
 
-	db_printf("%6s %6s %6s %6s %6s %6s %8s %8s %8s %8s\n", "CPU", "Pend",
-	    "Proto", "Len", "WMark", "Max", "Disp", "Drop", "Queue", "Handle");
+	db_printf("%3s %5s %6s %5s %5s %5s %8s %8s %8s %8s %8s\n", "CPU",
+	    "Pend", "Proto", "Len", "WMark", "Max", "Disp", "HDisp", "Drop",
+	    "Queue", "Handle");
 	for (cpu = 0; cpu < MAXCPU; cpu++) {
 		nwsp = &nws[cpu];
 		if (nwsp->nws_intr_event == NULL)
@@ -919,16 +1054,16 @@ DB_SHOW_COMMAND(netisr2, db_show_netisr2)
 				continue;
 			nwp = &nwsp->nws_work[proto];
 			if (first) {
-				db_printf("%6d %6d ", cpu,
+				db_printf("%3d %5d ", cpu,
 				    nwsp->nws_pendingwork);
 				first = 0;
 			} else
-				db_printf("%6s %6s ", "", "");
-			db_printf("%6s %6d %6d %6d %8ju %8ju %8ju %8ju\n",
+				db_printf("%3s %5s ", "", "");
+			db_printf("%6s %5d %5d %5d %8ju %8ju %8ju %8ju %8ju\n",
 			    np[proto].np_name, nwp->nw_len,
 			    nwp->nw_watermark, nwp->nw_qlimit,
-			    nwp->nw_dispatched, nwp->nw_qdrops,
-			    nwp->nw_queued, nwp->nw_handled);
+			    nwp->nw_dispatched, nwp->nw_hybrid_dispatched,
+			    nwp->nw_qdrops, nwp->nw_queued, nwp->nw_handled);
 		}
 	}
 }
