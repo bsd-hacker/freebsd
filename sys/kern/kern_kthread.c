@@ -92,6 +92,9 @@ kthread_create_pri_v(void (*func)(void *), void *arg,
 	if (newpp != NULL)
 		*newpp = p2;
 
+	if (prio == 0)
+		prio = PRI_MAX_KERN;
+
 	/* this is a non-swapped system process */
 	PROC_LOCK(p2);
 	p2->p_flag |= P_SYSTEM | P_KTHREAD;
@@ -111,8 +114,8 @@ kthread_create_pri_v(void (*func)(void *), void *arg,
 	/* Delay putting it on the run queue until now. */
 	if (!(flags & RFSTOPPED)) {
 		thread_lock(td);
-		sched_prio(td, prio);
 		sched_add(td, SRQ_BORING); 
+		sched_prio(td, prio);
 		thread_unlock(td);
 	}
 
