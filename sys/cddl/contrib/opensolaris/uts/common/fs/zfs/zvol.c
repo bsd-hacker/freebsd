@@ -823,7 +823,8 @@ zvol_create_minor(const char *name, major_t maj)
 	bioq_init(&zv->zv_queue);
 	mtx_init(&zv->zv_queue_mtx, "zvol", NULL, MTX_DEF);
 	zv->zv_state = 0;
-	kthread_create(zvol_worker, zv, NULL, 0, 0, "zvol:worker %s", pp->name);
+	kthread_create_pri(zvol_worker, zv, NULL, 0, 0, PRIBIO,
+	    "zvol:worker %s", pp->name);
 
 	zvol_minors++;
 end:

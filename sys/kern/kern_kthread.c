@@ -93,7 +93,7 @@ kthread_create_pri_v(void (*func)(void *), void *arg,
 		*newpp = p2;
 
 	if (prio == 0)
-		prio = PRI_MAX_KERN;
+		prio = PVM; /* XXX compatibility :-{ */
 
 	/* this is a non-swapped system process */
 	PROC_LOCK(p2);
