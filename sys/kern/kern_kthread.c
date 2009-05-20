@@ -72,12 +72,11 @@ kproc_start(udata)
  * flags are flags to fork1 (in unistd.h)
  * fmt and following will be *printf'd into (*newpp)->p_comm (for ps, etc.).
  */
-int
-kthread_create(void (*func)(void *), void *arg,
-    struct proc **newpp, int flags, int pages, const char *fmt, ...)
+static int
+kthread_create_pri_v(void (*func)(void *), void *arg,
+    struct proc **newpp, int flags, int pages, int prio, const char *comm)
 {
 	int error;
-	va_list ap;
 	struct thread *td;
 	struct proc *p2;
 
@@ -101,24 +100,52 @@ kthread_create(void (*func)(void *), void *arg,
 	mtx_unlock(&p2->p_sigacts->ps_mtx);
 	PROC_UNLOCK(p2);
 
-	/* set up arg0 for 'ps', et al */
-	va_start(ap, fmt);
-	vsnprintf(p2->p_comm, sizeof(p2->p_comm), fmt, ap);
-	va_end(ap);
+	memcpy(p2->p_comm, comm, sizeof(p2->p_comm));
+	td = FIRST_THREAD_IN_PROC(p2);
+	memcpy(td->td_name, comm, sizeof(td->td_name));
 
 	/* call the processes' main()... */
-	td = FIRST_THREAD_IN_PROC(p2);
 	cpu_set_fork_handler(td, func, arg);
 	TD_SET_CAN_RUN(td);
 
 	/* Delay putting it on the run queue until now. */
 	if (!(flags & RFSTOPPED)) {
 		thread_lock(td);
+		sched_prio(td, prio);
 		sched_add(td, SRQ_BORING); 
 		thread_unlock(td);
 	}
 
 	return 0;
+}
+
+int
+kthread_create_pri(void (*func)(void *), void *arg,
+    struct proc **newpp, int flags, int pages, int prio, const char *fmt, ...)
+{
+	va_list ap;
+	char		p_comm[MAXCOMLEN + 1];	/* (b) Process name. XXX */
+	
+	/* set up arg0 for 'ps', et al */
+	va_start(ap, fmt);
+	vsnprintf(p_comm, sizeof(p_comm), fmt, ap);
+	va_end(ap);
+
+	return (kthread_create_pri_v(func, arg, newpp, flags, pages, prio, p_comm));
+}
+
+int
+kthread_create(void (*func)(void *), void *arg,
+    struct proc **newpp, int flags, int pages, const char *fmt, ...)
+{
+	va_list ap;
+	char		p_comm[MAXCOMLEN + 1];	/* (b) Process name. XXX */
+	
+	/* set up arg0 for 'ps', et al */
+	va_start(ap, fmt);
+	vsnprintf(p_comm, sizeof(p_comm), fmt, ap);
+	va_end(ap);
+	return (kthread_create_pri_v(func, arg, newpp, flags, pages, 0, p_comm));
 }
 
 void

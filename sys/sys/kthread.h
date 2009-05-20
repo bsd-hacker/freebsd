@@ -46,6 +46,8 @@ void	kproc_shutdown(void *, int);
 void	kproc_start(const void *);
 int     kthread_create(void (*)(void *), void *, struct proc **,
 	    int flags, int pages, const char *, ...) __printflike(6, 7);
+int     kthread_create_pri(void (*)(void *), void *, struct proc **,
+            int flags, int pages, int prio, const char *, ...) __printflike(7, 8);
 void    kthread_exit(int) __dead2;
 int	kthread_resume(struct proc *); /* XXXKSE */
 int	kthread_suspend(struct proc *, int); /* XXXKSE */
