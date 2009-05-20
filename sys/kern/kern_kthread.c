@@ -106,7 +106,9 @@ kthread_create_pri_v(void (*func)(void *), void *arg,
 	memcpy(p2->p_comm, comm, sizeof(p2->p_comm));
 	td = FIRST_THREAD_IN_PROC(p2);
 	memcpy(td->td_name, comm, sizeof(td->td_name));
-
+	td->td_base_pri  = prio;
+	td->td_priority  = prio;
+	
 	/* call the processes' main()... */
 	cpu_set_fork_handler(td, func, arg);
 	TD_SET_CAN_RUN(td);
@@ -115,7 +117,6 @@ kthread_create_pri_v(void (*func)(void *), void *arg,
 	if (!(flags & RFSTOPPED)) {
 		thread_lock(td);
 		sched_add(td, SRQ_BORING); 
-		sched_prio(td, prio);
 		thread_unlock(td);
 	}
 
