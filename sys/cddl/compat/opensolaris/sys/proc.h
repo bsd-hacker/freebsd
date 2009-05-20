@@ -40,7 +40,7 @@
 
 #define	CPU		curcpu
 #define	minclsyspri	0
-#define	maxclsyspri	0
+#define	maxclsyspri	PRIBIO
 #define	max_ncpus	mp_ncpus
 #define	boot_max_ncpus	mp_ncpus
 
@@ -74,8 +74,8 @@ thread_create(caddr_t stk, size_t stksize, void (*proc)(void *), void *arg,
 	ASSERT(len == 0);
 	ASSERT(state == TS_RUN);
 
-	error = kthread_create(proc, arg, &p, 0, ZFS_KSTACK_PAGES,
-	    "solthread %p", proc);
+	error = kthread_create_pri(proc, arg, &p, 0, ZFS_KSTACK_PAGES,
+	    pri, "solthread %p", proc);
 	return (error == 0 ? FIRST_THREAD_IN_PROC(p) : NULL);
 }
 
