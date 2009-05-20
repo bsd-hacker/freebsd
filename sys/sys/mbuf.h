@@ -128,7 +128,11 @@ struct mb_ext {
 struct mbuf {
 	struct mbuf	*m_next;	/* next buffer in chain */
 	struct mbuf	*m_nextpkt;	/* next chain in queue/record */
+#ifdef _KERNEL	
 	uma_zone_t	 m_zone;	/* Zone allocated from. */
+#else
+	caddr_t		 m_zone;
+#endif	
 	caddr_t		 m_data;	/* location of valid data */
 	volatile int	 m_ref;		/* Reference count. */
 	int		 m_len;		/* amount of data in this mbuf */
