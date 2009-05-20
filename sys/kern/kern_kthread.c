@@ -92,9 +92,6 @@ kthread_create_pri_v(void (*func)(void *), void *arg,
 	if (newpp != NULL)
 		*newpp = p2;
 
-	if (prio == 0)
-		prio = PVM; /* XXX compatibility :-{ */
-
 	/* this is a non-swapped system process */
 	PROC_LOCK(p2);
 	p2->p_flag |= P_SYSTEM | P_KTHREAD;
@@ -106,8 +103,10 @@ kthread_create_pri_v(void (*func)(void *), void *arg,
 	memcpy(p2->p_comm, comm, sizeof(p2->p_comm));
 	td = FIRST_THREAD_IN_PROC(p2);
 	memcpy(td->td_name, comm, sizeof(td->td_name));
-	td->td_base_pri  = prio;
-	td->td_priority  = prio;
+	if (prio != 0) {
+		td->td_base_pri  = prio;
+		td->td_priority  = prio;
+	}
 	
 	/* call the processes' main()... */
 	cpu_set_fork_handler(td, func, arg);
