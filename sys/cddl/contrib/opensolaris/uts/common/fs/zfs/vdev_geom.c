@@ -530,8 +530,8 @@ vdev_geom_open(vdev_t *vd, uint64_t *psize, uint64_t *ashift)
 	vd->vdev_tsd = ctx;
 	pp = cp->provider;
 
-	kthread_create(vdev_geom_worker, ctx, NULL, 0, 0, "vdev:worker %s",
-	    pp->name);
+	kthread_create_pri(vdev_geom_worker, ctx, NULL, 0, 0, PRIBIO,
+	    "vdev:worker %s", pp->name);
 
 	/*
 	 * Determine the actual size of the device.
