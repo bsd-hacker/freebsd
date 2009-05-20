@@ -2872,6 +2872,7 @@ sysctl_kern_proc_filedesc(SYSCTL_HANDLER_ARGS)
 	struct file *fp;
 	struct proc *p;
 	int vfslocked;
+	size_t oldidx;
 
 	name = (int *)arg1;
 	if ((p = pfind((pid_t)name[0])) == NULL)
@@ -3036,14 +3037,26 @@ sysctl_kern_proc_filedesc(SYSCTL_HANDLER_ARGS)
 		    strlen(kif->kf_path) + 1;
 		kif->kf_structsize = roundup(kif->kf_structsize,
 		    sizeof(uint64_t));
+		oldidx = req->oldidx;
 		error = SYSCTL_OUT(req, kif, kif->kf_structsize);
-		if (error)
+		if (error) {
+			if (error == ENOMEM) {
+				/*
+				 * The hack to keep the ABI of sysctl
+				 * kern.proc.filedesc intact, but not
+				 * to account a partially copied
+				 * kinfo_file into the oldidx.
+				 */
+				req->oldidx = oldidx;
+				error = 0;
+			}
 			break;
+		}
 	}
 	FILEDESC_SUNLOCK(fdp);
 	fddrop(fdp);
 	free(kif, M_TEMP);
-	return (0);
+	return (error);
 }
 
 static SYSCTL_NODE(_kern_proc, KERN_PROC_FILEDESC, filedesc, CTLFLAG_RD,
