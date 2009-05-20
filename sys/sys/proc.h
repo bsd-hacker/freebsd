@@ -40,11 +40,13 @@
 
 #include <sys/callout.h>		/* For struct callout. */
 #include <sys/event.h>			/* For struct klist. */
+#include <sys/condvar.h>
 #ifndef _KERNEL
 #include <sys/filedesc.h>
 #endif
 #include <sys/queue.h>
 #include <sys/_lock.h>
+#include <sys/lock_profile.h>
 #include <sys/_mutex.h>
 #include <sys/osd.h>
 #include <sys/priority.h>
@@ -211,6 +213,7 @@ struct thread {
 	/* The two queues below should someday be merged. */
 	TAILQ_ENTRY(thread) td_slpq;	/* (t) Sleep queue. */
 	TAILQ_ENTRY(thread) td_lockq;	/* (t) Lock queue. */
+	struct cpuset	*td_cpuset;	/* (t) CPU affinity mask. */
 	struct seltd	*td_sel;	/* Select queue/channel. */
 	struct sleepqueue *td_sleepqueue; /* (k) Associated sleep queue. */
 	struct turnstile *td_turnstile;	/* (k) Associated turnstile. */
@@ -232,6 +235,8 @@ struct thread {
 	u_char		td_oncpu;	/* (t) Which cpu we are on. */
 	volatile u_char td_owepreempt;  /* (k*) Preempt on last critical_exit */
 	short		td_locks;	/* (k) Count of non-spin locks. */
+	short		td_rw_rlocks;	/* (k) Count of rwlock read locks. */
+	short		td_lk_slocks;	/* (k) Count of lockmgr shared locks. */
 	u_char		td_tsqueue;	/* (t) Turnstile queue blocked on. */
 	struct turnstile *td_blocked;	/* (t) Lock thread is blocked on. */
 	const char	*td_lockname;	/* (t) Name of lock blocked on. */
@@ -239,34 +244,32 @@ struct thread {
 	struct lock_list_entry *td_sleeplocks; /* (k) Held sleep locks. */
 	int		td_intr_nesting_level; /* (k) Interrupt recursion. */
 	int		td_pinned;	/* (k) Temporary cpu pin count. */
-	struct kse_thr_mailbox *td_mailbox; /* (*) Userland mailbox address. */
 	struct ucred	*td_ucred;	/* (k) Reference to credentials. */
-	struct thread	*td_standin;	/* (k + a) Use this for an upcall. */
-	struct kse_upcall *td_upcall;	/* (k + t) Upcall structure. */
 	u_int		td_estcpu;	/* (t) estimated cpu utilization */
 	u_int		td_slptick;	/* (t) Time at sleep. */
 	struct rusage	td_ru;		/* (t) rusage information */
+	uint64_t	td_incruntime;	/* (t) Cpu ticks to transfer to proc. */
 	uint64_t	td_runtime;	/* (t) How many cpu ticks we've run. */
 	u_int 		td_pticks;	/* (t) Statclock hits for profiling */
 	u_int		td_sticks;	/* (t) Statclock hits in system mode. */
 	u_int		td_iticks;	/* (t) Statclock hits in intr mode. */
 	u_int		td_uticks;	/* (t) Statclock hits in user mode. */
-	u_int		td_uuticks;	/* (k) Statclock hits (usr), for UTS. */
-	u_int		td_usticks;	/* (k) Statclock hits (sys), for UTS. */
 	int		td_intrval;	/* (t) Return value of TDF_INTERRUPT. */
 	sigset_t	td_oldsigmask;	/* (k) Saved mask from pre sigpause. */
 	sigset_t	td_sigmask;	/* (c) Current signal mask. */
 	volatile u_int	td_generation;	/* (k) For detection of preemption */
 	stack_t		td_sigstk;	/* (k) Stack ptr and on-stack flag. */
-	int		td_kflags;	/* (c) Flags for KSE threading. */
 	int		td_xsig;	/* (c) Signal for ptrace */
 	u_long		td_profil_addr;	/* (k) Temporary addr until AST. */
 	u_int		td_profil_ticks; /* (k) Temporary ticks until AST. */
 	char		td_name[MAXCOMLEN + 1];	/* (*) Thread name. */
+	struct file	*td_fpop;	/* (k) file referencing cdev under op */
+	struct osd	td_osd;		/* (k) Object specific data. */
 #define	td_endzero td_base_pri
 
 /* Copied during fork1() or thread_sched_upcall(). */
 #define	td_startcopy td_endzero
+	u_char		td_rqindex;	/* (t) Run queue index. */
 	u_char		td_base_pri;	/* (t) Thread base kernel priority. */
 	u_char		td_priority;	/* (t) Thread active priority. */
 	u_char		td_pri_class;	/* (t) Scheduling class. */
@@ -300,12 +303,9 @@ struct thread {
 	struct td_sched	*td_sched;	/* (*) Scheduler-specific data. */
 	struct kaudit_record	*td_ar;	/* (k) Active audit record, if any. */
 	int		td_syscalls;	/* per-thread syscall count (used by NFS :)) */
-	uint64_t	td_incruntime;	/* (t) Cpu ticks to transfer to proc. */
-	struct cpuset	*td_cpuset;	/* (t) CPU affinity mask. */
-	struct file	*td_fpop;	/* (k) file referencing cdev under op */
+	struct lpohead	td_lprof[2];	/* (a) lock profiling objects. */
 	struct kdtrace_thread	*td_dtrace; /* (*) DTrace-specific data. */
 	int		td_errno;	/* Error returned by last syscall. */
-	struct osd	td_osd;		/* (k) Object specific data. */
 };
 
 struct mtx *thread_lock_block(struct thread *);
@@ -317,6 +317,17 @@ do {									\
 	if (__m != &blocked_lock)					\
 		mtx_assert(__m, (type));				\
 } while (0)
+
+#ifdef INVARIANTS
+#define	THREAD_LOCKPTR_ASSERT(td, lock)					\
+do {									\
+	struct mtx *__m = (td)->td_lock;				\
+	KASSERT((__m == &blocked_lock || __m == (lock)),		\
+	    ("Thread %p lock %p does not match %p", td, __m, (lock)));	\
+} while (0)
+#else
+#define	THREAD_LOCKPTR_ASSERT(td, lock)
+#endif
 
 /*
  * Flags kept in td_flags:
@@ -337,7 +348,7 @@ do {									\
 #define	TDF_TIMOFAIL	0x00001000 /* Timeout from sleep after we were awake. */
 #define	TDF_INTERRUPT	0x00002000 /* Thread is marked as interrupted. */
 #define	TDF_UPIBLOCKED	0x00004000 /* Thread blocked on user PI mutex. */
-#define	TDF_UNUSED15	0x00008000 /* --available-- */
+#define	TDF_NEEDSUSPCHK	0x00008000 /* Thread may need to suspend. */
 #define	TDF_NEEDRESCHED	0x00010000 /* Thread needs to yield. */
 #define	TDF_NEEDSIGCHK	0x00020000 /* Thread may need signal delivery. */
 #define	TDF_XSIG	0x00040000 /* Thread is exchanging signal under trace */
@@ -392,17 +403,6 @@ do {									\
 #define	TDI_LOCK	0x0008	/* Stopped on a lock. */
 #define	TDI_IWAIT	0x0010	/* Awaiting interrupt. */
 
-/*
- * flags (in kflags) related to M:N threading.
- */
-#define	TDK_KSEREL	0x0001	/* Blocked in msleep on p->p_completed. */
-#define	TDK_KSERELSIG	0x0002	/* Blocked in msleep on p->p_siglist. */
-#define	TDK_WAKEUP	0x0004	/* Thread has been woken by kse_wakeup. */
-
-#define	TD_CAN_UNBIND(td)			\
-    (((td)->td_pflags & TDP_CAN_UNBIND) &&	\
-     ((td)->td_upcall != NULL))
-
 #define	TD_IS_SLEEPING(td)	((td)->td_inhibitors & TDI_SLEEPING)
 #define	TD_ON_SLEEPQ(td)	((td)->td_wchan != NULL)
 #define	TD_IS_SUSPENDED(td)	((td)->td_inhibitors & TDI_SUSPENDED)
@@ -414,11 +414,7 @@ do {									\
 #define	TD_CAN_RUN(td)		((td)->td_state == TDS_CAN_RUN)
 #define	TD_IS_INHIBITED(td)	((td)->td_state == TDS_INHIBITED)
 #define	TD_ON_UPILOCK(td)	((td)->td_flags & TDF_UPIBLOCKED)
-#if 0
-#define TD_IS_IDLETHREAD(td)	((td) == pcpu(idlethread))
-#else
 #define TD_IS_IDLETHREAD(td)	((td)->td_flags & TDF_IDLETD)
-#endif
 
 
 #define	TD_SET_INHIB(td, inhib) do {			\
@@ -450,24 +446,6 @@ do {									\
 #define	TD_SET_CAN_RUN(td)	(td)->td_state = TDS_CAN_RUN
 
 /*
- * An upcall is used when returning to userland.  If a thread does not have
- * an upcall on return to userland the thread exports its context and exits.
- */
-struct kse_upcall {
-	TAILQ_ENTRY(kse_upcall) ku_link;	/* List of upcalls in proc. */
-	struct proc		*ku_proc;	/* Associated proc. */
-	struct thread		*ku_owner;	/* Owning thread. */
-	int			ku_flags;	/* KUF_* flags. */
-	struct kse_mailbox	*ku_mailbox;	/* Userland mailbox address. */
-	stack_t			ku_stack;	/* Userland upcall stack. */
-	void			*ku_func;	/* Userland upcall function. */
-	unsigned int		ku_mflags;	/* Cached upcall mbox flags. */
-};
-
-#define	KUF_DOUPCALL	0x00001		/* Do upcall now; don't wait. */
-#define	KUF_EXITING	0x00002		/* Upcall structure is exiting. */
-
-/*
  * XXX: Does this belong in resource.h or resourcevar.h instead?
  * Resource usage extension.  The times in rusage structs in the kernel are
  * never up to date.  The actual times are kept as runtimes and tick counts
@@ -494,7 +472,6 @@ struct rusage_ext {
 struct proc {
 	LIST_ENTRY(proc) p_list;	/* (d) List of all processes. */
 	TAILQ_HEAD(, thread) p_threads;	/* (c) all threads. */
-	TAILQ_HEAD(, kse_upcall) p_upcalls; /* (j) All upcalls in the proc. */
 	struct mtx	p_slock;	/* process spin lock */
 	struct ucred	*p_ucred;	/* (c) Process owner's identity. */
 	struct filedesc	*p_fd;		/* (b) Open files. */
@@ -558,11 +535,6 @@ struct proc {
 	int		p_boundary_count;/* (c) Num threads at user boundary */
 	int		p_pendingcnt;	/* how many signals are pending */
 	struct itimers	*p_itimers;	/* (c) POSIX interval timers. */
-	int		p_numupcalls;	/* (j) Num upcalls. */
-	int		p_upsleeps;	/* (c) Num threads in kse_release(). */
-	struct kse_thr_mailbox *p_completed; /* (c) Completed thread mboxes. */
-	int		p_nextupcall;	/* (n) Next upcall time. */
-	int		p_upquantum;	/* (n) Quantum to schedule an upcall. */
 /* End area that is zeroed on creation. */
 #define	p_endzero	p_magic
 
@@ -595,6 +567,7 @@ struct proc {
 	STAILQ_HEAD(, ktr_request)	p_ktr;	/* (o) KTR event queue. */
 	LIST_HEAD(, mqueue_notifier)	p_mqnotifier; /* (c) mqueue notifiers.*/
 	struct kdtrace_proc	*p_dtrace; /* (*) DTrace-specific data. */
+	struct cv	p_pwait;	/* (*) wait cv for exit/exec */
 };
 
 #define	p_session	p_pgrp->pg_session
@@ -658,9 +631,25 @@ struct proc {
 
 #ifdef _KERNEL
 
-/* Flags for mi_switch(). */
-#define	SW_VOL		0x0001		/* Voluntary switch. */
-#define	SW_INVOL	0x0002		/* Involuntary switch. */
+/* Types and flags for mi_switch(). */
+#define	SW_TYPE_MASK		0xff	/* First 8 bits are switch type */
+#define	SWT_NONE		0	/* Unspecified switch. */
+#define	SWT_PREEMPT		1	/* Switching due to preemption. */
+#define	SWT_OWEPREEMPT		2	/* Switching due to opepreempt. */
+#define	SWT_TURNSTILE		3	/* Turnstile contention. */
+#define	SWT_SLEEPQ		4	/* Sleepq wait. */
+#define	SWT_SLEEPQTIMO		5	/* Sleepq timeout wait. */
+#define	SWT_RELINQUISH		6	/* yield call. */
+#define	SWT_NEEDRESCHED		7	/* NEEDRESCHED was set. */
+#define	SWT_IDLE		8	/* Switching from the idle thread. */
+#define	SWT_IWAIT		9	/* Waiting for interrupts. */
+#define	SWT_SUSPEND		10	/* Thread suspended. */
+#define	SWT_REMOTEPREEMPT	11	/* Remote processor preempted. */
+#define	SWT_REMOTEWAKEIDLE	12	/* Remote processor preempted idle. */
+#define	SWT_COUNT		13	/* Number of switch types. */
+/* Flags */
+#define	SW_VOL		0x0100		/* Voluntary switch. */
+#define	SW_INVOL	0x0200		/* Involuntary switch. */
 #define SW_PREEMPT	0x0004		/* The invol switch is a preemption */
 
 /* How values for thread_single(). */

@@ -39,10 +39,12 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/ktr.h>
+#include <sys/kernel.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/proc.h>
 #include <sys/rwlock.h>
+#include <sys/sysctl.h>
 #include <sys/systm.h>
 #include <sys/turnstile.h>
 
@@ -54,17 +56,27 @@ CTASSERT((RW_RECURSE & LO_CLASSFLAGS) == RW_RECURSE);
 #define	ADAPTIVE_RWLOCKS
 #endif
 
+#ifdef ADAPTIVE_RWLOCKS
+static int rowner_retries = 10;
+static int rowner_loops = 10000;
+SYSCTL_NODE(_debug, OID_AUTO, rwlock, CTLFLAG_RD, NULL, "rwlock debugging");
+SYSCTL_INT(_debug_rwlock, OID_AUTO, retry, CTLFLAG_RW, &rowner_retries, 0, "");
+SYSCTL_INT(_debug_rwlock, OID_AUTO, loops, CTLFLAG_RW, &rowner_loops, 0, "");
+#endif
+
 #ifdef DDB
 #include <ddb/ddb.h>
 
 static void	db_show_rwlock(struct lock_object *lock);
 #endif
+static void	assert_rw(struct lock_object *lock, int what);
 static void	lock_rw(struct lock_object *lock, int how);
 static int	unlock_rw(struct lock_object *lock);
 
 struct lock_class lock_class_rw = {
 	.lc_name = "rw",
 	.lc_flags = LC_SLEEPLOCK | LC_RECURSABLE | LC_UPGRADABLE,
+	.lc_assert = assert_rw,
 #ifdef DDB
 	.lc_ddb_show = db_show_rwlock,
 #endif
@@ -101,6 +113,13 @@ struct lock_class lock_class_rw = {
 #ifndef INVARIANTS
 #define	_rw_assert(rw, what, file, line)
 #endif
+
+void
+assert_rw(struct lock_object *lock, int what)
+{
+
+	rw_assert((struct rwlock *)lock, what);
+}
 
 void
 lock_rw(struct lock_object *lock, int how)
@@ -172,6 +191,14 @@ rw_sysinit(void *arg)
 	rw_init(args->ra_rw, args->ra_desc);
 }
 
+void
+rw_sysinit_flags(void *arg)
+{
+	struct rw_args_flags *args = arg;
+
+	rw_init_flags(args->ra_rw, args->ra_desc, args->ra_flags);
+}
+
 int
 rw_wowned(struct rwlock *rw)
 {
@@ -187,7 +214,7 @@ _rw_wlock(struct rwlock *rw, const char *file, int line)
 	KASSERT(rw->rw_lock != RW_DESTROYED,
 	    ("rw_wlock() of destroyed rwlock @ %s:%d", file, line));
 	WITNESS_CHECKORDER(&rw->lock_object, LOP_NEWORDER | LOP_EXCLUSIVE, file,
-	    line);
+	    line, NULL);
 	__rw_wlock(rw, curthread, file, line);
 	LOCK_LOG_LOCK("WLOCK", &rw->lock_object, 0, rw->rw_recurse, file, line);
 	WITNESS_LOCK(&rw->lock_object, LOP_EXCLUSIVE, file, line);
@@ -234,6 +261,17 @@ _rw_wunlock(struct rwlock *rw, const char *file, int line)
 		lock_profile_release_lock(&rw->lock_object);
 	__rw_wunlock(rw, curthread, file, line);
 }
+/*
+ * Determines whether a new reader can acquire a lock.  Succeeds if the
+ * reader already owns a read lock and the lock is locked for read to
+ * prevent deadlock from reader recursion.  Also succeeds if the lock
+ * is unlocked and has no writer waiters or spinners.  Failing otherwise
+ * prioritizes writers before readers.
+ */
+#define	RW_CAN_READ(_rw)						\
+    ((curthread->td_rw_rlocks && (_rw) & RW_LOCK_READ) || ((_rw) &	\
+    (RW_LOCK_READ | RW_LOCK_WRITE_WAITERS | RW_LOCK_WRITE_SPINNER)) ==	\
+    RW_LOCK_READ)
 
 void
 _rw_rlock(struct rwlock *rw, const char *file, int line)
@@ -241,31 +279,22 @@ _rw_rlock(struct rwlock *rw, const char *file, int line)
 	struct turnstile *ts;
 #ifdef ADAPTIVE_RWLOCKS
 	volatile struct thread *owner;
+	int spintries = 0;
+	int i;
 #endif
-#ifdef LOCK_PROFILING_SHARED
+#ifdef LOCK_PROFILING
 	uint64_t waittime = 0;
 	int contested = 0;
 #endif
-	uintptr_t x;
+	uintptr_t v;
 
 	KASSERT(rw->rw_lock != RW_DESTROYED,
 	    ("rw_rlock() of destroyed rwlock @ %s:%d", file, line));
 	KASSERT(rw_wowner(rw) != curthread,
 	    ("%s (%s): wlock already held @ %s:%d", __func__,
 	    rw->lock_object.lo_name, file, line));
-	WITNESS_CHECKORDER(&rw->lock_object, LOP_NEWORDER, file, line);
+	WITNESS_CHECKORDER(&rw->lock_object, LOP_NEWORDER, file, line, NULL);
 
-	/*
-	 * Note that we don't make any attempt to try to block read
-	 * locks once a writer has blocked on the lock.  The reason is
-	 * that we currently allow for read locks to recurse and we
-	 * don't keep track of all the holders of read locks.  Thus, if
-	 * we were to block readers once a writer blocked and a reader
-	 * tried to recurse on their reader lock after a writer had
-	 * blocked we would end up in a deadlock since the reader would
-	 * be blocked on the writer, and the writer would be blocked
-	 * waiting for the reader to release its original read lock.
-	 */
 	for (;;) {
 		/*
 		 * Handle the easy case.  If no other thread has a write
@@ -277,33 +306,27 @@ _rw_rlock(struct rwlock *rw, const char *file, int line)
 		 * completely unlocked rwlock since such a lock is encoded
 		 * as a read lock with no waiters.
 		 */
-		x = rw->rw_lock;
-		if (x & RW_LOCK_READ) {
-
+		v = rw->rw_lock;
+		if (RW_CAN_READ(v)) {
 			/*
 			 * The RW_LOCK_READ_WAITERS flag should only be set
-			 * if another thread currently holds a write lock,
-			 * and in that case RW_LOCK_READ should be clear.
+			 * if the lock has been unlocked and write waiters
+			 * were present.
 			 */
-			MPASS((x & RW_LOCK_READ_WAITERS) == 0);
-			if (atomic_cmpset_acq_ptr(&rw->rw_lock, x,
-			    x + RW_ONE_READER)) {
-#ifdef LOCK_PROFILING_SHARED
-				if (RW_READERS(x) == 0)
-					lock_profile_obtain_lock_success(
-					    &rw->lock_object, contested,
-					    waittime, file, line);
-#endif
+			if (atomic_cmpset_acq_ptr(&rw->rw_lock, v,
+			    v + RW_ONE_READER)) {
 				if (LOCK_LOG_TEST(&rw->lock_object, 0))
 					CTR4(KTR_LOCK,
 					    "%s: %p succeed %p -> %p", __func__,
-					    rw, (void *)x,
-					    (void *)(x + RW_ONE_READER));
+					    rw, (void *)v,
+					    (void *)(v + RW_ONE_READER));
 				break;
 			}
 			cpu_spinwait();
 			continue;
 		}
+		lock_profile_obtain_lock_failed(&rw->lock_object,
+		    &contested, &waittime);
 
 #ifdef ADAPTIVE_RWLOCKS
 		/*
@@ -311,36 +334,45 @@ _rw_rlock(struct rwlock *rw, const char *file, int line)
 		 * the owner stops running or the state of the lock
 		 * changes.
 		 */
-		owner = (struct thread *)RW_OWNER(x);
-		if (TD_IS_RUNNING(owner)) {
-			if (LOCK_LOG_TEST(&rw->lock_object, 0))
-				CTR3(KTR_LOCK, "%s: spinning on %p held by %p",
-				    __func__, rw, owner);
-#ifdef LOCK_PROFILING_SHARED
-			lock_profile_obtain_lock_failed(&rw->lock_object,
-			    &contested, &waittime);
-#endif
-			while ((struct thread*)RW_OWNER(rw->rw_lock) == owner &&
-			    TD_IS_RUNNING(owner))
+		if ((v & RW_LOCK_READ) == 0) {
+			owner = (struct thread *)RW_OWNER(v);
+			if (TD_IS_RUNNING(owner)) {
+				if (LOCK_LOG_TEST(&rw->lock_object, 0))
+					CTR3(KTR_LOCK,
+					    "%s: spinning on %p held by %p",
+					    __func__, rw, owner);
+				while ((struct thread*)RW_OWNER(rw->rw_lock) ==
+				    owner && TD_IS_RUNNING(owner))
+					cpu_spinwait();
+				continue;
+			}
+		} else if (spintries < rowner_retries) {
+			spintries++;
+			for (i = 0; i < rowner_loops; i++) {
+				v = rw->rw_lock;
+				if ((v & RW_LOCK_READ) == 0 || RW_CAN_READ(v))
+					break;
 				cpu_spinwait();
-			continue;
+			}
+			if (i != rowner_loops)
+				continue;
 		}
 #endif
 
 		/*
 		 * Okay, now it's the hard case.  Some other thread already
-		 * has a write lock, so acquire the turnstile lock so we can
-		 * begin the process of blocking.
+		 * has a write lock or there are write waiters present,
+		 * acquire the turnstile lock so we can begin the process
+		 * of blocking.
 		 */
 		ts = turnstile_trywait(&rw->lock_object);
 
 		/*
 		 * The lock might have been released while we spun, so
-		 * recheck its state and restart the loop if there is no
-		 * longer a write lock.
+		 * recheck its state and restart the loop if needed.
 		 */
-		x = rw->rw_lock;
-		if (x & RW_LOCK_READ) {
+		v = rw->rw_lock;
+		if (RW_CAN_READ(v)) {
 			turnstile_cancel(ts);
 			cpu_spinwait();
 			continue;
@@ -351,23 +383,30 @@ _rw_rlock(struct rwlock *rw, const char *file, int line)
 		 * If the current owner of the lock is executing on another
 		 * CPU quit the hard path and try to spin.
 		 */
-		owner = (struct thread *)RW_OWNER(x);
-		if (TD_IS_RUNNING(owner)) {
-			turnstile_cancel(ts);
-			cpu_spinwait();
-			continue;
+		if ((v & RW_LOCK_READ) == 0) {
+			owner = (struct thread *)RW_OWNER(v);
+			if (TD_IS_RUNNING(owner)) {
+				turnstile_cancel(ts);
+				cpu_spinwait();
+				continue;
+			}
 		}
 #endif
 
 		/*
-		 * Ok, it's still a write lock.  If the RW_LOCK_READ_WAITERS
-		 * flag is already set, then we can go ahead and block.  If
-		 * it is not set then try to set it.  If we fail to set it
-		 * drop the turnstile lock and restart the loop.
+		 * The lock is held in write mode or it already has waiters.
 		 */
-		if (!(x & RW_LOCK_READ_WAITERS)) {
-			if (!atomic_cmpset_ptr(&rw->rw_lock, x,
-			    x | RW_LOCK_READ_WAITERS)) {
+		MPASS(!RW_CAN_READ(v));
+
+		/*
+		 * If the RW_LOCK_READ_WAITERS flag is already set, then
+		 * we can go ahead and block.  If it is not set then try
+		 * to set it.  If we fail to set it drop the turnstile
+		 * lock and restart the loop.
+		 */
+		if (!(v & RW_LOCK_READ_WAITERS)) {
+			if (!atomic_cmpset_ptr(&rw->rw_lock, v,
+			    v | RW_LOCK_READ_WAITERS)) {
 				turnstile_cancel(ts);
 				cpu_spinwait();
 				continue;
@@ -384,10 +423,6 @@ _rw_rlock(struct rwlock *rw, const char *file, int line)
 		if (LOCK_LOG_TEST(&rw->lock_object, 0))
 			CTR2(KTR_LOCK, "%s: %p blocking on turnstile", __func__,
 			    rw);
-#ifdef LOCK_PROFILING_SHARED
-		lock_profile_obtain_lock_failed(&rw->lock_object, &contested,
-		    &waittime);
-#endif
 		turnstile_wait(ts, rw_owner(rw), TS_SHARED_QUEUE);
 		if (LOCK_LOG_TEST(&rw->lock_object, 0))
 			CTR2(KTR_LOCK, "%s: %p resuming from turnstile",
@@ -399,10 +434,12 @@ _rw_rlock(struct rwlock *rw, const char *file, int line)
 	 * however.  turnstiles don't like owners changing between calls to
 	 * turnstile_wait() currently.
 	 */
-
+	lock_profile_obtain_lock_success( &rw->lock_object, contested,
+	    waittime, file, line);
 	LOCK_LOG_LOCK("RLOCK", &rw->lock_object, 0, 0, file, line);
 	WITNESS_LOCK(&rw->lock_object, 0, file, line);
 	curthread->td_locks++;
+	curthread->td_rw_rlocks++;
 }
 
 int
@@ -421,6 +458,7 @@ _rw_try_rlock(struct rwlock *rw, const char *file, int line)
 			    line);
 			WITNESS_LOCK(&rw->lock_object, LOP_TRYLOCK, file, line);
 			curthread->td_locks++;
+			curthread->td_rw_rlocks++;
 			return (1);
 		}
 	}
@@ -433,12 +471,13 @@ void
 _rw_runlock(struct rwlock *rw, const char *file, int line)
 {
 	struct turnstile *ts;
-	uintptr_t x;
+	uintptr_t x, v, queue;
 
 	KASSERT(rw->rw_lock != RW_DESTROYED,
 	    ("rw_runlock() of destroyed rwlock @ %s:%d", file, line));
 	_rw_assert(rw, RA_RLOCKED, file, line);
 	curthread->td_locks--;
+	curthread->td_rw_rlocks--;
 	WITNESS_UNLOCK(&rw->lock_object, 0, file, line);
 	LOCK_LOG_LOCK("RUNLOCK", &rw->lock_object, 0, 0, file, line);
 
@@ -462,34 +501,14 @@ _rw_runlock(struct rwlock *rw, const char *file, int line)
 			}
 			continue;
 		}
-
-
-		/*
-		 * We should never have read waiters while at least one
-		 * thread holds a read lock.  (See note above)
-		 */
-		KASSERT(!(x & RW_LOCK_READ_WAITERS),
-		    ("%s: waiting readers", __func__));
-#ifdef LOCK_PROFILING_SHARED
-		lock_profile_release_lock(&rw->lock_object);
-#endif
-
 		/*
 		 * If there aren't any waiters for a write lock, then try
 		 * to drop it quickly.
 		 */
-		if (!(x & RW_LOCK_WRITE_WAITERS)) {
-
-			/*
-			 * There shouldn't be any flags set and we should
-			 * be the only read lock.  If we fail to release
-			 * the single read lock, then another thread might
-			 * have just acquired a read lock, so go back up
-			 * to the multiple read locks case.
-			 */
-			MPASS(x == RW_READERS_LOCK(1));
-			if (atomic_cmpset_ptr(&rw->rw_lock, RW_READERS_LOCK(1),
-			    RW_UNLOCKED)) {
+		if (!(x & RW_LOCK_WAITERS)) {
+			MPASS((x & ~RW_LOCK_WRITE_SPINNER) ==
+			    RW_READERS_LOCK(1));
+			if (atomic_cmpset_ptr(&rw->rw_lock, x, RW_UNLOCKED)) {
 				if (LOCK_LOG_TEST(&rw->lock_object, 0))
 					CTR2(KTR_LOCK, "%s: %p last succeeded",
 					    __func__, rw);
@@ -497,18 +516,13 @@ _rw_runlock(struct rwlock *rw, const char *file, int line)
 			}
 			continue;
 		}
-
 		/*
-		 * There should just be one reader with one or more
-		 * writers waiting.
-		 */
-		MPASS(x == (RW_READERS_LOCK(1) | RW_LOCK_WRITE_WAITERS));
-
-		/*
-		 * Ok, we know we have a waiting writer and we think we
-		 * are the last reader, so grab the turnstile lock.
+		 * Ok, we know we have waiters and we think we are the
+		 * last reader, so grab the turnstile lock.
 		 */
 		turnstile_chain_lock(&rw->lock_object);
+		v = rw->rw_lock & (RW_LOCK_WAITERS | RW_LOCK_WRITE_SPINNER);
+		MPASS(v & RW_LOCK_WAITERS);
 
 		/*
 		 * Try to drop our lock leaving the lock in a unlocked
@@ -526,8 +540,14 @@ _rw_runlock(struct rwlock *rw, const char *file, int line)
 		 * acquired a read lock, so drop the turnstile lock and
 		 * restart.
 		 */
-		if (!atomic_cmpset_ptr(&rw->rw_lock,
-		    RW_READERS_LOCK(1) | RW_LOCK_WRITE_WAITERS, RW_UNLOCKED)) {
+		x = RW_UNLOCKED;
+		if (v & RW_LOCK_WRITE_WAITERS) {
+			queue = TS_EXCLUSIVE_QUEUE;
+			x |= (v & RW_LOCK_READ_WAITERS);
+		} else
+			queue = TS_SHARED_QUEUE;
+		if (!atomic_cmpset_ptr(&rw->rw_lock, RW_READERS_LOCK(1) | v,
+		    x)) {
 			turnstile_chain_unlock(&rw->lock_object);
 			continue;
 		}
@@ -544,11 +564,12 @@ _rw_runlock(struct rwlock *rw, const char *file, int line)
 		 */
 		ts = turnstile_lookup(&rw->lock_object);
 		MPASS(ts != NULL);
-		turnstile_broadcast(ts, TS_EXCLUSIVE_QUEUE);
+		turnstile_broadcast(ts, queue);
 		turnstile_unpend(ts, TS_SHARED_LOCK);
 		turnstile_chain_unlock(&rw->lock_object);
 		break;
 	}
+	lock_profile_release_lock(&rw->lock_object);
 }
 
 /*
@@ -562,17 +583,20 @@ _rw_wlock_hard(struct rwlock *rw, uintptr_t tid, const char *file, int line)
 	struct turnstile *ts;
 #ifdef ADAPTIVE_RWLOCKS
 	volatile struct thread *owner;
+	int spintries = 0;
+	int i;
 #endif
+	uintptr_t v, x;
+#ifdef LOCK_PROFILING
 	uint64_t waittime = 0;
-	uintptr_t v;
 	int contested = 0;
+#endif
 
 	if (rw_wlocked(rw)) {
 		KASSERT(rw->lock_object.lo_flags & RW_RECURSE,
 		    ("%s: recursing but non-recursive rw %s @ %s:%d\n",
 		    __func__, rw->lock_object.lo_name, file, line));
 		rw->rw_recurse++;
-		atomic_set_ptr(&rw->rw_lock, RW_LOCK_RECURSED);
 		if (LOCK_LOG_TEST(&rw->lock_object, 0))
 			CTR2(KTR_LOCK, "%s: %p recursing", __func__, rw);
 		return;
@@ -583,6 +607,8 @@ _rw_wlock_hard(struct rwlock *rw, uintptr_t tid, const char *file, int line)
 		    rw->lock_object.lo_name, (void *)rw->rw_lock, file, line);
 
 	while (!_rw_write_lock(rw, tid)) {
+		lock_profile_obtain_lock_failed(&rw->lock_object,
+		    &contested, &waittime);
 #ifdef ADAPTIVE_RWLOCKS
 		/*
 		 * If the lock is write locked and the owner is
@@ -595,27 +621,32 @@ _rw_wlock_hard(struct rwlock *rw, uintptr_t tid, const char *file, int line)
 			if (LOCK_LOG_TEST(&rw->lock_object, 0))
 				CTR3(KTR_LOCK, "%s: spinning on %p held by %p",
 				    __func__, rw, owner);
-			lock_profile_obtain_lock_failed(&rw->lock_object,
-			    &contested, &waittime);
 			while ((struct thread*)RW_OWNER(rw->rw_lock) == owner &&
 			    TD_IS_RUNNING(owner))
 				cpu_spinwait();
 			continue;
 		}
+		if ((v & RW_LOCK_READ) && RW_READERS(v) &&
+		    spintries < rowner_retries) {
+			if (!(v & RW_LOCK_WRITE_SPINNER)) {
+				if (!atomic_cmpset_ptr(&rw->rw_lock, v,
+				    v | RW_LOCK_WRITE_SPINNER)) {
+					cpu_spinwait();
+					continue;
+				}
+			}
+			spintries++;
+			for (i = 0; i < rowner_loops; i++) {
+				if ((rw->rw_lock & RW_LOCK_WRITE_SPINNER) == 0)
+					break;
+				cpu_spinwait();
+			}
+			if (i != rowner_loops)
+				continue;
+		}
 #endif
-
 		ts = turnstile_trywait(&rw->lock_object);
 		v = rw->rw_lock;
-
-		/*
-		 * If the lock was released while spinning on the
-		 * turnstile chain lock, try again.
-		 */
-		if (v == RW_UNLOCKED) {
-			turnstile_cancel(ts);
-			cpu_spinwait();
-			continue;
-		}
 
 #ifdef ADAPTIVE_RWLOCKS
 		/*
@@ -631,31 +662,27 @@ _rw_wlock_hard(struct rwlock *rw, uintptr_t tid, const char *file, int line)
 			}
 		}
 #endif
-
 		/*
-		 * If the lock was released by a writer with both readers
-		 * and writers waiting and a reader hasn't woken up and
-		 * acquired the lock yet, rw_lock will be set to the
-		 * value RW_UNLOCKED | RW_LOCK_WRITE_WAITERS.  If we see
-		 * that value, try to acquire it once.  Note that we have
-		 * to preserve the RW_LOCK_WRITE_WAITERS flag as there are
-		 * other writers waiting still.  If we fail, restart the
-		 * loop.
+		 * Check for the waiters flags about this rwlock.
+		 * If the lock was released, without maintain any pending
+		 * waiters queue, simply try to acquire it.
+		 * If a pending waiters queue is present, claim the lock
+		 * ownership and maintain the pending queue.
 		 */
-		if (v == (RW_UNLOCKED | RW_LOCK_WRITE_WAITERS)) {
-			if (atomic_cmpset_acq_ptr(&rw->rw_lock,
-			    RW_UNLOCKED | RW_LOCK_WRITE_WAITERS,
-			    tid | RW_LOCK_WRITE_WAITERS)) {
-				turnstile_claim(ts);
-				CTR2(KTR_LOCK, "%s: %p claimed by new writer",
-				    __func__, rw);
+		x = v & (RW_LOCK_WAITERS | RW_LOCK_WRITE_SPINNER);
+		if ((v & ~x) == RW_UNLOCKED) {
+			x &= ~RW_LOCK_WRITE_SPINNER;
+			if (atomic_cmpset_acq_ptr(&rw->rw_lock, v, tid | x)) {
+				if (x)
+					turnstile_claim(ts);
+				else
+					turnstile_cancel(ts);
 				break;
 			}
 			turnstile_cancel(ts);
 			cpu_spinwait();
 			continue;
 		}
-
 		/*
 		 * If the RW_LOCK_WRITE_WAITERS flag isn't set, then try to
 		 * set it.  If we fail to set it, then loop back and try
@@ -672,7 +699,6 @@ _rw_wlock_hard(struct rwlock *rw, uintptr_t tid, const char *file, int line)
 				CTR2(KTR_LOCK, "%s: %p set write waiters flag",
 				    __func__, rw);
 		}
-
 		/*
 		 * We were unable to acquire the lock and the write waiters
 		 * flag is set, so we must block on the turnstile.
@@ -680,12 +706,13 @@ _rw_wlock_hard(struct rwlock *rw, uintptr_t tid, const char *file, int line)
 		if (LOCK_LOG_TEST(&rw->lock_object, 0))
 			CTR2(KTR_LOCK, "%s: %p blocking on turnstile", __func__,
 			    rw);
-		lock_profile_obtain_lock_failed(&rw->lock_object, &contested,
-		    &waittime);
 		turnstile_wait(ts, rw_owner(rw), TS_EXCLUSIVE_QUEUE);
 		if (LOCK_LOG_TEST(&rw->lock_object, 0))
 			CTR2(KTR_LOCK, "%s: %p resuming from turnstile",
 			    __func__, rw);
+#ifdef ADAPTIVE_RWLOCKS
+		spintries = 0;
+#endif
 	}
 	lock_profile_obtain_lock_success(&rw->lock_object, contested, waittime,
 	    file, line);
@@ -704,8 +731,7 @@ _rw_wunlock_hard(struct rwlock *rw, uintptr_t tid, const char *file, int line)
 	int queue;
 
 	if (rw_wlocked(rw) && rw_recursed(rw)) {
-		if ((--rw->rw_recurse) == 0)
-			atomic_clear_ptr(&rw->rw_lock, RW_LOCK_RECURSED);
+		rw->rw_recurse--;
 		if (LOCK_LOG_TEST(&rw->lock_object, 0))
 			CTR2(KTR_LOCK, "%s: %p unrecursing", __func__, rw);
 		return;
@@ -719,7 +745,6 @@ _rw_wunlock_hard(struct rwlock *rw, uintptr_t tid, const char *file, int line)
 
 	turnstile_chain_lock(&rw->lock_object);
 	ts = turnstile_lookup(&rw->lock_object);
-
 	MPASS(ts != NULL);
 
 	/*
@@ -739,11 +764,11 @@ _rw_wunlock_hard(struct rwlock *rw, uintptr_t tid, const char *file, int line)
 	 * of waiters or doing some complicated lock handoff gymnastics.
 	 */
 	v = RW_UNLOCKED;
-	if (rw->rw_lock & RW_LOCK_READ_WAITERS) {
-		queue = TS_SHARED_QUEUE;
-		v |= (rw->rw_lock & RW_LOCK_WRITE_WAITERS);
-	} else
+	if (rw->rw_lock & RW_LOCK_WRITE_WAITERS) {
 		queue = TS_EXCLUSIVE_QUEUE;
+		v |= (rw->rw_lock & RW_LOCK_READ_WAITERS);
+	} else
+		queue = TS_SHARED_QUEUE;
 
 	/* Wake up all waiters for the specific queue. */
 	if (LOCK_LOG_TEST(&rw->lock_object, 0))
@@ -763,7 +788,7 @@ _rw_wunlock_hard(struct rwlock *rw, uintptr_t tid, const char *file, int line)
 int
 _rw_try_upgrade(struct rwlock *rw, const char *file, int line)
 {
-	uintptr_t v, tid;
+	uintptr_t v, x, tid;
 	struct turnstile *ts;
 	int success;
 
@@ -779,36 +804,50 @@ _rw_try_upgrade(struct rwlock *rw, const char *file, int line)
 	 * turnstile.  So, do the simple case of no waiters first.
 	 */
 	tid = (uintptr_t)curthread;
-	if (!(rw->rw_lock & RW_LOCK_WRITE_WAITERS)) {
-		success = atomic_cmpset_ptr(&rw->rw_lock, RW_READERS_LOCK(1),
-		    tid);
-		goto out;
-	}
+	success = 0;
+	for (;;) {
+		v = rw->rw_lock;
+		if (RW_READERS(v) > 1)
+			break;
+		if (!(v & RW_LOCK_WAITERS)) {
+			success = atomic_cmpset_ptr(&rw->rw_lock, v, tid);
+			if (!success)
+				continue;
+			break;
+		}
 
-	/*
-	 * Ok, we think we have write waiters, so lock the
-	 * turnstile.
-	 */
-	ts = turnstile_trywait(&rw->lock_object);
-
-	/*
-	 * Try to switch from one reader to a writer again.  This time
-	 * we honor the current state of the RW_LOCK_WRITE_WAITERS
-	 * flag.  If we obtain the lock with the flag set, then claim
-	 * ownership of the turnstile.
-	 */
-	v = rw->rw_lock & RW_LOCK_WRITE_WAITERS;
-	success = atomic_cmpset_ptr(&rw->rw_lock, RW_READERS_LOCK(1) | v,
-	    tid | v);
-	if (success && v)
-		turnstile_claim(ts);
-	else
+		/*
+		 * Ok, we think we have waiters, so lock the turnstile.
+		 */
+		ts = turnstile_trywait(&rw->lock_object);
+		v = rw->rw_lock;
+		if (RW_READERS(v) > 1) {
+			turnstile_cancel(ts);
+			break;
+		}
+		/*
+		 * Try to switch from one reader to a writer again.  This time
+		 * we honor the current state of the waiters flags.
+		 * If we obtain the lock with the flags set, then claim
+		 * ownership of the turnstile.
+		 */
+		x = rw->rw_lock & RW_LOCK_WAITERS;
+		success = atomic_cmpset_ptr(&rw->rw_lock, v, tid | x);
+		if (success) {
+			if (x)
+				turnstile_claim(ts);
+			else
+				turnstile_cancel(ts);
+			break;
+		}
 		turnstile_cancel(ts);
-out:
+	}
 	LOCK_LOG_TRY("WUPGRADE", &rw->lock_object, 0, success, file, line);
-	if (success)
+	if (success) {
+		curthread->td_rw_rlocks--;
 		WITNESS_UPGRADE(&rw->lock_object, LOP_EXCLUSIVE | LOP_TRYLOCK,
 		    file, line);
+	}
 	return (success);
 }
 
@@ -820,6 +859,7 @@ _rw_downgrade(struct rwlock *rw, const char *file, int line)
 {
 	struct turnstile *ts;
 	uintptr_t tid, v;
+	int rwait, wwait;
 
 	KASSERT(rw->rw_lock != RW_DESTROYED,
 	    ("rw_downgrade() of destroyed rwlock @ %s:%d", file, line));
@@ -834,8 +874,7 @@ _rw_downgrade(struct rwlock *rw, const char *file, int line)
 	/*
 	 * Convert from a writer to a single reader.  First we handle
 	 * the easy case with no waiters.  If there are any waiters, we
-	 * lock the turnstile, "disown" the lock, and awaken any read
-	 * waiters.
+	 * lock the turnstile and "disown" the lock.
 	 */
 	tid = (uintptr_t)curthread;
 	if (atomic_cmpset_rel_ptr(&rw->rw_lock, tid, RW_READERS_LOCK(1)))
@@ -846,26 +885,32 @@ _rw_downgrade(struct rwlock *rw, const char *file, int line)
 	 * read the waiter flags without any races.
 	 */
 	turnstile_chain_lock(&rw->lock_object);
-	v = rw->rw_lock;
-	MPASS(v & (RW_LOCK_READ_WAITERS | RW_LOCK_WRITE_WAITERS));
+	v = rw->rw_lock & RW_LOCK_WAITERS;
+	rwait = v & RW_LOCK_READ_WAITERS;
+	wwait = v & RW_LOCK_WRITE_WAITERS;
+	MPASS(rwait | wwait);
 
 	/*
-	 * Downgrade from a write lock while preserving
-	 * RW_LOCK_WRITE_WAITERS and give up ownership of the
-	 * turnstile.  If there are any read waiters, wake them up.
+	 * Downgrade from a write lock while preserving waiters flag
+	 * and give up ownership of the turnstile.
 	 */
 	ts = turnstile_lookup(&rw->lock_object);
 	MPASS(ts != NULL);
-	if (v & RW_LOCK_READ_WAITERS)
+	if (!wwait)
+		v &= ~RW_LOCK_READ_WAITERS;
+	atomic_store_rel_ptr(&rw->rw_lock, RW_READERS_LOCK(1) | v);
+	/*
+	 * Wake other readers if there are no writers pending.  Otherwise they
+	 * won't be able to acquire the lock anyway.
+	 */
+	if (rwait && !wwait) {
 		turnstile_broadcast(ts, TS_SHARED_QUEUE);
-	atomic_store_rel_ptr(&rw->rw_lock, RW_READERS_LOCK(1) |
-	    (v & RW_LOCK_WRITE_WAITERS));
-	if (v & RW_LOCK_READ_WAITERS)
 		turnstile_unpend(ts, TS_EXCLUSIVE_LOCK);
-	else
+	} else
 		turnstile_disown(ts);
 	turnstile_chain_unlock(&rw->lock_object);
 out:
+	curthread->td_rw_rlocks++;
 	LOCK_LOG_LOCK("WDOWNGRADE", &rw->lock_object, 0, 0, file, line);
 }
 
@@ -972,7 +1017,7 @@ db_show_rwlock(struct lock_object *lock)
 	else {
 		td = rw_wowner(rw);
 		db_printf("WLOCK: %p (tid %d, pid %d, \"%s\")\n", td,
-		    td->td_tid, td->td_proc->p_pid, td->td_proc->p_comm);
+		    td->td_tid, td->td_proc->p_pid, td->td_name);
 		if (rw_recursed(rw))
 			db_printf(" recursed: %u\n", rw->rw_recurse);
 	}

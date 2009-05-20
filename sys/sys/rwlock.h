@@ -66,10 +66,11 @@
 #define	RW_LOCK_READ		0x01
 #define	RW_LOCK_READ_WAITERS	0x02
 #define	RW_LOCK_WRITE_WAITERS	0x04
-#define	RW_LOCK_RECURSED	0x08
+#define	RW_LOCK_WRITE_SPINNER	0x08
 #define	RW_LOCK_FLAGMASK						\
 	(RW_LOCK_READ | RW_LOCK_READ_WAITERS | RW_LOCK_WRITE_WAITERS |	\
-	RW_LOCK_RECURSED)
+	RW_LOCK_WRITE_SPINNER)
+#define	RW_LOCK_WAITERS		(RW_LOCK_READ_WAITERS | RW_LOCK_WRITE_WAITERS)
 
 #define	RW_OWNER(x)		((x) & ~RW_LOCK_FLAGMASK)
 #define	RW_READERS_SHIFT	4
@@ -81,6 +82,8 @@
 #define	RW_DESTROYED		(RW_LOCK_READ_WAITERS | RW_LOCK_WRITE_WAITERS)
 
 #ifdef _KERNEL
+
+#define	rw_recurse	lock_object.lo_data
 
 /* Very simple operations on rw_lock. */
 
@@ -113,7 +116,9 @@
 #define	__rw_wunlock(rw, tid, file, line) do {				\
 	uintptr_t _tid = (uintptr_t)(tid);				\
 									\
-	if (!_rw_write_unlock((rw), _tid))				\
+	if ((rw)->rw_recurse)						\
+		(rw)->rw_recurse--;					\
+	else if (!_rw_write_unlock((rw), _tid))				\
 		_rw_wunlock_hard((rw), _tid, (file), (line));		\
 } while (0)
 
@@ -127,6 +132,7 @@
 void	rw_init_flags(struct rwlock *rw, const char *name, int opts);
 void	rw_destroy(struct rwlock *rw);
 void	rw_sysinit(void *arg);
+void	rw_sysinit_flags(void *arg);
 int	rw_wowned(struct rwlock *rw);
 void	_rw_wlock(struct rwlock *rw, const char *file, int line);
 int	_rw_try_wlock(struct rwlock *rw, const char *file, int line);
@@ -166,6 +172,12 @@ void	_rw_assert(struct rwlock *rw, int what, const char *file, int line);
 #define	rw_try_upgrade(rw)	_rw_try_upgrade((rw), LOCK_FILE, LOCK_LINE)
 #define	rw_try_wlock(rw)	_rw_try_wlock((rw), LOCK_FILE, LOCK_LINE)
 #define	rw_downgrade(rw)	_rw_downgrade((rw), LOCK_FILE, LOCK_LINE)
+#define	rw_unlock(rw)	do {						\
+	if (rw_wowned(rw))						\
+		rw_wunlock(rw);						\
+	else								\
+		rw_runlock(rw);						\
+} while (0)
 #define	rw_sleep(chan, rw, pri, wmesg, timo)				\
 	_sleep((chan), &(rw)->lock_object, (pri), (wmesg), (timo))
 
@@ -176,6 +188,12 @@ struct rw_args {
 	const char 	*ra_desc;
 };
 
+struct rw_args_flags {
+	struct rwlock	*ra_rw;
+	const char 	*ra_desc;
+	int		ra_flags;
+};
+
 #define	RW_SYSINIT(name, rw, desc)					\
 	static struct rw_args name##_args = {				\
 		(rw),							\
@@ -183,6 +201,18 @@ struct rw_args {
 	};								\
 	SYSINIT(name##_rw_sysinit, SI_SUB_LOCK, SI_ORDER_MIDDLE,	\
 	    rw_sysinit, &name##_args);					\
+	SYSUNINIT(name##_rw_sysuninit, SI_SUB_LOCK, SI_ORDER_MIDDLE,	\
+	    rw_destroy, (rw))
+
+
+#define	RW_SYSINIT_FLAGS(name, rw, desc, flags)				\
+	static struct rw_args_flags name##_args = {			\
+		(rw),							\
+		(desc),							\
+		(flags),						\
+	};								\
+	SYSINIT(name##_rw_sysinit, SI_SUB_LOCK, SI_ORDER_MIDDLE,	\
+	    rw_sysinit_flags, &name##_args);				\
 	SYSUNINIT(name##_rw_sysuninit, SI_SUB_LOCK, SI_ORDER_MIDDLE,	\
 	    rw_destroy, (rw))
 

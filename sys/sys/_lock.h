@@ -55,15 +55,9 @@ struct lock_profile_object {
 
 struct lock_object {
 	const	char *lo_name;		/* Individual lock name. */
-	const	char *lo_type;		/* General lock type. */
 	u_int	lo_flags;
-#ifdef LOCK_PROFILING
-        struct  lock_profile_object lo_profile_obj;
-#endif
-	union {				/* Data for witness. */
-		STAILQ_ENTRY(lock_object) lod_list;
-		struct	witness *lod_witness;
-	} lo_witness_data;
+	u_int	lo_data;
+	struct	witness *lo_witness;
 };
 
 #endif /* !_SYS__LOCK_H_ */

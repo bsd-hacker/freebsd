@@ -32,7 +32,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
+__FBSDID("$FreeBSD: head/sys/kern/kern_rmlock.c 191539 2009-04-26 21:16:03Z rwatson $");
 
 #include "opt_ddb.h"
 
@@ -69,12 +69,14 @@ static __inline void compiler_memory_barrier(void) {
 	__asm __volatile("":::"memory");
 }
 
+static void	assert_rm(struct lock_object *lock, int what);
 static void	lock_rm(struct lock_object *lock, int how);
 static int	unlock_rm(struct lock_object *lock);
 
 struct lock_class lock_class_rm = {
 	.lc_name = "rm",
 	.lc_flags = LC_SLEEPLOCK | LC_RECURSABLE,
+	.lc_assert = assert_rm,
 #if 0
 #ifdef DDB
 	.lc_ddb_show = db_show_rwlock,
@@ -83,6 +85,13 @@ struct lock_class lock_class_rm = {
 	.lc_lock = lock_rm,
 	.lc_unlock = unlock_rm,
 };
+
+static void
+assert_rm(struct lock_object *lock, int what)
+{
+
+	panic("assert_rm called");
+}
 
 static void
 lock_rm(struct lock_object *lock, int how)
@@ -403,7 +412,7 @@ void _rm_wlock_debug(struct rmlock *rm, const char *file, int line)
 {
 
 	WITNESS_CHECKORDER(&rm->lock_object, LOP_NEWORDER | LOP_EXCLUSIVE,
-	    file, line);
+	    file, line, NULL);
 
 	_rm_wlock(rm);
 
@@ -430,7 +439,7 @@ _rm_rlock_debug(struct rmlock *rm, struct rm_priotracker *tracker,
     const char *file, int line)
 {
 
-	WITNESS_CHECKORDER(&rm->lock_object, LOP_NEWORDER, file, line);
+	WITNESS_CHECKORDER(&rm->lock_object, LOP_NEWORDER, file, line, NULL);
 
 	_rm_rlock(rm, tracker);
 
