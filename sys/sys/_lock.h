@@ -31,28 +31,6 @@
 #ifndef _SYS__LOCK_H_
 #define	_SYS__LOCK_H_
 
-struct lock_profile_object {
-        /*
-         * This does not result in variant structure sizes because
-         * MUTEX_PROFILING is in opt_global.h
-         */
-	u_int64_t               lpo_acqtime;
-	u_int64_t               lpo_waittime;
-	const char              *lpo_filename;
-	u_int                   lpo_namehash;
-	int                     lpo_lineno;
-	const char              *lpo_type;
-        /*
-         * Fields relating to measuring contention on mutexes.
-         * holding must be accessed atomically since it's
-         * modified by threads that don't yet hold the mutex.
-         * locking is only modified and referenced while
-         * the mutex is held.
-         */
-        u_int                   lpo_contest_holding;
-        u_int                   lpo_contest_locking;
-};
-
 struct lock_object {
 	const	char *lo_name;		/* Individual lock name. */
 	u_int	lo_flags;
