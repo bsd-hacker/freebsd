@@ -1474,9 +1474,9 @@ falloc(struct thread *td, struct file **resultfp, int *resultfd)
 	 * descriptor to the list of open files at that point, otherwise
 	 * put it at the front of the list of open files.
 	 */
-	fp->f_count = 1;
+	refcount_init(&fp->f_count, 1);
 	if (resultfp)
-		fp->f_count++;
+		fhold(fp);
 	fp->f_cred = crhold(td->td_ucred);
 	fp->f_ops = &badfileops;
 	fp->f_data = NULL;
@@ -2276,14 +2276,13 @@ _fdrop(struct file *fp, struct thread *td)
 		panic("fdrop: count %d", fp->f_count);
 	if (fp->f_ops != &badfileops)
 		error = fo_close(fp, td);
-	atomic_subtract_int(&openfiles, 1);
-
 	/*
 	 * The f_cdevpriv cannot be assigned non-NULL value while we
 	 * are destroying the file.
 	 */
 	if (fp->f_cdevpriv != NULL)
 		devfs_fpdrop(fp);
+	atomic_subtract_int(&openfiles, 1);
 	crfree(fp->f_cred);
 	uma_zfree(file_zone, fp);
 
@@ -2526,7 +2525,8 @@ sysctl_kern_file(SYSCTL_HANDLER_ARGS)
 			if (fdp == NULL)
 				continue;
 			/* overestimates sparse tables. */
-			n += fdp->fd_lastfile;
+			if (fdp->fd_lastfile > 0)
+				n += fdp->fd_lastfile;
 			fddrop(fdp);
 		}
 		sx_sunlock(&allproc_lock);
@@ -2907,7 +2907,6 @@ sysctl_kern_proc_filedesc(SYSCTL_HANDLER_ARGS)
 		case DTYPE_VNODE:
 			kif->kf_type = KF_TYPE_VNODE;
 			vp = fp->f_vnode;
-			vref(vp);
 			break;
 
 		case DTYPE_SOCKET:
@@ -2964,6 +2963,7 @@ sysctl_kern_proc_filedesc(SYSCTL_HANDLER_ARGS)
 			kif->kf_flags |= KF_FLAG_HASLOCK;
 		kif->kf_offset = fp->f_offset;
 		if (vp != NULL) {
+			vref(vp);
 			switch (vp->v_type) {
 			case VNON:
 				kif->kf_vnode_type = KF_VTYPE_VNON;
