@@ -70,42 +70,11 @@ int max_threads_hits;
 SYSCTL_INT(_kern_threads, OID_AUTO, max_threads_hits, CTLFLAG_RD,
 	&max_threads_hits, 0, "");
 
-#ifdef KSE
-int virtual_cpu;
-
-#endif
 TAILQ_HEAD(, thread) zombie_threads = TAILQ_HEAD_INITIALIZER(zombie_threads);
 static struct mtx zombie_lock;
 MTX_SYSINIT(zombie_lock, &zombie_lock, "zombie lock", MTX_SPIN);
 
 static void thread_zombie(struct thread *);
-
-#ifdef KSE
-static int
-sysctl_kse_virtual_cpu(SYSCTL_HANDLER_ARGS)
-{
-	int error, new_val;
-	int def_val;
-
-	def_val = mp_ncpus;
-	if (virtual_cpu == 0)
-		new_val = def_val;
-	else
-		new_val = virtual_cpu;
-	error = sysctl_handle_int(oidp, &new_val, 0, req);
-	if (error != 0 || req->newptr == NULL)
-		return (error);
-	if (new_val < 0)
-		return (EINVAL);
-	virtual_cpu = new_val;
-	return (0);
-}
-
-/* DEBUG ONLY */
-SYSCTL_PROC(_kern_threads, OID_AUTO, virtual_cpu, CTLTYPE_INT|CTLFLAG_RW,
-	0, sizeof(virtual_cpu), sysctl_kse_virtual_cpu, "I",
-	"debug virtual cpus");
-#endif
 
 struct mtx tid_lock;
 static struct unrhdr *tid_unrhdr;
@@ -136,9 +105,6 @@ thread_ctor(void *mem, int size, void *arg, int flags)
 #ifdef AUDIT
 	audit_thread_alloc(td);
 #endif
-	/* Free all OSD associated to this thread. */
-	osd_thread_exit(td);
-
 	umtx_thread_alloc(td);
 	return (0);
 }
@@ -176,9 +142,11 @@ thread_dtor(void *mem, int size, void *arg)
 #ifdef AUDIT
 	audit_thread_free(td);
 #endif
+	/* Free all OSD associated to this thread. */
+	osd_thread_exit(td);
+
 	EVENTHANDLER_INVOKE(thread_dtor, td);
 	free_unr(tid_unrhdr, td->td_tid);
-	sched_newthread(td);
 }
 
 /*
@@ -237,9 +205,6 @@ void
 proc_linkup(struct proc *p, struct thread *td)
 {
 
-#ifdef KSE
-	TAILQ_INIT(&p->p_upcalls);	     /* upcall list */
-#endif
 	sigqueue_init(&p->p_sigqueue, p);
 	p->p_ksi = ksiginfo_alloc(1);
 	if (p->p_ksi != NULL) {
@@ -264,9 +229,6 @@ threadinit(void)
 	thread_zone = uma_zcreate("THREAD", sched_sizeof_thread(),
 	    thread_ctor, thread_dtor, thread_init, thread_fini,
 	    16 - 1, 0);
-#ifdef KSE
-	kseinit();	/* set up kse specific stuff  e.g. upcall zone*/
-#endif
 }
 
 /*
@@ -292,7 +254,7 @@ thread_stash(struct thread *td)
 }
 
 /*
- * Reap zombie kse resource.
+ * Reap zombie resources.
  */
 void
 thread_reap(void)
@@ -317,9 +279,6 @@ thread_reap(void)
 			td_first = td_next;
 		}
 	}
-#ifdef KSE
-	upcall_reap();
-#endif
 }
 
 /*
@@ -349,6 +308,8 @@ thread_alloc(void)
 void
 thread_free(struct thread *td)
 {
+
+	lock_profile_thread_exit(td);
 	if (td->td_cpuset)
 		cpuset_rel(td->td_cpuset);
 	td->td_cpuset = NULL;
@@ -415,17 +376,6 @@ thread_exit(void)
 #ifdef AUDIT
 	AUDIT_SYSCALL_EXIT(0, td);
 #endif
-#ifdef KSE
-	if (td->td_standin != NULL) {
-		/*
-		 * Note that we don't need to free the cred here as it
-		 * is done in thread_reap().
-		 */
-		thread_zombie(td->td_standin);
-		td->td_standin = NULL;
-	}
-#endif
-
 	umtx_thread_exit(td);
 	/*
 	 * drop FPU & debug register state storage, or any other
@@ -519,22 +469,13 @@ thread_wait(struct proc *p)
 	mtx_assert(&Giant, MA_NOTOWNED);
 	KASSERT((p->p_numthreads == 1), ("Multiple threads in wait1()"));
 	td = FIRST_THREAD_IN_PROC(p);
-#ifdef KSE
-	if (td->td_standin != NULL) {
-		if (td->td_standin->td_ucred != NULL) {
-			crfree(td->td_standin->td_ucred);
-			td->td_standin->td_ucred = NULL;
-		}
-		thread_free(td->td_standin);
-		td->td_standin = NULL;
-	}
-#endif
 	/* Lock the last thread so we spin until it exits cpu_throw(). */
 	thread_lock(td);
 	thread_unlock(td);
 	/* Wait for any remaining threads to exit cpu_throw(). */
 	while (p->p_exitthreads)
 		sched_relinquish(curthread);
+	lock_profile_thread_exit(td);
 	cpuset_rel(td->td_cpuset);
 	td->td_cpuset = NULL;
 	cpu_thread_clean(td);
@@ -568,6 +509,8 @@ thread_link(struct thread *td, struct proc *p)
 	td->td_flags    = TDF_INMEM;
 
 	LIST_INIT(&td->td_contested);
+	LIST_INIT(&td->td_lprof[0]);
+	LIST_INIT(&td->td_lprof[1]);
 	sigqueue_init(&td->td_sigqueue, p);
 	callout_init(&td->td_slpcallout, CALLOUT_MPSAFE);
 	TAILQ_INSERT_HEAD(&p->p_threads, td, td_plist);
@@ -586,20 +529,7 @@ thread_unthread(struct thread *td)
 	struct proc *p = td->td_proc;
 
 	KASSERT((p->p_numthreads == 1), ("Unthreading with >1 threads"));
-#ifdef KSE
-	thread_lock(td);
-	upcall_remove(td);
-	thread_unlock(td);
-	p->p_flag &= ~(P_SA|P_HADTHREADS);
-	td->td_mailbox = NULL;
-	td->td_pflags &= ~(TDP_SA | TDP_CAN_UNBIND);
-	if (td->td_standin != NULL) {
-		thread_zombie(td->td_standin);
-		td->td_standin = NULL;
-	}
-#else
 	p->p_flag &= ~P_HADTHREADS;
-#endif
 }
 
 /*
@@ -679,12 +609,10 @@ thread_single(int mode)
 			if (td2 == td)
 				continue;
 			thread_lock(td2);
-			td2->td_flags |= TDF_ASTPENDING;
+			td2->td_flags |= TDF_ASTPENDING | TDF_NEEDSUSPCHK;
 			if (TD_IS_INHIBITED(td2)) {
 				switch (mode) {
 				case SINGLE_EXIT:
-					if (td->td_flags & TDF_DBSUSPEND)
-						td->td_flags &= ~TDF_DBSUSPEND;
 					if (TD_IS_SUSPENDED(td2))
 						wakeup_swapper |=
 						    thread_unsuspend_one(td2);
@@ -703,7 +631,7 @@ thread_single(int mode)
 						wakeup_swapper |=
 						    sleepq_abort(td2, ERESTART);
 					break;
-				default:	
+				default:
 					if (TD_IS_SUSPENDED(td2)) {
 						thread_unlock(td2);
 						continue;
@@ -869,7 +797,7 @@ thread_suspend_check(int return_instead)
 			td->td_flags |= TDF_BOUNDARY;
 		}
 		PROC_SUNLOCK(p);
-		mi_switch(SW_INVOL, NULL);
+		mi_switch(SW_INVOL | SWT_SUSPEND, NULL);
 		if (return_instead == 0)
 			td->td_flags &= ~TDF_BOUNDARY;
 		thread_unlock(td);
@@ -897,11 +825,12 @@ thread_suspend_switch(struct thread *td)
 	p->p_suspcount++;
 	PROC_UNLOCK(p);
 	thread_lock(td);
+	td->td_flags &= ~TDF_NEEDSUSPCHK;
 	TD_SET_SUSPENDED(td);
 	sched_sleep(td, 0);
 	PROC_SUNLOCK(p);
 	DROP_GIANT();
-	mi_switch(SW_VOL, NULL);
+	mi_switch(SW_VOL | SWT_SUSPEND, NULL);
 	thread_unlock(td);
 	PICKUP_GIANT();
 	PROC_LOCK(p);
@@ -917,6 +846,7 @@ thread_suspend_one(struct thread *td)
 	THREAD_LOCK_ASSERT(td, MA_OWNED);
 	KASSERT(!TD_IS_SUSPENDED(td), ("already suspended"));
 	p->p_suspcount++;
+	td->td_flags &= ~TDF_NEEDSUSPCHK;
 	TD_SET_SUSPENDED(td);
 	sched_sleep(td, 0);
 }

@@ -701,7 +701,7 @@ kern_ptrace(struct thread *td, int req, pid_t pid, void *addr, int data)
 
 	case PT_SUSPEND:
 		thread_lock(td2);
-		td2->td_flags |= TDF_DBSUSPEND;
+		td2->td_flags |= (TDF_DBSUSPEND | TDF_NEEDSUSPCHK);
 		thread_unlock(td2);
 		break;
 

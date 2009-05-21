@@ -181,7 +181,7 @@ ast(struct trapframe *framep)
 	 */
 	thread_lock(td);
 	flags = td->td_flags;
-	td->td_flags &= ~(TDF_ASTPENDING | TDF_NEEDSIGCHK |
+	td->td_flags &= ~(TDF_ASTPENDING | TDF_NEEDSIGCHK | TDF_NEEDSUSPCHK |
 	    TDF_NEEDRESCHED | TDF_INTERRUPT | TDF_ALRMPEND | TDF_PROFPEND |
 	    TDF_MACPEND);
 	thread_unlock(td);
@@ -251,7 +251,15 @@ ast(struct trapframe *framep)
 		mtx_unlock(&p->p_sigacts->ps_mtx);
 		PROC_UNLOCK(p);
 	}
-
+	/*
+	 * We need to check to see if we have to exit or wait due to a
+	 * single threading requirement or some other STOP condition.
+	 */
+	if (flags & TDF_NEEDSUSPCHK) {
+		PROC_LOCK(p);
+		thread_suspend_check(0);
+		PROC_UNLOCK(p);
+	}
 	userret(td, framep);
 	mtx_assert(&Giant, MA_NOTOWNED);
 }
