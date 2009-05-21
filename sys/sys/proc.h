@@ -390,6 +390,7 @@ do {									\
 #define	TDP_NORUNNINGBUF 0x00040000 /* Ignore runningbufspace check */
 #define	TDP_WAKEUP	0x00080000 /* Don't sleep in umtx cond_wait */
 #define	TDP_INBDFLUSH	0x00100000 /* Already in BO_BDFLUSH, do not recurse */
+#define	TDP_KTHREAD	0x00200000
 #define	TDP_IGNSUSP	0x00800000 /* Permission to ignore the MNTK_SUSPEND* */
 #define	TDP_AUDITREC	0x01000000 /* Audit record pending on thread */
 
