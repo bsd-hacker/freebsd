@@ -2179,6 +2179,7 @@ mxge_transmit_locked(struct mxge_slice_state *ss, struct mbuf *m)
 		BPF_MTAP(ifp, m);
 		/* give it to the nic */
 		mxge_encap(ss, m);
+		drbr_stats_update(ifp, m->m_pkthdr.len, m->m_flags);
 	} else if ((err = drbr_enqueue(ifp, tx->br, m)) != 0) {
 		return (err);
 	}
