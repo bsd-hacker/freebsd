@@ -490,8 +490,8 @@ static int p4_escrdisp[P4_NESCR];
 	KASSERT(p4_escrdisp[(E)] <= 0, ("[p4,%d] row disposition error",\
 		    __LINE__));						\
 	atomic_add_int(&p4_escrdisp[(E)], -1);				\
-	KASSERT(p4_escrdisp[(E)] >= (-mp_ncpus), ("[p4,%d] row "	\
-		"disposition error", __LINE__));			\
+	KASSERT(p4_escrdisp[(E)] >= (-pmc_cpu_max_active()), 		\
+		("[p4,%d] row disposition error", __LINE__));		\
 } while (0)
 
 #define	P4_ESCR_UNMARK_ROW_STANDALONE(E) do {				\
@@ -554,11 +554,11 @@ p4_pcpu_init(struct pmc_mdep *md, int cpu)
 	struct p4_cpu *p4c;
 	struct pmc_cpu *pc, *plc;
 
-	KASSERT(cpu >= 0 && cpu < mp_ncpus,
+	KASSERT(cpu >= 0 && cpu < pmc_cpu_max(),
 	    ("[p4,%d] insane cpu number %d", __LINE__, cpu));
 
-	PMCDBG(MDP,INI,0, "p4-init cpu=%d logical=%d", cpu,
-	    pmc_cpu_is_logical(cpu) != 0);
+	PMCDBG(MDP,INI,0, "p4-init cpu=%d is-primary=%d", cpu,
+	    pmc_cpu_is_primary(cpu) != 0);
 
 	first_ri = md->pmd_classdep[PMC_MDEP_CLASS_INDEX_P4].pcd_ri;
 
@@ -574,7 +574,7 @@ p4_pcpu_init(struct pmc_mdep *md, int cpu)
 	 * secondary.
 	 */
 
-	if (pmc_cpu_is_logical(cpu) && (cpu & 1)) {
+	if (!pmc_cpu_is_primary(cpu) && (cpu & 1)) {
 
 		p4_system_has_htt = 1;
 
@@ -678,7 +678,7 @@ p4_read_pmc(int cpu, int ri, pmc_value_t *v)
 	enum pmc_mode mode;
 	struct p4pmc_descr *pd;
 
-	KASSERT(cpu >= 0 && cpu < mp_ncpus,
+	KASSERT(cpu >= 0 && cpu < pmc_cpu_max(),
 	    ("[p4,%d] illegal CPU value %d", __LINE__, cpu));
 	KASSERT(ri >= 0 && ri < P4_NPMCS,
 	    ("[p4,%d] illegal row-index %d", __LINE__, ri));
@@ -735,7 +735,7 @@ p4_write_pmc(int cpu, int ri, pmc_value_t v)
 	const struct pmc_hw *phw;
 	const struct p4pmc_descr *pd;
 
-	KASSERT(cpu >= 0 && cpu < mp_ncpus,
+	KASSERT(cpu >= 0 && cpu < pmc_cpu_max(),
 	    ("[amd,%d] illegal CPU value %d", __LINE__, cpu));
 	KASSERT(ri >= 0 && ri < P4_NPMCS,
 	    ("[amd,%d] illegal row-index %d", __LINE__, ri));
@@ -788,7 +788,7 @@ p4_config_pmc(int cpu, int ri, struct pmc *pm)
 	struct p4_cpu *pc;
 	int cfgflags, cpuflag;
 
-	KASSERT(cpu >= 0 && cpu < mp_ncpus,
+	KASSERT(cpu >= 0 && cpu < pmc_cpu_max(),
 	    ("[p4,%d] illegal CPU %d", __LINE__, cpu));
 
 	KASSERT(ri >= 0 && ri < P4_NPMCS,
@@ -917,7 +917,7 @@ p4_allocate_pmc(int cpu, int ri, struct pmc *pm,
 	struct p4_event_descr *pevent;
 	const struct p4pmc_descr *pd;
 
-	KASSERT(cpu >= 0 && cpu < mp_ncpus,
+	KASSERT(cpu >= 0 && cpu < pmc_cpu_max(),
 	    ("[p4,%d] illegal CPU %d", __LINE__, cpu));
 	KASSERT(ri >= 0 && ri < P4_NPMCS,
 	    ("[p4,%d] illegal row-index value %d", __LINE__, ri));
@@ -1153,7 +1153,7 @@ p4_start_pmc(int cpu, int ri)
 	struct p4pmc_descr *pd;
 	uint32_t cccrvalue, cccrtbits, escrvalue, escrmsr, escrtbits;
 
-	KASSERT(cpu >= 0 && cpu < mp_ncpus,
+	KASSERT(cpu >= 0 && cpu < pmc_cpu_max(),
 	    ("[p4,%d] illegal CPU value %d", __LINE__, cpu));
 	KASSERT(ri >= 0 && ri < P4_NPMCS,
 	    ("[p4,%d] illegal row-index %d", __LINE__, ri));
@@ -1299,7 +1299,7 @@ p4_stop_pmc(int cpu, int ri)
 	struct p4pmc_descr *pd;
 	pmc_value_t tmp;
 
-	KASSERT(cpu >= 0 && cpu < mp_ncpus,
+	KASSERT(cpu >= 0 && cpu < pmc_cpu_max(),
 	    ("[p4,%d] illegal CPU value %d", __LINE__, cpu));
 	KASSERT(ri >= 0 && ri < P4_NPMCS,
 	    ("[p4,%d] illegal row index %d", __LINE__, ri));
@@ -1557,7 +1557,7 @@ p4_describe(int cpu, int ri, struct pmc_info *pi,
 	size_t copied;
 	const struct p4pmc_descr *pd;
 
-	KASSERT(cpu >= 0 && cpu < mp_ncpus,
+	KASSERT(cpu >= 0 && cpu < pmc_cpu_max(),
 	    ("[p4,%d] illegal CPU %d", __LINE__, cpu));
 	KASSERT(ri >= 0 && ri < P4_NPMCS,
 	    ("[p4,%d] row-index %d out of range", __LINE__, ri));

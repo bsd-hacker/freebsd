@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2003-2007 Joseph Koshy
+ * Copyright (c) 2003-2008 Joseph Koshy
  * Copyright (c) 2007 The FreeBSD Foundation
  * All rights reserved.
  *
@@ -38,6 +38,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/malloc.h>
 #include <sys/mutex.h>
 #include <sys/pmc.h>
+#include <sys/pmckern.h>
 #include <sys/smp.h>
 #include <sys/systm.h>
 
@@ -265,7 +266,7 @@ amd_read_pmc(int cpu, int ri, pmc_value_t *v)
 	struct pmc *pm;
 	pmc_value_t tmp;
 
-	KASSERT(cpu >= 0 && cpu < mp_ncpus,
+	KASSERT(cpu >= 0 && cpu < pmc_cpu_max(),
 	    ("[amd,%d] illegal CPU value %d", __LINE__, cpu));
 	KASSERT(ri >= 0 && ri < AMD_NPMCS,
 	    ("[amd,%d] illegal row-index %d", __LINE__, ri));
@@ -290,12 +291,15 @@ amd_read_pmc(int cpu, int ri, pmc_value_t *v)
 #endif
 
 	tmp = rdmsr(pd->pm_perfctr); /* RDMSR serializes */
-	if (PMC_IS_SAMPLING_MODE(mode))
-		*v = AMD_PERFCTR_VALUE_TO_RELOAD_COUNT(tmp);
-	else
-		*v = tmp;
+	PMCDBG(MDP,REA,2,"amd-read (pre-munge) id=%d -> %jd", ri, tmp);
+	if (PMC_IS_SAMPLING_MODE(mode)) {
+		/* Sign extend 48 bit value to 64 bits. */
+		tmp = (pmc_value_t) (((int64_t) tmp << 16) >> 16);
+		tmp = AMD_PERFCTR_VALUE_TO_RELOAD_COUNT(tmp);
+	}
+	*v = tmp;
 
-	PMCDBG(MDP,REA,2,"amd-read id=%d -> %jd", ri, *v);
+	PMCDBG(MDP,REA,2,"amd-read (post-munge) id=%d -> %jd", ri, *v);
 
 	return 0;
 }
@@ -311,7 +315,7 @@ amd_write_pmc(int cpu, int ri, pmc_value_t v)
 	enum pmc_mode mode;
 	struct pmc *pm;
 
-	KASSERT(cpu >= 0 && cpu < mp_ncpus,
+	KASSERT(cpu >= 0 && cpu < pmc_cpu_max(),
 	    ("[amd,%d] illegal CPU value %d", __LINE__, cpu));
 	KASSERT(ri >= 0 && ri < AMD_NPMCS,
 	    ("[amd,%d] illegal row-index %d", __LINE__, ri));
@@ -354,7 +358,7 @@ amd_config_pmc(int cpu, int ri, struct pmc *pm)
 
 	PMCDBG(MDP,CFG,1, "cpu=%d ri=%d pm=%p", cpu, ri, pm);
 
-	KASSERT(cpu >= 0 && cpu < mp_ncpus,
+	KASSERT(cpu >= 0 && cpu < pmc_cpu_max(),
 	    ("[amd,%d] illegal CPU value %d", __LINE__, cpu));
 	KASSERT(ri >= 0 && ri < AMD_NPMCS,
 	    ("[amd,%d] illegal row-index %d", __LINE__, ri));
@@ -436,7 +440,7 @@ amd_allocate_pmc(int cpu, int ri, struct pmc *pm,
 
 	(void) cpu;
 
-	KASSERT(cpu >= 0 && cpu < mp_ncpus,
+	KASSERT(cpu >= 0 && cpu < pmc_cpu_max(),
 	    ("[amd,%d] illegal CPU value %d", __LINE__, cpu));
 	KASSERT(ri >= 0 && ri < AMD_NPMCS,
 	    ("[amd,%d] illegal row index %d", __LINE__, ri));
@@ -518,7 +522,7 @@ amd_release_pmc(int cpu, int ri, struct pmc *pmc)
 
 	(void) pmc;
 
-	KASSERT(cpu >= 0 && cpu < mp_ncpus,
+	KASSERT(cpu >= 0 && cpu < pmc_cpu_max(),
 	    ("[amd,%d] illegal CPU value %d", __LINE__, cpu));
 	KASSERT(ri >= 0 && ri < AMD_NPMCS,
 	    ("[amd,%d] illegal row-index %d", __LINE__, ri));
@@ -550,7 +554,7 @@ amd_start_pmc(int cpu, int ri)
 	struct pmc_hw *phw;
 	const struct amd_descr *pd;
 
-	KASSERT(cpu >= 0 && cpu < mp_ncpus,
+	KASSERT(cpu >= 0 && cpu < pmc_cpu_max(),
 	    ("[amd,%d] illegal CPU value %d", __LINE__, cpu));
 	KASSERT(ri >= 0 && ri < AMD_NPMCS,
 	    ("[amd,%d] illegal row-index %d", __LINE__, ri));
@@ -590,7 +594,7 @@ amd_stop_pmc(int cpu, int ri)
 	const struct amd_descr *pd;
 	uint64_t config;
 
-	KASSERT(cpu >= 0 && cpu < mp_ncpus,
+	KASSERT(cpu >= 0 && cpu < pmc_cpu_max(),
 	    ("[amd,%d] illegal CPU value %d", __LINE__, cpu));
 	KASSERT(ri >= 0 && ri < AMD_NPMCS,
 	    ("[amd,%d] illegal row-index %d", __LINE__, ri));
@@ -628,13 +632,12 @@ amd_intr(int cpu, struct trapframe *tf)
 	uint32_t config, evsel, perfctr;
 	struct pmc *pm;
 	struct amd_cpu *pac;
-	struct pmc_hw *phw;
 	pmc_value_t v;
 
-	KASSERT(cpu >= 0 && cpu < mp_ncpus,
+	KASSERT(cpu >= 0 && cpu < pmc_cpu_max(),
 	    ("[amd,%d] out of range CPU %d", __LINE__, cpu));
 
-	PMCDBG(MDP,INT,1, "cpu=%d tf=0x%p um=%d", cpu, (void *) tf,
+	PMCDBG(MDP,INT,1, "cpu=%d tf=%p um=%d", cpu, (void *) tf,
 	    TRAPF_USERMODE(tf));
 
 	retval = 0;
@@ -656,20 +659,18 @@ amd_intr(int cpu, struct trapframe *tf)
 
 	for (i = 0; retval == 0 && i < AMD_NPMCS; i++) {
 
-		if (!AMD_PMC_HAS_OVERFLOWED(i))
-			continue;
-
-		phw = &pac->pc_amdpmcs[i];
-
-		KASSERT(phw != NULL, ("[amd,%d] null PHW pointer", __LINE__));
-
-		if ((pm = phw->phw_pmc) == NULL ||
-		    pm->pm_state != PMC_STATE_RUNNING ||
+		if ((pm = pac->pc_amdpmcs[i].phw_pmc) == NULL ||
 		    !PMC_IS_SAMPLING_MODE(PMC_TO_MODE(pm))) {
 			continue;
 		}
 
+		if (!AMD_PMC_HAS_OVERFLOWED(i))
+			continue;
+
 		retval = 1;	/* Found an interrupting PMC. */
+
+		if (pm->pm_state != PMC_STATE_RUNNING)
+			continue;
 
 		/* Stop the PMC, reload count. */
 		evsel   = AMD_PMC_EVSEL_0 + i;
@@ -708,7 +709,7 @@ amd_describe(int cpu, int ri, struct pmc_info *pi, struct pmc **ppmc)
 	const struct amd_descr *pd;
 	struct pmc_hw *phw;
 
-	KASSERT(cpu >= 0 && cpu < mp_ncpus,
+	KASSERT(cpu >= 0 && cpu < pmc_cpu_max(),
 	    ("[amd,%d] illegal CPU %d", __LINE__, cpu));
 	KASSERT(ri >= 0 && ri < AMD_NPMCS,
 	    ("[amd,%d] row-index %d out of range", __LINE__, ri));
@@ -764,7 +765,7 @@ amd_pcpu_init(struct pmc_mdep *md, int cpu)
 	struct amd_cpu *pac;
 	struct pmc_hw  *phw;
 
-	KASSERT(cpu >= 0 && cpu < mp_ncpus,
+	KASSERT(cpu >= 0 && cpu < pmc_cpu_max(),
 	    ("[amd,%d] insane cpu number %d", __LINE__, cpu));
 
 	PMCDBG(MDP,INI,1,"amd-init cpu=%d", cpu);
@@ -811,7 +812,7 @@ amd_pcpu_fini(struct pmc_mdep *md, int cpu)
 	struct pmc_cpu *pc;
 	struct amd_cpu *pac;
 
-	KASSERT(cpu >= 0 && cpu < mp_ncpus,
+	KASSERT(cpu >= 0 && cpu < pmc_cpu_max(),
 	    ("[amd,%d] insane cpu number (%d)", __LINE__, cpu));
 
 	PMCDBG(MDP,INI,1,"amd-cleanup cpu=%d", cpu);
@@ -954,7 +955,7 @@ pmc_amd_initialize(void)
 	for (i = 0; i < AMD_NPMCS; i++) {
 		(void) snprintf(amd_pmcdesc[i].pm_descr.pd_name,
 		    sizeof(amd_pmcdesc[i].pm_descr.pd_name), "%s-%d",
-		    name, i-1);
+		    name, i);
 		amd_pmcdesc[i].pm_descr.pd_class = class;
 	}
 
