@@ -141,7 +141,7 @@ void
 lock_spin(struct lock_object *lock, int how)
 {
 
-	panic("spin locks can only use msleep_spin");
+	mtx_lock_spin((struct mtx *)lock);
 }
 
 int
@@ -158,8 +158,11 @@ unlock_mtx(struct lock_object *lock)
 int
 unlock_spin(struct lock_object *lock)
 {
+	struct mtx *m;
 
-	panic("spin locks can only use msleep_spin");
+	m = (struct mtx *)lock;
+	mtx_assert(m, MA_OWNED | MA_NOTRECURSED);
+	mtx_unlock_spin(m);
 }
 
 /*
