@@ -758,6 +758,7 @@ struct pmc_owner  {
 	int			po_error;	/* recorded error */
 	int			po_sscount;	/* # SS PMCs owned */
 	struct cv		po_cv;		/* condvar */
+	struct cv		po_kthread_cv;	/* condvar */
 };
 
 #define	PMC_PO_OWNS_LOGFILE		0x00000001 /* has a log file */

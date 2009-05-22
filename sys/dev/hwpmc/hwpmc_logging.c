@@ -84,7 +84,6 @@ SYSCTL_INT(_kern_hwpmc, OID_AUTO, nbuffers, CTLFLAG_TUN|CTLFLAG_RD,
 TAILQ_HEAD(, pmclog_buffer) pmc_bufferlist =
 	TAILQ_HEAD_INITIALIZER(pmc_bufferlist);
 static struct mtx pmc_bufferlist_mtx;	/* spin lock */
-static struct mtx pmc_kthread_mtx;	/* sleep lock */
 
 #define	PMCLOG_INIT_BUFFER_DESCRIPTOR(D) do {				\
 		const int __roundup = roundup(sizeof(*D),		\
@@ -268,34 +267,31 @@ pmclog_loop(void *arg)
 	 * is deconfigured.
 	 */
 
-	mtx_lock(&pmc_kthread_mtx);
-
+	mtx_lock_spin(&po->po_mtx);
 	for (;;) {
 
 		/* check if we've been asked to exit */
-		if ((po->po_flags & PMC_PO_OWNS_LOGFILE) == 0)
+		if ((po->po_flags & PMC_PO_OWNS_LOGFILE) == 0) {
+			mtx_unlock_spin(&po->po_mtx);
 			break;
-
+		}
+		
 		if (lb == NULL) { /* look for a fresh buffer to write */
-			mtx_lock_spin(&po->po_mtx);
 			if ((lb = TAILQ_FIRST(&po->po_logbuffers)) == NULL) {
-				mtx_unlock_spin(&po->po_mtx);
 
 				/* wakeup any processes waiting for a FLUSH */
 				if (po->po_flags & PMC_PO_IN_FLUSH) {
 					po->po_flags &= ~PMC_PO_IN_FLUSH;
-					wakeup_one(po->po_kthread);
+					cv_signal(&po->po_kthread_cv);
 				}
 
-				cv_wait(&po->po_cv, &pmc_kthread_mtx);
+				cv_wait(&po->po_cv, &po->po_mtx);
 				continue;
 			}
-
 			TAILQ_REMOVE(&po->po_logbuffers, lb, plb_next);
-			mtx_unlock_spin(&po->po_mtx);
 		}
+		mtx_unlock_spin(&po->po_mtx);
 
-		mtx_unlock(&pmc_kthread_mtx);
 
 		/* process the request */
 		PMCDBG(LOG,WRI,2, "po=%p base=%p ptr=%p", po,
@@ -318,8 +314,6 @@ pmclog_loop(void *arg)
 		error = fo_write(po->po_file, &auio, ownercred, 0, td);
 		td->td_ucred = mycred;
 
-		mtx_lock(&pmc_kthread_mtx);
-
 		if (error) {
 			/* XXX some errors are recoverable */
 			/* XXX also check for SIGPIPE if a socket */
@@ -341,14 +335,12 @@ pmclog_loop(void *arg)
 
 		mtx_lock_spin(&pmc_bufferlist_mtx);
 		TAILQ_INSERT_HEAD(&pmc_bufferlist, lb, plb_next);
-		mtx_unlock_spin(&pmc_bufferlist_mtx);
 
 		lb = NULL;
 	}
-
+	mtx_lock_spin(&po->po_mtx);
 	po->po_kthread = NULL;
-
-	mtx_unlock(&pmc_kthread_mtx);
+	mtx_unlock_spin(&po->po_mtx);
 
 	/* return the current I/O buffer to the global pool */
 	if (lb) {
@@ -500,7 +492,6 @@ pmclog_schedule_io(struct pmc_owner *po)
 
 	PMCDBG(LOG,SIO, 1, "po=%p", po);
 
-	mtx_assert(&pmc_kthread_mtx, MA_OWNED);
 	mtx_assert(&po->po_mtx, MA_OWNED);
 
 	/*
@@ -524,11 +515,11 @@ pmclog_stop_kthread(struct pmc_owner *po)
 	 * wait for it to exit
 	 */
 
-	mtx_assert(&pmc_kthread_mtx, MA_OWNED);
+	mtx_assert(&po->po_mtx, MA_OWNED);
 	po->po_flags &= ~PMC_PO_OWNS_LOGFILE;
 	cv_signal(&po->po_cv);
 	if (po->po_kthread)
-		msleep(po->po_kthread, &pmc_kthread_mtx, PPAUSE, "pmckstp", 0);
+		cv_wait(&po->po_kthread_cv, &po->po_mtx);
 }
 
 /*
@@ -591,10 +582,10 @@ pmclog_configure_log(struct pmc_mdep *md, struct pmc_owner *po, int logfd)
 
  error:
 	/* shutdown the thread */
-	mtx_lock(&pmc_kthread_mtx);
+	mtx_lock_spin(&po->po_mtx);
 	if (po->po_kthread)
 		pmclog_stop_kthread(po);
-	mtx_unlock(&pmc_kthread_mtx);
+	mtx_lock_spin(&po->po_mtx);
 
 	KASSERT(po->po_kthread == NULL, ("[pmc,%d] po=%p kthread not stopped",
 	    __LINE__, po));
@@ -630,10 +621,11 @@ pmclog_deconfigure_log(struct pmc_owner *po)
 	    ("[pmc,%d] po=%p no log file", __LINE__, po));
 
 	/* stop the kthread, this will reset the 'OWNS_LOGFILE' flag */
-	mtx_lock(&pmc_kthread_mtx);
+	mtx_lock_spin(&po->po_mtx);
 	if (po->po_kthread)
 		pmclog_stop_kthread(po);
-	mtx_unlock(&pmc_kthread_mtx);
+	mtx_unlock_spin(&po->po_mtx);
+	
 
 	KASSERT(po->po_kthread == NULL,
 	    ("[pmc,%d] po=%p kthread not stopped", __LINE__, po));
@@ -686,7 +678,7 @@ pmclog_flush(struct pmc_owner *po)
 	/*
 	 * Check that we do have an active log file.
 	 */
-	mtx_lock(&pmc_kthread_mtx);
+	mtx_lock_spin(&po->po_mtx);
 	if ((po->po_flags & PMC_PO_OWNS_LOGFILE) == 0) {
 		error = EINVAL;
 		goto error;
@@ -695,20 +687,17 @@ pmclog_flush(struct pmc_owner *po)
 	/*
 	 * Schedule the current buffer if any.
 	 */
-	mtx_lock_spin(&po->po_mtx);
 	if (po->po_curbuf)
 		pmclog_schedule_io(po);
 	has_pending_buffers = !TAILQ_EMPTY(&po->po_logbuffers);
-	mtx_unlock_spin(&po->po_mtx);
 
 	if (has_pending_buffers) {
 		po->po_flags |= PMC_PO_IN_FLUSH; /* ask for a wakeup */
-		error = msleep(po->po_kthread, &pmc_kthread_mtx, PWAIT,
-		    "pmcflush", 0);
+		error = cv_wait_sig(&po->po_kthread_cv, &po->po_mtx);
 	}
 
  error:
-	mtx_unlock(&pmc_kthread_mtx);
+	mtx_unlock_spin(&po->po_mtx);
 
 	return error;
 }
@@ -980,7 +969,6 @@ pmclog_initialize()
 	}
 	mtx_init(&pmc_bufferlist_mtx, "pmc-buffer-list", "pmc-leaf",
 	    MTX_SPIN);
-	mtx_init(&pmc_kthread_mtx, "pmc-kthread", "pmc-sleep", MTX_DEF);
 }
 
 /*
@@ -994,7 +982,6 @@ pmclog_shutdown()
 {
 	struct pmclog_buffer *plb;
 
-	mtx_destroy(&pmc_kthread_mtx);
 	mtx_destroy(&pmc_bufferlist_mtx);
 
 	while ((plb = TAILQ_FIRST(&pmc_bufferlist)) != NULL) {
