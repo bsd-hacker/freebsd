@@ -96,11 +96,9 @@ userret(struct thread *td, struct trapframe *frame)
 	thread_unlock(td);
 	PROC_UNLOCK(p);
 #endif
-
 #ifdef KTRACE
 	KTRUSERRET(td);
 #endif
-
 	/*
 	 * If this thread tickled GEOM, we need to wait for the giggling to
 	 * stop before we return to userland
@@ -120,22 +118,12 @@ userret(struct thread *td, struct trapframe *frame)
 		PROC_UNLOCK(p);
 	}
 
-#ifdef KSE
-	/*
-	 * Do special thread processing, e.g. upcall tweaking and such.
-	 */
-	if (p->p_flag & P_SA)
-		thread_userret(td, frame);
-#endif
-
 	/*
 	 * Charge system time if profiling.
 	 */
 	if (p->p_flag & P_PROFIL) {
-
 		addupc_task(td, TRAPF_PC(frame), td->td_pticks * psratio);
 	}
-
 	/*
 	 * Let the scheduler adjust our priority etc.
 	 */
@@ -173,11 +161,6 @@ ast(struct trapframe *framep)
 	td->td_frame = framep;
 	td->td_pticks = 0;
 
-#ifdef KSE
-	if ((p->p_flag & P_SA) && (td->td_mailbox == NULL))
-		thread_user_enter(td);
-#endif
-
 	/*
 	 * This updates the td_flag's for the checks below in one
 	 * "atomic" operation with turning off the astpending flag.
@@ -207,13 +190,6 @@ ast(struct trapframe *framep)
 		td->td_profil_ticks = 0;
 		td->td_pflags &= ~TDP_OWEUPC;
 	}
-#if defined(HWPMC_HOOKS)
-	if (td->td_pflags & TDP_CALLCHAIN) {
-		PMC_CALL_HOOK_UNLOCKED(td, PMC_FN_USER_CALLCHAIN,
-		    (void *) framep);
-		td->td_pflags &= ~TDP_CALLCHAIN;
-	}
-#endif
 	if (flags & TDF_ALRMPEND) {
 		PROC_LOCK(p);
 		psignal(p, SIGVTALRM);
@@ -248,8 +224,7 @@ ast(struct trapframe *framep)
 #endif
 		thread_lock(td);
 		sched_prio(td, td->td_user_pri);
-		SCHED_STAT_INC(switch_needresched);
-		mi_switch(SW_INVOL, NULL);
+		mi_switch(SW_INVOL | SWT_NEEDRESCHED, NULL);
 		thread_unlock(td);
 #ifdef KTRACE
 		if (KTRPOINT(td, KTR_CSW))
@@ -273,6 +248,7 @@ ast(struct trapframe *framep)
 		thread_suspend_check(0);
 		PROC_UNLOCK(p);
 	}
+
 	userret(td, framep);
 	mtx_assert(&Giant, MA_NOTOWNED);
 }
