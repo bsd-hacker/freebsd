@@ -1906,6 +1906,7 @@ pmc_allocate_owner_descriptor(struct proc *p)
 
 	TAILQ_INIT(&po->po_logbuffers);
 	mtx_init(&po->po_mtx, "pmc-owner-mtx", "pmc-per-proc", MTX_SPIN);
+	cv_init(&po->po_cv, "pmc-cv");
 
 	PMCDBG(OWN,ALL,1, "allocate-owner proc=%p (%d, %s) pmc-owner=%p",
 	    p, p->p_pid, p->p_comm, po);

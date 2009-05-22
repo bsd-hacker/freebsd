@@ -287,9 +287,7 @@ pmclog_loop(void *arg)
 					wakeup_one(po->po_kthread);
 				}
 
-
-				(void) msleep(po, &pmc_kthread_mtx,
-				    PWAIT, "pmcloop", 0);
+				cv_wait(&po->po_cv, &pmc_kthread_mtx);
 				continue;
 			}
 
@@ -502,6 +500,7 @@ pmclog_schedule_io(struct pmc_owner *po)
 
 	PMCDBG(LOG,SIO, 1, "po=%p", po);
 
+	mtx_assert(&pmc_kthread_mtx, MA_OWNED);
 	mtx_assert(&po->po_mtx, MA_OWNED);
 
 	/*
@@ -510,7 +509,7 @@ pmclog_schedule_io(struct pmc_owner *po)
 	 */
 	TAILQ_INSERT_TAIL(&po->po_logbuffers, po->po_curbuf, plb_next);
 	po->po_curbuf = NULL;
-	wakeup_one(po);
+	cv_signal(&po->po_cv);
 }
 
 /*
@@ -527,7 +526,7 @@ pmclog_stop_kthread(struct pmc_owner *po)
 
 	mtx_assert(&pmc_kthread_mtx, MA_OWNED);
 	po->po_flags &= ~PMC_PO_OWNS_LOGFILE;
-	wakeup_one(po);
+	cv_signal(&po->po_cv);
 	if (po->po_kthread)
 		msleep(po->po_kthread, &pmc_kthread_mtx, PPAUSE, "pmckstp", 0);
 }

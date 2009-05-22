@@ -33,6 +33,7 @@
 #ifndef _SYS_PMC_H_
 #define	_SYS_PMC_H_
 
+#include <sys/condvar.h>
 #include <dev/hwpmc/pmc_events.h>
 
 #include <machine/pmc_mdep.h>
@@ -756,6 +757,7 @@ struct pmc_owner  {
 	struct file		*po_file;	/* file reference */
 	int			po_error;	/* recorded error */
 	int			po_sscount;	/* # SS PMCs owned */
+	struct cv		po_cv;		/* condvar */
 };
 
 #define	PMC_PO_OWNS_LOGFILE		0x00000001 /* has a log file */
