@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2003-2007 Joseph Koshy
+ * Copyright (c) 2003-2008 Joseph Koshy
  * Copyright (c) 2007 The FreeBSD Foundation
  * All rights reserved.
  *
@@ -88,7 +88,8 @@ union pmc_md_pmc {
 
 #define	PMC_TRAPFRAME_TO_PC(TF)	((TF)->tf_rip)
 #define	PMC_TRAPFRAME_TO_FP(TF)	((TF)->tf_rbp)
-#define	PMC_TRAPFRAME_TO_SP(TF)	((TF)->tf_rsp)
+#define	PMC_TRAPFRAME_TO_USER_SP(TF)	((TF)->tf_rsp)
+#define	PMC_TRAPFRAME_TO_KERNEL_SP(TF)	((TF)->tf_rsp)
 
 #define	PMC_AT_FUNCTION_PROLOGUE_PUSH_BP(I)		\
 	(((I) & 0xffffffff) == 0xe5894855) /* pushq %rbp; movq %rsp,%rbp */
@@ -103,8 +104,8 @@ union pmc_md_pmc {
 
 #define	PMC_IN_KERNEL_STACK(S,START,END)		\
 	((S) >= (START) && (S) < (END))
-#define	PMC_IN_KERNEL(va) (((va) >= DMAP_MIN_ADDRESS &&		\
-	(va) < DMAP_MAX_ADDRESS) || ((va) >= KERNBASE &&	\
+#define	PMC_IN_KERNEL(va) (((va) >= DMAP_MIN_ADDRESS &&			\
+	(va) < DMAP_MAX_ADDRESS) || ((va) >= VM_MIN_KERNEL_ADDRESS &&	\
 	(va) < VM_MAX_KERNEL_ADDRESS))
 
 #define	PMC_IN_USERSPACE(va) ((va) <= VM_MAXUSER_ADDRESS)

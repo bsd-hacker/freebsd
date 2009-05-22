@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2003-2005 Joseph Koshy
+ * Copyright (c) 2003-2005,2008 Joseph Koshy
  * Copyright (c) 2007 The FreeBSD Foundation
  * All rights reserved.
  *
@@ -83,8 +83,6 @@ union pmc_md_op_pmcallocate  {
 	struct pmc_md_p4_op_pmcallocate		pm_p4;
 	struct pmc_md_pentium_op_pmcallocate	pm_pentium;
 	struct pmc_md_ppro_op_pmcallocate	pm_ppro;
-	struct pmc_md_pentium_op_pmcallocate	pm_pentium;
-	struct pmc_md_ppro_op_pmcallocate	pm_ppro;
 	uint64_t				__pad[4];
 };
 
@@ -102,8 +100,6 @@ union pmc_md_pmc  {
 	struct pmc_md_p4_pmc	pm_p4;
 	struct pmc_md_pentium_pmc pm_pentium;
 	struct pmc_md_ppro_pmc	pm_ppro;
-	struct pmc_md_pentium_pmc pm_pentium;
-	struct pmc_md_ppro_pmc	pm_ppro;
 };
 
 struct pmc;
@@ -111,7 +107,25 @@ struct pmc_mdep;
 
 #define	PMC_TRAPFRAME_TO_PC(TF)	((TF)->tf_eip)
 #define	PMC_TRAPFRAME_TO_FP(TF)	((TF)->tf_ebp)
-#define	PMC_TRAPFRAME_TO_SP(TF)	((TF)->tf_esp)
+
+/*
+ * The layout of the stack frame on entry into the NMI handler depends on
+ * whether a privilege level change (and consequent stack switch) was
+ * required for entry.
+ *
+ * When processing an interrupt when in user mode, the processor switches
+ * stacks, and saves the user mode stack pointer on the kernel stack.  The
+ * user mode stack pointer is then available to the interrupt handler
+ * at frame->tf_esp.
+ *
+ * When processing an interrupt while in kernel mode, the processor
+ * continues to use the existing (kernel) stack.  Therefore we determine
+ * the stack pointer for the interrupted kernel procedure by adding an
+ * offset to the current frame pointer.
+ */
+
+#define	PMC_TRAPFRAME_TO_USER_SP(TF)	((TF)->tf_esp)
+#define	PMC_TRAPFRAME_TO_KERNEL_SP(TF)	((uintptr_t) &((TF)->tf_esp))
 
 #define	PMC_IN_KERNEL_STACK(S,START,END)		\
 	((S) >= (START) && (S) < (END))
@@ -125,9 +139,9 @@ struct pmc_mdep;
 	 (PC) < (uintptr_t) end_exceptions)
 
 #define	PMC_AT_FUNCTION_PROLOGUE_PUSH_BP(I)		\
-	(((I) & 0xffffffff) == 0xe5894855) /* pushq %rbp; movq %rsp,%rbp */
+	(((I) & 0x00ffffff) == 0xe58955) /* pushl %ebp; movl %esp,%ebp */
 #define	PMC_AT_FUNCTION_PROLOGUE_MOV_SP_BP(I)		\
-	(((I) & 0x00ffffff) == 0x00e58948) /* movq %rsp,%rbp */
+	(((I) & 0x0000ffff) == 0xe589)	/* movl %esp,%ebp */
 #define	PMC_AT_FUNCTION_EPILOGUE_RET(I)			\
 	(((I) & 0xFF) == 0xC3)		   /* ret */
 
