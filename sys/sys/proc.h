@@ -393,6 +393,7 @@ do {									\
 #define	TDP_KTHREAD	0x00200000
 #define	TDP_IGNSUSP	0x00800000 /* Permission to ignore the MNTK_SUSPEND* */
 #define	TDP_AUDITREC	0x01000000 /* Audit record pending on thread */
+#define	TDP_CALLCHAIN	0x00400000 /* Capture thread's callchain */
 
 /*
  * Reasons that the current thread can not be run yet.
