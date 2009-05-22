@@ -163,6 +163,7 @@ unlock_spin(struct lock_object *lock)
 	m = (struct mtx *)lock;
 	mtx_assert(m, MA_OWNED | MA_NOTRECURSED);
 	mtx_unlock_spin(m);
+	return (0);
 }
 
 /*
