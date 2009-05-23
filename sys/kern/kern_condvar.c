@@ -106,7 +106,7 @@ _cv_wait(struct cv *cvp, struct lock_object *lock)
 		ktrcsw(1, 0);
 #endif
 	CV_ASSERT(cvp, lock, td);
-	WITNESS_WARN(WARN_GIANTOK | WARN_SLEEPOK, lock,
+	WITNESS_WARN(WARN_GIANTOK, lock,
 	    "Waiting on \"%s\"", cvp->cv_description);
 	WITNESS_SAVE(lock, lock_witness);
 	class = LOCK_CLASS(lock);
