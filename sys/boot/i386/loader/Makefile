@@ -16,7 +16,7 @@ LIBFIREWIRE=	${.OBJDIR}/../libfirewire/libfirewire.a
 .endif
 
 # Put LOADER_ZFS_SUPPORT=yes in /etc/make.conf for ZFS support
-.if defined(LOADER_ZFS_SUPPORT)
+.if ${MK_ZFS} != "no"
 CFLAGS+=	-DLOADER_ZFS_SUPPORT
 LIBZFS=		${.OBJDIR}/../../zfs/libzfsboot.a
 .endif
