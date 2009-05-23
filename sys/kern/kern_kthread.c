@@ -108,6 +108,9 @@ kthread_create_pri_v(void (*func)(void *), void *arg,
 	if (prio != 0) {
 		td->td_base_pri  = prio;
 		td->td_priority  = prio;
+	} else {
+		td->td_base_pri  = PRI_MAX_KERN;
+		td->td_priority  = PRI_MAX_KERN;
 	}
 	
 	/* call the processes' main()... */
