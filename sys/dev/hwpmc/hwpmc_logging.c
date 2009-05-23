@@ -266,8 +266,8 @@ pmclog_loop(void *arg)
 	 * struct's queue.  The loop is exited when the log file
 	 * is deconfigured.
 	 */
+	mtx_lock_spin(&po->po_mtx);
 	for (;;) {
-		mtx_lock_spin(&po->po_mtx);
 		/* check if we've been asked to exit */
 		if ((po->po_flags & PMC_PO_OWNS_LOGFILE) == 0) {
 			mtx_unlock_spin(&po->po_mtx);
@@ -335,6 +335,7 @@ pmclog_loop(void *arg)
 		TAILQ_INSERT_HEAD(&pmc_bufferlist, lb, plb_next);
 		mtx_unlock_spin(&pmc_bufferlist_mtx);
 		lb = NULL;
+		mtx_lock_spin(&po->po_mtx);
 	}
 	mtx_lock_spin(&po->po_mtx);
 	po->po_kthread = NULL;
