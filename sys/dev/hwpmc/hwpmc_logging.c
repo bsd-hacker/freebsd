@@ -339,6 +339,7 @@ pmclog_loop(void *arg)
 	}
 	mtx_lock_spin(&po->po_mtx);
 	po->po_kthread = NULL;
+	cv_signal(&po->po_kthread_cv);
 	mtx_unlock_spin(&po->po_mtx);
 
 	/* return the current I/O buffer to the global pool */
