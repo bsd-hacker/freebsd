@@ -234,7 +234,7 @@ dbuf_init(void)
 {
 	uint64_t hsize = 1ULL << 16;
 	dbuf_hash_table_t *h = &dbuf_hash_table;
-	int i;
+	int i = 0;
 
 	/*
 	 * The hash table is big enough to fill all of physical memory
@@ -250,10 +250,15 @@ retry:
 	if (h->hash_table == NULL) {
 		/* XXX - we should really return an error instead of assert */
 		ASSERT(hsize > (1ULL << 10));
+		/* try a few times  before dropping */
+		if (i++ < 4)
+			goto retry;
+		i = 0;
 		hsize >>= 1;
 		goto retry;
 	}
 
+	printf("ZFS hash table has %ld buckets\n", hsize);
 	dbuf_cache = kmem_cache_create("dmu_buf_impl_t",
 	    sizeof (dmu_buf_impl_t),
 	    0, dbuf_cons, dbuf_dest, NULL, NULL, NULL, 0);
