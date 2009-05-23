@@ -712,6 +712,11 @@ dev/buslogic/bt_eisa.c		optional bt eisa
 dev/buslogic/bt_isa.c		optional bt isa
 dev/buslogic/bt_mca.c		optional bt mca
 dev/buslogic/bt_pci.c		optional bt pci
+dev/bwi/bwimac.c		optional bwi
+dev/bwi/bwiphy.c		optional bwi
+dev/bwi/bwirf.c			optional bwi
+dev/bwi/if_bwi.c		optional bwi
+dev/bwi/if_bwi_pci.c		optional bwi pci
 dev/cardbus/cardbus.c		optional cardbus
 dev/cardbus/cardbus_cis.c	optional cardbus
 dev/cardbus/cardbus_device.c	optional cardbus
@@ -1530,7 +1535,6 @@ legacy/dev/usb/ums.c		optional oums
 legacy/dev/usb/uplcom.c		optional ouplcom
 legacy/dev/usb/urio.c		optional ourio
 legacy/dev/usb/usb.c		optional ousb
-legacy/dev/usb/usb_ethersubr.c	optional ousb
 legacy/dev/usb/usb_if.m		optional ousb
 legacy/dev/usb/usb_mem.c	optional ousb
 legacy/dev/usb/usb_quirks.c	optional ousb
@@ -1604,6 +1608,7 @@ dev/usb/net/usb_ethernet.c \
 # USB WLAN drivers
 #
 dev/usb/wlan/if_rum.c		optional rum
+dev/usb/wlan/if_uath.c		optional uath
 dev/usb/wlan/if_ural.c		optional ural
 dev/usb/wlan/if_zyd.c		optional zyd
 #
@@ -1946,8 +1951,8 @@ kern/kern_time.c		standard
 kern/kern_timeout.c		standard
 kern/kern_umtx.c		standard
 kern/kern_uuid.c		standard
-kern/kern_xxx.c			standard
 kern/kern_vimage.c		standard
+kern/kern_xxx.c			standard
 kern/link_elf.c			standard
 kern/linker_if.m		standard
 kern/md4c.c			optional netsmb
@@ -2152,6 +2157,7 @@ net/if_arcsubr.c		optional arcnet
 net/if_atmsubr.c		optional atm
 net/if_bridge.c			optional bridge | if_bridge
 net/if_clone.c			standard
+net/if_dead.c			standard
 net/if_disc.c			optional disc
 net/if_edsc.c			optional edsc
 net/if_ef.c			optional ef
@@ -2213,6 +2219,7 @@ net80211/ieee80211_output.c	optional wlan
 net80211/ieee80211_phy.c	optional wlan
 net80211/ieee80211_power.c	optional wlan
 net80211/ieee80211_proto.c	optional wlan
+net80211/ieee80211_radiotap.c	optional wlan
 net80211/ieee80211_regdomain.c	optional wlan
 net80211/ieee80211_rssadapt.c	optional wlan wlan_rssadapt
 net80211/ieee80211_scan.c	optional wlan
@@ -2381,6 +2388,7 @@ netinet6/in6.c			optional inet6
 netinet6/in6_cksum.c		optional inet6
 netinet6/in6_gif.c		optional gif inet6
 netinet6/in6_ifattach.c		optional inet6
+netinet6/in6_mcast.c		optional inet6
 netinet6/in6_pcb.c		optional inet6
 netinet6/in6_proto.c		optional inet6
 netinet6/in6_rmx.c		optional inet6
@@ -2443,14 +2451,6 @@ netsmb/smb_subr.c		optional netsmb
 netsmb/smb_trantcp.c		optional netsmb
 netsmb/smb_usr.c		optional netsmb
 nfs/nfs_common.c		optional nfsclient | nfsserver
-nfs4client/nfs4_dev.c		optional nfsclient
-nfs4client/nfs4_idmap.c		optional nfsclient
-nfs4client/nfs4_socket.c	optional nfsclient
-nfs4client/nfs4_subs.c		optional nfsclient
-nfs4client/nfs4_vfs_subs.c	optional nfsclient
-nfs4client/nfs4_vfsops.c	optional nfsclient
-nfs4client/nfs4_vn_subs.c	optional nfsclient
-nfs4client/nfs4_vnops.c		optional nfsclient
 nfsclient/bootp_subr.c		optional bootp nfsclient
 nfsclient/krpc_subr.c		optional bootp nfsclient
 nfsclient/nfs_bio.c		optional nfsclient
@@ -2512,7 +2512,6 @@ rpc/rpc_generic.c		optional krpc | nfslockd | nfsclient | nfsserver
 rpc/rpc_prot.c			optional krpc | nfslockd | nfsclient | nfsserver
 rpc/rpcb_clnt.c			optional krpc | nfslockd | nfsclient | nfsserver
 rpc/rpcb_prot.c			optional krpc | nfslockd | nfsclient | nfsserver
-rpc/rpcclnt.c			optional nfsclient
 rpc/svc.c			optional krpc | nfslockd | nfsserver
 rpc/svc_auth.c			optional krpc | nfslockd | nfsserver
 rpc/svc_auth_unix.c		optional krpc | nfslockd | nfsserver

@@ -65,7 +65,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/vinet.h>
 
 #ifndef KTR_IGMPV3
-#define KTR_IGMPV3 KTR_SUBSYS
+#define KTR_IGMPV3 KTR_INET
 #endif
 
 #ifndef __SOCKUNION_DECLARED
@@ -392,7 +392,6 @@ static int
 in_getmulti(struct ifnet *ifp, const struct in_addr *group,
     struct in_multi **pinm)
 {
-	INIT_VNET_INET(ifp->if_vnet);
 	struct sockaddr_in	 gsin;
 	struct ifmultiaddr	*ifma;
 	struct in_ifinfo	*ii;
@@ -1648,11 +1647,14 @@ inp_get_source_filters(struct inpcb *inp, struct sockopt *sopt)
 		    lims->imsl_st[0] != imf->imf_st[0])
 			continue;
 		++ncsrcs;
-		if (tss != NULL && nsrcs-- > 0) {
-			psin = (struct sockaddr_in *)ptss++;
+		if (tss != NULL && nsrcs > 0) {
+			psin = (struct sockaddr_in *)ptss;
 			psin->sin_family = AF_INET;
 			psin->sin_len = sizeof(struct sockaddr_in);
 			psin->sin_addr.s_addr = htonl(lims->ims_haddr);
+			psin->sin_port = 0;
+			++ptss;
+			--nsrcs;
 		}
 	}
 
@@ -1808,6 +1810,7 @@ static struct ifnet *
 inp_lookup_mcast_ifp(const struct inpcb *inp,
     const struct sockaddr_in *gsin, const struct in_addr ina)
 {
+	INIT_VNET_INET(curvnet);
 	struct ifnet *ifp;
 
 	KASSERT(gsin->sin_family == AF_INET, ("%s: not AF_INET", __func__));
@@ -1853,7 +1856,6 @@ static int
 inp_join_group(struct inpcb *inp, struct sockopt *sopt)
 {
 	INIT_VNET_NET(curvnet);
-	INIT_VNET_INET(curvnet);
 	struct group_source_req		 gsr;
 	sockunion_t			*gsa, *ssa;
 	struct ifnet			*ifp;
@@ -2306,6 +2308,7 @@ static int
 inp_set_multicast_if(struct inpcb *inp, struct sockopt *sopt)
 {
 	INIT_VNET_NET(curvnet);
+	INIT_VNET_INET(curvnet);
 	struct in_addr		 addr;
 	struct ip_mreqn		 mreqn;
 	struct ifnet		*ifp;

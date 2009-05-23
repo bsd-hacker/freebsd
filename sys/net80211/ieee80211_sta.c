@@ -66,10 +66,10 @@ __FBSDID("$FreeBSD$");
 static	void sta_vattach(struct ieee80211vap *);
 static	void sta_beacon_miss(struct ieee80211vap *);
 static	int sta_newstate(struct ieee80211vap *, enum ieee80211_state, int);
-static	int sta_input(struct ieee80211_node *, struct mbuf *,
-	    int rssi, int noise, uint32_t rstamp);
+static	int sta_input(struct ieee80211_node *, struct mbuf *, int, int);
 static void sta_recv_mgmt(struct ieee80211_node *, struct mbuf *,
-	    int subtype, int rssi, int noise, uint32_t rstamp);
+	    int subtype, int rssi, int nf);
+static void sta_recv_ctl(struct ieee80211_node *, struct mbuf *, int subtype);
 
 void
 ieee80211_sta_attach(struct ieee80211com *ic)
@@ -93,6 +93,7 @@ sta_vattach(struct ieee80211vap *vap)
 	vap->iv_newstate = sta_newstate;
 	vap->iv_input = sta_input;
 	vap->iv_recv_mgmt = sta_recv_mgmt;
+	vap->iv_recv_ctl = sta_recv_ctl;
 	vap->iv_opdetach = sta_vdetach;
 	vap->iv_bmiss = sta_beacon_miss;
 }
@@ -488,8 +489,7 @@ doprint(struct ieee80211vap *vap, int subtype)
  * by the 802.11 layer.
  */
 static int
-sta_input(struct ieee80211_node *ni, struct mbuf *m,
-	int rssi, int noise, uint32_t rstamp)
+sta_input(struct ieee80211_node *ni, struct mbuf *m, int rssi, int nf)
 {
 #define	SEQ_LEQ(a,b)	((int)((a)-(b)) <= 0)
 #define	HAS_SEQ(type)	((type & 0x4) == 0)
@@ -545,7 +545,8 @@ sta_input(struct ieee80211_node *ni, struct mbuf *m,
 	if ((wh->i_fc[0] & IEEE80211_FC0_VERSION_MASK) !=
 	    IEEE80211_FC0_VERSION_0) {
 		IEEE80211_DISCARD_MAC(vap, IEEE80211_MSG_ANY,
-		    ni->ni_macaddr, NULL, "wrong version %x", wh->i_fc[0]);
+		    ni->ni_macaddr, NULL, "wrong version, fc %02x:%02x",
+		    wh->i_fc[0], wh->i_fc[1]);
 		vap->iv_stats.is_rx_badversion++;
 		goto err;
 	}
@@ -563,8 +564,7 @@ sta_input(struct ieee80211_node *ni, struct mbuf *m,
 			goto out;
 		}
 		IEEE80211_RSSI_LPF(ni->ni_avgrssi, rssi);
-		ni->ni_noise = noise;
-		ni->ni_rstamp = rstamp;
+		ni->ni_noise = nf;
 		if (HAS_SEQ(type)) {
 			uint8_t tid = ieee80211_gettid(wh);
 			if (IEEE80211_QOS_HAS_SEQ(wh) &&
@@ -740,8 +740,8 @@ sta_input(struct ieee80211_node *ni, struct mbuf *m,
 		}
 
 		/* copy to listener after decrypt */
-		if (bpf_peers_present(vap->iv_rawbpf))
-			bpf_mtap(vap->iv_rawbpf, m);
+		if (ieee80211_radiotap_active_vap(vap))
+			ieee80211_radiotap_tx(vap, m);
 		need_tap = 0;
 
 		/*
@@ -866,16 +866,15 @@ sta_input(struct ieee80211_node *ni, struct mbuf *m,
 			wh = mtod(m, struct ieee80211_frame *);
 			wh->i_fc[1] &= ~IEEE80211_FC1_WEP;
 		}
-		if (bpf_peers_present(vap->iv_rawbpf))
-			bpf_mtap(vap->iv_rawbpf, m);
-		vap->iv_recv_mgmt(ni, m, subtype, rssi, noise, rstamp);
-		m_freem(m);
-		return IEEE80211_FC0_TYPE_MGT;
+		vap->iv_recv_mgmt(ni, m, subtype, rssi, nf);
+		goto out;
 
 	case IEEE80211_FC0_TYPE_CTL:
 		vap->iv_stats.is_rx_ctl++;
 		IEEE80211_NODE_STAT(ni, rx_ctrl);
+		vap->iv_recv_ctl(ni, m, subtype);
 		goto out;
+
 	default:
 		IEEE80211_DISCARD(vap, IEEE80211_MSG_ANY,
 		    wh, NULL, "bad frame type 0x%x", type);
@@ -886,8 +885,8 @@ err:
 	ifp->if_ierrors++;
 out:
 	if (m != NULL) {
-		if (bpf_peers_present(vap->iv_rawbpf) && need_tap)
-			bpf_mtap(vap->iv_rawbpf, m);
+		if (need_tap)
+			ieee80211_radiotap_rx(vap, m);
 		m_freem(m);
 	}
 	return type;
@@ -896,7 +895,7 @@ out:
 
 static void
 sta_auth_open(struct ieee80211_node *ni, struct ieee80211_frame *wh,
-    int rssi, int noise, uint32_t rstamp, uint16_t seq, uint16_t status)
+    int rssi, int nf, uint16_t seq, uint16_t status)
 {
 	struct ieee80211vap *vap = ni->ni_vap;
 
@@ -925,7 +924,7 @@ sta_auth_open(struct ieee80211_node *ni, struct ieee80211_frame *wh,
 
 static void
 sta_auth_shared(struct ieee80211_node *ni, struct ieee80211_frame *wh,
-    uint8_t *frm, uint8_t *efrm, int rssi, int noise, uint32_t rstamp,
+    uint8_t *frm, uint8_t *efrm, int rssi, int nf,
     uint16_t seq, uint16_t status)
 {
 	struct ieee80211vap *vap = ni->ni_vap;
@@ -1126,7 +1125,7 @@ startbgscan(struct ieee80211vap *vap)
 
 static void
 sta_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
-	int subtype, int rssi, int noise, uint32_t rstamp)
+	int subtype, int rssi, int nf)
 {
 #define	ISPROBE(_st)	((_st) == IEEE80211_FC0_SUBTYPE_PROBE_RESP)
 #define	ISREASSOC(_st)	((_st) == IEEE80211_FC0_SUBTYPE_REASSOC_RESP)
@@ -1148,7 +1147,7 @@ sta_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
 		 * We process beacon/probe response frames:
 		 *    o when scanning, or
 		 *    o station mode when associated (to collect state
-		 *      updates such as 802.11g slot time), or
+		 *      updates such as 802.11g slot time)
 		 * Frames otherwise received are discarded.
 		 */ 
 		if (!((ic->ic_flags & IEEE80211_F_SCAN) || ni->ni_associd)) {
@@ -1262,7 +1261,7 @@ sta_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
 			 */
 			if (ic->ic_flags & IEEE80211_F_SCAN) {
 				ieee80211_add_scan(vap, &scan, wh,
-					subtype, rssi, noise, rstamp);
+					subtype, rssi, nf);
 			} else if (contbgscan(vap)) {
 				ieee80211_bg_scan(vap, 0);
 			} else if (startbgscan(vap)) {
@@ -1291,8 +1290,7 @@ sta_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
 				ieee80211_probe_curchan(vap, 1);
 				ic->ic_flags_ext &= ~IEEE80211_FEXT_PROBECHAN;
 			}
-			ieee80211_add_scan(vap, &scan, wh,
-				subtype, rssi, noise, rstamp);
+			ieee80211_add_scan(vap, &scan, wh, subtype, rssi, nf);
 			return;
 		}
 		break;
@@ -1327,11 +1325,10 @@ sta_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
 			return;
 		}
 		if (algo == IEEE80211_AUTH_ALG_SHARED)
-			sta_auth_shared(ni, wh, frm + 6, efrm, rssi,
-			    noise, rstamp, seq, status);
-		else if (algo == IEEE80211_AUTH_ALG_OPEN)
-			sta_auth_open(ni, wh, rssi, noise, rstamp,
+			sta_auth_shared(ni, wh, frm + 6, efrm, rssi, nf,
 			    seq, status);
+		else if (algo == IEEE80211_AUTH_ALG_OPEN)
+			sta_auth_open(ni, wh, rssi, nf, seq, status);
 		else {
 			IEEE80211_DISCARD(vap, IEEE80211_MSG_ANY,
 			    wh, "auth", "unsupported alg %d", algo);
@@ -1599,4 +1596,9 @@ sta_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
 	}
 #undef ISREASSOC
 #undef ISPROBE
+}
+
+static void
+sta_recv_ctl(struct ieee80211_node *ni, struct mbuf *m0, int subtype)
+{
 }

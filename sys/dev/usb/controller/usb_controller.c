@@ -55,8 +55,8 @@ static void	usb2_post_init(void *);
 #if USB_DEBUG
 static int usb2_ctrl_debug = 0;
 
-SYSCTL_NODE(_hw_usb2, OID_AUTO, ctrl, CTLFLAG_RW, 0, "USB controller");
-SYSCTL_INT(_hw_usb2_ctrl, OID_AUTO, debug, CTLFLAG_RW, &usb2_ctrl_debug, 0,
+SYSCTL_NODE(_hw_usb, OID_AUTO, ctrl, CTLFLAG_RW, 0, "USB controller");
+SYSCTL_INT(_hw_usb_ctrl, OID_AUTO, debug, CTLFLAG_RW, &usb2_ctrl_debug, 0,
     "Debug level");
 #endif
 
@@ -168,6 +168,10 @@ usb2_detach(device_t dev)
 	/* Get rid of USB explore process */
 
 	usb2_proc_free(&bus->explore_proc);
+
+	/* Get rid of control transfer process */
+
+	usb2_proc_free(&bus->control_xfer_proc);
 
 	return (0);
 }
@@ -286,7 +290,7 @@ usb2_bus_attach(struct usb2_proc_msg *pm)
 	struct usb2_device *child;
 	device_t dev;
 	usb2_error_t err;
-	uint8_t speed;
+	enum usb_dev_speed speed;
 
 	bus = ((struct usb2_bus_msg *)pm)->bus;
 	dev = bus->bdev;
@@ -411,6 +415,10 @@ usb2_attach_sub(device_t dev, struct usb2_bus *bus)
 	} else if (usb2_proc_create(&bus->explore_proc,
 	    &bus->bus_mtx, pname, USB_PRI_MED)) {
 		printf("WARNING: Creation of USB explore "
+		    "process failed.\n");
+	} else if (usb2_proc_create(&bus->control_xfer_proc,
+	    &bus->bus_mtx, pname, USB_PRI_MED)) {
+		printf("WARNING: Creation of USB control transfer "
 		    "process failed.\n");
 	} else {
 		/* Get final attach going */

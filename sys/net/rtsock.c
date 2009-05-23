@@ -1261,6 +1261,14 @@ rt_dispatch(struct mbuf *m, const struct sockaddr *sa)
 		*(unsigned short *)(tag + 1) = sa->sa_family;
 		m_tag_prepend(m, tag);
 	}
+#ifdef VIMAGE
+	if (V_loif)
+		m->m_pkthdr.rcvif = V_loif;
+	else {
+		m_freem(m);
+		return;
+	}
+#endif
 	netisr_queue(NETISR_ROUTE, m);	/* mbuf is free'd on failure. */
 }
 

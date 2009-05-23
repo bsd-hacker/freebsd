@@ -67,11 +67,12 @@ __FBSDID("$FreeBSD$");
 static	void hostap_vattach(struct ieee80211vap *);
 static	int hostap_newstate(struct ieee80211vap *, enum ieee80211_state, int);
 static	int hostap_input(struct ieee80211_node *ni, struct mbuf *m,
-	    int rssi, int noise, uint32_t rstamp);
+	    int rssi, int nf);
 static void hostap_deliver_data(struct ieee80211vap *,
 	    struct ieee80211_node *, struct mbuf *);
 static void hostap_recv_mgmt(struct ieee80211_node *, struct mbuf *,
-	    int subtype, int rssi, int noise, uint32_t rstamp);
+	    int subtype, int rssi, int nf);
+static void hostap_recv_ctl(struct ieee80211_node *, struct mbuf *, int);
 static void hostap_recv_pspoll(struct ieee80211_node *, struct mbuf *);
 
 void
@@ -96,6 +97,7 @@ hostap_vattach(struct ieee80211vap *vap)
 	vap->iv_newstate = hostap_newstate;
 	vap->iv_input = hostap_input;
 	vap->iv_recv_mgmt = hostap_recv_mgmt;
+	vap->iv_recv_ctl = hostap_recv_ctl;
 	vap->iv_opdetach = hostap_vdetach;
 	vap->iv_deliver_data = hostap_deliver_data;
 }
@@ -416,8 +418,7 @@ doprint(struct ieee80211vap *vap, int subtype)
  * by the 802.11 layer.
  */
 static int
-hostap_input(struct ieee80211_node *ni, struct mbuf *m,
-	int rssi, int noise, uint32_t rstamp)
+hostap_input(struct ieee80211_node *ni, struct mbuf *m, int rssi, int nf)
 {
 #define	SEQ_LEQ(a,b)	((int)((a)-(b)) <= 0)
 #define	HAS_SEQ(type)	((type & 0x4) == 0)
@@ -473,7 +474,8 @@ hostap_input(struct ieee80211_node *ni, struct mbuf *m,
 	if ((wh->i_fc[0] & IEEE80211_FC0_VERSION_MASK) !=
 	    IEEE80211_FC0_VERSION_0) {
 		IEEE80211_DISCARD_MAC(vap, IEEE80211_MSG_ANY,
-		    ni->ni_macaddr, NULL, "wrong version %x", wh->i_fc[0]);
+		    ni->ni_macaddr, NULL, "wrong version, fc %02x:%02x",
+		    wh->i_fc[0], wh->i_fc[1]);
 		vap->iv_stats.is_rx_badversion++;
 		goto err;
 	}
@@ -512,8 +514,7 @@ hostap_input(struct ieee80211_node *ni, struct mbuf *m,
 		}
 
 		IEEE80211_RSSI_LPF(ni->ni_avgrssi, rssi);
-		ni->ni_noise = noise;
-		ni->ni_rstamp = rstamp;
+		ni->ni_noise = nf;
 		if (HAS_SEQ(type)) {
 			uint8_t tid = ieee80211_gettid(wh);
 			if (IEEE80211_QOS_HAS_SEQ(wh) &&
@@ -696,8 +697,8 @@ hostap_input(struct ieee80211_node *ni, struct mbuf *m,
 			goto out;
 		}
 		/* copy to listener after decrypt */
-		if (bpf_peers_present(vap->iv_rawbpf))
-			bpf_mtap(vap->iv_rawbpf, m);
+		if (ieee80211_radiotap_active_vap(vap))
+			ieee80211_radiotap_rx(vap, m);
 		need_tap = 0;
 		/*
 		 * Finally, strip the 802.11 header.
@@ -831,23 +832,13 @@ hostap_input(struct ieee80211_node *ni, struct mbuf *m,
 			wh = mtod(m, struct ieee80211_frame *);
 			wh->i_fc[1] &= ~IEEE80211_FC1_WEP;
 		}
-		if (bpf_peers_present(vap->iv_rawbpf))
-			bpf_mtap(vap->iv_rawbpf, m);
-		vap->iv_recv_mgmt(ni, m, subtype, rssi, noise, rstamp);
-		m_freem(m);
-		return IEEE80211_FC0_TYPE_MGT;
+		vap->iv_recv_mgmt(ni, m, subtype, rssi, nf);
+		goto out;
 
 	case IEEE80211_FC0_TYPE_CTL:
 		vap->iv_stats.is_rx_ctl++;
 		IEEE80211_NODE_STAT(ni, rx_ctrl);
-		switch (subtype) {
-		case IEEE80211_FC0_SUBTYPE_PS_POLL:
-			hostap_recv_pspoll(ni, m);
-			break;
-		case IEEE80211_FC0_SUBTYPE_BAR:
-			ieee80211_recv_bar(ni, m);
-			break;
-		}
+		vap->iv_recv_ctl(ni, m, subtype);
 		goto out;
 	default:
 		IEEE80211_DISCARD(vap, IEEE80211_MSG_ANY,
@@ -859,8 +850,8 @@ err:
 	ifp->if_ierrors++;
 out:
 	if (m != NULL) {
-		if (bpf_peers_present(vap->iv_rawbpf) && need_tap)
-			bpf_mtap(vap->iv_rawbpf, m);
+		if (need_tap)
+			ieee80211_radiotap_rx(vap, m);
 		m_freem(m);
 	}
 	return type;
@@ -869,7 +860,7 @@ out:
 
 static void
 hostap_auth_open(struct ieee80211_node *ni, struct ieee80211_frame *wh,
-    int rssi, int noise, uint32_t rstamp, uint16_t seq, uint16_t status)
+    int rssi, int nf, uint16_t seq, uint16_t status)
 {
 	struct ieee80211vap *vap = ni->ni_vap;
 
@@ -947,7 +938,7 @@ hostap_auth_open(struct ieee80211_node *ni, struct ieee80211_frame *wh,
 
 static void
 hostap_auth_shared(struct ieee80211_node *ni, struct ieee80211_frame *wh,
-    uint8_t *frm, uint8_t *efrm, int rssi, int noise, uint32_t rstamp,
+    uint8_t *frm, uint8_t *efrm, int rssi, int nf,
     uint16_t seq, uint16_t status)
 {
 	struct ieee80211vap *vap = ni->ni_vap;
@@ -1049,8 +1040,7 @@ hostap_auth_shared(struct ieee80211_node *ni, struct ieee80211_frame *wh,
 		 */
 		ni->ni_flags |= IEEE80211_NODE_ASSOCID;
 		IEEE80211_RSSI_LPF(ni->ni_avgrssi, rssi);
-		ni->ni_noise = noise;
-		ni->ni_rstamp = rstamp;
+		ni->ni_noise = nf;
 		if (!ieee80211_alloc_challenge(ni)) {
 			/* NB: don't return error so they rexmit */
 			return;
@@ -1631,7 +1621,7 @@ is11bclient(const uint8_t *rates, const uint8_t *xrates)
 
 static void
 hostap_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
-	int subtype, int rssi, int noise, uint32_t rstamp)
+	int subtype, int rssi, int nf)
 {
 	struct ieee80211vap *vap = ni->ni_vap;
 	struct ieee80211com *ic = ni->ni_ic;
@@ -1686,8 +1676,7 @@ hostap_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
 				ieee80211_probe_curchan(vap, 1);
 				ic->ic_flags_ext &= ~IEEE80211_FEXT_PROBECHAN;
 			}
-			ieee80211_add_scan(vap, &scan, wh,
-				subtype, rssi, noise, rstamp);
+			ieee80211_add_scan(vap, &scan, wh, subtype, rssi, nf);
 			return;
 		}
 		/*
@@ -1850,11 +1839,10 @@ hostap_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
 			return;
 		}
 		if (algo == IEEE80211_AUTH_ALG_SHARED)
-			hostap_auth_shared(ni, wh, frm + 6, efrm, rssi,
-			    noise, rstamp, seq, status);
-		else if (algo == IEEE80211_AUTH_ALG_OPEN)
-			hostap_auth_open(ni, wh, rssi, noise, rstamp,
+			hostap_auth_shared(ni, wh, frm + 6, efrm, rssi, nf,
 			    seq, status);
+		else if (algo == IEEE80211_AUTH_ALG_OPEN)
+			hostap_auth_open(ni, wh, rssi, nf, seq, status);
 		else if (algo == IEEE80211_AUTH_ALG_LEAP) {
 			authalgreject(ni, wh, algo,
 			    seq+1, IEEE80211_STATUS_ALG);
@@ -2070,8 +2058,7 @@ hostap_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
 			return;
 		}
 		IEEE80211_RSSI_LPF(ni->ni_avgrssi, rssi);
-		ni->ni_noise = noise;
-		ni->ni_rstamp = rstamp;
+		ni->ni_noise = nf;
 		ni->ni_intval = lintval;
 		ni->ni_capinfo = capinfo;
 		ni->ni_fhdwell = vap->iv_bss->ni_fhdwell;
@@ -2161,6 +2148,19 @@ hostap_recv_mgmt(struct ieee80211_node *ni, struct mbuf *m0,
 		IEEE80211_DISCARD(vap, IEEE80211_MSG_ANY,
 		     wh, "mgt", "subtype 0x%x not handled", subtype);
 		vap->iv_stats.is_rx_badsubtype++;
+		break;
+	}
+}
+
+static void
+hostap_recv_ctl(struct ieee80211_node *ni, struct mbuf *m, int subtype)
+{
+	switch (subtype) {
+	case IEEE80211_FC0_SUBTYPE_PS_POLL:
+		hostap_recv_pspoll(ni, m);
+		break;
+	case IEEE80211_FC0_SUBTYPE_BAR:
+		ieee80211_recv_bar(ni, m);
 		break;
 	}
 }

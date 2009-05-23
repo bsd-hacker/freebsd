@@ -227,6 +227,8 @@ struct inpcb {
 #define	in6p_icmp6filt	inp_depend6.inp6_icmp6filt
 #define	in6p_cksum	inp_depend6.inp6_cksum
 
+#define	inp_vnet	inp_pcbinfo->ipi_vnet
+
 /*
  * The range of the generation count, as used in this implementation, is 9e19.
  * We would have to create 300 billion connections per second for this number
@@ -304,8 +306,12 @@ struct inpcbinfo {
 	struct rwlock		 ipi_lock;
 
 	/*
-	 * vimage 1
-	 * general use 1
+	 * Pointer to network stack instance
+	 */
+	struct vnet		*ipi_vnet;
+
+	/*
+	 * general use 2
 	 */
 	void 			*ipi_pspare[2];
 };
@@ -503,14 +509,7 @@ int	in_getsockaddr(struct socket *so, struct sockaddr **nam);
 struct sockaddr *
 	in_sockaddr(in_port_t port, struct in_addr *addr);
 void	in_pcbsosetlabel(struct socket *so);
-void	in_pcbremlists(struct inpcb *inp);
 void	ipport_tick(void *xtp);
-
-/*
- * Debugging routines compiled in when DDB is present.
- */
-void	db_print_inpcb(struct inpcb *inp, const char *name, int indent);
-
 #endif /* _KERNEL */
 
 #endif /* !_NETINET_IN_PCB_H_ */

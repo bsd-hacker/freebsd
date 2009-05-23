@@ -226,7 +226,6 @@ KGSSAPI_DEBUG	opt_kgssapi.h
 # filesystems will be enabled - but look below.
 NFSCLIENT	opt_nfs.h
 NFSSERVER	opt_nfs.h
-NFS4CLIENT	opt_nfs.h
 
 # Use this option to compile both NFS client and server using the
 # legacy RPC implementation instead of the newer KRPC system (which
@@ -764,6 +763,10 @@ AH_NEED_DESC_SWAP	opt_ah.h
 AH_USE_INIPDGAIN	opt_ah.h
 AH_MAXCHAN		opt_ah.h
 
+# options for the Broadcom BCM43xx driver (bwi)
+BWI_DEBUG		opt_bwi.h
+BWI_DEBUG_VERBOSE	opt_bwi.h
+
 # options for the Marvell 8335 wireless driver
 MALO_DEBUG		opt_malo.h
 MALO_TXBUF		opt_malo.h
@@ -801,6 +804,11 @@ TDMA_BINTVAL_DEFAULT	opt_tdma.h
 TDMA_TXRATE_11B_DEFAULT	opt_tdma.h
 TDMA_TXRATE_11G_DEFAULT	opt_tdma.h
 TDMA_TXRATE_11A_DEFAULT	opt_tdma.h
+TDMA_TXRATE_TURBO_DEFAULT	opt_tdma.h
+TDMA_TXRATE_HALF_DEFAULT	opt_tdma.h
+TDMA_TXRATE_QUARTER_DEFAULT	opt_tdma.h
+TDMA_TXRATE_11NA_DEFAULT	opt_tdma.h
+TDMA_TXRATE_11NG_DEFAULT	opt_tdma.h
 
 # Virtualize the network stack
 VIMAGE			opt_global.h

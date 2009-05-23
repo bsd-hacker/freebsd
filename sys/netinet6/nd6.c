@@ -191,7 +191,7 @@ nd6_init(void)
 	/* start timer */
 	callout_init(&V_nd6_slowtimo_ch, 0);
 	callout_reset(&V_nd6_slowtimo_ch, ND6_SLOWTIMER_INTERVAL * hz,
-	    nd6_slowtimo, NULL);
+	    nd6_slowtimo, curvnet);
 
 	nd6_init_done = 1;
 
@@ -489,6 +489,14 @@ nd6_llinfo_timer(void *arg)
 	if ((ifp = ((ln->lle_tbl != NULL) ? ln->lle_tbl->llt_ifp : NULL)) == NULL)
 		panic("ln ifp == NULL");
 
+/*
+ * XXX XXX XXX XXX XXX
+ *
+ * Why the ^%(@)*&%^) is this #define MIN() needed for CURVNET_SET()?!?
+ * And #define MIN() is in sys/param.h already, which is #included first
+ * here?!?
+ */
+#define       MIN(a,b) (((a)<(b))?(a):(b))
 	CURVNET_SET(ifp->if_vnet);
 	INIT_VNET_INET6(curvnet);
 
@@ -592,8 +600,8 @@ done:
 void
 nd6_timer(void *arg)
 {
-	CURVNET_SET_QUIET((struct vnet *) arg);
-	INIT_VNET_INET6((struct vnet *) arg);
+	CURVNET_SET((struct vnet *) arg);
+	INIT_VNET_INET6(curvnet);
 	int s;
 	struct nd_defrouter *dr;
 	struct nd_prefix *pr;
@@ -601,7 +609,7 @@ nd6_timer(void *arg)
 	struct in6_addrlifetime *lt6;
 
 	callout_reset(&V_nd6_timer_ch, V_nd6_prune * hz,
-	    nd6_timer, NULL);
+	    nd6_timer, curvnet);
 
 	/* expire default router list */
 	s = splnet();
@@ -872,7 +880,6 @@ nd6_purge(struct ifnet *ifp)
 struct llentry *
 nd6_lookup(struct in6_addr *addr6, int flags, struct ifnet *ifp)
 {
-	INIT_VNET_INET6(curvnet);
 	struct sockaddr_in6 sin6;
 	struct llentry *ln;
 	int llflags = 0;
@@ -1669,7 +1676,7 @@ nd6_slowtimo(void *arg)
 	struct ifnet *ifp;
 
 	callout_reset(&V_nd6_slowtimo_ch, ND6_SLOWTIMER_INTERVAL * hz,
-	    nd6_slowtimo, NULL);
+	    nd6_slowtimo, curvnet);
 	IFNET_RLOCK();
 	for (ifp = TAILQ_FIRST(&V_ifnet); ifp;
 	    ifp = TAILQ_NEXT(ifp, if_list)) {

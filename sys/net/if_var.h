@@ -117,6 +117,7 @@ struct	ifqueue {
 struct ifnet {
 	void	*if_softc;		/* pointer to driver state */
 	void	*if_l2com;		/* pointer to protocol bits */
+	struct vnet *if_vnet;		/* pointer to network stack instance */
 	TAILQ_ENTRY(ifnet) if_link; 	/* all struct ifnets are chained */
 	char	if_xname[IFNAMSIZ];	/* external name (name + unit) */
 	const char *if_dname;		/* driver name */
@@ -730,6 +731,7 @@ struct ifindex_entry {
  * to call ifnet_byindex() instead if ifnet_byindex_ref().
  */
 struct ifnet	*ifnet_byindex(u_short idx);
+struct ifnet	*ifnet_byindex_locked(u_short idx);
 struct ifnet	*ifnet_byindex_ref(u_short idx);
 
 /*
@@ -753,9 +755,12 @@ int	if_addmulti(struct ifnet *, struct sockaddr *, struct ifmultiaddr **);
 int	if_allmulti(struct ifnet *, int);
 struct	ifnet* if_alloc(u_char);
 void	if_attach(struct ifnet *);
+void	if_dead(struct ifnet *);
+void	if_grow(void);
 int	if_delmulti(struct ifnet *, struct sockaddr *);
 void	if_delmulti_ifma(struct ifmultiaddr *);
 void	if_detach(struct ifnet *);
+void	if_vmove(struct ifnet *, struct vnet *);
 void	if_purgeaddrs(struct ifnet *);
 void	if_purgemaddrs(struct ifnet *);
 void	if_down(struct ifnet *);
@@ -775,6 +780,7 @@ void	if_up(struct ifnet *);
 int	ifioctl(struct socket *, u_long, caddr_t, struct thread *);
 int	ifpromisc(struct ifnet *, int);
 struct	ifnet *ifunit(const char *);
+struct	ifnet *ifunit_ref(const char *);
 
 void	ifq_attach(struct ifaltq *, struct ifnet *ifp);
 void	ifq_detach(struct ifaltq *);

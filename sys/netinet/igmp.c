@@ -88,7 +88,7 @@ __FBSDID("$FreeBSD$");
 #include <security/mac/mac_framework.h>
 
 #ifndef KTR_IGMPV3
-#define KTR_IGMPV3 KTR_SUBSYS
+#define KTR_IGMPV3 KTR_INET
 #endif
 
 static struct igmp_ifinfo *
@@ -143,13 +143,8 @@ static int	sysctl_igmp_default_version(SYSCTL_HANDLER_ARGS);
 static int	sysctl_igmp_gsr(SYSCTL_HANDLER_ARGS);
 static int	sysctl_igmp_ifinfo(SYSCTL_HANDLER_ARGS);
 
-#ifdef VIMAGE
 static vnet_attach_fn	vnet_igmp_iattach;
 static vnet_detach_fn	vnet_igmp_idetach;
-#else
-static int	vnet_igmp_iattach(const void *);
-static int	vnet_igmp_idetach(const void *);
-#endif /* VIMAGE */
 
 #ifdef NETISR2
 static const struct netisr_handler igmp_nh = {
@@ -345,6 +340,7 @@ igmp_restore_context(struct mbuf *m)
 static int
 sysctl_igmp_default_version(SYSCTL_HANDLER_ARGS)
 {
+	INIT_VNET_INET(curvnet);
 	int	 error;
 	int	 new;
 
@@ -384,6 +380,7 @@ out_locked:
 static int
 sysctl_igmp_gsr(SYSCTL_HANDLER_ARGS)
 {
+	INIT_VNET_INET(curvnet);
 	int error;
 	int i;
 
@@ -425,6 +422,7 @@ static int
 sysctl_igmp_ifinfo(SYSCTL_HANDLER_ARGS)
 {
 	INIT_VNET_NET(curvnet);
+	INIT_VNET_INET(curvnet);
 	int			*name;
 	int			 error;
 	u_int			 namelen;
@@ -510,6 +508,7 @@ igmp_dispatch_queue(struct ifqueue *ifq, int limit, const int loop)
 static __inline int
 igmp_isgroupreported(const struct in_addr addr)
 {
+	INIT_VNET_INET(curvnet);
 
 	if (in_allhosts(addr) ||
 	    ((!V_igmp_sendlocal && IN_LOCAL_GROUP(ntohl(addr.s_addr)))))
@@ -541,9 +540,6 @@ igmp_ra_alloc(void)
 
 /*
  * Attach IGMP when PF_INET is attached to an interface.
- *
- * VIMAGE: Currently we set the vnet pointer, although it is
- * likely that it was already set by our caller.
  */
 struct igmp_ifinfo *
 igmp_domifattach(struct ifnet *ifp)
@@ -553,7 +549,6 @@ igmp_domifattach(struct ifnet *ifp)
 	CTR3(KTR_IGMPV3, "%s: called for ifp %p(%s)",
 	    __func__, ifp, ifp->if_xname);
 
-	CURVNET_SET(ifp->if_vnet);
 	IGMP_LOCK();
 
 	igi = igi_alloc_locked(ifp);
@@ -561,7 +556,6 @@ igmp_domifattach(struct ifnet *ifp)
 		igi->igi_flags |= IGIF_SILENT;
 
 	IGMP_UNLOCK();
-	CURVNET_RESTORE();
 
 	return (igi);
 }
@@ -572,6 +566,7 @@ igmp_domifattach(struct ifnet *ifp)
 static struct igmp_ifinfo *
 igi_alloc_locked(/*const*/ struct ifnet *ifp)
 {
+	INIT_VNET_INET(ifp->if_vnet);
 	struct igmp_ifinfo *igi;
 
 	IGMP_LOCK_ASSERT();
@@ -612,9 +607,6 @@ out:
  *
  * SMPNG: igmp_ifdetach() needs to take IF_ADDR_LOCK().
  * XXX This is also bitten by unlocked ifma_protospec access.
- *
- * VIMAGE: curvnet should have been set by caller, but let's not assume
- * that for now.
  */
 void
 igmp_ifdetach(struct ifnet *ifp)
@@ -625,8 +617,6 @@ igmp_ifdetach(struct ifnet *ifp)
 
 	CTR3(KTR_IGMPV3, "%s: called for ifp %p(%s)", __func__, ifp,
 	    ifp->if_xname);
-
-	CURVNET_SET(ifp->if_vnet);
 
 	IGMP_LOCK();
 
@@ -660,15 +650,10 @@ igmp_ifdetach(struct ifnet *ifp)
 	}
 
 	IGMP_UNLOCK();
-
-	CURVNET_RESTORE();
 }
 
 /*
  * Hook for domifdetach.
- *
- * VIMAGE: curvnet should have been set by caller, but let's not assume
- * that for now.
  */
 void
 igmp_domifdetach(struct ifnet *ifp)
@@ -678,19 +663,18 @@ igmp_domifdetach(struct ifnet *ifp)
 	CTR3(KTR_IGMPV3, "%s: called for ifp %p(%s)",
 	    __func__, ifp, ifp->if_xname);
 
-	CURVNET_SET(ifp->if_vnet);
 	IGMP_LOCK();
 
 	igi = ((struct in_ifinfo *)ifp->if_afdata[AF_INET])->ii_igmp;
 	igi_delete_locked(ifp);
 
 	IGMP_UNLOCK();
-	CURVNET_RESTORE();
 }
 
 static void
 igi_delete_locked(const struct ifnet *ifp)
 {
+	INIT_VNET_INET(ifp->if_vnet);
 	struct igmp_ifinfo *igi, *tigi;
 
 	CTR3(KTR_IGMPV3, "%s: freeing igmp_ifinfo for ifp %p(%s)",
@@ -815,6 +799,7 @@ static int
 igmp_input_v2_query(struct ifnet *ifp, const struct ip *ip,
     const struct igmp *igmp)
 {
+	INIT_VNET_INET(ifp->if_vnet);
 	struct ifmultiaddr	*ifma;
 	struct igmp_ifinfo	*igi;
 	struct in_multi		*inm;
@@ -907,6 +892,7 @@ out_locked:
 static void
 igmp_v2_update_group(struct in_multi *inm, const int timer)
 {
+	INIT_VNET_INET(curvnet);
 
 	CTR4(KTR_IGMPV3, "%s: %s/%s timer=%d", __func__,
 	    inet_ntoa(inm->inm_addr), inm->inm_ifp->if_xname, timer);
@@ -954,6 +940,7 @@ static int
 igmp_input_v3_query(struct ifnet *ifp, const struct ip *ip,
     /*const*/ struct igmpv3 *igmpv3)
 {
+	INIT_VNET_INET(ifp->if_vnet);
 	struct igmp_ifinfo	*igi;
 	struct in_multi		*inm;
 	uint32_t		 maxresp, nsrc, qqi;
@@ -1098,6 +1085,7 @@ static int
 igmp_input_v3_group_query(struct in_multi *inm, struct igmp_ifinfo *igi,
     int timer, /*const*/ struct igmpv3 *igmpv3)
 {
+	INIT_VNET_INET(curvnet);
 	int			 retval;
 	uint16_t		 nsrc;
 
@@ -1200,6 +1188,7 @@ static int
 igmp_input_v1_report(struct ifnet *ifp, /*const*/ struct ip *ip,
     /*const*/ struct igmp *igmp)
 {
+	INIT_VNET_INET(ifp->if_vnet);
 	struct in_ifaddr *ia;
 	struct in_multi *inm;
 
@@ -1306,6 +1295,7 @@ static int
 igmp_input_v2_report(struct ifnet *ifp, /*const*/ struct ip *ip,
     /*const*/ struct igmp *igmp)
 {
+	INIT_VNET_INET(ifp->if_vnet);
 	struct in_ifaddr *ia;
 	struct in_multi *inm;
 
@@ -1591,21 +1581,15 @@ igmp_input(struct mbuf *m, int off)
 void
 igmp_fasttimo(void)
 {
-#ifdef VIMAGE
 	VNET_ITERATOR_DECL(vnet_iter);
 
 	VNET_LIST_RLOCK();
 	VNET_FOREACH(vnet_iter) {
 		CURVNET_SET(vnet_iter);
-		INIT_VNET_INET(vnet_iter);
 		igmp_fasttimo_vnet();
 		CURVNET_RESTORE();
 	}
 	VNET_LIST_RUNLOCK();
-#else /* !VIMAGE */
-
-	igmp_fasttimo_vnet();
-#endif /* VIMAGE */
 }
 
 /*
@@ -1617,6 +1601,7 @@ igmp_fasttimo(void)
 static void
 igmp_fasttimo_vnet(void)
 {
+	INIT_VNET_INET(curvnet);
 	struct ifqueue		 scq;	/* State-change packets */
 	struct ifqueue		 qrq;	/* Query response packets */
 	struct ifnet		*ifp;
@@ -1739,6 +1724,7 @@ out_locked:
 static void
 igmp_v1v2_process_group_timer(struct in_multi *inm, const int version)
 {
+	INIT_VNET_INET(curvnet);
 	int report_timer_expired;
 
 	IN_MULTI_LOCK_ASSERT();
@@ -1787,6 +1773,7 @@ igmp_v3_process_group_timers(struct igmp_ifinfo *igi,
     struct ifqueue *qrq, struct ifqueue *scq,
     struct in_multi *inm, const int uri_fasthz)
 {
+	INIT_VNET_INET(curvnet);
 	int query_response_timer_expired;
 	int state_change_retransmit_timer_expired;
 
@@ -1976,6 +1963,7 @@ igmp_set_version(struct igmp_ifinfo *igi, const int version)
 static void
 igmp_v3_cancel_link_timers(struct igmp_ifinfo *igi)
 {
+	INIT_VNET_INET(curvnet);
 	struct ifmultiaddr	*ifma;
 	struct ifnet		*ifp;
 	struct in_multi		*inm;
@@ -2051,6 +2039,7 @@ igmp_v3_cancel_link_timers(struct igmp_ifinfo *igi)
 static void
 igmp_v1v2_process_querier_timers(struct igmp_ifinfo *igi)
 {
+	INIT_VNET_INET(curvnet);
 
 	IGMP_LOCK_ASSERT();
 
@@ -2127,20 +2116,15 @@ igmp_v1v2_process_querier_timers(struct igmp_ifinfo *igi)
 void
 igmp_slowtimo(void)
 {
-#ifdef VIMAGE
 	VNET_ITERATOR_DECL(vnet_iter);
 
 	VNET_LIST_RLOCK();
 	VNET_FOREACH(vnet_iter) {
 		CURVNET_SET(vnet_iter);
-		INIT_VNET_INET(vnet_iter);
 		igmp_slowtimo_vnet();
 		CURVNET_RESTORE();
 	}
 	VNET_LIST_RUNLOCK();
-#else /* !VIMAGE */
-	igmp_slowtimo_vnet();
-#endif /* VIMAGE */
 }
 
 /*
@@ -2149,6 +2133,7 @@ igmp_slowtimo(void)
 static void
 igmp_slowtimo_vnet(void)
 {
+	INIT_VNET_INET(curvnet);
 	struct igmp_ifinfo *igi;
 
 	IGMP_LOCK();
@@ -2176,9 +2161,6 @@ igmp_v1v2_queue_report(struct in_multi *inm, const int type)
 	IGMP_LOCK_ASSERT();
 
 	ifp = inm->inm_ifp;
-	/* XXX are these needed ? */
-	INIT_VNET_NET(ifp->if_vnet);
-	INIT_VNET_INET(ifp->if_vnet);
 
 	MGETHDR(m, M_DONTWAIT, MT_DATA);
 	if (m == NULL)
@@ -2316,6 +2298,7 @@ out_locked:
 static int
 igmp_initial_join(struct in_multi *inm, struct igmp_ifinfo *igi)
 {
+	INIT_VNET_INET(curvnet);
 	struct ifnet		*ifp;
 	struct ifqueue		*ifq;
 	int			 error, retval, syncstates;
@@ -2444,6 +2427,7 @@ igmp_initial_join(struct in_multi *inm, struct igmp_ifinfo *igi)
 static int
 igmp_handle_state_change(struct in_multi *inm, struct igmp_ifinfo *igi)
 {
+	INIT_VNET_INET(curvnet);
 	struct ifnet		*ifp;
 	int			 retval;
 
@@ -2503,6 +2487,7 @@ igmp_handle_state_change(struct in_multi *inm, struct igmp_ifinfo *igi)
 static void
 igmp_final_leave(struct in_multi *inm, struct igmp_ifinfo *igi)
 {
+	INIT_VNET_INET(curvnet);
 	int syncstates;
 
 	syncstates = 1;
@@ -2993,7 +2978,7 @@ igmp_v3_enqueue_filter_change(struct ifqueue *ifq, struct in_multi *inm)
 	struct ip_msource	*ims, *nims;
 	struct mbuf		*m, *m0, *md;
 	in_addr_t		 naddr;
-	int			 m0srcs, nbytes, off, rsrcs, schanged;
+	int			 m0srcs, nbytes, npbytes, off, rsrcs, schanged;
 	int			 nallow, nblock;
 	uint8_t			 mode, now, then;
 	rectype_t		 crt, drt, nrt;
@@ -3011,6 +2996,7 @@ igmp_v3_enqueue_filter_change(struct ifqueue *ifq, struct in_multi *inm)
 	nrt = REC_NONE;	/* record type for current node */
 	m0srcs = 0;	/* # source which will fit in current mbuf chain */
 	nbytes = 0;	/* # of bytes appended to group's state-change queue */
+	npbytes = 0;	/* # of bytes appended this packet */
 	rsrcs = 0;	/* # sources encoded in current record */
 	schanged = 0;	/* # nodes encoded in overall filter change */
 	nallow = 0;	/* # of source entries in ALLOW_NEW */
@@ -3057,6 +3043,7 @@ igmp_v3_enqueue_filter_change(struct ifqueue *ifq, struct in_multi *inm)
 				m0srcs = (ifp->if_mtu - IGMP_LEADINGSPACE -
 				    sizeof(struct igmp_grouprec)) /
 				    sizeof(in_addr_t);
+				npbytes = 0;
 				CTR1(KTR_IGMPV3,
 				    "%s: allocated new packet", __func__);
 			}
@@ -3076,15 +3063,19 @@ igmp_v3_enqueue_filter_change(struct ifqueue *ifq, struct in_multi *inm)
 				    "%s: m_append() failed", __func__);
 				return (-ENOMEM);
 			}
-			nbytes += sizeof(struct igmp_grouprec);
-			if (m == m0) {
-				md = m_last(m);
-				pig = (struct igmp_grouprec *)(mtod(md,
-				    uint8_t *) + md->m_len - nbytes);
-			} else {
-				md = m_getptr(m, 0, &off);
+			npbytes += sizeof(struct igmp_grouprec);
+			if (m != m0) {
+				/* new packet; offset in c hain */
+				md = m_getptr(m, npbytes -
+				    sizeof(struct igmp_grouprec), &off);
 				pig = (struct igmp_grouprec *)(mtod(md,
 				    uint8_t *) + off);
+			} else {
+				/* current packet; offset from last append */
+				md = m_last(m);
+				pig = (struct igmp_grouprec *)(mtod(md,
+				    uint8_t *) + md->m_len -
+				    sizeof(struct igmp_grouprec));
 			}
 			/*
 			 * Begin walking the tree for this record type
@@ -3143,7 +3134,7 @@ igmp_v3_enqueue_filter_change(struct ifqueue *ifq, struct in_multi *inm)
 			 * pass, back out of allocations.
 			 */
 			if (rsrcs == 0) {
-				nbytes -= sizeof(struct igmp_grouprec);
+				npbytes -= sizeof(struct igmp_grouprec);
 				if (m != m0) {
 					CTR1(KTR_IGMPV3,
 					    "%s: m_free(m)", __func__);
@@ -3156,7 +3147,7 @@ igmp_v3_enqueue_filter_change(struct ifqueue *ifq, struct in_multi *inm)
 				}
 				continue;
 			}
-			nbytes += (rsrcs * sizeof(in_addr_t));
+			npbytes += (rsrcs * sizeof(in_addr_t));
 			if (crt == REC_ALLOW)
 				pig->ig_type = IGMP_ALLOW_NEW_SOURCES;
 			else if (crt == REC_BLOCK)
@@ -3169,6 +3160,7 @@ igmp_v3_enqueue_filter_change(struct ifqueue *ifq, struct in_multi *inm)
 			m->m_pkthdr.PH_vt.vt_nrecs++;
 			if (m != m0)
 				_IF_ENQUEUE(ifq, m);
+			nbytes += npbytes;
 		} while (nims != NULL);
 		drt |= crt;
 		crt = (~crt & REC_FULL);
@@ -3288,6 +3280,7 @@ igmp_v3_merge_state_changes(struct in_multi *inm, struct ifqueue *ifscq)
 static void
 igmp_v3_dispatch_general_query(struct igmp_ifinfo *igi)
 {
+	INIT_VNET_INET(curvnet);
 	struct ifmultiaddr	*ifma, *tifma;
 	struct ifnet		*ifp;
 	struct in_multi		*inm;
@@ -3369,12 +3362,14 @@ igmp_intr(struct mbuf *m)
 	CTR2(KTR_IGMPV3, "%s: transmit %p", __func__, m);
 
 	/*
-	 * Restore VNET image pointer from enqueued mbuf chain
+	 * Set VNET image pointer from enqueued mbuf chain
 	 * before doing anything else. Whilst we use interface
 	 * indexes to guard against interface detach, they are
 	 * unique to each VIMAGE and must be retrieved.
 	 */
-	CURVNET_SET(m->m_pkthdr.header);
+	CURVNET_SET((struct vnet *)(m->m_pkthdr.header));
+	INIT_VNET_NET(curvnet);
+	INIT_VNET_INET(curvnet);
 	ifindex = igmp_restore_context(m);
 
 	/*
@@ -3456,7 +3451,6 @@ out:
 static struct mbuf *
 igmp_v3_encap_report(struct ifnet *ifp, struct mbuf *m)
 {
-	INIT_VNET_NET(curvnet);
 	INIT_VNET_INET(curvnet);
 	struct igmp_report	*igmp;
 	struct ip		*ip;
@@ -3625,7 +3619,9 @@ vnet_igmp_iattach(const void *unused __unused)
 static int
 vnet_igmp_idetach(const void *unused __unused)
 {
+#ifdef INVARIANTS
 	INIT_VNET_INET(curvnet);
+#endif
 
 	CTR1(KTR_IGMPV3, "%s: tearing down", __func__);
 
@@ -3635,15 +3631,15 @@ vnet_igmp_idetach(const void *unused __unused)
 	return (0);
 }
 
-#ifdef VIMAGE
-static struct vnet_symmap vnet_igmp_symmap[] = {
-	VNET_SYMMAP(igmp, igi_head),
-	VNET_SYMMAP(igmp, igmpstat),
-	VNET_SYMMAP_END
+#ifndef VIMAGE_GLOBALS
+static vnet_modinfo_t vnet_igmp_modinfo = {
+	.vmi_id		= VNET_MOD_IGMP,
+	.vmi_name	= "igmp",
+	.vmi_dependson	= VNET_MOD_INET,
+	.vmi_iattach	= vnet_igmp_iattach,
+	.vmi_idetach	= vnet_igmp_idetach
 };
-VNET_MOD_DECLARE(IGMP, igmp, vnet_igmp_iattach, vnet_igmp_idetach,
-    vnet_igmp_symmap);
-#endif /* VIMAGE */
+#endif
 
 static int
 igmp_modevent(module_t mod, int type, void *unused __unused)
@@ -3652,22 +3648,18 @@ igmp_modevent(module_t mod, int type, void *unused __unused)
     switch (type) {
     case MOD_LOAD:
 	igmp_sysinit();
-#ifdef VIMAGE
+#ifndef VIMAGE_GLOBALS
 	vnet_mod_register(&vnet_igmp_modinfo);
 #else
-	(void)vnet_igmp_iattach(NULL);
-#endif /* VIMAGE */
+	vnet_igmp_iattach(NULL);
+#endif
 	break;
     case MOD_UNLOAD:
-#ifdef VIMAGE
-	/*
-	 * TODO: Allow module unload if any VIMAGE instances
-	 * are using this module.
-	 */
-	return (EBUSY);
+#ifndef VIMAGE_GLOBALS
+	vnet_mod_deregister(&vnet_igmp_modinfo);
 #else
-	(void)vnet_igmp_idetach(NULL);
-#endif /* VIMAGE */
+	vnet_igmp_idetach(NULL);
+#endif
 	igmp_sysuninit();
 	break;
     default:

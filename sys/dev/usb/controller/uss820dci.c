@@ -62,8 +62,8 @@
 #if USB_DEBUG
 static int uss820dcidebug = 0;
 
-SYSCTL_NODE(_hw_usb2, OID_AUTO, uss820dci, CTLFLAG_RW, 0, "USB uss820dci");
-SYSCTL_INT(_hw_usb2_uss820dci, OID_AUTO, debug, CTLFLAG_RW,
+SYSCTL_NODE(_hw_usb, OID_AUTO, uss820dci, CTLFLAG_RW, 0, "USB uss820dci");
+SYSCTL_INT(_hw_usb_uss820dci, OID_AUTO, debug, CTLFLAG_RW,
     &uss820dcidebug, 0, "uss820dci debug level");
 #endif
 
@@ -230,11 +230,11 @@ uss820dci_setup_rx(struct uss820dci_td *td)
 
 	/* select the correct endpoint */
 	bus_space_write_1(td->io_tag, td->io_hdl,
-	    td->ep_reg, td->ep_index);
+	    USS820_EPINDEX, td->ep_index);
 
 	/* read out FIFO status */
 	rx_stat = bus_space_read_1(td->io_tag, td->io_hdl,
-	    td->rx_stat_reg);
+	    USS820_RXSTAT);
 
 	/* get pointer to softc */
 	sc = USS820_DCI_PC2SC(td->pc);
@@ -260,9 +260,9 @@ uss820dci_setup_rx(struct uss820dci_td *td)
 
 	/* get the packet byte count */
 	count = bus_space_read_1(td->io_tag, td->io_hdl,
-	    td->rx_count_low_reg);
+	    USS820_RXCNTL);
 	count |= (bus_space_read_1(td->io_tag, td->io_hdl,
-	    td->rx_count_high_reg) << 8);
+	    USS820_RXCNTH) << 8);
 	count &= 0x3FF;
 
 	/* verify data length */
@@ -278,11 +278,11 @@ uss820dci_setup_rx(struct uss820dci_td *td)
 	}
 	/* receive data */
 	bus_space_read_multi_1(td->io_tag, td->io_hdl,
-	    td->rx_fifo_reg, (void *)&req, sizeof(req));
+	    USS820_RXDAT, (void *)&req, sizeof(req));
 
 	/* read out FIFO status */
 	rx_stat = bus_space_read_1(td->io_tag, td->io_hdl,
-	    td->rx_stat_reg);
+	    USS820_RXSTAT);
 
 	if (rx_stat & (USS820_RXSTAT_EDOVW |
 	    USS820_RXSTAT_STOVW)) {
@@ -297,10 +297,10 @@ uss820dci_setup_rx(struct uss820dci_td *td)
 
 	/* set RXFFRC bit */
 	temp = bus_space_read_1(td->io_tag, td->io_hdl,
-	    td->rx_cntl_reg);
+	    USS820_RXCON);
 	temp |= USS820_RXCON_RXFFRC;
 	bus_space_write_1(td->io_tag, td->io_hdl,
-	    td->rx_cntl_reg, temp);
+	    USS820_RXCON, temp);
 
 	/* copy data into real buffer */
 	usb2_copy_in(td->pc, 0, &req, sizeof(req));
@@ -321,10 +321,10 @@ setup_not_complete:
 
 	/* set RXFFRC bit */
 	temp = bus_space_read_1(td->io_tag, td->io_hdl,
-	    td->rx_cntl_reg);
+	    USS820_RXCON);
 	temp |= USS820_RXCON_RXFFRC;
 	bus_space_write_1(td->io_tag, td->io_hdl,
-	    td->rx_cntl_reg, temp);
+	    USS820_RXCON, temp);
 
 	/* FALLTHROUGH */
 
@@ -365,16 +365,16 @@ uss820dci_data_rx(struct uss820dci_td *td)
 	got_short = 0;
 
 	/* select the correct endpoint */
-	bus_space_write_1(td->io_tag, td->io_hdl, td->ep_reg, td->ep_index);
+	bus_space_write_1(td->io_tag, td->io_hdl, USS820_EPINDEX, td->ep_index);
 
 	/* check if any of the FIFO banks have data */
 repeat:
 	/* read out FIFO flag */
 	rx_flag = bus_space_read_1(td->io_tag, td->io_hdl,
-	    td->rx_flag_reg);
+	    USS820_RXFLG);
 	/* read out FIFO status */
 	rx_stat = bus_space_read_1(td->io_tag, td->io_hdl,
-	    td->rx_stat_reg);
+	    USS820_RXSTAT);
 
 	DPRINTFN(5, "rx_stat=0x%02x rx_flag=0x%02x rem=%u\n",
 	    rx_stat, rx_flag, td->remainder);
@@ -410,19 +410,19 @@ repeat:
 
 		/* read out EPCON register */
 		/* enable RX input */
-		if (!td->did_stall) {
+		if (!td->did_enable) {
 			uss820dci_update_shared_1(USS820_DCI_PC2SC(td->pc),
 			    USS820_EPCON, 0xFF, USS820_EPCON_RXIE);
-			td->did_stall = 1;
+			td->did_enable = 1;
 		}
 		return (1);		/* not complete */
 	}
 	/* get the packet byte count */
 	count = bus_space_read_1(td->io_tag, td->io_hdl,
-	    td->rx_count_low_reg);
+	    USS820_RXCNTL);
 
 	count |= (bus_space_read_1(td->io_tag, td->io_hdl,
-	    td->rx_count_high_reg) << 8);
+	    USS820_RXCNTH) << 8);
 	count &= 0x3FF;
 
 	DPRINTFN(5, "count=0x%04x\n", count);
@@ -454,7 +454,7 @@ repeat:
 		}
 		/* receive data */
 		bus_space_read_multi_1(td->io_tag, td->io_hdl,
-		    td->rx_fifo_reg, buf_res.buffer, buf_res.length);
+		    USS820_RXDAT, buf_res.buffer, buf_res.length);
 
 		/* update counters */
 		count -= buf_res.length;
@@ -464,10 +464,10 @@ repeat:
 
 	/* set RXFFRC bit */
 	rx_cntl = bus_space_read_1(td->io_tag, td->io_hdl,
-	    td->rx_cntl_reg);
+	    USS820_RXCON);
 	rx_cntl |= USS820_RXCON_RXFFRC;
 	bus_space_write_1(td->io_tag, td->io_hdl,
-	    td->rx_cntl_reg, rx_cntl);
+	    USS820_RXCON, rx_cntl);
 
 	/* check if we are complete */
 	if ((td->remainder == 0) || got_short) {
@@ -495,18 +495,18 @@ uss820dci_data_tx(struct uss820dci_td *td)
 
 	/* select the correct endpoint */
 	bus_space_write_1(td->io_tag, td->io_hdl,
-	    td->ep_reg, td->ep_index);
+	    USS820_EPINDEX, td->ep_index);
 
 	to = 2;				/* don't loop forever! */
 
 repeat:
 	/* read out TX FIFO flags */
 	tx_flag = bus_space_read_1(td->io_tag, td->io_hdl,
-	    td->tx_flag_reg);
+	    USS820_TXFLG);
 
 	/* read out RX FIFO status last */
 	rx_stat = bus_space_read_1(td->io_tag, td->io_hdl,
-	    td->rx_stat_reg);
+	    USS820_RXSTAT);
 
 	DPRINTFN(5, "rx_stat=0x%02x tx_flag=0x%02x rem=%u\n",
 	    rx_stat, tx_flag, td->remainder);
@@ -553,7 +553,7 @@ repeat:
 		}
 		/* transmit data */
 		bus_space_write_multi_1(td->io_tag, td->io_hdl,
-		    td->tx_fifo_reg, buf_res.buffer, buf_res.length);
+		    USS820_TXDAT, buf_res.buffer, buf_res.length);
 
 		/* update counters */
 		count -= buf_res.length;
@@ -563,20 +563,20 @@ repeat:
 
 	/* post-write high packet byte count first */
 	bus_space_write_1(td->io_tag, td->io_hdl,
-	    td->tx_count_high_reg, count_copy >> 8);
+	    USS820_TXCNTH, count_copy >> 8);
 
 	/* post-write low packet byte count last */
 	bus_space_write_1(td->io_tag, td->io_hdl,
-	    td->tx_count_low_reg, count_copy);
+	    USS820_TXCNTL, count_copy);
 
 	/*
 	 * Enable TX output, which must happen after that we have written
 	 * data into the FIFO. This is undocumented.
 	 */
-	if (!td->did_stall) {
+	if (!td->did_enable) {
 		uss820dci_update_shared_1(USS820_DCI_PC2SC(td->pc),
 		    USS820_EPCON, 0xFF, USS820_EPCON_TXOE);
-		td->did_stall = 1;
+		td->did_enable = 1;
 	}
 	/* check remainder */
 	if (td->remainder == 0) {
@@ -600,15 +600,15 @@ uss820dci_data_tx_sync(struct uss820dci_td *td)
 
 	/* select the correct endpoint */
 	bus_space_write_1(td->io_tag, td->io_hdl,
-	    td->ep_reg, td->ep_index);
+	    USS820_EPINDEX, td->ep_index);
 
 	/* read out TX FIFO flag */
 	tx_flag = bus_space_read_1(td->io_tag, td->io_hdl,
-	    td->tx_flag_reg);
+	    USS820_TXFLG);
 
 	/* read out RX FIFO status last */
 	rx_stat = bus_space_read_1(td->io_tag, td->io_hdl,
-	    td->rx_stat_reg);
+	    USS820_RXSTAT);
 
 	DPRINTFN(5, "rx_stat=0x%02x rem=%u\n", rx_stat, td->remainder);
 
@@ -813,7 +813,8 @@ uss820dci_setup_standard_chain_sub(struct uss820_std_temp *temp)
 	td->offset = temp->offset;
 	td->remainder = temp->len;
 	td->error = 0;
-	td->did_stall = 0;
+	td->did_enable = 0;
+	td->did_stall = temp->did_stall;
 	td->short_pkt = temp->short_pkt;
 	td->alt_next = temp->setup_alt_next;
 }
@@ -843,6 +844,7 @@ uss820dci_setup_standard_chain(struct usb2_xfer *xfer)
 	temp.td_next = xfer->td_start[0];
 	temp.offset = 0;
 	temp.setup_alt_next = xfer->flags_int.short_frames_ok;
+	temp.did_stall = !xfer->flags_int.control_stall;
 
 	sc = USS820_DCI_BUS2SC(xfer->xroot->bus);
 	ep_no = (xfer->endpoint & UE_ADDR);
@@ -1173,7 +1175,7 @@ uss820dci_device_done(struct usb2_xfer *xfer, usb2_error_t error)
 	DPRINTFN(2, "xfer=%p, pipe=%p, error=%d\n",
 	    xfer, xfer->pipe, error);
 
-	if (xfer->flags_int.usb2_mode == USB_MODE_DEVICE) {
+	if (xfer->flags_int.usb_mode == USB_MODE_DEVICE) {
 		uss820dci_intr_set(xfer, 0);
 	}
 	/* dequeue transfer and start next transfer */
@@ -1279,7 +1281,7 @@ uss820dci_clear_stall(struct usb2_device *udev, struct usb2_pipe *pipe)
 	DPRINTFN(5, "pipe=%p\n", pipe);
 
 	/* check mode */
-	if (udev->flags.usb2_mode != USB_MODE_DEVICE) {
+	if (udev->flags.usb_mode != USB_MODE_DEVICE) {
 		/* not supported */
 		return;
 	}
@@ -1788,28 +1790,32 @@ USB_MAKE_STRING_DESC(STRING_LANG, uss820dci_langtab);
 USB_MAKE_STRING_DESC(STRING_VENDOR, uss820dci_vendor);
 USB_MAKE_STRING_DESC(STRING_PRODUCT, uss820dci_product);
 
-static void
-uss820dci_roothub_exec(struct usb2_bus *bus)
+static usb2_error_t
+uss820dci_roothub_exec(struct usb2_device *udev,
+    struct usb2_device_request *req, const void **pptr, uint16_t *plength)
 {
-	struct uss820dci_softc *sc = USS820_DCI_BUS2SC(bus);
-	struct usb2_sw_transfer *std = &sc->sc_bus.roothub_req;
+	struct uss820dci_softc *sc = USS820_DCI_BUS2SC(udev->bus);
+	const void *ptr;
+	uint16_t len;
 	uint16_t value;
 	uint16_t index;
+	usb2_error_t err;
 
 	USB_BUS_LOCK_ASSERT(&sc->sc_bus, MA_OWNED);
 
 	/* buffer reset */
-	std->ptr = USB_ADD_BYTES(&sc->sc_hub_temp, 0);
-	std->len = 0;
+	ptr = (const void *)&sc->sc_hub_temp;
+	len = 0;
+	err = 0;
 
-	value = UGETW(std->req.wValue);
-	index = UGETW(std->req.wIndex);
+	value = UGETW(req->wValue);
+	index = UGETW(req->wIndex);
 
 	/* demultiplex the control request */
 
-	switch (std->req.bmRequestType) {
+	switch (req->bmRequestType) {
 	case UT_READ_DEVICE:
-		switch (std->req.bRequest) {
+		switch (req->bRequest) {
 		case UR_GET_DESCRIPTOR:
 			goto tr_handle_get_descriptor;
 		case UR_GET_CONFIG:
@@ -1822,7 +1828,7 @@ uss820dci_roothub_exec(struct usb2_bus *bus)
 		break;
 
 	case UT_WRITE_DEVICE:
-		switch (std->req.bRequest) {
+		switch (req->bRequest) {
 		case UR_SET_ADDRESS:
 			goto tr_handle_set_address;
 		case UR_SET_CONFIG:
@@ -1838,9 +1844,9 @@ uss820dci_roothub_exec(struct usb2_bus *bus)
 		break;
 
 	case UT_WRITE_ENDPOINT:
-		switch (std->req.bRequest) {
+		switch (req->bRequest) {
 		case UR_CLEAR_FEATURE:
-			switch (UGETW(std->req.wValue)) {
+			switch (UGETW(req->wValue)) {
 			case UF_ENDPOINT_HALT:
 				goto tr_handle_clear_halt;
 			case UF_DEVICE_REMOTE_WAKEUP:
@@ -1850,7 +1856,7 @@ uss820dci_roothub_exec(struct usb2_bus *bus)
 			}
 			break;
 		case UR_SET_FEATURE:
-			switch (UGETW(std->req.wValue)) {
+			switch (UGETW(req->wValue)) {
 			case UF_ENDPOINT_HALT:
 				goto tr_handle_set_halt;
 			case UF_DEVICE_REMOTE_WAKEUP:
@@ -1867,7 +1873,7 @@ uss820dci_roothub_exec(struct usb2_bus *bus)
 		break;
 
 	case UT_READ_ENDPOINT:
-		switch (std->req.bRequest) {
+		switch (req->bRequest) {
 		case UR_GET_STATUS:
 			goto tr_handle_get_ep_status;
 		default:
@@ -1876,7 +1882,7 @@ uss820dci_roothub_exec(struct usb2_bus *bus)
 		break;
 
 	case UT_WRITE_INTERFACE:
-		switch (std->req.bRequest) {
+		switch (req->bRequest) {
 		case UR_SET_INTERFACE:
 			goto tr_handle_set_interface;
 		case UR_CLEAR_FEATURE:
@@ -1888,7 +1894,7 @@ uss820dci_roothub_exec(struct usb2_bus *bus)
 		break;
 
 	case UT_READ_INTERFACE:
-		switch (std->req.bRequest) {
+		switch (req->bRequest) {
 		case UR_GET_INTERFACE:
 			goto tr_handle_get_interface;
 		case UR_GET_STATUS:
@@ -1909,7 +1915,7 @@ uss820dci_roothub_exec(struct usb2_bus *bus)
 		break;
 
 	case UT_WRITE_CLASS_DEVICE:
-		switch (std->req.bRequest) {
+		switch (req->bRequest) {
 		case UR_CLEAR_FEATURE:
 			goto tr_valid;
 		case UR_SET_DESCRIPTOR:
@@ -1921,7 +1927,7 @@ uss820dci_roothub_exec(struct usb2_bus *bus)
 		break;
 
 	case UT_WRITE_CLASS_OTHER:
-		switch (std->req.bRequest) {
+		switch (req->bRequest) {
 		case UR_CLEAR_FEATURE:
 			goto tr_handle_clear_port_feature;
 		case UR_SET_FEATURE:
@@ -1937,7 +1943,7 @@ uss820dci_roothub_exec(struct usb2_bus *bus)
 		break;
 
 	case UT_READ_CLASS_OTHER:
-		switch (std->req.bRequest) {
+		switch (req->bRequest) {
 		case UR_GET_TT_STATE:
 			goto tr_handle_get_tt_state;
 		case UR_GET_STATUS:
@@ -1948,7 +1954,7 @@ uss820dci_roothub_exec(struct usb2_bus *bus)
 		break;
 
 	case UT_READ_CLASS_DEVICE:
-		switch (std->req.bRequest) {
+		switch (req->bRequest) {
 		case UR_GET_DESCRIPTOR:
 			goto tr_handle_get_class_descriptor;
 		case UR_GET_STATUS:
@@ -1969,31 +1975,31 @@ tr_handle_get_descriptor:
 		if (value & 0xff) {
 			goto tr_stalled;
 		}
-		std->len = sizeof(uss820dci_devd);
-		std->ptr = USB_ADD_BYTES(&uss820dci_devd, 0);
+		len = sizeof(uss820dci_devd);
+		ptr = (const void *)&uss820dci_devd;
 		goto tr_valid;
 	case UDESC_CONFIG:
 		if (value & 0xff) {
 			goto tr_stalled;
 		}
-		std->len = sizeof(uss820dci_confd);
-		std->ptr = USB_ADD_BYTES(&uss820dci_confd, 0);
+		len = sizeof(uss820dci_confd);
+		ptr = (const void *)&uss820dci_confd;
 		goto tr_valid;
 	case UDESC_STRING:
 		switch (value & 0xff) {
 		case 0:		/* Language table */
-			std->len = sizeof(uss820dci_langtab);
-			std->ptr = USB_ADD_BYTES(&uss820dci_langtab, 0);
+			len = sizeof(uss820dci_langtab);
+			ptr = (const void *)&uss820dci_langtab;
 			goto tr_valid;
 
 		case 1:		/* Vendor */
-			std->len = sizeof(uss820dci_vendor);
-			std->ptr = USB_ADD_BYTES(&uss820dci_vendor, 0);
+			len = sizeof(uss820dci_vendor);
+			ptr = (const void *)&uss820dci_vendor;
 			goto tr_valid;
 
 		case 2:		/* Product */
-			std->len = sizeof(uss820dci_product);
-			std->ptr = USB_ADD_BYTES(&uss820dci_product, 0);
+			len = sizeof(uss820dci_product);
+			ptr = (const void *)&uss820dci_product;
 			goto tr_valid;
 		default:
 			break;
@@ -2005,12 +2011,12 @@ tr_handle_get_descriptor:
 	goto tr_stalled;
 
 tr_handle_get_config:
-	std->len = 1;
+	len = 1;
 	sc->sc_hub_temp.wValue[0] = sc->sc_conf;
 	goto tr_valid;
 
 tr_handle_get_status:
-	std->len = 2;
+	len = 2;
 	USETW(sc->sc_hub_temp.wValue, UDS_SELF_POWERED);
 	goto tr_valid;
 
@@ -2029,7 +2035,7 @@ tr_handle_set_config:
 	goto tr_valid;
 
 tr_handle_get_interface:
-	std->len = 1;
+	len = 1;
 	sc->sc_hub_temp.wValue[0] = 0;
 	goto tr_valid;
 
@@ -2037,7 +2043,7 @@ tr_handle_get_tt_state:
 tr_handle_get_class_status:
 tr_handle_get_iface_status:
 tr_handle_get_ep_status:
-	std->len = 2;
+	len = 2;
 	USETW(sc->sc_hub_temp.wValue, 0);
 	goto tr_valid;
 
@@ -2081,7 +2087,7 @@ tr_handle_clear_port_feature:
 		sc->sc_flags.change_suspend = 0;
 		break;
 	default:
-		std->err = USB_ERR_IOERROR;
+		err = USB_ERR_IOERROR;
 		goto done;
 	}
 	goto tr_valid;
@@ -2106,7 +2112,7 @@ tr_handle_set_port_feature:
 		sc->sc_flags.port_powered = 1;
 		break;
 	default:
-		std->err = USB_ERR_IOERROR;
+		err = USB_ERR_IOERROR;
 		goto done;
 	}
 	goto tr_valid;
@@ -2152,22 +2158,24 @@ tr_handle_get_port_status:
 		value |= UPS_C_SUSPEND;
 	}
 	USETW(sc->sc_hub_temp.ps.wPortChange, value);
-	std->len = sizeof(sc->sc_hub_temp.ps);
+	len = sizeof(sc->sc_hub_temp.ps);
 	goto tr_valid;
 
 tr_handle_get_class_descriptor:
 	if (value & 0xFF) {
 		goto tr_stalled;
 	}
-	std->ptr = USB_ADD_BYTES(&uss820dci_hubd, 0);
-	std->len = sizeof(uss820dci_hubd);
+	ptr = (const void *)&uss820dci_hubd;
+	len = sizeof(uss820dci_hubd);
 	goto tr_valid;
 
 tr_stalled:
-	std->err = USB_ERR_STALLED;
+	err = USB_ERR_STALLED;
 tr_valid:
 done:
-	return;
+	*plength = len;
+	*pptr = ptr;
+	return (err);
 }
 
 static void
@@ -2263,20 +2271,6 @@ uss820dci_xfer_setup(struct usb2_setup_params *parm)
 			td->io_tag = sc->sc_io_tag;
 			td->io_hdl = sc->sc_io_hdl;
 			td->max_packet_size = xfer->max_packet_size;
-			td->rx_stat_reg = USS820_GET_REG(sc, USS820_RXSTAT);
-			td->tx_stat_reg = USS820_GET_REG(sc, USS820_TXSTAT);
-			td->rx_flag_reg = USS820_GET_REG(sc, USS820_RXFLG);
-			td->tx_flag_reg = USS820_GET_REG(sc, USS820_TXFLG);
-			td->rx_fifo_reg = USS820_GET_REG(sc, USS820_RXDAT);
-			td->tx_fifo_reg = USS820_GET_REG(sc, USS820_TXDAT);
-			td->rx_count_low_reg = USS820_GET_REG(sc, USS820_RXCNTL);
-			td->rx_count_high_reg = USS820_GET_REG(sc, USS820_RXCNTH);
-			td->tx_count_low_reg = USS820_GET_REG(sc, USS820_TXCNTL);
-			td->tx_count_high_reg = USS820_GET_REG(sc, USS820_TXCNTH);
-			td->rx_cntl_reg = USS820_GET_REG(sc, USS820_RXCON);
-			td->tx_cntl_reg = USS820_GET_REG(sc, USS820_TXCON);
-			td->pend_reg = USS820_GET_REG(sc, USS820_PEND);
-			td->ep_reg = USS820_GET_REG(sc, USS820_EPINDEX);
 			td->ep_index = ep_no;
 			if (pf->support_multi_buffer &&
 			    (parm->methods != &uss820dci_device_ctrl_methods)) {
@@ -2306,12 +2300,12 @@ uss820dci_pipe_init(struct usb2_device *udev, struct usb2_endpoint_descriptor *e
 
 	DPRINTFN(2, "pipe=%p, addr=%d, endpt=%d, mode=%d (%d)\n",
 	    pipe, udev->address,
-	    edesc->bEndpointAddress, udev->flags.usb2_mode,
+	    edesc->bEndpointAddress, udev->flags.usb_mode,
 	    sc->sc_rt_addr);
 
 	if (udev->device_index != sc->sc_rt_addr) {
 
-		if (udev->flags.usb2_mode != USB_MODE_DEVICE) {
+		if (udev->flags.usb_mode != USB_MODE_DEVICE) {
 			/* not supported */
 			return;
 		}

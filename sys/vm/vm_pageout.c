@@ -786,7 +786,8 @@ rescan0:
 		 */
 		if (object->ref_count == 0) {
 			vm_page_flag_clear(m, PG_REFERENCED);
-			pmap_clear_reference(m);
+			KASSERT(!pmap_page_is_mapped(m),
+			    ("vm_pageout_scan: page %p is mapped", m));
 
 		/*
 		 * Otherwise, if the page has been referenced while in the 
@@ -1243,7 +1244,7 @@ vm_pageout_oom(int shortage)
 			PROC_UNLOCK(p);
 			continue;
 		}
-		size = vmspace_swap_count(p->p_vmspace);
+		size = vmspace_swap_count(vm);
 		vm_map_unlock_read(&vm->vm_map);
 		if (shortage == VM_OOM_MEM)
 			size += vmspace_resident_count(vm);

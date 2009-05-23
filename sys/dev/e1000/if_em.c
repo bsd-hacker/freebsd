@@ -898,9 +898,7 @@ em_detach(device_t dev)
 	bus_generic_detach(dev);
 	if_free(ifp);
 
-#ifdef IFNET_BUF_RING
 	drbr_free(adapter->br, M_DEVBUF);
-#endif
 	em_free_transmit_structures(adapter);
 	em_free_receive_structures(adapter);
 
@@ -1008,17 +1006,23 @@ em_transmit_locked(struct ifnet *ifp, struct mbuf *m)
 	    || (!adapter->link_active)) {
 		error = drbr_enqueue(ifp, adapter->br, m);
 		return (error);
-	}
-	
-	if (ADAPTER_RING_EMPTY(adapter) &&
+	} else if (ADAPTER_RING_EMPTY(adapter) &&
 	    (adapter->num_tx_desc_avail > EM_TX_OP_THRESHOLD)) {
 		if (em_xmit(adapter, &m)) {
-			if (m && (error = drbr_enqueue(ifp, adapter->br, m)) != 0) {
+			if (m && (error = drbr_enqueue(ifp, adapter->br, m)) != 0)
 				return (error);
-			}
-		} else{
-			/* Send a copy of the frame to the BPF listener */
+		} else {
+			/*
+			 * We've bypassed the buf ring so we need to update
+			 * ifp directly
+			 */
+			drbr_stats_update(ifp, m->m_pkthdr.len, m->m_flags);
+			/*
+			** Send a copy of the frame to the BPF
+			** listener and set the watchdog on.
+			*/
 			ETHER_BPF_MTAP(ifp, m);
+			adapter->watchdog_timer = EM_TX_TIMEOUT;
 		}
 	} else if ((error = drbr_enqueue(ifp, adapter->br, m)) != 0)
 		return (error);
@@ -1058,6 +1062,7 @@ em_qflush(struct ifnet *ifp)
 	if_qflush(ifp);
 	EM_TX_UNLOCK(adapter);
 }
+#endif
 
 static void
 em_start_locked(struct ifnet *ifp)
@@ -1076,7 +1081,7 @@ em_start_locked(struct ifnet *ifp)
 	while ((adapter->num_tx_desc_avail > EM_TX_OP_THRESHOLD)
 	    && (!ADAPTER_RING_EMPTY(adapter))) {
 
-		m_head = buf_ring_dequeue_sc(adapter->br);
+		m_head = em_dequeue(ifp, adapter->br);
 		if (m_head == NULL)
 			break;
 		/*
@@ -1086,6 +1091,10 @@ em_start_locked(struct ifnet *ifp)
 		if (em_xmit(adapter, &m_head)) {
 			if (m_head == NULL)
 				break;
+#ifndef IFNET_BUF_RING
+			ifp->if_drv_flags |= IFF_DRV_OACTIVE;
+			IFQ_DRV_PREPEND(&ifp->if_snd, m_head);
+#endif
 			break;
 		}
 
@@ -1099,47 +1108,6 @@ em_start_locked(struct ifnet *ifp)
 		ifp->if_drv_flags |= IFF_DRV_OACTIVE;
 
 }
-#else
-static void
-em_start_locked(struct ifnet *ifp)
-{
-	struct adapter	*adapter = ifp->if_softc;
-	struct mbuf	*m_head;
-
-	EM_TX_LOCK_ASSERT(adapter);
-
-	if ((ifp->if_drv_flags & (IFF_DRV_RUNNING|IFF_DRV_OACTIVE)) !=
-	    IFF_DRV_RUNNING)
-		return;
-	if (!adapter->link_active)
-		return;
-
-	while (!IFQ_DRV_IS_EMPTY(&ifp->if_snd)) {
-
-		IFQ_DRV_DEQUEUE(&ifp->if_snd, m_head);
-		if (m_head == NULL)
-			break;
-		/*
-		 *  Encapsulation can modify our pointer, and or make it
-		 *  NULL on failure.  In that event, we can't requeue.
-		 */
-		if (em_xmit(adapter, &m_head)) {
-			if (m_head == NULL)
-				break;
-			ifp->if_drv_flags |= IFF_DRV_OACTIVE;
-			IFQ_DRV_PREPEND(&ifp->if_snd, m_head);
-			break;
-		}
-
-		/* Send a copy of the frame to the BPF listener */
-		ETHER_BPF_MTAP(ifp, m_head);
-
-		/* Set timeout in case hardware has problems transmitting. */
-		adapter->watchdog_timer = EM_TX_TIMEOUT;
-	}
-}
-
-#endif
 
 static void
 em_start(struct ifnet *ifp)
@@ -1964,12 +1932,8 @@ em_handle_tx(void *context, int pending)
 	struct ifnet	*ifp = adapter->ifp;
 
 	if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
-#ifdef IFNET_BUF_RING
 		if (!EM_TX_TRYLOCK(adapter))
 			return;
-#else
-		EM_TX_LOCK(adapter);
-#endif
 
 		em_txeof(adapter);
 		if (!ADAPTER_RING_EMPTY(adapter))
@@ -2986,6 +2950,11 @@ em_allocate_msix(struct adapter *adapter)
 	 */
 	TASK_INIT(&adapter->rx_task, 0, em_handle_rx, adapter);
 	TASK_INIT(&adapter->tx_task, 0, em_handle_tx, adapter);
+	/*
+	 * Handle compatibility for msi case for deferral due to
+	 * trylock failure
+	 */
+	TASK_INIT(&adapter->rxtx_task, 0, em_handle_tx, adapter);
 	TASK_INIT(&adapter->link_task, 0, em_handle_link, adapter);
 	adapter->tq = taskqueue_create_fast("em_taskq", M_NOWAIT,
 	    taskqueue_thread_enqueue, &adapter->tq);
@@ -4024,6 +3993,7 @@ static void
 em_txeof(struct adapter *adapter)
 {
         int first, last, done, num_avail;
+	u32 cleaned = 0;
         struct em_buffer *tx_buffer;
         struct e1000_tx_desc   *tx_desc, *eop_desc;
 	struct ifnet   *ifp = adapter->ifp;
@@ -4059,7 +4029,7 @@ em_txeof(struct adapter *adapter)
                 	tx_desc->upper.data = 0;
                 	tx_desc->lower.data = 0;
                 	tx_desc->buffer_addr = 0;
-                	num_avail++;
+                	++num_avail; ++cleaned;
 
 			if (tx_buffer->m_head) {
 				ifp->if_opackets++;
@@ -4096,21 +4066,22 @@ em_txeof(struct adapter *adapter)
         adapter->next_tx_to_clean = first;
 
         /*
-         * If we have enough room, clear IFF_DRV_OACTIVE to tell the stack
-         * that it is OK to send packets.
-         * If there are no pending descriptors, clear the timeout. Otherwise,
-         * if some descriptors have been freed, restart the timeout.
+         * If we have enough room, clear IFF_DRV_OACTIVE to
+         * tell the stack that it is OK to send packets.
+         * If there are no pending descriptors, clear the timeout.
          */
         if (num_avail > EM_TX_CLEANUP_THRESHOLD) {                
                 ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
-		/* All clean, turn off the timer */
                 if (num_avail == adapter->num_tx_desc) {
 			adapter->watchdog_timer = 0;
-		} else
-		/* Some cleaned, reset the timer */
-                if (num_avail != adapter->num_tx_desc_avail)
-			adapter->watchdog_timer = EM_TX_TIMEOUT;
+        		adapter->num_tx_desc_avail = num_avail;
+			return;
+		} 
         }
+
+	/* If any descriptors cleaned, reset the watchdog */
+	if (cleaned)
+		adapter->watchdog_timer = EM_TX_TIMEOUT;
         adapter->num_tx_desc_avail = num_avail;
 	return;
 }

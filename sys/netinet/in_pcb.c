@@ -120,13 +120,17 @@ int	ipport_tcplastcount;
 	if ((var) < (min)) { (var) = (min); } \
 	else if ((var) > (max)) { (var) = (max); }
 
+static void	in_pcbremlists(struct inpcb *inp);
+
 static int
 sysctl_net_ipport_check(SYSCTL_HANDLER_ARGS)
 {
 	INIT_VNET_INET(curvnet);
 	int error;
 
-	error = sysctl_handle_int(oidp, oidp->oid_arg1, oidp->oid_arg2, req);
+	SYSCTL_RESOLVE_V_ARG1();
+
+	error = sysctl_handle_int(oidp, arg1, arg2, req);
 	if (error == 0) {
 		RANGECHK(V_ipport_lowfirstauto, 1, IPPORT_RESERVED - 1);
 		RANGECHK(V_ipport_lowlastauto, 1, IPPORT_RESERVED - 1);
@@ -928,7 +932,8 @@ in_pcbfree_internal(struct inpcb *inp)
 #ifdef INET6
 	if (inp->inp_vflag & INP_IPV6PROTO) {
 		ip6_freepcbopts(inp->in6p_outputopts);
-		ip6_freemoptions(inp->in6p_moptions);
+		if (inp->in6p_moptions != NULL)
+			ip6_freemoptions(inp->in6p_moptions);
 	}
 #endif
 	if (inp->inp_options)
@@ -1633,7 +1638,7 @@ in_pcbrehash(struct inpcb *inp)
 /*
  * Remove PCB from various lists.
  */
-void
+static void
 in_pcbremlists(struct inpcb *inp)
 {
 	struct inpcbinfo *pcbinfo = inp->inp_pcbinfo;
@@ -1999,7 +2004,7 @@ db_print_inpvflag(u_char inp_vflag)
 	}
 }
 
-void
+static void
 db_print_inpcb(struct inpcb *inp, const char *name, int indent)
 {
 

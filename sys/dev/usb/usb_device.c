@@ -87,9 +87,22 @@ static void	usb2_cdev_cleanup(void *);
 
 int	usb2_template = 0;
 
-SYSCTL_INT(_hw_usb2, OID_AUTO, template, CTLFLAG_RW,
+SYSCTL_INT(_hw_usb, OID_AUTO, template, CTLFLAG_RW,
     &usb2_template, 0, "Selected USB device side template");
 
+static const char* statestr[USB_STATE_MAX] = {
+	[USB_STATE_DETACHED]	= "DETACHED",
+	[USB_STATE_ATTACHED]	= "ATTACHED",
+	[USB_STATE_POWERED]	= "POWERED",
+	[USB_STATE_ADDRESSED]	= "ADDRESSED",
+	[USB_STATE_CONFIGURED]	= "CONFIGURED",
+};
+
+const char *
+usb2_statestr(enum usb_dev_state state)
+{
+	return ((state < USB_STATE_MAX) ? statestr[state] : "UNKNOWN");
+}
 
 /*------------------------------------------------------------------------*
  *	usb2_get_pipe_by_addr
@@ -174,8 +187,8 @@ usb2_get_pipe(struct usb2_device *udev, uint8_t iface_index,
 
 	/* check USB mode */
 
-	if ((setup->usb_mode != USB_MODE_MAX) &&
-	    (udev->flags.usb2_mode != setup->usb_mode)) {
+	if (setup->usb_mode != USB_MODE_DUAL &&
+	    udev->flags.usb_mode != setup->usb_mode) {
 		/* wrong mode - no pipe */
 		return (NULL);
 	}
@@ -184,11 +197,11 @@ usb2_get_pipe(struct usb2_device *udev, uint8_t iface_index,
 
 	if (setup->direction == UE_DIR_RX) {
 		ea_mask = (UE_DIR_IN | UE_DIR_OUT);
-		ea_val = (udev->flags.usb2_mode == USB_MODE_DEVICE) ?
+		ea_val = (udev->flags.usb_mode == USB_MODE_DEVICE) ?
 		    UE_DIR_OUT : UE_DIR_IN;
 	} else if (setup->direction == UE_DIR_TX) {
 		ea_mask = (UE_DIR_IN | UE_DIR_OUT);
-		ea_val = (udev->flags.usb2_mode == USB_MODE_DEVICE) ?
+		ea_val = (udev->flags.usb_mode == USB_MODE_DEVICE) ?
 		    UE_DIR_IN : UE_DIR_OUT;
 	} else if (setup->direction == UE_DIR_ANY) {
 		/* match any endpoint direction */
@@ -403,7 +416,7 @@ usb2_unconfigure(struct usb2_device *udev, uint8_t flag)
 
 	/* free "cdesc" after "ifaces" and "pipes", if any */
 	if (udev->cdesc != NULL) {
-		if (udev->flags.usb2_mode != USB_MODE_DEVICE)
+		if (udev->flags.usb_mode != USB_MODE_DEVICE)
 			free(udev->cdesc, M_USB);
 		udev->cdesc = NULL;
 	}
@@ -457,12 +470,15 @@ usb2_set_config_index(struct usb2_device *udev, uint8_t index)
 		 * the current config number and index.
 		 */
 		err = usb2_req_set_config(udev, NULL, USB_UNCONFIG_NO);
+		if (udev->state == USB_STATE_CONFIGURED)
+			usb2_set_device_state(udev, USB_STATE_ADDRESSED);
 		goto done;
 	}
 	/* get the full config descriptor */
-	if (udev->flags.usb2_mode == USB_MODE_DEVICE) {
+	if (udev->flags.usb_mode == USB_MODE_DEVICE) {
 		/* save some memory */
-		err = usb2_req_get_config_desc_ptr(udev, &cdp, index);
+		err = usb2_req_get_descriptor_ptr(udev, &cdp, 
+		    (UDESC_CONFIG << 8) | index);
 	} else {
 		/* normal request */
 		err = usb2_req_get_config_desc_full(udev,
@@ -479,7 +495,7 @@ usb2_set_config_index(struct usb2_device *udev, uint8_t index)
 	selfpowered = 0;
 	if ((!udev->flags.uq_bus_powered) &&
 	    (cdp->bmAttributes & UC_SELF_POWERED) &&
-	    (udev->flags.usb2_mode == USB_MODE_HOST)) {
+	    (udev->flags.usb_mode == USB_MODE_HOST)) {
 		/* May be self powered. */
 		if (cdp->bmAttributes & UC_BUS_POWERED) {
 			/* Must ask device. */
@@ -517,12 +533,13 @@ usb2_set_config_index(struct usb2_device *udev, uint8_t index)
 		goto done;
 	}
 	/* Only update "self_powered" in USB Host Mode */
-	if (udev->flags.usb2_mode == USB_MODE_HOST) {
+	if (udev->flags.usb_mode == USB_MODE_HOST) {
 		udev->flags.self_powered = selfpowered;
 	}
 	udev->power = power;
 	udev->curr_config_no = cdp->bConfigurationValue;
 	udev->curr_config_index = index;
+	usb2_set_device_state(udev, USB_STATE_CONFIGURED);
 
 	/* Set the actual configuration value. */
 	err = usb2_req_set_config(udev, NULL, cdp->bConfigurationValue);
@@ -724,22 +741,33 @@ usb2_config_parse(struct usb2_device *udev, uint8_t iface_index, uint8_t cmd)
 				goto done;
 			}
 		}
-		udev->pipes_max = ep_max;
-		udev->pipes = NULL;
-		if (udev->pipes_max != 0) {
-			udev->pipes = malloc(sizeof(*pipe) * udev->pipes_max,
+		if (ep_max != 0) {
+			udev->pipes = malloc(sizeof(*pipe) * ep_max,
 			        M_USB, M_WAITOK | M_ZERO);
 			if (udev->pipes == NULL) {
 				err = USB_ERR_NOMEM;
 				goto done;
 			}
+		} else {
+			udev->pipes = NULL;
 		}
+		USB_BUS_LOCK(udev->bus);
+		udev->pipes_max = ep_max;
+		/* reset any ongoing clear-stall */
+		udev->pipe_curr = NULL;
+		USB_BUS_UNLOCK(udev->bus);
 	}
 
 done:
 	if (err) {
 		if (cmd == USB_CFG_ALLOC) {
 cleanup:
+			USB_BUS_LOCK(udev->bus);
+			udev->pipes_max = 0;
+			/* reset any ongoing clear-stall */
+			udev->pipe_curr = NULL;
+			USB_BUS_UNLOCK(udev->bus);
+
 			/* cleanup */
 			if (udev->ifaces != NULL)
 				free(udev->ifaces, M_USB);
@@ -749,7 +777,6 @@ cleanup:
 			udev->ifaces = NULL;
 			udev->pipes = NULL;
 			udev->ifaces_max = 0;
-			udev->pipes_max = 0;
 		}
 	}
 	return (err);
@@ -788,7 +815,7 @@ usb2_set_alt_interface_index(struct usb2_device *udev,
 		err = USB_ERR_INVAL;
 		goto done;
 	}
-	if (udev->flags.usb2_mode == USB_MODE_DEVICE) {
+	if (udev->flags.usb_mode == USB_MODE_DEVICE) {
 		usb2_detach_device(udev, iface_index,
 		    USB_UNCFG_FLAG_FREE_SUBDEV);
 	} else {
@@ -969,7 +996,7 @@ usb2_detach_device_sub(struct usb2_device *udev, device_t *ppdev,
 		    udev->port_no, udev->address);
 
 		if (device_is_attached(dev)) {
-			if (udev->flags.suspended) {
+			if (udev->flags.peer_suspended) {
 				err = DEVICE_RESUME(dev);
 				if (err) {
 					device_printf(dev, "Resume failed!\n");
@@ -1109,9 +1136,10 @@ usb2_probe_and_attach_sub(struct usb2_device *udev,
 		uaa->temp_dev = NULL;
 		device_set_ivars(iface->subdev, NULL);
 
-		if (udev->flags.suspended) {
+		if (udev->flags.peer_suspended) {
 			err = DEVICE_SUSPEND(iface->subdev);
-			device_printf(iface->subdev, "Suspend failed\n");
+			if (err)
+				device_printf(iface->subdev, "Suspend failed\n");
 		}
 		return (0);		/* success */
 	} else {
@@ -1150,7 +1178,7 @@ usb2_init_attach_arg(struct usb2_device *udev,
 	bzero(uaa, sizeof(*uaa));
 
 	uaa->device = udev;
-	uaa->usb2_mode = udev->flags.usb2_mode;
+	uaa->usb_mode = udev->flags.usb_mode;
 	uaa->port = udev->port_no;
 
 	uaa->info.idVendor = UGETW(udev->ddesc.idVendor);
@@ -1329,12 +1357,12 @@ usb2_suspend_resume(struct usb2_device *udev, uint8_t do_suspend)
 
 	USB_BUS_LOCK(udev->bus);
 	/* filter the suspend events */
-	if (udev->flags.suspended == do_suspend) {
+	if (udev->flags.peer_suspended == do_suspend) {
 		USB_BUS_UNLOCK(udev->bus);
 		/* nothing to do */
 		return (0);
 	}
-	udev->flags.suspended = do_suspend;
+	udev->flags.peer_suspended = do_suspend;
 	USB_BUS_UNLOCK(udev->bus);
 
 	/* do the suspend or resume */
@@ -1388,8 +1416,8 @@ usb2_clear_stall_proc(struct usb2_proc_msg *_pm)
  *------------------------------------------------------------------------*/
 struct usb2_device *
 usb2_alloc_device(device_t parent_dev, struct usb2_bus *bus,
-    struct usb2_device *parent_hub, uint8_t depth,
-    uint8_t port_index, uint8_t port_no, uint8_t speed, uint8_t usb2_mode)
+    struct usb2_device *parent_hub, uint8_t depth, uint8_t port_index,
+    uint8_t port_no, enum usb_dev_speed speed, enum usb_hc_mode mode)
 {
 	struct usb2_attach_arg uaa;
 	struct usb2_device *udev;
@@ -1401,9 +1429,9 @@ usb2_alloc_device(device_t parent_dev, struct usb2_bus *bus,
 	uint8_t device_index;
 
 	DPRINTF("parent_dev=%p, bus=%p, parent_hub=%p, depth=%u, "
-	    "port_index=%u, port_no=%u, speed=%u, usb2_mode=%u\n",
+	    "port_index=%u, port_no=%u, speed=%u, usb_mode=%u\n",
 	    parent_dev, bus, parent_hub, depth, port_index, port_no,
-	    speed, usb2_mode);
+	    speed, mode);
 
 	/*
 	 * Find an unused device index. In USB Host mode this is the
@@ -1459,6 +1487,7 @@ usb2_alloc_device(device_t parent_dev, struct usb2_bus *bus,
 	udev->bus = bus;
 	udev->address = USB_START_ADDR;	/* default value */
 	udev->plugtime = (usb2_ticks_t)ticks;
+	usb2_set_device_state(udev, USB_STATE_POWERED);
 	/*
 	 * We need to force the power mode to "on" because there are plenty
 	 * of USB devices out there that do not work very well with
@@ -1480,7 +1509,7 @@ usb2_alloc_device(device_t parent_dev, struct usb2_bus *bus,
 	udev->ddesc.bMaxPacketSize = USB_MAX_IPACKET;
 
 	udev->speed = speed;
-	udev->flags.usb2_mode = usb2_mode;
+	udev->flags.usb_mode = mode;
 
 	/* search for our High Speed USB HUB, if any */
 
@@ -1490,6 +1519,7 @@ usb2_alloc_device(device_t parent_dev, struct usb2_bus *bus,
 	while (hub) {
 		if (hub->speed == USB_SPEED_HIGH) {
 			udev->hs_hub_addr = hub->address;
+			udev->parent_hs_hub = hub;
 			udev->hs_port_no = adev->port_no;
 			break;
 		}
@@ -1518,7 +1548,7 @@ usb2_alloc_device(device_t parent_dev, struct usb2_bus *bus,
 	/* Create a link from /dev/ugenX.X to the default endpoint */
 	make_dev_alias(udev->default_dev, udev->ugen_name);
 #endif
-	if (udev->flags.usb2_mode == USB_MODE_HOST) {
+	if (udev->flags.usb_mode == USB_MODE_HOST) {
 
 		err = usb2_req_set_address(udev, NULL, device_index);
 
@@ -1559,6 +1589,7 @@ usb2_alloc_device(device_t parent_dev, struct usb2_bus *bus,
 			goto done;
 		}
 	}
+	usb2_set_device_state(udev, USB_STATE_ADDRESSED);
 
 	/*
 	 * Get the first 8 bytes of the device descriptor !
@@ -1672,7 +1703,7 @@ usb2_alloc_device(device_t parent_dev, struct usb2_bus *bus,
 	usb2_check_strings(udev);
 #endif
 
-	if (udev->flags.usb2_mode == USB_MODE_HOST) {
+	if (udev->flags.usb_mode == USB_MODE_HOST) {
 		uint8_t config_index;
 		uint8_t config_quirk;
 		uint8_t set_config_failed = 0;
@@ -1914,7 +1945,8 @@ usb2_free_device(struct usb2_device *udev, uint8_t flag)
 
 	DPRINTFN(4, "udev=%p port=%d\n", udev, udev->port_no);
 
-	bus = udev->bus;;
+	bus = udev->bus;
+	usb2_set_device_state(udev, USB_STATE_DETACHED);
 
 #if USB_HAVE_UGEN
 	usb2_notify_addq("-", udev);
@@ -1949,7 +1981,7 @@ usb2_free_device(struct usb2_device *udev, uint8_t flag)
 	    udev->default_dev->si_drv1);
 #endif
 
-	if (udev->flags.usb2_mode == USB_MODE_DEVICE) {
+	if (udev->flags.usb_mode == USB_MODE_DEVICE) {
 		/* stop receiving any control transfers (Device Side Mode) */
 		usb2_transfer_unsetup(udev->default_xfer, USB_DEFAULT_XFER_MAX);
 	}
@@ -2207,17 +2239,17 @@ usb2_check_strings(struct usb2_device *udev)
  * Returns:
  * See: USB_MODE_XXX
  */
-uint8_t
+enum usb_hc_mode
 usb2_get_mode(struct usb2_device *udev)
 {
-	return (udev->flags.usb2_mode);
+	return (udev->flags.usb_mode);
 }
 
 /*
  * Returns:
  * See: USB_SPEED_XXX
  */
-uint8_t
+enum usb_dev_speed
 usb2_get_speed(struct usb2_device *udev)
 {
 	return (udev->speed);
@@ -2420,8 +2452,25 @@ usb2_peer_can_wakeup(struct usb2_device *udev)
 	const struct usb2_config_descriptor *cdp;
 
 	cdp = udev->cdesc;
-	if ((cdp != NULL) && (udev->flags.usb2_mode == USB_MODE_HOST)) {
+	if ((cdp != NULL) && (udev->flags.usb_mode == USB_MODE_HOST)) {
 		return (cdp->bmAttributes & UC_REMOTE_WAKEUP);
 	}
 	return (0);			/* not supported */
+}
+
+void
+usb2_set_device_state(struct usb2_device *udev, enum usb_dev_state state)
+{
+
+	KASSERT(state < USB_STATE_MAX, ("invalid udev state"));
+
+	DPRINTF("udev %p state %s -> %s\n", udev,
+	    usb2_statestr(udev->state), usb2_statestr(state));
+	udev->state = state;
+}
+
+uint8_t
+usb2_device_attached(struct usb2_device *udev)
+{
+	return (udev->state > USB_STATE_DETACHED);
 }
