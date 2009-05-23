@@ -28,6 +28,7 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include "opt_netisr.h"
 #include "opt_route.h"
 #include "opt_device_polling.h"
 
@@ -45,11 +46,10 @@ __FBSDID("$FreeBSD$");
 
 #include <net/if.h>			/* for IFF_* flags		*/
 #include <net/netisr.h>			/* for NETISR_POLL		*/
+#include <net/netisr2.h>
 #include <net/route.h>
 #include <net/vnet.h>
 
-static void netisr_poll(void);		/* the two netisr handlers      */
-static void netisr_pollmore(void);
 static int poll_switch(SYSCTL_HANDLER_ARGS);
 
 void hardclock_device_poll(void);	/* hook from hardclock		*/
@@ -110,6 +110,11 @@ SYSCTL_NODE(_kern, OID_AUTO, polling, CTLFLAG_RW, 0,
 
 SYSCTL_UINT(_kern_polling, OID_AUTO, burst, CTLFLAG_RD,
 	&poll_burst, 0, "Current polling burst size");
+
+#ifdef NETISR2
+static int	netisr_poll_scheduled;
+static int	netisr_pollmore_scheduled;
+#endif
 
 static int poll_burst_max_sysctl(SYSCTL_HANDLER_ARGS)
 {
@@ -265,8 +270,10 @@ init_device_poll(void)
 {
 
 	mtx_init(&poll_mtx, "polling", NULL, MTX_DEF);
+#ifndef NETISR2
 	netisr_register(NETISR_POLL, (netisr_t *)netisr_poll, NULL, 0);
 	netisr_register(NETISR_POLLMORE, (netisr_t *)netisr_pollmore, NULL, 0);
+#endif
 }
 SYSINIT(device_poll, SI_SUB_CLOCKS, SI_ORDER_MIDDLE, init_device_poll, NULL);
 
@@ -315,7 +322,13 @@ hardclock_device_poll(void)
 		if (phase != 0)
 			suspect++;
 		phase = 1;
+#ifdef NETISR2
+		netisr_poll_scheduled = 1;
+		netisr_pollmore_scheduled = 1;
+		netisr2_sched_poll();
+#else
 		schednetisrbits(1 << NETISR_POLL | 1 << NETISR_POLLMORE);
+#endif
 		phase = 2;
 	}
 	if (pending_polls++ > 0)
@@ -366,9 +379,22 @@ netisr_pollmore()
 	int kern_load;
 
 	mtx_lock(&poll_mtx);
+#ifdef NETISR2
+	if (!netisr_pollmore_scheduled) {
+		mtx_unlock(&poll_mtx);
+		return;
+	}
+	netisr_pollmore_scheduled = 0;
+#endif
 	phase = 5;
 	if (residual_burst > 0) {
+#ifdef NETISR2
+		netisr_poll_scheduled = 1;
+		netisr_pollmore_scheduled = 1;
+		netisr2_sched_poll();
+#else
 		schednetisrbits(1 << NETISR_POLL | 1 << NETISR_POLLMORE);
+#endif
 		mtx_unlock(&poll_mtx);
 		/* will run immediately on return, followed by netisrs */
 		return;
@@ -398,7 +424,13 @@ netisr_pollmore()
 		poll_burst -= (poll_burst / 8);
 		if (poll_burst < 1)
 			poll_burst = 1;
+#ifdef NETISR2
+		netisr_poll_scheduled = 1;
+		netisr_pollmore_scheduled = 1;
+		netisr2_sched_poll();
+#else
 		schednetisrbits(1 << NETISR_POLL | 1 << NETISR_POLLMORE);
+#endif
 		phase = 6;
 	}
 	mtx_unlock(&poll_mtx);
@@ -408,13 +440,20 @@ netisr_pollmore()
  * netisr_poll is scheduled by schednetisr when appropriate, typically once
  * per tick.
  */
-static void
+void
 netisr_poll(void)
 {
 	int i, cycles;
 	enum poll_cmd arg = POLL_ONLY;
 
 	mtx_lock(&poll_mtx);
+#ifdef NETISR2
+	if (!netisr_poll_scheduled) {
+		mtx_unlock(&poll_mtx);
+		return;
+	}
+	netisr_poll_scheduled = 0;
+#endif
 	phase = 3;
 	if (residual_burst == 0) { /* first call in this tick */
 		microuptime(&poll_start_t);

@@ -124,4 +124,11 @@ u_int	netisr2_default_flow2cpu(u_int flowid);
 u_int	netisr2_get_cpucount(void);
 u_int	netisr2_get_cpuid(u_int cpunumber);
 
+/*
+ * Interfaces between DEVICE_POLLING and netisr2.
+ */
+void	netisr2_sched_poll(void);
+void	netisr_poll(void);
+void	netisr_pollmore(void);
+
 #endif /* !_NET_NETISR2_H_ */

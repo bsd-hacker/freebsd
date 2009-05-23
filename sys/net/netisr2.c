@@ -53,6 +53,7 @@ __FBSDID("$FreeBSD$");
  */
 
 #include "opt_ddb.h"
+#include "opt_device_polling.h"
 
 #include <sys/param.h>
 #include <sys/bus.h>
@@ -733,6 +734,12 @@ swi_net(void *arg)
 
 	nwsp = arg;
 
+#ifdef DEVICE_POLLING
+	KASSERT(nws_count == 1,
+	    ("swi_net: device_polling but nws_count != 1"));
+	netisr_poll();
+#endif
+
 	NETISR_RLOCK(&tracker);
 	NWS_LOCK(nwsp);
 	KASSERT(!(nwsp->nws_flags & NWS_RUNNING), ("swi_net: running"));
@@ -746,6 +753,10 @@ swi_net(void *arg)
 out:
 	NWS_UNLOCK(nwsp);
 	NETISR_RUNLOCK(&tracker);
+
+#ifdef DEVICE_POLLING
+	netisr_pollmore();
+#endif
 }
 
 static int
@@ -973,6 +984,22 @@ netisr_dispatch(int proto, struct mbuf *m)
 	(void)netisr2_dispatch(proto, m);
 }
 
+#ifdef DEVICE_POLLING
+/*
+ * Kernel polling borrows a netisr2 thread to run interface polling in; this
+ * function allows kernel polling to request that the netisr2 thread be
+ * scheduled even if no packets are pending for protocols.
+ */
+void
+netisr2_sched_poll(void)
+{
+	struct netisr_workstream *nwsp;
+
+	nwsp = &nws[nws_array[0]];
+	NWS_SIGNAL(nwsp);
+}
+#endif
+
 static void
 netisr2_start_swi(u_int cpuid, struct pcpu *pc)
 {
@@ -1020,6 +1047,15 @@ netisr2_init(void *arg)
 		netisr_maxthreads = 1;
 	if (netisr_maxthreads > MAXCPU)
 		netisr_maxthreads = MAXCPU;
+#ifdef DEVICE_POLLING
+	/*
+	 * The device polling code is not yet aware of how to deal with
+	 * multiple netisr threads, so for the time being compiling in device
+	 * polling disables parallel netisr workers.
+	 */
+	netisr_maxthreads = 1;
+	netisr_bindthreads = 0;
+#endif
 
 	netisr2_start_swi(curcpu, pcpu_find(curcpu));
 }
