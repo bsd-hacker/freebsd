@@ -1822,14 +1822,15 @@ arc_reclaim_needed(void)
 #ifdef _KERNEL
 	if (needfree)
 		return (1);
-
+	if (arc_size > arc_c_max)
+		return (1);
 	if (arc_size <= arc_c_min)
 		return (0);
 	/*
 	 * If pages are needed and we're using more than half
 	 * of kmem ... be charitable
 	 */
-	if (vm_pages_needed && (arc_size > kmem_size()/2))
+	if (vm_pages_needed && (arc_size > (kmem_size()*2)/3))
 		return (1);
 
 #if 0
@@ -3431,8 +3432,14 @@ arc_init(void)
 	/* Convert seconds to clock ticks */
 	arc_min_prefetch_lifespan = 1 * hz;
 
+#ifdef __amd64__
+	/* Start out with 1/8 of all memory */
+	arc_c = (physmem*PAGE_SIZE) / 8;
+
+#else
 	/* Start out with 1/8 of all memory */
 	arc_c = kmem_size() / 8;
+#endif
 #if 0
 #ifdef _KERNEL
 	/*
