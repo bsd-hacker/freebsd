@@ -221,7 +221,7 @@ typedef struct arc_state {
 	list_t	arcs_list[ARC_BUFC_NUMTYPES];	/* list of evictable buffers */
 	uint64_t arcs_lsize[ARC_BUFC_NUMTYPES];	/* amount of evictable data */
 	uint64_t arcs_size;	/* total amount of data in this state */
-	kmutex_t arcs_mtx;
+	kmutex_t arcs_mtx __aligned(128);
 } arc_state_t;
 
 /* The 6 states: */
@@ -966,6 +966,8 @@ add_reference(arc_buf_hdr_t *ab, kmutex_t *hash_lock, void *tag)
 		mutex_enter(&ab->b_state->arcs_mtx);
 		ASSERT(list_link_active(&ab->b_arc_node));
 		list_remove(list, ab);
+		mutex_exit(&ab->b_state->arcs_mtx);
+
 		if (GHOST_STATE(ab->b_state)) {
 			ASSERT3U(ab->b_datacnt, ==, 0);
 			ASSERT3P(ab->b_buf, ==, NULL);
@@ -974,7 +976,6 @@ add_reference(arc_buf_hdr_t *ab, kmutex_t *hash_lock, void *tag)
 		ASSERT(delta > 0);
 		ASSERT3U(*size, >=, delta);
 		atomic_add_64(size, -delta);
-		mutex_exit(&ab->b_state->arcs_mtx);
 		/* remove the prefetch flag if we get a reference */
 		if (ab->b_flags & ARC_PREFETCH)
 			ab->b_flags &= ~ARC_PREFETCH;
@@ -998,9 +999,10 @@ remove_reference(arc_buf_hdr_t *ab, kmutex_t *hash_lock, void *tag)
 		mutex_enter(&state->arcs_mtx);
 		ASSERT(!list_link_active(&ab->b_arc_node));
 		list_insert_head(&state->arcs_list[ab->b_type], ab);
+		mutex_exit(&state->arcs_mtx);
+
 		ASSERT(ab->b_datacnt > 0);
 		atomic_add_64(size, ab->b_size * ab->b_datacnt);
-		mutex_exit(&state->arcs_mtx);
 	}
 	return (cnt);
 }
