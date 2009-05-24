@@ -488,7 +488,7 @@ ipsec4_common_input_cb(struct mbuf *m, struct secasvar *sav,
 	 * XXXRW: Is this ordering sufficient?  Perhaps should be
 	 * m->m_pkthdr.rcvif?
 	 */
-	if ((error = netisr2_queue(NETISR_IP, (uintptr_t)sav, m))) {
+	if ((error = netisr2_queue_src(NETISR_IP, (uintptr_t)sav, m))) {
 #else
 	if ((error = netisr_queue(NETISR_IP, m))) {
 #endif
