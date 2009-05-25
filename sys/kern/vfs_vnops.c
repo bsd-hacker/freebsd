@@ -929,7 +929,7 @@ vn_start_write(vp, mpp, flags)
 	}
 	if (flags & V_XSLEEP)
 		goto unlock;
-	mp->mnt_writeopcount++;
+	atomic_add_int(&mp->mnt_writeopcount, 1);
 unlock:
 	MNT_REL(mp);
 	MNT_IUNLOCK(mp);
@@ -999,19 +999,23 @@ vn_start_secondary_write(vp, mpp, flags)
  * now in effect.
  */
 void
-vn_finished_write(mp)
-	struct mount *mp;
+vn_finished_write(struct mount *mp)
 {
+	int writeopcount;
+
 	if (mp == NULL)
 		return;
-	MNT_ILOCK(mp);
-	mp->mnt_writeopcount--;
-	if (mp->mnt_writeopcount < 0)
+
+	writeopcount = atomic_fetchadd_int(&mp->mnt_writeopcount, -1) - 1;
+
+	if (writeopcount < 0)
 		panic("vn_finished_write: neg cnt");
 	if ((mp->mnt_kern_flag & MNTK_SUSPEND) != 0 &&
-	    mp->mnt_writeopcount <= 0)
+	    writeopcount <= 0) {
+		MNT_ILOCK(mp);
 		wakeup(&mp->mnt_writeopcount);
-	MNT_IUNLOCK(mp);
+		MNT_IUNLOCK(mp);
+	}
 }
 
 
