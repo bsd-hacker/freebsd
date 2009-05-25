@@ -57,10 +57,6 @@ __FBSDID("$FreeBSD$");
 
 #ifdef ADAPTIVE_SX
 #include <machine/cpu.h>
-
-#ifndef SX_SPINS
-#define	SX_SPINS 1000
-#endif
 #endif
 
 #ifdef DDB
@@ -481,12 +477,8 @@ _sx_xlock_hard(struct sx *sx, uintptr_t tid, int opts, const char *file,
 				GIANT_SAVE();
 				spin_count = 0;
 				while (SX_OWNER(sx->sx_lock) == x &&
-				    TD_IS_RUNNING(owner) &&
-				    (spin_count++ < SX_SPINS))
+				    TD_IS_RUNNING(owner))
 					cpu_spinwait();
-
-				if (spin_count < SX_SPINS)
-					continue;
 			}
 		}
 #endif
@@ -718,11 +710,8 @@ _sx_slock_hard(struct sx *sx, int opts, const char *file, int line)
 				GIANT_SAVE();
 				spin_count = 0;
 				while (SX_OWNER(sx->sx_lock) == x &&
-				    TD_IS_RUNNING(owner) &&
-				    (spin_count++ < SX_SPINS))
+				    TD_IS_RUNNING(owner))
 					cpu_spinwait();
-				if (spin_count < SX_SPINS)
-					continue;
 			}
 		}
 #endif
