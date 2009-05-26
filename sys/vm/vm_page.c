@@ -1284,6 +1284,7 @@ vm_pageq_remove_locked(vm_page_t m)
 void
 vm_pageq_remove(vm_page_t m)
 {
+	mtx_assert(&vm_page_queue_mtx, MA_NOTOWNED);
 	vm_page_lock_queues();
 	vm_pageq_remove_locked(m);
 	vm_page_unlock_queues();

@@ -303,6 +303,7 @@ vm_pageout_clean(m)
 	 */
 	if ((m->hold_count != 0) ||
 	    ((m->busy != 0) || (m->oflags & VPO_BUSY))) {
+		vm_page_unlock(m);
 		return 0;
 	}
 	vm_page_io_start(m);
@@ -784,6 +785,7 @@ rescan0:
 			addl_page_shortage++;
 			continue;
 		}
+
 		if (vm_page_trylock(m) == 0) {
 			VM_OBJECT_UNLOCK(object);
 			addl_page_shortage++;
@@ -1040,8 +1042,7 @@ rescan0:
 			if (vm_pageout_clean(m) != 0) {
 				--page_shortage;
 				--maxlaunder;
-			} else
-				vm_page_unlock(m);
+			} 
 			vm_page_lock_queues();
 unlock_and_continue:
 			VM_OBJECT_UNLOCK(object);
@@ -1338,6 +1339,7 @@ vm_pageout_page_stats()
 			m = next;
 			continue;
 		}
+		vm_page_lock_assert(m, MA_NOTOWNED);
 		if (vm_page_trylock(m) == 0) {
 			VM_OBJECT_UNLOCK(object);
 			m = next;
