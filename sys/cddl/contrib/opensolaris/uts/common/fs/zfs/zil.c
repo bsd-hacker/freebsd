@@ -357,7 +357,7 @@ zil_create(zilog_t *zilog)
 	txg_wait_synced(zilog->zl_dmu_pool, zilog->zl_destroy_txg);
 
 	ASSERT(zh->zh_claim_txg == 0);
-	ASSERT(zh->zh_replayed_seq == 0);
+	ASSERT(zh->zh_replay_seq == 0);
 
 	blk = zh->zh_log;
 
