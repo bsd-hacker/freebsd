@@ -148,7 +148,9 @@ TUNABLE_INT("vm.boot_pages", &boot_pages);
 SYSCTL_INT(_vm, OID_AUTO, boot_pages, CTLFLAG_RD, &boot_pages, 0,
 	"number of pages allocated for bootstrapping the VM system");
 
-static void vm_page_enqueue(int queue, vm_page_t m);
+static void _vm_page_enqueue(int queue, vm_page_t m, int locked);
+static void _vm_page_free_toq(vm_page_t m, int locked);
+static void _vm_pageq_remove(vm_page_t m, int locked);
 
 /*
  *	vm_set_page_size:
@@ -517,6 +519,14 @@ vm_page_free(vm_page_t m)
 	vm_page_free_toq(m);
 }
 
+void
+vm_page_free_locked(vm_page_t m)
+{
+
+	m->flags &= ~PG_ZERO;
+	_vm_page_free_toq(m, 1);
+}
+
 /*
  *	vm_page_free_zero:
  *
@@ -528,6 +538,14 @@ vm_page_free_zero(vm_page_t m)
 
 	m->flags |= PG_ZERO;
 	vm_page_free_toq(m);
+}
+
+void
+vm_page_free_zero_locked(vm_page_t m)
+{
+
+	m->flags |= PG_ZERO;
+	_vm_page_free_toq(m, 1);
 }
 
 /*
@@ -1266,13 +1284,15 @@ vm_page_requeue(vm_page_t m)
  *	The queue containing the given page must be locked.
  *	This routine may not block.
  */
-void
-vm_pageq_remove_locked(vm_page_t m)
+static __inline void
+_vm_pageq_remove(vm_page_t m, int locked)
 {
 	int queue;
 	struct vpgqueues *pq;
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	if (locked == 0)
+		vm_page_lock_queues();
+
 	queue = VM_PAGE_GETQUEUE(m);
 	if (queue != PQ_NONE) {
 		VM_PAGE_SETQUEUE2(m, PQ_NONE);
@@ -1280,14 +1300,23 @@ vm_pageq_remove_locked(vm_page_t m)
 		TAILQ_REMOVE(&pq->pl, m, pageq);
 		(*pq->cnt)--;
 	}
+	if (locked == 0)
+		vm_page_unlock_queues();
 }
+
+void
+vm_pageq_remove_locked(vm_page_t m)
+{
+
+	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	_vm_pageq_remove(m, 1);
+}
+
 void
 vm_pageq_remove(vm_page_t m)
 {
 	mtx_assert(&vm_page_queue_mtx, MA_NOTOWNED);
-	vm_page_lock_queues();
-	vm_pageq_remove_locked(m);
-	vm_page_unlock_queues();
+	_vm_pageq_remove(m, 0);
 }
 
 /*
@@ -1298,23 +1327,26 @@ vm_pageq_remove(vm_page_t m)
  *	The page queues must be locked.
  */
 static void
-vm_page_enqueue_locked(int queue, vm_page_t m)
+_vm_page_enqueue(int queue, vm_page_t m, int locked)
 {
 	struct vpgqueues *vpq;
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	if (locked == 0) {
+		mtx_assert(&vm_page_queue_mtx, MA_NOTOWNED);
+		vm_page_lock_queues();
+	}
+#ifdef INVARIANTS
+	/* avoid dangling else */
+	else 
+		mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+#endif
+	
 	vpq = &vm_page_queues[queue];
 	VM_PAGE_SETQUEUE2(m, queue);
 	TAILQ_INSERT_TAIL(&vpq->pl, m, pageq);
 	++*vpq->cnt;
-}
-
-static void
-vm_page_enqueue(int queue, vm_page_t m)
-{
-	vm_page_lock_queues();
-	vm_page_enqueue_locked(queue, m);
-	vm_page_unlock_queues();
+	if (locked == 0)
+		vm_page_unlock_queues();
 }
 
 /*
@@ -1338,7 +1370,7 @@ vm_page_activate_locked(vm_page_t m)
 		if (m->wire_count == 0 && (m->flags & PG_UNMANAGED) == 0) {
 			if (m->act_count < ACT_INIT)
 				m->act_count = ACT_INIT;
-			vm_page_enqueue(PQ_ACTIVE, m);
+			_vm_page_enqueue(PQ_ACTIVE, m, 1);
 		}
 	} else {
 		if (m->act_count < ACT_INIT)
@@ -1399,8 +1431,8 @@ vm_page_free_wakeup(void)
  *	This routine may not block.
  */
 
-void
-vm_page_free_toq(vm_page_t m)
+static void
+_vm_page_free_toq(vm_page_t m, int locked)
 {
 
 	PCPU_INC(cnt.v_tfree);
@@ -1440,7 +1472,7 @@ vm_page_free_toq(vm_page_t m)
 	 * return, otherwise delay object association removal.
 	 */
 	if ((m->flags & PG_FICTITIOUS) != 0) {
-		vm_pageq_remove(m);
+		_vm_pageq_remove(m, locked);
 		return;
 	}
 
@@ -1449,12 +1481,10 @@ vm_page_free_toq(vm_page_t m)
 
 	if (m->hold_count != 0) {
 		m->flags &= ~PG_ZERO;
-		vm_page_lock_queues();
-		vm_pageq_remove_locked(m);
-		vm_page_enqueue_locked(PQ_HOLD, m);
-		vm_page_unlock_queues();
+		_vm_pageq_remove(m, locked);
+		_vm_page_enqueue(PQ_HOLD, m, locked);
 	} else {
-		vm_pageq_remove(m);
+		_vm_pageq_remove(m, locked);
 		mtx_lock(&vm_page_queue_free_mtx);
 		m->flags |= PG_FREE;
 		cnt.v_free_count++;
@@ -1471,6 +1501,20 @@ vm_page_free_toq(vm_page_t m)
 		vm_page_free_wakeup();
 		mtx_unlock(&vm_page_queue_free_mtx);
 	}
+}
+
+void
+vm_page_free_toq(vm_page_t m)
+{
+
+	_vm_page_free_toq(m, 0);
+}
+
+void
+vm_page_free_toq_locked(vm_page_t m)
+{
+
+	_vm_page_free_toq(m, 1);
 }
 
 /*
@@ -1546,10 +1590,10 @@ vm_page_unwire(vm_page_t m, int activate)
 			if (m->flags & PG_UNMANAGED) {
 				;
 			} else if (activate)
-				vm_page_enqueue(PQ_ACTIVE, m);
+				_vm_page_enqueue(PQ_ACTIVE, m, 0);
 			else {
 				vm_page_flag_clear(m, PG_WINATCFLS);
-				vm_page_enqueue(PQ_INACTIVE, m);
+				_vm_page_enqueue(PQ_INACTIVE, m, 0);
 			}
 		}
 	} else {
@@ -1694,10 +1738,7 @@ _vm_page_cache(vm_page_t m, int locked)
 	/*
 	 * Remove the page from the paging queues.
 	 */
-	if (locked)
-		vm_pageq_remove_locked(m);
-	else
-		vm_pageq_remove(m);
+	_vm_pageq_remove(m, locked);
 	/*
 	 * Remove the page from the object's collection of resident
 	 * pages. 

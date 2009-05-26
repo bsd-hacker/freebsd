@@ -314,6 +314,8 @@ void vm_page_hold(vm_page_t mem);
 void vm_page_unhold(vm_page_t mem);
 void vm_page_free(vm_page_t m);
 void vm_page_free_zero(vm_page_t m);
+void vm_page_free_locked(vm_page_t m);
+void vm_page_free_zero_locked(vm_page_t m);
 void vm_page_dirty(vm_page_t m);
 void vm_page_wakeup(vm_page_t m);
 
@@ -353,6 +355,7 @@ void vm_page_test_dirty (vm_page_t);
 int vm_page_bits (int, int);
 void vm_page_zero_invalid(vm_page_t m, boolean_t setvalid);
 void vm_page_free_toq(vm_page_t m);
+void vm_page_free_toq_locked(vm_page_t m);
 void vm_page_zero_idle_wakeup(void);
 void vm_page_cowfault (vm_page_t);
 int vm_page_cowsetup(vm_page_t);

@@ -870,7 +870,7 @@ rescan0:
 			/*
 			 * Invalid pages can be easily freed
 			 */
-			vm_page_free(m);
+			vm_page_free_locked(m);
 			cnt.v_dfree++;
 			--page_shortage;
 		} else if (m->dirty == 0) {
