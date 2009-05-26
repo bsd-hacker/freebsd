@@ -1334,7 +1334,7 @@ vm_page_activate_locked(vm_page_t m)
 	vm_page_lock_assert(m, MA_OWNED);
 	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
 	if (VM_PAGE_GETKNOWNQUEUE2(m) != PQ_ACTIVE) {
-		vm_pageq_remove(m);
+		vm_pageq_remove_locked(m);
 		if (m->wire_count == 0 && (m->flags & PG_UNMANAGED) == 0) {
 			if (m->act_count < ACT_INIT)
 				m->act_count = ACT_INIT;
