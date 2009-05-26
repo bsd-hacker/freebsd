@@ -28,6 +28,7 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_ktrace.h"
+#include "opt_witness.h"	
 
 #include <sys/param.h>
 #include <sys/systm.h>
