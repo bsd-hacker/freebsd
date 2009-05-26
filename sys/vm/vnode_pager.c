@@ -416,11 +416,11 @@ vnode_pager_setsize(vp, nsize)
 			 * bits.  This would prevent bogus_page
 			 * replacement from working properly.
 			 */
-			vm_page_lock_queues();
+			vm_page_lock(m);
 			vm_page_set_validclean(m, base, size);
 			if (m->dirty != 0)
 				m->dirty = VM_PAGE_BITS_ALL;
-			vm_page_unlock_queues();
+			vm_page_unlock(m);
 		} else if ((nsize & PAGE_MASK) &&
 		    __predict_false(object->cache != NULL)) {
 			vm_page_cache_free(object, OFF_TO_IDX(nsize),
@@ -546,23 +546,23 @@ vnode_pager_input_smlfs(object, m)
 				break;
 
 			VM_OBJECT_LOCK(object);
-			vm_page_lock_queues();
+			vm_page_lock(m);
 			vm_page_set_validclean(m, (i * bsize) & PAGE_MASK, bsize);
-			vm_page_unlock_queues();
+			vm_page_unlock(m);
 			VM_OBJECT_UNLOCK(object);
 		} else {
 			VM_OBJECT_LOCK(object);
-			vm_page_lock_queues();
+			vm_page_lock(m);
 			vm_page_set_validclean(m, (i * bsize) & PAGE_MASK, bsize);
-			vm_page_unlock_queues();
+			vm_page_unlock(m);
 			VM_OBJECT_UNLOCK(object);
 			bzero((caddr_t)sf_buf_kva(sf) + i * bsize, bsize);
 		}
 	}
 	sf_buf_free(sf);
-	vm_page_lock_queues();
+	vm_page_lock(m);
 	pmap_clear_modify(m);
-	vm_page_unlock_queues();
+	vm_page_unlock(m);
 	if (error) {
 		return VM_PAGER_ERROR;
 	}
@@ -631,10 +631,10 @@ vnode_pager_input_old(object, m)
 
 		VM_OBJECT_LOCK(object);
 	}
-	vm_page_lock_queues();
+	vm_page_lock(m);
 	pmap_clear_modify(m);
 	vm_page_undirty(m);
-	vm_page_unlock_queues();
+	vm_page_unlock(m);
 	if (!error)
 		m->valid = VM_PAGE_BITS_ALL;
 	return error ? VM_PAGER_ERROR : VM_PAGER_OK;
@@ -722,11 +722,12 @@ vnode_pager_generic_getpages(vp, m, bytecount, reqpage)
 	error = VOP_BMAP(vp, foff / bsize, &bo, &reqblock, NULL, NULL);
 	if (error == EOPNOTSUPP) {
 		VM_OBJECT_LOCK(object);
-		vm_page_lock_queues();
 		for (i = 0; i < count; i++)
-			if (i != reqpage)
+			if (i != reqpage) {
+				vm_page_lock(m[i]);
 				vm_page_free(m[i]);
-		vm_page_unlock_queues();
+				vm_page_unlock(m[i]);
+			}
 		PCPU_INC(cnt.v_vnodein);
 		PCPU_INC(cnt.v_vnodepgsin);
 		error = vnode_pager_input_old(object, m[reqpage]);
@@ -734,11 +735,12 @@ vnode_pager_generic_getpages(vp, m, bytecount, reqpage)
 		return (error);
 	} else if (error != 0) {
 		VM_OBJECT_LOCK(object);
-		vm_page_lock_queues();
 		for (i = 0; i < count; i++)
-			if (i != reqpage)
+			if (i != reqpage) {
+				vm_page_lock(m[i]);
 				vm_page_free(m[i]);
-		vm_page_unlock_queues();
+				vm_page_unlock(m[i]);
+			}
 		VM_OBJECT_UNLOCK(object);
 		return (VM_PAGER_ERROR);
 
@@ -750,11 +752,12 @@ vnode_pager_generic_getpages(vp, m, bytecount, reqpage)
 	} else if ((PAGE_SIZE / bsize) > 1 &&
 	    (vp->v_mount->mnt_stat.f_type != nfs_mount_type)) {
 		VM_OBJECT_LOCK(object);
-		vm_page_lock_queues();
 		for (i = 0; i < count; i++)
-			if (i != reqpage)
+			if (i != reqpage) {
+				vm_page_lock(m[i]);
 				vm_page_free(m[i]);
-		vm_page_unlock_queues();
+				vm_page_unlock(m[i]);
+			}
 		VM_OBJECT_UNLOCK(object);
 		PCPU_INC(cnt.v_vnodein);
 		PCPU_INC(cnt.v_vnodepgsin);
@@ -768,22 +771,24 @@ vnode_pager_generic_getpages(vp, m, bytecount, reqpage)
 	 */
 	VM_OBJECT_LOCK(object);
 	if (m[reqpage]->valid == VM_PAGE_BITS_ALL) {
-		vm_page_lock_queues();
 		for (i = 0; i < count; i++)
-			if (i != reqpage)
+			if (i != reqpage) {
+				vm_page_lock(m[i]);
 				vm_page_free(m[i]);
-		vm_page_unlock_queues();
+				vm_page_unlock(m[i]);
+			}
 		VM_OBJECT_UNLOCK(object);
 		return VM_PAGER_OK;
 	} else if (reqblock == -1) {
 		pmap_zero_page(m[reqpage]);
 		vm_page_undirty(m[reqpage]);
 		m[reqpage]->valid = VM_PAGE_BITS_ALL;
-		vm_page_lock_queues();
 		for (i = 0; i < count; i++)
-			if (i != reqpage)
+			if (i != reqpage) {
+				vm_page_lock(m[i]);
 				vm_page_free(m[i]);
-		vm_page_unlock_queues();
+				vm_page_unlock(m[i]);
+			}
 		VM_OBJECT_UNLOCK(object);
 		return (VM_PAGER_OK);
 	}
@@ -802,11 +807,12 @@ vnode_pager_generic_getpages(vp, m, bytecount, reqpage)
 		if (vnode_pager_addr(vp, IDX_TO_OFF(m[i]->pindex), &firstaddr,
 		    &runpg) != 0) {
 			VM_OBJECT_LOCK(object);
-			vm_page_lock_queues();
 			for (; i < count; i++)
-				if (i != reqpage)
+				if (i != reqpage) {
+					vm_page_lock(m[i]);
 					vm_page_free(m[i]);
-			vm_page_unlock_queues();
+					vm_page_unlock(m[i]);
+				}
 			VM_OBJECT_UNLOCK(object);
 			return (VM_PAGER_ERROR);
 		}
@@ -820,9 +826,9 @@ vnode_pager_generic_getpages(vp, m, bytecount, reqpage)
 				    (object->un_pager.vnp.vnp_size >> 32),
 				    (uintmax_t)object->un_pager.vnp.vnp_size);
 			}
-			vm_page_lock_queues();
+			vm_page_lock(m[i]);
 			vm_page_free(m[i]);
-			vm_page_unlock_queues();
+			vm_page_unlock(m[i]);
 			VM_OBJECT_UNLOCK(object);
 			runend = i + 1;
 			first = runend;
@@ -831,18 +837,20 @@ vnode_pager_generic_getpages(vp, m, bytecount, reqpage)
 		runend = i + runpg;
 		if (runend <= reqpage) {
 			VM_OBJECT_LOCK(object);
-			vm_page_lock_queues();
-			for (j = i; j < runend; j++)
+			for (j = i; j < runend; j++) {
+				vm_page_lock(m[j]);
 				vm_page_free(m[j]);
-			vm_page_unlock_queues();
+				vm_page_unlock(m[j]);
+			}
 			VM_OBJECT_UNLOCK(object);
 		} else {
 			if (runpg < (count - first)) {
 				VM_OBJECT_LOCK(object);
-				vm_page_lock_queues();
-				for (i = first + runpg; i < count; i++)
+				for (i = first + runpg; i < count; i++) {
+					vm_page_lock(m[i]);
 					vm_page_free(m[i]);
-				vm_page_unlock_queues();
+					vm_page_unlock(m[i]);
+				}
 				VM_OBJECT_UNLOCK(object);
 				count = first + runpg;
 			}
@@ -933,13 +941,13 @@ vnode_pager_generic_getpages(vp, m, bytecount, reqpage)
 	relpbuf(bp, &vnode_pbuf_freecnt);
 
 	VM_OBJECT_LOCK(object);
-	vm_page_lock_queues();
 	for (i = 0, tfoff = foff; i < count; i++, tfoff = nextoff) {
 		vm_page_t mt;
 
 		nextoff = tfoff + PAGE_SIZE;
 		mt = m[i];
 
+		vm_page_lock(mt);
 		if (nextoff <= object->un_pager.vnp.vnp_size) {
 			/*
 			 * Read filled up entire page.
@@ -988,8 +996,8 @@ vnode_pager_generic_getpages(vp, m, bytecount, reqpage)
 				vm_page_free(mt);
 			}
 		}
+		vm_page_unlock(mt);
 	}
-	vm_page_unlock_queues();
 	VM_OBJECT_UNLOCK(object);
 	if (error) {
 		printf("vnode_pager_getpages: I/O read error\n");
@@ -1115,10 +1123,13 @@ vnode_pager_generic_putpages(vp, m, bytecount, flags, rtvals)
 			maxsize = object->un_pager.vnp.vnp_size - poffset;
 			ncount = btoc(maxsize);
 			if ((pgoff = (int)maxsize & PAGE_MASK) != 0) {
-				vm_page_lock_queues();
-				vm_page_clear_dirty(m[ncount - 1], pgoff,
+				vm_page_t p;
+
+				p = m[ncount - 1];
+				vm_page_lock(p);
+				vm_page_clear_dirty(p, pgoff,
 					PAGE_SIZE - pgoff);
-				vm_page_unlock_queues();
+				vm_page_unlock(p);
 			}
 		} else {
 			maxsize = 0;

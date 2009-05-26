@@ -406,7 +406,7 @@ void
 vm_page_flag_set(vm_page_t m, unsigned short bits)
 {
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	vm_page_lock_assert(m, MA_OWNED);
 	m->flags |= bits;
 } 
 
@@ -414,7 +414,7 @@ void
 vm_page_flag_clear(vm_page_t m, unsigned short bits)
 {
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	vm_page_lock_assert(m, MA_OWNED);
 	m->flags &= ~bits;
 }
 
@@ -489,7 +489,7 @@ void
 vm_page_hold(vm_page_t mem)
 {
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	vm_page_lock_assert(mem, MA_OWNED);
         mem->hold_count++;
 }
 
@@ -497,7 +497,7 @@ void
 vm_page_unhold(vm_page_t mem)
 {
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	vm_page_lock_assert(mem, MA_OWNED);
 	--mem->hold_count;
 	KASSERT(mem->hold_count >= 0, ("vm_page_unhold: hold count < 0!!!"));
 	if (mem->hold_count == 0 && VM_PAGE_INQUEUE2(mem, PQ_HOLD))
@@ -542,10 +542,10 @@ vm_page_sleep(vm_page_t m, const char *msg)
 {
 
 	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
-	if (!mtx_owned(&vm_page_queue_mtx))
-		vm_page_lock_queues();
+	if (!mtx_owned(vm_page_lockptr(m)))
+		vm_page_lock(m);
 	vm_page_flag_set(m, PG_REFERENCED);
-	vm_page_unlock_queues();
+	vm_page_unlock(m);
 
 	/*
 	 * It's possible that while we sleep, the page will get
@@ -728,7 +728,7 @@ vm_page_remove(vm_page_t m)
 		m->oflags &= ~VPO_BUSY;
 		vm_page_flash(m);
 	}
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	vm_page_lock_assert(m, MA_OWNED);
 
 	/*
 	 * Now remove from the object's list of backed pages.
@@ -1236,16 +1236,26 @@ vm_waitpfault(void)
  *	The page queues must be locked.
  */
 void
-vm_page_requeue(vm_page_t m)
+vm_page_requeue_locked(vm_page_t m)
 {
-	int queue = VM_PAGE_GETQUEUE(m);
+	int queue;
 	struct vpgqueues *vpq;
 
+	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	queue = VM_PAGE_GETQUEUE(m);
 	if (queue != PQ_NONE) {
 		vpq = &vm_page_queues[queue];
 		TAILQ_REMOVE(&vpq->pl, m, pageq);
 		TAILQ_INSERT_TAIL(&vpq->pl, m, pageq);
 	}
+}
+
+void
+vm_page_requeue(vm_page_t m)
+{
+	vm_page_lock_queues();
+	vm_page_requeue_locked(m);
+	vm_page_unlock_queues();
 }
 
 /*
@@ -1257,17 +1267,26 @@ vm_page_requeue(vm_page_t m)
  *	This routine may not block.
  */
 void
-vm_pageq_remove(vm_page_t m)
+vm_pageq_remove_locked(vm_page_t m)
 {
-	int queue = VM_PAGE_GETQUEUE(m);
+	int queue;
 	struct vpgqueues *pq;
 
+	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	queue = VM_PAGE_GETQUEUE(m);
 	if (queue != PQ_NONE) {
 		VM_PAGE_SETQUEUE2(m, PQ_NONE);
 		pq = &vm_page_queues[queue];
 		TAILQ_REMOVE(&pq->pl, m, pageq);
 		(*pq->cnt)--;
 	}
+}
+void
+vm_pageq_remove(vm_page_t m)
+{
+	vm_page_lock_queues();
+	vm_pageq_remove_locked(m);
+	vm_page_unlock_queues();
 }
 
 /*
@@ -1278,14 +1297,23 @@ vm_pageq_remove(vm_page_t m)
  *	The page queues must be locked.
  */
 static void
-vm_page_enqueue(int queue, vm_page_t m)
+vm_page_enqueue_locked(int queue, vm_page_t m)
 {
 	struct vpgqueues *vpq;
 
+	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
 	vpq = &vm_page_queues[queue];
 	VM_PAGE_SETQUEUE2(m, queue);
 	TAILQ_INSERT_TAIL(&vpq->pl, m, pageq);
 	++*vpq->cnt;
+}
+
+static void
+vm_page_enqueue(int queue, vm_page_t m)
+{
+	vm_page_lock_queues();
+	vm_page_enqueue_locked(queue, m);
+	vm_page_unlock_queues();
 }
 
 /*
@@ -1299,9 +1327,10 @@ vm_page_enqueue(int queue, vm_page_t m)
  *	This routine may not block.
  */
 void
-vm_page_activate(vm_page_t m)
+vm_page_activate_locked(vm_page_t m)
 {
 
+	vm_page_lock_assert(m, MA_OWNED);
 	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
 	if (VM_PAGE_GETKNOWNQUEUE2(m) != PQ_ACTIVE) {
 		vm_pageq_remove(m);
@@ -1314,6 +1343,14 @@ vm_page_activate(vm_page_t m)
 		if (m->act_count < ACT_INIT)
 			m->act_count = ACT_INIT;
 	}
+}
+
+void
+vm_page_activate(vm_page_t m)
+{
+	vm_page_lock_queues();
+	vm_page_activate_locked(m);
+	vm_page_unlock_queues();
 }
 
 /*
@@ -1365,11 +1402,14 @@ void
 vm_page_free_toq(vm_page_t m)
 {
 
-	if (VM_PAGE_GETQUEUE(m) != PQ_NONE)
-		mtx_assert(&vm_page_queue_mtx, MA_OWNED);
-	KASSERT(!pmap_page_is_mapped(m),
-	    ("vm_page_free_toq: freeing mapped page %p", m));
 	PCPU_INC(cnt.v_tfree);
+#ifdef INVARIANTS
+	if (VM_PAGE_GETQUEUE(m) != PQ_NONE || m->object != NULL ||
+	    m->hold_count) {
+		vm_page_lock_assert(m, MA_OWNED);
+		KASSERT(!pmap_page_is_mapped(m),
+		    ("vm_page_free_toq: freeing mapped page %p", m));
+	}
 
 	if (m->busy || VM_PAGE_IS_FREE(m)) {
 		printf(
@@ -1381,6 +1421,10 @@ vm_page_free_toq(vm_page_t m)
 		else
 			panic("vm_page_free: freeing busy page");
 	}
+	KASSERT(m->wire_count == 0,
+	    ("vm_page_free: freeing wired page. Count: %d, pindex: 0x%lx",
+	    m->wire_count, (long)m->pindex));
+#endif
 
 	/*
 	 * unqueue, then remove page.  Note that we cannot destroy
@@ -1388,7 +1432,6 @@ vm_page_free_toq(vm_page_t m)
 	 * callback routine until after we've put the page on the
 	 * appropriate free queue.
 	 */
-	vm_pageq_remove(m);
 	vm_page_remove(m);
 
 	/*
@@ -1396,23 +1439,21 @@ vm_page_free_toq(vm_page_t m)
 	 * return, otherwise delay object association removal.
 	 */
 	if ((m->flags & PG_FICTITIOUS) != 0) {
+		vm_pageq_remove(m);
 		return;
 	}
 
 	m->valid = 0;
 	vm_page_undirty(m);
 
-	if (m->wire_count != 0) {
-		if (m->wire_count > 1) {
-			panic("vm_page_free: invalid wire count (%d), pindex: 0x%lx",
-				m->wire_count, (long)m->pindex);
-		}
-		panic("vm_page_free: freeing wired page");
-	}
 	if (m->hold_count != 0) {
 		m->flags &= ~PG_ZERO;
-		vm_page_enqueue(PQ_HOLD, m);
+		vm_page_lock_queues();
+		vm_pageq_remove_locked(m);
+		vm_page_enqueue_locked(PQ_HOLD, m);
+		vm_page_unlock_queues();
 	} else {
+		vm_pageq_remove(m);
 		mtx_lock(&vm_page_queue_free_mtx);
 		m->flags |= PG_FREE;
 		cnt.v_free_count++;
@@ -1450,7 +1491,7 @@ vm_page_wire(vm_page_t m)
 	 * and only unqueue the page if it is on some queue (if it is unmanaged
 	 * it is already off the queues).
 	 */
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	vm_page_lock_assert(m, MA_OWNED);
 	if (m->flags & PG_FICTITIOUS)
 		return;
 	if (m->wire_count == 0) {
@@ -1494,7 +1535,7 @@ void
 vm_page_unwire(vm_page_t m, int activate)
 {
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	vm_page_lock_assert(m, MA_OWNED);
 	if (m->flags & PG_FICTITIOUS)
 		return;
 	if (m->wire_count > 0) {
@@ -1531,7 +1572,7 @@ _vm_page_deactivate(vm_page_t m, int athead)
 {
 
 	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
-
+	vm_page_lock_assert(m, MA_OWNED);
 	/*
 	 * Ignore if already inactive.
 	 */
@@ -1539,7 +1580,7 @@ _vm_page_deactivate(vm_page_t m, int athead)
 		return;
 	if (m->wire_count == 0 && (m->flags & PG_UNMANAGED) == 0) {
 		vm_page_flag_clear(m, PG_WINATCFLS);
-		vm_pageq_remove(m);
+		vm_pageq_remove_locked(m);
 		if (athead)
 			TAILQ_INSERT_HEAD(&vm_page_queues[PQ_INACTIVE].pl, m, pageq);
 		else
@@ -1550,9 +1591,19 @@ _vm_page_deactivate(vm_page_t m, int athead)
 }
 
 void
+vm_page_deactivate_locked(vm_page_t m)
+{
+
+	_vm_page_deactivate(m, 0);
+}
+
+void
 vm_page_deactivate(vm_page_t m)
 {
-    _vm_page_deactivate(m, 0);
+
+	vm_page_lock_queues();
+	_vm_page_deactivate(m, 0);
+	vm_page_unlock_queues();
 }
 
 /*
@@ -1564,7 +1615,7 @@ int
 vm_page_try_to_cache(vm_page_t m)
 {
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	vm_page_lock_assert(m, MA_OWNED);
 	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 	if (m->dirty || m->hold_count || m->busy || m->wire_count ||
 	    (m->oflags & VPO_BUSY) || (m->flags & PG_UNMANAGED)) {
@@ -1587,7 +1638,7 @@ int
 vm_page_try_to_free(vm_page_t m)
 {
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	vm_page_lock_assert(m, MA_OWNED);
 	if (m->object != NULL)
 		VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 	if (m->dirty || m->hold_count || m->busy || m->wire_count ||
@@ -1614,7 +1665,7 @@ vm_page_cache(vm_page_t m)
 	vm_object_t object;
 	vm_page_t root;
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	vm_page_lock_assert(m, MA_OWNED);
 	object = m->object;
 	VM_OBJECT_LOCK_ASSERT(object, MA_OWNED);
 	if ((m->flags & PG_UNMANAGED) || (m->oflags & VPO_BUSY) || m->busy ||
@@ -1740,7 +1791,7 @@ vm_page_dontneed(vm_page_t m)
 	int dnw;
 	int head;
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	vm_page_lock_assert(m, MA_OWNED);
 	dnw = ++dnweight;
 
 	/*
@@ -1776,7 +1827,9 @@ vm_page_dontneed(vm_page_t m)
 		 */
 		head = 1;
 	}
+	vm_page_lock_queues();
 	_vm_page_deactivate(m, head);
+	vm_page_unlock_queues();
 }
 
 /*
@@ -1801,9 +1854,9 @@ retrylookup:
 			goto retrylookup;
 		} else {
 			if ((allocflags & VM_ALLOC_WIRED) != 0) {
-				vm_page_lock_queues();
+				vm_page_lock(m);
 				vm_page_wire(m);
-				vm_page_unlock_queues();
+				vm_page_unlock(m);
 			}
 			if ((allocflags & VM_ALLOC_NOBUSY) == 0)
 				vm_page_busy(m);
@@ -1870,7 +1923,7 @@ vm_page_set_validclean(vm_page_t m, int base, int size)
 	int frag;
 	int endoff;
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	vm_page_lock_assert(m, MA_OWNED);
 	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 	if (size == 0)	/* handle degenerate case */
 		return;
@@ -1929,7 +1982,7 @@ void
 vm_page_clear_dirty(vm_page_t m, int base, int size)
 {
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	vm_page_lock_assert(m, MA_OWNED);
 	m->dirty &= ~vm_page_bits(base, size);
 }
 
@@ -1948,7 +2001,7 @@ vm_page_set_invalid(vm_page_t m, int base, int size)
 
 	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 	bits = vm_page_bits(base, size);
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	vm_page_lock_assert(m, MA_OWNED);
 	if (m->valid == VM_PAGE_BITS_ALL && bits != 0)
 		pmap_remove_all(m);
 	m->valid &= ~bits;
@@ -2050,6 +2103,8 @@ vm_page_cowfault(vm_page_t m)
 	vm_object_t object;
 	vm_pindex_t pindex;
 
+	/* XXX Not properly locked. */
+	panic("vm_page_cowfault: Not properly locked\n");
 	object = m->object;
 	VM_OBJECT_LOCK_ASSERT(object, MA_OWNED);
 	KASSERT(object->paging_in_progress != 0,
@@ -2063,18 +2118,18 @@ vm_page_cowfault(vm_page_t m)
 	mnew = vm_page_alloc(object, pindex, VM_ALLOC_NORMAL | VM_ALLOC_NOBUSY);
 	if (mnew == NULL) {
 		vm_page_insert(m, object, pindex);
-		vm_page_unlock_queues();
+		vm_page_unlock(m);
 		VM_OBJECT_UNLOCK(object);
 		VM_WAIT;
 		VM_OBJECT_LOCK(object);
 		if (m == vm_page_lookup(object, pindex)) {
-			vm_page_lock_queues();
+			vm_page_lock(m);
 			goto retry_alloc;
 		} else {
 			/*
 			 * Page disappeared during the wait.
 			 */
-			vm_page_lock_queues();
+			vm_page_lock(m);
 			return;
 		}
 	}
@@ -2101,7 +2156,7 @@ void
 vm_page_cowclear(vm_page_t m)
 {
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	vm_page_lock_assert(m, MA_OWNED);
 	if (m->cow) {
 		m->cow--;
 		/* 
@@ -2117,7 +2172,7 @@ int
 vm_page_cowsetup(vm_page_t m)
 {
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	vm_page_lock_assert(m, MA_OWNED);
 	if (m->cow == USHRT_MAX - 1)
 		return (EBUSY);
 	m->cow++;

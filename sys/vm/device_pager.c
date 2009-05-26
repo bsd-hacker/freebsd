@@ -242,12 +242,13 @@ dev_pager_getpages(object, m, count, reqpage)
 		VM_OBJECT_LOCK(object);
 		dev_pager_updatefake(m[reqpage], paddr);
 		if (count > 1) {
-			vm_page_lock_queues();
 			for (i = 0; i < count; i++) {
-				if (i != reqpage)
+				if (i != reqpage) {
+					vm_page_lock(m[i]);
 					vm_page_free(m[i]);
+					vm_page_unlock(m[i]);
+				}
 			}
-			vm_page_unlock_queues();
 		}
 	} else {
 		/*
@@ -257,10 +258,11 @@ dev_pager_getpages(object, m, count, reqpage)
 		page = dev_pager_getfake(paddr);
 		VM_OBJECT_LOCK(object);
 		TAILQ_INSERT_TAIL(&object->un_pager.devp.devp_pglist, page, pageq);
-		vm_page_lock_queues();
-		for (i = 0; i < count; i++)
+		for (i = 0; i < count; i++) {
+			vm_page_lock(m[i]);
 			vm_page_free(m[i]);
-		vm_page_unlock_queues();
+			vm_page_unlock(m[i]);
+		}
 		vm_page_insert(page, object, offset);
 		m[reqpage] = page;
 	}

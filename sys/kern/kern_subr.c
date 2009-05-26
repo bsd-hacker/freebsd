@@ -107,9 +107,10 @@ retry:
 	if ((user_pg = vm_page_lookup(uobject, upindex)) != NULL) {
 		if (vm_page_sleep_if_busy(user_pg, TRUE, "vm_pgmoveco"))
 			goto retry;
-		vm_page_lock_queues();
+		vm_page_lock(user_pg);
 		pmap_remove_all(user_pg);
 		vm_page_free(user_pg);
+		vm_page_unlock(user_pg);
 	} else {
 		/*
 		 * Even if a physical page does not exist in the
@@ -118,11 +119,11 @@ retry:
 		 */
 		if (uobject->backing_object != NULL)
 			pmap_remove(map->pmap, uaddr, uaddr + PAGE_SIZE);
-		vm_page_lock_queues();
 	}
+	vm_page_lock(kern_pg);
 	vm_page_insert(kern_pg, uobject, upindex);
 	vm_page_dirty(kern_pg);
-	vm_page_unlock_queues();
+	vm_page_unlock(kern_pg);
 	VM_OBJECT_UNLOCK(uobject);
 	vm_map_lookup_done(map, entry);
 	return(KERN_SUCCESS);

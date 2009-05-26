@@ -621,9 +621,9 @@ mdstart_swap(struct md_s *sc, struct bio *bp)
 			if (rv == VM_PAGER_ERROR) {
 				sf_buf_free(sf);
 				sched_unpin();
-				vm_page_lock_queues();
+				vm_page_lock(m);
 				vm_page_wakeup(m);
-				vm_page_unlock_queues();
+				vm_page_unlock(m);
 				break;
 			}
 			bcopy((void *)(sf_buf_kva(sf) + offs), p, len);
@@ -633,9 +633,9 @@ mdstart_swap(struct md_s *sc, struct bio *bp)
 			if (rv == VM_PAGER_ERROR) {
 				sf_buf_free(sf);
 				sched_unpin();
-				vm_page_lock_queues();
+				vm_page_lock(m);
 				vm_page_wakeup(m);
-				vm_page_unlock_queues();
+				vm_page_unlock(m);
 				break;
 			}
 			bcopy(p, (void *)(sf_buf_kva(sf) + offs), len);
@@ -647,9 +647,9 @@ mdstart_swap(struct md_s *sc, struct bio *bp)
 			if (rv == VM_PAGER_ERROR) {
 				sf_buf_free(sf);
 				sched_unpin();
-				vm_page_lock_queues();
+				vm_page_lock(m);
 				vm_page_wakeup(m);
-				vm_page_unlock_queues();
+				vm_page_unlock(m);
 				break;
 			}
 			bzero((void *)(sf_buf_kva(sf) + offs), len);
@@ -659,12 +659,12 @@ mdstart_swap(struct md_s *sc, struct bio *bp)
 		}
 		sf_buf_free(sf);
 		sched_unpin();
-		vm_page_lock_queues();
+		vm_page_lock(m);
 		vm_page_wakeup(m);
 		vm_page_activate(m);
 		if (bp->bio_cmd == BIO_WRITE)
 			vm_page_dirty(m);
-		vm_page_unlock_queues();
+		vm_page_unlock(m);
 
 		/* Actions on further pages start at offset 0 */
 		p += PAGE_SIZE - offs;

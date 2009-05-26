@@ -310,9 +310,9 @@ proc_rwmem(struct proc *p, struct uio *uio)
 		/*
 		 * Hold the page in memory.
 		 */
-		vm_page_lock_queues();
+		vm_page_lock(m);
 		vm_page_hold(m);
-		vm_page_unlock_queues();
+		vm_page_unlock(m);
 
 		/*
 		 * We're done with tmap now.
@@ -327,9 +327,9 @@ proc_rwmem(struct proc *p, struct uio *uio)
 		/*
 		 * Release the page.
 		 */
-		vm_page_lock_queues();
+		vm_page_lock(m);
 		vm_page_unhold(m);
-		vm_page_unlock_queues();
+		vm_page_unlock(m);
 
 	} while (error == 0 && uio->uio_resid > 0);
 
