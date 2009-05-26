@@ -1660,8 +1660,8 @@ vm_page_try_to_free(vm_page_t m)
  *
  * This routine may not block.
  */
-void
-vm_page_cache(vm_page_t m)
+static void
+_vm_page_cache(vm_page_t m, int locked)
 {
 	vm_object_t object;
 	vm_page_t root;
@@ -1694,8 +1694,10 @@ vm_page_cache(vm_page_t m)
 	/*
 	 * Remove the page from the paging queues.
 	 */
-	vm_pageq_remove(m);
-
+	if (locked)
+		vm_pageq_remove_locked(m);
+	else
+		vm_pageq_remove(m);
 	/*
 	 * Remove the page from the object's collection of resident
 	 * pages. 
@@ -1762,6 +1764,20 @@ vm_page_cache(vm_page_t m)
 		else if (root != NULL && object->resident_page_count == 0)
 			vdrop(object->handle);
 	}
+}
+
+void
+vm_page_cache(vm_page_t m)
+{
+
+	_vm_page_cache(m, 0);
+}
+
+void
+vm_page_cache_locked(vm_page_t m)
+{
+
+	_vm_page_cache(m, 1);
 }
 
 /*

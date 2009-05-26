@@ -878,7 +878,7 @@ rescan0:
 			 * Clean pages can be placed onto the cache queue.
 			 * This effectively frees them.
 			 */
-			vm_page_cache(m);
+			vm_page_cache_locked(m);
 			--page_shortage;
 		} else if ((m->flags & PG_WINATCFLS) == 0 && pass == 0) {
 			/*
@@ -1157,7 +1157,7 @@ unlock_and_continue:
 				if (object->ref_count == 0) {
 					pmap_remove_all(m);
 					if (m->dirty == 0)
-						vm_page_cache(m);
+						vm_page_cache_locked(m);
 					else
 						vm_page_deactivate_locked(m);
 				} else {
