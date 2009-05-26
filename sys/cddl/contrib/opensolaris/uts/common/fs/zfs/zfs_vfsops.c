@@ -492,6 +492,13 @@ zfsvfs_setup(zfsvfs_t *zfsvfs, boolean_t mounting)
 	dmu_objset_set_user(zfsvfs->z_os, zfsvfs);
 	mutex_exit(&zfsvfs->z_os->os->os_user_ptr_lock);
 
+	zfsvfs->z_log = zil_open(zfsvfs->z_os, zfs_get_data);
+	if (zil_disable) {
+		zil_destroy(zfsvfs->z_log, 0);
+		zfsvfs->z_log = NULL;
+	}
+
+	
 	/*
 	 * If we are not mounting (ie: online recv), then we don't
 	 * have to worry about replaying the log as we blocked all
@@ -505,20 +512,26 @@ zfsvfs_setup(zfsvfs_t *zfsvfs, boolean_t mounting)
 		 * allow replays to succeed.
 		 */
 		readonly = zfsvfs->z_vfs->vfs_flag & VFS_RDONLY;
-		zfsvfs->z_vfs->vfs_flag &= ~VFS_RDONLY;
-
-		/*
-		 * Parse and replay the intent log.
-		 */
-		zil_replay(zfsvfs->z_os, zfsvfs, &zfsvfs->z_assign,
-		    zfs_replay_vector, zfs_unlinked_drain);
-
-		zfs_unlinked_drain(zfsvfs);
+		if (readonly != 0)
+			zfsvfs->z_vfs->vfs_flag &= ~VFS_RDONLY;
+		else
+			zfs_unlinked_drain(zfsvfs);
+		
+		if (zfsvfs->z_log) {
+			
+			/*
+			 * Parse and replay the intent log.
+			 * Because of ziltest, this must be done after
+			 * zfs_unlinked_drain().  (Further note: ziltest
+			 * doesn't use readonly mounts, where
+			 */
+			zfsvfs->z_replay = B_TRUE;
+			zil_replay(zfsvfs->z_os, zfsvfs, zfs_replay_vector);
+			zfsvfs->z_replay = B_FALSE;
+		}
+		
 		zfsvfs->z_vfs->vfs_flag |= readonly; /* restore readonly bit */
 	}
-
-	if (!zil_disable)
-		zfsvfs->z_log = zil_open(zfsvfs->z_os, zfs_get_data);
 
 	return (0);
 }
@@ -555,7 +568,6 @@ zfs_domount(vfs_t *vfsp, char *osname)
 	zfsvfs = kmem_zalloc(sizeof (zfsvfs_t), KM_SLEEP);
 	zfsvfs->z_vfs = vfsp;
 	zfsvfs->z_parent = zfsvfs;
-	zfsvfs->z_assign = TXG_NOWAIT;
 	zfsvfs->z_max_blksz = SPA_MAXBLOCKSIZE;
 	zfsvfs->z_show_ctldir = ZFS_SNAPDIR_VISIBLE;
 

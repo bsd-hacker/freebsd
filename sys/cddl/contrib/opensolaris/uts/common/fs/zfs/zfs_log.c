@@ -42,6 +42,17 @@
 #include <sys/dmu.h>
 #include <sys/spa.h>
 #include <sys/zfs_fuid.h>
+#include <sys/dsl_dataset.h>
+
+#define	ZFS_HANDLE_REPLAY(zilog, tx) \
+	if (zilog->zl_replay) { \
+		dsl_dataset_dirty(dmu_objset_ds(zilog->zl_os), tx); \
+		zilog->zl_replayed_seq[dmu_tx_get_txg(tx) & TXG_MASK] = \
+		    zilog->zl_replaying_seq; \
+		return; \
+	}
+
+
 
 /*
  * All the functions in this file are used to construct the log entries
@@ -236,6 +247,8 @@ zfs_log_create(zilog_t *zilog, dmu_tx_t *tx, uint64_t txtype,
 	if (zilog == NULL)
 		return;
 
+	ZFS_HANDLE_REPLAY(zilog, tx); /* exits if replay */
+
 	/*
 	 * If we have FUIDs present then add in space for
 	 * domains and ACE fuid's if any.
@@ -339,6 +352,8 @@ zfs_log_remove(zilog_t *zilog, dmu_tx_t *tx, uint64_t txtype,
 	if (zilog == NULL)
 		return;
 
+	ZFS_HANDLE_REPLAY(zilog, tx); /* exits if replay */
+	
 	itx = zil_itx_create(txtype, sizeof (*lr) + namesize);
 	lr = (lr_remove_t *)&itx->itx_lr;
 	lr->lr_doid = dzp->z_id;
@@ -362,6 +377,8 @@ zfs_log_link(zilog_t *zilog, dmu_tx_t *tx, uint64_t txtype,
 
 	if (zilog == NULL)
 		return;
+
+	ZFS_HANDLE_REPLAY(zilog, tx); /* exits if replay */
 
 	itx = zil_itx_create(txtype, sizeof (*lr) + namesize);
 	lr = (lr_link_t *)&itx->itx_lr;
@@ -389,6 +406,8 @@ zfs_log_symlink(zilog_t *zilog, dmu_tx_t *tx, uint64_t txtype,
 
 	if (zilog == NULL)
 		return;
+
+	ZFS_HANDLE_REPLAY(zilog, tx); /* exits if replay */
 
 	itx = zil_itx_create(txtype, sizeof (*lr) + namesize + linksize);
 	lr = (lr_create_t *)&itx->itx_lr;
@@ -424,6 +443,8 @@ zfs_log_rename(zilog_t *zilog, dmu_tx_t *tx, uint64_t txtype,
 	if (zilog == NULL)
 		return;
 
+	ZFS_HANDLE_REPLAY(zilog, tx); /* exits if replay */
+
 	itx = zil_itx_create(txtype, sizeof (*lr) + snamesize + dnamesize);
 	lr = (lr_rename_t *)&itx->itx_lr;
 	lr->lr_sdoid = sdzp->z_id;
@@ -455,6 +476,8 @@ zfs_log_write(zilog_t *zilog, dmu_tx_t *tx, int txtype,
 
 	if (zilog == NULL || zp->z_unlinked)
 		return;
+
+	ZFS_HANDLE_REPLAY(zilog, tx); /* exits if replay */
 
 	/*
 	 * Writes are handled in three different ways:
@@ -553,6 +576,8 @@ zfs_log_truncate(zilog_t *zilog, dmu_tx_t *tx, int txtype,
 	if (zilog == NULL || zp->z_unlinked)
 		return;
 
+	ZFS_HANDLE_REPLAY(zilog, tx); /* exits if replay */
+	
 	itx = zil_itx_create(txtype, sizeof (*lr));
 	lr = (lr_truncate_t *)&itx->itx_lr;
 	lr->lr_foid = zp->z_id;
@@ -581,6 +606,8 @@ zfs_log_setattr(zilog_t *zilog, dmu_tx_t *tx, int txtype,
 
 	if (zilog == NULL || zp->z_unlinked)
 		return;
+
+	ZFS_HANDLE_REPLAY(zilog, tx); /* exits if replay */
 
 	/*
 	 * If XVATTR set, then log record size needs to allow
@@ -647,6 +674,8 @@ zfs_log_acl(zilog_t *zilog, dmu_tx_t *tx, znode_t *zp,
 
 	if (zilog == NULL || zp->z_unlinked)
 		return;
+
+	ZFS_HANDLE_REPLAY(zilog, tx); /* exits if replay */
 
 	txtype = (zp->z_zfsvfs->z_version < ZPL_VERSION_FUID) ?
 	    TX_ACL_V0 : TX_ACL;

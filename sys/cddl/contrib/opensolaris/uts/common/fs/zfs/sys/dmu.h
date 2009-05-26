@@ -447,8 +447,12 @@ int dmu_free_object(objset_t *os, uint64_t object);
  * Canfail routines will return 0 on success, or an errno if there is a
  * nonrecoverable I/O error.
  */
+#define	DMU_READ_PREFETCH	0 /* prefetch */
+#define	DMU_READ_NO_PREFETCH	1 /* don't prefetch */
 int dmu_read(objset_t *os, uint64_t object, uint64_t offset, uint64_t size,
 	void *buf);
+int dmu_read_flags(objset_t *os, uint64_t object, uint64_t offset,
+    uint64_t size, void *buf, uint32_t flags);
 void dmu_write(objset_t *os, uint64_t object, uint64_t offset, uint64_t size,
 	const void *buf, dmu_tx_t *tx);
 int dmu_read_uio(objset_t *os, uint64_t object, struct uio *uio, uint64_t size);
@@ -456,7 +460,10 @@ int dmu_write_uio(objset_t *os, uint64_t object, struct uio *uio, uint64_t size,
     dmu_tx_t *tx);
 int dmu_write_pages(objset_t *os, uint64_t object, uint64_t offset,
     uint64_t size, struct page *pp, dmu_tx_t *tx);
-
+struct arc_buf *dmu_request_arcbuf(dmu_buf_t *handle, int size);
+void dmu_return_arcbuf(struct arc_buf *buf);
+void dmu_assign_arcbuf(dmu_buf_t *handle, uint64_t offset, struct arc_buf *buf,
+    dmu_tx_t *tx);	
 extern int zfs_prefetch_disable;
 
 /*

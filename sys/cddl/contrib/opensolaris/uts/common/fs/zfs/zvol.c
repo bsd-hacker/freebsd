@@ -73,6 +73,7 @@
 #include <sys/vdev_impl.h>
 #include <sys/zvol.h>
 #include <geom/geom.h>
+#include <sys/zil_impl.h>
 
 #include "zfs_namecheck.h"
 
@@ -138,6 +139,7 @@ typedef struct zvol_state {
 #define	ZVOL_RDONLY	0x1
 #define	ZVOL_DUMPIFIED	0x2
 #define	ZVOL_EXCL	0x4
+#define	ZVOL_WCE	0x8
 
 /*
  * zvol maximum transfer in one DMU tx.
@@ -278,28 +280,72 @@ zvol_access(struct g_provider *pp, int acr, int acw, int ace)
 ssize_t zvol_immediate_write_sz = 32768;
 
 static void
-zvol_log_write(zvol_state_t *zv, dmu_tx_t *tx, offset_t off, ssize_t len)
+zvol_log_write(zvol_state_t *zv, dmu_tx_t *tx, offset_t off, ssize_t resid,
+	boolean_t sync)
 {
 	uint32_t blocksize = zv->zv_volblocksize;
-	lr_write_t *lr;
+	zilog_t *zilog = zv->zv_zilog;
+	boolean_t slogging;
 
-	while (len) {
-		ssize_t nbytes = MIN(len, blocksize - P2PHASE(off, blocksize));
-		itx_t *itx = zil_itx_create(TX_WRITE, sizeof (*lr));
+	if (zil_disable)
+		return;
 
-		itx->itx_wr_state =
-		    len > zvol_immediate_write_sz ?  WR_INDIRECT : WR_NEED_COPY;
-		itx->itx_private = zv;
+	if (zilog->zl_replay) {
+		dsl_dataset_dirty(dmu_objset_ds(zilog->zl_os), tx);
+		zilog->zl_replayed_seq[dmu_tx_get_txg(tx) & TXG_MASK] =
+		    zilog->zl_replaying_seq;
+		return;
+	}
+	slogging = spa_has_slogs(zilog->zl_spa);
+
+	while (resid) {
+		ssize_t len;
+		itx_t *itx;
+		lr_write_t *lr;
+		itx_wr_state_t write_state;
+
+		/*
+		 * Unlike zfs_log_write() we can be called with
+		 * upto DMU_MAX_ACCESS/2 (5MB) writes.
+		 */
+		if (blocksize > zvol_immediate_write_sz && !slogging &&
+		    resid >= blocksize && off % blocksize == 0) {
+			write_state = WR_INDIRECT; /* uses dmu_sync */
+			len = blocksize;
+		} else if (sync) {
+			write_state = WR_COPIED;
+			len = MIN(ZIL_MAX_LOG_DATA, resid);
+		} else {
+			write_state = WR_NEED_COPY;
+			len = MIN(ZIL_MAX_LOG_DATA, resid);
+		}
+
+		itx = zil_itx_create(TX_WRITE, sizeof (*lr) +
+		    (write_state == WR_COPIED ? len : 0));
 		lr = (lr_write_t *)&itx->itx_lr;
+		if (write_state == WR_COPIED && dmu_read_flags(zv->zv_objset,
+		    ZVOL_OBJ, off, len, lr + 1, DMU_READ_NO_PREFETCH) != 0) {
+			kmem_free(itx, offsetof(itx_t, itx_lr) +
+			    itx->itx_lr.lrc_reclen);
+			itx = zil_itx_create(TX_WRITE, sizeof (*lr));
+			lr = (lr_write_t *)&itx->itx_lr;
+			write_state = WR_NEED_COPY;
+		}
+
+		itx->itx_wr_state = write_state;
+		if (write_state == WR_NEED_COPY)
+			itx->itx_sod += len;
+		itx->itx_private = zv;
 		lr->lr_foid = ZVOL_OBJ;
 		lr->lr_offset = off;
-		lr->lr_length = nbytes;
+		lr->lr_length = len;
 		lr->lr_blkoff = off - P2ALIGN_TYPED(off, blocksize, uint64_t);
 		BP_ZERO(&lr->lr_blkptr);
 
 		(void) zil_itx_assign(zv->zv_zilog, itx, tx);
-		len -= nbytes;
-		off += nbytes;
+
+		off += len;
+		resid -= len;
 	}
 }
 
@@ -337,6 +383,7 @@ zvol_serve_one(zvol_state_t *zv, struct bio *bp)
 	rl_t *rl;
 	int error = 0;
 	boolean_t reading;
+	boolean_t sync;
 
 	off = bp->bio_offset;
 	volsize = zv->zv_volsize;
@@ -349,12 +396,15 @@ zvol_serve_one(zvol_state_t *zv, struct bio *bp)
 
 	error = 0;
 
+
+	reading = (bp->bio_cmd == BIO_READ);
+	sync =  /* !(bp->b_flags & B_ASYNC) &&  !is_dump && */ !reading &&
+	    !(zv->zv_flags & ZVOL_WCE) && !zil_disable;	
 	/*
 	 * There must be no buffer changes when doing a dmu_sync() because
 	 * we can't change the data whilst calculating the checksum.
 	 * A better approach than a per zvol rwlock would be to lock ranges.
 	 */
-	reading = (bp->bio_cmd == BIO_READ);
 	rl = zfs_range_lock(&zv->zv_znode, off, resid,
 	    reading ? RL_READER : RL_WRITER);
 
@@ -375,7 +425,7 @@ zvol_serve_one(zvol_state_t *zv, struct bio *bp)
 				dmu_tx_abort(tx);
 			} else {
 				dmu_write(os, ZVOL_OBJ, off, size, addr, tx);
-				zvol_log_write(zv, tx, off, size);
+				zvol_log_write(zv, tx, off, size, sync);
 				dmu_tx_commit(tx);
 			}
 		}
@@ -811,7 +861,7 @@ zvol_create_minor(const char *name, major_t maj)
 	ASSERT(error == 0);
 	zv->zv_volblocksize = doi.doi_data_block_size;
 
-	zil_replay(os, zv, &zv->zv_txg_assign, zvol_replay_vector, NULL);
+	zil_replay(os, zv, zvol_replay_vector);
 
 	/* XXX this should handle the possible i/o error */
 	VERIFY(dsl_prop_register(dmu_objset_ds(zv->zv_objset),
