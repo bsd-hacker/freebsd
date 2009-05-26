@@ -304,7 +304,7 @@ vm_pageout_clean(m)
 	if ((m->hold_count != 0) ||
 	    ((m->busy != 0) || (m->oflags & VPO_BUSY))) {
 		vm_page_unlock(m);
-		return 0;
+		return (0);
 	}
 	vm_page_io_start(m);
 	pmap_remove_write(m);
@@ -362,8 +362,8 @@ more:
 			vm_page_unlock(p);
 			break;
 		}
-		vm_page_io_start(m);
-		pmap_remove_write(m);
+		vm_page_io_start(p);
+		pmap_remove_write(p);
 		vm_page_unlock(p);
 		mc[--page_base] = p;
 		++pageout_count;
@@ -394,8 +394,8 @@ more:
 			vm_page_unlock(p);
 			break;
 		}
-		vm_page_io_start(m);
-		pmap_remove_write(m);
+		vm_page_io_start(p);
+		pmap_remove_write(p);
 		vm_page_unlock(p);
 		mc[page_base + pageout_count] = p;
 		++pageout_count;
@@ -987,8 +987,8 @@ rescan0:
 					goto unlock_and_continue;
 				}
 				VM_OBJECT_LOCK(object);
-				vm_page_lock(m);
 				vm_page_lock_queues();
+				vm_page_lock(m);
 				/*
 				 * The page might have been moved to another
 				 * queue during potential blocking in vget()
@@ -1043,9 +1043,9 @@ rescan0:
 				--page_shortage;
 				--maxlaunder;
 			} 
-			vm_page_lock_assert(m, MA_NOTOWNED);
 			vm_page_lock_queues();
 unlock_and_continue:
+			vm_page_lock_assert(m, MA_NOTOWNED);
 			VM_OBJECT_UNLOCK(object);
 			if (mp != NULL) {
 				vm_page_unlock_queues();
