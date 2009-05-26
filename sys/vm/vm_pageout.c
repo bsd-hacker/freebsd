@@ -785,7 +785,7 @@ rescan0:
 			addl_page_shortage++;
 			continue;
 		}
-
+		vm_page_lock_assert(m, MA_NOTOWNED);
 		if (vm_page_trylock(m) == 0) {
 			VM_OBJECT_UNLOCK(object);
 			addl_page_shortage++;
@@ -1043,16 +1043,18 @@ rescan0:
 				--page_shortage;
 				--maxlaunder;
 			} 
+			vm_page_lock_assert(m, MA_NOTOWNED);
 			vm_page_lock_queues();
 unlock_and_continue:
 			VM_OBJECT_UNLOCK(object);
 			if (mp != NULL) {
+				vm_page_unlock_queues();
 				if (vp != NULL)
 					vput(vp);
 				VFS_UNLOCK_GIANT(vfslocked);
 				vm_object_deallocate(object);
 				vn_finished_write(mp);
-				vm_page_lock(m);
+				vm_page_lock_queues();
 			}
 			next = TAILQ_NEXT(&marker, pageq);
 			TAILQ_REMOVE(&vm_page_queues[PQ_INACTIVE].pl,
