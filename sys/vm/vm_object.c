@@ -1416,8 +1416,8 @@ retry:
 		}
 		vm_page_rename(m, new_object, idx);
 		/* page automatically made dirty by rename and cache handled */
-		vm_page_busy(m);
 		vm_page_unlock(m);
+		vm_page_busy(m);
 	}
 	if (orig_object->type == OBJT_SWAP) {
 		/*
