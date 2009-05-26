@@ -269,10 +269,8 @@ pmclog_loop(void *arg)
 	mtx_lock_spin(&po->po_mtx);
 	for (;;) {
 		/* check if we've been asked to exit */
-		if ((po->po_flags & PMC_PO_OWNS_LOGFILE) == 0) {
-			mtx_unlock_spin(&po->po_mtx);
+		if ((po->po_flags & PMC_PO_OWNS_LOGFILE) == 0)
 			break;
-		}
 		
 		if (lb == NULL) { /* look for a fresh buffer to write */
 			if ((lb = TAILQ_FIRST(&po->po_logbuffers)) == NULL) {
@@ -324,7 +322,7 @@ pmclog_loop(void *arg)
 			po->po_error = error; /* save for flush log */
 
 			PMCDBG(LOG,WRI,2, "po=%p error=%d", po, error);
-
+			mtx_lock_spin(&po->po_mtx);
 			break;
 		}
 
@@ -337,7 +335,6 @@ pmclog_loop(void *arg)
 		lb = NULL;
 		mtx_lock_spin(&po->po_mtx);
 	}
-	mtx_lock_spin(&po->po_mtx);
 	po->po_kthread = NULL;
 	cv_signal(&po->po_kthread_cv);
 	mtx_unlock_spin(&po->po_mtx);
@@ -585,7 +582,7 @@ pmclog_configure_log(struct pmc_mdep *md, struct pmc_owner *po, int logfd)
 	mtx_lock_spin(&po->po_mtx);
 	if (po->po_kthread)
 		pmclog_stop_kthread(po);
-	mtx_lock_spin(&po->po_mtx);
+	mtx_unlock_spin(&po->po_mtx);
 
 	KASSERT(po->po_kthread == NULL, ("[pmc,%d] po=%p kthread not stopped",
 	    __LINE__, po));
