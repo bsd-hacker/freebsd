@@ -961,8 +961,8 @@ rescan0:
 			 * of time.
 			 */
 			if (object->type == OBJT_VNODE) {
-				vm_page_unlock(m);
 				vm_page_unlock_queues();
+				vm_page_unlock(m);
 				vp = object->handle;
 				if (vp->v_type == VREG &&
 				    vn_start_write(vp, &mp, V_NOWAIT) != 0) {
@@ -1059,8 +1059,10 @@ unlock_and_continue:
 			next = TAILQ_NEXT(&marker, pageq);
 			TAILQ_REMOVE(&vm_page_queues[PQ_INACTIVE].pl,
 				     &marker, pageq);
+			vm_page_lock_assert(m, MA_NOTOWNED);
 			continue;
 		}
+		vm_page_unlock(m);
 		VM_OBJECT_UNLOCK(object);
 	}
 
