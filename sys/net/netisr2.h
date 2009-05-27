@@ -35,7 +35,7 @@
 
 /*-
  * Protocols express ordering constraints and affinity preferences by
- * implementing one or neither of nh_m2flow and nh_m2cpu, which are used by
+ * implementing one or neither of nh_m2flow and nh_m2cpuid, which are used by
  * netisr2 to determine which per-CPU workstream to assign mbufs to.
  *
  * The following policies may be used by protocols:
@@ -52,7 +52,7 @@
  *                      flow ID, falling back on source ordering.
  *
  * NETISR_POLICY_CPU - netisr2 will delegate all work placement decisions to
- *                     the protocol, querying nh_m2cpu for each packet.
+ *                     the protocol, querying nh_m2cpuid for each packet.
  *
  * Protocols might make decisions about work placement based on an existing
  * calculated flow ID on the mbuf, such as one provided in hardware, the
@@ -65,7 +65,7 @@
  * protocol handlers to notify them of CPU configuration changes so that they
  * can rebalance work.
  */
-typedef struct mbuf	*netisr_m2cpu_t(struct mbuf *m, uintptr_t source,
+typedef struct mbuf	*netisr_m2cpuid_t(struct mbuf *m, uintptr_t source,
 			 u_int *cpuid);
 typedef	struct mbuf	*netisr_m2flow_t(struct mbuf *m, uintptr_t source);
 
@@ -80,7 +80,7 @@ struct netisr_handler {
 	const char	*nh_name;	/* Character string protocol name. */
 	netisr_t	*nh_handler;	/* Protocol handler. */
 	netisr_m2flow_t	*nh_m2flow;	/* Query flow for untagged packet. */
-	netisr_m2cpu_t	*nh_m2cpu;	/* Query CPU to process packet on. */
+	netisr_m2cpuid_t *nh_m2cpuid;	/* Query CPU to process mbuf on. */
 	u_int		 nh_proto;	/* Integer protocol ID. */
 	u_int		 nh_qlimit;	/* Maximum per-CPU queue depth. */
 	u_int		 nh_policy;	/* Work placement policy. */

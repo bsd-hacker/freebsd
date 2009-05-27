@@ -181,7 +181,7 @@ struct netisr_proto {
 	const char	*np_name;	/* Character string protocol name. */
 	netisr_t	*np_handler;	/* Protocol handler. */
 	netisr_m2flow_t	*np_m2flow;	/* Query flow for untagged packet. */
-	netisr_m2cpu_t	*np_m2cpu;	/* Query CPU to process packet on. */
+	netisr_m2cpuid_t	*np_m2cpuid;	/* Query CPU to process packet on. */
 	u_int		 np_qlimit;	/* Maximum per-CPU queue depth. */
 	u_int		 np_policy;	/* Work placement policy. */
 };
@@ -358,11 +358,11 @@ netisr2_register(const struct netisr_handler *nhp)
 	    nhp->nh_m2flow == NULL,
 	    ("netisr2_register: nh_policy != FLOW but m2flow defined for %s",
 	    name));
-	KASSERT(nhp->nh_policy == NETISR_POLICY_CPU || nhp->nh_m2cpu == NULL,
-	    ("netisr2_register: nh_policy != CPU but m2cpu defined for %s",
+	KASSERT(nhp->nh_policy == NETISR_POLICY_CPU || nhp->nh_m2cpuid == NULL,
+	    ("netisr2_register: nh_policy != CPU but m2cpuid defined for %s",
 	    name));
-	KASSERT(nhp->nh_policy != NETISR_POLICY_CPU || nhp->nh_m2cpu != NULL,
-	    ("netisr2_register: nh_policy == CPU but m2cpu not defined for "
+	KASSERT(nhp->nh_policy != NETISR_POLICY_CPU || nhp->nh_m2cpuid != NULL,
+	    ("netisr2_register: nh_policy == CPU but m2cpuid not defined for "
 	    "%s", name));
 	KASSERT(nhp->nh_qlimit != 0,
 	    ("netisr2_register: nh_qlimit 0 for %s", name));
@@ -373,7 +373,7 @@ netisr2_register(const struct netisr_handler *nhp)
 	np[proto].np_name = name;
 	np[proto].np_handler = nhp->nh_handler;
 	np[proto].np_m2flow = nhp->nh_m2flow;
-	np[proto].np_m2cpu = nhp->nh_m2cpu;
+	np[proto].np_m2cpuid = nhp->nh_m2cpuid;
 	if (nhp->nh_qlimit > netisr_maxqlimit) {
 		printf("netisr2_register: %s requested queue limit %u "
 		    "capped to net.isr2.maxqlimit %u\n", name,
@@ -564,7 +564,7 @@ netisr2_unregister(const struct netisr_handler *nhp)
 	np[proto].np_name = NULL;
 	np[proto].np_handler = NULL;
 	np[proto].np_m2flow = NULL;
-	np[proto].np_m2cpu = NULL;
+	np[proto].np_m2cpuid = NULL;
 	np[proto].np_qlimit = 0;
 	np[proto].np_policy = 0;
 	for (i = 0; i < MAXCPU; i++) {
@@ -581,8 +581,8 @@ netisr2_unregister(const struct netisr_handler *nhp)
  * for assistance if required.
  */
 static struct mbuf *
-netisr2_selectcpu(struct netisr_proto *npp, uintptr_t source, struct mbuf *m,
-    u_int *cpuidp)
+netisr2_select_cpuid(struct netisr_proto *npp, uintptr_t source,
+    struct mbuf *m, u_int *cpuidp)
 {
 	struct ifnet *ifp;
 
@@ -604,7 +604,7 @@ netisr2_selectcpu(struct netisr_proto *npp, uintptr_t source, struct mbuf *m,
 	 */
 	switch (npp->np_policy) {
 	case NETISR_POLICY_CPU:
-		return (npp->np_m2cpu(m, source, cpuidp));
+		return (npp->np_m2cpuid(m, source, cpuidp));
 
 	case NETISR_POLICY_FLOW:
 		if (!(m->m_flags & M_FLOWID) && npp->np_m2flow != NULL) {
@@ -629,7 +629,7 @@ netisr2_selectcpu(struct netisr_proto *npp, uintptr_t source, struct mbuf *m,
 		return (m);
 
 	default:
-		panic("netisr2_selectcpu: invalid policy %u for %s",
+		panic("netisr2_select_cpuid: invalid policy %u for %s",
 		    npp->np_policy, npp->np_name);
 	}
 }
@@ -827,7 +827,7 @@ netisr2_queue_src(u_int proto, uintptr_t source, struct mbuf *m)
 	KASSERT(np[proto].np_handler != NULL,
 	    ("netisr2_queue_src: invalid proto %d", proto));
 
-	m = netisr2_selectcpu(&np[proto], source, m, &cpuid);
+	m = netisr2_select_cpuid(&np[proto], source, m, &cpuid);
 	if (m != NULL)
 		error = netisr2_queue_internal(proto, m, cpuid);
 	else
@@ -897,7 +897,7 @@ netisr2_dispatch_src(u_int proto, uintptr_t source, struct mbuf *m)
 	 * dispatch if we're on the right CPU and the netisr worker isn't
 	 * already running.
 	 */
-	m = netisr2_selectcpu(&np[proto], source, m, &cpuid);
+	m = netisr2_select_cpuid(&np[proto], source, m, &cpuid);
 	if (m == NULL) {
 		NETISR_RUNLOCK(&tracker);
 		return (ENOBUFS);
