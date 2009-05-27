@@ -622,9 +622,10 @@ netisr2_selectcpu(struct netisr_proto *npp, uintptr_t source, struct mbuf *m,
 	case NETISR_POLICY_SOURCE:
 		ifp = m->m_pkthdr.rcvif;
 		if (ifp != NULL)
-			*cpuidp = (ifp->if_index + source) % nws_count;
+			*cpuidp = nws_array[(ifp->if_index + source) %
+			    nws_count];
 		else
-			*cpuidp = source % nws_count;
+			*cpuidp = nws_array[source % nws_count];
 		return (m);
 
 	default:
