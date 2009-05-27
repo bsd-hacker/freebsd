@@ -37,8 +37,8 @@ __FBSDID("$FreeBSD$");
 #include <rpc/xdr.h>
 
 static void xdrmbuf_destroy(XDR *);
-static bool_t xdrmbuf_getlong(XDR *, long *);
-static bool_t xdrmbuf_putlong(XDR *, const long *);
+static bool_t xdrmbuf_getint32(XDR *, int32_t *);
+static bool_t xdrmbuf_putint32(XDR *, const int32_t *);
 static bool_t xdrmbuf_getbytes(XDR *, char *, u_int);
 static bool_t xdrmbuf_putbytes(XDR *, const char *, u_int);
 /* XXX: w/64-bit pointers, u_int not enough! */
@@ -47,8 +47,8 @@ static bool_t xdrmbuf_setpos(XDR *, u_int);
 static int32_t *xdrmbuf_inline(XDR *, u_int);
 
 static const struct	xdr_ops xdrmbuf_ops = {
-	xdrmbuf_getlong,
-	xdrmbuf_putlong,
+	xdrmbuf_getint32,
+	xdrmbuf_putint32,
 	xdrmbuf_getbytes,
 	xdrmbuf_putbytes,
 	xdrmbuf_getpos,
@@ -90,7 +90,7 @@ xdrmbuf_destroy(XDR *xdrs)
 }
 
 static bool_t
-xdrmbuf_getlong(XDR *xdrs, long *lp)
+xdrmbuf_getint32(XDR *xdrs, int32_t *lp)
 {
 	int32_t t;
 
@@ -100,9 +100,7 @@ xdrmbuf_getlong(XDR *xdrs, long *lp)
 }
 
 static bool_t
-xdrmbuf_putlong(xdrs, lp)
-	XDR *xdrs;
-	const long *lp;
+xdrmbuf_putint32(XDR *xdrs, const int32_t *lp)
 {
 	int32_t t = htonl(*lp);
 

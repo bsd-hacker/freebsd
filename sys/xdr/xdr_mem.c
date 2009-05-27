@@ -57,10 +57,10 @@ __FBSDID("$FreeBSD$");
 #define memmove(dst, src, len)	bcopy(src, dst, len)
 
 static void xdrmem_destroy(XDR *);
-static bool_t xdrmem_getlong_aligned(XDR *, long *);
-static bool_t xdrmem_putlong_aligned(XDR *, const long *);
-static bool_t xdrmem_getlong_unaligned(XDR *, long *);
-static bool_t xdrmem_putlong_unaligned(XDR *, const long *);
+static bool_t xdrmem_getint32_aligned(XDR *, int32_t *);
+static bool_t xdrmem_putint32_aligned(XDR *, const int32_t *);
+static bool_t xdrmem_getint32_unaligned(XDR *, int32_t *);
+static bool_t xdrmem_putint32_unaligned(XDR *, const int32_t *);
 static bool_t xdrmem_getbytes(XDR *, char *, u_int);
 static bool_t xdrmem_putbytes(XDR *, const char *, u_int);
 /* XXX: w/64-bit pointers, u_int not enough! */
@@ -70,8 +70,8 @@ static int32_t *xdrmem_inline_aligned(XDR *, u_int);
 static int32_t *xdrmem_inline_unaligned(XDR *, u_int);
 
 static const struct	xdr_ops xdrmem_ops_aligned = {
-	xdrmem_getlong_aligned,
-	xdrmem_putlong_aligned,
+	xdrmem_getint32_aligned,
+	xdrmem_putint32_aligned,
 	xdrmem_getbytes,
 	xdrmem_putbytes,
 	xdrmem_getpos,
@@ -81,8 +81,8 @@ static const struct	xdr_ops xdrmem_ops_aligned = {
 };
 
 static const struct	xdr_ops xdrmem_ops_unaligned = {
-	xdrmem_getlong_unaligned,
-	xdrmem_putlong_unaligned,
+	xdrmem_getint32_unaligned,
+	xdrmem_putint32_unaligned,
 	xdrmem_getbytes,
 	xdrmem_putbytes,
 	xdrmem_getpos,
@@ -100,7 +100,7 @@ xdrmem_create(XDR *xdrs, char *addr, u_int size, enum xdr_op op)
 {
 
 	xdrs->x_op = op;
-	xdrs->x_ops = ((unsigned long)addr & (sizeof(int32_t) - 1))
+	xdrs->x_ops = ((uintptr_t)addr & (sizeof(int32_t) - 1))
 	    ? &xdrmem_ops_unaligned : &xdrmem_ops_aligned;
 	xdrs->x_private = xdrs->x_base = addr;
 	xdrs->x_handy = size;
@@ -114,7 +114,7 @@ xdrmem_destroy(XDR *xdrs)
 }
 
 static bool_t
-xdrmem_getlong_aligned(XDR *xdrs, long *lp)
+xdrmem_getint32_aligned(XDR *xdrs, int32_t *lp)
 {
 
 	if (xdrs->x_handy < sizeof(int32_t))
@@ -126,7 +126,7 @@ xdrmem_getlong_aligned(XDR *xdrs, long *lp)
 }
 
 static bool_t
-xdrmem_putlong_aligned(XDR *xdrs, const long *lp)
+xdrmem_putint32_aligned(XDR *xdrs, const int32_t *lp)
 {
 
 	if (xdrs->x_handy < sizeof(int32_t))
@@ -138,7 +138,7 @@ xdrmem_putlong_aligned(XDR *xdrs, const long *lp)
 }
 
 static bool_t
-xdrmem_getlong_unaligned(XDR *xdrs, long *lp)
+xdrmem_getint32_unaligned(XDR *xdrs, int32_t *lp)
 {
 	u_int32_t l;
 
@@ -152,7 +152,7 @@ xdrmem_getlong_unaligned(XDR *xdrs, long *lp)
 }
 
 static bool_t
-xdrmem_putlong_unaligned(XDR *xdrs, const long *lp)
+xdrmem_putint32_unaligned(XDR *xdrs, const int32_t *lp)
 {
 	u_int32_t l;
 

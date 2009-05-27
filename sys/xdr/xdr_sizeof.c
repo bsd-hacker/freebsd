@@ -47,7 +47,7 @@ __FBSDID("$FreeBSD$");
 
 /* ARGSUSED */
 static bool_t
-x_putlong(XDR *xdrs, const long *longp)
+x_putint32(XDR *xdrs, const int32_t *longp)
 {
 
 	xdrs->x_handy += BYTES_PER_XDR_UNIT;
@@ -135,10 +135,10 @@ xdr_sizeof(xdrproc_t func, void *data)
 	struct xdr_ops ops;
 	bool_t stat;
 	/* to stop ANSI-C compiler from complaining */
-	typedef  bool_t (* dummyfunc1)(XDR *, long *);
+	typedef  bool_t (* dummyfunc1)(XDR *, int32_t *);
 	typedef  bool_t (* dummyfunc2)(XDR *, caddr_t, u_int);
 
-	ops.x_putlong = x_putlong;
+	ops.x_putint32 = x_putint32;
 	ops.x_putbytes = x_putbytes;
 	ops.x_inline = x_inline;
 	ops.x_getpostn = x_getpostn;
@@ -146,7 +146,7 @@ xdr_sizeof(xdrproc_t func, void *data)
 	ops.x_destroy = x_destroy;
 
 	/* the other harmless ones */
-	ops.x_getlong =  (dummyfunc1) harmless;
+	ops.x_getint32 =  (dummyfunc1) harmless;
 	ops.x_getbytes = (dummyfunc2) harmless;
 
 	x.x_op = XDR_ENCODE;

@@ -101,9 +101,9 @@ typedef struct __rpc_xdr {
 	enum xdr_op	x_op;		/* operation; fast additional param */
 	const struct xdr_ops {
 		/* get a long from underlying stream */
-		bool_t	(*x_getlong)(struct __rpc_xdr *, long *);
+		bool_t	(*x_getint32)(struct __rpc_xdr *, int32_t *);
 		/* put a long to " */
-		bool_t	(*x_putlong)(struct __rpc_xdr *, const long *);
+		bool_t	(*x_putint32)(struct __rpc_xdr *, const int32_t *);
 		/* get some bytes from " */
 		bool_t	(*x_getbytes)(struct __rpc_xdr *, char *, u_int);
 		/* put some bytes to " */
@@ -145,43 +145,43 @@ typedef	bool_t (*xdrproc_t)(XDR *, ...);
  * Operations defined on a XDR handle
  *
  * XDR		*xdrs;
- * long		*longp;
+ * int32_t	*int32p;
  * char *	 addr;
  * u_int	 len;
  * u_int	 pos;
  */
-#define XDR_GETLONG(xdrs, longp)			\
-	(*(xdrs)->x_ops->x_getlong)(xdrs, longp)
-#define xdr_getlong(xdrs, longp)			\
-	(*(xdrs)->x_ops->x_getlong)(xdrs, longp)
+#define XDR_GETINT32(xdrs, int32p)			\
+	(*(xdrs)->x_ops->x_getint32)(xdrs, int32p)
+#define xdr_getint32(xdrs, int32p)			\
+	(*(xdrs)->x_ops->x_getint32)(xdrs, int32p)
 
-#define XDR_PUTLONG(xdrs, longp)			\
-	(*(xdrs)->x_ops->x_putlong)(xdrs, longp)
-#define xdr_putlong(xdrs, longp)			\
-	(*(xdrs)->x_ops->x_putlong)(xdrs, longp)
+#define XDR_PUTINT32(xdrs, int32p)			\
+	(*(xdrs)->x_ops->x_putint32)(xdrs, int32p)
+#define xdr_putint32(xdrs, int32p)			\
+	(*(xdrs)->x_ops->x_putint32)(xdrs, int32p)
 
 static __inline int
-xdr_getint32(XDR *xdrs, int32_t *ip)
+xdr_getlong(XDR *xdrs, long *lp)
 {
-	long l;
+	int32_t i;
 
-	if (!xdr_getlong(xdrs, &l))
+	if (!xdr_getint32(xdrs, &i))
 		return (FALSE);
-	*ip = (int32_t)l;
+	*lp = (long) i;
 	return (TRUE);
 }
 
 static __inline int
-xdr_putint32(XDR *xdrs, int32_t *ip)
+xdr_putlong(XDR *xdrs, long *lp)
 {
-	long l;
+	int32_t i;
 
-	l = (long)*ip;
-	return xdr_putlong(xdrs, &l);
+	i = (int32_t) *lp;
+	return xdr_putint32(xdrs, &i);
 }
 
-#define XDR_GETINT32(xdrs, int32p)	xdr_getint32(xdrs, int32p)
-#define XDR_PUTINT32(xdrs, int32p)	xdr_putint32(xdrs, int32p)
+#define XDR_GETLONG(xdrs, longp)	xdr_getlong(xdrs, longp)
+#define XDR_PUTLONG(xdrs, longp)	xdr_putlong(xdrs, longp)
 
 #define XDR_GETBYTES(xdrs, addr, len)			\
 	(*(xdrs)->x_ops->x_getbytes)(xdrs, addr, len)
