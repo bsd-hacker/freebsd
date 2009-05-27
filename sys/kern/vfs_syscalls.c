@@ -1399,7 +1399,7 @@ link(td, uap)
 	return (error);
 }
 
-static int hardlink_check_uid = 0;
+int hardlink_check_uid = 0;
 SYSCTL_INT(_security_bsd, OID_AUTO, hardlink_check_uid, CTLFLAG_RW,
     &hardlink_check_uid, 0,
     "Unprivileged processes cannot create hard links to files owned by other "

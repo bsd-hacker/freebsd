@@ -268,3 +268,7 @@ i386/cpufreq/est.c		optional	cpufreq
 i386/cpufreq/p4tcc.c		optional	cpufreq
 #
 libkern/memset.c		standard
+
+cddl/contrib/opensolaris/common/atomic/amd64/opensolaris_atomic.S	optional	zfs \
+	compile-with "${ZFS_C} ${ZFS_CFLAGS} ${OPENSOLARIS_INC}"
+

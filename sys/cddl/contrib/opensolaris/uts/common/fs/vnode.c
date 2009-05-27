@@ -209,5 +209,5 @@ static struct kproc_desc up_kp = {
 	vn_rele_async_cleaner,
 	&vn_rele_async_proc
 };
-SYSINIT(vaclean, SI_SUB_KTHREAD_UPDATE, SI_ORDER_FIRST, kproc_start, &up_kp);
-SYSINIT(vn_rele_async_setup, SI_SUB_VFS, SI_ORDER_FIRST, vn_rele_async_init, NULL);
+SYSINIT(vaclean, SI_SUB_KTHREAD_UPDATE, SI_ORDER_ANY, kproc_start, &up_kp);
+SYSINIT(vn_rele_async_setup, SI_SUB_DRIVERS, SI_ORDER_ANY, vn_rele_async_init, NULL);
