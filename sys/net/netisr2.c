@@ -644,7 +644,7 @@ netisr2_select_cpuid(struct netisr_proto *npp, uintptr_t source,
  * processing.
  */
 static void
-netisr2_process_workstream_proto(struct netisr_workstream *nwsp, int proto)
+netisr2_process_workstream_proto(struct netisr_workstream *nwsp, u_int proto)
 {
 	struct netisr_work local_npw, *npwp;
 	u_int handled;
@@ -703,7 +703,7 @@ netisr2_process_workstream_proto(struct netisr_workstream *nwsp, int proto)
  * responsible for checking the running flag before entering this function.
  */
 static void
-netisr2_process_workstream(struct netisr_workstream *nwsp, int proto)
+netisr2_process_workstream(struct netisr_workstream *nwsp, u_int proto)
 {
 	u_int i;
 
