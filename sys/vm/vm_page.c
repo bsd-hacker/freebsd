@@ -249,6 +249,9 @@ vm_page_startup(vm_offset_t vaddr)
 			high_water = phys_avail[i + 1];
 		++nblocks;
 	}
+#ifdef XEN
+	low_water = 0;
+#endif	
 
 	end = phys_avail[biggestone+1];
 
