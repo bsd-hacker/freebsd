@@ -237,4 +237,4 @@ options		KDB
 options		ALT_BREAK_TO_DEBUGGER
 options		HWPMC_HOOKS
 options		LOCK_PROFILING
-
+device		mxge
