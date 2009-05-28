@@ -27,6 +27,10 @@ ident		GENERIC
 makeoptions	DEBUG=-g		# Build kernel with gdb(1) debug symbols
 makeoptions	MODULES_OVERRIDE="mxge zlib geom opensolaris zfs cxgb fxp nfe hwpmc linux linprocfs"
 
+makeoptions	OPENSOLARIS
+options		OPENSOLARIS
+options		ZFS
+
 options 	SCHED_ULE		# ULE scheduler
 options 	PREEMPTION		# Enable kernel thread preemption
 options 	INET			# InterNETworking

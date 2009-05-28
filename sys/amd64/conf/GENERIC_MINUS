@@ -27,6 +27,10 @@ ident		GENERIC
 makeoptions	DEBUG=-g		# Build kernel with gdb(1) debug symbols
 makeoptions	MODULES_OVERRIDE="opensolaris zfs zlib mxge geom hwpmc linux linprocfs"
 
+makeoptions	OPENSOLARIS
+options		OPENSOLARIS
+options		ZFS
+
 options 	SCHED_ULE		# ULE scheduler
 options 	PREEMPTION		# Enable kernel thread preemption
 options 	INET			# InterNETworking
@@ -78,6 +82,7 @@ options		DEBUG
 options		KDB
 options		DDB
 options		ALT_BREAK_TO_DEBUGGER
+options		HWPMC_HOOKS
 
 # Make an SMP-capable kernel by default
 options 	SMP			# Symmetric MultiProcessor Kernel
