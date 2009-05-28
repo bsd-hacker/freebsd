@@ -187,7 +187,6 @@ struct netisr_proto {
 };
 
 #define	NETISR_MAXPROT		32		/* Compile-time limit. */
-#define	NETISR_ALLPROT		0xffffffff	/* Run all protocols. */
 
 /*
  * The np array describes all registered protocols, indexed by protocol
@@ -239,7 +238,7 @@ struct netisr_workstream {
 	struct mtx	 nws_mtx;		/* Synchronize work. */
 	u_int		 nws_cpu;		/* CPU pinning. */
 	u_int		 nws_flags;		/* Wakeup flags. */
-	u_int		 nws_pendingwork;	/* Across all protos. */
+	u_int		 nws_pendingbits;	/* Scheduled protocols. */
 
 	/*
 	 * Each protocol has per-workstream data.
@@ -641,9 +640,9 @@ netisr2_select_cpuid(struct netisr_proto *npp, uintptr_t source,
  * from the global queue.  The caller is responsible for deciding whether to
  * loop, and for setting the NWS_RUNNING flag.  The passed workstream will be
  * locked on entry and relocked before return, but will be released while
- * processing.
+ * processing.  The number of packets processed is returned.
  */
-static void
+static u_int
 netisr2_process_workstream_proto(struct netisr_workstream *nwsp, u_int proto)
 {
 	struct netisr_work local_npw, *npwp;
@@ -659,7 +658,7 @@ netisr2_process_workstream_proto(struct netisr_workstream *nwsp, u_int proto)
 
 	npwp = &nwsp->nws_work[proto];
 	if (npwp->nw_len == 0)
-		return;
+		return (0);
 
 	/*
 	 * Move the global work queue to a thread-local work queue.
@@ -673,7 +672,7 @@ netisr2_process_workstream_proto(struct netisr_workstream *nwsp, u_int proto)
 	npwp->nw_head = NULL;
 	npwp->nw_tail = NULL;
 	npwp->nw_len = 0;
-	nwsp->nws_pendingwork -= handled;
+	nwsp->nws_pendingbits &= ~(1 << proto);
 	NWS_UNLOCK(nwsp);
 	while ((m = local_npw.nw_head) != NULL) {
 		local_npw.nw_head = m->m_nextpkt;
@@ -687,38 +686,7 @@ netisr2_process_workstream_proto(struct netisr_workstream *nwsp, u_int proto)
 	    ("netisr_process_proto(%d): len %d", proto, local_npw.nw_len));
 	NWS_LOCK(nwsp);
 	npwp->nw_handled += handled;
-}
-
-/*
- * Process either one or all protocols associated with a specific workstream.
- * Handle only existing work for each protocol processed, not new work that
- * may arrive while processing.  Set the running flag so that other threads
- * don't also try to process work in the queue; however, the lock on the
- * workstream will be released by netisr_process_workstream_proto() while
- * entering the protocol so that producers can continue to queue new work.
- *
- * The consumer is responsible for making sure that either all available work
- * is performed until there is no more work to perform, or that the worker is
- * scheduled to pick up where the consumer left off.  They are also
- * responsible for checking the running flag before entering this function.
- */
-static void
-netisr2_process_workstream(struct netisr_workstream *nwsp, u_int proto)
-{
-	u_int i;
-
-	NETISR_LOCK_ASSERT();
-	NWS_LOCK_ASSERT(nwsp);
-
-	KASSERT(nwsp->nws_flags & NWS_RUNNING,
-	    ("netisr2_process_workstream: not running"));
-	KASSERT(!(nwsp->nws_flags & NWS_DISPATCHING),
-	    ("netisr2_process_workstream: dispatching"));
-	if (proto == NETISR_ALLPROT) {
-		for (i = 0; i < NETISR_MAXPROT; i++)
-			netisr2_process_workstream_proto(nwsp, i);
-	} else
-		netisr2_process_workstream_proto(nwsp, proto);
+	return (handled);
 }
 
 /*
@@ -732,6 +700,7 @@ swi_net(void *arg)
 {
 	struct rm_priotracker tracker;
 	struct netisr_workstream *nwsp;
+	u_int bits, prot;
 
 	nwsp = arg;
 
@@ -748,8 +717,14 @@ swi_net(void *arg)
 		goto out;
 	nwsp->nws_flags |= NWS_RUNNING;
 	nwsp->nws_flags &= ~NWS_SCHEDULED;
-	while (nwsp->nws_pendingwork != 0)
-		netisr2_process_workstream(nwsp, NETISR_ALLPROT);
+
+	while ((bits = nws->nws_pendingbits) != 0) {
+		while ((prot = ffs(bits)) != 0) {
+			prot--;
+			bits &= ~(1 << prot);
+			(void)netisr2_process_workstream_proto(nwsp, prot);
+		}
+	}
 	nwsp->nws_flags &= ~NWS_RUNNING;
 out:
 	NWS_UNLOCK(nwsp);
@@ -761,7 +736,7 @@ out:
 }
 
 static int
-netisr2_queue_workstream(struct netisr_workstream *nwsp,
+netisr2_queue_workstream(struct netisr_workstream *nwsp, u_int proto,
     struct netisr_work *npwp, struct mbuf *m, int *dosignalp)
 {
 
@@ -780,7 +755,7 @@ netisr2_queue_workstream(struct netisr_workstream *nwsp,
 		npwp->nw_len++;
 		if (npwp->nw_len > npwp->nw_watermark)
 			npwp->nw_watermark = npwp->nw_len;
-		nwsp->nws_pendingwork++;
+		nwsp->nws_pendingbits |= (1 << proto);
 		if (!(nwsp->nws_flags & (NWS_SCHEDULED | NWS_RUNNING))) {
 			nwsp->nws_flags |= NWS_SCHEDULED;
 			*dosignalp = 1;	/* Defer until unlocked. */
@@ -807,7 +782,7 @@ netisr2_queue_internal(u_int proto, struct mbuf *m, u_int cpuid)
 	nwsp = &nws[cpuid];
 	npwp = &nwsp->nws_work[proto];
 	NWS_LOCK(nwsp);
-	error = netisr2_queue_workstream(nwsp, npwp, m, &dosignal);
+	error = netisr2_queue_workstream(nwsp, proto, npwp, m, &dosignal);
 	NWS_UNLOCK(nwsp);
 	if (dosignal)
 		NWS_SIGNAL(nwsp);
@@ -917,7 +892,8 @@ netisr2_dispatch_src(u_int proto, uintptr_t source, struct mbuf *m)
 	 */
 	NWS_LOCK(nwsp);
 	if (nwsp->nws_flags & (NWS_RUNNING | NWS_DISPATCHING | NWS_SCHEDULED)) {
-		error = netisr2_queue_workstream(nwsp, npwp, m, &dosignal);
+		error = netisr2_queue_workstream(nwsp, proto, npwp, m,
+		    &dosignal);
 		NWS_UNLOCK(nws);
 		if (dosignal)
 			NWS_SIGNAL(nwsp);
@@ -951,7 +927,7 @@ netisr2_dispatch_src(u_int proto, uintptr_t source, struct mbuf *m)
 	 * so, we'll want to establish a reasonable bound on the work done in
 	 * the "borrowed" context.
 	 */
-	if (nwsp->nws_pendingwork != 0) {
+	if (nwsp->nws_pendingbits != 0) {
 		nwsp->nws_flags |= NWS_SCHEDULED;
 		dosignal = 1;
 	} else
@@ -1092,9 +1068,9 @@ DB_SHOW_COMMAND(netisr2, db_show_netisr2)
 	struct netisr_work *nwp;
 	int cpu, first, proto;
 
-	db_printf("%3s %5s %6s %5s %5s %5s %8s %8s %8s %8s %8s\n", "CPU",
-	    "Pend", "Proto", "Len", "WMark", "Max", "Disp", "HDisp",
-	    "XHDisp", "Drop", "Queue");
+	db_printf("%3s %6s %5s %5s %5s %8s %8s %8s %8s %8s\n", "CPU",
+	    "Proto", "Len", "WMark", "Max", "Disp", "HDisp", "XHDisp",
+	    "Drop", "Queue");
 	for (cpu = 0; cpu < MAXCPU; cpu++) {
 		nwsp = &nws[cpu];
 		if (nwsp->nws_intr_event == NULL)
@@ -1105,12 +1081,12 @@ DB_SHOW_COMMAND(netisr2, db_show_netisr2)
 				continue;
 			nwp = &nwsp->nws_work[proto];
 			if (first) {
-				db_printf("%3d %5d ", cpu,
-				    nwsp->nws_pendingwork);
+				db_printf("%3d ", cpu);
 				first = 0;
 			} else
-				db_printf("%3s %5s ", "", "");
-			db_printf("%6s %5d %5d %5d %8ju %8ju %8ju %8ju %8ju\n",
+				db_printf("%3s ", "");
+			db_printf(
+			    "%6s %5d %5d %5d %8ju %8ju %8ju %8ju %8ju\n",
 			    np[proto].np_name, nwp->nw_len,
 			    nwp->nw_watermark, nwp->nw_qlimit,
 			    nwp->nw_dispatched, nwp->nw_hybrid_dispatched,
