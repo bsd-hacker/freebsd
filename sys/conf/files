@@ -2614,10 +2614,8 @@ cddl/contrib/opensolaris/uts/common/fs/zfs/zvol.c	optional zfs \
 cddl/contrib/opensolaris/uts/common/fs/zfs/vdev_geom.c	optional zfs \
 	compile-with "${ZFS_C} ${OPENSOLARIS_INC} ${ZFS_INC} ${ZFS_CFLAGS}"
 
-/*
- * Compression routines conflicting with ZFS
- *
- */
+
+# Compression routines conflicting with ZFS
 
 #cddl/contrib/opensolaris/uts/common/zmod/deflate.c	optional zfs \
 #	compile-with "${ZFS_C} ${OPENSOLARIS_INC} ${ZFS_INC} ${ZFS_CFLAGS}"
