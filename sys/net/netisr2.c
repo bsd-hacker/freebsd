@@ -106,6 +106,12 @@ static struct rmlock	netisr_rmlock;
 #define	NETISR_WLOCK()		rm_wlock(&netisr_rmlock)
 #define	NETISR_WUNLOCK()	rm_wunlock(&netisr_rmlock)
 
+/*
+ * Temporary define to determine whether we acquire the global read lock
+ * around packet dispatch and processing.
+ */
+/* #define	NETISR2_LOCKING */
+
 SYSCTL_NODE(_net, OID_AUTO, isr2, CTLFLAG_RW, 0, "netisr2");
 
 /*-
@@ -699,7 +705,9 @@ netisr2_process_workstream_proto(struct netisr_workstream *nwsp, u_int proto)
 static void
 swi_net(void *arg)
 {
+#ifdef NETISR2_LOCKING
 	struct rm_priotracker tracker;
+#endif
 	struct netisr_workstream *nwsp;
 	u_int bits, prot;
 
@@ -711,7 +719,9 @@ swi_net(void *arg)
 	netisr_poll();
 #endif
 
+#ifdef NETISR2_LOCKING
 	NETISR_RLOCK(&tracker);
+#endif
 	NWS_LOCK(nwsp);
 	KASSERT(!(nwsp->nws_flags & NWS_RUNNING), ("swi_net: running"));
 	if (nwsp->nws_flags & NWS_DISPATCHING)
@@ -729,7 +739,9 @@ swi_net(void *arg)
 	nwsp->nws_flags &= ~NWS_RUNNING;
 out:
 	NWS_UNLOCK(nwsp);
+#ifdef NETISR2_LOCKING
 	NETISR_RUNLOCK(&tracker);
+#endif
 
 #ifdef DEVICE_POLLING
 	netisr_pollmore();
@@ -776,7 +788,9 @@ netisr2_queue_internal(u_int proto, struct mbuf *m, u_int cpuid)
 	struct netisr_work *npwp;
 	int dosignal, error;
 
+#ifdef NETISR2_LOCKING
 	NETISR_LOCK_ASSERT();
+#endif
 	KASSERT(cpuid < MAXCPU, ("netisr2_queue_internal: cpuid too big "
 	    "(%u, %u)", cpuid, MAXCPU));
 
@@ -795,13 +809,17 @@ netisr2_queue_internal(u_int proto, struct mbuf *m, u_int cpuid)
 int
 netisr2_queue_src(u_int proto, uintptr_t source, struct mbuf *m)
 {
+#ifdef NETISR2_LOCKING
 	struct rm_priotracker tracker;
+#endif
 	u_int cpuid, error;
 
 	KASSERT(proto < NETISR_MAXPROT,
 	    ("netisr2_queue_src: invalid proto %d", proto));
 
+#ifdef NETISR2_LOCKING
 	NETISR_RLOCK(&tracker);
+#endif
 	KASSERT(np[proto].np_handler != NULL,
 	    ("netisr2_queue_src: invalid proto %d", proto));
 
@@ -810,7 +828,9 @@ netisr2_queue_src(u_int proto, uintptr_t source, struct mbuf *m)
 		error = netisr2_queue_internal(proto, m, cpuid);
 	else
 		error = ENOBUFS;
+#ifdef NETISR2_LOCKING
 	NETISR_RUNLOCK(&tracker);
+#endif
 	return (error);
 }
 
@@ -837,7 +857,9 @@ netisr_queue(int proto, struct mbuf *m)
 int
 netisr2_dispatch_src(u_int proto, uintptr_t source, struct mbuf *m)
 {
+#ifdef NETISR2_LOCKING
 	struct rm_priotracker tracker;
+#endif
 	struct netisr_workstream *nwsp;
 	struct netisr_work *npwp;
 	int dosignal, error;
@@ -851,7 +873,9 @@ netisr2_dispatch_src(u_int proto, uintptr_t source, struct mbuf *m)
 
 	KASSERT(proto < NETISR_MAXPROT,
 	    ("netisr2_dispatch_src: invalid proto %u", proto));
+#ifdef NETISR2_LOCKING
 	NETISR_RLOCK(&tracker);
+#endif
 	KASSERT(np[proto].np_handler != NULL,
 	    ("netisr2_dispatch_src: invalid proto %u", proto));
 
@@ -866,8 +890,8 @@ netisr2_dispatch_src(u_int proto, uintptr_t source, struct mbuf *m)
 		npwp->nw_dispatched++;
 		npwp->nw_handled++;
 		np[proto].np_handler(m);
-		NETISR_RUNLOCK(&tracker);
-		return (0);
+		error = 0;
+		goto out_unlock;
 	}
 
 	/*
@@ -877,8 +901,8 @@ netisr2_dispatch_src(u_int proto, uintptr_t source, struct mbuf *m)
 	 */
 	m = netisr2_select_cpuid(&np[proto], source, m, &cpuid);
 	if (m == NULL) {
-		NETISR_RUNLOCK(&tracker);
-		return (ENOBUFS);
+		error = ENOBUFS;
+		goto out_unlock;
 	}
 	sched_pin();
 	if (!netisr_hybridxcpu_enable && (cpuid != curcpu))
@@ -900,9 +924,7 @@ netisr2_dispatch_src(u_int proto, uintptr_t source, struct mbuf *m)
 		NWS_UNLOCK(nws);
 		if (dosignal)
 			NWS_SIGNAL(nwsp);
-		sched_unpin();
-		NETISR_RUNLOCK(&tracker);
-		return (error);
+		goto out_unpin;
 	}
 
 	/*
@@ -938,13 +960,17 @@ netisr2_dispatch_src(u_int proto, uintptr_t source, struct mbuf *m)
 	NWS_UNLOCK(nwsp);
 	if (dosignal)
 		NWS_SIGNAL(nwsp);
-	NETISR_RUNLOCK(&tracker);
-	return (0);
+	error = 0;
+	goto out_unpin;
 
 queue_fallback:
 	error = netisr2_queue_internal(proto, m, cpuid);
+out_unpin:
 	sched_unpin();
+out_unlock:
+#ifdef NETISR2_LOCKING
 	NETISR_RUNLOCK(&tracker);
+#endif
 	return (error);
 }
 
