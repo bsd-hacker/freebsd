@@ -94,7 +94,8 @@ __FBSDID("$FreeBSD$");
  * XXXRW: rmlocks don't support assertions.
  */
 static struct rmlock	netisr_rmlock;
-#define	NETISR_LOCK_INIT()	rm_init(&netisr_rmlock, "netisr", 0)
+#define	NETISR_LOCK_INIT()	rm_init_flags(&netisr_rmlock, "netisr", \
+				    RM_NOWITNESS)
 #if 0
 #define	NETISR_LOCK_ASSERT()	rm_assert(&netisr_rmlock, RW_LOCKED)
 #else
