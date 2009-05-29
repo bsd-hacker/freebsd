@@ -25,7 +25,7 @@ ident		GENERIC
 #hints		"GENERIC.hints"		# Default places to look for devices.
 
 makeoptions	DEBUG=-g		# Build kernel with gdb(1) debug symbols
-makeoptions	MODULES_OVERRIDE="mxge zlib geom opensolaris zfs cxgb fxp nfe hwpmc linux linprocfs"
+makeoptions	MODULES_OVERRIDE="geom opensolaris zfs cxgb fxp nfe hwpmc linux linprocfs drm"
 
 makeoptions	OPENSOLARIS
 options		OPENSOLARIS
@@ -207,19 +207,19 @@ device		firmware	# firmware assist module
 device		bpf		# Berkeley packet filter
 
 # USB support
-#device		uhci		# UHCI PCI->USB interface
-#device		ohci		# OHCI PCI->USB interface
-#device		ehci		# EHCI PCI->USB interface (USB 2.0)
-#device		usb		# USB Bus (required)
-#device		udbp		# USB Double Bulk Pipe devices
-#device		ugen		# Generic
-#device		uhid		# "Human Interface Devices"
-#device		ukbd		# Keyboard
-#device		ulpt		# Printer
-#device		umass		# Disks/Mass storage - Requires scbus and da
-#device		ums		# Mouse
+device		uhci		# UHCI PCI->USB interface
+device		ohci		# OHCI PCI->USB interface
+device		ehci		# EHCI PCI->USB interface (USB 2.0)
+device		usb		# USB Bus (required)
+device		ugen		# Generic
+device		uhid		# "Human Interface Devices"
+device		ukbd		# Keyboard
+device		ulpt		# Printer
+device		umass		# Disks/Mass storage - Requires scbus and da
+device		ums		# Mouse
 #device		urio		# Diamond Rio 500 MP3 player
 #device		uscanner	# Scanners
+#device		udbp		# USB Double Bulk Pipe devices
 # USB Serial devices
 #device		ucom		# Generic com ttys
 #device		uark		# Technologies ARK3116 based serial adapters
@@ -238,3 +238,4 @@ options		ALT_BREAK_TO_DEBUGGER
 options		HWPMC_HOOKS
 options		LOCK_PROFILING
 device		mxge
+
