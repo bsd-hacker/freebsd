@@ -39,7 +39,7 @@
 #include <sys/errno.h>
 #include <sys/syslog.h>
 
-#include <net/zlib.h>
+#include <libkern/zlib/zlib.h>
 
 #include <netgraph/ng_message.h>
 #include <netgraph/netgraph.h>

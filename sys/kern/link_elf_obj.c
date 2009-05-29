@@ -59,7 +59,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/link_elf.h>
 
 #ifdef DDB_CTF
-#include <net/zlib.h>
+#include <libkern/zlib/zlib.h>
 #endif
 
 #include "linker_if.h"

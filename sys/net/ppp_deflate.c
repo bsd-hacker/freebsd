@@ -38,7 +38,7 @@
 #include <sys/mutex.h>
 
 #include <net/ppp_defs.h>
-#include <net/zlib.h>
+#include <libkern/zlib/zlib.h>
 
 #define PACKETPTR	struct mbuf *
 #include <net/ppp_comp.h>
