@@ -179,7 +179,7 @@ struct netisr_proto {
 	const char	*np_name;	/* Character string protocol name. */
 	netisr_t	*np_handler;	/* Protocol handler. */
 	netisr_m2flow_t	*np_m2flow;	/* Query flow for untagged packet. */
-	netisr_m2cpuid_t	*np_m2cpuid;	/* Query CPU to process packet on. */
+	netisr_m2cpuid_t *np_m2cpuid;	/* Query CPU to process packet on. */
 	u_int		 np_qlimit;	/* Maximum per-CPU queue depth. */
 	u_int		 np_policy;	/* Work placement policy. */
 };
@@ -214,7 +214,6 @@ struct netisr_work {
 	 */
 	u_int64_t	 nw_dispatched; /* Number of direct dispatches. */
 	u_int64_t	 nw_hybrid_dispatched; /* "" hybrid dispatches. */
-	u_int64_t	 nw_hybrid_xcpudispatched; /* "" cross-CPU hybrid. */
 	u_int64_t	 nw_qdrops;	/* "" drops. */
 	u_int64_t	 nw_queued;	/* "" enqueues. */
 	u_int64_t	 nw_handled;	/* "" handled in worker. */
@@ -930,10 +929,7 @@ netisr2_dispatch_src(u_int proto, uintptr_t source, struct mbuf *m)
 	NWS_LOCK(nwsp);
 	nwsp->nws_flags &= ~NWS_DISPATCHING;
 	npwp->nw_handled++;
-	if (curcpu == cpuid)
-		npwp->nw_hybrid_dispatched++;
-	else
-		npwp->nw_hybrid_xcpudispatched++;
+	npwp->nw_hybrid_dispatched++;
 
 	/*
 	 * If other work was enqueued by another thread while we were direct
@@ -1088,9 +1084,8 @@ DB_SHOW_COMMAND(netisr2, db_show_netisr2)
 	struct netisr_work *nwp;
 	int cpu, first, proto;
 
-	db_printf("%3s %6s %5s %5s %5s %8s %8s %8s %8s %8s\n", "CPU",
-	    "Proto", "Len", "WMark", "Max", "Disp", "HDisp", "XHDisp",
-	    "Drop", "Queue");
+	db_printf("%3s %6s %5s %5s %5s %8s %8s %8s %8s\n", "CPU", "Proto",
+	    "Len", "WMark", "Max", "Disp", "HDisp", "Drop", "Queue");
 	for (cpu = 0; cpu < MAXCPU; cpu++) {
 		nwsp = &nws[cpu];
 		if (nwsp->nws_intr_event == NULL)
@@ -1106,12 +1101,11 @@ DB_SHOW_COMMAND(netisr2, db_show_netisr2)
 			} else
 				db_printf("%3s ", "");
 			db_printf(
-			    "%6s %5d %5d %5d %8ju %8ju %8ju %8ju %8ju\n",
+			    "%6s %5d %5d %5d %8ju %8ju %8ju %8ju\n",
 			    np[proto].np_name, nwp->nw_len,
 			    nwp->nw_watermark, nwp->nw_qlimit,
 			    nwp->nw_dispatched, nwp->nw_hybrid_dispatched,
-			    nwp->nw_hybrid_xcpudispatched, nwp->nw_qdrops,
-			    nwp->nw_queued);
+			    nwp->nw_qdrops, nwp->nw_queued);
 		}
 	}
 }
