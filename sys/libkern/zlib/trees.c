@@ -35,9 +35,6 @@
 
 #include <libkern/zlib/deflate.h>
 
-#ifdef DEBUG
-#  include <ctype.h>
-#endif
 
 /* ===========================================================================
  * Constants
@@ -163,7 +160,7 @@ local void copy_block     OF((deflate_state *s, charf *buf, unsigned len,
 local void gen_trees_header OF((void));
 #endif
 
-#ifndef DEBUG
+#if 1
 #  define send_code(s, c, tree) send_bits(s, tree[c].Code, tree[c].Len)
    /* Send a code of the given tree. c and tree must not have side effects */
 
@@ -318,7 +315,7 @@ local void tr_static_init()
 /* ===========================================================================
  * Genererate the file trees.h describing the static trees.
  */
-#ifdef GEN_TREES_H
+#if 0
 #  ifndef DEBUG
 #    include <stdio.h>
 #  endif

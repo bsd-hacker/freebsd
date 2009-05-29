@@ -1225,7 +1225,7 @@ local uInt longest_match_fast(s, cur_match)
     return (uInt)len <= s->lookahead ? (uInt)len : s->lookahead;
 }
 
-#ifdef DEBUG
+#if 0
 /* ===========================================================================
  * Check that the match at match_start is indeed a match.
  */

@@ -245,7 +245,7 @@ struct inflate_state FAR *state;
     state->distbits = 5;
 }
 
-#ifdef MAKEFIXED
+#if 0
 #include <stdio.h>
 
 /*

@@ -22,7 +22,7 @@
   one thread to use crc32().
  */
 
-#ifdef MAKECRCH
+#if 0
 #  include <stdio.h>
 #  ifndef DYNAMIC_CRC_TABLE
 #    define DYNAMIC_CRC_TABLE
