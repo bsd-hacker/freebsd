@@ -115,7 +115,7 @@ static struct rmlock	netisr_rmlock;
 SYSCTL_NODE(_net, OID_AUTO, isr2, CTLFLAG_RW, 0, "netisr2");
 
 /*-
- * Four direct dispatch policies are supported:
+ * Three direct dispatch policies are supported:
  *
  * - Always defer: all work is scheduled for a netisr, regardless of context.
  *   (direct_enable == 0)
@@ -127,12 +127,7 @@ SYSCTL_NODE(_net, OID_AUTO, isr2, CTLFLAG_RW, 0, "netisr2");
  * - Hybrid: if the executing context allows direct dispatch, and we're
  *   running on the CPU the work would be done on, then direct dispatch if it
  *   wouldn't violate ordering constraints on the workstream.
- *   (direct_enable != 0 && direct_force == 0 && hybridxcpu_enable == 0)
- *
- * - Hybrid with cross-CPU dispatch: if the executing context allows direct
- *   dispatch, then direct dispatch if it wouldn't violate ordering
- *   constraints on the workstream.
- *   (direct_enable != 0 && direct_force == 0 && hybridxcpu_enable != 0)
+ *   (direct_enable != 0 && direct_force == 0)
  *
  * Notice that changing the global policy could lead to short periods of
  * disordered processing, but this is considered acceptable as compared to
@@ -145,10 +140,6 @@ SYSCTL_INT(_net_isr2, OID_AUTO, direct_force, CTLFLAG_RW,
 static int	netisr_direct_enable = 1;	/* Enable direct dispatch. */
 SYSCTL_INT(_net_isr2, OID_AUTO, direct_enable, CTLFLAG_RW,
     &netisr_direct_enable, 0, "Enable direct dispatch");
-
-static int	netisr_hybridxcpu_enable = 1;	/* Enable cross-CPU dispatch. */
-SYSCTL_INT(_net_isr2, OID_AUTO, hybridxcpu_enable, CTLFLAG_RW,
-    &netisr_hybridxcpu_enable, 0, "Enable cross-CPU hybrid direct dispatch.");
 
 /*
  * Allow the administrator to limit the number of threads (CPUs) to use for
@@ -905,7 +896,7 @@ netisr2_dispatch_src(u_int proto, uintptr_t source, struct mbuf *m)
 		goto out_unlock;
 	}
 	sched_pin();
-	if (!netisr_hybridxcpu_enable && (cpuid != curcpu))
+	if (cpuid != curcpu)
 		goto queue_fallback;
 	nwsp = &nws[cpuid];
 	npwp = &nwsp->nws_work[proto];
