@@ -185,7 +185,7 @@ svr4_sys_stat(td, uap)
 
 int
 svr4_sys_lstat(td, uap)
-	register struct thread *td;
+	struct thread *td;
 	struct svr4_sys_lstat_args *uap;
 {
 	struct svr4_stat svr4_st;
@@ -210,7 +210,7 @@ svr4_sys_lstat(td, uap)
 
 int
 svr4_sys_fstat(td, uap)
-	register struct thread *td;
+	struct thread *td;
 	struct svr4_sys_fstat_args *uap;
 {
 	struct svr4_stat svr4_st;
@@ -228,7 +228,7 @@ svr4_sys_fstat(td, uap)
 
 int
 svr4_sys_xstat(td, uap)
-	register struct thread *td;
+	struct thread *td;
 	struct svr4_sys_xstat_args *uap;
 {
 	struct svr4_xstat svr4_st;
@@ -255,7 +255,7 @@ svr4_sys_xstat(td, uap)
 
 int
 svr4_sys_lxstat(td, uap)
-	register struct thread *td;
+	struct thread *td;
 	struct svr4_sys_lxstat_args *uap;
 {
 	struct svr4_xstat svr4_st;
@@ -282,7 +282,7 @@ svr4_sys_lxstat(td, uap)
 
 int
 svr4_sys_fxstat(td, uap)
-	register struct thread *td;
+	struct thread *td;
 	struct svr4_sys_fxstat_args *uap;
 {
 	struct svr4_xstat svr4_st;
@@ -299,7 +299,7 @@ svr4_sys_fxstat(td, uap)
 
 int
 svr4_sys_stat64(td, uap)
-	register struct thread *td;
+	struct thread *td;
 	struct svr4_sys_stat64_args *uap;
 {
 	struct svr4_stat64 svr4_st;
@@ -325,7 +325,7 @@ svr4_sys_stat64(td, uap)
 
 int
 svr4_sys_lstat64(td, uap)
-	register struct thread *td;
+	struct thread *td;
 	struct svr4_sys_lstat64_args *uap;
 {
 	struct svr4_stat64 svr4_st;
@@ -351,7 +351,7 @@ svr4_sys_lstat64(td, uap)
 
 int
 svr4_sys_fstat64(td, uap)
-	register struct thread *td;
+	struct thread *td;
 	struct svr4_sys_fstat64_args *uap;
 {
 	struct svr4_stat64 svr4_st;
@@ -368,7 +368,7 @@ svr4_sys_fstat64(td, uap)
 
 int
 svr4_ustat(td, uap)
-	register struct thread *td;
+	struct thread *td;
 	struct svr4_ustat_args *uap;
 {
 	struct svr4_ustat	us;
@@ -390,7 +390,7 @@ svr4_ustat(td, uap)
 
 int
 svr4_sys_uname(td, uap)
-	register struct thread *td;
+	struct thread *td;
 	struct svr4_sys_uname_args *uap;
 {
 	struct svr4_utsname	sut;
@@ -417,9 +417,10 @@ svr4_sys_systeminfo(td, uap)
 	int		error = 0;
 	register_t	*retval = td->td_retval;
 	size_t		len = 0;
-	char		buf[1];   /* XXX NetBSD uses 256, but that seems
-				     like awfully excessive kstack usage
-				     for an empty string... */
+	char		buf[11];   /* XXX NetBSD uses 256, but we use 11
+				     here as that seems like awfully
+				     excessive kstack usage for hostid
+				     string... */
 	u_int		rlen = uap->len;
 
 	switch (uap->what) {
@@ -447,8 +448,21 @@ svr4_sys_systeminfo(td, uap)
 		str = machine;
 		break;
 
+	case SVR4_SI_ISALIST:
+#if defined(__sparc__)
+		str = "sparcv9 sparcv9-fsmuld sparcv8 sparcv8-fsmuld sparcv7 sparc";
+#elif defined(__i386__)
+		str = "i386";
+#elif defined(__amd64__)
+		str = "amd64";
+#else
+		str = "unknown";
+#endif
+		break;
+
 	case SVR4_SI_HW_SERIAL:
-		str = "0";
+		snprintf(buf, sizeof(buf), "%lu", hostid);
+		str = buf;
 		break;
 
 	case SVR4_SI_HW_PROVIDER:
@@ -461,7 +475,7 @@ svr4_sys_systeminfo(td, uap)
 		break;
 
 	case SVR4_SI_PLATFORM:
-#ifdef __i386__
+#if defined(__i386__)
 		str = "i86pc";
 #else
 		str = "unknown";
@@ -517,7 +531,7 @@ svr4_sys_systeminfo(td, uap)
 
 int
 svr4_sys_utssys(td, uap)
-	register struct thread *td;
+	struct thread *td;
 	struct svr4_sys_utssys_args *uap;
 {
 	switch (uap->sel) {
@@ -548,7 +562,7 @@ svr4_sys_utssys(td, uap)
 
 int
 svr4_sys_utime(td, uap)
-	register struct thread *td;
+	struct thread *td;
 	struct svr4_sys_utime_args *uap;
 {
 	struct svr4_utimbuf ub;
@@ -577,7 +591,7 @@ svr4_sys_utime(td, uap)
 
 int
 svr4_sys_utimes(td, uap)
-	register struct thread *td;
+	struct thread *td;
 	struct svr4_sys_utimes_args *uap;
 {
 	char *path;
@@ -640,7 +654,7 @@ svr4_to_bsd_pathconf(name)
 
 int
 svr4_sys_pathconf(td, uap)
-	register struct thread *td;
+	struct thread *td;
 	struct svr4_sys_pathconf_args *uap;
 {
 	char *path;
@@ -666,7 +680,7 @@ svr4_sys_pathconf(td, uap)
 
 int
 svr4_sys_fpathconf(td, uap)
-	register struct thread *td;
+	struct thread *td;
 	struct svr4_sys_fpathconf_args *uap;
 {
         register_t	*retval = td->td_retval;

@@ -603,7 +603,7 @@ in_pcbladdr(struct inpcb *inp, struct in_addr *faddr, struct in_addr *laddr,
 			goto done;
 		}
 
-		if (cred == NULL || !jailed(cred)) {
+		if (cred == NULL || !prison_flag(cred, PR_IP4)) {
 			laddr->s_addr = ia->ia_addr.sin_addr.s_addr;
 			goto done;
 		}
@@ -647,7 +647,7 @@ in_pcbladdr(struct inpcb *inp, struct in_addr *faddr, struct in_addr *laddr,
 		struct ifnet *ifp;
 
 		/* If not jailed, use the default returned. */
-		if (cred == NULL || !jailed(cred)) {
+		if (cred == NULL || !prison_flag(cred, PR_IP4)) {
 			ia = (struct in_ifaddr *)sro.ro_rt->rt_ifa;
 			laddr->s_addr = ia->ia_addr.sin_addr.s_addr;
 			goto done;
@@ -712,7 +712,7 @@ in_pcbladdr(struct inpcb *inp, struct in_addr *faddr, struct in_addr *laddr,
 		if (ia == NULL)
 			ia = ifatoia(ifa_ifwithnet(sintosa(&sain)));
 
-		if (cred == NULL || !jailed(cred)) {
+		if (cred == NULL || !prison_flag(cred, PR_IP4)) {
 #if __FreeBSD_version < 800000
 			if (ia == NULL)
 				ia = (struct in_ifaddr *)sro.ro_rt->rt_ifa;
@@ -1223,7 +1223,8 @@ in_pcblookup_local(struct inpcbinfo *pcbinfo, struct in_addr laddr,
 				 * Found?
 				 */
 				if (cred == NULL ||
-				    inp->inp_cred->cr_prison == cred->cr_prison)
+				    prison_equal_ip4(cred->cr_prison,
+					inp->inp_cred->cr_prison))
 					return (inp);
 			}
 		}
@@ -1255,7 +1256,8 @@ in_pcblookup_local(struct inpcbinfo *pcbinfo, struct in_addr laddr,
 			LIST_FOREACH(inp, &phd->phd_pcblist, inp_portlist) {
 				wildcard = 0;
 				if (cred != NULL &&
-				    inp->inp_cred->cr_prison != cred->cr_prison)
+				    !prison_equal_ip4(inp->inp_cred->cr_prison,
+					cred->cr_prison))
 					continue;
 #ifdef INET6
 				/* XXX inp locking */
@@ -1444,7 +1446,7 @@ in_pcblookup_hash_full(struct inpcbinfo *pcbinfo, struct in_addr faddr,
 		 * the inp here, without any checks.
 		 * Well unless both bound with SO_REUSEPORT?
 		 */
-		if (jailed(inp->inp_cred))
+		if (prison_flag(inp->inp_cred, PR_IP4))
 			return (inp);
 		if (tmpinp == NULL)
 			tmpinp = inp;
@@ -1488,7 +1490,7 @@ in_pcblookup_hash_full(struct inpcbinfo *pcbinfo, struct in_addr faddr,
 			    (inp->inp_flags & INP_FAITH) == 0)
 				continue;
 
-			injail = jailed(inp->inp_cred);
+			injail = prison_flag(inp->inp_cred, PR_IP4);
 			if (injail) {
 				if (prison_check_ip4(inp->inp_cred,
 				    &laddr) != 0)

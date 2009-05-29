@@ -776,6 +776,8 @@ netisr2_queue_internal(u_int proto, struct mbuf *m, u_int cpuid)
 	int dosignal, error;
 
 	NETISR_LOCK_ASSERT();
+	KASSERT(cpuid < MAXCPU, ("netisr2_queue_internal: cpuid too big "
+	    "(%u, %u)", cpuid, MAXCPU));
 
 	dosignal = 0;
 	error = 0;

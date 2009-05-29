@@ -45,6 +45,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/kernel.h>
 #include <sys/fcntl.h>
+#include <sys/jail.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/namei.h>
@@ -145,6 +146,9 @@ namei(struct nameidata *ndp)
 	if (!lookup_shared)
 		cnp->cn_flags &= ~LOCKSHARED;
 	fdp = p->p_fd;
+
+	/* We will set this ourselves if we need it. */
+	cnp->cn_flags &= ~TRAILINGSLASH;
 
 	/*
 	 * Get a buffer for the name to be translated, and copy the
@@ -267,7 +271,7 @@ namei(struct nameidata *ndp)
 		vfslocked = (ndp->ni_cnd.cn_flags & GIANTHELD) != 0;
 		ndp->ni_cnd.cn_flags &= ~GIANTHELD;
 		/*
-		 * Check for symbolic link
+		 * If not a symbolic link, we're done.
 		 */
 		if ((cnp->cn_flags & ISSYMLINK) == 0) {
 			if ((cnp->cn_flags & (SAVENAME | SAVESTART)) == 0) {
@@ -446,6 +450,7 @@ lookup(struct nameidata *ndp)
 	struct vnode *dp = 0;	/* the directory we are searching */
 	struct vnode *tdp;		/* saved dp */
 	struct mount *mp;		/* mount table entry */
+	struct prison *pr;
 	int docache;			/* == 0 do not cache last component */
 	int wantparent;			/* 1 => wantparent or lockparent flag */
 	int rdonly;			/* lookup read-only flag bit */
@@ -531,6 +536,7 @@ dirloop:
 		if (*cp == '\0') {
 			trailing_slash = 1;
 			*ndp->ni_next = '\0';	/* XXX for direnter() ... */
+			cnp->cn_flags |= TRAILINGSLASH;
 		}
 	}
 	ndp->ni_next = cp;
@@ -603,9 +609,14 @@ dirloop:
 			goto bad;
 		}
 		for (;;) {
+			for (pr = cnp->cn_cred->cr_prison; pr != NULL;
+			     pr = pr->pr_parent)
+				if (dp == pr->pr_root)
+					break;
 			if (dp == ndp->ni_rootdir || 
 			    dp == ndp->ni_topdir || 
 			    dp == rootvnode ||
+			    pr != NULL ||
 			    ((dp->v_vflag & VV_ROOT) != 0 &&
 			     (cnp->cn_flags & NOCROSSMOUNT) != 0)) {
 				ndp->ni_dvp = dp;
@@ -800,14 +811,6 @@ unionlookup:
 		goto success;
 	}
 
-	/*
-	 * Check for bogus trailing slashes.
-	 */
-	if (trailing_slash && dp->v_type != VDIR) {
-		error = ENOTDIR;
-		goto bad2;
-	}
-
 nextname:
 	/*
 	 * Not a symbolic link.  If more pathname,
@@ -829,6 +832,14 @@ nextname:
 		dvfslocked = vfslocked;	/* dp becomes dvp in dirloop */
 		vfslocked = 0;
 		goto dirloop;
+	}
+	/*
+	 * If we're processing a path with a trailing slash,
+	 * check that the end result is a directory.
+	 */
+	if ((cnp->cn_flags & TRAILINGSLASH) && dp->v_type != VDIR) {
+		error = ENOTDIR;
+		goto bad2;
 	}
 	/*
 	 * Disallow directory write attempts on read-only filesystems.
