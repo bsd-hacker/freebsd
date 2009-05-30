@@ -1563,7 +1563,8 @@ _pmap_allocpte(pmap_t pmap, vm_paddr_t pa, vm_pindex_t ptepindex, int flags)
 			    flags) == NULL) {
 				KASSERT(m->wire_count == 1,
 				    ("wire_count == %d", m->wire_count));
-				m->wire_count = 0;
+				m->wire_count = 0;	
+				atomic_subtract_int(&cnt.v_wire_count, 1);
 				vm_page_free(m);
 				return (NULL);
 			}
@@ -1598,6 +1599,7 @@ _pmap_allocpte(pmap_t pmap, vm_paddr_t pa, vm_pindex_t ptepindex, int flags)
 				KASSERT(m->wire_count == 1,
 				    ("wire_count == %d", m->wire_count));
 				m->wire_count = 0;
+				atomic_subtract_int(&cnt.v_wire_count, 1);
 				vm_page_free(m);
 				return (NULL);
 			}
@@ -1613,6 +1615,7 @@ _pmap_allocpte(pmap_t pmap, vm_paddr_t pa, vm_pindex_t ptepindex, int flags)
 					KASSERT(m->wire_count == 1,
 					    ("wire_count == %d", m->wire_count));
 					m->wire_count = 0;
+					atomic_subtract_int(&cnt.v_wire_count, 1);
 					vm_page_free(m);
 					return (NULL);
 				}
@@ -2017,9 +2020,10 @@ free_pv_entry(pmap_t pmap, pv_entry_t pv)
 	/* entire chunk is free, return it */
 	m = PHYS_TO_VM_PAGE(DMAP_TO_PHYS((vm_offset_t)pc));
 	dump_drop_page(m->phys_addr);
+	mtx_unlock(&pv_lock);
 	KASSERT(m->wire_count == 1, ("wire_count == %d", m->wire_count));
 	m->wire_count = 0;
-	mtx_unlock(&pv_lock);
+	atomic_subtract_int(&cnt.v_wire_count, 1);
 	vm_page_free(m);
 }
 
@@ -4007,6 +4011,7 @@ restart:
 			    ("wire_count == %d", m->wire_count));
 			m->wire_count = 0;
 			mtx_unlock(&pv_lock);
+			atomic_subtract_int(&cnt.v_wire_count, 1);
 			vm_page_free(m);
 		}
 	}
