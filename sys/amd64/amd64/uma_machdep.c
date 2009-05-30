@@ -82,7 +82,10 @@ uma_small_free(void *mem, int size, u_int8_t flags)
 	pa = DMAP_TO_PHYS((vm_offset_t)mem);
 	dump_drop_page(pa);
 	m = PHYS_TO_VM_PAGE(pa);
-	m->wire_count--;
+
+	KASSERT(m->wire_count == 1,
+	    ("wire_count == %d", m->wire_count));
+	m->wire_count = 0;
 	vm_page_free(m);
 	atomic_subtract_int(&cnt.v_wire_count, 1);
 }
