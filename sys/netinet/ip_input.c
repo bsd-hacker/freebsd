@@ -297,8 +297,8 @@ sysctl_netinet_intr_queue_drops(SYSCTL_HANDLER_ARGS)
 		return (EINVAL);
 	netisr2_clearqdrops(&ip_nh);
 	return (0);
-
 }
+
 SYSCTL_PROC(_net_inet_ip, IPCTL_INTRQDROPS, intr_queue_drops,
     CTLTYPE_INT|CTLFLAG_RD, 0, 0, sysctl_netinet_intr_queue_drops, "I",
     "Number of packets dropped from the IP input queue");
