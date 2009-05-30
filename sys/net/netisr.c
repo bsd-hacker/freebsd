@@ -167,9 +167,22 @@ SYSCTL_INT(_net_isr, OID_AUTO, bindthreads, CTLFLAG_RD,
  */
 #define	NETISR_DEFAULT_MAXQLIMIT	10240
 static u_int	netisr_maxqlimit = NETISR_DEFAULT_MAXQLIMIT;
+TUNABLE_INT("net.isr.maxqlimit", &netisr_maxqlimit);
 SYSCTL_INT(_net_isr, OID_AUTO, maxqlimit, CTLFLAG_RD,
     &netisr_maxqlimit, 0,
     "Maximum netisr per-protocol, per-CPU queue depth.");
+
+/*
+ * The default per-workstream queue limit for protocols that don't initialize
+ * the nh_qlimit field of their struct netisr_handler.  If this is set above
+ * netisr_maxqlimit, we truncate it to the maximum during boot.
+ */
+#define	NETISR_DEFAULT_DEFAULTQLIMIT	256
+static u_int	netisr_defaultqlimit = NETISR_DEFAULT_DEFAULTQLIMIT;
+TUNABLE_INT("net.isr.defaultqlimit", &netisr_defaultqlimit);
+SYSCTL_INT(_net_isr, OID_AUTO, defaultqlimit, CTLFLAG_RD,
+    &netisr_defaultqlimit, 0,
+    "Default netisr per-protocol, per-CPU queue limit if not set by protocol");
 
 /*
  * Each protocol is described by a struct netisr_proto, which holds all
@@ -346,8 +359,6 @@ netisr_register(const struct netisr_handler *nhp)
 	KASSERT(nhp->nh_policy != NETISR_POLICY_CPU || nhp->nh_m2cpuid != NULL,
 	    ("%s: nh_policy == CPU but m2cpuid not defined for %s", __func__,
 	    name));
-	KASSERT(nhp->nh_qlimit != 0,
-	    ("%s: nh_qlimit 0 for %s", __func__, name));
 	KASSERT(proto < NETISR_MAXPROT,
 	    ("%s(%u, %s): protocol too big", __func__, proto, name));
 
@@ -364,7 +375,9 @@ netisr_register(const struct netisr_handler *nhp)
 	np[proto].np_handler = nhp->nh_handler;
 	np[proto].np_m2flow = nhp->nh_m2flow;
 	np[proto].np_m2cpuid = nhp->nh_m2cpuid;
-	if (nhp->nh_qlimit > netisr_maxqlimit) {
+	if (nhp->nh_qlimit == 0)
+		np[proto].np_qlimit = netisr_defaultqlimit;
+	else if (nhp->nh_qlimit > netisr_maxqlimit) {
 		printf("%s: %s requested queue limit %u capped to "
 		    "net.isr.maxqlimit %u\n", __func__, name, nhp->nh_qlimit,
 		    netisr_maxqlimit);
@@ -1022,6 +1035,8 @@ netisr_init(void *arg)
 		netisr_maxthreads = 1;
 	if (netisr_maxthreads > MAXCPU)
 		netisr_maxthreads = MAXCPU;
+	if (netisr_defaultqlimit > netisr_maxqlimit)
+		netisr_defaultqlimit = netisr_maxqlimit;
 #ifdef DEVICE_POLLING
 	/*
 	 * The device polling code is not yet aware of how to deal with
