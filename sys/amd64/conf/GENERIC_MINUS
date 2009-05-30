@@ -25,8 +25,7 @@ ident		GENERIC
 #hints		"GENERIC.hints"		# Default places to look for devices.
 
 makeoptions	DEBUG=-g		# Build kernel with gdb(1) debug symbols
-makeoptions	MODULES_OVERRIDE="opensolaris zfs zlib mxge geom hwpmc linux linprocfs"
-
+makeoptions	MODULES_OVERRIDE="geom zfs cxgb fxp nfe hwpmc linux linprocfs drm"
 makeoptions	OPENSOLARIS
 options		OPENSOLARIS
 options		ZFS
