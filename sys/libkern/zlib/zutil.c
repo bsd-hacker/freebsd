@@ -5,7 +5,19 @@
 
 /* @(#) $Id$ */
 
+
+#ifdef _KERNEL
 #include <libkern/zlib/zutil.h>
+
+/* Assume this is a *BSD or SVR4 kernel */
+#include <sys/types.h>
+#include <sys/time.h>
+#include <sys/systm.h>
+#include <sys/param.h>
+#include <sys/kernel.h>
+#include <sys/module.h>
+#  define HAVE_MEMCPY
+#endif
 
 #ifndef NO_DUMMY_DECL
 struct internal_state      {int dummy;}; /* for buggy compilers */
@@ -334,3 +346,25 @@ zcfree(void *opaque, void *ptr)
 
 
 #endif /* MY_ZCALLOC */
+
+#ifdef _KERNEL
+static int
+zlib_modevent(module_t mod, int type, void *unused)
+{
+	switch (type) {
+	case MOD_LOAD:
+		return 0;
+	case MOD_UNLOAD:
+		return 0;
+	}
+	return EINVAL;
+}
+
+static moduledata_t zlib_mod = {
+	"zlib",
+	zlib_modevent,
+	0
+};
+DECLARE_MODULE(zlib, zlib_mod, SI_SUB_DRIVERS, SI_ORDER_FIRST);
+MODULE_VERSION(zlib, 1);
+#endif /* _KERNEL */
