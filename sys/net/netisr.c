@@ -100,7 +100,7 @@ __FBSDID("$FreeBSD$");
  * Note: the NETISR_LOCKING define controls whether read locks are acquired
  * in packet processing paths requiring netisr registration stability.  This
  * is disabled by default as it can lead to a measurable performance
- * degradation even with rmlocks (3%-6% for loopback ping-ping traffic), and
+ * degradation even with rmlocks (3%-6% for loopback ping-pong traffic), and
  * because netisr registration and unregistration is extremely rare at
  * runtime.  If it becomes more common, this decision should be revisited.
  *
@@ -166,7 +166,7 @@ SYSCTL_INT(_net_isr, OID_AUTO, bindthreads, CTLFLAG_RD,
  * configuration and later modification using netisr_setqlimit().
  */
 #define	NETISR_DEFAULT_MAXQLIMIT	10240
-static int	netisr_maxqlimit = NETISR_DEFAULT_MAXQLIMIT;
+static u_int	netisr_maxqlimit = NETISR_DEFAULT_MAXQLIMIT;
 SYSCTL_INT(_net_isr, OID_AUTO, maxqlimit, CTLFLAG_RD,
     &netisr_maxqlimit, 0,
     "Maximum netisr per-protocol, per-CPU queue depth.");
@@ -328,7 +328,7 @@ netisr_register(const struct netisr_handler *nhp)
 	 * Test that the requested registration is valid.
 	 */
 	KASSERT(nhp->nh_name != NULL,
-	    ("%s: nh_name NULL for %d", __func__, proto));
+	    ("%s: nh_name NULL for %u", __func__, proto));
 	KASSERT(nhp->nh_handler != NULL,
 	    ("%s: nh_handler NULL for %s", __func__, name));
 	KASSERT(nhp->nh_policy == NETISR_POLICY_SOURCE ||
@@ -349,16 +349,16 @@ netisr_register(const struct netisr_handler *nhp)
 	KASSERT(nhp->nh_qlimit != 0,
 	    ("%s: nh_qlimit 0 for %s", __func__, name));
 	KASSERT(proto < NETISR_MAXPROT,
-	    ("%s(%d, %s): protocol too big", __func__, proto, name));
+	    ("%s(%u, %s): protocol too big", __func__, proto, name));
 
 	/*
 	 * Test that no existing registration exists for this protocol.
 	 */
 	NETISR_WLOCK();
 	KASSERT(np[proto].np_name == NULL,
-	    ("%s(%d, %s): name present", __func__, proto, name));
+	    ("%s(%u, %s): name present", __func__, proto, name));
 	KASSERT(np[proto].np_handler == NULL,
-	    ("%s(%d, %s): handler present", __func__, proto, name));
+	    ("%s(%u, %s): handler present", __func__, proto, name));
 
 	np[proto].np_name = name;
 	np[proto].np_handler = nhp->nh_handler;
@@ -397,11 +397,11 @@ netisr_clearqdrops(const struct netisr_handler *nhp)
 	name = nhp->nh_name;
 #endif
 	KASSERT(proto < NETISR_MAXPROT,
-	    ("%s(%d): protocol too big for %s", __func__, proto, name));
+	    ("%s(%u): protocol too big for %s", __func__, proto, name));
 
 	NETISR_WLOCK();
 	KASSERT(np[proto].np_handler != NULL,
-	    ("%s(%d): protocol not registered for %s", __func__, proto,
+	    ("%s(%u): protocol not registered for %s", __func__, proto,
 	    name));
 
 	for (i = 0; i < MAXCPU; i++) {
@@ -430,11 +430,11 @@ netisr_getqdrops(const struct netisr_handler *nhp, u_int64_t *qdropp)
 	name = nhp->nh_name;
 #endif
 	KASSERT(proto < NETISR_MAXPROT,
-	    ("%s(%d): protocol too big for %s", __func__, proto, name));
+	    ("%s(%u): protocol too big for %s", __func__, proto, name));
 
 	NETISR_RLOCK(&tracker);
 	KASSERT(np[proto].np_handler != NULL,
-	    ("%s(%d): protocol not registered for %s", __func__, proto,
+	    ("%s(%u): protocol not registered for %s", __func__, proto,
 	    name));
 
 	for (i = 0; i < MAXCPU; i++) {
@@ -461,11 +461,11 @@ netisr_getqlimit(const struct netisr_handler *nhp, u_int *qlimitp)
 	name = nhp->nh_name;
 #endif
 	KASSERT(proto < NETISR_MAXPROT,
-	    ("%s(%d): protocol too big for %s", __func__, proto, name));
+	    ("%s(%u): protocol too big for %s", __func__, proto, name));
 
 	NETISR_RLOCK(&tracker);
 	KASSERT(np[proto].np_handler != NULL,
-	    ("%s(%d): protocol not registered for %s", __func__, proto,
+	    ("%s(%u): protocol not registered for %s", __func__, proto,
 	    name));
 	*qlimitp = np[proto].np_qlimit;
 	NETISR_RUNLOCK(&tracker);
@@ -493,11 +493,11 @@ netisr_setqlimit(const struct netisr_handler *nhp, u_int qlimit)
 	name = nhp->nh_name;
 #endif
 	KASSERT(proto < NETISR_MAXPROT,
-	    ("%s(%d): protocol too big for %s", __func__, proto, name));
+	    ("%s(%u): protocol too big for %s", __func__, proto, name));
 
 	NETISR_WLOCK();
 	KASSERT(np[proto].np_handler != NULL,
-	    ("%s(%d): protocol not registered for %s", __func__, proto,
+	    ("%s(%u): protocol not registered for %s", __func__, proto,
 	    name));
 
 	np[proto].np_qlimit = qlimit;
@@ -517,6 +517,9 @@ netisr_drain_proto(struct netisr_work *npwp)
 {
 	struct mbuf *m;
 
+	/*
+	 * We would assert the lock on the workstream but it's not passed in.
+	 */
 	while ((m = npwp->nw_head) != NULL) {
 		npwp->nw_head = m->m_nextpkt;
 		m->m_nextpkt = NULL;
@@ -549,11 +552,11 @@ netisr_unregister(const struct netisr_handler *nhp)
 	name = nhp->nh_name;
 #endif
 	KASSERT(proto < NETISR_MAXPROT,
-	    ("%s(%d): protocol too big for %s", __func__, proto, name));
+	    ("%s(%u): protocol too big for %s", __func__, proto, name));
 
 	NETISR_WLOCK();
 	KASSERT(np[proto].np_handler != NULL,
-	    ("%s(%d): protocol not registered for %s", __func__, proto,
+	    ("%s(%u): protocol not registered for %s", __func__, proto,
 	    name));
 
 	np[proto].np_name = NULL;
@@ -645,12 +648,13 @@ netisr_process_workstream_proto(struct netisr_workstream *nwsp, u_int proto)
 	u_int handled;
 	struct mbuf *m;
 
+	NETISR_LOCK_ASSERT();
 	NWS_LOCK_ASSERT(nwsp);
 
 	KASSERT(nwsp->nws_flags & NWS_RUNNING,
-	    ("%s(%d): not running", __func__, proto));
+	    ("%s(%u): not running", __func__, proto));
 	KASSERT(proto >= 0 && proto < NETISR_MAXPROT,
-	    ("%s(%d): invalid proto\n", __func__, proto));
+	    ("%s(%u): invalid proto\n", __func__, proto));
 
 	npwp = &nwsp->nws_work[proto];
 	if (npwp->nw_len == 0)
@@ -679,7 +683,7 @@ netisr_process_workstream_proto(struct netisr_workstream *nwsp, u_int proto)
 		np[proto].np_handler(m);
 	}
 	KASSERT(local_npw.nw_len == 0,
-	    ("%s(%d): len %d", __func__, proto, local_npw.nw_len));
+	    ("%s(%u): len %u", __func__, proto, local_npw.nw_len));
 	NWS_LOCK(nwsp);
 	npwp->nw_handled += handled;
 	return (handled);
@@ -801,13 +805,13 @@ netisr_queue_src(u_int proto, uintptr_t source, struct mbuf *m)
 	u_int cpuid, error;
 
 	KASSERT(proto < NETISR_MAXPROT,
-	    ("%s: invalid proto %d", __func__, proto));
+	    ("%s: invalid proto %u", __func__, proto));
 
 #ifdef NETISR_LOCKING
 	NETISR_RLOCK(&tracker);
 #endif
 	KASSERT(np[proto].np_handler != NULL,
-	    ("%s: invalid proto %d", __func__, proto));
+	    ("%s: invalid proto %u", __func__, proto));
 
 	m = netisr_select_cpuid(&np[proto], source, m, &cpuid);
 	if (m != NULL)
@@ -981,7 +985,7 @@ netisr_start_swi(u_int cpuid, struct pcpu *pc)
 	nwsp = &nws[cpuid];
 	mtx_init(&nwsp->nws_mtx, "netisr_mtx", NULL, MTX_DEF);
 	nwsp->nws_cpu = cpuid;
-	snprintf(swiname, sizeof(swiname), "netisr %d", cpuid);
+	snprintf(swiname, sizeof(swiname), "netisr %u", cpuid);
 	error = swi_add(&nwsp->nws_intr_event, swiname, swi_net, nwsp,
 	    SWI_NET, INTR_MPSAFE, &nwsp->nws_swi_cookie);
 	if (error)
@@ -990,7 +994,7 @@ netisr_start_swi(u_int cpuid, struct pcpu *pc)
 	if (netisr_bindthreads) {
 		error = intr_event_bind(nwsp->nws_intr_event, cpuid);
 		if (error != 0)
-			printf("%s: cpu %d: intr_event_bind: %d", __func__,
+			printf("%s: cpu %u: intr_event_bind: %d", __func__,
 			    cpuid, error);
 	}
 	NETISR_WLOCK();
@@ -1004,7 +1008,7 @@ netisr_start_swi(u_int cpuid, struct pcpu *pc)
  * of most fields in global data structures.
  *
  * Start a worker thread for the boot CPU so that we can support network
- * traffic immediately in case the netowrk stack is used before additional
+ * traffic immediately in case the network stack is used before additional
  * CPUs are started (for example, diskless boot).
  */
 static void
@@ -1060,7 +1064,8 @@ DB_SHOW_COMMAND(netisr, db_show_netisr)
 {
 	struct netisr_workstream *nwsp;
 	struct netisr_work *nwp;
-	int cpu, first, proto;
+	int first, proto;
+	u_int cpu;
 
 	db_printf("%3s %6s %5s %5s %5s %8s %8s %8s %8s\n", "CPU", "Proto",
 	    "Len", "WMark", "Max", "Disp", "HDisp", "Drop", "Queue");

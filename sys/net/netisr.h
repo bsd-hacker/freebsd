@@ -133,7 +133,7 @@ int	netisr_queue(u_int proto, struct mbuf *m);
 int	netisr_queue_src(u_int proto, uintptr_t source, struct mbuf *m);
 
 /*
- * Provide a default implementation of "map a ID to a cpu ID".
+ * Provide a default implementation of "map an ID to a CPU ID".
  */
 u_int	netisr_default_flow2cpu(u_int flowid);
 
