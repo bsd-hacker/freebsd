@@ -176,7 +176,7 @@ struct vp_lock {
 #define	pa_index(pa)	((pa) >> PDRSHIFT)
 #define	pa_to_pvh(pa)	(&pv_table[pa_index(pa)])
 
-#define	PA_LOCKPTR(pa)	&pa_lock[pa_index((pa)) % PA_LOCK_COUNT]
+#define	PA_LOCKPTR(pa)	&pa_lock[pa_index((pa)) % PA_LOCK_COUNT].vp_lock
 #define	PA_LOCK(pa)	mtx_lock(PA_LOCKPTR(pa))
 #define	PA_TRYLOCK(pa)	mtx_trylock(PA_LOCKPTR(pa))
 #define	PA_UNLOCK(pa)	mtx_unlock(PA_LOCKPTR(pa))
@@ -626,7 +626,7 @@ pmap_bootstrap(vm_paddr_t *firstaddr)
 
 	/* Setup page locks. */
 	for (i = 0; i < PA_LOCK_COUNT; i++)
-		mtx_init(&pa_lock[i], "page lock", NULL, MTX_DEF | MTX_RECURSE | MTX_DUPOK);
+		mtx_init(&pa_lock[i].vp_lock, "page lock", NULL, MTX_DEF | MTX_RECURSE | MTX_DUPOK);
 	mtx_init(&pv_lock, "pv list lock", NULL, MTX_DEF);
 }
 
