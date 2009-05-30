@@ -315,7 +315,7 @@ hardclock_device_poll(void)
 		phase = 1;
 		netisr_poll_scheduled = 1;
 		netisr_pollmore_scheduled = 1;
-		netisr2_sched_poll();
+		netisr_sched_poll();
 		phase = 2;
 	}
 	if (pending_polls++ > 0)
@@ -375,7 +375,7 @@ netisr_pollmore()
 	if (residual_burst > 0) {
 		netisr_poll_scheduled = 1;
 		netisr_pollmore_scheduled = 1;
-		netisr2_sched_poll();
+		netisr_sched_poll();
 		mtx_unlock(&poll_mtx);
 		/* will run immediately on return, followed by netisrs */
 		return;
@@ -407,7 +407,7 @@ netisr_pollmore()
 			poll_burst = 1;
 		netisr_poll_scheduled = 1;
 		netisr_pollmore_scheduled = 1;
-		netisr2_sched_poll();
+		netisr_sched_poll();
 		phase = 6;
 	}
 	mtx_unlock(&poll_mtx);

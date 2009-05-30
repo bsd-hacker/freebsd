@@ -829,6 +829,6 @@ arp_init(void)
 	arp_iattach(NULL);
 #endif
 
-	netisr2_register(&arp_nh);
+	netisr_register(&arp_nh);
 }
 SYSINIT(arp, SI_SUB_PROTO_DOMAIN, SI_ORDER_ANY, arp_init, 0);

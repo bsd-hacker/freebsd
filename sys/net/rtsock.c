@@ -128,13 +128,13 @@ sysctl_route_netisr_maxqlen(SYSCTL_HANDLER_ARGS)
 {
 	int error, qlimit;
 
-	netisr2_getqlimit(&rtsock_nh, &qlimit);
+	netisr_getqlimit(&rtsock_nh, &qlimit);
 	error = sysctl_handle_int(oidp, &qlimit, 0, req);
         if (error || !req->newptr)
                 return (error);
 	if (qlimit < 1)
 		return (EINVAL);
-	return (netisr2_setqlimit(&rtsock_nh, qlimit));
+	return (netisr_setqlimit(&rtsock_nh, qlimit));
 }
 SYSCTL_PROC(_net_route, OID_AUTO, netisr_maxqlen, CTLTYPE_INT|CTLFLAG_RW,
     0, 0, sysctl_route_netisr_maxqlen, "I",
@@ -147,7 +147,7 @@ rts_init(void)
 
 	if (TUNABLE_INT_FETCH("net.route.netisr_maxqlen", &tmp))
 		rtsock_nh.nh_qlimit = tmp;
-	netisr2_register(&rtsock_nh);
+	netisr_register(&rtsock_nh);
 }
 SYSINIT(rtsock, SI_SUB_PROTO_DOMAIN, SI_ORDER_THIRD, rts_init, 0);
 

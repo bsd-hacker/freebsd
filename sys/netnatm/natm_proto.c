@@ -108,7 +108,7 @@ natm_init(void)
 {
 	LIST_INIT(&natm_pcbs);
 	NATM_LOCK_INIT();
-	netisr2_register(&natm_nh);
+	netisr_register(&natm_nh);
 }
 
 DOMAIN_SET(natm);

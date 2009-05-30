@@ -279,9 +279,9 @@ ddp_init(void)
 {
 
 	DDP_LIST_LOCK_INIT();
-	netisr2_register(&atalk1_nh);
-	netisr2_register(&atalk2_nh);
-	netisr2_register(&aarp_nh);
+	netisr_register(&atalk1_nh);
+	netisr_register(&atalk2_nh);
+	netisr_register(&aarp_nh);
 }
 
 #if 0

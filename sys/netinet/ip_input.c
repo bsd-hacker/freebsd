@@ -256,13 +256,13 @@ sysctl_netinet_intr_queue_maxlen(SYSCTL_HANDLER_ARGS)
 {
 	int error, qlimit;
 
-	netisr2_getqlimit(&ip_nh, &qlimit);
+	netisr_getqlimit(&ip_nh, &qlimit);
 	error = sysctl_handle_int(oidp, &qlimit, 0, req);
 	if (error || !req->newptr)
 		return (error);
 	if (qlimit < 1)
 		return (EINVAL);
-	return (netisr2_setqlimit(&ip_nh, qlimit));
+	return (netisr_setqlimit(&ip_nh, qlimit));
 }
 SYSCTL_PROC(_net_inet_ip, IPCTL_INTRQMAXLEN, intr_queue_maxlen,
     CTLTYPE_INT|CTLFLAG_RW, 0, 0, sysctl_netinet_intr_queue_maxlen, "I",
@@ -274,14 +274,14 @@ sysctl_netinet_intr_queue_drops(SYSCTL_HANDLER_ARGS)
 	u_int64_t qdrops_long;
 	int error, qdrops;
 
-	netisr2_getqdrops(&ip_nh, &qdrops_long);
+	netisr_getqdrops(&ip_nh, &qdrops_long);
 	qdrops = qdrops_long;
 	error = sysctl_handle_int(oidp, &qdrops, 0, req);
 	if (error || !req->newptr)
 		return (error);
 	if (qdrops != 0)
 		return (EINVAL);
-	netisr2_clearqdrops(&ip_nh);
+	netisr_clearqdrops(&ip_nh);
 	return (0);
 }
 
@@ -392,7 +392,7 @@ ip_init(void)
 
 	/* Initialize various other remaining things. */
 	IPQ_LOCK_INIT();
-	netisr2_register(&ip_nh);
+	netisr_register(&ip_nh);
 	ip_ft = flowtable_alloc(ip_output_flowtable_size, FL_PCPU);
 }
 

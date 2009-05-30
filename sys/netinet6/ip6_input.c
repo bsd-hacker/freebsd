@@ -304,7 +304,7 @@ ip6_init(void)
 			"error %d\n", __func__, i);
 
 	ip6_nh.nh_qlimit = V_ip6qmaxlen;
-	netisr2_register(&ip6_nh);
+	netisr_register(&ip6_nh);
 }
 
 static int

@@ -57,22 +57,22 @@
 /*-
  * Protocols express ordering constraints and affinity preferences by
  * implementing one or neither of nh_m2flow and nh_m2cpuid, which are used by
- * netisr2 to determine which per-CPU workstream to assign mbufs to.
+ * netisr to determine which per-CPU workstream to assign mbufs to.
  *
  * The following policies may be used by protocols:
  *
- * NETISR_POLICY_SOURCE - netisr2 should maintain source ordering without
- *                        advice from the protocol.  netisr2 will ignore any
+ * NETISR_POLICY_SOURCE - netisr should maintain source ordering without
+ *                        advice from the protocol.  netisr will ignore any
  *                        flow IDs present on the mbuf for the purposes of
  *                        work placement.
  *
- * NETISR_POLICY_FLOW - netisr2 should maintain flow ordering as defined by
+ * NETISR_POLICY_FLOW - netisr should maintain flow ordering as defined by
  *                      the mbuf header flow ID field.  If the protocol
- *                      implements nh_m2flow, then netisr2 will query the
+ *                      implements nh_m2flow, then netisr will query the
  *                      protocol in the event that the mbuf doesn't have a
  *                      flow ID, falling back on source ordering.
  *
- * NETISR_POLICY_CPU - netisr2 will delegate all work placement decisions to
+ * NETISR_POLICY_CPU - netisr will delegate all work placement decisions to
  *                     the protocol, querying nh_m2cpuid for each packet.
  *
  * Protocols might make decisions about work placement based on an existing
@@ -87,7 +87,7 @@
  * can rebalance work.
  */
 struct mbuf;
-typedef void		 netisr_t (struct mbuf *m);
+typedef void		 netisr_handler_t (struct mbuf *m);
 typedef struct mbuf	*netisr_m2cpuid_t(struct mbuf *m, uintptr_t source,
 			 u_int *cpuid);
 typedef	struct mbuf	*netisr_m2flow_t(struct mbuf *m, uintptr_t source);
@@ -101,7 +101,7 @@ typedef	struct mbuf	*netisr_m2flow_t(struct mbuf *m, uintptr_t source);
  */
 struct netisr_handler {
 	const char	*nh_name;	/* Character string protocol name. */
-	netisr_t	*nh_handler;	/* Protocol handler. */
+	netisr_handler_t *nh_handler;	/* Protocol handler. */
 	netisr_m2flow_t	*nh_m2flow;	/* Query flow for untagged packet. */
 	netisr_m2cpuid_t *nh_m2cpuid;	/* Query CPU to process mbuf on. */
 	u_int		 nh_proto;	/* Integer protocol ID. */
@@ -112,15 +112,15 @@ struct netisr_handler {
 };
 
 /*
- * Register, unregister, and other netisr2 handler management functions.
+ * Register, unregister, and other netisr handler management functions.
  */
-void	netisr2_clearqdrops(const struct netisr_handler *nhp);
-void	netisr2_getqdrops(const struct netisr_handler *nhp,
+void	netisr_clearqdrops(const struct netisr_handler *nhp);
+void	netisr_getqdrops(const struct netisr_handler *nhp,
 	    u_int64_t *qdropsp);
-void	netisr2_getqlimit(const struct netisr_handler *nhp, u_int *qlimitp);
-void	netisr2_register(const struct netisr_handler *nhp);
-int	netisr2_setqlimit(const struct netisr_handler *nhp, u_int qlimit);
-void	netisr2_unregister(const struct netisr_handler *nhp);
+void	netisr_getqlimit(const struct netisr_handler *nhp, u_int *qlimitp);
+void	netisr_register(const struct netisr_handler *nhp);
+int	netisr_setqlimit(const struct netisr_handler *nhp, u_int qlimit);
+void	netisr_unregister(const struct netisr_handler *nhp);
 
 /*
  * Process a packet destined for a protocol, and attempt direct dispatch.
@@ -128,29 +128,27 @@ void	netisr2_unregister(const struct netisr_handler *nhp);
  * variant.
  */
 int	netisr_dispatch(u_int proto, struct mbuf *m);
+int	netisr_dispatch_src(u_int proto, uintptr_t source, struct mbuf *m);
 int	netisr_queue(u_int proto, struct mbuf *m);
-int	netisr2_dispatch(u_int proto, struct mbuf *m);
-int	netisr2_dispatch_src(u_int proto, uintptr_t source, struct mbuf *m);
-int	netisr2_queue(u_int proto, struct mbuf *m);
-int	netisr2_queue_src(u_int proto, uintptr_t source, struct mbuf *m);
+int	netisr_queue_src(u_int proto, uintptr_t source, struct mbuf *m);
 
 /*
  * Provide a default implementation of "map a ID to a cpu ID".
  */
-u_int	netisr2_default_flow2cpu(u_int flowid);
+u_int	netisr_default_flow2cpu(u_int flowid);
 
 /*
- * Utility routines to return the number of CPUs participting in netisr2, and
+ * Utility routines to return the number of CPUs participting in netisr, and
  * to return a mapping from a number to a CPU ID that can be used with the
  * scheduler.
  */
-u_int	netisr2_get_cpucount(void);
-u_int	netisr2_get_cpuid(u_int cpunumber);
+u_int	netisr_get_cpucount(void);
+u_int	netisr_get_cpuid(u_int cpunumber);
 
 /*
- * Interfaces between DEVICE_POLLING and netisr2.
+ * Interfaces between DEVICE_POLLING and netisr.
  */
-void	netisr2_sched_poll(void);
+void	netisr_sched_poll(void);
 void	netisr_poll(void);
 void	netisr_pollmore(void);
 

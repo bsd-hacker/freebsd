@@ -3542,7 +3542,7 @@ igmp_sysinit(void)
 
 	m_raopt = igmp_ra_alloc();
 
-	netisr2_register(&igmp_nh);
+	netisr_register(&igmp_nh);
 }
 
 static void
@@ -3551,7 +3551,7 @@ igmp_sysuninit(void)
 
 	CTR1(KTR_IGMPV3, "%s: tearing down", __func__);
 
-	netisr2_unregister(&igmp_nh);
+	netisr_unregister(&igmp_nh);
 
 	m_free(m_raopt);
 	m_raopt = NULL;

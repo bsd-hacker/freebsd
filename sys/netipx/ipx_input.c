@@ -157,7 +157,7 @@ ipx_init(void)
 	ipx_hostmask.sipx_addr.x_net = ipx_broadnet;
 	ipx_hostmask.sipx_addr.x_host = ipx_broadhost;
 
-	netisr2_register(&ipx_nh);
+	netisr_register(&ipx_nh);
 }
 
 /*
