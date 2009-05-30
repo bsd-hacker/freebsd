@@ -129,7 +129,6 @@ static struct netisr_handler ipx_nh = {
 	.nh_name = "ipx",
 	.nh_handler = ipxintr,
 	.nh_proto = NETISR_IPX,
-	.nh_qlimit = IFQ_MAXLEN,
 	.nh_policy = NETISR_POLICY_SOURCE,
 };
 

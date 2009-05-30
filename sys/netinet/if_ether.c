@@ -120,7 +120,6 @@ static const struct netisr_handler arp_nh = {
 	.nh_name = "arp",
 	.nh_handler = arpintr,
 	.nh_proto = NETISR_ARP,
-	.nh_qlimit = 50,
 	.nh_policy = NETISR_POLICY_SOURCE,
 };
 

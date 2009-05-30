@@ -74,7 +74,6 @@ static const struct netisr_handler atalk1_nh = {
 	.nh_name = "atalk1",
 	.nh_handler = at1intr,
 	.nh_proto = NETISR_ATALK1,
-	.nh_qlimit = IFQ_MAXLEN,
 	.nh_policy = NETISR_POLICY_SOURCE,
 };
 
@@ -82,7 +81,6 @@ static const struct netisr_handler atalk2_nh = {
 	.nh_name = "atalk2",
 	.nh_handler = at2intr,
 	.nh_proto = NETISR_ATALK2,
-	.nh_qlimit = IFQ_MAXLEN,
 	.nh_policy = NETISR_POLICY_SOURCE,
 };
 
@@ -90,7 +88,6 @@ static const struct netisr_handler aarp_nh = {
 	.nh_name = "aarp",
 	.nh_handler = aarpintr,
 	.nh_proto = NETISR_AARP,
-	.nh_qlimit = IFQ_MAXLEN,
 	.nh_policy = NETISR_POLICY_SOURCE,
 };
 

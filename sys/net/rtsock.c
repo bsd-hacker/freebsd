@@ -119,7 +119,6 @@ static struct netisr_handler rtsock_nh = {
 	.nh_name = "rtsock",
 	.nh_handler = rts_input,
 	.nh_proto = NETISR_ROUTE,
-	.nh_qlimit = 256,
 	.nh_policy = NETISR_POLICY_SOURCE,
 };
 

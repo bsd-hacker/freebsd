@@ -92,7 +92,7 @@ static struct netisr_handler natm_nh = {
 	.nh_name = "natm",
 	.nh_handler = natmintr,
 	.nh_proto = NETISR_NATM,
-	.nh_qlimit = 1000 /* IFQ_MAXLEN */,
+	.nh_qlimit = 1000,
 	.nh_policy = NETISR_POLICY_SOURCE,
 };
 

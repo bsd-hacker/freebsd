@@ -148,7 +148,6 @@ static const struct netisr_handler igmp_nh = {
 	.nh_name = "igmp",
 	.nh_handler = igmp_intr,
 	.nh_proto = NETISR_IGMP,
-	.nh_qlimit = IFQ_MAXLEN,
 	.nh_policy = NETISR_POLICY_SOURCE,
 };
 

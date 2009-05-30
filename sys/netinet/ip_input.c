@@ -170,7 +170,6 @@ static struct netisr_handler ip_nh = {
 	.nh_handler = ip_input,
 	.nh_m2flow = ip_input_m2flow,
 	.nh_proto = NETISR_IP,
-	.nh_qlimit = IFQ_MAXLEN,
 	.nh_policy = NETISR_POLICY_FLOW,
 };
 
