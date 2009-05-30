@@ -51,7 +51,6 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_mac.h"
-#include "opt_netisr.h"
 #include "opt_route.h"
 
 #include <sys/param.h>
@@ -69,7 +68,6 @@ __FBSDID("$FreeBSD$");
 
 #include <net/if.h>
 #include <net/netisr.h>
-#include <net/netisr2.h>
 #include <net/route.h>
 #include <net/vnet.h>
 
@@ -146,7 +144,6 @@ static int	sysctl_igmp_ifinfo(SYSCTL_HANDLER_ARGS);
 static vnet_attach_fn	vnet_igmp_iattach;
 static vnet_detach_fn	vnet_igmp_idetach;
 
-#ifdef NETISR2
 static const struct netisr_handler igmp_nh = {
 	.nh_name = "igmp",
 	.nh_handler = igmp_intr,
@@ -154,12 +151,6 @@ static const struct netisr_handler igmp_nh = {
 	.nh_qlimit = IFQ_MAXLEN,
 	.nh_policy = NETISR_POLICY_SOURCE,
 };
-#else
-/*
- * Global netisr output queue.
- */
-struct ifqueue		 igmpoq;
-#endif
 
 /*
  * System-wide globals.
@@ -3551,13 +3542,7 @@ igmp_sysinit(void)
 
 	m_raopt = igmp_ra_alloc();
 
-#ifdef NETISR2
 	netisr2_register(&igmp_nh);
-#else
-	mtx_init(&igmpoq.ifq_mtx, "igmpoq_mtx", NULL, MTX_DEF);
-	IFQ_SET_MAXLEN(&igmpoq, IFQ_MAXLEN);
-	netisr_register(NETISR_IGMP, igmp_intr, &igmpoq, 0);
-#endif
 }
 
 static void
@@ -3566,12 +3551,7 @@ igmp_sysuninit(void)
 
 	CTR1(KTR_IGMPV3, "%s: tearing down", __func__);
 
-#ifdef NETISR2
 	netisr2_unregister(&igmp_nh);
-#else
-	netisr_unregister(NETISR_IGMP);
-	mtx_destroy(&igmpoq.ifq_mtx);
-#endif
 
 	m_free(m_raopt);
 	m_raopt = NULL;

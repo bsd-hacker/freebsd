@@ -62,7 +62,6 @@
  *	@(#)ipx_input.c
  */
 
-#include "opt_netisr.h"
 
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
@@ -79,7 +78,6 @@ __FBSDID("$FreeBSD$");
 #include <net/if.h>
 #include <net/route.h>
 #include <net/netisr.h>
-#include <net/netisr2.h>
 
 #include <netipx/ipx.h>
 #include <netipx/spx.h>
@@ -103,6 +101,11 @@ static int	ipxnetbios = 0;
 SYSCTL_INT(_net_ipx, OID_AUTO, ipxnetbios, CTLFLAG_RW,
 	   &ipxnetbios, 0, "Propagate netbios over ipx");
 
+static	int ipx_do_route(struct ipx_addr *src, struct route *ro);
+static	void ipx_undo_route(struct route *ro);
+static	void ipx_forward(struct mbuf *m);
+static	void ipxintr(struct mbuf *m);
+
 const union	ipx_net ipx_zeronet;
 const union	ipx_host ipx_zerohost;
 
@@ -122,25 +125,15 @@ struct mtx		ipxpcb_list_mtx;
 struct ipxpcbhead	ipxpcb_list;
 struct ipxpcbhead	ipxrawpcb_list;
 
-#ifdef NETISR2
-static const struct netisr_handler ipx_nh = {
+static struct netisr_handler ipx_nh = {
 	.nh_name = "ipx",
 	.nh_handler = ipxintr,
 	.nh_proto = NETISR_IPX,
 	.nh_qlimit = IFQ_MAXLEN,
 	.nh_policy = NETISR_POLICY_SOURCE,
 };
-#else
-static int ipxqmaxlen = IFQ_MAXLEN;
-static	struct ifqueue ipxintrq;
-#endif
 
 long	ipx_pexseq;		/* Locked with ipxpcb_list_mtx. */
-
-static	int ipx_do_route(struct ipx_addr *src, struct route *ro);
-static	void ipx_undo_route(struct route *ro);
-static	void ipx_forward(struct mbuf *m);
-static	void ipxintr(struct mbuf *m);
 
 /*
  * IPX initialization.
@@ -164,14 +157,7 @@ ipx_init(void)
 	ipx_hostmask.sipx_addr.x_net = ipx_broadnet;
 	ipx_hostmask.sipx_addr.x_host = ipx_broadhost;
 
-#ifdef NETISR2
-	ipx_nh.nh_qlimit = ipxqmaxlen;
 	netisr2_register(&ipx_nh);
-#else
-	ipxintrq.ifq_maxlen = ipxqmaxlen;
-	mtx_init(&ipxintrq.ifq_mtx, "ipx_inq", NULL, MTX_DEF);
-	netisr_register(NETISR_IPX, ipxintr, &ipxintrq, 0);
-#endif
 }
 
 /*

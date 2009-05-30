@@ -50,8 +50,6 @@
  * $FreeBSD$
  */
 
-#include "opt_netisr.h"
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/malloc.h>
@@ -62,7 +60,6 @@
 #include <net/if.h>
 #include <net/route.h>
 #include <net/netisr.h>
-#include <net/netisr2.h>
 
 #include <netatalk/at.h>
 #include <netatalk/at_var.h>
@@ -73,7 +70,6 @@
 static u_long	ddp_sendspace = DDP_MAXSZ; /* Max ddp size + 1 (ddp_type) */
 static u_long	ddp_recvspace = 10 * (587 + sizeof(struct sockaddr_at));
 
-#ifdef NETISR2
 static const struct netisr_handler atalk1_nh = {
 	.nh_name = "atalk1",
 	.nh_handler = at1intr,
@@ -97,10 +93,6 @@ static const struct netisr_handler aarp_nh = {
 	.nh_qlimit = IFQ_MAXLEN,
 	.nh_policy = NETISR_POLICY_SOURCE,
 };
-#else
-static struct ifqueue atintrq1, atintrq2, aarpintrq;
-#endif
-
 
 static int
 ddp_attach(struct socket *so, int proto, struct thread *td)
@@ -287,21 +279,9 @@ ddp_init(void)
 {
 
 	DDP_LIST_LOCK_INIT();
-#ifdef NETISR2
 	netisr2_register(&atalk1_nh);
 	netisr2_register(&atalk2_nh);
 	netisr2_register(&aarp_nh);
-#else
-	atintrq1.ifq_maxlen = IFQ_MAXLEN;
-	atintrq2.ifq_maxlen = IFQ_MAXLEN;
-	aarpintrq.ifq_maxlen = IFQ_MAXLEN;
-	mtx_init(&atintrq1.ifq_mtx, "at1_inq", NULL, MTX_DEF);
-	mtx_init(&atintrq2.ifq_mtx, "at2_inq", NULL, MTX_DEF);
-	mtx_init(&aarpintrq.ifq_mtx, "aarp_inq", NULL, MTX_DEF);
-	netisr_register(NETISR_ATALK1, at1intr, &atintrq1, 0);
-	netisr_register(NETISR_ATALK2, at2intr, &atintrq2, 0);
-	netisr_register(NETISR_AARP, aarpintr, &aarpintrq, 0);
-#endif
 }
 
 #if 0

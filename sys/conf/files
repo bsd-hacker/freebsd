@@ -2157,7 +2157,6 @@ net/if_vlan.c			optional vlan
 net/mppcc.c			optional netgraph_mppc_compression
 net/mppcd.c			optional netgraph_mppc_compression
 net/netisr.c			standard
-net/netisr2.c			optional netisr2
 net/pfil.c			optional ether | inet
 net/radix.c			standard
 net/radix_mpath.c		standard

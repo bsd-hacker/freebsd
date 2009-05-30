@@ -44,7 +44,6 @@
 #include "opt_inet6.h"
 #include "opt_ipsec.h"
 #include "opt_enc.h"
-#include "opt_netisr.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -61,7 +60,6 @@
 #include <net/pfil.h>
 #include <net/route.h>
 #include <net/netisr.h>
-#include <net/netisr2.h>
 
 #include <netinet/in.h>
 #include <netinet/in_systm.h>
@@ -483,15 +481,7 @@ ipsec4_common_input_cb(struct mbuf *m, struct secasvar *sav,
 	/*
 	 * Re-dispatch via software interrupt.
 	 */
-#ifdef NETISR2
-	/*
-	 * XXXRW: Is this ordering sufficient?  Perhaps should be
-	 * m->m_pkthdr.rcvif?
-	 */
 	if ((error = netisr2_queue_src(NETISR_IP, (uintptr_t)sav, m))) {
-#else
-	if ((error = netisr_queue(NETISR_IP, m))) {
-#endif
 		IPSEC_ISTAT(sproto, V_espstat.esps_qfull, V_ahstat.ahs_qfull,
 			    V_ipcompstat.ipcomps_qfull);
 

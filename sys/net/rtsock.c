@@ -34,7 +34,6 @@
 #include "opt_route.h"
 #include "opt_inet.h"
 #include "opt_inet6.h"
-#include "opt_netisr.h"
 
 #include <sys/param.h>
 #include <sys/domain.h>
@@ -58,7 +57,6 @@
 #include <net/if_dl.h>
 #include <net/if_llatbl.h>
 #include <net/netisr.h>
-#include <net/netisr2.h>
 #include <net/raw_cb.h>
 #include <net/route.h>
 #include <net/vnet.h>
@@ -94,12 +92,6 @@ MTX_SYSINIT(rtsock, &rtsock_mtx, "rtsock route_cb lock", MTX_DEF);
 
 SYSCTL_NODE(_net, OID_AUTO, route, CTLFLAG_RD, 0, "");
 
-#ifndef NETISR2
-static struct	ifqueue rtsintrq;
-SYSCTL_INT(_net_route, OID_AUTO, netisr_maxqlen, CTLFLAG_RW,
-    &rtsintrq.ifq_maxlen, 0, "maximum routing socket dispatch queue length");
-#endif
-
 struct walkarg {
 	int	w_tmemsize;
 	int	w_op, w_arg;
@@ -123,7 +115,6 @@ static void	rt_getmetrics(const struct rt_metrics_lite *in,
 			struct rt_metrics *out);
 static void	rt_dispatch(struct mbuf *, const struct sockaddr *);
 
-#ifdef NETISR2
 static struct netisr_handler rtsock_nh = {
 	.nh_name = "rtsock",
 	.nh_handler = rts_input,
@@ -148,24 +139,15 @@ sysctl_route_netisr_maxqlen(SYSCTL_HANDLER_ARGS)
 SYSCTL_PROC(_net_route, OID_AUTO, netisr_maxqlen, CTLTYPE_INT|CTLFLAG_RW,
     0, 0, sysctl_route_netisr_maxqlen, "I",
     "maximum routing socket dispatch queue length");
-#endif
 
 static void
 rts_init(void)
 {
 	int tmp;
 
-#ifdef NETISR2
 	if (TUNABLE_INT_FETCH("net.route.netisr_maxqlen", &tmp))
 		rtsock_nh.nh_qlimit = tmp;
 	netisr2_register(&rtsock_nh);
-#else
-	mtx_init(&rtsintrq.ifq_mtx, "rts_inq", NULL, MTX_DEF);
-	rtsintrq.ifq_maxlen = 256;
-	if (TUNABLE_INT_FETCH("net.route.netisr_maxqlen", &tmp))
-		rtsintrq.ifq_maxlen = tmp;
-	netisr_register(NETISR_ROUTE, rts_input, &rtsintrq, 0);
-#endif
 }
 SYSINIT(rtsock, SI_SUB_PROTO_DOMAIN, SI_ORDER_THIRD, rts_init, 0);
 

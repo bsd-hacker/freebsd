@@ -38,7 +38,6 @@ __FBSDID("$FreeBSD$");
 #include "opt_ipsec.h"
 #include "opt_route.h"
 #include "opt_mac.h"
-#include "opt_netisr.h"
 #include "opt_carp.h"
 
 #include <sys/param.h>
@@ -64,7 +63,6 @@ __FBSDID("$FreeBSD$");
 #include <net/if_dl.h>
 #include <net/route.h>
 #include <net/netisr.h>
-#include <net/netisr2.h>
 #include <net/vnet.h>
 #include <net/flowtable.h>
 
@@ -166,7 +164,6 @@ SYSCTL_V_INT(V_NET, vnet_inet, _net_inet_ip, OID_AUTO,
 
 struct pfil_head inet_pfil_hook;	/* Packet filter hooks */
 
-#ifdef NETISR2
 static struct mbuf	*ip_input_m2flow(struct mbuf *m, uintptr_t source);
 static struct netisr_handler ip_nh = {
 	.nh_name = "ip",
@@ -176,16 +173,6 @@ static struct netisr_handler ip_nh = {
 	.nh_qlimit = IFQ_MAXLEN,
 	.nh_policy = NETISR_POLICY_FLOW,
 };
-#else
-static struct	ifqueue ipintrq;
-static int	ipqmaxlen = IFQ_MAXLEN;
-
-SYSCTL_INT(_net_inet_ip, IPCTL_INTRQMAXLEN, intr_queue_maxlen, CTLFLAG_RW,
-    &ipintrq.ifq_maxlen, 0, "Maximum size of the IP input queue");
-SYSCTL_INT(_net_inet_ip, IPCTL_INTRQDROPS, intr_queue_drops, CTLFLAG_RD,
-    &ipintrq.ifq_drops, 0,
-    "Number of packets dropped from the IP input queue");
-#endif
 
 extern	struct domain inetdomain;
 extern	struct protosw inetsw[];
@@ -264,7 +251,6 @@ static void vnet_inet_register()
 SYSINIT(inet, SI_SUB_PROTO_BEGIN, SI_ORDER_FIRST, vnet_inet_register, 0);
 #endif
 
-#ifdef NETISR2
 static int
 sysctl_netinet_intr_queue_maxlen(SYSCTL_HANDLER_ARGS)
 {
@@ -307,7 +293,6 @@ static int ip_m2flow_enable = 1;
 SYSCTL_INT(_net_inet_ip, OID_AUTO, m2flow_enable, CTLFLAG_RW,
     &ip_m2flow_enable, 0,
     "Enable software flow ID calculation for parallel netisr distribution");
-#endif
 
 /*
  * IP initialization: fill in IP protocol switch table.
@@ -407,13 +392,7 @@ ip_init(void)
 
 	/* Initialize various other remaining things. */
 	IPQ_LOCK_INIT();
-#ifdef NETISR2
 	netisr2_register(&ip_nh);
-#else
-	ipintrq.ifq_maxlen = ipqmaxlen;
-	mtx_init(&ipintrq.ifq_mtx, "ip_inq", NULL, MTX_DEF);
-	netisr_register(NETISR_IP, ip_input, &ipintrq, 0);
-#endif
 	ip_ft = flowtable_alloc(ip_output_flowtable_size, FL_PCPU);
 }
 
@@ -424,7 +403,6 @@ ip_fini(void *xtp)
 	callout_stop(&ipport_tick_callout);
 }
 
-#ifdef NETISR2
 /*
  * Calculate a flow ID for an IP packet if one isn't already present; this is
  * a subset of the work done by ip_input() necessary to validate and read the
@@ -473,7 +451,6 @@ bad:
 	m_freem(m);
 	return (NULL);
 }
-#endif
 
 /*
  * Ip input routine.  Checksum and byte swap header.  If fragmented

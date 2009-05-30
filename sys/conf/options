@@ -413,7 +413,6 @@ MBUF_STRESS_TEST
 MROUTING		opt_mrouting.h
 NCP
 NETATALK		opt_atalk.h
-NETISR2			opt_netisr.h
 NFSLOCKD
 RADIX_MPATH		opt_mpath.h
 ROUTETABLES		opt_route.h

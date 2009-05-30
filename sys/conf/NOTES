@@ -512,11 +512,6 @@ options 	HWPMC_HOOKS		# Other necessary kernel hooks
 # NETWORKING OPTIONS
 
 #
-# Support for parallel netisr threads.
-#
-options 	NETISR2
-
-#
 # Protocol families
 #
 options 	INET			#Internet communications protocols

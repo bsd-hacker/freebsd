@@ -66,7 +66,6 @@ __FBSDID("$FreeBSD$");
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_ipsec.h"
-#include "opt_netisr.h"
 #include "opt_route.h"
 
 #include <sys/param.h>
@@ -89,7 +88,6 @@ __FBSDID("$FreeBSD$");
 #include <net/if_dl.h>
 #include <net/route.h>
 #include <net/netisr.h>
-#include <net/netisr2.h>
 #include <net/pfil.h>
 #include <net/vnet.h>
 
@@ -123,7 +121,6 @@ extern struct domain inet6domain;
 
 u_char ip6_protox[IPPROTO_MAX];
 
-#ifdef NETISR2
 static struct netisr_handler ip6_nh = {
 	.nh_name = "ip6",
 	.nh_handler = ip6_input,
@@ -131,9 +128,6 @@ static struct netisr_handler ip6_nh = {
 	.nh_qlimit = IFQ_MAXLEN,
 	.nh_policy = NETISR_POLICY_FLOW,
 };
-#else
-static struct ifqueue ip6intrq;
-#endif
 
 #ifndef VIMAGE
 #ifndef VIMAGE_GLOBALS
@@ -309,14 +303,8 @@ ip6_init(void)
 		printf("%s: WARNING: unable to register pfil hook, "
 			"error %d\n", __func__, i);
 
-#ifdef NETISR2
 	ip6_nh.nh_qlimit = V_ip6qmaxlen;
 	netisr2_register(&ip6_nh);
-#else
-	ip6intrq.ifq_maxlen = V_ip6qmaxlen; /* XXX */
-	mtx_init(&ip6intrq.ifq_mtx, "ip6_inq", NULL, MTX_DEF);
-	netisr_register(NETISR_IPV6, ip6_input, &ip6intrq, 0);
-#endif
 }
 
 static int

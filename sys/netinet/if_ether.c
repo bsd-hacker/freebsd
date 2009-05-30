@@ -41,7 +41,6 @@ __FBSDID("$FreeBSD$");
 #include "opt_inet.h"
 #include "opt_route.h"
 #include "opt_mac.h"
-#include "opt_netisr.h"
 #include "opt_carp.h"
 
 #include <sys/param.h>
@@ -61,7 +60,6 @@ __FBSDID("$FreeBSD$");
 #include <net/if_types.h>
 #include <net/route.h>
 #include <net/netisr.h>
-#include <net/netisr2.h>
 #include <net/if_llc.h>
 #include <net/ethernet.h>
 #include <net/vnet.h>
@@ -118,7 +116,6 @@ static void	arptimer(void *);
 static void	in_arpinput(struct mbuf *);
 #endif
 
-#ifdef NETISR2
 static const struct netisr_handler arp_nh = {
 	.nh_name = "arp",
 	.nh_handler = arpintr,
@@ -126,9 +123,6 @@ static const struct netisr_handler arp_nh = {
 	.nh_qlimit = 50,
 	.nh_policy = NETISR_POLICY_SOURCE,
 };
-#else
-static struct	ifqueue arpintrq;
-#endif
 
 #ifndef VIMAGE_GLOBALS
 static const vnet_modinfo_t vnet_arp_modinfo = {
@@ -835,12 +829,6 @@ arp_init(void)
 	arp_iattach(NULL);
 #endif
 
-#ifdef NETISR2
 	netisr2_register(&arp_nh);
-#else
-	arpintrq.ifq_maxlen = 50;
-	mtx_init(&arpintrq.ifq_mtx, "arp_inq", NULL, MTX_DEF);
-	netisr_register(NETISR_ARP, arpintr, &arpintrq, 0);
-#endif
 }
 SYSINIT(arp, SI_SUB_PROTO_DOMAIN, SI_ORDER_ANY, arp_init, 0);

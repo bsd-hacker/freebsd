@@ -35,8 +35,6 @@
  * protocol layer for access to native mode ATM
  */
 
-#include "opt_netisr.h"
-
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
@@ -49,7 +47,6 @@ __FBSDID("$FreeBSD$");
 
 #include <net/if.h>
 #include <net/netisr.h>
-#include <net/netisr2.h>
 
 #include <netinet/in.h>
 
@@ -91,7 +88,6 @@ static struct domain natmdomain = {
 	.dom_protoswNPROTOSW =	&natmsw[sizeof(natmsw)/sizeof(natmsw[0])],
 };
 
-#ifdef NETISR2
 static struct netisr_handler natm_nh = {
 	.nh_name = "natm",
 	.nh_handler = natmintr,
@@ -99,10 +95,6 @@ static struct netisr_handler natm_nh = {
 	.nh_qlimit = 1000 /* IFQ_MAXLEN */,
 	.nh_policy = NETISR_POLICY_SOURCE,
 };
-#else
-static int natmqmaxlen = 1000 /* IFQ_MAXLEN */;	/* max # of packets on queue */
-static struct ifqueue natmintrq;
-#endif
 
 #ifdef NATM_STAT
 u_int natm_sodropcnt;		/* # mbufs dropped due to full sb */
@@ -116,14 +108,7 @@ natm_init(void)
 {
 	LIST_INIT(&natm_pcbs);
 	NATM_LOCK_INIT();
-#ifdef NETISR2
 	netisr2_register(&natm_nh);
-#else
-	bzero(&natmintrq, sizeof(natmintrq));
-	natmintrq.ifq_maxlen = natmqmaxlen;
-	mtx_init(&natmintrq.ifq_mtx, "natm_inq", NULL, MTX_DEF);
-	netisr_register(NETISR_NATM, natmintr, &natmintrq, 0);
-#endif
 }
 
 DOMAIN_SET(natm);

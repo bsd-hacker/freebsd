@@ -1,3 +1,0 @@
-include GENERIC
-ident NETISR2
-options NETISR2
