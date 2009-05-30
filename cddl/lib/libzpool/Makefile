@@ -51,6 +51,7 @@ CFLAGS+=	-DWANTS_MUTEX_OWNED
 CFLAGS+=	-I${.CURDIR}/../../../lib/libpthread/thread
 CFLAGS+=	-I${.CURDIR}/../../../lib/libpthread/sys
 CFLAGS+=	-I${.CURDIR}/../../../lib/libthr/arch/${MACHINE_ARCH}/include
+CFLAGS+=	-I${.CURDIR}/../../../sys
 
 DPADD=		${LIBPTHREAD} ${LIBZ}
 LDADD=		-lpthread -lz
