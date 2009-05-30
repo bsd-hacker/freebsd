@@ -165,6 +165,14 @@ __FBSDID("$FreeBSD$");
 #define PV_STAT(x)	do { } while (0)
 #endif
 
+#define	CACHE_LINE_FETCH_SIZE	128
+#define	PA_LOCK_PAD		CACHE_LINE_FETCH_SIZE
+
+struct vp_lock {
+	struct mtx vp_lock;
+	unsigned char	pad[(PA_LOCK_PAD - sizeof(struct mtx))];
+};
+
 #define	pa_index(pa)	((pa) >> PDRSHIFT)
 #define	pa_to_pvh(pa)	(&pv_table[pa_index(pa)])
 
@@ -176,7 +184,7 @@ __FBSDID("$FreeBSD$");
 
 #define	PA_LOCK_COUNT	64
 
-struct mtx pa_lock[PA_LOCK_COUNT];
+struct vp_lock pa_lock[PA_LOCK_COUNT];
 struct mtx pv_lock;
 
 struct pmap kernel_pmap_store;
