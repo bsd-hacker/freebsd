@@ -1155,13 +1155,15 @@ vm_page_alloc(vm_object_t object, vm_pindex_t pindex, int req)
 		if (req & VM_ALLOC_ZERO)
 			flags = PG_ZERO;
 	}
+	mtx_unlock(&vm_page_queue_free_mtx);
+
 	if (object == NULL || object->type == OBJT_PHYS)
 		flags |= PG_UNMANAGED;
-	m->flags = flags;
 	if (req & (VM_ALLOC_NOBUSY | VM_ALLOC_NOOBJ))
 		m->oflags = 0;
 	else
 		m->oflags = VPO_BUSY;
+	m->flags = flags;
 	if (req & VM_ALLOC_WIRED) {
 		atomic_add_int(&cnt.v_wire_count, 1);
 		m->wire_count = 1;
@@ -1171,8 +1173,6 @@ vm_page_alloc(vm_object_t object, vm_pindex_t pindex, int req)
 	m->act_count = 0;
 	m->busy = 0;
 	KASSERT(m->dirty == 0, ("vm_page_alloc: free/cache page %p was dirty", m));
-	mtx_unlock(&vm_page_queue_free_mtx);
-
 	if ((req & VM_ALLOC_NOOBJ) == 0)
 		vm_page_insert(m, object, pindex);
 	else
@@ -1543,8 +1543,9 @@ vm_page_wire(vm_page_t m)
 		if ((m->flags & PG_UNMANAGED) == 0)
 			vm_pageq_remove(m);
 		atomic_add_int(&cnt.v_wire_count, 1);
-	}
-	m->wire_count++;
+		m->wire_count = 1;
+	} else 
+		atomic_add_int(&m->wire_count, 1);
 	KASSERT(m->wire_count != 0, ("vm_page_wire: wire_count overflow m=%p", m));
 }
 
@@ -1584,7 +1585,10 @@ vm_page_unwire(vm_page_t m, int activate)
 	if (m->flags & PG_FICTITIOUS)
 		return;
 	if (m->wire_count > 0) {
-		m->wire_count--;
+		if (m->wire_count > 1)
+			atomic_subtract_int(&m->wire_count, 1);
+		else
+			m->wire_count = 0;
 		if (m->wire_count == 0) {
 			atomic_subtract_int(&cnt.v_wire_count, 1);
 			if (m->flags & PG_UNMANAGED) {

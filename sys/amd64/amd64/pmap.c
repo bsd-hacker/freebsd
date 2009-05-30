@@ -618,7 +618,7 @@ pmap_bootstrap(vm_paddr_t *firstaddr)
 
 	/* Setup page locks. */
 	for (i = 0; i < PA_LOCK_COUNT; i++)
-		mtx_init(&pa_lock[i], "page lock", NULL, MTX_DEF | MTX_RECURSE);
+		mtx_init(&pa_lock[i], "page lock", NULL, MTX_DEF | MTX_RECURSE | MTX_DUPOK);
 	mtx_init(&pv_lock, "pv list lock", NULL, MTX_DEF);
 }
 
@@ -1348,7 +1348,7 @@ static __inline int
 pmap_unwire_pte_hold(pmap_t pmap, vm_offset_t va, vm_page_t m, vm_page_t *free)
 {
 
-	--m->wire_count;
+	atomic_subtract_int(&m->wire_count, 1);
 	if (m->wire_count == 0)
 		return _pmap_unwire_pte_hold(pmap, va, m, free);
 	else
@@ -1434,7 +1434,7 @@ pmap_unuse_pt(pmap_t pmap, vm_offset_t va, pd_entry_t ptepde, vm_page_t *free)
 		return 0;
 	KASSERT(ptepde != 0, ("pmap_unuse_pt: ptepde != 0"));
 	mpte = PHYS_TO_VM_PAGE(ptepde & PG_FRAME);
-	return pmap_unwire_pte_hold(pmap, va, mpte, free);
+	return (pmap_unwire_pte_hold(pmap, va, mpte, free));
 }
 
 void
@@ -1561,14 +1561,16 @@ _pmap_allocpte(pmap_t pmap, vm_paddr_t pa, vm_pindex_t ptepindex, int flags)
 			/* Have to allocate a new pdp, recurse */
 			if (_pmap_allocpte(pmap, pa, NUPDE + NUPDPE + pml4index,
 			    flags) == NULL) {
-				--m->wire_count;
+				KASSERT(m->wire_count == 1,
+				    ("wire_count == %d", m->wire_count));
+				m->wire_count = 0;
 				vm_page_free(m);
 				return (NULL);
 			}
 		} else {
 			/* Add reference to pdp page */
 			pdppg = PHYS_TO_VM_PAGE(*pml4 & PG_FRAME);
-			pdppg->wire_count++;
+			atomic_add_int(&pdppg->wire_count, 1);
 		}
 		pdp = (pdp_entry_t *)PHYS_TO_DMAP(*pml4 & PG_FRAME);
 
@@ -1593,7 +1595,9 @@ _pmap_allocpte(pmap_t pmap, vm_paddr_t pa, vm_pindex_t ptepindex, int flags)
 			/* Have to allocate a new pd, recurse */
 			if (_pmap_allocpte(pmap, pa, NUPDE + pdpindex,
 			    flags) == NULL) {
-				--m->wire_count;
+				KASSERT(m->wire_count == 1,
+				    ("wire_count == %d", m->wire_count));
+				m->wire_count = 0;
 				vm_page_free(m);
 				return (NULL);
 			}
@@ -1606,14 +1610,16 @@ _pmap_allocpte(pmap_t pmap, vm_paddr_t pa, vm_pindex_t ptepindex, int flags)
 				/* Have to allocate a new pd, recurse */
 				if (_pmap_allocpte(pmap, pa, NUPDE + pdpindex,
 				    flags) == NULL) {
-					--m->wire_count;
+					KASSERT(m->wire_count == 1,
+					    ("wire_count == %d", m->wire_count));
+					m->wire_count = 0;
 					vm_page_free(m);
 					return (NULL);
 				}
 			} else {
 				/* Add reference to the pd page */
 				pdpg = PHYS_TO_VM_PAGE(*pdp & PG_FRAME);
-				pdpg->wire_count++;
+				atomic_add_int(&pdpg->wire_count, 1);
 			}
 		}
 		pd = (pd_entry_t *)PHYS_TO_DMAP(*pdp & PG_FRAME);
@@ -1641,7 +1647,7 @@ retry:
 	if (pdpe != NULL && (*pdpe & PG_V) != 0) {
 		/* Add a reference to the pd page. */
 		pdpg = PHYS_TO_VM_PAGE(*pdpe & PG_FRAME);
-		pdpg->wire_count++;
+		atomic_add_int(&pdpg->wire_count, 1);
 	} else {
 		/* Allocate a pd page. */
 		ptepindex = pmap_pde_pindex(va);
@@ -1705,7 +1711,7 @@ retry:
 	 */
 	if (pd != NULL && (*pd & PG_V) != 0) {
 		m = PHYS_TO_VM_PAGE(*pd & PG_FRAME);
-		m->wire_count++;
+		atomic_add_int(&m->wire_count, 1);
 	} else {
 		/*
 		 * Here if the pte page isn't mapped, or if it has been
@@ -1745,7 +1751,8 @@ pmap_release(pmap_t pmap)
 	pmap->pm_pml4[DMPML4I] = 0;	/* Direct Map */
 	pmap->pm_pml4[PML4PML4I] = 0;	/* Recursive Mapping */
 
-	m->wire_count--;
+	KASSERT(m->wire_count == 1, ("wire_count == %d", m->wire_count));
+	m->wire_count = 0;
 	atomic_subtract_int(&cnt.v_wire_count, 1);
 	vm_page_free_zero(m);
 	PMAP_LOCK_DESTROY(pmap);
@@ -2010,7 +2017,8 @@ free_pv_entry(pmap_t pmap, pv_entry_t pv)
 	/* entire chunk is free, return it */
 	m = PHYS_TO_VM_PAGE(DMAP_TO_PHYS((vm_offset_t)pc));
 	dump_drop_page(m->phys_addr);
-	m->wire_count--;
+	KASSERT(m->wire_count == 1, ("wire_count == %d", m->wire_count));
+	m->wire_count = 0;
 	mtx_unlock(&pv_lock);
 	vm_page_free(m);
 }
@@ -3080,9 +3088,9 @@ restart:
 		/*
 		 * Remove extra pte reference
 		 */
-		if (mpte)
-			mpte->wire_count--;
-
+		if (mpte) 
+			atomic_subtract_int(&mpte->wire_count, 1);
+		
 		/*
 		 * We might be turning off write access to the page,
 		 * so we go ahead and sense modify status.
@@ -3112,7 +3120,7 @@ restart:
 			om = NULL;
 		}
 		if (mpte != NULL) {
-			mpte->wire_count--;
+			atomic_subtract_int(&mpte->wire_count, 1);
 			KASSERT(mpte->wire_count > 0,
 			    ("pmap_enter: missing reference to page table page,"
 			     " va: 0x%lx", va));
@@ -3229,7 +3237,7 @@ pmap_enter_pde(pmap_t pmap, vm_offset_t va, vm_page_t m, vm_prot_t prot)
 	if ((*pde & PG_V) != 0) {
 		KASSERT(mpde->wire_count > 1,
 		    ("pmap_enter_pde: mpde's wire count is too low"));
-		mpde->wire_count--;
+		atomic_subtract_int(&mpde->wire_count, 1);
 		CTR2(KTR_PMAP, "pmap_enter_pde: failure for va %#lx"
 		    " in pmap %p", va, pmap);
 		return (FALSE);
@@ -3243,6 +3251,7 @@ pmap_enter_pde(pmap_t pmap, vm_offset_t va, vm_page_t m, vm_prot_t prot)
 		 */
 		if (!pmap_pv_insert_pde(pmap, va, VM_PAGE_TO_PHYS(m))) {
 			free = NULL;
+
 			if (pmap_unwire_pte_hold(pmap, va, mpde, &free)) {
 				pmap_invalidate_page(pmap, va);
 				pmap_free_zero_pages(free);
@@ -3360,7 +3369,7 @@ pmap_enter_quick_locked(pmap_t pmap, vm_offset_t va, vm_page_t m,
 		 */
 		ptepindex = pmap_pde_pindex(va);
 		if (mpte && (mpte->pindex == ptepindex)) {
-			mpte->wire_count++;
+			atomic_add_int(&mpte->wire_count, 1);
 		} else {
 			/*
 			 * Get the page directory entry
@@ -3375,7 +3384,7 @@ pmap_enter_quick_locked(pmap_t pmap, vm_offset_t va, vm_page_t m,
 				if (*ptepa & PG_PS)
 					return (NULL);
 				mpte = PHYS_TO_VM_PAGE(*ptepa & PG_FRAME);
-				mpte->wire_count++;
+				atomic_add_int(&mpte->wire_count, 1);
 			} else {
 				pa = VM_PAGE_TO_PHYS(m);
 				mpte = _pmap_allocpte(pmap, pa, ptepindex,
@@ -3397,7 +3406,7 @@ pmap_enter_quick_locked(pmap_t pmap, vm_offset_t va, vm_page_t m,
 	pte = vtopte(va);
 	if (*pte) {
 		if (mpte != NULL) {
-			mpte->wire_count--;
+			atomic_subtract_int(&mpte->wire_count, 1);
 			mpte = NULL;
 		}
 		return (mpte);
@@ -3533,7 +3542,7 @@ retry:
 				pmap->pm_stats.resident_count +=
 				    NBPDR / PAGE_SIZE;
 			} else {
-				pdpg->wire_count--;
+				atomic_subtract_int(&pdpg->wire_count, 1);
 				KASSERT(pdpg->wire_count > 0,
 				    ("pmap_object_init_pt: missing reference "
 				     "to page directory page, va: 0x%lx", va));
@@ -3674,8 +3683,8 @@ pmap_copy(pmap_t dst_pmap, pmap_t src_pmap, vm_offset_t dst_addr, vm_size_t len,
 				*pde = srcptepaddr & ~PG_W;
 				dst_pmap->pm_stats.resident_count +=
 				    NBPDR / PAGE_SIZE;
-			} else
-				dstmpde->wire_count--;
+			} else 
+				atomic_subtract_int(&dstmpde->wire_count, 1);
 			PA_UNLOCK(pa);
 			continue;
 		}
@@ -3994,7 +4003,9 @@ restart:
 			TAILQ_REMOVE(&pmap->pm_pvchunk, pc, pc_list);
 			m = PHYS_TO_VM_PAGE(DMAP_TO_PHYS((vm_offset_t)pc));
 			dump_drop_page(m->phys_addr);
-			m->wire_count--;
+			KASSERT(m->wire_count == 1,
+			    ("wire_count == %d", m->wire_count));
+			m->wire_count = 0;
 			mtx_unlock(&pv_lock);
 			vm_page_free(m);
 		}
