@@ -132,6 +132,7 @@
 #include <sys/sdt.h>
 
 #include <vm/vm_pageout.h>
+#include <libkern/jenkins.h>
 
 static kmutex_t		arc_reclaim_thr_lock;
 static kcondvar_t	arc_reclaim_thr_cv;	/* used to signal reclaim thr */
@@ -625,19 +626,25 @@ static void l2arc_hdr_stat_remove(void);
 static uint64_t
 buf_hash(spa_t *spa, const dva_t *dva, uint64_t birth)
 {
-	uintptr_t spav = (uintptr_t)spa;
-	uint8_t *vdva = (uint8_t *)dva;
-	uint64_t crc = -1ULL;
-	int i;
+	uint32_t hashinput[2 + 4 + (sizeof(uintptr_t)>>2)];
+	int count = 2 + 4 + (sizeof(uintptr_t)>>2);
 
-	ASSERT(zfs_crc64_table[128] == ZFS_CRC64_POLY);
+	hashinput[0] = ((uint32_t *)&birth)[0];
+	hashinput[1] = ((uint32_t *)&birth)[1];
+	hashinput[2] = ((uint32_t *)dva)[0];
 
-	for (i = 0; i < sizeof (dva_t); i++)
-		crc = (crc >> 8) ^ zfs_crc64_table[(crc ^ vdva[i]) & 0xFF];
-
-	crc ^= (spav>>8) ^ birth;
-
-	return (crc);
+	hashinput[3] = ((uint32_t *)dva)[1];
+	hashinput[4] = ((uint32_t *)dva)[2];
+	hashinput[5] = ((uint32_t *)dva)[3];
+	hashinput[6] = ((uint32_t *)&spa)[0];
+#ifdef __LP64__	
+	hashinput[7] = ((uint32_t *)&spa)[1];
+#endif	
+/*
+ * "only" 32-bits, but this will suffice up 16TB of RAM (2^(32+12))
+ *
+ */
+	return (jenkins_hashword(hashinput, count, 0xCAFEBABE));
 }
 
 #define	BUF_EMPTY(buf)						\
