@@ -26,10 +26,7 @@
 
 #ifndef _NET_NETISR_H_
 #define _NET_NETISR_H_
-
-#ifndef _KERNEL
-#error "no user-serviceable parts inside"
-#endif
+#ifdef _KERNEL
 
 /*
  * The netisr (network interrupt service routine) provides a deferred
@@ -152,4 +149,5 @@ void	netisr_sched_poll(void);
 void	netisr_poll(void);
 void	netisr_pollmore(void);
 
+#endif /* !_KERNEL */
 #endif /* !_NET_NETISR_H_ */
