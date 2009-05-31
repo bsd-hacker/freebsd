@@ -36,6 +36,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/kthread.h>
 #include <sys/proc.h>
+#include <sys/eventhandler.h>
 #include <sys/resourcevar.h>
 #include <sys/socket.h>			/* needed by net/if.h		*/
 #include <sys/sockio.h>
@@ -110,6 +111,7 @@ SYSCTL_UINT(_kern_polling, OID_AUTO, burst, CTLFLAG_RD,
 
 static int	netisr_poll_scheduled;
 static int	netisr_pollmore_scheduled;
+static int	poll_shutting_down;
 
 static int poll_burst_max_sysctl(SYSCTL_HANDLER_ARGS)
 {
@@ -261,10 +263,19 @@ struct pollrec {
 static struct pollrec pr[POLL_LIST_LEN];
 
 static void
+poll_shutdown(void *arg, int howto)
+{
+
+	poll_shutting_down = 1;
+}
+
+static void
 init_device_poll(void)
 {
 
 	mtx_init(&poll_mtx, "polling", NULL, MTX_DEF);
+	EVENTHANDLER_REGISTER(shutdown_post_sync, poll_shutdown, NULL,
+	    SHUTDOWN_PRI_LAST);
 }
 SYSINIT(device_poll, SI_SUB_CLOCKS, SI_ORDER_MIDDLE, init_device_poll, NULL);
 
@@ -288,7 +299,7 @@ hardclock_device_poll(void)
 	static struct timeval prev_t, t;
 	int delta;
 
-	if (poll_handlers == 0)
+	if (poll_handlers == 0 || poll_shutting_down)
 		return;
 
 	microuptime(&t);
