@@ -1782,19 +1782,19 @@ cxgb_down_locked(struct adapter *sc)
 	
 	callout_stop(&sc->cxgb_tick_ch);
 	callout_stop(&sc->sge_timer_ch);
+	ADAPTER_UNLOCK(sc);
+
 	callout_drain(&sc->cxgb_tick_ch);
 	callout_drain(&sc->sge_timer_ch);
 	
 	if (sc->tq != NULL) {
 		printf("draining slow intr\n");
-		
 		taskqueue_drain(sc->tq, &sc->slow_intr_task);
 			printf("draining ext intr\n");	
 		taskqueue_drain(sc->tq, &sc->ext_intr_task);
 		printf("draining tick task\n");
 		taskqueue_drain(sc->tq, &sc->tick_task);
 	}
-	ADAPTER_UNLOCK(sc);
 }
 
 static int
