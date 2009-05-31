@@ -122,27 +122,29 @@ SYSCTL_NODE(_net, OID_AUTO, isr, CTLFLAG_RW, 0, "netisr");
  * Three direct dispatch policies are supported:
  *
  * - Always defer: all work is scheduled for a netisr, regardless of context.
- *   (!direct_enable)
+ *   (!direct)
  *
  * - Hybrid: if the executing context allows direct dispatch, and we're
  *   running on the CPU the work would be done on, then direct dispatch if it
  *   wouldn't violate ordering constraints on the workstream.
- *   (direct_enable && !direct_force)
+ *   (direct && !direct_force)
  *
  * - Always direct: if the executing context allows direct dispatch, always
- *   direct dispatch.  (direct_enable && direct_force)
+ *   direct dispatch.  (direct && direct_force)
  *
  * Notice that changing the global policy could lead to short periods of
  * misordered processing, but this is considered acceptable as compared to
  * the complexity of enforcing ordering during policy changes.
  */
 static int	netisr_direct_force = 1;	/* Always direct dispatch. */
+TUNABLE_INT("net.isr.direct_force", &netisr_direct_force);
 SYSCTL_INT(_net_isr, OID_AUTO, direct_force, CTLFLAG_RW,
     &netisr_direct_force, 0, "Force direct dispatch");
 
-static int	netisr_direct_enable = 1;	/* Enable direct dispatch. */
-SYSCTL_INT(_net_isr, OID_AUTO, direct_enable, CTLFLAG_RW,
-    &netisr_direct_enable, 0, "Enable direct dispatch");
+static int	netisr_direct = 1;	/* Enable direct dispatch. */
+TUNABLE_INT("net.isr.direct", &netisr_direct);
+SYSCTL_INT(_net_isr, OID_AUTO, direct, CTLFLAG_RW,
+    &netisr_direct, 0, "Enable direct dispatch");
 
 /*
  * Allow the administrator to limit the number of threads (CPUs) to use for
@@ -270,6 +272,8 @@ static u_int				 nws_array[MAXCPU];
  * CPUs once fully started.
  */
 static u_int				 nws_count;
+SYSCTL_INT(_net_isr, OID_AUTO, numthreads, CTLFLAG_RD,
+    &nws_count, 0, "Number of extant netisr threads.");
 
 /*
  * Per-workstream flags.
@@ -388,7 +392,7 @@ netisr_register(const struct netisr_handler *nhp)
 	for (i = 0; i < MAXCPU; i++) {
 		npwp = &nws[i].nws_work[proto];
 		bzero(npwp, sizeof(*npwp));
-		npwp->nw_qlimit = nhp->nh_qlimit;
+		npwp->nw_qlimit = np[proto].np_qlimit;
 	}
 	NETISR_WUNLOCK();
 }
@@ -862,7 +866,7 @@ netisr_dispatch_src(u_int proto, uintptr_t source, struct mbuf *m)
 	/*
 	 * If direct dispatch is entirely disabled, fall back on queueing.
 	 */
-	if (!netisr_direct_enable)
+	if (!netisr_direct)
 		return (netisr_queue_src(proto, source, m));
 
 	KASSERT(proto < NETISR_MAXPROT,
