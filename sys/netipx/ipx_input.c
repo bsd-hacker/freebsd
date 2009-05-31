@@ -62,7 +62,6 @@
  *	@(#)ipx_input.c
  */
 
-
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
