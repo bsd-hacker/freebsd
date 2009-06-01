@@ -744,7 +744,7 @@ swi_net(void *arg)
 		goto out;
 	nwsp->nws_flags |= NWS_RUNNING;
 	nwsp->nws_flags &= ~NWS_SCHEDULED;
-	while ((bits = nws->nws_pendingbits) != 0) {
+	while ((bits = nwsp->nws_pendingbits) != 0) {
 		while ((prot = ffs(bits)) != 0) {
 			prot--;
 			bits &= ~(1 << prot);
