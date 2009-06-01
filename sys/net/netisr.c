@@ -77,6 +77,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/socket.h>
 #include <sys/sysctl.h>
 #include <sys/systm.h>
+#include <sys/vimage.h>
 
 #ifdef DDB
 #include <ddb/ddb.h>
@@ -697,7 +698,10 @@ netisr_process_workstream_proto(struct netisr_workstream *nwsp, u_int proto)
 		if (local_npw.nw_head == NULL)
 			local_npw.nw_tail = NULL;
 		local_npw.nw_len--;
+		VNET_ASSERT(m->m_pkthdr.rcvif != NULL);
+		CURVNET_SET(m->m_pkthdr.rcvif->if_vnet);
 		np[proto].np_handler(m);
+		CURVNET_RESTORE();
 	}
 	KASSERT(local_npw.nw_len == 0,
 	    ("%s(%u): len %u", __func__, proto, local_npw.nw_len));
@@ -882,13 +886,17 @@ netisr_dispatch_src(u_int proto, uintptr_t source, struct mbuf *m)
 	/*
 	 * If direct dispatch is forced, then unconditionally dispatch
 	 * without a formal CPU selection.  Borrow the current CPU's stats,
-	 * even if there's no worker on it.
+	 * even if there's no worker on it.  In this case we don't update
+	 * nws_flags because all netisr processing will be source ordered due
+	 * to always being forced to directly dispatch.
 	 */
 	if (netisr_direct_force) {
 		nwsp = &nws[curcpu];
 		npwp = &nwsp->nws_work[proto];
+		NWS_LOCK(nwsp);
 		npwp->nw_dispatched++;
 		npwp->nw_handled++;
+		NWS_UNLOCK(nwsp);
 		np[proto].np_handler(m);
 		error = 0;
 		goto out_unlock;
