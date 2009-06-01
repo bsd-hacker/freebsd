@@ -442,7 +442,10 @@ ip_input_m2flow(struct mbuf *m, uintptr_t source)
 		goto bad;
 	}
 	m->m_flags |= M_FLOWID;
-	m->m_pkthdr.flowid = ip->ip_src.s_addr ^ ip->ip_dst.s_addr;
+	m->m_pkthdr.flowid = ((ip->ip_src.s_addr & 0xff000000) >> 24) ^
+	    ((ip->ip_src.s_addr & 0xff0000) >> 16) ^
+	    ((ip->ip_src.s_addr & 0xff00) >> 8) ^
+	    (ip->ip_src.s_addr & 0xff) ^ ip->ip_p;
 	return (m);
 
 bad:
