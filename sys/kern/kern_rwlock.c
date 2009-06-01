@@ -350,7 +350,6 @@ _rw_rlock(struct rwlock *rw, const char *file, int line)
 					    (void *)(v + RW_ONE_READER));
 				break;
 			}
-			cpu_spinwait();
 			continue;
 		}
 		lock_profile_obtain_lock_failed(&rw->lock_object,
@@ -406,20 +405,21 @@ _rw_rlock(struct rwlock *rw, const char *file, int line)
 		v = rw->rw_lock;
 		if (RW_CAN_READ(v)) {
 			turnstile_cancel(ts);
-			cpu_spinwait();
 			continue;
 		}
 
 #ifdef ADAPTIVE_RWLOCKS
 		/*
-		 * If the current owner of the lock is executing on another
-		 * CPU quit the hard path and try to spin.
+		 * The current lock owner might have started executing
+		 * on another CPU (or the lock could have changed
+		 * owners) while we were waiting on the turnstile
+		 * chain lock.  If so, drop the turnstile lock and try
+		 * again.
 		 */
 		if ((v & RW_LOCK_READ) == 0) {
 			owner = (struct thread *)RW_OWNER(v);
 			if (TD_IS_RUNNING(owner)) {
 				turnstile_cancel(ts);
-				cpu_spinwait();
 				continue;
 			}
 		}
@@ -440,7 +440,6 @@ _rw_rlock(struct rwlock *rw, const char *file, int line)
 			if (!atomic_cmpset_ptr(&rw->rw_lock, v,
 			    v | RW_LOCK_READ_WAITERS)) {
 				turnstile_cancel(ts);
-				cpu_spinwait();
 				continue;
 			}
 			if (LOCK_LOG_TEST(&rw->lock_object, 0))
@@ -692,7 +691,6 @@ _rw_wlock_hard(struct rwlock *rw, uintptr_t tid, const char *file, int line)
 			if (!(v & RW_LOCK_WRITE_SPINNER)) {
 				if (!atomic_cmpset_ptr(&rw->rw_lock, v,
 				    v | RW_LOCK_WRITE_SPINNER)) {
-					cpu_spinwait();
 					continue;
 				}
 			}
@@ -714,14 +712,16 @@ _rw_wlock_hard(struct rwlock *rw, uintptr_t tid, const char *file, int line)
 
 #ifdef ADAPTIVE_RWLOCKS
 		/*
-		 * If the current owner of the lock is executing on another
-		 * CPU quit the hard path and try to spin.
+		 * The current lock owner might have started executing
+		 * on another CPU (or the lock could have changed
+		 * owners) while we were waiting on the turnstile
+		 * chain lock.  If so, drop the turnstile lock and try
+		 * again.
 		 */
 		if (!(v & RW_LOCK_READ)) {
 			owner = (struct thread *)RW_OWNER(v);
 			if (TD_IS_RUNNING(owner)) {
 				turnstile_cancel(ts);
-				cpu_spinwait();
 				continue;
 			}
 		}
@@ -744,7 +744,6 @@ _rw_wlock_hard(struct rwlock *rw, uintptr_t tid, const char *file, int line)
 				break;
 			}
 			turnstile_cancel(ts);
-			cpu_spinwait();
 			continue;
 		}
 		/*
@@ -756,7 +755,6 @@ _rw_wlock_hard(struct rwlock *rw, uintptr_t tid, const char *file, int line)
 			if (!atomic_cmpset_ptr(&rw->rw_lock, v,
 			    v | RW_LOCK_WRITE_WAITERS)) {
 				turnstile_cancel(ts);
-				cpu_spinwait();
 				continue;
 			}
 			if (LOCK_LOG_TEST(&rw->lock_object, 0))

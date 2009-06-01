@@ -167,6 +167,7 @@ struct mount {
 	int		mnt_writeopcount;	/* (i) write syscalls pending */
 	int		mnt_kern_flag;		/* (i) kernel only flags */
 	u_int		mnt_flag;		/* (i) flags shared with user */
+	u_int		mnt_xflag;		/* (i) more flags shared with user */
 	u_int		mnt_noasync;		/* (i) # noasync overrides */
 	struct vfsoptlist *mnt_opt;		/* current mount options */
 	struct vfsoptlist *mnt_optnew;		/* new options passed to fs */
@@ -221,7 +222,7 @@ void          __mnt_vnode_markerfree(struct vnode **mvp, struct mount *mp);
 #endif /* _KERNEL */
 
 /*
- * User specifiable flags.
+ * User specifiable flags, stored in mnt_flag.
  */
 #define	MNT_RDONLY	0x00000001	/* read only filesystem */
 #define	MNT_SYNCHRONOUS	0x00000002	/* filesystem written synchronously */
@@ -618,10 +619,8 @@ vfs_statfs_t	__vfs_statfs;
 	({if (*(MP)->mnt_op->vfs_susp_clean != NULL)		\
 	       (*(MP)->mnt_op->vfs_susp_clean)(MP); })
 
-extern int mpsafe_vfs;
-
 #define	VFS_NEEDSGIANT_(MP)						\
-    (!mpsafe_vfs || ((MP) != NULL && ((MP)->mnt_kern_flag & MNTK_MPSAFE) == 0))
+    ((MP) != NULL && ((MP)->mnt_kern_flag & MNTK_MPSAFE) == 0)
 
 #define	VFS_NEEDSGIANT(MP) __extension__				\
 ({									\

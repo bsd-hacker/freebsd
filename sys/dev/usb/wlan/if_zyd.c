@@ -116,10 +116,10 @@ static device_probe_t zyd_match;
 static device_attach_t zyd_attach;
 static device_detach_t zyd_detach;
 
-static usb2_callback_t zyd_intr_read_callback;
-static usb2_callback_t zyd_intr_write_callback;
-static usb2_callback_t zyd_bulk_read_callback;
-static usb2_callback_t zyd_bulk_write_callback;
+static usb_callback_t zyd_intr_read_callback;
+static usb_callback_t zyd_intr_write_callback;
+static usb_callback_t zyd_bulk_read_callback;
+static usb_callback_t zyd_bulk_write_callback;
 
 static struct ieee80211vap *zyd_vap_create(struct ieee80211com *,
 		    const char name[IFNAMSIZ], int unit, int opmode,
@@ -232,7 +232,6 @@ static const struct usb_device_id zyd_devs[] = {
     {USB_VPI(USB_VENDOR_ZYXEL, USB_PRODUCT_ZYXEL_AG225H, ZYD_ZD1211)},
     {USB_VPI(USB_VENDOR_ZYXEL, USB_PRODUCT_ZYXEL_ZYAIRG220, ZYD_ZD1211)},
     {USB_VPI(USB_VENDOR_ZYXEL, USB_PRODUCT_ZYXEL_G200V2, ZYD_ZD1211)},
-    {USB_VPI(USB_VENDOR_ZYXEL, USB_PRODUCT_ZYXEL_G202, ZYD_ZD1211)},
     /* ZYD_ZD1211B */
     {USB_VPI(USB_VENDOR_ACCTON, USB_PRODUCT_ACCTON_SMCWUSBG, ZYD_ZD1211B)},
     {USB_VPI(USB_VENDOR_ACCTON, USB_PRODUCT_ACCTON_ZD1211B, ZYD_ZD1211B)},
@@ -252,6 +251,7 @@ static const struct usb_device_id zyd_devs[] = {
     {USB_VPI(USB_VENDOR_ZCOM, USB_PRODUCT_ZCOM_ZD1211B, ZYD_ZD1211B)},
     {USB_VPI(USB_VENDOR_ZYDAS, USB_PRODUCT_ZYDAS_ZD1211B, ZYD_ZD1211B)},
     {USB_VPI(USB_VENDOR_ZYXEL, USB_PRODUCT_ZYXEL_M202, ZYD_ZD1211B)},
+    {USB_VPI(USB_VENDOR_ZYXEL, USB_PRODUCT_ZYXEL_G202, ZYD_ZD1211B)},
     {USB_VPI(USB_VENDOR_ZYXEL, USB_PRODUCT_ZYXEL_G220V2, ZYD_ZD1211B)},
 };
 
@@ -1877,7 +1877,7 @@ static int
 zyd_get_macaddr(struct zyd_softc *sc)
 {
 	struct usb_device_request req;
-	usb2_error_t error;
+	usb_error_t error;
 
 	req.bmRequestType = UT_READ_VENDOR_DEVICE;
 	req.bRequest = ZYD_READFWDATAREQ;
