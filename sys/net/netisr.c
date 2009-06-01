@@ -820,7 +820,8 @@ netisr_queue_src(u_int proto, uintptr_t source, struct mbuf *m)
 #ifdef NETISR_LOCKING
 	struct rm_priotracker tracker;
 #endif
-	u_int cpuid, error;
+	u_int cpuid;
+	int error;
 
 	KASSERT(proto < NETISR_MAXPROT,
 	    ("%s: invalid proto %u", __func__, proto));
