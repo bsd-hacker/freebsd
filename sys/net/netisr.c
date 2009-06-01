@@ -248,8 +248,6 @@ struct netisr_workstream {
 	u_int		 nws_cpu;		/* CPU pinning. */
 	u_int		 nws_flags;		/* Wakeup flags. */
 	u_int		 nws_pendingbits;	/* Scheduled protocols. */
-	u_int64_t	 nws_wakeupssent;	/* How many times scheduled. */
-	u_int64_t	 nws_wakeups;		/* How many times woken up. */
 
 	/*
 	 * Each protocol has per-workstream data.
@@ -292,11 +290,7 @@ SYSCTL_INT(_net_isr, OID_AUTO, numthreads, CTLFLAG_RD,
 #define	NWS_LOCK(s)		mtx_lock(&(s)->nws_mtx)
 #define	NWS_LOCK_ASSERT(s)	mtx_assert(&(s)->nws_mtx, MA_OWNED)
 #define	NWS_UNLOCK(s)		mtx_unlock(&(s)->nws_mtx)
-#define	NWS_SIGNAL(s) do {					\
-	(s)->nws_wakeupssent++;					\
-	swi_sched((s)->nws_swi_cookie, 0);			\
-} while (0)
-	
+#define	NWS_SIGNAL(s)		swi_sched((s)->nws_swi_cookie, 0)
 
 /*
  * Utility routines for protocols that implement their own mapping of flows
@@ -738,7 +732,6 @@ swi_net(void *arg)
 	NETISR_RLOCK(&tracker);
 #endif
 	NWS_LOCK(nwsp);
-	nwsp->nws_wakeups++;
 	KASSERT(!(nwsp->nws_flags & NWS_RUNNING), ("swi_net: running"));
 	if (nwsp->nws_flags & NWS_DISPATCHING)
 		goto out;
