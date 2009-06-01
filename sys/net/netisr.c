@@ -776,7 +776,8 @@ netisr_queue_workstream(struct netisr_workstream *nwsp, u_int proto,
 		if (npwp->nw_len > npwp->nw_watermark)
 			npwp->nw_watermark = npwp->nw_len;
 		nwsp->nws_pendingbits |= (1 << proto);
-		if (!(nwsp->nws_flags & (NWS_SCHEDULED | NWS_RUNNING))) {
+		if (!(nwsp->nws_flags & 
+		    (NWS_RUNNING | NWS_DISPATCHING | NWS_SCHEDULED))) {
 			nwsp->nws_flags |= NWS_SCHEDULED;
 			*dosignalp = 1;	/* Defer until unlocked. */
 		}
