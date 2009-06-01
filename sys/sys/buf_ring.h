@@ -117,7 +117,6 @@ buf_ring_enqueue(struct buf_ring *br, void *buf)
 	while (br->br_prod_tail != prod_head)
 		cpu_spinwait();
 	br->br_prod_tail = prod_next;
-	mb();
 	critical_exit();
 	return (0);
 }
@@ -154,7 +153,7 @@ buf_ring_dequeue_mc(struct buf_ring *br)
 #ifdef DEBUG_BUFRING
 	br->br_ring[cons_head] = NULL;
 #endif
-	mb();
+	rmb();
 	
 	/*
 	 * If there are other dequeues in progress
@@ -165,7 +164,6 @@ buf_ring_dequeue_mc(struct buf_ring *br)
 		cpu_spinwait();
 
 	br->br_cons_tail = cons_next;
-	mb();
 	critical_exit();
 
 	return (buf);
@@ -196,7 +194,6 @@ buf_ring_dequeue_sc(struct buf_ring *br)
 	
 	br->br_cons_head = cons_next;
 	buf = br->br_ring[cons_head];
-	mb();
 	
 #ifdef DEBUG_BUFRING
 	br->br_ring[cons_head] = NULL;
@@ -207,7 +204,6 @@ buf_ring_dequeue_sc(struct buf_ring *br)
 		    br->br_cons_tail, cons_head);
 #endif
 	br->br_cons_tail = cons_next;
-	mb();
 	critical_exit();
 	return (buf);
 }
@@ -225,7 +221,7 @@ buf_ring_peek(struct buf_ring *br)
 	if ((br->br_lock != NULL) && !mtx_owned(br->br_lock))
 		panic("lock not held on single consumer dequeue");
 #endif	
-	mb();
+	wmb();
 	if (br->br_cons_head == br->br_prod_tail)
 		return (NULL);
 	
