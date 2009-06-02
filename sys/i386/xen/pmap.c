@@ -2630,7 +2630,7 @@ retry:
  *	insert this page into the given map NOW.
  */
 void
-pmap_enter(pmap_t pmap, vm_offset_t va, vm_page_t m,
+pmap_enter(pmap_t pmap, vm_offset_t va, vm_prot_t access, vm_page_t m,
     vm_prot_t prot, boolean_t wired)
 {
 	vm_paddr_t pa;
@@ -2796,7 +2796,9 @@ validate:
 	 * to update the pte.
 	 */
 	if ((origpte & ~(PG_M|PG_A)) != newpte) {
-		if (origpte) {
+		if ((access & VM_PROT_WRITE) != 0)
+			newpte |= PG_M;
+		if (origpte & PG_V) {
 			invlva = FALSE;
 			origpte = *pte;
 			PT_SET_VA(pte, newpte | PG_A, FALSE);
@@ -3434,6 +3436,25 @@ pmap_page_exists_quick(pmap_t pmap, vm_page_t m)
 }
 
 /*
+ * Returns TRUE if the given page is mapped individually or as part of
+ * a 4mpage.  Otherwise, returns FALSE.
+ */
+boolean_t
+pmap_page_is_mapped(vm_page_t m)
+{
+	struct md_page *pvh;
+
+	if ((m->flags & (PG_FICTITIOUS | PG_UNMANAGED)) != 0)
+		return (FALSE);
+	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	if (TAILQ_EMPTY(&m->md.pv_list)) {
+		pvh = pa_to_pvh(VM_PAGE_TO_PHYS(m));
+		return (!TAILQ_EMPTY(&pvh->pv_list));
+	} else
+		return (TRUE);
+}
+
+/*
  * Remove all pages from specified address space
  * this aids process exit speeds.  Also, this code
  * is special cased for current process only, but
@@ -4039,6 +4060,30 @@ pmap_addr_hint(vm_object_t obj, vm_offset_t addr, vm_size_t size)
 
 	addr = (addr + PDRMASK) & ~PDRMASK;
 	return addr;
+}
+
+/*
+ *	Increase the starting virtual address of the given mapping if a
+ *	different alignment might result in more superpage mappings.
+ */
+void
+pmap_align_superpage(vm_object_t object, vm_ooffset_t offset,
+    vm_offset_t *addr, vm_size_t size)
+{
+	vm_offset_t superpage_offset;
+
+	if (size < NBPDR)
+		return;
+	if (object != NULL && (object->flags & OBJ_COLORED) != 0)
+		offset += ptoa(object->pg_color);
+	superpage_offset = offset & PDRMASK;
+	if (size - ((NBPDR - superpage_offset) & PDRMASK) < NBPDR ||
+	    (*addr & PDRMASK) == superpage_offset)
+		return;
+	if ((*addr & PDRMASK) < superpage_offset)
+		*addr = (*addr & ~PDRMASK) + superpage_offset;
+	else
+		*addr = ((*addr + PDRMASK) & ~PDRMASK) + superpage_offset;
 }
 
 #if defined(PMAP_DEBUG)

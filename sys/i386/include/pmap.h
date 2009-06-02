@@ -185,9 +185,7 @@ extern pd_entry_t PTDpde[];
 extern pdpt_entry_t *IdlePDPT;
 #endif
 extern pd_entry_t *IdlePTD;	/* physical address of "Idle" state directory */
-#endif
 
-#ifdef _KERNEL
 /*
  * virtual address to page table entry and
  * to physical address.
@@ -283,7 +281,10 @@ pmap_kextract(vm_offset_t va)
 	return pa;
 }
 
-#ifdef PAE
+#define PT_UPDATES_FLUSH()
+#endif
+
+#if defined(PAE) && !defined(XEN)
 
 #define	pde_cmpset(pdep, old, new) \
 				atomic_cmpset_64((pdep), (old), (new))
