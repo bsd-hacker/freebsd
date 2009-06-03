@@ -2385,7 +2385,7 @@ t3_sge_alloc_qset(adapter_t *sc, u_int id, int nports, int irq_vec_idx,
 		  const struct qset_params *p, int ntxq, struct port_info *pi)
 {
 	struct sge_qset *q = &sc->sge.qs[id];
-	int i, header_size, ret = 0;
+	int i, ret = 0;
 
 	for (i = 0; i < SGE_TXQ_PER_SET; i++) {
 		
@@ -2470,26 +2470,24 @@ t3_sge_alloc_qset(adapter_t *sc, u_int id, int nports, int irq_vec_idx,
 	q->rspq.cidx = 0;
 	q->rspq.size = p->rspq_size;
 
-
-	header_size = sizeof(struct mbuf) + sizeof(uint32_t);
 	q->txq[TXQ_ETH].stop_thres = nports *
 	    flits_to_desc(sgl_len(TX_MAX_SEGS + 1) + 3);
 
-	q->fl[0].buf_size = (MCLBYTES - header_size);
+	q->fl[0].buf_size = MCLBYTES;
 	q->fl[0].zone = zone_clust;
 	q->fl[0].type = EXT_CLUSTER;
 #if __FreeBSD_version > 800000
 	if (cxgb_use_16k_clusters) {		
-		q->fl[1].buf_size = MJUM16BYTES - header_size;
+		q->fl[1].buf_size = MJUM16BYTES;
 		q->fl[1].zone = zone_jumbo16;
 		q->fl[1].type = EXT_JUMBO16;
 	} else {
-		q->fl[1].buf_size = MJUM9BYTES - header_size;
+		q->fl[1].buf_size = MJUM9BYTES;
 		q->fl[1].zone = zone_jumbo9;
 		q->fl[1].type = EXT_JUMBO9;		
 	}
 #else
-	q->fl[1].buf_size = MJUMPAGESIZE - header_size;
+	q->fl[1].buf_size = MJUMPAGESIZE;
 	q->fl[1].zone = zone_jumbop;
 	q->fl[1].type = EXT_JUMBOP;
 #endif
