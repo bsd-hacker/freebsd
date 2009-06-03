@@ -63,7 +63,6 @@ int
 busdma_map_sg_collapse(struct mbuf **m, bus_dma_segment_t *segs, int *nsegs)
 {
 	struct mbuf *n = *m;
-	struct mbuf *marray[TX_MAX_SEGS];
 	int seg_count, defragged = 0, err = 0;
 	bus_dma_segment_t *psegs;
 	
@@ -117,7 +116,7 @@ err_out:
 	return (err);
 }
 
-int 
+void
 busdma_map_sg_vec(struct mbuf **m, bus_dma_segment_t *segs, int pkt_count)
 {
 	struct mbuf *m0;
@@ -126,6 +125,5 @@ busdma_map_sg_vec(struct mbuf **m, bus_dma_segment_t *segs, int pkt_count)
 	for (m0 = *m, i = 0; i < pkt_count; segs++, i++, m0 = m0->m_nextpkt)
 		busdma_map_mbuf_fast(m0, segs);
 
-	return (0);
 }
 
