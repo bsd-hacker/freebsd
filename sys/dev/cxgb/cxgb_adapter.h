@@ -37,7 +37,6 @@ $FreeBSD$
 
 #include <sys/lock.h>
 #include <sys/mutex.h>
-#include <sys/sx.h>
 #include <sys/rman.h>
 #include <sys/mbuf.h>
 #include <sys/socket.h>
@@ -82,17 +81,6 @@ extern int cxgb_debug;
 		mtx_destroy((lock));					\
 	} while (0)
 
-#define SX_INIT(lock, lockname) \
-	do { \
-		printf("initializing %s at %s:%d\n", lockname, __FILE__, __LINE__); \
-		sx_init((lock), lockname);		\
-	} while (0)
-
-#define SX_DESTROY(lock) \
-	do { \
-		printf("destroying %s at %s:%d\n", (lock)->lock_object.lo_name, __FILE__, __LINE__); \
-		sx_destroy((lock));					\
-	} while (0)
 #else
 #define MTX_INIT mtx_init
 #define MTX_DESTROY mtx_destroy
@@ -109,11 +97,7 @@ struct port_info {
 	struct cmac	mac;
 	struct link_config link_config;
 	struct ifmedia	media;
-#ifdef USE_SX	
-	struct sx	lock;
-#else	
 	struct mtx	lock;
-#endif	
 	uint8_t		port_id;
 	uint8_t		tx_chan;
 	uint8_t		txpkt_intf;
@@ -385,11 +369,7 @@ struct adapter {
 	char                    fw_version[64];
 	uint32_t                open_device_map;
 	uint32_t                registered_device_map;
-#ifdef USE_SX
-	struct sx               lock;
-#else	
 	struct mtx              lock;
-#endif	
 	driver_intr_t           *cxgb_intr;
 	int                     msi_count;
 
@@ -413,19 +393,6 @@ struct t3_rx_mode {
 #define ELMR_UNLOCK(adapter)	mtx_unlock(&(adapter)->elmer_lock)
 
 
-#ifdef USE_SX
-#define PORT_LOCK(port)		     sx_xlock(&(port)->lock);
-#define PORT_UNLOCK(port)	     sx_xunlock(&(port)->lock);
-#define PORT_LOCK_INIT(port, name)   SX_INIT(&(port)->lock, name)
-#define PORT_LOCK_DEINIT(port)       SX_DESTROY(&(port)->lock)
-#define PORT_LOCK_ASSERT_OWNED(port) sx_assert(&(port)->lock, SA_LOCKED)
-
-#define ADAPTER_LOCK(adap)	           sx_xlock(&(adap)->lock);
-#define ADAPTER_UNLOCK(adap)	           sx_xunlock(&(adap)->lock);
-#define ADAPTER_LOCK_INIT(adap, name)      SX_INIT(&(adap)->lock, name)
-#define ADAPTER_LOCK_DEINIT(adap)          SX_DESTROY(&(adap)->lock)
-#define ADAPTER_LOCK_ASSERT_NOTOWNED(adap) sx_assert(&(adap)->lock, SA_UNLOCKED)
-#else
 #define PORT_LOCK(port)		     mtx_lock(&(port)->lock);
 #define PORT_UNLOCK(port)	     mtx_unlock(&(port)->lock);
 #define PORT_LOCK_INIT(port, name)   mtx_init(&(port)->lock, name, 0, MTX_DEF)
@@ -437,7 +404,6 @@ struct t3_rx_mode {
 #define ADAPTER_LOCK_INIT(adap, name) mtx_init(&(adap)->lock, name, 0, MTX_DEF)
 #define ADAPTER_LOCK_DEINIT(adap) mtx_destroy(&(adap)->lock)
 #define ADAPTER_LOCK_ASSERT_NOTOWNED(adap) mtx_assert(&(adap)->lock, MO_NOTOWNED)
-#endif
 
 
 static __inline uint32_t
