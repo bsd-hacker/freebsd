@@ -677,11 +677,12 @@ cxgb_free(struct adapter *sc)
 		    sc->msix_regs_res);
 	}
 
+	t3_free_sge_resources(sc);
 	t3_sge_deinit_sw(sc);
+
 	/*
 	 * Wait for last callout
 	 */
-	
 	DELAY(hz*100);
 
 	for (i = 0; i < (sc)->params.nports; ++i) {

@@ -232,7 +232,6 @@ struct sge_txq {
 	bus_addr_t	phys_addr;
 	struct task     qresume_task;
 	struct task     qreclaim_task;
-	struct port_info *port;
 	uint32_t	cntxt_id;
 	uint64_t	stops;
 	uint64_t	restarts;
@@ -250,10 +249,7 @@ struct sge_txq {
 	uint32_t	txq_dump_start;
 	uint32_t	txq_dump_count;
 	unsigned long   txq_frees;
-	struct mtx      lock;
 	struct sg_ent  txq_sgl[TX_MAX_SEGS / 2 + 1];
-	#define TXQ_NAME_LEN  32
-	char            lockbuf[TXQ_NAME_LEN];
 };
      	
 
@@ -284,7 +280,7 @@ struct sge_qset {
 	int                     idx; /* qset # */
 	int                     qs_flags;
 	struct cv		qs_cv;
-	struct mtx		qs_mtx;
+	struct mtx		lock;
 #define QS_NAME_LEN 32
 	char                    namebuf[QS_NAME_LEN];
 };

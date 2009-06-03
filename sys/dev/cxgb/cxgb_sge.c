@@ -198,10 +198,10 @@ static uint8_t flit_desc_map[] = {
 #endif
 };
 
-#define	TXQ_LOCK_ASSERT(qs)	mtx_assert(&(qs)->txq[TXQ_ETH].lock, MA_OWNED)
-#define	TXQ_TRYLOCK(qs)		mtx_trylock(&(qs)->txq[TXQ_ETH].lock)	
-#define	TXQ_LOCK(qs)		mtx_lock(&(qs)->txq[TXQ_ETH].lock)	
-#define	TXQ_UNLOCK(qs)		mtx_unlock(&(qs)->txq[TXQ_ETH].lock)	
+#define	TXQ_LOCK_ASSERT(qs)	mtx_assert(&(qs)->lock, MA_OWNED)
+#define	TXQ_TRYLOCK(qs)		mtx_trylock(&(qs)->lock)	
+#define	TXQ_LOCK(qs)		mtx_lock(&(qs)->lock)	
+#define	TXQ_UNLOCK(qs)		mtx_unlock(&(qs)->lock)	
 #define	TXQ_RING_EMPTY(qs)	drbr_empty((qs)->port->ifp, (qs)->txq[TXQ_ETH].txq_mr)
 #define	TXQ_RING_DEQUEUE(qs)	drbr_dequeue((qs)->port->ifp, (qs)->txq[TXQ_ETH].txq_mr)
 #define	CXGB_TX_TIMEOUT		5
@@ -222,19 +222,24 @@ static void sge_txq_reclaim_handler(void *arg, int ncount);
  *	queue's lock held.
  */
 static __inline int
-reclaim_completed_tx_(struct sge_txq *q, int reclaim_min)
+reclaim_completed_tx(struct sge_qset *qs, int reclaim_min, int queue)
 {
+	struct sge_txq *q = &qs->txq[queue];
+      
 	int reclaim = desc_reclaimable(q);
 
 	if (reclaim < reclaim_min)
 		return (0);
 	
-	mtx_assert(&q->lock, MA_OWNED);
+	mtx_assert(&qs->lock, MA_OWNED);
 	if (reclaim > 0) {
 		t3_free_tx_desc(q, reclaim);
 		q->cleaned += reclaim;
 		q->in_use -= reclaim;
-	} 
+	}
+	if (isset(&qs->txq_stopped, TXQ_ETH))
+                clrbit(&qs->txq_stopped, TXQ_ETH);
+
 	return (reclaim);
 }
 
@@ -872,13 +877,7 @@ static __inline void
 sge_txq_reclaim_(struct sge_txq *txq, int force)
 {
 
-	if (desc_reclaimable(txq) < 16)
-		return;
-	if (mtx_trylock(&txq->lock) == 0) 
-		return;
-	reclaim_completed_tx_(txq, 16);
-	mtx_unlock(&txq->lock);
-
+	panic("unimplemented");
 }
 
 static void
@@ -1284,8 +1283,7 @@ t3_encap(struct sge_qset *qs, struct mbuf **m, int count)
 		tso_info = V_LSO_MSS(m0->m_pkthdr.tso_segsz);
 #endif
 	if (count > 1) {
-		if ((err = busdma_map_sg_vec(m, segs, count)))
-			return (err);
+		busdma_map_sg_vec(m, segs, count);
 		nsegs = count;
 	} else if ((err = busdma_map_sg_collapse(&m0, segs, &nsegs))) {
 		if (cxgb_debug)
@@ -1509,6 +1507,8 @@ cxgb_transmit_locked(struct ifnet *ifp, struct sge_qset *qs, struct mbuf *m)
 	int error, count = 1;
 
 	TXQ_LOCK_ASSERT(qs);
+	reclaim_completed_tx(qs, (TX_ETH_Q_SIZE>>3), TXQ_ETH);
+
 	if ((!pi->link_config.link_ok) /* check others */) {
 		error = drbr_enqueue(ifp, br, m);
 		return (error);
@@ -1719,11 +1719,12 @@ immediate(const struct mbuf *m)
  *	descriptor and have no page fragments.
  */
 static int
-ctrl_xmit(adapter_t *adap, struct sge_txq *q, struct mbuf *m)
+ctrl_xmit(adapter_t *adap, struct sge_qset *qs, struct mbuf *m)
 {
 	int ret;
 	struct work_request_hdr *wrp = mtod(m, struct work_request_hdr *);
-
+	struct sge_txq *q = &qs->txq[TXQ_CTRL];
+	
 	if (__predict_false(!immediate(m))) {
 		m_freem(m);
 		return 0;
@@ -1732,13 +1733,13 @@ ctrl_xmit(adapter_t *adap, struct sge_txq *q, struct mbuf *m)
 	wrp->wrh_hi |= htonl(F_WR_SOP | F_WR_EOP);
 	wrp->wrh_lo = htonl(V_WR_TID(q->token));
 
-	mtx_lock(&q->lock);
+	TXQ_LOCK(qs);
 again:	reclaim_completed_tx_imm(q);
 
 	ret = check_desc_avail(adap, q, m, 1, TXQ_CTRL);
 	if (__predict_false(ret)) {
 		if (ret == 1) {
-			mtx_unlock(&q->lock);
+			TXQ_UNLOCK(qs);
 			log(LOG_ERR, "no desc available\n");
 			return (ENOSPC);
 		}
@@ -1751,8 +1752,7 @@ again:	reclaim_completed_tx_imm(q);
 		q->pidx = 0;
 		q->gen ^= 1;
 	}
-	mtx_unlock(&q->lock);
-	wmb();
+	TXQ_UNLOCK(qs);
 	t3_write_reg(adap, A_SG_KDOORBELL,
 		     F_SELEGRCNTX | V_EGRCNTX(q->cntxt_id));
 	return (0);
@@ -1775,7 +1775,7 @@ restart_ctrlq(void *data, int npending)
 
 	log(LOG_WARNING, "Restart_ctrlq in_use=%d\n", q->in_use);
 	
-	mtx_lock(&q->lock);
+	TXQ_LOCK(qs);
 again:	reclaim_completed_tx_imm(q);
 
 	while (q->in_use < q->size &&
@@ -1791,15 +1791,13 @@ again:	reclaim_completed_tx_imm(q);
 	}
 	if (!mbufq_empty(&q->sendq)) {
 		setbit(&qs->txq_stopped, TXQ_CTRL);
-		smp_mb();
 
 		if (should_restart_tx(q) &&
 		    test_and_clear_bit(TXQ_CTRL, &qs->txq_stopped))
 			goto again;
 		q->stops++;
 	}
-	mtx_unlock(&q->lock);
-	wmb();
+	TXQ_UNLOCK(qs);
 	t3_write_reg(adap, A_SG_KDOORBELL,
 		     F_SELEGRCNTX | V_EGRCNTX(q->cntxt_id));
 }
@@ -1811,7 +1809,7 @@ again:	reclaim_completed_tx_imm(q);
 int
 t3_mgmt_tx(struct adapter *adap, struct mbuf *m)
 {
-	return ctrl_xmit(adap, &adap->sge.qs[0].txq[TXQ_CTRL], m);
+	return ctrl_xmit(adap, &adap->sge.qs[0], m);
 }
 
 
@@ -1857,6 +1855,7 @@ t3_free_qset(adapter_t *sc, struct sge_qset *q)
 		}
 	}
 
+	MTX_DESTROY(&q->lock);
 	for (i = 0; i < SGE_TXQ_PER_SET; i++) {
 		if (q->txq[i].desc) {
 			mtx_lock_spin(&sc->sge.reg_lock);
@@ -1868,7 +1867,6 @@ t3_free_qset(adapter_t *sc, struct sge_qset *q)
 					q->txq[i].desc_map);
 			bus_dma_tag_destroy(q->txq[i].desc_tag);
 			bus_dma_tag_destroy(q->txq[i].entry_tag);
-			MTX_DESTROY(&q->txq[i].lock);
 		}
 		if (q->txq[i].sdesc) {
 			free(q->txq[i].sdesc, M_DEVBUF);
@@ -1905,9 +1903,6 @@ t3_free_sge_resources(adapter_t *sc)
 {
 	int i, nqsets;
 	
-#ifdef IFNET_MULTIQUEUE
-	panic("%s should not be called when IFNET_MULTIQUEUE is defined", __FUNCTION__);
-#endif		
 	for (nqsets = i = 0; i < (sc)->params.nports; i++) 
 		nqsets += sc->port[i].nqsets;
 
@@ -2146,11 +2141,12 @@ calc_tx_descs_ofld(struct mbuf *m, unsigned int nsegs)
  *	Send an offload packet through an SGE offload queue.
  */
 static int
-ofld_xmit(adapter_t *adap, struct sge_txq *q, struct mbuf *m)
+ofld_xmit(adapter_t *adap, struct sge_qset *qs, struct mbuf *m)
 {
 	int ret, nsegs;
 	unsigned int ndesc;
 	unsigned int pidx, gen;
+	struct sge_txq *q = &qs->txq[TXQ_OFLD];
 	bus_dma_segment_t segs[TX_MAX_SEGS], *vsegs;
 	struct tx_sw_desc *stx;
 
@@ -2162,15 +2158,15 @@ ofld_xmit(adapter_t *adap, struct sge_txq *q, struct mbuf *m)
 	stx = &q->sdesc[q->pidx];
 	KASSERT(stx->mi.mi_base == NULL, ("mi_base set"));
 	
-	mtx_lock(&q->lock);
-again:	reclaim_completed_tx_(q, 16);
+	TXQ_LOCK(qs);
+again:	reclaim_completed_tx(qs, 16, TXQ_OFLD);
 	ret = check_desc_avail(adap, q, m, ndesc, TXQ_OFLD);
 	if (__predict_false(ret)) {
 		if (ret == 1) {
 			printf("no ofld desc avail\n");
 			
 			m_set_priority(m, ndesc);     /* save for restart */
-			mtx_unlock(&q->lock);
+			TXQ_UNLOCK(qs);
 			return (EINTR);
 		}
 		goto again;
@@ -2190,7 +2186,7 @@ again:	reclaim_completed_tx_(q, 16);
 		  ndesc, pidx, skb->len, skb->len - skb->data_len,
 		  skb_shinfo(skb)->nr_frags);
 #endif
-	mtx_unlock(&q->lock);
+	TXQ_UNLOCK(qs);
 
 	write_ofld_wr(adap, m, q, pidx, gen, ndesc, segs, nsegs);
 	check_ring_tx_db(adap, q);
@@ -2214,8 +2210,8 @@ restart_offloadq(void *data, int npending)
 	struct tx_sw_desc *stx = &q->sdesc[q->pidx];
 	int nsegs, cleaned;
 		
-	mtx_lock(&q->lock);
-again:	cleaned = reclaim_completed_tx_(q, 16);
+	TXQ_LOCK(qs);
+again:	cleaned = reclaim_completed_tx(qs, 16, TXQ_OFLD);
 
 	while ((m = mbufq_peek(&q->sendq)) != NULL) {
 		unsigned int gen, pidx;
@@ -2243,16 +2239,15 @@ again:	cleaned = reclaim_completed_tx_(q, 16);
 		
 		(void)mbufq_dequeue(&q->sendq);
 		busdma_map_mbufs(&m, q, stx, segs, &nsegs);
-		mtx_unlock(&q->lock);
+		TXQ_UNLOCK(qs);
 		write_ofld_wr(adap, m, q, pidx, gen, ndesc, segs, nsegs);
-		mtx_lock(&q->lock);
+		TXQ_LOCK(qs);
 	}
-	mtx_unlock(&q->lock);
-	
 #if USE_GTS
 	set_bit(TXQ_RUNNING, &q->flags);
 	set_bit(TXQ_LAST_PKT_DB, &q->flags);
 #endif
+	TXQ_UNLOCK(qs);
 	wmb();
 	t3_write_reg(adap, A_SG_KDOORBELL,
 		     F_SELEGRCNTX | V_EGRCNTX(q->cntxt_id));
@@ -2300,9 +2295,9 @@ t3_offload_tx(struct t3cdev *tdev, struct mbuf *m)
 	struct sge_qset *qs = &adap->sge.qs[queue_set(m)];
 
 	if (__predict_false(is_ctrl_pkt(m))) 
-		return ctrl_xmit(adap, &qs->txq[TXQ_CTRL], m);
+		return ctrl_xmit(adap, qs, m);
 
-	return ofld_xmit(adap, &qs->txq[TXQ_OFLD], m);
+	return ofld_xmit(adap, qs, m);
 }
 
 /**
@@ -2394,7 +2389,7 @@ t3_sge_alloc_qset(adapter_t *sc, u_int id, int nports, int irq_vec_idx,
 	for (i = 0; i < SGE_TXQ_PER_SET; i++) {
 		
 		if ((q->txq[i].txq_mr = buf_ring_alloc(cxgb_txq_buf_ring_size,
-			    M_DEVBUF, M_WAITOK, &q->txq[i].lock)) == NULL) {
+			    M_DEVBUF, M_WAITOK, &q->lock)) == NULL) {
 			device_printf(sc->dev, "failed to allocate mbuf ring\n");
 			goto err;
 		}
@@ -2454,12 +2449,9 @@ t3_sge_alloc_qset(adapter_t *sc, u_int id, int nports, int irq_vec_idx,
 		mbufq_init(&q->txq[i].sendq);
 		q->txq[i].gen = 1;
 		q->txq[i].size = p->txq_size[i];
-		snprintf(q->txq[i].lockbuf, TXQ_NAME_LEN, "t3 txq lock %d:%d:%d",
-		    device_get_unit(sc->dev), irq_vec_idx, i);
-		MTX_INIT(&q->txq[i].lock, q->txq[i].lockbuf, NULL, MTX_DEF);
 	}
-
-	q->txq[TXQ_ETH].port = pi;
+	MTX_INIT(&q->lock, q->namebuf, NULL, MTX_DEF);
+	q->port = pi;
 	
 	TASK_INIT(&q->txq[TXQ_OFLD].qresume_task, 0, restart_offloadq, q);
 	TASK_INIT(&q->txq[TXQ_CTRL].qresume_task, 0, restart_ctrlq, q);
@@ -3050,11 +3042,8 @@ t3_intr_msix(void *data)
 	struct sge_qset *qs = data;
 	adapter_t *adap = qs->port->adapter;
 	struct sge_rspq *rspq = &qs->rspq;
-#ifndef IFNET_MULTIQUEUE
+
 	mtx_lock(&rspq->lock);
-#else	
-	if (mtx_trylock(&rspq->lock)) 
-#endif
 	{
 		
 		if (process_responses_gts(adap, rspq) == 0)
