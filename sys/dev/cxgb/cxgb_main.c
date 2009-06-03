@@ -1676,30 +1676,6 @@ cxgb_up(struct adapter *sc)
 {
 	int err = 0;
 
-	if ((sc->flags & FULL_INIT_DONE) == 0) {
-
-		if ((sc->flags & FW_UPTODATE) == 0)
-			if ((err = upgrade_fw(sc)))
-				goto out;
-		if ((sc->flags & TPS_UPTODATE) == 0)
-			if ((err = update_tpsram(sc)))
-				goto out;
-		err = t3_init_hw(sc, 0);
-		if (err)
-			goto out;
-
-		t3_set_reg_field(sc, A_TP_PARA_REG5, 0, F_RXDDPOFFINIT);
-		t3_write_reg(sc, A_ULPRX_TDDP_PSZ, V_HPZ0(PAGE_SHIFT - 12));
-
-		err = setup_sge_qsets(sc);
-		if (err)
-			goto out;
-
-		setup_rss(sc);
-		t3_add_configured_sysctls(sc);
-		sc->flags |= FULL_INIT_DONE;
-	}
-
 	t3_intr_clear(sc);
 
 	/* If it's MSI or INTx, allocate a single interrupt for everything */
@@ -1863,12 +1839,47 @@ offload_close(struct t3cdev *tdev)
 	return (0);
 }
 
+static int
+cxgb_first_init(struct adapter *sc)
+{
+	int err = 0;
+
+	if ((sc->flags & FW_UPTODATE) == 0)
+		if ((err = upgrade_fw(sc)))
+			goto out;
+	if ((sc->flags & TPS_UPTODATE) == 0)
+		if ((err = update_tpsram(sc)))
+			goto out;
+	err = t3_init_hw(sc, 0);
+	if (err)
+		goto out;
+
+	t3_set_reg_field(sc, A_TP_PARA_REG5, 0, F_RXDDPOFFINIT);
+	t3_write_reg(sc, A_ULPRX_TDDP_PSZ, V_HPZ0(PAGE_SHIFT - 12));
+
+	err = setup_sge_qsets(sc);
+	if (err)
+		goto out;
+
+	ADAPTER_LOCK(sc);
+	setup_rss(sc);
+	t3_add_configured_sysctls(sc);
+	sc->flags |= FULL_INIT_DONE;
+	ADAPTER_UNLOCK(sc);
+out:
+	return (err);
+}
 
 static void
 cxgb_init(void *arg)
 {
 	struct port_info *p = arg;
-
+	struct adapter *sc = p->adapter;
+	
+	if (((sc->flags & FULL_INIT_DONE) == 0) &&
+	    (cxgb_first_init(sc)))
+		return;
+		
 	PORT_LOCK(p);
 	cxgb_init_locked(p);
 	PORT_UNLOCK(p);
