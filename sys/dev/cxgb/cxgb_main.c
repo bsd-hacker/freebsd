@@ -99,6 +99,7 @@ static void cxgb_tick_handler(void *, int);
 static void cxgb_down_locked(struct adapter *sc);
 static void cxgb_tick(void *);
 static void setup_rss(adapter_t *sc);
+static void cxgb_release(struct adapter *sc);
 
 /* Attachment glue for the PCI controller end of the device.  Each port of
  * the device is attached separately, as defined later.
@@ -661,6 +662,7 @@ cxgb_free(struct adapter *sc)
  * drops the lock
  */
 	cxgb_down_locked(sc);
+	cxgb_release(sc);
 	
 #ifdef MSI_SUPPORTED
 	if (sc->flags & (USING_MSI | USING_MSIX)) {
@@ -1038,7 +1040,7 @@ cxgb_port_detach(device_t dev)
 	if (p->ifp->if_drv_flags & IFF_DRV_RUNNING) 
 		cxgb_stop_locked(p);
 	PORT_UNLOCK(p);
-	
+
 	ether_ifdetach(p->ifp);
 	printf("waiting for callout to stop ...");
 	DELAY(1000000);
@@ -1697,17 +1699,17 @@ cxgb_up(struct adapter *sc)
 	return (err);
 }
 
-
-/*
- * Release resources when all the ports and offloading have been stopped.
- */
 static void
-cxgb_down_locked(struct adapter *sc)
+cxgb_release(struct adapter *sc)
 {
+	ADAPTER_LOCK(sc);
+	if (sc->flags & TEARDOWN_IN_PROGRESS) {
+		ADAPTER_UNLOCK(sc);
+		return;
+	}
+	sc->flags |= TEARDOWN_IN_PROGRESS;
+	ADAPTER_UNLOCK(sc);
 	
-	t3_sge_stop(sc);
-	t3_intr_disable(sc);
-
 	if (sc->intr_tag != NULL) {
 		bus_teardown_intr(sc->dev, sc->irq_res, sc->intr_tag);
 		sc->intr_tag = NULL;
@@ -1722,14 +1724,7 @@ cxgb_down_locked(struct adapter *sc)
 	
 	if (sc->flags & USING_MSIX) 
 		cxgb_teardown_msix(sc);
-	
-	callout_stop(&sc->cxgb_tick_ch);
-	callout_stop(&sc->sge_timer_ch);
-	ADAPTER_UNLOCK(sc);
 
-	callout_drain(&sc->cxgb_tick_ch);
-	callout_drain(&sc->sge_timer_ch);
-	
 	if (sc->tq != NULL) {
 		printf("draining slow intr\n");
 		taskqueue_drain(sc->tq, &sc->slow_intr_task);
@@ -1738,6 +1733,26 @@ cxgb_down_locked(struct adapter *sc)
 		printf("draining tick task\n");
 		taskqueue_drain(sc->tq, &sc->tick_task);
 	}
+	
+	ADAPTER_LOCK(sc);
+	sc->flags &= ~(TEARDOWN_IN_PROGRESS|INTR_INIT_DONE);
+	ADAPTER_UNLOCK(sc);
+}
+
+/*
+ * Release resources when all the ports and offloading have been stopped.
+ */
+static void
+cxgb_down_locked(struct adapter *sc)
+{
+	
+	t3_sge_stop(sc);
+	t3_intr_disable(sc);
+
+	callout_stop(&sc->cxgb_tick_ch);
+	callout_stop(&sc->sge_timer_ch);
+	ADAPTER_UNLOCK(sc);
+
 }
 
 static int
@@ -1855,6 +1870,10 @@ cxgb_intr_init(struct adapter *sc)
 	int err = 0;
 
 	ADAPTER_LOCK(sc);
+	if (sc->flags & (INIT_IN_PROGRESS|TEARDOWN_IN_PROGRESS)) {
+		ADAPTER_UNLOCK(sc);
+		return (EINPROGRESS);
+	}	
 	sc->flags |= INIT_IN_PROGRESS;
 	ADAPTER_UNLOCK(sc);
 
@@ -2100,10 +2119,12 @@ cxgb_ioctl(struct ifnet *ifp, unsigned long command, caddr_t data)
 			} else
 				cxgb_init_locked(p);
 			p->if_flags = ifp->if_flags;
-		} else if (ifp->if_drv_flags & IFF_DRV_RUNNING)
+			PORT_UNLOCK(p);
+		} else if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
 			cxgb_stop_locked(p);
-				
-		PORT_UNLOCK(p);
+			PORT_UNLOCK(p);
+			cxgb_release(p->adapter);
+		}
 		break;
 	case SIOCADDMULTI:
 	case SIOCDELMULTI:

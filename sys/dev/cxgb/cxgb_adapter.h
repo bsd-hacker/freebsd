@@ -129,6 +129,7 @@ enum {				/* adapter flags */
 	TP_PARITY_INIT  = (1 << 8),
 	INIT_IN_PROGRESS = (1 << 9),
 	INTR_INIT_DONE	= (1 << 10),
+	TEARDOWN_IN_PROGRESS = (1 << 11),
 };
 
 #define FL_Q_SIZE	4096
