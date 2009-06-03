@@ -122,6 +122,7 @@ struct port_info {
 	uint8_t         first_qset;
 	uint32_t	nqsets;
 	int		link_fault;
+	int		watchdog_timer;
 
 	uint8_t		hw_addr[ETHER_ADDR_LEN];
 	struct task	timer_reclaim_task;
@@ -202,10 +203,6 @@ struct sge_rspq {
 	uint32_t	rspq_dump_count;
 };
 
-#ifndef DISABLE_MBUF_IOVEC
-#define rspq_mbuf rspq_mh.mh_head
-#endif
-
 struct rx_desc;
 struct rx_sw_desc;
 
@@ -258,14 +255,8 @@ struct sge_txq {
 	bus_dmamap_t	desc_map;
 	bus_dma_tag_t   entry_tag;
 	struct mbuf_head sendq;
-	/*
-	 * cleanq should really be an buf_ring to avoid extra
-	 * mbuf touches
-	 */
-	struct mbuf_head cleanq;	
 	struct buf_ring *txq_mr;
 	struct ifaltq	*txq_ifq;
-	struct mbuf     *immpkt;
 
 	uint32_t        txq_drops;
 	uint32_t        txq_skipped;
@@ -306,7 +297,6 @@ struct sge_qset {
 	uint64_t                port_stats[SGE_PSTAT_MAX];
 	struct port_info        *port;
 	int                     idx; /* qset # */
-	int                     qs_cpuid;
 	int                     qs_flags;
 	struct cv		qs_cv;
 	struct mtx		qs_mtx;
@@ -611,11 +601,7 @@ static inline int offload_running(adapter_t *adapter)
         return isset(&adapter->open_device_map, OFFLOAD_DEVMAP_BIT);
 }
 
-int cxgb_pcpu_enqueue_packet(struct ifnet *ifp, struct mbuf *m);
-int cxgb_pcpu_transmit(struct ifnet *ifp, struct mbuf *m);
-void cxgb_pcpu_shutdown_threads(struct adapter *sc);
-void cxgb_pcpu_startup_threads(struct adapter *sc);
-
+int cxgb_transmit(struct ifnet *ifp, struct mbuf *m);
 int process_responses(adapter_t *adap, struct sge_qset *qs, int budget);
 void t3_free_qset(adapter_t *sc, struct sge_qset *q);
 void cxgb_start(struct ifnet *ifp);

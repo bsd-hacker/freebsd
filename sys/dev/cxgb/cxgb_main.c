@@ -655,7 +655,6 @@ cxgb_free(struct adapter *sc)
 	ADAPTER_LOCK(sc);
 	sc->flags |= CXGB_SHUTDOWN;
 	ADAPTER_UNLOCK(sc);
-	cxgb_pcpu_shutdown_threads(sc);
 	ADAPTER_LOCK(sc);
 
 /*
@@ -957,9 +956,10 @@ cxgb_port_attach(device_t dev)
 	}
 
 	ether_ifattach(ifp, p->hw_addr);
-#ifdef IFNET_MULTIQUEUE
-	ifp->if_transmit = cxgb_pcpu_transmit;
-#endif
+#ifdef IFNET_BUF_RING
+	ifp->if_transmit = cxgb_transmit;
+	ifp->if_qflush = cxgb_qflush;
+#endif	
 	/*
 	 * Only default to jumbo frames on 10GigE
 	 */
@@ -1271,13 +1271,13 @@ t3_os_ext_intr_handler(adapter_t *sc)
 	 * interrupts in the meantime and let the task reenable them when
 	 * it's done.
 	 */
-	ADAPTER_LOCK(sc);
 	if (sc->slow_intr_mask) {
+		ADAPTER_LOCK(sc);
 		sc->slow_intr_mask &= ~F_T3DBG;
 		t3_write_reg(sc, A_PL_INT_ENABLE0, sc->slow_intr_mask);
 		taskqueue_enqueue(sc->tq, &sc->ext_intr_task);
+		ADAPTER_UNLOCK(sc);
 	}
-	ADAPTER_UNLOCK(sc);
 }
 
 static void
@@ -1555,7 +1555,6 @@ bind_qsets(adapter_t *sc)
 {
 	int i, j;
 
-	cxgb_pcpu_startup_threads(sc);
 	for (i = 0; i < (sc)->params.nports; ++i) {
 		const struct port_info *pi = adap2pinfo(sc, i);
 
