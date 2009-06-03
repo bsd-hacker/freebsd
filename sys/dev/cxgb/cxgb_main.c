@@ -956,10 +956,8 @@ cxgb_port_attach(device_t dev)
 	}
 
 	ether_ifattach(ifp, p->hw_addr);
-#ifdef IFNET_BUF_RING
 	ifp->if_transmit = cxgb_transmit;
 	ifp->if_qflush = cxgb_qflush;
-#endif	
 	/*
 	 * Only default to jumbo frames on 10GigE
 	 */

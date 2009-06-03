@@ -1509,13 +1509,7 @@ cxgb_transmit_locked(struct ifnet *ifp, struct sge_qset *qs, struct mbuf *m)
 	int error, count = 1;
 
 	TXQ_LOCK_ASSERT(qs);
-	/*
-	 * XXX FIX ME
-	 * 
-	 */
-	if (((ifp->if_drv_flags & (IFF_DRV_RUNNING|IFF_DRV_OACTIVE)) !=
-	    IFF_DRV_RUNNING)
-	    || (!pi->link_config.link_ok)) {
+	if ((!pi->link_config.link_ok) /* check others */) {
 		error = drbr_enqueue(ifp, br, m);
 		return (error);
 	} else if (TXQ_RING_EMPTY(qs) && sc->tunq_coalesce == 0) {
@@ -1585,6 +1579,16 @@ cxgb_start(struct ifnet *ifp)
 	TXQ_UNLOCK(qs);
 }
 
+void
+cxgb_qflush(struct ifnet *ifp)
+{
+	/*
+	 * flush any enqueued mbufs in the buf_rings
+	 * and in the transmit queues
+	 * no-op for now
+	 */
+	return;
+}
 
 /**
  *	write_imm - write a packet into a Tx descriptor as immediate data
