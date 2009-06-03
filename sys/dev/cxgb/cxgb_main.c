@@ -1676,32 +1676,6 @@ cxgb_up(struct adapter *sc)
 {
 	int err = 0;
 
-	t3_intr_clear(sc);
-
-	/* If it's MSI or INTx, allocate a single interrupt for everything */
-	if ((sc->flags & USING_MSIX) == 0) {
-		if ((sc->irq_res = bus_alloc_resource_any(sc->dev, SYS_RES_IRQ,
-		   &sc->irq_rid, RF_SHAREABLE | RF_ACTIVE)) == NULL) {
-			device_printf(sc->dev, "Cannot allocate interrupt rid=%d\n",
-			    sc->irq_rid);
-			err = EINVAL;
-			goto out;
-		}
-		device_printf(sc->dev, "allocated irq_res=%p\n", sc->irq_res);
-
-		if (bus_setup_intr(sc->dev, sc->irq_res, INTR_MPSAFE|INTR_TYPE_NET,
-#ifdef INTR_FILTERS
-			NULL,
-#endif			
-			sc->cxgb_intr, sc, &sc->intr_tag)) {
-			device_printf(sc->dev, "Cannot set up interrupt\n");
-			err = EINVAL;
-			goto irq_err;
-		}
-	} else {
-		cxgb_setup_msix(sc, sc->msi_count);
-	}
-
 	t3_sge_start(sc);
 	t3_intr_enable(sc);
 
@@ -1714,17 +1688,13 @@ cxgb_up(struct adapter *sc)
 				F_CMCACHEPERR | F_ARPLUTPERR);
 		t3_write_reg(sc, A_TP_INT_ENABLE, 0x7fbfffff);
 	}
-
 	
 	if (!(sc->flags & QUEUES_BOUND)) {
 		bind_qsets(sc);
 		sc->flags |= QUEUES_BOUND;		
 	}
-out:
+
 	return (err);
-irq_err:
-	CH_ERR(sc, "request_irq failed, err %d\n", err);
-	goto out;
 }
 
 
@@ -1879,6 +1849,51 @@ out:
 	return (err);
 }
 
+static int
+cxgb_intr_init(struct adapter *sc)
+{
+	int err = 0;
+
+	ADAPTER_LOCK(sc);
+	sc->flags |= INIT_IN_PROGRESS;
+	ADAPTER_UNLOCK(sc);
+
+	t3_intr_clear(sc);
+
+	/* If it's MSI or INTx, allocate a single interrupt for everything */
+	if ((sc->flags & USING_MSIX) == 0) {
+		if ((sc->irq_res = bus_alloc_resource_any(sc->dev, SYS_RES_IRQ,
+		   &sc->irq_rid, RF_SHAREABLE | RF_ACTIVE)) == NULL) {
+			device_printf(sc->dev, "Cannot allocate interrupt rid=%d\n",
+			    sc->irq_rid);
+			err = EINVAL;
+			goto out;
+		}
+		device_printf(sc->dev, "allocated irq_res=%p\n", sc->irq_res);
+
+		if (bus_setup_intr(sc->dev, sc->irq_res, INTR_MPSAFE|INTR_TYPE_NET,
+#ifdef INTR_FILTERS
+			NULL,
+#endif			
+			sc->cxgb_intr, sc, &sc->intr_tag)) {
+			device_printf(sc->dev, "Cannot set up interrupt\n");
+			err = EINVAL;
+			CH_ERR(sc, "request_irq failed, err %d\n", err);
+			goto out;
+		}
+	} else {
+		cxgb_setup_msix(sc, sc->msi_count);
+	}
+
+	ADAPTER_LOCK(sc);
+	sc->flags &= ~INIT_IN_PROGRESS;
+	sc->flags |= INTR_INIT_DONE;
+	ADAPTER_UNLOCK(sc);
+out:
+	return (err);
+}
+
+	
 static void
 cxgb_init(void *arg)
 {
@@ -1888,7 +1903,11 @@ cxgb_init(void *arg)
 	if (((sc->flags & FULL_INIT_DONE) == 0) &&
 	    (cxgb_first_init(sc)))
 		return;
-		
+
+	if (((sc->flags & INTR_INIT_DONE) == 0) &&
+	    (cxgb_intr_init(sc)))
+		return;
+
 	PORT_LOCK(p);
 	cxgb_init_locked(p);
 	PORT_UNLOCK(p);

@@ -128,6 +128,7 @@ enum {				/* adapter flags */
 	CXGB_OFLD_INIT	= (1 << 7),
 	TP_PARITY_INIT  = (1 << 8),
 	INIT_IN_PROGRESS = (1 << 9),
+	INTR_INIT_DONE	= (1 << 10),
 };
 
 #define FL_Q_SIZE	4096
