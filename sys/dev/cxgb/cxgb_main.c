@@ -677,7 +677,8 @@ cxgb_free(struct adapter *sc)
 		    sc->msix_regs_res);
 	}
 
-	t3_free_sge_resources(sc);
+	if (sc->flags & FULL_INIT_DONE)
+		t3_free_sge_resources(sc);
 	t3_sge_deinit_sw(sc);
 
 	/*
@@ -1858,10 +1859,12 @@ cxgb_first_init(struct adapter *sc)
 	setup_rss(sc);
 	t3_add_configured_sysctls(sc);
 	ADAPTER_LOCK(sc);
-	sc->flags &= ~INIT_IN_PROGRESS;
 	sc->flags |= FULL_INIT_DONE;
 	ADAPTER_UNLOCK(sc);
 out:
+	ADAPTER_LOCK(sc);
+	sc->flags &= ~INIT_IN_PROGRESS;
+	ADAPTER_UNLOCK(sc);
 	return (err);
 }
 
@@ -1906,10 +1909,12 @@ cxgb_intr_init(struct adapter *sc)
 	}
 
 	ADAPTER_LOCK(sc);
-	sc->flags &= ~INIT_IN_PROGRESS;
 	sc->flags |= INTR_INIT_DONE;
 	ADAPTER_UNLOCK(sc);
 out:
+	ADAPTER_LOCK(sc);
+	sc->flags &= ~INIT_IN_PROGRESS;
+	ADAPTER_UNLOCK(sc);
 	return (err);
 }
 
