@@ -1923,6 +1923,10 @@ cxgb_init_locked(struct port_info *p)
 	PORT_LOCK_ASSERT_OWNED(p);
 	ifp = p->ifp;
 
+	if ((sc->flags & (FULL_INIT_DONE|INTR_INIT_DONE)) ==
+	    (FULL_INIT_DONE|INTR_INIT_DONE))
+		return;
+
 	ADAPTER_LOCK(p->adapter);
 	if ((sc->open_device_map == 0) && (err = cxgb_up(sc))) {
 		ADAPTER_UNLOCK(p->adapter);
