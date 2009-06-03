@@ -873,22 +873,15 @@ refill_rspq(adapter_t *sc, const struct sge_rspq *q, u_int credits)
 		     V_RSPQ(q->cntxt_id) | V_CREDITS(credits));
 }
 
-static __inline void
-sge_txq_reclaim_(struct sge_txq *txq, int force)
-{
-
-	panic("unimplemented");
-}
-
 static void
 sge_txq_reclaim_handler(void *arg, int ncount)
 {
-	struct sge_txq *q = arg;
+	struct sge_qset *qs = arg;
+	int i;
 
-	sge_txq_reclaim_(q, TRUE);
+	for (i = 0; i < 3; i++)
+		reclaim_completed_tx(qs, 16, i);
 }
-
-
 
 static void
 sge_timer_reclaim(void *arg, int ncount)
@@ -897,7 +890,6 @@ sge_timer_reclaim(void *arg, int ncount)
 	int i, nqsets = pi->nqsets;
 	adapter_t *sc = pi->adapter;
 	struct sge_qset *qs;
-	struct sge_txq *txq;
 	struct mtx *lock;
 
 #ifdef IFNET_MULTIQUEUE
@@ -906,9 +898,7 @@ sge_timer_reclaim(void *arg, int ncount)
 	for (i = 0; i < nqsets; i++) {
 		qs = &sc->sge.qs[pi->first_qset + i];
 
-		txq = &qs->txq[TXQ_OFLD];
-		sge_txq_reclaim_(txq, FALSE);
-		
+		reclaim_completed_tx(qs, 16, TXQ_OFLD);
 		lock = (sc->flags & USING_MSIX) ? &qs->rspq.lock :
 			    &sc->sge.qs[0].rspq.lock;
 
@@ -2455,8 +2445,8 @@ t3_sge_alloc_qset(adapter_t *sc, u_int id, int nports, int irq_vec_idx,
 	
 	TASK_INIT(&q->txq[TXQ_OFLD].qresume_task, 0, restart_offloadq, q);
 	TASK_INIT(&q->txq[TXQ_CTRL].qresume_task, 0, restart_ctrlq, q);
-	TASK_INIT(&q->txq[TXQ_ETH].qreclaim_task, 0, sge_txq_reclaim_handler, &q->txq[TXQ_ETH]);
-	TASK_INIT(&q->txq[TXQ_OFLD].qreclaim_task, 0, sge_txq_reclaim_handler, &q->txq[TXQ_OFLD]);
+	TASK_INIT(&q->txq[TXQ_ETH].qreclaim_task, 0, sge_txq_reclaim_handler, q);
+	TASK_INIT(&q->txq[TXQ_OFLD].qreclaim_task, 0, sge_txq_reclaim_handler, q);
 
 	q->fl[0].gen = q->fl[1].gen = 1;
 	q->fl[0].size = p->fl_size;
