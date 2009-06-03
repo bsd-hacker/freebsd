@@ -2678,6 +2678,8 @@ get_packet(adapter_t *adap, unsigned int drop_thres, struct sge_qset *qs,
 			flags = M_PKTHDR;
 		if (fl->zone != zone_pack)
 			m_cljset(m0, cl, fl->type);
+		m0->m_flags |= flags;
+		m0->m_next = m0->m_nextpkt = NULL;
 		m0->m_pkthdr.len = m0->m_len = len;
 	}		
 	switch(sopeop) {
