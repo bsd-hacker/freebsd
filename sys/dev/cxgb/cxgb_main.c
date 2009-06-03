@@ -1844,6 +1844,14 @@ cxgb_first_init(struct adapter *sc)
 {
 	int err = 0;
 
+	ADAPTER_LOCK(sc);
+	if (sc->flags & INIT_IN_PROGRESS) {
+		ADAPTER_UNLOCK(sc);
+		return (EINPROGRESS);
+	}
+	sc->flags |= INIT_IN_PROGRESS;
+	ADAPTER_UNLOCK(sc);
+	
 	if ((sc->flags & FW_UPTODATE) == 0)
 		if ((err = upgrade_fw(sc)))
 			goto out;
@@ -1861,9 +1869,10 @@ cxgb_first_init(struct adapter *sc)
 	if (err)
 		goto out;
 
-	ADAPTER_LOCK(sc);
 	setup_rss(sc);
 	t3_add_configured_sysctls(sc);
+	ADAPTER_LOCK(sc);
+	sc->flags &= ~INIT_IN_PROGRESS;
 	sc->flags |= FULL_INIT_DONE;
 	ADAPTER_UNLOCK(sc);
 out:
