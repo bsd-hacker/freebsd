@@ -1923,7 +1923,7 @@ cxgb_init_locked(struct port_info *p)
 	PORT_LOCK_ASSERT_OWNED(p);
 	ifp = p->ifp;
 
-	if ((sc->flags & (FULL_INIT_DONE|INTR_INIT_DONE)) ==
+	if ((sc->flags & (FULL_INIT_DONE|INTR_INIT_DONE)) !=
 	    (FULL_INIT_DONE|INTR_INIT_DONE))
 		return;
 
