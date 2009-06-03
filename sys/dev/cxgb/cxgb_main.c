@@ -1377,7 +1377,7 @@ init_tp_parity(struct adapter *adap)
 		req = mtod(m, struct cpl_smt_write_req *);
 		m->m_len = m->m_pkthdr.len = sizeof(*req);
 		memset(req, 0, sizeof(*req));
-		req->wr.wr_hi = htonl(V_WR_OP(FW_WROPCODE_FORWARD));
+		req->wr.wrh_hi = htonl(V_WR_OP(FW_WROPCODE_FORWARD));
 		OPCODE_TID(req) = htonl(MK_OPCODE_TID(CPL_SMT_WRITE_REQ, i));
 		req->iff = i;
 		t3_mgmt_tx(adap, m);
@@ -1390,7 +1390,7 @@ init_tp_parity(struct adapter *adap)
 		req = mtod(m, struct cpl_l2t_write_req *);
 		m->m_len = m->m_pkthdr.len = sizeof(*req);
 		memset(req, 0, sizeof(*req));
-		req->wr.wr_hi = htonl(V_WR_OP(FW_WROPCODE_FORWARD));
+		req->wr.wrh_hi = htonl(V_WR_OP(FW_WROPCODE_FORWARD));
 		OPCODE_TID(req) = htonl(MK_OPCODE_TID(CPL_L2T_WRITE_REQ, i));
 		req->params = htonl(V_L2T_W_IDX(i));
 		t3_mgmt_tx(adap, m);
@@ -1403,7 +1403,7 @@ init_tp_parity(struct adapter *adap)
 		req = mtod(m, struct cpl_rte_write_req *);
 		m->m_len = m->m_pkthdr.len = sizeof(*req);
 		memset(req, 0, sizeof(*req));
-		req->wr.wr_hi = htonl(V_WR_OP(FW_WROPCODE_FORWARD));
+		req->wr.wrh_hi = htonl(V_WR_OP(FW_WROPCODE_FORWARD));
 		OPCODE_TID(req) = htonl(MK_OPCODE_TID(CPL_RTE_WRITE_REQ, i));
 		req->l2t_idx = htonl(V_L2T_W_IDX(i));
 		t3_mgmt_tx(adap, m);
@@ -1413,7 +1413,7 @@ init_tp_parity(struct adapter *adap)
 	greq = mtod(m, struct cpl_set_tcb_field *);
 	m->m_len = m->m_pkthdr.len = sizeof(*greq);
 	memset(greq, 0, sizeof(*greq));
-	greq->wr.wr_hi = htonl(V_WR_OP(FW_WROPCODE_FORWARD));
+	greq->wr.wrh_hi = htonl(V_WR_OP(FW_WROPCODE_FORWARD));
 	OPCODE_TID(greq) = htonl(MK_OPCODE_TID(CPL_SET_TCB_FIELD, 0));
 	greq->mask = htobe64(1);
 	t3_mgmt_tx(adap, m);
@@ -1494,7 +1494,7 @@ write_smt_entry(struct adapter *adapter, int idx)
 	req = mtod(m, struct cpl_smt_write_req *);
 	m->m_pkthdr.len = m->m_len = sizeof(struct cpl_smt_write_req);
 	
-	req->wr.wr_hi = htonl(V_WR_OP(FW_WROPCODE_FORWARD));
+	req->wr.wrh_hi = htonl(V_WR_OP(FW_WROPCODE_FORWARD));
 	OPCODE_TID(req) = htonl(MK_OPCODE_TID(CPL_SMT_WRITE_REQ, idx));
 	req->mtu_idx = NMTUS - 1;  /* should be 0 but there's a T3 bug */
 	req->iff = idx;
@@ -1538,7 +1538,7 @@ send_pktsched_cmd(struct adapter *adap, int sched, int qidx, int lo,
 	m = m_gethdr(M_DONTWAIT, MT_DATA);
 	if (m) {	
 		req = mtod(m, struct mngt_pktsched_wr *);
-		req->wr_hi = htonl(V_WR_OP(FW_WROPCODE_MNGT));
+		req->wr.wrh_hi = htonl(V_WR_OP(FW_WROPCODE_MNGT));
 		req->mngt_opcode = FW_MNGTOPCODE_PKTSCHED_SET;
 		req->sched = sched;
 		req->idx = qidx;
