@@ -2474,8 +2474,8 @@ t3_sge_alloc_qset(adapter_t *sc, u_int id, int nports, int irq_vec_idx,
 	    flits_to_desc(sgl_len(TX_MAX_SEGS + 1) + 3);
 
 	q->fl[0].buf_size = MCLBYTES;
-	q->fl[0].zone = zone_clust;
-	q->fl[0].type = EXT_CLUSTER;
+	q->fl[0].zone = zone_pack;
+	q->fl[0].type = EXT_PACKET;
 #if __FreeBSD_version > 800000
 	if (cxgb_use_16k_clusters) {		
 		q->fl[1].buf_size = MJUM16BYTES;
@@ -2671,12 +2671,13 @@ get_packet(adapter_t *adap, unsigned int drop_thres, struct sge_qset *qs,
 
 		bus_dmamap_unload(fl->entry_tag, sd->map);
 		cl = sd->rxsd_cl;
-		m = m0 = (struct mbuf *)cl;
+		m = m0 = sd->m;
 
 		if ((sopeop == RSPQ_SOP_EOP) ||
 		    (sopeop == RSPQ_SOP))
 			flags = M_PKTHDR;
-		m_cljset(m0, cl, fl->type);
+		if (fl->zone != zone_pack)
+			m_cljset(m0, cl, fl->type);
 		m0->m_pkthdr.len = m0->m_len = len;
 	}		
 	switch(sopeop) {
