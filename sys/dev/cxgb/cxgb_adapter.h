@@ -65,8 +65,6 @@ $FreeBSD$
 #include <netinet/tcp_lro.h>
 #endif
 
-#define USE_SX
-
 struct adapter;
 struct sge_qset;
 extern int cxgb_debug;
