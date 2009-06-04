@@ -402,7 +402,7 @@ struct t3_rx_mode {
 #define ADAPTER_UNLOCK(adap)	mtx_unlock(&(adap)->lock);
 #define ADAPTER_LOCK_INIT(adap, name) mtx_init(&(adap)->lock, name, 0, MTX_DEF)
 #define ADAPTER_LOCK_DEINIT(adap) mtx_destroy(&(adap)->lock)
-#define ADAPTER_LOCK_ASSERT_NOTOWNED(adap) mtx_assert(&(adap)->lock, MO_NOTOWNED)
+#define ADAPTER_LOCK_ASSERT_NOTOWNED(adap) mtx_assert(&(adap)->lock, MA_NOTOWNED)
 
 
 static __inline uint32_t
@@ -510,7 +510,7 @@ int t3_sge_init_adapter(adapter_t *);
 int t3_sge_reset_adapter(adapter_t *);
 int t3_sge_init_port(struct port_info *);
 void t3_sge_deinit_sw(adapter_t *);
-void t3_free_tx_desc(struct sge_txq *q, int n);
+void t3_free_tx_desc(struct sge_qset *qs, int n, int qid);
 void t3_free_tx_desc_all(struct sge_txq *q);
 
 void t3_rx_eth(struct adapter *adap, struct sge_rspq *rq, struct mbuf *m, int ethpad);

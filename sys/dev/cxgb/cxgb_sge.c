@@ -233,7 +233,7 @@ reclaim_completed_tx(struct sge_qset *qs, int reclaim_min, int queue)
 	
 	mtx_assert(&qs->lock, MA_OWNED);
 	if (reclaim > 0) {
-		t3_free_tx_desc(q, reclaim);
+		t3_free_tx_desc(qs, reclaim, queue);
 		q->cleaned += reclaim;
 		q->in_use -= reclaim;
 	}
@@ -1263,7 +1263,7 @@ t3_encap(struct sge_qset *qs, struct mbuf **m, int count)
 	DPRINTF("t3_encap port_id=%d qsidx=%d ", pi->port_id, pi->first_qset);
 	DPRINTF("mlen=%d txpkt_intf=%d tx_chan=%d\n", m[0]->m_pkthdr.len, pi->txpkt_intf, pi->tx_chan);
 	
-	mtx_assert(&txq->lock, MA_OWNED);
+	mtx_assert(&qs->lock, MA_OWNED);
 	cntrl = V_TXPKT_INTF(pi->txpkt_intf);
 /*
  * XXX need to add VLAN support for 6.x
@@ -1686,8 +1686,6 @@ reclaim_completed_tx_imm(struct sge_txq *q)
 {
 	unsigned int reclaim = q->processed - q->cleaned;
 
-	mtx_assert(&q->lock, MA_OWNED);
-	
 	q->in_use -= reclaim;
 	q->cleaned += reclaim;
 }
@@ -1966,10 +1964,11 @@ t3_sge_stop(adapter_t *sc)
  *      Returns number of buffers of reclaimed   
  */
 void
-t3_free_tx_desc(struct sge_txq *q, int reclaimable)
+t3_free_tx_desc(struct sge_qset *qs, int reclaimable, int queue)
 {
 	struct tx_sw_desc *txsd;
 	unsigned int cidx;
+	struct sge_txq *q = &qs->txq[queue];
 	
 #ifdef T3_TRACE
 	T3_TRACE2(sc->tb[q->cntxt_id & 7],
@@ -1978,7 +1977,7 @@ t3_free_tx_desc(struct sge_txq *q, int reclaimable)
 	cidx = q->cidx;
 	txsd = &q->sdesc[cidx];
 	DPRINTF("reclaiming %d WR\n", reclaimable);
-	mtx_assert(&q->lock, MA_OWNED);
+	mtx_assert(&qs->lock, MA_OWNED);
 	while (reclaimable--) {
 		DPRINTF("cidx=%d d=%p\n", cidx, txsd);
 		if (txsd->m != NULL) {
@@ -2146,7 +2145,6 @@ ofld_xmit(adapter_t *adap, struct sge_qset *qs, struct mbuf *m)
 	busdma_map_sgl(vsegs, segs, nsegs);
 
 	stx = &q->sdesc[q->pidx];
-	KASSERT(stx->mi.mi_base == NULL, ("mi_base set"));
 	
 	TXQ_LOCK(qs);
 again:	reclaim_completed_tx(qs, 16, TXQ_OFLD);
