@@ -2660,7 +2660,7 @@ get_packet(adapter_t *adap, unsigned int drop_thres, struct sge_qset *qs,
 
 		if ((sopeop == RSPQ_SOP_EOP) ||
 		    (sopeop == RSPQ_SOP))
-			flags = M_PKTHDR;
+			flags |= M_PKTHDR;
 		if (fl->zone != zone_pack)
 			m_cljset(m0, cl, fl->type);
 		m0->m_flags = flags;
