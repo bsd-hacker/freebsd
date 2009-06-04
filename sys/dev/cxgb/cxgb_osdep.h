@@ -116,10 +116,10 @@ struct t3_mbuf_hdr {
 
 #if __FreeBSD_version >= 701000
 #include "opt_inet.h"
-#ifdef notyet
+#ifdef INET
 #define LRO_SUPPORTED
-#endif
 #define TOE_SUPPORTED
+#endif
 #endif
 
 #if __FreeBSD_version < 800054

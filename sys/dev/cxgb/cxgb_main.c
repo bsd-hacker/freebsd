@@ -2098,16 +2098,6 @@ cxgb_ioctl(struct ifnet *ifp, unsigned long command, caddr_t data)
 	case SIOCSIFMTU:
 		error = cxgb_set_mtu(p, ifr->ifr_mtu);
 		break;
-	case SIOCSIFADDR:
-		if (ifa->ifa_addr->sa_family == AF_INET) {
-			ifp->if_flags |= IFF_UP;
-			if (!(ifp->if_drv_flags & IFF_DRV_RUNNING)) {
-				cxgb_init(p);
-			}
-			arp_ifinit(ifp, ifa);
-		} else
-			error = ether_ioctl(ifp, command, data);
-		break;
 	case SIOCSIFFLAGS:
 		PORT_LOCK(p);
 		if (ifp->if_flags & IFF_UP) {
