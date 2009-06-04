@@ -24,20 +24,54 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD$
+ * $FreeBSD: head/sys/netinet/ip_dummynet.h 193435 2009-06-04 12:27:57Z luigi $
  */
 
-#ifndef _IP_DUMMYNET_H
-#define _IP_DUMMYNET_H
+#ifndef _IP_DUMMYNET_VAR_H
+#define _IP_DUMMYNET_VAR_H
 
 /*
+ * Kernel-visible parts of dummynet data structures.
+ * Users of this file will often also need netinet/ip_dummynet.h.
  * Definition of dummynet data structures. In the structures, I decided
  * not to use the macros in <sys/queue.h> in the hope of making the code
  * easier to port to other architectures. The type of lists and queue we
  * use here is pretty simple anyways.
  */
 
-typedef u_int64_t dn_key ;      /* sorting key */
+/*
+ * We start with a heap, which is used in the scheduler to decide when
+ * to transmit packets etc.
+ *
+ * The key for the heap is used for two different values:
+ *
+ * 1. timer ticks- max 10K/second, so 32 bits are enough;
+ *
+ * 2. virtual times. These increase in steps of len/x, where len is the
+ *    packet length, and x is either the weight of the flow, or the
+ *    sum of all weights.
+ *    If we limit to max 1000 flows and a max weight of 100, then
+ *    x needs 17 bits. The packet size is 16 bits, so we can easily
+ *    overflow if we do not allow errors.
+ * So we use a key "dn_key" which is 64 bits. Some macros are used to
+ * compare key values and handle wraparounds.
+ * MAX64 returns the largest of two key values.
+ * MY_M is used as a shift count when doing fixed point arithmetic
+ * (a better name would be useful...).
+ */
+#define DN_KEY_LT(a,b)     ((int64_t)((a)-(b)) < 0)
+#define DN_KEY_LEQ(a,b)    ((int64_t)((a)-(b)) <= 0)
+#define DN_KEY_GT(a,b)     ((int64_t)((a)-(b)) > 0)
+#define DN_KEY_GEQ(a,b)    ((int64_t)((a)-(b)) >= 0)
+#define MAX64(x,y)  (( (int64_t) ( (y)-(x) )) > 0 ) ? (y) : (x)
+#define MY_M	16 /* number of left shift to obtain a larger precision */
+
+/*
+ * XXX With this scaling, max 1000 flows, max weight 100, 1Gbit/s, the
+ * virtual time wraps every 15 days.
+ */
+
+
 /*
  * The maximum hash table size for queues.  This value must be a power
  * of 2.
@@ -45,91 +79,35 @@ typedef u_int64_t dn_key ;      /* sorting key */
 #define DN_MAX_HASH_SIZE 65536
 
 /*
- * A heap entry is made of a key and a pointer to the actual
- * object stored in the heap.
- * The heap is an array of dn_heap_entry entries, dynamically allocated.
- * Current size is "size", with "elements" actually in use.
- * The heap normally supports only ordered insert and extract from the top.
- * If we want to extract an object from the middle of the heap, we
- * have to know where the object itself is located in the heap (or we
- * need to scan the whole array). To this purpose, an object has a
- * field (int) which contains the index of the object itself into the
- * heap. When the object is moved, the field must also be updated.
- * The offset of the index in the object is stored in the 'offset'
- * field in the heap descriptor. The assumption is that this offset
- * is non-zero if we want to support extract from the middle.
+ * Packets processed by dummynet have an mbuf tag associated with
+ * them that carries their dummynet state.  This is used within
+ * the dummynet code as well as outside when checking for special
+ * processing requirements.
  */
-struct dn_heap_entry {
-    dn_key key ;	/* sorting key. Topmost element is smallest one */
-    void *object ;	/* object pointer */
-} ;
+struct dn_pkt_tag {
+    struct ip_fw *rule;		/* matching rule */
+    int dn_dir;			/* action when packet comes out. */
+#define DN_TO_IP_OUT	1
+#define DN_TO_IP_IN	2
+/* Obsolete: #define DN_TO_BDG_FWD	3 */
+#define DN_TO_ETH_DEMUX	4
+#define DN_TO_ETH_OUT	5
+#define DN_TO_IP6_IN	6
+#define DN_TO_IP6_OUT	7
+#define DN_TO_IFB_FWD	8
 
-struct dn_heap {
-    int size ;
-    int elements ;
-    int offset ; /* XXX if > 0 this is the offset of direct ptr to obj */
-    struct dn_heap_entry *p ;	/* really an array of "size" entries */
-} ;
+    dn_key output_time;		/* when the pkt is due for delivery	*/
+    struct ifnet *ifp;		/* interface, for ip_output		*/
+    struct _ip6dn_args ip6opt;	/* XXX ipv6 options			*/
+};
 
+#if 0
 /*
- * Overall structure of dummynet (with WF2Q+):
-
-In dummynet, packets are selected with the firewall rules, and passed
-to two different objects: PIPE or QUEUE.
-
-A QUEUE is just a queue with configurable size and queue management
-policy. It is also associated with a mask (to discriminate among
-different flows), a weight (used to give different shares of the
-bandwidth to different flows) and a "pipe", which essentially
-supplies the transmit clock for all queues associated with that
-pipe.
-
-A PIPE emulates a fixed-bandwidth link, whose bandwidth is
-configurable.  The "clock" for a pipe can come from either an
-internal timer, or from the transmit interrupt of an interface.
-A pipe is also associated with one (or more, if masks are used)
-queue, where all packets for that pipe are stored.
-
-The bandwidth available on the pipe is shared by the queues
-associated with that pipe (only one in case the packet is sent
-to a PIPE) according to the WF2Q+ scheduling algorithm and the
-configured weights.
-
-In general, incoming packets are stored in the appropriate queue,
-which is then placed into one of a few heaps managed by a scheduler
-to decide when the packet should be extracted.
-The scheduler (a function called dummynet()) is run at every timer
-tick, and grabs queues from the head of the heaps when they are
-ready for processing.
-
-There are three data structures definining a pipe and associated queues:
-
- + dn_pipe, which contains the main configuration parameters related
-   to delay and bandwidth;
- + dn_flow_set, which contains WF2Q+ configuration, flow
-   masks, plr and RED configuration;
- + dn_flow_queue, which is the per-flow queue (containing the packets)
-
-Multiple dn_flow_set can be linked to the same pipe, and multiple
-dn_flow_queue can be linked to the same dn_flow_set.
-All data structures are linked in a linear list which is used for
-housekeeping purposes.
-
-During configuration, we create and initialize the dn_flow_set
-and dn_pipe structures (a dn_pipe also contains a dn_flow_set).
-
-At runtime: packets are sent to the appropriate dn_flow_set (either
-WFQ ones, or the one embedded in the dn_pipe for fixed-rate flows),
-which in turn dispatches them to the appropriate dn_flow_queue
-(created dynamically according to the masks).
-
-The transmit clock for fixed rate flows (ready_event()) selects the
-dn_flow_queue to be used to transmit the next packet. For WF2Q,
-wfq_ready_event() extract a pipe which in turn selects the right
-flow using a number of heaps defined into the pipe itself.
-
- *
+ * Stuff already defined in the userland visible part.
+ * We keep it here because when the userland representation changes,
+ * the in-kernel representation might remain the same.
  */
+
 
 /*
  * per flow queue. This contains the flow identifier, the queue
@@ -158,7 +136,7 @@ struct dn_flow_queue {
      */
     uint64_t numbytes ;		/* credit for transmission (dynamic queues) */
     int64_t extra_bits;		/* extra bits simulating unavailable channel */
- 
+
     u_int64_t tot_pkts ;	/* statistics counters	*/
     u_int64_t tot_bytes ;
     u_int32_t drops ;
@@ -311,5 +289,34 @@ struct dn_pipe_max {
 	struct dn_pipe pipe;
 	int samples[ED_MAX_SAMPLES_NO];
 };
+#endif /* kernel version of pipes/queues, already defined in userland */
 
-#endif /* _IP_DUMMYNET_H */
+SLIST_HEAD(dn_pipe_head, dn_pipe);
+
+#if 0
+typedef	int ip_dn_ctl_t(struct sockopt *); /* raw_ip.c */
+typedef	void ip_dn_ruledel_t(void *); /* ip_fw.c */
+typedef	int ip_dn_io_t(struct mbuf **m, int dir, struct ip_fw_args *fwa);
+extern	ip_dn_ctl_t *ip_dn_ctl_ptr;
+extern	ip_dn_ruledel_t *ip_dn_ruledel_ptr;
+extern	ip_dn_io_t *ip_dn_io_ptr;
+#define	DUMMYNET_LOADED	(ip_dn_io_ptr != NULL)
+#endif
+
+#ifdef _KERNEL
+/*
+ * Return the IPFW rule associated with the dummynet tag; if any.
+ * Make sure that the dummynet tag is not reused by lower layers.
+ */
+static __inline struct ip_fw *
+ip_dn_claim_rule(struct mbuf *m)
+{
+	struct m_tag *mtag = m_tag_find(m, PACKET_TAG_DUMMYNET, NULL);
+	if (mtag != NULL) {
+		mtag->m_tag_id = PACKET_TAG_NONE;
+		return (((struct dn_pkt_tag *)(mtag+1))->rule);
+	} else
+		return (NULL);
+}
+#endif
+#endif /* _IP_DUMMYNET_VAR_H */

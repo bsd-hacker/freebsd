@@ -173,7 +173,8 @@ extern int	ipstealth;		/* stealth forwarding */
 extern int rsvp_on;
 extern struct socket *ip_rsvpd;		/* reservation protocol daemon */
 extern struct socket *ip_mrouter;	/* multicast routing daemon */
-#endif
+#endif /* VIMAGE_GLOBALS */
+
 extern u_char	ip_protox[];
 extern int	(*legal_vif_num)(int);
 extern u_long	(*ip_mcast_src)(int);
@@ -222,6 +223,24 @@ extern void	(*rsvp_input_p)(struct mbuf *m, int off);
 extern	struct pfil_head inet_pfil_hook;	/* packet filter hooks */
 
 void	in_delayed_cksum(struct mbuf *m);
+
+/* Prototypes for ipfw and dummynet hooks */
+typedef int ip_fw_ctl_t(struct sockopt *);
+extern ip_fw_ctl_t *ip_fw_ctl_ptr;
+/* For kernel ipfw_ether and ipfw_bridge. */
+struct ip_fw_args;
+typedef int ip_fw_chk_t(struct ip_fw_args *args);
+extern  ip_fw_chk_t     *ip_fw_chk_ptr;
+#define IPFW_LOADED     (ip_fw_chk_ptr != NULL)
+
+typedef int ip_dn_ctl_t(struct sockopt *); /* raw_ip.c */
+typedef void ip_dn_ruledel_t(void *); /* ip_fw.c */
+typedef int ip_dn_io_t(struct mbuf **m, int dir, struct ip_fw_args *fwa);
+extern  ip_dn_ctl_t *ip_dn_ctl_ptr;
+extern  ip_dn_ruledel_t *ip_dn_ruledel_ptr;
+extern  ip_dn_io_t *ip_dn_io_ptr;
+#define DUMMYNET_LOADED (ip_dn_io_ptr != NULL)
+
 
 #endif /* _KERNEL */
 

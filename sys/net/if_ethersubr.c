@@ -74,7 +74,9 @@
 #include <netinet/in_var.h>
 #include <netinet/if_ether.h>
 #include <netinet/ip_fw.h>
+#include <netinet/ipfw/ip_fw_var.h>
 #include <netinet/ip_dummynet.h>
+#include <netinet/ipfw/ip_dummynet_var.h>
 #include <netinet/vinet.h>
 #endif
 #ifdef INET6
@@ -107,6 +109,8 @@ extern u_char	aarp_org_code[3];
 #endif /* NETATALK */
 
 #include <security/mac/mac_framework.h>
+
+
 
 #ifdef CTASSERT
 CTASSERT(sizeof (struct ether_header) == ETHER_ADDR_LEN * 2 + 2);

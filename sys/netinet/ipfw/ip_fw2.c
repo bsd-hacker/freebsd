@@ -82,8 +82,10 @@ __FBSDID("$FreeBSD$");
 #include <netinet/ip_var.h>
 #include <netinet/ip_icmp.h>
 #include <netinet/ip_fw.h>
+#include <netinet/ipfw/ip_fw_var.h>
 #include <netinet/ip_divert.h>
 #include <netinet/ip_dummynet.h>
+#include <netinet/ipfw/ip_dummynet_var.h>
 #include <netinet/ip_carp.h>
 #include <netinet/pim.h>
 #include <netinet/tcp_var.h>

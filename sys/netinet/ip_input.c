@@ -85,10 +85,6 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/socketvar.h>
 
-/* XXX: Temporary until ipfw_ether and ipfw_bridge are converted. */
-#include <netinet/ip_fw.h>
-#include <netinet/ip_dummynet.h>
-
 #include <security/mac/mac_framework.h>
 
 #ifdef CTASSERT

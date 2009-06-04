@@ -134,7 +134,9 @@ __FBSDID("$FreeBSD$");
 
 #include <net/route.h>
 #include <netinet/ip_fw.h>
+#include <netinet/ipfw/ip_fw_var.h>
 #include <netinet/ip_dummynet.h>
+#include <netinet/ipfw/ip_dummynet_var.h>
 
 /*
  * Size of the route hash table.  Must be a power of two.

@@ -70,8 +70,6 @@ __FBSDID("$FreeBSD$");
 #include <netinet/ip_var.h>
 #include <netinet/ip_mroute.h>
 
-#include <netinet/ip_fw.h>
-#include <netinet/ip_dummynet.h>
 #include <netinet/vinet.h>
 
 #ifdef IPSEC
