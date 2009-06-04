@@ -2633,7 +2633,7 @@ get_packet(adapter_t *adap, unsigned int drop_thres, struct sge_qset *qs,
 	uint32_t flags = M_EXT;
 	uint8_t sopeop = G_RSPD_SOP_EOP(ntohl(r->flags));
 	caddr_t cl;
-	struct mbuf *m, *m0;
+	struct mbuf *m;
 	int ret = 0;
 	
 	prefetch(sd->rxsd_cl);
@@ -2643,29 +2643,37 @@ get_packet(adapter_t *adap, unsigned int drop_thres, struct sge_qset *qs,
 	
 	if (recycle_enable && len <= SGE_RX_COPY_THRES &&
 	    sopeop == RSPQ_SOP_EOP) {
-		if ((m0 = m_gethdr(M_DONTWAIT, MT_DATA)) == NULL)
+		if ((m = m_gethdr(M_DONTWAIT, MT_DATA)) == NULL)
 			goto skip_recycle;
-		cl = mtod(m0, void *);
+		cl = mtod(m, void *);
 		memcpy(cl, sd->rxsd_cl, len);
 		recycle_rx_buf(adap, fl, fl->cidx);
-		m = m0;
-		m0->m_len = len;
-		m0->m_flags = 0;
+		m->m_pkthdr.len = m->m_len = len;
+		m->m_flags = 0;
+		mh->mh_head = mh->mh_tail = m;
+		ret = 1;
+		goto done;
 	} else {
 	skip_recycle:
-
 		bus_dmamap_unload(fl->entry_tag, sd->map);
 		cl = sd->rxsd_cl;
-		m = m0 = sd->m;
+		m = sd->m;
 
 		if ((sopeop == RSPQ_SOP_EOP) ||
 		    (sopeop == RSPQ_SOP))
 			flags |= M_PKTHDR;
-		if (fl->zone != zone_pack)
-			m_cljset(m0, cl, fl->type);
-		m0->m_flags = flags;
-		m0->m_next = m0->m_nextpkt = NULL;
-		m0->m_pkthdr.len = m0->m_len = len;
+		if (fl->zone == zone_pack) {
+			m_init(m, zone_pack, MCLBYTES, M_NOWAIT, MT_DATA, flags);
+			/*
+			 * restore clobbered data pointer
+			 */
+			m->m_data = m->m_ext.ext_buf;
+		} else {
+			m_cljset(m, cl, fl->type);
+			m->m_flags = flags;
+			m->m_next = m->m_nextpkt = NULL;
+		}
+		m->m_len = len;
 	}		
 	switch(sopeop) {
 	case RSPQ_SOP_EOP:
@@ -2700,6 +2708,9 @@ get_packet(adapter_t *adap, unsigned int drop_thres, struct sge_qset *qs,
 		ret = 1;
 		break;
 	}
+	if (cxgb_debug)
+		printf("len=%d pktlen=%d\n", m->m_len, m->m_pkthdr.len);
+done:
 	if (++fl->cidx == fl->size)
 		fl->cidx = 0;
 
@@ -2843,8 +2854,11 @@ process_responses(adapter_t *adap, struct sge_qset *qs, int budget)
 			int drop_thresh = eth ? SGE_RX_DROP_THRES : 0;
 			
 			eop = get_packet(adap, drop_thresh, qs, &rspq->rspq_mh, r);
-			rspq->rspq_mh.mh_head->m_flags |= M_FLOWID;
-			rspq->rspq_mh.mh_head->m_pkthdr.flowid = rss_hash;
+			if (eop) {
+				rspq->rspq_mh.mh_head->m_flags |= M_FLOWID;
+				rspq->rspq_mh.mh_head->m_pkthdr.flowid = rss_hash;
+			}
+			
 			ethpad = 2;
 		} else {
 			DPRINTF("pure response\n");
