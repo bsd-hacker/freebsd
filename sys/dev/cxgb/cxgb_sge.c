@@ -642,10 +642,10 @@ free_rx_bufs(adapter_t *sc, struct sge_fl *q)
 			bus_dmamap_unload(q->entry_tag, d->map);
 			bus_dmamap_destroy(q->entry_tag, d->map);
 			if (q->zone == zone_pack)
-				m_free_fast(zone_pack, d->m);
+				uma_zfree(zone_pack, d->m);
 			else {
 				uma_zfree(q->zone, d->rxsd_cl);
-				m_free_fast(zone_mbuf, d->m);
+				uma_zfree(zone_mbuf, d->m);
 			}			
 		}
 		
