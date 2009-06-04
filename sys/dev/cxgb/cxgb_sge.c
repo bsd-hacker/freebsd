@@ -2630,8 +2630,8 @@ get_packet(adapter_t *adap, unsigned int drop_thres, struct sge_qset *qs,
 	struct sge_fl *fl = (len_cq & F_RSPD_FLQ) ? &qs->fl[1] : &qs->fl[0];
 	struct rx_sw_desc *sd = &fl->sdesc[fl->cidx];
 	uint32_t len = G_RSPD_LEN(len_cq);
-	uint32_t flags = ntohl(r->flags);
-	uint8_t sopeop = G_RSPD_SOP_EOP(flags);
+	uint32_t flags = M_EXT;
+	uint8_t sopeop = G_RSPD_SOP_EOP(ntohl(r->flags));
 	caddr_t cl;
 	struct mbuf *m, *m0;
 	int ret = 0;
@@ -2650,6 +2650,7 @@ get_packet(adapter_t *adap, unsigned int drop_thres, struct sge_qset *qs,
 		recycle_rx_buf(adap, fl, fl->cidx);
 		m = m0;
 		m0->m_len = len;
+		m0->m_flags = 0;
 	} else {
 	skip_recycle:
 
@@ -2662,7 +2663,7 @@ get_packet(adapter_t *adap, unsigned int drop_thres, struct sge_qset *qs,
 			flags = M_PKTHDR;
 		if (fl->zone != zone_pack)
 			m_cljset(m0, cl, fl->type);
-		m0->m_flags |= flags;
+		m0->m_flags = flags;
 		m0->m_next = m0->m_nextpkt = NULL;
 		m0->m_pkthdr.len = m0->m_len = len;
 	}		
