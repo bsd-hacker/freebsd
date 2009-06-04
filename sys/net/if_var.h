@@ -613,6 +613,27 @@ drbr_dequeue(struct ifnet *ifp, struct buf_ring *br)
 	return (buf_ring_dequeue_sc(br));
 }
 
+static __inline struct mbuf *
+drbr_dequeue_cond(struct ifnet *ifp, struct buf_ring *br,
+    int (*func) (struct mbuf *, void *), void *arg) 
+{
+	struct mbuf *m;
+#ifdef ALTQ
+	/*
+	 * XXX need to evaluate / requeue 
+	 */
+	if (ALTQ_IS_ENABLED(&ifp->if_snd)) {	
+		IFQ_DRV_DEQUEUE(&ifp->if_snd, m);
+		return (m);
+	}
+#endif
+	m = buf_ring_peek(br);
+	if (m == NULL || func(m, arg) == 0)
+		return (NULL);
+
+	return (buf_ring_dequeue_sc(br));
+}
+
 static __inline int
 drbr_empty(struct ifnet *ifp, struct buf_ring *br)
 {
