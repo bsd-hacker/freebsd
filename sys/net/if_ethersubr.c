@@ -430,9 +430,10 @@ ether_output_frame(struct ifnet *ifp, struct mbuf *m)
 {
 #if defined(INET) || defined(INET6)
 	INIT_VNET_NET(ifp->if_vnet);
-	struct ip_fw *rule = ip_dn_claim_rule(m);
+	struct ip_fw *rule;
 
 	if (IPFW_LOADED && V_ether_ipfw != 0) {
+		rule = ip_dn_claim_rule(m);
 		if (ether_ipfw_chk(&m, ifp, &rule, 0) == 0) {
 			if (m) {
 				m_freem(m);
