@@ -2125,11 +2125,9 @@ cxgb_ioctl(struct ifnet *ifp, unsigned long command, caddr_t data)
 			} else
 				cxgb_init_locked(p);
 			p->if_flags = ifp->if_flags;
-			PORT_UNLOCK(p);
-		} else if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
+		} else if (ifp->if_drv_flags & IFF_DRV_RUNNING) 
 			cxgb_stop_locked(p);
-			PORT_UNLOCK(p);
-		}
+		PORT_UNLOCK(p);
 		break;
 	case SIOCADDMULTI:
 	case SIOCDELMULTI:
