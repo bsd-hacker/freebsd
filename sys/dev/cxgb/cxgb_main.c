@@ -2086,9 +2086,7 @@ static int
 cxgb_ioctl(struct ifnet *ifp, unsigned long command, caddr_t data)
 {
 	struct port_info *p = ifp->if_softc;
-#ifdef INET
 	struct ifaddr *ifa = (struct ifaddr *)data;
-#endif
 	struct ifreq *ifr = (struct ifreq *)data;
 	int flags, error = 0, reinit = 0;
 	uint32_t mask;
@@ -2101,17 +2099,13 @@ cxgb_ioctl(struct ifnet *ifp, unsigned long command, caddr_t data)
 		error = cxgb_set_mtu(p, ifr->ifr_mtu);
 		break;
 	case SIOCSIFADDR:
-#ifdef INET
 		if (ifa->ifa_addr->sa_family == AF_INET) {
 			ifp->if_flags |= IFF_UP;
 			if (!(ifp->if_drv_flags & IFF_DRV_RUNNING)) {
-				PORT_LOCK(p);
-				cxgb_init_locked(p);
-				PORT_UNLOCK(p);
+				cxgb_init(p);
 			}
 			arp_ifinit(ifp, ifa);
 		} else
-#endif
 			error = ether_ioctl(ifp, command, data);
 		break;
 	case SIOCSIFFLAGS:
@@ -2122,8 +2116,11 @@ cxgb_ioctl(struct ifnet *ifp, unsigned long command, caddr_t data)
 				if (((ifp->if_flags ^ flags) & IFF_PROMISC) ||
 				    ((ifp->if_flags ^ flags) & IFF_ALLMULTI))
 					cxgb_set_rxmode(p);
-			} else
+			} else {
+				PORT_UNLOCK(p);
 				cxgb_init_locked(p);
+				PORT_LOCK(p);
+			}
 			p->if_flags = ifp->if_flags;
 		} else if (ifp->if_drv_flags & IFF_DRV_RUNNING) 
 			cxgb_stop_locked(p);
