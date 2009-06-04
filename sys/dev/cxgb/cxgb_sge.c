@@ -212,6 +212,24 @@ static void sge_timer_cb(void *arg);
 static void sge_timer_reclaim(void *arg, int ncount);
 static void sge_txq_reclaim_handler(void *arg, int ncount);
 
+#ifdef __LP64__
+static void
+set_wr_hdr(struct work_request_hdr *wrp, uint64_t wr_hi, uint64_t wr_lo)
+{
+
+	wrp->wrh_hilo = (wr_hi<<32)|wr_lo;
+}
+#else
+static void
+set_wr_hdr(struct work_request_hdr *wrp, uint32_t wr_hi, uint32_t wr_lo)
+{
+
+	wrp->wrh_hi = wr_hi;
+	wmb();
+	wrp->wrh_lo = wr_lo;
+}
+#endif
+
 /**
  *	reclaim_completed_tx - reclaims completed Tx descriptors
  *	@adapter: the adapter
@@ -675,7 +693,7 @@ recycle_rx_buf(adapter_t *adap, struct sge_fl *q, unsigned int idx)
 	q->sdesc[q->pidx] = q->sdesc[idx];
 	to->addr_lo = from->addr_lo;        // already big endian
 	to->addr_hi = from->addr_hi;        // likewise
-	wmb();
+	wmb();	/* necessary ? */
 	to->len_gen = htobe32(V_FLD_GEN1(q->gen));
 	to->gen2 = htobe32(V_FLD_GEN2(q->gen));
 	q->credits++;
@@ -1096,7 +1114,7 @@ make_sgl(struct sg_ent *sgp, bus_dma_segment_t *segs, int nsegs)
  *	@adap: the adapter
  *	@q: the Tx queue
  *
- *	Ring the doorbel if a Tx queue is asleep.  There is a natural race,
+ *	Ring the doorbell if a Tx queue is asleep.  There is a natural race,
  *	where the HW is going to sleep just after we checked, however,
  *	then the interrupt handler will detect the outstanding TX packet
  *	and ring the doorbell for us.
@@ -1159,11 +1177,10 @@ write_wr_hdr_sgl(unsigned int ndesc, struct tx_desc *txd, struct txq_state *txqs
 	struct tx_sw_desc *txsd = &txq->sdesc[txqs->pidx];
 	
 	if (__predict_true(ndesc == 1)) {
-		wrp->wrh_hi = htonl(F_WR_SOP | F_WR_EOP | V_WR_DATATYPE(1) |
-		    V_WR_SGLSFLT(flits)) | wr_hi;
-		wmb();
-		wrp->wrh_lo = htonl(V_WR_LEN(flits + sgl_flits) |
-		    V_WR_GEN(txqs->gen)) | wr_lo;
+		set_wr_hdr(wrp, htonl(F_WR_SOP | F_WR_EOP | V_WR_DATATYPE(1) |
+			V_WR_SGLSFLT(flits)) | wr_hi,
+		    wrp->wrh_lo = htonl(V_WR_LEN(flits + sgl_flits) |
+			V_WR_GEN(txqs->gen)) | wr_lo);
 		/* XXX gen? */
 		wr_gen2(txd, txqs->gen);
 		
@@ -1210,9 +1227,8 @@ write_wr_hdr_sgl(unsigned int ndesc, struct tx_desc *txd, struct txq_state *txqs
 			wr_gen2(txd, txqs->gen);
 			flits = 1;
 		}
-		wrp->wrh_hi |= htonl(F_WR_EOP);
-		wmb();
-		wp->wrh_lo = htonl(V_WR_LEN(WR_FLITS) | V_WR_GEN(ogen)) | wr_lo;
+		set_wr_hdr(wrp, wrp->wrh_hi |= htonl(F_WR_EOP),
+		    htonl(V_WR_LEN(WR_FLITS) | V_WR_GEN(ogen)) | wr_lo);
 		wr_gen2((struct tx_desc *)wp, ogen);
 	}
 }
@@ -1250,8 +1266,6 @@ t3_encap(struct sge_qset *qs, struct mbuf **m, int count)
 
 	struct tx_desc *txd;
 		
-	DPRINTF("t3_encap cpu=%d ", curcpu);
-
 	pi = qs->port;
 	sc = pi->adapter;
 	txq = &qs->txq[TXQ_ETH];
@@ -1309,11 +1323,12 @@ t3_encap(struct sge_qset *qs, struct mbuf **m, int count)
 			txd->flit[fidx] |= htobe64(1 << 24);
 		}
 
-		wrp->wrh_hi = htonl(F_WR_SOP | F_WR_EOP | V_WR_DATATYPE(1) |
+		
+		wr_hi = htonl(F_WR_SOP | F_WR_EOP | V_WR_DATATYPE(1) |
 		    V_WR_SGLSFLT(flits)) | htonl(V_WR_OP(FW_WROPCODE_TUNNEL_TX_PKT) | txqs.compl);
-		wmb();
-		wrp->wrh_lo = htonl(V_WR_LEN(flits) |
+		wr_lo = htonl(V_WR_LEN(flits) |
 		    V_WR_GEN(txqs.gen)) | htonl(V_WR_TID(txq->token));
+		set_wr_hdr(wrp, wr_hi, wr_lo);
 		/* XXX gen? */
 		wr_gen2(txd, txqs.gen);
 		check_ring_tx_db(sc, txq);
@@ -1382,13 +1397,12 @@ t3_encap(struct sge_qset *qs, struct mbuf **m, int count)
 			txq_prod(txq, 1, &txqs);
 			m_copydata(m0, 0, mlen, (caddr_t)&txd->flit[3]);
 			flits = (mlen + 7) / 8 + 3;
-			hdr->wr.wrh_hi = htonl(V_WR_BCNTLFLT(mlen & 7) |
+			wr_hi = htonl(V_WR_BCNTLFLT(mlen & 7) |
 					  V_WR_OP(FW_WROPCODE_TUNNEL_TX_PKT) |
 					  F_WR_SOP | F_WR_EOP | txqs.compl);
-			wmb();
-			hdr->wr.wrh_lo = htonl(V_WR_LEN(flits) |
+			wr_lo = htonl(V_WR_LEN(flits) |
 			    V_WR_GEN(txqs.gen) | V_WR_TID(txq->token));
-
+			set_wr_hdr(&hdr->wr, wr_hi, wr_lo);
 			wr_gen2(txd, txqs.gen);
 			check_ring_tx_db(sc, txq);
 			return (0);
@@ -1411,19 +1425,17 @@ t3_encap(struct sge_qset *qs, struct mbuf **m, int count)
 			txq_prod(txq, 1, &txqs);
 			m_copydata(m0, 0, mlen, (caddr_t)&txd->flit[2]);
 			flits = (mlen + 7) / 8 + 2;
-			cpl->wr.wrh_hi = htonl(V_WR_BCNTLFLT(mlen & 7) |
-					  V_WR_OP(FW_WROPCODE_TUNNEL_TX_PKT) |
+			
+			wr_hi = htonl(V_WR_BCNTLFLT(mlen & 7) |
+			    V_WR_OP(FW_WROPCODE_TUNNEL_TX_PKT) |
 					  F_WR_SOP | F_WR_EOP | txqs.compl);
-			wmb();
-			cpl->wr.wrh_lo = htonl(V_WR_LEN(flits) |
+			wr_lo = htonl(V_WR_LEN(flits) |
 			    V_WR_GEN(txqs.gen) | V_WR_TID(txq->token));
-
+			set_wr_hdr(&cpl->wr, wr_hi, wr_lo);
 			wr_gen2(txd, txqs.gen);
 			check_ring_tx_db(sc, txq);
-			DPRINTF("pio buf\n");
 			return (0);
 		}
-		DPRINTF("regular buf\n");
 		flits = 2;
 	}
 	wrp = (struct work_request_hdr *)txd;
@@ -1435,7 +1447,6 @@ t3_encap(struct sge_qset *qs, struct mbuf **m, int count)
 
 	sgl_flits = sgl_len(nsegs);
 
-	DPRINTF("make_sgl success nsegs==%d ndesc==%d\n", nsegs, ndesc);
 	txq_prod(txq, ndesc, &txqs);
 	wr_hi = htonl(V_WR_OP(FW_WROPCODE_TUNNEL_TX_PKT) | txqs.compl);
 	wr_lo = htonl(V_WR_TID(txq->token));
@@ -1598,6 +1609,7 @@ write_imm(struct tx_desc *d, struct mbuf *m,
 {
 	struct work_request_hdr *from = mtod(m, struct work_request_hdr *);
 	struct work_request_hdr *to = (struct work_request_hdr *)d;
+	uint32_t wr_hi, wr_lo;
 
 	if (len > WR_LEN)
 		panic("len too big %d\n", len);
@@ -1605,11 +1617,11 @@ write_imm(struct tx_desc *d, struct mbuf *m,
 		panic("len too small %d", len);
 	
 	memcpy(&to[1], &from[1], len - sizeof(*from));
-	to->wrh_hi = from->wrh_hi | htonl(F_WR_SOP | F_WR_EOP |
+	wr_hi = from->wrh_hi | htonl(F_WR_SOP | F_WR_EOP |
 					V_WR_BCNTLFLT(len & 7));
-	wmb();
-	to->wrh_lo = from->wrh_lo | htonl(V_WR_GEN(gen) |
+	wr_lo = from->wrh_lo | htonl(V_WR_GEN(gen) |
 					V_WR_LEN((len + 7) / 8));
+	set_wr_hdr(to, wr_hi, wr_lo);
 	wr_gen2(d, gen);
 
 	/*
@@ -1657,11 +1669,7 @@ addq_exit:	mbufq_tail(&q->sendq, m);
 
 		struct sge_qset *qs = txq_to_qset(q, qid);
 
-		printf("stopping q\n");
-		
 		setbit(&qs->txq_stopped, qid);
-		smp_mb();
-
 		if (should_restart_tx(q) &&
 		    test_and_clear_bit(qid, &qs->txq_stopped))
 			return 2;
@@ -2207,8 +2215,6 @@ again:	cleaned = reclaim_completed_tx(qs, 16, TXQ_OFLD);
 
 		if (__predict_false(q->size - q->in_use < ndesc)) {
 			setbit(&qs->txq_stopped, TXQ_OFLD);
-			smp_mb();
-
 			if (should_restart_tx(q) &&
 			    test_and_clear_bit(TXQ_OFLD, &qs->txq_stopped))
 				goto again;
@@ -2418,11 +2424,6 @@ t3_sge_alloc_qset(adapter_t *sc, u_int id, int nports, int irq_vec_idx,
 	}
 
 	for (i = 0; i < ntxq; ++i) {
-		/*
-		 * The control queue always uses immediate data so does not
-		 * need to keep track of any mbufs.
-		 * XXX Placeholder for future TOE support.
-		 */
 		size_t sz = i == TXQ_CTRL ? 0 : sizeof(struct tx_sw_desc);
 
 		if ((ret = alloc_ring(sc, p->txq_size[i],
@@ -2861,7 +2862,6 @@ process_responses(adapter_t *adap, struct sge_qset *qs, int budget)
 			
 			ethpad = 2;
 		} else {
-			DPRINTF("pure response\n");
 			rspq->pure_rsps++;
 		}
 	skip:
@@ -2881,8 +2881,6 @@ process_responses(adapter_t *adap, struct sge_qset *qs, int budget)
 			refill_rspq(adap, rspq, rspq->credits);
 			rspq->credits = 0;
 		}
-		DPRINTF("eth=%d eop=%d flags=0x%x\n", eth, eop, flags);
-
 		if (!eth && eop) {
 			rspq->rspq_mh.mh_head->m_pkthdr.csum_data = rss_csum;
 			/*
@@ -2928,7 +2926,6 @@ process_responses(adapter_t *adap, struct sge_qset *qs, int budget)
 				struct ifnet *ifp = m->m_pkthdr.rcvif;
 				(*ifp->if_input)(ifp, m);
 			}
-			DPRINTF("received tunnel packet\n");
 			rspq->rspq_mh.mh_head = NULL;
 
 		}
