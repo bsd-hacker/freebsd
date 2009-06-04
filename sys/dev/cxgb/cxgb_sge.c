@@ -214,10 +214,13 @@ static void sge_txq_reclaim_handler(void *arg, int ncount);
 
 #ifdef __LP64__
 static void
-set_wr_hdr(struct work_request_hdr *wrp, uint64_t wr_hi, uint64_t wr_lo)
+set_wr_hdr(struct work_request_hdr *wrp, uint32_t wr_hi, uint32_t wr_lo)
 {
+	uint64_t wr_hilo;
 
-	wrp->wrh_hilo = (wr_hi<<32)|wr_lo;
+	wr_hilo = wr_lo;
+	wr_hilo |= (((uint64_t)wr_hi)<<32) ;
+	wrp->wrh_hilo = wr_hilo;
 }
 #else
 static void
