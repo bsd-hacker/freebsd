@@ -824,31 +824,33 @@ static void
 sge_timer_cb(void *arg)
 {
 	adapter_t *sc = arg;
-#ifndef IFNET_MULTIQUEUE	
-	struct port_info *pi;
-	struct sge_qset *qs;
-	struct sge_txq  *txq;
-	int i, j;
-	int reclaim_ofl, refill_rx;
+	if ((sc->flags & USING_MSIX) == 0) {
+		
+		struct port_info *pi;
+		struct sge_qset *qs;
+		struct sge_txq  *txq;
+		int i, j;
+		int reclaim_ofl, refill_rx;
 
-	if (sc->open_device_map == 0) 
-		return;
+		if (sc->open_device_map == 0) 
+			return;
 
-	for (i = 0; i < sc->params.nports; i++) {
-		pi = &sc->port[i];
-		for (j = 0; j < pi->nqsets; j++) {
-			qs = &sc->sge.qs[pi->first_qset + j];
-			txq = &qs->txq[0];
-			reclaim_ofl = txq[TXQ_OFLD].processed - txq[TXQ_OFLD].cleaned;
-			refill_rx = ((qs->fl[0].credits < qs->fl[0].size) || 
-			    (qs->fl[1].credits < qs->fl[1].size));
-			if (reclaim_ofl || refill_rx) {
-				taskqueue_enqueue(sc->tq, &pi->timer_reclaim_task);
-				break;
+		for (i = 0; i < sc->params.nports; i++) {
+			pi = &sc->port[i];
+			for (j = 0; j < pi->nqsets; j++) {
+				qs = &sc->sge.qs[pi->first_qset + j];
+				txq = &qs->txq[0];
+				reclaim_ofl = txq[TXQ_OFLD].processed - txq[TXQ_OFLD].cleaned;
+				refill_rx = ((qs->fl[0].credits < qs->fl[0].size) || 
+				    (qs->fl[1].credits < qs->fl[1].size));
+				if (reclaim_ofl || refill_rx) {
+					taskqueue_enqueue(sc->tq, &pi->timer_reclaim_task);
+					break;
+				}
 			}
 		}
 	}
-#endif
+	
 	if (sc->params.nports > 2) {
 		int i;
 
@@ -934,10 +936,9 @@ sge_timer_reclaim(void *arg, int ncount)
 	adapter_t *sc = pi->adapter;
 	struct sge_qset *qs;
 	struct mtx *lock;
-
-#ifdef IFNET_MULTIQUEUE
-	panic("%s should not be called with multiqueue support\n", __FUNCTION__);
-#endif 
+	
+	KASSERT((sc->flags & USING_MSIX) == 0,
+	    ("can't call timer reclaim for msi-x"));
 	for (i = 0; i < nqsets; i++) {
 		qs = &sc->sge.qs[pi->first_qset + i];
 
@@ -3101,13 +3102,8 @@ t3_intr_msix(void *data)
 	adapter_t *adap = qs->port->adapter;
 	struct sge_rspq *rspq = &qs->rspq;
 
-	mtx_lock(&rspq->lock);
-	{
-		
-		if (process_responses_gts(adap, rspq) == 0)
-			rspq->unhandled_irqs++;
-		mtx_unlock(&rspq->lock);
-	}
+	if (process_responses_gts(adap, rspq) == 0)
+		rspq->unhandled_irqs++;
 }
 
 #define QDUMP_SBUF_SIZE		32 * 400

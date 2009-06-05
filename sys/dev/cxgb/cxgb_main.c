@@ -2377,7 +2377,7 @@ cxgb_tick(void *arg)
 {
 	adapter_t *sc = (adapter_t *)arg;
 
-	if ((sc->flags & CXGB_SHUTDOWN) || (sc->open_device_map == 0)
+	if ((sc->flags & CXGB_SHUTDOWN) || (sc->open_device_map == 0))
 		return;
 
 	taskqueue_enqueue(sc->tq, &sc->tick_task);	
