@@ -215,20 +215,25 @@ static void sge_timer_cb(void *arg);
 static void sge_timer_reclaim(void *arg, int ncount);
 static void sge_txq_reclaim_handler(void *arg, int ncount);
 
-
 static __inline void 
 check_pkt_coalesce(struct sge_qset *qs) 
 { 
         struct adapter *sc; 
         struct sge_txq *txq; 
- 
+	uint8_t *fill;
+	
         txq = &qs->txq[TXQ_ETH]; 
         sc = qs->port->adapter; 
- 
-        if (sc->tunq_fill[qs->idx] && (txq->in_use < (txq->size - (txq->size>>2))))  
-                sc->tunq_fill[qs->idx] = 0; 
-        else if (!sc->tunq_fill[qs->idx] && (txq->in_use > (txq->size - (txq->size>>2))))  
-                sc->tunq_fill[qs->idx] = 1; 
+	fill = &sc->tunq_fill[qs->idx];
+	
+	/*
+	 * if the hardware transmit queue is more than 3/4 full
+	 * we mark it as coalescing
+	 */
+        if (*fill != 0 && (txq->in_use < (txq->size - (txq->size>>2))))  
+                *fill = 0; 
+        else if (*fill == 0 && (txq->in_use >= (txq->size - (txq->size>>2))))  
+                *fill = 1; 
 } 
 
 #ifdef __LP64__
@@ -1499,38 +1504,52 @@ coalesce_check(struct mbuf *m, void *arg)
 	return (0);
 }
 
+static struct mbuf *
+cxgb_dequeue_chain(struct sge_qset *qs, int *count)
+{
+	int nbytes = 0;
+	struct mbuf *m, *m_head, *m_tail;
+
+	m_head = m_tail = NULL;
+	do {
+		m = TXQ_RING_DEQUEUE_COND(qs, coalesce_check, &nbytes);
+		if (m_head == NULL) {
+			m_tail = m_head = m;
+		} else if (m != NULL) {
+			*count += 1;
+			m_tail->m_nextpkt = m;
+			m_tail = m;
+		}
+	} while (m != NULL);
+	
+	return (m_head);
+}
+	
 static void
 cxgb_start_locked(struct sge_qset *qs)
 {
-	struct mbuf *m, *m_tail, *m_head = NULL;
+	struct mbuf *m_head = NULL;
 	struct sge_txq *txq = &qs->txq[TXQ_ETH];
-	int txmax = min(TX_START_MAX_DESC, txq->size - txq->in_use);
+	int txmax;
 	int in_use_init = txq->in_use;
 	struct port_info *pi = qs->port;
 	struct adapter *sc = pi->adapter;
 	struct ifnet *ifp = pi->ifp;
-	int count, nbytes;
-	
+	int count, avail;
+
+	avail = txq->size - txq->in_use - 4;
+	txmax = min(TX_START_MAX_DESC, avail);
+
 	TXQ_LOCK_ASSERT(qs);
 	while ((txq->in_use - in_use_init < txmax) &&
 	    (!TXQ_RING_EMPTY(qs))) {
-		m_head = m_tail = NULL;
+		reclaim_completed_tx(qs, (TX_ETH_Q_SIZE>>4), TXQ_ETH);
 		check_pkt_coalesce(qs);
 		count = 1;
 
-		if (sc->tunq_coalesce) {
-			nbytes = 0;
-			do {
-				m = TXQ_RING_DEQUEUE_COND(qs, coalesce_check, &nbytes);
-				if (m_head == NULL) {
-					m_tail = m_head = m;
-				} else if (m != NULL) {
-					count++;
-					m_tail->m_nextpkt = m;
-					m_tail = m;
-				}
-			} while (m != NULL);
-		} else 
+		if (sc->tunq_coalesce)
+			m_head = cxgb_dequeue_chain(qs, &count);
+		 else 
 			m_head = TXQ_RING_DEQUEUE(qs); 
 
 		if (m_head == NULL)
@@ -1567,13 +1586,21 @@ cxgb_transmit_locked(struct ifnet *ifp, struct sge_qset *qs, struct mbuf *m)
 	struct adapter	*sc = pi->adapter;
 	struct sge_txq *txq = &qs->txq[TXQ_ETH];
 	struct buf_ring *br = txq->txq_mr;
-	int error, count = 1;
+	int error, avail;
 
+	avail = txq->size - txq->in_use;
 	TXQ_LOCK_ASSERT(qs);
 	reclaim_completed_tx(qs, (TX_ETH_Q_SIZE>>4), TXQ_ETH);
 
+	/*
+	 * We can only do a direct transmit if the following are true:
+	 * - we aren't coalescing (ring < 3/4 full)
+	 * - the link is up
+	 * - there are no packets enqueued already
+	 * - there is space in hardware transmit queue 
+	 */
 	if (sc->tunq_coalesce == 0 && pi->link_config.link_ok &&
-	    TXQ_RING_EMPTY(qs) && (txq->size - txq->in_use) >= 4) {
+	    TXQ_RING_EMPTY(qs) && avail > 4) {
 		if (t3_encap(qs, &m, 1)) {
 			if (m != NULL &&
 			    (error = drbr_enqueue(ifp, br, m)) != 0) 
@@ -1593,7 +1620,7 @@ cxgb_transmit_locked(struct ifnet *ifp, struct sge_qset *qs, struct mbuf *m)
 			/*
 			 * We sent via PIO, no longer need a copy
 			 */
-			if (count == 1 && m->m_pkthdr.len <= PIO_LEN)
+			if (m->m_pkthdr.len <= PIO_LEN)
 				m_freem(m);
 
 		}
