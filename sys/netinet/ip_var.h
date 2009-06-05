@@ -224,16 +224,13 @@ extern	struct pfil_head inet_pfil_hook;	/* packet filter hooks */
 
 void	in_delayed_cksum(struct mbuf *m);
 
-/* ipfw and dummynet hooks */
-extern int (*ip_fw_ctl_ptr)(struct sockopt *);
+/* ipfw and dummynet hooks. Most are declared in raw_ip.c */
 struct ip_fw_args;
-extern  int (*ip_fw_chk_ptr)(struct ip_fw_args *args);
-#define IPFW_LOADED     (ip_fw_chk_ptr != NULL)
-
-extern  int (*ip_dn_ctl_ptr)(struct sockopt *); /* raw_ip.c */
-extern int (*ip_dn_io_ptr)(struct mbuf **m, int dir, struct ip_fw_args *fwa);
-//typedef void ip_dn_ruledel_t(void *); /* ip_fw_pfil.c */
-extern  void (*ip_dn_ruledel_ptr)(void *); /* ip_fw_pfil.c */
+extern int	(*ip_fw_chk_ptr)(struct ip_fw_args *args);
+extern int	(*ip_fw_ctl_ptr)(struct sockopt *);
+extern int	(*ip_dn_ctl_ptr)(struct sockopt *);
+extern int	(*ip_dn_io_ptr)(struct mbuf **m, int dir, struct ip_fw_args *fwa);
+extern void	(*ip_dn_ruledel_ptr)(void *);		/* in ip_fw2.c */
 #endif /* _KERNEL */
 
 #endif /* !_NETINET_IP_VAR_H_ */
