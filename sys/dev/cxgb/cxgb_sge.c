@@ -96,8 +96,6 @@ extern int nmbjumbo4;
 extern int nmbjumbo9;
 extern int nmbjumbo16;
 
-static int coalesce_tx_enable;
-
 #define USE_GTS 0
 
 #define SGE_RX_SM_BUF_SIZE	1536
@@ -1542,7 +1540,7 @@ cxgb_start_locked(struct sge_qset *qs)
 
 	TXQ_LOCK_ASSERT(qs);
 	while ((txq->in_use - in_use_init < txmax) &&
-	    (!TXQ_RING_EMPTY(qs)) && (sc->flags & CXGB_SHUTDOWN) == 0) {
+	    (!TXQ_RING_EMPTY(qs)) && (ifp->if_drv_flags & IFF_DRV_RUNNING)) {
 		reclaim_completed_tx(qs, (TX_ETH_Q_SIZE>>4), TXQ_ETH);
 		check_pkt_coalesce(qs);
 		count = 1;
@@ -1640,7 +1638,7 @@ cxgb_transmit(struct ifnet *ifp, struct mbuf *m)
 	struct port_info *pi = ifp->if_softc;
 	int error, qidx = pi->first_qset;
 
-	if (pi->adapter->flags & CXGB_SHUTDOWN) {
+	if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0) {
 		m_freem(m);
 		return (0);
 	}
