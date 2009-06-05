@@ -237,8 +237,8 @@ set_wr_hdr(struct work_request_hdr *wrp, uint32_t wr_hi, uint32_t wr_lo)
 {
 	uint64_t wr_hilo;
 
-	wr_hilo = wr_lo;
-	wr_hilo |= (((uint64_t)wr_hi)<<32) ;
+	wr_hilo = wr_hi;
+	wr_hilo |= (((uint64_t)wr_lo)<<32) ;
 	wrp->wrh_hilo = wr_hilo;
 }
 #else
