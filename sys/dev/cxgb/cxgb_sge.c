@@ -1555,9 +1555,10 @@ cxgb_start_locked(struct sge_qset *qs)
 		check_pkt_coalesce(qs);
 		count = 1;
 
-		if (sc->tunq_coalesce)
+		if (sc->tunq_coalesce) {
 			m_head = cxgb_dequeue_chain(qs, &ci);
-		 else 
+			count = ci.count;
+		} else 
 			m_head = TXQ_RING_DEQUEUE(qs); 
 
 		if (m_head == NULL)
@@ -1566,7 +1567,7 @@ cxgb_start_locked(struct sge_qset *qs)
 		 *  Encapsulation can modify our pointer, and or make it
 		 *  NULL on failure.  In that event, we can't requeue.
 		 */
-		if (t3_encap(qs, &m_head, ci.count))
+		if (t3_encap(qs, &m_head, count))
 			break;
 		
 		/* Send a copy of the frame to the BPF listener */
