@@ -1308,11 +1308,11 @@ t3_encap(struct sge_qset *qs, struct mbuf **m, int count)
 	
 	mtx_assert(&qs->lock, MA_OWNED);
 	cntrl = V_TXPKT_INTF(pi->txpkt_intf);
-/*
- * XXX need to add VLAN support for 6.x
- */
+	KASSERT(m0->m_flags & M_PKTHDR, ("not packet header\n"));
+	
 #ifdef VLAN_SUPPORTED
-	if  (m0->m_pkthdr.csum_flags & (CSUM_TSO))
+	if  (count == 1 && m0->m_next != NULL &&
+	    m0->m_pkthdr.csum_flags & (CSUM_TSO))
 		tso_info = V_LSO_MSS(m0->m_pkthdr.tso_segsz);
 #endif
 	if (count > 1) {
