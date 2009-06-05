@@ -117,13 +117,10 @@ err_out:
 }
 
 void
-busdma_map_sg_vec(struct mbuf **m, bus_dma_segment_t *segs, int pkt_count)
+busdma_map_sg_vec(struct mbuf *m, bus_dma_segment_t *segs, int *nsegs)
 {
-	struct mbuf *m0;
-	int i;
 
-	for (m0 = *m, i = 0; i < pkt_count; segs++, i++, m0 = m0->m_nextpkt)
-		busdma_map_mbuf_fast(m0, segs);
-
+	for (; m != NULL ; segs++, *nsegs += 1, m = m->m_nextpkt)
+		busdma_map_mbuf_fast(m, segs);
 }
 

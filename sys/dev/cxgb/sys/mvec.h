@@ -50,7 +50,7 @@ busdma_map_mbuf_fast(struct mbuf *m, bus_dma_segment_t *seg)
 }
 
 int busdma_map_sg_collapse(struct mbuf **m, bus_dma_segment_t *segs, int *nsegs);
-void busdma_map_sg_vec(struct mbuf **m, bus_dma_segment_t *segs, int count);
+void busdma_map_sg_vec(struct mbuf *m, bus_dma_segment_t *segs, int *nsegs);
 static __inline int
 busdma_map_sgl(bus_dma_segment_t *vsegs, bus_dma_segment_t *segs, int count) 
 {

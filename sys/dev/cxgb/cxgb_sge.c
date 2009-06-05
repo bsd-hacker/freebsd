@@ -1276,8 +1276,8 @@ do { \
 #define GET_VTAG(cntrl, m)
 #endif
 
-int
-t3_encap(struct sge_qset *qs, struct mbuf **m, int count)
+static int
+t3_encap(struct sge_qset *qs, struct mbuf **m)
 {
 	adapter_t *sc;
 	struct mbuf *m0;
@@ -1311,32 +1311,34 @@ t3_encap(struct sge_qset *qs, struct mbuf **m, int count)
 	KASSERT(m0->m_flags & M_PKTHDR, ("not packet header\n"));
 	
 #ifdef VLAN_SUPPORTED
-	if  (count == 1 && m0->m_next != NULL &&
+	if  (m0->m_nextpkt == NULL && m0->m_next != NULL &&
 	    m0->m_pkthdr.csum_flags & (CSUM_TSO))
 		tso_info = V_LSO_MSS(m0->m_pkthdr.tso_segsz);
 #endif
-	if (count > 1) {
-		busdma_map_sg_vec(m, segs, count);
-		nsegs = count;
+	if (m0->m_nextpkt != NULL) {
+		busdma_map_sg_vec(m0, segs, &nsegs);
 	} else if ((err = busdma_map_sg_collapse(&m0, segs, &nsegs))) {
 		if (cxgb_debug)
 			printf("failed ... err=%d\n", err);
 		return (err);
 	} 
-	KASSERT(m0->m_pkthdr.len, ("empty packet nsegs=%d count=%d", nsegs, count));
+	KASSERT(m0->m_pkthdr.len, ("empty packet nsegs=%d", nsegs));
 
-	if ((m0->m_pkthdr.len > PIO_LEN) || (count > 1))
+	if ((m0->m_pkthdr.len > PIO_LEN) || (nsegs > 1))
 		txsd->m = m0;
 
-	if (count > 1) {
+	if (m0->m_nextpkt != NULL) {
 		struct cpl_tx_pkt_batch *cpl_batch = (struct cpl_tx_pkt_batch *)txd;
 		int i, fidx;
 
+		if (nsegs > 7)
+			panic("trying to coalesce %d packets in to one WR", nsegs);
+		
 		wrp = (struct work_request_hdr *)txd;
-		flits = count*2 + 1;
+		flits = nsegs*2 + 1;
 		txq_prod(txq, 1, &txqs);
 
-		for (fidx = 1, i = 0; i < count; i++, fidx += 2) {
+		for (fidx = 1, i = 0; i < nsegs; i++, fidx += 2) {
 			struct cpl_tx_pkt_batch_entry *cbe = &cpl_batch->pkt_entry[i];
 
 			cntrl = V_TXPKT_INTF(pi->txpkt_intf);
@@ -1537,12 +1539,11 @@ cxgb_start_locked(struct sge_qset *qs)
 {
 	struct mbuf *m_head = NULL;
 	struct sge_txq *txq = &qs->txq[TXQ_ETH];
-	int txmax;
+	int avail, txmax;
 	int in_use_init = txq->in_use;
 	struct port_info *pi = qs->port;
 	struct adapter *sc = pi->adapter;
 	struct ifnet *ifp = pi->ifp;
-	int count, avail;
 	struct coalesce_info ci;
 
 	avail = txq->size - txq->in_use - 4;
@@ -1553,11 +1554,9 @@ cxgb_start_locked(struct sge_qset *qs)
 	    (!TXQ_RING_EMPTY(qs)) && (ifp->if_drv_flags & IFF_DRV_RUNNING)) {
 		reclaim_completed_tx(qs, (TX_ETH_Q_SIZE>>4), TXQ_ETH);
 		check_pkt_coalesce(qs);
-		count = 1;
 
 		if (sc->tunq_coalesce) {
 			m_head = cxgb_dequeue_chain(qs, &ci);
-			count = ci.count;
 		} else 
 			m_head = TXQ_RING_DEQUEUE(qs); 
 
@@ -1567,7 +1566,7 @@ cxgb_start_locked(struct sge_qset *qs)
 		 *  Encapsulation can modify our pointer, and or make it
 		 *  NULL on failure.  In that event, we can't requeue.
 		 */
-		if (t3_encap(qs, &m_head, count))
+		if (t3_encap(qs, &m_head))
 			break;
 		
 		/* Send a copy of the frame to the BPF listener */
@@ -1576,7 +1575,7 @@ cxgb_start_locked(struct sge_qset *qs)
 		/*
 		 * We sent via PIO, no longer need a copy
 		 */
-		if (count == 1 && m_head->m_pkthdr.len <= PIO_LEN)
+		if (m_head->m_pkthdr.len <= PIO_LEN)
 			m_freem(m_head);
 
 		m_head = NULL;
@@ -1610,7 +1609,7 @@ cxgb_transmit_locked(struct ifnet *ifp, struct sge_qset *qs, struct mbuf *m)
 	 */
 	if (sc->tunq_coalesce == 0 && pi->link_config.link_ok &&
 	    TXQ_RING_EMPTY(qs) && avail > 4) {
-		if (t3_encap(qs, &m, 1)) {
+		if (t3_encap(qs, &m)) {
 			if (m != NULL &&
 			    (error = drbr_enqueue(ifp, br, m)) != 0) 
 				return (error);
