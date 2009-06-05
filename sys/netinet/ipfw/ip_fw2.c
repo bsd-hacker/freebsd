@@ -3606,8 +3606,8 @@ remove_rule(struct ip_fw_chain *chain, struct ip_fw *rule,
 }
 
 /*
- * Hook for rule delete.
- * Set/cleared when dummynet module is loaded.
+ * Hook for cleaning up dummynet when an ipfw rule is deleted.
+ * Set/cleared when dummynet module is loaded/unloaded.
  */
 void	(*ip_dn_ruledel_ptr)(void *) = NULL;
 

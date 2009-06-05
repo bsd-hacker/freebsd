@@ -1642,8 +1642,9 @@ dn_rule_delete_fs(struct dn_flow_set *fs, void *r)
 }
 
 /*
- * when a firewall rule is deleted, scan all queues and remove the rule-id
- * from packets matching this rule.
+ * When a firewall rule is deleted, scan all queues and remove the pointer
+ * to the rule from matching packets, making them point to the default rule.
+ * The pointer is used to reinject packets in case one_pass = 0.
  */
 void
 dn_rule_delete(void *r)
