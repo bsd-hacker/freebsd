@@ -1485,16 +1485,26 @@ t3_encap(struct sge_qset *qs, struct mbuf **m, int count)
 	return (0);
 }
 
+struct coalesce_info {
+	int count;
+	int nbytes;
+};
+
+
 static int
 coalesce_check(struct mbuf *m, void *arg)
 {
-	uintptr_t *nbytes = (uintptr_t *)arg;
+	struct coalesce_info *ci = arg;
+	int *count = &ci->count;
+	int *nbytes = &ci->nbytes;
 
-	if (*nbytes == 0)
+	if (*nbytes == 0) {
+		*count = 1;
 		return (1);
-	else if (m->m_next != NULL)
+	} else if ((m->m_next != NULL) && (*count > 6))
 		return (0);
 	else if (*nbytes + m->m_len <= 10500) {
+		*count += 1;
 		*nbytes += m->m_len;
 		return (1);
 	}
@@ -1503,18 +1513,17 @@ coalesce_check(struct mbuf *m, void *arg)
 }
 
 static struct mbuf *
-cxgb_dequeue_chain(struct sge_qset *qs, int *count)
+cxgb_dequeue_chain(struct sge_qset *qs, struct coalesce_info *ci)
 {
-	int nbytes = 0;
 	struct mbuf *m, *m_head, *m_tail;
 
 	m_head = m_tail = NULL;
+	ci->nbytes = 0;
 	do {
-		m = TXQ_RING_DEQUEUE_COND(qs, coalesce_check, &nbytes);
+		m = TXQ_RING_DEQUEUE_COND(qs, coalesce_check, &ci);
 		if (m_head == NULL) {
 			m_tail = m_head = m;
 		} else if (m != NULL) {
-			*count += 1;
 			m_tail->m_nextpkt = m;
 			m_tail = m;
 		}
@@ -1534,6 +1543,7 @@ cxgb_start_locked(struct sge_qset *qs)
 	struct adapter *sc = pi->adapter;
 	struct ifnet *ifp = pi->ifp;
 	int count, avail;
+	struct coalesce_info ci;
 
 	avail = txq->size - txq->in_use - 4;
 	txmax = min(TX_START_MAX_DESC, avail);
@@ -1546,7 +1556,7 @@ cxgb_start_locked(struct sge_qset *qs)
 		count = 1;
 
 		if (sc->tunq_coalesce)
-			m_head = cxgb_dequeue_chain(qs, &count);
+			m_head = cxgb_dequeue_chain(qs, &ci);
 		 else 
 			m_head = TXQ_RING_DEQUEUE(qs); 
 
@@ -1556,7 +1566,7 @@ cxgb_start_locked(struct sge_qset *qs)
 		 *  Encapsulation can modify our pointer, and or make it
 		 *  NULL on failure.  In that event, we can't requeue.
 		 */
-		if (t3_encap(qs, &m_head, count))
+		if (t3_encap(qs, &m_head, ci.count))
 			break;
 		
 		/* Send a copy of the frame to the BPF listener */
@@ -1625,7 +1635,8 @@ cxgb_transmit_locked(struct ifnet *ifp, struct sge_qset *qs, struct mbuf *m)
 	} else if ((error = drbr_enqueue(ifp, br, m)) != 0)
 		return (error);
 	
-	if (!TXQ_RING_EMPTY(qs) && pi->link_config.link_ok)
+	if (!TXQ_RING_EMPTY(qs) && pi->link_config.link_ok &&
+	    (!sc->tunq_coalesce || (drbr_inuse(ifp, br) >= 7)))
 		cxgb_start_locked(qs);
 
 	return (0);
