@@ -839,16 +839,6 @@ cxgb_setup_msix(adapter_t *sc, int msix_count)
 				return (EINVAL);
 				
 			}
-#if 0			
-#ifdef IFNET_MULTIQUEUE			
-			if (multiq) {
-				int vector = rman_get_start(sc->msix_irq_res[k]);
-				if (bootverbose)
-					device_printf(sc->dev, "binding vector=%d to cpu=%d\n", vector, k % mp_ncpus);
-				intr_bind(vector, k % mp_ncpus);
-			}
-#endif
-#endif
 		}
 	}
 
@@ -1727,6 +1717,9 @@ cxgb_release(struct adapter *sc)
 	if (sc->flags & USING_MSIX) 
 		cxgb_teardown_msix(sc);
 
+	callout_drain(&sc->cxgb_tick_ch);
+	callout_drain(&sc->sge_timer_ch);
+
 	if (sc->tq != NULL) {
 		printf("draining slow intr\n");
 		taskqueue_drain(sc->tq, &sc->slow_intr_task);
@@ -2384,7 +2377,7 @@ cxgb_tick(void *arg)
 {
 	adapter_t *sc = (adapter_t *)arg;
 
-	if(sc->flags & CXGB_SHUTDOWN)
+	if ((sc->flags & CXGB_SHUTDOWN) || (sc->open_device_map == 0)
 		return;
 
 	taskqueue_enqueue(sc->tq, &sc->tick_task);	

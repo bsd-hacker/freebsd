@@ -831,6 +831,9 @@ sge_timer_cb(void *arg)
 	int i, j;
 	int reclaim_ofl, refill_rx;
 
+	if (sc->open_device_map == 0) 
+		return;
+
 	for (i = 0; i < sc->params.nports; i++) {
 		pi = &sc->port[i];
 		for (j = 0; j < pi->nqsets; j++) {
