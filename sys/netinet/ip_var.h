@@ -224,24 +224,16 @@ extern	struct pfil_head inet_pfil_hook;	/* packet filter hooks */
 
 void	in_delayed_cksum(struct mbuf *m);
 
-/* Prototypes for ipfw and dummynet hooks */
-typedef int ip_fw_ctl_t(struct sockopt *);
-extern ip_fw_ctl_t *ip_fw_ctl_ptr;
-/* For kernel ipfw_ether and ipfw_bridge. */
+/* ipfw and dummynet hooks */
+extern int (*ip_fw_ctl_ptr)(struct sockopt *);
 struct ip_fw_args;
-typedef int ip_fw_chk_t(struct ip_fw_args *args);
-extern  ip_fw_chk_t     *ip_fw_chk_ptr;
+extern  int (*ip_fw_chk_ptr)(struct ip_fw_args *args);
 #define IPFW_LOADED     (ip_fw_chk_ptr != NULL)
 
-typedef int ip_dn_ctl_t(struct sockopt *); /* raw_ip.c */
-typedef void ip_dn_ruledel_t(void *); /* ip_fw.c */
-typedef int ip_dn_io_t(struct mbuf **m, int dir, struct ip_fw_args *fwa);
-extern  ip_dn_ctl_t *ip_dn_ctl_ptr;
-extern  ip_dn_ruledel_t *ip_dn_ruledel_ptr;
-extern  ip_dn_io_t *ip_dn_io_ptr;
-#define DUMMYNET_LOADED (ip_dn_io_ptr != NULL)
-
-
+extern  int (*ip_dn_ctl_ptr)(struct sockopt *); /* raw_ip.c */
+extern int (*ip_dn_io_ptr)(struct mbuf **m, int dir, struct ip_fw_args *fwa);
+//typedef void ip_dn_ruledel_t(void *); /* ip_fw_pfil.c */
+extern  void (*ip_dn_ruledel_ptr)(void *); /* ip_fw_pfil.c */
 #endif /* _KERNEL */
 
 #endif /* !_NETINET_IP_VAR_H_ */

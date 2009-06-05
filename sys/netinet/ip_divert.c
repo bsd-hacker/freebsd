@@ -76,7 +76,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/ip_divert.h>
 #include <netinet/ip_var.h>
 #include <netinet/ip_fw.h>
-#include <netinet/ipfw/ip_fw_var.h>
+#include <netinet/ipfw/ip_fw_var.h>	/* IP_FW_DIVERT_*_FLAG */
 #include <netinet/vinet.h>
 #ifdef SCTP
 #include <netinet/sctp_crc32.h>

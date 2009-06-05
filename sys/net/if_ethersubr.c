@@ -524,7 +524,7 @@ ether_ipfw_chk(struct mbuf **m0, struct ifnet *dst,
 	if (i == IP_FW_PASS) /* a PASS rule.  */
 		return 1;
 
-	if (DUMMYNET_LOADED && (i == IP_FW_DUMMYNET)) {
+	if (ip_dn_io_ptr && (i == IP_FW_DUMMYNET)) {
 		/*
 		 * Pass the pkt to dummynet, which consumes it.
 		 * If shared, make a copy and keep the original.
