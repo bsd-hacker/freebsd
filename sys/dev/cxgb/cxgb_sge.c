@@ -203,7 +203,10 @@ static uint8_t flit_desc_map[] = {
 #define	TXQ_LOCK(qs)		mtx_lock(&(qs)->lock)	
 #define	TXQ_UNLOCK(qs)		mtx_unlock(&(qs)->lock)	
 #define	TXQ_RING_EMPTY(qs)	drbr_empty((qs)->port->ifp, (qs)->txq[TXQ_ETH].txq_mr)
-#define	TXQ_RING_DEQUEUE(qs)	drbr_dequeue((qs)->port->ifp, (qs)->txq[TXQ_ETH].txq_mr)
+#define	TXQ_RING_DEQUEUE_COND(qs, func, arg)				\
+	drbr_dequeue_cond((qs)->port->ifp, (qs)->txq[TXQ_ETH].txq_mr, func, arg)
+#define	TXQ_RING_DEQUEUE(qs) \
+	drbr_dequeue((qs)->port->ifp, (qs)->txq[TXQ_ETH].txq_mr)
 #define	CXGB_TX_TIMEOUT		5
 
 int cxgb_debug = 0;
@@ -211,6 +214,22 @@ int cxgb_debug = 0;
 static void sge_timer_cb(void *arg);
 static void sge_timer_reclaim(void *arg, int ncount);
 static void sge_txq_reclaim_handler(void *arg, int ncount);
+
+
+static __inline void 
+check_pkt_coalesce(struct sge_qset *qs) 
+{ 
+        struct adapter *sc; 
+        struct sge_txq *txq; 
+ 
+        txq = &qs->txq[TXQ_ETH]; 
+        sc = qs->port->adapter; 
+ 
+        if (sc->tunq_fill[qs->idx] && (txq->in_use < (txq->size - (txq->size>>2))))  
+                sc->tunq_fill[qs->idx] = 0; 
+        else if (!sc->tunq_fill[qs->idx] && (txq->in_use > (txq->size - (txq->size>>2))))  
+                sc->tunq_fill[qs->idx] = 1; 
+} 
 
 #ifdef __LP64__
 static void
@@ -1459,22 +1478,57 @@ t3_encap(struct sge_qset *qs, struct mbuf **m, int count)
 	return (0);
 }
 
+static int
+coalesce_check(struct mbuf *m, void *arg)
+{
+	uintptr_t *nbytes = (uintptr_t *)arg;
+
+	if (*nbytes == 0)
+		return (1);
+	else if (m->m_next != NULL)
+		return (0);
+	else if (*nbytes + m->m_len <= 10500) {
+		*nbytes += m->m_len;
+		return (1);
+	}
+	
+	return (0);
+}
+
 static void
 cxgb_start_locked(struct sge_qset *qs)
 {
-	struct mbuf	*m_head = NULL;
+	struct mbuf *m, *m_tail, *m_head = NULL;
 	int txmax = TX_START_MAX_DESC;
 	struct sge_txq *txq = &qs->txq[TXQ_ETH];
 	int in_use_init = txq->in_use;
 	struct port_info *pi = qs->port;
+	struct adapter *sc = pi->adapter;
 	struct ifnet *ifp = pi->ifp;
-	int count = 1;
+	int count, nbytes;
 	
 	TXQ_LOCK_ASSERT(qs);
 	while ((txq->in_use - in_use_init < txmax) &&
 	    (!TXQ_RING_EMPTY(qs))) {
+		m_head = m_tail = NULL;
+		check_pkt_coalesce(qs);
+		count = 1;
 
-		m_head = TXQ_RING_DEQUEUE(qs);
+		if (sc->tunq_coalesce) {
+			nbytes = 0;
+			do {
+				m = TXQ_RING_DEQUEUE_COND(qs, coalesce_check, &nbytes);
+				if (m_head == NULL) {
+					m_tail = m_head = m;
+				} else if (m != NULL) {
+					count++;
+					m_tail->m_nextpkt = m;
+					m_tail = m;
+				}
+			} while (m != NULL);
+		} else 
+			m_head = TXQ_RING_DEQUEUE(qs); 
+
 		if (m_head == NULL)
 			break;
 		/*
@@ -1511,12 +1565,10 @@ cxgb_transmit_locked(struct ifnet *ifp, struct sge_qset *qs, struct mbuf *m)
 	int error, count = 1;
 
 	TXQ_LOCK_ASSERT(qs);
-	reclaim_completed_tx(qs, (TX_ETH_Q_SIZE>>3), TXQ_ETH);
+	reclaim_completed_tx(qs, (TX_ETH_Q_SIZE>>4), TXQ_ETH);
 
-	if ((!pi->link_config.link_ok) /* check others */) {
-		error = drbr_enqueue(ifp, br, m);
-		return (error);
-	} else if (TXQ_RING_EMPTY(qs) && sc->tunq_coalesce == 0) {
+	if (sc->tunq_coalesce == 0 && pi->link_config.link_ok &&
+	    TXQ_RING_EMPTY(qs)) {
 		if (t3_encap(qs, &m, 1)) {
 			if (m != NULL &&
 			    (error = drbr_enqueue(ifp, br, m)) != 0) 
@@ -1542,7 +1594,7 @@ cxgb_transmit_locked(struct ifnet *ifp, struct sge_qset *qs, struct mbuf *m)
 	} else if ((error = drbr_enqueue(ifp, br, m)) != 0)
 		return (error);
 	
-	if (!TXQ_RING_EMPTY(qs))
+	if (!TXQ_RING_EMPTY(qs) && pi->link_config.link_ok)
 		cxgb_start_locked(qs);
 
 	return (0);

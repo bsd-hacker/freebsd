@@ -2086,7 +2086,6 @@ static int
 cxgb_ioctl(struct ifnet *ifp, unsigned long command, caddr_t data)
 {
 	struct port_info *p = ifp->if_softc;
-	struct ifaddr *ifa = (struct ifaddr *)data;
 	struct ifreq *ifr = (struct ifreq *)data;
 	int flags, error = 0, reinit = 0;
 	uint32_t mask;
@@ -2099,7 +2098,6 @@ cxgb_ioctl(struct ifnet *ifp, unsigned long command, caddr_t data)
 		error = cxgb_set_mtu(p, ifr->ifr_mtu);
 		break;
 	case SIOCSIFFLAGS:
-		PORT_LOCK(p);
 		if (ifp->if_flags & IFF_UP) {
 			if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
 				flags = p->if_flags;
@@ -2107,14 +2105,15 @@ cxgb_ioctl(struct ifnet *ifp, unsigned long command, caddr_t data)
 				    ((ifp->if_flags ^ flags) & IFF_ALLMULTI))
 					cxgb_set_rxmode(p);
 			} else {
-				PORT_UNLOCK(p);
-				cxgb_init_locked(p);
-				PORT_LOCK(p);
+				cxgb_init(p);
 			}
 			p->if_flags = ifp->if_flags;
-		} else if (ifp->if_drv_flags & IFF_DRV_RUNNING) 
+		} else if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
+			PORT_LOCK(p);
 			cxgb_stop_locked(p);
-		PORT_UNLOCK(p);
+			PORT_UNLOCK(p);
+		}
+		
 		break;
 	case SIOCADDMULTI:
 	case SIOCDELMULTI:
