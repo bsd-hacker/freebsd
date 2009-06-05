@@ -1503,8 +1503,8 @@ static void
 cxgb_start_locked(struct sge_qset *qs)
 {
 	struct mbuf *m, *m_tail, *m_head = NULL;
-	int txmax = TX_START_MAX_DESC;
 	struct sge_txq *txq = &qs->txq[TXQ_ETH];
+	int txmax = min(TX_START_MAX_DESC, txq->size - txq->in_use);
 	int in_use_init = txq->in_use;
 	struct port_info *pi = qs->port;
 	struct adapter *sc = pi->adapter;
@@ -1565,19 +1565,21 @@ cxgb_transmit_locked(struct ifnet *ifp, struct sge_qset *qs, struct mbuf *m)
 {
 	struct port_info *pi = qs->port;
 	struct adapter	*sc = pi->adapter;
-	struct buf_ring *br = qs->txq[TXQ_ETH].txq_mr;
+	struct sge_txq *txq = &qs->txq[TXQ_ETH];
+	struct buf_ring *br = txq->txq_mr;
 	int error, count = 1;
 
 	TXQ_LOCK_ASSERT(qs);
 	reclaim_completed_tx(qs, (TX_ETH_Q_SIZE>>4), TXQ_ETH);
 
 	if (sc->tunq_coalesce == 0 && pi->link_config.link_ok &&
-	    TXQ_RING_EMPTY(qs)) {
+	    TXQ_RING_EMPTY(qs) && (txq->size - txq->in_use) >= 4) {
 		if (t3_encap(qs, &m, 1)) {
 			if (m != NULL &&
 			    (error = drbr_enqueue(ifp, br, m)) != 0) 
 				return (error);
 		} else {
+			check_pkt_coalesce(qs);
 			/*
 			 * We've bypassed the buf ring so we need to update
 			 * ifp directly
