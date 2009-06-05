@@ -2034,19 +2034,22 @@ void
 t3_free_tx_desc(struct sge_qset *qs, int reclaimable, int queue)
 {
 	struct tx_sw_desc *txsd;
-	unsigned int cidx;
+	unsigned int cidx, mask;
 	struct sge_txq *q = &qs->txq[queue];
-	
+
 #ifdef T3_TRACE
 	T3_TRACE2(sc->tb[q->cntxt_id & 7],
 		  "reclaiming %u Tx descriptors at cidx %u", reclaimable, cidx);
 #endif
 	cidx = q->cidx;
+	mask = q->size - 1;
 	txsd = &q->sdesc[cidx];
-	DPRINTF("reclaiming %d WR\n", reclaimable);
+
 	mtx_assert(&qs->lock, MA_OWNED);
 	while (reclaimable--) {
-		DPRINTF("cidx=%d d=%p\n", cidx, txsd);
+		prefetch(q->sdesc[(cidx + 1) & mask].m);
+		prefetch(q->sdesc[(cidx + 2) & mask].m);
+
 		if (txsd->m != NULL) {
 			if (txsd->flags & TX_SW_DESC_MAPPED) {
 				bus_dmamap_unload(q->entry_tag, txsd->map);
@@ -2688,15 +2691,20 @@ get_packet(adapter_t *adap, unsigned int drop_thres, struct sge_qset *qs,
 
 	unsigned int len_cq =  ntohl(r->len_cq);
 	struct sge_fl *fl = (len_cq & F_RSPD_FLQ) ? &qs->fl[1] : &qs->fl[0];
-	struct rx_sw_desc *sd = &fl->sdesc[fl->cidx];
+	int mask, cidx = fl->cidx;
+	struct rx_sw_desc *sd = &fl->sdesc[cidx];
 	uint32_t len = G_RSPD_LEN(len_cq);
 	uint32_t flags = M_EXT;
 	uint8_t sopeop = G_RSPD_SOP_EOP(ntohl(r->flags));
 	caddr_t cl;
 	struct mbuf *m;
 	int ret = 0;
-	
-	prefetch(sd->rxsd_cl);
+
+	mask = fl->size - 1;
+	prefetch(fl->sdesc[(cidx + 1) & mask].m);
+	prefetch(fl->sdesc[(cidx + 2) & mask].m);
+	prefetch(fl->sdesc[(cidx + 1) & mask].rxsd_cl);
+	prefetch(fl->sdesc[(cidx + 2) & mask].rxsd_cl);	
 
 	fl->credits--;
 	bus_dmamap_sync(fl->entry_tag, sd->map, BUS_DMASYNC_POSTREAD);
@@ -2935,7 +2943,7 @@ process_responses(adapter_t *adap, struct sge_qset *qs, int budget)
 			rspq->gen ^= 1;
 			r = rspq->desc;
 		}
-		prefetch(r);
+
 		if (++rspq->credits >= (rspq->size / 4)) {
 			refill_rspq(adap, rspq, rspq->credits);
 			rspq->credits = 0;
@@ -2955,8 +2963,6 @@ process_responses(adapter_t *adap, struct sge_qset *qs, int budget)
 			
 		} else if (eth && eop) {
 			struct mbuf *m = rspq->rspq_mh.mh_head;
-			prefetch(mtod(m, uint8_t *)); 
-			prefetch(mtod(m, uint8_t *) + L1_CACHE_BYTES);
 
 			t3_rx_eth(adap, rspq, m, ethpad);
 
