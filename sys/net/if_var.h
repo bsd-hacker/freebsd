@@ -643,6 +643,16 @@ drbr_empty(struct ifnet *ifp, struct buf_ring *br)
 #endif
 	return (buf_ring_empty(br));
 }
+
+static __inline int
+drbr_inuse(struct ifnet *ifp, struct buf_ring *br)
+{
+#ifdef ALTQ
+	if (ALTQ_IS_ENABLED(&ifp->if_snd))
+		return (ifp->if_snd.ifq_len);
+#endif
+	return (buf_ring_count(br));
+}
 #endif
 /*
  * 72 was chosen below because it is the size of a TCP/IP
