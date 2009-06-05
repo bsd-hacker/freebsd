@@ -1542,7 +1542,7 @@ cxgb_start_locked(struct sge_qset *qs)
 
 	TXQ_LOCK_ASSERT(qs);
 	while ((txq->in_use - in_use_init < txmax) &&
-	    (!TXQ_RING_EMPTY(qs))) {
+	    (!TXQ_RING_EMPTY(qs)) && (sc->flags & CXGB_SHUTDOWN) == 0) {
 		reclaim_completed_tx(qs, (TX_ETH_Q_SIZE>>4), TXQ_ETH);
 		check_pkt_coalesce(qs);
 		count = 1;
@@ -1639,6 +1639,11 @@ cxgb_transmit(struct ifnet *ifp, struct mbuf *m)
 	struct sge_qset *qs;
 	struct port_info *pi = ifp->if_softc;
 	int error, qidx = pi->first_qset;
+
+	if (pi->adapter->flags & CXGB_SHUTDOWN) {
+		m_freem(m);
+		return (0);
+	}
 	
 	if (m->m_flags & M_FLOWID)
 		qidx = (m->m_pkthdr.flowid % pi->nqsets) + pi->first_qset;
@@ -3420,14 +3425,6 @@ t3_add_attach_sysctls(adapter_t *sc)
 	    "txq_overrun",
 	    CTLFLAG_RD, &txq_fills,
 	    0, "#times txq overrun");
-	SYSCTL_ADD_INT(ctx, children, OID_AUTO, 
-	    "multiq_tx_enable",
-	    CTLFLAG_RW, &multiq_tx_enable,
-	    0, "enable transmit by multiple tx queues");
-	SYSCTL_ADD_INT(ctx, children, OID_AUTO, 
-	    "coalesce_tx_enable",
-	    CTLFLAG_RW, &coalesce_tx_enable,
-	    0, "coalesce small packets in work requests - WARNING ALPHA");
 }
 
 
