@@ -1655,7 +1655,8 @@ cxgb_transmit_locked(struct ifnet *ifp, struct sge_qset *qs, struct mbuf *m)
 	if (!TXQ_RING_EMPTY(qs) && pi->link_config.link_ok &&
 	    (!sc->tunq_coalesce || (drbr_inuse(ifp, br) >= 7)))
 		cxgb_start_locked(qs);
-	else if (!TXQ_RING_EMPTY(qs) && sc->tunq_coalesce)
+	else if (!TXQ_RING_EMPTY(qs) && sc->tunq_coalesce &&
+	    callout_pending(&txq->txq_timer) == 0)
 		callout_reset_on(&txq->txq_timer, 1, cxgb_tx_timeout,
 		    qs, txq->txq_timer.c_cpu);
 	return (0);
