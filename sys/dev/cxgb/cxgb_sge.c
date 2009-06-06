@@ -231,8 +231,10 @@ check_pkt_coalesce(struct sge_qset *qs)
         sc = qs->port->adapter; 
 	fill = &sc->tunq_fill[qs->idx];
 
-	if (cxgb_pcpu_tx_coalesce_force && (*fill == 0))
+	if (cxgb_pcpu_tx_coalesce_force && (*fill == 0)) {
 		*fill = 1;
+		return;
+	}
 	/*
 	 * if the hardware transmit queue is more than 3/4 full
 	 * we mark it as coalescing
