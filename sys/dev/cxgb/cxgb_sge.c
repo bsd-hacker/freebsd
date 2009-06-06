@@ -1540,7 +1540,7 @@ cxgb_start_locked(struct sge_qset *qs)
 	struct port_info *pi = qs->port;
 	struct adapter *sc = pi->adapter;
 	struct ifnet *ifp = pi->ifp;
-
+	uint64_t *coal = &sc->tunq_coalesce;
 	avail = txq->size - txq->in_use - 4;
 	txmax = min(TX_START_MAX_DESC, avail);
 
@@ -1550,11 +1550,8 @@ cxgb_start_locked(struct sge_qset *qs)
 		reclaim_completed_tx(qs, (TX_ETH_Q_SIZE>>4), TXQ_ETH);
 		check_pkt_coalesce(qs);
 
-		if (sc->tunq_coalesce) {
-			m_head = cxgb_dequeue_chain(qs);
-		} else 
-			m_head = TXQ_RING_DEQUEUE(qs); 
-
+		m_head = (*coal) ? cxgb_dequeue_chain(qs) : TXQ_RING_DEQUEUE(qs); 
+		
 		if (m_head == NULL)
 			break;
 		/*
