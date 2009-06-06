@@ -120,7 +120,7 @@ void
 busdma_map_sg_vec(struct mbuf *m, bus_dma_segment_t *segs, int *nsegs)
 {
 
-	for (; m != NULL ; segs++, *nsegs += 1, m = m->m_nextpkt)
+	for (*nsegs = 0; m != NULL ; segs++, *nsegs += 1, m = m->m_nextpkt)
 		busdma_map_mbuf_fast(m, segs);
 }
 
