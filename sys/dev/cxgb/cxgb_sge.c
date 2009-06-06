@@ -1509,12 +1509,13 @@ coalesce_check(struct mbuf *m, void *arg)
 }
 
 static struct mbuf *
-cxgb_dequeue_chain(struct sge_qset *qs, struct coalesce_info *ci)
+cxgb_dequeue_chain(struct sge_qset *qs)
 {
 	struct mbuf *m, *m_head, *m_tail;
+	struct coalesce_info ci;
 
 	m_head = m_tail = NULL;
-	ci->count = ci->nbytes = 0;
+	ci.count = ci.nbytes = 0;
 	do {
 		m = TXQ_RING_DEQUEUE_COND(qs, coalesce_check, &ci);
 		if (m_head == NULL) {
@@ -1524,7 +1525,8 @@ cxgb_dequeue_chain(struct sge_qset *qs, struct coalesce_info *ci)
 			m_tail = m;
 		}
 	} while (m != NULL);
-	
+	if (ci.count > 7)
+		panic("trying to coalesce %d packets in to one WR", ci.count);
 	return (m_head);
 }
 	
@@ -1538,7 +1540,6 @@ cxgb_start_locked(struct sge_qset *qs)
 	struct port_info *pi = qs->port;
 	struct adapter *sc = pi->adapter;
 	struct ifnet *ifp = pi->ifp;
-	struct coalesce_info ci;
 
 	avail = txq->size - txq->in_use - 4;
 	txmax = min(TX_START_MAX_DESC, avail);
@@ -1550,7 +1551,7 @@ cxgb_start_locked(struct sge_qset *qs)
 		check_pkt_coalesce(qs);
 
 		if (sc->tunq_coalesce) {
-			m_head = cxgb_dequeue_chain(qs, &ci);
+			m_head = cxgb_dequeue_chain(qs);
 		} else 
 			m_head = TXQ_RING_DEQUEUE(qs); 
 
