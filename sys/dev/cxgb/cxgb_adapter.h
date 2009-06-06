@@ -567,7 +567,6 @@ static inline int offload_running(adapter_t *adapter)
 int cxgb_transmit(struct ifnet *ifp, struct mbuf *m);
 void cxgb_qflush(struct ifnet *ifp);
 int process_responses(adapter_t *adap, struct sge_qset *qs, int budget);
-void t3_free_qset(adapter_t *sc, struct sge_qset *q);
 void cxgb_start(struct ifnet *ifp);
 void refill_fl_service(adapter_t *adap, struct sge_fl *fl);
 #endif

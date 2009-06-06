@@ -1940,7 +1940,7 @@ t3_mgmt_tx(struct adapter *adap, struct mbuf *m)
  *	as HW contexts, packet buffers, and descriptor rings.  Traffic to the
  *	queue set must be quiesced prior to calling this.
  */
-void
+static void
 t3_free_qset(adapter_t *sc, struct sge_qset *q)
 {
 	int i;
@@ -1973,6 +1973,7 @@ t3_free_qset(adapter_t *sc, struct sge_qset *q)
 		}
 	}
 
+	mtx_unlock(&q->lock);
 	MTX_DESTROY(&q->lock);
 	for (i = 0; i < SGE_TXQ_PER_SET; i++) {
 		if (q->txq[i].desc) {
@@ -2024,8 +2025,11 @@ t3_free_sge_resources(adapter_t *sc)
 	for (nqsets = i = 0; i < (sc)->params.nports; i++) 
 		nqsets += sc->port[i].nqsets;
 
-	for (i = 0; i < nqsets; ++i)
+	for (i = 0; i < nqsets; ++i) {
+		TXQ_LOCK(&sc->sge.qs[i]);
 		t3_free_qset(sc, &sc->sge.qs[i]);
+	}
+	
 }
 
 /**
@@ -2505,6 +2509,9 @@ t3_sge_alloc_qset(adapter_t *sc, u_int id, int nports, int irq_vec_idx,
 	struct sge_qset *q = &sc->sge.qs[id];
 	int i, ret = 0;
 
+	MTX_INIT(&q->lock, q->namebuf, NULL, MTX_DEF);
+	q->port = pi;
+
 	for (i = 0; i < SGE_TXQ_PER_SET; i++) {
 		
 		if ((q->txq[i].txq_mr = buf_ring_alloc(cxgb_txq_buf_ring_size,
@@ -2566,8 +2573,6 @@ t3_sge_alloc_qset(adapter_t *sc, u_int id, int nports, int irq_vec_idx,
 		q->txq[i].gen = 1;
 		q->txq[i].size = p->txq_size[i];
 	}
-	MTX_INIT(&q->lock, q->namebuf, NULL, MTX_DEF);
-	q->port = pi;
 	
 	TASK_INIT(&q->txq[TXQ_OFLD].qresume_task, 0, restart_offloadq, q);
 	TASK_INIT(&q->txq[TXQ_CTRL].qresume_task, 0, restart_ctrlq, q);
@@ -2687,6 +2692,7 @@ t3_sge_alloc_qset(adapter_t *sc, u_int id, int nports, int irq_vec_idx,
 err_unlock:
 	mtx_unlock_spin(&sc->sge.reg_lock);
 err:	
+	TXQ_LOCK(q);
 	t3_free_qset(sc, q);
 
 	return (ret);
