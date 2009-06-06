@@ -1616,6 +1616,7 @@ cxgb_transmit_locked(struct ifnet *ifp, struct sge_qset *qs, struct mbuf *m)
 	avail = txq->size - txq->in_use;
 	TXQ_LOCK_ASSERT(qs);
 	reclaim_completed_tx(qs, (TX_ETH_Q_SIZE>>4), TXQ_ETH);
+	check_pkt_coalesce(qs);
 
 	/*
 	 * We can only do a direct transmit if the following are true:
@@ -1631,7 +1632,6 @@ cxgb_transmit_locked(struct ifnet *ifp, struct sge_qset *qs, struct mbuf *m)
 			    (error = drbr_enqueue(ifp, br, m)) != 0) 
 				return (error);
 		} else {
-			check_pkt_coalesce(qs);
 			/*
 			 * We've bypassed the buf ring so we need to update
 			 * ifp directly
