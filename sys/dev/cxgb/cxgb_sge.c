@@ -1327,9 +1327,7 @@ t3_encap(struct sge_qset *qs, struct mbuf **m)
 		return (err);
 	} 
 	KASSERT(m0->m_pkthdr.len, ("empty packet nsegs=%d", nsegs));
-
-	if ((m0->m_pkthdr.len > PIO_LEN) || (nsegs > 1))
-		txsd->m = m0;
+	txsd->m = m0;	
 
 	if (m0->m_nextpkt != NULL) {
 		struct cpl_tx_pkt_batch *cpl_batch = (struct cpl_tx_pkt_batch *)txd;
@@ -1337,7 +1335,6 @@ t3_encap(struct sge_qset *qs, struct mbuf **m)
 
 		if (nsegs > 7)
 			panic("trying to coalesce %d packets in to one WR", nsegs);
-		
 		wrp = (struct work_request_hdr *)txd;
 		flits = nsegs*2 + 1;
 		txq_prod(txq, 1, &txqs);
@@ -1429,6 +1426,7 @@ t3_encap(struct sge_qset *qs, struct mbuf **m)
 			 */
 			DPRINTF("**5592 Fix** mbuf=%p,len=%d,tso_segsz=%d,csum_flags=%#x,flags=%#x",
 			    m0, mlen, m0->m_pkthdr.tso_segsz, m0->m_pkthdr.csum_flags, m0->m_flags);
+			txsd->m = NULL;
 			txq_prod(txq, 1, &txqs);
 			m_copydata(m0, 0, mlen, (caddr_t)&txd->flit[3]);
 			flits = (mlen + 7) / 8 + 3;
@@ -1457,6 +1455,7 @@ t3_encap(struct sge_qset *qs, struct mbuf **m)
 		cpl->len = htonl(mlen | 0x80000000);
 
 		if (mlen <= PIO_LEN) {
+			txsd->m = NULL;
 			txq_prod(txq, 1, &txqs);
 			m_copydata(m0, 0, mlen, (caddr_t)&txd->flit[2]);
 			flits = (mlen + 7) / 8 + 2;
@@ -3430,7 +3429,7 @@ t3_add_attach_sysctls(adapter_t *sc)
 	    "enable_debug",
 	    CTLFLAG_RW, &cxgb_debug,
 	    0, "enable verbose debugging output");
-	SYSCTL_ADD_ULONG(ctx, children, OID_AUTO, "tunq_coalesce",
+	SYSCTL_ADD_QUAD(ctx, children, OID_AUTO, "tunq_coalesce",
 	    CTLFLAG_RD, &sc->tunq_coalesce,
 	    "#tunneled packets freed");
 	SYSCTL_ADD_INT(ctx, children, OID_AUTO, 
