@@ -907,12 +907,6 @@ t3_sge_init_port(struct port_info *pi)
 	return (0);
 }
 
-void
-t3_sge_deinit_sw(adapter_t *sc)
-{
-	;
-}
-
 /**
  *	refill_rspq - replenish an SGE response queue
  *	@adapter: the adapter
@@ -1932,7 +1926,6 @@ t3_mgmt_tx(struct adapter *adap, struct mbuf *m)
 	return ctrl_xmit(adap, &adap->sge.qs[0], m);
 }
 
-
 /**
  *	free_qset - free the resources of an SGE queue set
  *	@sc: the controller owning the queue set
@@ -1947,8 +1940,7 @@ t3_free_qset(adapter_t *sc, struct sge_qset *q)
 {
 	int i;
 	
-	t3_free_tx_desc_all(&q->txq[TXQ_ETH]);
-	
+	reclaim_completed_tx(q, 0, TXQ_ETH);
 	for (i = 0; i < SGE_TXQ_PER_SET; i++) {
 		if (q->txq[i].txq_mr != NULL) 
 			buf_ring_free(q->txq[i].txq_mr, M_DEVBUF);
@@ -2137,25 +2129,6 @@ t3_free_tx_desc(struct sge_qset *qs, int reclaimable, int queue)
 	}
 	q->cidx = cidx;
 
-}
-
-void
-t3_free_tx_desc_all(struct sge_txq *q)
-{
-	int i;
-	struct tx_sw_desc *txsd;
-	
-	for (i = 0; i < q->size; i++) {
-		txsd = &q->sdesc[i];
-		if (txsd->m != NULL) {
-			if (txsd->flags & TX_SW_DESC_MAPPED) {
-				bus_dmamap_unload(q->entry_tag, txsd->map);
-				txsd->flags &= ~TX_SW_DESC_MAPPED;
-			}
-			m_freem_list(txsd->m);
-			txsd->m = NULL;			
-		}
-	}
 }
 
 /**

@@ -509,9 +509,7 @@ void t3_intr_msix(void *data);
 int t3_sge_init_adapter(adapter_t *);
 int t3_sge_reset_adapter(adapter_t *);
 int t3_sge_init_port(struct port_info *);
-void t3_sge_deinit_sw(adapter_t *);
 void t3_free_tx_desc(struct sge_qset *qs, int n, int qid);
-void t3_free_tx_desc_all(struct sge_txq *q);
 
 void t3_rx_eth(struct adapter *adap, struct sge_rspq *rq, struct mbuf *m, int ethpad);
 

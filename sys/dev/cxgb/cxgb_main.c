@@ -677,14 +677,14 @@ cxgb_free(struct adapter *sc)
 		    sc->msix_regs_res);
 	}
 
-	if (sc->flags & FULL_INIT_DONE)
+	if (sc->flags & FULL_INIT_DONE) {
 		t3_free_sge_resources(sc);
-	t3_sge_deinit_sw(sc);
-
+		sc->flags &= ~FULL_INIT_DONE;
+	}
 	/*
 	 * Wait for last callout
 	 */
-	DELAY(hz*100);
+	DELAY(hz*10000);
 
 	for (i = 0; i < (sc)->params.nports; ++i) {
 		if (sc->portdev[i] != NULL)
