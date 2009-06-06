@@ -1503,7 +1503,7 @@ coalesce_check(struct mbuf *m, void *arg)
 	if (*nbytes == 0) {
 		*count = 1;
 		return (1);
-	} else if ((m->m_next != NULL) && (*count > 6))
+	} else if ((m->m_next != NULL) || (*count > 6))
 		return (0);
 	else if (*nbytes + m->m_len <= 10500) {
 		*count += 1;
