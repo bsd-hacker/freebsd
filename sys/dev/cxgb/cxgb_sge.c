@@ -1492,7 +1492,6 @@ struct coalesce_info {
 	int nbytes;
 };
 
-
 static int
 coalesce_check(struct mbuf *m, void *arg)
 {
@@ -1500,17 +1499,12 @@ coalesce_check(struct mbuf *m, void *arg)
 	int *count = &ci->count;
 	int *nbytes = &ci->nbytes;
 
-	if (*nbytes == 0) {
-		*count = 1;
-		return (1);
-	} else if ((m->m_next != NULL) || (*count > 6))
-		return (0);
-	else if (*nbytes + m->m_len <= 10500) {
+	if ((*nbytes + m->m_len <= 10500) && (*count < 7) &&
+	    (m->m_next == NULL)){
 		*count += 1;
 		*nbytes += m->m_len;
 		return (1);
 	}
-	
 	return (0);
 }
 
@@ -1520,7 +1514,7 @@ cxgb_dequeue_chain(struct sge_qset *qs, struct coalesce_info *ci)
 	struct mbuf *m, *m_head, *m_tail;
 
 	m_head = m_tail = NULL;
-	ci->nbytes = 0;
+	ci->count = ci->nbytes = 0;
 	do {
 		m = TXQ_RING_DEQUEUE_COND(qs, coalesce_check, &ci);
 		if (m_head == NULL) {
