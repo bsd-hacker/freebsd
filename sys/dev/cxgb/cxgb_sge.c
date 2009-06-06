@@ -1514,6 +1514,12 @@ cxgb_dequeue_chain(struct sge_qset *qs)
 	struct mbuf *m, *m_head, *m_tail;
 	struct coalesce_info ci;
 
+	if (qs->port->adapter->tunq_coalesce) {
+		m = TXQ_RING_DEQUEUE(qs);
+		if (m != NULL && m->m_nextpkt != NULL)
+			panic("dequeued regular packet with nextpkt set!");
+	}
+
 	m_head = m_tail = NULL;
 	ci.count = ci.nbytes = 0;
 	do {
@@ -1523,6 +1529,7 @@ cxgb_dequeue_chain(struct sge_qset *qs)
 		} else if (m != NULL) {
 			m_tail->m_nextpkt = m;
 			m_tail = m;
+			m->m_nextpkt = NULL;
 		}
 	} while (m != NULL);
 	if (ci.count > 7)
@@ -1540,7 +1547,6 @@ cxgb_start_locked(struct sge_qset *qs)
 	struct port_info *pi = qs->port;
 	struct adapter *sc = pi->adapter;
 	struct ifnet *ifp = pi->ifp;
-	uint64_t *coal = &sc->tunq_coalesce;
 	avail = txq->size - txq->in_use - 4;
 	txmax = min(TX_START_MAX_DESC, avail);
 
@@ -1550,9 +1556,7 @@ cxgb_start_locked(struct sge_qset *qs)
 		reclaim_completed_tx(qs, (TX_ETH_Q_SIZE>>4), TXQ_ETH);
 		check_pkt_coalesce(qs);
 
-		m_head = (*coal) ? cxgb_dequeue_chain(qs) : TXQ_RING_DEQUEUE(qs); 
-		
-		if (m_head == NULL)
+		if ((m_head = cxgb_dequeue(qs)) == NULL)
 			break;
 		/*
 		 *  Encapsulation can modify our pointer, and or make it
