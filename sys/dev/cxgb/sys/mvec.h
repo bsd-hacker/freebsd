@@ -67,8 +67,16 @@ static __inline void
 m_freem_list(struct mbuf *m)
 {
 	struct mbuf *n; 
+#ifdef INVARIANTS
+	int i = 0;
+#endif	
 
 	while (m != NULL) {
+#ifdef INVARIANTS
+		if (m == (struct mbuf *)0xDEADBEEF)
+			panic("freed mbuf %d in mbuf list", i);
+		i++;
+#endif
 		n = m->m_nextpkt;
 		if (n != NULL)
 			prefetch(n);
