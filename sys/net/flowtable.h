@@ -56,6 +56,8 @@ struct flowtable *flowtable_alloc(int nentry, int flags);
 int flowtable_lookup(struct flowtable *ft, struct mbuf *m,
     struct route *ro);
 
+void flowtable_flush(void);
+
 #else
 static __inline struct flowtable *
 flowtable_alloc(int nentry, int flags)
@@ -71,6 +73,13 @@ flowtable_lookup(struct flowtable *ft, struct mbuf *m,
 
 	return (ENOTSUP);
 }
+
+static __inlnie void
+flowtable_flush(void)
+{
+	;
+}
+
 #endif
 #endif
 

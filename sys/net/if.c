@@ -71,6 +71,7 @@
 #include <net/if_var.h>
 #include <net/radix.h>
 #include <net/route.h>
+#include <net/flowtable.h>
 #include <net/vnet.h>
 
 #if defined(INET) || defined(INET6)
@@ -499,7 +500,7 @@ if_alloc(u_char type)
 void
 if_free(struct ifnet *ifp)
 {
-
+	flowtable_flush();
 	if_free_type(ifp, ifp->if_type);
 }
 

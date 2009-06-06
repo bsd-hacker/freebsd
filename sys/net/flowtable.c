@@ -36,7 +36,9 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>  
 #include <sys/types.h>
 #include <sys/bitstring.h>
+#include <sys/condvar.h>
 #include <sys/callout.h>
+#include <sys/mbuf.h>
 #include <sys/kernel.h>  
 #include <sys/kthread.h>
 #include <sys/limits.h>
@@ -169,6 +171,10 @@ static struct flowtable *flow_list_head;
 static uint32_t hashjitter;
 static uma_zone_t ipv4_zone;
 static uma_zone_t ipv6_zone;
+
+static struct cv 	flowclean_cv;
+static struct mtx	flowclean_lock;
+static uint64_t		flowclean_cycles;
 
 /*
  * TODO:
@@ -774,6 +780,8 @@ flowtable_setup(void *arg)
 	    NULL, NULL, NULL, 64, UMA_ZONE_MAXBUCKET);	
 	uma_zone_set_max(ipv4_zone, nmbflows);
 	uma_zone_set_max(ipv6_zone, nmbflows);
+	cv_init(&flowclean_cv, "flowcleanwait");
+	mtx_init(&flowclean_lock, "flowclean lock", NULL, MTX_DEF);
 }
 
 SYSINIT(flowtable_setup, SI_SUB_KTHREAD_INIT, SI_ORDER_ANY, flowtable_setup, NULL);
@@ -915,12 +923,30 @@ flowtable_cleaner(void)
 			}
 			ft = ft->ft_next;
 		}
+		flowclean_cycles++;
 		/*
 		 * The 20 second interval between cleaning checks
 		 * is arbitrary
 		 */
-		pause("flowcleanwait", 20*hz);
+		mtx_lock(&flowclean_lock);
+		cv_broadcast(&flowclean_cv);
+		cv_timedwait(&flowclean_cv, &flowclean_lock, 10*hz);
+		mtx_unlock(&flowclean_lock);
 	}
+}
+
+void
+flowtable_flush(void)
+{
+	uint64_t start;
+	
+	mtx_lock(&flowclean_lock);
+	start = flowclean_cycles;
+	while (start == flowclean_cycles) {
+		cv_broadcast(&flowclean_cv);
+		cv_wait(&flowclean_cv, &flowclean_lock);
+	}
+	mtx_unlock(&flowclean_lock);
 }
 
 static struct kproc_desc flow_kp = {
