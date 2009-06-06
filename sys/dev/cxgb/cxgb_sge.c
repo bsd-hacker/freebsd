@@ -78,6 +78,12 @@ TUNABLE_INT("hw.cxgb.txq_mr_size", &cxgb_txq_buf_ring_size);
 SYSCTL_UINT(_hw_cxgb, OID_AUTO, txq_mr_size, CTLFLAG_RDTUN, &cxgb_txq_buf_ring_size, 0,
     "size of per-queue mbuf ring");
 
+static int cxgb_pcpu_tx_coalesce_force = 0;
+TUNABLE_INT("hw.cxgb.tx_coalesce_force", &cxgb_pcpu_tx_coalesce_force);
+SYSCTL_UINT(_hw_cxgb, OID_AUTO, tx_coalesce, CTLFLAG_RW,
+    &cxgb_pcpu_tx_coalesce_force, 0,
+    "coalesce small packets into a single work request regardless of ring state");
+
 /*
  * XXX don't re-enable this until TOE stops assuming
  * we have an m_ext
@@ -212,6 +218,7 @@ int cxgb_debug = 0;
 static void sge_timer_cb(void *arg);
 static void sge_timer_reclaim(void *arg, int ncount);
 static void sge_txq_reclaim_handler(void *arg, int ncount);
+static void cxgb_start_locked(struct sge_qset *qs);
 
 static __inline void 
 check_pkt_coalesce(struct sge_qset *qs) 
@@ -219,11 +226,13 @@ check_pkt_coalesce(struct sge_qset *qs)
         struct adapter *sc; 
         struct sge_txq *txq; 
 	uint8_t *fill;
-	
+
         txq = &qs->txq[TXQ_ETH]; 
         sc = qs->port->adapter; 
 	fill = &sc->tunq_fill[qs->idx];
-	
+
+	if (cxgb_pcpu_tx_coalesce_force && (*fill == 0))
+		*fill = 1;
 	/*
 	 * if the hardware transmit queue is more than 3/4 full
 	 * we mark it as coalescing
@@ -268,12 +277,11 @@ static __inline int
 reclaim_completed_tx(struct sge_qset *qs, int reclaim_min, int queue)
 {
 	struct sge_txq *q = &qs->txq[queue];
-      
 	int reclaim = desc_reclaimable(q);
 
 	if (reclaim < reclaim_min)
 		return (0);
-	
+
 	mtx_assert(&qs->lock, MA_OWNED);
 	if (reclaim > 0) {
 		t3_free_tx_desc(qs, reclaim, queue);
@@ -1481,10 +1489,22 @@ t3_encap(struct sge_qset *qs, struct mbuf **m)
 	txq_prod(txq, ndesc, &txqs);
 	wr_hi = htonl(V_WR_OP(FW_WROPCODE_TUNNEL_TX_PKT) | txqs.compl);
 	wr_lo = htonl(V_WR_TID(txq->token));
-	write_wr_hdr_sgl(ndesc, txd, &txqs, txq, sgl, flits, sgl_flits, wr_hi, wr_lo);
+	write_wr_hdr_sgl(ndesc, txd, &txqs, txq, sgl, flits,
+	    sgl_flits, wr_hi, wr_lo);
 	check_ring_tx_db(pi->adapter, txq);
 
 	return (0);
+}
+
+static void
+cxgb_tx_timeout(void *arg)
+{
+	struct sge_qset *qs = arg;
+
+	if (TXQ_TRYLOCK(qs)) {
+		cxgb_start_locked(qs);
+		TXQ_UNLOCK(qs);
+	}
 }
 
 struct coalesce_info {
@@ -1509,7 +1529,7 @@ coalesce_check(struct mbuf *m, void *arg)
 }
 
 static struct mbuf *
-cxgb_dequeue_chain(struct sge_qset *qs)
+cxgb_dequeue(struct sge_qset *qs)
 {
 	struct mbuf *m, *m_head, *m_tail;
 	struct coalesce_info ci;
@@ -1545,14 +1565,15 @@ cxgb_start_locked(struct sge_qset *qs)
 	int avail, txmax;
 	int in_use_init = txq->in_use;
 	struct port_info *pi = qs->port;
-	struct adapter *sc = pi->adapter;
 	struct ifnet *ifp = pi->ifp;
 	avail = txq->size - txq->in_use - 4;
 	txmax = min(TX_START_MAX_DESC, avail);
 
 	TXQ_LOCK_ASSERT(qs);
 	while ((txq->in_use - in_use_init < txmax) &&
-	    (!TXQ_RING_EMPTY(qs)) && (ifp->if_drv_flags & IFF_DRV_RUNNING)) {
+	    (!TXQ_RING_EMPTY(qs)) &&
+	    (ifp->if_drv_flags & IFF_DRV_RUNNING) &&
+	    pi->link_config.link_ok) {
 		reclaim_completed_tx(qs, (TX_ETH_Q_SIZE>>4), TXQ_ETH);
 		check_pkt_coalesce(qs);
 
@@ -1634,7 +1655,9 @@ cxgb_transmit_locked(struct ifnet *ifp, struct sge_qset *qs, struct mbuf *m)
 	if (!TXQ_RING_EMPTY(qs) && pi->link_config.link_ok &&
 	    (!sc->tunq_coalesce || (drbr_inuse(ifp, br) >= 7)))
 		cxgb_start_locked(qs);
-
+	else if (!TXQ_RING_EMPTY(qs) && sc->tunq_coalesce)
+		callout_reset_on(&txq->txq_timer, 1, cxgb_tx_timeout,
+		    qs, txq->txq_timer.c_cpu);
 	return (0);
 }
 
@@ -2495,6 +2518,8 @@ t3_sge_alloc_qset(adapter_t *sc, u_int id, int nports, int irq_vec_idx,
 			goto err;
 		}
 		ifq_attach(q->txq[i].txq_ifq, pi->ifp);
+		callout_init(&q->txq[i].txq_timer, 1);
+		q->txq[i].txq_timer.c_cpu = id % mp_ncpus;
 	}
 	init_qset_cntxt(q, id);
 	q->idx = id;

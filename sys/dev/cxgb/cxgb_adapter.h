@@ -239,9 +239,10 @@ struct sge_txq {
 	bus_dmamap_t	desc_map;
 	bus_dma_tag_t   entry_tag;
 	struct mbuf_head sendq;
+
 	struct buf_ring *txq_mr;
 	struct ifaltq	*txq_ifq;
-
+	struct callout	txq_timer;
 	uint32_t        txq_drops;
 	uint32_t        txq_skipped;
 	uint32_t        txq_coalesced;
