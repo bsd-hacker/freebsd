@@ -1055,8 +1055,8 @@ txq_prod(struct sge_txq *txq, unsigned int ndesc, struct txq_state *txqs)
 	 */
 	txqs->gen = txq->gen;
 	txq->unacked += ndesc;
-	txqs->compl = (txq->unacked & 8) << (S_WR_COMPL - 3);
-	txq->unacked &= 7;
+	txqs->compl = (txq->unacked & 32) << (S_WR_COMPL - 5);
+	txq->unacked &= 31;
 	txqs->pidx = txq->pidx;
 	txq->pidx += ndesc;
 #ifdef INVARIANTS
@@ -1304,7 +1304,9 @@ write_wr_hdr_sgl(unsigned int ndesc, struct tx_desc *txd, struct txq_state *txqs
 			wr_gen2(txd, txqs->gen);
 			flits = 1;
 		}
-		set_wr_hdr(wrp, wrp->wrh_hi |= htonl(F_WR_EOP),
+		wrp->wrh_hi |= htonl(F_WR_EOP);
+		
+		set_wr_hdr(wrp, wrp->wrh_hi,
 		    htonl(V_WR_LEN(WR_FLITS) | V_WR_GEN(ogen)) | wr_lo);
 		wr_gen2((struct tx_desc *)wp, ogen);
 	}
@@ -1372,6 +1374,7 @@ t3_encap(struct sge_qset *qs, struct mbuf **m)
 				printf("failed ... err=%d\n", err);
 			return (err);
 		}
+		mlen = m0->m_pkthdr.len;
 		ndesc = calc_tx_descs(m0, nsegs);
 	}
 	txq_prod(txq, ndesc, &txqs);
@@ -1427,7 +1430,6 @@ t3_encap(struct sge_qset *qs, struct mbuf **m)
 		GET_VTAG(cntrl, m0);
 		cntrl |= V_TXPKT_OPCODE(CPL_TX_PKT_LSO);
 		hdr->cntrl = htonl(cntrl);
-		mlen = m0->m_pkthdr.len;
 		hdr->len = htonl(mlen | 0x80000000);
 
 		DPRINTF("tso buf len=%d\n", mlen);
@@ -1500,7 +1502,6 @@ t3_encap(struct sge_qset *qs, struct mbuf **m)
 		if (__predict_false(!(m0->m_pkthdr.csum_flags & (CSUM_TCP | CSUM_UDP))))
 			cntrl |= F_TXPKT_L4CSUM_DIS;
 		cpl->cntrl = htonl(cntrl);
-		mlen = m0->m_pkthdr.len;
 		cpl->len = htonl(mlen | 0x80000000);
 
 		if (mlen <= PIO_LEN) {
