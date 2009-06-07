@@ -293,11 +293,8 @@ cxgb_dequeue(struct sge_qset *qs)
 	struct mbuf *m, *m_head, *m_tail;
 	struct coalesce_info ci;
 
-	if (qs->port->adapter->tunq_coalesce) {
-		m = TXQ_RING_DEQUEUE(qs);
-		if (m != NULL && m->m_nextpkt != NULL)
-			panic("dequeued regular packet with nextpkt set!");
-	}
+	if (qs->port->adapter->tunq_coalesce == 0) 
+		return TXQ_RING_DEQUEUE(qs);
 
 	m_head = m_tail = NULL;
 	ci.count = ci.nbytes = 0;
@@ -308,7 +305,6 @@ cxgb_dequeue(struct sge_qset *qs)
 		} else if (m != NULL) {
 			m_tail->m_nextpkt = m;
 			m_tail = m;
-			m->m_nextpkt = NULL;
 		}
 	} while (m != NULL);
 	if (ci.count > 7)
@@ -919,7 +915,8 @@ sge_timer_cb(void *arg)
 				     (FW_TUNNEL_SGEEC_START + pi->first_qset));
 		}
 	}	
-	if (sc->open_device_map != 0) 
+	if (((sc->flags & USING_MSIX) == 0 || sc->params.nports > 2) &&
+	    sc->open_device_map != 0)
 		callout_reset(&sc->sge_timer_ch, TX_RECLAIM_PERIOD, sge_timer_cb, sc);
 }
 
@@ -990,6 +987,7 @@ sge_timer_reclaim(void *arg, int ncount)
 	
 	KASSERT((sc->flags & USING_MSIX) == 0,
 	    ("can't call timer reclaim for msi-x"));
+
 	for (i = 0; i < nqsets; i++) {
 		qs = &sc->sge.qs[pi->first_qset + i];
 
@@ -1702,7 +1700,6 @@ cxgb_transmit(struct ifnet *ifp, struct mbuf *m)
 		TXQ_UNLOCK(qs);
 	} else
 		error = drbr_enqueue(ifp, qs->txq[TXQ_ETH].txq_mr, m);
-	
 	return (error);
 }
 void
@@ -2808,19 +2805,21 @@ get_packet(adapter_t *adap, unsigned int drop_thres, struct sge_qset *qs,
 		} else {
 			m_cljset(m, cl, fl->type);
 			m->m_flags = flags;
-			m->m_next = m->m_nextpkt = NULL;
 		}
 		m->m_len = len;
 	}		
 	switch(sopeop) {
 	case RSPQ_SOP_EOP:
-		DBG(DBG_RX, ("get_packet: SOP-EOP m %p\n", m));
+		ret = 1;
+		/* FALLTHROUGH */
+	case RSPQ_SOP:
 		mh->mh_head = mh->mh_tail = m;
 		m->m_pkthdr.len = len;
-		ret = 1;
 		break;
+	case RSPQ_EOP:
+		ret = 1;
+		/* FALLTHROUGH */
 	case RSPQ_NSOP_NEOP:
-		DBG(DBG_RX, ("get_packet: NO_SOP-NO_EOP m %p\n", m));
 		if (mh->mh_tail == NULL) {
 			log(LOG_ERR, "discarding intermediate descriptor entry\n");
 			m_freem(m);
@@ -2829,20 +2828,6 @@ get_packet(adapter_t *adap, unsigned int drop_thres, struct sge_qset *qs,
 		mh->mh_tail->m_next = m;
 		mh->mh_tail = m;
 		mh->mh_head->m_pkthdr.len += len;
-		ret = 0;
-		break;
-	case RSPQ_SOP:
-		DBG(DBG_RX, ("get_packet: SOP m %p\n", m));
-		m->m_pkthdr.len = len;
-		mh->mh_head = mh->mh_tail = m;
-		ret = 0;
-		break;
-	case RSPQ_EOP:
-		DBG(DBG_RX, ("get_packet: EOP m %p\n", m));
-		mh->mh_head->m_pkthdr.len += len;
-		mh->mh_tail->m_next = m;
-		mh->mh_tail = m;
-		ret = 1;
 		break;
 	}
 	if (cxgb_debug)
@@ -2955,9 +2940,6 @@ process_responses(adapter_t *adap, struct sge_qset *qs, int budget)
 			} else {
 				m = m_gethdr(M_DONTWAIT, MT_DATA);
 			}
-
-			/* XXX m is lost here if rspq->rspq_mbuf is not NULL */
-
 			if (m == NULL)
 				goto no_mem;
 
