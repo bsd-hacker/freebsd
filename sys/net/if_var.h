@@ -559,8 +559,9 @@ do {									\
 static __inline void
 drbr_stats_update(struct ifnet *ifp, int len, int mflags)
 {
-
+#ifndef NO_SLOW_STATS
 	ifp->if_obytes += len;
+#endif	
 	if (mflags & M_MCAST)
 		ifp->if_omcasts++;
 }
@@ -578,13 +579,12 @@ drbr_enqueue(struct ifnet *ifp, struct buf_ring *br, struct mbuf *m)
 		return (error);
 	}
 #endif
-	if ((error = buf_ring_enqueue(br, m)) == ENOBUFS) {
+	if ((error = buf_ring_enqueue(br, m, m->m_pkthdr.len)) == ENOBUFS) {
 		br->br_drops++;
-		_IF_DROP(&ifp->if_snd);
 		m_freem(m);
 	} else
 		drbr_stats_update(ifp, len, mflags);
-	
+
 	return (error);
 }
 
