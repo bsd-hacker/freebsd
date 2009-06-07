@@ -1025,6 +1025,7 @@ static int
 cxgb_port_detach(device_t dev)
 {
 	struct port_info *p;
+	int i;
 
 	p = device_get_softc(dev);
 
@@ -1034,6 +1035,7 @@ cxgb_port_detach(device_t dev)
 	PORT_UNLOCK(p);
 
 	for (i = p->first_qset; i < p->first_qset + p->nqsets; i++) {
+		struct adapter *sc = p->adapter;
 		struct sge_qset *qs = &sc->sge.qs[i];
 		struct sge_txq *txq = &qs->txq[TXQ_ETH];
 
