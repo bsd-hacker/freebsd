@@ -1379,6 +1379,7 @@ t3_encap(struct sge_qset *qs, struct mbuf **m)
 
 		if (nsegs > 7)
 			panic("trying to coalesce %d packets in to one WR", nsegs);
+		txq->txq_coalesced += nsegs
 		wrp = (struct work_request_hdr *)txd;
 		flits = nsegs*2 + 1;
 		txq_prod(txq, 1, &txqs);
@@ -3607,7 +3608,7 @@ t3_add_configured_sysctls(adapter_t *sc)
 			SYSCTL_ADD_UINT(ctx, txqpoidlist, OID_AUTO, "skipped",
 			    CTLFLAG_RD, &txq->txq_skipped,
 			    0, "#tunneled packet descriptors skipped");
-			SYSCTL_ADD_UINT(ctx, txqpoidlist, OID_AUTO, "coalesced",
+			SYSCTL_ADD_QUAD(ctx, txqpoidlist, OID_AUTO, "coalesced",
 			    CTLFLAG_RD, &txq->txq_coalesced,
 			    0, "#tunneled packets coalesced");
 			SYSCTL_ADD_UINT(ctx, txqpoidlist, OID_AUTO, "enqueued",

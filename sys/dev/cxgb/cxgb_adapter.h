@@ -244,9 +244,9 @@ struct sge_txq {
 	struct ifaltq	*txq_ifq;
 	struct callout	txq_timer;
 	struct callout	txq_watchdog;
+	uint64_t        txq_coalesced;
 	uint32_t        txq_drops;
 	uint32_t        txq_skipped;
-	uint32_t        txq_coalesced;
 	uint32_t        txq_enqueued;
 	uint32_t	txq_dump_start;
 	uint32_t	txq_dump_count;
