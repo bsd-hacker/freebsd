@@ -243,6 +243,7 @@ struct sge_txq {
 	struct buf_ring *txq_mr;
 	struct ifaltq	*txq_ifq;
 	struct callout	txq_timer;
+	struct callout	txq_watchdog;
 	uint32_t        txq_drops;
 	uint32_t        txq_skipped;
 	uint32_t        txq_coalesced;
@@ -267,6 +268,7 @@ enum {
 #define QS_EXITING              0x1
 #define QS_RUNNING              0x2
 #define QS_BOUND                0x4
+#define	QS_FLUSHING		0x8
 
 struct sge_qset {
 	struct sge_rspq		rspq;
@@ -562,9 +564,8 @@ static inline int offload_running(adapter_t *adapter)
         return isset(&adapter->open_device_map, OFFLOAD_DEVMAP_BIT);
 }
 
+void cxgb_tx_watchdog(void *arg);
 int cxgb_transmit(struct ifnet *ifp, struct mbuf *m);
 void cxgb_qflush(struct ifnet *ifp);
-int process_responses(adapter_t *adap, struct sge_qset *qs, int budget);
 void cxgb_start(struct ifnet *ifp);
-void refill_fl_service(adapter_t *adap, struct sge_fl *fl);
 #endif

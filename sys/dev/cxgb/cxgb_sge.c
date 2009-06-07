@@ -704,12 +704,6 @@ __refill_fl_lt(adapter_t *adap, struct sge_fl *fl, int max)
 		refill_fl(adap, fl, min(max, fl->size - fl->credits));
 }
 
-void
-refill_fl_service(adapter_t *adap, struct sge_fl *fl)
-{
-	__refill_fl_lt(adap, fl, 512);
-}
-
 /**
  *	recycle_rx_buf - recycle a receive buffer
  *	@adapter: the adapter
@@ -1327,7 +1321,7 @@ t3_encap(struct sge_qset *qs, struct mbuf **m)
 		return (err);
 	} 
 	KASSERT(m0->m_pkthdr.len, ("empty packet nsegs=%d", nsegs));
-	txsd->m = m0;	
+	txsd->m = m0;
 
 	if (m0->m_nextpkt != NULL) {
 		struct cpl_tx_pkt_batch *cpl_batch = (struct cpl_tx_pkt_batch *)txd;
@@ -1491,13 +1485,33 @@ t3_encap(struct sge_qset *qs, struct mbuf **m)
 	return (0);
 }
 
+void
+cxgb_tx_watchdog(void *arg)
+{
+	struct sge_qset *qs = arg;
+	struct sge_txq *txq = &qs->txq[TXQ_ETH];
+
+	if (TXQ_TRYLOCK(qs)) {
+		qs->qs_flags |= QS_FLUSHING;
+		cxgb_start_locked(qs);
+		qs->qs_flags &= ~QS_FLUSHING;
+		TXQ_UNLOCK(qs);
+	}
+	if (qs->port->ifp->if_drv_flags & IFF_DRV_RUNNING)
+		callout_reset_on(&txq->txq_watchdog, hz, cxgb_tx_watchdog,
+		    qs, txq->txq_watchdog.c_cpu);
+}
+
+	
 static void
 cxgb_tx_timeout(void *arg)
 {
 	struct sge_qset *qs = arg;
 
 	if (TXQ_TRYLOCK(qs)) {
+		qs->qs_flags |= QS_FLUSHING;
 		cxgb_start_locked(qs);
+		qs->qs_flags &= ~QS_FLUSHING;
 		TXQ_UNLOCK(qs);
 	}
 }
@@ -1564,6 +1578,10 @@ cxgb_start_locked(struct sge_qset *qs)
 	avail = txq->size - txq->in_use - 4;
 	txmax = min(TX_START_MAX_DESC, avail);
 
+	/* in case all packets use more than one mbuf */
+	if (qs->qs_flags & QS_FLUSHING)
+		txmax = min(txmax, 7); 
+		
 	TXQ_LOCK_ASSERT(qs);
 	while ((txq->in_use - in_use_init < txmax) &&
 	    (!TXQ_RING_EMPTY(qs)) &&
@@ -1620,7 +1638,8 @@ cxgb_transmit_locked(struct ifnet *ifp, struct sge_qset *qs, struct mbuf *m)
 	 * - there are no packets enqueued already
 	 * - there is space in hardware transmit queue 
 	 */
-	if (sc->tunq_coalesce == 0 && pi->link_config.link_ok &&
+	if (sc->tunq_coalesce == 0 &&
+	    pi->link_config.link_ok &&
 	    TXQ_RING_EMPTY(qs) && avail > 4) {
 		if (t3_encap(qs, &m)) {
 			if (m != NULL &&
@@ -2501,7 +2520,9 @@ t3_sge_alloc_qset(adapter_t *sc, u_int id, int nports, int irq_vec_idx,
 		}
 		ifq_attach(q->txq[i].txq_ifq, pi->ifp);
 		callout_init(&q->txq[i].txq_timer, 1);
+		callout_init(&q->txq[i].txq_watchdog, 1);
 		q->txq[i].txq_timer.c_cpu = id % mp_ncpus;
+		q->txq[i].txq_watchdog.c_cpu = id % mp_ncpus;
 	}
 	init_qset_cntxt(q, id);
 	q->idx = id;
@@ -2888,7 +2909,7 @@ check_ring_db(adapter_t *adap, struct sge_qset *qs,
  *	on this queue.  If the system is under memory shortage use a fairly
  *	long delay to help recovery.
  */
-int
+static int
 process_responses(adapter_t *adap, struct sge_qset *qs, int budget)
 {
 	struct sge_rspq *rspq = &qs->rspq;

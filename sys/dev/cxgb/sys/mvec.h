@@ -73,9 +73,9 @@ m_freem_list(struct mbuf *m)
 
 	while (m != NULL) {
 #ifdef INVARIANTS
-		if ((m == (struct mbuf *)0xDEADCODE) ||
+		if ((m == (struct mbuf *)0xDEADC0DE) ||
 		    m == (struct mbuf *)0xdeadc0dedeadc0de)
-			panic("freed mbuf %d in mbuf list", i);
+			panic("%s freed mbuf %d in mbuf list", __FUNCTION__, i);
 		i++;
 #endif
 		n = m->m_nextpkt;

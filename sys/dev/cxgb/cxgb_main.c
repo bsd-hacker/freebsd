@@ -1936,7 +1936,7 @@ cxgb_init_locked(struct port_info *p)
 {
 	struct ifnet *ifp;
 	adapter_t *sc = p->adapter;
-	int err;
+	int i, err;
 
 	PORT_LOCK_ASSERT_OWNED(p);
 	ifp = p->ifp;
@@ -1972,11 +1972,18 @@ cxgb_init_locked(struct port_info *p)
 	device_printf(sc->dev, "enabling interrupts on port=%d\n", p->port_id);
 	t3_port_intr_enable(sc, p->port_id);
 
- 	callout_reset(&sc->cxgb_tick_ch, CXGB_TICKS(sc), cxgb_tick, sc);
 	t3_sge_reset_adapter(sc);
 
 	ifp->if_drv_flags |= IFF_DRV_RUNNING;
 	ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
+ 	callout_reset(&sc->cxgb_tick_ch, CXGB_TICKS(sc), cxgb_tick, sc);
+	for (i = p->first_qset; i < p->first_qset + p->nqsets; i++) {
+		struct sge_qset *qs = &sc->sge.qs[i];
+		struct sge_txq *txq = &qs->txq[TXQ_ETH];
+
+		callout_reset_on(&txq->txq_watchdog, hz, cxgb_tx_watchdog,
+		    qs, txq->txq_watchdog.c_cpu);
+	}
 }
 
 static void
