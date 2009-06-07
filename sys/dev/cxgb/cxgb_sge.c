@@ -1577,9 +1577,9 @@ cxgb_start_locked(struct sge_qset *qs)
 	avail = txq->size - txq->in_use - 4;
 	txmax = min(TX_START_MAX_DESC, avail);
 
-	/* in case all packets use more than one mbuf */
+	/* free all completed requests */
 	if (qs->qs_flags & QS_FLUSHING)
-		txmax = min(txmax, 7); 
+		reclaim_completed_tx(qs, 0, TXQ_ETH);
 		
 	TXQ_LOCK_ASSERT(qs);
 	while ((txq->in_use - in_use_init < txmax) &&
