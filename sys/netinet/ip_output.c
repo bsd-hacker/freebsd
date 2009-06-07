@@ -190,8 +190,13 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 	if ((flags & (IP_FORWARDING|IP_RAWOUTPUT)) == 0) {
 		ip->ip_v = IPVERSION;
 		ip->ip_hl = hlen >> 2;
+#ifndef NO_SLOW_STATS
 		ip->ip_id = ip_newid();
 		V_ipstat.ips_localout++;
+#else
+		ip->ip_id = PCPU_GET(ipid);
+		PCPU_INC(ipid, 1);
+#endif
 	} else {
 		hlen = ip->ip_hl << 2;
 	}

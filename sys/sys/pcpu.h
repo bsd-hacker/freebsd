@@ -72,6 +72,8 @@ struct pcpu {
 	uint64_t	pc_switchtime;
 	int		pc_switchticks;
 	u_int		pc_cpuid;		/* This cpu number */
+	u_short		pc_ipid;
+	u_short		pc_short_pad;
 	cpumask_t	pc_cpumask;		/* This cpu mask */
 	cpumask_t	pc_other_cpus;		/* Mask of all other cpus */
 	SLIST_ENTRY(pcpu) pc_allcpu;

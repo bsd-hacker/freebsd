@@ -30,6 +30,7 @@ makeoptions	MODULES_OVERRIDE="geom zfs cxgb fxp nfe hwpmc linux linprocfs drm"
 makeoptions	OPENSOLARIS
 options		OPENSOLARIS
 options		ZFS
+options		NO_SLOW_STATS
 
 options 	SCHED_ULE		# ULE scheduler
 options 	PREEMPTION		# Enable kernel thread preemption

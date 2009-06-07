@@ -781,3 +781,8 @@ INTR_FILTER             opt_global.h
 # Virtualize the network stack
 VIMAGE			opt_global.h
 VIMAGE_GLOBALS		opt_global.h
+
+
+# remove slow stats keeping
+NO_SLOW_STATS		opt_global.h
+
