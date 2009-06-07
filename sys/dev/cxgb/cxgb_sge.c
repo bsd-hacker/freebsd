@@ -1289,7 +1289,7 @@ write_wr_hdr_sgl(unsigned int ndesc, struct tx_desc *txd, struct txq_state *txqs
 				txd = txq->desc;
 				txsd = txq->sdesc;
 			}
-			
+
 			/*
 			 * when the head of the mbuf chain
 			 * is freed all clusters will be freed
@@ -1305,9 +1305,8 @@ write_wr_hdr_sgl(unsigned int ndesc, struct tx_desc *txd, struct txq_state *txqs
 			flits = 1;
 		}
 		wrp->wrh_hi |= htonl(F_WR_EOP);
-		
-		set_wr_hdr(wrp, wrp->wrh_hi,
-		    htonl(V_WR_LEN(WR_FLITS) | V_WR_GEN(ogen)) | wr_lo);
+		wmb();
+		wp->wrh_lo = htonl(V_WR_LEN(WR_FLITS) | V_WR_GEN(ogen)) | wr_lo;
 		wr_gen2((struct tx_desc *)wp, ogen);
 	}
 }
@@ -1368,6 +1367,7 @@ t3_encap(struct sge_qset *qs, struct mbuf **m)
 	if (m0->m_nextpkt != NULL) {
 		busdma_map_sg_vec(m0, segs, &nsegs);
 		ndesc = 1;
+		mlen = 0;
 	} else {
  		if ((err = busdma_map_sg_collapse(&m0, segs, &nsegs))) {
 			if (cxgb_debug)
