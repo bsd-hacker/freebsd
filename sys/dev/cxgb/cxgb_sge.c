@@ -220,7 +220,7 @@ static void sge_timer_reclaim(void *arg, int ncount);
 static void sge_txq_reclaim_handler(void *arg, int ncount);
 static void cxgb_start_locked(struct sge_qset *qs);
 
-static __inline void 
+static __inline uint64_t
 check_pkt_coalesce(struct sge_qset *qs) 
 { 
         struct adapter *sc; 
@@ -233,7 +233,7 @@ check_pkt_coalesce(struct sge_qset *qs)
 
 	if (cxgb_pcpu_tx_coalesce_force && (*fill == 0)) {
 		*fill = 1;
-		return;
+		return (1);
 	}
 	/*
 	 * if the hardware transmit queue is more than 3/4 full
@@ -243,6 +243,8 @@ check_pkt_coalesce(struct sge_qset *qs)
                 *fill = 0; 
         else if (*fill == 0 && (txq->in_use >= (txq->size - (txq->size>>2))))  
                 *fill = 1; 
+
+	return (sc->tunq_coalesce);
 } 
 
 #ifdef __LP64__
@@ -278,8 +280,8 @@ coalesce_check(struct mbuf *m, void *arg)
 	int *count = &ci->count;
 	int *nbytes = &ci->nbytes;
 
-	if ((*nbytes + m->m_len <= 10500) && (*count < 7) &&
-	    (m->m_next == NULL)){
+	if ((*nbytes == 0) || ((*nbytes + m->m_len <= 10500) &&
+		(*count < 7) && (m->m_next == NULL))) {
 		*count += 1;
 		*nbytes += m->m_len;
 		return (1);
@@ -293,7 +295,8 @@ cxgb_dequeue(struct sge_qset *qs)
 	struct mbuf *m, *m_head, *m_tail;
 	struct coalesce_info ci;
 
-	if (qs->port->adapter->tunq_coalesce == 0) 
+	
+	if (check_pkt_coalesce(qs) == 0) 
 		return TXQ_RING_DEQUEUE(qs);
 
 	m_head = m_tail = NULL;
@@ -1587,7 +1590,6 @@ cxgb_start_locked(struct sge_qset *qs)
 	    (ifp->if_drv_flags & IFF_DRV_RUNNING) &&
 	    pi->link_config.link_ok) {
 		reclaim_completed_tx(qs, (TX_ETH_Q_SIZE>>4), TXQ_ETH);
-		check_pkt_coalesce(qs);
 
 		if ((m_head = cxgb_dequeue(qs)) == NULL)
 			break;
@@ -1631,7 +1633,6 @@ cxgb_transmit_locked(struct ifnet *ifp, struct sge_qset *qs, struct mbuf *m)
 	avail = txq->size - txq->in_use;
 	TXQ_LOCK_ASSERT(qs);
 	reclaim_completed_tx(qs, (TX_ETH_Q_SIZE>>4), TXQ_ETH);
-	check_pkt_coalesce(qs);
 
 	/*
 	 * We can only do a direct transmit if the following are true:
@@ -1640,7 +1641,7 @@ cxgb_transmit_locked(struct ifnet *ifp, struct sge_qset *qs, struct mbuf *m)
 	 * - there are no packets enqueued already
 	 * - there is space in hardware transmit queue 
 	 */
-	if (sc->tunq_coalesce == 0 &&
+	if (check_pkt_coalesce(qs) == 0 &&
 	    pi->link_config.link_ok &&
 	    TXQ_RING_EMPTY(qs) && avail > 4) {
 		if (t3_encap(qs, &m)) {
