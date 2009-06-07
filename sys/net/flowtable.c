@@ -148,7 +148,8 @@ struct flowtable {
 	uint32_t	ft_allocated;
 	uint32_t	ft_misses;
 	uint64_t	ft_hits;
-
+	uint64_t	ft_lookups;
+	
 	uint32_t	ft_udp_idle;
 	uint32_t	ft_fin_wait_idle;
 	uint32_t	ft_syn_idle;
@@ -164,13 +165,13 @@ struct flowtable {
 	bitstr_t 	*ft_masks[MAXCPU];
 	bitstr_t	*ft_tmpmask;
 	struct flowtable *ft_next;
-};
+} __aligned(128);
 
 static struct proc *flowcleanerproc;
-static struct flowtable *flow_list_head;
-static uint32_t hashjitter;
-static uma_zone_t ipv4_zone;
-static uma_zone_t ipv6_zone;
+static struct flowtable *flow_list_head __aligned(128);
+static uma_zone_t ipv4_zone __aligned(128);
+static uma_zone_t ipv6_zone __aligned(128);
+static uint32_t hashjitter __aligned(128);
 
 static struct cv 	flowclean_cv;
 static struct mtx	flowclean_lock;
@@ -606,7 +607,7 @@ flowtable_lookup(struct flowtable *ft, struct mbuf *m, struct route *ro)
 	if (hash == 0 || (key[0] == 0 && (ft->ft_flags & FL_HASH_PORTS)))
 		return (ENOENT);
 
-	flowtable_lookups++;
+	ft->ft_lookups++;
 	FL_ENTRY_LOCK(ft, hash);
 	if ((fle = FL_ENTRY(ft, hash)) == NULL) {
 		FL_ENTRY_UNLOCK(ft, hash);
@@ -621,7 +622,7 @@ keycheck:
 	    && (proto == fle->f_proto)
 	    && (rt->rt_flags & RTF_UP)
 	    && (rt->rt_ifp != NULL)) {
-		flowtable_hits++;
+		ft->ft_hits++;
 		fle->f_uptime = time_uptime;
 		fle->f_flags |= flags;
 		ro->ro_rt = rt;
@@ -635,7 +636,7 @@ keycheck:
 	FL_ENTRY_UNLOCK(ft, hash);
 
 uncached:
-	flowtable_misses++;
+	ft->ft_misses++;
 	/*
 	 * This bit of code ends up locking the
 	 * same route 3 times (just like ip_output + ether_output)
