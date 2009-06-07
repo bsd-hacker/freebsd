@@ -227,14 +227,12 @@ check_pkt_coalesce(struct sge_qset *qs)
         struct sge_txq *txq; 
 	uint8_t *fill;
 
-        txq = &qs->txq[TXQ_ETH]; 
+	if (__predict_false(cxgb_pcpu_tx_coalesce_force))
+		return (1);
+	txq = &qs->txq[TXQ_ETH]; 
         sc = qs->port->adapter; 
 	fill = &sc->tunq_fill[qs->idx];
 
-	if (cxgb_pcpu_tx_coalesce_force && (*fill == 0)) {
-		*fill = 1;
-		return (1);
-	}
 	/*
 	 * if the hardware transmit queue is more than 3/4 full
 	 * we mark it as coalescing
@@ -1586,7 +1584,7 @@ cxgb_start_locked(struct sge_qset *qs)
 		
 	TXQ_LOCK_ASSERT(qs);
 	while ((txq->in_use - in_use_init < txmax) &&
-	    (!TXQ_RING_EMPTY(qs)) &&
+	    !TXQ_RING_EMPTY(qs) &&
 	    (ifp->if_drv_flags & IFF_DRV_RUNNING) &&
 	    pi->link_config.link_ok) {
 		reclaim_completed_tx(qs, (TX_ETH_Q_SIZE>>4), TXQ_ETH);
@@ -1670,9 +1668,9 @@ cxgb_transmit_locked(struct ifnet *ifp, struct sge_qset *qs, struct mbuf *m)
 		return (error);
 	
 	if (!TXQ_RING_EMPTY(qs) && pi->link_config.link_ok &&
-	    (!sc->tunq_coalesce || (drbr_inuse(ifp, br) >= 7)))
+	    (!check_pkt_coalesce(qs) || (drbr_inuse(ifp, br) >= 7)))
 		cxgb_start_locked(qs);
-	else if (!TXQ_RING_EMPTY(qs) && callout_pending(&txq->txq_timer) == 0)
+	else if (!TXQ_RING_EMPTY(qs) && !callout_pending(&txq->txq_timer))
 		callout_reset_on(&txq->txq_timer, 1, cxgb_tx_timeout,
 		    qs, txq->txq_timer.c_cpu);
 	return (0);
