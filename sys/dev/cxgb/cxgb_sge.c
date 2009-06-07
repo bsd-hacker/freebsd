@@ -1623,7 +1623,6 @@ static int
 cxgb_transmit_locked(struct ifnet *ifp, struct sge_qset *qs, struct mbuf *m)
 {
 	struct port_info *pi = qs->port;
-	struct adapter	*sc = pi->adapter;
 	struct sge_txq *txq = &qs->txq[TXQ_ETH];
 	struct buf_ring *br = txq->txq_mr;
 	int error, avail;
