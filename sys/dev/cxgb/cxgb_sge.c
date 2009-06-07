@@ -1055,8 +1055,8 @@ txq_prod(struct sge_txq *txq, unsigned int ndesc, struct txq_state *txqs)
 	 */
 	txqs->gen = txq->gen;
 	txq->unacked += ndesc;
-	txqs->compl = (txq->unacked & 32) << (S_WR_COMPL - 5);
-	txq->unacked &= 31;
+	txqs->compl = (txq->unacked & 8) << (S_WR_COMPL - 3);
+	txq->unacked &= 7;
 	txqs->pidx = txq->pidx;
 	txq->pidx += ndesc;
 #ifdef INVARIANTS
@@ -1090,7 +1090,7 @@ calc_tx_descs(const struct mbuf *m, int nsegs)
 {
 	unsigned int flits;
 
-	if (m->m_pkthdr.len <= WR_LEN - sizeof(struct cpl_tx_pkt))
+	if (m->m_pkthdr.len <= PIO_LEN)
 		return 1;
 
 	flits = sgl_len(nsegs) + 2;
@@ -1365,11 +1365,17 @@ t3_encap(struct sge_qset *qs, struct mbuf **m)
 #endif
 	if (m0->m_nextpkt != NULL) {
 		busdma_map_sg_vec(m0, segs, &nsegs);
-	} else if ((err = busdma_map_sg_collapse(&m0, segs, &nsegs))) {
-		if (cxgb_debug)
-			printf("failed ... err=%d\n", err);
-		return (err);
-	} 
+		ndesc = 1;
+	} else {
+ 		if ((err = busdma_map_sg_collapse(&m0, segs, &nsegs))) {
+			if (cxgb_debug)
+				printf("failed ... err=%d\n", err);
+			return (err);
+		}
+		ndesc = calc_tx_descs(m0, nsegs);
+	}
+	txq_prod(txq, ndesc, &txqs);
+
 	KASSERT(m0->m_pkthdr.len, ("empty packet nsegs=%d", nsegs));
 	txsd->m = m0;
 
@@ -1382,7 +1388,6 @@ t3_encap(struct sge_qset *qs, struct mbuf **m)
 		txq->txq_coalesced += nsegs;
 		wrp = (struct work_request_hdr *)txd;
 		flits = nsegs*2 + 1;
-		txq_prod(txq, 1, &txqs);
 
 		for (fidx = 1, i = 0; i < nsegs; i++, fidx += 2) {
 			struct cpl_tx_pkt_batch_entry *cbe = &cpl_batch->pkt_entry[i];
@@ -1472,7 +1477,6 @@ t3_encap(struct sge_qset *qs, struct mbuf **m)
 			DPRINTF("**5592 Fix** mbuf=%p,len=%d,tso_segsz=%d,csum_flags=%#x,flags=%#x",
 			    m0, mlen, m0->m_pkthdr.tso_segsz, m0->m_pkthdr.csum_flags, m0->m_flags);
 			txsd->m = NULL;
-			txq_prod(txq, 1, &txqs);
 			m_copydata(m0, 0, mlen, (caddr_t)&txd->flit[3]);
 			flits = (mlen + 7) / 8 + 3;
 			wr_hi = htonl(V_WR_BCNTLFLT(mlen & 7) |
@@ -1501,7 +1505,6 @@ t3_encap(struct sge_qset *qs, struct mbuf **m)
 
 		if (mlen <= PIO_LEN) {
 			txsd->m = NULL;
-			txq_prod(txq, 1, &txqs);
 			m_copydata(m0, 0, mlen, (caddr_t)&txd->flit[2]);
 			flits = (mlen + 7) / 8 + 2;
 			
@@ -1518,15 +1521,12 @@ t3_encap(struct sge_qset *qs, struct mbuf **m)
 		flits = 2;
 	}
 	wrp = (struct work_request_hdr *)txd;
-
-	ndesc = calc_tx_descs(m0, nsegs);
-	
 	sgp = (ndesc == 1) ? (struct sg_ent *)&txd->flit[flits] : sgl;
 	make_sgl(sgp, segs, nsegs);
 
 	sgl_flits = sgl_len(nsegs);
 
-	txq_prod(txq, ndesc, &txqs);
+	KASSERT(ndesc <= 4, ("ndesc too large %d", ndesc));
 	wr_hi = htonl(V_WR_OP(FW_WROPCODE_TUNNEL_TX_PKT) | txqs.compl);
 	wr_lo = htonl(V_WR_TID(txq->token));
 	write_wr_hdr_sgl(ndesc, txd, &txqs, txq, sgl, flits,
