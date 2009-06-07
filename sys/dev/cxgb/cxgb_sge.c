@@ -1612,7 +1612,9 @@ cxgb_start_locked(struct sge_qset *qs)
 		/* Set timeout in case hardware has problems transmitting. */
 		pi->watchdog_timer = CXGB_TX_TIMEOUT;
 	}
-
+	if (!TXQ_RING_EMPTY(qs) && callout_pending(&txq->txq_timer) == 0)
+		callout_reset_on(&txq->txq_timer, 1, cxgb_tx_timeout,
+		    qs, txq->txq_timer.c_cpu);
 	if (m_head != NULL)
 		m_freem(m_head);
 }
@@ -1669,8 +1671,7 @@ cxgb_transmit_locked(struct ifnet *ifp, struct sge_qset *qs, struct mbuf *m)
 	if (!TXQ_RING_EMPTY(qs) && pi->link_config.link_ok &&
 	    (!sc->tunq_coalesce || (drbr_inuse(ifp, br) >= 7)))
 		cxgb_start_locked(qs);
-	else if (!TXQ_RING_EMPTY(qs) && sc->tunq_coalesce &&
-	    callout_pending(&txq->txq_timer) == 0)
+	else if (!TXQ_RING_EMPTY(qs) && callout_pending(&txq->txq_timer) == 0)
 		callout_reset_on(&txq->txq_timer, 1, cxgb_tx_timeout,
 		    qs, txq->txq_timer.c_cpu);
 	return (0);
