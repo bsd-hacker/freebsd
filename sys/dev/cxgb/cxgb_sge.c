@@ -266,6 +266,56 @@ set_wr_hdr(struct work_request_hdr *wrp, uint32_t wr_hi, uint32_t wr_lo)
 }
 #endif
 
+struct coalesce_info {
+	int count;
+	int nbytes;
+};
+
+static int
+coalesce_check(struct mbuf *m, void *arg)
+{
+	struct coalesce_info *ci = arg;
+	int *count = &ci->count;
+	int *nbytes = &ci->nbytes;
+
+	if ((*nbytes + m->m_len <= 10500) && (*count < 7) &&
+	    (m->m_next == NULL)){
+		*count += 1;
+		*nbytes += m->m_len;
+		return (1);
+	}
+	return (0);
+}
+
+static struct mbuf *
+cxgb_dequeue(struct sge_qset *qs)
+{
+	struct mbuf *m, *m_head, *m_tail;
+	struct coalesce_info ci;
+
+	if (qs->port->adapter->tunq_coalesce) {
+		m = TXQ_RING_DEQUEUE(qs);
+		if (m != NULL && m->m_nextpkt != NULL)
+			panic("dequeued regular packet with nextpkt set!");
+	}
+
+	m_head = m_tail = NULL;
+	ci.count = ci.nbytes = 0;
+	do {
+		m = TXQ_RING_DEQUEUE_COND(qs, coalesce_check, &ci);
+		if (m_head == NULL) {
+			m_tail = m_head = m;
+		} else if (m != NULL) {
+			m_tail->m_nextpkt = m;
+			m_tail = m;
+			m->m_nextpkt = NULL;
+		}
+	} while (m != NULL);
+	if (ci.count > 7)
+		panic("trying to coalesce %d packets in to one WR", ci.count);
+	return (m_head);
+}
+	
 /**
  *	reclaim_completed_tx - reclaims completed Tx descriptors
  *	@adapter: the adapter
@@ -1502,7 +1552,6 @@ cxgb_tx_watchdog(void *arg)
 		    qs, txq->txq_watchdog.c_cpu);
 }
 
-	
 static void
 cxgb_tx_timeout(void *arg)
 {
@@ -1516,56 +1565,6 @@ cxgb_tx_timeout(void *arg)
 	}
 }
 
-struct coalesce_info {
-	int count;
-	int nbytes;
-};
-
-static int
-coalesce_check(struct mbuf *m, void *arg)
-{
-	struct coalesce_info *ci = arg;
-	int *count = &ci->count;
-	int *nbytes = &ci->nbytes;
-
-	if ((*nbytes + m->m_len <= 10500) && (*count < 7) &&
-	    (m->m_next == NULL)){
-		*count += 1;
-		*nbytes += m->m_len;
-		return (1);
-	}
-	return (0);
-}
-
-static struct mbuf *
-cxgb_dequeue(struct sge_qset *qs)
-{
-	struct mbuf *m, *m_head, *m_tail;
-	struct coalesce_info ci;
-
-	if (qs->port->adapter->tunq_coalesce) {
-		m = TXQ_RING_DEQUEUE(qs);
-		if (m != NULL && m->m_nextpkt != NULL)
-			panic("dequeued regular packet with nextpkt set!");
-	}
-
-	m_head = m_tail = NULL;
-	ci.count = ci.nbytes = 0;
-	do {
-		m = TXQ_RING_DEQUEUE_COND(qs, coalesce_check, &ci);
-		if (m_head == NULL) {
-			m_tail = m_head = m;
-		} else if (m != NULL) {
-			m_tail->m_nextpkt = m;
-			m_tail = m;
-			m->m_nextpkt = NULL;
-		}
-	} while (m != NULL);
-	if (ci.count > 7)
-		panic("trying to coalesce %d packets in to one WR", ci.count);
-	return (m_head);
-}
-	
 static void
 cxgb_start_locked(struct sge_qset *qs)
 {
@@ -1596,7 +1595,7 @@ cxgb_start_locked(struct sge_qset *qs)
 		 *  Encapsulation can modify our pointer, and or make it
 		 *  NULL on failure.  In that event, we can't requeue.
 		 */
-		if (t3_encap(qs, &m_head))
+		if (t3_encap(qs, &m_head) || m_head == NULL)
 			break;
 		
 		/* Send a copy of the frame to the BPF listener */
@@ -1605,7 +1604,8 @@ cxgb_start_locked(struct sge_qset *qs)
 		/*
 		 * We sent via PIO, no longer need a copy
 		 */
-		if (m_head->m_pkthdr.len <= PIO_LEN)
+		if (m->head->m_nextpkt == NULL &&
+		    m_head->m_pkthdr.len <= PIO_LEN)
 			m_freem(m_head);
 
 		m_head = NULL;
