@@ -1604,7 +1604,7 @@ cxgb_start_locked(struct sge_qset *qs)
 		/*
 		 * We sent via PIO, no longer need a copy
 		 */
-		if (m->head->m_nextpkt == NULL &&
+		if (m_head->m_nextpkt == NULL &&
 		    m_head->m_pkthdr.len <= PIO_LEN)
 			m_freem(m_head);
 

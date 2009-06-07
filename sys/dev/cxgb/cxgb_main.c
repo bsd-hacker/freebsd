@@ -1033,10 +1033,15 @@ cxgb_port_detach(device_t dev)
 		cxgb_stop_locked(p);
 	PORT_UNLOCK(p);
 
+	for (i = p->first_qset; i < p->first_qset + p->nqsets; i++) {
+		struct sge_qset *qs = &sc->sge.qs[i];
+		struct sge_txq *txq = &qs->txq[TXQ_ETH];
+
+		callout_drain(&txq->txq_watchdog);
+		callout_drain(&txq->txq_timer);
+	}
 	ether_ifdetach(p->ifp);
-	printf("waiting for callout to stop ...");
 	DELAY(1000000);
-	printf("done\n");
 	/*
 	 * the lock may be acquired in ifdetach
 	 */
