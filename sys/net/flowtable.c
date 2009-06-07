@@ -177,6 +177,20 @@ static struct cv 	flowclean_cv;
 static struct mtx	flowclean_lock;
 static uint64_t		flowclean_cycles;
 
+#if defined(__i386__) || defined(__amd64__)
+static __inline
+void prefetch(void *x) 
+{ 
+        __asm volatile("prefetcht0 %0" :: "m" (*(unsigned long *)x));
+} 
+#else
+static __inline
+void prefetch(void *x) 
+{
+	;
+}
+#endif
+
 /*
  * TODO:
  * - Make flowtable stats per-cpu, aggregated at sysctl call time,
@@ -613,7 +627,10 @@ flowtable_lookup(struct flowtable *ft, struct mbuf *m, struct route *ro)
 		FL_ENTRY_UNLOCK(ft, hash);
 		goto uncached;
 	}
-keycheck:	
+keycheck:
+	if (fle->f_next != NULL)
+		prefetch(fle->f_next);
+
 	rt = __DEVOLATILE(struct rtentry *, fle->f_rt);
 	lle = __DEVOLATILE(struct llentry *, fle->f_lle);
 	if ((rt != NULL)
