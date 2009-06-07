@@ -1648,9 +1648,10 @@ cxgb_transmit_locked(struct ifnet *ifp, struct sge_qset *qs, struct mbuf *m)
 		} else {
 			/*
 			 * We've bypassed the buf ring so we need to update
-			 * ifp directly
+			 * the stats directly
 			 */
-			drbr_stats_update(ifp, m->m_pkthdr.len, m->m_flags);
+			txq->txq_direct_packets++;
+			txq->txq_direct_bytes += m->m_pkthdr.len;
 			/*
 			** Send a copy of the frame to the BPF
 			** listener and set the watchdog on.

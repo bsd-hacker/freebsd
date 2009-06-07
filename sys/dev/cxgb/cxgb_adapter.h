@@ -250,7 +250,9 @@ struct sge_txq {
 	uint32_t        txq_enqueued;
 	uint32_t	txq_dump_start;
 	uint32_t	txq_dump_count;
-	unsigned long   txq_frees;
+	uint64_t	txq_direct_packets;
+	uint64_t	txq_direct_bytes;	
+	uint64_t	txq_frees;
 	struct sg_ent  txq_sgl[TX_MAX_SEGS / 2 + 1];
 };
      	
