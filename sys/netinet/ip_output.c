@@ -195,7 +195,7 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 		V_ipstat.ips_localout++;
 #else
 		ip->ip_id = PCPU_GET(ipid);
-		PCPU_INC(ipid, 1);
+		PCPU_INC(ipid);
 #endif
 	} else {
 		hlen = ip->ip_hl << 2;
