@@ -609,8 +609,6 @@ flowtable_lookup(struct flowtable *ft, struct mbuf *m, struct route *ro)
 	struct flowtable_stats *fs = &ft->ft_stats[curcpu];
 	
 	flags = ft->ft_flags;
-	ro->ro_rt = NULL;
-	ro->ro_lle = NULL;
 
 	/*
 	 * The internal hash lookup is the only IPv4 specific bit
@@ -699,7 +697,6 @@ uncached:
 
 		if (lle == NULL) {
 			RTFREE(rt);
-			ro->ro_rt = NULL;
 			return (ENOENT);
 		}
 		error = flowtable_insert(ft, hash, key, proto,
@@ -708,8 +705,6 @@ uncached:
 		if (error) {
 			RTFREE(rt);
 			LLE_FREE(lle);
-			ro->ro_rt = NULL;
-			ro->ro_lle = NULL;
 		}
 	} 
 
