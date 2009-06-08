@@ -1355,6 +1355,8 @@ t3_encap(struct sge_qset *qs, struct mbuf **m)
 	txd = &txq->desc[txq->pidx];
 	txsd = &txq->sdesc[txq->pidx];
 	sgl = txq->txq_sgl;
+
+	prefetch(txd);
 	m0 = *m;
 	
 	DPRINTF("t3_encap port_id=%d qsidx=%d ", pi->port_id, pi->first_qset);
