@@ -97,11 +97,11 @@ struct port_info {
 	struct cmac	mac;
 	struct link_config link_config;
 	struct ifmedia	media;
-	struct mtx	lock;
-	uint8_t		port_id;
-	uint8_t		tx_chan;
-	uint8_t		txpkt_intf;
-	uint8_t         first_qset;
+	struct mtx	lock __aligned(128);
+	uint32_t	port_id __aligned(128);
+	uint32_t	tx_chan;
+	uint32_t	txpkt_intf;
+	uint32_t        first_qset;
 	uint32_t	nqsets;
 	int		link_fault;
 	int		watchdog_timer;
@@ -115,7 +115,7 @@ struct port_info {
 #define PORT_NAME_LEN 32
 	char            lockbuf[PORT_LOCK_NAME_LEN];
 	char            namebuf[PORT_NAME_LEN];
-};
+} __aligned(128);
 
 enum {				/* adapter flags */
 	FULL_INIT_DONE	= (1 << 0),
