@@ -163,11 +163,11 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 			m->m_flags |= M_FLOWID;
 		}
 	}
-	if ((ro == &iproute) && (ro->ro_rt == NULL) && (ro->ro_lle == NULL)) {
-		if (flowtable_lookup(ip_ft, m, ro) == 0)
-			nortfree = 1;
+	if (ro == &iproute &&
+	    flowtable_lookup(ip_ft, m, ro) == 0) {
+		nortfree = 1;
+		ifp = ro->ro_rt->rt_ifp;
 	}
-
 	if (opt) {
 		len = 0;
 		m = ip_insertoptions(m, opt, &len);
@@ -175,7 +175,9 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 			hlen = len;
 	}
 	ip = mtod(m, struct ip *);
-
+	if (nortfree)
+		ip->ip_ttl = 1;
+	
 	/*
 	 * Fill in IP header.  If we are not allowing fragmentation,
 	 * then the ip_id field is meaningless, but we don't set it
@@ -245,7 +247,7 @@ again:
 		ifp = ia->ia_ifp;
 		ip->ip_ttl = 1;
 		isbroadcast = 1;
-	} else if (flags & IP_ROUTETOIF) {
+	} else if (ifp == NULL && (flags & IP_ROUTETOIF)) {
 		if ((ia = ifatoia(ifa_ifwithdstaddr(sintosa(dst)))) == NULL &&
 		    (ia = ifatoia(ifa_ifwithnet(sintosa(dst)))) == NULL) {
 			V_ipstat.ips_noroute++;
