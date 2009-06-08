@@ -100,6 +100,7 @@ struct mbuf *
 m_getm2(struct mbuf *m, int len, int how, short type, int flags)
 {
 	struct mbuf *mb, *nm = NULL, *mtail = NULL;
+	int size;	
 
 	KASSERT(len >= 0, ("%s: len is < 0", __func__));
 
@@ -112,25 +113,30 @@ m_getm2(struct mbuf *m, int len, int how, short type, int flags)
 
 	/* Loop and append maximum sized mbufs to the chain tail. */
 	while (len > 0) {
-		if (len > MCLBYTES)
+		if (len > MCLBYTES) {			
 			mb = m_getjcl(how, type, (flags & M_PKTHDR),
 			    MJUMPAGESIZE);
-		else if (len >= MINCLSIZE)
+			size = MJUMPAGESIZE;			
+		} else if (len >= MINCLSIZE) {			
 			mb = m_getcl(how, type, (flags & M_PKTHDR));
-		else if (flags & M_PKTHDR)
+			size = MCLBYTES;			
+		} else if (flags & M_PKTHDR) {			
 			mb = m_gethdr(how, type);
-		else
+			size = MHLEN;
+		} else {			
 			mb = m_get(how, type);
-
+			size = MLEN;
+		}
 		/* Fail the whole operation if one mbuf can't be allocated. */
 		if (mb == NULL) {
 			if (nm != NULL)
 				m_freem(nm);
 			return (NULL);
 		}
-
+		prefetch(mb);		
+		
 		/* Book keeping. */
-		len -= mb->m_size;
+		len -= size;
 		if (mtail != NULL)
 			mtail->m_next = mb;
 		else
