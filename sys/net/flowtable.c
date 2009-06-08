@@ -337,6 +337,7 @@ ipv4_flow_lookup_hash_internal(struct mbuf *m, struct route *ro,
 	struct ip *ip = NULL;
 	uint8_t proto = 0;
 	int iphlen;
+	int needflowid;
 	uint32_t hash;
 	struct sockaddr_in *sin;
 	struct tcphdr *th;
@@ -358,8 +359,8 @@ ipv4_flow_lookup_hash_internal(struct mbuf *m, struct route *ro,
 
 	key[2] = sin->sin_addr.s_addr;
 
-	if ((*flags & FL_HASH_PORTS) == 0 &&
-	    (m == NULL || (m->m_flags & M_FLOWID)))
+	needflowid = (m != NULL && (m->m_flags & M_FLOWID) == 0);
+	if ((*flags & FL_HASH_PORTS) == 0 && needflowid)
 		goto skipports;
 
 	proto = ip->ip_p;
@@ -369,8 +370,8 @@ ipv4_flow_lookup_hash_internal(struct mbuf *m, struct route *ro,
 	switch (proto) {
 	case IPPROTO_TCP:
 		th = (struct tcphdr *)((caddr_t)ip + iphlen);
-		sport = ntohs(th->th_sport);
-		dport = ntohs(th->th_dport);
+		sport = th->th_sport;
+		dport = th->th_dport;
 		*flags |= th->th_flags;
 		if (*flags & TH_RST)
 			*flags |= FL_STALE;
@@ -393,7 +394,7 @@ ipv4_flow_lookup_hash_internal(struct mbuf *m, struct route *ro,
 	
 	}
 	*protop = proto;
-	if (m != NULL && (m->m_flags & M_FLOWID) == 0) {
+	if (needflowid) {
 		((uint16_t *)key)[0] = sport;
 		((uint16_t *)key)[1] = dport; 
 		m->m_flags |= M_FLOWID;
