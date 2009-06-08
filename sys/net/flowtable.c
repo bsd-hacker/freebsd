@@ -185,20 +185,6 @@ static struct cv 	flowclean_cv;
 static struct mtx	flowclean_lock;
 static uint64_t		flowclean_cycles;
 
-#if defined(__i386__) || defined(__amd64__)
-static __inline
-void prefetch(void *x) 
-{ 
-        __asm volatile("prefetcht0 %0" :: "m" (*(unsigned long *)x));
-} 
-#else
-static __inline
-void prefetch(void *x) 
-{
-	;
-}
-#endif
-
 /*
  * TODO:
  * - Make flowtable stats per-cpu, aggregated at sysctl call time,

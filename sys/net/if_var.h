@@ -561,9 +561,9 @@ drbr_stats_update(struct ifnet *ifp, int len, int mflags)
 {
 #ifndef NO_SLOW_STATS
 	ifp->if_obytes += len;
-#endif	
 	if (mflags & M_MCAST)
 		ifp->if_omcasts++;
+#endif	
 }
 
 static __inline int
