@@ -483,7 +483,7 @@ pmclog_read(void *cookie, struct pmclog_ev *ev)
 
 
 	 /* Retrieve one event from the byte stream. */
-	ps->ps_len;
+	ps->ps_len = 0;
 	retval = pmclog_get_event(ps, &ps->ps_data, &ps->ps_len, ev);
 
 	/*
