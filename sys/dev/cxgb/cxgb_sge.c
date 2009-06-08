@@ -1404,6 +1404,11 @@ t3_encap(struct sge_qset *qs, struct mbuf **m)
 			cbe->cntrl = htonl(cntrl);
 			cbe->len = htonl(segs[i].ds_len | 0x80000000);
 			cbe->addr = htobe64(segs[i].ds_addr);
+			/*
+			 * 62% of function time is spent on the following - need to
+			 * calculate the value to be stored in an intermediate
+			 * and then do a direct update
+			 */
 			txd->flit[fidx] |= htobe64(1 << 24);
 		}
 
