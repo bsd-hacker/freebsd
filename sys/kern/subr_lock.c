@@ -188,7 +188,7 @@ struct lock_prof_cpu {
 
 struct lock_prof_cpu *lp_cpu[MAXCPU];
 
-volatile int lock_prof_enable __aligned(64);
+volatile int lock_prof_enable = 0;
 static volatile int lock_prof_resetting __aligned(64);
 
 /* SWAG: sbuf size = avg stat. line size * number of locks */
@@ -233,7 +233,6 @@ lock_prof_init(void *arg)
 {
 	int cpu;
 
-	lock_prof_enable = 1;
 	for (cpu = 0; cpu <= mp_maxid; cpu++) {
 		lp_cpu[cpu] = malloc(sizeof(*lp_cpu[cpu]), M_DEVBUF,
 		    M_WAITOK | M_ZERO);
