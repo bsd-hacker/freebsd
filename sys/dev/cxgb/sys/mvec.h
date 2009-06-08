@@ -72,7 +72,6 @@ m_freem_list(struct mbuf *m)
 		n = m->m_nextpkt;
 		if (n != NULL)
 			prefetch(n);
-		m->m_nextpkt = NULL;
 		m_freem(m);
 		m = n;
 	}	
