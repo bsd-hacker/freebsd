@@ -104,7 +104,6 @@ struct port_info {
 	uint32_t        first_qset;
 	uint32_t	nqsets;
 	int		link_fault;
-	int		watchdog_timer;
 
 	uint8_t		hw_addr[ETHER_ADDR_LEN];
 	struct task	timer_reclaim_task;

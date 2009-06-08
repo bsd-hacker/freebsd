@@ -1609,8 +1609,6 @@ cxgb_start_locked(struct sge_qset *qs)
 			m_freem(m_head);
 
 		m_head = NULL;
-		/* Set timeout in case hardware has problems transmitting. */
-		pi->watchdog_timer = CXGB_TX_TIMEOUT;
 	}
 	if (!TXQ_RING_EMPTY(qs) && callout_pending(&txq->txq_timer) == 0)
 		callout_reset_on(&txq->txq_timer, 1, cxgb_tx_timeout,
