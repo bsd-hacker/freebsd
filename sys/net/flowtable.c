@@ -147,6 +147,8 @@ struct flowtable {
 	uint32_t	ft_collisions;
 	uint32_t	ft_allocated;
 	uint32_t	ft_misses;
+	uint64_t	ft_free_checks;
+	uint64_t	ft_frees;
 	uint64_t	ft_hits;
 	uint64_t	ft_lookups;
 	
@@ -356,7 +358,8 @@ ipv4_flow_lookup_hash_internal(struct mbuf *m, struct route *ro,
 
 	key[2] = sin->sin_addr.s_addr;
 
-	if ((*flags & FL_HASH_PORTS) == 0)
+	if ((*flags & FL_HASH_PORTS) == 0 &&
+	    (m == NULL || (m->m_flags & M_FLOWID)))
 		goto skipports;
 
 	proto = ip->ip_p;
@@ -390,7 +393,14 @@ ipv4_flow_lookup_hash_internal(struct mbuf *m, struct route *ro,
 	
 	}
 	*protop = proto;
-
+	if (m != NULL && (m->m_flags & M_FLOWID) == 0) {
+		((uint16_t *)key)[0] = sport;
+		((uint16_t *)key)[1] = dport; 
+		m->m_flags |= M_FLOWID;
+		m->m_pkthdr.flowid = jenkins_hashword(key, 3,
+		    hashjitter + proto);
+	}
+	
 	/*
 	 * If this is a transmit route cache then 
 	 * hash all flows to a given destination to
@@ -404,11 +414,6 @@ ipv4_flow_lookup_hash_internal(struct mbuf *m, struct route *ro,
 
 skipports:
 	hash = jenkins_hashword(key, 3, hashjitter + proto);
-	if (m != NULL && (m->m_flags & M_FLOWID) == 0) {
-		m->m_flags |= M_FLOWID;
-		m->m_pkthdr.flowid = hash;
-	}
-
 	return (hash);
 noop:
 	*protop = proto;
@@ -488,7 +493,6 @@ flowtable_set_hashkey(struct flentry *fle, uint32_t *key)
 		nwords = 3;
 		hashkey = ((struct flentry_v6 *)fle)->fl_flow.ipf_key;
 	}
-	
 	for (i = 0; i < nwords; i++) 
 		hashkey[i] = key[i];
 }
@@ -507,7 +511,7 @@ flowtable_insert(struct flowtable *ft, uint32_t hash, uint32_t *key,
 	if (newfle == NULL)
 		return (ENOMEM);
 
-	newfle->f_flags |= (flags & FL_IPV6);
+	prefetch(newfle);
 	
 	FL_ENTRY_LOCK(ft, hash);
 	mask = flowtable_mask(ft);
@@ -521,7 +525,7 @@ flowtable_insert(struct flowtable *ft, uint32_t hash, uint32_t *key,
 	} 
 	
 	depth = 0;
-	flowtable_collisions++;
+	ft->ft_collisions++;
 	/*
 	 * find end of list and make sure that we were not
 	 * preempted by another thread handling this flow
@@ -551,6 +555,7 @@ flowtable_insert(struct flowtable *ft, uint32_t hash, uint32_t *key,
 		flowtable_max_depth = depth;
 	fletail->f_next = newfle;
 	fle = newfle;
+	newfle->f_flags |= (flags & FL_IPV6);
 skip:
 	flowtable_set_hashkey(fle, key);
 
@@ -852,7 +857,7 @@ flowtable_free_stale(struct flowtable *ft)
 		flehead = flowtable_entry(ft, curbit);
 		fle = fleprev = *flehead;
 
-		flowtable_free_checks++;
+		ft->ft_free_checks++;
 #ifdef DIAGNOSTIC
 		if (fle == NULL && curbit > 0) {
 			log(LOG_ALERT,
@@ -903,7 +908,7 @@ flowtable_free_stale(struct flowtable *ft)
 	while ((fle = flefreehead) != NULL) {
 		flefreehead = fle->f_next;
 		count++;
-		flowtable_frees++;
+		ft->ft_frees++;
 		fle_free(fle);
 	}
 	if (bootverbose && count)
