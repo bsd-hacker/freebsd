@@ -235,9 +235,11 @@ check_pkt_coalesce(struct sge_qset *qs)
 
 	/*
 	 * if the hardware transmit queue is more than 3/4 full
-	 * we mark it as coalescing
+	 * we mark it as coalescing - we drop back from coalescing
+	 * when we go below 1/4 full, this provides us with some
+	 * degree of hysteresis
 	 */
-        if (*fill != 0 && (txq->in_use < (txq->size - (txq->size>>2))))  
+        if (*fill != 0 && (txq->in_use < (txq->size>>2)))  
                 *fill = 0; 
         else if (*fill == 0 && (txq->in_use >= (txq->size - (txq->size>>2))))  
                 *fill = 1; 
@@ -250,9 +252,13 @@ static void
 set_wr_hdr(struct work_request_hdr *wrp, uint32_t wr_hi, uint32_t wr_lo)
 {
 	uint64_t wr_hilo;
-
+#if _BYTE_ORDER == _LITTLE_ENDIAN
 	wr_hilo = wr_hi;
-	wr_hilo |= (((uint64_t)wr_lo)<<32) ;
+	wr_hilo |= (((uint64_t)wr_lo)<<32);
+#else
+	wr_hilo = wr_lo;
+	wr_hilo |= (((uint64_t)wr_hi)<<32);
+#endif	
 	wrp->wrh_hilo = wr_hilo;
 }
 #else
@@ -1392,29 +1398,31 @@ t3_encap(struct sge_qset *qs, struct mbuf **m)
 		flits = nsegs*2 + 1;
 
 		for (fidx = 1, i = 0; i < nsegs; i++, fidx += 2) {
-			struct cpl_tx_pkt_batch_entry *cbe = &cpl_batch->pkt_entry[i];
+			struct cpl_tx_pkt_batch_entry *cbe;
+			uint64_t flit;
+			uint32_t *hflit = (uint32_t *)&flit;
+			int cflags = m0->m_pkthdr.csum_flags;
 
 			cntrl = V_TXPKT_INTF(pi->txpkt_intf);
 			GET_VTAG(cntrl, m0);
 			cntrl |= V_TXPKT_OPCODE(CPL_TX_PKT);
-			if (__predict_false(!(m0->m_pkthdr.csum_flags & CSUM_IP)))
+			if (__predict_false(!(cflags & CSUM_IP)))
 				cntrl |= F_TXPKT_IPCSUM_DIS;
-			if (__predict_false(!(m0->m_pkthdr.csum_flags & (CSUM_TCP | CSUM_UDP))))
+			if (__predict_false(!(cflags & (CSUM_TCP | CSUM_UDP))))
 				cntrl |= F_TXPKT_L4CSUM_DIS;
-			cbe->cntrl = htonl(cntrl);
-			cbe->len = htonl(segs[i].ds_len | 0x80000000);
+
+			hflit[0] = htonl(cntrl);
+			hflit[1] = htonl(segs[i].ds_len | 0x80000000);
+			flit |= htobe64(1 << 24);
+			cbe = &cpl_batch->pkt_entry[i];
+			cbe->cntrl = hflit[0];
+			cbe->len = hflit[1];
 			cbe->addr = htobe64(segs[i].ds_addr);
-			/*
-			 * 62% of function time is spent on the following - need to
-			 * calculate the value to be stored in an intermediate
-			 * and then do a direct update
-			 */
-			txd->flit[fidx] |= htobe64(1 << 24);
 		}
 
-		
 		wr_hi = htonl(F_WR_SOP | F_WR_EOP | V_WR_DATATYPE(1) |
-		    V_WR_SGLSFLT(flits)) | htonl(V_WR_OP(FW_WROPCODE_TUNNEL_TX_PKT) | txqs.compl);
+		    V_WR_SGLSFLT(flits)) |
+		    htonl(V_WR_OP(FW_WROPCODE_TUNNEL_TX_PKT) | txqs.compl);
 		wr_lo = htonl(V_WR_LEN(flits) |
 		    V_WR_GEN(txqs.gen)) | htonl(V_WR_TID(txq->token));
 		set_wr_hdr(wrp, wr_hi, wr_lo);
