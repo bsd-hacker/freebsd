@@ -140,10 +140,7 @@ union flentryp {
 	struct flentry		**pcpu[MAXCPU];
 };
 
-struct flowtable {
-	int 		ft_size;
-	int 		ft_lock_count;
-	uint32_t	ft_flags;
+struct flowtable_stats {
 	uint32_t	ft_collisions;
 	uint32_t	ft_allocated;
 	uint32_t	ft_misses;
@@ -151,6 +148,15 @@ struct flowtable {
 	uint64_t	ft_frees;
 	uint64_t	ft_hits;
 	uint64_t	ft_lookups;
+} __aligned(128);
+
+	
+
+struct flowtable {
+	struct	flowtable_stats ft_stats[MAXCPU];
+	int 		ft_size;
+	int 		ft_lock_count;
+	uint32_t	ft_flags;
 	
 	uint32_t	ft_udp_idle;
 	uint32_t	ft_fin_wait_idle;
@@ -503,6 +509,7 @@ flowtable_insert(struct flowtable *ft, uint32_t hash, uint32_t *key,
     uint8_t proto, struct route *ro, uint16_t flags)
 {
 	struct flentry *fle, *fletail, *newfle, **flep;
+	struct flowtable_stats *fs = &ft->ft_stats[curcpu];
 	int depth;
 	uma_zone_t flezone;
 	bitstr_t *mask;
@@ -513,7 +520,6 @@ flowtable_insert(struct flowtable *ft, uint32_t hash, uint32_t *key,
 		return (ENOMEM);
 
 	prefetch(newfle);
-	
 	FL_ENTRY_LOCK(ft, hash);
 	mask = flowtable_mask(ft);
 	flep = flowtable_entry(ft, hash);
@@ -526,7 +532,7 @@ flowtable_insert(struct flowtable *ft, uint32_t hash, uint32_t *key,
 	} 
 	
 	depth = 0;
-	ft->ft_collisions++;
+	fs->ft_collisions++;
 	/*
 	 * find end of list and make sure that we were not
 	 * preempted by another thread handling this flow
@@ -600,7 +606,8 @@ flowtable_lookup(struct flowtable *ft, struct mbuf *m, struct route *ro)
 	int error = 0, fib = 0;
 	struct rtentry *rt;
 	struct llentry *lle;
-
+	struct flowtable_stats *fs = &ft->ft_stats[curcpu];
+	
 	flags = ft->ft_flags;
 	ro->ro_rt = NULL;
 	ro->ro_lle = NULL;
@@ -627,7 +634,7 @@ flowtable_lookup(struct flowtable *ft, struct mbuf *m, struct route *ro)
 	if (hash == 0 || (key[0] == 0 && (ft->ft_flags & FL_HASH_PORTS)))
 		return (ENOENT);
 
-	ft->ft_lookups++;
+	fs->ft_lookups++;
 	FL_ENTRY_LOCK(ft, hash);
 	if ((fle = FL_ENTRY(ft, hash)) == NULL) {
 		FL_ENTRY_UNLOCK(ft, hash);
@@ -645,7 +652,7 @@ keycheck:
 	    && (proto == fle->f_proto)
 	    && (rt->rt_flags & RTF_UP)
 	    && (rt->rt_ifp != NULL)) {
-		ft->ft_hits++;
+		fs->ft_hits++;
 		fle->f_uptime = time_uptime;
 		fle->f_flags |= flags;
 		ro->ro_rt = rt;
@@ -659,7 +666,7 @@ keycheck:
 	FL_ENTRY_UNLOCK(ft, hash);
 
 uncached:
-	ft->ft_misses++;
+	fs->ft_misses++;
 	/*
 	 * This bit of code ends up locking the
 	 * same route 3 times (just like ip_output + ether_output)
@@ -836,6 +843,7 @@ flowtable_free_stale(struct flowtable *ft)
 	struct flentry *fle,  **flehead, *fleprev;
 	struct flentry *flefreehead, *flefreetail, *fletmp;
 	bitstr_t *mask, *tmpmask;
+	struct flowtable_stats *fs = &ft->ft_stats[curcpu];
 	
 	flefreehead = flefreetail = NULL;
 	mask = flowtable_mask(ft);
@@ -858,7 +866,7 @@ flowtable_free_stale(struct flowtable *ft)
 		flehead = flowtable_entry(ft, curbit);
 		fle = fleprev = *flehead;
 
-		ft->ft_free_checks++;
+		fs->ft_free_checks++;
 #ifdef DIAGNOSTIC
 		if (fle == NULL && curbit > 0) {
 			log(LOG_ALERT,
@@ -909,7 +917,7 @@ flowtable_free_stale(struct flowtable *ft)
 	while ((fle = flefreehead) != NULL) {
 		flefreehead = fle->f_next;
 		count++;
-		ft->ft_frees++;
+		fs->ft_frees++;
 		fle_free(fle);
 	}
 	if (bootverbose && count)
