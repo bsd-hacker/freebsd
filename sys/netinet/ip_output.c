@@ -166,7 +166,6 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 	if (ro == &iproute &&
 	    flowtable_lookup(ip_ft, m, ro) == 0) {
 		nortfree = 1;
-		ifp = ro->ro_rt->rt_ifp;
 	}
 	if (opt) {
 		len = 0;
@@ -175,8 +174,6 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 			hlen = len;
 	}
 	ip = mtod(m, struct ip *);
-	if (nortfree)
-		ip->ip_ttl = 1;
 	
 	/*
 	 * Fill in IP header.  If we are not allowing fragmentation,
@@ -247,14 +244,18 @@ again:
 		ifp = ia->ia_ifp;
 		ip->ip_ttl = 1;
 		isbroadcast = 1;
-	} else if (ifp == NULL && (flags & IP_ROUTETOIF)) {
-		if ((ia = ifatoia(ifa_ifwithdstaddr(sintosa(dst)))) == NULL &&
+	} else if (flags & IP_ROUTETOIF) {
+		if (nortfree == 0 &&
+		    (ia = ifatoia(ifa_ifwithdstaddr(sintosa(dst)))) == NULL &&
 		    (ia = ifatoia(ifa_ifwithnet(sintosa(dst)))) == NULL) {
 			V_ipstat.ips_noroute++;
 			error = ENETUNREACH;
 			goto bad;
 		}
-		ifp = ia->ia_ifp;
+		if (nortfree)
+			ifp = ro->ro_rt->rt_ifp;
+		else
+			ifp = ia->ia_ifp;
 		ip->ip_ttl = 1;
 		isbroadcast = in_broadcast(dst->sin_addr, ifp);
 	} else if (IN_MULTICAST(ntohl(ip->ip_dst.s_addr)) &&
