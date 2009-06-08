@@ -146,13 +146,13 @@ static int mxge_close(mxge_softc_t *sc);
 static int mxge_open(mxge_softc_t *sc);
 static void mxge_tick(void *arg);
 
-#if defined(__i386__) || defined(__amd64__)
+#if defined(__i386__) 
 static __inline
 void prefetch(void *x) 
 { 
         __asm volatile("prefetcht0 %0" :: "m" (*(unsigned long *)x));
 }
-#else
+#elif !defined(__amd64__)
 #define prefetch(x)
 #endif
 

@@ -343,6 +343,12 @@ ia32_pause(void)
 	__asm __volatile("pause");
 }
 
+static __inline
+void prefetch(void *x) 
+{ 
+        __asm volatile("prefetcht0 %0" :: "m" (*(unsigned long *)x));
+}
+
 static __inline u_long
 read_rflags(void)
 {
