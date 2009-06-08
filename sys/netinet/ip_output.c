@@ -289,7 +289,9 @@ again:
 		}
 		ia = ifatoia(ro->ro_rt->rt_ifa);
 		ifp = ro->ro_rt->rt_ifp;
+#ifndef NO_SLOW_STATS		
 		ro->ro_rt->rt_rmx.rmx_pksent++;
+#endif		
 		if (ro->ro_rt->rt_flags & RTF_GATEWAY)
 			dst = (struct sockaddr_in *)ro->ro_rt->rt_gateway;
 		if (ro->ro_rt->rt_flags & RTF_HOST)
@@ -612,12 +614,14 @@ passout:
 		 * once instead of for every generated packet.
 		 */
 		if (!(flags & IP_FORWARDING) && ia) {
+#ifndef NO_SLOW_STATS			
 			if (m->m_pkthdr.csum_flags & CSUM_TSO)
 				ia->ia_ifa.if_opackets +=
 				    m->m_pkthdr.len / m->m_pkthdr.tso_segsz;
 			else
 				ia->ia_ifa.if_opackets++;
 			ia->ia_ifa.if_obytes += m->m_pkthdr.len;
+#endif
 		}
 #ifdef MBUF_STRESS_TEST
 		if (mbuf_frag_size && m->m_pkthdr.len > mbuf_frag_size)

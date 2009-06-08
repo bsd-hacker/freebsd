@@ -1110,8 +1110,9 @@ udp_output(struct inpcb *inp, struct mbuf *m, struct sockaddr *addr,
 	((struct ip *)ui)->ip_len = sizeof (struct udpiphdr) + len;
 	((struct ip *)ui)->ip_ttl = inp->inp_ip_ttl;	/* XXX */
 	((struct ip *)ui)->ip_tos = inp->inp_ip_tos;	/* XXX */
+#ifndef NO_SLOW_STATS
 	V_udpstat.udps_opackets++;
-
+#endif
 	if (unlock_udbinfo == 2)
 		INP_INFO_WUNLOCK(&V_udbinfo);
 	else if (unlock_udbinfo == 1)
