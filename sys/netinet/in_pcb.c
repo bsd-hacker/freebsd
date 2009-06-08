@@ -196,7 +196,8 @@ in_pcballoc(struct socket *so, struct inpcbinfo *pcbinfo)
 #endif
 	struct inpcb *inp;
 	int error;
-
+	static int flowid = 1;
+	
 	INP_INFO_WLOCK_ASSERT(pcbinfo);
 	error = 0;
 	inp = uma_zalloc(pcbinfo->ipi_zone, M_NOWAIT);
@@ -207,6 +208,7 @@ in_pcballoc(struct socket *so, struct inpcbinfo *pcbinfo)
 	inp->inp_socket = so;
 	inp->inp_cred = crhold(so->so_cred);
 	inp->inp_inc.inc_fibnum = so->so_fibnum;
+	inp->inp_flowid = flowid++;
 #ifdef MAC
 	error = mac_inpcb_init(inp, M_NOWAIT);
 	if (error != 0)

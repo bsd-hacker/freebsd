@@ -1116,7 +1116,11 @@ udp_output(struct inpcb *inp, struct mbuf *m, struct sockaddr *addr,
 		INP_INFO_WUNLOCK(&V_udbinfo);
 	else if (unlock_udbinfo == 1)
 		INP_INFO_RUNLOCK(&V_udbinfo);
-	error = ip_output(m, inp->inp_options, NULL, ipflags,
+	if (inp->inp_flowid != 0) {
+		m->m_pkthdr.flowid = inp->inp_flowid;
+		m->m_flags |= M_FLOWID;
+	}
+ 	error = ip_output(m, inp->inp_options, NULL, ipflags,
 	    inp->inp_moptions, inp);
 	if (unlock_udbinfo == 2)
 		INP_WUNLOCK(inp);
