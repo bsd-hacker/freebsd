@@ -188,14 +188,14 @@ struct lock_prof_cpu {
 
 struct lock_prof_cpu *lp_cpu[MAXCPU];
 
+static int lock_prof_skipspin __aligned(128);
 volatile int lock_prof_enable = 0;
-static volatile int lock_prof_resetting __aligned(64);
+static volatile int lock_prof_resetting __aligned(128);
 
 /* SWAG: sbuf size = avg stat. line size * number of locks */
 #define LPROF_SBUF_SIZE		256 * 400
 
 static int lock_prof_rejected;
-static int lock_prof_skipspin;
 static int lock_prof_skipcount;
 
 #ifndef USE_CPU_NANOSECONDS
