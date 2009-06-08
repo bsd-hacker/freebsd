@@ -234,14 +234,14 @@ check_pkt_coalesce(struct sge_qset *qs)
 	fill = &sc->tunq_fill[qs->idx];
 
 	/*
-	 * if the hardware transmit queue is more than 3/4 full
+	 * if the hardware transmit queue is more than 1/2 full
 	 * we mark it as coalescing - we drop back from coalescing
-	 * when we go below 1/4 full, this provides us with some
+	 * when we go below 1/8 full, this provides us with some
 	 * degree of hysteresis
 	 */
-        if (*fill != 0 && (txq->in_use < (txq->size>>2)))  
+        if (*fill != 0 && (txq->in_use < (txq->size>>3)))  
                 *fill = 0; 
-        else if (*fill == 0 && (txq->in_use >= (txq->size - (txq->size>>2))))  
+        else if (*fill == 0 && (txq->in_use >= (txq->size - (txq->size>>1))))  
                 *fill = 1; 
 
 	return (sc->tunq_coalesce);
