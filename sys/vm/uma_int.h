@@ -168,7 +168,7 @@ struct uma_bucket {
 	int16_t	ub_cnt;				/* Count of free items. */
 	int16_t	ub_entries;			/* Max items. */
 	void	*ub_bucket[];			/* actual allocation storage */
-};
+} __aligned(128);
 
 typedef struct uma_bucket * uma_bucket_t;
 
