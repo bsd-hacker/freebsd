@@ -197,8 +197,7 @@ extern void kdb_backtrace(void);
         } \
 } while (0)
 
-
-#else /* !i386 && !amd64 */
+#elif !defined(__amd64__)  /* !i386 && !amd64 */
 #define smp_mb()
 #define prefetch(x)
 #define L1_CACHE_BYTES 32
