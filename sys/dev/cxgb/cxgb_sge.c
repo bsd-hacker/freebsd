@@ -241,7 +241,8 @@ check_pkt_coalesce(struct sge_qset *qs)
 	 * when we go below 1/8 full and there are no packets enqueued, 
 	 * this provides us with some degree of hysteresis
 	 */
-        if (*fill != 0 && (txq->in_use < (txq->size>>3)) && TXQ_EMPTY(qs))  
+        if (*fill != 0 && (txq->in_use < (txq->size>>3)) &&
+	    TXQ_RING_EMPTY(qs))  
                 *fill = 0; 
         else if (*fill == 0 && (txq->in_use >= (txq->size>>2)))
                 *fill = 1; 
