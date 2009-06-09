@@ -229,8 +229,6 @@ check_pkt_coalesce(struct sge_qset *qs)
 
 	if (__predict_false(cxgb_pcpu_tx_coalesce_force))
 		return (1);
-	if (__predict_false(qs->qs_flags & QS_FLUSHING))
-		return (0);
 	txq = &qs->txq[TXQ_ETH]; 
         sc = qs->port->adapter; 
 	fill = &sc->tunq_fill[qs->idx];
