@@ -239,15 +239,15 @@ check_pkt_coalesce(struct sge_qset *qs)
 	fill = &sc->tunq_fill[qs->idx];
 
 	/*
-	 * if the hardware transmit queue is more than 1/4 full
+	 * if the hardware transmit queue is more than 1/8 full
 	 * we mark it as coalescing - we drop back from coalescing
-	 * when we go below 1/16 full and there are no packets enqueued, 
+	 * when we go below 1/32 full and there are no packets enqueued, 
 	 * this provides us with some degree of hysteresis
 	 */
-        if (*fill != 0 && (txq->in_use < (txq->size>>4)) &&
+        if (*fill != 0 && (txq->in_use < (txq->size>>5)) &&
 	    TXQ_RING_EMPTY(qs))  
                 *fill = 0; 
-        else if (*fill == 0 && (txq->in_use >= (txq->size>>2)))
+        else if (*fill == 0 && (txq->in_use >= (txq->size>>3)))
                 *fill = 1; 
 
 	return (sc->tunq_coalesce);
@@ -1599,7 +1599,6 @@ cxgb_start_locked(struct sge_qset *qs)
 	avail = txq->size - txq->in_use - 4;
 	txmax = min(TX_START_MAX_DESC, avail);
 
-	/* free all completed requests */
 	if (qs->qs_flags & QS_FLUSHING)
 		reclaim_completed_tx(qs, 0, TXQ_ETH);
 		
@@ -1608,7 +1607,7 @@ cxgb_start_locked(struct sge_qset *qs)
 	    !TXQ_RING_EMPTY(qs) &&
 	    (ifp->if_drv_flags & IFF_DRV_RUNNING) &&
 	    pi->link_config.link_ok) {
-		reclaim_completed_tx(qs, (TX_ETH_Q_SIZE>>4), TXQ_ETH);
+		reclaim_completed_tx(qs, (TX_ETH_Q_SIZE>>6), TXQ_ETH);
 
 		if ((m_head = cxgb_dequeue(qs)) == NULL)
 			break;
@@ -1648,7 +1647,6 @@ cxgb_transmit_locked(struct ifnet *ifp, struct sge_qset *qs, struct mbuf *m)
 
 	avail = txq->size - txq->in_use;
 	TXQ_LOCK_ASSERT(qs);
-	reclaim_completed_tx(qs, (TX_ETH_Q_SIZE>>4), TXQ_ETH);
 
 	/*
 	 * We can only do a direct transmit if the following are true:
@@ -1685,7 +1683,8 @@ cxgb_transmit_locked(struct ifnet *ifp, struct sge_qset *qs, struct mbuf *m)
 		}
 	} else if ((error = drbr_enqueue(ifp, br, m)) != 0)
 		return (error);
-	
+
+	reclaim_completed_tx(qs, (TX_ETH_Q_SIZE>>4), TXQ_ETH);
 	if (!TXQ_RING_EMPTY(qs) && pi->link_config.link_ok &&
 	    (!check_pkt_coalesce(qs) || (drbr_inuse(ifp, br) >= 7)))
 		cxgb_start_locked(qs);
