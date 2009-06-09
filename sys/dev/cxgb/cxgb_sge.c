@@ -245,7 +245,7 @@ check_pkt_coalesce(struct sge_qset *qs)
 	 * this provides us with some degree of hysteresis
 	 */
         if (*fill != 0 && (txq->in_use < (txq->size>>5)) &&
-	    TXQ_RING_EMPTY(qs))  
+	    TXQ_RING_EMPTY(qs) && (qs->coalescing == 0))
                 *fill = 0; 
         else if (*fill == 0 && (txq->in_use >= (txq->size>>3)))
                 *fill = 1; 
@@ -1563,6 +1563,11 @@ cxgb_tx_watchdog(void *arg)
 	struct sge_qset *qs = arg;
 	struct sge_txq *txq = &qs->txq[TXQ_ETH];
 
+        if (qs->coalescing != 0 && (txq->in_use < (txq->size>>5)) &&
+	    TXQ_RING_EMPTY(qs))  
+                qs->coalescing = 0; 
+        else if (qs->coalescing == 0 && (txq->in_use >= (txq->size>>3)))
+                qs->coalescing = 1;
 	if (TXQ_TRYLOCK(qs)) {
 		qs->qs_flags |= QS_FLUSHING;
 		cxgb_start_locked(qs);
@@ -1578,7 +1583,10 @@ static void
 cxgb_tx_timeout(void *arg)
 {
 	struct sge_qset *qs = arg;
+	struct sge_txq *txq = &qs->txq[TXQ_ETH];
 
+	if (qs->coalescing == 0 && (txq->in_use >= (txq->size>>3)))
+                qs->coalescing = 1;	
 	if (TXQ_TRYLOCK(qs)) {
 		qs->qs_flags |= QS_TIMEOUT;
 		cxgb_start_locked(qs);

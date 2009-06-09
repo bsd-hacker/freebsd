@@ -282,6 +282,7 @@ struct sge_qset {
 	struct port_info        *port;
 	int                     idx; /* qset # */
 	int                     qs_flags;
+	int			coalescing;
 	struct cv		qs_cv;
 	struct mtx		lock;
 #define QS_NAME_LEN 32
