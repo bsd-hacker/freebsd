@@ -1580,9 +1580,9 @@ cxgb_tx_timeout(void *arg)
 	struct sge_qset *qs = arg;
 
 	if (TXQ_TRYLOCK(qs)) {
-		qs->qs_flags |= QS_FLUSHING;
+		qs->qs_flags |= QS_TIMEOUT;
 		cxgb_start_locked(qs);
-		qs->qs_flags &= ~QS_FLUSHING;
+		qs->qs_flags &= ~QS_TIMEOUT;
 		TXQ_UNLOCK(qs);
 	}
 }

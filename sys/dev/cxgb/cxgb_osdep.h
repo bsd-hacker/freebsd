@@ -170,8 +170,8 @@ struct t3_mbuf_hdr {
 #define TX_MAX_DESC                       4     /* max descriptors per packet    */
 
 
-#define TX_START_MIN_DESC  (TX_MAX_DESC << 1)
-#define TX_START_MAX_DESC (TX_MAX_DESC << 2)    /* maximum number of descriptors
+#define TX_START_MIN_DESC (TX_MAX_DESC << 1)
+#define TX_START_MAX_DESC (TX_MAX_DESC << 3)    /* maximum number of descriptors
 						 * call to start used per 	 */
 
 #define TX_CLEAN_MAX_DESC (TX_MAX_DESC << 4)    /* maximum tx descriptors

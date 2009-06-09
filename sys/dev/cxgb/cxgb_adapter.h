@@ -84,8 +84,6 @@ extern int cxgb_debug;
 #else
 #define MTX_INIT mtx_init
 #define MTX_DESTROY mtx_destroy
-#define SX_INIT sx_init
-#define SX_DESTROY sx_destroy
 #endif
 
 struct port_info {
@@ -270,6 +268,7 @@ enum {
 #define QS_RUNNING              0x2
 #define QS_BOUND                0x4
 #define	QS_FLUSHING		0x8
+#define	QS_TIMEOUT		0x10
 
 struct sge_qset {
 	struct sge_rspq		rspq;
