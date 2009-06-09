@@ -229,6 +229,8 @@ check_pkt_coalesce(struct sge_qset *qs)
 
 	if (__predict_false(cxgb_pcpu_tx_coalesce_force))
 		return (1);
+	if (__predict_false(qs->qs_flags & QS_FLUSHING))
+		return (0);
 	txq = &qs->txq[TXQ_ETH]; 
         sc = qs->port->adapter; 
 	fill = &sc->tunq_fill[qs->idx];
@@ -236,10 +238,10 @@ check_pkt_coalesce(struct sge_qset *qs)
 	/*
 	 * if the hardware transmit queue is more than 1/4 full
 	 * we mark it as coalescing - we drop back from coalescing
-	 * when we go below 1/16 full, this provides us with some
-	 * degree of hysteresis
+	 * when we go below 1/8 full and there are no packets enqueued, 
+	 * this provides us with some degree of hysteresis
 	 */
-        if (*fill != 0 && (txq->in_use < (txq->size>>4)))  
+        if (*fill != 0 && (txq->in_use < (txq->size>>3)) && TXQ_EMPTY(qs))  
                 *fill = 0; 
         else if (*fill == 0 && (txq->in_use >= (txq->size>>2)))
                 *fill = 1; 
@@ -3076,7 +3078,7 @@ process_responses(adapter_t *adap, struct sge_qset *qs, int budget)
 	if (sleeping)
 		check_ring_db(adap, qs, sleeping);
 
-	smp_mb();  /* commit Tx queue processed updates */
+	mb();  /* commit Tx queue processed updates */
 	if (__predict_false(qs->txq_stopped > 1)) {
 		printf("restarting tx on %p\n", qs);
 		
