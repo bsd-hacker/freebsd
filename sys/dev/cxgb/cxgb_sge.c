@@ -1607,7 +1607,7 @@ cxgb_start_locked(struct sge_qset *qs)
 	avail = txq->size - txq->in_use - 4;
 	txmax = min(TX_START_MAX_DESC, avail);
 
-	if (qs->qs_flags & QS_FLUSHING)
+	if (qs->qs_flags & (QS_FLUSHING|QS_TIMEOUT))
 		reclaim_completed_tx(qs, 0, TXQ_ETH);
 		
 	TXQ_LOCK_ASSERT(qs);
@@ -1615,7 +1615,7 @@ cxgb_start_locked(struct sge_qset *qs)
 	    !TXQ_RING_EMPTY(qs) &&
 	    (ifp->if_drv_flags & IFF_DRV_RUNNING) &&
 	    pi->link_config.link_ok) {
-		reclaim_completed_tx(qs, (TX_ETH_Q_SIZE>>6), TXQ_ETH);
+		reclaim_completed_tx(qs, (TX_ETH_Q_SIZE>>5), TXQ_ETH);
 
 		if ((m_head = cxgb_dequeue(qs)) == NULL)
 			break;
