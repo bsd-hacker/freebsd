@@ -220,6 +220,11 @@ static void sge_timer_reclaim(void *arg, int ncount);
 static void sge_txq_reclaim_handler(void *arg, int ncount);
 static void cxgb_start_locked(struct sge_qset *qs);
 
+/*
+ * XXX need to cope with bursty scheduling by looking at a wider
+ * window than we are now for determining the need for coalescing
+ *
+ */
 static __inline uint64_t
 check_pkt_coalesce(struct sge_qset *qs) 
 { 
@@ -236,10 +241,10 @@ check_pkt_coalesce(struct sge_qset *qs)
 	/*
 	 * if the hardware transmit queue is more than 1/4 full
 	 * we mark it as coalescing - we drop back from coalescing
-	 * when we go below 1/8 full and there are no packets enqueued, 
+	 * when we go below 1/16 full and there are no packets enqueued, 
 	 * this provides us with some degree of hysteresis
 	 */
-        if (*fill != 0 && (txq->in_use < (txq->size>>3)) &&
+        if (*fill != 0 && (txq->in_use < (txq->size>>4)) &&
 	    TXQ_RING_EMPTY(qs))  
                 *fill = 0; 
         else if (*fill == 0 && (txq->in_use >= (txq->size>>2)))
