@@ -208,7 +208,7 @@ in_pcballoc(struct socket *so, struct inpcbinfo *pcbinfo)
 	inp->inp_socket = so;
 	inp->inp_cred = crhold(so->so_cred);
 	inp->inp_inc.inc_fibnum = so->so_fibnum;
-	inp->inp_flowid = flowid++;
+	inp->inp_flowid = arc4random();
 #ifdef MAC
 	error = mac_inpcb_init(inp, M_NOWAIT);
 	if (error != 0)
