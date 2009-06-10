@@ -447,12 +447,12 @@ again:
 	 * interface in which case packetdrop should be done by queueing.
 	 */
 #ifdef ALTQ
-	if (ifp->if_snd.ifq_len &&
+	if (ip->ip_len > mtu &&
 	    (!ALTQ_IS_ENABLED(&ifp->if_snd)) &&
 	    ((ifp->if_snd.ifq_len + ip->ip_len / mtu + 1) >=
 	    ifp->if_snd.ifq_maxlen))
 #else
-	if (ifp->if_snd.ifq_len &&
+	if (ip->ip_len > mtu &&
 	    ((ifp->if_snd.ifq_len + ip->ip_len / mtu + 1) >=
 		ifp->if_snd.ifq_maxlen))
 #endif /* ALTQ */
