@@ -45,7 +45,7 @@ export RUNDIR=`pwd`/mp1/stressX
 export runRUNTIME=10m
 (cd ..; ./run.sh marcus.cfg) 
 
-umount $mp
+umount $mp 2>&1 | grep -v busy
 
 mount | grep -q $mp && umount -f $mp
 
