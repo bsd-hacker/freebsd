@@ -769,7 +769,7 @@ xenwatch_thread(void *unused)
 			TAILQ_REMOVE(&watch_events, msg, list);
 		mtx_unlock(&watch_events_lock);
 
-		if (msg != NULL) {
+		if (msg != NULL && msg->u.watch.handle->callback != NULL) {
 			msg->u.watch.handle->callback(
 				msg->u.watch.handle,
 				(const char **)msg->u.watch.vec,
