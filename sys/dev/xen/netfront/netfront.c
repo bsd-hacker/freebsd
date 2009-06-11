@@ -284,6 +284,7 @@ struct netfront_rx_info {
 static inline void
 add_id_to_freelist(struct mbuf **list, unsigned short id)
 {
+	KASSERT(id != 0, ("add_id_to_freelist: the head item (0) must always be free."));
 	list[id] = list[0];
 	list[0]  = (void *)(u_long)id;
 }
@@ -292,6 +293,7 @@ static inline unsigned short
 get_id_from_freelist(struct mbuf **list)
 {
 	u_int id = (u_int)(u_long)list[0];
+	KASSERT(id != 0, ("get_id_from_freelist: the head item (0) must always remain free."));
 	list[0] = list[id];
 	return (id);
 }
@@ -658,6 +660,23 @@ xn_free_tx_ring(struct netfront_info *sc)
 #endif
 }
 
+/*
+ * Do some brief math on the number of descriptors available to
+ * determine how many slots are available.
+ *
+ * Firstly - wouldn't something with RING_FREE_REQUESTS() be more applicable?
+ * Secondly - MAX_SKB_FRAGS is a Linux construct which may not apply here.
+ * Thirdly - it isn't used here anyway; the magic constant '24' is possibly
+ *   wrong?
+ * The "2" is presumably to ensure there are also enough slots available for
+ * the ring entries used for "options" (eg, the TSO entry before a packet
+ * is queued); I'm not sure why its 2 and not 1. Perhaps to make sure there's
+ * a "free" node in the tx mbuf list (node 0) to represent the freelist?
+ *
+ * This only figures out whether any xenbus ring descriptors are available;
+ * it doesn't at all reflect how many tx mbuf ring descriptors are also
+ * available.
+ */
 static inline int
 netfront_tx_slot_available(struct netfront_info *np)
 {
@@ -990,10 +1009,10 @@ xn_txeof(struct netfront_info *np)
 		for (i = np->tx.rsp_cons; i != prod; i++) {
 			id = RING_GET_RESPONSE(&np->tx, i)->id;
 			m = np->xn_cdata.xn_tx_chain[id]; 
-			
-			ifp->if_opackets++;
 			KASSERT(m != NULL, ("mbuf not found in xn_tx_chain"));
 			M_ASSERTVALID(m);
+			
+			ifp->if_opackets++;
 			if (unlikely(gnttab_query_foreign_access(
 			    np->grant_tx_ref[id]) != 0)) {
 				printf("network_tx_buf_gc: warning "
@@ -1325,6 +1344,12 @@ xn_start_locked(struct ifnet *ifp)
 		if (m_head == NULL) 
 			break;
 		
+		/*
+		 * netfront_tx_slot_available() tries to do some math to
+		 * ensure that there'll be enough xenbus ring slots available
+		 * for the maximum number of packet fragments (and a couple more
+		 * for what I guess are TSO and other ring entry items.)
+		 */
 		if (!netfront_tx_slot_available(sc)) {
 			IF_PREPEND(&ifp->if_snd, m_head);
 			ifp->if_drv_flags |= IFF_DRV_OACTIVE;
