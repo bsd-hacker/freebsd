@@ -54,9 +54,16 @@ __FBSDID("$FreeBSD$");
 #include <sys/device.h>
 #endif
 #include <sys/time.h>
+#ifdef __FreeBSD__
+#include <sys/vimage.h>
+#endif
 
 #include <net/if.h>
 #include <net/if_types.h>
+#ifdef __FreeBSD__
+#include <net/route.h>
+#include <net/vnet.h>
+#endif
 
 #include <netinet/in.h>
 #include <netinet/in_var.h>
@@ -109,7 +116,9 @@ void		 pfi_change_group_event(void * __unused, char *);
 void		 pfi_detach_group_event(void * __unused, struct ifg_group *);
 void		 pfi_ifaddr_event(void * __unused, struct ifnet *);
 
+#ifdef VIMAGE_GLOBALS
 extern struct ifgrouphead ifg_head;
+#endif
 #endif
 
 RB_PROTOTYPE(pfi_ifhead, pfi_kif, pfik_tree, pfi_if_compare);
@@ -121,6 +130,8 @@ RB_GENERATE(pfi_ifhead, pfi_kif, pfik_tree, pfi_if_compare);
 void
 pfi_initialize(void)
 {
+	INIT_VNET_NET(curvnet);
+
 	if (pfi_all != NULL)	/* already initialized */
 		return;
 
@@ -141,9 +152,9 @@ pfi_initialize(void)
 	struct ifnet *ifp;
 
 	IFNET_RLOCK();
-	TAILQ_FOREACH(ifg, &ifg_head, ifg_next)
+	TAILQ_FOREACH(ifg, &V_ifg_head, ifg_next)
 		pfi_attach_ifgroup(ifg);
-	TAILQ_FOREACH(ifp, &ifnet, if_link)
+	TAILQ_FOREACH(ifp, &V_ifnet, if_link)
 		pfi_attach_ifnet(ifp);
 	IFNET_RUNLOCK();
 
