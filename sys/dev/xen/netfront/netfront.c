@@ -31,7 +31,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysctl.h>
 #include <sys/queue.h>
 #include <sys/lock.h>
-#include <sys/sx.h>
 
 #include <net/if.h>
 #include <net/if_arp.h>
@@ -230,7 +229,7 @@ struct netfront_info {
 
 	struct mtx   tx_lock;
 	struct mtx   rx_lock;
-	struct sx    sc_lock;
+	struct mtx    sc_lock;
 
 	u_int handle;
 	u_int irq;
@@ -274,7 +273,7 @@ struct netfront_info {
 #define XN_LOCK_INIT(_sc, _name) \
         mtx_init(&(_sc)->tx_lock, #_name"_tx", "network transmit lock", MTX_DEF); \
         mtx_init(&(_sc)->rx_lock, #_name"_rx", "network receive lock", MTX_DEF);  \
-        sx_init(&(_sc)->sc_lock, #_name"_rx")
+        mtx_init(&(_sc)->sc_lock, #_name"_sc", "network softc lock", MTX_DEF)
 
 #define XN_RX_LOCK(_sc)           mtx_lock(&(_sc)->rx_lock)
 #define XN_RX_UNLOCK(_sc)         mtx_unlock(&(_sc)->rx_lock)
@@ -282,15 +281,15 @@ struct netfront_info {
 #define XN_TX_LOCK(_sc)           mtx_lock(&(_sc)->tx_lock)
 #define XN_TX_UNLOCK(_sc)         mtx_unlock(&(_sc)->tx_lock)
 
-#define XN_LOCK(_sc)           sx_xlock(&(_sc)->sc_lock); 
-#define XN_UNLOCK(_sc)         sx_xunlock(&(_sc)->sc_lock); 
+#define XN_LOCK(_sc)           mtx_lock(&(_sc)->sc_lock); 
+#define XN_UNLOCK(_sc)         mtx_unlock(&(_sc)->sc_lock); 
 
-#define XN_LOCK_ASSERT(_sc)    sx_assert(&(_sc)->sc_lock, SX_LOCKED); 
+#define XN_LOCK_ASSERT(_sc)    mtx_assert(&(_sc)->sc_lock, MA_OWNED); 
 #define XN_RX_LOCK_ASSERT(_sc)    mtx_assert(&(_sc)->rx_lock, MA_OWNED); 
 #define XN_TX_LOCK_ASSERT(_sc)    mtx_assert(&(_sc)->tx_lock, MA_OWNED); 
 #define XN_LOCK_DESTROY(_sc)   mtx_destroy(&(_sc)->rx_lock); \
                                mtx_destroy(&(_sc)->tx_lock); \
-                               sx_destroy(&(_sc)->sc_lock);
+	                       mtx_destroy(&(_sc)->sc_lock);
 
 struct netfront_rx_info {
 	struct netif_rx_response rx;
@@ -1813,7 +1812,6 @@ network_connect(struct netfront_info *np)
 	np->copying_receiver = ((MODPARM_rx_copy && feature_rx_copy) ||
 				(MODPARM_rx_flip && !feature_rx_flip));
 
-	XN_LOCK(np);
 	/* Recovery procedure: */
 	error = talk_to_backend(np->xbdev, np);
 	if (error) 
@@ -1822,6 +1820,7 @@ network_connect(struct netfront_info *np)
 	/* Step 1: Reinitialise variables. */
 	netif_release_tx_bufs(np);
 
+	XN_LOCK(np);
 	/* Step 2: Rebuild the RX buffer freelist and the RX ring itself. */
 	for (requeue_idx = 0, i = 0; i < NET_RX_RING_SIZE; i++) {
 		struct mbuf *m;
