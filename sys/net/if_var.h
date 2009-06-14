@@ -579,7 +579,7 @@ drbr_enqueue(struct ifnet *ifp, struct buf_ring *br, struct mbuf *m)
 		return (error);
 	}
 #endif
-	if ((error = buf_ring_enqueue(br, m, m->m_pkthdr.len)) == ENOBUFS) {
+	if ((error = buf_ring_enqueue(br, m, len)) == ENOBUFS) {
 		br->br_drops++;
 		m_freem(m);
 	} else
