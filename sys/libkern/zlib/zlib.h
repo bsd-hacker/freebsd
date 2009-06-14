@@ -30,7 +30,7 @@
 
 #ifndef ZLIB_H
 #define ZLIB_H
-
+#include <sys/types.h>
 #include <libkern/zlib/zconf.h>
 
 #ifdef __cplusplus
