@@ -78,11 +78,37 @@ TUNABLE_INT("hw.cxgb.txq_mr_size", &cxgb_txq_buf_ring_size);
 SYSCTL_UINT(_hw_cxgb, OID_AUTO, txq_mr_size, CTLFLAG_RDTUN, &cxgb_txq_buf_ring_size, 0,
     "size of per-queue mbuf ring");
 
-static int cxgb_pcpu_tx_coalesce_force = 0;
-TUNABLE_INT("hw.cxgb.tx_coalesce_force", &cxgb_pcpu_tx_coalesce_force);
-SYSCTL_UINT(_hw_cxgb, OID_AUTO, tx_coalesce, CTLFLAG_RW,
-    &cxgb_pcpu_tx_coalesce_force, 0,
+static int cxgb_tx_coalesce_force = 0;
+TUNABLE_INT("hw.cxgb.tx_coalesce_force", &cxgb_tx_coalesce_force);
+SYSCTL_UINT(_hw_cxgb, OID_AUTO, tx_coalesce_force, CTLFLAG_RW,
+    &cxgb_tx_coalesce_force, 0,
     "coalesce small packets into a single work request regardless of ring state");
+
+#define	COALESCE_START_DEFAULT		TX_ETH_Q_SIZE>>1
+#define	COALESCE_START_MAX		(TX_ETH_Q_SIZE-(TX_ETH_Q_SIZE>>3))
+#define	COALESCE_STOP_DEFAULT		TX_ETH_Q_SIZE>>2
+#define	COALESCE_STOP_MIN		TX_ETH_Q_SIZE>>5
+#define	TX_RECLAIM_DEFAULT		TX_ETH_Q_SIZE>>5
+#define	TX_RECLAIM_MAX			TX_ETH_Q_SIZE>>2
+#define	TX_RECLAIM_MIN			TX_ETH_Q_SIZE>>6
+
+
+static int cxgb_tx_coalesce_enable_start = COALESCE_START_DEFAULT;
+TUNABLE_INT("hw.cxgb.tx_coalesce_enable_start",
+    &cxgb_tx_coalesce_enable_start);
+SYSCTL_UINT(_hw_cxgb, OID_AUTO, tx_coalesce_enable_start, CTLFLAG_RW,
+    &cxgb_tx_coalesce_enable_start, 0,
+    "coalesce enable threshold");
+static int cxgb_tx_coalesce_enable_stop = COALESCE_STOP_DEFAULT;
+TUNABLE_INT("hw.cxgb.tx_coalesce_enable_stop", &cxgb_tx_coalesce_enable_stop);
+SYSCTL_UINT(_hw_cxgb, OID_AUTO, tx_coalesce_enable_stop, CTLFLAG_RW,
+    &cxgb_tx_coalesce_enable_stop, 0,
+    "coalesce disable threshold");
+static int cxgb_tx_reclaim_threshold = TX_RECLAIM_DEFAULT;
+TUNABLE_INT("hw.cxgb.tx_reclaim_threshold", &cxgb_tx_reclaim_threshold);
+SYSCTL_UINT(_hw_cxgb, OID_AUTO, tx_reclaim_threshold, CTLFLAG_RW,
+    &cxgb_tx_reclaim_threshold, 0,
+    "tx cleaning minimum threshold");
 
 /*
  * XXX don't re-enable this until TOE stops assuming
@@ -97,7 +123,7 @@ int fl_q_size = 0;
 int jumbo_q_size = 0;
 
 extern int cxgb_use_16k_clusters;
-extern int cxgb_pcpu_cache_enable;
+extern int cxgb_cache_enable;
 extern int nmbjumbo4;
 extern int nmbjumbo9;
 extern int nmbjumbo16;
@@ -232,22 +258,26 @@ check_pkt_coalesce(struct sge_qset *qs)
         struct sge_txq *txq; 
 	uint8_t *fill;
 
-	if (__predict_false(cxgb_pcpu_tx_coalesce_force))
+	if (__predict_false(cxgb_tx_coalesce_force))
 		return (1);
 	txq = &qs->txq[TXQ_ETH]; 
         sc = qs->port->adapter; 
 	fill = &sc->tunq_fill[qs->idx];
 
+	if (cxgb_tx_coalesce_enable_start > COALESCE_START_MAX)
+		cxgb_tx_coalesce_enable_start = COALESCE_START_MAX;
+	if (cxgb_tx_coalesce_enable_stop < COALESCE_STOP_MIN)
+		cxgb_tx_coalesce_enable_start = COALESCE_STOP_MIN;
 	/*
 	 * if the hardware transmit queue is more than 1/8 full
 	 * we mark it as coalescing - we drop back from coalescing
 	 * when we go below 1/32 full and there are no packets enqueued, 
 	 * this provides us with some degree of hysteresis
 	 */
-        if (*fill != 0 && (txq->in_use < (txq->size>>5)) &&
+        if (*fill != 0 && (txq->in_use <= cxgb_tx_coalesce_enable_stop) &&
 	    TXQ_RING_EMPTY(qs) && (qs->coalescing == 0))
                 *fill = 0; 
-        else if (*fill == 0 && (txq->in_use >= (txq->size>>3)))
+        else if (*fill == 0 && (txq->in_use >= cxgb_tx_coalesce_enable_start))
                 *fill = 1; 
 
 	return (sc->tunq_coalesce);
@@ -339,6 +369,10 @@ reclaim_completed_tx(struct sge_qset *qs, int reclaim_min, int queue)
 {
 	struct sge_txq *q = &qs->txq[queue];
 	int reclaim = desc_reclaimable(q);
+
+	if ((cxgb_tx_reclaim_threshold > TX_RECLAIM_MAX) ||
+	    (cxgb_tx_reclaim_threshold < TX_RECLAIM_MIN))
+		cxgb_tx_reclaim_threshold = TX_RECLAIM_DEFAULT;
 
 	if (reclaim < reclaim_min)
 		return (0);
@@ -1563,10 +1597,12 @@ cxgb_tx_watchdog(void *arg)
 	struct sge_qset *qs = arg;
 	struct sge_txq *txq = &qs->txq[TXQ_ETH];
 
-        if (qs->coalescing != 0 && (txq->in_use < (txq->size>>5)) &&
-	    TXQ_RING_EMPTY(qs))  
+        if (qs->coalescing != 0 &&
+	    (txq->in_use <= cxgb_tx_coalesce_enable_stop) &&
+	    TXQ_RING_EMPTY(qs))
                 qs->coalescing = 0; 
-        else if (qs->coalescing == 0 && (txq->in_use >= (txq->size>>3)))
+        else if (qs->coalescing == 0 &&
+	    (txq->in_use >= cxgb_tx_coalesce_enable_start))
                 qs->coalescing = 1;
 	if (TXQ_TRYLOCK(qs)) {
 		qs->qs_flags |= QS_FLUSHING;
@@ -1575,7 +1611,7 @@ cxgb_tx_watchdog(void *arg)
 		TXQ_UNLOCK(qs);
 	}
 	if (qs->port->ifp->if_drv_flags & IFF_DRV_RUNNING)
-		callout_reset_on(&txq->txq_watchdog, hz, cxgb_tx_watchdog,
+		callout_reset_on(&txq->txq_watchdog, hz/4, cxgb_tx_watchdog,
 		    qs, txq->txq_watchdog.c_cpu);
 }
 
@@ -1615,7 +1651,7 @@ cxgb_start_locked(struct sge_qset *qs)
 	    !TXQ_RING_EMPTY(qs) &&
 	    (ifp->if_drv_flags & IFF_DRV_RUNNING) &&
 	    pi->link_config.link_ok) {
-		reclaim_completed_tx(qs, (TX_ETH_Q_SIZE>>5), TXQ_ETH);
+		reclaim_completed_tx(qs, cxgb_tx_reclaim_threshold, TXQ_ETH);
 
 		if ((m_head = cxgb_dequeue(qs)) == NULL)
 			break;
@@ -1692,7 +1728,7 @@ cxgb_transmit_locked(struct ifnet *ifp, struct sge_qset *qs, struct mbuf *m)
 	} else if ((error = drbr_enqueue(ifp, br, m)) != 0)
 		return (error);
 
-	reclaim_completed_tx(qs, (TX_ETH_Q_SIZE>>4), TXQ_ETH);
+	reclaim_completed_tx(qs, cxgb_tx_reclaim_threshold, TXQ_ETH);
 	if (!TXQ_RING_EMPTY(qs) && pi->link_config.link_ok &&
 	    (!check_pkt_coalesce(qs) || (drbr_inuse(ifp, br) >= 7)))
 		cxgb_start_locked(qs);
