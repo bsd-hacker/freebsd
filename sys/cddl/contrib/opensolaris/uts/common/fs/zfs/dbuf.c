@@ -116,12 +116,12 @@ dbuf_find(dnode_t *dn, uint8_t level, uint64_t blkid)
 	mutex_enter(DBUF_HASH_MUTEX(h, idx));
 	for (db = h->hash_table[idx]; db != NULL; db = db->db_hash_next) {
 		if (DBUF_EQUAL(db, os, obj, level, blkid)) {
-			mutex_enter(&db->db_mtx);
+			rw_enter(&db->db_mtx, RW_READER);
 			if (db->db_state != DB_EVICTING) {
 				mutex_exit(DBUF_HASH_MUTEX(h, idx));
 				return (db);
 			}
-			mutex_exit(&db->db_mtx);
+			rw_exit(&db->db_mtx);
 		}
 	}
 	mutex_exit(DBUF_HASH_MUTEX(h, idx));
