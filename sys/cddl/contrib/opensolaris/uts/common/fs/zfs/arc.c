@@ -218,12 +218,30 @@ SYSCTL_INT(_vfs_zfs, OID_AUTO, mdcomp_disable, CTLFLAG_RDTUN,
  * second level ARC benefit from these fast lookups.
  */
 
+#define	ARCS_LOCK_PAD		128
+struct arcs_lock {
+	kmutex_t	arcs_lock;
+#ifdef _KERNEL
+	unsigned char	pad[(ARCS_LOCK_PAD - sizeof (kmutex_t))];
+#endif
+};
+
+/*
+ * must be power of two for mask use to work
+ *
+ */
+#define ARC_BUFC_NUMDATALISTS		16
+#define ARC_BUFC_NUMMETADATALISTS	16
+#define ARC_BUFC_NUMLISTS	(ARC_BUFC_NUMMETADATALISTS+ARC_BUFC_NUMDATALISTS)
+
 typedef struct arc_state {
-	list_t	arcs_list[ARC_BUFC_NUMTYPES];	/* list of evictable buffers */
 	uint64_t arcs_lsize[ARC_BUFC_NUMTYPES];	/* amount of evictable data */
 	uint64_t arcs_size;	/* total amount of data in this state */
-	kmutex_t arcs_mtx __aligned(128);
+	list_t	arcs_lists[ARC_BUFC_NUMLISTS]; /* list of evictable buffers */
+	struct arcs_lock arcs_locks[ARC_BUFC_NUMLISTS] __aligned(128);
 } arc_state_t;
+
+#define ARCS_LOCK(s, i) &((s)->arcs_locks[(i)].arcs_lock)
 
 /* The 6 states: */
 static arc_state_t ARC_anon;
@@ -959,21 +977,41 @@ arc_buf_freeze(arc_buf_t *buf)
 }
 
 static void
+get_buf_info(arc_buf_hdr_t *ab, arc_state_t *state, list_t **list, kmutex_t **lock)
+{
+	uint64_t buf_hashid = buf_hash(ab->b_spa, &ab->b_dva, ab->b_birth);
+
+	if (ab->b_type == ARC_BUFC_METADATA) 
+		buf_hashid &= (ARC_BUFC_NUMMETADATALISTS-1);
+	else {
+		buf_hashid &= (ARC_BUFC_NUMDATALISTS-1);
+		buf_hashid += ARC_BUFC_NUMMETADATALISTS;
+	}
+
+	*list = &state->arcs_lists[buf_hashid];
+	*lock = ARCS_LOCK(state, buf_hashid);
+}
+
+
+static void
 add_reference(arc_buf_hdr_t *ab, kmutex_t *hash_lock, void *tag)
 {
+
 	ASSERT(MUTEX_HELD(hash_lock));
 
 	if ((refcount_add(&ab->b_refcnt, tag) == 1) &&
 	    (ab->b_state != arc_anon)) {
+		list_t *list;
+		kmutex_t *lock;
 		uint64_t delta = ab->b_size * ab->b_datacnt;
-		list_t *list = &ab->b_state->arcs_list[ab->b_type];
 		uint64_t *size = &ab->b_state->arcs_lsize[ab->b_type];
 
-		ASSERT(!MUTEX_HELD(&ab->b_state->arcs_mtx));
-		mutex_enter(&ab->b_state->arcs_mtx);
+		get_buf_info(ab, ab->b_state, &list, &lock);
+		ASSERT(!MUTEX_HELD(lock));
+		mutex_enter(lock);
 		ASSERT(list_link_active(&ab->b_arc_node));
 		list_remove(list, ab);
-		mutex_exit(&ab->b_state->arcs_mtx);
+		mutex_exit(lock);
 
 		if (GHOST_STATE(ab->b_state)) {
 			ASSERT3U(ab->b_datacnt, ==, 0);
@@ -1001,12 +1039,16 @@ remove_reference(arc_buf_hdr_t *ab, kmutex_t *hash_lock, void *tag)
 	if (((cnt = refcount_remove(&ab->b_refcnt, tag)) == 0) &&
 	    (state != arc_anon)) {
 		uint64_t *size = &state->arcs_lsize[ab->b_type];
+		list_t *list;
+		kmutex_t *lock;
 
-		ASSERT(!MUTEX_HELD(&state->arcs_mtx));
-		mutex_enter(&state->arcs_mtx);
+		get_buf_info(ab, state, &list, &lock);
+		
+		ASSERT(!MUTEX_HELD(lock));
+		mutex_enter(lock);
 		ASSERT(!list_link_active(&ab->b_arc_node));
-		list_insert_head(&state->arcs_list[ab->b_type], ab);
-		mutex_exit(&state->arcs_mtx);
+		list_insert_head(list, ab);
+		mutex_exit(lock);
 
 		ASSERT(ab->b_datacnt > 0);
 		atomic_add_64(size, ab->b_size * ab->b_datacnt);
@@ -1024,6 +1066,8 @@ arc_change_state(arc_state_t *new_state, arc_buf_hdr_t *ab, kmutex_t *hash_lock)
 	arc_state_t *old_state = ab->b_state;
 	int64_t refcnt = refcount_count(&ab->b_refcnt);
 	uint64_t from_delta, to_delta;
+	list_t *list;
+	kmutex_t *lock;
 
 	ASSERT(MUTEX_HELD(hash_lock));
 	ASSERT(new_state != old_state);
@@ -1038,14 +1082,17 @@ arc_change_state(arc_state_t *new_state, arc_buf_hdr_t *ab, kmutex_t *hash_lock)
 	 */
 	if (refcnt == 0) {
 		if (old_state != arc_anon) {
-			int use_mutex = !MUTEX_HELD(&old_state->arcs_mtx);
+			int use_mutex;
 			uint64_t *size = &old_state->arcs_lsize[ab->b_type];
 
+			get_buf_info(ab, old_state, &list, &lock);
+			use_mutex = !MUTEX_HELD(lock);
+
 			if (use_mutex)
-				mutex_enter(&old_state->arcs_mtx);
+				mutex_enter(lock);
 
 			ASSERT(list_link_active(&ab->b_arc_node));
-			list_remove(&old_state->arcs_list[ab->b_type], ab);
+			list_remove(list, ab);
 
 			/*
 			 * If prefetching out of the ghost cache,
@@ -1060,16 +1107,20 @@ arc_change_state(arc_state_t *new_state, arc_buf_hdr_t *ab, kmutex_t *hash_lock)
 			atomic_add_64(size, -from_delta);
 
 			if (use_mutex)
-				mutex_exit(&old_state->arcs_mtx);
+				mutex_exit(lock);
 		}
 		if (new_state != arc_anon) {
-			int use_mutex = !MUTEX_HELD(&new_state->arcs_mtx);
+			int use_mutex; 
 			uint64_t *size = &new_state->arcs_lsize[ab->b_type];
 
+			get_buf_info(ab, new_state, &list, &lock);
+			use_mutex = !MUTEX_HELD(lock);
+			
+			
 			if (use_mutex)
-				mutex_enter(&new_state->arcs_mtx);
+				mutex_enter(lock);
 
-			list_insert_head(&new_state->arcs_list[ab->b_type], ab);
+			list_insert_head(list, ab);
 
 			/* ghost elements have a ghost size */
 			if (GHOST_STATE(new_state)) {
@@ -1080,7 +1131,7 @@ arc_change_state(arc_state_t *new_state, arc_buf_hdr_t *ab, kmutex_t *hash_lock)
 			atomic_add_64(size, to_delta);
 
 			if (use_mutex)
-				mutex_exit(&new_state->arcs_mtx);
+				mutex_exit(lock);
 		}
 	}
 
@@ -1471,17 +1522,42 @@ arc_evict(arc_state_t *state, spa_t *spa, int64_t bytes, boolean_t recycle,
 	arc_state_t *evicted_state;
 	uint64_t bytes_evicted = 0, skipped = 0, missed = 0;
 	arc_buf_hdr_t *ab, *ab_prev = NULL;
-	list_t *list = &state->arcs_list[type];
+	list_t *evicted_list, *list, *evicted_list_start, *list_start;
+	kmutex_t *lock, *evicted_lock;
 	kmutex_t *hash_lock;
 	boolean_t have_lock;
 	void *stolen = NULL;
+	static int evict_metadata_offset, evict_data_offset;
+	int idx, offset, list_count, count;
 
 	ASSERT(state == arc_mru || state == arc_mfu);
 
 	evicted_state = (state == arc_mru) ? arc_mru_ghost : arc_mfu_ghost;
+	
+	if (type == ARC_BUFC_METADATA) {
+		offset = 0;
+		list_count = ARC_BUFC_NUMMETADATALISTS;
+		list_start = &state->arcs_lists[0];
+		evicted_list_start = &evicted_state->arcs_lists[0];
+		idx = evict_metadata_offset;
+	} else {
+		offset = ARC_BUFC_NUMMETADATALISTS;
 
-	mutex_enter(&state->arcs_mtx);
-	mutex_enter(&evicted_state->arcs_mtx);
+		list_start = &state->arcs_lists[offset];
+		evicted_list_start = &evicted_state->arcs_lists[offset];
+		list_count = ARC_BUFC_NUMDATALISTS;
+		idx = evict_data_offset;
+	}
+	count = 0;
+	
+evict_start:
+	list = &list_start[idx];
+	evicted_list = &evicted_list_start[idx];
+	lock = ARCS_LOCK(state, (offset + idx));
+	evicted_lock = ARCS_LOCK(evicted_state, (offset + idx)); 
+
+	mutex_enter(lock);
+	mutex_enter(evicted_lock);
 
 	for (ab = list_tail(list); ab; ab = ab_prev) {
 		ab_prev = list_prev(list, ab);
@@ -1549,13 +1625,24 @@ arc_evict(arc_state_t *state, spa_t *spa, int64_t bytes, boolean_t recycle,
 		}
 	}
 
-	mutex_exit(&evicted_state->arcs_mtx);
-	mutex_exit(&state->arcs_mtx);
+	mutex_exit(evicted_lock);
+	mutex_exit(lock);
+	
+	idx  = ((idx + 1)&(list_count-1));
+	count++;
 
-	if (bytes_evicted < bytes)
-		dprintf("only evicted %lld bytes from %x",
-		    (longlong_t)bytes_evicted, state);
-
+	if (bytes_evicted < bytes) {
+		if (count < list_count)
+			goto evict_start;
+		else
+			dprintf("only evicted %lld bytes from %x",
+			    (longlong_t)bytes_evicted, state);
+	}
+	if (type == ARC_BUFC_METADATA) 
+		evict_metadata_offset = idx;
+	else
+		evict_data_offset = idx;
+		
 	if (skipped)
 		ARCSTAT_INCR(arcstat_evict_skip, skipped);
 
@@ -1594,14 +1681,28 @@ static void
 arc_evict_ghost(arc_state_t *state, spa_t *spa, int64_t bytes)
 {
 	arc_buf_hdr_t *ab, *ab_prev;
-	list_t *list = &state->arcs_list[ARC_BUFC_DATA];
-	kmutex_t *hash_lock;
+	list_t *list, *list_start;
+	kmutex_t *hash_lock, *lock;
 	uint64_t bytes_deleted = 0;
 	uint64_t bufs_skipped = 0;
+	static int evict_offset;
+	int list_count, idx = evict_offset;
+	int offset, count = 0;
 
 	ASSERT(GHOST_STATE(state));
-top:
-	mutex_enter(&state->arcs_mtx);
+
+	/*
+	 * data lists come after metadata lists
+	 */
+	list_start = &state->arcs_lists[ARC_BUFC_NUMMETADATALISTS];
+	list_count = ARC_BUFC_NUMDATALISTS;
+	offset = ARC_BUFC_NUMMETADATALISTS;
+	
+evict_start:
+	list = &list_start[idx];
+	lock = ARCS_LOCK(state, idx + offset);
+
+	mutex_enter(lock);
 	for (ab = list_tail(list); ab; ab = ab_prev) {
 		ab_prev = list_prev(list, ab);
 		if (spa && ab->b_spa != spa)
@@ -1631,20 +1732,31 @@ top:
 				break;
 		} else {
 			if (bytes < 0) {
-				mutex_exit(&state->arcs_mtx);
+				/*
+				 * we're draining the ARC, retry
+				 */
+				mutex_exit(lock);
 				mutex_enter(hash_lock);
 				mutex_exit(hash_lock);
-				goto top;
+				goto evict_start;
 			}
 			bufs_skipped += 1;
 		}
 	}
-	mutex_exit(&state->arcs_mtx);
-
-	if (list == &state->arcs_list[ARC_BUFC_DATA] &&
+	mutex_exit(lock);
+	idx  = ((idx + 1)&(ARC_BUFC_NUMDATALISTS-1));
+	count++;
+	
+	if (count < list_count)
+		goto evict_start;
+	
+	evict_offset = idx;
+	if ((uintptr_t)list > (uintptr_t)&state->arcs_lists[ARC_BUFC_NUMMETADATALISTS] &&
 	    (bytes < 0 || bytes_deleted < bytes)) {
-		list = &state->arcs_list[ARC_BUFC_METADATA];
-		goto top;
+		list_start = &state->arcs_lists[0];
+		list_count = ARC_BUFC_NUMMETADATALISTS;
+		offset = count = 0;
+		goto evict_start;
 	}
 
 	if (bufs_skipped) {
@@ -1758,22 +1870,22 @@ restart:
 void
 arc_flush(spa_t *spa)
 {
-	while (list_head(&arc_mru->arcs_list[ARC_BUFC_DATA])) {
+	while (arc_mru->arcs_lsize[ARC_BUFC_DATA]) {
 		(void) arc_evict(arc_mru, spa, -1, FALSE, ARC_BUFC_DATA);
 		if (spa)
 			break;
 	}
-	while (list_head(&arc_mru->arcs_list[ARC_BUFC_METADATA])) {
+	while (arc_mru->arcs_lsize[ARC_BUFC_METADATA]) {
 		(void) arc_evict(arc_mru, spa, -1, FALSE, ARC_BUFC_METADATA);
 		if (spa)
 			break;
 	}
-	while (list_head(&arc_mfu->arcs_list[ARC_BUFC_DATA])) {
+	while (arc_mfu->arcs_lsize[ARC_BUFC_DATA]) {
 		(void) arc_evict(arc_mfu, spa, -1, FALSE, ARC_BUFC_DATA);
 		if (spa)
 			break;
 	}
-	while (list_head(&arc_mfu->arcs_list[ARC_BUFC_METADATA])) {
+	while (arc_mfu->arcs_lsize[ARC_BUFC_METADATA]) {
 		(void) arc_evict(arc_mfu, spa, -1, FALSE, ARC_BUFC_METADATA);
 		if (spa)
 			break;
@@ -2830,7 +2942,9 @@ arc_buf_evict(arc_buf_t *buf)
 	arc_buf_hdr_t *hdr;
 	kmutex_t *hash_lock;
 	arc_buf_t **bufp;
-
+	list_t *list, *evicted_list;
+	kmutex_t *lock, *evicted_lock;
+	
 	rw_enter(&buf->b_lock, RW_WRITER);
 	hdr = buf->b_hdr;
 	if (hdr == NULL) {
@@ -2878,16 +2992,18 @@ arc_buf_evict(arc_buf_t *buf)
 		evicted_state =
 		    (old_state == arc_mru) ? arc_mru_ghost : arc_mfu_ghost;
 
-		mutex_enter(&old_state->arcs_mtx);
-		mutex_enter(&evicted_state->arcs_mtx);
+		get_buf_info(hdr, old_state, &list, &lock);
+		get_buf_info(hdr, evicted_state, &evicted_list, &evicted_lock);
+		mutex_enter(lock);
+		mutex_enter(evicted_lock);
 
 		arc_change_state(evicted_state, hdr, hash_lock);
 		ASSERT(HDR_IN_HASH_TABLE(hdr));
 		hdr->b_flags |= ARC_IN_HASH_TABLE;
 		hdr->b_flags &= ~ARC_BUF_AVAILABLE;
 
-		mutex_exit(&evicted_state->arcs_mtx);
-		mutex_exit(&old_state->arcs_mtx);
+		mutex_exit(evicted_lock);
+		mutex_exit(lock);
 	}
 	mutex_exit(hash_lock);
 	rw_exit(&buf->b_lock);
@@ -3434,6 +3550,8 @@ arc_lowmem(void *arg __unused, int howto __unused)
 void
 arc_init(void)
 {
+	int i;
+
 	mutex_init(&arc_reclaim_thr_lock, NULL, MUTEX_DEFAULT, NULL);
 	cv_init(&arc_reclaim_thr_cv, NULL, CV_DEFAULT, NULL);
 	mutex_init(&arc_lowmem_lock, NULL, MUTEX_DEFAULT, NULL);
@@ -3508,33 +3626,34 @@ arc_init(void)
 	arc_l2c_only = &ARC_l2c_only;
 	arc_size = 0;
 
-	mutex_init(&arc_anon->arcs_mtx, NULL, MUTEX_DEFAULT, NULL);
-	mutex_init(&arc_mru->arcs_mtx, NULL, MUTEX_DEFAULT, NULL);
-	mutex_init(&arc_mru_ghost->arcs_mtx, NULL, MUTEX_DEFAULT, NULL);
-	mutex_init(&arc_mfu->arcs_mtx, NULL, MUTEX_DEFAULT, NULL);
-	mutex_init(&arc_mfu_ghost->arcs_mtx, NULL, MUTEX_DEFAULT, NULL);
-	mutex_init(&arc_l2c_only->arcs_mtx, NULL, MUTEX_DEFAULT, NULL);
-
-	list_create(&arc_mru->arcs_list[ARC_BUFC_METADATA],
-	    sizeof (arc_buf_hdr_t), offsetof(arc_buf_hdr_t, b_arc_node));
-	list_create(&arc_mru->arcs_list[ARC_BUFC_DATA],
-	    sizeof (arc_buf_hdr_t), offsetof(arc_buf_hdr_t, b_arc_node));
-	list_create(&arc_mru_ghost->arcs_list[ARC_BUFC_METADATA],
-	    sizeof (arc_buf_hdr_t), offsetof(arc_buf_hdr_t, b_arc_node));
-	list_create(&arc_mru_ghost->arcs_list[ARC_BUFC_DATA],
-	    sizeof (arc_buf_hdr_t), offsetof(arc_buf_hdr_t, b_arc_node));
-	list_create(&arc_mfu->arcs_list[ARC_BUFC_METADATA],
-	    sizeof (arc_buf_hdr_t), offsetof(arc_buf_hdr_t, b_arc_node));
-	list_create(&arc_mfu->arcs_list[ARC_BUFC_DATA],
-	    sizeof (arc_buf_hdr_t), offsetof(arc_buf_hdr_t, b_arc_node));
-	list_create(&arc_mfu_ghost->arcs_list[ARC_BUFC_METADATA],
-	    sizeof (arc_buf_hdr_t), offsetof(arc_buf_hdr_t, b_arc_node));
-	list_create(&arc_mfu_ghost->arcs_list[ARC_BUFC_DATA],
-	    sizeof (arc_buf_hdr_t), offsetof(arc_buf_hdr_t, b_arc_node));
-	list_create(&arc_l2c_only->arcs_list[ARC_BUFC_METADATA],
-	    sizeof (arc_buf_hdr_t), offsetof(arc_buf_hdr_t, b_arc_node));
-	list_create(&arc_l2c_only->arcs_list[ARC_BUFC_DATA],
-	    sizeof (arc_buf_hdr_t), offsetof(arc_buf_hdr_t, b_arc_node));
+	for (i = 0; i < ARC_BUFC_NUMLISTS; i++) {
+		
+		mutex_init(&arc_anon->arcs_locks[i].arcs_lock,
+		    NULL, MUTEX_DEFAULT, NULL);
+		mutex_init(&arc_mru->arcs_locks[i].arcs_lock,
+		    NULL, MUTEX_DEFAULT, NULL);
+		mutex_init(&arc_mru_ghost->arcs_locks[i].arcs_lock,
+		    NULL, MUTEX_DEFAULT, NULL);
+		mutex_init(&arc_mfu->arcs_locks[i].arcs_lock,
+		    NULL, MUTEX_DEFAULT, NULL);
+		mutex_init(&arc_mfu_ghost->arcs_locks[i].arcs_lock,
+		    NULL, MUTEX_DEFAULT, NULL);
+		mutex_init(&arc_l2c_only->arcs_locks[i].arcs_lock,
+		    NULL, MUTEX_DEFAULT, NULL);
+	
+		list_create(&arc_mru->arcs_lists[i],
+		    sizeof (arc_buf_hdr_t), offsetof(arc_buf_hdr_t, b_arc_node));
+		list_create(&arc_mru_ghost->arcs_lists[i],
+		    sizeof (arc_buf_hdr_t), offsetof(arc_buf_hdr_t, b_arc_node));
+		list_create(&arc_mfu->arcs_lists[i],
+		    sizeof (arc_buf_hdr_t), offsetof(arc_buf_hdr_t, b_arc_node));
+		list_create(&arc_mfu_ghost->arcs_lists[i],
+		    sizeof (arc_buf_hdr_t), offsetof(arc_buf_hdr_t, b_arc_node));
+		list_create(&arc_mfu_ghost->arcs_lists[i],
+		    sizeof (arc_buf_hdr_t), offsetof(arc_buf_hdr_t, b_arc_node));
+		list_create(&arc_l2c_only->arcs_lists[i],
+		    sizeof (arc_buf_hdr_t), offsetof(arc_buf_hdr_t, b_arc_node));
+	}
 
 	buf_init();
 
@@ -3587,7 +3706,8 @@ arc_init(void)
 void
 arc_fini(void)
 {
-
+	int i;
+	
 	mutex_enter(&arc_reclaim_thr_lock);
 	arc_thread_exit = 1;
 	cv_signal(&arc_reclaim_thr_cv);
@@ -3608,21 +3728,19 @@ arc_fini(void)
 	mutex_destroy(&arc_reclaim_thr_lock);
 	cv_destroy(&arc_reclaim_thr_cv);
 
-	list_destroy(&arc_mru->arcs_list[ARC_BUFC_METADATA]);
-	list_destroy(&arc_mru_ghost->arcs_list[ARC_BUFC_METADATA]);
-	list_destroy(&arc_mfu->arcs_list[ARC_BUFC_METADATA]);
-	list_destroy(&arc_mfu_ghost->arcs_list[ARC_BUFC_METADATA]);
-	list_destroy(&arc_mru->arcs_list[ARC_BUFC_DATA]);
-	list_destroy(&arc_mru_ghost->arcs_list[ARC_BUFC_DATA]);
-	list_destroy(&arc_mfu->arcs_list[ARC_BUFC_DATA]);
-	list_destroy(&arc_mfu_ghost->arcs_list[ARC_BUFC_DATA]);
+	for (i = 0; i < ARC_BUFC_NUMLISTS; i++) {
+		list_destroy(&arc_mru->arcs_lists[i]);
+		list_destroy(&arc_mru_ghost->arcs_lists[i]);
+		list_destroy(&arc_mfu->arcs_lists[i]);
+		list_destroy(&arc_mfu_ghost->arcs_lists[i]);
 
-	mutex_destroy(&arc_anon->arcs_mtx);
-	mutex_destroy(&arc_mru->arcs_mtx);
-	mutex_destroy(&arc_mru_ghost->arcs_mtx);
-	mutex_destroy(&arc_mfu->arcs_mtx);
-	mutex_destroy(&arc_mfu_ghost->arcs_mtx);
-
+		mutex_destroy(&arc_anon->arcs_locks[i].arcs_lock);
+		mutex_destroy(&arc_mru->arcs_locks[i].arcs_lock);
+		mutex_destroy(&arc_mru_ghost->arcs_locks[i].arcs_lock);
+		mutex_destroy(&arc_mfu->arcs_locks[i].arcs_lock);
+		mutex_destroy(&arc_mfu_ghost->arcs_locks[i].arcs_lock);
+	}
+	
 	mutex_destroy(&zfs_write_limit_lock);
 
 	buf_fini();
@@ -4017,26 +4135,26 @@ static list_t *
 l2arc_list_locked(int list_num, kmutex_t **lock)
 {
 	list_t *list;
+	int idx;
+	
+	ASSERT(list_num >= 0 && list_num <= 2*ARC_BUFC_NUMLISTS);
 
-	ASSERT(list_num >= 0 && list_num <= 3);
-
-	switch (list_num) {
-	case 0:
-		list = &arc_mfu->arcs_list[ARC_BUFC_METADATA];
-		*lock = &arc_mfu->arcs_mtx;
-		break;
-	case 1:
-		list = &arc_mru->arcs_list[ARC_BUFC_METADATA];
-		*lock = &arc_mru->arcs_mtx;
-		break;
-	case 2:
-		list = &arc_mfu->arcs_list[ARC_BUFC_DATA];
-		*lock = &arc_mfu->arcs_mtx;
-		break;
-	case 3:
-		list = &arc_mru->arcs_list[ARC_BUFC_DATA];
-		*lock = &arc_mru->arcs_mtx;
-		break;
+	if (list_num < ARC_BUFC_NUMMETADATALISTS) {
+		list = &arc_mfu->arcs_lists[list_num];
+		*lock = ARCS_LOCK(arc_mfu, list_num);
+	} else if (list_num < ARC_BUFC_NUMMETADATALISTS*2) {
+		idx = list_num - ARC_BUFC_NUMMETADATALISTS;
+		list = &arc_mru->arcs_lists[idx];
+		*lock = ARCS_LOCK(arc_mru, idx);
+	} else if (list_num < (ARC_BUFC_NUMMETADATALISTS*2 +
+		ARC_BUFC_NUMDATALISTS)) {
+		idx = list_num - ARC_BUFC_NUMLISTS;
+		list = &arc_mfu->arcs_lists[idx];
+		*lock = ARCS_LOCK(arc_mfu, idx);
+	} else {
+		idx = list_num - ARC_BUFC_NUMLISTS - ARC_BUFC_NUMMETADATALISTS;
+		list = &arc_mru->arcs_lists[idx];
+		*lock = ARCS_LOCK(arc_mru, idx);
 	}
 
 	ASSERT(!(MUTEX_HELD(*lock)));
@@ -4207,7 +4325,7 @@ l2arc_write_buffers(spa_t *spa, l2arc_dev_t *dev, uint64_t target_sz)
 	 * Copy buffers for L2ARC writing.
 	 */
 	mutex_enter(&l2arc_buflist_mtx);
-	for (try = 0; try <= 3; try++) {
+	for (try = 0; try <= 2*ARC_BUFC_NUMLISTS; try++) {
 		list = l2arc_list_locked(try, &list_lock);
 		passed_sz = 0;
 
