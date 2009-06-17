@@ -621,16 +621,16 @@ dnode_hold_impl(objset_impl_t *os, uint64_t object, int flag,
 		}
 	}
 
-	mutex_enter(&dn->dn_mtx);
+	rw_enter(&dn->dn_mtx, RW_READER);
 	type = dn->dn_type;
 	if (dn->dn_free_txg ||
 	    ((flag & DNODE_MUST_BE_ALLOCATED) && type == DMU_OT_NONE) ||
 	    ((flag & DNODE_MUST_BE_FREE) && type != DMU_OT_NONE)) {
-		mutex_exit(&dn->dn_mtx);
+		rw_exit(&dn->dn_mtx);
 		dbuf_rele(db, FTAG);
 		return (type == DMU_OT_NONE ? ENOENT : EEXIST);
 	}
-	mutex_exit(&dn->dn_mtx);
+	rw_exit(&dn->dn_mtx);
 
 	if (refcount_add(&dn->dn_holds, tag) == 1)
 		dbuf_add_ref(db, dn);
