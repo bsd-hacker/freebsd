@@ -55,28 +55,29 @@ sub debug(@) {
 
 sub svn_check($;$) {
     my ($cond, $msg) = @_;
-    die(($msg || "something is rotten in the state of subversion") . "\n")
+    die(($msg || 'something is rotten in the state of subversion') . "\n")
 	unless $cond;
 }
 
 sub svn_do(@) {
     my @argv = @_;
-    info("svn", @argv);
-    system("svn", @argv)
+    info('svn', @argv);
+    system('svn', @argv)
 	unless $pretend;
 }
 
 sub svn_merge(@) {
-    unshift(@_, "--record-only")
+    unshift(@_, '--record-only')
 	if $already;
-    unshift(@_, "merge");
+    unshift(@_, 'merge');
     goto &svn_do;
 }
 
 sub svn_catch(@) {
     my (@argv) = @_;
 
-    open(my $fh, "-|", "svn", @argv)
+    debug('svn', @argv);
+    open(my $fh, '-|', 'svn', @argv)
 	or die("fmerge: could not run svn\n");
     return $fh;
 }
@@ -87,12 +88,12 @@ sub examine() {
 	chomp();
 	my ($key, $value) = split(/:\s+/, $_, 2);
 	next unless $key && $value;
-	if ($key eq "Path") {
+	if ($key eq 'Path') {
 	    debug("'$value' eq '$target'?");
 	    svn_check($value eq $target);
-	} elsif ($key eq "URL") {
+	} elsif ($key eq 'URL') {
 	    $svn_url = $value;
-	} elsif ($key eq "Repository Root") {
+	} elsif ($key eq 'Repository Root') {
 	    $svn_root = $value;
 	}
     }
@@ -101,7 +102,7 @@ sub examine() {
     svn_check($svn_url =~ m@^\Q$svn_root\E(/.*)$@);
     $svn_path = $1;
 
-    $fh = svn_catch("propget", "svn:mergeinfo", $target);
+    $fh = svn_catch('propget', 'svn:mergeinfo', $target);
     while (<$fh>) {
 	chomp();
 	debug("'$_' =~ m\@\Q/$branch\E((?:/[\\w.-]+)*):\@");
