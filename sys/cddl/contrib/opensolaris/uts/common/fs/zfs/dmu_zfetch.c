@@ -305,10 +305,9 @@ dmu_zfetch_find(zfetch_t *zf, zstream_t *zh, int prefetched)
 	 * modified in a number of different ways.
 	 */
 
-	if (rw_tryenter(&zf->zf_rwlock, RW_READER) == 0) {
-		rc = 1;
-		goto out;
-	}
+	if (rw_tryenter(&zf->zf_rwlock, RW_READER) == 0) 
+		return (1);
+
 top:
 
 	for (zs = list_head(&zf->zf_stream); zs;
