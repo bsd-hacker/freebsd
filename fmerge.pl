@@ -145,15 +145,17 @@ sub usage() {
 MAIN:{
     while (@ARGV) {
 	if ($ARGV[0] eq 'already') {
+	    shift;
 	    $already++;
 	} elsif ($ARGV[0] eq 'debug') {
+	    shift;
 	    $debug++;
 	} elsif ($ARGV[0] eq 'pretend') {
+	    shift;
 	    $pretend++;
 	} else {
 	    last;
 	}
-	shift;
     }
     if (@ARGV < 1) {
 	usage();
@@ -177,35 +179,27 @@ MAIN:{
 	}
     }
 
-    if (@ARGV > 0) {
-	if (@ARGV < 2) {
+    while (@ARGV) {
+	if ($ARGV[0] eq 'from') {
+	    shift;
+	    if (@ARGV < 1) {
+		usage();
+	    }
+	    $branch = $ARGV[0];
+	    shift;
+	} elsif ($ARGV[0] eq 'into') {
+	    shift;
+	    if (@ARGV < 1) {
+		usage();
+	    }
+	    $target = $ARGV[0];
+	    shift;
+	    if (!-d $target) {
+		usage();
+	    }
+	} else {
 	    usage();
 	}
-	if ($ARGV[0] ne 'from') {
-	    usage();
-	}
-	shift;
-	$branch = $ARGV[0];
-	shift;
-    }
-
-    if (@ARGV > 0) {
-	if (@ARGV < 2) {
-	    usage();
-	}
-	if ($ARGV[0] ne 'into') {
-	    usage();
-	}
-	shift;
-	$target = $ARGV[0];
-	shift;
-	if (!-d $target) {
-	    usage();
-	}
-    }
-
-    if (@ARGV > 0) {
-	usage();
     }
 
     examine();
