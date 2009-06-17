@@ -32,6 +32,8 @@ use strict;
 use warnings;
 
 our $already;
+our $debug;
+our $pretend;
 
 our $branch = "head";
 our $target = ".";
@@ -42,30 +44,51 @@ our $svn_url;
 our $svn_root;
 our $svn_branch;
 
+sub info(@) {
+    print(STDOUT join(' ', @_), "\n");
+}
+
+sub debug(@) {
+    info(@_)
+	if $debug;
+}
+
 sub svn_check($;$) {
     my ($cond, $msg) = @_;
-
     die(($msg || "something is rotten in the state of subversion") . "\n")
 	unless $cond;
 }
 
 sub svn_do(@) {
     my @argv = @_;
-
-    print(join(' ', "svn", @argv), "\n");
-    system("svn", @argv);
+    info("svn", @argv);
+    system("svn", @argv)
+	unless $pretend;
 }
 
-sub svn_info() {
-    local *PIPE;
+sub svn_merge(@) {
+    unshift(@_, "--record-only")
+	if $already;
+    unshift(@_, "merge");
+    goto &svn_do;
+}
 
-    open(PIPE, "-|", "svn", "info", $target)
+sub svn_catch(@) {
+    my (@argv) = @_;
+
+    open(my $fh, "-|", "svn", @argv)
 	or die("fmerge: could not run svn\n");
-    while (<PIPE>) {
+    return $fh;
+}
+
+sub examine() {
+    my $fh = svn_catch("info", $target);
+    while (<$fh>) {
 	chomp();
 	my ($key, $value) = split(/:\s+/, $_, 2);
 	next unless $key && $value;
 	if ($key eq "Path") {
+	    debug("'$value' eq '$target'?");
 	    svn_check($value eq $target);
 	} elsif ($key eq "URL") {
 	    $svn_url = $value;
@@ -73,26 +96,42 @@ sub svn_info() {
 	    $svn_root = $value;
 	}
     }
-    close(PIPE);
+    close($fh);
 
     svn_check($svn_url =~ m@^\Q$svn_root\E(/.*)$@);
     $svn_path = $1;
-    svn_check($svn_path =~ s@^/(\w+/\d+(?:\.\d+)*)/?@@);
-    $svn_branch = $1;
+
+    $fh = svn_catch("propget", "svn:mergeinfo", $target);
+    while (<$fh>) {
+	chomp();
+	debug("'$_' =~ m\@\Q/$branch\E((?:/[\\w.-]+)*):\@");
+	next unless m@\Q/$branch\E((?:/[\w.-]+)*):@;
+	my $subdir = $1;
+	debug("'$svn_path' =~ m\@^((?:/[\\w.-]+)+)\Q$subdir\E\$\@");
+	next unless $svn_path =~ m@^((?:/[\w.-]+)+)\Q$subdir\E$@;
+	$svn_path = $subdir;
+	$svn_branch = $1;
+	last;
+    }
+    close($fh);
+    if (!$svn_branch) {
+	# try to guess a stable / releng / release branch
+	debug("'$svn_path' =~ s\@^/([\\w+.-]/\\d+(?:\\.\\d+)*)/?\@\@");
+	$svn_path =~ s@^/(\w+/\d+(?:\.\d+)*)/?@@;
+	$svn_branch = $1;
+    }
+    svn_check($svn_branch);
+    debug("svn_branch = '$svn_branch'");
+    debug("svn_path = '$svn_path'");
 }
 
 sub fmerge() {
+    if (!@revs) {
+	svn_merge("$svn_root/$branch/$svn_path", $target);
+    }
     foreach my $rev (@revs) {
 	my ($m, $n) = @{$rev};
-	my @argv = ("merge");
-	if ($already) {
-	    push(@argv, "--record-only");
-	}
-	push(@argv,
-	     "-r$m:$n",
-	     "$svn_root/$branch/$svn_path",
-	     $target);
-	svn_do(@argv);
+	svn_merge("-r$m:$n", "$svn_root/$branch/$svn_path", $target);
     }
 }
 
@@ -103,14 +142,22 @@ sub usage() {
 }
 
 MAIN:{
+    while (@ARGV) {
+	if ($ARGV[0] eq 'already') {
+	    $already++;
+	} elsif ($ARGV[0] eq 'debug') {
+	    $debug++;
+	} elsif ($ARGV[0] eq 'pretend') {
+	    $pretend++;
+	} else {
+	    last;
+	}
+	shift;
+    }
     if (@ARGV < 1) {
 	usage();
     }
-    if ($ARGV[0] eq "already") {
-	$already = 1;
-	shift;
-    }
-    if ($ARGV[0] eq "all") {
+    if ($ARGV[0] eq 'all') {
 	shift;
     } else {
 	while (@ARGV && $ARGV[0] =~ m/^r?\d+(,r?\d+)*$/) {
@@ -133,7 +180,7 @@ MAIN:{
 	if (@ARGV < 2) {
 	    usage();
 	}
-	if ($ARGV[0] ne "from") {
+	if ($ARGV[0] ne 'from') {
 	    usage();
 	}
 	shift;
@@ -145,7 +192,7 @@ MAIN:{
 	if (@ARGV < 2) {
 	    usage();
 	}
-	if ($ARGV[0] ne "into") {
+	if ($ARGV[0] ne 'into') {
 	    usage();
 	}
 	shift;
@@ -160,7 +207,7 @@ MAIN:{
 	usage();
     }
 
-    svn_info();
+    examine();
     fmerge();
 }
 
