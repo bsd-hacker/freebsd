@@ -230,8 +230,8 @@ struct arcs_lock {
  * must be power of two for mask use to work
  *
  */
-#define ARC_BUFC_NUMDATALISTS		16
-#define ARC_BUFC_NUMMETADATALISTS	16
+#define ARC_BUFC_NUMDATALISTS		256
+#define ARC_BUFC_NUMMETADATALISTS	256
 #define ARC_BUFC_NUMLISTS	(ARC_BUFC_NUMMETADATALISTS+ARC_BUFC_NUMDATALISTS)
 
 typedef struct arc_state {
@@ -541,7 +541,7 @@ struct ht_lock {
 #endif
 };
 
-#define	BUF_LOCKS 256
+#define	BUF_LOCKS 512
 typedef struct buf_hash_table {
 	uint64_t ht_mask;
 	arc_buf_hdr_t **ht_table;
