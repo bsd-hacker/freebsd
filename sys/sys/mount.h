@@ -328,6 +328,7 @@ void          __mnt_vnode_markerfree(struct vnode **mvp, struct mount *mp);
 #define MNTK_SOFTDEP	0x00000004	/* async disabled by softdep */
 #define MNTK_NOINSMNTQ	0x00000008	/* insmntque is not allowed */
 #define	MNTK_REFEXPIRE	0x00000020	/* refcount expiring is happening */
+#define	MNTK_SHARED_WRITES	0x00000080 /* Allow shared locking for writes */
 #define MNTK_UNMOUNT	0x01000000	/* unmount in progress */
 #define	MNTK_MWAIT	0x02000000	/* waiting for unmount to finish */
 #define	MNTK_SUSPEND	0x08000000	/* request write suspension */
@@ -336,6 +337,9 @@ void          __mnt_vnode_markerfree(struct vnode **mvp, struct mount *mp);
 #define	MNTK_MPSAFE	0x20000000	/* Filesystem is MPSAFE. */
 #define	MNTK_NOKNOTE	0x80000000	/* Don't send KNOTEs from VOP hooks */
 #define MNTK_LOOKUP_SHARED	0x40000000 /* FS supports shared lock lookups */
+
+#define	MNT_SHARED_WRITES(mp) (((mp) != NULL) && 	\
+				((mp)->mnt_kern_flag & MNTK_SHARED_WRITES))
 
 /*
  * Sysctl CTL_VFS definitions.
