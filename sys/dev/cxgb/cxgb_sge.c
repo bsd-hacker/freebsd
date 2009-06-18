@@ -1301,7 +1301,7 @@ write_wr_hdr_sgl(unsigned int ndesc, struct tx_desc *txd, struct txq_state *txqs
 	if (__predict_true(ndesc == 1)) {
 		set_wr_hdr(wrp, htonl(F_WR_SOP | F_WR_EOP | V_WR_DATATYPE(1) |
 			V_WR_SGLSFLT(flits)) | wr_hi,
-		    wrp->wrh_lo = htonl(V_WR_LEN(flits + sgl_flits) |
+		    htonl(V_WR_LEN(flits + sgl_flits) |
 			V_WR_GEN(txqs->gen)) | wr_lo);
 		/* XXX gen? */
 		wr_gen2(txd, txqs->gen);
