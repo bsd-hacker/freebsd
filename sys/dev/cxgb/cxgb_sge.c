@@ -1645,7 +1645,10 @@ cxgb_start_locked(struct sge_qset *qs)
 
 	if (qs->qs_flags & (QS_FLUSHING|QS_TIMEOUT))
 		reclaim_completed_tx(qs, 0, TXQ_ETH);
-		
+
+	if (!pi->link_config.link_ok)
+		return;
+
 	TXQ_LOCK_ASSERT(qs);
 	while ((txq->in_use - in_use_init < txmax) &&
 	    !TXQ_RING_EMPTY(qs) &&
@@ -1674,7 +1677,8 @@ cxgb_start_locked(struct sge_qset *qs)
 
 		m_head = NULL;
 	}
-	if (!TXQ_RING_EMPTY(qs) && callout_pending(&txq->txq_timer) == 0)
+	if (!TXQ_RING_EMPTY(qs) && callout_pending(&txq->txq_timer) == 0 &&
+	    pi->link_config.link_ok)
 		callout_reset_on(&txq->txq_timer, 1, cxgb_tx_timeout,
 		    qs, txq->txq_timer.c_cpu);
 	if (m_head != NULL)
@@ -1745,7 +1749,8 @@ cxgb_transmit(struct ifnet *ifp, struct mbuf *m)
 	struct port_info *pi = ifp->if_softc;
 	int error, qidx = pi->first_qset;
 
-	if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0) {
+	if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0
+	    ||(!pi->link_config.link_ok)) {
 		m_freem(m);
 		return (0);
 	}
