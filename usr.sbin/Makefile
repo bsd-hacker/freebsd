@@ -129,8 +129,6 @@ SUBDIR=	${_ac} \
 	powerd \
 	${_ppp} \
 	${_pppctl} \
-	${_pppd} \
-	${_pppstats} \
 	${_praliases} \
 	${_praudit} \
 	procctl \
