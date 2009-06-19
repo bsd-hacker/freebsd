@@ -19,6 +19,8 @@ LIBFIREWIRE=	${.OBJDIR}/../libfirewire/libfirewire.a
 .if ${MK_ZFS} != "no"
 CFLAGS+=	-DLOADER_ZFS_SUPPORT
 LIBZFS=		${.OBJDIR}/../../zfs/libzfsboot.a
+.else
+LIBZFS=
 .endif
 
 # Enable PXE TFTP or NFS support, not both.
