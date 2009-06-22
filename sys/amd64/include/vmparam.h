@@ -184,7 +184,7 @@
 
 /* virtual sizes (bytes) for various kernel submaps */
 #ifndef VM_KMEM_SIZE
-#define	VM_KMEM_SIZE		(12 * 1024 * 1024)
+#define	VM_KMEM_SIZE		(256 * 1024 * 1024)
 #endif
 
 /*
