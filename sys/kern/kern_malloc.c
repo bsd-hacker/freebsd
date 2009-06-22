@@ -185,15 +185,15 @@ u_long vm_kmem_size;
 SYSCTL_ULONG(_vm, OID_AUTO, kmem_size, CTLFLAG_RD, &vm_kmem_size, 0,
     "Size of kernel memory");
 
-u_long vm_kmem_size_min;
+static u_long vm_kmem_size_min;
 SYSCTL_ULONG(_vm, OID_AUTO, kmem_size_min, CTLFLAG_RD, &vm_kmem_size_min, 0,
     "Minimum size of kernel memory");
 
-u_long vm_kmem_size_max;
+static u_long vm_kmem_size_max;
 SYSCTL_ULONG(_vm, OID_AUTO, kmem_size_max, CTLFLAG_RD, &vm_kmem_size_max, 0,
     "Maximum size of kernel memory");
 
-u_int vm_kmem_size_scale;
+static u_int vm_kmem_size_scale;
 SYSCTL_ULONG(_vm, OID_AUTO, kmem_size_scale, CTLFLAG_RD, &vm_kmem_size_scale, 0,
     "Scale factor for kernel memory size");
 
@@ -434,8 +434,6 @@ free(void *addr, struct malloc_type *mtp)
 	redzone_check(addr);
 	addr = redzone_addr_ntor(addr);
 #endif
-
-	size = 0;
 
 	slab = vtoslab((vm_offset_t)addr & (~UMA_SLAB_MASK));
 
