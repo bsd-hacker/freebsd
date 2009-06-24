@@ -342,9 +342,10 @@ struct rt_addrinfo {
 } while (0)
 
 #define	RTFREE_LOCKED(_rt) do {					\
-	if ((_rt)->rt_refcnt <= 1)				\
+	RT_LOCK_ASSERT(_rt);					\
+	if ((_rt)->rt_refcnt <= 1) {				\
 		rtfree(_rt);					\
-	else {							\
+	} else {						\
 		RT_REMREF(_rt);					\
 		RT_UNLOCK(_rt);					\
 	}							\
@@ -358,6 +359,7 @@ struct rt_addrinfo {
 } while (0)
 
 #define RT_TEMP_UNLOCK(_rt) do {				\
+	RT_LOCK_ASSERT(_rt);					\
 	RT_ADDREF(_rt);						\
 	RT_UNLOCK(_rt);						\
 } while (0)
