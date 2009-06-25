@@ -1356,7 +1356,7 @@ static __inline int
 pmap_unwire_pte_hold(pmap_t pmap, vm_offset_t va, vm_page_t m, vm_page_t *free)
 {
 
-	atomic_subtract_int(&m->wire_count, 1);
+	m->wire_count--;
 	if (m->wire_count == 0)
 		return _pmap_unwire_pte_hold(pmap, va, m, free);
 	else
@@ -1580,7 +1580,7 @@ _pmap_allocpte(pmap_t pmap, vm_paddr_t pa, vm_pindex_t ptepindex, int flags,
 		} else {
 			/* Add reference to pdp page */
 			pdppg = PHYS_TO_VM_PAGE(*pml4 & PG_FRAME);
-			atomic_add_int(&pdppg->wire_count, 1);
+			pdppg->wire_count++;
 		}
 		pdp = (pdp_entry_t *)PHYS_TO_DMAP(*pml4 & PG_FRAME);
 
@@ -1632,7 +1632,7 @@ _pmap_allocpte(pmap_t pmap, vm_paddr_t pa, vm_pindex_t ptepindex, int flags,
 			} else {
 				/* Add reference to the pd page */
 				pdpg = PHYS_TO_VM_PAGE(*pdp & PG_FRAME);
-				atomic_add_int(&pdpg->wire_count, 1);
+				pdpg->wire_count++;
 			}
 		}
 		pd = (pd_entry_t *)PHYS_TO_DMAP(*pdp & PG_FRAME);
@@ -1661,7 +1661,7 @@ retry:
 	if (pdpe != NULL && (*pdpe & PG_V) != 0) {
 		/* Add a reference to the pd page. */
 		pdpg = PHYS_TO_VM_PAGE(*pdpe & PG_FRAME);
-		atomic_add_int(&pdpg->wire_count, 1);
+		pdpg->wire_count++;
 	} else {
 		/* Allocate a pd page. */
 		ptepindex = pmap_pde_pindex(va);
@@ -1725,7 +1725,7 @@ retry:
 	 */
 	if (pd != NULL && (*pd & PG_V) != 0) {
 		m = PHYS_TO_VM_PAGE(*pd & PG_FRAME);
-		atomic_add_int(&m->wire_count, 1);
+		m->wire_count++;
 	} else {
 		/*
 		 * Here if the pte page isn't mapped, or if it has been
@@ -3104,7 +3104,7 @@ restart:
 		 * Remove extra pte reference
 		 */
 		if (mpte) 
-			atomic_subtract_int(&mpte->wire_count, 1);
+			mpte->wire_count--;
 		
 		/*
 		 * We might be turning off write access to the page,
@@ -3135,7 +3135,7 @@ restart:
 			om = NULL;
 		}
 		if (mpte != NULL) {
-			atomic_subtract_int(&mpte->wire_count, 1);
+			mpte->wire_count--;
 			KASSERT(mpte->wire_count > 0,
 			    ("pmap_enter: missing reference to page table page,"
 			     " va: 0x%lx", va));
@@ -3254,7 +3254,7 @@ pmap_enter_pde(pmap_t pmap, vm_offset_t va, vm_page_t m, vm_prot_t prot,
 	if ((*pde & PG_V) != 0) {
 		KASSERT(mpde->wire_count > 1,
 		    ("pmap_enter_pde: mpde's wire count is too low"));
-		atomic_subtract_int(&mpde->wire_count, 1);
+		mpde->wire_count--;
 		CTR2(KTR_PMAP, "pmap_enter_pde: failure for va %#lx"
 		    " in pmap %p", va, pmap);
 		return (FALSE);
@@ -3387,7 +3387,7 @@ pmap_enter_quick_locked(pmap_t pmap, vm_offset_t va, vm_page_t m,
 		 */
 		ptepindex = pmap_pde_pindex(va);
 		if (mpte && (mpte->pindex == ptepindex)) {
-			atomic_add_int(&mpte->wire_count, 1);
+			mpte->wire_count++;
 		} else {
 			/*
 			 * Get the page directory entry
@@ -3402,7 +3402,7 @@ pmap_enter_quick_locked(pmap_t pmap, vm_offset_t va, vm_page_t m,
 				if (*ptepa & PG_PS)
 					return (NULL);
 				mpte = PHYS_TO_VM_PAGE(*ptepa & PG_FRAME);
-				atomic_add_int(&mpte->wire_count, 1);
+				mpte->wire_count++;
 			} else {
 				pa = VM_PAGE_TO_PHYS(m);
 				mpte = _pmap_allocpte(pmap, pa, ptepindex,
@@ -3424,7 +3424,7 @@ pmap_enter_quick_locked(pmap_t pmap, vm_offset_t va, vm_page_t m,
 	pte = vtopte(va);
 	if (*pte) {
 		if (mpte != NULL) {
-			atomic_subtract_int(&mpte->wire_count, 1);
+			mpte->wire_count--;
 			mpte = NULL;
 		}
 		return (mpte);
@@ -3559,7 +3559,7 @@ retry:
 				pmap->pm_stats.resident_count +=
 				    NBPDR / PAGE_SIZE;
 			} else {
-				atomic_subtract_int(&pdpg->wire_count, 1);
+				pdpg->wire_count--;
 				KASSERT(pdpg->wire_count > 0,
 				    ("pmap_object_init_pt: missing reference "
 				     "to page directory page, va: 0x%lx", va));
@@ -3705,8 +3705,8 @@ pmap_copy(pmap_t dst_pmap, pmap_t src_pmap, vm_offset_t dst_addr, vm_size_t len,
 				*pde = srcptepaddr & ~PG_W;
 				dst_pmap->pm_stats.resident_count +=
 				    NBPDR / PAGE_SIZE;
-			} else 
-				atomic_subtract_int(&dstmpde->wire_count, 1);
+			} else
+				dstmpde->wire_count--;
 			PA_UNLOCK(pa);
 			continue;
 		}
