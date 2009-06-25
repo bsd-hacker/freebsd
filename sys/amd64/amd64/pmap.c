@@ -184,8 +184,9 @@ struct vp_lock {
 
 #define	PA_LOCK_COUNT	64
 
-struct vp_lock pa_lock[PA_LOCK_COUNT];
-struct mtx pv_lock;
+struct mtx pv_lock __aligned(128);
+struct vp_lock pa_lock[PA_LOCK_COUNT] __aligned(128);
+
 
 struct pmap kernel_pmap_store;
 
