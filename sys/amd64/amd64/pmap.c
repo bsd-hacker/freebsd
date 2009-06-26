@@ -184,7 +184,6 @@ struct vp_lock {
 
 #define	PA_LOCK_COUNT	64
 
-static vm_page_t global_free __aligned(128);
 struct mtx pv_lock __aligned(128);
 struct vp_lock pa_lock[PA_LOCK_COUNT] __aligned(128);
 
@@ -1243,7 +1242,19 @@ pmap_qremove(vm_offset_t sva, int count)
 
 /***************************************************
  * Page table page management routines.....
-***************************************************/
+ ***************************************************/
+static __inline void
+pmap_free_zero_pages(vm_page_t free)
+{
+	vm_page_t m;
+
+	while (free != NULL) {
+		m = free;
+		free = m->right;
+		/* Preserve the page's PG_ZERO setting. */
+		vm_page_free_toq(m);
+	}
+}
 
 /*
  * Schedule the specified unused page table page to be freed.  Specifically,
@@ -1262,36 +1273,6 @@ pmap_add_delayed_free_list(vm_page_t m, vm_page_t *free, boolean_t set_PG_ZERO)
 	*free = m;
 }
 	
-static __inline void
-pmap_free_zero_pages(vm_page_t free)
-{
-	vm_page_t m;
-
-	if (free == NULL)
-		return;	
-	/*
-	 * transfer global free list to local free list
-	 *
-	 */
-	mtx_lock(&pv_lock);
-	pmap_add_delayed_free_list(global_free, &free, FALSE);
-	global_free = NULL;	
-	mtx_unlock(&pv_lock);
-
-	/*
-	 * Avoid contention from repeated acquisition
-	 * we know we're going to need it for every page in the list
-	 */
-	vm_page_lock_queues();
-	while (free != NULL) {
-		m = free;
-		free = m->right;
-		/* Preserve the page's PG_ZERO setting. */
-		vm_page_free_toq_locked(m);
-	}
-	vm_page_unlock_queues();
-}
-
 /*
  * Inserts the specified page table page into the specified pmap's collection
  * of idle page table pages.  Each of a pmap's page table pages is responsible
@@ -1962,7 +1943,7 @@ SYSCTL_INT(_vm_pmap, OID_AUTO, pmap_collect_active, CTLFLAG_RD, &pmap_collect_ac
  * exacerbating the shortage of free pv entries.
  */
 static void
-pmap_collect(pmap_t locked_pmap, struct vpgqueues *vpq, vm_page_t *free)
+pmap_collect(pmap_t locked_pmap, struct vpgqueues *vpq)
 {
 	struct md_page *pvh;
 	pd_entry_t *pde;
@@ -1970,7 +1951,7 @@ pmap_collect(pmap_t locked_pmap, struct vpgqueues *vpq, vm_page_t *free)
 	pt_entry_t *pte, tpte;
 	pv_entry_t next_pv, pv;
 	vm_offset_t va;
-	vm_page_t m;
+	vm_page_t m, free;
 
 	vm_page_lock_queues();
 	TAILQ_FOREACH(m, &vpq->pl, pageq) {
@@ -2001,7 +1982,7 @@ pmap_collect(pmap_t locked_pmap, struct vpgqueues *vpq, vm_page_t *free)
 			if ((tpte & (PG_M | PG_RW)) == (PG_M | PG_RW))
 				vm_page_dirty(m);
 			free = NULL;
-			pmap_unuse_pt(pmap, va, *pde, free);
+			pmap_unuse_pt(pmap, va, *pde, &free);
 			pmap_invalidate_page(pmap, va);
 			TAILQ_REMOVE(&m->md.pv_list, pv, pv_list);
 			if (TAILQ_EMPTY(&m->md.pv_list)) {
@@ -2009,9 +1990,10 @@ pmap_collect(pmap_t locked_pmap, struct vpgqueues *vpq, vm_page_t *free)
 				if (TAILQ_EMPTY(&pvh->pv_list))
 					vm_page_flag_clear(m, PG_WRITEABLE);
 			}
-			free_pv_entry(pmap, pv, free);
+			free_pv_entry(pmap, pv, &free);
 			if (pmap != locked_pmap)
 				PMAP_UNLOCK(pmap);
+			pmap_free_zero_pages(free);
 		}
 		vm_page_unlock(m);
 	}
@@ -2074,7 +2056,7 @@ get_pv_entry(pmap_t pmap, int try)
 	int bit, field;
 	pv_entry_t pv;
 	struct pv_chunk *pc;
-	vm_page_t m, free = NULL;
+	vm_page_t m;
 
 	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
 	mtx_lock(&pv_lock);
@@ -2106,7 +2088,7 @@ retry:
 			}
 			PV_STAT(pv_entry_spare--);
 			mtx_unlock(&pv_lock);
-			goto done;
+			return (pv);
 		}
 	}
 	/* No free items, allocate another chunk */
@@ -2118,8 +2100,7 @@ retry:
 			pv_entry_count--;
 			PV_STAT(pc_chunk_tryfail++);
 			mtx_unlock(&pv_lock);
-			pv = NULL;
-			goto done;
+			return (NULL);
 		}
 		/*
 		 * Reclaim pv entries: At first, destroy mappings to inactive
@@ -2134,7 +2115,7 @@ retry:
 			pq = &vm_page_queues[PQ_ACTIVE];
 		} else
 			panic("get_pv_entry: increase vm.pmap.shpgperproc");
-		pmap_collect(pmap, pq, &free);
+		pmap_collect(pmap, pq);
 		goto retry;
 	}
 	PV_STAT(pc_chunk_count++);
@@ -2150,8 +2131,6 @@ retry:
 	TAILQ_INSERT_HEAD(&pmap->pm_pvchunk, pc, pc_list);
 	PV_STAT(pv_entry_spare += _NPCPV - 1);
 	mtx_unlock(&pv_lock);
-done:
-	pmap_free_zero_pages(free);
 	return (pv);
 }
 
@@ -2756,9 +2735,7 @@ pmap_remove_all(vm_page_t m)
 		PMAP_UNLOCK(pmap);
 	}
 	vm_page_flag_clear(m, PG_WRITEABLE);
-	mtx_lock(&pv_lock);
-	pmap_add_delayed_free_list(free, &global_free, FALSE);
-	mtx_unlock(&pv_lock);
+	pmap_free_zero_pages(free);
 }
 
 /*
@@ -3253,9 +3230,7 @@ validate:
 
 	PA_UNLOCK(pa);
 	PMAP_UNLOCK(pmap);
-	mtx_lock(&pv_lock);
-	pmap_add_delayed_free_list(free, &global_free, FALSE);
-	mtx_unlock(&pv_lock);
+	pmap_free_zero_pages(free);
 }
 
 /*
@@ -3648,6 +3623,7 @@ out:
 	if (pa)
 		PA_UNLOCK(pa);
 	PMAP_UNLOCK(pmap);
+
 	pmap_free_zero_pages(free);
 }
 
@@ -4137,7 +4113,6 @@ pmap_is_prefaultable(pmap_t pmap, vm_offset_t addr)
 	return (rv);
 }
 
-
 /*
  * Clear the write and modified bits in each of the given page's mappings.
  */
@@ -4167,9 +4142,7 @@ pmap_remove_write(vm_page_t m)
 		PMAP_UNLOCK(pmap);
 	}
 
-	mtx_lock(&pv_lock);
-	pmap_add_delayed_free_list(free, &global_free, FALSE);
-	mtx_unlock(&pv_lock);
+	pmap_free_zero_pages(free);
 	TAILQ_FOREACH(pv, &m->md.pv_list, pv_list) {
 		pmap = PV_PMAP(pv);
 		PMAP_LOCK(pmap);
@@ -4250,9 +4223,7 @@ pmap_ts_referenced(vm_page_t m)
 		}
 		PMAP_UNLOCK(pmap);
 	}
-	mtx_lock(&pv_lock);
-	pmap_add_delayed_free_list(free, &global_free, FALSE);
-	mtx_unlock(&pv_lock);
+	pmap_free_zero_pages(free);
 	if ((pv = TAILQ_FIRST(&m->md.pv_list)) != NULL) {
 		pvf = pv;
 		do {
@@ -4327,10 +4298,7 @@ pmap_clear_modify(vm_page_t m)
 		}
 		PMAP_UNLOCK(pmap);
 	}
-
-	mtx_lock(&pv_lock);
-	pmap_add_delayed_free_list(free, &global_free, FALSE);
-	mtx_unlock(&pv_lock);
+	pmap_free_zero_pages(free);
 	TAILQ_FOREACH(pv, &m->md.pv_list, pv_list) {
 		pmap = PV_PMAP(pv);
 		PMAP_LOCK(pmap);
@@ -4388,9 +4356,7 @@ pmap_clear_reference(vm_page_t m)
 		}
 		PMAP_UNLOCK(pmap);
 	}
-	mtx_lock(&pv_lock);
-	pmap_add_delayed_free_list(free, &global_free, FALSE);
-	mtx_unlock(&pv_lock);
+	pmap_free_zero_pages(free);
 	TAILQ_FOREACH(pv, &m->md.pv_list, pv_list) {
 		pmap = PV_PMAP(pv);
 		PMAP_LOCK(pmap);
