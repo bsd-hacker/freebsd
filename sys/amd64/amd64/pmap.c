@@ -239,12 +239,14 @@ struct msgbuf *msgbufp = 0;
  */
 static caddr_t crashdumpmap;
 
-static void	free_pv_entry(pmap_t pmap, pv_entry_t pv);
+static void	free_pv_entry(pmap_t pmap, pv_entry_t pv, vm_page_t *free);
 static pv_entry_t get_pv_entry(pmap_t locked_pmap, int try);
 static void	pmap_pv_demote_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa);
 static boolean_t pmap_pv_insert_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa);
-static void	pmap_pv_promote_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa);
-static void	pmap_pvh_free(struct md_page *pvh, pmap_t pmap, vm_offset_t va);
+static void	pmap_pv_promote_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa,
+	vm_page_t *free);
+static void	pmap_pvh_free(struct md_page *pvh, pmap_t pmap, vm_offset_t va,
+	vm_page_t *free);
 static pv_entry_t pmap_pvh_remove(struct md_page *pvh, pmap_t pmap,
 		    vm_offset_t va);
 
@@ -256,7 +258,8 @@ static vm_page_t pmap_enter_quick_locked(pmap_t pmap, vm_offset_t va,
 static void pmap_insert_pt_page(pmap_t pmap, vm_page_t mpte);
 static boolean_t pmap_is_modified_pvh(struct md_page *pvh);
 static vm_page_t pmap_lookup_pt_page(pmap_t pmap, vm_offset_t va);
-static void pmap_promote_pde(pmap_t pmap, pd_entry_t *pde, vm_offset_t va);
+static void pmap_promote_pde(pmap_t pmap, pd_entry_t *pde, vm_offset_t va,
+	vm_page_t *free);
 static boolean_t pmap_protect_pde(pmap_t pmap, pd_entry_t *pde, vm_offset_t sva,
     vm_prot_t prot);
 static int pmap_remove_pde(pmap_t pmap, pd_entry_t *pdq, vm_offset_t sva,
@@ -267,7 +270,7 @@ static void pmap_remove_pt_page(pmap_t pmap, vm_page_t mpte);
 static void pmap_remove_page(pmap_t pmap, vm_offset_t va, pd_entry_t *pde,
     vm_page_t *free);
 static void pmap_remove_entry(struct pmap *pmap, vm_page_t m,
-		vm_offset_t va);
+    vm_offset_t va, vm_page_t *free);
 static void pmap_insert_entry(pmap_t pmap, vm_offset_t va, vm_page_t m);
 static boolean_t pmap_try_insert_pv_entry(pmap_t pmap, vm_offset_t va,
     vm_page_t m);
@@ -1981,16 +1984,16 @@ pmap_collect(pmap_t locked_pmap, struct vpgqueues *vpq)
 			free = NULL;
 			pmap_unuse_pt(pmap, va, *pde, &free);
 			pmap_invalidate_page(pmap, va);
-			pmap_free_zero_pages(free);
 			TAILQ_REMOVE(&m->md.pv_list, pv, pv_list);
 			if (TAILQ_EMPTY(&m->md.pv_list)) {
 				pvh = pa_to_pvh(VM_PAGE_TO_PHYS(m));
 				if (TAILQ_EMPTY(&pvh->pv_list))
 					vm_page_flag_clear(m, PG_WRITEABLE);
 			}
-			free_pv_entry(pmap, pv);
+			free_pv_entry(pmap, pv, &free);
 			if (pmap != locked_pmap)
 				PMAP_UNLOCK(pmap);
+			pmap_free_zero_pages(free);
 		}
 		vm_page_unlock(m);
 	}
@@ -2002,7 +2005,7 @@ pmap_collect(pmap_t locked_pmap, struct vpgqueues *vpq)
  * free the pv_entry back to the free list
  */
 static void
-free_pv_entry(pmap_t pmap, pv_entry_t pv)
+free_pv_entry(pmap_t pmap, pv_entry_t pv, vm_page_t *free)
 {
 	vm_page_t m;
 	struct pv_chunk *pc;
@@ -2036,7 +2039,7 @@ free_pv_entry(pmap_t pmap, pv_entry_t pv)
 	KASSERT(m->wire_count == 1, ("wire_count == %d", m->wire_count));
 	m->wire_count = 0;
 	atomic_subtract_int(&cnt.v_wire_count, 1);
-	vm_page_free(m);
+	pmap_add_delayed_free_list(m, free, FALSE);
 }
 
 /*
@@ -2195,7 +2198,8 @@ pmap_pv_demote_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa)
  * for the 2MB page mapping.
  */
 static void
-pmap_pv_promote_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa)
+pmap_pv_promote_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa,
+	vm_page_t *free)
 {
 	struct md_page *pvh;
 	pv_entry_t pv;
@@ -2224,7 +2228,7 @@ pmap_pv_promote_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa)
 	do {
 		m++;
 		va += PAGE_SIZE;
-		pmap_pvh_free(&m->md, pmap, va);
+		pmap_pvh_free(&m->md, pmap, va, free);
 	} while (va < va_last);
 }
 
@@ -2234,22 +2238,22 @@ pmap_pv_promote_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa)
  * page mappings.
  */
 static void
-pmap_pvh_free(struct md_page *pvh, pmap_t pmap, vm_offset_t va)
+pmap_pvh_free(struct md_page *pvh, pmap_t pmap, vm_offset_t va, vm_page_t *free)
 {
 	pv_entry_t pv;
 
 	pv = pmap_pvh_remove(pvh, pmap, va);
 	KASSERT(pv != NULL, ("pmap_pvh_free: pv not found"));
-	free_pv_entry(pmap, pv);
+	free_pv_entry(pmap, pv, free);
 }
 
 static void
-pmap_remove_entry(pmap_t pmap, vm_page_t m, vm_offset_t va)
+pmap_remove_entry(pmap_t pmap, vm_page_t m, vm_offset_t va, vm_page_t *free)
 {
 	struct md_page *pvh;
 
 	vm_page_lock_assert(m, MA_OWNED);
-	pmap_pvh_free(&m->md, pmap, va);
+	pmap_pvh_free(&m->md, pmap, va, free);
 	if (TAILQ_EMPTY(&m->md.pv_list)) {
 		pvh = pa_to_pvh(VM_PAGE_TO_PHYS(m));
 		if (TAILQ_EMPTY(&pvh->pv_list))
@@ -2425,7 +2429,7 @@ pmap_remove_pde(pmap_t pmap, pd_entry_t *pdq, vm_offset_t sva,
 	if (oldpde & PG_MANAGED) {
 		PA_LOCK_ASSERT(oldpde & PG_PS_FRAME, MA_OWNED);
 		pvh = pa_to_pvh(oldpde & PG_PS_FRAME);
-		pmap_pvh_free(pvh, pmap, sva);
+		pmap_pvh_free(pvh, pmap, sva, free);
 		eva = sva + NBPDR;
 		for (va = sva, m = PHYS_TO_VM_PAGE(oldpde & PG_PS_FRAME);
 		    va < eva; va += PAGE_SIZE, m++) {
@@ -2495,7 +2499,7 @@ pmap_remove_pte(pmap_t pmap, pt_entry_t *ptq, vm_offset_t va,
 			vm_page_dirty(m);
 		if (oldpte & PG_A)
 			vm_page_flag_set(m, PG_REFERENCED);
-		pmap_remove_entry(pmap, m, va);
+		pmap_remove_entry(pmap, m, va, free);
 		vm_page_unlock(m);
 	}
 	return (ret);
@@ -2727,7 +2731,7 @@ pmap_remove_all(vm_page_t m)
 		pmap_unuse_pt(pmap, pv->pv_va, *pde, &free);
 		pmap_invalidate_page(pmap, pv->pv_va);
 		TAILQ_REMOVE(&m->md.pv_list, pv, pv_list);
-		free_pv_entry(pmap, pv);
+		free_pv_entry(pmap, pv, &free);
 		PMAP_UNLOCK(pmap);
 	}
 	vm_page_flag_clear(m, PG_WRITEABLE);
@@ -2924,7 +2928,8 @@ retry:
  * identical characteristics. 
  */
 static void
-pmap_promote_pde(pmap_t pmap, pd_entry_t *pde, vm_offset_t va)
+pmap_promote_pde(pmap_t pmap, pd_entry_t *pde, vm_offset_t va,
+	vm_page_t *free)
 {
 	pd_entry_t newpde;
 	pt_entry_t *firstpte, oldpte, pa, *pte;
@@ -3011,7 +3016,7 @@ setpte:
 	 * Promote the pv entries.
 	 */
 	if ((newpde & PG_MANAGED) != 0)
-		pmap_pv_promote_pde(pmap, va, newpde & PG_PS_FRAME);
+		pmap_pv_promote_pde(pmap, va, newpde & PG_PS_FRAME, free);
 
 	/*
 	 * Propagate the PAT index to its proper position.
@@ -3128,7 +3133,7 @@ restart:
 		if (origpte & PG_MANAGED) {
 			om = PHYS_TO_VM_PAGE(opa);
 			vm_page_lock_assert(om, MA_OWNED);
-			pmap_remove_entry(pmap, om, va);
+			pmap_remove_entry(pmap, om, va, &free);
 			if (origpte & PG_A)
 				vm_page_flag_set(om, PG_REFERENCED);
 			if ((origpte & (PG_M | PG_RW)) == (PG_M | PG_RW))
@@ -3221,7 +3226,7 @@ validate:
 	 */
 	if ((mpte == NULL || mpte->wire_count == NPTEPG) &&
 	    pg_ps_enabled && vm_reserv_level_iffullpop(m) == 0)
-		pmap_promote_pde(pmap, pde, va);
+		pmap_promote_pde(pmap, pde, va, &free);
 
 	PA_UNLOCK(pa);
 	PMAP_UNLOCK(pmap);
