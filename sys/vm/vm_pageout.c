@@ -743,19 +743,18 @@ vm_pageout_scan(int pass)
 		maxlaunder = 1;
 	if (pass)
 		maxlaunder = 10000;
+	vm_page_lock_queues();
 rescan0:
 	addl_page_shortage = addl_page_shortage_init;
 	maxscan = cnt.v_inactive_count;
-	vm_page_lock_queues();
 	for (m = TAILQ_FIRST(&vm_page_queues[PQ_INACTIVE].pl);
 	     m != NULL && maxscan-- > 0 && page_shortage > 0;
 	     m = next) {
 
 		cnt.v_pdpages++;
 
-		if (VM_PAGE_GETQUEUE(m) != PQ_INACTIVE) {
+		if (VM_PAGE_GETQUEUE(m) != PQ_INACTIVE)
 			goto rescan0;
-		}
 
 		next = TAILQ_NEXT(m, pageq);
 		object = m->object;
@@ -987,8 +986,8 @@ rescan0:
 					goto unlock_and_continue;
 				}
 				VM_OBJECT_LOCK(object);
-				vm_page_lock_queues();
 				vm_page_lock(m);
+				vm_page_lock_queues();
 				/*
 				 * The page might have been moved to another
 				 * queue during potential blocking in vget()
