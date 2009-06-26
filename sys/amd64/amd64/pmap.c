@@ -1248,12 +1248,16 @@ pmap_free_zero_pages(vm_page_t free)
 {
 	vm_page_t m;
 
+	if (free == NULL)
+		return;	
+	vm_page_lock_queues();
 	while (free != NULL) {
 		m = free;
 		free = m->right;
 		/* Preserve the page's PG_ZERO setting. */
-		vm_page_free_toq(m);
+		vm_page_free_toq_locked(m);
 	}
+	vm_page_unlock_queues();
 }
 
 /*
@@ -1951,7 +1955,7 @@ pmap_collect(pmap_t locked_pmap, struct vpgqueues *vpq)
 	pt_entry_t *pte, tpte;
 	pv_entry_t next_pv, pv;
 	vm_offset_t va;
-	vm_page_t m, free;
+	vm_page_t m, free = NULL;
 
 	vm_page_lock_queues();
 	TAILQ_FOREACH(m, &vpq->pl, pageq) {
@@ -1981,7 +1985,6 @@ pmap_collect(pmap_t locked_pmap, struct vpgqueues *vpq)
 				vm_page_flag_set(m, PG_REFERENCED);
 			if ((tpte & (PG_M | PG_RW)) == (PG_M | PG_RW))
 				vm_page_dirty(m);
-			free = NULL;
 			pmap_unuse_pt(pmap, va, *pde, &free);
 			pmap_invalidate_page(pmap, va);
 			TAILQ_REMOVE(&m->md.pv_list, pv, pv_list);
@@ -1993,10 +1996,10 @@ pmap_collect(pmap_t locked_pmap, struct vpgqueues *vpq)
 			free_pv_entry(pmap, pv, &free);
 			if (pmap != locked_pmap)
 				PMAP_UNLOCK(pmap);
-			pmap_free_zero_pages(free);
 		}
 		vm_page_unlock(m);
 	}
+	pmap_free_zero_pages(free);
 	vm_page_unlock_queues();
 }
 
