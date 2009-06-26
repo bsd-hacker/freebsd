@@ -1248,16 +1248,12 @@ pmap_free_zero_pages(vm_page_t free)
 {
 	vm_page_t m;
 
-	if (free == NULL)
-		return;	
-	vm_page_lock_queues();
 	while (free != NULL) {
 		m = free;
 		free = m->right;
 		/* Preserve the page's PG_ZERO setting. */
-		vm_page_free_toq_locked(m);
+		vm_page_free_toq(m);
 	}
-	vm_page_unlock_queues();
 }
 
 /*
@@ -1999,8 +1995,8 @@ pmap_collect(pmap_t locked_pmap, struct vpgqueues *vpq)
 		}
 		vm_page_unlock(m);
 	}
-	pmap_free_zero_pages(free);
 	vm_page_unlock_queues();
+	pmap_free_zero_pages(free);
 }
 
 
