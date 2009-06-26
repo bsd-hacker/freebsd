@@ -1259,9 +1259,9 @@ vm_page_requeue_locked(vm_page_t m)
 	int queue;
 	struct vpgqueues *vpq;
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
 	queue = VM_PAGE_GETQUEUE(m);
 	if (queue != PQ_NONE) {
+		mtx_assert(&vm_page_queue_mtx, MA_OWNED);
 		vpq = &vm_page_queues[queue];
 		TAILQ_REMOVE(&vpq->pl, m, pageq);
 		TAILQ_INSERT_TAIL(&vpq->pl, m, pageq);
@@ -1290,18 +1290,17 @@ _vm_pageq_remove(vm_page_t m, int locked)
 	int queue;
 	struct vpgqueues *pq;
 
-	if (locked == 0)
-		vm_page_lock_queues();
-
 	queue = VM_PAGE_GETQUEUE(m);
 	if (queue != PQ_NONE) {
+		if (locked == 0)
+			vm_page_lock_queues();
 		VM_PAGE_SETQUEUE2(m, PQ_NONE);
 		pq = &vm_page_queues[queue];
 		TAILQ_REMOVE(&pq->pl, m, pageq);
 		(*pq->cnt)--;
+		if (locked == 0)
+			vm_page_unlock_queues();
 	}
-	if (locked == 0)
-		vm_page_unlock_queues();
 }
 
 void
