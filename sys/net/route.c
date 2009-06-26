@@ -372,8 +372,11 @@ rtfree(struct rtentry *rt)
 	 * with the route.
 	 */
 	if ((rt->rt_flags & RTF_UP) == 0) {
-		if (rt->rt_nodes->rn_flags & (RNF_ACTIVE | RNF_ROOT))
+		if (rt->rt_nodes->rn_flags & (RNF_ACTIVE | RNF_ROOT)) {
+			printf("rn_flags=0x%x\n", rt->rt_nodes->rn_flags);
 			panic("rtfree 2");
+		}
+		
 		/*
 		 * the rtentry must have been removed from the routing table
 		 * so it is represented in rttrash.. remove that now.
@@ -756,14 +759,6 @@ rtexpunge(struct rtentry *rt)
 	if (rnh == NULL)
 		return (EAFNOSUPPORT);
 	RADIX_NODE_HEAD_LOCK_ASSERT(rnh);
-#if 0
-	/*
-	 * We cannot assume anything about the reference count
-	 * because protocols call us in many situations; often
-	 * before unwinding references to the table entry.
-	 */
-	KASSERT(rt->rt_refcnt <= 1, ("bogus refcnt %ld", rt->rt_refcnt));
-#endif
 	/*
 	 * Remove the item from the tree; it should be there,
 	 * but when callers invoke us blindly it may not (sigh).
