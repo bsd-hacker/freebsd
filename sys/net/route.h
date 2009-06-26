@@ -337,7 +337,8 @@ struct rt_addrinfo {
 #define	RT_REMREF(_rt)	do {					\
 	RT_LOCK_ASSERT(_rt);					\
 	KASSERT((_rt)->rt_refcnt > 0,				\
-		("bogus refcnt %d", (_rt)->rt_refcnt));	\
+	    ("invalid refcnt %d at %s:%d", (_rt)->rt_refcnt,	\
+		__FILE__, __LINE__));				\
 	(_rt)->rt_refcnt--;					\
 } while (0)
 
