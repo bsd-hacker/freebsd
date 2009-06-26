@@ -348,8 +348,7 @@ rtfree(struct rtentry *rt)
 	 * The callers should use RTFREE_LOCKED() or RTFREE(), so
 	 * we should come here exactly with the last reference.
 	 */
-	RT_REMREF(rt);
-	if (rt->rt_refcnt > 0) {
+	if (rt->rt_refcnt > 1) {
 		log(LOG_DEBUG, "%s: %p has %d refs\n", __func__, rt, rt->rt_refcnt);
 		goto done;
 	}
@@ -363,7 +362,7 @@ rtfree(struct rtentry *rt)
 	 * typically calls rtexpunge which clears the RTF_UP flag
 	 * on the entry so that the code below reclaims the storage.
 	 */
-	if (rt->rt_refcnt == 0 && rnh->rnh_close)
+	if (rt->rt_refcnt == 1 && rnh->rnh_close)
 		rnh->rnh_close((struct radix_node *)rt, rnh);
 
 	/*
