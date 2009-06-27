@@ -329,7 +329,7 @@ struct rt_addrinfo {
 
 #define	RT_ADDREF(_rt)	do {					\
 	RT_LOCK_ASSERT(_rt);					\
-	KASSERT((_rt)->rt_refcnt >= 1,				\
+	KASSERT((_rt)->rt_refcnt >= 0,				\
 		("negative refcnt %d", (_rt)->rt_refcnt));	\
 	(_rt)->rt_refcnt++;					\
 } while (0)
