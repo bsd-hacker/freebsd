@@ -537,7 +537,11 @@ in_pcbrtalloc(struct inpcb *inp, in_addr_t faddr, struct route *sro)
 	}
 
 	rt = sro->ro_rt;
-	if (rt == NULL)
+	/*
+	 * Don't cache route in pcb if this is a per-packet
+	 * route
+	 */
+	if (rt == NULL || (rt->rt_flags & RTF_PPACKET))
 		return;
 	
 	inp->inp_rt = rt;
