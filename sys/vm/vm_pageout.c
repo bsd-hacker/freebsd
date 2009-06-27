@@ -254,6 +254,8 @@ vm_pageout_fallback_object_lock(vm_page_t m, vm_page_t *next)
 	TAILQ_INSERT_AFTER(&vm_page_queues[queue].pl,
 			   m, &marker, pageq);
 	vm_page_unlock_queues();
+	vm_page_unlock(m);
+	vm_page_lock(m);
 	VM_OBJECT_LOCK(object);
 	vm_page_lock_queues();
 
@@ -757,7 +759,6 @@ rescan0:
 			goto rescan0;
 
 		next = TAILQ_NEXT(m, pageq);
-		object = m->object;
 
 		/*
 		 * skip marker pages
@@ -774,6 +775,10 @@ rescan0:
 			continue;
 		}
 
+		if (vm_page_trylock(m) == 0 || (object = m->object) == NULL) {
+			addl_page_shortage++;
+			continue;
+		}
 		/*
 		 * Don't mess with busy pages, keep in the front of the
 		 * queue, most likely are being paged out.
@@ -781,12 +786,7 @@ rescan0:
 		if (!VM_OBJECT_TRYLOCK(object) &&
 		    !vm_pageout_fallback_object_lock(m, &next)) {
 			VM_OBJECT_UNLOCK(object);
-			addl_page_shortage++;
-			continue;
-		}
-		vm_page_lock_assert(m, MA_NOTOWNED);
-		if (vm_page_trylock(m) == 0) {
-			VM_OBJECT_UNLOCK(object);
+			vm_page_unlock(m);
 			addl_page_shortage++;
 			continue;
 		}
@@ -1088,7 +1088,6 @@ unlock_and_continue:
 		    ("vm_pageout_scan: page %p isn't active", m));
 
 		next = TAILQ_NEXT(m, pageq);
-		object = m->object;
 
 		/*
 		 * XXX note that the object == NULL check is a band-aid
@@ -1098,19 +1097,19 @@ unlock_and_continue:
 		 * trylocking the object which in turn complicates error
 		 * handling slightly
 		 */
-		if ((object == NULL) || (m->flags & PG_MARKER) != 0) {
+		if ((m->flags & PG_MARKER) != 0) {
+			m = next;
+			continue;
+		}
+
+		if (vm_page_trylock(m) == 0 || (object = m->object) == NULL) {
 			m = next;
 			continue;
 		}
 		if (!VM_OBJECT_TRYLOCK(object) &&
 		    !vm_pageout_fallback_object_lock(m, &next)) {
 			VM_OBJECT_UNLOCK(object);
-			m = next;
-			continue;
-		}
-
-		if (vm_page_trylock(m) == 0) {
-			VM_OBJECT_UNLOCK(object);
+			vm_page_unlock(m);
 			m = next;
 			continue;
 		}
