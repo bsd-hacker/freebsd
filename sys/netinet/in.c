@@ -842,7 +842,9 @@ in_ifinit(struct ifnet *ifp, struct in_ifaddr *ia, struct sockaddr_in *sin,
 				rt->rt_ifp->if_type;
 			((struct sockaddr_dl *)rt->rt_gateway)->sdl_index =
 				rt->rt_ifp->if_index;
-			RT_REMREF(rt);
+			KASSERT(rt->rt_refcnt == 1,
+			    ("invalid refcnt %d", rt->rt_refcnt));
+			rt->rt_refcnt = 0;
 			RT_UNLOCK(rt);
 		} else if (error != 0)
 			log(LOG_INFO, "in_ifinit: insertion failed\n");
