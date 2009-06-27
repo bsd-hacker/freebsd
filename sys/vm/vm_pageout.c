@@ -255,8 +255,8 @@ vm_pageout_fallback_object_lock(vm_page_t m, vm_page_t *next)
 			   m, &marker, pageq);
 	vm_page_unlock_queues();
 	vm_page_unlock(m);
-	vm_page_lock(m);
 	VM_OBJECT_LOCK(object);
+	vm_page_lock(m);
 	vm_page_lock_queues();
 
 	/* Page queue might have changed. */
