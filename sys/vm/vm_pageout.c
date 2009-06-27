@@ -1089,7 +1089,7 @@ unlock_and_continue:
 
 		next = TAILQ_NEXT(m, pageq);
 		object = m->object;
-		if ((m->flags & PG_MARKER) != 0) {
+		if ((object == NULL) || (m->flags & PG_MARKER) != 0) {
 			m = next;
 			continue;
 		}
