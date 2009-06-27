@@ -509,9 +509,9 @@ route_output(struct mbuf *m, struct socket *so)
 			rt_setmetrics(rtm->rtm_inits,
 				&rtm->rtm_rmx, &saved_nrt->rt_rmx);
 			rtm->rtm_index = saved_nrt->rt_ifp->if_index;
-			KASSERT(rt->rt_refcnt == 1,
-			    ("invalid refcnt %d", rt->rt_refcnt));
-			rt->rt_refcnt = 0;
+			KASSERT(saved_nrt->rt_refcnt == 1,
+			    ("invalid refcnt %d", saved_nrt->rt_refcnt));
+			saved_nrt->rt_refcnt = 0;
 			RT_UNLOCK(saved_nrt);
 		}
 		break;
