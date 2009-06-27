@@ -11,7 +11,6 @@ SUBDIR=	async \
 	bridge \
 	car \
 	cisco \
-	deflate \
 	device \
 	echo \
 	eiface \
@@ -31,7 +30,6 @@ SUBDIR=	async \
 	lmi \
 	${_mppc} \
 	nat \
-	netflow \
 	netgraph \
 	one2many \
 	ppp \
@@ -48,10 +46,25 @@ SUBDIR=	async \
 	tag \
 	tcpmss \
 	tee \
-	tty \
 	UI \
 	vjc \
 	vlan
+
+
+
+
+
+# netgraph breakage
+
+# zlib changes
+# deflate \
+
+# RTF_CLONING removal (arpv2)
+#	netflow \
+
+# unclear
+# 	tty \
+
 
 .if ${MACHINE_ARCH} == "i386"
 _sync_ar=	sync_ar

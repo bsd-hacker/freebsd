@@ -14,12 +14,10 @@ SUBDIR=	${_3dfx} \
 	aha \
 	${_ahb} \
 	${_aic} \
-	aic7xxx \
 	aio \
 	${_amd} \
 	ale \
 	amr \
-	${_an} \
 	${_aout} \
 	${_apm} \
 	${_ar} \
@@ -28,7 +26,6 @@ SUBDIR=	${_3dfx} \
 	${_arl} \
 	${_asr} \
 	ata \
-	ath \
 	aue \
 	${_auxio} \
 	${_awi} \
@@ -96,7 +93,6 @@ SUBDIR=	${_3dfx} \
 	gem \
 	geom \
 	${_glxsb} \
-	hatm \
 	hifn \
 	hme \
 	${_hptiop} \
@@ -116,9 +112,6 @@ SUBDIR=	${_3dfx} \
 	if_gif \
 	if_gre \
 	if_lagg \
-	${_if_ndis} \
-	if_ppp \
-	if_sl \
 	if_stf \
 	if_tap \
 	if_tun \
@@ -133,12 +126,9 @@ SUBDIR=	${_3dfx} \
 	ip_mroute_mod \
 	${_ipmi} \
 	${_ips} \
-	${_ipw} \
 	${_ipwfw} \
-	iscsi \
 	isp \
 	ispfw \
-	${_iwi} \
 	${_iwifw} \
 	${_ixgb} \
 	jme \
@@ -169,7 +159,6 @@ SUBDIR=	${_3dfx} \
 	mac_seeotheruids \
 	mac_stub \
 	mac_test \
-	malo \
 	mcd \
 	md \
 	mem \
@@ -184,12 +173,10 @@ SUBDIR=	${_3dfx} \
 	msdosfs \
 	msdosfs_iconv \
 	${_mse} \
-	msk \
 	mxge \
 	my \
 	${_ncp} \
 	${_ncv} \
-	${_ndis} \
 	netgraph \
 	${_nfe} \
 	nfsclient \
@@ -226,18 +213,15 @@ SUBDIR=	${_3dfx} \
 	pseudofs \
 	${_pst} \
 	puc \
-	ral \
 	${_random} \
 	${_ray} \
 	rc \
 	rc4 \
-	${_rdma} \
 	re \
 	reiserfs \
 	rl \
 	rp \
 	rue \
-	rum \
 	${_s3} \
 	${_safe} \
 	${_sbni} \
@@ -250,7 +234,6 @@ SUBDIR=	${_3dfx} \
 	sf \
 	${_sio} \
 	sis \
-	sk \
 	${_smbfs} \
 	sn \
 	${_snc} \
@@ -301,7 +284,6 @@ SUBDIR=	${_3dfx} \
 	ums \
 	unionfs \
 	uplcom \
-	ural \
 	urio \
 	usb \
 	uscanner \
@@ -316,24 +298,52 @@ SUBDIR=	${_3dfx} \
 	vr \
 	vx \
 	wb \
-	${_wi} \
-	wlan \
-	wlan_scan_ap \
-	wlan_scan_sta \
-	wlan_acl \
-	wlan_amrr \
-	wlan_ccmp \
-	wlan_tkip \
-	wlan_wep \
-	wlan_xauth \
-	${_wpi} \
 	${_wpifw} \
 	${_xe} \
-	xfs \
 	xl \
 	${_zfs} \
-	zlib \
-	zyd
+	zlib
+
+# ddb changes
+#	aic7xxx \
+#	xfs \
+
+# wireless API changes resulting from HEAD networking backport
+#	${_wpi} \
+#	${_an} \
+#	ath \
+#	zyd
+#	ural \
+#	${_wi} \
+#	${_ndis} \
+#	${_if_ndis} \
+#	${_ipw} \
+#	${_iwi} \
+#	malo \
+#	ral \
+#	rum \
+
+#	wlan \
+#	wlan_scan_ap \
+#	wlan_scan_sta \
+#	wlan_acl \
+#	wlan_amrr \
+#	wlan_ccmp \
+#	wlan_tkip \
+#	wlan_wep \
+#	wlan_xauth \
+
+
+# EXTREF removal (not updated since 6 to use new jumbo cluster allocation)   
+#	hatm \
+#	iscsi \
+#	msk \
+#	sk \
+
+
+# arpresolve changed
+#	${_rdma} \
+ 
 
 .if ${MACHINE_ARCH} != "powerpc"
 _syscons=	syscons
