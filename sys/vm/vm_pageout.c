@@ -775,7 +775,7 @@ rescan0:
 			continue;
 		}
 
-		if (vm_page_trylock(m) == 0 || (object = m->object) == NULL) {
+		if (!vm_page_trylock(m) || (object = m->object) == NULL) {
 			addl_page_shortage++;
 			continue;
 		}
@@ -1102,7 +1102,7 @@ unlock_and_continue:
 			continue;
 		}
 
-		if (vm_page_trylock(m) == 0 || (object = m->object) == NULL) {
+		if (!vm_page_trylock(m) || (object = m->object) == NULL) {
 			m = next;
 			continue;
 		}
@@ -1344,15 +1344,15 @@ vm_pageout_page_stats()
 			m = next;
 			continue;
 		}
-		if (!VM_OBJECT_TRYLOCK(object) &&
-		    !vm_pageout_fallback_object_lock(m, &next)) {
-			VM_OBJECT_UNLOCK(object);
+		vm_page_lock_assert(m, MA_NOTOWNED);
+		if (!vm_page_trylock(m) || (object = m->object) == NULL) {
 			m = next;
 			continue;
 		}
-		vm_page_lock_assert(m, MA_NOTOWNED);
-		if (vm_page_trylock(m) == 0) {
+		if (!VM_OBJECT_TRYLOCK(object) &&
+		    !vm_pageout_fallback_object_lock(m, &next)) {
 			VM_OBJECT_UNLOCK(object);
+			vm_page_unlock(m);
 			m = next;
 			continue;
 		}
