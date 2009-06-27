@@ -1650,11 +1650,8 @@ nd6_prefix_onlink(struct nd_prefix *pr)
 		    ip6_sprintf(ip6bufm, &mask6.sin6_addr), rtflags, error));
 	}
 
-	if (rt != NULL) {
-		RT_LOCK(rt);
-		RT_REMREF(rt);
-		RT_UNLOCK(rt);
-	}
+	if (rt != NULL) 
+		RTFREE(rt);
 
 	return (error);
 }
