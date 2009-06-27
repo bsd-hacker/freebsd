@@ -258,8 +258,11 @@ different:
 	return 0;
 }
 
-void
-rtalloc_mpath_fib(struct route *ro, uint32_t hash, u_int fibnum)
+#define	RT_MP_NORMAL	0
+#define	RT_MP_LIST	1
+
+static void
+rtalloc_mpath_fib_(struct route *ro, uint32_t hash, u_int fibnum, int type)
 {
 	struct radix_node *rn0, *rn;
 	u_int32_t n;
@@ -277,14 +280,18 @@ rtalloc_mpath_fib(struct route *ro, uint32_t hash, u_int fibnum)
 	/* if the route does not exist or it is not multipath, don't care */
 	if (ro->ro_rt == NULL)
 		return;
-	if (rn_mpath_next((struct radix_node *)ro->ro_rt) == NULL) {
+	if (rn_mpath_next((struct radix_node *)ro->ro_rt) == NULL ||
+	    ((type == RT_MP_LIST) && (ro->ro_rt->rt_flags & RTF_PPACKET))) {
 		RT_UNLOCK(ro->ro_rt);
 		return;
 	}
-
+	
 	/* beyond here, we use rn as the master copy */
 	rn0 = rn = (struct radix_node *)ro->ro_rt;
 	n = rn_mpath_count(rn0);
+
+	if (ro->ro_rt->rt_flags & RTF_PPACKET)
+		hash = arc4random();
 
 	/* gw selection by Modulo-N Hash (RFC2991) XXX need improvement? */
 	hash += hashjitter;
@@ -317,6 +324,21 @@ rtalloc_mpath_fib(struct route *ro, uint32_t hash, u_int fibnum)
 	RT_UNLOCK(ro->ro_rt);
 }
 
+void
+rtalloc_mpath_fib_list(struct route *ro, uint32_t hash, u_int fibnum)
+{
+
+	rtalloc_mpath_fib_(ro, hash, fibnum, RT_MP_LIST);
+}
+
+
+void
+rtalloc_mpath_fib(struct route *ro, uint32_t hash, u_int fibnum)
+{
+
+	rtalloc_mpath_fib_(ro, hash, fibnum, RT_MP_NORMAL);
+}
+	
 extern int	in6_inithead(void **head, int off);
 extern int	in_inithead(void **head, int off);
 
