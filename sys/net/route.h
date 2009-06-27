@@ -329,7 +329,7 @@ struct rt_addrinfo {
 
 #define	RT_ADDREF(_rt)	do {					\
 	RT_LOCK_ASSERT(_rt);					\
-	KASSERT((_rt)->rt_refcnt >= 0,				\
+	KASSERT((_rt)->rt_refcnt >= 1,				\
 		("negative refcnt %d", (_rt)->rt_refcnt));	\
 	(_rt)->rt_refcnt++;					\
 } while (0)
@@ -344,7 +344,7 @@ struct rt_addrinfo {
 
 #define	RTFREE_LOCKED(_rt) do {					\
 	RT_LOCK_ASSERT(_rt);					\
-	if ((_rt)->rt_refcnt <= 1) {				\
+	if ((_rt)->rt_refcnt == 1) {				\
 		rtfree(_rt);					\
 	} else {						\
 		RT_REMREF(_rt);					\
