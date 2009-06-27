@@ -1089,6 +1089,15 @@ unlock_and_continue:
 
 		next = TAILQ_NEXT(m, pageq);
 		object = m->object;
+
+		/*
+		 * XXX note that the object == NULL check is a band-aid
+		 * that narrows the race - but really we need to acquire the
+		 * page lock before checking the validity of the object pointer
+		 * this in turn requires that we trylock the page before
+		 * trylocking the object which in turn complicates error
+		 * handling slightly
+		 */
 		if ((object == NULL) || (m->flags & PG_MARKER) != 0) {
 			m = next;
 			continue;
