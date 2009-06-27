@@ -1343,7 +1343,9 @@ rtinit1(struct ifaddr *ifa, int cmd, int flags, int fibnum)
 					 * We just wanted to add it..
 					 * we don't actually need a reference.
 					 */
-					RT_REMREF(rt);
+					KASSERT(rt->rt_refcnt == 1,
+					    ("invalid refcnt %d", rt->rt_refcnt));
+					rt->rt_refcnt = 0;
 				}
 				RT_UNLOCK(rt);
 			}
