@@ -204,8 +204,8 @@ static int pg_ps_enabled;
 SYSCTL_INT(_vm_pmap, OID_AUTO, pg_ps_enabled, CTLFLAG_RD, &pg_ps_enabled, 0,
     "Are large page mappings enabled?");
 
-static int pmap_tryrelock_calls;
-SYSCTL_INT(_vm_pmap, OID_AUTO, tryrelock_calls, CTLFLAG_RD,
+static uint64_t pmap_tryrelock_calls;
+SYSCTL_QUAD(_vm_pmap, OID_AUTO, tryrelock_calls, CTLFLAG_RD,
     &pmap_tryrelock_calls, 0, "Number of tryrelock calls");
 
 static int pmap_tryrelock_restart;
@@ -451,7 +451,7 @@ pa_tryrelock(pmap_t pmap, vm_paddr_t pa, vm_paddr_t *locked)
 	vm_paddr_t lockpa;
 
 	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
-	atomic_add_int((volatile int *)&pmap_tryrelock_calls, 1);
+	atomic_add_long((volatile long *)&pmap_tryrelock_calls, 1);
 	lockpa = *locked;
 	*locked = pa;
 	if (lockpa) {
