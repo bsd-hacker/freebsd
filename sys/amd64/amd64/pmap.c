@@ -2227,7 +2227,9 @@ pmap_pv_promote_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa,
 	do {
 		m++;
 		va += PAGE_SIZE;
+		vm_page_lock(m);
 		pmap_pvh_free(&m->md, pmap, va, free);
+		vm_page_unlock(m);
 	} while (va < va_last);
 }
 
@@ -3984,9 +3986,11 @@ restart:
 				}
 
 				/* Mark free */
+				mtx_lock(&pv_lock);
 				PV_STAT(pv_entry_frees++);
 				PV_STAT(pv_entry_spare++);
 				pv_entry_count--;
+				mtx_unlock(&pv_lock);
 				pc->pc_map[field] |= bitmask;
 				if ((tpte & PG_PS) != 0) {
 					pmap->pm_stats.resident_count -= NBPDR / PAGE_SIZE;
