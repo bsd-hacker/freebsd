@@ -988,8 +988,10 @@ rn_mpath_update(int req, struct rt_addrinfo *info,
 				memcmp(rt->rt_gateway, gateway, gateway->sa_len)))
 				error = ESRCH;
 			else {
+				RT_LOCK(rt);
 				*ret_nrt = rt;
 				RT_ADDREF(rt);
+				RT_UNLOCK(rt);
 				goto done;
 			}
 			
