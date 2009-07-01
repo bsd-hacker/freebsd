@@ -46,6 +46,7 @@
 #define	in6pcb		inpcb	/* for KAME src sync over BSD*'s */
 #define	in6p_sp		inp_sp	/* for KAME src sync over BSD*'s */
 struct inpcbpolicy;
+struct route;
 
 /*
  * struct inpcb is the common protocol control block structure used in most
@@ -481,6 +482,7 @@ void	in_pcbdisconnect(struct inpcb *);
 void	in_pcbdrop(struct inpcb *);
 void	in_pcbfree(struct inpcb *);
 int	in_pcbinshash(struct inpcb *);
+void	in_pcbrtalloc(struct inpcb *inp, in_addr_t faddr, struct route *sro);
 struct inpcb *
 	in_pcblookup_local(struct inpcbinfo *,
 	    struct in_addr, u_short, int, struct ucred *);
