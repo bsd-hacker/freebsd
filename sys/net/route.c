@@ -988,11 +988,9 @@ rn_mpath_update(int req, struct rt_addrinfo *info,
 				memcmp(rt->rt_gateway, gateway, gateway->sa_len)))
 				error = ESRCH;
 			else {
-				RT_LOCK(rt);
-				*ret_nrt = rt;
-				RT_ADDREF(rt);
-				RT_UNLOCK(rt);
-				goto done;
+				rn = rnh->rnh_deladdr(dst, netmask, rnh);
+				KASSERT(rn != NULL, ("radix node disappeared"));
+				goto gwdelete;
 			}
 			
 		}
@@ -1006,12 +1004,12 @@ rn_mpath_update(int req, struct rt_addrinfo *info,
 		error = ENOENT;
 		goto done;
 	}
-		
 	/*
 	 * if the entry is 2nd and on up
 	 */
 	if ((req == RTM_DELETE) && !rt_mpath_deldup(rto, rt))
 		panic ("rtrequest1: rt_mpath_deldup");
+gwdelete:
 	RT_LOCK(rt);
 	RT_ADDREF(rt);
 	if (req == RTM_DELETE) {
