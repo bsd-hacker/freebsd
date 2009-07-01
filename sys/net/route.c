@@ -988,8 +988,12 @@ rn_mpath_update(int req, struct rt_addrinfo *info,
 				memcmp(rt->rt_gateway, gateway, gateway->sa_len)))
 				error = ESRCH;
 			else {
+				/*
+				 * remove from tree before returning it
+				 * to the caller
+				 */
 				rn = rnh->rnh_deladdr(dst, netmask, rnh);
-				KASSERT(rn != NULL, ("radix node disappeared"));
+				KASSERT(rt == RNTORT(rn), ("radix node disappeared"));
 				goto gwdelete;
 			}
 			
