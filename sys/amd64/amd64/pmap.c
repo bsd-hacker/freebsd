@@ -2095,8 +2095,8 @@ retry:
 	    VM_ALLOC_SYSTEM : VM_ALLOC_NORMAL) | VM_ALLOC_NOOBJ |
 	    VM_ALLOC_WIRED);
 	if (m == NULL) {
+		pv_entry_count--;
 		if (try) {
-			pv_entry_count--;
 			PV_STAT(pc_chunk_tryfail++);
 			mtx_unlock(&pv_lock);
 			return (NULL);
@@ -2114,7 +2114,10 @@ retry:
 			pq = &vm_page_queues[PQ_ACTIVE];
 		} else
 			panic("get_pv_entry: increase vm.pmap.shpgperproc");
+		mtx_unlock(&pv_lock);
 		pmap_collect(pmap, pq);
+		mtx_lock(&pv_lock);
+		pv_entry_count++;
 		goto retry;
 	}
 	PV_STAT(pc_chunk_count++);
