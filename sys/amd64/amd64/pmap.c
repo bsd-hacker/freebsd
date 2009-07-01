@@ -4214,7 +4214,7 @@ pmap_ts_referenced(vm_page_t m)
 					 */
 					va += VM_PAGE_TO_PHYS(m) - (oldpde &
 					    PG_PS_FRAME);
-					pmap_remove_page(pmap, va, pde, NULL);
+					pmap_remove_page(pmap, va, pde, free);
 					rtval++;
 					if (rtval > 4) {
 						PMAP_UNLOCK(pmap);
@@ -4353,7 +4353,7 @@ pmap_clear_reference(vm_page_t m)
 				 */
 				va += VM_PAGE_TO_PHYS(m) - (oldpde &
 				    PG_PS_FRAME);
-				pmap_remove_page(pmap, va, pde, NULL);
+				pmap_remove_page(pmap, va, pde, free);
 			}
 		}
 		PMAP_UNLOCK(pmap);
