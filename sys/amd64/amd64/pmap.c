@@ -2490,10 +2490,14 @@ pmap_remove_pte(pmap_t pmap, pt_entry_t *ptq, vm_offset_t va,
 		ret = PMAP_REMOVE_LAST;
 	if (oldpte & PG_MANAGED) {
 		m = PHYS_TO_VM_PAGE(oldpte & PG_FRAME);
+		KASSERT((m->flags & PG_UNMANAGED) == 0,
+		    ("page not managed"));
 		if (vm_page_trylock(m) == 0) {
 			PMAP_UNLOCK(pmap);
 			vm_page_lock(m);
 			PMAP_LOCK(pmap);
+			KASSERT((m->flags & PG_UNMANAGED) == 0,
+			    ("page not managed"));
 		}
 		if ((oldpte & (PG_M | PG_RW)) == (PG_M | PG_RW))
 			vm_page_dirty(m);
