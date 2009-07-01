@@ -245,7 +245,7 @@ static void	pmap_pv_demote_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa);
 static boolean_t pmap_pv_insert_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa);
 static void	pmap_pv_promote_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa,
 	vm_page_t *free);
-static void	pmap_pvh_free(vm_page_t m, pmap_t pmap, vm_offset_t va,
+static void	pmap_pvh_free(struct md_page *pvh, pmap_t pmap, vm_offset_t va,
 	vm_page_t *free);
 static pv_entry_t pmap_pvh_remove(struct md_page *pvh, pmap_t pmap,
 		    vm_offset_t va);
@@ -2058,6 +2058,7 @@ get_pv_entry(pmap_t pmap, int try)
 	vm_page_t m;
 
 	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
+retry:
 	mtx_lock(&pv_lock);
 	PV_STAT(pv_entry_allocs++);
 	pv_entry_count++;
@@ -2067,7 +2068,6 @@ get_pv_entry(pmap_t pmap, int try)
 			    "increasing either the vm.pmap.shpgperproc or the "
 			    "vm.pmap.pv_entry_max sysctl.\n");
 	pq = NULL;
-retry:
 	pc = TAILQ_FIRST(&pmap->pm_pvchunk);
 	if (pc != NULL) {
 		for (field = 0; field < _NPCM; field++) {
@@ -2114,10 +2114,9 @@ retry:
 			pq = &vm_page_queues[PQ_ACTIVE];
 		} else
 			panic("get_pv_entry: increase vm.pmap.shpgperproc");
+		PV_STAT(pv_entry_allocs--);
 		mtx_unlock(&pv_lock);
 		pmap_collect(pmap, pq);
-		mtx_lock(&pv_lock);
-		pv_entry_count++;
 		goto retry;
 	}
 	PV_STAT(pc_chunk_count++);
@@ -2230,9 +2229,7 @@ pmap_pv_promote_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa,
 	do {
 		m++;
 		va += PAGE_SIZE;
-		vm_page_lock(m);
-		pmap_pvh_free(m, pmap, va, free);
-		vm_page_unlock(m);
+		pmap_pvh_free(&m->md, pmap, va, free);
 	} while (va < va_last);
 }
 
@@ -2242,13 +2239,10 @@ pmap_pv_promote_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa,
  * page mappings.
  */
 static void
-pmap_pvh_free(vm_page_t m, pmap_t pmap, vm_offset_t va, vm_page_t *free)
+pmap_pvh_free(struct md_page *pvh, pmap_t pmap, vm_offset_t va, vm_page_t *free)
 {
 	pv_entry_t pv;
-	struct md_page *pvh;
 
-	vm_page_lock_assert(m, MA_OWNED);
-	pvh = &m->md;
 	pv = pmap_pvh_remove(pvh, pmap, va);
 	KASSERT(pv != NULL, ("pmap_pvh_free: pv not found"));
 	free_pv_entry(pmap, pv, free);
@@ -2259,7 +2253,7 @@ pmap_remove_entry(pmap_t pmap, vm_page_t m, vm_offset_t va, vm_page_t *free)
 {
 	struct md_page *pvh;
 
-	pmap_pvh_free(m, pmap, va, free);
+	pmap_pvh_free(&m->md, pmap, va, free);
 	if (TAILQ_EMPTY(&m->md.pv_list)) {
 		pvh = pa_to_pvh(VM_PAGE_TO_PHYS(m));
 		if (TAILQ_EMPTY(&pvh->pv_list))
@@ -2435,8 +2429,7 @@ pmap_remove_pde(pmap_t pmap, pd_entry_t *pdq, vm_offset_t sva,
 	if (oldpde & PG_MANAGED) {
 		PA_LOCK_ASSERT(oldpde & PG_PS_FRAME, MA_OWNED);
 		pvh = pa_to_pvh(oldpde & PG_PS_FRAME);
-		pmap_pvh_free(PHYS_TO_VM_PAGE(oldpde & PG_PS_FRAME),
-		    pmap, sva, free);
+		pmap_pvh_free(pvh, pmap, sva, free);
 		eva = sva + NBPDR;
 		for (va = sva, m = PHYS_TO_VM_PAGE(oldpde & PG_PS_FRAME);
 		    va < eva; va += PAGE_SIZE, m++) {
