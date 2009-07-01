@@ -205,7 +205,7 @@ struct ortentry {
 /* Mask of RTF flags that are allowed to be modified by RTM_CHANGE. */
 #define RTF_FMASK	\
 	(RTF_PROTO1 | RTF_PROTO2 | RTF_PROTO3 | RTF_BLACKHOLE | \
-	 RTF_REJECT | RTF_STATIC | RTF_STICKY)
+	 RTF_REJECT | RTF_STATIC | RTF_STICKY | RTF_PPACKET)
 
 /*
  * Routing statistics.
