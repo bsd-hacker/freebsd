@@ -686,7 +686,9 @@ vm_object_terminate(vm_object_t object)
 		KASSERT(!p->busy && (p->oflags & VPO_BUSY) == 0,
 			("vm_object_terminate: freeing busy page %p "
 			"p->busy = %d, p->flags %x\n", p, p->busy, p->flags));
-		if (p->wire_count == 0) {
+		KASSERT(p->object == object,
+		    ("page object changed from %p to %p", object, p->object));
+		if (p->wire_count == 0 && p->hold_count == 0) {
 			vm_page_free(p);
 			cnt.v_pfree++;
 		} else {
