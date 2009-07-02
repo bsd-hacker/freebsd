@@ -1953,7 +1953,17 @@ pmap_collect(pmap_t locked_pmap, struct vpgqueues *vpq)
 	vm_offset_t va;
 	vm_page_t m, free = NULL;
 
-	vm_page_lock_queues();
+	/*
+	 * This isn't really a solid fix as we need to assure the caller
+	 * that pmap state hasn't changed -  but the way pageout works
+	 * we typically need to call pmap functions with the page queue lock
+	 * held
+	 */
+	if (vm_page_trylock_queues() == 0) {
+		PMAP_UNLOCK(locked_pmap);
+		vm_page_lock_queues();
+		PMAP_LOCK(locked_pmap);
+	}
 	TAILQ_FOREACH(m, &vpq->pl, pageq) {
 		if (m->hold_count || m->busy || vm_page_trylock(m) == 0)
 			continue;
