@@ -1008,6 +1008,7 @@ rn_mpath_update(int req, struct rt_addrinfo *info,
 		error = ENOENT;
 		goto done;
 	}
+		
 	/*
 	 * if the entry is 2nd and on up
 	 */
