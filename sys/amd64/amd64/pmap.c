@@ -2500,21 +2500,14 @@ pmap_remove_pte(pmap_t pmap, pt_entry_t *ptq, vm_offset_t va,
 		ret = PMAP_REMOVE_LAST;
 	if (oldpte & PG_MANAGED) {
 		m = PHYS_TO_VM_PAGE(oldpte & PG_FRAME);
+		vm_page_lock_assert(m, MA_OWNED);
 		KASSERT((m->flags & PG_UNMANAGED) == 0,
 		    ("page not managed"));
-		if (vm_page_trylock(m) == 0) {
-			PMAP_UNLOCK(pmap);
-			vm_page_lock(m);
-			PMAP_LOCK(pmap);
-			KASSERT((m->flags & PG_UNMANAGED) == 0,
-			    ("page not managed"));
-		}
 		if ((oldpte & (PG_M | PG_RW)) == (PG_M | PG_RW))
 			vm_page_dirty(m);
 		if (oldpte & PG_A)
 			vm_page_flag_set(m, PG_REFERENCED);
 		pmap_remove_entry(pmap, m, va, free);
-		vm_page_unlock(m);
 	}
 	return (ret);
 }
@@ -2526,6 +2519,7 @@ static void
 pmap_remove_page(pmap_t pmap, vm_offset_t va, pd_entry_t *pde, vm_page_t *free)
 {
 	pt_entry_t *pte;
+	vm_page_t m;
 
 	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
 	if ((*pde & PG_V) == 0)
@@ -2533,7 +2527,18 @@ pmap_remove_page(pmap_t pmap, vm_offset_t va, pd_entry_t *pde, vm_page_t *free)
 	pte = pmap_pde_to_pte(pde, va);
 	if ((*pte & PG_V) == 0)
 		return;
+
+	if  (*pte & PG_MANAGED) {
+		m = PHYS_TO_VM_PAGE(*pte & PG_FRAME);
+		if (vm_page_trylock(m) == 0) {
+			PMAP_UNLOCK(pmap);
+			vm_page_lock(m);
+			PMAP_LOCK(pmap);
+		}
+	}
 	pmap_remove_pte(pmap, pte, va, *pde, free);
+	if (m != NULL)
+		vm_page_unlock(m);
 	pmap_invalidate_page(pmap, va);
 }
 
@@ -2660,9 +2665,23 @@ restart:
 		for (pte = pmap_pde_to_pte(pde, sva); sva != va_next; pte++,
 		    sva += PAGE_SIZE) {
 			int ret;
+			vm_page_t m = NULL;
+
 			if (*pte == 0)
 				continue;
 
+			if  (*pte & PG_MANAGED) {
+				m = PHYS_TO_VM_PAGE(*pte & PG_FRAME);
+				if (vm_page_trylock(m) == 0) {
+					PMAP_UNLOCK(pmap);
+					vm_page_lock(m);
+					PMAP_LOCK(pmap);
+				}
+				if (*pte != *pmap_pde_to_pte(pde, sva)) {
+					vm_page_unlock(m);
+					goto restart;
+				}
+			}
 			/*
 			 * The TLB entry for a PG_G mapping is invalidated
 			 * by pmap_remove_pte().
@@ -2670,6 +2689,8 @@ restart:
 			if ((*pte & PG_G) == 0)
 				anyvalid = 1;
 			ret = pmap_remove_pte(pmap, pte, sva, ptpaddr, &free);
+			if (m != NULL)
+				vm_page_unlock(m);
 			if (ret & PMAP_REMOVE_LAST)
 				break;
 			if (ret & PMAP_REMOVE_UNLOCKED) {
