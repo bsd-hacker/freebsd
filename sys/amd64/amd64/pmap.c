@@ -2519,7 +2519,7 @@ static void
 pmap_remove_page(pmap_t pmap, vm_offset_t va, pd_entry_t *pde, vm_page_t *free)
 {
 	pt_entry_t *pte;
-	vm_page_t m;
+	vm_page_t m = NULL;
 
 	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
 	if ((*pde & PG_V) == 0)
