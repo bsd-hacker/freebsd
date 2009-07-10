@@ -124,7 +124,7 @@ zio_init(void)
 			char name[36];
 			(void) sprintf(name, "zio_buf_%lu", (ulong_t)size);
 			zio_buf_cache[c] = kmem_cache_create(name, size,
-			    align, NULL, NULL, NULL, NULL, NULL, KMC_NODEBUG);
+			    align, NULL, NULL, NULL, NULL, NULL, 0);
 
 			(void) sprintf(name, "zio_data_buf_%lu", (ulong_t)size);
 			zio_data_buf_cache[c] = kmem_cache_create(name, size,
@@ -217,7 +217,7 @@ zio_data_buf_alloc(size_t size)
 
 	return (kmem_cache_alloc(zio_data_buf_cache[c], KM_PUSHPAGE));
 #else
-	return (kmem_alloc(size, KM_SLEEP));
+	return (kmem_alloc(size, KM_SLEEP|KM_NODEBUG));
 #endif
 }
 
