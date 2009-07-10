@@ -263,7 +263,7 @@ mbuf_init(void *dummy)
 #else
 	    NULL, NULL, NULL, NULL,
 #endif
-	    UMA_ALIGN_PTR, UMA_ZONE_MAXBUCKET);
+	    UMA_ALIGN_PTR, UMA_ZONE_MAXBUCKET|UMA_ZONE_NODUMP);
 	if (nmbclusters > 0)
 		uma_zone_set_max(zone_clust, nmbclusters);
 
@@ -282,7 +282,7 @@ mbuf_init(void *dummy)
 #else
 	    NULL, NULL, NULL, NULL,
 #endif
-	    UMA_ALIGN_PTR, 0);
+	    UMA_ALIGN_PTR, UMA_ZONE_NODUMP);
 	if (nmbjumbop > 0)
 		uma_zone_set_max(zone_jumbop, nmbjumbop);
 
@@ -292,7 +292,7 @@ mbuf_init(void *dummy)
 #else
 	    NULL, NULL, NULL, NULL,
 #endif
-	    UMA_ALIGN_PTR, 0);
+	    UMA_ALIGN_PTR, UMA_ZONE_NODUMP);
 	if (nmbjumbo9 > 0)
 		uma_zone_set_max(zone_jumbo9, nmbjumbo9);
 	uma_zone_set_allocf(zone_jumbo9, mbuf_jumbo_alloc);
@@ -304,7 +304,7 @@ mbuf_init(void *dummy)
 #else
 	    NULL, NULL, NULL, NULL,
 #endif
-	    UMA_ALIGN_PTR, 0);
+	    UMA_ALIGN_PTR, UMA_ZONE_NODUMP);
 	if (nmbjumbo16 > 0)
 		uma_zone_set_max(zone_jumbo16, nmbjumbo16);
 	uma_zone_set_allocf(zone_jumbo16, mbuf_jumbo_alloc);
