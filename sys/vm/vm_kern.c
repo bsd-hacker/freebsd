@@ -84,6 +84,10 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_extern.h>
 #include <vm/uma.h>
 
+#ifdef	VM_MD_MINIDUMP
+#include <machine/md_var.h>
+#endif
+
 vm_map_t kernel_map=0;
 vm_map_t kmem_map=0;
 vm_map_t exec_map=0;
@@ -206,8 +210,15 @@ kmem_free(map, addr, size)
 	vm_offset_t addr;
 	vm_size_t size;
 {
+	vm_offset_t start = trunc_page(addr);
+	vm_offset_t end = round_page(addr + size);
+#ifdef VM_MD_MINIDUMP
+	vm_offset_t temp = start;
 
-	(void) vm_map_remove(map, trunc_page(addr), round_page(addr + size));
+	for (; temp < end; temp += PAGE_SIZE)
+		dump_add_page(pmap_kextract(temp));
+#endif	
+	(void) vm_map_remove(map, start, end);
 }
 
 /*
@@ -363,6 +374,10 @@ retry:
 		}
 		if (flags & M_ZERO && (m->flags & PG_ZERO) == 0)
 			pmap_zero_page(m);
+#ifdef VM_MD_MINIDUMP
+		if (flags & M_NODUMP)
+			dump_drop_page(VM_PAGE_TO_PHYS(m));
+#endif		
 		m->valid = VM_PAGE_BITS_ALL;
 		KASSERT((m->flags & PG_UNMANAGED) != 0,
 		    ("kmem_malloc: page %p is managed", m));
