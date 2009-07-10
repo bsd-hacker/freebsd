@@ -56,6 +56,7 @@ CTASSERT(sizeof(struct kerneldumpheader) == 512);
 extern uint64_t KPDPphys;
 
 uint64_t *vm_page_dump;
+uint64_t *vm_page_dump_exclude;
 int vm_page_dump_size;
 
 static struct kerneldumpheader kdh;
@@ -69,7 +70,7 @@ static size_t counter, progress;
 CTASSERT(sizeof(*vm_page_dump) == 8);
 
 static int
-is_dumpable(vm_paddr_t pa, int ignorebit)
+is_dumpable(vm_paddr_t pa)
 {
 	int i, idx, bit, isdata;
 	uint64_t pfn = pa;
@@ -77,7 +78,7 @@ is_dumpable(vm_paddr_t pa, int ignorebit)
 	pfn >>= PAGE_SHIFT;
 	idx = pfn >> 6;		/* 2^6 = 64 */
 	bit = pfn & 63;
-	isdata = (ignorebit == TRUE) ? 1 : vm_page_dump[idx] & (1ul << bit);
+	isdata = ((vm_page_dump_exclude[idx] & (1ul << bit)) == 0);
 
 	for (i = 0; dump_avail[i] != 0 || dump_avail[i + 1] != 0; i += 2) {
 		if (pa >= dump_avail[i] && pa < dump_avail[i + 1] && isdata)
@@ -224,7 +225,7 @@ minidumpsys(struct dumperinfo *di)
 			/* This is an entire 2M page. */
 			pa = pd[j] & PG_PS_FRAME;
 			for (k = 0; k < NPTEPG; k++) {
-				if (is_dumpable(pa, TRUE))
+				if (is_dumpable(pa))
 					dump_add_page(pa);
 				pa += PAGE_SIZE;
 			}
@@ -236,7 +237,7 @@ minidumpsys(struct dumperinfo *di)
 			for (k = 0; k < NPTEPG; k++) {
 				if ((pt[k] & PG_V) == PG_V) {
 					pa = pt[k] & PG_FRAME;
-					if (is_dumpable(pa, TRUE))
+					if (is_dumpable(pa))
 						dump_add_page(pa);
 				}
 			}
@@ -256,7 +257,7 @@ minidumpsys(struct dumperinfo *di)
 			bit = bsfq(bits);
 			pa = (((uint64_t)i * sizeof(*vm_page_dump) * NBBY) + bit) * PAGE_SIZE;
 			/* Clear out undumpable pages now if needed */
-			if (is_dumpable(pa, FALSE)) {
+			if (is_dumpable(pa)) {
 				dumpsize += PAGE_SIZE;
 			} else {
 				dump_drop_page(pa);
@@ -436,4 +437,26 @@ dump_drop_page(vm_paddr_t pa)
 	idx = pa >> 6;		/* 2^6 = 64 */
 	bit = pa & 63;
 	atomic_clear_long(&vm_page_dump[idx], 1ul << bit);
+}
+
+void
+dump_exclude_page(vm_paddr_t pa)
+{
+	int idx, bit;
+
+	pa >>= PAGE_SHIFT;
+	idx = pa >> 6;		/* 2^6 = 64 */
+	bit = pa & 63;
+	atomic_set_long(&vm_page_dump_exclude[idx], 1ul << bit);
+}
+
+void
+dump_unexclude_page(vm_paddr_t pa)
+{
+	int idx, bit;
+
+	pa >>= PAGE_SHIFT;
+	idx = pa >> 6;		/* 2^6 = 64 */
+	bit = pa & 63;
+	atomic_clear_long(&vm_page_dump_exclude[idx], 1ul << bit);
 }

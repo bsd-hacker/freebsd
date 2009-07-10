@@ -57,6 +57,7 @@ extern	char	kstack[];
 extern	char	sigcode[];
 extern	int	szsigcode;
 extern	uint64_t *vm_page_dump;
+extern	uint64_t *vm_page_dump_exclude;
 extern	int	vm_page_dump_size;
 
 typedef void alias_for_inthand_t(u_int cs, u_int ef, u_int esp, u_int ss);
@@ -72,6 +73,8 @@ void	doreti_iret(void) __asm(__STRING(doreti_iret));
 void	doreti_iret_fault(void) __asm(__STRING(doreti_iret_fault));
 void	dump_add_page(vm_paddr_t);
 void	dump_drop_page(vm_paddr_t);
+void	dump_exclude_page(vm_paddr_t);
+void	dump_unexclude_page(vm_paddr_t);
 void	initializecpu(void);
 void	fillw(int /*u_short*/ pat, void *base, size_t cnt);
 void	fpstate_drop(struct thread *td);
