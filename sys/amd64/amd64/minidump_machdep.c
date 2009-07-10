@@ -262,7 +262,7 @@ minidumpsys(struct dumperinfo *di)
 				dump_drop_page(pa);
 			}
 			bits &= ~(1ul << bit);
-			if (dumpsize % (1<<29))
+			if ((dumpsize % (1<<29)) == 0)
 				printf("%dMB ", (dumpsize>>20));
 		}
 	}
