@@ -69,12 +69,18 @@ static size_t counter, progress;
 CTASSERT(sizeof(*vm_page_dump) == 8);
 
 static int
-is_dumpable(vm_paddr_t pa)
+is_dumpable(vm_paddr_t pa, int ignorebit)
 {
-	int i;
+	int i, idx, bit, isdata;
+	uint64_t pfn = pa;
+
+	pfn >>= PAGE_SHIFT;
+	idx = pfn >> 6;		/* 2^6 = 64 */
+	bit = pfn & 63;
+	isdata = (ignorebit == TRUE) ? 1 : vm_page_dump[idx] & (1ul << bit);
 
 	for (i = 0; dump_avail[i] != 0 || dump_avail[i + 1] != 0; i += 2) {
-		if (pa >= dump_avail[i] && pa < dump_avail[i + 1])
+		if (pa >= dump_avail[i] && pa < dump_avail[i + 1] && isdata)
 			return (1);
 	}
 	return (0);
@@ -195,7 +201,7 @@ minidumpsys(struct dumperinfo *di)
 	int error;
 	uint64_t bits;
 	uint64_t *pdp, *pd, *pt, pa;
-	int i, j, k, bit;
+	int i, j, k, bit, pages_written;
 	struct minidumphdr mdhdr;
 
 	counter = 0;
@@ -218,7 +224,7 @@ minidumpsys(struct dumperinfo *di)
 			/* This is an entire 2M page. */
 			pa = pd[j] & PG_PS_FRAME;
 			for (k = 0; k < NPTEPG; k++) {
-				if (is_dumpable(pa))
+				if (is_dumpable(pa, TRUE))
 					dump_add_page(pa);
 				pa += PAGE_SIZE;
 			}
@@ -230,7 +236,7 @@ minidumpsys(struct dumperinfo *di)
 			for (k = 0; k < NPTEPG; k++) {
 				if ((pt[k] & PG_V) == PG_V) {
 					pa = pt[k] & PG_FRAME;
-					if (is_dumpable(pa))
+					if (is_dumpable(pa, TRUE))
 						dump_add_page(pa);
 				}
 			}
@@ -243,22 +249,26 @@ minidumpsys(struct dumperinfo *di)
 	dumpsize = ptesize;
 	dumpsize += round_page(msgbufp->msg_size);
 	dumpsize += round_page(vm_page_dump_size);
+	printf("dumpsize: ");
 	for (i = 0; i < vm_page_dump_size / sizeof(*vm_page_dump); i++) {
 		bits = vm_page_dump[i];
 		while (bits) {
 			bit = bsfq(bits);
 			pa = (((uint64_t)i * sizeof(*vm_page_dump) * NBBY) + bit) * PAGE_SIZE;
 			/* Clear out undumpable pages now if needed */
-			if (is_dumpable(pa)) {
+			if (is_dumpable(pa, FALSE)) {
 				dumpsize += PAGE_SIZE;
 			} else {
 				dump_drop_page(pa);
 			}
 			bits &= ~(1ul << bit);
+			if (dumpsize % (1<<29))
+				printf("%dMB ", (dumpsize>>20));
 		}
 	}
 	dumpsize += PAGE_SIZE;
 
+	printf("\n");
 	/* Determine dump offset on device. */
 	if (di->mediasize < SIZEOF_METADATA + dumpsize + sizeof(kdh) * 2) {
 		error = ENOSPC;
@@ -307,6 +317,7 @@ minidumpsys(struct dumperinfo *di)
 	if (error)
 		goto fail;
 
+	printf("\nDump kernel page table pages\n");
 	/* Dump kernel page table pages */
 	pdp = (uint64_t *)PHYS_TO_DMAP(KPDPphys);
 	for (va = VM_MIN_KERNEL_ADDRESS; va < MAX(KERNBASE + NKPT * NBPDR,
@@ -360,18 +371,23 @@ minidumpsys(struct dumperinfo *di)
 
 	/* Dump memory chunks */
 	/* XXX cluster it up and use blk_dump() */
-	for (i = 0; i < vm_page_dump_size / sizeof(*vm_page_dump); i++) {
+	printf("\nclustering memory chunks\n");
+	for (pages_written = i = 0;
+	     i < vm_page_dump_size / sizeof(*vm_page_dump); i++) {
 		bits = vm_page_dump[i];
 		while (bits) {
 			bit = bsfq(bits);
 			pa = (((uint64_t)i * sizeof(*vm_page_dump) * NBBY) + bit) * PAGE_SIZE;
+			pages_written++;
+			if (pages_written && (pages_written % 1024) == 0)
+				printf("%dMB ", pages_written*PAGE_SIZE);
 			error = blk_write(di, 0, pa, PAGE_SIZE);
 			if (error)
 				goto fail;
 			bits &= ~(1ul << bit);
 		}
 	}
-
+	printf("\n");
 	error = blk_flush(di);
 	if (error)
 		goto fail;
@@ -382,6 +398,7 @@ minidumpsys(struct dumperinfo *di)
 		goto fail;
 	dumplo += sizeof(kdh);
 
+	printf("\nstarting dump\n");
 	/* Signal completion, signoff and exit stage left. */
 	dump_write(di, NULL, 0, 0, 0);
 	printf("\nDump complete\n");
