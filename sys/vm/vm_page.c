@@ -301,6 +301,10 @@ vm_page_startup(vm_offset_t vaddr)
 	vm_page_dump = (void *)(uintptr_t)pmap_map(&vaddr, new_end,
 	    new_end + vm_page_dump_size, VM_PROT_READ | VM_PROT_WRITE);
 	bzero((void *)vm_page_dump, vm_page_dump_size);
+	new_end -= vm_page_dump_size;
+	vm_page_dump_exclude = (void *)(uintptr_t)pmap_map(&vaddr, new_end,
+	    new_end + vm_page_dump_size, VM_PROT_READ | VM_PROT_WRITE);
+	bzero((void *)vm_page_dump, vm_page_dump_size);
 #endif
 	/*
 	 * Compute the number of pages of memory that will be available for

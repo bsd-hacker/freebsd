@@ -216,7 +216,7 @@ kmem_free(map, addr, size)
 	vm_offset_t temp = start;
 
 	for (; temp < end; temp += PAGE_SIZE)
-		dump_add_page(pmap_kextract(temp));
+		dump_unexclude_page(pmap_kextract(temp));
 #endif	
 	(void) vm_map_remove(map, start, end);
 }
@@ -376,7 +376,7 @@ retry:
 			pmap_zero_page(m);
 #ifdef VM_MD_MINIDUMP
 		if (flags & M_NODUMP)
-			dump_drop_page(VM_PAGE_TO_PHYS(m));
+			dump_exclude_page(VM_PAGE_TO_PHYS(m));
 #endif		
 		m->valid = VM_PAGE_BITS_ALL;
 		KASSERT((m->flags & PG_UNMANAGED) != 0,
