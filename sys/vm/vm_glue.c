@@ -372,7 +372,8 @@ vm_thread_new(struct thread *td, int pages)
 		m->valid = VM_PAGE_BITS_ALL;
 	}
 	VM_OBJECT_UNLOCK(ksobj);
-	pmap_qenter(ks, ma, pages);
+	pmap_qenter_prot(ks, ma, pages,
+	    (VM_PROT_READ|VM_PROT_WRITE));
 	return (1);
 }
 
@@ -464,7 +465,8 @@ vm_thread_swapin(struct thread *td)
 		vm_page_wakeup(m);
 	}
 	VM_OBJECT_UNLOCK(ksobj);
-	pmap_qenter(td->td_kstack, ma, pages);
+	pmap_qenter_prot(td->td_kstack, ma, pages,
+	    (VM_PROT_READ|VM_PROT_WRITE));
 	cpu_thread_swapin(td);
 }
 

@@ -900,7 +900,8 @@ vnode_pager_generic_getpages(vp, m, bytecount, reqpage)
 	/*
 	 * and map the pages to be read into the kva
 	 */
-	pmap_qenter(kva, m, count);
+	pmap_qenter_prot(kva, m, count,
+	    (VM_PROT_READ|VM_PROT_WRITE|VM_PROT_EXCLUDE));
 
 	/* build a minimal buffer header */
 	bp->b_iocmd = BIO_READ;
