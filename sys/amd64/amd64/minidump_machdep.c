@@ -375,13 +375,13 @@ minidumpsys(struct dumperinfo *di)
 	printf("\nclustering memory chunks\n");
 	for (pages_written = i = 0;
 	     i < vm_page_dump_size / sizeof(*vm_page_dump); i++) {
-		bits = vm_page_dump[i];
+		bits = vm_page_dump[i] & ~(vm_page_dump_exclude[i]);
 		while (bits) {
 			bit = bsfq(bits);
 			pa = (((uint64_t)i * sizeof(*vm_page_dump) * NBBY) + bit) * PAGE_SIZE;
 			pages_written++;
 			if (pages_written && (pages_written % 1024) == 0)
-				printf("%dMB ", pages_written*PAGE_SIZE);
+				printf("%dMB ", (pages_written >> 8));
 			error = blk_write(di, 0, pa, PAGE_SIZE);
 			if (error)
 				goto fail;
