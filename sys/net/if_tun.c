@@ -76,25 +76,18 @@ struct tun_softc {
 #define	TUN_IASET	0x0008
 #define	TUN_DSTADDR	0x0010
 #define	TUN_LMODE	0x0020
-#define	TUN_RWAIT	0x0040
+
 #define	TUN_ASYNC	0x0080
 #define	TUN_IFHEAD	0x0100
 
 #define TUN_READY       (TUN_OPEN | TUN_INITED)
 
-	/*
-	 * XXXRW: tun_pid is used to exclusively lock /dev/tun.  Is this
-	 * actually needed?  Can we just return EBUSY if already open?
-	 * Problem is that this involved inherent races when a tun device
-	 * is handed off from one process to another, as opposed to just
-	 * being slightly stale informationally.
-	 */
-	pid_t	tun_pid;		/* owning pid */
 	struct	ifnet *tun_ifp;		/* the interface */
 	struct  sigio *tun_sigio;	/* information for async I/O */
 	struct	selinfo	tun_rsel;	/* read select */
 	struct mtx	tun_mtx;	/* protect mutable softc fields */
 	struct cv	tun_cv;		/* protect against ref'd dev destroy */
+	struct cv	tun_rwait_cv;	/* rwait wakeup */
 };
 #define TUN2IFP(sc)	((sc)->tun_ifp)
 
@@ -347,10 +340,7 @@ tunstart(struct ifnet *ifp)
 	}
 
 	mtx_lock(&tp->tun_mtx);
-	if (tp->tun_flags & TUN_RWAIT) {
-		tp->tun_flags &= ~TUN_RWAIT;
-		wakeup(tp);
-	}
+	cv_broadcast(&tp->tun_rwait_cv);
 	if (tp->tun_flags & TUN_ASYNC && tp->tun_sigio) {
 		mtx_unlock(&tp->tun_mtx);
 		pgsigio(&tp->tun_sigio, SIGIO, 0);
@@ -371,7 +361,8 @@ tuncreate(const char *name, struct cdev *dev)
 
 	sc = malloc(sizeof(*sc), M_TUN, M_WAITOK | M_ZERO);
 	mtx_init(&sc->tun_mtx, "tun_mtx", NULL, MTX_DEF);
-	cv_init(&sc->tun_cv, "tun_condvar");
+	cv_init(&sc->tun_cv, "tun_ref_cv");
+	cv_init(&sc->tun_rwait_cv, "tun_rwait_cv");
 	sc->tun_flags = TUN_INITED;
 	sc->tun_dev = dev;
 	mtx_lock(&tunmtx);
@@ -417,18 +408,11 @@ tunopen(struct cdev *dev, int flag, int mode, struct thread *td)
 		tp = dev->si_drv1;
 	}
 
-	/*
-	 * XXXRW: This use of tun_pid is subject to error due to the
-	 * fact that a reference to the tunnel can live beyond the
-	 * death of the process that created it.  Can we replace this
-	 * with a simple busy flag?
-	 */
 	mtx_lock(&tp->tun_mtx);
-	if (tp->tun_pid != 0 && tp->tun_pid != td->td_proc->p_pid) {
+	if (tp->tun_flags & TUN_OPEN) {
 		mtx_unlock(&tp->tun_mtx);
 		return (EBUSY);
 	}
-	tp->tun_pid = td->td_proc->p_pid;
 
 	tp->tun_flags |= TUN_OPEN;
 	mtx_unlock(&tp->tun_mtx);
@@ -448,36 +432,37 @@ tunclose(struct cdev *dev, int foo, int bar, struct thread *td)
 {
 	struct tun_softc *tp;
 	struct ifnet *ifp;
-	int s;
-
+	struct ifaddrhead head;
+	
 	tp = dev->si_drv1;
 	ifp = TUN2IFP(tp);
-
+	
+	TAILQ_INIT(&head);
 	mtx_lock(&tp->tun_mtx);
 	tp->tun_flags &= ~TUN_OPEN;
-	tp->tun_pid = 0;
 	mtx_unlock(&tp->tun_mtx);
 
 	/*
 	 * junk all pending output
 	 */
 	CURVNET_SET(ifp->if_vnet);
-	s = splimp();
 	IFQ_PURGE(&ifp->if_snd);
-	splx(s);
 
 	if (ifp->if_flags & IFF_UP) {
-		s = splimp();
+		mtx_lock(&tp->tun_mtx);
 		if_down(ifp);
-		splx(s);
+		mtx_unlock(&tp->tun_mtx);
 	}
 
 	/* Delete all addresses and routes which reference this interface. */
 	if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
 		struct ifaddr *ifa;
 
-		s = splimp();
-		TAILQ_FOREACH(ifa, &ifp->if_addrhead, ifa_link) {
+		while (!TAILQ_EMPTY(&ifp->if_addrhead)) {
+			IF_ADDR_LOCK(ifp);
+			ifa = TAILQ_FIRST(&ifp->if_addrhead);
+			TAILQ_REMOVE(&ifp->if_addrhead, ifa, ifa_link);
+			IF_ADDR_UNLOCK(ifp);
 			/* deal w/IPv4 PtP destination; unlocked read */
 			if (ifa->ifa_addr->sa_family == AF_INET) {
 				rtinit(ifa, (int)RTM_DELETE,
@@ -486,9 +471,13 @@ tunclose(struct cdev *dev, int foo, int bar, struct thread *td)
 				rtinit(ifa, (int)RTM_DELETE, 0);
 			}
 		}
+		IF_ADDR_LOCK(ifp);
+		TAILQ_CONCAT(&ifp->if_addrhead, &head, ifa_link);
 		if_purgeaddrs(ifp);
+		IF_ADDR_UNLOCK(ifp);
+		mtx_lock(&tp->tun_mtx);
 		ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
-		splx(s);
+		mtx_unlock(&tp->tun_mtx);
 	}
 	if_link_state_change(ifp, LINK_STATE_DOWN);
 	CURVNET_RESTORE();
@@ -507,12 +496,13 @@ tunclose(struct cdev *dev, int foo, int bar, struct thread *td)
 static int
 tuninit(struct ifnet *ifp)
 {
+	int error = 0;
 #ifdef INET
 	struct tun_softc *tp = ifp->if_softc;
 	struct ifaddr *ifa;
+	
+	mtx_assert(&tp->tun_mtx, MA_OWNED);
 #endif
-	int error = 0;
-
 	TUNDEBUG(ifp, "tuninit\n");
 
 	ifp->if_flags |= IFF_UP;
@@ -526,14 +516,12 @@ tuninit(struct ifnet *ifp)
 			struct sockaddr_in *si;
 
 			si = (struct sockaddr_in *)ifa->ifa_addr;
-			mtx_lock(&tp->tun_mtx);
 			if (si->sin_addr.s_addr)
 				tp->tun_flags |= TUN_IASET;
 
 			si = (struct sockaddr_in *)ifa->ifa_dstaddr;
 			if (si && si->sin_addr.s_addr)
 				tp->tun_flags |= TUN_DSTADDR;
-			mtx_unlock(&tp->tun_mtx);
 		}
 	}
 	if_addr_runlock(ifp);
@@ -550,17 +538,12 @@ tunifioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	struct ifreq *ifr = (struct ifreq *)data;
 	struct tun_softc *tp = ifp->if_softc;
 	struct ifstat *ifs;
-	int		error = 0, s;
+	int error = 0;
 
-	s = splimp();
+	mtx_lock(&tp->tun_mtx);
 	switch(cmd) {
 	case SIOCGIFSTATUS:
 		ifs = (struct ifstat *)data;
-		mtx_lock(&tp->tun_mtx);
-		if (tp->tun_pid)
-			sprintf(ifs->ascii + strlen(ifs->ascii),
-			    "\tOpened by PID %d\n", tp->tun_pid);
-		mtx_unlock(&tp->tun_mtx);
 		break;
 	case SIOCSIFADDR:
 		error = tuninit(ifp);
@@ -581,7 +564,7 @@ tunifioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	default:
 		error = EINVAL;
 	}
-	splx(s);
+	mtx_unlock(&tp->tun_mtx);
 	return (error);
 }
 
@@ -687,7 +670,6 @@ tunoutput(
 static	int
 tunioctl(struct cdev *dev, u_long cmd, caddr_t data, int flag, struct thread *td)
 {
-	int		s;
 	int		error;
 	struct tun_softc *tp = dev->si_drv1;
 	struct tuninfo *tunp;
@@ -758,11 +740,6 @@ tunioctl(struct cdev *dev, u_long cmd, caddr_t data, int flag, struct thread *td
 			return(EINVAL);
 		}
 		break;
-	case TUNSIFPID:
-		mtx_lock(&tp->tun_mtx);
-		tp->tun_pid = curthread->td_proc->p_pid;
-		mtx_unlock(&tp->tun_mtx);
-		break;
 	case FIONBIO:
 		break;
 	case FIOASYNC:
@@ -774,7 +751,6 @@ tunioctl(struct cdev *dev, u_long cmd, caddr_t data, int flag, struct thread *td
 		mtx_unlock(&tp->tun_mtx);
 		break;
 	case FIONREAD:
-		s = splimp();
 		if (!IFQ_IS_EMPTY(&TUN2IFP(tp)->if_snd)) {
 			struct mbuf *mb;
 			IFQ_LOCK(&TUN2IFP(tp)->if_snd);
@@ -784,7 +760,6 @@ tunioctl(struct cdev *dev, u_long cmd, caddr_t data, int flag, struct thread *td
 			IFQ_UNLOCK(&TUN2IFP(tp)->if_snd);
 		} else
 			*(int *)data = 0;
-		splx(s);
 		break;
 	case FIOSETOWN:
 		return (fsetown(*(int *)data, &tp->tun_sigio));
@@ -818,7 +793,7 @@ tunread(struct cdev *dev, struct uio *uio, int flag)
 	struct tun_softc *tp = dev->si_drv1;
 	struct ifnet	*ifp = TUN2IFP(tp);
 	struct mbuf	*m;
-	int		error=0, len, s;
+	int		error=0, len;
 
 	TUNDEBUG (ifp, "read\n");
 	mtx_lock(&tp->tun_mtx);
@@ -827,29 +802,21 @@ tunread(struct cdev *dev, struct uio *uio, int flag)
 		TUNDEBUG (ifp, "not ready 0%o\n", tp->tun_flags);
 		return (EHOSTDOWN);
 	}
-
-	tp->tun_flags &= ~TUN_RWAIT;
 	mtx_unlock(&tp->tun_mtx);
 
-	s = splimp();
 	do {
 		IFQ_DEQUEUE(&ifp->if_snd, m);
 		if (m == NULL) {
 			if (flag & O_NONBLOCK) {
-				splx(s);
 				return (EWOULDBLOCK);
 			}
 			mtx_lock(&tp->tun_mtx);
-			tp->tun_flags |= TUN_RWAIT;
+			error = cv_wait_sig(&tp->tun_rwait_cv, &tp->tun_mtx);
 			mtx_unlock(&tp->tun_mtx);
-			if ((error = tsleep(tp, PCATCH | (PZERO + 1),
-					"tunread", 0)) != 0) {
-				splx(s);
+			if (error)
 				return (error);
-			}
 		}
 	} while (m == NULL);
-	splx(s);
 
 	while (m && uio->uio_resid > 0 && error == 0) {
 		len = min(uio->uio_resid, m->m_len);
@@ -962,13 +929,11 @@ tunwrite(struct cdev *dev, struct uio *uio, int flag)
 static	int
 tunpoll(struct cdev *dev, int events, struct thread *td)
 {
-	int		s;
 	struct tun_softc *tp = dev->si_drv1;
 	struct ifnet	*ifp = TUN2IFP(tp);
 	int		revents = 0;
 	struct mbuf	*m;
 
-	s = splimp();
 	TUNDEBUG(ifp, "tunpoll\n");
 
 	if (events & (POLLIN | POLLRDNORM)) {
@@ -986,7 +951,6 @@ tunpoll(struct cdev *dev, int events, struct thread *td)
 	if (events & (POLLOUT | POLLWRNORM))
 		revents |= events & (POLLOUT | POLLWRNORM);
 
-	splx(s);
 	return (revents);
 }
 
@@ -1034,12 +998,11 @@ tunkqfilter(struct cdev *dev, struct knote *kn)
 static int
 tunkqread(struct knote *kn, long hint)
 {
-	int			ret, s;
+	int			ret;
 	struct cdev		*dev = (struct cdev *)(kn->kn_hook);
 	struct tun_softc	*tp = dev->si_drv1;
 	struct ifnet	*ifp = TUN2IFP(tp);
 
-	s = splimp();
 	if ((kn->kn_data = ifp->if_snd.ifq_len) > 0) {
 		TUNDEBUG(ifp,
 		    "%s have data in the queue.  Len = %d, minor = %#x\n",
@@ -1051,7 +1014,6 @@ tunkqread(struct knote *kn, long hint)
 		    dev2unit(dev));
 		ret = 0;
 	}
-	splx(s);
 
 	return (ret);
 }
@@ -1062,13 +1024,12 @@ tunkqread(struct knote *kn, long hint)
 static int
 tunkqwrite(struct knote *kn, long hint)
 {
-	int			s;
 	struct tun_softc	*tp = ((struct cdev *)kn->kn_hook)->si_drv1;
 	struct ifnet	*ifp = TUN2IFP(tp);
 
-	s = splimp();
+	mtx_lock(&tp->tun_mtx);
 	kn->kn_data = ifp->if_mtu;
-	splx(s);
+	mtx_unlock(&tp->tun_mtx);
 
 	return (1);
 }
