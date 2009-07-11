@@ -91,13 +91,117 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/stdarg.h>
 
-#if 1
-void gre_inet_ntoa(struct in_addr in);	/* XXX */
+static int
+gre_input_lookup_func(struct gre_softc_external *sc, struct mbuf *m, u_char proto)
+{
+	struct ip *ip = mtod(m, struct ip *);
+
+	return ((sc->g_dst.s_addr == ip->ip_src.s_addr) &&
+	    (sc->g_src.s_addr == ip->ip_dst.s_addr) &&
+	    (sc->g_proto == proto));
+}
+
+/*
+ * Decapsulate. Does the real work and is called from gre_input()
+ * (above). Returns an mbuf back if packet is not yet processed,
+ * and NULL if it needs no further processing. proto is the protocol
+ * number of the "calling" foo_input() routine.
+ */
+static struct mbuf *
+gre_input2(struct mbuf *m ,int hlen, u_char proto)
+{
+	struct greip *gip;
+	int isr;
+	struct gre_softc *sc;
+	u_int16_t flags;
+	u_int32_t af;
+
+	if ((sc = gre_lookup(m, proto, gre_input_lookup_func)) == NULL) {
+		/* No matching tunnel or tunnel is down. */
+		return (m);
+	}
+
+	if (m->m_len < sizeof(*gip)) {
+		m = m_pullup(m, sizeof(*gip));
+		if (m == NULL) 
+			goto done;
+	}
+	gip = mtod(m, struct greip *);
+
+	GRE2IFP(sc)->if_ipackets++;
+	GRE2IFP(sc)->if_ibytes += m->m_pkthdr.len;
+
+	switch (proto) {
+	case IPPROTO_GRE:
+		hlen += sizeof(struct gre_h);
+
+		/* process GRE flags as packet can be of variable len */
+		flags = ntohs(gip->gi_flags);
+
+		/* Checksum & Offset are present */
+		if ((flags & GRE_CP) | (flags & GRE_RP))
+			hlen += 4;
+		/* We don't support routing fields (variable length) */
+		if (flags & GRE_RP)
+			goto done;
+		if (flags & GRE_KP)
+			hlen += 4;
+		if (flags & GRE_SP)
+			hlen += 4;
+
+		switch (ntohs(gip->gi_ptype)) { /* ethertypes */
+		case WCCP_PROTOCOL_TYPE:
+			if (((struct gre_softc_external *)sc)->g_wccp_ver == WCCP_V2)
+				hlen += 4;
+			/* FALLTHROUGH */
+		case ETHERTYPE_IP:	/* shouldn't need a schednetisr(), */
+			isr = NETISR_IP;/* as we are in ip_input */
+			af = AF_INET;
+			break;
+#ifdef INET6
+		case ETHERTYPE_IPV6:
+			isr = NETISR_IPV6;
+			af = AF_INET6;
+			break;
 #endif
+#ifdef NETATALK
+		case ETHERTYPE_ATALK:
+			isr = NETISR_ATALK1;
+			af = AF_APPLETALK;
+			break;
+#endif
+		default:
+			/* Others not yet supported. */
+			goto done;
+		}
+		break;
+	default:
+		/* Others not yet supported. */
+		goto done;
+	}
 
-static struct gre_softc *gre_lookup(struct mbuf *, u_int8_t);
+	if (hlen > m->m_pkthdr.len) {
+		m_freem(m);
+		m = NULL;
+		goto done;
+	}
+	/* Unlike NetBSD, in FreeBSD m_adj() adjusts m->m_pkthdr.len as well */
+	m_adj(m, hlen);
 
-static struct mbuf *gre_input2(struct mbuf *, int, u_char);
+	if (bpf_peers_present(GRE2IFP(sc)->if_bpf)) {
+		bpf_mtap2(GRE2IFP(sc)->if_bpf, &af, sizeof(af), m);
+	}
+
+	m->m_pkthdr.rcvif = GRE2IFP(sc);
+	gre_free(sc);
+	netisr_queue(isr, m);
+
+	/* Packet is done, no further processing needed. */
+	return (NULL);
+done:
+	gre_free(sc);
+	return (m);
+}
 
 /*
  * De-encapsulate a packet and feed it back through ip input (this
@@ -123,110 +227,11 @@ gre_input(struct mbuf *m, int off)
 }
 
 /*
- * Decapsulate. Does the real work and is called from gre_input()
- * (above). Returns an mbuf back if packet is not yet processed,
- * and NULL if it needs no further processing. proto is the protocol
- * number of the "calling" foo_input() routine.
- */
-static struct mbuf *
-gre_input2(struct mbuf *m ,int hlen, u_char proto)
-{
-	struct greip *gip;
-	int isr;
-	struct gre_softc *sc;
-	u_int16_t flags;
-	u_int32_t af;
-
-	if ((sc = gre_lookup(m, proto)) == NULL) {
-		/* No matching tunnel or tunnel is down. */
-		return (m);
-	}
-
-	if (m->m_len < sizeof(*gip)) {
-		m = m_pullup(m, sizeof(*gip));
-		if (m == NULL)
-			return (NULL);
-	}
-	gip = mtod(m, struct greip *);
-
-	GRE2IFP(sc)->if_ipackets++;
-	GRE2IFP(sc)->if_ibytes += m->m_pkthdr.len;
-
-	switch (proto) {
-	case IPPROTO_GRE:
-		hlen += sizeof(struct gre_h);
-
-		/* process GRE flags as packet can be of variable len */
-		flags = ntohs(gip->gi_flags);
-
-		/* Checksum & Offset are present */
-		if ((flags & GRE_CP) | (flags & GRE_RP))
-			hlen += 4;
-		/* We don't support routing fields (variable length) */
-		if (flags & GRE_RP)
-			return (m);
-		if (flags & GRE_KP)
-			hlen += 4;
-		if (flags & GRE_SP)
-			hlen += 4;
-
-		switch (ntohs(gip->gi_ptype)) { /* ethertypes */
-		case WCCP_PROTOCOL_TYPE:
-			if (sc->wccp_ver == WCCP_V2)
-				hlen += 4;
-			/* FALLTHROUGH */
-		case ETHERTYPE_IP:	/* shouldn't need a schednetisr(), */
-			isr = NETISR_IP;/* as we are in ip_input */
-			af = AF_INET;
-			break;
-#ifdef INET6
-		case ETHERTYPE_IPV6:
-			isr = NETISR_IPV6;
-			af = AF_INET6;
-			break;
-#endif
-#ifdef NETATALK
-		case ETHERTYPE_ATALK:
-			isr = NETISR_ATALK1;
-			af = AF_APPLETALK;
-			break;
-#endif
-		default:
-			/* Others not yet supported. */
-			return (m);
-		}
-		break;
-	default:
-		/* Others not yet supported. */
-		return (m);
-	}
-
-	if (hlen > m->m_pkthdr.len) {
-		m_freem(m);
-		return (NULL);
-	}
-	/* Unlike NetBSD, in FreeBSD m_adj() adjusts m->m_pkthdr.len as well */
-	m_adj(m, hlen);
-
-	if (bpf_peers_present(GRE2IFP(sc)->if_bpf)) {
-		bpf_mtap2(GRE2IFP(sc)->if_bpf, &af, sizeof(af), m);
-	}
-
-	m->m_pkthdr.rcvif = GRE2IFP(sc);
-
-	netisr_queue(isr, m);
-
-	/* Packet is done, no further processing needed. */
-	return (NULL);
-}
-
-/*
  * input routine for IPPRPOTO_MOBILE
  * This is a little bit diffrent from the other modes, as the
  * encapsulating header was not prepended, but instead inserted
  * between IP header and payload
  */
-
 void
 gre_mobile_input(struct mbuf *m, int hlen)
 {
@@ -235,7 +240,7 @@ gre_mobile_input(struct mbuf *m, int hlen)
 	struct gre_softc *sc;
 	int msiz;
 
-	if ((sc = gre_lookup(m, IPPROTO_MOBILE)) == NULL) {
+	if ((sc = gre_lookup(m, IPPROTO_MOBILE, gre_input_lookup_func)) == NULL) {
 		/* No matching tunnel or tunnel is down. */
 		m_freem(m);
 		return;
@@ -244,7 +249,7 @@ gre_mobile_input(struct mbuf *m, int hlen)
 	if (m->m_len < sizeof(*mip)) {
 		m = m_pullup(m, sizeof(*mip));
 		if (m == NULL)
-			return;
+			goto done;
 	}
 	ip = mtod(m, struct ip *);
 	mip = mtod(m, struct mobip_h *);
@@ -261,7 +266,7 @@ gre_mobile_input(struct mbuf *m, int hlen)
 	if (m->m_len < (ip->ip_hl << 2) + msiz) {
 		m = m_pullup(m, (ip->ip_hl << 2) + msiz);
 		if (m == NULL)
-			return;
+			goto done;
 		ip = mtod(m, struct ip *);
 		mip = mtod(m, struct mobip_h *);
 	}
@@ -271,7 +276,7 @@ gre_mobile_input(struct mbuf *m, int hlen)
 
 	if (gre_in_cksum((u_int16_t *)&mip->mh, msiz) != 0) {
 		m_freem(m);
-		return;
+		goto done;
 	}
 
 	bcopy((caddr_t)(ip) + (ip->ip_hl << 2) + msiz, (caddr_t)(ip) +
@@ -297,38 +302,8 @@ gre_mobile_input(struct mbuf *m, int hlen)
 	}
 
 	m->m_pkthdr.rcvif = GRE2IFP(sc);
-
 	netisr_queue(NETISR_IP, m);
-}
 
-/*
- * Find the gre interface associated with our src/dst/proto set.
- *
- * XXXRW: Need some sort of drain/refcount mechanism so that the softc
- * reference remains valid after it's returned from gre_lookup().  Right
- * now, I'm thinking it should be reference-counted with a gre_dropref()
- * when the caller is done with the softc.  This is complicated by how
- * to handle destroying the gre softc; probably using a gre_drain() in
- * in_gre.c during destroy.
- */
-static struct gre_softc *
-gre_lookup(struct mbuf *m, u_int8_t proto)
-{
-	struct ip *ip = mtod(m, struct ip *);
-	struct gre_softc *sc;
-
-	mtx_lock(&gre_mtx);
-	for (sc = LIST_FIRST(&gre_softc_list); sc != NULL;
-	     sc = LIST_NEXT(sc, sc_list)) {
-		if ((sc->g_dst.s_addr == ip->ip_src.s_addr) &&
-		    (sc->g_src.s_addr == ip->ip_dst.s_addr) &&
-		    (sc->g_proto == proto) &&
-		    ((GRE2IFP(sc)->if_flags & IFF_UP) != 0)) {
-			mtx_unlock(&gre_mtx);
-			return (sc);
-		}
-	}
-	mtx_unlock(&gre_mtx);
-
-	return (NULL);
+done:
+	gre_free(sc);
 }

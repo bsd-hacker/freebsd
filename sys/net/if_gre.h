@@ -54,30 +54,19 @@ typedef enum {
 	WCCP_V2
 } wccp_ver_t;
 
-struct gre_softc {
-	struct ifnet *sc_ifp;
-	LIST_ENTRY(gre_softc) sc_list;
-	int gre_unit;
-	int gre_flags;
-	u_int	gre_fibnum;	/* use this fib for envelopes */
+/*
+ * The binary contract is to have the ifp at the front of the softc
+ *
+ */
+#define	GRE2IFP(sc)	(*(struct ifnet **)(&sc))
+struct gre_softc_external {
+	struct ifnet *gre_ifp;
 	struct in_addr g_src;	/* source address of gre packets */
 	struct in_addr g_dst;	/* destination address of gre packets */
-	struct route route;	/* routing entry that determines, where a
-				   encapsulated packet should go */
 	u_char g_proto;		/* protocol of encapsulator */
-
-	const struct encaptab *encap;	/* encapsulation cookie */
-
-	int called;		/* infinite recursion preventer */
-
-	uint32_t key;		/* key included in outgoing GRE packets */
-				/* zero means none */
-
-	wccp_ver_t wccp_ver;	/* version of the WCCP */
+	wccp_ver_t g_wccp_ver;	/* version of the WCCP */
 };
-#define	GRE2IFP(sc)	((sc)->sc_ifp)
-
-
+	
 struct gre_h {
 	u_int16_t flags;	/* GRE flags */
 	u_int16_t ptype;	/* protocol type of payload typically
@@ -184,11 +173,11 @@ struct mobip_h {
 #define GRESKEY		_IOW('i', 108, struct ifreq)
 
 #ifdef _KERNEL
-LIST_HEAD(gre_softc_head, gre_softc);
-extern struct mtx gre_mtx;
-extern struct gre_softc_head gre_softc_list;
-
+struct gre_softc;
 u_int16_t	gre_in_cksum(u_int16_t *, u_int);
+struct gre_softc *gre_lookup(struct mbuf *m, u_char proto,
+    int (*func)(struct gre_softc_external *, struct mbuf *, u_char));
+void gre_free(struct gre_softc *sc);
 #endif /* _KERNEL */
 
 #endif

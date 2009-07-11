@@ -86,9 +86,44 @@
 #endif
 
 #include <net/bpf.h>
-
 #include <net/if_gre.h>
 
+struct gre_softc {
+	struct mtx gre_mtx;
+	int gre_unit;
+	/*
+	 * refcount counts total references, not list external
+	 * like rtentry as that has proven to be error-prone
+	 */
+	int gre_refcnt;
+	u_int	gre_fibnum;	/* use this fib for envelopes */
+	struct route route;	/* routing entry that determines, where a
+				   encapsulated packet should go */
+	const struct encaptab *encap;	/* encapsulation cookie */
+
+	int called;		/* infinite recursion preventer */
+
+	uint32_t key;		/* key included in outgoing GRE packets */
+				/* zero means none */
+
+#define	MTX_BUF_SIZE	32
+	char sc_mtx_buf[MTX_BUF_SIZE];
+	LIST_ENTRY(gre_softc) sc_list;
+	struct gre_softc_external gre_ext;
+};
+#define	gre_src		gre_ext.g_src
+#define	gre_dst		gre_ext.g_dst
+#define	gre_proto	gre_ext.g_proto
+#define	gre_wccp_ver	gre_ext.g_wccp_ver
+LIST_HEAD(gre_softc_head, gre_softc);
+
+#define GRE_LOCK(sc)	mtx_lock(&(sc)->gre_mtx);
+#define GRE_UNLOCK(sc)	mtx_unlock(&(sc)->gre_mtx);
+#define	GRE_ADDREF(sc)	do {			\
+		GRE_LOCK(sc);			\
+		(sc)->gre_refcnt++;		\
+		GRE_UNLOCK(sc);			\
+	} while (0)
 /*
  * It is not easy to calculate the right value for a GRE MTU.
  * We leave this task to the admin and use the same default that
@@ -188,6 +223,9 @@ gre_clone_create(ifc, unit, params)
 		free(sc, M_GRE);
 		return (ENOSPC);
 	}
+	snprintf(sc->sc_mtx_buf, MTX_BUF_SIZE, "%s%d_mtx", ifc->ifc_name, unit);
+	mtx_init(&sc->gre_mtx, sc->sc_mtx_buf, NULL, MTX_DEF);
+	sc->gre_refcnt = 1;
 
 	GRE2IFP(sc)->if_softc = sc;
 	if_initname(GRE2IFP(sc), ifc->ifc_name, unit);
@@ -199,13 +237,13 @@ gre_clone_create(ifc, unit, params)
 	GRE2IFP(sc)->if_flags = IFF_POINTOPOINT|IFF_MULTICAST;
 	GRE2IFP(sc)->if_output = gre_output;
 	GRE2IFP(sc)->if_ioctl = gre_ioctl;
-	sc->g_dst.s_addr = sc->g_src.s_addr = INADDR_ANY;
-	sc->g_proto = IPPROTO_GRE;
+	sc->gre_dst.s_addr = sc->gre_src.s_addr = INADDR_ANY;
+	sc->gre_proto = IPPROTO_GRE;
 	GRE2IFP(sc)->if_flags |= IFF_LINK0;
 	sc->encap = NULL;
 	sc->called = 0;
 	sc->gre_fibnum = curthread->td_proc->p_fibnum;
-	sc->wccp_ver = WCCP_V1;
+	sc->gre_wccp_ver = WCCP_V1;
 	sc->key = 0;
 	if_attach(GRE2IFP(sc));
 	bpfattach(GRE2IFP(sc), DLT_NULL, sizeof(u_int32_t));
@@ -215,29 +253,43 @@ gre_clone_create(ifc, unit, params)
 	return (0);
 }
 
-static void
-gre_clone_destroy(ifp)
-	struct ifnet *ifp;
+void
+gre_free(struct gre_softc *sc)
 {
-	struct gre_softc *sc = ifp->if_softc;
+	struct ifnet *ifp;
 
-	mtx_lock(&gre_mtx);
-	LIST_REMOVE(sc, sc_list);
-	mtx_unlock(&gre_mtx);
+	GRE_LOCK(sc);	
+	(sc)->gre_refcnt--;
+	if ((sc)->gre_refcnt > 0) {
+		GRE_UNLOCK((sc));
+		return;
+	}
 
 #ifdef INET
 	if (sc->encap != NULL)
 		encap_detach(sc->encap);
 #endif
+	ifp = GRE2IFP(sc);
 	bpfdetach(ifp);
 	if_detach(ifp);
 	if_free(ifp);
 	free(sc, M_GRE);
 }
 
+static void
+gre_clone_destroy(struct ifnet *ifp)
+{
+	struct gre_softc *sc = ifp->if_softc;
+
+	mtx_lock(&gre_mtx);
+	LIST_REMOVE(sc, sc_list);
+	mtx_unlock(&gre_mtx);
+	gre_free(sc);
+}
+
 /*
  * The output routine. Takes a packet and encapsulates it in the protocol
- * given by sc->g_proto. See also RFC 1701 and RFC 2004
+ * given by sc->gre_proto. See also RFC 1701 and RFC 2004
  */
 static int
 gre_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
@@ -256,7 +308,8 @@ gre_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 	struct mobile_h mob_h;
 	u_int32_t af;
 	int extra = 0;
-
+	
+	GRE_LOCK(sc);
 	/*
 	 * gre may cause infinite recursion calls when misconfigured.
 	 * We'll prevent this by introducing upper limit.
@@ -271,7 +324,7 @@ gre_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 
 	if (!((ifp->if_flags & IFF_UP) &&
 	    (ifp->if_drv_flags & IFF_DRV_RUNNING)) ||
-	    sc->g_src.s_addr == INADDR_ANY || sc->g_dst.s_addr == INADDR_ANY) {
+	    sc->gre_src.s_addr == INADDR_ANY || sc->gre_dst.s_addr == INADDR_ANY) {
 		m_freem(m);
 		error = ENETDOWN;
 		goto end;
@@ -293,7 +346,7 @@ gre_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 
 	m->m_flags &= ~(M_BCAST|M_MCAST);
 
-	if (sc->g_proto == IPPROTO_MOBILE) {
+	if (sc->gre_proto == IPPROTO_MOBILE) {
 		if (dst->sa_family == AF_INET) {
 			struct mbuf *m0;
 			int msiz;
@@ -313,19 +366,19 @@ gre_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 			memset(&mob_h, 0, MOB_H_SIZ_L);
 			mob_h.proto = (ip->ip_p) << 8;
 			mob_h.odst = ip->ip_dst.s_addr;
-			ip->ip_dst.s_addr = sc->g_dst.s_addr;
+			ip->ip_dst.s_addr = sc->gre_dst.s_addr;
 
 			/*
 			 * If the packet comes from our host, we only change
 			 * the destination address in the IP header.
 			 * Else we also need to save and change the source
 			 */
-			if (in_hosteq(ip->ip_src, sc->g_src)) {
+			if (in_hosteq(ip->ip_src, sc->gre_src)) {
 				msiz = MOB_H_SIZ_S;
 			} else {
 				mob_h.proto |= MOB_H_SBIT;
 				mob_h.osrc = ip->ip_src.s_addr;
-				ip->ip_src.s_addr = sc->g_src.s_addr;
+				ip->ip_src.s_addr = sc->gre_src.s_addr;
 				msiz = MOB_H_SIZ_L;
 			}
 			mob_h.proto = htons(mob_h.proto);
@@ -365,13 +418,13 @@ gre_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 			error = EINVAL;
 			goto end;
 		}
-	} else if (sc->g_proto == IPPROTO_GRE) {
+	} else if (sc->gre_proto == IPPROTO_GRE) {
 		switch (dst->sa_family) {
 		case AF_INET:
 			ip = mtod(m, struct ip *);
 			gre_ip_tos = ip->ip_tos;
 			gre_ip_id = ip->ip_id;
-			if (sc->wccp_ver == WCCP_V2) {
+			if (sc->gre_wccp_ver == WCCP_V2) {
 				extra = sizeof(uint32_t);
 				etype =  WCCP_PROTOCOL_TYPE;
 			} else {
@@ -417,7 +470,7 @@ gre_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 	M_SETFIB(m, sc->gre_fibnum); /* The envelope may use a different FIB */
 
 	gh = mtod(m, struct greip *);
-	if (sc->g_proto == IPPROTO_GRE) {
+	if (sc->gre_proto == IPPROTO_GRE) {
 		uint32_t *options = gh->gi_options;
 
 		memset((void *)gh, 0, sizeof(struct greip) + extra);
@@ -432,10 +485,10 @@ gre_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 		}
 	}
 
-	gh->gi_pr = sc->g_proto;
-	if (sc->g_proto != IPPROTO_MOBILE) {
-		gh->gi_src = sc->g_src;
-		gh->gi_dst = sc->g_dst;
+	gh->gi_pr = sc->gre_proto;
+	if (sc->gre_proto != IPPROTO_MOBILE) {
+		gh->gi_src = sc->gre_src;
+		gh->gi_dst = sc->gre_dst;
 		((struct ip*)gh)->ip_v = IPPROTO_IPV4;
 		((struct ip*)gh)->ip_hl = (sizeof(struct ip)) >> 2;
 		((struct ip*)gh)->ip_ttl = GRE_TTL;
@@ -454,6 +507,7 @@ gre_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 	error = ip_output(m, NULL, &sc->route, IP_FORWARDING,
 	    (struct ip_moptions *)NULL, (struct inpcb *)NULL);
   end:
+	GRE_UNLOCK(sc);
 	sc->called = 0;
 	if (error)
 		ifp->if_oerrors++;
@@ -467,7 +521,6 @@ gre_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	struct if_laddrreq *lifr = (struct if_laddrreq *)data;
 	struct in_aliasreq *aifr = (struct in_aliasreq *)data;
 	struct gre_softc *sc = ifp->if_softc;
-	int s;
 	struct sockaddr_in si;
 	struct sockaddr *sa = NULL;
 	int error, adj;
@@ -477,7 +530,7 @@ gre_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	error = 0;
 	adj = 0;
 
-	s = splnet();
+	GRE_LOCK(sc);
 	switch (cmd) {
 	case SIOCSIFADDR:
 		ifp->if_flags |= IFF_UP;
@@ -492,13 +545,13 @@ gre_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		if ((error = priv_check(curthread, PRIV_NET_SETIFFLAGS)) != 0)
 			break;
 		if ((ifr->ifr_flags & IFF_LINK0) != 0)
-			sc->g_proto = IPPROTO_GRE;
+			sc->gre_proto = IPPROTO_GRE;
 		else
-			sc->g_proto = IPPROTO_MOBILE;
+			sc->gre_proto = IPPROTO_MOBILE;
 		if ((ifr->ifr_flags & IFF_LINK2) != 0)
-			sc->wccp_ver = WCCP_V2;
+			sc->gre_wccp_ver = WCCP_V2;
 		else
-			sc->wccp_ver = WCCP_V1;
+			sc->gre_wccp_ver = WCCP_V1;
 		goto recompute;
 	case SIOCSIFMTU:
 		/*
@@ -573,8 +626,8 @@ gre_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		 */
 		if ((error = priv_check(curthread, PRIV_NET_GRE)) != 0)
 			break;
-		sc->g_proto = ifr->ifr_flags;
-		switch (sc->g_proto) {
+		sc->gre_proto = ifr->ifr_flags;
+		switch (sc->gre_proto) {
 		case IPPROTO_GRE:
 			ifp->if_flags |= IFF_LINK0;
 			break;
@@ -587,7 +640,7 @@ gre_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		}
 		goto recompute;
 	case GREGPROTO:
-		ifr->ifr_flags = sc->g_proto;
+		ifr->ifr_flags = sc->gre_proto;
 		break;
 	case GRESADDRS:
 	case GRESADDRD:
@@ -600,9 +653,9 @@ gre_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		 */
 		sa = &ifr->ifr_addr;
 		if (cmd == GRESADDRS)
-			sc->g_src = (satosin(sa))->sin_addr;
+			sc->gre_src = (satosin(sa))->sin_addr;
 		if (cmd == GRESADDRD)
-			sc->g_dst = (satosin(sa))->sin_addr;
+			sc->gre_dst = (satosin(sa))->sin_addr;
 	recompute:
 #ifdef INET
 		if (sc->encap != NULL) {
@@ -610,8 +663,8 @@ gre_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 			sc->encap = NULL;
 		}
 #endif
-		if ((sc->g_src.s_addr != INADDR_ANY) &&
-		    (sc->g_dst.s_addr != INADDR_ANY)) {
+		if ((sc->gre_src.s_addr != INADDR_ANY) &&
+		    (sc->gre_dst.s_addr != INADDR_ANY)) {
 			bzero(&sp, sizeof(sp));
 			bzero(&sm, sizeof(sm));
 			bzero(&dp, sizeof(dp));
@@ -620,14 +673,14 @@ gre_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 			    sizeof(struct sockaddr_in);
 			sp.sin_family = sm.sin_family = dp.sin_family =
 			    dm.sin_family = AF_INET;
-			sp.sin_addr = sc->g_src;
-			dp.sin_addr = sc->g_dst;
+			sp.sin_addr = sc->gre_src;
+			dp.sin_addr = sc->gre_dst;
 			sm.sin_addr.s_addr = dm.sin_addr.s_addr =
 			    INADDR_BROADCAST;
 #ifdef INET
-			sc->encap = encap_attach(AF_INET, sc->g_proto,
+			sc->encap = encap_attach(AF_INET, sc->gre_proto,
 			    sintosa(&sp), sintosa(&sm), sintosa(&dp),
-			    sintosa(&dm), (sc->g_proto == IPPROTO_GRE) ?
+			    sintosa(&dm), (sc->gre_proto == IPPROTO_GRE) ?
 				&in_gre_protosw : &in_mobile_protosw, sc);
 			if (sc->encap == NULL)
 				printf("%s: unable to attach encap\n",
@@ -645,7 +698,7 @@ gre_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		memset(&si, 0, sizeof(si));
 		si.sin_family = AF_INET;
 		si.sin_len = sizeof(struct sockaddr_in);
-		si.sin_addr.s_addr = sc->g_src.s_addr;
+		si.sin_addr.s_addr = sc->gre_src.s_addr;
 		sa = sintosa(&si);
 		ifr->ifr_addr = *sa;
 		break;
@@ -653,7 +706,7 @@ gre_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		memset(&si, 0, sizeof(si));
 		si.sin_family = AF_INET;
 		si.sin_len = sizeof(struct sockaddr_in);
-		si.sin_addr.s_addr = sc->g_dst.s_addr;
+		si.sin_addr.s_addr = sc->gre_dst.s_addr;
 		sa = sintosa(&si);
 		ifr->ifr_addr = *sa;
 		break;
@@ -674,8 +727,8 @@ gre_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 			error = EINVAL;
 			break;
 		}
-		sc->g_src = aifr->ifra_addr.sin_addr;
-		sc->g_dst = aifr->ifra_dstaddr.sin_addr;
+		sc->gre_src = aifr->ifra_addr.sin_addr;
+		sc->gre_dst = aifr->ifra_dstaddr.sin_addr;
 		goto recompute;
 	case SIOCSLIFPHYADDR:
 		/*
@@ -694,8 +747,8 @@ gre_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 			error = EINVAL;
 			break;
 		}
-		sc->g_src = (satosin(&lifr->addr))->sin_addr;
-		sc->g_dst =
+		sc->gre_src = (satosin(&lifr->addr))->sin_addr;
+		sc->gre_dst =
 		    (satosin(&lifr->dstaddr))->sin_addr;
 		goto recompute;
 	case SIOCDIFPHYADDR:
@@ -705,49 +758,49 @@ gre_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		 */
 		if ((error = priv_check(curthread, PRIV_NET_SETIFPHYS)) != 0)
 			break;
-		sc->g_src.s_addr = INADDR_ANY;
-		sc->g_dst.s_addr = INADDR_ANY;
+		sc->gre_src.s_addr = INADDR_ANY;
+		sc->gre_dst.s_addr = INADDR_ANY;
 		goto recompute;
 	case SIOCGLIFPHYADDR:
-		if (sc->g_src.s_addr == INADDR_ANY ||
-		    sc->g_dst.s_addr == INADDR_ANY) {
+		if (sc->gre_src.s_addr == INADDR_ANY ||
+		    sc->gre_dst.s_addr == INADDR_ANY) {
 			error = EADDRNOTAVAIL;
 			break;
 		}
 		memset(&si, 0, sizeof(si));
 		si.sin_family = AF_INET;
 		si.sin_len = sizeof(struct sockaddr_in);
-		si.sin_addr.s_addr = sc->g_src.s_addr;
+		si.sin_addr.s_addr = sc->gre_src.s_addr;
 		memcpy(&lifr->addr, &si, sizeof(si));
-		si.sin_addr.s_addr = sc->g_dst.s_addr;
+		si.sin_addr.s_addr = sc->gre_dst.s_addr;
 		memcpy(&lifr->dstaddr, &si, sizeof(si));
 		break;
 	case SIOCGIFPSRCADDR:
 #ifdef INET6
 	case SIOCGIFPSRCADDR_IN6:
 #endif
-		if (sc->g_src.s_addr == INADDR_ANY) {
+		if (sc->gre_src.s_addr == INADDR_ANY) {
 			error = EADDRNOTAVAIL;
 			break;
 		}
 		memset(&si, 0, sizeof(si));
 		si.sin_family = AF_INET;
 		si.sin_len = sizeof(struct sockaddr_in);
-		si.sin_addr.s_addr = sc->g_src.s_addr;
+		si.sin_addr.s_addr = sc->gre_src.s_addr;
 		bcopy(&si, &ifr->ifr_addr, sizeof(ifr->ifr_addr));
 		break;
 	case SIOCGIFPDSTADDR:
 #ifdef INET6
 	case SIOCGIFPDSTADDR_IN6:
 #endif
-		if (sc->g_dst.s_addr == INADDR_ANY) {
+		if (sc->gre_dst.s_addr == INADDR_ANY) {
 			error = EADDRNOTAVAIL;
 			break;
 		}
 		memset(&si, 0, sizeof(si));
 		si.sin_family = AF_INET;
 		si.sin_len = sizeof(struct sockaddr_in);
-		si.sin_addr.s_addr = sc->g_dst.s_addr;
+		si.sin_addr.s_addr = sc->gre_dst.s_addr;
 		bcopy(&si, &ifr->ifr_addr, sizeof(ifr->ifr_addr));
 		break;
 	case GRESKEY:
@@ -779,7 +832,7 @@ gre_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		break;
 	}
 
-	splx(s);
+	GRE_UNLOCK(sc);
 	return (error);
 }
 
@@ -802,7 +855,7 @@ gre_compute_route(struct gre_softc *sc)
 	ro = &sc->route;
 
 	memset(ro, 0, sizeof(struct route));
-	((struct sockaddr_in *)&ro->ro_dst)->sin_addr = sc->g_dst;
+	((struct sockaddr_in *)&ro->ro_dst)->sin_addr = sc->gre_dst;
 	ro->ro_dst.sa_family = AF_INET;
 	ro->ro_dst.sa_len = sizeof(ro->ro_dst);
 
@@ -843,7 +896,7 @@ gre_compute_route(struct gre_softc *sc)
 	 * the route and search one to this interface ...
 	 */
 	if ((GRE2IFP(sc)->if_flags & IFF_LINK1) == 0)
-		((struct sockaddr_in *)&ro->ro_dst)->sin_addr = sc->g_dst;
+		((struct sockaddr_in *)&ro->ro_dst)->sin_addr = sc->gre_dst;
 
 #ifdef DIAGNOSTIC
 	printf(", choosing %s with gateway %s", if_name(ro->ro_rt->rt_ifp),
@@ -881,6 +934,31 @@ gre_in_cksum(u_int16_t *p, u_int len)
 	sum = (sum >> 16) + (sum & 0xffff);
 	sum += (sum >> 16);
 	return (~sum);
+}
+
+/*
+ * Find the gre interface associated with our src/dst/proto set.
+ *
+ */
+struct gre_softc *
+gre_lookup(struct mbuf *m, u_char proto,
+    int (*func)(struct gre_softc_external *, struct mbuf *, u_char))
+{
+	struct gre_softc *sc;
+
+	mtx_lock(&gre_mtx);
+	for (sc = LIST_FIRST(&gre_softc_list); sc != NULL;
+	     sc = LIST_NEXT(sc, sc_list)) {
+		if (func(&sc->gre_ext, m, proto) &&
+		    ((GRE2IFP(sc)->if_flags & IFF_UP) != 0)) {
+			GRE_ADDREF(sc);
+			mtx_unlock(&gre_mtx);
+			return (sc);
+		}
+	}
+	mtx_unlock(&gre_mtx);
+
+	return (NULL);
 }
 
 static int
