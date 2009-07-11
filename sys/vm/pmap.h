@@ -120,6 +120,7 @@ int		 pmap_pinit(pmap_t);
 void		 pmap_pinit0(pmap_t);
 void		 pmap_protect(pmap_t, vm_offset_t, vm_offset_t, vm_prot_t);
 void		 pmap_qenter(vm_offset_t, vm_page_t *, int);
+void		 pmap_qenter_prot(vm_offset_t, vm_page_t *, int, vm_prot_t);
 void		 pmap_qremove(vm_offset_t, int);
 void		 pmap_release(pmap_t);
 void		 pmap_remove(pmap_t, vm_offset_t, vm_offset_t);
