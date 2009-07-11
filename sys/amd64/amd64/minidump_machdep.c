@@ -202,7 +202,7 @@ minidumpsys(struct dumperinfo *di)
 	int error;
 	uint64_t bits;
 	uint64_t *pdp, *pd, *pt, pa;
-	int i, j, k, bit, pages_written;
+	int i, j, k, bit;
 	struct minidumphdr mdhdr;
 
 	counter = 0;
@@ -373,22 +373,18 @@ minidumpsys(struct dumperinfo *di)
 	/* Dump memory chunks */
 	/* XXX cluster it up and use blk_dump() */
 	printf("\nclustering memory chunks\n");
-	for (pages_written = i = 0;
+	for (i = 0;
 	     i < vm_page_dump_size / sizeof(*vm_page_dump); i++) {
 		bits = vm_page_dump[i] & ~(vm_page_dump_exclude[i]);
 		while (bits) {
 			bit = bsfq(bits);
 			pa = (((uint64_t)i * sizeof(*vm_page_dump) * NBBY) + bit) * PAGE_SIZE;
-			pages_written++;
-			if (pages_written && (pages_written % 1024) == 0)
-				printf("%dMB ", (pages_written >> 8));
 			error = blk_write(di, 0, pa, PAGE_SIZE);
 			if (error)
 				goto fail;
 			bits &= ~(1ul << bit);
 		}
 	}
-	printf("\n");
 	error = blk_flush(di);
 	if (error)
 		goto fail;
