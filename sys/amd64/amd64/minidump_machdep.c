@@ -301,6 +301,7 @@ minidumpsys(struct dumperinfo *di)
 		goto fail;
 	dumplo += sizeof(kdh);
 
+	printf("write header\n");
 	/* Dump my header */
 	bzero(&fakept, sizeof(fakept));
 	bcopy(&mdhdr, &fakept, sizeof(mdhdr));
@@ -308,11 +309,13 @@ minidumpsys(struct dumperinfo *di)
 	if (error)
 		goto fail;
 
+	printf("write msgbuf\n");
 	/* Dump msgbuf up front */
 	error = blk_write(di, (char *)msgbufp->msg_ptr, 0, round_page(msgbufp->msg_size));
 	if (error)
 		goto fail;
 
+	printf("write bitmap\n");
 	/* Dump bitmap */
 	error = blk_write(di, (char *)vm_page_dump, 0, round_page(vm_page_dump_size));
 	if (error)
