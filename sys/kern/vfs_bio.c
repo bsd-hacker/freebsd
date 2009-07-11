@@ -1308,9 +1308,12 @@ brelse(struct buf *bp)
 				}
 
 				if ((bp->b_flags & B_INVAL) == 0) {
-					pmap_qenter(
-					    trunc_page((vm_offset_t)bp->b_data),
-					    bp->b_pages, bp->b_npages);
+					pmap_qenter_prot(
+						trunc_page((vm_offset_t)bp->b_data),
+						    bp->b_pages, 
+						    bp->b_npages,
+						    (VM_PROT_READ|VM_PROT_WRITE|VM_PROT_EXCLUDE)
+						);
 				}
 				m = bp->b_pages[i];
 			}
@@ -2988,12 +2991,13 @@ allocbuf(struct buf *bp, int size)
 
 			bp->b_data = (caddr_t)
 			    trunc_page((vm_offset_t)bp->b_data);
-			pmap_qenter(
-			    (vm_offset_t)bp->b_data,
-			    bp->b_pages, 
-			    bp->b_npages
-			);
-			
+			pmap_qenter_prot(
+				(vm_offset_t)bp->b_data,
+				    bp->b_pages, 
+				    bp->b_npages,
+				    (VM_PROT_READ|VM_PROT_WRITE|VM_PROT_EXCLUDE)
+				);
+
 			bp->b_data = (caddr_t)((vm_offset_t)bp->b_data | 
 			    (vm_offset_t)(bp->b_offset & PAGE_MASK));
 		}
@@ -3257,8 +3261,12 @@ bufdone_finish(struct buf *bp)
 				if (m == NULL)
 					panic("biodone: page disappeared!");
 				bp->b_pages[i] = m;
-				pmap_qenter(trunc_page((vm_offset_t)bp->b_data),
-				    bp->b_pages, bp->b_npages);
+				pmap_qenter_prot(
+					trunc_page((vm_offset_t)bp->b_data),
+					    bp->b_pages, 
+					    bp->b_npages,
+					    (VM_PROT_READ|VM_PROT_WRITE|VM_PROT_EXCLUDE)
+				);
 			}
 #if defined(VFS_BIO_DEBUG)
 			if (OFF_TO_IDX(foff) != m->pindex) {
@@ -3353,8 +3361,12 @@ vfs_unbusy_pages(struct buf *bp)
 			if (!m)
 				panic("vfs_unbusy_pages: page missing\n");
 			bp->b_pages[i] = m;
-			pmap_qenter(trunc_page((vm_offset_t)bp->b_data),
-			    bp->b_pages, bp->b_npages);
+			pmap_qenter_prot(
+				trunc_page((vm_offset_t)bp->b_data),
+				    bp->b_pages, 
+				    bp->b_npages,
+				    (VM_PROT_READ|VM_PROT_WRITE|VM_PROT_EXCLUDE)
+				);
 		}
 		vm_object_pip_subtract(obj, 1);
 		vm_page_io_finish(m);
@@ -3477,8 +3489,12 @@ retry:
 	}
 	VM_OBJECT_UNLOCK(obj);
 	if (bogus)
-		pmap_qenter(trunc_page((vm_offset_t)bp->b_data),
-		    bp->b_pages, bp->b_npages);
+		pmap_qenter_prot(
+			trunc_page((vm_offset_t)bp->b_data),
+			    bp->b_pages, 
+			    bp->b_npages,
+			    (VM_PROT_READ|VM_PROT_WRITE|VM_PROT_EXCLUDE)
+			);
 }
 
 /*
@@ -3665,7 +3681,8 @@ tryagain:
 			goto tryagain;
 		}
 		p->valid = VM_PAGE_BITS_ALL;
-		pmap_qenter(pg, &p, 1);
+		pmap_qenter_prot(pg, &p, 1,
+		    (VM_PROT_READ|VM_PROT_WRITE|VM_PROT_EXCLUDE));
 		bp->b_pages[index] = p;
 	}
 	VM_OBJECT_UNLOCK(kernel_object);
@@ -3764,7 +3781,8 @@ retry:
 	}
 	if (pidx > btoc(MAXPHYS))
 		panic("vmapbuf: mapped more than MAXPHYS");
-	pmap_qenter((vm_offset_t)bp->b_saveaddr, bp->b_pages, pidx);
+	pmap_qenter_prot((vm_offset_t)bp->b_saveaddr, bp->b_pages, pidx,
+	    (VM_PROT_READ|VM_PROT_WRITE|VM_PROT_EXCLUDE));
 	
 	kva = bp->b_saveaddr;
 	bp->b_npages = pidx;
