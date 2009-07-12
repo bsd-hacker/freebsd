@@ -63,6 +63,7 @@
 #include <sys/socket.h>
 #include <sys/sockio.h>
 #include <sys/sysctl.h>
+#include <sys/syslog.h>
 #include <sys/systm.h>
 #include <sys/vimage.h>
 
@@ -97,8 +98,7 @@ struct gre_softc {
 	 */
 	int gre_refcnt;
 	u_int	gre_fibnum;	/* use this fib for envelopes */
-	struct route route;	/* routing entry that determines, where a
-				   encapsulated packet should go */
+	struct rtentry *gre_rt;
 	const struct encaptab *encap;	/* encapsulation cookie */
 
 	int called;		/* infinite recursion preventer */
@@ -308,8 +308,15 @@ gre_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 	struct mobile_h mob_h;
 	u_int32_t af;
 	int extra = 0;
+	struct route lro;
+
+	memset(&lro, 0, sizeof(struct route));
+	((struct sockaddr_in *)&lro.ro_dst)->sin_addr = sc->gre_dst;
+	lro.ro_dst.sa_family = AF_INET;
+	lro.ro_dst.sa_len = sizeof(lro.ro_dst);
 	
 	GRE_LOCK(sc);
+	lro.ro_rt = sc->gre_rt;
 	/*
 	 * gre may cause infinite recursion calls when misconfigured.
 	 * We'll prevent this by introducing upper limit.
@@ -504,7 +511,7 @@ gre_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 	 * overwriting the ip_id again.  ip_id is already set to the
 	 * ip_id of the encapsulated packet.
 	 */
-	error = ip_output(m, NULL, &sc->route, IP_FORWARDING,
+	error = ip_output(m, NULL, (ro != NULL) ? ro : &lro, IP_FORWARDING,
 	    (struct ip_moptions *)NULL, (struct inpcb *)NULL);
   end:
 	GRE_UNLOCK(sc);
@@ -686,8 +693,8 @@ gre_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 				printf("%s: unable to attach encap\n",
 				    if_name(GRE2IFP(sc)));
 #endif
-			if (sc->route.ro_rt != 0) /* free old route */
-				RTFREE(sc->route.ro_rt);
+			if (sc->gre_rt != NULL) /* free old route */
+				RTFREE(sc->gre_rt);
 			if (gre_compute_route(sc) == 0)
 				ifp->if_drv_flags |= IFF_DRV_RUNNING;
 			else
@@ -850,14 +857,12 @@ gre_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 static int
 gre_compute_route(struct gre_softc *sc)
 {
-	struct route *ro;
+	struct route ro;
 
-	ro = &sc->route;
-
-	memset(ro, 0, sizeof(struct route));
-	((struct sockaddr_in *)&ro->ro_dst)->sin_addr = sc->gre_dst;
-	ro->ro_dst.sa_family = AF_INET;
-	ro->ro_dst.sa_len = sizeof(ro->ro_dst);
+	memset(&ro, 0, sizeof(struct route));
+	((struct sockaddr_in *)&ro.ro_dst)->sin_addr = sc->gre_dst;
+	ro.ro_dst.sa_family = AF_INET;
+	ro.ro_dst.sa_len = sizeof(ro.ro_dst);
 
 	/*
 	 * toggle last bit, so our interface is not found, but a less
@@ -866,29 +871,28 @@ gre_compute_route(struct gre_softc *sc)
 	 * XXX MRT Use a different FIB for the tunnel to solve this problem.
 	 */
 	if ((GRE2IFP(sc)->if_flags & IFF_LINK1) == 0) {
-		((struct sockaddr_in *)&ro->ro_dst)->sin_addr.s_addr ^=
+		((struct sockaddr_in *)&ro.ro_dst)->sin_addr.s_addr ^=
 		    htonl(0x01);
 	}
 
 #ifdef DIAGNOSTIC
 	printf("%s: searching for a route to %s", if_name(GRE2IFP(sc)),
-	    inet_ntoa(((struct sockaddr_in *)&ro->ro_dst)->sin_addr));
+	    inet_ntoa(((struct sockaddr_in *)&ro.ro_dst)->sin_addr));
 #endif
 
-	rtalloc_fib(ro, sc->gre_fibnum);
-
+	rtalloc_fib(&ro, sc->gre_fibnum);
+	sc->gre_rt = ro.ro_rt;
 	/*
 	 * check if this returned a route at all and this route is no
 	 * recursion to ourself
 	 */
-	if (ro->ro_rt == NULL || ro->ro_rt->rt_ifp->if_softc == sc) {
-#ifdef DIAGNOSTIC
-		if (ro->ro_rt == NULL)
-			printf(" - no route found!\n");
+	if (ro.ro_rt == NULL || ro.ro_rt->rt_ifp->if_softc == sc) {
+		if (ro.ro_rt == NULL)
+			log(LOG_ERR, " - no route found!\n");
 		else
-			printf(" - route loops back to ourself!\n");
-#endif
-		return EADDRNOTAVAIL;
+			log(LOG_ERR, " - route loops back to ourself!\n");
+		RTFREE(ro.ro_rt);
+		return (EADDRNOTAVAIL);
 	}
 
 	/*
@@ -896,11 +900,11 @@ gre_compute_route(struct gre_softc *sc)
 	 * the route and search one to this interface ...
 	 */
 	if ((GRE2IFP(sc)->if_flags & IFF_LINK1) == 0)
-		((struct sockaddr_in *)&ro->ro_dst)->sin_addr = sc->gre_dst;
+		((struct sockaddr_in *)&ro.ro_dst)->sin_addr = sc->gre_dst;
 
 #ifdef DIAGNOSTIC
-	printf(", choosing %s with gateway %s", if_name(ro->ro_rt->rt_ifp),
-	    inet_ntoa(((struct sockaddr_in *)(ro->ro_rt->rt_gateway))->sin_addr));
+	printf(", choosing %s with gateway %s", if_name(ro.ro_rt->rt_ifp),
+	    inet_ntoa(((struct sockaddr_in *)(ro.ro_rt->rt_gateway))->sin_addr));
 	printf("\n");
 #endif
 
