@@ -58,9 +58,9 @@ typedef enum {
  * The binary contract is to have the ifp at the front of the softc
  *
  */
-#define	GRE2IFP(sc)	(*(struct ifnet **)(&sc))
+#define	GRE2IFP(sc)	(((struct gre_softc_external *)(sc))->g_ifp)
 struct gre_softc_external {
-	struct ifnet *gre_ifp;
+	struct ifnet *g_ifp;
 	struct in_addr g_src;	/* source address of gre packets */
 	struct in_addr g_dst;	/* destination address of gre packets */
 	u_char g_proto;		/* protocol of encapsulator */
