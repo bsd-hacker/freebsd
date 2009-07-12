@@ -209,17 +209,17 @@ greattach(void)
 }
 
 static int
-gre_clone_create(ifc, unit, params)
-	struct if_clone *ifc;
-	int unit;
-	caddr_t params;
+gre_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 {
 	struct gre_softc *sc;
-
+	struct ifnet *ifp;
+	
 	sc = malloc(sizeof(struct gre_softc), M_GRE, M_WAITOK | M_ZERO);
 
-	GRE2IFP(sc) = if_alloc(IFT_TUNNEL);
-	if (GRE2IFP(sc) == NULL) {
+	GRE2IFP(sc) = ifp = if_alloc(IFT_TUNNEL);
+	printf("gre_clone_create: ifp == %p GRE2IFP(sc) == %p\n", ifp,
+	    GRE2IFP(sc));
+	if (ifp == NULL) {
 		free(sc, M_GRE);
 		return (ENOSPC);
 	}
@@ -227,26 +227,26 @@ gre_clone_create(ifc, unit, params)
 	mtx_init(&sc->gre_mtx, sc->sc_mtx_buf, NULL, MTX_DEF);
 	sc->gre_refcnt = 1;
 
-	GRE2IFP(sc)->if_softc = sc;
-	if_initname(GRE2IFP(sc), ifc->ifc_name, unit);
+	ifp->if_softc = sc;
+	if_initname(ifp, ifc->ifc_name, unit);
 
-	GRE2IFP(sc)->if_snd.ifq_maxlen = IFQ_MAXLEN;
-	GRE2IFP(sc)->if_addrlen = 0;
-	GRE2IFP(sc)->if_hdrlen = 24; /* IP + GRE */
-	GRE2IFP(sc)->if_mtu = GREMTU;
-	GRE2IFP(sc)->if_flags = IFF_POINTOPOINT|IFF_MULTICAST;
-	GRE2IFP(sc)->if_output = gre_output;
-	GRE2IFP(sc)->if_ioctl = gre_ioctl;
+	ifp->if_snd.ifq_maxlen = IFQ_MAXLEN;
+	ifp->if_addrlen = 0;
+	ifp->if_hdrlen = 24; /* IP + GRE */
+	ifp->if_mtu = GREMTU;
+	ifp->if_flags = IFF_POINTOPOINT|IFF_MULTICAST;
+	ifp->if_output = gre_output;
+	ifp->if_ioctl = gre_ioctl;
 	sc->gre_dst.s_addr = sc->gre_src.s_addr = INADDR_ANY;
 	sc->gre_proto = IPPROTO_GRE;
-	GRE2IFP(sc)->if_flags |= IFF_LINK0;
+	ifp->if_flags |= IFF_LINK0;
 	sc->encap = NULL;
 	sc->called = 0;
 	sc->gre_fibnum = curthread->td_proc->p_fibnum;
 	sc->gre_wccp_ver = WCCP_V1;
 	sc->key = 0;
-	if_attach(GRE2IFP(sc));
-	bpfattach(GRE2IFP(sc), DLT_NULL, sizeof(u_int32_t));
+	if_attach(ifp);
+	bpfattach(ifp, DLT_NULL, sizeof(u_int32_t));
 	mtx_lock(&gre_mtx);
 	LIST_INSERT_HEAD(&gre_softc_list, sc, sc_list);
 	mtx_unlock(&gre_mtx);
