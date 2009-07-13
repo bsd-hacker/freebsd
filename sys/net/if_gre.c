@@ -217,8 +217,10 @@ gre_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 	sc = malloc(sizeof(struct gre_softc), M_GRE, M_WAITOK | M_ZERO);
 
 	GRE2IFP(sc) = ifp = if_alloc(IFT_TUNNEL);
+#ifdef DIAGNOSTIC
 	printf("gre_clone_create: ifp == %p GRE2IFP(sc) == %p\n", ifp,
 	    GRE2IFP(sc));
+#endif
 	if (ifp == NULL) {
 		free(sc, M_GRE);
 		return (ENOSPC);
@@ -889,9 +891,10 @@ gre_compute_route(struct gre_softc *sc)
 	if (ro.ro_rt == NULL || ro.ro_rt->rt_ifp->if_softc == sc) {
 		if (ro.ro_rt == NULL)
 			log(LOG_ERR, " - no route found!\n");
-		else
+		else {
 			log(LOG_ERR, " - route loops back to ourself!\n");
-		RTFREE(ro.ro_rt);
+			RTFREE(ro.ro_rt);
+		}
 		return (EADDRNOTAVAIL);
 	}
 
