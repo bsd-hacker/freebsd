@@ -4,7 +4,7 @@ TARGET_ARCH?=	${MACHINE_ARCH}
 
 .if ${TARGET_ARCH} == "amd64"
 GCC_CPU=	i386
-.elif ${TARGET_ARCH} == "powerpc"
+.elif ${TARGET_ARCH} == "powerpc" || ${TARGET_ARCH} == "ppc64"
 GCC_CPU=	rs6000
 .elif ${TARGET_ARCH} == "sparc64"
 GCC_CPU=	sparc
@@ -21,3 +21,7 @@ TARGET_CPU_DEFAULT= 16
 .if ${TARGET_ARCH} == "sparc64"
 TARGET_CPU_DEFAULT= TARGET_CPU_ultrasparc
 .endif
+.if ${TARGET_ARCH} == "ppc64"
+TARGET_CPU_DEFAULT= \"powerpc64\"
+.endif
+

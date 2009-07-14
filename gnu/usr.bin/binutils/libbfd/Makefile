@@ -25,6 +25,8 @@ SELARCH=
 SELARCH= &bfd_i386_arch
 .elif ${TARGET_ARCH} == "sparc64"
 SELARCH= &bfd_sparc_arch
+.elif ${TARGET_ARCH} == "ppc64"
+SELARCH= &bfd_powerpc_arch
 .else
 .for _a in ${ARCHS}
 .if ${SELARCH} == ""

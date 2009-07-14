@@ -21,13 +21,86 @@
 
 /* Override the defaults, which exist to force the proper definition.  */
 
-#undef	CPP_OS_DEFAULT_SPEC
-#define CPP_OS_DEFAULT_SPEC "%(cpp_os_freebsd)"
+#ifdef IN_LIBGCC2
+#undef TARGET_64BIT
+#ifdef __ppc64__
+#define TARGET_64BIT 1
+#else
+#define TARGET_64BIT 0
+#endif
+#endif
 
-#undef	CPP_OS_FREEBSD_SPEC
-#define CPP_OS_FREEBSD_SPEC	"\
-  -D__PPC__ -D__ppc__ -D__PowerPC__ -D__powerpc__ \
-  -Acpu=powerpc -Amachine=powerpc "
+/* On 64-bit systems, use the AIX ABI like Linux and NetBSD */
+
+#undef	DEFAULT_ABI
+#define	DEFAULT_ABI (TARGET_64BIT ? ABI_AIX : ABI_V4)
+#undef	TARGET_AIX
+#define	TARGET_AIX TARGET_64BIT
+
+#undef  FBSD_TARGET_CPU_CPP_BUILTINS
+#define FBSD_TARGET_CPU_CPP_BUILTINS()		\
+  do						\
+    {						\
+      builtin_define ("__PPC__");		\
+      builtin_define ("__ppc__");		\
+      builtin_define ("__PowerPC__");		\
+      builtin_define ("__powerpc__");		\
+      if (TARGET_64BIT)				\
+	{					\
+	  builtin_define ("__LP64__");		\
+	  builtin_define ("__ppc64__");		\
+	  builtin_define ("__powerpc64__");	\
+	  builtin_define ("__arch64__");	\
+	  builtin_assert ("cpu=powerpc64");	\
+	  builtin_assert ("machine=powerpc64");	\
+	} else {				\
+	  builtin_assert ("cpu=powerpc");	\
+	  builtin_assert ("machine=powerpc");	\
+	}					\
+    }						\
+  while (0)
+
+#define INVALID_64BIT "-m%s not supported in this configuration"
+#define INVALID_32BIT INVALID_64BIT
+
+#undef	SUBSUBTARGET_OVERRIDE_OPTIONS
+#define	SUBSUBTARGET_OVERRIDE_OPTIONS				\
+  do								\
+    {								\
+      if (!rs6000_explicit_options.alignment)			\
+	rs6000_alignment_flags = MASK_ALIGN_NATURAL;		\
+      if (TARGET_64BIT)						\
+	{							\
+	  if (DEFAULT_ABI != ABI_AIX)				\
+	    {							\
+	      rs6000_current_abi = ABI_AIX;			\
+	      error (INVALID_64BIT, "call");			\
+	    }							\
+	  dot_symbols = !strcmp (rs6000_abi_name, "aixdesc");	\
+	  if (target_flags & MASK_RELOCATABLE)			\
+	    {							\
+	      target_flags &= ~MASK_RELOCATABLE;		\
+	      error (INVALID_64BIT, "relocatable");		\
+	    }							\
+	  if (target_flags & MASK_EABI)				\
+	    {							\
+	      target_flags &= ~MASK_EABI;			\
+	      error (INVALID_64BIT, "eabi");			\
+	    }							\
+	  if (target_flags & MASK_PROTOTYPE)			\
+	    {							\
+	      target_flags &= ~MASK_PROTOTYPE;			\
+	      error (INVALID_64BIT, "prototype");		\
+	    }							\
+	  if ((target_flags & MASK_POWERPC64) == 0)		\
+	    {							\
+	      target_flags |= MASK_POWERPC64;			\
+	      error ("64 bit CPU required");			\
+	    }							\
+	}							\
+    }								\
+  while (0)
+
 
 #undef	STARTFILE_DEFAULT_SPEC
 #define STARTFILE_DEFAULT_SPEC "%(startfile_freebsd)"
@@ -57,7 +130,10 @@
    c-common.c, and config/<arch>/<arch>.h.  */
 
 #undef  SIZE_TYPE
-#define SIZE_TYPE "unsigned int"
+#define SIZE_TYPE	(TARGET_64BIT ? "long unsigned int" : "unsigned int")
+
+#undef  PTRDIFF_TYPE
+#define PTRDIFF_TYPE	(TARGET_64BIT ? "long int" : "int")
 
 /* rs6000.h gets this wrong for FreeBSD.  We use the GCC defaults instead.  */
 #undef WCHAR_TYPE

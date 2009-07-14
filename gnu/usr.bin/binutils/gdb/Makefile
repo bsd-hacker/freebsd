@@ -12,6 +12,8 @@ GDBDIR= ${.CURDIR}/../../../../contrib/gdb
 GDB_CPU=	sparc
 .elif ${TARGET_ARCH} == "amd64"
 GDB_CPU=	i386
+.elif ${TARGET_ARCH} == "ppc64"
+GDB_CPU=        powerpc
 .else
 GDB_CPU=	${TARGET_ARCH}
 .endif
