@@ -1,0 +1,237 @@
+<data>
+<languages>
+	<!-- Attributes known:
+		name = langugage name - only one
+		encoding = encodings to be done - seperated by space
+		countries = countries to create - seperated by space
+		family = which font family - only one
+		link = only with family, create this original file too - only one
+		fallback = read this file if name_countries doesn't exist - only one
+
+		By default, the name of the input file is name_countries.
+		If family is defined, the name of the input file will be name_family_countries.
+		If fallback is defined, the name of the input file will be that.
+
+		By default, the name of the output file is name_countries.
+		If family is defined, the name of the output file will be name_family_countries.
+		For backwards compatibility you use link which is name_countries.
+
+	-->
+	<language name="af"
+		encoding="ISO8859-1 ISO8859-15"
+		countries="ZA" />
+	<language name="am"
+		countries="ET" />		<!-- UTF-8 only -->
+	<language name="be"
+		encoding="CP1131 CP1251 ISO8859-5"
+		countries="BY" />
+	<language name="bg"
+		encoding="CP1251"
+		countries="BG" />
+	<language name="ca"
+		fallback="ca_ES"
+		encoding="ISO8859-1 ISO8859-15"
+		countries="AD ES FR IT" />	<!-- Not defined for anything else -->
+	<language name="cs"
+		encoding="ISO8859-2"
+		countries="CZ" />
+	<language name="da"
+		encoding="ISO8859-1 ISO8859-15"
+		countries="DK" />
+	<language name="de"
+		encoding="ISO8859-1 ISO8859-15"
+		countries="AT CH DE" />
+	<language name="el"
+		encoding="ISO8859-7"
+		countries="GR" />
+	<language name="en"
+		encoding="ISO8859-1 ISO8859-15 US-ASCII"
+		countries="AU CA GB NZ US" />
+	<language name="en"
+		countries="IE" />
+	<language name="es"
+		encoding="ISO8859-1 ISO8859-15"
+		countries="ES" />
+	<language name="et"
+		encoding="ISO8859-15"
+		countries="EE" />
+	<language name="eu"
+		encoding="ISO8859-1 ISO8859-15"
+		countries="ES" />
+	<language name="fi"
+		encoding="ISO8859-1 ISO8859-15"
+		countries="FI" />
+	<language name="fr"
+		encoding="ISO8859-1 ISO8859-15"
+		countries="BE CA CH FR" />
+	<language name="he"
+		countries="IL" />
+	<language name="hi"
+		encoding="ISCII-DEV"
+		countries="IN" />
+	<language name="hr"
+		encoding="ISO8859-2"
+		countries="HR" />
+	<language name="hu"
+		encoding="ISO8859-2"
+		countries="HU" />
+	<language name="hy"
+		encoding="ARMSCII-8"
+		countries="AM" />
+	<language name="is"
+		encoding="ISO8859-1 ISO8859-15"
+		countries="IS" />
+	<language name="it"
+		encoding="ISO8859-1 ISO8859-15"
+		countries="CH IT" />
+	<language name="ja"
+		link="jp_JP"
+		encoding="SJIS eucJP"
+		countries="JP" />
+	<language name="kk"
+		family="Cyrl"
+		link="kk_KZ"
+		encoding="PT154"
+		countries="KZ" />
+	<language name="ko"
+		encoding="CP949 eucKR"
+		countries="KR" />
+	<language name="la"
+		encoding="ISO8859-1 ISO8859-2 ISO8859-4 ISO8859-15 US-ASCII"
+		countries="LN" />
+	<language name="lt"
+		encoding="ISO8859-4 ISO8859-13"
+		countries="LT" />
+	<language name="mn"
+		family="Cyrl"
+		link="mn_MN"
+		countries="MN" />
+	<language name="nb"
+		link="no_NO"
+		encoding="ISO8859-1 ISO8859-15"
+		countries="NO" />
+	<language name="nl"
+		encoding="ISO8859-1 ISO8859-15"
+		countries="BE NL" />
+	<language name="nn"
+		encoding="ISO8859-1 ISO8859-15"
+		countries="NO" />
+	<language name="pl"
+		encoding="ISO8859-2"
+		countries="PL" />
+	<language name="pt"
+		encoding="ISO8859-1 ISO8859-15"
+		countries="PT" />
+	<language name="ro"
+		encoding="ISO8859-2"
+		countries="RO" />
+	<language name="ru"
+		encoding="CP1251 CP866 ISO8859-5 KOI8-R"
+		countries="RU" />
+	<language name="sk"
+		encoding="ISO8859-2"
+		countries="SK" />
+	<language name="sl"
+		encoding="ISO8859-2"
+		countries="SI" />
+	<language name="sr"
+		family="Latn"
+		link="sr_YU"
+		encoding="ISO8859-2"
+		countries="RS" />
+	<language name="sr"
+		family="Cyrl"
+		link="sr_YU"
+		encoding="ISO8859-5"
+		countries="RS" />
+	<language name="sv"
+		encoding="ISO8859-1 ISO8859-15"
+		countries="SE" />
+	<language name="tr"
+		encoding="ISO8859-9"
+		countries="TR" />
+	<language name="uk"
+		encoding="CP1251 ISO8859-5 KOI8-U"
+		countries="UA" />
+	<language name="zh"
+		family="Hans"
+		link="zh_CN"
+		encoding="GB18030 GB2312 GBK eucCN"
+		countries="CN" />
+	<language name="zh"
+		family="Hant"
+		link="zh_HK"
+		encoding="Big5HKSCS"
+		countries="HK" />
+	<language name="zh"
+		family="Hant"
+		link="zh_TW"
+		encoding="Big5"
+		countries="TW" />
+</languages>
+
+<translations>
+	<!-- These don't have a special Euro sign so just use Eu for it -->
+	<translation encoding="ISO8859-1" cldr="EURO_SIGN" string="Eu" />
+	<translation encoding="ISO8859-2" cldr="EURO_SIGN" string="Eu" />
+
+	<!-- These don't have a special Kow sign so just use KRW for it -->
+	<translation encoding="CP949" cldr="WON_SIGN" hex="5C" />
+	<translation encoding="eucKR" cldr="WON_SIGN" hex="5C" />
+
+	<!-- Minus and dashes -->
+	<translation encoding="ISO8859-1" cldr="MINUS_SIGN" string="-" />
+	<translation encoding="ISO8859-4" cldr="MINUS_SIGN" string="-" />
+	<translation encoding="ISO8859-13" cldr="MINUS_SIGN" string="-" />
+	<translation encoding="ISO8859-15" cldr="MINUS_SIGN" string="-" />
+	<translation encoding="ISO8859-2" cldr="EN_DASH" string="-" />
+
+	<!-- Copied from the original FreeBSD src/share/monetdef -->
+	<translation encoding="CP1251" cldr="HRYVNIA_SIGN" hex="E3F0ED" />
+	<translation encoding="ISO8859-5" cldr="HRYVNIA_SIGN" hex="D3E0DD" />
+	<translation encoding="KOI8-U" cldr="HRYVNIA_SIGN" hex="C7D2CE" />
+
+	<!-- Value found in http://en.wikipedia.org/wiki/Pound_sign -->
+	<translation encoding="US-ASCII" cldr="POUND_SIGN" hex="A3" />
+
+	<!-- Values found in http://en.wikipedia.org/wiki/Ya_(Cyrillic) -->
+	<translation encoding="CP1251" cldr="CYRILLIC_SMALL_LETTER_YA" hex="FF" />
+	<translation encoding="ISO8859-5" cldr="CYRILLIC_SMALL_LETTER_YA" hex="EF" />
+	<translation encoding="KOI8-U" cldr="CYRILLIC_SMALL_LETTER_YA" hex="D1" />
+	<!-- Values found in http://en.wikipedia.org/wiki/Cyrillic_characters_in_Unicode -->
+	<translation encoding="ISO8859-2" cldr="CYRILLIC_CAPITAL_LETTER_A" string="A" />
+	<translation encoding="ISO8859-2" cldr="CYRILLIC_SMALL_LETTER_A" string="a" />
+	<translation encoding="ISO8859-2" cldr="CYRILLIC_SMALL_LETTER_KA" string="k" />
+	<translation encoding="ISO8859-2" cldr="CYRILLIC_SMALL_LETTER_O" string="o" />
+	<translation encoding="ISO8859-2" cldr="CYRILLIC_CAPITAL_LETTER_DE" string="D" />
+	<translation encoding="ISO8859-2" cldr="CYRILLIC_SMALL_LETTER_DE" string="d" />
+	<translation encoding="ISO8859-2" cldr="CYRILLIC_CAPITAL_LETTER_IE" string="E" />
+	<translation encoding="ISO8859-2" cldr="CYRILLIC_SMALL_LETTER_IE" string="e" />
+	<translation encoding="ISO8859-2" cldr="CYRILLIC_CAPITAL_LETTER_EN" string="N" />
+	<translation encoding="ISO8859-2" cldr="CYRILLIC_SMALL_LETTER_EN" string="n" />
+	<translation encoding="ISO8859-2" cldr="CYRILLIC_SMALL_LETTER_BE" string="b" />
+	<translation encoding="ISO8859-2" cldr="CYRILLIC_SMALL_LETTER_ER" string="r" />
+	<translation encoding="ISO8859-2" cldr="CYRILLIC_SMALL_LETTER_JE" string="j" />
+	<translation encoding="ISO8859-2" cldr="CYRILLIC_SMALL_LETTER_EL" string="l" />
+	<translation encoding="ISO8859-2" cldr="CYRILLIC_SMALL_LETTER_GHE" string="g" />
+	<translation encoding="ISO8859-2" cldr="CYRILLIC_SMALL_LETTER_PE" string="p" />
+	<translation encoding="ISO8859-2" cldr="CYRILLIC_SMALL_LETTER_TE" string="t" />
+	<translation encoding="ISO8859-2" cldr="CYRILLIC_SMALL_LETTER_VE" string="v" />
+
+	<!-- Not sure why these ones aren't known by libiconv -->
+	<translation encoding="ISO8859-2" cldr="a" string="a" />
+	<translation encoding="ISO8859-2" cldr="d" string="d" />
+	<translation encoding="ISO8859-2" cldr="e" string="e" />
+	<translation encoding="ISO8859-2" cldr="i" string="i" />
+	<translation encoding="ISO8859-2" cldr="n" string="n" />
+	<translation encoding="ISO8859-2" cldr="r" string="r" />
+
+	<translation encoding="ISO8859-5" cldr="t" string="t" />
+	<translation encoding="ISO8859-5" cldr="k" string="k" />
+
+	<!-- Just a . ? -->
+	<translation encoding="ISO8859-2" cldr="FULL_STOP" string="." />
+	<translation encoding="ARMSCII-8" cldr="ONE_DOT_LEADER" string="." />
+
+</translations>
+</data>
