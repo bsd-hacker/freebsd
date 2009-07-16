@@ -163,13 +163,13 @@ MAIN:{
     if ($ARGV[0] eq 'all') {
 	shift;
     } else {
-	while (@ARGV && $ARGV[0] =~ m/^r?\d+(,r?\d+)*$/) {
+	while (@ARGV && $ARGV[0] =~ m/^[cr]?\d+([-:][cr]?\d+)?(,[cr]?\d+([-:][cr]?\d+)?)*$/) {
 	    foreach my $rev (split(',', $ARGV[0])) {
 		if ($rev =~ m/^[cr]?(\d+)$/) {
 		    push(@revs, [ $1 - 1, $1 ]);
 		} elsif ($rev =~ m/^[cr]?-(\d+)$/) {
 		    push(@revs, [ $1, $1 - 1 ]);
-		} elsif ($rev =~ m/^r?(\d+)[-:](\d+)$/) {
+		} elsif ($rev =~ m/^[cr]?(\d+)[-:][cr]?(\d+)$/) {
 		    push(@revs, [ $1, $2 ]);
 		} else {
 		    usage();
