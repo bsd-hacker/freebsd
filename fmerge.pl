@@ -37,7 +37,8 @@ our $pretend;
 
 our $branch = "head";
 our $target = ".";
-our @revs;
+our %revs = (0 => 0);
+our @ranges;
 
 our $svn_path;
 our $svn_url;
@@ -126,13 +127,75 @@ sub examine() {
     debug("svn_path = '$svn_path'");
 }
 
+sub addrevs($$) {
+    my ($m, $n) = @_;
+    if ($m > $n) {
+	for (my $i = $m; $i > $n; --$i) {
+	    $revs{$i} = -1;
+	}
+    } else {
+	for (my $i = $m + 1; $i <= $n; ++$i)  {
+	    $revs{$i} = +1;
+	}
+    }
+}
+
+sub revs2ranges() {
+    my ($m, $n);
+    # process in reverse, 0 acts as a sentinel
+    foreach my $i (sort({ $b <=> $a } keys(%revs)), 0) {
+	if (!$m) {
+	    $m = $n = $i;
+	    next;
+	} elsif ($i == $m - 1 && $revs{$m} == +1 && $revs{$i} == +1) {
+	    $m = $i;
+	    next;
+	} elsif ($i == $m + 1 && $revs{$m} == -1 && $revs{$i} == -1) {
+	    $m = $i;
+	    next;
+	} else {
+	    if ($revs{$m} == +1) {
+		push(@ranges, [ $m - 1, $n ]);
+	    } elsif ($revs{$m} == -1) {
+		push(@ranges, [ $n, $m - 1 ]);
+	    }
+	    $m = $n = $i;
+	}
+    }
+}
+
+sub printranges($) {
+    my ($fh) = @_;
+    my @print;
+    foreach my $range (@ranges) {
+	my ($m, $n) = @{$range};
+	if ($n == $m + 1) {
+	    push(@print, $n);
+	} elsif ($n == $m - 1) {
+	    push(@print, "-$m"); 
+	} else {
+	    push(@print, "$m:$n");
+	}
+    }
+    print($fh "merging ", join(', ', @print), "\n")
+	if @print;
+}
+
 sub fmerge() {
-    if (!@revs) {
+    if (!@ranges) {
 	svn_merge("$svn_root/$branch/$svn_path", $target);
     }
-    foreach my $rev (@revs) {
-	my ($m, $n) = @{$rev};
-	svn_merge("-r$m:$n", "$svn_root/$branch/$svn_path", $target);
+    foreach my $range (@ranges) {
+	my ($m, $n) = @{$range};
+	my $spec;
+	if ($n == $m + 1) {
+	    $spec = "-c$n";
+	} elsif ($n == $m - 1) {
+	    $spec = "-c-$n";
+	} else {
+	    $spec = "-r$m:$n";
+	}
+	svn_merge($spec, "$svn_root/$branch/$svn_path", $target);
     }
 }
 
@@ -166,11 +229,15 @@ MAIN:{
 	while (@ARGV && $ARGV[0] =~ m/^[cr]?\d+([-:][cr]?\d+)?(,[cr]?\d+([-:][cr]?\d+)?)*$/) {
 	    foreach my $rev (split(',', $ARGV[0])) {
 		if ($rev =~ m/^[cr]?(\d+)$/) {
-		    push(@revs, [ $1 - 1, $1 ]);
+		    addrevs($1 - 1, $1);
 		} elsif ($rev =~ m/^[cr]?-(\d+)$/) {
-		    push(@revs, [ $1, $1 - 1 ]);
+		    addrevs($1, $1 - 1);
 		} elsif ($rev =~ m/^[cr]?(\d+)[-:][cr]?(\d+)$/) {
-		    push(@revs, [ $1, $2 ]);
+		    if ($1 < $2) {
+			addrevs($1 - 1, $2);
+		    } else {
+			addrevs($1, $2 - 1);
+		    }
 		} else {
 		    usage();
 		}
@@ -203,6 +270,9 @@ MAIN:{
     }
 
     examine();
+    revs2ranges();
+    printranges(\*STDERR)
+	if $debug;
     fmerge();
 }
 
