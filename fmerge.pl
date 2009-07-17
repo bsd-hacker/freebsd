@@ -67,6 +67,22 @@ sub svn_do(@) {
     info('svn', @argv);
     system('svn', @argv)
 	unless $pretend;
+    my $pid = fork();
+    if ($pid == -1) {
+	die("fork(): $!\n");
+    } elsif ($pid == 0) {
+	exec('svn', @argv);
+	die("exec(): $!\n");
+    }
+    waitpid($pid, 0);
+    info($?);
+    if ($? & 128) {
+	info("svn died with signal", $? & 128);
+	kill($? & 128, $$);
+    } elsif ($?) {
+	info("svn returned error status", $? >> 8);
+	exit(1);
+    }
 }
 
 sub svn_merge(@) {
