@@ -46,7 +46,7 @@ our $svn_root;
 our $svn_branch;
 
 sub info(@) {
-    print(STDOUT join(' ', @_), "\n");
+    print(STDERR join(' ', @_), "\n");
 }
 
 sub debug(@) {
@@ -54,10 +54,12 @@ sub debug(@) {
 	if $debug;
 }
 
-sub svn_check($;$) {
-    my ($cond, $msg) = @_;
-    die(($msg || 'something is rotten in the state of subversion') . "\n")
-	unless $cond;
+sub svn_check($@) {
+    my ($cond, @msg) = @_;
+    if (!$cond) {
+	info(@msg);
+	exit(1);
+    }
 }
 
 sub svn_do(@) {
@@ -76,7 +78,6 @@ sub svn_merge(@) {
 
 sub svn_catch(@) {
     my (@argv) = @_;
-
     debug('svn', @argv);
     open(my $fh, '-|', 'svn', @argv)
 	or die("fmerge: could not run svn\n");
@@ -90,8 +91,7 @@ sub examine() {
 	my ($key, $value) = split(/:\s+/, $_, 2);
 	next unless $key && $value;
 	if ($key eq 'Path') {
-	    debug("'$value' eq '$target'?");
-	    svn_check($value eq $target);
+	    svn_check($value eq $target, "path mismatch: $value != $target");
 	} elsif ($key eq 'URL') {
 	    $svn_url = $value;
 	} elsif ($key eq 'Repository Root') {
@@ -100,14 +100,15 @@ sub examine() {
     }
     close($fh);
 
-    svn_check($svn_url =~ m@^\Q$svn_root\E(/.*)$@);
+    svn_check($svn_url =~ m@^\Q$svn_root\E(/.*)$@, "invalid svn URL: $svn_url");
     $svn_path = $1;
 
+    debug("guessing merge source / target directory");
     $fh = svn_catch('propget', 'svn:mergeinfo', $target);
     while (<$fh>) {
 	chomp();
-	debug("'$_' =~ m\@\Q/$branch\E((?:/[\\w.-]+)*):\@");
-	next unless m@\Q/$branch\E((?:/[\w.-]+)*):@;
+	debug("'$_' =~ m\@^\Q/$branch\E((?:/[\\w.-]+)*):\@");
+	next unless m@^\Q/$branch\E((?:/[\w.-]+)*):@;
 	my $subdir = $1;
 	debug("'$svn_path' =~ m\@^((?:/[\\w.-]+)+)\Q$subdir\E\$\@");
 	next unless $svn_path =~ m@^((?:/[\w.-]+)+)\Q$subdir\E$@;
@@ -116,13 +117,15 @@ sub examine() {
 	last;
     }
     close($fh);
+
     if (!$svn_branch) {
 	# try to guess a stable / releng / release branch
+	debug("guessing source branch");
 	debug("'$svn_path' =~ s\@^/([\\w+.-]/\\d+(?:\\.\\d+)*)/?\@\@");
 	$svn_path =~ s@^/(\w+/\d+(?:\.\d+)*)/?@@;
 	$svn_branch = $1;
     }
-    svn_check($svn_branch);
+    svn_check($svn_branch, "unable to figure out source branch");
     debug("svn_branch = '$svn_branch'");
     debug("svn_path = '$svn_path'");
 }
