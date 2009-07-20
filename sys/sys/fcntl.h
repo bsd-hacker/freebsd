@@ -110,7 +110,9 @@ typedef	__pid_t		pid_t;
  * to determine the target of relative file paths in the openat() and
  * similar syscalls.
  */
+#ifdef _KERNEL 
 #define	AT_FDCWD		-100
+#endif
 
 /* Defined by POSIX 1003.1; BSD default, but must be distinct from O_RDONLY. */
 #define	O_NOCTTY	0x8000		/* don't assign controlling terminal */
