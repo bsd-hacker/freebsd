@@ -54,8 +54,6 @@
  *
  * $FreeBSD$
  */
-#include "opt_psim.h"
-
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/module.h>
