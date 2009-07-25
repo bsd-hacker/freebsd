@@ -56,7 +56,7 @@ TARGET_INC+=	${GCC_CPU}/freebsd.h
 .if ${TARGET_ARCH} == "amd64"
 TARGET_INC+=	${GCC_CPU}/freebsd64.h
 .endif
-.if ${TARGET_ARCH} == "ppc64"
+.if ${TARGET_ARCH} == "powerpc64"
 TARGET_INC+=    ${GCC_CPU}/default64.h
 .endif
 .if ${TARGET_ARCH} == "arm"
@@ -174,7 +174,7 @@ OPT_FILES+=	${GCCDIR}/config/${GCC_CPU}/${GCC_CPU}.opt
 OPT_FILES+=	${.CURDIR}/${GCC_CPU}-freebsd.opt
 .endif
 
-.if ${TARGET_ARCH} == "powerpc" || ${TARGET_ARCH} == "ppc64"
+.if ${TARGET_ARCH} == "powerpc" || ${TARGET_ARCH} == "powerpc64"
 OPT_FILES+=	${GCCDIR}/config/${GCC_CPU}/sysv4.opt
 .endif
 
