@@ -42,7 +42,7 @@
 #define BYTE_MSF        (1)
 
 typedef	vm_offset_t	db_addr_t;	/* address - unsigned */
-typedef	int		db_expr_t;	/* expression - signed */
+typedef	intptr_t	db_expr_t;	/* expression - signed */
 
 #define	PC_REGS(regs)	((db_addr_t)kdb_thrctx->pcb_lr)
 

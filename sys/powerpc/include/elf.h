@@ -36,14 +36,23 @@
  * [ppc-eabi-1995-01.pdf] for details.
  */
 
-#include <sys/elf32.h>	/* Definitions common to all 32 bit architectures. */
-
+#ifdef __powerpc64__
+#define	__ELF_WORD_SIZE	64	/* Used by <sys/elf_generic.h> */
+#else
 #define	__ELF_WORD_SIZE	32	/* Used by <sys/elf_generic.h> */
+#endif
+
+#include <sys/elf32.h>	/* Definitions common to all 32 bit architectures. */
+#include <sys/elf64.h>	/* Definitions common to all 64 bit architectures. */
 #include <sys/elf_generic.h>
 
+#ifdef __powerpc64__
+#define	ELF_ARCH	EM_PPC64
+#define	ELF_MACHINE_OK(x) ((x) == EM_PPC64)
+#else
 #define	ELF_ARCH	EM_PPC
-
 #define	ELF_MACHINE_OK(x) ((x) == EM_PPC)
+#endif
 
 /*
  * Auxiliary vector entries for passing information to the interpreter.
@@ -60,6 +69,18 @@ typedef struct {	/* Auxiliary vector entry on initial stack */
 		void	(*a_fcn)(void);	/* Function pointer (not used). */
 	} a_un;
 } Elf32_Auxinfo;
+
+#ifdef __powerpc64__
+/* XXX: check ABI */
+typedef struct {	/* Auxiliary vector entry on initial stack */
+	int	a_type;			/* Entry type. */
+	union {
+		long	a_val;		/* Integer value. */
+		void	*a_ptr;		/* Address. */
+		void	(*a_fcn)(void);	/* Function pointer (not used). */
+	} a_un;
+} Elf64_Auxinfo;
+#endif
 
 __ElfType(Auxinfo);
 
@@ -91,9 +112,16 @@ __ElfType(Auxinfo);
 #define	R_PPC_EMB_COUNT		(R_PPC_EMB_RELSDA - R_PPC_EMB_NADDR32 + 1)
 
 /* Define "machine" characteristics */
+#ifdef __powerpc64__
+#define	ELF_TARG_CLASS	ELFCLASS64
+#define	ELF_TARG_DATA	ELFDATA2MSB
+#define	ELF_TARG_MACH	EM_PPC64
+#define	ELF_TARG_VER	1
+#else
 #define	ELF_TARG_CLASS	ELFCLASS32
 #define	ELF_TARG_DATA	ELFDATA2MSB
 #define	ELF_TARG_MACH	EM_PPC
 #define	ELF_TARG_VER	1
+#endif
 
 #endif /* !_MACHINE_ELF_H_ */

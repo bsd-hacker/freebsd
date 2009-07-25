@@ -105,6 +105,10 @@
 #ifdef __powerpc__
 #define	KINFO_PROC_SIZE	768
 #endif
+#ifdef __powerpc64__
+#undef KINFO_PROC_SIZE /* __powerpc__ is also defined on powerpc64 */
+#define	KINFO_PROC_SIZE 1088
+#endif
 #ifdef __sparc64__
 #define	KINFO_PROC_SIZE 1088
 #endif

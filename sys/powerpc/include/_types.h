@@ -112,7 +112,6 @@ typedef	__int64_t	__time_t;		/* time()... */
 typedef	__uint64_t	__uintfptr_t;
 typedef	__uint64_t	__uintptr_t;
 #else
-typedef	__uint64_t	__uintmax_t;
 typedef	__int32_t	__ptrdiff_t;		/* ptr1 - ptr2 */
 typedef	__int32_t	__register_t;
 typedef	__int32_t	__segsz_t;		/* segment size (in pages) */
