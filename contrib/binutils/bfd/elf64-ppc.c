@@ -7206,7 +7206,7 @@ ppc64_elf_build_stubs (bfd_boolean emit_stub_syms,
 	stub_sec->_cooked_size = 0;
       }
 
-  if (htab->plt != NULL)
+  if (htab->glink != NULL && htab->glink->contents != NULL)
     {
       unsigned int indx;
       bfd_vma plt0;
