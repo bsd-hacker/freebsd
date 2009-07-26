@@ -8,7 +8,7 @@
 # This makefile is constructed from a machine description:
 #	config machineid
 # Most changes should be made in the machine description
-#	/sys/powerpc/conf/``machineid''
+#	/sys/powerpc64/conf/``machineid''
 # after which you should do
 #	 config machineid
 # Generic makefile changes should be made in

@@ -77,7 +77,6 @@ powerpc/aim/interrupt.c		optional	aim
 powerpc/aim/locore.S		optional	aim no-obj
 powerpc/aim/machdep.c		optional	aim
 powerpc/aim/mmu_oea.c		optional	aim
-powerpc/aim/mmu_oea64.c		optional	aim
 powerpc/aim/mp_cpudep.c		optional	aim smp
 powerpc/aim/nexus.c		optional	aim
 powerpc/aim/ofw_machdep.c	optional	aim
@@ -87,6 +86,7 @@ powerpc/aim/swtch.S		optional	aim
 powerpc/aim/trap.c		optional	aim
 powerpc/aim/uma_machdep.c	optional	aim
 powerpc/aim/vm_machdep.c	optional	aim
+powerpc/aim64/mmu_oea64.c	optional	aim
 powerpc/booke/clock.c		optional	e500
 powerpc/booke/copyinout.c	optional	e500
 powerpc/booke/interrupt.c	optional	e500

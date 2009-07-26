@@ -44,6 +44,9 @@
 	  __asm __volatile("mfspr %0,%1" : "=r"(val) : "K"(reg));	\
 	  val; } )
 
+
+#ifndef __powerpc64__
+
 /* The following routines allow manipulation of the full 64-bit width 
  * of SPRs on 64 bit CPUs in bridge mode */
 
@@ -80,6 +83,8 @@
 		isync;" 						\
 	    : "=r"(scratch), "=r"(val) : "K"(reg), "r"(32)); 			\
 	    val; } )
+
+#endif
 
 #endif /* _LOCORE */
 

@@ -297,7 +297,7 @@ cpu_print_speed(void)
 	uint64_t	cps;
 	
 	if (cpu_est_clockrate(0, &cps) == 0)
-		printf(", %lld.%02lld MHz", cps / 1000000, (cps / 10000) % 100);
+		printf(", %jd.%02jd MHz", cps / 1000000, (cps / 10000) % 100);
 }
 
 /* Get current clock frequency for the given cpu id. */

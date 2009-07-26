@@ -17,7 +17,6 @@ font.h				optional	sc			\
 
 crypto/blowfish/bf_enc.c	optional	crypto | ipsec
 crypto/des/des_enc.c		optional	crypto | ipsec | netsmb
-dev/bm/if_bm.c			optional	bm powermac
 dev/adb/adb_bus.c		optional	adb
 dev/adb/adb_kbd.c		optional	adb
 dev/adb/adb_mouse.c		optional	adb
@@ -39,7 +38,6 @@ dev/ofw/ofw_standard.c		optional	aim
 dev/powermac_nvram/powermac_nvram.c optional	powermac_nvram powermac
 dev/scc/scc_bfe_macio.c		optional	scc powermac
 dev/sound/macio/aoa.c		optional	snd_davbus | snd_ai2s powermac
-dev/sound/macio/davbus.c	optional	snd_davbus powermac
 dev/sound/macio/i2s.c		optional	snd_ai2s powermac
 dev/sound/macio/snapper.c	optional	snd_ai2s iicbus powermac
 dev/sound/macio/tumbler.c	optional	snd_ai2s iicbus powermac
@@ -66,21 +64,20 @@ libkern/ucmpdi2.c		standard
 libkern/udivdi3.c		standard
 libkern/umoddi3.c		standard
 powerpc/aim/clock.c		optional	aim
-powerpc/aim/copyinout.c		optional	aim
 powerpc/aim/interrupt.c		optional	aim
-powerpc/aim/locore.S		optional	aim no-obj
-powerpc/aim/machdep.c		optional	aim
-powerpc/aim/mmu_oea.c		optional	aim
-powerpc/aim/mmu_oea64.c		optional	aim
 powerpc/aim/mp_cpudep.c		optional	aim smp
 powerpc/aim/nexus.c		optional	aim
 powerpc/aim/ofw_machdep.c	optional	aim
 powerpc/aim/ofwmagic.S		optional	aim
 powerpc/aim/platform_chrp.c	optional	aim
-powerpc/aim/swtch.S		optional	aim
 powerpc/aim/trap.c		optional	aim
 powerpc/aim/uma_machdep.c	optional	aim
 powerpc/aim/vm_machdep.c	optional	aim
+#powerpc/aim64/copyinout.c	optional	aim
+powerpc/aim64/locore.S		optional	aim no-obj
+powerpc/aim64/machdep.c		optional	aim
+powerpc/aim64/mmu_oea64.c	optional	aim
+powerpc/aim64/swtch.S		optional	aim
 powerpc/cpufreq/dfs.c		optional	cpufreq
 powerpc/cpufreq/pcr.c		optional	cpufreq aim
 powerpc/ofw/ofw_cpu.c		optional	aim
@@ -91,11 +88,8 @@ powerpc/ofw/ofw_syscons.c	optional	sc aim
 powerpc/powermac/ata_kauai.c	optional	powermac ata | powermac atamacio
 powerpc/powermac/ata_macio.c	optional	powermac ata | powermac atamacio
 powerpc/powermac/ata_dbdma.c	optional	powermac ata | powermac atamacio
-powerpc/powermac/cuda.c		optional	powermac cuda
 powerpc/powermac/cpcht.c	optional	powermac pci
 powerpc/powermac/dbdma.c	optional	powermac pci
-powerpc/powermac/grackle.c	optional	powermac pci
-powerpc/powermac/hrowpic.c	optional	powermac pci
 powerpc/powermac/kiic.c		optional	powermac kiic
 powerpc/powermac/macgpio.c	optional	powermac pci 
 powerpc/powermac/macio.c	optional	powermac pci
@@ -140,7 +134,3 @@ powerpc/powerpc/suswintr.c	standard
 powerpc/powerpc/syncicache.c	standard
 powerpc/powerpc/sys_machdep.c	standard
 powerpc/powerpc/uio_machdep.c	standard
-powerpc/psim/iobus.c 		optional	psim
-powerpc/psim/ata_iobus.c	optional	ata psim
-powerpc/psim/openpic_iobus.c	optional	psim
-powerpc/psim/uart_iobus.c	optional	uart psim

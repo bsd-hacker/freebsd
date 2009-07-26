@@ -576,7 +576,7 @@ cpcpci_activate_resource(device_t bus, device_t child, int type, int rid,
 			start += sc->sc_iostart;
 
 		if (bootverbose)
-			printf("cpcpci mapdev: start %x, len %ld\n", start,
+			printf("cpcpci mapdev: start %zx, len %ld\n", start,
 			    rman_get_size(res));
 
 		p = pmap_mapdev(start, (vm_size_t)rman_get_size(res));

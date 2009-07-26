@@ -142,6 +142,7 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_pager.h>
 #include <vm/uma.h>
 
+#include <machine/_inttypes.h>
 #include <machine/cpu.h>
 #include <machine/platform.h>
 #include <machine/frame.h>
@@ -159,10 +160,10 @@ __FBSDID("$FreeBSD$");
 
 #define TODO	panic("%s: not implemented", __func__);
 
-static __inline u_int32_t
-cntlzw(volatile u_int32_t a) {
-	u_int32_t b;
-	__asm ("cntlzw %0, %1" : "=r"(b) : "r"(a));
+static __inline register_t
+cntlzd(volatile register_t a) {
+	register_t b;
+	__asm ("cntlzd %0, %1" : "=r"(b) : "r"(a));
 	return b;
 }
 
@@ -709,8 +710,8 @@ moea64_bridge_cpu_bootstrap(mmu_t mmup, int ap)
 		mtsrin(i << ADDR_SR_SHFT, kernel_pmap->pm_sr[i]);
 	}
 	__asm __volatile ("sync; mtsdr1 %0; isync"
-	    :: "r"((u_int)moea64_pteg_table 
-		     | (32 - cntlzw(moea64_pteg_mask >> 11))));
+	    :: "r"((uintptr_t)moea64_pteg_table 
+		     | (64 - cntlzd(moea64_pteg_mask >> 11))));
 	tlbia();
 }
 
@@ -1156,7 +1157,7 @@ moea64_zero_page_area(mmu_t mmu, vm_page_t m, int off, int size)
 	vm_offset_t pa = VM_PAGE_TO_PHYS(m);
 
 	if (!moea64_initialized)
-		panic("moea64_zero_page: can't zero pa %#x", pa);
+		panic("moea64_zero_page: can't zero pa %#" PRIxPTR, pa);
 	if (size + off > PAGE_SIZE)
 		panic("moea64_zero_page: size + off > PAGE_SIZE");
 
@@ -1571,7 +1572,8 @@ moea64_kenter(mmu_t mmu, vm_offset_t va, vm_offset_t pa)
 
 	if (!pmap_bootstrapped) {
 		if (va >= VM_MIN_KERNEL_ADDRESS && va < VM_MAX_KERNEL_ADDRESS)
-			panic("Trying to enter an address in KVA -- %#x!\n",pa);
+			panic("Trying to enter an address in KVA -- %#"
+			    PRIxPTR "!\n",pa);
 	}
 
 	pte_lo = moea64_calc_wimg(pa);
@@ -1584,7 +1586,7 @@ moea64_kenter(mmu_t mmu, vm_offset_t va, vm_offset_t pa)
 	TLBIE(kernel_pmap, va);
 
 	if (error != 0 && error != ENOENT)
-		panic("moea64_kenter: failed to enter va %#x pa %#x: %d", va,
+		panic("moea64_kenter: failed to enter va %#zx pa %#zx: %d", va,
 		    pa, error);
 
 	/*
@@ -2032,7 +2034,7 @@ moea64_pvo_enter(pmap_t pm, uma_zone_t zone, struct pvo_head *pvo_head,
 	 */
 	if (bootstrap) {
 		if (moea64_bpvo_pool_index >= BPVO_POOL_SIZE) {
-			panic("moea64_enter: bpvo pool exhausted, %d, %d, %d",
+			panic("moea64_enter: bpvo pool exhausted, %d, %d, %zd",
 			      moea64_bpvo_pool_index, BPVO_POOL_SIZE, 
 			      BPVO_POOL_SIZE * sizeof(struct pvo_entry));
 		}
