@@ -127,8 +127,7 @@ kernel_text:
  * segment!
  */
 	.text
-	.globl	__start
-__start:
+ASENTRY(__start)
 	li	8,0
 	li	9,0x100
 	mtctr	9
@@ -163,7 +162,8 @@ __start:
 	mfsprg3 0
 	stw	0,16(9)			/* ofmsr[4] = sprg3 */
 	
-	bl	OF_initial_setup
+	bl	.OF_initial_setup
+	nop
 
 	lis	4,end@ha
 	addi	4,4,end@l
@@ -176,12 +176,15 @@ __start:
 	mr	6,20
 	mr	7,21
 
-	bl	powerpc_init
+	bl	.powerpc_init
+	nop
 	mr	%r1, %r3
 	li	%r3, 0
 	stw	%r3, 0(%r1)
-	bl	mi_startup
-	b	OF_exit
+	bl	.mi_startup
+	nop
+	b	.OF_exit
+	nop
 
 /*
  * int setfault()
@@ -191,8 +194,7 @@ __start:
  * or the (currently used) C code optimized, so it doesn't use any non-volatile
  * registers.
  */
-	.globl	setfault
-setfault:
+ASENTRY(setfault)
 	mflr	0
 	mfcr	12
 	mfsprg	4,0
@@ -206,4 +208,4 @@ setfault:
 	xor	3,3,3
 	blr
 
-#include <powerpc/aim/trap_subr.S>
+#include <powerpc/aim64/trap_subr.S>

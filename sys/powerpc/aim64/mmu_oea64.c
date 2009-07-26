@@ -268,9 +268,9 @@ struct ofw_map {
  */
 static struct	mem_region *regions;
 static struct	mem_region *pregions;
-extern u_int	phys_avail_count;
-extern int	regions_sz, pregions_sz;
-extern int	ofw_real_mode;
+static u_int	phys_avail_count;
+static int	regions_sz, pregions_sz;
+static int	ofw_real_mode;
 static struct	ofw_map translations[64];
 
 extern struct pmap ofw_pmap;
@@ -732,11 +732,13 @@ moea64_bridge_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernele
 	/* We don't have a direct map since there is no BAT */
 	hw_direct_map = 0;
 
+#ifndef __powerpc64__
 	/* Make sure battable is zero, since we have no BAT */
 	for (i = 0; i < 16; i++) {
 		battable[i].batu = 0;
 		battable[i].batl = 0;
 	}
+#endif
 
 	/* Get physical memory regions from firmware */
 	mem_regions(&pregions, &pregions_sz, &regions, &regions_sz);

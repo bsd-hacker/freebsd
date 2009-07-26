@@ -47,22 +47,13 @@ dev/syscons/scvtb.c		optional	sc
 dev/syscons/teken/teken.c	optional sc
 dev/uart/uart_cpu_powerpc.c	optional	uart
 kern/syscalls.c			optional	ktr
-libkern/ashldi3.c		standard
-libkern/ashrdi3.c		standard
 libkern/bcmp.c			standard
-libkern/cmpdi2.c		standard
-libkern/divdi3.c		standard
 libkern/ffs.c			standard
 libkern/ffsl.c			standard
 libkern/fls.c			standard
 libkern/flsl.c			standard
-libkern/lshrdi3.c		standard
 libkern/memmove.c		standard
 libkern/memset.c		standard
-libkern/moddi3.c		standard
-libkern/ucmpdi2.c		standard
-libkern/udivdi3.c		standard
-libkern/umoddi3.c		standard
 powerpc/aim/clock.c		optional	aim
 powerpc/aim/interrupt.c		optional	aim
 powerpc/aim/mp_cpudep.c		optional	aim smp
@@ -73,7 +64,7 @@ powerpc/aim/platform_chrp.c	optional	aim
 powerpc/aim/trap.c		optional	aim
 powerpc/aim/uma_machdep.c	optional	aim
 powerpc/aim/vm_machdep.c	optional	aim
-#powerpc/aim64/copyinout.c	optional	aim
+powerpc/aim64/copyinout.c	optional	aim
 powerpc/aim64/locore.S		optional	aim no-obj
 powerpc/aim64/machdep.c		optional	aim
 powerpc/aim64/mmu_oea64.c	optional	aim
@@ -112,7 +103,7 @@ powerpc/powerpc/db_hwwatch.c	optional	ddb
 powerpc/powerpc/db_interface.c	optional	ddb
 powerpc/powerpc/db_trace.c	optional	ddb
 powerpc/powerpc/dump_machdep.c	standard
-powerpc/powerpc/elf_machdep.c	standard
+powerpc/powerpc/elf64_machdep.c	standard
 powerpc/powerpc/fpu.c		optional	aim
 powerpc/powerpc/fuswintr.c	standard
 powerpc/powerpc/gdb_machdep.c	optional	gdb

@@ -478,8 +478,7 @@ CNAME(asttrapexit):
 /*
  * Deliberate entry to dbtrap
  */
-	.globl	CNAME(breakpoint)
-CNAME(breakpoint):
+ASENTRY(breakpoint)
 	mtsprg1	%r1
 	mfmsr	%r3
 	mtsrr1	%r3

@@ -4,6 +4,8 @@
 /* kernel version of this file, does not have signal goop */
 /* int setjmp(jmp_buf env) */
 
+#include <machine/asm.h>
+
 #define JMP_r1	0x04
 #define JMP_r14	0x08
 #define JMP_r15	0x0c
@@ -29,9 +31,7 @@
 #define JMP_xer	0x5c
 #define JMP_sig	0x60
 
-
-.globl setjmp
-setjmp:
+ASENTRY(setjmp)
 	stw 31, JMP_r31(3)
 	/* r1, r14-r30 */
 	stw 1,  JMP_r1 (3)
@@ -67,8 +67,7 @@ setjmp:
 
 
 .extern sigsetmask
-.globl longjmp
-longjmp:
+ASENTRY(longjmp)
 	lwz 31, JMP_r31(3)
 	/* r1, r14-r30 */
 	lwz 1,  JMP_r1 (3)
