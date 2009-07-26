@@ -145,7 +145,8 @@ cpu_fork(struct thread *td1, struct proc *p2, struct thread *td2, int flags)
 
 	KASSERT(td1 == curthread || td1 == &thread0,
 	    ("cpu_fork: p1 not curproc and not proc0"));
-	CTR3(KTR_PROC, "cpu_fork: called td1=%08x p2=%08x flags=%x", (u_int)td1, (u_int)p2, flags);
+	CTR3(KTR_PROC, "cpu_fork: called td1=%p p2=%p flags=%x",
+	    td1, p2, flags);
 
 	if ((flags & RFPROC) == 0)
 		return;
@@ -207,8 +208,8 @@ cpu_set_fork_handler(td, func, arg)
 {
 	struct	callframe *cf;
 
-	CTR4(KTR_PROC, "%s called with td=%08x func=%08x arg=%08x",
-	    __func__, (u_int)td, (u_int)func, (u_int)arg);
+	CTR4(KTR_PROC, "%s called with td=%p func=%p arg=%p",
+	    __func__, td, func, arg);
 
 	cf = (struct callframe *)td->td_pcb->pcb_sp;
 
@@ -461,11 +462,11 @@ cpu_set_upcall_kse(struct thread *td, void (*entry)(void *), void *arg,
 	stack_t *stack)
 {
 	struct trapframe *tf;
-	uint32_t sp;
+	uintptr_t sp;
 
 	tf = td->td_frame;
 	/* align stack and alloc space for frame ptr and saved LR */
-	sp = ((uint32_t)stack->ss_sp + stack->ss_size - sizeof(uint64_t)) &
+	sp = ((uintptr_t)stack->ss_sp + stack->ss_size - sizeof(uint64_t)) &
 	    ~0x1f;
 	bzero(tf, sizeof(struct trapframe));
 

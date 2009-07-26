@@ -65,6 +65,7 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_map.h>
 #include <vm/vm_page.h>
 
+#include <machine/_inttypes.h>
 #include <machine/altivec.h>
 #include <machine/cpu.h>
 #include <machine/db_machdep.h>
@@ -284,15 +285,16 @@ printtrap(u_int vector, struct trapframe *frame, int isfatal, int user)
 	    trapname(vector));
 	switch (vector) {
 	case EXC_DSI:
-		printf("   virtual address = 0x%x\n", frame->cpu.aim.dar);
+		printf("   virtual address = 0x%" PRIxPTR "\n",
+		    frame->cpu.aim.dar);
 		break;
 	case EXC_ISI:
-		printf("   virtual address = 0x%x\n", frame->srr0);
+		printf("   virtual address = 0x%" PRIxPTR "\n", frame->srr0);
 		break;
 	}
-	printf("   srr0            = 0x%x\n", frame->srr0);
-	printf("   srr1            = 0x%x\n", frame->srr1);
-	printf("   lr              = 0x%x\n", frame->lr);
+	printf("   srr0            = 0x%" PRIxPTR "\n", frame->srr0);
+	printf("   srr1            = 0x%" PRIxPTR "\n", frame->srr1);
+	printf("   lr              = 0x%" PRIxPTR "\n", frame->lr);
 	printf("   curthread       = %p\n", curthread);
 	if (curthread != NULL)
 		printf("          pid = %d, comm = %s\n",
@@ -350,7 +352,8 @@ syscall(struct trapframe *frame)
 		/*
 		 * The prep code is MP aware.
 		 */
-		(*p->p_sysent->sv_prepsyscall)(frame, args, &code, &params);
+		(*p->p_sysent->sv_prepsyscall)(frame, (int *)args, &code,
+		    &params);
 	} else if (code == SYS_syscall) {
 		/*
 		 * code is first argument,
@@ -602,7 +605,7 @@ badaddr_read(void *addr, size_t size, int *rptr)
 		x = *(volatile int32_t *)addr;
 		break;
 	default:
-		panic("badaddr: invalid size (%d)", size);
+		panic("badaddr: invalid size (%zd)", size);
 	}
 
 	/* Make sure we took the machine check, if we caused one. */

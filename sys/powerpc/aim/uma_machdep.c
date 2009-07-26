@@ -100,7 +100,7 @@ uma_small_free(void *mem, int size, u_int8_t flags)
 		return;
 	}
 
-	m = PHYS_TO_VM_PAGE((u_int32_t)mem);
+	m = PHYS_TO_VM_PAGE((vm_offset_t)mem);
 	m->wire_count--;
 	vm_page_free(m);
 	atomic_subtract_int(&cnt.v_wire_count, 1);

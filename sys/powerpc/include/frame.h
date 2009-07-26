@@ -55,7 +55,7 @@ struct trapframe {
 	register_t ctr;
 	register_t srr0;
 	register_t srr1;
-	int	exc;
+	register_t exc;
 	union {
 		struct {
 			/* dar & dsisr are only filled on a DSI trap */
@@ -90,6 +90,6 @@ struct callframe {
 /* Definitions for syscalls */
 #define	FIRSTARG	3				/* first arg in reg 3 */
 #define	NARGREG		8				/* 8 args in regs */
-#define	MOREARGS(sp)	((caddr_t)((int)(sp) + 8))	/* more args go here */
+#define	MOREARGS(sp)	((caddr_t)((uintptr_t)(sp) + 8)) /* more args go here */
 
 #endif	/* _MACHINE_FRAME_H_ */
