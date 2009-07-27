@@ -92,6 +92,10 @@
 #define	PSL_RI		0x00000002	/* recoverable interrupt */
 #define	PSL_LE		0x00000001	/* endian mode (1 == le) */
 
+#ifdef __powerpc64__
+#define PSL_SF		(0x1UL << 63)
+#endif
+
 #define	PSL_601_MASK	~(PSL_POW|PSL_ILE|PSL_BE|PSL_RI|PSL_LE)
 
 /*
@@ -109,7 +113,11 @@
 #define	PSL_MBO		0
 #define	PSL_MBZ		0
 
+#ifdef __powerpc64__
+#define	PSL_KERNSET	(PSL_SF | PSL_EE | PSL_ME | PSL_IR | PSL_DR | PSL_RI)
+#else
 #define	PSL_KERNSET	(PSL_EE | PSL_ME | PSL_IR | PSL_DR | PSL_RI)
+#endif
 #define	PSL_USERSET	(PSL_KERNSET | PSL_PR)
 
 #define	PSL_USERSTATIC	(PSL_USERSET | PSL_IP | 0x87c0008c)

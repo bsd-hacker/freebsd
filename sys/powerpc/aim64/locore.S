@@ -144,7 +144,7 @@ ASENTRY(__start)
 	mr	21,7
 
 	lis	8,openfirmware_entry@ha
-	stw	5,openfirmware_entry@l(8) /* save client interface handler */
+	std	5,openfirmware_entry@l(8) /* save client interface handler */
 
 	lis	1,(tmpstk+TMPSTKSZ-16)@ha
 	addi	1,1,(tmpstk+TMPSTKSZ-16)@l

@@ -211,8 +211,13 @@ ofw_real_map(const void *buf, size_t len)
 	mtx_assert(&of_bounce_mtx, MA_OWNED);
 
 	if (of_bounce_virt == NULL) {
+		/*
+		 * If we haven't set up the MMU, then buf is guaranteed
+		 * to be accessible to OF, because the only memory we
+		 * can use right now is memory mapped by firmware.
+		 */
 		if (!pmap_bootstrapped)
-			return (cell_t)buf;
+			return (cell_t)(uintptr_t)buf;
 
 		/*
 		 * XXX: It is possible for us to get called before the VM has
@@ -279,11 +284,11 @@ ofw_real_test(ofw_t ofw, const char *name)
 		cell_t nreturns;
 		cell_t service;
 		cell_t missing;
-	} args = {
-		(cell_t)"test",
-		1,
-		1,
-	};
+	} args;
+
+	args.name = (cell_t)(uintptr_t)"test";
+	args.nargs = 1;
+	args.nreturns = 1;
 
 	ofw_real_start();
 
@@ -310,11 +315,11 @@ ofw_real_peer(ofw_t ofw, phandle_t node)
 		cell_t nreturns;
 		cell_t node;
 		cell_t next;
-	} args = {
-		(cell_t)"peer",
-		1,
-		1,
-	};
+	} args;
+
+	args.name = (cell_t)(uintptr_t)"peer";
+	args.nargs = 1;
+	args.nreturns = 1;
 
 	args.node = node;
 	if (openfirmware(&args) == -1)
@@ -332,11 +337,11 @@ ofw_real_child(ofw_t ofw, phandle_t node)
 		cell_t nreturns;
 		cell_t node;
 		cell_t child;
-	} args = {
-		(cell_t)"child",
-		1,
-		1,
-	};
+	} args;
+
+	args.name = (cell_t)(uintptr_t)"child";
+	args.nargs = 1;
+	args.nreturns = 1;
 
 	args.node = node;
 	if (openfirmware(&args) == -1)
@@ -354,11 +359,11 @@ ofw_real_parent(ofw_t ofw, phandle_t node)
 		cell_t nreturns;
 		cell_t node;
 		cell_t parent;
-	} args = {
-		(cell_t)"parent",
-		1,
-		1,
-	};
+	} args;
+
+	args.name = (cell_t)(uintptr_t)"parent";
+	args.nargs = 1;
+	args.nreturns = 1;
 
 	args.node = node;
 	if (openfirmware(&args) == -1)
@@ -376,11 +381,11 @@ ofw_real_instance_to_package(ofw_t ofw, ihandle_t instance)
 		cell_t nreturns;
 		cell_t instance;
 		cell_t package;
-	} args = {
-		(cell_t)"instance-to-package",
-		1,
-		1,
-	};
+	} args;
+
+	args.name = (cell_t)(uintptr_t)"instance-to-package";
+	args.nargs = 1;
+	args.nreturns = 1;
 
 	args.instance = instance;
 	if (openfirmware(&args) == -1)
@@ -399,11 +404,11 @@ ofw_real_getproplen(ofw_t ofw, phandle_t package, const char *propname)
 		cell_t package;
 		cell_t propname;
 		cell_t proplen;
-	} args = {
-		(cell_t)"getproplen",
-		2,
-		1,
-	};
+	} args;
+
+	args.name = (cell_t)(uintptr_t)"getproplen";
+	args.nargs = 2;
+	args.nreturns = 1;
 
 	ofw_real_start();
 
@@ -431,11 +436,11 @@ ofw_real_getprop(ofw_t ofw, phandle_t package, const char *propname, void *buf,
 		cell_t buf;
 		cell_t buflen;
 		cell_t size;
-	} args = {
-		(cell_t)"getprop",
-		4,
-		1,
-	};
+	} args;
+
+	args.name = (cell_t)(uintptr_t)"getprop";
+	args.nargs = 4;
+	args.nreturns = 1;
 
 	ofw_real_start();
 
@@ -466,11 +471,11 @@ ofw_real_nextprop(ofw_t ofw, phandle_t package, const char *previous,
 		cell_t previous;
 		cell_t buf;
 		cell_t flag;
-	} args = {
-		(cell_t)"nextprop",
-		3,
-		1,
-	};
+	} args;
+
+	args.name = (cell_t)(uintptr_t)"nextprop";
+	args.nargs = 3;
+	args.nreturns = 1;
 
 	ofw_real_start();
 
@@ -502,11 +507,11 @@ ofw_real_setprop(ofw_t ofw, phandle_t package, const char *propname,
 		cell_t buf;
 		cell_t len;
 		cell_t size;
-	} args = {
-		(cell_t)"setprop",
-		4,
-		1,
-	};
+	} args;
+
+	args.name = (cell_t)(uintptr_t)"setprop";
+	args.nargs = 4;
+	args.nreturns = 1;
 
 	ofw_real_start();
 
@@ -534,11 +539,11 @@ ofw_real_canon(ofw_t ofw, const char *device, char *buf, size_t len)
 		cell_t buf;
 		cell_t len;
 		cell_t size;
-	} args = {
-		(cell_t)"canon",
-		3,
-		1,
-	};
+	} args;
+
+	args.name = (cell_t)(uintptr_t)"canon";
+	args.nargs = 3;
+	args.nreturns = 1;
 
 	ofw_real_start();
 
@@ -565,11 +570,11 @@ ofw_real_finddevice(ofw_t ofw, const char *device)
 		cell_t nreturns;
 		cell_t device;
 		cell_t package;
-	} args = {
-		(cell_t)"finddevice",
-		1,
-		1,
-	};
+	} args;
+
+	args.name = (cell_t)(uintptr_t)"finddevice";
+	args.nargs = 1;
+	args.nreturns = 1;
 
 	ofw_real_start();
 
@@ -594,11 +599,11 @@ ofw_real_instance_to_path(ofw_t ofw, ihandle_t instance, char *buf, size_t len)
 		cell_t buf;
 		cell_t len;
 		cell_t size;
-	} args = {
-		(cell_t)"instance-to-path",
-		3,
-		1,
-	};
+	} args;
+
+	args.name = (cell_t)(uintptr_t)"instance-to-path";
+	args.nargs = 3;
+	args.nreturns = 1;
 
 	ofw_real_start();
 
@@ -627,11 +632,11 @@ ofw_real_package_to_path(ofw_t ofw, phandle_t package, char *buf, size_t len)
 		cell_t buf;
 		cell_t len;
 		cell_t size;
-	} args = {
-		(cell_t)"package-to-path",
-		3,
-		1,
-	};
+	} args;
+
+	args.name = (cell_t)(uintptr_t)"package-to-path";
+	args.nargs = 3;
+	args.nreturns = 1;
 
 	ofw_real_start();
 
@@ -660,14 +665,14 @@ ofw_real_call_method(ofw_t ofw, ihandle_t instance, const char *method,
 		cell_t method;
 		cell_t instance;
 		cell_t args_n_results[12];
-	} args = {
-		(cell_t)"call-method",
-		2,
-		1,
-	};
+	} args;
 	cell_t *cp;
 	unsigned long *ap;
 	int n;
+
+	args.name = (cell_t)(uintptr_t)"call-method";
+	args.nargs = 2;
+	args.nreturns = 1;
 
 	if (nargs > 6)
 		return (-1);
@@ -707,11 +712,11 @@ ofw_real_open(ofw_t ofw, const char *device)
 		cell_t nreturns;
 		cell_t device;
 		cell_t instance;
-	} args = {
-		(cell_t)"open",
-		1,
-		1,
-	};
+	} args;
+
+	args.name = (cell_t)(uintptr_t)"open";
+	args.nargs = 1;
+	args.nreturns = 1;
 
 	ofw_real_start();
 
@@ -734,10 +739,10 @@ ofw_real_close(ofw_t ofw, ihandle_t instance)
 		cell_t nargs;
 		cell_t nreturns;
 		cell_t instance;
-	} args = {
-		(cell_t)"close",
-		1,
-	};
+	} args;
+
+	args.name = (cell_t)(uintptr_t)"close";
+	args.nargs = 1;
 
 	args.instance = instance;
 	openfirmware(&args);
@@ -755,11 +760,11 @@ ofw_real_read(ofw_t ofw, ihandle_t instance, void *addr, size_t len)
 		cell_t addr;
 		cell_t len;
 		cell_t actual;
-	} args = {
-		(cell_t)"read",
-		3,
-		1,
-	};
+	} args;
+
+	args.name = (cell_t)(uintptr_t)"read";
+	args.nargs = 3;
+	args.nreturns = 1;
 
 	ofw_real_start();
 
@@ -788,11 +793,11 @@ ofw_real_write(ofw_t ofw, ihandle_t instance, const void *addr, size_t len)
 		cell_t addr;
 		cell_t len;
 		cell_t actual;
-	} args = {
-		(cell_t)"write",
-		3,
-		1,
-	};
+	} args;
+
+	args.name = (cell_t)(uintptr_t)"write";
+	args.nargs = 3;
+	args.nreturns = 1;
 
 	ofw_real_start();
 
@@ -819,11 +824,11 @@ ofw_real_seek(ofw_t ofw, ihandle_t instance, u_int64_t pos)
 		cell_t poshi;
 		cell_t poslo;
 		cell_t status;
-	} args = {
-		(cell_t)"seek",
-		3,
-		1,
-	};
+	} args;
+
+	args.name = (cell_t)(uintptr_t)"seek";
+	args.nargs = 3;
+	args.nreturns = 1;
 
 	args.instance = instance;
 	args.poshi = pos >> 32;
@@ -849,18 +854,18 @@ ofw_real_claim(ofw_t ofw, void *virt, size_t size, u_int align)
 		cell_t size;
 		cell_t align;
 		cell_t baseaddr;
-	} args = {
-		(cell_t)"claim",
-		3,
-		1,
-	};
+	} args;
 
-	args.virt = (cell_t)virt;
+	args.name = (cell_t)(uintptr_t)"claim";
+	args.nargs = 3;
+	args.nreturns = 1;
+
+	args.virt = (cell_t)(uintptr_t)virt;
 	args.size = size;
 	args.align = align;
 	if (openfirmware(&args) == -1)
 		return ((void *)-1);
-	return ((void *)args.baseaddr);
+	return ((void *)(uintptr_t)args.baseaddr);
 }
 
 /* Release an area of memory. */
@@ -873,12 +878,12 @@ ofw_real_release(ofw_t ofw, void *virt, size_t size)
 		cell_t nreturns;
 		cell_t virt;
 		cell_t size;
-	} args = {
-		(cell_t)"release",
-		2,
-	};
+	} args;
 
-	args.virt = (cell_t)virt;
+	args.name = (cell_t)(uintptr_t)"release";
+	args.nargs = 2;
+
+	args.virt = (cell_t)(uintptr_t)virt;
 	args.size = size;
 	openfirmware(&args);
 }
@@ -895,9 +900,9 @@ ofw_real_enter(ofw_t ofw)
 		cell_t name;
 		cell_t nargs;
 		cell_t nreturns;
-	} args = {
-		(cell_t)"enter",
-	};
+	} args;
+
+	args.name = (cell_t)(uintptr_t)"enter";
 
 	openfirmware(&args);
 	/* We may come back. */
@@ -911,9 +916,9 @@ ofw_real_exit(ofw_t ofw)
 		cell_t name;
 		cell_t nargs;
 		cell_t nreturns;
-	} args = {
-		(cell_t)"exit",
-	};
+	} args;
+
+	args.name = (cell_t)(uintptr_t)"exit";
 
 	openfirmware(&args);
 	for (;;)			/* just in case */
