@@ -288,7 +288,7 @@ OF_initial_setup(void *fdt_ptr, void *junk, int (*openfirm)(void *))
 		 */
 		ofwcall_funcdesc.funcptr = openfirm;
 		ofwcall_funcdesc.toc = 0;
-		ofwcall_funcdesc.env= 0;
+		ofwcall_funcdesc.env = 0;
 		ofwcall = (int (*)(void *))(&ofwcall_funcdesc);
 	#else
 		ofwcall = openfirm;
