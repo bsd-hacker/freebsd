@@ -104,7 +104,6 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_pager.h>
 
 #include <machine/altivec.h>
-#include <machine/bat.h>
 #include <machine/cpu.h>
 #include <machine/elf.h>
 #include <machine/fpu.h>
@@ -230,8 +229,6 @@ cpu_startup(void *dummy)
 
 extern char	kernel_text[], _end[];
 
-extern void	*restorebridge, *restorebridgesize;
-extern void	*rfid_patch, *rfi_patch1, *rfi_patch2;
 #ifdef SMP
 extern void	*rstcode, *rstsize;
 #endif
@@ -398,8 +395,10 @@ powerpc_init(u_int startkernel, u_int endkernel, u_int basekernel, void *mdp)
 	bcopy(&trapcode, (void *)EXC_BPT,  (size_t)&trapsize);
 #endif
 	bcopy(&dsitrap,  (void *)(EXC_DSI),  (size_t)&dsisize);
+	bcopy(&trapcode, (void *)EXC_DSE,  (size_t)&trapsize);
 	bcopy(&alitrap,  (void *)(EXC_ALI),  (size_t)&alisize);
 	bcopy(&trapcode, (void *)EXC_ISI,  (size_t)&trapsize);
+	bcopy(&trapcode, (void *)EXC_ISE,  (size_t)&trapsize);
 	bcopy(&trapcode, (void *)EXC_EXI,  (size_t)&trapsize);
 	bcopy(&trapcode, (void *)EXC_FPU,  (size_t)&trapsize);
 	bcopy(&trapcode, (void *)EXC_DECR, (size_t)&trapsize);

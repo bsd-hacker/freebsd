@@ -170,7 +170,12 @@ cntlzd(volatile register_t a) {
 static __inline uint64_t
 va_to_vsid(pmap_t pm, vm_offset_t va)
 {
+	#ifdef __powerpc64__
+	return (((uint64_t)pm->pm_context << 36) |
+	    ((uintptr_t)va >> ADDR_SR_SHFT));
+	#else
 	return ((pm->pm_sr[(uintptr_t)va >> ADDR_SR_SHFT]) & SR_VSID_MASK);
+	#endif
 }
 
 #define	TLBSYNC()	__asm __volatile("tlbsync; ptesync");
@@ -186,11 +191,13 @@ va_to_vsid(pmap_t pm, vm_offset_t va)
 
 static __inline void
 TLBIE(pmap_t pmap, vm_offset_t va) {
+#ifndef __powerpc64__
 	register_t msr;
 	register_t scratch;
+	register_t vpn_hi, vpn_lo;
+#endif
 
 	uint64_t vpn;
-	register_t vpn_hi, vpn_lo;
 
 #if 1
 	/*
@@ -205,6 +212,15 @@ TLBIE(pmap_t pmap, vm_offset_t va) {
 	vpn = va;
 #endif
 
+#ifdef __powerpc64__
+	__asm __volatile("\
+	    ptesync; \
+	    tlbie %0; \
+	    eieio; \
+	    tlbsync; \
+	    ptesync;" 
+	:: "r"(vpn));
+#else
 	vpn_hi = (uint32_t)(vpn >> 32);
 	vpn_lo = (uint32_t)vpn;
 
@@ -224,13 +240,13 @@ TLBIE(pmap_t pmap, vm_offset_t va) {
 	    tlbsync; \
 	    ptesync;" 
 	: "=r"(msr), "=r"(scratch) : "r"(vpn_hi), "r"(vpn_lo), "r"(32));
+#endif
 }
 
 #define DISABLE_TRANS(msr)	msr = mfmsr(); mtmsr(msr & ~PSL_DR); isync()
 #define ENABLE_TRANS(msr)	mtmsr(msr); isync()
 
 #define	VSID_MAKE(sr, hash)	((sr) | (((hash) & 0xfffff) << 4))
-#define	VSID_TO_SR(vsid)	((vsid) & 0xf)
 #define	VSID_TO_HASH(vsid)	(((vsid) >> 4) & 0xfffff)
 
 #define	PVO_PTEGIDX_MASK	0x007		/* which PTEG slot */
@@ -270,7 +286,7 @@ static struct	mem_region *regions;
 static struct	mem_region *pregions;
 static u_int	phys_avail_count;
 static int	regions_sz, pregions_sz;
-static int	ofw_real_mode;
+extern int	ofw_real_mode;
 static struct	ofw_map translations[64];
 
 extern struct pmap ofw_pmap;
@@ -372,6 +388,7 @@ static void		moea64_kremove(mmu_t, vm_offset_t);
 static void		moea64_syncicache(pmap_t pmap, vm_offset_t va, 
 			    vm_offset_t pa);
 static void		tlbia(void);
+static void		slbia(void);
 
 /*
  * Kernel MMU interface
@@ -701,14 +718,45 @@ moea64_bridge_cpu_bootstrap(mmu_t mmup, int ap)
 {
 	int i = 0;
 
+	#ifdef __powerpc64__
+	register_t slb1, slb2;
+	#endif
+
 	/*
 	 * Initialize segment registers and MMU
 	 */
 
 	mtmsr(mfmsr() & ~PSL_DR & ~PSL_IR); isync();
-	for (i = 0; i < 16; i++) {
-		mtsrin(i << ADDR_SR_SHFT, kernel_pmap->pm_sr[i]);
-	}
+
+	/*
+	 * Install kernel SLB entries
+	 */
+
+	#ifdef __powerpc64__
+		slbia();
+
+		for (i = 0; i < NSEGS; i++) {
+			if (!kernel_pmap->pm_sr[i])
+				continue;
+
+			/* The right-most bit is a validity bit */
+			slb1 = ((register_t)kernel_pmap->pm_context << 36) |
+			    (kernel_pmap->pm_sr[i] >> 1);
+			slb1 <<= 12;
+			slb2 = kernel_pmap->pm_sr[i] << 27 | i;
+			
+			__asm __volatile ("slbmte %0, %1" :: "r"(slb1),
+			    "r"(slb2)); 
+		}
+	#else
+		for (i = 0; i < NSEGS; i++)
+			mtsrin(i << ADDR_SR_SHFT, pmap->pm_sr[i]);
+	#endif
+
+	/*
+	 * Install page table
+	 */
+
 	__asm __volatile ("sync; mtsdr1 %0; isync"
 	    :: "r"((uintptr_t)moea64_pteg_table 
 		     | (64 - cntlzd(moea64_pteg_mask >> 11))));
@@ -844,8 +892,14 @@ moea64_bridge_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernele
 	/*
 	 * Initialize the kernel pmap (which is statically allocated).
 	 */
+	kernel_pmap->pm_context = 0;
+	#ifdef __powerpc64__
+	for (i = 0; i < 16; i++) 
+		kernel_pmap->pm_sr[i] = (i << 1) | 1;
+	#else
 	for (i = 0; i < 16; i++) 
 		kernel_pmap->pm_sr[i] = EMPTY_SEGMENT + i;
+	#endif
 
 	kernel_pmap->pmap_phys = kernel_pmap;
 	kernel_pmap->pm_active = ~0;
@@ -883,6 +937,7 @@ moea64_bridge_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernele
 		moea64_kenter(mmup, pa, pa);
 	ENABLE_TRANS(msr);
 
+
 	if (!ofw_real_mode) {
 	    /*
 	     * Set up the Open Firmware pmap and add its mappings.
@@ -895,6 +950,7 @@ moea64_bridge_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernele
 	    if ((chosen = OF_finddevice("/chosen")) == -1)
 		panic("moea64_bootstrap: can't find /chosen");
 	    OF_getprop(chosen, "mmu", &mmui, 4);
+
 	    if ((mmu = OF_instance_to_package(mmui)) == -1)
 		panic("moea64_bootstrap: can't get mmu package");
 	    if ((sz = OF_getproplen(mmu, "translations")) == -1)
@@ -1748,9 +1804,15 @@ moea64_pinit(mmu_t mmu, pmap_t pmap)
 			hash |= i;
 		}
 		moea64_vsid_bitmap[n] |= mask;
-		for (i = 0; i < 16; i++) {
-			pmap->pm_sr[i] = VSID_MAKE(i, hash);
-		}
+
+		#ifdef __powerpc64__
+			pmap->pm_context = hash;
+			for (i = 0; i < NSEGS; i++) 
+				pmap->pm_sr[i] = 0;
+		#else
+			for (i = 0; i < 16; i++) 
+				pmap->pm_sr[i] = VSID_MAKE(i, hash);
+		#endif
 		return;
 	}
 
@@ -1974,6 +2036,12 @@ tlbia(void)
 
 	for (i = 0; i < 0xFF000; i += 0x00001000) 
 		TLBIE(NULL,i);
+}
+
+static void
+slbia(void)
+{
+	__asm __volatile ("slbia");
 }
 
 static int

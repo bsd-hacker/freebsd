@@ -42,22 +42,9 @@
 /*
  * Save/restore segment registers
  */
-#define RESTORE_SRS(pmap,sr)	mtsr    0,sr; \
-	lwz	sr,1*4(pmap);	mtsr	1,sr; \
-	lwz	sr,2*4(pmap);	mtsr	2,sr; \
-	lwz	sr,3*4(pmap);	mtsr	3,sr; \
-	lwz	sr,4*4(pmap);	mtsr	4,sr; \
-	lwz	sr,5*4(pmap);	mtsr	5,sr; \
-	lwz	sr,6*4(pmap);	mtsr	6,sr; \
-	lwz	sr,7*4(pmap);	mtsr	7,sr; \
-	lwz	sr,8*4(pmap);	mtsr	8,sr; \
-	lwz	sr,9*4(pmap);	mtsr	9,sr; \
-	lwz	sr,10*4(pmap);	mtsr	10,sr; \
-	lwz	sr,11*4(pmap);	mtsr	11,sr; \
-	lwz	sr,12*4(pmap);	mtsr	12,sr; \
-	lwz	sr,13*4(pmap);	mtsr	13,sr; \
-	lwz	sr,14*4(pmap);	mtsr	14,sr; \
-	lwz	sr,15*4(pmap);	mtsr	15,sr; isync;
+
+#define RESTORE_SRS(pmap, sr) \
+	slbia; 
 
 /*
  * User SRs are loaded through a pointer to the current pmap.
@@ -249,10 +236,13 @@ CNAME(rstcode):
 	addi	%r1,%r1,(124-16)@l
 
 	lis	%r3,1@l
-	bla	CNAME(pmap_cpu_bootstrap)
-	bla	CNAME(cpudep_ap_bootstrap)
+	bla	CNAME(.pmap_cpu_bootstrap)
+	nop
+	bla	CNAME(.cpudep_ap_bootstrap)
+	nop
 	mr	%r1,%r3
-	bla	CNAME(machdep_ap_bootstrap)
+	bla	CNAME(.machdep_ap_bootstrap)
+	nop
 
 	/* Should not be reached */
 9:
@@ -441,10 +431,12 @@ k_trap:
 /* Call C interrupt dispatcher: */
 trapagain:
 	addi	%r3,%r1,8
-	bl	CNAME(powerpc_interrupt)
-	.globl	CNAME(trapexit)		/* backtrace code sentinel */
-CNAME(trapexit):
+	bl	CNAME(.powerpc_interrupt)
+	nop
+	bl	CNAME(.trapexit)
+	nop
 
+ASENTRY(trapexit)	/* backtrace code sentinel */
 /* Disable interrupts: */
 	mfmsr	%r3
 	andi.	%r3,%r3,~PSL_EE@l
@@ -511,7 +503,8 @@ dbtrap:
 	FRAME_SETUP(PC_DBSAVE)
 /* Call C trap code: */
 	addi	%r3,%r1,8
-	bl	CNAME(db_trap_glue)
+	bl	CNAME(.db_trap_glue)
+	nop
 	or.	%r3,%r3,%r3
 	bne	dbleave
 /* This wasn't for KDB, so switch to real trap: */

@@ -169,8 +169,8 @@ ASENTRY(__start)
 	addi	4,4,end@l
 	mr	5,4
 
-	lis	3,kernel_text@ha
-	addi	3,3,kernel_text@l
+	lis	3,kernbase@ha
+	addi	3,3,kernbase@l
 
 	/* Restore the argument pointer and length */
 	mr	6,20
