@@ -196,7 +196,6 @@ in_pcballoc(struct socket *so, struct inpcbinfo *pcbinfo)
 #endif
 	struct inpcb *inp;
 	int error;
-	static int flowid = 1;
 	
 	INP_INFO_WLOCK_ASSERT(pcbinfo);
 	error = 0;

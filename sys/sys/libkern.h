@@ -139,6 +139,10 @@ crc32(const void *buf, size_t size)
 	return (crc ^ ~0U);
 }
 
+uint32_t
+calculate_crc32c(uint32_t crc32c, const unsigned char *buffer, 
+        unsigned int length);
+
 static __inline int
 memcmp(const void *b1, const void *b2, size_t len)
 {
