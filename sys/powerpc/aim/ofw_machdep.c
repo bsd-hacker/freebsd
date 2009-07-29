@@ -145,8 +145,11 @@ parse_ofw_memory(phandle_t node, const char *prop, struct mem_region *output)
 {
 	cell_t address_cells, size_cells;
 	int sz, i, j;
+	int apple_hack_mode;
 	phandle_t phandle;
+
 	sz = 0;
+	apple_hack_mode = 0;
 
 	/*
 	 * Get #address-cells from root node, defaulting to 1 if it cannot
@@ -159,7 +162,20 @@ parse_ofw_memory(phandle_t node, const char *prop, struct mem_region *output)
 	if (OF_getprop(phandle, "#size-cells", &size_cells, 
 	    sizeof(size_cells)) < sizeof(size_cells))
 		size_cells = 1;
+
+	/*
+	 * On Apple hardware, address_cells is always 1 for "available",
+	 * even when it is explicitly set to 2. Then all memory above 4 GB
+	 * should be added by hand to the available list. Detect Apple hardware
+	 * by seeing if ofw_real_mode is set -- only Apple seems to use
+	 * virtual-mode OF.
+	 */
+	if (strcmp(prop, "available") == 0 && !ofw_real_mode)
+		apple_hack_mode = 1;
 	
+	if (apple_hack_mode)
+		address_cells = 1;
+
 	/*
 	 * Get memory.
 	 */
@@ -216,6 +232,25 @@ parse_ofw_memory(phandle_t node, const char *prop, struct mem_region *output)
 			  output, sizeof(output[0]) * OFMEM_REGIONS)) <= 0)
 		panic("Physical memory map not found");
 	}
+
+	#ifdef __powerpc64__
+	if (apple_hack_mode) {
+		/* Add in regions above 4 GB to the available list */
+		struct mem_region himem[OFMEM_REGIONS];
+		int hisz;
+
+		hisz = parse_ofw_memory(node, "reg", himem);
+		j = sz/sizeof(output[0]);
+		for (i = 0; i < hisz/sizeof(himem[0]); i++) {
+			if (himem[i].mr_start > BUS_SPACE_MAXADDR_32BIT) {
+				output[j].mr_start = himem[i].mr_start;
+				output[j].mr_size = himem[i].mr_size;
+				j++;
+			}
+		}
+		sz = j*sizeof(output[0]);
+	}
+	#endif
 
 	return (sz);
 }

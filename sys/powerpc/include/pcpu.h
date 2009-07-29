@@ -71,12 +71,12 @@ struct pmap;
 #define	CPUSAVE_R29	2		/* where r29 gets saved */
 #define	CPUSAVE_R30	3		/* where r30 gets saved */
 #define	CPUSAVE_R31	4		/* where r31 gets saved */
-#define	CPUSAVE_AIM_DAR		4	/* where SPR_DAR gets saved */
-#define	CPUSAVE_AIM_DSISR	5	/* where SPR_DSISR gets saved */
-#define	CPUSAVE_BOOKE_DEAR	4	/* where SPR_DEAR gets saved */
-#define	CPUSAVE_BOOKE_ESR	5	/* where SPR_ESR gets saved */
-#define	CPUSAVE_SRR0	6		/* where SRR0 gets saved */
-#define	CPUSAVE_SRR1	7		/* where SRR1 gets saved */
+#define	CPUSAVE_AIM_DAR		5	/* where SPR_DAR gets saved */
+#define	CPUSAVE_AIM_DSISR	6	/* where SPR_DSISR gets saved */
+#define	CPUSAVE_BOOKE_DEAR	5	/* where SPR_DEAR gets saved */
+#define	CPUSAVE_BOOKE_ESR	6	/* where SPR_ESR gets saved */
+#define	CPUSAVE_SRR0	7		/* where SRR0 gets saved */
+#define	CPUSAVE_SRR1	8		/* where SRR1 gets saved */
 
 /* Book-E TLBSAVE is more elaborate */
 #define TLBSAVE_BOOKE_LR	0
