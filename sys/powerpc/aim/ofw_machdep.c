@@ -182,13 +182,17 @@ parse_ofw_memory(phandle_t node, const char *prop, struct mem_region *output)
 
 		output[j].mr_start = OFmem[i++];
 		if (address_cells == 2) {
+			#ifdef __powerpc64__
 			output[j].mr_start <<= 32;
+			#endif
 			output[j].mr_start += OFmem[i++];
 		}
 			
 		output[j].mr_size = OFmem[i++];
 		if (size_cells == 2) {
+			#ifdef __powerpc64__
 			output[j].mr_size <<= 32;
+			#endif
 			output[j].mr_size += OFmem[i++];
 		}
 
@@ -200,7 +204,7 @@ parse_ofw_memory(phandle_t node, const char *prop, struct mem_region *output)
 		if (((uint64_t)output[j].mr_start +
 		    (uint64_t)output[j].mr_size) >
 		    BUS_SPACE_MAXADDR_32BIT) {
-			ouptut[j].mr_size = BUS_SPACE_MAXADDR_32BIT -
+			output[j].mr_size = BUS_SPACE_MAXADDR_32BIT -
 			    output[j].mr_start;
 		}
 	      #endif

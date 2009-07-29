@@ -388,7 +388,9 @@ static void		moea64_kremove(mmu_t, vm_offset_t);
 static void		moea64_syncicache(pmap_t pmap, vm_offset_t va, 
 			    vm_offset_t pa);
 static void		tlbia(void);
+#ifdef __powerpc64__
 static void		slbia(void);
+#endif
 
 /*
  * Kernel MMU interface
@@ -750,7 +752,7 @@ moea64_bridge_cpu_bootstrap(mmu_t mmup, int ap)
 		}
 	#else
 		for (i = 0; i < NSEGS; i++)
-			mtsrin(i << ADDR_SR_SHFT, pmap->pm_sr[i]);
+			mtsrin(i << ADDR_SR_SHFT, kernel_pmap->pm_sr[i]);
 	#endif
 
 	/*
@@ -2070,11 +2072,13 @@ tlbia(void)
 		TLBIE(NULL,i);
 }
 
+#ifdef __powerpc64__
 static void
 slbia(void)
 {
 	__asm __volatile ("slbia");
 }
+#endif
 
 static int
 moea64_pvo_enter(pmap_t pm, uma_zone_t zone, struct pvo_head *pvo_head,
