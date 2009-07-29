@@ -1,5 +1,9 @@
 #!/usr/bin/perl -wC
 
+#
+# $FreeBSD$
+#
+
 use strict;
 use XML::Parser;
 use Text::Iconv;
@@ -26,6 +30,7 @@ my %values = ();
 my %hashtable = ();
 my %languages = ();
 my %translations = ();
+my %alternativemonths = ();
 get_languages();
 
 my %cm = ();
@@ -44,6 +49,8 @@ my %FILESNAMES = (
 
 my %callback = (
 	mdorder => \&callback_mdorder,
+	altmon => \&callback_altmon,
+	data => (),
 );
 
 my %DESC = (
@@ -87,7 +94,7 @@ my %DESC = (
 	"XXX"		=> "c_fmt",
 	"am_pm"		=> "AM/PM",
 	"d_t_fmt"	=> "date_fmt",
-	"mon2"		=> "Long month names (without case ending)",
+	"altmon"	=> "Long month names (without case ending)",
 	"md_order"	=> "md_order",
 	"t_fmt_ampm"	=> "ampm_fmt",
 
@@ -151,7 +158,8 @@ if ($TYPE eq "timedef") {
 	    "am_pm"		=> "as",
 	    "d_fmt"		=> "s",
 	    "d_t_fmt"		=> "s",
-	    "mon2"		=> ">mon",		# repeat them for now
+#	    "altmon"		=> ">mon",		# repeat them for now
+	    "altmon"		=> "<altmon<mon<as",
 	    "md_order"		=> "<mdorder<d_fmt<s",
 	    "t_fmt_ampm"	=> "s",
 	);
@@ -166,6 +174,18 @@ sub callback_mdorder {
 	$s =~ s/[^dm]//g;
 	return $s;
 };
+
+sub callback_altmon {
+	# if the language/country is known in %alternative months then
+	# return that, otherwise repeat mon
+	my $s = shift;
+
+	if (defined $alternativemonths{$callback{data}{l}}{$callback{data}{c}}) {
+		return $alternativemonths{$callback{data}{l}}{$callback{data}{c}};
+	}
+
+	return $s;
+}
 
 ############################
 
@@ -197,6 +217,7 @@ sub get_languages {
 	my %data = get_xmldata($CHARMAPS);
 	%languages = %{$data{L}}; 
 	%translations = %{$data{T}}; 
+	%alternativemonths = %{$data{AM}}; 
 
 	return if (!defined $doonly);
 
@@ -342,16 +363,24 @@ EOF
 
 				$output .= "#\n# $DESC{$k}\n";
 
+				# Replace one row with another
 				if ($f =~ /^>/) {
 					$k = substr($f, 1);
 					$f = $keys{$k};
 				}
+
+				# Callback function
 				if ($f =~ /^\</) {
+					$callback{data}{c} = $c;
+					$callback{data}{k} = $k;
+					$callback{data}{l} = $l;
+					$callback{data}{e} = $enc;
 					my @a = split(/\</, substr($f, 1));
 					my $rv =
 					    &{$callback{$a[0]}}($values{$l}{$c}{$a[1]});
 					$values{$l}{$c}{$k} = $rv;
 					$f = $a[2];
+					$callback{data} = ();
 				}
 
 				my $v = $values{$l}{$c}{$k};
@@ -451,7 +480,7 @@ sub make_makefile {
 # tools in /usr/src/tools/tools/locale.
 # 
 
-LOCALEDIR=	/usr/share/locale
+LOCALEDIR=	/share/locale
 FILESNAME=	$FILESNAMES{$TYPE}
 .SUFFIXES:	.src .out
 
@@ -480,6 +509,12 @@ EOF
 	foreach my $c (sort keys(%{$languages{$l}{$f}{data}})) {
 		next if ($#filter == 2 && ($filter[0] ne $l
 		    || $filter[1] ne $f || $filter[2] ne $c));
+		if (defined $languages{$l}{$f}{data}{$c}{$DEFENCODING}
+		 && $languages{$l}{$f}{data}{$c}{$DEFENCODING} eq "0") {
+			print "Skipping ${l}_" . ($f eq "x" ? "" : "${f}_") .
+			    "${c} - not read\n";
+			next;
+		}
 		foreach my $e (sort keys(%{$languages{$l}{$f}{data}{$c}})) {
 			my $file = $l . "_";
 			$file .= $f . "_" if ($f ne "x");
@@ -515,10 +550,6 @@ SYMLINKS+=	../\${f:C/:.*\$//}/\${FILESNAME} \${LOCALEDIR}/\${f:C/^.*://}
 .for f in \${LOCALES}
 FILESDIR_\${f}.out= \${LOCALEDIR}/\${f}
 .endfor
-
-
-src:
-	./cldr2def.pl /home/edwin/cldr/1.7.0/ charmaps.xml timedef nl_NL
 
 .include <bsd.prog.mk>
 EOF

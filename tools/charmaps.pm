@@ -1,5 +1,9 @@
 #!/usr/local/bin/perl -w
 
+#
+# $FreeBSD$
+#
+
 use strict;
 use XML::Parser;
 use Data::Dumper;
@@ -9,7 +13,9 @@ my %d = ();
 my $index = -1;
 
 sub get_xmldata {
-	open(FIN, "charmaps.xml");
+	my $xmlfile = shift;
+
+	open(FIN, $xmlfile);
 	my @xml = <FIN>;
 	chomp(@xml);
 	close(FIN);
@@ -38,10 +44,12 @@ sub h_start {
 
 	$data{element}{++$index} = $element;
 
-	if ($element eq "language") {
+	if ($index == 2
+	 && $data{element}{1} eq "languages"
+	 && $element eq "language") {
 		my $name = $attrs{name};
-		my $encoding = $attrs{encoding};
 		my $countries = $attrs{countries};
+		my $encoding = $attrs{encoding};
 		my $family = $attrs{family};
 		my $f = defined $attrs{family} ? $attrs{family} : "x";
 		my $link = $attrs{link};
@@ -63,7 +71,9 @@ sub h_start {
 		return;
 	}
 
-	if ($element eq "translation") {
+	if ($index == 2
+	 && $data{element}{1} eq "translations"
+	 && $element eq "translation") {
 		if (defined $attrs{hex}) {
 			my $k = "<" . $attrs{cldr} . ">";
 			my $hs = $attrs{hex};
@@ -80,17 +90,51 @@ sub h_start {
 		}
 		return;
 	}
+
+	if ($index == 2
+	 && $data{element}{1} eq "alternativemonths"
+	 && $element eq "language") {
+		my $name = $attrs{name};
+		my $countries = $attrs{countries};
+
+		$data{fields}{name} = $name;
+		$data{fields}{countries} = $countries;
+		$data{fields}{text} = "";
+
+		return;
+	}
 }
 
 sub h_end {
 	my $expat = shift;
 	my $element = shift;
+
+	if ($index == "2") {
+		if ($data{element}{1} eq "alternativemonths"
+		 && $data{element}{2} eq "language") {
+			foreach my $c (split(/,/, $data{fields}{countries})) {
+				my $m = $data{fields}{text};
+
+				$m =~ s/[\t ]//g;
+				$d{AM}{$data{fields}{name}}{$c} = $m;
+			}
+			$data{fields} = ();
+		}
+	}
+
 	$index--;
 }
 
 sub h_char {
 	my $expat = shift;
 	my $string = shift;
+
+	if ($index == "2") {
+		if ($data{element}{1} eq "alternativemonths"
+		 && $data{element}{2} eq "language") {
+			$data{fields}{text} .= $string;
+		}
+	}
 }
 
 #use Data::Dumper;
