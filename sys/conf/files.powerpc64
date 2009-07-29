@@ -34,7 +34,6 @@ dev/ofw/ofw_bus_subr.c		optional	aim
 dev/ofw/ofw_console.c		optional	aim
 dev/ofw/ofw_disk.c		optional	ofwd aim
 dev/ofw/ofw_iicbus.c		optional	iicbus aim
-dev/ofw/ofw_standard.c		optional	aim
 dev/powermac_nvram/powermac_nvram.c optional	powermac_nvram powermac
 dev/scc/scc_bfe_macio.c		optional	scc powermac
 dev/sound/macio/aoa.c		optional	snd_davbus | snd_ai2s powermac
@@ -71,6 +70,8 @@ powerpc/aim64/mmu_oea64.c	optional	aim
 powerpc/aim64/swtch.S		optional	aim
 powerpc/cpufreq/dfs.c		optional	cpufreq
 powerpc/cpufreq/pcr.c		optional	cpufreq aim
+powerpc/mambo/mambocall.S	optional	mambo
+powerpc/mambo/mambo_console.c	optional	mambo
 powerpc/ofw/ofw_cpu.c		optional	aim
 powerpc/ofw/ofw_pcibus.c	optional	pci aim
 powerpc/ofw/ofw_pcib_pci.c	optional	pci aim

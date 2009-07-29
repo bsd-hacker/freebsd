@@ -451,7 +451,7 @@ powerpc_init(u_int startkernel, u_int endkernel, u_int basekernel, void *mdp)
 	 */
 	thread0.td_pcb = (struct pcb *)
 	    ((thread0.td_kstack + thread0.td_kstack_pages * PAGE_SIZE -
-	    sizeof(struct pcb)) & ~15);
+	    sizeof(struct pcb)) & ~15UL);
 	bzero((void *)thread0.td_pcb, sizeof(struct pcb));
 	pc->pc_curpcb = thread0.td_pcb;
 
@@ -464,7 +464,7 @@ powerpc_init(u_int startkernel, u_int endkernel, u_int basekernel, void *mdp)
 		    "Boot flags requested debugger");
 #endif
 
-	return (((uintptr_t)thread0.td_pcb - 16) & ~15);
+	return (((uintptr_t)thread0.td_pcb - 16) & ~15UL);
 }
 
 void

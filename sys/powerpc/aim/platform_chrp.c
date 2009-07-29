@@ -85,7 +85,7 @@ PLATFORM_DEF(chrp_platform);
 static int
 chrp_probe(platform_t plat)
 {
-	if (OF_finddevice("/memory") != -1)
+	if (OF_finddevice("/memory") != -1 || OF_finddevice("/memory@0") != -1)
 		return (BUS_PROBE_GENERIC);
 
 	return (ENXIO);

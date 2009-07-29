@@ -84,9 +84,16 @@ struct pmap_md {
 #define	NPMAPS		32768
 #endif /* !defined(NPMAPS) */
 
+#ifdef __powerpc64__
+#define NSEGS	64	/* Typical SLB size. */
+#else
+#define NSEGS	16
+#endif
+
 struct	pmap {
 	struct	mtx	pm_mtx;
-	u_int		pm_sr[16];
+	
+	register_t	pm_sr[NSEGS];
 	u_int		pm_active;
 	u_int		pm_context;
 

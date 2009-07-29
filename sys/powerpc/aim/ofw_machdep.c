@@ -83,7 +83,7 @@ struct {
 } ofwcall_funcdesc;
 #endif
 	
-
+int		ofw_real_mode_entry(void *);
 static int	openfirmware(void *args);
 
 /*
@@ -286,10 +286,14 @@ OF_initial_setup(void *fdt_ptr, void *junk, int (*openfirm)(void *))
 		 * For PPC64, we need to hack up a function descriptor object
 		 * to be able to call a memory address.
 		 */
-		ofwcall_funcdesc.funcptr = openfirm;
-		ofwcall_funcdesc.toc = 0;
-		ofwcall_funcdesc.env = 0;
-		ofwcall = (int (*)(void *))(&ofwcall_funcdesc);
+		if (ofw_real_mode) {
+			ofwcall = ofw_real_mode_entry;
+		} else {
+			ofwcall_funcdesc.funcptr = openfirm;
+			ofwcall_funcdesc.toc = 0;
+			ofwcall_funcdesc.env = 0;
+			ofwcall = (int (*)(void *))&ofwcall_funcdesc;
+		}
 	#else
 		ofwcall = openfirm;
 	#endif
@@ -334,15 +338,6 @@ openfirmware(void *args)
 	if (pmap_bootstrapped && ofw_real_mode)
 		args = (void *)pmap_kextract((vm_offset_t)args);
 
-	__asm __volatile(	"\t"
-		"sync\n\t"
-		"mfmsr  %0\n\t"
-		"mtmsr  %1\n\t"
-		"isync\n"
-		: "=r" (oldmsr)
-		: "r" (ofmsr[0])
-	);
-
 	ofw_sprg_prepare();
 
 	if (pmap_bootstrapped && !ofw_real_mode) {
@@ -364,7 +359,22 @@ openfirmware(void *args)
 		isync();
 	}
 
+	__asm __volatile(	"\t"
+		"sync\n\t"
+		"mfmsr  %0\n\t"
+		"mtmsr  %1\n\t"
+		"isync\n"
+		: "=r" (oldmsr)
+		: "r" (ofmsr[0])
+	);
+
        	result = ofwcall(args);
+
+	__asm(	"\t"
+		"mtmsr  %0\n\t"
+		"isync\n"
+		: : "r" (oldmsr)
+	);
 
 	if (pmap_bootstrapped && !ofw_real_mode) {
 		/*
@@ -379,12 +389,6 @@ openfirmware(void *args)
 	}
 
 	ofw_sprg_restore();
-
-	__asm(	"\t"
-		"mtmsr  %0\n\t"
-		"isync\n"
-		: : "r" (oldmsr)
-	);
 
 	return (result);
 }

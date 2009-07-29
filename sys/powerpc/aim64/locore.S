@@ -180,11 +180,41 @@ ASENTRY(__start)
 	nop
 	mr	%r1, %r3
 	li	%r3, 0
-	stw	%r3, 0(%r1)
+	std	%r3, 0(%r1)
 	bl	.mi_startup
 	nop
 	b	.OF_exit
 	nop
+
+/*
+ * PPC64 ABI TOC base
+ */
+
+        .align  3
+tocbase:
+        .llong  .TOC.@tocbase
+
+/*
+ * Open Firmware Real-mode Entry Point. This is a huge pain.
+ */
+
+ASENTRY(ofw_real_mode_entry)
+	mflr	0
+	lis	31,openfirmware_entry@ha
+	ld	31,openfirmware_entry@l(31) /* read client interface handler */
+
+	mfmsr	30
+	mtsprg3	30
+	andi.	30, 30, ~(PSL_DR | PSL_IR | PSL_EE)@l
+	mtmsrd	30
+
+	mtctr	31
+	bctrl
+
+	mfsprg3	30
+	mtmsrd	30
+	mtlr 	0
+	blr
 
 /*
  * int setfault()

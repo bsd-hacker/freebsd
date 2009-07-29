@@ -34,7 +34,7 @@
 #include <machine/tlb.h>
 
 struct pmap;
-#define	CPUSAVE_LEN	8
+#define	CPUSAVE_LEN	9
 
 #define	PCPU_MD_COMMON_FIELDS						\
 	int		pc_inside_intr;					\
@@ -66,10 +66,11 @@ struct pmap;
 	int		pc_tid_next;
 
 /* Definitions for register offsets within the exception tmp save areas */
-#define	CPUSAVE_R28	0		/* where r28 gets saved */
-#define	CPUSAVE_R29	1		/* where r29 gets saved */
-#define	CPUSAVE_R30	2		/* where r30 gets saved */
-#define	CPUSAVE_R31	3		/* where r31 gets saved */
+#define	CPUSAVE_R27	0		/* where r27 gets saved */
+#define	CPUSAVE_R28	1		/* where r28 gets saved */
+#define	CPUSAVE_R29	2		/* where r29 gets saved */
+#define	CPUSAVE_R30	3		/* where r30 gets saved */
+#define	CPUSAVE_R31	4		/* where r31 gets saved */
 #define	CPUSAVE_AIM_DAR		4	/* where SPR_DAR gets saved */
 #define	CPUSAVE_AIM_DSISR	5	/* where SPR_DSISR gets saved */
 #define	CPUSAVE_BOOKE_DEAR	4	/* where SPR_DEAR gets saved */

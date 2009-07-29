@@ -43,31 +43,62 @@
  * Save/restore segment registers
  */
 
-#define RESTORE_SRS(pmap, sr) \
-	slbia; 
+/*
+ * Restore SRs for a pmap
+ *
+ * Requires that r27-r31 be scratch, with r27 initialized to the pmap
+ */
+
+restoresrs: 
+	slbia;
+	li	%r29, 0;
+	mr	%r28, %r27
+	lwz	%r27, PM_CONTEXT(%r27);
+instslb:
+	li	%r30, 31;
+	sld	%r30, %r27, %r30;
+	ld	%r31, PM_SR(%r28);
+
+	cmpli	0, %r31, 0;
+	beq	nslb;
+	
+	srdi	%r31, %r31, 1;
+	or	%r30, %r30, %r31;
+	sldi	%r30, %r30, 12;
+	ld	%r31, PM_SR(%r28);
+	sldi	%r31, %r31, 27;
+	or 	%r31, %r31, %r29;
+	slbmte	%r30, %r31;
+
+nslb:
+	addi	%r28, %r28, 8;
+	addi	%r29, %r29, 1;
+	cmpli	0, %r29, 63;
+	blt instslb;
+
+	blr;
 
 /*
  * User SRs are loaded through a pointer to the current pmap.
  */
-#define RESTORE_USER_SRS(pmap,sr) \
-	GET_CPUINFO(pmap); \
-	lwz	pmap,PC_CURPMAP(pmap); \
-	lwzu	sr,PM_SR(pmap); \
-	RESTORE_SRS(pmap,sr)
+#define RESTORE_USER_SRS() \
+	GET_CPUINFO(%r27); \
+	ld	%r27,PC_CURPMAP(%r27); \
+	bl	restoresrs;
 
 /*
  * Kernel SRs are loaded directly from kernel_pmap_
  */
-#define RESTORE_KERN_SRS(pmap,sr) \
-	lis	pmap,CNAME(kernel_pmap_store)@ha; \
-	lwzu	sr,CNAME(kernel_pmap_store)+PM_SR@l(pmap); \
-	RESTORE_SRS(pmap,sr)
+#define RESTORE_KERN_SRS() \
+	lis	%r27,CNAME(kernel_pmap_store)@ha; \
+	addi	%r27,%r27,CNAME(kernel_pmap_store)@l; \
+	bl	restoresrs;
 
 /*
  * FRAME_SETUP assumes:
  *	SPRG1		SP (1)
  * 	SPRG3		trap type
- *	savearea	r28-r31,DAR,DSISR   (DAR & DSISR only for DSI traps)
+ *	savearea	r27-r31,DAR,DSISR   (DAR & DSISR only for DSI traps)
  *	r28		LR
  *	r29		CR
  *	r30		scratch
@@ -88,45 +119,46 @@
 	isync;								\
 	mfsprg1	%r31;			/* get saved SP */		\
 	stdu	%r31,-FRAMELEN(%r1);	/* save it in the callframe */	\
-	std	%r0, FRAME_0+8(%r1);	/* save r0 in the trapframe */	\
-	std	%r31,FRAME_1+8(%r1);	/* save SP   "      "       */	\
-	std	%r2, FRAME_2+8(%r1);	/* save r2   "      "       */	\
-	std	%r28,FRAME_LR+8(%r1);	/* save LR   "      "       */	\
-	stw	%r29,FRAME_CR+8(%r1);	/* save CR   "      "       */	\
+	std	%r0, FRAME_0+16(%r1);	/* save r0 in the trapframe */	\
+	std	%r31,FRAME_1+16(%r1);	/* save SP   "      "       */	\
+	std	%r2, FRAME_2+16(%r1);	/* save r2   "      "       */	\
+	std	%r28,FRAME_LR+16(%r1);	/* save LR   "      "       */	\
+	stw	%r29,FRAME_CR+16(%r1);	/* save CR   "      "       */	\
 	GET_CPUINFO(%r2);						\
+	ld	%r27,(savearea+CPUSAVE_R27)(%r2); /* get saved r27 */	\
 	ld	%r28,(savearea+CPUSAVE_R28)(%r2); /* get saved r28 */	\
 	ld	%r29,(savearea+CPUSAVE_R29)(%r2); /* get saved r29 */	\
 	ld	%r30,(savearea+CPUSAVE_R30)(%r2); /* get saved r30 */	\
 	ld	%r31,(savearea+CPUSAVE_R31)(%r2); /* get saved r31 */	\
-	std	%r3,  FRAME_3+8(%r1);	/* save r3-r31 */		\
-	std	%r4,  FRAME_4+8(%r1);					\
-	std	%r5,  FRAME_5+8(%r1);					\
-	std	%r6,  FRAME_6+8(%r1);					\
-	std	%r7,  FRAME_7+8(%r1);					\
-	std	%r8,  FRAME_8+8(%r1);					\
-	std	%r9,  FRAME_9+8(%r1);					\
-	std	%r10, FRAME_10+8(%r1);					\
-	std	%r11, FRAME_11+8(%r1);					\
-	std	%r12, FRAME_12+8(%r1);					\
-	std	%r13, FRAME_13+8(%r1);					\
-	std	%r14, FRAME_14+8(%r1);					\
-	std	%r15, FRAME_15+8(%r1);					\
-	std	%r16, FRAME_16+8(%r1);					\
-	std	%r17, FRAME_17+8(%r1);					\
-	std	%r18, FRAME_18+8(%r1);					\
-	std	%r19, FRAME_19+8(%r1);					\
-	std	%r20, FRAME_20+8(%r1);					\
-	std	%r21, FRAME_21+8(%r1);					\
-	std	%r22, FRAME_22+8(%r1);					\
-	std	%r23, FRAME_23+8(%r1);					\
-	std	%r24, FRAME_24+8(%r1);					\
-	std	%r25, FRAME_25+8(%r1);					\
-	std	%r26, FRAME_26+8(%r1);					\
-	std	%r27, FRAME_27+8(%r1);					\
-	std	%r28, FRAME_28+8(%r1);					\
-	std	%r29, FRAME_29+8(%r1);					\
-	std	%r30, FRAME_30+8(%r1);					\
-	std	%r31, FRAME_31+8(%r1);					\
+	std	%r3,  FRAME_3+16(%r1);	/* save r3-r31 */		\
+	std	%r4,  FRAME_4+16(%r1);					\
+	std	%r5,  FRAME_5+16(%r1);					\
+	std	%r6,  FRAME_6+16(%r1);					\
+	std	%r7,  FRAME_7+16(%r1);					\
+	std	%r8,  FRAME_8+16(%r1);					\
+	std	%r9,  FRAME_9+16(%r1);					\
+	std	%r10, FRAME_10+16(%r1);					\
+	std	%r11, FRAME_11+16(%r1);					\
+	std	%r12, FRAME_12+16(%r1);					\
+	std	%r13, FRAME_13+16(%r1);					\
+	std	%r14, FRAME_14+16(%r1);					\
+	std	%r15, FRAME_15+16(%r1);					\
+	std	%r16, FRAME_16+16(%r1);					\
+	std	%r17, FRAME_17+16(%r1);					\
+	std	%r18, FRAME_18+16(%r1);					\
+	std	%r19, FRAME_19+16(%r1);					\
+	std	%r20, FRAME_20+16(%r1);					\
+	std	%r21, FRAME_21+16(%r1);					\
+	std	%r22, FRAME_22+16(%r1);					\
+	std	%r23, FRAME_23+16(%r1);					\
+	std	%r24, FRAME_24+16(%r1);					\
+	std	%r25, FRAME_25+16(%r1);					\
+	std	%r26, FRAME_26+16(%r1);					\
+	std	%r27, FRAME_27+16(%r1);					\
+	std	%r28, FRAME_28+16(%r1);					\
+	std	%r29, FRAME_29+16(%r1);					\
+	std	%r30, FRAME_30+16(%r1);					\
+	std	%r31, FRAME_31+16(%r1);					\
 	ld	%r28,(savearea+CPUSAVE_AIM_DAR)(%r2);  /* saved DAR */	\
 	lwz	%r29,(savearea+CPUSAVE_AIM_DSISR)(%r2);/* saved DSISR */\
 	ld	%r30,(savearea+CPUSAVE_SRR0)(%r2); /* saved SRR0 */	\
@@ -134,61 +166,61 @@
 	mfxer	%r3;							\
 	mfctr	%r4;							\
 	mfsprg3	%r5;							\
-	std	%r3, FRAME_XER+8(1);	/* save xer/ctr/exc */		\
-	std	%r4, FRAME_CTR+8(1);					\
-	std	%r5, FRAME_EXC+8(1);					\
-	std	%r28,FRAME_AIM_DAR+8(1);				\
-	stw	%r29,FRAME_AIM_DSISR+8(1); /* save dsisr/srr0/srr1 */	\
-	std	%r30,FRAME_SRR0+8(1);					\
-	std	%r31,FRAME_SRR1+8(1)
+	mtlr	%r6;							\
+	stw	%r3, FRAME_XER+16(1);	/* save xer/ctr/exc */		\
+	std	%r4, FRAME_CTR+16(1);					\
+	std	%r5, FRAME_EXC+16(1);					\
+	std	%r28,FRAME_AIM_DAR+16(1);				\
+	stw	%r29,FRAME_AIM_DSISR+16(1); /* save dsisr/srr0/srr1 */	\
+	std	%r30,FRAME_SRR0+16(1);					\
+	std	%r31,FRAME_SRR1+16(1)
 
 #define	FRAME_LEAVE(savearea)						\
 /* Now restore regs: */							\
-	ld	%r2,FRAME_SRR0+8(%r1);					\
-	ld	%r3,FRAME_SRR1+8(%r1);					\
-	ld	%r4,FRAME_CTR+8(%r1);					\
-	ld	%r5,FRAME_XER+8(%r1);					\
-	ld	%r6,FRAME_LR+8(%r1);					\
+	ld	%r2,FRAME_SRR0+16(%r1);					\
+	ld	%r3,FRAME_SRR1+16(%r1);					\
+	ld	%r4,FRAME_CTR+16(%r1);					\
+	lwz	%r5,FRAME_XER+16(%r1);					\
+	ld	%r6,FRAME_LR+16(%r1);					\
 	GET_CPUINFO(%r7);						\
 	std	%r2,(savearea+CPUSAVE_SRR0)(%r7); /* save SRR0 */	\
 	std	%r3,(savearea+CPUSAVE_SRR1)(%r7); /* save SRR1 */	\
-	lwz	%r7,FRAME_CR+8(%r1);					\
+	lwz	%r7,FRAME_CR+16(%r1);					\
 	mtctr	%r4;							\
 	mtxer	%r5;							\
-	mtlr	%r6;							\
 	mtsprg1	%r7;			/* save cr */			\
-	ld	%r31,FRAME_31+8(%r1);   /* restore r0-31 */		\
-	ld	%r30,FRAME_30+8(%r1);					\
-	ld	%r29,FRAME_29+8(%r1);					\
-	ld	%r28,FRAME_28+8(%r1);					\
-	ld	%r27,FRAME_27+8(%r1);					\
-	ld	%r26,FRAME_26+8(%r1);					\
-	ld	%r25,FRAME_25+8(%r1);					\
-	ld	%r24,FRAME_24+8(%r1);					\
-	ld	%r23,FRAME_23+8(%r1);					\
-	ld	%r22,FRAME_22+8(%r1);					\
-	ld	%r21,FRAME_21+8(%r1);					\
-	ld	%r20,FRAME_20+8(%r1);					\
-	ld	%r19,FRAME_19+8(%r1);					\
-	ld	%r18,FRAME_18+8(%r1);					\
-	ld	%r17,FRAME_17+8(%r1);					\
-	ld	%r16,FRAME_16+8(%r1);					\
-	ld	%r15,FRAME_15+8(%r1);					\
-	ld	%r14,FRAME_14+8(%r1);					\
-	ld	%r13,FRAME_13+8(%r1);					\
-	ld	%r12,FRAME_12+8(%r1);					\
-	ld	%r11,FRAME_11+8(%r1);					\
-	ld	%r10,FRAME_10+8(%r1);					\
-	ld	%r9, FRAME_9+8(%r1);					\
-	ld	%r8, FRAME_8+8(%r1);					\
-	ld	%r7, FRAME_7+8(%r1);					\
-	ld	%r6, FRAME_6+8(%r1);					\
-	ld	%r5, FRAME_5+8(%r1);					\
-	ld	%r4, FRAME_4+8(%r1);					\
-	ld	%r3, FRAME_3+8(%r1);					\
-	ld	%r2, FRAME_2+8(%r1);					\
-	ld	%r0, FRAME_0+8(%r1);					\
-	ld	%r1, FRAME_1+8(%r1);					\
+	ld	%r31,FRAME_31+16(%r1);   /* restore r0-31 */		\
+	ld	%r30,FRAME_30+16(%r1);					\
+	ld	%r29,FRAME_29+16(%r1);					\
+	ld	%r28,FRAME_28+16(%r1);					\
+	ld	%r27,FRAME_27+16(%r1);					\
+	ld	%r26,FRAME_26+16(%r1);					\
+	ld	%r25,FRAME_25+16(%r1);					\
+	ld	%r24,FRAME_24+16(%r1);					\
+	ld	%r23,FRAME_23+16(%r1);					\
+	ld	%r22,FRAME_22+16(%r1);					\
+	ld	%r21,FRAME_21+16(%r1);					\
+	ld	%r20,FRAME_20+16(%r1);					\
+	ld	%r19,FRAME_19+16(%r1);					\
+	ld	%r18,FRAME_18+16(%r1);					\
+	ld	%r17,FRAME_17+16(%r1);					\
+	ld	%r16,FRAME_16+16(%r1);					\
+	ld	%r15,FRAME_15+16(%r1);					\
+	ld	%r14,FRAME_14+16(%r1);					\
+	ld	%r13,FRAME_13+16(%r1);					\
+	ld	%r12,FRAME_12+16(%r1);					\
+	ld	%r11,FRAME_11+16(%r1);					\
+	ld	%r10,FRAME_10+16(%r1);					\
+	ld	%r9, FRAME_9+16(%r1);					\
+	ld	%r8, FRAME_8+16(%r1);					\
+	ld	%r7, FRAME_7+16(%r1);					\
+	ld	%r6, FRAME_6+16(%r1);					\
+	ld	%r5, FRAME_5+16(%r1);					\
+	ld	%r4, FRAME_4+16(%r1);					\
+	ld	%r3, FRAME_3+16(%r1);					\
+	ld	%r2, FRAME_2+16(%r1);					\
+	ld	%r0, FRAME_0+16(%r1);					\
+	ld	%r1, FRAME_1+16(%r1);					\
 /* Can't touch %r1 from here on */					\
 	mtsprg2	%r2;			/* save r2 & r3 */		\
 	mtsprg3	%r3;							\
@@ -203,7 +235,7 @@
 	mtcr	%r3;							\
 	bf	17,1f;			/* branch if PSL_PR is false */	\
 /* Restore user SRs */							\
-	RESTORE_USER_SRS(%r2,%r3);					\
+	RESTORE_USER_SRS();		/* uses r27-r31 */		\
 1:	mfsprg1	%r2;			/* restore cr */		\
 	mtcr	%r2;							\
 	GET_CPUINFO(%r2);						\
@@ -236,6 +268,8 @@ CNAME(rstcode):
 	addi	%r1,%r1,(124-16)@l
 
 	lis	%r3,1@l
+	lis	%r3,tocbase@ha
+	ld	%r2,tocbase@l(%r3)
 	bla	CNAME(.pmap_cpu_bootstrap)
 	nop
 	bla	CNAME(.cpudep_ap_bootstrap)
@@ -271,7 +305,8 @@ CNAME(trapsize) = .-CNAME(trapcode)
 CNAME(alitrap):
 	mtsprg1	%r1			/* save SP */
 	GET_CPUINFO(%r1)
-	std	%r28,(PC_TEMPSAVE+CPUSAVE_R28)(%r1)	/* free r28-r31 */
+	std	%r27,(PC_TEMPSAVE+CPUSAVE_R27)(%r1)	/* free r27-r31 */
+	std	%r28,(PC_TEMPSAVE+CPUSAVE_R28)(%r1)
 	std	%r29,(PC_TEMPSAVE+CPUSAVE_R29)(%r1)
 	std	%r30,(PC_TEMPSAVE+CPUSAVE_R30)(%r1)
 	std	%r31,(PC_TEMPSAVE+CPUSAVE_R31)(%r1)
@@ -302,7 +337,8 @@ CNAME(alisize) = .-CNAME(alitrap)
 CNAME(dsitrap):
 	mtsprg1	%r1			/* save SP */
 	GET_CPUINFO(%r1)
-	std	%r28,(PC_DISISAVE+CPUSAVE_R28)(%r1)	/* free r28-r31 */
+	std	%r27,(PC_DISISAVE+CPUSAVE_R27)(%r1)	/* free r27-r31 */
+	std	%r28,(PC_DISISAVE+CPUSAVE_R28)(%r1)
 	std	%r29,(PC_DISISAVE+CPUSAVE_R29)(%r1)
 	std	%r30,(PC_DISISAVE+CPUSAVE_R30)(%r1)
 	std	%r31,(PC_DISISAVE+CPUSAVE_R31)(%r1)
@@ -326,6 +362,8 @@ disitrap:
 	mtsprg3	%r1
 	
 	GET_CPUINFO(%r1)
+	ld	%r31,(PC_DISISAVE+CPUSAVE_R27)(%r1)
+	std	%r31,(PC_TEMPSAVE+CPUSAVE_R27)(%r1)
 	ld	%r30,(PC_DISISAVE+CPUSAVE_R28)(%r1)
 	std	%r30,(PC_TEMPSAVE+CPUSAVE_R28)(%r1)
 	ld	%r31,(PC_DISISAVE+CPUSAVE_R29)(%r1)
@@ -357,6 +395,8 @@ disitrap:
 	std	%r30,(PC_DBSAVE  +CPUSAVE_AIM_DAR)(%r1) /* save DAR */
 	lwz	%r30,(PC_TEMPSAVE+CPUSAVE_AIM_DSISR)(%r1) /* get DSISR */
 	stw	%r30,(PC_DBSAVE  +CPUSAVE_AIM_DSISR)(%r1) /* save DSISR */
+	ld	%r31,(PC_DISISAVE+CPUSAVE_R27)(%r1) /* get  r27 */
+	std	%r31,(PC_DBSAVE  +CPUSAVE_R27)(%r1) /* save r27 */
 	ld	%r30,(PC_DISISAVE+CPUSAVE_R28)(%r1) /* get  r28 */
 	std	%r30,(PC_DBSAVE  +CPUSAVE_R28)(%r1) /* save r28 */
 	ld	%r31,(PC_DISISAVE+CPUSAVE_R29)(%r1) /* get  r29 */
@@ -378,7 +418,7 @@ realtrap:
 	bf	17,k_trap		/* branch if PSL_PR is false */
 	GET_CPUINFO(%r1)
 	ld	%r1,PC_CURPCB(%r1)
-	RESTORE_KERN_SRS(%r30,%r31)	/* enable kernel mapping */
+	RESTORE_KERN_SRS()		/* enable kernel mapping */
 	ba s_trap
 
 /*
@@ -397,7 +437,8 @@ generictrap:
 
 	/* Save interesting registers */
 	GET_CPUINFO(%r1)
-	std	%r28,(PC_TEMPSAVE+CPUSAVE_R28)(%r1)	/* free r28-r31 */
+	std	%r27,(PC_TEMPSAVE+CPUSAVE_R27)(%r1)	/* free r27-r31 */
+	std	%r28,(PC_TEMPSAVE+CPUSAVE_R28)(%r1)
 	std	%r29,(PC_TEMPSAVE+CPUSAVE_R29)(%r1)
 	std	%r30,(PC_TEMPSAVE+CPUSAVE_R30)(%r1)
 	std	%r31,(PC_TEMPSAVE+CPUSAVE_R31)(%r1)
@@ -421,7 +462,7 @@ s_trap:
 	GET_CPUINFO(%r1)
 u_trap:
 	ld	%r1,PC_CURPCB(%r1)
-	RESTORE_KERN_SRS(%r30,%r31)	/* enable kernel mapping */
+	RESTORE_KERN_SRS() /* enable kernel mapping */
 
 /*
  * Now the common trap catching code.
@@ -430,7 +471,9 @@ k_trap:
 	FRAME_SETUP(PC_TEMPSAVE)
 /* Call C interrupt dispatcher: */
 trapagain:
-	addi	%r3,%r1,8
+	lis	%r3,tocbase@ha
+	ld	%r2,tocbase@l(%r3)
+	addi	%r3,%r1,16
 	bl	CNAME(.powerpc_interrupt)
 	nop
 	bl	CNAME(.trapexit)
@@ -478,6 +521,7 @@ ASENTRY(breakpoint)
 	mtmsr	%r3			/* disable interrupts */
 	isync
 	GET_CPUINFO(%r3)
+	std	%r27,(PC_DBSAVE+CPUSAVE_R27)(%r3)
 	std	%r28,(PC_DBSAVE+CPUSAVE_R28)(%r3)
 	std	%r29,(PC_DBSAVE+CPUSAVE_R29)(%r3)
 	std	%r30,(PC_DBSAVE+CPUSAVE_R30)(%r3)
@@ -502,7 +546,9 @@ dbtrap:
 
 	FRAME_SETUP(PC_DBSAVE)
 /* Call C trap code: */
-	addi	%r3,%r1,8
+	lis	%r3,tocbase@ha
+	ld	%r2,tocbase@l(%r3)
+	addi	%r3,%r1,16
 	bl	CNAME(.db_trap_glue)
 	nop
 	or.	%r3,%r3,%r3
@@ -514,6 +560,7 @@ dbtrap:
 	FRAME_LEAVE(PC_DBSAVE)
 	mtsprg1	%r1			/* prepare for entrance to realtrap */
 	GET_CPUINFO(%r1)
+	std	%r27,(PC_TEMPSAVE+CPUSAVE_R27)(%r1)
 	std	%r28,(PC_TEMPSAVE+CPUSAVE_R28)(%r1)
 	std	%r29,(PC_TEMPSAVE+CPUSAVE_R29)(%r1)
 	std	%r30,(PC_TEMPSAVE+CPUSAVE_R30)(%r1)
@@ -551,6 +598,7 @@ CNAME(dblow):
 1:
 	/* Privileged, so drop to KDB */
 	GET_CPUINFO(%r1)
+	std	%r27,(PC_DBSAVE+CPUSAVE_R27)(%r1)	/* free r27 */
 	std	%r28,(PC_DBSAVE+CPUSAVE_R28)(%r1)	/* free r28 */
         mfsprg2	%r28				/* r29 holds cr...  */
         std	%r28,(PC_DBSAVE+CPUSAVE_R29)(%r1)	/* free r29 */

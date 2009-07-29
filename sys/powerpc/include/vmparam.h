@@ -95,9 +95,9 @@
 
 #if defined(AIM)	/* AIM */
 
-#define	KERNBASE		0x00100000	/* start of kernel virtual */
+#define	KERNBASE		0x00100000UL	/* start of kernel virtual */
 
-#define	VM_MIN_KERNEL_ADDRESS	((vm_offset_t)(KERNEL_SR << ADDR_SR_SHFT))
+#define	VM_MIN_KERNEL_ADDRESS	((vm_offset_t)KERNEL_SR << ADDR_SR_SHFT)
 #define	VM_MAX_KERNEL_ADDRESS	(VM_MIN_KERNEL_ADDRESS + 2*SEGMENT_LENGTH - 1)
 
 /*

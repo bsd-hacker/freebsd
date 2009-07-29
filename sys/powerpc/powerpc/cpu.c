@@ -96,6 +96,7 @@ static const struct cputab models[] = {
         { "IBM PowerPC 970FX",		IBM970FX,	REVFMT_MAJMIN },
         { "IBM PowerPC 970GX",		IBM970GX,	REVFMT_MAJMIN },
         { "IBM PowerPC 970MP",		IBM970MP,	REVFMT_MAJMIN },
+        { "IBM Cell Broadband Engine",	IBMCELLBE,	REVFMT_MAJMIN },
         { "Motorola PowerPC 7400",	MPC7400,	REVFMT_MAJMIN },
         { "Motorola PowerPC 7410",	MPC7410,	REVFMT_MAJMIN },
         { "Motorola PowerPC 7450",	MPC7450,	REVFMT_MAJMIN },
