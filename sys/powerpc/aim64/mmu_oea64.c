@@ -820,6 +820,38 @@ moea64_bridge_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernele
 		phys_avail_count++;
 		physsz += regions[i].mr_size;
 	}
+
+	/* Check for overlap with the kernel and exception vectors */
+	for (j = 0; j < 2*phys_avail_count; j+=2) {
+		if (phys_avail[j] < EXC_LAST)
+			phys_avail[j] += EXC_LAST;
+
+		if (kernelstart >= phys_avail[j] &&
+		    kernelstart < phys_avail[j+1]) {
+			if (kernelend < phys_avail[j+1]) {
+				phys_avail[2*phys_avail_count] =
+				    (kernelend & ~PAGE_MASK) + PAGE_SIZE;
+				phys_avail[2*phys_avail_count + 1] =
+				    phys_avail[j+1];
+				phys_avail_count++;
+			}
+
+			phys_avail[j+1] = kernelstart & ~PAGE_MASK;
+		}
+
+		if (kernelend >= phys_avail[j] &&
+		    kernelend < phys_avail[j+1]) {
+			if (kernelstart > phys_avail[j]) {
+				phys_avail[2*phys_avail_count] = phys_avail[j];
+				phys_avail[2*phys_avail_count + 1] =
+				    kernelstart & ~PAGE_MASK;
+				phys_avail_count++;
+			}
+
+			phys_avail[j] = (kernelend & ~PAGE_MASK) + PAGE_SIZE;
+		}
+	}
+
 	physmem = btoc(physsz);
 
 	/*
