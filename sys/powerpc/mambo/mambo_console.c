@@ -52,7 +52,7 @@ __FBSDID("$FreeBSD: head/sys/dev/mambo/mambo_console.c 193018 2009-05-29 06:41:2
 #define MAMBOBURSTLEN	128	/* max number of bytes to write in one chunk */
 
 #define MAMBO_CONSOLE_WRITE	0
-#define MAMBO_CONSOLE_READ	0
+#define MAMBO_CONSOLE_READ	60
 
 static tsw_open_t mambotty_open;
 static tsw_close_t mambotty_close;
