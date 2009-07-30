@@ -930,6 +930,7 @@ moea64_bridge_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernele
 	#ifdef __powerpc64__
 	for (i = 0; i < 16; i++) 
 		kernel_pmap->pm_sr[i] = (i << 1) | 1;
+	kernel_pmap->pm_sr[USER_SR] = 0;
 	#else
 	for (i = 0; i < 16; i++) 
 		kernel_pmap->pm_sr[i] = EMPTY_SEGMENT + i;

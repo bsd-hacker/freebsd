@@ -65,6 +65,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 
 #include <vm/vm.h>
+#include <vm/vm_page.h>
 #include <vm/pmap.h>
 
 #include <machine/stdarg.h>
@@ -146,6 +147,13 @@ static ofw_def_t ofw_real = {
 };
 OFW_DEF(ofw_real);
 
+static ofw_def_t ofw_32bit = {
+	OFW_STD_32BIT,
+	ofw_real_methods,
+	0
+};
+OFW_DEF(ofw_32bit);
+
 MALLOC_DEFINE(M_OFWREAL, "ofwreal", "Open Firmware Real Mode Bounce Page");
 
 static int (*openfirmware)(void *);
@@ -155,6 +163,9 @@ static caddr_t		of_bounce_virt;
 static off_t		of_bounce_offset;
 static size_t		of_bounce_size;
 static struct mtx	of_bounce_mtx;
+
+extern int		ofw_real_mode;
+extern struct pmap	ofw_pmap;
 
 /*
  * After the VM is up, allocate a wired, low memory bounce page.
@@ -181,6 +192,8 @@ ofw_real_stop(void)
 static void
 ofw_real_bounce_alloc(void *junk)
 {
+	struct vm_page m;
+
 	/*
 	 * Check that ofw_real is actually in use before allocating wads 
 	 * of memory. Do this by checking if our mutex has been set up.
@@ -199,6 +212,16 @@ ofw_real_bounce_alloc(void *junk)
 			     0, BUS_SPACE_MAXADDR_32BIT, PAGE_SIZE, PAGE_SIZE);
 	of_bounce_phys = vtophys(of_bounce_virt);
 	of_bounce_size = PAGE_SIZE;
+
+	/*
+	 * Add this to the OFW pmap if we are running in virtual mode.
+	 */
+
+	if (!ofw_real_mode) {
+		m.phys_addr = of_bounce_phys;
+		pmap_enter(&ofw_pmap, of_bounce_phys, VM_PROT_ALL, &m,
+		    VM_PROT_ALL, 1);
+	}
 
 	mtx_unlock(&of_bounce_mtx);
 }

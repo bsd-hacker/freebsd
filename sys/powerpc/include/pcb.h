@@ -65,7 +65,8 @@ struct pcb {
 
 	union {
 		struct {
-			register_t	usr;	/* USER_SR segment */
+			register_t	usr_esid;	/* USER_SR segment */
+			register_t	usr_vsid;	/* USER_SR segment */
 		} aim;
 		struct {
 			register_t	ctr;

@@ -182,8 +182,13 @@ cpu_fork(struct thread *td1, struct proc *p2, struct thread *td2, int flags)
 	cf->cf_arg1 = (register_t)tf;
 
 	pcb->pcb_sp = (register_t)cf;
+	#ifdef __powerpc64__
+	pcb->pcb_lr = *(register_t *)fork_trampoline;
+	#else
 	pcb->pcb_lr = (register_t)fork_trampoline;
-	pcb->pcb_cpu.aim.usr = kernel_pmap->pm_sr[USER_SR];
+	#endif
+	pcb->pcb_cpu.aim.usr_vsid = 0;
+	pcb->pcb_cpu.aim.usr_esid = 0;
 
 	/* Setup to release spin count in fork_exit(). */
 	td2->td_md.md_spinlock_count = 1;
@@ -450,7 +455,8 @@ cpu_set_upcall(struct thread *td, struct thread *td0)
 
 	pcb2->pcb_sp = (register_t)cf;
 	pcb2->pcb_lr = (register_t)fork_trampoline;
-	pcb2->pcb_cpu.aim.usr = kernel_pmap->pm_sr[USER_SR];
+	pcb2->pcb_cpu.aim.usr_vsid = 0;
+	pcb2->pcb_cpu.aim.usr_esid = 0;
 
 	/* Setup to release spin count in fork_exit(). */
 	td->td_md.md_spinlock_count = 1;

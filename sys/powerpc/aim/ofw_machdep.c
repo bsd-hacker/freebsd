@@ -354,10 +354,15 @@ OF_bootstrap()
 	boolean_t status = FALSE;
 
 	if (ofwcall != NULL) {
-		if (ofw_real_mode)
+		if (ofw_real_mode) {
 			status = OF_install(OFW_STD_REAL, 0);
-		else
+		} else {
+			#ifdef __powerpc64__
+			status = OF_install(OFW_STD_32BIT, 0);
+			#else
 			status = OF_install(OFW_STD_DIRECT, 0);
+			#endif
+		}
 
 		if (status != TRUE)
 			return status;

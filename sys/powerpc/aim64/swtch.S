@@ -81,22 +81,47 @@ ENTRY(cpu_throw)
  * Switch to a new thread saving the current state in the old thread.
  */
 ENTRY(cpu_switch)
-	stw	%r5,TD_LOCK(%r3)	/* ULE:	update old thread's lock */
+	std	%r5,TD_LOCK(%r3)	/* ULE:	update old thread's lock */
 					/* XXX needs to change for MP */
 
-	lwz	%r5,TD_PCB(%r3)		/* Get the old thread's PCB ptr */
+	ld	%r5,TD_PCB(%r3)		/* Get the old thread's PCB ptr */
 	mr	%r12,%r2	
-	stmw	%r12,PCB_CONTEXT(%r5)	/* Save the non-volatile GP regs.
+	std	%r12,PCB_CONTEXT(%r5)	/* Save the non-volatile GP regs.
 					   These can now be used for scratch */
+	std	%r13,PCB_CONTEXT+1*8(%r5)	
+	std	%r14,PCB_CONTEXT+2*8(%r5)	
+	std	%r15,PCB_CONTEXT+3*8(%r5)	
+	std	%r16,PCB_CONTEXT+4*8(%r5)	
+	std	%r17,PCB_CONTEXT+5*8(%r5)	
+	std	%r18,PCB_CONTEXT+6*8(%r5)	
+	std	%r19,PCB_CONTEXT+7*8(%r5)	
+	std	%r20,PCB_CONTEXT+8*8(%r5)	
+	std	%r21,PCB_CONTEXT+9*8(%r5)	
+	std	%r22,PCB_CONTEXT+10*8(%r5)	
+	std	%r23,PCB_CONTEXT+11*8(%r5)	
+	std	%r24,PCB_CONTEXT+12*8(%r5)	
+	std	%r25,PCB_CONTEXT+13*8(%r5)	
+	std	%r26,PCB_CONTEXT+14*8(%r5)	
+	std	%r27,PCB_CONTEXT+15*8(%r5)	
+	std	%r28,PCB_CONTEXT+16*8(%r5)	
+	std	%r29,PCB_CONTEXT+17*8(%r5)	
+	std	%r30,PCB_CONTEXT+18*8(%r5)	
+	std	%r31,PCB_CONTEXT+19*8(%r5)	
 
 	mfcr	%r16			/* Save the condition register */
 	stw	%r16,PCB_CR(%r5)
 	mflr	%r16			/* Save the link register */
-	stw	%r16,PCB_LR(%r5)
-	mfsr	%r16,USER_SR		/* Save USER_SR for copyin/out */
+	std	%r16,PCB_LR(%r5)
+	
+	li	%r14,0			/* Save USER_SR for copyin/out */
+	li	%r15,0
+	li	%r16,USER_SR
+	slbmfee %r14, %r16
+	slbmfev %r15, %r16
 	isync
-	stw	%r16,PCB_AIM_USR(%r5)
-	stw	%r1,PCB_SP(%r5)		/* Save the stack pointer */
+	std	%r14,PCB_AIM_USR_ESID(%r5)
+	std	%r15,PCB_AIM_USR_VSID(%r5)
+	std	%r1,PCB_SP(%r5)		/* Save the stack pointer */
 
 	mr	%r14,%r3		/* Copy the old thread ptr... */
 	mr	%r15,%r4		/* and the new thread ptr in scratch */
@@ -105,34 +130,39 @@ ENTRY(cpu_switch)
 	/* Save FPU context if needed */
 	andi.	%r6, %r6, PCB_FPU
 	beq	.L1
-	bl	save_fpu
+	bl	.save_fpu
+	nop
 
 .L1:
 	lwz	%r6,PCB_FLAGS(%r5)
 	/* Save Altivec context if needed */
 	andi.	%r6, %r6, PCB_VEC
 	beq	.L2
-	bl	save_vec
+	bl	.save_vec
+	nop
 	
 .L2:
 	mr	%r3,%r14		/* restore old thread ptr */
-	bl	pmap_deactivate		/* Deactivate the current pmap */
+	bl	.pmap_deactivate	/* Deactivate the current pmap */
+	nop
 
 cpu_switchin:
 	mfsprg	%r7,0			/* Get the pcpu pointer */
-	stw	%r15,PC_CURTHREAD(%r7)	/* Store new current thread */
-	lwz	%r17,TD_PCB(%r15)	/* Store new current PCB */
-	stw	%r17,PC_CURPCB(%r7)
+	std	%r15,PC_CURTHREAD(%r7)	/* Store new current thread */
+	ld	%r17,TD_PCB(%r15)	/* Store new current PCB */
+	std	%r17,PC_CURPCB(%r7)
 
 	mr	%r3,%r15		/* Get new thread ptr */
-	bl	pmap_activate		/* Activate the new address space */
+	bl	.pmap_activate		/* Activate the new address space */
+	nop
 
 	lwz	%r6, PCB_FLAGS(%r17)
 	/* Restore FPU context if needed */
 	andi.	%r6, %r6, PCB_FPU
 	beq	.L3
 	mr	%r3,%r15		/* Pass curthread to enable_fpu */
-	bl	enable_fpu
+	bl	.enable_fpu
+	nop
 
 .L3:
 	lwz	%r6, PCB_FLAGS(%r17)
@@ -140,27 +170,49 @@ cpu_switchin:
 	andi.	%r6, %r6, PCB_VEC
 	beq	.L4
 	mr	%r3,%r15		/* Pass curthread to enable_vec */
-	bl	enable_vec
+	bl	.enable_vec
+	nop
 
 	/* thread to restore is in r3 */
 .L4:
 	mr	%r3,%r17		/* Recover PCB ptr */
-	lmw	%r12,PCB_CONTEXT(%r3)	/* Load the non-volatile GP regs */
+	ld	%r12,PCB_CONTEXT(%r3)	/* Load the non-volatile GP regs. */
+	ld	%r13,PCB_CONTEXT+1*8(%r3)	
+	ld	%r14,PCB_CONTEXT+2*8(%r3)	
+	ld	%r15,PCB_CONTEXT+3*8(%r3)	
+	ld	%r16,PCB_CONTEXT+4*8(%r3)	
+	ld	%r17,PCB_CONTEXT+5*8(%r3)	
+	ld	%r18,PCB_CONTEXT+6*8(%r3)	
+	ld	%r19,PCB_CONTEXT+7*8(%r3)	
+	ld	%r20,PCB_CONTEXT+8*8(%r3)	
+	ld	%r21,PCB_CONTEXT+9*8(%r3)	
+	ld	%r22,PCB_CONTEXT+10*8(%r3)	
+	ld	%r23,PCB_CONTEXT+11*8(%r3)	
+	ld	%r24,PCB_CONTEXT+12*8(%r3)	
+	ld	%r25,PCB_CONTEXT+13*8(%r3)	
+	ld	%r26,PCB_CONTEXT+14*8(%r3)	
+	ld	%r27,PCB_CONTEXT+15*8(%r3)	
+	ld	%r28,PCB_CONTEXT+16*8(%r3)
+	ld	%r29,PCB_CONTEXT+17*8(%r3)	
+	ld	%r30,PCB_CONTEXT+18*8(%r3)	
+	ld	%r31,PCB_CONTEXT+19*8(%r3)	
 	mr	%r2,%r12
 	lwz	%r5,PCB_CR(%r3)		/* Load the condition register */
 	mtcr	%r5
-	lwz	%r5,PCB_LR(%r3)		/* Load the link register */
+	ld	%r5,PCB_LR(%r3)		/* Load the link register */
 	mtlr	%r5
-	lwz	%r5,PCB_AIM_USR(%r3)	/* Load the USER_SR segment reg */
-	mtsr	USER_SR,%r5
+	ld	%r5,PCB_AIM_USR_VSID(%r3) /* Load the USER_SR segment reg */
+	ld	%r6,PCB_AIM_USR_ESID(%r3)
+	ori	%r6,%r6,USER_SR
+	slbmte	%r5,%r6
 	isync
-	lwz	%r1,PCB_SP(%r3)		/* Load the stack pointer */
+	ld	%r1,PCB_SP(%r3)		/* Load the stack pointer */
 	/*
 	 * Perform a dummy stwcx. to clear any reservations we may have
 	 * inherited from the previous thread. It doesn't matter if the
 	 * stwcx succeeds or not. pcb_context[0] can be clobbered.
 	 */
-	stwcx.	%r1, 0, %r3
+	stdcx.	%r1, 0, %r3
 	blr
 
 /*
@@ -169,9 +221,29 @@ cpu_switchin:
  */
 ENTRY(savectx)
 	mr	%r12,%r2
-	stmw	%r12,PCB_CONTEXT(%r3)	/* Save the non-volatile GP regs */
+	std	%r12,PCB_CONTEXT(%r3)	/* Save the non-volatile GP regs. */
+	std	%r13,PCB_CONTEXT+1*8(%r3)	
+	std	%r14,PCB_CONTEXT+2*8(%r3)	
+	std	%r15,PCB_CONTEXT+3*8(%r3)	
+	std	%r16,PCB_CONTEXT+4*8(%r3)	
+	std	%r17,PCB_CONTEXT+5*8(%r3)	
+	std	%r18,PCB_CONTEXT+6*8(%r3)	
+	std	%r19,PCB_CONTEXT+7*8(%r3)	
+	std	%r20,PCB_CONTEXT+8*8(%r3)	
+	std	%r21,PCB_CONTEXT+9*8(%r3)	
+	std	%r22,PCB_CONTEXT+10*8(%r3)	
+	std	%r23,PCB_CONTEXT+11*8(%r3)	
+	std	%r24,PCB_CONTEXT+12*8(%r3)	
+	std	%r25,PCB_CONTEXT+13*8(%r3)	
+	std	%r26,PCB_CONTEXT+14*8(%r3)	
+	std	%r27,PCB_CONTEXT+15*8(%r3)	
+	std	%r28,PCB_CONTEXT+16*8(%r3)
+	std	%r29,PCB_CONTEXT+17*8(%r3)	
+	std	%r30,PCB_CONTEXT+18*8(%r3)	
+	std	%r31,PCB_CONTEXT+19*8(%r3)	
+
 	mfcr	%r4			/* Save the condition register */
-	stw	%r4,PCB_CONTEXT(%r3)
+	stw	%r4,PCB_CR(%r3)
 	blr
 
 /*
@@ -179,10 +251,11 @@ ENTRY(savectx)
  * Set up the return from cpu_fork()
  */
 ENTRY(fork_trampoline)
-	lwz	%r3,CF_FUNC(%r1)
-	lwz	%r4,CF_ARG0(%r1)
-	lwz	%r5,CF_ARG1(%r1)
-	bl	fork_exit
+	ld	%r3,CF_FUNC(%r1)
+	ld	%r4,CF_ARG0(%r1)
+	ld	%r5,CF_ARG1(%r1)
+	bl	.fork_exit
+	nop
 	addi	%r1,%r1,CF_SIZE-FSP	/* Allow 8 bytes in front of
 					   trapframe to simulate FRAME_SETUP
 					   does when allocating space for

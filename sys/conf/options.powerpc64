@@ -3,6 +3,7 @@
 
 AIM			opt_global.h
 E500			opt_global.h
+CELL
 MAMBO
 
 GFB_DEBUG		opt_gfb.h

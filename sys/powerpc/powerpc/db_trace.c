@@ -109,11 +109,11 @@ struct db_variable *db_eregs = db_regs + sizeof (db_regs)/sizeof (db_regs[0]);
 static int
 db_frame(struct db_variable *vp, db_expr_t *valuep, int op)
 {
-	uint32_t *reg;
+	register_t *reg;
 
 	if (kdb_frame == NULL)
 		return (0);
-        reg = (uint32_t*)((uintptr_t)kdb_frame + (uintptr_t)vp->valuep);
+        reg = (register_t*)((uintptr_t)kdb_frame + (uintptr_t)vp->valuep);
         if (op == DB_VAR_GET)
                 *valuep = *reg;
         else
@@ -164,8 +164,13 @@ db_backtrace(struct thread *td, db_addr_t fp, int count)
 		stackframe = *(db_addr_t *)stackframe;
 
 	next_frame:
+	    #ifdef __powerpc64__
+		/* The saved arg values start at frame[6] */
+		args = (db_addr_t *)(stackframe + 48);
+	    #else
 		/* The saved arg values start at frame[2] */
 		args = (db_addr_t *)(stackframe + 8);
+	    #endif
 
 		if (stackframe < PAGE_SIZE)
 			break;
@@ -178,7 +183,11 @@ db_backtrace(struct thread *td, db_addr_t fp, int count)
 		 * 4 to convert into calling address (as opposed to
 		 * return address)
 		 */
+	    #ifdef __powerpc64__
+		lr = *(db_addr_t *)(stackframe + 16) - 4;
+	    #else
 		lr = *(db_addr_t *)(stackframe + 4) - 4;
+	    #endif
 		if ((lr & 3) || (lr < 0x100)) {
 			db_printf("saved LR(0x%zx) is invalid.", lr);
 			break;

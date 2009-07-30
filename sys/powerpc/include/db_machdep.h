@@ -35,9 +35,10 @@
 #define	_POWERPC_DB_MACHDEP_H_
 
 #include <vm/vm_param.h>
+#include <machine/elf.h>
 
 #define	DB_ELF_SYMBOLS
-#define	DB_ELFSIZE	32
+#define	DB_ELFSIZE	__ELF_WORD_SIZE
 
 #define BYTE_MSF        (1)
 
