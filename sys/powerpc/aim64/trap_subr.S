@@ -123,7 +123,7 @@ nslb:
 	std	%r31,FRAME_1+16(%r1);	/* save SP   "      "       */	\
 	std	%r2, FRAME_2+16(%r1);	/* save r2   "      "       */	\
 	std	%r28,FRAME_LR+16(%r1);	/* save LR   "      "       */	\
-	stw	%r29,FRAME_CR+16(%r1);	/* save CR   "      "       */	\
+	std	%r29,FRAME_CR+16(%r1);	/* save CR   "      "       */	\
 	GET_CPUINFO(%r2);						\
 	ld	%r27,(savearea+CPUSAVE_R27)(%r2); /* get saved r27 */	\
 	ld	%r28,(savearea+CPUSAVE_R28)(%r2); /* get saved r28 */	\
@@ -160,18 +160,18 @@ nslb:
 	std	%r30, FRAME_30+16(%r1);					\
 	std	%r31, FRAME_31+16(%r1);					\
 	ld	%r28,(savearea+CPUSAVE_AIM_DAR)(%r2);  /* saved DAR */	\
-	lwz	%r29,(savearea+CPUSAVE_AIM_DSISR)(%r2);/* saved DSISR */\
+	ld	%r29,(savearea+CPUSAVE_AIM_DSISR)(%r2);/* saved DSISR */\
 	ld	%r30,(savearea+CPUSAVE_SRR0)(%r2); /* saved SRR0 */	\
 	ld	%r31,(savearea+CPUSAVE_SRR1)(%r2); /* saved SRR1 */	\
 	mfxer	%r3;							\
 	mfctr	%r4;							\
 	mfsprg3	%r5;							\
 	mtlr	%r6;							\
-	stw	%r3, FRAME_XER+16(1);	/* save xer/ctr/exc */		\
+	std	%r3, FRAME_XER+16(1);	/* save xer/ctr/exc */		\
 	std	%r4, FRAME_CTR+16(1);					\
 	std	%r5, FRAME_EXC+16(1);					\
 	std	%r28,FRAME_AIM_DAR+16(1);				\
-	stw	%r29,FRAME_AIM_DSISR+16(1); /* save dsisr/srr0/srr1 */	\
+	std	%r29,FRAME_AIM_DSISR+16(1); /* save dsisr/srr0/srr1 */	\
 	std	%r30,FRAME_SRR0+16(1);					\
 	std	%r31,FRAME_SRR1+16(1)
 
@@ -180,12 +180,12 @@ nslb:
 	ld	%r2,FRAME_SRR0+16(%r1);					\
 	ld	%r3,FRAME_SRR1+16(%r1);					\
 	ld	%r4,FRAME_CTR+16(%r1);					\
-	lwz	%r5,FRAME_XER+16(%r1);					\
+	ld	%r5,FRAME_XER+16(%r1);					\
 	ld	%r6,FRAME_LR+16(%r1);					\
 	GET_CPUINFO(%r7);						\
 	std	%r2,(savearea+CPUSAVE_SRR0)(%r7); /* save SRR0 */	\
 	std	%r3,(savearea+CPUSAVE_SRR1)(%r7); /* save SRR1 */	\
-	lwz	%r7,FRAME_CR+16(%r1);					\
+	ld	%r7,FRAME_CR+16(%r1);					\
 	mtctr	%r4;							\
 	mtxer	%r5;							\
 	mtsprg1	%r7;			/* save cr */			\
@@ -313,7 +313,7 @@ CNAME(alitrap):
 	mfdar	%r30
 	mfdsisr	%r31
 	std	%r30,(PC_TEMPSAVE+CPUSAVE_AIM_DAR)(%r1)
-	stw	%r31,(PC_TEMPSAVE+CPUSAVE_AIM_DSISR)(%r1)
+	std	%r31,(PC_TEMPSAVE+CPUSAVE_AIM_DSISR)(%r1)
 	mfsprg1	%r1			/* restore SP, in case of branch */
 	mflr	%r28			/* save LR */
 	mfcr	%r29			/* save CR */
@@ -375,7 +375,7 @@ disitrap:
 	mfdar	%r30
 	mfdsisr	%r31
 	std	%r30,(PC_TEMPSAVE+CPUSAVE_AIM_DAR)(%r1)
-	stw	%r31,(PC_TEMPSAVE+CPUSAVE_AIM_DSISR)(%r1)
+	std	%r31,(PC_TEMPSAVE+CPUSAVE_AIM_DSISR)(%r1)
 
 #ifdef KDB
 	/* Try and detect a kernel stack overflow */
@@ -393,8 +393,8 @@ disitrap:
 	GET_CPUINFO(%r1)
 	ld	%r30,(PC_TEMPSAVE+CPUSAVE_AIM_DAR)(%r1) /* get DAR */
 	std	%r30,(PC_DBSAVE  +CPUSAVE_AIM_DAR)(%r1) /* save DAR */
-	lwz	%r30,(PC_TEMPSAVE+CPUSAVE_AIM_DSISR)(%r1) /* get DSISR */
-	stw	%r30,(PC_DBSAVE  +CPUSAVE_AIM_DSISR)(%r1) /* save DSISR */
+	ld	%r30,(PC_TEMPSAVE+CPUSAVE_AIM_DSISR)(%r1) /* get DSISR */
+	std	%r30,(PC_DBSAVE  +CPUSAVE_AIM_DSISR)(%r1) /* save DSISR */
 	ld	%r31,(PC_DISISAVE+CPUSAVE_R27)(%r1) /* get  r27 */
 	std	%r31,(PC_DBSAVE  +CPUSAVE_R27)(%r1) /* save r27 */
 	ld	%r30,(PC_DISISAVE+CPUSAVE_R28)(%r1) /* get  r28 */

@@ -154,7 +154,7 @@ cpu_fork(struct thread *td1, struct proc *p2, struct thread *td2, int flags)
 	p1 = td1->td_proc;
 
 	pcb = (struct pcb *)((td2->td_kstack +
-	    td2->td_kstack_pages * PAGE_SIZE - sizeof(struct pcb)) & ~0x2fU);
+	    td2->td_kstack_pages * PAGE_SIZE - sizeof(struct pcb)) & ~0x2fUL);
 	td2->td_pcb = pcb;
 
 	/* Copy the pcb */
@@ -183,7 +183,8 @@ cpu_fork(struct thread *td1, struct proc *p2, struct thread *td2, int flags)
 
 	pcb->pcb_sp = (register_t)cf;
 	#ifdef __powerpc64__
-	pcb->pcb_lr = *(register_t *)fork_trampoline;
+	pcb->pcb_lr = ((register_t *)fork_trampoline)[0];
+	pcb->pcb_toc = ((register_t *)fork_trampoline)[1];
 	#else
 	pcb->pcb_lr = (register_t)fork_trampoline;
 	#endif

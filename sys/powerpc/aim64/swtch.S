@@ -85,7 +85,6 @@ ENTRY(cpu_switch)
 					/* XXX needs to change for MP */
 
 	ld	%r5,TD_PCB(%r3)		/* Get the old thread's PCB ptr */
-	mr	%r12,%r2	
 	std	%r12,PCB_CONTEXT(%r5)	/* Save the non-volatile GP regs.
 					   These can now be used for scratch */
 	std	%r13,PCB_CONTEXT+1*8(%r5)	
@@ -109,7 +108,7 @@ ENTRY(cpu_switch)
 	std	%r31,PCB_CONTEXT+19*8(%r5)	
 
 	mfcr	%r16			/* Save the condition register */
-	stw	%r16,PCB_CR(%r5)
+	std	%r16,PCB_CR(%r5)
 	mflr	%r16			/* Save the link register */
 	std	%r16,PCB_LR(%r5)
 	
@@ -122,6 +121,7 @@ ENTRY(cpu_switch)
 	std	%r14,PCB_AIM_USR_ESID(%r5)
 	std	%r15,PCB_AIM_USR_VSID(%r5)
 	std	%r1,PCB_SP(%r5)		/* Save the stack pointer */
+	std	%r2,PCB_TOC(%r5)	/* Save the TOC pointer */
 
 	mr	%r14,%r3		/* Copy the old thread ptr... */
 	mr	%r15,%r4		/* and the new thread ptr in scratch */
@@ -196,8 +196,7 @@ cpu_switchin:
 	ld	%r29,PCB_CONTEXT+17*8(%r3)	
 	ld	%r30,PCB_CONTEXT+18*8(%r3)	
 	ld	%r31,PCB_CONTEXT+19*8(%r3)	
-	mr	%r2,%r12
-	lwz	%r5,PCB_CR(%r3)		/* Load the condition register */
+	ld	%r5,PCB_CR(%r3)		/* Load the condition register */
 	mtcr	%r5
 	ld	%r5,PCB_LR(%r3)		/* Load the link register */
 	mtlr	%r5
@@ -207,6 +206,7 @@ cpu_switchin:
 	slbmte	%r5,%r6
 	isync
 	ld	%r1,PCB_SP(%r3)		/* Load the stack pointer */
+	ld	%r2,PCB_TOC(%r3)	/* Load the TOC pointer */
 	/*
 	 * Perform a dummy stwcx. to clear any reservations we may have
 	 * inherited from the previous thread. It doesn't matter if the
@@ -220,7 +220,6 @@ cpu_switchin:
  * Update pcb, saving current processor state
  */
 ENTRY(savectx)
-	mr	%r12,%r2
 	std	%r12,PCB_CONTEXT(%r3)	/* Save the non-volatile GP regs. */
 	std	%r13,PCB_CONTEXT+1*8(%r3)	
 	std	%r14,PCB_CONTEXT+2*8(%r3)	
@@ -243,7 +242,7 @@ ENTRY(savectx)
 	std	%r31,PCB_CONTEXT+19*8(%r3)	
 
 	mfcr	%r4			/* Save the condition register */
-	stw	%r4,PCB_CR(%r3)
+	std	%r4,PCB_CR(%r3)
 	blr
 
 /*

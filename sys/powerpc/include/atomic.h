@@ -515,10 +515,10 @@ ATOMIC_STORE_LOAD(long,		64)
  * two values are equal, update the value of *p with newval. Returns
  * zero if the compare failed, nonzero otherwise.
  */
-static __inline uint32_t
+static __inline int
 atomic_cmpset_32(volatile uint32_t* p, uint32_t cmpval, uint32_t newval)
 {
-	uint32_t	ret;
+	int	ret;
 
 #ifdef __GNUCLIKE_ASM
 	__asm __volatile (
@@ -541,10 +541,10 @@ atomic_cmpset_32(volatile uint32_t* p, uint32_t cmpval, uint32_t newval)
 	return (ret);
 }
 
-static __inline u_long
+static __inline int
 atomic_cmpset_long(volatile u_long* p, u_long cmpval, u_long newval)
 {
-	u_long	ret;
+	int ret;
 
 #ifdef __GNUCLIKE_ASM
 	__asm __volatile (
@@ -588,7 +588,7 @@ atomic_cmpset_long(volatile u_long* p, u_long cmpval, u_long newval)
     atomic_cmpset_32((volatile u_int *)(dst), (u_int)(old), (u_int)(new))
 #endif
 
-static __inline uint32_t
+static __inline int
 atomic_cmpset_acq_32(volatile uint32_t *p, uint32_t cmpval, uint32_t newval)
 {
 	int retval;
@@ -598,24 +598,24 @@ atomic_cmpset_acq_32(volatile uint32_t *p, uint32_t cmpval, uint32_t newval)
 	return (retval);
 }
 
-static __inline uint32_t
+static __inline int
 atomic_cmpset_rel_32(volatile uint32_t *p, uint32_t cmpval, uint32_t newval)
 {
 	__ATOMIC_BARRIER;
 	return (atomic_cmpset_32(p, cmpval, newval));
 }
 
-static __inline u_long
+static __inline int
 atomic_cmpset_acq_long(volatile u_long *p, u_long cmpval, u_long newval)
 {
-	int retval;
+	u_long retval;
 
 	retval = atomic_cmpset_long(p, cmpval, newval);
 	__ATOMIC_BARRIER;
 	return (retval);
 }
 
-static __inline uint32_t
+static __inline int
 atomic_cmpset_rel_long(volatile u_long *p, u_long cmpval, u_long newval)
 {
 	__ATOMIC_BARRIER;

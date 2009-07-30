@@ -41,6 +41,7 @@ struct pcb {
 	register_t	pcb_context[20];	/* non-volatile r14-r31 */
 	register_t	pcb_cr;			/* Condition register */
 	register_t	pcb_sp;			/* stack pointer */
+	register_t	pcb_toc;		/* toc pointer */
 	register_t	pcb_lr;			/* link register */
 	struct		pmap *pcb_pm;		/* pmap of our vmspace */
 	faultbuf	*pcb_onfault;		/* For use during

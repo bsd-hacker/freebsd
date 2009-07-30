@@ -50,8 +50,8 @@
 struct trapframe {
 	register_t fixreg[32];
 	register_t lr;
-	int	cr;
-	int	xer;
+	register_t cr;
+	register_t xer;
 	register_t ctr;
 	register_t srr0;
 	register_t srr1;
@@ -60,7 +60,7 @@ struct trapframe {
 		struct {
 			/* dar & dsisr are only filled on a DSI trap */
 			register_t dar;
-			int	dsisr;
+			register_t dsisr;
 		} aim;
 		struct {
 			register_t dear;

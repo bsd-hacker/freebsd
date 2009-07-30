@@ -221,7 +221,8 @@ db_backtrace(struct thread *td, db_addr_t fp, int count)
 			case EXC_ALI:
 				/* XXX take advantage of the union. */
 				db_printf("ALI trap @ %#zx (xSR %#x) ",
-				    tf->cpu.aim.dar, tf->cpu.aim.dsisr);
+				    tf->cpu.aim.dar,
+				    (uint32_t)tf->cpu.aim.dsisr);
 				goto print_trap;
 			case EXC_ISI: trapstr = "ISI"; break;
 			case EXC_PGM: trapstr = "PGM"; break;
@@ -261,9 +262,11 @@ db_backtrace(struct thread *td, db_addr_t fp, int count)
 				    tf->srr1);
 			}
 			db_printf("%-10s  r1=%#zx cr=%#x xer=%#x ctr=%#zx",
-			    "", tf->fixreg[1], tf->cr, tf->xer, tf->ctr);
+			    "", tf->fixreg[1], (uint32_t)tf->cr,
+			    (uint32_t)tf->xer, tf->ctr);
 			if (tf->exc == EXC_DSI)
-				db_printf(" sr=%#x", tf->cpu.aim.dsisr);
+				db_printf(" sr=%#x",
+				    (uint32_t)tf->cpu.aim.dsisr);
 			db_printf("\n");
 			stackframe = (db_addr_t) tf->fixreg[1];
 			if (kernel_only && (tf->srr1 & PSL_PR))
