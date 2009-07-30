@@ -79,6 +79,19 @@ struct trapframe {
 /*
  * Call frame for PowerPC used during fork.
  */
+#ifdef __powerpc64__
+struct callframe {
+	register_t	cf_dummy_fp;	/* dummy frame pointer */
+	register_t	cf_cr;
+	register_t	cf_lr;
+	register_t	cf_compiler;
+	register_t	cf_linkeditor;
+	register_t	cf_toc;
+	register_t	cf_func;
+	register_t	cf_arg0;
+	register_t	cf_arg1;
+};
+#else
 struct callframe {
 	register_t	cf_dummy_fp;	/* dummy frame pointer */
 	register_t	cf_lr;		/* space for link register save */
@@ -86,6 +99,10 @@ struct callframe {
 	register_t	cf_arg0;
 	register_t	cf_arg1;
 };
+#endif
+
+/* Definitions for syscalls */
+#define	FIRSTARG	3				/* first arg in reg 3 */
 
 /* Definitions for syscalls */
 #define	FIRSTARG	3				/* first arg in reg 3 */

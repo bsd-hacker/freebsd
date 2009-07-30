@@ -191,6 +191,7 @@ ASENTRY(__start)
  */
 
         .align  3
+	.globl	tocbase
 tocbase:
         .llong  .TOC.@tocbase
 
@@ -200,19 +201,19 @@ tocbase:
 
 ASENTRY(ofw_real_mode_entry)
 	mflr	0
-	lis	31,openfirmware_entry@ha
-	ld	31,openfirmware_entry@l(31) /* read client interface handler */
+	lis	4,openfirmware_entry@ha
+	ld	4,openfirmware_entry@l(4) /* read client interface handler */
 
-	mfmsr	30
-	mtsprg3	30
-	andi.	30, 30, ~(PSL_DR | PSL_IR | PSL_EE)@l
-	mtmsrd	30
+	mfmsr	5
+	mtsprg3	5
+	andi.	5, 5, ~(PSL_DR | PSL_IR | PSL_EE)@l
+	mtmsrd	5
 
-	mtctr	31
+	mtctr	4
 	bctrl
 
-	mfsprg3	30
-	mtmsrd	30
+	mfsprg3	5
+	mtmsrd	5
 	mtlr 	0
 	blr
 
@@ -228,13 +229,34 @@ ASENTRY(setfault)
 	mflr	0
 	mfcr	12
 	mfsprg	4,0
-	lwz	4,PC_CURTHREAD(4)
-	lwz	4,TD_PCB(4)
-	stw	3,PCB_ONFAULT(4)
-	stw	0,0(3)
-	stw	1,4(3)
-	stw	2,8(3)
-	stmw	12,12(3)
+	ld	4,PC_CURTHREAD(4)
+	ld	4,TD_PCB(4)
+	std	3,PCB_ONFAULT(4)
+	std	0,0(3)
+	std	1,8(3)
+	std	2,16(3)
+
+	std	%r12,24(%r3)	/* Save the non-volatile GP regs. */
+	std	%r13,24+1*8(%r3)	
+	std	%r14,24+2*8(%r3)	
+	std	%r15,24+3*8(%r3)	
+	std	%r16,24+4*8(%r3)	
+	std	%r17,24+5*8(%r3)	
+	std	%r18,24+6*8(%r3)	
+	std	%r19,24+7*8(%r3)	
+	std	%r20,24+8*8(%r3)	
+	std	%r21,24+9*8(%r3)	
+	std	%r22,24+10*8(%r3)	
+	std	%r23,24+11*8(%r3)	
+	std	%r24,24+12*8(%r3)	
+	std	%r25,24+13*8(%r3)	
+	std	%r26,24+14*8(%r3)	
+	std	%r27,24+15*8(%r3)	
+	std	%r28,24+16*8(%r3)
+	std	%r29,24+17*8(%r3)	
+	std	%r30,24+18*8(%r3)	
+	std	%r31,24+19*8(%r3)	
+
 	xor	3,3,3
 	blr
 

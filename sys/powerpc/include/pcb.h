@@ -35,7 +35,7 @@
 #ifndef _MACHINE_PCB_H_
 #define	_MACHINE_PCB_H_
 
-typedef int faultbuf[25];
+typedef register_t faultbuf[25];
 
 struct pcb {
 	register_t	pcb_context[20];	/* non-volatile r14-r31 */

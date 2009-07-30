@@ -171,7 +171,7 @@ static __inline uint64_t
 va_to_vsid(pmap_t pm, vm_offset_t va)
 {
 	#ifdef __powerpc64__
-	return (((uint64_t)pm->pm_context << 36) |
+	return (((uint64_t)pm->pm_context << 17) |
 	    ((uintptr_t)va >> ADDR_SR_SHFT));
 	#else
 	return ((pm->pm_sr[(uintptr_t)va >> ADDR_SR_SHFT]) & SR_VSID_MASK);
@@ -742,7 +742,7 @@ moea64_bridge_cpu_bootstrap(mmu_t mmup, int ap)
 				continue;
 
 			/* The right-most bit is a validity bit */
-			slb1 = ((register_t)kernel_pmap->pm_context << 36) |
+			slb1 = ((register_t)kernel_pmap->pm_context << 17) |
 			    (kernel_pmap->pm_sr[i] >> 1);
 			slb1 <<= 12;
 			slb2 = kernel_pmap->pm_sr[i] << 27 | i;
@@ -926,7 +926,7 @@ moea64_bridge_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernele
 	/*
 	 * Initialize the kernel pmap (which is statically allocated).
 	 */
-	kernel_pmap->pm_context = 0;
+	kernel_pmap->pm_context = 0xfffff;
 	#ifdef __powerpc64__
 	for (i = 0; i < 16; i++) 
 		kernel_pmap->pm_sr[i] = (i << 1) | 1;
@@ -979,8 +979,6 @@ moea64_bridge_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernele
 	     */
 
 	    moea64_pinit(mmup, &ofw_pmap);
-	    ofw_pmap.pm_sr[KERNEL_SR] = kernel_pmap->pm_sr[KERNEL_SR];
-	    ofw_pmap.pm_sr[KERNEL2_SR] = kernel_pmap->pm_sr[KERNEL2_SR];
 
 	    if ((chosen = OF_finddevice("/chosen")) == -1)
 		panic("moea64_bootstrap: can't find /chosen");
@@ -1841,6 +1839,7 @@ moea64_pinit(mmu_t mmu, pmap_t pmap)
 		moea64_vsid_bitmap[n] |= mask;
 
 		#ifdef __powerpc64__
+printf("Assigning new context: %#x, hash %#x\n",moea64_vsidcontext,hash);
 			pmap->pm_context = hash;
 			for (i = 0; i < NSEGS; i++) 
 				pmap->pm_sr[i] = 0;

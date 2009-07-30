@@ -105,7 +105,9 @@ static struct powerpc_exception powerpc_exceptions[] = {
 	{ 0x0100, "system reset" },
 	{ 0x0200, "machine check" },
 	{ 0x0300, "data storage interrupt" },
+	{ 0x0380, "data segment exception" },
 	{ 0x0400, "instruction storage interrupt" },
+	{ 0x0480, "instruction segment exception" },
 	{ 0x0500, "external interrupt" },
 	{ 0x0600, "alignment" },
 	{ 0x0700, "program" },
@@ -493,7 +495,7 @@ trap_pfault(struct trapframe *frame, int user)
 	vm_map_t	map;
 	vm_prot_t	ftype;
 	int		rv;
-	u_int		user_sr;
+	register_t	user_sr;
 
 	td = curthread;
 	p = td->td_proc;
@@ -515,9 +517,16 @@ trap_pfault(struct trapframe *frame, int user)
 			if (p->p_vmspace == NULL)
 				return (SIGSEGV);
 
+			#ifdef __powerpc64__
+			user_sr = 0;
+			__asm ("slbmfev %0, %1"
+			    : "=r"(user_sr)
+			    : "r"(USER_SR));
+			#else
 			__asm ("mfsr %0, %1"
 			    : "=r"(user_sr)
 			    : "K"(USER_SR));
+			#endif
 			eva &= ADDR_PIDX | ADDR_POFF;
 			eva |= user_sr << ADDR_SR_SHFT;
 			map = &p->p_vmspace->vm_map;

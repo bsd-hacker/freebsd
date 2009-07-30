@@ -129,6 +129,10 @@ static u_int sf_buf_alloc_want;
  */
 static struct mtx sf_buf_lock;
 
+#ifdef __powerpc64__
+extern uintptr_t tocbase;
+#endif
+
 
 /*
  * Finish a fork operation, with process p2 nearly set up.
@@ -177,6 +181,9 @@ cpu_fork(struct thread *td1, struct proc *p2, struct thread *td2, int flags)
 
 	cf = (struct callframe *)tf - 1;
 	memset(cf, 0, sizeof(struct callframe));
+	#ifdef __powerpc64__
+	cf->cf_toc = tocbase;
+	#endif
 	cf->cf_func = (register_t)fork_return;
 	cf->cf_arg0 = (register_t)td2;
 	cf->cf_arg1 = (register_t)tf;
@@ -455,7 +462,12 @@ cpu_set_upcall(struct thread *td, struct thread *td0)
 	cf->cf_arg1 = (register_t)tf;
 
 	pcb2->pcb_sp = (register_t)cf;
+	#ifdef __powerpc64__
+	pcb2->pcb_lr = ((register_t *)fork_trampoline)[0];
+	pcb2->pcb_toc = ((register_t *)fork_trampoline)[1];
+	#else
 	pcb2->pcb_lr = (register_t)fork_trampoline;
+	#endif
 	pcb2->pcb_cpu.aim.usr_vsid = 0;
 	pcb2->pcb_cpu.aim.usr_esid = 0;
 

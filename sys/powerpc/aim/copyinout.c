@@ -72,6 +72,33 @@ int	setfault(faultbuf);	/* defined in locore.S */
 /*
  * Makes sure that the right segment of userspace is mapped in.
  */
+static __inline register_t
+va_to_vsid(pmap_t pm, const volatile void *va)
+{
+        #ifdef __powerpc64__
+        return (((uint64_t)pm->pm_context << 17) |
+            ((uintptr_t)va >> ADDR_SR_SHFT));
+        #else
+        return ((pm->pm_sr[(uintptr_t)va >> ADDR_SR_SHFT]) & SR_VSID_MASK);
+        #endif
+}
+
+#ifdef __powerpc64__
+static __inline void
+set_user_sr(register_t vsid)
+{
+	register_t esid, slb1, slb2;
+
+	esid = USER_SR;
+
+	slb1 = vsid << 12;
+	slb2 = (((esid << 1) | 1UL) << 27) | USER_SR;
+
+	__asm __volatile ("slbie %0; slbmte %1, %2" :: "r"(esid << 28),
+	    "r"(slb1), "r"(slb2));
+	isync();
+}
+#else
 static __inline void
 set_user_sr(register_t vsid)
 {
@@ -80,6 +107,7 @@ set_user_sr(register_t vsid)
 	__asm __volatile ("mtsr %0,%1" :: "n"(USER_SR), "r"(vsid));
 	isync();
 }
+#endif
 
 int
 copyout(const void *kaddr, void *udaddr, size_t len)
@@ -103,13 +131,13 @@ copyout(const void *kaddr, void *udaddr, size_t len)
 	up = udaddr;
 
 	while (len > 0) {
-		p = (char *)USER_ADDR + ((u_int)up & ~SEGMENT_MASK);
+		p = (char *)USER_ADDR + ((uintptr_t)up & ~SEGMENT_MASK);
 
 		l = ((char *)USER_ADDR + SEGMENT_LENGTH) - p;
 		if (l > len)
 			l = len;
 
-		set_user_sr(pm->pm_sr[(u_int)up >> ADDR_SR_SHFT]);
+		set_user_sr(va_to_vsid(pm,up));
 
 		bcopy(kp, p, l);
 
@@ -144,13 +172,13 @@ copyin(const void *udaddr, void *kaddr, size_t len)
 	up = udaddr;
 
 	while (len > 0) {
-		p = (char *)USER_ADDR + ((u_int)up & ~SEGMENT_MASK);
+		p = (char *)USER_ADDR + ((uintptr_t)up & ~SEGMENT_MASK);
 
 		l = ((char *)USER_ADDR + SEGMENT_LENGTH) - p;
 		if (l > len)
 			l = len;
 
-		set_user_sr(pm->pm_sr[(u_int)up >> ADDR_SR_SHFT]);
+		set_user_sr(va_to_vsid(pm,up));
 
 		bcopy(p, kp, l);
 
@@ -218,20 +246,47 @@ subyte(void *addr, int byte)
 
 	td = PCPU_GET(curthread);
 	pm = &td->td_proc->p_vmspace->vm_pmap;
-	p = (char *)((u_int)USER_ADDR + ((u_int)addr & ~SEGMENT_MASK));
+	p = (char *)((uintptr_t)USER_ADDR + ((uintptr_t)addr & ~SEGMENT_MASK));
 
 	if (setfault(env)) {
 		td->td_pcb->pcb_onfault = NULL;
 		return (-1);
 	}
 
-	set_user_sr(pm->pm_sr[(u_int)addr >> ADDR_SR_SHFT]);
+	set_user_sr(va_to_vsid(pm,addr));
 
 	*p = (char)byte;
 
 	td->td_pcb->pcb_onfault = NULL;
 	return (0);
 }
+
+#ifdef __powerpc64__
+int
+suword32(void *addr, int word)
+{
+	struct		thread *td;
+	pmap_t		pm;
+	faultbuf	env;
+	int		*p;
+
+	td = PCPU_GET(curthread);
+	pm = &td->td_proc->p_vmspace->vm_pmap;
+	p = (int *)((uintptr_t)USER_ADDR + ((uintptr_t)addr & ~SEGMENT_MASK));
+
+	if (setfault(env)) {
+		td->td_pcb->pcb_onfault = NULL;
+		return (-1);
+	}
+
+	set_user_sr(pm->pm_sr[(uintptr_t)addr >> ADDR_SR_SHFT]);
+
+	*p = word;
+
+	td->td_pcb->pcb_onfault = NULL;
+	return (0);
+}
+#endif
 
 int
 suword(void *addr, long word)
@@ -243,14 +298,14 @@ suword(void *addr, long word)
 
 	td = PCPU_GET(curthread);
 	pm = &td->td_proc->p_vmspace->vm_pmap;
-	p = (long *)((u_int)USER_ADDR + ((u_int)addr & ~SEGMENT_MASK));
+	p = (long *)((uintptr_t)USER_ADDR + ((uintptr_t)addr & ~SEGMENT_MASK));
 
 	if (setfault(env)) {
 		td->td_pcb->pcb_onfault = NULL;
 		return (-1);
 	}
 
-	set_user_sr(pm->pm_sr[(u_int)addr >> ADDR_SR_SHFT]);
+	set_user_sr(va_to_vsid(pm,addr));
 
 	*p = word;
 
@@ -258,12 +313,19 @@ suword(void *addr, long word)
 	return (0);
 }
 
+#ifdef __powerpc64__
+int
+suword64(void *addr, int64_t word)
+{
+	return (suword(addr, (long)word));
+}
+#else
 int
 suword32(void *addr, int32_t word)
 {
 	return (suword(addr, (long)word));
 }
-
+#endif
 
 int
 fubyte(const void *addr)
@@ -276,14 +338,15 @@ fubyte(const void *addr)
 
 	td = PCPU_GET(curthread);
 	pm = &td->td_proc->p_vmspace->vm_pmap;
-	p = (u_char *)((u_int)USER_ADDR + ((u_int)addr & ~SEGMENT_MASK));
+	p = (u_char *)((uintptr_t)USER_ADDR +
+	    ((uintptr_t)addr & ~SEGMENT_MASK));
 
 	if (setfault(env)) {
 		td->td_pcb->pcb_onfault = NULL;
 		return (-1);
 	}
 
-	set_user_sr(pm->pm_sr[(u_int)addr >> ADDR_SR_SHFT]);
+	set_user_sr(va_to_vsid(pm,addr));
 
 	val = *p;
 
@@ -301,14 +364,14 @@ fuword(const void *addr)
 
 	td = PCPU_GET(curthread);
 	pm = &td->td_proc->p_vmspace->vm_pmap;
-	p = (long *)((u_int)USER_ADDR + ((u_int)addr & ~SEGMENT_MASK));
+	p = (long *)((uintptr_t)USER_ADDR + ((uintptr_t)addr & ~SEGMENT_MASK));
 
 	if (setfault(env)) {
 		td->td_pcb->pcb_onfault = NULL;
 		return (-1);
 	}
 
-	set_user_sr(pm->pm_sr[(u_int)addr >> ADDR_SR_SHFT]);
+	set_user_sr(va_to_vsid(pm,addr));
 
 	val = *p;
 
@@ -338,9 +401,10 @@ casuword(volatile u_long *addr, u_long old, u_long new)
 
 	td = PCPU_GET(curthread);
 	pm = &td->td_proc->p_vmspace->vm_pmap;
-	p = (u_long *)((u_int)USER_ADDR + ((u_int)addr & ~SEGMENT_MASK));
+	p = (u_long *)((uintptr_t)USER_ADDR +
+	    ((uintptr_t)addr & ~SEGMENT_MASK));
 
-	set_user_sr(pm->pm_sr[(u_int)addr >> ADDR_SR_SHFT]);
+	set_user_sr(va_to_vsid(pm,addr));
 
 	if (setfault(env)) {
 		td->td_pcb->pcb_onfault = NULL;

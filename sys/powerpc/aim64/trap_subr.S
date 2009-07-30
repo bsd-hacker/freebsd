@@ -55,7 +55,7 @@ restoresrs:
 	mr	%r28, %r27
 	lwz	%r27, PM_CONTEXT(%r27);
 instslb:
-	li	%r30, 31;
+	li	%r30, 12;
 	sld	%r30, %r27, %r30;
 	ld	%r31, PM_SR(%r28);
 
@@ -554,7 +554,7 @@ dbtrap:
 	or.	%r3,%r3,%r3
 	bne	dbleave
 /* This wasn't for KDB, so switch to real trap: */
-	ld	%r3,FRAME_EXC+8(%r1)	/* save exception */
+	ld	%r3,FRAME_EXC+16(%r1)	/* save exception */
 	GET_CPUINFO(%r4)
 	std	%r3,(PC_DBSAVE+CPUSAVE_R31)(%r4)
 	FRAME_LEAVE(PC_DBSAVE)
