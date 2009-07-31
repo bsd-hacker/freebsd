@@ -1839,7 +1839,6 @@ moea64_pinit(mmu_t mmu, pmap_t pmap)
 		moea64_vsid_bitmap[n] |= mask;
 
 		#ifdef __powerpc64__
-printf("Assigning new context: %#x, hash %#x\n",moea64_vsidcontext,hash);
 			pmap->pm_context = hash;
 			for (i = 0; i < NSEGS; i++) 
 				pmap->pm_sr[i] = 0;
