@@ -279,7 +279,7 @@ suword32(void *addr, int word)
 		return (-1);
 	}
 
-	set_user_sr(pm->pm_sr[(uintptr_t)addr >> ADDR_SR_SHFT]);
+	set_user_sr(va_to_vsid(pm,addr));
 
 	*p = word;
 

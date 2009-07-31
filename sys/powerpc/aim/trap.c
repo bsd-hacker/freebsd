@@ -522,6 +522,12 @@ trap_pfault(struct trapframe *frame, int user)
 			__asm ("slbmfev %0, %1"
 			    : "=r"(user_sr)
 			    : "r"(USER_SR));
+
+			user_sr >>= 12;
+
+			/* XXX - limit to 46 byte EA space */
+			user_sr &= (1UL << 17) - 1UL;
+
 			#else
 			__asm ("mfsr %0, %1"
 			    : "=r"(user_sr)
