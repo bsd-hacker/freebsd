@@ -383,21 +383,24 @@ OF_bootstrap()
 static int
 openfirmware(void *args)
 {
-	long	oldmsr;
-	int	result;
-	u_int	srsave[16];
-	u_int   i;
+	long		oldmsr;
+	int		result;
+	#ifndef __powerpc64__
+	register_t	srsave[16];
+	u_int		i;
+	#endif
 
 	if (pmap_bootstrapped && ofw_real_mode)
 		args = (void *)pmap_kextract((vm_offset_t)args);
 
 	ofw_sprg_prepare();
 
+	#ifndef __powerpc64__
 	if (pmap_bootstrapped && !ofw_real_mode) {
 		/*
 		 * Swap the kernel's address space with Open Firmware's
 		 */
-		for (i = 0; i < 16; i++) {
+		if (!ppc64) for (i = 0; i < 16; i++) {
 			srsave[i] = mfsrin(i << ADDR_SR_SHFT);
 			mtsrin(i << ADDR_SR_SHFT, ofw_pmap.pm_sr[i]);
 		}
@@ -411,6 +414,7 @@ openfirmware(void *args)
 		}
 		isync();
 	}
+	#endif
 
 	__asm __volatile(	"\t"
 		"sync\n\t"
@@ -429,6 +433,7 @@ openfirmware(void *args)
 		: : "r" (oldmsr)
 	);
 
+	#ifndef __powerpc64__
 	if (pmap_bootstrapped && !ofw_real_mode) {
 		/*
 		 * Restore the kernel's addr space. The isync() doesn;t
@@ -440,6 +445,7 @@ openfirmware(void *args)
 			isync();
 		}
 	}
+	#endif
 
 	ofw_sprg_restore();
 

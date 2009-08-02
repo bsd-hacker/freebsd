@@ -66,24 +66,17 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/pcb.h>
 #include <machine/sr.h>
+#include <machine/slb.h>
 
 int	setfault(faultbuf);	/* defined in locore.S */
 
 /*
  * Makes sure that the right segment of userspace is mapped in.
  */
-static __inline register_t
-va_to_vsid(pmap_t pm, const volatile void *va)
-{
-        #ifdef __powerpc64__
-        return (((uint64_t)pm->pm_context << 17) |
-            ((uintptr_t)va >> ADDR_SR_SHFT));
-        #else
-        return ((pm->pm_sr[(uintptr_t)va >> ADDR_SR_SHFT]) & SR_VSID_MASK);
-        #endif
-}
 
 #ifdef __powerpc64__
+uint64_t va_to_vsid(pmap_t pm, const volatile void *va);
+
 static __inline void
 set_user_sr(register_t vsid)
 {
@@ -99,6 +92,12 @@ set_user_sr(register_t vsid)
 	isync();
 }
 #else
+static __inline register_t
+va_to_vsid(pmap_t pm, const volatile void *va)
+{
+        return ((pm->pm_sr[(uintptr_t)va >> ADDR_SR_SHFT]) & SR_VSID_MASK);
+}
+
 static __inline void
 set_user_sr(register_t vsid)
 {

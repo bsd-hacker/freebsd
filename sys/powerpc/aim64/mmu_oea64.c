@@ -159,6 +159,7 @@ __FBSDID("$FreeBSD$");
 #define	MOEA_DEBUG
 
 #define TODO	panic("%s: not implemented", __func__);
+static uintptr_t moea64_get_unique_vsid(void); 
 
 static __inline register_t
 cntlzd(volatile register_t a) {
@@ -167,16 +168,52 @@ cntlzd(volatile register_t a) {
 	return b;
 }
 
+#ifdef __powerpc64__
+uint64_t va_to_vsid(pmap_t pm, vm_offset_t va);
+
+uint64_t
+va_to_vsid(pmap_t pm, vm_offset_t va)
+{
+	uint64_t slbe, slbv, i;
+
+	slbe = (uintptr_t)va >> ADDR_SR_SHFT;
+	slbe = (slbe << SLBE_ESID_SHIFT) | SLBE_VALID;
+	slbv = 0;
+
+	for (i = 0; i < sizeof(pm->pm_slb)/sizeof(pm->pm_slb[0]); i++) {
+		if (pm->pm_slb[i].slbe == (slbe | i)) {
+			slbv = pm->pm_slb[i].slbv;
+			break;
+		}
+	}
+
+	/* XXX: Have a long list for processes mapping more than 16 GB */
+
+	/*
+	 * If there is no vsid for this VA, we need to add a new entry
+	 * to the PMAP's segment table.
+	 */
+
+	if (slbv == 0) {
+		slbv = moea64_get_unique_vsid() << SLBV_VSID_SHIFT;
+		for (i = 0; i < sizeof(pm->pm_slb)/sizeof(pm->pm_slb[0]); i++) {
+			if (!(pm->pm_slb[i].slbe & SLBE_VALID)) {
+				pm->pm_slb[i].slbv = slbv;
+				pm->pm_slb[i].slbe = slbe | i;
+				break;
+			}
+		}
+	}
+
+	return ((slbv & SLBV_VSID_MASK) >> SLBV_VSID_SHIFT);
+}
+#else
 static __inline uint64_t
 va_to_vsid(pmap_t pm, vm_offset_t va)
 {
-	#ifdef __powerpc64__
-	return (((uint64_t)pm->pm_context << 17) |
-	    ((uintptr_t)va >> ADDR_SR_SHFT));
-	#else
 	return ((pm->pm_sr[(uintptr_t)va >> ADDR_SR_SHFT]) & SR_VSID_MASK);
-	#endif
 }
+#endif
 
 #define	TLBSYNC()	__asm __volatile("tlbsync; ptesync");
 #define	SYNC()		__asm __volatile("sync");
@@ -327,7 +364,14 @@ static struct	pvo_entry *moea64_bpvo_pool;
 static int	moea64_bpvo_pool_index = 0;
 
 #define	VSID_NBPW	(sizeof(u_int32_t) * 8)
-static u_int	moea64_vsid_bitmap[NPMAPS / VSID_NBPW];
+#ifdef __powerpc64__
+#define	NVSIDS		(NPMAPS * 16)
+#define VSID_HASHMASK	0xffffffffUL
+#else
+#define NVSIDS		NPMAPS
+#define VSID_HASHMASK	0xfffffUL
+#endif
+static u_int	moea64_vsid_bitmap[NVSIDS / VSID_NBPW];
 
 static boolean_t moea64_initialized = FALSE;
 
@@ -720,10 +764,6 @@ moea64_bridge_cpu_bootstrap(mmu_t mmup, int ap)
 {
 	int i = 0;
 
-	#ifdef __powerpc64__
-	register_t slb1, slb2;
-	#endif
-
 	/*
 	 * Initialize segment registers and MMU
 	 */
@@ -737,21 +777,16 @@ moea64_bridge_cpu_bootstrap(mmu_t mmup, int ap)
 	#ifdef __powerpc64__
 		slbia();
 
-		for (i = 0; i < NSEGS; i++) {
-			if (!kernel_pmap->pm_sr[i])
+		for (i = 0; i < 64; i++) {
+			if (!(kernel_pmap->pm_slb[i].slbe & SLBE_VALID))
 				continue;
 
-			/* The right-most bit is a validity bit */
-			slb1 = ((register_t)kernel_pmap->pm_context << 17) |
-			    (kernel_pmap->pm_sr[i] >> 1);
-			slb1 <<= 12;
-			slb2 = kernel_pmap->pm_sr[i] << 27 | i;
-			
-			__asm __volatile ("slbmte %0, %1" :: "r"(slb1),
-			    "r"(slb2)); 
+			__asm __volatile ("slbmte %0, %1" :: 
+			    "r"(kernel_pmap->pm_slb[i].slbv),
+			    "r"(kernel_pmap->pm_slb[i].slbe)); 
 		}
 	#else
-		for (i = 0; i < NSEGS; i++)
+		for (i = 0; i < 16; i++)
 			mtsrin(i << ADDR_SR_SHFT, kernel_pmap->pm_sr[i]);
 	#endif
 
@@ -919,18 +954,21 @@ moea64_bridge_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernele
 	/*
 	 * Make sure kernel vsid is allocated as well as VSID 0.
 	 */
-	moea64_vsid_bitmap[(KERNEL_VSIDBITS & (NPMAPS - 1)) / VSID_NBPW]
+	moea64_vsid_bitmap[(KERNEL_VSIDBITS & (NVSIDS - 1)) / VSID_NBPW]
 		|= 1 << (KERNEL_VSIDBITS % VSID_NBPW);
 	moea64_vsid_bitmap[0] |= 1;
 
 	/*
 	 * Initialize the kernel pmap (which is statically allocated).
 	 */
-	kernel_pmap->pm_context = 0xfffff;
 	#ifdef __powerpc64__
-	for (i = 0; i < 16; i++) 
-		kernel_pmap->pm_sr[i] = (i << 1) | 1;
-	kernel_pmap->pm_sr[USER_SR] = 0;
+	for (i = 0; i < 16; i++) {
+		kernel_pmap->pm_slb[i].slbv = ((KERNEL_VSIDBITS << 17) | i) <<
+		    SLBV_VSID_SHIFT;
+		kernel_pmap->pm_slb[i].slbe = ((uint64_t)i << SLBE_ESID_SHIFT) |
+		    SLBE_VALID | i;
+	}
+	kernel_pmap->pm_slb[USER_SR].slbe = 0;
 	#else
 	for (i = 0; i < 16; i++) 
 		kernel_pmap->pm_sr[i] = EMPTY_SEGMENT + i;
@@ -1787,29 +1825,20 @@ moea64_page_wired_mappings(mmu_t mmu, vm_page_t m)
 	return (count);
 }
 
-static u_int	moea64_vsidcontext;
+static uintptr_t	moea64_vsidcontext;
 
-void
-moea64_pinit(mmu_t mmu, pmap_t pmap)
-{
-	int	i, mask;
-	u_int	entropy;
-
-	PMAP_LOCK_INIT(pmap);
+static uintptr_t
+moea64_get_unique_vsid(void) {
+	u_int entropy;
+	register_t hash;
+	uint32_t mask;
+	int i;
 
 	entropy = 0;
 	__asm __volatile("mftb %0" : "=r"(entropy));
 
-	if (pmap_bootstrapped)
-		pmap->pmap_phys = (pmap_t)moea64_kextract(mmu, (vm_offset_t)pmap);
-	else
-		pmap->pmap_phys = pmap;
-
-	/*
-	 * Allocate some segment registers for this pmap.
-	 */
-	for (i = 0; i < NPMAPS; i += VSID_NBPW) {
-		u_int	hash, n;
+	for (i = 0; i < NVSIDS; i += VSID_NBPW) {
+		u_int	n;
 
 		/*
 		 * Create a new value by mutiplying by a prime and adding in
@@ -1819,12 +1848,12 @@ moea64_pinit(mmu_t mmu, pmap_t pmap)
 		 * instead of a multiply.)
 		 */
 		moea64_vsidcontext = (moea64_vsidcontext * 0x1105) + entropy;
-		hash = moea64_vsidcontext & (NPMAPS - 1);
+		hash = moea64_vsidcontext & (NVSIDS - 1);
 		if (hash == 0)		/* 0 is special, avoid it */
 			continue;
 		n = hash >> 5;
 		mask = 1 << (hash & (VSID_NBPW - 1));
-		hash = (moea64_vsidcontext & 0xfffff);
+		hash = (moea64_vsidcontext & VSID_HASHMASK);
 		if (moea64_vsid_bitmap[n] & mask) {	/* collision? */
 			/* anything free in this bucket? */
 			if (moea64_vsid_bitmap[n] == 0xffffffff) {
@@ -1833,23 +1862,53 @@ moea64_pinit(mmu_t mmu, pmap_t pmap)
 			}
 			i = ffs(~moea64_vsid_bitmap[i]) - 1;
 			mask = 1 << i;
-			hash &= 0xfffff & ~(VSID_NBPW - 1);
+			hash &= VSID_HASHMASK & ~(VSID_NBPW - 1);
 			hash |= i;
 		}
 		moea64_vsid_bitmap[n] |= mask;
-
-		#ifdef __powerpc64__
-			pmap->pm_context = hash;
-			for (i = 0; i < NSEGS; i++) 
-				pmap->pm_sr[i] = 0;
-		#else
-			for (i = 0; i < 16; i++) 
-				pmap->pm_sr[i] = VSID_MAKE(i, hash);
-		#endif
-		return;
+		return (hash);
 	}
 
-	panic("moea64_pinit: out of segments");
+	panic("%s: out of segments",__func__);
+}
+
+void
+moea64_pinit(mmu_t mmu, pmap_t pmap)
+{
+	int	i;
+	#ifndef __powerpc64__
+	register_t hash;
+	#endif
+
+	PMAP_LOCK_INIT(pmap);
+
+	if (pmap_bootstrapped)
+		pmap->pmap_phys = (pmap_t)moea64_kextract(mmu,
+		    (vm_offset_t)pmap);
+	else
+		pmap->pmap_phys = pmap;
+
+	#ifdef __powerpc64__
+	/*
+	 * 64-bit PowerPC uses lazy segment allocation, so NULL
+	 * all the segment entries for now.
+	 */
+	for (i = 0; i < sizeof(pmap->pm_slb)/sizeof(pmap->pm_slb[0]); i++) {
+		pmap->pm_slb[i].slbv = 0;
+		pmap->pm_slb[i].slbe = 0;
+	}
+
+	#else
+
+	/*
+	 * Allocate some segment registers for this pmap.
+	 */
+	hash = moea64_get_unique_vsid();
+
+	for (i = 0; i < 16; i++) 
+		pmap->pm_sr[i] = VSID_MAKE(i, hash);
+
+	#endif
 }
 
 /*
@@ -1954,21 +2013,36 @@ moea64_qremove(mmu_t mmu, vm_offset_t va, int count)
 	}
 }
 
-void
-moea64_release(mmu_t mmu, pmap_t pmap)
+static __inline void
+moea64_release_vsid(uint64_t vsid)
 {
         int idx, mask;
-        
-	/*
-	 * Free segment register's VSID
-	 */
-        if (pmap->pm_sr[0] == 0)
-                panic("moea64_release");
 
-        idx = VSID_TO_HASH(pmap->pm_sr[0]) & (NPMAPS-1);
+        idx = vsid & (NVSIDS-1);
         mask = 1 << (idx % VSID_NBPW);
         idx /= VSID_NBPW;
         moea64_vsid_bitmap[idx] &= ~mask;
+}
+	
+
+void
+moea64_release(mmu_t mmu, pmap_t pmap)
+{
+        
+	/*
+	 * Free segment registers' VSIDs
+	 */
+    #ifdef __powerpc64__
+	int i;
+	for (i = 0; i < sizeof(pmap->pm_slb)/sizeof(pmap->pm_slb[0]); i++)
+		moea64_release_vsid(pmap->pm_slb[i].slbv);
+    #else
+        if (pmap->pm_sr[0] == 0)
+                panic("moea64_release");
+
+	moea64_release_vsid(pmap->pm_sr[0]);
+    #endif
+
 	PMAP_LOCK_DESTROY(pmap);
 }
 
@@ -2111,6 +2185,7 @@ moea64_pvo_enter(pmap_t pm, uma_zone_t zone, struct pvo_head *pvo_head,
 	 */
 	va &= ~ADDR_POFF;
 	vsid = va_to_vsid(pm, va);
+
 	ptegidx = va_to_pteg(vsid, va);
 
 	/*

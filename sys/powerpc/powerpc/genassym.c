@@ -102,10 +102,11 @@ ASSYM(TLBSAVE_BOOKE_R31, TLBSAVE_BOOKE_R31*sizeof(register_t));
 ASSYM(MTX_LOCK, offsetof(struct mtx, mtx_lock));
 
 #if defined(AIM)
-ASSYM(PM_KERNELSR, offsetof(struct pmap, pm_sr[KERNEL_SR]));
-ASSYM(PM_USRSR, offsetof(struct pmap, pm_sr[USER_SR]));
+#ifdef __powerpc64__
+ASSYM(PM_SLB, offsetof(struct pmap, pm_slb));
+#else
 ASSYM(PM_SR, offsetof(struct pmap, pm_sr));
-ASSYM(PM_CONTEXT, offsetof(struct pmap, pm_context));
+#endif
 #elif defined(E500)
 ASSYM(PM_PDIR, offsetof(struct pmap, pm_pdir));
 #endif

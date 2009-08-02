@@ -523,6 +523,8 @@ trap_pfault(struct trapframe *frame, int user)
 			    : "=r"(user_sr)
 			    : "r"(USER_SR));
 
+			/* XXX: THIS DOES NOT WORK */
+
 			user_sr >>= 12;
 
 			/* XXX - limit to 46 byte EA space */

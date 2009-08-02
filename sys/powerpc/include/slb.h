@@ -1,5 +1,5 @@
 /*-
- * Copyright (C) 2002 Benno Rice.
+ * Copyright (C) 2009 Nathan Whitehorn
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -11,7 +11,7 @@
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
  *
- * THIS SOFTWARE IS PROVIDED BY Benno Rice ``AS IS'' AND ANY EXPRESS OR
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
  * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
  * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
  * IN NO EVENT SHALL TOOLS GMBH BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
@@ -25,32 +25,36 @@
  * $FreeBSD$
  */
 
-#ifndef _MACHINE_SR_H_
-#define	_MACHINE_SR_H_
+#ifndef _MACHINE_SLB_H_
+#define	_MACHINE_SLB_H_
 
 /*
- * Bit definitions for segment registers.
+ * Bit definitions for segment lookaside buffer entries.
  *
- * PowerPC Microprocessor Family: The Programming Environments for 32-bit
- * Microprocessors, section 2.3.5
+ * PowerPC Microprocessor Family: The Programming Environments for 64-bit
+ * Microprocessors, section 7.4.2.1
+ *
+ * Note that these bitmasks are relative to the values for one of the two
+ * values for slbmte, slbmfee, and slbmfev, not the internal SLB
+ * representation.
  */
 
-#define	SR_TYPE		0x80000000	/* Type selector */
-#define	SR_KS		0x40000000	/* Supervisor-state protection key */
-#define	SR_KP		0x20000000	/* User-state protection key */
-#define	SR_N		0x10000000	/* No-execute protection */
-#define	SR_VSID_MASK	0x00ffffff	/* Virtual Segment ID mask */
+#define	SLBV_KS		0x0000000000000800UL /* Supervisor-state prot key */
+#define	SLBV_KP		0x0000000000000400UL /* User-state prot key */
+#define	SLBV_N		0x0000000000000200UL /* No-execute protection */
+#define	SLBV_L		0x0000000000000100UL /* Large page selector */
+#define	SLBV_CLASS	0x0000000000000080UL /* Class selector */
+#define	SLBV_VSID_MASK	0xfffffffffffff000UL /* Virtual segment ID mask */
+#define	SLBV_VSID_SHIFT	12
 
-/* Kernel segment register usage */
-#define	USER_SR		12
-#define	KERNEL_SR	13
-#define	KERNEL2_SR	14
-#define	KERNEL_VSIDBITS	0xfffffUL
-#define	KERNEL_SEGMENT	(0xfffff0 + KERNEL_SR)
-#define	KERNEL2_SEGMENT	(0xfffff0 + KERNEL2_SR)
-#define	EMPTY_SEGMENT	0xfffff0
-#define	USER_ADDR	((void *)((register_t)USER_SR << ADDR_SR_SHFT))
-#define	SEGMENT_LENGTH	0x10000000
-#define	SEGMENT_MASK	0xf0000000
+#define	SLBE_VALID	0x0000000008000000UL /* SLB entry valid */
+#define	SLBE_INDEX_MASK	0x0000000000000fffUL /* SLB index mask*/
+#define	SLBE_ESID_MASK	0xfffffffff0000000UL /* Effective segment ID mask */
+#define	SLBE_ESID_SHIFT	28
 
-#endif /* !_MACHINE_SR_H_ */
+struct slb {
+	uint64_t	slbv;
+	uint64_t	slbe;
+};
+
+#endif /* !_MACHINE_SLB_H_ */
