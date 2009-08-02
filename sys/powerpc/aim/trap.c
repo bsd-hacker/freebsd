@@ -544,7 +544,7 @@ trap_pfault(struct trapframe *frame, int user)
 			    : "=r"(user_sr)
 			    : "r"(USER_SR));
 
-			user_sr >>= SLBV_VSID_SHIFT;
+			user_sr = (user_sr & SLBV_VSID_MASK) >> SLBV_VSID_SHIFT;
 			user_sr = slb_esid_lookup(&p->p_vmspace->vm_pmap, user_sr);
 
 			#else

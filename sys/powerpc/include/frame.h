@@ -71,9 +71,13 @@ struct trapframe {
 };
 
 /*
- * This is to ensure alignment of the stackpointer
+ * FRAMELEN is the size of the stack region used by the low-level trap
+ * handler. It is the size of its data (trapframe) plus the callframe
+ * header (sizeof(struct callframe) - 3 register widths). It must also
+ * be 16-byte aligned.
  */
-#define	FRAMELEN	roundup(sizeof(struct trapframe) + 8, 16)
+#define	FRAMELEN	roundup(sizeof(struct trapframe) + \
+			    sizeof(struct callframe) - 3*sizeof(register_t), 16)
 #define	trapframe(td)	((td)->td_frame)
 
 /*

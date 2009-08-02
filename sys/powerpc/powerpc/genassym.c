@@ -117,7 +117,11 @@ ASSYM(PTE_FLAGS, offsetof(struct pte, flags));
 ASSYM(TLB0_ENTRY_SIZE, sizeof(struct tlb_entry));
 #endif
 
+#ifdef __powerpc64__
+ASSYM(FSP, 48);
+#else
 ASSYM(FSP, 8);
+#endif
 ASSYM(FRAMELEN, FRAMELEN);
 ASSYM(FRAME_0, offsetof(struct trapframe, fixreg[0]));
 ASSYM(FRAME_1, offsetof(struct trapframe, fixreg[1]));

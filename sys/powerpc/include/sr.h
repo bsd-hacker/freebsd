@@ -50,7 +50,8 @@
 #define	KERNEL2_SEGMENT	(0xfffff0 + KERNEL2_SR)
 #define	EMPTY_SEGMENT	0xfffff0
 #define	USER_ADDR	((void *)((register_t)USER_SR << ADDR_SR_SHFT))
-#define	SEGMENT_LENGTH	0x10000000
-#define	SEGMENT_MASK	0xf0000000
+#define	SEGMENT_LENGTH	0x10000000UL
+#define	SEGMENT_INVMASK	0x0fffffffUL
+#define	SEGMENT_MASK	~SEGMENT_INVMASK
 
 #endif /* !_MACHINE_SR_H_ */
