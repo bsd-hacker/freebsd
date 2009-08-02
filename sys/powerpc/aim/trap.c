@@ -486,6 +486,27 @@ syscall(struct trapframe *frame)
 	PTRACESTOP_SC(p, td, S_PT_SCX);
 }
 
+#ifdef __powerpc64__
+static uint64_t
+slb_esid_lookup(pmap_t pm, uint64_t vsid)
+{
+	uint64_t esid;
+	int i;
+
+	vsid <<= SLBV_VSID_SHIFT;
+
+	for (i = 0; i < sizeof(pm->pm_slb)/sizeof(pm->pm_slb[0]); i++) {
+		if ((pm->pm_slb[i].slbv & SLBV_VSID_MASK) == vsid) {
+			esid = pm->pm_slb[i].slbe & SLBE_ESID_MASK;
+			esid >>= SLBE_ESID_SHIFT;
+			return (esid);
+		}
+	}
+
+	return (0);
+}
+#endif
+
 static int
 trap_pfault(struct trapframe *frame, int user)
 {
@@ -523,12 +544,8 @@ trap_pfault(struct trapframe *frame, int user)
 			    : "=r"(user_sr)
 			    : "r"(USER_SR));
 
-			/* XXX: THIS DOES NOT WORK */
-
-			user_sr >>= 12;
-
-			/* XXX - limit to 46 byte EA space */
-			user_sr &= (1UL << 17) - 1UL;
+			user_sr >>= SLBV_VSID_SHIFT;
+			user_sr = slb_esid_lookup(&p->p_vmspace->vm_pmap, user_sr);
 
 			#else
 			__asm ("mfsr %0, %1"
