@@ -6,19 +6,20 @@
 
 use strict;
 use XML::Parser;
-use Text::Iconv;
 use Tie::IxHash;
 use Data::Dumper;
 use Digest::SHA qw(sha1_hex);
 require "charmaps.pm";
 
 if ($#ARGV < 2) {
-	print "Usage: $0 <cldrdir> <charmaps> <type> [la_CC]\n";
+	print "Usage: $0 <cldrdir> <unidatadir> <xmldirs> <charmaps> <type> [la_CC]\n";
 	exit(1);
 }
 
 my $DEFENCODING = "UTF-8";
-my $DIR = shift(@ARGV);
+my $CLDRDIR = shift(@ARGV);
+my $UNIDATADIR = shift(@ARGV);
+my $XMLDIR = shift(@ARGV);
 my $CHARMAPS = shift(@ARGV);
 my $TYPE = shift(@ARGV);
 my $doonly = shift(@ARGV);
@@ -26,15 +27,20 @@ my @filter = ();
 
 my %convertors = ();
 
+my %ucd = ();
 my %values = ();
 my %hashtable = ();
 my %languages = ();
 my %translations = ();
+my %encodings = ();
 my %alternativemonths = ();
 get_languages();
 
-my %cm = ();
-get_utf8map();
+my %utf8map = ();
+my %utf8aliases = ();
+get_unidata($UNIDATADIR);
+get_utf8map("$CLDRDIR/posix/$DEFENCODING.cm");
+get_encodings("$XMLDIR/charmaps");
 
 my %keys = ();
 tie(%keys, "Tie::IxHash");
@@ -50,7 +56,7 @@ my %FILESNAMES = (
 my %callback = (
 	mdorder => \&callback_mdorder,
 	altmon => \&callback_altmon,
-	data => (),
+	data => undef,
 );
 
 my %DESC = (
@@ -189,27 +195,83 @@ sub callback_altmon {
 
 ############################
 
+sub get_unidata {
+	my $directory = shift;
+
+	open(FIN, "$directory/UnicodeData.txt");
+	my @lines = <FIN>;
+	chomp(@lines);
+	close(FIN);
+
+	foreach my $l (@lines) {
+		my @a = split(/;/, $l);
+
+		$ucd{code2name}{"$a[0]"} = $a[1];	# Unicode name
+		$ucd{name2code}{"$a[1]"} = $a[0];	# Unicode code
+	}
+}
+
 sub get_utf8map {
-	open(FIN, "$DIR/posix/$DEFENCODING.cm");
+	my $file = shift;
+
+	open(FIN, $file);
 	my @lines = <FIN>;
 	close(FIN);
 	chomp(@lines);
+
+	my $prev_k = undef;
+	my $prev_v = "";
 	my $incharmap = 0;
 	foreach my $l (@lines) {
 		$l =~ s/\r//;
 		next if ($l =~ /^\#/);
 		next if ($l eq "");
+
 		if ($l eq "CHARMAP") {
 			$incharmap = 1;
 			next;
 		}
+
 		next if (!$incharmap);
 		last if ($l eq "END CHARMAP");
-		$l =~ /^([^\s]+)\s+(.*)/;
+
+		$l =~ /^<([^\s]+)>\s+(.*)/;
 		my $k = $1;
 		my $v = $2;
-		$v =~ s/\\x//g;
-		$cm{$k} = $v;
+		$k =~ s/_/ /g;		# unicode char string
+		$v =~ s/\\x//g;		# UTF-8 char code
+		$utf8map{$k} = $v;
+
+		$utf8aliases{$k} = $prev_k if ($prev_v eq $v);
+
+		$prev_v = $v;
+		$prev_k = $k;
+	}
+}
+
+sub get_encodings {
+	my $dir = shift;
+	foreach my $e (sort(keys(%encodings))) {
+		if (!open(FIN, "$dir/$e.TXT")) {
+			print "Cannot open charmap for $e\n";
+			next;
+
+		}
+		$encodings{$e} = 1;
+		my @lines = <FIN>;
+		close(FIN);
+		chomp(@lines);
+		foreach my $l (@lines) {
+			$l =~ s/\r//;
+			next if ($l =~ /^\#/);
+			next if ($l eq "");
+
+			my @a = split(" ", $l);
+			next if ($#a < 1);
+			$a[0] =~ s/^0[xX]//;	# local char code
+			$a[1] =~ s/^0[xX]//;	# unicode char code
+			$convertors{$e}{uc($a[1])} = uc($a[0]);
+		}
 	}
 }
 
@@ -218,6 +280,7 @@ sub get_languages {
 	%languages = %{$data{L}}; 
 	%translations = %{$data{T}}; 
 	%alternativemonths = %{$data{AM}}; 
+	%encodings = %{$data{E}}; 
 
 	return if (!defined $doonly);
 
@@ -248,14 +311,15 @@ sub get_fields {
 		$file = $l . "_";
 		$file .= $f . "_" if ($f ne "x");
 		$file .= $c;
-		if (!open(FIN, "$DIR/posix/$file.$DEFENCODING.src")) {
+		if (!open(FIN, "$CLDRDIR/posix/$file.$DEFENCODING.src")) {
 			if (!defined $languages{$l}{$f}{fallback}) {
 				print STDERR
 				    "Cannot open $file.$DEFENCODING.src\n";
 				next;
 			}
 			$file = $languages{$l}{$f}{fallback};
-			if (!open(FIN, "$DIR/posix/$file.$DEFENCODING.src")) {
+			if (!open(FIN,
+			    "$CLDRDIR/posix/$file.$DEFENCODING.src")) {
 				print STDERR
 				    "Cannot open fallback " .
 				    "$file.$DEFENCODING.src\n";
@@ -283,6 +347,12 @@ sub get_fields {
 
 				$continue = ($line =~ /\/$/);
 				$line =~ s/\/$// if ($continue);
+
+				while ($line =~ /_/) {
+					$line =~
+					    s/\<([^>_]+)_([^>]+)\>/<$1 $2>/;
+				}
+				die "_ in data - $line" if ($line =~ /_/);
 				$values{$l}{$c}{$k} .= $line;
 
 				last if (!$continue);
@@ -294,15 +364,57 @@ sub get_fields {
 }
 
 sub decodecldr {
+	my $e = shift;
 	my $s = shift;
-	my $v = $cm{$s};
+
+	my $v = undef;
+
+	if ($e eq "UTF-8") {
+		#
+		# Conversion to UTF-8 can be done from the Unicode name to
+		# the UTF-8 character code.
+		#
+		$v = $utf8map{$s};
+		die "Cannot convert $s in $e (charmap)" if (!defined $v);
+	} else {
+		#
+		# Conversion to these encodings can be done from the Unicode
+		# name to Unicode code to the encodings code.
+		#
+		my $ucc = undef;
+		$ucc = $ucd{name2code}{$s} if (defined $ucd{name2code}{$s});
+		$ucc = $ucd{name2code}{$utf8aliases{$s}}
+			if (!defined $ucc
+			 && $utf8aliases{$s}
+			 && defined $ucd{name2code}{$utf8aliases{$s}});
+
+		die "Cannot convert $s in $e (ucd string)" if (!defined $ucc);
+		$v = $convertors{$e}{$ucc};
+
+		$v = $translations{$e}{$s}{hex}
+			if (!defined $v && defined $translations{$e}{$s}{hex});
+
+		if (!defined $v && defined $translations{$e}{$s}{unicode}) {
+			my $ucn = $translations{$e}{$s}{unicode};
+			$ucc = $ucd{name2code}{$ucn}
+				if (defined $ucd{name2code}{$ucn});
+			$ucc = $ucd{name2code}{$utf8aliases{$ucn}}
+				if (!defined $ucc
+				 && defined $ucd{name2code}{$utf8aliases{$ucn}});
+			$v = $convertors{$e}{$ucc};
+		}
+
+		die "Cannot convert $s in $e (charmap)" if (!defined $v);
+	}
 
 	return pack("C", hex($v)) if (length($v) == 2);
 	return pack("CC", hex(substr($v, 0, 2)), hex(substr($v, 2, 2)))
 		if (length($v) == 4);
 	return pack("CCC", hex(substr($v, 0, 2)), hex(substr($v, 2, 2)),
 	    hex(substr($v, 4, 2))) if (length($v) == 6);
+	print STDERR "Cannot convert $e $s\n";
 	return "length = " . length($v);
+
 }
 
 sub translate {
@@ -331,13 +443,9 @@ sub print_fields {
 			$file .= "_" . $c;
 			print "Writing to $file in $enc\n";
 
-			eval {
-				$convertors{$enc} =
-				    Text::Iconv->new($DEFENCODING, $enc);
-			} if (!defined $convertors{$enc});
-			if (!defined $convertors{$enc}) {
-				print "Failed! Cannot convert between " .
-				    "$DEFENCODING and $enc.\n";
+			if ($enc ne $DEFENCODING &&
+			    !defined $convertors{$enc}) {
+				print "Failed! Cannot convert to $enc.\n";
 				next;
 			};
 
@@ -398,23 +506,24 @@ EOF
 					$v =~ s/^"//;
 					$v =~ s/"$//;
 					my $cm = "";
-					while ($v =~ /^(.*?)(<.*?>)(.*)/) {
+					while ($v =~ /^(.*?)<(.*?)>(.*)/) {
+						my $p1 = $1;
 						$cm = $2;
-						$v = $1 . decodecldr($2) . $3;
+						my $p3 = $3;
+
+						my $rv = decodecldr($enc, $cm);
+#						$rv = translate($enc, $cm)
+#							if (!defined $rv);
+						if (!defined $rv) {
+							print STDERR 
+"Could not convert $k ($cm) from $DEFENCODING to $enc\n";
+							$okay = 0;
+							next;
+						}
+
+						$v = $p1 . $rv . $p3;
 					}
-					my $fv =
-					    $convertors{$enc}->convert("$v");
-					$fv = translate($enc, $cm)
-						if (!defined $fv);
-					if (!defined $fv) {
-						print STDERR 
-						    "Could not convert $k " .
-						    "($cm) from $DEFENCODING " .
-						    "to $enc\n";
-						$okay = 0;
-						next;
-					}
-					$output .= "$fv\n";
+					$output .= "$v\n";
 					next;
 				}
 				if ($f eq "as") {
@@ -422,26 +531,27 @@ EOF
 						$v =~ s/^"//;
 						$v =~ s/"$//;
 						my $cm = "";
-						while ($v =~ /^(.*?)(<.*?>)(.*)/) {
+						while ($v =~ /^(.*?)<(.*?)>(.*)/) {
+							my $p1 = $1;
 							$cm = $2;
-							$v = $1 .
-							    decodecldr($2) . $3;
+							my $p3 = $3;
+
+							my $rv =
+							    decodecldr($enc,
+								$cm);
+#							$rv = translate($enc,
+#							    $cm)
+#							    if (!defined $rv);
+							if (!defined $rv) {
+								print STDERR 
+"Could not convert $k ($cm) from $DEFENCODING to $enc\n";
+								$okay = 0;
+								next;
+							}
+
+							$v = $1 . $rv . $3;
 						}
-						my $fv =
-						    $convertors{$enc}->convert("$v");
-						$fv = translate($enc, $cm)
-							if (!defined $fv);
-						if (!defined $fv) {
-							print STDERR
-							    "Could not " .
-							    "convert $k ($cm)" .
-							    " from " .
-							    "$DEFENCODING to " .
-							    "$enc\n";
-							$okay = 0;
-							next;
-						}
-						$output .= "$fv\n";
+						$output .= "$v\n";
 					}
 					next;
 				}

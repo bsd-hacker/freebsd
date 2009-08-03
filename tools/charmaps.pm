@@ -64,6 +64,7 @@ sub h_start {
 			if (defined $encoding) {
 				foreach my $e (split(" ", $encoding)) {
 					$d{L}{$name}{$f}{data}{$c}{$e} = undef;
+					$d{E}{$e} = 0;	# not read
 				}
 			}
 			$d{L}{$name}{$f}{data}{$c}{"UTF-8"} = undef;
@@ -74,19 +75,25 @@ sub h_start {
 	if ($index == 2
 	 && $data{element}{1} eq "translations"
 	 && $element eq "translation") {
-		if (defined $attrs{hex}) {
-			my $k = "<" . $attrs{cldr} . ">";
-			my $hs = $attrs{hex};
-			$d{T}{$attrs{encoding}}{$k} = "";
-			while ($hs ne "") {
-				$d{T}{$attrs{encoding}}{$k} .=
-					chr(hex(substr($hs, 0, 2)));
-				$hs = substr($hs, 2);
+		foreach my $e (split(" ", $attrs{encoding})) {
+			if (defined $attrs{hex}) {
+				my $k = $attrs{cldr};
+				my $hs = $attrs{hex};
+				$d{T}{$e}{$k}{hex} = $hs;
 			}
-		}
-		if (defined $attrs{string}) {
-			$d{T}{$attrs{encoding}}{"<" . $attrs{cldr} . ">"} =
-			    $attrs{string};
+			if (defined $attrs{string}) {
+				my $s = "";
+				for (my $i = 0; $i < length($attrs{string}); $i++) {
+					$s .= sprintf("%02x",
+					    ord(substr($attrs{string}, $i, 1)));
+				}
+				$d{T}{$e}{$attrs{cldr}}{hex} = $s;
+			}
+			if (defined $attrs{unicode}) {
+				my $k = $attrs{cldr};
+				my $uc = $attrs{unicode};
+				$d{T}{$e}{$k}{unicode} = $uc;
+			}
 		}
 		return;
 	}
@@ -115,7 +122,8 @@ sub h_end {
 			foreach my $c (split(/,/, $data{fields}{countries})) {
 				my $m = $data{fields}{text};
 
-				$m =~ s/[\t ]//g;
+				$m =~ s/^[\t ]//g;
+				$m =~ s/[\t ]$//g;
 				$d{AM}{$data{fields}{name}}{$c} = $m;
 			}
 			$data{fields} = ();
