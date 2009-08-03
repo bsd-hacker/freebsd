@@ -63,7 +63,7 @@ instslb:
 	slbmte	%r30, %r31;		/* Install SLB entry */
 
 nslb:
-	addi	%r28, %r28, 8;		/* Advance */
+	addi	%r28, %r28, 16;		/* Advance */
 	addi	%r29, %r29, 1;
 	cmpli	0, %r29, 63;		/* Repeat if we are not at the end */
 	blt instslb;
@@ -227,7 +227,16 @@ nslb:
 	mtcr	%r3;							\
 	bf	17,1f;			/* branch if PSL_PR is false */	\
 /* Restore user SRs */							\
-	RESTORE_USER_SRS();		/* uses r27-r31 */		\
+	GET_CPUINFO(%r3);						\
+	std	%r28,(savearea+CPUSAVE_R28)(%r3);			\
+	std	%r29,(savearea+CPUSAVE_R29)(%r3);			\
+	std	%r30,(savearea+CPUSAVE_R30)(%r3);			\
+	std	%r31,(savearea+CPUSAVE_R31)(%r3);			\
+	RESTORE_USER_SRS();		/* uses r28-r31 */		\
+	ld	%r31,(savearea+CPUSAVE_R31)(%r3);			\
+	ld	%r30,(savearea+CPUSAVE_R30)(%r3);			\
+	ld	%r29,(savearea+CPUSAVE_R29)(%r3);			\
+	ld	%r28,(savearea+CPUSAVE_R28)(%r3);			\
 1:	mfsprg1	%r2;			/* restore cr */		\
 	mtcr	%r2;							\
 	GET_CPUINFO(%r2);						\
