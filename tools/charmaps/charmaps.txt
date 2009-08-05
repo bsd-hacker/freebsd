@@ -1,3 +1,5 @@
+$FreeBSD$
+
 Sources:
 
 unicode.org:	http://unicode.org/Public/MAPPINGS
@@ -14,7 +16,7 @@ haible.de:	http://haible.de/bruno/charsets/conversion-tables/
 ?	GB18030		haible.de: GB18030.html
 +	GB2312		haible.de: GB2312.html / unicode.org-mappings/EASTASIA/GB/GB2312.TXT
 	GBK
-	ISCII-DEV	haible.de: Indic.html
++	ISCII-DEV	unicode.org: VENDORS/APPLE/DEVANAGA i/ haible.de: Indic.html
 +	ISO8859-1	unicode.org: ISO8859/
 +	ISO8859-2	unicode.org: ISO8859/
 +	ISO8859-4	unicode.org: ISO8859/
