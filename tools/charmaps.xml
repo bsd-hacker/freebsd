@@ -463,6 +463,10 @@
 	<translation encoding="ARMSCII-8"
 	    cldr="ONE DOT LEADER" string="FULL STOP" />
 
+	<translation encoding="US-ASCII" cldr="POUND SIGN" string="GBP" />
+	<translation encoding="US-ASCII"
+	    cldr="NO-BREAK SPACE" unicode="SPACE" />
+
 </translations>
 
 <oldtranslations>

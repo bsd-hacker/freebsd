@@ -29,7 +29,7 @@ haible.de:	http://haible.de/bruno/charsets/conversion-tables/
 +	KOI8-U		unicode.org: VENDORS/MISC
 +	PT154		IANA: PTCP154
 	SJIS		haible.de: Shift_JIS.html
-	US-ASCII
++	US-ASCII	From ISO8859-1.TXT
 	eucCN		haible.de: GB2312.html / unicode.org-mappings/EASTASIA/GB/GB2312.TXT
 ?	eucJP		haible.de: EUC-JP.html
 ?	eucKR		haible.de: EUC-KR.html
