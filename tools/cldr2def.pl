@@ -388,8 +388,15 @@ sub decodecldr {
 			 && $utf8aliases{$s}
 			 && defined $ucd{name2code}{$utf8aliases{$s}});
 
+		if (!defined $ucc) {
+			if (defined $translations{$e}{$s}{hex}) {
+				$v = $translations{$e}{$s}{hex};
+				$ucc = 0;
+			}
+		}
+
 		die "Cannot convert $s in $e (ucd string)" if (!defined $ucc);
-		$v = $convertors{$e}{$ucc};
+		$v = $convertors{$e}{$ucc} if (!defined $v);
 
 		$v = $translations{$e}{$s}{hex}
 			if (!defined $v && defined $translations{$e}{$s}{hex});
