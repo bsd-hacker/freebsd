@@ -460,6 +460,8 @@
 	<translation encoding="GB2312"
 	    cldr="CJK UNIFIED IDEOGRAPH-79D2" ucc="79D2" />
 
+	<translation encoding="ARMSCII-8"
+	    cldr="ONE DOT LEADER" string="FULL STOP" />
 
 </translations>
 
@@ -624,7 +626,6 @@
 
 	<!-- Just a . ? -->
 	<translation encoding="ISO8859-2" cldr="FULL STOP" string="." />
-	<translation encoding="ARMSCII-8" cldr="ONE DOT LEADER" string="." />
 
 </oldtranslations>
 
