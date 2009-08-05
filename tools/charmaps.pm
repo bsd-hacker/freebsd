@@ -94,6 +94,11 @@ sub h_start {
 				my $uc = $attrs{unicode};
 				$d{T}{$e}{$k}{unicode} = $uc;
 			}
+			if (defined $attrs{ucc}) {
+				my $k = $attrs{cldr};
+				my $uc = $attrs{ucc};
+				$d{T}{$e}{$k}{ucc} = $uc;
+			}
 		}
 		return;
 	}

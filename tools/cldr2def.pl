@@ -392,6 +392,8 @@ sub decodecldr {
 			if (defined $translations{$e}{$s}{hex}) {
 				$v = $translations{$e}{$s}{hex};
 				$ucc = 0;
+			} elsif (defined $translations{$e}{$s}{ucc}) {
+				$ucc = $translations{$e}{$s}{ucc};
 			}
 		}
 
