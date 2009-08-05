@@ -187,22 +187,207 @@
 	<translation encoding="ISO8859-2"
 	    cldr="EN DASH" unicode="HYPHEN-MINUS" />
 
-	<translation encoding="ISO8859-2"
+	<!-- Got these from http://www.decodeunicode.org/en/u+0400.
+	     Where possible use the international or ISO translation!
+	-->
+	<translation encoding="ISO8859-2" ucc="0408"
+	    cldr="CYRILLIC CAPITAL LETTER JE"
+	    unicode="LATIN CAPITAL LETTER J" />
+	<translation encoding="ISO8859-2" ucc="0458"
+	    cldr="CYRILLIC SMALL LETTER JE" unicode="LATIN SMALL LETTER J" />
+	<translation encoding="ISO8859-2" ucc="0409"
+	    cldr="CYRILLIC CAPITAL LETTER LJE" string="lj" />
+	<translation encoding="ISO8859-2" ucc="0459"
+	    cldr="CYRILLIC SMALL LETTER LJE" string="lj" />
+	<translation encoding="ISO8859-2" ucc="0410"
+	    cldr="CYRILLIC CAPITAL LETTER A" unicode="LATIN CAPITAL LETTER A" />
+	<translation encoding="ISO8859-2" ucc="0430"
+	    cldr="CYRILLIC SMALL LETTER A" unicode="LATIN SMALL LETTER A" />
+	<translation encoding="ISO8859-2" ucc="0411"
+	    cldr="CYRILLIC CAPITAL LETTER BE"
+	    unicode="LATIN CAPITAL LETTER B" />
+	<translation encoding="ISO8859-2" ucc="0431"
+	    cldr="CYRILLIC SMALL LETTER BE" unicode="LATIN SMALL LETTER B" />
+	<translation encoding="ISO8859-2" ucc="0412"
+	    cldr="CYRILLIC CAPITAL LETTER VE"
+	    unicode="LATIN CAPITAL LETTER B" />
+	<translation encoding="ISO8859-2" ucc="0432"
+	    cldr="CYRILLIC SMALL LETTER VE" unicode="LATIN SMALL LETTER B" />
+	<translation encoding="ISO8859-2" ucc="0413"
+	    cldr="CYRILLIC CAPITAL LETTER GHE"
+	    unicode="LATIN CAPITAL LETTER G" />
+	<translation encoding="ISO8859-2" ucc="0433"
+	    cldr="CYRILLIC SMALL LETTER GHE" unicode="LATIN SMALL LETTER G" />
+	<translation encoding="ISO8859-2" ucc="0414"
+	    cldr="CYRILLIC CAPITAL LETTER DE" string="D" />
+	<translation encoding="ISO8859-2" ucc="0434"
 	    cldr="CYRILLIC SMALL LETTER DE" string="d" />
+	<translation encoding="ISO8859-2" ucc="0415"
+	    cldr="CYRILLIC CAPITAL LETTER IE"
+	    unicode="LATIN CAPITAL LETTER E" />
+	<translation encoding="ISO8859-2" ucc="0435"
+	    cldr="CYRILLIC SMALL LETTER IE" unicode="LATIN SMALL LETTER E" />
+	<translation encoding="ISO8859-2" ucc="0416"
+	    cldr="CYRILLIC CAPITAL LETTER ZHE" string="ZH" />
+	<translation encoding="ISO8859-2" ucc="0436"
+	    cldr="CYRILLIC SMALL LETTER ZHE" string="zh" />
+	<translation encoding="ISO8859-2" ucc="0417"
+	    cldr="CYRILLIC CAPITAL LETTER ZE" string="z" />
+	<translation encoding="ISO8859-2" ucc="0437"
+	    cldr="CYRILLIC SMALL LETTER ZE" string="z" />
+	<translation encoding="ISO8859-2" ucc="0418"
+	    cldr="CYRILLIC CAPITAL LETTER I" unicode="LATIN CAPITAL LETTER J" />
+	<translation encoding="ISO8859-2" ucc="0438"
+	    cldr="CYRILLIC SMALL LETTER I" unicode="LATIN CAPITAL LETTER J" />
+	<translation encoding="ISO8859-2" ucc="0419"
+	    cldr="CYRILLIC CAPITAL LETTER I" unicode="LATIN SMALL LETTER J" />
+	<translation encoding="ISO8859-2" ucc="0439"
+	    cldr="CYRILLIC SMALL LETTER I" unicode="LATIN SMALL LETTER J" />
+	<translation encoding="ISO8859-2" ucc="041A"
+	    cldr="CYRILLIC CAPITAL LETTER KA"
+	    unicode="LATIN CAPITAL LETTER K" />
+	<translation encoding="ISO8859-2" ucc="043A"
+	    cldr="CYRILLIC SMALL LETTER KA" unicode="LATIN SMALL LETTER K" />
+	<translation encoding="ISO8859-2" ucc="041B"
+	    cldr="CYRILLIC CAPITAL LETTER EL"
+	    unicode="LATIN CAPITAL LETTER L" />
+	<translation encoding="ISO8859-2" ucc="043B"
+	    cldr="CYRILLIC SMALL LETTER EL" unicode="LATIN SMALL LETTER L" />
+	<translation encoding="ISO8859-2" ucc="041C"
+	    cldr="CYRILLIC CAPITAL LETTER EM"
+	    unicode="LATIN CAPITAL LETTER M" />
+	<translation encoding="ISO8859-2" ucc="043C"
+	    cldr="CYRILLIC SMALL LETTER EM" unicode="LATIN SMALL LETTER M" />
+	<translation encoding="ISO8859-2" ucc="041D"
+	    cldr="CYRILLIC CAPITAL LETTER EN"
+	    unicode="LATIN CAPITAL LETTER H" />
+	<translation encoding="ISO8859-2" ucc="043D"
+	    cldr="CYRILLIC SMALL LETTER EN" unicode="LATIN SMALL LETTER H" />
+	<translation encoding="ISO8859-2" ucc="041E"
+	    cldr="CYRILLIC CAPITAL LETTER O" unicode="LATIN CAPITAL LETTER O" />
+	<translation encoding="ISO8859-2" ucc="043E"
+	    cldr="CYRILLIC SMALL LETTER O" unicode="LATIN SMALL LETTER O" />
+	<translation encoding="ISO8859-2" ucc="041F"
+	    cldr="CYRILLIC CAPITAL LETTER PE"
+	    unicode="LATIN CAPITAL LETTER P" />
+	<translation encoding="ISO8859-2" ucc="043F"
+	    cldr="CYRILLIC SMALL LETTER PE" unicode="LATIN SMALL LETTER P" />
+	<translation encoding="ISO8859-2" ucc="0420"
+	    cldr="CYRILLIC CAPITAL LETTER ER"
+	    unicode="LATIN CAPITAL LETTER R" />
+	<translation encoding="ISO8859-2" ucc="0440"
+	    cldr="CYRILLIC SMALL LETTER ER" unicode="LATIN SMALL LETTER R" />
+	<translation encoding="ISO8859-2" ucc="0421"
+	    cldr="CYRILLIC CAPITAL LETTER ES"
+	    unicode="LATIN CAPITAL LETTER C" />
+	<translation encoding="ISO8859-2" ucc="0441"
+	    cldr="CYRILLIC SMALL LETTER ES" unicode="LATIN SMALL LETTER C" />
+	<translation encoding="ISO8859-2" ucc="0422"
+	    cldr="CYRILLIC CAPITAL LETTER TE"
+	    unicode="LATIN CAPITAL LETTER T" />
+	<translation encoding="ISO8859-2" ucc="0442"
+	    cldr="CYRILLIC SMALL LETTER TE" unicode="LATIN SMALL LETTER T" />
+	<translation encoding="ISO8859-2" ucc="0423"
+	    cldr="CYRILLIC CAPITAL LETTER U" unicode="LATIN CAPITAL LETTER U" />
+	<translation encoding="ISO8859-2" ucc="0443"
+	    cldr="CYRILLIC SMALL LETTER U" unicode="LATIN SMALL LETTER U" />
+	<translation encoding="ISO8859-2" ucc="0424"
+	    cldr="CYRILLIC CAPITAL LETTER EF"
+	    unicode="LATIN CAPITAL LETTER F" />
+	<translation encoding="ISO8859-2" ucc="0444"
+	    cldr="CYRILLIC SMALL LETTER EF" unicode="LATIN SMALL LETTER F" />
+	<translation encoding="ISO8859-2" ucc="0425"
+	    cldr="CYRILLIC CAPITAL LETTER HA"
+	    unicode="LATIN CAPITAL LETTER H" />
+	<translation encoding="ISO8859-2" ucc="0445"
+	    cldr="CYRILLIC SMALL LETTER HA" unicode="LATIN SMALL LETTER H" />
+	<translation encoding="ISO8859-2" ucc="0426"
+	    cldr="CYRILLIC CAPITAL LETTER TSE"
+	    unicode="LATIN CAPITAL LETTER C" />
+	<translation encoding="ISO8859-2" ucc="0446"
+	    cldr="CYRILLIC SMALL LETTER TSE" unicode="LATIN SMALL LETTER C" />
+	<translation encoding="ISO8859-2" ucc="0427"
+	    cldr="CYRILLIC CAPITAL LETTER CHE"
+	    unicode="LATIN CAPITAL LETTER C WITH CARON" />
+	<translation encoding="ISO8859-2" ucc="0447"
+	    cldr="CYRILLIC SMALL LETTER CHE"
+	    unicode="LATIN SMALL LETTER C WITH CARON" />
+	<translation encoding="ISO8859-2" ucc="0428"
+	    cldr="CYRILLIC CAPITAL LETTER SHA"
+	    unicode="LATIN CAPITAL LETTER S WITH CARON" />
+	<translation encoding="ISO8859-2" ucc="0448"
+	    cldr="CYRILLIC SMALL LETTER SHA"
+	    unicode="LATIN SMALL LETTER S WITH CARON" />
+	<translation encoding="ISO8859-2" ucc="0429"
+	    cldr="CYRILLIC CAPITAL LETTER SHCHA"
+	    unicode="LATIN CAPITAL LETTER S WITH CIRCUMFLEX" />
+	<translation encoding="ISO8859-2" ucc="0449"
+	    cldr="CYRILLIC SMALL LETTER SHCHA"
+	    unicode="LATIN SMALL LETTER S WITH CIRCUMFLEX" />
+	<translation encoding="ISO8859-2" ucc="042A"
+	    cldr="?CYRILLIC CAPITAL LETTER HARD SIGN" unicode="?" />
+	<translation encoding="ISO8859-2" ucc="044A"
+	    cldr="?CYRILLIC SMALL LETTER HARD SIGN" unicode="?" />
+	<translation encoding="ISO8859-2" ucc="042B"
+	    cldr="?CYRILLIC CAPITAL LETTER YERU" unicode="?" />
+	<translation encoding="ISO8859-2" ucc="044B"
+	    cldr="?CYRILLIC SMALL LETTER YERU" unicode="?" />
+	<translation encoding="ISO8859-2" ucc="042C"
+	    cldr="?CYRILLIC CAPITAL LETTER SOFT SIGN" unicode="?" />
+	<translation encoding="ISO8859-2" ucc="044C"
+	    cldr="?CYRILLIC SMALL LETTER SOFT SIGN" unicode="?" />
+	<translation encoding="ISO8859-2" ucc="042D"
+	    cldr="CYRILLIC CAPITAL LETTER E"
+	    unicode="LATIN CAPITAL LETTER E WITH GRAVE" />
+	<translation encoding="ISO8859-2" ucc="044D"
+	    cldr="CYRILLIC SMALL LETTER E"
+	    unicode="LATIN SMALL LETTER E WITH GRAVE" />
+	<translation encoding="ISO8859-2" ucc="042E"
+	    cldr="?CYRILLIC CAPITAL LETTER YU" unicode="?" />
+	<translation encoding="ISO8859-2" ucc="044E"
+	    cldr="?CYRILLIC SMALL LETTER YU" unicode="?" />
+	<translation encoding="ISO8859-2" ucc="042F"
+	    cldr="CYRILLIC CAPITAL LETTER YA"
+	    unicode="LATIN CAPITAL LETTER A WITH CIRCUMFLEX" />
+	<translation encoding="ISO8859-2" ucc="044F"
+	    cldr="CYRILLIC SMALL LETTER YA"
+	    unicode="LATIN SMALL LETTER A WITH CIRCUMFLEX" />
 
-</translations>
+	<translation encoding="ISO8859-2"
+	    cldr="LATIN SMALL LETTER T WITH COMMA BELOW"
+	    unicode="LATIN SMALL LETTER T" />
 
-<translationssss>
+	<translation encoding="ISO8859-5"
+	    cldr="MODIFIER LETTER APOSTROPHE" unicode="APOSTROPHE" />
+	<translation encoding="ISO8859-5"
+	    cldr="LATIN SMALL LETTER C WITH CARON"
+	    unicode="LATIN SMALL LETTER C" />
+
+	<translation encoding="KOI8-U"
+	    cldr="MODIFIER LETTER APOSTROPHE" unicode="APOSTROPHE" />
+
+	<translation encoding="CP1251"
+	    cldr="MODIFIER LETTER APOSTROPHE" unicode="APOSTROPHE" />
+
+	<!-- Copied from the original FreeBSD src/share/monetdef -->
+	<translation encoding="CP1251" cldr="HRYVNIA SIGN" hex="E3F0ED" />
+	<translation encoding="ISO8859-5" cldr="HRYVNIA SIGN" hex="D3E0DD" />
+	<translation encoding="KOI8-U" cldr="HRYVNIA SIGN" hex="C7D2CE" />
 
 	<!-- These don't have a special Kow sign so just use KRW for it -->
 	<translation encoding="CP949" cldr="WON SIGN" hex="5C" />
 	<translation encoding="eucKR" cldr="WON SIGN" hex="5C" />
 
+	<!-- Copied from the original FreeBSD src/share/timedef -->
+
+</translations>
+
+<oldtranslations>
+
 	<!-- Minus and dashes -->
 	<translation encoding="ISO8859-2" cldr="EN DASH" string="-" />
 
 	<!-- Copied from the original FreeBSD src/share/monetdef -->
-	<translation encoding="CP1251" cldr="HRYVNIA SIGN" hex="E3F0ED" />
 	<translation encoding="ISO8859-5" cldr="HRYVNIA SIGN" hex="D3E0DD" />
 	<translation encoding="KOI8-U" cldr="HRYVNIA SIGN" hex="C7D2CE" />
 
@@ -360,7 +545,7 @@
 	<translation encoding="ISO8859-2" cldr="FULL STOP" string="." />
 	<translation encoding="ARMSCII-8" cldr="ONE DOT LEADER" string="." />
 
-</translationssss>
+</oldtranslations>
 
 <alternativemonths>
 	<!-- Months which are different in dates ("21 december 1980") and in
