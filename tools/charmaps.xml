@@ -6,8 +6,10 @@
 		encoding = encodings to be done - seperated by space
 		countries = countries to create - seperated by space
 		family = which font family - only one
-		link = only with family, create this original file too - \
-			only one
+		countryname_link = only with family, link this original file \
+			too - only one
+		encoding_link = link this original encoding too - seperated \
+			by space
 		fallback = read this file if name_countries doesn't exist - \
 			only one
 
@@ -91,16 +93,17 @@
 		encoding="ISO8859-1 ISO8859-15"
 		countries="CH IT" />
 	<language name="ja"
-		link="jp_JP"
+		namecountry_link="jp_JP"
 		encoding="SJIS eucJP"
 		countries="JP" />
 	<language name="kk"
 		family="Cyrl"
-		link="kk_KZ"
+		namecountry_link="kk_KZ"
 		encoding="PT154"
 		countries="KZ" />
 	<language name="ko"
-		encoding="CP949 eucKR"
+		encoding="eucKR"
+		encoding_link="eucKR:CP949"
 		countries="KR" />
 	<language name="la"
 		encoding="ISO8859-1 ISO8859-2 ISO8859-4 ISO8859-15 US-ASCII"
@@ -110,10 +113,10 @@
 		countries="LT" />
 	<language name="mn"
 		family="Cyrl"
-		link="mn_MN"
+		namecountry_link="mn_MN"
 		countries="MN" />
 	<language name="nb"
-		link="no_NO"
+		namecountry_link="no_NO"
 		encoding="ISO8859-1 ISO8859-15"
 		countries="NO" />
 	<language name="nl"
@@ -142,12 +145,12 @@
 		countries="SI" />
 	<language name="sr"
 		family="Latn"
-		link="sr_YU"
+		namecountry_link="sr_YU"
 		encoding="ISO8859-2"
 		countries="RS" />
 	<language name="sr"
 		family="Cyrl"
-		link="sr_YU"
+		namecountry_link="sr_YU"
 		encoding="ISO8859-5"
 		countries="RS" />
 	<language name="sv"
@@ -161,17 +164,17 @@
 		countries="UA" />
 	<language name="zh"
 		family="Hans"
-		link="zh_CN"
+		namecountry_link="zh_CN"
 		encoding="GB18030 GB2312 GBK eucCN"
 		countries="CN" />
 	<language name="zh"
 		family="Hant"
-		link="zh_HK"
+		namecountry_link="zh_HK"
 		encoding="Big5HKSCS"
 		countries="HK" />
 	<language name="zh"
 		family="Hant"
-		link="zh_TW"
+		namecountry_link="zh_TW"
 		encoding="Big5"
 		countries="TW" />
 </languages>

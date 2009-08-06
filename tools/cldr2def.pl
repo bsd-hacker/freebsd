@@ -642,15 +642,23 @@ EOF
 			print FOUT "LOCALES+=\t$file.$e\n";
 		}
 
-		if (defined $languages{$l}{$f}{link}) {
+		if (defined $languages{$l}{$f}{nc_link}) {
 			foreach my $e (sort keys(%{$languages{$l}{$f}{data}{$c}})) {
 				my $file = $l . "_";
 				$file .= $f . "_" if ($f ne "x");
 				$file .= $c;
-				print FOUT "SAME+=\t\t$file.$e:$languages{$l}{$f}{link}.$e\t# legacy\n";
-				
+				print FOUT "SAME+=\t\t$file.$e:$languages{$l}{$f}{nc_link}.$e\t# legacy (lang/country change)\n";
 			}
-			
+		}
+
+		if (defined $languages{$l}{$f}{e_link}) {
+			foreach my $el (split(" ", $languages{$l}{$f}{e_link})) {
+				my @a = split(/:/, $el);
+				my $file = $l . "_";
+				$file .= $f . "_" if ($f ne "x");
+				$file .= $c;
+				print FOUT "SAME+=\t\t$file.$a[0]:$file.$a[1]\t# legacy (same charset)\n";
+			}
 		}
 
 	}

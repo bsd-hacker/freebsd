@@ -52,11 +52,13 @@ sub h_start {
 		my $encoding = $attrs{encoding};
 		my $family = $attrs{family};
 		my $f = defined $attrs{family} ? $attrs{family} : "x";
-		my $link = $attrs{link};
+		my $nc_link = $attrs{namecountry_link};
+		my $e_link = $attrs{encoding_link};
 		my $fallback = $attrs{fallback};
 
 		$d{L}{$name}{$f}{fallback} = $fallback;
-		$d{L}{$name}{$f}{link} = $link;
+		$d{L}{$name}{$f}{e_link} = $e_link;
+		$d{L}{$name}{$f}{nc_link} = $nc_link;
 		$d{L}{$name}{$f}{family} = $family;
 		$d{L}{$name}{$f}{encoding} = $encoding;
 		$d{L}{$name}{$f}{countries} = $countries;
