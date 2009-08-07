@@ -290,7 +290,7 @@ CNAME(trapcode):
 	mtsprg1	%r1			/* save SP */
 	mflr	%r1			/* Save the old LR in r1 */
 	mtsprg2 %r1			/* And then in SPRG2 */
-	li	%r1, 0x20		/* How to get the vector from LR */
+	li	%r1, 0xA0		/* How to get the vector from LR */
 	bla	generictrap		/* LR & SPRG3 is exception # */
 CNAME(trapsize) = .-CNAME(trapcode)
 

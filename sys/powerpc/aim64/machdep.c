@@ -232,7 +232,7 @@ extern char	kernel_text[], _end[];
 #ifdef SMP
 extern void	*rstcode, *rstsize;
 #endif
-extern void	*trapcode, *trapcode64, *trapsize;
+extern void	*trapcode, *trapsize;
 extern void	*alitrap, *alisize;
 extern void	*dsitrap, *dsisize;
 extern void	*decrint, *decrsize;
