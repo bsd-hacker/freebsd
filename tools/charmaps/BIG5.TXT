@@ -1,4 +1,6 @@
 #
+# $FreeBSD$
+#
 #	Name:             BIG5 to Unicode table (complete)
 #	Unicode version:  1.1
 #	Table version:    0.0d3
