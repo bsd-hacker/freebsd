@@ -381,9 +381,7 @@
 	<translation encoding="CP949" cldr="WON SIGN" hex="5C" />
 	<translation encoding="eucKR" cldr="WON SIGN" hex="5C" />
 
-	<!-- Copied from the original FreeBSD src/share/timedef -->
-
-
+	<!-- Asian characters -->
 	<translation encoding="GB2312 eucCN" cldr="C"
 	    unicode="FULLWIDTH LATIN CAPITAL LETTER C" />
 	<translation encoding="GB2312 eucCN" cldr="N"
@@ -434,7 +432,9 @@
 	    cldr="CJK UNIFIED IDEOGRAPH-516D" ucc="516D" />
 	<translation encoding="GB2312 eucCN"
 	    cldr="CJK UNIFIED IDEOGRAPH-5206" ucc="5206" />
-	<translation encoding="GB2312 eucCN"
+	<translation encoding="eucJP"
+	    cldr="CJK UNIFIED IDEOGRAPH-524D" ucc="524D" />
+	<translation encoding="GB2312 eucCN eucJP"
 	    cldr="CJK UNIFIED IDEOGRAPH-5348" ucc="5348" />
 	<translation encoding="GB2312 eucCN"
 	    cldr="CJK UNIFIED IDEOGRAPH-5426" ucc="5426" />
@@ -442,11 +442,15 @@
 	    cldr="CJK UNIFIED IDEOGRAPH-5468" ucc="5468" />
 	<translation encoding="GB2312 eucCN"
 	    cldr="CJK UNIFIED IDEOGRAPH-56DB" ucc="56DB" />
+	<translation encoding="eucJP"
+	    cldr="CJK UNIFIED IDEOGRAPH-571F" ucc="571F" />
 	<translation encoding="GB2312 eucCN"
 	    cldr="CJK UNIFIED IDEOGRAPH-5B9A" ucc="5B9A" />
-	<translation encoding="GB2312 eucCN"
+	<translation encoding="GB2312 eucCN eucJP"
 	    cldr="CJK UNIFIED IDEOGRAPH-5E74" ucc="5E74" />
-	<translation encoding="GB2312 eucCN"
+	<translation encoding="eucJP"
+	    cldr="CJK UNIFIED IDEOGRAPH-5F8C" ucc="5F8C" />
+	<translation encoding="GB2312 eucCN eucJP"
 	    cldr="CJK UNIFIED IDEOGRAPH-65E5" ucc="65E5" />
 	<translation encoding="GB2312 eucCN"
 	    cldr="CJK UNIFIED IDEOGRAPH-65F6" ucc="65F6" />
@@ -454,17 +458,27 @@
 	    cldr="CJK UNIFIED IDEOGRAPH-661F" ucc="661F" />
 	<translation encoding="GB2312 eucCN"
 	    cldr="CJK UNIFIED IDEOGRAPH-662F" ucc="662F" />
-	<translation encoding="GB2312 eucCN"
+	<translation encoding="eucJP"
+	    cldr="CJK UNIFIED IDEOGRAPH-66DC" ucc="66DC" />
+	<translation encoding="GB2312 eucCN eucJP"
 	    cldr="CJK UNIFIED IDEOGRAPH-6708" ucc="6708" />
 	<translation encoding="GB2312 eucCN"
 	    cldr="CJK UNIFIED IDEOGRAPH-671F" ucc="671F" />
+	<translation encoding="eucJP"
+	    cldr="CJK UNIFIED IDEOGRAPH-6728" ucc="6728" />
+	<translation encoding="eucJP"
+	    cldr="CJK UNIFIED IDEOGRAPH-6C34" ucc="6C34" />
+	<translation encoding="eucJP"
+	    cldr="CJK UNIFIED IDEOGRAPH-706B" ucc="706B" />
 	<translation encoding="GB2312 eucCN"
 	    cldr="CJK UNIFIED IDEOGRAPH-786E" ucc="786E" />
 	<translation encoding="GB2312 eucCN"
 	    cldr="CJK UNIFIED IDEOGRAPH-79D2" ucc="79D2" />
+	<translation encoding="eucJP"
+	    cldr="CJK UNIFIED IDEOGRAPH-91D1" ucc="91D1" />
 
 	<translation encoding="ARMSCII-8"
-	    cldr="ONE DOT LEADER" string="FULL STOP" />
+	    cldr="ONE DOT LEADER" unicode="FULL STOP" />
 
 	<translation encoding="US-ASCII" cldr="POUND SIGN" string="GBP" />
 	<translation encoding="US-ASCII"
