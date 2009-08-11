@@ -12,6 +12,8 @@
 			by space
 		fallback = read this file if name_countries doesn't exist - \
 			only one
+		definitions = only use in these definitions (msgdef, timedef, \
+			numericdef, monetdef)
 
 		By default, the name of the input file is name_countries.
 		If family is defined, the name of the input file will be \
@@ -107,7 +109,7 @@
 		countries="KR" />
 	<language name="la"
 		encoding="ISO8859-1 ISO8859-2 ISO8859-4 ISO8859-15 US-ASCII"
-		countries="LN" />
+		countries="LN" definitions="timedef" />
 	<language name="lt"
 		encoding="ISO8859-4 ISO8859-13"
 		countries="LT" />

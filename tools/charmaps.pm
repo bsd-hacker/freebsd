@@ -55,12 +55,14 @@ sub h_start {
 		my $nc_link = $attrs{namecountry_link};
 		my $e_link = $attrs{encoding_link};
 		my $fallback = $attrs{fallback};
+		my $definitions = $attrs{definitions};
 
 		$d{L}{$name}{$f}{fallback} = $fallback;
 		$d{L}{$name}{$f}{e_link} = $e_link;
 		$d{L}{$name}{$f}{nc_link} = $nc_link;
 		$d{L}{$name}{$f}{family} = $family;
 		$d{L}{$name}{$f}{encoding} = $encoding;
+		$d{L}{$name}{$f}{definitions} = $definitions;
 		$d{L}{$name}{$f}{countries} = $countries;
 		foreach my $c (split(" ", $countries)) {
 			if (defined $encoding) {

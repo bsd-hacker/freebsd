@@ -305,28 +305,32 @@ sub get_fields {
 	foreach my $c (sort keys(%{$languages{$l}{$f}{data}})) {
 		next if ($#filter == 2 && ($filter[0] ne $l
 		    || $filter[1] ne $f || $filter[2] ne $c));
+		next if (defined $languages{$l}{$f}{definitions}
+		    && $languages{$l}{$f}{definitions} !~ /$TYPE/);
 
 		$languages{$l}{$f}{data}{$c}{$DEFENCODING} = 0;	# unread
 		my $file;
 		$file = $l . "_";
 		$file .= $f . "_" if ($f ne "x");
 		$file .= $c;
-		if (!open(FIN, "$CLDRDIR/posix/$file.$DEFENCODING.src")) {
-			if (!defined $languages{$l}{$f}{fallback}) {
-				print STDERR
-				    "Cannot open $file.$DEFENCODING.src\n";
-				next;
-			}
+
+		my $filename = "$CLDRDIR/posix/$file.$DEFENCODING.src";
+		$filename = "$XMLDIR/$file.$DEFENCODING.src"
+		    if (! -f $filename);
+		if (! -f $filename
+		 && defined $languages{$l}{$f}{fallback}) {
 			$file = $languages{$l}{$f}{fallback};
-			if (!open(FIN,
-			    "$CLDRDIR/posix/$file.$DEFENCODING.src")) {
-				print STDERR
-				    "Cannot open fallback " .
-				    "$file.$DEFENCODING.src\n";
-				next;
-			}
+			$filename = "$CLDRDIR/posix/$file.$DEFENCODING.src";
 		}
-		print "Reading from $file.$DEFENCODING.src for ${l}_${f}_${c}\n";
+		$filename = "$CLDRDIR/posix/$file.$DEFENCODING.src"
+		    if (! -f $filename);
+		if (! -f $filename) {
+			print STDERR
+			    "Cannot open $file.$DEFENCODING.src or fallback\n";
+			next;
+		}
+		open(FIN, "$filename");
+		print "Reading from $filename for ${l}_${f}_${c}\n";
 		$languages{$l}{$f}{data}{$c}{$DEFENCODING} = 1;	# read
 		my @lines = <FIN>;
 		chomp(@lines);
@@ -440,6 +444,8 @@ sub print_fields {
 	foreach my $c (sort keys(%{$languages{$l}{$f}{data}})) {
 		next if ($#filter == 2 && ($filter[0] ne $l
 		    || $filter[1] ne $f || $filter[2] ne $c));
+		next if (defined $languages{$l}{$f}{definitions}
+		    && $languages{$l}{$f}{definitions} !~ /$TYPE/);
 		foreach my $enc (sort keys(%{$languages{$l}{$f}{data}{$c}})) {
 			if ($languages{$l}{$f}{data}{$c}{$DEFENCODING} eq "0") {
 				print "Skipping ${l}_" .
@@ -628,6 +634,8 @@ EOF
 	foreach my $c (sort keys(%{$languages{$l}{$f}{data}})) {
 		next if ($#filter == 2 && ($filter[0] ne $l
 		    || $filter[1] ne $f || $filter[2] ne $c));
+		next if (defined $languages{$l}{$f}{definitions}
+		    && $languages{$l}{$f}{definitions} !~ /$TYPE/);
 		if (defined $languages{$l}{$f}{data}{$c}{$DEFENCODING}
 		 && $languages{$l}{$f}{data}{$c}{$DEFENCODING} eq "0") {
 			print "Skipping ${l}_" . ($f eq "x" ? "" : "${f}_") .
