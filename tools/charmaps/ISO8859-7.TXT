@@ -1,4 +1,6 @@
 #
+# $FreeBSD$
+#
 #	Name:             ISO 8859-7:2003 to Unicode
 #	Unicode version:  4.0
 #	Table version:    2.0

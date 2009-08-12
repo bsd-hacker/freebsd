@@ -1,16 +1,18 @@
-
-Charset name:
-PTCP154
-
-Charset aliases:
-csPTCP154
-PT154
-CP154
-Cyrillic-Asian
-
-Suitability for use in MIME text:
-Yes
-
+#
+# $FreeBSD$
+#
+# Charset name:
+# PTCP154
+#
+# Charset aliases:
+# csPTCP154
+# PT154
+# CP154
+# Cyrillic-Asian
+#
+# Suitability for use in MIME text:
+# Yes
+#
 ISO 10646 equivalency table:
 #    Format: Three tab-separated columns
 #        Column #1 is the Paratype CP154 code (in hex)
@@ -275,17 +277,17 @@ ISO 10646 equivalency table:
 0xfd  0x044D     #       CYRILLIC SMALL LETTER E
 0xfe  0x044E     #       CYRILLIC SMALL LETTER YU
 0xff  0x044F     #       CYRILLIC SMALL LETTER YA
-
-
-Additional information:
-This charset based on CP1251 with added asian cyrillic symbols.
-
-Person & email address to contact for further information:
-Alexander Uskov
-InternetDataCenter of KazakhTelecom.
-e-mail: auskov&idc.kz
-
-Intended usage:
-COMMON
-
-(record created 2002-09-27)
+#
+#
+# Additional information:
+# This charset based on CP1251 with added asian cyrillic symbols.
+#
+# Person & email address to contact for further information:
+# Alexander Uskov
+# InternetDataCenter of KazakhTelecom.
+# e-mail: auskov&idc.kz
+#
+# Intended usage:
+# COMMON
+#
+# (record created 2002-09-27)
