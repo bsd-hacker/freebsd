@@ -442,9 +442,9 @@
 	    cldr="CJK UNIFIED IDEOGRAPH-516D" ucc="516D" />
 	<translation encoding="GB2312 GB18030 GBK Big5HKSCS eucCN"
 	    cldr="CJK UNIFIED IDEOGRAPH-5206" ucc="5206" />
-	<translation encoding="eucJP"
+	<translation encoding="eucJP SJIS"
 	    cldr="CJK UNIFIED IDEOGRAPH-524D" ucc="524D" />
-	<translation encoding="GB2312 GB18030 GBK Big5HKSCS eucCN eucJP"
+	<translation encoding="GB2312 GB18030 GBK Big5HKSCS eucCN eucJP SJIS"
 	    cldr="CJK UNIFIED IDEOGRAPH-5348" ucc="5348" />
 	<translation encoding="GB2312 GB18030 GBK Big5 Big5HKSCS eucCN"
 	    cldr="CJK UNIFIED IDEOGRAPH-5426" ucc="5426" />
@@ -452,15 +452,16 @@
 	    cldr="CJK UNIFIED IDEOGRAPH-5468" ucc="5468" />
 	<translation encoding="GB2312 GB18030 GBK Big5 Big5HKSCS eucCN"
 	    cldr="CJK UNIFIED IDEOGRAPH-56DB" ucc="56DB" />
-	<translation encoding="eucJP"
+	<translation encoding="eucJP SJIS"
 	    cldr="CJK UNIFIED IDEOGRAPH-571F" ucc="571F" />
 	<translation encoding="GB2312 GB18030 GBK Big5 Big5HKSCS eucCN"
 	    cldr="CJK UNIFIED IDEOGRAPH-5B9A" ucc="5B9A" />
-	<translation encoding="GB2312 GB18030 GBK Big5HKSCS eucCN eucJP"
+	<translation encoding="GB2312 GB18030 GBK Big5HKSCS eucCN eucJP SJIS"
 	    cldr="CJK UNIFIED IDEOGRAPH-5E74" ucc="5E74" />
-	<translation encoding="eucJP"
+	<translation encoding="eucJP SJIS"
 	    cldr="CJK UNIFIED IDEOGRAPH-5F8C" ucc="5F8C" />
-	<translation encoding="GB2312 GB18030 GBK Big5 Big5HKSCS eucCN eucJP"
+	<translation
+	    encoding="GB2312 GB18030 GBK Big5 Big5HKSCS eucCN eucJP SJIS"
 	    cldr="CJK UNIFIED IDEOGRAPH-65E5" ucc="65E5" />
 	<translation encoding="GB2312 GB18030 GBK eucCN"
 	    cldr="CJK UNIFIED IDEOGRAPH-65F6" ucc="65F6" />
@@ -470,17 +471,18 @@
 	    cldr="CJK UNIFIED IDEOGRAPH-662F" ucc="662F" />
 	<translation encoding="Big5HKSCS"
 	    cldr="CJK UNIFIED IDEOGRAPH-6642" ucc="6642" />
-	<translation encoding="eucJP"
+	<translation encoding="eucJP SJIS"
 	    cldr="CJK UNIFIED IDEOGRAPH-66DC" ucc="66DC" />
-	<translation encoding="GB2312 GB18030 GBK Big5 Big5HKSCS eucCN eucJP"
+	<translation
+	    encoding="GB2312 GB18030 GBK Big5 Big5HKSCS eucCN eucJP SJIS"
 	    cldr="CJK UNIFIED IDEOGRAPH-6708" ucc="6708" />
 	<translation encoding="GB2312 GB18030 GBK Big5 Big5HKSCS eucCN"
 	    cldr="CJK UNIFIED IDEOGRAPH-671F" ucc="671F" />
-	<translation encoding="eucJP"
+	<translation encoding="eucJP SJIS"
 	    cldr="CJK UNIFIED IDEOGRAPH-6728" ucc="6728" />
-	<translation encoding="eucJP"
+	<translation encoding="eucJP SJIS"
 	    cldr="CJK UNIFIED IDEOGRAPH-6C34" ucc="6C34" />
-	<translation encoding="eucJP"
+	<translation encoding="eucJP SJIS"
 	    cldr="CJK UNIFIED IDEOGRAPH-706B" ucc="706B" />
 	<translation encoding="GB2312 GB18030 GBK eucCN"
 	    cldr="CJK UNIFIED IDEOGRAPH-786E" ucc="786E" />
@@ -490,7 +492,7 @@
 	    cldr="CJK UNIFIED IDEOGRAPH-79D2" ucc="79D2" />
 	<translation encoding="Big5 Big5HKSCS"
 	    cldr="CJK UNIFIED IDEOGRAPH-9031" ucc="9031" />
-	<translation encoding="eucJP"
+	<translation encoding="eucJP SJIS"
 	    cldr="CJK UNIFIED IDEOGRAPH-91D1" ucc="91D1" />
 
 	<translation encoding="ARMSCII-8"
@@ -501,170 +503,6 @@
 	    cldr="NO-BREAK SPACE" unicode="SPACE" />
 
 </translations>
-
-<oldtranslations>
-
-	<!-- Minus and dashes -->
-	<translation encoding="ISO8859-2" cldr="EN DASH" string="-" />
-
-	<!-- Copied from the original FreeBSD src/share/monetdef -->
-	<translation encoding="ISO8859-5" cldr="HRYVNIA SIGN" hex="D3E0DD" />
-	<translation encoding="KOI8-U" cldr="HRYVNIA SIGN" hex="C7D2CE" />
-
-	<!-- Copied from the original FreeBSD src/share/timedef -->
-	<translation encoding="KOI8-R"
-	    cldr="CYRILLIC SMALL LETTER SOFT SIGN" hex="EC" />
-	<translation encoding="KOI8-R"
-	    cldr="CYRILLIC SMALL LETTER TE" hex="E2" />
-	<translation encoding="KOI8-R"
-	    cldr="CYRILLIC SMALL LETTER SHORT I" hex="E9" />
-
-	<translation encoding="KOI8-U"
-	    cldr="CYRILLIC SMALL LETTER SOFT SIGN" hex="D8" />
-	<translation encoding="KOI8-U"
-	    cldr="CYRILLIC SMALL LETTER SHORT I" hex="CA" />
-	<translation encoding="KOI8-U"
-	    cldr="CYRILLIC SMALL LETTER DE" hex="C4" />
-
-	<translation encoding="ISO8859-2"
-	    cldr="LATIN SMALL LETTER N WITH ACUTE" hex="F1" />
-	<translation encoding="ISO8859-2"
-	    cldr="LATIN SMALL LETTER I WITH ACUTE" hex="ED" />
-	<translation encoding="ISO8859-2" cldr="k" string="k" />
-
-	<translation encoding="ISO8859-4" cldr="s" string="s" />
-	<translation encoding="ISO8859-4"
-	    cldr="LATIN SMALL LETTER E WITH DOT ABOVE" hex="EC" />
-
-	<translation encoding="ISO8859-5"
-	    cldr="CYRILLIC SMALL LETTER SOFT SIGN" hex="EC" />
-	<translation encoding="ISO8859-5"
-	    cldr="CYRILLIC SMALL LETTER SHORT I" hex="D9" />
-	<translation encoding="ISO8859-5"
-	    cldr="CYRILLIC SMALL LETTER DE" hex="D4" />
-	<translation encoding="ISO8859-5"
-	    cldr="CYRILLIC SMALL LETTER YERU" hex="EB" />
-	<translation encoding="ISO8859-5"
-	    cldr="CYRILLIC SMALL LETTER KA" hex="DA" />
-	<translation encoding="ISO8859-5"
-	    cldr="CYRILLIC SMALL LETTER TE" hex="E2" />
-
-	<translation encoding="ISO8859-7"
-	    cldr="GREEK SMALL LETTER FINAL SIGMA" hex="F2" />
-
-	<translation encoding="CP1251"
-	    cldr="CYRILLIC SMALL LETTER YERU" hex="FB" />
-	<translation encoding="CP1251"
-	    cldr="CYRILLIC SMALL LETTER KA" hex="EA" />
-	<translation encoding="CP1251"
-	    cldr="CYRILLIC SMALL LETTER TE" hex="E2" />
-	<translation encoding="CP1251"
-	    cldr="CYRILLIC SMALL LETTER SOFT SIGN" hex="FC" />
-	<translation encoding="CP1251"
-	    cldr="CYRILLIC SMALL LETTER SHORT I" hex="E9" />
-	<translation encoding="CP1251"
-	    cldr="CYRILLIC SMALL LETTER DE" hex="E4" />
-
-	<translation encoding="CP1131"
-	    cldr="CYRILLIC SMALL LETTER YERU" hex="EB" />
-	<translation encoding="CP1131"
-	    cldr="CYRILLIC SMALL LETTER KA" hex="AA" />
-	<translation encoding="CP1131"
-	    cldr="CYRILLIC SMALL LETTER DE" hex="A4" />
-	<translation encoding="CP1131"
-	    cldr="CYRILLIC SMALL LETTER SOFT SIGN" hex="EC" />
-
-	<translation encoding="CP866"
-	    cldr="CYRILLIC SMALL LETTER SOFT SIGN" hex="EC" />
-	<translation encoding="CP866"
-	    cldr="CYRILLIC SMALL LETTER SHORT I" hex="A9" />
-	<translation encoding="CP866"
-	    cldr="CYRILLIC SMALL LETTER TE" hex="E2" />
-
-	<translation encoding="PT154"
-	    cldr="CYRILLIC SMALL LETTER A" hex="E0" />
-	<translation encoding="PT154"
-	    cldr="CYRILLIC SMALL LETTER EM" hex="EC" />
-	<translation encoding="PT154"
-	    cldr="CYRILLIC SMALL LETTER EN" hex="ED" />
-	<translation encoding="PT154"
-	    cldr="CYRILLIC SMALL LETTER ER" hex="F0" />
-	<translation encoding="PT154"
-	    cldr="CYRILLIC SMALL LETTER IE" hex="E5" />
-	<translation encoding="PT154"
-	    cldr="CYRILLIC SMALL LETTER KA" hex="EA" />
-	<translation encoding="PT154"
-	    cldr="CYRILLIC SMALL LETTER ZE" hex="E7" />
-
-	<!-- Spaces from XX -->
-	<!-- translation encoding="US-ASCII" cldr="NO-BREAK SPACE" string="XX" / -->
-
-	<!-- Value found in http://en.wikipedia.org/wiki/Pound_sign -->
-	<translation encoding="US-ASCII" cldr="POUND SIGN" hex="A3" />
-
-	<!-- Values found in http://en.wikipedia.org/wiki/Ya_(Cyrillic) -->
-	<translation encoding="CP1251"
-	    cldr="CYRILLIC SMALL LETTER YA" hex="FF" />
-	<translation encoding="ISO8859-5"
-	    cldr="CYRILLIC SMALL LETTER YA" hex="EF" />
-	<translation encoding="KOI8-U"
-	    cldr="CYRILLIC SMALL LETTER YA" hex="D1" />
-
-	<!-- Values found in
-		http://en.wikipedia.org/wiki/Cyrillic_characters_in_Unicode
-	 -->
-	<translation encoding="ISO8859-2"
-	    cldr="CYRILLIC CAPITAL LETTER A" string="A" />
-	<translation encoding="ISO8859-2"
-	    cldr="CYRILLIC SMALL LETTER A" string="a" />
-	<translation encoding="ISO8859-2"
-	    cldr="CYRILLIC SMALL LETTER KA" string="k" />
-	<translation encoding="ISO8859-2"
-	    cldr="CYRILLIC SMALL LETTER O" string="o" />
-	<translation encoding="ISO8859-2"
-	    cldr="CYRILLIC CAPITAL LETTER DE" string="D" />
-	<translation encoding="ISO8859-2"
-	    cldr="CYRILLIC SMALL LETTER DE" string="d" />
-	<translation encoding="ISO8859-2"
-	    cldr="CYRILLIC CAPITAL LETTER IE" string="E" />
-	<translation encoding="ISO8859-2"
-	    cldr="CYRILLIC SMALL LETTER IE" string="e" />
-	<translation encoding="ISO8859-2"
-	    cldr="CYRILLIC CAPITAL LETTER EN" string="N" />
-	<translation encoding="ISO8859-2"
-	    cldr="CYRILLIC SMALL LETTER EN" string="n" />
-	<translation encoding="ISO8859-2"
-	    cldr="CYRILLIC SMALL LETTER BE" string="b" />
-	<translation encoding="ISO8859-2"
-	    cldr="CYRILLIC SMALL LETTER ER" string="r" />
-	<translation encoding="ISO8859-2"
-	    cldr="CYRILLIC SMALL LETTER JE" string="j" />
-	<translation encoding="ISO8859-2"
-	    cldr="CYRILLIC SMALL LETTER EL" string="l" />
-	<translation encoding="ISO8859-2"
-	    cldr="CYRILLIC SMALL LETTER GHE" string="g" />
-	<translation encoding="ISO8859-2"
-	    cldr="CYRILLIC SMALL LETTER PE" string="p" />
-	<translation encoding="ISO8859-2"
-	    cldr="CYRILLIC SMALL LETTER TE" string="t" />
-	<translation encoding="ISO8859-2"
-	    cldr="CYRILLIC SMALL LETTER VE" string="v" />
-
-	<!-- Not sure why these ones aren't known by libiconv -->
-	<translation encoding="ISO8859-2" cldr="a" string="a" />
-	<translation encoding="ISO8859-2" cldr="d" string="d" />
-	<translation encoding="ISO8859-2" cldr="e" string="e" />
-	<translation encoding="ISO8859-2" cldr="i" string="i" />
-	<translation encoding="ISO8859-2" cldr="n" string="n" />
-	<translation encoding="ISO8859-2" cldr="r" string="r" />
-
-	<translation encoding="ISO8859-5" cldr="t" string="t" />
-	<translation encoding="ISO8859-5" cldr="k" string="k" />
-
-	<!-- Just a . ? -->
-	<translation encoding="ISO8859-2" cldr="FULL STOP" string="." />
-
-</oldtranslations>
 
 <alternativemonths>
 	<!-- Months which are different in dates ("21 december 1980") and in
