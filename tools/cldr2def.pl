@@ -8,22 +8,32 @@ use strict;
 use XML::Parser;
 use Tie::IxHash;
 use Data::Dumper;
+use Getopt::Long;
 use Digest::SHA qw(sha1_hex);
 require "charmaps.pm";
 
+
 if ($#ARGV < 2) {
-	print "Usage: $0 <cldrdir> <unidatadir> <xmldirs> <charmaps> <type> [la_CC]\n";
+	print "Usage: $0 --cldr=<cldrdir> --unidata=<unidatadir> --etc=<etcdir> --type=<type> [--lc=<la_CC>]\n";
 	exit(1);
 }
 
 my $DEFENCODING = "UTF-8";
-my $CLDRDIR = shift(@ARGV);
-my $UNIDATADIR = shift(@ARGV);
-my $XMLDIR = shift(@ARGV);
-my $CHARMAPS = shift(@ARGV);
-my $TYPE = shift(@ARGV);
-my $doonly = shift(@ARGV);
 my @filter = ();
+
+my $CLDRDIR = undef;
+my $UNIDATADIR = undef;
+my $ETCDIR = undef;
+my $TYPE = undef;
+my $doonly = undef;
+
+my $result = GetOptions (
+		"cldr=s"	=> \$CLDRDIR,
+		"unidata=s"	=> \$UNIDATADIR,
+		"etc=s"		=> \$ETCDIR,
+		"type=s"	=> \$TYPE,
+		"lc=s"		=> \$doonly
+	    );
 
 my %convertors = ();
 
@@ -40,7 +50,7 @@ my %utf8map = ();
 my %utf8aliases = ();
 get_unidata($UNIDATADIR);
 get_utf8map("$CLDRDIR/posix/$DEFENCODING.cm");
-get_encodings("$XMLDIR/charmaps");
+get_encodings("$ETCDIR/charmaps");
 
 my %keys = ();
 tie(%keys, "Tie::IxHash");
@@ -198,7 +208,8 @@ sub callback_altmon {
 sub get_unidata {
 	my $directory = shift;
 
-	open(FIN, "$directory/UnicodeData.txt");
+	open(FIN, "$directory/UnicodeData.txt")
+	    or die("Cannot open $directory/UnicodeData.txt");;
 	my @lines = <FIN>;
 	chomp(@lines);
 	close(FIN);
@@ -276,7 +287,7 @@ sub get_encodings {
 }
 
 sub get_languages {
-	my %data = get_xmldata($CHARMAPS);
+	my %data = get_xmldata($ETCDIR);
 	%languages = %{$data{L}}; 
 	%translations = %{$data{T}}; 
 	%alternativemonths = %{$data{AM}}; 
@@ -315,7 +326,7 @@ sub get_fields {
 		$file .= $c;
 
 		my $filename = "$CLDRDIR/posix/$file.$DEFENCODING.src";
-		$filename = "$XMLDIR/$file.$DEFENCODING.src"
+		$filename = "$ETCDIR/$file.$DEFENCODING.src"
 		    if (! -f $filename);
 		if (! -f $filename
 		 && defined $languages{$l}{$f}{fallback}) {

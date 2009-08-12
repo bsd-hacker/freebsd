@@ -2,16 +2,16 @@
 # $FreeBSD$
 #
 
-UNICODEDIR?=	/home/edwin/unicode/
-CLDRVERSION?=	1.7.1
-CLDRDIR?=	${UNICODEDIR}/cldr/${CLDRVERSION}/
-UNIDATAVERSION?=5.2.0
-UNIDATADIR?=	${UNICODEDIR}/UNIDATA/${UNIDATAVERSION}/
+CLDRDIR!=	grep ^cldr etc/unicode.conf | cut -f 2 -d " "
+UNIDATADIR!=	grep ^unidata etc/unicode.conf | cut -f 2 -d " "
 
-XMLDIR?=	/home/edwin/svn/edwin/locale/tools/
-XMLFILE?=	charmaps.xml
+ETCDIR=		${.CURDIR}/etc
 
 TYPES?=		monetdef numericdef msgdef timedef
+
+.if defined(LC)
+LC:=	--lc=${LC}
+.endif
 
 all:
 .for t in ${TYPES}
@@ -30,7 +30,11 @@ install:
 .for t in ${TYPES}
 build-${t}:
 	test -d ${t} || mkdir ${t}
-	perl -I tools tools/cldr2def.pl ${CLDRDIR} ${UNIDATADIR} ${XMLDIR} ${XMLDIR}/${XMLFILE} ${t} ${LC}
+	perl -I tools tools/cldr2def.pl \
+		--cldr=$$(realpath ${CLDRDIR}) \
+		--unidata=$$(realpath ${UNIDATADIR}) \
+		--etc=$$(realpath ${ETCDIR}) \
+		--type=${t} ${LC}
 .endfor
 
 clean:

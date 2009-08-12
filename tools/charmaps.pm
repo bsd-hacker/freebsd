@@ -13,9 +13,9 @@ my %d = ();
 my $index = -1;
 
 sub get_xmldata {
-	my $xmlfile = shift;
+	my $etcdir = shift;
 
-	open(FIN, $xmlfile);
+	open(FIN, "$etcdir/charmaps.xml");
 	my @xml = <FIN>;
 	chomp(@xml);
 	close(FIN);

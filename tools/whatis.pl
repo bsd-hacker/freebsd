@@ -1,8 +1,8 @@
 #!/bin/sh
 
-UNIDATA=/home/edwin/unicode/UNIDATA/5.2.0/UnicodeData.txt
-CHARMAPS=/home/edwin/svn/edwin/locale/tools/charmaps
-UTF8=~/unicode/cldr/1.7.1/posix/UTF-8.cm
+UNIDATA=$(grep ^unidata etc/unicode.conf | cut -f 2 -d " ")
+UTF8=$(grep ^cldr etc/unicode.conf | cut -f 2 -d " ")/UTF-8.cm
+CHARMAPS=etc/charmaps
 
 if [ -z "$1" ]; then
 	echo "Usage: $0 <unicode string>"
