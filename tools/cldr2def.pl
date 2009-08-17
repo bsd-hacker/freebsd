@@ -107,7 +107,7 @@ my %DESC = (
 	"day"		=> "Long weekday names",
 	"t_fmt"		=> "X_fmt",
 	"d_fmt"		=> "x_fmt",
-	"XXX"		=> "c_fmt",
+	"d_t_fmt"	=> "c_fmt",
 	"am_pm"		=> "AM/PM",
 	"d_t_fmt"	=> "date_fmt",
 	"altmon"	=> "Long month names (without case ending)",
@@ -174,7 +174,6 @@ if ($TYPE eq "timedef") {
 	    "am_pm"		=> "as",
 	    "d_fmt"		=> "s",
 	    "d_t_fmt"		=> "s",
-#	    "altmon"		=> ">mon",		# repeat them for now
 	    "altmon"		=> "<altmon<mon<as",
 	    "md_order"		=> "<mdorder<d_fmt<s",
 	    "t_fmt_ampm"	=> "s",

@@ -508,6 +508,11 @@
 
 </translations>
 
+<c_fmt>
+	<!-- The format of the output of date(1) and ctime(3) is different:
+	-->
+</c_fmt>
+
 <alternativemonths>
 	<!-- Months which are different in dates ("21 december 1980") and in
 		sentence usage ("We will do that in December.").
