@@ -1,0 +1,10 @@
+# $FreeBSD$
+#
+# WARNING: spaces may be essential at the end of lines
+# WARNING: empty lines are essential too
+#
+# yesexpr
+^[<LATIN SMALL LETTER Y><LATIN CAPITAL LETTER Y><HEBREW LETTER KAF>].*
+# noexpr
+^[<LATIN SMALL LETTER N><LATIN CAPITAL LETTER N><HEBREW LETTER LAMED>].*
+# EOF
