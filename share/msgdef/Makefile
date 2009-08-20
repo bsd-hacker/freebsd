@@ -56,8 +56,8 @@ CMSLINK_ro_RO=	ISO8859-2
 CMSLINK_sl_SI=	ISO8859-2
 CMSLINK_sv_SE=	ISO8859-1 ISO8859-15
 CMSLINK_tr_TR=	ISO8859-9
-CMSLINK_zh_Hans_CN.GB2312=	zh_Hans_CN.GBK
-CMSLINK_zh_Hant_TW.Big5=	zh_Hant_TW.Big5HKSCS
+CMSLINK_zh_Hans_CN=	GBK
+CMSLINK_zh_Hant_TW=	Big5HKSCS
 
 # For these locales, also create symlinks to the main locale.
 CCLNLINK_ca_ES=		ca_AD ca_FR ca_IT
@@ -78,6 +78,7 @@ LEGLINK_zh_Hans_CN=	zh_CN
 LEGLINK_zh_Hant_TW=	zh_TW zh_HK
 LEGLINK_sr_Cyrl_RS=	sr_YU
 LEGLINK_sr_Latn_RS.ISO8859-2=	sr_YU.ISO8859-2
+LEGLINK_zh_Hans_CN.GBK2312=	zh_CN.GBK
 
 #
 # In theory there are no parts after here which should be touched when adding
@@ -200,8 +201,8 @@ SYMLINKS+=	../${ccln}.${cm}/${LCTYPE} ${LOCALEDIR}/${cclncm}
 . endif
 
 . for cm in ${CMS}
-.  if defined(CCNLLINK_${ccln}.${cm})
-.   for cclncm in ${CCNLLINK_${ccln}.${cm}}
+.  if defined(CCLNLINK_${ccln}.${cm})
+.   for cclncm in ${CCLNLINK_${ccln}.${cm}}
 SYMLINKS+=	../${ccln}.${cm}/${LCTYPE} ${LOCALEDIR}/${cclncm}
 .   endfor
 .  endif
