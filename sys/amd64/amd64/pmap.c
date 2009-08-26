@@ -152,6 +152,7 @@ __FBSDID("$FreeBSD$");
 #define PMAP_SHPGPERPROC 200
 #endif
 
+#define DIAGNOSTIC
 #if !defined(DIAGNOSTIC)
 #define PMAP_INLINE	__gnu89_inline
 #else
