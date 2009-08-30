@@ -4889,6 +4889,13 @@ zfs_freebsd_aclcheck(ap)
 	return (EOPNOTSUPP);
 }
 
+static int 
+zfs_freebsd_getwritemount(struct vop_getwritemount_args *unused)
+{
+
+	return (EOPNOTSUPP);
+}
+
 struct vop_vector zfs_vnodeops;
 struct vop_vector zfs_fifoops;
 
@@ -4903,6 +4910,7 @@ struct vop_vector zfs_vnodeops = {
 #else
 	.vop_lookup =		zfs_freebsd_lookup,
 #endif
+	.vop_getwritemount =	zfs_freebsd_getwritemount,
 	.vop_getattr =		zfs_freebsd_getattr,
 	.vop_setattr =		zfs_freebsd_setattr,
 	.vop_create =		zfs_freebsd_create,
