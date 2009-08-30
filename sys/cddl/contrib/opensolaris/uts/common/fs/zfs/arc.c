@@ -186,6 +186,11 @@ SYSCTL_QUAD(_vfs_zfs, OID_AUTO, arc_min, CTLFLAG_RDTUN, &zfs_arc_min, 0,
 SYSCTL_INT(_vfs_zfs, OID_AUTO, mdcomp_disable, CTLFLAG_RDTUN,
     &zfs_mdcomp_disable, 0, "Disable metadata compression");
 
+#ifdef ZIO_USE_UMA
+extern kmem_cache_t	*zio_buf_cache[];
+extern kmem_cache_t	*zio_data_buf_cache[];
+#endif
+
 /*
  * Note that buffers can be in one of 6 states:
  *	ARC_anon	- anonymous (discussed below)
@@ -1893,8 +1898,6 @@ arc_kmem_reap_now(arc_reclaim_strategy_t strat)
 	size_t			i;
 	kmem_cache_t		*prev_cache = NULL;
 	kmem_cache_t		*prev_data_cache = NULL;
-	extern kmem_cache_t	*zio_buf_cache[];
-	extern kmem_cache_t	*zio_data_buf_cache[];
 #endif
 
 #ifdef _KERNEL

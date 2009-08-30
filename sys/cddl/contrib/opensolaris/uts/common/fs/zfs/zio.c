@@ -91,13 +91,6 @@ zio_init(void)
 #ifdef ZIO_USE_UMA
 	size_t c;
 #endif
-#if 0
-	vmem_t *data_alloc_arena = NULL;
-
-#ifdef _KERNEL
-	data_alloc_arena = zio_alloc_arena;
-#endif
-#endif
 	zio_cache = kmem_cache_create("zio_cache", sizeof (zio_t), 0,
 	    NULL, NULL, NULL, NULL, NULL, 0);
 
@@ -132,7 +125,7 @@ zio_init(void)
 
 			(void) sprintf(name, "zio_data_buf_%lu", (ulong_t)size);
 			zio_data_buf_cache[c] = kmem_cache_create(name, size,
-			    align, NULL, NULL, NULL, NULL, data_alloc_arena,
+			    align, NULL, NULL, NULL, NULL, NULL,
 			    KMC_NODEBUG);
 		}
 	}
@@ -422,7 +415,6 @@ zio_create(zio_t *pio, spa_t *spa, uint64_t txg, blkptr_t *bp,
 	ASSERT3U(size, <=, SPA_MAXBLOCKSIZE);
 	ASSERT(P2PHASE(size, SPA_MINBLOCKSIZE) == 0);
 	ASSERT(P2PHASE(offset, SPA_MINBLOCKSIZE) == 0);
-
 	ASSERT(!vd || spa_config_held(spa, SCL_STATE_ALL, RW_READER));
 	ASSERT(!bp || !(flags & ZIO_FLAG_CONFIG_WRITER));
 	ASSERT(vd || stage == ZIO_STAGE_OPEN);
