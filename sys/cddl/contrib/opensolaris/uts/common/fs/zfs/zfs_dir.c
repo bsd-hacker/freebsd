@@ -561,7 +561,6 @@ zfs_rmnode(znode_t *zp)
 
 	vfslocked = VFS_LOCK_GIANT(zfsvfs->z_vfs);
 
-	ASSERT(ZTOV(zp)->v_count == 0);
 	ASSERT(zp->z_phys->zp_links == 0);
 
 	/*
