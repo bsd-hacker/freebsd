@@ -65,8 +65,7 @@ sub svn_check($@) {
 sub svn_do(@) {
     my @argv = @_;
     info('svn', @argv);
-    system('svn', @argv)
-	unless $pretend;
+    return if $pretend;
     my $pid = fork();
     if ($pid == -1) {
 	die("fork(): $!\n");
@@ -75,7 +74,6 @@ sub svn_do(@) {
 	die("exec(): $!\n");
     }
     waitpid($pid, 0);
-    info($?);
     if ($? & 128) {
 	info("svn died with signal", $? & 128);
 	kill($? & 128, $$);
