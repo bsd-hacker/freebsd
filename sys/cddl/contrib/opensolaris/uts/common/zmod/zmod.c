@@ -30,43 +30,6 @@
 #include "zlib.h"
 #include "zutil.h"
 
-/*
- * Uncompress the buffer 'src' into the buffer 'dst'.  The caller must store
- * the expected decompressed data size externally so it can be passed in.
- * The resulting decompressed size is then returned through dstlen.  This
- * function return Z_OK on success, or another error code on failure.
- */
-#if 0
-int
-z_uncompress(void *dst, size_t *dstlen, const void *src, size_t srclen)
-{
-	z_stream zs;
-	int err;
-
-	bzero(&zs, sizeof (zs));
-	zs.next_in = (uchar_t *)src;
-	zs.avail_in = srclen;
-	zs.next_out = dst;
-	zs.avail_out = *dstlen;
-
-	/*
-	 * Call inflateInit2() specifying a window size of DEF_WBITS
-	 * with the 6th bit set to indicate that the compression format
-	 * type (zlib or gzip) should be automatically detected.
-	 */
-	if ((err = inflateInit2(&zs, DEF_WBITS | 0x20)) != Z_OK)
-		return (err);
-
-	if ((err = inflate(&zs, Z_FINISH)) != Z_STREAM_END) {
-		(void) inflateEnd(&zs);
-		return (err == Z_OK ? Z_BUF_ERROR : err);
-	}
-
-	*dstlen = zs.total_out;
-	return (inflateEnd(&zs));
-}
-#endif
-
 int
 z_compress_level(void *dst, size_t *dstlen, const void *src, size_t srclen,
     int level)
@@ -106,12 +69,3 @@ z_strerror(int err)
 
 	return (zError(err));
 }
-
-#if 0
-int
-z_compress(void *dst, size_t *dstlen, const void *src, size_t srclen)
-{
-	return (z_compress_level(dst, dstlen, src, srclen,
-	    Z_DEFAULT_COMPRESSION));
-}
-#endif

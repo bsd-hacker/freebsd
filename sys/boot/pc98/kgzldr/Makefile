@@ -11,7 +11,6 @@ CFLAGS=	-Os
 CFLAGS+=-DKZIP
 NO_SHARED=
 LDFLAGS=-Wl,-r
-.PATH:	${.CURDIR}/../../../kern
 .PATH:	${.CURDIR}/../../i386/kgzldr
 
 BOOT_COMCONSOLE_PORT?=	0x238
