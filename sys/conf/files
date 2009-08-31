@@ -2237,38 +2237,35 @@ net/rtsock.c			standard
 net/slcompress.c		optional netgraph_vjc | sppp | \
 					 netgraph_sppp
 net/vnet.c			optional vimage
-net/zlib.c			optional crypto | geom_uzip | ipsec | \
-					 mxge | netgraph_deflate | \
-					 ddb_ctf
 libkern/zlib/adler32.c		optional zfs | crypto | geom_uzip | ipsec | \
-					 mxge | ppp_deflate | \
+					 mxge | \
 					 netgraph_deflate | ddb_ctf | gzip	
 libkern/zlib/compress.c		optional zfs | crypto | geom_uzip | ipsec | \
-					 mxge | ppp_deflate | \
+					 mxge |  \
 					 netgraph_deflate | ddb_ctf | gzip	
 libkern/zlib/deflate.c		optional zfs | crypto | geom_uzip | ipsec | \
-					 mxge | ppp_deflate | \
+					 mxge |  \
 					 netgraph_deflate | ddb_ctf | gzip	
 libkern/zlib/inflate.c		optional zfs | crypto | geom_uzip | ipsec | \
-					 mxge | ppp_deflate | \
+					 mxge |  \
 					 netgraph_deflate | ddb_ctf | gzip	
 libkern/zlib/inffast.c		optional zfs | crypto | geom_uzip | ipsec | \
-					 mxge | ppp_deflate | \
+					 mxge |  \
 					 netgraph_deflate | ddb_ctf | gzip
 libkern/zlib/inftrees.c		optional zfs | crypto | geom_uzip | ipsec | \
-					 mxge | ppp_deflate | \
+					 mxge |  \
 					 netgraph_deflate | ddb_ctf | gzip
 libkern/zlib/trees.c		optional zfs | crypto | geom_uzip | ipsec | \
-					 mxge | ppp_deflate | \
+					 mxge |  \
 					 netgraph_deflate | ddb_ctf | gzip	
 libkern/zlib/uncompr.c		optional zfs | crypto | geom_uzip | ipsec | \
-					 mxge | ppp_deflate | \
+					 mxge |  \
 					 netgraph_deflate | ddb_ctf | gzip	
 libkern/zlib/zutil.c		optional zfs | crypto | geom_uzip | ipsec | \
-					 mxge | ppp_deflate | \
+					 mxge |  \
 					 netgraph_deflate | ddb_ctf | gzip	
 libkern/zlib/zl_crc32.c		optional zfs | crypto | geom_uzip | ipsec | \
-					 mxge | ppp_deflate | \
+					 mxge |  \
 					 netgraph_deflate | ddb_ctf | gzip	
 
 net80211/ieee80211.c		optional wlan
