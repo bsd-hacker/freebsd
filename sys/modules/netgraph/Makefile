@@ -11,7 +11,6 @@ SUBDIR=	async \
 	bridge \
 	car \
 	cisco \
-	deflate \
 	device \
 	echo \
 	eiface \
@@ -52,6 +51,8 @@ SUBDIR=	async \
 	UI \
 	vjc \
 	vlan
+
+#	deflate \
 
 .if ${MK_BLUETOOTH} != "no" || defined(ALL_MODULES)
 _bluetooth=	bluetooth

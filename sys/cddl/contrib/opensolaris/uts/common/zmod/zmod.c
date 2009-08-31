@@ -36,6 +36,7 @@
  * The resulting decompressed size is then returned through dstlen.  This
  * function return Z_OK on success, or another error code on failure.
  */
+#if 0
 int
 z_uncompress(void *dst, size_t *dstlen, const void *src, size_t srclen)
 {
@@ -64,6 +65,7 @@ z_uncompress(void *dst, size_t *dstlen, const void *src, size_t srclen)
 	*dstlen = zs.total_out;
 	return (inflateEnd(&zs));
 }
+#endif
 
 int
 z_compress_level(void *dst, size_t *dstlen, const void *src, size_t srclen,
@@ -91,13 +93,6 @@ z_compress_level(void *dst, size_t *dstlen, const void *src, size_t srclen,
 	return (deflateEnd(&zs));
 }
 
-int
-z_compress(void *dst, size_t *dstlen, const void *src, size_t srclen)
-{
-	return (z_compress_level(dst, dstlen, src, srclen,
-	    Z_DEFAULT_COMPRESSION));
-}
-
 /*
  * Convert a zlib error code into a string error message.
  */
@@ -111,3 +106,12 @@ z_strerror(int err)
 
 	return (zError(err));
 }
+
+#if 0
+int
+z_compress(void *dst, size_t *dstlen, const void *src, size_t srclen)
+{
+	return (z_compress_level(dst, dstlen, src, srclen,
+	    Z_DEFAULT_COMPRESSION));
+}
+#endif
