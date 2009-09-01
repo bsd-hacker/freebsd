@@ -227,26 +227,15 @@ ${ccln}.${cms}.out: ${ccln}.src
 .endif
 .endfor
 
-#.for locale in ${LOCALES}
-#.endfor
-#
-#CLEANFILES=	${FILES}
-#
-#SYMLINKS=
-#.for enc1 in ${ENCODINGS}
-#.for enc2 in ${ENCODINGS}
-#.for lang_terr in ${${enc1}_${enc2}}
-#SYMLINKS+=	../${lang_terr:C/:.*$//}.${enc1}/${FILESNAME} \
-#		${LOCALEDIR}/${lang_terr:C/^.*://}.${enc2}
-#.endfor
-#.endfor
-#.endfor
-#
-#beforeinstall:
-#.for locale in ${LOCALES}
-#.if exists(${DESTDIR}${LOCALEDIR}/${locale}/LC_MESSAGES/)
-#	rm -rf ${DESTDIR}${LOCALEDIR}/${locale}/LC_MESSAGES
-#.endif
-#.endfor
+beforeinstall:
+.for f in ${FILES:S/.out//}
+	rm -f ${DESTDIR}/${LOCALEDIR}/${f}/${FILESNAME}
+.endfor
+	set ${SYMLINKS}; \
+	while [ ! -z "$1" ]; do \
+		shift; \
+		rm -f ${DESTDIR}/$$1/${FILESNAME}; \
+		shift; \
+	done
 
 .include <bsd.prog.mk>
