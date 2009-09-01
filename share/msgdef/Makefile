@@ -120,7 +120,10 @@ FILESDIR_${ccln}.${cm}.out= ${LOCALEDIR}/${ccln}.${cm}
 .endfor
 
 FILES=		${ALLFILES:S/$/.out/}
-CLEANFILES=	${ALLFILES:S/$/.out/} ${CCLN:S/$/.src/}
+CLEANFILES=	${ALLFILES:S/$/.out/}
+.if defined(FULL)
+CLEANFILES+=	${CCLN:S/$/.src/}
+.endif
 FILESNAME=	${LCTYPE}
 
 # All links
@@ -215,10 +218,16 @@ SYMLINKS+=	../${ccln}.${cm}/${LCTYPE} ${LOCALEDIR}/${cclncm}
 #
 
 .for ccln in ${CCLN}
+
+# Normal makes don't need to convert from .unicode to .src
+. if defined(FULL)
 ${ccln}.src: ${ccln}.unicode
 	echo ${.ALLSRC} > ${.TARGET}
+. endif
+
 ${ccln}.UTF-8.out: ${ccln}.src
 	grep -v '^#' < ${.ALLSRC} > ${.TARGET}
+
 .if defined(CMS_${ccln})
 .for cms in ${CMS_${ccln}}
 ${ccln}.${cms}.out: ${ccln}.src
