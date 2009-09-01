@@ -26,6 +26,7 @@
 
 #include <sys/types.h>
 #include <sys/zmod.h>
+#include <sys/module.h>
 
 #include "zlib.h"
 #include "zutil.h"
@@ -69,3 +70,5 @@ z_strerror(int err)
 
 	return (zError(err));
 }
+
+MODULE_DEPEND(zfs, zlib, 1, 1, 1);
