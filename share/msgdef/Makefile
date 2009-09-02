@@ -3,17 +3,17 @@
 # All locales to be created.
 CCLN=           af_ZA am_ET be_BY bg_BG ca_ES cs_CZ da_DK de_DE \
 		el_GR en_CA en_GB en_US es_ES et_EE eu_ES fi_FI \
-		fr_BE fr_CH fr_FR he_IL hr_HR hu_HU hy_AM is_IS \
+		fr_BE fr_CH fr_FR he_IL hi_IN hr_HR hu_HU hy_AM is_IS \
 		it_IT ja_JP kk_KZ ko_KR lt_LT mn_MN nl_NL no_NO \
 		pl_PL pt_PT ro_RO ru_RU sl_SI sr_Cyrl_RS sr_Latn_RS \
 		sv_SE tr_TR uk_UA zh_Hans_CN zh_Hant_TW
-# hi_IN.ISCII-DEV.src
 
 # For these locales, beside creating the UTF-8 map also create these
 # charactermaps.
 CMS_be_BY=	CP1131 CP1251 ISO8859-5
 CMS_bg_BG=	CP1251
 CMS_el_GR=	ISO8859-7
+CMS_hi_IN=	macdevanaga
 CMS_hy_AM=	ARMSCII-8
 CMS_ja_JP=	SJIS eucJP
 CMS_kk_KZ=	PT154
@@ -79,6 +79,7 @@ LEGLINK_zh_Hant_TW=	zh_TW zh_HK
 LEGLINK_sr_Cyrl_RS=	sr_YU
 LEGLINK_sr_Latn_RS.ISO8859-2=	sr_YU.ISO8859-2
 LEGLINK_zh_Hans_CN.GBK2312=	zh_CN.GBK
+LEGLINK_hi_IN.macdevanaga=	hi_IN.ISCII-DEV
 
 #
 # In theory there are no parts after here which should be touched when adding
@@ -95,165 +96,5 @@ SHAREGRP=	edwin
 # All variables
 #
 
-# All charactermaps
-CMS=UTF-8
-.for ccln in ${CCLN}
-. if defined(CMS_${ccln})
-.  for cm in ${CMS_${ccln}}
-.   if ${CMS:M${cm}} == ""
-CMS+=	${cm}
-.   endif
-.  endfor
-. endif
-.endfor
-
-# All files generated and their locations
-ALLFILES=	${CCLN:S/$/.UTF-8/}
-.for ccln in ${CCLN}
-FILESDIR_${ccln}.UTF-8.out= ${LOCALEDIR}/${ccln}.UTF-8
-. if defined(CMS_${ccln})
-.  for cm in ${CMS_${ccln}}
-ALLFILES+=	${ccln}.${cm}
-FILESDIR_${ccln}.${cm}.out= ${LOCALEDIR}/${ccln}.${cm}
-.  endfor
-. endif
-.endfor
-
-FILES=		${ALLFILES:S/$/.out/}
-CLEANFILES=	${ALLFILES:S/$/.out/}
-.if defined(FULL)
-CLEANFILES+=	${CCLN:S/$/.src/}
-.endif
-FILESNAME=	${LCTYPE}
-
-# All links
-SYMLINKS=
-.for ccln in ${CCLN}
-. if defined(CMSLINK_${ccln})
-.  for cm in ${CMSLINK_${ccln}}
-SYMLINKS+=	../${ccln}.UTF-8/${LCTYPE} ${LOCALEDIR}/${ccln}.${cm}
-.  endfor
-. endif
-. for cm in ${CMS}
-.  if defined(CMSLINK_${ccln}.${cm})
-.   for cclncm in ${CMSLINK_${ccln}.${cm}}
-SYMLINKS+=	../${ccln}.${cm}/${LCTYPE} ${LOCALEDIR}/${cclncm}
-.   endfor
-.  endif
-. endfor
-.endfor
-
-.for ccln in ${CCLN}
-
-. if defined(LEGLINK_${ccln})
-.  for _ccln in ${LEGLINK_${ccln}}
-SYMLINKS+=	../${ccln}.UTF-8/${LCTYPE} ${LOCALEDIR}/${_ccln}.UTF-8
-.   if defined(CMS_${ccln})
-.    for cm in ${CMS_${ccln}}
-SYMLINKS+=	../${ccln}.UTF-8/${LCTYPE} ${LOCALEDIR}/${_ccln}.${cm}
-.    endfor
-.   endif
-
-.   if defined(CMSLINK_${ccln})
-.    for cm in ${CMSLINK_${ccln}}
-SYMLINKS+=	../${ccln}.UTF-8/${LCTYPE} ${LOCALEDIR}/${_ccln}.${cm}
-.    endfor
-.   endif
-
-.   for cm in ${CMS}
-.    if defined(CMSLINK_${ccln}.${cm})
-.     for cclncm in ${CMSLINK_${ccln}.${cm}}
-SYMLINKS+=	../${ccln}.${cm}/${LCTYPE} ${LOCALEDIR}/${cclncm}
-.     endfor
-.    endif
-.   endfor
-.  endfor
-. endif
-
-. for cm in ${CMS}
-.  if defined(LEGLINK_${ccln}.${cm})
-.   for cclncm in ${LEGLINK_${ccln}.${cm}}
-SYMLINKS+=	../${ccln}.${cm}/${LCTYPE} ${LOCALEDIR}/${cclncm}
-.   endfor
-.  endif
-. endfor
-
-. if defined(CCLNLINK_${ccln})
-.  for _ccln in ${CCLNLINK_${ccln}}
-SYMLINKS+=	../${ccln}.UTF-8/${LCTYPE} ${LOCALEDIR}/${_ccln}.UTF-8
-.   if defined(CMS_${ccln})
-.    for cm in ${CMS_${ccln}}
-SYMLINKS+=	../${ccln}.UTF-8/${LCTYPE} ${LOCALEDIR}/${_ccln}.${cm}
-.    endfor
-.   endif
-
-.   if defined(CMSLINK_${ccln})
-.    for cm in ${CMSLINK_${ccln}}
-SYMLINKS+=	../${ccln}.UTF-8/${LCTYPE} ${LOCALEDIR}/${_ccln}.${cm}
-.    endfor
-.   endif
-
-.   for cm in ${CMS}
-.    if defined(CMSLINK_${ccln}.${cm})
-.     for cclncm in ${CMSLINK_${ccln}.${cm}}
-SYMLINKS+=	../${ccln}.${cm}/${LCTYPE} ${LOCALEDIR}/${cclncm}
-.     endfor
-.    endif
-.   endfor
-.  endfor
-. endif
-
-. for cm in ${CMS}
-.  if defined(CCLNLINK_${ccln}.${cm})
-.   for cclncm in ${CCLNLINK_${ccln}.${cm}}
-SYMLINKS+=	../${ccln}.${cm}/${LCTYPE} ${LOCALEDIR}/${cclncm}
-.   endfor
-.  endif
-. endfor
-
-.endfor
-
-#
-# All targets
-#
-
-.for ccln in ${CCLN}
-
-# Normal makes don't need to convert from .unicode to .src
-. if defined(FULL)
-${ccln}.src: ${ccln}.unicode
-	../../cldr/tools/unicode2src.pl \
-	    --cldr=/home/edwin/unicode/cldr/1.7.1 \
-	    --unidata=/home/edwin/unicode/UNIDATA/5.1.0/ \
-	    --input=${.ALLSRC} \
-	    --output=${.TARGET}
-
-. endif
-
-${ccln}.UTF-8.out: ${ccln}.src
-	grep -v '^#' < ${.ALLSRC} > ${.TARGET}
-
-.if defined(CMS_${ccln})
-.for cms in ${CMS_${ccln}}
-${ccln}.${cms}.out: ${ccln}.src
-	/home/edwin/libiconv/bin/iconv \
-	    -f UTF-8 \
-	    -t ${.TARGET:S/${.ALLSRC:S/.src//}.//:S/.out//} \
-	    ${.ALLSRC} > ${.TARGET} \
-	|| rm ${.TARGET} && exit 0
-.endfor
-.endif
-.endfor
-
-beforeinstall:
-.for f in ${FILES:S/.out//}
-	rm -f ${DESTDIR}/${LOCALEDIR}/${f}/${FILESNAME}
-.endfor
-	set ${SYMLINKS}; \
-	while [ ! -z "$1" ]; do \
-		shift; \
-		rm -f ${DESTDIR}/$$1/${FILESNAME}; \
-		shift; \
-	done
-
+.include "../Makefile.def.in"
 .include <bsd.prog.mk>
