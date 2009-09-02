@@ -13,7 +13,7 @@ CCLN=           af_ZA am_ET be_BY bg_BG ca_ES cs_CZ da_DK de_DE \
 CMS_be_BY=	CP1131 CP1251 ISO8859-5
 CMS_bg_BG=	CP1251
 CMS_el_GR=	ISO8859-7
-CMS_hi_IN=	macdevanaga
+CMS_hi_IN=	ISCII-DEV
 CMS_hy_AM=	ARMSCII-8
 CMS_ja_JP=	SJIS eucJP
 CMS_kk_KZ=	PT154
@@ -79,15 +79,17 @@ LEGLINK_zh_Hant_TW=	zh_TW zh_HK
 LEGLINK_sr_Cyrl_RS=	sr_YU
 LEGLINK_sr_Latn_RS.ISO8859-2=	sr_YU.ISO8859-2
 LEGLINK_zh_Hans_CN.GBK2312=	zh_CN.GBK
-LEGLINK_hi_IN.macdevanaga=	hi_IN.ISCII-DEV
 
 #
 # In theory there are no parts after here which should be touched when adding
 # or removing locales and charactermaps.
 #
 
-LOCALEDIR=	/usr/share/locale
+# Required variables
 LCTYPE=		LC_MESSAGES
+LOCALEDIR=	/usr/share/locale
+
+# For testing only
 DESTDIR=	/home/edwin/locale/new/
 SHAREOWN=	edwin
 SHAREGRP=	edwin
@@ -96,5 +98,5 @@ SHAREGRP=	edwin
 # All variables
 #
 
-.include "../Makefile.def.in"
+.include "../Makefile.def.inc"
 .include <bsd.prog.mk>

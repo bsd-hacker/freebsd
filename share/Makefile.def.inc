@@ -1,7 +1,18 @@
 # $FreeBSD: user/edwin/locale/share/msgdef/Makefile 196760 2009-09-02 10:12:13Z edwin $
 
 #
-# All variables
+# Predefined variables - Not for "end-users" to look at.
+#
+
+# aliases for charactermaps
+CMALIAS_ISCII-DEV=	macdevanaga
+
+# libiconv doesn't understand iscii-dev, bsdiconv does
+ICONV=	/home/edwin/libiconv/bin/iconv
+ICONV_hi_IN.ISCII-DEV=	/usr/bin/iconv
+
+#
+# Calculated variables
 #
 
 # All charactermaps
@@ -120,10 +131,24 @@ SYMLINKS+=	../${ccln}.${cm}/${LCTYPE} ${LOCALEDIR}/${cclncm}
 .  endif
 . endfor
 
+#
+# Fill in the ICONV_ variables with the default values.
+#
+. if defined(CMS_${ccln})
+.  for cms in ${CMS_${ccln}}
+.   if !defined(ICONV_${ccln}.${cms})
+ICONV_${ccln}.${cms}=	${ICONV}
+.   endif
+.  endfor
+. endif
+
 .endfor
 
-ICONV=	/home/edwin/libiconv/bin/iconv
-ICONV_hi_IN.macdevanaga=	/usr/bin/iconv
+.for cm in ${CMS}
+. if !defined(CMALIAS_${cm})
+CMALIAS_${cm}=	${cm}
+. endif
+.endfor
 
 #
 # All targets
@@ -147,20 +172,14 @@ ${ccln}.UTF-8.out: ${ccln}.src
 
 . if defined(CMS_${ccln})
 .  for cms in ${CMS_${ccln}}
+
 ${ccln}.${cms}.out: ${ccln}.src
-.   if defined(ICONV_${ccln}.${cms})
 	${ICONV_${ccln}.${cms}} \
 	    -f UTF-8 \
-	    -t ${cms} \
+	    -t ${CMALIAS_${cms}} \
 	    ${.ALLSRC} > ${.TARGET} \
 	|| rm ${.TARGET} && exit 0
-.   else
-	${ICONV} \
-	    -f UTF-8 \
-	    -t ${cms} \
-	    ${.ALLSRC} > ${.TARGET} \
-	|| rm ${.TARGET} && exit 0
-.   endif
+
 .  endfor
 . endif
 .endfor
