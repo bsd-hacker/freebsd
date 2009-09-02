@@ -222,7 +222,12 @@ SYMLINKS+=	../${ccln}.${cm}/${LCTYPE} ${LOCALEDIR}/${cclncm}
 # Normal makes don't need to convert from .unicode to .src
 . if defined(FULL)
 ${ccln}.src: ${ccln}.unicode
-	echo ${.ALLSRC} > ${.TARGET}
+	../../cldr/tools/unicode2src.pl \
+	    --cldr=/home/edwin/unicode/cldr/1.7.1 \
+	    --unidata=/home/edwin/unicode/UNIDATA/5.1.0/ \
+	    --input=${.ALLSRC} \
+	    --output=${.TARGET}
+
 . endif
 
 ${ccln}.UTF-8.out: ${ccln}.src
@@ -231,7 +236,11 @@ ${ccln}.UTF-8.out: ${ccln}.src
 .if defined(CMS_${ccln})
 .for cms in ${CMS_${ccln}}
 ${ccln}.${cms}.out: ${ccln}.src
-	grep -v '^#' < ${.ALLSRC} > ${.TARGET}
+	iconv \
+	    -f UTF-8 \
+	    -t ${.TARGET:S/${.ALLSRC:S/.src//}.//:S/.out//} \
+	    ${.ALLSRC} > ${.TARGET} \
+	|| rm ${.TARGET} && exit 0
 .endfor
 .endif
 .endfor
