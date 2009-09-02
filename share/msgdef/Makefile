@@ -236,7 +236,7 @@ ${ccln}.UTF-8.out: ${ccln}.src
 .if defined(CMS_${ccln})
 .for cms in ${CMS_${ccln}}
 ${ccln}.${cms}.out: ${ccln}.src
-	iconv \
+	/home/edwin/libiconv/bin/iconv \
 	    -f UTF-8 \
 	    -t ${.TARGET:S/${.ALLSRC:S/.src//}.//:S/.out//} \
 	    ${.ALLSRC} > ${.TARGET} \
