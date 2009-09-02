@@ -125,6 +125,7 @@ struct file {
 	 *  DFLAG_SEEKABLE specific fields
 	 */
 	off_t		f_offset;
+	off_t		f_sfbytes;
 	/*
 	 * Mandatory Access control information.
 	 */

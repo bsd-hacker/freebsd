@@ -177,7 +177,10 @@ sowakeup(struct socket *so, struct sockbuf *sb)
 {
 
 	SOCKBUF_LOCK_ASSERT(sb);
-
+	if (sb->sb_flags & SB_SENDING) {
+	        SOCKBUF_UNLOCK(sb);
+		return;
+	}
 	selwakeuppri(&sb->sb_sel, PSOCK);
 	if (!SEL_WAITING(&sb->sb_sel))
 		sb->sb_flags &= ~SB_SEL;
@@ -879,6 +882,8 @@ sbdrop_internal(struct sockbuf *sb, int len)
 	}
 }
 
+extern void sosendingwakeup(void *unused __unused);
+
 /*
  * Drop data from (the front of) a sockbuf.
  */
@@ -889,6 +894,8 @@ sbdrop_locked(struct sockbuf *sb, int len)
 	SOCKBUF_LOCK_ASSERT(sb);
 
 	sbdrop_internal(sb, len);
+	if (sb->sb_flags & SB_SENDING)
+		sosendingwakeup(NULL);
 }
 
 void

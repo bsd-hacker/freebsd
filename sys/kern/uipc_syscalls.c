@@ -114,7 +114,7 @@ SYSCTL_INT(_kern_ipc, OID_AUTO, nsfbufsused, CTLFLAG_RD, &nsfbufsused, 0,
  * associated with the additional reference count.  If requested, return the
  * open file flags.
  */
-static int
+int
 getsock(struct filedesc *fdp, int fd, struct file **fpp, u_int *fflagp)
 {
 	struct file *fp;
@@ -1778,7 +1778,7 @@ int
 kern_sendfile(struct thread *td, struct sendfile_args *uap,
     struct uio *hdr_uio, struct uio *trl_uio, int compat)
 {
-	struct file *sock_fp;
+	struct file *sock_fp, *fp = NULL;
 	struct vnode *vp;
 	struct vm_object *obj = NULL;
 	struct socket *so = NULL;
@@ -1795,10 +1795,22 @@ kern_sendfile(struct thread *td, struct sendfile_args *uap,
 	 * File offset must be positive.  If it goes beyond EOF
 	 * we send only the header/trailer and no payload data.
 	 */
-	if ((error = fgetvp_read(td, uap->fd, &vp)) != 0)
+	if ((error = fget_read(td, uap->fd, &fp)) != 0)
 		goto out;
+	else {
+		if (fp->f_vnode == NULL) {
+			fdrop(fp, td);
+			error = EINVAL;
+			goto out;
+		} else {
+			vp = fp->f_vnode;
+			vref(vp);
+		}
+	}
+	
+	
 	vfslocked = VFS_LOCK_GIANT(vp->v_mount);
-	vn_lock(vp, LK_SHARED | LK_RETRY, td);
+	vn_lock(vp, LK_SHARED | LK_RETRY, curthread);
 	if (vp->v_type == VREG) {
 		obj = vp->v_object;
 		if (obj != NULL) {
@@ -1818,7 +1830,7 @@ kern_sendfile(struct thread *td, struct sendfile_args *uap,
 			}
 		}
 	}
-	VOP_UNLOCK(vp, 0, td);
+	VOP_UNLOCK(vp, 0, curthread);
 	VFS_UNLOCK_GIANT(vfslocked);
 	if (obj == NULL) {
 		error = EINVAL;
@@ -1834,7 +1846,7 @@ kern_sendfile(struct thread *td, struct sendfile_args *uap,
 	 * Remember if it a blocking or non-blocking socket.
 	 */
 	if ((error = getsock(td->td_proc->p_fd, uap->s, &sock_fp,
-	    NULL)) != 0)
+		    NULL)) != 0)
 		goto out;
 	so = sock_fp->f_data;
 	if (so->so_type != SOCK_STREAM) {
@@ -1845,6 +1857,19 @@ kern_sendfile(struct thread *td, struct sendfile_args *uap,
 		error = ENOTCONN;
 		goto out;
 	}
+
+	SOCKBUF_LOCK(&so->so_snd);
+	if (((so->so_snd.sb_flags & SB_SENDING) == 0) && fp->f_sfbytes != 0) {
+		SOCKBUF_UNLOCK(&so->so_snd);
+		if (uap->sbytes != NULL) {
+			copyout(&sbytes, uap->sbytes, sizeof(off_t));
+		}
+		fp->f_sfbytes = 0;
+		error = 0;
+		goto out;
+	}
+	SOCKBUF_UNLOCK(&so->so_snd);
+	
 	/*
 	 * Do not wait on memory allocations but return ENOMEM for
 	 * caller to retry later.
@@ -1946,6 +1971,7 @@ retry_space:
 		    (space <= 0 ||
 		     space < so->so_snd.sb_lowat)) {
 			if (so->so_state & SS_NBIO) {
+				soissending(so, td, uap, hdr_uio, trl_uio, compat);
 				SOCKBUF_UNLOCK(&so->so_snd);
 				error = EAGAIN;
 				goto done;
@@ -2053,7 +2079,7 @@ retry_space:
 				 */
 				bsize = vp->v_mount->mnt_stat.f_iosize;
 				vfslocked = VFS_LOCK_GIANT(vp->v_mount);
-				vn_lock(vp, LK_SHARED | LK_RETRY, td);
+				vn_lock(vp, LK_SHARED | LK_RETRY, curthread);
 
 				/*
 				 * XXXMAC: Because we don't have fp->f_cred
@@ -2065,7 +2091,7 @@ retry_space:
 				    trunc_page(off), UIO_NOCOPY, IO_NODELOCKED |
 				    IO_VMIO | ((MAXBSIZE / bsize) << IO_SEQSHIFT),
 				    td->td_ucred, NOCRED, &resid, td);
-				VOP_UNLOCK(vp, 0, td);
+				VOP_UNLOCK(vp, 0, curthread);
 				VFS_UNLOCK_GIANT(vfslocked);
 				VM_OBJECT_LOCK(obj);
 				vm_page_io_finish(pg);
@@ -2214,6 +2240,8 @@ out:
 	}
 	if (so)
 		fdrop(sock_fp, td);
+	if (fp)
+		fdrop(fp, td);
 	if (m)
 		m_freem(m);
 
