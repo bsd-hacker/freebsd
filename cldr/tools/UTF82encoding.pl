@@ -3,6 +3,11 @@
 use strict;
 use Data::Dumper;
 
+if ($#ARGV != 1) {
+	print "Usage: $0 <cldr dir> <input file>\n";
+	exit;
+}
+
 open(FIN, "$ARGV[0]/posix/UTF-8.cm");
 my @lines = <FIN>;
 chomp(@lines);
@@ -18,10 +23,9 @@ foreach my $line (@lines) {
 	next if ($#a != 1);
 
 	$a[1] =~ s/\\x//g;
-	$cm{$a[1]} = $a[0];
+	$a[0] =~ s/_/ /g;
+	$cm{$a[1]} = $a[0] if (!defined $cm{$a[1]});
 }
-
-print Dumper($cm{"4D"}), "\n";
 
 open(FIN, $ARGV[1]);
 @lines = <FIN>;
@@ -37,6 +41,16 @@ foreach my $line (@lines) {
 	my @l = split(//, $line);
 	for (my $i = 0; $i <= $#l; $i++) {
 		my $hex = sprintf("%X", ord($l[$i]));
+
+		if ((		      $l[$i] gt "\x20")
+		 && ($l[$i] lt "a" || $l[$i] gt "z")
+		 && ($l[$i] lt "A" || $l[$i] gt "Z")
+		 && ($l[$i] lt "0" || $l[$i] gt "9")
+		 && ($l[$i] lt "\x80")) {
+			print $l[$i];
+			next;
+		}
+
 		if (defined $cm{$hex}) {
 			print $cm{$hex};
 			next;
