@@ -3,12 +3,11 @@
 # All locales to be created.
 CCLN=		am_ET be_BY bg_BG ca_ES cs_CZ da_DK de_AT de_DE \
 		el_GR en_GB en_US es_ES et_EE eu_ES fi_FI fr_FR \
-		he_IL hr_HR hu_HU hy_AM is_IS \
+		he_IL hi_IN hr_HR hu_HU hy_AM is_IS \
 		it_IT ja_JP kk_KZ ko_KR la_LN lt_LT mn_MN nb_NO \
 		nl_NL nn_NO pl_PL pt_BR pt_PT ro_RO ru_RU sk_SK \
-		sl_SI sr_Cyrl_YU sr_Latn_YU sv_SE tr_TR uk_UA \
+		sl_SI sr_Cyrl_RS sr_Latn_RS sv_SE tr_TR uk_UA \
 		zh_Hans_CN zh_Hant_TW
-# hi_IN
 
 # For these locales, beside creating the UTF-8 map also create these
 # charactermaps.
@@ -78,7 +77,7 @@ CMSLINK_nl_NL=	ISO8859-1 ISO8859-15
 CMSLINK_nn_NO.ISO8859-1=	nn_NO.ISO8859-15
 CMSLINK_pt_PT.ISO8859-1=	pt_PT.ISO8859-15
 CMSLINK_sv_SE.ISO8859-1=	sv_SE.ISO8859-15
-CMSLINK_zh_Hans_CN.GB2312=	CMSLINK_zh_Hans_CN.GBK
+CMSLINK_zh_Hans_CN.GB2312=	zh_Hans_CN.GBK
 
 # For these locales, also create symlinks to the main locale.
 CCLNLINK_en_US.UTF-8=		af_ZA.UTF-8
