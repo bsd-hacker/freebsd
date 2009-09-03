@@ -1,154 +1,135 @@
 # $FreeBSD$
 
-LOCALES=	am_ET.UTF-8 \
-		be_BY.CP1131 \
-		be_BY.CP1251 \
-		be_BY.ISO8859-5 \
-		be_BY.UTF-8 \
-		bg_BG.CP1251 \
-		bg_BG.UTF-8 \
-		ca_ES.ISO8859-1 \
-		ca_ES.UTF-8 \
-		cs_CZ.ISO8859-2 \
-		cs_CZ.UTF-8 \
-		da_DK.ISO8859-1 \
-		da_DK.UTF-8 \
-		de_AT.ISO8859-1 \
-		de_AT.UTF-8 \
-		de_DE.ISO8859-1 \
-		de_DE.UTF-8 \
-		el_GR.ISO8859-7 \
-		el_GR.UTF-8 \
-		en_GB.ISO8859-1 \
-		en_US.ISO8859-1 \
-		es_ES.ISO8859-1 \
-		es_ES.UTF-8 \
-		et_EE.ISO8859-15 \
-		et_EE.UTF-8 \
-		eu_ES.ISO8859-1 \
-		fi_FI.ISO8859-1 \
-		fi_FI.UTF-8 \
-		fr_FR.ISO8859-1 \
-		fr_FR.UTF-8 \
-		he_IL.UTF-8 \
-		hi_IN.ISCII-DEV \
-		hr_HR.ISO8859-2 \
-		hr_HR.UTF-8 \
-		hu_HU.ISO8859-2 \
-		hu_HU.UTF-8 \
-		hy_AM.ARMSCII-8 \
-		hy_AM.UTF-8 \
-		is_IS.ISO8859-1 \
-		is_IS.UTF-8 \
-		ja_JP.eucJP \
-		ja_JP.SJIS \
-		ja_JP.UTF-8 \
-		it_IT.ISO8859-1 \
-		it_IT.UTF-8 \
-		kk_KZ.PT154 \
-		kk_KZ.UTF-8 \
-		ko_KR.eucKR \
-		ko_KR.UTF-8 \
-		la_LN.ISO8859-1 \
-		lt_LT.ISO8859-4 \
-		lt_LT.ISO8859-13 \
-		lt_LT.UTF-8 \
-		mn_MN.UTF-8 \
-		nb_NO.ISO8859-1 \
-		nb_NO.UTF-8 \
-		nl_NL.ISO8859-1 \
-		nn_NO.ISO8859-1 \
-		nn_NO.UTF-8 \
-		pl_PL.ISO8859-2 \
-		pl_PL.UTF-8 \
-		pt_BR.ISO8859-1 \
-		pt_BR.UTF-8 \
-		pt_PT.ISO8859-1 \
-		pt_PT.UTF-8 \
-		ro_RO.ISO8859-2 \
-		ro_RO.UTF-8 \
-		ru_RU.CP1251 \
-		ru_RU.CP866 \
-		ru_RU.ISO8859-5 \
-		ru_RU.KOI8-R \
-		ru_RU.UTF-8 \
-		sk_SK.ISO8859-2 \
-		sk_SK.UTF-8 \
-		sl_SI.ISO8859-2 \
-		sl_SI.UTF-8 \
-		sr_YU.ISO8859-2 \
-		sr_YU.ISO8859-5 \
-		sr_YU.UTF-8 \
-		sv_SE.ISO8859-1 \
-		sv_SE.UTF-8 \
-		tr_TR.ISO8859-9 \
-		tr_TR.UTF-8 \
-		uk_UA.CP1251 \
-		uk_UA.ISO8859-5 \
-		uk_UA.KOI8-U \
-		uk_UA.UTF-8 \
-		zh_CN.eucCN \
-		zh_CN.GB18030 \
-		zh_CN.GB2312 \
-		zh_CN.UTF-8 \
-		zh_TW.Big5 \
-		zh_TW.UTF-8
+# All locales to be created.
+CCLN=		am_ET be_BY bg_BG ca_ES cs_CZ da_DK de_AT de_DE \
+		el_GR en_GB en_US es_ES et_EE eu_ES fi_FI fr_FR \
+		he_IL hi_IN.ISCII-DEV.src hr_HR hu_HU hy_AM is_IS \
+		it_IT ja_JP kk_KZ ko_KR la_LN lt_LT mn_MN nb_NO \
+		nl_NL nn_NO pl_PL pt_BR pt_PT ro_RO ru_RU sk_SK \
+		sl_SI sr_Cyrl_YU sr_Latn_YU sv_SE tr_TR uk_UA \
+		zh_Hans_CN zh_Hant_TW
 
-LOCALEDIR=      /usr/share/locale
+# For these locales, beside creating the UTF-8 map also create these
+# charactermaps.
+CMS_be_BY=	CP1131 CP1251 ISO8859-5
+CMS_bg_BG=	CP1251
+CMS_ca_ES=	ISO8859-1
+CMS_cs_CZ=	ISO8859-2
+CMS_da_DK=	ISO8859-1
+CMS_de_AT=	ISO8859-1
+CMS_de_DE=	ISO8859-1
+CMS_el_GR=	ISO8859-7
+CMS_en_GB=	ISO8859-1
+CMS_en_US=	ISO8859-1
+CMS_es_ES=	ISO8859-1
+CMS_et_EE=	ISO8859-15
+CMS_eu_ES=	ISO8859-1
+CMS_fi_FI=	ISO8859-1
+CMS_fr_FR=	ISO8859-1
+CMS_hi_IN=	ISCII-DEV
+CMS_hr_HR=	ISO8859-2
+CMS_hu_HU=	ISO8859-2
+CMS_hy_AM=	ARMSCII-8
+CMS_is_IS=	ISO8859-1
+CMS_it_IT=	ISO8859-1
+CMS_ja_JP=	SJIS eucJP
+CMS_kk_KZ=	PT154
+CMS_ko_KR=	eucKR
+CMS_la_LN=	ISO8859-1
+CMS_lt_LT=	ISO8859-4 ISO8859-13
+CMS_nb_NO=	ISO8859-1
+CMS_nl_NL=	ISO8859-1
+CMS_nn_NO=	ISO8859-1
+CMS_pl_PL=	ISO8859-2
+CMS_pt_BR=	ISO8859-1
+CMS_pt_PT=	ISO8859-1
+CMS_ro_RO=	ISO8859-2
+CMS_ru_RU=	CP1251 CP866 ISO8859-5 KOI8-R
+CMS_sk_SK=	ISO8859-2
+CMS_sl_SI=	ISO8859-2
+CMS_sr_Cyrl_RS=	ISO8859-5
+CMS_sr_Latn_RS=	ISO8859-2
+CMS_sv_SE=	ISO8859-1
+CMS_tr_TR=	ISO8859-9
+CMS_uk_UA=	CP1251 ISO8859-5 KOI8-U
+CMS_zh_Hans_CN=	GB18030 GB2312 eucCN
+CMS_zh_Hant_TW=	Big5
 
-.SUFFIXES: .src .out
+xx
+/tmp/a
 
-.src.out:
-	grep -v '^#' < ${.IMPSRC} > ${.TARGET}
+# For these locales, link the following charactermaps to the UTF-8 map.
+# (unless the origin charactermap is defined)
+CMSLINK_af_ZA=	ISO8859-1 ISO8859-15
+CMSLINK_ca_ES=	ISO8859-1 ISO8859-15
+CMSLINK_cs_CZ=	ISO8859-2
+CMSLINK_da_DK=	ISO8859-1 ISO8859-15
+CMSLINK_de_DE=	ISO8859-1 ISO8859-15
+CMSLINK_en_CA=	ISO8859-1 ISO8859-15 US-ASCII
+CMSLINK_en_GB=	ISO8859-1 ISO8859-15 US-ASCII
+CMSLINK_en_US=	ISO8859-1 ISO8859-15 US-ASCII
+CMSLINK_es_ES=	ISO8859-1 ISO8859-15
+CMSLINK_et_EE=	ISO8859-15
+CMSLINK_eu_ES=	ISO8859-1 ISO8859-15
+CMSLINK_fi_FI=	ISO8859-1 ISO8859-15
+CMSLINK_fr_BE=	ISO8859-1 ISO8859-15
+CMSLINK_fr_CH=	ISO8859-1 ISO8859-15
+CMSLINK_fr_FR=	ISO8859-1 ISO8859-15
+CMSLINK_hr_HR=	ISO8859-2
+CMSLINK_hu_HU=	ISO8859-2
+CMSLINK_is_IS=	ISO8859-1 ISO8859-15
+CMSLINK_it_IT=	ISO8859-1 ISO8859-15
+CMSLINK_ko_KR.eucKR=	ko_KR.CP949
+CMSLINK_lt_LT=	ISO8859-4 ISO8859-13
+CMSLINK_nl_NL=	ISO8859-1 ISO8859-15
+CMSLINK_no_NO=	ISO8859-1 ISO8859-15
+CMSLINK_pl_PL=	ISO8859-2
+CMSLINK_pt_PT=	ISO8859-1 ISO8859-15
+CMSLINK_ro_RO=	ISO8859-2
+CMSLINK_sl_SI=	ISO8859-2
+CMSLINK_sv_SE=	ISO8859-1 ISO8859-15
+CMSLINK_tr_TR=	ISO8859-9
+CMSLINK_zh_Hans_CN=	GBK
+CMSLINK_zh_Hant_TW=	Big5HKSCS
 
-FILES=		${LOCALES:S/$/.out/}
-FILESNAME=	LC_TIME
+# For these locales, also create symlinks to the main locale.
+CCLNLINK_ca_ES=		ca_AD ca_FR ca_IT
+CCLNLINK_cs_CZ=		sk_SK
+CCLNLINK_de_DE=		de_AT de_CH
+CCLNLINK_en_GB=		en_AU en_NZ
+CCLNLINK_fr_FR=		fr_CA
+CCLNLINK_it_IT=		it_CH
+CCLNLINK_nl_NL=		nl_BE
+CCLNLINK_no_NO=		nb_NO nn_NO
+CCLNLINK_pt_PT=		pt_BR
+CCLNLINK_zh_Hant_TW=	zh_Hant_HK
+CCLNLINK_en_GB.UTF-8=	en_IE.UTF-8
 
-.for locale in ${LOCALES}
-FILESDIR_${locale}.out= ${LOCALEDIR}/${locale}
-.endfor
+# For these locales, create symlinks to the main locale for historical reasons.
+LEGLINK_ja_JP=		jp_JP
+LEGLINK_zh_Hans_CN=	zh_CN
+LEGLINK_zh_Hant_TW=	zh_TW zh_HK
+LEGLINK_sr_Cyrl_RS=	sr_YU
+LEGLINK_sr_Latn_RS.ISO8859-2=	sr_YU.ISO8859-2
+LEGLINK_zh_Hans_CN.GBK2312=	zh_CN.GBK
 
-CLEANFILES=	${FILES}
+#
+# In theory there are no parts after here which should be touched when adding
+# or removing locales and charactermaps.
+#
 
-ENCODINGS=	Big5HKSCS CP949 eucKR GB2312 GBK \
-		ISO8859-1 ISO8859-2 ISO8859-4 ISO8859-15 \
-		US-ASCII UTF-8
+# Required variables
+LCTYPE=		LC_MESSAGES
+LOCALEDIR=	/usr/share/locale
 
-CA_LINKS=	ca_ES:ca_AD ca_ES:ca_FR ca_ES:ca_IT
-DE_LINKS=	de_DE:de_CH
-FR_LINKS=	fr_FR:fr_BE fr_FR:fr_CA fr_FR:fr_CH
-IT_LINKS=	it_IT:it_CH
-NL_LINKS=	nl_NL:nl_BE
-NO_LINKS=	nb_NO:no_NO
-GB_LINKS=	en_GB:en_AU en_GB:en_CA en_GB:en_NZ
+# For testing only
+DESTDIR=	/home/edwin/locale/new/
+SHAREOWN=	edwin
+SHAREGRP=	edwin
 
-eucKR_CP949=	ko_KR
-GB2312_GBK=	zh_CN
-ISO8859-1_ISO8859-1= ${CA_LINKS} ${DE_LINKS} ${FR_LINKS} ${GB_LINKS} \
-		${IT_LINKS} ${NL_LINKS} ${NO_LINKS} en_US:af_ZA
-ISO8859-1_ISO8859-15= ca_ES da_DK de_AT de_DE en_GB en_US es_ES eu_ES \
-		fi_FI fr_FR is_IS it_IT la_LN nb_NO nl_NL nn_NO no_NO pt_PT \
-		sv_SE \
-		${CA_LINKS} ${DE_LINKS} ${FR_LINKS} ${GB_LINKS} ${IT_LINKS} \
-		${NL_LINKS}
-ISO8859-1_US-ASCII= ${GB_LINKS} en_GB en_US la_LN
-ISO8859-1_ISO8859-2= la_LN
-ISO8859-1_ISO8859-4= la_LN
-ISO8859-1_UTF-8= en_GB en_US eu_ES nl_NL
-ISO8859-15_ISO8859-15= en_US:af_ZA
-UTF-8_Big5HKSCS= zh_TW:zh_HK
-UTF-8_UTF-8=	${CA_LINKS} ${DE_LINKS} ${FR_LINKS} ${GB_LINKS} ${IT_LINKS} \
-		${NL_LINKS} ${NO_LINKS} \
-		en_GB:en_IE en_US:af_ZA zh_TW:zh_HK
+#
+# All variables
+#
 
-SYMLINKS=
-.for enc1 in ${ENCODINGS}
-.for enc2 in ${ENCODINGS}
-.for lang_terr in ${${enc1}_${enc2}}
-SYMLINKS+=	../${lang_terr:C/:.*$//}.${enc1}/${FILESNAME} \
-		${LOCALEDIR}/${lang_terr:C/^.*://}.${enc2}
-.endfor
-.endfor
-.endfor
-
+.include "../Makefile.def.inc"
 .include <bsd.prog.mk>
