@@ -63,7 +63,7 @@
 # A quick poll on IRC and the -doc mailinglist (June 2009) showed that
 # this format was not used often enough to push this change through.
 #
-%d<FULL_STOP>%m<FULL_STOP>%Y
+%d<FULL STOP>%m<FULL STOP>%Y
 #
 # c_fmt
 #

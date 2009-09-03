@@ -59,11 +59,11 @@
 #
 # d_fmt
 #
-%d<FULL_STOP>%m<FULL_STOP>%Y
+%d<FULL STOP>%m<FULL STOP>%Y
 #
 # c_fmt
 #
-%a<COMMA><SPACE>%d<FULL_STOP><SPACE>%b<SPACE>%Y<FULL_STOP><SPACE>%T
+%a<COMMA><SPACE>%d<FULL STOP><SPACE>%b<SPACE>%Y<FULL STOP><SPACE>%T
 #
 # am
 #
@@ -75,7 +75,7 @@
 #
 # d_t_fmt
 #
-%A<COMMA><SPACE>%d<FULL_STOP><SPACE>%B<SPACE>%Y<FULL_STOP><SPACE>%T<SPACE>%Z
+%A<COMMA><SPACE>%d<FULL STOP><SPACE>%B<SPACE>%Y<FULL STOP><SPACE>%T<SPACE>%Z
 #
 # Long month names (without case ending)
 #
