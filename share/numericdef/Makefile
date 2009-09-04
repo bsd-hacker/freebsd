@@ -10,13 +10,10 @@ CCLN=           af_ZA am_ET be_BY bg_BG ca_ES cs_CZ da_DK de_CH \
 
 # For these locales, beside creating the UTF-8 map also create these
 # charactermaps.
-#MS_ca_ES=	ISO8859-1
-#MS_de_DE=	P123
+# (none!)
 
 # For these locales, link the following charactermaps to the UTF-8 map.
 # (unless the origin charactermap is defined)
-#MSLINK_af_ZA=	ISO8859-1 ISO8859-15
-#MSLINK_be_BY=	CP1131 CP1251 ISO8859-5
 CMSLINK_af_ZA=	ISO8859-1 ISO8859-15
 CMSLINK_be_BY=	CP1131 CP1251 ISO8859-5
 CMSLINK_bg_BG=	CP1251
@@ -59,7 +56,6 @@ CMSLINK_uk_UA=	CP1251 ISO8859-5 KOI8-U
 CMSLINK_zh_Hans_CN=	GB18030 GB2312 GBK eucCN
 
 # For these locales, also create symlinks to the main locale.
-#CLNLINK_af_ZA=	en_GB
 CCLNLINK_ca_ES=	ca_AD ca_FR ca_IT
 CCLNLINK_de_DE=	de_AT
 CCLNLINK_en_GB.UTF-8=	en_IE.UTF-8
