@@ -1,0 +1,36 @@
+# $FreeBSD$
+#
+# WARNING: spaces may be essential at the end of lines
+# WARNING: empty lines are essential too
+#
+# int_curr_symbol (last character always SPACE)
+<LATIN CAPITAL LETTER R><LATIN CAPITAL LETTER U><LATIN CAPITAL LETTER B><SPACE>
+# currency_symbol
+<CYRILLIC SMALL LETTER ER><CYRILLIC SMALL LETTER U><CYRILLIC SMALL LETTER BE><FULL STOP>
+# mon_decimal_point
+<COMMA>
+# mon_thousands_sep
+<SPACE>
+# mon_grouping, separated by ;
+3;3
+# positive_sign
+
+# negative_sign
+<HYPHEN-MINUS>
+# int_frac_digits
+2
+# frac_digits
+2
+# p_cs_precedes
+0
+# p_sep_by_space
+1
+# n_cs_precedes
+0
+# n_sep_by_space
+1
+# p_sign_posn
+1
+# n_sign_posn
+1
+# EOF
