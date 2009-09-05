@@ -52,7 +52,7 @@ struct cv {
 void	cv_init(struct cv *cvp, const char *desc);
 void	cv_destroy(struct cv *cvp);
 
-void	_cv_wait(struct cv *cvp, struct lock_object *lock);
+void	_cv_wait(struct cv *cvp, struct lock_object *lock, int flags);
 void	_cv_wait_unlock(struct cv *cvp, struct lock_object *lock);
 int	_cv_wait_sig(struct cv *cvp, struct lock_object *lock);
 int	_cv_timedwait(struct cv *cvp, struct lock_object *lock, int timo);
@@ -61,8 +61,12 @@ int	_cv_timedwait_sig(struct cv *cvp, struct lock_object *lock, int timo);
 void	cv_signal(struct cv *cvp);
 void	cv_broadcastpri(struct cv *cvp, int pri);
 
+#define	CV_SLEEP_OK	       0x1
+
 #define	cv_wait(cvp, lock)						\
-	_cv_wait((cvp), &(lock)->lock_object)
+	_cv_wait((cvp), &(lock)->lock_object, 0)
+#define	opensolaris_cv_wait(cvp, lock)					\
+	_cv_wait((cvp), &(lock)->lock_object, CV_SLEEP_OK)
 #define	cv_wait_unlock(cvp, lock)					\
 	_cv_wait_unlock((cvp), &(lock)->lock_object)
 #define	cv_wait_sig(cvp, lock)						\

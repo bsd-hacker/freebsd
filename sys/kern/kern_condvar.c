@@ -93,7 +93,7 @@ cv_destroy(struct cv *cvp)
  * held when cv_signal or cv_broadcast are called.
  */
 void
-_cv_wait(struct cv *cvp, struct lock_object *lock)
+_cv_wait(struct cv *cvp, struct lock_object *lock, int flags)
 {
 	WITNESS_SAVE_DECL(lock_witness);
 	struct lock_class *class;
@@ -107,10 +107,9 @@ _cv_wait(struct cv *cvp, struct lock_object *lock)
 		ktrcsw(1, 0);
 #endif
 	CV_ASSERT(cvp, lock, td);
-#ifndef WITNESS_SKIPCV
-	WITNESS_WARN(WARN_GIANTOK, lock,
-	    "Waiting on \"%s\"", cvp->cv_description);
-#endif
+	if ((flags & CV_SLEEP_OK) == 0)
+		WITNESS_WARN(WARN_GIANTOK, lock,
+		    "Waiting on \"%s\"", cvp->cv_description);
 	WITNESS_SAVE(lock, lock_witness);
 	class = LOCK_CLASS(lock);
 
