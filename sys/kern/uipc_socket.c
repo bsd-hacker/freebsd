@@ -3221,8 +3221,10 @@ soissending(struct socket *so, struct thread *td,
 
 	bcopy(uap, &ref->sr_uap, sizeof(*uap));
 	ref->sr_uap.sbytes = NULL;
-	ref->sr_uap.offset += sbytes;
 	ref->sr_sock_fp->f_sfbytes = 0;
+	CTR4(KTR_SPARE1, "sock %p off %ld sbytes %ld total_sbytes %ld",
+	    so, ref->sr_uap.offset, sbytes, ref->sr_fp->f_sfbytes);
+	ref->sr_uap.offset += sbytes;
 	if (uap->nbytes)
 		ref->sr_uap.nbytes -= sbytes;
 	/*
@@ -3238,8 +3240,6 @@ soissending(struct socket *so, struct thread *td,
 	ref->sr_compat = compat;
 	ref->sr_magic = 0xCAFEBABE;
 	TASK_INIT(&ref->sr_task, 0, sendfile_task_func, ref);
-	CTR4(KTR_SPARE1, "sock %p off %ld sbytes %ld total_sbytes %ld",
-	    so, ref->sr_uap.offset, sbytes, ref->sr_fp->f_sfbytes);
 
 	CTR3(KTR_SPARE2, "enqueueing socket %p sock_fp %p s %d", so, ref->sr_sock_fp, uap->s);
 	mtx_lock(&sendfile_bg_lock);
@@ -3312,13 +3312,13 @@ sendfile_task_func(void *context, int pending __unused)
 		error = kern_sendfile(curthread, &sr->sr_uap,
 		    hdr_uio, trl_uio,
 		    sr->sr_compat, fp, so, sr->sr_ucred);
+		CTR4(KTR_SPARE1, "sock %p off %ld sbytes %ld total_sbytes %ld",
+		    so, sr->sr_uap.offset, sbytes, fp->f_sfbytes);
 		atomic_add_long(&fp->f_sfbytes, sbytes);
 		sr->sr_uap.offset += sbytes;
 		if (sr->sr_uap.nbytes)
 			sr->sr_uap.nbytes -= sbytes;
 
-		CTR4(KTR_SPARE1, "sock %p off %ld sbytes %ld total_sbytes %ld",
-		    so, sr->sr_uap.offset, sbytes, fp->f_sfbytes);
 		SOCKBUF_LOCK(sb);
 	}
 #ifdef KTR
