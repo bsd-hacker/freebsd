@@ -159,7 +159,7 @@ __FBSDID("$FreeBSD$");
 #define	MOEA_DEBUG
 
 #define TODO	panic("%s: not implemented", __func__);
-static uintptr_t moea64_get_unique_vsid(void); 
+uintptr_t moea64_get_unique_vsid(void); 
 
 static __inline register_t
 cntlzd(volatile register_t a) {
@@ -167,53 +167,6 @@ cntlzd(volatile register_t a) {
 	__asm ("cntlzd %0, %1" : "=r"(b) : "r"(a));
 	return b;
 }
-
-#ifdef __powerpc64__
-uint64_t va_to_vsid(pmap_t pm, vm_offset_t va);
-
-uint64_t
-va_to_vsid(pmap_t pm, vm_offset_t va)
-{
-	uint64_t slbe, slbv, i;
-
-	slbe = (uintptr_t)va >> ADDR_SR_SHFT;
-	slbe = (slbe << SLBE_ESID_SHIFT) | SLBE_VALID;
-	slbv = 0;
-
-	for (i = 0; i < sizeof(pm->pm_slb)/sizeof(pm->pm_slb[0]); i++) {
-		if (pm->pm_slb[i].slbe == (slbe | i)) {
-			slbv = pm->pm_slb[i].slbv;
-			break;
-		}
-	}
-
-	/* XXX: Have a long list for processes mapping more than 16 GB */
-
-	/*
-	 * If there is no vsid for this VA, we need to add a new entry
-	 * to the PMAP's segment table.
-	 */
-
-	if (slbv == 0) {
-		slbv = moea64_get_unique_vsid() << SLBV_VSID_SHIFT;
-		for (i = 0; i < sizeof(pm->pm_slb)/sizeof(pm->pm_slb[0]); i++) {
-			if (!(pm->pm_slb[i].slbe & SLBE_VALID)) {
-				pm->pm_slb[i].slbv = slbv;
-				pm->pm_slb[i].slbe = slbe | i;
-				break;
-			}
-		}
-	}
-
-	return ((slbv & SLBV_VSID_MASK) >> SLBV_VSID_SHIFT);
-}
-#else
-static __inline uint64_t
-va_to_vsid(pmap_t pm, vm_offset_t va)
-{
-	return ((pm->pm_sr[(uintptr_t)va >> ADDR_SR_SHFT]) & SR_VSID_MASK);
-}
-#endif
 
 #define	TLBSYNC()	__asm __volatile("tlbsync; ptesync");
 #define	SYNC()		__asm __volatile("sync");
@@ -1827,7 +1780,7 @@ moea64_page_wired_mappings(mmu_t mmu, vm_page_t m)
 
 static uintptr_t	moea64_vsidcontext;
 
-static uintptr_t
+uintptr_t
 moea64_get_unique_vsid(void) {
 	u_int entropy;
 	register_t hash;

@@ -228,15 +228,19 @@ nslb:
 	bf	17,1f;			/* branch if PSL_PR is false */	\
 /* Restore user SRs */							\
 	GET_CPUINFO(%r3);						\
+	std	%r27,(savearea+CPUSAVE_R27)(%r3);			\
 	std	%r28,(savearea+CPUSAVE_R28)(%r3);			\
 	std	%r29,(savearea+CPUSAVE_R29)(%r3);			\
 	std	%r30,(savearea+CPUSAVE_R30)(%r3);			\
 	std	%r31,(savearea+CPUSAVE_R31)(%r3);			\
+	mflr	%r27;			/* preserve LR */		\
 	RESTORE_USER_SRS();		/* uses r28-r31 */		\
+	mtlr	%r27;							\
 	ld	%r31,(savearea+CPUSAVE_R31)(%r3);			\
 	ld	%r30,(savearea+CPUSAVE_R30)(%r3);			\
 	ld	%r29,(savearea+CPUSAVE_R29)(%r3);			\
 	ld	%r28,(savearea+CPUSAVE_R28)(%r3);			\
+	ld	%r27,(savearea+CPUSAVE_R27)(%r3);			\
 1:	mfsprg1	%r2;			/* restore cr */		\
 	mtcr	%r2;							\
 	GET_CPUINFO(%r2);						\

@@ -57,6 +57,8 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
+#include <sys/lock.h>
+#include <sys/mutex.h>
 #include <sys/systm.h>
 #include <sys/proc.h>
 
@@ -75,14 +77,15 @@ int	setfault(faultbuf);	/* defined in locore.S */
  */
 
 #ifdef __powerpc64__
-uint64_t va_to_vsid(pmap_t pm, const volatile void *va);
-
 static __inline void
-set_user_sr(register_t vsid)
+set_user_sr(pmap_t pm, const void *addr)
 {
-	register_t esid, slb1, slb2;
+	register_t esid, vsid, slb1, slb2;
 
 	esid = USER_SR;
+	PMAP_LOCK(pm);
+	vsid = va_to_vsid(pm, (vm_offset_t)addr);
+	PMAP_UNLOCK(pm);
 
 	slb1 = vsid << 12;
 	slb2 = (((esid << 1) | 1UL) << 27) | USER_SR;
@@ -92,15 +95,12 @@ set_user_sr(register_t vsid)
 	isync();
 }
 #else
-static __inline register_t
-va_to_vsid(pmap_t pm, const volatile void *va)
-{
-        return ((pm->pm_sr[(uintptr_t)va >> ADDR_SR_SHFT]) & SR_VSID_MASK);
-}
-
 static __inline void
-set_user_sr(register_t vsid)
+set_user_sr(pmap_t pm, const void *addr)
 {
+	register_t vsid;
+
+	vsid = va_to_vsid(pm, (vm_offset_t)addr);
 
 	isync();
 	__asm __volatile ("mtsr %0,%1" :: "n"(USER_SR), "r"(vsid));
@@ -136,7 +136,7 @@ copyout(const void *kaddr, void *udaddr, size_t len)
 		if (l > len)
 			l = len;
 
-		set_user_sr(va_to_vsid(pm,up));
+		set_user_sr(pm,up);
 
 		bcopy(kp, p, l);
 
@@ -177,7 +177,7 @@ copyin(const void *udaddr, void *kaddr, size_t len)
 		if (l > len)
 			l = len;
 
-		set_user_sr(va_to_vsid(pm,up));
+		set_user_sr(pm,up);
 
 		bcopy(p, kp, l);
 
@@ -252,7 +252,7 @@ subyte(void *addr, int byte)
 		return (-1);
 	}
 
-	set_user_sr(va_to_vsid(pm,addr));
+	set_user_sr(pm,addr);
 
 	*p = (char)byte;
 
@@ -278,7 +278,7 @@ suword32(void *addr, int word)
 		return (-1);
 	}
 
-	set_user_sr(va_to_vsid(pm,addr));
+	set_user_sr(pm,addr);
 
 	*p = word;
 
@@ -304,7 +304,7 @@ suword(void *addr, long word)
 		return (-1);
 	}
 
-	set_user_sr(va_to_vsid(pm,addr));
+	set_user_sr(pm,addr);
 
 	*p = word;
 
@@ -345,7 +345,7 @@ fubyte(const void *addr)
 		return (-1);
 	}
 
-	set_user_sr(va_to_vsid(pm,addr));
+	set_user_sr(pm,addr);
 
 	val = *p;
 
@@ -370,7 +370,7 @@ fuword(const void *addr)
 		return (-1);
 	}
 
-	set_user_sr(va_to_vsid(pm,addr));
+	set_user_sr(pm,addr);
 
 	val = *p;
 
@@ -403,7 +403,7 @@ casuword(volatile u_long *addr, u_long old, u_long new)
 	p = (u_long *)((uintptr_t)USER_ADDR +
 	    ((uintptr_t)addr & ~SEGMENT_MASK));
 
-	set_user_sr(va_to_vsid(pm,addr));
+	set_user_sr(pm,(const void *)(vm_offset_t)addr);
 
 	if (setfault(env)) {
 		td->td_pcb->pcb_onfault = NULL;

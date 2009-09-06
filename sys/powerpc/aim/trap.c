@@ -177,6 +177,27 @@ trap(struct trapframe *frame)
 			sig = SIGTRAP;
 			break;
 
+#ifdef __powerpc64__
+		case EXC_ISE:
+		case EXC_DSE:
+			/*
+			 * Once we support more segments per process
+			 * than the SLB size, we should reload the SLB
+			 * cache here from the longer segment list.
+			 *
+			 * For now, we assume a miss, and call va_to_vsid()
+			 * to allocate a new segment. This will then likely
+			 * trigger a page fault immediately after.
+			 */
+
+			PMAP_LOCK(&p->p_vmspace->vm_pmap);
+			(void)va_to_vsid(&p->p_vmspace->vm_pmap,
+			    (type == EXC_ISE) ? frame->srr0 :
+			    frame->cpu.aim.dar);
+			PMAP_UNLOCK(&p->p_vmspace->vm_pmap);
+
+			break;
+#endif
 		case EXC_DSI:
 		case EXC_ISI:
 			sig = trap_pfault(frame, 1);
@@ -286,10 +307,12 @@ printtrap(u_int vector, struct trapframe *frame, int isfatal, int user)
 	printf("   exception       = 0x%x (%s)\n", vector >> 8,
 	    trapname(vector));
 	switch (vector) {
+	case EXC_DSE:
 	case EXC_DSI:
 		printf("   virtual address = 0x%" PRIxPTR "\n",
 		    frame->cpu.aim.dar);
 		break;
+	case EXC_ISE:
 	case EXC_ISI:
 		printf("   virtual address = 0x%" PRIxPTR "\n", frame->srr0);
 		break;

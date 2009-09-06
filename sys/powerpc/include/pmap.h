@@ -122,6 +122,15 @@ struct	md_page {
 #define	pmap_page_is_mapped(m)	(!LIST_EMPTY(&(m)->md.mdpg_pvoh))
 #define	pmap_page_set_memattr(m, ma)	(void)0
 
+/*
+ * Return the VSID corresponding to a given virtual address.
+ * If no VSID is currently defined, it will allocate one, and add it to
+ * a free SLB slot if available.
+ *
+ * NB: The PMAP MUST be locked already.
+ */
+uint64_t va_to_vsid(pmap_t pm, vm_offset_t va);
+
 #else
 
 struct pmap {

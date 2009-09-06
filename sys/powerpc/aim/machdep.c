@@ -1178,3 +1178,10 @@ db_trap_glue(struct trapframe *frame)
 
 	return (0);
 }
+
+uint64_t
+va_to_vsid(pmap_t pm, vm_offset_t va)
+{
+	return ((pm->pm_sr[(uintptr_t)va >> ADDR_SR_SHFT]) & SR_VSID_MASK);
+}
+

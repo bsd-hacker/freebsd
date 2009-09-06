@@ -1120,3 +1120,42 @@ db_trap_glue(struct trapframe *frame)
 
 	return (0);
 }
+
+uintptr_t moea64_get_unique_vsid(void);
+
+uint64_t
+va_to_vsid(pmap_t pm, vm_offset_t va)
+{
+	uint64_t slbe, slbv, i;
+
+	slbe = (uintptr_t)va >> ADDR_SR_SHFT;
+	slbe = (slbe << SLBE_ESID_SHIFT) | SLBE_VALID;
+	slbv = 0;
+
+	for (i = 0; i < sizeof(pm->pm_slb)/sizeof(pm->pm_slb[0]); i++) {
+		if (pm->pm_slb[i].slbe == (slbe | i)) {
+			slbv = pm->pm_slb[i].slbv;
+			break;
+		}
+	}
+
+	/* XXX: Have a long list for processes mapping more than 16 GB */
+
+	/*
+	 * If there is no vsid for this VA, we need to add a new entry
+	 * to the PMAP's segment table.
+	 */
+
+	if (slbv == 0) {
+		slbv = moea64_get_unique_vsid() << SLBV_VSID_SHIFT;
+		for (i = 0; i < sizeof(pm->pm_slb)/sizeof(pm->pm_slb[0]); i++) {
+			if (!(pm->pm_slb[i].slbe & SLBE_VALID)) {
+				pm->pm_slb[i].slbv = slbv;
+				pm->pm_slb[i].slbe = slbe | i;
+				break;
+			}
+		}
+	}
+
+	return ((slbv & SLBV_VSID_MASK) >> SLBV_VSID_SHIFT);
+}
