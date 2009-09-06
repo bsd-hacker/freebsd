@@ -106,6 +106,10 @@ SYSCTL_INT(_kern_ipc, OID_AUTO, nsfbufspeak, CTLFLAG_RD, &nsfbufspeak, 0,
 SYSCTL_INT(_kern_ipc, OID_AUTO, nsfbufsused, CTLFLAG_RD, &nsfbufsused, 0,
     "Number of sendfile(2) sf_bufs in use");
 
+static int bg_sendfile_enable = 1;
+SYSCTL_INT(_kern_ipc, OID_AUTO, bg_sendfile_enable, CTLFLAG_RW,
+    &bg_sendfile_enable, 0, "Enable background sendfile");
+
 /*
  * Convert a user file descriptor to a kernel file entry.  A reference on the
  * file entry is held upon returning.  This is lighter weight than
@@ -1986,7 +1990,8 @@ retry_space:
 		    (space <= 0 ||
 		     space < so->so_snd.sb_lowat)) {
 			if (so->so_state & SS_NBIO) {
-				if ((so->so_snd.sb_flags & SB_SENDING) == 0)
+				if (bg_sendfile_enable &&
+				    (so->so_snd.sb_flags & SB_SENDING) == 0)
 					soissending(so, td, uap, hdr_uio, trl_uio, compat, sbytes);
 				SOCKBUF_UNLOCK(&so->so_snd);
 				error = EAGAIN;
