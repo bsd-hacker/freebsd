@@ -3321,13 +3321,20 @@ sendfile_task_func(void *context, int pending __unused)
 		    so, sr->sr_uap.offset, sbytes, fp->f_sfbytes);
 		SOCKBUF_LOCK(sb);
 	}
-
+#ifdef KTR
+	else
+		CTR2(KTR_SPARE1, "sock %p off %ld - not writeable in task_func",
+		    so, sr->sr_uap.offset);
+#endif		
 	if (error == EAGAIN && srsendingwakeup(sr) != ENOTCONN) {
 		SOCKBUF_UNLOCK(sb);
 		return;
-	} else if (error != EAGAIN) 
+	}
+#ifdef KTR
+	if (error && error != EAGAIN && error != EPIPE) 
 		CTR1(KTR_SPARE1, "error %d", error); 
-
+#endif
+	
 	sb->sb_flags &= ~SB_SENDING;
 	sowwakeup_locked(so);
 done:
@@ -3375,6 +3382,8 @@ srsendingwakeup(struct socketref *sr)
 		sb->sb_flags |= SB_SENDING;
 		taskqueue_enqueue(sendfile_tq, &sr->sr_task);
 	} else {
+		CTR2(KTR_SPARE1, "sock %p off %ld - not writeable in srsendingwakeup",
+		    so, sr->sr_uap.offset);
 		sb->sb_flags |= SB_SENDING;
 		mtx_lock(&sendfile_bg_lock);
 		TAILQ_INSERT_TAIL(sendfile_bg_queue, sr, entry);
@@ -3420,7 +3429,7 @@ init_bgsend(void *unused __unused)
 
 	sendfile_tq = taskqueue_create("sendfile background taskq",  M_NOWAIT,
 	    taskqueue_thread_enqueue, &sendfile_tq);
-	taskqueue_start_threads(&sendfile_tq, 4, PI_SOFT,
+	taskqueue_start_threads(&sendfile_tq, mp_ncpus, PI_SOFT,
 	    "sendfile background taskq");
 
 	mtx_init(&sendfile_bg_lock, "sendfile bg", NULL, MTX_DEF);
