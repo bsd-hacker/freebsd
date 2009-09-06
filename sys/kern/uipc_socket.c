@@ -133,6 +133,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysproto.h>
 #include <sys/taskqueue.h>
 #include <sys/uio.h>
+#include <sys/vnode.h>
 #include <sys/jail.h>
 
 #include <security/mac/mac_framework.h>
@@ -3108,22 +3109,20 @@ soisdisconnected(struct socket *so)
 
 struct socketref {
 	struct proc *sr_proc;
+	struct ucred *sr_ucred;
 	struct file *sr_sock_fp;
 	struct file *sr_fp;
+	struct socket *sr_so;
 	struct sendfile_args sr_uap;
 	struct uio sr_hdr_uio;
 	struct uio sr_trl_uio;
-	int sr_compat;
+	short sr_compat;
 	int sr_magic;
+	struct task sr_task;
 	TAILQ_ENTRY(socketref) entry;
 
 };
 TAILQ_HEAD(srq, socketref);
-
-struct socketref_object {
-	struct srq sro_srh;
-	struct task sro_task;
-};
 
 struct srq *sendfile_bg_queue;
 struct mtx sendfile_bg_lock;
@@ -3131,159 +3130,10 @@ struct callout *sendfile_callout;
 struct taskqueue *sendfile_tq;
 extern int getsock(struct filedesc *fdp, int fd,
     struct file **fpp, u_int *fflagp);
+static void sendfile_task_func(void *context, int pending __unused);
+static int srsendingwakeup(struct socketref *sr);
 
 MALLOC_DEFINE(M_SOCKREF, "sockref", "socket reference memory");
-
-void
-soissending(struct socket *so, struct thread *td,
-    struct sendfile_args *uap, struct uio *hdr_uio,
-    struct uio *trl_uio, int compat)
-{
-	struct socketref *ref;
-	struct srq *srh;
-	int error;
-	struct socket *refso;
-	
-	SOCKBUF_LOCK_ASSERT(&so->so_snd);
-	ref = malloc(sizeof(struct socketref), 
-	    M_SOCKREF, M_NOWAIT);
-	if (ref == NULL)
-		return;
-	/*
-	 * Obtain reference to socket :-/
-	 * drop when done sending
-	 */
-	so->so_snd.sb_flags |= SB_SENDING;
-	ref->sr_proc = td->td_proc;
-
-	if ((error = getsock(td->td_proc->p_fd, uap->s, &ref->sr_sock_fp,
-		    NULL)) != 0) {
-		free(ref, M_DEVBUF);
-		return;
-	}
-	if (ref->sr_sock_fp->f_type != DTYPE_SOCKET) {
-		printf("socket descriptor s=%d is not socket", uap->s);
-		free(ref, M_DEVBUF);
-		return;
-	}
-
-	refso = ref->sr_sock_fp->f_data;
-	if (refso != so) {
-		printf("socket mismatch between refso: %p so: %p\n",
-		    refso, so);
-		free(ref, M_DEVBUF);
-		return;		
-	}
-	
-	if ((error = fget(td, uap->fd, &ref->sr_fp)) != 0) {
-		fdrop(ref->sr_sock_fp, td);
-		free(ref, M_DEVBUF);
-		return;
-	}
-
-	bcopy(uap, &ref->sr_uap, sizeof(*uap));
-	ref->sr_uap.sbytes = NULL;
-
-	/*
-	 * XXX 
-	 * We have to malloc memory for the uio data
-	 */
-	if (hdr_uio != NULL)
-		bcopy(hdr_uio, &ref->sr_hdr_uio, 
-		      sizeof(*hdr_uio));
-	if (trl_uio != NULL)
-		bcopy(trl_uio, &ref->sr_trl_uio, 
-		      sizeof(*trl_uio));
-	ref->sr_compat = compat;
-	ref->sr_magic = 0xCAFEBABE;
-	CTR3(KTR_SPARE2, "enqueueing socket %p sock_fp %p s %d", so, ref->sr_sock_fp, uap->s);
-	mtx_lock(&sendfile_bg_lock);
-	srh = sendfile_bg_queue;
-	TAILQ_INSERT_HEAD(srh, ref, entry);
-	mtx_unlock(&sendfile_bg_lock);
-}
-
-static void
-socketref_free(struct socketref *sr)
-{
-	struct thread *td = curthread;
-
-	fdrop(sr->sr_sock_fp, td);
-	fdrop(sr->sr_fp, td);
-	free(sr, M_SOCKREF);
-}
-
-static void
-sendfile_task_func(void *context, int pending __unused)
-{
-	struct socketref_object *sro;
-	struct srq *sh;
-	struct socketref *sr, *srtmp;
-	struct socket *so;
-	struct sockbuf *sb;
-	struct proc *p;
-	struct thread *td;
-	struct file *sock_fp, *fp;
-	int error, writeable;
-
-	sro = context;
-	sh = &sro->sro_srh;
-	td = curthread;
-
-	CTR0(KTR_SPARE2, "task_func running");
-	while (!TAILQ_EMPTY(sh)) {
-		sr = TAILQ_FIRST(sh);
-		TAILQ_REMOVE(sh, sr, entry);
-		if (sr->sr_magic != 0xCAFEBABE) {
-			printf("bad magic! 0x%x\n", sr->sr_magic);
-			continue;
-		}
-		p = td->td_proc;
-		td->td_proc = sr->sr_proc;
-		sock_fp = sr->sr_sock_fp;
-
-		CTR2(KTR_SPARE2, "processing sr %p sock_fp %p", sr, sock_fp);
-		if (sock_fp->f_type != DTYPE_SOCKET)
-			goto done;
-		
-		so = sock_fp->f_data;
-		CTR1(KTR_SPARE2, "task processing socket %p", so);
-		
-		if ((so->so_state & SS_ISCONNECTED) == 0)
-			goto done;
-		sb = &so->so_snd;
-		fp = sr->sr_fp;
-
-		SOCKBUF_LOCK(sb);
-		sb->sb_flags &= ~SB_SENDING;
-		if (so->so_snd.sb_state & SBS_CANTSENDMORE) {
-			CTR1(KTR_SPARE2, "task expired socket %p", so);
-			sowwakeup_locked(so);
-		} else if (sowriteable(so)) {
-			off_t sbytes;
-
-			sb->sb_flags |= SB_SENDING;
-			SOCKBUF_UNLOCK(sb);
-			sr->sr_uap.sbytes = &sbytes;
-			CTR1(KTR_SPARE2, "task sending on socket %p", so);
-			error = kern_sendfile(td, &sr->sr_uap,
-			    &sr->sr_hdr_uio, &sr->sr_trl_uio,
-			    sr->sr_compat);
-			atomic_add_long(&fp->f_sfbytes, sbytes);
-			if (error != EAGAIN) {
-				SOCKBUF_LOCK(sb);
-				sb->sb_flags &= ~SB_SENDING;
-				sowwakeup_locked(so);
-			}
-		}
-		td->td_proc = p;
-	done:
-		fdrop(fp, td);
-		fdrop(sr->sr_sock_fp, td);
-		free(sr, M_DEVBUF);
-	}
-	free(sro, M_DEVBUF);
-}
 
 #define SOCKBUF_LOCK_COND(sb, lockflag) do {	\
 		if ((lockflag))			\
@@ -3296,131 +3146,282 @@ sendfile_task_func(void *context, int pending __unused)
 } while (0)
 
 
-void
-sosendingwakeup(void *unused __unused)
+static void
+socketref_free(struct socketref *sr)
 {
-	struct socketref *sr, *srtmp;
-	struct srq *srh_local, *srh_global, srh_tmp;
-	struct socketref_object *sro;
-	struct task *srh_task;
+	struct thread *td;
+	struct file *fp = sr->sr_fp;
+	struct file *sock_fp = sr->sr_sock_fp;
+	struct proc *p = sr->sr_proc;
+	struct ucred *cred = sr->sr_ucred;
+
+	if (cred != NULL)
+		crfree(cred);
+	vrele(fp->f_vnode);
+	fdrop(fp, NULL);
+	fdrop(sock_fp, NULL);
+	PRELE(p);
+#ifdef INVARIANTS
+	bzero(sr, sizeof(*sr));
+#endif	
+	free(sr, M_SOCKREF);
+}
+
+void
+soissending(struct socket *so, struct thread *td,
+    struct sendfile_args *uap, struct uio *hdr_uio,
+    struct uio *trl_uio, int compat, int sbytes)
+{
+	struct socketref *ref;
+	int error;
+	struct socket *refso;
+	struct vnode *vp;
+	
+	SOCKBUF_LOCK_ASSERT(&so->so_snd);
+	ref = malloc(sizeof(struct socketref), 
+	    M_SOCKREF, M_NOWAIT|M_ZERO);
+	if (ref == NULL)
+		return;
+	/*
+	 * Obtain reference to socket :-/
+	 * drop when done sending
+	 */
+	so->so_snd.sb_flags |= SB_SENDING;
+	PROC_LOCK(td->td_proc);
+	td->td_proc->p_lock++;
+	PROC_UNLOCK(td->td_proc);
+   
+	ref->sr_proc = td->td_proc;
+
+	if ((error = getsock(td->td_proc->p_fd, uap->s, &ref->sr_sock_fp,
+		    NULL)) != 0) {
+		goto error;
+	}
+	if (ref->sr_sock_fp->f_type != DTYPE_SOCKET) {
+		printf("socket descriptor s=%d is not socket", uap->s);
+		goto error;
+	}
+
+	refso = ref->sr_sock_fp->f_data;
+	if (refso != so) {
+		printf("socket mismatch between refso: %p so: %p\n",
+		    refso, so);
+		goto error_sock_fp;
+	}
+	ref->sr_so = refso;
+
+	if ((error = fget(td, uap->fd, &ref->sr_fp)) != 0) {
+		goto error_sock_fp;
+	} else if (ref->sr_fp->f_vnode != NULL) {
+		vp = ref->sr_fp->f_vnode;
+		vref(vp);
+	} else {
+		goto error_fp;
+	}
+
+	bcopy(uap, &ref->sr_uap, sizeof(*uap));
+	ref->sr_uap.sbytes = NULL;
+	ref->sr_uap.offset += sbytes;
+	if (uap->nbytes)
+		ref->sr_uap.nbytes -= sbytes;
+	/*
+	 * XXX 
+	 * We have to malloc memory for the uio data
+	 */
+	if (hdr_uio != NULL)
+		bcopy(hdr_uio, &ref->sr_hdr_uio, 
+		      sizeof(*hdr_uio));
+	if (trl_uio != NULL)
+		bcopy(trl_uio, &ref->sr_trl_uio, 
+		      sizeof(*trl_uio));
+	ref->sr_compat = compat;
+	ref->sr_magic = 0xCAFEBABE;
+	TASK_INIT(&ref->sr_task, 0, sendfile_task_func, ref);
+
+	CTR3(KTR_SPARE2, "enqueueing socket %p sock_fp %p s %d", so, ref->sr_sock_fp, uap->s);
+	mtx_lock(&sendfile_bg_lock);
+	TAILQ_INSERT_TAIL(sendfile_bg_queue, ref, entry);
+	mtx_unlock(&sendfile_bg_lock);
+	return;
+error_fp:
+	fdrop(ref->sr_fp, td);
+error_sock_fp:
+	fdrop(ref->sr_sock_fp, td);
+error:
+	free(ref, M_DEVBUF);
+}
+
+static void
+sendfile_task_func(void *context, int pending __unused)
+{
+	struct socketref *sr;
 	struct socket *so;
 	struct sockbuf *sb;
-	struct file *fp;
-	struct proc *p;
-	struct thread *td;
-	int writeable, sblockneeded;
+	struct file *sock_fp, *fp;
+	int error, writeable;
+	struct uio *hdr_uio = NULL, *trl_uio = NULL;
+	off_t sbytes;
 
-	srh_global = sendfile_bg_queue;
-	if (!TAILQ_EMPTY(srh_global)) {
-		TAILQ_INIT(&srh_tmp);
-		mtx_lock(&sendfile_bg_lock);
-		TAILQ_CONCAT(&srh_tmp, srh_global, entry);
-		mtx_unlock(&sendfile_bg_lock);
-		if (TAILQ_EMPTY(&srh_tmp))
-		    goto done;
+	sr = context;
+	CTR0(KTR_SPARE2, "task_func running");
+	if (sr->sr_magic != 0xCAFEBABE) {
+		printf("bad magic! 0x%x\n", sr->sr_magic);
+		/* XXX memory leak */
+		return;
+	}
 
-		if ((sro = malloc(sizeof(struct socketref_object),
-			    M_DEVBUF, M_NOWAIT)) == NULL)
-			goto done;
-
-		srh_local = &sro->sro_srh;
-		srh_task = &sro->sro_task;
-		TAILQ_INIT(srh_local);
-		TASK_INIT(srh_task, 0, sendfile_task_func, sro);
-		CTR0(KTR_SPARE2, "processing pcpu list");
-	} else
+	sock_fp = sr->sr_sock_fp;
+	fp = sr->sr_fp;
+	CTR2(KTR_SPARE2, "processing sr %p sock_fp %p", sr, sock_fp);
+	if (sock_fp->f_type != DTYPE_SOCKET)
+		goto done;
+		
+	so = sock_fp->f_data;
+	CTR1(KTR_SPARE2, "task processing socket %p", so);
+		
+	if ((so->so_state & SS_ISCONNECTED) == 0)
 		goto done;
 
-	td = curthread;
-	p = td->td_proc;
-	TAILQ_FOREACH_SAFE(sr, &srh_tmp, entry, srtmp) {
-		fp = sr->sr_sock_fp;
-		td->td_proc = sr->sr_proc;
-		CTR2(KTR_SPARE2, "processing s %d sock_fp %p", sr->sr_uap.s, fp);
+	if (sr->sr_ucred == NULL &&
+	    (sr->sr_ucred = crdup(sr->sr_proc->p_ucred)) == NULL)
+		goto done;
 
-		if (fp->f_type != DTYPE_SOCKET) {
-			CTR1(KTR_SPARE2, "not socket - type %d", fp->f_type);
-			goto next;
-		}
-		so = fp->f_data;
-		if ((so->so_state & SS_ISCONNECTED) == 0) {
-			CTR0(KTR_SPARE2, "not connected %p");
-			goto next;
-		}
-		CTR1(KTR_SPARE2, "processing socket %p", so);
-		sb = &so->so_snd;
-		sblockneeded = !SOCKBUF_OWNED(sb);
-		writeable = 0;
-		SOCKBUF_LOCK_COND(sb, sblockneeded);
-		sb->sb_flags &= ~SB_SENDING;
-		if (sb->sb_state & SBS_CANTSENDMORE) {
-			SOCKBUF_UNLOCK_COND(sb, sblockneeded);
-			goto next;
-		} else {
-			writeable = sowriteable(so);
-			sb->sb_flags |= SB_SENDING;
-			SOCKBUF_UNLOCK_COND(sb, sblockneeded);
-		}
+	sb = &so->so_snd;
+	SOCKBUF_UNLOCK_ASSERT(sb);
+	SOCKBUF_LOCK(sb);
+	sb->sb_flags &= ~SB_SENDING;
+	if (sb->sb_state & SBS_CANTSENDMORE) {
+		CTR1(KTR_SPARE2, "SBS_CANTSENDMORE - socket %p", so);
+		sowwakeup_locked(so);
+		goto done;
+	} else if (sowriteable(so)) {
+		sb->sb_flags |= SB_SENDING;
+		SOCKBUF_UNLOCK(sb);
+		if (sr->sr_hdr_uio.uio_td != NULL)
+			hdr_uio = &sr->sr_hdr_uio;
+		if (sr->sr_trl_uio.uio_td != NULL)
+			trl_uio = &sr->sr_trl_uio;
 
-		if (writeable) {
-			CTR2(KTR_SPARE2, "enqueue socket to task %p sr %p", so, sr);
-			TAILQ_REMOVE(&srh_tmp, sr, entry);
-			TAILQ_INSERT_HEAD(srh_local, sr, entry);
+		sr->sr_uap.sbytes = &sbytes;
+		sr->sr_uap.flags |= SF_TASKQ;
+		CTR1(KTR_SPARE2, "task sending on socket %p", so);
+		
+		error = kern_sendfile(curthread, &sr->sr_uap,
+		    hdr_uio, trl_uio,
+		    sr->sr_compat, fp, so, sr->sr_ucred);
+		atomic_add_long(&fp->f_sfbytes, sbytes);
+		sr->sr_uap.offset += sbytes;
+		if (sr->sr_uap.nbytes)
+			sr->sr_uap.nbytes -= sbytes;
+		/*
+		 * XXX we have a race here 
+		 * - if sbdrop is called before a re-enqueue,
+		 *   we'll have a lost wakeup ... maybe call
+		 * sosendingwakup? Or check for sowriteable(so)	
+		 */
+		SOCKBUF_LOCK(sb);
+		if (error == EAGAIN && srsendingwakeup(sr) != ENOTCONN) {
+			SOCKBUF_UNLOCK(sb);
+			return;
 		}
-		if (sr->sr_magic != 0xCAFEBABE)
-			printf("bad magic! 0x%x in %s\n",
-			    sr->sr_magic, __FUNCTION__);
+	} 
+	sb->sb_flags &= ~SB_SENDING;
+	sowwakeup_locked(so);
+done:
+	SOCKBUF_UNLOCK_ASSERT(sb);
+	socketref_free(sr);
+}
 
-		continue;
-	next:
-		CTR1(KTR_SPARE2, "freeing expired socket %p", so);
-		TAILQ_REMOVE(&srh_tmp, sr, entry);
-		socketref_free(sr);
+static int
+srsendingwakeup(struct socketref *sr) 
+{
+	struct socket *so;
+	struct file *fp;
+	struct sockbuf *sb;
+
+	if (sr->sr_magic != 0xCAFEBABE) {
+		printf("bad magic! sr: %p magic : 0x%x in %s\n",
+		    sr, sr->sr_magic, __FUNCTION__);
+		/*
+		 * XXX leak - should be assert perhaps
+		 * 
+		 */
+		return (0);
 	}
-	td->td_proc = p;
 
-	if (!TAILQ_EMPTY(&srh_tmp)) {
+	fp = sr->sr_sock_fp;
+	CTR2(KTR_SPARE2, "processing s %d sock_fp %p", sr->sr_uap.s, fp);
+	if (fp->f_type != DTYPE_SOCKET) {
+		CTR1(KTR_SPARE2, "not socket - type %d", fp->f_type);
+		goto error;
+	}
+	so = fp->f_data;
+	if ((so->so_state & SS_ISCONNECTED) == 0) {
+		CTR0(KTR_SPARE2, "not connected %p");
+		goto error;
+	}
+
+	CTR1(KTR_SPARE2, "processing socket %p", so);
+	sb = &so->so_snd;
+	SOCKBUF_LOCK_ASSERT(sb);
+	if (sb->sb_state & SBS_CANTSENDMORE) {
+		;
+	} else if (sowriteable(so)) {
+		CTR2(KTR_SPARE2, "enqueue socket to task %p sr %p", so, sr);
+		sb->sb_flags |= SB_SENDING;
+		taskqueue_enqueue(sendfile_tq, &sr->sr_task);
+	} else {
 		mtx_lock(&sendfile_bg_lock);
-		TAILQ_CONCAT(srh_global, &srh_tmp, entry);
+		TAILQ_INSERT_TAIL(sendfile_bg_queue, sr, entry);
 		mtx_unlock(&sendfile_bg_lock);
 	}
-	
-	if (!TAILQ_EMPTY(srh_local)) {
-		taskqueue_enqueue(sendfile_tq, srh_task);
-	} else {
-		free(sro, M_DEVBUF);
+	return (0);
+error:
+	return (ENOTCONN);
+}
+
+void
+sosendingwakeup(struct sockbuf *sb)
+{
+	struct socketref *sr = NULL;
+
+	SOCKBUF_LOCK_ASSERT(sb);
+	mtx_lock(&sendfile_bg_lock);
+	if (!TAILQ_EMPTY(sendfile_bg_queue)) {
+		TAILQ_FOREACH(sr, sendfile_bg_queue, entry) {
+			if (sb == &sr->sr_so->so_snd) {
+				sb->sb_flags &= ~SB_SENDING;
+				TAILQ_REMOVE(sendfile_bg_queue, sr, entry);
+				break;
+			}
+		}
+
 	}
-done:
-	if (!callout_pending(sendfile_callout))
-		callout_reset(sendfile_callout, MAX(hz/10, 1),
-		    sosendingwakeup, NULL);
+	mtx_unlock(&sendfile_bg_lock);
+	
+	/*
+	 * Buffer in flight
+	 */
+	if (sr != NULL && srsendingwakeup(sr) == ENOTCONN) {
+		CTR2(KTR_SPARE2, "freeing expired socket %p ref %p",
+		    sr->sr_so, sr);
+		socketref_free(sr);
+	}
 }
 
 static void
 init_bgsend(void *unused __unused)
 {	
-	struct srq *srh;
 
 	sendfile_tq = taskqueue_create("sendfile background taskq",  M_NOWAIT,
 	    taskqueue_thread_enqueue, &sendfile_tq);
-	taskqueue_start_threads(&sendfile_tq, 1, PI_NET,
+	taskqueue_start_threads(&sendfile_tq, 4, PI_SOFT,
 	    "sendfile background taskq");
 
-	printf("init_bgsend mp_maxid: %d all_cpus 0x%x\n",
-	    mp_maxid, all_cpus);
-
 	mtx_init(&sendfile_bg_lock, "sendfile bg", NULL, MTX_DEF);
-	sendfile_callout = malloc(sizeof(struct callout),
+	sendfile_bg_queue = malloc(sizeof(struct srq),
 	    M_DEVBUF, M_NOWAIT);
-	srh = sendfile_bg_queue = malloc(sizeof(struct srq),
-	    M_DEVBUF, M_NOWAIT);
-	TAILQ_INIT(srh);
-
-	callout_init(sendfile_callout, TRUE);
-	callout_reset(sendfile_callout, MAX(hz/10, 1),
-		    sosendingwakeup, NULL);
-
-	printf("init_bgsend done\n");
+	TAILQ_INIT(sendfile_bg_queue);
 }
 
 SYSINIT(init_bgsend, SI_SUB_SMP, SI_ORDER_ANY, init_bgsend, NULL);

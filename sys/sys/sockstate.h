@@ -80,7 +80,9 @@ void	soisdisconnected(struct socket *so);
 void	soisdisconnecting(struct socket *so);
 void	soissending(struct socket *so,
     struct thread *td, struct sendfile_args *uap,
-    struct uio *hdr_uio, struct uio *trl_uio, int compat);
+    struct uio *hdr_uio, struct uio *trl_uio,
+    int compat, int sbytes);
+void	sosendingwakeup(struct sockbuf *sb);
 void	socantrcvmore(struct socket *so);
 void	socantrcvmore_locked(struct socket *so);
 void	socantsendmore(struct socket *so);

@@ -1747,7 +1747,8 @@ do_sendfile(struct thread *td, struct sendfile_args *uap, int compat)
 		}
 	}
 
-	error = kern_sendfile(td, uap, hdr_uio, trl_uio, compat);
+	error = kern_sendfile(td, uap, hdr_uio, trl_uio, compat,
+	    NULL, NULL, NULL);
 out:
 	if (hdr_uio)
 		free(hdr_uio, M_IOV);
@@ -1776,7 +1777,8 @@ freebsd4_sendfile(struct thread *td, struct freebsd4_sendfile_args *uap)
 
 int
 kern_sendfile(struct thread *td, struct sendfile_args *uap,
-    struct uio *hdr_uio, struct uio *trl_uio, int compat)
+    struct uio *hdr_uio, struct uio *trl_uio, int compat,
+    struct file *bgfp, struct socket *bgso, struct ucred *bgcred)
 {
 	struct file *sock_fp, *fp = NULL;
 	struct vnode *vp;
@@ -1785,9 +1787,15 @@ kern_sendfile(struct thread *td, struct sendfile_args *uap,
 	struct mbuf *m = NULL;
 	struct sf_buf *sf;
 	struct vm_page *pg;
+	struct ucred *cred;
 	off_t off, xfsize, fsbytes = 0, sbytes = 0, rem = 0;
 	int error, hdrlen = 0, mnw = 0;
 	int vfslocked;
+
+	if (bgcred != NULL)
+		cred = bgcred;
+	else
+		cred = td->td_ucred;
 
 	/*
 	 * The file descriptor must be a regular file and have a
@@ -1795,20 +1803,23 @@ kern_sendfile(struct thread *td, struct sendfile_args *uap,
 	 * File offset must be positive.  If it goes beyond EOF
 	 * we send only the header/trailer and no payload data.
 	 */
-	if ((error = fget_read(td, uap->fd, &fp)) != 0)
-		goto out;
-	else {
-		if (fp->f_vnode == NULL) {
-			fdrop(fp, td);
-			error = EINVAL;
+	if  ((uap->flags & SF_TASKQ) == 0) {
+		if ((error = fget_read(td, uap->fd, &fp)) != 0)
 			goto out;
-		} else {
-			vp = fp->f_vnode;
-			vref(vp);
+		else {
+			if (fp->f_vnode == NULL) {
+				fdrop(fp, td);
+				error = EINVAL;
+				goto out;
+			} else {
+				vp = fp->f_vnode;
+				vref(vp);
+			}
 		}
+	} else {
+		vp = bgfp->f_vnode;
 	}
-	
-	
+
 	vfslocked = VFS_LOCK_GIANT(vp->v_mount);
 	vn_lock(vp, LK_SHARED | LK_RETRY, curthread);
 	if (vp->v_type == VREG) {
@@ -1841,30 +1852,35 @@ kern_sendfile(struct thread *td, struct sendfile_args *uap,
 		goto out;
 	}
 
-	/*
-	 * The socket must be a stream socket and connected.
-	 * Remember if it a blocking or non-blocking socket.
-	 */
-	if ((error = getsock(td->td_proc->p_fd, uap->s, &sock_fp,
-		    NULL)) != 0)
-		goto out;
-	so = sock_fp->f_data;
-	if (so->so_type != SOCK_STREAM) {
-		error = EINVAL;
-		goto out;
-	}
-	if ((so->so_state & SS_ISCONNECTED) == 0) {
-		error = ENOTCONN;
-		goto out;
+	if  ((uap->flags & SF_TASKQ) == 0) {
+		/*
+		 * The socket must be a stream socket and connected.
+		 * Remember if it a blocking or non-blocking socket.
+		 */
+		if ((error = getsock(td->td_proc->p_fd, uap->s, &sock_fp,
+			    NULL)) != 0)
+			goto out;
+		so = sock_fp->f_data;
+		if (so->so_type != SOCK_STREAM) {
+			error = EINVAL;
+			goto out;
+		}
+		if ((so->so_state & SS_ISCONNECTED) == 0) {
+			error = ENOTCONN;
+			goto out;
+		}
+	} else {
+		so = bgso;
 	}
 
 	SOCKBUF_LOCK(&so->so_snd);
-	if (((so->so_snd.sb_flags & SB_SENDING) == 0) && fp->f_sfbytes != 0) {
+	if ((uap->flags & SF_TASKQ) == 0 &&
+	    sock_fp->f_sfbytes != 0) {
 		SOCKBUF_UNLOCK(&so->so_snd);
 		if (uap->sbytes != NULL) {
 			copyout(&sbytes, uap->sbytes, sizeof(off_t));
+			sock_fp->f_sfbytes = 0;
 		}
-		fp->f_sfbytes = 0;
 		error = 0;
 		goto out;
 	}
@@ -1880,7 +1896,7 @@ kern_sendfile(struct thread *td, struct sendfile_args *uap,
 
 #ifdef MAC
 	SOCK_LOCK(so);
-	error = mac_check_socket_send(td->td_ucred, so);
+	error = mac_check_socket_send(cred, so);
 	SOCK_UNLOCK(so);
 	if (error)
 		goto out;
@@ -1971,7 +1987,8 @@ retry_space:
 		    (space <= 0 ||
 		     space < so->so_snd.sb_lowat)) {
 			if (so->so_state & SS_NBIO) {
-				soissending(so, td, uap, hdr_uio, trl_uio, compat);
+				if ((so->so_snd.sb_flags & SB_SENDING) == 0)
+					soissending(so, td, uap, hdr_uio, trl_uio, compat, sbytes);
 				SOCKBUF_UNLOCK(&so->so_snd);
 				error = EAGAIN;
 				goto done;
@@ -2090,7 +2107,7 @@ retry_space:
 				error = vn_rdwr(UIO_READ, vp, NULL, MAXBSIZE,
 				    trunc_page(off), UIO_NOCOPY, IO_NODELOCKED |
 				    IO_VMIO | ((MAXBSIZE / bsize) << IO_SEQSHIFT),
-				    td->td_ucred, NOCRED, &resid, td);
+				    cred, NOCRED, &resid, td);
 				VOP_UNLOCK(vp, 0, curthread);
 				VFS_UNLOCK_GIANT(vfslocked);
 				VM_OBJECT_LOCK(obj);
@@ -2233,15 +2250,17 @@ out:
 	}
 	if (obj != NULL)
 		vm_object_deallocate(obj);
-	if (vp != NULL) {
-		vfslocked = VFS_LOCK_GIANT(vp->v_mount);
-		vrele(vp);
-		VFS_UNLOCK_GIANT(vfslocked);
+	if ((uap->flags & SF_TASKQ) == 0) {
+		if (vp != NULL) {
+			vfslocked = VFS_LOCK_GIANT(vp->v_mount);
+			vrele(vp);
+			VFS_UNLOCK_GIANT(vfslocked);
+		}
+		if (so)
+			fdrop(sock_fp, td);
+		if (fp)
+			fdrop(fp, td);
 	}
-	if (so)
-		fdrop(sock_fp, td);
-	if (fp)
-		fdrop(fp, td);
 	if (m)
 		m_freem(m);
 

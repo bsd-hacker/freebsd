@@ -153,8 +153,11 @@ struct mbuf *
 	sbsndptr(struct sockbuf *sb, u_int off, u_int len, u_int *moff);
 void	sbtoxsockbuf(struct sockbuf *sb, struct xsockbuf *xsb);
 int	sbwait(struct sockbuf *sb);
-int	sblock(struct sockbuf *sb, int flags);
+int	_sblock(struct sockbuf *sb, int flags, const char *file, int line);
 void	sbunlock(struct sockbuf *sb);
+
+#define sblock(sb, flags) \
+	_sblock((sb), (flags), __FILE__, __LINE__)
 
 /*
  * How much space is there in a socket buffer (so->so_snd or so->so_rcv)?

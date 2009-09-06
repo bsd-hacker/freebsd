@@ -144,7 +144,8 @@ int	kern_semctl(struct thread *td, int semid, int semnum, int cmd,
 int	kern_select(struct thread *td, int nd, fd_set *fd_in, fd_set *fd_ou,
 	    fd_set *fd_ex, struct timeval *tvp);
 int	kern_sendfile(struct thread *td, struct sendfile_args *uap,
-	    struct uio *hdr_uio, struct uio *trl_uio, int compat);
+	    struct uio *hdr_uio, struct uio *trl_uio, int compat,
+    struct file *bgfp, struct socket *bgso, struct ucred *bgcred);
 int	kern_sendit(struct thread *td, int s, struct msghdr *mp, int flags,
 	    struct mbuf *control, enum uio_seg segflg);
 int	kern_setgroups(struct thread *td, u_int ngrp, gid_t *groups);
