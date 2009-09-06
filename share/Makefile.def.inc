@@ -8,8 +8,8 @@
 CMALIAS_ISCII-DEV=	macdevanaga
 
 # libiconv doesn't understand iscii-dev, bsdiconv does
-ICONV=	/home/edwin/libiconv/bin/iconv
-ICONV_hi_IN.ISCII-DEV=	/usr/bin/iconv
+ICONV=	iconv
+ICONV_hi_IN.ISCII-DEV=	bsdiconv
 
 #
 # Calculated variables
@@ -148,6 +148,13 @@ ICONV_${ccln}.${cms}=	${ICONV}
 . if !defined(CMALIAS_${cm})
 CMALIAS_${cm}=	${cm}
 . endif
+
+. if !defined(TRANSLATION_${cm})
+TRANSLATION_${cm}=
+. endif
+. for TR in ${TRANSLATION_${cm}}
+_TRANSLATION_${cm}+=	 | awk '{ gsub("${TR:C/:.*//:C/([0-9a-fA-F][0-9a-fA-F])/\\\\x\1/g}", "${TR:C/^.*://:C/([0-9a-fA-F][0-9a-fA-F])/\\\\x\1/g}"); print }'
+. endfor
 .endfor
 
 #
@@ -174,10 +181,12 @@ ${ccln}.UTF-8.out: ${ccln}.src
 .  for cms in ${CMS_${ccln}}
 
 ${ccln}.${cms}.out: ${ccln}.src
+	cat ${.ALLSRC} \
+	${_TRANSLATION_${cms}} | \
 	${ICONV_${ccln}.${cms}} \
 	    -f UTF-8 \
 	    -t ${CMALIAS_${cms}} \
-	    ${.ALLSRC} > ${.TARGET} \
+	    > ${.TARGET} \
 	|| rm ${.TARGET} && exit 0
 
 .  endfor

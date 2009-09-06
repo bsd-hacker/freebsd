@@ -75,6 +75,11 @@ CCLNLINK_es_ES=	eu_ES
 CCLNLINK_de_CH=	fr_CH it_CH
 CCLNLINK_no_NO=	nb_NO nn_NO
 
+# Some locales are not fully one-on-one, therefore need to be
+# translated manually.
+TRANSLATION_eucKR=	E282A9:5C
+TRANSLATION_ISO8859-1=	E282AC:455552
+
 # For these locales, create symlinks to the main locale for historical reasons.
 LEGLINK_ja_JP=		jp_JP
 LEGLINK_zh_Hans_CN=	zh_CN
@@ -91,8 +96,8 @@ LEGLINK_zh_Hans_CN.GBK2312=	zh_CN.GBK
 # Required variables
 LCTYPE=		LC_NUMERIC
 LOCALEDIR=	/usr/share/locale
-ICONV_pt_PT.ISO8859-1=	/usr/bin/iconv
-ICONV_ko_KR.eucKR=	/usr/bin/iconv
+#ICONV_pt_PT.ISO8859-1=	bsdiconv
+#ICONV_ko_KR.eucKR=	bsdiconv
 
 # For testing only
 DESTDIR=	/home/edwin/locale/new/
