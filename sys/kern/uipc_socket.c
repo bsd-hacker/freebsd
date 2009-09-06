@@ -3170,7 +3170,7 @@ socketref_free(struct socketref *sr)
 void
 soissending(struct socket *so, struct thread *td,
     struct sendfile_args *uap, struct uio *hdr_uio,
-    struct uio *trl_uio, int compat, int sbytes)
+    struct uio *trl_uio, int compat, off_t sbytes)
 {
 	struct socketref *ref;
 	int error;
@@ -3190,7 +3190,7 @@ soissending(struct socket *so, struct thread *td,
 	PROC_LOCK(td->td_proc);
 	td->td_proc->p_lock++;
 	PROC_UNLOCK(td->td_proc);
-   
+
 	ref->sr_proc = td->td_proc;
 
 	if ((error = getsock(td->td_proc->p_fd, uap->s, &ref->sr_sock_fp,
@@ -3222,6 +3222,7 @@ soissending(struct socket *so, struct thread *td,
 	bcopy(uap, &ref->sr_uap, sizeof(*uap));
 	ref->sr_uap.sbytes = NULL;
 	ref->sr_uap.offset += sbytes;
+	ref->sr_sock_fp->f_sfbytes = 0;
 	if (uap->nbytes)
 		ref->sr_uap.nbytes -= sbytes;
 	/*
@@ -3237,6 +3238,8 @@ soissending(struct socket *so, struct thread *td,
 	ref->sr_compat = compat;
 	ref->sr_magic = 0xCAFEBABE;
 	TASK_INIT(&ref->sr_task, 0, sendfile_task_func, ref);
+	CTR4(KTR_SPARE1, "sock %p off %ld sbytes %ld total_sbytes %ld",
+	    so, ref->sr_uap.offset, sbytes, ref->sr_fp->f_sfbytes);
 
 	CTR3(KTR_SPARE2, "enqueueing socket %p sock_fp %p s %d", so, ref->sr_sock_fp, uap->s);
 	mtx_lock(&sendfile_bg_lock);
@@ -3258,9 +3261,9 @@ sendfile_task_func(void *context, int pending __unused)
 	struct socket *so;
 	struct sockbuf *sb;
 	struct file *sock_fp, *fp;
-	int error, writeable;
+	int error = EAGAIN;
 	struct uio *hdr_uio = NULL, *trl_uio = NULL;
-	off_t sbytes;
+	off_t sbytes = 0;
 
 	sr = context;
 	CTR0(KTR_SPARE2, "task_func running");
@@ -3313,18 +3316,18 @@ sendfile_task_func(void *context, int pending __unused)
 		sr->sr_uap.offset += sbytes;
 		if (sr->sr_uap.nbytes)
 			sr->sr_uap.nbytes -= sbytes;
-		/*
-		 * XXX we have a race here 
-		 * - if sbdrop is called before a re-enqueue,
-		 *   we'll have a lost wakeup ... maybe call
-		 * sosendingwakup? Or check for sowriteable(so)	
-		 */
+
+		CTR4(KTR_SPARE1, "sock %p off %ld sbytes %ld total_sbytes %ld",
+		    so, sr->sr_uap.offset, sbytes, fp->f_sfbytes);
 		SOCKBUF_LOCK(sb);
-		if (error == EAGAIN && srsendingwakeup(sr) != ENOTCONN) {
-			SOCKBUF_UNLOCK(sb);
-			return;
-		}
-	} 
+	}
+
+	if (error == EAGAIN && srsendingwakeup(sr) != ENOTCONN) {
+		SOCKBUF_UNLOCK(sb);
+		return;
+	} else if (error != EAGAIN) 
+		CTR1(KTR_SPARE1, "error %d", error); 
+
 	sb->sb_flags &= ~SB_SENDING;
 	sowwakeup_locked(so);
 done:
@@ -3352,25 +3355,27 @@ srsendingwakeup(struct socketref *sr)
 	fp = sr->sr_sock_fp;
 	CTR2(KTR_SPARE2, "processing s %d sock_fp %p", sr->sr_uap.s, fp);
 	if (fp->f_type != DTYPE_SOCKET) {
-		CTR1(KTR_SPARE2, "not socket - type %d", fp->f_type);
+		CTR1(KTR_SPARE1, "not socket - type %d", fp->f_type);
 		goto error;
 	}
 	so = fp->f_data;
 	if ((so->so_state & SS_ISCONNECTED) == 0) {
-		CTR0(KTR_SPARE2, "not connected %p");
+		CTR1(KTR_SPARE1, "not connected %p", so);
 		goto error;
 	}
 
 	CTR1(KTR_SPARE2, "processing socket %p", so);
 	sb = &so->so_snd;
 	SOCKBUF_LOCK_ASSERT(sb);
+	sb->sb_flags &= ~SB_SENDING;
 	if (sb->sb_state & SBS_CANTSENDMORE) {
-		;
+		CTR1(KTR_SPARE1, "SBS_CANTSENDMORE %p", so);
 	} else if (sowriteable(so)) {
 		CTR2(KTR_SPARE2, "enqueue socket to task %p sr %p", so, sr);
 		sb->sb_flags |= SB_SENDING;
 		taskqueue_enqueue(sendfile_tq, &sr->sr_task);
 	} else {
+		sb->sb_flags |= SB_SENDING;
 		mtx_lock(&sendfile_bg_lock);
 		TAILQ_INSERT_TAIL(sendfile_bg_queue, sr, entry);
 		mtx_unlock(&sendfile_bg_lock);

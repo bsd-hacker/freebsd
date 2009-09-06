@@ -1873,7 +1873,6 @@ kern_sendfile(struct thread *td, struct sendfile_args *uap,
 		so = bgso;
 	}
 
-	SOCKBUF_LOCK(&so->so_snd);
 	if ((uap->flags & SF_TASKQ) == 0 &&
 	    sock_fp->f_sfbytes != 0) {
 		SOCKBUF_UNLOCK(&so->so_snd);
@@ -1884,7 +1883,7 @@ kern_sendfile(struct thread *td, struct sendfile_args *uap,
 		error = 0;
 		goto out;
 	}
-	SOCKBUF_UNLOCK(&so->so_snd);
+
 	
 	/*
 	 * Do not wait on memory allocations but return ENOMEM for
@@ -2246,7 +2245,10 @@ out:
 		td->td_retval[0] = 0;
 	}
 	if (uap->sbytes != NULL) {
-		copyout(&sbytes, uap->sbytes, sizeof(off_t));
+		if ((uap->flags & SF_TASKQ) == 0)
+			copyout(&sbytes, uap->sbytes, sizeof(off_t));
+		else
+			*(uap->sbytes) = sbytes;
 	}
 	if (obj != NULL)
 		vm_object_deallocate(obj);
