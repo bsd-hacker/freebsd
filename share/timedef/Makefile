@@ -80,7 +80,7 @@ CMSLINK_sv_SE.ISO8859-1=	sv_SE.ISO8859-15
 CMSLINK_zh_Hans_CN.GB2312=	zh_Hans_CN.GBK
 
 # For these locales, also create symlinks to the main locale.
-CCLNLINK_en_US.UTF-8=		af_ZA.UTF-8
+CCLNLINK_en_US.UTF-8=	af_ZA.UTF-8
 CCLNLINK_ca_ES=	ca_AD ca_IT ca_IT
 CCLNLINK_de_DE=	de_CH
 CCLNLINK_en_GB=	en_AU en_CA en_NZ

@@ -63,7 +63,7 @@
 #
 # c_fmt
 #
-%a<SPACE>%e<SPACE>%b<SPACE>%Y><SPACE>%X
+%a<SPACE>%e<SPACE>%b<SPACE>%Y<SPACE>%X
 #
 # am
 #

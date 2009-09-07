@@ -59,7 +59,7 @@
 #
 # x_fmt
 #
-%Y<FULL STOP>%M<FULL STOP>%D
+%Y<FULL STOP>%m<FULL STOP>%d
 #
 # c_fmt
 #

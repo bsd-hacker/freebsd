@@ -60,7 +60,7 @@
 #
 # x_fmt
 #
-%d<SOLIDUS>%M<SOLIDUS>%Y
+%d<SOLIDUS>%m<SOLIDUS>%Y
 #
 # c_fmt
 #

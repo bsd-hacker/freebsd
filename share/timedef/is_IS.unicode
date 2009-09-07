@@ -59,7 +59,7 @@
 #
 # x_fmt
 #
-%d<FULL STOP>%M<FULL STOP>%Y
+%d<FULL STOP>%m<FULL STOP>%Y
 #
 # c_fmt
 #
@@ -75,7 +75,7 @@
 #
 # date_fmt
 #
-%a<SPACE>%e<SPACE>%b><SPACE>%Y<SPACE>%X<SPACE>%Z
+%a<SPACE>%e<SPACE>%b<SPACE>%Y<SPACE>%X<SPACE>%Z
 #
 # Long month names (without case ending)
 #

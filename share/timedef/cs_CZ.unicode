@@ -62,7 +62,7 @@
 #
 # x_fmt
 #
-%Y<SOLIDUS>%M<SOLIDUS>%D
+%Y<SOLIDUS>%m<SOLIDUS>%d
 #
 # c_fmt
 #
@@ -78,7 +78,7 @@
 #
 # date_fmt
 #
-%a><SPACE>%e<FULL STOP><SPACE>%B<SPACE>%Y<SPACE>%X<SPACE>%Z
+%a<SPACE>%e<FULL STOP><SPACE>%B<SPACE>%Y<SPACE>%X<SPACE>%Z
 #
 # Long month names (without case ending)
 #
@@ -101,5 +101,5 @@ dm
 #
 # ampm_fmt
 #
-%I<COLON>%M<COLON>%S<SPACE>%P
+%I<COLON>%M<COLON>%S<SPACE>%p
 # EOF

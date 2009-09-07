@@ -74,7 +74,7 @@
 #
 # date_fmt
 #
-%a<SPACE>%e<SPACE>%b<SPACE>%Y><SPACE>%X<SPACE>%Z
+%a<SPACE>%e<SPACE>%b<SPACE>%Y<SPACE>%X<SPACE>%Z
 #
 # Long month names (without case ending)
 #

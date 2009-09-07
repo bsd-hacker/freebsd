@@ -98,5 +98,5 @@ dm
 #
 # ampm_fmt
 #
-%I<COLON>%M<COLON>%S<SPACE>%P
+%I<COLON>%M<COLON>%S<SPACE>%p
 # EOF
