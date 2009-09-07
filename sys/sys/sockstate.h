@@ -81,7 +81,7 @@ void	soisdisconnecting(struct socket *so);
 void	soissending(struct socket *so,
     struct thread *td, struct sendfile_args *uap,
     struct uio *hdr_uio, struct uio *trl_uio,
-    int compat, off_t sbytes);
+    int compat, off_t sbytes, off_t vnp_size);
 void	sosendingwakeup(struct sockbuf *sb);
 void	socantrcvmore(struct socket *so);
 void	socantrcvmore_locked(struct socket *so);

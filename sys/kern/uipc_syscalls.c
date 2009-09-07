@@ -1792,7 +1792,7 @@ kern_sendfile(struct thread *td, struct sendfile_args *uap,
 	struct sf_buf *sf;
 	struct vm_page *pg;
 	struct ucred *cred;
-	off_t off, xfsize, fsbytes = 0, sbytes = 0, rem = 0;
+	off_t off, xfsize, fsbytes = 0, sbytes = 0, rem = 0, vnp_size = 0;
 	int error, hdrlen = 0, mnw = 0;
 	int vfslocked;
 
@@ -1992,7 +1992,7 @@ retry_space:
 			if (so->so_state & SS_NBIO) {
 				if (bg_sendfile_enable &&
 				    (so->so_snd.sb_flags & SB_SENDING) == 0)
-					soissending(so, td, uap, hdr_uio, trl_uio, compat, sbytes);
+					soissending(so, td, uap, hdr_uio, trl_uio, compat, sbytes, vnp_size);
 				SOCKBUF_UNLOCK(&so->so_snd);
 				error = EAGAIN;
 				goto done;
@@ -2054,6 +2054,7 @@ retry_space:
 				done = 1;		/* all data sent */
 				break;
 			}
+			vnp_size = obj->un_pager.vnp.vnp_size;
 			/*
 			 * Don't overflow the send buffer.
 			 * Stop here and send out what we've

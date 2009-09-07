@@ -3118,6 +3118,7 @@ struct socketref {
 	struct uio sr_trl_uio;
 	short sr_compat;
 	int sr_magic;
+	off_t sr_vnp_size;
 	struct task sr_task;
 	TAILQ_ENTRY(socketref) entry;
 
@@ -3170,7 +3171,8 @@ socketref_free(struct socketref *sr)
 void
 soissending(struct socket *so, struct thread *td,
     struct sendfile_args *uap, struct uio *hdr_uio,
-    struct uio *trl_uio, int compat, off_t sbytes)
+    struct uio *trl_uio, int compat, off_t sbytes,
+    off_t vnp_size)
 {
 	struct socketref *ref;
 	int error;
@@ -3239,6 +3241,7 @@ soissending(struct socket *so, struct thread *td,
 		      sizeof(*trl_uio));
 	ref->sr_compat = compat;
 	ref->sr_magic = 0xCAFEBABE;
+	ref->sr_vnp_size = vnp_size;
 	TASK_INIT(&ref->sr_task, 0, sendfile_task_func, ref);
 
 	CTR3(KTR_SPARE2, "enqueueing socket %p sock_fp %p s %d", so, ref->sr_sock_fp, uap->s);
@@ -3319,6 +3322,11 @@ sendfile_task_func(void *context, int pending __unused)
 		if (sr->sr_uap.nbytes)
 			sr->sr_uap.nbytes -= sbytes;
 
+		if (error == EAGAIN &&
+		    (sr->sr_uap.offset + sbytes == sr->sr_vnp_size)) {
+			CTR0(KTR_SPARE1, "EAGAIN on full send");
+			error = 0;
+		}
 		SOCKBUF_LOCK(sb);
 	}
 #ifdef KTR
