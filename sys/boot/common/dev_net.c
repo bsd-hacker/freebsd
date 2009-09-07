@@ -145,7 +145,7 @@ net_open(struct open_file *f, ...)
 				return (error);
 			}
 		}
-#if defined(__sparc64__)
+#if defined(__sparc64__) || defined(__powerpc__)
 		netdev_opens++;
 #endif
 	}
