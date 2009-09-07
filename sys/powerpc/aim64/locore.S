@@ -87,10 +87,10 @@
 GLOBAL(tmpstk)
 	.space	TMPSTKSZ
 GLOBAL(esym)
-	.long	0			/* end of symbol table */
+	.llong	0			/* end of symbol table */
 
 GLOBAL(ofmsr)
-	.long	0, 0, 0, 0, 0		/* msr/sprg0-3 used in Open Firmware */
+	.llong	0, 0, 0, 0, 0		/* msr/sprg0-3 used in Open Firmware */
 
 #define	INTRCNT_COUNT	256		/* max(HROWPIC_IRQMAX,OPENPIC_IRQMAX) */
 GLOBAL(intrnames)
@@ -105,11 +105,11 @@ GLOBAL(eintrcnt)
  * File-scope for locore.S
  */
 idle_u:
-	.long	0			/* fake uarea during idle after exit */
+	.llong	0			/* fake uarea during idle after exit */
 openfirmware_entry:
-	.long	0			/* Open Firmware entry point */
+	.llong	0			/* Open Firmware entry point */
 srsave:
-	.long	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+	.llong	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 
 	.text
 	.globl	btext
@@ -146,21 +146,32 @@ ASENTRY(__start)
 	lis	8,openfirmware_entry@ha
 	std	5,openfirmware_entry@l(8) /* save client interface handler */
 
+	/* Set up the stack pointer */
 	lis	1,(tmpstk+TMPSTKSZ-16)@ha
 	addi	1,1,(tmpstk+TMPSTKSZ-16)@l
 
+	/* Set up the TOC pointer */
+	lis	2,tocbase@ha
+	ld	2,tocbase@l(2)
+
+	/* Switch to 64-bit mode */
+	mfmsr	9
+	li	8,1
+	insrdi	9,8,1,0
+	mtmsrd	9
+
 	mfmsr	0
 	lis	9,ofmsr@ha
-	stwu	0,ofmsr@l(9)
+	stdu	0,ofmsr@l(9)
 
 	mfsprg0	0			/* save SPRG0-3 */
-	stw	0,4(9)			/* ofmsr[1] = sprg0 */
+	std	0,8(9)			/* ofmsr[1] = sprg0 */
 	mfsprg1 0
-	stw	0,8(9)			/* ofmsr[2] = sprg1 */
+	std	0,16(9)			/* ofmsr[2] = sprg1 */
 	mfsprg2 0
-	stw	0,12(9)			/* ofmsr[3] = sprg2 */
+	std	0,24(9)			/* ofmsr[3] = sprg2 */
 	mfsprg3 0
-	stw	0,16(9)			/* ofmsr[4] = sprg3 */
+	std	0,32(9)			/* ofmsr[4] = sprg3 */
 	
 	bl	.OF_initial_setup
 	nop
@@ -215,6 +226,31 @@ ASENTRY(ofw_real_mode_entry)
 	mfsprg3	5
 	mtmsrd	5
 	mtlr 	0
+	blr
+
+ASENTRY(ofw_32bit_mode_entry)
+	mflr	4
+	mtsprg1 4
+
+	lis	4,openfirmware_entry@ha
+	ld	4,openfirmware_entry@l(4) /* read client interface handler */
+
+	/* Set up a 32-bit MSR in r5 */
+	mfmsr	5
+	mtsprg2	5
+	clrldi	5,5,1
+
+	/* Set MSR, branch to OF, and come back */
+	mtmsrd	5
+	isync
+	mtctr	4
+	bctrl
+	mfsprg2	5
+	mtmsrd	5
+	isync
+
+	mfsprg1	4
+	mtlr 	4
 	blr
 
 /*

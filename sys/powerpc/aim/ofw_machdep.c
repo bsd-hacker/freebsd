@@ -68,16 +68,8 @@ static int	(*ofwcall)(void *);
 static void	*fdt;
 int		ofw_real_mode;
 
-#ifdef __powerpc64__
-/* Handle PPC64 ABI brain damage */
-struct {
-	int		(*funcptr)(void *);
-	uintptr_t	toc;
-	uintptr_t	env;
-} ofwcall_funcdesc;
-#endif
-	
 int		ofw_real_mode_entry(void *);
+int		ofw_32bit_mode_entry(void *);
 static int	openfirmware(void *args);
 
 /*
@@ -329,22 +321,21 @@ OF_initial_setup(void *fdt_ptr, void *junk, int (*openfirm)(void *))
 	else
 		ofw_real_mode = 1;
 
+	ofwcall = NULL;
+
 	#ifdef __powerpc64__
 		/*
-		 * For PPC64, we need to hack up a function descriptor object
-		 * to be able to call a memory address.
+		 * For PPC64, we need to use some hand-written
+		 * asm trampolines to get to OF.
 		 */
-		if (ofw_real_mode) {
+		if (ofw_real_mode && openfirm != NULL)
 			ofwcall = ofw_real_mode_entry;
-		} else {
-			ofwcall_funcdesc.funcptr = openfirm;
-			ofwcall_funcdesc.toc = 0;
-			ofwcall_funcdesc.env = 0;
-			ofwcall = (int (*)(void *))&ofwcall_funcdesc;
-		}
+		else
+			ofwcall = ofw_32bit_mode_entry;
 	#else
 		ofwcall = openfirm;
 	#endif
+
 	fdt = fdt_ptr;
 }
 

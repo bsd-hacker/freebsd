@@ -13,12 +13,12 @@ SUBDIR+=		efi
 .endif
 
 # Build Open Firmware library.
-.if ${MACHINE_ARCH} == "powerpc" || ${MACHINE_ARCH} == "sparc64"
+.if ${MACHINE_ARCH} == "powerpc" || ${MACHINE_ARCH} == "powerpc64" || ${MACHINE_ARCH} == "sparc64"
 SUBDIR+=		ofw
 .endif
 
 # Build U-Boot library.
-.if ${MACHINE_ARCH} == "powerpc" || ${MACHINE_ARCH} == "arm"
+.if ${MACHINE_ARCH} == "powerpc" || ${MACHINE_ARCH} == "powerpc64" || ${MACHINE_ARCH} == "arm"
 SUBDIR+=		uboot
 .endif
 
