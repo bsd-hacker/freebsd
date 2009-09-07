@@ -217,7 +217,7 @@ TLBIE(pmap_t pmap, vm_offset_t va) {
 	__asm __volatile("\
 	    mfmsr %0; \
 	    clrldi %1,%0,49; \
-	    insrdi %1,1,1,0; \
+	    insrdi %1,%5,1,0; \
 	    mtmsrd %1; \
 	    ptesync; \
 	    \
@@ -229,7 +229,7 @@ TLBIE(pmap_t pmap, vm_offset_t va) {
 	    eieio; \
 	    tlbsync; \
 	    ptesync;" 
-	: "=r"(msr), "=r"(scratch) : "r"(vpn_hi), "r"(vpn_lo), "r"(32));
+	: "=r"(msr), "=r"(scratch) : "r"(vpn_hi), "r"(vpn_lo), "r"(32), "r"(1));
 #endif
 }
 
