@@ -267,9 +267,9 @@ CNAME(rstcode):
 	mflr	%r1
 	addi	%r1,%r1,(124-16)@l
 
-	lis	%r3,1@l
 	lis	%r3,tocbase@ha
 	ld	%r2,tocbase@l(%r3)
+	lis	%r3,1@l
 	bla	CNAME(.pmap_cpu_bootstrap)
 	nop
 	bla	CNAME(.cpudep_ap_bootstrap)
@@ -476,10 +476,9 @@ trapagain:
 	addi	%r3,%r1,48
 	bl	CNAME(.powerpc_interrupt)
 	nop
-	bl	CNAME(.trapexit)
-	nop
 
-ASENTRY(trapexit)	/* backtrace code sentinel */
+	.globl	CNAME(trapexit)	/* backtrace code sentinel */
+CNAME(trapexit):
 /* Disable interrupts: */
 	mfmsr	%r3
 	andi.	%r3,%r3,~PSL_EE@l
@@ -500,8 +499,11 @@ ASENTRY(trapexit)	/* backtrace code sentinel */
 	ori	%r3,%r3,PSL_EE@l
 	mtmsr	%r3
 	isync
-	addi	%r3,%r1,8
-	bl	CNAME(ast)
+	lis	%r3,tocbase@ha
+	ld	%r2,tocbase@l(%r3)
+	addi	%r3,%r1,48
+	bl	CNAME(.ast)
+	nop
 	.globl	CNAME(asttrapexit)	/* backtrace code sentinel #2 */
 CNAME(asttrapexit):
 	b	trapexit		/* test ast ret value ? */
