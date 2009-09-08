@@ -971,6 +971,11 @@ moea64_bridge_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernele
 
 	    moea64_pinit(mmup, &ofw_pmap);
 
+	    #ifndef __powerpc64__
+	    ofw_pmap.pm_sr[KERNEL_SR] = kernel_pmap->pm_sr[KERNEL_SR];
+	    ofw_pmap.pm_sr[KERNEL2_SR] = kernel_pmap->pm_sr[KERNEL2_SR];
+	    #endif
+
 	    if ((chosen = OF_finddevice("/chosen")) == -1)
 		panic("moea64_bootstrap: can't find /chosen");
 	    OF_getprop(chosen, "mmu", &mmui, 4);

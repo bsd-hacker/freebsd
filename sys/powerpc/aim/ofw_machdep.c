@@ -136,6 +136,7 @@ static int
 parse_ofw_memory(phandle_t node, const char *prop, struct mem_region *output)
 {
 	cell_t address_cells, size_cells;
+	cell_t OFmem[4*(OFMEM_REGIONS + 1)];
 	int sz, i, j;
 	int apple_hack_mode;
 	phandle_t phandle;
@@ -171,15 +172,13 @@ parse_ofw_memory(phandle_t node, const char *prop, struct mem_region *output)
 	/*
 	 * Get memory.
 	 */
-	if (address_cells > 1 || size_cells > 1) {
-	    cell_t OFmem[4*(OFMEM_REGIONS + 1)];
-	    if ((node == -1) || (sz = OF_getprop(node, prop,
-		OFmem, sizeof(OFmem[0]) * 4 * OFMEM_REGIONS)) <= 0)
-			panic("Physical memory map not found");
+	if ((node == -1) || (sz = OF_getprop(node, prop,
+	    OFmem, sizeof(OFmem[0]) * 4 * OFMEM_REGIONS)) <= 0)
+		panic("Physical memory map not found");
 
-	    i = 0;
-	    j = 0;
-	    while (i < sz/sizeof(cell_t)) {
+	i = 0;
+	j = 0;
+	while (i < sz/sizeof(cell_t)) {
 	      #ifndef __powerpc64__
 		/* On 32-bit PPC, ignore regions starting above 4 GB */
 		if (OFmem[i] > 0) {
@@ -216,14 +215,10 @@ parse_ofw_memory(phandle_t node, const char *prop, struct mem_region *output)
 			    output[j].mr_start;
 		}
 	      #endif
+
 		j++;
-	    }
-	    sz = j*sizeof(output[0]);
-	} else {
-	    if ((sz = OF_getprop(node, prop,
-			  output, sizeof(output[0]) * OFMEM_REGIONS)) <= 0)
-		panic("Physical memory map not found");
 	}
+	sz = j*sizeof(output[0]);
 
 	#ifdef __powerpc64__
 	if (apple_hack_mode) {
@@ -378,20 +373,30 @@ openfirmware(void *args)
 	int		result;
 	#ifndef __powerpc64__
 	register_t	srsave[16];
-	u_int		i;
 	#endif
+	u_int		i;
 
 	if (pmap_bootstrapped && ofw_real_mode)
 		args = (void *)pmap_kextract((vm_offset_t)args);
 
 	ofw_sprg_prepare();
 
-	#ifndef __powerpc64__
 	if (pmap_bootstrapped && !ofw_real_mode) {
 		/*
 		 * Swap the kernel's address space with Open Firmware's
 		 */
-		if (!ppc64) for (i = 0; i < 16; i++) {
+
+		#ifdef __powerpc64__
+		for (i = 1; i < 16; i++) {
+			if (i == KERNEL_SR || i == KERNEL2_SR || i == USER_SR)
+				continue;
+			
+			__asm __volatile ("slbie %0; slbmte %1, %2" ::
+			    "r"(i << 28), "r"(ofw_pmap.pm_slb[i].slbv),
+			    "r"(ofw_pmap.pm_slb[i].slbe));
+		}
+		#else
+		for (i = 0; i < 16; i++) {
 			srsave[i] = mfsrin(i << ADDR_SR_SHFT);
 			mtsrin(i << ADDR_SR_SHFT, ofw_pmap.pm_sr[i]);
 		}
@@ -404,8 +409,8 @@ openfirmware(void *args)
 					 "mtdbatu 3, %0" : : "r" (0));
 		}
 		isync();
+		#endif
 	}
-	#endif
 
 	__asm __volatile(	"\t"
 		"sync\n\t"
@@ -424,19 +429,28 @@ openfirmware(void *args)
 		: : "r" (oldmsr)
 	);
 
-	#ifndef __powerpc64__
 	if (pmap_bootstrapped && !ofw_real_mode) {
 		/*
 		 * Restore the kernel's addr space. The isync() doesn;t
 		 * work outside the loop unless mtsrin() is open-coded
 		 * in an asm statement :(
 		 */
+		#ifdef __powerpc64__
+		for (i = 1; i < 16; i++) {
+			if (i == KERNEL_SR || i == KERNEL2_SR || i == USER_SR)
+				continue;
+			
+			__asm __volatile ("slbie %0; slbmte %1, %2" ::
+			    "r"(i << 28), "r"(kernel_pmap->pm_slb[i].slbv),
+			    "r"(kernel_pmap->pm_slb[i].slbe));
+		}
+		#else
 		for (i = 0; i < 16; i++) {
 			mtsrin(i << ADDR_SR_SHFT, srsave[i]);
 			isync();
 		}
+		#endif
 	}
-	#endif
 
 	ofw_sprg_restore();
 
