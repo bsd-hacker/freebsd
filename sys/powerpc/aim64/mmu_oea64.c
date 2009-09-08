@@ -1026,7 +1026,7 @@ moea64_bridge_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernele
 				    translations[i].om_va + off);
 
 			m.phys_addr = translations[i].om_pa_lo + off;
-		      #ifdef __powerpc64
+		      #ifdef __powerpc64__
 			m.phys_addr += translations[i].om_pa_hi << 32;
 		      #endif
 			moea64_enter_locked(&ofw_pmap,
