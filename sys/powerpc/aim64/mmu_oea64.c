@@ -262,11 +262,11 @@ TLBIE(pmap_t pmap, vm_offset_t va) {
 #define ASSERT_TABLE_LOCK() mtx_assert(&moea64_table_mutex, MA_OWNED)
 
 struct ofw_map {
-	vm_offset_t	om_va;
-	vm_size_t	om_len;
-	vm_offset_t	om_pa_hi;
-	vm_offset_t	om_pa_lo;
-	u_int		om_mode;
+	cell_t	om_va;
+	cell_t	om_len;
+	cell_t	om_pa_hi;
+	cell_t	om_pa_lo;
+	cell_t	om_mode;
 };
 
 /*
@@ -1001,8 +1001,10 @@ moea64_bridge_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernele
 		if (translations[i].om_pa_lo % PAGE_SIZE)
 			panic("OFW translation not page-aligned!");
 
+	      #ifndef __powerpc64__
 		if (translations[i].om_pa_hi)
 			panic("OFW translations above 32-bit boundary!");
+	      #endif
 
 		/* Now enter the pages for this mapping */
 
