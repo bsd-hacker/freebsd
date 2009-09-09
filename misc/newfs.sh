@@ -41,7 +41,7 @@ mount | grep "$mntpoint" | grep md${mdstart}${part} > /dev/null && umount $mntpo
 mdconfig -l | grep md${mdstart} > /dev/null &&  mdconfig -d -u ${mdstart}
 
 mdconfig -a -t vnode -f $diskimage -u ${mdstart}
-disklabel -r -w md${mdstart} auto
+bsdlabel -w md${mdstart} auto
 
 
 for opt in "-O1" "-O2" "-O2 -U"; do

@@ -40,7 +40,7 @@ mount | grep "${mntpoint}" | grep -q md${mdstart}${part} && umount $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
 mdconfig -a -t swap -s 12m -u $mdstart
-disklabel -r -w md$mdstart auto
+bsdlabel -w md$mdstart auto
 
 newfs md${mdstart}${part} > /dev/null
 tunefs -l enable /dev/md${mdstart}${part}

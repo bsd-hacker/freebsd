@@ -55,7 +55,7 @@ truncate -s ${size}G $diskimage
 blocksize="-b 65536"
 opt="-O2 -U"
 mdconfig -a -t vnode -f $diskimage -u $mdstart
-disklabel -r -w md$mdstart auto
+bsdlabel -w md$mdstart auto
 newfs $blocksize $opt md${mdstart}${part} > /dev/null
 mount /dev/md${mdstart}${part} $mntpoint
 

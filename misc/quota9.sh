@@ -50,7 +50,7 @@ if [ $# -eq 0 ]; then
 	mdconfig -l | grep -q md${mdstart} &&  mdconfig -d -u ${mdstart}
 
 	mdconfig -a -t vnode -f $D -u ${mdstart}
-	disklabel -r -w md${mdstart} auto
+	bsdlabel -w md${mdstart} auto
 	newfs -U  md${mdstart}${part} > /dev/null
 	echo "/dev/md${mdstart}${part} ${mntpoint} ufs rw,userquota 2 2" >> /etc/fstab
 	mount ${mntpoint}

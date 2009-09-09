@@ -49,7 +49,7 @@ size=25  # Gb
 truncate -s ${size}G $diskimage
 
 mdconfig -a -t vnode -f $diskimage -u $mdstart
-disklabel -r -w md$mdstart auto
+bsdlabel -w md$mdstart auto
 newfs -O2 -U md${mdstart}${part} > /dev/null
 mount /dev/md${mdstart}${part} $mntpoint
 

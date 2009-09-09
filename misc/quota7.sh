@@ -41,7 +41,7 @@ mount | grep "/mnt" | grep -q md0 && umount -f /mnt
 mdconfig -l | grep -q md0 &&  mdconfig -d -u 0
 
 mdconfig -a -t vnode -f $D -u 0
-disklabel -r -w md0 auto
+bsdlabel -w md0 auto
 newfs -U  md0c > /dev/null
 echo "/dev/md0c /mnt ufs rw,userquota 2 2" >> /etc/fstab
 mount /mnt

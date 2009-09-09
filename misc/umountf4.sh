@@ -47,7 +47,7 @@ if [ $# -eq 0 ]; then
 
 		dede $D$m 1m 10
 		mdconfig -a -t vnode -f $D$m -u $m
-		disklabel -r -w md$m auto
+		bsdlabel -w md$m auto
 		newfs md${m}${part} > /dev/null 2>&1
 	done
 

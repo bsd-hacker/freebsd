@@ -50,7 +50,7 @@ mount | grep "$mntpoint" | grep md${mdstart} > /dev/null && umount $mntpoint
 mdconfig -l | grep md${mdstart} > /dev/null &&  mdconfig -d -u ${mdstart}
 
 mdconfig -a -t vnode -f $D -u ${mdstart}
-disklabel -r -w md${mdstart} auto
+bsdlabel -w md${mdstart} auto
 newfs md${mdstart}${part} > /dev/null 2>&1
 mount /dev/md${mdstart}${part} $mntpoint
 #newfs_msdos -F 32 -b 8192 /dev/md${mdstart}a

@@ -47,7 +47,7 @@ mount | grep "${mntpoint}" | grep -q md${mdstart}${part} && umount $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 
 mdconfig -a -t swap -s 20m -u $mdstart
-disklabel -r -w md$mdstart auto
+bsdlabel -w md$mdstart auto
 
 newfs -O 2 md${mdstart}${part} > /dev/null
 mount /dev/md${mdstart}${part} $mntpoint

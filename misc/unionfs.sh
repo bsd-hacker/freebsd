@@ -40,7 +40,7 @@ mount | grep "/mnt" | grep md0c > /dev/null && umount /mnt
 mdconfig -l | grep md0 > /dev/null &&  mdconfig -d -u 0
 
 mdconfig -a -t vnode -f $D -u 0
-disklabel -r -w md0 auto
+bsdlabel -w md0 auto
 newfs -U  md0c > /dev/null
 mount /dev/md0c /mnt
 mount -t unionfs -o noatime /mnt /tmp
