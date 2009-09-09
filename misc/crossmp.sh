@@ -28,7 +28,7 @@
 # $FreeBSD$
 #
 
-# Hunt for deadlock that could occur when lookup crosses mount point and mp is being unmounted.
+# Copy of crossmp.sh, but with SU enabled.
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
@@ -47,7 +47,7 @@ if [ $# -eq 0 ]; then
 
 		dede $D$m 1m 1
 		mdconfig -a -t vnode -f $D$m -u $m
-		disklabel -r -w md$m auto
+		bsdlabel -w md$m auto
 		newfs md${m}${part} > /dev/null 2>&1
 	done
 
