@@ -45,7 +45,7 @@ ftest () {	# fstype, soft update, disk full
    export KBLOCKS=$(($1 * disk))
    export  INODES=$(($2 * disk))
 
-   for i in `jot 50`; do
+   for i in `jot 10`; do
       (cd ../testcases/rw;./rw -t 2m -i 20)
    done
 
@@ -59,7 +59,7 @@ mount | grep "${mntpoint}" | grep md${mdstart}${part} > /dev/null && umount ${mn
 mdconfig -l | grep md${mdstart} > /dev/null &&  mdconfig -d -u ${mdstart}
 
 mdconfig -a -t swap -s 20m -u ${mdstart}
-disklabel -r -w md${mdstart} auto
+bsdlabel -w md${mdstart} auto
 
 ftest 1 0 0	# ufs1
 ftest 1 0 1	# ufs1, disk full
