@@ -46,7 +46,7 @@ dede $D$m 100m 1 || exit 1
 
 mdconfig -a -t vnode -f $D$m -u $m
 
-disklabel -r -w md$m auto
+bsdlabel -w md$m auto
 newfs md${m}${part} > /dev/null 2>&1
 mount $opt /dev/md${m}${part} ${mntpoint}$m
 
@@ -59,7 +59,7 @@ mdconfig -l | grep -q md$m &&  mdconfig -d -u $m
 truncate -s 500M ${mntpoint}$n/diskimage
 mdconfig -a -t vnode -f ${mntpoint}$n/diskimage -u $m
 
-disklabel -r -w md$m auto
+bsdlabel -w md$m auto
 newfs md${m}${part} > /dev/null 2>&1
 mount $opt /dev/md${m}${part} ${mntpoint}$m
 
