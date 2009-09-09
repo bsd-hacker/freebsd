@@ -28,6 +28,8 @@
 # $FreeBSD$
 #
 
+# panic: ufs_dirbad: /mnt: bad dir ino 32899 at offset 16896: mangled entry
+
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
