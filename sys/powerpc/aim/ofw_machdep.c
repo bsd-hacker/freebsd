@@ -421,7 +421,7 @@ openfirmware(void *args)
 	);
 
       #ifndef __powerpc64__
-	if (pmap_bootstrapped && !ofw_real_mode && 0) {
+	if (pmap_bootstrapped && !ofw_real_mode) {
 		/*
 		 * Restore the kernel's addr space. The isync() doesn;t
 		 * work outside the loop unless mtsrin() is open-coded
