@@ -1037,6 +1037,7 @@ moea64_bridge_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernele
 
 			if (translations[i].om_va + off < SEGMENT_LENGTH)
 				moea64_kenter(mmup, translations[i].om_va + off,
+				    translations[i].om_pa_lo + off);
 
 			moea64_enter_locked(&ofw_pmap,
 			    translations[i].om_va + off, &m, VM_PROT_ALL, 1);
