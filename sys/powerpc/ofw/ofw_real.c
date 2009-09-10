@@ -192,8 +192,6 @@ ofw_real_stop(void)
 static void
 ofw_real_bounce_alloc(void *junk)
 {
-	struct vm_page m;
-
 	/*
 	 * Check that ofw_real is actually in use before allocating wads 
 	 * of memory. Do this by checking if our mutex has been set up.
@@ -210,18 +208,17 @@ ofw_real_bounce_alloc(void *junk)
 
 	of_bounce_virt = contigmalloc(PAGE_SIZE, M_OFWREAL, 0,
 			     0, BUS_SPACE_MAXADDR_32BIT, PAGE_SIZE, PAGE_SIZE);
-	of_bounce_phys = vtophys(of_bounce_virt);
-	of_bounce_size = PAGE_SIZE;
 
 	/*
-	 * Add this to the OFW pmap if we are running in virtual mode.
+	 * XXX: Use of_bounce_virt in 32-bit mode. This assumes that kernel
+	 * VA space is always < 0xffffffff.
 	 */
+	if (ofw_real_mode)
+		of_bounce_phys = vtophys(of_bounce_virt);
+	else
+		of_bounce_phys = (vm_offset_t)of_bounce_virt;
 
-	if (!ofw_real_mode) {
-		m.phys_addr = of_bounce_phys;
-		pmap_enter(&ofw_pmap, of_bounce_phys, VM_PROT_ALL, &m,
-		    VM_PROT_ALL, 1);
-	}
+	of_bounce_size = PAGE_SIZE;
 
 	mtx_unlock(&of_bounce_mtx);
 }

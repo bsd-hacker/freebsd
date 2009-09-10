@@ -1017,20 +1017,30 @@ moea64_bridge_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernele
 		for (off = 0; off < translations[i].om_len; off += PAGE_SIZE) {
 			struct vm_page m;
 
+			m.phys_addr = translations[i].om_pa_lo + off;
+
+		      #ifdef __powerpc64__
+			m.phys_addr += (vm_offset_t)translations[i].om_pa_hi
+			    << 32;
+
+			/*
+			 * ofw_pmap is unused on PPC64 since slb replacement
+			 * is non-atomic, so map the kernel and OFW into
+			 * the same address space.
+			 */
+			moea64_kenter(mmup, translations[i].om_va + off,
+			    m.phys_addr);
+		      #else
 			/* Map low memory mappings into the kernel pmap, too.
 			 * These are typically mappings made by the loader,
 			 * so we need them if we want to keep executing. */
 
 			if (translations[i].om_va + off < SEGMENT_LENGTH)
 				moea64_kenter(mmup, translations[i].om_va + off,
-				    translations[i].om_va + off);
 
-			m.phys_addr = translations[i].om_pa_lo + off;
-		      #ifdef __powerpc64__
-			m.phys_addr += translations[i].om_pa_hi << 32;
-		      #endif
 			moea64_enter_locked(&ofw_pmap,
 			    translations[i].om_va + off, &m, VM_PROT_ALL, 1);
+		      #endif
 
 			ofw_mappings++;
 		}

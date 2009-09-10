@@ -373,29 +373,20 @@ openfirmware(void *args)
 	int		result;
 	#ifndef __powerpc64__
 	register_t	srsave[16];
-	#endif
 	u_int		i;
+	#endif
 
 	if (pmap_bootstrapped && ofw_real_mode)
 		args = (void *)pmap_kextract((vm_offset_t)args);
 
 	ofw_sprg_prepare();
 
+      #ifndef __powerpc64__
 	if (pmap_bootstrapped && !ofw_real_mode) {
 		/*
 		 * Swap the kernel's address space with Open Firmware's
 		 */
 
-		#ifdef __powerpc64__
-		for (i = 1; i < 16; i++) {
-			if (i == KERNEL_SR || i == KERNEL2_SR || i == USER_SR)
-				continue;
-			
-			__asm __volatile ("slbie %0; slbmte %1, %2" ::
-			    "r"(i << 28), "r"(ofw_pmap.pm_slb[i].slbv),
-			    "r"(ofw_pmap.pm_slb[i].slbe));
-		}
-		#else
 		for (i = 0; i < 16; i++) {
 			srsave[i] = mfsrin(i << ADDR_SR_SHFT);
 			mtsrin(i << ADDR_SR_SHFT, ofw_pmap.pm_sr[i]);
@@ -409,8 +400,8 @@ openfirmware(void *args)
 					 "mtdbatu 3, %0" : : "r" (0));
 		}
 		isync();
-		#endif
 	}
+      #endif
 
 	__asm __volatile(	"\t"
 		"sync\n\t"
@@ -429,28 +420,20 @@ openfirmware(void *args)
 		: : "r" (oldmsr)
 	);
 
-	if (pmap_bootstrapped && !ofw_real_mode) {
+      #ifndef __powerpc64__
+	if (pmap_bootstrapped && !ofw_real_mode && 0) {
 		/*
 		 * Restore the kernel's addr space. The isync() doesn;t
 		 * work outside the loop unless mtsrin() is open-coded
 		 * in an asm statement :(
 		 */
-		#ifdef __powerpc64__
-		for (i = 1; i < 16; i++) {
-			if (i == KERNEL_SR || i == KERNEL2_SR || i == USER_SR)
-				continue;
-			
-			__asm __volatile ("slbie %0; slbmte %1, %2" ::
-			    "r"(i << 28), "r"(kernel_pmap->pm_slb[i].slbv),
-			    "r"(kernel_pmap->pm_slb[i].slbe));
-		}
-		#else
+
 		for (i = 0; i < 16; i++) {
 			mtsrin(i << ADDR_SR_SHFT, srsave[i]);
 			isync();
 		}
-		#endif
 	}
+      #endif
 
 	ofw_sprg_restore();
 
