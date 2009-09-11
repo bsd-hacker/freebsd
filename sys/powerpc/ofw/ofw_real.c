@@ -423,7 +423,7 @@ ofw_real_getproplen(ofw_t ofw, phandle_t package, const char *propname)
 		cell_t nreturns;
 		cell_t package;
 		cell_t propname;
-		cell_t proplen;
+		int32_t proplen;
 	} args;
 
 	args.name = (cell_t)(uintptr_t)"getproplen";
@@ -455,7 +455,7 @@ ofw_real_getprop(ofw_t ofw, phandle_t package, const char *propname, void *buf,
 		cell_t propname;
 		cell_t buf;
 		cell_t buflen;
-		cell_t size;
+		int32_t size;
 	} args;
 
 	args.name = (cell_t)(uintptr_t)"getprop";
@@ -558,7 +558,7 @@ ofw_real_canon(ofw_t ofw, const char *device, char *buf, size_t len)
 		cell_t device;
 		cell_t buf;
 		cell_t len;
-		cell_t size;
+		int32_t size;
 	} args;
 
 	args.name = (cell_t)(uintptr_t)"canon";
@@ -618,7 +618,7 @@ ofw_real_instance_to_path(ofw_t ofw, ihandle_t instance, char *buf, size_t len)
 		cell_t instance;
 		cell_t buf;
 		cell_t len;
-		cell_t size;
+		int32_t size;
 	} args;
 
 	args.name = (cell_t)(uintptr_t)"instance-to-path";
@@ -651,7 +651,7 @@ ofw_real_package_to_path(ofw_t ofw, phandle_t package, char *buf, size_t len)
 		cell_t package;
 		cell_t buf;
 		cell_t len;
-		cell_t size;
+		int32_t size;
 	} args;
 
 	args.name = (cell_t)(uintptr_t)"package-to-path";
@@ -779,7 +779,7 @@ ofw_real_read(ofw_t ofw, ihandle_t instance, void *addr, size_t len)
 		cell_t instance;
 		cell_t addr;
 		cell_t len;
-		cell_t actual;
+		int32_t actual;
 	} args;
 
 	args.name = (cell_t)(uintptr_t)"read";
@@ -812,7 +812,7 @@ ofw_real_write(ofw_t ofw, ihandle_t instance, const void *addr, size_t len)
 		cell_t instance;
 		cell_t addr;
 		cell_t len;
-		cell_t actual;
+		int32_t actual;
 	} args;
 
 	args.name = (cell_t)(uintptr_t)"write";

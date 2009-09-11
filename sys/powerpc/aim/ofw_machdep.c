@@ -68,7 +68,6 @@ static int	(*ofwcall)(void *);
 static void	*fdt;
 int		ofw_real_mode;
 
-int		ofw_real_mode_entry(void *);
 int		ofw_32bit_mode_entry(void *);
 static int	openfirmware(void *args);
 
@@ -323,9 +322,7 @@ OF_initial_setup(void *fdt_ptr, void *junk, int (*openfirm)(void *))
 		 * For PPC64, we need to use some hand-written
 		 * asm trampolines to get to OF.
 		 */
-		if (ofw_real_mode && openfirm != NULL)
-			ofwcall = ofw_real_mode_entry;
-		else
+		if (openfirm != NULL)
 			ofwcall = ofw_32bit_mode_entry;
 	#else
 		ofwcall = openfirm;
@@ -369,9 +366,9 @@ OF_bootstrap()
 static int
 openfirmware(void *args)
 {
-	long		oldmsr;
 	int		result;
 	#ifndef __powerpc64__
+	long		oldmsr;
 	register_t	srsave[16];
 	u_int		i;
 	#endif
@@ -401,7 +398,6 @@ openfirmware(void *args)
 		}
 		isync();
 	}
-      #endif
 
 	__asm __volatile(	"\t"
 		"sync\n\t"
@@ -411,16 +407,17 @@ openfirmware(void *args)
 		: "=r" (oldmsr)
 		: "r" (ofmsr[0])
 	);
+      #endif
 
        	result = ofwcall(args);
 
+      #ifndef __powerpc64__
 	__asm(	"\t"
 		"mtmsr  %0\n\t"
 		"isync\n"
 		: : "r" (oldmsr)
 	);
 
-      #ifndef __powerpc64__
 	if (pmap_bootstrapped && !ofw_real_mode) {
 		/*
 		 * Restore the kernel's addr space. The isync() doesn;t

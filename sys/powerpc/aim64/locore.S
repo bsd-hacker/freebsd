@@ -154,12 +154,6 @@ ASENTRY(__start)
 	lis	2,tocbase@ha
 	ld	2,tocbase@l(2)
 
-	/* Switch to 64-bit mode */
-	mfmsr	9
-	li	8,1
-	insrdi	9,8,1,0
-	mtmsrd	9
-
 	mfmsr	0
 	lis	9,ofmsr@ha
 	stdu	0,ofmsr@l(9)
@@ -172,6 +166,12 @@ ASENTRY(__start)
 	std	0,24(9)			/* ofmsr[3] = sprg2 */
 	mfsprg3 0
 	std	0,32(9)			/* ofmsr[4] = sprg3 */
+
+	/* Switch to 64-bit mode */
+	mfmsr	9
+	li	8,1
+	insrdi	9,8,1,0
+	mtmsrd	9
 	
 	bl	.OF_initial_setup
 	nop
@@ -210,47 +210,97 @@ tocbase:
  * Open Firmware Real-mode Entry Point. This is a huge pain.
  */
 
-ASENTRY(ofw_real_mode_entry)
-	mflr	0
-	lis	4,openfirmware_entry@ha
-	ld	4,openfirmware_entry@l(4) /* read client interface handler */
-
-	mfmsr	5
-	mtsprg3	5
-	andi.	5, 5, ~(PSL_DR | PSL_IR | PSL_EE)@l
-	mtmsrd	5
-
-	mtctr	4
-	bctrl
-
-	mfsprg3	5
-	mtmsrd	5
-	mtlr 	0
-	blr
-
 ASENTRY(ofw_32bit_mode_entry)
-	mflr	4
-	mtsprg1 4
+	mflr	%r0
+	std	%r0,16(%r1)
+	stdu	%r1,-224(%r1)
 
-	lis	4,openfirmware_entry@ha
-	ld	4,openfirmware_entry@l(4) /* read client interface handler */
+	/*
+	 * We need to save the following, because OF's register save/
+	 * restore code assumes that the contents of registers are
+	 * at most 32 bits wide: lr, cr, r2, r13-r31, the old MSR. These
+	 * get placed in that order in the stack.
+	 */
 
-	/* Set up a 32-bit MSR in r5 */
-	mfmsr	5
-	mtsprg2	5
-	clrldi	5,5,1
+	mfcr	%r4
+	std	%r4,48(%r1)
+	std	%r13,56(%r1)
+	std	%r14,64(%r1)
+	std	%r15,72(%r1)
+	std	%r16,80(%r1)
+	std	%r17,88(%r1)
+	std	%r18,96(%r1)
+	std	%r19,104(%r1)
+	std	%r20,112(%r1)
+	std	%r21,120(%r1)
+	std	%r22,128(%r1)
+	std	%r23,136(%r1)
+	std	%r24,144(%r1)
+	std	%r25,152(%r1)
+	std	%r26,160(%r1)
+	std	%r27,168(%r1)
+	std	%r28,176(%r1)
+	std	%r29,184(%r1)
+	std	%r30,192(%r1)
+	std	%r31,200(%r1)
+	std	%r2,208(%r1)
+
+	/* Save the old MSR */
+	mfmsr	%r4
+	std	%r4,216(%r1)
+	mr	%r14,%r4	/* Save in a non-volatile reg */
+
+	lis	%r4,openfirmware_entry@ha
+	ld	%r4,openfirmware_entry@l(%r4) /* read client interface handler */
 
 	/* Set MSR, branch to OF, and come back */
-	mtmsrd	5
+	lis	%r5,ofmsr@ha
+	ld	%r5,ofmsr@l(%r5)
+	mtmsrd	%r5
 	isync
-	mtctr	4
+	mtctr	%r4
 	bctrl
-	mfsprg2	5
-	mtmsrd	5
+
+	/* Turn translation back on to get to the stack */
+	mtmsr	%r14
 	isync
 
-	mfsprg1	4
-	mtlr 	4
+	/* Now we can use the stack again, so get the real MSR */
+	ld	%r5,216(%r1)
+	mtmsrd	%r5
+	isync
+
+	/* Sign-extend the return value from OF */
+	extsw	%r3,%r3
+
+	/* Restore all the non-volatile registers */
+	ld	%r5,48(%r1)
+	mtcr	%r5
+	ld	%r13,56(%r1)
+	ld	%r14,64(%r1)
+	ld	%r15,72(%r1)
+	ld	%r16,80(%r1)
+	ld	%r17,88(%r1)
+	ld	%r18,96(%r1)
+	ld	%r19,104(%r1)
+	ld	%r20,112(%r1)
+	ld	%r21,120(%r1)
+	ld	%r22,128(%r1)
+	ld	%r23,136(%r1)
+	ld	%r24,144(%r1)
+	ld	%r25,152(%r1)
+	ld	%r26,160(%r1)
+	ld	%r27,168(%r1)
+	ld	%r28,176(%r1)
+	ld	%r29,184(%r1)
+	ld	%r30,192(%r1)
+	ld	%r31,200(%r1)
+	ld	%r2,208(%r1)
+
+	/* Restore the stack and link register */
+	ld	%r1,0(%r1)
+	ld	%r0,16(%r1)
+	mtlr 	%r0
 	blr
 
 /*
