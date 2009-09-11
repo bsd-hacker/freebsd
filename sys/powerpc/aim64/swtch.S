@@ -200,10 +200,15 @@ cpu_switchin:
 	mtcr	%r5
 	ld	%r5,PCB_LR(%r3)		/* Load the link register */
 	mtlr	%r5
-	ld	%r5,PCB_AIM_USR_VSID(%r3) /* Load the USER_SR segment reg */
+
+	li	%r5,USER_SR		/* Load the USER_SR segment reg */
+	sldi	%r5,%r5,28
+	slbie	%r5
+	ld	%r5,PCB_AIM_USR_VSID(%r3)
 	ld	%r6,PCB_AIM_USR_ESID(%r3)
 	ori	%r6,%r6,USER_SR
 	slbmte	%r5,%r6
+
 	isync
 	ld	%r1,PCB_SP(%r3)		/* Load the stack pointer */
 	ld	%r2,PCB_TOC(%r3)	/* Load the TOC pointer */
