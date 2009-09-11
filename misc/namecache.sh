@@ -57,6 +57,10 @@
 
 # Consistency is restored by a umount + mount of the FS
 
+# Observations:
+#    No problems seen with vfs.lookup_shared=0.
+#    Does not fail in a "private" subdirectory
+
 . ../default.cfg
 
 odir=`pwd`
@@ -65,7 +69,11 @@ sed '1,/^EOF/d' < $odir/$0 > namecache.c
 cc -o namecache -Wall namecache.c
 rm -f namecache.c
 
-rm -f file.0*
+#dir=/tmp/namecache.dir	# No problems seen
+dir=/tmp
+[ -d $dir ] || mkdir -p $dir
+cd $dir
+
 for i in `jot 30`; do
 	for j in `jot 10`; do
 		/tmp/namecache &
@@ -76,12 +84,12 @@ for i in `jot 30`; do
 	done
 done
 
-if ls -l /tmp/file.* 2>/dev/null | grep -q file.0; then
-	echo "ls -l /tmp/file.0*"
-	ls -l /tmp/file.0*
+if ls -l ${dir}/file.0* 2>&1 | egrep "file.0[0-9]" | grep -q "No such file"; then
+	echo "ls -l ${dir}/file.0*"
+	ls -l ${dir}/file.0*
 fi
 
-rm -f /tmp/namecache # /tmp/file.0*
+rm -f /tmp/namecache # /${dir}/file.0*
 exit
 EOF
 /* Test scenario for possible name cache problem */
@@ -103,7 +111,7 @@ __FBSDID("$FreeBSD$");
 #include <unistd.h>
 
 static char path[MAXPATHLEN+1];
-static char buf[8096];
+static char buf[64 * 1024];
 
 void
 pm(void)
@@ -115,12 +123,6 @@ pm(void)
 	struct dirent *dp;
 	char *bp = buf;
 
-        if (stat(".", &statb) != 0)
-                err(1, "stat(%s)", ".");
-
-        if (!S_ISDIR(statb.st_mode))
-                return;
-
 	if ((fd = open(".", O_RDONLY)) == -1)
 		err(1, "open(%s)", ".");
 
@@ -130,6 +132,7 @@ pm(void)
 		space = space - n;
 		bp   = bp + n;
 	} while (n != 0);
+	close(fd);
 
 	bp = buf;
 	dp = (struct dirent *)bp;
