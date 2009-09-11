@@ -87,8 +87,8 @@ set_user_sr(pmap_t pm, const void *addr)
 	vsid = va_to_vsid(pm, (vm_offset_t)addr);
 	PMAP_UNLOCK(pm);
 
-	slb1 = vsid << 12;
-	slb2 = (((esid << 1) | 1UL) << 27) | USER_SR;
+	slb1 = vsid << SLBV_VSID_SHIFT;
+	slb2 = (esid << SLBE_ESID_SHIFT) | SLBE_VALID | USER_SR;
 
 	__asm __volatile ("slbie %0; slbmte %1, %2" :: "r"(esid << 28),
 	    "r"(slb1), "r"(slb2));
