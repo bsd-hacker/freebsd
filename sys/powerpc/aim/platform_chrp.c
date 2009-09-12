@@ -102,7 +102,7 @@ static u_long
 chrp_timebase_freq(platform_t plat, struct cpuref *cpuref)
 {
 	phandle_t phandle;
-	long ticks = -1;
+	int32_t ticks = -1;
 
 	phandle = cpuref->cr_hwref;
 
