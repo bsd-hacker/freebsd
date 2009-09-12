@@ -180,7 +180,7 @@ parse_ofw_memory(phandle_t node, const char *prop, struct mem_region *output)
 	while (i < sz/sizeof(cell_t)) {
 	      #ifndef __powerpc64__
 		/* On 32-bit PPC, ignore regions starting above 4 GB */
-		if (OFmem[i] > 0) {
+		if (address_cells > 1 && OFmem[i] > 0) {
 			i += address_cells + size_cells;
 			continue;
 		}
