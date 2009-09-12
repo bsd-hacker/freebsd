@@ -189,18 +189,13 @@ TLBIE(pmap_t pmap, vm_offset_t va) {
 
 	uint64_t vpn;
 
-#if 1
 	/*
-	 * CPU documentation says that tlbie takes the VPN, not the
-	 * VA. I think the code below does this correctly. We will see.
+	 * Compute the virtual page number we wish to invalidate.
 	 */
 
 	vpn = (uint64_t)(va & ADDR_PIDX);
 	if (pmap != NULL)
 		vpn |= (va_to_vsid(pmap,va) << 28);
-#else
-	vpn = va;
-#endif
 
 #ifdef __powerpc64__
 	__asm __volatile("\
