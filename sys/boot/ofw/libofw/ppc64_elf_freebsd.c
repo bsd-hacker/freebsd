@@ -80,7 +80,7 @@ ppc64_ofw_elf_exec(struct preloaded_file *fp)
 	/* Handle function descriptor */
 	entry = *(uint64_t *)e->e_entry;
 
-	if ((error = md_load(fp->f_args, &mdp)) != 0)
+	if ((error = md_load64(fp->f_args, &mdp)) != 0)
 		return (error);
 
 	printf("Kernel entry at 0x%lx ...\n", entry);
