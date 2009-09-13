@@ -23,6 +23,11 @@ CMS=UTF-8
 CMS+=	${cm}
 .  endif
 . endfor
+. for cm in ${CMSLINK_${ccln}}
+.  if ${CMS:M${cm}} == ""
+CMS+=	${cm}
+.  endif
+. endfor
 .endfor
 
 # All files generated and their locations
