@@ -28,6 +28,7 @@ CMSLINK_es_ES=	ISO8859-1 ISO8859-15
 CMSLINK_et_EE=	ISO8859-15
 CMSLINK_eu_ES=	ISO8859-1 ISO8859-15
 CMSLINK_fi_FI=	ISO8859-1 ISO8859-15
+CMSLINK_fr_BE=	ISO8859-1 ISO8859-15
 CMSLINK_fr_FR=	ISO8859-1 ISO8859-15
 CMSLINK_hi_IN=	ISCII-DEV
 CMSLINK_hr_HR=	ISO8859-2
@@ -58,9 +59,8 @@ CMSLINK_zh_Hans_CN=	GB18030 GB2312 GBK eucCN
 # For these locales, also create symlinks to the main locale.
 CCLNLINK_ca_ES=	ca_AD ca_FR ca_IT
 CCLNLINK_de_DE=	de_AT
-CCLNLINK_en_US.UTF-8=	en_IE.UTF-8
 CCLNLINK_en_US=	en_AU en_CA en_GB en_NZ
-CCLNLINK_en_US.UTF-8=	he_IL.UTF-8
+CCLNLINK_en_US.UTF-8=	en_IE.UTF-8 he_IL.UTF-8
 CCLNLINK_fr_BE=	nl_BE
 CCLNLINK_fr_FR=	fr_CA fr_CH
 CCLNLINK_it_IT=	it_CH
@@ -69,7 +69,10 @@ CCLNLINK_zh_Hans_HK.UTF-8=	zh_Hant_HK.Big5HKSCS zh_Hant_HK.UTF-8 zh_Hant_TW.Big5
 
 # For these locales, create symlinks to the main locale for historical reasons.
 LEGLINK_ja_JP=		jp_JP
-LEGLINK_zh_Hans_CN=	zh_CN zh_TW zh_HK
+LEGLINK_zh_Hans_CN=	zh_CN
+LEGLINK_zh_Hans_CN.Big5HKSCS=	zh_HK.Big5HKSCS
+LEGLINK_zh_Hans_CN.Big5=	zh_HK.Big5  zh_TW.Big5
+LEGLINK_zh_Hans_CN.UTF-8=	zh_HK.UTF-8 zh_TW.UTF-8
 LEGLINK_sr_Cyrl_RS=	sr_YU
 LEGLINK_sr_Latn_RS.ISO8859-2=	sr_YU.ISO8859-2
 LEGLINK_zh_Hans_CN.GBK2312=	zh_CN.GBK
