@@ -7,7 +7,7 @@ CCLN=           af_ZA am_ET be_BY bg_BG ca_ES cs_CZ da_DK de_AT \
 		hi_IN hr_HR hu_HU hy_AM is_IS it_IT ja_JP kk_KZ \
 		ko_KR lt_LT mn_MN nl_BE nl_NL no_NO pl_PL pt_BR \
 		pt_PT ro_RO ru_RU sk_SK sl_SI sr_Cyrl_RS sr_Latn_RS \
-		sv_SE tr_TR uk_UA zh_CN zh_HK zh_TW
+		sv_SE tr_TR uk_UA zh_Hans_CN zh_Hant_HK zh_Hant_TW
 
 # For these locales, beside creating the UTF-8 map also create these
 # charactermaps.
@@ -83,7 +83,8 @@ TRANSLATION_ISO8859-1=	E282AC:455552
 # For these locales, create symlinks to the main locale for historical reasons.
 LEGLINK_ja_JP=		jp_JP
 LEGLINK_zh_Hans_CN=	zh_CN
-LEGLINK_zh_Hant_TW=	zh_TW zh_HK
+LEGLINK_zh_Hant_TW=	zh_TW
+LEGLINK_zh_Hant_HK=	zh_HK
 LEGLINK_sr_Cyrl_RS=	sr_YU
 LEGLINK_sr_Latn_RS.ISO8859-2=	sr_YU.ISO8859-2
 LEGLINK_zh_Hans_CN.GBK2312=	zh_CN.GBK
