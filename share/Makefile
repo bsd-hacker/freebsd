@@ -5,7 +5,9 @@
 
 # Do not include `info' in the SUBDIR list, it is handled separately.
 
-SUBDIR=	${_colldef} \
+SUBDIR=	msgdef numericdef timedef monetdef
+
+_SUBDIR=	${_colldef} \
 	${_dict} \
 	${_doc} \
 	${_examples} \
