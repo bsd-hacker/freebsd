@@ -18,25 +18,21 @@ ICONV_hi_IN.ISCII-DEV=	bsdiconv
 # All charactermaps
 CMS=UTF-8
 .for ccln in ${CCLN}
-. if defined(CMS_${ccln})
-.  for cm in ${CMS_${ccln}}
-.   if ${CMS:M${cm}} == ""
+. for cm in ${CMS_${ccln}}
+.  if ${CMS:M${cm}} == ""
 CMS+=	${cm}
-.   endif
-.  endfor
-. endif
+.  endif
+. endfor
 .endfor
 
 # All files generated and their locations
 ALLFILES=	${CCLN:S/$/.UTF-8/}
 .for ccln in ${CCLN}
 FILESDIR_${ccln}.UTF-8.out= ${LOCALEDIR}/${ccln}.UTF-8
-. if defined(CMS_${ccln})
-.  for cm in ${CMS_${ccln}}
+. for cm in ${CMS_${ccln}}
 ALLFILES+=	${ccln}.${cm}
 FILESDIR_${ccln}.${cm}.out= ${LOCALEDIR}/${ccln}.${cm}
-.  endfor
-. endif
+. endfor
 .endfor
 
 FILES=		${ALLFILES:S/$/.out/}
@@ -47,15 +43,108 @@ CLEANFILES+=	${CCLN:S/$/.src/}
 FILESNAME=	${LCTYPE}
 
 # All links
-SYMLINKS=
+#
+# CMS_ca_ES=		ISO8859-1
+# CMSLINK_ca_ES=	ISO8859-2
+# CMSLINK_ca_ES.ISO8859-1=	ISO8859-15
+# CCLNLINK_ca_ES=	ca_FR
+# CCLNLINK_ca_ES.UTF-8=	ca_IT.UTF-8
+# LEGLINK_ca_ES=	ca_CA
+#
+# First create the direct CMSLINK symlinks:
+#
+# foreach cm in CMSLINK_ca_ES
+#   ca_ES.cm		-> ca_ES.UTF-8
+# endfor
+# foreach cm in CMS
+#   if defined(CMSLINK_ca_ES.cm)
+#     foreach cmi in CMSLINK_ca_ES.cm
+#       ca_ES.cmi	-> ca_ES.cm
+#     endfor
+#   endif
+# endfor
+#
+# Next create the direct CCNLNLINK symlinks:
+#
+# foreach ccln in CCLNLINK_ca_ES
+#   foreach cm in CMSLINK_ca_ES
+#     ccln.cm		-> ca_ES.UTF-8
+#   endfor
+# endfor
+# foreach ccln in CCLNLINK_ca_ES
+#   foreach cm in CMS
+#     if defined(CMSLINK_ca_ES.cm)
+#       foreach cmi in CMSLINK_ca_ES.cm
+#         ccln.cmi	-> ca_ES.cm
+#       endfor
+#     endif
+#   endfor
+# endfor
+#
+# And the per-charactermap CCNLNLINK symlinks:
+#
+# foreach ccln in CCLN
+#   foreach cm in CMS
+#     if defined(CCLNLINK_ccln.cm)
+#	foreach cclncm in CCLNLINK_ccln.cm
+#	  cclncm	-> ccln.cm
+#	endfor
+#     endif
+#   endfor
+# endfor
+#
+# af_ZA.UTF-8
+# af_ZA.ISO8859-1
+# af_ZA.ISO8859-15	-> af_ZA.ISO8859-1
+# af_ZA.ISO8859-2	-> af_ZA.UTF-8
+#
+# af_ZB.UTF-8		-> af_ZA.UTF-8
+# af_ZB.ISO8859-1	-> af_ZA.ISO8859-1
+# af_ZB.ISO8859-15	-> af_ZB.ISO8895-1
+# af_ZB.ISO8859-2	-> af_ZB.UTF-8
+#
+# af_ZC.UTF-8		-> af_ZA.UTF-8
+#
+# af_ZD.UTF-8		-> af_ZA.UTF-8
+# af_ZD.ISO8859-1	-> af_ZA.ISO8859-1
+# af_ZD.ISO8859-15	-> af_ZD.ISO8895-1
+# af_ZD.ISO8859-2	-> af_ZD.UTF-8
+#
+
+# LEGLINK_xxXX is nothing more than a CCLNLINK_xxXX
 .for ccln in ${CCLN}
-. if defined(CMSLINK_${ccln})
-.  for cm in ${CMSLINK_${ccln}}
-SYMLINKS+=	../${ccln}.UTF-8/${LCTYPE} ${LOCALEDIR}/${ccln}.${cm}
-.  endfor
-. endif
+. for _ccln in ${LEGLINK_${ccln}}
+CCLNLINK_${ccln}+=	${_ccln}
+. endfor
 . for cm in ${CMS}
-.  if defined(CMSLINK_${ccln}.${cm})
+.  ifdef LEGLINK_${ccln}.${cm}
+CCLNLINK_${ccln}.${cm}+=	${LEGLINK_${ccln}.${cm}}
+.  endif
+. endfor
+.endfor
+
+#
+# First create the direct CMSLINK symlinks:
+#
+# foreach cm in CMSLINK_ca_ES
+#   ca_ES.cm		-> ca_ES.UTF-8
+# endfor
+.for ccln in ${CCLN}
+. for cm in ${CMSLINK_${ccln}}
+SYMLINKS+=	../${ccln}.UTF-8/${LCTYPE} ${LOCALEDIR}/${ccln}.${cm}
+. endfor
+.endfor
+
+# foreach cm in CMS
+#   if defined(CMSLINK_ca_ES.cm)
+#     foreach cmi in CMSLINK_ca_ES.cm
+#       ca_ES.cmi	-> ca_ES.cm
+#     endfor
+#   endif
+# endfor
+.for ccln in ${CCLN}
+. for cm in ${CMS}
+.  ifdef CMSLINK_${ccln}.${cm}
 .   for cclncm in ${CMSLINK_${ccln}.${cm}}
 SYMLINKS+=	../${ccln}.${cm}/${LCTYPE} ${LOCALEDIR}/${cclncm}
 .   endfor
@@ -63,77 +152,106 @@ SYMLINKS+=	../${ccln}.${cm}/${LCTYPE} ${LOCALEDIR}/${cclncm}
 . endfor
 .endfor
 
+#
+# Next create the direct CCNLNLINK symlinks:
+#
+# foreach ccln in CCLNLINK_ca_ES
+#   ccln.UTF-8		-> ca_ES.UTF-8
+#   foreach cm in CMSLINK_ca_ES
+#     ccln.cm		-> ca_ES.UTF-8
+#   endfor
+# endfor
 .for ccln in ${CCLN}
-
-. if defined(LEGLINK_${ccln})
-.  for _ccln in ${LEGLINK_${ccln}}
-SYMLINKS+=	../${ccln}.UTF-8/${LCTYPE} ${LOCALEDIR}/${_ccln}.UTF-8
-.   if defined(CMS_${ccln})
-.    for cm in ${CMS_${ccln}}
-SYMLINKS+=	../${ccln}.UTF-8/${LCTYPE} ${LOCALEDIR}/${_ccln}.${cm}
-.    endfor
-.   endif
-
-.   if defined(CMSLINK_${ccln})
-.    for cm in ${CMSLINK_${ccln}}
-SYMLINKS+=	../${ccln}.UTF-8/${LCTYPE} ${LOCALEDIR}/${_ccln}.${cm}
-.    endfor
-.   endif
-
-.   for cm in ${CMS}
-.    if defined(CMSLINK_${ccln}.${cm})
-.     for cclncm in ${CMSLINK_${ccln}.${cm}}
-SYMLINKS+=	../${ccln}.${cm}/${LCTYPE} ${LOCALEDIR}/${cclncm}
-.     endfor
-.    endif
-.   endfor
+. for cclni in ${CCLNLINK_${ccln}}
+SYMLINKS+=	../${ccln}.UTF-8/${LCTYPE} ${LOCALEDIR}/${cclni}.UTF-8
+.  for cm in ${CMS_${ccln}}
+SYMLINKS+=	../${ccln}.${cm}/${LCTYPE} ${LOCALEDIR}/${cclni}.${cm}
 .  endfor
-. endif
-
-. for cm in ${CMS}
-.  if defined(LEGLINK_${ccln}.${cm})
-.   for cclncm in ${LEGLINK_${ccln}.${cm}}
-SYMLINKS+=	../${ccln}.${cm}/${LCTYPE} ${LOCALEDIR}/${cclncm}
-.   endfor
-.  endif
+.  for cm in ${CMSLINK_${ccln}}
+SYMLINKS+=	../${ccln}.UTF-8/${LCTYPE} ${LOCALEDIR}/${cclni}.${cm}
+.  endfor
 . endfor
-
-. if defined(CCLNLINK_${ccln})
-.  for _ccln in ${CCLNLINK_${ccln}}
-SYMLINKS+=	../${ccln}.UTF-8/${LCTYPE} ${LOCALEDIR}/${_ccln}.UTF-8
-.   if defined(CMS_${ccln})
-.    for cm in ${CMS_${ccln}}
-SYMLINKS+=	../${ccln}.UTF-8/${LCTYPE} ${LOCALEDIR}/${_ccln}.${cm}
+.endfor
+# foreach ccln in CCLNLINK_ca_ES
+#   foreach cm in CMS
+#     if defined(CMSLINK_ca_ES.cm)
+#       foreach cclncmi in CMSLINK_ca_ES.cm
+#         cclncmi(ca_ES -> ccln)	-> ca_ES.cm
+#       endfor
+#     endif
+#   endfor
+# endfor
+.for ccln in ${CCLN}
+. for cclni in ${CCLNLINK_${ccln}}
+.  for cm in ${CMS}
+.   ifdef CMSLINK_${ccln}.${cm}
+.    for cclncmi in ${CMSLINK_${ccln}.${cm}}
+SYMLINKS+=	../${ccln}.${cm}/${LCTYPE} ${LOCALEDIR}/${cclncmi:S/${ccln}/${cclni}/}
 .    endfor
 .   endif
-
-.   if defined(CMSLINK_${ccln})
-.    for cm in ${CMSLINK_${ccln}}
-SYMLINKS+=	../${ccln}.UTF-8/${LCTYPE} ${LOCALEDIR}/${_ccln}.${cm}
-.    endfor
-.   endif
-
-.   for cm in ${CMS}
-.    if defined(CMSLINK_${ccln}.${cm})
-.     for cclncm in ${CMSLINK_${ccln}.${cm}}
-SYMLINKS+=	../${ccln}.${cm}/${LCTYPE} ${LOCALEDIR}/${cclncm}
-.     endfor
-.    endif
-.   endfor
 .  endfor
-. endif
+. endfor
+.endfor
 
+#
+# And the per-charactermap CCNLNLINK symlinks:
+#
+# foreach ccln in CCLN
+#   foreach cm in CMS
+#     if defined(CCLNLINK_ccln.cm)
+#	foreach cclncm in CCLNLINK_ccln.cm
+#	  cclncm	-> ccln.cm
+#	endfor
+#     endif
+#   endfor
+# endfor
+.for ccln in ${CCLN}
 . for cm in ${CMS}
-.  if defined(CCLNLINK_${ccln}.${cm})
+.  ifdef CCLNLINK_${ccln}.${cm}
 .   for cclncm in ${CCLNLINK_${ccln}.${cm}}
 SYMLINKS+=	../${ccln}.${cm}/${LCTYPE} ${LOCALEDIR}/${cclncm}
 .   endfor
 .  endif
 . endfor
+.endfor
+
+## CMSLINK_xxXX=cm is nothing more than CMSLINK_xxXX.UTF-8=cm
+#.for ccln in ${CCLN}
+#.warning 0: ${ccln}
+#CMSLINK_${ccln}.UTF-8+=	${CMSLINK_${ccln}:S/^/${ccln}./}
+#.endfor
+#
+## CCLNLINK_xxXX=yyYY is nothing more than CCLNLINK_xxXX.(CMS_xxXX + CMSLINK_xxXX)=yyYY.(CMS)
+#.for ccln in ${CCLN}
+#. for cm in ${CMS_${ccln}}
+#.warning 1ccln: ${ccln}
+#.warning 1cm: ${cm}
+#CCLNLINK_${ccln}.${cm}+=	${CCLNLINK_${ccln}:S/$/.${cm}/}
+#. endfor
+#. for cm in ${CMS}
+#.warning 2cm: ${cm}
+#.  for cclncm in ${CMSLINK_${ccln}.${cm}}
+#.warning 2cclncm: ${cclncm}
+#CCLNLINK_${ccln}.${cm}+=	${cclncm}
+#.  endfor
+#. endfor
+#.endfor
+#
+#SYMLINKS=
+## Now join all symlinks
+#.for ccln in ${CCLN}
+#. for cm in ${CMS}
+#.  for cclncm in ${CCLNLINK_${ccln}.${cm}}
+#SYMLINKS+=	../${ccln}.${cm}/${LCTYPE} ${LOCALEDIR}/${cclncm}
+#.  endfor
+#. endfor
+#.endfor
+
 
 #
 # Fill in the ICONV_ variables with the default values.
 #
+.for ccln in ${CCLN}
 . if defined(CMS_${ccln})
 .  for cms in ${CMS_${ccln}}
 .   if !defined(ICONV_${ccln}.${cms})
@@ -141,7 +259,6 @@ ICONV_${ccln}.${cms}=	${ICONV}
 .   endif
 .  endfor
 . endif
-
 .endfor
 
 .for cm in ${CMS}
@@ -180,7 +297,7 @@ ${ccln}.UTF-8.out: ${ccln}.src
 . if defined(CMS_${ccln})
 .  for cms in ${CMS_${ccln}}
 
-${ccln}.${cms}.out: ${ccln}.src
+${ccln}.${cms}.out: ${ccln}.UTF-8.out
 	cat ${.ALLSRC} \
 	${_TRANSLATION_${cms}} | \
 	${ICONV_${ccln}.${cms}} \
