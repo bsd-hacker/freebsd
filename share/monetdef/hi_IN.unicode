@@ -6,11 +6,7 @@
 # int_curr_symbol (last character always SPACE)
 <LATIN CAPITAL LETTER I><LATIN CAPITAL LETTER N><LATIN CAPITAL LETTER R><SPACE>
 # currency_symbol
-
---CFDEC8--
-
---DEC8AC--
-<LATIN CAPITAL LETTER O WITH TILDE AND MACRON><SPACE>
+<DEVANAGARI LETTER RA><DEVANAGARI VOWEL SIGN U><FULL STOP>
 # mon_decimal_point
 <FULL STOP>
 # mon_thousands_sep
