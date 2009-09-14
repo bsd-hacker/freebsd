@@ -4,7 +4,7 @@
 CCLN=           af_ZA am_ET be_BY bg_BG ca_ES cs_CZ da_DK de_DE \
 		el_GR en_CA en_GB en_US es_ES et_EE eu_ES fi_FI \
 		fr_BE fr_CH fr_FR he_IL hi_IN hr_HR hu_HU hy_AM is_IS \
-		it_IT ja_JP kk_KZ ko_KR lt_LT mn_MN nl_NL no_NO \
+		it_IT ja_JP kk_KZ ko_KR lt_LT lv_LV mn_MN nl_NL no_NO \
 		pl_PL pt_PT ro_RO ru_RU sl_SI sr_Cyrl_RS sr_Latn_RS \
 		sv_SE tr_TR uk_UA zh_Hans_CN zh_Hant_TW
 
@@ -18,6 +18,7 @@ CMS_hy_AM=	ARMSCII-8
 CMS_ja_JP=	SJIS eucJP
 CMS_kk_KZ=	PT154
 CMS_ko_KR=	eucKR
+CMS_lv_LV=	ISO8859-13
 CMS_ru_RU=	CP1251 CP866 ISO8859-5 KOI8-R
 CMS_sr_Cyrl_RS=	ISO8859-5
 CMS_sr_Latn_RS=	ISO8859-2

@@ -1,0 +1,46 @@
+------------------------------------------------------------------------
+MERGED
+r196814 | ache | 2009-09-04 16:26:40 +1000 (Fri, 04 Sep 2009) | 5 lines
+Changed paths:
+   M /head/share/timedef/Makefile
+   A /head/share/timedef/lv_LV.ISO8859-13.src
+   A /head/share/timedef/lv_LV.UTF-8.src
+
+Add lv_LV
+
+------------------------------------------------------------------------
+MERGED
+r196813 | ache | 2009-09-04 16:19:37 +1000 (Fri, 04 Sep 2009) | 5 lines
+Changed paths:
+   M /head/share/msgdef/Makefile
+   A /head/share/msgdef/lv_LV.ISO8859-13.src
+   A /head/share/msgdef/lv_LV.UTF-8.src
+
+Add lv_LV
+
+------------------------------------------------------------------------
+MERGED
+r196812 | ache | 2009-09-04 15:54:45 +1000 (Fri, 04 Sep 2009) | 5 lines
+Changed paths:
+   M /head/share/monetdef/Makefile
+   A /head/share/monetdef/lv_LV.ISO8859-13.src
+
+Add lv_LV
+
+------------------------------------------------------------------------
+MERGED
+r196792 | ache | 2009-09-04 03:37:23 +1000 (Fri, 04 Sep 2009) | 2 lines
+Changed paths:
+   M /head/share/numericdef/Makefile
+
+Add lv_LV
+
+------------------------------------------------------------------------
+MERGED
+r196651 | ume | 2009-08-30 20:47:00 +1000 (Sun, 30 Aug 2009) | 4 lines
+Changed paths:
+   M /head/share/timedef/ja_JP.UTF-8.src
+
+AM/PM date format for ja_JP.eucJP and ja_JP.SJIS were
+localized by r193869.  However, ja_JP.UTF-8 wasn't.
+So, reflect it to ja_JP.UTF-8 as well.

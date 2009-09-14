@@ -64,6 +64,7 @@ CCLNLINK_en_US.UTF-8=	en_IE.UTF-8 he_IL.UTF-8
 CCLNLINK_fr_BE=	nl_BE
 CCLNLINK_fr_FR=	fr_CA fr_CH
 CCLNLINK_it_IT=	it_CH
+CCLNLINK_lt_LT=	lv_LV
 CCLNLINK_no_NO=	nb_NO nn_NO
 CCLNLINK_zh_Hans_HK.UTF-8=	zh_Hant_HK.Big5HKSCS zh_Hant_HK.UTF-8 zh_Hant_TW.Big5 zh_Hant_TW.UTF-8
 

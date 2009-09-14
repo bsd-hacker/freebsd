@@ -4,7 +4,7 @@
 CCLN=		am_ET be_BY bg_BG ca_ES cs_CZ da_DK de_AT de_DE \
 		el_GR en_GB en_US es_ES et_EE eu_ES fi_FI fr_FR \
 		he_IL hi_IN hr_HR hu_HU hy_AM is_IS \
-		it_IT ja_JP kk_KZ ko_KR la_LN lt_LT mn_MN nb_NO \
+		it_IT ja_JP kk_KZ ko_KR la_LN lt_LT lv_LV mn_MN nb_NO \
 		nl_NL nn_NO pl_PL pt_BR pt_PT ro_RO ru_RU sk_SK \
 		sl_SI sr_Cyrl_RS sr_Latn_RS sv_SE tr_TR uk_UA \
 		zh_Hans_CN zh_Hant_TW
@@ -37,6 +37,7 @@ CMS_kk_KZ=	PT154
 CMS_ko_KR=	eucKR
 CMS_la_LN=	ISO8859-1
 CMS_lt_LT=	ISO8859-4 ISO8859-13
+CMS_lv_LV=	ISO8859-13
 CMS_nb_NO=	ISO8859-1
 CMS_nl_NL=	ISO8859-1
 CMS_nn_NO=	ISO8859-1

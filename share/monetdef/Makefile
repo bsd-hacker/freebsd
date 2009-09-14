@@ -5,7 +5,7 @@ CCLN=           af_ZA am_ET be_BY bg_BG ca_ES cs_CZ da_DK de_AT \
 		de_CH de_DE el_GR en_AU en_CA en_GB en_IE en_NZ \
 		en_US es_ES et_EE fi_FI fr_BE fr_CA fr_FR he_IL \
 		hi_IN hr_HR hu_HU hy_AM is_IS it_IT ja_JP kk_KZ \
-		ko_KR lt_LT mn_MN nl_BE nl_NL no_NO pl_PL pt_BR \
+		ko_KR lt_LT lv_LV mn_MN nl_BE nl_NL no_NO pl_PL pt_BR \
 		pt_PT ro_RO ru_RU sk_SK sl_SI sr_Cyrl_RS sr_Latn_RS \
 		sv_SE tr_TR uk_UA zh_Hans_CN zh_Hant_HK zh_Hant_TW
 
@@ -54,6 +54,7 @@ CMSLINK_it_IT=	ISO8859-1 ISO8859-15
 CMSLINK_ja_JP.eucJP=	ja_JP.SJIS
 CMSLINK_ko_KR.eucKR=	ko_KR.CP949
 CMSLINK_lt_LT=	ISO8859-4 ISO8859-13
+CMSLINK_lv_LV=	ISO8859-13
 CMSLINK_nl_BE=	ISO8859-1 ISO8859-15
 CMSLINK_nl_NL=	ISO8859-1 ISO8859-15
 CMSLINK_no_NO=	ISO8859-1 ISO8859-15
@@ -78,7 +79,7 @@ CCLNLINK_no_NO=	nb_NO nn_NO
 # Some locales are not fully one-on-one, therefore need to be
 # translated manually.
 TRANSLATION_eucKR=	E282A9:5C
-TRANSLATION_ISO8859-1=	E282AC:455552
+TRANSLATION_ISO8859-1=	E282AC:4575
 
 # For these locales, create symlinks to the main locale for historical reasons.
 LEGLINK_ja_JP=		jp_JP
