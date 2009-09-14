@@ -334,7 +334,7 @@ powerpc_init(u_int startkernel, u_int endkernel, u_int basekernel, void *mdp)
 		case IBM970MP:
 		case IBM970GX:
 			scratch = mfspr(SPR_HID5);
-			scratch &= ~((register_t)HID5_970_DCBZ_SIZE_HI << 32);
+			scratch &= ~HID5_970_DCBZ_SIZE_HI;
 			mtspr(SPR_HID5, scratch);
 			break;
 	}
@@ -825,7 +825,7 @@ cpu_halt(void)
 void
 cpu_idle(int busy)
 {
-	uint32_t msr;
+	register_t msr;
 
 	msr = mfmsr();
 

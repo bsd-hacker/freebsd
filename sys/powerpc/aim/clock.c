@@ -95,8 +95,7 @@ static struct timecounter	decr_timecounter = {
 void
 decr_intr(struct trapframe *frame)
 {
-	long		tick;
-	int		nticks;
+	int32_t		tick, nticks;
 
 	/*
 	 * Check whether we are initialized.

@@ -759,7 +759,7 @@ moea64_bridge_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernele
 	int		ofw_mappings;
 	vm_size_t	size, physsz, hwphyssz;
 	vm_offset_t	pa, va, off;
-	uint32_t	msr;
+	register_t	msr;
 	void		*dpcpu;
 
 	/* We don't have a direct map since there is no BAT */

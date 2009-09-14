@@ -342,9 +342,9 @@ powerpc_init(u_int startkernel, u_int endkernel, u_int basekernel, void *mdp)
 		case IBM970FX:
 		case IBM970MP:
 		case IBM970GX:
-			scratch = mfspr64upper(SPR_HID5,msr);
+			scratch = mfspr(SPR_HID5);
 			scratch &= ~HID5_970_DCBZ_SIZE_HI;
-			mtspr64(SPR_HID5, scratch, mfspr(SPR_HID5), msr);
+			mtspr(SPR_HID5, scratch);
 			break;
 	}
 
