@@ -64,15 +64,16 @@ CCLNLINK_en_US.UTF-8=	en_IE.UTF-8 he_IL.UTF-8
 CCLNLINK_fr_BE=	nl_BE
 CCLNLINK_fr_FR=	fr_CA fr_CH
 CCLNLINK_it_IT=	it_CH
-CCLNLINK_lt_LT=	lv_LV
+CCLNLINK_lt_LT.ISO8859-13=	lv_LV.ISO8859-13
+CCLNLINK_lt_LT.UTF-8=	lv_LV.UTF-8
 CCLNLINK_no_NO=	nb_NO nn_NO
 CCLNLINK_zh_Hans_HK.UTF-8=	zh_Hant_HK.Big5HKSCS zh_Hant_HK.UTF-8 zh_Hant_TW.Big5 zh_Hant_TW.UTF-8
 
 # For these locales, create symlinks to the main locale for historical reasons.
 LEGLINK_ja_JP=		jp_JP
 LEGLINK_zh_Hans_CN=	zh_CN
-LEGLINK_zh_Hans_CN.Big5HKSCS=	zh_HK.Big5HKSCS
-LEGLINK_zh_Hans_CN.Big5=	zh_HK.Big5  zh_TW.Big5
+LEGLINK_zh_Hans_CN.eucCN=	zh_HK.Big5HKSCS zh_TW.Big5
+LEGLINK_zh_Hans_CN.Big5=	zh_HK.Big5
 LEGLINK_zh_Hans_CN.UTF-8=	zh_HK.UTF-8 zh_TW.UTF-8
 LEGLINK_sr_Cyrl_RS=	sr_YU
 LEGLINK_sr_Latn_RS.ISO8859-2=	sr_YU.ISO8859-2

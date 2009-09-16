@@ -21,10 +21,12 @@ CMS_hy_AM=	ARMSCII-8
 CMS_ja_JP=	eucJP
 CMS_kk_KZ=	PT154
 CMS_ko_KR=	eucKR
+CMS_lv_LV=	ISO8859-13
 CMS_pl_PL=	ISO8859-2
 CMS_pt_PT=	ISO8859-1 ISO8859-15
 CMS_ru_RU=	CP1251 CP866 ISO8859-5 KOI8-R
 CMS_uk_UA=	CP1251 ISO8859-5 KOI8-U
+CMS_sr_Cyrl_RS=	ISO8859-5
 CMS_zh_Hans_CN=	GB18030 GB2312 eucCN
 
 # For these locales, link the following charactermaps to the UTF-8 map.
@@ -54,7 +56,6 @@ CMSLINK_it_IT=	ISO8859-1 ISO8859-15
 CMSLINK_ja_JP.eucJP=	ja_JP.SJIS
 CMSLINK_ko_KR.eucKR=	ko_KR.CP949
 CMSLINK_lt_LT=	ISO8859-4 ISO8859-13
-CMSLINK_lv_LV=	ISO8859-13
 CMSLINK_nl_BE=	ISO8859-1 ISO8859-15
 CMSLINK_nl_NL=	ISO8859-1 ISO8859-15
 CMSLINK_no_NO=	ISO8859-1 ISO8859-15
@@ -63,7 +64,6 @@ CMSLINK_ro_RO=	ISO8859-2
 CMSLINK_sk_SK=	ISO8859-2
 CMSLINK_sl_SI=	ISO8859-2
 CMSLINK_sr_Latn_RS=	ISO8859-2
-CMSLINK_sr_Cyrl_RS=	ISO8859-5
 CMSLINK_sv_SE=	ISO8859-1 ISO8859-15
 CMSLINK_tr_TR=	ISO8859-9
 CMSLINK_zh_Hans_CN.GB2312=	zh_Hans_CN.GBK
@@ -77,17 +77,17 @@ CCLNLINK_de_CH=	fr_CH it_CH
 CCLNLINK_no_NO=	nb_NO nn_NO
 
 # Some locales are not fully one-on-one, therefore need to be
-# translated manually.
-TRANSLATION_eucKR=	E282A9:5C
-TRANSLATION_ISO8859-1=	E282AC:4575
+# translated manually (multiple allowed)
+TRANSLATION_eucKR=	E282A9:5C	# Won sign
+TRANSLATION_ISO8859-1=	E282AC:4575	# Euro sign
 
 # For these locales, create symlinks to the main locale for historical reasons.
 LEGLINK_ja_JP=		jp_JP
+LEGLINK_sr_Latn_RS.UTF-8=	sr_YU.UTF-8 sr_YU.ISO8859-2
+LEGLINK_sr_Cyrl_RS.ISO8859-5=	sr_YU.ISO8859-5
 LEGLINK_zh_Hans_CN=	zh_CN
 LEGLINK_zh_Hant_TW=	zh_TW
 LEGLINK_zh_Hant_HK=	zh_HK
-LEGLINK_sr_Cyrl_RS=	sr_YU
-LEGLINK_sr_Latn_RS.ISO8859-2=	sr_YU.ISO8859-2
 LEGLINK_zh_Hans_CN.GBK2312=	zh_CN.GBK
 
 #
