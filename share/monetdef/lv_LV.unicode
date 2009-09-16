@@ -4,7 +4,7 @@
 # WARNING: empty lines are essential too
 #
 # int_curr_symbol (last character always SPACE)
-<LATIN CAPITAL LETTER L><LATIN CAPITAL LETTER V><LATIN CAPITAL LETTER L>
+<LATIN CAPITAL LETTER L><LATIN CAPITAL LETTER V><LATIN CAPITAL LETTER L><SPACE>
 # currency_symbol
 <LATIN CAPITAL LETTER L><LATIN SMALL LETTER S>
 # mon_decimal_point
@@ -16,7 +16,7 @@
 # positive_sign
 
 # negative_sign
-<HYPHEN>
+<HYPHEN-MINUS>
 # int_frac_digits
 2
 # frac_digits
