@@ -271,11 +271,17 @@ ICONV_${ccln}.${cms}=	${ICONV}
 CMALIAS_${cm}=	${cm}
 . endif
 
-. if !defined(TRANSLATION_${cm})
-TRANSLATION_${cm}=
+. if !defined(TRANSLATIONBEFORE_${cm})
+TRANSLATIONBEFORE_${cm}=
 . endif
-. for TR in ${TRANSLATION_${cm}}
-_TRANSLATION_${cm}+=	 | awk '{ gsub("${TR:C/:.*//:C/([0-9a-fA-F][0-9a-fA-F])/\\\\x\1/g}", "${TR:C/^.*://:C/([0-9a-fA-F][0-9a-fA-F])/\\\\x\1/g}"); print }'
+. if !defined(TRANSLATIONAFTER_${cm})
+TRANSLATIONAFTER_${cm}=
+. endif
+. for TR in ${TRANSLATIONBEFORE_${cm}}
+_TRANSLATIONBEFORE_${cm}+=	 | awk '{ gsub("${TR:C/:.*//:C/([0-9a-fA-F][0-9a-fA-F])/\\\\x\1/g}", "${TR:C/^.*://:C/([0-9a-fA-F][0-9a-fA-F])/\\\\x\1/g}"); print }'
+. endfor
+. for TR in ${TRANSLATIONAFTER_${cm}}
+_TRANSLATIONAFTER_${cm}+=	 | awk '{ gsub("${TR:C/:.*//:C/([0-9a-fA-F][0-9a-fA-F])/\\\\x\1/g}", "${TR:C/^.*://:C/([0-9a-fA-F][0-9a-fA-F])/\\\\x\1/g}"); print }'
 . endfor
 .endfor
 
@@ -304,10 +310,11 @@ ${ccln}.UTF-8.out: ${ccln}.src
 
 ${ccln}.${cms}.out: ${ccln}.UTF-8.out
 	cat ${.ALLSRC} \
-	${_TRANSLATION_${cms}} | \
+	${_TRANSLATIONBEFORE_${cms}} | \
 	${ICONV_${ccln}.${cms}} \
 	    -f UTF-8 \
 	    -t ${CMALIAS_${cms}} \
+	${_TRANSLATIONAFTER_${cms}} \
 	    > ${.TARGET} \
 	|| rm ${.TARGET} && exit 0
 

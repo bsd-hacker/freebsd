@@ -73,6 +73,9 @@ CCLNLINK_pt_PT=		pt_BR
 CCLNLINK_zh_Hant_TW=	zh_Hant_HK
 CCLNLINK_en_GB.UTF-8=	en_IE.UTF-8
 
+#
+TRANSLATIONAFTER_ARMSCII-8=	5DA9:5D2E	# ]. fixing
+
 # For these locales, create symlinks to the main locale for historical reasons.
 LEGLINK_ja_JP=		jp_JP
 LEGLINK_zh_Hans_CN=	zh_CN

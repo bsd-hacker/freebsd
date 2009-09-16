@@ -78,8 +78,8 @@ CCLNLINK_no_NO=	nb_NO nn_NO
 
 # Some locales are not fully one-on-one, therefore need to be
 # translated manually (multiple allowed)
-TRANSLATION_eucKR=	E282A9:5C	# Won sign
-TRANSLATION_ISO8859-1=	E282AC:4575	# Euro sign
+TRANSLATIONBEFORE_eucKR=	E282A9:5C	# Won sign
+TRANSLATIONBEFORE_ISO8859-1=	E282AC:4575	# Euro sign
 
 # For these locales, create symlinks to the main locale for historical reasons.
 LEGLINK_ja_JP=		jp_JP
