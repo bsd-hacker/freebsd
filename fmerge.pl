@@ -35,8 +35,13 @@ our $already;
 our $debug;
 our $pretend;
 
-our $branch = "head";
-our $target = ".";
+our $src_branch = "head";	# where we merge from
+our $src_path;
+our $src_url;			# source URL
+our $tgt_branch;		# where we merge to
+our $tgt_path;
+our $tgt_dir = ".";		# target directory
+
 our %revs = (0 => 0);
 our @ranges;
 
@@ -99,13 +104,13 @@ sub svn_catch(@) {
 }
 
 sub examine() {
-    my $fh = svn_catch("info", $target);
+    my $fh = svn_catch("info", $tgt_dir);
     while (<$fh>) {
 	chomp();
 	my ($key, $value) = split(/:\s+/, $_, 2);
 	next unless $key && $value;
 	if ($key eq 'Path') {
-	    svn_check($value eq $target, "path mismatch: $value != $target");
+	    svn_check($value eq $tgt_dir, "path mismatch: $value != $tgt_dir");
 	} elsif ($key eq 'URL') {
 	    $svn_url = $value;
 	} elsif ($key eq 'Repository Root') {
@@ -118,11 +123,11 @@ sub examine() {
     $svn_path = $1;
 
     debug("guessing merge source / target directory");
-    $fh = svn_catch('propget', 'svn:mergeinfo', $target);
+    $fh = svn_catch('propget', 'svn:mergeinfo', $tgt_dir);
     while (<$fh>) {
 	chomp();
-	debug("'$_' =~ m\@^\Q/$branch\E((?:/[\\w.-]+)*):\@");
-	next unless m@^\Q/$branch\E((?:/[\w.-]+)*):@;
+	debug("'$_' =~ m\@^\Q/$src_branch\E((?:/[\\w.-]+)*):\@");
+	next unless m@^\Q/$src_branch\E((?:/[\w.-]+)*):@;
 	my $subdir = $1;
 	debug("'$svn_path' =~ m\@^((?:/[\\w.-]+)+)\Q$subdir\E\$\@");
 	next unless $svn_path =~ m@^((?:/[\w.-]+)+)\Q$subdir\E$@;
@@ -146,6 +151,7 @@ sub examine() {
 
 sub addrevs($$) {
     my ($m, $n) = @_;
+    debug("adding range r$m:$n");
     if ($m > $n) {
 	for (my $i = $m; $i > $n; --$i) {
 	    $revs{$i} = -1;
@@ -179,6 +185,7 @@ sub revs2ranges() {
 	    $m = $n = $i;
 	}
     }
+    debug(join("\n  ", "ranges:", map { "r$_->[0]:$_->[1]" } @ranges));
 }
 
 sub printranges($) {
@@ -200,7 +207,7 @@ sub printranges($) {
 
 sub fmerge() {
     if (!@ranges) {
-	svn_merge("$svn_root/$branch/$svn_path", $target);
+	svn_merge("$svn_root/$src_branch/$svn_path", $tgt_dir);
     }
     foreach my $range (@ranges) {
 	my ($m, $n) = @{$range};
@@ -212,7 +219,7 @@ sub fmerge() {
 	} else {
 	    $spec = "-r$m:$n";
 	}
-	svn_merge($spec, "$svn_root/$branch/$svn_path", $target);
+	svn_merge($spec, "$svn_root/$src_branch/$svn_path", $tgt_dir);
     }
 }
 
@@ -269,16 +276,16 @@ MAIN:{
 	    if (@ARGV < 1) {
 		usage();
 	    }
-	    $branch = $ARGV[0];
+	    $src_branch = $ARGV[0];
 	    shift;
 	} elsif ($ARGV[0] eq 'into') {
 	    shift;
 	    if (@ARGV < 1) {
 		usage();
 	    }
-	    $target = $ARGV[0];
+	    $tgt_dir = $ARGV[0];
 	    shift;
-	    if (!-d $target) {
+	    if (!-d $tgt_dir) {
 		usage();
 	    }
 	} else {
