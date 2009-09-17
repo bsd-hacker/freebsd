@@ -69,8 +69,9 @@ sub svn_check($@) {
 
 sub svn_do(@) {
     my @argv = @_;
+    unshift(@argv, '--dry-run')
+	if $pretend;
     info('svn', @argv);
-    return if $pretend;
     my $pid = fork();
     if ($pid == -1) {
 	die("fork(): $!\n");
