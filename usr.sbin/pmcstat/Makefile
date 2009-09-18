@@ -10,6 +10,6 @@ LDADD=	-lelf -lkvm -lpmc -lm
 
 WARNS?=	6
 
-SRCS=	pmcstat.c pmcstat.h pmcstat_log.c
+SRCS=	pmcstat.c pmcstat.h pmcstat_log.c pmcstat_logct.c
 
 .include <bsd.prog.mk>

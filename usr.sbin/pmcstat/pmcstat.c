@@ -494,6 +494,7 @@ pmcstat_show_usage(void)
 	    "\t -D path\t create profiles in directory \"path\"\n"
 	    "\t -E\t\t (toggle) show counts at process exit\n"
 	    "\t -G file\t write a system-wide callgraph to \"file\"\n"
+	    "\t -f type\t set output format (calltree|callgraph) for system-wide callgraph\n"
 	    "\t -M file\t print executable/gmon file map to \"file\"\n"
 	    "\t -N\t\t (toggle) capture callchains\n"
 	    "\t -O file\t send log output to \"file\"\n"
@@ -594,7 +595,7 @@ main(int argc, char **argv)
 	}
 
 	while ((option = getopt(argc, argv,
-	    "CD:EG:M:NO:P:R:S:Wc:dgk:m:n:o:p:qr:s:t:vw:z:")) != -1)
+	    "CD:EG:M:NO:P:R:S:Wc:dgk:m:n:o:p:qr:s:t:vw:z:f:")) != -1)
 		switch (option) {
 		case 'C':	/* cumulative values */
 			use_cumulative_counts = !use_cumulative_counts;
@@ -631,6 +632,11 @@ main(int argc, char **argv)
 		case 'G':	/* produce a system-wide callgraph */
 			args.pa_flags |= FLAG_DO_CALLGRAPHS;
 			graphfilename = optarg;
+			break;
+
+		case 'f':	/* output system-wide callgraph in calltree format (KCachegrind) */
+			if (strcasecmp(optarg, "calltree") == 0)
+				args.pa_flags |= FLAG_DO_CALLTREE;
 			break;
 
 		case 'g':	/* produce gprof compatible profiles */
@@ -1012,6 +1018,17 @@ main(int argc, char **argv)
 		if ((args.pa_flags & FLAG_DO_ANALYSIS) == 0)
 			args.pa_flags |= FLAG_DO_PRINT;
 
+		if (args.pa_flags & FLAG_DO_CALLTREE) {		
+			pmcstat_ct_initialize_logging(&args);
+			args.pa_logfd = pmcstat_ct_open_log(args.pa_inputpath,
+		    PMCSTAT_OPEN_FOR_READ);
+		    if ((args.pa_logparser = pmclog_open(args.pa_logfd)) == NULL)
+				err(EX_OSERR, "ERROR: Cannot create parser");
+			pmcstat_ct_process_log(&args);
+			pmcstat_ct_shutdown_logging(&args);
+			exit(EX_OK);
+		}
+		
 		pmcstat_initialize_logging(&args);
 		args.pa_logfd = pmcstat_open_log(args.pa_inputpath,
 		    PMCSTAT_OPEN_FOR_READ);

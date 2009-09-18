@@ -50,6 +50,7 @@
 #define	FLAG_DO_CALLGRAPHS		0x00004000	/* -G */
 #define	FLAG_DO_ANALYSIS		0x00008000	/* -g or -G */
 #define	FLAG_WANTS_MAPPINGS		0x00010000	/* -m */
+#define FLAG_DO_CALLTREE		0x00020000	/* -f calltree */
 
 #define	DEFAULT_SAMPLE_COUNT		65536
 #define	DEFAULT_WAIT_INTERVAL		5.0
@@ -136,19 +137,24 @@ void	pmcstat_cleanup(struct pmcstat_args *_a);
 void	pmcstat_clone_event_descriptor(struct pmcstat_args *_a,
     struct pmcstat_ev *_ev, uint32_t _cpumask);
 int	pmcstat_close_log(struct pmcstat_args *_a);
+int	pmcstat_ct_close_log(struct pmcstat_args *_a);
 void	pmcstat_create_process(struct pmcstat_args *_a);
 void	pmcstat_find_targets(struct pmcstat_args *_a, const char *_arg);
 void	pmcstat_initialize_logging(struct pmcstat_args *_a);
+void	pmcstat_ct_initialize_logging(struct pmcstat_args *_a);
 void	pmcstat_kill_process(struct pmcstat_args *_a);
 int	pmcstat_open_log(const char *_p, int _mode);
+int	pmcstat_ct_open_log(const char *_p, int _mode);
 void	pmcstat_print_counters(struct pmcstat_args *_a);
 void	pmcstat_print_headers(struct pmcstat_args *_a);
 void	pmcstat_print_pmcs(struct pmcstat_args *_a);
 void	pmcstat_show_usage(void);
 void	pmcstat_shutdown_logging(struct pmcstat_args *_a);
+void	pmcstat_ct_shutdown_logging(struct pmcstat_args *_a);
 void	pmcstat_start_pmcs(struct pmcstat_args *_a);
 void	pmcstat_start_process(void);
 int	pmcstat_process_log(struct pmcstat_args *_a);
+int	pmcstat_ct_process_log(struct pmcstat_args *_a);
 uint32_t pmcstat_get_cpumask(const char *_a);
 
 #endif	/* _PMCSTAT_H_ */
