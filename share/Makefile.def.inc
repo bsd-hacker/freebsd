@@ -220,39 +220,6 @@ SYMLINKS+=	../${ccln}.${cm}/${LCTYPE} ${LOCALEDIR}/${cclncm}
 . endfor
 .endfor
 
-## CMSLINK_xxXX=cm is nothing more than CMSLINK_xxXX.UTF-8=cm
-#.for ccln in ${CCLN}
-#.warning 0: ${ccln}
-#CMSLINK_${ccln}.UTF-8+=	${CMSLINK_${ccln}:S/^/${ccln}./}
-#.endfor
-#
-## CCLNLINK_xxXX=yyYY is nothing more than CCLNLINK_xxXX.(CMS_xxXX + CMSLINK_xxXX)=yyYY.(CMS)
-#.for ccln in ${CCLN}
-#. for cm in ${CMS_${ccln}}
-#.warning 1ccln: ${ccln}
-#.warning 1cm: ${cm}
-#CCLNLINK_${ccln}.${cm}+=	${CCLNLINK_${ccln}:S/$/.${cm}/}
-#. endfor
-#. for cm in ${CMS}
-#.warning 2cm: ${cm}
-#.  for cclncm in ${CMSLINK_${ccln}.${cm}}
-#.warning 2cclncm: ${cclncm}
-#CCLNLINK_${ccln}.${cm}+=	${cclncm}
-#.  endfor
-#. endfor
-#.endfor
-#
-#SYMLINKS=
-## Now join all symlinks
-#.for ccln in ${CCLN}
-#. for cm in ${CMS}
-#.  for cclncm in ${CCLNLINK_${ccln}.${cm}}
-#SYMLINKS+=	../${ccln}.${cm}/${LCTYPE} ${LOCALEDIR}/${cclncm}
-#.  endfor
-#. endfor
-#.endfor
-
-
 #
 # Fill in the ICONV_ variables with the default values.
 #
@@ -286,29 +253,58 @@ _TRANSLATIONAFTER_${cm}+=	 | awk '{ gsub("${TR:C/:.*//:C/([0-9a-fA-F][0-9a-fA-F]
 .endfor
 
 #
-# All targets
+# Target selection
 #
+TARGET_LC_MESSAGES=	TARGET_CHARACTERMAP
+TARGET_LC_MONETARY=	TARGET_CHARACTERMAP
+TARGET_LC_NUMERIC=	TARGET_CHARACTERMAP
+TARGET_LC_TIME=		TARGET_CHARACTERMAP
+TARGET_LC_COLLDEF=	TARGET_COLLDEF
+.if !defined(TARGET_${LCTYPE})
+.error unknown LCTYPE (${LCTYPE}) or not set.
+.endif
+TARGET=	${TARGET_${LCTYPE}}
 
-.for ccln in ${CCLN}
+#
+# All targets for TARGET_CHARACTERMAP
+#
+# .unicode -> utf-8.src -> utf-8.out
+#                 \__ iso8859-1.src -> iso8859-1.out
+# <----1---><--2---><------3--------><----4----->
+#
+# 1. The files .unicode are stored in the SCM and are the source
+#    for the whole further system
+# 2. The Perl script converts the .unicode files and the Unicode
+#    CLDR database into UTF-8 code
+# 3. The UTF-8 gets converted by libiconv or bsdiconv in the specific
+#    charactermap.
+# 4. Get rid of the comments.
+#
+# As long as there is no bsdiconv, the files with the extension
+# .unicode and .src must be stored in the SCM and will not be
+# generated as part of the build process.
+#
+.if ${TARGET} == "TARGET_CHARACTERMAP"
+. for ccln in ${CCLN}
 
 # Normal makes don't need to convert from .unicode to .src
-. if defined(FULL)
-${ccln}.src: ${ccln}.unicode
+.  if defined(FULL)
+${ccln}.UTF-8.src: ${ccln}.unicode
 	../../cldr/tools/unicode2src.pl \
 	    --cldr=/home/edwin/unicode/cldr/1.7.1 \
 	    --unidata=/home/edwin/unicode/UNIDATA/5.1.0/ \
 	    --input=${.ALLSRC} \
 	    --output=${.TARGET}
 
-. endif
+.  endif
 
-${ccln}.UTF-8.out: ${ccln}.src
+${ccln}.UTF-8.out: ${ccln}.UTF-8.src
 	grep -v '^#' < ${.ALLSRC} > ${.TARGET}
 
-. if defined(CMS_${ccln})
-.  for cms in ${CMS_${ccln}}
+.  if defined(CMS_${ccln})
+.   for cms in ${CMS_${ccln}}
 
-${ccln}.${cms}.out: ${ccln}.UTF-8.out
+${ccln}.${cms}.src: ${ccln}.UTF-8.src
 	cat ${.ALLSRC} \
 	${_TRANSLATIONBEFORE_${cms}} | \
 	${ICONV_${ccln}.${cms}} \
@@ -318,9 +314,13 @@ ${ccln}.${cms}.out: ${ccln}.UTF-8.out
 	    > ${.TARGET} \
 	|| rm ${.TARGET} && exit 0
 
-.  endfor
-. endif
-.endfor
+${ccln}.${cms}.out: ${ccln}.${cms}.src
+	grep -v '^#' < ${.ALLSRC} > ${.TARGET}
+
+.   endfor
+.  endif
+. endfor
+.endif
 
 beforeinstall:
 .for f in ${FILES:S/.out//}

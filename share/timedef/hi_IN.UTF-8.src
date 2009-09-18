@@ -1,0 +1,103 @@
+# $FreeBSD: user/edwin/locale/share/timedef/hi_IN.ISCII-DEV.src 174990 2007-12-30 03:08:52Z ache $
+#
+# WARNING: spaces may be essential at the end of lines
+# WARNING: empty lines are essential too
+#
+# Short month names -- same as long
+#
+जनवरी
+फ़रवरी
+मार्च
+अप्रेल
+मई
+जून
+जुलाई
+अगस्त
+सितम्बर
+अक्टूबर
+नवम्बर
+दिसम्बर
+#
+# Long month names (as in a date)
+#
+जनवरी
+फ़रवरी
+मार्च
+अप्रेल
+मई
+जून
+जुलाई
+अगस्त
+सितम्बर
+अक्टूबर
+नवम्बर
+दिसम्बर
+#
+#
+# Short weekday names
+#
+रव
+सो
+मं
+बु
+गु
+शु
+शन
+#
+# Long weekday names
+#
+रविवार
+सोमवार
+मंगलवार
+बुधवार
+गुरुवार
+शुक्रवार
+शनिवार
+#
+# X_fmt
+#
+%H:%M:%S
+#
+# x_fmt
+#
+%d/%m/%Y
+#
+# c_fmt
+#
+%a %b %e %X %Y
+#
+# am
+#
+पूर्वाह्न
+#
+# pm
+अपराह्न
+#
+#
+# date_fmt
+#
+%a %b %e %X %Z %Y
+#
+# Long month names (without case ending)
+#
+जनवरी
+फ़रवरी
+मार्च
+अप्रेल
+मई
+जून
+जुलाई
+अगस्त
+सितम्बर
+अक्टूबर
+नवम्बर
+दिसम्बर
+#
+# md_order
+#
+dm
+#
+# ampm_fmt
+#
+%I:%M:%S %p
+# EOF
