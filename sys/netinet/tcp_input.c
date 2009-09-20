@@ -269,6 +269,8 @@ do { \
  */
 #define DELAY_ACK(tp)							\
 	((!tcp_timer_active(tp, TT_DELACK) &&				\
+	    !((tp->t_inpcb->inp_flags2 & INP_RT_VALID) &&		\
+		(tp->t_inpcb->inp_rt->rt_ifp->if_flags & IFF_LOOPBACK))	&& \
 	    (tp->t_flags & TF_RXWIN0SENT) == 0) &&			\
 	    (V_tcp_delack_enabled || (tp->t_flags & TF_NEEDSYN)))
 
