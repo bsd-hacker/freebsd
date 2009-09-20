@@ -452,6 +452,8 @@ void 	inp_4tuple_get(struct inpcb *inp, uint32_t *laddr, uint16_t *lp,
 #define	INP_CHECK_SOCKAF(so, af)	(INP_SOCKAF(so) == af)
 
 #ifdef _KERNEL
+struct route;
+
 VNET_DECLARE(int, ipport_reservedhigh);
 VNET_DECLARE(int, ipport_reservedlow);
 VNET_DECLARE(int, ipport_lowfirstauto);
@@ -496,6 +498,7 @@ void	in_pcbdisconnect(struct inpcb *);
 void	in_pcbdrop(struct inpcb *);
 void	in_pcbfree(struct inpcb *);
 int	in_pcbinshash(struct inpcb *);
+void	in_pcbrtalloc(struct inpcb *inp, in_addr_t faddr, struct route *sro);
 struct inpcb *
 	in_pcblookup_local(struct inpcbinfo *,
 	    struct in_addr, u_short, int, struct ucred *);
