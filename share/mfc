@@ -1,3 +1,12 @@
+MERGED
+r196788 | ache | 2009-09-04 02:53:11 +1000 (Fri, 04 Sep 2009) | 2 lines
+Changed paths:
+   M /head/share/colldef/Makefile
+   A /head/share/colldef/la_LN.ISO8859-13.src (from /head/share/colldef/lt_LT.ISO8859-13.src:196787)
+   D /head/share/colldef/lt_LT.ISO8859-13.src
+
+Add lv_LV, move lt_LT to common part
+
 ------------------------------------------------------------------------
 MERGED
 r196814 | ache | 2009-09-04 16:26:40 +1000 (Fri, 04 Sep 2009) | 5 lines

@@ -11,6 +11,17 @@ CMALIAS_ISCII-DEV=	macdevanaga
 ICONV=	iconv
 ICONV_hi_IN.ISCII-DEV=	bsdiconv
 
+# Target selection
+TARGET_LC_MESSAGES=	TARGET_CHARACTERMAP
+TARGET_LC_MONETARY=	TARGET_CHARACTERMAP
+TARGET_LC_NUMERIC=	TARGET_CHARACTERMAP
+TARGET_LC_TIME=		TARGET_CHARACTERMAP
+TARGET_LC_COLLATE=	TARGET_COLLDEF
+.if !defined(TARGET_${LCTYPE})
+.error unknown LCTYPE (${LCTYPE}) or not set.
+.endif
+TARGET=	${TARGET_${LCTYPE}}
+
 #
 # Calculated variables
 #
@@ -30,8 +41,11 @@ CMS+=	${cm}
 . endfor
 .endfor
 
-# All files generated and their locations
+# All files generated and their locations. Default UTF-8 is only for
+# the TARGET_CHARACTERMAP, not for the TARGET_COLLDEF.
+.if ${TARGET} == "TARGET_CHARACTERMAP"
 ALLFILES=	${CCLN:S/$/.UTF-8/}
+.endif
 .for ccln in ${CCLN}
 FILESDIR_${ccln}.UTF-8.out= ${LOCALEDIR}/${ccln}.UTF-8
 . for cm in ${CMS_${ccln}}
@@ -253,19 +267,6 @@ _TRANSLATIONAFTER_${cm}+=	 | awk '{ gsub("${TR:C/:.*//:C/([0-9a-fA-F][0-9a-fA-F]
 .endfor
 
 #
-# Target selection
-#
-TARGET_LC_MESSAGES=	TARGET_CHARACTERMAP
-TARGET_LC_MONETARY=	TARGET_CHARACTERMAP
-TARGET_LC_NUMERIC=	TARGET_CHARACTERMAP
-TARGET_LC_TIME=		TARGET_CHARACTERMAP
-TARGET_LC_COLLDEF=	TARGET_COLLDEF
-.if !defined(TARGET_${LCTYPE})
-.error unknown LCTYPE (${LCTYPE}) or not set.
-.endif
-TARGET=	${TARGET_${LCTYPE}}
-
-#
 # All targets for TARGET_CHARACTERMAP
 #
 # .unicode -> utf-8.src -> utf-8.out
@@ -322,6 +323,21 @@ ${ccln}.${cms}.out: ${ccln}.${cms}.src
 . endfor
 .endif
 
+#
+# All targets for TARGET_COLLDEF
+#
+.if ${TARGET} == "TARGET_COLLDEF"
+. for ccln in ${CCLN}
+.  for cm in ${CMS_${ccln}}
+${ccln}.${cm}.out: ${ccln}.${cm}.src
+	colldef -I ${.CURDIR} -o ${.TARGET} ${.ALLSRC}
+.  endfor
+. endfor
+.endif
+
+#
+# General targets.
+#
 beforeinstall:
 .for f in ${FILES:S/.out//}
 	rm -f ${DESTDIR}/${LOCALEDIR}/${f}/${FILESNAME}
