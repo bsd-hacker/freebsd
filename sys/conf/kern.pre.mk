@@ -53,7 +53,44 @@ C_DIALECT= -std=c99
 NOSTDINC= -nostdinc
 .endif
 
+.if defined(OPENSOLARIS)
+SUNW=$S/cddl/contrib/opensolaris
+OPENSOLARIS_INC=
+OPENSOLARIS_INC+=-I$S/cddl/compat/opensolaris
+OPENSOLARIS_INC+=-I${SUNW}/uts/common 
+OPENSOLARIS_INC+=-I${SUNW}/uts/common/fs/zfs
+OPENSOLARIS_INC+=-I${SUNW}/uts/common/zmod
+OPENSOLARIS_INC+=-I$S
+OPENSOLARIS_INC+=-I${SUNW}/common/zfs
+OPENSOLARIS_INC+=-I${SUNW}/common 
+OPENSOLARIS_INC+=-I$S/../include
+OPENSOLARIS_INC+=-I.
+OPENSOLARIS_INC+=-I@
+CWARNFLAGS+=-Wno-unknown-pragmas
+.endif
+
+
+ZFS_C_DIALECT=-std=iso9899:1999
+ZFS_CWARNFLAGS=-Wno-missing-prototypes
+ZFS_CWARNFLAGS+=-Wno-pointer-sign
+ZFS_CWARNFLAGS+=-Wno-undef
+ZFS_CWARNFLAGS+=-Wno-strict-prototypes
+ZFS_CWARNFLAGS+=-Wno-cast-qual
+ZFS_CWARNFLAGS+=-Wno-parentheses
+ZFS_CWARNFLAGS+=-Wno-redundant-decls
+ZFS_CWARNFLAGS+=-Wno-missing-braces
+ZFS_CWARNFLAGS+=-Wno-uninitialized
+ZFS_CWARNFLAGS+=-Wno-unused
+ZFS_CWARNFLAGS+=-Wno-inline
+ZFS_CWARNFLAGS+=-Wno-switch
+
+ZFS_INC=
+
+.if make(depend) || make(kernel-depend)
+INCLUDES= ${OPENSOLARIS_INC} ${ZFS_INC} ${NOSTDINC} ${INCLMAGIC} -I. -I$S
+.else
 INCLUDES= ${NOSTDINC} ${INCLMAGIC} -I. -I$S
+.endif
 
 # This hack lets us use the OpenBSD altq code without spamming a new
 # include path into contrib'ed source files.
@@ -79,8 +116,6 @@ INCLUDES+= -I$S/dev/twa
 # ...  and XFS
 INCLUDES+= -I$S/gnu/fs/xfs/FreeBSD -I$S/gnu/fs/xfs/FreeBSD/support -I$S/gnu/fs/xfs
 
-# ...  and OpenSolaris
-INCLUDES+= -I$S/contrib/opensolaris/compat
 
 # ... and the same for cxgb
 INCLUDES+= -I$S/dev/cxgb
@@ -89,10 +124,26 @@ INCLUDES+= -I$S/dev/cxgb
 
 CFLAGS=	${COPTFLAGS} ${C_DIALECT} ${DEBUG} ${CWARNFLAGS}
 CFLAGS+= ${INCLUDES} -D_KERNEL -DHAVE_KERNEL_OPTION_HEADERS -include opt_global.h
+
+ZFS_CFLAGS= -DFREEBSD_NAMECACHE -DBUILDING_ZFS -D_KERNEL
+ZFS_CFLAGS+=-DHAVE_KERNEL_OPTION_HEADERS -nostdinc 	
+ZFS_CFLAGS+=-mcmodel=kernel -mno-red-zone  -mfpmath=387 -mno-sse -mno-sse2 -mno-sse3 -mno-mmx -mno-3dnow  -msoft-float -fno-asynchronous-unwind-tables -ffreestanding
+ZFS_CFLAGS+=${COPTFLAGS} ${ZFS_C_DIALECT} ${DEBUG} ${CWARNFLAGS} 
+ZFS_CFLAGS+=${ZFS_CWARNFLAGS}  -include opt_global.h -I${.CURDIR}
+
 .if ${CC} != "icc"
 CFLAGS+= -fno-common -finline-limit=${INLINE_LIMIT}
 CFLAGS+= --param inline-unit-growth=100
 CFLAGS+= --param large-function-growth=1000
+.endif
+
+ZFS_CFLAGS+= -fno-common -finline-limit=${INLINE_LIMIT}
+ZFS_CFLAGS+= --param inline-unit-growth=100
+ZFS_CFLAGS+= --param large-function-growth=1000
+
+.if ${MACHINE_ARCH} == "amd64" || ${MACHINE} == "i386" || \
+    ${MACHINE_ARCH} == "ia64" || ${MACHINE_ARCH} == "powerpc" || \
+    ${MACHINE_ARCH} == "sparc64"
 WERROR?= -Werror
 .endif
 
@@ -121,6 +172,7 @@ CFLAGS+=	${CONF_CFLAGS}
 LINTFLAGS=	${LINTOBJKERNFLAGS}
 
 NORMAL_C= ${CC} -c ${CFLAGS} ${WERROR} ${PROF} ${.IMPSRC}
+ZFS_C= ${CC} -c -DBUILDING_ZFS -D_KERNEL ${WERROR} ${PROF} ${.IMPSRC}
 NORMAL_S= ${CC} -c ${ASM_CFLAGS} ${WERROR} ${.IMPSRC}
 PROFILE_C= ${CC} -c ${CFLAGS} ${WERROR} ${.IMPSRC}
 NORMAL_C_NOWERROR= ${CC} -c ${CFLAGS} ${PROF} ${.IMPSRC}
