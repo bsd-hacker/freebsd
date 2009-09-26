@@ -1520,6 +1520,7 @@ arc_evict(arc_state_t *state, spa_t *spa, int64_t bytes, boolean_t recycle,
 {
 	arc_state_t *evicted_state;
 	uint64_t bytes_evicted = 0, skipped = 0, missed = 0;
+	int64_t bytes_remaining;
 	arc_buf_hdr_t *ab, *ab_prev = NULL;
 	list_t *evicted_list, *list, *evicted_list_start, *list_start;
 	kmutex_t *lock, *evicted_lock;
@@ -1533,6 +1534,7 @@ arc_evict(arc_state_t *state, spa_t *spa, int64_t bytes, boolean_t recycle,
 
 	evicted_state = (state == arc_mru) ? arc_mru_ghost : arc_mfu_ghost;
 	
+	bytes_remaining = evicted_state->arcs_lsize[ab->b_type];
 	if (type == ARC_BUFC_METADATA) {
 		offset = 0;
 		list_count = ARC_BUFC_NUMMETADATALISTS;
@@ -1560,6 +1562,7 @@ evict_start:
 
 	for (ab = list_tail(list); ab; ab = ab_prev) {
 		ab_prev = list_prev(list, ab);
+		bytes_remaining -= (ab->b_size * ab->b_datacnt);
 		/* prefetch buffers have a minimum lifespan */
 		if (HDR_IO_IN_PROGRESS(ab) ||
 		    (spa && ab->b_spa != spa) ||
@@ -1619,6 +1622,13 @@ evict_start:
 				mutex_exit(hash_lock);
 			if (bytes >= 0 && bytes_evicted >= bytes)
 				break;
+			if (bytes_remaining > 0) {
+				mutex_exit(evicted_lock);
+				mutex_exit(lock);
+				idx  = ((idx + 1)&(list_count-1));
+				count++;
+				goto evict_start;
+			}
 		} else {
 			missed += 1;
 		}
@@ -1940,15 +1950,18 @@ arc_reclaim_needed(void)
 #endif
 
 #ifdef _KERNEL
+	if (needfree)
+		return (1);
+	if (arc_size > arc_c_max)
+		return (1);
+	if (arc_size <= arc_c_min)
+		return (0);
 
 	/*
 	 * If pages are needed or we're within 2048 pages 
 	 * of needing to page need to reclaim
 	 */
 	if (vm_pages_needed || (vm_paging_target() > -2048))
-		return (1);
-
-	if (needfree)
 		return (1);
 
 #if 0
