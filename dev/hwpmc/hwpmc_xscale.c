@@ -41,6 +41,42 @@ struct xscale_event_code_map {
 	uint8_t		pe_mask;
 };
 
+
+static int
+xscale_read_pmc(int cpu, int ri, pmc_value_t *v)
+{
+}
+
+static int
+xscale_write_pmc(int cpu, int ri, pmc_value_t v)
+{
+}
+
+static int
+xscale_config_pmc(int cpu, int ri, struct pmc *pm)
+{
+}
+
+static int
+xscale_start_pmc(int cpu, int ri)
+{
+}
+
+static int
+xscale_stop_pmc(int cpu, int ri)
+{
+}
+
+static int
+xscale_intr(int cpu, struct trapframe *tf)
+{
+}
+
+static int
+xscale_describe(int cpu, int ri, struct pmc_info *pi, struct pmc **ppmc)
+{
+}
+
 struct pmc_mdep *
 pmc_xscale_initialize()
 {
