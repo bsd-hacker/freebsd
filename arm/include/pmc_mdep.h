@@ -15,14 +15,20 @@ union pmc_md_op_pmcallocate {
 #define	PMCLOG_READADDR		PMCLOG_READ32
 #define	PMCLOG_EMITADDR		PMCLOG_EMIT32
 
-#if	_KERNEL
+#ifdef	_KERNEL
 union pmc_md_pmc {
+	struct pmc_md_xscale_pmc	pm_xscale;
 };
 
-#define	PMC_TRAPFRAME_TO_PC(TF)	(0)	/* Stubs */
-#define	PMC_TRAPFRAME_TO_FP(TF)	(0)
-#define	PMC_TRAPFRAME_TO_SP(TF)	(0)
+#define	PMC_TRAPFRAME_TO_PC(TF)	((TF)->tf_pc)
+#define	PMC_TRAPFRAME_TO_FP(TF)	((TF)->tf_usr_lr)
+#define	PMC_TRAPFRAME_TO_SP(TF)	((TF)->tf_usr_sp)
 
-#endif
+/*
+ * Prototypes
+ */
+struct pmc_mdep *pmc_xscale_initialize(void);
+void		pmc_xscale_finalize(struct pmc_mdep *_md);
+#endif /* _KERNEL */
 
 #endif /* !_MACHINE_PMC_MDEP_H_ */

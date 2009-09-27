@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2005, Joseph Koshy
+ * Copyright (c) 2009 Rui Paulo <rpaulo@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -28,46 +28,27 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+/* Support for the Intel XScale network processors */
+
 #include <sys/param.h>
 #include <sys/pmc.h>
 
 #include <machine/pmc_mdep.h>
 
+struct xscale_event_code_map {
+	enum pmc_event	pe_ev;
+	uint8_t		pe_code;
+	uint8_t		pe_mask;
+};
+
 struct pmc_mdep *
-pmc_md_initialize()
+pmc_xscale_initialize()
 {
-	if (cpu_class == CPU_CLASS_XSCALE)
-		return pmc_xscale_initialize();
-	else
-		return NULL;
+	return NULL;
 }
 
 void
-pmc_md_finalize(struct pmc_mdep *md)
+pmc_xscale_finalize(struct pmc_mdep *md)
 {
-	if (cpu_class == CPU_CLASS_XSCALE)
-		return pmc_xscale_finalize();
-	else
-		KASSERT(0, ("[arm,%d] Unknown CPU Class 0x%x", __LINE__,
-		    cpu_class));
-}
-
-int
-pmc_save_kernel_callchain(uintptr_t *cc, int maxsamples,
-    struct trapframe *tf)
-{
-	(void) cc;
-	(void) maxsamples;
-	(void) tf;
-	return (0);
-}
-
-int
-pmc_save_user_callchain(uintptr_t *cc, int maxsamples,
-    struct trapframe *tf)
-{
-	(void) cc;
-	(void) maxsamples;
-	(void) tf;
-	return (0);
+	(void) md;
 }
