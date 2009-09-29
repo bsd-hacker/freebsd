@@ -88,11 +88,6 @@ LEGLINK_zh_Hans_CN.GBK2312=	zh_CN.GBK
 LCTYPE=		LC_NUMERIC
 LOCALEDIR=	/usr/share/locale
 
-# For testing only
-DESTDIR=	/home/edwin/locale/new/
-SHAREOWN=	edwin
-SHAREGRP=	edwin
-
 #
 # All variables
 #

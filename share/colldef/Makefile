@@ -74,11 +74,6 @@ LEGLINK_la_LN.US-ASCII+=	zh_CN.eucCN zh_CN.UTF-8 zh_CN.GBK zh_CN.GB2312 zh_CN.GB
 LCTYPE=		LC_COLLATE
 LOCALEDIR=	/usr/share/locale
 
-# For testing only
-DESTDIR=	/home/edwin/locale/new/
-SHAREOWN=	edwin
-SHAREGRP=	edwin
-
 # DONE
 #
 # All variables

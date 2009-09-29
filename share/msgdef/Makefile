@@ -92,11 +92,6 @@ LEGLINK_sr_Latn_RS.ISO8859-2=	sr_YU.ISO8859-2
 LCTYPE=		LC_MESSAGES
 LOCALEDIR=	/usr/share/locale
 
-# For testing only
-DESTDIR=	/home/edwin/locale/new/
-SHAREOWN=	edwin
-SHAREGRP=	edwin
-
 #
 # All variables
 #

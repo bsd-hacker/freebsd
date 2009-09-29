@@ -101,11 +101,6 @@ LOCALEDIR=	/usr/share/locale
 #ICONV_pt_PT.ISO8859-1=	bsdiconv
 #ICONV_ko_KR.eucKR=	bsdiconv
 
-# For testing only
-DESTDIR=	/home/edwin/locale/new/
-SHAREOWN=	edwin
-SHAREGRP=	edwin
-
 #
 # All variables
 #

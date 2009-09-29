@@ -1,5 +1,15 @@
 # $FreeBSD: user/edwin/locale/share/msgdef/Makefile 196760 2009-09-02 10:12:13Z edwin $
 
+.if defined(LOCALE_DESTDIR)
+DESTDIR=	${LOCALE_DESTDIR}
+.endif
+.if defined(LOCALE_SHAREOWN)
+SHAREOWN=	${LOCALE_SHAREOWN}
+.endif
+.if defined(LOCALE_SHAREGRP)
+SHAREGRP=	${LOCALE_SHAREGRP}
+.endif
+
 #
 # Predefined variables - Not for "end-users" to look at.
 #
@@ -56,8 +66,8 @@ FILESDIR_${ccln}.${cm}.out= ${LOCALEDIR}/${ccln}.${cm}
 
 FILES=		${ALLFILES:S/$/.out/}
 CLEANFILES=	${ALLFILES:S/$/.out/}
-.if defined(FULL)
-CLEANFILES+=	${CCLN:S/$/.src/}
+.if defined(FULL) && ${TARGET} == "TARGET_CHARACTERMAP"
+CLEANFILES=	${ALLFILES:S/$/.src/}
 .endif
 FILESNAME=	${LCTYPE}
 
@@ -291,9 +301,9 @@ _TRANSLATIONAFTER_${cm}+=	 | awk '{ gsub("${TR:C/:.*//:C/([0-9a-fA-F][0-9a-fA-F]
 # Normal makes don't need to convert from .unicode to .src
 .  if defined(FULL)
 ${ccln}.UTF-8.src: ${ccln}.unicode
-	../../cldr/tools/unicode2src.pl \
-	    --cldr=/home/edwin/unicode/cldr/1.7.1 \
-	    --unidata=/home/edwin/unicode/UNIDATA/5.1.0/ \
+	${TOOLSDIR}/unicode2src.pl \
+	    --cldr=${CLDRDIR} \
+	    --unidata=${UNIDATADIR} \
 	    --input=${.ALLSRC} \
 	    --output=${.TARGET}
 
@@ -304,6 +314,7 @@ ${ccln}.UTF-8.out: ${ccln}.UTF-8.src
 
 .  if defined(CMS_${ccln})
 .   for cms in ${CMS_${ccln}}
+.    if defined(FULL)
 
 ${ccln}.${cms}.src: ${ccln}.UTF-8.src
 	cat ${.ALLSRC} \
@@ -314,6 +325,7 @@ ${ccln}.${cms}.src: ${ccln}.UTF-8.src
 	${_TRANSLATIONAFTER_${cms}} \
 	    > ${.TARGET} \
 	|| rm ${.TARGET} && exit 0
+.    endif
 
 ${ccln}.${cms}.out: ${ccln}.${cms}.src
 	grep -v '^#' < ${.ALLSRC} > ${.TARGET}
