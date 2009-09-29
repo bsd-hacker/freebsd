@@ -36,19 +36,18 @@ our $debug;
 our $pretend;
 
 our $src_branch = "head";	# where we merge from
-our $src_path;
+our $src_path;			# path relative to source branch
 our $src_url;			# source URL
 our $tgt_branch;		# where we merge to
-our $tgt_path;
+our $tgt_path;			# path relative to target branch
 our $tgt_dir = ".";		# target directory
+our $tgt_url;			# target URL
 
 our %revs = (0 => 0);
 our @ranges;
 
-our $svn_path;
-our $svn_url;
-our $svn_root;
-our $svn_branch;
+our $svn_path;			# path relative to branch
+our $svn_root;			# Repository root
 
 sub info(@) {
     print(STDERR join(' ', @_), "\n");
@@ -113,14 +112,14 @@ sub examine() {
 	if ($key eq 'Path') {
 	    svn_check($value eq $tgt_dir, "path mismatch: $value != $tgt_dir");
 	} elsif ($key eq 'URL') {
-	    $svn_url = $value;
+	    $tgt_url = $value;
 	} elsif ($key eq 'Repository Root') {
 	    $svn_root = $value;
 	}
     }
     close($fh);
 
-    svn_check($svn_url =~ m@^\Q$svn_root\E(/.*)$@, "invalid svn URL: $svn_url");
+    svn_check($tgt_url =~ m@^\Q$svn_root\E(/.*)$@, "invalid svn URL: $tgt_url");
     $svn_path = $1;
 
     debug("guessing merge source / target directory");
@@ -133,20 +132,20 @@ sub examine() {
 	debug("'$svn_path' =~ m\@^((?:/[\\w.-]+)+)\Q$subdir\E\$\@");
 	next unless $svn_path =~ m@^((?:/[\w.-]+)+)\Q$subdir\E$@;
 	$svn_path = $subdir;
-	$svn_branch = $1;
+	$tgt_branch = $1;
 	last;
     }
     close($fh);
 
-    if (!$svn_branch) {
+    if (!$tgt_branch) {
 	# try to guess a stable / releng / release branch
-	debug("guessing source branch");
+	debug("guessing target branch");
 	debug("'$svn_path' =~ s\@^/([\\w+.-]/\\d+(?:\\.\\d+)*)/?\@\@");
-	$svn_path =~ s@^/(\w+/\d+(?:\.\d+)*)/?@@;
-	$svn_branch = $1;
+	$svn_path =~ s@^/(head|\w+/\d+(?:\.\d+)*)/?@@;
+	$tgt_branch = $1;
     }
-    svn_check($svn_branch, "unable to figure out source branch");
-    debug("svn_branch = '$svn_branch'");
+    svn_check($tgt_branch, "unable to figure out source branch");
+    debug("tgt_branch = '$tgt_branch'");
     debug("svn_path = '$svn_path'");
 }
 
