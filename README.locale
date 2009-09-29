@@ -1,0 +1,188 @@
+New approach to the FreeBSD locale database
+===========================================
+
+Background
+----------
+Over the years the FreeBSD locale database (share/colldef,
+share/monetdef, share/msgdef, share/numericdef, share/timedef) has
+accumulated a total of 165 definitions (language - country-code -
+character-set triplets). The contents of the files is for Western
+European languages often low-ASCII but for Eastern European and
+Asian languages partly or fully high-ASCII. Without knowing how to
+display or interpret the character-sets, it is difficult to make
+sure by the general audience that the local languages (language -
+country-code) definitions is displayed properly in various
+character-sets.
+
+
+Solution
+--------
+With a per definition (language - country-code) low-ASCII file with
+the definitions of the characters for the fields, it would be
+possible to generate the various character-sets for that language.
+
+
+What do we need
+---------------
+- A database with all character encoding definitions. The Unicode
+  Project defines these.
+- An intermittent format which can be used to convert these encodings
+  into unique characters. The UTF-8 character-set supports this.
+- A tool to convert from the intermittent format into the various
+  character-sets. Libiconv (GPL) and bsdiconv (BSDL) can do this.
+- A Makefile which glues everything together.
+
+
+Gotchas
+-------
+- Some countries do not only have multiple languages (nl_BE and
+  fr_BE for example), but some of them have also different font
+  families: sr_Cyrl_RS and sr_Latn_RS.
+- Duplicate detection has always been a manual thing and is tricky
+  to do initially. Right now this keeps being the job of the
+  maintainers of the locale data in the SCM repository.
+
+
+Examples
+--------
+
+The word for the last day of the week in the en_US language - country
+code would be in Unicode format:
+    <LATIN CAPITAL LETTER S><LATIN SMALL LETTER U>
+    <LATIN SMALL LETTER N><LATIN SMALL LETTER D>
+    <LATIN SMALL LETTER A><LATIN SMALL LETTER Y>
+Converted into UTF-8 this will be:
+    Sunday
+Converted into ISO-8859 this will be:
+    Sunday
+
+The word for the last day of the week in the ru_RU language -
+country code would be in Unicode format:
+    <CYRILLIC SMALL LETTER ES><CYRILLIC SMALL LETTER U>
+    <CYRILLIC SMALL LETTER BE><CYRILLIC SMALL LETTER BE>
+    <CYRILLIC SMALL LETTER O><CYRILLIC SMALL LETTER TE>
+    <CYRILLIC SMALL LETTER A>
+Converted into UTF-8 this will be:
+    <D1><81><D1><83><D0><B1><D0><B1><D0><BE><D1><82><D0><B0>
+Converted into KOI8-R this will be:
+    <D3><D5><C2><C2><CF><D4><C1>
+
+
+Careful!
+--------
+- In the timedef definitions, do not convert the %A into Unicode
+  format because the %A is a low-ASCII input for strftime(). Also
+  don't put the md_order in Unicode format because that is a low-ASCII
+  definition.
+- libiconv doesn't understand ISCII-DEV, bsdiconv calls it macdevanaga.
+- Backwards compatibility: There are a bunch of old or obsolete
+  names in the FreeBSD locale definitions (sr_YU -> sr_Cyrl_RS and
+  sr_Latn_RS, zh_HK -> zh_Hant_HK, zh_CN -> zh_Hans_CN) which still
+  might be needed.
+
+
+Current status
+--------------
+
+Finished:
+- Conversion of the current locale data into the Unicode format for 
+  share/monetdef, share/msgdef, share/numericdef, share/timedef.
+- Conversion of the current Makefiles to support the new approach.
+  It also adds the file src/share/Makefile.def.inc which does do
+  the magic between the definitions in the Makefile and the FreeBSD
+  bsd.*.mk. Done for share/colldef, share/monetdef, share/msgdef,
+  share/numericdef, share/timedef.
+- Regression check.
+- Conversion of the Unicode definitions to the UTF-8 character-set.
+
+Pending:
+- Checking of the data with the CLDR (Common Locale Data Repository)
+  for completeness of the current data.
+- Conversion of Makefiles for share/mklocale.
+- Conversion of the Unicode definitions to the UTF-8 character-set
+  in a C program or AWK script to make it self-hosting.  This is
+  right now a Perl script so it can't be part of the base OS build
+  yet. This tool for now lives in src/tools/tools/locale/.
+- Import of the file UTF-8.cm (from the CLDR project) and the file
+  UnicodeData.txt (from the Unicode project) into the base operating
+  system. These files for now live in src/tools/tools/locale/
+
+Pending third parties:
+- bsdiconv in the main system.
+
+
+SCM
+---
+
+(Currently the SCM contains all the definitions (language - country-code
+- character-set) in low and high-ASCII. To keep the SCM history, we
+will once move them to their .unicode extension and then overwrite
+them with the Unicode encoding definitions)
+
+The .unicode files are stored in SCM and will be, in the long term,
+be the only source in SCM. Right now due to lack of bsdiconv in the
+base operating system we will have to store also the character-map
+sources (.src) files into the SCM. Once bsdiconv is in the base
+system these files can be removed and the whole database can be
+made self-hosted.
+
+
+Testing (before move to src/tools/tools/locale)
+-----------------------------------------------
+
+To test the current system, you need the following data:
+
+- A copy of the CLDR, available from http://cldr.unicode.org/.
+  Currently version 1.7.1 is used. We only use the file posix/UTF-8.cm
+  from it.
+- A copy of the Unicode database, available from http://www.unicode.org/.
+  Currently version is 5.1.0. We only use the file UnicodeData.txt from it.
+- A copy of svn://svn.freebsd.org/base/user/edwin/locale/.
+- A copy of bsdiconv from p4:///depot/gabor/something.
+
+Local configuration:
+
+- Add to /etc/make.conf (make sure they match your directory layout)
+	CLDRDIR=	/home/edwin/unicode/cldr/1.7.1
+	UNIDATADIR=	/home/edwin/unicode/UNIDATA/5.1.0
+	TOOLSDIR=	/home/edwin/svn/edwin/locale/cldr/tools/
+	LOCALE_DESTDIR=	/home/edwin/locale/new
+	LOCALE_SHAREOWN=edwin
+	LOCALE_SHAREGRP=edwin
+
+Test it out:
+
+- Go to the SVN directory /user/edwin/locale/share. The Makefile
+  there only includes the locale directories, so there is no need to
+  be worried about the other .
+
+- Run "FULL=1 make clean" to get rid of all generated files, even
+  the ones in the SCM. You should only have the *.unicode and the
+  Makefiles now.
+
+- Run "FULL=1 make" to recreate everything. 
+
+- Run "make clean" to get rid of all data not in the SCM.
+
+- Run "make" to recreate the data not in the SCM.
+
+#
+# All targets for TARGET_CHARACTERMAP
+#
+# .unicode -> .utf-8.src -> .utf-8.out
+#                 \__ .iso8859-1.src -> .iso8859-1.out
+# <----1---><--2---><------3--------><----4----->
+#
+# 1. The files .unicode are stored in the SCM and are the source
+#    for the whole further system
+# 2. The Perl script converts the .unicode files and the Unicode
+#    CLDR database into UTF-8 code
+# 3. The UTF-8 gets converted by libiconv or bsdiconv in the specific
+#    character-map.
+# 4. Get rid of the comments.
+#
+# As long as there is no bsdiconv, the files with the extension
+# .unicode and .src must be stored in the SCM and will not be
+# generated as part of the build process.
+#
+
