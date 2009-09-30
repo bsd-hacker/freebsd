@@ -164,8 +164,7 @@ static uint32_t fwohci_cyctimer (struct firewire_comm *);
 static void fwohci_rbuf_update (struct fwohci_softc *, int);
 static void fwohci_tbuf_update (struct fwohci_softc *, int);
 void fwohci_txbufdb (struct fwohci_softc *, int , struct fw_bulkxfer *);
-static void fwohci_task_busreset(void *, int);
-static void fwohci_task_sid(void *, int);
+static void fwohci_sid(struct fwohci_softc *);
 static void fwohci_task_dma(void *, int);
 
 /*
@@ -771,8 +770,6 @@ fwohci_init(struct fwohci_softc *sc, device_t dev)
 		taskqueue_thread_enqueue, &sc->fc.taskqueue);
 	taskqueue_start_threads(&sc->fc.taskqueue, 1, PI_NET, "fw%d_taskq",
 					device_get_unit(dev));
-	TASK_INIT(&sc->fwohci_task_busreset, 2, fwohci_task_busreset, sc);
-	TASK_INIT(&sc->fwohci_task_sid, 1, fwohci_task_sid, sc);
 	TASK_INIT(&sc->fwohci_task_dma, 0, fwohci_task_dma, sc);
 
 	fw_init(&sc->fc);
@@ -817,8 +814,6 @@ fwohci_detach(struct fwohci_softc *sc, device_t dev)
 		fwohci_db_free(&sc->ir[i]);
 	}
 	if (sc->fc.taskqueue != NULL) {
-		taskqueue_drain(sc->fc.taskqueue, &sc->fwohci_task_busreset);
-		taskqueue_drain(sc->fc.taskqueue, &sc->fwohci_task_sid);
 		taskqueue_drain(sc->fc.taskqueue, &sc->fwohci_task_dma);
 		taskqueue_drain(sc->fc.taskqueue, &sc->fc.task_timeout);
 		taskqueue_free(sc->fc.taskqueue);
@@ -1843,7 +1838,7 @@ fwohci_intr_core(struct fwohci_softc *sc, uint32_t stat, int count)
 	struct firewire_comm *fc = (struct firewire_comm *)sc;
 	uint32_t node_id, plen;
 
-	FW_GLOCK_ASSERT(fc);
+	FW_GLOCK(fc);
 	if ((stat & OHCI_INT_PHY_BUS_R) && (fc->status != FWBUSRESET)) {
 		fc->status = FWBUSRESET;
 		/* Disable bus reset interrupt until sid recv. */
@@ -1858,8 +1853,10 @@ fwohci_intr_core(struct fwohci_softc *sc, uint32_t stat, int count)
 		OWRITE(sc,  OHCI_ATSCTLCLR, OHCI_CNTL_DMA_RUN);
 		sc->atrs.xferq.flag &= ~FWXFERQ_RUNNING;
 
-		if (!kdb_active)
-			taskqueue_enqueue(sc->fc.taskqueue, &sc->fwohci_task_busreset);
+		fw_busreset(&sc->fc, FWBUSRESET);
+
+		OWRITE(sc, OHCI_CROMHDR, ntohl(sc->fc.config_rom[0]));
+		OWRITE(sc, OHCI_BUS_OPT, ntohl(sc->fc.config_rom[2]));
 	}
 	if (stat & OHCI_INT_PHY_SID) {
 		/* Enable bus reset interrupt */
@@ -1909,12 +1906,16 @@ fwohci_intr_core(struct fwohci_softc *sc, uint32_t stat, int count)
 
 		fc->status = FWBUSINIT;
 
+		fwohci_sid(sc);
+#if 0
 		if (!kdb_active)
 			taskqueue_enqueue(sc->fc.taskqueue, &sc->fwohci_task_sid);
+#endif
 	}
 sidout:
 	if ((stat & ~(OHCI_INT_PHY_BUS_R | OHCI_INT_PHY_SID)) && (!kdb_active))
 		taskqueue_enqueue(sc->fc.taskqueue, &sc->fwohci_task_dma);
+	FW_GUNLOCK(fc);
 }
 
 static void
@@ -1995,26 +1996,14 @@ fwohci_intr_dma(struct fwohci_softc *sc, uint32_t stat, int count)
 }
 
 static void
-fwohci_task_busreset(void *arg, int pending)
+fwohci_sid(struct fwohci_softc *sc)
 {
-	struct fwohci_softc *sc = (struct fwohci_softc *)arg;
-
-	FW_GLOCK(&sc->fc);
-	fw_busreset(&sc->fc, FWBUSRESET);
-	OWRITE(sc, OHCI_CROMHDR, ntohl(sc->fc.config_rom[0]));
-	OWRITE(sc, OHCI_BUS_OPT, ntohl(sc->fc.config_rom[2]));
-	FW_GUNLOCK(&sc->fc);
-}
-
-static void
-fwohci_task_sid(void *arg, int pending)
-{
-	struct fwohci_softc *sc = (struct fwohci_softc *)arg;
 	struct firewire_comm *fc = &sc->fc;
 	uint32_t *buf;
 	int i, plen;
 
 
+	FW_GLOCK_ASSERT(fc);
 	/*
 	 * We really should have locking
 	 * here.  Not sure why it's not
@@ -2069,7 +2058,6 @@ fwohci_check_stat(struct fwohci_softc *sc)
 {
 	uint32_t stat, irstat, itstat;
 
-	FW_GLOCK_ASSERT(&sc->fc);
 	stat = OREAD(sc, FWOHCI_INTSTAT);
 	if (stat == 0xffffffff) {
 		device_printf(sc->fc.dev, 
@@ -2104,9 +2092,7 @@ fwohci_intr(void *arg)
 {
 	struct fwohci_softc *sc = (struct fwohci_softc *)arg;
 
-	FW_GLOCK(&sc->fc);
 	fwohci_check_stat(sc);
-	FW_GUNLOCK(&sc->fc);
 }
 
 void
@@ -2114,9 +2100,7 @@ fwohci_poll(struct firewire_comm *fc, int quick, int count)
 {
 	struct fwohci_softc *sc = (struct fwohci_softc *)fc;
 
-	FW_GLOCK(fc);
 	fwohci_check_stat(sc);
-	FW_GUNLOCK(fc);
 }
 
 static void

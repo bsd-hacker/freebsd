@@ -49,6 +49,7 @@ typedef	struct proc fw_proc;
 #include <sys/uio.h>
 #include <sys/mutex.h>
 #include <sys/taskqueue.h>
+#include <sys/kernel.h>
 
 #define	splfw splimp
 
@@ -79,6 +80,11 @@ struct firewire_softc {
 	struct cdev *dev;
 #endif
 	struct firewire_comm *fc;
+	struct intr_config_hook ich;
+	/* 
+	 * Used during initialization to wakeup	
+	 * sleeping parent thread
+	 */
 };
 
 #define FW_MAX_DMACH 0x20
@@ -128,6 +134,7 @@ struct firewire_comm{
 #define	FWBUSPHYCONF	6
 #define	FWBUSEXPDONE	7
 #define	FWBUSCOMPLETION	10
+	int probe_init_state; 
 	int nisodma;
 	struct fw_eui64 eui;
 	struct fw_xferq

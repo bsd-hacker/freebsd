@@ -77,7 +77,7 @@ struct crom_src_buf {
 	struct crom_chunk hw;
 };
 
-int firewire_debug=0, try_bmr=1, hold_count=0;
+int firewire_debug=1, try_bmr=1, hold_count=0;
 SYSCTL_INT(_debug, OID_AUTO, firewire_debug, CTLFLAG_RW, &firewire_debug, 0,
 	"FireWire driver debug flag");
 SYSCTL_NODE(_hw, OID_AUTO, firewire, CTLFLAG_RD, 0, "FireWire Subsystem");
@@ -103,13 +103,14 @@ static void firewire_xfer_timeout(void *, int);
 static int firewire_shutdown    (device_t);
 #endif
 static device_t firewire_add_child   (device_t, int, const char *, int);
-static void fw_try_bmr (void *);
+static void fw_try_bmr (struct firewire_comm *);
 static void fw_try_bmr_callback (struct fw_xfer *);
 static void fw_asystart (struct fw_xfer *);
 static int fw_get_tlabel (struct firewire_comm *, struct fw_xfer *);
 static void fw_bus_probe (struct firewire_comm *);
 static void fw_attach_dev (struct firewire_comm *);
 static void fw_bus_probe_thread(void *);
+static void fw_probe_init(void *);
 #ifdef FW_VMACCESS
 static void fw_vmaccess (struct fw_xfer *);
 #endif
@@ -458,16 +459,27 @@ firewire_attach(device_t dev)
 	mtx_init(&fc->wait_lock, "fwwait", NULL, MTX_DEF);
 	mtx_init(&fc->tlabel_lock, "fwtlabel", NULL, MTX_DEF);
 	CALLOUT_INIT(&fc->timeout_callout);
+#if 0
 	CALLOUT_INIT(&fc->bmr_callout);
 	CALLOUT_INIT(&fc->busprobe_callout);
+#endif
 	TASK_INIT(&fc->task_timeout, 0, firewire_xfer_timeout, (void *)fc);
 
 	callout_reset(&sc->fc->timeout_callout, hz,
 			(void *)firewire_watchdog, (void *)sc->fc);
 
 	/* create thread */
-	kproc_create(fw_bus_probe_thread, (void *)fc, &fc->probe_thread,
-		0, 0, "fw%d_probe", unit);
+	if (kproc_create(fw_bus_probe_thread, (void *)sc,
+		&fc->probe_thread, 0, 0, "fw%d_probe", unit))
+		panic("Could not create fw%d_probe thread\n", unit);
+
+	sc->ich.ich_func = (void *)fw_probe_init;
+	sc->ich.ich_arg = (void *)sc;
+	if (config_intrhook_establish(&sc->ich) != 0) {
+		device_printf(sc->fc->dev,
+				"can't establish config hook\n");
+		return(ENXIO);
+	}
 
 	/* Locate our children */
 	bus_generic_probe(dev);
@@ -475,11 +487,6 @@ firewire_attach(device_t dev)
 	/* launch attachement of the added children */
 	bus_generic_attach(dev);
 
-	/* bus_reset */
-	FW_GLOCK(fc);
-	fw_busreset(fc, FWBUSNOTREADY);
-	FW_GUNLOCK(fc);
-	fc->ibr(fc);
 
 	return 0;
 }
@@ -536,8 +543,11 @@ firewire_detach(device_t dev)
 		printf("firewire probe thread didn't die\n");
 	mtx_unlock(&fc->wait_lock);
 
-	if (fc->arq !=0 && fc->arq->maxq > 0)
+	if (fc->arq !=0 && fc->arq->maxq > 0) {
+		FW_GLOCK(fc);
 		fw_drain_txq(fc);
+		FW_GUNLOCK(fc);
+	}
 
 	if ((err = fwdev_destroydev(sc)) != 0)
 		return err;
@@ -546,8 +556,10 @@ firewire_detach(device_t dev)
 		return err;
 
 	callout_stop(&fc->timeout_callout);
+#if 0
 	callout_stop(&fc->bmr_callout);
 	callout_stop(&fc->busprobe_callout);
+#endif
 
 	/* XXX xfer_free and untimeout on all xfers */
 	for (fwdev = STAILQ_FIRST(&fc->devices); fwdev != NULL;
@@ -597,7 +609,7 @@ fw_drain_txq(struct firewire_comm *fc)
 
 	STAILQ_INIT(&xfer_drain);
 
-	FW_GLOCK(fc);
+	FW_GLOCK_ASSERT(fc);
 	fw_xferq_drain(fc->atq);
 	fw_xferq_drain(fc->ats);
 	for(i = 0; i < fc->nisodma; i++)
@@ -617,6 +629,7 @@ fw_drain_txq(struct firewire_comm *fc)
 
 	STAILQ_FOREACH_SAFE(xfer, &xfer_drain, tlabel, txfer)
 		xfer->hand(xfer);	
+	FW_GLOCK(fc);
 }
 
 static void
@@ -741,8 +754,10 @@ fw_busreset(struct firewire_comm *fc, uint32_t new_status)
 	int i, devcnt;
 
 	FW_GLOCK_ASSERT(fc);
+#if 0
 	if (fc->status == FWBUSMGRELECT)
 		callout_stop(&fc->bmr_callout);
+#endif
 
 	fc->status = new_status;
 	fw_reset_csr(fc);
@@ -756,8 +771,11 @@ fw_busreset(struct firewire_comm *fc, uint32_t new_status)
 		for( i = 0 ; i < devcnt ; i++)
 			if (device_get_state(devlistp[i]) >= DS_ATTACHED)  {
 				fdc = device_get_softc(devlistp[i]);
-				if (fdc->post_busreset != NULL)
+				if (fdc->post_busreset != NULL) {
+					FW_GUNLOCK(fc);
 					fdc->post_busreset(fdc);
+					FW_GLOCK(fc);
+				}
 			}
 		free(devlistp, M_TEMP);
 	}
@@ -1321,6 +1339,7 @@ void fw_sidrcv(struct firewire_comm* fc, uint32_t *sid, u_int len)
 	union fw_self_id *self_id;
 	u_int i, j, node, c_port = 0, i_branch = 0;
 
+	FW_GLOCK_ASSERT(fc);
 	fc->sid_cnt = len /(sizeof(uint32_t) * 2);
 	fc->max_node = fc->nodeid & 0x3f;
 	CSRARC(fc, NODE_IDS) = ((uint32_t)fc->nodeid) << 16;
@@ -1408,17 +1427,25 @@ void fw_sidrcv(struct firewire_comm* fc, uint32_t *sid, u_int len)
 		if (fc->irm == fc->nodeid) {
 			fc->status = FWBUSMGRDONE;
 			CSRARC(fc, BUS_MGR_ID) = fc->set_bmr(fc, fc->irm);
+			FW_GUNLOCK(fc);
 			fw_bmr(fc);
+			FW_GLOCK(fc);
 		} else {
 			fc->status = FWBUSMGRELECT;
+			fw_try_bmr(fc);
+#if 0
 			callout_reset(&fc->bmr_callout, hz/8,
 				(void *)fw_try_bmr, (void *)fc);
+#endif
 		}
 	} else
 		fc->status = FWBUSMGRDONE;
 
+#if 0
 	callout_reset(&fc->busprobe_callout, hz/4,
 			(void *)fw_bus_probe, (void *)fc);
+#endif
+	fw_bus_probe(fc);
 }
 
 /*
@@ -1716,79 +1743,109 @@ fw_find_self_id(struct firewire_comm *fc, int node)
 static void
 fw_explore(struct firewire_comm *fc)
 {
-	int node, err, s, i, todo, todo2, trys;
-	char nodes[63];
-	struct fw_device dfwdev;
-	union fw_self_id *fwsid;
+        int node, err, s, i;
+        struct fw_device dfwdev;
+        union fw_self_id *fwsid;
 
-	todo = 0;
-	/* setup dummy fwdev */
-	dfwdev.fc = fc;
-	dfwdev.speed = 0;
-	dfwdev.maxrec = 8; /* 512 */
-	dfwdev.status = FWDEVINIT;
+        /* setup dummy fwdev */
+        dfwdev.fc = fc;
+        dfwdev.speed = 0;
+        dfwdev.maxrec = 8; /* 512 */
+        dfwdev.status = FWDEVINIT;
 
-	for (node = 0; node <= fc->max_node; node ++) {
-		/* We don't probe myself and linkdown nodes */
-		if (node == fc->nodeid) {
-			if (firewire_debug)
-				device_printf(fc->bdev, "%s:"
-					"found myself node(%d) fc->nodeid(%d) fc->max_node(%d)\n",
-					__func__, node, fc->nodeid, fc->max_node);
-			continue;
-		} else if (firewire_debug) {
-			device_printf(fc->bdev, "%s:"
-				"node(%d) fc->max_node(%d) found\n",
-				__func__, node, fc->max_node);
-		}
-		fwsid = fw_find_self_id(fc, node);
-		if (!fwsid || !fwsid->p0.link_active) {
-			if (firewire_debug)
-				device_printf(fc->bdev, "%s: node%d: link down\n",
-							__func__, node);
-			continue;
-		}
-		nodes[todo++] = node;
-	}
+        for (node = 0; node <= fc->max_node; node ++) {
+                /* We don't probe myself and linkdown nodes */
+                if (node == fc->nodeid) {
+                        if (firewire_debug)
+                                device_printf(fc->bdev, "%s:"
+                                        "found myself node(%d) fc->nodeid(%d) fc->max_node(%d)\n",
+                                        __func__, node, fc->nodeid, fc->max_node);
+                        continue;
+                } else if (firewire_debug) {
+                        device_printf(fc->bdev, "%s:"
+                                "node(%d) fc->max_node(%d) found\n",
+                                __func__, node, fc->max_node);
+                }
 
-	s = splfw();
-	for (trys = 0; todo > 0 && trys < 3; trys ++) {
-		todo2 = 0;
-		for (i = 0; i < todo; i ++) {
-			dfwdev.dst = nodes[i];
-			err = fw_explore_node(&dfwdev);
-			if (err)
-				nodes[todo2++] = nodes[i];
-			if (firewire_debug)
-				device_printf(fc->bdev, "%s: node %d, err = %d\n",
-					__func__, node, err);
-		}
-		todo = todo2;
-	}
-	splx(s);
+                fwsid = fw_find_self_id(fc, node);
+                if (!fwsid || !fwsid->p0.link_active) {
+                        if (firewire_debug)
+                                device_printf(fc->bdev, "%s: node%d: link down\n",
+                                                        __func__, node);
+                        continue;
+                }
+
+                s = splfw();
+                dfwdev.dst = node;
+                for (i = 0; i < 3; i ++) {
+                        err = fw_explore_node(&dfwdev);
+                        if (firewire_debug)
+                                device_printf(fc->bdev, "%s: node %d, err = %d\n",
+                                        __func__, node, err);
+                        if (!err) /* If explore fails, retry else break inner loop */
+                                break;
+                }
+                if (firewire_debug && (i > 3) ) /* Failure to explore node */
+                        device_printf(fc->bdev, "%s: failure to explore node(%d) err(%d)\n",
+                                        __func__, node, err);
+                splx(s);
+        }
 }
 
+/*
+ * Used at system boot time to allow the bus_probe_thread
+ * to execute via config_intrhook
+ */
+static void
+fw_probe_init(void *arg)
+{
+	struct firewire_softc *sc;
+	struct firewire_comm *fc;
+
+	sc = (struct firewire_softc *)arg;
+	fc = sc->fc;
+
+	printf("%s: started\n", __func__);
+	mtx_lock(&fc->wait_lock);
+	fc->probe_init_state = 1;
+	/*wakeup(fc);*/
+	/*msleep((void *)fw_probe_init, &fc->wait_lock, PWAIT|PCATCH, "-", 0);*/
+	/* bus_reset */
+	FW_GLOCK(fc);
+	fw_busreset(fc, FWBUSNOTREADY);
+	FW_GUNLOCK(fc);
+	mtx_unlock(&fc->wait_lock);
+	fc->ibr(fc);
+	printf("%s: finished\n", __func__);
+}
 
 static void
 fw_bus_probe_thread(void *arg)
 {
-	struct firewire_comm *fc;
-
-	fc = (struct firewire_comm *)arg;
+	struct firewire_softc *sc = (struct firewire_softc *)arg;
+	struct firewire_comm *fc = sc->fc;
 
 	mtx_lock(&fc->wait_lock);
-	while (fc->status != FWBUSDETACH) {
-		if (fc->status == FWBUSEXPLORE) {
-			mtx_unlock(&fc->wait_lock);
-			fw_explore(fc);
-			fc->status = FWBUSEXPDONE;
-			if (firewire_debug)
-				printf("bus_explore done\n");
-			fw_attach_dev(fc);
-			mtx_lock(&fc->wait_lock);
-		}
+	do {
+		printf("%s: going to sleep\n", __func__);
 		msleep((void *)fc, &fc->wait_lock, PWAIT|PCATCH, "-", 0);
-	}
+		printf("%s: awoke!\n", __func__);
+		if (fc->status != FWBUSDETACH) {
+			if (fc->status == FWBUSEXPLORE) {
+				mtx_unlock(&fc->wait_lock);
+				fw_explore(fc);
+				fc->status = FWBUSEXPDONE;
+				if (firewire_debug)
+					printf("bus_explore done\n");
+				fw_attach_dev(fc);
+				mtx_lock(&fc->wait_lock);
+			}
+		}
+		if (fc->probe_init_state) {
+			fc->probe_init_state = 0;
+			config_intrhook_disestablish(&sc->ich);
+		}
+	} while (fc->status != FWBUSDETACH);
 	mtx_unlock(&fc->wait_lock);
 	kproc_exit(0);
 }
@@ -2180,10 +2237,9 @@ error:
  * To candidate Bus Manager election process.
  */
 static void
-fw_try_bmr(void *arg)
+fw_try_bmr(struct firewire_comm *fc)
 {
 	struct fw_xfer *xfer;
-	struct firewire_comm *fc = (struct firewire_comm *)arg;
 	struct fw_pkt *fp;
 	int err = 0;
 

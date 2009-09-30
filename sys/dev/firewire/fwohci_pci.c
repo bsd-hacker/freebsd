@@ -91,7 +91,6 @@ static int fwohci_pci_detach(device_t self);
 static int
 fwohci_pci_probe( device_t dev )
 {
-#if 1
 	uint32_t id;
 
 	id = pci_get_devid(dev);
@@ -212,7 +211,6 @@ fwohci_pci_probe( device_t dev )
 		device_set_desc(dev, "Sun PCIO-2");
 		return BUS_PROBE_DEFAULT;
 	}
-#endif
 	if (pci_get_class(dev) == PCIC_SERIALBUS
 			&& pci_get_subclass(dev) == PCIS_SERIALBUS_FW
 			&& pci_get_progif(dev) == PCI_INTERFACE_OHCI) {

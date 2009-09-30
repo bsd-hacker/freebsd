@@ -97,6 +97,11 @@
 #define SBP_QUEUE_LEN ((SBP_DMA_SIZE - SBP_LOGIN_SIZE) / sizeof(struct sbp_ocb))
 #define SBP_NUM_OCB (SBP_QUEUE_LEN * SBP_NUM_TARGETS)
 
+#define SBP_XPT_DONE(ccb)\
+	do { \
+		xpt_print(ccb->ccb_h.path, "%s: func = %x, status = %x\n",\
+			   __func__, ccb->ccb_h.func_code, ccb->ccb_h.status); \
+	} while (0)
 /* 
  * STATUS FIFO addressing
  *   bit
@@ -806,12 +811,12 @@ sbp_post_busreset(void *arg)
 SBP_DEBUG(0)
 	printf("sbp_post_busreset\n");
 END_DEBUG
+	SBP_LOCK(sbp);
 	if ((sbp->sim->flags & SIMQ_FREEZED) == 0) {
-		SBP_LOCK(sbp);
-		xpt_freeze_simq(sbp->sim, /*count*/1);
 		sbp->sim->flags |= SIMQ_FREEZED;
-		SBP_UNLOCK(sbp);
+		xpt_freeze_simq(sbp->sim, /*count*/1);
 	}
+	SBP_UNLOCK(sbp);
 	microtime(&sbp->last_busreset);
 }
 
@@ -1257,7 +1262,7 @@ END_DEBUG
 	if(fw_asyreq(xfer->fc, -1, xfer) != 0){
 			sbp_xfer_free(xfer);
 			ocb->ccb->ccb_h.status = CAM_REQ_INVALID;
-			xpt_done(ocb->ccb);
+			SBP_XPT_DONE(ocb->ccb);
 	}
 	SBP_LOCK(sdev->target->sbp);
 }
@@ -1900,7 +1905,7 @@ END_DEBUG
 				if (ccb->csio.cdb_io.cdb_bytes[0] == INQUIRY)
 					sbp_fix_inq_data(ocb);
 				SBP_LOCK(sbp);
-				xpt_done(ccb);
+				SBP_XPT_DONE(ccb);
 				SBP_UNLOCK(sbp);
 			}
 			break;
@@ -2370,7 +2375,7 @@ SBP_DEBUG(1)
 END_DEBUG
 
 			ccb->ccb_h.status = CAM_DEV_NOT_THERE;
-			xpt_done(ccb);
+			SBP_XPT_DONE(ccb);
 			return;
 		}
 		break;
@@ -2390,7 +2395,7 @@ SBP_DEBUG(0)
 				ccb->ccb_h.func_code);
 END_DEBUG
 			ccb->ccb_h.status = CAM_DEV_NOT_THERE;
-			xpt_done(ccb);
+			SBP_XPT_DONE(ccb);
 			return;
 		}
 		break;
@@ -2433,7 +2438,7 @@ SBP_DEBUG(2)
 END_DEBUG
 		if(sdev == NULL){
 			ccb->ccb_h.status = CAM_DEV_NOT_THERE;
-			xpt_done(ccb);
+			SBP_XPT_DONE(ccb);
 			return;
 		}
 #if 0
@@ -2444,7 +2449,7 @@ END_DEBUG
 			printf("probe stage, periph name: %s\n", name);
 			if (strcmp(name, "probe") != 0) {
 				ccb->ccb_h.status = CAM_REQUEUE_REQ;
-				xpt_done(ccb);
+				SBP_XPT_DONE(ccb);
 				return;
 			}
 		}
@@ -2457,7 +2462,7 @@ END_DEBUG
 				sdev->freeze ++;
 				SBP_UNLOCK(sdev->target->sbp);
 			}
-			xpt_done(ccb);
+			SBP_XPT_DONE(ccb);
 			return;
 		}
 
@@ -2521,7 +2526,7 @@ printf("ORB %08x %08x %08x %08x\n", ntohl(ocb->orb[4]), ntohl(ocb->orb[5]), ntoh
 		if (ccg->block_size == 0) {
 			printf("sbp_action1: block_size is 0.\n");
 			ccb->ccb_h.status = CAM_REQ_INVALID;
-			xpt_done(ccb);
+			SBP_XPT_DONE(ccb);
 			break;
 		}
 SBP_DEBUG(1)
@@ -2557,7 +2562,7 @@ END_DEBUG
 #else
 		cam_calc_geometry(ccg, /*extended*/1);
 #endif
-		xpt_done(ccb);
+		SBP_XPT_DONE(ccb);
 		break;
 	}
 	case XPT_RESET_BUS:		/* Reset the specified SCSI bus */
@@ -2569,7 +2574,7 @@ SBP_DEBUG(1)
 END_DEBUG
 
 		ccb->ccb_h.status = CAM_REQ_INVALID;
-		xpt_done(ccb);
+		SBP_XPT_DONE(ccb);
 		break;
 	}
 	case XPT_PATH_INQ:		/* Path routing inquiry */
@@ -2601,7 +2606,7 @@ END_DEBUG
                 cpi->protocol_version = SCSI_REV_2;
 
 		cpi->ccb_h.status = CAM_REQ_CMP;
-		xpt_done(ccb);
+		SBP_XPT_DONE(ccb);
 		break;
 	}
 	case XPT_GET_TRAN_SETTINGS:
@@ -2626,18 +2631,18 @@ SBP_DEBUG(1)
 			ccb->ccb_h.target_id, ccb->ccb_h.target_lun);
 END_DEBUG
 		cts->ccb_h.status = CAM_REQ_CMP;
-		xpt_done(ccb);
+		SBP_XPT_DONE(ccb);
 		break;
 	}
 	case XPT_ABORT:
 		ccb->ccb_h.status = CAM_UA_ABORT;
-		xpt_done(ccb);
+		SBP_XPT_DONE(ccb);
 		break;
 	case XPT_SET_TRAN_SETTINGS:
 		/* XXX */
 	default:
 		ccb->ccb_h.status = CAM_REQ_INVALID;
-		xpt_done(ccb);
+		SBP_XPT_DONE(ccb);
 		break;
 	}
 	return;
@@ -2939,7 +2944,7 @@ END_DEBUG
 					ocb->ccb->ccb_h.timeout_ch);
 		ocb->ccb->ccb_h.status = status;
 		SBP_LOCK(sdev->target->sbp);
-		xpt_done(ocb->ccb);
+		SBP_XPT_DONE(ocb->ccb);
 		SBP_UNLOCK(sdev->target->sbp);
 	}
 	sbp_free_ocb(sdev, ocb);
