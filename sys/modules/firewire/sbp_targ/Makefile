@@ -9,6 +9,7 @@ SRCS	= bus_if.h device_if.h \
 	  opt_cam.h opt_scsi.h \
 	  sbp_targ.c sbp.h \
 	  firewire.h firewirereg.h \
-	  iec13213.h
+	  iec13213.h \
+          fwcsr.c fwcsr.h
 
 .include <bsd.kmod.mk>
