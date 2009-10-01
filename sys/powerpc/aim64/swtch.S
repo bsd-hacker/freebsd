@@ -111,6 +111,8 @@ ENTRY(cpu_switch)
 	std	%r16,PCB_CR(%r5)
 	mflr	%r16			/* Save the link register */
 	std	%r16,PCB_LR(%r5)
+	std	%r1,PCB_SP(%r5)		/* Save the stack pointer */
+	std	%r2,PCB_TOC(%r5)	/* Save the TOC pointer */
 	
 	li	%r14,0			/* Save USER_SR for copyin/out */
 	li	%r15,0
@@ -120,8 +122,6 @@ ENTRY(cpu_switch)
 	isync
 	std	%r14,PCB_AIM_USR_ESID(%r5)
 	std	%r15,PCB_AIM_USR_VSID(%r5)
-	std	%r1,PCB_SP(%r5)		/* Save the stack pointer */
-	std	%r2,PCB_TOC(%r5)	/* Save the TOC pointer */
 
 	mr	%r14,%r3		/* Copy the old thread ptr... */
 	mr	%r15,%r4		/* and the new thread ptr in scratch */
@@ -200,6 +200,8 @@ cpu_switchin:
 	mtcr	%r5
 	ld	%r5,PCB_LR(%r3)		/* Load the link register */
 	mtlr	%r5
+	ld	%r1,PCB_SP(%r3)		/* Load the stack pointer */
+	ld	%r2,PCB_TOC(%r3)	/* Load the TOC pointer */
 
 	li	%r5,USER_SR		/* Load the USER_SR segment reg */
 	sldi	%r5,%r5,28
@@ -210,8 +212,6 @@ cpu_switchin:
 	slbmte	%r5,%r6
 
 	isync
-	ld	%r1,PCB_SP(%r3)		/* Load the stack pointer */
-	ld	%r2,PCB_TOC(%r3)	/* Load the TOC pointer */
 	/*
 	 * Perform a dummy stwcx. to clear any reservations we may have
 	 * inherited from the previous thread. It doesn't matter if the
@@ -248,6 +248,7 @@ ENTRY(savectx)
 
 	mfcr	%r4			/* Save the condition register */
 	std	%r4,PCB_CR(%r3)
+	std	%r2,PCB_TOC(%r3)	/* Save the TOC pointer */
 	blr
 
 /*
