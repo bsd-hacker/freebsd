@@ -814,8 +814,8 @@ SBP_DEBUG(0)
 	printf("%s\n", __func__);
 END_DEBUG
 	SBP_LOCK(sbp);
-	if ((sbp->sim->flags & SIMQ_FREEZED) == 0) {
-		sbp->sim->flags |= SIMQ_FREEZED;
+	if ((sbp->flags & SIMQ_FREEZED) == 0) {
+		sbp->flags |= SIMQ_FREEZED;
 		xpt_freeze_simq(sbp->sim, /*count*/1);
 		callout_reset(&sbp->busreset_timeout,
 			      scan_delay * hz / 1000,
@@ -835,8 +835,8 @@ sbp_busreset_timeout(void *arg)
 	callout_stop(&sbp->busreset_timeout);
 	printf("%s: Failed to recieved SID from fwohci\n", __func__);
 	SBP_LOCK(sbp);
+	sbp->flags &= ~SIMQ_FREEZED;
 	xpt_release_simq(sbp->sim, /*run queue*/TRUE);
-	sbp->sim->flags &= ~SIMQ_FREEZED;
 	SBP_UNLOCK(sbp);
 	printf("%s: Done\n", __func__);
 }
@@ -904,8 +904,8 @@ END_DEBUG
 			sbp_free_target(target);
 	}
 	SBP_LOCK(sbp);
+	sbp->flags &= ~SIMQ_FREEZED;
 	xpt_release_simq(sbp->sim, /*run queue*/TRUE);
-	sbp->sim->flags &= ~SIMQ_FREEZED;
 	SBP_UNLOCK(sbp);
 }
 
