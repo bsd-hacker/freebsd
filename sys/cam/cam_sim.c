@@ -106,8 +106,10 @@ cam_sim_free(struct cam_sim *sim, int free_devq)
 {
 	int error;
 
+	mtx_assert(sim->mtx, MA_OWNED);
 	sim->refcount--;
 	if (sim->refcount > 0) {
+		printf("%s: sim->refcount(%d)\n", __func__, sim->refcount);
 		error = msleep(sim, sim->mtx, PRIBIO, "simfree", 0);
 		KASSERT(error == 0, ("invalid error value for msleep(9)"));
 	}
@@ -125,6 +127,7 @@ cam_sim_release(struct cam_sim *sim)
 	KASSERT(sim->refcount >= 1, ("sim->refcount >= 1"));
 	mtx_assert(sim->mtx, MA_OWNED);
 
+	printf("%s: sim->refcount(%d)\n", __func__, sim->refcount);
 	sim->refcount--;
 	if (sim->refcount == 0)
 		wakeup(sim);
@@ -137,6 +140,7 @@ cam_sim_hold(struct cam_sim *sim)
 	mtx_assert(sim->mtx, MA_OWNED);
 
 	sim->refcount++;
+	printf("%s: sim->refcount(%d)\n", __func__, sim->refcount);
 }
 
 void
