@@ -252,10 +252,12 @@ struct sbp_softc {
 #define SIMQ_FREEZED 1
 	int flags;
 	struct mtx mtx;
+	struct callout busreset_timeout;
 };
 #define SBP_LOCK(sbp) mtx_lock(&(sbp)->mtx)
 #define SBP_UNLOCK(sbp) mtx_unlock(&(sbp)->mtx)
 
+static void sbp_busreset_timeout(void *);
 static void sbp_post_explore (void *);
 static void sbp_recv (struct fw_xfer *);
 static void sbp_mgm_callback (struct fw_xfer *);
@@ -815,10 +817,29 @@ END_DEBUG
 	if ((sbp->sim->flags & SIMQ_FREEZED) == 0) {
 		sbp->sim->flags |= SIMQ_FREEZED;
 		xpt_freeze_simq(sbp->sim, /*count*/1);
+		callout_reset(&sbp->busreset_timeout,
+			      scan_delay * hz / 1000,
+			      sbp_busreset_timeout,
+			      (void *)sbp);
 	}
 	SBP_UNLOCK(sbp);
 	microtime(&sbp->last_busreset);
 }
+static void
+sbp_busreset_timeout(void *arg)
+{
+	struct sbp_softc *sbp;
+
+	sbp = (struct sbp_softc *)arg;
+
+	callout_stop(&sbp->busreset_timeout);
+	printf("%s: Failed to recieved SID from fwohci\n", __func__);
+	SBP_LOCK(sbp);
+	xpt_release_simq(sbp->sim, /*run queue*/TRUE);
+	sbp->sim->flags &= ~SIMQ_FREEZED;
+	SBP_UNLOCK(sbp);
+}
+
 
 static void
 sbp_post_explore(void *arg)
@@ -828,6 +849,7 @@ sbp_post_explore(void *arg)
 	struct fw_device *fwdev;
 	int i, alive;
 
+	callout_stop(&sbp->busreset_timeout);
 SBP_DEBUG(0)
 	printf("sbp_post_explore (sbp_cold=%d)\n", sbp_cold);
 END_DEBUG
@@ -2063,6 +2085,7 @@ END_DEBUG
 	sbp->fd.post_busreset = sbp_post_busreset;
 	sbp->fd.post_explore = sbp_post_explore;
 
+	CALLOUT_INIT(&sbp->busreset_timeout);
 	if (fc->status != -1) {
 		s = splfw();
 		sbp_post_busreset((void *)sbp);
@@ -2358,6 +2381,8 @@ SBP_DEBUG(1)
 		printf("invalid target %d lun %d\n",
 			ccb->ccb_h.target_id, ccb->ccb_h.target_lun);
 END_DEBUG
+
+	printf("%s: ccb func_code = %x\n", __func__, ccb->ccb_h.func_code);
 
 	switch (ccb->ccb_h.func_code) {
 	case XPT_SCSI_IO:
