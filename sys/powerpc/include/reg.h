@@ -8,8 +8,8 @@
 struct reg {
 	register_t fixreg[32];
 	register_t lr;
-	int cr;
-	int xer;
+	register_t cr;
+	register_t xer;
 	register_t ctr;
 	register_t pc;
 };
