@@ -107,8 +107,6 @@ struct xpt_softc {
 	TAILQ_HEAD(,cam_eb)	xpt_busses;
 	u_int			bus_generation;
 
-	struct intr_config_hook	*xpt_config_hook;
-
 	struct mtx		xpt_topo_lock;
 	struct mtx		xpt_lock;
 };
@@ -910,34 +908,18 @@ xpt_init(void *dummy)
 	xpt_free_path(path);
 	mtx_unlock(&xsoftc.xpt_lock);
 
-	/*
-	 * Register a callback for when interrupts are enabled.
-	 */
-	xsoftc.xpt_config_hook =
-	    (struct intr_config_hook *)malloc(sizeof(struct intr_config_hook),
-					      M_CAMXPT, M_NOWAIT | M_ZERO);
-	if (xsoftc.xpt_config_hook == NULL) {
-		printf("xpt_init: Cannot malloc config hook "
-		       "- failing attach\n");
-		return (ENOMEM);
-	}
-
-	xsoftc.xpt_config_hook->ich_func = xpt_config;
-	if (config_intrhook_establish(xsoftc.xpt_config_hook) != 0) {
-		free (xsoftc.xpt_config_hook, M_CAMXPT);
-		printf("xpt_init: config_intrhook_establish failed "
-		       "- failing attach\n");
-	}
-
 	/* fire up rescan thread */
 	if (kproc_create(xpt_scanner_thread, NULL, NULL, 0, 0, "xpt_thrd")) {
 		printf("xpt_init: failed to create rescan thread\n");
 	}
 	/* Install our software interrupt handlers */
-	swi_add(NULL, "cambio", camisr, NULL, SWI_CAMBIO, INTR_MPSAFE, &cambio_ih);
+	swi_add(NULL, "cambio", camisr, NULL, SWI_CAMBIO, INTR_MPSAFE,
+		&cambio_ih);
 
 	return (0);
 }
+
+SYSINIT(cam_config, SI_SUB_CONFIG_CAM, SI_ORDER_FIRST, xpt_config, NULL);
 
 static cam_status
 xptregister(struct cam_periph *periph, void *arg)
@@ -4697,6 +4679,13 @@ xpt_config(void *arg)
 		}
 		xpt_for_all_busses(xptconfigfunc, NULL);
 	}
+
+	mtx_lock(&xsoftc.xpt_lock);
+	while (msleep(xpt_config, &xsoftc.xpt_lock, PCONFIG, "camhk",
+		      30 * hz) == EWOULDBLOCK) {
+		printf("Warning\n");
+	}
+	mtx_unlock(&xsoftc.xpt_lock);
 }
 
 /*
@@ -4743,9 +4732,9 @@ xpt_finishconfig_task(void *context, int pending)
 		xpt_for_all_devices(xptpassannouncefunc, NULL);
 
 		/* Release our hook so that the boot can continue. */
-		config_intrhook_disestablish(xsoftc.xpt_config_hook);
-		free(xsoftc.xpt_config_hook, M_CAMXPT);
-		xsoftc.xpt_config_hook = NULL;
+		mtx_lock(&xsoftc.xpt_lock);
+		wakeup(xpt_config);
+		mtx_unlock(&xsoftc.xpt_lock);
 	}
 
 	free(context, M_CAMXPT);

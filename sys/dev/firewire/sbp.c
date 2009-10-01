@@ -811,7 +811,7 @@ sbp_post_busreset(void *arg)
 
 	sbp = (struct sbp_softc *)arg;
 SBP_DEBUG(0)
-	printf("sbp_post_busreset\n");
+	printf("%s\n", __func__);
 END_DEBUG
 	SBP_LOCK(sbp);
 	if ((sbp->sim->flags & SIMQ_FREEZED) == 0) {
@@ -838,6 +838,7 @@ sbp_busreset_timeout(void *arg)
 	xpt_release_simq(sbp->sim, /*run queue*/TRUE);
 	sbp->sim->flags &= ~SIMQ_FREEZED;
 	SBP_UNLOCK(sbp);
+	printf("%s: Done\n", __func__);
 }
 
 
@@ -859,14 +860,6 @@ END_DEBUG
 
 	if (sbp_cold > 0)
 		sbp_cold --;
-
-#if 0
-	/*
-	 * XXX don't let CAM the bus rest.
-	 * CAM tries to do something with freezed (DEV_RETRY) devices.
-	 */
-	xpt_async(AC_BUS_RESET, sbp->path, /*arg*/ NULL);
-#endif
 
 	/* Garbage Collection */
 	for(i = 0 ; i < SBP_NUM_TARGETS ; i ++){
@@ -1036,6 +1029,8 @@ END_DEBUG
 		device_printf(sdev->target->sbp->fd.dev,
 			"%s:%s failed\n", __func__, sdev->bustgtlun);
 	}
+	free(ccb, M_SBP);
+#if 0
 	sdev = sbp_next_dev(target, sdev->lun_id + 1);
 	if (sdev == NULL) {
 		free(ccb, M_SBP);
@@ -1047,6 +1042,7 @@ END_DEBUG
 	xpt_action(ccb);
 	xpt_release_devq(sdev->path, sdev->freeze, TRUE);
 	sdev->freeze = 1;
+#endif
 }
 
 static void
@@ -1055,35 +1051,41 @@ sbp_cam_scan_target(void *arg)
 	struct sbp_target *target = (struct sbp_target *)arg;
 	struct sbp_dev *sdev;
 	union ccb *ccb;
+	int targ_ctr = 0;
 
+	while ((sdev = sbp_next_dev(target, targ_ctr)) != NULL) {
+#if 0
 	sdev = sbp_next_dev(target, 0);
 	if (sdev == NULL) {
 		printf("sbp_cam_scan_target: nothing to do for target%d\n",
 							target->target_id);
 		return;
 	}
+#endif
 SBP_DEBUG(0)
-	device_printf(sdev->target->sbp->fd.dev,
-		"%s:%s\n", __func__, sdev->bustgtlun);
+		device_printf(sdev->target->sbp->fd.dev,
+				"%s:%s\n", __func__, sdev->bustgtlun);
 END_DEBUG
-	ccb = malloc(sizeof(union ccb), M_SBP, M_NOWAIT | M_ZERO);
-	if (ccb == NULL) {
-		printf("sbp_cam_scan_target: malloc failed\n");
-		return;
-	}
-	xpt_setup_ccb(&ccb->ccb_h, sdev->path, SCAN_PRI);
-	ccb->ccb_h.func_code = XPT_SCAN_LUN;
-	ccb->ccb_h.cbfcnp = sbp_cam_scan_lun;
-	ccb->ccb_h.flags |= CAM_DEV_QFREEZE;
-	ccb->crcn.flags = CAM_FLAG_NONE;
-	ccb->ccb_h.ccb_sdev_ptr = sdev;
+		ccb = malloc(sizeof(union ccb), M_SBP, M_NOWAIT | M_ZERO);
+		if (ccb == NULL) {
+			printf("sbp_cam_scan_target: malloc failed\n");
+			break;
+		}
+		xpt_setup_ccb(&ccb->ccb_h, sdev->path, SCAN_PRI);
+		ccb->ccb_h.func_code = XPT_SCAN_LUN;
+		ccb->ccb_h.cbfcnp = sbp_cam_scan_lun;
+		ccb->ccb_h.flags |= CAM_DEV_QFREEZE;
+		ccb->crcn.flags = CAM_FLAG_NONE;
+		ccb->ccb_h.ccb_sdev_ptr = sdev;
 
-	/* The scan is in progress now. */
-	SBP_LOCK(target->sbp);
-	xpt_action(ccb);
-	xpt_release_devq(sdev->path, sdev->freeze, TRUE);
-	sdev->freeze = 1;
-	SBP_UNLOCK(target->sbp);
+		/* The scan is in progress now. */
+		SBP_LOCK(target->sbp);
+		xpt_action(ccb);
+		xpt_release_devq(sdev->path, sdev->freeze, TRUE);
+		sdev->freeze = 1;
+		SBP_UNLOCK(target->sbp);
+		targ_ctr++;
+	}
 }
 
 static __inline void
