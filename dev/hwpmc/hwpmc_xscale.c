@@ -80,11 +80,37 @@ xscale_describe(int cpu, int ri, struct pmc_info *pi, struct pmc **ppmc)
 struct pmc_mdep *
 pmc_xscale_initialize()
 {
-	return NULL;
+	struct pmc_mdep *pmc_mdep;
+
+	pmc_mdep = malloc(sizeof(struct pmc_mdep) + sizeof(struct pmc_classdep),
+	    M_PMC, M_WAITOK|M_ZERO);
+	pmc_mdep->pmd_cputype = PMC_CPU_INTEL_XSCALE;
+	pmc_mdep->pmd_nclass = 1;
+
+	pcd = &pmc_mdep->pmd_classdep[0];
+	pcd->pcd_caps = XSCALE_PMC_CAPS;
+	pcd->pcd_num = XSCALE_NPMCS;
+	pcd->pcd_ri = pmc_mdep->pmd_npmc;
+	pcd->pcd_width = 48; /* XXX */
+
+	pcd->pcd_allocate_pmc = xscale_allocate_pmc;
+	pcd->pcd_config_pmc = xscale_config_pmc;
+	pcd->pcd_describe = xscale_describe;
+	pcd->pcd_get_config = xscale_get_config;
+	pcd->pcd_read_pmc = xscale_read_pmc;
+	pcd->pcd_release_pmc = xscale_release_pmc;
+	pcd->pcd_start_pmc = xscale_start_pmc;
+	pcd->pcd_stop_pmc = xscale_stop_pmc;
+	pcd->pcd_write_pmc = xscale_write_pmc;
+
+	pmc_mdep->pmd_intr = xscale_intr;
+	pmc_mdep->pmd_switch_in = xscale_switch_in;
+	pmc_mdep->pmd_switch_out = xscale_switch_out;
+
+	return (pmc_mdep);
 }
 
 void
 pmc_xscale_finalize(struct pmc_mdep *md)
 {
-	(void) md;
 }

@@ -37,5 +37,9 @@
 				 PMC_CAP_WRITE | PMC_CAP_INVERT |	\
 				 PMC_CAP_QUALIFIER)
 
-
+#ifdef _KERNEL
+/* MD extension for 'struct pmc' */
+struct pmc_md_xscale_pmc {
+};
+#endif /* _KERNEL */
 #endif /* _DEV_HWPMC_XSCALE_H_ */
