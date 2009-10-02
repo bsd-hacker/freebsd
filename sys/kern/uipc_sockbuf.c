@@ -133,7 +133,7 @@ sbwait(struct sockbuf *sb)
 }
 
 int
-sblock(struct sockbuf *sb, int flags)
+_sblock(struct sockbuf *sb, int flags, const char *file, int line)
 {
 
 	KASSERT((flags & SBL_VALID) == flags,
@@ -142,12 +142,12 @@ sblock(struct sockbuf *sb, int flags)
 	if (flags & SBL_WAIT) {
 		if ((sb->sb_flags & SB_NOINTR) ||
 		    (flags & SBL_NOINTR)) {
-			sx_xlock(&sb->sb_sx);
+			_sx_xlock(&sb->sb_sx, 0, file, line);
 			return (0);
 		}
-		return (sx_xlock_sig(&sb->sb_sx));
+		return (_sx_xlock(&sb->sb_sx, SX_INTERRUPTIBLE, file, line));
 	} else {
-		if (sx_try_xlock(&sb->sb_sx) == 0)
+		if (_sx_try_xlock(&sb->sb_sx, file, line) == 0)
 			return (EWOULDBLOCK);
 		return (0);
 	}
@@ -178,7 +178,10 @@ sowakeup(struct socket *so, struct sockbuf *sb)
 	int ret;
 
 	SOCKBUF_LOCK_ASSERT(sb);
-
+	if (sb->sb_flags & SB_SENDING) {
+	        SOCKBUF_UNLOCK(sb);
+		return;
+	}
 	selwakeuppri(&sb->sb_sel, PSOCK);
 	if (!SEL_WAITING(&sb->sb_sel))
 		sb->sb_flags &= ~SB_SEL;
@@ -906,6 +909,8 @@ sbdrop_locked(struct sockbuf *sb, int len)
 	SOCKBUF_LOCK_ASSERT(sb);
 
 	sbdrop_internal(sb, len);
+	if (sb->sb_flags & SB_SENDING)
+		sosendingwakeup(sb);
 }
 
 void

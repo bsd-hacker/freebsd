@@ -52,6 +52,7 @@
 #define	SB_NOCOALESCE	0x200		/* don't coalesce new data into existing mbufs */
 #define	SB_IN_TOE	0x400		/* socket buffer is in the middle of an operation */
 #define	SB_AUTOSIZE	0x800		/* automatically size socket buffer */
+#define	SB_SENDING	0x1000		/* socket is owned by sendfile thread */
 
 #define	SBS_CANTSENDMORE	0x0010	/* can't send more data to peer */
 #define	SBS_CANTRCVMORE		0x0020	/* can't receive more data from peer */
@@ -155,8 +156,11 @@ struct mbuf *
 	sbsndptr(struct sockbuf *sb, u_int off, u_int len, u_int *moff);
 void	sbtoxsockbuf(struct sockbuf *sb, struct xsockbuf *xsb);
 int	sbwait(struct sockbuf *sb);
-int	sblock(struct sockbuf *sb, int flags);
+int	_sblock(struct sockbuf *sb, int flags, const char *file, int line);
 void	sbunlock(struct sockbuf *sb);
+
+#define sblock(sb, flags) \
+	_sblock((sb), (flags), __FILE__, __LINE__)
 
 /*
  * How much space is there in a socket buffer (so->so_snd or so->so_rcv)?
