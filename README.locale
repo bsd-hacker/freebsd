@@ -94,15 +94,13 @@ Finished:
   share/numericdef, share/timedef.
 - Regression check.
 - Conversion of the Unicode definitions to the UTF-8 character-set.
+  It is residing in usr.bin/unicode2utf8 and requires the file
+  posix/UTF-8.cm from the CLDR distribution.
 
 Pending:
 - Checking of the data with the CLDR (Common Locale Data Repository)
   for completeness of the current data.
 - Conversion of Makefiles for share/mklocale.
-- Conversion of the Unicode definitions to the UTF-8 character-set
-  in a C program or AWK script to make it self-hosting.  This is
-  right now a Perl script so it can't be part of the base OS build
-  yet. This tool for now lives in src/tools/tools/locale/.
 - Import of the file UTF-8.cm (from the CLDR project) and the file
   UnicodeData.txt (from the Unicode project) into the base operating
   system. These files for now live in src/tools/tools/locale/
@@ -145,7 +143,6 @@ Local configuration:
 - Add to /etc/make.conf (make sure they match your directory layout)
 	CLDRDIR=	/home/edwin/unicode/cldr/1.7.1
 	UNIDATADIR=	/home/edwin/unicode/UNIDATA/5.1.0
-	TOOLSDIR=	/home/edwin/svn/edwin/locale/cldr/tools/
 	LOCALE_DESTDIR=	/home/edwin/locale/new
 	LOCALE_SHAREOWN=edwin
 	LOCALE_SHAREGRP=edwin

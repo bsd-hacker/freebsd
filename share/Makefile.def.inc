@@ -301,9 +301,8 @@ _TRANSLATIONAFTER_${cm}+=	 | awk '{ gsub("${TR:C/:.*//:C/([0-9a-fA-F][0-9a-fA-F]
 # Normal makes don't need to convert from .unicode to .src
 .  if defined(FULL)
 ${ccln}.UTF-8.src: ${ccln}.unicode
-	${TOOLSDIR}/unicode2src.pl \
+	../../usr.bin/unicode2utf8/unicode2utf8 \
 	    --cldr=${CLDRDIR} \
-	    --unidata=${UNIDATADIR} \
 	    --input=${.ALLSRC} \
 	    --output=${.TARGET}
 
