@@ -133,8 +133,6 @@ To test the current system, you need the following data:
 - A copy of the CLDR, available from http://cldr.unicode.org/.
   Currently version 1.7.1 is used. We only use the file posix/UTF-8.cm
   from it.
-- A copy of the Unicode database, available from http://www.unicode.org/.
-  Currently version is 5.1.0. We only use the file UnicodeData.txt from it.
 - A copy of svn://svn.freebsd.org/base/user/edwin/locale/.
 - A copy of bsdiconv from p4:///depot/gabor/something.
 
@@ -142,7 +140,6 @@ Local configuration:
 
 - Add to /etc/make.conf (make sure they match your directory layout)
 	CLDRDIR=	/home/edwin/unicode/cldr/1.7.1
-	UNIDATADIR=	/home/edwin/unicode/UNIDATA/5.1.0
 	LOCALE_DESTDIR=	/home/edwin/locale/new
 	LOCALE_SHAREOWN=edwin
 	LOCALE_SHAREGRP=edwin
