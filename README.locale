@@ -107,7 +107,7 @@ Pending:
   system. These files for now live in src/tools/tools/locale/
 
 Pending third parties:
-- bsdiconv in the main system.
+- bsdiconv in the base operating system.
 
 
 SCM
