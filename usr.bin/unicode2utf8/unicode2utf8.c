@@ -1,10 +1,40 @@
+/*-
+ * Copyright (c) 2009 Edwin Groothuis <edwin@FreeBSD.org>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
+
 #include <sys/param.h>
+
+#include <err.h>
+#include <errno.h>
+#include <getopt.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <getopt.h>
-#include <err.h>
-#include <errno.h>
 #include <sysexits.h>
 
 #define MAXBUF	512
@@ -23,16 +53,19 @@ struct utf8map	*get_utf8map(char *dir);
 struct utf8map	*find_utf8map(char *unidata);
 void		 translate(char *file_in, char *file_out);
 
+int debug = 0;
+
 int
-main(int argc, char **argv) {
+main(int argc, char *argv[])
+{
 	char *cldr = NULL, *file_in = NULL, *file_out = NULL;
 	char ch;
 
-	/* options descriptor */
 	static struct option longopts[] = {
 		{ "cldr",	required_argument,	NULL,	1 },
-		{ "input",	required_argument,	NULL,	3 },
-		{ "output",	required_argument,	NULL,	4 },
+		{ "input",	required_argument,	NULL,	2 },
+		{ "output",	required_argument,	NULL,	3 },
+		{ "debug",	no_argument,		NULL,	4 },
 		{ NULL,		0,			NULL,	0 }
 	};
 
@@ -41,12 +74,14 @@ main(int argc, char **argv) {
 		case 1:
 			cldr = optarg;
 			break;
-		case 3:
+		case 2:
 			file_in = optarg;
 			break;
-		case 4:
+		case 3:
 			file_out = optarg;
 			break;
+		case 4:
+			debug++;
 			break;
 		default:
 			usage();
@@ -55,16 +90,19 @@ main(int argc, char **argv) {
 	argc -= optind;
 	argv += optind;
 
+	if (cldr == NULL || file_in == NULL || file_out == NULL)
+		usage();
+
 	get_utf8map(cldr);
 	translate(file_in, file_out);
 }
 
 void
-translate(char *file_in, char *file_out) {
-	FILE *fin, *fout;
-	char line[MAXBUF];
-	char *p, *q1, *q2;
+translate(char *file_in, char *file_out)
+{
 	struct utf8map *map;
+	FILE *fin, *fout;
+	char *p, *q1, *q2, line[MAXBUF];
 
 	if ((fin = fopen(file_in, "r")) == NULL)
 		errx(EX_DATAERR, "Cannot open %s for reading.", file_in);
@@ -110,7 +148,8 @@ translate(char *file_in, char *file_out) {
 }
 
 struct utf8map *
-find_utf8map(char *uniname) {
+find_utf8map(char *uniname)
+{
 	struct utf8map *p;
 	int hashindex = uniname[strlen(uniname) - 1];
 
@@ -118,7 +157,8 @@ find_utf8map(char *uniname) {
 	while (p != NULL) {
 		if (strcmp(p->uniname, uniname) == 0)
 			return p;
-		// printf("'%s' - '%s'\n", p->uniname, uniname);
+		if (debug)
+			printf("'%s' - '%s'\n", p->uniname, uniname);
 		p = p->next;
 	}
 
@@ -126,14 +166,12 @@ find_utf8map(char *uniname) {
 }
 
 struct utf8map *
-get_utf8map(char *dir) {
-	FILE *fin;
-	char filename[MAXPATHLEN];
-	char uniname[MAXBUF], utf8char[MAXBUF];
-	char *p;
-	int len, i;
+get_utf8map(char *dir)
+{
 	struct utf8map *new;
-	int hashindex;
+	FILE *fin;
+	int len, i, hashindex;
+	char filename[MAXPATHLEN], uniname[MAXBUF], utf8char[MAXBUF], *p;
 
 	sprintf(filename, "%s/posix/UTF-8.cm", dir);
 
@@ -155,7 +193,7 @@ get_utf8map(char *dir) {
 			 && strcmp(utf8char, "CHARMAP") == 0)
 				break;
 
-			/* Get rid of the _'s in the name */
+			/* Get rid of the _'s in the name. */
 			while ((p = strchr(uniname, '_')) != NULL)
 				*p = ' ';
 			if ((p = strchr(uniname, '>')) == NULL)
@@ -167,7 +205,7 @@ get_utf8map(char *dir) {
 				errx(EX_DATAERR, "No leading '<' for %s",
 				    uniname);
 
-			/* Translate hex strings into ascii-strings */
+			/* Translate hex strings into ascii-strings. */
 			len = strlen(utf8char);
 			if (len % 4 != 0)
 				errx(EX_DATAERR, "Wrong length: '%s'",
@@ -176,7 +214,7 @@ get_utf8map(char *dir) {
 			for (i = 0; i < len; i++) {
 				/*
 				 * Not setting will produce wrong results for
-				 * the unicode string NULL
+				 * the unicode string NULL.
 				 */
 				errno = 0;
 
@@ -190,7 +228,9 @@ get_utf8map(char *dir) {
 				utf8char[len] = 0;
 			}
 
-			// printf("-%s-%s-\n", uniname, utf8char);
+			if (debug)
+				printf("-%s-%s-\n", uniname, utf8char);
+
 			new = (struct utf8map *)malloc(sizeof(struct utf8map));
 			new->next = utf8map_head[hashindex];
 			new->uniname = strdup(uniname + 1);
@@ -202,16 +242,16 @@ get_utf8map(char *dir) {
 
 	if (feof(fin))
 		errx(EX_DATAERR, "Didn't find final CHARMAP magic cookie.\n");
-
 	fclose(fin);
 
 	return NULL;
 }
 
 void
-usage(void) {
+usage(void)
+{
 
-	printf("Usage: unicode2utf8 --cldr=. --input=. --output=.\n");
+	printf("Usage: unicode2utf8 --cldr=dir --input=file --output=file\n");
 	exit(EX_USAGE);
 }
 
