@@ -46,18 +46,19 @@ Gotchas
 Examples
 --------
 
-The word for the last day of the week in the en_US language - country
-code would be in Unicode format:
-    <LATIN CAPITAL LETTER S><LATIN SMALL LETTER U>
-    <LATIN SMALL LETTER N><LATIN SMALL LETTER D>
+The word for the second last day of the week in the en_US language
+- country code would be in Unicode format:
+    <LATIN CAPITAL LETTER S><LATIN SMALL LETTER A>
+    <LATIN SMALL LETTER T><LATIN SMALL LETTER U>
+    <LATIN SMALL LETTER R><LATIN SMALL LETTER D>
     <LATIN SMALL LETTER A><LATIN SMALL LETTER Y>
 Converted into UTF-8 this will be:
-    Sunday
+    Saturday
 Converted into ISO-8859 this will be:
-    Sunday
+    Saturday
 
-The word for the last day of the week in the ru_RU language -
-country code would be in Unicode format:
+The word for the second last day of the week in the ru_RU language
+- country code would be in Unicode format:
     <CYRILLIC SMALL LETTER ES><CYRILLIC SMALL LETTER U>
     <CYRILLIC SMALL LETTER BE><CYRILLIC SMALL LETTER BE>
     <CYRILLIC SMALL LETTER O><CYRILLIC SMALL LETTER TE>

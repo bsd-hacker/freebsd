@@ -1,0 +1,91 @@
+.\" Copyright (c) 2009 Edwin Groothuis <edwin@FreeBSD.org>
+.\" All rights reserved.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+.\" ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.\" IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+.\" ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+.\" FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+.\" DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+.\" OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+.\" HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+.\" LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+.\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+.\" SUCH DAMAGE.
+.\"
+.\" $FreeBSD$
+.\"
+.Dd October 4, 2009
+.Dt unicode2utf8 1
+.Os
+.Sh NAME
+.Nm unicode2utf8
+.Nd converts a file with Unicode name definitions into UTF-8 character
+definitions.
+.Sh SYNOPSIS
+.Nm
+.Fl -cldr Ar directory
+.Fl -input Ar filename
+.Fl -output Ar filename
+.Sh DESCRIPTION
+The
+.Nm
+utility is made to convert the Unicode encoded strings in the
+contents of the specified input file with the corresponding UTF-8
+character definitions.
+.Pp
+Lines starting with a # are copied as-is.
+.Pp
+The Unicode encoded strings are specified between a '<' and a '>'
+sign.
+They are looked up against the keys in the conversion table specified
+in the file
+.Pa posix/UTF-8.cm
+in the with
+.Fl -cldr
+defined directory and the matching value is written out.
+.Pp
+Other characters are copied as-is.
+.Sh OPTIONS
+.Bl -tag -width indent
+.It Fl -cldr Ar directory
+The directory where the file
+.Pa posix/UTF-8.cm
+resides.
+By default this should point to
+.Pa /usr/share/misc ,
+but for maintainers of the FreeBSD locale database this could point
+to their own extracted copy of the CLDR database.
+.It Fl -input Ar filename
+The source file with the Unicode encoded strings.
+.It Fl -output Ar filename
+The destination file with the Unicode encoded strings replaced with
+their UTF-8 equivalents.
+.El
+.Sh EXIT STATUS
+The
+.Nm
+utility exits 0 on success, and >0 if an error occurs.
+.Sh SEE ALSO
+.Xr iconv 1 ,
+.Xr bsdiconv 1
+.Bl -tag -width indent
+.It http://cldr.unicode.org/
+Website of the Common Locale Database Repository,
+the maintainers of the file
+.Pa /usr/share/misc/UTF-8.cm
+.El
+.Sh AUTHORS
+The
+.Nm
+utility and this manual page were written by
+.An Edwin Groothuis Aq edwin@FreeBSD.org .
