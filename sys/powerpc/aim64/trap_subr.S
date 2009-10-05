@@ -110,7 +110,7 @@ nslb:
 	mtmsr	%r30;			/* stack can now be accessed */	\
 	isync;								\
 	mfsprg1	%r31;			/* get saved SP */		\
-	stdu	%r31,-FRAMELEN(%r1);	/* save it in the callframe */	\
+	stdu	%r31,-(FRAMELEN+288)(%r1); /* save it in the callframe */ \
 	std	%r0, FRAME_0+48(%r1);	/* save r0 in the trapframe */	\
 	std	%r31,FRAME_1+48(%r1);	/* save SP   "      "       */	\
 	std	%r2, FRAME_2+48(%r1);	/* save r2   "      "       */	\
@@ -386,7 +386,7 @@ disitrap:
 	sub.	%r30,%r31,%r30		/* SP - DAR */
 	bge	1f
 	neg	%r30,%r30		/* modulo value */
-1:	cmplwi	%cr0,%r30,4096		/* is DAR within a page of SP? */
+1:	cmpldi	%cr0,%r30,4096		/* is DAR within a page of SP? */
 	bge	%cr0,realtrap		/* no, too far away. */
 
 	/* Now convert this DSI into a DDB trap.  */
