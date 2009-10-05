@@ -128,8 +128,8 @@ extern vm_offset_t ksym_start, ksym_end;
 #endif
 
 int cold = 1;
-int cacheline_size = 32;
-int ppc64 = 0;
+int cacheline_size = 128;
+int ppc64 = 1;
 int hw_direct_map = 1;
 
 struct pcpu __pcpu[MAXCPU];
@@ -145,17 +145,10 @@ SYSINIT(cpu, SI_SUB_CPU, SI_ORDER_FIRST, cpu_startup, NULL);
 SYSCTL_INT(_machdep, CPU_CACHELINE, cacheline_size,
 	   CTLFLAG_RD, &cacheline_size, 0, "");
 
-u_int		powerpc_init(u_int, u_int, u_int, void *);
-
-int		save_ofw_mapping(void);
-int		restore_ofw_mapping(void);
-
-void		install_extint(void (*)(void));
-
-int             setfault(faultbuf);             /* defined in locore.S */
-
+uintptr_t powerpc_init(vm_offset_t, vm_offset_t, vm_offset_t, void *);
 static int	grab_mcontext(struct thread *, mcontext_t *, int);
 
+int             setfault(faultbuf);             /* defined in locore.S */
 void		asm_panic(char *);
 
 long		Maxmem = 0;
@@ -239,8 +232,9 @@ extern void	*decrint, *decrsize;
 extern void     *extint, *extsize;
 extern void	*dblow, *dbsize;
 
-u_int
-powerpc_init(u_int startkernel, u_int endkernel, u_int basekernel, void *mdp)
+uintptr_t
+powerpc_init(vm_offset_t startkernel, vm_offset_t endkernel,
+    vm_offset_t basekernel, void *mdp)
 {
 	struct		pcpu *pc;
 	vm_offset_t	end;
@@ -372,10 +366,8 @@ powerpc_init(u_int startkernel, u_int endkernel, u_int basekernel, void *mdp)
 	    cache_check[cacheline_size] == 0; cacheline_size++);
 
 	/*
-	 * This is a PPC64 system
+	 * Install interrupt handlers
 	 */
-
-	ppc64 = 1;
 
 #ifdef SMP
 	bcopy(&rstcode, (void *)EXC_RST,  (size_t)&rstsize);
@@ -395,7 +387,7 @@ powerpc_init(u_int startkernel, u_int endkernel, u_int basekernel, void *mdp)
 	bcopy(&trapcode, (void *)EXC_BPT,  (size_t)&trapsize);
 #endif
 	bcopy(&dsitrap,  (void *)EXC_DSI,  (size_t)&dsisize);
-	bcopy(&trapcode, (void *)EXC_DSE,  (size_t)&trapsize);
+	bcopy(&dsitrap,  (void *)EXC_DSE,  (size_t)&dsisize);
 	bcopy(&alitrap,  (void *)EXC_ALI,  (size_t)&alisize);
 	bcopy(&trapcode, (void *)EXC_ISI,  (size_t)&trapsize);
 	bcopy(&trapcode, (void *)EXC_ISE,  (size_t)&trapsize);
@@ -464,7 +456,7 @@ powerpc_init(u_int startkernel, u_int endkernel, u_int basekernel, void *mdp)
 		    "Boot flags requested debugger");
 #endif
 
-	return (((uintptr_t)thread0.td_pcb - 16) & ~15UL);
+	return (((uintptr_t)thread0.td_pcb - 48) & ~15UL);
 }
 
 void

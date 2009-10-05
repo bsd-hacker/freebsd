@@ -543,8 +543,8 @@ dbtrap:
 	andi.	%r1,%r1,0xff00
 	mtsprg3	%r1
 
-	lis	%r1,(tmpstk+TMPSTKSZ-16)@ha	/* get new SP */
-	addi	%r1,%r1,(tmpstk+TMPSTKSZ-16)@l
+	lis	%r1,(tmpstk+TMPSTKSZ-48)@ha	/* get new SP */
+	addi	%r1,%r1,(tmpstk+TMPSTKSZ-48)@l
 
 	FRAME_SETUP(PC_DBSAVE)
 /* Call C trap code: */

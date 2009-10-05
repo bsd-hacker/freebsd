@@ -147,8 +147,8 @@ ASENTRY(__start)
 	std	5,openfirmware_entry@l(8) /* save client interface handler */
 
 	/* Set up the stack pointer */
-	lis	1,(tmpstk+TMPSTKSZ-16)@ha
-	addi	1,1,(tmpstk+TMPSTKSZ-16)@l
+	lis	1,(tmpstk+TMPSTKSZ-48)@ha
+	addi	1,1,(tmpstk+TMPSTKSZ-48)@l
 
 	/* Set up the TOC pointer */
 	lis	2,tocbase@ha
