@@ -78,6 +78,7 @@
         .set    kernbase, KERNBASE
 
 #define	TMPSTKSZ	8192		/* 8K temporary stack */
+#define	OFWSTKSZ	4096		/* 4K Open Firmware stack */
 
 /*
  * Globals
@@ -86,6 +87,8 @@
 	.align	4
 GLOBAL(tmpstk)
 	.space	TMPSTKSZ
+GLOBAL(ofwstk)
+	.space	OFWSTKSZ
 GLOBAL(esym)
 	.llong	0			/* end of symbol table */
 
@@ -253,6 +256,20 @@ ASENTRY(ofw_32bit_mode_entry)
 	lis	%r4,openfirmware_entry@ha
 	ld	%r4,openfirmware_entry@l(%r4) /* read client interface handler */
 
+	/*
+	 * Set up OF stack. This needs to be accessible in real mode and
+	 * use the 32-bit ABI stack frame format. The pointer to the current
+	 * kernel stack is placed at the very top of the stack so we
+	 * can get it back later.
+	 */
+	mr	%r5,%r1
+	lis	%r1,(ofwstk+OFWSTKSZ-16)@ha
+	addi	%r1,%r1,(ofwstk+OFWSTKSZ-16)@l
+	std	%r5,8(%r1)	/* Save real stack pointer */
+	li	%r5,0
+	stw	%r5,4(%r1)
+	stw	%r5,0(%r1)
+
 	/* Set MSR, branch to OF, and come back */
 	lis	%r5,ofmsr@ha
 	ld	%r5,ofmsr@l(%r5)
@@ -264,6 +281,8 @@ ASENTRY(ofw_32bit_mode_entry)
 	/* Turn translation back on to get to the stack */
 	mtmsr	%r14
 	isync
+
+	ld	%r1,8(%r1)	/* Load real stack pointer */
 
 	/* Now we can use the stack again, so get the real MSR */
 	ld	%r5,216(%r1)
