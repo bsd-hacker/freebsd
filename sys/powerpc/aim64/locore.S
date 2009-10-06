@@ -216,7 +216,7 @@ tocbase:
 ASENTRY(ofw_32bit_mode_entry)
 	mflr	%r0
 	std	%r0,16(%r1)
-	stdu	%r1,-224(%r1)
+	stdu	%r1,-208(%r1)
 
 	/*
 	 * We need to save the following, because OF's register save/
@@ -246,47 +246,51 @@ ASENTRY(ofw_32bit_mode_entry)
 	std	%r29,184(%r1)
 	std	%r30,192(%r1)
 	std	%r31,200(%r1)
-	std	%r2,208(%r1)
 
-	/* Save the old MSR */
-	mfmsr	%r4
-	std	%r4,216(%r1)
-	mr	%r14,%r4	/* Save in a non-volatile reg */
+	/* Record the old MSR */
+	mfmsr	%r6
 
+	/* read client interface handler */
 	lis	%r4,openfirmware_entry@ha
-	ld	%r4,openfirmware_entry@l(%r4) /* read client interface handler */
+	ld	%r4,openfirmware_entry@l(%r4)
 
 	/*
-	 * Set up OF stack. This needs to be accessible in real mode and
-	 * use the 32-bit ABI stack frame format. The pointer to the current
-	 * kernel stack is placed at the very top of the stack so we
-	 * can get it back later.
+	 * Set the MSR to the OF value. This has the side effect of disabling
+	 * exceptions, which is important for the next few steps.
 	 */
-	mr	%r5,%r1
-	lis	%r1,(ofwstk+OFWSTKSZ-16)@ha
-	addi	%r1,%r1,(ofwstk+OFWSTKSZ-16)@l
-	std	%r5,8(%r1)	/* Save real stack pointer */
-	li	%r5,0
-	stw	%r5,4(%r1)
-	stw	%r5,0(%r1)
 
-	/* Set MSR, branch to OF, and come back */
 	lis	%r5,ofmsr@ha
 	ld	%r5,ofmsr@l(%r5)
 	mtmsrd	%r5
 	isync
+
+	/*
+	 * Set up OF stack. This needs to be accessible in real mode and
+	 * use the 32-bit ABI stack frame format. The pointer to the current
+	 * kernel stack is placed at the very top of the stack along with
+	 * the old MSR so we can get them back later.
+	 */
+	mr	%r5,%r1
+	lis	%r1,(ofwstk+OFWSTKSZ-32)@ha
+	addi	%r1,%r1,(ofwstk+OFWSTKSZ-32)@l
+	std	%r5,8(%r1)	/* Save real stack pointer */
+	std	%r2,16(%r1)	/* Save old TOC */
+	std	%r6,24(%r1)	/* Save old MSR */
+	li	%r5,0
+	stw	%r5,4(%r1)
+	stw	%r5,0(%r1)
+
+	/* Finally, branch to OF */
 	mtctr	%r4
 	bctrl
 
-	/* Turn translation back on to get to the stack */
-	mtmsr	%r14
-	isync
+	/* Reload stack pointer and MSR from the OFW stack */
+	ld	%r6,24(%r1)
+	ld	%r2,16(%r1)
+	ld	%r1,8(%r1)
 
-	ld	%r1,8(%r1)	/* Load real stack pointer */
-
-	/* Now we can use the stack again, so get the real MSR */
-	ld	%r5,216(%r1)
-	mtmsrd	%r5
+	/* Now set the real MSR */
+	mtmsrd	%r6
 	isync
 
 	/* Sign-extend the return value from OF */
@@ -314,7 +318,6 @@ ASENTRY(ofw_32bit_mode_entry)
 	ld	%r29,184(%r1)
 	ld	%r30,192(%r1)
 	ld	%r31,200(%r1)
-	ld	%r2,208(%r1)
 
 	/* Restore the stack and link register */
 	ld	%r1,0(%r1)

@@ -367,11 +367,18 @@ static int
 openfirmware(void *args)
 {
 	int		result;
+	register_t	oldmsr;
 	#ifndef __powerpc64__
-	long		oldmsr;
 	register_t	srsave[16];
 	u_int		i;
 	#endif
+
+	/*
+	 * Turn off exceptions - we really don't want to end up
+	 * anywhere unexpected with PCPU set to something strange,
+	 * the stack pointer wrong, or the OFW mapping enabled.
+	 */
+	oldmsr = intr_disable();
 
 	if (pmap_bootstrapped && ofw_real_mode)
 		args = (void *)pmap_kextract((vm_offset_t)args);
@@ -398,26 +405,11 @@ openfirmware(void *args)
 		}
 		isync();
 	}
-
-	__asm __volatile(	"\t"
-		"sync\n\t"
-		"mfmsr  %0\n\t"
-		"mtmsr  %1\n\t"
-		"isync\n"
-		: "=r" (oldmsr)
-		: "r" (ofmsr[0])
-	);
       #endif
 
        	result = ofwcall(args);
 
       #ifndef __powerpc64__
-	__asm(	"\t"
-		"mtmsr  %0\n\t"
-		"isync\n"
-		: : "r" (oldmsr)
-	);
-
 	if (pmap_bootstrapped && !ofw_real_mode) {
 		/*
 		 * Restore the kernel's addr space. The isync() doesn;t
@@ -433,6 +425,8 @@ openfirmware(void *args)
       #endif
 
 	ofw_sprg_restore();
+
+	intr_restore(oldmsr);
 
 	return (result);
 }
