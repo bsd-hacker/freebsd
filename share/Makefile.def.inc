@@ -255,6 +255,13 @@ ICONV_${ccln}.${cms}=	${ICONV}
 .   endif
 .  endfor
 . endif
+. if defined(CMSLINK_${ccln})
+.  for cms in ${CMSLINK_${ccln}}
+.   if !defined(ICONV_${ccln}.${cms})
+ICONV_${ccln}.${cms}=	${ICONV}
+.   endif
+.  endfor
+. endif
 .endfor
 
 .for cm in ${CMS}
@@ -305,7 +312,6 @@ ${ccln}.UTF-8.src: ${ccln}.unicode
 	    --cldr=${CLDRDIR} \
 	    --input=${.ALLSRC} \
 	    --output=${.TARGET}
-
 .  endif
 
 ${ccln}.UTF-8.out: ${ccln}.UTF-8.src
@@ -359,5 +365,63 @@ beforeinstall:
 		rm -f ${DESTDIR}/$$1/${FILESNAME}; \
 		shift; \
 	done
+
+.if defined(FULL)
+#
+# Maintainer Bag of Tricks
+#
+# Perform the following checks:
+# - Create all files defined with CCLN and (CMS_xx and CMSLINK_xx)
+# - See if all MD5 checksums for CMS_{ccln} are different.
+# - See if all MD5 checksums for CMSLINK_{ccln} are the same.
+#
+checkcms:
+. for ccln in ${CCLN}
+	../../usr.bin/unicode2utf8/unicode2utf8 \
+	    --cldr=${CLDRDIR} \
+	    --input=${ccln}.unicode \
+	    --output=${ccln}.UTF-8.src
+	grep -v '^#' < ${ccln}.UTF-8.src > ${ccln}.UTF-8.out
+.  for cms in ${CMS_${ccln}} ${CMSLINK_${ccln}}
+	cat ${ccln}.UTF-8.src \
+	${_TRANSLATIONBEFORE_${cms}} | \
+	${ICONV_${ccln}.${cms}} \
+	    -f UTF-8 \
+	    -t ${CMALIAS_${cms}} \
+	${_TRANSLATIONAFTER_${cms}} \
+	    > ${ccln}.${cms}.src \
+	|| rm ${ccln}.${cms}.src && exit 0
+	grep -v '^#' < ${ccln}.${cms}.src > ${ccln}.${cms}.out
+.  endfor
+. endfor
+	md5 -r *.out > /tmp/a
+	FULL=1 ${MAKE} checkcms1
+
+. for ccln in ${CCLN}
+.  for cms in UTF-8 ${CMS_${ccln}} ${CMSLINK_${ccln}}
+MD5SUM_${ccln}.${cms}!=	grep ${ccln}.${cms}.out /tmp/a | awk '{ print $$1 }'
+.  endfor
+. endfor
+
+#
+# Perform the following checks:
+# - See if all MD5 checksums for CMS_{ccln} are different.
+# - See if all MD5 checksums for CMSLINK_{ccln} are the same.
+#
+checkcms1:
+. for ccln in ${CCLN}
+.  for cms in ${CMS_${ccln}}
+	@if [ ${MD5SUM_${ccln}.${cms}} = ${MD5SUM_${ccln}.UTF-8} ]; then \
+		echo Same: ${ccln}.UTF-8 - ${ccln}.${cms}; \
+	fi
+.  endfor
+.  for cms in ${CMSLINK_${ccln}}
+	@if [ ${MD5SUM_${ccln}.${cms}} != ${MD5SUM_${ccln}.UTF-8} ]; then \
+		echo Different: ${ccln}.UTF-8 - ${ccln}.${cms}; \
+	fi
+.  endfor
+. endfor
+
+.endif
 
 .include <bsd.prog.mk>
