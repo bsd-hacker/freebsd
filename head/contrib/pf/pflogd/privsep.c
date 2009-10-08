@@ -1,4 +1,4 @@
-/*	$OpenBSD: privsep.c,v 1.16 2006/10/25 20:55:04 moritz Exp $	*/
+/*	$OpenBSD: privsep.c,v 1.15 2006/03/06 10:45:56 djm Exp $	*/
 
 /*
  * Copyright (c) 2003 Can Erkin Acar
@@ -16,13 +16,10 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
 
 #include <net/if.h>
 #include <net/bpf.h>
@@ -31,20 +28,13 @@ __FBSDID("$FreeBSD$");
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
-#ifndef __FreeBSD__
 #include <pcap.h>
 #include <pcap-int.h>
-#endif
 #include <pwd.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef __FreeBSD__
-/* XXX: pcap pollutes namespace with strlcpy if not present previously */
-#include <pcap.h>
-#include <pcap-int.h>
-#endif
 #include <syslog.h>
 #include <unistd.h>
 #include "pflogd.h"
@@ -79,11 +69,7 @@ priv_init(void)
 	int snaplen, ret, olderrno;
 	struct passwd *pw;
 
-#ifdef __FreeBSD__
-	for (i = 1; i < NSIG; i++)
-#else
 	for (i = 1; i < _NSIG; i++)
-#endif
 		signal(i, SIG_DFL);
 
 	/* Create sockets */

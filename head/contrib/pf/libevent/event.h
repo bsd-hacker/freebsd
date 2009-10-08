@@ -1,3 +1,5 @@
+/*	$OpenBSD: event.h,v 1.19 2008/05/02 06:09:11 brad Exp $	*/
+
 /*
  * Copyright (c) 2000-2004 Niels Provos <provos@citi.umich.edu>
  * All rights reserved.
@@ -31,6 +33,8 @@
 extern "C" {
 #endif
 
+#include <sys/time.h>
+#include <stdint.h>
 #include <stdarg.h>
 
 #ifdef WIN32
@@ -40,6 +44,8 @@ extern "C" {
 typedef unsigned char u_char;
 typedef unsigned short u_short;
 #endif
+
+#define LIBEVENT_VERSION	"1.3e"
 
 #define EVLIST_TIMEOUT	0x01
 #define EVLIST_INSERTED	0x02
@@ -131,17 +137,15 @@ TAILQ_HEAD (evkeyvalq, evkeyval);
 
 struct eventop {
 	char *name;
-	void *(*init)(void);
+	void *(*init)(struct event_base *);
 	int (*add)(void *, struct event *);
 	int (*del)(void *, struct event *);
 	int (*recalc)(struct event_base *, void *, int);
 	int (*dispatch)(struct event_base *, void *, struct timeval *);
-	void (*dealloc)(void *);
+	void (*dealloc)(struct event_base *, void *);
 };
 
-#define TIMEOUT_DEFAULT	{5, 0}
-
-void *event_init(void);
+struct event_base *event_init(void);
 int event_dispatch(void);
 int event_base_dispatch(struct event_base *);
 void event_base_free(struct event_base *);
@@ -169,12 +173,6 @@ int event_base_loopexit(struct event_base *, struct timeval *);
 #define evtimer_pending(ev, tv)		event_pending(ev, EV_TIMEOUT, tv)
 #define evtimer_initialized(ev)		((ev)->ev_flags & EVLIST_INIT)
 
-#define timeout_add(ev, tv)		event_add(ev, tv)
-#define timeout_set(ev, cb, arg)	event_set(ev, -1, 0, cb, arg)
-#define timeout_del(ev)			event_del(ev)
-#define timeout_pending(ev, tv)		event_pending(ev, EV_TIMEOUT, tv)
-#define timeout_initialized(ev)		((ev)->ev_flags & EVLIST_INIT)
-
 #define signal_add(ev, tv)		event_add(ev, tv)
 #define signal_set(ev, x, cb, arg)	\
 	event_set(ev, x, EV_SIGNAL|EV_PERSIST, cb, arg)
@@ -184,6 +182,7 @@ int event_base_loopexit(struct event_base *, struct timeval *);
 
 void event_set(struct event *, int, short, void (*)(int, short, void *), void *);
 int event_once(int, short, void (*)(int, short, void *), void *, struct timeval *);
+int event_base_once(struct event_base *, int, short, void (*)(int, short, void *), void *, struct timeval *);
 
 int event_add(struct event *, struct timeval *);
 int event_del(struct event *);
@@ -263,7 +262,8 @@ struct bufferevent *bufferevent_new(int fd,
 int bufferevent_base_set(struct event_base *base, struct bufferevent *bufev);
 int bufferevent_priority_set(struct bufferevent *bufev, int pri);
 void bufferevent_free(struct bufferevent *bufev);
-int bufferevent_write(struct bufferevent *bufev, void *data, size_t size);
+int bufferevent_write(struct bufferevent *bufev,
+    const void *data, size_t size);
 int bufferevent_write_buffer(struct bufferevent *bufev, struct evbuffer *buf);
 size_t bufferevent_read(struct bufferevent *bufev, void *data, size_t size);
 int bufferevent_enable(struct bufferevent *bufev, short event);
@@ -291,7 +291,7 @@ int evbuffer_read(struct evbuffer *, int, int);
 u_char *evbuffer_find(struct evbuffer *, const u_char *, size_t);
 void evbuffer_setcb(struct evbuffer *, void (*)(struct evbuffer *, size_t, size_t, void *), void *);
 
-/* 
+/*
  * Marshaling tagged data - We assume that all tags are inserted in their
  * numeric order - so that unknown tags will always be higher than the
  * known ones - and we can just ignore the end of an event buffer.
@@ -299,39 +299,37 @@ void evbuffer_setcb(struct evbuffer *, void (*)(struct evbuffer *, size_t, size_
 
 void evtag_init(void);
 
-void evtag_marshal(struct evbuffer *evbuf, u_int8_t tag, const void *data,
-    u_int32_t len);
+void evtag_marshal(struct evbuffer *evbuf, uint8_t tag, const void *data,
+    uint32_t len);
 
-void encode_int(struct evbuffer *evbuf, u_int32_t number);
+void encode_int(struct evbuffer *evbuf, uint32_t number);
 
-void evtag_marshal_int(struct evbuffer *evbuf, u_int8_t tag,
-    u_int32_t integer);
+void evtag_marshal_int(struct evbuffer *evbuf, uint8_t tag, uint32_t integer);
 
-void evtag_marshal_string(struct evbuffer *buf, u_int8_t tag,
+void evtag_marshal_string(struct evbuffer *buf, uint8_t tag,
     const char *string);
 
-void evtag_marshal_timeval(struct evbuffer *evbuf, u_int8_t tag,
+void evtag_marshal_timeval(struct evbuffer *evbuf, uint8_t tag,
     struct timeval *tv);
 
 void evtag_test(void);
 
-int evtag_unmarshal(struct evbuffer *src, u_int8_t *ptag,
-    struct evbuffer *dst);
-int evtag_peek(struct evbuffer *evbuf, u_int8_t *ptag);
-int evtag_peek_length(struct evbuffer *evbuf, u_int32_t *plength);
-int evtag_payload_length(struct evbuffer *evbuf, u_int32_t *plength);
+int evtag_unmarshal(struct evbuffer *src, uint8_t *ptag, struct evbuffer *dst);
+int evtag_peek(struct evbuffer *evbuf, uint8_t *ptag);
+int evtag_peek_length(struct evbuffer *evbuf, uint32_t *plength);
+int evtag_payload_length(struct evbuffer *evbuf, uint32_t *plength);
 int evtag_consume(struct evbuffer *evbuf);
 
-int evtag_unmarshal_int(struct evbuffer *evbuf, u_int8_t need_tag,
-    u_int32_t *pinteger);
+int evtag_unmarshal_int(struct evbuffer *evbuf, uint8_t need_tag,
+    uint32_t *pinteger);
 
-int evtag_unmarshal_fixed(struct evbuffer *src, u_int8_t need_tag, void *data,
+int evtag_unmarshal_fixed(struct evbuffer *src, uint8_t need_tag, void *data,
     size_t len);
 
-int evtag_unmarshal_string(struct evbuffer *evbuf, u_int8_t need_tag,
+int evtag_unmarshal_string(struct evbuffer *evbuf, uint8_t need_tag,
     char **pstring);
 
-int evtag_unmarshal_timeval(struct evbuffer *evbuf, u_int8_t need_tag,
+int evtag_unmarshal_timeval(struct evbuffer *evbuf, uint8_t need_tag,
     struct timeval *ptv);
 
 #ifdef __cplusplus

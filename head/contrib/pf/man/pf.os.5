@@ -13,10 +13,7 @@
 .\" WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-.\"
-.\" $FreeBSD$
-.\"
-.Dd August 18, 2003
+.Dd $Mdocdate$
 .Dt PF.OS 5
 .Os
 .Sh NAME
@@ -26,7 +23,7 @@
 The
 .Xr pf 4
 firewall and the
-.Xr tcpdump 1
+.Xr tcpdump 8
 program can both fingerprint the operating system of hosts that
 originate an IPv4 TCP connection.
 The file consists of newline-separated records, one per fingerprint,
@@ -203,7 +200,7 @@ An absolutely braindead embedded operating system fingerprint could be:
 .Ed
 .Pp
 The
-.Xr tcpdump 1
+.Xr tcpdump 8
 output of
 .Bd -literal
   # tcpdump -s128 -c1 -nv 'tcp[13] == 2'
@@ -217,7 +214,7 @@ almost translates into the following fingerprint
   57344:64:1:44:M1460:	exampleOS:1.0::exampleOS 1.0
 .Ed
 .Sh SEE ALSO
-.Xr tcpdump 1 ,
 .Xr pf 4 ,
 .Xr pf.conf 5 ,
-.Xr pfctl 8
+.Xr pfctl 8 ,
+.Xr tcpdump 8

@@ -26,6 +26,6 @@ int add_rdr(u_int32_t, struct sockaddr *, struct sockaddr *, u_int16_t,
     struct sockaddr *, u_int16_t);
 int do_commit(void);
 int do_rollback(void);
-void init_filter(char *, int);
+void init_filter(char *, char *, int);
 int prepare_commit(u_int32_t);
 int server_lookup(struct sockaddr *, struct sockaddr *, struct sockaddr *);
