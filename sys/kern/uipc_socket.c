@@ -3450,7 +3450,7 @@ soissending(struct socket *so, struct thread *td,
 	bcopy(uap, &ref->sr_uap, sizeof(*uap));
 	ref->sr_uap.sbytes = NULL;
 	ref->sr_sock_fp->f_sfbytes = 0;
-	CTR4(KTR_SPARE1, "sock %p off %ld sbytes %ld total_sbytes %ld",
+	CTR4(KTR_SPARE2, "sock %p off %ld sbytes %ld total_sbytes %ld",
 	    so, ref->sr_uap.offset, sbytes, ref->sr_fp->f_sfbytes);
 	ref->sr_uap.offset += sbytes;
 	if (uap->nbytes)
@@ -3541,7 +3541,7 @@ sendfile_task_func(void *context, int pending __unused)
 		error = kern_sendfile(curthread, &sr->sr_uap,
 		    hdr_uio, trl_uio,
 		    sr->sr_compat, fp, so, sr->sr_ucred);
-		CTR4(KTR_SPARE1, "sock %p off %ld sbytes %ld total_sbytes %ld",
+		CTR4(KTR_SPARE2, "sock %p off %ld sbytes %ld total_sbytes %ld",
 		    so, sr->sr_uap.offset, sbytes, fp->f_sfbytes);
 		atomic_add_long(&fp->f_sfbytes, sbytes);
 		sr->sr_uap.offset += sbytes;
@@ -3549,14 +3549,14 @@ sendfile_task_func(void *context, int pending __unused)
 			sr->sr_uap.nbytes -= sbytes;
 		if (error == EAGAIN &&
 		    (sr->sr_uap.offset + sbytes == sr->sr_vnp_size)) {
-			CTR0(KTR_SPARE1, "EAGAIN on full send");
+			CTR0(KTR_SPARE2, "EAGAIN on full send");
 			error = 0;
 		}
 		SOCKBUF_LOCK(sb);
 	}
 #ifdef KTR
 	else
-		CTR2(KTR_SPARE1, "sock %p off %ld - not writeable in task_func",
+		CTR2(KTR_SPARE2, "sock %p off %ld - not writeable in task_func",
 		    so, sr->sr_uap.offset);
 #endif		
 	if (error == EAGAIN && srsendingwakeup(sr) != ENOTCONN) {
@@ -3565,7 +3565,7 @@ sendfile_task_func(void *context, int pending __unused)
 	}
 #ifdef KTR
 	if (error && error != EAGAIN && error != EPIPE) 
-		CTR1(KTR_SPARE1, "error %d", error); 
+		CTR1(KTR_SPARE2, "error %d", error); 
 #endif
 	
 	sb->sb_flags &= ~SB_SENDING;
@@ -3595,12 +3595,12 @@ srsendingwakeup(struct socketref *sr)
 	fp = sr->sr_sock_fp;
 	CTR2(KTR_SPARE2, "processing s %d sock_fp %p", sr->sr_uap.s, fp);
 	if (fp->f_type != DTYPE_SOCKET) {
-		CTR1(KTR_SPARE1, "not socket - type %d", fp->f_type);
+		CTR1(KTR_SPARE2, "not socket - type %d", fp->f_type);
 		goto error;
 	}
 	so = fp->f_data;
 	if ((so->so_state & SS_ISCONNECTED) == 0) {
-		CTR1(KTR_SPARE1, "not connected %p", so);
+		CTR1(KTR_SPARE2, "not connected %p", so);
 		goto error;
 	}
 
@@ -3609,13 +3609,13 @@ srsendingwakeup(struct socketref *sr)
 	SOCKBUF_LOCK_ASSERT(sb);
 	sb->sb_flags &= ~SB_SENDING;
 	if (sb->sb_state & SBS_CANTSENDMORE) {
-		CTR1(KTR_SPARE1, "SBS_CANTSENDMORE %p", so);
+		CTR1(KTR_SPARE2, "SBS_CANTSENDMORE %p", so);
 	} else if (sowriteable(so)) {
 		CTR2(KTR_SPARE2, "enqueue socket to task %p sr %p", so, sr);
 		sb->sb_flags |= SB_SENDING;
 		taskqueue_enqueue(sendfile_tq, &sr->sr_task);
 	} else {
-		CTR2(KTR_SPARE1, "sock %p off %ld - not writeable in srsendingwakeup",
+		CTR2(KTR_SPARE2, "sock %p off %ld - not writeable in srsendingwakeup",
 		    so, sr->sr_uap.offset);
 		sb->sb_flags |= SB_SENDING;
 		mtx_lock(&sendfile_bg_lock);
