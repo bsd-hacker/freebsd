@@ -1,4 +1,4 @@
-/*	$OpenBSD: pf_ruleset.c,v 1.1 2006/10/27 13:56:51 mcbride Exp $ */
+/*	$OpenBSD: pf_ruleset.c,v 1.2 2008/12/18 15:31:37 dhill Exp $ */
 
 /*
  * Copyright (c) 2001 Daniel Hartmeier
@@ -35,11 +35,6 @@
  *
  */
 
-#ifdef __FreeBSD__
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-#endif
-
 #include <sys/param.h>
 #include <sys/socket.h>
 #ifdef _KERNEL
@@ -64,11 +59,7 @@ __FBSDID("$FreeBSD$");
 # define DPFPRINTF(format, x...)		\
 	if (pf_status.debug >= PF_DEBUG_NOISY)	\
 		printf(format , ##x)
-#ifdef __FreeBSD__
-#define rs_malloc(x)		malloc(x, M_TEMP, M_NOWAIT)
-#else
-#define rs_malloc(x)		malloc(x, M_TEMP, M_WAITOK)
-#endif
+#define rs_malloc(x)		malloc(x, M_TEMP, M_WAITOK|M_CANFAIL|M_ZERO)
 #define rs_free(x)		free(x, M_TEMP)
 
 #else
@@ -79,7 +70,7 @@ __FBSDID("$FreeBSD$");
 # include <stdio.h>
 # include <stdlib.h>
 # include <string.h>
-# define rs_malloc(x)		 malloc(x)
+# define rs_malloc(x)		 calloc(1, x)
 # define rs_free(x)		 free(x)
 
 # ifdef PFDEBUG
@@ -93,17 +84,6 @@ __FBSDID("$FreeBSD$");
 
 struct pf_anchor_global	 pf_anchors;
 struct pf_anchor	 pf_main_anchor;
-
-#ifndef __FreeBSD__
-/* XXX: hum? */
-int			 pf_get_ruleset_number(u_int8_t);
-void			 pf_init_ruleset(struct pf_ruleset *);
-int			 pf_anchor_setup(struct pf_rule *,
-			    const struct pf_ruleset *, const char *);
-int			 pf_anchor_copyout(const struct pf_ruleset *,
-			    const struct pf_rule *, struct pfioc_rule *);
-void			 pf_anchor_remove(struct pf_rule *);
-#endif
 
 static __inline int pf_anchor_compare(struct pf_anchor *, struct pf_anchor *);
 
@@ -168,7 +148,8 @@ pf_find_anchor(const char *path)
 	struct pf_anchor	*key, *found;
 
 	key = (struct pf_anchor *)rs_malloc(sizeof(*key));
-	memset(key, 0, sizeof(*key));
+	if (key == NULL)
+		return (NULL);
 	strlcpy(key->path, path, sizeof(key->path));
 	found = RB_FIND(pf_anchor_global, &pf_anchors, key);
 	rs_free(key);
@@ -196,11 +177,7 @@ pf_find_or_create_ruleset(const char *path)
 {
 	char			*p, *q, *r;
 	struct pf_ruleset	*ruleset;
-#ifdef __FreeBSD__
-	struct pf_anchor	*anchor = NULL, *dup, *parent = NULL;
-#else
 	struct pf_anchor	*anchor, *dup, *parent = NULL;
-#endif
 
 	if (path[0] == 0)
 		return (&pf_main_ruleset);
@@ -210,7 +187,8 @@ pf_find_or_create_ruleset(const char *path)
 	if (ruleset != NULL)
 		return (ruleset);
 	p = (char *)rs_malloc(MAXPATHLEN);
-	bzero(p, MAXPATHLEN);
+	if (p == NULL)
+		return (NULL);
 	strlcpy(p, path, MAXPATHLEN);
 	while (parent == NULL && (q = strrchr(p, '/')) != NULL) {
 		*q = 0;
@@ -242,7 +220,6 @@ pf_find_or_create_ruleset(const char *path)
 			rs_free(p);
 			return (NULL);
 		}
-		memset(anchor, 0, sizeof(*anchor));
 		RB_INIT(&anchor->children);
 		strlcpy(anchor->name, q, sizeof(anchor->name));
 		if (parent != NULL) {
@@ -328,7 +305,8 @@ pf_anchor_setup(struct pf_rule *r, const struct pf_ruleset *s,
 	if (!name[0])
 		return (0);
 	path = (char *)rs_malloc(MAXPATHLEN);
-	bzero(path, MAXPATHLEN);
+	if (path == NULL)
+		return (1);
 	if (name[0] == '/')
 		strlcpy(path, name + 1, MAXPATHLEN);
 	else {
@@ -386,7 +364,8 @@ pf_anchor_copyout(const struct pf_ruleset *rs, const struct pf_rule *r,
 		int	 i;
 
 		a = (char *)rs_malloc(MAXPATHLEN);
-		bzero(a, MAXPATHLEN);
+		if (a == NULL)
+			return (1);
 		if (rs->anchor == NULL)
 			a[0] = 0;
 		else
