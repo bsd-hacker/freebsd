@@ -31,6 +31,9 @@
  *
  */
 
+ #include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
+ 
 #include <sys/types.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -55,6 +58,10 @@
 
 #include "pfctl_parser.h"
 #include "pfctl.h"
+
+ #ifdef __FreeBSD__
+ #define HTONL(x)       (x) = htonl((__uint32_t)(x))
+ #endif
 
 void	 usage(void);
 int	 pfctl_enable(int, int);
@@ -244,6 +251,10 @@ pfctl_enable(int dev, int opts)
 	if (ioctl(dev, DIOCSTART)) {
 		if (errno == EEXIST)
 			errx(1, "pf already enabled");
+ #ifdef __FreeBSD__
+                else if (errno == ESRCH)
+                        errx(1, "pfil registeration failed");
+ #endif
 		else
 			err(1, "DIOCSTART");
 	}
@@ -2182,7 +2193,11 @@ main(int argc, char *argv[])
 		/* turn off options */
 		opts &= ~ (PF_OPT_DISABLE | PF_OPT_ENABLE);
 		clearopt = showopt = debugopt = NULL;
+ #if defined(__FreeBSD__) && !defined(ENABLE_ALTQ)
+                altqsupport = 0;
+ #else
 		altqsupport = 1;
+#endif
 	}
 
 	if (opts & PF_OPT_DISABLE)

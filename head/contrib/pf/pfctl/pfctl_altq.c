@@ -18,6 +18,9 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
+
 #include <sys/types.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -74,7 +77,11 @@ static int		 gsc_add_seg(struct gen_sc *, double, double, double,
 			     double);
 static double		 sc_x2y(struct service_curve *, double);
 
+#ifdef __FreeBSD__
+u_int32_t	getifspeed(int, char *);
+#else
 u_int32_t	 getifspeed(char *);
+#endif
 u_long		 getifmtu(char *);
 int		 eval_queue_opts(struct pf_altq *, struct node_queue_opt *,
 		     u_int32_t);
@@ -146,6 +153,11 @@ print_altq(const struct pf_altq *a, unsigned int level,
 		return;
 	}
 
+#ifdef __FreeBSD__
+	if (a->local_flags & PFALTQ_FLAG_IF_REMOVED)
+		printf("INACTIVE ");
+#endif
+
 	printf("altq on %s ", a->ifname);
 
 	switch (a->scheduler) {
@@ -181,6 +193,10 @@ print_queue(const struct pf_altq *a, unsigned int level,
 {
 	unsigned int	i;
 
+#ifdef __FreeBSD__
+        if (a->local_flags & PFALTQ_FLAG_IF_REMOVED)
+                printf("INACTIVE ");
+#endif
 	printf("queue ");
 	for (i = 0; i < level; ++i)
 		printf(" ");
@@ -223,7 +239,11 @@ eval_pfaltq(struct pfctl *pf, struct pf_altq *pa, struct node_queue_bw *bw,
 	if (bw->bw_absolute > 0)
 		pa->ifbandwidth = bw->bw_absolute;
 	else
+#ifdef __FreeBSD__
+		if ((rate = getifspeed(pf->dev, pa->ifname)) == 0) {
+#else
 		if ((rate = getifspeed(pa->ifname)) == 0) {
+#endif
 			fprintf(stderr, "interface %s does not know its bandwidth, "
 			    "please specify an absolute bandwidth\n",
 			    pa->ifname);
@@ -1075,6 +1095,26 @@ rate2str(double rate)
 	return (buf);
 }
 
+-#ifdef __FreeBSD__
+-/*
+- * XXX
+- * FreeBSD does not have SIOCGIFDATA.
+- * To emulate this, DIOCGIFSPEED ioctl added to pf.
+- */
+u_int32_t
+getifspeed(int pfdev, char *ifname)
+{
+	struct pf_ifspeed io;
+
+	bzero(&io, sizeof io);
+	if (strlcpy(io.ifname, ifname, IFNAMSIZ) >=
+	    sizeof(io.ifname)) 
+		errx(1, "getifspeed: strlcpy");
+	if (ioctl(pfdev, DIOCGIFSPEED, &io) == -1)
+		err(1, "DIOCGIFSPEED");
+	return ((u_int32_t)io.baudrate);
+}
+#else
 u_int32_t
 getifspeed(char *ifname)
 {
@@ -1095,6 +1135,7 @@ getifspeed(char *ifname)
 		err(1, "close");
 	return ((u_int32_t)ifrdat.ifi_baudrate);
 }
+#endif
 
 u_long
 getifmtu(char *ifname)
@@ -1109,7 +1150,11 @@ getifmtu(char *ifname)
 	    sizeof(ifr.ifr_name))
 		errx(1, "getifmtu: strlcpy");
 	if (ioctl(s, SIOCGIFMTU, (caddr_t)&ifr) == -1)
+#ifdef __FreeBSD__
+		ifr.ifr_mtu = 1500;
+#else
 		err(1, "SIOCGIFMTU");
+#endif
 	if (close(s))
 		err(1, "close");
 	if (ifr.ifr_mtu > 0)

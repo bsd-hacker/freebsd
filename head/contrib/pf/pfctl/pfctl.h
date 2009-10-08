@@ -85,6 +85,11 @@ void	 warn_namespace_collision(const char *);
 int	 pfctl_show_ifaces(const char *, int);
 FILE	*pfctl_fopen(const char *, const char *);
 
+#ifdef __FreeBSD__
+extern int altqsupport;
+extern int dummynetsupport;
+#endif
+
 #ifndef DEFAULT_PRIORITY
 #define DEFAULT_PRIORITY	1
 #endif

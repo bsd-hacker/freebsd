@@ -16,6 +16,9 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
+
 #include <sys/types.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -86,6 +89,10 @@ pfctl_show_altq(int dev, const char *iface, int opts, int verbose2)
 	struct pf_altq_node	*root = NULL, *node;
 	int			 nodes, dotitle = (opts & PF_OPT_SHOWALL);
 
+#ifdef __FreeBSD__
+	if (!altqsupport)
+		return (-1);
+#endif
 
 	if ((nodes = pfctl_update_qstats(dev, &root)) < 0)
 		return (-1);
@@ -111,6 +118,10 @@ pfctl_show_altq(int dev, const char *iface, int opts, int verbose2)
 		for (node = root; node != NULL; node = node->next) {
 			if (iface != NULL && strcmp(node->altq.ifname, iface))
 				continue;
+#ifdef __FreeBSD__
+			if (node->altq.local_flags & PFALTQ_FLAG_IF_REMOVED)
+				continue;
+#endif
 			pfctl_print_altq_node(dev, node, 0, opts);
 		}
 	}
@@ -150,7 +161,12 @@ pfctl_update_qstats(int dev, struct pf_altq_node **root)
 			warn("DIOCGETALTQ");
 			return (-1);
 		}
+#ifdef __FreeBSD__
+		if (pa.altq.qid > 0 &&
+		    !(pa.altq.local_flags & PFALTQ_FLAG_IF_REMOVED)) {
+#else
 		if (pa.altq.qid > 0) {
+#endif
 			pq.nr = nr;
 			pq.ticket = pa.ticket;
 			pq.buf = &qstats.data;
@@ -168,6 +184,19 @@ pfctl_update_qstats(int dev, struct pf_altq_node **root)
 				pfctl_insert_altq_node(root, pa.altq, qstats);
 			}
 		}
+#ifdef __FreeBSD__
+                  else if (pa.altq.local_flags & PFALTQ_FLAG_IF_REMOVED) {
+                        memset(&qstats.data, 0, sizeof(qstats.data));
+                        if ((node = pfctl_find_altq_node(*root, pa.altq.qname,
+                            pa.altq.ifname)) != NULL) {
+                                memcpy(&node->qstats.data, &qstats.data,
+                                    sizeof(qstats.data));
+                                update_avg(node);
+                        } else {
+                                pfctl_insert_altq_node(root, pa.altq, qstats);
+                        }               
+                }
+#endif
 	}
 	return (mnr);
 }
@@ -274,6 +303,10 @@ pfctl_print_altq_nodestat(int dev, const struct pf_altq_node *a)
 	if (a->altq.qid == 0)
 		return;
 
+#ifdef __FreeBSD__
+        if (a->altq.local_flags & PFALTQ_FLAG_IF_REMOVED)
+                return;
+#endif
 	switch (a->altq.scheduler) {
 	case ALTQT_CBQ:
 		print_cbqstats(a->qstats);

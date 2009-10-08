@@ -31,6 +31,9 @@
  *
  */
 
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
+
 #include <sys/types.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -594,7 +597,11 @@ print_status(struct pf_status *s, int opts)
 		printf("Limit Counters\n");
 		for (i = 0; i < LCNT_MAX; i++) {
 			printf("  %-25s %14lld ", pf_lcounters[i],
+#ifdef __FreeBSD__
+				    (unsigned long long)s->lcounters[i]);
+#else
 				    s->lcounters[i]);
+#endif
 			if (runtime > 0)
 				printf("%14.1f/s\n",
 				    (double)s->lcounters[i] / (double)runtime);
@@ -639,8 +646,13 @@ print_src_node(struct pf_src_node *sn, int opts)
 			    sn->expire, min, sec);
 		}
 		printf(", %llu pkts, %llu bytes",
+#ifdef __FreeBSD__
+		    (unsigned long long)(sn->packets[0] + sn->packets[1]),
+		    (unsigned long long)(sn->bytes[0] + sn->bytes[1]));
+#else
 		    sn->packets[0] + sn->packets[1],
 		    sn->bytes[0] + sn->bytes[1]);
+#endif
 		switch (sn->ruletype) {
 		case PF_NAT:
 			if (sn->rule.nr != -1)
