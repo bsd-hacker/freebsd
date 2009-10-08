@@ -35,6 +35,11 @@
  *
  */
 
+ #ifdef __FreeBSD__
+ #include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
+ #endif
+ 
 #include <sys/param.h>
 #include <sys/socket.h>
 #ifdef _KERNEL
@@ -59,7 +64,11 @@
 # define DPFPRINTF(format, x...)		\
 	if (pf_status.debug >= PF_DEBUG_NOISY)	\
 		printf(format , ##x)
+ #ifdef __FreeBSD__
+ #define rs_malloc(x)           malloc(x, M_TEMP, M_NOWAIT)
+#else
 #define rs_malloc(x)		malloc(x, M_TEMP, M_WAITOK|M_CANFAIL|M_ZERO)
+ #endif
 #define rs_free(x)		free(x, M_TEMP)
 
 #else
@@ -177,7 +186,11 @@ pf_find_or_create_ruleset(const char *path)
 {
 	char			*p, *q, *r;
 	struct pf_ruleset	*ruleset;
+#ifdef __FreeBSD__
+	struct pf_anchor	*anchor = NULL, *dup, *parent = NULL;
+#else
 	struct pf_anchor	*anchor, *dup, *parent = NULL;
+#endif
 
 	if (path[0] == 0)
 		return (&pf_main_ruleset);

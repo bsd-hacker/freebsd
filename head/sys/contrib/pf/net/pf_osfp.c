@@ -21,7 +21,9 @@
 #include <sys/socket.h>
 #ifdef _KERNEL
 # include <sys/systm.h>
+#ifndef __FreeBSD__
 #include <sys/pool.h>
+#endif
 #endif /* _KERNEL */
 #include <sys/mbuf.h>
 
@@ -43,7 +45,11 @@
 # define DPFPRINTF(format, x...)		\
 	if (pf_status.debug >= PF_DEBUG_NOISY)	\
 		printf(format , ##x)
+ #ifdef __FreeBSD__
+ typedef uma_zone_t pool_t;
+ #else
 typedef struct pool pool_t;
+#endif
 
 #else
 /* Userland equivalents so we can lend code to tcpdump et al. */
@@ -58,6 +64,10 @@ typedef struct pool pool_t;
 # define pool_get(pool, flags)	malloc(*(pool))
 # define pool_put(pool, item)	free(item)
 # define pool_init(pool, size, a, ao, f, m, p)	(*(pool)) = (size)
+
+ # ifdef __FreeBSD__
+ # define NTOHS(x) (x) = ntohs((u_int16_t)(x))
+ # endif
 
 # ifdef PFDEBUG
 #  include <sys/stdarg.h>
@@ -290,16 +300,48 @@ pf_osfp_match(struct pf_osfp_enlist *list, pf_osfp_t os)
 }
 
 /* Initialize the OS fingerprint system */
+ #ifdef __FreeBSD__
+ int
+ #else
 void
+#endif
 pf_osfp_initialize(void)
 {
+ #if defined(__FreeBSD__) && defined(_KERNEL)
+        int error = ENOMEM;
+        
+        do {
+                pf_osfp_entry_pl = pf_osfp_pl = NULL;
+                UMA_CREATE(pf_osfp_entry_pl, struct pf_osfp_entry, "pfospfen");
+                UMA_CREATE(pf_osfp_pl, struct pf_os_fingerprint, "pfosfp");
+                error = 0;
+        } while(0);
+ #else
 	pool_init(&pf_osfp_entry_pl, sizeof(struct pf_osfp_entry), 0, 0, 0,
 	    "pfosfpen", &pool_allocator_nointr);
 	pool_init(&pf_osfp_pl, sizeof(struct pf_os_fingerprint), 0, 0, 0,
 	    "pfosfp", &pool_allocator_nointr);
+#endif
 	SLIST_INIT(&pf_osfp_list);
+
+ #ifdef __FreeBSD__
+ #ifdef _KERNEL
+        return (error);
+ #else
+        return (0);
+ #endif
+ #endif
 }
 
+ #if defined(__FreeBSD__) && (_KERNEL)
+ void
+ pf_osfp_cleanup(void)
+ {
+        UMA_DESTROY(pf_osfp_entry_pl);
+        UMA_DESTROY(pf_osfp_pl);
+ }
+ #endif
+ 
 /* Flush the fingerprint list */
 void
 pf_osfp_flush(void)
@@ -367,11 +409,19 @@ pf_osfp_add(struct pf_osfp_ioctl *fpioc)
 				return (EEXIST);
 		}
 		if ((entry = pool_get(&pf_osfp_entry_pl,
+#ifdef __FreeBSD__
+		    PR_WAITOK)) == NULL)
+#else
 		    PR_WAITOK|PR_LIMITFAIL)) == NULL)
+#endif
 			return (ENOMEM);
 	} else {
 		if ((fp = pool_get(&pf_osfp_pl,
+#ifdef __FreeBSD__
+                    PR_WAITOK)) == NULL)
+#else
 		    PR_WAITOK|PR_LIMITFAIL)) == NULL)
+#endif
 			return (ENOMEM);
 		memset(fp, 0, sizeof(*fp));
 		fp->fp_tcpopts = fpioc->fp_tcpopts;
@@ -384,7 +434,11 @@ pf_osfp_add(struct pf_osfp_ioctl *fpioc)
 		fp->fp_ttl = fpioc->fp_ttl;
 		SLIST_INIT(&fp->fp_oses);
 		if ((entry = pool_get(&pf_osfp_entry_pl,
+#ifdef __FreeBSD__
+                    PR_WAITOK)) == NULL) {
+#else
 		    PR_WAITOK|PR_LIMITFAIL)) == NULL) {
+#endif
 			pool_put(&pf_osfp_pl, fp);
 			return (ENOMEM);
 		}

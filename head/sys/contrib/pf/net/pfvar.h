@@ -37,15 +37,34 @@
 #include <sys/types.h>
 #include <sys/queue.h>
 #include <sys/tree.h>
+#ifdef __FreeBSD__
+#include <sys/lock.h>
+#include <sys/sx.h>
+#else
 #include <sys/rwlock.h>
+#endif
 
 #include <net/radix.h>
 #include <net/route.h>
+#ifdef __FreeBSD__
+#include <net/if_clone.h>
+#include <net/pf_mtag.h>
+#include <vm/uma.h>
+#else
 #include <netinet/ip_ipsp.h>
+#endif
+
+#ifdef __FreeBSD__
+#include <netinet/in.h>
+#endif
+
 #include <netinet/tcp_fsm.h>
 
 struct ip;
 struct ip6_hdr;
+#ifdef __FreeBSD__
+struct inpcb;
+#endif
 
 #define	PF_TCPS_PROXY_SRC	((TCP_NSTATES)+0)
 #define	PF_TCPS_PROXY_DST	((TCP_NSTATES)+1)
@@ -154,6 +173,9 @@ struct pf_addr_wrap {
 		}			 a;
 		char			 ifname[IFNAMSIZ];
 		char			 tblname[PF_TABLE_NAME_SIZE];
+#ifdef __FreeBSD__
+#define        RTLABEL_LEN     32
+#endif
 		char			 rtlabelname[RTLABEL_LEN];
 		u_int32_t		 rtlabel;
 	}			 v;
@@ -189,6 +211,68 @@ struct pfi_dynaddr {
  * Address manipulation macros
  */
 
+#ifdef __FreeBSD__
+#define splsoftnet()   splnet()
+
+#define        HTONL(x)        (x) = htonl((__uint32_t)(x))
+#define        HTONS(x)        (x) = htons((__uint16_t)(x))
+#define        NTOHL(x)        (x) = ntohl((__uint32_t)(x))
+#define        NTOHS(x)        (x) = ntohs((__uint16_t)(x))
+
+#define PF_NAME                "pf"
+
+#define PR_NOWAIT	M_NOWAIT
+#define	PR_WAITOK	M_WAIT
+#define PR_ZERO		M_ZERO
+#define pool_get(p, f) uma_zalloc(*(p), (f))
+#define pool_put(p, o) uma_zfree(*(p), (o))
+
+#define UMA_CREATE(var, type, desc) \
+               var = uma_zcreate(desc, sizeof(type),   \
+                       NULL, NULL, NULL, NULL, UMA_ALIGN_PTR, 0); \
+               if (var == NULL) break
+#define UMA_DESTROY(var) \
+               if(var) uma_zdestroy(var)
+
+extern struct mtx pf_task_mtx;
+
+#define        PF_ASSERT(h) mtx_assert(&pf_task_mtx, (h))
+
+#define PF_LOCK()      do {                    \
+       PF_ASSERT(MA_NOTOWNED);                 \
+       mtx_lock(&pf_task_mtx);                 \
+} while(0)
+#define PF_UNLOCK()    do {                    \
+       PF_ASSERT(MA_OWNED);                    \
+       mtx_unlock(&pf_task_mtx);               \
+} while(0)
+
+#define PF_COPYIN(uaddr, kaddr, len, r) do {   \
+       PF_UNLOCK();                            \
+       r = copyin((uaddr), (kaddr), (len));    \
+       PF_LOCK();                              \
+} while(0)
+
+#define PF_COPYOUT(kaddr, uaddr, len, r) do {  \
+       PF_UNLOCK();                            \
+       r = copyout((kaddr), (uaddr), (len));   \
+       PF_LOCK();                              \
+} while(0)
+
+extern void init_pf_mutex(void);
+extern void destroy_pf_mutex(void);
+
+#define PF_MODVER      1
+#define PFLOG_MODVER   1
+#define PFSYNC_MODVER  1
+
+#define PFLOG_MINVER   1
+#define PFLOG_PREFVER  PFLOG_MODVER
+#define PFLOG_MAXVER   1
+#define PFSYNC_MINVER  1
+#define PFSYNC_PREFVER PFSYNC_MODVER
+#define PFSYNC_MAXVER  1
+#endif /* __FreeBSD__ */
 #ifdef INET
 #ifndef INET6
 #define PF_INET_ONLY
@@ -545,6 +629,7 @@ struct pf_rule {
 	u_int32_t		 src_nodes;
 	u_int32_t		 max_src_nodes;
 	u_int32_t		 max_src_states;
+	u_int32_t                spare1;                /* netgraph */
 	u_int32_t		 max_src_conn;
 	struct {
 		u_int32_t		limit;
@@ -563,6 +648,7 @@ struct pf_rule {
 	u_int16_t		 max_mss;
 	u_int16_t		 tag;
 	u_int16_t		 match_tag;
+	u_int16_t                spare2;                /* netgraph */
 
 	struct pf_rule_uid	 uid;
 	struct pf_rule_gid	 gid;
@@ -740,7 +826,13 @@ struct pf_state {
 	u_int64_t		 id;
 	u_int32_t		 creatorid;
 	u_int8_t		 direction;
+#ifdef __FreeBSD__
+	u_int8_t		 pad[2];
+	u_int8_t	 local_flags;
+#define	PFSTATE_EXPIRING 0x01
+#else
 	u_int8_t		 pad[3];
+#endif
 
 	TAILQ_ENTRY(pf_state)	 sync_list;
 	TAILQ_ENTRY(pf_state)	 entry_list;
@@ -824,6 +916,11 @@ struct pfsync_state {
 	sa_family_t	 af;
 	u_int8_t	 proto;
 	u_int8_t	 direction;
+#ifdef __FreeBSD__
+	u_int8_t         local_flags;
+#define        PFSTATE_EXPIRING        0x01
+	u_int8_t	 pad;
+#endif
 	u_int8_t	 log;
 	u_int8_t	 state_flags;
 	u_int8_t	 timeout;
@@ -985,6 +1082,15 @@ struct pfr_tstats {
 #define	pfrts_name	pfrts_t.pfrt_name
 #define pfrts_flags	pfrts_t.pfrt_flags
 
+#ifndef _SOCKADDR_UNION_DEFINED
+#define	_SOCKADDR_UNION_DEFINED
+union sockaddr_union {
+	struct sockaddr		sa;
+	struct sockaddr_in	sin;
+	struct sockaddr_in6	sin6;
+};
+#endif /* _SOCKADDR_UNION_DEFINED */
+
 struct pfr_kcounters {
 	u_int64_t		 pfrkc_packets[PFR_DIR_MAX][PFR_OP_ADDR_MAX];
 	u_int64_t		 pfrkc_bytes[PFR_DIR_MAX][PFR_OP_ADDR_MAX];
@@ -1104,6 +1210,9 @@ struct pf_pdesc {
 	struct pf_addr	*dst;		/* dst address */
 	u_int16_t *sport;
 	u_int16_t *dport;
+#ifdef __FreeBSD__
+	struct pf_mtag	*pf_mtag;
+#endif
 
 	u_int32_t	 p_len;		/* total length of payload */
 
@@ -1302,6 +1411,10 @@ struct pf_altq {
 	u_int32_t		 parent_qid;	/* parent queue id */
 	u_int32_t		 bandwidth;	/* queue bandwidth */
 	u_int8_t		 priority;	/* priority */
+#ifdef __FreeBSD__
+	u_int8_t                 local_flags;   /* dynamic interface */
+#define        PFALTQ_FLAG_IF_REMOVED          0x01
+#endif
 	u_int16_t		 qlimit;	/* queue size limit */
 	u_int16_t		 flags;		/* misc flags */
 	union {
@@ -1578,6 +1691,13 @@ struct pfioc_iface {
 #define DIOCSETIFFLAG	_IOWR('D', 89, struct pfioc_iface)
 #define DIOCCLRIFFLAG	_IOWR('D', 90, struct pfioc_iface)
 #define DIOCKILLSRCNODES	_IOWR('D', 91, struct pfioc_src_node_kill)
+#ifdef __FreeBSD__
+struct pf_ifspeed {
+	char                    ifname[IFNAMSIZ];
+	u_int32_t               baudrate;
+};
+#define DIOCGIFSPEED   _IOWR('D', 92, struct pf_ifspeed)
+#endif
 
 #ifdef _KERNEL
 RB_HEAD(pf_src_tree, pf_src_node);
@@ -1609,13 +1729,31 @@ extern int			 pf_tbladdr_setup(struct pf_ruleset *,
 extern void			 pf_tbladdr_remove(struct pf_addr_wrap *);
 extern void			 pf_tbladdr_copyout(struct pf_addr_wrap *);
 extern void			 pf_calc_skip_steps(struct pf_rulequeue *);
+#ifdef __FreeBSD__
+#ifdef ALTQ
+extern void			 pf_altq_ifnet_event(struct ifnet *, int);
+#endif
+extern uma_zone_t		 pf_src_tree_pl, pf_rule_pl;
+extern uma_zone_t		 pf_state_pl, pf_state_key_pl, pf_state_item_pl,
+				    pf_altq_pl, pf_pooladdr_pl;
+extern uma_zone_t		 pfr_ktable_pl, pfr_kentry_pl, pfr_kentry_pl2;
+extern uma_zone_t		 pf_cache_pl, pf_cent_pl;
+extern uma_zone_t		 pf_state_scrub_pl;
+extern uma_zone_t		 pfi_addr_pl;
+#else
 extern struct pool		 pf_src_tree_pl, pf_rule_pl;
 extern struct pool		 pf_state_pl, pf_state_key_pl, pf_state_item_pl,
 				    pf_altq_pl, pf_pooladdr_pl;
 extern struct pool		 pf_state_scrub_pl;
+#endif
 extern void			 pf_purge_thread(void *);
+#ifdef __FreeBSD__
+extern int			 pf_purge_expired_src_nodes(int);
+extern int			 pf_purge_expired_states(u_int32_t, int);
+#else
 extern void			 pf_purge_expired_src_nodes(int);
 extern void			 pf_purge_expired_states(u_int32_t);
+#endif
 extern void			 pf_unlink_state(struct pf_state *);
 extern void			 pf_free_state(struct pf_state *);
 extern int			 pf_state_insert(struct pfi_kif *,
@@ -1643,16 +1781,29 @@ void				 pf_rm_rule(struct pf_rulequeue *,
 struct pf_divert		*pf_find_divert(struct mbuf *);
 
 #ifdef INET
+#ifdef __FreeBSD__
+int	pf_test(int, struct ifnet *, struct mbuf **, struct ether_header *,
+    struct inpcb *);
+#else
 int	pf_test(int, struct ifnet *, struct mbuf **, struct ether_header *);
+#endif
 #endif /* INET */
 
 #ifdef INET6
+#ifdef __FreeBSD__
+int	pf_test6(int, struct ifnet *, struct mbuf **, struct ether_header *,
+    struct inpcb *);
+#else
 int	pf_test6(int, struct ifnet *, struct mbuf **, struct ether_header *);
+#endif
 void	pf_poolmask(struct pf_addr *, struct pf_addr*,
 	    struct pf_addr *, struct pf_addr *, u_int8_t);
 void	pf_addr_inc(struct pf_addr *, sa_family_t);
 #endif /* INET6 */
 
+#ifdef __FreeBSD__
+u_int32_t	pf_new_isn(struct pf_state *);
+#endif
 void   *pf_pull_hdr(struct mbuf *, int, void *, int, u_short *, u_short *,
 	    sa_family_t);
 void	pf_change_a(void *, u_int16_t *, u_int32_t, u_int8_t);
@@ -1687,7 +1838,11 @@ u_int32_t
 void	pf_purge_expired_fragments(void);
 int	pf_routable(struct pf_addr *addr, sa_family_t af, struct pfi_kif *);
 int	pf_rtlabel_match(struct pf_addr *, sa_family_t, struct pf_addr_wrap *);
+#ifdef __FreeBSD__
+int	pf_socket_lookup(int, struct pf_pdesc *,  struct inpcb *);
+#else
 int	pf_socket_lookup(int, struct pf_pdesc *);
+#endif
 struct pf_state_key *pf_alloc_state_key(int);
 void	pf_pkt_addr_changed(struct mbuf *);
 int	pf_state_key_attach(struct pf_state_key *, struct pf_state *, int);
@@ -1731,6 +1886,9 @@ int	pfr_ina_define(struct pfr_table *, struct pfr_addr *, int, int *,
 extern struct pfi_kif		*pfi_all;
 
 void		 pfi_initialize(void);
+#ifdef __FreeBSD__
+void		 pfi_cleanup(void);
+#endif
 struct pfi_kif	*pfi_kif_get(const char *);
 void		 pfi_kif_ref(struct pfi_kif *, enum pfi_kif_refs);
 void		 pfi_kif_unref(struct pfi_kif *, enum pfi_kif_refs);
@@ -1750,25 +1908,72 @@ int		 pfi_get_ifaces(const char *, struct pfi_kif *, int *);
 int		 pfi_set_flags(const char *, int);
 int		 pfi_clear_flags(const char *, int);
 
+#ifdef __FreeBSD__
+int		 pf_match_tag(struct mbuf *, struct pf_rule *, int *,
+		     struct pf_mtag *);
+#else
 int		 pf_match_tag(struct mbuf *, struct pf_rule *, int *);
+#endif
 u_int16_t	 pf_tagname2tag(char *);
 void		 pf_tag2tagname(u_int16_t, char *);
 void		 pf_tag_ref(u_int16_t);
 void		 pf_tag_unref(u_int16_t);
+#ifdef __FreeBSD__
+int		 pf_tag_packet(struct mbuf *, int, int, struct pf_mtag *);
+#else
 int		 pf_tag_packet(struct mbuf *, int, int);
+#endif
 u_int32_t	 pf_qname2qid(char *);
 void		 pf_qid2qname(u_int32_t, char *);
 void		 pf_qid_unref(u_int32_t);
 
 extern struct pf_status	pf_status;
+
+#ifdef __FreeBSD__
+extern uma_zone_t	pf_frent_pl, pf_frag_pl;
+extern struct sx	pf_consistency_lock;
+#else
 extern struct pool	pf_frent_pl, pf_frag_pl;
 extern struct rwlock	pf_consistency_lock;
+#endif
 
 struct pf_pool_limit {
 	void		*pp;
 	unsigned	 limit;
 };
 extern struct pf_pool_limit	pf_pool_limits[PF_LIMIT_MAX];
+
+#ifdef __FreeBSD__
+struct pf_frent {
+	LIST_ENTRY(pf_frent) fr_next;
+	struct ip *fr_ip;
+	struct mbuf *fr_m;
+};
+
+struct pf_frcache {
+	LIST_ENTRY(pf_frcache) fr_next;
+	uint16_t        fr_off;
+	uint16_t        fr_end;
+};
+
+struct pf_fragment {
+	RB_ENTRY(pf_fragment) fr_entry;
+	TAILQ_ENTRY(pf_fragment) frag_next;
+	struct in_addr  fr_src;
+	struct in_addr  fr_dst;
+	u_int8_t        fr_p;           /* protocol of this fragment */
+	u_int8_t        fr_flags;       /* status flags */
+	u_int16_t       fr_id;          /* fragment id for reassemble */
+	u_int16_t       fr_max;         /* fragment data max */
+	u_int32_t       fr_timeout;
+#define fr_queue        fr_u.fru_queue
+#define fr_cache        fr_u.fru_cache
+	union {
+		LIST_HEAD(pf_fragq, pf_frent) fru_queue;        /* buffering */
+		LIST_HEAD(pf_cacheq, pf_frcache) fru_cache;     /* non-buf */
+	} fr_u;
+};
+#endif /* (__FreeBSD__) */
 
 #endif /* _KERNEL */
 
@@ -1790,12 +1995,14 @@ struct pf_ruleset	*pf_find_ruleset(const char *);
 struct pf_ruleset	*pf_find_or_create_ruleset(const char *);
 void			 pf_rs_initialize(void);
 
+#ifndef __FreeBSD__
 #ifdef _KERNEL
 int			 pf_anchor_copyout(const struct pf_ruleset *,
 			    const struct pf_rule *, struct pfioc_rule *);
 void			 pf_anchor_remove(struct pf_rule *);
 
 #endif /* _KERNEL */
+#endif
 
 /* The fingerprint functions can be linked into userland programs (tcpdump) */
 int	pf_osfp_add(struct pf_osfp_ioctl *);
@@ -1809,7 +2016,12 @@ struct pf_osfp_enlist *
 	    const struct tcphdr *);
 void	pf_osfp_flush(void);
 int	pf_osfp_get(struct pf_osfp_ioctl *);
+#ifdef __FreeBSD__
+int	pf_osfp_initialize(void);
+void	pf_osfp_cleanup(void);
+#else
 void	pf_osfp_initialize(void);
+#endif
 int	pf_osfp_match(struct pf_osfp_enlist *, pf_osfp_t);
 struct pf_os_fingerprint *
 	pf_osfp_validate(void);

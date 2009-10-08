@@ -32,19 +32,37 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+ #if defined(__FreeBSD__)
+ #include "opt_inet.h"
+ #include "opt_inet6.h"
+ 
+ #include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
+ #endif
+
 #include <sys/param.h>
 #include <sys/systm.h>
+ #ifdef __FreeBSD__
+ #include <sys/malloc.h>
+ #endif
 #include <sys/mbuf.h>
 #include <sys/filio.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
 #include <sys/kernel.h>
+ #ifndef __FreeBSD__
 #include <sys/device.h>
+#endif
 #include <sys/time.h>
+ #ifndef __FreeBSD__
 #include <sys/pool.h>
+#endif
 
 #include <net/if.h>
 #include <net/if_types.h>
+ #ifdef __FreeBSD__
+ #include <net/vnet.h>
+ #endif
 
 #include <netinet/in.h>
 #include <netinet/in_var.h>
@@ -59,12 +77,24 @@
 #endif /* INET6 */
 
 struct pfi_kif		 *pfi_all = NULL;
+ #ifdef __FreeBSD__
+ uma_zone_t               pfi_addr_pl;
+ #else
 struct pool		  pfi_addr_pl;
+#endif
 struct pfi_ifhead	  pfi_ifs;
 long			  pfi_update = 1;
 struct pfr_addr		 *pfi_buffer;
 int			  pfi_buffer_cnt;
 int			  pfi_buffer_max;
+ #ifdef __FreeBSD__
+ eventhandler_tag         pfi_attach_cookie = NULL;
+ eventhandler_tag         pfi_detach_cookie = NULL;
+ eventhandler_tag         pfi_attach_group_cookie = NULL;
+ eventhandler_tag         pfi_change_group_cookie = NULL;
+ eventhandler_tag         pfi_detach_group_cookie = NULL;
+ eventhandler_tag         pfi_ifaddr_event_cookie = NULL;
+ #endif
 
 void		 pfi_kif_update(struct pfi_kif *);
 void		 pfi_dynaddr_update(struct pfi_dynaddr *dyn);
@@ -76,6 +106,15 @@ void		 pfi_address_add(struct sockaddr *, int, int);
 int		 pfi_if_compare(struct pfi_kif *, struct pfi_kif *);
 int		 pfi_skip_if(const char *, struct pfi_kif *);
 int		 pfi_unmask(void *);
+ #ifdef __FreeBSD__
+ void            pfi_attach_ifnet_event(void * __unused, struct ifnet *);
+ void            pfi_detach_ifnet_event(void * __unused, struct ifnet *);
+ void            pfi_attach_group_event(void * __unused, struct ifg_group *);
+ void            pfi_change_group_event(void * __unused, char *);
+ void            pfi_detach_group_event(void * __unused, struct ifg_group *);
+ void            pfi_ifaddr_event(void * __unused, struct ifnet *);
+ 
+ #endif
 
 RB_PROTOTYPE(pfi_ifhead, pfi_kif, pfik_tree, pfi_if_compare);
 RB_GENERATE(pfi_ifhead, pfi_kif, pfik_tree, pfi_if_compare);
@@ -89,15 +128,71 @@ pfi_initialize(void)
 	if (pfi_all != NULL)	/* already initialized */
 		return;
 
+#ifndef __FreeBSD__
 	pool_init(&pfi_addr_pl, sizeof(struct pfi_dynaddr), 0, 0, 0,
 	    "pfiaddrpl", &pool_allocator_nointr);
+#endif
 	pfi_buffer_max = 64;
 	pfi_buffer = malloc(pfi_buffer_max * sizeof(*pfi_buffer),
 	    PFI_MTYPE, M_WAITOK);
 
 	if ((pfi_all = pfi_kif_get(IFG_ALL)) == NULL)
 		panic("pfi_kif_get for pfi_all failed");
-}
+ #ifdef __FreeBSD__
+        struct ifg_group *ifg;
+        struct ifnet *ifp;
+ 
+        IFNET_RLOCK();
+        TAILQ_FOREACH(ifg, &V_ifg_head, ifg_next)
+                pfi_attach_ifgroup(ifg);
+        TAILQ_FOREACH(ifp, &V_ifnet, if_link)
+                pfi_attach_ifnet(ifp);
+        IFNET_RUNLOCK();
+ 
+        pfi_attach_cookie = EVENTHANDLER_REGISTER(ifnet_arrival_event,
+            pfi_attach_ifnet_event, NULL, EVENTHANDLER_PRI_ANY);
+        pfi_detach_cookie = EVENTHANDLER_REGISTER(ifnet_departure_event,
+            pfi_detach_ifnet_event, NULL, EVENTHANDLER_PRI_ANY);
+        pfi_attach_group_cookie = EVENTHANDLER_REGISTER(group_attach_event,
+            pfi_attach_group_event, NULL, EVENTHANDLER_PRI_ANY);
+        pfi_change_group_cookie = EVENTHANDLER_REGISTER(group_change_event,
+            pfi_change_group_event, NULL, EVENTHANDLER_PRI_ANY);
+        pfi_detach_group_cookie = EVENTHANDLER_REGISTER(group_detach_event,
+            pfi_detach_group_event, NULL, EVENTHANDLER_PRI_ANY);
+        pfi_ifaddr_event_cookie = EVENTHANDLER_REGISTER(ifaddr_event,
+            pfi_ifaddr_event, NULL, EVENTHANDLER_PRI_ANY);
+ #endif
+ }
+
+ #ifdef __FreeBSD__
+ void
+ pfi_cleanup(void)
+ {
+        struct pfi_kif *p;
+ 
+        PF_UNLOCK();
+        EVENTHANDLER_DEREGISTER(ifnet_arrival_event, pfi_attach_cookie);
+        EVENTHANDLER_DEREGISTER(ifnet_departure_event, pfi_detach_cookie);
+        EVENTHANDLER_DEREGISTER(group_attach_event, pfi_attach_group_cookie);
+        EVENTHANDLER_DEREGISTER(group_change_event, pfi_change_group_cookie);
+        EVENTHANDLER_DEREGISTER(group_detach_event, pfi_detach_group_cookie);
+        EVENTHANDLER_DEREGISTER(ifaddr_event, pfi_ifaddr_event_cookie);
+        PF_LOCK();
+ 
+        pfi_all = NULL;
+        while ((p = RB_MIN(pfi_ifhead, &pfi_ifs))) {
+                if (p->pfik_rules || p->pfik_states) {
+                        printf("pfi_cleanup: dangling refs for %s\n",
+                            p->pfik_name);
+                }
+ 
+                RB_REMOVE(pfi_ifhead, &pfi_ifs, p);
+                free(p, PFI_MTYPE);
+        }
+ 
+        free(pfi_buffer, PFI_MTYPE);
+ }
+ #endif
 
 struct pfi_kif *
 pfi_kif_get(const char *kif_name)
@@ -111,11 +206,26 @@ pfi_kif_get(const char *kif_name)
 		return (kif);
 
 	/* create new one */
+ #ifdef __FreeBSD__
+        if ((kif = malloc(sizeof(*kif), PFI_MTYPE, M_NOWAIT | M_ZERO)) == NULL)
+ #else
 	if ((kif = malloc(sizeof(*kif), PFI_MTYPE, M_DONTWAIT|M_ZERO)) == NULL)
+#endif
 		return (NULL);
 
 	strlcpy(kif->pfik_name, kif_name, sizeof(kif->pfik_name));
+ #ifdef __FreeBSD__
+        /*
+         * It seems that the value of time_second is in unintialzied state
+         * when pf sets interface statistics clear time in boot phase if pf
+         * was statically linked to kernel. Instead of setting the bogus
+         * time value have pfi_get_ifaces handle this case. In
+         * pfi_get_ifaces it uses boottime.tv_sec if it sees the time is 0.
+         */
+        kif->pfik_tzero = time_second > 1 ? time_second : 0;
+ #else
 	kif->pfik_tzero = time_second;
+#endif
 	TAILQ_INIT(&kif->pfik_dynaddrs);
 
 	RB_INSERT(pfi_ifhead, &pfi_ifs, kif);
@@ -205,10 +315,12 @@ pfi_attach_ifnet(struct ifnet *ifp)
 	kif->pfik_ifp = ifp;
 	ifp->if_pf_kif = (caddr_t)kif;
 
+#ifndef __FreeBSD__
 	if ((kif->pfik_ah_cookie = hook_establish(ifp->if_addrhooks, 1,
 	    pfi_kifaddr_update, kif)) == NULL)
 		panic("pfi_attach_ifnet: cannot allocate '%s' address hook",
 		    ifp->if_xname);
+#endif
 
 	pfi_kif_update(kif);
 
@@ -226,7 +338,9 @@ pfi_detach_ifnet(struct ifnet *ifp)
 
 	s = splsoftnet();
 	pfi_update++;
+#ifndef __FreeBSD__
 	hook_disestablish(ifp->if_addrhooks, kif->pfik_ah_cookie);
+#endif
 	pfi_kif_update(kif);
 
 	kif->pfik_ifp = NULL;
@@ -332,7 +446,12 @@ pfi_dynaddr_setup(struct pf_addr_wrap *aw, sa_family_t af)
 
 	if (aw->type != PF_ADDR_DYNIFTL)
 		return (0);
+#ifdef __FreeBSD__
+	/* XXX: revisit! */
+	if ((dyn = pool_get(&pfi_addr_pl, PR_WAITOK | PR_ZERO))
+#else
 	if ((dyn = pool_get(&pfi_addr_pl, PR_WAITOK | PR_LIMITFAIL | PR_ZERO))
+#endif
 	    == NULL)
 		return (1);
 
@@ -466,6 +585,18 @@ pfi_instance_add(struct ifnet *ifp, int net, int flags)
 		af = ia->ifa_addr->sa_family;
 		if (af != AF_INET && af != AF_INET6)
 			continue;
+#ifdef __FreeBSD__
+                /*
+                 * XXX: For point-to-point interfaces, (ifname:0) and IPv4,
+                 *      jump over addresses without a proper route to work
+                 *      around a problem with ppp not fully removing the
+                 *      address used during IPCP.
+                 */
+                if ((ifp->if_flags & IFF_POINTOPOINT) &&
+                    !(ia->ifa_flags & IFA_ROUTE) &&
+                    (flags & PFI_AFLAG_NOALIAS) && (af == AF_INET))
+                        continue;
+ #endif
 		if ((flags & PFI_AFLAG_BROADCAST) && af == AF_INET6)
 			continue;
 		if ((flags & PFI_AFLAG_BROADCAST) &&
@@ -523,7 +654,11 @@ pfi_address_add(struct sockaddr *sa, int af, int net)
 			return;
 		}
 		p = malloc(new_max * sizeof(*pfi_buffer), PFI_MTYPE,
+ #ifdef __FreeBSD__
+                    M_NOWAIT);
+ #else
 		    M_DONTWAIT);
+#endif
 		if (p == NULL) {
 			printf("pfi_address_add: no memory to grow buffer "
 			    "(%d/%d)\n", pfi_buffer_cnt, PFI_BUFFER_MAX);
@@ -661,6 +796,9 @@ pfi_get_ifaces(const char *name, struct pfi_kif *buf, int *size)
 {
 	struct pfi_kif	*p, *nextp;
 	int		 s, n = 0;
+ #ifdef __FreeBSD__
+        int              error;
+ #endif
 
 	s = splsoftnet();
 	for (p = RB_MIN(pfi_ifhead, &pfi_ifs); p; p = nextp) {
@@ -671,7 +809,12 @@ pfi_get_ifaces(const char *name, struct pfi_kif *buf, int *size)
 			if (!p->pfik_tzero)
 				p->pfik_tzero = time_second;
 			pfi_kif_ref(p, PFI_KIF_REF_RULE);
+ #ifdef __FreeBSD__
+                        PF_COPYOUT(p, buf++, sizeof(*buf), error);
+                        if (error) {
+ #else
 			if (copyout(p, buf++, sizeof(*buf))) {
+#endif
 				pfi_kif_unref(p, PFI_KIF_REF_RULE);
 				splx(s);
 				return (EFAULT);
@@ -756,3 +899,59 @@ pfi_unmask(void *addr)
 	return (b);
 }
 
+ #ifdef __FreeBSD__
+ void
+ pfi_attach_ifnet_event(void *arg __unused, struct ifnet *ifp)
+ {
+        PF_LOCK();
+        pfi_attach_ifnet(ifp);
+ #ifdef ALTQ
+        pf_altq_ifnet_event(ifp, 0);
+ #endif
+        PF_UNLOCK();
+ }
+ 
+ void
+ pfi_detach_ifnet_event(void *arg __unused, struct ifnet *ifp)
+ {
+        PF_LOCK();
+        pfi_detach_ifnet(ifp);
+ #ifdef ALTQ
+        pf_altq_ifnet_event(ifp, 1);
+ #endif
+        PF_UNLOCK();
+ }
+ 
+ void
+ pfi_attach_group_event(void *arg __unused, struct ifg_group *ifg)
+ {
+        PF_LOCK();
+        pfi_attach_ifgroup(ifg);
+        PF_UNLOCK();
+ }
+ 
+ void
+ pfi_change_group_event(void *arg __unused, char *gname)
+ {
+        PF_LOCK();
+        pfi_group_change(gname);
+        PF_UNLOCK();
+ }
+
+ void
+ pfi_detach_group_event(void *arg __unused, struct ifg_group *ifg)
+ {
+        PF_LOCK();
+        pfi_detach_ifgroup(ifg);
+        PF_UNLOCK();
+ }
+ 
+ void
+ pfi_ifaddr_event(void *arg __unused, struct ifnet *ifp)
+ {
+        PF_LOCK();
+        if (ifp && ifp->if_pf_kif)
+                pfi_kifaddr_update(ifp->if_pf_kif);
+        PF_UNLOCK();
+ }
+ #endif /* __FreeBSD__ */

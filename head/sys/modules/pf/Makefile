@@ -6,7 +6,7 @@
 .PATH: ${.CURDIR}/../../contrib/pf/netinet
 
 KMOD=	pf
-SRCS = 	pf.c pf_if.c pf_subr.c pf_osfp.c pf_ioctl.c pf_norm.c pf_table.c \
+SRCS = 	pf.c pf_if.c pf_lb.c pf_osfp.c pf_ioctl.c pf_norm.c pf_table.c \
 	pf_ruleset.c \
 	in4_cksum.c \
 	opt_pf.h opt_inet.h opt_inet6.h opt_bpf.h

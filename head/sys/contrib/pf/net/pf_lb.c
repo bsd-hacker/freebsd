@@ -35,10 +35,44 @@
  *
  */
 
+ #ifdef __FreeBSD__
+ #include "opt_inet.h"
+ #include "opt_inet6.h"
+ 
+ #include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
+ #endif
+ 
+ #ifdef __FreeBSD__
+ #include "opt_bpf.h"
+ #include "opt_pf.h"
+ 
+ #ifdef DEV_BPF
+ #define        NBPFILTER       DEV_BPF
+ #else
+ #define        NBPFILTER       0
+ #endif
+ 
+ #ifdef DEV_PFLOG
+ #define        NPFLOG          DEV_PFLOG
+ #else
+ #define        NPFLOG          0
+ #endif
+ 
+ #ifdef DEV_PFSYNC
+ #define        NPFSYNC         DEV_PFSYNC
+ #else
+ #define        NPFSYNC         0
+ #endif
+  
+ #else
 #include "bpfilter.h"
 #include "pflog.h"
 #include "pfsync.h"
+#endif
+#ifdef notyet
 #include "pflow.h"
+#endif
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -48,11 +82,26 @@
 #include <sys/socketvar.h>
 #include <sys/kernel.h>
 #include <sys/time.h>
+#ifdef  __FreeBSD__
+#include <sys/sysctl.h>
+#endif
+#ifndef __FreeBSD__
 #include <sys/pool.h>
+#endif
 #include <sys/proc.h>
+ #ifdef __FreeBSD__
+ #include <sys/kthread.h>
+ #include <sys/lock.h>
+ #include <sys/sx.h>
+ #else
 #include <sys/rwlock.h>
+#endif
 
+#ifdef __FreeBSD__
+#include <sys/md5.h>
+#else
 #include <crypto/md5.h>
+#endif
 
 #include <net/if.h>
 #include <net/if_types.h>
@@ -76,10 +125,14 @@
 #include <netinet/icmp_var.h>
 #include <netinet/if_ether.h>
 
+#ifndef __FreeBSD__
 #include <dev/rndvar.h>
+#endif
 #include <net/pfvar.h>
 #include <net/if_pflog.h>
+#ifdef notyet
 #include <net/if_pflow.h>
+#endif
 
 #if NPFSYNC > 0
 #include <net/if_pfsync.h>
@@ -219,7 +272,11 @@ pf_match_translation(struct pf_pdesc *pd, struct mbuf *m, int off,
 		    !pf_match_port(dst->port_op, dst->port[0],
 		    dst->port[1], dport))
 			r = r->skip[PF_SKIP_DST_PORT].ptr;
+#ifdef __FreeBSD__
+		else if (r->match_tag && !pf_match_tag(m, r, &tag, pd->pf_mtag))
+#else
 		else if (r->match_tag && !pf_match_tag(m, r, &tag))
+#endif
 			r = TAILQ_NEXT(r, entries);
 		else if (r->os_fingerprint != PF_OSFP_ANY && (pd->proto !=
 		    IPPROTO_TCP || !pf_osfp_match(pf_osfp_fingerprint(pd, m,
@@ -240,7 +297,11 @@ pf_match_translation(struct pf_pdesc *pd, struct mbuf *m, int off,
 			pf_step_out_of_anchor(&asd, &ruleset, rs_num, &r,
 			    NULL, NULL);
 	}
+#ifdef __FreeBSD__
+	if (pf_tag_packet(m, tag, rtableid, pd->pf_mtag))
+#else
 	if (pf_tag_packet(m, tag, rtableid))
+#endif
 		return (NULL);
 	if (rm != NULL && (rm->action == PF_NONAT ||
 	    rm->action == PF_NORDR || rm->action == PF_NOBINAT))
@@ -302,12 +363,20 @@ pf_get_sport(sa_family_t af, u_int8_t proto, struct pf_rule *r,
 				high = tmp;
 			}
 			/* low < high */
+#ifdef __FreeBSD__
+			cut = htonl(arc4random()) % (1 + high - low) + low;
+#else
 			cut = arc4random_uniform(1 + high - low) + low;
+#endif
 			/* low <= cut <= high */
 			for (tmp = cut; tmp <= high; ++(tmp)) {
 				key.port[0] = htons(tmp);
 				if (pf_find_state_all(&key, PF_IN, NULL) ==
+#ifdef __FreeBSD__
+                                    NULL) {
+#else
 				    NULL && !in_baddynamic(tmp, proto)) {
+#endif
 					*nport = htons(tmp);
 					return (0);
 				}
@@ -315,7 +384,11 @@ pf_get_sport(sa_family_t af, u_int8_t proto, struct pf_rule *r,
 			for (tmp = cut - 1; tmp >= low; --(tmp)) {
 				key.port[0] = htons(tmp);
 				if (pf_find_state_all(&key, PF_IN, NULL) ==
+#ifdef __FreeBSD__
+				    NULL) {
+#else
 				    NULL && !in_baddynamic(tmp, proto)) {
+#endif
 					*nport = htons(tmp);
 					return (0);
 				}
