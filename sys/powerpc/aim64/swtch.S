@@ -213,9 +213,9 @@ cpu_switchin:
 
 	isync
 	/*
-	 * Perform a dummy stwcx. to clear any reservations we may have
+	 * Perform a dummy stdcx. to clear any reservations we may have
 	 * inherited from the previous thread. It doesn't matter if the
-	 * stwcx succeeds or not. pcb_context[0] can be clobbered.
+	 * stdcx succeeds or not. pcb_context[0] can be clobbered.
 	 */
 	stdcx.	%r1, 0, %r3
 	blr
