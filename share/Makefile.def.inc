@@ -174,8 +174,8 @@ SYMLINKS+=	../${ccln}.UTF-8/${LCTYPE} ${LOCALEDIR}/${ccln}.${cm}
 .for ccln in ${CCLN}
 . for cm in ${CMS}
 .  ifdef CMSLINK_${ccln}.${cm}
-.   for cclncm in ${CMSLINK_${ccln}.${cm}}
-SYMLINKS+=	../${ccln}.${cm}/${LCTYPE} ${LOCALEDIR}/${cclncm}
+.   for cmi in ${CMSLINK_${ccln}.${cm}}
+SYMLINKS+=	../${ccln}.${cm}/${LCTYPE} ${LOCALEDIR}/${ccln}.${cmi}
 .   endfor
 .  endif
 . endfor
@@ -214,8 +214,8 @@ SYMLINKS+=	../${ccln}.UTF-8/${LCTYPE} ${LOCALEDIR}/${cclni}.${cm}
 . for cclni in ${CCLNLINK_${ccln}}
 .  for cm in ${CMS}
 .   ifdef CMSLINK_${ccln}.${cm}
-.    for cclncmi in ${CMSLINK_${ccln}.${cm}}
-SYMLINKS+=	../${ccln}.${cm}/${LCTYPE} ${LOCALEDIR}/${cclncmi:S/${ccln}/${cclni}/}
+.    for cmi in ${CMSLINK_${ccln}.${cm}}
+SYMLINKS+=	../${ccln}.${cm}/${LCTYPE} ${LOCALEDIR}/${cclni}.${cmi}
 .    endfor
 .   endif
 .  endfor
@@ -329,7 +329,7 @@ ${ccln}.${cms}.src: ${ccln}.UTF-8.src
 	    -t ${CMALIAS_${cms}} \
 	${_TRANSLATIONAFTER_${cms}} \
 	    > ${.TARGET} \
-	|| rm ${.TARGET} && exit 0
+	|| (rm ${.TARGET} && exit 1)
 .    endif
 
 ${ccln}.${cms}.out: ${ccln}.${cms}.src
@@ -365,63 +365,5 @@ beforeinstall:
 		rm -f ${DESTDIR}/$$1/${FILESNAME}; \
 		shift; \
 	done
-
-.if defined(FULL)
-#
-# Maintainer Bag of Tricks
-#
-# Perform the following checks:
-# - Create all files defined with CCLN and (CMS_xx and CMSLINK_xx)
-# - See if all MD5 checksums for CMS_{ccln} are different.
-# - See if all MD5 checksums for CMSLINK_{ccln} are the same.
-#
-checkcms:
-. for ccln in ${CCLN}
-	../../usr.bin/unicode2utf8/unicode2utf8 \
-	    --cldr=${CLDRDIR} \
-	    --input=${ccln}.unicode \
-	    --output=${ccln}.UTF-8.src
-	grep -v '^#' < ${ccln}.UTF-8.src > ${ccln}.UTF-8.out
-.  for cms in ${CMS_${ccln}} ${CMSLINK_${ccln}}
-	cat ${ccln}.UTF-8.src \
-	${_TRANSLATIONBEFORE_${cms}} | \
-	${ICONV_${ccln}.${cms}} \
-	    -f UTF-8 \
-	    -t ${CMALIAS_${cms}} \
-	${_TRANSLATIONAFTER_${cms}} \
-	    > ${ccln}.${cms}.src \
-	|| rm ${ccln}.${cms}.src && exit 0
-	grep -v '^#' < ${ccln}.${cms}.src > ${ccln}.${cms}.out
-.  endfor
-. endfor
-	md5 -r *.out > /tmp/a
-	FULL=1 ${MAKE} checkcms1
-
-. for ccln in ${CCLN}
-.  for cms in UTF-8 ${CMS_${ccln}} ${CMSLINK_${ccln}}
-MD5SUM_${ccln}.${cms}!=	grep ${ccln}.${cms}.out /tmp/a | awk '{ print $$1 }'
-.  endfor
-. endfor
-
-#
-# Perform the following checks:
-# - See if all MD5 checksums for CMS_{ccln} are different.
-# - See if all MD5 checksums for CMSLINK_{ccln} are the same.
-#
-checkcms1:
-. for ccln in ${CCLN}
-.  for cms in ${CMS_${ccln}}
-	@if [ ${MD5SUM_${ccln}.${cms}} = ${MD5SUM_${ccln}.UTF-8} ]; then \
-		echo Same: ${ccln}.UTF-8 - ${ccln}.${cms}; \
-	fi
-.  endfor
-.  for cms in ${CMSLINK_${ccln}}
-	@if [ ${MD5SUM_${ccln}.${cms}} != ${MD5SUM_${ccln}.UTF-8} ]; then \
-		echo Different: ${ccln}.UTF-8 - ${ccln}.${cms}; \
-	fi
-.  endfor
-. endfor
-
-.endif
 
 .include <bsd.prog.mk>
