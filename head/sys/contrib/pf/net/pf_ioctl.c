@@ -272,7 +272,8 @@ static struct cdevsw pf_cdevsw = {
  init_zone_var(void)
  {
         pf_src_tree_pl = pf_rule_pl = NULL;
-        pf_state_pl = pf_altq_pl = pf_pooladdr_pl = NULL;
+        pf_state_pl = pf_state_key_pl = pf_state_item_pl = NULL;
+	pf_altq_pl = pf_pooladdr_pl = NULL;
         pf_frent_pl = pf_frag_pl = pf_cache_pl = pf_cent_pl = NULL;
         pf_state_scrub_pl = NULL;
         pfr_ktable_pl = pfr_kentry_pl = NULL;
@@ -284,6 +285,8 @@ static struct cdevsw pf_cdevsw = {
         UMA_DESTROY(pf_src_tree_pl);
         UMA_DESTROY(pf_rule_pl);
         UMA_DESTROY(pf_state_pl);
+        UMA_DESTROY(pf_state_key_pl);
+        UMA_DESTROY(pf_state_item_pl);
         UMA_DESTROY(pf_altq_pl);
         UMA_DESTROY(pf_pooladdr_pl);
         UMA_DESTROY(pf_frent_pl);
@@ -306,6 +309,8 @@ int
                 UMA_CREATE(pf_src_tree_pl,struct pf_src_node, "pfsrctrpl");
                 UMA_CREATE(pf_rule_pl,    struct pf_rule, "pfrulepl");
                 UMA_CREATE(pf_state_pl,   struct pf_state, "pfstatepl");
+                UMA_CREATE(pf_state_key_pl,   struct pf_state, "pfstatekeypl");
+                UMA_CREATE(pf_state_item_pl,   struct pf_state, "pfstateitempl");
                 UMA_CREATE(pf_altq_pl,    struct pf_altq, "pfaltqpl");
                 UMA_CREATE(pf_pooladdr_pl, struct pf_pooladdr, "pfpooladdrpl");
                 UMA_CREATE(pfr_ktable_pl,  struct pfr_ktable, "pfrktable");

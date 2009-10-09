@@ -410,7 +410,7 @@ pf_osfp_add(struct pf_osfp_ioctl *fpioc)
 		}
 		if ((entry = pool_get(&pf_osfp_entry_pl,
 #ifdef __FreeBSD__
-		    PR_WAITOK)) == NULL)
+		    PR_NOWAIT)) == NULL)
 #else
 		    PR_WAITOK|PR_LIMITFAIL)) == NULL)
 #endif
@@ -418,7 +418,7 @@ pf_osfp_add(struct pf_osfp_ioctl *fpioc)
 	} else {
 		if ((fp = pool_get(&pf_osfp_pl,
 #ifdef __FreeBSD__
-                    PR_WAITOK)) == NULL)
+                    PR_NOWAIT)) == NULL)
 #else
 		    PR_WAITOK|PR_LIMITFAIL)) == NULL)
 #endif
@@ -435,7 +435,7 @@ pf_osfp_add(struct pf_osfp_ioctl *fpioc)
 		SLIST_INIT(&fp->fp_oses);
 		if ((entry = pool_get(&pf_osfp_entry_pl,
 #ifdef __FreeBSD__
-                    PR_WAITOK)) == NULL) {
+                    PR_NOWAIT)) == NULL) {
 #else
 		    PR_WAITOK|PR_LIMITFAIL)) == NULL) {
 #endif
