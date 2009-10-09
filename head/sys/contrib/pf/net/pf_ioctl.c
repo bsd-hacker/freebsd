@@ -291,7 +291,6 @@ static struct cdevsw pf_cdevsw = {
         UMA_DESTROY(pf_cache_pl);
         UMA_DESTROY(pf_cent_pl);
         UMA_DESTROY(pfr_ktable_pl);
-        UMA_DESTROY(pfr_kentry_pl2);
         UMA_DESTROY(pfr_kentry_pl);
         UMA_DESTROY(pf_state_scrub_pl);
         UMA_DESTROY(pfi_addr_pl);
@@ -311,7 +310,6 @@ int
                 UMA_CREATE(pf_pooladdr_pl, struct pf_pooladdr, "pfpooladdrpl");
                 UMA_CREATE(pfr_ktable_pl,  struct pfr_ktable, "pfrktable");
                 UMA_CREATE(pfr_kentry_pl,  struct pfr_kentry, "pfrkentry");
-                UMA_CREATE(pfr_kentry_pl2,  struct pfr_kentry, "pfrkentry2");
                 UMA_CREATE(pf_frent_pl,   struct pf_frent, "pffrent");
                 UMA_CREATE(pf_frag_pl,    struct pf_fragment, "pffrag");
                 UMA_CREATE(pf_cache_pl,   struct pf_fragment, "pffrcache");

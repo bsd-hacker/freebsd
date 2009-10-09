@@ -1736,7 +1736,7 @@ extern void			 pf_altq_ifnet_event(struct ifnet *, int);
 extern uma_zone_t		 pf_src_tree_pl, pf_rule_pl;
 extern uma_zone_t		 pf_state_pl, pf_state_key_pl, pf_state_item_pl,
 				    pf_altq_pl, pf_pooladdr_pl;
-extern uma_zone_t		 pfr_ktable_pl, pfr_kentry_pl, pfr_kentry_pl2;
+extern uma_zone_t		 pfr_ktable_pl, pfr_kentry_pl;
 extern uma_zone_t		 pf_cache_pl, pf_cent_pl;
 extern uma_zone_t		 pf_state_scrub_pl;
 extern uma_zone_t		 pfi_addr_pl;
