@@ -121,7 +121,7 @@ openpicbus_mambo_probe(device_t dev)
 {
 	const char *type = ofw_bus_get_type(dev);
 
-	if (strcmp(type, "open-pic") != 0)
+	if (type == NULL || strcmp(type, "open-pic") != 0)
                 return (ENXIO);
 
 	device_set_desc(dev, "Mambo OpenPIC Container");

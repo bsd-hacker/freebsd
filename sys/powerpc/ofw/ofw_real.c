@@ -173,7 +173,7 @@ extern struct pmap	ofw_pmap;
 
 static void ofw_real_bounce_alloc(void *);
 
-SYSINIT(ofw_real_bounce_alloc, SI_SUB_VM, SI_ORDER_ANY, 
+SYSINIT(ofw_real_bounce_alloc, SI_SUB_KMEM, SI_ORDER_ANY, 
     ofw_real_bounce_alloc, NULL);
 
 static void

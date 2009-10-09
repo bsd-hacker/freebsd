@@ -96,7 +96,7 @@ celliic_probe(device_t dev)
 {
 	const char *type = ofw_bus_get_type(dev);
 
-	if (strcmp(type, "stidc-iic") != 0)
+	if (type == NULL || strcmp(type, "stidc-iic") != 0)
 		return (ENXIO);
 
 	device_set_desc(dev, "Cell Integrated Interrupt Controller");
