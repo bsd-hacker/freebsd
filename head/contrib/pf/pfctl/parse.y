@@ -1171,7 +1171,7 @@ scrub_opt	: NODF	{
 			scrub_opts.randomid = 1;
 		}
 		| RTABLE NUMBER				{
-			if ($2 < 0 || $2 > RT_TABLEID_MAX) {
+			if ($2 < 0 /* || $2 > RT_TABLEID_MAX */) {
 				yyerror("invalid rtable id");
 				YYERROR;
 			}
@@ -1319,7 +1319,7 @@ antispoof_opt	: label	{
 			antispoof_opts.label = $1;
 		}
 		| RTABLE NUMBER				{
-			if ($2 < 0 || $2 > RT_TABLEID_MAX) {
+			if ($2 < 0 /* || $2 > RT_TABLEID_MAX */ ) {
 				yyerror("invalid rtable id");
 				YYERROR;
 			}
@@ -2354,7 +2354,7 @@ filter_opt	: USER uids {
 				filter_opts.prob = 1;
 		}
 		| RTABLE NUMBER				{
-			if ($2 < 0 || $2 > RT_TABLEID_MAX) {
+			if ($2 < 0 /* || $2 > RT_TABLEID_MAX */ ) {
 				yyerror("invalid rtable id");
 				YYERROR;
 			}
@@ -4161,7 +4161,7 @@ tagged		: /* empty */		{ $$.neg = 0; $$.name = NULL; }
 
 rtable		: /* empty */		{ $$ = -1; }
 		| RTABLE NUMBER		{
-			if ($2 < 0 || $2 > RT_TABLEID_MAX) {
+			if ($2 < 0 /* || $2 > RT_TABLEID_MAX */ ) {
 				yyerror("invalid rtable id");
 				YYERROR;
 			}

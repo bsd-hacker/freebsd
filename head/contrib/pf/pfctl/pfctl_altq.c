@@ -1095,12 +1095,12 @@ rate2str(double rate)
 	return (buf);
 }
 
--#ifdef __FreeBSD__
--/*
-- * XXX
-- * FreeBSD does not have SIOCGIFDATA.
-- * To emulate this, DIOCGIFSPEED ioctl added to pf.
-- */
+#ifdef __FreeBSD__
+/*
+ * XXX
+ * FreeBSD does not have SIOCGIFDATA.
+ * To emulate this, DIOCGIFSPEED ioctl added to pf.
+ */
 u_int32_t
 getifspeed(int pfdev, char *ifname)
 {

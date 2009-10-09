@@ -39,6 +39,10 @@ __FBSDID("$FreeBSD$");
 #include <sys/socket.h>
 #include <sys/stat.h>
 
+#ifdef __FreeBSD__
+#include <sys/endian.h>
+#endif
+
 #include <net/if.h>
 #include <netinet/in.h>
 #include <net/pfvar.h>
@@ -58,10 +62,6 @@ __FBSDID("$FreeBSD$");
 
 #include "pfctl_parser.h"
 #include "pfctl.h"
-
- #ifdef __FreeBSD__
- #define HTONL(x)       (x) = htonl((__uint32_t)(x))
- #endif
 
 void	 usage(void);
 int	 pfctl_enable(int, int);
@@ -1583,7 +1583,11 @@ pfctl_init_options(struct pfctl *pf)
 	pf->limit[PF_LIMIT_TABLE_ENTRIES] = PFR_KENTRY_HIWAT;
 
 	mib[0] = CTL_HW;
+#ifdef __FreeBSD__
+	mib[1] = HW_PHYSMEM;
+#else
 	mib[1] = HW_PHYSMEM64;
+#endif
 	size = sizeof(mem);
 	if (sysctl(mib, 2, &mem, &size, NULL, 0) == -1)
 		err(1, "sysctl");
