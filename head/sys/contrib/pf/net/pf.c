@@ -5160,10 +5160,10 @@ pf_test_state_other(struct pf_state **state, int direction, struct pfi_kif *kif,
 		struct pf_state_key *nk = (*state)->key[pd->didx];
 
 #ifdef __FreeBSD__
-		KASSERT(nk, ("%s: nk is null", __FUNCTION));
-		KASSERT(pd, ("%s: pd is null", __FUNCTION));
-		KASSERT(pd->src, ("%s: pd->src is null", __FUNCTION));
-		KASSERT(pd->dst, ("%s: pd->dst is null", __FUNCTION));
+		KASSERT(nk, ("%s: nk is null", __FUNCTION__));
+		KASSERT(pd, ("%s: pd is null", __FUNCTION__));
+		KASSERT(pd->src, ("%s: pd->src is null", __FUNCTION__));
+		KASSERT(pd->dst, ("%s: pd->dst is null", __FUNCTION__));
 #else
 		KASSERT(nk);
 		KASSERT(pd);

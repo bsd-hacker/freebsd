@@ -2930,10 +2930,6 @@ check_body:
 					break;
 				}
 				at->qid = altq->qid;
-				if (is_ipv4)
-					at->af = AF_INET;
-				else
-					at->af = AF_LINK;
 				at->hdr = ip;
 				break;
 			}

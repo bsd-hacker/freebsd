@@ -115,7 +115,11 @@
 
 void	pflogattach(int);
 int	pflogoutput(struct ifnet *, struct mbuf *, struct sockaddr *,
+#ifdef __FreeBSD__
+		       struct route *);
+#else
 	    	       struct rtentry *);
+#endif
 int	pflogioctl(struct ifnet *, u_long, caddr_t);
 void	pflogstart(struct ifnet *);
  #ifdef __FreeBSD__
@@ -165,35 +169,39 @@ pflog_clone_create(struct if_clone *ifc, int unit)
 	    M_DEVBUF, M_NOWAIT|M_ZERO)) == NULL)
 		return (ENOMEM);
 
-	pflogif >sc_unit = unit;
+	pflogif->sc_unit = unit;
  #ifdef __FreeBSD__
-        ifp = pflogif >sc_ifp = if_alloc(IFT_PFLOG);
+        ifp = pflogif->sc_ifp = if_alloc(IFT_PFLOG);
         if (ifp == NULL) {
                 free(pflogif, M_DEVBUF);
                 return (ENOSPC);
         }
-        if_initname(ifp, ifc >ifc_name, unit);
+        if_initname(ifp, ifc->ifc_name, unit);
  #else
-	ifp = &pflogif >sc_if;
-	snprintf(ifp >if_xname, sizeof ifp >if_xname, "pflog%d", unit);
+	ifp = &pflogif->sc_if;
+	snprintf(ifp->if_xname, sizeof ifp->if_xname, "pflog%d", unit);
 #endif
-	ifp >if_softc = pflogif;
-	ifp >if_mtu = PFLOGMTU;
-	ifp >if_ioctl = pflogioctl;
-	ifp >if_output = pflogoutput;
-	ifp >if_start = pflogstart;
+	ifp->if_softc = pflogif;
+	ifp->if_mtu = PFLOGMTU;
+	ifp->if_ioctl = pflogioctl;
+	ifp->if_output = pflogoutput;
+	ifp->if_start = pflogstart;
 #ifndef __FreeBSD__
-	ifp >if_type = IFT_PFLOG;
+	ifp->if_type = IFT_PFLOG;
 #endif
-	ifp >if_snd.ifq_maxlen = ifqmaxlen;
-	ifp >if_hdrlen = PFLOG_HDRLEN;
+	ifp->if_snd.ifq_maxlen = ifqmaxlen;
+	ifp->if_hdrlen = PFLOG_HDRLEN;
 	if_attach(ifp);
 #ifndef __FreeBSD__
 	if_alloc_sadl(ifp);
 #endif
 
 #if NBPFILTER > 0
-	bpfattach(&pflogif >sc_if.if_bpf, ifp, DLT_PFLOG, PFLOG_HDRLEN);
+#ifdef __FreeBSD__
+	bpfattach(ifp, DLT_PFLOG, PFLOG_HDRLEN);
+#else
+	bpfattach(&pflogif->sc_if.if_bpf, ifp, DLT_PFLOG, PFLOG_HDRLEN);
+#endif
 #endif
 
 	s = splnet();
@@ -219,14 +227,14 @@ int
 pflog_clone_destroy(struct ifnet *ifp)
 #endif
 {
-	struct pflog_softc	*pflogif = ifp >if_softc;
+	struct pflog_softc	*pflogif = ifp->if_softc;
 	int			 s;
 
 	s = splnet();
  #ifdef __FreeBSD__
         PF_LOCK();
  #endif
-	pflogifs[pflogif >sc_unit] = NULL;
+	pflogifs[pflogif->sc_unit] = NULL;
 	LIST_REMOVE(pflogif, sc_list);
  #ifdef __FreeBSD__
         PF_UNLOCK();
@@ -259,14 +267,14 @@ pflogstart(struct ifnet *ifp)
 
 	for (;;) {
  #ifdef __FreeBSD__
-                IF_LOCK(&ifp >if_snd);
-                _IF_DROP(&ifp >if_snd);
-                _IF_DEQUEUE(&ifp >if_snd, m);
-                IF_UNLOCK(&ifp >if_snd);
+                IF_LOCK(&ifp->if_snd);
+                _IF_DROP(&ifp->if_snd);
+                _IF_DEQUEUE(&ifp->if_snd, m);
+                IF_UNLOCK(&ifp->if_snd);
  #else
 		s = splnet();
-		IF_DROP(&ifp >if_snd);
-		IF_DEQUEUE(&ifp >if_snd, m);
+		IF_DROP(&ifp->if_snd);
+		IF_DEQUEUE(&ifp->if_snd, m);
 		splx(s);
 #endif
 
@@ -279,7 +287,11 @@ pflogstart(struct ifnet *ifp)
 
 int
 pflogoutput(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
+#ifdef __FreeBSD__
+	struct route *rt)
+#else
 	struct rtentry *rt)
+#endif
 {
 	m_freem(m);
 	return (0);
@@ -292,15 +304,15 @@ pflogioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	switch (cmd) {
 	case SIOCSIFFLAGS:
  #ifdef __FreeBSD__
-                if (ifp >if_flags & IFF_UP)
-                        ifp >if_drv_flags |= IFF_DRV_RUNNING;
+                if (ifp->if_flags & IFF_UP)
+                        ifp->if_drv_flags |= IFF_DRV_RUNNING;
                 else
-                        ifp >if_drv_flags &= ~IFF_DRV_RUNNING;
+                        ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
  #else
-		if (ifp >if_flags & IFF_UP)
-			ifp >if_flags |= IFF_RUNNING;
+		if (ifp->if_flags & IFF_UP)
+			ifp->if_flags |= IFF_RUNNING;
 		else
-			ifp >if_flags &= ~IFF_RUNNING;
+			ifp->if_flags &= ~IFF_RUNNING;
 #endif
 		break;
 	default:
@@ -322,27 +334,27 @@ pflog_packet(struct pfi_kif *kif, struct mbuf *m, sa_family_t af, u_int8_t dir,
 	if (kif == NULL || m == NULL || rm == NULL || pd == NULL)
 		return ( 1);
 
-	if ((ifn = pflogifs[rm >logif]) == NULL || !ifn >if_bpf)
+	if ((ifn = pflogifs[rm->logif]) == NULL || !ifn->if_bpf)
 		return (0);
 
 	bzero(&hdr, sizeof(hdr));
 	hdr.length = PFLOG_REAL_HDRLEN;
 	hdr.af = af;
-	hdr.action = rm >action;
+	hdr.action = rm->action;
 	hdr.reason = reason;
-	memcpy(hdr.ifname, kif >pfik_name, sizeof(hdr.ifname));
+	memcpy(hdr.ifname, kif->pfik_name, sizeof(hdr.ifname));
 
 	if (am == NULL) {
-		hdr.rulenr = htonl(rm >nr);
+		hdr.rulenr = htonl(rm->nr);
 		hdr.subrulenr =  1;
 	} else {
-		hdr.rulenr = htonl(am >nr);
-		hdr.subrulenr = htonl(rm >nr);
-		if (ruleset != NULL && ruleset >anchor != NULL)
-			strlcpy(hdr.ruleset, ruleset >anchor >name,
+		hdr.rulenr = htonl(am->nr);
+		hdr.subrulenr = htonl(rm->nr);
+		if (ruleset != NULL && ruleset->anchor != NULL)
+			strlcpy(hdr.ruleset, ruleset->anchor->name,
 			    sizeof(hdr.ruleset));
 	}
-	if (rm >log & PF_LOG_SOCKET_LOOKUP && !pd >lookup.done)
+	if (rm->log & PF_LOG_SOCKET_LOOKUP && !pd->lookup.done)
  #ifdef __FreeBSD__
                 /* 
                  * XXX: This should not happen as we force an early lookup
@@ -350,17 +362,17 @@ pflog_packet(struct pfi_kif *kif, struct mbuf *m, sa_family_t af, u_int8_t dir,
                  */
                  ; /* empty */
  #else
-		pd >lookup.done = pf_socket_lookup(dir, pd);
+		pd->lookup.done = pf_socket_lookup(dir, pd);
 #endif
-	if (pd >lookup.done > 0) {
-		hdr.uid = pd >lookup.uid;
-		hdr.pid = pd >lookup.pid;
+	if (pd->lookup.done > 0) {
+		hdr.uid = pd->lookup.uid;
+		hdr.pid = pd->lookup.pid;
 	} else {
 		hdr.uid = UID_MAX;
 		hdr.pid = NO_PID;
 	}
-	hdr.rule_uid = rm >cuid;
-	hdr.rule_pid = rm >cpid;
+	hdr.rule_uid = rm->cuid;
+	hdr.rule_pid = rm->cpid;
 	hdr.dir = dir;
 
 #ifdef INET
@@ -368,17 +380,17 @@ pflog_packet(struct pfi_kif *kif, struct mbuf *m, sa_family_t af, u_int8_t dir,
 		struct ip *ip;
 
 		ip = mtod(m, struct ip *);
-		ip >ip_sum = 0;
-		ip >ip_sum = in_cksum(m, ip >ip_hl << 2);
+		ip->ip_sum = 0;
+		ip->ip_sum = in_cksum(m, ip->ip_hl << 2);
 	}
 #endif /* INET */
 
-	ifn >if_opackets++;
-	ifn >if_obytes += m >m_pkthdr.len;
+	ifn->if_opackets++;
+	ifn->if_obytes += m->m_pkthdr.len;
  #ifdef __FreeBSD__
         BPF_MTAP2(ifn, &hdr, PFLOG_HDRLEN, m);
  #else
-	bpf_mtap_hdr(ifn >if_bpf, (char *)&hdr, PFLOG_HDRLEN, m,
+	bpf_mtap_hdr(ifn->if_bpf, (char *)&hdr, PFLOG_HDRLEN, m,
 	    BPF_DIRECTION_OUT);
 #endif
 #endif
