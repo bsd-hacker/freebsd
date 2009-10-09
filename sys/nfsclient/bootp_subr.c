@@ -58,7 +58,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/socketvar.h>
 #include <sys/sysctl.h>
 #include <sys/uio.h>
-#include <sys/vimage.h>
 
 #include <net/if.h>
 #include <net/route.h>
@@ -358,7 +357,6 @@ bootpboot_p_tree(struct radix_node *rn)
 void
 bootpboot_p_rtlist(void)
 {
-	INIT_VNET_NET(curvnet);
 	struct radix_node_head *rnh;
 
 	printf("Routing table:\n");
@@ -387,12 +385,11 @@ bootpboot_p_if(struct ifnet *ifp, struct ifaddr *ifa)
 void
 bootpboot_p_iflist(void)
 {
-	INIT_VNET_NET(curvnet);
 	struct ifnet *ifp;
 	struct ifaddr *ifa;
 
 	printf("Interface list:\n");
-	IFNET_RLOCK(); /* could sleep, but okay for debugging XXX */
+	IFNET_RLOCK();
 	for (ifp = TAILQ_FIRST(&V_ifnet);
 	     ifp != NULL;
 	     ifp = TAILQ_NEXT(ifp, if_link)) {
@@ -1597,7 +1594,6 @@ bootpc_decode_reply(struct nfsv3_diskless *nd, struct bootpc_ifcontext *ifctx,
 void
 bootpc_init(void)
 {
-	INIT_VNET_NET(curvnet);
 	struct bootpc_ifcontext *ifctx, *nctx;	/* Interface BOOTP contexts */
 	struct bootpc_globalcontext *gctx; 	/* Global BOOTP context */
 	struct ifnet *ifp;

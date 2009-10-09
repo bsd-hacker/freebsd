@@ -50,6 +50,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/mount.h>
 #include <sys/bio.h>
 #include <sys/buf.h>
+#include <sys/jail.h>
 #include <sys/malloc.h>
 #include <sys/mbuf.h>
 #include <sys/namei.h>
@@ -61,7 +62,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/stat.h>
 #include <sys/sysctl.h>
 #include <sys/signalvar.h>
-#include <sys/vimage.h>
 
 #include <vm/vm.h>
 #include <vm/vm_object.h>
@@ -82,7 +82,6 @@ __FBSDID("$FreeBSD$");
 #include <net/if.h>
 #include <netinet/in.h>
 #include <netinet/in_var.h>
-#include <netinet/vinet.h>
 
 #include <machine/stdarg.h>
 
@@ -1062,7 +1061,8 @@ nfs_lookup(struct vop_lookup_args *ap)
 		if (error == 0)
 			newvp = NFSTOV(np);
 		vfs_unbusy(mp);
-		vn_lock(dvp, ltype | LK_RETRY);
+		if (newvp != dvp)
+			vn_lock(dvp, ltype | LK_RETRY);
 		if (dvp->v_iflag & VI_DOOMED) {
 			if (error == 0) {
 				if (newvp == dvp)
@@ -1553,7 +1553,7 @@ again:
 			*tl = txdr_unsigned(NFSV3CREATE_EXCLUSIVE);
 			tl = nfsm_build(u_int32_t *, NFSX_V3CREATEVERF);
 #ifdef INET
-			INIT_VNET_INET(curvnet);
+			CURVNET_SET(CRED_TO_VNET(cnp->cn_cred));
 			IN_IFADDR_RLOCK();
 			if (!TAILQ_EMPTY(&V_in_ifaddrhead))
 				*tl++ = IA_SIN(TAILQ_FIRST(&V_in_ifaddrhead))->sin_addr.s_addr;
@@ -1562,6 +1562,7 @@ again:
 				*tl++ = create_verf;
 #ifdef INET
 			IN_IFADDR_RUNLOCK();
+			CURVNET_RESTORE();
 #endif
 			*tl = ++create_verf;
 		} else {
@@ -2936,7 +2937,7 @@ nfs_flush(struct vnode *vp, int waitfor, int commit)
 	int bvecsize = 0, bveccount;
 
 	if (nmp->nm_flag & NFSMNT_INT)
-		slpflag = PCATCH;
+		slpflag = NFS_PCATCH;
 	if (!commit)
 		passone = 0;
 	bo = &vp->v_bufobj;
@@ -3134,7 +3135,7 @@ loop:
 				error = EINTR;
 				goto done;
 			}
-			if (slpflag == PCATCH) {
+			if (slpflag & PCATCH) {
 				slpflag = 0;
 				slptimeo = 2 * hz;
 			}
@@ -3172,7 +3173,7 @@ loop:
 			    error = nfs_sigintr(nmp, td);
 			    if (error)
 				goto done;
-			    if (slpflag == PCATCH) {
+			    if (slpflag & PCATCH) {
 				slpflag = 0;
 				slptimeo = 2 * hz;
 			    }

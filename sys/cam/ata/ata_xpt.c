@@ -83,11 +83,11 @@ static periph_init_t probe_periph_init;
 
 static struct periph_driver probe_driver =
 {
-	probe_periph_init, "probe",
+	probe_periph_init, "aprobe",
 	TAILQ_HEAD_INITIALIZER(probe_driver.units)
 };
 
-PERIPHDRIVER_DECLARE(probe, probe_driver);
+PERIPHDRIVER_DECLARE(aprobe, probe_driver);
 
 typedef enum {
 	PROBE_RESET,
@@ -357,9 +357,9 @@ probestart(struct cam_periph *periph, union ccb *start_ccb)
 		      /*dxfer_len*/sizeof(struct ata_params),
 		      30 * 1000);
 		if (periph->path->device->protocol == PROTO_ATA)
-			ata_36bit_cmd(ataio, ATA_ATA_IDENTIFY, 0, 0, 0);
+			ata_28bit_cmd(ataio, ATA_ATA_IDENTIFY, 0, 0, 0);
 		else
-			ata_36bit_cmd(ataio, ATA_ATAPI_IDENTIFY, 0, 0, 0);
+			ata_28bit_cmd(ataio, ATA_ATAPI_IDENTIFY, 0, 0, 0);
 		break;
 	}
 	case PROBE_SETMODE:
@@ -370,12 +370,12 @@ probestart(struct cam_periph *periph, union ccb *start_ccb)
 		cam_fill_ataio(ataio,
 		      1,
 		      probedone,
-		      /*flags*/CAM_DIR_IN,
-		      MSG_SIMPLE_Q_TAG,
-		      /*data_ptr*/(u_int8_t *)ident_buf,
-		      /*dxfer_len*/sizeof(struct ata_params),
+		      /*flags*/CAM_DIR_NONE,
+		      0,
+		      /*data_ptr*/NULL,
+		      /*dxfer_len*/0,
 		      30 * 1000);
-		ata_36bit_cmd(ataio, ATA_SETFEATURES, ATA_SF_SETXFER, 0,
+		ata_28bit_cmd(ataio, ATA_SETFEATURES, ATA_SF_SETXFER, 0,
 		    ata_max_mode(ident_buf, ATA_UDMA6, ATA_UDMA6));
 		break;
 	}
@@ -1204,7 +1204,7 @@ ata_scan_bus(struct cam_periph *periph, union ccb *request_ccb)
 				    scan_info->request_ccb->ccb_h.path, 1);
 				cts.ccb_h.func_code = XPT_SET_TRAN_SETTINGS;
 				cts.type = CTS_TYPE_CURRENT_SETTINGS;
-				cts.xport_specific.sata.pm_present = 1;
+				cts.xport_specific.sata.pm_present = 0;
 				cts.xport_specific.sata.valid = CTS_SATA_VALID_PM;
 				xpt_action((union ccb *)&cts);
 			}
@@ -1311,7 +1311,7 @@ ata_scan_lun(struct cam_periph *periph, struct cam_path *path,
 		request_ccb->crcn.flags = flags;
 	}
 
-	if ((old_periph = cam_periph_find(path, "probe")) != NULL) {
+	if ((old_periph = cam_periph_find(path, "aprobe")) != NULL) {
 		probe_softc *softc;
 
 		softc = (probe_softc *)old_periph->softc;
@@ -1319,7 +1319,7 @@ ata_scan_lun(struct cam_periph *periph, struct cam_path *path,
 				  periph_links.tqe);
 	} else {
 		status = cam_periph_alloc(proberegister, NULL, probecleanup,
-					  probestart, "probe",
+					  probestart, "aprobe",
 					  CAM_PERIPH_BIO,
 					  request_ccb->ccb_h.path, NULL, 0,
 					  request_ccb);

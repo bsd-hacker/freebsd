@@ -135,8 +135,8 @@ __FBSDID("$FreeBSD$");
  */
 
 struct vpgqueues vm_page_queues[PQ_COUNT];
-struct mtx vm_page_queue_mtx;
-struct mtx vm_page_queue_free_mtx;
+struct vpglocks vm_page_queue_lock;
+struct vpglocks vm_page_queue_free_lock;
 
 vm_page_t vm_page_array = 0;
 int vm_page_array_size = 0;
@@ -1161,7 +1161,9 @@ vm_page_alloc(vm_object_t object, vm_pindex_t pindex, int req)
 	mtx_unlock(&vm_page_queue_free_mtx);
 
 	if (object != NULL) {
-		if (object->memattr != VM_MEMATTR_DEFAULT)
+		/* Ignore device objects; the pager sets "memattr" for them. */
+		if (object->memattr != VM_MEMATTR_DEFAULT &&
+		    object->type != OBJT_DEVICE && object->type != OBJT_SG)
 			pmap_page_set_memattr(m, object->memattr);
 		vm_page_insert(m, object, pindex);
 	} else

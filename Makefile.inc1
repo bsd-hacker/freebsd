@@ -5,7 +5,7 @@
 #	-DNO_CLEANDIR run ${MAKE} clean, instead of ${MAKE} cleandir
 #	-DNO_CLEAN do not clean at all
 #	-DNO_SHARE do not go into share subdir
-#	-DKERNFAST define NO_KERNELCONFIG, NO_KERNELCLEAN and NO_KERNELCONFIG
+#	-DKERNFAST define NO_KERNELCONFIG, NO_KERNELCLEAN and NO_KERNELDEPEND
 #	-DNO_KERNELCONFIG do not run config in ${MAKE} buildkernel
 #	-DNO_KERNELCLEAN do not run ${MAKE} clean in ${MAKE} buildkernel
 #	-DNO_KERNELDEPEND do not run ${MAKE} depend in ${MAKE} buildkernel
@@ -1069,7 +1069,7 @@ libraries:
 #
 # static libgcc.a prerequisite for shared libc
 #
-_prereq_libs= gnu/lib/libgcc
+_prereq_libs= gnu/lib/libssp/libssp_nonshared gnu/lib/libgcc
 
 # These dependencies are not automatically generated:
 #
