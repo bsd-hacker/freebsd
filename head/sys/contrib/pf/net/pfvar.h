@@ -828,7 +828,7 @@ struct pf_state {
 	u_int8_t		 direction;
 #ifdef __FreeBSD__
 	u_int8_t		 pad[2];
-	u_int8_t	 local_flags;
+	u_int8_t		 local_flags;
 #define	PFSTATE_EXPIRING 0x01
 #else
 	u_int8_t		 pad[3];
@@ -930,9 +930,30 @@ struct pfsync_state {
 
 #ifdef __FreeBSD__
 typedef int     	pfsync_state_import_t(struct pfsync_state *, u_int8_t);
-extern pfsync_state_import_t  *pfsync_state_import_ptr;
+typedef	int		pfsync_up_t(void);
+typedef	void		pfsync_insert_state_t(struct pf_state *);
+typedef	void		pfsync_update_state_t(struct pf_state *);
+typedef	void		pfsync_delete_state_t(struct pf_state *);
+typedef void		pfsync_clear_states_t(u_int32_t, const char *);
+typedef int		pfsync_defer_t(struct pf_state *, struct mbuf *);
+
+extern pfsync_state_import_t	*pfsync_state_import_ptr;
+extern pfsync_up_t		*pfsync_up_ptr;
+extern pfsync_insert_state_t	*pfsync_insert_state_ptr;
+extern pfsync_update_state_t	*pfsync_update_state_ptr;
+extern pfsync_delete_state_t	*pfsync_delete_state_ptr;
+extern pfsync_clear_states_t	*pfsync_clear_states_ptr;
+extern pfsync_defer_t		*pfsync_defer_ptr;
+
 void                    pfsync_state_export(struct pfsync_state *,
                             struct pf_state *);
+
+/* Macros to set/clear/test flags. */
+#ifdef _KERNEL
+#define SET(t, f)       ((t) |= (f))
+#define CLR(t, f)       ((t) &= ~(f))
+#define ISSET(t, f)     ((t) & (f))
+#endif
 #endif
 
 #define PFSYNC_FLAG_SRCNODE	0x04

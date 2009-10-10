@@ -973,7 +973,12 @@ pf_state_insert(struct pfi_kif *kif, struct pf_state_key *skw,
 	pf_status.states++;
 	pfi_kif_ref(kif, PFI_KIF_REF_STATE);
 #if NPFSYNC > 0
+#ifdef __FreeBSD__
+	if (pfsync_insert_state_ptr != NULL)
+		pfsync_insert_state_ptr(s);
+#else
 	pfsync_insert_state(s);
+#endif
 #endif
 	return (0);
 }
@@ -1336,7 +1341,12 @@ pf_unlink_state(struct pf_state *cur)
 		export_pflow(cur);
 #endif
 #if NPFSYNC > 0
+#ifdef __FreeBSD__
+	if (pfsync_delete_state_ptr != NULL)
+		pfsync_delete_state_ptr(cur);
+#else
 	pfsync_delete_state(cur);
+#endif
 #endif
 	cur->timeout = PFTM_UNLINKED;
 	pf_src_tree_remove_state(cur);
@@ -3407,14 +3417,23 @@ pf_test_rule(struct pf_rule **rm, struct pf_state **sm, int direction,
 
 #if NPFSYNC > 0
 	if (*sm != NULL && !ISSET((*sm)->state_flags, PFSTATE_NOSYNC) &&
+#ifdef __FreeBSD__
+	    direction == PF_OUT && pfsync_up_ptr != NULL && pfsync_up_ptr()) {
+#else
 	    direction == PF_OUT && pfsync_up()) {
+#endif
 		/*
 		 * We want the state created, but we dont
 		 * want to send this in case a partner
 		 * firewall has to know about it to allow
 		 * replies through it.
 		 */
+#ifdef __FreeBSD__
+		if (pfsync_defer_ptr != NULL)
+			pfsync_defer(*sm, m);
+#else
 		if (pfsync_defer(*sm, m))
+#endif
 			return (PF_DEFER);
 	}
 #endif
@@ -6293,7 +6312,12 @@ pf_test(int dir, struct ifnet *ifp, struct mbuf **m0,
 		    &reason);
 		if (action == PF_PASS) {
 #if NPFSYNC > 0
+#ifdef __FreeBSD__
+			if (pfsync_update_state_ptr != NULL)
+				pfsync_update_state_ptr(s);
+#else
 			pfsync_update_state(s);
+#endif
 #endif /* NPFSYNC */
 			r = s->rule.ptr;
 			a = s->anchor.ptr;
@@ -6328,7 +6352,12 @@ pf_test(int dir, struct ifnet *ifp, struct mbuf **m0,
 		action = pf_test_state_udp(&s, dir, kif, m, off, h, &pd);
 		if (action == PF_PASS) {
 #if NPFSYNC > 0
+#ifdef __FreeBSD__
+                        if (pfsync_update_state_ptr != NULL)
+                                pfsync_update_state_ptr(s);
+#else
 			pfsync_update_state(s);
+#endif
 #endif /* NPFSYNC */
 			r = s->rule.ptr;
 			a = s->anchor.ptr;
@@ -6357,7 +6386,12 @@ pf_test(int dir, struct ifnet *ifp, struct mbuf **m0,
 		    &reason);
 		if (action == PF_PASS) {
 #if NPFSYNC > 0
+#ifdef __FreeBSD__
+                        if (pfsync_update_state_ptr != NULL)
+                                pfsync_update_state_ptr(s);
+#else
 			pfsync_update_state(s);
+#endif
 #endif /* NPFSYNC */
 			r = s->rule.ptr;
 			a = s->anchor.ptr;
@@ -6386,7 +6420,12 @@ pf_test(int dir, struct ifnet *ifp, struct mbuf **m0,
 		action = pf_test_state_other(&s, dir, kif, m, &pd);
 		if (action == PF_PASS) {
 #if NPFSYNC > 0
+#ifdef __FreeBSD__
+                        if (pfsync_update_state_ptr != NULL)
+                                pfsync_update_state_ptr(s);
+#else
 			pfsync_update_state(s);
+#endif
 #endif /* NPFSYNC */
 			r = s->rule.ptr;
 			a = s->anchor.ptr;
@@ -6761,7 +6800,12 @@ pf_test6(int dir, struct ifnet *ifp, struct mbuf **m0,
 		    &reason);
 		if (action == PF_PASS) {
 #if NPFSYNC > 0
+#ifdef __FreeBSD__
+                        if (pfsync_update_state_ptr != NULL)
+                                pfsync_update_state_ptr(s);
+#else
 			pfsync_update_state(s);
+#endif
 #endif /* NPFSYNC */
 			r = s->rule.ptr;
 			a = s->anchor.ptr;
@@ -6796,7 +6840,12 @@ pf_test6(int dir, struct ifnet *ifp, struct mbuf **m0,
 		action = pf_test_state_udp(&s, dir, kif, m, off, h, &pd);
 		if (action == PF_PASS) {
 #if NPFSYNC > 0
+#ifdef __FreeBSD__
+                        if (pfsync_update_state_ptr != NULL)
+                                pfsync_update_state_ptr(s);
+#else
 			pfsync_update_state(s);
+#endif
 #endif /* NPFSYNC */
 			r = s->rule.ptr;
 			a = s->anchor.ptr;
@@ -6832,7 +6881,12 @@ pf_test6(int dir, struct ifnet *ifp, struct mbuf **m0,
 		    m, off, h, &pd, &reason);
 		if (action == PF_PASS) {
 #if NPFSYNC > 0
+#ifdef __FreeBSD__
+                        if (pfsync_update_state_ptr != NULL)
+                                pfsync_update_state_ptr(s);
+#else
 			pfsync_update_state(s);
+#endif
 #endif /* NPFSYNC */
 			r = s->rule.ptr;
 			a = s->anchor.ptr;
@@ -6852,7 +6906,12 @@ pf_test6(int dir, struct ifnet *ifp, struct mbuf **m0,
 		action = pf_test_state_other(&s, dir, kif, m, &pd);
 		if (action == PF_PASS) {
 #if NPFSYNC > 0
+#ifdef __FreeBSD__
+                        if (pfsync_update_state_ptr != NULL)
+                                pfsync_update_state_ptr(s);
+#else
 			pfsync_update_state(s);
+#endif
 #endif /* NPFSYNC */
 			r = s->rule.ptr;
 			a = s->anchor.ptr;

@@ -250,7 +250,13 @@ static struct cdevsw pf_cdevsw = {
  int pf_end_threads = 0;
  struct mtx pf_task_mtx;
  #ifdef __FreeBSD__
- pfsync_state_import_t	*pfsync_state_import_ptr = NULL;
+ pfsync_state_import_t  *pfsync_state_import_ptr = NULL;
+ pfsync_up_t		*pfsync_up_ptr = NULL;
+ pfsync_insert_state_t  *pfsync_insert_state_ptr = NULL;
+ pfsync_update_state_t  *pfsync_update_state_ptr = NULL;
+ pfsync_delete_state_t  *pfsync_delete_state_ptr = NULL;
+ pfsync_clear_states_t  *pfsync_clear_states_ptr = NULL;
+ pfsync_defer_t		*pfsync_defer_ptr = NULL;
  #if NPFLOG >0
  pflog_packet_t *pflog_packet_ptr = NULL;
  #endif
@@ -1991,7 +1997,12 @@ pfioctl(dev_t dev, u_long cmd, caddr_t addr, int flags, struct proc *p)
 		}
 		psk->psk_killed = killed;
 #if NPFSYNC > 0
+#ifdef __FreeBSD__
+		if (pfsync_clear_states_ptr != NULL)
+			pfsync_clear_states_ptr(pf_status.hostid, psk->psk_ifname);
+#else
 		pfsync_clear_states(pf_status.hostid, psk->psk_ifname);
+#endif
 #endif
 		break;
 	}
@@ -2072,7 +2083,7 @@ pfioctl(dev_t dev, u_long cmd, caddr_t addr, int flags, struct proc *p)
 		}
 #ifdef __FreeBSD__
 		if (pfsync_state_import_ptr != NULL)
-			pfsync_state_import_ptr(sp, PFSYNC_SI_IOCTL);
+			error = pfsync_state_import_ptr(sp, PFSYNC_SI_IOCTL);
 #else
 		error = pfsync_state_import(sp, PFSYNC_SI_IOCTL);
 #endif
@@ -3526,7 +3537,7 @@ pfsync_state_export(struct pfsync_state *sp, struct pf_state *st)
                 state->timeout = PFTM_PURGE;
  #if NPFSYNC
                 /* don't send out individual delete messages */
-                state->sync_flags = PFSTATE_NOSYNC;
+                state->state_flags = PFSTATE_NOSYNC;
  #endif
                 pf_unlink_state(state);
         }

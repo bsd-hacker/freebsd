@@ -97,8 +97,6 @@ device		acpi
 device		eisa
 device		pci
 
-device		pfsync
-
 # Floppy drives
 device		fdc
 

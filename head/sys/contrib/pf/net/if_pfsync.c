@@ -308,13 +308,6 @@ SYSCTL_STRUCT(_net_inet_pfsync, 0, stats, CTLFLAG_RW,
     "PFSYNC statistics (struct pfsyncstats, net/if_pfsync.h)");
 #endif
 
-/* Macros to set/clear/test flags. */
-#ifdef _KERNEL
-#define SET(t, f)       ((t) |= (f))
-#define CLR(t, f)       ((t) &= ~(f))
-#define ISSET(t, f)     ((t) & (f))
-#endif
-
 static void	pfsyncintr(void *);
 struct pfsync_swi {
 	void *	pfsync_swi_cookie;
@@ -2604,7 +2597,7 @@ pfsync_q_ins(struct pf_state *st, int q)
 
 #ifdef __FreeBSD__
 	KASSERT(st->sync_state == PFSYNC_S_NONE,
-		("%s: st->sync_state == PFSYNC_S_NONE" __FUNCITON__));
+		("%s: st->sync_state == PFSYNC_S_NONE", __FUNCTION__));
 #else
 	KASSERT(st->sync_state == PFSYNC_S_NONE);
 #endif
@@ -2647,7 +2640,7 @@ pfsync_q_del(struct pf_state *st)
 
 #ifdef __FreeBSD__
 	KASSERT(st->sync_state != PFSYNC_S_NONE, 
-		("%s: st->sync_state != PFSYNC_S_NONE", __FUNCTION));
+		("%s: st->sync_state != PFSYNC_S_NONE", __FUNCTION__));
 #else
 	KASSERT(st->sync_state != PFSYNC_S_NONE);
 #endif
@@ -3049,6 +3042,12 @@ pfsync_modevent(module_t mod, int type, void *data)
  			panic("%s: swi_add %d", __func__, error);
 		
 		pfsync_state_import_ptr = pfsync_state_import;
+		pfsync_up_ptr = pfsync_up;
+		pfsync_insert_state_ptr = pfsync_insert_state;
+		pfsync_update_state_ptr = pfsync_update_state;
+		pfsync_delete_state_ptr = pfsync_delete_state;
+		pfsync_clear_states_ptr = pfsync_clear_states;
+		pfsync_defer_ptr = pfsync_defer;
 #endif
 		break;
 	case MOD_UNLOAD:
@@ -3056,6 +3055,12 @@ pfsync_modevent(module_t mod, int type, void *data)
 		swi_remove(pfsync_swi.pfsync_swi_cookie);
 		
 		pfsync_state_import_ptr = NULL;
+                pfsync_up_ptr = NULL;
+                pfsync_insert_state_ptr = NULL;
+                pfsync_update_state_ptr = NULL;
+                pfsync_delete_state_ptr = NULL;
+                pfsync_clear_states_ptr = NULL;
+		pfsync_defer_ptr = NULL;
 #endif
 		if_clone_detach(&pfsync_cloner);
 		break;
