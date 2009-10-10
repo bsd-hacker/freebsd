@@ -928,6 +928,13 @@ struct pfsync_state {
 	u_int8_t	 updates;
 } __packed;
 
+#ifdef __FreeBSD__
+typedef int     	pfsync_state_import_t(struct pfsync_state *, u_int8_t);
+extern pfsync_state_import_t  *pfsync_state_import_ptr;
+void                    pfsync_state_export(struct pfsync_state *,
+                            struct pf_state *);
+#endif
+
 #define PFSYNC_FLAG_SRCNODE	0x04
 #define PFSYNC_FLAG_NATSRCNODE	0x08
 

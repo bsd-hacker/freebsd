@@ -115,9 +115,13 @@ __FBSDID("$FreeBSD$");
 #endif
 #include <net/pfvar.h>
 
-#if NPFSYNC > 0
+#ifdef __FreeBSD__
+#include <net/if_pfsync.h>
+#else
+#if NPFSYNC > 0 
 #include <net/if_pfsync.h>
 #endif /* NPFSYNC > 0 */
+#endif
 
 #if NPFLOG > 0
 #include <net/if_pflog.h>
@@ -246,6 +250,7 @@ static struct cdevsw pf_cdevsw = {
  int pf_end_threads = 0;
  struct mtx pf_task_mtx;
  #ifdef __FreeBSD__
+ pfsync_state_import_t	*pfsync_state_import_ptr = NULL;
  #if NPFLOG >0
  pflog_packet_t *pflog_packet_ptr = NULL;
  #endif
@@ -2065,7 +2070,10 @@ pfioctl(dev_t dev, u_long cmd, caddr_t addr, int flags, struct proc *p)
 			error = EINVAL;
 			break;
 		}
-#ifdef notyet
+#ifdef __FreeBSD__
+		if (pfsync_state_import_ptr != NULL)
+			pfsync_state_import_ptr(sp, PFSYNC_SI_IOCTL);
+#else
 		error = pfsync_state_import(sp, PFSYNC_SI_IOCTL);
 #endif
 		break;
@@ -2085,9 +2093,7 @@ pfioctl(dev_t dev, u_long cmd, caddr_t addr, int flags, struct proc *p)
 			break;
 		}
 
-#ifdef notyet
 		pfsync_state_export(&ps->state, s);
-#endif
 		break;
 	}
 
@@ -2118,9 +2124,7 @@ pfioctl(dev_t dev, u_long cmd, caddr_t addr, int flags, struct proc *p)
 			if (state->timeout != PFTM_UNLINKED) {
 				if ((nr+1) * sizeof(*p) > (unsigned)ps->ps_len)
 					break;
-#ifdef notyet
 				pfsync_state_export(pstore, state);
-#endif
 #ifdef __FreeBSD__
                                 PF_COPYOUT(pstore, p, sizeof(*p), error);
  #else
@@ -3449,6 +3453,67 @@ fail:
 }
 
  #ifdef __FreeBSD__
+void
+pfsync_state_export(struct pfsync_state *sp, struct pf_state *st)
+{
+        bzero(sp, sizeof(struct pfsync_state));
+
+        /* copy from state key */
+        sp->key[PF_SK_WIRE].addr[0] = st->key[PF_SK_WIRE]->addr[0];
+        sp->key[PF_SK_WIRE].addr[1] = st->key[PF_SK_WIRE]->addr[1];
+        sp->key[PF_SK_WIRE].port[0] = st->key[PF_SK_WIRE]->port[0];
+        sp->key[PF_SK_WIRE].port[1] = st->key[PF_SK_WIRE]->port[1];
+        sp->key[PF_SK_STACK].addr[0] = st->key[PF_SK_STACK]->addr[0];
+        sp->key[PF_SK_STACK].addr[1] = st->key[PF_SK_STACK]->addr[1];
+        sp->key[PF_SK_STACK].port[0] = st->key[PF_SK_STACK]->port[0];
+        sp->key[PF_SK_STACK].port[1] = st->key[PF_SK_STACK]->port[1];
+        sp->proto = st->key[PF_SK_WIRE]->proto;
+        sp->af = st->key[PF_SK_WIRE]->af;
+
+        /* copy from state */
+        strlcpy(sp->ifname, st->kif->pfik_name, sizeof(sp->ifname));
+        bcopy(&st->rt_addr, &sp->rt_addr, sizeof(sp->rt_addr));
+        sp->creation = htonl(time_second - st->creation);
+        sp->expire = pf_state_expires(st);
+        if (sp->expire <= time_second)
+                sp->expire = htonl(0);
+        else
+                sp->expire = htonl(sp->expire - time_second);
+
+        sp->direction = st->direction;
+        sp->log = st->log;
+        sp->timeout = st->timeout;
+        sp->state_flags = st->state_flags;
+        if (st->src_node)
+                sp->sync_flags |= PFSYNC_FLAG_SRCNODE;
+        if (st->nat_src_node)
+                sp->sync_flags |= PFSYNC_FLAG_NATSRCNODE;
+
+        bcopy(&st->id, &sp->id, sizeof(sp->id));
+        sp->creatorid = st->creatorid;
+        pf_state_peer_hton(&st->src, &sp->src);
+        pf_state_peer_hton(&st->dst, &sp->dst);
+
+        if (st->rule.ptr == NULL)
+                sp->rule = htonl(-1);
+        else
+                sp->rule = htonl(st->rule.ptr->nr);
+        if (st->anchor.ptr == NULL)
+                sp->anchor = htonl(-1);
+        else
+                sp->anchor = htonl(st->anchor.ptr->nr);
+        if (st->nat_rule.ptr == NULL)
+                sp->nat_rule = htonl(-1);
+        else
+                sp->nat_rule = htonl(st->nat_rule.ptr->nr);
+
+        pf_state_counter_hton(st->packets[0], sp->packets[0]);
+        pf_state_counter_hton(st->packets[1], sp->packets[1]);
+        pf_state_counter_hton(st->bytes[0], sp->bytes[0]);
+        pf_state_counter_hton(st->bytes[1], sp->bytes[1]);
+
+}
+
  /*
   * XXX - Check for version missmatch!!!
   */
