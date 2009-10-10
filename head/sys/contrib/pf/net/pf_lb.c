@@ -65,12 +65,16 @@ __FBSDID("$FreeBSD$");
  #define        NPFSYNC         0
  #endif
   
+ #ifdef DEV_PFLOW
+ #define        NPFLOW          DEV_PFLOW
+ #else
+ #define        NPFLOW          0
+ #endif
+
  #else
 #include "bpfilter.h"
 #include "pflog.h"
 #include "pfsync.h"
-#endif
-#ifdef notyet
 #include "pflow.h"
 #endif
 
@@ -130,9 +134,7 @@ __FBSDID("$FreeBSD$");
 #endif
 #include <net/pfvar.h>
 #include <net/if_pflog.h>
-#ifdef notyet
 #include <net/if_pflow.h>
-#endif
 
 #if NPFSYNC > 0
 #include <net/if_pfsync.h>

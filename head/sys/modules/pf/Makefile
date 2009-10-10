@@ -31,6 +31,7 @@ opt_pf.h:
 	echo "#define DEV_PF 1" > ${.TARGET}
 	echo "#define DEV_PFLOG 1" >> ${.TARGET}
 	echo "#define DEV_PFSYNC 1" >> ${.TARGET}
+	echo "#define DEV_PFLOW 1" >> ${.TARGET}
 
 .endif
 
