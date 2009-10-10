@@ -1370,7 +1370,12 @@ pf_free_state(struct pf_state *cur)
 #endif
 
 #if NPFSYNC > 0
+#ifdef __FreeBSD__
+	if (pfsync_state_in_use_ptr != NULL)
+		pfsync_state_in_use_ptr(cur);
+#else
 	if (pfsync_state_in_use(cur))
+#endif
 		return;
 #endif
  #ifdef __FreeBSD__
@@ -3437,7 +3442,7 @@ pf_test_rule(struct pf_rule **rm, struct pf_state **sm, int direction,
 		 */
 #ifdef __FreeBSD__
 		if (pfsync_defer_ptr != NULL)
-			pfsync_defer(*sm, m);
+			pfsync_defer_ptr(*sm, m);
 #else
 		if (pfsync_defer(*sm, m))
 #endif

@@ -73,6 +73,10 @@ struct pflow_softc {
 #else
 	struct timeout		 sc_tmo;
 #endif
+#ifdef __FreeBSD__
+	struct ifqueue		 sc_ifq;
+	struct task		 sc_send_task;
+#endif
 	struct in_addr		 sc_sender_ip;
 	u_int16_t		 sc_sender_port;
 	struct in_addr		 sc_receiver_ip;

@@ -90,6 +90,7 @@ __FBSDID("$FreeBSD$");
 #ifdef __FreeBSD__
 #include <machine/in_cksum.h>
 #endif
+
 #define PFLOW_MINMTU	\
     (sizeof(struct pflow_header) + sizeof(struct pflow_flow))
 
@@ -106,6 +107,7 @@ void	pflowattach(int);
 #ifdef __FreeBSD__
 int     pflow_clone_create(struct if_clone *, int, caddr_t);
 void    pflow_clone_destroy(struct ifnet *);
+void	pflow_senddef(void *, int);
 #else
 int	pflow_clone_create(struct if_clone *, int);
 int	pflow_clone_destroy(struct ifnet *);
@@ -205,10 +207,15 @@ pflow_clone_create(struct if_clone *ifc, int unit)
 	ifp->if_start = pflowstart;
 	ifp->if_type = IFT_PFLOW;
 	ifp->if_snd.ifq_maxlen = ifqmaxlen;
+#ifdef __FreeBSD__
+	mtx_init(&pflowif->sc_ifq.ifq_mtx, ifp->if_xname,
+	    "pflow send queue", MTX_DEF);
+	TASK_INIT(&pflowif->sc_send_task, 0, pflow_senddef, pflowif);
+#endif
 	ifp->if_hdrlen = PFLOW_HDRLEN;
 	ifp->if_flags = IFF_UP;
 #ifdef __FreeBSD__
-	ifp->if_flags &= ~IFF_DRV_RUNNING;
+	ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
 #else
 	ifp->if_flags &= ~IFF_RUNNING;	/* not running, need receiver */
 #endif
@@ -231,7 +238,13 @@ pflow_clone_create(struct if_clone *ifc, int unit)
 #endif
 #endif
 	/* Insert into list of pflows */
+#ifdef __FreeBSD__
+	PF_LOCK();
+#endif
 	SLIST_INSERT_HEAD(&pflowif_list, pflowif, sc_next);
+#ifdef __FreeBSD__
+        PF_UNLOCK();
+#endif
 	return (0);
 }
 
@@ -251,7 +264,13 @@ pflow_clone_destroy(struct ifnet *ifp)
 	bpfdetach(ifp);
 #endif
 	if_detach(ifp);
+#ifdef __FreeBSD__
+        PF_LOCK();
+#endif
 	SLIST_REMOVE(&pflowif_list, sc, pflow_softc, sc_next);
+#ifdef __FreeBSD__
+        PF_UNLOCK();
+#endif
 #ifdef __FreeBSD__
 	free(sc->sc_imo.imo_membership, M_DEVBUF);
 #else
@@ -699,7 +718,9 @@ pflow_sendout_mbuf(struct pflow_softc *sc, struct mbuf *m)
 	struct ifnet	*ifp = &sc->sc_if;
 #endif
 	struct ip	*ip;
+#ifndef __FreeBSD__
 	int		 err;
+#endif
 
 	/* UDP Header*/
 	M_PREPEND(m, sizeof(struct udpiphdr), M_DONTWAIT);
@@ -756,15 +777,21 @@ pflow_sendout_mbuf(struct pflow_softc *sc, struct mbuf *m)
 	sc->sc_if.if_obytes += m->m_pkthdr.len;
 #endif
 
+#ifdef __FreeBSD__
+	if (!IF_HANDOFF(&sc->sc_ifq, m, NULL))
+		pflowstats.pflow_oerrors++;
+	taskqueue_enqueue(taskqueue_thread, &sc->sc_send_task);
+#else
 	if ((err = ip_output(m, NULL, NULL, IP_RAWOUTPUT, &sc->sc_imo, NULL))) {
 		pflowstats.pflow_oerrors++;
-#ifdef __FreeBSD__
-		sc->sc_ifp->if_oerrors++;
-#else
 		sc->sc_if.if_oerrors++;
-#endif
 	}
+#endif
+#ifdef __FreeBSD__
+	return (0);
+#else
 	return (err);
+#endif
 }
 
 int
@@ -829,6 +856,23 @@ pflow_sysctl(int *name, u_int namelen, void *oldp, size_t *oldlenp,
 #endif
 
 #ifdef __FreeBSD__
+void
+pflow_senddef(void *arg, __unused int pending)
+{
+	struct pflow_softc *sc = (struct pflow_softc *)arg;
+	struct mbuf *m;
+
+	for(;;) {
+		IF_DEQUEUE(&sc->sc_ifq, m);
+		if (m == NULL)
+			break;
+		if (ip_output(m, NULL, NULL, IP_RAWOUTPUT, &sc->sc_imo, NULL)) {
+			pflowstats.pflow_oerrors++;
+			sc->sc_ifp->if_oerrors++;
+		}
+	}
+}
+
 static int
 pflow_modevent(module_t mod, int type, void *data)
 {

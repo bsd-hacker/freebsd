@@ -3044,6 +3044,7 @@ pfsync_modevent(module_t mod, int type, void *data)
 		pfsync_update_state_ptr = pfsync_update_state;
 		pfsync_delete_state_ptr = pfsync_delete_state;
 		pfsync_clear_states_ptr = pfsync_clear_states;
+		pfsync_state_in_use_ptr = pfsync_state_in_use;
 		pfsync_defer_ptr = pfsync_defer;
 #endif
 		break;
@@ -3057,6 +3058,7 @@ pfsync_modevent(module_t mod, int type, void *data)
                 pfsync_update_state_ptr = NULL;
                 pfsync_delete_state_ptr = NULL;
                 pfsync_clear_states_ptr = NULL;
+		pfsync_state_in_use_ptr = NULL;
 		pfsync_defer_ptr = NULL;
 #endif
 		if_clone_detach(&pfsync_cloner);
