@@ -343,6 +343,8 @@ contrib/ngatm/netnatm/sig/sig_verify.c optional ngatm_uni \
 	compile-with "${NORMAL_C} -I$S/contrib/ngatm"
 contrib/pf/net/if_pflog.c	optional pflog pf inet \
 	compile-with "${NORMAL_C} -I$S/contrib/pf"
+contrib/pf/net/if_pflow.c	optional pflow pf inet \
+	compile-with "${NORMAL_C} -I$S/contrib/pf"
 contrib/pf/net/if_pfsync.c	optional pfsync pf inet \
 	compile-with "${NORMAL_C} -I$S/contrib/pf"
 contrib/pf/net/pf.c		optional pf inet \
