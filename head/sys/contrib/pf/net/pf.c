@@ -1338,7 +1338,12 @@ pf_unlink_state(struct pf_state *cur)
 	RB_REMOVE(pf_state_tree_id, &tree_id, cur);
 #if NPFLOW > 0
 	if (cur->state_flags & PFSTATE_PFLOW)
+#ifdef __FreeBSD__
+		if (export_pflow_ptr != NULL)
+			export_pflow_ptr(cur);
+#else
 		export_pflow(cur);
+#endif
 #endif
 #if NPFSYNC > 0
 #ifdef __FreeBSD__

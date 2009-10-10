@@ -246,6 +246,7 @@ static struct cdevsw pf_cdevsw = {
  int pf_end_threads = 0;
  struct mtx pf_task_mtx;
  #ifdef __FreeBSD__
+ /* pfsync */
  pfsync_state_import_t  *pfsync_state_import_ptr = NULL;
  pfsync_up_t		*pfsync_up_ptr = NULL;
  pfsync_insert_state_t  *pfsync_insert_state_ptr = NULL;
@@ -253,6 +254,8 @@ static struct cdevsw pf_cdevsw = {
  pfsync_delete_state_t  *pfsync_delete_state_ptr = NULL;
  pfsync_clear_states_t  *pfsync_clear_states_ptr = NULL;
  pfsync_defer_t		*pfsync_defer_ptr = NULL;
+ /* pflow */
+ export_pflow_t		*export_pflow_ptr = NULL;
  #if NPFLOG >0
  pflog_packet_t *pflog_packet_ptr = NULL;
  #endif

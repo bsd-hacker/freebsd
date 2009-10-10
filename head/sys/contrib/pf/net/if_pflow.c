@@ -17,17 +17,50 @@
  * OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#ifdef __FreeBSD__
+#include "opt_inet.h"
+#include "opt_inet6.h"
+#include "opt_bpf.h"
+#include "opt_pf.h"
+
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
+
+#ifdef DEV_BPF
+#define NBPFILTER       DEV_BPF
+#else
+#define NBPFILTER       0
+#endif
+
+#endif /* __FreeBSD__ */
+
 #include <sys/types.h>
+#ifdef __FreeBSD__
+#include <sys/priv.h>
+#endif
 #include <sys/malloc.h>
 #include <sys/param.h>
 #include <sys/mbuf.h>
 #include <sys/socket.h>
+#ifdef __FreeBSD__
+#include <sys/module.h>
+#include <sys/sockio.h>
+#include <sys/taskqueue.h>
+#include <sys/lock.h>
+#include <sys/mutex.h>
+#else
 #include <sys/ioctl.h>
+#endif
 #include <sys/kernel.h>
 #include <sys/sysctl.h>
+#ifndef __FreeBSD__
 #include <dev/rndvar.h>
+#endif
 
 #include <net/if.h>
+#ifdef __FreeBSD__
+#include <net/if_clone.h>
+#endif
 #include <net/if_types.h>
 #include <net/bpf.h>
 #include <net/route.h>
@@ -49,9 +82,14 @@
 #include <net/pfvar.h>
 #include <net/if_pflow.h>
 
+#ifndef __FreeBSD__
 #include "bpfilter.h"
 #include "pflow.h"
+#endif
 
+#ifdef __FreeBSD__
+#include <machine/in_cksum.h>
+#endif
 #define PFLOW_MINMTU	\
     (sizeof(struct pflow_header) + sizeof(struct pflow_flow))
 
@@ -65,11 +103,20 @@ SLIST_HEAD(, pflow_softc) pflowif_list;
 struct pflowstats	 pflowstats;
 
 void	pflowattach(int);
+#ifdef __FreeBSD__
+int     pflow_clone_create(struct if_clone *, int, caddr_t);
+void    pflow_clone_destroy(struct ifnet *);
+#else
 int	pflow_clone_create(struct if_clone *, int);
 int	pflow_clone_destroy(struct ifnet *);
+#endif
 void	pflow_setmtu(struct pflow_softc *, int);
 int	pflowoutput(struct ifnet *, struct mbuf *, struct sockaddr *,
+#ifdef __FreeBSD__
+	    struct route *);
+#else
 	    struct rtentry *);
+#endif
 int	pflowioctl(struct ifnet *, u_long, caddr_t);
 void	pflowstart(struct ifnet *);
 
@@ -84,16 +131,22 @@ int	pflow_get_dynport(void);
 int	export_pflow_if(struct pf_state*, struct pflow_softc *);
 int	copy_flow_to_m(struct pflow_flow *flow, struct pflow_softc *sc);
 
+#ifdef __FreeBSD__
+IFC_SIMPLE_DECLARE(pflow, 1);
+#else
 struct if_clone	pflow_cloner =
     IF_CLONE_INITIALIZER("pflow", pflow_clone_create,
     pflow_clone_destroy);
+#endif
 
+#ifndef __FreeBSD__
 /* from in_pcb.c */
 extern int ipport_hifirstauto;
 extern int ipport_hilastauto;
 
 /* from kern/kern_clock.c; incremented each clock tick. */
 extern int ticks;
+#endif
 
 void
 pflowattach(int npflow)
@@ -103,7 +156,11 @@ pflowattach(int npflow)
 }
 
 int
+#ifdef __FreeBSD__
+pflow_clone_create(struct if_clone *ifc, int unit, caddr_t param)
+#else
 pflow_clone_create(struct if_clone *ifc, int unit)
+#endif
 {
 	struct ifnet		*ifp;
 	struct pflow_softc	*pflowif;
@@ -115,16 +172,33 @@ pflow_clone_create(struct if_clone *ifc, int unit)
 	pflowif->sc_sender_ip.s_addr = INADDR_ANY;
 	pflowif->sc_sender_port = pflow_get_dynport();
 
+#ifdef __FreeBSD__
+        pflowif->sc_imo.imo_membership = (struct in_multi **)malloc(
+            (sizeof(struct in_multi *) * IP_MIN_MEMBERSHIPS), M_DEVBUF,
+            M_NOWAIT | M_ZERO);
+        pflowif->sc_imo.imo_multicast_vif = -1;
+#else
 	pflowif->sc_imo.imo_membership = malloc(
 	    (sizeof(struct in_multi *) * IP_MIN_MEMBERSHIPS), M_IPMOPTS,
 	    M_WAITOK|M_ZERO);
+#endif
 	pflowif->sc_imo.imo_max_memberships = IP_MIN_MEMBERSHIPS;
 	pflowif->sc_receiver_ip.s_addr = 0;
 	pflowif->sc_receiver_port = 0;
 	pflowif->sc_sender_ip.s_addr = INADDR_ANY;
 	pflowif->sc_sender_port = pflow_get_dynport();
+#ifdef __FreeBSD__
+	ifp = pflowif->sc_ifp = if_alloc(IFT_PFLOW);
+        if (ifp == NULL) {
+                free(pflowif->sc_imo.imo_membership, M_DEVBUF);
+                free(pflowif, M_DEVBUF);
+                return (ENOSPC);
+        }
+        if_initname(ifp, ifc->ifc_name, unit);
+#else
 	ifp = &pflowif->sc_if;
 	snprintf(ifp->if_xname, sizeof ifp->if_xname, "pflow%d", unit);
+#endif
 	ifp->if_softc = pflowif;
 	ifp->if_ioctl = pflowioctl;
 	ifp->if_output = pflowoutput;
@@ -133,22 +207,39 @@ pflow_clone_create(struct if_clone *ifc, int unit)
 	ifp->if_snd.ifq_maxlen = ifqmaxlen;
 	ifp->if_hdrlen = PFLOW_HDRLEN;
 	ifp->if_flags = IFF_UP;
+#ifdef __FreeBSD__
+	ifp->if_flags &= ~IFF_DRV_RUNNING;
+#else
 	ifp->if_flags &= ~IFF_RUNNING;	/* not running, need receiver */
+#endif
 	pflow_setmtu(pflowif, ETHERMTU);
+#ifdef __FreeBSD__
+	callout_init(&pflowif->sc_tmo, CALLOUT_MPSAFE);
+#else
 	timeout_set(&pflowif->sc_tmo, pflow_timeout, pflowif);
+#endif
 	if_attach(ifp);
+#ifndef __FreeBSD__
 	if_alloc_sadl(ifp);
-
-#if NBPFILTER > 0
-	bpfattach(&pflowif->sc_if.if_bpf, ifp, DLT_RAW, 0);
 #endif
 
+#if NBPFILTER > 0
+#ifdef __FreeBSD__
+        bpfattach(ifp, DLT_RAW, 0);
+#else
+	bpfattach(&pflowif->sc_if.if_bpf, ifp, DLT_RAW, 0);
+#endif
+#endif
 	/* Insert into list of pflows */
 	SLIST_INSERT_HEAD(&pflowif_list, pflowif, sc_next);
 	return (0);
 }
 
+#ifdef __FreeBSD__
+void
+#else
 int
+#endif
 pflow_clone_destroy(struct ifnet *ifp)
 {
 	struct pflow_softc	*sc = ifp->if_softc;
@@ -161,10 +252,16 @@ pflow_clone_destroy(struct ifnet *ifp)
 #endif
 	if_detach(ifp);
 	SLIST_REMOVE(&pflowif_list, sc, pflow_softc, sc_next);
+#ifdef __FreeBSD__
+	free(sc->sc_imo.imo_membership, M_DEVBUF);
+#else
 	free(sc->sc_imo.imo_membership, M_IPMOPTS);
+#endif
 	free(sc, M_DEVBUF);
 	splx(s);
+#ifndef __FreeBSD__
 	return (0);
+#endif
 }
 
 /*
@@ -178,8 +275,17 @@ pflowstart(struct ifnet *ifp)
 
 	for (;;) {
 		s = splnet();
+#ifdef __FreeBSD__
+		IF_LOCK(&ifp->if_snd);
+		_IF_DROP(&ifp->if_snd);
+                _IF_DEQUEUE(&ifp->if_snd, m);
+#else
 		IF_DROP(&ifp->if_snd);
 		IF_DEQUEUE(&ifp->if_snd, m);
+#endif
+#ifdef __FreeBSD__
+		IF_UNLOCK(&ifp->if_snd);
+#endif
 		splx(s);
 
 		if (m == NULL)
@@ -190,7 +296,11 @@ pflowstart(struct ifnet *ifp)
 
 int
 pflowoutput(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
+#ifdef __FreeBSD__
+	struct route *rt)
+#else
 	struct rtentry *rt)
+#endif
 {
 	m_freem(m);
 	return (0);
@@ -200,7 +310,9 @@ pflowoutput(struct ifnet *ifp, struct mbuf *m, struct sockaddr *dst,
 int
 pflowioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 {
+#ifndef __FreeBSD__
 	struct proc		*p = curproc;
+#endif
 	struct pflow_softc	*sc = ifp->if_softc;
 	struct ifreq		*ifr = (struct ifreq *)data;
 	struct pflowreq		 pflowr;
@@ -214,10 +326,18 @@ pflowioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		if ((ifp->if_flags & IFF_UP) &&
 		    sc->sc_receiver_ip.s_addr != 0 &&
 		    sc->sc_receiver_port != 0) {
+#ifdef __FreeBSD__
+			ifp->if_drv_flags |= IFF_DRV_RUNNING;
+#else
 			ifp->if_flags |= IFF_RUNNING;
+#endif
 			sc->sc_gcounter=pflowstats.pflow_flows;
 		} else
+#ifdef __FreeBSD__
+                        ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
+#else
 			ifp->if_flags &= ~IFF_RUNNING;
+#endif
 		break;
 	case SIOCSIFMTU:
 		if (ifr->ifr_mtu < PFLOW_MINMTU)
@@ -244,7 +364,11 @@ pflowioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		break;
 
 	case SIOCSETPFLOW:
+#ifdef __FreeBSD__
+                if ((error = priv_check(curthread, PRIV_NETINET_PF)) != 0)
+#else
 		if ((error = suser(p, p->p_acflag)) != 0)
+#endif
 			return (error);
 		if ((error = copyin(ifr->ifr_data, &pflowr,
 		    sizeof(pflowr))))
@@ -264,10 +388,18 @@ pflowioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		if ((ifp->if_flags & IFF_UP) &&
 		    sc->sc_receiver_ip.s_addr != 0 &&
 		    sc->sc_receiver_port != 0) {
+#ifdef __FreeBSD__
+                        ifp->if_drv_flags |= IFF_DRV_RUNNING;
+#else
 			ifp->if_flags |= IFF_RUNNING;
+#endif
 			sc->sc_gcounter=pflowstats.pflow_flows;
 		} else
+#ifdef __FreeBSD__
+                        ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
+#else
 			ifp->if_flags &= ~IFF_RUNNING;
+#endif
 
 		break;
 
@@ -291,7 +423,11 @@ pflow_setmtu(struct pflow_softc *sc, int mtu_req)
 	    sizeof (struct udpiphdr)) / sizeof(struct pflow_flow);
 	if (sc->sc_maxcount > PFLOW_MAXFLOWS)
 	    sc->sc_maxcount = PFLOW_MAXFLOWS;
+#ifdef __FreeBSD__
+	sc->sc_ifp->if_mtu = sizeof(struct pflow_header) +
+#else
 	sc->sc_if.if_mtu = sizeof(struct pflow_header) +
+#endif
 	    sizeof (struct udpiphdr) + 
 	    sc->sc_maxcount * sizeof(struct pflow_flow);
 }
@@ -326,10 +462,19 @@ pflow_get_mbuf(struct pflow_softc *sc)
 	h.flow_sequence = htonl(sc->sc_gcounter);
 	h.engine_type = PFLOW_ENGINE_TYPE;
 	h.engine_id = PFLOW_ENGINE_ID;
+#ifdef __FreeBSD__
+	m_copyback(m, 0, PFLOW_HDRLEN, (caddr_t)&h);
+#else
 	m_copyback(m, 0, PFLOW_HDRLEN, &h);
+#endif
 
 	sc->sc_count = 0;
+#ifdef __FreeBSD__
+	callout_reset(&sc->sc_tmo, PFLOW_TIMEOUT * hz,
+	    pflow_timeout, sc);
+#else
 	timeout_add_sec(&sc->sc_tmo, PFLOW_TIMEOUT);
+#endif
 	return (m);
 }
 
@@ -383,11 +528,19 @@ int
 export_pflow_if(struct pf_state *st, struct pflow_softc *sc)
 {
 	struct pf_state		 pfs_copy;
+#ifdef __FreeBSD__
+	struct ifnet		*ifp = sc->sc_ifp;
+#else
 	struct ifnet		*ifp = &sc->sc_if;
+#endif
 	u_int64_t		 bytes[2];
 	int			 ret = 0;
 
+#ifdef __FreeBSD__
+	if (!(ifp->if_drv_flags & IFF_DRV_RUNNING))
+#else
 	if (!(ifp->if_flags & IFF_RUNNING))
+#endif
 		return (0);
 
 	if ((st->bytes[0] < (u_int64_t)PFLOW_MAXBYTES)
@@ -439,7 +592,11 @@ copy_flow_to_m(struct pflow_flow *flow, struct pflow_softc *sc)
 	}
 	m_copyback(sc->sc_mbuf, PFLOW_HDRLEN +
 	    (sc->sc_count * sizeof (struct pflow_flow)),
+#ifdef __FreeBSD__
+	    sizeof (struct pflow_flow), (caddr_t)flow);
+#else
 	    sizeof (struct pflow_flow), flow);
+#endif
 
 	if (pflowstats.pflow_flows == sc->sc_gcounter)
 		pflowstats.pflow_flows++;
@@ -494,15 +651,27 @@ pflow_sendout(struct pflow_softc *sc)
 {
 	struct mbuf		*m = sc->sc_mbuf;
 	struct pflow_header	*h;
+#ifdef __FreeBSD__
+	struct ifnet		*ifp = sc->sc_ifp;
+#else
 	struct ifnet		*ifp = &sc->sc_if;
+#endif
 
+#ifdef __FreeBSD__
+	callout_stop(&sc->sc_tmo);
+#else
 	timeout_del(&sc->sc_tmo);
+#endif
 
 	if (m == NULL)
 		return (0);
 
 	sc->sc_mbuf = NULL;
+#ifdef __FreeBSD__
+        if (!(ifp->if_drv_flags & IFF_DRV_RUNNING)) {
+#else
 	if (!(ifp->if_flags & IFF_RUNNING)) {
+#endif
 		m_freem(m);
 		return (0);
 	}
@@ -524,7 +693,11 @@ pflow_sendout_mbuf(struct pflow_softc *sc, struct mbuf *m)
 {
 	struct udpiphdr	*ui;
 	u_int16_t	 len = m->m_pkthdr.len;
+#ifdef __FreeBSD__
+        struct ifnet            *ifp = sc->sc_ifp;
+#else
 	struct ifnet	*ifp = &sc->sc_if;
+#endif
 	struct ip	*ip;
 	int		 err;
 
@@ -556,24 +729,40 @@ pflow_sendout_mbuf(struct pflow_softc *sc, struct mbuf *m)
 	 * Compute the pseudo-header checksum; defer further checksumming
 	 * until ip_output() or hardware (if it exists).
 	 */
+#ifndef __FreeBSD__
+	/* XXX */
 	m->m_pkthdr.csum_flags |= M_UDPV4_CSUM_OUT;
 	ui->ui_sum = in_cksum_phdr(ui->ui_src.s_addr,
 	    ui->ui_dst.s_addr, htons(len + sizeof(struct udphdr) +
 	    IPPROTO_UDP));
+#endif
 
 #if NBPFILTER > 0
 	if (ifp->if_bpf) {
 		ip->ip_sum = in_cksum(m, ip->ip_hl << 2);
+#ifdef __FreeBSD__
+                BPF_MTAP(ifp, m);
+#else
 		bpf_mtap(ifp->if_bpf, m, BPF_DIRECTION_OUT);
+#endif
 	}
 #endif
 
+#ifdef __FreeBSD__
+	sc->sc_ifp->if_opackets++;
+	sc->sc_ifp->if_obytes += m->m_pkthdr.len;
+#else
 	sc->sc_if.if_opackets++;
 	sc->sc_if.if_obytes += m->m_pkthdr.len;
+#endif
 
 	if ((err = ip_output(m, NULL, NULL, IP_RAWOUTPUT, &sc->sc_imo, NULL))) {
 		pflowstats.pflow_oerrors++;
+#ifdef __FreeBSD__
+		sc->sc_ifp->if_oerrors++;
+#else
 		sc->sc_if.if_oerrors++;
+#endif
 	}
 	return (err);
 }
@@ -581,13 +770,29 @@ pflow_sendout_mbuf(struct pflow_softc *sc, struct mbuf *m)
 int
 pflow_get_dynport(void)
 {
+#ifdef __FreeBSD__
+	u_int16_t	low, high, cut;
+#else
 	u_int16_t	tmp, low, high, cut;
+#endif
 
+#ifdef __FreeBSD__
+	low = V_ipport_firstauto; /* sysctl */
+        high = V_ipport_lastauto;
+#else
 	low = ipport_hifirstauto;     /* sysctl */
 	high = ipport_hilastauto;
+#endif
 
+#ifdef __FreeBSD__
+	cut = low + (arc4random() % (1 + high - low));
+#else
 	cut = arc4random_uniform(1 + high - low) + low;
+#endif
 
+#ifdef __FreeBSD__
+	return (cut);
+#else
 	for (tmp = cut; tmp <= high; ++(tmp)) {
 		if (!in_baddynamic(tmp, IPPROTO_UDP))
 			return (htons(tmp));
@@ -599,8 +804,10 @@ pflow_get_dynport(void)
 	}
 
 	return (htons(ipport_hilastauto)); /* XXX */
+#endif
 }
 
+#ifdef notyet
 int
 pflow_sysctl(int *name, u_int namelen, void *oldp, size_t *oldlenp,
     void *newp, size_t newlen)
@@ -619,3 +826,40 @@ pflow_sysctl(int *name, u_int namelen, void *oldp, size_t *oldlenp,
 	}
 	return (0);
 }
+#endif
+
+#ifdef __FreeBSD__
+static int
+pflow_modevent(module_t mod, int type, void *data)
+{
+        int error = 0;
+
+        switch (type) {
+        case MOD_LOAD:
+                pflowattach(0);
+		export_pflow_ptr = export_pflow;
+                break;
+        case MOD_UNLOAD:
+                if_clone_detach(&pflow_cloner);
+		export_pflow_ptr = NULL;
+                break;
+        default:
+                error = EINVAL;
+                break;
+        }
+
+        return error;
+}
+
+static moduledata_t pflow_mod = {
+        "pflow",
+        pflow_modevent,
+        0
+};
+
+#define PFLOW_MODVER 1
+
+DECLARE_MODULE(pflow, pflow_mod, SI_SUB_PROTO_IFATTACHDOMAIN, SI_ORDER_ANY);
+MODULE_VERSION(pflow, PFLOW_MODVER);
+MODULE_DEPEND(pflow, pf, PF_MODVER, PF_MODVER, PF_MODVER);
+#endif /* __FreeBSD__ */

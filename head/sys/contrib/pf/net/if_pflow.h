@@ -57,14 +57,22 @@ struct pflow_flow {
 extern int pflow_ok;
 
 struct pflow_softc {
+#ifdef __FreeBSD__
+	struct ifnet		*sc_ifp;
+#else
 	struct ifnet		 sc_if;
+#endif
 	struct ifnet		*sc_pflow_ifp;
 
 	unsigned int		 sc_count;
 	unsigned int		 sc_maxcount;
 	u_int64_t		 sc_gcounter;
 	struct ip_moptions	 sc_imo;
+#ifdef __FreeBSD__
+	struct callout		 sc_tmo;
+#else
 	struct timeout		 sc_tmo;
+#endif
 	struct in_addr		 sc_sender_ip;
 	u_int16_t		 sc_sender_port;
 	struct in_addr		 sc_receiver_ip;
@@ -74,7 +82,6 @@ struct pflow_softc {
 };
 
 extern struct pflow_softc	*pflowif;
-
 #endif /* _KERNEL */
 
 struct pflow_header {
@@ -113,6 +120,11 @@ struct pflowreq {
 };
 
 #ifdef _KERNEL
+#ifdef __FreeBSD__
+#define SIOCSETPFLOW   _IOW('i', 249, struct ifreq)
+#define SIOCGETPFLOW   _IOWR('i', 250, struct ifreq)
+#endif
+
 int export_pflow(struct pf_state *);
 int pflow_sysctl(int *, u_int,  void *, size_t *, void *, size_t);
 #endif /* _KERNEL */

@@ -104,9 +104,6 @@ __FBSDID("$FreeBSD$");
 #include <net/if_clone.h>
 #endif
 #include <net/if_types.h>
-#ifdef __FreeBSD__
-#include <net/netisr.h>
-#endif
 #include <net/route.h>
 #include <net/bpf.h>
 #include <net/netisr.h>
@@ -3082,5 +3079,5 @@ static moduledata_t pfsync_mod = {
 
 DECLARE_MODULE(pfsync, pfsync_mod, SI_SUB_PROTO_IFATTACHDOMAIN, SI_ORDER_ANY);
 MODULE_VERSION(pfsync, PFSYNC_MODVER);
-MODULE_DEPEND(pflog, pf, PF_MODVER, PF_MODVER, PF_MODVER);
+MODULE_DEPEND(pfsync, pf, PF_MODVER, PF_MODVER, PF_MODVER);
 #endif /* __FreeBSD__ */

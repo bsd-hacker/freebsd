@@ -929,6 +929,7 @@ struct pfsync_state {
 } __packed;
 
 #ifdef __FreeBSD__
+/* pfsync */
 typedef int     	pfsync_state_import_t(struct pfsync_state *, u_int8_t);
 typedef	int		pfsync_up_t(void);
 typedef	void		pfsync_insert_state_t(struct pf_state *);
@@ -947,6 +948,11 @@ extern pfsync_defer_t		*pfsync_defer_ptr;
 
 void                    pfsync_state_export(struct pfsync_state *,
                             struct pf_state *);
+
+/* pflow */
+typedef int		export_pflow_t(struct pf_state *);
+
+extern export_pflow_t		*export_pflow_ptr;
 
 /* Macros to set/clear/test flags. */
 #ifdef _KERNEL
