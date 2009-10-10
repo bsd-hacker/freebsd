@@ -26,9 +26,12 @@ opt_bpf.h:
 	echo "#define DEV_BPF 1" > ${.TARGET}
 
 # pflog can be loaded as a module, have the additional checks turned on
+# pfsync can be loaded as a module, have the additional checks turned on
 opt_pf.h:
 	echo "#define DEV_PF 1" > ${.TARGET}
 	echo "#define DEV_PFLOG 1" >> ${.TARGET}
+	echo "#define DEV_PFSYNC 1" >> ${.TARGET}
+
 .endif
 
 .include <bsd.kmod.mk>

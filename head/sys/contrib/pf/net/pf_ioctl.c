@@ -115,13 +115,9 @@ __FBSDID("$FreeBSD$");
 #endif
 #include <net/pfvar.h>
 
-#ifdef __FreeBSD__
-#include <net/if_pfsync.h>
-#else
 #if NPFSYNC > 0 
 #include <net/if_pfsync.h>
 #endif /* NPFSYNC > 0 */
-#endif
 
 #if NPFLOG > 0
 #include <net/if_pflog.h>
@@ -3537,7 +3533,7 @@ pfsync_state_export(struct pfsync_state *sp, struct pf_state *st)
                 state->timeout = PFTM_PURGE;
  #if NPFSYNC
                 /* don't send out individual delete messages */
-                state->state_flags = PFSTATE_NOSYNC;
+                state->sync_state = PFSTATE_NOSYNC;
  #endif
                 pf_unlink_state(state);
         }

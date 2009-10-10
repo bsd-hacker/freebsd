@@ -3497,9 +3497,7 @@ pf_create_state(struct pf_rule *r, struct pf_rule *nr, struct pf_rule *a,
 	if (r->rule_flag & PFRULE_PFLOW)
 		s->state_flags |= PFSTATE_PFLOW;
 	s->log = r->log & PF_LOG_ALL;
-#ifdef notyet
 	s->sync_state = PFSYNC_S_NONE;
-#endif
 	if (nr != NULL)
 		s->log |= nr->log & PF_LOG_ALL;
 	switch (pd->proto) {
