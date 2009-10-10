@@ -34,6 +34,7 @@ LDADD+=	-lbsdxml -ljail -lsbuf
 SRCS+=	ifcarp.c		# SIOC[GS]VH support
 SRCS+=	ifgroup.c		# ...
 SRCS+=	ifpfsync.c		# pfsync(4) support
+SRCS+=	ifpflow.c		# pflow(4) support
 
 SRCS+=	ifbridge.c		# bridge support
 SRCS+=	iflagg.c		# lagg support
