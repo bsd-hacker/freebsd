@@ -30,12 +30,21 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifdef __FreeBSD__
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
+
+#include <sys/param.h>
+#endif
 #include <sys/types.h>
 #include <sys/ioctl.h>
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <net/if.h>
+#ifdef __FreeBSD__
+#include <net/pfvar.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -48,7 +57,11 @@
 #include <errno.h>
 #include <stdarg.h>
 #include <fcntl.h>
+#ifdef __FreeBSD__
+#include "pidfile.h"
+#else
 #include <util.h>
+#endif
 #include "pflogd.h"
 
 pcap_t *hpcap;
@@ -153,7 +166,11 @@ logmsg(int pri, const char *message, ...)
 	va_end(ap);
 }
 
+#ifdef __FreeBSD__
+void
+#else
 __dead void
+#endif
 usage(void)
 {
 	fprintf(stderr, "usage: pflogd [-Dx] [-d delay] [-f filename]");
@@ -214,7 +231,11 @@ if_exists(char *ifname)
 		sizeof(ifr.ifr_name))
 			errx(1, "main ifr_name: strlcpy");
 	ifr.ifr_data = (caddr_t)&ifrdat;
+#ifdef __FreeBSD__
+	if (ioctl(s, DIOCGIFSPEED, (caddr_t)&ifr) == -1)
+#else
 	if (ioctl(s, SIOCGIFDATA, (caddr_t)&ifr) == -1)
+#endif
 		return (0);
 	if (close(s))
 		err(1, "close");

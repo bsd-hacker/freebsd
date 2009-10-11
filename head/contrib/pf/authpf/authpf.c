@@ -16,6 +16,11 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#ifdef __FreeBSD__
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
+#endif
+
 #include <sys/types.h>
 #include <sys/file.h>
 #include <sys/ioctl.h>
@@ -68,7 +73,11 @@ struct timeval	Tstart, Tend;	/* start and end times of session */
 
 volatile sig_atomic_t	want_death;
 static void		need_death(int signo);
+#ifdef __FreeBSD__
+static void		do_death(int);
+#else
 static __dead void	do_death(int);
+#endif
 extern char *__progname;	/* program name */
 
 /*
@@ -912,7 +921,11 @@ need_death(int signo)
 /*
  * function that removes our stuff when we go away.
  */
+#ifdef __FreeBSD__
+static void
+#else
 static __dead void
+#endif
 do_death(int active)
 {
 	int	ret = 0;

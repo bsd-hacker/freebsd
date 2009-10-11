@@ -16,6 +16,11 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#ifdef __FreeBSD__
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
+#endif
+
 #include <sys/queue.h>
 #include <sys/types.h>
 #include <sys/time.h>
@@ -43,6 +48,10 @@
 #include <vis.h>
 
 #include "filter.h"
+
+#ifdef __FreeBSD__
+#define LIST_END(s)	NULL
+#endif
 
 #define CONNECT_TIMEOUT	30
 #define MIN_PORT	1024
@@ -574,7 +583,11 @@ logmsg(int pri, const char *message, ...)
 
 		/* We don't care about truncation. */
 		vsnprintf(buf, sizeof buf, message, ap);
+#ifdef __FreeBSD__
+		strvis(visbuf, buf, VIS_CSTYLE | VIS_NL);
+#else
 		strnvis(visbuf, buf, sizeof visbuf, VIS_CSTYLE | VIS_NL);
+#endif
 		fprintf(stderr, "%s\n", visbuf);
 	}
 
