@@ -635,7 +635,8 @@ __elfN(load_file)(struct proc *p, const char *file, u_long *addr,
 	}
 
 	for (i = 0, numsegs = 0; i < hdr->e_phnum; i++) {
-		if (phdr[i].p_type == PT_LOAD) {	/* Loadable segment */
+		if (phdr[i].p_type == PT_LOAD && phdr[i].p_memsz != 0) {
+			/* Loadable segment */
 			prot = 0;
 			if (phdr[i].p_flags & PF_X)
   				prot |= VM_PROT_EXECUTE;
@@ -687,7 +688,7 @@ __CONCAT(exec_, __elfN(imgact))(struct image_params *imgp)
 	u_long text_size = 0, data_size = 0, total_size = 0;
 	u_long text_addr = 0, data_addr = 0;
 	u_long seg_size, seg_addr;
-	u_long addr, entry = 0, proghdr = 0;
+	u_long addr, et_dyn_addr, entry = 0, proghdr = 0;
 	int32_t osrel = 0;
 	int error = 0, i;
 	const char *interp = NULL, *newinterp = NULL;
@@ -735,9 +736,12 @@ __CONCAT(exec_, __elfN(imgact))(struct image_params *imgp)
 		    hdr->e_ident[EI_OSABI]);
 		return (ENOEXEC);
 	}
-	if (hdr->e_type == ET_DYN &&
-	    (brand_info->flags & BI_CAN_EXEC_DYN) == 0)
-		return (ENOEXEC);
+	if (hdr->e_type == ET_DYN) {
+		if ((brand_info->flags & BI_CAN_EXEC_DYN) == 0)
+			return (ENOEXEC);
+		et_dyn_addr = ET_DYN_LOAD_ADDR;
+	} else
+		et_dyn_addr = 0;
 	sv = brand_info->sysvec;
 	if (interp != NULL && brand_info->interp_newpath != NULL)
 		newinterp = brand_info->interp_newpath;
@@ -764,6 +768,8 @@ __CONCAT(exec_, __elfN(imgact))(struct image_params *imgp)
 	for (i = 0; i < hdr->e_phnum; i++) {
 		switch (phdr[i].p_type) {
 		case PT_LOAD:	/* Loadable segment */
+			if (phdr[i].p_memsz == 0)
+				break;
 			prot = 0;
 			if (phdr[i].p_flags & PF_X)
   				prot |= VM_PROT_EXECUTE;
@@ -783,7 +789,7 @@ __CONCAT(exec_, __elfN(imgact))(struct image_params *imgp)
 
 			if ((error = __elfN(load_section)(vmspace,
 			    imgp->object, phdr[i].p_offset,
-			    (caddr_t)(uintptr_t)phdr[i].p_vaddr,
+			    (caddr_t)(uintptr_t)phdr[i].p_vaddr + et_dyn_addr,
 			    phdr[i].p_memsz, phdr[i].p_filesz, prot,
 			    sv->sv_pagesize)) != 0)
 				return (error);
@@ -797,11 +803,12 @@ __CONCAT(exec_, __elfN(imgact))(struct image_params *imgp)
 			if (phdr[i].p_offset == 0 &&
 			    hdr->e_phoff + hdr->e_phnum * hdr->e_phentsize
 				<= phdr[i].p_filesz)
-				proghdr = phdr[i].p_vaddr + hdr->e_phoff;
+				proghdr = phdr[i].p_vaddr + hdr->e_phoff +
+				    et_dyn_addr;
 
-			seg_addr = trunc_page(phdr[i].p_vaddr);
+			seg_addr = trunc_page(phdr[i].p_vaddr + et_dyn_addr);
 			seg_size = round_page(phdr[i].p_memsz +
-			    phdr[i].p_vaddr - seg_addr);
+			    phdr[i].p_vaddr + et_dyn_addr - seg_addr);
 
 			/*
 			 * Is this .text or .data?  We can't use
@@ -823,7 +830,7 @@ __CONCAT(exec_, __elfN(imgact))(struct image_params *imgp)
 			    phdr[i].p_memsz)) {
 				text_size = seg_size;
 				text_addr = seg_addr;
-				entry = (u_long)hdr->e_entry;
+				entry = (u_long)hdr->e_entry + et_dyn_addr;
 			} else {
 				data_size = seg_size;
 				data_addr = seg_addr;
@@ -831,7 +838,7 @@ __CONCAT(exec_, __elfN(imgact))(struct image_params *imgp)
 			total_size += seg_size;
 			break;
 		case PT_PHDR: 	/* Program header table info */
-			proghdr = phdr[i].p_vaddr;
+			proghdr = phdr[i].p_vaddr + et_dyn_addr;
 			break;
 		default:
 			break;
