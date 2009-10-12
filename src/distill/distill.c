@@ -57,7 +57,7 @@ distill(const char *url, unsigned long revision)
 	/* set up our authentication system */
 	/* XXX check for errors */
 	auth_providers = apr_array_make(pool, 1, sizeof auth_provider);
-	svn_client_get_username_prompt_provider(&auth_provider,
+	svn_auth_get_username_prompt_provider(&auth_provider,
 	    username_prompt_callback, NULL, 0, pool);
 	APR_ARRAY_PUSH(auth_providers, svn_auth_provider_object_t *) =
 	    auth_provider;
