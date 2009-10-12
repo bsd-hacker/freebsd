@@ -1,5 +1,8 @@
 #!/bin/sh
 
+export CPPFLAGS=-I/usr/local/include
+export LDFLAGS=-L/usr/local/lib
+
 sh -x ./autogen.sh
 set -x
 ./configure --enable-wall --enable-wextra --enable-werror "$@"
