@@ -234,7 +234,12 @@ struct pfi_dynaddr {
 #define UMA_DESTROY(var) \
                if(var) uma_zdestroy(var)
 
+#ifdef __FreeBSD__
+VNET_DECLARE(struct mtx,		 pf_task_mtx);
+#define	pf_task_mtx			 VNET(pf_task_mtx)
+#else
 extern struct mtx pf_task_mtx;
+#endif
 
 #define        PF_ASSERT(h) mtx_assert(&pf_task_mtx, (h))
 
@@ -939,14 +944,22 @@ typedef int		pfsync_state_in_use_t(struct pf_state *);
 typedef int		pfsync_defer_t(struct pf_state *, struct mbuf *);
 typedef	int		pfsync_up_t(void);
 
-extern pfsync_state_import_t	*pfsync_state_import_ptr;
-extern pfsync_insert_state_t	*pfsync_insert_state_ptr;
-extern pfsync_update_state_t	*pfsync_update_state_ptr;
-extern pfsync_delete_state_t	*pfsync_delete_state_ptr;
-extern pfsync_clear_states_t	*pfsync_clear_states_ptr;
-extern pfsync_state_in_use_t	*pfsync_state_in_use_ptr;
-extern pfsync_defer_t		*pfsync_defer_ptr;
-extern pfsync_up_t		*pfsync_up_ptr;
+VNET_DECLARE(pfsync_state_import_t,	*pfsync_state_import_ptr);
+#define pfsync_state_import_ptr          VNET(pfsync_state_import_ptr)
+VNET_DECLARE(pfsync_insert_state_t,	*pfsync_insert_state_ptr);
+#define pfsync_insert_state_ptr          VNET(pfsync_insert_state_ptr)
+VNET_DECLARE(pfsync_update_state_t,	*pfsync_update_state_ptr);
+#define pfsync_update_state_ptr          VNET(pfsync_update_state_ptr)
+VNET_DECLARE(pfsync_delete_state_t,	*pfsync_delete_state_ptr);
+#define pfsync_delete_state_ptr          VNET(pfsync_delete_state_ptr)
+VNET_DECLARE(pfsync_clear_states_t,	*pfsync_clear_states_ptr);
+#define pfsync_clear_states_ptr          VNET(pfsync_clear_states_ptr)
+VNET_DECLARE(pfsync_state_in_use_t,	*pfsync_state_in_use_ptr);
+#define pfsync_state_in_use_ptr          VNET(pfsync_state_in_use_ptr)
+VNET_DECLARE(pfsync_defer_t,		*pfsync_defer_ptr);
+#define pfsync_defer_ptr                 VNETpfsync_defer_ptr)
+VNET_DECLARE(pfsync_up_t,		*pfsync_up_ptr);
+#define pfsync_up_ptr                    VNET(pfsync_up_ptr)
 
 void                    pfsync_state_export(struct pfsync_state *,
                             struct pf_state *);
@@ -954,7 +967,15 @@ void                    pfsync_state_export(struct pfsync_state *,
 /* pflow */
 typedef int		export_pflow_t(struct pf_state *);
 
-extern export_pflow_t		*export_pflow_ptr;
+VNET_DECLARE(export_pflow_t,		*export_pflow_ptr);
+#define export_pflow_ptr                 VNET(export_pflow_ptr)
+
+/* pflog */
+VNET_DECLARE(plog_packet_t,		*pflog_packet_ptr);
+#define pflog_packet_ptr                 VNET(pflog_packet_ptr)
+
+/* pf uid hack */
+#define debug_pfugidhack                 VNET(debug_pfugidhack)
 
 /* Macros to set/clear/test flags. */
 #ifdef _KERNEL
@@ -1191,7 +1212,12 @@ RB_PROTOTYPE(pf_state_tree_ext_gwy, pf_state_key,
 RB_HEAD(pfi_ifhead, pfi_kif);
 
 /* state tables */
+#ifdef __FreeBSD__
+VNET_DECLARE(struct pf_state_tree,	 pf_statetbl);
+#define	pf_statetbl			 VNET(pf_statetbl)
+#else
 extern struct pf_state_tree	 pf_statetbl;
+#endif
 
 /* keep synced with pfi_kif, used in RB_FIND */
 struct pfi_kif_cmp {
@@ -1738,20 +1764,62 @@ struct pf_ifspeed {
 #ifdef _KERNEL
 RB_HEAD(pf_src_tree, pf_src_node);
 RB_PROTOTYPE(pf_src_tree, pf_src_node, entry, pf_src_compare);
+#ifdef __FreeBSD__
+VNET_DECLARE(struct pf_src_tree,	 tree_src_tracking);
+#define	tree_src_tracking		 VNET(tree_src_tracking)
+#else
 extern struct pf_src_tree tree_src_tracking;
+#endif
 
 RB_HEAD(pf_state_tree_id, pf_state);
 RB_PROTOTYPE(pf_state_tree_id, pf_state,
     entry_id, pf_state_compare_id);
+#ifdef __FreeBSD__
+VNET_DECLARE(struct pf_state_tree_id,	 tree_id);
+#define	tree_id				 VNET(tree_id)
+VNET_DECLARE(struct pf_state_queue,	 state_list);
+#define	state_list			 VNET(state_list)
+#else
 extern struct pf_state_tree_id tree_id;
 extern struct pf_state_queue state_list;
+#endif
 
 TAILQ_HEAD(pf_poolqueue, pf_pool);
+#ifdef __FreeBSD__
+VNET_DECLARE(struct pf_poolqueue,	 pf_pools[2]);
+#define	pf_pools			 VNET(pf_pools)
+#else
 extern struct pf_poolqueue		  pf_pools[2];
+#endif
 TAILQ_HEAD(pf_altqqueue, pf_altq);
+#ifdef __FreeBSD__
+VNET_DECLARE(struct pf_altqqueue,	 pf_altqs[2]);
+#define	pf_altqs			 VNET(pf_altqs)
+VNET_DECLARE(struct pf_palist,		 pf_pabuf);
+#define	pf_pabuf			 VNET(pf_pabuf)
+#else
 extern struct pf_altqqueue		  pf_altqs[2];
 extern struct pf_palist			  pf_pabuf;
+#endif
 
+#ifdef __FreeBSD__
+VNET_DECLARE(u_int32_t,			 ticket_altqs_active);
+#define	ticket_altqs_active		 VNET(ticket_altqs_active)
+VNET_DECLARE(u_int32_t,			 ticket_altqs_inactive);
+#define	ticket_altqs_inactive		 VNET(ticket_altqs_inactive)
+VNET_DECLARE(int,			 altqs_inactive_open);
+#define	altqs_inactive_open		 VNET(altqs_inactive_open)
+VNET_DECLARE(u_int32_t,			 ticket_pabuf);
+#define	ticket_pabuf			 VNET(ticket_pabuf)
+VNET_DECLARE(struct pf_altqqueue,	*pf_altqs_active);
+#define	pf_altqs_active			 VNET(pf_altqs_active)
+VNET_DECLARE(struct pf_altqqueue,	*pf_altqs_inactive);
+#define	pf_altqs_inactive		 VNET(pf_altqs_inactive)
+VNET_DECLARE(struct pf_poolqueue,	*pf_pools_active);
+#define	pf_pools_active			 VNET(pf_pools_active)
+VNET_DECLARE(struct pf_poolqueue,	*pf_pools_inactive);
+#define	pf_pools_inactive		 VNET(pf_pools_inactive)
+#else
 extern u_int32_t		 ticket_altqs_active;
 extern u_int32_t		 ticket_altqs_inactive;
 extern int			 altqs_inactive_open;
@@ -1760,6 +1828,7 @@ extern struct pf_altqqueue	*pf_altqs_active;
 extern struct pf_altqqueue	*pf_altqs_inactive;
 extern struct pf_poolqueue	*pf_pools_active;
 extern struct pf_poolqueue	*pf_pools_inactive;
+#endif
 extern int			 pf_tbladdr_setup(struct pf_ruleset *,
 				    struct pf_addr_wrap *);
 extern void			 pf_tbladdr_remove(struct pf_addr_wrap *);
@@ -1767,15 +1836,34 @@ extern void			 pf_tbladdr_copyout(struct pf_addr_wrap *);
 extern void			 pf_calc_skip_steps(struct pf_rulequeue *);
 #ifdef __FreeBSD__
 #ifdef ALTQ
-extern void			 pf_altq_ifnet_event(struct ifnet *, int);
+VNET_DECLARE(void                      pf_altq_ifnet_event(struct ifnet *, int));
 #endif
-extern uma_zone_t		 pf_src_tree_pl, pf_rule_pl;
-extern uma_zone_t		 pf_state_pl, pf_state_key_pl, pf_state_item_pl,
-				    pf_altq_pl, pf_pooladdr_pl;
-extern uma_zone_t		 pfr_ktable_pl, pfr_kentry_pl;
-extern uma_zone_t		 pf_cache_pl, pf_cent_pl;
-extern uma_zone_t		 pf_state_scrub_pl;
-extern uma_zone_t		 pfi_addr_pl;
+VNET_DECLARE(uma_zone_t,		 pf_src_tree_pl);
+#define	pf_src_tree_pl			 VNET(pf_src_tree_pl)
+VNET_DECLARE(uma_zone_t,		 pf_rule_pl);
+#define	pf_rule_pl			 VNET(pf_rule_pl)
+VNET_DECLARE(uma_zone_t,		 pf_state_pl);
+#define	pf_state_pl			 VNET(pf_state_pl)
+VNET_DECLARE(uma_zone_t,		 pf_state_key_pl);
+#define	pf_state_key_pl			 VNET(pf_state_key_pl)
+VNET_DECLARE(uma_zone_t,		 pf_state_item_pl);
+#define	pf_state_item_pl		 VNET(pf_state_item_pl)
+VNET_DECLARE(uma_zone_t,		 pf_altq_pl);
+#define	pf_altq_pl			 VNET(pf_altq_pl)
+VNET_DECLARE(uma_zone_t,		 pf_pooladdr_pl);
+#define	pf_pooladdr_pl			 VNET(pf_pooladdr_pl)
+VNET_DECLARE(uma_zone_t,		 pfr_ktable_pl);
+#define	pfr_ktable_pl			 VNET(pfr_ktable_pl)
+VNET_DECLARE(uma_zone_t,		 pfr_kentry_pl);
+#define	pfr_kentry_pl			 VNET(pfr_kentry_p)
+VNET_DECLARE(uma_zone_t,		 pf_cache_pl);
+#define	pf_cache_pl			 VNET(pf_cache_pl)
+VNET_DECLARE(uma_zone_t,		 pf_cent_pl);
+#define	pf_cent_pl			 VNET(pf_cent_pl)
+VNET_DECLARE(uma_zone_t,		 pf_state_scrub_pl);
+#define	pf_state_scrub_pl		 VNET(pf_state_scrub_pl)
+VNET_DECLARE(uma_zone_t,		 pfi_addr_pl);
+#define	pfi_addr_pl			 VNET(pfi_addr_pl)
 #else
 extern struct pool		 pf_src_tree_pl, pf_rule_pl;
 extern struct pool		 pf_state_pl, pf_state_key_pl, pf_state_item_pl,
@@ -1783,13 +1871,8 @@ extern struct pool		 pf_state_pl, pf_state_key_pl, pf_state_item_pl,
 extern struct pool		 pf_state_scrub_pl;
 #endif
 extern void			 pf_purge_thread(void *);
-#ifdef __FreeBSD__
-extern int			 pf_purge_expired_src_nodes(int);
-extern int			 pf_purge_expired_states(u_int32_t, int);
-#else
 extern void			 pf_purge_expired_src_nodes(int);
 extern void			 pf_purge_expired_states(u_int32_t);
-#endif
 extern void			 pf_unlink_state(struct pf_state *);
 extern void			 pf_free_state(struct pf_state *);
 extern int			 pf_state_insert(struct pfi_kif *,
@@ -1808,8 +1891,15 @@ extern void			 pf_print_flags(u_int8_t);
 extern u_int16_t		 pf_cksum_fixup(u_int16_t, u_int16_t, u_int16_t,
 				    u_int8_t);
 
+#ifdef __FreeBSD__
+VNET_DECLARE(struct ifnet,		*sync_ifp);
+#define	sync_ifp		 	 VNET(sync_ifp);
+VNET_DECLARE(struct pf_rule,		 pf_default_rule);
+#define	pf_default_rule		 	 VNET(pf_default_rule)
+#else
 extern struct ifnet		*sync_ifp;
 extern struct pf_rule		 pf_default_rule;
+#endif
 extern void			 pf_addrcpy(struct pf_addr *, struct pf_addr *,
 				    u_int8_t);
 void				 pf_rm_rule(struct pf_rulequeue *,
@@ -1919,7 +2009,12 @@ int	pfr_ina_commit(struct pfr_table *, u_int32_t, int *, int *, int);
 int	pfr_ina_define(struct pfr_table *, struct pfr_addr *, int, int *,
 	    int *, u_int32_t, int);
 
+#ifdef __FreeBSD__
+VNET_DECLARE(struct pfi_kif,		*pfi_all);
+#define	pfi_all		 		 VNET(pfi_all)
+#else
 extern struct pfi_kif		*pfi_all;
+#endif
 
 void		 pfi_initialize(void);
 #ifdef __FreeBSD__
@@ -1963,11 +2058,20 @@ u_int32_t	 pf_qname2qid(char *);
 void		 pf_qid2qname(u_int32_t, char *);
 void		 pf_qid_unref(u_int32_t);
 
+#ifdef __FreeBSD__
+VNET_DECLARE(struct pf_status,		 pf_status);
+#define	pf_status			 VNET(pf_status)
+#else
 extern struct pf_status	pf_status;
+#endif
 
 #ifdef __FreeBSD__
-extern uma_zone_t	pf_frent_pl, pf_frag_pl;
-extern struct sx	pf_consistency_lock;
+VNET_DECLARE(uma_zone_t,		 pf_frent_pl);
+#define	pf_frent_pl			 VNET(pf_frent_pl)
+VNET_DECLARE(uma_zone_t,		 pf_frag_pl);
+#define	pf_frag_pl			 VNET(pf_frag_pl)
+VNET_DECLARE(struct sx,			 pf_consistency_lock);
+#define	pf_consistency_lock		 VNET(pf_consistency_lock)
 #else
 extern struct pool	pf_frent_pl, pf_frag_pl;
 extern struct rwlock	pf_consistency_lock;
@@ -1977,7 +2081,12 @@ struct pf_pool_limit {
 	void		*pp;
 	unsigned	 limit;
 };
+#ifdef __FreeBSD__
+VNET_DECLARE(struct pf_pool_limit,		 pf_pool_limits[PF_LIMIT_MAX]);
+#define	pf_pool_limits				 VNET(pf_pool_limits)
+#else
 extern struct pf_pool_limit	pf_pool_limits[PF_LIMIT_MAX];
+#endif
 
 #ifdef __FreeBSD__
 struct pf_frent {
@@ -2013,8 +2122,15 @@ struct pf_fragment {
 
 #endif /* _KERNEL */
 
+#ifdef __FreeBSD__
+VNET_DECLARE(struct pf_anchor_global,		 pf_anchors);
+#define	pf_anchors				 VNET(pf_anchors)
+VNET_DECLARE(struct pf_anchor,			 pf_main_anchor);
+#define	pf_main_anchor				 VNET(pf_main_anchor)
+#else
 extern struct pf_anchor_global  pf_anchors;
 extern struct pf_anchor        pf_main_anchor;
+#endif
 #define pf_main_ruleset	pf_main_anchor.ruleset
 
 /* these ruleset functions can be linked into userland programs (pfctl) */

@@ -25,22 +25,22 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
- #ifdef __FreeBSD__
- #include "opt_inet.h"
- #include "opt_inet6.h"
- #include "opt_pf.h"
- 
- #include <sys/cdefs.h>
+#ifdef __FreeBSD__
+#include "opt_inet.h"
+#include "opt_inet6.h"
+#include "opt_pf.h"
+
+#include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
  
- #ifdef DEV_PFLOG
- #define        NPFLOG DEV_PFLOG
- #else
- #define        NPFLOG 0
- #endif
- #else
+#ifdef DEV_PFLOG
+#define        NPFLOG DEV_PFLOG
+#else
+#define        NPFLOG 0
+#endif
+#else
 #include "pflog.h"
- #endif
+#endif
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -116,18 +116,35 @@ struct pf_fragment {
 };
 #endif
 
+#ifdef __FreeBSD__
+TAILQ_HEAD(pf_fragqueue, pf_fragment);
+TAILQ_HEAD(pf_cachequeue, pf_fragment);
+VNET_DEFINE(struct pf_fragqueue,	pf_fragqueue);
+#define	pf_fragqueue			VNET(pf_fragqueue);
+VNET_DEFINE(struct pf_cachequeue,	pf_cachequeue);
+#define	pf_cachequeue			VNET(pf_cachequeue)
+#else
 TAILQ_HEAD(pf_fragqueue, pf_fragment)	pf_fragqueue;
 TAILQ_HEAD(pf_cachequeue, pf_fragment)	pf_cachequeue;
+#endif
 
 #ifndef __FreeBSD__
 static __inline int	 pf_frag_compare(struct pf_fragment *,
 			    struct pf_fragment *);
- #else
- static int      pf_frag_compare(struct pf_fragment *,
-                            struct pf_fragment *);
- #endif
+#else
+static int      pf_frag_compare(struct pf_fragment *,
+                           struct pf_fragment *);
+#endif
 
+#ifdef __FreeBSD__
+RB_HEAD(pf_frag_tree, pf_fragment);
+VNET_DEFINE(struct pf_frag_tree,	pf_frag_tree);
+#define	pf_frag_tree			VNET(pf_frag_tree)
+VNET_DEFINE(struct pf_frag_tree,	pf_cache_tree);
+#define	pf_cache_tree			VNET(pf_cache_tree)
+#else
 RB_HEAD(pf_frag_tree, pf_fragment)	pf_frag_tree, pf_cache_tree;
+#endif
 RB_PROTOTYPE(pf_frag_tree, pf_fragment, fr_entry, pf_frag_compare);
 RB_GENERATE(pf_frag_tree, pf_fragment, fr_entry, pf_frag_compare);
 
@@ -156,14 +173,22 @@ void			 pf_scrub_ip6(struct mbuf **, u_int8_t);
 } while(0)
 
 /* Globals */
- #ifdef __FreeBSD__
- uma_zone_t              pf_frent_pl, pf_frag_pl, pf_cache_pl, pf_cent_pl;
- uma_zone_t              pf_state_scrub_pl;
- #else
+#ifdef __FreeBSD__
+VNET_DEFINE(uma_zone_t,		pf_frent_pl);
+VNET_DEFINE(uma_zone_t,		pf_frag_pl);
+VNET_DEFINE(uma_zone_t,		pf_cache_pl);
+VNET_DEFINE(uma_zone_t,		pf_cent_pl);
+VNET_DEFINE(uma_zone_t,		pf_state_scrub_pl);
+
+VNET_DEFINE(int,		pf_nfrents);
+#define	pf_nfrents		VNET(pf_nfrents)
+VNET_DEFINE(int,		pf_ncache);
+#define	pf_ncache		VNET(pf_ncache)
+#else
 struct pool		 pf_frent_pl, pf_frag_pl, pf_cache_pl, pf_cent_pl;
 struct pool		 pf_state_scrub_pl;
-#endif
 int			 pf_nfrents, pf_ncache;
+#endif
 
 void
 pf_normalize_init(void)
@@ -199,9 +224,9 @@ pf_normalize_init(void)
 	TAILQ_INIT(&pf_cachequeue);
 }
 
- #ifdef __FreeBSD__
- static int
- #else
+#ifdef __FreeBSD__
+static int
+#else
 static __inline int
 #endif
 pf_frag_compare(struct pf_fragment *a, struct pf_fragment *b)
@@ -231,10 +256,10 @@ pf_purge_expired_fragments(void)
 				    pf_default_rule.timeout[PFTM_FRAG];
 
 	while ((frag = TAILQ_LAST(&pf_fragqueue, pf_fragqueue)) != NULL) {
- #ifdef __FreeBSD__
+#ifdef __FreeBSD__
                 KASSERT((BUFFER_FRAGMENTS(frag)),
                         ("BUFFER_FRAGMENTS(frag) == 0: %s", __FUNCTION__));
- #else
+#else
 		KASSERT(BUFFER_FRAGMENTS(frag));
 #endif
 		if (frag->fr_timeout > expire)
@@ -245,10 +270,10 @@ pf_purge_expired_fragments(void)
 	}
 
 	while ((frag = TAILQ_LAST(&pf_cachequeue, pf_cachequeue)) != NULL) {
- #ifdef __FreeBSD__
+#ifdef __FreeBSD__
                 KASSERT((!BUFFER_FRAGMENTS(frag)),
                         ("BUFFER_FRAGMENTS(frag) != 0: %s", __FUNCTION__));
- #else
+#else
 		KASSERT(!BUFFER_FRAGMENTS(frag));
 #endif
 		if (frag->fr_timeout > expire)
@@ -256,12 +281,12 @@ pf_purge_expired_fragments(void)
 
 		DPFPRINTF(("expiring %d(%p)\n", frag->fr_id, frag));
 		pf_free_fragment(frag);
- #ifdef __FreeBSD__
+#ifdef __FreeBSD__
                 KASSERT((TAILQ_EMPTY(&pf_cachequeue) ||
                     TAILQ_LAST(&pf_cachequeue, pf_cachequeue) != frag),
                     ("!(TAILQ_EMPTY() || TAILQ_LAST() == farg): %s",
                     __FUNCTION__));
- #else
+#else
 		KASSERT(TAILQ_EMPTY(&pf_cachequeue) ||
 		    TAILQ_LAST(&pf_cachequeue, pf_cachequeue) != frag);
 #endif

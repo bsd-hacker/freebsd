@@ -78,9 +78,19 @@ typedef struct pool pool_t;
 #endif /* _KERNEL */
 
 
+#ifdef __FreeBSD__
+SLIST_HEAD(pf_osfp_list, pf_os_fingerprint);
+VNET_DEFINE(struct pf_osfp_list,	pf_osfp_list);
+#define	pf_osfp_list			VNET(pf_osfp_list)
+VNET_DEFINE(pool_t,			pf_osfp_entry_pl);
+#define	pf_osfp_entry_pl		VNET(pf_osfp_entry_pl)
+VNET_DEFINE(pool_t,			pf_osfp_pl);
+#define	pf_osfp_pl			VNET(pf_osfp_pl)
+#else
 SLIST_HEAD(pf_osfp_list, pf_os_fingerprint) pf_osfp_list;
 pool_t pf_osfp_entry_pl;
 pool_t pf_osfp_pl;
+#endif
 
 struct pf_os_fingerprint	*pf_osfp_find(struct pf_osfp_list *,
 				    struct pf_os_fingerprint *, u_int8_t);

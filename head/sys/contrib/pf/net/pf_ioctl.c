@@ -176,24 +176,41 @@ int			 pf_addr_setup(struct pf_ruleset *,
 			    struct pf_addr_wrap *, sa_family_t);
 void			 pf_addr_copyout(struct pf_addr_wrap *);
 
-struct pf_rule		 pf_default_rule;
+#define	TAGID_MAX	 50000
 #ifdef __FreeBSD__
-struct sx               pf_consistency_lock;
-SX_SYSINIT(pf_consistency_lock, &pf_consistency_lock, "pf_statetbl_lock");
-#else
-struct rwlock		 pf_consistency_lock = RWLOCK_INITIALIZER("pfcnslk");
-#endif
+VNET_DEFINE(struct pf_rule, pf_default_rule);
+#define pf_default_rule       VNET(pf_default_rule);
+VNET_DEFINE(struct sx, pf_consistency_lock);
+#define pf_consistency_lock	VNET(pf_consistency_lock);
+SX_SYSINIT(pf_consistency_lock, &pf_consistency_lock,
+	"pf_statetbl_lock");
 #ifdef ALTQ
-static int		 pf_altq_running;
+static VNET_DEFINE(int, pf_altq_running);
+#define pf_altq_running       VNET(pf_altq_running)
 #endif
 
-#define	TAGID_MAX	 50000
+TAILQ_HEAD(pf_tags, pf_tagname);
+
+VNET_DEFINE(struct pf_tags, pf_tags);
+#define	pf_tags		VNET(pf_tags)
+VNET_DEFINE(struct pf_tags, pf_qids);
+#define	pf_qids		VNET(pf_qids);
+
+#else /* !__FreeBSD__ */
+struct pf_rule           pf_default_rule;
+struct rwlock            pf_consistency_lock = RWLOCK_INITIALIZER("pfcnslk");
+#ifdef ALTQ
+static int               pf_altq_running;
+#endif
+
 TAILQ_HEAD(pf_tags, pf_tagname)	pf_tags = TAILQ_HEAD_INITIALIZER(pf_tags),
 				pf_qids = TAILQ_HEAD_INITIALIZER(pf_qids);
+#endif /* __FreeBSD__ */
 
 #if (PF_QNAME_SIZE != PF_TAG_NAME_SIZE)
 #error PF_QNAME_SIZE must be equal to PF_TAG_NAME_SIZE
 #endif
+
 u_int16_t		 tagname2tag(struct pf_tags *, char *);
 void			 tag2tagname(struct pf_tags *, u_int16_t, char *);
 void			 tag_unref(struct pf_tags *, u_int16_t);
@@ -204,120 +221,116 @@ void			 pf_rtlabel_copyout(struct pf_addr_wrap *);
 #define DPFPRINTF(n, x) if (pf_status.debug >= (n)) printf x
 
 #ifdef __FreeBSD__
- static struct cdev     *pf_dev;
+static VNET_DEFINE(struct cdev, *pf_dev);
  
- /*
-  * XXX - These are new and need to be checked when moveing to a new version
-  */
- static void             pf_clear_states(void);
- static int              pf_clear_tables(void);
- static void             pf_clear_srcnodes(void);
- /*
-  * XXX - These are new and need to be checked when moveing to a new version
-  */
-  
- /*
-  * Wrapper functions for pfil(9) hooks
-  */
- static int pf_check_in(void *arg, struct mbuf **m, struct ifnet *ifp,
-                int dir, struct inpcb *inp);
- static int pf_check_out(void *arg, struct mbuf **m, struct ifnet *ifp,
-                int dir, struct inpcb *inp);
- #ifdef INET6
- static int pf_check6_in(void *arg, struct mbuf **m, struct ifnet *ifp,
-                int dir, struct inpcb *inp);
- static int pf_check6_out(void *arg, struct mbuf **m, struct ifnet *ifp,
-                int dir, struct inpcb *inp);
- #endif
+/*
+ * XXX - These are new and need to be checked when moveing to a new version
+ */
+static void             pf_clear_states(void);
+static int              pf_clear_tables(void);
+static void             pf_clear_srcnodes(void);
+/*
+ * XXX - These are new and need to be checked when moveing to a new version
+ */
  
- static int              hook_pf(void);
- static int              dehook_pf(void);
- static int              shutdown_pf(void);
- static int              pf_load(void);
- static int              pf_unload(void);
+/*
+ * Wrapper functions for pfil(9) hooks
+ */
+static int pf_check_in(void *arg, struct mbuf **m, struct ifnet *ifp,
+               int dir, struct inpcb *inp);
+static int pf_check_out(void *arg, struct mbuf **m, struct ifnet *ifp,
+               int dir, struct inpcb *inp);
+#ifdef INET6
+static int pf_check6_in(void *arg, struct mbuf **m, struct ifnet *ifp,
+               int dir, struct inpcb *inp);
+static int pf_check6_out(void *arg, struct mbuf **m, struct ifnet *ifp,
+               int dir, struct inpcb *inp);
+#endif
+ 
+static int              hook_pf(void);
+static int              dehook_pf(void);
+static int              shutdown_pf(void);
+static int              pf_load(void);
+static int              pf_unload(void);
 
-static struct cdevsw pf_cdevsw = {
-        .d_ioctl =      pfioctl,
-        .d_name =       PF_NAME,
-        .d_version =    D_VERSION,
- };
- 
- static volatile int pf_pfil_hooked = 0;
- int pf_end_threads = 0;
- struct mtx pf_task_mtx;
- #ifdef __FreeBSD__
- /* pfsync */
- pfsync_state_import_t  *pfsync_state_import_ptr = NULL;
- pfsync_insert_state_t  *pfsync_insert_state_ptr = NULL;
- pfsync_update_state_t  *pfsync_update_state_ptr = NULL;
- pfsync_delete_state_t  *pfsync_delete_state_ptr = NULL;
- pfsync_clear_states_t  *pfsync_clear_states_ptr = NULL;
- pfsync_state_in_use_t	*pfsync_state_in_use_ptr = NULL;
- pfsync_defer_t		*pfsync_defer_ptr = NULL;
- pfsync_up_t		*pfsync_up_ptr = NULL;
- /* pflow */
- export_pflow_t		*export_pflow_ptr = NULL;
- #if NPFLOG >0
- pflog_packet_t *pflog_packet_ptr = NULL;
- #endif
- #else
- pflog_packet_t *pflog_packet_ptr = NULL;
- #endif
- 
- int debug_pfugidhack = 0;
- SYSCTL_INT(_debug, OID_AUTO, pfugidhack, CTLFLAG_RW, &debug_pfugidhack, 0,
-     "Enable/disable pf user/group rules mpsafe hack");
- 
- void
- init_pf_mutex(void)
- {
-        mtx_init(&pf_task_mtx, "pf task mtx", NULL, MTX_DEF);
- }
- 
- void
- destroy_pf_mutex(void)
- {
-        mtx_destroy(&pf_task_mtx);
- }
- void
- init_zone_var(void)
- {
-        pf_src_tree_pl = pf_rule_pl = NULL;
-        pf_state_pl = pf_state_key_pl = pf_state_item_pl = NULL;
+static VNET_DEFINE(struct cdevsw, pf_cdevsw);
+#define pf_cdevsw			VNET(pf_cdevsw)
+
+static volatile VNET_DEFINE(int, pf_pfil_hooked);
+#define pf_pfil_hooked			VNET(pf_pfil_hooked)
+VNET_DEFINE(int, pf_end_threads);
+#define pf_end_threads			VNET(pf_end_threads)
+struct mtx pf_task_mtx;
+
+/* pfsync */
+VNET_DEFINE(pfsync_state_import_t, *pfsync_state_import_ptr);
+VNET_DEFINE(pfsync_insert_state_t, *pfsync_insert_state_ptr);
+VNET_DEFINE(pfsync_update_state_t, *pfsync_update_state_ptr);
+VNET_DEFINE(pfsync_delete_state_t, *pfsync_delete_state_ptr);
+VNET_DEFINE(pfsync_clear_states_t, *pfsync_clear_states_ptr);
+VNET_DEFINE(pfsync_state_in_use_t, *pfsync_state_in_use_ptr);
+VNET_DEFINE(pfsync_defer_t, *pfsync_defer_ptr);
+VNET_DEFINE(pfsync_up_t, *pfsync_up_ptr);
+/* pflow */
+VNET_DEFINE(export_pflow_t, *export_pflow_ptr);
+/* pflog */
+VNET_DEFINE(pflog_packet_t, *pflog_packet_ptr);
+
+VNET_DEFINE(int, debug_pfugidhack);
+SYSCTL_VNET_INT(_debug, OID_AUTO, pfugidhack, CTLFLAG_RW,
+	&debug_pfugidhack, 0,
+	"Enable/disable pf user/group rules mpsafe hack");
+
+void
+init_pf_mutex(void)
+{
+       mtx_init(&pf_task_mtx, "pf task mtx", NULL, MTX_DEF);
+}
+
+void
+destroy_pf_mutex(void)
+{
+       mtx_destroy(&pf_task_mtx);
+}
+void
+init_zone_var(void)
+{
+	pf_src_tree_pl = pf_rule_pl = NULL;
+	pf_state_pl = pf_state_key_pl = pf_state_item_pl = NULL;
 	pf_altq_pl = pf_pooladdr_pl = NULL;
-        pf_frent_pl = pf_frag_pl = pf_cache_pl = pf_cent_pl = NULL;
-        pf_state_scrub_pl = NULL;
-        pfr_ktable_pl = pfr_kentry_pl = NULL;
- }
- 
- void
- cleanup_pf_zone(void)
- {
-        UMA_DESTROY(pf_src_tree_pl);
-        UMA_DESTROY(pf_rule_pl);
-        UMA_DESTROY(pf_state_pl);
-        UMA_DESTROY(pf_state_key_pl);
-        UMA_DESTROY(pf_state_item_pl);
-        UMA_DESTROY(pf_altq_pl);
-        UMA_DESTROY(pf_pooladdr_pl);
-        UMA_DESTROY(pf_frent_pl);
-        UMA_DESTROY(pf_frag_pl);
-        UMA_DESTROY(pf_cache_pl);
-        UMA_DESTROY(pf_cent_pl);
-        UMA_DESTROY(pfr_ktable_pl);
-        UMA_DESTROY(pfr_kentry_pl);
-        UMA_DESTROY(pf_state_scrub_pl);
-        UMA_DESTROY(pfi_addr_pl);
- }
+	pf_frent_pl = pf_frag_pl = pf_cache_pl = pf_cent_pl = NULL;
+	pf_state_scrub_pl = NULL;
+	pfr_ktable_pl = pfr_kentry_pl = NULL;
+}
+
+void
+cleanup_pf_zone(void)
+{
+	UMA_DESTROY(pf_src_tree_pl);
+	UMA_DESTROY(pf_rule_pl);
+	UMA_DESTROY(pf_state_pl);
+	UMA_DESTROY(pf_state_key_pl);
+	UMA_DESTROY(pf_state_item_pl);
+	UMA_DESTROY(pf_altq_pl);
+	UMA_DESTROY(pf_pooladdr_pl);
+	UMA_DESTROY(pf_frent_pl);
+	UMA_DESTROY(pf_frag_pl);
+	UMA_DESTROY(pf_cache_pl);
+	UMA_DESTROY(pf_cent_pl);
+	UMA_DESTROY(pfr_ktable_pl);
+	UMA_DESTROY(pfr_kentry_pl);
+	UMA_DESTROY(pf_state_scrub_pl);
+	UMA_DESTROY(pfi_addr_pl);
+}
 
 int
- pfattach(void)
- {
-        u_int32_t *my_timeout = pf_default_rule.timeout;
-        int error = 1;
- 
+pfattach(void)
+{
+	u_int32_t *my_timeout = pf_default_rule.timeout;
+	int error = 1;
+
         do {
-                UMA_CREATE(pf_src_tree_pl,struct pf_src_node, "pfsrctrpl");
+		UMA_CREATE(pf_src_tree_pl,struct pf_src_node, "pfsrctrpl");
                 UMA_CREATE(pf_rule_pl,    struct pf_rule, "pfrulepl");
                 UMA_CREATE(pf_state_pl,   struct pf_state, "pfstatepl");
                 UMA_CREATE(pf_state_key_pl,   struct pf_state, "pfstatekeypl");
@@ -410,9 +423,9 @@ int
         if (kproc_create(pf_purge_thread, NULL, NULL, 0, 0, "pfpurge"))
                 return (ENXIO);
  
-        return (error);
- }
- #else /* !__FreeBSD__ */
+	return (error);
+}
+#else /* !__FreeBSD__ */
 
 void
 pfattach(int num)
@@ -3463,7 +3476,7 @@ fail:
 	return (error);
 }
 
- #ifdef __FreeBSD__
+#ifdef __FreeBSD__
 void
 pfsync_state_export(struct pfsync_state *sp, struct pf_state *st)
 {
@@ -3525,34 +3538,34 @@ pfsync_state_export(struct pfsync_state *sp, struct pf_state *st)
 
 }
 
- /*
-  * XXX - Check for version missmatch!!!
-  */
- static void
- pf_clear_states(void)
- {
+/*
+ * XXX - Check for version missmatch!!!
+ */
+static void
+pf_clear_states(void)
+{
         struct pf_state         *state;
  
         RB_FOREACH(state, pf_state_tree_id, &tree_id) {
                 state->timeout = PFTM_PURGE;
- #if NPFSYNC
+#if NPFSYNC
                 /* don't send out individual delete messages */
                 state->sync_state = PFSTATE_NOSYNC;
- #endif
+#endif
                 pf_unlink_state(state);
         }
  
  #if 0 /* NPFSYNC */
- /*
-  * XXX This is called on module unload, we do not want to sync that over? */
-  */
-        pfsync_clear_states(pf_status.hostid, psk->psk_ifname);
- #endif
- }
+/*
+ * XXX This is called on module unload, we do not want to sync that over? */
+ */
+       pfsync_clear_states(pf_status.hostid, psk->psk_ifname);
+#endif
+}
 
- static int
- pf_clear_tables(void)
- {
+static int
+pf_clear_tables(void)
+{
         struct pfioc_table io;
         int error;
  
@@ -3562,11 +3575,11 @@ pfsync_state_export(struct pfsync_state *sp, struct pf_state *st)
             io.pfrio_flags);
  
         return (error);
- }
+}
  
- static void
- pf_clear_srcnodes(void)
- {
+static void
+pf_clear_srcnodes(void)
+{
         struct pf_src_node      *n;
         struct pf_state         *state;
  
@@ -3578,17 +3591,17 @@ pfsync_state_export(struct pfsync_state *sp, struct pf_state *st)
                 n->expire = 1;
                 n->states = 0;
         }
- }
- /*
-  * XXX - Check for version missmatch!!!
-  */
+}
+/*
+ * XXX - Check for version missmatch!!!
+ */
 
- /*
-  * Duplicate pfctl -Fa operation to get rid of as much as we can.
-  */
- static int
- shutdown_pf(void)
- {
+/*
+ * Duplicate pfctl -Fa operation to get rid of as much as we can.
+ */
+static int
+shutdown_pf(void)
+{
         int error = 0;
         u_int32_t t[5];
         char nn = '\0';
@@ -3631,13 +3644,13 @@ pfsync_state_export(struct pfsync_state *sp, struct pf_state *st)
                 if ((error = pf_clear_tables()) != 0)
                         break;
  
- #ifdef ALTQ
+#ifdef ALTQ
                 if ((error = pf_begin_altq(&t[0])) != 0) {
                         DPFPRINTF(PF_DEBUG_MISC, ("shutdown_pf: ALTQ\n"));
                         break;
                 }
                 pf_commit_altq(t[0]);
- #endif
+#endif
  
                 pf_clear_states();
  
@@ -3648,12 +3661,13 @@ pfsync_state_export(struct pfsync_state *sp, struct pf_state *st)
         } while(0);
  
          return (error);
- }
+}
 
- static int
- pf_check_in(void *arg, struct mbuf **m, struct ifnet *ifp, int dir,
-     struct inpcb *inp)
- {
+#ifdef INET
+static int
+pf_check_in(void *arg, struct mbuf **m, struct ifnet *ifp, int dir,
+    struct inpcb *inp)
+{
         /*
          * XXX Wed Jul 9 22:03:16 2003 UTC
          * OpenBSD has changed its byte ordering convention on ip_len/ip_off
@@ -3683,12 +3697,12 @@ pfsync_state_export(struct pfsync_state *sp, struct pf_state *st)
                 NTOHS(h->ip_off);
         }
         return chk;
- }
+}
 
- static int
- pf_check_out(void *arg, struct mbuf **m, struct ifnet *ifp, int dir,
-     struct inpcb *inp)
- {
+static int
+pf_check_out(void *arg, struct mbuf **m, struct ifnet *ifp, int dir,
+    struct inpcb *inp)
+{
         /*
          * XXX Wed Jul 9 22:03:16 2003 UTC
          * OpenBSD has changed its byte ordering convention on ip_len/ip_off
@@ -3724,12 +3738,13 @@ pfsync_state_export(struct pfsync_state *sp, struct pf_state *st)
         }
         return chk;
 }
+#endif
 
- #ifdef INET6
- static int
- pf_check6_in(void *arg, struct mbuf **m, struct ifnet *ifp, int dir,
-     struct inpcb *inp)
- {
+#ifdef INET6
+static int
+pf_check6_in(void *arg, struct mbuf **m, struct ifnet *ifp, int dir,
+    struct inpcb *inp)
+{
  
         /*
          * IPv6 is not affected by ip_len/ip_off byte order changes.
@@ -3748,12 +3763,12 @@ pfsync_state_export(struct pfsync_state *sp, struct pf_state *st)
                 *m = NULL;
         }
         return chk;
- }
+}
 
- static int
- pf_check6_out(void *arg, struct mbuf **m, struct ifnet *ifp, int dir,
-     struct inpcb *inp)
- {
+static int
+pf_check6_out(void *arg, struct mbuf **m, struct ifnet *ifp, int dir,
+    struct inpcb *inp)
+{
         /*
          * IPv6 does not affected ip_len/ip_off byte order changes.
          */
@@ -3770,28 +3785,32 @@ pfsync_state_export(struct pfsync_state *sp, struct pf_state *st)
                 *m = NULL;
         }
         return chk;
- }
- #endif /* INET6 */
+}
+#endif /* INET6 */
 
- static int
- hook_pf(void)
- {
+static int
+hook_pf(void)
+{
+#ifdef INET
         struct pfil_head *pfh_inet;
- #ifdef INET6
+#endif
+#ifdef INET6
         struct pfil_head *pfh_inet6;
- #endif
+#endif
         
         PF_ASSERT(MA_NOTOWNED);
  
         if (pf_pfil_hooked)
                 return (0); 
         
+#ifdef INET
         pfh_inet = pfil_head_get(PFIL_TYPE_AF, AF_INET);
         if (pfh_inet == NULL)
                 return (ESRCH); /* XXX */
         pfil_add_hook(pf_check_in, NULL, PFIL_IN | PFIL_WAITOK, pfh_inet);
         pfil_add_hook(pf_check_out, NULL, PFIL_OUT | PFIL_WAITOK, pfh_inet);
- #ifdef INET6
+#endif
+#ifdef INET6
         pfh_inet6 = pfil_head_get(PFIL_TYPE_AF, AF_INET6);
         if (pfh_inet6 == NULL) {
                 pfil_remove_hook(pf_check_in, NULL, PFIL_IN | PFIL_WAITOK,
@@ -3802,25 +3821,28 @@ pfsync_state_export(struct pfsync_state *sp, struct pf_state *st)
         }
         pfil_add_hook(pf_check6_in, NULL, PFIL_IN | PFIL_WAITOK, pfh_inet6);
         pfil_add_hook(pf_check6_out, NULL, PFIL_OUT | PFIL_WAITOK, pfh_inet6);
- #endif
+#endif
  
         pf_pfil_hooked = 1;
         return (0);
- }
+}
 
- static int
- dehook_pf(void)
- {
+static int
+dehook_pf(void)
+{
+#ifdef INET
         struct pfil_head *pfh_inet;
- #ifdef INET6
+#endif
+#ifdef INET6
         struct pfil_head *pfh_inet6;
- #endif
+#endif
  
         PF_ASSERT(MA_NOTOWNED);
  
         if (pf_pfil_hooked == 0)
                 return (0);
  
+#ifdef INET
         pfh_inet = pfil_head_get(PFIL_TYPE_AF, AF_INET);
         if (pfh_inet == NULL)
                 return (ESRCH); /* XXX */
@@ -3828,7 +3850,8 @@ pfsync_state_export(struct pfsync_state *sp, struct pf_state *st)
             pfh_inet);
         pfil_remove_hook(pf_check_out, NULL, PFIL_OUT | PFIL_WAITOK,
             pfh_inet);
- #ifdef INET6
+#endif
+#ifdef INET6
         pfh_inet6 = pfil_head_get(PFIL_TYPE_AF, AF_INET6);
         if (pfh_inet6 == NULL)
                 return (ESRCH); /* XXX */
@@ -3836,15 +3859,85 @@ pfsync_state_export(struct pfsync_state *sp, struct pf_state *st)
             pfh_inet6);
         pfil_remove_hook(pf_check6_out, NULL, PFIL_OUT | PFIL_WAITOK,
             pfh_inet6);
- #endif
+#endif
  
         pf_pfil_hooked = 0;
         return (0);
- }
+}
 
- static int
- pf_load(void)
- {
+/* Vnet accessors */
+static int
+vnet_pf_init(const void *unused) 
+{
+	TAILQ_HEAD_INITIALIZER(pf_tags);
+	TAILQ_HEAD_INITIALIZER(pf_qids);
+
+	pf_cdevsw = {
+		.d_ioctl =      pfioctl,
+		.d_name =       PF_NAME,
+		.d_version =    D_VERSION,
+	};
+
+	pf_pfil_hooked = 0;
+	pf_end_threads = 0;
+
+	/* pfsync */
+	pfsync_state_import_ptr = NULL;
+	pfsync_insert_state_ptr = NULL;
+	pfsync_update_state_ptr = NULL;
+	pfsync_delete_state_ptr = NULL;
+	pfsync_clear_states_ptr = NULL;
+	pfsync_state_in_use_ptr = NULL;
+	pfsync_defer_ptr = NULL;
+	pfsync_up_ptr = NULL;
+	/* pflow */
+	export_pflow_ptr = NULL;
+	/* pflog */
+	pflog_packet_ptr = NULL;
+
+	debug_pfugidhack = 0;
+
+#if 0
+	/* XXX: Are they needed here?! */
+	pfi_attach_cookie = NULL;
+	pfi_detach_cookie = NULL;
+	pfi_attach_group_cookie = NULL;
+	pfi_change_group_cookie = NULL;
+	pfi_detach_group_cookie = NULL;
+	pfi_ifaddr_event_cookie = NULL;
+#endif
+
+	return (0);
+}
+
+static int
+vnet_pf_uninit(const void *unused) {
+	return (0);
+}
+
+/* Define startup order. */
+#define PF_SYSINIT_ORDER      SI_SUB_PROTO_BEGIN
+#define PF_MODEVENT_ORDER     (SI_ORDER_FIRST) /* On boot slot in here. */
+#define PF_VNET_ORDER         (PF_MODEVENT_ORDER + 2) /* Later still. */
+
+/*
+ * Starting up.
+ * VNET_SYSINIT is called for each existing vnet and each new vnet.
+ */
+VNET_SYSINIT(vnet_pf_init, PF_SYSINIT_ORDER, PF_VNET_ORDER,
+           vnet_pf_init, NULL);
+
+/*
+ * Closing up shop. These are done in REVERSE ORDER,
+ * Not called on reboot.
+ * VNET_SYSUNINIT is called for each exiting vnet as it exits.
+ */
+VNET_SYSUNINIT(vnet_pf_uninit, PF_SYSINIT_ORDER, PF_VNET_ORDER,
+           vnet_pf_uninit, NULL);
+
+static int
+pf_load(void)
+{
         init_zone_var();
         init_pf_mutex();
         pf_dev = make_dev(&pf_cdevsw, 0, 0, 0, 0600, PF_NAME);
@@ -3853,12 +3946,12 @@ pfsync_state_export(struct pfsync_state *sp, struct pf_state *st)
                 destroy_pf_mutex();
                 return (ENOMEM);
         }
-        return (0);
- }
+	return (0);
+}
 
- static int
- pf_unload(void)
- {
+static int
+pf_unload(void)
+{
         int error = 0;
  
         PF_LOCK();
@@ -3888,35 +3981,35 @@ pfsync_state_export(struct pfsync_state *sp, struct pf_state *st)
         PF_UNLOCK();
         destroy_dev(pf_dev);
         destroy_pf_mutex();
-        return error;
- }
+	return error;
+}
 
- static int
- pf_modevent(module_t mod, int type, void *data)
- {
-        int error = 0;
+static int
+pf_modevent(module_t mod, int type, void *data)
+{
+       int error = 0;
+
+       switch(type) {
+       case MOD_LOAD:
+               error = pf_load();
+               break;
+
+       case MOD_UNLOAD:
+               error = pf_unload();
+               break;
+       default:
+               error = EINVAL;
+               break;
+       }
+       return error;
+}
  
-        switch(type) {
-        case MOD_LOAD:
-                error = pf_load();
-                break;
- 
-        case MOD_UNLOAD:
-                error = pf_unload();
-                break;
-        default:
-                error = EINVAL;
-                break;
-        }
-        return error;
- }
- 
- static moduledata_t pf_mod = {
-        "pf",
-        pf_modevent,
-        0
- };
- 
- DECLARE_MODULE(pf, pf_mod, SI_SUB_PROTO_IFATTACHDOMAIN, SI_ORDER_FIRST);
- MODULE_VERSION(pf, PF_MODVER);
- #endif /* __FreeBSD__ */
+static moduledata_t pf_mod = {
+       "pf",
+       pf_modevent,
+       0
+};
+
+DECLARE_MODULE(pf, pf_mod, SI_SUB_PROTO_IFATTACHDOMAIN, SI_ORDER_FIRST);
+MODULE_VERSION(pf, PF_MODVER);
+#endif /* __FreeBSD__ */

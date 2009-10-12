@@ -32,37 +32,37 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
- #if defined(__FreeBSD__)
- #include "opt_inet.h"
- #include "opt_inet6.h"
+#if defined(__FreeBSD__)
+#include "opt_inet.h"
+#include "opt_inet6.h"
  
- #include <sys/cdefs.h>
+#include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
- #endif
+#endif
 
 #include <sys/param.h>
 #include <sys/systm.h>
- #ifdef __FreeBSD__
- #include <sys/malloc.h>
- #endif
+#ifdef __FreeBSD__
+#include <sys/malloc.h>
+#endif
 #include <sys/mbuf.h>
 #include <sys/filio.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
 #include <sys/kernel.h>
- #ifndef __FreeBSD__
+#ifndef __FreeBSD__
 #include <sys/device.h>
 #endif
 #include <sys/time.h>
- #ifndef __FreeBSD__
+#ifndef __FreeBSD__
 #include <sys/pool.h>
 #endif
 
 #include <net/if.h>
 #include <net/if_types.h>
- #ifdef __FreeBSD__
- #include <net/vnet.h>
- #endif
+#ifdef __FreeBSD__
+#include <net/vnet.h>
+#endif
 
 #include <netinet/in.h>
 #include <netinet/in_var.h>
@@ -76,25 +76,36 @@ __FBSDID("$FreeBSD$");
 #include <netinet/ip6.h>
 #endif /* INET6 */
 
+#ifdef __FreeBSD__
+VNET_DEFINE(struct pfi_kif,	*pfi_all);
+VNET_DEFINE(uma_zone_t,		 pfi_addr_pl);
+VNET_DEFINE(struct pfi_ifhead,	 pfi_ifs);
+#define	pfi_ifs			 VNET(pfi_ifs)
+VNET_DEFINE(long,		 pfi_update);
+#define	pfi_update		 VNET(pfi_update)
+VNET_DEFINE(struct pfr_addr,	*pfi_buffer);
+#define	pfi_buffer		 VNET(pfi_buffer)
+VNET_DEFINE(int,		 pfi_buffer_cnt);
+#define	pfi_buffer_cnt		 VNET(pfi_buffer_cnt)
+VNET_DEFINE(int,		 pfi_buffer_max);
+#define	pfi_buffer_max		 VNET(pfi_buffer_max)
+#else
 struct pfi_kif		 *pfi_all = NULL;
- #ifdef __FreeBSD__
- uma_zone_t               pfi_addr_pl;
- #else
 struct pool		  pfi_addr_pl;
-#endif
 struct pfi_ifhead	  pfi_ifs;
 long			  pfi_update = 1;
 struct pfr_addr		 *pfi_buffer;
 int			  pfi_buffer_cnt;
 int			  pfi_buffer_max;
- #ifdef __FreeBSD__
- eventhandler_tag         pfi_attach_cookie = NULL;
- eventhandler_tag         pfi_detach_cookie = NULL;
- eventhandler_tag         pfi_attach_group_cookie = NULL;
- eventhandler_tag         pfi_change_group_cookie = NULL;
- eventhandler_tag         pfi_detach_group_cookie = NULL;
- eventhandler_tag         pfi_ifaddr_event_cookie = NULL;
- #endif
+#endif
+#ifdef __FreeBSD__
+VNET_DEFINE(eventhandler_tag,	 pfi_attach_cookie);
+VNET_DEFINE(eventhandler_tag,	 pfi_detach_cookie);
+VNET_DEFINE(eventhandler_tag,	 pfi_attach_group_cookie);
+VNET_DEFINE(eventhandler_tag,	 pfi_change_group_cookie);
+VNET_DEFINE(eventhandler_tag,	 pfi_detach_group_cookie);
+VNET_DEFINE(eventhandler_tag,	 pfi_ifaddr_event_cookie);
+#endif
 
 void		 pfi_kif_update(struct pfi_kif *);
 void		 pfi_dynaddr_update(struct pfi_dynaddr *dyn);
@@ -106,15 +117,15 @@ void		 pfi_address_add(struct sockaddr *, int, int);
 int		 pfi_if_compare(struct pfi_kif *, struct pfi_kif *);
 int		 pfi_skip_if(const char *, struct pfi_kif *);
 int		 pfi_unmask(void *);
- #ifdef __FreeBSD__
- void            pfi_attach_ifnet_event(void * __unused, struct ifnet *);
- void            pfi_detach_ifnet_event(void * __unused, struct ifnet *);
- void            pfi_attach_group_event(void * __unused, struct ifg_group *);
- void            pfi_change_group_event(void * __unused, char *);
- void            pfi_detach_group_event(void * __unused, struct ifg_group *);
- void            pfi_ifaddr_event(void * __unused, struct ifnet *);
+#ifdef __FreeBSD__
+void            pfi_attach_ifnet_event(void * __unused, struct ifnet *);
+void            pfi_detach_ifnet_event(void * __unused, struct ifnet *);
+void            pfi_attach_group_event(void * __unused, struct ifg_group *);
+void            pfi_change_group_event(void * __unused, char *);
+void            pfi_detach_group_event(void * __unused, struct ifg_group *);
+void            pfi_ifaddr_event(void * __unused, struct ifnet *);
  
- #endif
+#endif
 
 RB_PROTOTYPE(pfi_ifhead, pfi_kif, pfik_tree, pfi_if_compare);
 RB_GENERATE(pfi_ifhead, pfi_kif, pfik_tree, pfi_if_compare);

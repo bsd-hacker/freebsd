@@ -39,39 +39,39 @@
  #include "opt_inet.h"
  #include "opt_inet6.h"
  
- #include <sys/cdefs.h>
+#include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
- #endif
+#endif
  
- #ifdef __FreeBSD__
- #include "opt_bpf.h"
- #include "opt_pf.h"
- 
- #ifdef DEV_BPF
- #define        NBPFILTER       DEV_BPF
- #else
- #define        NBPFILTER       0
- #endif
- 
- #ifdef DEV_PFLOG
- #define        NPFLOG          DEV_PFLOG
- #else
- #define        NPFLOG          0
- #endif
- 
- #ifdef DEV_PFSYNC
- #define        NPFSYNC         DEV_PFSYNC
- #else
- #define        NPFSYNC         0
- #endif
-  
- #ifdef DEV_PFLOW
- #define        NPFLOW          DEV_PFLOW
- #else
- #define        NPFLOW          0
- #endif
+#ifdef __FreeBSD__
+#include "opt_bpf.h"
+#include "opt_pf.h"
 
- #else
+#ifdef DEV_BPF
+#define        NBPFILTER       DEV_BPF
+#else
+#define        NBPFILTER       0
+#endif
+ 
+#ifdef DEV_PFLOG
+#define        NPFLOG          DEV_PFLOG
+#else
+#define        NPFLOG          0
+#endif
+ 
+#ifdef DEV_PFSYNC
+#define        NPFSYNC         DEV_PFSYNC
+#else
+#define        NPFSYNC         0
+#endif
+  
+#ifdef DEV_PFLOW
+#define        NPFLOW          DEV_PFLOW
+#else
+#define        NPFLOW          0
+#endif
+
+#else
 #include "bpfilter.h"
 #include "pflog.h"
 #include "pfsync.h"
@@ -93,11 +93,11 @@ __FBSDID("$FreeBSD$");
 #include <sys/pool.h>
 #endif
 #include <sys/proc.h>
- #ifdef __FreeBSD__
- #include <sys/kthread.h>
- #include <sys/lock.h>
- #include <sys/sx.h>
- #else
+#ifdef __FreeBSD__
+#include <sys/kthread.h>
+#include <sys/lock.h>
+#include <sys/sx.h>
+#else
 #include <sys/rwlock.h>
 #endif
 
