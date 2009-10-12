@@ -934,6 +934,7 @@ struct pfsync_state {
 } __packed;
 
 #ifdef __FreeBSD__
+#ifdef _KERNEL
 /* pfsync */
 typedef int     	pfsync_state_import_t(struct pfsync_state *, u_int8_t);
 typedef	void		pfsync_insert_state_t(struct pf_state *);
@@ -981,6 +982,7 @@ VNET_DECLARE(pflog_packet_t,		*pflog_packet_ptr);
 
 /* pf uid hack */
 #define debug_pfugidhack                 VNET(debug_pfugidhack)
+#endif
 
 /* Macros to set/clear/test flags. */
 #ifdef _KERNEL
@@ -1218,8 +1220,10 @@ RB_HEAD(pfi_ifhead, pfi_kif);
 
 /* state tables */
 #ifdef __FreeBSD__
+#ifdef _KERNEL
 VNET_DECLARE(struct pf_state_tree,	 pf_statetbl);
 #define	pf_statetbl			 VNET(pf_statetbl)
+#endif
 #else
 extern struct pf_state_tree	 pf_statetbl;
 #endif
@@ -2143,10 +2147,12 @@ struct pf_fragment {
 #endif /* _KERNEL */
 
 #ifdef __FreeBSD__
+#ifdef _KERNEL
 VNET_DECLARE(struct pf_anchor_global,		 pf_anchors);
 #define	pf_anchors				 VNET(pf_anchors)
 VNET_DECLARE(struct pf_anchor,			 pf_main_anchor);
 #define	pf_main_anchor				 VNET(pf_main_anchor)
+#endif
 #else
 extern struct pf_anchor_global  pf_anchors;
 extern struct pf_anchor        pf_main_anchor;

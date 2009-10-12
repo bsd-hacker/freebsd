@@ -53,9 +53,6 @@ __FBSDID("$FreeBSD$");
 #include <netinet/tcp.h>
 
 #include <net/if.h>
-#ifdef __FreeBSD__
-#include <net/vnet.h>
-#endif
 #include <net/pfvar.h>
 
 #ifdef INET6
@@ -100,7 +97,7 @@ __FBSDID("$FreeBSD$");
 #endif /* _KERNEL */
 
 
-#ifdef __FreeBSD__
+#if defined(__FreeBSD__) && defined(_KERNEL)
 VNET_DEFINE(struct pf_anchor_global,	pf_anchors);
 VNET_DEFINE(struct pf_anchor,		pf_main_anchor);
 #else
