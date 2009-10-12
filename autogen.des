@@ -1,0 +1,5 @@
+#!/bin/sh
+
+sh -x ./autogen.sh
+set -x
+./configure --enable-wall --enable-wextra --enable-werror "$@"

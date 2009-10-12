@@ -1,0 +1,126 @@
+#
+# $Id$
+#
+AC_PREREQ([2.59])
+AC_INIT([svnsup], [1.0], [des@des.no])
+AC_CONFIG_SRCDIR([src/distill/distill.c])
+AM_CONFIG_HEADER([config.h])
+
+AC_LANG(C)
+AC_C_CONST
+AM_INIT_AUTOMAKE
+
+AC_PROG_CC
+AC_PROG_CPP
+AC_PROG_INSTALL
+AC_PROG_LN_S
+AC_PROG_MAKE_SET
+
+PKG_PROG_PKG_CONFIG
+
+AC_ARG_ENABLE(debugging,
+	AS_HELP_STRING([--enable-debugging],
+		[enable debugging (default is NO)]),
+	[
+		CFLAGS="${CFLAGS} -O0 -g"
+		CPPFLAGS="${CPPFLAGS} -DDEBUG"
+	]
+)
+
+AC_ARG_ENABLE(wall,
+	AS_HELP_STRING([--enable-wall],
+		[gcc only: compile with -Wall (default is NO)]),
+	AS_IF([test x"${GCC+set}" = xset], [
+		CFLAGS="${CFLAGS} -Wall"
+	], [
+		AC_MSG_WARN([-Wall is only supported on gcc])
+	])
+)
+
+AC_ARG_ENABLE(wextra,
+	AS_HELP_STRING([--enable-wextra],
+		[gcc only: compile with -Wextra (default is NO)]),
+	AS_IF([test x"${GCC+set}" = xset], [
+		CFLAGS="${CFLAGS} -Wextra"
+	], [
+		AC_MSG_WARN([-Wextra is only supported on gcc])
+	])
+)
+
+AC_ARG_ENABLE(werror,
+	AS_HELP_STRING([--enable-werror],
+		[gcc only: compile with -Werror (default is NO)]),
+	AS_IF([test x"${GCC+set}" = xset], [
+		CFLAGS="${CFLAGS} -Werror"
+	], [
+		AC_MSG_WARN([-Werror is only supported on gcc])
+	])
+)
+
+#
+# APR
+#
+PKG_CHECK_MODULES([APR_1], [apr-1])
+
+#
+# Subersion remote access library
+#
+saved_CPPFLAGS="${CPPFLAGS}"
+CPPFLAGS="${APR_1_CFLAGS}"
+AC_CHECK_HEADER([subversion-1/svn_ra.h], [], [
+	AC_MSG_ERROR([cannot proceed without <subversion-1/svn_ra.h>])
+])
+CPPFLAGS="${saved_CPPFLAGS}"
+saved_LIBS="${LIBS}"
+LIBS=""
+AC_CHECK_LIB([svn_ra-1], [svn_ra_version], [], [
+	AC_MSG_ERROR([cannot proceed without libsvn_ra-1])
+])
+SVN_RA_1_LIBS="${LIBS}"
+LIBS="${saved_LIBS}"
+AC_SUBST([SVN_RA_1_LIBS])
+
+#
+# Subversion delta library
+#
+saved_CPPFLAGS="${CPPFLAGS}"
+CPPFLAGS="${APR_1_CFLAGS}"
+AC_CHECK_HEADER([subversion-1/svn_delta.h], [], [
+	AC_MSG_ERROR([cannot proceed without <subversion-1/svn_delta.h>])
+])
+CPPFLAGS="${saved_CPPFLAGS}"
+saved_LIBS="${LIBS}"
+AC_CHECK_LIB([svn_delta-1], [svn_delta_version], [], [
+	AC_MSG_ERROR([cannot proceed without libsvn_delta-1])
+])
+SVN_DELTA_1_LIBS="${LIBS}"
+LIBS="${saved_LIBS}"
+AC_SUBST([SVN_DELTA_1_LIBS])
+
+#
+# Subversion client library
+#
+saved_CPPFLAGS="${CPPFLAGS}"
+CPPFLAGS="${APR_1_CFLAGS}"
+AC_CHECK_HEADER([subversion-1/svn_client.h], [], [
+	AC_MSG_ERROR([cannot proceed without <subversion-1/svn_client.h>])
+])
+CPPFLAGS="${saved_CPPFLAGS}"
+saved_LIBS="${LIBS}"
+AC_CHECK_LIB([svn_client-1], [svn_client_version], [], [
+	AC_MSG_ERROR([cannot proceed without libsvn_client-1])
+])
+SVN_CLIENT_1_LIBS="${LIBS}"
+LIBS="${saved_LIBS}"
+AC_SUBST([SVN_CLIENT_1_LIBS])
+
+#
+# Output
+#
+AC_CONFIG_FILES([
+	Makefile
+	src/Makefile
+	src/distill/Makefile
+	src/apply/Makefile
+])
+AC_OUTPUT
