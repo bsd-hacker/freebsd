@@ -168,7 +168,7 @@ __FBSDID("$FreeBSD$");
 #include <security/mac/mac_framework.h>
  
 extern int ip_optcopy(struct ip *, struct ip *);
-extern int debug_pfugidhack;
+VNET_DECLARE(int,	debug_pfugidhack);
 #endif
 
 #define DPFPRINTF(n, x)	if (pf_status.debug >= (n)) printf x
