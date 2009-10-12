@@ -66,7 +66,7 @@ PKG_CHECK_MODULES([APR_1], [apr-1])
 # Subersion remote access library
 #
 saved_CPPFLAGS="${CPPFLAGS}"
-CPPFLAGS="${APR_1_CFLAGS}"
+CPPFLAGS="${CPPFLAGS} ${APR_1_CFLAGS}"
 AC_CHECK_HEADER([subversion-1/svn_ra.h], [], [
 	AC_MSG_ERROR([cannot proceed without <subversion-1/svn_ra.h>])
 ])
@@ -84,7 +84,7 @@ AC_SUBST([SVN_RA_1_LIBS])
 # Subversion delta library
 #
 saved_CPPFLAGS="${CPPFLAGS}"
-CPPFLAGS="${APR_1_CFLAGS}"
+CPPFLAGS="${CPPFLAGS} ${APR_1_CFLAGS}"
 AC_CHECK_HEADER([subversion-1/svn_delta.h], [], [
 	AC_MSG_ERROR([cannot proceed without <subversion-1/svn_delta.h>])
 ])
@@ -101,7 +101,7 @@ AC_SUBST([SVN_DELTA_1_LIBS])
 # Subversion client library
 #
 saved_CPPFLAGS="${CPPFLAGS}"
-CPPFLAGS="${APR_1_CFLAGS}"
+CPPFLAGS="${CPPFLAGS} ${APR_1_CFLAGS}"
 AC_CHECK_HEADER([subversion-1/svn_client.h], [], [
 	AC_MSG_ERROR([cannot proceed without <subversion-1/svn_client.h>])
 ])
