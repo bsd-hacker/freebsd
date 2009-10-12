@@ -171,7 +171,11 @@ extern int ip_optcopy(struct ip *, struct ip *);
 VNET_DECLARE(int,	debug_pfugidhack);
 #endif
 
+#ifdef __FreeBSD__
+#define DPFPRINTF(n, x)	if (V_pf_status.debug >= (n)) printf x
+#else
 #define DPFPRINTF(n, x)	if (pf_status.debug >= (n)) printf x
+#endif
 
 /*
  * Global variables
@@ -558,13 +562,21 @@ pf_src_connlimit(struct pf_state **state)
 	if ((*state)->rule.ptr->max_src_conn &&
 	    (*state)->rule.ptr->max_src_conn <
 	    (*state)->src_node->conn) {
+#ifdef __FreeBSD__
+		V_pf_status.lcounters[LCNT_SRCCONN]++;
+#else
 		pf_status.lcounters[LCNT_SRCCONN]++;
+#endif
 		bad++;
 	}
 
 	if ((*state)->rule.ptr->max_src_conn_rate.limit &&
 	    pf_check_threshold(&(*state)->src_node->conn_rate)) {
+#ifdef __FreeBSD__
+		V_pf_status.lcounters[LCNT_SRCCONNRATE]++;
+#else
 		pf_status.lcounters[LCNT_SRCCONNRATE]++;
+#endif
 		bad++;
 	}
 
@@ -575,8 +587,13 @@ pf_src_connlimit(struct pf_state **state)
 		struct pfr_addr p;
 		u_int32_t	killed = 0;
 
+#ifdef __FreeBSD__
+		V_pf_status.lcounters[LCNT_OVERLOAD_TABLE]++;
+		if (V_pf_status.debug >= PF_DEBUG_MISC) {
+#else
 		pf_status.lcounters[LCNT_OVERLOAD_TABLE]++;
 		if (pf_status.debug >= PF_DEBUG_MISC) {
+#endif
 			printf("pf_src_connlimit: blocking address ");
 			pf_print_host(&(*state)->src_node->addr, 0,
 			    (*state)->key[PF_SK_WIRE]->af);
@@ -607,7 +624,11 @@ pf_src_connlimit(struct pf_state **state)
 			struct pf_state_key *sk;
 			struct pf_state *st;
 
+#ifdef __FreeBSD__
+			V_pf_status.lcounters[LCNT_OVERLOAD_FLUSH]++;
+#else
 			pf_status.lcounters[LCNT_OVERLOAD_FLUSH]++;
+#endif
 			RB_FOREACH(st, pf_state_tree_id, &tree_id) {
 				sk = st->key[PF_SK_WIRE];
 				/*
@@ -632,10 +653,18 @@ pf_src_connlimit(struct pf_state **state)
 					killed++;
 				}
 			}
+#ifdef __FreeBSD__
+			if (V_pf_status.debug >= PF_DEBUG_MISC)
+#else
 			if (pf_status.debug >= PF_DEBUG_MISC)
+#endif
 				printf(", %u states killed", killed);
 		}
+#ifdef __FreeBSD__
+		if (V_pf_status.debug >= PF_DEBUG_MISC)
+#else
 		if (pf_status.debug >= PF_DEBUG_MISC)
+#endif
 			printf("\n");
 	}
 
@@ -659,7 +688,11 @@ pf_insert_src_node(struct pf_src_node **sn, struct pf_rule *rule,
 			k.rule.ptr = rule;
 		else
 			k.rule.ptr = NULL;
+#ifdef __FreeBSD__
+		V_pf_status.scounters[SCNT_SRC_NODE_SEARCH]++;
+#else
 		pf_status.scounters[SCNT_SRC_NODE_SEARCH]++;
+#endif
 		*sn = RB_FIND(pf_src_tree, &tree_src_tracking, &k);
 	}
 	if (*sn == NULL) {
@@ -667,7 +700,11 @@ pf_insert_src_node(struct pf_src_node **sn, struct pf_rule *rule,
 		    rule->src_nodes < rule->max_src_nodes)
 			(*sn) = pool_get(&pf_src_tree_pl, PR_NOWAIT | PR_ZERO);
 		else
+#ifdef __FreeBSD__
+			V_pf_status.lcounters[LCNT_SRCNODES]++;
+#else
 			pf_status.lcounters[LCNT_SRCNODES]++;
+#endif
 		if ((*sn) == NULL)
 			return (-1);
 
@@ -684,7 +721,11 @@ pf_insert_src_node(struct pf_src_node **sn, struct pf_rule *rule,
 		PF_ACPY(&(*sn)->addr, src, af);
 		if (RB_INSERT(pf_src_tree,
 		    &tree_src_tracking, *sn) != NULL) {
+#ifdef __FreeBSD__
+			if (V_pf_status.debug >= PF_DEBUG_MISC) {
+#else
 			if (pf_status.debug >= PF_DEBUG_MISC) {
+#endif
 				printf("pf: src_tree insert failed: ");
 				pf_print_host(&(*sn)->addr, 0, af);
 				printf("\n");
@@ -696,12 +737,21 @@ pf_insert_src_node(struct pf_src_node **sn, struct pf_rule *rule,
 		(*sn)->ruletype = rule->action;
 		if ((*sn)->rule.ptr != NULL)
 			(*sn)->rule.ptr->src_nodes++;
+#ifdef __FreeBSD__
+		V_pf_status.scounters[SCNT_SRC_NODE_INSERT]++;
+		V_pf_status.src_nodes++;
+#else
 		pf_status.scounters[SCNT_SRC_NODE_INSERT]++;
 		pf_status.src_nodes++;
+#endif
 	} else {
 		if (rule->max_src_states &&
 		    (*sn)->states >= rule->max_src_states) {
+#ifdef __FreeBSD__
+			V_pf_status.lcounters[LCNT_SRCSTATES]++;
+#else
 			pf_status.lcounters[LCNT_SRCSTATES]++;
+#endif
 			return (-1);
 		}
 	}
@@ -819,7 +869,11 @@ pf_state_key_attach(struct pf_state_key *sk, struct pf_state *s, int idx)
 					/* unlink late or sks can go away */
 					olds = si->s;
 				} else {
+#ifdef __FreeBSD__
+					if (V_pf_status.debug >= PF_DEBUG_MISC) {
+#else
 					if (pf_status.debug >= PF_DEBUG_MISC) {
+#endif
 						printf("pf: %s key attach "
 						    "failed on %s: ",
 						    (idx == PF_SK_WIRE) ?
@@ -994,11 +1048,20 @@ pf_state_insert(struct pfi_kif *kif, struct pf_state_key *skw,
 	}
 
 	if (s->id == 0 && s->creatorid == 0) {
+#ifdef __FreeBSD__
+		s->id = htobe64(V_pf_status.stateid++);
+		s->creatorid = V_pf_status.hostid;
+#else
 		s->id = htobe64(pf_status.stateid++);
 		s->creatorid = pf_status.hostid;
+#endif
 	}
 	if (RB_INSERT(pf_state_tree_id, &tree_id, s) != NULL) {
+#ifdef __FreeBSD__
+		if (V_pf_status.debug >= PF_DEBUG_MISC) {
+#else
 		if (pf_status.debug >= PF_DEBUG_MISC) {
+#endif
 			printf("pf: state insert failed: "
 			    "id: %016llx creatorid: %08x",
 			    betoh64(s->id), ntohl(s->creatorid));
@@ -1008,8 +1071,13 @@ pf_state_insert(struct pfi_kif *kif, struct pf_state_key *skw,
 		return (-1);
 	}
 	TAILQ_INSERT_TAIL(&state_list, s, entry_list);
+#ifdef __FreeBSD__
+	V_pf_status.fcounters[FCNT_STATE_INSERT]++;
+	V_pf_status.states++;
+#else
 	pf_status.fcounters[FCNT_STATE_INSERT]++;
 	pf_status.states++;
+#endif
 	pfi_kif_ref(kif, PFI_KIF_REF_STATE);
 #if NPFSYNC > 0
 #ifdef __FreeBSD__
@@ -1025,7 +1093,11 @@ pf_state_insert(struct pfi_kif *kif, struct pf_state_key *skw,
 struct pf_state *
 pf_find_state_byid(struct pf_state_cmp *key)
 {
+#ifdef __FreeBSD__
+	V_pf_status.fcounters[FCNT_STATE_SEARCH]++;
+#else
 	pf_status.fcounters[FCNT_STATE_SEARCH]++;
+#endif
 
 	return (RB_FIND(pf_state_tree_id, &tree_id, (struct pf_state *)key));
 }
@@ -1073,7 +1145,11 @@ pf_find_state(struct pfi_kif *kif, struct pf_state_key_cmp *key, u_int dir,
 	struct pf_state_key	*sk;
 	struct pf_state_item	*si;
 
+#ifdef __FreeBSD__
+	V_pf_status.fcounters[FCNT_STATE_SEARCH]++;
+#else
 	pf_status.fcounters[FCNT_STATE_SEARCH]++;
+#endif
 
 #ifdef __FreeBSD__
 	if (dir == PF_OUT && pftag->statekey &&
@@ -1132,7 +1208,11 @@ pf_find_state_all(struct pf_state_key_cmp *key, u_int dir, int *more)
 	struct pf_state_key	*sk;
 	struct pf_state_item	*si, *ret = NULL;
 
+#ifdef __FreeBSD__
+	V_pf_status.fcounters[FCNT_STATE_SEARCH]++;
+#else
 	pf_status.fcounters[FCNT_STATE_SEARCH]++;
+#endif
 
 	sk = RB_FIND(pf_state_tree, &pf_statetbl, (struct pf_state_key *)key);
 
@@ -1177,7 +1257,11 @@ pf_purge_thread(void *v)
                         sx_sunlock(&pf_consistency_lock);
                         sx_xlock(&pf_consistency_lock);
                         PF_LOCK();
+#ifdef __FreeBSD__
+                        pf_purge_expired_states(V_pf_status.states, 1);
+#else
                         pf_purge_expired_states(pf_status.states, 1);
+#endif
                         pf_purge_expired_fragments();
                         pf_purge_expired_src_nodes(1);
                         pf_end_threads++;
@@ -1192,7 +1276,7 @@ pf_purge_thread(void *v)
 
 		/* process a fraction of the state table every second */
  #ifdef __FreeBSD__
-                if(!pf_purge_expired_states(1 + (pf_status.states
+                if(!pf_purge_expired_states(1 + (V_pf_status.states
                     / pf_default_rule.timeout[PFTM_INTERVAL]), 0)) {
                         PF_UNLOCK();
                         sx_sunlock(&pf_consistency_lock);
@@ -1200,7 +1284,7 @@ pf_purge_thread(void *v)
                         PF_LOCK();
                         locked = 1;
  
-                        pf_purge_expired_states(1 + (pf_status.states
+                        pf_purge_expired_states(1 + (V_pf_status.states
                             / pf_default_rule.timeout[PFTM_INTERVAL]), 1);
                 }
  #else
@@ -1258,7 +1342,11 @@ pf_state_expires(const struct pf_state *state)
 	} else {
 		start = pf_default_rule.timeout[PFTM_ADAPTIVE_START];
 		end = pf_default_rule.timeout[PFTM_ADAPTIVE_END];
+#ifdef __FreeBSD__
+		states = V_pf_status.states;
+#else
 		states = pf_status.states;
+#endif
 	}
 	if (end && states > start && start < end) {
 		if (states < end)
@@ -1303,8 +1391,13 @@ pf_purge_expired_src_nodes(int waslocked)
 					pf_rm_rule(NULL, cur->rule.ptr);
 			}
 			RB_REMOVE(pf_src_tree, &tree_src_tracking, cur);
+#ifdef __FreeBSD__
+			V_pf_status.scounters[SCNT_SRC_NODE_REMOVALS]++;
+			V_pf_status.src_nodes--;
+#else
 			pf_status.scounters[SCNT_SRC_NODE_REMOVALS]++;
 			pf_status.src_nodes--;
+#endif
 			pool_put(&pf_src_tree_pl, cur);
 		}
 	}
@@ -1437,8 +1530,13 @@ pf_free_state(struct pf_state *cur)
 	if (cur->tag)
 		pf_tag_unref(cur->tag);
 	pool_put(&pf_state_pl, cur);
+#ifdef __FreeBSD__
+	V_pf_status.fcounters[FCNT_STATE_REMOVALS]++;
+	V_pf_status.states--;
+#else
 	pf_status.fcounters[FCNT_STATE_REMOVALS]++;
 	pf_status.states--;
+#endif
 }
 
 #ifdef __FreeBSD__
@@ -3513,7 +3611,11 @@ pf_create_state(struct pf_rule *r, struct pf_rule *nr, struct pf_rule *a,
 
 	/* check maximums */
 	if (r->max_states && (r->states_cur >= r->max_states)) {
+#ifdef __FreeBSD__
+		V_pf_status.lcounters[LCNT_STATES]++;
+#else
 		pf_status.lcounters[LCNT_STATES]++;
+#endif
 		REASON_SET(&reason, PFRES_MAXSTATES);
 		return (PF_DROP);
 	}
@@ -3706,14 +3808,24 @@ csfailed:
 
 	if (sn != NULL && sn->states == 0 && sn->expire == 0) {
 		RB_REMOVE(pf_src_tree, &tree_src_tracking, sn);
+#ifdef __FreeBSD__
+		V_pf_status.scounters[SCNT_SRC_NODE_REMOVALS]++;
+		V_pf_status.src_nodes--;
+#else
 		pf_status.scounters[SCNT_SRC_NODE_REMOVALS]++;
 		pf_status.src_nodes--;
+#endif
 		pool_put(&pf_src_tree_pl, sn);
 	}
 	if (nsn != sn && nsn != NULL && nsn->states == 0 && nsn->expire == 0) {
 		RB_REMOVE(pf_src_tree, &tree_src_tracking, nsn);
+#ifdef __FreeBSD__
+		V_pf_status.scounters[SCNT_SRC_NODE_REMOVALS]++;
+		V_pf_status.src_nodes--;
+#else
 		pf_status.scounters[SCNT_SRC_NODE_REMOVALS]++;
 		pf_status.src_nodes--;
+#endif
 		pool_put(&pf_src_tree_pl, nsn);
 	}
 	return (PF_DROP);
@@ -4061,7 +4173,11 @@ pf_tcp_track_full(struct pf_state_peer *src, struct pf_state_peer *dst,
 		 * and keep updating the state TTL.
 		 */
 
+#ifdef __FreeBSD__
+		if (V_pf_status.debug >= PF_DEBUG_MISC) {
+#else
 		if (pf_status.debug >= PF_DEBUG_MISC) {
+#endif
 			printf("pf: loose state match: ");
 			pf_print_state(*state);
 			pf_print_flags(th->th_flags);
@@ -4120,7 +4236,11 @@ pf_tcp_track_full(struct pf_state_peer *src, struct pf_state_peer *dst,
 			src->seqlo = 0;
 			src->seqhi = 1;
 			src->max_win = 1;
+#ifdef __FreeBSD__
+		} else if (V_pf_status.debug >= PF_DEBUG_MISC) {
+#else
 		} else if (pf_status.debug >= PF_DEBUG_MISC) {
+#endif
 			printf("pf: BAD state: ");
 			pf_print_state(*state);
 			pf_print_flags(th->th_flags);
@@ -4359,7 +4479,11 @@ pf_test_state_tcp(struct pf_state **state, int direction, struct pfi_kif *kif,
 	if (((th->th_flags & (TH_SYN|TH_ACK)) == TH_SYN) &&
 	    dst->state >= TCPS_FIN_WAIT_2 &&
 	    src->state >= TCPS_FIN_WAIT_2) {
+#ifdef __FreeBSD__
+		if (V_pf_status.debug >= PF_DEBUG_MISC) {
+#else
 		if (pf_status.debug >= PF_DEBUG_MISC) {
+#endif
 			printf("pf: state reuse ");
 			pf_print_state(*state);
 			pf_print_flags(th->th_flags);
@@ -4790,7 +4914,11 @@ pf_test_state_icmp(struct pf_state **state, int direction, struct pfi_kif *kif,
 			if (!((*state)->state_flags & PFSTATE_SLOPPY) &&
 			    (!SEQ_GEQ(src->seqhi, seq) ||
 			    !SEQ_GEQ(seq, src->seqlo - (dst->max_win << dws)))) {
+#ifdef __FreeBSD__
+				if (V_pf_status.debug >= PF_DEBUG_MISC) {
+#else
 				if (pf_status.debug >= PF_DEBUG_MISC) {
+#endif
 					printf("pf: BAD ICMP %d:%d ",
 					    icmptype, pd->hdr.icmp->icmp_code);
 					pf_print_host(pd->src, 0, pd->af);
@@ -4803,7 +4931,11 @@ pf_test_state_icmp(struct pf_state **state, int direction, struct pfi_kif *kif,
 				REASON_SET(reason, PFRES_BADSTATE);
 				return (PF_DROP);
 			} else {
+#ifdef __FreeBSD__
+				if (V_pf_status.debug >= PF_DEBUG_MISC) {
+#else
 				if (pf_status.debug >= PF_DEBUG_MISC) {
+#endif
 					printf("pf: OK ICMP %d:%d ",
 					    icmptype, pd->hdr.icmp->icmp_code);
 					pf_print_host(pd->src, 0, pd->af);
@@ -6230,15 +6362,14 @@ pf_test(int dir, struct ifnet *ifp, struct mbuf **m0,
 
 #ifdef __FreeBSD__
 	PF_LOCK();
-#endif
-	if (!pf_status.running)
- #ifdef __FreeBSD__
+	if (!V_pf_status.running)
         {
                 PF_UNLOCK();
- #endif
 		return (PF_PASS);
- #ifdef __FreeBSD__
         }
+ #else
+	if (!pf_status.running)
+		return (PF_PASS);
  #endif
 
 	memset(&pd, 0, sizeof(pd));
@@ -6655,15 +6786,14 @@ pf_test6(int dir, struct ifnet *ifp, struct mbuf **m0,
 
 #ifdef __FreeBSD__
         PF_LOCK();
- #endif
 	if (!pf_status.running)
- #ifdef __FreeBSD__
         {
                 PF_UNLOCK();
- #endif
 		return (PF_PASS);
- #ifdef __FreeBSD__
         }
+ #else
+	if (!pf_status.running)
+		return (PF_PASS);
  #endif
 
 	memset(&pd, 0, sizeof(pd));

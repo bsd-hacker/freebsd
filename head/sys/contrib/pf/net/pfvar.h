@@ -957,7 +957,7 @@ VNET_DECLARE(pfsync_clear_states_t,	*pfsync_clear_states_ptr);
 VNET_DECLARE(pfsync_state_in_use_t,	*pfsync_state_in_use_ptr);
 #define pfsync_state_in_use_ptr          VNET(pfsync_state_in_use_ptr)
 VNET_DECLARE(pfsync_defer_t,		*pfsync_defer_ptr);
-#define pfsync_defer_ptr                 VNETpfsync_defer_ptr)
+#define pfsync_defer_ptr                 VNET(pfsync_defer_ptr)
 VNET_DECLARE(pfsync_up_t,		*pfsync_up_ptr);
 #define pfsync_up_ptr                    VNET(pfsync_up_ptr)
 
@@ -971,7 +971,12 @@ VNET_DECLARE(export_pflow_t,		*export_pflow_ptr);
 #define export_pflow_ptr                 VNET(export_pflow_ptr)
 
 /* pflog */
-VNET_DECLARE(plog_packet_t,		*pflog_packet_ptr);
+struct pf_ruleset;
+struct pf_pdesc;
+typedef int pflog_packet_t(struct pfi_kif *, struct mbuf *, sa_family_t,
+    u_int8_t, u_int8_t, struct pf_rule *, struct pf_rule *,
+    struct pf_ruleset *, struct pf_pdesc *);
+VNET_DECLARE(pflog_packet_t,		*pflog_packet_ptr);
 #define pflog_packet_ptr                 VNET(pflog_packet_ptr)
 
 /* pf uid hack */
@@ -1398,6 +1403,15 @@ struct pf_pdesc {
 			*(a) = (x); \
 	} while (0)
 
+#ifdef __FreeBSD__
+#define REASON_SET(a, x) \
+	do { \
+		if ((a) != NULL) \
+			*(a) = (x); \
+		if (x < PFRES_MAX) \
+			V_pf_status.counters[x]++; \
+	} while (0)
+#else
 #define REASON_SET(a, x) \
 	do { \
 		if ((a) != NULL) \
@@ -1405,6 +1419,7 @@ struct pf_pdesc {
 		if (x < PFRES_MAX) \
 			pf_status.counters[x]++; \
 	} while (0)
+#endif
 
 struct pf_status {
 	u_int64_t	counters[PFRES_MAX];
@@ -1855,7 +1870,7 @@ VNET_DECLARE(uma_zone_t,		 pf_pooladdr_pl);
 VNET_DECLARE(uma_zone_t,		 pfr_ktable_pl);
 #define	pfr_ktable_pl			 VNET(pfr_ktable_pl)
 VNET_DECLARE(uma_zone_t,		 pfr_kentry_pl);
-#define	pfr_kentry_pl			 VNET(pfr_kentry_p)
+#define	pfr_kentry_pl			 VNET(pfr_kentry_pl)
 VNET_DECLARE(uma_zone_t,		 pf_cache_pl);
 #define	pf_cache_pl			 VNET(pf_cache_pl)
 VNET_DECLARE(uma_zone_t,		 pf_cent_pl);
@@ -1871,8 +1886,13 @@ extern struct pool		 pf_state_pl, pf_state_key_pl, pf_state_item_pl,
 extern struct pool		 pf_state_scrub_pl;
 #endif
 extern void			 pf_purge_thread(void *);
+#ifdef __FreeBSD__
+extern int			 pf_purge_expired_src_nodes(int);
+extern int			 pf_purge_expired_states(u_int32_t , int);
+#else
 extern void			 pf_purge_expired_src_nodes(int);
 extern void			 pf_purge_expired_states(u_int32_t);
+#endif
 extern void			 pf_unlink_state(struct pf_state *);
 extern void			 pf_free_state(struct pf_state *);
 extern int			 pf_state_insert(struct pfi_kif *,
@@ -2060,7 +2080,7 @@ void		 pf_qid_unref(u_int32_t);
 
 #ifdef __FreeBSD__
 VNET_DECLARE(struct pf_status,		 pf_status);
-#define	pf_status			 VNET(pf_status)
+#define	V_pf_status			 VNET(pf_status)
 #else
 extern struct pf_status	pf_status;
 #endif

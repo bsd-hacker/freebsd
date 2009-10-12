@@ -178,10 +178,8 @@ void			 pf_addr_copyout(struct pf_addr_wrap *);
 
 #define	TAGID_MAX	 50000
 #ifdef __FreeBSD__
-VNET_DEFINE(struct pf_rule, pf_default_rule);
-#define pf_default_rule       VNET(pf_default_rule);
-VNET_DEFINE(struct sx, pf_consistency_lock);
-#define pf_consistency_lock	VNET(pf_consistency_lock);
+VNET_DEFINE(struct pf_rule,	 pf_default_rule);
+VNET_DEFINE(struct sx,		 pf_consistency_lock);
 SX_SYSINIT(pf_consistency_lock, &pf_consistency_lock,
 	"pf_statetbl_lock");
 #ifdef ALTQ
@@ -191,9 +189,11 @@ static VNET_DEFINE(int, pf_altq_running);
 
 TAILQ_HEAD(pf_tags, pf_tagname);
 
-VNET_DEFINE(struct pf_tags, pf_tags);
-#define	pf_tags		VNET(pf_tags)
-VNET_DEFINE(struct pf_tags, pf_qids);
+#define	V_pf_tags		VNET(pf_tags)
+VNET_DEFINE(struct pf_tags, pf_tags) = 
+	TAILQ_HEAD_INITIALIZER(V_pf_tags);
+VNET_DEFINE(struct pf_tags, pf_qids) =
+	TAILQ_HEAD_INITIALIZER(pf_qids);
 #define	pf_qids		VNET(pf_qids);
 
 #else /* !__FreeBSD__ */
@@ -218,7 +218,11 @@ int			 pf_rtlabel_add(struct pf_addr_wrap *);
 void			 pf_rtlabel_remove(struct pf_addr_wrap *);
 void			 pf_rtlabel_copyout(struct pf_addr_wrap *);
 
+#ifdef __FreeBSD__
+#define DPFPRINTF(n, x) if (V_pf_status.debug >= (n)) printf x
+#else
 #define DPFPRINTF(n, x) if (pf_status.debug >= (n)) printf x
+#endif
 
 #ifdef __FreeBSD__
 static VNET_DEFINE(struct cdev, *pf_dev);
@@ -253,7 +257,11 @@ static int              shutdown_pf(void);
 static int              pf_load(void);
 static int              pf_unload(void);
 
-static VNET_DEFINE(struct cdevsw, pf_cdevsw);
+static VNET_DEFINE(struct cdevsw, pf_cdevsw) = {
+                .d_ioctl =      pfioctl,
+                .d_name =       PF_NAME,
+                .d_version =    D_VERSION,
+};
 #define pf_cdevsw			VNET(pf_cdevsw)
 
 static volatile VNET_DEFINE(int, pf_pfil_hooked);
@@ -412,13 +420,22 @@ pfattach(void)
         my_timeout[PFTM_ADAPTIVE_END] = PFSTATE_ADAPT_END;
  
         pf_normalize_init();
+#ifdef __FreeBSD__
+        bzero(&V_pf_status, sizeof(pf_status));
+        V_pf_status.debug = PF_DEBUG_URGENT;
+#else
         bzero(&pf_status, sizeof(pf_status));
         pf_status.debug = PF_DEBUG_URGENT;
+#endif
  
         pf_pfil_hooked = 0;
  
         /* XXX do our best to avoid a conflict */
+#ifdef __FreeBSD__
+        V_pf_status.hostid = arc4random();
+#else
         pf_status.hostid = arc4random();
+#endif
  
         if (kproc_create(pf_purge_thread, NULL, NULL, 0, 0, "pfpurge"))
                 return (ENXIO);
@@ -723,13 +740,21 @@ tag_unref(struct pf_tags *head, u_int16_t tag)
 u_int16_t
 pf_tagname2tag(char *tagname)
 {
+#ifdef __FreeBSD__
+	return (tagname2tag(&V_pf_tags, tagname));
+#else
 	return (tagname2tag(&pf_tags, tagname));
+#endif
 }
 
 void
 pf_tag2tagname(u_int16_t tagid, char *p)
 {
+#ifdef __FreeBSD__
+	tag2tagname(&V_pf_tags, tagid, p);
+#else
 	tag2tagname(&pf_tags, tagid, p);
+#endif
 }
 
 void
@@ -737,7 +762,11 @@ pf_tag_ref(u_int16_t tag)
 {
 	struct pf_tagname *t;
 
+#ifdef __FreeBSD__
+	TAILQ_FOREACH(t, &V_pf_tags, entries)
+#else
 	TAILQ_FOREACH(t, &pf_tags, entries)
+#endif
 		if (t->tag == tag)
 			break;
 	if (t != NULL)
@@ -747,7 +776,11 @@ pf_tag_ref(u_int16_t tag)
 void
 pf_tag_unref(u_int16_t tag)
 {
+#ifdef __FreeBSD__
+	tag_unref(&V_pf_tags, tag);
+#else
 	tag_unref(&pf_tags, tag);
+#endif
 }
 
 int
@@ -1288,7 +1321,11 @@ pf_setup_pfsync_matching(struct pf_ruleset *rs)
 	}
 
 	MD5Final(digest, &ctx);
+#ifdef __FreeBSD__
+	memcpy(V_pf_status.pf_chksum, digest, sizeof(V_pf_status.pf_chksum));
+#else
 	memcpy(pf_status.pf_chksum, digest, sizeof(pf_status.pf_chksum));
+#endif
 	return (0);
 }
 
@@ -1455,7 +1492,11 @@ pfioctl(dev_t dev, u_long cmd, caddr_t addr, int flags, struct proc *p)
 	switch (cmd) {
 
 	case DIOCSTART:
+#ifdef __FreeBSD__
+		if (V_pf_status.running)
+#else
 		if (pf_status.running)
+#endif
 			error = EEXIST;
 		else {
 #ifdef __FreeBSD__
@@ -1467,33 +1508,48 @@ pfioctl(dev_t dev, u_long cmd, caddr_t addr, int flags, struct proc *p)
                                     ("pf: pfil registeration fail\n"));
                                 break;
                         }
- #endif
+			V_pf_status.running = 1;
+			V_pf_status.since = time_second;
+
+			if (V_pf_status.stateid == 0) {
+				V_pf_status.stateid = time_second;
+				V_pf_status.stateid = V_pf_status.stateid << 32;
+			}
+#else
 			pf_status.running = 1;
 			pf_status.since = time_second;
+
 			if (pf_status.stateid == 0) {
 				pf_status.stateid = time_second;
 				pf_status.stateid = pf_status.stateid << 32;
 			}
+ #endif
 			DPFPRINTF(PF_DEBUG_MISC, ("pf: started\n"));
 		}
 		break;
 
 	case DIOCSTOP:
-		if (!pf_status.running)
+#ifdef __FreeBSD__
+		if (!V_pf_status.running)
 			error = ENOENT;
 		else {
-			pf_status.running = 0;
-#ifdef __FreeBSD__
+			V_pf_status.running = 0;
                         PF_UNLOCK();
                         error = dehook_pf();
                         PF_LOCK();
                         if (error) {
-                                pf_status.running = 1;
+                                V_pf_status.running = 1;
                                 DPFPRINTF(PF_DEBUG_MISC,
                                         ("pf: pfil unregisteration failed\n"));
                         }
- #endif
+			V_pf_status.since = time_second;
+#else
+                if (!pf_status.running)
+                        error = ENOENT;
+                else {
+                        pf_status.running = 0;
 			pf_status.since = time_second;
+#endif
 			DPFPRINTF(PF_DEBUG_MISC, ("pf: stopped\n"));
 		}
 		break;
@@ -2012,7 +2068,7 @@ pfioctl(dev_t dev, u_long cmd, caddr_t addr, int flags, struct proc *p)
 #if NPFSYNC > 0
 #ifdef __FreeBSD__
 		if (pfsync_clear_states_ptr != NULL)
-			pfsync_clear_states_ptr(pf_status.hostid, psk->psk_ifname);
+			pfsync_clear_states_ptr(V_pf_status.hostid, psk->psk_ifname);
 #else
 		pfsync_clear_states(pf_status.hostid, psk->psk_ifname);
 #endif
@@ -2030,7 +2086,11 @@ pfioctl(dev_t dev, u_long cmd, caddr_t addr, int flags, struct proc *p)
 
 		if (psk->psk_pfcmp.id) {
 			if (psk->psk_pfcmp.creatorid == 0)
+#ifdef __FreeBSD__
+				psk->psk_pfcmp.creatorid = V_pf_status.hostid;
+#else
 				psk->psk_pfcmp.creatorid = pf_status.hostid;
+#endif
 			if ((s = pf_find_state_byid(&psk->psk_pfcmp))) {
 				pf_unlink_state(s);
 				psk->psk_killed = 1;
@@ -2128,7 +2188,11 @@ pfioctl(dev_t dev, u_long cmd, caddr_t addr, int flags, struct proc *p)
 		u_int32_t		 nr = 0;
 
 		if (ps->ps_len == 0) {
+#ifdef __FreeBSD__
+			nr = V_pf_status.states;
+#else
 			nr = pf_status.states;
+#endif
 			ps->ps_len = sizeof(struct pfsync_state) * nr;
 			break;
 		}
@@ -2172,7 +2236,11 @@ pfioctl(dev_t dev, u_long cmd, caddr_t addr, int flags, struct proc *p)
 
 	case DIOCGETSTATUS: {
 		struct pf_status *s = (struct pf_status *)addr;
+#ifdef __FreeBSD__
+		bcopy(&V_pf_status, s, sizeof(struct pf_status));
+#else
 		bcopy(&pf_status, s, sizeof(struct pf_status));
+#endif
 		pfi_update_status(s->ifname, s);
 		break;
 	}
@@ -2181,20 +2249,37 @@ pfioctl(dev_t dev, u_long cmd, caddr_t addr, int flags, struct proc *p)
 		struct pfioc_if	*pi = (struct pfioc_if *)addr;
 
 		if (pi->ifname[0] == 0) {
+#ifdef __FreeBSD__
+			bzero(V_pf_status.ifname, IFNAMSIZ);
+#else
 			bzero(pf_status.ifname, IFNAMSIZ);
+#endif
 			break;
 		}
+#ifdef __FreeBSD__
+		strlcpy(V_pf_status.ifname, pi->ifname, IFNAMSIZ);
+#else
 		strlcpy(pf_status.ifname, pi->ifname, IFNAMSIZ);
+#endif
 		break;
 	}
 
 	case DIOCCLRSTATUS: {
+#ifdef __FreeBSD__
+		bzero(V_pf_status.counters, sizeof(V_pf_status.counters));
+		bzero(V_pf_status.fcounters, sizeof(V_pf_status.fcounters));
+		bzero(V_pf_status.scounters, sizeof(V_pf_status.scounters));
+		V_pf_status.since = time_second;
+		if (*V_pf_status.ifname)
+			pfi_update_status(V_pf_status.ifname, NULL);
+#else
 		bzero(pf_status.counters, sizeof(pf_status.counters));
 		bzero(pf_status.fcounters, sizeof(pf_status.fcounters));
 		bzero(pf_status.scounters, sizeof(pf_status.scounters));
 		pf_status.since = time_second;
 		if (*pf_status.ifname)
 			pfi_update_status(pf_status.ifname, NULL);
+#endif
 		break;
 	}
 
@@ -2309,7 +2394,11 @@ pfioctl(dev_t dev, u_long cmd, caddr_t addr, int flags, struct proc *p)
 	case DIOCSETDEBUG: {
 		u_int32_t	*level = (u_int32_t *)addr;
 
+#ifdef __FreeBSD__
+		V_pf_status.debug = *level;
+#else
 		pf_status.debug = *level;
+#endif
 		break;
 	}
 
@@ -3178,18 +3267,18 @@ pfioctl(dev_t dev, u_long cmd, caddr_t addr, int flags, struct proc *p)
 		}
 #ifdef __FreeBSD__
                 PF_UNLOCK();
- #endif
+#endif
 		ioe = malloc(sizeof(*ioe), M_TEMP, M_WAITOK);
 		table = malloc(sizeof(*table), M_TEMP, M_WAITOK);
 #ifdef __FreeBSD__
                 PF_LOCK();
- #endif
+#endif
 		/* first makes sure everything will succeed */
 		for (i = 0; i < io->size; i++) {
 #ifdef __FreeBSD__
                         PF_COPYIN(io->array+i, ioe, sizeof(*ioe), error);
                         if (error) {
- #else
+#else
 			if (copyin(io->array+i, ioe, sizeof(*ioe))) {
 #endif
 				free(table, M_TEMP);
@@ -3371,7 +3460,11 @@ pfioctl(dev_t dev, u_long cmd, caddr_t addr, int flags, struct proc *p)
 			n->states = 0;
 		}
 		pf_purge_expired_src_nodes(1);
+#ifdef __FreeBSD__
+		V_pf_status.src_nodes = 0;
+#else
 		pf_status.src_nodes = 0;
+#endif
 		break;
 	}
 
@@ -3417,10 +3510,17 @@ pfioctl(dev_t dev, u_long cmd, caddr_t addr, int flags, struct proc *p)
 	case DIOCSETHOSTID: {
 		u_int32_t	*hostid = (u_int32_t *)addr;
 
+#ifdef __FreeBSD__
+		if (*hostid == 0)
+			V_pf_status.hostid = arc4random();
+		else
+			V_pf_status.hostid = *hostid;
+#else
 		if (*hostid == 0)
 			pf_status.hostid = arc4random();
 		else
 			pf_status.hostid = *hostid;
+#endif
 		break;
 	}
 
@@ -3559,7 +3659,7 @@ pf_clear_states(void)
 /*
  * XXX This is called on module unload, we do not want to sync that over? */
  */
-       pfsync_clear_states(pf_status.hostid, psk->psk_ifname);
+       pfsync_clear_states(V_pf_status.hostid, psk->psk_ifname);
 #endif
 }
 
@@ -3606,7 +3706,7 @@ shutdown_pf(void)
         u_int32_t t[5];
         char nn = '\0';
  
-        pf_status.running = 0;
+        V_pf_status.running = 0;
         do {
                 if ((error = pf_begin_rules(&t[0], PF_RULESET_SCRUB, &nn))
                     != 0) {
@@ -3869,15 +3969,6 @@ dehook_pf(void)
 static int
 vnet_pf_init(const void *unused) 
 {
-	TAILQ_HEAD_INITIALIZER(pf_tags);
-	TAILQ_HEAD_INITIALIZER(pf_qids);
-
-	pf_cdevsw = {
-		.d_ioctl =      pfioctl,
-		.d_name =       PF_NAME,
-		.d_version =    D_VERSION,
-	};
-
 	pf_pfil_hooked = 0;
 	pf_end_threads = 0;
 
@@ -3955,7 +4046,7 @@ pf_unload(void)
         int error = 0;
  
         PF_LOCK();
-        pf_status.running = 0;
+        V_pf_status.running = 0;
         PF_UNLOCK();
         error = dehook_pf();
         if (error) {

@@ -148,7 +148,11 @@ __FBSDID("$FreeBSD$");
 #endif /* INET6 */
 
 
+#ifdef __FreeBSD__
+#define DPFPRINTF(n, x)	if (V_pf_status.debug >= (n)) printf x
+#else
 #define DPFPRINTF(n, x)	if (pf_status.debug >= (n)) printf x
+#endif
 
 /*
  * Global variables
@@ -433,11 +437,19 @@ pf_map_addr(sa_family_t af, struct pf_rule *r, struct pf_addr *saddr,
 			k.rule.ptr = r;
 		else
 			k.rule.ptr = NULL;
+#ifdef __FreeBSD__
+		V_pf_status.scounters[SCNT_SRC_NODE_SEARCH]++;
+#else
 		pf_status.scounters[SCNT_SRC_NODE_SEARCH]++;
+#endif
 		*sn = RB_FIND(pf_src_tree, &tree_src_tracking, &k);
 		if (*sn != NULL && !PF_AZERO(&(*sn)->raddr, af)) {
 			PF_ACPY(naddr, &(*sn)->raddr, af);
+#ifdef __FreeBSD__
+			if (V_pf_status.debug >= PF_DEBUG_MISC) {
+#else
 			if (pf_status.debug >= PF_DEBUG_MISC) {
+#endif
 				printf("pf_map_addr: src tracking maps ");
 				pf_print_host(&k.addr, 0, af);
 				printf(" to ");
@@ -584,7 +596,11 @@ pf_map_addr(sa_family_t af, struct pf_rule *r, struct pf_addr *saddr,
 	if (*sn != NULL)
 		PF_ACPY(&(*sn)->raddr, naddr, af);
 
+#ifdef __FreeBSD__
+	if (V_pf_status.debug >= PF_DEBUG_MISC &&
+#else
 	if (pf_status.debug >= PF_DEBUG_MISC &&
+#endif
 	    (rpool->opts & PF_POOL_TYPEMASK) != PF_POOL_NONE) {
 		printf("pf_map_addr: selected address ");
 		pf_print_host(naddr, 0, af);

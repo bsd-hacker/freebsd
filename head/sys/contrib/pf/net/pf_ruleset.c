@@ -61,9 +61,15 @@ __FBSDID("$FreeBSD$");
 
 
 #ifdef _KERNEL
+#ifdef __FreeBSD__
+# define DPFPRINTF(format, x...)		\
+	if (V_pf_status.debug >= PF_DEBUG_NOISY)	\
+		printf(format , ##x)
+#else
 # define DPFPRINTF(format, x...)		\
 	if (pf_status.debug >= PF_DEBUG_NOISY)	\
 		printf(format , ##x)
+#endif
  #ifdef __FreeBSD__
  #define rs_malloc(x)           malloc(x, M_TEMP, M_NOWAIT)
 #else

@@ -674,14 +674,22 @@ pfsync_state_import(struct pfsync_state *sp, u_int8_t flags)
 	int pool_flags;
 	int error;
 
+#ifdef __FreeBSD__
+	if (sp->creatorid == 0 && V_pf_status.debug >= PF_DEBUG_MISC) {
+#else
 	if (sp->creatorid == 0 && pf_status.debug >= PF_DEBUG_MISC) {
+#endif
 		printf("pfsync_state_import: invalid creator id:"
 		    " %08x\n", ntohl(sp->creatorid));
 		return (EINVAL);
 	}
 
 	if ((kif = pfi_kif_get(sp->ifname)) == NULL) {
+#ifdef __FreeBSD__
+		if (V_pf_status.debug >= PF_DEBUG_MISC)
+#else
 		if (pf_status.debug >= PF_DEBUG_MISC)
+#endif
 			printf("pfsync_state_import: "
 			    "unknown interface: %s\n", sp->ifname);
 		if (flags & PFSYNC_SI_IOCTL)
@@ -845,7 +853,11 @@ pfsync_input(struct mbuf *m, ...)
 	pfsyncstats.pfsyncs_ipackets++;
 
 	/* verify that we have a sync interface configured */
+#ifdef __FreeBSD__
+	if (!sc || !sc->sc_sync_if || !V_pf_status.running)
+#else
 	if (!sc || !sc->sc_sync_if || !pf_status.running)
+#endif
 		goto done;
 
 	/* verify that the packet came in on the right interface */
@@ -900,7 +912,11 @@ pfsync_input(struct mbuf *m, ...)
 	pkt.src = ip->ip_src;
 	pkt.flags = 0;
 
+#ifdef __FreeBSD__
+	if (!bcmp(&ph->pfcksum, &V_pf_status.pf_chksum, PF_MD5_DIGEST_LENGTH))
+#else
 	if (!bcmp(&ph->pfcksum, &pf_status.pf_chksum, PF_MD5_DIGEST_LENGTH))
+#endif
 		pkt.flags |= PFSYNC_SI_CKSUM;
 
 	offset += sizeof(*ph);
@@ -1019,7 +1035,11 @@ pfsync_in_ins(struct pfsync_pkt *pkt, struct mbuf *m, int offset, int count)
 		    sp->dst.state > PF_TCPS_PROXY_DST ||
 		    sp->direction > PF_OUT ||
 		    (sp->af != AF_INET && sp->af != AF_INET6)) {
+#ifdef __FreeBSD__
+			if (V_pf_status.debug >= PF_DEBUG_MISC) {
+#else
 			if (pf_status.debug >= PF_DEBUG_MISC) {
+#endif
 				printf("pfsync_input: PFSYNC5_ACT_INS: "
 				    "invalid value\n");
 			}
@@ -1154,7 +1174,11 @@ pfsync_in_upd(struct pfsync_pkt *pkt, struct mbuf *m, int offset, int count)
 		if (sp->timeout >= PFTM_MAX ||
 		    sp->src.state > PF_TCPS_PROXY_DST ||
 		    sp->dst.state > PF_TCPS_PROXY_DST) {
+#ifdef __FreeBSD__
+			if (V_pf_status.debug >= PF_DEBUG_MISC) {
+#else
 			if (pf_status.debug >= PF_DEBUG_MISC) {
+#endif
 				printf("pfsync_input: PFSYNC_ACT_UPD: "
 				    "invalid value\n");
 			}
@@ -1192,7 +1216,11 @@ pfsync_in_upd(struct pfsync_pkt *pkt, struct mbuf *m, int offset, int count)
 		}
 
 		if (sfail) {
+#ifdef __FreeBSD__
+			if (V_pf_status.debug >= PF_DEBUG_MISC) {
+#else
 			if (pf_status.debug >= PF_DEBUG_MISC) {
+#endif
 				printf("pfsync: %s stale update (%d)"
 				    " id: %016llx creatorid: %08x\n",
 				    (sfail < 7 ?  "ignoring" : "partial"),
@@ -1253,7 +1281,11 @@ pfsync_in_upd_c(struct pfsync_pkt *pkt, struct mbuf *m, int offset, int count)
 		if (up->timeout >= PFTM_MAX ||
 		    up->src.state > PF_TCPS_PROXY_DST ||
 		    up->dst.state > PF_TCPS_PROXY_DST) {
+#ifdef __FreeBSD__
+			if (V_pf_status.debug >= PF_DEBUG_MISC) {
+#else
 			if (pf_status.debug >= PF_DEBUG_MISC) {
+#endif
 				printf("pfsync_input: "
 				    "PFSYNC_ACT_UPD_C: "
 				    "invalid value\n");
@@ -1290,7 +1322,11 @@ pfsync_in_upd_c(struct pfsync_pkt *pkt, struct mbuf *m, int offset, int count)
 		}
 
 		if (sfail) {
+#ifdef __FreeBSD__
+			if (V_pf_status.debug >= PF_DEBUG_MISC) {
+#else
 			if (pf_status.debug >= PF_DEBUG_MISC) {
+#endif
 				printf("pfsync: ignoring stale update "
 				    "(%d) id: %016llx "
 				    "creatorid: %08x\n", sfail,
@@ -1481,7 +1517,11 @@ pfsync_in_bus(struct pfsync_pkt *pkt, struct mbuf *m, int offset, int count)
 		    pf_pool_limits[PF_LIMIT_STATES].limit /
 		    (PFSYNC_BULKPACKETS * sc->sc_maxcount));
 #endif
+#ifdef __FreeBSD__
+		if (V_pf_status.debug >= PF_DEBUG_MISC)
+#else
 		if (pf_status.debug >= PF_DEBUG_MISC)
+#endif
 			printf("pfsync: received bulk update start\n");
 		break;
 
@@ -1499,11 +1539,19 @@ pfsync_in_bus(struct pfsync_pkt *pkt, struct mbuf *m, int offset, int count)
 #endif
 #endif
 			pfsync_sync_ok = 1;
+#ifdef __FreeBSD__
+			if (V_pf_status.debug >= PF_DEBUG_MISC)
+#else
 			if (pf_status.debug >= PF_DEBUG_MISC)
+#endif
 				printf("pfsync: received valid "
 				    "bulk update end\n");
 		} else {
+#ifdef __FreeBSD__
+			if (V_pf_status.debug >= PF_DEBUG_MISC)
+#else
 			if (pf_status.debug >= PF_DEBUG_MISC)
+#endif
 				printf("pfsync: received invalid "
 				    "bulk update end: bad timestamp\n");
 		}
@@ -1581,7 +1629,11 @@ pfsync_update_net_tdb(struct pfsync_tdb *pt)
 	return;
 
  bad:
+#ifdef __FreeBSD__
+	if (V_pf_status.debug >= PF_DEBUG_MISC)
+#else
 	if (pf_status.debug >= PF_DEBUG_MISC)
+#endif
 		printf("pfsync_insert: PFSYNC_ACT_TDB_UPD: "
 		    "invalid value\n");
 	pfsyncstats.pfsyncs_badstate++;
@@ -1827,7 +1879,11 @@ pfsyncioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 #endif
 #endif
 			pfsync_sync_ok = 0;
+#ifdef __FreeBSD__
+			if (V_pf_status.debug >= PF_DEBUG_MISC)
+#else
 			if (pf_status.debug >= PF_DEBUG_MISC)
+#endif
 				printf("pfsync: requesting bulk update\n");
 #ifdef __FreeBSD__
                 	callout_reset(&sc->sc_bulkfail_tmo, 5 * hz,
@@ -2057,7 +2113,11 @@ pfsync_sendout(void)
 
 	ph->version = PFSYNC_VERSION;
 	ph->len = htons(sc->sc_len - sizeof(*ip));
+#ifdef __FreeBSD__
+	bcopy(V_pf_status.pf_chksum, ph->pfcksum, PF_MD5_DIGEST_LENGTH);
+#else
 	bcopy(pf_status.pf_chksum, ph->pfcksum, PF_MD5_DIGEST_LENGTH);
+#endif
 
 	/* walk the queues */
 	for (q = 0; q < PFSYNC_S_COUNT; q++) {
@@ -2751,7 +2811,11 @@ pfsync_bulk_start(void)
 		sc->sc_bulk_next = TAILQ_FIRST(&state_list);
 	sc->sc_bulk_last = sc->sc_bulk_next;
 
+#ifdef __FreeBSD__
+	if (V_pf_status.debug >= PF_DEBUG_MISC)
+#else
 	if (pf_status.debug >= PF_DEBUG_MISC)
+#endif
 		printf("pfsync: received bulk update request\n");
 
 	pfsync_bulk_status(PFSYNC_BUS_START);
@@ -2821,7 +2885,11 @@ pfsync_bulk_status(u_int8_t status)
 	r.subh.action = PFSYNC_ACT_BUS;
 	r.subh.count = htons(1);
 
+#ifdef __FreeBSD__
+	r.bus.creatorid = V_pf_status.hostid;
+#else
 	r.bus.creatorid = pf_status.hostid;
+#endif
 	r.bus.endtime = htonl(time_uptime - sc->sc_ureq_received);
 	r.bus.status = status;
 
@@ -2853,7 +2921,11 @@ pfsync_bulk_fail(void *arg)
 #endif
 #endif
 		pfsync_sync_ok = 1;
+#ifdef __FreeBSD__
+		if (V_pf_status.debug >= PF_DEBUG_MISC)
+#else
 		if (pf_status.debug >= PF_DEBUG_MISC)
+#endif
 			printf("pfsync: failed to receive bulk update\n");
 	}
 }

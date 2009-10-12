@@ -120,7 +120,7 @@ struct pf_fragment {
 TAILQ_HEAD(pf_fragqueue, pf_fragment);
 TAILQ_HEAD(pf_cachequeue, pf_fragment);
 VNET_DEFINE(struct pf_fragqueue,	pf_fragqueue);
-#define	pf_fragqueue			VNET(pf_fragqueue);
+#define	V_pf_fragqueue			VNET(pf_fragqueue);
 VNET_DEFINE(struct pf_cachequeue,	pf_cachequeue);
 #define	pf_cachequeue			VNET(pf_cachequeue)
 #else
@@ -139,7 +139,7 @@ static int      pf_frag_compare(struct pf_fragment *,
 #ifdef __FreeBSD__
 RB_HEAD(pf_frag_tree, pf_fragment);
 VNET_DEFINE(struct pf_frag_tree,	pf_frag_tree);
-#define	pf_frag_tree			VNET(pf_frag_tree)
+#define	V_pf_frag_tree			VNET(pf_frag_tree)
 VNET_DEFINE(struct pf_frag_tree,	pf_cache_tree);
 #define	pf_cache_tree			VNET(pf_cache_tree)
 #else
@@ -165,12 +165,21 @@ void			 pf_scrub_ip(struct mbuf **, u_int32_t, u_int8_t,
 #ifdef INET6
 void			 pf_scrub_ip6(struct mbuf **, u_int8_t);
 #endif
+#ifdef __FreeBSD__
+#define	DPFPRINTF(x) do {				\
+	if (V_pf_status.debug >= PF_DEBUG_MISC) {	\
+		printf("%s: ", __func__);		\
+		printf x ;				\
+	}						\
+} while(0)
+#else
 #define	DPFPRINTF(x) do {				\
 	if (pf_status.debug >= PF_DEBUG_MISC) {		\
 		printf("%s: ", __func__);		\
 		printf x ;				\
 	}						\
 } while(0)
+#endif
 
 /* Globals */
 #ifdef __FreeBSD__
@@ -220,7 +229,11 @@ pf_normalize_init(void)
 	pool_sethardlimit(&pf_cent_pl, PFFRAG_FRCENT_HIWAT, NULL, 0);
 #endif
 
+#ifdef __FreeBSD__
+	TAILQ_INIT(&V_pf_fragqueue);
+#else
 	TAILQ_INIT(&pf_fragqueue);
+#endif
 	TAILQ_INIT(&pf_cachequeue);
 }
 
@@ -255,11 +268,12 @@ pf_purge_expired_fragments(void)
 	u_int32_t		 expire = time_second -
 				    pf_default_rule.timeout[PFTM_FRAG];
 
-	while ((frag = TAILQ_LAST(&pf_fragqueue, pf_fragqueue)) != NULL) {
 #ifdef __FreeBSD__
+	while ((frag = TAILQ_LAST(&V_pf_fragqueue, pf_fragqueue)) != NULL) {
                 KASSERT((BUFFER_FRAGMENTS(frag)),
                         ("BUFFER_FRAGMENTS(frag) == 0: %s", __FUNCTION__));
 #else
+	while ((frag = TAILQ_LAST(&pf_fragqueue, pf_fragqueue)) != NULL) {
 		KASSERT(BUFFER_FRAGMENTS(frag));
 #endif
 		if (frag->fr_timeout > expire)
@@ -307,7 +321,11 @@ pf_flush_fragments(void)
 	DPFPRINTF(("trying to free > %d frents\n",
 	    pf_nfrents - goal));
 	while (goal < pf_nfrents) {
+#ifdef __FreeBSD__
+		frag = TAILQ_LAST(&V_pf_fragqueue, pf_fragqueue);
+#else
 		frag = TAILQ_LAST(&pf_fragqueue, pf_fragqueue);
+#endif
 		if (frag == NULL)
 			break;
 		pf_free_fragment(frag);
@@ -390,8 +408,13 @@ pf_find_fragment(struct ip *ip, struct pf_frag_tree *tree)
 		/* XXX Are we sure we want to update the timeout? */
 		frag->fr_timeout = time_second;
 		if (BUFFER_FRAGMENTS(frag)) {
+#ifdef __FreeBSD__
+			TAILQ_REMOVE(&V_pf_fragqueue, frag, frag_next);
+			TAILQ_INSERT_HEAD(&V_pf_fragqueue, frag, frag_next);
+#else
 			TAILQ_REMOVE(&pf_fragqueue, frag, frag_next);
 			TAILQ_INSERT_HEAD(&pf_fragqueue, frag, frag_next);
+#endif
 		} else {
 			TAILQ_REMOVE(&pf_cachequeue, frag, frag_next);
 			TAILQ_INSERT_HEAD(&pf_cachequeue, frag, frag_next);
@@ -407,8 +430,13 @@ void
 pf_remove_fragment(struct pf_fragment *frag)
 {
 	if (BUFFER_FRAGMENTS(frag)) {
+#ifdef __FreeBSD__
+		RB_REMOVE(pf_frag_tree, &V_pf_frag_tree, frag);
+		TAILQ_REMOVE(&V_pf_fragqueue, frag, frag_next);
+#else
 		RB_REMOVE(pf_frag_tree, &pf_frag_tree, frag);
 		TAILQ_REMOVE(&pf_fragqueue, frag, frag_next);
+#endif
 		pool_put(&pf_frag_pl, frag);
 	} else {
 		RB_REMOVE(pf_frag_tree, &pf_cache_tree, frag);
@@ -461,8 +489,13 @@ pf_reassemble(struct mbuf **m0, struct pf_fragment **frag,
 		(*frag)->fr_timeout = time_second;
 		LIST_INIT(&(*frag)->fr_queue);
 
+#ifdef __FreeBSD__
+		RB_INSERT(pf_frag_tree, &V_pf_frag_tree, *frag);
+		TAILQ_INSERT_HEAD(&V_pf_fragqueue, *frag, frag_next);
+#else
 		RB_INSERT(pf_frag_tree, &pf_frag_tree, *frag);
 		TAILQ_INSERT_HEAD(&pf_fragqueue, *frag, frag_next);
+#endif
 
 		/* We do not have a previous fragment */
 		frep = NULL;
@@ -1077,7 +1110,11 @@ pf_normalize_ip(struct mbuf **m0, int dir, struct pfi_kif *kif, u_short *reason,
 	if ((r->rule_flag & (PFRULE_FRAGCROP|PFRULE_FRAGDROP)) == 0) {
 		/* Fully buffer all of the fragments */
 
+#ifdef __FreeBSD__
+		frag = pf_find_fragment(h, &V_pf_frag_tree);
+#else
 		frag = pf_find_fragment(h, &pf_frag_tree);
+#endif
 
 		/* Check if we saw the last fragment already */
 		if (frag != NULL && (frag->fr_flags & PFFRAG_SEENLAST) &&
@@ -1688,7 +1725,11 @@ pf_normalize_tcp_stateful(struct mbuf *m, int off, struct pf_pdesc *pd,
 
 				if (got_ts) {
 					/* Huh?  Multiple timestamps!? */
+#ifdef __FreeBSD__
+					if (V_pf_status.debug >= PF_DEBUG_MISC) {
+#else
 					if (pf_status.debug >= PF_DEBUG_MISC) {
+#endif
 						DPFPRINTF(("multiple TS??"));
 						pf_print_state(state);
 						printf("\n");
@@ -1757,7 +1798,11 @@ pf_normalize_tcp_stateful(struct mbuf *m, int off, struct pf_pdesc *pd,
 	if (src->scrub && (src->scrub->pfss_flags & PFSS_PAWS) &&
 	    (uptime.tv_sec - src->scrub->pfss_last.tv_sec > TS_MAX_IDLE ||
 	    time_second - state->creation > TS_MAX_CONN))  {
+#ifdef __FreeBSD__
+		if (V_pf_status.debug >= PF_DEBUG_MISC) {
+#else
 		if (pf_status.debug >= PF_DEBUG_MISC) {
+#endif
 			DPFPRINTF(("src idled out of PAWS\n"));
 			pf_print_state(state);
 			printf("\n");
@@ -1767,7 +1812,11 @@ pf_normalize_tcp_stateful(struct mbuf *m, int off, struct pf_pdesc *pd,
 	}
 	if (dst->scrub && (dst->scrub->pfss_flags & PFSS_PAWS) &&
 	    uptime.tv_sec - dst->scrub->pfss_last.tv_sec > TS_MAX_IDLE) {
+#ifdef __FreeBSD__
+		if (V_pf_status.debug >= PF_DEBUG_MISC) {
+#else
 		if (pf_status.debug >= PF_DEBUG_MISC) {
+#endif
 			DPFPRINTF(("dst idled out of PAWS\n"));
 			pf_print_state(state);
 			printf("\n");
@@ -1916,7 +1965,11 @@ pf_normalize_tcp_stateful(struct mbuf *m, int off, struct pf_pdesc *pd,
 			    "\n", dst->scrub->pfss_tsval,
 			    dst->scrub->pfss_tsecr, dst->scrub->pfss_tsval0));
 #endif
+#ifdef __FreeBSD__
+			if (V_pf_status.debug >= PF_DEBUG_MISC) {
+#else
 			if (pf_status.debug >= PF_DEBUG_MISC) {
+#endif
 				pf_print_state(state);
 				pf_print_flags(th->th_flags);
 				printf("\n");
@@ -1964,7 +2017,11 @@ pf_normalize_tcp_stateful(struct mbuf *m, int off, struct pf_pdesc *pd,
 			 * Hey!  Someone tried to sneak a packet in.  Or the
 			 * stack changed its RFC1323 behavior?!?!
 			 */
+#ifdef __FreeBSD__
+			if (V_pf_status.debug >= PF_DEBUG_MISC) {
+#else
 			if (pf_status.debug >= PF_DEBUG_MISC) {
+#endif
 				DPFPRINTF(("Did not receive expected RFC1323 "
 				    "timestamp\n"));
 				pf_print_state(state);
@@ -1991,7 +2048,11 @@ pf_normalize_tcp_stateful(struct mbuf *m, int off, struct pf_pdesc *pd,
 			src->scrub->pfss_flags |= PFSS_DATA_TS;
 		else {
 			src->scrub->pfss_flags |= PFSS_DATA_NOTS;
+#ifdef __FreeBSD__
+			if (V_pf_status.debug >= PF_DEBUG_MISC && dst->scrub &&
+#else
 			if (pf_status.debug >= PF_DEBUG_MISC && dst->scrub &&
+#endif
 			    (dst->scrub->pfss_flags & PFSS_TIMESTAMP)) {
 				/* Don't warn if other host rejected RFC1323 */
 				DPFPRINTF(("Broken RFC1323 stack did not "

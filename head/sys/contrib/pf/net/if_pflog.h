@@ -80,10 +80,12 @@ struct old_pfloghdr {
  struct pfi_kif;
  struct pf_pdesc;
  
- typedef int pflog_packet_t(struct pfi_kif *, struct mbuf *, sa_family_t,
-     u_int8_t, u_int8_t, struct pf_rule *, struct pf_rule *,
-     struct pf_ruleset *, struct pf_pdesc *);
- extern pflog_packet_t *pflog_packet_ptr;
+#if 0
+typedef int pflog_packet_t(struct pfi_kif *, struct mbuf *, sa_family_t,
+    u_int8_t, u_int8_t, struct pf_rule *, struct pf_rule *,
+    struct pf_ruleset *, struct pf_pdesc *);
+extern pflog_packet_t *pflog_packet_ptr;
+#endif
 #define        PFLOG_PACKET(i,x,a,b,c,d,e,f,g,h) do {  \
         if (pflog_packet_ptr != NULL)           \
         pflog_packet_ptr(i,a,b,c,d,e,f,g,h);    \
