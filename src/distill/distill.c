@@ -43,6 +43,7 @@ int verbose;
 static int
 distill(const char *url, unsigned long revision)
 {
+	apr_hash_t *config;
 	apr_pool_t *pool;
 	apr_status_t status;
 	svn_auth_provider_object_t *auth_provider;
@@ -64,8 +65,9 @@ distill(const char *url, unsigned long revision)
 	svn_auth_open(&ra_callbacks.auth_baton, auth_providers, pool);
 
 	/* open a connection to the repo */
+	config = apr_hash_make(pool);
 	error = svn_ra_open3(&ra_session, url, NULL, &ra_callbacks,
-	    NULL, NULL, pool);
+	    NULL, config, pool);
 	SVNSUP_SVN_ERROR(error, "svn_ra_open3()");
 
 	/* get revision metadata */
