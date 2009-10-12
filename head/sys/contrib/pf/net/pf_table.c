@@ -175,19 +175,28 @@ struct pfr_walktree {
 
 #define senderr(e)	do { rv = (e); goto _bad; } while (0)
 
- #ifdef __FreeBSD__
- uma_zone_t              pfr_ktable_pl;
- uma_zone_t              pfr_kentry_pl;
- uma_zone_t              pfr_kcounters_pl;
- #else
+#ifdef __FreeBSD__
+VNET_DEFINE(uma_zone_t,			pfr_ktable_pl);
+VNET_DEFINE(uma_zone_t,			pfr_kentry_pl);
+VNET_DEFINE(uma_zone_t,			pfr_kcounters_pl);
+#define	pfr_kcounters_pl		VNET(pfr_kcounters_pl)
+VNET_DEFINE(struct sockaddr_in,		pfr_sin);
+#define	pfr_sin				VNET(pfr_sin)
+VNET_DEFINE(struct sockaddr_in6,	pfr_sin6);
+#define	pfr_sin6			VNET(pfr_sin6)
+VNET_DEFINE(union sockaddr_union,	pfr_mask);
+#define	pfr_mask			VNET(pfr_mask)
+VNET_DEFINE(struct pf_addr,		pfr_ffaddr);
+#define	pfr_ffaddr			VNET(pfr_ffaddr)
+#else
 struct pool		 pfr_ktable_pl;
 struct pool		 pfr_kentry_pl;
 struct pool		 pfr_kcounters_pl;
-#endif
 struct sockaddr_in	 pfr_sin;
 struct sockaddr_in6	 pfr_sin6;
 union sockaddr_union	 pfr_mask;
 struct pf_addr		 pfr_ffaddr;
+#endif
 
 void			 pfr_copyout_addr(struct pfr_addr *,
 			    struct pfr_kentry *ke);
