@@ -145,10 +145,7 @@ __FBSDID("$FreeBSD$");
 #include <net/pfvar.h>
 #include <net/if_pflog.h>
 #include <net/if_pflow.h>
-
-#if NPFSYNC > 0
 #include <net/if_pfsync.h>
-#endif /* NPFSYNC > 0 */
 
 #ifdef INET6
 #include <netinet/ip6.h>

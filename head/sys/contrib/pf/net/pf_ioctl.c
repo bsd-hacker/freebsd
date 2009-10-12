@@ -115,9 +115,7 @@ __FBSDID("$FreeBSD$");
 #endif
 #include <net/pfvar.h>
 
-#if NPFSYNC > 0 
 #include <net/if_pfsync.h>
-#endif /* NPFSYNC > 0 */
 
 #if NPFLOG > 0
 #include <net/if_pflog.h>

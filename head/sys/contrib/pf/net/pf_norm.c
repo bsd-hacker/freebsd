@@ -120,9 +120,9 @@ struct pf_fragment {
 TAILQ_HEAD(pf_fragqueue, pf_fragment);
 TAILQ_HEAD(pf_cachequeue, pf_fragment);
 VNET_DEFINE(struct pf_fragqueue,	pf_fragqueue);
-#define	V_pf_fragqueue			VNET(pf_fragqueue);
+#define	V_pf_fragqueue			VNET(pf_fragqueue)
 VNET_DEFINE(struct pf_cachequeue,	pf_cachequeue);
-#define	pf_cachequeue			VNET(pf_cachequeue)
+#define	V_pf_cachequeue			VNET(pf_cachequeue)
 #else
 TAILQ_HEAD(pf_fragqueue, pf_fragment)	pf_fragqueue;
 TAILQ_HEAD(pf_cachequeue, pf_fragment)	pf_cachequeue;
@@ -202,7 +202,7 @@ int			 pf_nfrents, pf_ncache;
 void
 pf_normalize_init(void)
 {
- #ifdef __FreeBSD__
+#ifdef __FreeBSD__
         /*
          * XXX
          * No high water mark support(It's hint not hard limit).
@@ -231,10 +231,11 @@ pf_normalize_init(void)
 
 #ifdef __FreeBSD__
 	TAILQ_INIT(&V_pf_fragqueue);
+	TAILQ_INIT(&V_pf_cachequeue);
 #else
 	TAILQ_INIT(&pf_fragqueue);
-#endif
 	TAILQ_INIT(&pf_cachequeue);
+#endif
 }
 
 #ifdef __FreeBSD__
@@ -283,11 +284,12 @@ pf_purge_expired_fragments(void)
 		pf_free_fragment(frag);
 	}
 
-	while ((frag = TAILQ_LAST(&pf_cachequeue, pf_cachequeue)) != NULL) {
 #ifdef __FreeBSD__
+	while ((frag = TAILQ_LAST(&V_pf_cachequeue, pf_cachequeue)) != NULL) {
                 KASSERT((!BUFFER_FRAGMENTS(frag)),
                         ("BUFFER_FRAGMENTS(frag) != 0: %s", __FUNCTION__));
 #else
+	while ((frag = TAILQ_LAST(&pf_cachequeue, pf_cachequeue)) != NULL) {
 		KASSERT(!BUFFER_FRAGMENTS(frag));
 #endif
 		if (frag->fr_timeout > expire)
@@ -296,8 +298,8 @@ pf_purge_expired_fragments(void)
 		DPFPRINTF(("expiring %d(%p)\n", frag->fr_id, frag));
 		pf_free_fragment(frag);
 #ifdef __FreeBSD__
-                KASSERT((TAILQ_EMPTY(&pf_cachequeue) ||
-                    TAILQ_LAST(&pf_cachequeue, pf_cachequeue) != frag),
+                KASSERT((TAILQ_EMPTY(&V_pf_cachequeue) ||
+                    TAILQ_LAST(&V_pf_cachequeue, pf_cachequeue) != frag),
                     ("!(TAILQ_EMPTY() || TAILQ_LAST() == farg): %s",
                     __FUNCTION__));
 #else
@@ -336,7 +338,11 @@ pf_flush_fragments(void)
 	DPFPRINTF(("trying to free > %d cache entries\n",
 	    pf_ncache - goal));
 	while (goal < pf_ncache) {
+#ifdef __FreeBSD__
+		frag = TAILQ_LAST(&V_pf_cachequeue, pf_cachequeue);
+#else
 		frag = TAILQ_LAST(&pf_cachequeue, pf_cachequeue);
+#endif
 		if (frag == NULL)
 			break;
 		pf_free_fragment(frag);
@@ -416,8 +422,13 @@ pf_find_fragment(struct ip *ip, struct pf_frag_tree *tree)
 			TAILQ_INSERT_HEAD(&pf_fragqueue, frag, frag_next);
 #endif
 		} else {
+#ifdef __FreeBSD__
+			TAILQ_REMOVE(&V_pf_cachequeue, frag, frag_next);
+			TAILQ_INSERT_HEAD(&V_pf_cachequeue, frag, frag_next);
+#else
 			TAILQ_REMOVE(&pf_cachequeue, frag, frag_next);
 			TAILQ_INSERT_HEAD(&pf_cachequeue, frag, frag_next);
+#endif
 		}
 	}
 
@@ -440,7 +451,11 @@ pf_remove_fragment(struct pf_fragment *frag)
 		pool_put(&pf_frag_pl, frag);
 	} else {
 		RB_REMOVE(pf_frag_tree, &pf_cache_tree, frag);
+#ifdef __FreeBSD__
+		TAILQ_REMOVE(&V_pf_cachequeue, frag, frag_next);
+#else
 		TAILQ_REMOVE(&pf_cachequeue, frag, frag_next);
+#endif
 		pool_put(&pf_cache_pl, frag);
 	}
 }
@@ -724,7 +739,11 @@ pf_fragcache(struct mbuf **m0, struct ip *h, struct pf_fragment **frag, int mff,
 		LIST_INSERT_HEAD(&(*frag)->fr_cache, cur, fr_next);
 
 		RB_INSERT(pf_frag_tree, &pf_cache_tree, *frag);
+#ifdef __FreeBSD__
+		TAILQ_INSERT_HEAD(&V_pf_cachequeue, *frag, frag_next);
+#else
 		TAILQ_INSERT_HEAD(&pf_cachequeue, *frag, frag_next);
+#endif
 
 		DPFPRINTF(("fragcache[%d]: new %d-%d\n", h->ip_id, off, max));
 
