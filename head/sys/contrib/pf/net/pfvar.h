@@ -1855,7 +1855,7 @@ extern void			 pf_tbladdr_copyout(struct pf_addr_wrap *);
 extern void			 pf_calc_skip_steps(struct pf_rulequeue *);
 #ifdef __FreeBSD__
 #ifdef ALTQ
-VNET_DECLARE(void                      pf_altq_ifnet_event(struct ifnet *, int));
+extern	void			 pf_altq_ifnet_event(struct ifnet *, int);
 #endif
 VNET_DECLARE(uma_zone_t,		 pf_src_tree_pl);
 #define	pf_src_tree_pl			 VNET(pf_src_tree_pl)

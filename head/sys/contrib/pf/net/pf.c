@@ -2246,9 +2246,16 @@ pf_send_tcp(const struct pf_rule *r, sa_family_t af,
 
 #ifdef ALTQ
 	if (r != NULL && r->qid) {
+#ifdef __FreeBSD__
+		pf_mtag->qid = r->qid;
+
+		/* add hints for ecn */
+		pf_mtag->hdr = mtod(m, struct ip *);
+#else
 		m->m_pkthdr.pf.qid = r->qid;
 		/* add hints for ecn */
 		m->m_pkthdr.pf.hdr = mtod(m, struct ip *);
+#endif
 	}
 #endif /* ALTQ */
 	m->m_data += max_linkhdr;
@@ -6712,12 +6719,22 @@ done:
 
 #ifdef ALTQ
 	if (action == PF_PASS && r->qid) {
+#ifdef __FreeBSD__
+		if (pqid || (pd.tos & IPTOS_LOWDELAY))
+			pd.pf_mtag->qid = r->pqid;
+		else
+			pd.pf_mtag->qid = r->qid;
+		/* add hints for ecn */
+		pd.pf_mtag->hdr = h;
+
+#else
 		if (pqid || (pd.tos & IPTOS_LOWDELAY))
 			m->m_pkthdr.pf.qid = r->pqid;
 		else
 			m->m_pkthdr.pf.qid = r->qid;
 		/* add hints for ecn */
 		m->m_pkthdr.pf.hdr = h;
+#endif
 	}
 #endif /* ALTQ */
 
@@ -6873,7 +6890,11 @@ pf_test6(int dir, struct ifnet *ifp, struct mbuf **m0,
 	struct pfi_kif		*kif;
 	u_short			 action, reason = 0, log = 0;
 	struct mbuf		*m = *m0, *n = NULL;
+#ifdef __FreeBSD__
+	struct ip6_hdr		*h = NULL;
+#else
 	struct ip6_hdr		*h;
+#endif
 	struct pf_rule		*a = NULL, *r = &pf_default_rule, *tr, *nr;
 	struct pf_state		*s = NULL;
 	struct pf_ruleset	*ruleset = NULL;
@@ -7232,12 +7253,21 @@ done:
 
 #ifdef ALTQ
 	if (action == PF_PASS && r->qid) {
+#ifdef __FreeBSD__
+		if (pd.tos & IPTOS_LOWDELAY)
+			pd.pf_mtag->qid = r->pqid;
+		else
+			pd.pf_mtag->qid = r->qid;
+		/* add hints for ecn */
+		pd.pf_mtag->hdr = h;
+#else
 		if (pd.tos & IPTOS_LOWDELAY)
 			m->m_pkthdr.pf.qid = r->pqid;
 		else
 			m->m_pkthdr.pf.qid = r->qid;
 		/* add hints for ecn */
 		m->m_pkthdr.pf.hdr = h;
+#endif
 	}
 #endif /* ALTQ */
 

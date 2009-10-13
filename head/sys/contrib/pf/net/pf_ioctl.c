@@ -192,7 +192,7 @@ VNET_DEFINE(struct pf_tags, pf_tags) =
 	TAILQ_HEAD_INITIALIZER(V_pf_tags);
 VNET_DEFINE(struct pf_tags, pf_qids) =
 	TAILQ_HEAD_INITIALIZER(pf_qids);
-#define	pf_qids		VNET(pf_qids);
+#define	pf_qids			VNET(pf_qids)
 
 #else /* !__FreeBSD__ */
 struct pf_rule           pf_default_rule;
