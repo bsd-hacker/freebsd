@@ -3525,12 +3525,13 @@ sendfile_task_func(void *context, int pending __unused)
 	so = sock_fp->f_data;
 	sb = &so->so_snd;
 	SOCKBUF_UNLOCK_ASSERT(sb);
+	if (sr->sr_ucred == NULL &&
+	    (sr->sr_ucred = crdup(sr->sr_proc->p_ucred)) == NULL) {
+		SOCKBUF_LOCK(sb);
+		goto done;
+	}
 	SOCKBUF_LOCK(sb);
 	if ((so->so_state & SS_ISCONNECTED) == 0)
-		goto done;
-
-	if (sr->sr_ucred == NULL &&
-	    (sr->sr_ucred = crdup(sr->sr_proc->p_ucred)) == NULL)
 		goto done;
 
 	sb->sb_flags &= ~(SB_SENDING|SB_SENDING_TASK);
