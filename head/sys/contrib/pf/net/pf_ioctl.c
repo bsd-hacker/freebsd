@@ -1593,7 +1593,7 @@ pfioctl(dev_t dev, u_long cmd, caddr_t addr, int flags, struct proc *p)
 			break;
 		}
 #ifdef __FreeBSD__
-		rule = pool_get(&pf_rule_pl, PR_WAITOK);
+		rule = pool_get(&pf_rule_pl, PR_NOWAIT);
 #else
 		rule = pool_get(&pf_rule_pl, PR_WAITOK|PR_LIMITFAIL);
 #endif
@@ -1857,7 +1857,7 @@ pfioctl(dev_t dev, u_long cmd, caddr_t addr, int flags, struct proc *p)
 
 		if (pcr->action != PF_CHANGE_REMOVE) {
 #ifdef __FreeBSD__
-			newrule = pool_get(&pf_rule_pl, PR_WAITOK);
+			newrule = pool_get(&pf_rule_pl, PR_NOWAIT);
 #else
 			newrule = pool_get(&pf_rule_pl, PR_WAITOK|PR_LIMITFAIL);
 #endif
@@ -2487,7 +2487,11 @@ pfioctl(dev_t dev, u_long cmd, caddr_t addr, int flags, struct proc *p)
 			error = EBUSY;
 			break;
 		}
+#ifdef __FreeBSD__
+		altq = pool_get(&pf_altq_pl, PR_NOWAIT);
+#else
 		altq = pool_get(&pf_altq_pl, PR_WAITOK|PR_LIMITFAIL);
+#endif
 		if (altq == NULL) {
 			error = ENOMEM;
 			break;
@@ -2654,7 +2658,7 @@ pfioctl(dev_t dev, u_long cmd, caddr_t addr, int flags, struct proc *p)
 			break;
 		}
 #ifdef __FreeBSD__
-		pa = pool_get(&pf_pooladdr_pl, PR_WAITOK);
+		pa = pool_get(&pf_pooladdr_pl, PR_NOWAIT);
 #else
 		pa = pool_get(&pf_pooladdr_pl, PR_WAITOK|PR_LIMITFAIL);
 #endif
@@ -2753,7 +2757,7 @@ pfioctl(dev_t dev, u_long cmd, caddr_t addr, int flags, struct proc *p)
 		if (pca->action != PF_CHANGE_REMOVE) {
 			newpa = pool_get(&pf_pooladdr_pl,
 #ifdef __FreeBSD__
-			    PR_WAITOK);
+			    PR_NOWAIT);
 #else
 			    PR_WAITOK|PR_LIMITFAIL);
 #endif
