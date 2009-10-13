@@ -140,6 +140,7 @@ CFLAGS+= --param large-function-growth=1000
 ZFS_CFLAGS+= -fno-common -finline-limit=${INLINE_LIMIT}
 ZFS_CFLAGS+= --param inline-unit-growth=100
 ZFS_CFLAGS+= --param large-function-growth=1000
+ZFS_CFLAGS+= -DZIO_USE_UMA
 
 .if ${MACHINE_ARCH} == "amd64" || ${MACHINE} == "i386" || \
     ${MACHINE_ARCH} == "ia64" || ${MACHINE_ARCH} == "powerpc" || \
