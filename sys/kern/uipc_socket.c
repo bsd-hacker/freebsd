@@ -3386,7 +3386,7 @@ MALLOC_DEFINE(M_SOCKREF, "sockref", "socket reference memory");
 } while (0)
 
 
-static void
+static int
 socketref_free(struct socketref *sr)
 {
 	struct file *fp = sr->sr_fp;
@@ -3394,10 +3394,14 @@ socketref_free(struct socketref *sr)
 	struct proc *p = sr->sr_proc;
 	struct ucred *cred = sr->sr_ucred;
 	struct sockbuf *sb = &sr->sr_so->so_snd;
+	int refs;
 
 	if (cred != NULL)
 		crfree(cred);
 	vrele(fp->f_vnode);
+	refs = sock_fp->f_count - 1;
+	if (refs == 0)
+		SOCKBUF_UNLOCK(sb); 
 	fdrop(fp, NULL);
 	fdrop(sock_fp, NULL);
 	PRELE(p);
@@ -3405,6 +3409,7 @@ socketref_free(struct socketref *sr)
 	bzero(sr, sizeof(*sr));
 #endif	
 	free(sr, M_SOCKREF);
+	return (refs);
 }
 
 void
@@ -3503,7 +3508,7 @@ sendfile_task_func(void *context, int pending __unused)
 	struct socket *so;
 	struct sockbuf *sb;
 	struct file *sock_fp, *fp;
-	int error = EAGAIN;
+	int refs, error = EAGAIN;
 	struct uio *hdr_uio = NULL, *trl_uio = NULL;
 	off_t sbytes = 0;
 
@@ -3580,8 +3585,9 @@ sendfile_task_func(void *context, int pending __unused)
 done:
 	SOCKBUF_LOCK_ASSERT(sb);
 	sb->sb_flags &= ~(SB_SENDING|SB_SENDING_TASK);
-	socketref_free(sr);
-	sowwakeup_locked(so);
+	refs = socketref_free(sr);
+	if (refs)
+		sowwakeup_locked(so);
 }
 
 static int
