@@ -624,9 +624,10 @@ sofree(struct socket *so)
 	if (bg_sendfile_enable) {
 		SOCKBUF_LOCK(&so->so_snd);
 		if ((so->so_snd.sb_flags & (SB_SENDING|SB_SENDING_TASK)) ==
-		    (SB_SENDING|SB_SENDING_TASK))
-			sbwait(&so->so_snd);
-		else if (so->so_snd.sb_flags & SB_SENDING)
+		    (SB_SENDING|SB_SENDING_TASK)) {
+			while (so->so_snd.sb_flags & SB_SENDING)
+				sbwait(&so->so_snd);
+		} else if (so->so_snd.sb_flags & SB_SENDING)
 			sosendingwakeup(&so->so_snd);
 		SOCKBUF_UNLOCK(&so->so_snd);
 	}
