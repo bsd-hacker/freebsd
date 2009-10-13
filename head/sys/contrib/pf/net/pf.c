@@ -136,6 +136,9 @@ __FBSDID("$FreeBSD$");
 #include <netinet/udp_var.h>
 #include <netinet/icmp_var.h>
 #include <netinet/if_ether.h>
+#ifdef __FreeBSD__
+#include <netinet/ip_divert.h>
+#endif
 
 #ifndef __FreeBSD__
 #include <dev/rndvar.h>
@@ -371,6 +374,13 @@ struct pf_pool_limit pf_pool_limits[PF_LIMIT_MAX] = {
 #endif
 
 #ifdef __FreeBSD__
+#define	PF_FREEBSD_DIVERT()							\
+	do {									\
+		r = (*state)->rule.ptr;						\
+		if (r->divert.port && !(pd->pf_mtag->flags & PF_TAG_DIVERTED))	\
+			return (PF_PASS);					\
+	} while (0)
+
 #define STATE_LOOKUP(i, k, d, s, m, pt)					\
         do {                                                            \
                 s = pf_find_state(i, k, d, m, pt);                      \
@@ -4342,6 +4352,9 @@ pf_test_state_tcp(struct pf_state **state, int direction, struct pfi_kif *kif,
 	int			 copyback = 0;
 	struct pf_state_peer	*src, *dst;
 	struct pf_state_key	*sk;
+#ifdef __FreeBSD__
+	struct pf_rule		*r;
+#endif
 
 	key.af = pd->af;
 	key.proto = IPPROTO_TCP;
@@ -4359,6 +4372,8 @@ pf_test_state_tcp(struct pf_state **state, int direction, struct pfi_kif *kif,
 
 #ifdef __FreeBSD__
 	STATE_LOOKUP(kif, &key, direction, *state, m, pd->pf_mtag);
+
+	PF_FREEBSD_DIVERT();
 #else
 	STATE_LOOKUP(kif, &key, direction, *state, m);
 #endif
@@ -4370,6 +4385,19 @@ pf_test_state_tcp(struct pf_state **state, int direction, struct pfi_kif *kif,
 		src = &(*state)->dst;
 		dst = &(*state)->src;
 	}
+
+#ifdef __FreeBSD__
+	/*
+	 * The inital state is created when searching in the ruleset when
+	 * the packet reloops the state checking will drop it.
+	 * We take measure here for this special case.
+	 */
+	if ((th->th_flags & TH_SYN) && src->state == TCPS_SYN_SENT &&
+	    dst->state == TCPS_CLOSED) {
+		if (pd->pf_mtag->flags & PF_TAG_DIVERTED)
+			return (PF_PASS);
+	}
+#endif
 
 	sk = (*state)->key[pd->didx];
 
@@ -4536,6 +4564,9 @@ pf_test_state_udp(struct pf_state **state, int direction, struct pfi_kif *kif,
 	struct pf_state_peer	*src, *dst;
 	struct pf_state_key_cmp	 key;
 	struct udphdr		*uh = pd->hdr.udp;
+#ifdef __FreeBSD__
+	struct pf_rule		*r;
+#endif
 
 	key.af = pd->af;
 	key.proto = IPPROTO_UDP;
@@ -4553,6 +4584,8 @@ pf_test_state_udp(struct pf_state **state, int direction, struct pfi_kif *kif,
 
 #ifdef __FreeBSD__
         STATE_LOOKUP(kif, &key, direction, *state, m, pd->pf_mtag);
+
+	PF_FREEBSD_DIVERT();
 #else
         STATE_LOOKUP(kif, &key, direction, *state, m);
 #endif
@@ -4609,6 +4642,7 @@ pf_test_state_icmp(struct pf_state **state, int direction, struct pfi_kif *kif,
 {
 	struct pf_addr  *saddr = pd->src, *daddr = pd->dst;
 #ifdef __FreeBSD__
+	struct pf_rule	*r;
 	u_int16_t	 icmpid = 0, *icmpsum;
 #else
 	u_int16_t	 icmpid, *icmpsum;
@@ -4666,6 +4700,8 @@ pf_test_state_icmp(struct pf_state **state, int direction, struct pfi_kif *kif,
 
 #ifdef __FreeBSD__
 		STATE_LOOKUP(kif, &key, direction, *state, m, pd->pf_mtag);
+
+		PF_FREEBSD_DIVERT();
 #else
 		STATE_LOOKUP(kif, &key, direction, *state, m);
 #endif
@@ -4881,6 +4917,8 @@ pf_test_state_icmp(struct pf_state **state, int direction, struct pfi_kif *kif,
 
 #ifdef __FreeBSD__
 			STATE_LOOKUP(kif, &key, direction, *state, m, pd->pf_mtag);
+
+			PF_FREEBSD_DIVERT();
 #else
 			STATE_LOOKUP(kif, &key, direction, *state, m);
 #endif
@@ -5031,6 +5069,8 @@ pf_test_state_icmp(struct pf_state **state, int direction, struct pfi_kif *kif,
 
 #ifdef __FreeBSD__
 			STATE_LOOKUP(kif, &key, direction, *state, m, pd->pf_mtag);
+
+			PF_FREEBSD_DIVERT();
 #else
 			STATE_LOOKUP(kif, &key, direction, *state, m);
 #endif
@@ -5120,6 +5160,8 @@ pf_test_state_icmp(struct pf_state **state, int direction, struct pfi_kif *kif,
 
 #ifdef __FreeBSD__
 			STATE_LOOKUP(kif, &key, direction, *state, m, pd->pf_mtag);
+
+			PF_FREEBSD_DIVERT();
 #else
 			STATE_LOOKUP(kif, &key, direction, *state, m);
 #endif
@@ -5183,6 +5225,8 @@ pf_test_state_icmp(struct pf_state **state, int direction, struct pfi_kif *kif,
 
 #ifdef __FreeBSD__
 			STATE_LOOKUP(kif, &key, direction, *state, m, pd->pf_mtag);
+
+			PF_FREEBSD_DIVERT();
 #else
 			STATE_LOOKUP(kif, &key, direction, *state, m);
 #endif
@@ -5239,6 +5283,8 @@ pf_test_state_icmp(struct pf_state **state, int direction, struct pfi_kif *kif,
 
 #ifdef __FreeBSD__
 			STATE_LOOKUP(kif, &key, direction, *state, m, pd->pf_mtag);
+
+			PF_FREEBSD_DIVERT();
 #else
 			STATE_LOOKUP(kif, &key, direction, *state, m);
 #endif
@@ -5308,6 +5354,9 @@ pf_test_state_other(struct pf_state **state, int direction, struct pfi_kif *kif,
 {
 	struct pf_state_peer	*src, *dst;
 	struct pf_state_key_cmp	 key;
+#ifdef __FreeBSD__
+	struct pf_rule		*r;
+#endif
 
 	key.af = pd->af;
 	key.proto = pd->proto;
@@ -5323,6 +5372,8 @@ pf_test_state_other(struct pf_state **state, int direction, struct pfi_kif *kif,
 
 #ifdef __FreeBSD__
         STATE_LOOKUP(kif, &key, direction, *state, m, pd->pf_mtag);
+
+	PF_FREEBSD_DIVERT();
 #else
         STATE_LOOKUP(kif, &key, direction, *state, m);
 #endif
@@ -6351,6 +6402,7 @@ pf_test(int dir, struct ifnet *ifp, struct mbuf **m0,
 	struct mbuf		*m = *m0;
 #ifdef __FreeBSD__
 	struct ip		*h = NULL;
+	struct m_tag		*dvtag;
 #else
 	struct ip		*h;
 #endif
@@ -6431,7 +6483,14 @@ pf_test(int dir, struct ifnet *ifp, struct mbuf **m0,
 	if (m->m_pkthdr.pf.flags & PF_TAG_GENERATED)
 		return (PF_PASS);
 #endif
-
+	
+#ifdef __FreeBSD__
+	if (ip_divert_ptr != NULL &&
+	    ((dvtag = m_tag_find(m, PACKET_TAG_DIVERT, NULL)) != NULL)) {
+		pd.pf_mtag->flags |= PF_TAG_DIVERTED;
+		m_tag_delete(m, dvtag);
+	} else
+#endif
 	/* We do IP header normalization and packet reassembly here */
 	if (pf_normalize_ip(m0, dir, kif, &reason, &pd) != PF_PASS) {
 		action = PF_DROP;
@@ -6670,19 +6729,48 @@ done:
 		m->m_pkthdr.pf.flags |= PF_TAG_TRANSLATE_LOCALHOST;
 #endif
 
+#ifdef __FreeBSD__
+	if (action == PF_PASS && r->divert.port &&
+	    ip_divert_ptr != NULL && !(pd.pf_mtag->flags & PF_TAG_DIVERTED)) {
+                struct divert_tag *dt;
+
+                dvtag = m_tag_get(PACKET_TAG_DIVERT,
+                        sizeof(struct divert_tag), M_NOWAIT);
+                if (dvtag != NULL) {
+                        dt = (struct divert_tag *)(dvtag+1);
+                        dt->cookie = 0;
+                        dt->info = r->divert.port;
+                        m_tag_prepend(m, dvtag);
+
+			pd.pf_mtag->flags |= PF_TAG_DIVERTED;
+
+                        PF_UNLOCK();
+
+                        ip_divert_ptr(*m0,
+                            dir == PF_IN ? DIV_DIR_IN : DIV_DIR_OUT);
+
+                        *m0 = NULL;
+                        return (action);
+                } else {
+                        /* XXX: ipfw has the same behaviour! */
+			action = PF_DROP;
+			REASON_SET(&reason, PFRES_MEMORY);
+			log = 1;
+                        DPFPRINTF(PF_DEBUG_MISC,
+                                ("pf: failed to allocate divert tag\n"));
+		}
+        }
+#else
 	if (dir == PF_IN && action == PF_PASS && r->divert.port) {
 		struct pf_divert *divert;
 
 		if ((divert = pf_get_divert(m))) {
-#ifdef __FreeBSD__
-			pd.pf_mtag->flags |= PF_TAG_DIVERTED;
-#else
 			m->m_pkthdr.pf.flags |= PF_TAG_DIVERTED;
-#endif
 			divert->port = r->divert.port;
 			divert->addr.ipv4 = r->divert.addr.v4;
 		}
 	}
+#endif
 
 	if (log) {
 		struct pf_rule *lr;
@@ -7156,19 +7244,21 @@ done:
 		m->m_pkthdr.pf.flags |= PF_TAG_TRANSLATE_LOCALHOST;
 #endif
 
+#ifdef __FreeBSD__
+	/* XXX: Anybody working on it?! */
+	if (r->divert.port)
+		printf("pf: divert(9) is not supported for IPv6\n");
+#else
 	if (dir == PF_IN && action == PF_PASS && r->divert.port) {
 		struct pf_divert *divert;
 
 		if ((divert = pf_get_divert(m))) {
-#ifdef __FreeBSD__
-			pd.pf_mtag->flags |= PF_TAG_DIVERTED;
-#else
 			m->m_pkthdr.pf.flags |= PF_TAG_DIVERTED;
-#endif
 			divert->port = r->divert.port;
 			divert->addr.ipv6 = r->divert.addr.v6;
 		}
 	}
+#endif
 
 	if (log) {
 		struct pf_rule *lr;

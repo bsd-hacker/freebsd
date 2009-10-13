@@ -80,6 +80,7 @@ __FBSDID("$FreeBSD$");
 #ifdef IPSEC
 #include <netinet/ip_ipsec.h>
 #endif /* IPSEC */
+#include <netinet/ip_divert.h>
 
 #include <sys/socketvar.h>
 
@@ -182,6 +183,9 @@ static struct netisr_handler ip_nh = {
 extern	struct domain inetdomain;
 extern	struct protosw inetsw[];
 u_char	ip_protox[IPPROTO_MAX];
+
+/* Divert hooks. */
+ip_divert_packet_t *ip_divert_ptr = NULL;
 
 SYSCTL_VNET_STRUCT(_net_inet_ip, IPCTL_STATS, stats, CTLFLAG_RW,
     &VNET_NAME(ipstat), ipstat,

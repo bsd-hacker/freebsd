@@ -50,6 +50,9 @@ struct divert_tag {
 	u_int16_t	cookie;		/* ipfw rule number */
 };
 
+#define DIV_DIR_IN	1
+#define DIV_DIR_OUT	0
+
 /*
  * Return the divert cookie associated with the mbuf; if any.
  */

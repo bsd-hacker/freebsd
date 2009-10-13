@@ -74,16 +74,11 @@ VNET_DEFINE(int, fw6_enable) = 1;
 
 int ipfw_chg_hook(SYSCTL_HANDLER_ARGS);
 
-/* Divert hooks. */
-ip_divert_packet_t *ip_divert_ptr = NULL;
-
 /* ng_ipfw hooks. */
 ng_ipfw_input_t *ng_ipfw_input_p = NULL;
 
 /* Forward declarations. */
 static int	ipfw_divert(struct mbuf **, int, int);
-#define	DIV_DIR_IN	1
-#define	DIV_DIR_OUT	0
 
 int
 ipfw_check_in(void *arg, struct mbuf **m0, struct ifnet *ifp, int dir,
