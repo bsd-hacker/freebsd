@@ -18,6 +18,20 @@ AC_PROG_MAKE_SET
 
 PKG_PROG_PKG_CONFIG
 
+AC_ARG_ENABLE(distill,
+	AS_HELP_STRING([--enable-distill],
+		[build svnsup-distill (default is YES)]),
+	[], [enable_distill=yes]
+)
+AM_CONDITIONAL([ENABLE_DISTILL], [test x"$enable_distill" = xyes])
+
+AC_ARG_ENABLE(apply,
+	AS_HELP_STRING([--enable-apply],
+		[build svnsup-apply (default is YES)]),
+	[], [enable_apply=yes]
+)
+AM_CONDITIONAL([ENABLE_APPLY], [test x"$enable_apply" = xyes])
+
 AC_ARG_ENABLE(debugging,
 	AS_HELP_STRING([--enable-debugging],
 		[enable debugging (default is NO)]),
