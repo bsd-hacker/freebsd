@@ -2158,19 +2158,19 @@ pf_send_tcp(const struct pf_rule *r, sa_family_t af,
         struct pf_mtag  *pf_mtag;
 #endif
  
- #ifdef __FreeBSD__
+#ifdef __FreeBSD__
         KASSERT(
- #ifdef INET
+#ifdef INET
             af == AF_INET
- #else
+#else
             0
- #endif
+#endif
             ||
- #ifdef INET6
+#ifdef INET6
             af == AF_INET6
- #else
+#else
             0
- #endif
+#endif
             , ("Unsupported AF %d", af));
         len = 0;
         th = NULL;
@@ -2206,7 +2206,7 @@ pf_send_tcp(const struct pf_rule *r, sa_family_t af,
 		return;
  #ifdef __FreeBSD__
  #ifdef MAC
-		mac_netinet_firewall_send(m);
+	mac_netinet_firewall_send(m);
  #endif
 	if ((pf_mtag = pf_get_mtag(m)) == NULL) {
 		m_freem(m);
@@ -6338,10 +6338,10 @@ pf_get_divert(struct mbuf *m)
 
 #ifdef INET
 int
- #ifdef __FreeBSD__
- pf_test(int dir, struct ifnet *ifp, struct mbuf **m0,
-     struct ether_header *eh, struct inpcb *inp)
- #else
+#ifdef __FreeBSD__
+pf_test(int dir, struct ifnet *ifp, struct mbuf **m0,
+    struct ether_header *eh, struct inpcb *inp)
+#else
 pf_test(int dir, struct ifnet *ifp, struct mbuf **m0,
     struct ether_header *eh)
 #endif
@@ -6665,7 +6665,7 @@ done:
 	    s->nat_rule.ptr->action == PF_BINAT) &&
 	    (ntohl(pd.dst->v4.s_addr) >> IN_CLASSA_NSHIFT) == IN_LOOPBACKNET)
 #ifdef __FreeBSD__
-		pd.pf_mtag->flags |= PF_TAG_TRANSLATE_LOCALHOST;
+		m->m_flags |= M_SKIP_FIREWALL;
 #else
 		m->m_pkthdr.pf.flags |= PF_TAG_TRANSLATE_LOCALHOST;
 #endif
@@ -7151,7 +7151,7 @@ done:
 	    s->nat_rule.ptr->action == PF_BINAT) &&
 	    IN6_IS_ADDR_LOOPBACK(&pd.dst->v6))
 #ifdef __FreeBSD__
-		pd.pf_mtag->flags |= PF_TAG_TRANSLATE_LOCALHOST;
+		m->m_flags |= M_SKIP_FIREWALL;
 #else
 		m->m_pkthdr.pf.flags |= PF_TAG_TRANSLATE_LOCALHOST;
 #endif
