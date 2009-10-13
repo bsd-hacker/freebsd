@@ -16,8 +16,6 @@ AC_PROG_INSTALL
 AC_PROG_LN_S
 AC_PROG_MAKE_SET
 
-PKG_PROG_PKG_CONFIG
-
 AC_ARG_ENABLE(distill,
 	AS_HELP_STRING([--enable-distill],
 		[build svnsup-distill (default is YES)]),
@@ -72,61 +70,53 @@ AC_ARG_ENABLE(werror,
 )
 
 #
-# APR
+# APR -- needed for svnsup-distill
 #
-PKG_CHECK_MODULES([APR_1], [apr-1])
+AS_IF([test x"$enable_distill" = x"yes"], [
+	PKG_PROG_PKG_CONFIG
+	PKG_CHECK_MODULES([APR_1], [apr-1])
+])
 
 #
-# Subersion remote access library
+# Helper for Subversion libraries
 #
-saved_CPPFLAGS="${CPPFLAGS}"
-CPPFLAGS="${CPPFLAGS} ${APR_1_CFLAGS}"
-AC_CHECK_HEADER([subversion-1/svn_ra.h], [], [
-	AC_MSG_ERROR([cannot proceed without <subversion-1/svn_ra.h>])
+m4_define([check_subversion], [
+	saved_CPPFLAGS="${CPPFLAGS}"
+	CPPFLAGS="${CPPFLAGS} ${APR_1_CFLAGS}"
+	AC_CHECK_HEADER([subversion-1/$2.h], [], [
+		AC_MSG_ERROR([cannot proceed without <subversion-1/$2.h>])
+	])
+	CPPFLAGS="${saved_CPPFLAGS}"
+	saved_LIBS="${LIBS}"
+	LIBS=""
+	AC_CHECK_LIB([$2-1], [$2_version], [], [
+		AC_MSG_ERROR([cannot proceed without lib$2-1])
+	])
+	$1_1_LIBS="${LIBS}"
+	LIBS="${saved_LIBS}"
+	AC_SUBST([$1_1_LIBS])
 ])
-CPPFLAGS="${saved_CPPFLAGS}"
-saved_LIBS="${LIBS}"
-LIBS=""
-AC_CHECK_LIB([svn_ra-1], [svn_ra_version], [], [
-	AC_MSG_ERROR([cannot proceed without libsvn_ra-1])
-])
-SVN_RA_1_LIBS="${LIBS}"
-LIBS="${saved_LIBS}"
-AC_SUBST([SVN_RA_1_LIBS])
 
 #
-# Subversion delta library
+# Subersion remote access library -- needed for svnsup-distill
 #
-saved_CPPFLAGS="${CPPFLAGS}"
-CPPFLAGS="${CPPFLAGS} ${APR_1_CFLAGS}"
-AC_CHECK_HEADER([subversion-1/svn_delta.h], [], [
-	AC_MSG_ERROR([cannot proceed without <subversion-1/svn_delta.h>])
+AS_IF([test x"$enable_distill" = x"yes"], [
+	check_subversion([SVN_RA], [svn_ra])
 ])
-CPPFLAGS="${saved_CPPFLAGS}"
-saved_LIBS="${LIBS}"
-AC_CHECK_LIB([svn_delta-1], [svn_delta_version], [], [
-	AC_MSG_ERROR([cannot proceed without libsvn_delta-1])
-])
-SVN_DELTA_1_LIBS="${LIBS}"
-LIBS="${saved_LIBS}"
-AC_SUBST([SVN_DELTA_1_LIBS])
 
 #
-# Subversion client library
+# Subversion delta library -- needed for svnsup-distill
 #
-saved_CPPFLAGS="${CPPFLAGS}"
-CPPFLAGS="${CPPFLAGS} ${APR_1_CFLAGS}"
-AC_CHECK_HEADER([subversion-1/svn_client.h], [], [
-	AC_MSG_ERROR([cannot proceed without <subversion-1/svn_client.h>])
+AS_IF([test x"$enable_distill" = x"yes"], [
+	check_subversion([SVN_DELTA], [svn_delta])
 ])
-CPPFLAGS="${saved_CPPFLAGS}"
-saved_LIBS="${LIBS}"
-AC_CHECK_LIB([svn_client-1], [svn_client_version], [], [
-	AC_MSG_ERROR([cannot proceed without libsvn_client-1])
+
+#
+# Subversion client library -- needed for svnsup-distill
+#
+AS_IF([test x"$enable_distill" = x"yes"], [
+	check_subversion([SVN_CLIENT], [svn_client])
 ])
-SVN_CLIENT_1_LIBS="${LIBS}"
-LIBS="${saved_LIBS}"
-AC_SUBST([SVN_CLIENT_1_LIBS])
 
 #
 # Output
