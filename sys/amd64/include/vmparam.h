@@ -88,6 +88,11 @@
 #define	UMA_MD_SMALL_ALLOC
 
 /*
+ * We machine specific sparse kernel dump
+ */
+#define	VM_MD_MINIDUMP
+
+/*
  * The physical address space is densely populated.
  */
 #define	VM_PHYSSEG_DENSE
