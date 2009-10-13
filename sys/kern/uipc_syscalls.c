@@ -53,6 +53,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/proc.h>
 #include <sys/fcntl.h>
 #include <sys/file.h>
+#include <sys/ktr.h>
 #include <sys/filio.h>
 #include <sys/mount.h>
 #include <sys/mbuf.h>
@@ -1906,22 +1907,20 @@ kern_sendfile(struct thread *td, struct sendfile_args *uap,
 			error = ENOTCONN;
 			goto out;
 		}
-	} else {
-		so = bgso;
-	}
-
-	if ((uap->flags & SF_TASKQ) == 0 &&
-	    sock_fp->f_sfbytes != 0) {
-		SOCKBUF_UNLOCK(&so->so_snd);
-		if (uap->sbytes != NULL) {
-			copyout(&sbytes, uap->sbytes, sizeof(off_t));
-			sock_fp->f_sfbytes = 0;
+		if (sock_fp->f_sfbytes != 0) {
+			if (uap->sbytes != NULL)
+				CTR2(KTR_SPARE2, "sock %p f_sfbytes %ld",
+				    so, sock_fp->f_sfbytes);
+			else
+				CTR2(KTR_SPARE2, "sock %p !sbytes f_sfbytes %ld",
+				    so, sock_fp->f_sfbytes);
+			error = 0;
+			goto out;
 		}
-		error = 0;
-		goto out;
-	}
+	} else
+		so = bgso;
 
-	
+
 	/*
 	 * Do not wait on memory allocations but return ENOMEM for
 	 * caller to retry later.
@@ -2297,9 +2296,12 @@ out:
 		td->td_retval[0] = 0;
 	}
 	if (uap->sbytes != NULL) {
-		if ((uap->flags & SF_TASKQ) == 0)
-			copyout(&sbytes, uap->sbytes, sizeof(off_t));
-		else
+		if ((uap->flags & SF_TASKQ) == 0) {
+			if (sock_fp != NULL && sock_fp->f_sfbytes != 0)
+				copyout(&sock_fp->f_sfbytes, uap->sbytes, sizeof(off_t));
+			else
+				copyout(&sbytes, uap->sbytes, sizeof(off_t));
+		} else
 			*(uap->sbytes) = sbytes;
 	}
 	if (obj != NULL)

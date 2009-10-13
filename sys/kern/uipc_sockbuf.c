@@ -37,6 +37,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/aio.h> /* for aio_swake proto */
 #include <sys/kernel.h>
+#include <sys/ktr.h>
 #include <sys/lock.h>
 #include <sys/mbuf.h>
 #include <sys/mutex.h>
@@ -905,11 +906,13 @@ sbdrop_internal(struct sockbuf *sb, int len)
 void
 sbdrop_locked(struct sockbuf *sb, int len)
 {
+	int flags;
 
 	SOCKBUF_LOCK_ASSERT(sb);
 
 	sbdrop_internal(sb, len);
-	if (sb->sb_flags & SB_SENDING)
+	if ((sb->sb_flags & (SB_SENDING|SB_SENDING_TASK)) == SB_SENDING	&&
+	    sbspace(sb) >= sb->sb_lowat)
 		sosendingwakeup(sb);
 }
 

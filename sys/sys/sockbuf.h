@@ -53,6 +53,7 @@
 #define	SB_IN_TOE	0x400		/* socket buffer is in the middle of an operation */
 #define	SB_AUTOSIZE	0x800		/* automatically size socket buffer */
 #define	SB_SENDING	0x1000		/* socket is owned by sendfile thread */
+#define	SB_SENDING_TASK	0x2000		/* socket is in taskqueue queue */
 
 #define	SBS_CANTSENDMORE	0x0010	/* can't send more data to peer */
 #define	SBS_CANTRCVMORE		0x0020	/* can't receive more data from peer */

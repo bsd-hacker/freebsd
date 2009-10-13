@@ -3370,7 +3370,7 @@ struct taskqueue *sendfile_tq;
 extern int getsock(struct filedesc *fdp, int fd,
     struct file **fpp, u_int *fflagp);
 static void sendfile_task_func(void *context, int pending __unused);
-static int srsendingwakeup(struct socketref *sr);
+static int srsendingwakeup(struct socketref *sr, int external);
 
 MALLOC_DEFINE(M_SOCKREF, "sockref", "socket reference memory");
 
@@ -3462,7 +3462,7 @@ soissending(struct socket *so, struct thread *td,
 	ref->sr_uap.sbytes = NULL;
 	ref->sr_sock_fp->f_sfbytes = 0;
 	CTR4(KTR_SPARE2, "sock %p off %ld sbytes %ld total_sbytes %ld",
-	    so, ref->sr_uap.offset, sbytes, ref->sr_fp->f_sfbytes);
+	    so, ref->sr_uap.offset, sbytes, ref->sr_sock_fp->f_sfbytes);
 	ref->sr_uap.offset += sbytes;
 	if (uap->nbytes)
 		ref->sr_uap.nbytes -= sbytes;
@@ -3506,7 +3506,6 @@ sendfile_task_func(void *context, int pending __unused)
 	off_t sbytes = 0;
 
 	sr = context;
-	CTR0(KTR_SPARE2, "task_func running");
 	if (sr->sr_magic != 0xCAFEBABE) {
 		printf("bad magic! 0x%x\n", sr->sr_magic);
 		/* XXX memory leak */
@@ -3515,13 +3514,10 @@ sendfile_task_func(void *context, int pending __unused)
 
 	sock_fp = sr->sr_sock_fp;
 	fp = sr->sr_fp;
-	CTR2(KTR_SPARE2, "processing sr %p sock_fp %p", sr, sock_fp);
 	if (sock_fp->f_type != DTYPE_SOCKET)
 		goto done;
 		
 	so = sock_fp->f_data;
-	CTR1(KTR_SPARE2, "task processing socket %p", so);
-		
 	if ((so->so_state & SS_ISCONNECTED) == 0)
 		goto done;
 
@@ -3532,13 +3528,13 @@ sendfile_task_func(void *context, int pending __unused)
 	sb = &so->so_snd;
 	SOCKBUF_UNLOCK_ASSERT(sb);
 	SOCKBUF_LOCK(sb);
-	sb->sb_flags &= ~SB_SENDING;
+	sb->sb_flags &= ~(SB_SENDING|SB_SENDING_TASK);
 	if (sb->sb_state & SBS_CANTSENDMORE) {
 		CTR1(KTR_SPARE2, "SBS_CANTSENDMORE - socket %p", so);
 		sowwakeup_locked(so);
 		goto done;
 	} else if (sowriteable(so)) {
-		sb->sb_flags |= SB_SENDING;
+		sb->sb_flags |= (SB_SENDING|SB_SENDING_TASK);
 		SOCKBUF_UNLOCK(sb);
 		if (sr->sr_hdr_uio.uio_td != NULL)
 			hdr_uio = &sr->sr_hdr_uio;
@@ -3547,39 +3543,36 @@ sendfile_task_func(void *context, int pending __unused)
 
 		sr->sr_uap.sbytes = &sbytes;
 		sr->sr_uap.flags |= SF_TASKQ;
-		CTR1(KTR_SPARE2, "task sending on socket %p", so);
-		
+
 		error = kern_sendfile(curthread, &sr->sr_uap,
 		    hdr_uio, trl_uio,
 		    sr->sr_compat, fp, so, sr->sr_ucred);
-		CTR4(KTR_SPARE2, "sock %p off %ld sbytes %ld total_sbytes %ld",
-		    so, sr->sr_uap.offset, sbytes, fp->f_sfbytes);
-		atomic_add_long(&fp->f_sfbytes, sbytes);
+		CTR5(KTR_SPARE2, "sock %p error %d off %ld sbytes %ld total_sbytes %ld",
+		    so, error, sr->sr_uap.offset, sbytes, sock_fp->f_sfbytes);
+		SOCKBUF_LOCK(sb);
+		atomic_add_long(&sock_fp->f_sfbytes, sbytes);
 		sr->sr_uap.offset += sbytes;
 		if (sr->sr_uap.nbytes)
 			sr->sr_uap.nbytes -= sbytes;
-		if (error == EAGAIN &&
-		    (sr->sr_uap.offset + sbytes == sr->sr_vnp_size)) {
-			CTR0(KTR_SPARE2, "EAGAIN on full send");
-			error = 0;
+		sb->sb_flags &= ~(SB_SENDING|SB_SENDING_TASK);
+		if (error == EAGAIN) {
+			if (sr->sr_uap.offset + sbytes == sr->sr_vnp_size) {
+				CTR0(KTR_SPARE2, "EAGAIN on full send");
+				error = 0;
+			}
+			if (srsendingwakeup(sr, 0) != ENOTCONN) {
+				SOCKBUF_UNLOCK(sb);
+				return;
+			}
 		}
-		SOCKBUF_LOCK(sb);
+			
 	}
-#ifdef KTR
-	else
-		CTR2(KTR_SPARE2, "sock %p off %ld - not writeable in task_func",
-		    so, sr->sr_uap.offset);
-#endif		
-	if (error == EAGAIN && srsendingwakeup(sr) != ENOTCONN) {
-		SOCKBUF_UNLOCK(sb);
-		return;
-	}
+
 #ifdef KTR
 	if (error && error != EAGAIN && error != EPIPE) 
 		CTR1(KTR_SPARE2, "error %d", error); 
 #endif
 	
-	sb->sb_flags &= ~SB_SENDING;
 	sowwakeup_locked(so);
 done:
 	SOCKBUF_UNLOCK_ASSERT(sb);
@@ -3587,7 +3580,7 @@ done:
 }
 
 static int
-srsendingwakeup(struct socketref *sr) 
+srsendingwakeup(struct socketref *sr, int external)
 {
 	struct socket *so;
 	struct file *fp;
@@ -3604,30 +3597,29 @@ srsendingwakeup(struct socketref *sr)
 	}
 
 	fp = sr->sr_sock_fp;
-	CTR2(KTR_SPARE2, "processing s %d sock_fp %p", sr->sr_uap.s, fp);
 	if (fp->f_type != DTYPE_SOCKET) {
 		CTR1(KTR_SPARE2, "not socket - type %d", fp->f_type);
 		goto error;
 	}
 	so = fp->f_data;
+	sb = &so->so_snd;
+	SOCKBUF_LOCK_ASSERT(sb);
+	sb->sb_flags &= ~(SB_SENDING|SB_SENDING_TASK);
 	if ((so->so_state & SS_ISCONNECTED) == 0) {
 		CTR1(KTR_SPARE2, "not connected %p", so);
 		goto error;
 	}
 
-	CTR1(KTR_SPARE2, "processing socket %p", so);
-	sb = &so->so_snd;
-	SOCKBUF_LOCK_ASSERT(sb);
-	sb->sb_flags &= ~SB_SENDING;
 	if (sb->sb_state & SBS_CANTSENDMORE) {
 		CTR1(KTR_SPARE2, "SBS_CANTSENDMORE %p", so);
 	} else if (sowriteable(so)) {
 		CTR2(KTR_SPARE2, "enqueue socket to task %p sr %p", so, sr);
-		sb->sb_flags |= SB_SENDING;
+		sb->sb_flags |= (SB_SENDING|SB_SENDING_TASK);
 		taskqueue_enqueue(sendfile_tq, &sr->sr_task);
 	} else {
-		CTR2(KTR_SPARE2, "sock %p off %ld - not writeable in srsendingwakeup",
-		    so, sr->sr_uap.offset);
+		if (external)
+			CTR3(KTR_SPARE2, "sock %p off %ld sbspace %ld - not writeable in srsendingwakeup",
+			    so, sr->sr_uap.offset, sbspace(sb));
 		sb->sb_flags |= SB_SENDING;
 		mtx_lock(&sendfile_bg_lock);
 		TAILQ_INSERT_TAIL(sendfile_bg_queue, sr, entry);
@@ -3648,7 +3640,8 @@ sosendingwakeup(struct sockbuf *sb)
 	if (!TAILQ_EMPTY(sendfile_bg_queue)) {
 		TAILQ_FOREACH(sr, sendfile_bg_queue, entry) {
 			if (sb == &sr->sr_so->so_snd) {
-				sb->sb_flags &= ~SB_SENDING;
+				CTR3(KTR_SPARE2,
+				    "dequeueing socket %p sock_fp %p s %d", sr->sr_so, sr->sr_sock_fp, sr->sr_uap.s);
 				TAILQ_REMOVE(sendfile_bg_queue, sr, entry);
 				break;
 			}
@@ -3657,10 +3650,13 @@ sosendingwakeup(struct sockbuf *sb)
 	}
 	mtx_unlock(&sendfile_bg_lock);
 	
+	if (sb->sb_flags & SB_SENDING_TASK)
+		panic("task flag set while task not running");
+
 	/*
 	 * Buffer in flight
 	 */
-	if (sr != NULL && srsendingwakeup(sr) == ENOTCONN) {
+	if (sr != NULL && srsendingwakeup(sr, 1) == ENOTCONN) {
 		CTR2(KTR_SPARE2, "freeing expired socket %p ref %p",
 		    sr->sr_so, sr);
 		socketref_free(sr);
