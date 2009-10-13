@@ -35,48 +35,46 @@
  *
  */
 
- #ifdef __FreeBSD__
- #include "opt_inet.h"
- #include "opt_inet6.h"
- 
- #include <sys/cdefs.h>
+#ifdef __FreeBSD__
+#include "opt_inet.h"
+#include "opt_inet6.h"
+
+#include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
- #endif
+#endif
 
- #ifdef __FreeBSD__
- #include "opt_bpf.h"
- #include "opt_pf.h"
- 
- #ifdef DEV_BPF
- #define        NBPFILTER       DEV_BPF
- #else
- #define        NBPFILTER       0
- #endif
- 
- #ifdef DEV_PFLOG
- #define        NPFLOG          DEV_PFLOG
- #else
- #define        NPFLOG          0
- #endif
- 
- #ifdef DEV_PFSYNC
- #define        NPFSYNC         DEV_PFSYNC
- #else
- #define        NPFSYNC         0
- #endif
- 
- #ifdef DEV_PFLOW
- #define        NPFLOW		DEV_PFLOW
- #else
- #define        NPFLOW		0
- #endif
+#ifdef __FreeBSD__
+#include "opt_bpf.h"
+#include "opt_pf.h"
 
- #else
+#ifdef DEV_BPF
+#define        NBPFILTER       DEV_BPF
+#else
+#define        NBPFILTER       0
+#endif
+
+#ifdef DEV_PFLOG
+#define        NPFLOG          DEV_PFLOG
+#else
+#define        NPFLOG          0
+#endif
+
+#ifdef DEV_PFSYNC
+#define        NPFSYNC         DEV_PFSYNC
+#else
+#define        NPFSYNC         0
+#endif
+
+#ifdef DEV_PFLOW
+#define        NPFLOW		DEV_PFLOW
+#else
+#define        NPFLOW		0
+#endif
+
+#else
 #include "bpfilter.h"
 #include "pflog.h"
 #include "pfsync.h"
-#endif
-#ifdef notyet
 #include "pflow.h"
 #endif
 
@@ -5450,22 +5448,19 @@ pf_pull_hdr(struct mbuf *m, int off, void *p, int len,
 int
 pf_routable(struct pf_addr *addr, sa_family_t af, struct pfi_kif *kif)
 {
+#ifdef __FreeBSD__
+#ifdef RADIX_MPATH
+	struct radix_node_head	*rnh;
+#endif
+#endif
 	struct sockaddr_in	*dst;
 	int			 ret = 1;
 	int			 check_mpath;
-#ifdef __FreeBSD__
-#ifdef RADIX_MPATH
-	extern int		 ipmultipath;
-#endif
-#else
+#ifndef __FreeBSD__
 	extern int		 ipmultipath;
 #endif
 #ifdef INET6
-#ifdef __FreeBSD__
-#ifdef RADIX_MPATH
-	extern int		 ip6_multipath;
-#endif
-#else
+#ifndef __FreeBSD__
 	extern int		 ip6_multipath;
 #endif
 	struct sockaddr_in6	*dst6;
@@ -5478,6 +5473,14 @@ pf_routable(struct pf_addr *addr, sa_family_t af, struct pfi_kif *kif)
 	struct ifnet		*ifp;
 
 	check_mpath = 0;
+#ifdef __FreeBSD__
+#ifdef RADIX_MPATH
+	/* XXX: stick to table 0 for now */
+	rnh = rt_tables_get_rnh(0, af);
+	if (rnh != NULL && rn_mpath_capable(rnh))
+		check_mpath = 1;
+#endif
+#endif
 	bzero(&ro, sizeof(ro));
 	switch (af) {
 	case AF_INET:
@@ -5485,7 +5488,7 @@ pf_routable(struct pf_addr *addr, sa_family_t af, struct pfi_kif *kif)
 		dst->sin_family = AF_INET;
 		dst->sin_len = sizeof(*dst);
 		dst->sin_addr = addr->v4;
-#ifdef notyet
+#ifndef __FreeBSD__
 		if (ipmultipath)
 			check_mpath = 1;
 #endif
@@ -5502,7 +5505,7 @@ pf_routable(struct pf_addr *addr, sa_family_t af, struct pfi_kif *kif)
 		dst6->sin6_family = AF_INET6;
 		dst6->sin6_len = sizeof(*dst6);
 		dst6->sin6_addr = addr->v6;
-#ifdef notyet
+#ifndef __FreeBSD__
 		if (ip6_multipath)
 			check_mpath = 1;
 #endif
@@ -5516,13 +5519,13 @@ pf_routable(struct pf_addr *addr, sa_family_t af, struct pfi_kif *kif)
 	if (kif != NULL && kif->pfik_ifp->if_type == IFT_ENC)
 		goto out;
 
- #ifdef __FreeBSD__
- /* XXX MRT not always INET */ /* stick with table 0 though */
+#ifdef __FreeBSD__
+/* XXX MRT not always INET */ /* stick with table 0 though */
         if (af == AF_INET)
                 in_rtalloc_ign((struct route *)&ro, 0, 0);
         else
                 rtalloc_ign((struct route *)&ro, 0);
- #else /* ! __FreeBSD__ */
+#else /* ! __FreeBSD__ */
 	rtalloc_noclone((struct route *)&ro, NO_CLONING);
 #endif
 
@@ -5541,7 +5544,7 @@ pf_routable(struct pf_addr *addr, sa_family_t af, struct pfi_kif *kif)
 		rn = (struct radix_node *)ro.ro_rt;
 		do {
 			rt = (struct rtentry *)rn;
- #ifndef __FreeBSD__ /* CARPDEV */
+#ifndef __FreeBSD__ /* CARPDEV */
 			if (rt->rt_ifp->if_type == IFT_CARP)
 				ifp = rt->rt_ifp->if_carpdev;
 			else
