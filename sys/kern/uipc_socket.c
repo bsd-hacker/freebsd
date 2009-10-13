@@ -3398,8 +3398,6 @@ socketref_free(struct socketref *sr)
 	if (cred != NULL)
 		crfree(cred);
 	vrele(fp->f_vnode);
-	sb->sb_flags &= ~(SB_SENDING|SB_SENDING_TASK);
-	SOCKBUF_UNLOCK(sb);
 	fdrop(fp, NULL);
 	fdrop(sock_fp, NULL);
 	PRELE(p);
@@ -3580,8 +3578,9 @@ sendfile_task_func(void *context, int pending __unused)
 	
 done:
 	SOCKBUF_LOCK_ASSERT(sb);
-	sowwakeup_locked(so);
+	sb->sb_flags &= ~(SB_SENDING|SB_SENDING_TASK);
 	socketref_free(sr);
+	sowwakeup_locked(so);
 }
 
 static int
