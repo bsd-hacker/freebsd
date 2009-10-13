@@ -6487,8 +6487,16 @@ pf_test(int dir, struct ifnet *ifp, struct mbuf **m0,
 #ifdef __FreeBSD__
 	if (ip_divert_ptr != NULL &&
 	    ((dvtag = m_tag_find(m, PACKET_TAG_DIVERT, NULL)) != NULL)) {
-		pd.pf_mtag->flags |= PF_TAG_DIVERTED;
-		m_tag_delete(m, dvtag);
+		/* 
+		 * Ipfw puts the rule number in the divert cookie
+		 * while pf itself just puts zero.
+		 * Use this fact to detect if this is pf created divert tag
+		 * or ipfw one.
+		 */
+		if (!divert_cookie(dvtag)) {
+			pd.pf_mtag->flags |= PF_TAG_DIVERTED;
+			m_tag_delete(m, dvtag);
+		}
 	} else
 #endif
 	/* We do IP header normalization and packet reassembly here */
