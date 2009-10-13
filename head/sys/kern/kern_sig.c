@@ -162,7 +162,7 @@ SYSINIT(signal, SI_SUB_P1003_1B, SI_ORDER_FIRST+3, sigqueue_start, NULL);
 
 int sugid_coredump;
 SYSCTL_INT(_kern, OID_AUTO, sugid_coredump, CTLFLAG_RW, 
-    &sugid_coredump, 0, "Enable coredumping set user/group ID processes");
+    &sugid_coredump, 0, "Allow setuid and setgid processes to dump core");
 
 static int	do_coredump = 1;
 SYSCTL_INT(_kern, OID_AUTO, coredump, CTLFLAG_RW,
@@ -1014,7 +1014,7 @@ kern_sigprocmask(struct thread *td, int how, sigset_t *set, sigset_t *oset,
 	}
 
 	/*
-	 * The new_block set contains signals that were not previosly
+	 * The new_block set contains signals that were not previously
 	 * blocked, but are blocked now.
 	 *
 	 * In case we block any signal that was not previously blocked
