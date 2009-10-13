@@ -3393,10 +3393,13 @@ socketref_free(struct socketref *sr)
 	struct file *sock_fp = sr->sr_sock_fp;
 	struct proc *p = sr->sr_proc;
 	struct ucred *cred = sr->sr_ucred;
+	struct sockbuf *sb = &sr->sr_so->so_snd;
 
 	if (cred != NULL)
 		crfree(cred);
 	vrele(fp->f_vnode);
+	sb->sb_flags &= ~(SB_SENDING|SB_SENDING_TASK);
+	SOCKBUF_UNLOCK(sb);
 	fdrop(fp, NULL);
 	fdrop(sock_fp, NULL);
 	PRELE(p);
@@ -3515,10 +3518,16 @@ sendfile_task_func(void *context, int pending __unused)
 
 	sock_fp = sr->sr_sock_fp;
 	fp = sr->sr_fp;
-	if (sock_fp->f_type != DTYPE_SOCKET)
-		goto done;
-		
+	if (sock_fp->f_type != DTYPE_SOCKET) {
+		printf("bad socket type 0x%x\n", sock_fp->f_type);
+		/* XXX memory leak */
+		return;
+	}
+
 	so = sock_fp->f_data;
+	sb = &so->so_snd;
+	SOCKBUF_UNLOCK_ASSERT(sb);
+	SOCKBUF_LOCK(sb);
 	if ((so->so_state & SS_ISCONNECTED) == 0)
 		goto done;
 
@@ -3526,13 +3535,9 @@ sendfile_task_func(void *context, int pending __unused)
 	    (sr->sr_ucred = crdup(sr->sr_proc->p_ucred)) == NULL)
 		goto done;
 
-	sb = &so->so_snd;
-	SOCKBUF_UNLOCK_ASSERT(sb);
-	SOCKBUF_LOCK(sb);
 	sb->sb_flags &= ~(SB_SENDING|SB_SENDING_TASK);
 	if (sb->sb_state & SBS_CANTSENDMORE) {
 		CTR1(KTR_SPARE2, "SBS_CANTSENDMORE - socket %p", so);
-		sowwakeup_locked(so);
 		goto done;
 	} else if (sowriteable(so)) {
 		sb->sb_flags |= (SB_SENDING|SB_SENDING_TASK);
@@ -3555,7 +3560,6 @@ sendfile_task_func(void *context, int pending __unused)
 		sr->sr_uap.offset += sbytes;
 		if (sr->sr_uap.nbytes)
 			sr->sr_uap.nbytes -= sbytes;
-		sb->sb_flags &= ~(SB_SENDING|SB_SENDING_TASK);
 		if (error == EAGAIN) {
 			if (sr->sr_uap.offset + sbytes == sr->sr_vnp_size) {
 				CTR0(KTR_SPARE2, "EAGAIN on full send");
@@ -3574,9 +3578,9 @@ sendfile_task_func(void *context, int pending __unused)
 		CTR1(KTR_SPARE2, "error %d", error); 
 #endif
 	
-	sowwakeup_locked(so);
 done:
-	SOCKBUF_UNLOCK_ASSERT(sb);
+	SOCKBUF_LOCK_ASSERT(sb);
+	sowwakeup_locked(so);
 	socketref_free(sr);
 }
 
