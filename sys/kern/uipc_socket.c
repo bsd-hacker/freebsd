@@ -166,6 +166,7 @@ static struct filterops sowrite_filtops =
 uma_zone_t socket_zone;
 so_gen_t	so_gencnt;	/* generation count for sockets */
 
+extern int bg_sendfile_enable;
 int	maxsockets;
 
 MALLOC_DEFINE(M_SONAME, "soname", "socket name");
@@ -619,6 +620,16 @@ sofree(struct socket *so)
 		(*pr->pr_domain->dom_dispose)(so->so_rcv.sb_mb);
 	if (pr->pr_usrreqs->pru_detach != NULL)
 		(*pr->pr_usrreqs->pru_detach)(so);
+
+	if (bg_sendfile_enable) {
+		SOCKBUF_LOCK(&so->so_snd);
+		if ((so->so_snd.sb_flags & (SB_SENDING|SB_SENDING_TASK)) ==
+		    (SB_SENDING|SB_SENDING_TASK))
+			sbwait(&so->so_snd);
+		else if (so->so_snd.sb_flags & SB_SENDING)
+			sosendingwakeup(&so->so_snd);
+		SOCKBUF_UNLOCK(&so->so_snd);
+	}
 
 	/*
 	 * From this point on, we assume that no other references to this

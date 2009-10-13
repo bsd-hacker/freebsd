@@ -116,7 +116,7 @@ SYSCTL_INT(_kern_ipc, OID_AUTO, nsfbufsused, CTLFLAG_RD, &nsfbufsused, 0,
 /* XXX move to header */
 int getsock(struct filedesc *fdp, int fd, struct file **fpp, u_int *fflagp);
 
-static int bg_sendfile_enable = 0;
+int bg_sendfile_enable = 0;
 SYSCTL_INT(_kern_ipc, OID_AUTO, bg_sendfile_enable, CTLFLAG_RW,
     &bg_sendfile_enable, 0, "Enable background sendfile");
 
