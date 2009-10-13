@@ -87,6 +87,10 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_phys.h>
 #include <vm/vm_extern.h>
 
+#ifdef VM_MD_MINIDUMP
+#include <machine/md_var.h>
+#endif
+
 static int
 vm_contig_launder_page(vm_page_t m, vm_page_t *next)
 {
@@ -219,6 +223,10 @@ contigmapping(vm_map_t map, vm_size_t size, vm_page_t m, vm_memattr_t memattr,
 			pmap_zero_page(m);
 		m->valid = VM_PAGE_BITS_ALL;
 		m++;
+#ifdef VM_MD_MINIDUMP
+		if (flags & M_NODUMP)
+			dump_exclude_page(VM_PAGE_TO_PHYS(m));
+#endif		
 	}
 	VM_OBJECT_UNLOCK(object);
 	vm_map_wire(map, addr, addr + size,
