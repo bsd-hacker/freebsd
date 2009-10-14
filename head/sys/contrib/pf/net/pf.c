@@ -336,7 +336,9 @@ void			 pf_set_rt_ifp(struct pf_state *,
 			    struct pf_addr *);
 int			 pf_check_proto_cksum(struct mbuf *, int, int,
 			    u_int8_t, sa_family_t);
+#ifndef __FreeBSD__
 struct pf_divert	*pf_get_divert(struct mbuf *);
+#endif
 void			 pf_print_state_parts(struct pf_state *,
 			    struct pf_state_key *, struct pf_state_key *);
 int			 pf_addr_wrap_neq(struct pf_addr_wrap *,
@@ -6358,25 +6360,21 @@ pf_check_proto_cksum(struct mbuf *m, int off, int len, u_int8_t p,
 }
 #endif
 
+#ifndef __FreeBSD__
 struct pf_divert *
 pf_find_divert(struct mbuf *m)
 {
-#ifdef notyet
 	struct m_tag    *mtag;
 
 	if ((mtag = m_tag_find(m, PACKET_TAG_PF_DIVERT, NULL)) == NULL)
 		return (NULL);
 
 	return ((struct pf_divert *)(mtag + 1));
-#else
-	return NULL;
-#endif
 }
 
 struct pf_divert *
 pf_get_divert(struct mbuf *m)
 {
-#ifdef notyet
 	struct m_tag    *mtag;
 
 	if ((mtag = m_tag_find(m, PACKET_TAG_PF_DIVERT, NULL)) == NULL) {
@@ -6389,10 +6387,8 @@ pf_get_divert(struct mbuf *m)
 	}
 
 	return ((struct pf_divert *)(mtag + 1));
-#else
-	return NULL;
-#endif
 }
+#endif
 
 #ifdef INET
 int

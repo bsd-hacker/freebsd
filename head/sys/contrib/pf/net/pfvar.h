@@ -1928,7 +1928,9 @@ extern void			 pf_addrcpy(struct pf_addr *, struct pf_addr *,
 				    u_int8_t);
 void				 pf_rm_rule(struct pf_rulequeue *,
 				    struct pf_rule *);
+#ifndef __FreeBSD__
 struct pf_divert		*pf_find_divert(struct mbuf *);
+#endif
 
 #ifdef INET
 #ifdef __FreeBSD__
