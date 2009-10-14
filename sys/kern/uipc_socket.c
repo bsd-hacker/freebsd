@@ -3396,6 +3396,11 @@ socketref_free(struct socketref *sr)
 	struct sockbuf *sb = &sr->sr_so->so_snd;
 	int refs;
 
+	if (sock_fp->f_count != fp->f_count) {
+		sb->sb_flags |= (SB_SENDING|SB_SENDING_TASK);
+		taskqueue_enqueue(sendfile_tq, &sr->sr_task);
+		return (1);
+	}
 	if (cred != NULL)
 		crfree(cred);
 	vrele(fp->f_vnode);
