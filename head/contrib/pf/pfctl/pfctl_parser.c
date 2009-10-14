@@ -1010,6 +1010,9 @@ print_rule(struct pf_rule *r, const char *anchor_call, int verbose)
 	if (r->rtableid != -1)
 		printf(" rtable %u", r->rtableid);
 	if (r->divert.port) {
+#ifdef __FreeBSD__
+		printf(" divert-to %u", ntohs(r->divert.port));
+#else
 		if (PF_AZERO(&r->divert.addr, r->af)) {
 			printf(" divert-reply");
 		} else {
@@ -1024,6 +1027,7 @@ print_rule(struct pf_rule *r, const char *anchor_call, int verbose)
 				printf("%s", buf);
 			printf(" port %u", ntohs(r->divert.port));
 		}
+#endif
 	}
 	if (!anchor_call[0] && (r->action == PF_NAT ||
 	    r->action == PF_BINAT || r->action == PF_RDR)) {

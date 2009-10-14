@@ -2220,6 +2220,9 @@ pfrule		: action dir logquick interface route af proto fromto
 				}
 				free($9.queues.pqname);
 			}
+#ifdef __FreeBSD__
+			r.divert.port = $9.divert.port;
+#else
 			if ((r.divert.port = $9.divert.port)) {
 				if (r.direction == PF_OUT) {
 					if ($9.divert.addr) {
@@ -2243,7 +2246,8 @@ pfrule		: action dir logquick interface route af proto fromto
 					r.divert.addr =
 					    $9.divert.addr->addr.v.a.addr;
 				}
-			}	
+			}
+#endif
 
 			expand_rule(&r, $4, $5.host, $7, $8.src_os,
 			    $8.src.host, $8.src.port, $8.dst.host, $8.dst.port,
@@ -2360,13 +2364,26 @@ filter_opt	: USER uids {
 			}
 			filter_opts.rtableid = $2;
 		}
+		| DIVERTTO portplain {
+#ifdef __FreeBSD__
+			filter_opts.divert.port = $2.a;
+			if (!filter_opts.divert.port) {
+                                yyerror("invalid divert port: %u", ntohs($2.a));
+                                YYERROR;
+                        }
+#endif
+		}
 		| DIVERTTO STRING PORT portplain {
+#ifndef __FreeBSD__
 			if ((filter_opts.divert.addr = host($2)) == NULL) {
 				yyerror("could not parse divert address: %s",
 				    $2);
 				free($2);
 				YYERROR;
 			}
+#else
+			if ($2)
+#endif
 			free($2);
 			filter_opts.divert.port = $4.a;
 			if (!filter_opts.divert.port) {
@@ -2375,6 +2392,9 @@ filter_opt	: USER uids {
 			}
 		}
 		| DIVERTREPLY {
+#ifdef __FreeBSD__
+			yyerror("divert-reply has no meaning in FreeBSD pf(4)");
+#endif
 			filter_opts.divert.port = 1;	/* some random value */
 		}
 		;
