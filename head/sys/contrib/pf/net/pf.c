@@ -7391,7 +7391,6 @@ pf_check_congestion(struct ifqueue *ifq)
 #endif
 }
 
-#ifdef notyet
 /*
  * must be called whenever any addressing information such as
  * address, port, protocol has changed
@@ -7399,6 +7398,12 @@ pf_check_congestion(struct ifqueue *ifq)
 void
 pf_pkt_addr_changed(struct mbuf *m)
 {
+#ifdef __FreeBSD__
+	struct pf_mtag	*pf_tag;
+
+	if ((pf_tag = pf_find_mtag(m)) != NULL)
+		pf_tag->statekey = NULL;
+#else
 	m->m_pkthdr.pf.statekey = NULL;
-}
 #endif
+}

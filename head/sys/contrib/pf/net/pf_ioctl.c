@@ -438,6 +438,9 @@ pfattach(void)
         if (kproc_create(pf_purge_thread, NULL, NULL, 0, 0, "pfpurge"))
                 return (ENXIO);
  
+#ifdef __FreeBSD__
+	m_addr_chg_pf_p = pf_pkt_addr_changed;
+#endif
 	return (error);
 }
 #else /* !__FreeBSD__ */

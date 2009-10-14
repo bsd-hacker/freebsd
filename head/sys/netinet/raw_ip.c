@@ -89,6 +89,9 @@ VNET_DEFINE(ip_fw_ctl_ptr_t, ip_fw_ctl_ptr) = NULL;
 int (*ip_dn_ctl_ptr)(struct sockopt *) = NULL;
 int (*ip_dn_io_ptr)(struct mbuf **m, int dir, struct ip_fw_args *fwa) = NULL;
 
+/* Hook for telling pf that the destination address changed */
+void (*m_addr_chg_pf_p)(struct mbuf *m);
+
 /*
  * Hooks for multicast routing. They all default to NULL, so leave them not
  * initialized and rely on BSS being set to 0.
