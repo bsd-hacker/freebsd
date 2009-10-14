@@ -2394,8 +2394,10 @@ filter_opt	: USER uids {
 		| DIVERTREPLY {
 #ifdef __FreeBSD__
 			yyerror("divert-reply has no meaning in FreeBSD pf(4)");
-#endif
+			YYERROR;
+#else
 			filter_opts.divert.port = 1;	/* some random value */
+#endif
 		}
 		;
 
