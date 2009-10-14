@@ -945,22 +945,14 @@ typedef int		pfsync_state_in_use_t(struct pf_state *);
 typedef int		pfsync_defer_t(struct pf_state *, struct mbuf *);
 typedef	int		pfsync_up_t(void);
 
-VNET_DECLARE(pfsync_state_import_t,	*pfsync_state_import_ptr);
-#define pfsync_state_import_ptr          VNET(pfsync_state_import_ptr)
-VNET_DECLARE(pfsync_insert_state_t,	*pfsync_insert_state_ptr);
-#define pfsync_insert_state_ptr          VNET(pfsync_insert_state_ptr)
-VNET_DECLARE(pfsync_update_state_t,	*pfsync_update_state_ptr);
-#define pfsync_update_state_ptr          VNET(pfsync_update_state_ptr)
-VNET_DECLARE(pfsync_delete_state_t,	*pfsync_delete_state_ptr);
-#define pfsync_delete_state_ptr          VNET(pfsync_delete_state_ptr)
-VNET_DECLARE(pfsync_clear_states_t,	*pfsync_clear_states_ptr);
-#define pfsync_clear_states_ptr          VNET(pfsync_clear_states_ptr)
-VNET_DECLARE(pfsync_state_in_use_t,	*pfsync_state_in_use_ptr);
-#define pfsync_state_in_use_ptr          VNET(pfsync_state_in_use_ptr)
-VNET_DECLARE(pfsync_defer_t,		*pfsync_defer_ptr);
-#define pfsync_defer_ptr                 VNET(pfsync_defer_ptr)
-VNET_DECLARE(pfsync_up_t,		*pfsync_up_ptr);
-#define pfsync_up_ptr                    VNET(pfsync_up_ptr)
+extern pfsync_state_import_t	*pfsync_state_import_ptr;
+extern pfsync_insert_state_t	*pfsync_insert_state_ptr;
+extern pfsync_update_state_t	*pfsync_update_state_ptr;
+extern pfsync_delete_state_t	*pfsync_delete_state_ptr;
+extern pfsync_clear_states_t	*pfsync_clear_states_ptr;
+extern pfsync_state_in_use_t	*pfsync_state_in_use_ptr;
+extern pfsync_defer_t		*pfsync_defer_ptr;
+extern pfsync_up_t		*pfsync_up_ptr;
 
 void                    pfsync_state_export(struct pfsync_state *,
                             struct pf_state *);
@@ -968,8 +960,7 @@ void                    pfsync_state_export(struct pfsync_state *,
 /* pflow */
 typedef int		export_pflow_t(struct pf_state *);
 
-VNET_DECLARE(export_pflow_t,		*export_pflow_ptr);
-#define export_pflow_ptr                 VNET(export_pflow_ptr)
+extern export_pflow_t		*export_pflow_ptr;
 
 /* pflog */
 struct pf_ruleset;
@@ -977,8 +968,8 @@ struct pf_pdesc;
 typedef int pflog_packet_t(struct pfi_kif *, struct mbuf *, sa_family_t,
     u_int8_t, u_int8_t, struct pf_rule *, struct pf_rule *,
     struct pf_ruleset *, struct pf_pdesc *);
-VNET_DECLARE(pflog_packet_t,		*pflog_packet_ptr);
-#define pflog_packet_ptr                 VNET(pflog_packet_ptr)
+
+extern pflog_packet_t		*pflog_packet_ptr;
 
 /* pf uid hack */
 #define debug_pfugidhack                 VNET(debug_pfugidhack)

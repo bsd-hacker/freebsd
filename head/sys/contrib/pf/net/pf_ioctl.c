@@ -269,18 +269,18 @@ VNET_DEFINE(int, pf_end_threads);
 struct mtx pf_task_mtx;
 
 /* pfsync */
-VNET_DEFINE(pfsync_state_import_t, *pfsync_state_import_ptr);
-VNET_DEFINE(pfsync_insert_state_t, *pfsync_insert_state_ptr);
-VNET_DEFINE(pfsync_update_state_t, *pfsync_update_state_ptr);
-VNET_DEFINE(pfsync_delete_state_t, *pfsync_delete_state_ptr);
-VNET_DEFINE(pfsync_clear_states_t, *pfsync_clear_states_ptr);
-VNET_DEFINE(pfsync_state_in_use_t, *pfsync_state_in_use_ptr);
-VNET_DEFINE(pfsync_defer_t, *pfsync_defer_ptr);
-VNET_DEFINE(pfsync_up_t, *pfsync_up_ptr);
+pfsync_state_import_t 		*pfsync_state_import_ptr;
+pfsync_insert_state_t		*pfsync_insert_state_ptr;
+pfsync_update_state_t		*pfsync_update_state_ptr;
+pfsync_delete_state_t		*pfsync_delete_state_ptr;
+pfsync_clear_states_t		*pfsync_clear_states_ptr;
+pfsync_state_in_use_t		*pfsync_state_in_use_ptr;
+pfsync_defer_t			*pfsync_defer_ptr;
+pfsync_up_t			*pfsync_up_ptr;
 /* pflow */
-VNET_DEFINE(export_pflow_t, *export_pflow_ptr);
+export_pflow_t			*export_pflow_ptr;
 /* pflog */
-VNET_DEFINE(pflog_packet_t, *pflog_packet_ptr);
+pflog_packet_t			*pflog_packet_ptr;
 
 VNET_DEFINE(int, debug_pfugidhack);
 SYSCTL_VNET_INT(_debug, OID_AUTO, pfugidhack, CTLFLAG_RW,
