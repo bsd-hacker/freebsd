@@ -3371,7 +3371,7 @@ struct taskqueue *sendfile_tq;
 extern int getsock(struct filedesc *fdp, int fd,
     struct file **fpp, u_int *fflagp);
 static void sendfile_task_func(void *context, int pending __unused);
-static int srsendingwakeup(struct socketref *sr, int external);
+static void srsendingwakeup(struct socketref *sr, int external);
 
 MALLOC_DEFINE(M_SOCKREF, "sockref", "socket reference memory");
 
@@ -3574,12 +3574,10 @@ sendfile_task_func(void *context, int pending __unused)
 				CTR0(KTR_SPARE2, "EAGAIN on full send");
 				error = 0;
 			}
-			if (srsendingwakeup(sr, 0) != ENOTCONN) {
-				SOCKBUF_UNLOCK(sb);
-				return;
-			}
+			srsendingwakeup(sr, 0);
+			SOCKBUF_UNLOCK(sb);
+			return;
 		}
-			
 	}
 
 #ifdef KTR
@@ -3595,7 +3593,7 @@ done:
 		sowwakeup_locked(so);
 }
 
-static int
+static void
 srsendingwakeup(struct socketref *sr, int external)
 {
 	struct socket *so;
@@ -3609,26 +3607,21 @@ srsendingwakeup(struct socketref *sr, int external)
 		 * XXX leak - should be assert perhaps
 		 * 
 		 */
-		return (0);
+		return;
 	}
 
 	fp = sr->sr_sock_fp;
 	if (fp->f_type != DTYPE_SOCKET) {
-		CTR1(KTR_SPARE2, "not socket - type %d", fp->f_type);
-		goto error;
+		printf("not socket - type %d\n", fp->f_type);
+		return;
 	}
 	so = fp->f_data;
 	sb = &so->so_snd;
 	SOCKBUF_LOCK_ASSERT(sb);
 	sb->sb_flags &= ~(SB_SENDING|SB_SENDING_TASK);
-	if ((so->so_state & SS_ISCONNECTED) == 0) {
-		CTR1(KTR_SPARE2, "not connected %p", so);
-		goto error;
-	}
-
-	if (sb->sb_state & SBS_CANTSENDMORE) {
-		CTR1(KTR_SPARE2, "SBS_CANTSENDMORE %p", so);
-	} else if (sowriteable(so)) {
+	if ((so->so_state & SS_ISCONNECTED) == 0 ||
+	    (sb->sb_state & SBS_CANTSENDMORE) ||
+	    (sowriteable(so))) {
 		CTR2(KTR_SPARE2, "enqueue socket to task %p sr %p", so, sr);
 		sb->sb_flags |= (SB_SENDING|SB_SENDING_TASK);
 		taskqueue_enqueue(sendfile_tq, &sr->sr_task);
@@ -3641,9 +3634,6 @@ srsendingwakeup(struct socketref *sr, int external)
 		TAILQ_INSERT_TAIL(sendfile_bg_queue, sr, entry);
 		mtx_unlock(&sendfile_bg_lock);
 	}
-	return (0);
-error:
-	return (ENOTCONN);
 }
 
 void
@@ -3672,11 +3662,8 @@ sosendingwakeup(struct sockbuf *sb)
 	/*
 	 * Buffer in flight
 	 */
-	if (sr != NULL && srsendingwakeup(sr, 1) == ENOTCONN) {
-		CTR2(KTR_SPARE2, "freeing expired socket %p ref %p",
-		    sr->sr_so, sr);
-		socketref_free(sr);
-	}
+	if (sr != NULL)
+		srsendingwakeup(sr, 1);
 }
 
 static void
