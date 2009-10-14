@@ -269,18 +269,18 @@ VNET_DEFINE(int, pf_end_threads);
 struct mtx pf_task_mtx;
 
 /* pfsync */
-pfsync_state_import_t 		*pfsync_state_import_ptr;
-pfsync_insert_state_t		*pfsync_insert_state_ptr;
-pfsync_update_state_t		*pfsync_update_state_ptr;
-pfsync_delete_state_t		*pfsync_delete_state_ptr;
-pfsync_clear_states_t		*pfsync_clear_states_ptr;
-pfsync_state_in_use_t		*pfsync_state_in_use_ptr;
-pfsync_defer_t			*pfsync_defer_ptr;
-pfsync_up_t			*pfsync_up_ptr;
+pfsync_state_import_t 		*pfsync_state_import_ptr = NULL;
+pfsync_insert_state_t		*pfsync_insert_state_ptr = NULL;
+pfsync_update_state_t		*pfsync_update_state_ptr = NULL;
+pfsync_delete_state_t		*pfsync_delete_state_ptr = NULL;
+pfsync_clear_states_t		*pfsync_clear_states_ptr = NULL;
+pfsync_state_in_use_t		*pfsync_state_in_use_ptr = NULL;
+pfsync_defer_t			*pfsync_defer_ptr = NULL;
+pfsync_up_t			*pfsync_up_ptr = NULL;
 /* pflow */
-export_pflow_t			*export_pflow_ptr;
+export_pflow_t			*export_pflow_ptr = NULL;
 /* pflog */
-pflog_packet_t			*pflog_packet_ptr;
+pflog_packet_t			*pflog_packet_ptr = NULL;
 
 VNET_DEFINE(int, debug_pfugidhack);
 SYSCTL_VNET_INT(_debug, OID_AUTO, pfugidhack, CTLFLAG_RW,
@@ -3977,31 +3977,7 @@ vnet_pf_init(const void *unused)
 	pf_pfil_hooked = 0;
 	pf_end_threads = 0;
 
-	/* pfsync */
-	pfsync_state_import_ptr = NULL;
-	pfsync_insert_state_ptr = NULL;
-	pfsync_update_state_ptr = NULL;
-	pfsync_delete_state_ptr = NULL;
-	pfsync_clear_states_ptr = NULL;
-	pfsync_state_in_use_ptr = NULL;
-	pfsync_defer_ptr = NULL;
-	pfsync_up_ptr = NULL;
-	/* pflow */
-	export_pflow_ptr = NULL;
-	/* pflog */
-	pflog_packet_ptr = NULL;
-
 	debug_pfugidhack = 0;
-
-#if 0
-	/* XXX: Are they needed here?! */
-	pfi_attach_cookie = NULL;
-	pfi_detach_cookie = NULL;
-	pfi_attach_group_cookie = NULL;
-	pfi_change_group_cookie = NULL;
-	pfi_detach_group_cookie = NULL;
-	pfi_ifaddr_event_cookie = NULL;
-#endif
 
 	return (0);
 }

@@ -99,12 +99,12 @@ int			  pfi_buffer_cnt;
 int			  pfi_buffer_max;
 #endif
 #ifdef __FreeBSD__
-VNET_DEFINE(eventhandler_tag,	 pfi_attach_cookie);
-VNET_DEFINE(eventhandler_tag,	 pfi_detach_cookie);
-VNET_DEFINE(eventhandler_tag,	 pfi_attach_group_cookie);
-VNET_DEFINE(eventhandler_tag,	 pfi_change_group_cookie);
-VNET_DEFINE(eventhandler_tag,	 pfi_detach_group_cookie);
-VNET_DEFINE(eventhandler_tag,	 pfi_ifaddr_event_cookie);
+eventhandler_tag	 pfi_attach_cookie;
+eventhandler_tag	 pfi_detach_cookie;
+eventhandler_tag	 pfi_attach_group_cookie;
+eventhandler_tag	 pfi_change_group_cookie;
+eventhandler_tag	 pfi_detach_group_cookie;
+eventhandler_tag	 pfi_ifaddr_event_cookie;
 #endif
 
 void		 pfi_kif_update(struct pfi_kif *);
