@@ -122,8 +122,9 @@ static void	cpu_print_cacheinfo(u_int, uint16_t);
 void
 cpu_setup(u_int cpuid)
 {
-	u_int		pvr, maj, min, hid0;
+	u_int		pvr, maj, min;
 	uint16_t	vers, rev, revfmt;
+	register_t	hid0;
 	const struct	cputab *cp;
 	const char	*name;
 	char		*bitmask;
@@ -289,7 +290,7 @@ cpu_setup(u_int cpuid)
 			break;
 	}
 
-	printf("cpu%d: HID0 %b\n", cpuid, hid0, bitmask);
+	printf("cpu%d: HID0 %b\n", cpuid, (int)hid0, bitmask);
 }
 
 void
