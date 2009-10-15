@@ -123,12 +123,12 @@ struct pflowreq {
 #define PFLOW_MASK_DSTPRT	0x04
 };
 
-#ifdef _KERNEL
 #ifdef __FreeBSD__
 #define SIOCSETPFLOW   _IOW('i', 249, struct ifreq)
 #define SIOCGETPFLOW   _IOWR('i', 250, struct ifreq)
 #endif
 
+#ifdef _KERNEL
 int export_pflow(struct pf_state *);
 int pflow_sysctl(int *, u_int,  void *, size_t *, void *, size_t);
 #endif /* _KERNEL */

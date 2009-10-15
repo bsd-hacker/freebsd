@@ -268,12 +268,12 @@ struct pfsyncreq {
 	int		 pfsyncr_authlevel;
 };
 
-#ifdef _KERNEL
-
 #ifdef __FreeBSD__
 #define SIOCSETPFSYNC   _IOW('i', 247, struct ifreq)
 #define SIOCGETPFSYNC   _IOWR('i', 248, struct ifreq)
 #endif
+
+#ifdef _KERNEL
 
 /*
  * this shows where a pf state is with respect to the syncing.
