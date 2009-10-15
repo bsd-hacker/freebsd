@@ -52,6 +52,10 @@ log_entry_receiver(void *baton,
 	(void)pool;
 	(void)baton;
 	SVNSUP_DEBUG("%s(r%lu)\n", __func__, (long)log_entry->revision);
+
+	if (!debug)
+		return (SVN_NO_ERROR);
+
 	fprintf(stderr, "revision properties:\n");
 #if 0
 	for (hash_index = apr_hash_first(pool, log_entry->revprops);

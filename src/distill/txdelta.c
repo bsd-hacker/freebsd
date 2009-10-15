@@ -44,6 +44,9 @@ txdelta_window_handler(svn_txdelta_window_t *window, void *baton)
 	(void)baton;
 	SVNSUP_DEBUG("%s()\n", __func__);
 
+	if (!debug)
+		return (SVN_NO_ERROR);
+
 	if (window == NULL) {
 		fprintf(stderr, "end of delta\n");
 		return (SVN_NO_ERROR);
