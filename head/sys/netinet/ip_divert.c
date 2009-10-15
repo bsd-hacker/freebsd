@@ -37,9 +37,6 @@ __FBSDID("$FreeBSD$");
 #ifndef INET
 #error "IPDIVERT requires INET."
 #endif
-#ifndef IPFIREWALL
-#error "IPDIVERT requires IPFIREWALL"
-#endif
 #endif
 
 #include <sys/param.h>
