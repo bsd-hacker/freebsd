@@ -2438,14 +2438,15 @@ pf_send_tcp(const struct pf_rule *r, sa_family_t af,
 		h->ip_v = 4;
 		h->ip_hl = sizeof(*h) >> 2;
 		h->ip_tos = IPTOS_LOWDELAY;
- #ifdef __FreeBSD__
+#ifdef __FreeBSD__
                 h->ip_off = V_path_mtu_discovery ? IP_DF : 0;
                 h->ip_len = len;
- #else
+		h->ip_ttl = ttl ? ttl : V_ip_defttl;
+#else
 		h->ip_len = htons(len);
 		h->ip_off = htons(ip_mtudisc ? IP_DF : 0);
-#endif
 		h->ip_ttl = ttl ? ttl : ip_defttl;
+#endif
 		h->ip_sum = 0;
 		if (eh == NULL) {
  #ifdef __FreeBSD__
@@ -3101,7 +3102,11 @@ pf_get_mss(struct mbuf *m, int off, u_int16_t th_off, sa_family_t af)
 	int		 hlen;
 	u_int8_t	 hdr[60];
 	u_int8_t	*opt, optlen;
+#ifdef __FreeBSD__
+	u_int16_t	 mss = V_tcp_mssdflt;
+#else
 	u_int16_t	 mss = tcp_mssdflt;
+#endif
 
 	hlen = th_off << 2;	/* hlen <= sizeof(hdr) */
 	if (hlen <= sizeof(struct tcphdr))
@@ -3147,10 +3152,11 @@ pf_calc_mss(struct pf_addr *addr, sa_family_t af, u_int16_t offer)
 	struct rtentry		*rt = NULL;
 #ifdef __FreeBSD__
 	int			 hlen = 0;
+	u_int16_t		 mss = V_tcp_mssdflt;
 #else
 	int			 hlen;
-#endif
 	u_int16_t		 mss = tcp_mssdflt;
+#endif
 
 	switch (af) {
 #ifdef INET
@@ -3239,10 +3245,10 @@ pf_tcp_iss(struct pf_pdesc *pd)
 
 #ifdef __FreeBSD__
 	if (V_pf_tcp_secret_init == 0) {
-		read_random(&V_pf_tcp_secret, sizeof(pf_tcp_secret));
+		read_random(&V_pf_tcp_secret, sizeof(V_pf_tcp_secret));
 		MD5Init(&V_pf_tcp_secret_ctx);
 		MD5Update(&V_pf_tcp_secret_ctx, V_pf_tcp_secret,
-		    sizeof(pf_tcp_secret));
+		    sizeof(V_pf_tcp_secret));
 		V_pf_tcp_secret_init = 1;
 	}
 
@@ -3775,7 +3781,11 @@ pf_create_state(struct pf_rule *r, struct pf_rule *nr, struct pf_rule *a,
 	struct pf_state		*s = NULL;
 	struct pf_src_node	*sn = NULL;
 	struct tcphdr		*th = pd->hdr.tcp;
+#ifdef __FreeBSD__
+	u_int16_t		 mss = V_tcp_mssdflt;
+#else
 	u_int16_t		 mss = tcp_mssdflt;
+#endif
 	u_short			 reason;
 
 	/* check maximums */
@@ -5939,7 +5949,11 @@ pf_route(struct mbuf **m, struct pf_rule *r, int dir, struct ifnet *oifp,
 		rtalloc(ro);
 #endif
 		if (ro->ro_rt == 0) {
+#ifdef __FreeBSD__
+			KMOD_IPSTAT_INC(ips_noroute);
+#else
 			ipstat.ips_noroute++;
+#endif
 			goto bad;
 		}
 
@@ -6071,7 +6085,11 @@ pf_route(struct mbuf **m, struct pf_rule *r, int dir, struct ifnet *oifp,
 		if ((ifp->if_capabilities & IFCAP_CSUM_IPv4) &&
 		    ifp->if_bridge == NULL) {
 			m0->m_pkthdr.csum_flags |= M_IPV4_CSUM_OUT;
+#ifdef __FreeBSD__
+			KMOD_IPSTAT_INC(ips_outhwcsum);
+#else
 			ipstat.ips_outhwcsum++;
+#endif
 		} else
 			ip->ip_sum = in_cksum(m0, ip->ip_hl << 2);
 		/* Update relevant hardware checksum stats for TCP/UDP */
@@ -6089,7 +6107,11 @@ pf_route(struct mbuf **m, struct pf_rule *r, int dir, struct ifnet *oifp,
 	 * Must be able to put at least 8 bytes per fragment.
 	 */
 	if (ip->ip_off & htons(IP_DF)) {
+#ifdef __FreeBSD__
+		KMOD_IPSTAT_INC(ips_cantfrag);
+#else
 		ipstat.ips_cantfrag++;
+#endif
 		if (r->rt != PF_DUPTO) {
  #ifdef __FreeBSD__
                         /* icmp_error() expects host byte ordering */
@@ -6146,7 +6168,11 @@ pf_route(struct mbuf **m, struct pf_rule *r, int dir, struct ifnet *oifp,
 	}
 
 	if (error == 0)
+#ifdef __FreeBSD__
+		KMOD_IPSTAT_INC(ips_fragmented);
+#else
 		ipstat.ips_fragmented++;
+#endif
 
 done:
 	if (r->rt != PF_DUPTO)
@@ -7087,7 +7113,7 @@ pf_test6(int dir, struct ifnet *ifp, struct mbuf **m0,
 
 #ifdef __FreeBSD__
         PF_LOCK();
-	if (!pf_status.running)
+	if (!V_pf_status.running)
         {
                 PF_UNLOCK();
 		return (PF_PASS);
