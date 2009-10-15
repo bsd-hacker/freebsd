@@ -368,4 +368,4 @@ ASENTRY(setfault)
 	xor	3,3,3
 	blr
 
-#include <powerpc/aim64/trap_subr.S>
+#include <powerpc/aim/trap_subr64.S>

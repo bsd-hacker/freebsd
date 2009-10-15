@@ -104,7 +104,9 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_pager.h>
 
 #include <machine/altivec.h>
+#ifndef __powerpc64__
 #include <machine/bat.h>
+#endif
 #include <machine/cpu.h>
 #include <machine/elf.h>
 #include <machine/fpu.h>
@@ -129,15 +131,24 @@ extern vm_offset_t ksym_start, ksym_end;
 #endif
 
 int cold = 1;
+#ifdef __powerpc64__
+int cacheline_size = 128;
+int ppc64 = 1;
+#else
 int cacheline_size = 32;
 int ppc64 = 0;
+#endif
 int hw_direct_map = 1;
 
 struct pcpu __pcpu[MAXCPU];
 
 static struct trapframe frame0;
 
+#ifdef __powerpc64__
+char		machine[] = "powerpc64";
+#else
 char		machine[] = "powerpc";
+#endif
 SYSCTL_STRING(_hw, HW_MACHINE, machine, CTLFLAG_RD, machine, 0, "");
 
 static void	cpu_startup(void *);
@@ -146,26 +157,21 @@ SYSINIT(cpu, SI_SUB_CPU, SI_ORDER_FIRST, cpu_startup, NULL);
 SYSCTL_INT(_machdep, CPU_CACHELINE, cacheline_size,
 	   CTLFLAG_RD, &cacheline_size, 0, "");
 
-u_int		powerpc_init(u_int, u_int, u_int, void *);
-
-int		save_ofw_mapping(void);
-int		restore_ofw_mapping(void);
-
-void		install_extint(void (*)(void));
-
-int             setfault(faultbuf);             /* defined in locore.S */
-
+uintptr_t	powerpc_init(vm_offset_t, vm_offset_t, vm_offset_t, void *);
 static int	grab_mcontext(struct thread *, mcontext_t *, int);
 
+int             setfault(faultbuf);             /* defined in locore.S */
 void		asm_panic(char *);
 
 long		Maxmem = 0;
 long		realmem = 0;
 
 struct pmap	ofw_pmap;
-extern int	ofmsr;
+extern register_t ofmsr;
 
+#ifndef __powerpc64__
 struct bat	battable[16];
+#endif
 
 struct kva_md_info kmi;
 
@@ -209,7 +215,11 @@ cpu_startup(void *dummy)
 		for (indx = 0; phys_avail[indx + 1] != 0; indx += 2) {
 			int size1 = phys_avail[indx + 1] - phys_avail[indx];
 
+			#ifdef __powerpc64__
+			printf("0x%16lx - 0x%16lx, %d bytes (%d pages)\n",
+			#else
 			printf("0x%08x - 0x%08x, %d bytes (%d pages)\n",
+			#endif
 			    phys_avail[indx], phys_avail[indx + 1] - 1, size1,
 			    size1 / PAGE_SIZE);
 		}
@@ -232,21 +242,27 @@ cpu_startup(void *dummy)
 
 extern char	kernel_text[], _end[];
 
+#ifndef __powerpc64__
+/* Bits for running on 64-bit systems in 32-bit mode. */
 extern void	*testppc64, *testppc64size;
 extern void	*restorebridge, *restorebridgesize;
 extern void	*rfid_patch, *rfi_patch1, *rfi_patch2;
+extern void	*trapcode64;
+#endif
+
 #ifdef SMP
 extern void	*rstcode, *rstsize;
 #endif
-extern void	*trapcode, *trapcode64, *trapsize;
+extern void	*trapcode, *trapsize;
 extern void	*alitrap, *alisize;
 extern void	*dsitrap, *dsisize;
 extern void	*decrint, *decrsize;
 extern void     *extint, *extsize;
 extern void	*dblow, *dbsize;
 
-u_int
-powerpc_init(u_int startkernel, u_int endkernel, u_int basekernel, void *mdp)
+uintptr_t
+powerpc_init(vm_offset_t startkernel, vm_offset_t endkernel,
+    vm_offset_t basekernel, void *mdp)
 {
 	struct		pcpu *pc;
 	vm_offset_t	end;
@@ -254,7 +270,7 @@ powerpc_init(u_int startkernel, u_int endkernel, u_int basekernel, void *mdp)
 	size_t		trap_offset;
 	void		*kmdp;
         char		*env;
-	uint32_t	msr, scratch;
+	register_t	msr, scratch;
 	uint8_t		*cache_check;
 
 	end = 0;
@@ -394,6 +410,7 @@ powerpc_init(u_int startkernel, u_int endkernel, u_int basekernel, void *mdp)
 
 	ppc64 = 1;
 
+	#ifndef __powerpc64__
 	bcopy(&testppc64, (void *)EXC_PGM,  (size_t)&testppc64size);
 	__syncicache((void *)EXC_PGM, (size_t)&testppc64size);
 
@@ -442,6 +459,10 @@ powerpc_init(u_int startkernel, u_int endkernel, u_int basekernel, void *mdp)
 		generictrap = &trapcode;
 	}
 
+	#else /* powerpc64 */
+	generictrap = &trapcode;
+	#endif
+
 #ifdef SMP
 	bcopy(&rstcode, (void *)(EXC_RST + trap_offset),  (size_t)&rstsize);
 #else
@@ -459,9 +480,13 @@ powerpc_init(u_int startkernel, u_int endkernel, u_int basekernel, void *mdp)
 	bcopy(generictrap, (void *)EXC_TRC,  (size_t)&trapsize);
 	bcopy(generictrap, (void *)EXC_BPT,  (size_t)&trapsize);
 #endif
-	bcopy(&dsitrap,  (void *)(EXC_DSI + trap_offset),  (size_t)&dsisize);
 	bcopy(&alitrap,  (void *)(EXC_ALI + trap_offset),  (size_t)&alisize);
+	bcopy(&dsitrap,  (void *)(EXC_DSI + trap_offset),  (size_t)&dsisize);
 	bcopy(generictrap, (void *)EXC_ISI,  (size_t)&trapsize);
+	#ifdef __powerpc64__
+	bcopy(&dsitrap,	   (void *)EXC_DSE,  (size_t)&dsisize);
+	bcopy(generictrap, (void *)EXC_ISE,  (size_t)&trapsize);
+	#endif
 	bcopy(generictrap, (void *)EXC_EXI,  (size_t)&trapsize);
 	bcopy(generictrap, (void *)EXC_FPU,  (size_t)&trapsize);
 	bcopy(generictrap, (void *)EXC_DECR, (size_t)&trapsize);
@@ -517,7 +542,7 @@ powerpc_init(u_int startkernel, u_int endkernel, u_int basekernel, void *mdp)
 	 */
 	thread0.td_pcb = (struct pcb *)
 	    ((thread0.td_kstack + thread0.td_kstack_pages * PAGE_SIZE -
-	    sizeof(struct pcb)) & ~15);
+	    sizeof(struct pcb)) & ~15UL);
 	bzero((void *)thread0.td_pcb, sizeof(struct pcb));
 	pc->pc_curpcb = thread0.td_pcb;
 
@@ -530,7 +555,8 @@ powerpc_init(u_int startkernel, u_int endkernel, u_int basekernel, void *mdp)
 		    "Boot flags requested debugger");
 #endif
 
-	return (((uintptr_t)thread0.td_pcb - 16) & ~15);
+	return (((uintptr_t)thread0.td_pcb -
+	    (sizeof(struct callframe) - 3*sizeof(register_t))) & ~15UL);
 }
 
 void
@@ -900,14 +926,14 @@ cpu_halt(void)
 void
 cpu_idle(int busy)
 {
-	uint32_t msr;
+	register_t msr;
 
 	msr = mfmsr();
 
 #ifdef INVARIANTS
 	if ((msr & PSL_EE) != PSL_EE) {
 		struct thread *td = curthread;
-		printf("td msr %x\n", td->td_md.md_saved_msr);
+		printf("td msr %#lx\n", (u_long)td->td_md.md_saved_msr);
 		panic("ints disabled in idleproc!");
 	}
 #endif
@@ -933,6 +959,9 @@ exec_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings)
 {
 	struct trapframe	*tf;
 	struct ps_strings	arginfo;
+	#ifdef __powerpc64__
+	register_t		entry_desc[3];
+	#endif
 
 	tf = trapframe(td);
 	bzero(tf, sizeof *tf);
@@ -973,8 +1002,29 @@ exec_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings)
 	tf->fixreg[7] = 0;			/* termination vector */
 	tf->fixreg[8] = (register_t)PS_STRINGS;	/* NetBSD extension */
 
+	#ifdef __powerpc64__
+	if (1) {
+		/*
+		 * For 64-bit, we need to disentangle the function descriptor
+		 * 
+		 * 0. entry point
+		 * 1. TOC value (r2)
+		 * 2. Environment pointer (r11)
+                 */
+
+		(void)copyin((void *)entry, entry_desc, sizeof(entry_desc));
+		tf->srr0 = entry_desc[0];
+		tf->fixreg[2] = entry_desc[1];
+		tf->fixreg[11] = entry_desc[2];
+		tf->srr1 = PSL_SF | PSL_MBO | PSL_USERSET | PSL_FE_DFLT;
+	} else {
+		tf->srr0 = entry;
+		tf->srr1 = PSL_MBO | PSL_USERSET | PSL_FE_DFLT;
+	}
+	#else
 	tf->srr0 = entry;
 	tf->srr1 = PSL_MBO | PSL_USERSET | PSL_FE_DFLT;
+	#endif
 	td->td_pcb->pcb_flags = 0;
 }
 
@@ -1179,9 +1229,52 @@ db_trap_glue(struct trapframe *frame)
 	return (0);
 }
 
+#ifdef __powerpc64__
+uintptr_t moea64_get_unique_vsid(void);
+
+uint64_t
+va_to_vsid(pmap_t pm, vm_offset_t va)
+{
+	uint64_t slbe, slbv, i;
+
+	slbe = (uintptr_t)va >> ADDR_SR_SHFT;
+	slbe = (slbe << SLBE_ESID_SHIFT) | SLBE_VALID;
+	slbv = 0;
+
+	for (i = 0; i < sizeof(pm->pm_slb)/sizeof(pm->pm_slb[0]); i++) {
+		if (pm->pm_slb[i].slbe == (slbe | i)) {
+			slbv = pm->pm_slb[i].slbv;
+			break;
+		}
+	}
+
+	/* XXX: Have a long list for processes mapping more than 16 GB */
+
+	/*
+	 * If there is no vsid for this VA, we need to add a new entry
+	 * to the PMAP's segment table.
+	 */
+
+	if (slbv == 0) {
+		slbv = moea64_get_unique_vsid() << SLBV_VSID_SHIFT;
+		for (i = 0; i < sizeof(pm->pm_slb)/sizeof(pm->pm_slb[0]); i++) {
+			if (!(pm->pm_slb[i].slbe & SLBE_VALID)) {
+				pm->pm_slb[i].slbv = slbv;
+				pm->pm_slb[i].slbe = slbe | i;
+				break;
+			}
+		}
+	}
+
+	return ((slbv & SLBV_VSID_MASK) >> SLBV_VSID_SHIFT);
+}
+
+#else
+
 uint64_t
 va_to_vsid(pmap_t pm, vm_offset_t va)
 {
 	return ((pm->pm_sr[(uintptr_t)va >> ADDR_SR_SHFT]) & SR_VSID_MASK);
 }
 
+#endif

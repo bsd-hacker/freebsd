@@ -55,18 +55,18 @@ libkern/memset.c		standard
 powerpc/aim/clock.c		optional	aim
 powerpc/aim/copyinout.c		optional	aim
 powerpc/aim/interrupt.c		optional	aim
+powerpc/aim/locore.S		optional	aim no-obj
+powerpc/aim/machdep.c		optional	aim
+powerpc/aim/mmu_oea64.c		optional	aim
 powerpc/aim/mp_cpudep.c		optional	aim smp
 powerpc/aim/nexus.c		optional	aim
 powerpc/aim/ofw_machdep.c	optional	aim
 powerpc/aim/ofwmagic.S		optional	aim
 powerpc/aim/platform_chrp.c	optional	aim
+powerpc/aim/swtch64.S		optional	aim
 powerpc/aim/trap.c		optional	aim
 powerpc/aim/uma_machdep.c	optional	aim
 powerpc/aim/vm_machdep.c	optional	aim
-powerpc/aim64/locore.S		optional	aim no-obj
-powerpc/aim64/machdep.c		optional	aim
-powerpc/aim64/mmu_oea64.c	optional	aim
-powerpc/aim64/swtch.S		optional	aim
 powerpc/cell/celliic.c		optional	cell
 powerpc/cpufreq/dfs.c		optional	cpufreq
 powerpc/cpufreq/pcr.c		optional	cpufreq aim
