@@ -179,15 +179,15 @@ struct pfr_walktree {
 VNET_DEFINE(uma_zone_t,			pfr_ktable_pl);
 VNET_DEFINE(uma_zone_t,			pfr_kentry_pl);
 VNET_DEFINE(uma_zone_t,			pfr_kcounters_pl);
-#define	pfr_kcounters_pl		VNET(pfr_kcounters_pl)
+#define	V_pfr_kcounters_pl		VNET(pfr_kcounters_pl)
 VNET_DEFINE(struct sockaddr_in,		pfr_sin);
-#define	pfr_sin				VNET(pfr_sin)
+#define	V_pfr_sin			VNET(pfr_sin)
 VNET_DEFINE(struct sockaddr_in6,	pfr_sin6);
-#define	pfr_sin6			VNET(pfr_sin6)
+#define	V_pfr_sin6			VNET(pfr_sin6)
 VNET_DEFINE(union sockaddr_union,	pfr_mask);
-#define	pfr_mask			VNET(pfr_mask)
+#define	V_pfr_mask			VNET(pfr_mask)
 VNET_DEFINE(struct pf_addr,		pfr_ffaddr);
-#define	pfr_ffaddr			VNET(pfr_ffaddr)
+#define	V_pfr_ffaddr			VNET(pfr_ffaddr)
 #else
 struct pool		 pfr_ktable_pl;
 struct pool		 pfr_kentry_pl;
@@ -262,7 +262,6 @@ pfr_initialize(void)
 	    "pfrkentry", NULL);
 	pool_init(&pfr_kcounters_pl, sizeof(struct pfr_kcounters), 0, 0, 0,
 	    "pfrkcounters", NULL);
-#endif
 
 	pfr_sin.sin_len = sizeof(pfr_sin);
 	pfr_sin.sin_family = AF_INET;
@@ -270,6 +269,14 @@ pfr_initialize(void)
 	pfr_sin6.sin6_family = AF_INET6;
 
 	memset(&pfr_ffaddr, 0xff, sizeof(pfr_ffaddr));
+#else
+	V_pfr_sin.sin_len = sizeof(V_pfr_sin);
+	V_pfr_sin.sin_family = AF_INET;
+	V_pfr_sin6.sin6_len = sizeof(V_pfr_sin6);
+	V_pfr_sin6.sin6_family = AF_INET6;
+
+	memset(&V_pfr_ffaddr, 0xff, sizeof(V_pfr_ffaddr));
+#endif
 }
 
 int
@@ -960,10 +967,11 @@ void
 pfr_destroy_kentry(struct pfr_kentry *ke)
 {
 	if (ke->pfrke_counters)
-		pool_put(&pfr_kcounters_pl, ke->pfrke_counters);
 #ifdef __FreeBSD__
+		pool_put(&V_pfr_kcounters_pl, ke->pfrke_counters);
 	pool_put(&V_pfr_kentry_pl, ke);
 #else
+		pool_put(&pfr_kcounters_pl, ke->pfrke_counters);
 	pool_put(&pfr_kentry_pl, ke);
 #endif
 }
@@ -1047,7 +1055,11 @@ pfr_clstats_kentries(struct pfr_kentryworkq *workq, long tzero, int negchange)
 		if (negchange)
 			p->pfrke_not = !p->pfrke_not;
 		if (p->pfrke_counters) {
+#ifdef __FreeBSD__
+			pool_put(&V_pfr_kcounters_pl, p->pfrke_counters);
+#else
 			pool_put(&pfr_kcounters_pl, p->pfrke_counters);
+#endif
 			p->pfrke_counters = NULL;
 		}
 		splx(s);
@@ -1259,19 +1271,35 @@ pfr_walktree(struct radix_node *rn, void *arg)
 		if (ke->pfrke_af == AF_INET) {
 			if (w->pfrw_dyn->pfid_acnt4++ > 0)
 				break;
+#ifdef __FreeBSD__
+			pfr_prepare_network(&V_pfr_mask, AF_INET, ke->pfrke_net);
+#else
 			pfr_prepare_network(&pfr_mask, AF_INET, ke->pfrke_net);
+#endif
 			w->pfrw_dyn->pfid_addr4 = *SUNION2PF(
 			    &ke->pfrke_sa, AF_INET);
 			w->pfrw_dyn->pfid_mask4 = *SUNION2PF(
+#ifdef __FreeBSD__
+			    &V_pfr_mask, AF_INET);
+#else
 			    &pfr_mask, AF_INET);
+#endif
 		} else if (ke->pfrke_af == AF_INET6){
 			if (w->pfrw_dyn->pfid_acnt6++ > 0)
 				break;
+#ifdef __FreeBSD__
+			pfr_prepare_network(&V_pfr_mask, AF_INET6, ke->pfrke_net);
+#else
 			pfr_prepare_network(&pfr_mask, AF_INET6, ke->pfrke_net);
+#endif
 			w->pfrw_dyn->pfid_addr6 = *SUNION2PF(
 			    &ke->pfrke_sa, AF_INET6);
 			w->pfrw_dyn->pfid_mask6 = *SUNION2PF(
+#ifdef __FreeBSD__
+			    &V_pfr_mask, AF_INET6);
+#else
 			    &pfr_mask, AF_INET6);
+#endif
 		}
 		break;
 	}
@@ -2172,16 +2200,26 @@ pfr_match_addr(struct pfr_ktable *kt, struct pf_addr *a, sa_family_t af)
 	switch (af) {
 #ifdef INET
 	case AF_INET:
+#ifdef __FreeBSD__
+		V_pfr_sin.sin_addr.s_addr = a->addr32[0];
+		ke = (struct pfr_kentry *)rn_match(&V_pfr_sin, kt->pfrkt_ip4);
+#else
 		pfr_sin.sin_addr.s_addr = a->addr32[0];
 		ke = (struct pfr_kentry *)rn_match(&pfr_sin, kt->pfrkt_ip4);
+#endif
 		if (ke && KENTRY_RNF_ROOT(ke))
 			ke = NULL;
 		break;
 #endif /* INET */
 #ifdef INET6
 	case AF_INET6:
+#ifdef __FreeBSD__
+		bcopy(a, &V_pfr_sin6.sin6_addr, sizeof(V_pfr_sin6.sin6_addr));
+		ke = (struct pfr_kentry *)rn_match(&V_pfr_sin6, kt->pfrkt_ip6);
+#else
 		bcopy(a, &pfr_sin6.sin6_addr, sizeof(pfr_sin6.sin6_addr));
 		ke = (struct pfr_kentry *)rn_match(&pfr_sin6, kt->pfrkt_ip6);
+#endif
 		if (ke && KENTRY_RNF_ROOT(ke))
 			ke = NULL;
 		break;
@@ -2209,16 +2247,26 @@ pfr_update_stats(struct pfr_ktable *kt, struct pf_addr *a, sa_family_t af,
 	switch (af) {
 #ifdef INET
 	case AF_INET:
+#ifdef __FreeBSD__
+		V_pfr_sin.sin_addr.s_addr = a->addr32[0];
+		ke = (struct pfr_kentry *)rn_match(&V_pfr_sin, kt->pfrkt_ip4);
+#else
 		pfr_sin.sin_addr.s_addr = a->addr32[0];
 		ke = (struct pfr_kentry *)rn_match(&pfr_sin, kt->pfrkt_ip4);
+#endif
 		if (ke && KENTRY_RNF_ROOT(ke))
 			ke = NULL;
 		break;
 #endif /* INET */
 #ifdef INET6
 	case AF_INET6:
+#ifdef __FreeBSD__
+		bcopy(a, &V_pfr_sin6.sin6_addr, sizeof(V_pfr_sin6.sin6_addr));
+		ke = (struct pfr_kentry *)rn_match(&V_pfr_sin6, kt->pfrkt_ip6);
+#else
 		bcopy(a, &pfr_sin6.sin6_addr, sizeof(pfr_sin6.sin6_addr));
 		ke = (struct pfr_kentry *)rn_match(&pfr_sin6, kt->pfrkt_ip6);
+#endif
 		if (ke && KENTRY_RNF_ROOT(ke))
 			ke = NULL;
 		break;
@@ -2236,7 +2284,11 @@ pfr_update_stats(struct pfr_ktable *kt, struct pf_addr *a, sa_family_t af,
 	if (ke != NULL && op_pass != PFR_OP_XPASS &&
 	    (kt->pfrkt_flags & PFR_TFLAG_COUNTERS)) {
 		if (ke->pfrke_counters == NULL)
+#ifdef __FreeBSD__
+			ke->pfrke_counters = pool_get(&V_pfr_kcounters_pl,
+#else
 			ke->pfrke_counters = pool_get(&pfr_kcounters_pl,
+#endif
 			    PR_NOWAIT | PR_ZERO);
 		if (ke->pfrke_counters != NULL) {
 			ke->pfrke_counters->pfrkc_packets[dir_out][op_pass]++;
@@ -2305,10 +2357,17 @@ pfr_pool_get(struct pfr_ktable *kt, int *pidx, struct pf_addr *counter,
 	union sockaddr_union	 mask;
 	int			 idx = -1, use_counter = 0;
 
+#ifdef __FreeBSD__
+	if (af == AF_INET)
+		addr = (struct pf_addr *)&V_pfr_sin.sin_addr;
+	else if (af == AF_INET6)
+		addr = (struct pf_addr *)&V_pfr_sin6.sin6_addr;
+#else
 	if (af == AF_INET)
 		addr = (struct pf_addr *)&pfr_sin.sin_addr;
 	else if (af == AF_INET6)
 		addr = (struct pf_addr *)&pfr_sin6.sin6_addr;
+#endif
 	if (!(kt->pfrkt_flags & PFR_TFLAG_ACTIVE) && kt->pfrkt_root != NULL)
 		kt = kt->pfrkt_root;
 	if (!(kt->pfrkt_flags & PFR_TFLAG_ACTIVE))
@@ -2327,9 +2386,17 @@ _next_block:
 		kt->pfrkt_nomatch++;
 		return (1);
 	}
+#ifdef __FreeBSD__
+	pfr_prepare_network(&V_pfr_mask, af, ke->pfrke_net);
+#else
 	pfr_prepare_network(&pfr_mask, af, ke->pfrke_net);
+#endif
 	*raddr = SUNION2PF(&ke->pfrke_sa, af);
+#ifdef __FreeBSD__
+	*rmask = SUNION2PF(&V_pfr_mask, af);
+#else
 	*rmask = SUNION2PF(&pfr_mask, af);
+#endif
 
 	if (use_counter) {
 		/* is supplied address within block? */
@@ -2354,12 +2421,21 @@ _next_block:
 	}
 	for (;;) {
 		/* we don't want to use a nested block */
+#ifdef __FreeBSD__
+		if (af == AF_INET)
+			ke2 = (struct pfr_kentry *)rn_match(&V_pfr_sin,
+			    kt->pfrkt_ip4);
+		else if (af == AF_INET6)
+			ke2 = (struct pfr_kentry *)rn_match(&V_pfr_sin6,
+			    kt->pfrkt_ip6);
+#else
 		if (af == AF_INET)
 			ke2 = (struct pfr_kentry *)rn_match(&pfr_sin,
 			    kt->pfrkt_ip4);
 		else if (af == AF_INET6)
 			ke2 = (struct pfr_kentry *)rn_match(&pfr_sin6,
 			    kt->pfrkt_ip6);
+#endif
 		/* no need to check KENTRY_RNF_ROOT() here */
 		if (ke2 == ke) {
 			/* lookup return the same block - perfect */
@@ -2371,7 +2447,11 @@ _next_block:
 
 		/* we need to increase the counter past the nested block */
 		pfr_prepare_network(&mask, AF_INET, ke2->pfrke_net);
+#ifdef __FreeBSD__
+		PF_POOLMASK(addr, addr, SUNION2PF(&mask, af), &V_pfr_ffaddr, af);
+#else
 		PF_POOLMASK(addr, addr, SUNION2PF(&mask, af), &pfr_ffaddr, af);
+#endif
 		PF_AINC(addr, af);
 		if (!PF_MATCHA(0, *raddr, *rmask, addr, af)) {
 			/* ok, we reached the end of our main block */
