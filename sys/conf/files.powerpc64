@@ -43,7 +43,6 @@ dev/sound/macio/tumbler.c	optional	snd_ai2s iicbus powermac
 dev/syscons/scgfbrndr.c		optional	sc
 dev/syscons/scterm-teken.c	optional	sc
 dev/syscons/scvtb.c		optional	sc
-dev/syscons/teken/teken.c	optional sc
 dev/uart/uart_cpu_powerpc.c	optional	uart
 kern/syscalls.c			optional	ktr
 libkern/bcmp.c			standard
