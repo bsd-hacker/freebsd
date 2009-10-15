@@ -711,7 +711,11 @@ pfsync_state_import(struct pfsync_state *sp, u_int8_t flags)
 		r = pf_main_ruleset.rules[
 		    PF_RULESET_FILTER].active.ptr_array[ntohl(sp->rule)];
 	else
+#ifdef __FreeBSD__
+		r = &V_pf_default_rule;
+#else
 		r = &pf_default_rule;
+#endif
 
 	if ((r->max_states && r->states_cur >= r->max_states))
 		goto cleanup;

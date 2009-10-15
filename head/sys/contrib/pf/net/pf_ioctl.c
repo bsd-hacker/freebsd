@@ -273,9 +273,9 @@ static VNET_DEFINE(struct cdevsw, pf_cdevsw) = {
 #define pf_cdevsw			VNET(pf_cdevsw)
 
 static volatile VNET_DEFINE(int, pf_pfil_hooked);
-#define V_pf_pfil_hooked			VNET(pf_pfil_hooked)
-VNET_DEFINE(int, pf_end_threads);
-struct mtx pf_task_mtx;
+#define V_pf_pfil_hooked	VNET(pf_pfil_hooked)
+VNET_DEFINE(int,		pf_end_threads);
+VNET_DEFINE(struct mtx,		pf_task_mtx);
 
 /* pfsync */
 pfsync_state_import_t 		*pfsync_state_import_ptr = NULL;
@@ -4378,7 +4378,7 @@ pf_unload(void)
         V_pf_end_threads = 1;
         while (V_pf_end_threads < 2) {
                 wakeup_one(pf_purge_thread);
-                msleep(pf_purge_thread, &pf_task_mtx, 0, "pftmo", hz);
+                msleep(pf_purge_thread, &V_pf_task_mtx, 0, "pftmo", hz);
         }
         pfi_cleanup();
         pf_osfp_flush();
