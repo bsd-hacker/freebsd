@@ -149,7 +149,7 @@ pfi_initialize(void)
 #endif
 #ifdef __FreeBSD__
 	V_pfi_buffer_max = 64;
-	V_pfi_buffer = malloc(V_pfi_buffer_max * sizeof(*pfi_buffer),
+	V_pfi_buffer = malloc(V_pfi_buffer_max * sizeof(*V_pfi_buffer),
 	    PFI_MTYPE, M_WAITOK);
 
 	if ((V_pfi_all = pfi_kif_get(IFG_ALL)) == NULL)
@@ -745,7 +745,7 @@ pfi_address_add(struct sockaddr *sa, int af, int net)
 #endif
 			return;
 		}
-		p = malloc(new_max * sizeof(*pfi_buffer), PFI_MTYPE,
+		p = malloc(new_max * sizeof(*V_pfi_buffer), PFI_MTYPE,
  #ifdef __FreeBSD__
                     M_NOWAIT);
  #else
@@ -761,7 +761,7 @@ pfi_address_add(struct sockaddr *sa, int af, int net)
 			return;
 		}
 #ifdef __FreeBSD__
-		memcpy(V_pfi_buffer, p, V_pfi_buffer_cnt * sizeof(*pfi_buffer));
+		memcpy(V_pfi_buffer, p, V_pfi_buffer_cnt * sizeof(*V_pfi_buffer));
 		/* no need to zero buffer */
 		free(V_pfi_buffer, PFI_MTYPE);
 		V_pfi_buffer = p;

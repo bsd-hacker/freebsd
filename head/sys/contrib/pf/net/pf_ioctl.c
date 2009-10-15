@@ -39,6 +39,7 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include "opt_global.h"
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_bpf.h"
@@ -178,21 +179,30 @@ void			 pf_addr_copyout(struct pf_addr_wrap *);
 #ifdef __FreeBSD__
 VNET_DEFINE(struct pf_rule,	 pf_default_rule);
 VNET_DEFINE(struct sx,		 pf_consistency_lock);
+#ifndef VIMAGE
 SX_SYSINIT(pf_consistency_lock, &V_pf_consistency_lock,
 	"pf_statetbl_lock");
+#endif
 #ifdef ALTQ
-static VNET_DEFINE(int, pf_altq_running);
-#define pf_altq_running       VNET(pf_altq_running)
+static VNET_DEFINE(int,		pf_altq_running);
+#define V_pf_altq_running       VNET(pf_altq_running)
 #endif
 
 TAILQ_HEAD(pf_tags, pf_tagname);
 
+#ifdef VIMAGE
+#define	V_pf_tags		VNET(pf_tags)
+VNET_DEFINE(struct pf_tags, pf_tags);
+#define	V_pf_qids		VNET(pf_qids)
+VNET_DEFINE(struct pf_tags, pf_qids);
+#else
 #define	V_pf_tags		VNET(pf_tags)
 VNET_DEFINE(struct pf_tags, pf_tags) = 
 	TAILQ_HEAD_INITIALIZER(V_pf_tags);
+#define	V_pf_qids		VNET(pf_qids)
 VNET_DEFINE(struct pf_tags, pf_qids) =
-	TAILQ_HEAD_INITIALIZER(pf_qids);
-#define	pf_qids			VNET(pf_qids)
+	TAILQ_HEAD_INITIALIZER(V_pf_qids);
+#endif
 
 #else /* !__FreeBSD__ */
 struct pf_rule           pf_default_rule;
@@ -223,7 +233,7 @@ void			 pf_rtlabel_copyout(struct pf_addr_wrap *);
 #endif
 
 #ifdef __FreeBSD__
-static VNET_DEFINE(struct cdev, *pf_dev);
+static struct cdev	*pf_dev;
  
 /*
  * XXX - These are new and need to be checked when moveing to a new version
@@ -283,7 +293,7 @@ pflog_packet_t			*pflog_packet_ptr = NULL;
 
 VNET_DEFINE(int, debug_pfugidhack);
 SYSCTL_VNET_INT(_debug, OID_AUTO, pfugidhack, CTLFLAG_RW,
-	&V_debug_pfugidhack, 0,
+	&VNET_NAME(debug_pfugidhack), 0,
 	"Enable/disable pf user/group rules mpsafe hack");
 
 void
@@ -419,7 +429,7 @@ pfattach(void)
  
         pf_normalize_init();
 
-        bzero(&V_pf_status, sizeof(pf_status));
+        bzero(&V_pf_status, sizeof(V_pf_status));
         V_pf_status.debug = PF_DEBUG_URGENT;
  
         V_pf_pfil_hooked = 0;
@@ -833,19 +843,31 @@ pf_rtlabel_copyout(struct pf_addr_wrap *a)
 u_int32_t
 pf_qname2qid(char *qname)
 {
+#ifdef __FreeBSD__
+	return ((u_int32_t)tagname2tag(&V_pf_qids, qname));
+#else
 	return ((u_int32_t)tagname2tag(&pf_qids, qname));
+#endif
 }
 
 void
 pf_qid2qname(u_int32_t qid, char *p)
 {
+#ifdef __FreeBSD__
+	tag2tagname(&V_pf_qids, (u_int16_t)qid, p);
+#else
 	tag2tagname(&pf_qids, (u_int16_t)qid, p);
+#endif
 }
 
 void
 pf_qid_unref(u_int32_t qid)
 {
+#ifdef __FreeBSD__
+	tag_unref(&V_pf_qids, (u_int16_t)qid);
+#else
 	tag_unref(&pf_qids, (u_int16_t)qid);
+#endif
 }
 
 int
@@ -962,7 +984,11 @@ pf_commit_altq(u_int32_t ticket)
 #endif
 			/* attach the discipline */
 			error = altq_pfattach(altq);
+#ifdef __FreeBSD__
+			if (error == 0 && V_pf_altq_running)
+#else
 			if (error == 0 && pf_altq_running)
+#endif
 				error = pf_enable_altq(altq);
 			if (error != 0) {
 				splx(s);
@@ -983,7 +1009,11 @@ pf_commit_altq(u_int32_t ticket)
 		if (altq->qname[0] == 0) {
 #endif
 			/* detach and destroy the discipline */
+#ifdef __FreeBSD__
+			if (V_pf_altq_running)
+#else
 			if (pf_altq_running)
+#endif
 				error = pf_disable_altq(altq);
 			err = altq_pfdetach(altq);
 			if (err != 0 && error == 0)
@@ -2611,7 +2641,11 @@ pfioctl(dev_t dev, u_long cmd, caddr_t addr, int flags, struct proc *p)
 			}
 		}
 		if (error == 0)
+#ifdef __FreeBSD__
+			V_pf_altq_running = 1;
+#else
 			pf_altq_running = 1;
+#endif
 		DPFPRINTF(PF_DEBUG_MISC, ("altq: started\n"));
 		break;
 	}
@@ -2634,7 +2668,11 @@ pfioctl(dev_t dev, u_long cmd, caddr_t addr, int flags, struct proc *p)
 			}
 		}
 		if (error == 0)
+#ifdef __FreeBSD__
+			V_pf_altq_running = 0;
+#else
 			pf_altq_running = 0;
+#endif
 		DPFPRINTF(PF_DEBUG_MISC, ("altq: stopped\n"));
 		break;
 	}
@@ -3098,7 +3136,11 @@ pfioctl(dev_t dev, u_long cmd, caddr_t addr, int flags, struct proc *p)
 		pr->nr = 0;
 		if (ruleset->anchor == NULL) {
 			/* XXX kludge for pf_main_ruleset */
+#ifdef __FreeBSD__
+			RB_FOREACH(anchor, pf_anchor_global, &V_pf_anchors)
+#else
 			RB_FOREACH(anchor, pf_anchor_global, &pf_anchors)
+#endif
 				if (anchor->parent == NULL)
 					pr->nr++;
 		} else {
@@ -3123,7 +3165,11 @@ pfioctl(dev_t dev, u_long cmd, caddr_t addr, int flags, struct proc *p)
 		pr->name[0] = 0;
 		if (ruleset->anchor == NULL) {
 			/* XXX kludge for pf_main_ruleset */
+#ifdef __FreeBSD__
+			RB_FOREACH(anchor, pf_anchor_global, &V_pf_anchors)
+#else
 			RB_FOREACH(anchor, pf_anchor_global, &pf_anchors)
+#endif
 				if (anchor->parent == NULL && nr++ == pr->nr) {
 					strlcpy(pr->name, anchor->name,
 					    sizeof(pr->name));
@@ -4261,6 +4307,9 @@ vnet_pf_init(const void *unused)
 
 	V_debug_pfugidhack = 0;
 
+	TAILQ_INIT(&V_pf_tags);
+	TAILQ_INIT(&V_pf_qids);
+
 	return (0);
 }
 
@@ -4293,6 +4342,9 @@ static int
 pf_load(void)
 {
         init_zone_var();
+#ifdef VIMAGE
+	sx_init(&V_pf_consistency_lock, "pf_statetbl_lock");
+#endif
         init_pf_mutex();
         pf_dev = make_dev(&pf_cdevsw, 0, 0, 0, 0600, PF_NAME);
         if (pfattach() < 0) {
@@ -4335,6 +4387,9 @@ pf_unload(void)
         PF_UNLOCK();
         destroy_dev(pf_dev);
         destroy_pf_mutex();
+#ifdef VIMAGE
+	sx_destroy(&V_pf_consistency_lock);
+#endif
 	return error;
 }
 

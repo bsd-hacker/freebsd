@@ -171,7 +171,11 @@ pf_find_anchor(const char *path)
 	if (key == NULL)
 		return (NULL);
 	strlcpy(key->path, path, sizeof(key->path));
+#ifdef __FreeBSD__
+	found = RB_FIND(pf_anchor_global, &V_pf_anchors, key);
+#else
 	found = RB_FIND(pf_anchor_global, &pf_anchors, key);
+#endif
 	rs_free(key);
 	return (found);
 }
@@ -252,7 +256,11 @@ pf_find_or_create_ruleset(const char *path)
 			strlcat(anchor->path, "/", sizeof(anchor->path));
 		}
 		strlcat(anchor->path, anchor->name, sizeof(anchor->path));
+#ifdef __FreeBSD__
+		if ((dup = RB_INSERT(pf_anchor_global, &V_pf_anchors, anchor)) !=
+#else
 		if ((dup = RB_INSERT(pf_anchor_global, &pf_anchors, anchor)) !=
+#endif
 		    NULL) {
 			printf("pf_find_or_create_ruleset: RB_INSERT1 "
 			    "'%s' '%s' collides with '%s' '%s'\n",
@@ -269,7 +277,11 @@ pf_find_or_create_ruleset(const char *path)
 				    "RB_INSERT2 '%s' '%s' collides with "
 				    "'%s' '%s'\n", anchor->path, anchor->name,
 				    dup->path, dup->name);
+#ifdef __FreeBSD__
+				RB_REMOVE(pf_anchor_global, &V_pf_anchors,
+#else
 				RB_REMOVE(pf_anchor_global, &pf_anchors,
+#endif
 				    anchor);
 				rs_free(anchor);
 				rs_free(p);
@@ -305,7 +317,11 @@ pf_remove_if_empty_ruleset(struct pf_ruleset *ruleset)
 			    !TAILQ_EMPTY(ruleset->rules[i].inactive.ptr) ||
 			    ruleset->rules[i].inactive.open)
 				return;
+#ifdef __FreeBSD__
+		RB_REMOVE(pf_anchor_global, &V_pf_anchors, ruleset->anchor);
+#else
 		RB_REMOVE(pf_anchor_global, &pf_anchors, ruleset->anchor);
+#endif
 		if ((parent = ruleset->anchor->parent) != NULL)
 			RB_REMOVE(pf_anchor_node, &parent->children,
 			    ruleset->anchor);

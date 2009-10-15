@@ -3204,7 +3204,11 @@ pf_calc_mss(struct pf_addr *addr, sa_family_t af, u_int16_t offer)
 
 	if (rt && rt->rt_ifp) {
 		mss = rt->rt_ifp->if_mtu - hlen - sizeof(struct tcphdr);
+#ifdef __FreeBSD__
+		mss = max(V_tcp_mssdflt, mss);
+#else
 		mss = max(tcp_mssdflt, mss);
+#endif
 		RTFREE(rt);
 	}
 	mss = min(mss, offer);
