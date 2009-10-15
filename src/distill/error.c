@@ -36,8 +36,18 @@
 
 #include "distill.h"
 
+static inline void
+svnsup_print_where(FILE *f, svnsup_where_t *where)
+{
+	if (debug) {
+		fprintf(f, "svnsup: in %s() on line %d of %s\n",
+		    where->func, where->line, where->file);
+	}
+}
+
 void
-svnsup_apr_error(svnsup_where_t *where, apr_status_t status, const char *fmt, ...)
+svnsup_apr_error(svnsup_where_t *where, apr_status_t status,
+    const char *fmt, ...)
 {
 	char errbuf[1024];
 	va_list ap;
@@ -48,14 +58,13 @@ svnsup_apr_error(svnsup_where_t *where, apr_status_t status, const char *fmt, ..
 	va_end(ap);
 	apr_strerror(status, errbuf, sizeof(errbuf));
 	fprintf(stderr, "\nsvnsup: %s\n", errbuf);
-	if (debug)
-		fprintf(stderr, "svnsup: in %s() on line %d of %s\n",
-		    where->func, where->line, where->file);
+	svnsup_print_where(stderr, where);
 	exit(1);
 }
 
 void
-svnsup_svn_error(svnsup_where_t *where, svn_error_t *error, const char *fmt, ...)
+svnsup_svn_error(svnsup_where_t *where, svn_error_t *error,
+    const char *fmt, ...)
 {
 	va_list ap;
 
@@ -65,14 +74,13 @@ svnsup_svn_error(svnsup_where_t *where, svn_error_t *error, const char *fmt, ...
 	va_end(ap);
 	fprintf(stderr, "\n");
 	svn_handle_error2(error, stderr, FALSE, "svnsup: ");
-	if (debug)
-		fprintf(stderr, "svnsup: in %s() on line %d of %s\n",
-		    where->func, where->line, where->file);
+	svnsup_print_where(stderr, where);
 	exit(1);
 }
 
 void
-svnsup_assert(svnsup_where_t *where, const char *cond, const char *fmt, ...)
+svnsup_assert(svnsup_where_t *where, const char *cond,
+    const char *fmt, ...)
 {
 	va_list ap;
 
@@ -82,8 +90,6 @@ svnsup_assert(svnsup_where_t *where, const char *cond, const char *fmt, ...)
 	va_start(ap, fmt);
 	vfprintf(stderr, fmt, ap);
 	va_end(ap);
-	if (debug)
-		fprintf(stderr, "svnsup: in %s() on line %d of %s\n",
-		    where->func, where->line, where->file);
+	svnsup_print_where(stderr, where);
 	exit(1);
 }
