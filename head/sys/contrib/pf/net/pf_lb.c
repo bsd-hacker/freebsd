@@ -439,10 +439,11 @@ pf_map_addr(sa_family_t af, struct pf_rule *r, struct pf_addr *saddr,
 			k.rule.ptr = NULL;
 #ifdef __FreeBSD__
 		V_pf_status.scounters[SCNT_SRC_NODE_SEARCH]++;
+		*sn = RB_FIND(pf_src_tree, &V_tree_src_tracking, &k);
 #else
 		pf_status.scounters[SCNT_SRC_NODE_SEARCH]++;
-#endif
 		*sn = RB_FIND(pf_src_tree, &tree_src_tracking, &k);
+#endif
 		if (*sn != NULL && !PF_AZERO(&(*sn)->raddr, af)) {
 			PF_ACPY(naddr, &(*sn)->raddr, af);
 #ifdef __FreeBSD__
@@ -774,8 +775,13 @@ pf_get_translation(struct pf_pdesc *pd, struct mbuf *m, int off, int direction,
 		 * Pretend there was no match.
 		 */
 		if (!bcmp(*skp, *nkp, sizeof(struct pf_state_key_cmp))) {
+#ifdef __FreeBSD__
+			pool_put(&V_pf_state_key_pl, *nkp);
+			pool_put(&V_pf_state_key_pl, *skp);
+#else
 			pool_put(&pf_state_key_pl, *nkp);
 			pool_put(&pf_state_key_pl, *skp);
+#endif
 			*skw = *sks = *nkp = *skp = NULL;
 			return (NULL);
 		}

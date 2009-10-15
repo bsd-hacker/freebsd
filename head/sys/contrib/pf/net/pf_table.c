@@ -921,10 +921,14 @@ pfr_create_kentry(struct pfr_addr *ad, int intr)
 	struct pfr_kentry	*ke;
 
 	if (intr)
+#ifdef __FreeBSD__
+		ke = pool_get(&V_pfr_kentry_pl, PR_NOWAIT | PR_ZERO);
+#else
 		ke = pool_get(&pfr_kentry_pl, PR_NOWAIT | PR_ZERO);
+#endif
 	else
 #ifdef __FreeBSD__
-		ke = pool_get(&pfr_kentry_pl, PR_WAITOK|PR_ZERO);
+		ke = pool_get(&V_pfr_kentry_pl, PR_WAITOK|PR_ZERO);
 #else
 		ke = pool_get(&pfr_kentry_pl, PR_WAITOK|PR_ZERO|PR_LIMITFAIL);
 #endif
@@ -957,7 +961,11 @@ pfr_destroy_kentry(struct pfr_kentry *ke)
 {
 	if (ke->pfrke_counters)
 		pool_put(&pfr_kcounters_pl, ke->pfrke_counters);
+#ifdef __FreeBSD__
+	pool_put(&V_pfr_kentry_pl, ke);
+#else
 	pool_put(&pfr_kentry_pl, ke);
+#endif
 }
 
 void
@@ -2047,13 +2055,13 @@ pfr_create_ktable(struct pfr_table *tbl, long tzero, int attachruleset,
 
 	if (intr)
 #ifdef __FreeBSD__
-		kt = pool_get(&pfr_ktable_pl, PR_NOWAIT|PR_ZERO);
+		kt = pool_get(&V_pfr_ktable_pl, PR_NOWAIT|PR_ZERO);
 #else
 		kt = pool_get(&pfr_ktable_pl, PR_NOWAIT|PR_ZERO|PR_LIMITFAIL);
 #endif
 	else
 #ifdef __FreeBSD__
-		kt = pool_get(&pfr_ktable_pl, PR_WAITOK|PR_ZERO);
+		kt = pool_get(&V_pfr_ktable_pl, PR_WAITOK|PR_ZERO);
 #else
 		kt = pool_get(&pfr_ktable_pl, PR_WAITOK|PR_ZERO|PR_LIMITFAIL);
 #endif
@@ -2125,7 +2133,11 @@ pfr_destroy_ktable(struct pfr_ktable *kt, int flushaddr)
 		kt->pfrkt_rs->tables--;
 		pf_remove_if_empty_ruleset(kt->pfrkt_rs);
 	}
+#ifdef __FreeBSD__
+	pool_put(&V_pfr_ktable_pl, kt);
+#else
 	pool_put(&pfr_ktable_pl, kt);
+#endif
 }
 
 int

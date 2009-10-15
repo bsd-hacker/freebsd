@@ -236,10 +236,20 @@ struct pfi_dynaddr {
 
 #ifdef __FreeBSD__
 VNET_DECLARE(struct mtx,		 pf_task_mtx);
-#define	pf_task_mtx			 VNET(pf_task_mtx)
+#define	V_pf_task_mtx			 VNET(pf_task_mtx)
+
+#define        PF_ASSERT(h) mtx_assert(&V_pf_task_mtx, (h))
+
+#define PF_LOCK()      do {                    \
+       PF_ASSERT(MA_NOTOWNED);                 \
+       mtx_lock(&V_pf_task_mtx);               \
+} while(0)
+#define PF_UNLOCK()    do {                    \
+       PF_ASSERT(MA_OWNED);                    \
+       mtx_unlock(&V_pf_task_mtx);             \
+} while(0)
 #else
 extern struct mtx pf_task_mtx;
-#endif
 
 #define        PF_ASSERT(h) mtx_assert(&pf_task_mtx, (h))
 
@@ -251,6 +261,7 @@ extern struct mtx pf_task_mtx;
        PF_ASSERT(MA_OWNED);                    \
        mtx_unlock(&pf_task_mtx);               \
 } while(0)
+#endif
 
 #define PF_COPYIN(uaddr, kaddr, len, r) do {   \
        PF_UNLOCK();                            \
@@ -972,7 +983,10 @@ typedef int pflog_packet_t(struct pfi_kif *, struct mbuf *, sa_family_t,
 extern pflog_packet_t		*pflog_packet_ptr;
 
 /* pf uid hack */
-#define debug_pfugidhack                 VNET(debug_pfugidhack)
+VNET_DECLARE(int,       	debug_pfugidhack);
+#define V_debug_pfugidhack      VNET(debug_pfugidhack)
+
+#define V_pf_end_threads	VNET(pf_end_threads)
 #endif
 
 /* Macros to set/clear/test flags. */
@@ -1213,7 +1227,7 @@ RB_HEAD(pfi_ifhead, pfi_kif);
 #ifdef __FreeBSD__
 #ifdef _KERNEL
 VNET_DECLARE(struct pf_state_tree,	 pf_statetbl);
-#define	pf_statetbl			 VNET(pf_statetbl)
+#define	V_pf_statetbl			 VNET(pf_statetbl)
 #endif
 #else
 extern struct pf_state_tree	 pf_statetbl;
@@ -1776,7 +1790,7 @@ RB_HEAD(pf_src_tree, pf_src_node);
 RB_PROTOTYPE(pf_src_tree, pf_src_node, entry, pf_src_compare);
 #ifdef __FreeBSD__
 VNET_DECLARE(struct pf_src_tree,	 tree_src_tracking);
-#define	tree_src_tracking		 VNET(tree_src_tracking)
+#define	V_tree_src_tracking		 VNET(tree_src_tracking)
 #else
 extern struct pf_src_tree tree_src_tracking;
 #endif
@@ -1786,9 +1800,9 @@ RB_PROTOTYPE(pf_state_tree_id, pf_state,
     entry_id, pf_state_compare_id);
 #ifdef __FreeBSD__
 VNET_DECLARE(struct pf_state_tree_id,	 tree_id);
-#define	tree_id				 VNET(tree_id)
+#define	V_tree_id			 VNET(tree_id)
 VNET_DECLARE(struct pf_state_queue,	 state_list);
-#define	state_list			 VNET(state_list)
+#define	V_state_list			 VNET(state_list)
 #else
 extern struct pf_state_tree_id tree_id;
 extern struct pf_state_queue state_list;
@@ -1797,16 +1811,16 @@ extern struct pf_state_queue state_list;
 TAILQ_HEAD(pf_poolqueue, pf_pool);
 #ifdef __FreeBSD__
 VNET_DECLARE(struct pf_poolqueue,	 pf_pools[2]);
-#define	pf_pools			 VNET(pf_pools)
+#define	V_pf_pools			 VNET(pf_pools)
 #else
 extern struct pf_poolqueue		  pf_pools[2];
 #endif
 TAILQ_HEAD(pf_altqqueue, pf_altq);
 #ifdef __FreeBSD__
 VNET_DECLARE(struct pf_altqqueue,	 pf_altqs[2]);
-#define	pf_altqs			 VNET(pf_altqs)
+#define	V_pf_altqs			 VNET(pf_altqs)
 VNET_DECLARE(struct pf_palist,		 pf_pabuf);
-#define	pf_pabuf			 VNET(pf_pabuf)
+#define	V_pf_pabuf			 VNET(pf_pabuf)
 #else
 extern struct pf_altqqueue		  pf_altqs[2];
 extern struct pf_palist			  pf_pabuf;
@@ -1814,21 +1828,21 @@ extern struct pf_palist			  pf_pabuf;
 
 #ifdef __FreeBSD__
 VNET_DECLARE(u_int32_t,			 ticket_altqs_active);
-#define	ticket_altqs_active		 VNET(ticket_altqs_active)
+#define	V_ticket_altqs_active		 VNET(ticket_altqs_active)
 VNET_DECLARE(u_int32_t,			 ticket_altqs_inactive);
-#define	ticket_altqs_inactive		 VNET(ticket_altqs_inactive)
+#define	V_ticket_altqs_inactive		 VNET(ticket_altqs_inactive)
 VNET_DECLARE(int,			 altqs_inactive_open);
-#define	altqs_inactive_open		 VNET(altqs_inactive_open)
+#define	V_altqs_inactive_open		 VNET(altqs_inactive_open)
 VNET_DECLARE(u_int32_t,			 ticket_pabuf);
-#define	ticket_pabuf			 VNET(ticket_pabuf)
-VNET_DECLARE(struct pf_altqqueue,	*pf_altqs_active);
-#define	pf_altqs_active			 VNET(pf_altqs_active)
-VNET_DECLARE(struct pf_altqqueue,	*pf_altqs_inactive);
-#define	pf_altqs_inactive		 VNET(pf_altqs_inactive)
-VNET_DECLARE(struct pf_poolqueue,	*pf_pools_active);
-#define	pf_pools_active			 VNET(pf_pools_active)
-VNET_DECLARE(struct pf_poolqueue,	*pf_pools_inactive);
-#define	pf_pools_inactive		 VNET(pf_pools_inactive)
+#define	V_ticket_pabuf			 VNET(ticket_pabuf)
+VNET_DECLARE(struct pf_altqqueue *,	 pf_altqs_active);
+#define	V_pf_altqs_active		 VNET(pf_altqs_active)
+VNET_DECLARE(struct pf_altqqueue *,	 pf_altqs_inactive);
+#define	V_pf_altqs_inactive		 VNET(pf_altqs_inactive)
+VNET_DECLARE(struct pf_poolqueue *,	 pf_pools_active);
+#define	V_pf_pools_active		 VNET(pf_pools_active)
+VNET_DECLARE(struct pf_poolqueue *,	 pf_pools_inactive);
+#define	V_pf_pools_inactive		 VNET(pf_pools_inactive)
 #else
 extern u_int32_t		 ticket_altqs_active;
 extern u_int32_t		 ticket_altqs_inactive;
@@ -1849,31 +1863,31 @@ extern void			 pf_calc_skip_steps(struct pf_rulequeue *);
 extern	void			 pf_altq_ifnet_event(struct ifnet *, int);
 #endif
 VNET_DECLARE(uma_zone_t,		 pf_src_tree_pl);
-#define	pf_src_tree_pl			 VNET(pf_src_tree_pl)
+#define	V_pf_src_tree_pl		 VNET(pf_src_tree_pl)
 VNET_DECLARE(uma_zone_t,		 pf_rule_pl);
-#define	pf_rule_pl			 VNET(pf_rule_pl)
+#define	V_pf_rule_pl			 VNET(pf_rule_pl)
 VNET_DECLARE(uma_zone_t,		 pf_state_pl);
-#define	pf_state_pl			 VNET(pf_state_pl)
+#define	V_pf_state_pl			 VNET(pf_state_pl)
 VNET_DECLARE(uma_zone_t,		 pf_state_key_pl);
-#define	pf_state_key_pl			 VNET(pf_state_key_pl)
+#define	V_pf_state_key_pl		 VNET(pf_state_key_pl)
 VNET_DECLARE(uma_zone_t,		 pf_state_item_pl);
-#define	pf_state_item_pl		 VNET(pf_state_item_pl)
+#define	V_pf_state_item_pl		 VNET(pf_state_item_pl)
 VNET_DECLARE(uma_zone_t,		 pf_altq_pl);
-#define	pf_altq_pl			 VNET(pf_altq_pl)
+#define	V_pf_altq_pl			 VNET(pf_altq_pl)
 VNET_DECLARE(uma_zone_t,		 pf_pooladdr_pl);
-#define	pf_pooladdr_pl			 VNET(pf_pooladdr_pl)
+#define	V_pf_pooladdr_pl		 VNET(pf_pooladdr_pl)
 VNET_DECLARE(uma_zone_t,		 pfr_ktable_pl);
-#define	pfr_ktable_pl			 VNET(pfr_ktable_pl)
+#define	V_pfr_ktable_pl			 VNET(pfr_ktable_pl)
 VNET_DECLARE(uma_zone_t,		 pfr_kentry_pl);
-#define	pfr_kentry_pl			 VNET(pfr_kentry_pl)
+#define	V_pfr_kentry_pl			 VNET(pfr_kentry_pl)
 VNET_DECLARE(uma_zone_t,		 pf_cache_pl);
-#define	pf_cache_pl			 VNET(pf_cache_pl)
+#define	V_pf_cache_pl			 VNET(pf_cache_pl)
 VNET_DECLARE(uma_zone_t,		 pf_cent_pl);
-#define	pf_cent_pl			 VNET(pf_cent_pl)
+#define	V_pf_cent_pl			 VNET(pf_cent_pl)
 VNET_DECLARE(uma_zone_t,		 pf_state_scrub_pl);
-#define	pf_state_scrub_pl		 VNET(pf_state_scrub_pl)
+#define	V_pf_state_scrub_pl		 VNET(pf_state_scrub_pl)
 VNET_DECLARE(uma_zone_t,		 pfi_addr_pl);
-#define	pfi_addr_pl			 VNET(pfi_addr_pl)
+#define	V_pfi_addr_pl			 VNET(pfi_addr_pl)
 #else
 extern struct pool		 pf_src_tree_pl, pf_rule_pl;
 extern struct pool		 pf_state_pl, pf_state_key_pl, pf_state_item_pl,
@@ -1907,10 +1921,10 @@ extern u_int16_t		 pf_cksum_fixup(u_int16_t, u_int16_t, u_int16_t,
 				    u_int8_t);
 
 #ifdef __FreeBSD__
-VNET_DECLARE(struct ifnet,		*sync_ifp);
-#define	sync_ifp		 	 VNET(sync_ifp);
+VNET_DECLARE(struct ifnet *,		 sync_ifp);
+#define	V_sync_ifp		 	 VNET(sync_ifp);
 VNET_DECLARE(struct pf_rule,		 pf_default_rule);
-#define	pf_default_rule		 	 VNET(pf_default_rule)
+#define	V_pf_default_rule		  VNET(pf_default_rule)
 #else
 extern struct ifnet		*sync_ifp;
 extern struct pf_rule		 pf_default_rule;
@@ -2027,8 +2041,8 @@ int	pfr_ina_define(struct pfr_table *, struct pfr_addr *, int, int *,
 	    int *, u_int32_t, int);
 
 #ifdef __FreeBSD__
-VNET_DECLARE(struct pfi_kif,		*pfi_all);
-#define	pfi_all		 		 VNET(pfi_all)
+VNET_DECLARE(struct pfi_kif *,		 pfi_all);
+#define	V_pfi_all	 		 VNET(pfi_all)
 #else
 extern struct pfi_kif		*pfi_all;
 #endif
@@ -2084,11 +2098,11 @@ extern struct pf_status	pf_status;
 
 #ifdef __FreeBSD__
 VNET_DECLARE(uma_zone_t,		 pf_frent_pl);
-#define	pf_frent_pl			 VNET(pf_frent_pl)
+#define	V_pf_frent_pl			 VNET(pf_frent_pl)
 VNET_DECLARE(uma_zone_t,		 pf_frag_pl);
-#define	pf_frag_pl			 VNET(pf_frag_pl)
+#define	V_pf_frag_pl			 VNET(pf_frag_pl)
 VNET_DECLARE(struct sx,			 pf_consistency_lock);
-#define	pf_consistency_lock		 VNET(pf_consistency_lock)
+#define	V_pf_consistency_lock		 VNET(pf_consistency_lock)
 #else
 extern struct pool	pf_frent_pl, pf_frag_pl;
 extern struct rwlock	pf_consistency_lock;
@@ -2100,7 +2114,7 @@ struct pf_pool_limit {
 };
 #ifdef __FreeBSD__
 VNET_DECLARE(struct pf_pool_limit,		 pf_pool_limits[PF_LIMIT_MAX]);
-#define	pf_pool_limits				 VNET(pf_pool_limits)
+#define	V_pf_pool_limits			 VNET(pf_pool_limits)
 #else
 extern struct pf_pool_limit	pf_pool_limits[PF_LIMIT_MAX];
 #endif
@@ -2142,15 +2156,16 @@ struct pf_fragment {
 #ifdef __FreeBSD__
 #ifdef _KERNEL
 VNET_DECLARE(struct pf_anchor_global,		 pf_anchors);
-#define	pf_anchors				 VNET(pf_anchors)
+#define	V_pf_anchors				 VNET(pf_anchors)
 VNET_DECLARE(struct pf_anchor,			 pf_main_anchor);
-#define	pf_main_anchor				 VNET(pf_main_anchor)
+#define	V_pf_main_anchor			 VNET(pf_main_anchor)
+#define pf_main_ruleset	V_pf_main_anchor.ruleset
 #endif
 #else
 extern struct pf_anchor_global  pf_anchors;
 extern struct pf_anchor        pf_main_anchor;
-#endif
 #define pf_main_ruleset	pf_main_anchor.ruleset
+#endif
 
 /* these ruleset functions can be linked into userland programs (pfctl) */
 int			 pf_get_ruleset_number(u_int8_t);

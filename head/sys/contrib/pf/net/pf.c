@@ -166,7 +166,6 @@ __FBSDID("$FreeBSD$");
 #include <security/mac/mac_framework.h>
  
 extern int ip_optcopy(struct ip *, struct ip *);
-VNET_DECLARE(int,	debug_pfugidhack);
 #endif
 
 #ifdef __FreeBSD__
@@ -185,8 +184,8 @@ VNET_DEFINE(struct pf_state_tree,	 pf_statetbl);
 
 VNET_DEFINE(struct pf_altqqueue,	 pf_altqs[2]);
 VNET_DEFINE(struct pf_palist,		 pf_pabuf);
-VNET_DEFINE(struct pf_altqqueue,	*pf_altqs_active);
-VNET_DEFINE(struct pf_altqqueue,	*pf_altqs_inactive);
+VNET_DEFINE(struct pf_altqqueue *,	 pf_altqs_active);
+VNET_DEFINE(struct pf_altqqueue *,	 pf_altqs_inactive);
 VNET_DEFINE(struct pf_status,		 pf_status);
 
 VNET_DEFINE(u_int32_t,			 ticket_altqs_active);
@@ -195,9 +194,13 @@ VNET_DEFINE(int,			 altqs_inactive_open);
 VNET_DEFINE(u_int32_t,			 ticket_pabuf);
 
 VNET_DEFINE(MD5_CTX,			 pf_tcp_secret_ctx);
+#define V_pf_tcp_secret_ctx		 VNET(pf_tcp_secret_ctx)
 VNET_DEFINE(u_char,			 pf_tcp_secret[16]);
+#define V_pf_tcp_secret			 VNET(pf_tcp_secret)
 VNET_DEFINE(int,			 pf_tcp_secret_init);
+#define V_pf_tcp_secret_init		 VNET(pf_tcp_secret_init)
 VNET_DEFINE(int,			 pf_tcp_iss_off);
+#define V_pf_tcp_iss_off		 VNET(pf_tcp_iss_off)
 
 struct pf_anchor_stackframe {
         struct pf_ruleset                       *rs;
@@ -206,6 +209,7 @@ struct pf_anchor_stackframe {
         struct pf_anchor                        *child;
 };
 VNET_DEFINE(struct pf_anchor_stackframe, pf_anchor_stack[64]);
+#define V_pf_anchor_stack		 VNET(pf_anchor_stack)
 
 VNET_DEFINE(uma_zone_t,	 pf_src_tree_pl);
 VNET_DEFINE(uma_zone_t,	 pf_rule_pl);
@@ -414,8 +418,13 @@ struct pf_pool_limit pf_pool_limits[PF_LIMIT_MAX] = {
 	} while (0)
 #endif
 
+#ifdef __FreeBSD__
+#define BOUND_IFACE(r, k) \
+	((r)->rule_flag & PFRULE_IFBOUND) ? (k) : V_pfi_all
+#else
 #define BOUND_IFACE(r, k) \
 	((r)->rule_flag & PFRULE_IFBOUND) ? (k) : pfi_all
+#endif
 
 #define STATE_INC_COUNTERS(s)				\
 	do {						\
@@ -633,10 +642,11 @@ pf_src_connlimit(struct pf_state **state)
 
 #ifdef __FreeBSD__
 			V_pf_status.lcounters[LCNT_OVERLOAD_FLUSH]++;
+			RB_FOREACH(st, pf_state_tree_id, &V_tree_id) {
 #else
 			pf_status.lcounters[LCNT_OVERLOAD_FLUSH]++;
-#endif
 			RB_FOREACH(st, pf_state_tree_id, &tree_id) {
+#endif
 				sk = st->key[PF_SK_WIRE];
 				/*
 				 * Kill states from this source.  (Only those
@@ -697,15 +707,20 @@ pf_insert_src_node(struct pf_src_node **sn, struct pf_rule *rule,
 			k.rule.ptr = NULL;
 #ifdef __FreeBSD__
 		V_pf_status.scounters[SCNT_SRC_NODE_SEARCH]++;
+		*sn = RB_FIND(pf_src_tree, &V_tree_src_tracking, &k);
 #else
 		pf_status.scounters[SCNT_SRC_NODE_SEARCH]++;
-#endif
 		*sn = RB_FIND(pf_src_tree, &tree_src_tracking, &k);
+#endif
 	}
 	if (*sn == NULL) {
 		if (!rule->max_src_nodes ||
 		    rule->src_nodes < rule->max_src_nodes)
+#ifdef __FreeBSD__
+			(*sn) = pool_get(&V_pf_src_tree_pl, PR_NOWAIT | PR_ZERO);
+#else
 			(*sn) = pool_get(&pf_src_tree_pl, PR_NOWAIT | PR_ZERO);
+#endif
 		else
 #ifdef __FreeBSD__
 			V_pf_status.lcounters[LCNT_SRCNODES]++;
@@ -727,17 +742,22 @@ pf_insert_src_node(struct pf_src_node **sn, struct pf_rule *rule,
 			(*sn)->rule.ptr = NULL;
 		PF_ACPY(&(*sn)->addr, src, af);
 		if (RB_INSERT(pf_src_tree,
-		    &tree_src_tracking, *sn) != NULL) {
 #ifdef __FreeBSD__
+		    &V_tree_src_tracking, *sn) != NULL) {
 			if (V_pf_status.debug >= PF_DEBUG_MISC) {
 #else
+		    &tree_src_tracking, *sn) != NULL) {
 			if (pf_status.debug >= PF_DEBUG_MISC) {
 #endif
 				printf("pf: src_tree insert failed: ");
 				pf_print_host(&(*sn)->addr, 0, af);
 				printf("\n");
 			}
+#ifdef __FreeBSD__
+			pool_put(&V_pf_src_tree_pl, *sn);
+#else
 			pool_put(&pf_src_tree_pl, *sn);
+#endif
 			return (-1);
 		}
 		(*sn)->creation = time_second;
@@ -863,7 +883,11 @@ pf_state_key_attach(struct pf_state_key *sk, struct pf_state *s, int idx)
 	KASSERT(s->key[idx] == NULL);	/* XXX handle this? */
 #endif
 
+#ifdef __FreeBSD__
+	if ((cur = RB_INSERT(pf_state_tree, &V_pf_statetbl, sk)) != NULL) {
+#else
 	if ((cur = RB_INSERT(pf_state_tree, &pf_statetbl, sk)) != NULL) {
+#endif
 		/* key exists. check for same kif, if none, add to key */
 		TAILQ_FOREACH(si, &cur->states, entry)
 			if (si->s->kif == s->kif &&
@@ -899,23 +923,39 @@ pf_state_key_attach(struct pf_state_key *sk, struct pf_state *s, int idx)
 						    sk : NULL);
 						printf("\n");
 					}
+#ifdef __FreeBSD__
+					pool_put(&V_pf_state_key_pl, sk);
+#else
 					pool_put(&pf_state_key_pl, sk);
+#endif
 					return (-1);	/* collision! */
 				}
 			}
+#ifdef __FreeBSD__
+		pool_put(&V_pf_state_key_pl, sk);
+#else
 		pool_put(&pf_state_key_pl, sk);
+#endif
 		s->key[idx] = cur;
 	} else
 		s->key[idx] = sk;
 
+#ifdef __FreeBSD__
+	if ((si = pool_get(&V_pf_state_item_pl, PR_NOWAIT)) == NULL) {
+#else
 	if ((si = pool_get(&pf_state_item_pl, PR_NOWAIT)) == NULL) {
+#endif
 		pf_state_key_detach(s, idx);
 		return (-1);
 	}
 	si->s = s;
 
 	/* list is sorted, if-bound states before floating */
+#ifdef __FreeBSD__
+	if (s->kif == V_pfi_all)
+#else
 	if (s->kif == pfi_all)
+#endif
 		TAILQ_INSERT_TAIL(&s->key[idx]->states, si, entry);
 	else
 		TAILQ_INSERT_HEAD(&s->key[idx]->states, si, entry);
@@ -950,11 +990,19 @@ pf_state_key_detach(struct pf_state *s, int idx)
 
 	if (si) {
 		TAILQ_REMOVE(&s->key[idx]->states, si, entry);
+#ifdef __FreeBSD__
+		pool_put(&V_pf_state_item_pl, si);
+#else
 		pool_put(&pf_state_item_pl, si);
+#endif
 	}
 
 	if (TAILQ_EMPTY(&s->key[idx]->states)) {
+#ifdef __FreeBSD__
+		RB_REMOVE(pf_state_tree, &V_pf_statetbl, s->key[idx]);
+#else
 		RB_REMOVE(pf_state_tree, &pf_statetbl, s->key[idx]);
+#endif
 		if (s->key[idx]->reverse)
 			s->key[idx]->reverse->reverse = NULL;
 #ifdef __FreeBSD__
@@ -963,7 +1011,11 @@ pf_state_key_detach(struct pf_state *s, int idx)
 		if (s->key[idx]->inp)
 			s->key[idx]->inp->inp_pf_sk = NULL;
 #endif
+#ifdef __FreeBSD__
+		pool_put(&V_pf_state_key_pl, s->key[idx]);
+#else
 		pool_put(&pf_state_key_pl, s->key[idx]);
+#endif
 	}
 	s->key[idx] = NULL;
 }
@@ -973,7 +1025,11 @@ pf_alloc_state_key(int pool_flags)
 {
 	struct pf_state_key	*sk;
 
+#ifdef __FreeBSD__
+	if ((sk = pool_get(&V_pf_state_key_pl, pool_flags)) == NULL)
+#else
 	if ((sk = pool_get(&pf_state_key_pl, pool_flags)) == NULL)
+#endif
 		return (NULL);
 	TAILQ_INIT(&sk->states);
 
@@ -1045,7 +1101,11 @@ pf_state_insert(struct pfi_kif *kif, struct pf_state_key *skw,
 		s->key[PF_SK_STACK] = s->key[PF_SK_WIRE];
 	} else {
 		if (pf_state_key_attach(skw, s, PF_SK_WIRE)) {
+#ifdef __FreeBSD__
+			pool_put(&V_pf_state_key_pl, sks);
+#else
 			pool_put(&pf_state_key_pl, sks);
+#endif
 			return (-1);
 		}
 		if (pf_state_key_attach(sks, s, PF_SK_STACK)) {
@@ -1063,10 +1123,11 @@ pf_state_insert(struct pfi_kif *kif, struct pf_state_key *skw,
 		s->creatorid = pf_status.hostid;
 #endif
 	}
-	if (RB_INSERT(pf_state_tree_id, &tree_id, s) != NULL) {
 #ifdef __FreeBSD__
+	if (RB_INSERT(pf_state_tree_id, &V_tree_id, s) != NULL) {
 		if (V_pf_status.debug >= PF_DEBUG_MISC) {
 #else
+	if (RB_INSERT(pf_state_tree_id, &tree_id, s) != NULL) {
 		if (pf_status.debug >= PF_DEBUG_MISC) {
 #endif
 			printf("pf: state insert failed: "
@@ -1077,11 +1138,12 @@ pf_state_insert(struct pfi_kif *kif, struct pf_state_key *skw,
 		pf_detach_state(s);
 		return (-1);
 	}
-	TAILQ_INSERT_TAIL(&state_list, s, entry_list);
 #ifdef __FreeBSD__
+	TAILQ_INSERT_TAIL(&V_state_list, s, entry_list);
 	V_pf_status.fcounters[FCNT_STATE_INSERT]++;
 	V_pf_status.states++;
 #else
+	TAILQ_INSERT_TAIL(&state_list, s, entry_list);
 	pf_status.fcounters[FCNT_STATE_INSERT]++;
 	pf_status.states++;
 #endif
@@ -1102,11 +1164,13 @@ pf_find_state_byid(struct pf_state_cmp *key)
 {
 #ifdef __FreeBSD__
 	V_pf_status.fcounters[FCNT_STATE_SEARCH]++;
+
+	return (RB_FIND(pf_state_tree_id, &V_tree_id, (struct pf_state *)key));
 #else
 	pf_status.fcounters[FCNT_STATE_SEARCH]++;
-#endif
 
 	return (RB_FIND(pf_state_tree_id, &tree_id, (struct pf_state *)key));
+#endif
 }
 
 /* XXX debug function, intended to be removed one day */
@@ -1163,7 +1227,11 @@ pf_find_state(struct pfi_kif *kif, struct pf_state_key_cmp *key, u_int dir,
 	    ((struct pf_state_key *)pftag->statekey)->reverse)
 		sk = ((struct pf_state_key *)pftag->statekey)->reverse;
 	else {
+#ifdef __FreeBSD__
+		if ((sk = RB_FIND(pf_state_tree, &V_pf_statetbl,
+#else
 		if ((sk = RB_FIND(pf_state_tree, &pf_statetbl,
+#endif
 		    (struct pf_state_key *)key)) == NULL)
 			return (NULL);
 		if (dir == PF_OUT && pftag->statekey &&
@@ -1179,7 +1247,11 @@ pf_find_state(struct pfi_kif *kif, struct pf_state_key_cmp *key, u_int dir,
 	    ((struct pf_state_key *)m->m_pkthdr.pf.statekey)->reverse)
 		sk = ((struct pf_state_key *)m->m_pkthdr.pf.statekey)->reverse;
 	else {
+#ifdef __FreeBSD__
+		if ((sk = RB_FIND(pf_state_tree, &V_pf_statetbl,
+#else
 		if ((sk = RB_FIND(pf_state_tree, &pf_statetbl,
+#endif
 		    (struct pf_state_key *)key)) == NULL)
 			return (NULL);
 		if (dir == PF_OUT && m->m_pkthdr.pf.statekey &&
@@ -1201,7 +1273,11 @@ pf_find_state(struct pfi_kif *kif, struct pf_state_key_cmp *key, u_int dir,
 
 	/* list is sorted, if-bound states before floating ones */
 	TAILQ_FOREACH(si, &sk->states, entry)
+#ifdef __FreeBSD__
+		if ((si->s->kif == V_pfi_all || si->s->kif == kif) &&
+#else
 		if ((si->s->kif == pfi_all || si->s->kif == kif) &&
+#endif
 		    sk == (dir == PF_IN ? si->s->key[PF_SK_WIRE] :
 		    si->s->key[PF_SK_STACK]))
 			return (si->s);
@@ -1221,8 +1297,11 @@ pf_find_state_all(struct pf_state_key_cmp *key, u_int dir, int *more)
 	pf_status.fcounters[FCNT_STATE_SEARCH]++;
 #endif
 
+#ifdef __FreeBSD__
+	sk = RB_FIND(pf_state_tree, &V_pf_statetbl, (struct pf_state_key *)key);
+#else
 	sk = RB_FIND(pf_state_tree, &pf_statetbl, (struct pf_state_key *)key);
-
+#endif
 	if (sk != NULL) {
 		TAILQ_FOREACH(si, &sk->states, entry)
 			if (dir == PF_INOUT ||
@@ -1255,25 +1334,22 @@ pf_purge_thread(void *v)
 		tsleep(pf_purge_thread, PWAIT, "pftm", 1 * hz);
 
  #ifdef __FreeBSD__
-                sx_slock(&pf_consistency_lock);
+                sx_slock(&V_pf_consistency_lock);
                 PF_LOCK();
                 locked = 0;
  
-                if (pf_end_threads) {
+                if (V_pf_end_threads) {
                         PF_UNLOCK();
-                        sx_sunlock(&pf_consistency_lock);
-                        sx_xlock(&pf_consistency_lock);
+                        sx_sunlock(&V_pf_consistency_lock);
+                        sx_xlock(&V_pf_consistency_lock);
                         PF_LOCK();
-#ifdef __FreeBSD__
+
                         pf_purge_expired_states(V_pf_status.states, 1);
-#else
-                        pf_purge_expired_states(pf_status.states, 1);
-#endif
                         pf_purge_expired_fragments();
                         pf_purge_expired_src_nodes(1);
-                        pf_end_threads++;
+                        V_pf_end_threads++;
  
-                        sx_xunlock(&pf_consistency_lock);
+                        sx_xunlock(&V_pf_consistency_lock);
                         PF_UNLOCK();
                         wakeup(pf_purge_thread);
                         kproc_exit(0);
@@ -1284,15 +1360,15 @@ pf_purge_thread(void *v)
 		/* process a fraction of the state table every second */
  #ifdef __FreeBSD__
                 if(!pf_purge_expired_states(1 + (V_pf_status.states
-                    / pf_default_rule.timeout[PFTM_INTERVAL]), 0)) {
+                    / V_pf_default_rule.timeout[PFTM_INTERVAL]), 0)) {
                         PF_UNLOCK();
-                        sx_sunlock(&pf_consistency_lock);
-                        sx_xlock(&pf_consistency_lock);
+                        sx_sunlock(&V_pf_consistency_lock);
+                        sx_xlock(&V_pf_consistency_lock);
                         PF_LOCK();
                         locked = 1;
  
                         pf_purge_expired_states(1 + (V_pf_status.states
-                            / pf_default_rule.timeout[PFTM_INTERVAL]), 1);
+                            / V_pf_default_rule.timeout[PFTM_INTERVAL]), 1);
                 }
  #else
 		pf_purge_expired_states(1 + (pf_status.states
@@ -1300,7 +1376,11 @@ pf_purge_thread(void *v)
 #endif
 
 		/* purge other expired types every PFTM_INTERVAL seconds */
+#ifdef __FreeBSD__
+		if (++nloops >= V_pf_default_rule.timeout[PFTM_INTERVAL]) {
+#else
 		if (++nloops >= pf_default_rule.timeout[PFTM_INTERVAL]) {
+#endif
 			pf_purge_expired_fragments();
 			pf_purge_expired_src_nodes(0);
 			nloops = 0;
@@ -1310,9 +1390,9 @@ pf_purge_thread(void *v)
  #ifdef __FreeBSD__
                 PF_UNLOCK();
                 if (locked)
-                        sx_xunlock(&pf_consistency_lock);
+                        sx_xunlock(&V_pf_consistency_lock);
                 else
-                        sx_sunlock(&pf_consistency_lock);
+                        sx_sunlock(&V_pf_consistency_lock);
  #endif
 	}
 }
@@ -1341,17 +1421,23 @@ pf_state_expires(const struct pf_state *state)
 #endif
 	timeout = state->rule.ptr->timeout[state->timeout];
 	if (!timeout)
+#ifdef __FreeBSD__
+		timeout = V_pf_default_rule.timeout[state->timeout];
+#else
 		timeout = pf_default_rule.timeout[state->timeout];
+#endif
 	start = state->rule.ptr->timeout[PFTM_ADAPTIVE_START];
 	if (start) {
 		end = state->rule.ptr->timeout[PFTM_ADAPTIVE_END];
 		states = state->rule.ptr->states_cur;
 	} else {
-		start = pf_default_rule.timeout[PFTM_ADAPTIVE_START];
-		end = pf_default_rule.timeout[PFTM_ADAPTIVE_END];
 #ifdef __FreeBSD__
+		start = V_pf_default_rule.timeout[PFTM_ADAPTIVE_START];
+		end = V_pf_default_rule.timeout[PFTM_ADAPTIVE_END];
 		states = V_pf_status.states;
 #else
+		start = pf_default_rule.timeout[PFTM_ADAPTIVE_START];
+		end = pf_default_rule.timeout[PFTM_ADAPTIVE_END];
 		states = pf_status.states;
 #endif
 	}
@@ -1376,19 +1462,28 @@ pf_purge_expired_src_nodes(int waslocked)
 	struct pf_src_node		*cur, *next;
 	int				 locked = waslocked;
 
+#ifdef __FreeBSD__
+	for (cur = RB_MIN(pf_src_tree, &V_tree_src_tracking); cur; cur = next) {
+	next = RB_NEXT(pf_src_tree, &V_tree_src_tracking, cur);
+#else
 	for (cur = RB_MIN(pf_src_tree, &tree_src_tracking); cur; cur = next) {
 	next = RB_NEXT(pf_src_tree, &tree_src_tracking, cur);
+#endif
 
 		if (cur->states <= 0 && cur->expire <= time_second) {
 			if (! locked) {
  #ifdef __FreeBSD__
-                                 if (!sx_try_upgrade(&pf_consistency_lock))
+                                 if (!sx_try_upgrade(&V_pf_consistency_lock))
                                         return (0);
  #else
 				rw_enter_write(&pf_consistency_lock);
 #endif
 				next = RB_NEXT(pf_src_tree,
+#ifdef __FreeBSD__
+				    &V_tree_src_tracking, cur);
+#else
 				    &tree_src_tracking, cur);
+#endif
 				locked = 1;
 			}
 			if (cur->rule.ptr != NULL) {
@@ -1397,22 +1492,24 @@ pf_purge_expired_src_nodes(int waslocked)
 				    cur->rule.ptr->max_src_nodes <= 0)
 					pf_rm_rule(NULL, cur->rule.ptr);
 			}
-			RB_REMOVE(pf_src_tree, &tree_src_tracking, cur);
 #ifdef __FreeBSD__
+			RB_REMOVE(pf_src_tree, &V_tree_src_tracking, cur);
 			V_pf_status.scounters[SCNT_SRC_NODE_REMOVALS]++;
 			V_pf_status.src_nodes--;
+			pool_put(&V_pf_src_tree_pl, cur);
 #else
+			RB_REMOVE(pf_src_tree, &tree_src_tracking, cur);
 			pf_status.scounters[SCNT_SRC_NODE_REMOVALS]++;
 			pf_status.src_nodes--;
-#endif
 			pool_put(&pf_src_tree_pl, cur);
+#endif
 		}
 	}
 
 	if (locked && !waslocked)
 #ifdef __FreeBSD__
 	{
-		sx_downgrade(&pf_consistency_lock);
+		sx_downgrade(&V_pf_consistency_lock);
 	}
 	return (1);
 #else
@@ -1432,7 +1529,11 @@ pf_src_tree_remove_state(struct pf_state *s)
 			timeout = s->rule.ptr->timeout[PFTM_SRC_NODE];
 			if (!timeout)
 				timeout =
+#ifdef __FreeBSD__
+				    V_pf_default_rule.timeout[PFTM_SRC_NODE];
+#else
 				    pf_default_rule.timeout[PFTM_SRC_NODE];
+#endif
 			s->src_node->expire = time_second + timeout;
 		}
 	}
@@ -1441,7 +1542,11 @@ pf_src_tree_remove_state(struct pf_state *s)
 			timeout = s->rule.ptr->timeout[PFTM_SRC_NODE];
 			if (!timeout)
 				timeout =
+#ifdef __FreeBSD__
+				    V_pf_default_rule.timeout[PFTM_SRC_NODE];
+#else
 				    pf_default_rule.timeout[PFTM_SRC_NODE];
+#endif
 			s->nat_src_node->expire = time_second + timeout;
 		}
 	}
@@ -1474,7 +1579,11 @@ pf_unlink_state(struct pf_state *cur)
 		    cur->src.seqhi, cur->src.seqlo + 1,
 		    TH_RST|TH_ACK, 0, 0, 0, 1, cur->tag, NULL, NULL);
 	}
+#ifdef __FreeBSD__
+	RB_REMOVE(pf_state_tree_id, &V_tree_id, cur);
+#else
 	RB_REMOVE(pf_state_tree_id, &tree_id, cur);
+#endif
 #if NPFLOW > 0
 	if (cur->state_flags & PFSTATE_PFLOW)
 #ifdef __FreeBSD__
@@ -1533,14 +1642,19 @@ pf_free_state(struct pf_state *cur)
 			pf_rm_rule(NULL, cur->anchor.ptr);
 	pf_normalize_tcp_cleanup(cur);
 	pfi_kif_unref(cur->kif, PFI_KIF_REF_STATE);
+#ifdef __FreeBSD__
+	TAILQ_REMOVE(&V_state_list, cur, entry_list);
+#else
 	TAILQ_REMOVE(&state_list, cur, entry_list);
+#endif
 	if (cur->tag)
 		pf_tag_unref(cur->tag);
-	pool_put(&pf_state_pl, cur);
 #ifdef __FreeBSD__
+	pool_put(&V_pf_state_pl, cur);
 	V_pf_status.fcounters[FCNT_STATE_REMOVALS]++;
 	V_pf_status.states--;
 #else
+	pool_put(&pf_state_pl, cur);
 	pf_status.fcounters[FCNT_STATE_REMOVALS]++;
 	pf_status.states--;
 #endif
@@ -1565,7 +1679,11 @@ pf_purge_expired_states(u_int32_t maxcheck)
 	while (maxcheck--) {
 		/* wrap to start of list when we hit the end */
 		if (cur == NULL) {
+#ifdef __FreeBSD__
+			cur = TAILQ_FIRST(&V_state_list);
+#else
 			cur = TAILQ_FIRST(&state_list);
+#endif
 			if (cur == NULL)
 				break;	/* list empty */
 		}
@@ -1577,7 +1695,7 @@ pf_purge_expired_states(u_int32_t maxcheck)
 			/* free unlinked state */
 			if (! locked) {
  #ifdef __FreeBSD__
-                                 if (!sx_try_upgrade(&pf_consistency_lock))
+                                 if (!sx_try_upgrade(&V_pf_consistency_lock))
                                         return (0);
  #else
 				rw_enter_write(&pf_consistency_lock);
@@ -1590,7 +1708,7 @@ pf_purge_expired_states(u_int32_t maxcheck)
 			pf_unlink_state(cur);
 			if (! locked) {
  #ifdef __FreeBSD__
-                                 if (!sx_try_upgrade(&pf_consistency_lock))
+                                 if (!sx_try_upgrade(&V_pf_consistency_lock))
                                         return (0);
  #else
 				rw_enter_write(&pf_consistency_lock);
@@ -1604,7 +1722,7 @@ pf_purge_expired_states(u_int32_t maxcheck)
 
  #ifdef __FreeBSD__
         if (!waslocked && locked)
-                sx_downgrade(&pf_consistency_lock);
+                sx_downgrade(&V_pf_consistency_lock);
  
         return (1);
  #else
@@ -2665,14 +2783,23 @@ pf_step_into_anchor(int *depth, struct pf_ruleset **rs, int n,
 	(*r)->anchor->match = 0;
 	if (match)
 		*match = 0;
+#ifdef __FreeBSD__
+	if (*depth >= sizeof(V_pf_anchor_stack) /
+	    sizeof(V_pf_anchor_stack[0])) {
+#else
 	if (*depth >= sizeof(pf_anchor_stack) /
 	    sizeof(pf_anchor_stack[0])) {
+#endif
 		printf("pf_step_into_anchor: stack overflow\n");
 		*r = TAILQ_NEXT(*r, entries);
 		return;
 	} else if (*depth == 0 && a != NULL)
 		*a = *r;
+#ifdef __FreeBSD__
+	f = V_pf_anchor_stack + (*depth)++;
+#else
 	f = pf_anchor_stack + (*depth)++;
+#endif
 	f->rs = *rs;
 	f->r = *r;
 	if ((*r)->anchor_wildcard) {
@@ -2701,7 +2828,11 @@ pf_step_out_of_anchor(int *depth, struct pf_ruleset **rs, int n,
 	do {
 		if (*depth <= 0)
 			break;
+#ifdef __FreeBSD__
+		f = V_pf_anchor_stack + *depth - 1;
+#else
 		f = pf_anchor_stack + *depth - 1;
+#endif
 		if (f->parent != NULL && f->child != NULL) {
 			if (f->child->match ||
 			    (match != NULL && *match)) {
@@ -3106,18 +3237,27 @@ pf_tcp_iss(struct pf_pdesc *pd)
 	MD5_CTX ctx;
 	u_int32_t digest[4];
 
-	if (pf_tcp_secret_init == 0) {
 #ifdef __FreeBSD__
-		read_random(&pf_tcp_secret, sizeof(pf_tcp_secret));
+	if (V_pf_tcp_secret_init == 0) {
+		read_random(&V_pf_tcp_secret, sizeof(pf_tcp_secret));
+		MD5Init(&V_pf_tcp_secret_ctx);
+		MD5Update(&V_pf_tcp_secret_ctx, V_pf_tcp_secret,
+		    sizeof(pf_tcp_secret));
+		V_pf_tcp_secret_init = 1;
+	}
+
+	ctx = V_pf_tcp_secret_ctx;
 #else
+	if (pf_tcp_secret_init == 0) {
 		arc4random_buf(pf_tcp_secret, sizeof(pf_tcp_secret));
-#endif
 		MD5Init(&pf_tcp_secret_ctx);
 		MD5Update(&pf_tcp_secret_ctx, pf_tcp_secret,
 		    sizeof(pf_tcp_secret));
 		pf_tcp_secret_init = 1;
 	}
+
 	ctx = pf_tcp_secret_ctx;
+#endif
 
 	MD5Update(&ctx, (char *)&pd->hdr.tcp->th_sport, sizeof(u_short));
 	MD5Update(&ctx, (char *)&pd->hdr.tcp->th_dport, sizeof(u_short));
@@ -3129,13 +3269,14 @@ pf_tcp_iss(struct pf_pdesc *pd)
 		MD5Update(&ctx, (char *)&pd->dst->v4, sizeof(struct in_addr));
 	}
 	MD5Final((u_char *)digest, &ctx);
-	pf_tcp_iss_off += 4096;
 #ifdef __FreeBSD__
+	V_pf_tcp_iss_off += 4096;
 #define	ISN_RANDOM_INCREMENT (4096 - 1)
 	return (digest[0] + (arc4random() & ISN_RANDOM_INCREMENT) +
-	    pf_tcp_iss_off);
+	    V_pf_tcp_iss_off);
 #undef	ISN_RANDOM_INCREMENT
 #else
+	pf_tcp_iss_off += 4096;
 	return (digest[0] + tcp_iss + pf_tcp_iss_off);
 #endif
 }
@@ -3183,7 +3324,7 @@ pf_test_rule(struct pf_rule **rm, struct pf_state **sm, int direction,
  #ifdef __FreeBSD__
         if (inp != NULL)
                 pd->lookup.done = pf_socket_lookup(direction, pd, inp);
-        else if (debug_pfugidhack) {
+        else if (V_debug_pfugidhack) {
                 PF_UNLOCK();
                 DPFPRINTF(PF_DEBUG_MISC, ("pf: unlocked lookup\n"));
                 pd->lookup.done = pf_socket_lookup(direction, pd, inp);
@@ -3566,10 +3707,17 @@ pf_test_rule(struct pf_rule **rm, struct pf_state **sm, int direction,
 		if (action != PF_PASS)
 			return (action);
 	} else {
+#ifdef __FreeBSD__
+		if (sk != NULL)
+			pool_put(&V_pf_state_key_pl, sk);
+		if (nk != NULL)
+			pool_put(&V_pf_state_key_pl, nk);
+#else
 		if (sk != NULL)
 			pool_put(&pf_state_key_pl, sk);
 		if (nk != NULL)
 			pool_put(&pf_state_key_pl, nk);
+#endif
 	}
 
 	/* copy back packet headers if we performed NAT operations */
@@ -3602,10 +3750,17 @@ pf_test_rule(struct pf_rule **rm, struct pf_state **sm, int direction,
 	return (PF_PASS);
 
 cleanup:
+#ifdef __FreeBSD__
+	if (sk != NULL)
+		pool_put(&V_pf_state_key_pl, sk);
+	if (nk != NULL)
+		pool_put(&V_pf_state_key_pl, nk);
+#else
 	if (sk != NULL)
 		pool_put(&pf_state_key_pl, sk);
 	if (nk != NULL)
 		pool_put(&pf_state_key_pl, nk);
+#endif
 	return (PF_DROP);
 }
 
@@ -3646,7 +3801,11 @@ pf_create_state(struct pf_rule *r, struct pf_rule *nr, struct pf_rule *a,
 		REASON_SET(&reason, PFRES_SRCLIMIT);
 		goto csfailed;
 	}
+#ifdef __FreeBSD__
+	s = pool_get(&V_pf_state_pl, PR_NOWAIT | PR_ZERO);
+#else
 	s = pool_get(&pf_state_pl, PR_NOWAIT | PR_ZERO);
+#endif
 	if (s == NULL) {
 		REASON_SET(&reason, PFRES_MEMORY);
 		goto csfailed;
@@ -3737,7 +3896,11 @@ pf_create_state(struct pf_rule *r, struct pf_rule *nr, struct pf_rule *a,
 			REASON_SET(&reason, PFRES_MEMORY);
 			pf_src_tree_remove_state(s);
 			STATE_DEC_COUNTERS(s);
+#ifdef __FreeBSD__
+			pool_put(&V_pf_state_pl, s);
+#else
 			pool_put(&pf_state_pl, s);
+#endif
 			return (PF_DROP);
 		}
 		if ((pd->flags & PFDESC_TCP_NORM) && s->src.scrub &&
@@ -3749,7 +3912,11 @@ pf_create_state(struct pf_rule *r, struct pf_rule *nr, struct pf_rule *a,
 			pf_normalize_tcp_cleanup(s);
 			pf_src_tree_remove_state(s);
 			STATE_DEC_COUNTERS(s);
+#ifdef __FreeBSD__
+			pool_put(&V_pf_state_pl, s);
+#else
 			pool_put(&pf_state_pl, s);
+#endif
 			return (PF_DROP);
 		}
 	}
@@ -3765,7 +3932,11 @@ pf_create_state(struct pf_rule *r, struct pf_rule *nr, struct pf_rule *a,
 		REASON_SET(&reason, PFRES_STATEINS);
 		pf_src_tree_remove_state(s);
 		STATE_DEC_COUNTERS(s);
+#ifdef __FreeBSD__
+		pool_put(&V_pf_state_pl, s);
+#else
 		pool_put(&pf_state_pl, s);
+#endif
 		return (PF_DROP);
 	} else
 		*sm = s;
@@ -3815,32 +3986,43 @@ pf_create_state(struct pf_rule *r, struct pf_rule *nr, struct pf_rule *a,
 	return (PF_PASS);
 
 csfailed:
+#ifdef __FreeBSD__
+	if (sk != NULL)
+		pool_put(&V_pf_state_key_pl, sk);
+	if (nk != NULL)
+		pool_put(&V_pf_state_key_pl, nk);
+#else
 	if (sk != NULL)
 		pool_put(&pf_state_key_pl, sk);
 	if (nk != NULL)
 		pool_put(&pf_state_key_pl, nk);
+#endif
 
 	if (sn != NULL && sn->states == 0 && sn->expire == 0) {
-		RB_REMOVE(pf_src_tree, &tree_src_tracking, sn);
 #ifdef __FreeBSD__
+		RB_REMOVE(pf_src_tree, &V_tree_src_tracking, sn);
 		V_pf_status.scounters[SCNT_SRC_NODE_REMOVALS]++;
 		V_pf_status.src_nodes--;
+		pool_put(&V_pf_src_tree_pl, sn);
 #else
+		RB_REMOVE(pf_src_tree, &tree_src_tracking, sn);
 		pf_status.scounters[SCNT_SRC_NODE_REMOVALS]++;
 		pf_status.src_nodes--;
-#endif
 		pool_put(&pf_src_tree_pl, sn);
+#endif
 	}
 	if (nsn != sn && nsn != NULL && nsn->states == 0 && nsn->expire == 0) {
-		RB_REMOVE(pf_src_tree, &tree_src_tracking, nsn);
 #ifdef __FreeBSD__
+		RB_REMOVE(pf_src_tree, &V_tree_src_tracking, nsn);
 		V_pf_status.scounters[SCNT_SRC_NODE_REMOVALS]++;
 		V_pf_status.src_nodes--;
+		pool_put(&V_pf_src_tree_pl, nsn);
 #else
+		RB_REMOVE(pf_src_tree, &tree_src_tracking, nsn);
 		pf_status.scounters[SCNT_SRC_NODE_REMOVALS]++;
 		pf_status.src_nodes--;
-#endif
 		pool_put(&pf_src_tree_pl, nsn);
+#endif
 	}
 	return (PF_DROP);
 }
@@ -6406,10 +6588,11 @@ pf_test(int dir, struct ifnet *ifp, struct mbuf **m0,
 #ifdef __FreeBSD__
 	struct ip		*h = NULL;
 	struct m_tag		*dvtag;
+	struct pf_rule		*a = NULL, *r = &V_pf_default_rule, *tr, *nr;
 #else
 	struct ip		*h;
-#endif
 	struct pf_rule		*a = NULL, *r = &pf_default_rule, *tr, *nr;
+#endif
 	struct pf_state		*s = NULL;
 	struct pf_ruleset	*ruleset = NULL;
 	struct pf_pdesc		 pd;
@@ -6835,7 +7018,11 @@ done:
 		}
 		tr = r;
 		nr = (s != NULL) ? s->nat_rule.ptr : pd.nat_rule;
+#ifdef __FreeBSD__
+		if (nr != NULL && r == &V_pf_default_rule)
+#else
 		if (nr != NULL && r == &pf_default_rule)
+#endif
 			tr = nr;
 		if (tr->src.addr.type == PF_ADDR_TABLE)
 			pfr_update_stats(tr->src.addr.p.tbl,
@@ -6888,10 +7075,11 @@ pf_test6(int dir, struct ifnet *ifp, struct mbuf **m0,
 	struct mbuf		*m = *m0, *n = NULL;
 #ifdef __FreeBSD__
 	struct ip6_hdr		*h = NULL;
+	struct pf_rule		*a = NULL, *r = &V_pf_default_rule, *tr, *nr;
 #else
 	struct ip6_hdr		*h;
-#endif
 	struct pf_rule		*a = NULL, *r = &pf_default_rule, *tr, *nr;
+#endif
 	struct pf_state		*s = NULL;
 	struct pf_ruleset	*ruleset = NULL;
 	struct pf_pdesc		 pd;
@@ -7336,7 +7524,11 @@ done:
 		}
 		tr = r;
 		nr = (s != NULL) ? s->nat_rule.ptr : pd.nat_rule;
+#ifdef __FreeBSD__
+		if (nr != NULL && r == &V_pf_default_rule)
+#else
 		if (nr != NULL && r == &pf_default_rule)
+#endif
 			tr = nr;
 		if (tr->src.addr.type == PF_ADDR_TABLE)
 			pfr_update_stats(tr->src.addr.p.tbl,

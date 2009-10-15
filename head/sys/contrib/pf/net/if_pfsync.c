@@ -593,7 +593,11 @@ pfsync_alloc_scrub_memory(struct pfsync_state_peer *s,
     struct pf_state_peer *d)
 {
 	if (s->scrub.scrub_flag && d->scrub == NULL) {
+#ifdef __FreeBSD__
+		d->scrub = pool_get(&V_pf_state_scrub_pl, PR_NOWAIT | PR_ZERO);
+#else
 		d->scrub = pool_get(&pf_state_scrub_pl, PR_NOWAIT | PR_ZERO);
+#endif
 		if (d->scrub == NULL)
 			return (ENOMEM);
 	}
@@ -717,15 +721,18 @@ pfsync_state_import(struct pfsync_state *sp, u_int8_t flags)
 		pool_flags = PR_WAITOK | PR_ZERO;
 	else
 		pool_flags = PR_ZERO;
+
+	if ((st = pool_get(&V_pf_state_pl, pool_flags)) == NULL)
+		goto cleanup;
 #else
 	if (flags & PFSYNC_SI_IOCTL)
 		pool_flags = PR_WAITOK | PR_LIMITFAIL | PR_ZERO;
 	else
 		pool_flags = PR_LIMITFAIL | PR_ZERO;
-#endif
 
 	if ((st = pool_get(&pf_state_pl, pool_flags)) == NULL)
 		goto cleanup;
+#endif
 
 	if ((skw = pf_alloc_state_key(pool_flags)) == NULL)
 		goto cleanup;
@@ -818,18 +825,33 @@ pfsync_state_import(struct pfsync_state *sp, u_int8_t flags)
 	error = ENOMEM;
 	if (skw == sks)
 		sks = NULL;
+#ifdef __FreeBSD__
+	if (skw != NULL)
+		pool_put(&V_pf_state_key_pl, skw);
+	if (sks != NULL)
+		pool_put(&V_pf_state_key_pl, sks);
+#else
 	if (skw != NULL)
 		pool_put(&pf_state_key_pl, skw);
 	if (sks != NULL)
 		pool_put(&pf_state_key_pl, sks);
+#endif
 
  cleanup_state:	/* pf_state_insert frees the state keys */
 	if (st) {
+#ifdef __FreeBSD__
+		if (st->dst.scrub)
+			pool_put(&V_pf_state_scrub_pl, st->dst.scrub);
+		if (st->src.scrub)
+			pool_put(&V_pf_state_scrub_pl, st->src.scrub);
+		pool_put(&V_pf_state_pl, st);
+#else
 		if (st->dst.scrub)
 			pool_put(&pf_state_scrub_pl, st->dst.scrub);
 		if (st->src.scrub)
 			pool_put(&pf_state_scrub_pl, st->src.scrub);
 		pool_put(&pf_state_pl, st);
+#endif
 	}
 	return (error);
 }
@@ -970,9 +992,15 @@ pfsync_in_clr(struct pfsync_pkt *pkt, struct mbuf *m, int offset, int count)
 		creatorid = clr[i].creatorid;
 
 		if (clr[i].ifname[0] == '\0') {
+#ifdef __FreeBSD__
+			for (st = RB_MIN(pf_state_tree_id, &V_tree_id);
+			    st; st = nexts) {
+				nexts = RB_NEXT(pf_state_tree_id, &V_tree_id, st);
+#else
 			for (st = RB_MIN(pf_state_tree_id, &tree_id);
 			    st; st = nexts) {
 				nexts = RB_NEXT(pf_state_tree_id, &tree_id, st);
+#endif
 				if (st->creatorid == creatorid) {
 					SET(st->state_flags, PFSTATE_NOSYNC);
 					pf_unlink_state(st);
@@ -983,10 +1011,18 @@ pfsync_in_clr(struct pfsync_pkt *pkt, struct mbuf *m, int offset, int count)
 				continue;
 
 			/* XXX correct? */
+#ifdef __FreeBSD__
+			for (sk = RB_MIN(pf_state_tree, &V_pf_statetbl);
+#else
 			for (sk = RB_MIN(pf_state_tree, &pf_statetbl);
+#endif
 			    sk; sk = nextsk) {
 				nextsk = RB_NEXT(pf_state_tree,
+#ifdef __FreeBSD__
+				    &V_pf_statetbl, sk);
+#else
 				    &pf_statetbl, sk);
+#endif
 				TAILQ_FOREACH(si, &sk->states, entry) {
 					if (si->s->creatorid == creatorid) {
 						SET(si->s->state_flags,
@@ -2808,7 +2844,11 @@ pfsync_bulk_start(void)
 	sc->sc_ureq_received = time_uptime;
 
 	if (sc->sc_bulk_next == NULL)
+#ifdef __FreeBSD__
+		sc->sc_bulk_next = TAILQ_FIRST(&V_state_list);
+#else
 		sc->sc_bulk_next = TAILQ_FIRST(&state_list);
+#endif
 	sc->sc_bulk_last = sc->sc_bulk_next;
 
 #ifdef __FreeBSD__
@@ -2844,7 +2884,11 @@ pfsync_bulk_update(void *arg)
 
 		st = TAILQ_NEXT(st, entry_list);
 		if (st == NULL)
+#ifdef __FreeBSD__
+			st = TAILQ_FIRST(&V_state_list);
+#else
 			st = TAILQ_FIRST(&state_list);
+#endif
 
 		if (i > 0 && TAILQ_EMPTY(&sc->sc_qs[PFSYNC_S_UPD])) {
 			sc->sc_bulk_next = st;
