@@ -5,10 +5,11 @@ AC_PREREQ([2.59])
 AC_INIT([svnsup], [1.0], [des@des.no])
 AC_CONFIG_SRCDIR([src/distill/distill.c])
 AM_CONFIG_HEADER([config.h])
+AM_INIT_AUTOMAKE
 
 AC_LANG(C)
+AC_USE_SYSTEM_EXTENSIONS
 AC_C_CONST
-AM_INIT_AUTOMAKE
 
 AC_PROG_CC
 AC_PROG_CPP
@@ -17,6 +18,7 @@ AC_PROG_LN_S
 AC_PROG_MAKE_SET
 AC_PROG_RANLIB
 
+# Build svnsup-distill
 AC_ARG_ENABLE(distill,
 	AS_HELP_STRING([--enable-distill],
 		[build svnsup-distill (default is YES)]),
@@ -24,6 +26,7 @@ AC_ARG_ENABLE(distill,
 )
 AM_CONDITIONAL([ENABLE_DISTILL], [test x"$enable_distill" = xyes])
 
+# Build svnsup-apply
 AC_ARG_ENABLE(apply,
 	AS_HELP_STRING([--enable-apply],
 		[build svnsup-apply (default is YES)]),
@@ -31,15 +34,17 @@ AC_ARG_ENABLE(apply,
 )
 AM_CONDITIONAL([ENABLE_APPLY], [test x"$enable_apply" = xyes])
 
+# Enable debugging symbols
 AC_ARG_ENABLE(debugging,
 	AS_HELP_STRING([--enable-debugging],
-		[enable debugging (default is NO)]),
+		[enable debugging symbols (default is NO)]),
 	[
 		CFLAGS="${CFLAGS} -O0 -g"
 		CPPFLAGS="${CPPFLAGS} -DDEBUG"
 	]
 )
 
+# Compile with -Wall
 AC_ARG_ENABLE(wall,
 	AS_HELP_STRING([--enable-wall],
 		[gcc only: compile with -Wall (default is NO)]),
@@ -50,6 +55,7 @@ AC_ARG_ENABLE(wall,
 	])
 )
 
+# Compile with -Wextra
 AC_ARG_ENABLE(wextra,
 	AS_HELP_STRING([--enable-wextra],
 		[gcc only: compile with -Wextra (default is NO)]),
@@ -60,6 +66,7 @@ AC_ARG_ENABLE(wextra,
 	])
 )
 
+# Compile with -Werror
 AC_ARG_ENABLE(werror,
 	AS_HELP_STRING([--enable-werror],
 		[gcc only: compile with -Werror (default is NO)]),
