@@ -42,6 +42,8 @@
 #include <subversion-1/svn_error.h>
 #include <subversion-1/svn_ra.h>
 
+#include "svnsup.h"
+
 extern int debug;
 extern int verbose;
 
@@ -68,6 +70,15 @@ void svnsup_svn_error(svnsup_where_t *, svn_error_t *, const char *, ...);
 	do {								\
 		if ((error) != SVN_NO_ERROR)				\
 			svnsup_svn_error(SVNSUP_WHERE,			\
+			    (error), __VA_ARGS__);			\
+	} while (0)
+
+/* svnsup errors */
+void svnsup_svnsup_error(svnsup_where_t *, svnsup_err_t, const char *, ...);
+#define SVNSUP_SVNSUP_ERROR(error, ...)					\
+	do {								\
+		if ((error) != SVNSUP_ERR_NONE)				\
+			svnsup_svnsup_error(SVNSUP_WHERE,		\
 			    (error), __VA_ARGS__);			\
 	} while (0)
 

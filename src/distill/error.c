@@ -79,6 +79,22 @@ svnsup_svn_error(svnsup_where_t *where, svn_error_t *error,
 }
 
 void
+svnsup_svnsup_error(svnsup_where_t *where, svnsup_err_t error,
+    const char *fmt, ...)
+{
+	va_list ap;
+
+	fprintf(stderr, "svnsup: ");
+	va_start(ap, fmt);
+	vfprintf(stderr, fmt, ap);
+	va_end(ap);
+	fprintf(stderr, "\n");
+	fprintf(stderr, "svnsup: error code %d\n", error); /* XXX */
+	svnsup_print_where(stderr, where);
+	exit(1);
+}
+
+void
 svnsup_assert(svnsup_where_t *where, const char *cond,
     const char *fmt, ...)
 {
