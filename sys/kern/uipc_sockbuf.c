@@ -906,7 +906,6 @@ sbdrop_internal(struct sockbuf *sb, int len)
 void
 sbdrop_locked(struct sockbuf *sb, int len)
 {
-	int flags;
 
 	SOCKBUF_LOCK_ASSERT(sb);
 
