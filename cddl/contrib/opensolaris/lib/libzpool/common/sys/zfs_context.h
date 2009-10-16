@@ -305,6 +305,8 @@ extern void cv_broadcast(kcondvar_t *cv);
 #define	KM_PUSHPAGE		KM_SLEEP
 #define	KM_NOSLEEP		UMEM_DEFAULT
 #define	KMC_NODEBUG		UMC_NODEBUG
+#define	KM_NODEBUG		KMC_NODEBUG
+
 #define	kmem_alloc(_s, _f)	umem_alloc(_s, _f)
 #define	kmem_zalloc(_s, _f)	umem_zalloc(_s, _f)
 #define	kmem_free(_b, _s)	umem_free(_b, _s)
