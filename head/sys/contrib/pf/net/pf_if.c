@@ -33,6 +33,7 @@
  */
 
 #if defined(__FreeBSD__)
+#include "opt_global.h"
 #include "opt_inet.h"
 #include "opt_inet6.h"
  
@@ -120,11 +121,10 @@ int		 pfi_unmask(void *);
 #ifdef __FreeBSD__
 void            pfi_attach_ifnet_event(void * __unused, struct ifnet *);
 void            pfi_detach_ifnet_event(void * __unused, struct ifnet *);
-void            pfi_attach_group_event(void * __unused, struct ifg_group *);
-void            pfi_change_group_event(void * __unused, char *);
-void            pfi_detach_group_event(void * __unused, struct ifg_group *);
+void            pfi_attach_group_event(void *, struct ifg_group *);
+void            pfi_change_group_event(void *, char *);
+void            pfi_detach_group_event(void *, struct ifg_group *);
 void            pfi_ifaddr_event(void * __unused, struct ifnet *);
- 
 #endif
 
 RB_PROTOTYPE(pfi_ifhead, pfi_kif, pfik_tree, pfi_if_compare);
@@ -177,11 +177,11 @@ pfi_initialize(void)
         pfi_detach_cookie = EVENTHANDLER_REGISTER(ifnet_departure_event,
             pfi_detach_ifnet_event, NULL, EVENTHANDLER_PRI_ANY);
         pfi_attach_group_cookie = EVENTHANDLER_REGISTER(group_attach_event,
-            pfi_attach_group_event, NULL, EVENTHANDLER_PRI_ANY);
+            pfi_attach_group_event, curvnet, EVENTHANDLER_PRI_ANY);
         pfi_change_group_cookie = EVENTHANDLER_REGISTER(group_change_event,
-            pfi_change_group_event, NULL, EVENTHANDLER_PRI_ANY);
+            pfi_change_group_event, curvnet, EVENTHANDLER_PRI_ANY);
         pfi_detach_group_cookie = EVENTHANDLER_REGISTER(group_detach_event,
-            pfi_detach_group_event, NULL, EVENTHANDLER_PRI_ANY);
+            pfi_detach_group_event, curvnet, EVENTHANDLER_PRI_ANY);
         pfi_ifaddr_event_cookie = EVENTHANDLER_REGISTER(ifaddr_event,
             pfi_ifaddr_event, NULL, EVENTHANDLER_PRI_ANY);
  #endif
@@ -1040,55 +1040,67 @@ pfi_unmask(void *addr)
  void
  pfi_attach_ifnet_event(void *arg __unused, struct ifnet *ifp)
  {
+	CURVNET_SET(ifp->if_vnet);
         PF_LOCK();
         pfi_attach_ifnet(ifp);
  #ifdef ALTQ
         pf_altq_ifnet_event(ifp, 0);
  #endif
         PF_UNLOCK();
+	CURVNET_RESTORE();
  }
  
  void
  pfi_detach_ifnet_event(void *arg __unused, struct ifnet *ifp)
  {
+	CURVNET_SET(ifp->if_vnet);
         PF_LOCK();
         pfi_detach_ifnet(ifp);
  #ifdef ALTQ
         pf_altq_ifnet_event(ifp, 1);
  #endif
         PF_UNLOCK();
+	CURVNET_RESTORE();
  }
  
  void
- pfi_attach_group_event(void *arg __unused, struct ifg_group *ifg)
+ pfi_attach_group_event(void *arg , struct ifg_group *ifg)
  {
+	CURVNET_SET((struct vnet *)arg);
         PF_LOCK();
         pfi_attach_ifgroup(ifg);
         PF_UNLOCK();
+	CURVNET_RESTORE();
  }
  
  void
- pfi_change_group_event(void *arg __unused, char *gname)
+ pfi_change_group_event(void *arg, char *gname)
  {
+	CURVNET_SET((struct vnet *)arg);
         PF_LOCK();
         pfi_group_change(gname);
         PF_UNLOCK();
+	CURVNET_RESTORE();
  }
 
  void
- pfi_detach_group_event(void *arg __unused, struct ifg_group *ifg)
+ pfi_detach_group_event(void *arg, struct ifg_group *ifg)
  {
+	CURVNET_SET((struct vnet *)arg);
         PF_LOCK();
         pfi_detach_ifgroup(ifg);
         PF_UNLOCK();
+	CURVNET_RESTORE();
  }
  
  void
  pfi_ifaddr_event(void *arg __unused, struct ifnet *ifp)
  {
+	CURVNET_SET(ifp->if_vnet);
         PF_LOCK();
         if (ifp && ifp->if_pf_kif)
                 pfi_kifaddr_update(ifp->if_pf_kif);
         PF_UNLOCK();
+	CURVNET_RESTORE();
  }
  #endif /* __FreeBSD__ */

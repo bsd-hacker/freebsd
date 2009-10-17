@@ -36,6 +36,7 @@
  */
 
 #ifdef __FreeBSD__
+#include "opt_global.h"
 #include "opt_inet.h"
 #include "opt_inet6.h"
 
@@ -1326,18 +1327,20 @@ void
 pf_purge_thread(void *v)
 {
 	int nloops = 0, s;
- #ifdef __FreeBSD__
+#ifdef __FreeBSD__
         int locked;
- #endif
+#endif
+
+	CURVNET_SET((struct vnet *)v);
 
 	for (;;) {
 		tsleep(pf_purge_thread, PWAIT, "pftm", 1 * hz);
 
- #ifdef __FreeBSD__
+#ifdef __FreeBSD__
                 sx_slock(&V_pf_consistency_lock);
                 PF_LOCK();
                 locked = 0;
- 
+
                 if (V_pf_end_threads) {
                         PF_UNLOCK();
                         sx_sunlock(&V_pf_consistency_lock);
@@ -1354,11 +1357,11 @@ pf_purge_thread(void *v)
                         wakeup(pf_purge_thread);
                         kproc_exit(0);
                 }
- #endif
+#endif
 		s = splsoftnet();
 
 		/* process a fraction of the state table every second */
- #ifdef __FreeBSD__
+#ifdef __FreeBSD__
                 if(!pf_purge_expired_states(1 + (V_pf_status.states
                     / V_pf_default_rule.timeout[PFTM_INTERVAL]), 0)) {
                         PF_UNLOCK();
@@ -1370,7 +1373,7 @@ pf_purge_thread(void *v)
                         pf_purge_expired_states(1 + (V_pf_status.states
                             / V_pf_default_rule.timeout[PFTM_INTERVAL]), 1);
                 }
- #else
+#else
 		pf_purge_expired_states(1 + (pf_status.states
 		    / pf_default_rule.timeout[PFTM_INTERVAL]));
 #endif
@@ -1395,6 +1398,7 @@ pf_purge_thread(void *v)
                         sx_sunlock(&V_pf_consistency_lock);
  #endif
 	}
+	CURVNET_RESTORE();
 }
 
 u_int32_t

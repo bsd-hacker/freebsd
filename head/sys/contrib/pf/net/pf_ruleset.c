@@ -40,6 +40,10 @@
 __FBSDID("$FreeBSD$");
  #endif
  
+#ifdef _KERNEL
+#include "opt_global.h"
+#endif
+
 #include <sys/param.h>
 #include <sys/socket.h>
 #ifdef _KERNEL
@@ -96,6 +100,13 @@ __FBSDID("$FreeBSD$");
 # endif /* PFDEBUG */
 #endif /* _KERNEL */
 
+#if defined(__FreeBSD__) && !defined(_KERNEL)
+#undef V_pf_anchors
+#define V_pf_anchors		 pf_anchors
+
+#undef pf_main_ruleset
+#define pf_main_ruleset		 pf_main_anchor.ruleset
+#endif
 
 #if defined(__FreeBSD__) && defined(_KERNEL)
 VNET_DEFINE(struct pf_anchor_global,	pf_anchors);

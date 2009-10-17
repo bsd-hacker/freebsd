@@ -235,8 +235,8 @@ struct pfi_dynaddr {
                if(var) uma_zdestroy(var)
 
 #ifdef __FreeBSD__
-VNET_DECLARE(struct mtx,		 pf_task_mtx);
-#define	V_pf_task_mtx			 VNET(pf_task_mtx)
+VNET_DECLARE(struct mtx,	 pf_task_mtx);
+#define	V_pf_task_mtx		 VNET(pf_task_mtx)
 
 #define        PF_ASSERT(h) mtx_assert(&V_pf_task_mtx, (h))
 

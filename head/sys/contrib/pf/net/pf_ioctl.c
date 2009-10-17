@@ -78,6 +78,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/time.h>
 #ifdef __FreeBSD__
+#include <sys/ucred.h>
+#include <sys/jail.h>
 #include <sys/module.h>
 #include <sys/conf.h>
 #include <sys/proc.h>
@@ -176,13 +178,11 @@ int			 pf_addr_setup(struct pf_ruleset *,
 void			 pf_addr_copyout(struct pf_addr_wrap *);
 
 #define	TAGID_MAX	 50000
+
 #ifdef __FreeBSD__
 VNET_DEFINE(struct pf_rule,	 pf_default_rule);
 VNET_DEFINE(struct sx,		 pf_consistency_lock);
-#ifndef VIMAGE
-SX_SYSINIT(pf_consistency_lock, &V_pf_consistency_lock,
-	"pf_statetbl_lock");
-#endif
+
 #ifdef ALTQ
 static VNET_DEFINE(int,		pf_altq_running);
 #define V_pf_altq_running       VNET(pf_altq_running)
@@ -190,19 +190,10 @@ static VNET_DEFINE(int,		pf_altq_running);
 
 TAILQ_HEAD(pf_tags, pf_tagname);
 
-#ifdef VIMAGE
 #define	V_pf_tags		VNET(pf_tags)
 VNET_DEFINE(struct pf_tags, pf_tags);
 #define	V_pf_qids		VNET(pf_qids)
 VNET_DEFINE(struct pf_tags, pf_qids);
-#else
-#define	V_pf_tags		VNET(pf_tags)
-VNET_DEFINE(struct pf_tags, pf_tags) = 
-	TAILQ_HEAD_INITIALIZER(V_pf_tags);
-#define	V_pf_qids		VNET(pf_qids)
-VNET_DEFINE(struct pf_tags, pf_qids) =
-	TAILQ_HEAD_INITIALIZER(V_pf_qids);
-#endif
 
 #else /* !__FreeBSD__ */
 struct pf_rule           pf_default_rule;
@@ -233,7 +224,8 @@ void			 pf_rtlabel_copyout(struct pf_addr_wrap *);
 #endif
 
 #ifdef __FreeBSD__
-static struct cdev	*pf_dev;
+static VNET_DEFINE(struct cdev *,	pf_dev);
+#define V_pf_dev			VNET(pf_dev)
  
 /*
  * XXX - These are new and need to be checked when moveing to a new version
@@ -265,12 +257,11 @@ static int              shutdown_pf(void);
 static int              pf_load(void);
 static int              pf_unload(void);
 
-static VNET_DEFINE(struct cdevsw, pf_cdevsw) = {
+static struct cdevsw pf_cdevsw = {
                 .d_ioctl =      pfioctl,
                 .d_name =       PF_NAME,
                 .d_version =    D_VERSION,
 };
-#define pf_cdevsw			VNET(pf_cdevsw)
 
 static volatile VNET_DEFINE(int, pf_pfil_hooked);
 #define V_pf_pfil_hooked	VNET(pf_pfil_hooked)
@@ -437,7 +428,7 @@ pfattach(void)
         /* XXX do our best to avoid a conflict */
         V_pf_status.hostid = arc4random();
  
-        if (kproc_create(pf_purge_thread, NULL, NULL, 0, 0, "pfpurge"))
+        if (kproc_create(pf_purge_thread, curvnet, NULL, 0, 0, "pfpurge"))
                 return (ENXIO);
  
 	m_addr_chg_pf_p = pf_pkt_addr_changed;
@@ -1459,6 +1450,8 @@ pfioctl(dev_t dev, u_long cmd, caddr_t addr, int flags, struct proc *p)
 	int			 s;
 #endif
 	int			 error = 0;
+
+	CURVNET_SET(TD_TO_VNET(td));
 
 	/* XXX keep in sync with switch() below */
 #ifdef __FreeBSD__
@@ -3894,6 +3887,9 @@ fail:
 	else
 		rw_exit_read(&pf_consistency_lock);
 #endif
+
+	CURVNET_RESTORE();
+
 	return (error);
 }
 
@@ -4118,7 +4114,9 @@ pf_check_in(void *arg, struct mbuf **m, struct ifnet *ifp, int dir,
                 HTONS(h->ip_len);
                 HTONS(h->ip_off);
         }
+	CURVNET_SET(ifp->if_vnet);
         chk = pf_test(PF_IN, ifp, m, NULL, inp);
+	CURVNET_RESTORE();
         if (chk && *m) {
                 m_freem(*m);
                 *m = NULL;
@@ -4158,7 +4156,9 @@ pf_check_out(void *arg, struct mbuf **m, struct ifnet *ifp, int dir,
                 HTONS(h->ip_len);
                 HTONS(h->ip_off);
         }
+	CURVNET_SET(ifp->if_vnet);
         chk = pf_test(PF_OUT, ifp, m, NULL, inp);
+	CURVNET_RESTORE();
         if (chk && *m) {
                 m_freem(*m);
                 *m = NULL;
@@ -4189,8 +4189,10 @@ pf_check6_in(void *arg, struct mbuf **m, struct ifnet *ifp, int dir,
          * order to support scoped addresses. In order to support stateful
          * filtering we have change this to lo0 as it is the case in IPv4.
          */
+	CURVNET_SET(ifp->if_vnet);
         chk = pf_test6(PF_IN, (*m)->m_flags & M_LOOP ? V_loif : ifp, m,
             NULL, inp);
+	CURVNET_RESTORE();
         if (chk && *m) {
                 m_freem(*m);
                 *m = NULL;
@@ -4212,7 +4214,9 @@ pf_check6_out(void *arg, struct mbuf **m, struct ifnet *ifp, int dir,
                 in_delayed_cksum(*m);
                 (*m)->m_pkthdr.csum_flags &= ~CSUM_DELAY_DATA;
         }
+	CURVNET_SET(ifp->if_vnet);
         chk = pf_test6(PF_OUT, ifp, m, NULL, inp);
+	CURVNET_RESTORE();
         if (chk && *m) {
                 m_freem(*m);
                 *m = NULL;
@@ -4232,7 +4236,7 @@ hook_pf(void)
 #endif
         
         PF_ASSERT(MA_NOTOWNED);
- 
+
         if (V_pf_pfil_hooked)
                 return (0); 
         
@@ -4310,11 +4314,15 @@ vnet_pf_init(const void *unused)
 	TAILQ_INIT(&V_pf_tags);
 	TAILQ_INIT(&V_pf_qids);
 
+	pf_load();
+
 	return (0);
 }
 
 static int
 vnet_pf_uninit(const void *unused) {
+	pf_unload();
+
 	return (0);
 }
 
@@ -4342,16 +4350,15 @@ static int
 pf_load(void)
 {
         init_zone_var();
-#ifdef VIMAGE
 	sx_init(&V_pf_consistency_lock, "pf_statetbl_lock");
-#endif
         init_pf_mutex();
-        pf_dev = make_dev(&pf_cdevsw, 0, 0, 0, 0600, PF_NAME);
+        V_pf_dev = make_dev(&pf_cdevsw, 0, 0, 0, 0600, PF_NAME);
         if (pfattach() < 0) {
-                destroy_dev(pf_dev);
+                destroy_dev(V_pf_dev);
                 destroy_pf_mutex();
                 return (ENOMEM);
         }
+
 	return (0);
 }
 
@@ -4385,11 +4392,9 @@ pf_unload(void)
         pf_osfp_cleanup();
         cleanup_pf_zone();
         PF_UNLOCK();
-        destroy_dev(pf_dev);
+        destroy_dev(V_pf_dev);
         destroy_pf_mutex();
-#ifdef VIMAGE
 	sx_destroy(&V_pf_consistency_lock);
-#endif
 	return error;
 }
 
@@ -4400,11 +4405,9 @@ pf_modevent(module_t mod, int type, void *data)
 
        switch(type) {
        case MOD_LOAD:
-               error = pf_load();
                break;
 
        case MOD_UNLOAD:
-               error = pf_unload();
                break;
        default:
                error = EINVAL;
