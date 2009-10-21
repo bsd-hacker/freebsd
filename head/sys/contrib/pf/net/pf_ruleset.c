@@ -35,15 +35,11 @@
  *
  */
 
- #ifdef __FreeBSD__
- #include <sys/cdefs.h>
+#ifdef __FreeBSD__
+#include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
- #endif
- 
-#ifdef _KERNEL
-#include "opt_global.h"
 #endif
-
+ 
 #include <sys/param.h>
 #include <sys/socket.h>
 #ifdef _KERNEL

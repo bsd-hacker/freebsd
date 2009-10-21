@@ -33,7 +33,6 @@
  */
 
 #if defined(__FreeBSD__)
-#include "opt_global.h"
 #include "opt_inet.h"
 #include "opt_inet6.h"
  

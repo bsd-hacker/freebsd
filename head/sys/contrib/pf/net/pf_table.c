@@ -30,25 +30,24 @@
  *
  */
 
- #ifdef __FreeBSD__
-#include "opt_global.h"
- #include "opt_inet.h"
- #include "opt_inet6.h"
+#ifdef __FreeBSD__
+#include "opt_inet.h"
+#include "opt_inet6.h"
  
- #include <sys/cdefs.h>
+#include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
- #endif
+#endif
 
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/socket.h>
 #include <sys/mbuf.h>
 #include <sys/kernel.h>
- #ifdef __FreeBSD__
- #include <sys/malloc.h>
+#ifdef __FreeBSD__
+#include <sys/malloc.h>
 #else
 #include <sys/pool.h>
- #endif
+#endif
 
 #include <net/if.h>
 #include <net/route.h>

@@ -17,10 +17,6 @@
  *
  */
 
-#ifdef __FreeBSD__
-#include "opt_global.h"
-#endif
-
 #include <sys/param.h>
 #include <sys/socket.h>
 #ifdef _KERNEL
