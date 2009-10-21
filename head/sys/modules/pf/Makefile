@@ -36,8 +36,9 @@ opt_pf.h:
 .if defined(VIMAGE)
 opt_global.h:
 	echo "#define VIMAGE 1" >> ${.TARGET}
+CFLAGS+=	-include ${.CURDIR}/opt_global.h
+.endif
 .endif
 
-.endif
 
 .include <bsd.kmod.mk>
