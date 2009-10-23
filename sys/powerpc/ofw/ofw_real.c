@@ -226,6 +226,7 @@ ofw_real_bounce_alloc(void *junk)
 static cell_t
 ofw_real_map(const void *buf, size_t len)
 {
+	static char emergency_buffer[255];
 	cell_t phys;
 
 	mtx_assert(&of_bounce_mtx, MA_OWNED);
@@ -243,17 +244,18 @@ ofw_real_map(const void *buf, size_t len)
 		 * XXX: It is possible for us to get called before the VM has
 		 * come online, but after the MMU is up. We don't have the
 		 * bounce buffer yet, but can no longer presume a 1:1 mapping.
-		 * Grab the physical address of the buffer, and hope it is
-		 * in range if this happens.
+		 * Copy into the emergency buffer, and reset at the end.
 		 */
-		return (cell_t)vtophys(buf);
+		of_bounce_virt = emergency_buffer;
+		of_bounce_phys = (vm_offset_t)of_bounce_virt;
+		of_bounce_size = sizeof(emergency_buffer);
 	}
 
 	/*
 	 * Make sure the bounce page offset satisfies any reasonable
 	 * alignment constraint.
 	 */
-	of_bounce_offset += of_bounce_offset % sizeof(register_t);
+	of_bounce_offset += sizeof(register_t) - (of_bounce_offset % sizeof(register_t));
 
 	if (of_bounce_offset + len > of_bounce_size) {
 		panic("Oversize Open Firmware call!");
@@ -265,7 +267,7 @@ ofw_real_map(const void *buf, size_t len)
 
 	of_bounce_offset += len;
 
-	return phys;
+	return (phys);
 }
 
 static void

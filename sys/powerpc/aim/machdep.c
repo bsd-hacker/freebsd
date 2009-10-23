@@ -1003,24 +1003,19 @@ exec_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings)
 	tf->fixreg[8] = (register_t)PS_STRINGS;	/* NetBSD extension */
 
 	#ifdef __powerpc64__
-	if (1) {
-		/*
-		 * For 64-bit, we need to disentangle the function descriptor
-		 * 
-		 * 0. entry point
-		 * 1. TOC value (r2)
-		 * 2. Environment pointer (r11)
-                 */
+	/*
+	 * For 64-bit, we need to disentangle the function descriptor
+	 * 
+	 * 0. entry point
+	 * 1. TOC value (r2)
+	 * 2. Environment pointer (r11)
+	 */
 
-		(void)copyin((void *)entry, entry_desc, sizeof(entry_desc));
-		tf->srr0 = entry_desc[0];
-		tf->fixreg[2] = entry_desc[1];
-		tf->fixreg[11] = entry_desc[2];
-		tf->srr1 = PSL_SF | PSL_MBO | PSL_USERSET | PSL_FE_DFLT;
-	} else {
-		tf->srr0 = entry;
-		tf->srr1 = PSL_MBO | PSL_USERSET | PSL_FE_DFLT;
-	}
+	(void)copyin((void *)entry, entry_desc, sizeof(entry_desc));
+	tf->srr0 = entry_desc[0];
+	tf->fixreg[2] = entry_desc[1];
+	tf->fixreg[11] = entry_desc[2];
+	tf->srr1 = PSL_SF | PSL_MBO | PSL_USERSET | PSL_FE_DFLT;
 	#else
 	tf->srr0 = entry;
 	tf->srr1 = PSL_MBO | PSL_USERSET | PSL_FE_DFLT;

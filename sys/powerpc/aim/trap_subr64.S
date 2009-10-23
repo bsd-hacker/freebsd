@@ -255,33 +255,33 @@ nslb:
 /*
  * Processor reset exception handler. These are typically
  * the first instructions the processor executes after a
- * software reset.
+ * software reset. We do this in two bits so that we are
+ * not still hanging around in the trap handling region
+ * once the MMU is turned on.
  */
 	.globl	CNAME(rstcode), CNAME(rstsize)
 CNAME(rstcode):
-	bl	1f
+	ba	cpu_reset
+CNAME(rstsize) = . - CNAME(rstcode)
 
-	.space	124
-
-1:
-	mflr	%r1
-	addi	%r1,%r1,(124-16)@l
+cpu_reset:
+	lis	%r1,(tmpstk+TMPSTKSZ-48)@ha	/* get new SP */
+	addi	%r1,%r1,(tmpstk+TMPSTKSZ-48)@l
 
 	lis	%r3,tocbase@ha
 	ld	%r2,tocbase@l(%r3)
 	lis	%r3,1@l
-	bla	CNAME(.pmap_cpu_bootstrap)
+	bl	CNAME(.pmap_cpu_bootstrap)
 	nop
-	bla	CNAME(.cpudep_ap_bootstrap)
+	bl	CNAME(.cpudep_ap_bootstrap)
 	nop
 	mr	%r1,%r3
-	bla	CNAME(.machdep_ap_bootstrap)
+	bl	CNAME(.machdep_ap_bootstrap)
 	nop
 
 	/* Should not be reached */
 9:
 	b	9b
-CNAME(rstsize) = . - CNAME(rstcode)
 #endif
 
 /*

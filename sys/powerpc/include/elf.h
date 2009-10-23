@@ -124,4 +124,6 @@ __ElfType(Auxinfo);
 #define	ELF_TARG_VER	1
 #endif
 
+#define	ET_DYN_LOAD_ADDR 0x01010000
+
 #endif /* !_MACHINE_ELF_H_ */
