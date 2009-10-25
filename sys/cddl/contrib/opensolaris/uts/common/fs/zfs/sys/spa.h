@@ -534,6 +534,8 @@ extern void spa_prop_clear_bootfs(spa_t *spa, uint64_t obj, dmu_tx_t *tx);
 /* asynchronous event notification */
 extern void spa_event_notify(spa_t *spa, vdev_t *vdev, const char *name);
 
+extern struct vnode *spa_get_vnode(spa_t *spa);
+
 #ifdef ZFS_DEBUG
 #define	dprintf_bp(bp, fmt, ...) do {				\
 	if (zfs_flags & ZFS_DEBUG_DPRINTF) { 			\
