@@ -2224,7 +2224,7 @@ sbp_targ_recv(struct fw_xfer *xfer)
 	if (fwdev == NULL) {
 		getmicrotime(&tv);
 		printf("(%ld)(%ld) %s: cannot resolve nodeid=%d\n",
-		    tv.tv_sec, tv.tv_usec,__func__, fp->mode.wreqb.src & 0x3f);
+		    (long)tv.tv_sec, tv.tv_usec,__func__, fp->mode.wreqb.src & 0x3f);
 		rtcode = RESP_TYPE_ERROR; /* XXX */
 	} else {
 		lo = fp->mode.wreqb.dest_lo;
