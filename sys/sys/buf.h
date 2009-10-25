@@ -444,6 +444,7 @@ buf_countdeps(struct buf *bp, int i)
 #define	GB_LOCK_NOWAIT	0x0001		/* Fail if we block on a buf lock. */
 #define	GB_NOCREAT	0x0002		/* Don't create a buf if not found. */
 #define	GB_NOWAIT_BD	0x0004		/* Do not wait for bufdaemon */
+#define	GB_NODUMP	0x0008		/* exclude this buffer from core dump */
 
 #ifdef _KERNEL
 extern int	nbuf;			/* The number of buffer headers */

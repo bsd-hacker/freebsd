@@ -221,7 +221,7 @@
  *		The default is 16384, roughly 2x the block size used by a
  *		normal UFS filesystem.
  */
-#define MAXBSIZE	65536	/* must be power of 2 */
+#define MAXBSIZE	MAXPHYS	/* must be power of 2 */
 #define BKVASIZE	16384	/* must be power of 2 */
 #define BKVAMASK	(BKVASIZE-1)
 
