@@ -50,6 +50,8 @@ distill(const char *url, unsigned long revision)
 	apr_array_header_t *auth_providers;
 	svn_ra_session_t *ra_session;
 	svn_error_t *error;
+	svnsup_delta_t sd;
+	svnsup_err_t err;
 
 	/* our root pool */
 	status = apr_pool_create(&pool, NULL);
@@ -70,6 +72,10 @@ distill(const char *url, unsigned long revision)
 	    NULL, config, pool);
 	SVNSUP_SVN_ERROR(error, "svn_ra_open3()");
 
+	/* XXX create delta */
+	err = svnsup_create_delta(&sd);
+	SVNSUP_SVNSUP_ERROR(err, "svnsup_delta_create()");
+
 	/* get revision metadata */
 	error = svn_ra_get_log2(ra_session, NULL, revision, revision, 0,
 	    TRUE, TRUE, FALSE, NULL, log_entry_receiver, NULL, pool);
@@ -77,8 +83,12 @@ distill(const char *url, unsigned long revision)
 
 	/* replay the requested revision */
 	error = svn_ra_replay(ra_session, revision, revision - 1, TRUE,
-	    &delta_editor, NULL, pool);
+	    &delta_editor, sd, pool);
 	SVNSUP_SVN_ERROR(error, "svn_ra_replay()");
+
+	/* finish off the delta */
+	err = svnsup_close_delta(sd);
+	SVNSUP_SVNSUP_ERROR(err, "svnsup_delta_close()");
 
 	/* clean up */
 	apr_pool_destroy(pool);

@@ -31,20 +31,61 @@
 #include "config.h"
 #endif
 
+#include <assert.h>
 #include <ctype.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "svnsup.h"
 
+// XXX missing I/O error handling
+
 struct svnsup_delta {
 	FILE *f;
-	int started:1;
+	struct svnsup_delta_file *sdf;
+	unsigned int ntxt;
 };
 
+struct svnsup_delta_file {
+	struct svnsup_delta *sd;
+	char *fn;
+	int create:1;
+	int checksum:1;
+};
+
+static svnsup_delta_file_t
+svnsup_delta_file_alloc(svnsup_delta_t sd, const char *fn)
+{
+	svnsup_delta_file_t sdf;
+
+	if ((sdf = calloc(1, sizeof *sdf)) == NULL) {
+		return (NULL);
+	} else if ((sdf->fn = strdup(fn)) == NULL) {
+		free(sdf);
+		return (NULL);
+	}
+	sdf->sd = sd;
+	sd->sdf = sdf;
+	return (sdf);
+}
+
+void
+svnsup_delta_file_free(svnsup_delta_file_t sdf)
+{
+
+	sdf->sd->sdf = NULL;
+	free(sdf->fn);
+	free(sdf);
+}
+
+/*
+ * Create an svnsup delta.
+ */
 int
-svnsup_delta_create(svnsup_delta_t *sdp)
+svnsup_create_delta(svnsup_delta_t *sdp)
 {
 	svnsup_delta_t sd;
 
@@ -55,14 +96,21 @@ svnsup_delta_create(svnsup_delta_t *sdp)
 	return (SVNSUP_ERR_NONE);
 }
 
+/*
+ * Close an svnsup delta.
+ */
 int
-svnsup_delta_close(svnsup_delta_t sd)
+svnsup_close_delta(svnsup_delta_t sd)
 {
 
+	assert(sd->sdf == NULL);
 	free(sd);
 	return (SVNSUP_ERR_NONE);
 }
 
+/*
+ * Comment
+ */
 int
 svnsup_delta_comment(svnsup_delta_t sd, const char *fmt, ...)
 {
@@ -77,15 +125,226 @@ svnsup_delta_comment(svnsup_delta_t sd, const char *fmt, ...)
 		return (SVNSUP_ERR_MEMORY);
 	p = commentbuf;
 	while (*p != '\0') {
-		fputs("# ", sd->f);
+		fprintf(sd->f, "# ");
 		while (*p != '\0' && *p != '\n') {
-			putc(isprint(*p) ? *p : ' ', sd->f);
+			fprintf(sd->f, "%c", isprint(*p) ? *p : ' ');
 			++p;
 		}
-		putc('\n', sd->f);
+		fprintf(sd->f, "\n");
 		if (*p == '\n')
 			++p;
 	}
 	free(commentbuf);
+	return (SVNSUP_ERR_NONE);
+}
+
+/*
+ * Metadata
+ */
+int
+svnsup_delta_meta(svnsup_delta_t sd, const char *key, const char *fmt, ...)
+{
+
+	(void)sd;
+	(void)key;
+	(void)fmt;
+	return (SVNSUP_ERR_NONE);
+}
+
+/*
+ * Create a directory
+ */
+int
+svnsup_delta_create_directory(svnsup_delta_t sd, const char *dn)
+{
+
+	assert(sd != NULL);
+	assert(dn != NULL && *dn != '\0');
+	assert(sd->sdf == NULL);
+	fprintf(sd->f, "@mkdir ");
+	svnsup_string_fencode(sd->f, dn);
+	fprintf(sd->f, "\n");
+	return (SVNSUP_ERR_NONE);
+}
+
+/*
+ * Remove a file or directory
+ */
+int
+svnsup_delta_remove(svnsup_delta_t sd, const char *fn)
+{
+
+	assert(sd != NULL);
+	assert(fn != NULL && *fn != '\0');
+	assert(sd->sdf == NULL);
+	fprintf(sd->f, "@remove ");
+	svnsup_string_fencode(sd->f, fn);
+	fprintf(sd->f, "\n");
+	return (SVNSUP_ERR_NONE);
+}
+
+/*
+ * Text to be used in later edits
+ */
+int
+svnsup_delta_text(svnsup_delta_t sd, const char *src, size_t len,
+    unsigned int *txtid)
+{
+
+	assert(sd != NULL);
+	assert(src != NULL);
+	assert(len > 0);
+	assert(txtid != NULL);
+	*txtid = sd->ntxt++;
+	fprintf(sd->f, "@text %u ", *txtid);
+	svnsup_buf_fencode(sd->f, src, len);
+	fprintf(sd->f, "\n");
+	return (SVNSUP_ERR_NONE);
+}
+
+/*
+ * Create a file and start working on it
+ */
+int
+svnsup_delta_create_file(svnsup_delta_t sd, svnsup_delta_file_t *sdfp,
+    const char *fn)
+{
+	svnsup_delta_file_t sdf;
+
+	assert(sd != NULL);
+	assert(sd->sdf == NULL);
+	assert(sdfp != NULL);
+	assert(fn != NULL && *fn != '\0');
+	if ((sdf = svnsup_delta_file_alloc(sd, fn)) == NULL)
+		return (SVNSUP_ERR_MEMORY);
+	sdf->create = 1;
+	*sdfp = sdf;
+	fprintf(sd->f, "@create ");
+	svnsup_string_fencode(sd->f, fn);
+	fprintf(sd->f, "\n");
+	return (SVNSUP_ERR_NONE);
+}
+
+/*
+ * Start working on the specified file
+ */
+int
+svnsup_delta_open_file(svnsup_delta_t sd, svnsup_delta_file_t *sdfp,
+    const char *fn)
+{
+	svnsup_delta_file_t sdf;
+
+	assert(sd != NULL);
+	assert(sd->sdf == NULL);
+	assert(sdfp != NULL);
+	assert(fn != NULL && *fn != '\0');
+	if ((sdf = svnsup_delta_file_alloc(sd, fn)) == NULL)
+		return (SVNSUP_ERR_MEMORY);
+	*sdfp = sdf;
+	return (SVNSUP_ERR_NONE);
+}
+
+/*
+ * Checksum of the original file
+ */
+int
+svnsup_delta_file_checksum(svnsup_delta_file_t sdf, const char *md5)
+{
+
+	assert(sdf != NULL);
+	assert(sdf->sd != NULL);
+	assert(sdf->sd->sdf == sdf);
+	assert(sdf->fn != NULL);
+	assert(!sdf->create);
+	assert(*sdf->fn != '\0');
+	assert(md5 != NULL && *md5 != '\0');
+	fprintf(sdf->sd->f, "@open ");
+	svnsup_string_fencode(sdf->sd->f, sdf->fn);
+	fprintf(sdf->sd->f, " md5 ");
+	svnsup_string_fencode(sdf->sd->f, md5);
+	fprintf(sdf->sd->f, "\n");
+	sdf->checksum = 1;
+	return (SVNSUP_ERR_NONE);
+}
+
+/*
+ * Shortcut to svnsup_delta_text()
+ */
+int
+svnsup_delta_file_text(svnsup_delta_file_t sdf, const char *src, size_t len,
+    unsigned int *txtid)
+{
+
+	return (svnsup_delta_text(sdf->sd, src, len, txtid));
+}
+
+/*
+ * Copy text from the original file to the new file
+ */
+int
+svnsup_delta_file_copy(svnsup_delta_file_t sdf, off_t off, size_t size)
+{
+
+	assert(sdf != NULL);
+	assert(sdf->sd != NULL);
+	assert(sdf->sd->sdf == sdf);
+	assert(sdf->create || sdf->checksum);
+	assert(size > 0);
+	fprintf(sdf->sd->f, "@copy %ju %zu\n", (uintmax_t)off, size);
+	return (SVNSUP_ERR_NONE);
+}
+
+/*
+ * Repeat text in the new file
+ */
+int
+svnsup_delta_file_repeat(svnsup_delta_file_t sdf, off_t off, size_t size)
+{
+
+	assert(sdf != NULL);
+	assert(sdf->sd != NULL);
+	assert(sdf->sd->sdf == sdf);
+	assert(sdf->create || sdf->checksum);
+	assert(size > 0);
+	fprintf(sdf->sd->f, "@repeat %ju %zu\n", (uintmax_t)off, size);
+	return (SVNSUP_ERR_NONE);
+}
+
+/*
+ * Insert text into the new file
+ */
+int
+svnsup_delta_file_insert(svnsup_delta_file_t sdf, unsigned int txtid,
+    off_t off, size_t size)
+{
+
+	assert(sdf != NULL);
+	assert(sdf->sd != NULL);
+	assert(sdf->sd->sdf == sdf);
+	assert(sdf->create || sdf->checksum);
+	assert(txtid < sdf->sd->ntxt);
+	assert(size > 0);
+	fprintf(sdf->sd->f, "@insert %u %ju %zu\n", txtid, (uintmax_t)off, size);
+	return (SVNSUP_ERR_NONE);
+}
+
+/*
+ * Stop working on the specified file
+ */
+int
+svnsup_delta_close_file(svnsup_delta_file_t sdf, const char *md5)
+{
+
+	assert(sdf != NULL);
+	assert(sdf->sd != NULL);
+	assert(sdf->sd->sdf == sdf);
+	assert(sdf->create || sdf->checksum);
+	assert(md5 != NULL && *md5 != '\0');
+	fprintf(sdf->sd->f, "@close ");
+	svnsup_string_fencode(sdf->sd->f, sdf->fn);
+	fprintf(sdf->sd->f, " md5 ");
+	svnsup_string_fencode(sdf->sd->f, md5);
+	fprintf(sdf->sd->f, "\n");
+	svnsup_delta_file_free(sdf);
 	return (SVNSUP_ERR_NONE);
 }

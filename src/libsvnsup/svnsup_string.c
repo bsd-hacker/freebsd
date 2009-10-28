@@ -31,48 +31,81 @@
 #include "config.h"
 #endif
 
+#include <sys/types.h>
+
+#include <assert.h>
+#include <ctype.h>
 #include <stdio.h>
+#include <string.h>
 
-#include "distill.h"
+#include "svnsup.h"
 
-// XXX documentation + error handling
-svn_error_t *
-txdelta_window_handler(svn_txdelta_window_t *window, void *baton)
+/*
+ * Safe to send as is
+ */
+int
+svnsup_string_is_safe(const char *str)
 {
-	svnsup_delta_file_t sdf = (svnsup_delta_file_t)baton;
-	const svn_txdelta_op_t *op;
-	unsigned int txtid = 0;
-	int i, ret;
 
-	SVNSUP_DEBUG("%s()\n", __func__);
-
-	if (window == NULL)
-		return (SVN_NO_ERROR);
-
-	if (window->new_data != NULL && window->new_data->len > 0) {
-		SVNSUP_DEBUG("%lu bytes of data\n",
-		    (unsigned long)window->new_data->len);
-		ret = svnsup_delta_file_text(sdf, window->new_data->data,
-		    window->new_data->len, &txtid);
-		SVNSUP_SVNSUP_ERROR(ret, "svnsup_delta_file_text()");
+	while (*str != '\0') {
+		if (!isprint(*str) || isspace(*str))
+			return (0);
+		++str;
 	}
+	return (1);
+}
 
-	for (i = 0, op = window->ops; i < window->num_ops; ++i, ++op) {
-		switch (op->action_code) {
-		case svn_txdelta_source:
-			svnsup_delta_file_copy(sdf, op->offset, op->length);
-			break;
-		case svn_txdelta_target:
-			svnsup_delta_file_repeat(sdf, op->offset, op->length);
-			break;
-		case svn_txdelta_new:
-			svnsup_delta_file_insert(sdf, txtid, op->offset,
-			    op->length);
-			break;
-		default:
-			SVNSUP_ASSERT(0, "invalid window operation");
-			break;
-		}
+/*
+ * Safe to send as is
+ */
+int
+svnsup_buf_is_safe(const char *buf, size_t size)
+{
+
+	while (size > 0) {
+		if (!isprint(*buf) || isspace(*buf))
+			return (0);
+		++buf;
+		--size;
 	}
-	return (SVN_NO_ERROR);
+	return (1);
+}
+
+char *
+svnsup_string_encode(const char *str)
+{
+
+	assert(0);
+	(void)str;
+	return (NULL);
+}
+
+char *
+svnsup_buf_encode(const char *buf, size_t size)
+{
+
+	assert(0);
+	(void)buf;
+	(void)size;
+	return (NULL);
+}
+
+int
+svnsup_string_fencode(FILE *f, const char *str)
+{
+
+	return (svnsup_buf_fencode(f, str, strlen(str)));
+}
+
+int
+svnsup_buf_fencode(FILE *f, const char *buf, size_t size)
+{
+	int len;
+
+	if (svnsup_buf_is_safe(buf, size))
+		return (fprintf(f, "%zu[%.*s]", size, (int)size, buf));
+	len = fprintf(f, "%zu{", size);
+	len += svnsup_base64_fencode(f, (const unsigned char *)buf, size);
+	len += fprintf(f, "}");
+	return (len);
 }

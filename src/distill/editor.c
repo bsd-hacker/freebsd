@@ -51,11 +51,11 @@ open_root(void *edit_baton,
     apr_pool_t *dir_pool,
     void **root_baton)
 {
+	svnsup_delta_t sd = (svnsup_delta_t)edit_baton;
 
-	(void)edit_baton;
 	(void)dir_pool;
 	SVNSUP_DEBUG("%s(%ld)\n", __func__, (long)base_revision);
-	*root_baton = (void *)__LINE__;
+	*root_baton = sd;
 	return (SVN_NO_ERROR);
 }
 
@@ -65,10 +65,11 @@ delete_entry(const char *path,
     void *parent_baton,
     apr_pool_t *pool)
 {
+	svnsup_delta_t sd = (svnsup_delta_t)parent_baton;
 
-	(void)parent_baton;
 	(void)pool;
 	SVNSUP_DEBUG("%s(%ld, %s)\n", __func__, (long)revision, path);
+	svnsup_delta_remove(sd, path);
 	return (SVN_NO_ERROR);
 }
 
@@ -80,12 +81,13 @@ add_directory(const char *path,
     apr_pool_t *dir_pool,
     void **child_baton)
 {
+	svnsup_delta_t sd = (svnsup_delta_t)parent_baton;
 
-	(void)parent_baton;
 	(void)dir_pool;
 	SVNSUP_DEBUG("%s(%s, %s, %ld)\n", __func__, path,
 	    copyfrom_path, (long)copyfrom_revision);
-	*child_baton = (void *)__LINE__;
+	svnsup_delta_create_directory(sd, path);
+	*child_baton = sd; /* XXX */
 	return (SVN_NO_ERROR);
 }
 
@@ -96,12 +98,12 @@ open_directory(const char *path,
     apr_pool_t *dir_pool,
     void **child_baton)
 {
+	svnsup_delta_t sd = (svnsup_delta_t)parent_baton;
 
-	(void)parent_baton;
 	(void)dir_pool;
 	SVNSUP_DEBUG("%s(%s, %ld)\n", __func__, path,
 	    (long)base_revision);
-	*child_baton = (void *)__LINE__;
+	*child_baton = sd; /* XXX */
 	return (SVN_NO_ERROR);
 }
 
@@ -134,8 +136,9 @@ absent_directory(const char *path,
     void *parent_baton,
     apr_pool_t *pool)
 {
+	svnsup_delta_t sd = (svnsup_delta_t)parent_baton;
 
-	(void)parent_baton;
+	(void)sd;
 	(void)pool;
 	SVNSUP_DEBUG("%s(%s)\n", __func__, path);
 	return (SVN_NO_ERROR);
@@ -149,12 +152,14 @@ add_file(const char *path,
     apr_pool_t *file_pool,
     void **file_baton)
 {
+	svnsup_delta_t sd = (svnsup_delta_t)parent_baton;
+	svnsup_delta_file_t sdf;
 
-	(void)parent_baton;
 	(void)file_pool;
 	SVNSUP_DEBUG("%s(%s, %s, %ld)\n", __func__, path,
 	    copyfrom_path, (long)copyfrom_revision);
-	*file_baton = (void *)__LINE__;
+	svnsup_delta_create_file(sd, &sdf, path);
+	*file_baton = sdf;
 	return (SVN_NO_ERROR);
 }
 
@@ -165,12 +170,15 @@ open_file(const char *path,
     apr_pool_t *file_pool,
     void **file_baton)
 {
+	svnsup_delta_t sd = (svnsup_delta_t)parent_baton;
+	svnsup_delta_file_t sdf;
 
-	(void)parent_baton;
+	(void)sd;
 	(void)file_pool;
 	SVNSUP_DEBUG("%s(%s, %ld)\n", __func__, path,
 	    (long)base_revision);
-	*file_baton = (void *)__LINE__;
+	svnsup_delta_open_file(sd, &sdf, path);
+	*file_baton = sdf;
 	return (SVN_NO_ERROR);
 }
 
@@ -181,12 +189,15 @@ apply_textdelta(void *file_baton,
     svn_txdelta_window_handler_t *handler,
     void **handler_baton)
 {
+	svnsup_delta_file_t sdf = (svnsup_delta_file_t)file_baton;
 
-	(void)file_baton;
+	(void)sdf;
 	(void)pool;
 	SVNSUP_DEBUG("%s(%s)\n", __func__, base_checksum);
+	if (base_checksum)
+		svnsup_delta_file_checksum(sdf, base_checksum);
 	*handler = txdelta_window_handler;
-	*handler_baton = (void *)__LINE__;
+	*handler_baton = file_baton;
 	return (SVN_NO_ERROR);
 }
 
@@ -196,8 +207,9 @@ change_file_prop(void *file_baton,
     const svn_string_t *value,
     apr_pool_t *pool)
 {
+	svnsup_delta_file_t sdf = (svnsup_delta_file_t)file_baton;
 
-	(void)file_baton;
+	(void)sdf;
 	(void)pool;
 	SVNSUP_DEBUG("%s(%s, %s)\n", __func__, name, value->data);
 	return (SVN_NO_ERROR);
@@ -208,10 +220,11 @@ close_file(void *file_baton,
     const char *text_checksum,
     apr_pool_t *pool)
 {
+	svnsup_delta_file_t sdf = (svnsup_delta_file_t)file_baton;
 
-	(void)file_baton;
 	(void)pool;
 	SVNSUP_DEBUG("%s(%s)\n", __func__, text_checksum);
+	svnsup_delta_close_file(sdf, text_checksum);
 	return (SVN_NO_ERROR);
 }
 
@@ -220,8 +233,9 @@ absent_file(const char *path,
     void *parent_baton,
     apr_pool_t *pool)
 {
+	svnsup_delta_t sd = (svnsup_delta_t)parent_baton;
 
-	(void)parent_baton;
+	(void)sd;
 	(void)pool;
 	SVNSUP_DEBUG("%s(%s)\n", __func__, path);
 	return (SVN_NO_ERROR);

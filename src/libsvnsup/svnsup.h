@@ -37,11 +37,52 @@ typedef enum svnsup_err {
 	SVNSUP_ERR_MAX,
 } svnsup_err_t;
 
+/*
+ * svnsup_delta.c
+ */
 typedef struct svnsup_delta *svnsup_delta_t;
+typedef struct svnsup_delta_file *svnsup_delta_file_t;
 
-int svnsup_delta_create(svnsup_delta_t *);
-int svnsup_delta_close(svnsup_delta_t);
+int svnsup_create_delta(svnsup_delta_t *);
+int svnsup_close_delta(svnsup_delta_t);
 
 int svnsup_delta_comment(svnsup_delta_t, const char *, ...);
+int svnsup_delta_meta(svnsup_delta_t, const char *, const char *, ...);
+int svnsup_delta_create_directory(svnsup_delta_t, const char *);
+int svnsup_delta_remove(svnsup_delta_t, const char *);
+int svnsup_delta_text(svnsup_delta_t, const char *, size_t,
+    unsigned int *);
+
+int svnsup_delta_create_file(svnsup_delta_t, svnsup_delta_file_t *,
+    const char *);
+int svnsup_delta_open_file(svnsup_delta_t, svnsup_delta_file_t *,
+    const char *);
+int svnsup_delta_file_checksum(svnsup_delta_file_t, const char *);
+int svnsup_delta_file_text(svnsup_delta_file_t, const char *, size_t,
+    unsigned int *);
+int svnsup_delta_file_copy(svnsup_delta_file_t, off_t, size_t);
+int svnsup_delta_file_repeat(svnsup_delta_file_t, off_t, size_t);
+int svnsup_delta_file_insert(svnsup_delta_file_t, unsigned int, off_t, size_t);
+int svnsup_delta_close_file(svnsup_delta_file_t, const char *);
+
+/*
+ * svnsup_string.c
+ */
+int svnsup_string_is_safe(const char *);
+int svnsup_buf_is_safe(const char *, size_t);
+char *svnsup_string_encode(const char *);
+char *svnsup_buf_encode(const char *, size_t);
+
+#ifdef FOPEN_MAX /* defined by stdio.h, cf. IEEE 1003.1 */
+int svnsup_string_fencode(FILE *, const char *);
+int svnsup_buf_fencode(FILE *, const char *, size_t);
+#endif
+
+/*
+ * svnsup_base64.c
+ */
+#ifdef FOPEN_MAX /* defined by stdio.h, cf. IEEE 1003.1 */
+int svnsup_base64_fencode(FILE *, const unsigned char *, size_t);
+#endif
 
 #endif

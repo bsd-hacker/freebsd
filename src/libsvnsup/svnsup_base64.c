@@ -31,48 +31,54 @@
 #include "config.h"
 #endif
 
+#include <sys/types.h>
+
 #include <stdio.h>
 
-#include "distill.h"
+#include "svnsup.h"
 
-// XXX documentation + error handling
-svn_error_t *
-txdelta_window_handler(svn_txdelta_window_t *window, void *baton)
+static const char b64t[65] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    "abcdefghijklmnopqrstuvwxyz"
+    "0123456789"
+    "+/"
+    "=";
+
+int
+svnsup_base64_fencode(FILE *f, const unsigned char *buf, size_t size)
 {
-	svnsup_delta_file_t sdf = (svnsup_delta_file_t)baton;
-	const svn_txdelta_op_t *op;
-	unsigned int txtid = 0;
-	int i, ret;
+	int count = 0;
+#if 0
+	int width = 0;
+#endif
 
-	SVNSUP_DEBUG("%s()\n", __func__);
-
-	if (window == NULL)
-		return (SVN_NO_ERROR);
-
-	if (window->new_data != NULL && window->new_data->len > 0) {
-		SVNSUP_DEBUG("%lu bytes of data\n",
-		    (unsigned long)window->new_data->len);
-		ret = svnsup_delta_file_text(sdf, window->new_data->data,
-		    window->new_data->len, &txtid);
-		SVNSUP_SVNSUP_ERROR(ret, "svnsup_delta_file_text()");
-	}
-
-	for (i = 0, op = window->ops; i < window->num_ops; ++i, ++op) {
-		switch (op->action_code) {
-		case svn_txdelta_source:
-			svnsup_delta_file_copy(sdf, op->offset, op->length);
-			break;
-		case svn_txdelta_target:
-			svnsup_delta_file_repeat(sdf, op->offset, op->length);
-			break;
-		case svn_txdelta_new:
-			svnsup_delta_file_insert(sdf, txtid, op->offset,
-			    op->length);
-			break;
-		default:
-			SVNSUP_ASSERT(0, "invalid window operation");
-			break;
+	while (size >= 3) {
+		putc(b64t[buf[0] >> 2], f);
+		putc(b64t[(buf[0] << 4 | buf[1] >> 4) & 0x3f], f);
+		putc(b64t[(buf[1] << 2 | buf[2] >> 6) & 0x3f], f);
+		putc(b64t[buf[2] & 0x3f], f);
+		count += 4;
+		buf += 3;
+		size -= 3;
+#if 0
+		if ((width += 3) == 64 && size > 0) {
+			putc('\n', f);
+			++count;
+			width = 0;
 		}
+#endif
 	}
-	return (SVN_NO_ERROR);
+	if (size > 0) {
+		putc(b64t[buf[0] >> 2], f);
+		if (size > 1) {
+			putc(b64t[(buf[0] << 4 | buf[1] >> 4) & 0x3f], f);
+			putc(b64t[(buf[1] << 2) & 0x3f], f);
+		} else {
+			putc(b64t[(buf[0] << 4) & 0x3f], f);
+			putc('=', f);
+		}
+		putc('=', f);
+		count += 4;
+	}
+	return (count);
 }
