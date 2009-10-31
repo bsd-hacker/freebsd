@@ -3657,6 +3657,7 @@ arc_tempreserve_space(uint64_t reserve, uint64_t txg)
 static kmutex_t arc_lowmem_lock;
 #ifdef _KERNEL
 static eventhandler_tag arc_event_lowmem = NULL;
+static eventhandler_tag arc_event_shutdown = NULL;
 
 static void
 arc_lowmem(void *arg __unused, int howto __unused)
@@ -3670,6 +3671,30 @@ arc_lowmem(void *arg __unused, int howto __unused)
 		tsleep(&needfree, 0, "zfs:lowmem", hz / 5);
 	mutex_exit(&arc_lowmem_lock);
 }
+void
+arc_shutdown(void *arg __unused, int howto __unused)
+{
+	struct mount *mp, *tmpmp;
+	int error;
+
+	arc_flush(NULL);
+	TAILQ_FOREACH_SAFE(mp, &mountlist, mnt_list, tmpmp) {
+		if (strcmp(mp->mnt_vfc->vfc_name, "zfs") == 0) {
+			error = dounmount(mp, MNT_FORCE, curthread);
+			if (error) {
+				TAILQ_REMOVE(&mountlist, mp, mnt_list);
+				printf("unmount of %s failed (",
+				    mp->mnt_stat.f_mntonname);
+				if (error == EBUSY)
+					printf("BUSY)\n");
+				else
+					printf("%d)\n", error);
+			}
+		}
+		
+	}
+}
+
 #endif
 
 void
@@ -3793,8 +3818,10 @@ arc_init(void)
 	    TS_RUN, minclsyspri);
 
 #ifdef _KERNEL
-	arc_event_lowmem = EVENTHANDLER_REGISTER(vm_lowmem, arc_lowmem, NULL,
-	    EVENTHANDLER_PRI_FIRST);
+	arc_event_lowmem = EVENTHANDLER_REGISTER(vm_lowmem, arc_lowmem,
+	    NULL, EVENTHANDLER_PRI_FIRST);
+	arc_event_shutdown = EVENTHANDLER_REGISTER(shutdown_pre_sync,
+	    arc_event_shutdown, NULL, EVENTHANDLER_PRI_FIRST);
 #endif
 
 	arc_dead = FALSE;
@@ -3885,6 +3912,8 @@ arc_fini(void)
 #ifdef _KERNEL
 	if (arc_event_lowmem != NULL)
 		EVENTHANDLER_DEREGISTER(vm_lowmem, arc_event_lowmem);
+	if (arc_event_shutdown != NULL)
+		EVENTHANDLER_DEREGISTER(shutdown_pre_sync, arc_event_shutdown);
 #endif
 }
 
