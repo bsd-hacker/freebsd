@@ -3334,22 +3334,6 @@ arc_write_done(zio_t *zio)
 		CTR2(KTR_SPARE2, "arc_write_done(%p) flags %X",
 		    bp, bp->b_flags);
 
-		if ((hdr->b_buf == buf) &&
-		    (bp->b_bufobj == NULL)) {
-
-			bp->b_bufobj = &vp->v_bufobj;
-			bp->b_lblkno = blkno;
-			bp->b_blkno = blkno;
-			bp->b_offset = (blkno << 9);
-			BO_LOCK(bp->b_bufobj);
-			bgetvp(vp, bp);
-			BO_UNLOCK(bp->b_bufobj);
-			bp->b_flags &= ~B_INVAL;
-			bp->b_flags |= B_CACHE;
-		}
-
-		/*
-		 */
 		arc_cksum_verify(buf);
 
 		exists = buf_hash_insert(hdr, &hash_lock);
@@ -3371,7 +3355,20 @@ arc_write_done(zio_t *zio)
 			arc_hdr_destroy(exists);
 			exists = buf_hash_insert(hdr, &hash_lock);
 			ASSERT3P(exists, ==, NULL);
+		} else if ((hdr->b_buf == buf) &&
+		    (bp->b_bufobj == NULL)) {
+
+			bp->b_bufobj = &vp->v_bufobj;
+			bp->b_lblkno = blkno;
+			bp->b_blkno = blkno;
+			bp->b_offset = (blkno << 9);
+			BO_LOCK(bp->b_bufobj);
+			bgetvp(vp, bp);
+			BO_UNLOCK(bp->b_bufobj);
+			bp->b_flags &= ~B_INVAL;
+			bp->b_flags |= B_CACHE;
 		}
+
 		hdr->b_flags &= ~ARC_IO_IN_PROGRESS;
 		/* if it's not anon, we are doing a scrub */
 		if (hdr->b_state == arc_anon)
