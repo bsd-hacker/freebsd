@@ -1359,11 +1359,14 @@ arc_brelse(arc_buf_t *buf, void *data, size_t size)
 {
 	struct buf *bp;
 
-#ifdef INVARIANTS
-	if (buf->b_bp->b_vp)
-		KASSERT((buf->b_bp->b_xflags & (BX_VNCLEAN|BX_VNDIRTY)) == BX_VNCLEAN, ("brelse() on buffer that is not clean"));
-#endif	
 	bp = buf->b_bp;
+#ifdef INVARIANTS
+	if (bp->b_vp) {
+		KASSERT((buf->b_bp->b_xflags & (BX_VNCLEAN|BX_VNDIRTY)) == BX_VNCLEAN, ("brelse() on buffer that is not clean"));
+		brelvp(bp);
+	}
+#endif	
+	
 	CTR5(KTR_SPARE2, "arc_brelse() bp=%p flags %X size %ld lblkno=%ld blkno=%ld",
 	    bp, bp->b_flags, size, bp->b_lblkno, bp->b_blkno);
 	brelse(bp);
