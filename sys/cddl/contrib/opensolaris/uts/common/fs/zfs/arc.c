@@ -1328,10 +1328,9 @@ arc_getblk(arc_buf_t *buf)
 		newbp->b_offset = (blkno<<9);	
 
 		if (bp->b_vp != NULL) {			
-			KASSERT(bp->b_xflags & BX_VNCLEAN, ("brelvp() on buffer that is not in splay"));
+			KASSERT((bp->b_xflags & (BX_VNCLEAN|BX_VNDIRTY)) == BX_VNCLEAN, ("brelvp() on buffer that is not in splay"));
 			brelvp(bp);
 		}
-		
 		BO_LOCK(&vp->v_bufobj);
 		bgetvp(vp, newbp);
 		BO_UNLOCK(&vp->v_bufobj);
@@ -1358,14 +1357,16 @@ arc_getblk(arc_buf_t *buf)
 static void
 arc_brelse(arc_buf_t *buf, void *data, size_t size)
 {
+	struct buf *bp;
 
 #ifdef INVARIANTS
 	if (buf->b_bp->b_vp)
-		KASSERT(buf->b_bp->b_xflags & BX_VNCLEAN, ("brelse() on buffer that is not in splay"));
+		KASSERT((buf->b_bp->b_xflags & (BX_VNCLEAN|BX_VNDIRTY)) == BX_VNCLEAN, ("brelse() on buffer that is not clean"));
 #endif	
-	CTR3(KTR_SPARE2, "arc_brelse() bp=%p flags %X size %ld",
-	    buf->b_bp, buf->b_bp->b_flags, size);
-	brelse(buf->b_bp);
+	bp = buf->b_bp;
+	CTR5(KTR_SPARE2, "arc_brelse() bp=%p flags %X size %ld lblkno=%ld blkno=%ld",
+	    bp, bp->b_flags, size, bp->b_lblkno, bp->b_blkno);
+	brelse(bp);
 }
 
 /*
