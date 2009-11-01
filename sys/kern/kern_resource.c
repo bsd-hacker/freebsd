@@ -56,6 +56,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sx.h>
 #include <sys/syscallsubr.h>
 #include <sys/sysent.h>
+#include <sys/syslog.h>
 #include <sys/time.h>
 #include <sys/umtx.h>
 
@@ -900,7 +901,8 @@ calcru1(struct proc *p, struct rusage_ext *ruxp, struct timeval *up,
 		 * serious, so lets keep it and hope laptops can be made
 		 * more truthful about their CPU speed via ACPI.
 		 */
-		printf("calcru: runtime went backwards from %ju usec "
+		log(LOG_WARNING,
+		    "calcru: runtime went backwards from %ju usec "
 		    "to %ju usec for pid %d (%s)\n",
 		    (uintmax_t)ruxp->rux_tu, (uintmax_t)tu,
 		    p->p_pid, p->p_comm);
