@@ -161,7 +161,8 @@ static periph_init_t xpt_periph_init;
 static struct periph_driver xpt_driver =
 {
 	xpt_periph_init, "xpt",
-	TAILQ_HEAD_INITIALIZER(xpt_driver.units)
+	TAILQ_HEAD_INITIALIZER(xpt_driver.units), /* generation */ 0,
+	CAM_PERIPH_DRV_EARLY
 };
 
 PERIPHDRIVER_DECLARE(xpt, xpt_driver);
@@ -216,9 +217,7 @@ static void	 xpt_release_devq_device(struct cam_ed *dev, u_int count,
 					 int run_queue);
 static struct cam_et*
 		 xpt_alloc_target(struct cam_eb *bus, target_id_t target_id);
-static void	 xpt_release_target(struct cam_eb *bus, struct cam_et *target);
-static void	 xpt_release_device(struct cam_eb *bus, struct cam_et *target,
-				    struct cam_ed *device);
+static void	 xpt_release_target(struct cam_et *target);
 static struct cam_eb*
 		 xpt_find_bus(path_id_t path_id);
 static struct cam_et*
@@ -452,7 +451,34 @@ xptioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flag, struct thread *td
 			ccb = xpt_alloc_ccb();
 
 			CAM_SIM_LOCK(bus->sim);
-
+			/* Ensure passed in target/lun supported on this bus. */
+			if ((inccb->ccb_h.target_id != CAM_TARGET_WILDCARD) ||
+			    (inccb->ccb_h.target_lun != CAM_LUN_WILDCARD)) {
+				if (xpt_create_path(&ccb->ccb_h.path,
+					    xpt_periph,
+					    inccb->ccb_h.path_id,
+					    CAM_TARGET_WILDCARD,
+					    CAM_LUN_WILDCARD) != CAM_REQ_CMP) {
+					error = EINVAL;
+					CAM_SIM_UNLOCK(bus->sim);
+					xpt_free_ccb(ccb);
+					break;
+				}
+				xpt_setup_ccb(&ccb->ccb_h, ccb->ccb_h.path,
+				    inccb->ccb_h.pinfo.priority);
+				ccb->ccb_h.func_code = XPT_PATH_INQ;
+				xpt_action(ccb);
+				xpt_free_path(ccb->ccb_h.path);
+				if ((inccb->ccb_h.target_id != CAM_TARGET_WILDCARD &&
+				    inccb->ccb_h.target_id > ccb->cpi.max_target) ||
+				    (inccb->ccb_h.target_lun != CAM_LUN_WILDCARD &&
+				    inccb->ccb_h.target_lun > ccb->cpi.max_lun)) {
+					error = EINVAL;
+					CAM_SIM_UNLOCK(bus->sim);
+					xpt_free_ccb(ccb);
+					break;
+				}
+			}
 			/*
 			 * Create a path using the bus, target, and lun the
 			 * user passed in.
@@ -1075,30 +1101,35 @@ xpt_announce_periph(struct cam_periph *periph, char *announce_string)
 	speed = cpi.base_transfer_speed;
 	freq = 0;
 	if (cts.ccb_h.status == CAM_REQ_CMP && cts.transport == XPORT_SPI) {
-		struct	ccb_trans_settings_spi *spi;
+		struct	ccb_trans_settings_spi *spi =
+		    &cts.xport_specific.spi;
 
-		spi = &cts.xport_specific.spi;
 		if ((spi->valid & CTS_SPI_VALID_SYNC_OFFSET) != 0
 		  && spi->sync_offset != 0) {
 			freq = scsi_calc_syncsrate(spi->sync_period);
 			speed = freq;
 		}
-
 		if ((spi->valid & CTS_SPI_VALID_BUS_WIDTH) != 0)
 			speed *= (0x01 << spi->bus_width);
 	}
 	if (cts.ccb_h.status == CAM_REQ_CMP && cts.transport == XPORT_FC) {
-		struct	ccb_trans_settings_fc *fc = &cts.xport_specific.fc;
+		struct	ccb_trans_settings_fc *fc =
+		    &cts.xport_specific.fc;
+
 		if (fc->valid & CTS_FC_VALID_SPEED)
 			speed = fc->bitrate;
 	}
 	if (cts.ccb_h.status == CAM_REQ_CMP && cts.transport == XPORT_SAS) {
-		struct	ccb_trans_settings_sas *sas = &cts.xport_specific.sas;
+		struct	ccb_trans_settings_sas *sas =
+		    &cts.xport_specific.sas;
+
 		if (sas->valid & CTS_SAS_VALID_SPEED)
 			speed = sas->bitrate;
 	}
 	if (cts.ccb_h.status == CAM_REQ_CMP && cts.transport == XPORT_SATA) {
-		struct	ccb_trans_settings_sata *sata = &cts.xport_specific.sata;
+		struct	ccb_trans_settings_sata *sata =
+		    &cts.xport_specific.sata;
+
 		if (sata->valid & CTS_SATA_VALID_SPEED)
 			speed = sata->bitrate;
 	}
@@ -1146,7 +1177,20 @@ xpt_announce_periph(struct cam_periph *periph, char *announce_string)
 		if (fc->valid & CTS_FC_VALID_PORT)
 			printf(" PortID 0x%x", fc->port);
 	}
+	if (cts.ccb_h.status == CAM_REQ_CMP && cts.transport == XPORT_ATA) {
+		struct ccb_trans_settings_ata *ata =
+		    &cts.xport_specific.ata;
 
+		if (ata->valid & CTS_ATA_VALID_BYTECOUNT)
+			printf(" (PIO size %dbytes)", ata->bytecount);
+	}
+	if (cts.ccb_h.status == CAM_REQ_CMP && cts.transport == XPORT_SATA) {
+		struct ccb_trans_settings_sata *sata =
+		    &cts.xport_specific.sata;
+
+		if (sata->valid & CTS_SATA_VALID_BYTECOUNT)
+			printf(" (PIO size %dbytes)", sata->bytecount);
+	}
 	if (path->device->inq_flags & SID_CmdQue
 	 || path->device->flags & CAM_DEV_TAG_AFTER_COUNT) {
 		printf("\n%s%d: Command Queueing enabled",
@@ -3475,9 +3519,9 @@ xpt_compile_path(struct cam_path *new_path, struct cam_periph *perph,
 		CAM_DEBUG(new_path, CAM_DEBUG_TRACE, ("xpt_compile_path\n"));
 	} else {
 		if (device != NULL)
-			xpt_release_device(bus, target, device);
+			xpt_release_device(device);
 		if (target != NULL)
-			xpt_release_target(bus, target);
+			xpt_release_target(target);
 		if (bus != NULL)
 			xpt_release_bus(bus);
 	}
@@ -3489,11 +3533,11 @@ xpt_release_path(struct cam_path *path)
 {
 	CAM_DEBUG(path, CAM_DEBUG_TRACE, ("xpt_release_path\n"));
 	if (path->device != NULL) {
-		xpt_release_device(path->bus, path->target, path->device);
+		xpt_release_device(path->device);
 		path->device = NULL;
 	}
 	if (path->target != NULL) {
-		xpt_release_target(path->bus, path->target);
+		xpt_release_target(path->target);
 		path->target = NULL;
 	}
 	if (path->bus != NULL) {
@@ -4329,15 +4373,15 @@ xpt_alloc_target(struct cam_eb *bus, target_id_t target_id)
 }
 
 static void
-xpt_release_target(struct cam_eb *bus, struct cam_et *target)
+xpt_release_target(struct cam_et *target)
 {
 
 	if ((--target->refcount == 0)
 	 && (TAILQ_FIRST(&target->ed_entries) == NULL)) {
-		TAILQ_REMOVE(&bus->et_entries, target, links);
-		bus->generation++;
+		TAILQ_REMOVE(&target->bus->et_entries, target, links);
+		target->bus->generation++;
+		xpt_release_bus(target->bus);
 		free(target, M_CAMXPT);
-		xpt_release_bus(bus);
 	}
 }
 
@@ -4424,13 +4468,18 @@ xpt_alloc_device(struct cam_eb *bus, struct cam_et *target, lun_id_t lun_id)
 	return (device);
 }
 
-static void
-xpt_release_device(struct cam_eb *bus, struct cam_et *target,
-		   struct cam_ed *device)
+void
+xpt_acquire_device(struct cam_ed *device)
 {
 
-	if ((--device->refcount == 0)
-	 && ((device->flags & CAM_DEV_UNCONFIGURED) != 0)) {
+	device->refcount++;
+}
+
+void
+xpt_release_device(struct cam_ed *device)
+{
+
+	if (--device->refcount == 0) {
 		struct cam_devq *devq;
 
 		if (device->alloc_ccb_entry.pinfo.index != CAM_UNQUEUED_INDEX
@@ -4440,16 +4489,16 @@ xpt_release_device(struct cam_eb *bus, struct cam_et *target,
 		if ((device->flags & CAM_DEV_REL_TIMEOUT_PENDING) != 0)
 				callout_stop(&device->callout);
 
-		TAILQ_REMOVE(&target->ed_entries, device,links);
-		target->generation++;
-		bus->sim->max_ccbs -= device->ccbq.devq_openings;
+		TAILQ_REMOVE(&device->target->ed_entries, device,links);
+		device->target->generation++;
+		device->target->bus->sim->max_ccbs -= device->ccbq.devq_openings;
 		/* Release our slot in the devq */
-		devq = bus->sim->devq;
+		devq = device->target->bus->sim->devq;
 		cam_devq_resize(devq, devq->alloc_queue.array_size - 1);
 		camq_fini(&device->drvq);
 		cam_ccbq_fini(&device->ccbq);
+		xpt_release_target(device->target);
 		free(device, M_CAMXPT);
-		xpt_release_target(bus, target);
 	}
 }
 
@@ -4649,6 +4698,9 @@ xptconfigfunc(struct cam_eb *bus, void *arg)
 static void
 xpt_config(void *arg)
 {
+	struct	periph_driver **p_drv;
+	int	i;
+
 	/*
 	 * Now that interrupts are enabled, go find our devices
 	 */
@@ -4682,6 +4734,13 @@ xpt_config(void *arg)
 #endif /* CAM_DEBUG_BUS */
 #endif /* CAMDEBUG */
 
+	/* Register early peripheral drivers */
+	/* XXX This will have to change when we have loadable modules */
+	p_drv = periph_drivers;
+	for (i = 0; p_drv[i] != NULL; i++) {
+		if ((p_drv[i]->flags & CAM_PERIPH_DRV_EARLY) != 0)
+			(*p_drv[i]->init)();
+	}
 	/*
 	 * Scan all installed busses.
 	 */
@@ -4732,7 +4791,8 @@ xpt_finishconfig_task(void *context, int pending)
 		/* XXX This will have to change when we have loadable modules */
 		p_drv = periph_drivers;
 		for (i = 0; p_drv[i] != NULL; i++) {
-			(*p_drv[i]->init)();
+			if ((p_drv[i]->flags & CAM_PERIPH_DRV_EARLY) == 0)
+				(*p_drv[i]->init)();
 		}
 
 		/*

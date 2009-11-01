@@ -220,7 +220,7 @@ static int sigproptbl[NSIG] = {
         SA_KILL|SA_PROC,		/* SIGUSR2 */
 };
 
-static void reschedule_signals(struct proc *p, sigset_t block);
+static void reschedule_signals(struct proc *p, sigset_t block, int flags);
 
 static void
 sigqueue_start(void)
@@ -970,14 +970,15 @@ execsigs(struct proc *p)
  */
 int
 kern_sigprocmask(struct thread *td, int how, sigset_t *set, sigset_t *oset,
-    int old)
+    int flags)
 {
 	sigset_t new_block, oset1;
 	struct proc *p;
 	int error;
 
 	p = td->td_proc;
-	PROC_LOCK(p);
+	if (!(flags & SIGPROCMASK_PROC_LOCKED))
+		PROC_LOCK(p);
 	if (oset != NULL)
 		*oset = td->td_sigmask;
 
@@ -999,7 +1000,7 @@ kern_sigprocmask(struct thread *td, int how, sigset_t *set, sigset_t *oset,
 		case SIG_SETMASK:
 			SIG_CANTMASK(*set);
 			oset1 = td->td_sigmask;
-			if (old)
+			if (flags & SIGPROCMASK_OLD)
 				SIGSETLO(td->td_sigmask, *set);
 			else
 				td->td_sigmask = *set;
@@ -1023,9 +1024,10 @@ kern_sigprocmask(struct thread *td, int how, sigset_t *set, sigset_t *oset,
 	 * possibly waking it up.
 	 */
 	if (p->p_numthreads != 1)
-		reschedule_signals(p, new_block);
+		reschedule_signals(p, new_block, flags);
 
-	PROC_UNLOCK(p);
+	if (!(flags & SIGPROCMASK_PROC_LOCKED))
+		PROC_UNLOCK(p);
 	return (error);
 }
 
@@ -1394,15 +1396,11 @@ osigblock(td, uap)
 	register struct thread *td;
 	struct osigblock_args *uap;
 {
-	struct proc *p = td->td_proc;
-	sigset_t set;
+	sigset_t set, oset;
 
 	OSIG2SIG(uap->mask, set);
-	SIG_CANTMASK(set);
-	PROC_LOCK(p);
-	SIG2OSIG(td->td_sigmask, td->td_retval[0]);
-	SIGSETOR(td->td_sigmask, set);
-	PROC_UNLOCK(p);
+	kern_sigprocmask(td, SIG_BLOCK, &set, &oset, 0);
+	SIG2OSIG(oset, td->td_retval[0]);
 	return (0);
 }
 
@@ -1416,16 +1414,11 @@ osigsetmask(td, uap)
 	struct thread *td;
 	struct osigsetmask_args *uap;
 {
-	struct proc *p = td->td_proc;
-	sigset_t set;
+	sigset_t set, oset;
 
 	OSIG2SIG(uap->mask, set);
-	SIG_CANTMASK(set);
-	PROC_LOCK(p);
-	SIG2OSIG(td->td_sigmask, td->td_retval[0]);
-	SIGSETLO(td->td_sigmask, set);
-	signotify(td);
-	PROC_UNLOCK(p);
+	kern_sigprocmask(td, SIG_SETMASK, &set, &oset, 0);
+	SIG2OSIG(oset, td->td_retval[0]);
 	return (0);
 }
 #endif /* COMPAT_43 */
@@ -1458,6 +1451,7 @@ int
 kern_sigsuspend(struct thread *td, sigset_t mask)
 {
 	struct proc *p = td->td_proc;
+	int has_sig, sig;
 
 	/*
 	 * When returning from sigsuspend, we want
@@ -1467,13 +1461,28 @@ kern_sigsuspend(struct thread *td, sigset_t mask)
 	 * to indicate this.
 	 */
 	PROC_LOCK(p);
-	td->td_oldsigmask = td->td_sigmask;
+	kern_sigprocmask(td, SIG_SETMASK, &mask, &td->td_oldsigmask,
+	    SIGPROCMASK_PROC_LOCKED);
 	td->td_pflags |= TDP_OLDMASK;
-	SIG_CANTMASK(mask);
-	td->td_sigmask = mask;
-	signotify(td);
-	while (msleep(&p->p_sigacts, &p->p_mtx, PPAUSE|PCATCH, "pause", 0) == 0)
-		/* void */;
+
+	/*
+	 * Process signals now. Otherwise, we can get spurious wakeup
+	 * due to signal entered process queue, but delivered to other
+	 * thread. But sigsuspend should return only on signal
+	 * delivery.
+	 */
+	for (has_sig = 0; !has_sig;) {
+		while (msleep(&p->p_sigacts, &p->p_mtx, PPAUSE|PCATCH, "pause",
+			0) == 0)
+			/* void */;
+		thread_suspend_check(0);
+		mtx_lock(&p->p_sigacts->ps_mtx);
+		while ((sig = cursig(td, SIG_STOP_ALLOWED)) != 0) {
+			postsig(sig);
+			has_sig = 1;
+		}
+		mtx_unlock(&p->p_sigacts->ps_mtx);
+	}
 	PROC_UNLOCK(p);
 	/* always return EINTR rather than ERESTART... */
 	return (EINTR);
@@ -1495,21 +1504,10 @@ osigsuspend(td, uap)
 	struct thread *td;
 	struct osigsuspend_args *uap;
 {
-	struct proc *p = td->td_proc;
 	sigset_t mask;
 
-	PROC_LOCK(p);
-	td->td_oldsigmask = td->td_sigmask;
-	td->td_pflags |= TDP_OLDMASK;
 	OSIG2SIG(uap->mask, mask);
-	SIG_CANTMASK(mask);
-	SIGSETLO(td->td_sigmask, mask);
-	signotify(td);
-	while (msleep(&p->p_sigacts, &p->p_mtx, PPAUSE|PCATCH, "opause", 0) == 0)
-		/* void */;
-	PROC_UNLOCK(p);
-	/* always return EINTR rather than ERESTART... */
-	return (EINTR);
+	return (kern_sigsuspend(td, mask));
 }
 #endif /* COMPAT_43 */
 
@@ -1838,6 +1836,7 @@ void
 trapsignal(struct thread *td, ksiginfo_t *ksi)
 {
 	struct sigacts *ps;
+	sigset_t mask;
 	struct proc *p;
 	int sig;
 	int code;
@@ -1860,9 +1859,11 @@ trapsignal(struct thread *td, ksiginfo_t *ksi)
 #endif
 		(*p->p_sysent->sv_sendsig)(ps->ps_sigact[_SIG_IDX(sig)], 
 				ksi, &td->td_sigmask);
-		SIGSETOR(td->td_sigmask, ps->ps_catchmask[_SIG_IDX(sig)]);
+		mask = ps->ps_catchmask[_SIG_IDX(sig)];
 		if (!SIGISMEMBER(ps->ps_signodefer, sig))
-			SIGADDSET(td->td_sigmask, sig);
+			SIGADDSET(mask, sig);
+		kern_sigprocmask(td, SIG_BLOCK, &mask, NULL,
+		    SIGPROCMASK_PROC_LOCKED | SIGPROCMASK_PS_LOCKED);
 		if (SIGISMEMBER(ps->ps_sigreset, sig)) {
 			/*
 			 * See kern_sigaction() for origin of this code.
@@ -2398,7 +2399,7 @@ stopme:
 }
 
 static void
-reschedule_signals(struct proc *p, sigset_t block)
+reschedule_signals(struct proc *p, sigset_t block, int flags)
 {
 	struct sigacts *ps;
 	struct thread *td;
@@ -2416,12 +2417,14 @@ reschedule_signals(struct proc *p, sigset_t block)
 
 		td = sigtd(p, i, 0);
 		signotify(td);
-		mtx_lock(&ps->ps_mtx);
+		if (!(flags & SIGPROCMASK_PS_LOCKED))
+			mtx_lock(&ps->ps_mtx);
 		if (p->p_flag & P_TRACED || SIGISMEMBER(ps->ps_sigcatch, i))
 			tdsigwakeup(td, i, SIG_CATCH,
 			    (SIGISMEMBER(ps->ps_sigintr, i) ? EINTR :
 			     ERESTART));
-		mtx_unlock(&ps->ps_mtx);
+		if (!(flags & SIGPROCMASK_PS_LOCKED))
+			mtx_unlock(&ps->ps_mtx);
 	}
 }
 
@@ -2449,7 +2452,7 @@ tdsigcleanup(struct thread *td)
 	SIGFILLSET(unblocked);
 	SIGSETNAND(unblocked, td->td_sigmask);
 	SIGFILLSET(td->td_sigmask);
-	reschedule_signals(p, unblocked);
+	reschedule_signals(p, unblocked, 0);
 
 }
 
@@ -2676,7 +2679,7 @@ postsig(sig)
 	struct sigacts *ps;
 	sig_t action;
 	ksiginfo_t ksi;
-	sigset_t returnmask;
+	sigset_t returnmask, mask;
 
 	KASSERT(sig != 0, ("postsig"));
 
@@ -2731,9 +2734,11 @@ postsig(sig)
 		} else
 			returnmask = td->td_sigmask;
 
-		SIGSETOR(td->td_sigmask, ps->ps_catchmask[_SIG_IDX(sig)]);
+		mask = ps->ps_catchmask[_SIG_IDX(sig)];
 		if (!SIGISMEMBER(ps->ps_signodefer, sig))
-			SIGADDSET(td->td_sigmask, sig);
+			SIGADDSET(mask, sig);
+		kern_sigprocmask(td, SIG_BLOCK, &mask, NULL,
+		    SIGPROCMASK_PROC_LOCKED | SIGPROCMASK_PS_LOCKED);
 
 		if (SIGISMEMBER(ps->ps_sigreset, sig)) {
 			/*

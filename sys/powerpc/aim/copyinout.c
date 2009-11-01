@@ -385,11 +385,51 @@ fuword32(const void *addr)
 }
 
 uint32_t
-casuword32(volatile uint32_t *base, uint32_t oldval, uint32_t newval)
+casuword32(volatile uint32_t *addr, uint32_t old, uint32_t new)
 {
-	return (casuword((volatile u_long *)base, oldval, newval));
+	struct thread *td;
+	pmap_t pm;
+	faultbuf env;
+	u_long *p, val;
+
+	td = PCPU_GET(curthread);
+	pm = &td->td_proc->p_vmspace->vm_pmap;
+	p = (u_long *)((uintptr_t)USER_ADDR +
+	    ((uintptr_t)addr & ~SEGMENT_MASK));
+
+	set_user_sr(pm,(const void *)(vm_offset_t)addr);
+
+	if (setfault(env)) {
+		td->td_pcb->pcb_onfault = NULL;
+		return (-1);
+	}
+
+	__asm __volatile (
+		"1:\tlwarx %0, 0, %2\n\t"	/* load old value */
+		"cmplw %3, %0\n\t"		/* compare */
+		"bne 2f\n\t"			/* exit if not equal */
+		"stwcx. %4, 0, %2\n\t"      	/* attempt to store */
+		"bne- 1b\n\t"			/* spin if failed */
+		"b 3f\n\t"			/* we've succeeded */
+		"2:\n\t"
+		"stwcx. %0, 0, %2\n\t"       	/* clear reservation (74xx) */
+		"3:\n\t"
+		: "=&r" (val), "=m" (*p)
+		: "r" (p), "r" (old), "r" (new), "m" (*p)
+		: "cc", "memory");
+
+	td->td_pcb->pcb_onfault = NULL;
+
+	return (val);
 }
 
+#ifndef __powerpc64__
+u_long
+casuword(volatile u_long *addr, u_long old, u_long new)
+{
+	return (casuword32((volatile uint32_t *)addr, old, new));
+}
+#else
 u_long
 casuword(volatile u_long *addr, u_long old, u_long new)
 {
@@ -410,10 +450,23 @@ casuword(volatile u_long *addr, u_long old, u_long new)
 		return (-1);
 	}
 
-	val = *p;
-	(void) atomic_cmpset_32((volatile uint32_t *)p, old, new);
+	__asm __volatile (
+		"1:\tldarx %0, 0, %2\n\t"	/* load old value */
+		"cmpld %3, %0\n\t"		/* compare */
+		"bne 2f\n\t"			/* exit if not equal */
+		"stdcx. %4, 0, %2\n\t"      	/* attempt to store */
+		"bne- 1b\n\t"			/* spin if failed */
+		"b 3f\n\t"			/* we've succeeded */
+		"2:\n\t"
+		"stdcx. %0, 0, %2\n\t"       	/* clear reservation (74xx) */
+		"3:\n\t"
+		: "=&r" (val), "=m" (*p)
+		: "r" (p), "r" (old), "r" (new), "m" (*p)
+		: "cc", "memory");
 
 	td->td_pcb->pcb_onfault = NULL;
 
 	return (val);
 }
+#endif
+

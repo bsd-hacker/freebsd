@@ -700,7 +700,7 @@ acd_geom_access(struct g_provider *pp, int dr, int dw, int de)
 	request->dev = dev;
 	bcopy(ccb, request->u.atapi.ccb, 16);
 	request->flags = ATA_R_ATAPI;
-	request->timeout = 5;
+	request->timeout = 10;
 	ata_queue_request(request);
 	if (!request->error &&
 	    (request->u.atapi.sense.key == 2 ||
@@ -1905,8 +1905,7 @@ static devclass_t acd_devclass;
 static int
 acd_modevent(module_t mod, int what, void *arg)  
 {
-    g_modevent(0, what, &acd_class);
-    return 0;
+    return g_modevent(0, what, &acd_class);
 }
  
 DRIVER_MODULE(acd, ata, acd_driver, acd_devclass, acd_modevent, NULL);
