@@ -1347,7 +1347,7 @@ arc_getblk(arc_buf_t *buf)
 	} else
 		newbp = getblk(spa_get_vnode(spa), blkno,
 		    size, 0, 0, flags);
-	CTR2(KTR_BUF, "arc_getblk() bp=%p flags %X",
+	CTR2(KTR_SPARE2, "arc_getblk() bp=%p flags %X",
 	    newbp, newbp->b_flags);
 
 	BUF_KERNPROC(newbp);
@@ -1363,6 +1363,8 @@ arc_brelse(arc_buf_t *buf, void *data, size_t size)
 	if (buf->b_bp->b_vp)
 		KASSERT(buf->b_bp->b_xflags & BX_VNCLEAN, ("brelse() on buffer that is not in splay"));
 #endif	
+	CTR3(KTR_SPARE2, "arc_brelse() bp=%p flags %X size %ld",
+	    buf->b_bp, buf->b_bp->b_flags, size);
 	brelse(buf->b_bp);
 }
 
@@ -3325,7 +3327,7 @@ arc_write_done(zio_t *zio)
 		struct vnode *vp = spa_get_vnode(hdr->b_spa);
 		off_t blkno = hdr->b_dva.dva_word[1] & ~(1UL<<63);	
 
-		CTR2(KTR_BUF, "arc_write_done(%p) flags %X",
+		CTR2(KTR_SPARE2, "arc_write_done(%p) flags %X",
 		    bp, bp->b_flags);
 
 		if ((hdr->b_buf == buf) &&
@@ -3677,7 +3679,6 @@ arc_shutdown(void *arg __unused, int howto __unused)
 	struct mount *mp, *tmpmp;
 	int error;
 
-	arc_flush(NULL);
 	TAILQ_FOREACH_SAFE(mp, &mountlist, mnt_list, tmpmp) {
 		if (strcmp(mp->mnt_vfc->vfc_name, "zfs") == 0) {
 			error = dounmount(mp, MNT_FORCE, curthread);
@@ -3693,6 +3694,14 @@ arc_shutdown(void *arg __unused, int howto __unused)
 		}
 		
 	}
+	arc_flush(NULL);
+
+#if 0	
+	zfsdev_fini();
+	zvol_fini();
+	zfs_fini();
+#endif	
+	spa_fini();
 }
 
 #endif
@@ -3821,7 +3830,7 @@ arc_init(void)
 	arc_event_lowmem = EVENTHANDLER_REGISTER(vm_lowmem, arc_lowmem,
 	    NULL, EVENTHANDLER_PRI_FIRST);
 	arc_event_shutdown = EVENTHANDLER_REGISTER(shutdown_pre_sync,
-	    arc_event_shutdown, NULL, EVENTHANDLER_PRI_FIRST);
+	    arc_shutdown, NULL, EVENTHANDLER_PRI_FIRST);
 #endif
 
 	arc_dead = FALSE;
