@@ -57,6 +57,7 @@
  */
 
 #include "assym.s"
+#include "opt_sched.h"
 
 #include <sys/syscall.h>
 
@@ -81,38 +82,35 @@ ENTRY(cpu_throw)
  * Switch to a new thread saving the current state in the old thread.
  */
 ENTRY(cpu_switch)
-	std	%r5,TD_LOCK(%r3)	/* ULE:	update old thread's lock */
-					/* XXX needs to change for MP */
-
-	ld	%r5,TD_PCB(%r3)		/* Get the old thread's PCB ptr */
-	std	%r12,PCB_CONTEXT(%r5)	/* Save the non-volatile GP regs.
+	ld	%r6,TD_PCB(%r3)		/* Get the old thread's PCB ptr */
+	std	%r12,PCB_CONTEXT(%r6)	/* Save the non-volatile GP regs.
 					   These can now be used for scratch */
-	std	%r13,PCB_CONTEXT+1*8(%r5)	
-	std	%r14,PCB_CONTEXT+2*8(%r5)	
-	std	%r15,PCB_CONTEXT+3*8(%r5)	
-	std	%r16,PCB_CONTEXT+4*8(%r5)	
-	std	%r17,PCB_CONTEXT+5*8(%r5)	
-	std	%r18,PCB_CONTEXT+6*8(%r5)	
-	std	%r19,PCB_CONTEXT+7*8(%r5)	
-	std	%r20,PCB_CONTEXT+8*8(%r5)	
-	std	%r21,PCB_CONTEXT+9*8(%r5)	
-	std	%r22,PCB_CONTEXT+10*8(%r5)	
-	std	%r23,PCB_CONTEXT+11*8(%r5)	
-	std	%r24,PCB_CONTEXT+12*8(%r5)	
-	std	%r25,PCB_CONTEXT+13*8(%r5)	
-	std	%r26,PCB_CONTEXT+14*8(%r5)	
-	std	%r27,PCB_CONTEXT+15*8(%r5)	
-	std	%r28,PCB_CONTEXT+16*8(%r5)	
-	std	%r29,PCB_CONTEXT+17*8(%r5)	
-	std	%r30,PCB_CONTEXT+18*8(%r5)	
-	std	%r31,PCB_CONTEXT+19*8(%r5)	
+	std	%r13,PCB_CONTEXT+1*8(%r6)	
+	std	%r14,PCB_CONTEXT+2*8(%r6)	
+	std	%r15,PCB_CONTEXT+3*8(%r6)	
+	std	%r16,PCB_CONTEXT+4*8(%r6)	
+	std	%r17,PCB_CONTEXT+5*8(%r6)	
+	std	%r18,PCB_CONTEXT+6*8(%r6)	
+	std	%r19,PCB_CONTEXT+7*8(%r6)	
+	std	%r20,PCB_CONTEXT+8*8(%r6)	
+	std	%r21,PCB_CONTEXT+9*8(%r6)	
+	std	%r22,PCB_CONTEXT+10*8(%r6)	
+	std	%r23,PCB_CONTEXT+11*8(%r6)	
+	std	%r24,PCB_CONTEXT+12*8(%r6)	
+	std	%r25,PCB_CONTEXT+13*8(%r6)	
+	std	%r26,PCB_CONTEXT+14*8(%r6)	
+	std	%r27,PCB_CONTEXT+15*8(%r6)	
+	std	%r28,PCB_CONTEXT+16*8(%r6)	
+	std	%r29,PCB_CONTEXT+17*8(%r6)	
+	std	%r30,PCB_CONTEXT+18*8(%r6)	
+	std	%r31,PCB_CONTEXT+19*8(%r6)	
 
 	mfcr	%r16			/* Save the condition register */
-	std	%r16,PCB_CR(%r5)
+	std	%r16,PCB_CR(%r6)
 	mflr	%r16			/* Save the link register */
-	std	%r16,PCB_LR(%r5)
-	std	%r1,PCB_SP(%r5)		/* Save the stack pointer */
-	std	%r2,PCB_TOC(%r5)	/* Save the TOC pointer */
+	std	%r16,PCB_LR(%r6)
+	std	%r1,PCB_SP(%r6)		/* Save the stack pointer */
+	std	%r2,PCB_TOC(%r6)	/* Save the TOC pointer */
 	
 	li	%r14,0			/* Save USER_SR for copyin/out */
 	li	%r15,0
@@ -120,23 +118,26 @@ ENTRY(cpu_switch)
 	slbmfee %r14, %r16
 	slbmfev %r15, %r16
 	isync
-	std	%r14,PCB_AIM_USR_ESID(%r5)
-	std	%r15,PCB_AIM_USR_VSID(%r5)
+	std	%r14,PCB_AIM_USR_ESID(%r6)
+	std	%r15,PCB_AIM_USR_VSID(%r6)
 
 	mr	%r14,%r3		/* Copy the old thread ptr... */
 	mr	%r15,%r4		/* and the new thread ptr in scratch */
+	mr	%r16,%r5		/* and the new lock */
+	mr	%r17,%r6		/* and the PCB */
 	
-	lwz	%r6,PCB_FLAGS(%r5)
+	lwz	%r7,PCB_FLAGS(%r17)
 	/* Save FPU context if needed */
-	andi.	%r6, %r6, PCB_FPU
+	andi.	%r7, %r7, PCB_FPU
 	beq	.L1
 	bl	.save_fpu
 	nop
 
 .L1:
-	lwz	%r6,PCB_FLAGS(%r5)
+	mr	%r3,%r14		/* restore old thread ptr */
+	lwz	%r7,PCB_FLAGS(%r17)
 	/* Save Altivec context if needed */
-	andi.	%r6, %r6, PCB_VEC
+	andi.	%r7, %r7, PCB_VEC
 	beq	.L2
 	bl	.save_vec
 	nop
@@ -146,7 +147,19 @@ ENTRY(cpu_switch)
 	bl	.pmap_deactivate	/* Deactivate the current pmap */
 	nop
 
+	std	%r16,TD_LOCK(%r14)	/* ULE:	update old thread's lock */
+
 cpu_switchin:
+#if defined(SMP) && defined(SCHED_ULE)
+	/* Wait for the new thread to become unblocked */
+	lis	%r6,blocked_lock@ha
+	addi	%r6,%r6,blocked_lock@l
+blocked_loop:
+	ld	%r7,TD_LOCK(%r15)
+	cmpd	%r6,%r7 
+	beq	blocked_loop
+#endif
+
 	mfsprg	%r7,0			/* Get the pcpu pointer */
 	std	%r15,PC_CURTHREAD(%r7)	/* Store new current thread */
 	ld	%r17,TD_PCB(%r15)	/* Store new current PCB */

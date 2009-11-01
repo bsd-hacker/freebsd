@@ -94,7 +94,7 @@ ENTRY(cpu_switch)
 	isync
 	stw	%r16,PCB_AIM_USR_VSID(%r6)
 	stw	%r1,PCB_SP(%r6)		/* Save the stack pointer */
-	stw	%r2,PCB_TOC(%r5)	/* Save the TOC pointer */
+	stw	%r2,PCB_TOC(%r6)	/* Save the TOC pointer */
 
 	mr	%r14,%r3		/* Copy the old thread ptr... */
 	mr	%r15,%r4		/* and the new thread ptr in scratch */
