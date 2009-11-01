@@ -1454,7 +1454,8 @@ buf_vlist_remove(struct buf *bp)
 		bv = &bp->b_bufobj->bo_clean;
 	if (bp != bv->bv_root) {
 		root = buf_splay(bp->b_lblkno, bp->b_xflags, bv->bv_root);
-		KASSERT(root == bp, ("splay lookup failed in remove"));
+
+		KASSERT(root == bp, ("splay lookup failed in remove bp=%p lblkno=%ld blkno=%ld", bp, bp->b_lblkno, bp->b_blkno));
 	}
 	if (bp->b_left == NULL) {
 		root = bp->b_right;
