@@ -3357,14 +3357,21 @@ arc_write_done(zio_t *zio)
 			ASSERT3P(exists, ==, NULL);
 		} else if ((hdr->b_buf == buf) &&
 		    (bp->b_bufobj == NULL)) {
+			struct buf *oldbp;
+			struct bufobj *bo;
 
-			bp->b_bufobj = &vp->v_bufobj;
+			oldbp = getblk(vp, blkno, bp->b_bcount, 0, 0, GB_NOCREAT);
+			if (oldbp != NULL) {
+				oldbp->b_flags |= B_INVAL;
+				brelse(oldbp);
+			}
+			bo = bp->b_bufobj = &vp->v_bufobj;
 			bp->b_lblkno = blkno;
 			bp->b_blkno = blkno;
 			bp->b_offset = (blkno << 9);
-			BO_LOCK(bp->b_bufobj);
+			BO_LOCK(bo);
 			bgetvp(vp, bp);
-			BO_UNLOCK(bp->b_bufobj);
+			BO_UNLOCK(bo);
 			bp->b_flags &= ~B_INVAL;
 			bp->b_flags |= B_CACHE;
 		}
