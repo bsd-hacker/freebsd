@@ -491,8 +491,9 @@ static void arc_get_data_buf(arc_buf_t *buf);
 static void arc_access(arc_buf_hdr_t *buf, kmutex_t *hash_lock);
 static int arc_evict_needed(arc_buf_contents_t type);
 static void arc_evict_ghost(arc_state_t *state, spa_t *spa, int64_t bytes);
+static void arc_binval(arc_buf_t *buf, off_t blkno, struct vnode *vp, size_t size);
 
-#define	GHOST_STATE(state)	\
+#define	GHOST_STATE(state)						\
 	((state) == arc_mru_ghost || (state) == arc_mfu_ghost ||	\
 	(state) == arc_l2c_only)
 
@@ -1307,31 +1308,21 @@ arc_getblk(arc_buf_t *buf)
 		ASSERT(type == ARC_BUFC_DATA);
 		flags = GB_NODUMP;
 		atomic_add_64(&arc_size, size);
-	}	
+	}
+
+	if ((size < PAGE_SIZE) ||
+	    (buf->b_hdr->b_flags & ARC_BUF_CLONING) ||
+	    BUF_EMPTY(buf->b_hdr)) 
+		newbp = geteblk(size, flags);
+	else 
+		newbp = getblk(spa_get_vnode(spa), blkno,
+		    size, 0, 0, flags);	
 
 	if (buf->b_hdr->b_flags & ARC_BUF_CLONING) {
-		newbp = geteblk(size, flags);
-		tbuf = buf;
 		vp = spa_get_vnode(spa);
 
-		bp = buf->b_bp;
-		bcopy(bp->b_data, newbp->b_data, size);
-		KASSERT((bp->b_blkno == bp->b_lblkno) &&
-		    (bp->b_blkno == blkno),
-		    ("blkno mismatch b_blkno %ld b_lblkno %ld blkno %ld",
-			bp->b_blkno, bp->b_lblkno, blkno));
-		while (tbuf->b_next != NULL) {
-			if (tbuf->b_bp->b_vp != NULL) {
-				KASSERT((bp->b_xflags & (BX_VNCLEAN|BX_VNDIRTY)) == BX_VNCLEAN, ("brelvp() on buffer that is not in splay"));
-
-				bp = tbuf->b_bp;
-				bp->b_flags |= B_INVAL;
-				bp->b_flags &= ~B_CACHE;
-				brelvp(bp);
-				break;
-			}
-			tbuf = tbuf->b_next;
-		}
+		arc_binval(buf, blkno, vp, size);
+		bcopy(buf->b_next->b_data, newbp->b_data, size);
 
 		newbp->b_bufobj = &vp->v_bufobj;
 		newbp->b_lblkno = blkno;
@@ -1343,15 +1334,16 @@ arc_getblk(arc_buf_t *buf)
 		BO_UNLOCK(&vp->v_bufobj);
 		newbp->b_flags &= ~B_INVAL;
 		newbp->b_flags |= B_CACHE;
-		buf->b_hdr->b_flags &= ~ARC_BUF_CLONING;
-		
-	} else if (BUF_EMPTY(buf->b_hdr)) {
-		newbp = geteblk(size, flags);
-	} else
-		newbp = getblk(spa_get_vnode(spa), blkno,
-		    size, 0, 0, flags);
+		buf->b_hdr->b_flags &= ~ARC_BUF_CLONING;		
+	} 
+#ifdef LOGALL
+	/*
+	 * not useful for tracking down collisions
+	 *
+	 */
 	CTR2(KTR_SPARE2, "arc_getblk() bp=%p flags %X",
 	    newbp, newbp->b_flags);
+#endif
 
 	BUF_KERNPROC(newbp);
 	buf->b_bp = newbp;
@@ -1367,14 +1359,45 @@ arc_brelse(arc_buf_t *buf, void *data, size_t size)
 #ifdef INVARIANTS
 	if (bp->b_vp) {
 		KASSERT((buf->b_bp->b_xflags & (BX_VNCLEAN|BX_VNDIRTY)) == BX_VNCLEAN, ("brelse() on buffer that is not clean"));
-		brelvp(bp);
 	}
 #endif	
 	
-	CTR5(KTR_SPARE2, "arc_brelse() bp=%p flags %X size %ld lblkno=%ld blkno=%ld",
-	    bp, bp->b_flags, size, bp->b_lblkno, bp->b_blkno);
+	CTR4(KTR_SPARE2, "arc_brelse() bp=%p flags %X size %ld blkno=%ld",
+	    bp, bp->b_flags, size, bp->b_blkno);
 	brelse(bp);
 }
+
+static void
+arc_binval(arc_buf_t *buf, off_t blkno, struct vnode *vp, size_t size) 
+{
+	arc_buf_hdr_t *hdr;
+	arc_buf_t *tbuf;
+	int released = 0;
+	struct buf *bp = NULL;	
+
+	/*
+	 * disassociate backing buffers from the vnode
+	 *
+	 */
+	for (tbuf = buf; tbuf != NULL; 	tbuf = tbuf->b_next) {
+		if ((tbuf->b_bp != NULL) && (tbuf->b_bp->b_vp != NULL)) {
+			bp = tbuf->b_bp;
+			KASSERT((bp->b_xflags & (BX_VNCLEAN|BX_VNDIRTY)) == BX_VNCLEAN, ("brelvp() on buffer that is not in splay"));
+			
+			bp->b_flags |= B_INVAL;
+			bp->b_flags &= ~B_CACHE;
+			brelvp(bp);
+			released = 1;	
+		}
+	}
+
+	if (!released)
+		if ((bp = getblk(vp, blkno, size, 0, 0, GB_NOCREAT)) != NULL) {		
+			bp->b_flags |= B_INVAL;
+			brelse(bp);
+		}
+}
+
 
 /*
  * Free the arc data buffer.  If it is an l2arc write in progress,
@@ -3335,8 +3358,8 @@ arc_write_done(zio_t *zio)
 		struct vnode *vp = spa_get_vnode(hdr->b_spa);
 		off_t blkno = hdr->b_dva.dva_word[1] & ~(1UL<<63);	
 
-		CTR2(KTR_SPARE2, "arc_write_done(%p) flags %X",
-		    bp, bp->b_flags);
+		CTR3(KTR_SPARE2, "arc_write_done() bp=%p flags %X blkno %ld",
+		    bp, bp->b_flags, blkno);
 
 		arc_cksum_verify(buf);
 
@@ -3360,15 +3383,11 @@ arc_write_done(zio_t *zio)
 			exists = buf_hash_insert(hdr, &hash_lock);
 			ASSERT3P(exists, ==, NULL);
 		} else if ((hdr->b_buf == buf) &&
-		    (bp->b_bufobj == NULL)) {
-			struct buf *oldbp;
+		    (bp->b_bufobj == NULL) &&
+		    (bp->b_bcount >= PAGE_SIZE)) {
 			struct bufobj *bo;
 
-			oldbp = getblk(vp, blkno, bp->b_bcount, 0, 0, GB_NOCREAT);
-			if (oldbp != NULL) {
-				oldbp->b_flags |= B_INVAL;
-				brelse(oldbp);
-			}
+			arc_binval(buf, blkno, vp, bp->b_bcount);
 			bo = bp->b_bufobj = &vp->v_bufobj;
 			bp->b_lblkno = blkno;
 			bp->b_blkno = blkno;
@@ -3691,6 +3710,10 @@ arc_shutdown(void *arg __unused, int howto __unused)
 	struct mount *mp, *tmpmp;
 	int error;
 
+	/*
+	 * unmount all ZFS file systems - freeing any buffers
+	 * then free all space allocator resources
+	 */
 	TAILQ_FOREACH_SAFE(mp, &mountlist, mnt_list, tmpmp) {
 		if (strcmp(mp->mnt_vfc->vfc_name, "zfs") == 0) {
 			error = dounmount(mp, MNT_FORCE, curthread);
@@ -3708,7 +3731,10 @@ arc_shutdown(void *arg __unused, int howto __unused)
 	}
 	arc_flush(NULL);
 
-#if 0	
+#ifdef NOTYET
+	/*
+	 * need corresponding includes
+	 */
 	zfsdev_fini();
 	zvol_fini();
 	zfs_fini();
