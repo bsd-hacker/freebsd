@@ -1312,11 +1312,21 @@ arc_getblk(arc_buf_t *buf)
 	if (buf->b_hdr->b_flags & ARC_BUF_CLONING) {
 		newbp = geteblk(size, flags);
 		tbuf = buf;
-
-		while (tbuf->b_next != NULL)
-			tbuf = tbuf->b_next;		
-		bp = tbuf->b_bp;
 		vp = spa_get_vnode(spa);
+
+		bcopy(buf->b_bp->b_data, newbp->b_data, size);
+		while (tbuf->b_next != NULL) {
+			if (tbuf->b_bp->b_vp != NULL) {
+				KASSERT((bp->b_xflags & (BX_VNCLEAN|BX_VNDIRTY)) == BX_VNCLEAN, ("brelvp() on buffer that is not in splay"));
+
+				bp = tbuf->b_bp;
+				bp->b_flags |= B_INVAL;
+				bp->b_flags &= ~B_CACHE;
+				brelvp(bp);
+				break;
+			}
+			tbuf = tbuf->b_next;
+		}
 
 		KASSERT((bp->b_blkno == bp->b_lblkno) &&
 		    (bp->b_blkno == blkno),
@@ -1327,18 +1337,11 @@ arc_getblk(arc_buf_t *buf)
 		newbp->b_blkno = blkno;
 		newbp->b_offset = (blkno<<9);	
 
-		if (bp->b_vp != NULL) {			
-			KASSERT((bp->b_xflags & (BX_VNCLEAN|BX_VNDIRTY)) == BX_VNCLEAN, ("brelvp() on buffer that is not in splay"));
-			brelvp(bp);
-		}
 		BO_LOCK(&vp->v_bufobj);
 		bgetvp(vp, newbp);
 		BO_UNLOCK(&vp->v_bufobj);
 		newbp->b_flags &= ~B_INVAL;
 		newbp->b_flags |= B_CACHE;
-		bp->b_flags |= B_INVAL;
-		bp->b_flags &= ~B_CACHE;
-		bcopy(bp->b_data, newbp->b_data, size);
 		buf->b_hdr->b_flags &= ~ARC_BUF_CLONING;
 		
 	} else if (BUF_EMPTY(buf->b_hdr)) {
