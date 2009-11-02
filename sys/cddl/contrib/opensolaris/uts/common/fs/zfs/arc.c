@@ -1314,7 +1314,12 @@ arc_getblk(arc_buf_t *buf)
 		tbuf = buf;
 		vp = spa_get_vnode(spa);
 
-		bcopy(buf->b_bp->b_data, newbp->b_data, size);
+		bp = buf->b_bp;
+		bcopy(bp->b_data, newbp->b_data, size);
+		KASSERT((bp->b_blkno == bp->b_lblkno) &&
+		    (bp->b_blkno == blkno),
+		    ("blkno mismatch b_blkno %ld b_lblkno %ld blkno %ld",
+			bp->b_blkno, bp->b_lblkno, blkno));
 		while (tbuf->b_next != NULL) {
 			if (tbuf->b_bp->b_vp != NULL) {
 				KASSERT((bp->b_xflags & (BX_VNCLEAN|BX_VNDIRTY)) == BX_VNCLEAN, ("brelvp() on buffer that is not in splay"));
@@ -1328,10 +1333,6 @@ arc_getblk(arc_buf_t *buf)
 			tbuf = tbuf->b_next;
 		}
 
-		KASSERT((bp->b_blkno == bp->b_lblkno) &&
-		    (bp->b_blkno == blkno),
-		    ("blkno mismatch b_blkno %ld b_lblkno %ld blkno %ld",
-			bp->b_blkno, bp->b_lblkno, blkno));
 		newbp->b_bufobj = &vp->v_bufobj;
 		newbp->b_lblkno = blkno;
 		newbp->b_blkno = blkno;
