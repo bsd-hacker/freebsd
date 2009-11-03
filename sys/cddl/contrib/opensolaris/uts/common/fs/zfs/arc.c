@@ -1308,6 +1308,7 @@ arc_getblk(arc_buf_t *buf)
 	struct buf *newbp, *bp;
 	arc_buf_t *tbuf;
 	struct vnode *vp;
+	struct bufobj *bo;
 	int flags = 0;
 
 	if (type == ARC_BUFC_METADATA) {
@@ -1318,21 +1319,52 @@ arc_getblk(arc_buf_t *buf)
 		atomic_add_64(&arc_size, size);
 	}
 
+	vp = spa_get_vnode(spa);
+	bo = &vp->v_bufobj;
 	if ((size < PAGE_SIZE) ||
 	    (buf->b_hdr->b_flags & ARC_BUF_CLONING) ||
-	    BUF_EMPTY(buf->b_hdr)) 
+	    BUF_EMPTY(buf->b_hdr)) {
+		
 		newbp = geteblk(size, flags);
-	else 
-		newbp = getblk(spa_get_vnode(spa), blkno,
-		    size, 0, 0, flags);	
+	} else {
+		/*
+		 * We need to be careful to handle the case where the buffer
+		 * is already held in the ARC for a previous birth transaction
+		 */
+		BO_LOCK(bo);
+		bp = gbincore(bo, blkno);
+		if (bp != NULL) {
+			if (BUF_ISLOCKED(bp)) {
+				BO_UNLOCK(bo);
+				newbp = geteblk(size, flags);
+				arc_binval(buf, blkno, vp, size, newbp);
+			} else {
+				BUF_LOCK(bp, LK_EXCLUSIVE | LK_INTERLOCK, BO_MTX(bo));
+				if (bp->b_flags & B_INVAL)
+					bp->b_flags &= ~B_CACHE;
+				else if ((bp->b_flags & (B_VMIO | B_INVAL)) == 0)
+					bp->b_flags |= B_CACHE;
+				bremfree(bp);
+				if (bp->b_bcount != size) {
+					bp->b_flags |= B_INVAL;
+					bp->b_flags &= ~B_CACHE;
+					brelse(bp);
+					newbp = getblk(vp, blkno, size, 0, 0, flags);
+				} else
+					newbp = bp;
+			}
+			
+		}
+	}
 
-	if (buf->b_hdr->b_flags & ARC_BUF_CLONING) {
+	if ((size >= PAGE_SIZE) && (buf->b_hdr->b_flags & ARC_BUF_CLONING)) {
 		vp = spa_get_vnode(spa);
 
 		bcopy(buf->b_next->b_data, newbp->b_data, size);
 		arc_binval(buf, blkno, vp, size, newbp);
 		buf->b_hdr->b_flags &= ~ARC_BUF_CLONING;		
 	} 
+	
 #ifdef LOGALL
 	/*
 	 * not useful for tracking down collisions
@@ -1408,6 +1440,7 @@ arc_binval(arc_buf_t *buf, off_t blkno, struct vnode *vp, size_t size, struct bu
 				BUF_LOCK(bp, LK_EXCLUSIVE | LK_INTERLOCK, BO_MTX(bo));
 				bp->b_flags |= B_INVAL;
 				bp->b_flags &= ~B_CACHE;
+				bremfree(bp);
 				brelse(bp);
 				BO_LOCK(bo);
 			}
