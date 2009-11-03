@@ -155,7 +155,7 @@ __FBSDID("$FreeBSD$");
 
 #define	BADSTACK_SBUF_SIZE	(256 * WITNESS_COUNT)
 #define	CYCLEGRAPH_SBUF_SIZE	8192
-#define	FULLGRAPH_SBUF_SIZE	32768
+#define	FULLGRAPH_SBUF_SIZE	131072
 
 /*
  * These flags go in the witness relationship matrix and describe the
