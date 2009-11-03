@@ -1197,7 +1197,8 @@ arc_data_buf_free(void *buf, uint64_t size)
 }
 
 static arc_buf_t *
-_arc_buf_alloc(spa_t *spa, int size, void *tag, arc_buf_contents_t type, dva_t dva)
+_arc_buf_alloc(spa_t *spa, int size, void *tag, arc_buf_contents_t type,
+	blkptr_t *bp)
 {
 	arc_buf_hdr_t *hdr;
 	arc_buf_t *buf;
@@ -1207,7 +1208,14 @@ _arc_buf_alloc(spa_t *spa, int size, void *tag, arc_buf_contents_t type, dva_t d
 	ASSERT(BUF_EMPTY(hdr));
 	hdr->b_size = size;
 	hdr->b_type = type;
-	hdr->b_dva = dva;
+	if (bp != NULL) {
+		hdr->b_dva = *BP_IDENTITY(bp);
+		hdr->b_birth = bp->blk_birth;
+	} else {
+		hdr->b_dva.dva_word[0] = 0;
+		hdr->b_dva.dva_word[1] = 0;
+		hdr->b_birth = 0;
+	}
 	hdr->b_spa = spa;
 	hdr->b_state = arc_anon;
 	hdr->b_arc_access = 0;
@@ -1230,9 +1238,8 @@ _arc_buf_alloc(spa_t *spa, int size, void *tag, arc_buf_contents_t type, dva_t d
 arc_buf_t *
 arc_buf_alloc(spa_t *spa, int size, void *tag, arc_buf_contents_t type)
 {
-	dva_t dva = {0ULL, 0ULL};
 
-	return (_arc_buf_alloc(spa, size, tag, type, dva));
+	return (_arc_buf_alloc(spa, size, tag, type, NULL));
 }
 
 static arc_buf_t *
@@ -1321,19 +1328,8 @@ arc_getblk(arc_buf_t *buf)
 	if (buf->b_hdr->b_flags & ARC_BUF_CLONING) {
 		vp = spa_get_vnode(spa);
 
-		arc_binval(buf, blkno, vp, size);
+		arc_binval(buf, blkno, vp, size, newbp);
 		bcopy(buf->b_next->b_data, newbp->b_data, size);
-
-		newbp->b_bufobj = &vp->v_bufobj;
-		newbp->b_lblkno = blkno;
-		newbp->b_blkno = blkno;
-		newbp->b_offset = (blkno<<9);	
-
-		BO_LOCK(&vp->v_bufobj);
-		bgetvp(vp, newbp);
-		BO_UNLOCK(&vp->v_bufobj);
-		newbp->b_flags &= ~B_INVAL;
-		newbp->b_flags |= B_CACHE;
 		buf->b_hdr->b_flags &= ~ARC_BUF_CLONING;		
 	} 
 #ifdef LOGALL
@@ -1368,13 +1364,14 @@ arc_brelse(arc_buf_t *buf, void *data, size_t size)
 }
 
 static void
-arc_binval(arc_buf_t *buf, off_t blkno, struct vnode *vp, size_t size) 
+arc_binval(arc_buf_t *buf, off_t blkno, struct vnode *vp, size_t size, struct buf *newbp) 
 {
 	arc_buf_hdr_t *hdr;
 	arc_buf_t *tbuf;
-	int released = 0;
+	int released = 0, gotvp = 0;
 	struct buf *bp = NULL;	
-
+	uint64_t birth;
+	
 	/*
 	 * disassociate backing buffers from the vnode
 	 *
@@ -1390,14 +1387,36 @@ arc_binval(arc_buf_t *buf, off_t blkno, struct vnode *vp, size_t size)
 			released = 1;	
 		}
 	}
+	newbp->b_bufobj = &vp->v_bufobj;
+	newbp->b_lblkno = blkno;
+	newbp->b_blkno = blkno;
+	newbp->b_offset = hdr->b_birth;
+	newbp->b_flags &= ~B_INVAL;
+	newbp->b_flags |= B_CACHE;
 
-	if (!released)
-		if ((bp = getblk(vp, blkno, size, 0, 0, GB_NOCREAT)) != NULL) {		
-			bp->b_flags |= B_INVAL;
-			brelse(bp);
-		}
+	BO_LOCK(bo);
+	if (!released) {
+		bp = gbincore(bo, blkno);
+		if (bp != NULL) {
+			if (BUF_ISLOCKED(bp)) {
+				newbp->b_xflags |= BX_BKGRDMARKER;
+				bp->b_vflags |= BV_BKGRDINPROG;
+				bgetvp(vp, newbp);
+				gotvp = 1;
+			} else {
+				BUF_LOCK(bp, LK_EXCLUSIVE | LK_INTERLOCK, BO_MTX(bo));
+				bp->b_flags |= B_INVAL;
+				bp->b_flags &= ~B_CACHE;
+				BO_UNLOCK(bo);
+				brelse(bp);
+				BO_LOCK(bo);
+			}
+		} 
+	}
+	if (!gotvp)
+		bgetvp(vp, newbp);
+	BO_UNLOCK(&vp->v_bufobj);
 }
-
 
 /*
  * Free the arc data buffer.  If it is an l2arc write in progress,
@@ -2772,11 +2791,9 @@ arc_read_nolock(zio_t *pio, spa_t *spa, blkptr_t *bp,
 top:
 	hdr = buf_hash_find(spa, BP_IDENTITY(bp), bp->blk_birth, &hash_lock);
 	if (hdr && hdr->b_datacnt > 0) {
-
 		*arc_flags |= ARC_CACHED;
 
 		if (HDR_IO_IN_PROGRESS(hdr)) {
-
 			if (*arc_flags & ARC_WAIT) {
 				cv_wait(&hdr->b_cv, hash_lock);
 				mutex_exit(hash_lock);
@@ -2850,10 +2867,10 @@ top:
 			/* this block is not in the cache */
 			arc_buf_hdr_t	*exists;
 			arc_buf_contents_t type = BP_GET_BUFC_TYPE(bp);
+
 			buf = _arc_buf_alloc(spa, size, private, type,
-			    *BP_IDENTITY(bp));
+			    bp);
 			hdr = buf->b_hdr;
-			hdr->b_birth = bp->blk_birth;
 			hdr->b_cksum0 = bp->blk_cksum.zc_word[0];
 			exists = buf_hash_insert(hdr, &hash_lock);
 			if (exists) {
@@ -2912,7 +2929,8 @@ top:
 			ARCSTAT_BUMP(arcstat_page_cache_hits);
 			mutex_exit(hash_lock);
 			goto top;
-		}
+		} else
+			buf->b_bp->b_offset = bp->blk_birth;
 
 		acb = kmem_zalloc(sizeof (arc_callback_t), KM_SLEEP);
 		acb->acb_done = done;
@@ -3385,18 +3403,7 @@ arc_write_done(zio_t *zio)
 		} else if ((hdr->b_buf == buf) &&
 		    (bp->b_bufobj == NULL) &&
 		    (bp->b_bcount >= PAGE_SIZE)) {
-			struct bufobj *bo;
-
-			arc_binval(buf, blkno, vp, bp->b_bcount);
-			bo = bp->b_bufobj = &vp->v_bufobj;
-			bp->b_lblkno = blkno;
-			bp->b_blkno = blkno;
-			bp->b_offset = (blkno << 9);
-			BO_LOCK(bo);
-			bgetvp(vp, bp);
-			BO_UNLOCK(bo);
-			bp->b_flags &= ~B_INVAL;
-			bp->b_flags |= B_CACHE;
+			arc_binval(buf, blkno, vp, bp->b_bcount, bp);
 		}
 
 		hdr->b_flags &= ~ARC_IO_IN_PROGRESS;
