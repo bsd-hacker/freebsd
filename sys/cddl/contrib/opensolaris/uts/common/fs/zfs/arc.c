@@ -1345,13 +1345,9 @@ arc_getblk(arc_buf_t *buf)
 				else if ((bp->b_flags & (B_VMIO | B_INVAL)) == 0)
 					bp->b_flags |= B_CACHE;
 				bremfree(bp);
-				if (bp->b_bcount != size) {
-					bp->b_flags |= B_INVAL;
-					bp->b_flags &= ~B_CACHE;
-					brelse(bp);
-					newbp = getblk(vp, blkno, size, 0, 0, flags);
-				} else
-					newbp = bp;
+				if (bp->b_bcount != size)
+					allocbuf_flags(bp, size, flags);
+				newbp = bp;
 			}
 			
 		} else {
