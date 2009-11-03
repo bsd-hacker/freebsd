@@ -1321,6 +1321,8 @@ arc_getblk(arc_buf_t *buf)
 
 	vp = spa_get_vnode(spa);
 	bo = &vp->v_bufobj;
+	newbp = NULL;
+
 	if ((size < PAGE_SIZE) ||
 	    (buf->b_hdr->b_flags & ARC_BUF_CLONING) ||
 	    BUF_EMPTY(buf->b_hdr)) {
@@ -1336,8 +1338,7 @@ arc_getblk(arc_buf_t *buf)
 		if (bp != NULL) {
 			if (BUF_ISLOCKED(bp)) {
 				BO_UNLOCK(bo);
-				newbp = geteblk(size, flags);
-				arc_binval(buf, blkno, vp, size, newbp);
+				brelvp(bp);
 			} else {
 				BUF_LOCK(bp, LK_EXCLUSIVE | LK_INTERLOCK, BO_MTX(bo));
 				if (bp->b_flags & B_INVAL)
@@ -1350,10 +1351,12 @@ arc_getblk(arc_buf_t *buf)
 				newbp = bp;
 			}
 			
-		} else {
+		} else 
 			BO_UNLOCK(bo);
+
+		if (newbp == NULL)
 			newbp = getblk(vp, blkno, size, 0, 0, flags);
-		}
+
 		newbp->b_offset = buf->b_hdr->b_birth;
 	}
 
@@ -1400,7 +1403,7 @@ static void
 arc_binval(arc_buf_t *buf, off_t blkno, struct vnode *vp, size_t size, struct buf *newbp) 
 {
 	arc_buf_t *tbuf;
-	int released = 0, gotvp = 0;
+	int released = 0;
 	struct buf *bp = NULL;	
 	uint64_t birth;
 	struct bufobj *bo;
@@ -1432,22 +1435,19 @@ arc_binval(arc_buf_t *buf, off_t blkno, struct vnode *vp, size_t size, struct bu
 		bp = gbincore(bo, blkno);
 		if (bp != NULL) {
 			if (BUF_ISLOCKED(bp)) {
-				newbp->b_xflags |= BX_BKGRDMARKER;
-				bp->b_vflags |= BV_BKGRDINPROG;
-				bgetvp(vp, newbp);
-				gotvp = 1;
+				BO_UNLOCK(bo);
+				brelvp(bp);
 			} else {
 				BUF_LOCK(bp, LK_EXCLUSIVE | LK_INTERLOCK, BO_MTX(bo));
 				bp->b_flags |= B_INVAL;
 				bp->b_flags &= ~B_CACHE;
 				bremfree(bp);
 				brelse(bp);
-				BO_LOCK(bo);
 			}
+			BO_LOCK(bo);
 		} 
 	}
-	if (!gotvp)
-		bgetvp(vp, newbp);
+	bgetvp(vp, newbp);
 	BO_UNLOCK(bo);
 }
 
