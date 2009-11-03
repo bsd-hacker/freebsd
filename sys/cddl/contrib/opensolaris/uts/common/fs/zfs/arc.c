@@ -491,7 +491,8 @@ static void arc_get_data_buf(arc_buf_t *buf);
 static void arc_access(arc_buf_hdr_t *buf, kmutex_t *hash_lock);
 static int arc_evict_needed(arc_buf_contents_t type);
 static void arc_evict_ghost(arc_state_t *state, spa_t *spa, int64_t bytes);
-static void arc_binval(arc_buf_t *buf, off_t blkno, struct vnode *vp, size_t size);
+static void arc_binval(arc_buf_t *buf, off_t blkno, struct vnode *vp,
+    size_t size, struct buf *bp);
 
 #define	GHOST_STATE(state)						\
 	((state) == arc_mru_ghost || (state) == arc_mfu_ghost ||	\
@@ -1328,8 +1329,8 @@ arc_getblk(arc_buf_t *buf)
 	if (buf->b_hdr->b_flags & ARC_BUF_CLONING) {
 		vp = spa_get_vnode(spa);
 
-		arc_binval(buf, blkno, vp, size, newbp);
 		bcopy(buf->b_next->b_data, newbp->b_data, size);
+		arc_binval(buf, blkno, vp, size, newbp);
 		buf->b_hdr->b_flags &= ~ARC_BUF_CLONING;		
 	} 
 #ifdef LOGALL
@@ -1371,7 +1372,8 @@ arc_binval(arc_buf_t *buf, off_t blkno, struct vnode *vp, size_t size, struct bu
 	int released = 0, gotvp = 0;
 	struct buf *bp = NULL;	
 	uint64_t birth;
-	
+	struct bufobj *bo;
+
 	/*
 	 * disassociate backing buffers from the vnode
 	 *
@@ -1387,7 +1389,7 @@ arc_binval(arc_buf_t *buf, off_t blkno, struct vnode *vp, size_t size, struct bu
 			released = 1;	
 		}
 	}
-	newbp->b_bufobj = &vp->v_bufobj;
+	bo = newbp->b_bufobj = &vp->v_bufobj;
 	newbp->b_lblkno = blkno;
 	newbp->b_blkno = blkno;
 	newbp->b_offset = hdr->b_birth;
