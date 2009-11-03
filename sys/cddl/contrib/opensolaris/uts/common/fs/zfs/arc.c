@@ -1354,7 +1354,11 @@ arc_getblk(arc_buf_t *buf)
 					newbp = bp;
 			}
 			
+		} else {
+			BO_UNLOCK(bo);
+			newbp = getblk(vp, blkno, size, 0, 0, flags);
 		}
+		newbp->b_offset = buf->b_hdr->b_birth;
 	}
 
 	if ((size >= PAGE_SIZE) && (buf->b_hdr->b_flags & ARC_BUF_CLONING)) {
