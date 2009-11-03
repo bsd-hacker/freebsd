@@ -94,7 +94,6 @@ struct buf *buf;		/* buffer header pool */
 
 static struct proc *bufdaemonproc;
 
-static int _allocbuf(struct buf *bp, int size, int flags);
 static int inmem(struct vnode *vp, daddr_t blkno);
 static void vm_hold_free_pages(struct buf *bp, vm_offset_t from,
 		vm_offset_t to);
@@ -2625,7 +2624,7 @@ loop:
 		 */
 
 		if (bp->b_bcount != size)
-			_allocbuf(bp, size, flags);
+			allocbuf_flags(bp, size, flags);
 
 		KASSERT(bp->b_offset != NOOFFSET, 
 		    ("getblk: no buffer offset"));
@@ -2745,7 +2744,7 @@ loop:
 			    bp, bp->b_bufobj->bo_object));
 		}
 
-		_allocbuf(bp, size, flags);
+		allocbuf_flags(bp, size, flags);
 		bp->b_flags &= ~B_DONE;
 	}
 	CTR4(KTR_BUF, "getblk(%p, %ld, %d) = %p", vp, (long)blkno, size, bp);
@@ -2771,7 +2770,7 @@ geteblk(int size, int flags)
 		    (curthread->td_pflags & TDP_BUFNEED) != 0)
 			return (NULL);
 	}
-	_allocbuf(bp, size, flags);
+	allocbuf_flags(bp, size, flags);
 	bp->b_flags |= B_INVAL;	/* b_dep cleared by getnewbuf() */
 	BUF_ASSERT_HELD(bp);
 	return (bp);
@@ -2793,8 +2792,8 @@ geteblk(int size, int flags)
  * B_CACHE for the non-VMIO case.
  */
 
-static int
-_allocbuf(struct buf *bp, int size, int flags)
+int
+allocbuf_flags(struct buf *bp, int size, int flags)
 {
 	int newbsize, mbsize;
 	int i;
@@ -3089,7 +3088,7 @@ int
 allocbuf(struct buf *bp, int size)
 {
 
-	return (_allocbuf(bp, size, 0));
+	return (allocbuf_flags(bp, size, 0));
 }
 
 void

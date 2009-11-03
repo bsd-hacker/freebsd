@@ -513,6 +513,7 @@ void	pbgetvp(struct vnode *, struct buf *);
 void	pbrelbo(struct buf *);
 void	pbrelvp(struct buf *);
 int	allocbuf(struct buf *bp, int size);
+int	allocbuf_flags(struct buf *bp, int size, int flags);
 void	reassignbuf(struct buf *);
 struct	buf *trypbuf(int *);
 void	bwait(struct buf *, u_char, const char *);
