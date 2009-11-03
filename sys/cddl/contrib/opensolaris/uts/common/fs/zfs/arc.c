@@ -1408,7 +1408,6 @@ arc_binval(arc_buf_t *buf, off_t blkno, struct vnode *vp, size_t size, struct bu
 				BUF_LOCK(bp, LK_EXCLUSIVE | LK_INTERLOCK, BO_MTX(bo));
 				bp->b_flags |= B_INVAL;
 				bp->b_flags &= ~B_CACHE;
-				BO_UNLOCK(bo);
 				brelse(bp);
 				BO_LOCK(bo);
 			}
