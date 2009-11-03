@@ -1367,7 +1367,6 @@ arc_brelse(arc_buf_t *buf, void *data, size_t size)
 static void
 arc_binval(arc_buf_t *buf, off_t blkno, struct vnode *vp, size_t size, struct buf *newbp) 
 {
-	arc_buf_hdr_t *hdr;
 	arc_buf_t *tbuf;
 	int released = 0, gotvp = 0;
 	struct buf *bp = NULL;	
@@ -1392,7 +1391,7 @@ arc_binval(arc_buf_t *buf, off_t blkno, struct vnode *vp, size_t size, struct bu
 	bo = newbp->b_bufobj = &vp->v_bufobj;
 	newbp->b_lblkno = blkno;
 	newbp->b_blkno = blkno;
-	newbp->b_offset = hdr->b_birth;
+	newbp->b_offset = buf->b_hdr->b_birth;
 	newbp->b_flags &= ~B_INVAL;
 	newbp->b_flags |= B_CACHE;
 
@@ -1417,7 +1416,7 @@ arc_binval(arc_buf_t *buf, off_t blkno, struct vnode *vp, size_t size, struct bu
 	}
 	if (!gotvp)
 		bgetvp(vp, newbp);
-	BO_UNLOCK(&vp->v_bufobj);
+	BO_UNLOCK(bo);
 }
 
 /*
