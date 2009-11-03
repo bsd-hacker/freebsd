@@ -2327,7 +2327,7 @@ arc_reclaim_thread(void *dummy __unused)
 static void
 arc_adapt(int bytes, arc_state_t *state)
 {
-	int mult;
+	int mult, divisor;
 
 	if (state == arc_l2c_only)
 		return;
@@ -2342,13 +2342,15 @@ arc_adapt(int bytes, arc_state_t *state)
 	 *	  target size of the MRU list.
 	 */
 	if (state == arc_mru_ghost) {
+		divisor = MAX(arc_mru_ghost->arcs_size, 1);
 		mult = ((arc_mru_ghost->arcs_size >= arc_mfu_ghost->arcs_size) ?
 		    1 : (arc_mfu_ghost->arcs_size/arc_mru_ghost->arcs_size));
 
 		arc_p = MIN(arc_c, arc_p + bytes * mult);
 	} else if (state == arc_mfu_ghost) {
+		divisor = MAX(arc_mfu_ghost->arcs_size, 1);		
 		mult = ((arc_mfu_ghost->arcs_size >= arc_mru_ghost->arcs_size) ?
-		    1 : (arc_mru_ghost->arcs_size/arc_mfu_ghost->arcs_size));
+		    1 : (arc_mru_ghost->arcs_size/divisor));
 
 		arc_p = MAX(0, (int64_t)arc_p - bytes * mult);
 	}
