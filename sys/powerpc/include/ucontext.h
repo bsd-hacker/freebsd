@@ -44,7 +44,7 @@ typedef struct __mcontext {
 	int		mc_len;			/* sizeof(__mcontext) */
 	uint64_t	mc_avec[32*2];		/* vector register file */
 	uint32_t	mc_av[2];
-	uint32_t	mc_frame[41];
+	register_t	mc_frame[42];
 	uint64_t	mc_fpreg[33];
 } mcontext_t __aligned(16);
 
