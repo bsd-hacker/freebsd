@@ -126,8 +126,8 @@
 #include <sys/vdev.h>
 #ifdef _KERNEL
 #include <sys/dnlc.h>
-#include <sys/ktr.h>
 #endif
+#include <sys/ktr.h>
 #include <sys/callb.h>
 #include <sys/kstat.h>
 #include <sys/sdt.h>
@@ -1708,14 +1708,13 @@ arc_evict(arc_state_t *state, spa_t *spa, int64_t bytes, boolean_t recycle,
 	boolean_t have_lock;
 	struct buf *stolen = NULL;
 	static int evict_metadata_offset, evict_data_offset;
-	int idx, offset, list_count, count;
+	int i, idx, offset, list_count, count;
 
 	ASSERT(state == arc_mru || state == arc_mfu);
 	ASSERT(recycle == FALSE);
 
 	evicted_state = (state == arc_mru) ? arc_mru_ghost : arc_mfu_ghost;
 	
-	bytes_remaining = evicted_state->arcs_lsize[ab->b_type];
 	if (type == ARC_BUFC_METADATA) {
 		offset = 0;
 		list_count = ARC_BUFC_NUMMETADATALISTS;
@@ -1730,6 +1729,9 @@ arc_evict(arc_state_t *state, spa_t *spa, int64_t bytes, boolean_t recycle,
 		list_count = ARC_BUFC_NUMDATALISTS;
 		idx = evict_data_offset;
 	}
+	for (bytes_remaining = 0, i = 0; i < list_count; i++) 
+                bytes_remaining += evicted_state->arcs_lsize[i + offset]; 
+
 	count = 0;
 	
 evict_start:

@@ -214,7 +214,7 @@ zio_data_buf_alloc(size_t size)
 
 	return (kmem_cache_alloc(zio_data_buf_cache[c], KM_PUSHPAGE));
 #else
-	return (kmem_alloc(size, KM_SLEEP|KM_NODEBUG));
+	return (kmem_alloc(size, KM_SLEEP));
 #endif
 }
 
