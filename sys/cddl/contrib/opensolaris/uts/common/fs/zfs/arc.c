@@ -1305,6 +1305,7 @@ arc_getblk(arc_buf_t *buf)
 	arc_buf_contents_t	type = buf->b_hdr->b_type;
 	spa_t			*spa = buf->b_hdr->b_spa;
 	off_t blkno = buf->b_hdr->b_dva.dva_word[1] & ~(1UL<<63);
+	void *data;
 	struct buf *newbp, *bp;
 	arc_buf_t *tbuf;
 	struct vnode *vp;
@@ -1323,11 +1324,12 @@ arc_getblk(arc_buf_t *buf)
 	bo = &vp->v_bufobj;
 	newbp = NULL;
 
-	if ((size < PAGE_SIZE) ||
-	    (buf->b_hdr->b_flags & ARC_BUF_CLONING) ||
-	    BUF_EMPTY(buf->b_hdr)) {
-		
+	if ((size < PAGE_SIZE)) {
+		data = zio_buf_alloc(size);
+	} else if ((buf->b_hdr->b_flags & ARC_BUF_CLONING) ||
+	    BUF_EMPTY(buf->b_hdr)) {		
 		newbp = geteblk(size, flags);
+		data = newbp->b_data;		
 	} else {
 		/*
 		 * We need to be careful to handle the case where the buffer
@@ -1358,13 +1360,15 @@ arc_getblk(arc_buf_t *buf)
 			newbp = getblk(vp, blkno, size, 0, 0, flags);
 
 		newbp->b_offset = buf->b_hdr->b_birth;
+		data = newbp->b_data;		
 	}
 
-	if ((size >= PAGE_SIZE) && (buf->b_hdr->b_flags & ARC_BUF_CLONING)) {
+	if (buf->b_hdr->b_flags & ARC_BUF_CLONING) {
 		vp = spa_get_vnode(spa);
 
 		bcopy(buf->b_next->b_data, newbp->b_data, size);
-		arc_binval(buf, blkno, vp, size, newbp);
+		if (size >= PAGE_SIZE)
+			arc_binval(buf, blkno, vp, size, newbp);
 		buf->b_hdr->b_flags &= ~ARC_BUF_CLONING;		
 	} 
 	
@@ -1379,7 +1383,7 @@ arc_getblk(arc_buf_t *buf)
 
 	BUF_KERNPROC(newbp);
 	buf->b_bp = newbp;
-	buf->b_data = newbp->b_data;
+	buf->b_data = data;
 }
 
 static void
@@ -1388,6 +1392,11 @@ arc_brelse(arc_buf_t *buf, void *data, size_t size)
 	struct buf *bp;
 
 	bp = buf->b_bp;
+	if (bp == NULL) {
+		zio_buf_free(buf->b_data, size);
+		return;
+	}
+
 #ifdef INVARIANTS
 	if (bp->b_vp) {
 		KASSERT((buf->b_bp->b_xflags & (BX_VNCLEAN|BX_VNDIRTY)) == BX_VNCLEAN, ("brelse() on buffer that is not clean"));
@@ -1717,6 +1726,7 @@ arc_evict(arc_state_t *state, spa_t *spa, int64_t bytes, boolean_t recycle,
 	
 	if (type == ARC_BUFC_METADATA) {
 		offset = 0;
+
 		list_count = ARC_BUFC_NUMMETADATALISTS;
 		list_start = &state->arcs_lists[0];
 		evicted_list_start = &evicted_state->arcs_lists[0];
