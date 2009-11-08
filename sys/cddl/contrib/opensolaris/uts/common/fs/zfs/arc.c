@@ -1366,7 +1366,7 @@ arc_getblk(arc_buf_t *buf)
 	if (buf->b_hdr->b_flags & ARC_BUF_CLONING) {
 		vp = spa_get_vnode(spa);
 
-		bcopy(buf->b_next->b_data, newbp->b_data, size);
+		bcopy(buf->b_next->b_data, data, size);
 		if (size >= PAGE_SIZE)
 			arc_binval(buf, blkno, vp, size, newbp);
 		buf->b_hdr->b_flags &= ~ARC_BUF_CLONING;		
