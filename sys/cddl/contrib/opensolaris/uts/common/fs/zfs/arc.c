@@ -2708,9 +2708,11 @@ arc_read_done(zio_t *zio)
 
 	arc_cksum_compute(buf, B_FALSE);
 
-	buf->b_bp->b_flags &= ~B_INVAL;
-	buf->b_bp->b_flags |= B_CACHE;
-
+	if (buf->b_bp != NULL) {
+		buf->b_bp->b_flags &= ~B_INVAL;
+		buf->b_bp->b_flags |= B_CACHE;
+	}
+	
 	/* create copies of the data buffer for the callers */
 	abuf = buf;
 	for (acb = callback_list; acb; acb = acb->acb_next) {
@@ -2969,16 +2971,18 @@ top:
 		 * We hit in the page cache
 		 *
 		 */
-		if ((buf->b_bp->b_flags & (B_CACHE|B_INVAL)) == B_CACHE) {
-			/*
-			 * track the number of times
-			 * the buffer was found in the cache
-			 */
-			ARCSTAT_BUMP(arcstat_page_cache_hits);
-			mutex_exit(hash_lock);
-			goto top;
-		} else
+		if (buf->b_bp != NULL) {
+			if ((buf->b_bp->b_flags & (B_CACHE|B_INVAL)) == B_CACHE) {
+				/*
+				 * track the number of times
+				 * the buffer was found in the cache
+				 */
+				ARCSTAT_BUMP(arcstat_page_cache_hits);
+				mutex_exit(hash_lock);
+				goto top;
+			}
 			buf->b_bp->b_offset = bp->blk_birth;
+		}
 
 		acb = kmem_zalloc(sizeof (arc_callback_t), KM_SLEEP);
 		acb->acb_done = done;
@@ -3449,6 +3453,7 @@ arc_write_done(zio_t *zio)
 			exists = buf_hash_insert(hdr, &hash_lock);
 			ASSERT3P(exists, ==, NULL);
 		} else if ((hdr->b_buf == buf) &&
+		    (bp != NULL) &&
 		    (bp->b_bufobj == NULL) &&
 		    (bp->b_bcount >= PAGE_SIZE)) {
 			arc_binval(buf, blkno, vp, bp->b_bcount, bp);
