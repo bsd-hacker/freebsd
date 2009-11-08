@@ -1381,7 +1381,8 @@ arc_getblk(arc_buf_t *buf)
 	    newbp, newbp->b_flags);
 #endif
 
-	BUF_KERNPROC(newbp);
+	if (newbp != NULL)
+		BUF_KERNPROC(newbp);
 	buf->b_bp = newbp;
 	buf->b_data = data;
 }
@@ -3424,7 +3425,7 @@ arc_write_done(zio_t *zio)
 		off_t blkno = hdr->b_dva.dva_word[1] & ~(1UL<<63);	
 
 		CTR3(KTR_SPARE2, "arc_write_done() bp=%p flags %X blkno %ld",
-		    bp, bp->b_flags, blkno);
+		    bp, bp ? bp->b_flags : 0, blkno);
 
 		arc_cksum_verify(buf);
 
