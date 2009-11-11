@@ -342,7 +342,8 @@ clkintr(void *arg)
 	 */
 	
 	if (shadow_tv_version != HYPERVISOR_shared_info->wc_version) {
-		printf("[XEN] hypervisor wallclock nudged; nudging TOD.\n");
+		if (bootverbose)
+			printf("[XEN] hypervisor wallclock nudged; nudging TOD.\n");
 		update_wallclock();
 		add_uptime_to_wallclock();
 		tc_setclock(&shadow_tv);
