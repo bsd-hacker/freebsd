@@ -332,8 +332,9 @@ join(const char *dir, const char *name)
 {
 	char *buffer;
 
-	buffer = malloc(strlen(dir) + strlen("/") + strlen(name) + 1,
-	    M_DEVBUF, M_WAITOK);
+	if ((buffer = malloc(strlen(dir) + strlen("/") + strlen(name) + 1,
+		    M_DEVBUF, M_NOWAIT)) == NULL)
+		return (NULL);
 
 	strcpy(buffer, dir);
 	if (strcmp(name, "")) {
@@ -379,6 +380,9 @@ xenbus_directory(struct xenbus_transaction t, const char *dir,
 	int error;
 
 	path = join(dir, node);
+	if (path == NULL)
+		return (ENOMEM);
+
 	error = xs_single(t, XS_DIRECTORY, path, &len, (void **) &strings);
 	free(path, M_DEVBUF);
 	if (error)
@@ -562,8 +566,11 @@ xenbus_printf(struct xenbus_transaction t,
 #define PRINTF_BUFFER_SIZE 4096
 	char *printf_buffer;
 
-	printf_buffer = malloc(PRINTF_BUFFER_SIZE, M_DEVBUF, M_WAITOK);
+	printf_buffer = malloc(PRINTF_BUFFER_SIZE, M_DEVBUF, M_NOWAIT);
 
+	if (printf_buffer == NULL)
+		return (ENOMEM);
+	
 	va_start(ap, fmt);
 	ret = vsnprintf(printf_buffer, PRINTF_BUFFER_SIZE, fmt, ap);
 	va_end(ap);
@@ -789,7 +796,9 @@ xs_process_msg(enum xsd_sockmsg_type *type)
 	char *body;
 	int error;
 		
-	msg = malloc(sizeof(*msg), M_DEVBUF, M_WAITOK);
+	if ((msg = malloc(sizeof(*msg), M_DEVBUF, M_NOWAIT)) == NULL)
+		return (ENOMEM);
+		
 	mtx_lock(&xs_state.reply_lock);
 	error = xb_read(&msg->hdr, sizeof(msg->hdr), &xs_state.reply_lock.lock_object);
 	mtx_unlock(&xs_state.reply_lock);
@@ -798,7 +807,11 @@ xs_process_msg(enum xsd_sockmsg_type *type)
 		return (error);
 	}
 
-	body = malloc(msg->hdr.len + 1, M_DEVBUF, M_WAITOK);
+	if ((body = malloc(msg->hdr.len + 1, M_DEVBUF, M_NOWAIT)) == NULL) {
+		free(msg, M_DEVBUF);
+		return (ENOMEM);
+	}
+		
 	mtx_lock(&xs_state.reply_lock);
 	error = xb_read(body, msg->hdr.len, &xs_state.reply_lock.lock_object); 
 	mtx_unlock(&xs_state.reply_lock);
