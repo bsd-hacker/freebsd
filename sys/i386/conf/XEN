@@ -86,8 +86,8 @@ options		CPU_DISABLE_SSE
 
 
 # To make an SMP kernel, the next two lines are needed
-options 	SMP			# Symmetric MultiProcessor Kernel
-device		apic			# I/O APIC
+#options 	SMP			# Symmetric MultiProcessor Kernel
+#device		apic			# I/O APIC
 
 # CPU frequency control
 #device		cpufreq
