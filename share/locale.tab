@@ -1,0 +1,85 @@
+#
+# $FreeBSD$
+#
+# Lists of locales and corresponding charactersets known by the
+# FreeBSD locale definition database (/usr/share/*def)..
+#
+# Note that even if the FreeBSD locale definition database has an
+# entry for it, it doesn't mean automatically that all FreeBSD base
+# system tools do support them, not that all FreeBSD ports related
+# tools do support them.
+#
+# Extra charactermaps: defines which additional charactermaps besides UTF-8
+# need to be generated for a certain language/country combination.
+#
+af_ZA: ISO8859-1 ISO8859-15
+am_ET: 
+be_BY: CP1131 CP1251 ISO8859-5
+bg_BG: CP1251
+ca_AD: ISO8859-1 ISO8859-15
+ca_ES: ISO8859-1 ISO8859-15
+ca_FR: ISO8859-1 ISO8859-15
+ca_IT: ISO8859-1 ISO8859-15
+cs_CZ: ISO8859-2
+da_DK: ISO8859-1 ISO8859-15
+de_AT: ISO8859-1 ISO8859-15
+de_CH: ISO8859-1 ISO8859-15
+de_DE: ISO8859-1 ISO8859-15
+el_GR: ISO8859-7
+en_AU: ISO8859-1 ISO8859-15 US-ASCII
+en_CA: ISO8859-1 ISO8859-15 US-ASCII
+en_GB: ISO8859-1 ISO8859-15 US-ASCII
+en_IE:
+en_NZ: ISO8859-1 ISO8859-15 US-ASCII
+en_US: ISO8859-1 ISO8859-15 US-ASCII
+es_ES: ISO8859-1 ISO8859-15
+et_EE: ISO8859-15
+eu_ES: ISO8859-1 ISO8859-15
+fi_FI: ISO8859-1 ISO8859-15
+fr_BE: ISO8859-1 ISO8859-15
+fr_CA: ISO8859-1 ISO8859-15
+fr_CH: ISO8859-1 ISO8859-15
+fr_FR: ISO8859-1 ISO8859-15
+he_IL: 
+hi_IN: ISCII-DEV
+hr_HR: ISO8859-2
+hu_HU: ISO8859-2
+hy_AM: ARMSCII-8
+is_IS: ISO8859-1 ISO8859-15
+it_CH: ISO8859-1 ISO8859-15
+it_IT: ISO8859-1 ISO8859-15
+ja_JP: SJIS eucJP
+kk_KZ: PT154
+ko_KR: CP949 eucKR
+la_LN: ISO8859-2 ISO8859-4 ISO8859-15 US-ASCII
+lt_LT: ISO8859-4 ISO8859-13
+lv_LV: ISO8859-13
+mn_MN: 
+nb_NO: ISO8859-1 ISO8859-15
+nl_BE: ISO8859-1 ISO8859-15
+nl_NL: ISO8859-1 ISO8859-15
+nn_NO: ISO8859-1 ISO8859-15
+no_NO: ISO8859-1 ISO8859-15
+pl_PL: ISO8859-2
+pt_BR: ISO8859-1 ISO8859-15
+pt_PT: ISO8859-1 ISO8859-15
+ro_RO: ISO8859-2
+ru_RU: CP1251 CP866 ISO8859-5 KOI8-R
+sk_SK: ISO8859-2
+sl_SI: ISO8859-2
+sr_Cyrl_RS: ISO8859-5
+sr_Latn_RS: ISO8859-2
+sv_SE: ISO8859-1
+tr_TR: ISO8859-9
+uk_UA: CP1251 ISO8859-5 KOI8-U
+zh_Hans_CN: eucCN GB18030 GB2312 GBK
+zh_Hant_HK: Big5
+zh_Hant_TW: Big5
+#
+# Legacy links: The following language/country combinations are old
+# names and the corresponding new name.
+#
+sr_YU! sr_Cyrl_RS sr_Latn_RS
+zh_CN! zh_Hans_CN
+zh_HK! zh_Hant_HK
+zh_TW! zh_Hant_TW
