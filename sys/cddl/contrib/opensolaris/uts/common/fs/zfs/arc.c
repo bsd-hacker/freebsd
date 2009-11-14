@@ -1259,9 +1259,7 @@ arc_buf_clone(arc_buf_t *from)
 	hdr->b_buf = buf;
 	hdr->b_flags |= ARC_BUF_CLONING;
 	arc_get_data_buf(buf);
-#ifdef nomore	
 	bcopy(from->b_data, buf->b_data, size);
-#endif	
 	hdr->b_datacnt += 1;
 	return (buf);
 }
@@ -1327,7 +1325,7 @@ arc_getblk(arc_buf_t *buf)
 	if ((size < PAGE_SIZE)) {
 		data = zio_buf_alloc(size);
 	} else if ((buf->b_hdr->b_flags & ARC_BUF_CLONING) ||
-	    BUF_EMPTY(buf->b_hdr)) {		
+	    BUF_EMPTY(buf->b_hdr)) {
 		newbp = geteblk(size, flags);
 		data = newbp->b_data;		
 	} else {
@@ -1363,15 +1361,12 @@ arc_getblk(arc_buf_t *buf)
 		data = newbp->b_data;		
 	}
 
-	if (buf->b_hdr->b_flags & ARC_BUF_CLONING) {
-		vp = spa_get_vnode(spa);
+	if ((buf->b_hdr->b_flags & ARC_BUF_CLONING) &&
+	    (size >= PAGE_SIZE) &&
+	    (!BUF_EMPTY(buf->b_hdr)))
+		arc_binval(buf, blkno, vp, size, newbp);
+	buf->b_hdr->b_flags &= ~ARC_BUF_CLONING;
 
-		bcopy(buf->b_next->b_data, data, size);
-		if (size >= PAGE_SIZE)
-			arc_binval(buf, blkno, vp, size, newbp);
-		buf->b_hdr->b_flags &= ~ARC_BUF_CLONING;		
-	} 
-	
 #ifdef LOGALL
 	/*
 	 * not useful for tracking down collisions
