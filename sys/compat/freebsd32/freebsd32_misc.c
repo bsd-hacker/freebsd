@@ -31,6 +31,8 @@ __FBSDID("$FreeBSD$");
 #include "opt_inet.h"
 #include "opt_inet6.h"
 
+#define __ELF_WORD_SIZE 32
+
 #include <sys/param.h>
 #include <sys/bus.h>
 #include <sys/clock.h>
@@ -44,6 +46,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/lock.h>
 #include <sys/malloc.h>
 #include <sys/file.h>		/* Must come after sys/malloc.h */
+#include <sys/imgact.h>
 #include <sys/mbuf.h>
 #include <sys/mman.h>
 #include <sys/module.h>
@@ -91,6 +94,7 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_extern.h>
 
 #include <machine/cpu.h>
+#include <machine/elf.h>
 
 #include <security/audit/audit.h>
 
@@ -3072,3 +3076,123 @@ syscall32_module_handler(struct module *mod, int what, void *arg)
 		return (error);
 	}
 }
+
+register_t *
+freebsd32_copyout_strings(struct image_params *imgp)
+{
+	int argc, envc;
+	u_int32_t *vectp;
+	char *stringp, *destp;
+	u_int32_t *stack_base;
+	struct freebsd32_ps_strings *arginfo;
+	size_t execpath_len;
+	int szsigcode;
+
+	/*
+	 * Calculate string base and vector table pointers.
+	 * Also deal with signal trampoline code for this exec type.
+	 */
+	if (imgp->execpath != NULL && imgp->auxargs != NULL)
+		execpath_len = strlen(imgp->execpath) + 1;
+	else
+		execpath_len = 0;
+	arginfo = (struct freebsd32_ps_strings *)FREEBSD32_PS_STRINGS;
+	szsigcode = *(imgp->proc->p_sysent->sv_szsigcode);
+	destp =	(caddr_t)arginfo - szsigcode - SPARE_USRSPACE -
+		roundup(execpath_len, sizeof(char *)) -
+		roundup((ARG_MAX - imgp->args->stringspace), sizeof(char *));
+
+	/*
+	 * install sigcode
+	 */
+	if (szsigcode)
+		copyout(imgp->proc->p_sysent->sv_sigcode,
+			((caddr_t)arginfo - szsigcode), szsigcode);
+
+	/*
+	 * Copy the image path for the rtld.
+	 */
+	if (execpath_len != 0) {
+		imgp->execpathp = (uintptr_t)arginfo - szsigcode - execpath_len;
+		copyout(imgp->execpath, (void *)imgp->execpathp,
+		    execpath_len);
+	}
+
+	/*
+	 * If we have a valid auxargs ptr, prepare some room
+	 * on the stack.
+	 */
+	if (imgp->auxargs) {
+		/*
+		 * 'AT_COUNT*2' is size for the ELF Auxargs data. This is for
+		 * lower compatibility.
+		 */
+		imgp->auxarg_size = (imgp->auxarg_size) ? imgp->auxarg_size
+			: (AT_COUNT * 2);
+		/*
+		 * The '+ 2' is for the null pointers at the end of each of
+		 * the arg and env vector sets,and imgp->auxarg_size is room
+		 * for argument of Runtime loader.
+		 */
+		vectp = (u_int32_t *) (destp - (imgp->args->argc +
+		    imgp->args->envc + 2 + imgp->auxarg_size + execpath_len) *
+		    sizeof(u_int32_t));
+	} else
+		/*
+		 * The '+ 2' is for the null pointers at the end of each of
+		 * the arg and env vector sets
+		 */
+		vectp = (u_int32_t *)
+			(destp - (imgp->args->argc + imgp->args->envc + 2) * sizeof(u_int32_t));
+
+	/*
+	 * vectp also becomes our initial stack base
+	 */
+	stack_base = vectp;
+
+	stringp = imgp->args->begin_argv;
+	argc = imgp->args->argc;
+	envc = imgp->args->envc;
+	/*
+	 * Copy out strings - arguments and environment.
+	 */
+	copyout(stringp, destp, ARG_MAX - imgp->args->stringspace);
+
+	/*
+	 * Fill in "ps_strings" struct for ps, w, etc.
+	 */
+	suword32(&arginfo->ps_argvstr, (u_int32_t)(intptr_t)vectp);
+	suword32(&arginfo->ps_nargvstr, argc);
+
+	/*
+	 * Fill in argument portion of vector table.
+	 */
+	for (; argc > 0; --argc) {
+		suword32(vectp++, (u_int32_t)(intptr_t)destp);
+		while (*stringp++ != 0)
+			destp++;
+		destp++;
+	}
+
+	/* a null vector table pointer separates the argp's from the envp's */
+	suword32(vectp++, 0);
+
+	suword32(&arginfo->ps_envstr, (u_int32_t)(intptr_t)vectp);
+	suword32(&arginfo->ps_nenvstr, envc);
+
+	/*
+	 * Fill in environment portion of vector table.
+	 */
+	for (; envc > 0; --envc) {
+		suword32(vectp++, (u_int32_t)(intptr_t)destp);
+		while (*stringp++ != 0)
+			destp++;
+		destp++;
+	}
+
+	/* end of vector table is a null pointer */
+	suword32(vectp, 0);
+
+	return ((register_t *)stack_base);
+}
+

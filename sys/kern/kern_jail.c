@@ -707,7 +707,7 @@ kern_jail_set(struct thread *td, struct uio *optuio, int flags)
 		}
 	}
 
-#ifdef COMPAT_IA32
+#ifdef COMPAT_FREEBSD32
 	if (td->td_proc->p_sysent->sv_flags & SV_IA32) {
 		uint32_t hid32;
 
@@ -1929,7 +1929,7 @@ kern_jail_get(struct thread *td, struct uio *optuio, int flags)
 	error = vfs_setopts(opts, "host.hostuuid", pr->pr_hostuuid);
 	if (error != 0 && error != ENOENT)
 		goto done_deref;
-#ifdef COMPAT_IA32
+#ifdef COMPAT_FREEBSD32
 	if (td->td_proc->p_sysent->sv_flags & SV_IA32) {
 		uint32_t hid32 = pr->pr_hostid;
 

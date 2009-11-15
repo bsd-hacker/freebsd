@@ -17,8 +17,8 @@
 
 #include <bsm/audit_kevents.h>
 
+struct image_params;
 struct proc;
-
 struct thread;
 
 #define	PAD_(t)	(sizeof(register_t) <= sizeof(t) ? \
@@ -545,6 +545,7 @@ int	freebsd32_semctl(struct thread *, struct freebsd32_semctl_args *);
 int	freebsd32_msgctl(struct thread *, struct freebsd32_msgctl_args *);
 int	freebsd32_shmctl(struct thread *, struct freebsd32_shmctl_args *);
 int	freebsd32_pselect(struct thread *, struct freebsd32_pselect_args *);
+register_t *freebsd32_copyout_strings(struct image_params *imgp);
 
 #ifdef COMPAT_43
 
