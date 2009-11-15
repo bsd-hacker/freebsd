@@ -357,9 +357,9 @@ syscall(struct trapframe *frame)
 	struct		sysent *callp;
 	struct		thread *td;
 	struct		proc *p;
-	int		error, n;
-	size_t		narg;
-	register_t	args[10];
+	int		error, n, i;
+	size_t		narg, argsz;
+	u_register_t	args[10];
 	u_int		code;
 
 	td = PCPU_GET(curthread);
@@ -370,6 +370,11 @@ syscall(struct trapframe *frame)
 	code = frame->fixreg[0];
 	params = (caddr_t)(frame->fixreg + FIRSTARG);
 	n = NARGREG;
+
+	if (p->p_sysent->sv_flags & SV_ILP32)
+		argsz = sizeof(uint32_t);
+	else
+		argsz = sizeof(uint64_t);
 
 	if (p->p_sysent->sv_prepsyscall) {
 		/*
@@ -382,7 +387,7 @@ syscall(struct trapframe *frame)
 		 * code is first argument,
 		 * followed by actual args.
 		 */
-		code = *(u_int *) params;
+		code = *(register_t *) params;
 		params += sizeof(register_t);
 		n -= 1;
 	} else if (code == SYS___syscall) {
@@ -391,10 +396,16 @@ syscall(struct trapframe *frame)
 		 * so as to maintain quad alignment
 		 * for the rest of the args.
 		 */
-		params += sizeof(register_t);
-		code = *(u_int *) params;
-		params += sizeof(register_t);
-		n -= 2;
+		if (p->p_sysent->sv_flags & SV_ILP32) {
+			params += sizeof(register_t);
+			code = *(register_t *) params;
+			params += sizeof(register_t);
+			n -= 2;
+		} else {
+			code = *(register_t *) params;
+			params += sizeof(register_t);
+			n -= 1;
+		}
 	}
 
  	if (p->p_sysent->sv_mask)
@@ -407,23 +418,27 @@ syscall(struct trapframe *frame)
 
 	narg = callp->sy_narg;
 
-	if (narg > n) {
-		bcopy(params, args, n * sizeof(register_t));
+	if (p->p_sysent->sv_flags & SV_ILP32) {
+		for (i = 0; i < n; i++)
+			args[i] = ((u_register_t *)(params))[i] & 0xffffffff;
+	} else {
+		for (i = 0; i < n; i++)
+			args[i] = ((u_register_t *)(params))[i];
+	}
+
+	if (narg > n)
 		error = copyin(MOREARGS(frame->fixreg[1]), args + n,
-			       (narg - n) * sizeof(register_t));
-		params = (caddr_t)args;
-	} else
+			       (narg - n) * argsz);
+	else
 		error = 0;
 
 	CTR5(KTR_SYSC, "syscall: p=%s %s(%x %x %x)", td->td_name,
 	     syscallnames[code],
-	     frame->fixreg[FIRSTARG],
-	     frame->fixreg[FIRSTARG+1],
-	     frame->fixreg[FIRSTARG+2]);
+	     args[0], args[1], args[2]);
 
 #ifdef	KTRACE
 	if (KTRPOINT(td, KTR_SYSCALL))
-		ktrsyscall(code, narg, (register_t *)params);
+		ktrsyscall(code, narg, args);
 #endif
 
 	td->td_syscalls++;
@@ -437,7 +452,7 @@ syscall(struct trapframe *frame)
 		PTRACESTOP_SC(p, td, S_PT_SCE);
 
 		AUDIT_SYSCALL_ENTER(code, td);
-		error = (*callp->sy_call)(td, params);
+		error = (*callp->sy_call)(td, args);
 		AUDIT_SYSCALL_EXIT(error, td);
 
 		CTR3(KTR_SYSC, "syscall: p=%s %s ret=%x", td->td_name,

@@ -57,7 +57,7 @@ stack_capture(struct stack *st, vm_offset_t frame)
 	if (frame < PAGE_SIZE)
 		return;
 	while (1) {
-		frame = *(register_t *)frame;
+		frame = *(vm_offset_t *)frame;
 		if (frame < PAGE_SIZE)
 			break;
 
@@ -75,8 +75,8 @@ stack_capture(struct stack *st, vm_offset_t frame)
 		 * things are going wrong. Plus, prevents this shortened
 		 * version of code from accessing user-space frames
 		 */
-		if (callpc + CALLOFFSET == (register_t) &trapexit ||
-		    callpc + CALLOFFSET == (register_t) &asttrapexit)
+		if (callpc + CALLOFFSET == (vm_offset_t) &trapexit ||
+		    callpc + CALLOFFSET == (vm_offset_t) &asttrapexit)
 			break;
 
 		if (stack_put(st, callpc) == -1)

@@ -107,7 +107,9 @@ powerpc/powerpc/db_hwwatch.c	optional	ddb
 powerpc/powerpc/db_interface.c	optional	ddb
 powerpc/powerpc/db_trace.c	optional	ddb
 powerpc/powerpc/dump_machdep.c	standard
+powerpc/powerpc/elf32_machdep.c	optional	compat_freebsd32
 powerpc/powerpc/elf64_machdep.c	standard
+powerpc/powerpc/exec_machdep.c	standard
 powerpc/powerpc/fpu.c		optional	aim
 powerpc/powerpc/fuswintr.c	standard
 powerpc/powerpc/gdb_machdep.c	optional	gdb
@@ -129,3 +131,10 @@ powerpc/powerpc/suswintr.c	standard
 powerpc/powerpc/syncicache.c	standard
 powerpc/powerpc/sys_machdep.c	standard
 powerpc/powerpc/uio_machdep.c	standard
+
+compat/freebsd32/freebsd32_ioctl.c	optional	compat_freebsd32
+compat/freebsd32/freebsd32_misc.c	optional	compat_freebsd32
+compat/freebsd32/freebsd32_syscalls.c	optional	compat_freebsd32
+compat/freebsd32/freebsd32_sysent.c	optional	compat_freebsd32
+kern/imgact_elf32.c			optional	compat_ppc32
+

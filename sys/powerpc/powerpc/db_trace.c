@@ -53,6 +53,12 @@ static db_varfcn_t db_frame;
 
 #define DB_OFFSET(x)	(db_expr_t *)offsetof(struct trapframe, x)
 
+#ifdef __powerpc64__
+#define	CALLOFFSET	8	/* Include TOC reload slot */
+#else
+#define	CALLOFFSET	4
+#endif
+
 struct db_variable db_regs[] = {
 	{ "r0",	 DB_OFFSET(fixreg[0]),	db_frame },
 	{ "r1",	 DB_OFFSET(fixreg[1]),	db_frame },
@@ -205,11 +211,10 @@ db_backtrace(struct thread *td, db_addr_t fp, int count)
 		 * to determine if the callframe has to traverse a saved
 		 * trap context
 		 */
-		if ((lr + 4 == (db_addr_t) &trapexit) ||
-		    (lr + 4 == (db_addr_t) &asttrapexit)) {
+		if ((lr + CALLOFFSET == (db_addr_t) &trapexit) ||
+		    (lr + CALLOFFSET == (db_addr_t) &asttrapexit)) {
 			const char *trapstr;
-			struct trapframe *tf = (struct trapframe *)
-				(stackframe+8);
+			struct trapframe *tf = (struct trapframe *)(args);
 			db_printf("%s ", tf->srr1 & PSL_PR ? "user" : "kernel");
 			switch (tf->exc) {
 			case EXC_DSI:

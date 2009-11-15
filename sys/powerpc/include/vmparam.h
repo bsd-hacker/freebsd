@@ -91,6 +91,7 @@
 #endif /* LOCORE */
 
 #define	VM_MAX_ADDRESS		VM_MAXUSER_ADDRESS
+#define	FREEBSD32_USRSTACK	0x7ffff000
 
 
 #if defined(AIM)	/* AIM */

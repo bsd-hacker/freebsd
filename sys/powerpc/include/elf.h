@@ -126,4 +126,40 @@ __ElfType(Auxinfo);
 
 #define	ET_DYN_LOAD_ADDR 0x01010000
 
+/*
+ * Define some bits needed for 32-bit compatibility.
+ */
+
+#if defined(_KERNEL) && defined(__powerpc64__)
+#include <sys/proc.h>
+#include <sys/procfs.h>
+
+#include "opt_compat.h"
+
+#ifdef COMPAT_PPC32
+/*
+ * Alternative layouts for <sys/procfs.h>
+ * Used in core dumps, the reason for this file existing.
+ */
+struct prstatus32 {
+	int	pr_version;
+	u_int	pr_statussz;
+	u_int	pr_gregsetsz;
+	u_int	pr_fpregsetsz;
+	int	pr_osreldate;
+	int	pr_cursig;
+	pid_t	pr_pid;
+	struct reg32 pr_reg;
+};
+
+struct prpsinfo32 {
+	int	pr_version;
+	u_int	pr_psinfosz;
+	char	pr_fname[PRFNAMESZ+1];
+	char	pr_psargs[PRARGSZ+1];
+};
+#endif
+
+#endif
+
 #endif /* !_MACHINE_ELF_H_ */

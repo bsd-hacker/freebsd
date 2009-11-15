@@ -418,7 +418,11 @@ realtrap:
 	bf	17,k_trap		/* branch if PSL_PR is false */
 	GET_CPUINFO(%r1)
 	ld	%r1,PC_CURPCB(%r1)
+	mr	%r27,%r28		/* Save LR, r29 */
+	mtsprg2	%r29
 	RESTORE_KERN_SRS()		/* enable kernel mapping */
+	mfsprg2	%r29
+	mr	%r28,%r27
 	ba s_trap
 
 /*
@@ -462,7 +466,11 @@ s_trap:
 	GET_CPUINFO(%r1)
 u_trap:
 	ld	%r1,PC_CURPCB(%r1)
+	mr	%r27,%r28		/* Save LR, r29 */
+	mtsprg2	%r29
 	RESTORE_KERN_SRS() /* enable kernel mapping */
+	mfsprg2	%r29
+	mr	%r28,%r27
 
 /*
  * Now the common trap catching code.

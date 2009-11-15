@@ -28,6 +28,9 @@
 #include <sys/param.h>
 #include <sys/kernel.h>
 #include <sys/systm.h>
+
+#define __ELF_WORD_SIZE 32
+
 #include <sys/exec.h>
 #include <sys/imgact.h>
 #include <sys/malloc.h>
@@ -46,11 +49,21 @@
 
 #include <machine/cpu.h>
 #include <machine/elf.h>
+#include <machine/reg.h>
 #include <machine/md_var.h>
+
+#ifdef __powerpc64__
+#include <compat/freebsd32/freebsd32_proto.h>
+#include <compat/freebsd32/freebsd32_util.h>
+#endif
 
 struct sysentvec elf32_freebsd_sysvec = {
 	.sv_size	= SYS_MAXSYSCALL,
+#ifdef __powerpc64__
+	.sv_table	= freebsd32_sysent,
+#else
 	.sv_table	= sysent,
+#endif
 	.sv_mask	= 0,
 	.sv_sigsize	= 0,
 	.sv_sigtbl	= NULL,
@@ -72,8 +85,13 @@ struct sysentvec elf32_freebsd_sysvec = {
 	.sv_usrstack	= USRSTACK,
 	.sv_psstrings	= PS_STRINGS,
 	.sv_stackprot	= VM_PROT_ALL,
+#ifdef __powerpc64__
+	.sv_copyout_strings = freebsd32_copyout_strings,
+	.sv_setregs	= ppc32_setregs,
+#else
 	.sv_copyout_strings = exec_copyout_strings,
 	.sv_setregs	= exec_setregs,
+#endif
 	.sv_fixlimit	= NULL,
 	.sv_maxssiz	= NULL,
 	.sv_flags	= SV_ABI_FREEBSD | SV_ILP32
@@ -111,14 +129,13 @@ SYSINIT(oelf32, SI_SUB_EXEC, SI_ORDER_ANY,
 	(sysinit_cfunc_t) elf32_insert_brand_entry,
 	&freebsd_brand_oinfo);
 
-
 void
 elf32_dump_thread(struct thread *td __unused, void *dst __unused,
     size_t *off __unused)
 {
 }
 
-
+#ifndef __powerpc64__
 /* Process one elf relocation with addend. */
 static int
 elf_reloc_internal(linker_file_t lf, Elf_Addr relocbase, const void *data,
@@ -137,8 +154,8 @@ elf_reloc_internal(linker_file_t lf, Elf_Addr relocbase, const void *data,
 		break;
 	case ELF_RELOC_RELA:
 		rela = (const Elf_Rela *)data;
-		where = (Elf_Addr *) (relocbase + rela->r_offset);
-		hwhere = (Elf_Half *) (relocbase + rela->r_offset);
+		where = (Elf_Addr *) ((uintptr_t)relocbase + rela->r_offset);
+		hwhere = (Elf_Half *) ((uintptr_t)relocbase + rela->r_offset);
 		addend = rela->r_addend;
 		rtype = ELF_R_TYPE(rela->r_info);
 		symidx = ELF_R_SYM(rela->r_info);
@@ -236,3 +253,4 @@ elf_cpu_unload_file(linker_file_t lf __unused)
 
 	return (0);
 }
+#endif

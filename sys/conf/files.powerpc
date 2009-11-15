@@ -154,7 +154,8 @@ powerpc/powerpc/db_hwwatch.c	optional	ddb
 powerpc/powerpc/db_interface.c	optional	ddb
 powerpc/powerpc/db_trace.c	optional	ddb
 powerpc/powerpc/dump_machdep.c	standard
-powerpc/powerpc/elf_machdep.c	standard
+powerpc/powerpc/elf32_machdep.c	standard
+powerpc/powerpc/exec_machdep.c	standard
 powerpc/powerpc/fpu.c		optional	aim
 powerpc/powerpc/fuswintr.c	standard
 powerpc/powerpc/gdb_machdep.c	optional	gdb
