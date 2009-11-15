@@ -494,7 +494,7 @@ static void arc_access(arc_buf_hdr_t *buf, kmutex_t *hash_lock);
 static int arc_evict_needed(arc_buf_contents_t type);
 static void arc_evict_ghost(arc_state_t *state, spa_t *spa, int64_t bytes);
 static void arc_binval(arc_buf_t *buf, off_t blkno, struct vnode *vp,
-    size_t size, struct buf *bp);
+    size_t size, int flags, struct buf *bp);
 
 #define	GHOST_STATE(state)						\
 	((state) == arc_mru_ghost || (state) == arc_mfu_ghost ||	\
@@ -1298,6 +1298,67 @@ arc_buf_add_ref(arc_buf_t *buf, void* tag)
 	    data, metadata, hits);
 }
 
+static struct buf *
+arc_gbincore_replace(struct vnode *vp, off_t blkno, size_t size, int flags,
+    struct buf *newbp)
+{
+	struct buf *bp;
+	struct bufobj *bo;
+	int associated = 0;
+
+	/*
+	 * We need to be careful to handle the case where the buffer
+	 * is already held in the ARC for a previous birth transaction
+	 */
+	bo = &vp->v_bufobj;
+	BO_LOCK(bo);
+	bp = gbincore(bo, blkno);
+	if (bp != NULL) {
+		if (bp == newbp) {
+			BO_UNLOCK(bo);
+			return (bp);
+		}
+		if (BUF_ISLOCKED(bp)) {
+			BO_UNLOCK(bo);
+			brelvp(bp);
+		} else {
+			BUF_LOCK(bp, LK_EXCLUSIVE | LK_INTERLOCK, BO_MTX(bo));
+			if (newbp != NULL) {
+				bp->b_flags |= B_INVAL;
+				bp->b_flags &= ~B_CACHE;
+				bremfree(bp);
+				brelse(bp);
+			} else {
+				/*
+				 * We don't have a new buffer for which we're 
+				 * replacing the mapping, use this buffer
+				 */
+				if (bp->b_flags & B_INVAL)
+					bp->b_flags &= ~B_CACHE;
+				else if ((bp->b_flags & (B_VMIO | B_INVAL)) == 0)
+					bp->b_flags |= B_CACHE;
+				bremfree(bp);
+				if (bp->b_bcount != size)
+					allocbuf_flags(bp, size, flags);
+				associated = 1;
+			}
+		}
+	}
+
+	if (!associated) {
+		if (newbp != NULL) {
+			if (bp != NULL)
+				BO_LOCK(bo);
+			bgetvp(vp, newbp);
+			BO_UNLOCK(bo);
+			bp = newbp;
+		} else
+			bp = getblk(vp, blkno, size, 0, 0, flags);
+	} 
+
+	return (bp);
+}
+
 static void
 arc_getblk(arc_buf_t *buf)
 {
@@ -1332,33 +1393,7 @@ arc_getblk(arc_buf_t *buf)
 		newbp = geteblk(size, flags);
 		data = newbp->b_data;		
 	} else {
-		/*
-		 * We need to be careful to handle the case where the buffer
-		 * is already held in the ARC for a previous birth transaction
-		 */
-		BO_LOCK(bo);
-		bp = gbincore(bo, blkno);
-		if (bp != NULL) {
-			if (BUF_ISLOCKED(bp)) {
-				BO_UNLOCK(bo);
-				brelvp(bp);
-			} else {
-				BUF_LOCK(bp, LK_EXCLUSIVE | LK_INTERLOCK, BO_MTX(bo));
-				if (bp->b_flags & B_INVAL)
-					bp->b_flags &= ~B_CACHE;
-				else if ((bp->b_flags & (B_VMIO | B_INVAL)) == 0)
-					bp->b_flags |= B_CACHE;
-				bremfree(bp);
-				if (bp->b_bcount != size)
-					allocbuf_flags(bp, size, flags);
-				newbp = bp;
-			}
-			
-		} else 
-			BO_UNLOCK(bo);
-
-		if (newbp == NULL)
-			newbp = getblk(vp, blkno, size, 0, 0, flags);
+		newbp = arc_gbincore_replace(vp, blkno, size, flags, NULL);
 
 		newbp->b_offset = buf->b_hdr->b_birth;
 		data = newbp->b_data;		
@@ -1368,7 +1403,7 @@ arc_getblk(arc_buf_t *buf)
 	    (size >= PAGE_SIZE) &&
 	    (!BUF_EMPTY(buf->b_hdr)) &&
 		!page_cache_disable)
-		arc_binval(buf, blkno, vp, size, newbp);
+		arc_binval(buf, blkno, vp, size, flags, newbp);
 	buf->b_hdr->b_flags &= ~ARC_BUF_CLONING;
 
 #ifdef LOGALL
@@ -1409,7 +1444,8 @@ arc_brelse(arc_buf_t *buf, void *data, size_t size)
 }
 
 static void
-arc_binval(arc_buf_t *buf, off_t blkno, struct vnode *vp, size_t size, struct buf *newbp) 
+arc_binval(arc_buf_t *buf, off_t blkno, struct vnode *vp, size_t size,
+    int flags, struct buf *newbp) 
 {
 	arc_buf_t *tbuf;
 	int released = 0;
@@ -1439,25 +1475,8 @@ arc_binval(arc_buf_t *buf, off_t blkno, struct vnode *vp, size_t size, struct bu
 	newbp->b_flags &= ~B_INVAL;
 	newbp->b_flags |= B_CACHE;
 
-	BO_LOCK(bo);
-	if (!released) {
-		bp = gbincore(bo, blkno);
-		if (bp != NULL) {
-			if (BUF_ISLOCKED(bp)) {
-				BO_UNLOCK(bo);
-				brelvp(bp);
-			} else {
-				BUF_LOCK(bp, LK_EXCLUSIVE | LK_INTERLOCK, BO_MTX(bo));
-				bp->b_flags |= B_INVAL;
-				bp->b_flags &= ~B_CACHE;
-				bremfree(bp);
-				brelse(bp);
-			}
-			BO_LOCK(bo);
-		} 
-	}
-	bgetvp(vp, newbp);
-	BO_UNLOCK(bo);
+	if (!released) 
+		arc_gbincore_replace(vp, blkno, size, flags, newbp);
 }
 
 /*
@@ -3456,7 +3475,7 @@ arc_write_done(zio_t *zio)
 		    (bp->b_bufobj == NULL) &&
 		    (bp->b_bcount >= PAGE_SIZE) &&
 			!page_cache_disable) {
-			arc_binval(buf, blkno, vp, bp->b_bcount, bp);
+			arc_binval(buf, blkno, vp, bp->b_bcount, 0, bp);
 		}
 
 		hdr->b_flags &= ~ARC_IO_IN_PROGRESS;
