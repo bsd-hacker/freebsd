@@ -187,6 +187,8 @@ SYSCTL_QUAD(_vfs_zfs, OID_AUTO, arc_min, CTLFLAG_RDTUN, &zfs_arc_min, 0,
 SYSCTL_INT(_vfs_zfs, OID_AUTO, mdcomp_disable, CTLFLAG_RDTUN,
     &zfs_mdcomp_disable, 0, "Disable metadata compression");
 
+static int page_cache_disable = 1;
+
 #ifdef ZIO_USE_UMA
 extern kmem_cache_t	*zio_buf_cache[];
 extern kmem_cache_t	*zio_data_buf_cache[];
@@ -1325,7 +1327,8 @@ arc_getblk(arc_buf_t *buf)
 	if ((size < PAGE_SIZE)) {
 		data = zio_buf_alloc(size);
 	} else if ((buf->b_hdr->b_flags & ARC_BUF_CLONING) ||
-	    BUF_EMPTY(buf->b_hdr)) {
+	    BUF_EMPTY(buf->b_hdr) ||
+		page_cache_disable) {
 		newbp = geteblk(size, flags);
 		data = newbp->b_data;		
 	} else {
@@ -1363,7 +1366,8 @@ arc_getblk(arc_buf_t *buf)
 
 	if ((buf->b_hdr->b_flags & ARC_BUF_CLONING) &&
 	    (size >= PAGE_SIZE) &&
-	    (!BUF_EMPTY(buf->b_hdr)))
+	    (!BUF_EMPTY(buf->b_hdr)) &&
+		!page_cache_disable)
 		arc_binval(buf, blkno, vp, size, newbp);
 	buf->b_hdr->b_flags &= ~ARC_BUF_CLONING;
 
@@ -3450,7 +3454,8 @@ arc_write_done(zio_t *zio)
 		} else if ((hdr->b_buf == buf) &&
 		    (bp != NULL) &&
 		    (bp->b_bufobj == NULL) &&
-		    (bp->b_bcount >= PAGE_SIZE)) {
+		    (bp->b_bcount >= PAGE_SIZE) &&
+			!page_cache_disable) {
 			arc_binval(buf, blkno, vp, bp->b_bcount, bp);
 		}
 
