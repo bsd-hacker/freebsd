@@ -187,7 +187,9 @@ SYSCTL_QUAD(_vfs_zfs, OID_AUTO, arc_min, CTLFLAG_RDTUN, &zfs_arc_min, 0,
 SYSCTL_INT(_vfs_zfs, OID_AUTO, mdcomp_disable, CTLFLAG_RDTUN,
     &zfs_mdcomp_disable, 0, "Disable metadata compression");
 
-static int page_cache_disable = 1;
+static int zfs_page_cache_disable = 0;
+SYSCTL_INT(_vfs_zfs, OID_AUTO, page_cache_disable, CTLFLAG_RDTUN,
+    &zfs_page_cache_disable, 0, "Disable backing ARC with page cache ");
 
 #ifdef ZIO_USE_UMA
 extern kmem_cache_t	*zio_buf_cache[];
@@ -1389,7 +1391,7 @@ arc_getblk(arc_buf_t *buf)
 		data = zio_buf_alloc(size);
 	} else if ((buf->b_hdr->b_flags & ARC_BUF_CLONING) ||
 	    BUF_EMPTY(buf->b_hdr) ||
-		page_cache_disable) {
+		zfs_page_cache_disable) {
 		newbp = geteblk(size, flags);
 		data = newbp->b_data;		
 	} else {
@@ -1402,7 +1404,7 @@ arc_getblk(arc_buf_t *buf)
 	if ((buf->b_hdr->b_flags & ARC_BUF_CLONING) &&
 	    (size >= PAGE_SIZE) &&
 	    (!BUF_EMPTY(buf->b_hdr)) &&
-		!page_cache_disable)
+		!zfs_page_cache_disable)
 		arc_binval(buf, blkno, vp, size, flags, newbp);
 	buf->b_hdr->b_flags &= ~ARC_BUF_CLONING;
 
@@ -3474,7 +3476,7 @@ arc_write_done(zio_t *zio)
 		    (bp != NULL) &&
 		    (bp->b_bufobj == NULL) &&
 		    (bp->b_bcount >= PAGE_SIZE) &&
-			!page_cache_disable) {
+			!zfs_page_cache_disable) {
 			arc_binval(buf, blkno, vp, bp->b_bcount, 0, bp);
 		}
 
