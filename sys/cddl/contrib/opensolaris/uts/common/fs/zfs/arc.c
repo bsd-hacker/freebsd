@@ -1339,9 +1339,13 @@ arc_gbincore_replace(struct vnode *vp, off_t blkno, size_t size, int flags,
 				else if ((bp->b_flags & (B_VMIO | B_INVAL)) == 0)
 					bp->b_flags |= B_CACHE;
 				bremfree(bp);
-				if (bp->b_bcount != size)
+				if ((bp->b_bcount != size) && (buf->b_kvasize >= size)) {
 					allocbuf_flags(bp, size, flags);
-				goto done;
+					goto done;
+				} else {
+					bp->b_flags |= B_INVAL;
+					brelse(bp);
+				}
 			}
 		}
 	}
