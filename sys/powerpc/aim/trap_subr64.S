@@ -492,13 +492,13 @@ CNAME(trapexit):
 	andi.	%r3,%r3,~PSL_EE@l
 	mtmsr	%r3
 /* Test AST pending: */
-	ld	%r5,FRAME_SRR1+8(%r1)
+	ld	%r5,FRAME_SRR1+48(%r1)
 	mtcr	%r5
 	bf	17,1f			/* branch if PSL_PR is false */
 
 	GET_CPUINFO(%r3)		/* get per-CPU pointer */
 	ld	%r4, PC_CURTHREAD(%r3)	/* deref to get curthread */
-	ld	%r4, TD_FLAGS(%r4)	/* get thread flags value */
+	lwz	%r4, TD_FLAGS(%r4)	/* get thread flags value */
 	lis	%r5, (TDF_ASTPENDING|TDF_NEEDRESCHED)@h
 	ori	%r5,%r5, (TDF_ASTPENDING|TDF_NEEDRESCHED)@l
 	and.	%r4,%r4,%r5
