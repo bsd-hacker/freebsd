@@ -1306,7 +1306,6 @@ arc_gbincore_replace(struct vnode *vp, off_t blkno, size_t size, int flags,
 {
 	struct buf *bp;
 	struct bufobj *bo;
-	int associated = 0;
 
 	/*
 	 * We need to be careful to handle the case where the buffer
@@ -1342,24 +1341,30 @@ arc_gbincore_replace(struct vnode *vp, off_t blkno, size_t size, int flags,
 				bremfree(bp);
 				if (bp->b_bcount != size)
 					allocbuf_flags(bp, size, flags);
-				associated = 1;
+				goto done;
 			}
 		}
 	}
 
-	if (!associated) {
-		if (newbp != NULL) {
-			if (bp != NULL)
-				BO_LOCK(bo);
-			bgetvp(vp, newbp);
+	/*
+	 *   	   !bp    		brelvp(bp)  	brelse(bp)	associated  
+	 * !newbp  unlock()/getblk 	getblk	    	XXX		no-op	  	
+	 *
+	 * newbp  bgetvp()/ul		l/bgetvp()/ul	l/bgetvp()/ul	XXX
+	 */
+	if (newbp != NULL) {
+		if (bp != NULL)
+			BO_LOCK(bo);
+		bgetvp(vp, newbp);
+		BO_UNLOCK(bo);
+		bp = newbp;
+	} else {
+		if (bp == NULL) 
 			BO_UNLOCK(bo);
-			bp = newbp;
-		} else {
-			BO_UNLOCK(bo);
-			bp = getblk(vp, blkno, size, 0, 0, flags);
-		}
+		bp = getblk(vp, blkno, size, 0, 0, flags);
 	} 
 
+done:
 	return (bp);
 }
 
