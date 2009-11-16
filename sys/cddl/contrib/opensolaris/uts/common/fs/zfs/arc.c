@@ -1354,8 +1354,10 @@ arc_gbincore_replace(struct vnode *vp, off_t blkno, size_t size, int flags,
 			bgetvp(vp, newbp);
 			BO_UNLOCK(bo);
 			bp = newbp;
-		} else
+		} else {
+			BO_UNLOCK(bo);
 			bp = getblk(vp, blkno, size, 0, 0, flags);
+		}
 	} 
 
 	return (bp);
