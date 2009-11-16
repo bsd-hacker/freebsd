@@ -86,7 +86,6 @@ CONSOLE_DRIVER(mambo);
 static void
 cn_drvinit(void *unused)
 {
-	char output[32];
 	struct tty *tp;
 
 	if (mambo_consdev.cn_pri != CN_DEAD &&
@@ -95,7 +94,8 @@ cn_drvinit(void *unused)
 			return;
 
 		tp = tty_alloc(&mambo_ttydevsw, NULL);
-		tty_makedev(tp, NULL, "%s", output);
+		tty_init_console(tp, 0);
+		tty_makedev(tp, NULL, "%s", "mambocons");
 		tty_makealias(tp, "mambocons");
 	}
 }
