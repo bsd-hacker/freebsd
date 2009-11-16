@@ -81,14 +81,17 @@ struct sysentvec elf32_freebsd_sysvec = {
 	.sv_minsigstksz	= MINSIGSTKSZ,
 	.sv_pagesize	= PAGE_SIZE,
 	.sv_minuser	= VM_MIN_ADDRESS,
-	.sv_maxuser	= VM_MAXUSER_ADDRESS,
-	.sv_usrstack	= USRSTACK,
-	.sv_psstrings	= PS_STRINGS,
 	.sv_stackprot	= VM_PROT_ALL,
 #ifdef __powerpc64__
+	.sv_maxuser	= VM_MAXUSER_ADDRESS,
+	.sv_usrstack	= FREEBSD32_USRSTACK,
+	.sv_psstrings	= FREEBSD32_PS_STRINGS,
 	.sv_copyout_strings = freebsd32_copyout_strings,
 	.sv_setregs	= ppc32_setregs,
 #else
+	.sv_maxuser	= VM_MAXUSER_ADDRESS,
+	.sv_usrstack	= USRSTACK,
+	.sv_psstrings	= PS_STRINGS,
 	.sv_copyout_strings = exec_copyout_strings,
 	.sv_setregs	= exec_setregs,
 #endif

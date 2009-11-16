@@ -93,6 +93,9 @@ int	badaddr(void *, size_t);
 int	badaddr_read(void *, size_t, int *);
 
 extern char	*syscallnames[];
+#ifdef COMPAT_FREEBSD32
+extern char	*freebsd32_syscallnames[];
+#endif
 
 struct powerpc_exception {
 	u_int	vector;
@@ -361,6 +364,7 @@ syscall(struct trapframe *frame)
 	size_t		narg, argsz;
 	u_register_t	args[10];
 	u_int		code;
+	char		**scall_names;
 
 	td = PCPU_GET(curthread);
 	p = td->td_proc;
@@ -370,11 +374,6 @@ syscall(struct trapframe *frame)
 	code = frame->fixreg[0];
 	params = (caddr_t)(frame->fixreg + FIRSTARG);
 	n = NARGREG;
-
-	if (p->p_sysent->sv_flags & SV_ILP32)
-		argsz = sizeof(uint32_t);
-	else
-		argsz = sizeof(uint64_t);
 
 	if (p->p_sysent->sv_prepsyscall) {
 		/*
@@ -419,9 +418,19 @@ syscall(struct trapframe *frame)
 	narg = callp->sy_narg;
 
 	if (p->p_sysent->sv_flags & SV_ILP32) {
+		argsz = sizeof(uint32_t);
+		#ifdef COMPAT_FREEBSD32
+		scall_names = freebsd32_syscallnames;
+		#else
+		scall_names = syscallnames;
+		#endif
+
 		for (i = 0; i < n; i++)
 			args[i] = ((u_register_t *)(params))[i] & 0xffffffff;
 	} else {
+		argsz = sizeof(uint64_t);
+		scall_names = syscallnames;
+
 		for (i = 0; i < n; i++)
 			args[i] = ((u_register_t *)(params))[i];
 	}
@@ -433,7 +442,7 @@ syscall(struct trapframe *frame)
 		error = 0;
 
 	CTR5(KTR_SYSC, "syscall: p=%s %s(%x %x %x)", td->td_name,
-	     syscallnames[code],
+	     scall_names[code],
 	     args[0], args[1], args[2]);
 
 #ifdef	KTRACE
@@ -456,7 +465,7 @@ syscall(struct trapframe *frame)
 		AUDIT_SYSCALL_EXIT(error, td);
 
 		CTR3(KTR_SYSC, "syscall: p=%s %s ret=%x", td->td_name,
-		     syscallnames[code], td->td_retval[0]);
+		     scall_names[code], td->td_retval[0]);
 	}
 	switch (error) {
 	case 0:
@@ -500,13 +509,13 @@ syscall(struct trapframe *frame)
 	 * Check for misbehavior.
 	 */
 	WITNESS_WARN(WARN_PANIC, NULL, "System call %s returning",
-	    (code >= 0 && code < SYS_MAXSYSCALL) ? syscallnames[code] : "???");
+	    (code >= 0 && code < SYS_MAXSYSCALL) ? scall_names[code] : "???");
 	KASSERT(td->td_critnest == 0,
 	    ("System call %s returning in a critical section",
-	    (code >= 0 && code < SYS_MAXSYSCALL) ? syscallnames[code] : "???"));
+	    (code >= 0 && code < SYS_MAXSYSCALL) ? scall_names[code] : "???"));
 	KASSERT(td->td_locks == 0,
 	    ("System call %s returning with %d locks held",
-	    (code >= 0 && code < SYS_MAXSYSCALL) ? syscallnames[code] : "???",
+	    (code >= 0 && code < SYS_MAXSYSCALL) ? scall_names[code] : "???",
 	    td->td_locks));
 
 #ifdef	KTRACE

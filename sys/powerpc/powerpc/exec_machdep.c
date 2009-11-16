@@ -490,7 +490,7 @@ ppc32_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings)
 	tf->fixreg[5] = (register_t)arginfo.ps_envstr;
 	tf->fixreg[6] = 0;			/* auxillary vector */
 	tf->fixreg[7] = 0;			/* termination vector */
-	tf->fixreg[8] = (register_t)PS_STRINGS;	/* NetBSD extension */
+	tf->fixreg[8] = (register_t)FREEBSD32_PS_STRINGS; /* NetBSD extension */
 
 	tf->srr0 = entry;
 	tf->srr1 = PSL_MBO | PSL_USERSET | PSL_FE_DFLT;

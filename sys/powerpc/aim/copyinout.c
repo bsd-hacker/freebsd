@@ -353,6 +353,33 @@ fubyte(const void *addr)
 	return (val);
 }
 
+#ifdef __powerpc64__
+int32_t
+fuword32(const void *addr)
+{
+	struct		thread *td;
+	pmap_t		pm;
+	faultbuf	env;
+	int32_t		*p, val;
+
+	td = PCPU_GET(curthread);
+	pm = &td->td_proc->p_vmspace->vm_pmap;
+	p = (int32_t *)((uintptr_t)USER_ADDR + ((uintptr_t)addr & ~SEGMENT_MASK));
+
+	if (setfault(env)) {
+		td->td_pcb->pcb_onfault = NULL;
+		return (-1);
+	}
+
+	set_user_sr(pm,addr);
+
+	val = *p;
+
+	td->td_pcb->pcb_onfault = NULL;
+	return (val);
+}
+#endif
+
 long
 fuword(const void *addr)
 {
@@ -378,11 +405,13 @@ fuword(const void *addr)
 	return (val);
 }
 
+#ifndef __powerpc64__
 int32_t
 fuword32(const void *addr)
 {
 	return ((int32_t)fuword(addr));
 }
+#endif
 
 uint32_t
 casuword32(volatile uint32_t *addr, uint32_t old, uint32_t new)
