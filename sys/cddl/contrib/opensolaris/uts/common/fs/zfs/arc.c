@@ -1302,15 +1302,21 @@ static void
 arc_bgetvp(arc_buf_t *buf)
 {	
 	uint64_t blkno = buf->b_hdr->b_dva.dva_word[1] & ~(1UL<<63);
-	struct buf *bp = buf->b_bp;
+	struct buf *newbp, *bp = buf->b_bp;
 	struct vnode *vp = spa_get_vnode(buf->b_hdr->b_spa);
 	struct bufobj *bo = &vp->v_bufobj;
 	arc_buf_hdr_t *hdr = buf->b_hdr;
 
+	if (blkno == 0)
+		return;
+
+	newbp = buf->b_bp;
+	newbp->b_offset = hdr->b_birth;
+	newbp->b_blkno = newbp->b_lblkno = blkno;
+
 	BO_LOCK(bo);
 	bp = gbincore(bo, blkno);
 	if (bp != NULL) {
-
 		/*
 		 * XXX we have a race with getblk here
 		 */
@@ -1324,26 +1330,22 @@ arc_bgetvp(arc_buf_t *buf)
 		    (bp->b_flags & (B_CACHE|B_INVAL)) == B_CACHE) { 
 			bp->b_flags |= B_INVAL;
 			bp->b_flags &= ~B_CACHE;
-
 			brelse(bp);
-			buf->b_bp->b_offset = hdr->b_birth;
-			buf->b_bp->b_flags |= B_CACHE;
-			buf->b_bp->b_flags &= ~B_INVAL;
-
+			
+			newbp->b_flags |= B_CACHE;
+			newbp->b_flags &= ~B_INVAL;
+			
 			BO_LOCK(bo);
-			bgetvp(vp, buf->b_bp);
+			bgetvp(vp, newbp);
 			BO_UNLOCK(bo);
 		} else
 			brelse(bp);
 	} else {
-		if (blkno != 0) {
-			buf->b_bp->b_flags |= B_CACHE;
-			buf->b_bp->b_flags &= ~B_INVAL;
-			bgetvp(vp, buf->b_bp);
-		}
+		newbp->b_flags |= B_CACHE;
+		newbp->b_flags &= ~B_INVAL;
+		bgetvp(vp, newbp);
 		BO_UNLOCK(bo);
 	}
-	
 }
 
 static void
