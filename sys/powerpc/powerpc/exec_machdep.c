@@ -141,8 +141,6 @@ sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	tf = td->td_frame;
 	oonstack = sigonstack(tf->fixreg[1]);
 
-	rndfsize = ((sizeof(sf) + 15) / 16) * 16;
-
 	/*
 	 * Fill siginfo structure.
 	 */
@@ -162,6 +160,7 @@ sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 		code = siginfo32.si_code;
 		sfp = (caddr_t)&sf32;
 		sfpsize = sizeof(sf32);
+		rndfsize = ((sizeof(sf32) + 15) / 16) * 16;
 
 		/*
 		 * Save user context
@@ -183,6 +182,15 @@ sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 		code = ksi->ksi_code;
 		sfp = (caddr_t)&sf;
 		sfpsize = sizeof(sf);
+		#ifdef __powerpc64__
+		/*
+		 * 64-bit PPC defines a 288 byte scratch region
+		 * below the stack.
+		 */
+		rndfsize = 288 + ((sizeof(sf) + 47) / 48) * 48;
+		#else
+		rndfsize = ((sizeof(sf) + 15) / 16) * 16;
+		#endif
 
 		/*
 		 * Save user context
@@ -280,15 +288,8 @@ sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	mtx_unlock(&psp->ps_mtx);
 	PROC_UNLOCK(p);
 
-	#ifdef COMPAT_FREEBSD32
-	if (p->p_sysent->sv_flags & SV_ILP32)
-		tf->srr0 = (register_t)(FREEBSD32_PS_STRINGS -
-		    *(p->p_sysent->sv_szsigcode));
-	else
-	#else
-		tf->srr0 = (register_t)(PS_STRINGS -
-		    *(p->p_sysent->sv_szsigcode));
-	#endif
+	tf->srr0 = (register_t)(p->p_sysent->sv_psstrings -
+	    *(p->p_sysent->sv_szsigcode));
 
 	/*
 	 * copy the frame out to userland.
