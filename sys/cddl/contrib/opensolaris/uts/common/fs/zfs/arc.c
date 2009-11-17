@@ -1319,20 +1319,30 @@ arc_gbincore_replace(struct vnode *vp, off_t blkno, size_t size, int flags,
 			BO_UNLOCK(bo);
 			return (bp);
 		}
+
 		if (BUF_ISLOCKED(bp)) {
+			/*
+			 * buffer is currently referenced in the ARC with older birth txg
+			 *
+			 */
+			bp->b_flags |= B_INVAL;
+			bp->b_flags &= ~B_CACHE;
 			BO_UNLOCK(bo);
 			brelvp(bp);
 		} else {
 			BUF_LOCK(bp, LK_EXCLUSIVE | LK_INTERLOCK, BO_MTX(bo));
 			if (newbp != NULL) {
+				/*
+				 * mapping exists but we wish to replace it with 
+				 * newbp
+				 */
 				bp->b_flags |= B_INVAL;
 				bp->b_flags &= ~B_CACHE;
 				bremfree(bp);
 				brelse(bp);
 			} else {
 				/*
-				 * We don't have a new buffer for which we're 
-				 * replacing the mapping, use this buffer
+				 * buffer is usable for this mapping
 				 */
 				if (bp->b_flags & B_INVAL)
 					bp->b_flags &= ~B_CACHE;
@@ -1404,20 +1414,14 @@ arc_getblk(arc_buf_t *buf)
 	    BUF_EMPTY(buf->b_hdr) ||
 		zfs_page_cache_disable) {
 		newbp = geteblk(size, flags);
-		data = newbp->b_data;		
+		data = newbp->b_data;
+		buf->b_hdr->b_flags &= ~ARC_BUF_CLONING;
 	} else {
 		newbp = arc_gbincore_replace(vp, blkno, size, flags, NULL);
 
 		newbp->b_offset = buf->b_hdr->b_birth;
-		data = newbp->b_data;		
+		data = newbp->b_data;
 	}
-
-	if ((buf->b_hdr->b_flags & ARC_BUF_CLONING) &&
-	    (size >= PAGE_SIZE) &&
-	    (!BUF_EMPTY(buf->b_hdr)) &&
-		!zfs_page_cache_disable)
-		arc_binval(buf, blkno, vp, size, flags, newbp);
-	buf->b_hdr->b_flags &= ~ARC_BUF_CLONING;
 
 #ifdef LOGALL
 	/*
@@ -1454,42 +1458,6 @@ arc_brelse(arc_buf_t *buf, void *data, size_t size)
 	CTR4(KTR_SPARE2, "arc_brelse() bp=%p flags %X size %ld blkno=%ld",
 	    bp, bp->b_flags, size, bp->b_blkno);
 	brelse(bp);
-}
-
-static void
-arc_binval(arc_buf_t *buf, off_t blkno, struct vnode *vp, size_t size,
-    int flags, struct buf *newbp) 
-{
-	arc_buf_t *tbuf;
-	int released = 0;
-	struct buf *bp = NULL;	
-	uint64_t birth;
-	struct bufobj *bo;
-
-	/*
-	 * disassociate backing buffers from the vnode
-	 *
-	 */
-	for (tbuf = buf; tbuf != NULL; 	tbuf = tbuf->b_next) {
-		if ((tbuf->b_bp != NULL) && (tbuf->b_bp->b_vp != NULL)) {
-			bp = tbuf->b_bp;
-			KASSERT((bp->b_xflags & (BX_VNCLEAN|BX_VNDIRTY)) == BX_VNCLEAN, ("brelvp() on buffer that is not in splay"));
-			
-			bp->b_flags |= B_INVAL;
-			bp->b_flags &= ~B_CACHE;
-			brelvp(bp);
-			released = 1;	
-		}
-	}
-	bo = newbp->b_bufobj = &vp->v_bufobj;
-	newbp->b_lblkno = blkno;
-	newbp->b_blkno = blkno;
-	newbp->b_offset = buf->b_hdr->b_birth;
-	newbp->b_flags &= ~B_INVAL;
-	newbp->b_flags |= B_CACHE;
-
-	if (!released) 
-		arc_gbincore_replace(vp, blkno, size, flags, newbp);
 }
 
 /*
@@ -2739,11 +2707,6 @@ arc_read_done(zio_t *zio)
 
 	arc_cksum_compute(buf, B_FALSE);
 
-	if (buf->b_bp != NULL) {
-		buf->b_bp->b_flags &= ~B_INVAL;
-		buf->b_bp->b_flags |= B_CACHE;
-	}
-	
 	/* create copies of the data buffer for the callers */
 	abuf = buf;
 	for (acb = callback_list; acb; acb = acb->acb_next) {
@@ -2769,6 +2732,16 @@ arc_read_done(zio_t *zio)
 		if (HDR_IN_HASH_TABLE(hdr))
 			buf_hash_remove(hdr);
 		freeable = refcount_is_zero(&hdr->b_refcnt);
+	}
+
+	if ((freeable == FALSE) && !zfs_page_cache_disable) {
+		off_t blkno = hdr->b_dva.dva_word[1] & ~(1UL<<63);
+		struct buf *bp = buf->b_bp;
+
+		bp->b_flags |= B_CACHE;
+		bp->b_flags &= ~B_INVAL;
+		arc_gbincore_replace(spa_get_vnode(hdr->b_spa),
+		    blkno, bp->b_bcount, 0, bp);
 	}
 
 	/*
@@ -3483,12 +3456,13 @@ arc_write_done(zio_t *zio)
 			arc_hdr_destroy(exists);
 			exists = buf_hash_insert(hdr, &hash_lock);
 			ASSERT3P(exists, ==, NULL);
-		} else if ((hdr->b_buf == buf) &&
-		    (bp != NULL) &&
+		} else if ((bp != NULL) &&
 		    (bp->b_bufobj == NULL) &&
 		    (bp->b_bcount >= PAGE_SIZE) &&
 			!zfs_page_cache_disable) {
-			arc_binval(buf, blkno, vp, bp->b_bcount, 0, bp);
+			bp->b_flags |= B_CACHE;
+			bp->b_flags &= ~B_INVAL;
+			arc_gbincore_replace(vp, blkno, bp->b_bcount, 0, bp);
 		}
 
 		hdr->b_flags &= ~ARC_IO_IN_PROGRESS;
