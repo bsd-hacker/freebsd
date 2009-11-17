@@ -94,6 +94,22 @@ __FBSDID("$FreeBSD: projects/ppc64/sys/powerpc/aim/machdep.c 198753 2009-11-01 1
 #include <compat/freebsd32/freebsd32_signal.h>
 #include <compat/freebsd32/freebsd32_util.h>
 #include <compat/freebsd32/freebsd32_proto.h>
+
+typedef struct __ucontext32 {
+	sigset_t		uc_sigmask;
+	mcontext32_t		uc_mcontext;
+	uint32_t		uc_link;
+	struct sigaltstack32    uc_stack;
+	uint32_t		uc_flags;
+	uint32_t		__spare__[4];
+} ucontext32_t;
+
+struct sigframe32 {
+	ucontext32_t		sf_uc;
+	struct siginfo32	sf_si;
+};
+
+static int	grab_mcontext32(struct thread *td, mcontext32_t *, int flags);
 #endif
 
 static int	grab_mcontext(struct thread *, mcontext_t *, int);
@@ -102,11 +118,16 @@ void
 sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 {
 	struct trapframe *tf;
-	struct sigframe *sfp;
 	struct sigacts *psp;
 	struct sigframe sf;
 	struct thread *td;
 	struct proc *p;
+	#ifdef COMPAT_FREEBSD32
+	struct siginfo32 siginfo32;
+	struct sigframe32 sf32;
+	#endif
+	size_t sfpsize;
+	caddr_t sfp, usfp;
 	int oonstack, rndfsize;
 	int sig;
 	int code;
@@ -114,8 +135,7 @@ sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	td = curthread;
 	p = td->td_proc;
 	PROC_LOCK_ASSERT(p, MA_OWNED);
-	sig = ksi->ksi_signo;
-	code = ksi->ksi_code;
+
 	psp = p->p_sigacts;
 	mtx_assert(&psp->ps_mtx, MA_OWNED);
 	tf = td->td_frame;
@@ -123,30 +143,76 @@ sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 
 	rndfsize = ((sizeof(sf) + 15) / 16) * 16;
 
+	/*
+	 * Fill siginfo structure.
+	 */
+	ksi->ksi_info.si_signo = ksi->ksi_signo;
+	#ifdef AIM
+	ksi->ksi_info.si_addr = (void *)((tf->exc == EXC_DSI) ? 
+	    tf->cpu.aim.dar : tf->srr0);
+	#else
+	ksi->ksi_info.si_addr = (void *)((tf->exc == EXC_DSI) ? 
+	    tf->cpu.booke.dear : tf->srr0);
+	#endif
+
+	#ifdef COMPAT_FREEBSD32
+	if (p->p_sysent->sv_flags & SV_ILP32) {
+		siginfo_to_siginfo32(&ksi->ksi_info, &siginfo32);
+		sig = siginfo32.si_signo;
+		code = siginfo32.si_code;
+		sfp = (caddr_t)&sf32;
+		sfpsize = sizeof(sf32);
+
+		/*
+		 * Save user context
+		 */
+
+		memset(&sf32, 0, sizeof(sf32));
+		grab_mcontext32(td, &sf32.sf_uc.uc_mcontext, 0);
+
+		sf32.sf_uc.uc_sigmask = *mask;
+		sf32.sf_uc.uc_stack.ss_sp = (uintptr_t)td->td_sigstk.ss_sp;
+		sf32.sf_uc.uc_stack.ss_size = (uint32_t)td->td_sigstk.ss_size;
+		sf32.sf_uc.uc_stack.ss_flags = (td->td_pflags & TDP_ALTSTACK)
+		    ? ((oonstack) ? SS_ONSTACK : 0) : SS_DISABLE;
+
+		sf32.sf_uc.uc_mcontext.mc_onstack = (oonstack) ? 1 : 0;
+	} else {
+	#endif
+		sig = ksi->ksi_signo;
+		code = ksi->ksi_code;
+		sfp = (caddr_t)&sf;
+		sfpsize = sizeof(sf);
+
+		/*
+		 * Save user context
+		 */
+
+		memset(&sf, 0, sizeof(sf));
+		grab_mcontext(td, &sf.sf_uc.uc_mcontext, 0);
+
+		sf.sf_uc.uc_sigmask = *mask;
+		sf.sf_uc.uc_stack = td->td_sigstk;
+		sf.sf_uc.uc_stack.ss_flags = (td->td_pflags & TDP_ALTSTACK)
+		    ? ((oonstack) ? SS_ONSTACK : 0) : SS_DISABLE;
+
+		sf.sf_uc.uc_mcontext.mc_onstack = (oonstack) ? 1 : 0;
+	#ifdef COMPAT_FREEBSD32
+	}
+	#endif
+
 	CTR4(KTR_SIG, "sendsig: td=%p (%s) catcher=%p sig=%d", td, p->p_comm,
 	     catcher, sig);
-
-	/*
-	 * Save user context
-	 */
-	memset(&sf, 0, sizeof(sf));
-	grab_mcontext(td, &sf.sf_uc.uc_mcontext, 0);
-	sf.sf_uc.uc_sigmask = *mask;
-	sf.sf_uc.uc_stack = td->td_sigstk;
-	sf.sf_uc.uc_stack.ss_flags = (td->td_pflags & TDP_ALTSTACK)
-	    ? ((oonstack) ? SS_ONSTACK : 0) : SS_DISABLE;
-
-	sf.sf_uc.uc_mcontext.mc_onstack = (oonstack) ? 1 : 0;
 
 	/*
 	 * Allocate and validate space for the signal handler context.
 	 */
 	if ((td->td_pflags & TDP_ALTSTACK) != 0 && !oonstack &&
 	    SIGISMEMBER(psp->ps_sigonstack, sig)) {
-		sfp = (struct sigframe *)(td->td_sigstk.ss_sp +
+		usfp = (void *)(td->td_sigstk.ss_sp +
 		   td->td_sigstk.ss_size - rndfsize);
 	} else {
-		sfp = (struct sigframe *)(tf->fixreg[1] - rndfsize);
+		usfp = (void *)(tf->fixreg[1] - rndfsize);
 	}
 
 	/*
@@ -171,26 +237,34 @@ sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	 *   srr0  - trampoline function addr
 	 */
 	tf->lr = (register_t)catcher;
-	tf->fixreg[1] = (register_t)sfp;
+	tf->fixreg[1] = (register_t)usfp;
 	tf->fixreg[FIRSTARG] = sig;
-	tf->fixreg[FIRSTARG+2] = (register_t)&sfp->sf_uc;
+	#ifdef COMPAT_FREEBSD32
+	tf->fixreg[FIRSTARG+2] = (register_t)usfp +
+	    (p->p_sysent->sv_flags & SV_ILP32) ?
+	    offsetof(struct sigframe32, sf_uc) :
+	    offsetof(struct sigframe, sf_uc);
+	#else
+	tf->fixreg[FIRSTARG+2] = (register_t)usfp +
+	    offsetof(struct sigframe, sf_uc);
+	#endif
 	if (SIGISMEMBER(psp->ps_siginfo, sig)) {
 		/*
 		 * Signal handler installed with SA_SIGINFO.
 		 */
-		tf->fixreg[FIRSTARG+1] = (register_t)&sfp->sf_si;
-
-		/*
-		 * Fill siginfo structure.
-		 */
-		sf.sf_si = ksi->ksi_info;
-		sf.sf_si.si_signo = sig;
-		#ifdef AIM
-		sf.sf_si.si_addr = (void *)((tf->exc == EXC_DSI) ? 
-		    tf->cpu.aim.dar : tf->srr0);
-		#else
-		sf.sf_si.si_addr = (void *)((tf->exc == EXC_DSI) ? 
-		    tf->cpu.booke.dear : tf->srr0);
+		#ifdef COMPAT_FREEBSD32
+		if (p->p_sysent->sv_flags & SV_ILP32) {
+			sf32.sf_si = siginfo32;
+			tf->fixreg[FIRSTARG+1] = (register_t)usfp +
+			    offsetof(struct sigframe32, sf_si);
+			sf32.sf_si = siginfo32;
+		} else  {
+		#endif
+			tf->fixreg[FIRSTARG+1] = (register_t)usfp +
+			    offsetof(struct sigframe, sf_si);
+			sf.sf_si = ksi->ksi_info;
+		#ifdef COMPAT_FREEBSD32
+		}
 		#endif
 	} else {
 		/* Old FreeBSD-style arguments. */
@@ -206,12 +280,20 @@ sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 	mtx_unlock(&psp->ps_mtx);
 	PROC_UNLOCK(p);
 
-	tf->srr0 = (register_t)(PS_STRINGS - *(p->p_sysent->sv_szsigcode));
+	#ifdef COMPAT_FREEBSD32
+	if (p->p_sysent->sv_flags & SV_ILP32)
+		tf->srr0 = (register_t)(FREEBSD32_PS_STRINGS -
+		    *(p->p_sysent->sv_szsigcode));
+	else
+	#else
+		tf->srr0 = (register_t)(PS_STRINGS -
+		    *(p->p_sysent->sv_szsigcode));
+	#endif
 
 	/*
 	 * copy the frame out to userland.
 	 */
-	if (copyout(&sf, sfp, sizeof(*sfp)) != 0) {
+	if (copyout(sfp, usfp, sfpsize) != 0) {
 		/*
 		 * Process has trashed its stack. Kill it.
 		 */
@@ -601,12 +683,12 @@ fill_regs32(struct thread *td, struct reg32 *regs)
 }
 
 static int
-get_mcontext32(struct thread *td, mcontext32_t *mcp, int flags)
+grab_mcontext32(struct thread *td, mcontext32_t *mcp, int flags)
 {
 	mcontext_t mcp64;
 	int i, error;
 
-	error = get_mcontext(td, &mcp64, flags);
+	error = grab_mcontext(td, &mcp64, flags);
 	if (error != 0)
 		return (error);
 	
@@ -621,6 +703,21 @@ get_mcontext32(struct thread *td, mcontext32_t *mcp, int flags)
 	memcpy(mcp->mc_fpreg,mcp64.mc_fpreg,sizeof(mcp64.mc_fpreg));
 
 	return (0);
+}
+
+static int
+get_mcontext32(struct thread *td, mcontext32_t *mcp, int flags)
+{
+	int error;
+
+	error = grab_mcontext32(td, mcp, flags);
+	if (error == 0) {
+		PROC_LOCK(curthread->td_proc);
+		mcp->mc_onstack = sigonstack(td->td_frame->fixreg[1]);
+		PROC_UNLOCK(curthread->td_proc);
+	}
+
+	return (error);
 }
 
 static int
@@ -646,15 +743,6 @@ set_mcontext32(struct thread *td, const mcontext32_t *mcp)
 #endif
 
 #ifdef COMPAT_FREEBSD32
-typedef struct __ucontext32 {
-	sigset_t		uc_sigmask;
-	mcontext32_t		uc_mcontext;
-	uint32_t		uc_link;
-	struct sigaltstack32    uc_stack;
-	uint32_t		uc_flags;
-	uint32_t		__spare__[4];
-} ucontext32_t;
-
 int
 freebsd32_sigreturn(struct thread *td, struct freebsd32_sigreturn_args *uap)
 {
