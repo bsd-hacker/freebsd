@@ -1300,86 +1300,45 @@ arc_buf_add_ref(arc_buf_t *buf, void* tag)
 	    data, metadata, hits);
 }
 
-static struct buf *
-arc_gbincore_replace(struct vnode *vp, off_t blkno, size_t size, int flags,
-    struct buf *newbp)
-{
-	struct buf *bp;
-	struct bufobj *bo;
+static void
+arc_bgetvp(arc_buf_t *buf)
+{	
+	off_t blkno = buf->b_hdr->b_dva.dva_word[1] & ~(1UL<<63);
+	struct buf *bp = buf->b_bp;
+	struct vnode *vp = spa_get_vnode(buf->b_hdr->b_spa);
+	struct bufobj *bo = &vp->v_bufobj;
+	arc_buf_hdr_t *hdr = buf->b_hdr;
 
-	/*
-	 * We need to be careful to handle the case where the buffer
-	 * is already held in the ARC for a previous birth transaction
-	 */
-	bo = &vp->v_bufobj;
 	BO_LOCK(bo);
 	bp = gbincore(bo, blkno);
 	if (bp != NULL) {
-		if (bp == newbp) {
-			BO_UNLOCK(bo);
-			return (bp);
-		}
 
-		if (BUF_ISLOCKED(bp)) {
-			/*
-			 * buffer is currently referenced in the ARC with older birth txg
-			 *
-			 */
+		/*
+		 * XXX we have a race with getblk here
+		 */
+		BUF_LOCK(bp, LK_EXCLUSIVE | LK_INTERLOCK, BO_MTX(bo));
+		bremfree(bp);
+		/*
+		 * buffer is usable for this mapping
+		 */
+		if (!(hdr->b_flags & ARC_IO_ERROR) &&
+		    (bp->b_offset <= hdr->b_birth) &&
+		    (bp->b_flags & (B_CACHE|B_INVAL)) == B_CACHE) { 
 			bp->b_flags |= B_INVAL;
 			bp->b_flags &= ~B_CACHE;
-			BO_UNLOCK(bo);
-			brelvp(bp);
-		} else {
-			BUF_LOCK(bp, LK_EXCLUSIVE | LK_INTERLOCK, BO_MTX(bo));
-			if (newbp != NULL) {
-				/*
-				 * mapping exists but we wish to replace it with 
-				 * newbp
-				 */
-				bp->b_flags |= B_INVAL;
-				bp->b_flags &= ~B_CACHE;
-				bremfree(bp);
-				brelse(bp);
-			} else {
-				/*
-				 * buffer is usable for this mapping
-				 */
-				if (bp->b_flags & B_INVAL)
-					bp->b_flags &= ~B_CACHE;
-				else if ((bp->b_flags & (B_VMIO | B_INVAL)) == 0)
-					bp->b_flags |= B_CACHE;
-				bremfree(bp);
-				if ((bp->b_bcount != size) && (buf->b_kvasize >= size)) {
-					allocbuf_flags(bp, size, flags);
-					goto done;
-				} else {
-					bp->b_flags |= B_INVAL;
-					brelse(bp);
-				}
-			}
-		}
-	}
 
-	/*
-	 *   	   !bp    		brelvp(bp)  	brelse(bp)	associated  
-	 * !newbp  unlock()/getblk 	getblk	    	XXX		no-op	  	
-	 *
-	 * newbp  bgetvp()/ul		l/bgetvp()/ul	l/bgetvp()/ul	XXX
-	 */
-	if (newbp != NULL) {
-		if (bp != NULL)
+			brelse(bp);
+			buf->b_bp->b_offset = hdr->b_birth;
+			buf->b_bp->b_flags |= B_CACHE;
+			buf->b_bp->b_flags &= ~B_INVAL;
+
 			BO_LOCK(bo);
-		bgetvp(vp, newbp);
-		BO_UNLOCK(bo);
-		bp = newbp;
-	} else {
-		if (bp == NULL) 
+			bgetvp(vp, buf->b_bp);
 			BO_UNLOCK(bo);
-		bp = getblk(vp, blkno, size, 0, 0, flags);
-	} 
-
-done:
-	return (bp);
+		} else
+			brelse(bp);
+	} else
+		BO_UNLOCK(bo);
 }
 
 static void
@@ -1411,15 +1370,14 @@ arc_getblk(arc_buf_t *buf)
 	if ((size < PAGE_SIZE)) {
 		data = zio_buf_alloc(size);
 	} else if ((buf->b_hdr->b_flags & ARC_BUF_CLONING) ||
-	    BUF_EMPTY(buf->b_hdr) ||
-		zfs_page_cache_disable) {
+	    BUF_EMPTY(buf->b_hdr)) {
 		newbp = geteblk(size, flags);
 		data = newbp->b_data;
 		buf->b_hdr->b_flags &= ~ARC_BUF_CLONING;
 	} else {
-		newbp = arc_gbincore_replace(vp, blkno, size, flags, NULL);
-
-		newbp->b_offset = buf->b_hdr->b_birth;
+		newbp = getblk(vp, blkno, size, 0, 0, flags);
+		if (newbp->b_vp != NULL)
+			brelvp(newbp);
 		data = newbp->b_data;
 	}
 
@@ -1441,20 +1399,16 @@ arc_getblk(arc_buf_t *buf)
 static void
 arc_brelse(arc_buf_t *buf, void *data, size_t size)
 {
-	struct buf *bp;
+	struct buf *bp = buf->b_bp;
+	arc_buf_hdr_t *hdr = buf->b_hdr;
 
-	bp = buf->b_bp;
 	if (bp == NULL) {
 		zio_buf_free(buf->b_data, size);
 		return;
 	}
 
-#ifdef INVARIANTS
-	if (bp->b_vp) {
-		KASSERT((buf->b_bp->b_xflags & (BX_VNCLEAN|BX_VNDIRTY)) == BX_VNCLEAN, ("brelse() on buffer that is not clean"));
-	}
-#endif	
-	
+	if (hdr->b_datacnt == 1)
+		arc_bgetvp(buf);
 	CTR4(KTR_SPARE2, "arc_brelse() bp=%p flags %X size %ld blkno=%ld",
 	    bp, bp->b_flags, size, bp->b_blkno);
 	brelse(bp);
@@ -2734,16 +2688,6 @@ arc_read_done(zio_t *zio)
 		freeable = refcount_is_zero(&hdr->b_refcnt);
 	}
 
-	if ((freeable == FALSE) && !zfs_page_cache_disable) {
-		off_t blkno = hdr->b_dva.dva_word[1] & ~(1UL<<63);
-		struct buf *bp = buf->b_bp;
-
-		bp->b_flags |= B_CACHE;
-		bp->b_flags &= ~B_INVAL;
-		arc_gbincore_replace(spa_get_vnode(hdr->b_spa),
-		    blkno, bp->b_bcount, 0, bp);
-	}
-
 	/*
 	 * Broadcast before we drop the hash_lock to avoid the possibility
 	 * that the hdr (and hence the cv) might be freed before we get to
@@ -2985,7 +2929,6 @@ top:
 				mutex_exit(hash_lock);
 				goto top;
 			}
-			buf->b_bp->b_offset = bp->blk_birth;
 		}
 
 		acb = kmem_zalloc(sizeof (arc_callback_t), KM_SLEEP);
@@ -3456,14 +3399,7 @@ arc_write_done(zio_t *zio)
 			arc_hdr_destroy(exists);
 			exists = buf_hash_insert(hdr, &hash_lock);
 			ASSERT3P(exists, ==, NULL);
-		} else if ((bp != NULL) &&
-		    (bp->b_bufobj == NULL) &&
-		    (bp->b_bcount >= PAGE_SIZE) &&
-			!zfs_page_cache_disable) {
-			bp->b_flags |= B_CACHE;
-			bp->b_flags &= ~B_INVAL;
-			arc_gbincore_replace(vp, blkno, bp->b_bcount, 0, bp);
-		}
+		} 
 
 		hdr->b_flags &= ~ARC_IO_IN_PROGRESS;
 		/* if it's not anon, we are doing a scrub */
