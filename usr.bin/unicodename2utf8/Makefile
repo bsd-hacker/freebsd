@@ -3,8 +3,11 @@
 
 PROG=		unicodename2utf8
 SRCS=		unicodename2utf8.c
-NO_MAN=		yes
 WARNS?=		6
+MAN=		unicodename2utf8.1
+
+LINKS=		${BINDIR}/unicodename2utf8 ${BINDIR}/utf82unicodename
+MLINKS=		unicodename2utf8.1 utf82unicodename.1
 
 test:
 	./unicodename2utf8 \

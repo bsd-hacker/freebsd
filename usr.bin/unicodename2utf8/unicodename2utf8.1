@@ -28,22 +28,31 @@
 .Dt unicode2utf8 1
 .Os
 .Sh NAME
-.Nm unicode2utf8
-.Nd converts a file with Unicode name definitions into UTF-8 character
-definitions.
+.Nm unicodename2utf8 ,
+.Nm utf82unicodename
+.Nd convert a file with Unicode name definitions into UTF-8 character and
+vice-versa.
 .Sh SYNOPSIS
 .Nm
+.Fl cldr Ar directory
+.Op Fl -input Ar filename
+.Op Fl -output Ar filename
+.Op Fl -reverse
+.Nm utf82unicode
 .Fl -cldr Ar directory
-.Fl -input Ar filename
-.Fl -output Ar filename
+.Op Fl -input Ar filename
+.Op Fl -output Ar filename
+.Op Fl -reverse
 .Sh DESCRIPTION
 The
 .Nm
-utility is made to convert the Unicode encoded strings in the
-contents of the specified input file with the corresponding UTF-8
-character definitions.
-.Pp
-Lines starting with a # are copied as-is.
+utility converts the Unicode encoded strings in the contents of the
+specified input file with the corresponding UTF-8 character
+definitions.
+The
+.Nm utf82unicodename
+utility converts the UTF-8 encoded strings in the contents of the
+specified input file with the corresponding Unicode names.
 .Pp
 The Unicode encoded strings are specified between a '<' and a '>'
 sign.
@@ -66,15 +75,16 @@ By default this should point to
 but for maintainers of the FreeBSD locale database this could point
 to their own extracted copy of the CLDR database.
 .It Fl -input Ar filename
-The source file with the Unicode encoded strings.
+The source file.
+If not specific, stdin will be used.
 .It Fl -output Ar filename
-The destination file with the Unicode encoded strings replaced with
-their UTF-8 equivalents.
+The output file.
+If not specific, stdout will be used.
+.It Fl -reverse
+If specified, do the reverse conversions.
 .El
 .Sh EXIT STATUS
-The
-.Nm
-utility exits 0 on success, and >0 if an error occurs.
+The utilties exit with 0 on success, and >0 if an error occurs.
 .Sh SEE ALSO
 .Xr iconv 1 ,
 .Xr bsdiconv 1
@@ -85,7 +95,5 @@ the maintainers of the file
 .Pa /usr/share/misc/UTF-8.cm
 .El
 .Sh AUTHORS
-The
-.Nm
-utility and this manual page were written by
+The utilities and this manual page were written by
 .An Edwin Groothuis Aq edwin@FreeBSD.org .
