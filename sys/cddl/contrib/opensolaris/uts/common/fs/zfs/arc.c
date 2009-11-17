@@ -1337,8 +1337,13 @@ arc_bgetvp(arc_buf_t *buf)
 			BO_UNLOCK(bo);
 		} else
 			brelse(bp);
-	} else
+	} else {
+		buf->b_bp->b_flags |= B_CACHE;
+		buf->b_bp->b_flags &= ~B_INVAL;
+		bgetvp(vp, buf->b_bp);
 		BO_UNLOCK(bo);
+	}
+	
 }
 
 static void
@@ -1384,7 +1389,7 @@ arc_getblk(arc_buf_t *buf)
 		postflags = newbp->b_flags;
 
 		if (preflags != postflags)
-		CTR2(KTR_SPARE2, "arc_getblk() flags change pre %X post %X", preflags, postflags);
+			CTR2(KTR_SPARE2, "arc_getblk() flags change pre %X post %X", preflags, postflags);
 		data = newbp->b_data;
 	}
 
