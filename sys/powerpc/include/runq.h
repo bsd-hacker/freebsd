@@ -30,18 +30,18 @@
 #define	_MACHINE_RUNQ_H_
 
 #ifdef __powerpc64__
-#define	RQB_LEN		(1)		/* Number of priority status words. */
-#define	RQB_L2BPW	(6)		/* Log2(sizeof(rqb_word_t) * NBBY)). */
+#define	RQB_LEN		(1UL)		/* Number of priority status words. */
+#define	RQB_L2BPW	(6UL)		/* Log2(sizeof(rqb_word_t) * NBBY)). */
 #else
 #define	RQB_LEN		(2)		/* Number of priority status words. */
 #define	RQB_L2BPW	(5)		/* Log2(sizeof(rqb_word_t) * NBBY)). */
 #endif
-#define	RQB_BPW		(1<<RQB_L2BPW)	/* Bits in an rqb_word_t. */
+#define	RQB_BPW		(1UL<<RQB_L2BPW) /* Bits in an rqb_word_t. */
 
-#define	RQB_BIT(pri)	(1 << ((pri) & (RQB_BPW - 1)))
+#define	RQB_BIT(pri)	(1UL << ((pri) & (RQB_BPW - 1)))
 #define	RQB_WORD(pri)	((pri) >> RQB_L2BPW)
 
-#define	RQB_FFS(word)	(ffs(word) - 1)
+#define	RQB_FFS(word)	(ffsl(word) - 1)
 
 /*
  * Type of run queue status word.
