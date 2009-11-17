@@ -495,8 +495,6 @@ static void arc_get_data_buf(arc_buf_t *buf);
 static void arc_access(arc_buf_hdr_t *buf, kmutex_t *hash_lock);
 static int arc_evict_needed(arc_buf_contents_t type);
 static void arc_evict_ghost(arc_state_t *state, spa_t *spa, int64_t bytes);
-static void arc_binval(arc_buf_t *buf, off_t blkno, struct vnode *vp,
-    size_t size, int flags, struct buf *bp);
 
 #define	GHOST_STATE(state)						\
 	((state) == arc_mru_ghost || (state) == arc_mfu_ghost ||	\
@@ -1303,7 +1301,7 @@ arc_buf_add_ref(arc_buf_t *buf, void* tag)
 static void
 arc_bgetvp(arc_buf_t *buf)
 {	
-	off_t blkno = buf->b_hdr->b_dva.dva_word[1] & ~(1UL<<63);
+	uint64_t blkno = buf->b_hdr->b_dva.dva_word[1] & ~(1UL<<63);
 	struct buf *bp = buf->b_bp;
 	struct vnode *vp = spa_get_vnode(buf->b_hdr->b_spa);
 	struct bufobj *bo = &vp->v_bufobj;
@@ -1338,9 +1336,11 @@ arc_bgetvp(arc_buf_t *buf)
 		} else
 			brelse(bp);
 	} else {
-		buf->b_bp->b_flags |= B_CACHE;
-		buf->b_bp->b_flags &= ~B_INVAL;
-		bgetvp(vp, buf->b_bp);
+		if (blkno != 0) {
+			buf->b_bp->b_flags |= B_CACHE;
+			buf->b_bp->b_flags &= ~B_INVAL;
+			bgetvp(vp, buf->b_bp);
+		}
 		BO_UNLOCK(bo);
 	}
 	
@@ -1352,7 +1352,7 @@ arc_getblk(arc_buf_t *buf)
 	uint64_t		size = buf->b_hdr->b_size;
 	arc_buf_contents_t	type = buf->b_hdr->b_type;
 	spa_t			*spa = buf->b_hdr->b_spa;
-	off_t blkno = buf->b_hdr->b_dva.dva_word[1] & ~(1UL<<63);
+	uint64_t blkno = buf->b_hdr->b_dva.dva_word[1] & ~(1UL<<63);
 	void *data;
 	struct buf *newbp, *bp;
 	arc_buf_t *tbuf;
@@ -3385,7 +3385,7 @@ arc_write_done(zio_t *zio)
 		 */
 		struct buf *bp = buf->b_bp;
 		struct vnode *vp = spa_get_vnode(hdr->b_spa);
-		off_t blkno = hdr->b_dva.dva_word[1] & ~(1UL<<63);	
+		uint64_t blkno = hdr->b_dva.dva_word[1] & ~(1UL<<63);	
 
 		CTR3(KTR_SPARE2, "arc_write_done() bp=%p flags %X blkno %ld",
 		    bp, bp ? bp->b_flags : 0, blkno);
