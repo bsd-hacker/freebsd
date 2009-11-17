@@ -419,11 +419,11 @@ casuword32(volatile uint32_t *addr, uint32_t old, uint32_t new)
 	struct thread *td;
 	pmap_t pm;
 	faultbuf env;
-	u_long *p, val;
+	uint32_t *p, val;
 
 	td = PCPU_GET(curthread);
 	pm = &td->td_proc->p_vmspace->vm_pmap;
-	p = (u_long *)((uintptr_t)USER_ADDR +
+	p = (uint32_t *)((uintptr_t)USER_ADDR +
 	    ((uintptr_t)addr & ~SEGMENT_MASK));
 
 	set_user_sr(pm,(const void *)(vm_offset_t)addr);
