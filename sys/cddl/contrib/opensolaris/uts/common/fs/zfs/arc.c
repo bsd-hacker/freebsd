@@ -1315,10 +1315,6 @@ arc_bgetvp(arc_buf_t *buf)
 		return;
 
 	newbp = buf->b_bp;
-
-	if ((newbp->b_flags & (B_INVAL|B_CACHE)) != B_CACHE)
-		return;
-
 	newbp->b_offset = newbp->b_birth = hdr->b_birth;
 	newbp->b_blkno = newbp->b_lblkno = blkno;
 
@@ -1340,7 +1336,7 @@ arc_bgetvp(arc_buf_t *buf)
 			bp->b_flags |= B_INVAL;
 			bp->b_birth = 0;
 			brelse(bp);
-		} else {
+		} else if ((newbp->b_flags & (B_INVAL|B_CACHE)) == B_CACHE) {
 			bp->b_flags |= B_INVAL;
 			bp->b_birth = 0;
 			brelse(bp);
@@ -1348,7 +1344,8 @@ arc_bgetvp(arc_buf_t *buf)
 			BO_LOCK(bo);
 			bgetvp(vp, newbp);
 			BO_UNLOCK(bo);
-		}
+		} else
+			brelse(bp);
 	} else {
 		newbp->b_flags |= B_CACHE;
 		newbp->b_flags &= ~B_INVAL;
