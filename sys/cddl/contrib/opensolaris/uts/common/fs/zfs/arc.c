@@ -1424,9 +1424,13 @@ arc_brelse(arc_buf_t *buf, void *data, size_t size)
 		return;
 	}
 
-	arc_bgetvp(buf);
-	CTR4(KTR_SPARE2, "arc_brelse() bp=%p flags %X size %ld blkno=%ld",
-	    bp, bp->b_flags, size, bp->b_blkno);
+	if (hdr->b_datacnt == 1) {
+		arc_bgetvp(buf);
+		CTR4(KTR_SPARE2, "arc_brelse() bp=%p flags %X"
+		    " size %ld blkno=%ld",
+		    bp, bp->b_flags, size, bp->b_blkno);
+	}
+
 	brelse(bp);
 }
 
