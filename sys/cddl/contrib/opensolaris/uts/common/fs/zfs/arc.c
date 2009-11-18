@@ -1336,16 +1336,17 @@ arc_bgetvp(arc_buf_t *buf)
 			bp->b_flags |= B_INVAL;
 			bp->b_birth = 0;
 			brelse(bp);
-		} else if ((newbp->b_flags & (B_INVAL|B_CACHE)) == B_CACHE) {
+		} else {
+			
 			bp->b_flags |= B_INVAL;
 			bp->b_birth = 0;
 			brelse(bp);
-			
-			BO_LOCK(bo);
-			bgetvp(vp, newbp);
-			BO_UNLOCK(bo);
-		} else
-			brelse(bp);
+			if ((newbp->b_flags & (B_INVAL|B_CACHE)) == B_CACHE) {
+				BO_LOCK(bo);
+				bgetvp(vp, newbp);
+				BO_UNLOCK(bo);
+			}
+		} 
 	} else {
 		newbp->b_flags |= B_CACHE;
 		newbp->b_flags &= ~B_INVAL;
