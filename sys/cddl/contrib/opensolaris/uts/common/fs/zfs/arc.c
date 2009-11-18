@@ -1315,9 +1315,8 @@ arc_bgetvp(arc_buf_t *buf)
 		return;
 
 	newbp = buf->b_bp;
-	newbp->b_birth = hdr->b_birth;
+	newbp->b_offset = newbp->b_birth = hdr->b_birth;
 	newbp->b_blkno = newbp->b_lblkno = blkno;
-	newbp->b_offset = NOOFFSET;
 
 	BO_LOCK(bo);
 	bp = gbincore(bo, blkno);
