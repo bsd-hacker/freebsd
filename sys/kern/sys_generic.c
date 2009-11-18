@@ -913,7 +913,7 @@ kern_select(struct thread *td, int nd, fd_set *fd_in, fd_set *fd_ou,
 #define swizzle_fdset(bits)
 #endif
 
-	/* Make sure the bit order make it through an ABI transition */
+	/* Make sure the bit order makes it through an ABI transition */
 	swizzle_fdset(ibits[0]);
 	swizzle_fdset(ibits[1]);
 	swizzle_fdset(ibits[2]);
