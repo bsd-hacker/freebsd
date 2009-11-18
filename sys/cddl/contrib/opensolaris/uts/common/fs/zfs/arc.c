@@ -1332,16 +1332,12 @@ arc_bgetvp(arc_buf_t *buf)
 		if (((bp->b_flags & (B_CACHE|B_INVAL)) == B_CACHE) &&
 		    (bp->b_birth > hdr->b_birth)) {
 			brelse(bp);
-		} else if (hdr->b_flags & ARC_IO_ERROR) {
-			bp->b_flags |= B_INVAL;
-			bp->b_birth = 0;
-			brelse(bp);
 		} else {
-			
 			bp->b_flags |= B_INVAL;
 			bp->b_birth = 0;
 			brelse(bp);
-			if ((newbp->b_flags & (B_INVAL|B_CACHE)) == B_CACHE) {
+			if (!(hdr->b_flags & ARC_IO_ERROR) &&
+			    (newbp->b_flags & (B_INVAL|B_CACHE)) == B_CACHE) {
 				BO_LOCK(bo);
 				bgetvp(vp, newbp);
 				BO_UNLOCK(bo);
