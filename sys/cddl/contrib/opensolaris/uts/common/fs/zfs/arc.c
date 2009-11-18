@@ -1315,6 +1315,10 @@ arc_bgetvp(arc_buf_t *buf)
 		return;
 
 	newbp = buf->b_bp;
+
+	if ((newbp->b_flags & (B_INVAL|B_CACHE)) != B_CACHE)
+		return;
+
 	newbp->b_offset = newbp->b_birth = hdr->b_birth;
 	newbp->b_blkno = newbp->b_lblkno = blkno;
 
@@ -1340,9 +1344,6 @@ arc_bgetvp(arc_buf_t *buf)
 			bp->b_flags |= B_INVAL;
 			bp->b_birth = 0;
 			brelse(bp);
-			
-			newbp->b_flags |= B_CACHE;
-			newbp->b_flags &= ~B_INVAL;
 			
 			BO_LOCK(bo);
 			bgetvp(vp, newbp);
@@ -1423,8 +1424,7 @@ arc_brelse(arc_buf_t *buf, void *data, size_t size)
 		return;
 	}
 
-	if (hdr->b_datacnt == 1)
-		arc_bgetvp(buf);
+	arc_bgetvp(buf);
 	CTR4(KTR_SPARE2, "arc_brelse() bp=%p flags %X size %ld blkno=%ld",
 	    bp, bp->b_flags, size, bp->b_blkno);
 	brelse(bp);
@@ -2702,8 +2702,11 @@ arc_read_done(zio_t *zio)
 		if (HDR_IN_HASH_TABLE(hdr))
 			buf_hash_remove(hdr);
 		freeable = refcount_is_zero(&hdr->b_refcnt);
+	} else if (buf->b_bp != NULL) {
+		buf->b_bp->b_flags |= B_CACHE;
+		buf->b_bp->b_flags &= ~B_INVAL;
 	}
-
+	
 	/*
 	 * Broadcast before we drop the hash_lock to avoid the possibility
 	 * that the hdr (and hence the cv) might be freed before we get to
@@ -3415,7 +3418,10 @@ arc_write_done(zio_t *zio)
 			arc_hdr_destroy(exists);
 			exists = buf_hash_insert(hdr, &hash_lock);
 			ASSERT3P(exists, ==, NULL);
-		} 
+		} else if (buf->b_bp != NULL) {
+			buf->b_bp->b_flags |= B_CACHE;
+			buf->b_bp->b_flags &= ~B_INVAL;
+		}
 
 		hdr->b_flags &= ~ARC_IO_IN_PROGRESS;
 		/* if it's not anon, we are doing a scrub */
