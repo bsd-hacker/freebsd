@@ -590,7 +590,6 @@ freebsd32_select(struct thread *td, struct freebsd32_select_args *uap)
 	} else
 		tvp = NULL;
 	/*
-	 * XXX big-endian needs to convert the fd_sets too.
 	 * XXX Do pointers need PTRIN()?
 	 */
 	return (kern_select(td, uap->nd, uap->in, uap->ou, uap->ex, tvp,
@@ -624,7 +623,6 @@ freebsd32_pselect(struct thread *td, struct freebsd32_pselect_args *uap)
 	} else
 		uset = NULL;
 	/*
-	 * XXX big-endian needs to convert the fd_sets too.
 	 * XXX Do pointers need PTRIN()?
 	 */
 	error = kern_pselect(td, uap->nd, uap->in, uap->ou, uap->ex, tvp,
