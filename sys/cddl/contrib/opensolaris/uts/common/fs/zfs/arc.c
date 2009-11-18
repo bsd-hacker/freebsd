@@ -1369,7 +1369,6 @@ arc_getblk(arc_buf_t *buf)
 	struct vnode *vp;
 	struct bufobj *bo;
 	int flags = 0;
-	int preflags, postflags;
 
 	if (type == ARC_BUFC_METADATA) {
 		arc_space_consume(size);
@@ -1392,14 +1391,9 @@ arc_getblk(arc_buf_t *buf)
 		buf->b_hdr->b_flags &= ~ARC_BUF_CLONING;
 	} else {
 		newbp = getblk(vp, blkno, size, 0, 0, flags);
-		preflags = newbp->b_flags;
-
-		if (newbp->b_vp != NULL)
-			brelvp(newbp);
-		postflags = newbp->b_flags;
-
-		if (preflags != postflags)
-			CTR2(KTR_SPARE2, "arc_getblk() flags change pre %X post %X", preflags, postflags);
+		if (newbp->b_birth != buf->b_hdr->b_birth)
+			newbp->b_flags |= B_INVAL;
+		brelvp(newbp);
 		data = newbp->b_data;
 	}
 
