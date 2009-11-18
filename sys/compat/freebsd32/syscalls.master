@@ -317,11 +317,9 @@
 173	AUE_PREAD	COMPAT6	{ ssize_t freebsd32_pread(int fd, void *buf, \
 				    size_t nbyte, int pad, \
 				    u_int32_t offsetlo, u_int32_t offsethi); }
-; XXX note - bigendian is different
 174	AUE_PWRITE	COMPAT6	{ ssize_t freebsd32_pwrite(int fd, \
 				    const void *buf, size_t nbyte, int pad, \
 				    u_int32_t offsetlo, u_int32_t offsethi); }
-; XXX note - bigendian is different
 175	AUE_NULL	UNIMPL	nosys
 176	AUE_NTP_ADJTIME	NOPROTO	{ int ntp_adjtime(struct timex *tp); }
 177	AUE_NULL	UNIMPL	sfork (BSD/OS 2.x)
@@ -364,7 +362,6 @@
 199	AUE_LSEEK	COMPAT6	{ off_t freebsd32_lseek(int fd, int pad, \
 				    u_int32_t offsetlo, u_int32_t offsethi, \
 				    int whence); }
-; XXX note - bigendian is different
 200	AUE_TRUNCATE	COMPAT6	{ int freebsd32_truncate(char *path, \
 				    int pad, u_int32_t lengthlo, \
 				    u_int32_t lengthhi); }

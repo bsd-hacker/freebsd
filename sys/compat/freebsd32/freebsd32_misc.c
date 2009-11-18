@@ -2013,8 +2013,13 @@ freebsd32_lseek(struct thread *td, struct freebsd32_lseek_args *uap)
 	error = lseek(td, &ap);
 	/* Expand the quad return into two parts for eax and edx */
 	pos = *(off_t *)(td->td_retval);
+	#if BYTE_ORDER == BIG_ENDIAN
+	td->td_retval[0] = pos >> 32;
+	td->td_retval[1] = pos & 0xffffffff;
+	#else
 	td->td_retval[0] = pos & 0xffffffff;	/* %eax */
 	td->td_retval[1] = pos >> 32;		/* %edx */
+	#endif
 	return error;
 }
 

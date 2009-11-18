@@ -347,15 +347,25 @@ struct freebsd32_pread_args {
 	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
 	char buf_l_[PADL_(void *)]; void * buf; char buf_r_[PADR_(void *)];
 	char nbyte_l_[PADL_(size_t)]; size_t nbyte; char nbyte_r_[PADR_(size_t)];
+	#if BYTE_ORDER == BIG_ENDIAN
+	char offsethi_l_[PADL_(u_int32_t)]; u_int32_t offsethi; char offsethi_r_[PADR_(u_int32_t)];
+	char offsetlo_l_[PADL_(u_int32_t)]; u_int32_t offsetlo; char offsetlo_r_[PADR_(u_int32_t)];
+	#else
 	char offsetlo_l_[PADL_(u_int32_t)]; u_int32_t offsetlo; char offsetlo_r_[PADR_(u_int32_t)];
 	char offsethi_l_[PADL_(u_int32_t)]; u_int32_t offsethi; char offsethi_r_[PADR_(u_int32_t)];
+	#endif
 };
 struct freebsd32_pwrite_args {
 	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
 	char buf_l_[PADL_(const void *)]; const void * buf; char buf_r_[PADR_(const void *)];
 	char nbyte_l_[PADL_(size_t)]; size_t nbyte; char nbyte_r_[PADR_(size_t)];
+	#if BYTE_ORDER == BIG_ENDIAN
+	char offsethi_l_[PADL_(u_int32_t)]; u_int32_t offsethi; char offsethi_r_[PADR_(u_int32_t)];
+	char offsetlo_l_[PADL_(u_int32_t)]; u_int32_t offsetlo; char offsetlo_r_[PADR_(u_int32_t)];
+	#else
 	char offsetlo_l_[PADL_(u_int32_t)]; u_int32_t offsetlo; char offsetlo_r_[PADR_(u_int32_t)];
 	char offsethi_l_[PADL_(u_int32_t)]; u_int32_t offsethi; char offsethi_r_[PADR_(u_int32_t)];
+	#endif
 };
 struct freebsd32_mmap_args {
 	char addr_l_[PADL_(caddr_t)]; caddr_t addr; char addr_r_[PADR_(caddr_t)];
@@ -374,8 +384,13 @@ struct freebsd32_lseek_args {
 };
 struct freebsd32_truncate_args {
 	char path_l_[PADL_(char *)]; char * path; char path_r_[PADR_(char *)];
+	#if BYTE_ORDER == BIG_ENDIAN
+	char lengthhi_l_[PADL_(u_int32_t)]; u_int32_t lengthhi; char lengthhi_r_[PADR_(u_int32_t)];
+	char lengthlo_l_[PADL_(u_int32_t)]; u_int32_t lengthlo; char lengthlo_r_[PADR_(u_int32_t)];
+	#else
 	char lengthlo_l_[PADL_(u_int32_t)]; u_int32_t lengthlo; char lengthlo_r_[PADR_(u_int32_t)];
 	char lengthhi_l_[PADL_(u_int32_t)]; u_int32_t lengthhi; char lengthhi_r_[PADR_(u_int32_t)];
+	#endif
 };
 struct freebsd32_ftruncate_args {
 	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
@@ -667,8 +682,13 @@ struct freebsd6_freebsd32_mmap_args {
 struct freebsd6_freebsd32_lseek_args {
 	char fd_l_[PADL_(int)]; int fd; char fd_r_[PADR_(int)];
 	char pad_l_[PADL_(int)]; int pad; char pad_r_[PADR_(int)];
+	#if BYTE_ORDER == BIG_ENDIAN
+	char offsethi_l_[PADL_(u_int32_t)]; u_int32_t offsethi; char offsethi_r_[PADR_(u_int32_t)];
+	char offsetlo_l_[PADL_(u_int32_t)]; u_int32_t offsetlo; char offsetlo_r_[PADR_(u_int32_t)];
+	#else
 	char offsetlo_l_[PADL_(u_int32_t)]; u_int32_t offsetlo; char offsetlo_r_[PADR_(u_int32_t)];
 	char offsethi_l_[PADL_(u_int32_t)]; u_int32_t offsethi; char offsethi_r_[PADR_(u_int32_t)];
+	#endif
 	char whence_l_[PADL_(int)]; int whence; char whence_r_[PADR_(int)];
 };
 struct freebsd6_freebsd32_truncate_args {
