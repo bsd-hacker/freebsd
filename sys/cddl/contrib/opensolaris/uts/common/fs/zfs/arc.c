@@ -452,6 +452,7 @@ struct arc_write_callback {
 	arc_buf_t	*awcb_buf;
 };
 
+
 struct arc_buf_hdr {
 	/* protected by hash lock */
 	dva_t			b_dva;
@@ -1307,11 +1308,14 @@ arc_bgetvp(arc_buf_t *buf)
 	struct bufobj *bo = &vp->v_bufobj;
 	arc_buf_hdr_t *hdr = buf->b_hdr;
 
-	if (blkno == 0)
+	if (zfs_page_cache_disable)
+		return;
+
+	if (blkno == 0 || hdr->b_birth == 0)
 		return;
 
 	newbp = buf->b_bp;
-	newbp->b_offset = hdr->b_birth;
+	newbp->b_birth = hdr->b_birth;
 	newbp->b_blkno = newbp->b_lblkno = blkno;
 
 	BO_LOCK(bo);
@@ -1325,11 +1329,16 @@ arc_bgetvp(arc_buf_t *buf)
 		/*
 		 * buffer is usable for this mapping
 		 */
-		if (!(hdr->b_flags & ARC_IO_ERROR) &&
-		    (bp->b_offset <= hdr->b_birth) &&
-		    (bp->b_flags & (B_CACHE|B_INVAL)) == B_CACHE) { 
+		if (((bp->b_flags & (B_CACHE|B_INVAL)) == B_CACHE) &&
+		    (bp->b_birth > hdr->b_birth)) {
+			brelse(bp);
+		} else if (hdr->b_flags & ARC_IO_ERROR) {
 			bp->b_flags |= B_INVAL;
-			bp->b_flags &= ~B_CACHE;
+			bp->b_birth = 0;
+			brelse(bp);
+		} else {
+			bp->b_flags |= B_INVAL;
+			bp->b_birth = 0;
 			brelse(bp);
 			
 			newbp->b_flags |= B_CACHE;
@@ -1338,8 +1347,7 @@ arc_bgetvp(arc_buf_t *buf)
 			BO_LOCK(bo);
 			bgetvp(vp, newbp);
 			BO_UNLOCK(bo);
-		} else
-			brelse(bp);
+		}
 	} else {
 		newbp->b_flags |= B_CACHE;
 		newbp->b_flags &= ~B_INVAL;

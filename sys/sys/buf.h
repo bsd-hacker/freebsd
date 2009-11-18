@@ -104,7 +104,8 @@ struct buf {
 	long		b_resid;
 	void	(*b_iodone)(struct buf *);
 	daddr_t b_blkno;		/* Underlying physical block number. */
-	off_t	b_offset;		/* Offset into file. */
+	off_t		b_offset;	/* Offset into file. */
+	uint64_t	b_birth;	/* birth txg	    */	 
 	TAILQ_ENTRY(buf) b_bobufs;	/* (V) Buffer's associated vnode. */
 	struct buf	*b_left;	/* (V) splay tree link */
 	struct buf	*b_right;	/* (V) splay tree link */
