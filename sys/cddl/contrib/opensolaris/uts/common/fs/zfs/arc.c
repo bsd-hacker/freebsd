@@ -188,6 +188,7 @@ SYSCTL_INT(_vfs_zfs, OID_AUTO, mdcomp_disable, CTLFLAG_RDTUN,
     &zfs_mdcomp_disable, 0, "Disable metadata compression");
 
 static int zfs_page_cache_disable = 0;
+TUNABLE_INT("vfs.zfs.page_cache_disable", &zfs_page_cache_disable);
 SYSCTL_INT(_vfs_zfs, OID_AUTO, page_cache_disable, CTLFLAG_RDTUN,
     &zfs_page_cache_disable, 0, "Disable backing ARC with page cache ");
 
@@ -1343,9 +1344,8 @@ arc_bgetvp(arc_buf_t *buf)
 				BO_UNLOCK(bo);
 			}
 		} 
-	} else {
-		newbp->b_flags |= B_CACHE;
-		newbp->b_flags &= ~B_INVAL;
+	} else 	if (!(hdr->b_flags & ARC_IO_ERROR) &&
+	    (newbp->b_flags & (B_INVAL|B_CACHE)) == B_CACHE) {
 		bgetvp(vp, newbp);
 		BO_UNLOCK(bo);
 	}
