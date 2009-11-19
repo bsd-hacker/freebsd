@@ -1322,14 +1322,8 @@ arc_brelvp(arc_buf_hdr_t *hdr)
 		 */
 		BUF_LOCK(bp, LK_EXCLUSIVE | LK_INTERLOCK, BO_MTX(bo));
 		bremfree(bp);
-		/*
-		 * buffer is not valid or is older
-		 */
-		if (((bp->b_flags & (B_CACHE|B_INVAL)) != B_CACHE) ||
-		    (bp->b_birth <= hdr->b_birth)) {
-			bp->b_flags |= B_INVAL;
-			bp->b_birth = 0;
-		} 
+		bp->b_flags |= B_INVAL;
+		bp->b_birth = 0;
 		brelse(bp);
 	} else
 		BO_UNLOCK(bo);
@@ -3411,6 +3405,8 @@ arc_write_done(zio_t *zio)
 	hdr->b_dva = *BP_IDENTITY(zio->io_bp);
 	hdr->b_birth = zio->io_bp->blk_birth;
 	hdr->b_cksum0 = zio->io_bp->blk_cksum.zc_word[0];
+	arc_brelvp(hdr);
+
 	/*
 	 * If the block to be written was all-zero, we may have
 	 * compressed it away.  In this case no write was performed
@@ -3452,8 +3448,6 @@ arc_write_done(zio_t *zio)
 			exists = buf_hash_insert(hdr, &hash_lock);
 			ASSERT3P(exists, ==, NULL);
 		} else if (buf->b_bp != NULL) {
-			arc_brelvp(hdr);
-			
 			buf->b_bp->b_flags |= B_CACHE;
 			buf->b_bp->b_flags &= ~B_INVAL;
 		}
@@ -3469,7 +3463,6 @@ arc_write_done(zio_t *zio)
 		 * This is an anonymous buffer with no user callback,
 		 * destroy it if there are no active references.
 		 */
-		arc_brelvp(hdr);
 		mutex_enter(&arc_eviction_mtx);
 		destroy_hdr = refcount_is_zero(&hdr->b_refcnt);
 		hdr->b_flags &= ~ARC_IO_IN_PROGRESS;
@@ -3478,7 +3471,6 @@ arc_write_done(zio_t *zio)
 			arc_hdr_destroy(hdr);
 	} else {
 		hdr->b_flags &= ~ARC_IO_IN_PROGRESS;
-		arc_brelvp(hdr);
 	}
 	hdr->b_flags &= ~ARC_STORED;
 
