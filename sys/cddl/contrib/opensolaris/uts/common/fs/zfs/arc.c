@@ -1348,7 +1348,8 @@ arc_bgetvp(arc_buf_t *buf)
 	    (newbp->b_flags & (B_INVAL|B_CACHE)) == B_CACHE) {
 		bgetvp(vp, newbp);
 		BO_UNLOCK(bo);
-	}
+	} else
+		BO_UNLOCK(bo);
 }
 
 static void
