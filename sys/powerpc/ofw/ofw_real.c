@@ -98,7 +98,7 @@ static ssize_t ofw_real_instance_to_path(ofw_t, ihandle_t instance, char *buf,
 static ssize_t ofw_real_package_to_path(ofw_t, phandle_t package, char *buf, 
     size_t len);
 static int ofw_real_call_method(ofw_t, ihandle_t instance, const char *method, 
-    int nargs, int nreturns, unsigned long *args_and_returns);
+    int nargs, int nreturns, cell_t *args_and_returns);
 static ihandle_t ofw_real_open(ofw_t, const char *device);
 static void ofw_real_close(ofw_t, ihandle_t instance);
 static ssize_t ofw_real_read(ofw_t, ihandle_t instance, void *addr, size_t len);
@@ -678,7 +678,7 @@ ofw_real_package_to_path(ofw_t ofw, phandle_t package, char *buf, size_t len)
 /*  Call the method in the scope of a given instance. */
 static int
 ofw_real_call_method(ofw_t ofw, ihandle_t instance, const char *method, 
-    int nargs, int nreturns, unsigned long *args_and_returns)
+    int nargs, int nreturns, cell_t *args_and_returns)
 {
 	static struct {
 		cell_t name;
@@ -688,8 +688,7 @@ ofw_real_call_method(ofw_t ofw, ihandle_t instance, const char *method,
 		cell_t instance;
 		cell_t args_n_results[12];
 	} args;
-	cell_t *cp;
-	unsigned long *ap;
+	cell_t *cp, *ap;
 	int n;
 
 	args.name = (cell_t)(uintptr_t)"call-method";

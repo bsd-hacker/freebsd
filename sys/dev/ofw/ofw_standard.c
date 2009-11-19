@@ -95,7 +95,7 @@ static ssize_t ofw_std_package_to_path(ofw_t ofw, phandle_t package, char *buf,
     size_t len);
 static int ofw_std_call_method(ofw_t ofw, ihandle_t instance,
     const char *method, int nargs, int nreturns,
-    unsigned long *args_and_returns);
+    cell_t *args_and_returns);
 static ihandle_t ofw_std_open(ofw_t ofw, const char *device);
 static void ofw_std_close(ofw_t ofw, ihandle_t instance);
 static ssize_t ofw_std_read(ofw_t ofw, ihandle_t instance, void *addr,
@@ -514,7 +514,7 @@ ofw_std_package_to_path(ofw_t ofw, phandle_t package, char *buf, size_t len)
 /*  Call the method in the scope of a given instance. */
 static int
 ofw_std_call_method(ofw_t ofw, ihandle_t instance, const char *method,
-    int nargs, int nreturns, unsigned long *args_and_returns)
+    int nargs, int nreturns, cell_t *args_and_returns)
 {
 	static struct {
 		cell_t name;
