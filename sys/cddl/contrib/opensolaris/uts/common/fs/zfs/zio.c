@@ -25,6 +25,7 @@
 
 #include <sys/zfs_context.h>
 #include <sys/fm/fs/zfs.h>
+#include <sys/arc.h>
 #include <sys/spa.h>
 #include <sys/txg.h>
 #include <sys/spa_impl.h>
@@ -548,6 +549,7 @@ zio_write(zio_t *pio, spa_t *spa, uint64_t txg, blkptr_t *bp,
 	    zp->zp_ndvas <= spa_max_replication(spa));
 	ASSERT(ready != NULL);
 
+	arc_binval(spa, BP_IDENTITY(bp));
 	zio = zio_create(pio, spa, txg, bp, data, size, done, private,
 	    ZIO_TYPE_WRITE, priority, flags, NULL, 0, zb,
 	    ZIO_STAGE_OPEN, ZIO_WRITE_PIPELINE);
@@ -565,6 +567,7 @@ zio_rewrite(zio_t *pio, spa_t *spa, uint64_t txg, blkptr_t *bp, void *data,
 {
 	zio_t *zio;
 
+	arc_binval(spa, BP_IDENTITY(bp));
 	zio = zio_create(pio, spa, txg, bp, data, size, done, private,
 	    ZIO_TYPE_WRITE, priority, flags, NULL, 0, zb,
 	    ZIO_STAGE_OPEN, ZIO_REWRITE_PIPELINE);

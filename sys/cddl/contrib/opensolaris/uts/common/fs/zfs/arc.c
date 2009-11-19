@@ -1300,18 +1300,18 @@ arc_buf_add_ref(arc_buf_t *buf, void* tag)
 	    data, metadata, hits);
 }
 
-static void
-arc_brelvp(arc_buf_hdr_t *hdr)
+void
+arc_binval(spa_t *spa, dva_t *dva)
 {
-	uint64_t blkno = hdr->b_dva.dva_word[1] & ~(1UL<<63);
-	struct vnode *vp = spa_get_vnode(hdr->b_spa);
+	uint64_t blkno = dva->dva_word[1] & ~(1UL<<63);
+	struct vnode *vp = spa_get_vnode(spa);
 	struct bufobj *bo = &vp->v_bufobj;
 	struct buf *bp;
 
 	if (zfs_page_cache_disable)
 		return;
 
-	if (blkno == 0 || hdr->b_birth == 0)
+	if (blkno == 0)
 		return;
 
 	BO_LOCK(bo);
@@ -2673,7 +2673,6 @@ arc_read_done(zio_t *zio)
 	buf = zio->io_private;
 	hdr = buf->b_hdr;
 
-	arc_brelvp(hdr);
 	/*
 	 * The hdr was inserted into hash-table and removed from lists
 	 * prior to starting I/O.  We should find this header, since
@@ -3406,7 +3405,6 @@ arc_write_done(zio_t *zio)
 	hdr->b_dva = *BP_IDENTITY(zio->io_bp);
 	hdr->b_birth = zio->io_bp->blk_birth;
 	hdr->b_cksum0 = zio->io_bp->blk_cksum.zc_word[0];
-	arc_brelvp(hdr);
 
 	/*
 	 * If the block to be written was all-zero, we may have
