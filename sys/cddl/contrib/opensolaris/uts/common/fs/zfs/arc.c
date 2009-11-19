@@ -2673,6 +2673,7 @@ arc_read_done(zio_t *zio)
 	buf = zio->io_private;
 	hdr = buf->b_hdr;
 
+	arc_brelvp(hdr);
 	/*
 	 * The hdr was inserted into hash-table and removed from lists
 	 * prior to starting I/O.  We should find this header, since
