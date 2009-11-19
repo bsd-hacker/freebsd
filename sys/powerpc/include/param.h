@@ -54,7 +54,11 @@
 #define	MACHINE		"powerpc"
 #endif
 #ifndef MACHINE_ARCH
+#ifdef __powerpc64__
+#define	MACHINE_ARCH	"powerpc64"
+#else
 #define	MACHINE_ARCH	"powerpc"
+#endif
 #endif
 #define	MID_MACHINE	MID_POWERPC
 
