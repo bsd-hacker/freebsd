@@ -119,6 +119,12 @@ CTASSERT(sizeof(struct sigaction32) == 24);
 static int freebsd32_kevent_copyout(void *arg, struct kevent *kevp, int count);
 static int freebsd32_kevent_copyin(void *arg, struct kevent *kevp, int count);
 
+#if BYTE_ORDER == BIG_ENDIAN
+#define PAIR32TO64(type, name) ((name ## 2) | ((type)(name ## 1) << 32))
+#else
+#define PAIR32TO64(type, name) ((name ## 1) | ((type)(name ## 2) << 32))
+#endif
+
 int
 freebsd32_wait4(struct thread *td, struct freebsd32_wait4_args *uap)
 {
@@ -430,8 +436,7 @@ freebsd32_mmap(struct thread *td, struct freebsd32_mmap_args *uap)
 	int prot	 = uap->prot;
 	int flags	 = uap->flags;
 	int fd		 = uap->fd;
-	off_t pos	 = (uap->poslo
-			    | ((off_t)uap->poshi << 32));
+	off_t pos	 = PAIR32TO64(off_t,uap->pos);
 #ifdef __ia64__
 	vm_size_t pageoff;
 	int error;
@@ -527,8 +532,8 @@ freebsd6_freebsd32_mmap(struct thread *td, struct freebsd6_freebsd32_mmap_args *
 	ap.prot = uap->prot;
 	ap.flags = uap->flags;
 	ap.fd = uap->fd;
-	ap.poslo = uap->poslo;
-	ap.poshi = uap->poshi;
+	ap.pos1 = uap->pos1;
+	ap.pos2 = uap->pos2;
 
 	return (freebsd32_mmap(td, &ap));
 }
@@ -845,7 +850,7 @@ freebsd32_preadv(struct thread *td, struct freebsd32_preadv_args *uap)
 	error = freebsd32_copyinuio(uap->iovp, uap->iovcnt, &auio);
 	if (error)
 		return (error);
-	error = kern_preadv(td, uap->fd, auio, uap->offset);
+	error = kern_preadv(td, uap->fd, auio, PAIR32TO64(off_t,uap->offset));
 	free(auio, M_IOV);
 	return (error);
 }
@@ -859,7 +864,7 @@ freebsd32_pwritev(struct thread *td, struct freebsd32_pwritev_args *uap)
 	error = freebsd32_copyinuio(uap->iovp, uap->iovcnt, &auio);
 	if (error)
 		return (error);
-	error = kern_pwritev(td, uap->fd, auio, uap->offset);
+	error = kern_pwritev(td, uap->fd, auio, PAIR32TO64(off_t,uap->offset));
 	free(auio, M_IOV);
 	return (error);
 }
@@ -1984,7 +1989,7 @@ freebsd32_pread(struct thread *td, struct freebsd32_pread_args *uap)
 	ap.fd = uap->fd;
 	ap.buf = uap->buf;
 	ap.nbyte = uap->nbyte;
-	ap.offset = (uap->offsetlo | ((off_t)uap->offsethi << 32));
+	ap.offset = PAIR32TO64(off_t,uap->offset);
 	return (pread(td, &ap));
 }
 
@@ -1996,7 +2001,7 @@ freebsd32_pwrite(struct thread *td, struct freebsd32_pwrite_args *uap)
 	ap.fd = uap->fd;
 	ap.buf = uap->buf;
 	ap.nbyte = uap->nbyte;
-	ap.offset = (uap->offsetlo | ((off_t)uap->offsethi << 32));
+	ap.offset = PAIR32TO64(off_t,uap->offset);
 	return (pwrite(td, &ap));
 }
 
@@ -2008,7 +2013,7 @@ freebsd32_lseek(struct thread *td, struct freebsd32_lseek_args *uap)
 	off_t pos;
 
 	ap.fd = uap->fd;
-	ap.offset = (uap->offsetlo | ((off_t)uap->offsethi << 32));
+	ap.offset = PAIR32TO64(off_t,uap->offset);
 	ap.whence = uap->whence;
 	error = lseek(td, &ap);
 	/* Expand the quad return into two parts for eax and edx */
@@ -2029,7 +2034,7 @@ freebsd32_truncate(struct thread *td, struct freebsd32_truncate_args *uap)
 	struct truncate_args ap;
 
 	ap.path = uap->path;
-	ap.length = (uap->lengthlo | ((off_t)uap->lengthhi << 32));
+	ap.length = PAIR32TO64(off_t,uap->length);
 	return (truncate(td, &ap));
 }
 
@@ -2039,7 +2044,7 @@ freebsd32_ftruncate(struct thread *td, struct freebsd32_ftruncate_args *uap)
 	struct ftruncate_args ap;
 
 	ap.fd = uap->fd;
-	ap.length = (uap->lengthlo | ((off_t)uap->lengthhi << 32));
+	ap.length = PAIR32TO64(off_t,uap->length);
 	return (ftruncate(td, &ap));
 }
 
@@ -2071,7 +2076,7 @@ freebsd6_freebsd32_pread(struct thread *td, struct freebsd6_freebsd32_pread_args
 	ap.fd = uap->fd;
 	ap.buf = uap->buf;
 	ap.nbyte = uap->nbyte;
-	ap.offset = (uap->offsetlo | ((off_t)uap->offsethi << 32));
+	ap.offset = PAIR32TO64(off_t,uap->offset);
 	return (pread(td, &ap));
 }
 
@@ -2083,7 +2088,7 @@ freebsd6_freebsd32_pwrite(struct thread *td, struct freebsd6_freebsd32_pwrite_ar
 	ap.fd = uap->fd;
 	ap.buf = uap->buf;
 	ap.nbyte = uap->nbyte;
-	ap.offset = (uap->offsetlo | ((off_t)uap->offsethi << 32));
+	ap.offset = PAIR32TO64(off_t,uap->offset);
 	return (pwrite(td, &ap));
 }
 
@@ -2095,7 +2100,7 @@ freebsd6_freebsd32_lseek(struct thread *td, struct freebsd6_freebsd32_lseek_args
 	off_t pos;
 
 	ap.fd = uap->fd;
-	ap.offset = (uap->offsetlo | ((off_t)uap->offsethi << 32));
+	ap.offset = PAIR32TO64(off_t,uap->offset);
 	ap.whence = uap->whence;
 	error = lseek(td, &ap);
 	/* Expand the quad return into two parts for eax and edx */
@@ -2116,7 +2121,7 @@ freebsd6_freebsd32_truncate(struct thread *td, struct freebsd6_freebsd32_truncat
 	struct truncate_args ap;
 
 	ap.path = uap->path;
-	ap.length = (uap->lengthlo | ((off_t)uap->lengthhi << 32));
+	ap.length = PAIR32TO64(off_t,uap->length);
 	return (truncate(td, &ap));
 }
 
@@ -2126,7 +2131,7 @@ freebsd6_freebsd32_ftruncate(struct thread *td, struct freebsd6_freebsd32_ftrunc
 	struct ftruncate_args ap;
 
 	ap.fd = uap->fd;
-	ap.length = (uap->lengthlo | ((off_t)uap->lengthhi << 32));
+	ap.length = PAIR32TO64(off_t,uap->length);
 	return (ftruncate(td, &ap));
 }
 #endif /* COMPAT_FREEBSD6 */
@@ -2153,7 +2158,7 @@ freebsd32_do_sendfile(struct thread *td,
 
 	ap.fd = uap->fd;
 	ap.s = uap->s;
-	ap.offset = (uap->offsetlo | ((off_t)uap->offsethi << 32));
+	ap.offset = PAIR32TO64(off_t,uap->offset);
 	ap.nbytes = uap->nbytes;
 	ap.hdtr = (struct sf_hdtr *)uap->hdtr;		/* XXX not used */
 	ap.sbytes = uap->sbytes;
@@ -2891,7 +2896,7 @@ freebsd32_cpuset_setid(struct thread *td,
 	struct cpuset_setid_args ap;
 
 	ap.which = uap->which;
-	ap.id = (uap->idlo | ((id_t)uap->idhi << 32));
+	ap.id = PAIR32TO64(id_t,uap->id);
 	ap.setid = uap->setid;
 
 	return (cpuset_setid(td, &ap));
@@ -2905,7 +2910,7 @@ freebsd32_cpuset_getid(struct thread *td,
 
 	ap.level = uap->level;
 	ap.which = uap->which;
-	ap.id = (uap->idlo | ((id_t)uap->idhi << 32));
+	ap.id = PAIR32TO64(id_t,uap->id);
 	ap.setid = uap->setid;
 
 	return (cpuset_getid(td, &ap));
@@ -2919,7 +2924,7 @@ freebsd32_cpuset_getaffinity(struct thread *td,
 
 	ap.level = uap->level;
 	ap.which = uap->which;
-	ap.id = (uap->idlo | ((id_t)uap->idhi << 32));
+	ap.id = PAIR32TO64(id_t,uap->id);
 	ap.cpusetsize = uap->cpusetsize;
 	ap.mask = uap->mask;
 
@@ -2934,7 +2939,7 @@ freebsd32_cpuset_setaffinity(struct thread *td,
 
 	ap.level = uap->level;
 	ap.which = uap->which;
-	ap.id = (uap->idlo | ((id_t)uap->idhi << 32));
+	ap.id = PAIR32TO64(id_t,uap->id);
 	ap.cpusetsize = uap->cpusetsize;
 	ap.mask = uap->mask;
 
