@@ -1301,6 +1301,41 @@ arc_buf_add_ref(arc_buf_t *buf, void* tag)
 }
 
 static void
+arc_brelvp(arc_buf_hdr_t *hdr)
+{
+	uint64_t blkno = hdr->b_dva.dva_word[1] & ~(1UL<<63);
+	struct vnode *vp = spa_get_vnode(hdr->b_spa);
+	struct bufobj *bo = &vp->v_bufobj;
+	struct buf *bp;
+
+	if (zfs_page_cache_disable)
+		return;
+
+	if (blkno == 0 || hdr->b_birth == 0)
+		return;
+
+	BO_LOCK(bo);
+	bp = gbincore(bo, blkno);
+	if (bp != NULL) {
+		/*
+		 * XXX we have a race with getblk here
+		 */
+		BUF_LOCK(bp, LK_EXCLUSIVE | LK_INTERLOCK, BO_MTX(bo));
+		bremfree(bp);
+		/*
+		 * buffer is not valid or is older
+		 */
+		if (((bp->b_flags & (B_CACHE|B_INVAL)) != B_CACHE) ||
+		    (bp->b_birth <= hdr->b_birth)) {
+			bp->b_flags |= B_INVAL;
+			bp->b_birth = 0;
+		} 
+		brelse(bp);
+	} else
+		BO_UNLOCK(bo);
+}
+
+static void
 arc_bgetvp(arc_buf_t *buf)
 {	
 	uint64_t blkno = buf->b_hdr->b_dva.dva_word[1] & ~(1UL<<63);
@@ -1344,7 +1379,7 @@ arc_bgetvp(arc_buf_t *buf)
 			bgetvp(vp, newbp);
 			BO_UNLOCK(bo);
 		}
-	} else 	if ((hdr->b_datacnt == 1) &&
+	} else if ((hdr->b_datacnt == 1) &&
 	    !(hdr->b_flags & ARC_IO_ERROR) &&
 	    (newbp->b_flags & (B_INVAL|B_CACHE)) == B_CACHE) {
 		bgetvp(vp, newbp);
@@ -3417,6 +3452,8 @@ arc_write_done(zio_t *zio)
 			exists = buf_hash_insert(hdr, &hash_lock);
 			ASSERT3P(exists, ==, NULL);
 		} else if (buf->b_bp != NULL) {
+			arc_brelvp(hdr);
+			
 			buf->b_bp->b_flags |= B_CACHE;
 			buf->b_bp->b_flags &= ~B_INVAL;
 		}
@@ -3432,6 +3469,7 @@ arc_write_done(zio_t *zio)
 		 * This is an anonymous buffer with no user callback,
 		 * destroy it if there are no active references.
 		 */
+		arc_brelvp(hdr);
 		mutex_enter(&arc_eviction_mtx);
 		destroy_hdr = refcount_is_zero(&hdr->b_refcnt);
 		hdr->b_flags &= ~ARC_IO_IN_PROGRESS;
@@ -3440,6 +3478,7 @@ arc_write_done(zio_t *zio)
 			arc_hdr_destroy(hdr);
 	} else {
 		hdr->b_flags &= ~ARC_IO_IN_PROGRESS;
+		arc_brelvp(hdr);
 	}
 	hdr->b_flags &= ~ARC_STORED;
 
