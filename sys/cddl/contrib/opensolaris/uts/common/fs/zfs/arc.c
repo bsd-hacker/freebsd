@@ -1328,23 +1328,24 @@ arc_bgetvp(arc_buf_t *buf)
 		BUF_LOCK(bp, LK_EXCLUSIVE | LK_INTERLOCK, BO_MTX(bo));
 		bremfree(bp);
 		/*
-		 * buffer is usable for this mapping
+		 * buffer is not valid or is older
 		 */
-		if (((bp->b_flags & (B_CACHE|B_INVAL)) == B_CACHE) &&
-		    (bp->b_birth > hdr->b_birth)) {
-			brelse(bp);
-		} else {
+		if (((bp->b_flags & (B_CACHE|B_INVAL)) != B_CACHE) ||
+		    (bp->b_birth <= hdr->b_birth)) {
 			bp->b_flags |= B_INVAL;
 			bp->b_birth = 0;
-			brelse(bp);
-			if (!(hdr->b_flags & ARC_IO_ERROR) &&
-			    (newbp->b_flags & (B_INVAL|B_CACHE)) == B_CACHE) {
-				BO_LOCK(bo);
-				bgetvp(vp, newbp);
-				BO_UNLOCK(bo);
-			}
 		} 
-	} else 	if (!(hdr->b_flags & ARC_IO_ERROR) &&
+		brelse(bp);
+
+		if ((hdr->b_datacnt == 1) &&
+		    !(hdr->b_flags & ARC_IO_ERROR) &&
+		    (newbp->b_flags & (B_INVAL|B_CACHE)) == B_CACHE) {
+			BO_LOCK(bo);
+			bgetvp(vp, newbp);
+			BO_UNLOCK(bo);
+		}
+	} else 	if ((hdr->b_datacnt == 1) &&
+	    !(hdr->b_flags & ARC_IO_ERROR) &&
 	    (newbp->b_flags & (B_INVAL|B_CACHE)) == B_CACHE) {
 		bgetvp(vp, newbp);
 		BO_UNLOCK(bo);
@@ -1419,12 +1420,10 @@ arc_brelse(arc_buf_t *buf, void *data, size_t size)
 		return;
 	}
 
-	if (hdr->b_datacnt == 1) {
-		arc_bgetvp(buf);
-		CTR4(KTR_SPARE2, "arc_brelse() bp=%p flags %X"
-		    " size %ld blkno=%ld",
-		    bp, bp->b_flags, size, bp->b_blkno);
-	}
+	arc_bgetvp(buf);
+	CTR4(KTR_SPARE2, "arc_brelse() bp=%p flags %X"
+	    " size %ld blkno=%ld",
+	    bp, bp->b_flags, size, bp->b_blkno);
 
 	brelse(bp);
 }
