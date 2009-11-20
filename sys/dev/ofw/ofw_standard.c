@@ -528,8 +528,7 @@ ofw_std_call_method(ofw_t ofw, ihandle_t instance, const char *method,
 		2,
 		1,
 	};
-	cell_t *cp;
-	unsigned long *ap;
+	cell_t *cp, *ap;
 	int n;
 
 	if (nargs > 6)
