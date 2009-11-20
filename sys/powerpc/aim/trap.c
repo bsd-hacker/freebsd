@@ -441,6 +441,15 @@ syscall(struct trapframe *frame)
 	else
 		error = 0;
 
+#ifdef __powerpc64__
+	if (p->p_sysent->sv_flags & SV_ILP32 && narg > n) {
+		/* Expand the size of arguments copied from the stack */
+
+		for (i = narg; i >= n; i--)
+			args[i] = ((uint32_t *)(&args[n]))[i-n];
+	}
+#endif
+
 	CTR5(KTR_SYSC, "syscall: p=%s %s(%x %x %x)", td->td_name,
 	     scall_names[code],
 	     args[0], args[1], args[2]);
@@ -469,7 +478,8 @@ syscall(struct trapframe *frame)
 	}
 	switch (error) {
 	case 0:
-		if (frame->fixreg[0] == SYS___syscall &&
+		if (p->p_sysent->sv_flags & SV_ILP32 &&
+		    frame->fixreg[0] == SYS___syscall &&
 		    code != SYS_freebsd6_lseek && code != SYS_lseek) {
 			/*
 			 * 64-bit return, 32-bit syscall. Fixup byte order
