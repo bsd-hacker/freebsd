@@ -1303,16 +1303,20 @@ arc_buf_add_ref(arc_buf_t *buf, void* tag)
 void
 arc_binval(spa_t *spa, dva_t *dva)
 {
-	uint64_t blkno = dva->dva_word[1] & ~(1UL<<63);
-	struct vnode *vp = spa_get_vnode(spa);
-	struct bufobj *bo = &vp->v_bufobj;
+	uint64_t blkno;
+	struct vnode *vp;
+	struct bufobj *bo;
 	struct buf *bp;
 
 	if (zfs_page_cache_disable)
 		return;
 
-	if (blkno == 0)
+	if (dva == NULL || spa == NULL || blkno == 0)
 		return;
+
+	blkno = dva->dva_word[1] & ~(1UL<<63);
+	vp = spa_get_vnode(spa);
+	bo = &vp->v_bufobj;
 
 	BO_LOCK(bo);
 	bp = gbincore(bo, blkno);
@@ -1408,7 +1412,7 @@ arc_getblk(arc_buf_t *buf)
 	bo = &vp->v_bufobj;
 	newbp = NULL;
 
-	if ((size < PAGE_SIZE)) {
+	if (size < PAGE_SIZE) {
 		data = zio_buf_alloc(size);
 	} else if ((buf->b_hdr->b_flags & ARC_BUF_CLONING) ||
 	    BUF_EMPTY(buf->b_hdr)) {
@@ -2961,21 +2965,6 @@ top:
 			ASSERT(hdr->b_datacnt == 0);
 			hdr->b_datacnt = 1;
 		}
-		/*
-		 * We hit in the page cache
-		 *
-		 */
-		if (buf->b_bp != NULL) {
-			if ((buf->b_bp->b_flags & (B_CACHE|B_INVAL)) == B_CACHE) {
-				/*
-				 * track the number of times
-				 * the buffer was found in the cache
-				 */
-				ARCSTAT_BUMP(arcstat_page_cache_hits);
-				mutex_exit(hash_lock);
-				goto top;
-			}
-		}
 
 		acb = kmem_zalloc(sizeof (arc_callback_t), KM_SLEEP);
 		acb->acb_done = done;
@@ -3076,6 +3065,20 @@ top:
 
 		rzio = zio_read(pio, spa, bp, buf->b_data, size,
 		    arc_read_done, buf, priority, zio_flags, zb);
+
+		/*
+		 * We hit in the page cache
+		 *
+		 */
+		if ((buf->b_bp != NULL) &&
+		    ((buf->b_bp->b_flags & (B_CACHE|B_INVAL)) == B_CACHE)) {
+			/*
+			 * track the number of times
+			 * the buffer was found in the cache
+			 */
+			ARCSTAT_BUMP(arcstat_page_cache_hits);
+			rzio->io_pipeline = ZIO_INTERLOCK_STAGES;
+		}
 
 		if (*arc_flags & ARC_WAIT)
 			return (zio_wait(rzio));
