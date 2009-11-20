@@ -897,7 +897,7 @@ kern_select(struct thread *td, int nd, fd_set *fd_in, fd_set *fd_ou,
 	getbits(fd_ex, 2);
 #undef	getbits
 
-#if BYTE_ORDER == BIG_ENDIAN
+#if BYTE_ORDER == BIG_ENDIAN && defined(__LP64__)
 	/*
 	 * XXX: swizzle_fdset assumes that if abi_nfdbits != NFDBITS,
 	 * we are running under 32-bit emulation. This should be more
