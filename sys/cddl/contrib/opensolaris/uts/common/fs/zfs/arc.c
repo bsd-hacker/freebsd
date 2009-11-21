@@ -1730,7 +1730,7 @@ arc_evict(arc_state_t *state, spa_t *spa, int64_t bytes, boolean_t recycle,
 	 * don't recycle page cache bufs
 	 *
 	 */
-	if (recycle && (size >= PAGE_SIZE))
+	if (recycle && (bytes >= PAGE_SIZE))
 		recycle = FALSE;
 	if (type == ARC_BUFC_METADATA) {
 		offset = 0;
