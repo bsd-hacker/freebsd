@@ -81,7 +81,7 @@ options 	WITNESS_SKIPSPIN	#Don't run witness on spinlocks for speed
 #options 	SMP			# Symmetric MultiProcessor Kernel
 
 # CPU frequency control
-#device		cpufreq
+device		cpufreq
 
 # Standard busses
 device		pci
