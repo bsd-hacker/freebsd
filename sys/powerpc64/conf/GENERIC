@@ -78,7 +78,7 @@ options 	WITNESS			#Enable checks to detect deadlocks and cycles
 options 	WITNESS_SKIPSPIN	#Don't run witness on spinlocks for speed
 
 # To make an SMP kernel, the next line is needed
-options 	SMP			# Symmetric MultiProcessor Kernel
+#options 	SMP			# Symmetric MultiProcessor Kernel
 
 # CPU frequency control
 #device		cpufreq
@@ -136,8 +136,8 @@ device		bpf		#Berkeley packet filter
 
 # USB support
 device		uhci		# UHCI PCI->USB interface
-#device		ohci		# OHCI PCI->USB interface
-#device		ehci		# EHCI PCI->USB interface
+device		ohci		# OHCI PCI->USB interface
+device		ehci		# EHCI PCI->USB interface
 device		usb		# USB Bus (required)
 device		uhid		# "Human Interface Devices"
 device		ukbd		# Keyboard
@@ -172,5 +172,5 @@ device		kiic		# Keywest I2C
 
 options 	KTR
 options 	KTR_COMPILE=0xffffffff
-#options 	KTR_MASK=KTR_SIG
+#options 	KTR_MASK=(KTR_SYSC)
 options 	KTR_VERBOSE
