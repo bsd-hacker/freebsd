@@ -1436,10 +1436,8 @@ arc_getblk(arc_buf_t *buf)
 	    newbp, newbp->b_flags);
 #endif
 
-	if (newbp != NULL) {
+	if (newbp != NULL)
 		BUF_KERNPROC(newbp);
-		newbp->b_flags |= B_VMIO;
-	}
 	buf->b_bp = newbp;
 	buf->b_data = data;
 }
