@@ -453,7 +453,6 @@ struct arc_write_callback {
 	arc_buf_t	*awcb_buf;
 };
 
-
 struct arc_buf_hdr {
 	/* protected by hash lock */
 	dva_t			b_dva;
@@ -498,7 +497,7 @@ static void arc_access(arc_buf_hdr_t *buf, kmutex_t *hash_lock);
 static int arc_evict_needed(arc_buf_contents_t type);
 static void arc_evict_ghost(arc_state_t *state, spa_t *spa, int64_t bytes);
 
-#define	GHOST_STATE(state)						\
+#define	GHOST_STATE(state)	\
 	((state) == arc_mru_ghost || (state) == arc_mfu_ghost ||	\
 	(state) == arc_l2c_only)
 
@@ -1704,7 +1703,7 @@ arc_buf_size(arc_buf_t *buf)
  * it can't get a hash_lock on, and so may not catch all candidates.
  * It may also return without evicting as much space as requested.
  */
-static struct buf *
+static void *
 arc_evict(arc_state_t *state, spa_t *spa, int64_t bytes, boolean_t recycle,
     arc_buf_contents_t type)
 {
@@ -1716,18 +1715,16 @@ arc_evict(arc_state_t *state, spa_t *spa, int64_t bytes, boolean_t recycle,
 	kmutex_t *lock, *evicted_lock;
 	kmutex_t *hash_lock;
 	boolean_t have_lock;
-	struct buf *stolen = NULL;
+	void *stolen = NULL;
 	static int evict_metadata_offset, evict_data_offset;
 	int i, idx, offset, list_count, count;
 
 	ASSERT(state == arc_mru || state == arc_mfu);
-	ASSERT(recycle == FALSE);
 
 	evicted_state = (state == arc_mru) ? arc_mru_ghost : arc_mfu_ghost;
 	
 	if (type == ARC_BUFC_METADATA) {
 		offset = 0;
-
 		list_count = ARC_BUFC_NUMMETADATALISTS;
 		list_start = &state->arcs_lists[0];
 		evicted_list_start = &evicted_state->arcs_lists[0];
@@ -1792,7 +1789,7 @@ evict_start:
 				if (buf->b_efunc) {
 					mutex_enter(&arc_eviction_mtx);
 					arc_buf_destroy(buf,
-					    buf->b_bp == stolen, FALSE);
+					    buf->b_data == stolen, FALSE);
 					ab->b_buf = buf->b_next;
 					buf->b_hdr = &arc_eviction_hdr;
 					buf->b_next = arc_eviction_list;
@@ -1802,7 +1799,7 @@ evict_start:
 				} else {
 					rw_exit(&buf->b_lock);
 					arc_buf_destroy(buf,
-					    buf->b_bp == stolen, TRUE);
+					    buf->b_data == stolen, TRUE);
 				}
 			}
 			if (ab->b_datacnt == 0) {
@@ -2486,9 +2483,11 @@ arc_get_data_buf(arc_buf_t *buf)
 		state =  (arc_mru->arcs_lsize[type] > 0 &&
 		    mfu_space > arc_mfu->arcs_size) ? arc_mru : arc_mfu;
 	}
-	(void) arc_evict(state, NULL, size, FALSE, type);
-	arc_getblk(buf);
-	ASSERT(buf->b_data != NULL);
+	if ((buf->b_data = arc_evict(state, NULL, size, (size < PAGE_SIZE), type)) == NULL) {
+		arc_getblk(buf);
+		ASSERT(buf->b_data != NULL);
+	}
+
 out:
 	/*
 	 * Update the state size.  Note that ghost states have a
@@ -2737,7 +2736,7 @@ arc_read_done(zio_t *zio)
 		buf->b_bp->b_flags |= B_CACHE;
 		buf->b_bp->b_flags &= ~B_INVAL;
 	}
-	
+
 	/*
 	 * Broadcast before we drop the hash_lock to avoid the possibility
 	 * that the hdr (and hence the cv) might be freed before we get to
@@ -2839,9 +2838,11 @@ arc_read_nolock(zio_t *pio, spa_t *spa, blkptr_t *bp,
 top:
 	hdr = buf_hash_find(spa, BP_IDENTITY(bp), bp->blk_birth, &hash_lock);
 	if (hdr && hdr->b_datacnt > 0) {
+
 		*arc_flags |= ARC_CACHED;
 
 		if (HDR_IO_IN_PROGRESS(hdr)) {
+
 			if (*arc_flags & ARC_WAIT) {
 				cv_wait(&hdr->b_cv, hash_lock);
 				mutex_exit(hash_lock);
@@ -2915,9 +2916,7 @@ top:
 			/* this block is not in the cache */
 			arc_buf_hdr_t	*exists;
 			arc_buf_contents_t type = BP_GET_BUFC_TYPE(bp);
-
-			buf = _arc_buf_alloc(spa, size, private, type,
-			    bp);
+			buf = _arc_buf_alloc(spa, size, private, type, bp);
 			hdr = buf->b_hdr;
 			hdr->b_cksum0 = bp->blk_cksum.zc_word[0];
 			exists = buf_hash_insert(hdr, &hash_lock);
@@ -2964,6 +2963,7 @@ top:
 			arc_get_data_buf(buf);
 			ASSERT(hdr->b_datacnt == 0);
 			hdr->b_datacnt = 1;
+
 		}
 
 		acb = kmem_zalloc(sizeof (arc_callback_t), KM_SLEEP);
@@ -3067,7 +3067,7 @@ top:
 		    arc_read_done, buf, priority, zio_flags, zb);
 
 		/*
-		 * We hit in the page cache
+		 * We hit in the page cache - can bypass the I/O stages
 		 *
 		 */
 		if ((buf->b_bp != NULL) &&
@@ -3405,10 +3405,10 @@ arc_write_done(zio_t *zio)
 	arc_buf_hdr_t *hdr = buf->b_hdr;
 
 	hdr->b_acb = NULL;
+
 	hdr->b_dva = *BP_IDENTITY(zio->io_bp);
 	hdr->b_birth = zio->io_bp->blk_birth;
 	hdr->b_cksum0 = zio->io_bp->blk_cksum.zc_word[0];
-
 	/*
 	 * If the block to be written was all-zero, we may have
 	 * compressed it away.  In this case no write was performed
@@ -3418,15 +3418,6 @@ arc_write_done(zio_t *zio)
 	if (!BUF_EMPTY(hdr)) {
 		arc_buf_hdr_t *exists;
 		kmutex_t *hash_lock;
-		/*
-		 * Associate buffer with offset in the page cache
-		 */
-		struct buf *bp = buf->b_bp;
-		struct vnode *vp = spa_get_vnode(hdr->b_spa);
-		uint64_t blkno = hdr->b_dva.dva_word[1] & ~(1UL<<63);	
-
-		CTR3(KTR_SPARE2, "arc_write_done() bp=%p flags %X blkno %ld",
-		    bp, bp ? bp->b_flags : 0, blkno);
 
 		arc_cksum_verify(buf);
 
@@ -3453,7 +3444,6 @@ arc_write_done(zio_t *zio)
 			buf->b_bp->b_flags |= B_CACHE;
 			buf->b_bp->b_flags &= ~B_INVAL;
 		}
-
 		hdr->b_flags &= ~ARC_IO_IN_PROGRESS;
 		/* if it's not anon, we are doing a scrub */
 		if (hdr->b_state == arc_anon)
@@ -3920,8 +3910,8 @@ arc_init(void)
 	    TS_RUN, minclsyspri);
 
 #ifdef _KERNEL
-	arc_event_lowmem = EVENTHANDLER_REGISTER(vm_lowmem, arc_lowmem,
-	    NULL, EVENTHANDLER_PRI_FIRST);
+	arc_event_lowmem = EVENTHANDLER_REGISTER(vm_lowmem, arc_lowmem, NULL,
+	    EVENTHANDLER_PRI_FIRST);
 	arc_event_shutdown = EVENTHANDLER_REGISTER(shutdown_pre_sync,
 	    arc_shutdown, NULL, EVENTHANDLER_PRI_FIRST);
 #endif
