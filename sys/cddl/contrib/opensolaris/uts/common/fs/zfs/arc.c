@@ -1419,10 +1419,11 @@ arc_getblk(arc_buf_t *buf)
 		data = newbp->b_data;
 		buf->b_hdr->b_flags &= ~ARC_BUF_CLONING;
 	} else {
-		newbp = getblk(vp, blkno, size, 0, 0, flags);
-		if (newbp->b_birth != buf->b_hdr->b_birth)
-			newbp->b_flags |= B_INVAL;
-		brelvp(newbp);
+		newbp = getblk(vp, blkno, size, 0, 0, flags | GB_NOCREAT);
+		if (newbp == NULL)
+			newbp = geteblk(size, flags);
+		else
+			brelvp(newbp);
 		data = newbp->b_data;
 	}
 
@@ -1435,8 +1436,10 @@ arc_getblk(arc_buf_t *buf)
 	    newbp, newbp->b_flags);
 #endif
 
-	if (newbp != NULL)
+	if (newbp != NULL) {
 		BUF_KERNPROC(newbp);
+		newbp->b_flags |= B_VMIO;
+	}
 	buf->b_bp = newbp;
 	buf->b_data = data;
 }
@@ -1722,7 +1725,13 @@ arc_evict(arc_state_t *state, spa_t *spa, int64_t bytes, boolean_t recycle,
 	ASSERT(state == arc_mru || state == arc_mfu);
 
 	evicted_state = (state == arc_mru) ? arc_mru_ghost : arc_mfu_ghost;
-	
+
+	/*
+	 * don't recycle page cache bufs
+	 *
+	 */
+	if (recycle && (size >= PAGE_SIZE))
+		recycle = FALSE;
 	if (type == ARC_BUFC_METADATA) {
 		offset = 0;
 		list_count = ARC_BUFC_NUMMETADATALISTS;
@@ -2483,7 +2492,7 @@ arc_get_data_buf(arc_buf_t *buf)
 		state =  (arc_mru->arcs_lsize[type] > 0 &&
 		    mfu_space > arc_mfu->arcs_size) ? arc_mru : arc_mfu;
 	}
-	if ((buf->b_data = arc_evict(state, NULL, size, (size < PAGE_SIZE), type)) == NULL) {
+	if ((buf->b_data = arc_evict(state, NULL, size, TRUE, type)) == NULL) {
 		arc_getblk(buf);
 		ASSERT(buf->b_data != NULL);
 	}
