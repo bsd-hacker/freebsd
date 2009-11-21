@@ -95,16 +95,14 @@ typedef enum {
 
 struct disk_params {
 	u_int8_t  heads;
-	u_int32_t cylinders;
 	u_int8_t  secs_per_track;
-	u_int32_t secsize;	/* Number of bytes/sector */
-	u_int64_t sectors;	/* total number sectors */
+	u_int32_t cylinders;
+	u_int32_t secsize;	/* Number of bytes/logical sector */
+	u_int64_t sectors;	/* Total number sectors */
 };
 
 struct ada_softc {
 	struct	 bio_queue_head bio_queue;
-	SLIST_ENTRY(ada_softc) links;
-	LIST_HEAD(, ccb_hdr) pending_ccbs;
 	ada_state state;
 	ada_flags flags;	
 	ada_quirks quirks;
@@ -124,9 +122,17 @@ struct ada_quirk_entry {
 	ada_quirks quirks;
 };
 
-//static struct ada_quirk_entry ada_quirk_table[] =
-//{
-//};
+static struct ada_quirk_entry ada_quirk_table[] =
+{
+	{
+		/* Default */
+		{
+		  T_ANY, SIP_MEDIA_REMOVABLE|SIP_MEDIA_FIXED,
+		  /*vendor*/"*", /*product*/"*", /*revision*/"*"
+		},
+		/*quirks*/0
+	},
+};
 
 static	disk_strategy_t	adastrategy;
 static	dumper_t	adadump;
@@ -142,7 +148,7 @@ static	void		adadone(struct cam_periph *periph,
 			       union ccb *done_ccb);
 static  int		adaerror(union ccb *ccb, u_int32_t cam_flags,
 				u_int32_t sense_flags);
-static void		adasetgeom(struct cam_periph *periph,
+static void		adagetparams(struct cam_periph *periph,
 				struct ccb_getdev *cgd);
 static timeout_t	adasendorderedtag;
 static void		adashutdown(void *arg, int howto);
@@ -373,7 +379,6 @@ adadump(void *arg, void *virtual, vm_offset_t physical, off_t offset, size_t len
 	}
 
 	if (length > 0) {
-		periph->flags |= CAM_PERIPH_POLLED;
 		xpt_setup_ccb(&ccb.ccb_h, periph->path, CAM_PRIORITY_NORMAL);
 		ccb.ccb_h.ccb_state = ADA_CCB_DUMP;
 		cam_fill_ataio(&ccb.ataio,
@@ -433,7 +438,6 @@ adadump(void *arg, void *virtual, vm_offset_t physical, off_t offset, size_t len
 					 /*timeout*/0,
 					 /*getcount_only*/0);
 	}
-	periph->flags &= ~CAM_PERIPH_POLLED;
 	cam_periph_unlock(periph);
 	return (0);
 }
@@ -613,7 +617,6 @@ adaregister(struct cam_periph *periph, void *arg)
 		return(CAM_REQ_CMP_ERR);
 	}
 
-	LIST_INIT(&softc->pending_ccbs);
 	bioq_init(&softc->bio_queue);
 
 	if (cgd->ident_data.capabilities1 & ATA_SUPPORT_DMA)
@@ -623,7 +626,7 @@ adaregister(struct cam_periph *periph, void *arg)
 	if (cgd->ident_data.support.command2 & ATA_SUPPORT_FLUSHCACHE)
 		softc->flags |= ADA_FLAG_CAN_FLUSHCACHE;
 	if (cgd->ident_data.satacapabilities & ATA_SUPPORT_NCQ &&
-	    cgd->ident_data.queue >= 31)
+	    cgd->inq_flags & SID_CmdQue)
 		softc->flags |= ADA_FLAG_CAN_NCQ;
 	softc->state = ADA_STATE_NORMAL;
 
@@ -632,12 +635,10 @@ adaregister(struct cam_periph *periph, void *arg)
 	/*
 	 * See if this device has any quirks.
 	 */
-//	match = cam_quirkmatch((caddr_t)&cgd->inq_data,
-//			       (caddr_t)ada_quirk_table,
-//			       sizeof(ada_quirk_table)/sizeof(*ada_quirk_table),
-//			       sizeof(*ada_quirk_table), scsi_inquiry_match);
-	match = NULL;
-
+	match = cam_quirkmatch((caddr_t)&cgd->ident_data,
+			       (caddr_t)ada_quirk_table,
+			       sizeof(ada_quirk_table)/sizeof(*ada_quirk_table),
+			       sizeof(*ada_quirk_table), ata_identify_match);
 	if (match != NULL)
 		softc->quirks = ((struct ada_quirk_entry *)match)->quirks;
 	else
@@ -658,6 +659,7 @@ adaregister(struct cam_periph *periph, void *arg)
 	 * Register this media as a disk
 	 */
 	mtx_unlock(periph->sim->mtx);
+	adagetparams(periph, cgd);
 	softc->disk = disk_alloc();
 	softc->disk->d_open = adaopen;
 	softc->disk->d_close = adaclose;
@@ -671,9 +673,9 @@ adaregister(struct cam_periph *periph, void *arg)
 	else if (maxio > MAXPHYS)
 		maxio = MAXPHYS;	/* for safety */
 	if (cgd->ident_data.support.command2 & ATA_SUPPORT_ADDRESS48)
-		maxio = min(maxio, 65536 * 512);
+		maxio = min(maxio, 65536 * softc->params.secsize);
 	else					/* 28bit ATA command limit */
-		maxio = min(maxio, 256 * 512);
+		maxio = min(maxio, 256 * softc->params.secsize);
 	softc->disk->d_maxsize = maxio;
 	softc->disk->d_unit = periph->unit_number;
 	softc->disk->d_flags = 0;
@@ -682,9 +684,12 @@ adaregister(struct cam_periph *periph, void *arg)
 	strlcpy(softc->disk->d_ident, cgd->serial_num,
 	    MIN(sizeof(softc->disk->d_ident), cgd->serial_num_len + 1));
 
-	adasetgeom(periph, cgd);
 	softc->disk->d_sectorsize = softc->params.secsize;
-	softc->disk->d_mediasize = softc->params.secsize * (off_t)softc->params.sectors;
+	softc->disk->d_mediasize = (off_t)softc->params.sectors *
+	    softc->params.secsize;
+	softc->disk->d_stripesize = ata_physical_sector_size(&cgd->ident_data);
+	softc->disk->d_stripeoffset = softc->disk->d_stripesize -
+	    ata_logical_sector_offset(&cgd->ident_data);
 	/* XXX: these are not actually "firmware" values, so they may be wrong */
 	softc->disk->d_fwsectors = softc->params.secs_per_track;
 	softc->disk->d_fwheads = softc->params.heads;
@@ -701,11 +706,6 @@ adaregister(struct cam_periph *periph, void *arg)
 		dp->secsize, dp->heads,
 		dp->secs_per_track, dp->cylinders);
 	xpt_announce_periph(periph, announce_buf);
-	if (softc->flags & ADA_FLAG_CAN_NCQ) {
-		printf("%s%d: Native Command Queueing enabled\n",
-		       periph->periph_name, periph->unit_number);
-	}
-
 	/*
 	 * Add async callbacks for bus reset and
 	 * bus device reset calls.  I don't bother
@@ -852,19 +852,10 @@ adastart(struct cam_periph *periph, union ccb *start_ccb)
 				break;
 			}
 			start_ccb->ccb_h.ccb_state = ADA_CCB_BUFFER_IO;
-
-			/*
-			 * Block out any asyncronous callbacks
-			 * while we touch the pending ccb list.
-			 */
-			LIST_INSERT_HEAD(&softc->pending_ccbs,
-					 &start_ccb->ccb_h, periph_links.le);
-			softc->outstanding_cmds++;
-
 			start_ccb->ccb_h.ccb_bp = bp;
-			bp = bioq_first(&softc->bio_queue);
-
+			softc->outstanding_cmds++;
 			xpt_action(start_ccb);
+			bp = bioq_first(&softc->bio_queue);
 		}
 		
 		if (bp != NULL) {
@@ -941,12 +932,6 @@ adadone(struct cam_periph *periph, union ccb *done_ccb)
 			if (ataio->resid > 0)
 				bp->bio_flags |= BIO_ERROR;
 		}
-
-		/*
-		 * Block out any asyncronous callbacks
-		 * while we touch the pending ccb list.
-		 */
-		LIST_REMOVE(&done_ccb->ccb_h, periph_links.le);
 		softc->outstanding_cmds--;
 		if (softc->outstanding_cmds == 0)
 			softc->flags |= ADA_FLAG_WENT_IDLE;
@@ -983,14 +968,14 @@ adaerror(union ccb *ccb, u_int32_t cam_flags, u_int32_t sense_flags)
 }
 
 static void
-adasetgeom(struct cam_periph *periph, struct ccb_getdev *cgd)
+adagetparams(struct cam_periph *periph, struct ccb_getdev *cgd)
 {
 	struct ada_softc *softc = (struct ada_softc *)periph->softc;
 	struct disk_params *dp = &softc->params;
 	u_int64_t lbasize48;
 	u_int32_t lbasize;
 
-	dp->secsize = 512;
+	dp->secsize = ata_logical_sector_size(&cgd->ident_data);
 	if ((cgd->ident_data.atavalid & ATA_FLAG_54_58) &&
 		cgd->ident_data.current_heads && cgd->ident_data.current_sectors) {
 		dp->heads = cgd->ident_data.current_heads;

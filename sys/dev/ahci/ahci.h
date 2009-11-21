@@ -352,6 +352,7 @@ struct ahci_channel {
 	struct cam_path		*path;
 	uint32_t		caps;		/* Controller capabilities */
 	uint32_t		caps2;		/* Controller capabilities */
+	int			quirks;
 	int			numslots;	/* Number of present slots */
 	int			pm_level;	/* power management level */
 	int			sata_rev;	/* Maximum allowed SATA generation */
@@ -366,6 +367,7 @@ struct ahci_channel {
 	int			numrslots;	/* Number of running slots */
 	int			numtslots;	/* Number of tagged slots */
 	int			readlog;	/* Our READ LOG active */
+	int			fatalerr;	/* Fatal error happend */
 	int			lastslot;	/* Last used slot */
 	int			taggedtarget;	/* Last tagged target */
 	union ccb		*frozen;	/* Frozen command */
@@ -390,6 +392,7 @@ struct ahci_controller {
 	} irqs[16];
 	uint32_t		caps;		/* Controller capabilities */
 	uint32_t		caps2;		/* Controller capabilities */
+	int			quirks;
 	int			numirqs;
 	int			channels;
 	int			ichannels;

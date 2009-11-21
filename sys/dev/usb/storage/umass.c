@@ -679,7 +679,7 @@ static const struct umass_devdescr umass_devdescr[] = {
 		WRONG_CSWSIG
 	},
 	{USB_VENDOR_OLYMPUS, USB_PRODUCT_OLYMPUS_C700, RID_WILDCARD,
-		UMASS_PROTO_SCSI,
+		UMASS_PROTO_DEFAULT,
 		NO_GETMAXLUN
 	},
 	{USB_VENDOR_ONSPEC, USB_PRODUCT_ONSPEC_SDS_HOTFIND_D, RID_WILDCARD,
@@ -1669,6 +1669,7 @@ umass_detach(device_t dev)
 #if (__FreeBSD_version >= 700037)
 	mtx_unlock(&sc->sc_mtx);
 #endif
+	mtx_destroy(&sc->sc_mtx);
 
 	return (0);			/* success */
 }

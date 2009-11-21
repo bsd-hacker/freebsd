@@ -859,7 +859,6 @@ dadump(void *arg, void *virtual, vm_offset_t physical, off_t offset, size_t leng
 	}
 
 	if (length > 0) {
-		periph->flags |= CAM_PERIPH_POLLED;
 		xpt_setup_ccb(&csio.ccb_h, periph->path, CAM_PRIORITY_NORMAL);
 		csio.ccb_h.ccb_state = DA_CCB_DUMP;
 		scsi_read_write(&csio,
@@ -885,7 +884,6 @@ dadump(void *arg, void *virtual, vm_offset_t physical, off_t offset, size_t leng
 			else
 				printf("status == 0x%x, scsi status == 0x%x\n",
 				       csio.ccb_h.status, csio.scsi_status);
-			periph->flags |= CAM_PERIPH_POLLED;
 			return(EIO);
 		}
 		cam_periph_unlock(periph);
@@ -929,7 +927,6 @@ dadump(void *arg, void *virtual, vm_offset_t physical, off_t offset, size_t leng
 			}
 		}
 	}
-	periph->flags &= ~CAM_PERIPH_POLLED;
 	cam_periph_unlock(periph);
 	return (0);
 }
@@ -1948,8 +1945,15 @@ dagetcapacity(struct cam_periph *periph)
 
 done:
 
-	if (error == 0)
-		dasetgeom(periph, block_len, maxsector);
+	if (error == 0) {
+		if (block_len >= MAXPHYS || block_len == 0) {
+			xpt_print(periph->path,
+			    "unsupportable block size %ju\n",
+			    (uintmax_t) block_len);
+			error = EINVAL;
+		} else
+			dasetgeom(periph, block_len, maxsector);
+	}
 
 	xpt_release_ccb(ccb);
 

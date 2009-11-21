@@ -285,7 +285,6 @@ static xpt_devicefunc_t	xptsetasyncfunc;
 static xpt_busfunc_t	xptsetasyncbusfunc;
 static cam_status	xptregister(struct cam_periph *periph,
 				    void *arg);
-static void	 xpt_start_tags(struct cam_path *path);
 static __inline int xpt_schedule_dev_allocq(struct cam_eb *bus,
 					    struct cam_ed *dev);
 static __inline int periph_is_queued(struct cam_periph *periph);
@@ -299,12 +298,6 @@ xpt_schedule_dev_allocq(struct cam_eb *bus, struct cam_ed *dev)
 	int retval;
 
 	if (dev->ccbq.devq_openings > 0) {
-		if ((dev->flags & CAM_DEV_RESIZE_QUEUE_NEEDED) != 0) {
-			cam_ccbq_resize(&dev->ccbq,
-					dev->ccbq.dev_openings
-					+ dev->ccbq.dev_active);
-			dev->flags &= ~CAM_DEV_RESIZE_QUEUE_NEEDED;
-		}
 		/*
 		 * The priority of a device waiting for CCB resources
 		 * is that of the the highest priority peripheral driver
@@ -317,6 +310,27 @@ xpt_schedule_dev_allocq(struct cam_eb *bus, struct cam_ed *dev)
 		retval = 0;
 	}
 
+	return (retval);
+}
+
+static __inline int
+xpt_schedule_dev_sendq(struct cam_eb *bus, struct cam_ed *dev)
+{
+	int	retval;
+
+	if (dev->ccbq.dev_openings > 0) {
+		/*
+		 * The priority of a device waiting for controller
+		 * resources is that of the the highest priority CCB
+		 * enqueued.
+		 */
+		retval =
+		    xpt_schedule_dev(&bus->sim->devq->send_queue,
+				     &dev->send_ccb_entry.pinfo,
+				     CAMQ_GET_HEAD(&dev->ccbq.queue)->priority);
+	} else {
+		retval = 0;
+	}
 	return (retval);
 }
 
@@ -2657,6 +2671,7 @@ xpt_action_default(union ccb *start_ccb)
 			cgd->protocol = dev->protocol;
 			cgd->inq_data = dev->inq_data;
 			cgd->ident_data = dev->ident_data;
+			cgd->inq_flags = dev->inq_flags;
 			cgd->ccb_h.status = CAM_REQ_CMP;
 			cgd->serial_num_len = dev->serial_num_len;
 			if ((dev->serial_num_len > 0)
@@ -3258,15 +3273,12 @@ xpt_run_dev_sendq(struct cam_eb *bus)
 
 	devq->send_queue.qfrozen_cnt++;
 	while ((devq->send_queue.entries > 0)
-	    && (devq->send_openings > 0)) {
+	    && (devq->send_openings > 0)
+	    && (devq->send_queue.qfrozen_cnt <= 1)) {
 		struct	cam_ed_qinfo *qinfo;
 		struct	cam_ed *device;
 		union ccb *work_ccb;
 		struct	cam_sim *sim;
-
-	    	if (devq->send_queue.qfrozen_cnt > 1) {
-			break;
-		}
 
 		qinfo = (struct cam_ed_qinfo *)camq_remove(&devq->send_queue,
 							   CAMQ_HEAD);
@@ -3315,9 +3327,7 @@ xpt_run_dev_sendq(struct cam_eb *bus)
 			}
 			mtx_unlock(&xsoftc.xpt_lock);
 		}
-		devq->active_dev = device;
 		cam_ccbq_remove_ccb(&device->ccbq, work_ccb);
-
 		cam_ccbq_send_ccb(&device->ccbq, work_ccb);
 
 		devq->send_openings--;
@@ -3355,8 +3365,6 @@ xpt_run_dev_sendq(struct cam_eb *bus)
 		 */
 		sim = work_ccb->ccb_h.path->bus->sim;
 		(*(sim->sim_action))(sim, work_ccb);
-
-		devq->active_dev = NULL;
 	}
 	devq->send_queue.qfrozen_cnt--;
 }
@@ -3747,6 +3755,11 @@ xpt_release_ccb(union ccb *free_ccb)
 	mtx_assert(sim->mtx, MA_OWNED);
 
 	cam_ccbq_release_opening(&device->ccbq);
+	if (device->flags & CAM_DEV_RESIZE_QUEUE_NEEDED) {
+		device->flags &= ~CAM_DEV_RESIZE_QUEUE_NEEDED;
+		cam_ccbq_resize(&device->ccbq,
+		    device->ccbq.dev_openings + device->ccbq.dev_active);
+	}
 	if (sim->ccb_count > sim->max_ccbs) {
 		xpt_free_ccb(free_ccb);
 		sim->ccb_count--;
@@ -4022,13 +4035,19 @@ xpt_async(u_int32_t async_code, struct cam_path *path, void *async_arg)
 			 && path->device->lun_id != CAM_LUN_WILDCARD
 			 && device->lun_id != CAM_LUN_WILDCARD)
 				continue;
-
+			/*
+			 * The async callback could free the device.
+			 * If it is a broadcast async, it doesn't hold
+			 * device reference, so take our own reference.
+			 */
+			xpt_acquire_device(device);
 			(*(bus->xport->async))(async_code, bus,
 					       target, device,
 					       async_arg);
 
 			xpt_async_bcast(&device->asyncs, async_code,
 					path, async_arg);
+			xpt_release_device(device);
 		}
 	}
 
@@ -4076,45 +4095,18 @@ xpt_dev_async_default(u_int32_t async_code, struct cam_eb *bus,
 u_int32_t
 xpt_freeze_devq(struct cam_path *path, u_int count)
 {
-	struct ccb_hdr *ccbh;
 
 	mtx_assert(path->bus->sim->mtx, MA_OWNED);
-
 	path->device->ccbq.queue.qfrozen_cnt += count;
-
-	/*
-	 * Mark the last CCB in the queue as needing
-	 * to be requeued if the driver hasn't
-	 * changed it's state yet.  This fixes a race
-	 * where a ccb is just about to be queued to
-	 * a controller driver when it's interrupt routine
-	 * freezes the queue.  To completly close the
-	 * hole, controller drives must check to see
-	 * if a ccb's status is still CAM_REQ_INPROG
-	 * just before they queue
-	 * the CCB.  See ahc_action/ahc_freeze_devq for
-	 * an example.
-	 */
-	ccbh = TAILQ_LAST(&path->device->ccbq.active_ccbs, ccb_hdr_tailq);
-	if (ccbh && ccbh->status == CAM_REQ_INPROG)
-		ccbh->status = CAM_REQUEUE_REQ;
 	return (path->device->ccbq.queue.qfrozen_cnt);
 }
 
 u_int32_t
 xpt_freeze_simq(struct cam_sim *sim, u_int count)
 {
+
 	mtx_assert(sim->mtx, MA_OWNED);
-
 	sim->devq->send_queue.qfrozen_cnt += count;
-	if (sim->devq->active_dev != NULL) {
-		struct ccb_hdr *ccbh;
-
-		ccbh = TAILQ_LAST(&sim->devq->active_dev->ccbq.active_ccbs,
-				  ccb_hdr_tailq);
-		if (ccbh && ccbh->status == CAM_REQ_INPROG)
-			ccbh->status = CAM_REQUEUE_REQ;
-	}
 	return (sim->devq->send_queue.qfrozen_cnt);
 }
 
@@ -4232,6 +4224,7 @@ void
 xpt_done(union ccb *done_ccb)
 {
 	struct cam_sim *sim;
+	int	first;
 
 	CAM_DEBUG(done_ccb->ccb_h.path, CAM_DEBUG_TRACE, ("xpt_done\n"));
 	if ((done_ccb->ccb_h.func_code & XPT_FC_QUEUED) != 0) {
@@ -4240,25 +4233,17 @@ xpt_done(union ccb *done_ccb)
 		 * any of the "non-immediate" type of ccbs.
 		 */
 		sim = done_ccb->ccb_h.path->bus->sim;
-		switch (done_ccb->ccb_h.path->periph->type) {
-		case CAM_PERIPH_BIO:
-			TAILQ_INSERT_TAIL(&sim->sim_doneq, &done_ccb->ccb_h,
-					  sim_links.tqe);
-			done_ccb->ccb_h.pinfo.index = CAM_DONEQ_INDEX;
-			if ((sim->flags & CAM_SIM_ON_DONEQ) == 0) {
-				mtx_lock(&cam_simq_lock);
-				TAILQ_INSERT_TAIL(&cam_simq, sim,
-						  links);
-				mtx_unlock(&cam_simq_lock);
-				sim->flags |= CAM_SIM_ON_DONEQ;
-				if ((done_ccb->ccb_h.path->periph->flags &
-				    CAM_PERIPH_POLLED) == 0)
-					swi_sched(cambio_ih, 0);
-			}
-			break;
-		default:
-			panic("unknown periph type %d",
-			    done_ccb->ccb_h.path->periph->type);
+		TAILQ_INSERT_TAIL(&sim->sim_doneq, &done_ccb->ccb_h,
+		    sim_links.tqe);
+		done_ccb->ccb_h.pinfo.index = CAM_DONEQ_INDEX;
+		if ((sim->flags & CAM_SIM_ON_DONEQ) == 0) {
+			mtx_lock(&cam_simq_lock);
+			first = TAILQ_EMPTY(&cam_simq);
+			TAILQ_INSERT_TAIL(&cam_simq, sim, links);
+			mtx_unlock(&cam_simq_lock);
+			sim->flags |= CAM_SIM_ON_DONEQ;
+			if (first)
+				swi_sched(cambio_ih, 0);
 		}
 	}
 }
@@ -4574,7 +4559,7 @@ xpt_find_device(struct cam_et *target, lun_id_t lun_id)
 	return (device);
 }
 
-static void
+void
 xpt_start_tags(struct cam_path *path)
 {
 	struct ccb_relsim crs;
@@ -4593,6 +4578,30 @@ xpt_start_tags(struct cam_path *path)
 		newopenings = min(device->maxtags,
 				  sim->max_tagged_dev_openings);
 	xpt_dev_ccbq_resize(path, newopenings);
+	xpt_setup_ccb(&crs.ccb_h, path, CAM_PRIORITY_NORMAL);
+	crs.ccb_h.func_code = XPT_REL_SIMQ;
+	crs.release_flags = RELSIM_RELEASE_AFTER_QEMPTY;
+	crs.openings
+	    = crs.release_timeout
+	    = crs.qfrozen_cnt
+	    = 0;
+	xpt_action((union ccb *)&crs);
+}
+
+void
+xpt_stop_tags(struct cam_path *path)
+{
+	struct ccb_relsim crs;
+	struct cam_ed *device;
+	struct cam_sim *sim;
+
+	device = path->device;
+	sim = path->bus->sim;
+	device->flags &= ~CAM_DEV_TAG_AFTER_COUNT;
+	device->tag_delay_count = 0;
+	xpt_freeze_devq(path, /*count*/1);
+	device->inq_flags &= ~SID_CmdQue;
+	xpt_dev_ccbq_resize(path, sim->max_dev_openings);
 	xpt_setup_ccb(&crs.ccb_h, path, CAM_PRIORITY_NORMAL);
 	crs.ccb_h.func_code = XPT_REL_SIMQ;
 	crs.release_flags = RELSIM_RELEASE_AFTER_QEMPTY;

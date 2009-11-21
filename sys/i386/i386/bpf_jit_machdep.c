@@ -1,6 +1,6 @@
 /*-
  * Copyright (C) 2002-2003 NetGroup, Politecnico di Torino (Italy)
- * Copyright (C) 2005-2008 Jung-uk Kim <jkim@FreeBSD.org>
+ * Copyright (C) 2005-2009 Jung-uk Kim <jkim@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -42,6 +42,9 @@ __FBSDID("$FreeBSD$");
 #include <net/if.h>
 #else
 #include <stdlib.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <sys/param.h>
 #endif
 
 #include <sys/types.h>
@@ -51,21 +54,22 @@ __FBSDID("$FreeBSD$");
 
 #include <i386/i386/bpf_jit_machdep.h>
 
-bpf_filter_func	bpf_jit_compile(struct bpf_insn *, u_int, int *);
+bpf_filter_func	bpf_jit_compile(struct bpf_insn *, u_int, size_t *);
 
 /*
- * emit routine to update the jump table
+ * Emit routine to update the jump table.
  */
 static void
 emit_length(bpf_bin_stream *stream, __unused u_int value, u_int len)
 {
 
-	(stream->refs)[stream->bpf_pc] += len;
+	if (stream->refs != NULL)
+		(stream->refs)[stream->bpf_pc] += len;
 	stream->cur_ip += len;
 }
 
 /*
- * emit routine to output the actual binary code
+ * Emit routine to output the actual binary code.
  */
 static void
 emit_code(bpf_bin_stream *stream, u_int value, u_int len)
@@ -92,56 +96,103 @@ emit_code(bpf_bin_stream *stream, u_int value, u_int len)
 }
 
 /*
- * Function that does the real stuff
+ * Scan the filter program and find possible optimization.
+ */
+static int
+bpf_jit_optimize(struct bpf_insn *prog, u_int nins)
+{
+	const struct bpf_insn *p;
+	int flags;
+	u_int i;
+
+	/* Do we return immediately? */
+	if (BPF_CLASS(prog[0].code) == BPF_RET)
+		return (BPF_JIT_FLAG_RET);
+
+	for (flags = 0, i = 0; i < nins; i++) {
+		p = &prog[i];
+
+		/* Do we need reference table? */
+		if ((flags & BPF_JIT_FLAG_JMP) == 0 &&
+		    BPF_CLASS(p->code) == BPF_JMP)
+			flags |= BPF_JIT_FLAG_JMP;
+
+		/* Do we need scratch memory? */
+		if ((flags & BPF_JIT_FLAG_MEM) == 0 &&
+		    (p->code == BPF_ST || p->code == BPF_STX ||
+		    p->code == (BPF_LD|BPF_MEM) ||
+		    p->code == (BPF_LDX|BPF_MEM)))
+			flags |= BPF_JIT_FLAG_MEM;
+
+		if (flags == BPF_JIT_FLAG_ALL)
+			break;
+	}
+
+	return (flags);
+}
+
+/*
+ * Function that does the real stuff.
  */
 bpf_filter_func
-bpf_jit_compile(struct bpf_insn *prog, u_int nins, int *mem)
+bpf_jit_compile(struct bpf_insn *prog, u_int nins, size_t *size)
 {
-	struct bpf_insn *ins;
-	u_int i, pass;
 	bpf_bin_stream stream;
+	struct bpf_insn *ins;
+	int flags, flag_ret, flag_jmp, flag_mem;
+	u_int i, pass;
+
+	flags = bpf_jit_optimize(prog, nins);
+	flag_ret = (flags & BPF_JIT_FLAG_RET) != 0;
+	flag_jmp = (flags & BPF_JIT_FLAG_JMP) != 0;
+	flag_mem = (flags & BPF_JIT_FLAG_MEM) != 0;
 
 	/*
-	 * NOTE: do not modify the name of this variable, as it's used by
+	 * NOTE: Do not modify the name of this variable, as it's used by
 	 * the macros to emit code.
 	 */
 	emit_func emitm;
 
-	/* Allocate the reference table for the jumps */
+	memset(&stream, 0, sizeof(stream));
+
+	/* Allocate the reference table for the jumps. */
+	if (flag_jmp) {
 #ifdef _KERNEL
-	stream.refs = (u_int *)malloc((nins + 1) * sizeof(u_int),
-	    M_BPFJIT, M_NOWAIT);
+		stream.refs = malloc((nins + 1) * sizeof(u_int), M_BPFJIT,
+		    M_NOWAIT | M_ZERO);
 #else
-	stream.refs = (u_int *)malloc((nins + 1) * sizeof(u_int));
+		stream.refs = malloc((nins + 1) * sizeof(u_int));
 #endif
-	if (stream.refs == NULL)
-		return (NULL);
-
-	/* Reset the reference table */
-	for (i = 0; i < nins + 1; i++)
-		stream.refs[i] = 0;
-
-	stream.cur_ip = 0;
-	stream.bpf_pc = 0;
+		if (stream.refs == NULL)
+			return (NULL);
+#ifndef _KERNEL
+		memset(stream.refs, 0, (nins + 1) * sizeof(u_int));
+#endif
+	}
 
 	/*
-	 * the first pass will emit the lengths of the instructions
-	 * to create the reference table
+	 * The first pass will emit the lengths of the instructions
+	 * to create the reference table.
 	 */
 	emitm = emit_length;
 
-	pass = 0;
-	for (;;) {
+	for (pass = 0; pass < 2; pass++) {
 		ins = prog;
 
-		/* create the procedure header */
-		PUSH(EBP);
-		MOVrd(ESP, EBP);
-		PUSH(EDI);
-		PUSH(ESI);
-		PUSH(EBX);
-		MOVodd(8, EBP, EBX);
-		MOVodd(16, EBP, EDI);
+		/* Create the procedure header. */
+		if (!flag_ret) {
+			PUSH(EBP);
+			MOVrd(ESP, EBP);
+		}
+		if (flag_mem)
+			SUBib(BPF_MEMWORDS * sizeof(uint32_t), ESP);
+		if (!flag_ret) {
+			PUSH(EDI);
+			PUSH(ESI);
+			PUSH(EBX);
+			MOVodd(8, EBP, EBX);
+			MOVodd(16, EBP, EDI);
+		}
 
 		for (i = 0; i < nins; i++) {
 			stream.bpf_pc++;
@@ -156,17 +207,23 @@ bpf_jit_compile(struct bpf_insn *prog, u_int nins, int *mem)
 
 			case BPF_RET|BPF_K:
 				MOVid(ins->k, EAX);
-				POP(EBX);
-				POP(ESI);
-				POP(EDI);
-				LEAVE_RET();
+				if (!flag_ret) {
+					POP(EBX);
+					POP(ESI);
+					POP(EDI);
+					LEAVE();
+				}
+				RET();
 				break;
 
 			case BPF_RET|BPF_A:
-				POP(EBX);
-				POP(ESI);
-				POP(EDI);
-				LEAVE_RET();
+				if (!flag_ret) {
+					POP(EBX);
+					POP(ESI);
+					POP(EDI);
+					LEAVE();
+				}
+				RET();
 				break;
 
 			case BPF_LD|BPF_W|BPF_ABS:
@@ -181,7 +238,8 @@ bpf_jit_compile(struct bpf_insn *prog, u_int nins, int *mem)
 				POP(EBX);
 				POP(ESI);
 				POP(EDI);
-				LEAVE_RET();
+				LEAVE();
+				RET();
 				MOVobd(EBX, ESI, EAX);
 				BSWAP(EAX);
 				break;
@@ -198,7 +256,8 @@ bpf_jit_compile(struct bpf_insn *prog, u_int nins, int *mem)
 				POP(EBX);
 				POP(ESI);
 				POP(EDI);
-				LEAVE_RET();
+				LEAVE();
+				RET();
 				MOVobw(EBX, ESI, AX);
 				SWAP_AX();
 				break;
@@ -211,7 +270,8 @@ bpf_jit_compile(struct bpf_insn *prog, u_int nins, int *mem)
 				POP(EBX);
 				POP(ESI);
 				POP(EDI);
-				LEAVE_RET();
+				LEAVE();
+				RET();
 				MOVobb(EBX, ESI, AL);
 				break;
 
@@ -240,7 +300,8 @@ bpf_jit_compile(struct bpf_insn *prog, u_int nins, int *mem)
 				POP(EBX);
 				POP(ESI);
 				POP(EDI);
-				LEAVE_RET();
+				LEAVE();
+				RET();
 				MOVobd(EBX, ESI, EAX);
 				BSWAP(EAX);
 				break;
@@ -262,7 +323,8 @@ bpf_jit_compile(struct bpf_insn *prog, u_int nins, int *mem)
 				POP(EBX);
 				POP(ESI);
 				POP(EDI);
-				LEAVE_RET();
+				LEAVE();
+				RET();
 				MOVobw(EBX, ESI, AX);
 				SWAP_AX();
 				break;
@@ -279,7 +341,8 @@ bpf_jit_compile(struct bpf_insn *prog, u_int nins, int *mem)
 				POP(EBX);
 				POP(ESI);
 				POP(EDI);
-				LEAVE_RET();
+				LEAVE();
+				RET();
 				ADDrd(EDX, ESI);
 				MOVobb(EBX, ESI, AL);
 				break;
@@ -292,7 +355,8 @@ bpf_jit_compile(struct bpf_insn *prog, u_int nins, int *mem)
 				POP(EBX);
 				POP(ESI);
 				POP(EDI);
-				LEAVE_RET();
+				LEAVE();
+				RET();
 				ZEROrd(EDX);
 				MOVobb(EBX, ESI, DL);
 				ANDib(0x0f, DL);
@@ -308,14 +372,16 @@ bpf_jit_compile(struct bpf_insn *prog, u_int nins, int *mem)
 				break;
 
 			case BPF_LD|BPF_MEM:
-				MOVid((uintptr_t)mem, ECX);
-				MOVid(ins->k * 4, ESI);
+				MOVrd(EBP, ECX);
+				MOVid(((int)ins->k - BPF_MEMWORDS) *
+				    sizeof(uint32_t), ESI);
 				MOVobd(ECX, ESI, EAX);
 				break;
 
 			case BPF_LDX|BPF_MEM:
-				MOVid((uintptr_t)mem, ECX);
-				MOVid(ins->k * 4, ESI);
+				MOVrd(EBP, ECX);
+				MOVid(((int)ins->k - BPF_MEMWORDS) *
+				    sizeof(uint32_t), ESI);
 				MOVobd(ECX, ESI, EDX);
 				break;
 
@@ -325,14 +391,16 @@ bpf_jit_compile(struct bpf_insn *prog, u_int nins, int *mem)
 				 * be optimized if the previous instruction
 				 * was already of this type
 				 */
-				MOVid((uintptr_t)mem, ECX);
-				MOVid(ins->k * 4, ESI);
+				MOVrd(EBP, ECX);
+				MOVid(((int)ins->k - BPF_MEMWORDS) *
+				    sizeof(uint32_t), ESI);
 				MOVomd(EAX, ECX, ESI);
 				break;
 
 			case BPF_STX:
-				MOVid((uintptr_t)mem, ECX);
-				MOVid(ins->k * 4, ESI);
+				MOVrd(EBP, ECX);
+				MOVid(((int)ins->k - BPF_MEMWORDS) *
+				    sizeof(uint32_t), ESI);
 				MOVomd(EDX, ECX, ESI);
 				break;
 
@@ -418,7 +486,8 @@ bpf_jit_compile(struct bpf_insn *prog, u_int nins, int *mem)
 				POP(EBX);
 				POP(ESI);
 				POP(EDI);
-				LEAVE_RET();
+				LEAVE();
+				RET();
 				MOVrd(EDX, ECX);
 				ZEROrd(EDX);
 				DIVrd(ECX);
@@ -497,47 +566,56 @@ bpf_jit_compile(struct bpf_insn *prog, u_int nins, int *mem)
 			ins++;
 		}
 
-		pass++;
-		if (pass == 2)
-			break;
+		if (pass > 0)
+			continue;
 
+		*size = stream.cur_ip;
 #ifdef _KERNEL
-		stream.ibuf = (char *)malloc(stream.cur_ip, M_BPFJIT, M_NOWAIT);
-		if (stream.ibuf == NULL) {
-			free(stream.refs, M_BPFJIT);
-			return (NULL);
-		}
+		stream.ibuf = malloc(*size, M_BPFJIT, M_NOWAIT);
+		if (stream.ibuf == NULL)
+			break;
 #else
-		stream.ibuf = (char *)malloc(stream.cur_ip);
-		if (stream.ibuf == NULL) {
-			free(stream.refs);
-			return (NULL);
+		stream.ibuf = mmap(NULL, *size, PROT_READ | PROT_WRITE,
+		    MAP_ANON, -1, 0);
+		if (stream.ibuf == MAP_FAILED) {
+			stream.ibuf = NULL;
+			break;
 		}
 #endif
 
 		/*
-		 * modify the reference table to contain the offsets and
-		 * not the lengths of the instructions
+		 * Modify the reference table to contain the offsets and
+		 * not the lengths of the instructions.
 		 */
-		for (i = 1; i < nins + 1; i++)
-			stream.refs[i] += stream.refs[i - 1];
+		if (flag_jmp)
+			for (i = 1; i < nins + 1; i++)
+				stream.refs[i] += stream.refs[i - 1];
 
-		/* Reset the counters */
+		/* Reset the counters. */
 		stream.cur_ip = 0;
 		stream.bpf_pc = 0;
 
-		/* the second pass creates the actual code */
+		/* The second pass creates the actual code. */
 		emitm = emit_code;
 	}
 
 	/*
-	 * the reference table is needed only during compilation,
-	 * now we can free it
+	 * The reference table is needed only during compilation,
+	 * now we can free it.
 	 */
+	if (flag_jmp)
 #ifdef _KERNEL
-	free(stream.refs, M_BPFJIT);
+		free(stream.refs, M_BPFJIT);
 #else
-	free(stream.refs);
+		free(stream.refs);
+#endif
+
+#ifndef _KERNEL
+	if (stream.ibuf != NULL &&
+	    mprotect(stream.ibuf, *size, PROT_READ | PROT_EXEC) != 0) {
+		munmap(stream.ibuf, *size);
+		stream.ibuf = NULL;
+	}
 #endif
 
 	return ((bpf_filter_func)stream.ibuf);

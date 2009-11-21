@@ -706,6 +706,7 @@ options 	NETGRAPH_TCPMSS
 options 	NETGRAPH_TEE
 options 	NETGRAPH_UI
 options 	NETGRAPH_VJC
+options 	NETGRAPH_VLAN
 
 # NgATM - Netgraph ATM
 options 	NGATM_ATM
@@ -1409,8 +1410,8 @@ options 	SC_NO_SUSPEND_VTYSWITCH
 #	0x100	Probe for a keyboard device periodically if one is not present
 
 # Enable experimental features of the syscons terminal emulator (teken).
+options 	TEKEN_CONS25		# cons25-style terminal emulation
 options 	TEKEN_UTF8		# UTF-8 output handling
-options 	TEKEN_XTERM		# xterm-style terminal emulation
 
 #
 # Optional devices:
@@ -1715,8 +1716,11 @@ hint.ata.1.irq="15"
 #
 # ATA_STATIC_ID:	controller numbering is static ie depends on location
 #			else the device numbers are dynamically allocated.
+# ATA_REQUEST_TIMEOUT:	the number of seconds to wait for an ATA request
+#			before timing out.
 
 options 	ATA_STATIC_ID
+#options 	ATA_REQUEST_TIMEOUT=10
 
 #
 # Standard floppy disk controllers and floppy tapes, supports
@@ -2000,6 +2004,7 @@ device		bwi		# Broadcom BCM430* BCM431*
 device		de		# DEC/Intel DC21x4x (``Tulip'')
 device		em		# Intel Pro/1000 Gigabit Ethernet
 device		igb		# Intel Pro/1000 PCIE Gigabit Ethernet
+device		ixgb		# Intel Pro/10Gbe PCI-X Ethernet
 device		ixgbe		# Intel Pro/10Gbe PCIE Ethernet
 device		le		# AMD Am7900 LANCE and Am79C9xx PCnet
 device		mxge		# Myricom Myri-10G 10GbE NIC

@@ -1914,10 +1914,10 @@ vm_map_protect(vm_map_t map, vm_offset_t start, vm_offset_t end,
 		}
 
 		/*
-		 * Update physical map if necessary. Worry about copy-on-write
-		 * here.
+		 * When restricting access, update the physical map.  Worry
+		 * about copy-on-write here.
 		 */
-		if (current->protection != old_prot) {
+		if ((old_prot & ~current->protection) != 0) {
 #define MASK(entry)	(((entry)->eflags & MAP_ENTRY_COW) ? ~VM_PROT_WRITE : \
 							VM_PROT_ALL)
 			pmap_protect(map->pmap, current->start,
@@ -2381,7 +2381,7 @@ vm_map_wire(vm_map_t map, vm_offset_t start, vm_offset_t end,
 			 */
 			vm_map_unlock(map);
 			rv = vm_fault_wire(map, saved_start, saved_end,
-			    user_wire, fictitious);
+			    fictitious);
 			vm_map_lock(map);
 			if (last_timestamp + 1 != map->timestamp) {
 				/*
@@ -3563,7 +3563,7 @@ RetryLookup:;
 	else
 		prot = entry->protection;
 	fault_type &= (VM_PROT_READ|VM_PROT_WRITE|VM_PROT_EXECUTE);
-	if ((fault_type & prot) != fault_type) {
+	if ((fault_type & prot) != fault_type || prot == VM_PROT_NONE) {
 		vm_map_unlock_read(map);
 		return (KERN_PROTECTION_FAILURE);
 	}
