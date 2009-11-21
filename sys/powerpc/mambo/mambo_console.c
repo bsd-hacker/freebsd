@@ -157,7 +157,7 @@ mambo_cngetc(struct consdev *cp)
 
 	ch = mambocall(MAMBO_CONSOLE_READ);
 
-	if (ch > 0) {
+	if (ch > 0 && ch < 0xff) {
 #if defined(KDB) && defined(ALT_BREAK_TO_DEBUGGER)
 		int kdb_brk;
 
