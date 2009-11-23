@@ -1300,12 +1300,16 @@ arc_buf_add_ref(arc_buf_t *buf, void* tag)
 }
 
 void
-arc_binval(spa_t *spa, dva_t *dva)
+arc_binval(spa_t *spa, dva_t *dva, uint64_t size)
 {
 	uint64_t blkno;
 	struct vnode *vp;
 	struct bufobj *bo;
 	struct buf *bp;
+	vm_pindex_t start, end;
+	vm_object_t object;
+	vm_page_t m;
+	int i;
 
 	if (zfs_page_cache_disable)
 		return;
@@ -1328,18 +1332,57 @@ arc_binval(spa_t *spa, dva_t *dva)
 		bp->b_flags |= B_INVAL;
 		bp->b_birth = 0;
 		brelse(bp);
-	} else
+	} else {
 		BO_UNLOCK(bo);
+		start = OFF_TO_IDX((blkno << 9));
+		end = start + OFF_TO_IDX(size);
+		object = vp->v_object;
+
+		if (size == 0)
+			return;
+		VM_OBJECT_LOCK(object);
+		vm_page_cache_free(object, start, end);
+		for (i = 0; i < OFF_TO_IDX(size); i++) {
+			if ((m = vm_page_lookup(object, start + i)) != NULL)
+				vm_page_free(m);
+		}
+		VM_OBJECT_UNLOCK(object);
+	}
 }
 
 static void
-arc_bgetvp(arc_buf_t *buf)
+arc_pcache(struct vnode *vp, struct buf *bp, uint64_t blkno)
+{
+	vm_pindex_t start = OFF_TO_IDX((blkno << 9));
+	vm_object_t object = vp->v_object;
+	struct bufobj *bo = &vp->v_bufobj;
+	vm_page_t m;
+	int i;
+
+	VM_OBJECT_LOCK(object);
+	vm_page_cache_free(object, start, start + bp->b_npages);
+	for (i = 0; i < bp->b_npages; i++) {
+		if ((m = vm_page_lookup(object, start + i)) != NULL)
+			vm_page_free(m);
+		m = bp->b_pages[i];
+		vm_page_insert(m, object, start + i);
+	}
+	VM_OBJECT_UNLOCK(object);
+	BO_LOCK(bo);
+	bgetvp(vp, bp);
+	BO_UNLOCK(bo);
+	bp->b_flags |= B_VMIO;
+}
+
+static void
+arc_bcache(arc_buf_t *buf)
 {	
 	uint64_t blkno = buf->b_hdr->b_dva.dva_word[1] & ~(1UL<<63);
 	struct buf *newbp, *bp = buf->b_bp;
 	struct vnode *vp = spa_get_vnode(buf->b_hdr->b_spa);
 	struct bufobj *bo = &vp->v_bufobj;
 	arc_buf_hdr_t *hdr = buf->b_hdr;
+	int cachebuf;
 
 	if (zfs_page_cache_disable)
 		return;
@@ -1348,17 +1391,19 @@ arc_bgetvp(arc_buf_t *buf)
 		return;
 
 	newbp = buf->b_bp;
-	newbp->b_offset = newbp->b_birth = hdr->b_birth;
+	newbp->b_birth = hdr->b_birth;
 	newbp->b_blkno = newbp->b_lblkno = blkno;
+	newbp->b_offset = (blkno << 9);
+	cachebuf = ((hdr->b_datacnt == 1) &&
+	    !(hdr->b_flags & ARC_IO_ERROR) &&
+	    ((newbp->b_flags & (B_INVAL|B_CACHE)) == B_CACHE));
 
 	BO_LOCK(bo);
 	bp = gbincore(bo, blkno);
 	if (bp != NULL) {
-		/*
-		 * XXX we have a race with getblk here
-		 */
 		BUF_LOCK(bp, LK_EXCLUSIVE | LK_INTERLOCK, BO_MTX(bo));
 		bremfree(bp);
+
 		/*
 		 * buffer is not valid or is older
 		 */
@@ -1368,20 +1413,11 @@ arc_bgetvp(arc_buf_t *buf)
 			bp->b_birth = 0;
 		} 
 		brelse(bp);
-
-		if ((hdr->b_datacnt == 1) &&
-		    !(hdr->b_flags & ARC_IO_ERROR) &&
-		    (newbp->b_flags & (B_INVAL|B_CACHE)) == B_CACHE) {
-			BO_LOCK(bo);
-			bgetvp(vp, newbp);
-			BO_UNLOCK(bo);
-		}
-	} else if ((hdr->b_datacnt == 1) &&
-	    !(hdr->b_flags & ARC_IO_ERROR) &&
-	    (newbp->b_flags & (B_INVAL|B_CACHE)) == B_CACHE) {
-		bgetvp(vp, newbp);
-		BO_UNLOCK(bo);
-	} else
+		if (cachebuf)
+			arc_pcache(vp, newbp, blkno);
+	} else if (cachebuf) 
+		arc_pcache(vp, newbp, blkno);
+	else
 		BO_UNLOCK(bo);
 }
 
@@ -1397,7 +1433,9 @@ arc_getblk(arc_buf_t *buf)
 	arc_buf_t *tbuf;
 	struct vnode *vp;
 	struct bufobj *bo;
-	int flags = 0;
+	int i, flags = 0;
+	vm_pindex_t start, end;
+	vm_object_t object;
 
 	if (type == ARC_BUFC_METADATA) {
 		arc_space_consume(size);
@@ -1419,11 +1457,26 @@ arc_getblk(arc_buf_t *buf)
 		data = newbp->b_data;
 		buf->b_hdr->b_flags &= ~ARC_BUF_CLONING;
 	} else {
-		newbp = getblk(vp, blkno, size, 0, 0, flags | GB_NOCREAT);
+		newbp = getblk(vp, blkno, size, 0, 0, flags | GB_LOCK_NOWAIT);
 		if (newbp == NULL)
 			newbp = geteblk(size, flags);
-		else
+		else {
+			vm_object_t object = vp->v_object;
+			vm_page_t m;
+
+			/*
+			 * Strip the buffers pages from the object
+			 */
+			VM_OBJECT_LOCK(object);
+			vm_page_lock_queues();
+			for (i = 0; i < newbp->b_npages; i++){
+				m = newbp->b_pages[i];
+				vm_page_remove(m);
+			}
+			vm_page_unlock_queues();
+			VM_OBJECT_UNLOCK(object);
 			brelvp(newbp);
+		}
 		data = newbp->b_data;
 	}
 
@@ -1453,11 +1506,20 @@ arc_brelse(arc_buf_t *buf, void *data, size_t size)
 		return;
 	}
 
-	arc_bgetvp(buf);
-	CTR4(KTR_SPARE2, "arc_brelse() bp=%p flags %X"
-	    " size %ld blkno=%ld",
-	    bp, bp->b_flags, size, bp->b_blkno);
+	arc_bcache(buf);
 
+
+	if (bp->b_vp == NULL)
+		KASSERT((bp->b_flags & B_VMIO) == 0, ("no vp but VMIO set!"));
+	else
+		CTR4(KTR_SPARE2, "arc_brelse() bp=%p flags %X"
+		    " size %ld blkno=%ld",
+		    bp, bp->b_flags, size, bp->b_blkno);
+
+	/*
+	 * need to log path through here to determine why we're not ending up on the inactive queue
+	 *
+	 */
 	brelse(bp);
 }
 
