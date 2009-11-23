@@ -1342,10 +1342,7 @@ arc_binval(spa_t *spa, dva_t *dva, uint64_t size)
 			return;
 		VM_OBJECT_LOCK(object);
 		vm_page_cache_free(object, start, end);
-		for (i = 0; i < OFF_TO_IDX(size); i++) {
-			if ((m = vm_page_lookup(object, start + i)) != NULL)
-				vm_page_free(m);
-		}
+		vm_object_page_remove(object, start, end, FALSE);
 		VM_OBJECT_UNLOCK(object);
 	}
 }
@@ -1361,9 +1358,8 @@ arc_pcache(struct vnode *vp, struct buf *bp, uint64_t blkno, int lockneeded)
 
 	VM_OBJECT_LOCK(object);
 	vm_page_cache_free(object, start, start + bp->b_npages);
+	vm_object_page_remove(object, start, start + bp->b_npages, FALSE);
 	for (i = 0; i < bp->b_npages; i++) {
-		if ((m = vm_page_lookup(object, start + i)) != NULL)
-			vm_page_free(m);
 		m = bp->b_pages[i];
 		vm_page_insert(m, object, start + i);
 	}
@@ -1477,6 +1473,7 @@ arc_getblk(arc_buf_t *buf)
 			vm_page_unlock_queues();
 			VM_OBJECT_UNLOCK(object);
 			brelvp(newbp);
+			newbp->b_flags &= ~B_VMIO;
 		}
 		data = newbp->b_data;
 	}
