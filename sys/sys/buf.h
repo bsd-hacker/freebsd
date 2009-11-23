@@ -225,6 +225,8 @@ struct buf {
 #define B_CLUSTER	0x40000000	/* pagein op, so swap() can count it */
 #define B_REMFREE	0x80000000	/* Delayed bremfree */
 
+#define	B_ZFS		B_01000000	/* is a ZFS buffer */
+
 #define PRINT_BUF_FLAGS "\20\40remfree\37cluster\36vmio\35ram\34b27" \
 	"\33paging\32b25\31b24\30b23\27relbuf\26dirty\25b20" \
 	"\24b19\23b18\22clusterok\21malloc\20nocache\17b14\16inval" \
