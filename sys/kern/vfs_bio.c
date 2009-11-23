@@ -1446,6 +1446,7 @@ brelse(struct buf *bp)
 	bp->b_flags &= ~(B_ASYNC | B_NOCACHE | B_AGE | B_RELBUF | B_DIRECT);
 	if ((bp->b_flags & B_DELWRI) == 0 && (bp->b_xflags & BX_VNDIRTY))
 		panic("brelse: not dirty");
+	bp->b_flags &= ~B_ZFS;
 	/* unlock */
 	BUF_UNLOCK(bp);
 }
