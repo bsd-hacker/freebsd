@@ -1491,24 +1491,37 @@ arc_getblk(arc_buf_t *buf)
 
 	if (newbp != NULL) {
 		BUF_KERNPROC(newbp);
-		KASSERT(newbp->b_pages[0]->object == NULL,
-		    "newbp page not removed");
+#ifdef INVARIANTS
+		for (i = 0; i < newbp->b_npages; i++)
+			KASSERT(newbp->b_pages[i]->object == NULL,
+			    "newbp page not removed");
+#endif	
 	}
 	buf->b_bp = newbp;
 	buf->b_data = data;
 }
 
-static void
+void
+arc_brelse(arc_buf_t *buf, void *data, size_t size);
+
+void
 arc_brelse(arc_buf_t *buf, void *data, size_t size)
 {
 	struct buf *bp = buf->b_bp;
 	arc_buf_hdr_t *hdr = buf->b_hdr;
-
+#ifdef INVARIANTS
+	int i;
+#endif
+	
 	if (bp == NULL) {
 		zio_buf_free(buf->b_data, size);
 		return;
 	}
-
+#ifdef INVARIANTS
+	for (i = 0; i < bp->b_npages; i++)
+		KASSERT(bp->b_pages[i]->object == NULL,
+		    "newbp page not removed");
+#endif	
 	arc_bcache(buf);
 
 
@@ -1519,10 +1532,6 @@ arc_brelse(arc_buf_t *buf, void *data, size_t size)
 		    " size %ld blkno=%ld",
 		    bp, bp->b_flags, size, bp->b_blkno);
 
-	/*
-	 * need to log path through here to determine why we're not ending up on the inactive queue
-	 *
-	 */
 	brelse(bp);
 }
 
@@ -2805,6 +2814,12 @@ arc_read_done(zio_t *zio)
 			buf_hash_remove(hdr);
 		freeable = refcount_is_zero(&hdr->b_refcnt);
 	} else if (buf->b_bp != NULL) {
+#ifdef INVARIANTS
+		int i;
+		for (i = 0; i < buf->b_bp->b_npages; i++)
+			KASSERT(buf->b_bp->b_pages[i]->object == NULL,
+			    "bp page not removed");
+#endif	
 		buf->b_bp->b_flags |= B_CACHE;
 		buf->b_bp->b_flags &= ~B_INVAL;
 	}
