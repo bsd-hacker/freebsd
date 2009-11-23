@@ -1351,7 +1351,7 @@ arc_binval(spa_t *spa, dva_t *dva, uint64_t size)
 }
 
 static void
-arc_pcache(struct vnode *vp, struct buf *bp, uint64_t blkno)
+arc_pcache(struct vnode *vp, struct buf *bp, uint64_t blkno, int lockneeded)
 {
 	vm_pindex_t start = OFF_TO_IDX((blkno << 9));
 	vm_object_t object = vp->v_object;
@@ -1368,7 +1368,8 @@ arc_pcache(struct vnode *vp, struct buf *bp, uint64_t blkno)
 		vm_page_insert(m, object, start + i);
 	}
 	VM_OBJECT_UNLOCK(object);
-	BO_LOCK(bo);
+	if (lockneeded)
+		BO_LOCK(bo);
 	bgetvp(vp, bp);
 	BO_UNLOCK(bo);
 	bp->b_flags |= B_VMIO;
@@ -1414,9 +1415,9 @@ arc_bcache(arc_buf_t *buf)
 		} 
 		brelse(bp);
 		if (cachebuf)
-			arc_pcache(vp, newbp, blkno);
+			arc_pcache(vp, newbp, blkno, TRUE);
 	} else if (cachebuf) 
-		arc_pcache(vp, newbp, blkno);
+		arc_pcache(vp, newbp, blkno, FALSE);
 	else
 		BO_UNLOCK(bo);
 }
