@@ -1356,6 +1356,11 @@ arc_pcache(struct vnode *vp, struct buf *bp, uint64_t blkno, int lockneeded)
 	vm_page_t m;
 	int i;
 
+	if (lockneeded)
+		BO_LOCK(bo);
+	bgetvp(vp, bp);
+	BO_UNLOCK(bo);
+
 	VM_OBJECT_LOCK(object);
 	vm_page_cache_free(object, start, start + bp->b_npages);
 	vm_object_page_remove(object, start, start + bp->b_npages, FALSE);
@@ -1364,10 +1369,6 @@ arc_pcache(struct vnode *vp, struct buf *bp, uint64_t blkno, int lockneeded)
 		vm_page_insert(m, object, start + i);
 	}
 	VM_OBJECT_UNLOCK(object);
-	if (lockneeded)
-		BO_LOCK(bo);
-	bgetvp(vp, bp);
-	BO_UNLOCK(bo);
 	bp->b_flags |= B_VMIO;
 }
 
@@ -1449,7 +1450,8 @@ arc_getblk(arc_buf_t *buf)
 	if (size < PAGE_SIZE) {
 		data = zio_buf_alloc(size);
 	} else if ((buf->b_hdr->b_flags & ARC_BUF_CLONING) ||
-	    BUF_EMPTY(buf->b_hdr)) {
+	    BUF_EMPTY(buf->b_hdr) ||
+	    (blkno == 0)) {
 		newbp = geteblk(size, flags);
 		data = newbp->b_data;
 		buf->b_hdr->b_flags &= ~ARC_BUF_CLONING;
@@ -1487,8 +1489,11 @@ arc_getblk(arc_buf_t *buf)
 	    newbp, newbp->b_flags);
 #endif
 
-	if (newbp != NULL)
+	if (newbp != NULL) {
 		BUF_KERNPROC(newbp);
+		KASSERT(newbp->b_pages[0]->object == NULL,
+		    "newbp page not removed");
+	}
 	buf->b_bp = newbp;
 	buf->b_data = data;
 }
