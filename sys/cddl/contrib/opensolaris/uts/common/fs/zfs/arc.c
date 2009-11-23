@@ -1314,7 +1314,7 @@ arc_binval(spa_t *spa, dva_t *dva, uint64_t size)
 	if (zfs_page_cache_disable)
 		return;
 
-	if (dva == NULL || spa == NULL || blkno == 0)
+	if (dva == NULL || spa == NULL || blkno == 0 || size == 0)
 		return;
 
 	blkno = dva->dva_word[1] & ~(1UL<<63);
@@ -1324,9 +1324,6 @@ arc_binval(spa_t *spa, dva_t *dva, uint64_t size)
 	BO_LOCK(bo);
 	bp = gbincore(bo, blkno);
 	if (bp != NULL) {
-		/*
-		 * XXX we have a race with getblk here
-		 */
 		BUF_LOCK(bp, LK_EXCLUSIVE | LK_INTERLOCK, BO_MTX(bo));
 		bremfree(bp);
 		bp->b_flags |= B_INVAL;
@@ -1339,8 +1336,6 @@ arc_binval(spa_t *spa, dva_t *dva, uint64_t size)
 	end = start + OFF_TO_IDX(size);
 	object = vp->v_object;
 
-	if (size == 0)
-		return;
 	VM_OBJECT_LOCK(object);
 	vm_page_cache_free(object, start, end);
 	vm_object_page_remove(object, start, end, FALSE);
@@ -1354,7 +1349,7 @@ arc_binval(spa_t *spa, dva_t *dva, uint64_t size)
 }
 
 static void
-arc_pcache(struct vnode *vp, struct buf *bp, uint64_t blkno, int lockneeded)
+arc_pcache(struct vnode *vp, struct buf *bp, uint64_t blkno)
 {
 	vm_pindex_t start = OFF_TO_IDX((blkno << 9));
 	vm_object_t object = vp->v_object;
@@ -1362,18 +1357,17 @@ arc_pcache(struct vnode *vp, struct buf *bp, uint64_t blkno, int lockneeded)
 	vm_page_t m;
 	int i;
 
-	if (lockneeded)
-		BO_LOCK(bo);
+	BO_LOCK(bo);
 	bgetvp(vp, bp);
 	BO_UNLOCK(bo);
 
 	VM_OBJECT_LOCK(object);
-	vm_page_cache_free(object, start, start + bp->b_npages);
 	for (i = 0; i < bp->b_npages; i++) {
 		m = bp->b_pages[i];
 		vm_page_insert(m, object, start + i);
 	}
 	VM_OBJECT_UNLOCK(object);
+	bp->b_flags |= B_VMIO;
 }
 
 static void
@@ -1400,27 +1394,9 @@ arc_bcache(arc_buf_t *buf)
 	    !(hdr->b_flags & ARC_IO_ERROR) &&
 	    ((newbp->b_flags & (B_INVAL|B_CACHE)) == B_CACHE));
 
-	BO_LOCK(bo);
-	bp = gbincore(bo, blkno);
-	if (bp != NULL) {
-		BUF_LOCK(bp, LK_EXCLUSIVE | LK_INTERLOCK, BO_MTX(bo));
-		bremfree(bp);
-
-		/*
-		 * buffer is not valid or is older
-		 */
-		if (((bp->b_flags & (B_CACHE|B_INVAL)) != B_CACHE) ||
-		    (bp->b_birth <= hdr->b_birth)) {
-			bp->b_flags |= B_INVAL;
-			bp->b_birth = 0;
-		} 
-		brelse(bp);
-		if (cachebuf)
-			arc_pcache(vp, newbp, blkno, TRUE);
-	} else if (cachebuf) 
-		arc_pcache(vp, newbp, blkno, FALSE);
-	else
-		BO_UNLOCK(bo);
+	arc_binval(hdr->b_spa, &hdr->b_dva, hdr->b_size);	
+	if (cachebuf) 
+		arc_pcache(vp, newbp, blkno);
 
 }
 
@@ -1537,6 +1513,7 @@ arc_brelse(arc_buf_t *buf, void *data, size_t size)
 		    " size %ld blkno=%ld",
 		    bp, bp->b_flags, size, bp->b_blkno);
 
+	bp->b_flags |= B_ZFS;
 	brelse(bp);
 }
 
