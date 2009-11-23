@@ -1070,13 +1070,17 @@ vdev_open(vdev_t *vd)
 		struct vnode *vp;
 
 		error = getnewvnode("zpool" , NULL, &dead_vnodeops, &vp);
+		KASSERT(error == 0, ("unhandled error in vdev_open"));
 		if (error != 0)
 			return (error);
 
 		vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
+		vp->v_type = VREG;
 		vnode_create_vobject(vp, 512, curthread);
 		vd->vdev_vnode = vp;
 		VOP_UNLOCK(vp, 0);
+		KASSERT(vp->v_object != NULL, ("vnode_create_vobject failed"));		
+		
 	}
 	/*
 	 * If a leaf vdev has a DTL, and seems healthy, then kick off a
