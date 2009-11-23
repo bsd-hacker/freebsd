@@ -1332,19 +1332,25 @@ arc_binval(spa_t *spa, dva_t *dva, uint64_t size)
 		bp->b_flags |= B_INVAL;
 		bp->b_birth = 0;
 		brelse(bp);
-	} else {
+	} else
 		BO_UNLOCK(bo);
-		start = OFF_TO_IDX((blkno << 9));
-		end = start + OFF_TO_IDX(size);
-		object = vp->v_object;
 
-		if (size == 0)
-			return;
-		VM_OBJECT_LOCK(object);
-		vm_page_cache_free(object, start, end);
-		vm_object_page_remove(object, start, end, FALSE);
-		VM_OBJECT_UNLOCK(object);
+	start = OFF_TO_IDX((blkno << 9));
+	end = start + OFF_TO_IDX(size);
+	object = vp->v_object;
+
+	if (size == 0)
+		return;
+	VM_OBJECT_LOCK(object);
+	vm_page_cache_free(object, start, end);
+	vm_object_page_remove(object, start, end, FALSE);
+#ifdef INVARIANTS
+	for (i = 0; i < OFF_TO_IDX(size); i++) {
+		KASSERT(vm_page_lookup(object, start + i) == NULL,
+		    ("found page at %ld", start + i));
 	}
+#endif	
+	VM_OBJECT_UNLOCK(object);
 }
 
 static void
@@ -1363,13 +1369,11 @@ arc_pcache(struct vnode *vp, struct buf *bp, uint64_t blkno, int lockneeded)
 
 	VM_OBJECT_LOCK(object);
 	vm_page_cache_free(object, start, start + bp->b_npages);
-	vm_object_page_remove(object, start, start + bp->b_npages, FALSE);
 	for (i = 0; i < bp->b_npages; i++) {
 		m = bp->b_pages[i];
 		vm_page_insert(m, object, start + i);
 	}
 	VM_OBJECT_UNLOCK(object);
-	bp->b_flags |= B_VMIO;
 }
 
 static void
@@ -1417,6 +1421,7 @@ arc_bcache(arc_buf_t *buf)
 		arc_pcache(vp, newbp, blkno, FALSE);
 	else
 		BO_UNLOCK(bo);
+
 }
 
 static void
@@ -1494,7 +1499,7 @@ arc_getblk(arc_buf_t *buf)
 #ifdef INVARIANTS
 		for (i = 0; i < newbp->b_npages; i++)
 			KASSERT(newbp->b_pages[i]->object == NULL,
-			    "newbp page not removed");
+			    ("newbp page not removed"));
 #endif	
 	}
 	buf->b_bp = newbp;
@@ -1520,7 +1525,7 @@ arc_brelse(arc_buf_t *buf, void *data, size_t size)
 #ifdef INVARIANTS
 	for (i = 0; i < bp->b_npages; i++)
 		KASSERT(bp->b_pages[i]->object == NULL,
-		    "newbp page not removed");
+		    ("newbp page not removed"));
 #endif	
 	arc_bcache(buf);
 
@@ -2818,7 +2823,7 @@ arc_read_done(zio_t *zio)
 		int i;
 		for (i = 0; i < buf->b_bp->b_npages; i++)
 			KASSERT(buf->b_bp->b_pages[i]->object == NULL,
-			    "bp page not removed");
+			    ("bp page not removed"));
 #endif	
 		buf->b_bp->b_flags |= B_CACHE;
 		buf->b_bp->b_flags &= ~B_INVAL;
