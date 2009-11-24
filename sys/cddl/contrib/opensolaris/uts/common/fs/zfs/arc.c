@@ -1302,7 +1302,7 @@ arc_buf_add_ref(arc_buf_t *buf, void* tag)
 void
 arc_binval(spa_t *spa, dva_t *dva, uint64_t size)
 {
-	uint64_t blkno;
+	uint64_t blkno, blkno_lookup;
 	struct vnode *vp;
 	struct bufobj *bo;
 	struct buf *bp;
@@ -1317,22 +1317,26 @@ arc_binval(spa_t *spa, dva_t *dva, uint64_t size)
 	if (dva == NULL || spa == NULL || blkno == 0 || size == 0)
 		return;
 
-	blkno = dva->dva_word[1] & ~(1UL<<63);
+	blkno_lookup = blkno = dva->dva_word[1] & ~(1UL<<63);
 	vp = spa_get_vnode(spa);
 	bo = &vp->v_bufobj;
 
 	BO_LOCK(bo);
-	bp = gbincore(bo, blkno);
+retry:
+	bp = gbincore(bo, blkno_lookup);
 	if (bp != NULL) {
 		BUF_LOCK(bp, LK_EXCLUSIVE | LK_INTERLOCK, BO_MTX(bo));
 		bremfree(bp);
 		bp->b_flags |= B_INVAL;
 		bp->b_birth = 0;
 		brelse(bp);
+	} else if (blkno_lookup & 0x7) {
+		blkno_lookup &= ~0x7;
+		goto retry;
 	} else
 		BO_UNLOCK(bo);
 
-	start = OFF_TO_IDX((blkno << 9));
+	start = OFF_TO_IDX((blkno_lookup << 9));
 	end = start + OFF_TO_IDX(size + PAGE_MASK);
 	object = vp->v_object;
 
@@ -1342,7 +1346,8 @@ arc_binval(spa_t *spa, dva_t *dva, uint64_t size)
 #ifdef INVARIANTS
 	for (i = 0; i < OFF_TO_IDX(size); i++) {
 		KASSERT(vm_page_lookup(object, start + i) == NULL,
-		    ("found page at %ld", start + i));
+		    ("found page at %ld blkno %ld blkno_lookup %ld",
+			start + i, blkno, blkno_lookup));
 	}
 #endif	
 	VM_OBJECT_UNLOCK(object);
