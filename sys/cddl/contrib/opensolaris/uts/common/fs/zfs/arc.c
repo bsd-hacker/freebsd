@@ -1333,7 +1333,7 @@ arc_binval(spa_t *spa, dva_t *dva, uint64_t size)
 		BO_UNLOCK(bo);
 
 	start = OFF_TO_IDX((blkno << 9));
-	end = start + OFF_TO_IDX(size);
+	end = start + OFF_TO_IDX(size + PAGE_MASK);
 	object = vp->v_object;
 
 	VM_OBJECT_LOCK(object);
@@ -1392,7 +1392,8 @@ arc_bcache(arc_buf_t *buf)
 	newbp->b_offset = (blkno << 9);
 	cachebuf = ((hdr->b_datacnt == 1) &&
 	    !(hdr->b_flags & ARC_IO_ERROR) &&
-	    ((newbp->b_flags & (B_INVAL|B_CACHE)) == B_CACHE));
+	    ((newbp->b_flags & (B_INVAL|B_CACHE)) == B_CACHE) &&
+	    (blkno & 0x7) == 0);
 
 	arc_binval(hdr->b_spa, &hdr->b_dva, hdr->b_size);	
 	if (cachebuf) 
