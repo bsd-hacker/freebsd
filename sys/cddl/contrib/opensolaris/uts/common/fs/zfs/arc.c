@@ -1326,16 +1326,21 @@ retry:
 	bp = gbincore(bo, blkno_lookup);
 	if (bp != NULL) {
 		BUF_LOCK(bp, LK_EXCLUSIVE | LK_INTERLOCK, BO_MTX(bo));
+		CTR3(KTR_SPARE2, "arc_binval() bp=%p blkno %ld npages %d",
+		   bp, blkno, bp->b_npages);
 		bremfree(bp);
+		KASSERT(bp->b_flags & B_VMIO, ("buf found, VMIO not set"));		
 		bp->b_flags |= B_INVAL;
 		bp->b_birth = 0;
 		brelse(bp);
 	} else if (blkno_lookup & 0x7) {
 		blkno_lookup &= ~0x7;
 		goto retry;
-	} else
+	} else {
+		CTR2(KTR_SPARE2, "arc_binval() blkno %ld npages %d",
+		    blkno, OFF_TO_IDX(size));
 		BO_UNLOCK(bo);
-
+	}
 	start = OFF_TO_IDX((blkno_lookup << 9));
 	end = start + OFF_TO_IDX(size + PAGE_MASK);
 	object = vp->v_object;
@@ -1366,6 +1371,8 @@ arc_pcache(struct vnode *vp, struct buf *bp, uint64_t blkno)
 	bgetvp(vp, bp);
 	BO_UNLOCK(bo);
 
+	CTR3(KTR_SPARE2, "arc_pcache() bp=%p blkno %ld npages %d",
+		   bp, blkno, bp->b_npages);
 	VM_OBJECT_LOCK(object);
 	for (i = 0; i < bp->b_npages; i++) {
 		m = bp->b_pages[i];
@@ -1400,10 +1407,9 @@ arc_bcache(arc_buf_t *buf)
 	    ((newbp->b_flags & (B_INVAL|B_CACHE)) == B_CACHE) &&
 	    (blkno & 0x7) == 0);
 
-	arc_binval(hdr->b_spa, &hdr->b_dva, hdr->b_size);	
+	arc_binval(hdr->b_spa, &hdr->b_dva, hdr->b_size);
 	if (cachebuf) 
-		arc_pcache(vp, newbp, blkno);
-
+		arc_pcache(vp, newbp, blkno);	
 }
 
 static void
@@ -1467,17 +1473,11 @@ arc_getblk(arc_buf_t *buf)
 		data = newbp->b_data;
 	}
 
-#ifdef LOGALL
-	/*
-	 * not useful for tracking down collisions
-	 *
-	 */
-	CTR2(KTR_SPARE2, "arc_getblk() bp=%p flags %X",
-	    newbp, newbp->b_flags);
-#endif
-
 	if (newbp != NULL) {
 		BUF_KERNPROC(newbp);
+
+		CTR4(KTR_SPARE2, "arc_getblk() bp=%p flags %X blkno %ld npages %d",
+		    newbp, newbp->b_flags, blkno, newbp->b_npages);
 #ifdef INVARIANTS
 		for (i = 0; i < newbp->b_npages; i++)
 			KASSERT(newbp->b_pages[i]->object == NULL,
@@ -1514,10 +1514,12 @@ arc_brelse(arc_buf_t *buf, void *data, size_t size)
 
 	if (bp->b_vp == NULL)
 		KASSERT((bp->b_flags & B_VMIO) == 0, ("no vp but VMIO set!"));
-	else
+	else {
+		KASSERT((bp->b_flags & B_VMIO), ("vp but VMIO not set!"));
 		CTR4(KTR_SPARE2, "arc_brelse() bp=%p flags %X"
 		    " size %ld blkno=%ld",
 		    bp, bp->b_flags, size, bp->b_blkno);
+	}
 
 	bp->b_flags |= B_ZFS;
 	brelse(bp);
