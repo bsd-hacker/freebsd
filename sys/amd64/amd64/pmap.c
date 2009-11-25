@@ -1137,10 +1137,16 @@ pmap_map(vm_offset_t *virt, vm_paddr_t start, vm_paddr_t end, int prot)
  * Note: SMP coherent.  Uses a ranged shootdown IPI.
  */
 void
-pmap_qenter(vm_offset_t sva, vm_page_t *ma, int count)
+pmap_qenter_prot(vm_offset_t sva, vm_page_t *ma, int count, vm_prot_t prot)
 {
 	pt_entry_t *endpte, oldpte, *pte;
+	uint64_t flags = PG_V;
 
+	if (prot & VM_PROT_WRITE)
+		flags |= PG_RW;
+	if ((prot & VM_PROT_EXECUTE) == 0)
+		flags |= PG_NX;
+	
 	oldpte = 0;
 	pte = vtopte(sva);
 	endpte = pte + count;
@@ -1148,6 +1154,9 @@ pmap_qenter(vm_offset_t sva, vm_page_t *ma, int count)
 		oldpte |= *pte;
 		pte_store(pte, VM_PAGE_TO_PHYS(*ma) | PG_G |
 		    pmap_cache_bits((*ma)->md.pat_mode, 0) | PG_RW | PG_V);
+		pte_store(pte, VM_PAGE_TO_PHYS(*ma) | PG_G | flags);
+		if (prot & VM_PROT_EXCLUDE)
+			dump_exclude_page(VM_PAGE_TO_PHYS(*ma));
 		pte++;
 		ma++;
 	}
@@ -1155,6 +1164,16 @@ pmap_qenter(vm_offset_t sva, vm_page_t *ma, int count)
 		pmap_invalidate_range(kernel_pmap, sva, sva + count *
 		    PAGE_SIZE);
 }
+
+void
+pmap_qenter(vm_offset_t sva, vm_page_t *ma, int count)
+{
+
+	pmap_qenter_prot(sva, ma, count,
+	    VM_PROT_READ|VM_PROT_WRITE|VM_PROT_EXECUTE);
+
+}
+
 
 /*
  * This routine tears out page mappings from the
@@ -1168,6 +1187,7 @@ pmap_qremove(vm_offset_t sva, int count)
 
 	va = sva;
 	while (count-- > 0) {
+		dump_unexclude_page(pmap_kextract(va));
 		pmap_kremove(va);
 		va += PAGE_SIZE;
 	}

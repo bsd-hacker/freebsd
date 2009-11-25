@@ -144,7 +144,8 @@ struct vdev {
 	list_node_t	vdev_state_dirty_node; /* state dirty list	*/
 	uint64_t	vdev_deflate_ratio; /* deflation ratio (x512)	*/
 	uint64_t	vdev_islog;	/* is an intent log device	*/
-
+	struct vnode	*vdev_vnode;	/* container for page cache 	*/
+	
 	/*
 	 * Leaf vdev state.
 	 */

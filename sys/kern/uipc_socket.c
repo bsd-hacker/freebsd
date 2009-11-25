@@ -124,10 +124,15 @@ __FBSDID("$FreeBSD$");
 #include <sys/resourcevar.h>
 #include <net/route.h>
 #include <sys/signalvar.h>
+#include <sys/smp.h>
 #include <sys/stat.h>
 #include <sys/sx.h>
+#include <sys/syscallsubr.h>
 #include <sys/sysctl.h>
+#include <sys/sysproto.h>
+#include <sys/taskqueue.h>
 #include <sys/uio.h>
+#include <sys/vnode.h>
 #include <sys/jail.h>
 
 #include <net/vnet.h>
@@ -161,6 +166,7 @@ static struct filterops sowrite_filtops =
 uma_zone_t socket_zone;
 so_gen_t	so_gencnt;	/* generation count for sockets */
 
+extern int bg_sendfile_enable;
 int	maxsockets;
 
 MALLOC_DEFINE(M_SONAME, "soname", "socket name");
@@ -614,6 +620,17 @@ sofree(struct socket *so)
 		(*pr->pr_domain->dom_dispose)(so->so_rcv.sb_mb);
 	if (pr->pr_usrreqs->pru_detach != NULL)
 		(*pr->pr_usrreqs->pru_detach)(so);
+
+	if (bg_sendfile_enable) {
+		SOCKBUF_LOCK(&so->so_snd);
+		if ((so->so_snd.sb_flags & (SB_SENDING|SB_SENDING_TASK)) ==
+		    (SB_SENDING|SB_SENDING_TASK)) {
+			while (so->so_snd.sb_flags & SB_SENDING)
+				sbwait(&so->so_snd);
+		} else if (so->so_snd.sb_flags & SB_SENDING)
+			sosendingwakeup(&so->so_snd);
+		SOCKBUF_UNLOCK(&so->so_snd);
+	}
 
 	/*
 	 * From this point on, we assume that no other references to this
@@ -3328,6 +3345,343 @@ soisdisconnected(struct socket *so)
 	sowwakeup_locked(so);
 	wakeup(&so->so_timeo);
 }
+
+struct socketref {
+	struct proc *sr_proc;
+	struct ucred *sr_ucred;
+	struct file *sr_sock_fp;
+	struct file *sr_fp;
+	struct socket *sr_so;
+	struct sendfile_args sr_uap;
+	struct uio sr_hdr_uio;
+	struct uio sr_trl_uio;
+	short sr_compat;
+	int sr_magic;
+	off_t sr_vnp_size;
+	struct task sr_task;
+	TAILQ_ENTRY(socketref) entry;
+
+};
+TAILQ_HEAD(srq, socketref);
+
+struct srq *sendfile_bg_queue;
+struct mtx sendfile_bg_lock;
+struct callout *sendfile_callout;
+struct taskqueue *sendfile_tq;
+extern int getsock(struct filedesc *fdp, int fd,
+    struct file **fpp, u_int *fflagp);
+static void sendfile_task_func(void *context, int pending __unused);
+static void srsendingwakeup(struct socketref *sr, int external);
+
+MALLOC_DEFINE(M_SOCKREF, "sockref", "socket reference memory");
+
+#define SOCKBUF_LOCK_COND(sb, lockflag) do {	\
+		if ((lockflag))			\
+			SOCKBUF_LOCK((sb));	\
+} while (0)
+
+#define SOCKBUF_UNLOCK_COND(sb, lockflag) do {	\
+		if ((lockflag))			\
+			SOCKBUF_UNLOCK((sb));	\
+} while (0)
+
+
+static int
+socketref_free(struct socketref *sr)
+{
+	struct file *fp = sr->sr_fp;
+	struct file *sock_fp = sr->sr_sock_fp;
+	struct proc *p = sr->sr_proc;
+	struct ucred *cred = sr->sr_ucred;
+	struct sockbuf *sb = &sr->sr_so->so_snd;
+	int refs;
+
+	if (sock_fp->f_count != fp->f_count) {
+		sb->sb_flags |= (SB_SENDING|SB_SENDING_TASK);
+		taskqueue_enqueue(sendfile_tq, &sr->sr_task);
+		return (1);
+	}
+	if (cred != NULL)
+		crfree(cred);
+	vrele(fp->f_vnode);
+	refs = sock_fp->f_count - 1;
+	if (refs == 0)
+		SOCKBUF_UNLOCK(sb); 
+	fdrop(fp, NULL);
+	fdrop(sock_fp, NULL);
+	PRELE(p);
+#ifdef INVARIANTS
+	bzero(sr, sizeof(*sr));
+#endif	
+	free(sr, M_SOCKREF);
+	return (refs);
+}
+
+void
+soissending(struct socket *so, struct thread *td,
+    struct sendfile_args *uap, struct uio *hdr_uio,
+    struct uio *trl_uio, int compat, off_t sbytes,
+    off_t vnp_size)
+{
+	struct socketref *ref;
+	int error;
+	struct socket *refso;
+	struct vnode *vp;
+	
+	SOCKBUF_LOCK_ASSERT(&so->so_snd);
+	ref = malloc(sizeof(struct socketref), 
+	    M_SOCKREF, M_NOWAIT|M_ZERO);
+	if (ref == NULL)
+		return;
+	/*
+	 * Obtain reference to socket :-/
+	 * drop when done sending
+	 */
+	so->so_snd.sb_flags |= SB_SENDING;
+	PROC_LOCK(td->td_proc);
+	td->td_proc->p_lock++;
+	PROC_UNLOCK(td->td_proc);
+
+	ref->sr_proc = td->td_proc;
+
+	if ((error = getsock(td->td_proc->p_fd, uap->s, &ref->sr_sock_fp,
+		    NULL)) != 0) {
+		goto error;
+	}
+	if (ref->sr_sock_fp->f_type != DTYPE_SOCKET) {
+		printf("socket descriptor s=%d is not socket", uap->s);
+		goto error;
+	}
+
+	refso = ref->sr_sock_fp->f_data;
+	if (refso != so) {
+		printf("socket mismatch between refso: %p so: %p\n",
+		    refso, so);
+		goto error_sock_fp;
+	}
+	ref->sr_so = refso;
+
+	if ((error = fget(td, uap->fd, &ref->sr_fp)) != 0) {
+		goto error_sock_fp;
+	} else if (ref->sr_fp->f_vnode != NULL) {
+		vp = ref->sr_fp->f_vnode;
+		vref(vp);
+	} else {
+		goto error_fp;
+	}
+
+	bcopy(uap, &ref->sr_uap, sizeof(*uap));
+	ref->sr_uap.sbytes = NULL;
+	ref->sr_sock_fp->f_sfbytes = 0;
+	CTR4(KTR_SPARE2, "sock %p off %ld sbytes %ld total_sbytes %ld",
+	    so, ref->sr_uap.offset, sbytes, ref->sr_sock_fp->f_sfbytes);
+	ref->sr_uap.offset += sbytes;
+	if (uap->nbytes)
+		ref->sr_uap.nbytes -= sbytes;
+	/*
+	 * XXX 
+	 * We have to malloc memory for the uio data
+	 */
+	if (hdr_uio != NULL)
+		bcopy(hdr_uio, &ref->sr_hdr_uio, 
+		      sizeof(*hdr_uio));
+	if (trl_uio != NULL)
+		bcopy(trl_uio, &ref->sr_trl_uio, 
+		      sizeof(*trl_uio));
+	ref->sr_compat = compat;
+	ref->sr_magic = 0xCAFEBABE;
+	ref->sr_vnp_size = vnp_size;
+	TASK_INIT(&ref->sr_task, 0, sendfile_task_func, ref);
+
+	CTR3(KTR_SPARE2, "enqueueing socket %p sock_fp %p s %d", so, ref->sr_sock_fp, uap->s);
+	mtx_lock(&sendfile_bg_lock);
+	TAILQ_INSERT_TAIL(sendfile_bg_queue, ref, entry);
+	mtx_unlock(&sendfile_bg_lock);
+	return;
+error_fp:
+	fdrop(ref->sr_fp, td);
+error_sock_fp:
+	fdrop(ref->sr_sock_fp, td);
+error:
+	free(ref, M_DEVBUF);
+}
+
+static void
+sendfile_task_func(void *context, int pending __unused)
+{
+	struct socketref *sr;
+	struct socket *so;
+	struct sockbuf *sb;
+	struct file *sock_fp, *fp;
+	int refs, error = EAGAIN;
+	struct uio *hdr_uio = NULL, *trl_uio = NULL;
+	off_t sbytes = 0;
+
+	sr = context;
+	if (sr->sr_magic != 0xCAFEBABE) {
+		printf("bad magic! 0x%x\n", sr->sr_magic);
+		/* XXX memory leak */
+		return;
+	}
+
+	sock_fp = sr->sr_sock_fp;
+	fp = sr->sr_fp;
+	if (sock_fp->f_type != DTYPE_SOCKET) {
+		printf("bad socket type 0x%x\n", sock_fp->f_type);
+		/* XXX memory leak */
+		return;
+	}
+
+	so = sock_fp->f_data;
+	sb = &so->so_snd;
+	SOCKBUF_UNLOCK_ASSERT(sb);
+	if (sr->sr_ucred == NULL &&
+	    (sr->sr_ucred = crdup(sr->sr_proc->p_ucred)) == NULL) {
+		SOCKBUF_LOCK(sb);
+		goto done;
+	}
+	SOCKBUF_LOCK(sb);
+	if ((so->so_state & SS_ISCONNECTED) == 0)
+		goto done;
+
+	sb->sb_flags &= ~(SB_SENDING|SB_SENDING_TASK);
+	if (sb->sb_state & SBS_CANTSENDMORE) {
+		CTR1(KTR_SPARE2, "SBS_CANTSENDMORE - socket %p", so);
+		goto done;
+	} else if (sowriteable(so)) {
+		sb->sb_flags |= (SB_SENDING|SB_SENDING_TASK);
+		SOCKBUF_UNLOCK(sb);
+		if (sr->sr_hdr_uio.uio_td != NULL)
+			hdr_uio = &sr->sr_hdr_uio;
+		if (sr->sr_trl_uio.uio_td != NULL)
+			trl_uio = &sr->sr_trl_uio;
+
+		sr->sr_uap.sbytes = &sbytes;
+		sr->sr_uap.flags |= SF_TASKQ;
+
+		error = kern_sendfile(curthread, &sr->sr_uap,
+		    hdr_uio, trl_uio,
+		    sr->sr_compat, fp, so, sr->sr_ucred);
+		CTR5(KTR_SPARE2, "sock %p error %d off %ld sbytes %ld total_sbytes %ld",
+		    so, error, sr->sr_uap.offset, sbytes, sock_fp->f_sfbytes);
+		SOCKBUF_LOCK(sb);
+		atomic_add_long(&sock_fp->f_sfbytes, sbytes);
+		sr->sr_uap.offset += sbytes;
+		if (sr->sr_uap.nbytes)
+			sr->sr_uap.nbytes -= sbytes;
+		if (error == EAGAIN) {
+			if (sr->sr_uap.offset + sbytes == sr->sr_vnp_size) {
+				CTR0(KTR_SPARE2, "EAGAIN on full send");
+				error = 0;
+			}
+			srsendingwakeup(sr, 0);
+			SOCKBUF_UNLOCK(sb);
+			return;
+		}
+	}
+
+#ifdef KTR
+	if (error && error != EAGAIN && error != EPIPE) 
+		CTR1(KTR_SPARE2, "error %d", error); 
+#endif
+	
+done:
+	SOCKBUF_LOCK_ASSERT(sb);
+	sb->sb_flags &= ~(SB_SENDING|SB_SENDING_TASK);
+	refs = socketref_free(sr);
+	if (refs)
+		sowwakeup_locked(so);
+}
+
+static void
+srsendingwakeup(struct socketref *sr, int external)
+{
+	struct socket *so;
+	struct file *fp;
+	struct sockbuf *sb;
+
+	if (sr->sr_magic != 0xCAFEBABE) {
+		printf("bad magic! sr: %p magic : 0x%x in %s\n",
+		    sr, sr->sr_magic, __FUNCTION__);
+		/*
+		 * XXX leak - should be assert perhaps
+		 * 
+		 */
+		return;
+	}
+
+	fp = sr->sr_sock_fp;
+	if (fp->f_type != DTYPE_SOCKET) {
+		printf("not socket - type %d\n", fp->f_type);
+		return;
+	}
+	so = fp->f_data;
+	sb = &so->so_snd;
+	SOCKBUF_LOCK_ASSERT(sb);
+	sb->sb_flags &= ~(SB_SENDING|SB_SENDING_TASK);
+	if ((so->so_state & SS_ISCONNECTED) == 0 ||
+	    (sb->sb_state & SBS_CANTSENDMORE) ||
+	    (sowriteable(so))) {
+		CTR2(KTR_SPARE2, "enqueue socket to task %p sr %p", so, sr);
+		sb->sb_flags |= (SB_SENDING|SB_SENDING_TASK);
+		taskqueue_enqueue(sendfile_tq, &sr->sr_task);
+	} else {
+		if (external)
+			CTR3(KTR_SPARE2, "sock %p off %ld sbspace %ld - not writeable in srsendingwakeup",
+			    so, sr->sr_uap.offset, sbspace(sb));
+		sb->sb_flags |= SB_SENDING;
+		mtx_lock(&sendfile_bg_lock);
+		TAILQ_INSERT_TAIL(sendfile_bg_queue, sr, entry);
+		mtx_unlock(&sendfile_bg_lock);
+	}
+}
+
+void
+sosendingwakeup(struct sockbuf *sb)
+{
+	struct socketref *sr = NULL;
+
+	SOCKBUF_LOCK_ASSERT(sb);
+	mtx_lock(&sendfile_bg_lock);
+	if (!TAILQ_EMPTY(sendfile_bg_queue)) {
+		TAILQ_FOREACH(sr, sendfile_bg_queue, entry) {
+			if (sb == &sr->sr_so->so_snd) {
+				CTR3(KTR_SPARE2,
+				    "dequeueing socket %p sock_fp %p s %d", sr->sr_so, sr->sr_sock_fp, sr->sr_uap.s);
+				TAILQ_REMOVE(sendfile_bg_queue, sr, entry);
+				break;
+			}
+		}
+
+	}
+	mtx_unlock(&sendfile_bg_lock);
+	
+	if (sb->sb_flags & SB_SENDING_TASK)
+		panic("task flag set while task not running");
+
+	/*
+	 * Buffer in flight
+	 */
+	if (sr != NULL)
+		srsendingwakeup(sr, 1);
+}
+
+static void
+init_bgsend(void *unused __unused)
+{	
+
+	sendfile_tq = taskqueue_create("sendfile background taskq",  M_NOWAIT,
+	    taskqueue_thread_enqueue, &sendfile_tq);
+	taskqueue_start_threads(&sendfile_tq, mp_ncpus, PI_SOFT,
+	    "sendfile background taskq");
+
+	mtx_init(&sendfile_bg_lock, "sendfile bg", NULL, MTX_DEF);
+	sendfile_bg_queue = malloc(sizeof(struct srq),
+	    M_DEVBUF, M_NOWAIT);
+	TAILQ_INIT(sendfile_bg_queue);
+}
+
+SYSINIT(init_bgsend, SI_SUB_SMP, SI_ORDER_ANY, init_bgsend, NULL);
 
 /*
  * Make a copy of a sockaddr in a malloced buffer of type M_SONAME.

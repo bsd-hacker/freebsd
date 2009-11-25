@@ -52,11 +52,12 @@ struct arc_buf {
 	void			*b_data;
 	arc_evict_func_t	*b_efunc;
 	void			*b_private;
+	struct buf 		*b_bp;
 };
 
 typedef enum arc_buf_contents {
-	ARC_BUFC_DATA,				/* buffer contains data */
 	ARC_BUFC_METADATA,			/* buffer contains metadata */
+	ARC_BUFC_DATA,				/* buffer contains data */
 	ARC_BUFC_NUMTYPES
 } arc_buf_contents_t;
 /*
@@ -111,6 +112,7 @@ int arc_tryread(spa_t *spa, blkptr_t *bp, void *data);
 void arc_set_callback(arc_buf_t *buf, arc_evict_func_t *func, void *private);
 int arc_buf_evict(arc_buf_t *buf);
 
+void arc_binval(spa_t *spa, dva_t *dva, uint64_t size);
 void arc_flush(spa_t *spa);
 void arc_tempreserve_clear(uint64_t reserve);
 int arc_tempreserve_space(uint64_t reserve, uint64_t txg);

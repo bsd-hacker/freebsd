@@ -104,7 +104,8 @@ struct buf {
 	long		b_resid;
 	void	(*b_iodone)(struct buf *);
 	daddr_t b_blkno;		/* Underlying physical block number. */
-	off_t	b_offset;		/* Offset into file. */
+	off_t		b_offset;	/* Offset into file. */
+	uint64_t	b_birth;	/* birth txg	    */	 
 	TAILQ_ENTRY(buf) b_bobufs;	/* (V) Buffer's associated vnode. */
 	struct buf	*b_left;	/* (V) splay tree link */
 	struct buf	*b_right;	/* (V) splay tree link */
@@ -223,6 +224,8 @@ struct buf {
 #define B_VMIO		0x20000000	/* VMIO flag */
 #define B_CLUSTER	0x40000000	/* pagein op, so swap() can count it */
 #define B_REMFREE	0x80000000	/* Delayed bremfree */
+
+#define	B_ZFS		B_01000000	/* is a ZFS buffer */
 
 #define PRINT_BUF_FLAGS "\20\40remfree\37cluster\36vmio\35ram\34b27" \
 	"\33paging\32b25\31b24\30b23\27relbuf\26dirty\25b20" \
@@ -444,6 +447,7 @@ buf_countdeps(struct buf *bp, int i)
 #define	GB_LOCK_NOWAIT	0x0001		/* Fail if we block on a buf lock. */
 #define	GB_NOCREAT	0x0002		/* Don't create a buf if not found. */
 #define	GB_NOWAIT_BD	0x0004		/* Do not wait for bufdaemon */
+#define	GB_NODUMP	0x0008		/* exclude this buffer from core dump */
 
 #ifdef _KERNEL
 extern int	nbuf;			/* The number of buffer headers */
@@ -512,6 +516,7 @@ void	pbgetvp(struct vnode *, struct buf *);
 void	pbrelbo(struct buf *);
 void	pbrelvp(struct buf *);
 int	allocbuf(struct buf *bp, int size);
+int	allocbuf_flags(struct buf *bp, int size, int flags);
 void	reassignbuf(struct buf *);
 struct	buf *trypbuf(int *);
 void	bwait(struct buf *, u_char, const char *);

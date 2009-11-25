@@ -1060,10 +1060,28 @@ vdev_open(vdev_t *vd)
 	 * inconsistently account for existing bp's.
 	 */
 	if (vd->vdev_top == vd) {
+		struct vnode *vp;
+
 		vd->vdev_deflate_ratio = (1<<17) /
 		    (vdev_psize_to_asize(vd, 1<<17) >> SPA_MINBLOCKSHIFT);
-	}
 
+	}
+	if (vd->vdev_parent == NULL) {
+		struct vnode *vp;
+
+		error = getnewvnode("zpool" , NULL, &dead_vnodeops, &vp);
+		KASSERT(error == 0, ("unhandled error in vdev_open"));
+		if (error != 0)
+			return (error);
+
+		vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
+		vp->v_type = VREG;
+		vnode_create_vobject(vp, 512, curthread);
+		vd->vdev_vnode = vp;
+		VOP_UNLOCK(vp, 0);
+		KASSERT(vp->v_object != NULL, ("vnode_create_vobject failed"));		
+		
+	}
 	/*
 	 * If a leaf vdev has a DTL, and seems healthy, then kick off a
 	 * resilver.  But don't do this if we are doing a reopen for a
@@ -1192,6 +1210,8 @@ vdev_close(vdev_t *vd)
 	else
 		vd->vdev_state = VDEV_STATE_CLOSED;
 	vd->vdev_stat.vs_aux = VDEV_AUX_NONE;
+
+	vn_free(vd->vdev_vnode);
 }
 
 void

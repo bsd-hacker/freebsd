@@ -4299,3 +4299,10 @@ done:
 #endif
 #endif
 }
+
+struct vnode *
+spa_get_vnode(spa_t *spa)
+{
+
+	return (spa->spa_root_vdev->vdev_vnode);
+}
