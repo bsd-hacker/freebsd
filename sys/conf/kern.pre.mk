@@ -127,9 +127,13 @@ CFLAGS+= ${INCLUDES} -D_KERNEL -DHAVE_KERNEL_OPTION_HEADERS -include opt_global.
 
 ZFS_CFLAGS= -DFREEBSD_NAMECACHE -DBUILDING_ZFS -D_KERNEL
 ZFS_CFLAGS+=-DHAVE_KERNEL_OPTION_HEADERS -nostdinc 	
-ZFS_CFLAGS+=-mcmodel=kernel -mno-red-zone  -mfpmath=387 -mno-sse -mno-sse2 -mno-sse3 -mno-mmx -mno-3dnow  -msoft-float -fno-asynchronous-unwind-tables -ffreestanding
+ZFS_CFLAGS+= -mno-red-zone  -mfpmath=387 -mno-sse -mno-sse2 -mno-sse3 -mno-mmx -mno-3dnow  -msoft-float -fno-asynchronous-unwind-tables -ffreestanding
 ZFS_CFLAGS+=${COPTFLAGS} ${ZFS_C_DIALECT} ${DEBUG} ${CWARNFLAGS} 
 ZFS_CFLAGS+=${ZFS_CWARNFLAGS}  -include opt_global.h -I${.CURDIR}
+.if ${MACHINE_ARCH} == "amd64" 
+ZFS_CFLAGS+=-mcmodel=kernel 
+.endif
+
 
 .if ${CC} != "icc"
 CFLAGS+= -fno-common -finline-limit=${INLINE_LIMIT}
