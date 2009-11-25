@@ -1299,6 +1299,7 @@ arc_buf_add_ref(arc_buf_t *buf, void* tag)
 	    data, metadata, hits);
 }
 
+#ifdef _KERNEL
 void
 arc_binval(spa_t *spa, dva_t *dva, uint64_t size)
 {
@@ -1317,7 +1318,7 @@ arc_binval(spa_t *spa, dva_t *dva, uint64_t size)
 	if (dva == NULL || spa == NULL || blkno == 0 || size == 0)
 		return;
 
-	blkno_lookup = blkno = dva->dva_word[1] & ~(1UL<<63);
+	blkno_lookup = blkno = dva->dva_word[1] & ~(1ULL<<63);
 	vp = spa_get_vnode(spa);
 	bo = &vp->v_bufobj;
 
@@ -1385,7 +1386,7 @@ arc_pcache(struct vnode *vp, struct buf *bp, uint64_t blkno)
 static void
 arc_bcache(arc_buf_t *buf)
 {	
-	uint64_t blkno = buf->b_hdr->b_dva.dva_word[1] & ~(1UL<<63);
+	uint64_t blkno = buf->b_hdr->b_dva.dva_word[1] & ~(1ULL<<63);
 	struct buf *newbp, *bp = buf->b_bp;
 	struct vnode *vp = spa_get_vnode(buf->b_hdr->b_spa);
 	struct bufobj *bo = &vp->v_bufobj;
@@ -1411,6 +1412,13 @@ arc_bcache(arc_buf_t *buf)
 	if (cachebuf) 
 		arc_pcache(vp, newbp, blkno);	
 }
+#else
+void
+arc_binval(spa_t *spa, dva_t *dva, uint64_t size)
+{
+}
+#endif
+
 
 static void
 arc_getblk(arc_buf_t *buf)
@@ -1418,31 +1426,37 @@ arc_getblk(arc_buf_t *buf)
 	uint64_t		size = buf->b_hdr->b_size;
 	arc_buf_contents_t	type = buf->b_hdr->b_type;
 	spa_t			*spa = buf->b_hdr->b_spa;
-	uint64_t blkno = buf->b_hdr->b_dva.dva_word[1] & ~(1UL<<63);
+	uint64_t blkno = buf->b_hdr->b_dva.dva_word[1] & ~(1ULL<<63);
 	void *data;
-	struct buf *newbp, *bp;
 	arc_buf_t *tbuf;
 	struct vnode *vp;
-	struct bufobj *bo;
 	int i, flags = 0;
+#ifdef _KERNEL	
+	struct buf *newbp, *bp;
+	struct bufobj *bo;
 	vm_pindex_t start, end;
 	vm_object_t object;
-
+#endif
 	if (type == ARC_BUFC_METADATA) {
 		arc_space_consume(size);
 	} else {
 		ASSERT(type == ARC_BUFC_DATA);
+#ifdef _KERNEL
 		flags = GB_NODUMP;
+#endif		
 		atomic_add_64(&arc_size, size);
 	}
 
+#ifdef 	_KERNEL
 	vp = spa_get_vnode(spa);
 	bo = &vp->v_bufobj;
 	newbp = NULL;
-
+#endif
 	if (size < PAGE_SIZE) {
 		data = zio_buf_alloc(size);
-	} else if ((buf->b_hdr->b_flags & ARC_BUF_CLONING) ||
+	}
+#ifdef _KERNEL
+	else if ((buf->b_hdr->b_flags & ARC_BUF_CLONING) ||
 	    BUF_EMPTY(buf->b_hdr) ||
 	    (blkno == 0)) {
 		newbp = geteblk(size, flags);
@@ -1485,13 +1499,11 @@ arc_getblk(arc_buf_t *buf)
 #endif	
 	}
 	buf->b_bp = newbp;
+#endif	
 	buf->b_data = data;
 }
 
-void
-arc_brelse(arc_buf_t *buf, void *data, size_t size);
-
-void
+static void
 arc_brelse(arc_buf_t *buf, void *data, size_t size)
 {
 	struct buf *bp = buf->b_bp;
@@ -1504,6 +1516,7 @@ arc_brelse(arc_buf_t *buf, void *data, size_t size)
 		zio_buf_free(buf->b_data, size);
 		return;
 	}
+#ifdef _KERNEL
 #ifdef INVARIANTS
 	for (i = 0; i < bp->b_npages; i++)
 		KASSERT(bp->b_pages[i]->object == NULL,
@@ -1523,6 +1536,7 @@ arc_brelse(arc_buf_t *buf, void *data, size_t size)
 
 	bp->b_flags |= B_ZFS;
 	brelse(bp);
+#endif
 }
 
 /*
@@ -2803,7 +2817,9 @@ arc_read_done(zio_t *zio)
 		if (HDR_IN_HASH_TABLE(hdr))
 			buf_hash_remove(hdr);
 		freeable = refcount_is_zero(&hdr->b_refcnt);
-	} else if (buf->b_bp != NULL) {
+	}
+#ifdef _KERNEL
+	else if (buf->b_bp != NULL) {
 #ifdef INVARIANTS
 		int i;
 		for (i = 0; i < buf->b_bp->b_npages; i++)
@@ -2813,7 +2829,7 @@ arc_read_done(zio_t *zio)
 		buf->b_bp->b_flags |= B_CACHE;
 		buf->b_bp->b_flags &= ~B_INVAL;
 	}
-
+#endif
 	/*
 	 * Broadcast before we drop the hash_lock to avoid the possibility
 	 * that the hdr (and hence the cv) might be freed before we get to
@@ -3147,6 +3163,7 @@ top:
 		 * We hit in the page cache - can bypass the I/O stages
 		 *
 		 */
+#ifdef _KERNEL
 		if ((buf->b_bp != NULL) &&
 		    ((buf->b_bp->b_flags & (B_CACHE|B_INVAL)) == B_CACHE)) {
 			/*
@@ -3156,7 +3173,7 @@ top:
 			ARCSTAT_BUMP(arcstat_page_cache_hits);
 			rzio->io_pipeline = ZIO_INTERLOCK_STAGES;
 		}
-
+#endif
 		if (*arc_flags & ARC_WAIT)
 			return (zio_wait(rzio));
 
@@ -3517,10 +3534,13 @@ arc_write_done(zio_t *zio)
 			arc_hdr_destroy(exists);
 			exists = buf_hash_insert(hdr, &hash_lock);
 			ASSERT3P(exists, ==, NULL);
-		} else if (buf->b_bp != NULL) {
+		}
+#ifdef _KERNEL
+		else if (buf->b_bp != NULL) {
 			buf->b_bp->b_flags |= B_CACHE;
 			buf->b_bp->b_flags &= ~B_INVAL;
 		}
+#endif
 		hdr->b_flags &= ~ARC_IO_IN_PROGRESS;
 		/* if it's not anon, we are doing a scrub */
 		if (hdr->b_state == arc_anon)
