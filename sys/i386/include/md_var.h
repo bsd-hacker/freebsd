@@ -72,6 +72,7 @@ extern	int	szfreebsd4_sigcode;
 extern	int	szosigcode;
 #endif
 extern	uint32_t *vm_page_dump;
+extern	uint32_t *vm_page_dump_exclude;
 extern	int	vm_page_dump_size;
 
 typedef void alias_for_inthand_t(u_int cs, u_int ef, u_int esp, u_int ss);

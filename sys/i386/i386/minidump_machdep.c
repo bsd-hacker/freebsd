@@ -54,6 +54,7 @@ CTASSERT(sizeof(struct kerneldumpheader) == 512);
 #define	DEV_ALIGN(x)	(((off_t)(x) + (DEV_BSIZE-1)) & ~(DEV_BSIZE-1))
 
 uint32_t *vm_page_dump;
+uint32_t *vm_page_dump_exclude;
 int vm_page_dump_size;
 
 static struct kerneldumpheader kdh;

@@ -1323,7 +1323,7 @@ pmap_map(vm_offset_t *virt, vm_paddr_t start, vm_paddr_t end, int prot)
  * Note: SMP coherent.  Uses a ranged shootdown IPI.
  */
 void
-pmap_qenter(vm_offset_t sva, vm_page_t *ma, int count)
+pmap_qenter_prot(vm_offset_t sva, vm_page_t *ma, int count, vm_prot_t prot)
 {
 	pt_entry_t *endpte, *pte;
 	vm_paddr_t pa;
@@ -1332,12 +1332,22 @@ pmap_qenter(vm_offset_t sva, vm_page_t *ma, int count)
 	multicall_entry_t mcl[16];
 	multicall_entry_t *mclp = mcl;
 	int error;
+#ifdef PAE	
+	uint64_t flags = PG_V;
+	if ((prot & VM_PROT_EXECUTE) == 0)
+		flags |= PG_NX;
+#else
+	uint32_t flags = 0;
+#endif
+
+	if (prot & VM_PROT_WRITE)
+		flags |= PG_RW;
 
 	CTR2(KTR_PMAP, "pmap_qenter:sva=0x%x count=%d", va, count);
 	pte = vtopte(sva);
 	endpte = pte + count;
 	while (pte < endpte) {
-		pa = xpmap_ptom(VM_PAGE_TO_PHYS(*ma)) | pgeflag | PG_RW | PG_V | PG_M | PG_A;
+		pa = xpmap_ptom(VM_PAGE_TO_PHYS(*ma)) | pgeflag | flags | PG_V | PG_M | PG_A;
 
 		mclp->op = __HYPERVISOR_update_va_mapping;
 		mclp->args[0] = va;
@@ -1368,6 +1378,14 @@ pmap_qenter(vm_offset_t sva, vm_page_t *ma, int count)
 #endif	
 }
 
+void
+pmap_qenter(vm_offset_t sva, vm_page_t *ma, int count)
+{
+
+	pmap_qenter_prot(sva, ma, count,
+	    VM_PROT_READ|VM_PROT_WRITE|VM_PROT_EXECUTE);
+
+}
 
 /*
  * This routine tears out page mappings from the
