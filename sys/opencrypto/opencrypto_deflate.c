@@ -44,7 +44,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/sdt.h>
 #include <sys/systm.h>
-#include <net/zlib.h>
+#include <libkern/zlib/zlib.h>
 
 #include <opencrypto/cryptodev.h>
 #include <opencrypto/deflate.h>

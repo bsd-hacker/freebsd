@@ -3,14 +3,12 @@
  * For conditions of distribution and use, see copyright notice in zlib.h
  */
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
-#include "zutil.h"
-#include "inftrees.h"
+#include <libkern/zlib/zutil.h>
+#include <libkern/zlib/inftrees.h>
 
 #define MAXBITS 15
 
-static const char inflate_copyright[] =
+const char inflate_copyright[] =
    " inflate 1.2.3 Copyright 1995-2005 Mark Adler ";
 /*
   If you use the zlib library in a product, an acknowledgment is welcome

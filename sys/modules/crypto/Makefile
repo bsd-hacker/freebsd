@@ -11,8 +11,8 @@
 KMOD	= crypto
 SRCS	= crypto.c cryptodev_if.c
 SRCS	+= criov.c cryptosoft.c xform.c
-SRCS	+= cast.c deflate.c rmd160.c rijndael-alg-fst.c rijndael-api.c
-SRCS	+= skipjack.c bf_enc.c bf_skey.c
+SRCS	+= cast.c opencrypto_deflate.c rmd160.c rijndael-alg-fst.c 
+SRCS	+= rijndael-api.c skipjack.c bf_enc.c bf_skey.c
 SRCS	+= des_ecb.c des_enc.c des_setkey.c
 SRCS	+= sha1.c sha2.c
 SRCS	+= opt_param.h cryptodev_if.h bus_if.h device_if.h

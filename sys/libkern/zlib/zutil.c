@@ -1,16 +1,23 @@
-/*
- * Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
- * Use is subject to license terms.
- */
-
 /* zutil.c -- target dependent utility functions for the compression library
  * Copyright (C) 1995-2005 Jean-loup Gailly.
  * For conditions of distribution and use, see copyright notice in zlib.h
  */
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
+/* @(#) $Id$ */
 
-#include "zutil.h"
+
+#ifdef _KERNEL
+#include <libkern/zlib/zutil.h>
+
+/* Assume this is a *BSD or SVR4 kernel */
+#include <sys/types.h>
+#include <sys/time.h>
+#include <sys/systm.h>
+#include <sys/param.h>
+#include <sys/kernel.h>
+#include <sys/module.h>
+#  define HAVE_MEMCPY
+#endif
 
 #ifndef NO_DUMMY_DECL
 struct internal_state      {int dummy;}; /* for buggy compilers */
@@ -117,7 +124,7 @@ uLong ZEXPORT zlibCompileFlags()
     return flags;
 }
 
-#ifdef DEBUG
+#if 0
 
 #  ifndef verbose
 #    define verbose 0
@@ -149,7 +156,6 @@ const char * ZEXPORT zError(err)
     int errno = 0;
 #endif
 
-#define	HAVE_MEMCPY
 #ifndef HAVE_MEMCPY
 
 void zmemcpy(dest, source, len)
@@ -303,22 +309,62 @@ extern voidp  calloc OF((uInt items, uInt size));
 extern void   free   OF((voidpf ptr));
 #endif
 
-voidpf zcalloc (opaque, items, size)
-    voidpf opaque;
-    unsigned items;
-    unsigned size;
+struct zchdr {
+	uint32_t zch_magic;
+	uint32_t zch_size;
+};
+
+#define	ZCH_MAGIC	0x3cc13cc1
+
+void *
+zcalloc(void *opaque, uint32_t items, uint32_t size)
 {
-    if (opaque) items += size - size; /* make compiler happy */
-    return sizeof(uInt) > 2 ? (voidpf)malloc(items * size) :
-                              (voidpf)calloc(items, size);
+	size_t nbytes = sizeof (struct zchdr) + items * size;
+	struct zchdr *z = malloc(nbytes, M_DEVBUF, M_NOWAIT);
+
+	if (z == NULL)
+		return (NULL);
+
+	z->zch_magic = ZCH_MAGIC;
+	z->zch_size = nbytes;
+
+	return (z + 1);
 }
 
-void  zcfree (opaque, ptr)
-    voidpf opaque;
-    voidpf ptr;
+/*ARGSUSED*/
+void
+zcfree(void *opaque, void *ptr)
 {
-    free(ptr);
-    if (opaque) return; /* make compiler happy */
+	struct zchdr *z = ((struct zchdr *)ptr) - 1;
+
+	if (z->zch_magic != ZCH_MAGIC)
+		panic("zcfree region corrupt: hdr=%p ptr=%p", (void *)z, ptr);
+
+	free(z, M_DEVBUF);
 }
+
+
 
 #endif /* MY_ZCALLOC */
+
+#ifdef _KERNEL
+static int
+zlib_modevent(module_t mod, int type, void *unused)
+{
+	switch (type) {
+	case MOD_LOAD:
+		return 0;
+	case MOD_UNLOAD:
+		return 0;
+	}
+	return EINVAL;
+}
+
+static moduledata_t zlib_mod = {
+	"zlib",
+	zlib_modevent,
+	0
+};
+DECLARE_MODULE(zlib, zlib_mod, SI_SUB_DRIVERS, SI_ORDER_FIRST);
+MODULE_VERSION(zlib, 1);
+#endif /* _KERNEL */

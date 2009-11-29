@@ -1,14 +1,7 @@
-/*
- * Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
- * Use is subject to license terms.
- */
-
 /* inflate.c -- zlib decompression
  * Copyright (C) 1995-2005 Mark Adler
  * For conditions of distribution and use, see copyright notice in zlib.h
  */
-
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
 
 /*
  * Change history:
@@ -87,10 +80,10 @@
  * The history for versions after 1.2.0 are in ChangeLog in zlib distribution.
  */
 
-#include "zutil.h"
-#include "inftrees.h"
-#include "inflate.h"
-#include "inffast.h"
+#include <libkern/zlib/zutil.h>
+#include <libkern/zlib/inftrees.h>
+#include <libkern/zlib/inflate.h>
+#include <libkern/zlib/inffast.h>
 
 #ifdef MAKEFIXED
 #  ifndef BUILDFIXED
@@ -252,7 +245,7 @@ struct inflate_state FAR *state;
     state->distbits = 5;
 }
 
-#ifdef MAKEFIXED
+#if 0
 #include <stdio.h>
 
 /*
@@ -379,10 +372,10 @@ unsigned out;
 
 /* Macros for inflate(): */
 
-/* check function to use adler32() for zlib or crc32() for gzip */
+/* check function to use adler32() for zlib or zl_crc32() for gzip */
 #ifdef GUNZIP
 #  define UPDATE(check, buf, len) \
-    (state->flags ? crc32(check, buf, len) : adler32(check, buf, len))
+    (state->flags ? zl_crc32(check, buf, len) : adler32(check, buf, len))
 #else
 #  define UPDATE(check, buf, len) adler32(check, buf, len)
 #endif
@@ -393,7 +386,7 @@ unsigned out;
     do { \
         hbuf[0] = (unsigned char)(word); \
         hbuf[1] = (unsigned char)((word) >> 8); \
-        check = crc32(check, hbuf, 2); \
+        check = zl_crc32(check, hbuf, 2); \
     } while (0)
 
 #  define CRC4(check, word) \
@@ -402,7 +395,7 @@ unsigned out;
         hbuf[1] = (unsigned char)((word) >> 8); \
         hbuf[2] = (unsigned char)((word) >> 16); \
         hbuf[3] = (unsigned char)((word) >> 24); \
-        check = crc32(check, hbuf, 4); \
+        check = zl_crc32(check, hbuf, 4); \
     } while (0)
 #endif
 
@@ -601,7 +594,7 @@ int flush;
             NEEDBITS(16);
 #ifdef GUNZIP
             if ((state->wrap & 2) && hold == 0x8b1f) {  /* gzip header */
-                state->check = crc32(0L, Z_NULL, 0);
+                state->check = zl_crc32(0L, Z_NULL, 0);
                 CRC2(state->check, hold);
                 INITBITS();
                 state->mode = FLAGS;
@@ -656,7 +649,6 @@ int flush;
             if (state->flags & 0x0200) CRC2(state->check, hold);
             INITBITS();
             state->mode = TIME;
-	    /*FALLTHRU*/
         case TIME:
             NEEDBITS(32);
             if (state->head != Z_NULL)
@@ -664,7 +656,6 @@ int flush;
             if (state->flags & 0x0200) CRC4(state->check, hold);
             INITBITS();
             state->mode = OS;
-	    /*FALLTHRU*/
         case OS:
             NEEDBITS(16);
             if (state->head != Z_NULL) {
@@ -674,7 +665,6 @@ int flush;
             if (state->flags & 0x0200) CRC2(state->check, hold);
             INITBITS();
             state->mode = EXLEN;
-	    /*FALLTHRU*/
         case EXLEN:
             if (state->flags & 0x0400) {
                 NEEDBITS(16);
@@ -687,7 +677,6 @@ int flush;
             else if (state->head != Z_NULL)
                 state->head->extra = Z_NULL;
             state->mode = EXTRA;
-	    /*FALLTHRU*/
         case EXTRA:
             if (state->flags & 0x0400) {
                 copy = state->length;
@@ -701,7 +690,7 @@ int flush;
                                 state->head->extra_max - len : copy);
                     }
                     if (state->flags & 0x0200)
-                        state->check = crc32(state->check, next, copy);
+                        state->check = zl_crc32(state->check, next, copy);
                     have -= copy;
                     next += copy;
                     state->length -= copy;
@@ -710,7 +699,6 @@ int flush;
             }
             state->length = 0;
             state->mode = NAME;
-	    /*FALLTHRU*/
         case NAME:
             if (state->flags & 0x0800) {
                 if (have == 0) goto inf_leave;
@@ -723,7 +711,7 @@ int flush;
                         state->head->name[state->length++] = len;
                 } while (len && copy < have);
                 if (state->flags & 0x0200)
-                    state->check = crc32(state->check, next, copy);
+                    state->check = zl_crc32(state->check, next, copy);
                 have -= copy;
                 next += copy;
                 if (len) goto inf_leave;
@@ -732,7 +720,6 @@ int flush;
                 state->head->name = Z_NULL;
             state->length = 0;
             state->mode = COMMENT;
-	    /*FALLTHRU*/
         case COMMENT:
             if (state->flags & 0x1000) {
                 if (have == 0) goto inf_leave;
@@ -745,7 +732,7 @@ int flush;
                         state->head->comment[state->length++] = len;
                 } while (len && copy < have);
                 if (state->flags & 0x0200)
-                    state->check = crc32(state->check, next, copy);
+                    state->check = zl_crc32(state->check, next, copy);
                 have -= copy;
                 next += copy;
                 if (len) goto inf_leave;
@@ -753,7 +740,6 @@ int flush;
             else if (state->head != Z_NULL)
                 state->head->comment = Z_NULL;
             state->mode = HCRC;
-	    /*FALLTHRU*/
         case HCRC:
             if (state->flags & 0x0200) {
                 NEEDBITS(16);
@@ -768,7 +754,7 @@ int flush;
                 state->head->hcrc = (int)((state->flags >> 9) & 1);
                 state->head->done = 1;
             }
-            strm->adler = state->check = crc32(0L, Z_NULL, 0);
+            strm->adler = state->check = zl_crc32(0L, Z_NULL, 0);
             state->mode = TYPE;
             break;
 #endif
@@ -777,7 +763,6 @@ int flush;
             strm->adler = state->check = REVERSE(hold);
             INITBITS();
             state->mode = DICT;
-	    /*FALLTHRU*/
         case DICT:
             if (state->havedict == 0) {
                 RESTORE();
@@ -785,10 +770,8 @@ int flush;
             }
             strm->adler = state->check = adler32(0L, Z_NULL, 0);
             state->mode = TYPE;
-	    /*FALLTHRU*/
         case TYPE:
             if (flush == Z_BLOCK) goto inf_leave;
-	    /*FALLTHRU*/
         case TYPEDO:
             if (state->last) {
                 BYTEBITS();
@@ -834,7 +817,6 @@ int flush;
                     state->length));
             INITBITS();
             state->mode = COPY;
-	    /*FALLTHRU*/
         case COPY:
             copy = state->length;
             if (copy) {
@@ -870,7 +852,6 @@ int flush;
             Tracev((stderr, "inflate:       table sizes ok\n"));
             state->have = 0;
             state->mode = LENLENS;
-	    /*FALLTHRU*/
         case LENLENS:
             while (state->have < state->ncode) {
                 NEEDBITS(3);
@@ -892,7 +873,6 @@ int flush;
             Tracev((stderr, "inflate:       code lengths ok\n"));
             state->have = 0;
             state->mode = CODELENS;
-	    /*FALLTHRU*/
         case CODELENS:
             while (state->have < state->nlen + state->ndist) {
                 for (;;) {
@@ -967,7 +947,6 @@ int flush;
             }
             Tracev((stderr, "inflate:       codes ok\n"));
             state->mode = LEN;
-	    /*FALLTHRU*/
         case LEN:
             if (have >= 6 && left >= 258) {
                 RESTORE();
@@ -1011,7 +990,6 @@ int flush;
             }
             state->extra = (unsigned)(this.op) & 15;
             state->mode = LENEXT;
-	    /*FALLTHRU*/
         case LENEXT:
             if (state->extra) {
                 NEEDBITS(state->extra);
@@ -1020,7 +998,6 @@ int flush;
             }
             Tracevv((stderr, "inflate:         length %u\n", state->length));
             state->mode = DIST;
-	    /*FALLTHRU*/
         case DIST:
             for (;;) {
                 this = state->distcode[BITS(state->distbits)];
@@ -1046,7 +1023,6 @@ int flush;
             state->offset = (unsigned)this.val;
             state->extra = (unsigned)(this.op) & 15;
             state->mode = DISTEXT;
-	    /*FALLTHRU*/
         case DISTEXT:
             if (state->extra) {
                 NEEDBITS(state->extra);
@@ -1067,7 +1043,6 @@ int flush;
             }
             Tracevv((stderr, "inflate:         distance %u\n", state->offset));
             state->mode = MATCH;
-	    /*FALLTHRU*/
         case MATCH:
             if (left == 0) goto inf_leave;
             copy = out - left;
@@ -1123,7 +1098,6 @@ int flush;
             }
 #ifdef GUNZIP
             state->mode = LENGTH;
-	    /*FALLTHRU*/
         case LENGTH:
             if (state->wrap && state->flags) {
                 NEEDBITS(32);
@@ -1137,7 +1111,6 @@ int flush;
             }
 #endif
             state->mode = DONE;
-	    /*FALLTHRU*/
         case DONE:
             ret = Z_STREAM_END;
             goto inf_leave;
@@ -1311,7 +1284,7 @@ z_streamp strm;
             state->bits -= 8;
         }
         state->have = 0;
-        (void) syncsearch(&(state->have), buf, len);
+        syncsearch(&(state->have), buf, len);
     }
 
     /* search available input */
@@ -1323,7 +1296,7 @@ z_streamp strm;
     /* return no joy or set up to restart inflate() on a new block */
     if (state->have != 4) return Z_DATA_ERROR;
     in = strm->total_in;  out = strm->total_out;
-    (void) inflateReset(strm);
+    inflateReset(strm);
     strm->total_in = in;  strm->total_out = out;
     state->mode = TYPE;
     return Z_OK;

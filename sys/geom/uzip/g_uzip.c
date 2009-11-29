@@ -38,7 +38,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 
 #include <geom/geom.h>
-#include <net/zlib.h>
+#include <libkern/zlib/zlib.h>
 
 #undef GEOM_UZIP_DEBUG
 #ifdef GEOM_UZIP_DEBUG

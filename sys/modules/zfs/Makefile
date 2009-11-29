@@ -45,16 +45,7 @@ SRCS+=	list.c
 SRCS+=	nvpair_alloc_system.c
 
 .PATH:	${SUNW}/uts/common/zmod
-SRCS+=	adler32.c
-SRCS+=	opensolaris_crc32.c
-SRCS+=	deflate.c
-SRCS+=	inffast.c
-SRCS+=	inflate.c
-SRCS+=	inftrees.c
-SRCS+=	trees.c
 SRCS+=	zmod.c
-SRCS+=	zmod_subr.c
-SRCS+=	zutil.c
 
 .PATH:	${SUNW}/common/zfs
 .include "${SUNW}/uts/common/Makefile.files"

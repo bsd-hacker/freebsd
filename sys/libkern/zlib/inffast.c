@@ -3,12 +3,10 @@
  * For conditions of distribution and use, see copyright notice in zlib.h
  */
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
-#include "zutil.h"
-#include "inftrees.h"
-#include "inflate.h"
-#include "inffast.h"
+#include <libkern/zlib/zutil.h>
+#include <libkern/zlib/inftrees.h>
+#include <libkern/zlib/inflate.h>
+#include <libkern/zlib/inffast.h>
 
 #ifndef ASMINF
 
