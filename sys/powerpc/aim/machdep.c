@@ -133,10 +133,8 @@ extern vm_offset_t ksym_start, ksym_end;
 int cold = 1;
 #ifdef __powerpc64__
 int cacheline_size = 128;
-int ppc64 = 1;
 #else
 int cacheline_size = 32;
-int ppc64 = 0;
 #endif
 int hw_direct_map = 1;
 
@@ -271,6 +269,9 @@ powerpc_init(vm_offset_t startkernel, vm_offset_t endkernel,
         char		*env;
 	register_t	msr, scratch;
 	uint8_t		*cache_check;
+	#ifndef __powerpc64__
+	int		ppc64;
+	#endif
 
 	end = 0;
 	kmdp = NULL;
@@ -401,6 +402,7 @@ powerpc_init(vm_offset_t startkernel, vm_offset_t endkernel,
 		cacheline_size = 32;
 	}
 
+	#ifndef __powerpc64__
 	/*
 	 * Figure out whether we need to use the 64 bit PMAP. This works by
 	 * executing an instruction that is only legal on 64-bit PPC (mtmsrd),
@@ -409,7 +411,6 @@ powerpc_init(vm_offset_t startkernel, vm_offset_t endkernel,
 
 	ppc64 = 1;
 
-	#ifndef __powerpc64__
 	bcopy(&testppc64, (void *)EXC_PGM,  (size_t)&testppc64size);
 	__syncicache((void *)EXC_PGM, (size_t)&testppc64size);
 
@@ -421,12 +422,15 @@ powerpc_init(vm_offset_t startkernel, vm_offset_t endkernel,
 		mfsprg2 %1;"
 	    : "=r"(scratch), "=r"(ppc64));
 
+	if (ppc64)
+		cpu_features |= PPC_FEATURE_64;
+
 	/*
 	 * Now copy restorebridge into all the handlers, if necessary,
 	 * and set up the trap tables.
 	 */
 
-	if (ppc64) {
+	if (cpu_features & PPC_FEATURE_64) {
 		/* Patch the two instances of rfi -> rfid */
 		bcopy(&rfid_patch,&rfi_patch1,4);
 	#ifdef KDB
@@ -459,6 +463,7 @@ powerpc_init(vm_offset_t startkernel, vm_offset_t endkernel,
 	}
 
 	#else /* powerpc64 */
+	cpu_features |= PPC_FEATURE_64;
 	generictrap = &trapcode;
 	#endif
 
@@ -513,7 +518,7 @@ powerpc_init(vm_offset_t startkernel, vm_offset_t endkernel,
 	 * in case the platform module had a better idea of what we
 	 * should do.
 	 */
-	if (ppc64)
+	if (cpu_features & PPC_FEATURE_64)
 		pmap_mmu_install(MMU_TYPE_G5, BUS_PROBE_GENERIC);
 	else
 		pmap_mmu_install(MMU_TYPE_OEA, BUS_PROBE_GENERIC);

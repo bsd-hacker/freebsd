@@ -49,16 +49,18 @@ mode2str(int mode)
 	case ATA_PIO2: return "PIO2";
 	case ATA_PIO3: return "PIO3";
 	case ATA_PIO4: return "PIO4";
+	case ATA_WDMA0: return "WDMA0";
+	case ATA_WDMA1: return "WDMA1";
 	case ATA_WDMA2: return "WDMA2";
+	case ATA_UDMA0: return "UDMA0";
+	case ATA_UDMA1: return "UDMA1";
 	case ATA_UDMA2: return "UDMA33";
+	case ATA_UDMA3: return "UDMA44";
 	case ATA_UDMA4: return "UDMA66";
 	case ATA_UDMA5: return "UDMA100";
 	case ATA_UDMA6: return "UDMA133";
 	case ATA_SA150: return "SATA150";
 	case ATA_SA300: return "SATA300";
-	case ATA_USB: return "USB";
-	case ATA_USB1: return "USB1";
-	case ATA_USB2: return "USB2";
 	case ATA_DMA: return "BIOSDMA";
 	default: return "???";
 	}
@@ -73,9 +75,15 @@ str2mode(char *str)
 	if (!strcasecmp(str, "PIO2")) return ATA_PIO2;
 	if (!strcasecmp(str, "PIO3")) return ATA_PIO3;
 	if (!strcasecmp(str, "PIO4")) return ATA_PIO4;
+	if (!strcasecmp(str, "WDMA0")) return ATA_WDMA0;
+	if (!strcasecmp(str, "WDMA1")) return ATA_WDMA1;
 	if (!strcasecmp(str, "WDMA2")) return ATA_WDMA2;
+	if (!strcasecmp(str, "UDMA0")) return ATA_UDMA0;
+	if (!strcasecmp(str, "UDMA1")) return ATA_UDMA1;
 	if (!strcasecmp(str, "UDMA2")) return ATA_UDMA2;
 	if (!strcasecmp(str, "UDMA33")) return ATA_UDMA2;
+	if (!strcasecmp(str, "UDMA3")) return ATA_UDMA3;
+	if (!strcasecmp(str, "UDMA44")) return ATA_UDMA3;
 	if (!strcasecmp(str, "UDMA4")) return ATA_UDMA4;
 	if (!strcasecmp(str, "UDMA66")) return ATA_UDMA4;
 	if (!strcasecmp(str, "UDMA5")) return ATA_UDMA5;
@@ -84,9 +92,6 @@ str2mode(char *str)
 	if (!strcasecmp(str, "UDMA133")) return ATA_UDMA6;
 	if (!strcasecmp(str, "SATA150")) return ATA_SA150;
 	if (!strcasecmp(str, "SATA300")) return ATA_SA300;
-	if (!strcasecmp(str, "USB")) return ATA_USB;
-	if (!strcasecmp(str, "USB1")) return ATA_USB1;
-	if (!strcasecmp(str, "USB2")) return ATA_USB2;
 	if (!strcasecmp(str, "BIOSDMA")) return ATA_DMA;
 	return -1;
 }
