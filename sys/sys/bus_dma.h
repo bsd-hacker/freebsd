@@ -82,6 +82,9 @@
  *     (yet) be included directly.
  */
 
+
+#define	BUS_DMA_SET_MINSEGSZ	3
+
 /*
  * Flags used in various bus DMA methods.
  */
@@ -174,6 +177,8 @@ int bus_dma_tag_create(bus_dma_tag_t parent, bus_size_t alignment,
 		       void *filtfuncarg, bus_size_t maxsize, int nsegments,
 		       bus_size_t maxsegsz, int flags, bus_dma_lock_t *lockfunc,
 		       void *lockfuncarg, bus_dma_tag_t *dmat);
+
+int bus_dma_tag_set(bus_dma_tag_t dmat, int op, bus_size_t arg);
 
 int bus_dma_tag_destroy(bus_dma_tag_t dmat);
 

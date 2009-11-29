@@ -62,6 +62,7 @@ struct bounce_zone;
 struct bus_dma_tag {
 	bus_dma_tag_t	  parent;
 	bus_size_t	  alignment;
+	bus_size_t	  minsegsz;
 	bus_size_t	  boundary;
 	bus_addr_t	  lowaddr;
 	bus_addr_t	  highaddr;
@@ -210,6 +211,16 @@ static void
 dflt_lock(void *arg, bus_dma_lock_op_t op)
 {
 	panic("driver error: busdma dflt_lock called");
+}
+
+int
+bus_dma_tag_set(bus_dma_tag_t dmat, int op, bus_size_t arg)
+{
+	if (op != BUS_DMA_SET_MINSEGSZ)
+		return (EINVAL);
+
+	dmat->minsegsz = arg;
+	return (0);
 }
 
 /*
@@ -697,6 +708,11 @@ _bus_dmamap_load_buffer(bus_dma_tag_t dmat,
 			if (sgsize > (baddr - curaddr))
 				sgsize = (baddr - curaddr);
 		}
+
+		if ((dmat->minsegsz > 0) &&
+		    (sgsize % dmat->minsegsz))
+			sgsize -= (sgsize % dmat->minsegsz-1);
+		
 
 		if (((dmat->flags & BUS_DMA_COULD_BOUNCE) != 0) &&
 		    map->pagesneeded != 0 && run_filter(dmat, curaddr))
