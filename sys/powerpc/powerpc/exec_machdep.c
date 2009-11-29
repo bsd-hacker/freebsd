@@ -75,6 +75,7 @@ __FBSDID("$FreeBSD: projects/ppc64/sys/powerpc/aim/machdep.c 198753 2009-11-01 1
 #include <sys/malloc.h>
 #include <sys/mutex.h>
 #include <sys/signalvar.h>
+#include <sys/syscall.h>
 #include <sys/sysent.h>
 #include <sys/sysproto.h>
 #include <sys/ucontext.h>
@@ -844,4 +845,69 @@ freebsd32_swapcontext(struct thread *td, struct freebsd32_swapcontext_args *uap)
 }
 
 #endif
+
+void
+cpu_set_syscall_retval(struct thread *td, int error)
+{
+	struct proc *p;
+	struct trapframe *tf;
+	int fixup;
+
+	if (error == EJUSTRETURN)
+		return;
+
+	p = td->td_proc;
+	tf = td->td_frame;
+
+	if (tf->fixreg[0] == SYS___syscall &&
+	    (p->p_sysent->sv_flags & SV_ILP32)) {
+		int code = tf->fixreg[FIRSTARG + 1];
+		if (p->p_sysent->sv_mask)
+			code &= p->p_sysent->sv_mask;
+		fixup = (code != SYS_freebsd6_lseek && code != SYS_lseek) ?
+		    1 : 0;
+	} else
+		fixup = 0;
+
+	switch (error) {
+	case 0:
+		if (fixup) {
+			/*
+			 * 64-bit return, 32-bit syscall. Fixup byte order
+			 */
+			tf->fixreg[FIRSTARG] = 0;
+			tf->fixreg[FIRSTARG + 1] = td->td_retval[0];
+		} else {
+			tf->fixreg[FIRSTARG] = td->td_retval[0];
+			tf->fixreg[FIRSTARG + 1] = td->td_retval[1];
+		}
+		tf->cr &= ~0x10000000;		/* XXX: Magic number */
+		break;
+	case ERESTART:
+		/*
+		 * Set user's pc back to redo the system call.
+		 */
+		tf->srr0 -= 4;
+		break;
+	default:
+		if (p->p_sysent->sv_errsize) {
+			error = (error < p->p_sysent->sv_errsize) ?
+			    p->p_sysent->sv_errtbl[error] : -1;
+		}
+		tf->fixreg[FIRSTARG] = error;
+		tf->cr |= 0x10000000;		/* XXX: Magic number */
+		break;
+	}
+}
+
+int
+cpu_set_user_tls(struct thread *td, void *tls_base)
+{
+
+	if (td->td_proc->p_sysent->sv_flags & SV_LP64) 
+		td->td_frame->fixreg[13] = (register_t)tls_base + 0x8000;
+	else
+		td->td_frame->fixreg[2] = (register_t)tls_base + 0x7008;
+	return (0);
+}
 
