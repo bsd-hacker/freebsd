@@ -2137,7 +2137,8 @@ freebsd32_do_sendfile(struct thread *td,
 		}
 	}
 
-	error = kern_sendfile(td, &ap, hdr_uio, trl_uio, compat);
+	error = kern_sendfile(td, &ap, hdr_uio, trl_uio, compat,
+	    NULL, NULL, NULL);
 out:
 	if (hdr_uio)
 		free(hdr_uio, M_IOV);

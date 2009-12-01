@@ -94,6 +94,7 @@ struct buf *buf;		/* buffer header pool */
 
 static struct proc *bufdaemonproc;
 
+static int _allocbuf(struct buf *bp, int size, int flags);
 static int inmem(struct vnode *vp, daddr_t blkno);
 static void vm_hold_free_pages(struct buf *bp, vm_offset_t from,
 		vm_offset_t to);
@@ -2624,7 +2625,7 @@ loop:
 		 */
 
 		if (bp->b_bcount != size)
-			allocbuf(bp, size);
+			_allocbuf(bp, size, flags);
 
 		KASSERT(bp->b_offset != NOOFFSET, 
 		    ("getblk: no buffer offset"));
@@ -2744,7 +2745,7 @@ loop:
 			    bp, bp->b_bufobj->bo_object));
 		}
 
-		allocbuf(bp, size);
+		_allocbuf(bp, size, flags);
 		bp->b_flags &= ~B_DONE;
 	}
 	CTR4(KTR_BUF, "getblk(%p, %ld, %d) = %p", vp, (long)blkno, size, bp);
@@ -2770,7 +2771,7 @@ geteblk(int size, int flags)
 		    (curthread->td_pflags & TDP_BUFNEED) != 0)
 			return (NULL);
 	}
-	allocbuf(bp, size);
+	_allocbuf(bp, size, flags);
 	bp->b_flags |= B_INVAL;	/* b_dep cleared by getnewbuf() */
 	BUF_ASSERT_HELD(bp);
 	return (bp);
@@ -2792,17 +2793,21 @@ geteblk(int size, int flags)
  * B_CACHE for the non-VMIO case.
  */
 
-int
-allocbuf(struct buf *bp, int size)
+static int
+_allocbuf(struct buf *bp, int size, int flags)
 {
 	int newbsize, mbsize;
 	int i;
+	vm_prot_t prot = VM_PROT_ALL;
 
 	BUF_ASSERT_HELD(bp);
 
 	if (bp->b_kvasize < size)
 		panic("allocbuf: buffer too small");
 
+	if (flags & GB_NODUMP)
+		prot |= VM_PROT_EXCLUDE;
+	
 	if ((bp->b_flags & B_VMIO) == 0) {
 		caddr_t origbuf;
 		int origbufsize;
@@ -3062,10 +3067,11 @@ allocbuf(struct buf *bp, int size)
 
 			bp->b_data = (caddr_t)
 			    trunc_page((vm_offset_t)bp->b_data);
-			pmap_qenter(
-			    (vm_offset_t)bp->b_data,
-			    bp->b_pages, 
-			    bp->b_npages
+			pmap_qenter_prot(
+				(vm_offset_t)bp->b_data,
+				bp->b_pages, 
+				bp->b_npages,
+				prot
 			);
 			
 			bp->b_data = (caddr_t)((vm_offset_t)bp->b_data | 
@@ -3077,6 +3083,13 @@ allocbuf(struct buf *bp, int size)
 	bp->b_bufsize = newbsize;	/* actual buffer allocation	*/
 	bp->b_bcount = size;		/* requested buffer size	*/
 	return 1;
+}
+
+int
+allocbuf(struct buf *bp, int size)
+{
+
+	return (_allocbuf(bp, size, 0));
 }
 
 void

@@ -71,11 +71,18 @@
 #define	SBS_RCVATMARK		0x0040	/* at mark on input */
 
 struct socket;
+struct sendfile_args;
+struct uio;
 
 void	soisconnected(struct socket *so);
 void	soisconnecting(struct socket *so);
 void	soisdisconnected(struct socket *so);
 void	soisdisconnecting(struct socket *so);
+void	soissending(struct socket *so,
+    struct thread *td, struct sendfile_args *uap,
+    struct uio *hdr_uio, struct uio *trl_uio,
+    int compat, off_t sbytes, off_t vnp_size);
+void	sosendingwakeup(struct sockbuf *sb);
 void	socantrcvmore(struct socket *so);
 void	socantrcvmore_locked(struct socket *so);
 void	socantsendmore(struct socket *so);
