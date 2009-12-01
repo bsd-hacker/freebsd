@@ -43,8 +43,8 @@
 #ifdef _KERNEL
 
 #define	CPU		curcpu
-#define	minclsyspri	PRIBIO
-#define	maxclsyspri	PVM
+#define	maxclsyspri	PRIBIO
+#define	minclsyspri	PVFS
 #define	max_ncpus	mp_ncpus
 #define	boot_max_ncpus	mp_ncpus
 
