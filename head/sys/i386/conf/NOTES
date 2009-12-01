@@ -785,15 +785,19 @@ hint.pcf.0.irq="5"
 # Hardware watchdog timers:
 #
 # ichwd: Intel ICH watchdog timer
+# amdsbwd: AMD SB7xx watchdog timer
 #
 device		ichwd
+device		amdsbwd
 
 #
 # Temperature sensors:
 #
 # coretemp: on-die sensor on Intel Core and newer CPUs
+# amdtemp: on-die sensor on AMD K8/K10/K11 CPUs
 #
 device		coretemp
+device		amdtemp
 
 #
 # CPU control pseudo-device. Provides access to MSRs, CPUID info and

@@ -67,6 +67,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/callout.h>
 #include <sys/malloc.h>
 #include <sys/priv.h>
+#include <sys/kdb.h>
 
 #include <dev/usb/usb.h>
 #include <dev/usb/usbdi.h>
@@ -104,6 +105,8 @@ SYSCTL_INT(_hw_usb_ukbd, OID_AUTO, debug, CTLFLAG_RW,
 SYSCTL_INT(_hw_usb_ukbd, OID_AUTO, no_leds, CTLFLAG_RW,
     &ukbd_no_leds, 0, "Disables setting of keyboard leds");
 
+TUNABLE_INT("hw.usb.ukbd.debug", &ukbd_debug);
+TUNABLE_INT("hw.usb.ukbd.no_leds", &ukbd_no_leds);
 #endif
 
 #define	UPROTO_BOOT_KEYBOARD 1
@@ -327,6 +330,9 @@ static void
 ukbd_do_poll(struct ukbd_softc *sc, uint8_t wait)
 {
 	DPRINTFN(2, "polling\n");
+
+	if (kdb_active == 0)
+		return;		/* Only poll if KDB is active */
 
 	while (sc->sc_inputs == 0) {
 
@@ -745,7 +751,7 @@ ukbd_probe(device_t dev)
 		if (usb_test_quirk(uaa, UQ_KBD_IGNORE))
 			return (ENXIO);
 		else
-			return (0);
+			return (BUS_PROBE_GENERIC);
 	}
 
 	error = usbd_req_get_hid_desc(uaa->device, NULL,
@@ -767,7 +773,7 @@ ukbd_probe(device_t dev)
 		if (usb_test_quirk(uaa, UQ_KBD_IGNORE))
 			error = ENXIO;
 		else
-			error = 0;
+			error = BUS_PROBE_GENERIC;
 	} else
 		error = ENXIO;
 
@@ -920,7 +926,7 @@ ukbd_detach(device_t dev)
 	DPRINTF("\n");
 
 	if (sc->sc_flags & UKBD_FLAG_POLLING) {
-		panic("cannot detach polled keyboard!\n");
+		panic("cannot detach polled keyboard\n");
 	}
 	sc->sc_flags |= UKBD_FLAG_GONE;
 

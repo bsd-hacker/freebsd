@@ -34,7 +34,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd July 25, 2009
+.Dd October 18, 2009
 .Dt JAIL 8
 .Os
 .Sh NAME
@@ -377,7 +377,7 @@ Since raw sockets can be used to configure and interact with various
 network subsystems, extra caution should be used where privileged access
 to jails is given out to untrusted parties.
 .It Va allow.chflags
-Normally, priveleged users inside a jail are treated as unprivileged by
+Normally, privileged users inside a jail are treated as unprivileged by
 .Xr chflags 2 .
 When this parameter is set, such users are treated as privileged, and
 may manipulate system file flags subject to the usual constraints on
@@ -561,7 +561,7 @@ or for running a virtual server.
 Start a shell in the jail:
 .Pp
 .Bd -literal -offset indent
-jail path=/data/jail/192.0.2.100 host.hostname=testhostname \\
+jail -c path=/data/jail/192.0.2.100 host.hostname=testhostname \\
 	ip4.addr=192.0.2.100 command=/bin/sh
 .Ed
 .Pp
@@ -636,7 +636,7 @@ script from within the jail.
 .Bd -literal -offset indent
 ifconfig ed0 inet alias 192.0.2.100/32
 mount -t procfs proc /data/jail/192.0.2.100/proc
-jail path=/data/jail/192.0.2.100 host.hostname=testhostname \\
+jail -c path=/data/jail/192.0.2.100 host.hostname=testhostname \\
 	ip4.addr=192.0.2.100 command=/bin/sh /etc/rc
 .Ed
 .Pp

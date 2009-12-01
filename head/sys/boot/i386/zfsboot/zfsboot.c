@@ -84,7 +84,7 @@ __FBSDID("$FreeBSD$");
 #define	KARGS_FLAGS_ZFS		0x4
 
 #define PATH_CONFIG	"/boot.config"
-#define PATH_BOOT3	"/boot/loader"
+#define PATH_BOOT3	"/boot/zfsloader"
 #define PATH_KERNEL	"/boot/kernel/kernel"
 
 #define ARGS		0x900
@@ -138,8 +138,8 @@ struct dsk {
     unsigned unit;
     unsigned slice;
     unsigned part;
-    unsigned start;
     int init;
+    daddr_t start;
 };
 static char cmd[512];
 static char kname[1024];
@@ -163,7 +163,7 @@ static int parse(void);
 static void printf(const char *,...);
 static void putchar(int);
 static uint32_t memsize(void);
-static int drvread(struct dsk *, void *, unsigned, unsigned);
+static int drvread(struct dsk *, void *, daddr_t, unsigned);
 static int keyhit(unsigned);
 static int xputc(int);
 static int xgetc(int);
@@ -310,7 +310,8 @@ static int
 vdev_read(vdev_t *vdev, void *priv, off_t off, void *buf, size_t bytes)
 {
 	char *p;
-	unsigned int lba, nb;
+	daddr_t lba;
+	unsigned int nb;
 	struct dsk *dsk = (struct dsk *) priv;
 
 	if ((off & (DEV_BSIZE - 1)) || (bytes & (DEV_BSIZE - 1)))
@@ -474,6 +475,7 @@ probe_drive(struct dsk *dsk, spa_t **spap)
     slba = hdr.hdr_lba_table;
     elba = slba + hdr.hdr_entries / entries_per_sec;
     while (slba < elba) {
+	dsk->start = 0;
 	if (drvread(dsk, sec, slba, 1))
 	    return;
 	for (part = 0; part < entries_per_sec; part++) {
@@ -494,7 +496,6 @@ probe_drive(struct dsk *dsk, spa_t **spap)
 		     */
 		    dsk = copy_dsk(dsk);
 		}
-		break;
 	    }
 	}
 	slba++;
@@ -609,7 +610,7 @@ main(void)
 
     if (zfs_lookup(spa, PATH_CONFIG, &dn) == 0) {
 	off = 0;
-	xfsread(&dn, &off, cmd, sizeof(cmd));
+	zfs_read(spa, &dn, &off, cmd, sizeof(cmd));
     }
 
     if (*cmd) {
@@ -857,12 +858,13 @@ static void
 printf(const char *fmt,...)
 {
     va_list ap;
-    char buf[10];
+    char buf[20];
     char *s;
-    unsigned u;
+    unsigned long long u;
     int c;
     int minus;
     int prec;
+    int l;
     int len;
     int pad;
 
@@ -871,6 +873,7 @@ printf(const char *fmt,...)
 	if (c == '%') {
 	    minus = 0;
 	    prec = 0;
+	    l = 0;
 	nextfmt:
 	    c = *fmt++;
 	    switch (c) {
@@ -892,6 +895,9 @@ printf(const char *fmt,...)
 	    case 'c':
 		putchar(va_arg(ap, int));
 		continue;
+	    case 'l':
+		l++;
+		goto nextfmt;
 	    case 's':
 		s = va_arg(ap, char *);
 		if (prec) {
@@ -914,7 +920,17 @@ printf(const char *fmt,...)
 		}
 		continue;
 	    case 'u':
-		u = va_arg(ap, unsigned);
+		switch (l) {
+		case 2:
+		    u = va_arg(ap, unsigned long long);
+		    break;
+		case 1:
+		    u = va_arg(ap, unsigned long);
+		    break;
+		default:
+		    u = va_arg(ap, unsigned);
+		    break;
+		}
 		s = buf;
 		do
 		    *s++ = '0' + u % 10U;
@@ -949,7 +965,7 @@ static struct {
 #endif
 
 static int
-drvread(struct dsk *dsk, void *buf, unsigned lba, unsigned nblk)
+drvread(struct dsk *dsk, void *buf, daddr_t lba, unsigned nblk)
 {
 #ifdef GPT
     static unsigned c = 0x2d5c7c2f;
@@ -984,7 +1000,7 @@ drvread(struct dsk *dsk, void *buf, unsigned lba, unsigned nblk)
     v86.es = VTOPSEG(buf);
     v86.eax = lba;
     v86.ebx = VTOPOFF(buf);
-    v86.ecx = lba >> 16;
+    v86.ecx = lba >> 32;
     v86.edx = nblk << 8 | dsk->drive;
     v86int();
     v86.ctl = V86_FLAGS;

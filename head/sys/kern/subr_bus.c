@@ -35,6 +35,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/lock.h>
 #include <sys/kernel.h>
 #include <sys/kobj.h>
+#include <sys/limits.h>
 #include <sys/malloc.h>
 #include <sys/module.h>
 #include <sys/mutex.h>
@@ -1049,9 +1050,10 @@ devclass_driver_added(devclass_t dc, driver_t *driver)
  * @param driver	the driver to register
  */
 static int
-devclass_add_driver(devclass_t dc, driver_t *driver, int pass)
+devclass_add_driver(devclass_t dc, driver_t *driver, int pass, devclass_t *dcp)
 {
 	driverlink_t dl;
+	const char *parentname;
 
 	PDEBUG(("%s", DRIVERNAME(driver)));
 
@@ -1072,9 +1074,17 @@ devclass_add_driver(devclass_t dc, driver_t *driver, int pass)
 	kobj_class_compile((kobj_class_t) driver);
 
 	/*
-	 * Make sure the devclass which the driver is implementing exists.
+	 * If the driver has any base classes, make the
+	 * devclass inherit from the devclass of the driver's
+	 * first base class. This will allow the system to
+	 * search for drivers in both devclasses for children
+	 * of a device using this driver.
 	 */
-	devclass_find_internal(driver->name, NULL, TRUE);
+	if (driver->baseclasses)
+		parentname = driver->baseclasses[0]->name;
+	else
+		parentname = NULL;
+	*dcp = devclass_find_internal(driver->name, parentname, TRUE);
 
 	dl->driver = driver;
 	TAILQ_INSERT_TAIL(&dc->drivers, dl, link);
@@ -1575,7 +1585,7 @@ devclass_add_device(devclass_t dc, device_t dev)
 
 	PDEBUG(("%s in devclass %s", DEVICENAME(dev), DEVCLANAME(dc)));
 
-	buflen = snprintf(NULL, 0, "%s%d$", dc->name, dev->unit);
+	buflen = snprintf(NULL, 0, "%s%d$", dc->name, INT_MAX);
 	if (buflen < 0)
 		return (ENOMEM);
 	dev->nameunit = malloc(buflen, M_BUS, M_NOWAIT|M_ZERO);
@@ -3520,6 +3530,24 @@ bus_generic_config_intr(device_t dev, int irq, enum intr_trigger trig,
 }
 
 /**
+ * @brief Helper function for implementing BUS_DESCRIBE_INTR().
+ *
+ * This simple implementation of BUS_DESCRIBE_INTR() simply calls the
+ * BUS_DESCRIBE_INTR() method of the parent of @p dev.
+ */
+int
+bus_generic_describe_intr(device_t dev, device_t child, struct resource *irq,
+    void *cookie, const char *descr)
+{
+
+	/* Propagate up the bus hierarchy until someone handles it. */
+	if (dev->parent)
+		return (BUS_DESCRIBE_INTR(dev->parent, child, irq, cookie,
+		    descr));
+	return (EINVAL);
+}
+
+/**
  * @brief Helper function for implementing BUS_GET_DMA_TAG().
  *
  * This simple implementation of BUS_GET_DMA_TAG() simply calls the
@@ -3824,6 +3852,28 @@ bus_bind_intr(device_t dev, struct resource *r, int cpu)
 }
 
 /**
+ * @brief Wrapper function for BUS_DESCRIBE_INTR().
+ *
+ * This function first formats the requested description into a
+ * temporary buffer and then calls the BUS_DESCRIBE_INTR() method of
+ * the parent of @p dev.
+ */
+int
+bus_describe_intr(device_t dev, struct resource *irq, void *cookie,
+    const char *fmt, ...)
+{
+	va_list ap;
+	char descr[MAXCOMLEN + 1];
+
+	if (dev->parent == NULL)
+		return (EINVAL);
+	va_start(ap, fmt);
+	vsnprintf(descr, sizeof(descr), fmt, ap);
+	va_end(ap);
+	return (BUS_DESCRIBE_INTR(dev->parent, dev, irq, cookie, descr));
+}
+
+/**
  * @brief Wrapper function for BUS_SET_RESOURCE().
  *
  * This function simply calls the BUS_SET_RESOURCE() method of the
@@ -4117,27 +4167,8 @@ driver_module_handler(module_t mod, int what, void *arg)
 		driver = dmd->dmd_driver;
 		PDEBUG(("Loading module: driver %s on bus %s (pass %d)",
 		    DRIVERNAME(driver), dmd->dmd_busname, pass));
-		error = devclass_add_driver(bus_devclass, driver, pass);
-		if (error)
-			break;
-
-		/*
-		 * If the driver has any base classes, make the
-		 * devclass inherit from the devclass of the driver's
-		 * first base class. This will allow the system to
-		 * search for drivers in both devclasses for children
-		 * of a device using this driver.
-		 */
-		if (driver->baseclasses) {
-			const char *parentname;
-			parentname = driver->baseclasses[0]->name;
-			*dmd->dmd_devclass =
-				devclass_find_internal(driver->name,
-				    parentname, TRUE);
-		} else {
-			*dmd->dmd_devclass =
-				devclass_find_internal(driver->name, NULL, TRUE);
-		}
+		error = devclass_add_driver(bus_devclass, driver, pass,
+		    dmd->dmd_devclass);
 		break;
 
 	case MOD_UNLOAD:

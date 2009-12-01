@@ -1,7 +1,139 @@
 ----------------------------------------
-03 September 2009. Summary of changes for version 20090903:
+12 November 2009. Summary of changes for version 20091112:
 
 This release is available at www.acpica.org/downloads
+
+1) ACPI CA Core Subsystem:
+
+Implemented a post-order callback to AcpiWalkNamespace. The existing 
+interface only has a pre-order callback. This change adds an additional 
+parameter for a post-order callback which will be more useful for bus scans. 
+ACPICA BZ 779. Lin Ming. Updated the ACPICA Programmer Reference.
+
+Modified the behavior of the operation region memory mapping cache for 
+SystemMemory. Ensure that the memory mappings created for operation regions 
+do not cross 4K page boundaries. Crossing a page boundary while mapping 
+regions can cause kernel warnings on some hosts if the pages have different 
+attributes. Such regions are probably BIOS bugs, and this is the workaround. 
+Linux BZ 14445. Lin Ming.
+
+Implemented an automatic repair for predefined methods that must return 
+sorted lists. This change will repair (by sorting) packages returned by _ALR, 
+_PSS, and _TSS. Drivers can now assume that the packages are correctly sorted 
+and do not contain NULL package elements. Adds one new file, 
+namespace/nsrepair2.c. ACPICA BZ 784. Lin Ming, Bob Moore.
+
+Fixed a possible fault during predefined name validation if a return Package 
+object contains NULL elements. Also adds a warning if a NULL element is 
+followed by any non-null elements. ACPICA BZ 813, 814. Future enhancement may 
+include repair or removal of all such NULL elements where possible.
+
+Implemented additional module-level executable AML code support. This change 
+will execute module-level code that is not at the root of the namespace 
+(under a Device object, etc.) at table load time. Module-level executable AML 
+code has been illegal since ACPI 2.0. ACPICA BZ 762. Lin Ming.
+
+Implemented a new internal function to create Integer objects. This function 
+simplifies miscellaneous object creation code. ACPICA BZ 823.
+
+Reduced the severity of predefined repair messages, Warning to Info. Since 
+the object was successfully repaired, a warning is too severe. Reduced to an 
+info message for now. These messages may eventually be changed to debug-only. 
+ACPICA BZ 812.
+
+Example Code and Data Size: These are the sizes for the OS-independent 
+acpica.lib produced by the Microsoft Visual C++ 6.0 32-bit compiler. The 
+debug version of the code includes the debug output trace mechanism and has a 
+much larger code and data size.
+
+  Previous Release:
+    Non-Debug Version:  85.8K Code, 18.0K Data, 103.8K Total
+    Debug Version:     161.8K Code, 50.6K Data, 212.4K Total
+  Current Release:
+    Non-Debug Version:  86.6K Code, 18.2K Data, 104.8K Total
+    Debug Version:     162.7K Code, 50.8K Data, 213.5K Total
+
+2) iASL Compiler/Disassembler and Tools:
+
+iASL: Implemented Switch() with While(1) so that Break works correctly. This 
+change correctly implements the Switch operator with a surrounding While(1) 
+so that the Break operator works as expected. ACPICA BZ 461. Lin Ming.
+
+iASL: Added a message if a package initializer list is shorter than package 
+length. Adds a new remark for a Package() declaration if an initializer list 
+exists, but is shorter than the declared length of the package. Although 
+technically legal, this is probably a coding error and it is seen in the 
+field. ACPICA BZ 815. Lin Ming, Bob Moore.
+
+iASL: Fixed a problem where the compiler could fault after the maximum number 
+of errors was reached (200).
+
+acpixtract: Fixed a possible warning for pointer cast if the compiler warning 
+level set very high.
+
+----------------------------------------
+13 October 2009. Summary of changes for version 20091013:
+
+This release is available at www.acpica.org/downloads
+
+1) ACPI CA Core Subsystem:
+
+Fixed a problem where an Operation Region _REG method could be executed more 
+than once. If a custom address space handler is installed by the host before 
+the "initialize operation regions" phase of the ACPICA initialization, any 
+_REG methods for that address space could be executed twice. This change 
+fixes the problem. ACPICA BZ 427. Lin Ming.
+
+Fixed a possible memory leak for the Scope() ASL operator. When the exact 
+invocation of "Scope(\)" is executed (change scope to root), one internal 
+operand object was leaked. Lin Ming.
+
+Implemented a run-time repair for the _MAT predefined method. If the _MAT 
+return value is defined as a Field object in the AML, and the field
+size is less than or equal to the default width of an integer (32 or 64),_MAT 
+can incorrectly return an Integer instead of a Buffer. ACPICA now 
+automatically repairs this problem. ACPICA BZ 810.
+
+Implemented a run-time repair for the _BIF and _BIX predefined methods. The 
+"OEM Information" field is often incorrectly returned as an Integer with 
+value zero if the field is not supported by the platform. This is due to an 
+ambiguity in the ACPI specification. The field should always be a string. 
+ACPICA now automatically repairs this problem by returning a NULL string 
+within the returned Package. ACPICA BZ 807.
+
+Example Code and Data Size: These are the sizes for the OS-independent 
+acpica.lib produced by the Microsoft Visual C++ 6.0 32-bit compiler. The 
+debug version of the code includes the debug output trace mechanism and has a 
+much larger code and data size.
+
+  Previous Release:
+    Non-Debug Version:  85.6K Code, 18.0K Data, 103.6K Total
+    Debug Version:     161.7K Code, 50.9K Data, 212.6K Total
+  Current Release:
+    Non-Debug Version:  85.8K Code, 18.0K Data, 103.8K Total
+    Debug Version:     161.8K Code, 50.6K Data, 212.4K Total
+
+2) iASL Compiler/Disassembler and Tools:
+
+Disassembler: Fixed a problem where references to external symbols that 
+contained one or more parent-prefixes (carats) were not handled correctly, 
+possibly causing a fault. ACPICA BZ 806. Lin Ming.
+
+Disassembler: Restructured the code so that all functions that handle 
+external symbols are in a single module. One new file is added, 
+common/dmextern.c.
+
+AML Debugger: Added a max count argument for the Batch command (which 
+executes multiple predefined methods within the namespace.)
+
+iASL: Updated the compiler documentation (User Reference.) Available at 
+http://www.acpica.org/documentation/. ACPICA BZ 750.
+
+AcpiXtract: Updated for Lint and other formatting changes. Close all open 
+files.
+
+----------------------------------------
+03 September 2009. Summary of changes for version 20090903:
 
 1) ACPI CA Core Subsystem:
 
@@ -74,8 +206,6 @@ subtables.
 ----------------------------------------
 30 July 2009. Summary of changes for version 20090730:
 
-This release is available at www.acpica.org/downloads
-
 The ACPI 4.0 implementation for ACPICA is complete with this release.
 
 1) ACPI CA Core Subsystem:
@@ -145,8 +275,6 @@ changes to existing tables. ACPICA BZ 775.
 
 ----------------------------------------
 25 June 2009. Summary of changes for version 20090625:
-
-This release is available at www.acpica.org/downloads
 
 The ACPI 4.0 Specification was released on June 16 and is available at 
 www.acpi.info. ACPICA implementation of ACPI 4.0 is underway and will 
@@ -224,8 +352,6 @@ predefined names and control methods (31 total). ACPICA BZ 769.
 ----------------------------------------
 21 May 2009. Summary of changes for version 20090521:
 
-This release is available at www.acpica.org/downloads
-
 1) ACPI CA Core Subsystem:
 
 Disabled the preservation of the SCI enable bit in the PM1 control register. 
@@ -296,8 +422,6 @@ after an invalid sub-table ID.
 
 ----------------------------------------
 22 April 2009. Summary of changes for version 20090422:
-
-This release is available at www.acpica.org/downloads
 
 1) ACPI CA Core Subsystem:
 

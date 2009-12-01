@@ -798,10 +798,10 @@ ata_default_registers(device_t dev)
 void
 ata_modify_if_48bit(struct ata_request *request)
 {
-    struct ata_channel *ch = device_get_softc(device_get_parent(request->dev));
+    struct ata_channel *ch = device_get_softc(request->parent);
     struct ata_device *atadev = device_get_softc(request->dev);
 
-    atadev->flags &= ~ATA_D_48BIT_ACTIVE;
+    request->flags &= ~ATA_R_48BIT;
 
     if (((request->u.ata.lba + request->u.ata.count) >= ATA_MAX_28BIT_LBA ||
 	 request->u.ata.count > 256) &&
@@ -875,7 +875,7 @@ ata_modify_if_48bit(struct ata_request *request)
 	default:
 	    return;
 	}
-	atadev->flags |= ATA_D_48BIT_ACTIVE;
+	request->flags |= ATA_R_48BIT;
     }
     else if (atadev->param.support.command2 & ATA_SUPPORT_ADDRESS48) {
 
@@ -893,7 +893,7 @@ ata_modify_if_48bit(struct ata_request *request)
 	default:
 	    return;
 	}
-	atadev->flags |= ATA_D_48BIT_ACTIVE;
+	request->flags |= ATA_R_48BIT;
     }
 }
 
@@ -942,9 +942,6 @@ ata_mode2str(int mode)
     case ATA_UDMA6: return "UDMA133";
     case ATA_SA150: return "SATA150";
     case ATA_SA300: return "SATA300";
-    case ATA_USB: return "USB";
-    case ATA_USB1: return "USB1";
-    case ATA_USB2: return "USB2";
     default:
 	if (mode & ATA_DMA_MASK)
 	    return "BIOSDMA";

@@ -81,13 +81,12 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/usb_bus.h>
 #include <dev/usb/usb_pci.h>
 #include <dev/usb/controller/uhci.h>
+#include <dev/usb/controller/uhcireg.h>
 
 #define	PCI_UHCI_VENDORID_INTEL		0x8086
 #define	PCI_UHCI_VENDORID_VIA		0x1106
 
 /* PIIX4E has no separate stepping */
-
-#define	PCI_UHCI_BASE_REG               0x20
 
 static device_probe_t uhci_pci_probe;
 static device_attach_t uhci_pci_attach;

@@ -173,6 +173,11 @@ MODULE_DEPEND(u3g, usb, 1, 1, 1);
 
 static const struct usb_device_id u3g_devs[] = {
 #define	U3G_DEV(v,p,i) { USB_VPI(USB_VENDOR_##v, USB_PRODUCT_##v##_##p, i) }
+	U3G_DEV(CURITEL, UM175, 0),
+	/* OEM: Huawei */
+	U3G_DEV(HUAWEI, MOBILE, U3GFL_HUAWEI_INIT),
+	U3G_DEV(HUAWEI, E180V, U3GFL_HUAWEI_INIT),
+	U3G_DEV(HUAWEI, E220, U3GFL_HUAWEI_INIT),
 	/* OEM: Option */
 	U3G_DEV(OPTION, GT3G, 0),
 	U3G_DEV(OPTION, GT3GQUAD, 0),
@@ -186,10 +191,8 @@ static const struct usb_device_id u3g_devs[] = {
 	/* OEM: Qualcomm, Inc. */
 	U3G_DEV(QUALCOMMINC, ZTE_STOR, U3GFL_SCSI_EJECT),
 	U3G_DEV(QUALCOMMINC, CDMA_MSM, U3GFL_SCSI_EJECT),
-	/* OEM: Huawei */
-	U3G_DEV(HUAWEI, MOBILE, U3GFL_HUAWEI_INIT),
-	U3G_DEV(HUAWEI, E180V, U3GFL_HUAWEI_INIT),
-	U3G_DEV(HUAWEI, E220, U3GFL_HUAWEI_INIT),
+	/* OEM: Merlin */
+	U3G_DEV(MERLIN, V620, 0),
 	/* OEM: Novatel */
 	U3G_DEV(NOVATEL, CDMA_MODEM, 0),
 	U3G_DEV(NOVATEL, ES620, 0),
@@ -208,8 +211,6 @@ static const struct usb_device_id u3g_devs[] = {
 	U3G_DEV(NOVATEL, ZEROCD, U3GFL_SCSI_EJECT),
 	U3G_DEV(NOVATEL, U760, U3GFL_SCSI_EJECT),
 	U3G_DEV(DELL, U740, 0),
-	/* OEM: Merlin */
-	U3G_DEV(MERLIN, V620, 0),
 	/* OEM: Sierra Wireless: */
 	U3G_DEV(SIERRA, AIRCARD580, 0),
 	U3G_DEV(SIERRA, AIRCARD595, 0),
@@ -249,8 +250,6 @@ u3g_sierra_init(struct usb_device *udev)
 {
 	struct usb_device_request req;
 
-	DPRINTFN(0, "\n");
-
 	req.bmRequestType = UT_VENDOR;
 	req.bRequest = UR_SET_INTERFACE;
 	USETW(req.wValue, UF_DEVICE_REMOTE_WAKEUP);
@@ -268,8 +267,6 @@ static void
 u3g_huawei_init(struct usb_device *udev)
 {
 	struct usb_device_request req;
-
-	DPRINTFN(0, "\n");
 
 	req.bmRequestType = UT_WRITE_DEVICE;
 	req.bRequest = UR_SET_FEATURE;
