@@ -59,29 +59,17 @@ SYSCTL_INT(_vfs_zfs, OID_AUTO, page_cache_disable, CTLFLAG_RDTUN,
 
 static eventhandler_tag zbio_event_shutdown = NULL;
 
-void
-zbio_data_getblk(arc_buf_t *buf)
-{
-
-	zbio_getblk(buf);
-}
-
-void
-zbio_getblk(arc_buf_t *buf)
+static void
+_zbio_getblk(arc_buf_t *buf, int flags)
 {
 	zbio_buf_hdr_t		*hdr = (zbio_buf_hdr_t *)buf->b_hdr;
 	uint64_t		size = hdr->b_size;
-	arc_buf_contents_t	type = hdr->b_type;
 	spa_t			*spa = hdr->b_spa;
 	uint64_t blkno = hdr->b_dva.dva_word[1] & ~(1ULL<<63);
 	void *data;
-	arc_buf_t *tbuf;
 	struct vnode *vp;
-	int i, flags = 0;
 	struct buf *newbp;
 	struct bufobj *bo;
-	vm_pindex_t start, end;
-	vm_object_t object;
 
 	vp = spa_get_vnode(spa);
 	bo = &vp->v_bufobj;
@@ -112,6 +100,20 @@ zbio_getblk(arc_buf_t *buf)
 
 	buf->b_bp = newbp;
 	buf->b_data = data;
+}
+
+void
+zbio_getblk(arc_buf_t *buf)
+{
+
+	_zbio_getblk(buf, 0);
+}
+
+void
+zbio_data_getblk(arc_buf_t *buf)
+{
+
+	_zbio_getblk(buf, GB_NODUMP);
 }
 
 void
