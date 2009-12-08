@@ -483,12 +483,29 @@ DRIVER_MODULE(bge, pci, bge_driver, bge_devclass, 0, 0);
 DRIVER_MODULE(miibus, bge, miibus_driver, miibus_devclass, 0, 0);
 
 static int bge_allow_asf = 1;
+/*
+ * A common design characteristic for many Broadcom client controllers
+ * is that they only support a single outstanding DMA read operation
+ * on the PCIe bus. This means that it will take twice as long to fetch
+ * a TX frame that is split into header and payload buffers as it does
+ * to fetch a single, contiguous TX frame (2 reads vs. 1 read). For
+ * these controllers, coalescing buffers to reduce the number of memory
+ * reads is effective way to get maximum performance(about 940Mbps).
+ * Without collapsing TX buffers the maximum TCP bulk transfer
+ * performance is about 850Mbps. However forcing coalescing mbufs
+ * consumes a lot of CPU cycles, so leave it off by default.
+ */
+static int bge_forced_collapse = 0;
 
 TUNABLE_INT("hw.bge.allow_asf", &bge_allow_asf);
+TUNABLE_INT("hw.bge.forced_collapse", &bge_forced_collapse);
 
 SYSCTL_NODE(_hw, OID_AUTO, bge, CTLFLAG_RD, 0, "BGE driver parameters");
 SYSCTL_INT(_hw_bge, OID_AUTO, allow_asf, CTLFLAG_RD, &bge_allow_asf, 0,
 	"Allow ASF mode if available");
+SYSCTL_INT(_hw_bge, OID_AUTO, forced_collapse, CTLFLAG_RD, &bge_forced_collapse,
+	0, "Number of fragmented TX buffers of a frame allowed before "
+	"forced collapsing");
 
 #define	SPARC64_BLADE_1500_MODEL	"SUNW,Sun-Blade-1500"
 #define	SPARC64_BLADE_1500_PATH_BGE	"/pci@1f,700000/network@2"
@@ -1625,7 +1642,9 @@ bge_blockinit(struct bge_softc *sc)
 	else
 		val = BGE_STD_RX_RING_CNT / 8;
 	CSR_WRITE_4(sc, BGE_RBDI_STD_REPL_THRESH, val);
-	CSR_WRITE_4(sc, BGE_RBDI_JUMBO_REPL_THRESH, BGE_JUMBO_RX_RING_CNT/8);
+	if (BGE_IS_JUMBO_CAPABLE(sc))
+		CSR_WRITE_4(sc, BGE_RBDI_JUMBO_REPL_THRESH,
+		    BGE_JUMBO_RX_RING_CNT/8);
 
 	/*
 	 * Disable all unused send rings by setting the 'ring disabled'
@@ -1667,8 +1686,10 @@ bge_blockinit(struct bge_softc *sc)
 
 	/* Initialize RX ring indexes */
 	bge_writembx(sc, BGE_MBX_RX_STD_PROD_LO, 0);
-	bge_writembx(sc, BGE_MBX_RX_JUMBO_PROD_LO, 0);
-	bge_writembx(sc, BGE_MBX_RX_MINI_PROD_LO, 0);
+	if (BGE_IS_JUMBO_CAPABLE(sc))
+		bge_writembx(sc, BGE_MBX_RX_JUMBO_PROD_LO, 0);
+	if (sc->bge_asicrev == BGE_ASICREV_BCM5700)
+		bge_writembx(sc, BGE_MBX_RX_MINI_PROD_LO, 0);
 
 	/*
 	 * Set up RX return ring 0
@@ -3915,6 +3936,26 @@ bge_encap(struct bge_softc *sc, struct mbuf **m_head, uint32_t *txidx)
 			csum_flags |= BGE_TXBDFLAG_IP_FRAG;
 	}
 
+	if ((m->m_pkthdr.csum_flags & CSUM_TSO) == 0 &&
+	    bge_forced_collapse > 0 && (sc->bge_flags & BGE_FLAG_PCIE) != 0 &&
+	    m->m_next != NULL) {
+		/*
+		 * Forcedly collapse mbuf chains to overcome hardware
+		 * limitation which only support a single outstanding
+		 * DMA read operation.
+		 */
+		if (bge_forced_collapse == 1)
+			m = m_defrag(m, M_DONTWAIT);
+		else
+			m = m_collapse(m, M_DONTWAIT, bge_forced_collapse);
+		if (m == NULL) {
+			m_freem(*m_head);
+			*m_head = NULL;
+			return (ENOBUFS);
+		}
+		*m_head = m;
+	}
+
 	map = sc->bge_cdata.bge_tx_dmamap[idx];
 	error = bus_dmamap_load_mbuf_sg(sc->bge_cdata.bge_tx_mtag, map, m, segs,
 	    &nsegs, BUS_DMA_NOWAIT);
@@ -4551,16 +4592,10 @@ static void
 bge_stop(struct bge_softc *sc)
 {
 	struct ifnet *ifp;
-	struct ifmedia_entry *ifm;
-	struct mii_data *mii = NULL;
-	int mtmp, itmp;
 
 	BGE_LOCK_ASSERT(sc);
 
 	ifp = sc->bge_ifp;
-
-	if ((sc->bge_flags & BGE_FLAG_TBI) == 0)
-		mii = device_get_softc(sc->bge_miibus);
 
 	callout_stop(&sc->bge_stat_ch);
 
@@ -4634,27 +4669,6 @@ bge_stop(struct bge_softc *sc)
 
 	/* Free TX buffers. */
 	bge_free_tx_ring(sc);
-
-	/*
-	 * Isolate/power down the PHY, but leave the media selection
-	 * unchanged so that things will be put back to normal when
-	 * we bring the interface back up.
-	 */
-	if ((sc->bge_flags & BGE_FLAG_TBI) == 0) {
-		itmp = ifp->if_flags;
-		ifp->if_flags |= IFF_UP;
-		/*
-		 * If we are called from bge_detach(), mii is already NULL.
-		 */
-		if (mii != NULL) {
-			ifm = mii->mii_media.ifm_cur;
-			mtmp = ifm->ifm_media;
-			ifm->ifm_media = IFM_ETHER | IFM_NONE;
-			mii_mediachg(mii);
-			ifm->ifm_media = mtmp;
-		}
-		ifp->if_flags = itmp;
-	}
 
 	sc->bge_tx_saved_considx = BGE_TXCONS_UNSET;
 
