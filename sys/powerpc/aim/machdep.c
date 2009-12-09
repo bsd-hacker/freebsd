@@ -390,7 +390,7 @@ powerpc_init(vm_offset_t startkernel, vm_offset_t endkernel,
 	for (cacheline_size = 0; cacheline_size < 0x100; cacheline_size++)
 		cache_check[cacheline_size] = 0xff;
 
-	__asm __volatile("dcbz %0,0":: "r" (cache_check) : "memory");
+	__asm __volatile("dcbz 0,%0":: "r" (cache_check) : "memory");
 
 	/* Find the first byte dcbz did not zero to get the cache line size */
 	for (cacheline_size = 0; cacheline_size < 0x100 &&
