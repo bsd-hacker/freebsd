@@ -134,7 +134,9 @@ __ElfType(Auxinfo);
 #include <sys/proc.h>
 #include <sys/procfs.h>
 
+#ifndef KLD_MODULE
 #include "opt_compat.h"
+#endif
 
 #ifdef COMPAT_PPC32
 /*

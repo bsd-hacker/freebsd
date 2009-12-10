@@ -4,7 +4,7 @@
 #ifndef _POWERPC_REG_H_
 #define	_POWERPC_REG_H_
 
-#ifdef _KERNEL
+#if defined(_KERNEL) && !defined(KLD_MODULE)
 #include "opt_compat.h"
 #endif
 
