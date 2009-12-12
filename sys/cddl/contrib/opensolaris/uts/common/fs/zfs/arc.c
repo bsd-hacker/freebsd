@@ -2918,21 +2918,6 @@ top:
 		rzio = zio_read(pio, spa, bp, buf->b_data, size,
 		    arc_read_done, buf, priority, zio_flags, zb);
 
-		/*
-		 * We hit in the page cache - can bypass the I/O stages
-		 *
-		 */
-#ifdef _KERNEL
-		if ((buf->b_bp != NULL) &&
-		    ((buf->b_bp->b_flags & (B_CACHE|B_INVAL)) == B_CACHE)) {
-			/*
-			 * track the number of times
-			 * the buffer was found in the cache
-			 */
-			ARCSTAT_BUMP(arcstat_page_cache_hits);
-			rzio->io_pipeline = ZIO_INTERLOCK_STAGES;
-		}
-#endif
 		if (*arc_flags & ARC_WAIT)
 			return (zio_wait(rzio));
 
