@@ -436,8 +436,9 @@ zio_create(zio_t *pio, spa_t *spa, uint64_t txg, blkptr_t *bp,
 
 
 	if (bp != NULL) {
-		if ((vd == NULL) || (vd->vdev_parent == NULL))
-			zbio_sync_cache(spa, bp, txg, size);
+		if (((vd == NULL) || (vd->vdev_parent == NULL)) &&
+		    ((type == ZIO_TYPE_WRITE) || (type == ZIO_TYPE_READ)))
+			zbio_sync_cache(spa, bp, txg, data, size, type == ZIO_TYPE_WRITE ? BIO_WRITE : BIO_READ);
 
 		zio->io_bp = bp;
 		zio->io_bp_copy = *bp;
