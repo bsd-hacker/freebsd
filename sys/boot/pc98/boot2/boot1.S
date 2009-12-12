@@ -104,8 +104,10 @@ main:		cld
 		and $0x00ffffff,%eax
 		mov %eax,%es:(EPSON_ID)
 
+#ifdef SET_MACHINE_TYPE
 		/* Set machine type to PC98_SYSTEM_PARAMETER */
-		call machine_check
+		call set_machine_type
+#endif
 
 		/* Setup graphic screen */
 		mov $0x42,%ah		/* 640x400 */
@@ -210,11 +212,14 @@ putstr:		lodsb
 /*
  * Display a single char.
  */
-putc:		push %ds
+putc:		pusha
 		xor %dx,%dx
 		mov %dx,%ds
 		mov MEM_REL+cursor-start,%di
-		mov $160,%cx
+		mov $0xa000,%bx
+		mov %bx,%es
+		mov $(80*2),%cx
+
 		cmp $0x08,%al
 		je putc.bs
 		cmp $0x0d,%al
@@ -224,41 +229,55 @@ putc:		push %ds
 		cmp $0x5c,%al			/* \ */
 		jne 1f
 		mov $0xfc,%al
-1:		mov $0xa000,%bx
-		mov %bx,%es
-		mov $0xe1,%bl
-		mov %bl,%es:0x2000(%di)		/* Attribute */
-		stosb
-		inc %di
-		jmp putc.move
+1:		movb $0xe1,%es:0x2000(%di)
+		stosw
+		jmp putc.scr
 putc.bs:	test %di,%di
 		jz putc.move
 		dec %di
 		dec %di
+		movb $0xe1,%es:0x2000(%di)
+		movw $0x20,%es:(%di)
 		jmp putc.move
-putc.cr:	/* xor %dx,%dx */
-		mov %di,%ax
+putc.cr:	mov %di,%ax
 		div %cx
 		sub %dx,%di
 		jmp putc.move
 putc.lf:	add %cx,%di
+putc.scr:	cmp $(80*2*25),%di		/* Scroll screen */
+		jb putc.move
+		push %ds
+		mov %bx,%ds
+		mov $(80*2),%si
+		xor %di,%di
+		mov $(80*24/2),%cx
+		rep
+		movsl
+		xor %ax,%ax
+		mov $0x20,%al
+		mov $80,%cl
+		rep
+		stosw
+		pop %ds
+		mov $(80*24*2),%di
 putc.move:	mov %di,MEM_REL+cursor-start	/* Move cursor */
 		mov $0x13,%ah
 		mov %di,%dx
 		int $0x18
-		pop %ds
+		popa
 		lret
 
 cursor:		.word 0
 
+#ifdef SET_MACHINE_TYPE
 /*
  * Set machine type to PC98_SYSTEM_PARAMETER.
  */
-machine_check:	xor %edx,%edx
+set_machine_type:
+		xor %edx,%edx
 		mov %dx,%ds
-#		mov $MEM_SYS,%ax
-#		mov %ax,%es
-
+//		mov $MEM_SYS,%ax
+//		mov %ax,%es
 		/* Wait V-SYNC */
 vsync.1:	inb $0x60,%al
 		test $0x20,%al
@@ -310,8 +329,8 @@ m_not_h98:	or $M_NOT_H98,%edx
 
 1:		mov $PC98_MACHINE_TYPE,%bx
 		mov %edx,%es:(%bx)
-
 		ret
+#endif
 
 /* Messages */
 

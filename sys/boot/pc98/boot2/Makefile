@@ -38,6 +38,9 @@ CFLAGS=	-Os \
 	-Wpointer-arith -Wshadow -Wstrict-prototypes -Wwrite-strings \
 	-Winline --param max-inline-insns-single=100
 
+# Set machine type to PC98_SYSTEM_PARAMETER
+#CFLAGS+=	-DSET_MACHINE_TYPE
+
 # Initialize the bi_bios_geom using the BIOS geometry
 #CFLAGS+=	-DGET_BIOSGEOM
 
