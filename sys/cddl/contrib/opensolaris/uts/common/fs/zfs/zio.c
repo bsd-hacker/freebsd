@@ -435,10 +435,15 @@ zio_create(zio_t *pio, spa_t *spa, uint64_t txg, blkptr_t *bp,
 	else
 		zio->io_child_type = ZIO_CHILD_LOGICAL;
 
-
 	if (bp != NULL) {
 		io_bypass = 0;
 
+		/*
+		 * Synchronize buffer with page cache - making sure that
+		 * the page cache only holds the most recent txg's pages.
+		 * This also allows us to skip disk I/O if we hit in the
+		 * page cache.
+		 */
 		if (((vd == NULL) || (vd->vdev_parent == NULL)) &&
 		    ((type == ZIO_TYPE_WRITE) || (type == ZIO_TYPE_READ)))
 			io_bypass = zbio_sync_cache(spa, bp, txg, data, size,
