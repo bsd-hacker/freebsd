@@ -93,7 +93,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/kstat.h>
 #include <sys/sdt.h>
 
-#include <sys/bitstring.h>
+
+#include <sys/sf_buf.h>
 #include <vm/vm_pageout.h>
 
 #ifdef _KERNEL
@@ -122,6 +123,8 @@ MALLOC_DEFINE(M_ZFS_BIO, "zfs_bio", "zfs buffer cache / vm");
 #define	B_ASSIGNED	B_00004000	
 
 #define	ZB_EVICT_ALL	0x1
+#define	ZB_COPYIN	0x2
+#define	ZB_COPYOUT	0x3
 
 #define btos(nbytes)	((nbytes)>>DEV_BSHIFT)
 #define stob(nsectors)	((nsectors)<<DEV_BSHIFT) 
@@ -143,9 +146,10 @@ struct zbio_state {
 #define ZBIO_STATE_LOCK(zs)	mtx_lock(&(zs)->mtx)
 #define	ZBIO_STATE_UNLOCK(zs)	mtx_unlock(&(zs)->mtx)
 
-#define	spa_get_bio_state(spa)	((zbio_state_t *)spa_get_vnode((spa))->v_data)
-#define	spa_get_vm_object(spa)	spa_get_vnode((spa))->v_object
-#define	zbio_buf_get_spa(bp)	(((zbio_buf_hdr_t *)((arc_buf_t *)(bp->b_arc_buf))->b_hdr)->b_spa)
+#define	spa_get_bio_state(spa)		((zbio_state_t *)spa_get_vnode((spa))->v_data)
+#define	spa_get_vm_object(spa)		spa_get_vnode((spa))->v_object
+#define	zbio_buf_get_spa(bp)		(((zbio_buf_hdr_t *)((arc_buf_t *)(bp->b_arc_buf))->b_hdr)->b_spa)
+#define	zbio_buf_get_vm_object(bp)	spa_get_vm_object(zbio_buf_get_spa((bp)))
 
 static void zbio_buf_blkno_remove(buf_t *bp);
 static void zbio_buf_va_insert(buf_t *bp, zbio_state_t *object);
@@ -481,29 +485,87 @@ zbio_buf_blkno_lookup(zbio_state_t *state, daddr_t blkno)
 }
 
 static void
-zbio_buf_vm_object_copyin(buf_t *bp)
+zbio_buf_vm_object_copy(buf_t *bp, int direction)
 {
+	vm_object_t object;
+	vm_pindex_t start, end;
+	vm_offset_t offset;
+	uint64_t byte_offset;
+	vm_offset_t page_offset;
+	int i, size;	
+	caddr_t va;	
+	vm_page_t m;
+	struct sf_buf *sf;
 
+	object = zbio_buf_get_vm_object(bp);
+	byte_offset = stob(bp->b_blkno);
+	page_offset = byte_offset & PAGE_MASK;
+	start = OFF_TO_IDX(byte_offset);
+	end = OFF_TO_IDX(byte_offset + bp->b_bcount);
+
+	VM_OBJECT_LOCK(object);	
+	for (bp->b_npages = i = 0; start + i < end; i++) {
+		m = vm_page_lookup(object, start + i);
+
+		if ((m == NULL) || (m->valid != VM_PAGE_BITS_ALL))
+			goto done;
+
+		bp->b_pages[i] = m;		
+		bp->b_npages++;
+	}
+	for (i = 0; i < bp->b_npages; i++) {		
+		sf = sf_buf_alloc(bp->b_pages[i], 0);
+		va = (caddr_t)sf_buf_kva(sf);
+		size = PAGE_SIZE;		
+				
+		if (i == 0) 
+			va += page_offset;
+		if (i == bp->b_npages - 1)
+			size = PAGE_SIZE - page_offset;
+
+		if (direction == ZB_COPYIN)
+			memcpy(bp->b_data + PAGE_SIZE*i, va, size);
+		else
+			memcpy(va, bp->b_data + PAGE_SIZE*i, size);
+		sf_buf_free(sf);
+	}
 	
+done:
+	bp->b_npages = 0;
+	VM_OBJECT_UNLOCK(object);
 }
 
 static void
 zbio_buf_vm_object_copyout(buf_t *bp)
 {
-
 	
+	zbio_buf_vm_object_copy(bp, ZB_COPYOUT);
+}
+
+static void
+zbio_buf_vm_object_copyin(buf_t *bp)
+{
+	
+	zbio_buf_vm_object_copy(bp, ZB_COPYIN);
 }
 
 static void
 zbio_buf_vm_object_evict(buf_t *bp)
 {
 	int i;
+	vm_page_t m;
 
+	VM_OBJECT_LOCK_ASSERT(zbio_buf_get_vm_object(bp), MA_OWNED);
 	/*
 	 * remove pages from backing vm_object 
 	 */
-	for (i = 0; i < bp->b_npages; i++) 
-		vm_page_remove(bp->b_pages[i]);
+	for (i = 0; i < bp->b_npages; i++) {
+		m = bp->b_pages[i];
+		vm_pageq_remove(m);
+		vm_page_remove(m);
+		m->valid = 0;
+		m->flags |= PG_UNMANAGED;
+	}
 }
 
 static void
@@ -513,7 +575,7 @@ zbio_buf_vm_object_insert(buf_t *bp, int valid)
 	vm_pindex_t start = OFF_TO_IDX(stob(bp->b_blkno));
 	spa_t *spa = zbio_buf_get_spa(bp);
 	struct vnode *vp = spa_get_vnode(spa);
-	struct vm_object *object = vp->v_object;
+	vm_object_t object = vp->v_object;
 	int i;
 
 	VM_OBJECT_LOCK(object);
