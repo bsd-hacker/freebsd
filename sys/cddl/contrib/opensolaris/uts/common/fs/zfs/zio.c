@@ -444,7 +444,7 @@ zio_create(zio_t *pio, spa_t *spa, uint64_t txg, blkptr_t *bp,
 		 * This also allows us to skip disk I/O if we hit in the
 		 * page cache.
 		 */
-		if (((vd == NULL) || (vd->vdev_parent == NULL)) &&
+		if (((vd != NULL) && (vd->vdev_vnode != NULL)) &&
 		    ((type == ZIO_TYPE_WRITE) || (type == ZIO_TYPE_READ)))
 			io_bypass = zbio_sync_cache(spa, bp, txg, data, size,
 			    type == ZIO_TYPE_WRITE ? BIO_WRITE : BIO_READ);

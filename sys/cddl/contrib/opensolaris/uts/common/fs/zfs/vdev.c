@@ -1060,8 +1060,6 @@ vdev_open(vdev_t *vd)
 	 * inconsistently account for existing bp's.
 	 */
 	if (vd->vdev_top == vd) {
-		struct vnode *vp;
-
 		vd->vdev_deflate_ratio = (1<<17) /
 		    (vdev_psize_to_asize(vd, 1<<17) >> SPA_MINBLOCKSHIFT);
 
