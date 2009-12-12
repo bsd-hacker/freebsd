@@ -34,7 +34,7 @@ $FreeBSD$
 
 #define	ZBIO_BUF_CLONING	(1 << 30)	/* is being cloned */
 
-void zbio_sync_cache(spa_t *spa, blkptr_t *bp, uint64_t txg, void *data, uint64_t size, int bio_op);
+int zbio_sync_cache(spa_t *spa, blkptr_t *bp, uint64_t txg, void *data, uint64_t size, int bio_op);
 void zbio_getblk(arc_buf_t *buf);
 void zbio_data_getblk(arc_buf_t *buf);
 void zbio_relse(arc_buf_t *buf, size_t size);

@@ -122,9 +122,13 @@ MALLOC_DEFINE(M_ZFS_BIO, "zfs_bio", "zfs buffer cache / vm");
 #define	B_CLONED	B_00001000
 #define	B_ASSIGNED	B_00004000	
 
-#define	ZB_EVICT_ALL	0x1
-#define	ZB_COPYIN	0x2
-#define	ZB_COPYOUT	0x3
+#define	ZB_EVICT_ALL		0x1
+#define	ZB_EVICT_BUFFERED	0x2
+
+#define	ZB_COPYIN		0x2
+#define	ZB_COPYOUT		0x3
+
+#define	NO_TXG			0x0
 
 #define btos(nbytes)	((nbytes)>>DEV_BSHIFT)
 #define stob(nsectors)	((nsectors)<<DEV_BSHIFT) 
@@ -529,7 +533,9 @@ zbio_buf_vm_object_copy(buf_t *bp, int direction)
 			memcpy(va, bp->b_data + PAGE_SIZE*i, size);
 		sf_buf_free(sf);
 	}
-	
+	bp->b_flags &= ~B_INVAL;
+	bp->b_flags |= B_CACHE;
+
 done:
 	bp->b_npages = 0;
 	VM_OBJECT_UNLOCK(object);
@@ -556,12 +562,17 @@ zbio_buf_vm_object_evict(buf_t *bp)
 	vm_page_t m;
 
 	VM_OBJECT_LOCK_ASSERT(zbio_buf_get_vm_object(bp), MA_OWNED);
+	vm_page_lock_queues();
+	for (i = 0; i < bp->b_npages; i++) {
+		m = bp->b_pages[i];
+		vm_pageq_remove(m);
+	}
+	vm_page_unlock_queues();
 	/*
 	 * remove pages from backing vm_object 
 	 */
 	for (i = 0; i < bp->b_npages; i++) {
 		m = bp->b_pages[i];
-		vm_pageq_remove(m);
 		vm_page_remove(m);
 		m->valid = 0;
 		m->flags |= PG_UNMANAGED;
@@ -569,16 +580,13 @@ zbio_buf_vm_object_evict(buf_t *bp)
 }
 
 static void
-zbio_buf_vm_object_insert(buf_t *bp, int valid)
+zbio_buf_vm_object_insert_locked(buf_t *bp, struct vnode *vp,
+    vm_object_t object, int valid)
 {
 	vm_page_t m;
 	vm_pindex_t start = OFF_TO_IDX(stob(bp->b_blkno));
-	spa_t *spa = zbio_buf_get_spa(bp);
-	struct vnode *vp = spa_get_vnode(spa);
-	vm_object_t object = vp->v_object;
 	int i;
 
-	VM_OBJECT_LOCK(object);
 	/*
 	 * Insert buffer pages in the object
 	 */
@@ -588,7 +596,6 @@ zbio_buf_vm_object_insert(buf_t *bp, int valid)
 			m->valid = VM_PAGE_BITS_ALL;
 		vm_page_insert(m, object, start + i);
 		m->flags &= ~PG_UNMANAGED;
-		vdrop(vp);
 	}
 	vm_page_lock_queues();
 	for (i = 0; i < bp->b_npages; i++) {
@@ -596,8 +603,18 @@ zbio_buf_vm_object_insert(buf_t *bp, int valid)
 		vm_page_enqueue(PQ_INACTIVE, m);
 	}
 	vm_page_unlock_queues();
+}
+
+static void
+zbio_buf_vm_object_insert(buf_t *bp, int valid)
+{
+	spa_t *spa = zbio_buf_get_spa(bp);
+	struct vnode *vp = spa_get_vnode(spa);
+	vm_object_t object = vp->v_object;
+
+	VM_OBJECT_LOCK(object);
+	zbio_buf_vm_object_insert_locked(bp, vp, object, valid);
 	VM_OBJECT_UNLOCK(object);
-	
 }
 
 /*
@@ -612,8 +629,8 @@ zbio_buf_vm_object_insert(buf_t *bp, int valid)
  *	This routine may not block.
  */
 static void
-zbio_buf_blkno_evict_overlap(daddr_t blkno, int size, zbio_state_t *state,
-    uint64_t txg, int evict_op, int locked)
+zbio_buf_evict_overlap_locked(daddr_t blkno, int size, zbio_state_t *state,
+    uint64_t txg, int evict_op, vm_object_t object)
 {
 	buf_t *root, *tmpbp;
 	daddr_t blkno_end, tmpblkno, tmpblkno_end;
@@ -621,10 +638,7 @@ zbio_buf_blkno_evict_overlap(daddr_t blkno, int size, zbio_state_t *state,
 	int i, collisions;
 	uint64_t tmptxg;
 	vm_pindex_t start, end;
-	vm_object_t 	object = spa_get_vm_object(state->spa);
 
-	if (!locked)
-		VM_OBJECT_LOCK(object);
 	if ((root = state->blkno_root) == NULL)
 		goto done;
 
@@ -645,7 +659,7 @@ zbio_buf_blkno_evict_overlap(daddr_t blkno, int size, zbio_state_t *state,
 		
 		if (((tmpblkno >= blkno) && (tmpblkno < blkno_end)) ||
 		    (tmpblkno_end > blkno) && (tmpblkno_end <= blkno_end) &&
-		    ((txg == 0) || (tmptxg < txg))) {
+		    ((txg == NO_TXG) || (tmptxg < txg))) {
 			TAILQ_INSERT_TAIL(&clh, tmpbp, b_freelist);
 			collisions++;
 		}
@@ -680,9 +694,19 @@ done:
 		}
 #endif	
 	}
-	if (!locked)
-		VM_OBJECT_UNLOCK(object);			
 }
+
+static void
+zbio_buf_evict_overlap(daddr_t blkno, int size, zbio_state_t *state,
+    uint64_t txg, int evict_op)
+{
+	vm_object_t	object = spa_get_vm_object(state->spa);
+
+	VM_OBJECT_LOCK(object);
+	zbio_buf_evict_overlap_locked(blkno, size, state, txg, evict_op, object);
+	VM_OBJECT_UNLOCK(object);
+}
+
 
 /*
 Cases:
@@ -737,7 +761,7 @@ _zbio_getblk_malloc(zbio_buf_hdr_t *hdr, int flags)
 	newbp->b_bcount = size;
 	if (!BUF_EMPTY(hdr) && !(hdr->b_flags & ZBIO_BUF_CLONING)) {
 		blkno = hdr->b_dva.dva_word[1] & ~(1ULL<<63);
-		zbio_buf_blkno_evict_overlap(blkno, size, state, txg, 0, FALSE);
+		zbio_buf_evict_overlap(blkno, size, state, txg, ZB_EVICT_BUFFERED);
 		newbp->b_blkno = blkno;
 		/*
 		 * Copy in from the page cache if found & valid
@@ -769,7 +793,7 @@ _zbio_getblk_vmio(zbio_buf_hdr_t *hdr, int flags)
 		zbio_buf_va_insert(newbp, state);
 	} else {
 		blkno = hdr->b_dva.dva_word[1] & ~(1ULL<<63);
-		zbio_buf_blkno_evict_overlap(blkno, size, state, 0, 0, FALSE);
+		zbio_buf_evict_overlap(blkno, size, state, NO_TXG, ZB_EVICT_BUFFERED);
 
 		while (newbp == NULL)
 			newbp = getblk(vp, blkno, size, 0, 0, flags | GB_LOCK_NOWAIT);
@@ -851,7 +875,7 @@ zbio_relse(arc_buf_t *buf, size_t size)
 	}
 }
 
-void
+int
 zbio_sync_cache(spa_t *spa, blkptr_t *blkp, uint64_t txg, void *data, uint64_t size, int bio_op)
 {
 	buf_t		*bp;
@@ -862,10 +886,11 @@ zbio_sync_cache(spa_t *spa, blkptr_t *blkp, uint64_t txg, void *data, uint64_t s
 	vm_object_t	object = vp->v_object;
 	vm_pindex_t	start;
 	vm_page_t	m;	
-	int i;
+	int i, io_bypass = FALSE;
 
 	if (zfs_page_cache_disable)
-		return;
+		return (FALSE);
+
 	/*
 	 * XXX incomplete
 	 */
@@ -876,7 +901,7 @@ zbio_sync_cache(spa_t *spa, blkptr_t *blkp, uint64_t txg, void *data, uint64_t s
 		    ("doing I/O with cloned or evicted buffer 0x%x", bp->b_flags));
 
 		if (bp->b_flags & B_MALLOC) {
-			zbio_buf_blkno_evict_overlap(blkno, size, state, txg, 0, FALSE);
+			zbio_buf_evict_overlap(blkno, size, state, txg, ZB_EVICT_BUFFERED);
 
 			if (bio_op == BIO_READ) {
 				/*
@@ -886,19 +911,28 @@ zbio_sync_cache(spa_t *spa, blkptr_t *blkp, uint64_t txg, void *data, uint64_t s
 				zbio_buf_vm_object_copyin(bp);
 				if (bp->b_flags & B_CACHE) {
 					/* update zio pipeline */
+					io_bypass = TRUE;
 				}
-			} else
+			} else {
 				zbio_buf_vm_object_copyout(bp);
+			}
 		} else {
-			zbio_buf_blkno_evict_overlap(blkno, size, state, 0, ZB_EVICT_ALL, TRUE);
+			VM_OBJECT_LOCK(object);
+			zbio_buf_evict_overlap_locked(blkno, size, state, NO_TXG,
+			    ZB_EVICT_ALL, object);
 			bp->b_blkno = bp->b_lblkno = blkno;
 			bp->b_flags |= (B_VMIO|B_ASSIGNED);
-			zbio_buf_vm_object_insert(bp, bio_op == BIO_WRITE);
+			zbio_buf_vm_object_insert_locked(bp, vp, object, bio_op == BIO_WRITE);
+			VM_OBJECT_UNLOCK(object);
 		}
 	} else {
 		bp = zbio_buf_blkno_lookup(state, blkno);
+		if (bio_op == BIO_READ && (bp->b_flags & (B_CACHE|B_INVAL)) == B_CACHE)
+			io_bypass = TRUE;
 		KASSERT(bp != NULL, ("blkno=%ld data=%p unmanaged", blkno, bp->b_data));
 	}
+
+	return (io_bypass);
 }
 
 static void

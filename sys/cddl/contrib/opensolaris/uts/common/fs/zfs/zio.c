@@ -413,6 +413,7 @@ zio_create(zio_t *pio, spa_t *spa, uint64_t txg, blkptr_t *bp,
     const zbookmark_t *zb, uint8_t stage, uint32_t pipeline)
 {
 	zio_t *zio;
+	int io_bypass;
 
 	ASSERT3U(size, <=, SPA_MAXBLOCKSIZE);
 	ASSERT(P2PHASE(size, SPA_MINBLOCKSIZE) == 0);
@@ -436,9 +437,12 @@ zio_create(zio_t *pio, spa_t *spa, uint64_t txg, blkptr_t *bp,
 
 
 	if (bp != NULL) {
+		io_bypass = 0;
+
 		if (((vd == NULL) || (vd->vdev_parent == NULL)) &&
 		    ((type == ZIO_TYPE_WRITE) || (type == ZIO_TYPE_READ)))
-			zbio_sync_cache(spa, bp, txg, data, size, type == ZIO_TYPE_WRITE ? BIO_WRITE : BIO_READ);
+			io_bypass = zbio_sync_cache(spa, bp, txg, data, size,
+			    type == ZIO_TYPE_WRITE ? BIO_WRITE : BIO_READ);
 
 		zio->io_bp = bp;
 		zio->io_bp_copy = *bp;
@@ -450,6 +454,8 @@ zio_create(zio_t *pio, spa_t *spa, uint64_t txg, blkptr_t *bp,
 				pipeline |= ZIO_GANG_STAGES;
 			zio->io_logical = zio;
 		}
+		if (io_bypass)
+			pipeline = ZIO_INTERLOCK_STAGES;
 	}
 
 	zio->io_spa = spa;
