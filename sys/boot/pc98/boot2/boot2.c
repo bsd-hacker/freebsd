@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2008 TAKAHASHI Yoshihiro
+ * Copyright (c) 2008-2009 TAKAHASHI Yoshihiro
  * Copyright (c) 1998 Robert Nordier
  * All rights reserved.
  *
@@ -27,8 +27,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/cpufunc.h>
 #include <machine/elf.h>
 #include <machine/psl.h>
-
-#include <pc98/cbus/cbus.h>
 
 #include <stdarg.h>
 
@@ -149,7 +147,7 @@ static int dskread(void *, unsigned, unsigned);
 static void printf(const char *,...);
 static void putchar(int);
 static uint32_t memsize(void);
-static int drvread(void *, unsigned, unsigned);
+static int drvread(void *, unsigned);
 static int keyhit(unsigned);
 static int xputc(int);
 static int xgetc(int);
@@ -235,7 +233,7 @@ putc(int c)
     v86.ctl = V86_FLAGS;
 }
 
-static int
+static inline int
 is_scsi_hd(void)
 {
 
@@ -248,7 +246,9 @@ is_scsi_hd(void)
 static inline void
 fix_sector_size(void)
 {
-    u_char *p = (u_char *)PTOV(0x460 + dsk.unit * 4);
+    u_char *p;
+
+    p = (u_char *)PTOV(0x460 + dsk.unit * 4);	/* SCSI equipment parameter */
 
     if ((p[0] & 0x1f) == 7) {		/* SCSI MO */
 	if (!(p[3] & 0x30)) {		/* 256B / sector */
@@ -258,7 +258,7 @@ fix_sector_size(void)
     }
 }
 
-static uint32_t
+static inline uint32_t
 get_diskinfo(void)
 {
 
@@ -275,8 +275,23 @@ get_diskinfo(void)
 	return (v86.ecx << 16) | v86.edx;
     }
 
+    /* SCSI MO or CD */
+    fix_sector_size();	/* SCSI MO */
+
     /* other SCSI devices */
     return (65535 << 16) | (8 << 8) | 32;
+}
+
+static void
+set_dsk(void)
+{
+    uint32_t di;
+
+    di = get_diskinfo();
+
+    dsk.head = (di >> 8) & 0xff;
+    dsk.sec = di & 0xff;
+    dsk.start = 0;
 }
 
 #ifdef GET_BIOSGEOM
@@ -314,6 +329,32 @@ bd_getbigeom(int bunit)
 }
 #endif
 
+static int
+check_slice(void)
+{
+    struct pc98_partition *dp;
+    char *sec;
+    unsigned i, cyl;
+
+    sec = dmadat->secbuf;
+    cyl = *(uint16_t *)PTOV(ARGS);
+    set_dsk();
+
+    if (dsk.type == TYPE_FD)
+	return (WHOLE_DISK_SLICE);
+    if (drvread(sec, DOSBBSECTOR + 1))
+	return (WHOLE_DISK_SLICE);	/* Read error */
+    dp = (void *)(sec + DOSPARTOFF);
+    for (i = 0; i < NDOSPART; i++) {
+	if (dp[i].dp_mid == DOSMID_386BSD) {
+	    if (dp[i].dp_scyl <= cyl && cyl <= dp[i].dp_ecyl)
+		return (BASE_SLICE + i);
+	}
+    }
+
+    return (WHOLE_DISK_SLICE);
+}
+
 int
 main(void)
 {
@@ -335,7 +376,7 @@ main(void)
         dsk.type = TYPE_DA;
     else /* if (dsk.disk == 0x30 || dsk.disk == 0x90) */
         dsk.type = TYPE_FD;
-    dsk.slice = WHOLE_DISK_SLICE;	/* XXX */
+    dsk.slice = check_slice();
 #ifdef GET_BIOSGEOM
     for (i = 0; i < N_BIOS_GEOM; i++)
 	bootinfo.bi_bios_geom[i] = bd_getbigeom(i);
@@ -605,18 +646,14 @@ dskread(void *buf, unsigned lba, unsigned nblk)
     struct disklabel *d;
     char *sec;
     unsigned sl, i;
-    uint32_t di;
     u_char *p;
 
     if (!dsk_meta) {
 	sec = dmadat->secbuf;
-	di = get_diskinfo();
-	dsk.head = (di >> 8) & 0xff;
-	dsk.sec = di & 0xff;
-	dsk.start = 0;
+	set_dsk();
 	if (dsk.type == TYPE_FD)
 	    goto unsliced;
-	if (drvread(sec, DOSBBSECTOR + 1, 1))
+	if (drvread(sec, DOSBBSECTOR + 1))
 	    return -1;
 	dp = (void *)(sec + DOSPARTOFF);
 	sl = dsk.slice;
@@ -637,7 +674,7 @@ dskread(void *buf, unsigned lba, unsigned nblk)
 	    dsk.start = dp->dp_scyl * dsk.head * dsk.sec +
 		dp->dp_shd * dsk.sec + dp->dp_ssect;
 	}
-	if (drvread(sec, dsk.start + LABELSECTOR, 1))
+	if (drvread(sec, dsk.start + LABELSECTOR))
 		return -1;
 	d = (void *)(sec + LABELOFFSET);
 	if (d->d_magic != DISKMAGIC || d->d_magic2 != DISKMAGIC) {
@@ -657,7 +694,7 @@ dskread(void *buf, unsigned lba, unsigned nblk)
     unsliced: ;
     }
     for (p = buf; nblk; p += 512, lba++, nblk--) {
-	if ((i = drvread(p, dsk.start + lba, 1)))
+	if ((i = drvread(p, dsk.start + lba)))
 	    return i;
     }
     return 0;
@@ -710,7 +747,7 @@ putchar(int c)
 }
 
 static int
-drvread(void *buf, unsigned lba, unsigned nblk)
+drvread(void *buf, unsigned lba)
 {
     static unsigned c = 0x2d5c7c2f;
     unsigned bpc, x, cyl, head, sec;
@@ -723,28 +760,19 @@ drvread(void *buf, unsigned lba, unsigned nblk)
 
     if (!OPT_CHECK(RBX_QUIET))
 	printf("%c\b", c = c << 8 | c >> 24);
-    v86.addr = 0x1b;
-    v86.eax = 0x0600 | dsk.daua;
+    v86.ctl = V86_ADDR | V86_CALLF | V86_FLAGS;
+    v86.addr = READORG;		/* call to read in boot1 */
     v86.ecx = cyl;
     v86.edx = (head << 8) | sec;
-    if (dsk.type == TYPE_FD) {
-	v86.eax |= 0xd000;
-	v86.ecx |= 0x0200;
-	v86.edx += 1;
-    } else if (dsk.type == TYPE_DA && !is_scsi_hd()) {
-	/* SCSI MO */
-	fix_sector_size();
-	v86.eax &= 0xff7f;
-	v86.ecx = lba & 0xffff;
-	v86.edx = (lba >> 16) & 0xffff;
-    }
-    v86.ebx = nblk * 512;
+    v86.edi = lba;
+    v86.ebx = 512;
     v86.es = VTOPSEG(buf);
     v86.ebp = VTOPOFF(buf);
     v86int();
+    v86.ctl = V86_FLAGS;
     if (V86_CY(v86.efl)) {
-	printf("error %x c/h/s %u/%u/%u lba %u nblk %u\n", v86.eax >> 8 & 0xff,
-	       cyl, head, sec, lba, nblk);
+	printf("error %u c/h/s %u/%u/%u lba %u\n", v86.eax >> 8 & 0xff,
+	       cyl, head, sec, lba);
 	return -1;
     }
     return 0;

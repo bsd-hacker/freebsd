@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2008 TAKAHASHI Yoshihiro
+ * Copyright (c) 2008-2009 TAKAHASHI Yoshihiro
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -60,6 +60,7 @@
 		.set NSECT,0x10
 
 		.globl start
+		.globl read
 		.globl putc
 		.code16
 
@@ -134,9 +135,9 @@ main:		cld
 		pop %cx
 
 		/* bootstrap passes */
-		xor %ax,%ax
-		mov %ax,%ds
-		mov %ax,%es
+		xor %edi,%edi
+		mov %di,%ds
+		mov %di,%es
 		mov %cs,%bx
 		cmp $0x1fe0,%bx
 		jz boot_fd
@@ -149,20 +150,18 @@ main:		cld
 		jz boot_fd
 		cmp $0x90,%al
 		jnz boot_hd
-boot_fd:	mov $0xd6,%ah		/* read data */
-		mov $0x0200,%cx
-		mov $0x0001,%dx
+boot_fd:	xor %cx,%cx
 		jmp boot_load
 boot_hd:	test %cx,%cx
-		jnz boot_hd.1
+		jnz boot_load
 		mov %cs:(boot_cyl),%cx
-boot_hd.1:	mov $0x06,%ah		/* read data */
-		xor %dx,%dx
 boot_load:	mov %cx,MEM_ARG		/* Save cylinder number */
-		mov (DAUA),%al
+		mov %cx,%di
+		xor %dx,%dx
 		mov $LOAD_SIZE,%bx
 		mov $MEM_BUF,%bp
-		int $0x1b
+		push %cs
+		callw read
 		jc error
 
 		/* Transfer boot2.bin */
@@ -183,6 +182,48 @@ boot_load:	mov %cx,MEM_ARG		/* Save cylinder number */
 
 		/* Start BTX */
 		ljmp $0x0000,$MEM_JMP
+
+/*
+ * Reads sectors from the disk.
+ * Call with:
+ *
+ * %bx		- bytes to read
+ * %cx		- cylinder
+ * %dh		- head
+ * %dl		- sector
+ * %edi		- lba
+ * %es:(%bp)	- buffer to read data into
+ * %ds		- segment to access BIOS area (= 0x0000)
+ */
+read:		mov $0x06,%ah
+		mov (DAUA),%al
+		mov %ax,%si
+		and $0xf0,%al
+		cmp $0x30,%al		/* 1.44MB FDD */
+		jz read_fd
+		cmp $0x90,%al		/* 1MB FDD */
+		jz read_fd
+		cmp $0xa0,%al		/* Is SCSI device? */
+		jnz read_load
+		push %cx
+		mov %si,%cx
+		and $0x0f,%cl
+		inc %cl
+		mov (0x482),%ah
+		shr %cl,%ah		/* Is SCSI HDD? */
+		pop %cx
+		jc read_load
+		and $0xff7f,%si		/* SCSI MO */
+		mov %di,%cx
+		shr $16,%di
+		mov %di,%dx
+		jmp read_load
+read_fd:	or $0xd000,%si
+		or $0x0200,%cx
+		inc %dx
+read_load:	mov %si,%ax
+		int $0x1b
+		lret
 
 /*
  * Print out the error message, wait for a keypress, and then reboot

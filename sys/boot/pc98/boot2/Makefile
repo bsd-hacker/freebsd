@@ -95,9 +95,9 @@ boot2.s: boot2.c boot2.h ${.CURDIR}/../../common/ufsread.c
 	rm -f boot2.s.tmp
 
 boot2.h: boot1.out
-	${NM} -t d ${.ALLSRC} | awk '/([0-9])+ T putc/ \
+	${NM} -t d ${.ALLSRC} | awk '/([0-9])+ T (read|putc)/ \
 	    { x = $$1 - ORG1; \
-	    printf("#define PUTCORG %#x\n", REL1 + x) }' \
+	    printf("#define %sORG %#x\n", toupper($$3), REL1 + x) }' \
 	    ORG1=`printf "%d" ${ORG1}` \
 	    REL1=`printf "%d" ${REL1}` > ${.TARGET}
 
