@@ -105,7 +105,7 @@ __FBSDID("$FreeBSD$");
 	(buf)->b_birth == 0)
 
 SYSCTL_DECL(_vfs_zfs);
-static int zfs_page_cache_disable = 1;
+int zfs_page_cache_disable = 1;
 TUNABLE_INT("vfs.zfs.page_cache_disable", &zfs_page_cache_disable);
 SYSCTL_INT(_vfs_zfs, OID_AUTO, page_cache_disable, CTLFLAG_RDTUN,
     &zfs_page_cache_disable, 0, "Disable backing ARC with page cache ");
@@ -759,16 +759,6 @@ _zbio_getblk_malloc(zbio_buf_hdr_t *hdr, int flags)
 	newbp->b_data = data;
 	newbp->b_flags = (B_MALLOC|B_INVAL);
 	newbp->b_bcount = size;
-	if (!BUF_EMPTY(hdr) && !(hdr->b_flags & ZBIO_BUF_CLONING)) {
-		blkno = hdr->b_dva.dva_word[1] & ~(1ULL<<63);
-		zbio_buf_evict_overlap(blkno, size, state, txg, ZB_EVICT_BUFFERED);
-		newbp->b_blkno = blkno;
-		/*
-		 * Copy in from the page cache if found & valid
-		 * and mark B_CACHE
-		 */
-		zbio_buf_vm_object_copyin(newbp);
-	}
 
 	if (hdr->b_flags & ZBIO_BUF_CLONING) {
 		newbp->b_flags |= B_CLONED;
@@ -781,31 +771,13 @@ static buf_t *
 _zbio_getblk_vmio(zbio_buf_hdr_t *hdr, int flags)
 {
 	buf_t 		*newbp;
-	daddr_t 	blkno;
 	uint64_t	size = hdr->b_size;
 	spa_t		*spa = hdr->b_spa;
 	zbio_state_t	*state = spa_get_bio_state(spa);
-	struct vnode 	*vp = spa_get_vnode(spa);
-	struct bufobj	*bo = &vp->v_bufobj;
 
-	if (BUF_EMPTY(hdr)) {
-		newbp = geteblk(size, flags);
-		zbio_buf_va_insert(newbp, state);
-	} else {
-		blkno = hdr->b_dva.dva_word[1] & ~(1ULL<<63);
-		zbio_buf_evict_overlap(blkno, size, state, NO_TXG, ZB_EVICT_BUFFERED);
-
-		while (newbp == NULL)
-			newbp = getblk(vp, blkno, size, 0, 0, flags | GB_LOCK_NOWAIT);
-		brelvp(newbp);
-		newbp->b_flags |= B_ASSIGNED;
-		zbio_buf_blkno_insert(newbp, state);
-	}
-	newbp->b_bufobj = bo;
+	newbp = geteblk(size, flags);
+	zbio_buf_va_insert(newbp, state);
 	BUF_KERNPROC(newbp);
-	CTR4(KTR_SPARE2, "arc_getblk() bp=%p flags %X "
-	    "blkno %ld npages %d",
-	    newbp, newbp->b_flags, blkno, newbp->b_npages);
 
 	return (newbp);
 }
@@ -876,7 +848,8 @@ zbio_relse(arc_buf_t *buf, size_t size)
 }
 
 int
-zbio_sync_cache(spa_t *spa, blkptr_t *blkp, uint64_t txg, void *data, uint64_t size, int bio_op)
+zbio_sync_cache(spa_t *spa, blkptr_t *blkp, uint64_t txg, void *data,
+    uint64_t size, int bio_op)
 {
 	buf_t		*bp;
 	zbio_state_t 	*state = spa_get_bio_state(spa);
@@ -917,11 +890,13 @@ zbio_sync_cache(spa_t *spa, blkptr_t *blkp, uint64_t txg, void *data, uint64_t s
 				zbio_buf_vm_object_copyout(bp);
 			}
 		} else {
+			zbio_buf_va_remove(bp);
 			VM_OBJECT_LOCK(object);
 			zbio_buf_evict_overlap_locked(blkno, size, state, NO_TXG,
 			    ZB_EVICT_ALL, object);
 			bp->b_blkno = bp->b_lblkno = blkno;
 			bp->b_flags |= (B_VMIO|B_ASSIGNED);
+			zbio_buf_blkno_insert(bp, state);
 			zbio_buf_vm_object_insert_locked(bp, vp, object, bio_op == BIO_WRITE);
 			VM_OBJECT_UNLOCK(object);
 		}

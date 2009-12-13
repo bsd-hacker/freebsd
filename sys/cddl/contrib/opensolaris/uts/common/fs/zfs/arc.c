@@ -258,7 +258,6 @@ static arc_state_t ARC_mfu_ghost;
 static arc_state_t ARC_l2c_only;
 
 typedef struct arc_stats {
-	kstat_named_t arcstat_page_cache_hits;
 	kstat_named_t arcstat_hits;
 	kstat_named_t arcstat_misses;
 	kstat_named_t arcstat_demand_data_hits;
@@ -309,7 +308,6 @@ typedef struct arc_stats {
 
 static arc_stats_t arc_stats = {
 	{ "hits",			KSTAT_DATA_UINT64 },
-	{ "page_cache_hits",		KSTAT_DATA_UINT64 },
 	{ "misses",			KSTAT_DATA_UINT64 },
 	{ "demand_data_hits",		KSTAT_DATA_UINT64 },
 	{ "demand_data_misses",		KSTAT_DATA_UINT64 },
@@ -451,7 +449,6 @@ struct arc_write_callback {
 /*
  * Keep initial ordering in-sync with zbio_buf_hdr
  */
-
 struct arc_buf_hdr {
 	/* protected by hash lock */
 	dva_t			b_dva;
@@ -645,6 +642,8 @@ typedef struct l2arc_data_free {
 	void		(*l2df_func)(arc_buf_t *, size_t);
 	list_node_t	l2df_list_node;
 } l2arc_data_free_t;
+
+extern int zfs_page_cache_disable;
 
 static kmutex_t l2arc_feed_thr_lock;
 static kcondvar_t l2arc_feed_thr_cv;
@@ -1198,9 +1197,8 @@ arc_data_buf_free(void *buf, uint64_t size)
 	atomic_add_64(&arc_size, -size);
 }
 
-static arc_buf_t *
-_arc_buf_alloc(spa_t *spa, int size, void *tag, arc_buf_contents_t type,
-	blkptr_t *bp)
+arc_buf_t *
+arc_buf_alloc(spa_t *spa, int size, void *tag, arc_buf_contents_t type)
 {
 	arc_buf_hdr_t *hdr;
 	arc_buf_t *buf;
@@ -1210,14 +1208,6 @@ _arc_buf_alloc(spa_t *spa, int size, void *tag, arc_buf_contents_t type,
 	ASSERT(BUF_EMPTY(hdr));
 	hdr->b_size = size;
 	hdr->b_type = type;
-	if (bp != NULL) {
-		hdr->b_dva = *BP_IDENTITY(bp);
-		hdr->b_birth = bp->blk_birth;
-	} else {
-		hdr->b_dva.dva_word[0] = 0;
-		hdr->b_dva.dva_word[1] = 0;
-		hdr->b_birth = 0;
-	}
 	hdr->b_spa = spa;
 	hdr->b_state = arc_anon;
 	hdr->b_arc_access = 0;
@@ -1235,13 +1225,6 @@ _arc_buf_alloc(spa_t *spa, int size, void *tag, arc_buf_contents_t type,
 	(void) refcount_add(&hdr->b_refcnt, tag);
 
 	return (buf);
-}
-
-arc_buf_t *
-arc_buf_alloc(spa_t *spa, int size, void *tag, arc_buf_contents_t type)
-{
-
-	return (_arc_buf_alloc(spa, size, tag, type, NULL));
 }
 
 static arc_buf_t *
@@ -1564,7 +1547,7 @@ arc_evict(arc_state_t *state, spa_t *spa, int64_t bytes, boolean_t recycle,
 	 * don't recycle page cache bufs
 	 *
 	 */
-	if (recycle && (bytes >= PAGE_SIZE))
+	if (recycle && ((bytes & PAGE_MASK) != 0) && !zfs_page_cache_disable)
 		recycle = FALSE;
 #endif
 	if (type == ARC_BUFC_METADATA) {
@@ -2339,7 +2322,7 @@ arc_get_data_buf(arc_buf_t *buf)
 			zbio_data_getblk(buf);
 			atomic_add_64(&arc_size, size);
 		}
-		if (size < PAGE_SIZE)
+		if (size & PAGE_MASK)
 			ARCSTAT_BUMP(arcstat_recycle_miss);
 	}
 	ASSERT(buf->b_data != NULL);
@@ -2768,8 +2751,10 @@ top:
 			/* this block is not in the cache */
 			arc_buf_hdr_t	*exists;
 			arc_buf_contents_t type = BP_GET_BUFC_TYPE(bp);
-			buf = _arc_buf_alloc(spa, size, private, type, bp);
+			buf = arc_buf_alloc(spa, size, private, type);
 			hdr = buf->b_hdr;
+			hdr->b_dva = *BP_IDENTITY(bp);
+			hdr->b_birth = bp->blk_birth;
 			hdr->b_cksum0 = bp->blk_cksum.zc_word[0];
 			exists = buf_hash_insert(hdr, &hash_lock);
 			if (exists) {
@@ -4021,6 +4006,7 @@ l2arc_do_free_on_write()
 
 	for (df = list_tail(buflist); df; df = df_prev) {
 		df_prev = list_prev(buflist, df);
+		ASSERT(df->l2df_buf != NULL);
 		ASSERT(df->l2df_func != NULL);
 		df->l2df_func(df->l2df_buf, df->l2df_size);
 		list_remove(buflist, df);
