@@ -27,13 +27,12 @@
 #include <sys/fm/fs/zfs.h>
 #include <sys/spa.h>
 #include <sys/txg.h>
-#include <sys/arc.h>
-#include <sys/zfs_bio.h>
 #include <sys/spa_impl.h>
 #include <sys/vdev_impl.h>
 #include <sys/zio_impl.h>
 #include <sys/zio_compress.h>
 #include <sys/zio_checksum.h>
+#include <sys/zfs_bio.h>
 
 /*
  * ==========================================================================
@@ -187,7 +186,7 @@ zio_fini(void)
  * excess / transient data in-core during a crashdump.
  */
 void *
-zio_buf_alloc(size_t size)
+_zio_buf_alloc(size_t size)
 {
 #ifdef ZIO_USE_UMA
 	size_t c = (size - 1) >> SPA_MINBLOCKSHIFT;
@@ -207,7 +206,7 @@ zio_buf_alloc(size_t size)
  * of kernel heap dumped to disk when the kernel panics)
  */
 void *
-zio_data_buf_alloc(size_t size)
+_zio_data_buf_alloc(size_t size)
 {
 #ifdef ZIO_USE_UMA
 	size_t c = (size - 1) >> SPA_MINBLOCKSHIFT;
@@ -221,7 +220,7 @@ zio_data_buf_alloc(size_t size)
 }
 
 void
-zio_buf_free(void *buf, size_t size)
+_zio_buf_free(void *buf, size_t size)
 {
 #ifdef ZIO_USE_UMA
 	size_t c = (size - 1) >> SPA_MINBLOCKSHIFT;
@@ -235,7 +234,7 @@ zio_buf_free(void *buf, size_t size)
 }
 
 void
-zio_data_buf_free(void *buf, size_t size)
+_zio_data_buf_free(void *buf, size_t size)
 {
 #ifdef ZIO_USE_UMA
 	size_t c = (size - 1) >> SPA_MINBLOCKSHIFT;
@@ -248,6 +247,45 @@ zio_data_buf_free(void *buf, size_t size)
 #endif
 }
 
+void *
+zio_buf_alloc(size_t size)
+{
+
+	if (zfs_page_cache_disable)
+		return (_zio_buf_alloc(size));
+
+	return (zio_getblk(size, 0));
+}
+
+void *
+zio_data_buf_alloc(size_t size)
+{
+
+	if (zfs_page_cache_disable)
+		return (_zio_data_buf_alloc(size));
+
+	return (zio_getblk(size, GB_NODUMP));
+}
+
+void
+zio_buf_free(void *buf, size_t size)
+{
+
+	if (zfs_page_cache_disable)
+		_zio_buf_free(buf, size);
+	else
+		zio_relse(buf, size);
+}
+	
+void
+zio_data_buf_free(void *buf, size_t size)
+{
+
+	if (zfs_page_cache_disable)
+		_zio_data_buf_free(buf, size);
+	else
+		zio_relse(buf, size);
+}
 /*
  * ==========================================================================
  * Push and pop I/O transform buffers
@@ -413,7 +451,6 @@ zio_create(zio_t *pio, spa_t *spa, uint64_t txg, blkptr_t *bp,
     const zbookmark_t *zb, uint8_t stage, uint32_t pipeline)
 {
 	zio_t *zio;
-	int io_bypass;
 
 	ASSERT3U(size, <=, SPA_MAXBLOCKSIZE);
 	ASSERT(P2PHASE(size, SPA_MINBLOCKSIZE) == 0);
@@ -436,7 +473,7 @@ zio_create(zio_t *pio, spa_t *spa, uint64_t txg, blkptr_t *bp,
 		zio->io_child_type = ZIO_CHILD_LOGICAL;
 
 	if (bp != NULL) {
-		io_bypass = 0;
+		int io_bypass;
 
 		/*
 		 * Synchronize buffer with page cache - making sure that
@@ -444,10 +481,7 @@ zio_create(zio_t *pio, spa_t *spa, uint64_t txg, blkptr_t *bp,
 		 * This also allows us to skip disk I/O if we hit in the
 		 * page cache.
 		 */
-		if (((vd != NULL) && (vd->vdev_vnode != NULL)) &&
-		    ((type == ZIO_TYPE_WRITE) || (type == ZIO_TYPE_READ)))
-			io_bypass = zbio_sync_cache(spa, bp, txg, data, size,
-			    type == ZIO_TYPE_WRITE ? BIO_WRITE : BIO_READ);
+		io_bypass = zio_sync_cache(spa, bp, txg, data, size, type, vd);
 
 		zio->io_bp = bp;
 		zio->io_bp_copy = *bp;
@@ -2248,6 +2282,11 @@ zio_done(zio_t *zio)
 	ASSERT(zio->io_child == NULL);
 	ASSERT(zio->io_reexecute == 0);
 	ASSERT(zio->io_error == 0 || (zio->io_flags & ZIO_FLAG_CANFAIL));
+
+	/*
+	 * Mark buffers pages as valid
+	 */
+	zio_cache_valid(zio->io_data, zio->io_size, zio->io_type, vd);
 
 	if (zio->io_done)
 		zio->io_done(zio);

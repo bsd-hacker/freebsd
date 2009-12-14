@@ -31,30 +31,43 @@ $FreeBSD$
 
 #ifndef	_SYS_ZFS_BIO_H
 #define	_SYS_ZFS_BIO_H
+#include <sys/vdev_impl.h>	/* vd->vdev_vnode */
+#include <sys/zfs_context.h>
 
-#define	ZBIO_BUF_CLONING	(1 << 30)	/* is being cloned */
+extern int zfs_page_cache_disable;
 
-int zbio_sync_cache(spa_t *spa, blkptr_t *bp, uint64_t txg, void *data, uint64_t size, int bio_op);
-void zbio_getblk(arc_buf_t *buf);
-void zbio_data_getblk(arc_buf_t *buf);
-void zbio_relse(arc_buf_t *buf, size_t size);
+void _zio_cache_valid(void *data, uint64_t size);
+int _zio_sync_cache(spa_t *spa, blkptr_t *bp, uint64_t txg, void *data,
+    uint64_t size, zio_type_t type);
 
-typedef struct zbio_buf_hdr zbio_buf_hdr_t;
-struct zbio_buf_hdr {
-	/* protected by hash lock */
-	dva_t			b_dva;
-	uint64_t		b_birth;
-	uint32_t		b_flags;
-	uint32_t		b_datacnt;
+static __inline int
+zio_sync_cache(spa_t *spa, blkptr_t *bp, uint64_t txg, void *data,
+    uint64_t size, zio_type_t type, vdev_t *vd)
+{
+	int io_bypass = 0;
 
-	/* immutable */
-	arc_buf_contents_t	b_type;
-	uint64_t		b_size;
-	spa_t			*b_spa;
-};
+	if (!zfs_page_cache_disable &&
+	    ((vd != NULL) && (vd->vdev_vnode != NULL)) &&
+	    ((type == ZIO_TYPE_WRITE) || (type == ZIO_TYPE_READ)))
+		io_bypass = _zio_sync_cache(spa, bp, txg, data, size, type);
+
+	return (io_bypass);
+}
+
+static __inline void
+zio_cache_valid(void *data, uint64_t size, zio_type_t type, vdev_t *vd) 
+{
+
+	if ((vd != NULL) && (type == ZIO_TYPE_READ) &&
+	    (vd->vdev_vnode != NULL) && (size & PAGE_MASK) == 0)
+		_zio_cache_valid(data, size);
+}
+
+void *zio_getblk(uint64_t size, int flags);
+void zio_relse(void *data, size_t size);
 
 #ifdef _KERNEL
-void zbio_init(void);
-void zbio_fini(void);
+void zfs_bio_init(void);
+void zfs_bio_fini(void);
 #endif
 #endif

@@ -371,6 +371,11 @@ extern void zio_buf_free(void *buf, size_t size);
 extern void *zio_data_buf_alloc(size_t size);
 extern void zio_data_buf_free(void *buf, size_t size);
 
+extern void *_zio_buf_alloc(size_t size);
+extern void _zio_buf_free(void *buf, size_t size);
+extern void *_zio_data_buf_alloc(size_t size);
+extern void _zio_data_buf_free(void *buf, size_t size);
+	
 extern void zio_resubmit_stage_async(void *);
 
 extern zio_t *zio_vdev_child_io(zio_t *zio, blkptr_t *bp, vdev_t *vd,

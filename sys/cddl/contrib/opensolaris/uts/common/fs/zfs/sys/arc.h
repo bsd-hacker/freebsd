@@ -52,9 +52,6 @@ struct arc_buf {
 	void			*b_data;
 	arc_evict_func_t	*b_efunc;
 	void			*b_private;
-#ifdef _KERNEL	
-	struct buf 		*b_bp;
-#endif
 };
 
 typedef enum arc_buf_contents {

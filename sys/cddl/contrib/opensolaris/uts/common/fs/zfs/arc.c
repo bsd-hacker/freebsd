@@ -122,7 +122,6 @@
 #include <sys/zio_checksum.h>
 #include <sys/zfs_context.h>
 #include <sys/arc.h>
-#include <sys/zfs_bio.h>
 #include <sys/refcount.h>
 #include <sys/vdev.h>
 #ifdef _KERNEL
@@ -446,31 +445,27 @@ struct arc_write_callback {
 	arc_buf_t	*awcb_buf;
 };
 
-/*
- * Keep initial ordering in-sync with zbio_buf_hdr
- */
 struct arc_buf_hdr {
 	/* protected by hash lock */
 	dva_t			b_dva;
 	uint64_t		b_birth;
-	uint32_t		b_flags;
-	uint32_t		b_datacnt;
+	uint64_t		b_cksum0;
 
-	/* immutable */
-	arc_buf_contents_t	b_type;
-	uint64_t		b_size;
-	spa_t			*b_spa;
-
-	/* protected by hash lock */
 	kmutex_t		b_freeze_lock;
 	zio_cksum_t		*b_freeze_cksum;
 
 	arc_buf_hdr_t		*b_hash_next;
 	arc_buf_t		*b_buf;
-	uint64_t		b_cksum0;
+	uint32_t		b_flags;
+	uint32_t		b_datacnt;
 
 	arc_callback_t		*b_acb;
 	kcondvar_t		b_cv;
+
+	/* immutable */
+	arc_buf_contents_t	b_type;
+	uint64_t		b_size;
+	spa_t			*b_spa;
 
 	/* protected by arc state mutex */
 	arc_state_t		*b_state;
@@ -637,13 +632,11 @@ struct l2arc_buf_hdr {
 
 typedef struct l2arc_data_free {
 	/* protected by l2arc_free_on_write_mtx */
-	arc_buf_t	*l2df_buf;
+	void		*l2df_data;
 	size_t		l2df_size;
-	void		(*l2df_func)(arc_buf_t *, size_t);
+	void		(*l2df_func)(void *, size_t);
 	list_node_t	l2df_list_node;
 } l2arc_data_free_t;
-
-extern int zfs_page_cache_disable;
 
 static kmutex_t l2arc_feed_thr_lock;
 static kcondvar_t l2arc_feed_thr_cv;
@@ -1241,7 +1234,6 @@ arc_buf_clone(arc_buf_t *from)
 	buf->b_private = NULL;
 	buf->b_next = hdr->b_buf;
 	hdr->b_buf = buf;
-	hdr->b_flags |= ZBIO_BUF_CLONING;
 	arc_get_data_buf(buf);
 	bcopy(from->b_data, buf->b_data, size);
 	hdr->b_datacnt += 1;
@@ -1285,13 +1277,13 @@ arc_buf_add_ref(arc_buf_t *buf, void* tag)
  * the buffer is placed on l2arc_free_on_write to be freed later.
  */
 static void
-arc_buf_data_free(arc_buf_hdr_t *hdr, void (*free_func)(arc_buf_t *, size_t),
-    arc_buf_t *buf, size_t size)
+arc_buf_data_free(arc_buf_hdr_t *hdr, void (*free_func)(void *, size_t),
+    void *data, size_t size)
 {
 	if (HDR_L2_WRITING(hdr)) {
 		l2arc_data_free_t *df;
 		df = kmem_alloc(sizeof (l2arc_data_free_t), KM_SLEEP);
-		df->l2df_buf = buf;
+		df->l2df_data = data;
 		df->l2df_size = size;
 		df->l2df_func = free_func;
 		mutex_enter(&l2arc_free_on_write_mtx);
@@ -1299,7 +1291,7 @@ arc_buf_data_free(arc_buf_hdr_t *hdr, void (*free_func)(arc_buf_t *, size_t),
 		mutex_exit(&l2arc_free_on_write_mtx);
 		ARCSTAT_BUMP(arcstat_l2_free_on_write);
 	} else {
-		free_func(buf, size);
+		free_func(data, size);
 	}
 }
 
@@ -1317,13 +1309,13 @@ arc_buf_destroy(arc_buf_t *buf, boolean_t recycle, boolean_t all)
 		arc_cksum_verify(buf);
 		if (!recycle) {
 			if (type == ARC_BUFC_METADATA) {
-				arc_buf_data_free(buf->b_hdr, zbio_relse,
-				    buf, size);
+				arc_buf_data_free(buf->b_hdr, zio_buf_free,
+				    buf->b_data, size);
 				arc_space_return(size);
 			} else {
 				ASSERT(type == ARC_BUFC_DATA);
 				arc_buf_data_free(buf->b_hdr,
-				    zbio_relse, buf, size);
+				    zio_data_buf_free, buf->b_data, size);
 				atomic_add_64(&arc_size, -size);
 			}
 		}
@@ -1541,15 +1533,8 @@ arc_evict(arc_state_t *state, spa_t *spa, int64_t bytes, boolean_t recycle,
 	ASSERT(state == arc_mru || state == arc_mfu);
 
 	evicted_state = (state == arc_mru) ? arc_mru_ghost : arc_mfu_ghost;
+	recycle = (bytes & PAGE_MASK) ? recycle : FALSE;
 
-#ifdef _KERNEL
-	/*
-	 * don't recycle page cache bufs
-	 *
-	 */
-	if (recycle && ((bytes & PAGE_MASK) != 0) && !zfs_page_cache_disable)
-		recycle = FALSE;
-#endif
 	if (type == ARC_BUFC_METADATA) {
 		offset = 0;
 		list_count = ARC_BUFC_NUMMETADATALISTS;
@@ -1973,6 +1958,7 @@ arc_reclaim_needed(void)
 	if (arc_size <= arc_c_min)
 		return (0);
 
+#if 0
 	/*
 	 * If pages are needed or we're within 2048 pages 
 	 * of needing to page need to reclaim
@@ -1980,7 +1966,7 @@ arc_reclaim_needed(void)
 	if (vm_pages_needed || (vm_paging_target() > -2048))
 		return (1);
 
-#if 0
+
 	/*
 	 * take 'desfree' extra pages, so we reclaim sooner, rather than later
 	 */
@@ -2284,11 +2270,11 @@ arc_get_data_buf(arc_buf_t *buf)
 	 */
 	if (!arc_evict_needed(type)) {
 		if (type == ARC_BUFC_METADATA) {
-			zbio_getblk(buf);
+			buf->b_data = zio_buf_alloc(size);
 			arc_space_consume(size);
 		} else {
 			ASSERT(type == ARC_BUFC_DATA);
-			zbio_data_getblk(buf);
+			buf->b_data = zio_data_buf_alloc(size);
 			atomic_add_64(&arc_size, size);
 		}
 		goto out;
@@ -2315,11 +2301,11 @@ arc_get_data_buf(arc_buf_t *buf)
 	}
 	if ((buf->b_data = arc_evict(state, NULL, size, TRUE, type)) == NULL) {
 		if (type == ARC_BUFC_METADATA) {
-			zbio_getblk(buf);
+			buf->b_data = zio_buf_alloc(size);
 			arc_space_consume(size);
 		} else {
 			ASSERT(type == ARC_BUFC_DATA);
-			zbio_data_getblk(buf);
+			buf->b_data = zio_data_buf_alloc(size);
 			atomic_add_64(&arc_size, size);
 		}
 		if (size & PAGE_MASK)
@@ -4006,9 +3992,9 @@ l2arc_do_free_on_write()
 
 	for (df = list_tail(buflist); df; df = df_prev) {
 		df_prev = list_prev(buflist, df);
-		ASSERT(df->l2df_buf != NULL);
+		ASSERT(df->l2df_data != NULL);
 		ASSERT(df->l2df_func != NULL);
-		df->l2df_func(df->l2df_buf, df->l2df_size);
+		df->l2df_func(df->l2df_data, df->l2df_size);
 		list_remove(buflist, df);
 		kmem_free(df, sizeof (l2arc_data_free_t));
 	}
