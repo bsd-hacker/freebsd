@@ -131,8 +131,6 @@
 #include <sys/kstat.h>
 #include <sys/sdt.h>
 
-#include <vm/vm_pageout.h>
-
 static kmutex_t		arc_reclaim_thr_lock;
 static kcondvar_t	arc_reclaim_thr_cv;	/* used to signal reclaim thr */
 static uint8_t		arc_thread_exit;
@@ -1959,14 +1957,6 @@ arc_reclaim_needed(void)
 		return (0);
 
 #if 0
-	/*
-	 * If pages are needed or we're within 2048 pages 
-	 * of needing to page need to reclaim
-	 */
-	if (vm_pages_needed || (vm_paging_target() > -2048))
-		return (1);
-
-
 	/*
 	 * take 'desfree' extra pages, so we reclaim sooner, rather than later
 	 */
