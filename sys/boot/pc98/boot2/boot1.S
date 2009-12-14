@@ -105,9 +105,12 @@ main:		cld
 		and $0x00ffffff,%eax
 		mov %eax,%es:(EPSON_ID)
 
-#ifdef SET_MACHINE_TYPE
 		/* Set machine type to PC98_SYSTEM_PARAMETER */
+#ifdef SET_MACHINE_TYPE
 		call set_machine_type
+#else
+		mov $M_NEC_PC98+M_NOT_H98,%eax
+		mov %eax,%es:(PC98_MACHINE_TYPE)
 #endif
 
 		/* Setup graphic screen */
@@ -319,6 +322,7 @@ set_machine_type:
 		mov %dx,%ds
 //		mov $MEM_SYS,%ax
 //		mov %ax,%es
+
 		/* Wait V-SYNC */
 vsync.1:	inb $0x60,%al
 		test $0x20,%al
