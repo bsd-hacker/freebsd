@@ -279,7 +279,7 @@ static struct mtx PMAP2mutex;
 
 SYSCTL_NODE(_vm, OID_AUTO, pmap, CTLFLAG_RD, 0, "VM/pmap parameters");
 static int pg_ps_enabled;
-SYSCTL_INT(_vm_pmap, OID_AUTO, pg_ps_enabled, CTLFLAG_RD, &pg_ps_enabled, 0,
+SYSCTL_INT(_vm_pmap, OID_AUTO, pg_ps_enabled, CTLFLAG_RDTUN, &pg_ps_enabled, 0,
     "Are large page mappings enabled?");
 
 SYSCTL_INT(_vm_pmap, OID_AUTO, pv_entry_max, CTLFLAG_RD, &pv_entry_max, 0,
@@ -3101,9 +3101,10 @@ void *
 pmap_kenter_temporary(vm_paddr_t pa, int i)
 {
 	vm_offset_t va;
+	vm_paddr_t ma = xpmap_ptom(pa);
 
 	va = (vm_offset_t)crashdumpmap + (i * PAGE_SIZE);
-	pmap_kenter(va, pa);
+	PT_SET_MA(va, (ma & ~PAGE_MASK) | PG_V | pgeflag);
 	invlpg(va);
 	return ((void *)crashdumpmap);
 }

@@ -90,7 +90,6 @@ __FBSDID("$FreeBSD$");
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 #include "arch.h"
 #include "dir.h"
@@ -98,7 +97,6 @@ __FBSDID("$FreeBSD$");
 #include "GNode.h"
 #include "hash.h"
 #include "lst.h"
-#include "make.h"
 #include "str.h"
 #include "targ.h"
 #include "util.h"
@@ -832,21 +830,6 @@ Path_FindFile(char *name, struct Path *path)
 	 * When searching for $(FILE), we will find it in $(INSTALLDIR)
 	 * b/c we added it here. This is not good...
 	 */
-#ifdef notdef
-	cp[-1] = '\0';
-	Path_AddDir(path, name);
-	cp[-1] = '/';
-
-	bigmisses += 1;
-	pe = TAILQ_LAST(path, Path);
-	if (pe == NULL)
-		return (NULL);
-
-	if (Hash_FindEntry(&pe->dir->files, cp) != NULL) {
-		return (estrdup(name));
-
-	return (NULL);
-#else /* !notdef */
 	DEBUGF(DIR, ("Looking for \"%s\"...", name));
 
 	bigmisses += 1;
@@ -864,7 +847,6 @@ Path_FindFile(char *name, struct Path *path)
 		DEBUGF(DIR, ("failed. Returning NULL\n"));
 		return (NULL);
 	}
-#endif /* notdef */
 }
 
 /*-
@@ -878,7 +860,7 @@ Path_FindFile(char *name, struct Path *path)
  *
  * Side Effects:
  *	The modification time is placed in the node's mtime slot.
- *	If the node didn't have a path entry before, and Dir_FindFile
+ *	If the node didn't have a path entry before, and Path_FindFile
  *	found one for it, the full name is placed in the path slot.
  *-----------------------------------------------------------------------
  */

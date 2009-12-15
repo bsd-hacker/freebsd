@@ -364,7 +364,9 @@ TRACE(("expecting DO got %s %s\n", tokname[got], got == TWORD ? wordtext : ""));
 		n1 = (union node *)stalloc(sizeof (struct nfor));
 		n1->type = NFOR;
 		n1->nfor.var = wordtext;
-		if (readtoken() == TWORD && ! quoteflag && equal(wordtext, "in")) {
+		while (readtoken() == TNL)
+			;
+		if (lasttoken == TWORD && ! quoteflag && equal(wordtext, "in")) {
 			app = &ap;
 			while (readtoken() == TWORD) {
 				n2 = (union node *)stalloc(sizeof (struct narg));
@@ -1310,6 +1312,7 @@ parsebackq: {
 	int saveprompt;
 	const int bq_startlinno = plinno;
 
+	str = NULL;
 	if (setjmp(jmploc.loc)) {
 		if (str)
 			ckfree(str);
@@ -1321,7 +1324,6 @@ parsebackq: {
 		longjmp(handler->loc, 1);
 	}
 	INTOFF;
-	str = NULL;
 	savelen = out - stackblock();
 	if (savelen > 0) {
 		str = ckmalloc(savelen);
@@ -1561,7 +1563,10 @@ setprompt(int which)
 #ifndef NO_HISTORY
 	if (!el)
 #endif
+	{
 		out2str(getprompt(NULL));
+		flushout(out2);
+	}
 }
 
 /*

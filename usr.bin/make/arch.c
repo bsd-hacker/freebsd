@@ -103,7 +103,6 @@ __FBSDID("$FreeBSD$");
 
 #include "arch.h"
 #include "buf.h"
-#include "config.h"
 #include "dir.h"
 #include "globals.h"
 #include "GNode.h"
@@ -1131,7 +1130,7 @@ Arch_MemMTime(GNode *gn)
  *	command (or the linker will know where to find it) and set the
  *	TARGET variable for this node to be the node's name. Otherwise,
  *	we set the TARGET variable to be the full path of the library,
- *	as returned by Dir_FindFile.
+ *	as returned by Path_FindFile.
  *
  *-----------------------------------------------------------------------
  */
