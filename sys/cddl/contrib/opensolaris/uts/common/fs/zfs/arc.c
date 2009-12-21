@@ -548,7 +548,7 @@ struct ht_lock {
 typedef struct buf_hash_table {
 	uint64_t ht_mask;
 	arc_buf_hdr_t **ht_table;
-	struct ht_lock ht_locks[BUF_LOCKS];
+	struct ht_lock ht_locks[BUF_LOCKS] __aligned(128);
 } buf_hash_table_t;
 
 static buf_hash_table_t buf_hash_table;
