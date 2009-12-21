@@ -420,6 +420,14 @@ extern int zio_handle_fault_injection(zio_t *zio, int error);
 extern int zio_handle_device_injection(vdev_t *vd, int error);
 extern int zio_handle_label_injection(zio_t *zio, int error);
 
+
+static __inline int
+zio_recycleable(int64_t size)
+{
+
+	return ((size > 0) && (size & PAGE_MASK));
+}
+
 #ifdef	__cplusplus
 }
 #endif
