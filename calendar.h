@@ -36,38 +36,59 @@
 #include <sys/types.h>
 #include <sys/uio.h>
 
+#define	SECSPERDAY	24 * 60 * 60
+
 extern struct passwd *pw;
 extern int doall;
 extern struct iovec header[];
-extern struct tm *tp;
+extern struct tm tp1, tp2;
+extern time_t t1, t2;
 extern const char *calendarFile;
 extern int *cumdays;
 extern int yrdays;
-extern struct fixs neaster, npaskha;
+extern struct fixs neaster, npaskha, ncny;
 
 void	cal(void);
 void	closecal(FILE *);
+int	checkdayofweek(char *, int *len, int *offset, char **dow);
+char *	getdayofweekname(int);
+int	checkmonth(char *, int *len, int *offset, char **month);
+char *	getmonthname(int);
 int	getday(char *);
 int	getdayvar(char *);
-int	getfield(char *, char **, int *);
+int	getfield(char *, int *);
 int	getmonth(char *);
 int	geteaster(char *, int);
 int	getpaskha(char *, int);
 int	easter(int);
-int	isnow(char *, int *, int *, int *);
+int	parsedaymonth(char *, int *, int *, int *);
 FILE	*opencal(void);
-void	settime(time_t);
+void	settimes(time_t,int, int);
 time_t	Mktime(char *);
 void	setnnames(void);
 
 #define isleap(y) ((((y) % 4) == 0 && ((y) % 100) != 0) || ((y) % 400) == 0)
 
-/* some flags */
-#define	F_ISMONTH	0x01	/* month (January ...) */
-#define	F_ISDAY		0x02	/* day of week (Sun, Mon, ...) */
-#define	F_ISDAYVAR	0x04	/* variables day of week, like SundayLast */
-#define	F_EASTER	0x08	/* Easter or easter depending days */
+/* Flags to determine the returned values by determinestyle() */
+#define	F_NONE			0x000
+#define	F_MONTH			0x001
+#define	F_DAYOFWEEK		0x002
+#define	F_DAYOFMONTH		0x004
+#define	F_MODIFIERINDEX		0x008
+#define	F_MODIFIEROFFSET	0x010
+#define	F_SPECIALDAY		0x020
+#define	F_ALLMONTH		0x040
+#define	F_ALLDAY		0x080
+#define	F_VARIABLE		0x100
+#define	F_EASTER		0x200
+#define	F_CNY			0x400
+#define	F_PASKHA		0x800
 
+#define	STRING_EASTER	"Easter"
+#define	STRING_PASKHA	"Paskha"
+#define	STRING_CNY	"ChineseNewYear"
+
+extern int	debug;		/* show parsing of the input */
 extern int	f_dayAfter;	/* days after current date */
 extern int	f_dayBefore;	/* days before current date */
 extern int	Friday;		/* day before weekend */

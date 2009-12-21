@@ -90,7 +90,7 @@ const char *calendarNoMail = "nomail";	/* don't sent mail if this file exist */
 
 char	path[MAXPATHLEN];
 
-struct fixs neaster, npaskha;
+struct fixs neaster, npaskha, ncny;
 
 struct iovec header[] = {
 	{"From: ", 6},
@@ -102,26 +102,37 @@ struct iovec header[] = {
 	{"'s Calendar\nPrecedence: bulk\n\n", 30},
 };
 
+#define MAXCOUNT	55
 void
 cal(void)
 {
-	int printing;
-	char *p;
+	char *pp, p;
 	FILE *fp;
 	int ch, l;
-	int month;
-	int day;
-	int var;
+	int count, i;
+	int month[MAXCOUNT];
+	int day[MAXCOUNT];
+	int flags;
 	static int d_first = -1;
 	char buf[2048 + 1];
-	struct event *events = NULL;
+	struct event *events[MAXCOUNT];
+	struct event *eventshead = NULL;
+	struct tm tm;
+	char dbuf[80];
+
+	/* Unused */
+	tm.tm_sec = 0;
+	tm.tm_min = 0;
+	tm.tm_hour = 0;
+	tm.tm_wday = 0;
 
 	if ((fp = opencal()) == NULL)
 		return;
-	for (printing = 0; fgets(buf, sizeof(buf), stdin) != NULL;) {
-		if ((p = strchr(buf, '\n')) != NULL)
-			*p = '\0';
+	while (fgets(buf, sizeof(buf), stdin) != NULL) {
+		if ((pp = strchr(buf, '\n')) != NULL)
+			*pp = '\0';
 		else
+			/* Flush this line */
 			while ((ch = getchar()) != '\n' && ch != EOF);
 		for (l = strlen(buf);
 		     l > 0 && isspace((unsigned char)buf[l - 1]);
@@ -130,6 +141,8 @@ cal(void)
 		buf[l] = '\0';
 		if (buf[0] == '\0')
 			continue;
+
+		/* Parse special definitions: LANG, Easter and Paskha */
 		if (strncmp(buf, "LANG=", 5) == 0) {
 			(void)setlocale(LC_ALL, buf + 5);
 			d_first = (*nl_langinfo(D_MD_ORDER) == 'd');
@@ -152,38 +165,54 @@ cal(void)
 			npaskha.len = strlen(buf + 7);
 			continue;
 		}
-		if (buf[0] != '\t') {
-			printing = isnow(buf, &month, &day, &var) ? 1 : 0;
-			if ((p = strchr(buf, '\t')) == NULL)
-				continue;
-			if (p > buf && p[-1] == '*')
-				var = 1;
-			if (printing) {
-				struct tm tm;
-				char dbuf[80];
 
-				if (d_first < 0)
-					d_first =
-					    (*nl_langinfo(D_MD_ORDER) == 'd');
-				tm.tm_sec = 0;	/* unused */
-				tm.tm_min = 0;	/* unused */
-				tm.tm_hour = 0;	/* unused */
-				tm.tm_wday = 0;	/* unused */
-				tm.tm_mon = month - 1;
-				tm.tm_mday = day;
-				tm.tm_year = tp->tm_year; /* unused */
-				(void)strftime(dbuf, sizeof(dbuf),
-				    d_first ? "%e %b" : "%b %e", &tm);
-				events = event_add(events, month, day, dbuf,
-				    var, p);
-			}
-		} else {
-			if (printing)
-				event_continue(events, buf);
+		/*
+		 * If the line starts with a tab, the data has to be
+		 * added to the previous line
+		 */
+		if (buf[0] == '\t') {
+			for (i = 0; i < count; i++)
+				event_continue(events[i], buf);
+			continue;
+		}
+
+		/* Get rid of leading spaces (non-standard) */
+		while (isspace(buf[0]))
+			memcpy(buf, buf + 1, strlen(buf) - 1);
+
+		/* No tab in the line, then not a valid line */
+		if ((pp = strchr(buf, '\t')) == NULL)
+			continue;
+
+		/* Trim spaces in front of the tab */
+		while (isspace(pp[-1]))
+			pp--;
+		p = *pp;
+		*pp = '\0';
+		if ((count = parsedaymonth(buf, month, day, &flags)) == 0)
+			continue;
+		*pp = p;
+		/* Find the last tab */
+		while (pp[1] == '\t')
+			pp++;
+
+		if (d_first < 0)
+			d_first =
+			    (*nl_langinfo(D_MD_ORDER) == 'd');
+
+		for (i = 0; i < count; i++) {
+			tm.tm_mon = month[i] - 1;
+			tm.tm_mday = day[i];
+			tm.tm_year = tp1.tm_year; /* unused */
+			(void)strftime(dbuf, sizeof(dbuf),
+			    d_first ? "%e %b" : "%b %e", &tm);
+			eventshead = event_add(eventshead, month[i], day[i],
+			    dbuf, (flags &= F_VARIABLE != 0) ? 1 : 0, pp);
+			events[i] = eventshead;
 		}
 	}
 
-	event_print_all(fp, events);
+	event_print_all(fp, eventshead);
 	closecal(fp);
 }
 
@@ -263,7 +292,7 @@ event_print_all(FILE *fp, struct event *events)
 	 */
 	for (daycounter = 0; daycounter <= f_dayAfter + f_dayBefore;
 	    daycounter++) {
-		day = tp->tm_yday - f_dayBefore + daycounter;
+		day = tp1.tm_yday - f_dayBefore + daycounter;
 		if (day < 0)
 			day += yrdays;
 		if (day >= yrdays)
@@ -303,74 +332,77 @@ event_print_all(FILE *fp, struct event *events)
 	}
 }
 
-int
-getfield(char *p, char **endp, int *flags)
-{
-	int val, var;
-	char *start, savech;
-
-	for (; !isdigit((unsigned char)*p) && !isalpha((unsigned char)*p)
-               && *p != '*'; ++p)
-	       ;
-	if (*p == '*') {			/* `*' is current month */
-		*flags |= F_ISMONTH;
-		*endp = p + 1;
-		return (tp->tm_mon + 1);
-	}
-	if (isdigit((unsigned char)*p)) {
-		val = strtol(p, &p, 10);	/* if 0, it's failure */
-		for (; !isdigit((unsigned char)*p)
-                       && !isalpha((unsigned char)*p) && *p != '*'; ++p);
-		*endp = p;
-		return (val);
-	}
-	for (start = p; isalpha((unsigned char)*++p););
-
-	/* Sunday-1 */
-	if (*p == '+' || *p == '-')
-		for(; isdigit((unsigned char)*++p);)
-			;
-
-	savech = *p;
-	*p = '\0';
-
-	/* Month */
-	if ((val = getmonth(start)) != 0)
-		*flags |= F_ISMONTH;
-
-	/* Day */
-	else if ((val = getday(start)) != 0) {
-		*flags |= F_ISDAY;
-
-		/* variable weekday */
-		if ((var = getdayvar(start)) != 0) {
-			if (var <= 5 && var >= -4)
-				val += var * 10;
-#ifdef DEBUG
-			printf("var: %d\n", var);
+#ifdef NOTDEF
+//int
+//getfield(char *p, int *flags)
+//{
+//	int val, var;
+//	char *start, savech;
+//
+//	if (*p == '\0')
+//		return(0);
+//
+//	/* Find the first digit, alpha or * */
+//	for (; !isdigit((unsigned char)*p) && !isalpha((unsigned char)*p)
+//               && *p != '*'; ++p)
+//	       ;
+//	if (*p == '*') {			/* `*' is current month */
+//		*flags |= F_ISMONTH;
+//		return (tp->tm_mon + 1);
+//	}
+//	if (isdigit((unsigned char)*p)) {
+//		val = strtol(p, &p, 10);	/* if 0, it's failure */
+//		for (; !isdigit((unsigned char)*p)
+//                       && !isalpha((unsigned char)*p) && *p != '*'; ++p);
+//		return (val);
+//	}
+//	for (start = p; isalpha((unsigned char)*++p););
+//
+//	/* Sunday-1 */
+//	if (*p == '+' || *p == '-')
+//		for(; isdigit((unsigned char)*++p);)
+//			;
+//
+//	savech = *p;
+//	*p = '\0';
+//
+//	/* Month */
+//	if ((val = getmonth(start)) != 0)
+//		*flags |= F_ISMONTH;
+//
+//	/* Day */
+//	else if ((val = getday(start)) != 0) {
+//		*flags |= F_ISDAY;
+//
+//		/* variable weekday */
+//		if ((var = getdayvar(start)) != 0) {
+//			if (var <= 5 && var >= -4)
+//				val += var * 10;
+//#ifdef DEBUG
+//			printf("var: %d\n", var);
+//#endif
+//		}
+//	}
+//
+//	/* Easter */
+//	else if ((val = geteaster(start, tp->tm_year + 1900)) != 0)
+//		*flags |= F_EASTER;
+//
+//	/* Paskha */
+//	else if ((val = getpaskha(start, tp->tm_year + 1900)) != 0)
+//		*flags |= F_EASTER;
+//
+//	/* undefined rest */
+//	else {
+//		*p = savech;
+//		return (0);
+//	}
+//	for (*p = savech; !isdigit((unsigned char)*p)
+//	   && !isalpha((unsigned char)*p) && *p != '*'; ++p)
+//		;
+//	return (val);
+//}
 #endif
-		}
-	}
-
-	/* Easter */
-	else if ((val = geteaster(start, tp->tm_year + 1900)) != 0)
-		*flags |= F_EASTER;
-
-	/* Paskha */
-	else if ((val = getpaskha(start, tp->tm_year + 1900)) != 0)
-		*flags |= F_EASTER;
-
-	/* undefined rest */
-	else {
-		*p = savech;
-		return (0);
-	}
-	for (*p = savech; !isdigit((unsigned char)*p)
-	   && !isalpha((unsigned char)*p) && *p != '*'; ++p)
-		;
-	*endp = p;
-	return (val);
-}
 
 FILE *
 opencal(void)

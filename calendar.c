@@ -59,6 +59,7 @@ __FBSDID("$FreeBSD$");
 
 struct passwd	*pw;
 int		doall = 0;
+int		debug = 0;
 time_t		f_time = 0;
 
 int	f_dayAfter = 0;		/* days after current date */
@@ -74,7 +75,7 @@ main(int argc, char *argv[])
 
 	(void)setlocale(LC_ALL, "");
 
-	while ((ch = getopt(argc, argv, "-A:aB:F:f:t:W:")) != -1)
+	while ((ch = getopt(argc, argv, "-A:aB:dF:f:t:W:")) != -1)
 		switch (ch) {
 		case '-':		/* backward contemptible */
 		case 'a':
@@ -95,8 +96,8 @@ main(int argc, char *argv[])
 
 		case 'W': /* we don't need no steenking Fridays */
 			Friday = -1;
-
 			/* FALLTHROUGH */
+
 		case 'A': /* days after current date */
 			f_dayAfter = atoi(optarg);
 			break;
@@ -107,6 +108,10 @@ main(int argc, char *argv[])
 
 		case 'F':
 			Friday = atoi(optarg);
+			break;
+
+		case 'd':
+			debug = 1;
 			break;
 
 		case '?':
@@ -124,7 +129,7 @@ main(int argc, char *argv[])
 	if (f_time <= 0)
 		(void)time(&f_time);
 
-	settime(f_time);
+	settimes(f_time, f_dayBefore, f_dayAfter);
 
 	if (doall)
 		while ((pw = getpwent()) != NULL) {
