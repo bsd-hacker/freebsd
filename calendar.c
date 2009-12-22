@@ -153,6 +153,6 @@ usage(void)
 	fprintf(stderr, "%s\n%s\n",
 	    "usage: calendar [-a] [-A days] [-B days] [-F friday] "
 	    "[-f calendarfile]",
-	    "                [-t dd[.mm[.year]]] [-W days]");
+	    "                [-d] [-t dd[.mm[.year]]] [-W days]");
 	exit(1);
 }

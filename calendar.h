@@ -38,6 +38,8 @@
 
 #define	SECSPERDAY	24 * 60 * 60
 
+/* Not yet categorized */
+
 extern struct passwd *pw;
 extern int doall;
 extern struct iovec header[];
@@ -48,28 +50,9 @@ extern int *cumdays;
 extern int yrdays;
 extern struct fixs neaster, npaskha, ncny;
 
-void	cal(void);
-void	closecal(FILE *);
-int	checkdayofweek(char *, int *len, int *offset, char **dow);
-char *	getdayofweekname(int);
-int	checkmonth(char *, int *len, int *offset, char **month);
-char *	getmonthname(int);
-int	getday(char *);
-int	getdayvar(char *);
-int	getfield(char *, int *);
-int	getmonth(char *);
-int	geteaster(char *, int);
-int	getpaskha(char *, int);
-int	easter(int);
-int	parsedaymonth(char *, int *, int *, int *);
-FILE	*opencal(void);
-void	settimes(time_t,int, int);
-time_t	Mktime(char *);
-void	setnnames(void);
-
 #define isleap(y) ((((y) % 4) == 0 && ((y) % 100) != 0) || ((y) % 400) == 0)
 
-/* Flags to determine the returned values by determinestyle() */
+/* Flags to determine the returned values by determinestyle() in parsedata.c */
 #define	F_NONE			0x000
 #define	F_MONTH			0x001
 #define	F_DAYOFWEEK		0x002
@@ -93,7 +76,57 @@ extern int	f_dayAfter;	/* days after current date */
 extern int	f_dayBefore;	/* days before current date */
 extern int	Friday;		/* day before weekend */
 
+/* events.c */
+/*
+ * Event sorting related functions:
+ * - Use event_add() to create a new event
+ * - Use event_continue() to add more text to the last added event
+ * - Use event_print_all() to display them in time chronological order
+ */
+struct event *event_add(struct event *, int, int, char *, int, char *);
+void	event_continue(struct event *events, char *txt);
+void	event_print_all(FILE *fp, struct event *events);
+struct event {
+	int	month;
+	int	day;
+	int	var;
+	char	*date;
+	char	*text;
+	struct event *next;
+};
+
+/* locale.c */
+
 struct fixs {
 	char	*name;
 	int	len;
 };
+
+extern struct fixs fndays[8];		/* full national days names */
+extern struct fixs ndays[8];		/* short national days names */
+extern struct fixs fnmonths[13];	/* full national months names */
+extern struct fixs nmonths[13];		/* short national month names */
+extern const char *months[];
+extern const char *fmonths[];
+extern const char *days[];
+extern const char *fdays[];
+
+void	setnnames(void);
+
+/* day.c */
+void	settimes(time_t,int, int);
+time_t	Mktime(char *);
+
+/* parsedata.c */
+int	parsedaymonth(char *, int *, int *, int *);
+
+/* io.c */
+void	cal(void);
+void	closecal(FILE *);
+FILE	*opencal(void);
+
+/* ostern.c / pashka.c */
+int	geteaster(char *, int);
+int	getpaskha(char *, int);
+int	easter(int);
+

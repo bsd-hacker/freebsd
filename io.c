@@ -46,11 +46,8 @@ static char sccsid[] = "@(#)calendar.c  8.3 (Berkeley) 3/25/94";
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include <sys/types.h>
 #include <sys/param.h>
 #include <sys/stat.h>
-#include <sys/time.h>
-#include <sys/uio.h>
 #include <sys/wait.h>
 #include <ctype.h>
 #include <err.h>
@@ -65,24 +62,6 @@ __FBSDID("$FreeBSD$");
 
 #include "pathnames.h"
 #include "calendar.h"
-
-/*
- * Event sorting related functions:
- * - Use event_add() to create a new event
- * - Use event_continue() to add more text to the last added event
- * - Use event_print_all() to display them in time chronological order
- */
-static struct event *event_add(struct event *, int, int, char *, int, char *);
-static void	event_continue(struct event *events, char *txt);
-static void	event_print_all(FILE *fp, struct event *events);
-struct event {
-	int	month;
-	int	day;
-	int	var;
-	char	*date;
-	char	*text;
-	struct event *next;
-};
 
 const char *calendarFile = "calendar";	/* default calendar file */
 const char *calendarHomes[] = {".calendar", _PATH_INCLUDE};	/* HOME */
@@ -214,122 +193,6 @@ cal(void)
 
 	event_print_all(fp, eventshead);
 	closecal(fp);
-}
-
-static struct event *
-event_add(struct event *events, int month, int day,
-    char *date, int var, char *txt)
-{
-	struct event *e;
-
-	/*
-	 * Creating a new event:
-	 * - Create a new event
-	 * - Copy the machine readable day and month
-	 * - Copy the human readable and language specific date
-	 * - Copy the text of the event
-	 */
-	e = (struct event *)calloc(1, sizeof(struct event));
-	if (e == NULL)
-		errx(1, "event_add: cannot allocate memory");
-	e->month = month;
-	e->day = day;
-	e->var = var;
-	e->date = strdup(date);
-	if (e->date == NULL)
-		errx(1, "event_add: cannot allocate memory");
-	e->text = strdup(txt);
-	if (e->text == NULL)
-		errx(1, "event_add: cannot allocate memory");
-	e->next = events;
-
-	return e;
-}
-
-static void
-event_continue(struct event *e, char *txt)
-{
-	char *text;
-
-	/*
-	 * Adding text to the event:
-	 * - Save a copy of the old text (unknown length, so strdup())
-	 * - Allocate enough space for old text + \n + new text + 0
-	 * - Store the old text + \n + new text
-	 * - Destroy the saved copy.
-	 */
-	text = strdup(e->text);
-	if (text == NULL)
-		errx(1, "event_continue: cannot allocate memory");
-
-	free(e->text);
-	e->text = (char *)malloc(strlen(text) + strlen(txt) + 3);
-	if (e->text == NULL)
-		errx(1, "event_continue: cannot allocate memory");
-	strcpy(e->text, text);
-	strcat(e->text, "\n");
-	strcat(e->text, txt);
-	free(text);
-
-	return;
-}
-
-static void
-event_print_all(FILE *fp, struct event *events)
-{
-	struct event *e, *e_next;
-	int daycounter;
-	int day, month;
-
-	/*
-	 * Print all events:
-	 * - We know the number of days to be counted (f_dayAfter + f_dayBefore)
-	 * - We know the current day of the year ("now" - f_dayBefore + counter)
-	 * - We know the number of days in the year (yrdays, set in settime())
-	 * - So we know the date on which the current daycounter is on the
-	 *   calendar in days and months.
-	 * - Go through the list of events, and print all matching dates
-	 */
-	for (daycounter = 0; daycounter <= f_dayAfter + f_dayBefore;
-	    daycounter++) {
-		day = tp1.tm_yday - f_dayBefore + daycounter;
-		if (day < 0)
-			day += yrdays;
-		if (day >= yrdays)
-			day -= yrdays;
-
-		/*
-		 * When we know the day of the year, we can determine the day
-		 * of the month and the month.
-		 */
-		month = 1;
-		while (month <= 12) {
-			if (day <= cumdays[month])
-				break;
-			month++;
-		}
-		month--;
-		day -= cumdays[month];
-
-#ifdef DEBUG
-		fprintf(stderr, "event_print_allmonth: %d, day: %d\n",
-		    month, day);
-#endif
-
-		/*
-		 * Go through all events and print the text of the matching
-		 * dates
-		 */
-		for (e = events; e != NULL; e = e_next) {
-			e_next = e->next;
-
-			if (month != e->month || day != e->day)
-				continue;
-
-			(void)fprintf(fp, "%s%c%s\n", e->date,
-			    e->var ? '*' : ' ', e->text);
-		}
-	}
 }
 
 #ifdef NOTDEF

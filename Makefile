@@ -4,7 +4,7 @@
 CFLAGS=	 -pipe  -g -std=gnu99 -fstack-protector   -Wall
 
 PROG=	calendar
-SRCS=   calendar.c io.c day.c ostern.c paskha.c
+SRCS=   calendar.c locale.c events.c parsedata.c io.c day.c ostern.c paskha.c
 INTER=          de_AT.ISO_8859-15 de_DE.ISO8859-1 fr_FR.ISO8859-1 \
 		hr_HR.ISO8859-2 hu_HU.ISO8859-2 ru_RU.KOI8-R uk_UA.KOI8-U
 DE_LINKS=       de_DE.ISO8859-15
