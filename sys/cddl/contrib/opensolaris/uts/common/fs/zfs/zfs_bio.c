@@ -568,16 +568,18 @@ zio_buf_vm_object_evict(buf_t bp)
 }
 
 static void
-zio_buf_vm_object_insert_locked(buf_t bp, struct vnode *vp,
+zio_buf_vm_object_insert(buf_t bp, struct vnode *vp,
     vm_object_t object, int valid)
 {
 	vm_page_t m;
-	vm_pindex_t start = OFF_TO_IDX(stob(bp->b_blkno));
+	vm_pindex_t start;
 	int i;
 
+	VM_OBJECT_LOCK_ASSERT(object, MA_OWNED);
 	/*
 	 * Insert buffer pages in the object
 	 */
+	start = OFF_TO_IDX(stob(bp->b_blkno));
 	for (i = 0; i < bp->b_npages; i++) {
 		m = bp->b_pages[i];
 		if (valid)
@@ -593,18 +595,6 @@ zio_buf_vm_object_insert_locked(buf_t bp, struct vnode *vp,
 	vm_page_unlock_queues();
 }
 
-static void
-zio_buf_vm_object_insert(buf_t bp, int valid)
-{
-	spa_t *spa = zio_buf_get_spa(bp);
-	struct vnode *vp = spa_get_vnode(spa);
-	vm_object_t object = vp->v_object;
-
-	VM_OBJECT_LOCK(object);
-	zio_buf_vm_object_insert_locked(bp, vp, object, valid);
-	VM_OBJECT_UNLOCK(object);
-}
-
 /*
  *	zio_buf_evict_overlap:		[ internal use only ]
  *
@@ -617,8 +607,8 @@ zio_buf_vm_object_insert(buf_t bp, int valid)
  *	This routine may not block.
  */
 static void
-zio_buf_evict_overlap_locked(daddr_t blkno, int size, zio_spa_state_t state,
-    uint64_t txg, int evict_op, vm_object_t object)
+zio_buf_evict_overlap(vm_object_t object, daddr_t blkno, int size,
+    zio_spa_state_t state, uint64_t txg, int evict_op)
 {
 	buf_t root, tmpbp;
 	daddr_t blkno_end, tmpblkno, tmpblkno_end;
@@ -672,6 +662,7 @@ done:
 	    && (evict_op == ZB_EVICT_ALL)) {
 		start = OFF_TO_IDX(stob(blkno));
 		end = start + OFF_TO_IDX(size);
+		VM_OBJECT_LOCK_ASSERT(object, MA_OWNED);
 		vm_page_cache_free(object, start, end);
 		vm_object_page_remove(object, start, end, FALSE);
 #ifdef INVARIANTS
@@ -683,18 +674,6 @@ done:
 	}
 }
 
-static void
-zio_buf_evict_overlap(daddr_t blkno, int size, zio_spa_state_t state,
-    uint64_t txg, int evict_op)
-{
-	vm_object_t	object = spa_get_vm_object(state->zss_spa);
-
-	VM_OBJECT_LOCK(object);
-	zio_buf_evict_overlap_locked(blkno, size, state, txg, evict_op, object);
-	VM_OBJECT_UNLOCK(object);
-}
-
-
 /*
  * scan blkno + size range in object to verify that all the pages are
  * resident and valid
@@ -702,8 +681,16 @@ zio_buf_evict_overlap(daddr_t blkno, int size, zio_spa_state_t state,
 static int
 vm_pages_valid_locked(vm_object_t object, uint64_t blkno, uint64_t size)
 {
+	vm_pindex_t start;
+	vm_page_t m;
+	int i;
 
-	return (0);
+	start = OFF_TO_IDX(stob(blkno));
+	for (i = 0; i < OFF_TO_IDX(size); i++)
+		if ((m = vm_page_lookup(object, start + i)) == NULL ||
+		    (m->valid != VM_PAGE_BITS_ALL))
+			return (0);
+	return (1);
 }
 
 static int
@@ -725,7 +712,19 @@ vm_pages_valid(vm_object_t object, uint64_t blkno, uint64_t size)
 static void
 vm_object_reference_pages(vm_object_t object, buf_t bp)
 {
-	
+	uint64_t blkno, size;
+	vm_pindex_t start;
+	vm_page_t m;
+	int i;
+
+	start = OFF_TO_IDX(stob(blkno));
+	vm_page_lock_queues();
+	for (i = 0; i < bp->b_npages; i++) {
+		m = vm_page_lookup(object, start + i);
+		vm_page_wire(m);
+		bp->b_pages[i] = m;
+	}
+	vm_page_unlock_queues();
 }
 
 /*
@@ -848,7 +847,7 @@ _zio_sync_cache(spa_t *spa, blkptr_t *blkp, uint64_t txg, void *data,
 	    ("doing I/O with cloned or evicted buffer 0x%x", bp->b_flags));
 
 	if (bp->b_flags & B_MALLOC) {
-		zio_buf_evict_overlap(blkno, size, state, txg, ZB_EVICT_BUFFERED);
+		zio_buf_evict_overlap(object, blkno, size, state, txg, ZB_EVICT_BUFFERED);
 
 		if (zio_op == ZIO_TYPE_READ) {
 			/*
@@ -875,18 +874,18 @@ _zio_sync_cache(spa_t *spa, blkptr_t *blkp, uint64_t txg, void *data,
 		 */
 
 		VM_OBJECT_LOCK(object);
-		zio_buf_evict_overlap_locked(blkno, size, state, NO_TXG,
-		    ZB_EVICT_ALL, object);
+		zio_buf_evict_overlap(object, blkno, size, state, NO_TXG,
+		    ZB_EVICT_ALL);
 		bp->b_blkno = bp->b_lblkno = blkno;
 		bp->b_flags |= (B_VMIO|B_ASSIGNED);
 		bp->b_birth = txg;
 		zio_buf_blkno_insert(bp, state);
-		zio_buf_vm_object_insert_locked(bp, vp, object, zio_op == ZIO_TYPE_WRITE);
+		zio_buf_vm_object_insert(bp, vp, object, zio_op == ZIO_TYPE_WRITE);
 		VM_OBJECT_UNLOCK(object);
 	} else {
 		KASSERT(zio_op == ZIO_TYPE_READ, ("unexpected op %d", zio_op));
-		zio_buf_evict_overlap_locked(blkno, size, state, NO_TXG,
-		    ZB_EVICT_BUFFERED, object);
+		zio_buf_evict_overlap(object, blkno, size, state, NO_TXG,
+		    ZB_EVICT_BUFFERED);
 		bp->b_blkno = bp->b_lblkno = blkno;
 		bp->b_flags |= (B_VMIO|B_ASSIGNED);
 		bp->b_birth = txg;
@@ -897,7 +896,7 @@ _zio_sync_cache(spa_t *spa, blkptr_t *blkp, uint64_t txg, void *data,
 				vm_page_free(bp->b_pages[i]);
 			vm_object_reference_pages(object, bp);
 		} else
-			zio_buf_vm_object_insert_locked(bp, vp, object, FALSE);
+			zio_buf_vm_object_insert(bp, vp, object, FALSE);
 		VM_OBJECT_UNLOCK(object);
 	}
 
