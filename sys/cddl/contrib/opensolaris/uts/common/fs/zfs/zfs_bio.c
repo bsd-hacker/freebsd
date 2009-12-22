@@ -30,51 +30,51 @@ POSSIBILITY OF SUCH DAMAGE.
 /**************************************************************************
 This module integrates the caching af pages associated with ARC buffers in a
 per-SPA vm object. Each SPA also has an associated "zio_state_t" which
-tracks bufs allocated for the SPA in two splay trees.
+tracks mapped bufs allocated for the SPA in a splay tree.
 
-The first splay tree tracks bufs by the data pointer's virtual address.
-It is used for malloc'ed buffers, and buffers that are VMIO but do not have
-any pages in the SPA's vm object(s).
+A global lookup table (currently splay tree, subject to change) is used to
+map the data KVA to the struct buf. This allows us to provide page cache
+integration without churning ZFS' malloc-centric interfaces that only pass
+the data address around.
 
-Buffers are malloced if:
-    1) the size is not a multiple of PAGE_SIZE
-    2) the buffer is cloned
+Buffers are malloced if the size is not a multiple of PAGE_SIZE, and thus
+the buffer could not be an integer number of pages. 
 
-There are two reasons why a VMIO buf would not have any pages in the vm object:
-    1) the buffer has not yet been assigned an address on disk (and thus
-       has no offset in the vm object)
-    2) the buffer did have pages in the vm object, but they were evicted
-       and replaced by a newer 
-
-The second splay tree tracks buffers by block address and is only used
-to track buffers whose pages are referenced by the vm object. It is used to
+ZFS does not provide any block information when allocating a buffer.
+Thus, even page backed buffers are unmapped at allocation time. Buffers
+are mapped to an address in zio_sync_cache (called from zio_create),
+where they are either added to or removed from the page cache backing
+the vdev. Once the buffer is mapped a second splay tree tracks buffers
+by block address whose pages are referenced by the vm object. It is used to
 ensure that buffers that belong to an older transaction group don't have their
 pages mapped by buffers belonging to a newer transaction group.
 
-zfs_bio assumes that buffers that are cloned and buffers whose pages
-are evicted from the vm object are not used for I/O (will not be referenced
-from zfs_bio_sync_cache).
-
-Pages in the vm object are marked valid on completion of a read or before the
-initiation of a write.
+Pages in the vm object are marked valid before the initiation of a write
+and on completion of a read. 
 
 
-
-There are two places where we synchronize the ARC with the vm object's
-page cache: getblk and sync_cache.
-
-In getblk for a malloced buffer we check if the page at the corresponding offset
-is valid, if it is map it in and copy it in to the new buffer. For a VMIO buffer
-we need to remove the pages for any existing overlapping buffers and free any
-other pages in the vm object.
-
-In sync_cache for a malloced buffer we need to evict pages belonging to overlapping
-VMIO buffers, then copy to/from any pages still in the vm object. For an unmapped
-VMIO buffer, we need to remove pages belonging to any existing buffers and free
-any remaining overlapping pages in the vm object. We then add the VMIO buffers
-pages to a VM object. If the buffer is already mapped we mark the pages valid on a
-write, on a read we set a flag in the zio and mark the pages valid before calling
-the io_done I/O completion function.
+Logic in sync_cache:
+   B_MALLOC:
+           evict older txg
+       READ:
+           copyin from page cache
+       WRITE:
+           copyout to page cache
+   !B_MALLOC:
+       READ:
+           evict older txg
+           if (cached pages all valid)
+               free current buffer pages and map in cached pages
+           else
+               remove all pages from object
+               insert current buffer's pages
+       WRITE:
+           evict older txg + pages
+           mark buffer's pages as valid
+           insert buffer's pages in the object
+       mark buffer B_VMIO
+   B_VMIO:
+       No work to do 
 
 
 **************************************************************************/
@@ -97,11 +97,6 @@ __FBSDID("$FreeBSD$");
 
 #ifdef _KERNEL
 
-#define	BUF_EMPTY(buf)						\
-	((buf)->b_dva.dva_word[0] == 0 &&			\
-	(buf)->b_dva.dva_word[1] == 0 &&			\
-	(buf)->b_birth == 0)
-
 SYSCTL_DECL(_vfs_zfs);
 int zfs_page_cache_disable = 1;
 TUNABLE_INT("vfs.zfs.page_cache_disable", &zfs_page_cache_disable);
@@ -109,9 +104,9 @@ SYSCTL_INT(_vfs_zfs, OID_AUTO, page_cache_disable, CTLFLAG_RDTUN,
     &zfs_page_cache_disable, 0, "Disable backing ARC with page cache ");
 
 static eventhandler_tag zfs_bio_event_shutdown = NULL;
-struct zio_state;
-typedef struct zio_state	zio_state_t;
-typedef	struct buf		buf_t;
+struct zio_spa_state;
+typedef struct zio_spa_state *	zio_spa_state_t;
+typedef	struct buf	*	buf_t;
 
 MALLOC_DEFINE(M_ZFS_BIO, "zfs_bio", "zfs buffer cache / vm");
 
@@ -132,29 +127,182 @@ MALLOC_DEFINE(M_ZFS_BIO, "zfs_bio", "zfs buffer cache / vm");
 
 #define b_state			b_fsprivate3
 
-struct zio_state {
-	struct mtx 	mtx;
-	buf_t 		*blkno_root;		/* track buf by blkno 		*/
-	buf_t 		*va_root;		/* track buf by data address 	*/
-	spa_t		*spa;
-	int		generation;
-	int		resident_count;
-	TAILQ_HEAD(, buf) blkno_memq;	/* list of resident buffers */
-	TAILQ_HEAD(, buf) va_memq;	/* list of resident buffers */	
+struct zio_spa_state {
+	struct mtx 	zss_mtx;
+	buf_t 		zss_blkno_root;	/* track buf by blkno 		*/
+
+	spa_t		*zss_spa;
+	int		zss_generation;
+	int		zss_resident_count;
+	TAILQ_HEAD(, buf) zss_blkno_memq;	/* list of resident buffers */
+};
+/*
+ * Hash table routines
+ */
+
+#define	HT_LOCK_PAD	128
+
+struct ht_lock {
+	struct mtx	ht_lock;
+#ifdef _KERNEL
+	unsigned char	pad[(HT_LOCK_PAD - sizeof (struct mtx))];
+#endif
 };
 
-static zio_state_t global_state;
+typedef struct cluster_list_head *	buf_head_t;
 
-#define ZIO_STATE_LOCK(zs)	mtx_lock(&(zs)->mtx)
-#define	ZIO_STATE_UNLOCK(zs)	mtx_unlock(&(zs)->mtx)
+#define	BUF_LOCKS 256
+typedef struct buf_hash_table {
+	uint64_t	ht_mask;
+	buf_head_t 	ht_table;
+	struct ht_lock	ht_locks[BUF_LOCKS] __aligned(128);
+} buf_hash_table_t;
 
-#define	spa_get_zio_state(spa)		((zio_state_t *)spa_get_vnode((spa))->v_data)
+static buf_hash_table_t buf_hash_table;
+
+#define	BUF_HASH_INDEX(va, size)					\
+	(buf_hash(va, size) & buf_hash_table.ht_mask)
+#define	BUF_HASH_LOCK_NTRY(idx) 	(buf_hash_table.ht_locks[idx & (BUF_LOCKS-1)])
+#define	BUF_HASH_LOCK(idx)		(&(BUF_HASH_LOCK_NTRY(idx).ht_lock))
+
+#define ZIO_SPA_STATE_LOCK(zs)		mtx_lock(&(zs)->zss_mtx)
+#define	ZIO_SPA_STATE_UNLOCK(zs)	mtx_unlock(&(zs)->zss_mtx)
+
+#define	spa_get_zio_state(spa)		((zio_spa_state_t)spa_get_vnode((spa))->v_data)
 #define	spa_get_vm_object(spa)		spa_get_vnode((spa))->v_object
-#define	zio_buf_get_spa(bp)		(((zio_state_t *)bp->b_state)->spa)
+#define	zio_buf_get_spa(bp)		(((zio_spa_state_t)bp->b_state)->zss_spa)
 #define	zio_buf_get_vm_object(bp)	spa_get_vm_object(zio_buf_get_spa((bp)))
 
-static void zio_buf_blkno_remove(buf_t *bp);
-static void zio_buf_va_insert(buf_t *bp);
+static uint64_t
+buf_hash(caddr_t va, uint64_t size)
+{
+	uint8_t *vav = (uint8_t *)&va;
+	uint64_t crc = -1ULL;
+	int i;
+
+	ASSERT(zfs_crc64_table[128] == ZFS_CRC64_POLY);
+
+	for (i = i; i < sizeof (caddr_t); i++)
+		crc = (crc >> 8) ^ zfs_crc64_table[(crc ^ vav[i]) & 0xFF];
+
+	crc ^= (size>>9);
+
+	return (crc);
+}
+
+static void
+buf_init(void)
+{
+	uint64_t *ct;
+	uint64_t hsize = 1ULL << 12;
+	int i, j;
+
+	/*
+	 * The hash table is big enough to fill all of physical memory
+	 * with an average 64K block size.  The table will take up
+	 * totalmem*sizeof(void*)/64K (eg. 128KB/GB with 8-byte pointers).
+	 */
+	while (hsize * 65536 < (uint64_t)physmem * PAGESIZE)
+		hsize <<= 1;
+retry:
+	buf_hash_table.ht_mask = hsize - 1;
+	buf_hash_table.ht_table =
+	    malloc(hsize * sizeof (buf_head_t), M_ZFS_BIO, M_WAITOK|M_ZERO);
+	if (buf_hash_table.ht_table == NULL) {
+		ASSERT(hsize > (1ULL << 8));
+		hsize >>= 1;
+		goto retry;
+	}
+
+	for (i = 0; i < hsize; i++)
+		TAILQ_INIT(&buf_hash_table.ht_table[i]);
+
+	for (i = 0; i < BUF_LOCKS; i++)
+		mtx_init(&buf_hash_table.ht_locks[i].ht_lock,  "ht_lock", NULL, MTX_DEF);
+}
+
+/*
+ *	zio_buf_insert:		[ internal use only ]
+ *
+ *	Inserts the given buf into the state splay tree and state list.
+ *
+ *	The object and page must be locked.
+ *	This routine may not block.
+ */
+static void
+zio_buf_va_insert(buf_t bp)
+{
+	caddr_t va = bp->b_data;
+	uint64_t idx, size = bp->b_bcount;
+	struct mtx *lock;
+	buf_head_t bh;
+
+	idx = BUF_HASH_INDEX(va, size);
+	lock = BUF_HASH_LOCK(idx);
+	bh = &buf_hash_table.ht_table[idx];
+	mtx_lock(lock);
+	TAILQ_INSERT_HEAD(bh, bp, b_bobufs);
+	mtx_unlock(lock);
+}
+
+/*
+ *	zio_buf_va_lookup:
+ *
+ *	Returns the range associated with the object/offset
+ *	pair specified; if none is found, NULL is returned.
+ *
+ *	The object must be locked.
+ *	This routine may not block.
+ *	This is a critical path routine
+ */
+static buf_t 
+zio_buf_va_lookup(caddr_t va, uint64_t size)
+{
+	buf_t bp;
+	uint64_t idx;
+	struct mtx *lock;
+	buf_head_t bh;
+
+	idx = BUF_HASH_INDEX(va, size);
+	lock = BUF_HASH_LOCK(idx);
+	bh = &buf_hash_table.ht_table[idx];
+	mtx_lock(lock);
+	TAILQ_FOREACH(bp, bh, b_bobufs)
+		if (bp->b_data == va)
+			break;
+	mtx_unlock(lock);
+	return (bp);
+}
+
+/*
+ *	zio_buf_va_remove:
+ *
+ *	Removes the given buf from the spa's state tree
+ *	buf list
+ *
+ *	The state and buf must be locked.
+ *	This routine may not block.
+ */
+static buf_t
+zio_buf_va_remove(caddr_t va, uint64_t size)
+{
+	uint64_t idx;
+	struct mtx *lock;
+	buf_head_t bh;
+	buf_t bp;
+
+	idx = BUF_HASH_INDEX(va, size);
+	lock = BUF_HASH_LOCK(idx);
+	bh = &buf_hash_table.ht_table[idx];
+	mtx_lock(lock);
+	TAILQ_FOREACH(bp, bh, b_bobufs)
+	    if (bp->b_data == va) {
+		    TAILQ_REMOVE(bh, bp, b_bobufs);
+		    break;
+	    }
+	mtx_unlock(lock);
+	return (bp);
+}
 
 /*
  *	zio_buf_blkno_splay:		[ internal use only ]
@@ -164,15 +312,15 @@ static void zio_buf_va_insert(buf_t *bp);
  *	lblkno is not found in the tree, returns a buf that is
  *	adjacent to the pindex, coming before or after it.
  */
-static buf_t *
-zio_buf_blkno_splay(daddr_t blkno, buf_t *root)
+static buf_t 
+zio_buf_blkno_splay(daddr_t blkno, buf_t root)
 {
-	buf_t dummy;
-	buf_t *lefttreemax, *righttreemin, *y;
+	struct buf dummy;
+	buf_t lefttreemax, righttreemin, y;
 	
 	if (root == NULL)
 		return (root);
-	lefttreemax = righttreemin = &dummy;
+	lefttreemax = righttreemin = (buf_t)&dummy;
 	for (;; root = y) {
 		if (blkno < root->b_blkno) {
 			if ((y = root->b_left) == NULL)
@@ -213,55 +361,6 @@ zio_buf_blkno_splay(daddr_t blkno, buf_t *root)
 	return (root);
 }
 
-static buf_t *
-zio_buf_va_splay(caddr_t va, buf_t *root)
-{
-	buf_t dummy;
-	buf_t *lefttreemax, *righttreemin, *y;
-	
-	if (root == NULL)
-		return (root);
-	lefttreemax = righttreemin = &dummy;
-	for (;; root = y) {
-		if (va < root->b_data) {
-			if ((y = root->b_left) == NULL)
-				break;
-			if (va < y->b_data) {
-				/* Rotate right. */
-				root->b_left = y->b_right;
-				y->b_right = root;
-				root = y;
-				if ((y = root->b_left) == NULL)
-					break;
-			}
-			/* Link into the new root's right tree. */
-			righttreemin->b_left = root;
-			righttreemin = root;
-		} else if (va > root->b_data) {
-			if ((y = root->b_right) == NULL)
-				break;
-			if (va > y->b_data) {
-				/* Rotate left. */
-				root->b_right = y->b_left;
-				y->b_left = root;
-				root = y;
-				if ((y = root->b_right) == NULL)
-					break;
-			}
-			/* Link into the new root's left tree. */
-			lefttreemax->b_right = root;
-			lefttreemax = root;
-		} else
-			break;
-	}
-	/* Assemble the new root. */
-	lefttreemax->b_right = root->b_left;
-	righttreemin->b_left = root->b_right;
-	root->b_left = dummy.b_right;
-	root->b_right = dummy.b_left;
-	return (root);
-}
-
 /*
  *	zio_buf_blkno_insert:		[ internal use only ]
  *
@@ -271,19 +370,19 @@ zio_buf_va_splay(caddr_t va, buf_t *root)
  *	This routine may not block.
  */
 static void
-zio_buf_blkno_insert(buf_t *bp, zio_state_t *object)
+zio_buf_blkno_insert(buf_t bp, zio_spa_state_t object)
 {
-	buf_t *root;
+	buf_t root;
 	daddr_t root_blkno_end, blkno, blkno_end;
 
 	blkno = bp->b_blkno;
 	blkno_end = bp->b_blkno + btos(bp->b_bcount);
 
-	root = object->blkno_root;
+	root = object->zss_blkno_root;
 	if (root == NULL) {
 		bp->b_left = NULL;
 		bp->b_right = NULL;
-		TAILQ_INSERT_TAIL(&object->blkno_memq, bp, b_bobufs);
+		TAILQ_INSERT_TAIL(&object->zss_blkno_memq, bp, b_bobufs);
 	} else {
 		root = zio_buf_blkno_splay(bp->b_blkno, root);
 		root_blkno_end = root->b_blkno + btos(root->b_bcount);
@@ -302,61 +401,39 @@ zio_buf_blkno_insert(buf_t *bp, zio_state_t *object)
 			bp->b_right = root->b_right;
 			bp->b_left = root;
 			root->b_right = NULL;
-			TAILQ_INSERT_AFTER(&object->blkno_memq, root, bp, b_bobufs);
+			TAILQ_INSERT_AFTER(&object->zss_blkno_memq, root, bp, b_bobufs);
 		}
 	}
-	object->blkno_root = bp;
-	object->generation++;
+	object->zss_blkno_root = bp;
+	object->zss_generation++;
 
 	/*
 	 * show that the object has one more resident buffer.
 	 */
-	object->resident_count++;
+	object->zss_resident_count++;
 }
 
 /*
- *	zio_buf_insert:		[ internal use only ]
+ *	zio_buf_blkno_lookup:
  *
- *	Inserts the given buf into the state splay tree and state list.
+ *	Returns the range associated with the object/offset
+ *	pair specified; if none is found, NULL is returned.
  *
- *	The object and page must be locked.
+ *	The object must be locked.
  *	This routine may not block.
+ *	This is a critical path routine
  */
-static void
-zio_buf_va_insert(buf_t *bp)
+static buf_t
+zio_buf_blkno_lookup(zio_spa_state_t state, daddr_t blkno)
 {
-	buf_t *root;
-	caddr_t va = bp->b_data;
-	zio_state_t *object = &global_state;
+	buf_t bp;
 
-	root = object->va_root;
-	if (root == NULL) {
-		bp->b_left = NULL;
-		bp->b_right = NULL;
-		TAILQ_INSERT_TAIL(&object->va_memq, bp, b_bobufs);
-	} else {
-		root = zio_buf_va_splay(bp->b_data, root);
-		if (va < root->b_data) {
-			bp->b_left = root->b_left;
-			bp->b_right = root;
-			root->b_left = NULL;
-			TAILQ_INSERT_BEFORE(root, bp, b_bobufs);
-		} else if (va == root->b_data) {
-			panic("zio_buf_va_insert: address already allocated");
-		} else {
-			bp->b_right = root->b_right;
-			bp->b_left = root;
-			root->b_right = NULL;
-			TAILQ_INSERT_AFTER(&object->va_memq, root, bp, b_bobufs);
-		}
+	if ((bp = state->zss_blkno_root) != NULL && bp->b_blkno != blkno) {
+		bp = zio_buf_blkno_splay(blkno, bp);
+		if ((state->zss_blkno_root = bp)->b_blkno != blkno)
+			bp = NULL;
 	}
-	object->va_root = bp;
-	object->generation++;
-
-	/*
-	 * show that the object has one more resident buffer.
-	 */
-	object->resident_count++;
+	return (bp);
 }
 
 /*
@@ -369,10 +446,10 @@ zio_buf_va_insert(buf_t *bp)
  *	This routine may not block.
  */
 static void
-zio_buf_blkno_remove(buf_t *bp)
+zio_buf_blkno_remove(buf_t bp)
 {
-	zio_state_t *state;
-	buf_t *root;
+	zio_spa_state_t state;
+	buf_t root;
 	daddr_t blkno, blkno_end;
 
 	if ((state = bp->b_state) == NULL)
@@ -381,113 +458,26 @@ zio_buf_blkno_remove(buf_t *bp)
 	/*
 	 * Now remove from the object's list of backed pages.
 	 */
-	if (bp != state->blkno_root)
-		zio_buf_blkno_splay(bp->b_blkno, state->blkno_root);
+	if (bp != state->zss_blkno_root)
+		zio_buf_blkno_splay(bp->b_blkno, state->zss_blkno_root);
 	if (bp->b_left == NULL)
 		root = bp->b_right;
 	else {
 		root = zio_buf_blkno_splay(bp->b_blkno, bp->b_left);
 		root->b_right = bp->b_right;
 	}
-	state->blkno_root = root;
-	TAILQ_REMOVE(&state->blkno_memq, bp, b_bobufs);
+	state->zss_blkno_root = root;
+	TAILQ_REMOVE(&state->zss_blkno_memq, bp, b_bobufs);
 
 	/*
 	 * And show that the object has one fewer resident page.
 	 */
-	state->resident_count--;
-	state->generation++;
+	state->zss_resident_count--;
+	state->zss_generation++;
 }
 
-/*
- *	zio_buf_va_remove:
- *
- *	Removes the given buf from the spa's state tree
- *	buf list
- *
- *	The state and buf must be locked.
- *	This routine may not block.
- */
-static void
-zio_buf_va_remove(buf_t *bp)
-{
-	zio_state_t *state;
-	buf_t *root;
-	vm_offset_t va;
-
-	if ((state = bp->b_state) == NULL)
-		return;
-
-	/*
-	 * Now remove from the object's list of backed pages.
-	 */
-	if (bp != state->va_root)
-		zio_buf_va_splay(bp->b_data, state->va_root);
-	if (bp->b_left == NULL)
-		root = bp->b_right;
-	else {
-		root = zio_buf_va_splay(bp->b_data, bp->b_left);
-		root->b_right = bp->b_right;
-	}
-	state->va_root = root;
-	TAILQ_REMOVE(&state->va_memq, bp, b_bobufs);
-
-	/*
-	 * And show that the object has one fewer resident page.
-	 */
-	state->resident_count--;
-	state->generation++;
-}
-
-/*
- *	zio_buf_va_lookup:
- *
- *	Returns the range associated with the object/offset
- *	pair specified; if none is found, NULL is returned.
- *
- *	The object must be locked.
- *	This routine may not block.
- *	This is a critical path routine
- */
-static buf_t *
-zio_buf_va_lookup(caddr_t va)
-{
-	buf_t *bp;
-
-	if ((bp = global_state.va_root) != NULL && bp->b_data != va) {
-		bp = zio_buf_va_splay(va, bp);
-		if ((global_state.va_root = bp)->b_data != va)
-			bp = NULL;
-	}
-	return (bp);
-}
-
-
-/*
- *	zio_buf_blkno_lookup:
- *
- *	Returns the range associated with the object/offset
- *	pair specified; if none is found, NULL is returned.
- *
- *	The object must be locked.
- *	This routine may not block.
- *	This is a critical path routine
- */
-static buf_t *
-zio_buf_blkno_lookup(zio_state_t *state, daddr_t blkno)
-{
-	buf_t *bp;
-
-	if ((bp = state->blkno_root) != NULL && bp->b_blkno != blkno) {
-		bp = zio_buf_blkno_splay(blkno, bp);
-		if ((state->blkno_root = bp)->b_blkno != blkno)
-			bp = NULL;
-	}
-	return (bp);
-}
-
-static void
-zio_buf_vm_object_copy(buf_t *bp, int direction)
+static __inline void
+zio_buf_vm_object_copy(buf_t bp, int direction)
 {
 	vm_object_t object;
 	vm_pindex_t start, end;
@@ -540,21 +530,21 @@ done:
 }
 
 static void
-zio_buf_vm_object_copyout(buf_t *bp)
+zio_buf_vm_object_copyout(buf_t bp)
 {
 	
 	zio_buf_vm_object_copy(bp, ZB_COPYOUT);
 }
 
 static void
-zio_buf_vm_object_copyin(buf_t *bp)
+zio_buf_vm_object_copyin(buf_t bp)
 {
 	
 	zio_buf_vm_object_copy(bp, ZB_COPYIN);
 }
 
 static void
-zio_buf_vm_object_evict(buf_t *bp)
+zio_buf_vm_object_evict(buf_t bp)
 {
 	int i;
 	vm_page_t m;
@@ -578,7 +568,7 @@ zio_buf_vm_object_evict(buf_t *bp)
 }
 
 static void
-zio_buf_vm_object_insert_locked(buf_t *bp, struct vnode *vp,
+zio_buf_vm_object_insert_locked(buf_t bp, struct vnode *vp,
     vm_object_t object, int valid)
 {
 	vm_page_t m;
@@ -604,7 +594,7 @@ zio_buf_vm_object_insert_locked(buf_t *bp, struct vnode *vp,
 }
 
 static void
-zio_buf_vm_object_insert(buf_t *bp, int valid)
+zio_buf_vm_object_insert(buf_t bp, int valid)
 {
 	spa_t *spa = zio_buf_get_spa(bp);
 	struct vnode *vp = spa_get_vnode(spa);
@@ -627,17 +617,17 @@ zio_buf_vm_object_insert(buf_t *bp, int valid)
  *	This routine may not block.
  */
 static void
-zio_buf_evict_overlap_locked(daddr_t blkno, int size, zio_state_t *state,
+zio_buf_evict_overlap_locked(daddr_t blkno, int size, zio_spa_state_t state,
     uint64_t txg, int evict_op, vm_object_t object)
 {
-	buf_t *root, *tmpbp;
+	buf_t root, tmpbp;
 	daddr_t blkno_end, tmpblkno, tmpblkno_end;
 	struct cluster_list_head clh;
 	int i, collisions;
 	uint64_t tmptxg;
 	vm_pindex_t start, end;
 
-	if ((root = state->blkno_root) == NULL)
+	if ((root = state->zss_blkno_root) == NULL)
 		goto done;
 
 	collisions = 0;
@@ -671,12 +661,11 @@ zio_buf_evict_overlap_locked(daddr_t blkno, int size, zio_state_t *state,
 		KASSERT(tmpbp->b_flags & B_EVICTED == 0,
 		    ("buffer has already been evicted"));
 		tmpbp->b_flags |= B_EVICTED;
-		state->blkno_root = tmpbp;
+		state->zss_blkno_root = tmpbp;
 		/*
 		 * move buffer to the unmanaged tree
 		 */
 		zio_buf_blkno_remove(tmpbp);
-		zio_buf_va_insert(tmpbp);
 	}
 done:
 	if (!(collisions == 1 && tmpbp->b_blkno == blkno && tmpbp->b_bcount == size)
@@ -695,16 +684,49 @@ done:
 }
 
 static void
-zio_buf_evict_overlap(daddr_t blkno, int size, zio_state_t *state,
+zio_buf_evict_overlap(daddr_t blkno, int size, zio_spa_state_t state,
     uint64_t txg, int evict_op)
 {
-	vm_object_t	object = spa_get_vm_object(state->spa);
+	vm_object_t	object = spa_get_vm_object(state->zss_spa);
 
 	VM_OBJECT_LOCK(object);
 	zio_buf_evict_overlap_locked(blkno, size, state, txg, evict_op, object);
 	VM_OBJECT_UNLOCK(object);
 }
 
+
+/*
+ * scan blkno + size range in object to verify that all the pages are
+ * resident and valid
+ */
+static int
+vm_pages_valid_locked(vm_object_t object, uint64_t blkno, uint64_t size)
+{
+
+	return (0);
+}
+
+static int
+vm_pages_valid(vm_object_t object, uint64_t blkno, uint64_t size)
+{
+	int valid;
+
+	VM_OBJECT_LOCK(object);
+	valid = vm_pages_valid_locked(object, blkno, size);
+	VM_OBJECT_UNLOCK(object);
+
+	return (valid);
+}
+
+/*
+ * insert pages from object in to bp's b_pages
+ * and wire
+ */
+static void
+vm_object_reference_pages(vm_object_t object, buf_t bp)
+{
+	
+}
 
 /*
 Cases:
@@ -739,10 +761,10 @@ D) !B_MALLOC / address is known
 
 */
 
-static buf_t *
+static buf_t 
 _zio_getblk_malloc(uint64_t size, int flags)
 {
-	buf_t 		*newbp;
+	buf_t 		newbp;
 	void 		*data;
 
 	if (flags & GB_NODUMP) 
@@ -755,10 +777,10 @@ _zio_getblk_malloc(uint64_t size, int flags)
 	newbp->b_bcount = size;
 }
 
-static buf_t *
+static buf_t 
 _zio_getblk_vmio(uint64_t size, int flags)
 {
-	buf_t 		*newbp;
+	buf_t 		newbp;
 
 	newbp = geteblk(size, flags);
 	BUF_KERNPROC(newbp);
@@ -769,7 +791,7 @@ _zio_getblk_vmio(uint64_t size, int flags)
 void *
 zio_getblk(uint64_t size, int flags)
 {
-	buf_t 		*newbp;
+	buf_t 		newbp;
 
 	if (size & PAGE_MASK)
 		newbp = _zio_getblk_malloc(size, flags);
@@ -783,10 +805,9 @@ zio_getblk(uint64_t size, int flags)
 void
 zio_relse(void *data, size_t size)
 {
-	buf_t *bp;
+	buf_t bp;
 
-	bp = zio_buf_va_lookup(data);
-	zio_buf_va_remove(bp);
+	bp = zio_buf_va_remove(data, size);
 
 	if (bp->b_flags & B_ASSIGNED)
 		zio_buf_blkno_remove(bp);
@@ -809,10 +830,10 @@ zio_relse(void *data, size_t size)
 
 int
 _zio_sync_cache(spa_t *spa, blkptr_t *blkp, uint64_t txg, void *data,
-    uint64_t size, zio_type_t bio_op)
+    uint64_t size, zio_type_t zio_op)
 {
-	buf_t		*bp;
-	zio_state_t 	*state = spa_get_zio_state(spa);
+	buf_t		bp;
+	zio_spa_state_t state = spa_get_zio_state(spa);
 	dva_t		dva = *BP_IDENTITY(blkp);
 	daddr_t		blkno = dva.dva_word[1] & ~(1ULL<<63);
 	struct vnode	*vp = spa_get_vnode(spa);
@@ -821,47 +842,63 @@ _zio_sync_cache(spa_t *spa, blkptr_t *blkp, uint64_t txg, void *data,
 	vm_page_t	m;	
 	int i, io_bypass = FALSE;
 
-	/*
-	 * XXX incomplete
-	 */
-
+	bp = zio_buf_va_lookup(data, size);
 	
-	if ((bp = zio_buf_va_lookup(data)) != NULL) {
-		KASSERT(bp->b_flags & B_EVICTED == 0,
-		    ("doing I/O with cloned or evicted buffer 0x%x", bp->b_flags));
+	KASSERT(bp->b_flags & B_EVICTED == 0,
+	    ("doing I/O with cloned or evicted buffer 0x%x", bp->b_flags));
 
-		if (bp->b_flags & B_MALLOC) {
-			zio_buf_evict_overlap(blkno, size, state, txg, ZB_EVICT_BUFFERED);
+	if (bp->b_flags & B_MALLOC) {
+		zio_buf_evict_overlap(blkno, size, state, txg, ZB_EVICT_BUFFERED);
 
-			if (bio_op == BIO_READ) {
-				/*
-				 * if page resident - copy in
-				 * update zio pipeline
-				 */
-				zio_buf_vm_object_copyin(bp);
-				if (bp->b_flags & B_CACHE) {
-					/* update zio pipeline */
-					io_bypass = TRUE;
-				}
-			} else {
-				zio_buf_vm_object_copyout(bp);
+		if (zio_op == ZIO_TYPE_READ) {
+			/*
+			 * if page resident - copy in
+			 * update zio pipeline
+			 */
+			zio_buf_vm_object_copyin(bp);
+			if (bp->b_flags & B_CACHE) {
+				/* update zio pipeline */
+				io_bypass = TRUE;
 			}
 		} else {
-			zio_buf_va_remove(bp);
-			VM_OBJECT_LOCK(object);
-			zio_buf_evict_overlap_locked(blkno, size, state, NO_TXG,
-			    ZB_EVICT_ALL, object);
-			bp->b_blkno = bp->b_lblkno = blkno;
-			bp->b_flags |= (B_VMIO|B_ASSIGNED);
-			zio_buf_blkno_insert(bp, state);
-			zio_buf_vm_object_insert_locked(bp, vp, object, bio_op == BIO_WRITE);
-			VM_OBJECT_UNLOCK(object);
+			zio_buf_vm_object_copyout(bp);
 		}
+	} else if (bp->b_flags & B_VMIO) {
+		KASSERT(bp == zio_buf_blkno_lookup(state, blkno),
+		    ("VMIO buffer not mapped"));
+		if (zio_op == ZIO_TYPE_READ && (bp->b_flags & (B_CACHE|B_INVAL)) == B_CACHE)
+			io_bypass = TRUE;		
+	} else if ((zio_op == ZIO_TYPE_WRITE) || !vm_pages_valid(object, blkno, size)) {
+		/*
+		 * XXX still need to handle the case where the pages in the page cache are valid
+		 * and we are doing a read
+		 */
+
+		VM_OBJECT_LOCK(object);
+		zio_buf_evict_overlap_locked(blkno, size, state, NO_TXG,
+		    ZB_EVICT_ALL, object);
+		bp->b_blkno = bp->b_lblkno = blkno;
+		bp->b_flags |= (B_VMIO|B_ASSIGNED);
+		bp->b_birth = txg;
+		zio_buf_blkno_insert(bp, state);
+		zio_buf_vm_object_insert_locked(bp, vp, object, zio_op == ZIO_TYPE_WRITE);
+		VM_OBJECT_UNLOCK(object);
 	} else {
-		bp = zio_buf_blkno_lookup(state, blkno);
-		if (bio_op == BIO_READ && (bp->b_flags & (B_CACHE|B_INVAL)) == B_CACHE)
-			io_bypass = TRUE;
-		KASSERT(bp != NULL, ("blkno=%ld data=%p unmanaged", blkno, bp->b_data));
+		KASSERT(zio_op == ZIO_TYPE_READ, ("unexpected op %d", zio_op));
+		zio_buf_evict_overlap_locked(blkno, size, state, NO_TXG,
+		    ZB_EVICT_BUFFERED, object);
+		bp->b_blkno = bp->b_lblkno = blkno;
+		bp->b_flags |= (B_VMIO|B_ASSIGNED);
+		bp->b_birth = txg;
+		zio_buf_blkno_insert(bp, state);
+		VM_OBJECT_LOCK(object);
+		if (vm_pages_valid_locked(object, blkno, size)) {
+			for (i = 0; i < bp->b_npages; i++)
+				vm_page_free(bp->b_pages[i]);
+			vm_object_reference_pages(object, bp);
+		} else
+			zio_buf_vm_object_insert_locked(bp, vp, object, FALSE);
+		VM_OBJECT_UNLOCK(object);
 	}
 
 	return (io_bypass);
@@ -870,8 +907,14 @@ _zio_sync_cache(spa_t *spa, blkptr_t *blkp, uint64_t txg, void *data,
 void
 _zio_cache_valid(void *data, uint64_t size)
 {
+	buf_t bp;
+	int i;
 
-	
+	bp = zio_buf_va_lookup(data, size);
+	for (i = 0; i < bp->b_npages; i++) 
+		bp->b_pages[i]->valid = VM_PAGE_BITS_ALL;
+	bp->b_flags &= ~B_INVAL;
+	bp->b_flags |= B_CACHE;
 }
 
 static void
