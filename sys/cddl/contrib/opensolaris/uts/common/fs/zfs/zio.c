@@ -143,6 +143,7 @@ zio_init(void)
 #endif
 
 	zio_inject_init();
+	zfs_bio_init();
 }
 
 void
@@ -170,6 +171,7 @@ zio_fini(void)
 
 	kmem_cache_destroy(zio_cache);
 
+	zfs_bio_fini();
 	zio_inject_fini();
 }
 

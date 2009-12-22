@@ -963,6 +963,7 @@ zfs_bio_init(void)
 
 	zfs_bio_event_shutdown = EVENTHANDLER_REGISTER(shutdown_pre_sync,
 	    zfs_bio_shutdown, NULL, EVENTHANDLER_PRI_FIRST);
+	buf_init();
 }
 
 void
