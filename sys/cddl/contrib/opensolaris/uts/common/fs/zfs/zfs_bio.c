@@ -103,7 +103,7 @@ TUNABLE_INT("vfs.zfs.page_cache_disable", &zfs_page_cache_disable);
 SYSCTL_INT(_vfs_zfs, OID_AUTO, page_cache_disable, CTLFLAG_RDTUN,
     &zfs_page_cache_disable, 0, "Disable backing ARC with page cache ");
 
-static eventhandler_tag zfs_bio_event_shutdown = NULL;
+static eventhandler_tag zfs_bio_event_shutdown;
 struct zio_spa_state;
 typedef struct zio_spa_state *	zio_spa_state_t;
 typedef	struct buf	*	buf_t;
@@ -155,7 +155,7 @@ typedef struct cluster_list_head *	buf_head_t;
 typedef struct buf_hash_table {
 	uint64_t	ht_mask;
 	buf_head_t 	ht_table;
-	struct ht_lock	ht_locks[BUF_LOCKS] __aligned(128);
+	struct ht_lock	*ht_locks;
 } buf_hash_table_t;
 
 static buf_hash_table_t buf_hash_table;
@@ -172,6 +172,12 @@ static buf_hash_table_t buf_hash_table;
 #define	spa_get_vm_object(spa)		spa_get_vnode((spa))->v_object
 #define	zio_buf_get_spa(bp)		(((zio_spa_state_t)bp->b_state)->zss_spa)
 #define	zio_buf_get_vm_object(bp)	spa_get_vm_object(zio_buf_get_spa((bp)))
+
+#ifndef DEBUG
+#define INLINE static __inline
+#else
+#define INLINE
+#endif
 
 static uint64_t
 buf_hash(caddr_t va, uint64_t size)
@@ -190,7 +196,10 @@ buf_hash(caddr_t va, uint64_t size)
 	return (crc);
 }
 
-static void
+const char *buf_lock = "ht_lock";
+
+
+void
 buf_init(void)
 {
 	uint64_t *ct;
@@ -207,18 +216,20 @@ buf_init(void)
 retry:
 	buf_hash_table.ht_mask = hsize - 1;
 	buf_hash_table.ht_table =
-	    malloc(hsize * sizeof (buf_head_t), M_ZFS_BIO, M_WAITOK|M_ZERO);
+	    malloc(hsize * sizeof (struct cluster_list_head), M_ZFS_BIO, M_NOWAIT|M_ZERO);
 	if (buf_hash_table.ht_table == NULL) {
 		ASSERT(hsize > (1ULL << 8));
 		hsize >>= 1;
 		goto retry;
 	}
-
+	buf_hash_table.ht_locks =
+	    malloc(BUF_LOCKS*128, M_ZFS_BIO, M_WAITOK|M_ZERO);	
+	
 	for (i = 0; i < hsize; i++)
 		TAILQ_INIT(&buf_hash_table.ht_table[i]);
 
 	for (i = 0; i < BUF_LOCKS; i++)
-		mtx_init(&buf_hash_table.ht_locks[i].ht_lock,  "ht_lock", NULL, MTX_DEF);
+		mtx_init(&(buf_hash_table.ht_locks[i].ht_lock),  buf_lock, NULL, MTX_DEF|MTX_DUPOK);
 }
 
 /*
@@ -229,7 +240,7 @@ retry:
  *	The object and page must be locked.
  *	This routine may not block.
  */
-static void
+INLINE void
 zio_buf_va_insert(buf_t bp)
 {
 	caddr_t va = bp->b_data;
@@ -241,7 +252,7 @@ zio_buf_va_insert(buf_t bp)
 	lock = BUF_HASH_LOCK(idx);
 	bh = &buf_hash_table.ht_table[idx];
 	mtx_lock(lock);
-	TAILQ_INSERT_HEAD(bh, bp, b_bobufs);
+	TAILQ_INSERT_HEAD(bh, bp, b_freelist);
 	mtx_unlock(lock);
 }
 
@@ -255,7 +266,7 @@ zio_buf_va_insert(buf_t bp)
  *	This routine may not block.
  *	This is a critical path routine
  */
-static buf_t 
+INLINE buf_t 
 zio_buf_va_lookup(caddr_t va, uint64_t size)
 {
 	buf_t bp;
@@ -267,7 +278,7 @@ zio_buf_va_lookup(caddr_t va, uint64_t size)
 	lock = BUF_HASH_LOCK(idx);
 	bh = &buf_hash_table.ht_table[idx];
 	mtx_lock(lock);
-	TAILQ_FOREACH(bp, bh, b_bobufs)
+	TAILQ_FOREACH(bp, bh, b_freelist)
 		if (bp->b_data == va)
 			break;
 	mtx_unlock(lock);
@@ -283,7 +294,7 @@ zio_buf_va_lookup(caddr_t va, uint64_t size)
  *	The state and buf must be locked.
  *	This routine may not block.
  */
-static buf_t
+INLINE buf_t
 zio_buf_va_remove(caddr_t va, uint64_t size)
 {
 	uint64_t idx;
@@ -295,12 +306,13 @@ zio_buf_va_remove(caddr_t va, uint64_t size)
 	lock = BUF_HASH_LOCK(idx);
 	bh = &buf_hash_table.ht_table[idx];
 	mtx_lock(lock);
-	TAILQ_FOREACH(bp, bh, b_bobufs)
+	TAILQ_FOREACH(bp, bh, b_freelist)
 	    if (bp->b_data == va) {
-		    TAILQ_REMOVE(bh, bp, b_bobufs);
+		    TAILQ_REMOVE(bh, bp, b_freelist);
 		    break;
 	    }
 	mtx_unlock(lock);
+	KASSERT(bp != NULL, ("no buffer found for va=%p size=%lld", va, size));
 	return (bp);
 }
 
@@ -382,7 +394,7 @@ zio_buf_blkno_insert(buf_t bp, zio_spa_state_t object)
 	if (root == NULL) {
 		bp->b_left = NULL;
 		bp->b_right = NULL;
-		TAILQ_INSERT_TAIL(&object->zss_blkno_memq, bp, b_bobufs);
+		TAILQ_INSERT_TAIL(&object->zss_blkno_memq, bp, b_freelist);
 	} else {
 		root = zio_buf_blkno_splay(bp->b_blkno, root);
 		root_blkno_end = root->b_blkno + btos(root->b_bcount);
@@ -392,7 +404,7 @@ zio_buf_blkno_insert(buf_t bp, zio_spa_state_t object)
 			bp->b_left = root->b_left;
 			bp->b_right = root;
 			root->b_left = NULL;
-			TAILQ_INSERT_BEFORE(root, bp, b_bobufs);
+			TAILQ_INSERT_BEFORE(root, bp, b_freelist);
 		} else if (blkno == root->b_blkno) {
 			panic("zio_buf_blkno_insert: blkno already allocated");
 		} else {
@@ -401,7 +413,7 @@ zio_buf_blkno_insert(buf_t bp, zio_spa_state_t object)
 			bp->b_right = root->b_right;
 			bp->b_left = root;
 			root->b_right = NULL;
-			TAILQ_INSERT_AFTER(&object->zss_blkno_memq, root, bp, b_bobufs);
+			TAILQ_INSERT_AFTER(&object->zss_blkno_memq, root, bp, b_freelist);
 		}
 	}
 	object->zss_blkno_root = bp;
@@ -467,7 +479,7 @@ zio_buf_blkno_remove(buf_t bp)
 		root->b_right = bp->b_right;
 	}
 	state->zss_blkno_root = root;
-	TAILQ_REMOVE(&state->zss_blkno_memq, bp, b_bobufs);
+	TAILQ_REMOVE(&state->zss_blkno_memq, bp, b_freelist);
 
 	/*
 	 * And show that the object has one fewer resident page.
@@ -624,7 +636,7 @@ zio_buf_evict_overlap(vm_object_t object, daddr_t blkno, int size,
 	root = zio_buf_blkno_splay(blkno, root);
 	TAILQ_INIT(&clh);
 	if (blkno < root->b_blkno)
-		tmpbp = TAILQ_PREV(root, cluster_list_head, b_bobufs);
+		tmpbp = TAILQ_PREV(root, cluster_list_head, b_freelist);
 
 	/*
 	 * Find all existing buffers that overlap with this range
@@ -641,7 +653,7 @@ zio_buf_evict_overlap(vm_object_t object, daddr_t blkno, int size,
 			TAILQ_INSERT_TAIL(&clh, tmpbp, b_freelist);
 			collisions++;
 		}
-		tmpbp = TAILQ_NEXT(tmpbp, b_bobufs);
+		tmpbp = TAILQ_NEXT(tmpbp, b_freelist);
 	}
 	while (!TAILQ_EMPTY(&clh)) {
 		tmpbp = TAILQ_FIRST(&clh);
@@ -961,9 +973,10 @@ zfs_bio_init(void)
 	if (zfs_page_cache_disable)
 		return;
 
+	buf_init();
+
 	zfs_bio_event_shutdown = EVENTHANDLER_REGISTER(shutdown_pre_sync,
 	    zfs_bio_shutdown, NULL, EVENTHANDLER_PRI_FIRST);
-	buf_init();
 }
 
 void
