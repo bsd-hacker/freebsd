@@ -40,6 +40,10 @@
 #include <sys/fs/zfs.h>
 #include <sys/arc.h>
 
+#ifdef _KERNEL
+#include <sys/zfs_bio.h>
+#endif
+
 SYSCTL_DECL(_vfs_zfs);
 SYSCTL_NODE(_vfs_zfs, OID_AUTO, vdev, CTLFLAG_RW, 0, "ZFS VDEV");
 
@@ -1077,6 +1081,7 @@ vdev_open(vdev_t *vd)
 		vp->v_type = VREG;
 		vnode_create_vobject(vp, 512, curthread);
 		vd->vdev_vnode = vp;
+		vp->v_data = zio_spa_state_alloc(vd->vdev_spa);
 		VOP_UNLOCK(vp, 0);
 		KASSERT(vp->v_object != NULL, ("vnode_create_vobject failed"));		
 		

@@ -110,9 +110,7 @@ typedef	struct buf	*	buf_t;
 
 MALLOC_DEFINE(M_ZFS_BIO, "zfs_bio", "zfs buffer cache / vm");
 
-#define	B_EVICTED	B_00000800
 #define	B_DATA		B_00001000
-#define	B_ASSIGNED	B_00004000	
 
 #define	ZB_EVICT_ALL		0x1
 #define	ZB_EVICT_BUFFERED	0x2
@@ -182,16 +180,16 @@ static buf_hash_table_t buf_hash_table;
 static uint64_t
 buf_hash(caddr_t va, uint64_t size)
 {
-	uint8_t *vav = (uint8_t *)&va;
 	uint64_t crc = -1ULL;
+	uint8_t *vav = (uint8_t *)&va;
 	int i;
 
 	ASSERT(zfs_crc64_table[128] == ZFS_CRC64_POLY);
 
-	for (i = i; i < sizeof (caddr_t); i++)
+	for (i = 0; i < sizeof (caddr_t); i++)
 		crc = (crc >> 8) ^ zfs_crc64_table[(crc ^ vav[i]) & 0xFF];
 
-	crc ^= (size>>9);
+	crc ^= (size>>4);
 
 	return (crc);
 }
@@ -232,6 +230,21 @@ retry:
 		mtx_init(&(buf_hash_table.ht_locks[i].ht_lock),  buf_lock, NULL, MTX_DEF|MTX_DUPOK);
 }
 
+void *
+zio_spa_state_alloc(spa_t *spa)
+{
+	struct zio_spa_state *zss;
+
+	zss = malloc(sizeof(struct zio_spa_state), M_ZFS_BIO, M_WAITOK|M_ZERO);
+
+	zss->zss_spa = spa;
+	mtx_init(&zss->zss_mtx, "zio_spa_state", NULL, MTX_DEF);
+	TAILQ_INIT(&zss->zss_blkno_memq);
+
+	return (zss);
+}
+
+
 /*
  *	zio_buf_insert:		[ internal use only ]
  *
@@ -244,13 +257,16 @@ INLINE void
 zio_buf_va_insert(buf_t bp)
 {
 	caddr_t va = bp->b_data;
-	uint64_t idx, size = bp->b_bcount;
+	long idx, size = bp->b_bcount;
 	struct mtx *lock;
 	buf_head_t bh;
 
 	idx = BUF_HASH_INDEX(va, size);
 	lock = BUF_HASH_LOCK(idx);
 	bh = &buf_hash_table.ht_table[idx];
+
+	CTR3(KTR_SPARE3, "va_insert(va=%p size=%ld) idx=%ld", va, size, idx);
+
 	mtx_lock(lock);
 	TAILQ_INSERT_HEAD(bh, bp, b_freelist);
 	mtx_unlock(lock);
@@ -297,7 +313,7 @@ zio_buf_va_lookup(caddr_t va, uint64_t size)
 INLINE buf_t
 zio_buf_va_remove(caddr_t va, uint64_t size)
 {
-	uint64_t idx;
+	long idx;
 	struct mtx *lock;
 	buf_head_t bh;
 	buf_t bp;
@@ -305,6 +321,9 @@ zio_buf_va_remove(caddr_t va, uint64_t size)
 	idx = BUF_HASH_INDEX(va, size);
 	lock = BUF_HASH_LOCK(idx);
 	bh = &buf_hash_table.ht_table[idx];
+
+
+	CTR3(KTR_SPARE3, "va_remove(va=%p size=%ld) idx=%ld", va, (long)size, idx);
 	mtx_lock(lock);
 	TAILQ_FOREACH(bp, bh, b_freelist)
 	    if (bp->b_data == va) {
@@ -489,9 +508,8 @@ zio_buf_blkno_remove(buf_t bp)
 }
 
 static __inline void
-zio_buf_vm_object_copy(buf_t bp, int direction)
+zio_buf_vm_object_copy(vm_object_t object, buf_t bp, int direction)
 {
-	vm_object_t object;
 	vm_pindex_t start, end;
 	vm_offset_t offset;
 	uint64_t byte_offset;
@@ -501,7 +519,6 @@ zio_buf_vm_object_copy(buf_t bp, int direction)
 	vm_page_t m;
 	struct sf_buf *sf;
 
-	object = zio_buf_get_vm_object(bp);
 	byte_offset = stob(bp->b_blkno);
 	page_offset = byte_offset & PAGE_MASK;
 	start = OFF_TO_IDX(byte_offset);
@@ -542,17 +559,17 @@ done:
 }
 
 static void
-zio_buf_vm_object_copyout(buf_t bp)
+zio_buf_vm_object_copyout(vm_object_t object, buf_t bp)
 {
 	
-	zio_buf_vm_object_copy(bp, ZB_COPYOUT);
+	zio_buf_vm_object_copy(object, bp, ZB_COPYOUT);
 }
 
 static void
-zio_buf_vm_object_copyin(buf_t bp)
+zio_buf_vm_object_copyin(vm_object_t object, buf_t bp)
 {
 	
-	zio_buf_vm_object_copy(bp, ZB_COPYIN);
+	zio_buf_vm_object_copy(object, bp, ZB_COPYIN);
 }
 
 static void
@@ -660,9 +677,7 @@ zio_buf_evict_overlap(vm_object_t object, daddr_t blkno, int size,
 		TAILQ_REMOVE(&clh, tmpbp, b_freelist);
 		zio_buf_vm_object_evict(tmpbp);
 
-		KASSERT(tmpbp->b_flags & B_EVICTED == 0,
-		    ("buffer has already been evicted"));
-		tmpbp->b_flags |= B_EVICTED;
+		tmpbp->b_flags &= ~B_VMIO;
 		state->zss_blkno_root = tmpbp;
 		/*
 		 * move buffer to the unmanaged tree
@@ -776,16 +791,18 @@ static buf_t
 _zio_getblk_malloc(uint64_t size, int flags)
 {
 	buf_t 		newbp;
-	void 		*data;
 
-	if (flags & GB_NODUMP) 
-		data = _zio_data_buf_alloc(size);
-	else
-		data = _zio_buf_alloc(size);
 	newbp = malloc(sizeof(struct buf), M_ZFS_BIO, M_WAITOK|M_ZERO);
-	newbp->b_data = data;
 	newbp->b_flags = (B_MALLOC|B_INVAL);
 	newbp->b_bcount = size;
+
+	if (flags & GB_NODUMP) {
+		newbp->b_flags |= B_DATA;
+		newbp->b_data = _zio_data_buf_alloc(size);
+	} else
+		newbp->b_data = _zio_buf_alloc(size);
+
+	return (newbp);
 }
 
 static buf_t 
@@ -820,7 +837,7 @@ zio_relse(void *data, size_t size)
 
 	bp = zio_buf_va_remove(data, size);
 
-	if (bp->b_flags & B_ASSIGNED)
+	if (bp->b_flags & B_VMIO)
 		zio_buf_blkno_remove(bp);
 
 	if (bp->b_flags & B_MALLOC) {
@@ -855,9 +872,6 @@ _zio_sync_cache(spa_t *spa, blkptr_t *blkp, uint64_t txg, void *data,
 
 	bp = zio_buf_va_lookup(data, size);
 	
-	KASSERT(bp->b_flags & B_EVICTED == 0,
-	    ("doing I/O with cloned or evicted buffer 0x%x", bp->b_flags));
-
 	if (bp->b_flags & B_MALLOC) {
 		zio_buf_evict_overlap(object, blkno, size, state, txg, ZB_EVICT_BUFFERED);
 
@@ -866,13 +880,13 @@ _zio_sync_cache(spa_t *spa, blkptr_t *blkp, uint64_t txg, void *data,
 			 * if page resident - copy in
 			 * update zio pipeline
 			 */
-			zio_buf_vm_object_copyin(bp);
+			zio_buf_vm_object_copyin(object, bp);
 			if (bp->b_flags & B_CACHE) {
 				/* update zio pipeline */
 				io_bypass = TRUE;
 			}
 		} else {
-			zio_buf_vm_object_copyout(bp);
+			zio_buf_vm_object_copyout(object, bp);
 		}
 	} else if (bp->b_flags & B_VMIO) {
 		KASSERT(bp == zio_buf_blkno_lookup(state, blkno),
@@ -889,7 +903,7 @@ _zio_sync_cache(spa_t *spa, blkptr_t *blkp, uint64_t txg, void *data,
 		zio_buf_evict_overlap(object, blkno, size, state, NO_TXG,
 		    ZB_EVICT_ALL);
 		bp->b_blkno = bp->b_lblkno = blkno;
-		bp->b_flags |= (B_VMIO|B_ASSIGNED);
+		bp->b_flags |= B_VMIO;
 		bp->b_birth = txg;
 		zio_buf_blkno_insert(bp, state);
 		zio_buf_vm_object_insert(bp, vp, object, zio_op == ZIO_TYPE_WRITE);
@@ -899,7 +913,7 @@ _zio_sync_cache(spa_t *spa, blkptr_t *blkp, uint64_t txg, void *data,
 		zio_buf_evict_overlap(object, blkno, size, state, NO_TXG,
 		    ZB_EVICT_BUFFERED);
 		bp->b_blkno = bp->b_lblkno = blkno;
-		bp->b_flags |= (B_VMIO|B_ASSIGNED);
+		bp->b_flags |= B_VMIO;
 		bp->b_birth = txg;
 		zio_buf_blkno_insert(bp, state);
 		VM_OBJECT_LOCK(object);
