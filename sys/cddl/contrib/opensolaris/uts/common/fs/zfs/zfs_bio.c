@@ -244,6 +244,35 @@ zio_spa_state_alloc(spa_t *spa)
 	return (zss);
 }
 
+/*
+ * scan blkno + size range in object to verify that all the pages are
+ * resident and valid
+ */
+static int
+vm_pages_valid_locked(vm_object_t object, uint64_t blkno, uint64_t size)
+{
+	vm_page_t m;
+	uint64_t i;
+
+	for (i = stob(blkno); i < stob(blkno) + size; i += PAGE_SIZE)
+		if ((m = vm_page_lookup(object, OFF_TO_IDX(i))) == NULL ||
+		    (m->valid != VM_PAGE_BITS_ALL))
+			return (0);
+	return (1);
+}
+
+static int
+vm_pages_valid(vm_object_t object, uint64_t blkno, uint64_t size)
+{
+	int valid;
+
+	VM_OBJECT_LOCK(object);
+	valid = vm_pages_valid_locked(object, blkno, size);
+	VM_OBJECT_UNLOCK(object);
+
+	return (valid);
+}
+
 
 /*
  *	zio_buf_insert:		[ internal use only ]
@@ -321,7 +350,6 @@ zio_buf_va_remove(caddr_t va, uint64_t size)
 	idx = BUF_HASH_INDEX(va, size);
 	lock = BUF_HASH_LOCK(idx);
 	bh = &buf_hash_table.ht_table[idx];
-
 
 	CTR3(KTR_SPARE3, "va_remove(va=%p size=%ld) idx=%ld", va, (long)size, idx);
 	mtx_lock(lock);
@@ -525,15 +553,9 @@ zio_buf_vm_object_copy(vm_object_t object, buf_t bp, int direction)
 	end = OFF_TO_IDX(byte_offset + bp->b_bcount);
 
 	VM_OBJECT_LOCK(object);	
-	for (bp->b_npages = i = 0; start + i < end; i++) {
-		m = vm_page_lookup(object, start + i);
+	if (vm_pages_valid_locked(object, bp->b_blkno, bp->b_bcount) == 0)
+		goto done;
 
-		if ((m == NULL) || (m->valid != VM_PAGE_BITS_ALL))
-			goto done;
-
-		bp->b_pages[i] = m;		
-		bp->b_npages++;
-	}
 	for (i = 0; i < bp->b_npages; i++) {		
 		sf = sf_buf_alloc(bp->b_pages[i], 0);
 		va = (caddr_t)sf_buf_kva(sf);
@@ -685,8 +707,8 @@ zio_buf_evict_overlap(vm_object_t object, daddr_t blkno, int size,
 		zio_buf_blkno_remove(tmpbp);
 	}
 done:
-	if (!(collisions == 1 && tmpbp->b_blkno == blkno && tmpbp->b_bcount == size)
-	    && (evict_op == ZB_EVICT_ALL)) {
+	if (!(collisions == 1 && tmpbp->b_blkno == blkno &&
+		tmpbp->b_bcount == size) && (evict_op == ZB_EVICT_ALL)) {
 		start = OFF_TO_IDX(stob(blkno));
 		end = start + OFF_TO_IDX(size);
 		VM_OBJECT_LOCK_ASSERT(object, MA_OWNED);
@@ -699,37 +721,6 @@ done:
 		}
 #endif	
 	}
-}
-
-/*
- * scan blkno + size range in object to verify that all the pages are
- * resident and valid
- */
-static int
-vm_pages_valid_locked(vm_object_t object, uint64_t blkno, uint64_t size)
-{
-	vm_pindex_t start;
-	vm_page_t m;
-	int i;
-
-	start = OFF_TO_IDX(stob(blkno));
-	for (i = 0; i < OFF_TO_IDX(size); i++)
-		if ((m = vm_page_lookup(object, start + i)) == NULL ||
-		    (m->valid != VM_PAGE_BITS_ALL))
-			return (0);
-	return (1);
-}
-
-static int
-vm_pages_valid(vm_object_t object, uint64_t blkno, uint64_t size)
-{
-	int valid;
-
-	VM_OBJECT_LOCK(object);
-	valid = vm_pages_valid_locked(object, blkno, size);
-	VM_OBJECT_UNLOCK(object);
-
-	return (valid);
 }
 
 /*
@@ -894,11 +885,6 @@ _zio_sync_cache(spa_t *spa, blkptr_t *blkp, uint64_t txg, void *data,
 		if (zio_op == ZIO_TYPE_READ && (bp->b_flags & (B_CACHE|B_INVAL)) == B_CACHE)
 			io_bypass = TRUE;		
 	} else if ((zio_op == ZIO_TYPE_WRITE) || !vm_pages_valid(object, blkno, size)) {
-		/*
-		 * XXX still need to handle the case where the pages in the page cache are valid
-		 * and we are doing a read
-		 */
-
 		VM_OBJECT_LOCK(object);
 		zio_buf_evict_overlap(object, blkno, size, state, NO_TXG,
 		    ZB_EVICT_ALL);
