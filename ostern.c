@@ -60,7 +60,7 @@ easter(int year) /* 0 ... abcd, NOT since 1900 */
 
 	L = I - J;
 
-	if (year % 400 == 0 || (year % 4 == 0 && year % 100 != 0))
+	if (isleap(year))
 		return 31 + 29 + 21 + L + 7;
 	else
 		return 31 + 28 + 21 + L + 7;

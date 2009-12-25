@@ -120,23 +120,23 @@ event_print_all(FILE *fp, struct event *events)
 	for (daycounter = 0; daycounter <= f_dayAfter + f_dayBefore;
 	    daycounter++) {
 		day = tp1.tm_yday - f_dayBefore + daycounter;
-		if (day < 0)
-			day += yrdays;
-		if (day >= yrdays)
-			day -= yrdays;
+//		if (day < 0)
+//			day += yrdays;
+//		if (day >= yrdays)
+//			day -= yrdays;
 
 		/*
 		 * When we know the day of the year, we can determine the day
 		 * of the month and the month.
 		 */
-		month = 1;
-		while (month <= 12) {
-			if (day <= cumdays[month])
-				break;
-			month++;
-		}
-		month--;
-		day -= cumdays[month];
+//		month = 1;
+//		while (month <= 12) {
+//			if (day <= cumdays[month])
+//				break;
+//			month++;
+//		}
+//		month--;
+//		day -= cumdays[month];
 
 #ifdef DEBUG
 		fprintf(stderr, "event_print_allmonth: %d, day: %d\n",

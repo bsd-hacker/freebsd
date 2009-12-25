@@ -46,7 +46,6 @@ extern struct iovec header[];
 extern struct tm tp1, tp2;
 extern time_t t1, t2;
 extern const char *calendarFile;
-extern int *cumdays;
 extern int yrdays;
 extern struct fixs neaster, npaskha, ncny;
 
@@ -114,7 +113,8 @@ extern const char *fdays[];
 void	setnnames(void);
 
 /* day.c */
-void	settimes(time_t,int, int);
+extern const struct tm tm0;
+void	settimes(time_t,int, int, struct tm *tp1, struct tm *tp2);
 time_t	Mktime(char *);
 
 /* parsedata.c */
@@ -126,7 +126,10 @@ void	closecal(FILE *);
 FILE	*opencal(void);
 
 /* ostern.c / pashka.c */
-int	geteaster(char *, int);
-int	getpaskha(char *, int);
+int	paskha(int);
 int	easter(int);
 
+/* dates.c */
+extern int cumdaytab[][14];
+void	generatedates(struct tm *tp1, struct tm *tp2);
+void	dumpdates(void);

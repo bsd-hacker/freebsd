@@ -129,7 +129,9 @@ main(int argc, char *argv[])
 	if (f_time <= 0)
 		(void)time(&f_time);
 
-	settimes(f_time, f_dayBefore, f_dayAfter);
+	settimes(f_time, f_dayBefore, f_dayAfter, &tp1, &tp2);
+	generatedates(&tp1, &tp2);
+	dumpdates();
 
 	if (doall)
 		while ((pw = getpwent()) != NULL) {

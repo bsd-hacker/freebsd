@@ -45,40 +45,26 @@ __FBSDID("$FreeBSD$");
 
 struct tm		tp1, tp2;
 time_t			time1, time2;
-static const struct tm	tm0;
-int			*cumdays, yrdays;
+const struct tm		tm0;
 char			dayname[10];
 
 
-/* 1-based month, 0-based days, cumulative */
-int	daytab[][14] = {
-	{0, -1, 30, 58, 89, 119, 150, 180, 211, 242, 272, 303, 333, 364},
-	{0, -1, 30, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365},
-};
-
-
 void
-settimes(time_t now, int before, int after)
+settimes(time_t now, int before, int after, struct tm *tp1, struct tm *tp2)
 {
 	char *oldl, *lbufp;
 	struct tm tp;
 
 	localtime_r(&now, &tp);
-	if (isleap(tp.tm_year + 1900)) {
-		yrdays = 366;
-		cumdays = daytab[1];
-	} else {
-		yrdays = 365;
-		cumdays = daytab[0];
-	}
+
 	/* Friday displays Monday's events */
 	if (f_dayAfter == 0 && f_dayBefore == 0 && Friday != -1)
 		f_dayAfter = tp.tm_wday == Friday ? 3 : 1;
 
 	time1 = now - SECSPERDAY * f_dayBefore;
-	localtime_r(&time1, &tp1);
+	localtime_r(&time1, tp1);
 	time2 = now + SECSPERDAY * f_dayAfter;
-	localtime_r(&time2, &tp2);
+	localtime_r(&time2, tp2);
 
 	header[5].iov_base = dayname;
 
