@@ -47,6 +47,7 @@ struct tm		tp1, tp2;
 time_t			time1, time2;
 const struct tm		tm0;
 char			dayname[10];
+int			year1, year2;
 
 
 void
@@ -63,8 +64,10 @@ settimes(time_t now, int before, int after, struct tm *tp1, struct tm *tp2)
 
 	time1 = now - SECSPERDAY * f_dayBefore;
 	localtime_r(&time1, tp1);
+	year1 = 1900 + tp1->tm_year;
 	time2 = now + SECSPERDAY * f_dayAfter;
 	localtime_r(&time2, tp2);
+	year2 = 1900 + tp2->tm_year;
 
 	header[5].iov_base = dayname;
 

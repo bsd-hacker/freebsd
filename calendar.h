@@ -74,6 +74,7 @@ extern int	debug;		/* show parsing of the input */
 extern int	f_dayAfter;	/* days after current date */
 extern int	f_dayBefore;	/* days before current date */
 extern int	Friday;		/* day before weekend */
+extern int	year1, year2;
 
 /* events.c */
 /*
@@ -118,7 +119,7 @@ void	settimes(time_t,int, int, struct tm *tp1, struct tm *tp2);
 time_t	Mktime(char *);
 
 /* parsedata.c */
-int	parsedaymonth(char *, int *, int *, int *);
+int	parsedaymonth(char *, int *, int *, int *, int *);
 
 /* io.c */
 void	cal(void);
@@ -131,5 +132,11 @@ int	easter(int);
 
 /* dates.c */
 extern int cumdaytab[][14];
+extern int mondaytab[][14];
+extern int debug_remember;
 void	generatedates(struct tm *tp1, struct tm *tp2);
 void	dumpdates(void);
+int	remember_ymd(int y, int m, int d);
+int	remember_yd(int y, int d, int *rm, int *rd);
+int	first_dayofweek_of_year(int y);
+int	first_dayofweek_of_month(int y, int m);

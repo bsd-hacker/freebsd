@@ -125,7 +125,7 @@ determinestyle(char *date, int *flags,
 	}
 
 	/*
-	 * After this, leave by goto-ing to "allfine" or "fail" to restore the
+	 * AFTER this, leave by goto-ing to "allfine" or "fail" to restore the
 	 * original data in `date'.
 	 */
 	pold = *p;
@@ -241,6 +241,42 @@ allfine:
 	
 }
 
+static void
+remember(int index, int *y, int *m, int *d, int yy, int mm, int dd)
+{
+
+	y[index] = yy;
+	m[index] = mm;
+	d[index] = dd;
+}
+
+void
+debug_determinestyle(int dateonly, char *date, int flags, char *month,
+    int imonth, char *dayofmonth, int idayofmonth, char *dayofweek,
+    int idayofweek, char *modifieroffset, char *modifierindex, char *specialday)
+{
+
+	if (dateonly != 0) {
+		printf("-------\ndate: |%s|\n", date);
+		if (dateonly == 1)
+			return;
+	}
+	printf("flags: %x - %s\n", flags, showflags(flags));
+	if (modifieroffset[0] != '\0')
+		printf("modifieroffset: |%s|\n", modifieroffset);
+	if (modifierindex[0] != '\0')
+		printf("modifierindex: |%s|\n", modifierindex);
+	if (month[0] != '\0')
+		printf("month: |%s| (%d)\n", month, imonth);
+	if (dayofmonth[0] != '\0')
+		printf("dayofmonth: |%s| (%d)\n", dayofmonth, idayofmonth);
+	if (dayofweek[0] != '\0')
+		printf("dayofweek: |%s| (%d)\n", dayofweek, idayofweek);
+	if (specialday[0] != '\0')
+		printf("specialday: |%s|\n", specialday);
+}
+
+
 /*
  * Possible date formats include any combination of:
  *	3-charmonth			(January, Jan, Jan)
@@ -252,11 +288,13 @@ allfine:
  * along with the matched line.
  */
 int
-parsedaymonth(char *date, int *monthp, int *dayp, int *flags)
+parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 {
 	char month[100], dayofmonth[100], dayofweek[100], modifieroffset[100];
 	char modifierindex[100], specialday[100];
-	int idayofweek, imonth, idayofmonth;
+	int idayofweek, imonth, idayofmonth, year, index;
+
+	int *mondays, d, m, dow, rm, rd;
 
 	/*
 	 * CONVENTION
@@ -271,7 +309,9 @@ parsedaymonth(char *date, int *monthp, int *dayp, int *flags)
 	*flags = 0;
 
 	if (debug)
-		printf("-------\ndate: |%s|\n", date);
+		debug_determinestyle(1, date, *flags, month, imonth,
+		    dayofmonth, idayofmonth, dayofweek, idayofweek,
+		    modifieroffset, modifierindex, specialday);
 	if (determinestyle(date, flags, month, &imonth, dayofmonth,
 	    &idayofmonth, dayofweek, &idayofweek, modifieroffset,
 	    modifierindex, specialday) == 0) {
@@ -280,27 +320,92 @@ parsedaymonth(char *date, int *monthp, int *dayp, int *flags)
 		return (0);
 	}
 
-	if (debug) {
-		printf("flags: %x - %s\n", *flags, showflags(*flags));
-		if (modifieroffset[0] != '\0')
-			printf("modifieroffset: |%s|\n", modifieroffset);
-		if (modifierindex[0] != '\0')
-			printf("modifierindex: |%s|\n", modifierindex);
-		if (month[0] != '\0')
-			printf("month: |%s| (%d)\n", month, imonth);
-		if (dayofmonth[0] != '\0')
-			printf("dayofmonth: |%s| (%d)\n", dayofmonth,
-			    idayofmonth);
-		if (dayofweek[0] != '\0')
-			printf("dayofweek: |%s| (%d)\n", dayofweek, idayofweek);
-		if (specialday[0] != '\0')
-			printf("specialday: |%s|\n", specialday);
+	if (debug)
+		debug_determinestyle(0, date, *flags, month, imonth,
+		    dayofmonth, idayofmonth, dayofweek, idayofweek,
+		    modifieroffset, modifierindex, specialday);
+
+	index = 0;
+	for (year = year1; year <= year2; year++) {
+		mondays = mondaytab[isleap(year)];
+
+		/* Same day every year */
+		if (*flags == (F_MONTH | F_DAYOFMONTH)) {
+			if (!remember_ymd(year, imonth, idayofmonth))
+				continue;
+			remember(index++, yearp, monthp, dayp,
+			    year, imonth, idayofmonth);
+			continue;
+		}
+
+		/* Same day every month */
+		if (*flags == (F_ALLMONTH | F_DAYOFMONTH)) {
+			for (m = 1; m <= 12; m++) {
+				if (!remember_ymd(year, m, idayofmonth))
+					continue;
+				remember(index++, yearp, monthp, dayp,
+				    year, m, idayofmonth);
+			}
+			continue;
+		}
+
+		/* Every day of a month */
+		if (*flags == (F_ALLDAY | F_MONTH)) {
+			for (d = 1; d <= mondays[imonth]; d++) {
+				if (!remember_ymd(year, imonth, d))
+					continue;
+				remember(index++, yearp, monthp, dayp,
+				    year, imonth, d);
+			}
+			continue;
+		}
+
+		/* One day of every month */
+		if (*flags == (F_ALLMONTH | F_DAYOFWEEK)) {
+			for (m = 1; m <= 12; m++) {
+				if (!remember_ymd(year, m, idayofmonth))
+					continue;
+				remember(index++, yearp, monthp, dayp,
+				    year, m, idayofmonth);
+			}
+			continue;
+		}
+
+		/* Every dayofweek of the year */
+		if (*flags == (F_DAYOFWEEK | F_VARIABLE)) {
+			dow = first_dayofweek_of_year(year);
+			d = (idayofweek - dow + 8) % 7;
+			while (d <= 366) {
+				if (remember_yd(year, d, &rm, &rd))
+					remember(index++, yearp, monthp, dayp,
+					    year, rm, rd);
+				d += 7;
+			}
+			continue;
+		}
+
+		/* Every dayofweek of the month */
+		if (*flags == (F_DAYOFWEEK | F_MONTH | F_VARIABLE)) {
+			dow = first_dayofweek_of_month(year, imonth);
+			d = (idayofweek - dow + 8) % 7;
+			while (d <= mondays[imonth]) {
+				if (remember_ymd(year, imonth, d))
+					remember(index++, yearp, monthp, dayp,
+					    year, imonth, rd);
+				d += 7;
+			}
+			continue;
+
+		}
+
+		printf("Unprocessed:\n");
+		debug_determinestyle(2, date, *flags, month, imonth,
+		    dayofmonth, idayofmonth, dayofweek, idayofweek,
+		    modifieroffset, modifierindex, specialday);
+
 	}
 
-	if ((*flags & !F_VARIABLE) == (F_MONTH | F_DAYOFMONTH)) {
-	}
-
-	return (0);
+	return (index);
 
 #ifdef NOTDEF
 	if (!(v1 = getfield(date, &flags)))

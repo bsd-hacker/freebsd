@@ -29,11 +29,12 @@ struct cal_day {
 	int julianday;			/* 000 .. 366 */
 	int dayofweek;			/* 0 .. 6 */
 	struct cal_day *nextday;
-	struct cal_month *month;
-	struct cal_year	*year;
+	struct cal_month *month;	/* points back */
+	struct cal_year	*year;		/* points back */
 	struct event *events;
 } cal_day;
 
+int debug_remember = 0;
 struct cal_year	*hyear = NULL;
 
 /* 1-based month, 0-based days, cumulative */
@@ -223,4 +224,116 @@ dumpdates(void)
 		}
 		y = y->nextyear;
 	}
+}
+
+int
+remember_ymd(int yy, int mm, int dd)
+{
+	struct cal_year *y;
+	struct cal_month *m;
+	struct cal_day *d;
+
+	if (debug_remember)
+		printf("remember_ymd: %d - %d - %d\n", yy, mm, dd);
+
+	y = hyear;
+	while (y != NULL) {
+		if (y->year != yy) {
+			y = y->nextyear;
+			continue;
+		}
+		m = y->months;
+		while (m != NULL) {
+			if (m->month != mm) {
+				m = m->nextmonth;
+				continue;
+			}
+			d = m->days;
+			while (d != NULL) {
+				if (d->dayofmonth == dd)
+					return (1);
+				d = d->nextday;
+				continue;;
+			}
+			return (0);
+		}
+		return (0);
+	}
+	return (0);
+}
+
+int
+remember_yd(int yy, int dd, int *rm, int *rd)
+{
+	struct cal_year *y;
+	struct cal_month *m;
+	struct cal_day *d;
+
+	if (debug_remember)
+		printf("remember_yd: %d - %d\n", yy, dd);
+
+	y = hyear;
+	while (y != NULL) {
+		if (y->year != yy) {
+			y = y->nextyear;
+			continue;
+		}
+		m = y->months;
+		while (m != NULL) {
+			d = m->days;
+			while (d != NULL) {
+				if (d->julianday == dd) {
+					*rm = m->month;
+					*rd = d->dayofmonth;
+					return (1);
+				}
+				d = d->nextday;
+			}
+			m = m->nextmonth;
+		}
+		return (0);
+	}
+	return (0);
+}
+
+int
+first_dayofweek_of_year(int yy)
+{
+	struct cal_year *y;
+
+	y = hyear;
+	while (y != NULL) {
+		if (y->year == yy)
+			return (y->firstdayofweek);
+		y = y->nextyear;
+	}
+
+	/* Should not happen */
+	return (-1);
+}
+
+int
+first_dayofweek_of_month(int yy, int mm)
+{
+	struct cal_year *y;
+	struct cal_month *m;
+
+	y = hyear;
+	while (y != NULL) {
+		if (y->year != yy) {
+			y = y->nextyear;
+			continue;
+		}
+		m = y->months;
+		while (m != NULL) {
+			if (m->month == mm)
+				return (m->firstdayofweek);
+			m = m->nextmonth;
+		}
+		/* Should not happen */
+		return (-1);
+	}
+
+	/* Should not happen */
+	return (-1);
 }

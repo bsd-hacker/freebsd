@@ -91,6 +91,7 @@ cal(void)
 	int count, i;
 	int month[MAXCOUNT];
 	int day[MAXCOUNT];
+	int year[MAXCOUNT];
 	int flags;
 	static int d_first = -1;
 	char buf[2048 + 1];
@@ -168,16 +169,16 @@ cal(void)
 			pp--;
 		p = *pp;
 		*pp = '\0';
-		if ((count = parsedaymonth(buf, month, day, &flags)) == 0)
+		if ((count = parsedaymonth(buf, year, month, day, &flags)) == 0)
 			continue;
+		printf("%s - count: %d\n", buf, count);
 		*pp = p;
 		/* Find the last tab */
 		while (pp[1] == '\t')
 			pp++;
 
 		if (d_first < 0)
-			d_first =
-			    (*nl_langinfo(D_MD_ORDER) == 'd');
+			d_first = (*nl_langinfo(D_MD_ORDER) == 'd');
 
 		for (i = 0; i < count; i++) {
 			tm.tm_mon = month[i] - 1;
