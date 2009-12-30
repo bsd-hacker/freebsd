@@ -41,6 +41,7 @@ static int checkmonth(char *s, int *len, int *offset, char **month);
 static char *getdayofweekname(int i);
 static int checkdayofweek(char *s, int *len, int *offset, char **dow);
 static int isonlydigits(char *s, int nostar);
+static int indextooffset(char *s);
 
 /*
  * Expected styles:
@@ -320,7 +321,7 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 	char modifierindex[100], specialday[100];
 	int idayofweek, imonth, idayofmonth, year, index;
 
-	int *mondays, d, m, dow, rm, rd;
+	int *mondays, d, m, dow, rm, rd, offset;
 
 	/*
 	 * CONVENTION
@@ -410,6 +411,42 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 			continue;
 		}
 
+		/* A certain dayofweek of a month */
+		if (*flags ==
+		    (F_MONTH | F_DAYOFWEEK | F_MODIFIERINDEX | F_VARIABLE)) {
+			offset = indextooffset(modifierindex);
+			dow = first_dayofweek_of_month(year, imonth);
+			d = (idayofweek - dow + 8) % 7;
+
+			if (offset > 0) {
+				while (d <= mondays[imonth]) {
+					if (--offset == 0
+					 && remember_ymd(year, imonth, d)) {
+						remember(index++, yearp,
+						    monthp, dayp, year, imonth,
+						    rd);
+						continue;
+					}
+					d += 7;
+				}
+				continue;
+			}
+			if (offset < 0) {
+				while (d <= mondays[imonth])
+					d += 7;
+				while (offset != 0) {
+					offset++;
+					d -= 7;
+				}
+				if (remember_ymd(year, imonth, d))
+					remember(index++, yearp,
+					    monthp, dayp, year, imonth,
+					    rd);
+				continue;
+			}
+			continue;
+		}
+
 		/* Every dayofweek of the month */
 		if (*flags == (F_DAYOFWEEK | F_MONTH | F_VARIABLE)) {
 			dow = first_dayofweek_of_month(year, imonth);
@@ -421,7 +458,6 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 				d += 7;
 			}
 			continue;
-
 		}
 
 		printf("Unprocessed:\n");
@@ -752,3 +788,20 @@ isonlydigits(char *s, int nostar)
 	return (1);
 }
 
+static int
+indextooffset(char *s)
+{
+	if (strcasecmp(s, "first") == 0)
+		return (1);
+	if (strcasecmp(s, "second") == 0)
+		return (2);
+	if (strcasecmp(s, "third") == 0)
+		return (3);
+	if (strcasecmp(s, "fourth") == 0)
+		return (4);
+	if (strcasecmp(s, "fifth") == 0)
+		return (5);
+	if (strcasecmp(s, "last") == 0)
+		return (-1);
+	return (0);
+}
