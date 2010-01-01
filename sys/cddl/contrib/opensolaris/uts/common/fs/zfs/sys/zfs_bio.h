@@ -32,6 +32,7 @@ $FreeBSD$
 #ifndef	_SYS_ZFS_BIO_H
 #define	_SYS_ZFS_BIO_H
 #include <sys/vdev_impl.h>	/* vd->vdev_vnode */
+#include <sys/spa_impl.h>	/* spa->spa_root_vdev */
 #include <sys/zfs_context.h>
 
 extern int zfs_page_cache_disable;
@@ -57,8 +58,8 @@ static __inline void
 zio_cache_valid(void *data, uint64_t size, zio_type_t type, vdev_t *vd) 
 {
 
-	if ((vd != NULL) && (type == ZIO_TYPE_READ) &&
-	    (size & PAGE_MASK) == 0)
+	if (((vd == NULL) || (vd->vdev_spa->spa_root_vdev == vd)) &&
+	    (type == ZIO_TYPE_READ) && (size & PAGE_MASK) == 0)
 		_zio_cache_valid(data, size);
 }
 
