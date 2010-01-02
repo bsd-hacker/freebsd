@@ -120,12 +120,17 @@ MALLOC_DEFINE(M_ZFS_BIO, "zfs_bio", "zfs buffer cache / vm");
 
 #define	B_DATA		B_00001000
 
-#define	ZB_EVICT_ALL		0x1
-#define	ZB_EVICT_BUFFERED	0x2
 
-#define	ZB_COPYIN		0x2
-#define	ZB_COPYOUT		0x3
-
+typedef enum {
+	ZB_EVICT_ALL		= 0x1,
+	ZB_EVICT_BUFFERED	= 0x2
+} zb_evict_type_t;
+	
+enum {
+	ZB_COPYIN		= 0x2,
+	ZB_COPYOUT		= 0x3
+};
+	
 #define	NO_TXG			0x0
 
 #define btos(nbytes)	((nbytes)>>DEV_BSHIFT)
@@ -546,6 +551,10 @@ zio_buf_blkno_remove_locked(vm_object_t object, buf_t bp)
 	 */
 	state->zss_resident_count--;
 	state->zss_generation++;
+
+#ifdef INVARIANTS
+	bp->b_right = bp->b_left = NULL;
+#endif	
 }
 
 static void
@@ -625,16 +634,8 @@ zio_buf_vm_object_evict(buf_t bp)
 	vm_page_lock_queues();
 	for (i = 0; i < bp->b_npages; i++) {
 		m = bp->b_pages[i];
-		vm_pageq_remove(m);
-	}
-	/*
-	 * remove pages from backing vm_object 
-	 */
-	for (i = 0; i < bp->b_npages; i++) {
-		m = bp->b_pages[i];
 		vm_page_remove(m);
 		m->valid = 0;
-		m->flags |= PG_UNMANAGED;
 	}
 	vm_page_unlock_queues();
 }
@@ -657,14 +658,7 @@ zio_buf_vm_object_insert(buf_t bp, struct vnode *vp,
 		if (valid)
 			m->valid = VM_PAGE_BITS_ALL;
 		vm_page_insert(m, object, start + i);
-		m->flags &= ~PG_UNMANAGED;
 	}
-	vm_page_lock_queues();
-	for (i = 0; i < bp->b_npages; i++) {
-		m = bp->b_pages[i];
-		vm_page_enqueue(PQ_INACTIVE, m);
-	}
-	vm_page_unlock_queues();
 }
 
 /*
@@ -680,7 +674,7 @@ zio_buf_vm_object_insert(buf_t bp, struct vnode *vp,
  */
 static void
 zio_buf_evict_overlap(vm_object_t object, daddr_t blkno, int size,
-    zio_spa_state_t state, uint64_t txg, int evict_op)
+    zio_spa_state_t state, uint64_t txg, zb_evict_type_t evict_op)
 {
 	buf_t root, tmpbp, bp_prev;
 	daddr_t blkno_end, tmpblkno, tmpblkno_end;
@@ -695,14 +689,21 @@ zio_buf_evict_overlap(vm_object_t object, daddr_t blkno, int size,
 
 	collisions = 0;
 	blkno_end = blkno + btos(size);
-	root = zio_buf_blkno_splay(blkno, root);
-	if (blkno < root->b_blkno)
-		tmpbp = TAILQ_PREV(root, cluster_list_head, b_freelist);
+	if ((root = zio_buf_blkno_splay(blkno, root)) == NULL)
+		goto done;
 
+	if ((blkno >= root->b_blkno) ||
+	    (tmpbp = TAILQ_PREV(root, cluster_list_head, b_freelist)) == NULL ||
+	    (blkno >= tmpbp->b_blkno + btos(tmpbp->b_bcount)))
+		tmpbp = root;
+	if ((blkno_end <= tmpbp->b_blkno) ||
+	    (blkno >= root->b_blkno + btos(root->b_bcount)))
+		goto done;
+	
 	/*
 	 * Find all existing buffers that overlap with this range
 	 */
-	bp_prev = tmpbp = tmpbp != NULL ? tmpbp : root;
+	bp_prev = tmpbp;
 	while (tmpbp != NULL && tmpbp->b_blkno < blkno_end) {
 		tmpblkno = tmpbp->b_blkno;
 		tmpblkno_end = tmpblkno + btos(tmpbp->b_bcount);
@@ -721,16 +722,16 @@ zio_buf_evict_overlap(vm_object_t object, daddr_t blkno, int size,
 		tmpbp = TAILQ_FIRST(&clh);
 		TAILQ_REMOVE(&clh, tmpbp, b_cluster.cluster_entry);
 		zio_buf_vm_object_evict(tmpbp);
-
+		tmpbp->b_bufobj = NULL;
 		tmpbp->b_flags &= ~B_VMIO;
-		state->zss_blkno_root = tmpbp;
+		tmpbp->b_blkno = tmpbp->b_lblkno = 0;
 		/*
 		 * move buffer to the unmanaged tree
 		 */
 		zio_buf_blkno_remove_locked(object, tmpbp);
 	}
 done:
-	if (!(collisions == 1 && tmpbp->b_blkno == blkno &&
+	if (!(collisions == 1 && tmpbp != NULL && tmpbp->b_blkno == blkno &&
 		tmpbp->b_bcount == size) && (evict_op == ZB_EVICT_ALL)) {
 		start = OFF_TO_IDX(stob(blkno));
 		end = start + OFF_TO_IDX(size);
@@ -753,12 +754,11 @@ done:
 static void
 vm_object_reference_pages(vm_object_t object, buf_t bp)
 {
-	uint64_t blkno, size;
 	vm_pindex_t start;
 	vm_page_t m;
 	int i;
 
-	start = OFF_TO_IDX(stob(blkno));
+	start = OFF_TO_IDX(stob(bp->b_blkno));
 	vm_page_lock_queues();
 	for (i = 0; i < bp->b_npages; i++) {
 		m = vm_page_lookup(object, start + i);
@@ -853,12 +853,24 @@ void
 zio_relse(void *data, size_t size)
 {
 	buf_t bp;
+	vm_page_t m;
+	int i;
 
 	bp = zio_buf_va_remove(data, size);
 
-	if (bp->b_flags & B_VMIO)
+	if (bp->b_flags & B_VMIO) {
+		vm_page_lock_queues();
+		for (i = 0; i < bp->b_npages; i++) {
+			m = bp->b_pages[i];
+			m->wire_count--;
+			m->flags &= ~PG_UNMANAGED;
+			vm_page_deactivate(m);
+			m->wire_count++; /* brelse assumes wire_count is set */
+		}
+		vm_page_unlock_queues();
 		zio_buf_blkno_remove(bp);
-
+	}
+	
 	if (bp->b_flags & B_MALLOC) {
 		if (bp->b_flags & B_DATA)
 			_zio_data_buf_free(bp->b_data, size);
@@ -869,8 +881,8 @@ zio_relse(void *data, size_t size)
 		CTR4(KTR_SPARE2, "arc_brelse() bp=%p flags %X"
 		    " size %ld blkno=%ld",
 		    bp, bp->b_flags, size, bp->b_blkno);
-
-		bp->b_flags |= B_ZFS;
+		bp->b_flags |= (B_ZFS|B_INVAL);
+		bp->b_flags &= ~B_CACHE;
 		brelse(bp);
 	}
 }
@@ -923,10 +935,15 @@ _zio_sync_cache(spa_t *spa, blkptr_t *blkp, uint64_t txg, void *data,
 		zio_buf_evict_overlap(object, blkno, size, state, NO_TXG,
 		    ZB_EVICT_ALL);
 		bp->b_blkno = bp->b_lblkno = blkno;
+		bp->b_bufobj = &vp->v_bufobj;
 		bp->b_flags |= B_VMIO;
 		bp->b_birth = txg;
 		bp->b_state = state;
 		zio_buf_blkno_insert(bp, state);
+		if (zio_op == ZIO_TYPE_WRITE) {
+			bp->b_flags |= B_CACHE;
+			bp->b_flags &= ~B_INVAL;
+		}
 		zio_buf_vm_object_insert(bp, vp, object, zio_op == ZIO_TYPE_WRITE);
 		VM_OBJECT_UNLOCK(object);
 	} else {
@@ -935,9 +952,11 @@ _zio_sync_cache(spa_t *spa, blkptr_t *blkp, uint64_t txg, void *data,
 		zio_buf_evict_overlap(object, blkno, size, state, NO_TXG,
 		    ZB_EVICT_BUFFERED);
 		bp->b_blkno = bp->b_lblkno = blkno;
-		bp->b_flags |= B_VMIO;
+		bp->b_bufobj = &vp->v_bufobj;
+		bp->b_flags |= (B_VMIO|B_CACHE);
+		bp->b_flags &= ~B_INVAL;
 		bp->b_birth = txg;
-		bp->b_state = state;		
+		bp->b_state = state;
 		zio_buf_blkno_insert(bp, state);
 		if (vm_pages_valid_locked(object, blkno, size)) {
 			for (i = 0; i < bp->b_npages; i++) {
@@ -966,8 +985,8 @@ _zio_cache_valid(void *data, uint64_t size)
 	if ((bp->b_flags & B_VMIO) == 0)
 		return;
 	for (i = 0; i < bp->b_npages; i++) {
-		KASSERT((bp->b_pages[i]->flags & PG_UNMANAGED) == 0,
-		    ("validating unmanaged page"));
+		KASSERT(bp->b_pages[i]->object != NULL,
+		    ("validating page not in object"));
 		bp->b_pages[i]->valid = VM_PAGE_BITS_ALL;
 	}
 	bp->b_flags &= ~B_INVAL;

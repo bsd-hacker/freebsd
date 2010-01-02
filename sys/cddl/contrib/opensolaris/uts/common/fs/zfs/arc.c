@@ -1531,7 +1531,7 @@ arc_evict(arc_state_t *state, spa_t *spa, int64_t bytes, boolean_t recycle,
 	ASSERT(state == arc_mru || state == arc_mfu);
 
 	evicted_state = (state == arc_mru) ? arc_mru_ghost : arc_mfu_ghost;
-	recycle = (bytes & PAGE_MASK) ? recycle : FALSE;
+	recycle = (bytes == 128*1024) ? FALSE : recycle;
 
 	if (type == ARC_BUFC_METADATA) {
 		offset = 0;
