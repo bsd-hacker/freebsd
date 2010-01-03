@@ -84,3 +84,16 @@ priv_check_cred(struct ucred *cred, int priv, int flags)
 }
 
 
+int
+vslock(void *addr, size_t len)
+{
+
+	return (0);
+}
+
+int
+vsunlock(void *addr, size_t len)
+{
+
+	return (0);
+}

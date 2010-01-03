@@ -11,6 +11,7 @@ LIB=	unet
 UNET_KERN_COMMON_OBJS +=	\
 	kern_mbuf.o		\
 	kern_subr.o		\
+	kern_sysctl.o		\
 	subr_eventhandler.o	\
 	subr_sbuf.o		\
 	uipc_accf.o		\
