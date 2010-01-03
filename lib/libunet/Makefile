@@ -13,6 +13,7 @@ UNET_KERN_COMMON_OBJS +=	\
 	kern_subr.o		\
 	subr_eventhandler.o	\
 	subr_sbuf.o		\
+	uipc_accf.o		\
 	uipc_mbuf.o		\
 	uipc_mbuf2.o		\
 	uipc_domain.o		\
@@ -20,6 +21,7 @@ UNET_KERN_COMMON_OBJS +=	\
 	uipc_socket.o
 
 UNET_NET_COMMON_OBJS +=		\
+	bpf.o			\
 	if.o			\
 	if_clone.o		\
 	if_dead.o		\
@@ -65,6 +67,7 @@ UNET_NETINET_COMMON_OBJS +=	\
 	udp_usrreq.o
 
 UNET_LIBKERN_COMMON_OBJS =	\
+	arc4random.o		\
 	bcmp.o			\
 	inet_aton.o		\
 	inet_ntoa.o		\
@@ -78,15 +81,18 @@ UNET_LIBKERN_COMMON_OBJS =	\
 	strtoul.o
 
 UNET_GLUE_COMMON_OBJS =		\
-	unet_init.o		\
-	unet_uipc_syscalls.o
+	unet_compat.o		\
+	unet_glue.o
+#	unet_init.o		\
+#	unet_uipc_syscalls.o
 
 
 UNET_COMMON_OBJS =			\
 	${UNET_KERN_COMMON_OBJS}	\
 	${UNET_LIBKERN_COMMON_OBJS}	\
 	${UNET_NET_COMMON_OBJS}		\
-	${UNET_NETINET_COMMON_OBJS}	
+	${UNET_NETINET_COMMON_OBJS}	\
+	${UNET_GLUE_COMMON_OBJS}
 
 UNET_COMMON_SRCS= ${UNET_COMMON_OBJS:C/.o$/.c/}
 
