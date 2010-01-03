@@ -9,10 +9,14 @@ PREFIX= ${.CURDIR}/../../sys
 LIB=	unet
 
 UNET_KERN_COMMON_OBJS +=	\
+	kern_environment.o	\
+	kern_event.o		\
 	kern_mbuf.o		\
 	kern_subr.o		\
 	kern_sysctl.o		\
 	subr_eventhandler.o	\
+	subr_param.o		\
+	subr_pcpu.o		\
 	subr_sbuf.o		\
 	uipc_accf.o		\
 	uipc_mbuf.o		\
@@ -26,7 +30,7 @@ UNET_NET_COMMON_OBJS +=		\
 	if.o			\
 	if_clone.o		\
 	if_dead.o		\
-	if_ether.o		\
+	if_ethersubr.o		\
 	if_loop.o		\
 	if_llatbl.o		\
 	netisr.o		\
@@ -38,6 +42,7 @@ UNET_NET_COMMON_OBJS +=		\
 	rtsock.o		
 
 UNET_NETINET_COMMON_OBJS +=	\
+	if_ether.o		\
 	igmp.o			\
 	in.o			\
 	in_cksum.o		\
@@ -86,7 +91,7 @@ UNET_GLUE_COMMON_OBJS =		\
 	unet_glue.o
 #	unet_init.o		\
 #	unet_uipc_syscalls.o
-
+#	unet_sys_generic.o
 
 UNET_COMMON_OBJS =			\
 	${UNET_KERN_COMMON_OBJS}	\
@@ -103,6 +108,7 @@ CFLAGS+=	-I${PREFIX}
 CFLAGS+=	-I.
 CFLAGS+=	-D_KERNEL
 CFLAGS+=	-DUNET
+CFLAGS+=	-DMAXUSERS=32
 CFLAGS+=	-fno-builtin
 
 .include <bsd.lib.mk>

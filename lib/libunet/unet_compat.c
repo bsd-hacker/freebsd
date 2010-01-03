@@ -42,3 +42,11 @@ crfree(struct ucred *cr)
 		free(cr);
 	}
 }       
+
+void
+panic(const char *fmt, ...)
+{
+
+	abort();
+}
+
