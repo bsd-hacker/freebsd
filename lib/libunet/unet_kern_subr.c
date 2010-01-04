@@ -144,3 +144,39 @@ out:
 		td->td_pflags &= ~TDP_DEADLKTREAT;
 	return (error);
 }
+
+int
+copyinuio(struct iovec *iovp, u_int iovcnt, struct uio **uiop)
+{
+	struct iovec *iov;
+	struct uio *uio;
+	u_int iovlen;
+	int error, i;
+
+	*uiop = NULL;
+	if (iovcnt > UIO_MAXIOV)
+		return (EINVAL);
+	iovlen = iovcnt * sizeof (struct iovec);
+	uio = malloc(iovlen + sizeof *uio, M_IOV, M_WAITOK);
+	iov = (struct iovec *)(uio + 1);
+	error = copyin(iovp, iov, iovlen);
+	if (error) {
+		free(uio, M_IOV);
+		return (error);
+	}
+	uio->uio_iov = iov;
+	uio->uio_iovcnt = iovcnt;
+	uio->uio_segflg = UIO_USERSPACE;
+	uio->uio_offset = -1;
+	uio->uio_resid = 0;
+	for (i = 0; i < iovcnt; i++) {
+		if (iov->iov_len > INT_MAX - uio->uio_resid) {
+			free(uio, M_IOV);
+			return (EINVAL);
+		}
+		uio->uio_resid += iov->iov_len;
+		iov++;
+	}
+	*uiop = uio;
+	return (0);
+}

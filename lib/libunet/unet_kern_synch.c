@@ -51,3 +51,19 @@ _sleep(void *ident, struct lock_object *lock, int priority,
 
 	panic("");
 }
+
+void
+wakeup(void *chan)
+{
+	panic("");
+	
+}
+
+
+void
+wakeup_one(void *chan)
+{
+
+	panic("");
+}
+

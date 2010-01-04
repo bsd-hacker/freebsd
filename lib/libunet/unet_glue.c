@@ -34,8 +34,6 @@ SYSCTL_NODE(, CTL_NET,	  net,    CTLFLAG_RW, 0,
 SYSCTL_NODE(, CTL_VM,	  vm,    CTLFLAG_RW, 0,
 	"Virtual memory");
 
-MALLOC_DEFINE(M_IOV, "iov", "large iov's");
-
 
 int	ticks;
 
@@ -596,8 +594,6 @@ securelevel_gt(struct ucred *cr, int level)
 }
 
 
-
-
 /**
  * @brief Send a 'notification' to userland, using standard ways
  */
@@ -612,5 +608,24 @@ void
 cpu_pcpu_init(struct pcpu *pcpu, int cpuid, size_t size)
 {
 	;	
+}
+
+/*
+ * Send a SIGIO or SIGURG signal to a process or process group using stored
+ * credentials rather than those of the current process.
+ */
+void
+pgsigio(sigiop, sig, checkctty)
+	struct sigio **sigiop;
+	int sig, checkctty;
+{
+
+	panic("");
+}
+
+void
+kproc_exit(int ecode)
+{
+	panic("");
 }
 

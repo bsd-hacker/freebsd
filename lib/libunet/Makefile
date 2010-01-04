@@ -15,12 +15,15 @@ UNET_KERN_COMMON_OBJS +=	\
 	kern_malloc.o		\
 	kern_mbuf.o		\
 	kern_module.o		\
+	kern_mtxpool.o		\
 	kern_sysctl.o		\
 	md5c.o			\
 	subr_eventhandler.o	\
 	subr_param.o		\
 	subr_pcpu.o		\
 	subr_sbuf.o		\
+	sys_generic.o		\
+	sys_socket.o		\
 	uipc_accf.o		\
 	uipc_mbuf.o		\
 	uipc_mbuf2.o		\
@@ -90,18 +93,22 @@ UNET_LIBKERN_COMMON_OBJS =	\
 	strncmp.o		\
 	strtoul.o
 
-UNET_RANDOM_COMMON_OBJS =	\
+UNET_OTHER_COMMON_OBJS =	\
 	harvest.o
 
 UNET_GLUE_COMMON_OBJS =		\
 	unet_compat.o		\
 	unet_glue.o		\
-	unet_init_main.c	\
+	unet_in_cksum.o	\
+	unet_init_main.o	\
 	unet_lock.o		\
 	unet_uma_core.c		\
+	unet_kern_condvar.o	\
+	unet_kern_descrip.o	\
 	unet_kern_intr.o	\
 	unet_kern_synch.o	\
 	unet_kern_subr.o	\
+	unet_kern_timeout.o	\
 	unet_subr_taskqueue.o
 
 #	unet_init.o		\
@@ -113,7 +120,7 @@ UNET_COMMON_OBJS =			\
 	${UNET_LIBKERN_COMMON_OBJS}	\
 	${UNET_NET_COMMON_OBJS}		\
 	${UNET_NETINET_COMMON_OBJS}	\
-	${UNET_RANDOM_COMMON_OBJS}	\
+	${UNET_OTHER_COMMON_OBJS}	\
 	${UNET_GLUE_COMMON_OBJS}
 
 UNET_COMMON_SRCS= ${UNET_COMMON_OBJS:C/.o$/.c/}
