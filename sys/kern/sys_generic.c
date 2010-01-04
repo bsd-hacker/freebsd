@@ -62,7 +62,9 @@ __FBSDID("$FreeBSD$");
 #include <sys/syscallsubr.h>
 #include <sys/sysctl.h>
 #include <sys/sysent.h>
+#ifndef UNET
 #include <sys/vnode.h>
+#endif
 #include <sys/bio.h>
 #include <sys/buf.h>
 #include <sys/condvar.h>
@@ -92,6 +94,35 @@ static void	seltdinit(struct thread *);
 static int	seltdwait(struct thread *, int);
 static void	seltdclear(struct thread *);
 
+#ifdef UNET
+static int
+dofileread(td, fd, fp, auio, offset, flags)
+	struct thread *td;
+	int fd;
+	struct file *fp;
+	struct uio *auio;
+	off_t offset;
+	int flags;
+{
+	panic("");
+	return (0);
+}
+
+
+static int
+dofilewrite(td, fd, fp, auio, offset, flags)
+	struct thread *td;
+	int fd;
+	struct file *fp;
+	struct uio *auio;
+	off_t offset;
+	int flags;
+{
+	
+	panic("");
+	return (0);
+}
+#endif
 /*
  * One seltd per-thread allocated on demand as needed.
  *
@@ -154,6 +185,7 @@ read(td, uap)
 	return(error);
 }
 
+#ifndef UNET
 /*
  * Positioned read system call
  */
@@ -200,6 +232,7 @@ freebsd6_pread(td, uap)
 	oargs.offset = uap->offset;
 	return (pread(td, &oargs));
 }
+#endif
 
 /*
  * Scatter read system call.
@@ -239,6 +272,7 @@ kern_readv(struct thread *td, int fd, struct uio *auio)
 	return (error);
 }
 
+#ifndef UNET
 /*
  * Scatter positioned read system call.
  */
@@ -334,6 +368,7 @@ dofileread(td, fd, fp, auio, offset, flags)
 	td->td_retval[0] = cnt;
 	return (error);
 }
+#endif
 
 #ifndef _SYS_SYSPROTO_H_
 struct write_args {
@@ -363,6 +398,7 @@ write(td, uap)
 	return(error);
 }
 
+#ifndef UNET
 /*
  * Positioned write system call.
  */
@@ -409,6 +445,7 @@ freebsd6_pwrite(td, uap)
 	oargs.offset = uap->offset;
 	return (pwrite(td, &oargs));
 }
+#endif
 
 /*
  * Gather write system call.
@@ -448,6 +485,7 @@ kern_writev(struct thread *td, int fd, struct uio *auio)
 	return (error);
 }
 
+#ifndef UNET
 /*
  * Gather positioned write system call.
  */
@@ -610,6 +648,7 @@ oftruncate(td, uap)
 	return (kern_ftruncate(td, uap->fd, uap->length));
 }
 #endif /* COMPAT_43 */
+#endif
 
 #ifndef _SYS_SYSPROTO_H_
 struct ioctl_args {
@@ -750,7 +789,7 @@ poll_no_poll(int events)
 
 	return (events & (POLLIN | POLLOUT | POLLRDNORM | POLLWRNORM));
 }
-
+#ifndef UNET
 int
 pselect(struct thread *td, struct pselect_args *uap)
 {
@@ -802,6 +841,7 @@ kern_pselect(struct thread *td, int nd, fd_set *in, fd_set *ou, fd_set *ex,
 	error = kern_select(td, nd, in, ou, ex, tvp, abi_nfdbits);
 	return (error);
 }
+#endif
 
 #ifndef _SYS_SYSPROTO_H_
 struct select_args {
