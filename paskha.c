@@ -1,4 +1,4 @@
-/*
+/*-
  * Copyright (C) 1993-1996 by Andrey A. Chernov, Moscow, Russia.
  * All rights reserved.
  *

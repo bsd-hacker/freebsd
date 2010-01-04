@@ -1,4 +1,4 @@
-/*
+/*-
  * Copyright (c) 1989, 1993, 1994
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -96,7 +96,6 @@ cal(void)
 	static int d_first = -1;
 	char buf[2048 + 1];
 	struct event *events[MAXCOUNT];
-	struct event *eventshead = NULL;
 	struct tm tm;
 	char dbuf[80];
 
@@ -167,12 +166,14 @@ cal(void)
 		/* Trim spaces in front of the tab */
 		while (isspace(pp[-1]))
 			pp--;
+
 		p = *pp;
 		*pp = '\0';
 		if ((count = parsedaymonth(buf, year, month, day, &flags)) == 0)
 			continue;
 		printf("%s - count: %d\n", buf, count);
 		*pp = p;
+
 		/* Find the last tab */
 		while (pp[1] == '\t')
 			pp++;
@@ -183,90 +184,17 @@ cal(void)
 		for (i = 0; i < count; i++) {
 			tm.tm_mon = month[i] - 1;
 			tm.tm_mday = day[i];
-			tm.tm_year = tp1.tm_year; /* unused */
+			tm.tm_year = year[i] - 1900;
 			(void)strftime(dbuf, sizeof(dbuf),
 			    d_first ? "%e %b" : "%b %e", &tm);
-			eventshead = event_add(eventshead, month[i], day[i],
-			    dbuf, (flags &= F_VARIABLE != 0) ? 1 : 0, pp);
-			events[i] = eventshead;
+			events[i] = event_add(year[i], month[i], day[i], dbuf,
+			    ((flags &= F_VARIABLE) != 0) ? 1 : 0, pp);
 		}
 	}
 
-	event_print_all(fp, eventshead);
+	event_print_all(fp);
 	closecal(fp);
 }
-
-#ifdef NOTDEF
-//int
-//getfield(char *p, int *flags)
-//{
-//	int val, var;
-//	char *start, savech;
-//
-//	if (*p == '\0')
-//		return(0);
-//
-//	/* Find the first digit, alpha or * */
-//	for (; !isdigit((unsigned char)*p) && !isalpha((unsigned char)*p)
-//               && *p != '*'; ++p)
-//	       ;
-//	if (*p == '*') {			/* `*' is current month */
-//		*flags |= F_ISMONTH;
-//		return (tp->tm_mon + 1);
-//	}
-//	if (isdigit((unsigned char)*p)) {
-//		val = strtol(p, &p, 10);	/* if 0, it's failure */
-//		for (; !isdigit((unsigned char)*p)
-//                       && !isalpha((unsigned char)*p) && *p != '*'; ++p);
-//		return (val);
-//	}
-//	for (start = p; isalpha((unsigned char)*++p););
-//
-//	/* Sunday-1 */
-//	if (*p == '+' || *p == '-')
-//		for(; isdigit((unsigned char)*++p);)
-//			;
-//
-//	savech = *p;
-//	*p = '\0';
-//
-//	/* Month */
-//	if ((val = getmonth(start)) != 0)
-//		*flags |= F_ISMONTH;
-//
-//	/* Day */
-//	else if ((val = getday(start)) != 0) {
-//		*flags |= F_ISDAY;
-//
-//		/* variable weekday */
-//		if ((var = getdayvar(start)) != 0) {
-//			if (var <= 5 && var >= -4)
-//				val += var * 10;
-//#ifdef DEBUG
-//			printf("var: %d\n", var);
-//#endif
-//		}
-//	}
-//
-//	/* Easter */
-//	else if ((val = geteaster(start, tp->tm_year + 1900)) != 0)
-//		*flags |= F_EASTER;
-//
-//	/* Paskha */
-//	else if ((val = getpaskha(start, tp->tm_year + 1900)) != 0)
-//		*flags |= F_EASTER;
-//
-//	/* undefined rest */
-//	else {
-//		*p = savech;
-//		return (0);
-//	}
-//	for (*p = savech; !isdigit((unsigned char)*p)
-//	   && !isalpha((unsigned char)*p) && *p != '*'; ++p)
-//		;
-//	return (val);
-//}
-#endif
 
 FILE *
 opencal(void)

@@ -1,4 +1,4 @@
-/*
+/*-
  * Copyright (c) 1989, 1993, 1994
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -83,10 +83,11 @@ extern int	year1, year2;
  * - Use event_continue() to add more text to the last added event
  * - Use event_print_all() to display them in time chronological order
  */
-struct event *event_add(struct event *, int, int, char *, int, char *);
+struct event *event_add(int, int, int, char *, int, char *);
 void	event_continue(struct event *events, char *txt);
-void	event_print_all(FILE *fp, struct event *events);
+void	event_print_all(FILE *fp);
 struct event {
+	int	year;
 	int	month;
 	int	day;
 	int	var;
@@ -140,3 +141,5 @@ int	remember_ymd(int y, int m, int d);
 int	remember_yd(int y, int d, int *rm, int *rd);
 int	first_dayofweek_of_year(int y);
 int	first_dayofweek_of_month(int y, int m);
+int	walkthrough_dates(struct event **e);
+void	addtodate(struct event *e, int year, int month, int day);

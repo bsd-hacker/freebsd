@@ -79,6 +79,8 @@ int	mondaytab[][14] = {
 	{0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31, 30},
 };
 
+static struct cal_day *	find_day(int yy, int mm, int dd);
+
 static void
 createdate(int y, int m, int d)
 {
@@ -282,7 +284,7 @@ remember_ymd(int yy, int mm, int dd)
 				if (d->dayofmonth == dd)
 					return (1);
 				d = d->nextday;
-				continue;;
+				continue;
 			}
 			return (0);
 		}
@@ -365,4 +367,86 @@ first_dayofweek_of_month(int yy, int mm)
 
 	/* Should not happen */
 	return (-1);
+}
+
+int
+walkthrough_dates(struct event **e)
+{
+	static struct cal_year *y = NULL;
+	static struct cal_month *m = NULL;
+	static struct cal_day *d = NULL;
+
+	if (y == NULL) {
+		y = hyear;
+		m = y->months;
+		d = m->days;
+		*e = d->events;
+		return (1);
+	};
+	if (d->nextday != NULL) {
+		d = d->nextday;
+		*e = d->events;
+		return (1);
+	}
+	if (m->nextmonth != NULL) {
+		m = m->nextmonth;
+		d = m->days;
+		*e = d->events;
+		return (1);
+	}
+	if (y->nextyear != NULL) {
+		y = y->nextyear;
+		m = y->months;
+		d = m->days;
+		*e = d->events;
+		return (1);
+	}
+
+	return (0);
+}
+
+static struct cal_day *
+find_day(int yy, int mm, int dd)
+{
+	struct cal_year *y;
+	struct cal_month *m;
+	struct cal_day *d;
+
+	if (debug_remember)
+		printf("remember_ymd: %d - %d - %d\n", yy, mm, dd);
+
+	y = hyear;
+	while (y != NULL) {
+		if (y->year != yy) {
+			y = y->nextyear;
+			continue;
+		}
+		m = y->months;
+		while (m != NULL) {
+			if (m->month != mm) {
+				m = m->nextmonth;
+				continue;
+			}
+			d = m->days;
+			while (d != NULL) {
+				if (d->dayofmonth == dd)
+					return (d);
+				d = d->nextday;
+				continue;
+			}
+			return (NULL);
+		}
+		return (NULL);
+	}
+	return (NULL);
+}
+
+void
+addtodate(struct event *e, int year, int month, int day)
+{
+	struct cal_day *d;
+
+	d = find_day(year, month, day);
+	e->next = d->events;
+	d->events = e;
 }

@@ -424,7 +424,7 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 					 && remember_ymd(year, imonth, d)) {
 						remember(index++, yearp,
 						    monthp, dayp, year, imonth,
-						    rd);
+						    d);
 						continue;
 					}
 					d += 7;
@@ -440,8 +440,7 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 				}
 				if (remember_ymd(year, imonth, d))
 					remember(index++, yearp,
-					    monthp, dayp, year, imonth,
-					    rd);
+					    monthp, dayp, year, imonth, d);
 				continue;
 			}
 			continue;
@@ -454,7 +453,7 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 			while (d <= mondays[imonth]) {
 				if (remember_ymd(year, imonth, d))
 					remember(index++, yearp, monthp, dayp,
-					    year, imonth, rd);
+					    year, imonth, d);
 				d += 7;
 			}
 			continue;

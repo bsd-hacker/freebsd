@@ -1,4 +1,4 @@
-/*
+/*-
  * Copyright (c) 1989, 1993, 1994
  *	The Regents of the University of California.  All rights reserved.
  *
@@ -44,8 +44,7 @@ __FBSDID("$FreeBSD: user/edwin/calendar/io.c 200813 2009-12-21 21:17:59Z edwin $
 #include "calendar.h"
 
 struct event *
-event_add(struct event *events, int month, int day,
-    char *date, int var, char *txt)
+event_add(int year, int month, int day, char *date, int var, char *txt)
 {
 	struct event *e;
 
@@ -68,9 +67,8 @@ event_add(struct event *events, int month, int day,
 	e->text = strdup(txt);
 	if (e->text == NULL)
 		errx(1, "event_add: cannot allocate memory");
-	e->next = events;
-
-	return e;
+	addtodate(e, year, month, day);
+	return (e);
 }
 
 void
@@ -102,42 +100,11 @@ event_continue(struct event *e, char *txt)
 }
 
 void
-event_print_all(FILE *fp, struct event *events)
+event_print_all(FILE *fp)
 {
-	struct event *e, *e_next;
-	int daycounter;
-	int day, month;
+	struct event *e;
 
-	/*
-	 * Print all events:
-	 * - We know the number of days to be counted (f_dayAfter + f_dayBefore)
-	 * - We know the current day of the year ("now" - f_dayBefore + counter)
-	 * - We know the number of days in the year (yrdays, set in settime())
-	 * - So we know the date on which the current daycounter is on the
-	 *   calendar in days and months.
-	 * - Go through the list of events, and print all matching dates
-	 */
-	for (daycounter = 0; daycounter <= f_dayAfter + f_dayBefore;
-	    daycounter++) {
-		day = tp1.tm_yday - f_dayBefore + daycounter;
-//		if (day < 0)
-//			day += yrdays;
-//		if (day >= yrdays)
-//			day -= yrdays;
-
-		/*
-		 * When we know the day of the year, we can determine the day
-		 * of the month and the month.
-		 */
-//		month = 1;
-//		while (month <= 12) {
-//			if (day <= cumdays[month])
-//				break;
-//			month++;
-//		}
-//		month--;
-//		day -= cumdays[month];
-
+	while (walkthrough_dates(&e) != 0) {
 #ifdef DEBUG
 		fprintf(stderr, "event_print_allmonth: %d, day: %d\n",
 		    month, day);
@@ -147,14 +114,10 @@ event_print_all(FILE *fp, struct event *events)
 		 * Go through all events and print the text of the matching
 		 * dates
 		 */
-		for (e = events; e != NULL; e = e_next) {
-			e_next = e->next;
-
-			if (month != e->month || day != e->day)
-				continue;
-
+		while (e != NULL) {
 			(void)fprintf(fp, "%s%c%s\n", e->date,
 			    e->var ? '*' : ' ', e->text);
+			e = e->next;
 		}
 	}
 }
