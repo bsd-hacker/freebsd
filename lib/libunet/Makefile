@@ -15,14 +15,12 @@ UNET_KERN_COMMON_OBJS +=	\
 	kern_malloc.o		\
 	kern_mbuf.o		\
 	kern_module.o		\
-	kern_subr.o		\
 	kern_sysctl.o		\
 	md5c.o			\
 	subr_eventhandler.o	\
 	subr_param.o		\
 	subr_pcpu.o		\
 	subr_sbuf.o		\
-	subr_taskqueue.o	\
 	uipc_accf.o		\
 	uipc_mbuf.o		\
 	uipc_mbuf2.o		\
@@ -99,8 +97,12 @@ UNET_GLUE_COMMON_OBJS =		\
 	unet_compat.o		\
 	unet_glue.o		\
 	unet_init_main.c	\
+	unet_lock.o		\
 	unet_uma_core.c		\
-	unet_kern_synch.o
+	unet_kern_intr.o	\
+	unet_kern_synch.o	\
+	unet_kern_subr.o	\
+	unet_subr_taskqueue.o
 
 #	unet_init.o		\
 #	unet_uipc_syscalls.o
@@ -124,6 +126,7 @@ CFLAGS+=	-D_KERNEL
 CFLAGS+=	-DUNET
 CFLAGS+=	-DMAXUSERS=32
 CFLAGS+=	-fno-builtin
+CFLAGS+=	-g
 
 .include <bsd.lib.mk>
 
