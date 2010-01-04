@@ -12,7 +12,6 @@ LIB=	unet
 UNET_KERN_COMMON_OBJS +=	\
 	kern_environment.o	\
 	kern_event.o		\
-	kern_malloc.o		\
 	kern_mbuf.o		\
 	kern_module.o		\
 	kern_mtxpool.o		\

@@ -21,6 +21,7 @@
 #include <vm/pmap.h>
 #include <vm/vm_object.h>
 #include <vm/vm_map.h>
+#include <vm/vm_extern.h>
 
 SYSCTL_NODE(, 0,	  sysctl, CTLFLAG_RW, 0,
 	"Sysctl internal magic");
@@ -33,6 +34,9 @@ SYSCTL_NODE(, CTL_NET,	  net,    CTLFLAG_RW, 0,
 
 SYSCTL_NODE(, CTL_VM,	  vm,    CTLFLAG_RW, 0,
 	"Virtual memory");
+
+MALLOC_DEFINE(M_DEVBUF, "devbuf", "device driver memory");
+MALLOC_DEFINE(M_TEMP, "temp", "misc temporary data buffers");
 
 
 int	ticks;
@@ -162,11 +166,10 @@ vslock(void *addr, size_t len)
 	return (0);
 }
 
-int
+void
 vsunlock(void *addr, size_t len)
 {
 
-	return (0);
 }
 
 
@@ -629,3 +632,90 @@ kproc_exit(int ecode)
 	panic("");
 }
 
+vm_offset_t
+kmem_alloc_contig(vm_map_t map, vm_size_t size, int flags, vm_paddr_t low,
+    vm_paddr_t high, unsigned long alignment, unsigned long boundary,
+    vm_memattr_t memattr)
+{
+	return (kmem_malloc(map, size, flags));
+}
+
+void
+malloc_init(void *data)
+{
+#ifdef notyet
+	struct malloc_type_internal *mtip;
+	struct malloc_type *mtp;
+
+	KASSERT(cnt.v_page_count != 0, ("malloc_register before vm_init"));
+
+	mtp = data;
+	if (mtp->ks_magic != M_MAGIC)
+		panic("malloc_init: bad malloc type magic");
+
+	mtip = uma_zalloc(mt_zone, M_WAITOK | M_ZERO);
+	mtp->ks_handle = mtip;
+
+	mtx_lock(&malloc_mtx);
+	mtp->ks_next = kmemstatistics;
+	kmemstatistics = mtp;
+	kmemcount++;
+	mtx_unlock(&malloc_mtx);
+#endif
+}
+
+void
+malloc_uninit(void *data)
+{
+#ifdef notyet
+	struct malloc_type_internal *mtip;
+	struct malloc_type_stats *mtsp;
+	struct malloc_type *mtp, *temp;
+	uma_slab_t slab;
+	long temp_allocs, temp_bytes;
+	int i;
+
+	mtp = data;
+	KASSERT(mtp->ks_magic == M_MAGIC,
+	    ("malloc_uninit: bad malloc type magic"));
+	KASSERT(mtp->ks_handle != NULL, ("malloc_deregister: cookie NULL"));
+
+	mtx_lock(&malloc_mtx);
+	mtip = mtp->ks_handle;
+	mtp->ks_handle = NULL;
+	if (mtp != kmemstatistics) {
+		for (temp = kmemstatistics; temp != NULL;
+		    temp = temp->ks_next) {
+			if (temp->ks_next == mtp) {
+				temp->ks_next = mtp->ks_next;
+				break;
+			}
+		}
+		KASSERT(temp,
+		    ("malloc_uninit: type '%s' not found", mtp->ks_shortdesc));
+	} else
+		kmemstatistics = mtp->ks_next;
+	kmemcount--;
+	mtx_unlock(&malloc_mtx);
+
+	/*
+	 * Look for memory leaks.
+	 */
+	temp_allocs = temp_bytes = 0;
+	for (i = 0; i < MAXCPU; i++) {
+		mtsp = &mtip->mti_stats[i];
+		temp_allocs += mtsp->mts_numallocs;
+		temp_allocs -= mtsp->mts_numfrees;
+		temp_bytes += mtsp->mts_memalloced;
+		temp_bytes -= mtsp->mts_memfreed;
+	}
+	if (temp_allocs > 0 || temp_bytes > 0) {
+		printf("Warning: memory type %s leaked memory on destroy "
+		    "(%ld allocations, %ld bytes leaked).\n", mtp->ks_shortdesc,
+		    temp_allocs, temp_bytes);
+	}
+
+	slab = vtoslab((vm_offset_t) mtip & (~UMA_SLAB_MASK));
+	uma_zfree_arg(mt_zone, mtip, slab);
+#endif
+}
