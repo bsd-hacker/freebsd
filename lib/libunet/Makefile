@@ -5,6 +5,7 @@ PREFIX= ${.CURDIR}/../../sys
 .PATH: ${PREFIX}/libkern
 .PATH: ${PREFIX}/net
 .PATH: ${PREFIX}/netinet
+.PATH: ${PREFIX}/dev/random
 
 LIB=	unet
 
@@ -14,10 +15,12 @@ UNET_KERN_COMMON_OBJS +=	\
 	kern_mbuf.o		\
 	kern_subr.o		\
 	kern_sysctl.o		\
+	md5c.o			\
 	subr_eventhandler.o	\
 	subr_param.o		\
 	subr_pcpu.o		\
 	subr_sbuf.o		\
+	subr_taskqueue.o	\
 	uipc_accf.o		\
 	uipc_mbuf.o		\
 	uipc_mbuf2.o		\
@@ -51,6 +54,7 @@ UNET_NETINET_COMMON_OBJS +=	\
 	in_proto.o		\
 	in_rmx.o		\
 	ip_encap.o		\
+	ip_fastfwd.o		\
 	ip_icmp.o		\
 	ip_id.o			\
 	ip_input.o		\
@@ -86,6 +90,9 @@ UNET_LIBKERN_COMMON_OBJS =	\
 	strncmp.o		\
 	strtoul.o
 
+UNET_RANDOM_COMMON_OBJS =	\
+	harvest.o
+
 UNET_GLUE_COMMON_OBJS =		\
 	unet_compat.o		\
 	unet_glue.o
@@ -98,6 +105,7 @@ UNET_COMMON_OBJS =			\
 	${UNET_LIBKERN_COMMON_OBJS}	\
 	${UNET_NET_COMMON_OBJS}		\
 	${UNET_NETINET_COMMON_OBJS}	\
+	${UNET_RANDOM_COMMON_OBJS}	\
 	${UNET_GLUE_COMMON_OBJS}
 
 UNET_COMMON_SRCS= ${UNET_COMMON_OBJS:C/.o$/.c/}

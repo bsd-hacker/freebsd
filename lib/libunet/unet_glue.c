@@ -3,8 +3,10 @@
 #include <sys/param.h>
 #include <sys/types.h>
 #include <sys/kernel.h>
+#include <sys/limits.h>
 #include <sys/malloc.h>
 #include <sys/refcount.h>
+#include <sys/resourcevar.h>
 #include <sys/sysctl.h>
 #include <sys/systm.h>
 #include <sys/jail.h>
@@ -36,6 +38,7 @@ volatile int smp_started;
 u_int mp_maxid;
 
 int cold;
+struct mtx Giant;
 
 static void	timevalfix(struct timeval *);
 
@@ -253,6 +256,41 @@ ratecheck(struct timeval *lasttime, const struct timeval *mininterval)
 	return (rv);
 }
 
+/*
+ * ppsratecheck(): packets (or events) per second limitation.
+ *
+ * Return 0 if the limit is to be enforced (e.g. the caller
+ * should drop a packet because of the rate limitation).
+ *
+ * maxpps of 0 always causes zero to be returned.  maxpps of -1
+ * always causes 1 to be returned; this effectively defeats rate
+ * limiting.
+ *
+ * Note that we maintain the struct timeval for compatibility
+ * with other bsd systems.  We reuse the storage and just monitor
+ * clock ticks for minimal overhead.  
+ */
+int
+ppsratecheck(struct timeval *lasttime, int *curpps, int maxpps)
+{
+	int now;
+
+	/*
+	 * Reset the last time and counter if this is the first call
+	 * or more than a second has passed since the last update of
+	 * lasttime.
+	 */
+	now = ticks;
+	if (lasttime->tv_sec == 0 || (u_int)(now - lasttime->tv_sec) >= hz) {
+		lasttime->tv_sec = now;
+		*curpps = 1;
+		return (maxpps != 0);
+	} else {
+		(*curpps)++;		/* NB: ignore potential overflow */
+		return (maxpps < 0 || *curpps < maxpps);
+	}
+}
+
 void
 bintime(struct bintime *bt)
 {
@@ -274,4 +312,152 @@ getmicrotime(struct timeval *tvp)
 	panic("");
 }
 
+/*
+ * Compute number of ticks in the specified amount of time.
+ */
+int
+tvtohz(tv)
+	struct timeval *tv;
+{
+	register unsigned long ticks;
+	register long sec, usec;
 
+	/*
+	 * If the number of usecs in the whole seconds part of the time
+	 * difference fits in a long, then the total number of usecs will
+	 * fit in an unsigned long.  Compute the total and convert it to
+	 * ticks, rounding up and adding 1 to allow for the current tick
+	 * to expire.  Rounding also depends on unsigned long arithmetic
+	 * to avoid overflow.
+	 *
+	 * Otherwise, if the number of ticks in the whole seconds part of
+	 * the time difference fits in a long, then convert the parts to
+	 * ticks separately and add, using similar rounding methods and
+	 * overflow avoidance.  This method would work in the previous
+	 * case but it is slightly slower and assumes that hz is integral.
+	 *
+	 * Otherwise, round the time difference down to the maximum
+	 * representable value.
+	 *
+	 * If ints have 32 bits, then the maximum value for any timeout in
+	 * 10ms ticks is 248 days.
+	 */
+	sec = tv->tv_sec;
+	usec = tv->tv_usec;
+	if (usec < 0) {
+		sec--;
+		usec += 1000000;
+	}
+	if (sec < 0) {
+#ifdef DIAGNOSTIC
+		if (usec > 0) {
+			sec++;
+			usec -= 1000000;
+		}
+		printf("tvotohz: negative time difference %ld sec %ld usec\n",
+		       sec, usec);
+#endif
+		ticks = 1;
+	} else if (sec <= LONG_MAX / 1000000)
+		ticks = (sec * 1000000 + (unsigned long)usec + (tick - 1))
+			/ tick + 1;
+	else if (sec <= LONG_MAX / hz)
+		ticks = sec * hz
+			+ ((unsigned long)usec + (tick - 1)) / tick + 1;
+	else
+		ticks = LONG_MAX;
+	if (ticks > INT_MAX)
+		ticks = INT_MAX;
+	return ((int)ticks);
+}
+
+int
+copyin(const void *uaddr, void *kaddr, size_t len)
+{
+
+	memcpy(kaddr, uaddr, len);
+
+	return (0);
+}
+
+int
+copyout(const void *kaddr, void *uaddr, size_t len)
+{
+	
+	memcpy(uaddr, kaddr, len);
+
+	return (0);
+}
+
+
+int
+copystr(const void *kfaddr, void *kdaddr, size_t len, size_t *done)
+{
+	size_t bytes;
+	
+	bytes = strlcpy(kdaddr, kfaddr, len);
+	if (done != NULL)
+		*done = bytes;
+
+	return (0);
+}
+
+
+
+int
+copyinstr(const void *uaddr, void *kaddr, size_t len, size_t *done)
+{	
+	size_t bytes;
+	
+	bytes = strlcpy(kaddr, uaddr, len);
+	if (done != NULL)
+		*done = bytes;
+
+	return (0);
+}
+
+
+int
+subyte(void *base, int byte)
+{
+
+	*(char *)base = (uint8_t)byte;
+	return (0);
+}
+
+
+
+/*
+ * Change the total socket buffer size a user has used.
+ */
+int
+chgsbsize(uip, hiwat, to, max)
+	struct	uidinfo	*uip;
+	u_int  *hiwat;
+	u_int	to;
+	rlim_t	max;
+{
+	int diff;
+
+	diff = to - *hiwat;
+	if (diff > 0) {
+		if (atomic_fetchadd_long(&uip->ui_sbsize, (long)diff) + diff > max) {
+			atomic_subtract_long(&uip->ui_sbsize, (long)diff);
+			return (0);
+		}
+	} else {
+		atomic_add_long(&uip->ui_sbsize, (long)diff);
+		if (uip->ui_sbsize < 0)
+			printf("negative sbsize for uid = %d\n", uip->ui_uid);
+	}
+	*hiwat = to;
+	return (1);
+}
+
+int
+useracc(void *addr, int len, int rw)
+{
+	return (1);
+}
+
+       
