@@ -2,9 +2,9 @@
 PREFIX= ${.CURDIR}/../../sys
 
 .PATH: ${PREFIX}/kern
-.PATH: ${PREFIX}/libkern
 .PATH: ${PREFIX}/net
 .PATH: ${PREFIX}/netinet
+.PATH: ${PREFIX}/libkern
 .PATH: ${PREFIX}/dev/random
 
 LIB=	unet
@@ -12,7 +12,9 @@ LIB=	unet
 UNET_KERN_COMMON_OBJS +=	\
 	kern_environment.o	\
 	kern_event.o		\
+	kern_malloc.o		\
 	kern_mbuf.o		\
+	kern_module.o		\
 	kern_subr.o		\
 	kern_sysctl.o		\
 	md5c.o			\
@@ -95,7 +97,11 @@ UNET_RANDOM_COMMON_OBJS =	\
 
 UNET_GLUE_COMMON_OBJS =		\
 	unet_compat.o		\
-	unet_glue.o
+	unet_glue.o		\
+	unet_init_main.c	\
+	unet_uma_core.c		\
+	unet_kern_synch.o
+
 #	unet_init.o		\
 #	unet_uipc_syscalls.o
 #	unet_sys_generic.o

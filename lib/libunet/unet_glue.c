@@ -3,16 +3,24 @@
 #include <sys/param.h>
 #include <sys/types.h>
 #include <sys/kernel.h>
+#include <sys/bus.h>
+#include <sys/event.h>
+#include <sys/jail.h>
 #include <sys/limits.h>
 #include <sys/malloc.h>
 #include <sys/refcount.h>
 #include <sys/resourcevar.h>
 #include <sys/sysctl.h>
 #include <sys/systm.h>
-#include <sys/jail.h>
 #include <sys/priv.h>
 #include <sys/time.h>
+#include <sys/ucred.h>
 
+#include <vm/vm.h>
+#include <vm/vm_param.h>
+#include <vm/pmap.h>
+#include <vm/vm_object.h>
+#include <vm/vm_map.h>
 
 SYSCTL_NODE(, 0,	  sysctl, CTLFLAG_RW, 0,
 	"Sysctl internal magic");
@@ -23,9 +31,16 @@ SYSCTL_NODE(, CTL_KERN,	  kern,   CTLFLAG_RW, 0,
 SYSCTL_NODE(, CTL_NET,	  net,    CTLFLAG_RW, 0,
 	"Network, (see socket.h)");
 
+SYSCTL_NODE(, CTL_VM,	  vm,    CTLFLAG_RW, 0,
+	"Virtual memory");
+
 MALLOC_DEFINE(M_IOV, "iov", "large iov's");
-MALLOC_DEFINE(M_DEVBUF, "devbuf", "device driver memory");
-MALLOC_DEFINE(M_TEMP, "temp", "misc temporary data buffers");
+
+
+int	ticks;
+
+time_t time_second = 1;
+time_t time_uptime = 1;
 
 /* This is used in modules that need to work in both SMP and UP. */
 cpumask_t all_cpus;
@@ -36,6 +51,18 @@ int mp_maxcpus = MAXCPU;
 
 volatile int smp_started;
 u_int mp_maxid;
+
+long first_page = 0;
+
+struct vmmeter cnt;
+vm_map_t kernel_map=0;
+vm_map_t kmem_map=0;
+
+struct vm_object kernel_object_store;
+struct vm_object kmem_object_store;
+
+struct filterops fs_filtops;
+struct filterops sig_filtops;
 
 int cold;
 struct mtx Giant;
@@ -98,6 +125,18 @@ prison_local_ip4(struct ucred *cred, struct in_addr *ia)
 
 int
 prison_remote_ip4(struct ucred *cred, struct in_addr *ia)
+{
+
+	return (0);
+}
+
+
+/*
+ * Return 1 if the passed credential is in a jail and that jail does not
+ * have its own virtual network stack, otherwise 0.
+ */
+int
+jailed_without_vnet(struct ucred *cred)
 {
 
 	return (0);
@@ -454,10 +493,124 @@ chgsbsize(uip, hiwat, to, max)
 	return (1);
 }
 
+
+/*
+ * Return the current (soft) limit for a particular system resource.
+ * The which parameter which specifies the index into the rlimit array
+ */
+rlim_t
+lim_cur(struct proc *p, int which)
+{
+	struct rlimit rl;
+
+	lim_rlimit(p, which, &rl);
+	return (rl.rlim_cur);
+}
+
+/*
+ * Return a copy of the entire rlimit structure for the system limit
+ * specified by 'which' in the rlimit structure pointed to by 'rlp'.
+ */
+void
+lim_rlimit(struct proc *p, int which, struct rlimit *rlp)
+{
+
+#if 0
+	PROC_LOCK_ASSERT(p, MA_OWNED);
+	KASSERT(which >= 0 && which < RLIM_NLIMITS,
+	    ("request for invalid resource limit"));
+	*rlp = p->p_limit->pl_rlimit[which];
+	if (p->p_sysent->sv_fixlimit != NULL)
+		p->p_sysent->sv_fixlimit(rlp, which);
+#endif
+}
+
 int
 useracc(void *addr, int len, int rw)
 {
 	return (1);
 }
 
+
        
+struct proc *
+zpfind(pid_t pid)
+{
+
+	return (NULL);
+}
+
+int
+p_cansee(struct thread *td, struct proc *p)
+{
+
+	return (0);
+}
+
+struct proc *
+pfind(pid_t pid)
+{
+
+	return (NULL);
+}
+
+/*
+ * Fill in a struct xucred based on a struct ucred.
+ */
+void
+cru2x(struct ucred *cr, struct xucred *xcr)
+{
+#if 0
+	int ngroups;
+
+	bzero(xcr, sizeof(*xcr));
+	xcr->cr_version = XUCRED_VERSION;
+	xcr->cr_uid = cr->cr_uid;
+
+	ngroups = MIN(cr->cr_ngroups, XU_NGROUPS);
+	xcr->cr_ngroups = ngroups;
+	bcopy(cr->cr_groups, xcr->cr_groups,
+	    ngroups * sizeof(*cr->cr_groups));
+#endif
+}
+
+int
+cr_cansee(struct ucred *u1, struct ucred *u2)
+{
+
+	return (0);
+}
+
+int
+cr_canseeinpcb(struct ucred *cred, struct inpcb *inp)
+{
+
+	return (0);
+}
+
+int
+securelevel_gt(struct ucred *cr, int level)
+{
+
+	return (0);
+}
+
+
+
+
+/**
+ * @brief Send a 'notification' to userland, using standard ways
+ */
+void
+devctl_notify(const char *system, const char *subsystem, const char *type,
+    const char *data)
+{
+	;	
+}
+
+void
+cpu_pcpu_init(struct pcpu *pcpu, int cpuid, size_t size)
+{
+	;	
+}
+

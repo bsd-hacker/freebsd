@@ -6,7 +6,7 @@
 #include <sys/ucred.h>
 
 struct malloc_type;
-
+#if 0
 void *
 unet_malloc(unsigned long size, struct malloc_type *type, int flags)
 {
@@ -20,7 +20,7 @@ unet_free(void *addr, struct malloc_type *type)
 
 	free(addr);
 }
-
+#endif
 /*
  * Claim another reference to a ucred structure.
  */
