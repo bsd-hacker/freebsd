@@ -145,6 +145,7 @@ __FBSDID("$FreeBSD$");
 static int	soreceive_rcvoob(struct socket *so, struct uio *uio,
 		    int flags);
 
+#ifndef UNET
 static void	filt_sordetach(struct knote *kn);
 static int	filt_soread(struct knote *kn, long hint);
 static void	filt_sowdetach(struct knote *kn);
@@ -157,7 +158,7 @@ static struct filterops soread_filtops =
 	{ 1, NULL, filt_sordetach, filt_soread };
 static struct filterops sowrite_filtops =
 	{ 1, NULL, filt_sowdetach, filt_sowrite };
-
+#endif
 uma_zone_t socket_zone;
 so_gen_t	so_gencnt;	/* generation count for sockets */
 
@@ -2920,9 +2921,11 @@ sopoll_generic(struct socket *so, int events, struct ucred *active_cred,
 	return (revents);
 }
 
+
 int
 soo_kqfilter(struct file *fp, struct knote *kn)
 {
+#ifndef UNET
 	struct socket *so = kn->kn_fp->f_data;
 	struct sockbuf *sb;
 
@@ -2946,8 +2949,12 @@ soo_kqfilter(struct file *fp, struct knote *kn)
 	knlist_add(&sb->sb_sel.si_note, kn, 1);
 	sb->sb_flags |= SB_KNOTE;
 	SOCKBUF_UNLOCK(sb);
+#else
+	panic("soo_kqfilter not supported");
+#endif
 	return (0);
 }
+
 
 /*
  * Some routines that return EOPNOTSUPP for entry points that are not
@@ -3089,6 +3096,7 @@ pru_sopoll_notsupp(struct socket *so, int events, struct ucred *cred,
 	return EOPNOTSUPP;
 }
 
+#ifndef UNET
 static void
 filt_sordetach(struct knote *kn)
 {
@@ -3168,7 +3176,7 @@ filt_solisten(struct knote *kn, long hint)
 	kn->kn_data = so->so_qlen;
 	return (! TAILQ_EMPTY(&so->so_comp));
 }
-
+#endif
 int
 socheckuid(struct socket *so, uid_t uid)
 {
