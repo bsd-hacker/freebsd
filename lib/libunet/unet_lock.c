@@ -44,15 +44,14 @@ mtx_sysinit(void *arg)
 }
 
 void
-_mtx_lock_sleep(struct mtx *m, uintptr_t tid, int opts,
-    const char *file, int line)
+_mtx_lock_flags(struct mtx *m, int opts, const char *file, int line)
 {
 
 	panic("");
 }
 
 void
-_mtx_unlock_sleep(struct mtx *m, int opts, const char *file, int line)
+_mtx_unlock_flags(struct mtx *m, int opts, const char *file, int line)
 {
 
 	panic("");
