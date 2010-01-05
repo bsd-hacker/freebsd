@@ -156,6 +156,10 @@ void	panic(const char *, ...) __printflike(1, 2);
 void	panic(const char *, ...) __dead2 __printflike(1, 2);
 #endif
 
+#ifdef UNET
+#define log syslog
+#endif
+
 void	cpu_boot(int);
 void	cpu_flush_dcache(void *, size_t);
 void	cpu_rootconf(void);
