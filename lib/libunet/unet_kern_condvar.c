@@ -16,15 +16,18 @@ __FBSDID("$FreeBSD$");
 #include <sys/sleepqueue.h>
 #include <sys/resourcevar.h>
 
+#include <pthread.h>
+
 /*
  * Initialize a condition variable.  Must be called before use.
  */
 void
 cv_init(struct cv *cvp, const char *desc)
 {
-
+	pthread_condattr_t ca;
+    
 	cvp->cv_description = desc;
-	cvp->cv_waiters = 0;
+	pthread_cond_init(&cvp->cv_cond, &ca);
 }
 
 /*
@@ -34,14 +37,8 @@ cv_init(struct cv *cvp, const char *desc)
 void
 cv_destroy(struct cv *cvp)
 {
-#ifdef INVARIANTS
-	struct sleepqueue *sq;
 
-	sleepq_lock(cvp);
-	sq = sleepq_lookup(cvp);
-	sleepq_release(cvp);
-	KASSERT(sq == NULL, ("%s: associated sleep queue non-empty", __func__));
-#endif
+	pthread_cond_destroy(&cvp->cv_cond);
 }
 
 /*
@@ -54,8 +51,8 @@ cv_destroy(struct cv *cvp)
 void
 _cv_wait(struct cv *cvp, struct lock_object *lock)
 {
-	panic("");
-	
+
+	pthread_cond_wait(&cvp->cv_cond, &lock->lo_mutex);
 }
 
 /*
@@ -67,9 +64,8 @@ _cv_wait(struct cv *cvp, struct lock_object *lock)
 int
 _cv_wait_sig(struct cv *cvp, struct lock_object *lock)
 {
-	panic("");
 
-	return (0);
+	return (pthread_cond_wait(&cvp->cv_cond, &lock->lo_mutex));
 }
 
 /*
@@ -80,9 +76,19 @@ _cv_wait_sig(struct cv *cvp, struct lock_object *lock)
 int
 _cv_timedwait(struct cv *cvp, struct lock_object *lock, int timo)
 {
-	panic("");
-	
-	return (0);
+	struct timespec abstime;
+	int secs = timo/hz;
+	int nsecs = (timo%hz)*((1000*1000*1000)/hz);
+
+	abstime.tv_sec = secs;
+	abstime.tv_nsec = nsecs;
+
+	/* XXX
+	 * how do we handle getting interrupted by a signal?
+	 * set the sigmask?
+	 */
+	return (pthread_cond_timedwait(&cvp->cv_cond, &lock->lo_mutex,
+		    &abstime));
 }
 
 /*
@@ -94,9 +100,15 @@ _cv_timedwait(struct cv *cvp, struct lock_object *lock, int timo)
 int
 _cv_timedwait_sig(struct cv *cvp, struct lock_object *lock, int timo)
 {
-	panic("");
+	struct timespec abstime;
+	int secs = timo/hz;
+	int nsecs = (timo%hz)*((1000*1000*1000)/hz);
 
-	return (0);
+	abstime.tv_sec = secs;
+	abstime.tv_nsec = nsecs;
+
+	return (pthread_cond_timedwait(&cvp->cv_cond, &lock->lo_mutex,
+		    &abstime));
 }
 
 /*
@@ -106,6 +118,6 @@ _cv_timedwait_sig(struct cv *cvp, struct lock_object *lock, int timo)
 void
 cv_broadcastpri(struct cv *cvp, int pri)
 {
-	panic("");
-	
+
+	pthread_cond_broadcast(&cvp->cv_cond);
 }
