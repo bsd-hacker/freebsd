@@ -331,27 +331,6 @@ ppsratecheck(struct timeval *lasttime, int *curpps, int maxpps)
 	}
 }
 
-void
-bintime(struct bintime *bt)
-{
-
-	panic("");
-}
-	
-void
-getmicrouptime(struct timeval *tvp)
-{
-
-	panic("");
-}
-
-void
-getmicrotime(struct timeval *tvp)
-{
-
-	panic("");
-}
-
 /*
  * Compute number of ticks in the specified amount of time.
  */
@@ -613,6 +592,7 @@ cpu_pcpu_init(struct pcpu *pcpu, int cpuid, size_t size)
 	;	
 }
 
+
 /*
  * Send a SIGIO or SIGURG signal to a process or process group using stored
  * credentials rather than those of the current process.
@@ -622,14 +602,47 @@ pgsigio(sigiop, sig, checkctty)
 	struct sigio **sigiop;
 	int sig, checkctty;
 {
-
 	panic("");
+#ifdef notyet
+	ksiginfo_t ksi;
+	struct sigio *sigio;
+
+	ksiginfo_init(&ksi);
+	ksi.ksi_signo = sig;
+	ksi.ksi_code = SI_KERNEL;
+
+	SIGIO_LOCK();
+	sigio = *sigiop;
+	if (sigio == NULL) {
+		SIGIO_UNLOCK();
+		return;
+	}
+	if (sigio->sio_pgid > 0) {
+		PROC_LOCK(sigio->sio_proc);
+		if (CANSIGIO(sigio->sio_ucred, sigio->sio_proc->p_ucred))
+			psignal(sigio->sio_proc, sig);
+		PROC_UNLOCK(sigio->sio_proc);
+	} else if (sigio->sio_pgid < 0) {
+		struct proc *p;
+
+		PGRP_LOCK(sigio->sio_pgrp);
+		LIST_FOREACH(p, &sigio->sio_pgrp->pg_members, p_pglist) {
+			PROC_LOCK(p);
+			if (CANSIGIO(sigio->sio_ucred, p->p_ucred) &&
+			    (checkctty == 0 || (p->p_flag & P_CONTROLT)))
+				psignal(p, sig);
+			PROC_UNLOCK(p);
+		}
+		PGRP_UNLOCK(sigio->sio_pgrp);
+	}
+	SIGIO_UNLOCK();
+#endif
 }
 
 void
 kproc_exit(int ecode)
 {
-	panic("");
+	panic("kproc_exit unsupported");
 }
 
 vm_offset_t
@@ -718,4 +731,22 @@ malloc_uninit(void *data)
 	slab = vtoslab((vm_offset_t) mtip & (~UMA_SLAB_MASK));
 	uma_zfree_arg(mt_zone, mtip, slab);
 #endif
+}
+
+void
+knote(struct knlist *list, long hint, int lockflags)
+{
+	
+}
+
+void
+knlist_destroy(struct knlist *knl)
+{
+	
+}
+
+void
+knlist_init_mtx(struct knlist *knl, struct mtx *lock)
+{
+	
 }

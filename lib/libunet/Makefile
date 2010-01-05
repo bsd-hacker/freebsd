@@ -11,7 +11,6 @@ LIB=	unet
 
 UNET_KERN_COMMON_OBJS +=	\
 	kern_environment.o	\
-	kern_event.o		\
 	kern_mbuf.o		\
 	kern_module.o		\
 	kern_mtxpool.o		\
@@ -116,8 +115,9 @@ UNET_COMMON_SRCS= ${UNET_COMMON_OBJS:C/.o$/.c/}
 
 SRCS=	${UNET_COMMON_SRCS}
 
-CFLAGS+=	-I${PREFIX}
+CFLAGS+=	-I./include
 CFLAGS+=	-I./include/opt
+CFLAGS+=	-I${PREFIX}
 CFLAGS+=	-D_KERNEL
 CFLAGS+=	-DUNET
 CFLAGS+=	-DMAXUSERS=32

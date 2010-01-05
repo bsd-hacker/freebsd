@@ -39,80 +39,20 @@ struct taskqueue {
 #define	TQ_FLAGS_PENDING	(1 << 2)
 
 
-struct taskqueue *
-taskqueue_create(const char *name, int mflags,
-				    taskqueue_enqueue_fn enqueue,
-    void *context)
-{
-
-	panic("");
-	return (NULL);
-	
-}
-
-int
-taskqueue_start_threads(struct taskqueue **tqp, int count, int pri,
-    const char *name, ...)
-{
-
-
-	panic("");
-	return (0);
-}
-
-
-void
-taskqueue_run(struct taskqueue *queue)
-{
-
-	panic("");
-}
-
+struct taskqueue *taskqueue_swi;
 
 int
 taskqueue_enqueue(struct taskqueue *queue, struct task *task)
 {
 
-	panic("");
+	panic("should be unreachable");
 	return (0);
 }
-
 
 void
 taskqueue_drain(struct taskqueue *queue, struct task *task)
 {
 	
-	panic("");
+	panic("should be unreachable");
 }
-
-void
-taskqueue_free(struct taskqueue *queue)
-{
-
-	panic("");	
-}
-
-void
-taskqueue_thread_enqueue(void *context)
-{
-	panic("");
-	
-}
-
-static void
-taskqueue_swi_enqueue(void *context)
-{
-	swi_sched(taskqueue_ih, 0);
-}
-
-static void
-taskqueue_swi_run(void *dummy)
-{
-	taskqueue_run(taskqueue_swi);
-}
-
-TASKQUEUE_DEFINE(swi, taskqueue_swi_enqueue, NULL,
-		 swi_add(NULL, "task queue", taskqueue_swi_run, NULL, SWI_TQ,
-		     INTR_MPSAFE, &taskqueue_ih)); 
-
 
