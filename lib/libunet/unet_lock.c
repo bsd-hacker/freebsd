@@ -277,19 +277,29 @@ _rm_runlock(struct rmlock *rm,  struct rm_priotracker *tracker)
 }
 
 
+struct lock_class lock_class_sx = {
+	.lc_name = "sx",
+	.lc_flags = LC_SLEEPLOCK | LC_SLEEPABLE | LC_RECURSABLE | LC_UPGRADABLE,
+#ifdef DDB
+	.lc_ddb_show = db_show_sx,
+#endif
+#ifdef KDTRACE_HOOKS
+	.lc_owner = owner_sx,
+#endif
+};
 
 void
 sx_init_flags(struct sx *sx, const char *description, int opts)
 {
 
-	panic("");
+	rw_init_flags((struct rwlock *)sx, description, opts);
 }
 
 void
 sx_destroy(struct sx *sx)
 {
 
-	panic("");
+	rw_destroy((struct rwlock *)sx);
 }
 
 int
@@ -297,7 +307,7 @@ _sx_xlock_hard(struct sx *sx, uintptr_t tid, int opts,
     const char *file, int line)
 {
 	
-	panic("");
+	_rw_wlock((struct rwlock *)sx, file, line);
 	return (0);
 }
 
@@ -305,7 +315,7 @@ int
 _sx_slock_hard(struct sx *sx, int opts, const char *file, int line)
 {
 	
-	panic("");
+	_rw_rlock((struct rwlock *)sx, file, line);
 	return (0);
 }
 
@@ -314,21 +324,20 @@ _sx_xunlock_hard(struct sx *sx, uintptr_t tid, const char *file, int
     line)
 {
 	
-	panic("");
+	_rw_wunlock((struct rwlock *)sx, file, line);
 }
 
 void
 _sx_sunlock_hard(struct sx *sx, const char *file, int line)
 {
 	
-	panic("");
+	_rw_runlock((struct rwlock *)sx, file, line);
 }
 
 int
 _sx_try_xlock(struct sx *sx, const char *file, int line)
 {
-	
-	panic("");
-	return (0);
+
+	return (_rw_try_wlock((struct rwlock *)sx, file, line));
 }
 
