@@ -42,6 +42,7 @@ static char *getdayofweekname(int i);
 static int checkdayofweek(char *s, int *len, int *offset, char **dow);
 static int isonlydigits(char *s, int nostar);
 static int indextooffset(char *s);
+static int parseoffset(char *s);
 
 /*
  * Expected styles:
@@ -320,6 +321,7 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 	char month[100], dayofmonth[100], dayofweek[100], modifieroffset[100];
 	char modifierindex[100], specialday[100];
 	int idayofweek, imonth, idayofmonth, year, index;
+	int ieaster, ipaskha;
 
 	int *mondays, d, m, dow, rm, rd, offset;
 
@@ -355,6 +357,7 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 	index = 0;
 	for (year = year1; year <= year2; year++) {
 		mondays = mondaytab[isleap(year)];
+		ieaster = easter(year);
 
 		/* Same day every year */
 		if (*flags == (F_MONTH | F_DAYOFMONTH)) {
@@ -459,6 +462,30 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 			continue;
 		}
 
+		/* Easter */
+		if ((*flags & ~F_MODIFIEROFFSET) ==
+		    (F_SPECIALDAY | F_VARIABLE | F_EASTER)) {
+			offset = 0;
+			if ((*flags & F_MODIFIEROFFSET) != 0)
+				offset = parseoffset(modifieroffset);
+			if (remember_yd(year, ieaster + offset, &rm, &rd))
+				remember(index++, yearp, monthp, dayp,
+				    year, rm, rd);
+			continue;
+		}
+
+		/* Paskha */
+		if ((*flags & ~F_MODIFIEROFFSET) ==
+		    (F_SPECIALDAY | F_VARIABLE | F_PASKHA)) {
+			offset = 0;
+			if ((*flags & F_MODIFIEROFFSET) != 0)
+				offset = parseoffset(modifieroffset);
+			if (remember_yd(year, ipaskha + offset, &rm, &rd))
+				remember(index++, yearp, monthp, dayp,
+				    year, rm, rd);
+			continue;
+		}
+
 		printf("Unprocessed:\n");
 		debug_determinestyle(2, date, *flags, month, imonth,
 		    dayofmonth, idayofmonth, dayofweek, idayofweek,
@@ -467,175 +494,6 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 	}
 
 	return (index);
-
-#ifdef NOTDEF
-	if (!(v1 = getfield(date, &flags)))
-		return (0);
-
-	/* Easter or Easter depending days */
-	if (flags & F_EASTER)
-		day = v1 - 1; /* days since January 1 [0-365] */
-
-	 /*
-	  * 1. {Weekday,Day} XYZ ...
-	  *
-	  *    where Day is > 12
-	  */
-	else if (flags & F_ISDAY || v1 > 12) {
-
-		/* found a day; day: 1-31 or weekday: 1-7 */
-		day = v1;
-
-		/* {Day,Weekday} {Month,Monthname} ... */
-		/* if no recognizable month, assume just a day alone
-		 * in other words, find month or use current month */
-		if (!(month = getfield(endp, &flags)))
-			month = tp->tm_mon + 1;
-	}
-
-	/* 2. {Monthname} XYZ ... */
-	else if (flags & F_ISMONTH) {
-		month = v1;
-
-		/* Monthname {day,weekday} */
-		/* if no recognizable day, assume the first day in month */
-		if (!(day = getfield(endp, &flags)))
-			day = 1;
-	}
-
-	/* Hm ... */
-	else {
-		v2 = getfield(endp, &flags);
-
-		/*
-		 * {Day} {Monthname} ...
-		 * where Day <= 12
-		 */
-		if (flags & F_ISMONTH) {
-			day = v1;
-			month = v2;
-			*varp = 0;
-		}
-
-		/* {Month} {Weekday,Day} ...  */
-		else {
-			/* F_ISDAY set, v2 > 12, or no way to tell */
-			month = v1;
-			/* if no recognizable day, assume the first */
-			day = v2 ? v2 : 1;
-			*varp = 0;
-		}
-	}
-
-	/* convert Weekday into *next*  Day,
-	 * e.g.: 'Sunday' -> 22
-	 *       'SundayLast' -> ??
-	 */
-	if (flags & F_ISDAY) {
-#ifdef DEBUG
-		fprintf(stderr, "\nday: %d %s month %d\n", day, endp, month);
-#endif
-
-		*varp = 1;
-		/* variable weekday, SundayLast, MondayFirst ... */
-		if (day < 0 || day >= 10) {
-
-			/* negative offset; last, -4 .. -1 */
-			if (day < 0) {
-				v1 = day / 10 - 1;	/* offset -4 ... -1 */
-				day = 10 + (day % 10);	/* day 1 ... 7 */
-
-				/* day, eg '22nd' */
-				v2 = tp->tm_mday +
-				    (((day - 1) - tp->tm_wday + 7) % 7);
-
-				/* (month length - day)	/ 7 + 1 */
-				if (cumdays[month + 1] - cumdays[month] >= v2
-				    && ((int)((cumdays[month + 1] -
-				    cumdays[month] - v2) / 7) + 1) == -v1)
-					day = v2;	/* bingo ! */
-
-				/* set to yesterday */
-				else {
-					day = tp->tm_mday - 1;
-					if (day == 0)
-						return (0);
-				}
-			}
-
-			/* first, second ... +1 ... +5 */
-			else {
-				/* offset: +1 (first Sunday) ... */
-				v1 = day / 10;
-				day = day % 10;
-
-				/* day, eg '22th' */
-				v2 = tp->tm_mday +
-				    (((day - 1) - tp->tm_wday + 7) % 7);
-
-				/* Hurrah! matched */
-				if (((v2 - 1 + 7) / 7) == v1 )
-					day = v2;
-
-				else {
-					/* set to yesterday */
-					day = tp->tm_mday - 1;
-					if (day == 0)
-						return (0);
-				}
-			}
-		} else {
-			/* wired */
-			day = tp->tm_mday + (((day - 1) - tp->tm_wday + 7) % 7);
-			*varp = 1;
-		}
-	}
-
-	if (!(flags & F_EASTER)) {
-		if (day + cumdays[month] > cumdays[month + 1]) {
-			/* off end of month, adjust */
-			day -= (cumdays[month + 1] - cumdays[month]);
-			/* next year */
-			if (++month > 12)
-				month = 1;
-		}
-		*monthp = month;
-		*dayp = day;
-		day = cumdays[month] + day;
-	} else {
-		for (v1 = 0; day > cumdays[v1]; v1++)
-			;
-		*monthp = v1 - 1;
-		*dayp = day - cumdays[v1 - 1];
-		*varp = 1;
-	}
-
-#ifdef DEBUG
-	fprintf(stderr, "day2: day %d(%d-%d) yday %d\n",
-	    *dayp, day, cumdays[month], tp->tm_yday);
-#endif
-
-	/* When days before or days after is specified */
-	/* no year rollover */
-	if (day >= tp->tm_yday - f_dayBefore &&
-	    day <= tp->tm_yday + f_dayAfter)
-		return (1);
-
-	/* next year */
-	if (tp->tm_yday + f_dayAfter >= yrdays) {
-		int end = tp->tm_yday + f_dayAfter - yrdays;
-		if (day <= end)
-			return (1);
-	}
-
-	/* previous year */
-	if (tp->tm_yday - f_dayBefore < 0) {
-		int before = yrdays + (tp->tm_yday - f_dayBefore);
-		if (day >= before)
-			return (1);
-	}
-#endif
-	return (0);
 }
 
 static char *
@@ -803,4 +661,11 @@ indextooffset(char *s)
 	if (strcasecmp(s, "last") == 0)
 		return (-1);
 	return (0);
+}
+
+static int
+parseoffset(char *s)
+{
+
+	return strtol(s, NULL, 10);
 }
