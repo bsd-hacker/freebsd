@@ -39,9 +39,7 @@ int
 intr_event_bind(struct intr_event *ie, u_char cpu)
 {
 
-	panic("");
-	return (0);
-		    
+	return (ENOTSUP);
 }
 
 

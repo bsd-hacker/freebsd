@@ -81,8 +81,8 @@ struct callout_cpu cc_cpu;
 #define	CC_CPU(cpu)	&cc_cpu
 #define	CC_SELF()	&cc_cpu
 #endif
-#define	CC_LOCK(cc)	mtx_lock_spin(&(cc)->cc_lock)
-#define	CC_UNLOCK(cc)	mtx_unlock_spin(&(cc)->cc_lock)
+#define	CC_LOCK(cc)	mtx_lock(&(cc)->cc_lock)
+#define	CC_UNLOCK(cc)	mtx_unlock(&(cc)->cc_lock)
 
 static int timeout_cpu;
 

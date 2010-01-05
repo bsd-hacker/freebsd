@@ -284,6 +284,25 @@ SYSCTL_PROC(_vm, OID_AUTO, zone_count, CTLFLAG_RD|CTLTYPE_INT,
 SYSCTL_PROC(_vm, OID_AUTO, zone_stats, CTLFLAG_RD|CTLTYPE_STRUCT,
     0, 0, sysctl_vm_zone_stats, "s,struct uma_type_header", "Zone Stats");
 
+void
+lock_thread_bucket(void)
+{
+
+	panic("");
+}
+
+void
+unlock_thread_bucket(void)
+{
+
+	panic("");
+}
+	       
+
+#define critical_enter()	lock_thread_bucket()
+#define critical_exit()		unlock_thread_bucket()
+
+
 /*
  * This routine checks to see whether or not it's safe to enable buckets.
  */

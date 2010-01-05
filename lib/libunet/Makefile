@@ -80,17 +80,7 @@ UNET_NETINET_COMMON_OBJS +=	\
 
 UNET_LIBKERN_COMMON_OBJS =	\
 	arc4random.o		\
-	bcmp.o			\
-	inet_aton.o		\
-	inet_ntoa.o		\
-	memcmp.o		\
-	strcat.o		\
-	strcmp.o		\
-	strcpy.o		\
-	strlcpy.o		\
-	strlen.o		\
-	strncmp.o		\
-	strtoul.o
+	strlcpy.o
 
 UNET_OTHER_COMMON_OBJS =	\
 	harvest.o
@@ -101,15 +91,15 @@ UNET_GLUE_COMMON_OBJS =		\
 	unet_in_cksum.o	\
 	unet_init_main.o	\
 	unet_lock.o		\
-	unet_uma_core.c		\
 	unet_kern_condvar.o	\
 	unet_kern_descrip.o	\
 	unet_kern_intr.o	\
 	unet_kern_synch.o	\
 	unet_kern_subr.o	\
 	unet_kern_timeout.o	\
-	unet_subr_taskqueue.o
-
+	unet_subr_taskqueue.o	\
+	unet_uma_core.c
+#
 #	unet_init.o		\
 #	unet_uipc_syscalls.o
 #	unet_sys_generic.o
