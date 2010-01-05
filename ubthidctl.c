@@ -22,9 +22,6 @@
  * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
  * ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
- *
- * $FreeBSD$
- *
  */
 
 /*
@@ -33,9 +30,7 @@
  */
 
 #include <sys/cdefs.h>
-#ifdef __FreeBSD__
 __FBSDID("$FreeBSD$");
-#endif
 
 #include <err.h>
 #include <fcntl.h>
@@ -46,7 +41,8 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/ioctl.h>
 
-#include <dev/usb/usb.h>
+#include <dev/usb/usb_ioctl.h>
+#include <dev/usb/usbdi.h>
 
 typedef enum {
 	HCI = 0,
@@ -81,7 +77,7 @@ finddevice(tblentry_t tblentry)
 	dev.devno = -1;
 	
 	for (i = 0; i < 20; i++) {
-		snprintf(filename, sizeof(filename) - 1, "/dev/usb%d", i); 
+		snprintf(filename, sizeof(filename) - 1, "/dev/ugen%d.1", i); 
 		fd = open(filename, O_RDONLY);
 		if (fd < 0)
 			return dev;
@@ -171,7 +167,7 @@ switchmode(const char *dev, const int devaddr, hidmode_t mode)
 	USETW(req.ucr_request.wIndex, 0);
 	USETW(req.ucr_request.wLength, 0);
 	req.ucr_data = NULL;
-	req.ucr_flags = USBD_SHORT_XFER_OK;
+	req.ucr_flags = USB_SHORT_XFER_OK;
 	req.ucr_request.bmRequestType = UT_VENDOR;
 	req.ucr_request.bRequest = 0;
 
