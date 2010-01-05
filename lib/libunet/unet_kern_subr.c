@@ -15,6 +15,7 @@
 #include <sys/sysctl.h>
 #include <sys/uio.h>
 
+#include <pthread.h>
 /*
  * General routine to allocate a hash table with control of memory flags.
  */
@@ -77,7 +78,7 @@ void
 uio_yield(void)
 {
 
-	panic("");
+	pthread_yield();
 }
 
 int
