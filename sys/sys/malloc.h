@@ -39,6 +39,11 @@
 #include <sys/queue.h>
 #include <sys/_lock.h>
 #include <sys/_mutex.h>
+#ifdef UNET
+#define	malloc	unet_malloc
+#define	free	unet_free
+#endif
+
 
 #define	MINALLOCSIZE	UMA_SMALLEST_UNIT
 
