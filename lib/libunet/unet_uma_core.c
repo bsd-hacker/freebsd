@@ -92,28 +92,6 @@ __FBSDID("$FreeBSD$");
 
 #undef UMA_MD_SMALL_ALLOC
 
-uma_slab_t
-vtoslab(vm_offset_t va)
-{
-
-	panic("");
-	return (NULL);
-}
-
-void
-vsetslab(vm_offset_t va, uma_slab_t slab)
-{
-
-	panic("");
-}
-
-
-void
-vsetobj(vm_offset_t va, vm_object_t obj)
-{
-
-	panic("");
-}
 /*
  * This is the zone and keg from which all zones are spawned.  The idea is that
  * even the zone & keg heads are allocated from the allocator, so we use the
