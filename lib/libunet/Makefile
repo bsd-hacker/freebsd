@@ -17,6 +17,7 @@ UNET_KERN_COMMON_OBJS +=	\
 	kern_sysctl.o		\
 	md5c.o			\
 	subr_eventhandler.o	\
+	subr_lock.o		\
 	subr_param.o		\
 	subr_pcpu.o		\
 	subr_sbuf.o		\
@@ -120,6 +121,7 @@ CFLAGS+=	-I./include/opt
 CFLAGS+=	-I${PREFIX}
 CFLAGS+=	-D_KERNEL
 CFLAGS+=	-DMUTEX_NOINLINE
+CFLAGS+=	-DRWLOCK_NOINLINE
 CFLAGS+=	-DUNET
 CFLAGS+=	-DMAXUSERS=32
 CFLAGS+=	-fno-builtin

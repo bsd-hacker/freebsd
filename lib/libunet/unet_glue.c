@@ -67,7 +67,6 @@ struct filterops fs_filtops;
 struct filterops sig_filtops;
 
 int cold;
-struct mtx Giant;
 
 static void	timevalfix(struct timeval *);
 
