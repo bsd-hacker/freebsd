@@ -144,6 +144,14 @@ cal(void)
 			npaskha.len = strlen(buf + 7);
 			continue;
 		}
+		if (strncasecmp(buf, "ChineseNewYear=", 15) == 0 && buf[15]) {
+			if (ncny.name != NULL)
+				free(ncny.name);
+			if ((ncny.name = strdup(buf + 15)) == NULL)
+				errx(1, "cannot allocate memory");
+			ncny.len = strlen(buf + 15);
+			continue;
+		}
 
 		/*
 		 * If the line starts with a tab, the data has to be
