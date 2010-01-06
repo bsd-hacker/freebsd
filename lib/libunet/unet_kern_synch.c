@@ -11,6 +11,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/ktr.h>
 #include <sys/lock.h>
+#include <sys/malloc.h>
 #include <sys/mutex.h>
 #include <sys/proc.h>
 #include <sys/resourcevar.h>
@@ -20,14 +21,75 @@ __FBSDID("$FreeBSD$");
 #include <sys/smp.h>
 #include <sys/sx.h>
 #include <sys/sysctl.h>
-#include <sys/sysproto.h>
 #include <sys/vmmeter.h>
 #ifdef KTRACE
 #include <sys/uio.h>
 #include <sys/ktrace.h>
 #endif
 
+#include <pthread.h>
+
 int	hogticks;
+
+typedef struct sleep_entry {
+	void 		*chan;
+	const char 	*wmesg;
+	pthread_cond_t	cond;
+	int		waiters;
+} *sleep_entry_t;
+
+static void synch_setup(void *dummy);
+SYSINIT(synch_setup, SI_SUB_KICK_SCHEDULER, SI_ORDER_FIRST, synch_setup,
+    NULL);
+
+static struct se_head *se_active;
+static u_long se_hashmask;
+static pthread_mutex_t synch_lock;
+
+static void
+synch_setup(void *arg)
+{
+	pthread_mutexattr_t attr;
+
+	pthread_mutexattr_init(&attr);
+	pthread_mutex_init(&synch_lock, &attr);
+	se_active = hashinit(64, M_TEMP, &se_hashmask);
+}
+
+sleep_entry_t
+se_alloc(void *chan, const char *wmesg)
+{
+	sleep_entry_t se;
+	pthread_condattr_t attr;
+
+	se = malloc(sizeof(*se), M_DEVBUF, 0);
+	se->chan = chan;
+	se->wmesg = wmesg;
+	pthread_condattr_init(&attr);
+	pthread_cond_init(&se->cond, &attr);
+
+	/* insert in hash table */
+	return (se);
+}
+
+sleep_entry_t
+se_lookup(void *chan)
+{
+	/* lookup in hashtable */
+	return (NULL);
+}
+
+void
+se_free(sleep_entry_t se)
+{
+
+	if (--se->waiters == 0) {
+		/* unlink se */
+		pthread_cond_destroy(&se->cond);
+		free(se, M_DEVBUF);
+	}
+}
+		
 
 /*
  * General sleep call.  Suspends the current thread until a wakeup is
@@ -48,22 +110,49 @@ int
 _sleep(void *ident, struct lock_object *lock, int priority,
     const char *wmesg, int timo)
 {
+	sleep_entry_t se;
+	int rv;
+	struct timespec ts;
 
-	panic("");
+	pthread_mutex_lock(&synch_lock);
+	if ((se = se_lookup(ident)) != NULL)
+		se->waiters++;
+	else
+		se = se_alloc(ident, wmesg);
+	pthread_mutex_unlock(&synch_lock);
+	
+	if (timo)
+		rv = pthread_cond_timedwait(&se->cond, &lock->lo_mutex, &ts);
+	else
+		rv = pthread_cond_wait(&se->cond, &lock->lo_mutex);
+
+	pthread_mutex_lock(&synch_lock);
+	se_free(se);
+	pthread_mutex_unlock(&synch_lock);	
+
+	return (rv);
 }
 
 void
 wakeup(void *chan)
 {
-	panic("");
-	
+	sleep_entry_t se;
+
+	pthread_mutex_lock(&synch_lock);
+	if ((se = se_lookup(chan)) != NULL)
+		pthread_cond_broadcast(&se->cond);
+	pthread_mutex_unlock(&synch_lock);
 }
 
 
 void
 wakeup_one(void *chan)
 {
+	sleep_entry_t se;
 
-	panic("");
+	pthread_mutex_lock(&synch_lock);
+	if ((se = se_lookup(chan)) != NULL)
+		pthread_cond_signal(&se->cond);
+	pthread_mutex_unlock(&synch_lock);
 }
 
