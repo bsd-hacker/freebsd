@@ -69,7 +69,7 @@ const char *calendarNoMail = "nomail";	/* don't sent mail if this file exist */
 
 char	path[MAXPATHLEN];
 
-struct fixs neaster, npaskha, ncny;
+struct fixs neaster, npaskha, ncny, nfullmoon, nnewmoon;
 
 struct iovec header[] = {
 	{"From: ", 6},
@@ -150,6 +150,22 @@ cal(void)
 			if ((ncny.name = strdup(buf + 15)) == NULL)
 				errx(1, "cannot allocate memory");
 			ncny.len = strlen(buf + 15);
+			continue;
+		}
+		if (strncasecmp(buf, "NewMoon=", 8) == 0 && buf[8]) {
+			if (nnewmoon.name != NULL)
+				free(nnewmoon.name);
+			if ((nnewmoon.name = strdup(buf + 8)) == NULL)
+				errx(1, "cannot allocate memory");
+			nnewmoon.len = strlen(buf + 8);
+			continue;
+		}
+		if (strncasecmp(buf, "FullMoon=", 9) == 0 && buf[9]) {
+			if (nfullmoon.name != NULL)
+				free(nfullmoon.name);
+			if ((nfullmoon.name = strdup(buf + 9)) == NULL)
+				errx(1, "cannot allocate memory");
+			nfullmoon.len = strlen(buf + 9);
 			continue;
 		}
 

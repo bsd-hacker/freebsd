@@ -47,28 +47,32 @@ extern struct tm tp1, tp2;
 extern time_t t1, t2;
 extern const char *calendarFile;
 extern int yrdays;
-extern struct fixs neaster, npaskha, ncny;
+extern struct fixs neaster, npaskha, ncny, nfullmoon, nnewmoon;
 
 #define isleap(y) ((((y) % 4) == 0 && ((y) % 100) != 0) || ((y) % 400) == 0)
 
 /* Flags to determine the returned values by determinestyle() in parsedata.c */
-#define	F_NONE			0x000
-#define	F_MONTH			0x001
-#define	F_DAYOFWEEK		0x002
-#define	F_DAYOFMONTH		0x004
-#define	F_MODIFIERINDEX		0x008
-#define	F_MODIFIEROFFSET	0x010
-#define	F_SPECIALDAY		0x020
-#define	F_ALLMONTH		0x040
-#define	F_ALLDAY		0x080
-#define	F_VARIABLE		0x100
-#define	F_EASTER		0x200
-#define	F_CNY			0x400
-#define	F_PASKHA		0x800
+#define	F_NONE			0x0000
+#define	F_MONTH			0x0001
+#define	F_DAYOFWEEK		0x0002
+#define	F_DAYOFMONTH		0x0004
+#define	F_MODIFIERINDEX		0x0008
+#define	F_MODIFIEROFFSET	0x0010
+#define	F_SPECIALDAY		0x0020
+#define	F_ALLMONTH		0x0040
+#define	F_ALLDAY		0x0080
+#define	F_VARIABLE		0x0100
+#define	F_EASTER		0x0200
+#define	F_CNY			0x0400
+#define	F_PASKHA		0x0800
+#define	F_NEWMOON		0x1000
+#define	F_FULLMOON		0x2000
 
 #define	STRING_EASTER	"Easter"
 #define	STRING_PASKHA	"Paskha"
 #define	STRING_CNY	"ChineseNewYear"
+#define STRING_NEWMOON	"NewMoon"
+#define STRING_FULLMOON	"FullMoon"
 
 extern int	debug;		/* show parsing of the input */
 extern int	f_dayAfter;	/* days after current date */
@@ -143,3 +147,8 @@ int	first_dayofweek_of_year(int y);
 int	first_dayofweek_of_month(int y, int m);
 int	walkthrough_dates(struct event **e);
 void	addtodate(struct event *e, int year, int month, int day);
+
+/* pom.c */
+#define	MAXMOONS	15
+void	pom(int year, int *fms, int *nms);
+

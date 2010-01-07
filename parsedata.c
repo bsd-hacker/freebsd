@@ -121,6 +121,14 @@ determinestyle(char *date, int *flags,
 			CHECKSPECIAL(date, STRING_CNY, strlen(STRING_CNY),
 			    F_CNY);
 			CHECKSPECIAL(date, ncny.name, ncny.len, F_CNY);
+			CHECKSPECIAL(date, STRING_NEWMOON,
+			    strlen(STRING_NEWMOON), F_NEWMOON);
+			CHECKSPECIAL(date, nnewmoon.name, nnewmoon.len,
+			    F_NEWMOON);
+			CHECKSPECIAL(date, STRING_FULLMOON,
+			    strlen(STRING_FULLMOON), F_FULLMOON);
+			CHECKSPECIAL(date, nfullmoon.name, nfullmoon.len,
+			    F_FULLMOON);
 			CHECKSPECIAL(date, STRING_PASKHA,
 			    strlen(STRING_PASKHA), F_PASKHA);
 			CHECKSPECIAL(date, npaskha.name, npaskha.len, F_PASKHA);
@@ -321,7 +329,9 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 	char month[100], dayofmonth[100], dayofweek[100], modifieroffset[100];
 	char modifierindex[100], specialday[100];
 	int idayofweek, imonth, idayofmonth, year, index;
+
 	int ieaster, ipaskha;
+	int ifullmoon[MAXMOONS], inewmoon[MAXMOONS];
 
 	int *mondays, d, m, dow, rm, rd, offset;
 
@@ -358,6 +368,7 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 	for (year = year1; year <= year2; year++) {
 		mondays = mondaytab[isleap(year)];
 		ieaster = easter(year);
+		pom(year, ifullmoon, inewmoon);
 
 		/* Same day every year */
 		if (*flags == (F_MONTH | F_DAYOFMONTH)) {
@@ -486,6 +497,40 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 			continue;
 		}
 
+		/* FullMoon */
+		if ((*flags & ~F_MODIFIEROFFSET) ==
+		    (F_SPECIALDAY | F_VARIABLE | F_FULLMOON)) {
+			int i;
+
+			offset = 0;
+			if ((*flags & F_MODIFIEROFFSET) != 0)
+				offset = parseoffset(modifieroffset);
+			for (i = 0; ifullmoon[i] != 0; i++) {
+				if (remember_yd(year, ifullmoon[i] + offset,
+				    &rm, &rd))
+					remember(index++, yearp, monthp, dayp,
+						year, rm, rd);
+			}
+			continue;
+		}
+
+		/* NewMoon */
+		if ((*flags & ~F_MODIFIEROFFSET) ==
+		    (F_SPECIALDAY | F_VARIABLE | F_NEWMOON)) {
+			int i;
+
+			offset = 0;
+			if ((*flags & F_MODIFIEROFFSET) != 0)
+				offset = parseoffset(modifieroffset);
+			for (i = 0; ifullmoon[i] != 0; i++) {
+				if (remember_yd(year, inewmoon[i] + offset,
+				    &rm, &rd))
+					remember(index++, yearp, monthp, dayp,
+						year, rm, rd);
+			}
+			continue;
+		}
+
 		printf("Unprocessed:\n");
 		debug_determinestyle(2, date, *flags, month, imonth,
 		    dayofmonth, idayofmonth, dayofweek, idayofweek,
@@ -526,6 +571,10 @@ showflags(int flags)
 		strcat(s, "paskha ");
 	if ((flags & F_EASTER) != 0)
 		strcat(s, "easter ");
+	if ((flags & F_FULLMOON) != 0)
+		strcat(s, "fullmoon ");
+	if ((flags & F_NEWMOON) != 0)
+		strcat(s, "newmoon ");
 
 	return s;
 }
