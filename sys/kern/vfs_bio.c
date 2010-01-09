@@ -1268,6 +1268,7 @@ brelse(struct buf *bp)
 	 * background write.
 	 */
 	if ((bp->b_flags & B_VMIO)
+	    && (bp->b_vp != NULL)
 	    && !(bp->b_vp->v_mount != NULL &&
 		 (bp->b_vp->v_mount->mnt_vfc->vfc_flags & VFCF_NETWORK) != 0 &&
 		 !vn_isdisk(bp->b_vp, NULL) &&
@@ -1730,7 +1731,7 @@ getnewbuf(struct vnode *vp, int slpflag, int slptimeo, int size, int maxsize,
 	struct thread *td;
 	struct buf *bp;
 	struct buf *nbp;
-	int defrag = 0;
+	int defrag = 0, retrying = 0;
 	int nqindex;
 	static int flushingbufs;
 
@@ -1995,10 +1996,16 @@ restart:
 		if (gbflags & GB_NOWAIT_BD)
 			return (NULL);
 
+		EVENTHANDLER_INVOKE(vm_lowmem, 0);
+		if (!retrying) {
+			retrying = 1;
+			goto restart;
+		}
 		mtx_lock(&nblock);
 		while (needsbuffer & flags) {
 			if (vp != NULL && (td->td_pflags & TDP_BUFNEED) == 0) {
 				mtx_unlock(&nblock);
+				EVENTHANDLER_INVOKE(vm_lowmem, 0);
 				/*
 				 * getblk() is called with a vnode
 				 * locked, and some majority of the
