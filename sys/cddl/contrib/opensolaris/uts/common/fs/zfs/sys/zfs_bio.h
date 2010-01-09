@@ -47,10 +47,11 @@ zio_sync_cache(spa_t *spa, blkptr_t *bp, uint64_t txg, void *data,
 {
 	int io_bypass = 0;
 
+#ifdef	_KERNEL
 	if (!zfs_page_cache_disable && (vd == NULL) &&
 	    ((type == ZIO_TYPE_WRITE) || (type == ZIO_TYPE_READ)))
 		io_bypass = _zio_sync_cache(spa, bp, txg, data, size, type);
-
+#endif
 	return (io_bypass);
 }
 
@@ -58,17 +59,21 @@ static __inline void
 zio_cache_valid(void *data, uint64_t size, zio_type_t type, vdev_t *vd) 
 {
 
+#ifdef	_KERNEL
 	if (((vd == NULL) || (vd->vdev_spa->spa_root_vdev == vd)) &&
 	    (type == ZIO_TYPE_READ) && (size & PAGE_MASK) == 0)
 		_zio_cache_valid(data, size);
+#endif	
 }
+
 
 void *zio_getblk(uint64_t size, int flags);
 void zio_relse(void *data, size_t size);
 void *zio_spa_state_alloc(spa_t *spa);
-
-#ifdef _KERNEL
 void zfs_bio_init(void);
 void zfs_bio_fini(void);
+
+#ifndef _KERNEL
+#define GB_NODUMP	0
 #endif
 #endif

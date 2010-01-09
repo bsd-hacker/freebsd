@@ -100,13 +100,13 @@ __FBSDID("$FreeBSD$");
 #include <sys/kstat.h>
 #include <sys/sdt.h>
 
-#include <sys/sf_buf.h>
 #include <sys/zfs_bio.h>
 
+int zfs_page_cache_disable = 1;
 #ifdef _KERNEL
+#include <sys/sf_buf.h>
 
 SYSCTL_DECL(_vfs_zfs);
-int zfs_page_cache_disable = 1;
 TUNABLE_INT("vfs.zfs.page_cache_disable", &zfs_page_cache_disable);
 SYSCTL_INT(_vfs_zfs, OID_AUTO, page_cache_disable, CTLFLAG_RDTUN,
     &zfs_page_cache_disable, 0, "Disable backing ARC with page cache ");
@@ -198,7 +198,6 @@ buf_hash(caddr_t va, uint64_t size)
 	int i;
 
 	ASSERT(zfs_crc64_table[128] == ZFS_CRC64_POLY);
-
 	for (i = 0; i < sizeof (caddr_t); i++)
 		crc = (crc >> 8) ^ zfs_crc64_table[(crc ^ vav[i]) & 0xFF];
 
@@ -208,8 +207,6 @@ buf_hash(caddr_t va, uint64_t size)
 }
 
 const char *buf_lock = "ht_lock";
-
-
 void
 buf_init(void)
 {
@@ -376,6 +373,27 @@ zio_buf_va_remove(caddr_t va, uint64_t size)
 	return (bp);
 }
 
+static void
+zio_buf_find_duplicates(zio_spa_state_t object)
+{
+	buf_t bp0, bp1;
+	
+	
+	TAILQ_FOREACH(bp0, &object->zss_blkno_memq, b_freelist) {		
+		TAILQ_FOREACH(bp1, &object->zss_blkno_memq, b_freelist) {
+			if (bp0 == bp1)
+				continue;
+			if (((bp0->b_blkno >= bp1->b_blkno) &&
+			    (bp0->b_blkno < bp1->b_blkno + btos(bp1->b_bcount))) ||
+			    ((bp0->b_blkno + btos(bp0->b_bcount) > bp1->b_blkno) &&
+				(bp0->b_blkno + btos(bp0->b_bcount) <=
+				    bp1->b_blkno + btos(bp1->b_bcount))))
+				panic("duplicate blkno mappings at %lld",
+				    bp0->b_blkno);
+		}
+	}
+}
+
 /*
  *	zio_buf_blkno_splay:		[ internal use only ]
  *
@@ -483,6 +501,7 @@ zio_buf_blkno_insert(buf_t bp, zio_spa_state_t object)
 	 * show that the object has one more resident buffer.
 	 */
 	object->zss_resident_count++;
+	zio_buf_find_duplicates(object);
 }
 
 /*
@@ -687,10 +706,24 @@ zio_buf_evict_overlap(vm_object_t object, daddr_t blkno, int size,
 	if ((root = state->zss_blkno_root) == NULL)
 		goto done;
 
+	if (blkno >= root->b_blkno &&
+	    blkno_end <= root->b_blkno + btos(root->b_bcount)) {
+		tmpbp = root;
+		collisions = 1;
+		goto evict;
+	}
+	
 	collisions = 0;
 	blkno_end = blkno + btos(size);
 	if ((root = zio_buf_blkno_splay(blkno, root)) == NULL)
 		goto done;
+
+	if (blkno >= root->b_blkno &&
+	    blkno_end <= root->b_blkno + btos(root->b_bcount)) {
+		tmpbp = root;
+		collisions = 1;
+		goto evict;
+	}
 
 	if ((blkno >= root->b_blkno) ||
 	    (tmpbp = TAILQ_PREV(root, cluster_list_head, b_freelist)) == NULL ||
@@ -721,6 +754,7 @@ zio_buf_evict_overlap(vm_object_t object, daddr_t blkno, int size,
 	while (!TAILQ_EMPTY(&clh)) {
 		tmpbp = TAILQ_FIRST(&clh);
 		TAILQ_REMOVE(&clh, tmpbp, b_cluster.cluster_entry);
+	evict:
 		zio_buf_vm_object_evict(tmpbp);
 		tmpbp->b_bufobj = NULL;
 		tmpbp->b_flags &= ~B_VMIO;
@@ -762,6 +796,8 @@ vm_object_reference_pages(vm_object_t object, buf_t bp)
 	vm_page_lock_queues();
 	for (i = 0; i < bp->b_npages; i++) {
 		m = vm_page_lookup(object, start + i);
+		vm_pageq_remove(m);
+		m->flags |= PG_UNMANAGED;
 		vm_page_wire(m);
 		bp->b_pages[i] = m;
 	}
@@ -859,15 +895,20 @@ zio_relse(void *data, size_t size)
 	bp = zio_buf_va_remove(data, size);
 
 	if (bp->b_flags & B_VMIO) {
+		VM_OBJECT_LOCK(zio_buf_get_vm_object(bp));
 		vm_page_lock_queues();
 		for (i = 0; i < bp->b_npages; i++) {
 			m = bp->b_pages[i];
 			m->wire_count--;
 			m->flags &= ~PG_UNMANAGED;
-			vm_page_deactivate(m);
-			m->wire_count++; /* brelse assumes wire_count is set */
+			vm_page_cache(m);
+			bp->b_pages[i] = 0;
 		}
 		vm_page_unlock_queues();
+		VM_OBJECT_UNLOCK(zio_buf_get_vm_object(bp));
+		atomic_subtract_int(&cnt.v_wire_count, bp->b_npages);
+		pmap_qremove((vm_offset_t)bp->b_saveaddr, bp->b_npages);
+		bp->b_npages = 0;
 		zio_buf_blkno_remove(bp);
 	}
 	
@@ -882,7 +923,7 @@ zio_relse(void *data, size_t size)
 		    " size %ld blkno=%ld",
 		    bp, bp->b_flags, size, bp->b_blkno);
 		bp->b_flags |= (B_ZFS|B_INVAL);
-		bp->b_flags &= ~B_CACHE;
+		bp->b_flags &= ~(B_CACHE|B_VMIO);
 		brelse(bp);
 	}
 }
@@ -964,8 +1005,7 @@ _zio_sync_cache(spa_t *spa, blkptr_t *blkp, uint64_t txg, void *data,
 				m->wire_count--;
 				vm_page_free(m);
 			}
-
-		
+			atomic_subtract_int(&cnt.v_wire_count, bp->b_npages);
 			vm_object_reference_pages(object, bp);
 		} else
 			zio_buf_vm_object_insert(bp, vp, object, FALSE);
@@ -1055,13 +1095,13 @@ zfs_bio_fini(void)
 #else /* !_KERNEL */
 
 void *
-zio_getblk(uint64_t size)
+zio_getblk(uint64_t size, int flags)
 {
 	return (zio_buf_alloc(size));
 }
 
-void
-zio_data_getblk(uint64_t size)
+void *
+zio_data_getblk(uint64_t size, int flags)
 {
 
 	return (zio_data_buf_alloc(size));
@@ -1075,9 +1115,14 @@ zio_relse(void *data, size_t size)
 }
 
 void
-zio_sync_cache(spa_t *spa, blkptr_t *bp, uint64_t txg, uint64_t size)
+zfs_bio_init(void)
 {
-	;
 }
+
+void
+zfs_bio_fini(void)
+{
+}
+
 #endif
 
