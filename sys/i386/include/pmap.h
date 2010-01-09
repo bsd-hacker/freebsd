@@ -441,14 +441,21 @@ typedef struct pv_entry {
  * pv_entries are allocated in chunks per-process.  This avoids the
  * need to track per-pmap assignments.
  */
+#ifdef QUEUE_MACRO_DEBUG
+#define	_NPCM	5
+#define	_NPCPV	144
+#define _NSPARE	((PAGE_SIZE - (4 + 24 + _NPCM*4 + _NPCPV*28))>>2)
+#else
 #define	_NPCM	11
 #define	_NPCPV	336
+#define _NSPARE 2
+#endif
 struct pv_chunk {
-	pmap_t			pc_pmap;
-	TAILQ_ENTRY(pv_chunk)	pc_list;
-	uint32_t		pc_map[_NPCM];	/* bitmap; 1 = free */
-	uint32_t		pc_spare[2];
-	struct pv_entry		pc_pventry[_NPCPV];
+	pmap_t			pc_pmap; 	/* 4 */
+	TAILQ_ENTRY(pv_chunk)	pc_list;	/* 8 | 24 */ 
+	uint32_t		pc_map[_NPCM];	/* _NPCM*4 - bitmap; 1 = free */
+	uint32_t		pc_spare[_NSPARE]; /* _NSPARE*4 */
+	struct pv_entry		pc_pventry[_NPCPV]; /* _NPCPV * 12 | 28 */
 };
 
 #ifdef	_KERNEL

@@ -1339,15 +1339,16 @@ pmap_qenter_prot(vm_offset_t sva, vm_page_t *ma, int count, vm_prot_t prot)
 #else
 	uint32_t flags = 0;
 #endif
-
 	if (prot & VM_PROT_WRITE)
 		flags |= PG_RW;
+	if (prot & VM_PROT_READ)
+		flags |= PG_V;
 
 	CTR2(KTR_PMAP, "pmap_qenter:sva=0x%x count=%d", va, count);
 	pte = vtopte(sva);
 	endpte = pte + count;
 	while (pte < endpte) {
-		pa = xpmap_ptom(VM_PAGE_TO_PHYS(*ma)) | pgeflag | flags | PG_V | PG_M | PG_A;
+		pa = xpmap_ptom(VM_PAGE_TO_PHYS(*ma)) | pgeflag | flags;
 
 		mclp->op = __HYPERVISOR_update_va_mapping;
 		mclp->args[0] = va;
@@ -1980,16 +1981,19 @@ pmap_growkernel(vm_offset_t addr)
  ***************************************************/
 
 CTASSERT(sizeof(struct pv_chunk) == PAGE_SIZE);
+#ifdef QUEUE_MACRO_DEBUG
+CTASSERT(_NPCM == 5);
+
+#define	PC_FREE0_3	0xfffffffful	/* Free values for index 0 through 9 */
+#define	PC_FREE5	0x0000fffful	/* Free values for index 10 */
+
+static uint32_t pc_freemask[5] = {
+	PC_FREE0_3, PC_FREE0_3, PC_FREE0_3,
+	PC_FREE0_3, PC_FREE5
+};
+
+#else
 CTASSERT(_NPCM == 11);
-
-static __inline struct pv_chunk *
-pv_to_chunk(pv_entry_t pv)
-{
-
-	return (struct pv_chunk *)((uintptr_t)pv & ~(uintptr_t)PAGE_MASK);
-}
-
-#define PV_PMAP(pv) (pv_to_chunk(pv)->pc_pmap)
 
 #define	PC_FREE0_9	0xfffffffful	/* Free values for index 0 through 9 */
 #define	PC_FREE10	0x0000fffful	/* Free values for index 10 */
@@ -2000,6 +2004,18 @@ static uint32_t pc_freemask[11] = {
 	PC_FREE0_9, PC_FREE0_9, PC_FREE0_9,
 	PC_FREE0_9, PC_FREE10
 };
+
+#endif
+static __inline struct pv_chunk *
+pv_to_chunk(pv_entry_t pv)
+{
+
+	return (struct pv_chunk *)((uintptr_t)pv & ~(uintptr_t)PAGE_MASK);
+}
+
+#define PV_PMAP(pv) (pv_to_chunk(pv)->pc_pmap)
+
+
 
 SYSCTL_INT(_vm_pmap, OID_AUTO, pv_entry_count, CTLFLAG_RD, &pv_entry_count, 0,
 	"Current number of pv entries");
