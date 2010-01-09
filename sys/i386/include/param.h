@@ -114,7 +114,11 @@
 #define IOPAGES	2		/* pages of i/o permission bitmap */
 
 #ifndef KSTACK_PAGES
+#if !defined(WITNESS) && !defined(DEBUG)
 #define KSTACK_PAGES 2		/* Includes pcb! */
+#else
+#define KSTACK_PAGES 3		/* Includes pcb! */
+#endif
 #endif
 #define KSTACK_GUARD_PAGES 1	/* pages of kstack guard; 0 disables */
 
