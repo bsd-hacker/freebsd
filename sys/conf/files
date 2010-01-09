@@ -3005,6 +3005,8 @@ cddl/contrib/opensolaris/uts/common/fs/zfs/zap_leaf.c	optional zfs \
 	compile-with "${ZFS_C} ${OPENSOLARIS_INC} ${ZFS_INC} ${ZFS_CFLAGS}"
 cddl/contrib/opensolaris/uts/common/fs/zfs/zap_micro.c	optional zfs \
 	compile-with "${ZFS_C} ${OPENSOLARIS_INC} ${ZFS_INC} ${ZFS_CFLAGS}"
+cddl/contrib/opensolaris/uts/common/fs/zfs/zfs_bio.c	optional zfs \
+	compile-with "${ZFS_C} ${OPENSOLARIS_INC} ${ZFS_INC} ${ZFS_CFLAGS}"
 cddl/contrib/opensolaris/uts/common/fs/zfs/zfs_byteswap.c	optional zfs \
 	compile-with "${ZFS_C} ${OPENSOLARIS_INC} ${ZFS_INC} ${ZFS_CFLAGS}"
 cddl/contrib/opensolaris/uts/common/fs/zfs/zfs_fm.c	optional zfs \
