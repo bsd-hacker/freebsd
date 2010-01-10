@@ -571,6 +571,9 @@ zio_buf_blkno_remove_locked(vm_object_t object, buf_t bp)
 	state->zss_resident_count--;
 	state->zss_generation++;
 
+	if (bp == state->zss_blkno_root)
+		state->zss_blkno_root = NULL;
+	
 #ifdef INVARIANTS
 	bp->b_right = bp->b_left = NULL;
 #endif	
@@ -756,13 +759,14 @@ zio_buf_evict_overlap(vm_object_t object, daddr_t blkno, int size,
 		TAILQ_REMOVE(&clh, tmpbp, b_cluster.cluster_entry);
 	evict:
 		zio_buf_vm_object_evict(tmpbp);
-		tmpbp->b_bufobj = NULL;
-		tmpbp->b_flags &= ~B_VMIO;
-		tmpbp->b_blkno = tmpbp->b_lblkno = 0;
 		/*
 		 * move buffer to the unmanaged tree
 		 */
 		zio_buf_blkno_remove_locked(object, tmpbp);
+		tmpbp->b_bufobj = NULL;
+		tmpbp->b_flags &= ~(B_VMIO|B_CACHE);
+		tmpbp->b_blkno = tmpbp->b_lblkno = 0;
+		tmpbp->b_state = NULL;
 	}
 done:
 	if (!(collisions == 1 && tmpbp != NULL && tmpbp->b_blkno == blkno &&
