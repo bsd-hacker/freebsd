@@ -177,9 +177,6 @@ static boolean_t
 xcons_putc(int c)
 {
 	int force_flush = xc_mute ||
-#ifdef DDB
-		db_active ||
-#endif
 		panicstr;	/* we're not gonna recover, so force
 				 * flush 
 				 */
@@ -386,15 +383,17 @@ xc_timeout(void *v)
 
 	tp = (struct tty *)v;
 
-	tty_lock(tp);
-	while ((c = xccncheckc(NULL)) != -1)
+	while ((c = xccncheckc(NULL)) != -1) {
+		tty_lock(tp);
 		ttydisc_rint(tp, c, 0);
-
+		tty_unlock(tp);
+	}
 	if (xc_start_needed) {
 	    	xc_start_needed = FALSE;
+		tty_lock(tp);
 		xcoutwakeup(tp);
+		tty_unlock(tp);
 	}
-	tty_unlock(tp);
 
 	callout_reset(&xc_callout, XC_POLLTIME, xc_timeout, tp);
 }
