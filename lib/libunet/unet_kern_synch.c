@@ -32,6 +32,7 @@ __FBSDID("$FreeBSD$");
 int	hogticks;
 
 typedef struct sleep_entry {
+	LIST_ENTRY(sleep_entry) list_entry;
 	void 		*chan;
 	const char 	*wmesg;
 	pthread_cond_t	cond;
@@ -45,6 +46,8 @@ SYSINIT(synch_setup, SI_SUB_KICK_SCHEDULER, SI_ORDER_FIRST, synch_setup,
 static struct se_head *se_active;
 static u_long se_hashmask;
 static pthread_mutex_t synch_lock;
+#define SE_HASH(chan)	(((uintptr_t)chan) & se_hashmask)
+LIST_HEAD(se_head, sleep_entry);
 
 static void
 synch_setup(void *arg)
@@ -61,21 +64,33 @@ se_alloc(void *chan, const char *wmesg)
 {
 	sleep_entry_t se;
 	pthread_condattr_t attr;
+	struct se_head *hash_list;	
 
 	se = malloc(sizeof(*se), M_DEVBUF, 0);
 	se->chan = chan;
 	se->wmesg = wmesg;
+	se->waiters = 1;
 	pthread_condattr_init(&attr);
 	pthread_cond_init(&se->cond, &attr);
 
 	/* insert in hash table */
+	hash_list = &se_active[SE_HASH(chan)];
+	LIST_INSERT_HEAD(hash_list, se, list_entry);
+	
 	return (se);
 }
 
 sleep_entry_t
 se_lookup(void *chan)
 {
-	/* lookup in hashtable */
+	struct se_head *hash_list;
+	sleep_entry_t se;
+
+	hash_list = &se_active[SE_HASH(chan)];
+	LIST_FOREACH(se, hash_list, list_entry) 
+		if (se->chan == chan)
+			return (se);
+
 	return (NULL);
 }
 
@@ -84,7 +99,7 @@ se_free(sleep_entry_t se)
 {
 
 	if (--se->waiters == 0) {
-		/* unlink se */
+		LIST_REMOVE(se, list_entry);
 		pthread_cond_destroy(&se->cond);
 		free(se, M_DEVBUF);
 	}
@@ -120,7 +135,7 @@ _sleep(void *ident, struct lock_object *lock, int priority,
 	else
 		se = se_alloc(ident, wmesg);
 	pthread_mutex_unlock(&synch_lock);
-	
+
 	if (timo)
 		rv = pthread_cond_timedwait(&se->cond, &lock->lo_mutex, &ts);
 	else
