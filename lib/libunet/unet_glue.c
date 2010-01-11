@@ -39,6 +39,8 @@ MALLOC_DEFINE(M_DEVBUF, "devbuf", "device driver memory");
 MALLOC_DEFINE(M_TEMP, "temp", "misc temporary data buffers");
 
 
+extern void abort(void);
+
 int	ticks;
 
 time_t time_second = 1;
@@ -601,7 +603,8 @@ pgsigio(sigiop, sig, checkctty)
 	struct sigio **sigiop;
 	int sig, checkctty;
 {
-	panic("");
+	printf("SIGIO not supported yet\n");
+	abort();
 #ifdef notyet
 	ksiginfo_t ksi;
 	struct sigio *sigio;

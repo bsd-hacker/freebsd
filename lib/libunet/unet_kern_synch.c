@@ -143,7 +143,7 @@ _sleep(void *ident, struct lock_object *lock, int priority,
 
 	pthread_mutex_lock(&synch_lock);
 	se_free(se);
-	pthread_mutex_unlock(&synch_lock);	
+	pthread_mutex_unlock(&synch_lock);
 
 	return (rv);
 }
