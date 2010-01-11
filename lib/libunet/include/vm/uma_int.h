@@ -180,47 +180,6 @@ struct uma_cache {
 };
 
 typedef struct uma_cache * uma_cache_t;
-
-/*
- * Keg management structure
- *
- * TODO: Optimize for cache line size
- *
- */
-struct uma_keg {
-	LIST_ENTRY(uma_keg)	uk_link;	/* List of all kegs */
-
-	struct mtx	uk_lock;	/* Lock for the keg */
-	struct uma_hash	uk_hash;
-
-	char		*uk_name;		/* Name of creating zone. */
-	LIST_HEAD(,uma_zone)	uk_zones;	/* Keg's zones */
-	LIST_HEAD(,uma_slab)	uk_part_slab;	/* partially allocated slabs */
-	LIST_HEAD(,uma_slab)	uk_free_slab;	/* empty slab list */
-	LIST_HEAD(,uma_slab)	uk_full_slab;	/* full slabs */
-
-	u_int32_t	uk_recurse;	/* Allocation recursion count */
-	u_int32_t	uk_align;	/* Alignment mask */
-	u_int32_t	uk_pages;	/* Total page count */
-	u_int32_t	uk_free;	/* Count of items free in slabs */
-	u_int32_t	uk_size;	/* Requested size of each item */
-	u_int32_t	uk_rsize;	/* Real size of each item */
-	u_int32_t	uk_maxpages;	/* Maximum number of pages to alloc */
-
-	uma_init	uk_init;	/* Keg's init routine */
-	uma_fini	uk_fini;	/* Keg's fini routine */
-	uma_alloc	uk_allocf;	/* Allocation function */
-	uma_free	uk_freef;	/* Free routine */
-
-	struct vm_object	*uk_obj;	/* Zone specific object */
-	vm_offset_t	uk_kva;		/* Base kva for zones with objs */
-	uma_zone_t	uk_slabzone;	/* Slab zone backing us, if OFFPAGE */
-
-	u_int16_t	uk_pgoff;	/* Offset to uma_slab struct */
-	u_int16_t	uk_ppera;	/* pages per allocation from backend */
-	u_int16_t	uk_ipers;	/* Items per slab */
-	u_int32_t	uk_flags;	/* Internal flags */
-};
 typedef struct uma_keg	* uma_keg_t;
 
 /* Page management structure */
@@ -290,44 +249,6 @@ struct uma_klink {
 typedef struct uma_klink *uma_klink_t;
 
 /*
- * Zone management structure 
- *
- * TODO: Optimize for cache line size
- *
- */
-struct uma_zone {
-	char		*uz_name;	/* Text name of the zone */
-	struct mtx	*uz_lock;	/* Lock for the zone (keg's lock) */
-
-	LIST_ENTRY(uma_zone)	uz_link;	/* List of all zones in keg */
-	LIST_HEAD(,uma_bucket)	uz_full_bucket;	/* full buckets */
-	LIST_HEAD(,uma_bucket)	uz_free_bucket;	/* Buckets for frees */
-
-	LIST_HEAD(,uma_klink)	uz_kegs;	/* List of kegs. */
-	struct uma_klink	uz_klink;	/* klink for first keg. */
-
-	uma_slaballoc	uz_slab;	/* Allocate a slab from the backend. */
-	uma_ctor	uz_ctor;	/* Constructor for each allocation */
-	uma_dtor	uz_dtor;	/* Destructor */
-	uma_init	uz_init;	/* Initializer for each item */
-	uma_fini	uz_fini;	/* Discards memory */
-
-	u_int64_t	uz_allocs;	/* Total number of allocations */
-	u_int64_t	uz_frees;	/* Total number of frees */
-	u_int64_t	uz_fails;	/* Total number of alloc failures */
-	u_int32_t	uz_flags;	/* Flags inherited from kegs */
-	u_int32_t	uz_size;	/* Size inherited from kegs */
-	uint16_t	uz_fills;	/* Outstanding bucket fills */
-	uint16_t	uz_count;	/* Highest value ub_ptr can have */
-
-	/*
-	 * This HAS to be the last item because we adjust the zone size
-	 * based on NCPU and then allocate the space for the zones.
-	 */
-	struct uma_cache	uz_cpu[1];	/* Per cpu caches */
-};
-
-/*
  * These flags must not overlap with the UMA_ZONE flags specified in uma.h.
  */
 #define	UMA_ZFLAG_BUCKET	0x02000000	/* Bucket zone. */
@@ -349,6 +270,7 @@ void uma_large_free(uma_slab_t slab);
 
 /* Lock Macros */
 
+#if 0
 #define	KEG_LOCK_INIT(k, lc)					\
 	do {							\
 		if ((lc))					\
@@ -358,7 +280,12 @@ void uma_large_free(uma_slab_t slab);
 			mtx_init(&(k)->uk_lock, (k)->uk_name,	\
 			    "UMA zone", MTX_DEF | MTX_DUPOK);	\
 	} while (0)
-	    
+#else
+#define KEG_LOCK_INIT(k, lc)   					\
+	do {							\
+		pthread_mutex_init(&(k)->uk_lock, NULL);	\
+	} while (0)
+#endif
 #define	KEG_LOCK_FINI(k)	mtx_destroy(&(k)->uk_lock)
 #define	KEG_LOCK(k)	mtx_lock(&(k)->uk_lock)
 #define	KEG_UNLOCK(k)	mtx_unlock(&(k)->uk_lock)
@@ -389,28 +316,6 @@ hash_sfind(struct uma_hash *hash, u_int8_t *data)
                         return (slab);
         }
         return (NULL);
-}
-
-static __inline uma_slab_t
-vtoslab(vm_offset_t va)
-{
-	panic("");
-
-	return (NULL);
-}
-
-static __inline void
-vsetslab(vm_offset_t va, uma_slab_t slab)
-{
-
-	panic("");
-}
-
-static __inline void
-vsetobj(vm_offset_t va, vm_object_t obj)
-{
-
-	panic("");
 }
 
 /*
