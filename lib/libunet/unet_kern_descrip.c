@@ -76,6 +76,15 @@ __FBSDID("$FreeBSD$");
 #include <sys/unistd.h>
 #include <sys/user.h>
 
+static MALLOC_DEFINE(M_FILEDESC, "filedesc", "Open file descriptor table");
+
+static uma_zone_t file_zone;
+
+volatile int openfiles;			/* actual number of open files */
+
+/* A mutex to protect the association between a proc and filedesc. */
+static struct mtx	fdesc_mtx;
+
 
 /*
  * This is common code for FIOSETOWN ioctl called by fcntl(fd, F_SETOWN, arg).
@@ -87,16 +96,13 @@ int
 fsetown(pid_t pgid, struct sigio **sigiop)
 {
 
-	panic("");
-
 	return (0);
 }
 	
 pid_t
 fgetown(struct sigio **sigiop)
 {
-	
-	panic("");
+
 	return (0);
 }
 
@@ -104,8 +110,7 @@ fgetown(struct sigio **sigiop)
 void
 funsetown(struct sigio **sigiop)
 {
-
-	panic("");
+	/* nothing to do here */
 }
 
 
@@ -119,8 +124,52 @@ funsetown(struct sigio **sigiop)
 int
 falloc(struct thread *td, struct file **resultfp, int *resultfd)
 {
-	panic("");
 
+	struct proc *p = td->td_proc;
+	struct file *fp;
+	int error, i;
+	int maxuserfiles = maxfiles - (maxfiles / 20);
+	static struct timeval lastfail;
+	static int curfail;
+
+	fp = uma_zalloc(file_zone, M_WAITOK | M_ZERO);
+	if ((openfiles >= maxuserfiles &&
+	    priv_check(td, PRIV_MAXFILES) != 0) ||
+	    openfiles >= maxfiles) {
+		if (ppsratecheck(&lastfail, &curfail, 1)) {
+			printf("kern.maxfiles limit exceeded by uid %i, please see tuning(7).\n",
+				td->td_ucred->cr_ruid);
+		}
+		uma_zfree(file_zone, fp);
+		return (ENFILE);
+	}
+	atomic_add_int(&openfiles, 1);
+	/*
+	 * If the process has file descriptor zero open, add the new file
+	 * descriptor to the list of open files at that point, otherwise
+	 * put it at the front of the list of open files.
+	 */
+	refcount_init(&fp->f_count, 1);
+	if (resultfp)
+		fhold(fp);
+	fp->f_cred = crhold(td->td_ucred);
+	fp->f_ops = &badfileops;
+	fp->f_data = NULL;
+	fp->f_vnode = NULL;
+	FILEDESC_XLOCK(p->p_fd);
+	if ((error = fdalloc(td, 0, &i))) {
+		FILEDESC_XUNLOCK(p->p_fd);
+		fdrop(fp, td);
+		if (resultfp)
+			fdrop(fp, td);
+		return (error);
+	}
+	p->p_fd->fd_ofiles[i] = fp;
+	FILEDESC_XUNLOCK(p->p_fd);
+	if (resultfp)
+		*resultfp = fp;
+	if (resultfd)
+		*resultfd = i;	
 	return (0);
 }
 
@@ -131,9 +180,24 @@ falloc(struct thread *td, struct file **resultfp, int *resultfd)
 int
 _fdrop(struct file *fp, struct thread *td)
 {
+	int error;
 
-	panic("");
-	return (0);
+	error = 0;
+	if (fp->f_count != 0)
+		panic("fdrop: count %d", fp->f_count);
+	if (fp->f_ops != &badfileops)
+		error = fo_close(fp, td);
+	/*
+	 * The f_cdevpriv cannot be assigned non-NULL value while we
+	 * are destroying the file.
+	 */
+	if (fp->f_cdevpriv != NULL)
+		devfs_fpdrop(fp);
+	atomic_subtract_int(&openfiles, 1);
+	crfree(fp->f_cred);
+	uma_zfree(file_zone, fp);
+
+	return (error);
 }
 	
 void
@@ -244,6 +308,18 @@ fget_write(struct thread *td, int fd, struct file **fpp)
 	return(_fget(td, fd, fpp, FWRITE));
 }
 
+
+/* ARGSUSED*/
+static void
+filelistinit(void *dummy)
+{
+
+	file_zone = uma_zcreate("Files", sizeof(struct file), NULL, NULL,
+	    NULL, NULL, UMA_ALIGN_PTR, UMA_ZONE_NOFREE);
+	mtx_init(&sigio_lock, "sigio lock", NULL, MTX_DEF);
+	mtx_init(&fdesc_mtx, "fdesc", NULL, MTX_DEF);
+}
+SYSINIT(select, SI_SUB_LOCK, SI_ORDER_FIRST, filelistinit, NULL);
 
 /*-------------------------------------------------------------------*/
 
