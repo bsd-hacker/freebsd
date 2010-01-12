@@ -35,6 +35,9 @@ SYSCTL_NODE(, CTL_NET,	  net,    CTLFLAG_RW, 0,
 SYSCTL_NODE(, CTL_VM,	  vm,    CTLFLAG_RW, 0,
 	"Virtual memory");
 
+SYSCTL_NODE(, CTL_DEBUG,  debug,  CTLFLAG_RW, 0,
+	"Debugging");
+
 MALLOC_DEFINE(M_DEVBUF, "devbuf", "device driver memory");
 MALLOC_DEFINE(M_TEMP, "temp", "misc temporary data buffers");
 

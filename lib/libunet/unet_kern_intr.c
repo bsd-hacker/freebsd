@@ -27,6 +27,10 @@ __FBSDID("$FreeBSD$");
 #include <sys/syslog.h>
 #include <sys/unistd.h>
 
+
+struct	intr_event *clk_intr_event;
+
+
 /*
  * Bind an interrupt event to the specified CPU.  Note that not all
  * platforms support binding an interrupt to a CPU.  For those
