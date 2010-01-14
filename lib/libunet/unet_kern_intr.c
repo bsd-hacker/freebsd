@@ -95,6 +95,11 @@ critical_exit(void)
 {
 }
 
+#undef thread_lock
+#undef thread_unlock
+#define thread_lock(tdp)      	mtx_lock((tdp)->td_lock)
+#define thread_unlock(tdp)      mtx_unlock((tdp)->td_lock)
+
 
 
 struct	intr_event *clk_intr_event;
@@ -213,7 +218,6 @@ intr_event_update(struct intr_event *ie)
 	/* Start off with no entropy and just the name of the event. */
 	mtx_assert(&ie->ie_lock, MA_OWNED);
 	strlcpy(ie->ie_fullname, ie->ie_name, sizeof(ie->ie_fullname));
-	ie->ie_flags &= ~IE_ENTROPY;
 	missed = 0;
 	space = 1;
 
@@ -226,8 +230,6 @@ intr_event_update(struct intr_event *ie)
 			space = 0;
 		} else
 			missed++;
-		if (ih->ih_flags & IH_ENTROPY)
-			ie->ie_flags |= IE_ENTROPY;
 	}
 
 	/*
@@ -338,12 +340,10 @@ intr_event_destroy(struct intr_event *ie)
 		return (EBUSY);
 	}
 	TAILQ_REMOVE(&event_list, ie, ie_list);
-#ifndef notyet
 	if (ie->ie_thread != NULL) {
 		ithread_destroy(ie->ie_thread);
 		ie->ie_thread = NULL;
 	}
-#endif
 	mtx_unlock(&ie->ie_lock);
 	mtx_unlock(&event_lock);
 	mtx_destroy(&ie->ie_lock);
@@ -424,8 +424,6 @@ intr_event_add_handler(struct intr_event *ie, const char *name,
 		ih->ih_flags = IH_EXCLUSIVE;
 	if (flags & INTR_MPSAFE)
 		ih->ih_flags |= IH_MPSAFE;
-	if (flags & INTR_ENTROPY)
-		ih->ih_flags |= IH_ENTROPY;
 
 	/* We can only have one exclusive handler in a event. */
 	mtx_lock(&ie->ie_lock);
@@ -497,8 +495,6 @@ intr_event_add_handler(struct intr_event *ie, const char *name,
 		ih->ih_flags = IH_EXCLUSIVE;
 	if (flags & INTR_MPSAFE)
 		ih->ih_flags |= IH_MPSAFE;
-	if (flags & INTR_ENTROPY)
-		ih->ih_flags |= IH_ENTROPY;
 
 	/* We can only have one exclusive handler in a event. */
 	mtx_lock(&ie->ie_lock);
@@ -586,9 +582,6 @@ intr_event_remove_handler(void *cookie)
 #ifdef INVARIANTS
 	struct intr_handler *ih;
 #endif
-#ifdef notyet
-	int dead;
-#endif
 
 	if (handler == NULL)
 		return (EINVAL);
@@ -629,7 +622,7 @@ ok:
 	 * thread do it.
 	 */
 	thread_lock(ie->ie_thread->it_thread);
-	if (!TD_AWAITING_INTR(ie->ie_thread->it_thread) && !cold) {
+	if (!TD_AWAITING_INTR(ie->ie_thread->it_thread)) {
 		handler->ih_flags |= IH_DEAD;
 
 		/*
@@ -638,30 +631,11 @@ ok:
 		 * it on the list.
 		 */
 		ie->ie_thread->it_need = 1;
-	} else
-		TAILQ_REMOVE(&ie->ie_handlers, handler, ih_next);
+	}
 	thread_unlock(ie->ie_thread->it_thread);
 	while (handler->ih_flags & IH_DEAD)
 		msleep(handler, &ie->ie_lock, 0, "iev_rmh", 0);
 	intr_event_update(ie);
-#ifdef notyet
-	/*
-	 * XXX: This could be bad in the case of ppbus(8).  Also, I think
-	 * this could lead to races of stale data when servicing an
-	 * interrupt.
-	 */
-	dead = 1;
-	TAILQ_FOREACH(ih, &ie->ie_handlers, ih_next) {
-		if (!(ih->ih_flags & IH_FAST)) {
-			dead = 0;
-			break;
-		}
-	}
-	if (dead) {
-		ithread_destroy(ie->ie_thread);
-		ie->ie_thread = NULL;
-	}
-#endif
 	mtx_unlock(&ie->ie_lock);
 	free(handler, M_ITHREAD);
 	return (0);
@@ -687,19 +661,6 @@ intr_event_schedule_thread(struct intr_event *ie)
 	it = ie->ie_thread;
 	td = it->it_thread;
 	p = td->td_proc;
-
-	/*
-	 * If any of the handlers for this ithread claim to be good
-	 * sources of entropy, then gather some.
-	 */
-	if (harvest.interrupt && ie->ie_flags & IE_ENTROPY) {
-		CTR3(KTR_INTR, "%s: pid %d (%s) gathering entropy", __func__,
-		    p->p_pid, td->td_name);
-		entropy.event = (uintptr_t)ie;
-		entropy.td = ctd;
-		random_harvest(&entropy, sizeof(entropy), 2, 0,
-		    RANDOM_INTERRUPT);
-	}
 
 	KASSERT(p != NULL, ("ithread %s has no process", ie->ie_name));
 
@@ -734,9 +695,6 @@ intr_event_remove_handler(void *cookie)
 	struct intr_thread *it;
 #ifdef INVARIANTS
 	struct intr_handler *ih;
-#endif
-#ifdef notyet
-	int dead;
 #endif
 
 	if (handler == NULL)
@@ -780,7 +738,7 @@ ok:
 	 * thread do it.
 	 */
 	thread_lock(it->it_thread);
-	if (!TD_AWAITING_INTR(it->it_thread) && !cold) {
+	if (!TD_AWAITING_INTR(it->it_thread)) {
 		handler->ih_flags |= IH_DEAD;
 
 		/*
@@ -789,8 +747,7 @@ ok:
 		 * it on the list.
 		 */
 		it->it_need = 1;
-	} else
-		TAILQ_REMOVE(&ie->ie_handlers, handler, ih_next);
+	} 
 	thread_unlock(it->it_thread);
 	while (handler->ih_flags & IH_DEAD)
 		msleep(handler, &ie->ie_lock, 0, "iev_rmh", 0);
@@ -803,24 +760,6 @@ ok:
 		handler->ih_thread = NULL;
 	}
 	intr_event_update(ie);
-#ifdef notyet
-	/*
-	 * XXX: This could be bad in the case of ppbus(8).  Also, I think
-	 * this could lead to races of stale data when servicing an
-	 * interrupt.
-	 */
-	dead = 1;
-	TAILQ_FOREACH(ih, &ie->ie_handlers, ih_next) {
-		if (handler != NULL) {
-			dead = 0;
-			break;
-		}
-	}
-	if (dead) {
-		ithread_destroy(ie->ie_thread);
-		ie->ie_thread = NULL;
-	}
-#endif
 	mtx_unlock(&ie->ie_lock);
 	free(handler, M_ITHREAD);
 	return (0);
@@ -843,19 +782,6 @@ intr_event_schedule_thread(struct intr_event *ie, struct intr_thread *it)
 	ctd = curthread;
 	td = it->it_thread;
 	p = td->td_proc;
-
-	/*
-	 * If any of the handlers for this ithread claim to be good
-	 * sources of entropy, then gather some.
-	 */
-	if (harvest.interrupt && ie->ie_flags & IE_ENTROPY) {
-		CTR3(KTR_INTR, "%s: pid %d (%s) gathering entropy", __func__,
-		    p->p_pid, td->td_name);
-		entropy.event = (uintptr_t)ie;
-		entropy.td = ctd;
-		random_harvest(&entropy, sizeof(entropy), 2, 0,
-		    RANDOM_INTERRUPT);
-	}
 
 	KASSERT(p != NULL, ("ithread %s has no process", ie->ie_name));
 
@@ -903,9 +829,6 @@ swi_add(struct intr_event **eventp, const char *name, driver_intr_t handler,
 {
 	struct intr_event *ie;
 	int error;
-
-	if (flags & INTR_ENTROPY)
-		return (EINVAL);
 
 	ie = (eventp != NULL) ? *eventp : NULL;
 
