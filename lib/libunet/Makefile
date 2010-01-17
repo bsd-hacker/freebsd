@@ -6,6 +6,7 @@ PREFIX= ${.CURDIR}/../../sys
 .PATH: ${PREFIX}/netinet
 .PATH: ${PREFIX}/libkern
 .PATH: ${PREFIX}/dev/random
+.PATH: unet_sys
 
 LIB=	unet
 
