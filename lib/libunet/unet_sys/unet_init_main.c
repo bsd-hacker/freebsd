@@ -102,6 +102,10 @@ SYSCTL_INT(_debug, OID_AUTO, boothowto, CTLFLAG_RD, &boothowto, 0, "");
 int	bootverbose;
 SYSCTL_INT(_debug, OID_AUTO, bootverbose, CTLFLAG_RW, &bootverbose, 0, "");
 #endif
+
+#define VERBOSE_SYSINIT
+
+
 /*
  * This ensures that there is at least one entry so that the sysinit_set
  * symbol is not undefined.  A sybsystem ID of SI_SUB_DUMMY is never
@@ -152,6 +156,7 @@ sysinit_add(struct sysinit **set, struct sysinit **set_end)
 	newsysinit_end = newset + count;
 }
 
+
 /*
  * System startup; initialize the world, create process 0, mount root
  * filesystem, and fork to create init and pagedaemon.  Most of the
@@ -170,15 +175,22 @@ mi_startup(void)
 	register struct sysinit **sipp;		/* system initialization*/
 	register struct sysinit **xipp;		/* interior loop of sort*/
 	register struct sysinit *save;		/* bubble*/
+	struct sysinit **temp;
+	int size;
 
 #if defined(VERBOSE_SYSINIT)
 	int last;
 	int verbose;
 #endif
 
-	if (sysinit == NULL) {
+	if (sysinit == NULL) {		
 		sysinit = SET_BEGIN(sysinit_set);
 		sysinit_end = SET_LIMIT(sysinit_set);
+		size = (uintptr_t)sysinit_end - (uintptr_t)sysinit;
+		temp = malloc(size, M_DEVBUF, M_WAITOK);
+		memcpy(temp, sysinit, size);
+		sysinit = temp;
+		sysinit_end = (struct sysinit **)(((uint8_t *)sysinit) + size);
 	}
 
 restart:
