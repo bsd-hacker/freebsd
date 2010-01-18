@@ -113,8 +113,9 @@ struct lock_class lock_class_rw = {
 void
 rw_sysinit(void *arg)
 {
+	struct rw_args *args = arg;
 
-	panic("");
+	rw_init(args->ra_rw, args->ra_desc);
 }
 
 void
