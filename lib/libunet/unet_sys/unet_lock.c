@@ -303,7 +303,7 @@ sx_destroy(struct sx *sx)
 }
 
 int
-_sx_xlock_hard(struct sx *sx, uintptr_t tid, int opts,
+_sx_xlock(struct sx *sx, int opts,
     const char *file, int line)
 {
 	
@@ -312,7 +312,7 @@ _sx_xlock_hard(struct sx *sx, uintptr_t tid, int opts,
 }
 
 int
-_sx_slock_hard(struct sx *sx, int opts, const char *file, int line)
+_sx_slock(struct sx *sx, int opts, const char *file, int line)
 {
 	
 	_rw_rlock((struct rwlock *)sx, file, line);
@@ -320,15 +320,14 @@ _sx_slock_hard(struct sx *sx, int opts, const char *file, int line)
 }
 
 void
-_sx_xunlock_hard(struct sx *sx, uintptr_t tid, const char *file, int
-    line)
+_sx_xunlock(struct sx *sx, const char *file, int line)
 {
 	
 	_rw_wunlock((struct rwlock *)sx, file, line);
 }
 
 void
-_sx_sunlock_hard(struct sx *sx, const char *file, int line)
+_sx_sunlock(struct sx *sx, const char *file, int line)
 {
 	
 	_rw_runlock((struct rwlock *)sx, file, line);
