@@ -39,6 +39,7 @@
 #ifdef _KERNEL
 #include <sys/systm.h>
 #include <vm/uma.h>
+#include <sys/malloc.h>
 #ifdef WITNESS
 #include <sys/lock.h>
 #endif

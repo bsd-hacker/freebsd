@@ -37,8 +37,9 @@
 #define VM_UMA_H
 
 #include <sys/param.h>		/* For NULL */
+#ifndef UNET
 #include <sys/malloc.h>		/* For M_* */
-
+#endif
 /* User visible parameters */
 #define UMA_SMALLEST_UNIT       (PAGE_SIZE / 256) /* Smallest item allocated */
 
