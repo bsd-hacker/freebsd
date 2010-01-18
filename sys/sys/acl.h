@@ -39,6 +39,7 @@
 #include <sys/param.h>
 #include <sys/queue.h>
 #include <vm/uma.h>
+#include <sys/malloc.h>
 
 /*
  * POSIX.1e and NFSv4 ACL types and related constants.
