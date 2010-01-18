@@ -63,12 +63,16 @@ __FBSDID("$FreeBSD$");
 CTASSERT(LOCK_CLASS_MAX == 15);
 
 struct lock_class *lock_classes[LOCK_CLASS_MAX + 1] = {
+#ifndef UNET
 	&lock_class_mtx_spin,
+#endif	
 	&lock_class_mtx_sleep,
 	&lock_class_sx,
 	&lock_class_rm,
 	&lock_class_rw,
+#ifndef UNET
 	&lock_class_lockmgr,
+#endif	
 };
 
 void
