@@ -143,7 +143,11 @@ kern_timeout_callwheel_alloc(caddr_t v)
 {
 	struct callout_cpu *cc;
 
+#ifdef notyet
 	timeout_cpu = PCPU_GET(cpuid);
+#else
+	timeout_cpu = 0;
+#endif	
 	cc = CC_CPU(timeout_cpu);
 	/*
 	 * Calculate callout wheel size
