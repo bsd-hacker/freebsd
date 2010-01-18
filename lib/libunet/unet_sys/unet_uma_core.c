@@ -52,11 +52,11 @@
 __FBSDID("$FreeBSD$");
 
 /* I should really use ktr.. */
-/*
+
 #define UMA_DEBUG 1
 #define UMA_DEBUG_ALLOC 1
 #define UMA_DEBUG_ALLOC_1 1
-*/
+
 
 #include "opt_ddb.h"
 #include "opt_param.h"
@@ -1762,6 +1762,7 @@ uma_startup(void *bootmem, int boot_pages)
 	/* The initial zone has no Per cpu queues so it's smaller */
 	zone_ctor(kegs, sizeof(struct uma_zone), &args, M_WAITOK);
 
+#if 0	
 #ifdef UMA_DEBUG
 	printf("Filling boot free list.\n");
 #endif
@@ -1772,7 +1773,8 @@ uma_startup(void *bootmem, int boot_pages)
 		LIST_INSERT_HEAD(&uma_boot_pages, slab, us_link);
 	}
 	pthread_mutex_init(&uma_boot_pages_mtx, NULL);
-
+#endif
+	
 #ifdef UMA_DEBUG
 	printf("Creating uma zone headers zone and keg.\n");
 #endif
