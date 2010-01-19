@@ -64,6 +64,8 @@ __FBSDID("$FreeBSD$");
 
 #include <net/if.h>
 #include <net/route.h>
+#include <net/vnet.h>
+
 #include <netinet/in.h>
 
 #include <rpc/rpc.h>
@@ -421,14 +423,18 @@ nfs_mountroot(struct mount *mp)
 	char buf[128];
 	char *cp;
 
+	CURVNET_SET(TD_TO_VNET(td));
+
 #if defined(BOOTP_NFSROOT) && defined(BOOTP)
 	bootpc_init();		/* use bootp to get nfs_diskless filled in */
 #elif defined(NFS_ROOT)
 	nfs_setup_diskless();
 #endif
 
-	if (nfs_diskless_valid == 0)
+	if (nfs_diskless_valid == 0) {
+		CURVNET_RESTORE();
 		return (-1);
+	}
 	if (nfs_diskless_valid == 1)
 		nfs_convert_diskless();
 
@@ -514,6 +520,7 @@ nfs_mountroot(struct mount *mp)
 	nd->root_args.hostname = buf;
 	if ((error = nfs_mountdiskless(buf,
 	    &nd->root_saddr, &nd->root_args, td, &vp, mp)) != 0) {
+		CURVNET_RESTORE();
 		return (error);
 	}
 
@@ -527,6 +534,7 @@ nfs_mountroot(struct mount *mp)
 	    sizeof (prison0.pr_hostname));
 	mtx_unlock(&prison0.pr_mtx);
 	inittodr(ntohl(nd->root_time));
+	CURVNET_RESTORE();
 	return (0);
 }
 

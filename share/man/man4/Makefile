@@ -156,10 +156,12 @@ MAN=	aac.4 \
 	ips.4 \
 	ipsec.4 \
 	ipw.4 \
+	ipwfw.4 \
 	iscsi_initiator.4 \
 	isp.4 \
 	ispfw.4 \
 	iwi.4 \
+	iwifw.4 \
 	iwn.4 \
 	iwnfw.4 \
 	ixgb.4 \
@@ -201,6 +203,7 @@ MAN=	aac.4 \
 	meteor.4 \
 	mfi.4 \
 	miibus.4 \
+	mk48txx.4 \
 	mld.4 \
 	mlx.4 \
 	mly.4 \
@@ -337,6 +340,7 @@ MAN=	aac.4 \
 	ses.4 \
 	sf.4 \
 	si.4 \
+	siba.4 \
 	sio.4 \
 	siis.4 \
 	sis.4 \
@@ -423,6 +427,7 @@ MAN=	aac.4 \
 	ugen.4 \
 	uhci.4 \
 	uhid.4 \
+	uhso.4 \
 	uipaq.4 \
 	ukbd.4 \
 	ulpt.4 \

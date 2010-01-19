@@ -1190,7 +1190,7 @@ ath_suspend(struct ath_softc *sc)
 	/*
 	 * NB: don't worry about putting the chip in low power
 	 * mode; pci will power off our socket on suspend and
-	 * cardbus detaches the device.
+	 * CardBus detaches the device.
 	 */
 }
 
@@ -5351,7 +5351,7 @@ ath_chan_set(struct ath_softc *sc, struct ieee80211_channel *chan)
 		ath_stoprecv(sc);		/* turn off frame recv */
 		if (!ath_hal_reset(ah, sc->sc_opmode, chan, AH_TRUE, &status)) {
 			if_printf(ifp, "%s: unable to reset "
-			    "channel %u (%u Mhz, flags 0x%x), hal status %u\n",
+			    "channel %u (%u MHz, flags 0x%x), hal status %u\n",
 			    __func__, ieee80211_chan2ieee(ic, chan),
 			    chan->ic_freq, chan->ic_flags, status);
 			return EIO;

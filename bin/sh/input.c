@@ -93,7 +93,7 @@ struct parsefile {
 
 
 int plinno = 1;			/* input line number */
-MKINIT int parsenleft;		/* copy of parsefile->nleft */
+int parsenleft;			/* copy of parsefile->nleft */
 MKINIT int parselleft;		/* copy of parsefile->lleft */
 char *parsenextc;		/* copy of parsefile->nextc */
 MKINIT struct parsefile basepf;	/* top level input file */
@@ -111,9 +111,9 @@ static int preadfd(void);
 INCLUDE "input.h"
 INCLUDE "error.h"
 
-INIT {
-	extern char basebuf[];
+MKINIT char basebuf[];
 
+INIT {
 	basepf.nextc = basepf.buf = basebuf;
 }
 
@@ -401,7 +401,7 @@ popstring(void)
  */
 
 void
-setinputfile(char *fname, int push)
+setinputfile(const char *fname, int push)
 {
 	int fd;
 	int fd2;

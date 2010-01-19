@@ -173,7 +173,7 @@ __FBSDID("$FreeBSD$");
 #endif
 
 #if !defined(PMAP_DIAGNOSTIC)
-#define PMAP_INLINE	__gnu89_inline
+#define PMAP_INLINE	extern inline
 #else
 #define PMAP_INLINE
 #endif
@@ -317,6 +317,9 @@ static __inline void pagezero(void *page);
 
 #if defined(PAE) && !defined(XEN)
 static void *pmap_pdpt_allocf(uma_zone_t zone, int bytes, u_int8_t *flags, int wait);
+#endif
+#ifndef XEN
+static void pmap_set_pg(void);
 #endif
 
 CTASSERT(1 << PDESHIFT == sizeof(pd_entry_t));
@@ -549,10 +552,11 @@ pmap_init_pat(void)
 	wrmsr(MSR_PAT, pat_msr);
 }
 
+#ifndef XEN
 /*
  * Set PG_G on kernel pages.  Only the BSP calls this when SMP is turned on.
  */
-void
+static void
 pmap_set_pg(void)
 {
 	pd_entry_t pdir;
@@ -587,6 +591,7 @@ pmap_set_pg(void)
 		}
 	}
 }
+#endif
 
 /*
  * Initialize a vm_page's machine-dependent fields.
@@ -3101,9 +3106,10 @@ void *
 pmap_kenter_temporary(vm_paddr_t pa, int i)
 {
 	vm_offset_t va;
+	vm_paddr_t ma = xpmap_ptom(pa);
 
 	va = (vm_offset_t)crashdumpmap + (i * PAGE_SIZE);
-	PT_SET_MA(va, (pa & ~PAGE_MASK) | PG_V | pgeflag);
+	PT_SET_MA(va, (ma & ~PAGE_MASK) | PG_V | pgeflag);
 	invlpg(va);
 	return ((void *)crashdumpmap);
 }

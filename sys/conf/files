@@ -933,6 +933,7 @@ dev/firewire/if_fwip.c		optional fwip
 dev/firewire/sbp.c		optional sbp
 dev/firewire/sbp_targ.c		optional sbp_targ
 dev/flash/at45d.c		optional at45d
+dev/flash/mx25l.c		optional mx25l
 dev/fxp/if_fxp.c		optional fxp inet
 dev/gem/if_gem.c		optional gem
 dev/gem/if_gem_pci.c		optional gem pci
@@ -1082,6 +1083,20 @@ iwi_monitor.fw			optional iwimonitorfw | iwifw		\
 	no-obj no-implicit-rule						\
 	clean		"iwi_monitor.fw"
 dev/iwn/if_iwn.c		optional iwn
+iwn1000fw.c			optional iwn1000fw | iwnfw		\
+	compile-with	"${AWK} -f $S/tools/fw_stub.awk iwn1000.fw:iwn1000fw -miwn1000fw -c${.TARGET}" \
+	no-implicit-rule before-depend local				\
+	clean		"iwn1000fw.c"
+iwn1000fw.fwo			optional iwn1000fw | iwnfw		\
+	dependency	"iwn1000.fw"					\
+	compile-with	"${LD} -b binary -d -warn-common -r -d -o ${.TARGET} iwn1000.fw" \
+	no-implicit-rule						\
+	clean		"iwn1000fw.fwo"
+iwn1000.fw			optional iwn1000fw | iwnfw		\
+	dependency	".PHONY"					\
+	compile-with	"uudecode -o ${.TARGET} $S/contrib/dev/iwn/iwlwifi-1000-128.50.3.1.fw.uu" \
+	no-obj no-implicit-rule						\
+	clean		"iwn1000.fw"
 iwn4965fw.c			optional iwn4965fw | iwnfw		\
 	compile-with	"${AWK} -f $S/tools/fw_stub.awk iwn4965.fw:iwn4965fw -miwn4965fw -c${.TARGET}" \
 	no-implicit-rule before-depend local				\
@@ -1093,7 +1108,7 @@ iwn4965fw.fwo			optional iwn4965fw | iwnfw		\
 	clean		"iwn4965fw.fwo"
 iwn4965.fw			optional iwn4965fw | iwnfw		\
 	dependency	".PHONY"					\
-	compile-with	"uudecode -o ${.TARGET} $S/contrib/dev/iwn/iwlwifi-4965-228.57.2.23.fw.uu" \
+	compile-with	"uudecode -o ${.TARGET} $S/contrib/dev/iwn/iwlwifi-4965-228.61.2.24.fw.uu" \
 	no-obj no-implicit-rule						\
 	clean		"iwn4965.fw"
 iwn5000fw.c			optional iwn5000fw | iwnfw		\
@@ -1107,7 +1122,7 @@ iwn5000fw.fwo		optional iwn5000fw | iwnfw			\
 	clean		"iwn5000fw.fwo"
 iwn5000.fw			optional iwn5000fw | iwnfw		\
 	dependency	".PHONY"					\
-	compile-with	"uudecode -o ${.TARGET} $S/contrib/dev/iwn/iwlwifi-5000-5.4.A.11.fw.uu"	\
+	compile-with	"uudecode -o ${.TARGET} $S/contrib/dev/iwn/iwlwifi-5000-8.24.2.12.fw.uu"	\
 	no-obj no-implicit-rule						\
 	clean		"iwn5000.fw"
 iwn5150fw.c			optional iwn5150fw | iwnfw		\
@@ -1124,6 +1139,20 @@ iwn5150.fw			optional iwn5150fw | iwnfw		\
 	compile-with	"uudecode -o ${.TARGET} $S/contrib/dev/iwn/iwlwifi-5150-8.24.2.2.fw.uu" \
 	no-obj no-implicit-rule						\
 	clean		"iwn5150.fw"
+iwn6000fw.c			optional iwn6000fw | iwnfw		\
+	compile-with	"${AWK} -f $S/tools/fw_stub.awk iwn6000.fw:iwn6000fw -miwn6000fw -c${.TARGET}" \
+	no-implicit-rule before-depend local				\
+	clean		"iwn6000fw.c"
+iwn6000fw.fwo			optional iwn6000fw | iwnfw		\
+	dependency	"iwn6000.fw"					\
+	compile-with	"${LD} -b binary -d -warn-common -r -d -o ${.TARGET} iwn6000.fw" \
+	no-implicit-rule						\
+	clean		"iwn6000fw.fwo"
+iwn6000.fw			optional iwn6000fw | iwnfw		\
+	dependency	".PHONY"					\
+	compile-with	"uudecode -o ${.TARGET} $S/contrib/dev/iwn/iwlwifi-6000-9.176.4.1.fw.uu" \
+	no-obj no-implicit-rule						\
+	clean		"iwn6000.fw"
 dev/ixgb/if_ixgb.c		optional ixgb
 dev/ixgb/ixgb_ee.c		optional ixgb
 dev/ixgb/ixgb_hw.c		optional ixgb
@@ -1647,7 +1676,7 @@ dev/usb/usb_request.c		optional usb
 dev/usb/usb_transfer.c		optional usb
 dev/usb/usb_util.c		optional usb
 #
-# USB ethernet drivers
+# USB network drivers
 #
 dev/usb/net/if_aue.c		optional aue
 dev/usb/net/if_axe.c		optional axe
@@ -1658,6 +1687,7 @@ dev/usb/net/if_rue.c		optional rue
 dev/usb/net/if_udav.c		optional udav
 dev/usb/net/usb_ethernet.c	optional aue | axe | cdce | cue | kue | rue | \
 					 udav
+dev/usb/net/uhso.c		optional uhso
 #
 # USB WLAN drivers
 #
@@ -1906,6 +1936,7 @@ geom/label/g_label_gpt.c	optional geom_label
 geom/linux_lvm/g_linux_lvm.c	optional geom_linux_lvm
 geom/mirror/g_mirror.c		optional geom_mirror
 geom/mirror/g_mirror_ctl.c	optional geom_mirror
+geom/mountver/g_mountver.c	optional geom_mountver
 geom/multipath/g_multipath.c	optional geom_multipath
 geom/nop/g_nop.c		optional geom_nop
 geom/part/g_part.c		standard
@@ -1926,18 +1957,15 @@ geom/virstor/binstream.c	optional geom_virstor
 geom/virstor/g_virstor.c	optional geom_virstor
 geom/virstor/g_virstor_md.c	optional geom_virstor
 geom/zero/g_zero.c		optional geom_zero
-gnu/fs/ext2fs/ext2_alloc.c		optional ext2fs \
-	warning "kernel contains GPL contaminated ext2fs filesystem"
-gnu/fs/ext2fs/ext2_balloc.c	optional ext2fs
-gnu/fs/ext2fs/ext2_bmap.c	optional ext2fs
-gnu/fs/ext2fs/ext2_inode.c	optional ext2fs
-gnu/fs/ext2fs/ext2_inode_cnv.c	optional ext2fs
-gnu/fs/ext2fs/ext2_linux_balloc.c	optional ext2fs
-gnu/fs/ext2fs/ext2_linux_ialloc.c	optional ext2fs
-gnu/fs/ext2fs/ext2_lookup.c	optional ext2fs
-gnu/fs/ext2fs/ext2_subr.c	optional ext2fs
-gnu/fs/ext2fs/ext2_vfsops.c	optional ext2fs
-gnu/fs/ext2fs/ext2_vnops.c	optional ext2fs
+fs/ext2fs/ext2_alloc.c		optional ext2fs
+fs/ext2fs/ext2_balloc.c		optional ext2fs
+fs/ext2fs/ext2_bmap.c		optional ext2fs
+fs/ext2fs/ext2_inode.c		optional ext2fs
+fs/ext2fs/ext2_inode_cnv.c	optional ext2fs
+fs/ext2fs/ext2_lookup.c		optional ext2fs
+fs/ext2fs/ext2_subr.c		optional ext2fs
+fs/ext2fs/ext2_vfsops.c		optional ext2fs
+fs/ext2fs/ext2_vnops.c		optional ext2fs
 gnu/fs/reiserfs/reiserfs_hashes.c	optional reiserfs \
 	warning "kernel contains GPL contaminated ReiserFS filesystem"
 gnu/fs/reiserfs/reiserfs_inode.c	optional reiserfs
@@ -2427,7 +2455,11 @@ netinet/ip_encap.c		optional inet | inet6
 netinet/ip_fastfwd.c		optional inet
 netinet/ipfw/ip_fw2.c		optional inet ipfirewall \
 	compile-with "${NORMAL_C} -I$S/contrib/pf"
+netinet/ipfw/ip_fw_dynamic.c	optional inet ipfirewall
+netinet/ipfw/ip_fw_log.c	optional inet ipfirewall
 netinet/ipfw/ip_fw_pfil.c	optional inet ipfirewall
+netinet/ipfw/ip_fw_sockopt.c	optional inet ipfirewall
+netinet/ipfw/ip_fw_table.c	optional inet ipfirewall
 netinet/ipfw/ip_fw_nat.c	optional inet ipfirewall_nat
 netinet/ip_icmp.c		optional inet
 netinet/ip_input.c		optional inet

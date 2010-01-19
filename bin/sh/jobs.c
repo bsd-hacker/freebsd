@@ -92,7 +92,7 @@ STATIC struct job *getjob(char *);
 STATIC pid_t dowait(int, struct job *);
 STATIC pid_t waitproc(int, int *);
 STATIC void cmdtxt(union node *);
-STATIC void cmdputs(char *);
+STATIC void cmdputs(const char *);
 #if JOBS
 STATIC void setcurjob(struct job *);
 STATIC void deljob(struct job *);
@@ -757,6 +757,7 @@ forkshell(struct job *jp, union node *n, int mode)
 		TRACE(("Child shell %d\n", (int)getpid()));
 		wasroot = rootshell;
 		rootshell = 0;
+		handler = &main_handler;
 		closescript();
 		INTON;
 		clear_traps();
@@ -1082,7 +1083,7 @@ cmdtxt(union node *n)
 {
 	union node *np;
 	struct nodelist *lp;
-	char *p;
+	const char *p;
 	int i;
 	char s[2];
 
@@ -1211,9 +1212,10 @@ redir:
 
 
 STATIC void
-cmdputs(char *s)
+cmdputs(const char *s)
 {
-	char *p, *q;
+	const char *p;
+	char *q;
 	char c;
 	int subtype = 0;
 

@@ -1819,7 +1819,7 @@ if_route(struct ifnet *ifp, int flag, int fam)
 #endif
 }
 
-void	(*vlan_link_state_p)(struct ifnet *, int);	/* XXX: private from if_vlan */
+void	(*vlan_link_state_p)(struct ifnet *);	/* XXX: private from if_vlan */
 void	(*vlan_trunk_cap_p)(struct ifnet *);		/* XXX: private from if_vlan */
 
 /*
@@ -1845,19 +1845,12 @@ do_link_state_change(void *arg, int pending)
 {
 	struct ifnet *ifp = (struct ifnet *)arg;
 	int link_state = ifp->if_link_state;
-	int link;
 	CURVNET_SET(ifp->if_vnet);
 
 	/* Notify that the link state has changed. */
 	rt_ifmsg(ifp);
-	if (link_state == LINK_STATE_UP)
-		link = NOTE_LINKUP;
-	else if (link_state == LINK_STATE_DOWN)
-		link = NOTE_LINKDOWN;
-	else
-		link = NOTE_LINKINV;
 	if (ifp->if_vlantrunk != NULL)
-		(*vlan_link_state_p)(ifp, link);
+		(*vlan_link_state_p)(ifp);
 
 	if ((ifp->if_type == IFT_ETHER || ifp->if_type == IFT_L2VLAN) &&
 	    IFP2AC(ifp)->ac_netgraph != NULL)
@@ -2095,6 +2088,14 @@ ifhwioctl(u_long cmd, struct ifnet *ifp, caddr_t data, struct thread *td)
 			return (EINVAL);
 		if (ifunit(new_name) != NULL)
 			return (EEXIST);
+
+		/*
+		 * XXX: Locking.  Nothing else seems to lock if_flags,
+		 * and there are numerous other races with the
+		 * ifunit() checks not being atomic with namespace
+		 * changes (renames, vmoves, if_attach, etc).
+		 */
+		ifp->if_flags |= IFF_RENAMING;
 		
 		/* Announce the departure of the interface. */
 		rt_ifannouncemsg(ifp, IFAN_DEPARTURE);
@@ -2129,6 +2130,8 @@ ifhwioctl(u_long cmd, struct ifnet *ifp, caddr_t data, struct thread *td)
 		EVENTHANDLER_INVOKE(ifnet_arrival_event, ifp);
 		/* Announce the return of the interface. */
 		rt_ifannouncemsg(ifp, IFAN_ARRIVAL);
+
+		ifp->if_flags &= ~IFF_RENAMING;
 		break;
 
 #ifdef VIMAGE
@@ -2265,6 +2268,7 @@ ifhwioctl(u_long cmd, struct ifnet *ifp, caddr_t data, struct thread *td)
 			return (error);
 		error = if_setlladdr(ifp,
 		    ifr->ifr_addr.sa_data, ifr->ifr_addr.sa_len);
+		EVENTHANDLER_INVOKE(iflladdr_event, ifp);
 		break;
 
 	case SIOCAIFGROUP:

@@ -187,6 +187,7 @@ static const struct bge_type {
 	{ BCOM_VENDORID,	BCOM_DEVICEID_BCM5754M },
 	{ BCOM_VENDORID,	BCOM_DEVICEID_BCM5755 },
 	{ BCOM_VENDORID,	BCOM_DEVICEID_BCM5755M },
+	{ BCOM_VENDORID,	BCOM_DEVICEID_BCM5756 },
 	{ BCOM_VENDORID,	BCOM_DEVICEID_BCM5761 },
 	{ BCOM_VENDORID,	BCOM_DEVICEID_BCM5761E },
 	{ BCOM_VENDORID,	BCOM_DEVICEID_BCM5761S },
@@ -901,7 +902,8 @@ bge_miibus_statchg(device_t dev)
 	mii = device_get_softc(sc->bge_miibus);
 
 	BGE_CLRBIT(sc, BGE_MAC_MODE, BGE_MACMODE_PORTMODE);
-	if (IFM_SUBTYPE(mii->mii_media_active) == IFM_1000_T)
+	if (IFM_SUBTYPE(mii->mii_media_active) == IFM_1000_T ||
+	    IFM_SUBTYPE(mii->mii_media_active) == IFM_1000_SX)
 		BGE_SETBIT(sc, BGE_MAC_MODE, BGE_PORTMODE_GMII);
 	else
 		BGE_SETBIT(sc, BGE_MAC_MODE, BGE_PORTMODE_MII);
@@ -1782,13 +1784,20 @@ bge_blockinit(struct bge_softc *sc)
 	if (!(BGE_IS_5705_PLUS(sc)))
 		CSR_WRITE_4(sc, BGE_RXLS_MODE, BGE_RXLSMODE_ENABLE);
 
+	val = BGE_MACMODE_TXDMA_ENB | BGE_MACMODE_RXDMA_ENB |
+	    BGE_MACMODE_RX_STATS_CLEAR | BGE_MACMODE_TX_STATS_CLEAR |
+	    BGE_MACMODE_RX_STATS_ENB | BGE_MACMODE_TX_STATS_ENB |
+	    BGE_MACMODE_FRMHDR_DMA_ENB;
+
+	if (sc->bge_flags & BGE_FLAG_TBI)
+		val |= BGE_PORTMODE_TBI;
+	else if (sc->bge_flags & BGE_FLAG_MII_SERDES)
+		val |= BGE_PORTMODE_GMII;
+	else
+		val |= BGE_PORTMODE_MII;
+
 	/* Turn on DMA, clear stats */
-	CSR_WRITE_4(sc, BGE_MAC_MODE, BGE_MACMODE_TXDMA_ENB |
-	    BGE_MACMODE_RXDMA_ENB | BGE_MACMODE_RX_STATS_CLEAR |
-	    BGE_MACMODE_TX_STATS_CLEAR | BGE_MACMODE_RX_STATS_ENB |
-	    BGE_MACMODE_TX_STATS_ENB | BGE_MACMODE_FRMHDR_DMA_ENB |
-	    ((sc->bge_flags & BGE_FLAG_TBI) ?
-	    BGE_PORTMODE_TBI : BGE_PORTMODE_MII));
+	CSR_WRITE_4(sc, BGE_MAC_MODE, val);
 
 	/* Set misc. local control, enable interrupts on attentions */
 	CSR_WRITE_4(sc, BGE_MISC_LOCAL_CTL, BGE_MLC_INTR_ONATTN);
@@ -2604,7 +2613,8 @@ bge_attach(device_t dev)
 		    sc->bge_asicrev == BGE_ASICREV_BCM5761 ||
 		    sc->bge_asicrev == BGE_ASICREV_BCM5784 ||
 		    sc->bge_asicrev == BGE_ASICREV_BCM5787) {
-			if (sc->bge_chipid != BGE_CHIPID_BCM5722_A0)
+			if (pci_get_device(dev) != BCOM_DEVICEID_BCM5722 &&
+			    pci_get_device(dev) != BCOM_DEVICEID_BCM5756)
 				sc->bge_flags |= BGE_FLAG_JITTER_BUG;
 		} else if (sc->bge_asicrev != BGE_ASICREV_BCM5906)
 			sc->bge_flags |= BGE_FLAG_BER_BUG;
@@ -2642,8 +2652,15 @@ bge_attach(device_t dev)
 	 * the TSO to the controllers that are not affected TSO issues
 	 * (e.g. 5755 or higher).
 	 */
-	if (BGE_IS_5755_PLUS(sc))
-		sc->bge_flags |= BGE_FLAG_TSO;
+	if (BGE_IS_5755_PLUS(sc)) {
+		/*
+		 * BCM5754 and BCM5787 shares the same ASIC id so
+		 * explicit device id check is required.
+		 */
+		if (pci_get_device(dev) != BCOM_DEVICEID_BCM5754 &&
+		    pci_get_device(dev) != BCOM_DEVICEID_BCM5754M)
+			sc->bge_flags |= BGE_FLAG_TSO;
+	}
 
   	/*
 	 * Check if this is a PCI-X or PCI Express device.
@@ -2842,12 +2859,14 @@ bge_attach(device_t dev)
 		hwcfg = ntohl(hwcfg);
 	}
 
-	if ((hwcfg & BGE_HWCFG_MEDIA) == BGE_MEDIA_FIBER)
-		sc->bge_flags |= BGE_FLAG_TBI;
-
 	/* The SysKonnect SK-9D41 is a 1000baseSX card. */
-	if ((pci_read_config(dev, BGE_PCI_SUBSYS, 4) >> 16) == SK_SUBSYSID_9D41)
-		sc->bge_flags |= BGE_FLAG_TBI;
+	if ((pci_read_config(dev, BGE_PCI_SUBSYS, 4) >> 16) ==
+	    SK_SUBSYSID_9D41 || (hwcfg & BGE_HWCFG_MEDIA) == BGE_MEDIA_FIBER) {
+		if (BGE_IS_5714_FAMILY(sc))
+			sc->bge_flags |= BGE_FLAG_MII_SERDES;
+		else
+			sc->bge_flags |= BGE_FLAG_TBI;
+	}
 
 	if (sc->bge_flags & BGE_FLAG_TBI) {
 		ifmedia_init(&sc->bge_ifmedia, IFM_IMASK, bge_ifmedia_upd,
@@ -3931,11 +3950,8 @@ bge_encap(struct bge_softc *sc, struct mbuf **m_head, uint32_t *txidx)
 			m = m_defrag(m, M_DONTWAIT);
 		else
 			m = m_collapse(m, M_DONTWAIT, sc->bge_forced_collapse);
-		if (m == NULL) {
-			m_freem(*m_head);
-			*m_head = NULL;
-			return (ENOBUFS);
-		}
+		if (m == NULL)
+			m = *m_head;
 		*m_head = m;
 	}
 

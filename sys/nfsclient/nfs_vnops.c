@@ -1558,11 +1558,14 @@ nfs_create(struct vop_create_args *ap)
 	/*
 	 * Oops, not for me..
 	 */
-	if (vap->va_type == VSOCK)
-		return (nfs_mknodrpc(dvp, ap->a_vpp, cnp, vap));
-
-	if ((error = VOP_GETATTR(dvp, &vattr, cnp->cn_cred)) != 0)
+	if (vap->va_type == VSOCK) {
+		error = nfs_mknodrpc(dvp, ap->a_vpp, cnp, vap);
 		return (error);
+	}
+
+	if ((error = VOP_GETATTR(dvp, &vattr, cnp->cn_cred)) != 0) {
+		return (error);
+	}
 	if (vap->va_vaflags & VA_EXCLUSIVE)
 		fmode |= O_EXCL;
 again:

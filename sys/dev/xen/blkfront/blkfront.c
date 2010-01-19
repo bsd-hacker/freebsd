@@ -450,7 +450,7 @@ blkfront_attach(device_t dev)
 
 	/* Allocate parent DMA tag */
 	if (bus_dma_tag_create(	NULL,			/* parent */
-				4096, 0,		/* algnmnt, boundary */
+				512, 4096,		/* algnmnt, boundary */
 				BUS_SPACE_MAXADDR,	/* lowaddr */
 				BUS_SPACE_MAXADDR,	/* highaddr */
 				NULL, NULL,		/* filter, filterarg */
@@ -733,7 +733,7 @@ connect(struct xb_softc *sc)
 /**
  * Handle the change of state of the backend to Closing.  We must delete our
  * device-layer structures now, to ensure that writes are flushed through to
- * the backend.  Once is this done, we can switch to Closed in
+ * the backend.  Once this is done, we can switch to Closed in
  * acknowledgement.
  */
 static void
@@ -960,7 +960,7 @@ blkif_queue_cb(void *arg, bus_dma_segment_t *segs, int nsegs, int error)
 
 		/* install a grant reference. */
 		ref = gnttab_claim_grant_reference(&cm->gref_head);
-		KASSERT( ref != ENOSPC, ("grant_reference failed") );
+		KASSERT( ref >= 0, ("grant_reference failed") );
 
 		gnttab_grant_foreign_access_ref(
 			ref,

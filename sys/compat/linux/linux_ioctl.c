@@ -96,6 +96,7 @@ static linux_ioctl_function_t linux_ioctl_drm;
 static linux_ioctl_function_t linux_ioctl_sg;
 static linux_ioctl_function_t linux_ioctl_v4l;
 static linux_ioctl_function_t linux_ioctl_special;
+static linux_ioctl_function_t linux_ioctl_fbsd_usb;
 
 static struct linux_ioctl_handler cdrom_handler =
 { linux_ioctl_cdrom, LINUX_IOCTL_CDROM_MIN, LINUX_IOCTL_CDROM_MAX };
@@ -121,6 +122,8 @@ static struct linux_ioctl_handler sg_handler =
 { linux_ioctl_sg, LINUX_IOCTL_SG_MIN, LINUX_IOCTL_SG_MAX };
 static struct linux_ioctl_handler video_handler =
 { linux_ioctl_v4l, LINUX_IOCTL_VIDEO_MIN, LINUX_IOCTL_VIDEO_MAX };
+static struct linux_ioctl_handler fbsd_usb =
+{ linux_ioctl_fbsd_usb, LINUX_FBSD_USB_MIN, LINUX_FBSD_USB_MAX };
 
 DATA_SET(linux_ioctl_handler_set, cdrom_handler);
 DATA_SET(linux_ioctl_handler_set, vfat_handler);
@@ -134,6 +137,7 @@ DATA_SET(linux_ioctl_handler_set, private_handler);
 DATA_SET(linux_ioctl_handler_set, drm_handler);
 DATA_SET(linux_ioctl_handler_set, sg_handler);
 DATA_SET(linux_ioctl_handler_set, video_handler);
+DATA_SET(linux_ioctl_handler_set, fbsd_usb);
 
 struct handler_element
 {
@@ -143,7 +147,7 @@ struct handler_element
 };
 
 static TAILQ_HEAD(, handler_element) handlers =
-	TAILQ_HEAD_INITIALIZER(handlers);
+    TAILQ_HEAD_INITIALIZER(handlers);
 static struct sx linux_ioctl_sx;
 SX_SYSINIT(linux_ioctl, &linux_ioctl_sx, "linux ioctl handlers");
 
@@ -2624,7 +2628,6 @@ bsd_to_linux_v4l_tuner(struct video_tuner *vt, struct l_video_tuner *lvt)
 	return (0);
 }
 
-#if 0
 static int
 linux_to_bsd_v4l_clip(struct l_video_clip *lvc, struct video_clip *vc)
 {
@@ -2635,7 +2638,6 @@ linux_to_bsd_v4l_clip(struct l_video_clip *lvc, struct video_clip *vc)
 	vc->next = PTRIN(lvc->next);	/* possible pointer size conversion */
 	return (0);
 }
-#endif
 
 static int
 linux_to_bsd_v4l_window(struct l_video_window *lvw, struct video_window *vw)
@@ -2696,29 +2698,21 @@ linux_to_bsd_v4l_code(struct l_video_code *lvc, struct video_code *vc)
 	return (0);
 }
 
-#if 0
 static int
-linux_v4l_cliplist_copy(struct l_video_window *lvw, struct video_window *vw)
+linux_v4l_clip_copy(void *lvc, struct video_clip **ppvc)
 {
+	int error;
 	struct video_clip vclip;
 	struct l_video_clip l_vclip;
-	struct video_clip **ppvc;
-	struct l_video_clip *plvc;
-	int error;
 
-	ppvc = &(vw->clips);
-	for (plvc = (struct l_video_clip *) PTRIN(lvw->clips);
-	    plvc != NULL;
-	    plvc = (struct l_video_clip *) PTRIN(plvc->next)) {
-		error = copyin((void *) plvc, &l_vclip, sizeof(l_vclip));
-		if (error) return (error);
-		linux_to_bsd_v4l_clip(&l_vclip, &vclip);
-		/* XXX: If there can be no concurrency: s/M_NOWAIT/M_WAITOK/ */
-		if ((*ppvc = malloc(sizeof(**ppvc), M_LINUX, M_NOWAIT)) == NULL)
-			return (ENOMEM);    /* XXX: linux has no ENOMEM here */
-		memcpy(&vclip, *ppvc, sizeof(vclip));
-		ppvc = &((*ppvc)->next);
-	}
+	error = copyin(lvc, &l_vclip, sizeof(l_vclip));
+	if (error) return (error);
+	linux_to_bsd_v4l_clip(&l_vclip, &vclip);
+	/* XXX: If there can be no concurrency: s/M_NOWAIT/M_WAITOK/ */
+	if ((*ppvc = malloc(sizeof(**ppvc), M_LINUX, M_NOWAIT)) == NULL)
+		return (ENOMEM);    /* XXX: linux has no ENOMEM here */
+	memcpy(&vclip, *ppvc, sizeof(vclip));
+	(*ppvc)->next = NULL;
 	return (0);
 }
 
@@ -2734,7 +2728,71 @@ linux_v4l_cliplist_free(struct video_window *vw)
 	}
 	return (0);
 }
-#endif
+
+static int
+linux_v4l_cliplist_copy(struct l_video_window *lvw, struct video_window *vw)
+{
+	int error;
+	int clipcount;
+	void *plvc;
+	struct video_clip **ppvc;
+
+	/*
+	 * XXX: The cliplist is used to pass in a list of clipping
+	 *	rectangles or, if clipcount == VIDEO_CLIP_BITMAP, a
+	 *	clipping bitmap.  Some Linux apps, however, appear to
+	 *	leave cliplist and clips uninitialized.  In any case,
+	 *	the cliplist is not used by pwc(4), at the time of
+	 *	writing, FreeBSD's only V4L driver.  When a driver
+	 *	that uses the cliplist is developed, this code may
+	 *	need re-examiniation.
+	 */
+	error = 0;
+	clipcount = vw->clipcount;
+	if (clipcount == VIDEO_CLIP_BITMAP) {
+		/*
+		 * In this case, the pointer (clips) is overloaded
+		 * to be a "void *" to a bitmap, therefore there
+		 * is no struct video_clip to copy now.
+		 */
+	} else if (clipcount > 0 && clipcount <= 16384) {
+		/*
+		 * Clips points to list of clip rectangles, so
+		 * copy the list.
+		 *
+		 * XXX: Upper limit of 16384 was used here to try to
+		 *	avoid cases when clipcount and clips pointer
+		 *	are uninitialized and therefore have high random
+		 *	values, as is the case in the Linux Skype
+		 *	application.  The value 16384 was chosen as that
+		 *	is what is used in the Linux stradis(4) MPEG
+		 *	decoder driver, the only place we found an
+		 *	example of cliplist use.
+		 */
+		plvc = PTRIN(lvw->clips);
+		ppvc = &(vw->clips);
+		while (clipcount-- > 0) {
+			if (plvc == 0)
+				error = EFAULT;
+			if (!error)
+				error = linux_v4l_clip_copy(plvc, ppvc);
+			if (error) {
+				linux_v4l_cliplist_free(vw);
+				break;
+			}
+			ppvc = &((*ppvc)->next);
+		        plvc = PTRIN(((struct l_video_clip *) plvc)->next);
+		}
+	} else {
+		/*
+		 * clipcount == 0 or negative (but not VIDEO_CLIP_BITMAP)
+		 * Force cliplist to null.
+		 */
+		vw->clipcount = 0;
+		vw->clips = NULL;
+	}
+	return (error);
+}
 
 static int
 linux_ioctl_v4l(struct thread *td, struct linux_ioctl_args *args)
@@ -2805,21 +2863,14 @@ linux_ioctl_v4l(struct thread *td, struct linux_ioctl_args *args)
 			return (error);
 		}
 		linux_to_bsd_v4l_window(&l_vwin, &vwin);
-#if 0
-		/*
-		 * XXX: some Linux apps call SWIN but do not store valid
-		 *	values in clipcount or in the clips pointer.  Until
-		 *	we have someone calling to support this, the code
-		 *	to handle the list of video_clip structures is removed.
-		 */
 		error = linux_v4l_cliplist_copy(&l_vwin, &vwin);
-#endif
-		if (!error)
-			error = fo_ioctl(fp, VIDIOCSWIN, &vwin, td->td_ucred, td);
+		if (error) {
+			fdrop(fp, td);
+			return (error);
+		}
+		error = fo_ioctl(fp, VIDIOCSWIN, &vwin, td->td_ucred, td);
 		fdrop(fp, td);
-#if 0
 		linux_v4l_cliplist_free(&vwin);
-#endif
 		return (error);
 
 	case LINUX_VIDIOCGFBUF:
@@ -2910,6 +2961,24 @@ linux_ioctl_special(struct thread *td, struct linux_ioctl_args *args)
 	}
 
 	return (error);
+}
+
+/*
+ * Support for mounting our devfs under /compat/linux/dev and using
+ * our libusb(3) compiled on Linux to access it from within Linuxolator
+ * environment.
+ */
+static int
+linux_ioctl_fbsd_usb(struct thread *td, struct linux_ioctl_args *args)
+{
+
+	/*
+	 * Because on GNU/Linux we build our libusb(3) with our header
+	 * files and ioccom.h macros, ioctl() will contain our native
+	 * command value. This means that we can basically redirect this
+	 * call further.
+	 */
+	return (ioctl(td, (struct ioctl_args *)args));
 }
 
 /*

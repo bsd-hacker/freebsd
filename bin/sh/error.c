@@ -67,7 +67,7 @@ volatile sig_atomic_t intpending;
 char *commandname;
 
 
-static void exverror(int, const char *, va_list) __printf0like(2, 0);
+static void exverror(int, const char *, va_list) __printf0like(2, 0) __dead2;
 
 /*
  * Called to raise an exception.  Since C doesn't include exceptions, we
@@ -160,8 +160,8 @@ exverror(int cond, const char *msg, va_list ap)
 #endif
 	if (msg) {
 		if (commandname)
-			outfmt(&errout, "%s: ", commandname);
-		doformat(&errout, msg, ap);
+			outfmt(out2, "%s: ", commandname);
+		doformat(out2, msg, ap);
 		out2c('\n');
 	}
 	flushall();

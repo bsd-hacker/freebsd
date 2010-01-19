@@ -868,8 +868,8 @@ g_mirror_done(struct bio *bp)
 	bp->bio_cflags = G_MIRROR_BIO_FLAG_REGULAR;
 	mtx_lock(&sc->sc_queue_mtx);
 	bioq_disksort(&sc->sc_queue, bp);
-	wakeup(sc);
 	mtx_unlock(&sc->sc_queue_mtx);
+	wakeup(sc);
 }
 
 static void
@@ -954,9 +954,9 @@ g_mirror_regular_request(struct bio *bp)
 			pbp->bio_error = 0;
 			mtx_lock(&sc->sc_queue_mtx);
 			bioq_disksort(&sc->sc_queue, pbp);
+			mtx_unlock(&sc->sc_queue_mtx);
 			G_MIRROR_DEBUG(4, "%s: Waking up %p.", __func__, sc);
 			wakeup(sc);
-			mtx_unlock(&sc->sc_queue_mtx);
 		}
 		break;
 	case BIO_DELETE:
@@ -994,8 +994,8 @@ g_mirror_sync_done(struct bio *bp)
 	bp->bio_cflags = G_MIRROR_BIO_FLAG_SYNC;
 	mtx_lock(&sc->sc_queue_mtx);
 	bioq_disksort(&sc->sc_queue, bp);
-	wakeup(sc);
 	mtx_unlock(&sc->sc_queue_mtx);
+	wakeup(sc);
 }
 
 static void
@@ -1107,9 +1107,9 @@ g_mirror_start(struct bio *bp)
 	}
 	mtx_lock(&sc->sc_queue_mtx);
 	bioq_disksort(&sc->sc_queue, bp);
+	mtx_unlock(&sc->sc_queue_mtx);
 	G_MIRROR_DEBUG(4, "%s: Waking up %p.", __func__, sc);
 	wakeup(sc);
-	mtx_unlock(&sc->sc_queue_mtx);
 }
 
 /*
@@ -2036,6 +2036,15 @@ g_mirror_launch_provider(struct g_mirror_softc *sc)
 	pp = g_new_providerf(sc->sc_geom, "mirror/%s", sc->sc_name);
 	pp->mediasize = sc->sc_mediasize;
 	pp->sectorsize = sc->sc_sectorsize;
+	pp->stripesize = 0;
+	pp->stripeoffset = 0;
+	LIST_FOREACH(disk, &sc->sc_disks, d_next) {
+		if (disk->d_consumer && disk->d_consumer->provider &&
+		    disk->d_consumer->provider->stripesize > pp->stripesize) {
+			pp->stripesize = disk->d_consumer->provider->stripesize;
+			pp->stripeoffset = disk->d_consumer->provider->stripeoffset;
+		}
+	}
 	sc->sc_provider = pp;
 	g_error_provider(pp, 0);
 	g_topology_unlock();

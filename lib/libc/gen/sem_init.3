@@ -27,7 +27,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd December 8, 2009
+.Dd January 9, 2010
 .Dt SEM_INIT 3
 .Os
 .Sh NAME
@@ -46,9 +46,19 @@ function initializes the unnamed semaphore pointed to by
 .Fa sem
 to have the value
 .Fa value .
+.Pp
 A non-zero value for
 .Fa pshared
-specifies a shared semaphore that can be used by multiple processes.
+specifies a shared semaphore that can be used by multiple processes,
+the semaphore should be located in shared memory region (see
+.Xr mmap 2 ,
+.Xr shm_open 2 ,
+and
+.Xr shmget 2 ) ,
+any process having read and write access to address
+.Fa sem
+can perform semaphore operations on
+.Fa sem .
 .Pp
 Following a successful call to
 .Fn sem_init ,
@@ -90,10 +100,3 @@ The
 .Fn sem_init
 function conforms to
 .St -p1003.1-96 .
-.Sh BUGS
-A sem_t is a pointer to a separately allocated structure,
-therefore process shared semaphores only work between related processes
-and do not perform very well
-(each operation is a system call,
-while single-process semaphores only do a system call
-if they need to block or wake up a thread).

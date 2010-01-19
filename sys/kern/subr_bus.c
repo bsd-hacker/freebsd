@@ -2898,8 +2898,11 @@ resource_list_busy(struct resource_list *rl, int type, int rid)
 	rle = resource_list_find(rl, type, rid);
 	if (rle == NULL || rle->res == NULL)
 		return (0);
-	if ((rle->flags & (RLE_RESERVED | RLE_ALLOCATED)) == RLE_RESERVED)
+	if ((rle->flags & (RLE_RESERVED | RLE_ALLOCATED)) == RLE_RESERVED) {
+		KASSERT(!(rman_get_flags(rle->res) & RF_ACTIVE),
+		    ("reserved resource is active"));
 		return (0);
+	}
 	return (1);
 }
 
@@ -3060,12 +3063,12 @@ resource_list_alloc(struct resource_list *rl, device_t bus, device_t child,
 		if (rle->flags & RLE_RESERVED) {
 			if (rle->flags & RLE_ALLOCATED)
 				return (NULL);
-			else if ((flags & RF_ACTIVE) &&
+			if ((flags & RF_ACTIVE) &&
 			    bus_activate_resource(child, type, *rid,
 			    rle->res) != 0)
 				return (NULL);
-			else
-				return (rle->res);
+			rle->flags |= RLE_ALLOCATED;
+			return (rle->res);
 		}
 		panic("resource_list_alloc: resource entry is busy");
 	}
@@ -3801,6 +3804,10 @@ bus_generic_rl_release_resource(device_t dev, device_t child, int type,
 {
 	struct resource_list *		rl = NULL;
 
+	if (device_get_parent(child) != dev)
+		return (BUS_RELEASE_RESOURCE(device_get_parent(dev), child,
+		    type, rid, r));
+
 	rl = BUS_GET_RESOURCE_LIST(dev, child);
 	if (!rl)
 		return (EINVAL);
@@ -3820,6 +3827,10 @@ bus_generic_rl_alloc_resource(device_t dev, device_t child, int type,
     int *rid, u_long start, u_long end, u_long count, u_int flags)
 {
 	struct resource_list *		rl = NULL;
+
+	if (device_get_parent(child) != dev)
+		return (BUS_ALLOC_RESOURCE(device_get_parent(dev), child,
+		    type, rid, start, end, count, flags));
 
 	rl = BUS_GET_RESOURCE_LIST(dev, child);
 	if (!rl)

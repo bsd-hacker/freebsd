@@ -77,6 +77,7 @@ struct session {
 	u_int		s_count;	/* Ref cnt; pgrps in session - atomic. */
 	struct proc	*s_leader;	/* (m + e) Session leader. */
 	struct vnode	*s_ttyvp;	/* (m) Vnode of controlling tty. */
+	struct cdev_priv *s_ttydp;	/* (m) Device of controlling tty.  */
 	struct tty	*s_ttyp;	/* (e) Controlling tty. */
 	pid_t		s_sid;		/* (c) Session ID. */
 					/* (m) Setlogin() name: */
@@ -216,7 +217,8 @@ struct thread {
 	int		td_pinned;	/* (k) Temporary cpu pin count. */
 	struct ucred	*td_ucred;	/* (k) Reference to credentials. */
 	u_int		td_estcpu;	/* (t) estimated cpu utilization */
-	u_int		td_slptick;	/* (t) Time at sleep. */
+	int		td_slptick;	/* (t) Time at sleep. */
+	int		td_blktick;	/* (t) Time spent blocked. */
 	struct rusage	td_ru;		/* (t) rusage information */
 	uint64_t	td_incruntime;	/* (t) Cpu ticks to transfer to proc. */
 	uint64_t	td_runtime;	/* (t) How many cpu ticks we've run. */

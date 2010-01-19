@@ -339,6 +339,9 @@ void	if_maddr_runlock(struct ifnet *ifp);	/* if_multiaddrs */
 } while(0)
 
 #ifdef _KERNEL
+/* interface link layer address change event */
+typedef void (*iflladdr_event_handler_t)(void *, struct ifnet *);
+EVENTHANDLER_DECLARE(iflladdr_event, iflladdr_event_handler_t);
 /* interface address change event */
 typedef void (*ifaddr_event_handler_t)(void *, struct ifnet *);
 EVENTHANDLER_DECLARE(ifaddr_event, ifaddr_event_handler_t);
@@ -710,6 +713,7 @@ struct ifaddr {
 	struct mtx ifa_mtx;
 };
 #define	IFA_ROUTE	RTF_UP		/* route installed */
+#define IFA_RTSELF	RTF_HOST	/* loopback route to self installed */
 
 /* for compatibility with other BSDs */
 #define	ifa_list	ifa_link
@@ -843,7 +847,6 @@ void	if_ref(struct ifnet *);
 void	if_rele(struct ifnet *);
 int	if_setlladdr(struct ifnet *, const u_char *, int);
 void	if_up(struct ifnet *);
-/*void	ifinit(void);*/ /* declared in systm.h for main() */
 int	ifioctl(struct socket *, u_long, caddr_t, struct thread *);
 int	ifpromisc(struct ifnet *, int);
 struct	ifnet *ifunit(const char *);

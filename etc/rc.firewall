@@ -212,14 +212,16 @@ case ${firewall_type} in
 	${fwcmd} add pass all from me to ${net}
 	${fwcmd} add pass all from ${net} to me
 	if [ -n "$net6" ]; then
-		${fwcmd} add pass all from me6 to ${net6}
-		${fwcmd} add pass all from ${net6} to me6
+		${fwcmd} add pass all from me to ${net6}
+		${fwcmd} add pass all from ${net6} to me
 	fi
 
 	if [ -n "$net6" ]; then
 		# Allow any link-local multicast traffic
 		${fwcmd} add pass all from fe80::/10 to ff02::/16
 		${fwcmd} add pass all from ${net6} to ff02::/16
+		# Allow DHCPv6
+		${fwcmd} add pass udp from fe80::/10 to me 546
 	fi
 
 	# Allow TCP through if setup succeeded
@@ -446,18 +448,13 @@ case ${firewall_type} in
 
 	# For services permitted below.
 	${fwcmd} add pass tcp  from me to any established
-	if [ $ipv6_available -eq 0 ]; then
-		${fwcmd} add pass tcp from me6 to any established
-	fi
 
 	# Allow any connection out, adding state for each.
 	${fwcmd} add pass tcp  from me to any setup keep-state
 	${fwcmd} add pass udp  from me to any       keep-state
 	${fwcmd} add pass icmp from me to any       keep-state
 	if [ $ipv6_available -eq 0 ]; then
-		${fwcmd} add pass tcp from me6 to any setup keep-state
-		${fwcmd} add pass udp from me6 to any keep-state
-		${fwcmd} add pass ipv6-icmp from me6 to any keep-state
+		${fwcmd} add pass ipv6-icmp from me to any keep-state
 	fi
 
 	# Allow DHCP.
@@ -465,7 +462,7 @@ case ${firewall_type} in
 	${fwcmd} add pass udp  from any 67     to me 68 in
 	${fwcmd} add pass udp  from any 67     to 255.255.255.255 68 in
 	if [ $ipv6_available -eq 0 ]; then
-		${fwcmd} add pass udp from fe80::/10 to me6 546 in
+		${fwcmd} add pass udp from fe80::/10 to me 546 in
 	fi
 	# Some servers will ping the IP while trying to decide if it's 
 	# still in use.
@@ -476,7 +473,10 @@ case ${firewall_type} in
 
 	# Allow "mandatory" ICMP in.
 	${fwcmd} add pass icmp from any to any icmptype 3,4,11
-	
+	if [ $ipv6_available -eq 0 ]; then
+		${fwcmd} add pass ipv6-icmp from any to any icmp6type 3
+	fi
+
 	# Add permits for this workstations published services below
 	# Only IPs and nets in firewall_allowservices is allowed in.
 	# If you really wish to let anyone use services on your 
@@ -491,9 +491,6 @@ case ${firewall_type} in
 	for i in ${firewall_allowservices} ; do
 	  for j in ${firewall_myservices} ; do
 	    ${fwcmd} add pass tcp from $i to me $j
-	    if [ $ipv6_available -eq 0 ]; then
-	      ${fwcmd} add pass tcp from $i to me6 $j
-	    fi
 	  done
 	done
 
@@ -502,9 +499,6 @@ case ${firewall_type} in
 	# degrade the level of protection provided by the firewall.
 	for i in ${firewall_trusted} ; do
 	  ${fwcmd} add pass ip from $i to me
-	done
-	for i in ${firewall_trusted_ipv6} ; do
-	  ${fwcmd} add pass all from $i to me6
 	done
 
 	${fwcmd} add 65000 count ip from any to any

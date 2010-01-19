@@ -126,16 +126,20 @@ ad_attach(device_t dev)
     adp->disk->d_name = "ad";
     adp->disk->d_drv1 = dev;
     adp->disk->d_maxsize = ch->dma.max_iosize ? ch->dma.max_iosize : DFLTPHYS;
+    if (atadev->param.support.command2 & ATA_SUPPORT_ADDRESS48)
+	adp->disk->d_maxsize = min(adp->disk->d_maxsize, 65536 * DEV_BSIZE);
+    else					/* 28bit ATA command limit */
+	adp->disk->d_maxsize = min(adp->disk->d_maxsize, 256 * DEV_BSIZE);
     adp->disk->d_sectorsize = DEV_BSIZE;
     adp->disk->d_mediasize = DEV_BSIZE * (off_t)adp->total_secs;
     adp->disk->d_fwsectors = adp->sectors;
     adp->disk->d_fwheads = adp->heads;
     adp->disk->d_unit = device_get_unit(dev);
     if (atadev->param.support.command2 & ATA_SUPPORT_FLUSHCACHE)
-	adp->disk->d_flags = DISKFLAG_CANFLUSHCACHE;
+	adp->disk->d_flags |= DISKFLAG_CANFLUSHCACHE;
     if ((atadev->param.support.command2 & ATA_SUPPORT_CFA) ||
 	atadev->param.config == ATA_PROTO_CFA)
-	adp->disk->d_flags = DISKFLAG_CANDELETE;
+	adp->disk->d_flags |= DISKFLAG_CANDELETE;
     strlcpy(adp->disk->d_ident, atadev->param.serial,
 	sizeof(adp->disk->d_ident));
     disk_create(adp->disk, DISK_VERSION);

@@ -80,6 +80,8 @@ static pci_addr_t	pci_mapbase(uint64_t mapreg);
 static const char	*pci_maptype(uint64_t mapreg);
 static int		pci_mapsize(uint64_t testval);
 static int		pci_maprange(uint64_t mapreg);
+static pci_addr_t	pci_rombase(uint64_t mapreg);
+static int		pci_romsize(uint64_t testval);
 static void		pci_fixancient(pcicfgregs *cfg);
 static int		pci_printf(pcicfgregs *cfg, const char *fmt, ...);
 
@@ -142,7 +144,7 @@ static device_method_t pci_methods[] = {
 	DEVMETHOD(bus_alloc_resource,	pci_alloc_resource),
 	DEVMETHOD(bus_release_resource,	bus_generic_rl_release_resource),
 	DEVMETHOD(bus_activate_resource, pci_activate_resource),
-	DEVMETHOD(bus_deactivate_resource, bus_generic_deactivate_resource),
+	DEVMETHOD(bus_deactivate_resource, pci_deactivate_resource),
 	DEVMETHOD(bus_child_pnpinfo_str, pci_child_pnpinfo_str_method),
 	DEVMETHOD(bus_child_location_str, pci_child_location_str_method),
 
@@ -253,7 +255,7 @@ disable.  1 means conservatively place devices into D3 state.  2 means\n\
 agressively place devices into D3 state.  3 means put absolutely everything\n\
 in D3 state.");
 
-static int pci_do_power_resume = 1;
+int pci_do_power_resume = 1;
 TUNABLE_INT("hw.pci.do_power_resume", &pci_do_power_resume);
 SYSCTL_INT(_hw_pci, OID_AUTO, do_power_resume, CTLFLAG_RW,
     &pci_do_power_resume, 1,
@@ -388,6 +390,34 @@ pci_mapsize(uint64_t testval)
 	return (ln2size);
 }
 
+/* return base address of device ROM */
+
+static pci_addr_t
+pci_rombase(uint64_t mapreg)
+{
+
+	return (mapreg & PCIM_BIOS_ADDR_MASK);
+}
+
+/* return log2 of map size decided for device ROM */
+
+static int
+pci_romsize(uint64_t testval)
+{
+	int ln2size;
+
+	testval = pci_rombase(testval);
+	ln2size = 0;
+	if (testval != 0) {
+		while ((testval & 1) == 0)
+		{
+			ln2size++;
+			testval >>= 1;
+		}
+	}
+	return (ln2size);
+}
+	
 /* return log2 of address range supported by map register */
 
 static int
@@ -2280,6 +2310,21 @@ pci_read_bar(device_t dev, int reg, pci_addr_t *mapp, pci_addr_t *testvalp)
 	int ln2range;
 	uint16_t cmd;
 
+	/*
+	 * The device ROM BAR is special.  It is always a 32-bit
+	 * memory BAR.  Bit 0 is special and should not be set when
+	 * sizing the BAR.
+	 */
+	if (reg == PCIR_BIOS) {
+		map = pci_read_config(dev, reg, 4);
+		pci_write_config(dev, reg, 0xfffffffe, 4);
+		testval = pci_read_config(dev, reg, 4);
+		pci_write_config(dev, reg, map, 4);
+		*mapp = map;
+		*testvalp = testval;
+		return;
+	}
+
 	map = pci_read_config(dev, reg, 4);
 	ln2range = pci_maprange(map);
 	if (ln2range == 64)
@@ -2327,6 +2372,10 @@ pci_write_bar(device_t dev, int reg, pci_addr_t base)
 	int ln2range;
 
 	map = pci_read_config(dev, reg, 4);
+
+	/* The device ROM BAR is always 32-bits. */
+	if (reg == PCIR_BIOS)
+		return;
 	ln2range = pci_maprange(map);
 	pci_write_config(dev, reg, base, 4);
 	if (ln2range == 64)
@@ -3579,10 +3628,11 @@ pci_reserve_map(device_t dev, device_t child, int type, int *rid,
 	pci_read_bar(child, *rid, &map, &testval);
 
 	/* Ignore a BAR with a base of 0. */
-	if (pci_mapbase(testval) == 0)
+	if ((*rid == PCIR_BIOS && pci_rombase(testval) == 0) ||
+	    pci_mapbase(testval) == 0)
 		goto out;
 
-	if (PCI_BAR_MEM(testval)) {
+	if (PCI_BAR_MEM(testval) || *rid == PCIR_BIOS) {
 		if (type != SYS_RES_MEMORY) {
 			if (bootverbose)
 				device_printf(dev,
@@ -3608,8 +3658,13 @@ pci_reserve_map(device_t dev, device_t child, int type, int *rid,
 	 * actually uses and we would otherwise have a
 	 * situation where we might allocate the excess to
 	 * another driver, which won't work.
+	 *
+	 * Device ROM BARs use a different mask value.
 	 */
-	mapsize = pci_mapsize(testval);
+	if (*rid == PCIR_BIOS)
+		mapsize = pci_romsize(testval);
+	else
+		mapsize = pci_mapsize(testval);
 	count = 1UL << mapsize;
 	if (RF_ALIGNMENT(flags) < mapsize)
 		flags = (flags & ~RF_ALIGNMENT_MASK) | RF_ALIGNMENT_LOG2(mapsize);
@@ -3700,25 +3755,6 @@ pci_alloc_resource(device_t dev, device_t child, int type, int *rid,
 }
 
 int
-pci_release_resource(device_t dev, device_t child, int type, int rid,
-    struct resource *r)
-{
-
-	if (device_get_parent(child) != dev)
-		return (BUS_RELEASE_RESOURCE(device_get_parent(dev), child,
-		    type, rid, r));
-
-	/*
-	 * For BARs we don't actually want to release the resource.
-	 * Instead, we deactivate the resource if needed and then give
-	 * ownership of the BAR back to the bus.  This is handled for us
-	 * in resource_list_release() since we use resource_list_reserve()
-	 * for BARs.
-	 */
-	return (bus_generic_rl_release_resource(dev, child, type, rid, r));
-}
-
-int
 pci_activate_resource(device_t dev, device_t child, int type, int rid,
     struct resource *r)
 {
@@ -3730,6 +3766,10 @@ pci_activate_resource(device_t dev, device_t child, int type, int rid,
 
 	/* Enable decoding in the command register when activating BARs. */
 	if (device_get_parent(child) == dev) {
+		/* Device ROMs need their decoding explicitly enabled. */
+		if (rid == PCIR_BIOS)
+			pci_write_config(child, rid, rman_get_start(r) |
+			    PCIM_BIOS_ENABLE, 4);
 		switch (type) {
 		case SYS_RES_IOPORT:
 		case SYS_RES_MEMORY:
@@ -3738,6 +3778,62 @@ pci_activate_resource(device_t dev, device_t child, int type, int rid,
 		}
 	}
 	return (error);
+}
+
+int
+pci_deactivate_resource(device_t dev, device_t child, int type,
+    int rid, struct resource *r)
+{
+	int error;
+
+	error = bus_generic_deactivate_resource(dev, child, type, rid, r);
+	if (error)
+		return (error);
+
+	/* Disable decoding for device ROMs. */
+	if (rid == PCIR_BIOS)
+		pci_write_config(child, rid, rman_get_start(r), 4);
+	return (0);
+}
+
+void
+pci_delete_child(device_t dev, device_t child)
+{
+	struct resource_list_entry *rle;
+	struct resource_list *rl;
+	struct pci_devinfo *dinfo;
+
+	dinfo = device_get_ivars(child);
+	rl = &dinfo->resources;
+
+	if (device_is_attached(child))
+		device_detach(child);
+
+	/* Turn off access to resources we're about to free */
+	pci_write_config(child, PCIR_COMMAND, pci_read_config(child,
+	    PCIR_COMMAND, 2) & ~(PCIM_CMD_MEMEN | PCIM_CMD_PORTEN), 2);
+
+	/* Free all allocated resources */
+	STAILQ_FOREACH(rle, rl, link) {
+		if (rle->res) {
+			if (rman_get_flags(rle->res) & RF_ACTIVE ||
+			    resource_list_busy(rl, rle->type, rle->rid)) {
+				pci_printf(&dinfo->cfg,
+				    "Resource still owned, oops. "
+				    "(type=%d, rid=%d, addr=%lx)\n",
+				    rle->type, rle->rid,
+				    rman_get_start(rle->res));
+				bus_release_resource(child, rle->type, rle->rid,
+				    rle->res);
+			}
+			resource_list_unreserve(rl, dev, child, rle->type,
+			    rle->rid);
+		}
+	}
+	resource_list_free(rl);
+
+	device_delete_child(dev, child);
+	pci_freecfg(dinfo);
 }
 
 void

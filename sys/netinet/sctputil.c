@@ -52,14 +52,8 @@ __FBSDID("$FreeBSD$");
 #define NUMBER_OF_MTU_SIZES 18
 
 
-#if defined(__Windows__) && !defined(SCTP_LOCAL_TRACE_BUF)
-#include "eventrace_netinet.h"
-#include "sctputil.tmh"		/* this is the file that will be auto
-				 * generated */
-#else
 #ifndef KTR_SCTP
 #define KTR_SCTP KTR_SUBSYS
-#endif
 #endif
 
 void
@@ -4382,7 +4376,7 @@ sctp_add_to_readq(struct sctp_inpcb *inp,
 				m = SCTP_BUF_NEXT(prev);
 			}
 			if (m == NULL) {
-				control->tail_mbuf = prev;;
+				control->tail_mbuf = prev;
 			}
 			continue;
 		}

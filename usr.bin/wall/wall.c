@@ -64,9 +64,8 @@ static const char sccsid[] = "@(#)wall.c	8.2 (Berkeley) 11/16/93";
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#define	_ULOG_POSIX_NAMES
-#include <ulog.h>
 #include <unistd.h>
+#include <utmpx.h>
 
 #include "ttymsg.h"
 
@@ -180,7 +179,7 @@ main(int argc, char *argv[])
 }
 
 static void
-usage()
+usage(void)
 {
 	(void)fprintf(stderr, "usage: wall [-g group] [file]\n");
 	exit(1);

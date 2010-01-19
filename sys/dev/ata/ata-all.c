@@ -1150,12 +1150,11 @@ ata_satarev2str(int rev)
 }
 
 int
-ata_atapi(device_t dev)
+ata_atapi(device_t dev, int target)
 {
-    struct ata_channel *ch = device_get_softc(device_get_parent(dev));
-    struct ata_device *atadev = device_get_softc(dev);
+    struct ata_channel *ch = device_get_softc(dev);
 
-    return (ch->devices & (ATA_ATAPI_MASTER << atadev->unit));
+    return (ch->devices & (ATA_ATAPI_MASTER << target));
 }
 
 int
@@ -1474,7 +1473,7 @@ ataaction(struct cam_sim *sim, union ccb *ccb)
 			d = &ch->curr[ccb->ccb_h.target_id];
 		else
 			d = &ch->user[ccb->ccb_h.target_id];
-		if ((ch->flags & ATA_SATA) && (ch->flags & ATA_NO_SLAVE)) {
+		if (ch->flags & ATA_SATA) {
 			if (cts->xport_specific.sata.valid & CTS_SATA_VALID_REVISION)
 				d->revision = cts->xport_specific.sata.revision;
 			if (cts->xport_specific.ata.valid & CTS_SATA_VALID_MODE) {
@@ -1498,8 +1497,6 @@ ataaction(struct cam_sim *sim, union ccb *ccb)
 			}
 			if (cts->xport_specific.ata.valid & CTS_ATA_VALID_BYTECOUNT)
 				d->bytecount = cts->xport_specific.ata.bytecount;
-			if (ch->flags & ATA_SATA)
-				d->bytecount = min(8192, d->bytecount);
 		}
 		ccb->ccb_h.status = CAM_REQ_CMP;
 		xpt_done(ccb);
@@ -1516,7 +1513,7 @@ ataaction(struct cam_sim *sim, union ccb *ccb)
 			d = &ch->user[ccb->ccb_h.target_id];
 		cts->protocol = PROTO_ATA;
 		cts->protocol_version = PROTO_VERSION_UNSPECIFIED;
-		if ((ch->flags & ATA_SATA) && (ch->flags & ATA_NO_SLAVE)) {
+		if (ch->flags & ATA_SATA) {
 			cts->transport = XPORT_SATA;
 			cts->transport_version = XPORT_VERSION_UNSPECIFIED;
 			cts->xport_specific.sata.mode = d->mode;
@@ -1605,7 +1602,7 @@ ataaction(struct cam_sim *sim, union ccb *ccb)
 		strncpy(cpi->hba_vid, "ATA", HBA_IDLEN);
 		strncpy(cpi->dev_name, cam_sim_name(sim), DEV_IDLEN);
 		cpi->unit_number = cam_sim_unit(sim);
-		if ((ch->flags & ATA_SATA) && (ch->flags & ATA_NO_SLAVE))
+		if (ch->flags & ATA_SATA)
 			cpi->transport = XPORT_SATA;
 		else
 			cpi->transport = XPORT_ATA;
@@ -1681,6 +1678,9 @@ ata_module_event_handler(module_t mod, int what, void *arg)
 static moduledata_t ata_moduledata = { "ata", ata_module_event_handler, NULL };
 DECLARE_MODULE(ata, ata_moduledata, SI_SUB_CONFIGURE, SI_ORDER_SECOND);
 MODULE_VERSION(ata, 1);
+#ifdef ATA_CAM
+MODULE_DEPEND(ata, cam, 1, 1, 1);
+#endif
 
 static void
 ata_init(void)

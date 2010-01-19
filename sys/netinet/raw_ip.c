@@ -80,14 +80,18 @@ VNET_DEFINE(struct inpcbinfo, ripcbinfo);
 #define	V_ripcbinfo		VNET(ripcbinfo)
 
 /*
- * Control and data hooks for ipfw and dummynet.
+ * Control and data hooks for ipfw, dummynet, divert and so on.
  * The data hooks are not used here but it is convenient
  * to keep them all in one place.
  */
 VNET_DEFINE(ip_fw_chk_ptr_t, ip_fw_chk_ptr) = NULL;
 VNET_DEFINE(ip_fw_ctl_ptr_t, ip_fw_ctl_ptr) = NULL;
-int (*ip_dn_ctl_ptr)(struct sockopt *) = NULL;
-int (*ip_dn_io_ptr)(struct mbuf **m, int dir, struct ip_fw_args *fwa) = NULL;
+
+int	(*ip_dn_ctl_ptr)(struct sockopt *);
+int	(*ip_dn_io_ptr)(struct mbuf **, int, struct ip_fw_args *);
+void	(*ip_divert_ptr)(struct mbuf *, int);
+int	(*ng_ipfw_input_p)(struct mbuf **, int,
+			struct ip_fw_args *, int);
 
 /*
  * Hooks for multicast routing. They all default to NULL, so leave them not
@@ -291,7 +295,7 @@ rip_input(struct mbuf *m, int off)
 			continue;
 		if (inp->inp_faddr.s_addr != ip->ip_src.s_addr)
 			continue;
-		if (jailed(inp->inp_cred)) {
+		if (jailed_without_vnet(inp->inp_cred)) {
 			/*
 			 * XXX: If faddr was bound to multicast group,
 			 * jailed raw socket will drop datagram.
@@ -325,7 +329,7 @@ rip_input(struct mbuf *m, int off)
 		if (!in_nullhost(inp->inp_faddr) &&
 		    !in_hosteq(inp->inp_faddr, ip->ip_src))
 			continue;
-		if (jailed(inp->inp_cred)) {
+		if (jailed_without_vnet(inp->inp_cred)) {
 			/*
 			 * Allow raw socket in jail to receive multicast;
 			 * assume process had PRIV_NETINET_RAW at attach,

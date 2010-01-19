@@ -105,6 +105,8 @@ ata_ite_chipinit(device_t dev)
 	pci_write_config(dev, 0x56, 0x31, 1);
 
 	ctlr->setmode = ata_ite_821x_setmode;
+	/* No timing restrictions initally. */
+	ctlr->chipset_data = (void *)0;
     }
     ctlr->ch_attach = ata_ite_ch_attach;
     return 0;
@@ -129,6 +131,7 @@ ata_ite_821x_setmode(device_t dev, int target, int mode)
 	struct ata_channel *ch = device_get_softc(dev);
 	int devno = (ch->unit << 1) + target;
 	int piomode;
+	uint8_t *timings = (uint8_t*)(&ctlr->chipset_data);
 	u_int8_t udmatiming[] =
 		{ 0x44, 0x42, 0x31, 0x21, 0x11, 0xa2, 0x91 };
 	u_int8_t chtiming[] =
@@ -158,11 +161,10 @@ ata_ite_821x_setmode(device_t dev, int target, int mode)
 			     (1 << (devno + 3)), 1);
 		piomode = mode;
 	}
+	timings[devno] = chtiming[ata_mode2idx(piomode)];
 	/* set active and recover timing (shared between master & slave) */
-	if (pci_read_config(parent, 0x54 + (ch->unit << 2), 1) <
-	    chtiming[ata_mode2idx(piomode)])
-		pci_write_config(parent, 0x54 + (ch->unit << 2),
-				 chtiming[ata_mode2idx(piomode)], 1);
+	pci_write_config(parent, 0x54 + (ch->unit << 2),
+	    max(timings[ch->unit << 1], timings[(ch->unit << 1) + 1]), 1);
 	return (mode);
 }
 
@@ -212,12 +214,12 @@ ata_ite_8213_setmode(device_t dev, int target, int mode)
 	reg40 |= 0x4033;
 	/* Set PIO/WDMA timings. */
 	if (target == 0) {
-	    reg40 |= (ata_atapi(dev) ? 0x04 : 0x00);
+	    reg40 |= (ata_atapi(dev, target) ? 0x04 : 0x00);
 	    mask40 = 0x3300;
 	    new40 = timings[ata_mode2idx(piomode)] << 8;
 	}
 	else {
-	    reg40 |= (ata_atapi(dev) ? 0x40 : 0x00);
+	    reg40 |= (ata_atapi(dev, target) ? 0x40 : 0x00);
 	    mask44 = 0x0f;
 	    new44 = ((timings[ata_mode2idx(piomode)] & 0x30) >> 2) |
 		    (timings[ata_mode2idx(piomode)] & 0x03);

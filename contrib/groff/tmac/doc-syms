@@ -651,6 +651,8 @@
 .\" X/Open
 .ds doc-str-St--susv2          Version\~2 of the Single \*[doc-Tn-font-size]UNIX\*[doc-str-St] Specification
 .as doc-str-St--susv2          " (\*[Lq]\*[doc-Tn-font-size]SUSv2\*[doc-str-St]\*[Rq])
+.ds doc-str-St--susv3          Version\~3 of the Single \*[doc-Tn-font-size]UNIX\*[doc-str-St] Specification
+.as doc-str-St--susv3          " (\*[Lq]\*[doc-Tn-font-size]SUSv3\*[doc-str-St]\*[Rq])
 .ds doc-str-St--svid4          System\~V Interface Definition, Fourth Edition
 .as doc-str-St--svid4          " (\*[Lq]\*[doc-Tn-font-size]SVID\*[doc-str-St]\^4\*[Rq])
 .ds doc-str-St--xbd5           \*[doc-Tn-font-size]X/Open\*[doc-str-St] System Interface Definitions Issue\~5
@@ -777,7 +779,6 @@
 .ds doc-str-Lb-librt       \*[Px] \*[doc-str-Lb]Real-time Library (librt, \-lrt)
 .ds doc-str-Lb-libtermcap  Termcap Access Library (libtermcap, \-ltermcap)
 .ds doc-str-Lb-libusbhid   USB Human Interface Devices Library (libusbhid, \-lusbhid)
-.ds doc-str-Lb-libulog     User Login Record Library (libulog, \-lulog)
 .ds doc-str-Lb-libutil     System Utilities Library (libutil, \-lutil)
 .ds doc-str-Lb-libx86_64   x86_64 Architecture Library (libx86_64, \-lx86_64)
 .ds doc-str-Lb-libz        Compression Library (libz, \-lz)
