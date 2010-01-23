@@ -6,7 +6,10 @@
 #include <sys/refcount.h>
 #include <sys/ucred.h>
 #include <sys/time.h>
+#include <sys/proc.h>
 
+
+#include <pthread.h>
 struct malloc_type;
 
 vm_offset_t kmem_malloc(void * map, int bytes, int wait);
@@ -95,5 +98,20 @@ getmicrotime(struct timeval *tvp)
 	gettimeofday(&tv, NULL);
 }
 
+int
+kproc_kthread_add(void (*start_routine)(void *), void *arg,
+    struct proc **p,  struct thread **td,
+    int flags, int pages,
+    char * procname, const char *str, ...)
+{
+	int error;
+	pthread_t thread;
+	pthread_attr_t attr;
 
+	*td = malloc(sizeof(struct thread));
+	pthread_attr_init(&attr);
+	
+	error = pthread_create(&thread, &attr, start_routine, arg);
 
+	return (error);
+}

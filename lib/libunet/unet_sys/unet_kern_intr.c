@@ -361,15 +361,16 @@ ithread_create(const char *name)
 
 	ithd = malloc(sizeof(struct intr_thread), M_ITHREAD, M_WAITOK | M_ZERO);
 
-#ifdef notyet
 	error = kproc_kthread_add(ithread_loop, ithd, &intrproc,
 		    &td, RFSTOPPED | RFHIGHPID,
 	    	    0, "intr", "%s", name);
+
+	
 	if (error)
 		panic("kproc_create() failed with %d", error);
 	td->td_pflags |= TDP_ITHREAD;
 	ithd->it_thread = td;
-#endif	
+
 	CTR2(KTR_INTR, "%s: created %s", __func__, name);
 	return (ithd);
 }
