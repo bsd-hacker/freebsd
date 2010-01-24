@@ -280,6 +280,4 @@ restart:
 		}
 	}
 
-	panic("Shouldn't get here!");
-	/* NOTREACHED*/
 }
