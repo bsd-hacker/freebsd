@@ -23,6 +23,9 @@
 #include <vm/vm_map.h>
 #include <vm/vm_extern.h>
 
+int bootverbose;
+struct prison prison0;
+
 SYSCTL_NODE(, 0,	  sysctl, CTLFLAG_RW, 0,
 	"Sysctl internal magic");
 
@@ -754,4 +757,10 @@ void
 knlist_init_mtx(struct knlist *knl, struct mtx *lock)
 {
 	
+}
+
+void
+module_register_init(void *arg)
+{
+	printf("skipped module registration");
 }

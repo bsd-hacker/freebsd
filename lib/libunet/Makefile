@@ -13,11 +13,11 @@ LIB=	unet
 UNET_KERN_COMMON_OBJS +=	\
 	kern_environment.o	\
 	kern_mbuf.o		\
-	kern_module.o		\
 	kern_mtxpool.o		\
 	kern_sysctl.o		\
 	md5c.o			\
 	subr_eventhandler.o	\
+	subr_kobj.o		\
 	subr_lock.o		\
 	subr_param.o		\
 	subr_pcpu.o		\
@@ -89,7 +89,7 @@ UNET_OTHER_COMMON_OBJS =	\
 UNET_GLUE_COMMON_OBJS =		\
 	unet_compat.o		\
 	unet_glue.o		\
-	unet_in_cksum.o	\
+	unet_in_cksum.o		\
 	unet_init_main.o	\
 	unet_lock.o		\
 	unet_kern_condvar.o	\

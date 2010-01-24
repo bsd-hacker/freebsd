@@ -40,7 +40,7 @@ typedef struct sleep_entry {
 } *sleep_entry_t;
 
 static void synch_setup(void *dummy);
-SYSINIT(synch_setup, SI_SUB_KICK_SCHEDULER, SI_ORDER_FIRST, synch_setup,
+SYSINIT(synch_setup, SI_SUB_INTR, SI_ORDER_FIRST, synch_setup,
     NULL);
 
 static struct se_head *se_active;

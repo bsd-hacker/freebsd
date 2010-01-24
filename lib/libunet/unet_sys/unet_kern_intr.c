@@ -850,6 +850,7 @@ swi_add(struct intr_event **eventp, const char *name, driver_intr_t handler,
 	    (pri * RQ_PPQ) + PI_SOFT, flags, cookiep);
 	if (error)
 		return (error);
+#if 0
 	if (pri == SWI_CLOCK) {
 		struct proc *p;
 		p = ie->ie_thread->it_thread->td_proc;
@@ -857,6 +858,7 @@ swi_add(struct intr_event **eventp, const char *name, driver_intr_t handler,
 		p->p_flag |= P_NOLOAD;
 		PROC_UNLOCK(p);
 	}
+#endif	
 	return (0);
 }
 

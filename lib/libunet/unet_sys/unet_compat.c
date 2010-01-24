@@ -98,6 +98,25 @@ getmicrotime(struct timeval *tvp)
 	gettimeofday(&tv, NULL);
 }
 
+__thread struct thread *pcurthread;
+
+struct pthread_start_args 
+{
+	struct thread *psa_td;
+	void (*psa_start_routine)(void *);
+	void *psa_arg;
+};
+
+static void *
+pthread_start_routine(void *arg)
+{
+	struct pthread_start_args *psa = arg;
+
+	pcurthread = psa->psa_td;
+	psa->psa_start_routine(psa->psa_arg);
+	free(psa);
+}
+
 int
 kproc_kthread_add(void (*start_routine)(void *), void *arg,
     struct proc **p,  struct thread **td,
@@ -107,11 +126,16 @@ kproc_kthread_add(void (*start_routine)(void *), void *arg,
 	int error;
 	pthread_t thread;
 	pthread_attr_t attr;
+	struct pthread_start_args *psa;
 
 	*td = malloc(sizeof(struct thread));
-	pthread_attr_init(&attr);
+	psa = malloc(sizeof(struct pthread_start_args));
+	psa->psa_start_routine = start_routine;
+	psa->psa_arg = arg;
+	psa->psa_td = *td;
 	
-	error = pthread_create(&thread, &attr, start_routine, arg);
+	pthread_attr_init(&attr); 
+	error = pthread_create(&thread, &attr, pthread_start_routine, psa);
 
 	return (error);
 }
