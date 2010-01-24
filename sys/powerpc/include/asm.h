@@ -53,9 +53,18 @@
 #define PIC_GOT(x)	x
 #endif
 
+#ifdef __powerpc64__
+#undef	PIC_PLT
+#define	PIC_PLT(x)	__CONCAT(.,x)
+#endif
+
 #define	CNAME(csym)		csym
 #define	ASMNAME(asmsym)		asmsym
+#ifdef __powerpc64__
+#define	HIDENAME(asmsym)	__CONCAT(_,asmsym)
+#else
 #define	HIDENAME(asmsym)	__CONCAT(.,asmsym)
+#endif
 
 #define	_GLOBAL(x) \
 	.data; .align 2; .globl x; x:

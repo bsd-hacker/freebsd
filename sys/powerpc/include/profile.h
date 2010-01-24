@@ -36,7 +36,7 @@
 
 #define FUNCTION_ALIGNMENT 16
 
-typedef u_int	fptrdiff_t;
+typedef __ptrdiff_t	fptrdiff_t;
 
 /*
  * The mcount trampoline macro, expanded in libc/gmon/mcount.c
@@ -74,6 +74,13 @@ typedef u_int	fptrdiff_t;
  * ctr register rather than the link register, to allow the link register
  * to be restored to what it was on entry to the profiled routine.
  */
+
+#ifdef __powerpc64__
+/* XXX not implemented */
+
+#define MCOUNT int _mcount(void) {return (0);}
+
+#else
 
 #ifdef PIC
 #define _PLT "@plt"
@@ -115,6 +122,7 @@ __asm(	"	.globl	_mcount			\n" \
 	"	bctr				\n" \
 	"_mcount_end:				\n" \
 	"	.size	_mcount,_mcount_end-_mcount");
+#endif
 
 #ifdef _KERNEL
 #define	MCOUNT_ENTER(s)		s = intr_disable()

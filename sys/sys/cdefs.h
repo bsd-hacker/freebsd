@@ -356,9 +356,17 @@
 	extern __typeof (sym) aliassym __attribute__ ((__alias__ (#sym)))
 #endif
 #ifdef __STDC__
+#ifdef __powerpc64__
+#define	__weak_reference(sym,alias)	\
+	__asm__(".weak " #alias);	\
+	__asm__(".equ "  #alias ", " #sym); \
+	__asm__(".weak ." #alias);	\
+	__asm__(".equ ."  #alias ", ." #sym)
+#else
 #define	__weak_reference(sym,alias)	\
 	__asm__(".weak " #alias);	\
 	__asm__(".equ "  #alias ", " #sym)
+#endif
 #define	__warn_references(sym,msg)	\
 	__asm__(".section .gnu.warning." #sym);	\
 	__asm__(".asciz \"" msg "\"");	\
