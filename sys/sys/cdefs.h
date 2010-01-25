@@ -367,6 +367,9 @@
 	__asm__(".weak " #alias);	\
 	__asm__(".equ "  #alias ", " #sym)
 #endif
+#define	__weak_reference_data(sym,alias)\
+	__asm__(".weak " #alias);	\
+	__asm__(".equ "  #alias ", " #sym)
 #define	__warn_references(sym,msg)	\
 	__asm__(".section .gnu.warning." #sym);	\
 	__asm__(".asciz \"" msg "\"");	\

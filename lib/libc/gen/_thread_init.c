@@ -30,7 +30,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/types.h>
 
 __weak_reference(_thread_init_stub, _thread_init);
-__weak_reference(_thread_autoinit_dummy_decl_stub, _thread_autoinit_dummy_decl);
+__weak_reference_data(_thread_autoinit_dummy_decl_stub,
+    _thread_autoinit_dummy_decl);
 
 int	_thread_autoinit_dummy_decl_stub = 0;
 
