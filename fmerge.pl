@@ -178,9 +178,9 @@ sub revs2ranges() {
 	    next;
 	} else {
 	    if ($revs{$m} == +1) {
-		push(@ranges, [ $m - 1, $n ]);
+		unshift(@ranges, [ $m - 1, $n ]);
 	    } elsif ($revs{$m} == -1) {
-		push(@ranges, [ $n, $m - 1 ]);
+		unshift(@ranges, [ $n, $m - 1 ]);
 	    }
 	    $m = $n = $i;
 	}
