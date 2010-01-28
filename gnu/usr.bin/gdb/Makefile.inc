@@ -38,6 +38,10 @@ CFLAGS+= -I${CNTRB_GDB}/include
 CFLAGS+= -I${CNTRB_BU}/include
 CFLAGS+= -I${CNTRB_BU}/bfd
 
+.if ${MACHINE_ARCH} == "powerpc64"
+CFLAGS+= -mminimal-toc
+.endif
+
 GENSRCS+= nm.h tm.h
 
 .if defined(GDB_CROSS_DEBUGGER)

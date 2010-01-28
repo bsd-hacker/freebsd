@@ -1965,6 +1965,9 @@ pmcstat_callgraph_do_gmon_arcs(void)
  * callgraph is generated if FLAG_DO_CALLGRAPHS is set.  gmon.out
  * files usable by gprof(1) are created if FLAG_DO_GPROF is set.
  */
+
+int foo[sizeof(uintfptr_t) - 7];
+
 static int
 pmcstat_analyze_log(struct pmcstat_args *a)
 {

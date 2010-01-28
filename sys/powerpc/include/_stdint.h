@@ -80,13 +80,21 @@
 #define	INT8_MAX	0x7f
 #define	INT16_MAX	0x7fff
 #define	INT32_MAX	0x7fffffff
+#ifdef __powerpc64__
+#define	INT64_MAX	0x7fffffffffffffffL
+#else
 #define	INT64_MAX	0x7fffffffffffffffLL
+#endif
 
 /* Maximum values of exact-width unsigned integer types. */
 #define	UINT8_MAX	0xff
 #define	UINT16_MAX	0xffff
 #define	UINT32_MAX	0xffffffffU
+#ifdef __powerpc64__
+#define	UINT64_MAX	0xffffffffffffffffUL
+#else
 #define	UINT64_MAX	0xffffffffffffffffULL
+#endif
 
 /*
  * ISO/IEC 9899:1999

@@ -173,7 +173,11 @@ void __mcount(uintfptr_t frompc, uintfptr_t selfpc);
 
 #else	/* !_KERNEL */
 
+#ifdef __powerpc64__
+typedef u_long	uintfptr_t;
+#else
 typedef u_int	uintfptr_t;
+#endif
 
 #endif	/* _KERNEL */
 

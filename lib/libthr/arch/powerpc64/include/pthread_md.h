@@ -44,7 +44,7 @@
 /*
  * Variant I tcb. The structure layout is fixed, don't blindly
  * change it.
- * %r2 points to end of the structure.
+ * %r13 points to end of the structure.
  */
 struct tcb {
 	void			*tcb_dtv;

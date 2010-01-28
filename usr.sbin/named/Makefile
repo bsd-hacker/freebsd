@@ -48,6 +48,10 @@ CFLAGS+=	-DCONFIGARGS="\"${CONFIGARGS}\""
 CFLAGS+=	-I${SRCDIR}/unix/include -I${SRCDIR}/include -I${LIB_BIND_DIR}
 CFLAGS+=	-I${BIND_DIR}/lib/isc/${ISC_ATOMIC_ARCH}/include
 
+.if ${MACHINE_ARCH} == powerpc64
+CFLAGS+=	-mminimal-toc
+.endif
+
 # Remove the date stamp to make it more obvious when real changes happen
 CFLAGS+=	-U__DATE__
 
