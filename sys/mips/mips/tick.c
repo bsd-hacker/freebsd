@@ -144,6 +144,7 @@ mips_timer_init_params(uint64_t platform_counter_freq, int double_count)
 	/*
 	 * XXX: Some MIPS32 cores update the Count register only every two
 	 * pipeline cycles.
+	 * We know this because of status registers in CP0, make it automatic.
 	 */
 	if (double_count != 0)
 		counter_freq /= 2;
@@ -239,10 +240,10 @@ DELAY(int n)
 	}
 }
 
-#ifdef TARGET_OCTEON
+#if 0 /* TARGET_OCTEON */
 int64_t wheel_run = 0;
 
-void octeon_led_run_wheel(void);
+void octeon_led_run_wheel();
 
 #endif
 /*
@@ -294,7 +295,7 @@ clock_intr(void *arg)
 			profclock(USERMODE(tf->sr), tf->pc);
 	}
 	critical_exit();
-#ifdef TARGET_OCTEON
+#if 0 /* TARGET_OCTEON */
 	/* Run the FreeBSD display once every hz ticks  */
 	wheel_run += cycles_per_tick;
 	if (wheel_run >= cycles_per_sec) {

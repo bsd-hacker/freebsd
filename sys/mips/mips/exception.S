@@ -519,9 +519,6 @@ NNON_LEAF(MipsUserGenException, STAND_FRAME_SIZE, ra)
 	and	t0, t0, ~(MIPS_SR_INT_IE)
 	mtc0	t0, COP_0_STATUS_REG
 	ITLBNOPFIX
-	or	t0, t0, SR_EXL
-	mtc0	t0, COP_0_STATUS_REG	# set exeption level
-	ITLBNOPFIX
 
 /*
  * The use of k1 for storing the PCB pointer must be done only
@@ -581,16 +578,10 @@ NNON_LEAF(MipsUserGenException, STAND_FRAME_SIZE, ra)
 #ifdef TARGET_OCTEON
 	and k0, k0, ~(MIPS_SR_KX | MIPS_SR_SX | MIPS_SR_UX)
 #endif
-	or  k0, k0, (MIPS_SR_INT_IE)
 	.set noat
 	RESTORE_U_PCB_REG(AT, AST, k1)
 
-/*
- * The restoration of the user SR must be done only after
- * k1 is no longer needed.  Otherwise, k1 will get clobbered after
- * interrupts are enabled.
- */
-	mtc0	k0, COP_0_STATUS_REG	# still exeption level
+	mtc0	k0, COP_0_STATUS_REG	# still exception level
 	ITLBNOPFIX
 	sync
 	eret
@@ -757,9 +748,6 @@ NNON_LEAF(MipsUserIntr, STAND_FRAME_SIZE, ra)
 	and	t0, t0, ~(MIPS_SR_INT_IE)
 	mtc0	t0, COP_0_STATUS_REG
 	ITLBNOPFIX
-	or	t0, t0, SR_EXL
-	mtc0	t0, COP_0_STATUS_REG	# set exeption level
-	ITLBNOPFIX
 
 	GET_CPU_PCPU(k1)
 	lw	k1, PC_CURPCB(k1)
@@ -814,50 +802,15 @@ NNON_LEAF(MipsUserIntr, STAND_FRAME_SIZE, ra)
 #ifdef TARGET_OCTEON
 	and k0, k0, ~(MIPS_SR_KX | MIPS_SR_SX | MIPS_SR_UX)
 #endif
-	or  k0, k0, (MIPS_SR_INT_IE|SR_EXL)
 	.set	noat
 	RESTORE_U_PCB_REG(AT, AST, k1)
 
-/*
- * The restoration of the user SR must be done only after
- * k1 is no longer needed.  Otherwise, k1 will get clobbered after
- * interrupts are enabled.
- */
 	mtc0	k0, COP_0_STATUS_REG	# SR with EXL set. 
 	ITLBNOPFIX
 	sync
 	eret
 	.set	at
 END(MipsUserIntr)
-
-/*----------------------------------------------------------------------------
- *
- * MipsTLBInvalidException --
- *
- *	Handle a TLB invalid exception.
- *	The BaddVAddr, Context, and EntryHi registers contain the failed
- *	virtual address.
- *
- * Results:
- *	None.
- *
- * Side effects:
- *	None.
- *
- *----------------------------------------------------------------------------
- */
-NLEAF(MipsTLBInvalidException)
-	.set	noat
-	mfc0	k0, COP_0_STATUS_REG
-	nop
-	and	k0, k0, SR_KSU_USER
-	bne	k0, zero, _C_LABEL(MipsUserTLBInvalidException)
-	nop
-	.set	at
-END(MipsTLBInvalidException)
-/*
- * Fall through ...
- */
 
 NLEAF(MipsKernTLBInvalidException)
 	.set	noat

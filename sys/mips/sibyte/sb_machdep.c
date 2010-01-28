@@ -93,6 +93,8 @@ extern void cfe_env_init(void);
 extern int *edata;
 extern int *end;
 
+extern char MipsTLBMiss[], MipsTLBMissEnd[];
+
 void
 platform_cpu_init()
 {
@@ -169,7 +171,7 @@ mips_init(void)
 			 * from CFE, omit the region at the start of physical
 			 * memory where the kernel has been loaded.
 			 */
-			phys_avail[i] += MIPS_KSEG0_TO_PHYS((vm_offset_t)&end);
+			phys_avail[i] += MIPS_KSEG0_TO_PHYS(kernel_kseg0_end);
 		}
 		phys_avail[i + 1] = addr + len;
 		physmem += len;
@@ -183,6 +185,28 @@ mips_init(void)
 	init_param1();
 	init_param2(physmem);
 	mips_cpu_init();
+
+	/*
+	 * XXX
+	 * The kernel is running in 32-bit mode but the CFE is running in
+	 * 64-bit mode. So the SR_KX bit in the status register is turned
+	 * on by the CFE every time we call into it - for e.g. CFE_CONSOLE.
+	 *
+	 * This means that if get a TLB miss for any address above 0xc0000000
+	 * and the SR_KX bit is set then we will end up in the XTLB exception
+	 * vector.
+	 *
+	 * For now work around this by copying the TLB exception handling
+	 * code to the XTLB exception vector.
+	 */
+	{
+		bcopy(MipsTLBMiss, (void *)XTLB_MISS_EXC_VEC,
+		      MipsTLBMissEnd - MipsTLBMiss);
+
+		mips_icache_sync_all();
+		mips_dcache_wbinv_all();
+	}
+
 	pmap_bootstrap();
 	mips_proc0_init();
 	mutex_init();
@@ -230,15 +254,30 @@ platform_trap_exit(void)
 
 }
 
+static void
+kseg0_map_coherent(void)
+{
+	uint32_t config;
+	const int CFG_K0_COHERENT = 5;
+
+	config = mips_rd_config();
+	config &= ~CFG_K0_MASK;
+	config |= CFG_K0_COHERENT;
+	mips_wr_config(config);
+}
+
 void
 platform_start(__register_t a0, __register_t a1, __register_t a2,
 	       __register_t a3)
 {
-	vm_offset_t kernend;
+	/*
+	 * Make sure that kseg0 is mapped cacheable-coherent
+	 */
+	kseg0_map_coherent();
 
 	/* clear the BSS and SBSS segments */
 	memset(&edata, 0, (vm_offset_t)&end - (vm_offset_t)&edata);
-	kernend = round_page((vm_offset_t)&end);
+	mips_postboot_fixup();
 
 	/* Initialize pcpu stuff */
 	mips_pcpu0_init();

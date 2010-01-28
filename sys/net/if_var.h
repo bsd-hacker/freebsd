@@ -203,7 +203,8 @@ struct ifnet {
 	 * be used with care where binary compatibility is required.
 	 */
 	char	 if_cspare[3];
-	void	*if_pspare[8];
+	char	*if_description;	/* interface description */
+	void	*if_pspare[7];
 	int	if_ispare[4];
 };
 
@@ -833,7 +834,7 @@ void	if_delmulti_ifma(struct ifmultiaddr *);
 void	if_detach(struct ifnet *);
 void	if_vmove(struct ifnet *, struct vnet *);
 void	if_purgeaddrs(struct ifnet *);
-void	if_purgemaddrs(struct ifnet *);
+void	if_delallmulti(struct ifnet *);
 void	if_down(struct ifnet *);
 struct ifmultiaddr *
 	if_findmulti(struct ifnet *, struct sockaddr *);

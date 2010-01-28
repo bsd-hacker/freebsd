@@ -624,25 +624,68 @@ OLD_FILES+=usr/share/man/man8/zfs.8.gz
 OLD_FILES+=usr/share/man/man8/zpool.8.gz
 .endif
 
-#.if ${MK_CPP} == no
-# to be filled in
-#.endif
+.if ${MK_CPP} == no
+OLD_FILES+=usr/bin/cpp
+OLD_FILES+=usr/share/man/man1/cpp.1.gz
+.endif
 
 #.if ${MK_CRYPT} == no
 # to be filled in
 #.endif
 
-#.if ${MK_CVS} == no
-# to be filled in
-#.endif
+.if ${MK_CTM} == no
+OLD_FILES+=usr/sbin/ctm
+OLD_FILES+=usr/sbin/ctm_dequeue
+OLD_FILES+=usr/sbin/ctm_rmail
+OLD_FILES+=usr/sbin/ctm_smail
+OLD_FILES+=usr/share/man/man1/ctm.1.gz
+OLD_FILES+=usr/share/man/man1/ctm_dequeue.1.gz
+OLD_FILES+=usr/share/man/man1/ctm_rmail.1.gz
+OLD_FILES+=usr/share/man/man1/ctm_smail.1.gz
+OLD_FILES+=usr/share/man/man5/ctm.5.gz
+.endif
+
+.if ${MK_CVS} == no
+OLD_FILES+=usr/bin/cvs
+OLD_FILES+=usr/bin/cvsbug
+OLD_FILES+=usr/share/examples/cvs/contrib/README
+OLD_FILES+=usr/share/examples/cvs/contrib/clmerge
+OLD_FILES+=usr/share/examples/cvs/contrib/cln_hist
+OLD_FILES+=usr/share/examples/cvs/contrib/commit_prep
+OLD_FILES+=usr/share/examples/cvs/contrib/cvs2vendor
+OLD_FILES+=usr/share/examples/cvs/contrib/cvs_acls
+OLD_FILES+=usr/share/examples/cvs/contrib/cvscheck
+OLD_FILES+=usr/share/examples/cvs/contrib/cvscheck.man
+OLD_FILES+=usr/share/examples/cvs/contrib/cvshelp.man
+OLD_FILES+=usr/share/examples/cvs/contrib/descend.man
+OLD_FILES+=usr/share/examples/cvs/contrib/easy-import
+OLD_FILES+=usr/share/examples/cvs/contrib/intro.doc
+OLD_FILES+=usr/share/examples/cvs/contrib/log
+OLD_FILES+=usr/share/examples/cvs/contrib/log_accum
+OLD_FILES+=usr/share/examples/cvs/contrib/mfpipe
+OLD_FILES+=usr/share/examples/cvs/contrib/rcs-to-cvs
+OLD_FILES+=usr/share/examples/cvs/contrib/rcs2log
+OLD_FILES+=usr/share/examples/cvs/contrib/rcslock
+OLD_FILES+=usr/share/examples/cvs/contrib/sccs2rcs
+OLD_FILES+=usr/share/info/cvs.info.gz
+OLD_FILES+=usr/share/info/cvsclient.info.gz
+OLD_FILES+=usr/share/man/man1/cvs.1.gz
+OLD_FILES+=usr/share/man/man5/cvs.5.gz
+OLD_FILES+=usr/share/man/man8/cvsbug.8.gz
+.endif
 
 #.if ${MK_CXX} == no
 # to be filled in
 #.endif
 
-#.if ${MK_DICT} == no
-# to be filled in
-#.endif
+.if ${MK_DICT} == no
+OLD_FILES+=usr/share/dict/README
+OLD_FILES+=usr/share/dict/freebsd
+OLD_FILES+=usr/share/dict/propernames
+OLD_FILES+=usr/share/dict/web2
+OLD_FILES+=usr/share/dict/web2a
+OLD_FILES+=usr/share/dict/words
+.endif
 
 #.if ${MK_EXAMPLES} == no
 # to be filled in

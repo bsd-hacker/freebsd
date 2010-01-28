@@ -819,6 +819,7 @@ kern_ptrace(struct thread *td, int req, pid_t pid, void *addr, int data)
 
 	case PT_WRITE_I:
 	case PT_WRITE_D:
+		td2->td_dbgflags |= TDB_USERWR;
 		write = 1;
 		/* FALLTHROUGH */
 	case PT_READ_I:
@@ -887,6 +888,7 @@ kern_ptrace(struct thread *td, int req, pid_t pid, void *addr, int data)
 			break;
 		case PIOD_WRITE_D:
 		case PIOD_WRITE_I:
+			td2->td_dbgflags |= TDB_USERWR;
 			uio.uio_rw = UIO_WRITE;
 			break;
 		default:
@@ -909,6 +911,7 @@ kern_ptrace(struct thread *td, int req, pid_t pid, void *addr, int data)
 		goto sendsig;	/* in PT_CONTINUE above */
 
 	case PT_SETREGS:
+		td2->td_dbgflags |= TDB_USERWR;
 		error = PROC_WRITE(regs, td2, addr);
 		break;
 
@@ -917,6 +920,7 @@ kern_ptrace(struct thread *td, int req, pid_t pid, void *addr, int data)
 		break;
 
 	case PT_SETFPREGS:
+		td2->td_dbgflags |= TDB_USERWR;
 		error = PROC_WRITE(fpregs, td2, addr);
 		break;
 
@@ -925,6 +929,7 @@ kern_ptrace(struct thread *td, int req, pid_t pid, void *addr, int data)
 		break;
 
 	case PT_SETDBREGS:
+		td2->td_dbgflags |= TDB_USERWR;
 		error = PROC_WRITE(dbregs, td2, addr);
 		break;
 

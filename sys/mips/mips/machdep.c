@@ -84,6 +84,8 @@ __FBSDID("$FreeBSD$");
 #include <machine/cache.h>
 #include <machine/clock.h>
 #include <machine/cpu.h>
+#include <machine/cpuregs.h>
+#include <machine/elf.h>
 #include <machine/hwfunc.h>
 #include <machine/intr_machdep.h>
 #include <machine/md_var.h>
@@ -150,9 +152,18 @@ extern char MipsTLBMiss[], MipsTLBMissEnd[];
 extern char MipsCache[], MipsCacheEnd[];
 
 extern char edata[], end[];
+#ifdef DDB
+extern vm_offset_t ksym_start, ksym_end;
+#endif
 
 u_int32_t bootdev;
 struct bootinfo bootinfo;
+/*
+ * First kseg0 address available for use. By default it's equal to &end.
+ * But in some cases there might be additional data placed right after 
+ * _end by loader or ELF trampoline.
+ */
+vm_offset_t kernel_kseg0_end = (vm_offset_t)&end;
 
 static void
 cpu_startup(void *dummy)
@@ -161,7 +172,6 @@ cpu_startup(void *dummy)
 	if (boothowto & RB_VERBOSE)
 		bootverbose++;
 
-	bootverbose++;
 	printf("real memory  = %lu (%luK bytes)\n", ptoa(realmem),
 	    ptoa(realmem) / 1024);
 
@@ -351,10 +361,46 @@ mips_vector_init(void)
 	 * Mask all interrupts. Each interrupt will be enabled
 	 * when handler is installed for it
 	 */
-	set_intr_mask (ALL_INT_MASK);
+	set_intr_mask(ALL_INT_MASK);
+	enableintr();
+
 	/* Clear BEV in SR so we start handling our own exceptions */
 	mips_cp0_status_write(mips_cp0_status_read() & ~SR_BOOT_EXC_VEC);
 
+}
+
+/*
+ * Fix kernel_kseg0_end address in case trampoline placed debug sympols 
+ * data there
+ */
+void
+mips_postboot_fixup(void)
+{
+#ifdef DDB
+	Elf_Size *trampoline_data = (Elf_Size*)kernel_kseg0_end;
+	Elf_Size symtabsize = 0;
+
+	if (trampoline_data[0] == SYMTAB_MAGIC) {
+		symtabsize = trampoline_data[1];
+		kernel_kseg0_end += 2 * sizeof(Elf_Size);
+		/* start of .symtab */
+		ksym_start = kernel_kseg0_end;
+		kernel_kseg0_end += symtabsize;
+		/* end of .strtab */
+		ksym_end = kernel_kseg0_end;
+	}
+#endif
+}
+
+/*
+ * Many SoCs have a means to reset the core itself.  Others do not, or
+ * the method is unknown to us.  For those cases, we jump to the mips
+ * reset vector and hope for the best.  This works well in practice.
+ */
+void
+mips_generic_reset()
+{
+	((void(*)(void))(intptr_t)MIPS_VEC_RESET)();
 }
 
 /*

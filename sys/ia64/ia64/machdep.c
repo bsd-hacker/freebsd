@@ -373,13 +373,6 @@ cpu_startup(void *dummy)
 SYSINIT(cpu_startup, SI_SUB_CPU, SI_ORDER_FIRST, cpu_startup, NULL);
 
 void
-cpu_boot(int howto)
-{
-
-	efi_reset_system();
-}
-
-void
 cpu_flush_dcache(void *ptr, size_t len)
 {
 	vm_offset_t lim, va;
@@ -434,7 +427,7 @@ void
 cpu_reset()
 {
 
-	cpu_boot(0);
+	efi_reset_system();
 }
 
 void
@@ -449,7 +442,7 @@ cpu_switch(struct thread *old, struct thread *new, struct mtx *mtx)
 	if (PCPU_GET(fpcurthread) == old)
 		old->td_frame->tf_special.psr |= IA64_PSR_DFH;
 	if (!savectx(oldpcb)) {
-		old->td_lock = mtx;
+		atomic_store_rel_ptr(&old->td_lock, mtx);
 #if defined(SCHED_ULE) && defined(SMP)
 		/* td_lock is volatile */
 		while (new->td_lock == &blocked_lock)

@@ -14,6 +14,16 @@
 # The file is partitioned: OLD_FILES first, then OLD_LIBS and OLD_DIRS last.
 #
 
+# 20100122: move BSDL bc/dc USD documents to /usr/share/doc/usd
+OLD_FILES+=usr/share/doc/papers/bc.ascii.gz
+OLD_FILES+=usr/share/doc/papers/dc.ascii.gz
+# 20100120: replacing GNU bc/dc with BSDL versions
+OLD_FILES+=usr/share/examples/bc/ckbook.b
+OLD_FILES+=usr/share/examples/bc/pi.b
+OLD_FILES+=usr/share/examples/bc/primes.b
+OLD_FILES+=usr/share/examples/bc/twins.b
+OLD_FILES+=usr/share/info/dc.info.gz
+OLD_DIRS+=usr/share/examples/bc
 # 20100114: removal of ttyslot(3)
 OLD_FILES+=usr/share/man/man3/ttyslot.3.gz
 # 20100113: remove utmp.h, replace it by utmpx.h

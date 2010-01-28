@@ -18,6 +18,7 @@ SUBDIR=	alias \
 	awk \
 	banner \
 	basename \
+	${_bc} \
 	${_biff} \
 	${_bluetooth} \
 	brandelf \
@@ -49,6 +50,7 @@ SUBDIR=	alias \
 	${_csup} \
 	${_ctags} \
 	cut \
+	${_dc} \
 	${_dig} \
 	dirname \
 	du \
@@ -278,7 +280,9 @@ _hesinfo=	hesinfo
 .endif
 
 .if ${MK_OPENSSL} != "no"
+_bc=		bc
 _chkey=		chkey
+_dc=		dc
 _newkey=	newkey
 .if ${MK_LIBTHR} != "no"
 _csup=		csup
@@ -383,6 +387,10 @@ _smbutil=	smbutil
 .endif
 
 .if ${MACHINE_ARCH} == "powerpc"
+_smbutil=	smbutil
+.endif
+
+.if ${MACHINE_ARCH} == "sparc64"
 _smbutil=	smbutil
 .endif
 
