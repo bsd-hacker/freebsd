@@ -526,7 +526,7 @@ exec_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings)
          */
         td->td_retval[0] = arginfo.ps_nargvstr;
         td->td_retval[1] = (register_t)arginfo.ps_argvstr;
-	tf->fixreg[3] = arginfo.ps_nargvstr;
+	tf->fixreg[3] = *((register_t *)(&arginfo.ps_nargvstr));
 	tf->fixreg[4] = (register_t)arginfo.ps_argvstr;
 	tf->fixreg[5] = (register_t)arginfo.ps_envstr;
 	tf->fixreg[6] = 0;			/* auxillary vector */
