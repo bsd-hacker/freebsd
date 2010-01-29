@@ -1,0 +1,387 @@
+http://www.webexhibits.org/calendars/calendar-chinese.html
+Title: The Chinese Calendar | Calendar
+Important stuff: Prefixed with |
+
+
+   The Chinese Calendar
+                                     Dragon
+
+   Chinese New Year Celebrations
+
+   Chinese New Year parades have their origins in the California Gold Rush,
+   when immigrants sought to share their culture. Today, New Year's parades
+   take place around the globe.
+
+   Chinese New Year is the main holiday of the year for more than one quarter
+   of the world's population. Although the People's Republic of China uses
+   the Gregorian calendar for civil purposes, a special Chinese calendar is
+   used for determining festivals. Various Chinese communities around the
+   world also use this calendar.
+
+   The beginnings of the Chinese calendar can be traced back to the 14th
+   century B.C.E. Legend has it that the Emperor Huangdi invented the
+   calendar in 2637 B.C.E.
+
+   The Chinese calendar is based on exact astronomical observations of the
+   longitude of the sun and the phases of the moon. This means that
+   principles of modern science have had an impact on the Chinese calendar.
+
+     * What Does the Chinese Year Look Like?
+     * What Years Are Leap Years?
+     * How Does One Count Years?
+     * What Is the Current Year in the Chinese Calendar?
+     * What about the year 2033?
+     * When did the calendar really start?
+     * What was the early Chinese calendar?
+     * Details of early calendars
+     * When were foreign calendars introduced?
+
+ What Does the Chinese Year Look Like?
+
+   The Chinese calendar - like the Hebrew - is a combined solar/lunar
+   calendar in that it strives to have its years coincide with the tropical
+   year and its months coincide with the synodic months. It is not surprising
+   that a few similarities exist between the Chinese and the Hebrew calendar:
+
+     * An ordinary year has 12 months, a leap year has 13 months.
+     * An ordinary year has 353, 354, or 355 days, a leap year has 383, 384,
+       or 385 days.
+
+|  When determining what a Chinese year looks like, one must make a number of
+|  astronomical calculations:
+|
+|  First, determine the dates for the new moons. Here, a new moon is the
+|  completely "black" moon (that is, when the moon is in conjunction with the
+|  sun), not the first visible crescent used in the Islamic and Hebrew
+|  calendars. The date of a new moon is the first day of a new month.
+|
+|  Second, determine the dates when the sun's longitude is a multiple of 30
+|  degrees. (The sun's longitude is 0 at Vernal Equinox, 90 at Summer
+|  Solstice, 180 at Autumnal Equinox, and 270 at Winter Solstice.) These
+|  dates are called the Principal Terms and are used to determine the number
+|  of each month:
+
+     * Principal Term 1 occurs when the sun's longitude is 330 degrees.
+     * Principal Term 2 occurs when the sun's longitude is 0 degrees.
+     * Principal Term 3 occurs when the sun's longitude is 30 degrees. (etc.)
+     * Principal Term 11 occurs when the sun's longitude is 270 degrees.
+     * Principal Term 12 occurs when the sun's longitude is 300 degrees.
+
+   Each month carries the number of the Principal Term that occurs in that
+   month.
+
+   In rare cases, a month may contain two Principal Terms; in this case the
+   months numbers may have to be shifted. Principal Term 11 (Winter Solstice)
+   must always fall in the 11th month.
+
+|  All the astronomical calculations are carried out for the meridian 120
+|  degrees east of Greenwich. This roughly corresponds to the east coast of
+|  China.
+
+   Some variations in these rules are seen in various Chinese communities.
+
+ What Years Are Leap Years?
+
+   Leap years have 13 months. To determine if a year is a leap year,
+   calculate the number of new moons between the 11th month in one year
+   (i.e., the month containing the Winter Solstice) and the 11th month in the
+   following year. If there are 13 new moons from the start of the 11th month
+   in the first year to the start of the 11th month in the second year, a
+   leap month must be inserted.
+
+   In leap years, at least one month does not contain a Principal Term. The
+   first such month is the leap month. It carries the same number as the
+   previous month, with the additional note that it is the leap month.
+
+ How Does One Count Years?
+
+   Unlike most other calendars, the Chinese calendar does not count years in
+   an infinite sequence. Instead years have names that are repeated every 60
+   years.
+
+   (Historically, years used to be counted since the accession of an emperor,
+   but this was abolished after the 1911 revolution.)
+
+   Within each 60-year cycle, each year is assigned name consisting of two
+   components:
+
+   The first component is a Celestial Stemm. These words have no English
+   equivalent:
+
+   1 jia  6  ji
+   2 yi   7  geng
+   3 bing 8  xin
+   4 ding 9  ren
+   5 wu   10 gui
+
+   The second component is a Terrestrial Branch. The names of the
+   corresponding animals in the zodiac cycle of 12 animals are given in
+   parentheses.
+
+   1 zi (rat)           7  wu (horse)
+   2 chou (ox)          8  wei (sheep)
+   3 yin (tiger)        9  shen (monkey)
+   4 mao (hare, rabbit) 10 you (rooster)
+   5 chen (dragon)      11 xu (dog)
+   6 si (snake)         12 hai (pig)
+
+   Each of the two components is used sequentially. Thus, the 1st year of the
+   60-year cycle becomes jia-zi, the 2nd year is yi-chou, the 3rd year is
+   bing-yin, etc. When we reach the end of a component, we start from the
+   beginning: The 10th year is gui-you, the 11th year is jia-xu (restarting
+   the Celestial Stem), the 12th year is yi-hai, and the 13th year is bing-zi
+   (restarting the Terrestrial Branch). Finally, the 60th year becomes
+   gui-hai.
+
+   This way of naming years within a 60-year cycle goes back approximately
+   2000 years. A similar naming of days and months has fallen into disuse,
+   but the date name is still listed in calendars.
+
+   It is customary to number the 60-year cycles since 2637 B.C.E., when the
+   calendar was supposedly invented. In that year the first 60-year cycle
+   started.
+
+ What Is the Current Year in the Chinese Calendar?
+
+|  The current 60-year cycle started on 2 Feb 1984. That date bears the name
+|  bing-yin in the 60-day cycle, and the first month of that first year bears
+|  the name gui-chou in the 60-month cycle.
+
+   This means that the year wu-yin, the 15th year in the 78th cycle, started
+   on 28 Jan 1998. The 20th year in the 78th cycle, started on 1 Feb 2003.
+
+   The following are dates for Chinese/Lunar New Year's day:
+
+   Chinese year Zodiac animal Gregorian calendar
+   4693         Boar          January 31, 1995
+   4694         Rat           February 19, 1996
+   4695         Ox            February 7, 1997
+   4696         Tiger         January 28, 1998
+   4697         Hare/Rabbit   February 16, 1999
+   4698         Dragon        February 5, 2000
+   4699         Snake         January 24, 2001
+   4700         Horse         February 12, 2002
+   4701         Ram/Sheep     February 1, 2003
+   4702         Monkey        January 22, 2004
+   4703         Rooster       February 9, 2005
+   4704         Dog           January 29, 2006
+   4705         Boar          February 18, 2007
+   4706         Rat           February 7, 2008
+   4707         Ox            January 26, 2009
+   4708         Tiger         February 10, 2010
+   4709         Hare/Rabbit   February 3, 2011
+   4710         Dragon        January 23, 2012
+   4711         Snake         February 10, 2013
+   4712         Horse         January 31, 2014
+   4713         Ram/Sheep     February 19, 2015
+   4714         Monkey        February 9, 2016
+   4715         Rooster       January 28, 2017
+   4716         Dog           February 16, 2018
+   4717         Boar          February 5, 2019
+   4718         Rat           January 25, 2020
+
+ What about the year 2033?
+
+   In the early 1990s, Chinese astronomers discovered that there was an error
+   in the Chinese calendar for 2033. The traditional calendar claimed that
+   the leap month would follow the 7th month, while in fact it comes after
+   the 11th month. It is very unusual that the 11th month has a leap month,
+   in fact it hasn't happened since the calendar reform in 1645 (before 1645,
+   all months had the same probability for having a leap month). But many
+   Chinese astronomers still claim that there will never be a leap month
+   after the 12th and 1st month. In addition, there will be a leap month
+   after the 1st month in 2262 (in fact, it should have happened in 1651, but
+   they got the calculations wrong!) and there will be a leap month after the
+   12th month in 3358. Since the Chinese calendar is an astronomical
+   calendar, predictions require delicate astronomical calculations, so my
+   computations for 3358 should probably be taken with a grain of salt.
+
+ When did the calendar really start?
+
+   If the Chinese calendar started in 2637 B.C.E., why is the current year 60
+   years too late? (e.g., in 1999, the current year was 4697? and not 4637)?
+
+   The Chinese calendar does not use a continuous year count! They used a 60
+   year cycle and a system of regional years (starting with each emperor).
+   Before the 1911 revolution, Sun Yat-sen wanted to establish a republican
+   alternative to the imperial reign cycles. According to Chinese tradition,
+   the first year of the Yellow Emperor was 2698 B.C.E., so he introduced a
+   counting system based on this. Under this system, 2000 is year 4698. An
+   alternative system is to start with the first historical record of the
+   60-day cycle from March 8, 2637 B.C.E. Based on this system, 2000 is year
+   4637.
+
+                               shang oracle bones
+
+   Two oracle bones from the Shang Dynasty in China (c. 1800 - 1200 BCE)
+
+   Evidence from the Shang oracle bone inscriptions shows that at least by
+   the 14th century BC the Shang Chinese had established the solar year at
+   365 1/4 days and lunation at 29 1/2 days. In the calendar that the Shang
+   used, the seasons of the year and the phases of the Moon were all
+   supposedly accounted for.
+
+ What was the Early Chinese calendar?
+
+   In China, the calendar was a sacred document, sponsored and promulgated by
+   the reigning monarch. For more than two millennia, a Bureau of Astronomy
+   made astronomical observations, calculated astronomical events such as
+   eclipses, prepared astrological predictions, and maintained the calendar.
+   After all, a successful calendar not only served practical needs, but also
+   confirmed the consonance between Heaven and the imperial court.
+
+   Analysis of surviving astronomical records inscribed on oracle bones
+   reveals a Chinese lunisolar calendar, with intercalation of lunar months,
+   dating back to the Shang dynasty of the fourteenth century B.C.E. Various
+   intercalation schemes were developed for the early calendars, including
+   the nineteen-year and 76-year lunar phase cycles that came to be known in
+   the West as the Metonic cycle and Callipic cycle.
+
+   From the earliest records, the beginning of the year occurred at a New
+   Moon near the winter solstice. The choice of month for beginning the civil
+   year varied with time and place, however. In the late second century
+   B.C.E., a calendar reform established the practice, which continues today,
+   of requiring the winter solstice to occur in month 11. This reform also
+   introduced the intercalation system in which dates of New Moons are
+   compared with the 24 solar terms. However, calculations were based on the
+   mean motions resulting from the cyclic relationships. Inequalities in the
+   Moon's motions were incorporated as early as the seventh century C.E., but
+   the Sun's mean longitude was used for calculating the solar terms until
+   1644.
+
+   Years were counted from a succession of eras established by reigning
+   emperors. Although the accession of an emperor would mark a new era, an
+   emperor might also declare a new era at various times within his reign.
+   The introduction of a new era was an attempt to reestablish a broken
+   connection between Heaven and Earth, as personified by the emperor. The
+   break might be revealed by the death of an emperor, the occurrence of a
+   natural disaster, or the failure of astronomers to predict a celestial
+   event such as an eclipse. In the latter case, a new era might mark the
+   introduction of new astronomical or calendrical models.
+
+   Sexagenary cycles were used to count years, months, days, and fractions of
+   a day using the set of Celestial Stems and Terrestrial Branches. Use of
+   the sixty-day cycle is seen in the earliest astronomical records. By
+   contrast the sixty-year cycle was introduced in the first century C.E. or
+   possibly a century earlier. Although the day count has fallen into disuse
+   in everyday life, it is still tabulated in calendars. The initial year
+   (jia-zi) of the current year cycle began on 1984 February 2, which is the
+   third day (bing-yin) of the day cycle.
+
+ Details of early calendars
+
+   One of the two methods that they used to make this calendar was to add an
+   extra month of 29 or 30 days, which they termed the 13th month, to the end
+   of a regular 12-month year. There is also evidence that suggests that the
+   Chinese developed the Metonic cycle (see above Complex cycles) - i.e., 19
+   years with a total of 235 months-a century ahead of Meton's first
+   calculation (no later than the Spring and Autumn period, 770-476 BC).
+   During this cycle of 19 years there were seven intercalations of months.
+   The other method, which was abandoned soon after the Shang started to
+   adopt it, was to insert an extra month between any two months of a regular
+   year. Possibly, a lack of astronomical and arithmetical knowledge allowed
+   them to do this.
+
+   By the 3rd century BC, the first method of intercalation was gradually
+   falling into disfavour, while the establishment of the meteorological
+   cycle, the erh-shih-ssu chieh-ch'i (Pinyin ershisi jieqi), during this
+   period officially revised the second method. This meteorological cycle
+   contained 24 points, each beginning one of the periods named consecutively
+   the Spring Begins, the Rain Water, the Excited Insects, the Vernal
+   Equinox, the Clear and Bright, the Grain Rains, the Summer Begins, the
+   Grain Fills, the Grain in Ear, the Summer Solstice, the Slight Heat, the
+   Great Heat, the Autumn Begins, the Limit of Heat, the White Dew, the
+   Autumn Equinox, the Cold Dew, the Hoar Frost Descends, the Winter Begins,
+   the Little Snow, the Heavy Snow, the Winter Solstice, the Little Cold, and
+   the Severe Cold. The establishment of this cycle required a fair amount of
+   astronomical understanding of the Earth as a celestial body, and without
+   elaborate equipment it is impossible to collect the necessary information.
+   Modern scholars acknowledge the superiority of pre-Sung Chinese astronomy
+   (at least until about the 13th century AD) over that of other,
+   contemporary nations.
+
+   The 24 points within the meteorological cycle coincide with points 15-o
+   apart on the ecliptic (the plane of the Earth's yearly journey around the
+   Sun or, if it is thought that the Sun turns around the Earth, the apparent
+   journey of the Sun against the stars). It takes about 15.2 days for the
+   Sun to travel from one of these points to another (because the ecliptic is
+   a complete circle of 360-o), and the Sun needs 365  1/4 days to finish its
+   journey in this cycle. Supposedly, each of the 12 months of the year
+   contains two points, but, because a lunar month has only 29  1/2 days and
+   the two points share about 30.4 days, there is always the chance that a
+   lunar month will fail to contain both points, though the distance between
+   any two given points is only 15-o. If such an occasion occurs, the
+   intercalation of an extra month takes place. For instance, one may find a
+   year with two "Julys" or with two "Augusts" in the Chinese calendar. In
+   fact, the exact length of the month in the Chinese calendar is either 30
+   days or 29 days-a phenomenon which reflects its lunar origin. Also, the
+   meteorological cycle means essentially a solar year. The Chinese thus
+   consider their calendar as yin-yang li, or a "lunar-solar calendar."
+
+ When were foreign calendars introduced?
+
+   Although the yin-yang li has been continuously employed by the Chinese,
+   foreign calendars were introduced to the Chinese, the Hindu calendar, for
+   instance, during the T'ang (Tang) dynasty (618-907), and were once used
+   concurrently with the native calendar. This situation also held true for
+   the Muslim calendar, which was introduced during the Yuean dynasty
+   (1206-1368). The Gregorian calendar was taken to China by Jesuit
+   missionaries in 1582, the very year that it was first used by Europeans.
+   Not until 1912, after the general public adopted the Gregorian calendar,
+   did the yin-yang li lose its primary importance.
+
+   Western (pre-Copernican) astronomical theories were introduced to China by
+   Jesuit missionaries in the seventeenth century. Gradually, more modern
+   Western concepts became known. Following the revolution of 1911, the
+   traditional practice of counting years from the accession of an emperor
+   was abolished.
+
+        Made with SpicyNodes| Books | Museum store | Credits & feedback
+
+              Copyright (c) 2008 IDEA -- webexhibits.org/calendars
+
+ References
+
+   Visible links
+   . Calendars exhibit
+	http://www.webexhibits.org/calendars/
+   . Webexhibit
+	http://webexhibits.org/
+   . http://www.webexhibits.org/calendars/index.html
+   . http://www.webexhibits.org/calendars/nodes.html
+   . http://www.webexhibits.org/calendars/year.html
+   . http://www.webexhibits.org/calendars/calendar.html
+   . http://www.webexhibits.org/calendars/week.html
+   . http://www.webexhibits.org/calendars/timeline.html
+   . http://www.webexhibits.org/calendars/introduction.html
+   . http://www.webexhibits.org/calendars/calendar.html
+   . http://www.webexhibits.org/calendars/calendar-chinese.html
+   . http://www.webexhibits.org/calendars/calendar-christian.html
+   . http://www.webexhibits.org/calendars/calendar-indian.html
+   . http://www.webexhibits.org/calendars/calendar-islamic.html
+   . http://www.webexhibits.org/calendars/calendar-jewish.html
+   . http://www.webexhibits.org/calendars/calendar-other.html
+   . http://www.webexhibits.org/calendars/calendar-ancient.html
+   . http://www.webexhibits.org/calendars/calendar-french.html
+   . http://www.webexhibits.org/calendars/calendar-future.html
+   . http://www.webexhibits.org/calendars/calendar-mayan.html
+   . http://www.webexhibits.org/calendars/calendar-roman.html
+   . http://www.webexhibits.org/calendars/calendar-chinese.html#anchor-chinese-year
+   . http://www.webexhibits.org/calendars/calendar-chinese.html#anchor-leap-years
+   . http://www.webexhibits.org/calendars/calendar-chinese.html#anchor-count-years
+   . http://www.webexhibits.org/calendars/calendar-chinese.html#anchor-chinese-calendar
+   . http://www.webexhibits.org/calendars/calendar-chinese.html#anchor-2033
+   . http://www.webexhibits.org/calendars/calendar-chinese.html#anchor-really-start
+   . http://www.webexhibits.org/calendars/calendar-chinese.html#anchor-early-chinese
+   . http://www.webexhibits.org/calendars/calendar-chinese.html#anchor-details-early
+   . http://www.webexhibits.org/calendars/calendar-chinese.html#anchor-foreign-calendars
+   . Books
+	http://www.webexhibits.org/calendars/books.html
+   . Museum store
+	http://www.webexhibits.org/calendars/museumstore.html
+   . Credits & feedback
+	http://www.webexhibits.org/calendars/credits.html
+   . IDEA
+	http://idea.org/
+   . calendars
+	http://webexhibits.org/calendars

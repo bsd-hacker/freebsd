@@ -1,0 +1,134 @@
+Formula and examples obtained from "How to Calculate alt/az: SAAO" at
+http://www.saao.ac.za/public-info/sun-moon-stars/sun-index/how-to-calculate-altaz/
+
+examples-
+
+(a) Cape Town       Feb 15   10:30   1995
+(b) Bloemfontein    May 20   13:35   1996
+(c) Johannesburg   Sept 25   16:45   1997
+
+
+(1) find Y, the year minus 1900:
+
+(a) Y = 95
+(b)     96
+(c)     97
+
+(2) find Z(J) from this table:
+   Jan   J= 1   Z(J)=  -0.5*        Jul   J=  7   Z(J) = 180.5
+   Feb      2          30.5*        Aug       8          211.5
+   Mar      3          58.5         Sep       9          242.5
+   Apr      4          89.5         Oct      10          272.5
+   May      5         119.5         Nov      11          303.5
+   Jun      6         150.5         Dec      12          333.5
+   (* reduce by one for a leap year)
+
+(a) Z(J) =  30.5
+(b)        119.5
+(c)        242.5
+
+(3) find D the number of days from this formula:
+   D = integer(365.25 x Y) + Z(J) + K + UT/24
+   where K is the day of the month and UT is the universal time
+
+(a) D = int(365.25 x 95) +  30.5 + 15 +  8.500/24  = 34743.854
+(b)     int(365.25 x 96) + 119.5 + 20 + 11.583/24  = 35203.983
+(c)     int(365.25 x 97) + 242.5 + 25 + 14.750/24  = 35697.115
+
+(4) find T the fraction of a julian century from this formula:
+      T = D/36525
+
+(a) T = 0.9512349
+(b)     0.9638325
+(c)     0.9773337
+
+
+(5) find L the mean longitude of the sun from this formula:
+   L = 279.697 + 36000.769 x T
+
+(a) L = 34524.885  => 324.885   (removing multiples of 360 degrees)
+(b)     34978.408  =>  58.408
+(c)     35464.462  => 184.462
+
+(6) find M the mean anomaly of the sun from this formula:
+      M = 358.476 + 35999.050 x T
+
+(a) M = 34602.029 =>  42.029   (removing multiples of 360 degrees)
+(b)     35055.530 => 135.530
+(c)     35541.561 => 261.561
+
+(7) find epsilon the obliquity from this formula:
+   epsilon = 23.452 - 0.013 x T
+
+(a) epsilon = 23.4396
+(b)           23.4395
+(c)           23.4393
+
+(8) find lambda the ecliptic longitude of the sun from this formula:
+   lambda = L + (1.919 - 0.005 x T) x sin(M) + 0.020 x sin(2M)
+
+(a) lambda = 324.885 + 1.9142 x  0.6695 + 0.020 x  0.9946 = 326.186
+(b)           58.408 + 1.9142 x  0.7005 + 0.020 x -0.9998 =  59.729
+(c)          184.462 + 1.9141 x -0.9892 + 0.020 x  0.2903 = 182.574
+
+(9) find alpha the right ascension of the sun from this formula:
+   alpha = arctan (tan(lambda) x cos(epsilon))      in same quadrant as lambda
+(a) alpha = 328.428
+(b)          57.537
+(c)         182.362
+
+(10) find delta the declination of the sun from this formula:
+   delta = arcsin (sin(lambda) x sin(epsilon))
+
+(a) DEC = -12.789
+(b)        20.093
+(c)        -1.024
+
+
+(11) to proceed you need to know LONG the east-longitude of your location:
+
+		east-longitude       latitude
+
+Windhoek        17.10                -22.57
+Cape Town       18.37                -33.92
+P.E.            25.67                -33.97
+Bloemfontein    26.12                -29.20
+Johannesburg    28.00                -26.25
+Durban          30.93                -29.92
+
+(12) find HA the hour angle of the sun from this formula:
+      HA = L - alpha + 180 + 15 x UT + LONG
+
+(a) HA = 324.885 - 328.428 + 180 + 15 x  8.500 + 18.37  = -37.673
+(b)       58.408 -  57.537 + 180 + 15 x 11.583 + 26.12  =  20.736
+(c)      184.462 - 182.362 + 180 + 15 x 14.750 + 28.00  =  71.350
+
+(13) find the altitude of the center of the sun ALT from this formula:
+
+ALT [degrees] =
+    ARCSIN [ SIN(LAT) x SIN(DEC)  +  COS(LAT) x COS(DEC) x COS(HA) ]
+
+(a) ALT = ARCSIN ( -.5580 x -.2214  +  .8298 x .9752 x .7915 ) = 49.822
+(b) ALT = ARCSIN ( -.4879 x  .3435  +  .8729 x .9391 x .9352 ) = 36.800
+(c) ALT = ARCSIN ( -.4423 x -.0182  +  .8969 x .9998 x .3198 ) = 17.147
+
+
+(14) find the azimuth of the sun AZ from this formula:
+
+AZ [degrees] = ARCTAN [ SIN(HA) /
+	      (COS(HA) x SIN(LAT)  -  TAN(DEC) x COS(LAT)) ]
+
+(a) AZ = ARCTAN [ -.6112/ ( .7915 x -.5580  -  -.2270 x .8298 ) ]
+       = ARCTAN (  2.4130 ) =  67.49   {i.e. east of true north}
+(b) AZ = ARCTAN [  .3541/ ( .9352 x -.4879  -   .3658 x .8729 ) ]
+       = ARCTAN ( -0.45656 ) = -24.54 = 335.46  {i.e. west of true north}
+(c) AZ = ARCTAN [  .9475/ ( .3198 x -.4423  -  -.01787 x .8969 ) ]
+       = ARCTAN ( -7.5546 ) = -82.46 = 277.54   {i.e. west of true north}
+
+COMPARISON WITH COMPUTER ALMANAC PROGRAM
+
+rough calculation here      computer almanac calculation    difference
+
+(a) alt = 49.8, az =  67.5       ALT = 49.8, AZ =  67.5      none
+(b) alt = 36.8, az = 335.5       ALT = 36.8, AZ = 335.5      none
+(c) alt = 17.1, az = 277.5       ALT = 17.1, AZ = 277.5      none

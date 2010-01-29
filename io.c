@@ -70,6 +70,7 @@ const char *calendarNoMail = "nomail";	/* don't sent mail if this file exist */
 char	path[MAXPATHLEN];
 
 struct fixs neaster, npaskha, ncny, nfullmoon, nnewmoon;
+struct fixs nmarequinox, nsepequinox, njunsolstice, ndecsolstice;
 
 struct iovec header[] = {
 	{"From: ", 6},
@@ -82,6 +83,15 @@ struct iovec header[] = {
 };
 
 #define MAXCOUNT	55
+#define	REPLACE(string, slen, struct_) \
+		if (strncasecmp(buf, (string), (slen)) == 0 && buf[(slen)]) { \
+			if (struct_.name != NULL)			      \
+				free(struct_.name);			      \
+			if ((struct_.name = strdup(buf + (slen))) == NULL)    \
+				errx(1, "cannot allocate memory");	      \
+			struct_.len = strlen(buf + (slen));		      \
+			continue;					      \
+		}
 void
 cal(void)
 {
@@ -121,53 +131,22 @@ cal(void)
 		if (buf[0] == '\0')
 			continue;
 
-		/* Parse special definitions: LANG, Easter and Paskha */
+		/* Parse special definitions: LANG, Easter, Paskha etc */
 		if (strncmp(buf, "LANG=", 5) == 0) {
 			(void)setlocale(LC_ALL, buf + 5);
 			d_first = (*nl_langinfo(D_MD_ORDER) == 'd');
 			setnnames();
 			continue;
 		}
-		if (strncasecmp(buf, "Easter=", 7) == 0 && buf[7]) {
-			if (neaster.name != NULL)
-				free(neaster.name);
-			if ((neaster.name = strdup(buf + 7)) == NULL)
-				errx(1, "cannot allocate memory");
-			neaster.len = strlen(buf + 7);
-			continue;
-		}
-		if (strncasecmp(buf, "Paskha=", 7) == 0 && buf[7]) {
-			if (npaskha.name != NULL)
-				free(npaskha.name);
-			if ((npaskha.name = strdup(buf + 7)) == NULL)
-				errx(1, "cannot allocate memory");
-			npaskha.len = strlen(buf + 7);
-			continue;
-		}
-		if (strncasecmp(buf, "ChineseNewYear=", 15) == 0 && buf[15]) {
-			if (ncny.name != NULL)
-				free(ncny.name);
-			if ((ncny.name = strdup(buf + 15)) == NULL)
-				errx(1, "cannot allocate memory");
-			ncny.len = strlen(buf + 15);
-			continue;
-		}
-		if (strncasecmp(buf, "NewMoon=", 8) == 0 && buf[8]) {
-			if (nnewmoon.name != NULL)
-				free(nnewmoon.name);
-			if ((nnewmoon.name = strdup(buf + 8)) == NULL)
-				errx(1, "cannot allocate memory");
-			nnewmoon.len = strlen(buf + 8);
-			continue;
-		}
-		if (strncasecmp(buf, "FullMoon=", 9) == 0 && buf[9]) {
-			if (nfullmoon.name != NULL)
-				free(nfullmoon.name);
-			if ((nfullmoon.name = strdup(buf + 9)) == NULL)
-				errx(1, "cannot allocate memory");
-			nfullmoon.len = strlen(buf + 9);
-			continue;
-		}
+		REPLACE("Easter=", 7, neaster);
+		REPLACE("Paskha=", 7, npaskha);
+		REPLACE("ChineseNewYear=", 15, ncny);
+		REPLACE("NewMoon=", 8, nnewmoon);
+		REPLACE("FullMoon=", 9, nfullmoon);
+		REPLACE("MarEquinox=", 11, nmarequinox);
+		REPLACE("SepEquinox=", 11, nsepequinox);
+		REPLACE("JunSolstice=", 12, njunsolstice);
+		REPLACE("DecSolstice=", 12, ndecsolstice);
 
 		/*
 		 * If the line starts with a tab, the data has to be

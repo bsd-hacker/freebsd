@@ -48,31 +48,40 @@ extern time_t t1, t2;
 extern const char *calendarFile;
 extern int yrdays;
 extern struct fixs neaster, npaskha, ncny, nfullmoon, nnewmoon;
+extern struct fixs nmarequinox, nsepequinox, njunsolstice, ndecsolstice;
 
 #define isleap(y) ((((y) % 4) == 0 && ((y) % 100) != 0) || ((y) % 400) == 0)
 
 /* Flags to determine the returned values by determinestyle() in parsedata.c */
-#define	F_NONE			0x0000
-#define	F_MONTH			0x0001
-#define	F_DAYOFWEEK		0x0002
-#define	F_DAYOFMONTH		0x0004
-#define	F_MODIFIERINDEX		0x0008
-#define	F_MODIFIEROFFSET	0x0010
-#define	F_SPECIALDAY		0x0020
-#define	F_ALLMONTH		0x0040
-#define	F_ALLDAY		0x0080
-#define	F_VARIABLE		0x0100
-#define	F_EASTER		0x0200
-#define	F_CNY			0x0400
-#define	F_PASKHA		0x0800
-#define	F_NEWMOON		0x1000
-#define	F_FULLMOON		0x2000
+#define	F_NONE			0x00000
+#define	F_MONTH			0x00001
+#define	F_DAYOFWEEK		0x00002
+#define	F_DAYOFMONTH		0x00004
+#define	F_MODIFIERINDEX		0x00008
+#define	F_MODIFIEROFFSET	0x00010
+#define	F_SPECIALDAY		0x00020
+#define	F_ALLMONTH		0x00040
+#define	F_ALLDAY		0x00080
+#define	F_VARIABLE		0x00100
+#define	F_EASTER		0x00200
+#define	F_CNY			0x00400
+#define	F_PASKHA		0x00800
+#define	F_NEWMOON		0x01000
+#define	F_FULLMOON		0x02000
+#define	F_MAREQUINOX		0x04000
+#define	F_SEPEQUINOX		0x08000
+#define	F_JUNSOLSTICE		0x10000
+#define	F_DECSOLSTICE		0x20000
 
 #define	STRING_EASTER	"Easter"
 #define	STRING_PASKHA	"Paskha"
 #define	STRING_CNY	"ChineseNewYear"
 #define STRING_NEWMOON	"NewMoon"
 #define STRING_FULLMOON	"FullMoon"
+#define STRING_MAREQUINOX	"MarEquinox"
+#define STRING_SEPEQUINOX	"SepEquinox"
+#define STRING_JUNSOLSTICE	"JunSolstice"
+#define STRING_DECSOLSTICE	"DecSolstice"
 
 extern int	debug;		/* show parsing of the input */
 extern int	f_dayAfter;	/* days after current date */
@@ -152,3 +161,5 @@ void	addtodate(struct event *e, int year, int month, int day);
 #define	MAXMOONS	15
 void	pom(int year, int *fms, int *nms);
 
+/* sunpos.c */
+void	equinoxsolstice(int year, double UTCoffset, int *equinoxdays, int *solsticedays);

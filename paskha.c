@@ -55,36 +55,3 @@ paskha(int R) /*year*/
 	cumday = cumdaytab[isleap(R)];
 	return (((cumday[3] + 1) + 22) + (d + e));
 }
-
-/* return year day for Orthodox Easter depending days */
-
-int
-getpaskha(char *s, int year)
-{
-	int offset;
-
-	if (strncasecmp(s, PASKHA, PASKHALEN) == 0)
-		s += PASKHALEN;
-	else if (npaskha.name != NULL
-	    && strncasecmp(s, npaskha.name, npaskha.len) == 0)
-		s += npaskha.len;
-	else
-		return 0;
-
-	/* Paskha+1  or Paskha-2
-	 *       ^            ^   */
-
-	switch (*s) {
-
-	case '-':
-	case '+':
-		offset = atoi(s);
-		break;
-
-	default:
-		offset = 0;
-		break;
-	}
-
-	return (paskha(year) + offset + 13 /* new style */);
-}

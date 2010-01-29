@@ -79,7 +79,7 @@ static int parseoffset(char *s);
  * SpecialDay		::=	'Easter' | 'Pashka' | 'ChineseNewYear'
  *
  */
-int
+static int
 determinestyle(char *date, int *flags,
     char *month, int *imonth, char *dayofmonth, int *idayofmonth,
     char *dayofweek, int *idayofweek, char *modifieroffset,
@@ -135,6 +135,22 @@ determinestyle(char *date, int *flags,
 			CHECKSPECIAL(date, STRING_EASTER,
 			    strlen(STRING_EASTER), F_EASTER);
 			CHECKSPECIAL(date, neaster.name, neaster.len, F_EASTER);
+			CHECKSPECIAL(date, STRING_MAREQUINOX,
+			    strlen(STRING_MAREQUINOX), F_MAREQUINOX);
+			CHECKSPECIAL(date, nmarequinox.name, nmarequinox.len,
+			    F_SEPEQUINOX);
+			CHECKSPECIAL(date, STRING_SEPEQUINOX,
+			    strlen(STRING_SEPEQUINOX), F_SEPEQUINOX);
+			CHECKSPECIAL(date, nsepequinox.name, nsepequinox.len,
+			    F_SEPEQUINOX);
+			CHECKSPECIAL(date, STRING_JUNSOLSTICE,
+			    strlen(STRING_JUNSOLSTICE), F_JUNSOLSTICE);
+			CHECKSPECIAL(date, njunsolstice.name, njunsolstice.len,
+			    F_JUNSOLSTICE);
+			CHECKSPECIAL(date, STRING_DECSOLSTICE,
+			    strlen(STRING_DECSOLSTICE), F_DECSOLSTICE);
+			CHECKSPECIAL(date, ndecsolstice.name, ndecsolstice.len,
+			    F_DECSOLSTICE);
 			if (checkdayofweek(date, &len, &offset, &dow) != 0) {
 				*flags |= F_DAYOFWEEK;
 				*flags |= F_VARIABLE;
@@ -286,7 +302,7 @@ remember(int index, int *y, int *m, int *d, int yy, int mm, int dd)
 	d[index] = dd;
 }
 
-void
+static void
 debug_determinestyle(int dateonly, char *date, int flags, char *month,
     int imonth, char *dayofmonth, int idayofmonth, char *dayofweek,
     int idayofweek, char *modifieroffset, char *modifierindex, char *specialday)
@@ -332,6 +348,7 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 
 	int ieaster, ipaskha;
 	int ifullmoon[MAXMOONS], inewmoon[MAXMOONS];
+	int equinoxdays[2], solsticedays[2];
 
 	int *mondays, d, m, dow, rm, rd, offset;
 
@@ -366,9 +383,11 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 
 	index = 0;
 	for (year = year1; year <= year2; year++) {
+		/* Get important dates for this year */
 		mondays = mondaytab[isleap(year)];
 		ieaster = easter(year);
 		pom(year, ifullmoon, inewmoon);
+		equinoxsolstice(year, 0.0, equinoxdays, solsticedays);
 
 		/* Same day every year */
 		if (*flags == (F_MONTH | F_DAYOFMONTH)) {
@@ -531,11 +550,58 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 			continue;
 		}
 
+		/* (Mar|Sep)Equinox */
+		if ((*flags & ~F_MODIFIEROFFSET) ==
+		    (F_SPECIALDAY | F_VARIABLE | F_MAREQUINOX)) {
+			offset = 0;
+			if ((*flags & F_MODIFIEROFFSET) != 0)
+				offset = parseoffset(modifieroffset);
+			if (remember_yd(year, equinoxdays[0] + offset,
+			    &rm, &rd))
+				remember(index++, yearp, monthp, dayp,
+				    year, rm, rd);
+			continue;
+		}
+		if ((*flags & ~F_MODIFIEROFFSET) ==
+		    (F_SPECIALDAY | F_VARIABLE | F_SEPEQUINOX)) {
+			offset = 0;
+			if ((*flags & F_MODIFIEROFFSET) != 0)
+				offset = parseoffset(modifieroffset);
+			if (remember_yd(year, equinoxdays[1] + offset,
+			    &rm, &rd))
+				remember(index++, yearp, monthp, dayp,
+				    year, rm, rd);
+			continue;
+		}
+
+		/* (Jun|Dec)Solstice */
+		if ((*flags & ~F_MODIFIEROFFSET) ==
+		    (F_SPECIALDAY | F_VARIABLE | F_JUNSOLSTICE)) {
+			offset = 0;
+			if ((*flags & F_MODIFIEROFFSET) != 0)
+				offset = parseoffset(modifieroffset);
+			if (remember_yd(year, solsticedays[0] + offset,
+			    &rm, &rd))
+				remember(index++, yearp, monthp, dayp,
+				    year, rm, rd);
+			continue;
+		}
+		if ((*flags & ~F_MODIFIEROFFSET) ==
+		    (F_SPECIALDAY | F_VARIABLE | F_DECSOLSTICE)) {
+			offset = 0;
+			if ((*flags & F_MODIFIEROFFSET) != 0)
+				offset = parseoffset(modifieroffset);
+			if (remember_yd(year, solsticedays[1] + offset,
+			    &rm, &rd))
+				remember(index++, yearp, monthp, dayp,
+				    year, rm, rd);
+			continue;
+		}
+
 		printf("Unprocessed:\n");
 		debug_determinestyle(2, date, *flags, month, imonth,
 		    dayofmonth, idayofmonth, dayofweek, idayofweek,
 		    modifieroffset, modifierindex, specialday);
-
 	}
 
 	return (index);
@@ -575,6 +641,14 @@ showflags(int flags)
 		strcat(s, "fullmoon ");
 	if ((flags & F_NEWMOON) != 0)
 		strcat(s, "newmoon ");
+	if ((flags & F_MAREQUINOX) != 0)
+		strcat(s, "marequinox ");
+	if ((flags & F_SEPEQUINOX) != 0)
+		strcat(s, "sepequinox ");
+	if ((flags & F_JUNSOLSTICE) != 0)
+		strcat(s, "junsolstice ");
+	if ((flags & F_DECSOLSTICE) != 0)
+		strcat(s, "decsolstice ");
 
 	return s;
 }
