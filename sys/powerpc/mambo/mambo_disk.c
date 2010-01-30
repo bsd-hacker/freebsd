@@ -112,7 +112,6 @@ mambodisk_attach(device_t dev)
 	d->d_open = mambodisk_open;
 	d->d_close = mambodisk_close;
 	d->d_strategy = mambodisk_strategy;
-	// d->d_dump = mambodisk_dump;	Need polling mmc layer
 	d->d_name = "mambodisk";
 	d->d_drv1 = sc;
 	d->d_maxsize = MAXPHYS;		/* Maybe ask bridge? */
@@ -123,7 +122,7 @@ mambodisk_attach(device_t dev)
 
 	d->d_unit = device_get_unit(dev);
 	d->d_mediasize = mambocall(MAMBO_DISK_INFO,MAMBO_INFO_DEVSZ,d->d_unit)
-	    * 1024; /* Mambo gives size in KB */
+	    * 1024ULL; /* Mambo gives size in KB */
 
 	mb = d->d_mediasize >> 20;	/* 1MiB == 1 << 20 */
 	unit = 'M';
@@ -197,10 +196,11 @@ mambodisk_task(void *arg)
 {
 	struct mambodisk_softc *sc = (struct mambodisk_softc*)arg;
 	struct bio *bp;
-	int sz, result;
+	size_t sz;
+	int result;
 	daddr_t block, end;
 	device_t dev;
-	uint32_t unit;
+	u_long unit;
 
 	dev = sc->dev;
 	unit = device_get_unit(dev);
@@ -220,7 +220,7 @@ mambodisk_task(void *arg)
 		sz = sc->disk->d_sectorsize;
 		end = bp->bio_pblkno + (bp->bio_bcount / sz);
 		for (block = bp->bio_pblkno; block < end;) {
-			uint32_t numblocks;
+			u_long numblocks;
 			char *vaddr = bp->bio_data + 
 			    (block - bp->bio_pblkno) * sz;
 
@@ -230,10 +230,10 @@ mambodisk_task(void *arg)
 
 			if (bp->bio_cmd == BIO_READ) {
 				result = mambocall(MAMBO_DISK_READ, vaddr, 
-				    (uint32_t)block, (numblocks << 16) | unit);
+				  (u_long)block, (numblocks << 16) | unit);
 			} else if (bp->bio_cmd == BIO_WRITE) {
 				result = mambocall(MAMBO_DISK_WRITE, vaddr, 
-				    (uint32_t)block, (numblocks << 16) | unit);
+				  (u_long)block, (numblocks << 16) | unit);
 			} else {
 				result = 1;
 			}

@@ -30,6 +30,6 @@
 #ifndef _MAMBO_MAMBOCALL_H_
 #define _MAMBO_MAMBOCALL_H_
 
-int mambocall(int op, ...);
+long mambocall(int op, ...);
 
 #endif /* _MAMBO_MAMBOCALL_H_ */
