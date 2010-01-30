@@ -899,7 +899,8 @@ ptrace_clear_single_step(struct thread *td)
 }
 
 void
-exec_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings)
+exec_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings,
+    struct image_params *imgp)
 {
 	struct trapframe *tf;
 	struct pcb *pcb;

@@ -1172,11 +1172,12 @@ void (*cpu_idle_hook)(void) = cpu_idle_default;
  * Reset registers to default values on exec.
  */
 void
-exec_setregs(td, entry, stack, ps_strings)
+exec_setregs(td, entry, stack, ps_strings, imgp)
 	struct thread *td;
 	u_long entry;
 	u_long stack;
 	u_long ps_strings;
+	struct image_params *imgp;
 {
 	struct trapframe *regs = td->td_frame;
 	struct pcb *pcb = td->td_pcb;

@@ -516,7 +516,8 @@ spinlock_exit(void)
  * Clear registers on exec
  */
 void
-exec_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings)
+exec_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings,
+    struct image_params *imgp)
 {
 	struct trapframe *tf = td->td_frame;
 

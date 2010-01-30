@@ -472,7 +472,8 @@ set_fpregs(struct thread *td, struct fpreg *fpregs)
  * code by the MIPS elf abi).
  */
 void
-exec_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings)
+exec_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings,
+    struct image_params *imgp)
 {
 
 	bzero((caddr_t)td->td_frame, sizeof(struct trapframe));

@@ -828,11 +828,12 @@ exec_linux_imgact_try(struct image_params *imgp)
  * XXX copied from ia32_signal.c.
  */
 static void
-exec_linux_setregs(td, entry, stack, ps_strings)
+exec_linux_setregs(td, entry, stack, ps_strings, imgp)
 	struct thread *td;
 	u_long entry;
 	u_long stack;
 	u_long ps_strings;
+	struct image_params *imgp;
 {
 	struct trapframe *regs = td->td_frame;
 	struct pcb *pcb = td->td_pcb;

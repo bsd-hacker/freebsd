@@ -1320,7 +1320,8 @@ set_mcontext(struct thread *td, const mcontext_t *mc)
  * Clear registers on exec.
  */
 void
-exec_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings)
+exec_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings,
+    struct image_params *imgp)
 {
 	struct trapframe *tf;
 	uint64_t *ksttop, *kst;

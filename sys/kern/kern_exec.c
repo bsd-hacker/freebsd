@@ -372,6 +372,7 @@ do_execve(td, args, mac_p)
 	imgp->execlabel = NULL;
 	imgp->attr = &attr;
 	imgp->entry_addr = 0;
+	imgp->reloc_base = 0;
 	imgp->vmspace_destroyed = 0;
 	imgp->interpreted = 0;
 	imgp->opened = 0;
@@ -800,10 +801,10 @@ interpret:
 	/* Set values passed into the program in registers. */
 	if (p->p_sysent->sv_setregs)
 		(*p->p_sysent->sv_setregs)(td, imgp->entry_addr,
-		    (u_long)(uintptr_t)stack_base, imgp->ps_strings);
+		    (u_long)(uintptr_t)stack_base, imgp->ps_strings, imgp);
 	else
 		exec_setregs(td, imgp->entry_addr,
-		    (u_long)(uintptr_t)stack_base, imgp->ps_strings);
+		    (u_long)(uintptr_t)stack_base, imgp->ps_strings, imgp);
 
 	vfs_mark_atime(imgp->vp, td->td_ucred);
 

@@ -120,7 +120,8 @@ freebsd32_sigreturn(struct thread *td, struct freebsd32_sigreturn_args *uap)
 
 
 void
-ia32_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings)
+ia32_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings,
+    struct image_params *imgp)
 {
 	struct trapframe *tf = td->td_frame;
 	vm_offset_t gdt, ldt;
@@ -129,7 +130,7 @@ ia32_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings)
 	struct segment_descriptor desc;
 	struct vmspace *vmspace = td->td_proc->p_vmspace;
 
-	exec_setregs(td, entry, stack, ps_strings);
+	exec_setregs(td, entry, stack, ps_strings, imgp);
 
 	/* Non-syscall frames are cleared by exec_setregs() */
 	if (tf->tf_flags & FRAME_SYSCALL) {

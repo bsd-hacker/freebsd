@@ -486,7 +486,8 @@ set_mcontext(struct thread *td, const mcontext_t *mcp)
  * Set set up registers on exec.
  */
 void
-exec_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings)
+exec_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings,
+    struct image_params *imgp)
 {
 	struct trapframe	*tf;
 	struct ps_strings	arginfo;
@@ -543,9 +544,9 @@ exec_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings)
 	 */
 
 	(void)copyin((void *)entry, entry_desc, sizeof(entry_desc));
-	tf->srr0 = entry_desc[0];
-	tf->fixreg[2] = entry_desc[1];
-	tf->fixreg[11] = entry_desc[2];
+	tf->srr0 = entry_desc[0] + imgp->reloc_base;
+	tf->fixreg[2] = entry_desc[1] + imgp->reloc_base;
+	tf->fixreg[11] = entry_desc[2] + imgp->reloc_base;
 	tf->srr1 = PSL_SF | PSL_MBO | PSL_USERSET | PSL_FE_DFLT;
 	#else
 	tf->srr0 = entry;
@@ -556,7 +557,8 @@ exec_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings)
 
 #ifdef COMPAT_PPC32
 void
-ppc32_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings)
+ppc32_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings,
+    struct image_params *imgp)
 {
 	struct trapframe		*tf;
 	struct freebsd32_ps_strings	arginfo;
