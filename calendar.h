@@ -163,3 +163,4 @@ void	pom(int year, int *fms, int *nms);
 
 /* sunpos.c */
 void	equinoxsolstice(int year, double UTCoffset, int *equinoxdays, int *solsticedays);
+int	calculatesunlongitude30(int year, int degreeGMToffset, int *ichinesemonths);

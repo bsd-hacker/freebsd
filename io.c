@@ -174,7 +174,6 @@ cal(void)
 		*pp = '\0';
 		if ((count = parsedaymonth(buf, year, month, day, &flags)) == 0)
 			continue;
-		printf("%s - count: %d\n", buf, count);
 		*pp = p;
 
 		/* Find the last tab */

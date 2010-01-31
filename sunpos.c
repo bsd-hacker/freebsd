@@ -93,14 +93,10 @@ static double ZJtable[] = {
 
 static void
 sunpos(int inYY, int inMM, int inDD, double UTCOFFSET, int inHOUR, int inMIN,
-    double eastlongitude, double latitude, double *DEC, double *ALT, double *AZ)
+    double eastlongitude, double latitude, double *L, double *DEC)
 {
 	int Y;
-	double ZJ, D, T, L, M, epsilon, lambda, alpha, HA, UTHM;
-
-	/* Not calculated in this code */
-	*ALT = 0;
-	*AZ = 0;
+	double ZJ, D, T, M, epsilon, lambda, alpha, HA, UTHM;
 
 	ZJ = ZJtable[inMM];
 	if (inMM <= 2 && isleap(inYY))
@@ -110,14 +106,14 @@ sunpos(int inYY, int inMM, int inDD, double UTCOFFSET, int inHOUR, int inMIN,
 	Y = inYY - 1900;						/*  1 */
 	D = floor(365.25 * Y) + ZJ + inDD + UTHM / 24;			/*  3 */
 	T = D / 36525.0;						/*  4 */
-	L = 279.697 + 36000.769 * T;					/*  5 */
-	fixup(&L);
+	*L = 279.697 + 36000.769 * T;					/*  5 */
+	fixup(L);
 	M = 358.476 + 35999.050 * T;					/*  6 */
 	fixup(&M);
 	epsilon = 23.452 - 0.013 * T;					/*  7 */
 	fixup(&epsilon);
 
-	lambda = L + (1.919 - 0.005 * T) * SIN(M) + 0.020 * SIN(2 * M);	/*  8 */
+	lambda = *L + (1.919 - 0.005 * T) * SIN(M) + 0.020 * SIN(2 * M);	/*  8 */
 	fixup(&lambda);
 	alpha = ATAN(TAN(lambda) * COS(epsilon));			/*  9 */
 
@@ -134,7 +130,7 @@ sunpos(int inYY, int inMM, int inDD, double UTCOFFSET, int inHOUR, int inMIN,
 	*DEC = ASIN(SIN(lambda) * SIN(epsilon));			/* 10 */
 	fixup(DEC);
 	fixup(&eastlongitude);
-	HA = L - alpha + 180 + 15 * UTHM + eastlongitude;		/* 12 */
+	HA = *L - alpha + 180 + 15 * UTHM + eastlongitude;		/* 12 */
 	fixup(&HA);
 	fixup(&latitude);
 #ifdef NOTDEF
@@ -195,7 +191,7 @@ sunpos(int inYY, int inMM, int inDD, double UTCOFFSET, int inHOUR, int inMIN,
 void
 equinoxsolstice(int year, double UTCoffset, int *equinoxdays, int *solsticedays)
 {
-	double dec, prevdec, alt, az;
+	double dec, prevdec, L;
 	int h, d, prevangle, angle;
 	int found = 0;
 
@@ -212,7 +208,7 @@ equinoxsolstice(int year, double UTCoffset, int *equinoxdays, int *solsticedays)
 	for (d = 18; d < 31; d++) {
 		for (h = 0; h < 4 * 24; h++) {
 			sunpos(year, 3, d, UTCoffset, HOUR(h), MIN(h),
-			    0.0, 0.0, &dec, &alt, &az);
+			    0.0, 0.0, &L, &dec);
 			if (SIGN(prevdec) != SIGN(dec)) {
 #ifdef NOTDEF
 				DEBUG1(year, 3, d, HOUR(h), MIN(h),
@@ -237,7 +233,7 @@ equinoxsolstice(int year, double UTCoffset, int *equinoxdays, int *solsticedays)
 	for (d = 18; d < 31; d++) {
 		for (h = 0; h < 4 * 24; h++) {
 			sunpos(year, 9, d, UTCoffset, HOUR(h), MIN(h),
-			    0.0, 0.0, &dec, &alt, &az);
+			    0.0, 0.0, &L, &dec);
 			if (SIGN(prevdec) != SIGN(dec)) {
 #ifdef NOTDEF
 				DEBUG1(year, 9, d, HOUR(h), MIN(h),
@@ -264,7 +260,7 @@ equinoxsolstice(int year, double UTCoffset, int *equinoxdays, int *solsticedays)
 	for (d = 18; d < 31; d++) {
 		for (h = 0; h < 4 * 24; h++) {
 			sunpos(year, 6, d, UTCoffset, HOUR(h), MIN(h),
-			    0.0, 0.0, &dec, &alt, &az);
+			    0.0, 0.0, &L, &dec);
 			angle = ANGLE(prevdec, dec);
 			if (prevangle != angle) {
 #ifdef NOTDEF
@@ -293,7 +289,7 @@ equinoxsolstice(int year, double UTCoffset, int *equinoxdays, int *solsticedays)
 	for (d = 18; d < 31; d++) {
 		for (h = 0; h < 4 * 24; h++) {
 			sunpos(year, 12, d, UTCoffset, HOUR(h), MIN(h),
-			    0.0, 0.0, &dec, &alt, &az);
+			    0.0, 0.0, &L, &dec);
 			angle = ANGLE(prevdec, dec);
 			if (prevangle != angle) {
 #ifdef NOTDEF
@@ -312,6 +308,58 @@ equinoxsolstice(int year, double UTCoffset, int *equinoxdays, int *solsticedays)
 	}
 
 	return;
+}
+
+int
+calculatesunlongitude30(int year, int degreeGMToffset, int *ichinesemonths)
+{
+	int m, d, h;
+	double dec;
+	double curL, prevL;
+	int *pichinesemonths, *monthdays, *cumdays, i;
+	int firstmonth330;
+
+	cumdays = cumdaytab[isleap(year)];
+	monthdays = mondaytab[isleap(year)];
+	pichinesemonths = ichinesemonths;
+
+	sunpos(year - 1, 12, 31,
+	    -24 * (degreeGMToffset / 360.0),
+	    HOUR(h), MIN(h), 0.0, 0.0, &prevL, &dec);
+
+	for (m = 1; m <= 12; m++) {
+		for (d = 1; d <= monthdays[m]; d++) {
+			for (h = 0; h < 4 * 24; h++) {
+				sunpos(year, m, d,
+				    -24 * (degreeGMToffset / 360.0),
+				    HOUR(h), MIN(h), 0.0, 0.0, &curL, &dec);
+				if (curL < 180 && prevL > 180) {
+					*pichinesemonths = cumdays[m] + d;
+#ifdef DEBUG
+printf("%04d-%02d-%02d %02d:%02d - %d %g\n",
+    year, m, d, HOUR(h), MIN(h), *pichinesemonths, curL);
+#endif
+					    pichinesemonths++;
+				} else {
+					for (i = 0; i <= 360; i += 30)
+						if (curL > i && prevL < i) {
+							*pichinesemonths =
+							    cumdays[m] + d;
+#ifdef DEBUG
+printf("%04d-%02d-%02d %02d:%02d - %d %g\n",
+    year, m, d, HOUR(h), MIN(h), *pichinesemonths, curL);
+#endif
+							if (i == 330)
+								firstmonth330 = *pichinesemonths;
+							pichinesemonths++;
+						}
+				}
+				prevL = curL;
+			}
+		}
+	}
+	*pichinesemonths = 0;
+	return (firstmonth330);
 }
 
 #ifdef NOTDEF

@@ -347,10 +347,10 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 	int idayofweek, imonth, idayofmonth, year, index;
 
 	int ieaster, ipaskha;
-	int ifullmoon[MAXMOONS], inewmoon[MAXMOONS];
+	int ifullmoon[MAXMOONS], inewmoon[MAXMOONS], ichinesemonths[MAXMOONS];
 	int equinoxdays[2], solsticedays[2];
 
-	int *mondays, d, m, dow, rm, rd, offset;
+	int *mondays, d, m, dow, rm, rd, offset, firstcnyday;
 
 	/*
 	 * CONVENTION
@@ -388,6 +388,16 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 		ieaster = easter(year);
 		pom(year, ifullmoon, inewmoon);
 		equinoxsolstice(year, 0.0, equinoxdays, solsticedays);
+
+		/* CNY: Match day with sun longitude at 330` with new moon */
+		firstcnyday = calculatesunlongitude30(year, 120,
+		    ichinesemonths);
+		for (m = 0; inewmoon[m] != 0; m++) {
+			if (inewmoon[m] > firstcnyday) {
+				firstcnyday = inewmoon[m - 1];
+				break;
+			}
+		}
 
 		/* Same day every year */
 		if (*flags == (F_MONTH | F_DAYOFMONTH)) {
@@ -511,6 +521,18 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 			if ((*flags & F_MODIFIEROFFSET) != 0)
 				offset = parseoffset(modifieroffset);
 			if (remember_yd(year, ipaskha + offset, &rm, &rd))
+				remember(index++, yearp, monthp, dayp,
+				    year, rm, rd);
+			continue;
+		}
+
+		/* Chinese New Year */
+		if ((*flags & ~F_MODIFIEROFFSET) ==
+		    (F_SPECIALDAY | F_VARIABLE | F_CNY)) {
+			offset = 0;
+			if ((*flags & F_MODIFIEROFFSET) != 0)
+				offset = parseoffset(modifieroffset);
+			if (remember_yd(year, firstcnyday + offset, &rm, &rd))
 				remember(index++, yearp, monthp, dayp,
 				    year, rm, rd);
 			continue;
