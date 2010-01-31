@@ -72,9 +72,8 @@ typedef struct {	/* Auxiliary vector entry on initial stack */
 	} a_un;
 } Elf32_Auxinfo;
 
-/* XXX: check ABI */
 typedef struct {	/* Auxiliary vector entry on initial stack */
-	int	a_type;			/* Entry type. */
+	long	a_type;			/* Entry type. */
 	union {
 		long	a_val;		/* Integer value. */
 		void	*a_ptr;		/* Address. */
