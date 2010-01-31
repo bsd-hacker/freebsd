@@ -44,9 +44,9 @@
 #include "rtld.h"
 
 struct funcdesc {
-	uint64_t addr;
-	uint64_t toc;
-	uint64_t env;
+	Elf_Addr addr;
+	Elf_Addr toc;
+	Elf_Addr env;
 };
 
 /*
@@ -104,7 +104,7 @@ do_copy_relocations(Obj_Entry *dstobj)
 
 		srcaddr = (const void *) (srcobj->relocbase+srcsym->st_value);
 		memcpy(dstaddr, srcaddr, size);
-		dbg("copy_reloc: src=%p,dst=%p,size=%d\n",srcaddr,dstaddr,size);
+		dbg("copy_reloc: src=%p,dst=%p,size=%zd\n",srcaddr,dstaddr,size);
 	}
 
 	return (0);
@@ -163,8 +163,8 @@ reloc_nonplt_object(Obj_Entry *obj_rtld, Obj_Entry *obj, const Elf_Rela *rela,
 	case R_PPC_NONE:
 		break;
 
-        case R_PPC_ADDR32:    /* word32 S + A */
-        case R_PPC_GLOB_DAT:  /* word32 S + A */
+        case R_PPC64_ADDR64:    /* doubleword64 S + A */
+        case R_PPC_GLOB_DAT:
 		def = find_symdef(ELF_R_SYM(rela->r_info), obj, &defobj,
 				  false, cache);
 		if (def == NULL) {
@@ -180,7 +180,7 @@ reloc_nonplt_object(Obj_Entry *obj_rtld, Obj_Entry *obj, const Elf_Rela *rela,
 		}
                 break;
 
-        case R_PPC_RELATIVE:  /* word32 B + A */
+        case R_PPC_RELATIVE:  /* doubleword64 B + A */
 		tmp = (Elf_Addr)(obj->relocbase + rela->r_addend);
 
 		/* As above, don't issue write unnecessarily */
@@ -211,7 +211,7 @@ reloc_nonplt_object(Obj_Entry *obj_rtld, Obj_Entry *obj, const Elf_Rela *rela,
 		 */
 		break;
 
-	case R_PPC_DTPMOD32:
+	case R_PPC64_DTPMOD64:
 		def = find_symdef(ELF_R_SYM(rela->r_info), obj, &defobj,
 		    false, cache);
 
@@ -222,7 +222,7 @@ reloc_nonplt_object(Obj_Entry *obj_rtld, Obj_Entry *obj, const Elf_Rela *rela,
 
 		break;
 
-	case R_PPC_TPREL32:
+	case R_PPC64_TPREL64:
 		def = find_symdef(ELF_R_SYM(rela->r_info), obj, &defobj,
 		    false, cache);
 
@@ -251,7 +251,7 @@ reloc_nonplt_object(Obj_Entry *obj_rtld, Obj_Entry *obj, const Elf_Rela *rela,
 		
 		break;
 		
-	case R_PPC_DTPREL32:
+	case R_PPC64_DTPREL64:
 		def = find_symdef(ELF_R_SYM(rela->r_info), obj, &defobj,
 		    false, cache);
 
@@ -322,8 +322,8 @@ done:
 static int
 reloc_plt_object(Obj_Entry *obj, const Elf_Rela *rela)
 {
-	Elf_Word *where = (Elf_Word *)(obj->relocbase + rela->r_offset);
-	int reloff;
+	Elf_Addr *where = (Elf_Addr *)(obj->relocbase + rela->r_offset);
+	long reloff;
 
 	reloff = rela - obj->pltrela;
 
@@ -331,11 +331,9 @@ reloc_plt_object(Obj_Entry *obj, const Elf_Rela *rela)
 		return (-1);
 	}
 
-	dbg(" reloc_plt_object: where=%p,pltres=%p,reloff=%x,distance=%x",
-	    (void *)where, (void *)pltresolve, reloff, distance);
+	dbg(" reloc_plt_object: where=%p,reloff=%lx", (void *)where, reloff);
 
-	((struct funcdesc *)(where))->addr =
-	    (uint64_t)_rtld_powerpc64_pltresolve;
+	memcpy(where, _rtld_powerpc64_pltresolve, sizeof(struct funcdesc));
 	((struct funcdesc *)(where))->toc = reloff;
 	((struct funcdesc *)(where))->env = (uint64_t)obj;
 
@@ -413,16 +411,15 @@ reloc_jmpslots(Obj_Entry *obj)
 
 
 /*
- * Update the value of a PLT jump slot. Branch directly to the target if
- * it is within +/- 32Mb, otherwise go indirectly via the pltcall
- * trampoline call and jump table.
+ * Update the value of a PLT jump slot.
  */
 Elf_Addr
 reloc_jmpslot(Elf_Addr *wherep, Elf_Addr target, const Obj_Entry *defobj,
 	      const Obj_Entry *obj, const Elf_Rel *rel)
 {
-	dbg(" reloc_jmpslot: where=%p, target=%p",
-	    (void *)wherep, (void *)target);
+	dbg(" reloc_jmpslot: where=%p, target=%p (%#lx + %#lx)",
+	    (void *)wherep, (void *)target, *(Elf_Addr *)target,
+	    (Elf_Addr)defobj->relocbase);
 
 	/*
 	 * At the PLT entry pointed at by `wherep', construct
@@ -431,6 +428,18 @@ reloc_jmpslot(Elf_Addr *wherep, Elf_Addr target, const Obj_Entry *defobj,
 	 */
 
 	memcpy(wherep, (void *)target, sizeof(struct funcdesc));
+	if (((struct funcdesc *)(wherep))->addr < (Elf_Addr)defobj->relocbase) {
+		/*
+		 * XXX: It is possible (e.g. LD_BIND_NOW) that the function
+		 * descriptor we are copying has not yet been relocated.
+		 * If this happens, fix it.
+		 */
+
+		((struct funcdesc *)(wherep))->addr +=
+		    (Elf_Addr)defobj->relocbase;
+		((struct funcdesc *)(wherep))->toc +=
+		    (Elf_Addr)defobj->relocbase;
+	}
 
 	return (target);
 }
@@ -438,8 +447,9 @@ reloc_jmpslot(Elf_Addr *wherep, Elf_Addr target, const Obj_Entry *defobj,
 void
 init_pltgot(Obj_Entry *obj)
 {
+#if 0
 	struct funcdesc *pltcall;
-	int N = obj->pltrelasize / sizeof(Elf_Rela);
+	//int N = obj->pltrelasize / sizeof(Elf_Rela);
 
 	pltcall = (struct funcdesc *)obj->pltgot;
 
@@ -448,22 +458,16 @@ init_pltgot(Obj_Entry *obj)
 	}
 
 	/*
-	 * Copy the function description into the PLT slot
+	 * Copy the function description into the PLT0 slot
 	 */
 	memcpy(pltcall, _rtld_powerpc64_pltresolve, sizeof(*pltcall));
-
-	/*
-	 * Now fake the two arguments we get in the descriptor to
-	 * pass information to the resolver.
-	 */
-	pltcall->toc = N;
-	pltcall->env = (uint64_t)obj;
+#endif
 }
 
 void
 allocate_initial_tls(Obj_Entry *list)
 {
-	register Elf_Addr **tp __asm__("r2");
+	register Elf_Addr **tp __asm__("r13");
 	Elf_Addr **_tp;
 
 	/*
@@ -474,7 +478,7 @@ allocate_initial_tls(Obj_Entry *list)
 
 	tls_static_space = tls_last_offset + tls_last_size + RTLD_STATIC_TLS_EXTRA;
 
-	_tp = (Elf_Addr **) ((char *) allocate_tls(list, NULL, TLS_TCB_SIZE, 8) 
+	_tp = (Elf_Addr **) ((char *)allocate_tls(list, NULL, TLS_TCB_SIZE, 16) 
 	    + TLS_TP_OFFSET + TLS_TCB_SIZE);
 
 	/*
@@ -487,7 +491,7 @@ allocate_initial_tls(Obj_Entry *list)
 void*
 __tls_get_addr(tls_index* ti)
 {
-	register Elf_Addr **tp __asm__("r2");
+	register Elf_Addr **tp __asm__("r13");
 	char *p;
 
 	p = tls_get_addr_common((Elf_Addr**)((Elf_Addr)tp - TLS_TP_OFFSET 

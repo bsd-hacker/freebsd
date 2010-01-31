@@ -45,6 +45,26 @@ _ENTRY(_rtld_start)
 /*	std     %r7,80(%r1)   *//*  cleanup (always 0) */
 	std     %r8,88(%r1)	/*  ps_strings */
 
+	/*
+	 * Perform initial relocation of ld-elf.so. Not as easy as it
+	 * sounds.
+	 *  - perform small forward branch to put PC into link reg
+	 *  - use link-time constants to determine offset to the
+	 *    _DYNAMIC section and the GOT. Add these to the PC to
+	 *    convert to absolute addresses.
+	 *  - call reloc_non_plt_self() to fix up ld-elf.so's relocations
+	 */
+
+	bl	1f
+	.llong	_DYNAMIC-.
+1:
+	mflr	%r3		/* PC value at .llong */
+	ld	%r4,0(%r3)	/* offset to _DYNAMIC */
+	add	%r3,%r4,%r3	/* r3 = &_DYNAMIC, absolute value */
+
+	ld	%r4,-0x8000(%r2) /* First TOC entry is TOC base */
+	subf	%r4,%r4,%r2	/* Subtract from real TOC base to get base */
+
 	bl	.reloc_non_plt_self /* reloc_non_plt_self(&_DYNAMIC,base) */
 	nop
 
@@ -55,14 +75,16 @@ _ENTRY(_rtld_start)
 	 * original stack layout has to be found by moving back a word
 	 * from the argv pointer.
 	 */
-        ld     %r4,56(%r1)	/* restore argv */
+	ld	%r4,56(%r1)
         addi    %r3,%r4,-8	/* locate argc ptr, &argv[-1] */
-
-	addi	%r4,%r1,16	/* &exit_proc on stack */
-	addi	%r5,%r1,24	/* &obj_main on stack */
+	addi	%r4,%r1,80	/* &exit_proc on stack */
+	addi	%r5,%r1,72	/* &obj_main on stack */
 
 	bl      ._rtld		/* &_start = _rtld(sp, &exit_proc, &obj_main)*/
 	nop
+	ld	%r2,8(%r3)
+	ld	%r11,16(%r3)
+	ld	%r3,0(%r3)
 	mtlr    %r3
 
 	/*
