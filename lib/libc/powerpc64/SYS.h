@@ -42,8 +42,15 @@
 #define	SYSCALL(x)						\
 	.text;							\
 	.align 2;						\
-2:	b	PIC_PLT(CNAME(HIDENAME(cerror)));		\
+2:	mflr	%r0;						\
+	std	%r0,16(%r1);					\
+	stdu	%r1,-48(%r1);					\
+	bl	PIC_PLT(CNAME(HIDENAME(cerror)));		\
 	nop;							\
+	addi	%r1,%r1,48;					\
+	ld	%r0,16(%r1);					\
+	mtlr	%r0;						\
+	blr;							\
 ENTRY(__CONCAT(__sys_,x));					\
 	.weak	CNAME(x);					\
 	.set	CNAME(x),CNAME(__CONCAT(__sys_,x));		\
@@ -66,14 +73,19 @@ ENTRY(__CONCAT(__sys_,x));					\
 	.set	CNAME(__CONCAT(._,x)),CNAME(__CONCAT(.__sys_,x));\
 	_SYSCALL(x);						\
 	bnslr;							\
-	b	PIC_PLT(CNAME(HIDENAME(cerror)));		\
-	nop
+	mflr	%r0;						\
+	std	%r0,16(%r1);					\
+	stdu	%r1,-48(%r1);					\
+	bl	PIC_PLT(CNAME(HIDENAME(cerror)));		\
+	nop;							\
+	addi	%r1,%r1,48;					\
+	ld	%r0,16(%r1);					\
+	mtlr	%r0;						\
+	blr;
 
 #define	RSYSCALL(x)						\
 	.text;							\
 	.align 2;						\
-2:	b	PIC_PLT(CNAME(HIDENAME(cerror)));		\
-	nop;							\
 ENTRY(__CONCAT(__sys_,x));					\
 	.weak	CNAME(x);					\
 	.set	CNAME(x),CNAME(__CONCAT(__sys_,x));		\
@@ -85,5 +97,13 @@ ENTRY(__CONCAT(__sys_,x));					\
 	.set	CNAME(__CONCAT(._,x)),CNAME(__CONCAT(.__sys_,x));\
 	_SYSCALL(x);						\
 	bnslr;							\
-	b	PIC_PLT(CNAME(HIDENAME(cerror)));		\
-	nop
+								\
+	mflr	%r0;						\
+	std	%r0,16(%r1);					\
+	stdu	%r1,-48(%r1);					\
+	bl	PIC_PLT(CNAME(HIDENAME(cerror)));		\
+	nop;							\
+	addi	%r1,%r1,48;					\
+	ld	%r0,16(%r1);					\
+	mtlr	%r0;						\
+	blr;
