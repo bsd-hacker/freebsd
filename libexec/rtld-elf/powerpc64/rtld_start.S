@@ -96,7 +96,6 @@ _ENTRY(_rtld_start)
 	ld      %r6,72(%r1)	/* obj */
 	ld      %r7,80(%r1)	/* exit proc */
 	ld      %r8,88(%r1)	/* ps_strings */
-        addi    %r1,%r1,96	/* restore original stackptr */
 
 	blrl	/* _start(argc, argv, envp, obj, cleanup, ps_strings) */
 

@@ -441,6 +441,8 @@ reloc_jmpslot(Elf_Addr *wherep, Elf_Addr target, const Obj_Entry *defobj,
 		    (Elf_Addr)defobj->relocbase;
 	}
 
+	__asm __volatile("dcbst 0,%0; sync" :: "r"(wherep) : "memory");
+
 	return (target);
 }
 
