@@ -1,7 +1,7 @@
 #	@(#)Makefile	8.1 (Berkeley) 6/6/93
 # $FreeBSD$
 
-CFLAGS=	 -pipe  -g -std=gnu99 -fstack-protector   -Wall
+CFLAGS=	 -pipe  -g -pg -std=gnu99 -fstack-protector   -Wall
 
 PROG=	calendar
 SRCS=   calendar.c locale.c events.c dates.c parsedata.c io.c day.c \
