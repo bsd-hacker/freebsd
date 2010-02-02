@@ -103,12 +103,31 @@ Ignore weekends when calculating the number of days.
 To handle calendars in your national code table you can specify
 .Dq LANG=<locale_name>
 in the calendar file as early as possible.
-To handle national Easter
-names in the calendars
-.Dq Easter=<national_name>
-(for Catholic Easter) or
-.Dq Paskha=<national_name>
-(for Orthodox Easter) can be used.
+.Pp
+The names of the following special days are recognized:
+.Bl -tag -width 123456789012345 -compact
+.It Easter
+Catholic Easter.
+.It Paskha
+Orthodox Easter.
+.It NewMoon
+The lunar New Moon.
+.It FullMoon
+The lunar Full Moon.
+.It MarSolstice
+The solar solstice in March.
+.It JunEquinox
+The solar equinox in June.
+.It MarSolstice
+The solar solstice in March.
+.It DecEquinox
+The solar equinox in December.
+.It ChineseNewYear
+The first day of the Chinese year.
+.El
+They may be reassigned to their local names via an assignment like
+.Dq Easter=Pasen
+in the calendar file.
 .Pp
 Other lines should begin with a month and day.
 They may be entered in almost any format, either numeric or as character
@@ -122,11 +141,11 @@ Two numbers default to the month followed by the day.
 Lines with leading tabs default to the last entered date, allowing
 multiple line specifications for a single date.
 .Pp
-``Easter'', is Easter for this year, and may be followed by a positive
-or negative integer.
-.Pp
-``Paskha'', is Orthodox Easter for this year, and may be followed by a
-positive or negative integer.
+The names of the special recognized days may be followed by a
+positive or negative integer, like:
+.Dq Easter+3
+or
+.Dq Pashka-4 .
 .Pp
 Weekdays may be followed by ``-4'' ...\& ``+5'' (aliases for
 last, first, second, third, fourth) for moving events like
@@ -259,7 +278,17 @@ A
 .Nm
 command appeared in
 .At v7 .
+.Sh NOTES
+Chinese New Year is calculated at 120 degrees east of Greenwich,
+which roughly corresponds with the east coast of China.
+.Pp
+The phases of the moon and the longitude of the sun are calculated
+against the local position which corresponds with 30 degrees times
+the time-difference towards Greenwich.
 .Sh BUGS
 The
 .Nm
-utility does not handle Jewish holidays and moon phases.
+utility does not handle Jewish holidays.
+.Pp
+There is no possibility to properly specify the local position
+needed for solar and lunar calculations.
