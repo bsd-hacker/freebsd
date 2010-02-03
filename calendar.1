@@ -125,7 +125,8 @@ The solar equinox in December.
 .It ChineseNewYear
 The first day of the Chinese year.
 .El
-They may be reassigned to their local names via an assignment like
+These names may be reassigned to their local names via an assignment
+like
 .Dq Easter=Pasen
 in the calendar file.
 .Pp
@@ -141,7 +142,7 @@ Two numbers default to the month followed by the day.
 Lines with leading tabs default to the last entered date, allowing
 multiple line specifications for a single date.
 .Pp
-The names of the special recognized days may be followed by a
+The names of the recognized special days may be followed by a
 positive or negative integer, like:
 .Dq Easter+3
 or
@@ -210,7 +211,8 @@ calendar file to use if no calendar file exists in the current directory.
 do not send mail if this file exists.
 .El
 .Pp
-The following default calendar files are provided:
+The following default calendar files are provided in
+.Pa /usr/share/calendars:
 .Pp
 .Bl -tag -width calendar.southafrica -compact
 .It Pa calendar.all
@@ -227,6 +229,8 @@ so that roving holidays are set correctly for the current year.
 Days of special significance to computer people.
 .It Pa calendar.croatian
 Calendar of events in Croatia.
+.It Pa calendar.dutch
+Calendar of events in the Netherlands.
 .It Pa calendar.freebsd
 Birthdays of
 .Fx
