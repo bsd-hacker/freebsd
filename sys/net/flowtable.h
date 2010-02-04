@@ -34,10 +34,13 @@ $FreeBSD$
 
 #ifdef	_KERNEL
 
-#define	FL_HASH_PORTS	(1<<0)	/* hash 4-tuple + protocol */
+#define	FL_HASH_ALL	(1<<0)	/* hash 4-tuple + protocol */
 #define	FL_PCPU		(1<<1)	/* pcpu cache */
+#define	FL_NOAUTO	(1<<2)	/* don't automatically add flentry on miss */
 
 struct flowtable;
+struct flentry;
+
 VNET_DECLARE(struct flowtable *, ip_ft);
 #define	V_ip_ft			VNET(ip_ft)
 
@@ -48,8 +51,18 @@ struct flowtable *flowtable_alloc(int nentry, int flags);
  * return it in the route.
  *
  */
-int flowtable_lookup(struct flowtable *ft, struct mbuf *m,
-    struct route *ro, uint32_t fibnum);
+struct flentry *flowtable_lookup_mbuf(struct flowtable *ft, struct mbuf *m, int af);
+
+struct flentry *flowtable_lookup(struct flowtable *ft, struct sockaddr *ssa,
+    struct sockaddr *dsa, uint32_t fibnum, int flags);
+
+int kern_flowtable_insert(struct flowtable *ft, struct sockaddr *ssa,
+    struct sockaddr *dsa, struct route *ro, uint32_t fibnum, int flags,
+    uint8_t proto);
+
+void flow_invalidate(struct flentry *fl);
+
+void flow_to_route(struct flentry *fl, struct route *ro);
 
 void flowtable_route_flush(struct flowtable *ft, struct rtentry *rt);
 

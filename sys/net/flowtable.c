@@ -30,6 +30,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "opt_route.h"
 #include "opt_mpath.h"
 #include "opt_ddb.h"
+#include "opt_inet.h"
+#include "opt_inet6.h"
 
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
@@ -63,6 +65,9 @@ __FBSDID("$FreeBSD$");
 #include <netinet/in_var.h>
 #include <netinet/if_ether.h>
 #include <netinet/ip.h>
+#ifdef INET6
+#include <netinet/ip6.h>
+#endif
 #include <netinet/tcp.h>
 #include <netinet/udp.h>
 #include <netinet/sctp.h>
@@ -342,45 +347,123 @@ flowtable_pcpu_unlock(struct flowtable *table, uint32_t hash)
 #define FL_ENTRY_LOCK(table, hash)  (table)->ft_lock((table), (hash))
 #define FL_ENTRY_UNLOCK(table, hash) (table)->ft_unlock((table), (hash))
 
-#define FL_STALE (1<<8)
-#define FL_IPV6  (1<<9)
+#define FL_STALE 	(1<<8)
+#define FL_IPV6  	(1<<9)
+#define FL_OVERWRITE	(1<<10)
+#define	FL_TCP		(1<<11)
+#define	FL_SCTP		(1<<12)
+#define	FL_UDP		(1<<13)
 
-static uint32_t
-ipv4_flow_lookup_hash_internal(struct mbuf *m, struct route *ro,
-    uint32_t *key, uint16_t *flags, uint8_t *protop)
+void
+flow_invalidate(struct flentry *fle)
 {
-	uint16_t sport = 0, dport = 0;
-	struct ip *ip = NULL;
-	uint8_t proto = 0;
+
+	fle->f_flags |= FL_STALE;
+}
+
+static __inline int
+proto_to_flags(uint8_t proto)
+{
+	int flag;
+
+	switch (proto) {
+	case IPPROTO_TCP:
+		flag = FL_TCP;
+		break;
+	case IPPROTO_SCTP:
+		flag = FL_SCTP;
+		break;		
+	case IPPROTO_UDP:
+		flag = FL_UDP;
+		break;
+	default:
+		flag = 0;
+		break;
+	}
+
+	return (flag);
+}
+
+static __inline int
+flags_to_proto(int flags)
+{
+	int proto, protoflags;
+
+	protoflags = flags & (FL_TCP|FL_SCTP|FL_UDP);
+	switch (protoflags) {
+	case FL_TCP:
+		proto = IPPROTO_TCP;
+		break;
+	case FL_SCTP:
+		proto = IPPROTO_SCTP;
+		break;
+	case FL_UDP:
+		proto = IPPROTO_UDP;
+		break;
+	default:
+		proto = 0;
+		break;
+	}
+	return (proto);
+}
+
+void
+flow_to_route(struct flentry *fle, struct route *ro)
+{
+	struct sockaddr_in *sin = NULL;
+	struct sockaddr_in6 *sin6 = NULL;
+	uint32_t *hashkey;
+	
+#ifdef INET6
+	if (fle->f_flags & FL_IPV6) {
+		sin6 = (struct sockaddr_in6 *)&ro->ro_dst;
+
+		sin6->sin6_family = AF_INET6;
+		sin6->sin6_len = sizeof(*sin);
+		hashkey = ((struct flentry_v6 *)fle)->fl_flow.ipf_key;
+		memcpy(&sin6->sin6_addr, &hashkey[1], sizeof (struct in6_addr));
+	} else
+#endif
+#ifdef INET		
+	{
+		sin = (struct sockaddr_in *)&ro->ro_dst;
+
+		sin->sin_family = AF_INET;
+		sin->sin_len = sizeof(*sin);
+		hashkey = ((struct flentry_v4 *)fle)->fl_flow.ipf_key;
+		sin->sin_addr.s_addr = hashkey[1];
+	}
+#endif	
+	; /* terminate INET6 else if no INET4 */
+	ro->ro_rt = __DEVOLATILE(struct rtentry *, fle->f_rt);
+	ro->ro_lle = __DEVOLATILE(struct llentry *, fle->f_lle);
+}
+
+#ifdef INET
+static int
+ipv4_mbuf_demarshal(struct mbuf *m, struct sockaddr_in *ssin,
+    struct sockaddr_in *dsin, uint16_t *flags)
+{
+	struct ip *ip;
+	uint8_t proto;
 	int iphlen;
-	uint32_t hash;
-	struct sockaddr_in *sin;
 	struct tcphdr *th;
 	struct udphdr *uh;
 	struct sctphdr *sh;
+	uint16_t sport, dport;
 
-	if ((V_flowtable_enable == 0) || (V_flowtable_ready == 0))
-		return (0);
-
-	key[1] = key[0] = 0;
-	sin = (struct sockaddr_in *)&ro->ro_dst;
-	if (m != NULL) {
-		ip = mtod(m, struct ip *);
-		sin->sin_family = AF_INET;
-		sin->sin_len = sizeof(*sin);
-		sin->sin_addr = ip->ip_dst;
-	} else
-		*flags &= ~FL_HASH_PORTS;
-
-	key[2] = sin->sin_addr.s_addr;
-
-	if ((*flags & FL_HASH_PORTS) == 0)
-		goto skipports;
+	sport = dport = 0;
+	ip = mtod(m, struct ip *);
+	dsin->sin_family = AF_INET;
+	dsin->sin_len = sizeof(*dsin);
+	dsin->sin_addr = ip->ip_dst;
+	ssin->sin_family = AF_INET;
+	ssin->sin_len = sizeof(*dsin);
+	ssin->sin_addr = ip->ip_dst;	
 
 	proto = ip->ip_p;
 	iphlen = ip->ip_hl << 2; /* XXX options? */
-	key[1] = ip->ip_src.s_addr;
-	
+
 	switch (proto) {
 	case IPPROTO_TCP:
 		th = (struct tcphdr *)((caddr_t)ip + iphlen);
@@ -401,37 +484,243 @@ ipv4_flow_lookup_hash_internal(struct mbuf *m, struct route *ro,
 		dport = sh->dest_port;
 	break;
 	default:
-		if (*flags & FL_HASH_PORTS)
-			goto noop;
+		return (ENOTSUP);
 		/* no port - hence not a protocol we care about */
 		break;
 	
 	}
-	*protop = proto;
 
-	/*
-	 * If this is a transmit route cache then 
-	 * hash all flows to a given destination to
-	 * the same bucket
-	 */
-	if ((*flags & FL_HASH_PORTS) == 0)
-		proto = sport = dport = 0;
-
-	((uint16_t *)key)[0] = sport;
-	((uint16_t *)key)[1] = dport; 
-
-skipports:
-	hash = jenkins_hashword(key, 3, V_flow_hashjitter + proto);
-	if (m != NULL && (m->m_flags & M_FLOWID) == 0) {
-		m->m_flags |= M_FLOWID;
-		m->m_pkthdr.flowid = hash;
-	}
-
-	return (hash);
-noop:
-	*protop = proto;
+	*flags |= proto_to_flags(proto);
+	ssin->sin_port = sport;
+	dsin->sin_port = dport;
 	return (0);
 }
+
+static uint32_t
+ipv4_flow_lookup_hash_internal(
+	struct sockaddr_in *ssin, struct sockaddr_in *dsin, 
+	    uint32_t *key, uint16_t flags)
+{
+	uint16_t sport, dport;
+	uint8_t proto;
+
+	if ((V_flowtable_enable == 0) || (V_flowtable_ready == 0))
+		return (0);
+
+	proto = flags_to_proto(flags);
+	sport = dport = key[2] = key[1] = key[0] = 0;
+	if (dsin != NULL) {
+		key[1] = dsin->sin_addr.s_addr;
+		dport = dsin->sin_port;
+	}
+	if ((ssin != NULL) && (flags & FL_HASH_ALL)) {
+		key[2] = ssin->sin_addr.s_addr;
+		sport = ssin->sin_port;
+	}
+	if (flags & FL_HASH_ALL) {
+		((uint16_t *)key)[0] = sport;
+		((uint16_t *)key)[1] = dport; 
+	}
+
+	return (jenkins_hashword(key, 3, V_flow_hashjitter + proto));
+}
+
+static struct flentry *
+flowtable_lookup_mbuf4(struct flowtable *ft, struct mbuf *m)
+{
+	struct sockaddr ssa, dsa;
+	uint16_t flags;
+	struct sockaddr_in *dsin, *ssin;
+
+	dsin = (struct sockaddr_in *)&dsa;
+	ssin = (struct sockaddr_in *)&ssa;
+	flags = 0;
+	if (ipv4_mbuf_demarshal(m, ssin, dsin, &flags) != 0)
+		return (NULL);
+
+	return (flowtable_lookup(ft, &ssa, &dsa, M_GETFIB(m), flags));
+}
+#endif /* INET */
+
+#ifdef INET6
+/*
+ * PULLUP_TO(len, p, T) makes sure that len + sizeof(T) is contiguous,
+ * then it sets p to point at the offset "len" in the mbuf. WARNING: the
+ * pointer might become stale after other pullups (but we never use it
+ * this way).
+ */
+#define PULLUP_TO(_len, p, T)						\
+do {									\
+	int x = (_len) + sizeof(T);					\
+	if ((m)->m_len < x) {						\
+		goto receive_failed;					\
+	}								\
+	p = (mtod(m, char *) + (_len));					\
+} while (0)
+
+#define	TCP(p)		((struct tcphdr *)(p))
+#define	SCTP(p)		((struct sctphdr *)(p))
+#define	UDP(p)		((struct udphdr *)(p))
+
+static int
+ipv6_mbuf_demarshal(struct mbuf *m, struct sockaddr_in6 *ssin6,
+    struct sockaddr_in6 *dsin6, uint16_t *flags)
+{
+	struct ip6_hdr *ip6;
+	uint8_t proto;
+	int hlen;
+	uint16_t src_port, dst_port;
+	u_short offset;
+	void *ulp;
+
+	offset = hlen = src_port = dst_port = 0;
+	ulp = NULL;
+	ip6 = mtod(m, struct ip6_hdr *);
+	hlen = sizeof(struct ip6_hdr);
+	proto = ip6->ip6_nxt;
+
+	while (ulp == NULL) {
+		switch (proto) {
+		case IPPROTO_ICMPV6:
+		case IPPROTO_OSPFIGP:
+		case IPPROTO_PIM:
+		case IPPROTO_CARP:
+		case IPPROTO_ESP:
+		case IPPROTO_NONE:
+			ulp = ip6;
+			break;
+		case IPPROTO_TCP:
+			PULLUP_TO(hlen, ulp, struct tcphdr);
+			dst_port = TCP(ulp)->th_dport;
+			src_port = TCP(ulp)->th_sport;
+			*flags = TCP(ulp)->th_flags;
+			if (*flags & (TH_RST|TH_FIN))
+				*flags |= FL_STALE;
+			break;
+		case IPPROTO_SCTP:
+			PULLUP_TO(hlen, ulp, struct sctphdr);
+			src_port = SCTP(ulp)->src_port;
+			dst_port = SCTP(ulp)->dest_port;
+			break;
+		case IPPROTO_UDP:
+			PULLUP_TO(hlen, ulp, struct udphdr);
+			dst_port = UDP(ulp)->uh_dport;
+			src_port = UDP(ulp)->uh_sport;
+			break;
+		case IPPROTO_HOPOPTS:	/* RFC 2460 */
+			PULLUP_TO(hlen, ulp, struct ip6_hbh);
+			hlen += (((struct ip6_hbh *)ulp)->ip6h_len + 1) << 3;
+			proto = ((struct ip6_hbh *)ulp)->ip6h_nxt;
+			ulp = NULL;
+			break;
+		case IPPROTO_ROUTING:	/* RFC 2460 */
+			PULLUP_TO(hlen, ulp, struct ip6_rthdr);	
+			hlen += (((struct ip6_rthdr *)ulp)->ip6r_len + 1) << 3;
+			proto = ((struct ip6_rthdr *)ulp)->ip6r_nxt;
+			ulp = NULL;
+			break;
+		case IPPROTO_FRAGMENT:	/* RFC 2460 */
+			PULLUP_TO(hlen, ulp, struct ip6_frag);
+			hlen += sizeof (struct ip6_frag);
+			proto = ((struct ip6_frag *)ulp)->ip6f_nxt;
+			offset = ((struct ip6_frag *)ulp)->ip6f_offlg &
+			    IP6F_OFF_MASK;
+			ulp = NULL;
+			break;
+		case IPPROTO_DSTOPTS:	/* RFC 2460 */
+			PULLUP_TO(hlen, ulp, struct ip6_hbh);
+			hlen += (((struct ip6_hbh *)ulp)->ip6h_len + 1) << 3;
+			proto = ((struct ip6_hbh *)ulp)->ip6h_nxt;
+			ulp = NULL;
+			break;
+		case IPPROTO_AH:	/* RFC 2402 */
+			PULLUP_TO(hlen, ulp, struct ip6_ext);
+			hlen += (((struct ip6_ext *)ulp)->ip6e_len + 2) << 2;
+			proto = ((struct ip6_ext *)ulp)->ip6e_nxt;
+			ulp = NULL;
+			break;
+		default:
+			PULLUP_TO(hlen, ulp, struct ip6_ext);
+			break;
+		}
+	}
+
+	if (src_port == 0) {
+	receive_failed:
+		return (ENOTSUP);
+	}
+	
+	dsin6->sin6_family = AF_INET6;
+	dsin6->sin6_len = sizeof(*dsin6);
+	memcpy(&dsin6->sin6_addr, &ip6->ip6_dst, sizeof(struct in6_addr));
+
+	ssin6->sin6_family = AF_INET6;
+	ssin6->sin6_len = sizeof(*ssin6);
+	memcpy(&ssin6->sin6_addr, &ip6->ip6_src, sizeof(struct in6_addr));
+	*flags |= proto_to_flags(proto);
+
+	return (0);
+}
+
+#define zero_key(key) 		\
+do {				\
+	key[0] = 0;		\
+	key[1] = 0;		\
+	key[2] = 0;		\
+	key[3] = 0;		\
+	key[4] = 0;		\
+	key[5] = 0;		\
+	key[6] = 0;		\
+	key[7] = 0;		\
+	key[8] = 0;		\
+} while (0)
+	
+static uint32_t
+ipv6_flow_lookup_hash_internal(
+	struct sockaddr_in6 *ssin6, struct sockaddr_in6 *dsin6, 
+	    uint32_t *key, uint16_t flags)
+{
+	uint16_t sport, dport;
+	uint8_t proto;
+
+	if ((V_flowtable_enable == 0) || (V_flowtable_ready == 0))
+		return (0);
+
+	proto = flags_to_proto(flags);
+	zero_key(key);
+	sport = dport = 0;
+	if (dsin6 != NULL) {
+		memcpy(&key[1], &dsin6->sin6_addr, sizeof(struct in6_addr));
+		dport = dsin6->sin6_port;
+	}
+	if ((ssin6 != NULL) && (flags & FL_HASH_ALL)) {
+		memcpy(&key[5], &ssin6->sin6_addr, sizeof(struct in6_addr));
+		sport = ssin6->sin6_port;
+	}
+	if (flags & FL_HASH_ALL) {
+		((uint16_t *)key)[0] = sport;
+		((uint16_t *)key)[1] = dport; 
+	}
+
+	return (jenkins_hashword(key, 9, V_flow_hashjitter + proto));
+}
+
+static struct flentry *
+flowtable_lookup_mbuf6(struct flowtable *ft, struct mbuf *m)
+{
+	struct sockaddr ssa, dsa;
+	struct sockaddr_in6 *dsin6, *ssin6;	
+	uint16_t flags;
+
+	dsin6 = (struct sockaddr_in6 *)&dsa;
+	ssin6 = (struct sockaddr_in6 *)&ssa;
+	flags = 0;
+	if (ipv6_mbuf_demarshal(m, ssin6, dsin6, &flags) != 0)
+		return (NULL);
+
+	return (flowtable_lookup(ft, &ssa, &dsa, M_GETFIB(m), flags));
+}
+#endif /* INET6 */
 
 static bitstr_t *
 flowtable_mask(struct flowtable *ft)
@@ -553,6 +842,9 @@ flowtable_insert(struct flowtable *ft, uint32_t hash, uint32_t *key,
 			FL_ENTRY_UNLOCK(ft, hash);
 			uma_zfree((newfle->f_flags & FL_IPV6) ?
 			    V_flow_ipv6_zone : V_flow_ipv4_zone, newfle);
+
+			if (flags & FL_OVERWRITE) 
+				goto skip;
 			return (EEXIST);
 		}
 		/*
@@ -582,6 +874,21 @@ skip:
 	return (0);
 }
 
+int
+kern_flowtable_insert(struct flowtable *ft, struct sockaddr *ssa,
+    struct sockaddr *dsa, struct route *ro, uint32_t fibnum, int flags,
+	uint8_t proto)
+{
+	uint32_t key[9], hash;
+
+	flags = (ft->ft_flags | flags | FL_OVERWRITE);
+
+	hash = ipv4_flow_lookup_hash_internal((struct sockaddr_in *)ssa,
+	    (struct sockaddr_in *)dsa, key, flags);
+
+	return (flowtable_insert(ft, hash, key, proto, fibnum, ro, flags));
+}
+
 static int
 flowtable_key_equal(struct flentry *fle, uint32_t *key)
 {
@@ -603,42 +910,74 @@ flowtable_key_equal(struct flentry *fle, uint32_t *key)
 	return (1);
 }
 
-int
-flowtable_lookup(struct flowtable *ft, struct mbuf *m, struct route *ro, uint32_t fibnum)
+struct flentry *
+flowtable_lookup_mbuf(struct flowtable *ft, struct mbuf *m, int af)
+{
+	struct flentry *fle = NULL;
+
+#ifdef INET
+	if (af == AF_INET)
+		fle = flowtable_lookup_mbuf4(ft, m);
+#endif
+#ifdef INET6
+	if (af == AF_INET6)
+		fle = flowtable_lookup_mbuf6(ft, m);
+#endif	
+	if (fle != NULL && m != NULL && (m->m_flags & M_FLOWID) == 0) {
+		m->m_flags |= M_FLOWID;
+		m->m_pkthdr.flowid = fle->f_fhash;
+	}
+	return (fle);
+}
+	
+struct flentry *
+flowtable_lookup(struct flowtable *ft, struct sockaddr *ssa,
+    struct sockaddr *dsa, uint32_t fibnum, int flags)
 {
 	uint32_t key[9], hash;
 	struct flentry *fle;
-	uint16_t flags;
 	uint8_t proto = 0;
 	int error = 0;
 	struct rtentry *rt;
 	struct llentry *lle;
+	struct route sro, *ro;
 
-	flags = ft->ft_flags;
+	ro = &sro;
 	ro->ro_rt = NULL;
 	ro->ro_lle = NULL;
+	hash = 0;
+	flags |= ft->ft_flags;
+#ifdef INET
+	if (ssa->sa_family == AF_INET) {
+		struct sockaddr_in *ssin, *dsin;
 
-	/*
-	 * The internal hash lookup is the only IPv4 specific bit
-	 * remaining
-	 *
-	 * XXX BZ: to add IPv6 support just add a check for the
-	 * address type in m and ro and an equivalent ipv6 lookup
-	 * function - the rest of the code should automatically
-	 * handle an ipv6 flow (note that m can be NULL in which
-	 * case ro will be set)
-	 */
-	hash = ipv4_flow_lookup_hash_internal(m, ro, key,
-	    &flags, &proto);
+		dsin = (struct sockaddr_in *)dsa;
+		ssin = (struct sockaddr_in *)ssa;
+		
+		hash = ipv4_flow_lookup_hash_internal(ssin, dsin, key, flags);
+	}
+#endif	
+#ifdef INET6		
+	if (ssa->sa_family == AF_INET6) {
+		struct sockaddr_in6 *ssin6, *dsin6;
+
+		dsin6 = (struct sockaddr_in6 *)dsa;
+		ssin6 = (struct sockaddr_in6 *)ssa;
+
+		hash = ipv6_flow_lookup_hash_internal(ssin6, dsin6, key, flags);
+	}
+#endif
+	if (hash == 0)
+		return (NULL);
 
 	/*
 	 * Ports are zero and this isn't a transmit cache
 	 * - thus not a protocol for which we need to keep 
 	 * state
-	 * FL_HASH_PORTS => key[0] != 0 for TCP || UDP || SCTP
+	 * FL_HASH_ALL => key[0] != 0 for TCP || UDP || SCTP
 	 */
-	if (hash == 0 || (key[0] == 0 && (ft->ft_flags & FL_HASH_PORTS)))
-		return (ENOENT);
+	if (hash == 0 || (key[0] == 0 && (ft->ft_flags & FL_HASH_ALL)))
+		return (NULL);
 
 	V_flowtable_lookups++;
 	FL_ENTRY_LOCK(ft, hash);
@@ -647,6 +986,7 @@ flowtable_lookup(struct flowtable *ft, struct mbuf *m, struct route *ro, uint32_
 		goto uncached;
 	}
 keycheck:	
+	proto = flags_to_proto(flags);
 	rt = __DEVOLATILE(struct rtentry *, fle->f_rt);
 	lle = __DEVOLATILE(struct llentry *, fle->f_lle);
 	if ((rt != NULL)
@@ -659,16 +999,15 @@ keycheck:
 		V_flowtable_hits++;
 		fle->f_uptime = time_uptime;
 		fle->f_flags |= flags;
-		ro->ro_rt = rt;
-		ro->ro_lle = lle;
 		FL_ENTRY_UNLOCK(ft, hash);
-		return (0);
+		return (fle);
 	} else if (fle->f_next != NULL) {
 		fle = fle->f_next;
 		goto keycheck;
 	}
 	FL_ENTRY_UNLOCK(ft, hash);
-
+	if (flags & FL_NOAUTO)
+		return (NULL);
 uncached:
 	V_flowtable_misses++;
 	/*
@@ -695,9 +1034,8 @@ uncached:
 		if (ifp->if_flags & (IFF_POINTOPOINT | IFF_LOOPBACK)) {
 			RTFREE(rt);
 			ro->ro_rt = NULL;
-			return (ENOENT);
+			return (NULL);
 		}
-
 		if (rt->rt_flags & RTF_GATEWAY)
 			l3addr = rt->rt_gateway;
 		else
@@ -708,7 +1046,7 @@ uncached:
 		if (lle == NULL) {
 			RTFREE(rt);
 			ro->ro_rt = NULL;
-			return (ENOENT);
+			return (NULL);
 		}
 		error = flowtable_insert(ft, hash, key, proto, fibnum,
 		    ro, flags);
@@ -721,7 +1059,7 @@ uncached:
 		}
 	} 
 
-	return (error);
+	return ((error) ? NULL : fle);
 }
 
 /*
@@ -783,7 +1121,7 @@ flowtable_alloc(int nentry, int flags)
 	 * just a cache - so everything is eligible for
 	 * replacement after 5s of non-use
 	 */
-	if (flags & FL_HASH_PORTS) {
+	if (flags & FL_HASH_ALL) {
 		ft->ft_udp_idle = V_flowtable_udp_expire;
 		ft->ft_syn_idle = V_flowtable_syn_expire;
 		ft->ft_fin_wait_idle = V_flowtable_fin_wait_expire;
