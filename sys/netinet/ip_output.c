@@ -157,10 +157,10 @@ ip_output(struct mbuf *m, struct mbuf *opt, struct route *ro, int flags,
 			 * longer than that long for the stability of ro_rt.  The
 			 * flow ID assignment must have happened before this point.
 			 */
-			if ((fle = flowtable_lookup_mbuf(V_ip_ft, m, AF_INET)) != NULL)
+			if ((fle = flowtable_lookup_mbuf(V_ip_ft, m, AF_INET)) != NULL) {
 				flow_to_route(fle, ro);
-			else
 				nortfree = 1;
+			}
 		}
 #endif
 	}

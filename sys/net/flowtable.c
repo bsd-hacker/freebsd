@@ -955,6 +955,7 @@ flowtable_lookup(struct flowtable *ft, struct sockaddr *ssa,
 	ro = &sro;
 	ro->ro_rt = NULL;
 	ro->ro_lle = NULL;
+	ro->ro_dst = *dsa;
 	hash = 0;
 	flags |= ft->ft_flags;
 #ifdef INET
