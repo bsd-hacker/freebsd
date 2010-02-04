@@ -38,6 +38,10 @@ $FreeBSD$
 #define	FL_PCPU		(1<<1)	/* pcpu cache */
 #define	FL_NOAUTO	(1<<2)	/* don't automatically add flentry on miss */
 
+#define	FL_TCP		(1<<11)
+#define	FL_SCTP		(1<<12)
+#define	FL_UDP		(1<<13)
+
 struct flowtable;
 struct flentry;
 
@@ -57,8 +61,7 @@ struct flentry *flowtable_lookup(struct flowtable *ft, struct sockaddr *ssa,
     struct sockaddr *dsa, uint32_t fibnum, int flags);
 
 int kern_flowtable_insert(struct flowtable *ft, struct sockaddr *ssa,
-    struct sockaddr *dsa, struct route *ro, uint32_t fibnum, int flags,
-    uint8_t proto);
+    struct sockaddr *dsa, struct route *ro, uint32_t fibnum, int flags);
 
 void flow_invalidate(struct flentry *fl);
 

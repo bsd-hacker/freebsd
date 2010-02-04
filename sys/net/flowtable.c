@@ -350,9 +350,6 @@ flowtable_pcpu_unlock(struct flowtable *table, uint32_t hash)
 #define FL_STALE 	(1<<8)
 #define FL_IPV6  	(1<<9)
 #define FL_OVERWRITE	(1<<10)
-#define	FL_TCP		(1<<11)
-#define	FL_SCTP		(1<<12)
-#define	FL_UDP		(1<<13)
 
 void
 flow_invalidate(struct flentry *fle)
@@ -812,12 +809,13 @@ flowtable_set_hashkey(struct flentry *fle, uint32_t *key)
 
 static int
 flowtable_insert(struct flowtable *ft, uint32_t hash, uint32_t *key,
-    uint8_t proto, uint32_t fibnum, struct route *ro, uint16_t flags)
+    uint32_t fibnum, struct route *ro, uint16_t flags)
 {
 	struct flentry *fle, *fletail, *newfle, **flep;
 	int depth;
 	uma_zone_t flezone;
 	bitstr_t *mask;
+	uint8_t proto;
 
 	flezone = (flags & FL_IPV6) ? V_flow_ipv6_zone : V_flow_ipv4_zone;
 	newfle = uma_zalloc(flezone, M_NOWAIT | M_ZERO);
@@ -825,7 +823,8 @@ flowtable_insert(struct flowtable *ft, uint32_t hash, uint32_t *key,
 		return (ENOMEM);
 
 	newfle->f_flags |= (flags & FL_IPV6);
-	
+	proto = flags_to_proto(flags);
+
 	FL_ENTRY_LOCK(ft, hash);
 	mask = flowtable_mask(ft);
 	flep = flowtable_entry(ft, hash);
@@ -886,17 +885,25 @@ skip:
 
 int
 kern_flowtable_insert(struct flowtable *ft, struct sockaddr *ssa,
-    struct sockaddr *dsa, struct route *ro, uint32_t fibnum, int flags,
-	uint8_t proto)
+    struct sockaddr *dsa, struct route *ro, uint32_t fibnum, int flags)
 {
 	uint32_t key[9], hash;
 
 	flags = (ft->ft_flags | flags | FL_OVERWRITE);
+	hash = 0;
 
-	hash = ipv4_flow_lookup_hash_internal((struct sockaddr_in *)ssa,
-	    (struct sockaddr_in *)dsa, key, flags);
+#ifdef INET
+	if (ssa->sa_family == AF_INET) 
+		hash = ipv4_flow_lookup_hash_internal((struct sockaddr_in *)ssa,
+		    (struct sockaddr_in *)dsa, key, flags);
+#endif
+#ifdef INET6
+	if (ssa->sa_family == AF_INET6) 
+		hash = ipv6_flow_lookup_hash_internal((struct sockaddr_in6 *)ssa,
+		    (struct sockaddr_in6 *)dsa, key, flags);
+#endif	
 
-	return (flowtable_insert(ft, hash, key, proto, fibnum, ro, flags));
+	return (flowtable_insert(ft, hash, key, fibnum, ro, flags));
 }
 
 static int
@@ -1059,8 +1066,7 @@ uncached:
 			ro->ro_rt = NULL;
 			return (NULL);
 		}
-		error = flowtable_insert(ft, hash, key, proto, fibnum,
-		    ro, flags);
+		error = flowtable_insert(ft, hash, key, fibnum, ro, flags);
 				
 		if (error) {
 			RTFREE(rt);
