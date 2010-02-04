@@ -452,7 +452,7 @@ ipv4_mbuf_demarshal(struct mbuf *m, struct sockaddr_in *ssin,
 	struct sctphdr *sh;
 	uint16_t sport, dport;
 
-	sport = dport = 0;
+	proto = sport = dport = 0;
 	ip = mtod(m, struct ip *);
 	dsin->sin_family = AF_INET;
 	dsin->sin_len = sizeof(*dsin);
@@ -460,6 +460,9 @@ ipv4_mbuf_demarshal(struct mbuf *m, struct sockaddr_in *ssin,
 	ssin->sin_family = AF_INET;
 	ssin->sin_len = sizeof(*dsin);
 	ssin->sin_addr = ip->ip_dst;	
+
+	if ((*flags & FL_HASH_ALL) == 0)
+		goto skipports;
 
 	proto = ip->ip_p;
 	iphlen = ip->ip_hl << 2; /* XXX options? */
@@ -469,8 +472,8 @@ ipv4_mbuf_demarshal(struct mbuf *m, struct sockaddr_in *ssin,
 		th = (struct tcphdr *)((caddr_t)ip + iphlen);
 		sport = ntohs(th->th_sport);
 		dport = ntohs(th->th_dport);
-		*flags |= th->th_flags;
-		if (*flags & TH_RST)
+		if ((*flags & FL_HASH_ALL) &&
+		    (th->th_flags & (TH_RST|TH_FIN)))
 			*flags |= FL_STALE;
 	break;
 	case IPPROTO_UDP:
@@ -491,6 +494,7 @@ ipv4_mbuf_demarshal(struct mbuf *m, struct sockaddr_in *ssin,
 	}
 
 	*flags |= proto_to_flags(proto);
+skipports:
 	ssin->sin_port = sport;
 	dsin->sin_port = dport;
 	return (0);
@@ -579,6 +583,9 @@ ipv6_mbuf_demarshal(struct mbuf *m, struct sockaddr_in6 *ssin6,
 	hlen = sizeof(struct ip6_hdr);
 	proto = ip6->ip6_nxt;
 
+	if ((*flags & FL_HASH_ALL) == 0)
+		goto skipports;
+
 	while (ulp == NULL) {
 		switch (proto) {
 		case IPPROTO_ICMPV6:
@@ -593,8 +600,8 @@ ipv6_mbuf_demarshal(struct mbuf *m, struct sockaddr_in6 *ssin6,
 			PULLUP_TO(hlen, ulp, struct tcphdr);
 			dst_port = TCP(ulp)->th_dport;
 			src_port = TCP(ulp)->th_sport;
-			*flags = TCP(ulp)->th_flags;
-			if (*flags & (TH_RST|TH_FIN))
+			if ((*flags & FL_HASH_ALL) &&
+			    (TCP(ulp)->th_flags & (TH_RST|TH_FIN)))
 				*flags |= FL_STALE;
 			break;
 		case IPPROTO_SCTP:
@@ -649,13 +656,16 @@ ipv6_mbuf_demarshal(struct mbuf *m, struct sockaddr_in6 *ssin6,
 	receive_failed:
 		return (ENOTSUP);
 	}
-	
+
+skipports:
 	dsin6->sin6_family = AF_INET6;
 	dsin6->sin6_len = sizeof(*dsin6);
+	dsin6->sin6_port = dst_port;
 	memcpy(&dsin6->sin6_addr, &ip6->ip6_dst, sizeof(struct in6_addr));
 
 	ssin6->sin6_family = AF_INET6;
 	ssin6->sin6_len = sizeof(*ssin6);
+	ssin6->sin6_port = src_port;
 	memcpy(&ssin6->sin6_addr, &ip6->ip6_src, sizeof(struct in6_addr));
 	*flags |= proto_to_flags(proto);
 
