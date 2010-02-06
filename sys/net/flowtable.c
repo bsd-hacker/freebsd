@@ -187,12 +187,24 @@ static struct cv 	flowclean_cv;
 static struct mtx	flowclean_lock;
 static uint32_t		flowclean_cycles;
 
+#ifdef FLOWTABLE_DEBUG
+#define FLDPRINTF(ft, fmt, ...) 		\
+do {		  				\
+	if ((ft)->ft_flags & FL_DEBUG)		\
+		printf((fmt), __VA_ARGS__);	\
+} while (0);					\
+
+#else
+#define FLDPRINTF(ft, fmt, ...)
+
+#endif
+
+
 /*
  * TODO:
  * - Make flowtable stats per-cpu, aggregated at sysctl call time,
  *   to avoid extra cache evictions caused by incrementing a shared
  *   counter
- * - add IPv6 support to flow lookup
  * - add sysctls to resize && flush flow tables 
  * - Add per flowtable sysctls for statistics and configuring timeouts
  * - add saturation counter to rtentry to support per-packet load-balancing
@@ -441,8 +453,8 @@ flow_to_route(struct flentry *fle, struct route *ro)
 
 #ifdef INET
 static int
-ipv4_mbuf_demarshal(struct mbuf *m, struct sockaddr_in *ssin,
-    struct sockaddr_in *dsin, uint16_t *flags)
+ipv4_mbuf_demarshal(struct flowtable *ft, struct mbuf *m,
+    struct sockaddr_in *ssin, struct sockaddr_in *dsin, uint16_t *flags)
 {
 	struct ip *ip;
 	uint8_t proto;
@@ -461,8 +473,11 @@ ipv4_mbuf_demarshal(struct mbuf *m, struct sockaddr_in *ssin,
 	ssin->sin_len = sizeof(*dsin);
 	ssin->sin_addr = ip->ip_dst;	
 
-	if ((*flags & FL_HASH_ALL) == 0)
+	if ((*flags & FL_HASH_ALL) == 0) {
+		FLDPRINTF(ft, "skip port check flags=0x%x ",
+		    *flags);
 		goto skipports;
+	}
 
 	proto = ip->ip_p;
 	iphlen = ip->ip_hl << 2; /* XXX options? */
@@ -487,6 +502,7 @@ ipv4_mbuf_demarshal(struct mbuf *m, struct sockaddr_in *ssin,
 		dport = sh->dest_port;
 	break;
 	default:
+		FLDPRINTF(ft, "proto=0x%x not supported\n", proto);
 		return (ENOTSUP);
 		/* no port - hence not a protocol we care about */
 		break;
@@ -497,6 +513,19 @@ ipv4_mbuf_demarshal(struct mbuf *m, struct sockaddr_in *ssin,
 skipports:
 	ssin->sin_port = sport;
 	dsin->sin_port = dport;
+#ifdef FLOWTABLE_DEBUG
+	if (*flags & FL_HASH_ALL) {
+		char saddr[4*sizeof "123"], daddr[4*sizeof "123"];
+		inet_ntoa_r(*(struct in_addr *) &ip->ip_dst, daddr);
+		inet_ntoa_r(*(struct in_addr *) &ip->ip_src, saddr);
+		FLDPRINTF(ft, "proto=%d %s:%d->%s:%d\n",
+		    proto, saddr, ntohs(sport), daddr, ntohs(dport));
+	} else {
+		char daddr[4*sizeof "123"];
+		inet_ntoa_r(*(struct in_addr *) &ip->ip_dst, daddr);		
+		FLDPRINTF(ft, "proto=%d %s\n", proto, daddr);
+	}
+#endif	
 	return (0);
 }
 
@@ -539,7 +568,7 @@ flowtable_lookup_mbuf4(struct flowtable *ft, struct mbuf *m)
 	dsin = (struct sockaddr_in *)&dsa;
 	ssin = (struct sockaddr_in *)&ssa;
 	flags = 0;
-	if (ipv4_mbuf_demarshal(m, ssin, dsin, &flags) != 0)
+	if (ipv4_mbuf_demarshal(ft, m, ssin, dsin, &flags) != 0)
 		return (NULL);
 
 	return (flowtable_lookup(ft, &ssa, &dsa, M_GETFIB(m), flags));
@@ -567,8 +596,8 @@ do {									\
 #define	UDP(p)		((struct udphdr *)(p))
 
 static int
-ipv6_mbuf_demarshal(struct mbuf *m, struct sockaddr_in6 *ssin6,
-    struct sockaddr_in6 *dsin6, uint16_t *flags)
+ipv6_mbuf_demarshal(struct flowtable *ft, struct mbuf *m,
+    struct sockaddr_in6 *ssin6, struct sockaddr_in6 *dsin6, uint16_t *flags)
 {
 	struct ip6_hdr *ip6;
 	uint8_t proto;
@@ -725,7 +754,7 @@ flowtable_lookup_mbuf6(struct flowtable *ft, struct mbuf *m)
 	dsin6 = (struct sockaddr_in6 *)&dsa;
 	ssin6 = (struct sockaddr_in6 *)&ssa;
 	flags = 0;
-	if (ipv6_mbuf_demarshal(m, ssin6, dsin6, &flags) != 0)
+	if (ipv6_mbuf_demarshal(ft, m, ssin6, dsin6, &flags) != 0)
 		return (NULL);
 
 	return (flowtable_lookup(ft, &ssa, &dsa, M_GETFIB(m), flags));
@@ -921,10 +950,9 @@ kern_flowtable_insert(struct flowtable *ft, struct sockaddr *ssa,
 #endif	
 	if (ro->ro_rt == NULL || ro->ro_lle == NULL)
 		return (EINVAL);
-#ifdef FLOWTABLE_DEBUG
-	printf("kern_flowtable_insert: hash=0x%x fibnum=%d flags=0x%x\n",
+
+	FLDPRINTF(ft, "kern_flowtable_insert: hash=0x%x fibnum=%d flags=0x%x\n",
 	    hash, fibnum, flags);
-#endif
 	return (flowtable_insert(ft, hash, key, fibnum, ro, flags));
 }
 
@@ -941,7 +969,7 @@ flowtable_key_equal(struct flentry *fle, uint32_t *key)
 		nwords = 3;
 		hashkey = ((struct flentry_v6 *)fle)->fl_flow.ipf_key;
 	}
-	
+
 	for (i = 0; i < nwords; i++) 
 		if (hashkey[i] != key[i])
 			return (0);
@@ -1007,9 +1035,6 @@ flowtable_lookup(struct flowtable *ft, struct sockaddr *ssa,
 		hash = ipv6_flow_lookup_hash_internal(ssin6, dsin6, key, flags);
 	}
 #endif
-	if (hash == 0)
-		return (NULL);
-
 	/*
 	 * Ports are zero and this isn't a transmit cache
 	 * - thus not a protocol for which we need to keep 
@@ -1026,6 +1051,8 @@ flowtable_lookup(struct flowtable *ft, struct sockaddr *ssa,
 		goto uncached;
 	}
 keycheck:	
+	FLDPRINTF(ft, "doing keycheck on fle=%p hash=0x%x\n",
+		    fle, fle->f_fhash);
 	proto = flags_to_proto(flags);
 	rt = __DEVOLATILE(struct rtentry *, fle->f_rt);
 	lle = __DEVOLATILE(struct llentry *, fle->f_lle);
