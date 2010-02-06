@@ -159,6 +159,7 @@ struct flowtable {
 	uint32_t	ft_syn_idle;
 	uint32_t	ft_tcp_idle;
 
+	char		*ft_name;
 	fl_lock_t	*ft_lock;
 	fl_lock_t 	*ft_unlock;
 	fl_rtalloc_t	*ft_rtalloc;
@@ -407,12 +408,12 @@ flags_to_proto(int flags)
 void
 flow_to_route(struct flentry *fle, struct route *ro)
 {
-	struct sockaddr_in *sin = NULL;
-	struct sockaddr_in6 *sin6 = NULL;
-	uint32_t *hashkey;
+	uint32_t *hashkey = NULL;
 	
 #ifdef INET6
 	if (fle->f_flags & FL_IPV6) {
+		struct sockaddr_in6 *sin6;
+
 		sin6 = (struct sockaddr_in6 *)&ro->ro_dst;
 
 		sin6->sin6_family = AF_INET6;
@@ -423,6 +424,8 @@ flow_to_route(struct flentry *fle, struct route *ro)
 #endif
 #ifdef INET		
 	{
+		struct sockaddr_in *sin;
+
 		sin = (struct sockaddr_in *)&ro->ro_dst;
 
 		sin->sin_family = AF_INET;
@@ -510,13 +513,13 @@ ipv4_flow_lookup_hash_internal(
 
 	proto = flags_to_proto(flags);
 	sport = dport = key[2] = key[1] = key[0] = 0;
-	if (dsin != NULL) {
-		key[1] = dsin->sin_addr.s_addr;
-		dport = dsin->sin_port;
-	}
 	if ((ssin != NULL) && (flags & FL_HASH_ALL)) {
-		key[2] = ssin->sin_addr.s_addr;
+		key[1] = ssin->sin_addr.s_addr;
 		sport = ssin->sin_port;
+	}
+	if (dsin != NULL) {
+		key[2] = dsin->sin_addr.s_addr;
+		dport = dsin->sin_port;
 	}
 	if (flags & FL_HASH_ALL) {
 		((uint16_t *)key)[0] = sport;
@@ -902,6 +905,8 @@ kern_flowtable_insert(struct flowtable *ft, struct sockaddr *ssa,
 		hash = ipv6_flow_lookup_hash_internal((struct sockaddr_in6 *)ssa,
 		    (struct sockaddr_in6 *)dsa, key, flags);
 #endif	
+	if (ro->ro_rt == NULL || ro->ro_lle == NULL)
+		return (EINVAL);
 
 	return (flowtable_insert(ft, hash, key, fibnum, ro, flags));
 }
@@ -1085,7 +1090,7 @@ uncached:
 #define calloc(count, size) malloc((count)*(size), M_DEVBUF, M_WAITOK|M_ZERO)
 	
 struct flowtable *
-flowtable_alloc(int nentry, int flags)
+flowtable_alloc(char *name, int nentry, int flags)
 {
 	struct flowtable *ft, *fttail;
 	int i;
@@ -1097,7 +1102,8 @@ flowtable_alloc(int nentry, int flags)
 
 	ft = malloc(sizeof(struct flowtable),
 	    M_RTABLE, M_WAITOK | M_ZERO);
-	
+
+	ft->ft_name = name;
 	ft->ft_flags = flags;
 	ft->ft_size = nentry;
 #ifdef RADIX_MPATH
@@ -1521,6 +1527,7 @@ flowtable_show_vnet(void)
 
 	ft = V_flow_list_head;
 	while (ft != NULL) {
+		printf("name: %s\n", ft->ft_name);
 		if (ft->ft_flags & FL_PCPU) {
 			for (i = 0; i <= mp_maxid; i++) {
 				if (CPU_ABSENT(i))

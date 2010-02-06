@@ -48,7 +48,7 @@ struct flentry;
 VNET_DECLARE(struct flowtable *, ip_ft);
 #define	V_ip_ft			VNET(ip_ft)
 
-struct flowtable *flowtable_alloc(int nentry, int flags);
+struct flowtable *flowtable_alloc(char *name, int nentry, int flags);
 
 /*
  * Given a flow table, look up the L3 and L2 information and
