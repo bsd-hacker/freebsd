@@ -902,14 +902,132 @@ cpu_set_syscall_retval(struct thread *td, int error)
 	}
 }
 
+/*
+ * Threading functions
+ */
+void
+cpu_thread_exit(struct thread *td)
+{
+}
+
+void
+cpu_thread_clean(struct thread *td)
+{
+}
+
+void
+cpu_thread_alloc(struct thread *td)
+{
+	struct pcb *pcb;
+
+	pcb = (struct pcb *)((td->td_kstack + td->td_kstack_pages * PAGE_SIZE -
+	    sizeof(struct pcb)) & ~0x2fU);
+	td->td_pcb = pcb;
+	td->td_frame = (struct trapframe *)pcb - 1;
+}
+
+void
+cpu_thread_free(struct thread *td)
+{
+}
+
+void
+cpu_thread_swapin(struct thread *td)
+{
+}
+
+void
+cpu_thread_swapout(struct thread *td)
+{
+}
+
 int
 cpu_set_user_tls(struct thread *td, void *tls_base)
 {
 
 	if (td->td_proc->p_sysent->sv_flags & SV_LP64) 
-		td->td_frame->fixreg[13] = (register_t)tls_base + 0x8000;
+		td->td_frame->fixreg[13] = (register_t)tls_base + 0x7010;
 	else
 		td->td_frame->fixreg[2] = (register_t)tls_base + 0x7008;
 	return (0);
+}
+
+void
+cpu_set_upcall(struct thread *td, struct thread *td0)
+{
+	struct pcb *pcb2;
+	struct trapframe *tf;
+	struct callframe *cf;
+
+	pcb2 = td->td_pcb;
+
+	/* Copy the upcall pcb */
+	bcopy(td0->td_pcb, pcb2, sizeof(*pcb2));
+
+	/* Create a stack for the new thread */
+	tf = td->td_frame;
+	bcopy(td0->td_frame, tf, sizeof(struct trapframe));
+	tf->fixreg[FIRSTARG] = 0;
+	tf->fixreg[FIRSTARG + 1] = 0;
+	tf->cr &= ~0x10000000;
+
+	/* Set registers for trampoline to user mode. */
+	cf = (struct callframe *)tf - 1;
+	memset(cf, 0, sizeof(struct callframe));
+	cf->cf_func = (register_t)fork_return;
+	cf->cf_arg0 = (register_t)td;
+	cf->cf_arg1 = (register_t)tf;
+
+	pcb2->pcb_sp = (register_t)cf;
+	#ifdef __powerpc64__
+	pcb2->pcb_lr = ((register_t *)fork_trampoline)[0];
+	pcb2->pcb_toc = ((register_t *)fork_trampoline)[1];
+	#else
+	pcb2->pcb_lr = (register_t)fork_trampoline;
+	#endif
+	pcb2->pcb_cpu.aim.usr_vsid = 0;
+	pcb2->pcb_cpu.aim.usr_esid = 0;
+
+	/* Setup to release spin count in fork_exit(). */
+	td->td_md.md_spinlock_count = 1;
+	td->td_md.md_saved_msr = PSL_KERNSET;
+}
+
+void
+cpu_set_upcall_kse(struct thread *td, void (*entry)(void *), void *arg,
+	stack_t *stack)
+{
+	struct trapframe *tf;
+	uintptr_t sp;
+
+	tf = td->td_frame;
+	/* align stack and alloc space for frame ptr and saved LR */
+	sp = ((uintptr_t)stack->ss_sp + stack->ss_size - sizeof(uint64_t)) &
+	    ~0x1f;
+	bzero(tf, sizeof(struct trapframe));
+
+	tf->fixreg[1] = (register_t)sp;
+	tf->fixreg[3] = (register_t)arg;
+	if (td->td_proc->p_sysent->sv_flags & SV_ILP32) {
+		tf->srr0 = (register_t)entry;
+	    #ifdef AIM
+		tf->srr1 = PSL_MBO | PSL_USERSET | PSL_FE_DFLT;
+	    #else
+		tf->srr1 = PSL_USERSET;
+	    #endif
+	} else {
+	    #ifdef __powerpc64__
+		register_t entry_desc[3];
+		(void)copyin((void *)entry, entry_desc, sizeof(entry_desc));
+		tf->srr0 = entry_desc[0];
+		tf->fixreg[2] = entry_desc[1];
+		tf->fixreg[11] = entry_desc[2];
+		tf->srr1 = PSL_SF | PSL_MBO | PSL_USERSET | PSL_FE_DFLT;
+	    #endif
+	}
+	td->td_pcb->pcb_flags = 0;
+
+	td->td_retval[0] = (register_t)entry;
+	td->td_retval[1] = 0;
 }
 
