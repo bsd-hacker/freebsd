@@ -1073,9 +1073,10 @@ keycheck:
 		goto keycheck;
 	}
 	FL_ENTRY_UNLOCK(ft, hash);
+uncached:
 	if (flags & FL_NOAUTO)
 		return (NULL);
-uncached:
+
 	V_flowtable_misses++;
 	/*
 	 * This bit of code ends up locking the
