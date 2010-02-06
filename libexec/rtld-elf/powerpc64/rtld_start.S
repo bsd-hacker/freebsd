@@ -105,56 +105,57 @@ _ENTRY(_rtld_start)
 /*
  * _rtld_bind_start()
  *
- * Call into the MI binder. This routine is reached via the PLT call cell,
- * and then _rtld_powerpc_pltresolve().
- * On entry, %r13 contains the index of the PLT cell, and %r12 contains
- * a pointer to the ELF object for the file.
- *  Save all registers, call into the binder to resolve and fixup the external
+ * Call into the MI binder. This routine is reached via the PLT call cell
+ * On entry, %r11 contains a pointer to the (object, relocation) tuple.
+ *
+ * Save all registers, call into the binder to resolve and fixup the external
  * routine, and then transfer to the external routine on return.
  */
 	.globl  _rtld_bind
 
 _ENTRY(_rtld_bind_start)
-	stwu    %r1,-160(%r1)		# stack space for 29 regs + r0/lr/cr
-	stw     %r0,20(%r1)		# save r0
 	mflr    %r0
-	stw     %r0,16(%r1)		# save lr
+	std     %r0,16(%r1)		# save lr
 	mfcr    %r0
-	stw     %r0,12(%r1)		# save cr
-	stmw    %r3,24(%r1)		# save r3-r31
+	std     %r0,8(%r1)		# save cr
 
-	mr      %r3,%r12		# obj
-	mulli   %r4,%r11,12		# rela index * sizeof(Elf_Rela)
+	stdu    %r1,-48-9*8(%r1)	# stack space for 8 regs + header
+	std	%r3,48+0*8(%r1)		# save r3-r31
+	std	%r4,48+1*8(%r1)
+	std	%r5,48+2*8(%r1)
+	std	%r6,48+3*8(%r1)
+	std	%r7,48+4*8(%r1)
+	std	%r8,48+5*8(%r1)
+	std	%r9,48+6*8(%r1)
+	std	%r10,48+7*8(%r1)
+	std	%r12,48+8*8(%r1)
+
+	ld	%r3,0(%r11)
+	ld	%r4,8(%r11)
 	bl      ._rtld_bind		# target addr = _rtld_bind(obj, reloff)
 	nop
+
+	ld	%r2,8(%r3)
+	ld	%r11,16(%r3)
+	ld	%r3,0(%r3)
 	mtctr   %r3			# move absolute target addr into ctr
 
-        lmw     %r3,24(%r1)		# restore r3-r31
-        lwz     %r0,12(%r1)		# restore cr
+        ld	%r3,48+0*8(%r1)		# restore r3-r31
+        ld	%r4,48+1*8(%r1)
+        ld	%r5,48+2*8(%r1)
+        ld	%r6,48+3*8(%r1)
+	ld	%r7,48+4*8(%r1)
+	ld	%r8,48+5*8(%r1)
+	ld	%r9,48+6*8(%r1)
+	ld	%r10,48+7*8(%r1)
+	ld	%r12,48+8*8(%r1)
+
+        addi    %r1,%r1,48+9*8		# restore stack
+
+        ld	%r0,8(%r1)		# restore cr
         mtcr    %r0
-        lwz     %r0,16(%r1)		# restore lr
+        ld	%r0,16(%r1)		# restore lr
         mtlr    %r0
-        lwz     %r0,20(%r1)		# restore r0
 
-        addi    %r1,%r1,160		# restore stack
         bctr				# jump to target
-
-
-/*
- * _rtld_powerpc64_pltresolve()
- *
- *  The first time an external routine is called, the PLT slot will
- * set up %r2 to the offset of the slot, and will jump to this routine.
- * The ELF object is in %r11, and _rtld_bind_start is called
- * to complete the binding.
- */
-_ENTRY(_rtld_powerpc64_pltresolve)
-	mr	%r13,%r2
-	ld	%r2,40(%r1)
-	addis	%r12,%r2,_rtld_bind_start@toc@ha
-	addi	%r12,%r12,_rtld_bind_start@toc@l
-	ld	%r2,8(%r12)
-	ld	%r12,0(%r12)
-        mtctr   %r12
-        bctr
 

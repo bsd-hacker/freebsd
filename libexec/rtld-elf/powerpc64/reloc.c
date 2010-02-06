@@ -323,19 +323,25 @@ static int
 reloc_plt_object(Obj_Entry *obj, const Elf_Rela *rela)
 {
 	Elf_Addr *where = (Elf_Addr *)(obj->relocbase + rela->r_offset);
+	Elf_Addr *glink;
 	long reloff;
 
 	reloff = rela - obj->pltrela;
+
+	if (obj->priv == NULL)
+		obj->priv = malloc(obj->pltrelasize);
+	glink = obj->priv + reloff*sizeof(Elf_Addr)*2;
 
 	if ((reloff < 0) || (reloff >= 0x8000)) {
 		return (-1);
 	}
 
-	dbg(" reloc_plt_object: where=%p,reloff=%lx", (void *)where, reloff);
+	dbg(" reloc_plt_object: where=%p,reloff=%lx,glink=%p", (void *)where, reloff, glink);
 
-	memcpy(where, _rtld_powerpc64_pltresolve, sizeof(struct funcdesc));
-	((struct funcdesc *)(where))->toc = reloff;
-	((struct funcdesc *)(where))->env = (uint64_t)obj;
+	memcpy(where, _rtld_bind_start, sizeof(struct funcdesc));
+	((struct funcdesc *)(where))->env = (Elf_Addr)glink;
+	*(glink++) = (Elf_Addr)obj;
+	*(glink++) = reloff*sizeof(Elf_Rela);
 
 	return (0);
 }
@@ -351,7 +357,6 @@ reloc_plt(Obj_Entry *obj)
 	const Elf_Rela *rela;
 
 	if (obj->pltrelasize != 0) {
-
 		relalim = (const Elf_Rela *)((char *)obj->pltrela +
 		    obj->pltrelasize);
 		for (rela = obj->pltrela;  rela < relalim;  rela++) {
@@ -449,21 +454,6 @@ reloc_jmpslot(Elf_Addr *wherep, Elf_Addr target, const Obj_Entry *defobj,
 void
 init_pltgot(Obj_Entry *obj)
 {
-#if 0
-	struct funcdesc *pltcall;
-	//int N = obj->pltrelasize / sizeof(Elf_Rela);
-
-	pltcall = (struct funcdesc *)obj->pltgot;
-
-	if (pltcall == NULL) {
-		return;
-	}
-
-	/*
-	 * Copy the function description into the PLT0 slot
-	 */
-	memcpy(pltcall, _rtld_powerpc64_pltresolve, sizeof(*pltcall));
-#endif
 }
 
 void
