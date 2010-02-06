@@ -810,6 +810,20 @@ flowtable_set_hashkey(struct flentry *fle, uint32_t *key)
 		hashkey[i] = key[i];
 }
 
+
+static uint32_t *
+flowtable_get_hashkey(struct flentry *fle)
+{
+	uint32_t *hashkey;
+
+	if (fle->f_flags & FL_IPV6)
+		hashkey = ((struct flentry_v4 *)fle)->fl_flow.ipf_key;
+	else
+		hashkey = ((struct flentry_v6 *)fle)->fl_flow.ipf_key;
+
+	return (hashkey);
+}
+
 static int
 flowtable_insert(struct flowtable *ft, uint32_t hash, uint32_t *key,
     uint32_t fibnum, struct route *ro, uint16_t flags)
@@ -907,7 +921,10 @@ kern_flowtable_insert(struct flowtable *ft, struct sockaddr *ssa,
 #endif	
 	if (ro->ro_rt == NULL || ro->ro_lle == NULL)
 		return (EINVAL);
-
+#ifdef FLOWTABLE_DEBUG
+	printf("kern_flowtable_insert: hash=0x%x fibnum=%d flags=0x%x\n",
+	    hash, fibnum, flags);
+#endif
 	return (flowtable_insert(ft, hash, key, fibnum, ro, flags));
 }
 
@@ -1470,10 +1487,28 @@ flow_show(struct flowtable *ft, struct flentry *fle)
 {
 	int idle_time;
 	int rt_valid;
+	uint16_t sport, dport;
+	uint32_t *hashkey;
+	char saddr[4*sizeof "123"], daddr[4*sizeof "123"];
 
 	idle_time = (int)(time_uptime - fle->f_uptime);
 	rt_valid = fle->f_rt != NULL;
-	db_printf("hash=0x%08x idle_time=%03d rt=%p ifp=%p",
+
+	if (fle->f_flags & FL_IPV6)
+		goto skipaddr;
+
+	hashkey = flowtable_get_hashkey(fle);
+	inet_ntoa_r(*(struct in_addr *) &hashkey[2], daddr);
+	if (ft->ft_flags & FL_HASH_ALL) {
+		inet_ntoa_r(*(struct in_addr *) &hashkey[1], saddr);		
+		sport = ((uint16_t *)hashkey)[0];
+		dport = ((uint16_t *)hashkey)[1];
+		db_printf("%s:%d->%s:%d\n", saddr, sport, daddr, dport);
+	} else 
+		db_printf("%s:\n", daddr);
+	    
+skipaddr:
+	    db_printf("\thash=0x%08x idle_time=%03d rt=%p ifp=%p",
 	    fle->f_fhash, idle_time,
 	    fle->f_rt, rt_valid ? fle->f_rt->rt_ifp : NULL);
 	if (rt_valid && (fle->f_rt->rt_flags & RTF_UP))
