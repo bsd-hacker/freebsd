@@ -417,7 +417,7 @@ flow_to_route(struct flentry *fle, struct route *ro)
 		sin6 = (struct sockaddr_in6 *)&ro->ro_dst;
 
 		sin6->sin6_family = AF_INET6;
-		sin6->sin6_len = sizeof(*sin);
+		sin6->sin6_len = sizeof(*sin6);
 		hashkey = ((struct flentry_v6 *)fle)->fl_flow.ipf_key;
 		memcpy(&sin6->sin6_addr, &hashkey[1], sizeof (struct in6_addr));
 	} else
