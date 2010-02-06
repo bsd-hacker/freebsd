@@ -470,8 +470,8 @@ ipv4_mbuf_demarshal(struct mbuf *m, struct sockaddr_in *ssin,
 	switch (proto) {
 	case IPPROTO_TCP:
 		th = (struct tcphdr *)((caddr_t)ip + iphlen);
-		sport = ntohs(th->th_sport);
-		dport = ntohs(th->th_dport);
+		sport = th->th_sport;
+		dport = th->th_dport;
 		if ((*flags & FL_HASH_ALL) &&
 		    (th->th_flags & (TH_RST|TH_FIN)))
 			*flags |= FL_STALE;
@@ -1501,8 +1501,8 @@ flow_show(struct flowtable *ft, struct flentry *fle)
 	inet_ntoa_r(*(struct in_addr *) &hashkey[2], daddr);
 	if (ft->ft_flags & FL_HASH_ALL) {
 		inet_ntoa_r(*(struct in_addr *) &hashkey[1], saddr);		
-		sport = ((uint16_t *)hashkey)[0];
-		dport = ((uint16_t *)hashkey)[1];
+		sport = ntohs(((uint16_t *)hashkey)[0]);
+		dport = ntohs(((uint16_t *)hashkey)[1]);
 		db_printf("%s:%d->%s:%d\n", saddr, sport, daddr, dport);
 	} else 
 		db_printf("%s:\n", daddr);
