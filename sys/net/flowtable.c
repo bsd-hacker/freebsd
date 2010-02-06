@@ -165,7 +165,6 @@ struct flowtable {
 	fl_rtalloc_t	*ft_rtalloc;
 	struct mtx	*ft_locks;
 
-	
 	union flentryp	ft_table;
 	bitstr_t 	*ft_masks[MAXCPU];
 	bitstr_t	*ft_tmpmask;
@@ -567,7 +566,7 @@ flowtable_lookup_mbuf4(struct flowtable *ft, struct mbuf *m)
 
 	dsin = (struct sockaddr_in *)&dsa;
 	ssin = (struct sockaddr_in *)&ssa;
-	flags = 0;
+	flags = ft->ft_flags;
 	if (ipv4_mbuf_demarshal(ft, m, ssin, dsin, &flags) != 0)
 		return (NULL);
 
@@ -753,7 +752,8 @@ flowtable_lookup_mbuf6(struct flowtable *ft, struct mbuf *m)
 
 	dsin6 = (struct sockaddr_in6 *)&dsa;
 	ssin6 = (struct sockaddr_in6 *)&ssa;
-	flags = 0;
+	flags = ft->ft_flags;
+	
 	if (ipv6_mbuf_demarshal(ft, m, ssin6, dsin6, &flags) != 0)
 		return (NULL);
 
