@@ -187,14 +187,14 @@ static struct mtx	flowclean_lock;
 static uint32_t		flowclean_cycles;
 
 #ifdef FLOWTABLE_DEBUG
-#define FLDPRINTF(ft, fmt, ...) 		\
+#define FLDPRINTF(ft, flags, fmt, ...) 		\
 do {		  				\
-	if ((ft)->ft_flags & FL_DEBUG)		\
+	if ((ft)->ft_flags & (flags))		\
 		printf((fmt), __VA_ARGS__);	\
 } while (0);					\
 
 #else
-#define FLDPRINTF(ft, fmt, ...)
+#define FLDPRINTF(ft, flags, fmt, ...)
 
 #endif
 
@@ -473,7 +473,7 @@ ipv4_mbuf_demarshal(struct flowtable *ft, struct mbuf *m,
 	ssin->sin_addr = ip->ip_dst;	
 
 	if ((*flags & FL_HASH_ALL) == 0) {
-		FLDPRINTF(ft, "skip port check flags=0x%x ",
+		FLDPRINTF(ft, FL_DEBUG_ALL, "skip port check flags=0x%x ",
 		    *flags);
 		goto skipports;
 	}
@@ -501,7 +501,7 @@ ipv4_mbuf_demarshal(struct flowtable *ft, struct mbuf *m,
 		dport = sh->dest_port;
 	break;
 	default:
-		FLDPRINTF(ft, "proto=0x%x not supported\n", proto);
+		FLDPRINTF(ft, FL_DEBUG_ALL, "proto=0x%x not supported\n", proto);
 		return (ENOTSUP);
 		/* no port - hence not a protocol we care about */
 		break;
@@ -513,16 +513,16 @@ skipports:
 	ssin->sin_port = sport;
 	dsin->sin_port = dport;
 #ifdef FLOWTABLE_DEBUG
-	if (*flags & FL_HASH_ALL) {
+	if (*flags & (FL_HASH_ALL|FL_DEBUG_ALL)) {
 		char saddr[4*sizeof "123"], daddr[4*sizeof "123"];
 		inet_ntoa_r(*(struct in_addr *) &ip->ip_dst, daddr);
 		inet_ntoa_r(*(struct in_addr *) &ip->ip_src, saddr);
-		FLDPRINTF(ft, "proto=%d %s:%d->%s:%d\n",
+		FLDPRINTF(ft, FL_DEBUG_ALL, "proto=%d %s:%d->%s:%d\n",
 		    proto, saddr, ntohs(sport), daddr, ntohs(dport));
 	} else {
 		char daddr[4*sizeof "123"];
 		inet_ntoa_r(*(struct in_addr *) &ip->ip_dst, daddr);		
-		FLDPRINTF(ft, "proto=%d %s\n", proto, daddr);
+		FLDPRINTF(ft, FL_DEBUG_ALL, "proto=%d %s\n", proto, daddr);
 	}
 #endif	
 	return (0);
@@ -951,7 +951,8 @@ kern_flowtable_insert(struct flowtable *ft, struct sockaddr *ssa,
 	if (ro->ro_rt == NULL || ro->ro_lle == NULL)
 		return (EINVAL);
 
-	FLDPRINTF(ft, "kern_flowtable_insert: hash=0x%x fibnum=%d flags=0x%x\n",
+	FLDPRINTF(ft, FL_DEBUG,
+	    "kern_flowtable_insert: hash=0x%x fibnum=%d flags=0x%x\n",
 	    hash, fibnum, flags);
 	return (flowtable_insert(ft, hash, key, fibnum, ro, flags));
 }
@@ -1051,7 +1052,7 @@ flowtable_lookup(struct flowtable *ft, struct sockaddr *ssa,
 		goto uncached;
 	}
 keycheck:	
-	FLDPRINTF(ft, "doing keycheck on fle=%p hash=0x%x\n",
+	FLDPRINTF(ft, FL_DEBUG, "doing keycheck on fle=%p hash=0x%x\n",
 		    fle, fle->f_fhash);
 	proto = flags_to_proto(flags);
 	rt = __DEVOLATILE(struct rtentry *, fle->f_rt);

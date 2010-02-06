@@ -42,6 +42,7 @@ $FreeBSD$
 #define	FL_SCTP		(1<<12)
 #define	FL_UDP		(1<<13)
 #define	FL_DEBUG	(1<<14)
+#define	FL_DEBUG_ALL	(1<<15)
 
 struct flowtable;
 struct flentry;
