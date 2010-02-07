@@ -186,6 +186,7 @@ static struct cv 	flowclean_cv;
 static struct mtx	flowclean_lock;
 static uint32_t		flowclean_cycles;
 
+
 #ifdef FLOWTABLE_DEBUG
 #define FLDPRINTF(ft, flags, fmt, ...) 		\
 do {		  				\
@@ -493,13 +494,13 @@ ipv4_mbuf_demarshal(struct flowtable *ft, struct mbuf *m,
 	ssin->sin_len = sizeof(*dsin);
 	ssin->sin_addr = ip->ip_dst;	
 
+	proto = ip->ip_p;
 	if ((*flags & FL_HASH_ALL) == 0) {
 		FLDPRINTF(ft, FL_DEBUG_ALL, "skip port check flags=0x%x ",
 		    *flags);
 		goto skipports;
 	}
 
-	proto = ip->ip_p;
 	iphlen = ip->ip_hl << 2; /* XXX options? */
 
 	switch (proto) {
@@ -529,8 +530,8 @@ ipv4_mbuf_demarshal(struct flowtable *ft, struct mbuf *m,
 	
 	}
 
-	*flags |= proto_to_flags(proto);
 skipports:
+	*flags |= proto_to_flags(proto);
 	ssin->sin_port = sport;
 	dsin->sin_port = dport;
 	return (0);
@@ -543,6 +544,7 @@ ipv4_flow_lookup_hash_internal(
 {
 	uint16_t sport, dport;
 	uint8_t proto;
+	int offset = 0;
 
 	if ((V_flowtable_enable == 0) || (V_flowtable_ready == 0))
 		return (0);
@@ -560,9 +562,10 @@ ipv4_flow_lookup_hash_internal(
 	if (flags & FL_HASH_ALL) {
 		((uint16_t *)key)[0] = sport;
 		((uint16_t *)key)[1] = dport; 
-	}
+	} else
+		offset = V_flow_hashjitter + proto;
 
-	return (jenkins_hashword(key, 3, V_flow_hashjitter + proto));
+	return (jenkins_hashword(key, 3, offset));
 }
 
 static struct flentry *
@@ -728,6 +731,7 @@ ipv6_flow_lookup_hash_internal(
 {
 	uint16_t sport, dport;
 	uint8_t proto;
+	int offset = 0;
 
 	if ((V_flowtable_enable == 0) || (V_flowtable_ready == 0))
 		return (0);
@@ -746,9 +750,10 @@ ipv6_flow_lookup_hash_internal(
 	if (flags & FL_HASH_ALL) {
 		((uint16_t *)key)[0] = sport;
 		((uint16_t *)key)[1] = dport; 
-	}
+	} else
+		offset = V_flow_hashjitter + proto;
 
-	return (jenkins_hashword(key, 9, V_flow_hashjitter + proto));
+	return (jenkins_hashword(key, 9, offset));
 }
 
 static struct flentry *
@@ -1029,6 +1034,7 @@ flowtable_lookup(struct flowtable *ft, struct sockaddr *ssa,
 	ro->ro_dst = *dsa;
 	hash = 0;
 	flags |= ft->ft_flags;
+	proto = flags_to_proto(flags);
 #ifdef INET
 	if (ssa->sa_family == AF_INET) {
 		struct sockaddr_in *ssin, *dsin;
@@ -1038,9 +1044,10 @@ flowtable_lookup(struct flowtable *ft, struct sockaddr *ssa,
 		
 		hash = ipv4_flow_lookup_hash_internal(ssin, dsin, key, flags);
 #ifdef FLOWTABLE_DEBUG
-		if (*flags & FL_DEBUG_ALL){
+		if (flags & FL_DEBUG_ALL){
 			printf("lookup: hash=0x%x ", hash);
-			ipv4_flow_print_tuple(*flags, proto, ssin, dsin);
+			ipv4_flow_print_tuple(flags, proto, ssin, dsin);
+		}
 #endif		
 	}
 #endif	
@@ -1072,7 +1079,6 @@ flowtable_lookup(struct flowtable *ft, struct sockaddr *ssa,
 keycheck:	
 	FLDPRINTF(ft, FL_DEBUG, "doing keycheck on fle=%p hash=0x%x\n",
 		    fle, fle->f_fhash);
-	proto = flags_to_proto(flags);
 	rt = __DEVOLATILE(struct rtentry *, fle->f_rt);
 	lle = __DEVOLATILE(struct llentry *, fle->f_lle);
 	if ((rt != NULL)
@@ -1550,7 +1556,8 @@ flow_show(struct flowtable *ft, struct flentry *fle)
 		inet_ntoa_r(*(struct in_addr *) &hashkey[1], saddr);		
 		sport = ntohs(((uint16_t *)hashkey)[0]);
 		dport = ntohs(((uint16_t *)hashkey)[1]);
-		db_printf("%s:%d->%s:%d\n", saddr, sport, daddr, dport);
+		db_printf("proto=%d %s:%d->%s:%d\n", fle->f_proto,
+		    saddr, sport, daddr, dport);
 	} else 
 		db_printf("%s:\n", daddr);
 	    
