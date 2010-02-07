@@ -1072,7 +1072,7 @@ flowtable_lookup(struct flowtable *ft, struct sockaddr *ssa,
 	}
 keycheck:	
 #ifdef FLOWTABLE_DEBUG
-	if (flags & FL_DEBUG_ALL){
+	if (flags & FL_DEBUG){
 		printf("keycheck: key=%x:%x:%x hash=%x ",
 		    key[0], key[1], key[2], hash);
 		ipv4_flow_print_tuple(flags, proto,
@@ -1573,9 +1573,10 @@ skipaddr:
 	if (rt_valid && (fle->f_rt->rt_flags & RTF_UP))
 		db_printf(" RTF_UP ");
 	
-	    db_printf("\tkey=%x:%x:%x hash=%08x idle_time=%03d\n\trt=%p ifp=%p",
-		hashkey[0], hashkey[1], hashkey[2], fle->f_fhash, idle_time,
-	    fle->f_rt, rt_valid ? fle->f_rt->rt_ifp : NULL);
+	db_printf("\n\tkey=%x:%x:%x hash=%08x idle_time=%03d"
+	    "\n\trt=%p ifp=%p",
+	    hashkey[0], hashkey[1], hashkey[2], fle->f_fhash,
+	    idle_time, fle->f_rt, rt_valid ? fle->f_rt->rt_ifp : NULL);
 	db_printf("\n");
 }
 
