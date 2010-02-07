@@ -459,8 +459,8 @@ ipv4_flow_print_tuple(int flags, int proto, struct sockaddr_in *ssin,
 	char saddr[4*sizeof "123"], daddr[4*sizeof "123"];
 
 	if (flags & FL_HASH_ALL) {
-		inet_ntoa_r(*(struct in_addr *) &dsin->sin_addr, daddr);
-		inet_ntoa_r(*(struct in_addr *) &ssin->sin_addr, saddr);
+		inet_ntoa_r(ssin->sin_addr, saddr);
+		inet_ntoa_r(dsin->sin_addr, daddr);
 		printf("proto=%d %s:%d->%s:%d\n",
 		    proto, saddr, ntohs(ssin->sin_port), daddr,
 		    ntohs(dsin->sin_port));
@@ -967,9 +967,9 @@ kern_flowtable_insert(struct flowtable *ft, struct sockaddr *ssa,
 	    "kern_flowtable_insert: hash=0x%x fibnum=%d flags=0x%x\n",
 	    hash, fibnum, flags);
 #ifdef FLOWTABLE_DEBUG
-	if (*flags & FL_DEBUG)
+	if (flags & FL_DEBUG)
 		ipv4_flow_print_tuple(flags, flags_to_proto(flags),
-		    (struct sockaddr_in *)&ssa, (struct sockaddr_in *)&dsa);
+		    (struct sockaddr_in *)ssa, (struct sockaddr_in *)dsa);
 #endif	
 	return (flowtable_insert(ft, hash, key, fibnum, ro, flags));
 }
