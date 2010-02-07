@@ -253,7 +253,6 @@ __FBSDID("$FreeBSD$");
 #ifdef __powerpc64__
 #  define QUANTUM_2POW		4
 #  define SIZEOF_PTR_2POW	3
-#  define NO_TLS
 #elif defined(__powerpc__)
 #  define QUANTUM_2POW		4
 #  define SIZEOF_PTR_2POW	2
