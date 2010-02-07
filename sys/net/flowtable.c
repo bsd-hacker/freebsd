@@ -431,7 +431,7 @@ flow_to_route(struct flentry *fle, struct route *ro)
 		sin6->sin6_family = AF_INET6;
 		sin6->sin6_len = sizeof(*sin6);
 		hashkey = ((struct flentry_v6 *)fle)->fl_flow.ipf_key;
-		memcpy(&sin6->sin6_addr, &hashkey[1], sizeof (struct in6_addr));
+		memcpy(&sin6->sin6_addr, &hashkey[2], sizeof (struct in6_addr));
 	} else
 #endif
 #ifdef INET		
@@ -443,7 +443,7 @@ flow_to_route(struct flentry *fle, struct route *ro)
 		sin->sin_family = AF_INET;
 		sin->sin_len = sizeof(*sin);
 		hashkey = ((struct flentry_v4 *)fle)->fl_flow.ipf_key;
-		sin->sin_addr.s_addr = hashkey[1];
+		sin->sin_addr.s_addr = hashkey[2];
 	}
 #endif	
 	; /* terminate INET6 else if no INET4 */
