@@ -491,8 +491,8 @@ ipv4_mbuf_demarshal(struct flowtable *ft, struct mbuf *m,
 	dsin->sin_len = sizeof(*dsin);
 	dsin->sin_addr = ip->ip_dst;
 	ssin->sin_family = AF_INET;
-	ssin->sin_len = sizeof(*dsin);
-	ssin->sin_addr = ip->ip_dst;	
+	ssin->sin_len = sizeof(*ssin);
+	ssin->sin_addr = ip->ip_src;	
 
 	proto = ip->ip_p;
 	if ((*flags & FL_HASH_ALL) == 0) {
