@@ -47,7 +47,7 @@ CLEANFILES+= dhclient_FIXED
 # Define Makefile variable RESCUE
 CRUNCH_BUILDOPTS+= -DRESCUE
 # Define compile-time RESCUE symbol when compiling components
-.if ${TARGET_ARCH} == powerpc64
+.if ${MACHINE_ARCH} == powerpc64
 CRUNCH_BUILDOPTS+= CRUNCH_CFLAGS=\"-DRESCUE -mminimal-toc\"
 .else
 CRUNCH_BUILDOPTS+= CRUNCH_CFLAGS=-DRESCUE

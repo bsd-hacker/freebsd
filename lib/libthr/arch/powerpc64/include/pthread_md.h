@@ -39,7 +39,7 @@
 #define	CPU_SPINWAIT
 
 #define	DTV_OFFSET		offsetof(struct tcb, tcb_dtv)
-#define	TP_OFFSET		0x8000
+#define	TP_OFFSET		0x7010
 
 /*
  * Variant I tcb. The structure layout is fixed, don't blindly

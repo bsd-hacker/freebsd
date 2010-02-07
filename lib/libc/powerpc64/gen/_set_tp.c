@@ -31,5 +31,5 @@ _set_tp(void *tpval)
 {
 	register void *tp __asm__("r13");
 
-	__asm __volatile("mr %0,%1" : "=r"(tp) : "r"((char*)tpval + 0x7016));
+	__asm __volatile("mr %0,%1" : "=r"(tp) : "r"((char*)tpval + 0x7010));
 }
