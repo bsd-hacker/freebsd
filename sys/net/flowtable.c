@@ -533,10 +533,6 @@ ipv4_mbuf_demarshal(struct flowtable *ft, struct mbuf *m,
 skipports:
 	ssin->sin_port = sport;
 	dsin->sin_port = dport;
-#ifdef FLOWTABLE_DEBUG
-	if (*flags & FL_DEBUG_ALL)
-		ipv4_flow_print_tuple(*flags, proto, ssin, dsin);
-#endif	
 	return (0);
 }
 
@@ -1041,6 +1037,11 @@ flowtable_lookup(struct flowtable *ft, struct sockaddr *ssa,
 		ssin = (struct sockaddr_in *)ssa;
 		
 		hash = ipv4_flow_lookup_hash_internal(ssin, dsin, key, flags);
+#ifdef FLOWTABLE_DEBUG
+		if (*flags & FL_DEBUG_ALL){
+			printf("lookup: hash=0x%x ", hash);
+			ipv4_flow_print_tuple(*flags, proto, ssin, dsin);
+#endif		
 	}
 #endif	
 #ifdef INET6		
