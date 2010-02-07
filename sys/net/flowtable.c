@@ -1073,8 +1073,11 @@ flowtable_lookup(struct flowtable *ft, struct sockaddr *ssa,
 keycheck:	
 #ifdef FLOWTABLE_DEBUG
 	if (flags & FL_DEBUG){
-		printf("keycheck: key=%x:%x:%x hash=%x ",
-		    key[0], key[1], key[2], hash);
+		printf("keycheck: key=%x:%x:%x hash=%x fibnum=%02d "
+		    "keyequal=%d hashequal=%d",
+		    key[0], key[1], key[2], hash, fibnum,
+		    flowtable_key_equal(fle, key),
+		    (fle->f_fhash == hash));
 		ipv4_flow_print_tuple(flags, proto,
 		    (struct sockaddr_in *)ssa,
 		    (struct sockaddr_in *)dsa);
@@ -1573,10 +1576,11 @@ skipaddr:
 	if (rt_valid && (fle->f_rt->rt_flags & RTF_UP))
 		db_printf(" RTF_UP ");
 	
-	db_printf("\n\tkey=%x:%x:%x hash=%08x idle_time=%03d"
-	    "\n\trt=%p ifp=%p",
+	db_printf("\n\tkey=%08x:%08x:%08x hash=%08x idle_time=%03d"
+	    "\n\tfibnum=%02d rt=%p ifp=%p",
 	    hashkey[0], hashkey[1], hashkey[2], fle->f_fhash,
-	    idle_time, fle->f_rt, rt_valid ? fle->f_rt->rt_ifp : NULL);
+	    idle_time, fle->f_fibnum,
+	    fle->f_rt, rt_valid ? fle->f_rt->rt_ifp : NULL);
 	db_printf("\n");
 }
 
@@ -1587,7 +1591,8 @@ flowtable_show(struct flowtable *ft, int cpuid)
 	struct flentry *fle,  **flehead;
 	bitstr_t *mask, *tmpmask;
 
-	db_printf("cpu: %d\n", cpuid);
+	if (cpuid != -1)
+		db_printf("cpu: %d\n", cpuid);
 	mask = flowtable_mask_pcpu(ft, cpuid);
 	tmpmask = ft->ft_tmpmask;
 	memcpy(tmpmask, mask, ft->ft_size/8);
@@ -1632,7 +1637,7 @@ flowtable_show_vnet(void)
 				flowtable_show(ft, i);
 			}
 		} else {
-			flowtable_show(ft, 0);
+			flowtable_show(ft, -1);
 		}
 		ft = ft->ft_next;
 	}
