@@ -186,7 +186,7 @@ static struct cv 	flowclean_cv;
 static struct mtx	flowclean_lock;
 static uint32_t		flowclean_cycles;
 
-
+#define FLOWTABLE_DEBUG
 #ifdef FLOWTABLE_DEBUG
 #define FLDPRINTF(ft, flags, fmt, ...) 		\
 do {		  				\
@@ -965,8 +965,8 @@ kern_flowtable_insert(struct flowtable *ft, struct sockaddr *ssa,
 		return (EINVAL);
 
 	FLDPRINTF(ft, FL_DEBUG,
-	    "kern_flowtable_insert: hash=0x%x fibnum=%d flags=0x%x\n",
-	    hash, fibnum, flags);
+	    "kern_flowtable_insert: key=%x:%x:%x hash=%x fibnum=%d flags=%x\n",
+	    key[0], key[1], key[2], hash, fibnum, flags);
 #ifdef FLOWTABLE_DEBUG
 	if (flags & FL_DEBUG)
 		ipv4_flow_print_tuple(flags, flags_to_proto(flags),
@@ -1045,7 +1045,8 @@ flowtable_lookup(struct flowtable *ft, struct sockaddr *ssa,
 		hash = ipv4_flow_lookup_hash_internal(ssin, dsin, key, flags);
 #ifdef FLOWTABLE_DEBUG
 		if (flags & FL_DEBUG_ALL){
-			printf("lookup: hash=0x%x ", hash);
+			printf("lookup: key=%x:%x:%x hash=%x ",
+			    key[0], key[1], key[2], hash);
 			ipv4_flow_print_tuple(flags, proto, ssin, dsin);
 		}
 #endif		
@@ -1077,7 +1078,7 @@ flowtable_lookup(struct flowtable *ft, struct sockaddr *ssa,
 		goto uncached;
 	}
 keycheck:	
-	FLDPRINTF(ft, FL_DEBUG, "doing keycheck on fle=%p hash=0x%x\n",
+	FLDPRINTF(ft, FL_DEBUG, "doing keycheck on fle=%p hash=%x\n",
 		    fle, fle->f_fhash);
 	rt = __DEVOLATILE(struct rtentry *, fle->f_rt);
 	lle = __DEVOLATILE(struct llentry *, fle->f_lle);
@@ -1547,10 +1548,10 @@ flow_show(struct flowtable *ft, struct flentry *fle)
 	idle_time = (int)(time_uptime - fle->f_uptime);
 	rt_valid = fle->f_rt != NULL;
 
+	hashkey = flowtable_get_hashkey(fle);
 	if (fle->f_flags & FL_IPV6)
 		goto skipaddr;
 
-	hashkey = flowtable_get_hashkey(fle);
 	inet_ntoa_r(*(struct in_addr *) &hashkey[2], daddr);
 	if (ft->ft_flags & FL_HASH_ALL) {
 		inet_ntoa_r(*(struct in_addr *) &hashkey[1], saddr);		
@@ -1562,8 +1563,8 @@ flow_show(struct flowtable *ft, struct flentry *fle)
 		db_printf("%s:\n", daddr);
 	    
 skipaddr:
-	    db_printf("\thash=0x%08x idle_time=%03d rt=%p ifp=%p",
-	    fle->f_fhash, idle_time,
+	    db_printf("\tkey=%x:%x:%x hash=%08x idle_time=%03d rt=%p ifp=%p",
+		hashkey[0], hashkey[1], hashkey[2], fle->f_fhash, idle_time,
 	    fle->f_rt, rt_valid ? fle->f_rt->rt_ifp : NULL);
 	if (rt_valid && (fle->f_rt->rt_flags & RTF_UP))
 		db_printf(" RTF_UP ");
