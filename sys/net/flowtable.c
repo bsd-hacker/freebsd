@@ -451,6 +451,27 @@ flow_to_route(struct flentry *fle, struct route *ro)
 }
 
 #ifdef INET
+#ifdef FLOWTABLE_DEBUG
+static void
+ipv4_flow_print_tuple(int flags, int proto, struct sockaddr_in *ssin,
+    struct sockaddr_in *dsin)
+{
+	char saddr[4*sizeof "123"], daddr[4*sizeof "123"];
+
+	if (flags & FL_HASH_ALL) {
+		inet_ntoa_r(*(struct in_addr *) &dsin->sin_addr, daddr);
+		inet_ntoa_r(*(struct in_addr *) &ssin->sin_addr, saddr);
+		printf("proto=%d %s:%d->%s:%d\n",
+		    proto, saddr, ntohs(ssin->sin_port), daddr,
+		    ntohs(dsin->sin_port));
+	} else {
+		inet_ntoa_r(*(struct in_addr *) &dsin->sin_addr, daddr);
+		printf("proto=%d %s\n", proto, daddr);
+	}
+
+}
+#endif
+
 static int
 ipv4_mbuf_demarshal(struct flowtable *ft, struct mbuf *m,
     struct sockaddr_in *ssin, struct sockaddr_in *dsin, uint16_t *flags)
@@ -513,17 +534,8 @@ skipports:
 	ssin->sin_port = sport;
 	dsin->sin_port = dport;
 #ifdef FLOWTABLE_DEBUG
-	if (*flags & (FL_HASH_ALL|FL_DEBUG_ALL)) {
-		char saddr[4*sizeof "123"], daddr[4*sizeof "123"];
-		inet_ntoa_r(*(struct in_addr *) &ip->ip_dst, daddr);
-		inet_ntoa_r(*(struct in_addr *) &ip->ip_src, saddr);
-		FLDPRINTF(ft, FL_DEBUG_ALL, "proto=%d %s:%d->%s:%d\n",
-		    proto, saddr, ntohs(sport), daddr, ntohs(dport));
-	} else {
-		char daddr[4*sizeof "123"];
-		inet_ntoa_r(*(struct in_addr *) &ip->ip_dst, daddr);		
-		FLDPRINTF(ft, FL_DEBUG_ALL, "proto=%d %s\n", proto, daddr);
-	}
+	if (*flags & FL_DEBUG_ALL)
+		ipv4_flow_print_tuple(*flags, proto, ssin, dsin);
 #endif	
 	return (0);
 }
@@ -954,6 +966,11 @@ kern_flowtable_insert(struct flowtable *ft, struct sockaddr *ssa,
 	FLDPRINTF(ft, FL_DEBUG,
 	    "kern_flowtable_insert: hash=0x%x fibnum=%d flags=0x%x\n",
 	    hash, fibnum, flags);
+#ifdef FLOWTABLE_DEBUG
+	if (*flags & FL_DEBUG)
+		ipv4_flow_print_tuple(flags, flags_to_proto(flags),
+		    (struct sockaddr_in *)&ssa, (struct sockaddr_in *)&dsa);
+#endif	
 	return (flowtable_insert(ft, hash, key, fibnum, ro, flags));
 }
 
