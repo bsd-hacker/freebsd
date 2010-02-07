@@ -1043,13 +1043,6 @@ flowtable_lookup(struct flowtable *ft, struct sockaddr *ssa,
 		ssin = (struct sockaddr_in *)ssa;
 		
 		hash = ipv4_flow_lookup_hash_internal(ssin, dsin, key, flags);
-#ifdef FLOWTABLE_DEBUG
-		if (flags & FL_DEBUG_ALL){
-			printf("lookup: key=%x:%x:%x hash=%x ",
-			    key[0], key[1], key[2], hash);
-			ipv4_flow_print_tuple(flags, proto, ssin, dsin);
-		}
-#endif		
 	}
 #endif	
 #ifdef INET6		
@@ -1078,8 +1071,15 @@ flowtable_lookup(struct flowtable *ft, struct sockaddr *ssa,
 		goto uncached;
 	}
 keycheck:	
-	FLDPRINTF(ft, FL_DEBUG, "doing keycheck on fle=%p hash=%x\n",
-		    fle, fle->f_fhash);
+#ifdef FLOWTABLE_DEBUG
+	if (flags & FL_DEBUG_ALL){
+		printf("keycheck: key=%x:%x:%x hash=%x ",
+		    key[0], key[1], key[2], hash);
+		ipv4_flow_print_tuple(flags, proto,
+		    (struct sockaddr_in *)ssa,
+		    (struct sockaddr_in *)dsa);
+	}
+#endif		
 	rt = __DEVOLATILE(struct rtentry *, fle->f_rt);
 	lle = __DEVOLATILE(struct llentry *, fle->f_lle);
 	if ((rt != NULL)
@@ -1557,19 +1557,25 @@ flow_show(struct flowtable *ft, struct flentry *fle)
 		inet_ntoa_r(*(struct in_addr *) &hashkey[1], saddr);		
 		sport = ntohs(((uint16_t *)hashkey)[0]);
 		dport = ntohs(((uint16_t *)hashkey)[1]);
-		db_printf("proto=%d %s:%d->%s:%d\n", fle->f_proto,
-		    saddr, sport, daddr, dport);
+		db_printf("%s:%d->%s:%d",
+		    saddr, sport, daddr,
+		    dport);
 	} else 
-		db_printf("%s:\n", daddr);
+		db_printf("%s ", daddr);
 	    
 skipaddr:
-	    db_printf("\tkey=%x:%x:%x hash=%08x idle_time=%03d rt=%p ifp=%p",
-		hashkey[0], hashkey[1], hashkey[2], fle->f_fhash, idle_time,
-	    fle->f_rt, rt_valid ? fle->f_rt->rt_ifp : NULL);
-	if (rt_valid && (fle->f_rt->rt_flags & RTF_UP))
-		db_printf(" RTF_UP ");
 	if (fle->f_flags & FL_STALE)
 		db_printf(" FL_STALE ");
+	if (fle->f_flags & FL_TCP)
+		db_printf(" FL_TCP ");
+	if (fle->f_flags & FL_UDP)
+		db_printf(" FL_UDP ");
+	if (rt_valid && (fle->f_rt->rt_flags & RTF_UP))
+		db_printf(" RTF_UP ");
+	
+	    db_printf("\tkey=%x:%x:%x hash=%08x idle_time=%03d\n\trt=%p ifp=%p",
+		hashkey[0], hashkey[1], hashkey[2], fle->f_fhash, idle_time,
+	    fle->f_rt, rt_valid ? fle->f_rt->rt_ifp : NULL);
 	db_printf("\n");
 }
 
