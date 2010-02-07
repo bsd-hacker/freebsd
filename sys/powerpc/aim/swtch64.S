@@ -126,6 +126,8 @@ ENTRY(cpu_switch)
 	mr	%r16,%r5		/* and the new lock */
 	mr	%r17,%r6		/* and the PCB */
 	
+	stdu	%r1,-48(%r1)
+
 	lwz	%r7,PCB_FLAGS(%r17)
 	/* Save FPU context if needed */
 	andi.	%r7, %r7, PCB_FPU
@@ -147,6 +149,8 @@ ENTRY(cpu_switch)
 	bl	.pmap_deactivate	/* Deactivate the current pmap */
 	nop
 
+	addi	%r1,%r1,48
+
 	std	%r16,TD_LOCK(%r14)	/* ULE:	update old thread's lock */
 
 cpu_switchin:
@@ -164,6 +168,8 @@ blocked_loop:
 	std	%r15,PC_CURTHREAD(%r7)	/* Store new current thread */
 	ld	%r17,TD_PCB(%r15)	/* Store new current PCB */
 	std	%r17,PC_CURPCB(%r7)
+
+	stdu	%r1,-48(%r1)
 
 	mr	%r3,%r15		/* Get new thread ptr */
 	bl	.pmap_activate		/* Activate the new address space */
@@ -188,6 +194,7 @@ blocked_loop:
 
 	/* thread to restore is in r3 */
 .L4:
+	addi	%r1,%r1,48
 	mr	%r3,%r17		/* Recover PCB ptr */
 	ld	%r12,PCB_CONTEXT(%r3)	/* Load the non-volatile GP regs. */
 	ld	%r13,PCB_CONTEXT+1*8(%r3)	
@@ -272,9 +279,11 @@ ENTRY(fork_trampoline)
 	ld	%r3,CF_FUNC(%r1)
 	ld	%r4,CF_ARG0(%r1)
 	ld	%r5,CF_ARG1(%r1)
+
+	stdu	%r1,-48(%r1)
 	bl	.fork_exit
 	nop
-	addi	%r1,%r1,CF_SIZE-FSP	/* Allow 8 bytes in front of
+	addi	%r1,%r1,48+CF_SIZE-FSP	/* Allow 8 bytes in front of
 					   trapframe to simulate FRAME_SETUP
 					   does when allocating space for
 					   a frame pointer/saved LR */

@@ -308,7 +308,7 @@ SUBDIR=	${_3dfx} \
 	${_zfs} \
 	zlib \
 
-.if ${MACHINE_ARCH} != "powerpc"
+.if ${MACHINE_ARCH} != "powerpc" && ${MACHINE_ARCH} != "powerpc64"
 _syscons=	syscons
 _vpo=		vpo
 .endif
@@ -597,7 +597,7 @@ _wi=		wi
 _xe=		xe
 .endif
 
-.if ${MACHINE_ARCH} == "powerpc"
+.if ${MACHINE_ARCH} == "powerpc" || ${MACHINE_ARCH} == "powerpc64"
 _an=		an
 _bm=		bm
 _cpufreq=	cpufreq

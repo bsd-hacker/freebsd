@@ -16,6 +16,8 @@ SRCS=	uart_bus_acpi.c ${uart_bus_ebus} uart_bus_isa.c uart_bus_pccard.c \
 	uart_if.c uart_if.h uart_subr.c uart_tty.c
 .if ${MACHINE} == "sun4v"
 SRCS+=	uart_cpu_sparc64.c
+.elif ${MACHINE} == "powerpc64"
+SRCS+=	uart_cpu_powerpc.c
 .else
 SRCS+=	uart_cpu_${MACHINE}.c
 .endif

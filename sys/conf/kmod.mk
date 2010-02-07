@@ -124,7 +124,7 @@ CFLAGS+=	${DEBUG_FLAGS}
 CFLAGS+=	-fno-omit-frame-pointer
 .endif
 
-.if ${MACHINE_ARCH} == "powerpc"
+.if ${MACHINE_ARCH} == "powerpc" || ${MACHINE_ARCH} == "powerpc64"
 CFLAGS+=	-mlongcall -fno-omit-frame-pointer
 .endif
 

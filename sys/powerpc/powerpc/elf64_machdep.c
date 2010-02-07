@@ -125,7 +125,6 @@ elf_reloc_internal(linker_file_t lf, Elf_Addr relocbase, const void *data,
     int type, int local, elf_lookup_fn lookup)
 {
 	Elf_Addr *where;
-	Elf_Half *hwhere;
 	Elf_Addr addr;
 	Elf_Addr addend;
 	Elf_Word rtype, symidx;
@@ -138,7 +137,6 @@ elf_reloc_internal(linker_file_t lf, Elf_Addr relocbase, const void *data,
 	case ELF_RELOC_RELA:
 		rela = (const Elf_Rela *)data;
 		where = (Elf_Addr *) (relocbase + rela->r_offset);
-		hwhere = (Elf_Half *) (relocbase + rela->r_offset);
 		addend = rela->r_addend;
 		rtype = ELF_R_TYPE(rela->r_info);
 		symidx = ELF_R_SYM(rela->r_info);
@@ -152,7 +150,7 @@ elf_reloc_internal(linker_file_t lf, Elf_Addr relocbase, const void *data,
        	case R_PPC_NONE:
 	       	break;
 
-	case R_PPC_ADDR32: /* word32 S + A */
+	case R_PPC64_ADDR64:	/* doubleword64 S + A */
        		addr = lookup(lf, symidx, 1);
 	       	if (addr == 0)
 	       		return -1;
@@ -160,42 +158,15 @@ elf_reloc_internal(linker_file_t lf, Elf_Addr relocbase, const void *data,
 	       	*where = addr;
 	       	break;
 
-       	case R_PPC_ADDR16_LO: /* #lo(S) */
-		addr = lookup(lf, symidx, 1);
-		if (addr == 0)
-			return -1;
-		/*
-		 * addend values are sometimes relative to sections
-		 * (i.e. .rodata) in rela, where in reality they
-		 * are relative to relocbase. Detect this condition.
-		 */
-		if (addr > relocbase && addr <= (relocbase + addend))
-			addr = relocbase + addend;
-		else
-			addr += addend;
-		*hwhere = addr & 0xffff;
-		break;
-
-	case R_PPC_ADDR16_HA: /* #ha(S) */
-		addr = lookup(lf, symidx, 1);
-		if (addr == 0)
-			return -1;
-		/*
-		 * addend values are sometimes relative to sections
-		 * (i.e. .rodata) in rela, where in reality they
-		 * are relative to relocbase. Detect this condition.
-		 */
-		if (addr > relocbase && addr <= (relocbase + addend))
-			addr = relocbase + addend;
-		else
-			addr += addend;
-	       	*hwhere = ((addr >> 16) + ((addr & 0x8000) ? 1 : 0))
-		    & 0xffff;
-		break;
-
-	case R_PPC_RELATIVE: /* word32 B + A */
+	case R_PPC_RELATIVE:	/* doubleword64 B + A */
        		*where = elf_relocaddr(lf, relocbase + addend);
 	       	break;
+
+	case R_PPC_JMP_SLOT:	/* function descriptor copy */
+		addr = lookup(lf, symidx, 1);
+		memcpy(where, (Elf_Addr *)addr, 3*sizeof(Elf_Addr));
+		__asm __volatile("dcbst 0,%0; sync" :: "r"(where) : "memory");
+		break;
 
 	default:
        		printf("kldload: unexpected relocation type %d\n",

@@ -15,7 +15,7 @@ SUBDIR+=	audiocs
 .endif
 .endif
 
-.if ${MACHINE_ARCH} == "powerpc"
+.if ${MACHINE_ARCH} == "powerpc" || ${MACHINE_ARCH} == "powerpc64"
 SUBDIR+=	ai2s davbus
 .endif
 

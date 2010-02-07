@@ -76,7 +76,7 @@
  * This does not reflect the optimal alignment, just the possibility
  * (within reasonable limits). 
  */
-#define	ALIGNED_POINTER(p, t)	((((unsigned)(p)) & (sizeof (t) - 1)) == 0)
+#define	ALIGNED_POINTER(p, t)	((((uintptr_t)(p)) & (sizeof (t) - 1)) == 0)
 
 /*
  * CACHE_LINE_SIZE is the compile-time maximum cache line size for an
