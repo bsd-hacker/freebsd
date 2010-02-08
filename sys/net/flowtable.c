@@ -1044,6 +1044,7 @@ flowtable_lookup(struct flowtable *ft, struct sockaddr *ssa,
 		dsin6 = (struct sockaddr_in6 *)dsa;
 		ssin6 = (struct sockaddr_in6 *)ssa;
 
+		flags |= FL_IPV6;
 		hash = ipv6_flow_lookup_hash_internal(ssin6, dsin6, key, flags);
 	}
 #endif
