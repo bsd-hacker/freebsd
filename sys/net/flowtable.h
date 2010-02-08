@@ -50,6 +50,9 @@ struct flentry;
 VNET_DECLARE(struct flowtable *, ip_ft);
 #define	V_ip_ft			VNET(ip_ft)
 
+VNET_DECLARE(struct flowtable *, ip6_ft);
+#define	V_ip6_ft		VNET(ip6_ft)
+
 struct flowtable *flowtable_alloc(char *name, int nentry, int flags);
 
 /*
@@ -66,10 +69,16 @@ int kern_flowtable_insert(struct flowtable *ft, struct sockaddr *ssa,
     struct sockaddr *dsa, struct route *ro, uint32_t fibnum, int flags);
 
 void flow_invalidate(struct flentry *fl);
-
-void flow_to_route(struct flentry *fl, struct route *ro);
-
 void flowtable_route_flush(struct flowtable *ft, struct rtentry *rt);
+
+#ifdef INET
+void flow_to_route(struct flentry *fl, struct route *ro);
+#endif
+
+#ifdef INET6
+void flow_to_route_in6(struct flentry *fl, struct route_in6 *ro);
+#endif
+
 
 #endif /* _KERNEL */
 #endif

@@ -186,7 +186,6 @@ static struct cv 	flowclean_cv;
 static struct mtx	flowclean_lock;
 static uint32_t		flowclean_cycles;
 
-#define FLOWTABLE_DEBUG
 #ifdef FLOWTABLE_DEBUG
 #define FLDPRINTF(ft, flags, fmt, ...) 		\
 do {		  				\
@@ -417,40 +416,6 @@ flags_to_proto(int flags)
 	return (proto);
 }
 
-void
-flow_to_route(struct flentry *fle, struct route *ro)
-{
-	uint32_t *hashkey = NULL;
-	
-#ifdef INET6
-	if (fle->f_flags & FL_IPV6) {
-		struct sockaddr_in6 *sin6;
-
-		sin6 = (struct sockaddr_in6 *)&ro->ro_dst;
-
-		sin6->sin6_family = AF_INET6;
-		sin6->sin6_len = sizeof(*sin6);
-		hashkey = ((struct flentry_v6 *)fle)->fl_flow.ipf_key;
-		memcpy(&sin6->sin6_addr, &hashkey[2], sizeof (struct in6_addr));
-	} else
-#endif
-#ifdef INET		
-	{
-		struct sockaddr_in *sin;
-
-		sin = (struct sockaddr_in *)&ro->ro_dst;
-
-		sin->sin_family = AF_INET;
-		sin->sin_len = sizeof(*sin);
-		hashkey = ((struct flentry_v4 *)fle)->fl_flow.ipf_key;
-		sin->sin_addr.s_addr = hashkey[2];
-	}
-#endif	
-	; /* terminate INET6 else if no INET4 */
-	ro->ro_rt = __DEVOLATILE(struct rtentry *, fle->f_rt);
-	ro->ro_lle = __DEVOLATILE(struct llentry *, fle->f_lle);
-}
-
 #ifdef INET
 #ifdef FLOWTABLE_DEBUG
 static void
@@ -582,6 +547,21 @@ flowtable_lookup_mbuf4(struct flowtable *ft, struct mbuf *m)
 		return (NULL);
 
 	return (flowtable_lookup(ft, &ssa, &dsa, M_GETFIB(m), flags));
+}
+
+void
+flow_to_route(struct flentry *fle, struct route *ro)
+{
+	uint32_t *hashkey = NULL;
+	struct sockaddr_in *sin;
+
+	sin = (struct sockaddr_in *)&ro->ro_dst;
+	sin->sin_family = AF_INET;
+	sin->sin_len = sizeof(*sin);
+	hashkey = ((struct flentry_v4 *)fle)->fl_flow.ipf_key;
+	sin->sin_addr.s_addr = hashkey[2];
+	ro->ro_rt = __DEVOLATILE(struct rtentry *, fle->f_rt);
+	ro->ro_lle = __DEVOLATILE(struct llentry *, fle->f_lle);
 }
 #endif /* INET */
 
@@ -771,6 +751,23 @@ flowtable_lookup_mbuf6(struct flowtable *ft, struct mbuf *m)
 		return (NULL);
 
 	return (flowtable_lookup(ft, &ssa, &dsa, M_GETFIB(m), flags));
+}
+
+void
+flow_to_route_in6(struct flentry *fle, struct route_in6 *ro)
+{
+	uint32_t *hashkey = NULL;
+	struct sockaddr_in6 *sin6;
+
+	sin6 = (struct sockaddr_in6 *)&ro->ro_dst;
+
+	sin6->sin6_family = AF_INET6;
+	sin6->sin6_len = sizeof(*sin6);
+	hashkey = ((struct flentry_v6 *)fle)->fl_flow.ipf_key;
+	memcpy(&sin6->sin6_addr, &hashkey[5], sizeof (struct in6_addr));
+	ro->ro_rt = __DEVOLATILE(struct rtentry *, fle->f_rt);
+	ro->ro_lle = __DEVOLATILE(struct llentry *, fle->f_lle);
+
 }
 #endif /* INET6 */
 
@@ -967,11 +964,6 @@ kern_flowtable_insert(struct flowtable *ft, struct sockaddr *ssa,
 	FLDPRINTF(ft, FL_DEBUG,
 	    "kern_flowtable_insert: key=%x:%x:%x hash=%x fibnum=%d flags=%x\n",
 	    key[0], key[1], key[2], hash, fibnum, flags);
-#ifdef FLOWTABLE_DEBUG
-	if (flags & FL_DEBUG)
-		ipv4_flow_print_tuple(flags, flags_to_proto(flags),
-		    (struct sockaddr_in *)ssa, (struct sockaddr_in *)dsa);
-#endif	
 	return (flowtable_insert(ft, hash, key, fibnum, ro, flags));
 }
 
@@ -1071,18 +1063,6 @@ flowtable_lookup(struct flowtable *ft, struct sockaddr *ssa,
 		goto uncached;
 	}
 keycheck:	
-#ifdef FLOWTABLE_DEBUG
-	if (flags & FL_DEBUG){
-		printf("keycheck: key=%x:%x:%x hash=%x fibnum=%02d "
-		    "keyequal=%d hashequal=%d",
-		    key[0], key[1], key[2], hash, fibnum,
-		    flowtable_key_equal(fle, key),
-		    (fle->f_fhash == hash));
-		ipv4_flow_print_tuple(flags, proto,
-		    (struct sockaddr_in *)ssa,
-		    (struct sockaddr_in *)dsa);
-	}
-#endif		
 	rt = __DEVOLATILE(struct rtentry *, fle->f_rt);
 	lle = __DEVOLATILE(struct llentry *, fle->f_lle);
 	if ((rt != NULL)
