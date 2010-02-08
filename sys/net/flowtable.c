@@ -1117,7 +1117,14 @@ uncached:
 			l3addr = rt->rt_gateway;
 		else
 			l3addr = &ro->ro_dst;
-		llentry_update(&lle, LLTABLE(ifp), l3addr, ifp);
+#ifdef INET6		
+		if (ssa->sa_family == AF_INET6)
+			llentry_update(&lle, LLTABLE6(ifp), l3addr, ifp);
+#endif
+#ifdef INET		
+		if (ssa->sa_family == AF_INET)
+			llentry_update(&lle, LLTABLE(ifp), l3addr, ifp);
+#endif
 		ro->ro_lle = lle;
 
 		if (lle == NULL) {
