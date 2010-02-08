@@ -1077,7 +1077,8 @@ done:
 	if (ro == &ip6route && ro->ro_rt && flevalid == 0) {
                 /* brace necessary for RTFREE */
 		RTFREE(ro->ro_rt);
-	} else if (ro_pmtu == &ip6route && ro_pmtu->ro_rt) {
+	} else if (ro_pmtu == &ip6route && ro_pmtu->ro_rt &&
+	    ((flevalid == 0) || (ro_pmtu != ro))) {
 		RTFREE(ro_pmtu->ro_rt);
 	}
 #ifdef IPSEC
