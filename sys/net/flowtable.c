@@ -1531,14 +1531,19 @@ static void
 flow_show(struct flowtable *ft, struct flentry *fle)
 {
 	int idle_time;
-	int rt_valid;
+	int rt_valid, ifp_valid;
 	uint16_t sport, dport;
 	uint32_t *hashkey;
 	char saddr[4*sizeof "123"], daddr[4*sizeof "123"];
+	volatile struct rtentry *rt;
+	struct ifnet *ifp = NULL;
 
 	idle_time = (int)(time_uptime - fle->f_uptime);
-	rt_valid = fle->f_rt != NULL;
-
+	rt = fle->f_rt;
+	rt_valid = rt != NULL;
+	if (rt_valid) 
+		ifp = rt->rt_ifp;
+	ifp_valid = ifp != NULL;
 	hashkey = flowtable_get_hashkey(fle);
 	if (fle->f_flags & FL_IPV6)
 		goto skipaddr;
@@ -1553,7 +1558,7 @@ flow_show(struct flowtable *ft, struct flentry *fle)
 		    dport);
 	} else 
 		db_printf("%s ", daddr);
-	    
+    
 skipaddr:
 	if (fle->f_flags & FL_STALE)
 		db_printf(" FL_STALE ");
@@ -1561,14 +1566,29 @@ skipaddr:
 		db_printf(" FL_TCP ");
 	if (fle->f_flags & FL_UDP)
 		db_printf(" FL_UDP ");
-	if (rt_valid && (fle->f_rt->rt_flags & RTF_UP))
-		db_printf(" RTF_UP ");
-	
-	db_printf("\n\tkey=%08x:%08x:%08x hash=%08x idle_time=%03d"
-	    "\n\tfibnum=%02d rt=%p ifp=%p",
-	    hashkey[0], hashkey[1], hashkey[2], fle->f_fhash,
-	    idle_time, fle->f_fibnum,
-	    fle->f_rt, rt_valid ? fle->f_rt->rt_ifp : NULL);
+	if (rt_valid) {
+		if (rt->rt_flags & RTF_UP)
+			db_printf(" RTF_UP ");
+	}
+	if (ifp_valid) {
+		if (ifp->if_flags & IFF_LOOPBACK)
+			db_printf(" IFF_LOOPBACK ");
+		if (ifp->if_flags & IFF_UP)
+			db_printf(" IFF_UP ");		
+		if (ifp->if_flags & IFF_POINTOPOINT)
+			db_printf(" IFF_POINTOPOINT ");		
+	}
+	if (fle->f_flags & FL_IPV6)
+		db_printf("\n\tkey=%08x:%08x:%08x%08x:%08x:%08x%08x:%08x:%08x",
+		    hashkey[0], hashkey[1], hashkey[2],
+		    hashkey[3], hashkey[4], hashkey[5],
+		    hashkey[6], hashkey[7], hashkey[8]);
+	else
+		db_printf("\n\tkey=%08x:%08x:%08x ",
+		    hashkey[0], hashkey[1], hashkey[2]);
+	db_printf("hash=%08x idle_time=%03d"
+	    "\n\tfibnum=%02d rt=%p",
+	    fle->f_fhash, idle_time, fle->f_fibnum, fle->f_rt);
 	db_printf("\n");
 }
 
