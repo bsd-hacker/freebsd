@@ -22,4 +22,6 @@ SRCS+=	cpu-powerpc.c	\
 VECS+=	${DEFAULT_VECTOR} \
 	bfd_elf64_powerpcle_vec	\
 	bfd_elf32_powerpc_vec \
-	bfd_elf32_powerpcle_vec 
+	bfd_elf32_powerpcle_vec \
+	ppcboot_vec
+
