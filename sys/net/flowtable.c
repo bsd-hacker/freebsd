@@ -513,7 +513,6 @@ ipv4_flow_lookup_hash_internal(
 
 	if ((V_flowtable_enable == 0) || (V_flowtable_ready == 0))
 		return (0);
-
 	proto = flags_to_proto(flags);
 	sport = dport = key[2] = key[1] = key[0] = 0;
 	if ((ssin != NULL) && (flags & FL_HASH_ALL)) {
@@ -1033,7 +1032,10 @@ flowtable_lookup(struct flowtable *ft, struct sockaddr *ssa,
 
 		dsin = (struct sockaddr_in *)dsa;
 		ssin = (struct sockaddr_in *)ssa;
-		
+		if ((ntohl(dsin->sin_addr.s_addr) >> IN_CLASSA_NSHIFT) == IN_LOOPBACKNET ||
+		    (ntohl(ssin->sin_addr.s_addr) >> IN_CLASSA_NSHIFT) == IN_LOOPBACKNET)
+			return (NULL);
+
 		hash = ipv4_flow_lookup_hash_internal(ssin, dsin, key, flags);
 	}
 #endif	
