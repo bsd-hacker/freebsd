@@ -192,6 +192,11 @@ ip6_init(void)
 #define IPV6_SENDREDIRECTS	1
 #endif
 
+#ifdef FLOWTABLE
+	TUNABLE_INT_FETCH("net.inet6.ip6.output_flowtable_size",
+	    &V_ip6_output_flowtable_size);
+	V_ip6_ft = flowtable_alloc(V_ip6_output_flowtable_size, FL_PCPU);
+#endif
 	V_ip6_forwarding = IPV6FORWARDING; /* act as router? */
 	V_ip6_sendredirects = IPV6_SENDREDIRECTS;
 	V_ip6_defhlim = IPV6_DEFHLIM;
