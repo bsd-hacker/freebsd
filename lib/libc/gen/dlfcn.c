@@ -46,44 +46,38 @@ static const char sorry[] = "Service unavailable";
  * be weak symbols so that the dynamic linker can override them.
  */
 
-void _rtld_error(const char *fmt, ...);
-__weak_reference(_libc_rtld_error, _rtld_error);
-
+#pragma weak _rtld_error
 void
-_libc_rtld_error(const char *fmt, ...)
+_rtld_error(const char *fmt, ...)
 {
 }
 
-__weak_reference(_libc_dladdr, dladdr);
-
+#pragma weak dladdr
 int
-_libc_dladdr(const void *addr, Dl_info *dlip)
+dladdr(const void *addr, Dl_info *dlip)
 {
 	_rtld_error(sorry);
 	return 0;
 }
 
-__weak_reference(_libc_dlclose, dlclose);
-
+#pragma weak dlclose
 int
-_libc_dlclose(void *handle)
+dlclose(void *handle)
 {
 	_rtld_error(sorry);
 	return -1;
 }
 
-__weak_reference(_libc_dlerror, dlerror);
-
+#pragma weak dlerror
 const char *
-_libc_dlerror(void)
+dlerror(void)
 {
 	return sorry;
 }
 
-__weak_reference(_libc_dllockinit, dllockinit);
-
+#pragma weak dllockinit
 void
-_libc_dllockinit(void *context,
+dllockinit(void *context,
 	   void *(*lock_create)(void *context),
 	   void (*rlock_acquire)(void *lock),
 	   void (*wlock_acquire)(void *lock),
@@ -95,80 +89,71 @@ _libc_dllockinit(void *context,
 		context_destroy(context);
 }
 
-__weak_reference(_libc_dlopen, dlopen);
-
+#pragma weak dlopen
 void *
-_libc_dlopen(const char *name, int mode)
+dlopen(const char *name, int mode)
 {
 	_rtld_error(sorry);
 	return NULL;
 }
 
-__weak_reference(_libc_dlsym, dlsym);
-
+#pragma weak dlsym
 void *
-_libc_dlsym(void * __restrict handle, const char * __restrict name)
+dlsym(void * __restrict handle, const char * __restrict name)
 {
 	_rtld_error(sorry);
 	return NULL;
 }
 
-__weak_reference(_libc_dlfunc, dlfunc);
-
+#pragma weak dlfunc
 dlfunc_t
-_libc_dlfunc(void * __restrict handle, const char * __restrict name)
+dlfunc(void * __restrict handle, const char * __restrict name)
 {
 	_rtld_error(sorry);
 	return NULL;
 }
 
-__weak_reference(_libc_dlvsym, dlvsym);
-
+#pragma weak dlvsym
 void *
-_libc_dlvsym(void * __restrict handle, const char * __restrict name,
+dlvsym(void * __restrict handle, const char * __restrict name,
     const char * __restrict version)
 {
 	_rtld_error(sorry);
 	return NULL;
 }
 
-__weak_reference(_libc_dlinfo, dlinfo);
-
+#pragma weak dlinfo
 int
-_libc_dlinfo(void * __restrict handle, int request, void * __restrict p)
+dlinfo(void * __restrict handle, int request, void * __restrict p)
 {
 	_rtld_error(sorry);
 	return 0;
 }
 
-__weak_reference(_libc_rtld_thread_init, _rtld_thread_init);
-
+#pragma weak _rtld_thread_init
 void
-_libc_rtld_thread_init(void * li)
+_rtld_thread_init(void * li)
 {
 	_rtld_error(sorry);
 }
 
-__weak_reference(_libc_dl_iterate_phdr, dl_iterate_phdr);
-
+#pragma weak dl_iterate_phdr
 int
-_libc_dl_iterate_phdr(int (*callback)(struct dl_phdr_info *, size_t, void *),
+dl_iterate_phdr(int (*callback)(struct dl_phdr_info *, size_t, void *),
     void *data)
 {
 	_rtld_error(sorry);
 	return 0;
 }
 
-__weak_reference(_libc_rtld_atfork_pre, _rtld_atfork_pre);
-
+#pragma weak _rtld_atfork_pre
 void
-_libc_rtld_atfork_pre(int *locks)
+_rtld_atfork_pre(int *locks)
 {
 }
 
-__weak_reference(_libc_rtld_atfork_post, _rtld_atfork_post);
-
+#pragma weak _rtld_atfork_post
 void
-_libc_rtld_atfork_post(int *locks)
+_rtld_atfork_post(int *locks)
 {
 }
