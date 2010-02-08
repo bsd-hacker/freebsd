@@ -70,6 +70,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_carp.h"
 #include "opt_sctp.h"
 #include "opt_mpath.h"
+#include "opt_route.h"
 
 #include <sys/param.h>
 #include <sys/socket.h>
@@ -129,6 +130,10 @@ __FBSDID("$FreeBSD$");
 #endif /* IPSEC */
 
 #include <netinet6/ip6protosw.h>
+
+#ifdef FLOWTABLE
+#include <net/flowtable.h>
+#endif
 
 /*
  * TCP/IP protocol family: IP6, ICMP6, UDP, TCP.
@@ -547,7 +552,7 @@ SYSCTL_VNET_INT(_net_inet6_ip6, IPV6CTL_STEALTH, stealth, CTLFLAG_RW,
 #endif
 
 #ifdef FLOWTABLE
-static VNET_DEFINE(int, ip6_output_flowtable_size) = 2048;
+VNET_DEFINE(int, ip6_output_flowtable_size) = 2048;
 VNET_DEFINE(struct flowtable *, ip6_ft);
 #define	V_ip6_output_flowtable_size	VNET(ip6_output_flowtable_size)
 

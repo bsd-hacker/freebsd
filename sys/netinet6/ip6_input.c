@@ -66,6 +66,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_ipsec.h"
+#include "opt_route.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -112,6 +113,12 @@ __FBSDID("$FreeBSD$");
 #endif /* IPSEC */
 
 #include <netinet6/ip6protosw.h>
+
+#ifdef FLOWTABLE
+#include <net/flowtable.h>
+extern VNET_DEFINE(int, ip6_output_flowtable_size);
+#define	V_ip6_output_flowtable_size	VNET(ip6_output_flowtable_size)
+#endif
 
 extern struct domain inet6domain;
 
@@ -195,7 +202,7 @@ ip6_init(void)
 #ifdef FLOWTABLE
 	TUNABLE_INT_FETCH("net.inet6.ip6.output_flowtable_size",
 	    &V_ip6_output_flowtable_size);
-	V_ip6_ft = flowtable_alloc(V_ip6_output_flowtable_size, FL_PCPU);
+	V_ip6_ft = flowtable_alloc("ipv6", V_ip6_output_flowtable_size, FL_PCPU);
 #endif
 	V_ip6_forwarding = IPV6FORWARDING; /* act as router? */
 	V_ip6_sendredirects = IPV6_SENDREDIRECTS;
