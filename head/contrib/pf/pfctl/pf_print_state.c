@@ -322,10 +322,17 @@ print_state(struct pfsync_state *s, int opts)
 		bcopy(s->bytes[0], &bytes[0], sizeof(u_int64_t));
 		bcopy(s->bytes[1], &bytes[1], sizeof(u_int64_t));
 		printf(", %llu:%llu pkts, %llu:%llu bytes",
+#ifdef __FreeBSD__
+		    (unsigned long long)betoh64(packets[0]),
+		    (unsigned long long)betoh64(packets[1]),
+		    (unsigned long long)betoh64(bytes[0]),
+		    (unsigned long long)betoh64(bytes[1]));
+#else
 		    betoh64(packets[0]),
 		    betoh64(packets[1]),
 		    betoh64(bytes[0]),
 		    betoh64(bytes[1]));
+#endif
 		if (ntohl(s->anchor) != -1)
 			printf(", anchor %u", ntohl(s->anchor));
 		if (ntohl(s->rule) != -1)
@@ -345,7 +352,11 @@ print_state(struct pfsync_state *s, int opts)
 
 		bcopy(&s->id, &id, sizeof(u_int64_t));
 		printf("   id: %016llx creatorid: %08x",
+#ifdef __FreeBSD__
+		    (unsigned long long)betoh64(id), ntohl(s->creatorid));
+#else
 		    betoh64(id), ntohl(s->creatorid));
+#endif
 		printf("\n");
 	}
 }

@@ -575,7 +575,11 @@ print_status(struct pf_status *s, int opts)
 		    s->src_nodes, "");
 		for (i = 0; i < SCNT_MAX; i++) {
 			printf("  %-25s %14lld ", pf_scounters[i],
+#ifdef __FreeBSD__
+				    (int64_t)s->scounters[i]);
+#else
 				    s->scounters[i]);
+#endif
 			if (runtime > 0)
 				printf("%14.1f/s\n",
 				    (double)s->scounters[i] / (double)runtime);

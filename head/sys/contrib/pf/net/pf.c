@@ -1132,7 +1132,11 @@ pf_state_insert(struct pfi_kif *kif, struct pf_state_key *skw,
 #endif
 			printf("pf: state insert failed: "
 			    "id: %016llx creatorid: %08x",
+#ifdef __FreeBSD__
+			    (unsigned long long)betoh64(s->id), ntohl(s->creatorid));
+#else
 			    betoh64(s->id), ntohl(s->creatorid));
+#endif
 			printf("\n");
 		}
 		pf_detach_state(s);
@@ -4396,8 +4400,13 @@ pf_tcp_track_full(struct pf_state_peer *src, struct pf_state_peer *dst,
 			pf_print_flags(th->th_flags);
 			printf(" seq=%u (%u) ack=%u len=%u ackskew=%d "
 			    "pkts=%llu:%llu dir=%s,%s\n", seq, orig_seq, ack,
+#ifdef __FreeBSD__
+			    pd->p_len, ackskew, (unsigned long long)(*state)->packets[0],
+			    (unsigned long long)(*state)->packets[1],
+#else
 			    pd->p_len, ackskew, (*state)->packets[0],
 			    (*state)->packets[1],
+#endif
 			    pd->dir == PF_IN ? "in" : "out",
 			    pd->dir == (*state)->direction ? "fwd" : "rev");
 		}
@@ -4460,7 +4469,12 @@ pf_tcp_track_full(struct pf_state_peer *src, struct pf_state_peer *dst,
 			printf(" seq=%u (%u) ack=%u len=%u ackskew=%d "
 			    "pkts=%llu:%llu dir=%s,%s\n",
 			    seq, orig_seq, ack, pd->p_len, ackskew,
+#ifdef __FreeBSD__
+			    (unsigned long long)(*state)->packets[0],
+			    (unsigned long long)(*state)->packets[1],
+#else
 			    (*state)->packets[0], (*state)->packets[1],
+#endif
 			    pd->dir == PF_IN ? "in" : "out",
 			    pd->dir == (*state)->direction ? "fwd" : "rev");
 			printf("pf: State failure on: %c %c %c %c | %c %c\n",
