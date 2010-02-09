@@ -23,7 +23,7 @@
 
 #ifdef IN_LIBGCC2
 #undef TARGET_64BIT
-#ifdef __ppc64__
+#ifdef __powerpc64__
 #define TARGET_64BIT 1
 #else
 #define TARGET_64BIT 0
@@ -163,4 +163,44 @@
 "	nop\n"						\
 "	.previous");
 #endif
+
+/* __throw will restore its own return address to be the same as the
+   return address of the function that the throw is being made to.
+   This is unfortunate, because we want to check the original
+   return address to see if we need to restore the TOC.
+   So we have to squirrel it away with this.  */
+#define SETUP_FRAME_ADDRESSES() \
+  do { if (TARGET_64BIT) rs6000_aix_emit_builtin_unwind_init (); } while (0)
+
+/* Select a format to encode pointers in exception handling data.  CODE
+   is 0 for data, 1 for code labels, 2 for function pointers.  GLOBAL is
+   true if the symbol may be affected by dynamic relocations.  */
+#undef	ASM_PREFERRED_EH_DATA_FORMAT
+#define	ASM_PREFERRED_EH_DATA_FORMAT(CODE, GLOBAL) \
+  ((TARGET_64BIT || flag_pic || TARGET_RELOCATABLE)			\
+   ? (((GLOBAL) ? DW_EH_PE_indirect : 0) | DW_EH_PE_pcrel		\
+      | (TARGET_64BIT ? DW_EH_PE_udata8 : DW_EH_PE_sdata4))		\
+   : DW_EH_PE_absptr)
+
+#define MD_FROB_UPDATE_CONTEXT(CTX, FS)					\
+  if (TARGET_64BIT) {							\
+    if ((FS)->regs.reg[2].how == REG_UNSAVED)				\
+      {									\
+	unsigned int *insn						\
+	  = (unsigned int *)						\
+	    _Unwind_GetGR ((CTX), LINK_REGISTER_REGNUM);		\
+	if (*insn == 0xE8410028)					\
+	  _Unwind_SetGRPtr ((CTX), 2, (CTX)->cfa + 40);			\
+      }									\
+  }
+
+/* Indicate that jump tables go in the text section.  */
+#undef  JUMP_TABLES_IN_TEXT_SECTION
+#define JUMP_TABLES_IN_TEXT_SECTION TARGET_64BIT
+
+/* FreeBSD doesn't support saving and restoring 64-bit regs with a 32-bit
+   kernel. This is supported when running on a 64-bit kernel with
+   COMPAT_FREEBSD32, but tell GCC it isn't so that our 32-bit binaries
+   are compatible. */
+#define OS_MISSING_POWERPC64 !TARGET_64BIT
 
