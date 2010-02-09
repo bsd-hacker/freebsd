@@ -38,10 +38,7 @@ _init:
 ._init:
 	stdu 1,-48(1)
 	mflr 0
-	std 31,40(1)
 	std 0,64(1)
-	mr 31,1
-
 
 	.section .fini,"ax",@progbits
 	.align	2
@@ -58,10 +55,7 @@ _fini:
 ._fini:
 	stdu 1,-48(1)
 	mflr 0
-	std 31,40(1)
 	std 0,64(1)
-	mr 31,1
-
 
 	.section .rodata
 .ascii "$FreeBSD: projects/ppc64/lib/csu/powerpc/crti.S 96632 2002-05-15 04:19:49Z obrien $\0"

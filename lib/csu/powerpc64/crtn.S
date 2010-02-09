@@ -24,20 +24,16 @@
  */
 
 	.section .init,"ax",@progbits
-	ld 11,0(1)
-	ld 0,16(11)
+	ld %r1,0(%r1)
+	ld 0,16(%r1)
 	mtlr 0
-	ld 31,-8(11)
-	mr 1,11
 	blr
 
 
 	.section .fini,"ax",@progbits
-	ld 11,0(1)
-	ld 0,16(11)
+	ld %r1,0(%r1)
+	ld 0,16(%r1)
 	mtlr 0
-	ld 31,-8(11)
-	mr 1,11
 	blr
 
 

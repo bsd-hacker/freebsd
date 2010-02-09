@@ -22,6 +22,3 @@ TARGET_CPU_DEFAULT= TARGET_CPU_ultrasparc
 TARGET_CPU_DEFAULT= \"powerpc64\"
 .endif
 
-.if ${MACHINE_ARCH} == "powerpc64"
-CFLAGS+= -mminimal-toc
-.endif

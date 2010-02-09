@@ -151,3 +151,16 @@
 /* Override rs6000.h definition.  */
 #undef  ASM_APP_OFF
 #define ASM_APP_OFF "#NO_APP\n"
+
+/* _init and _fini functions are built from bits spread across many
+   object files, each potentially with a different TOC pointer.  For
+   that reason, place a nop after the call so that the linker can
+   restore the TOC pointer if a TOC adjusting call stub is needed.  */
+#ifdef __powerpc64__
+#define CRT_CALL_STATIC_FUNCTION(SECTION_OP, FUNC)	\
+  asm (SECTION_OP "\n"					\
+"	bl ." #FUNC "\n"				\
+"	nop\n"						\
+"	.previous");
+#endif
+
