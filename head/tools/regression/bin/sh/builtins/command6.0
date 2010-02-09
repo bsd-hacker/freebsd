@@ -1,0 +1,15 @@
+# $FreeBSD: user/eri/pf45/head/tools/regression/bin/sh/builtins/command6.0 201343 2009-12-31 16:13:33Z jilles $
+PATH=/var/empty
+command -pV ls
+command -pV true
+command -pV /bin/ls
+
+fun() {
+}
+command -pV fun
+command -pV break
+command -pV if
+command -pV {
+
+alias foo=bar
+command -pV foo
