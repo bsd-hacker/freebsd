@@ -41,9 +41,8 @@ HIDENAME(minbrk):
         .text
 
 ENTRY(brk)
-	addis	%r5,%r2,HIDENAME(minbrk)@toc@ha
-	ld	%r5,HIDENAME(minbrk)@toc@l(%r5)
-	ld	%r6,0(%r5)
+	addis	%r6,%r2,HIDENAME(minbrk)@toc@ha
+	ld	%r6,HIDENAME(minbrk)@toc@l(%r6)
 	cmpld   %r6,%r3			/* if (minbrk <= r3) */
 	bgt     0f
 	mr	%r6,%r3			/* r6 = r3 */
@@ -55,8 +54,7 @@ ENTRY(brk)
 
 	/* record new break */
 	addis	%r7,%r2,HIDENAME(curbrk)@toc@ha
-	ld	%r7,HIDENAME(curbrk)@toc@l(%r7)
-	std	%r6,0(%r7)
+	std	%r6,HIDENAME(curbrk)@toc@l(%r7)
 
 	blr				/* return 0 */
 

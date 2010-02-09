@@ -34,7 +34,6 @@ __FBSDID("$FreeBSD$");
 
 SYSCALL(setlogin)
 	addis	%r4,%r2,CNAME(_logname_valid)@toc@ha
-	ld	%r4,CNAME(_logname_valid)@toc@l(%r4)
-	li	%r5,%r0
-	std	%r5,0(%r4)
+	li	%r5,0
+	stw	%r5,CNAME(_logname_valid)@toc@l(%r4)
 	blr

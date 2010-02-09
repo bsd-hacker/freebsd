@@ -40,7 +40,7 @@ HIDENAME(curbrk):
 	.text
 ENTRY(sbrk)
 	addis	%r5,%r2,HIDENAME(curbrk)@toc@ha
-	ld	%r5,HIDENAME(curbrk)@toc@l(%r5)
+	addi	%r5,%r5,HIDENAME(curbrk)@toc@l
 	ld	%r6,0(%r5)			/* r6 = old break */
 	cmpdi	%r3,0				/* sbrk(0) - return curbrk */
 	beq	1f
