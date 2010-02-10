@@ -604,6 +604,16 @@ _cpufreq=	cpufreq
 _nvram=		powermac_nvram
 _smbfs=		smbfs
 _sound=		sound
+_tmpfs=		tmpfs
+.endif
+
+.if ${MACHINE_ARCH} == "powerpc64"
+.if ${MK_CDDL} != "no" || defined(ALL_MODULES)
+_opensolaris=	opensolaris
+.endif
+.if ${MK_ZFS} != "no" || defined(ALL_MODULES)
+_zfs=		zfs
+.endif
 .endif
 
 .if ${MACHINE_ARCH} == "sparc64"
