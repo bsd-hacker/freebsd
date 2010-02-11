@@ -535,7 +535,7 @@ ipv4_flow_lookup_hash_internal(
 static struct flentry *
 flowtable_lookup_mbuf4(struct flowtable *ft, struct mbuf *m)
 {
-	struct sockaddr ssa, dsa;
+	struct sockaddr_storage ssa, dsa;
 	uint16_t flags;
 	struct sockaddr_in *dsin, *ssin;
 
@@ -738,7 +738,7 @@ ipv6_flow_lookup_hash_internal(
 static struct flentry *
 flowtable_lookup_mbuf6(struct flowtable *ft, struct mbuf *m)
 {
-	struct sockaddr ssa, dsa;
+	struct sockaddr_storage ssa, dsa;
 	struct sockaddr_in6 *dsin6, *ssin6;	
 	uint16_t flags;
 
@@ -939,8 +939,9 @@ skip:
 }
 
 int
-kern_flowtable_insert(struct flowtable *ft, struct sockaddr *ssa,
-    struct sockaddr *dsa, struct route *ro, uint32_t fibnum, int flags)
+kern_flowtable_insert(struct flowtable *ft,
+    struct sockaddr_storage *ssa, struct sockaddr_storage *dsa,
+    struct route *ro, uint32_t fibnum, int flags)
 {
 	uint32_t key[9], hash;
 
@@ -948,12 +949,12 @@ kern_flowtable_insert(struct flowtable *ft, struct sockaddr *ssa,
 	hash = 0;
 
 #ifdef INET
-	if (ssa->sa_family == AF_INET) 
+	if (ssa->ss_family == AF_INET) 
 		hash = ipv4_flow_lookup_hash_internal((struct sockaddr_in *)ssa,
 		    (struct sockaddr_in *)dsa, key, flags);
 #endif
 #ifdef INET6
-	if (ssa->sa_family == AF_INET6) 
+	if (ssa->ss_family == AF_INET6) 
 		hash = ipv6_flow_lookup_hash_internal((struct sockaddr_in6 *)ssa,
 		    (struct sockaddr_in6 *)dsa, key, flags);
 #endif	
@@ -1008,8 +1009,8 @@ flowtable_lookup_mbuf(struct flowtable *ft, struct mbuf *m, int af)
 }
 	
 struct flentry *
-flowtable_lookup(struct flowtable *ft, struct sockaddr *ssa,
-    struct sockaddr *dsa, uint32_t fibnum, int flags)
+flowtable_lookup(struct flowtable *ft, struct sockaddr_storage *ssa,
+    struct sockaddr_storage *dsa, uint32_t fibnum, int flags)
 {
 	uint32_t key[9], hash;
 	struct flentry *fle;
@@ -1018,17 +1019,18 @@ flowtable_lookup(struct flowtable *ft, struct sockaddr *ssa,
 	struct rtentry *rt;
 	struct llentry *lle;
 	struct route sro, *ro;
+	struct route_in6 sro6;
 
 	ro = &sro;
 	ro->ro_rt = NULL;
 	ro->ro_lle = NULL;
-	ro->ro_dst = *dsa;
 	hash = 0;
 	flags |= ft->ft_flags;
 	proto = flags_to_proto(flags);
 #ifdef INET
-	if (ssa->sa_family == AF_INET) {
+	if (ssa->ss_family == AF_INET) {
 		struct sockaddr_in *ssin, *dsin;
+		memcpy(&ro->ro_dst, &dsa, sizeof(struct sockaddr_in));
 
 		dsin = (struct sockaddr_in *)dsa;
 		ssin = (struct sockaddr_in *)ssa;
@@ -1040,9 +1042,12 @@ flowtable_lookup(struct flowtable *ft, struct sockaddr *ssa,
 	}
 #endif	
 #ifdef INET6		
-	if (ssa->sa_family == AF_INET6) {
+	if (ssa->ss_family == AF_INET6) {
 		struct sockaddr_in6 *ssin6, *dsin6;
 
+		ro = (struct route *)&sro6;
+		memcpy(&ro->ro_dst, &dsa,
+		    sizeof(struct sockaddr_in6));
 		dsin6 = (struct sockaddr_in6 *)dsa;
 		ssin6 = (struct sockaddr_in6 *)ssa;
 
@@ -1107,7 +1112,7 @@ uncached:
 		error = ENETUNREACH;
 	else {
 		struct llentry *lle = NULL;
-		struct sockaddr *l3addr;
+		struct sockaddr_storage *l3addr;
 		struct rtentry *rt = ro->ro_rt;
 		struct ifnet *ifp = rt->rt_ifp;
 
@@ -1116,17 +1121,25 @@ uncached:
 			ro->ro_rt = NULL;
 			return (NULL);
 		}
-		if (rt->rt_flags & RTF_GATEWAY)
-			l3addr = rt->rt_gateway;
-		else
-			l3addr = &ro->ro_dst;
 #ifdef INET6		
-		if (ssa->sa_family == AF_INET6)
+		if (ssa->ss_family == AF_INET6) {
+			if (rt->rt_flags & RTF_GATEWAY)
+				l3addr = (struct sockaddr_storage *)rt->rt_gateway;
+			
+			else
+				l3addr = (struct sockaddr_storage *)&ro->ro_dst;
 			llentry_update(&lle, LLTABLE6(ifp), l3addr, ifp);
-#endif
-#ifdef INET		
-		if (ssa->sa_family == AF_INET)
-			llentry_update(&lle, LLTABLE(ifp), l3addr, ifp);
+		}
+#endif	
+#ifdef INET			
+		if (ssa->ss_family == AF_INET) {
+			if (rt->rt_flags & RTF_GATEWAY)
+				l3addr = (struct sockaddr_storage *)rt->rt_gateway;
+			else
+				l3addr = (struct sockaddr_storage *)&ro->ro_dst;
+			llentry_update(&lle, LLTABLE(ifp), l3addr, ifp);	
+		}
+			
 #endif
 		ro->ro_lle = lle;
 

@@ -62,11 +62,11 @@ struct flowtable *flowtable_alloc(char *name, int nentry, int flags);
  */
 struct flentry *flowtable_lookup_mbuf(struct flowtable *ft, struct mbuf *m, int af);
 
-struct flentry *flowtable_lookup(struct flowtable *ft, struct sockaddr *ssa,
-    struct sockaddr *dsa, uint32_t fibnum, int flags);
+struct flentry *flowtable_lookup(struct flowtable *ft, struct sockaddr_storage *ssa,
+    struct sockaddr_storage *dsa, uint32_t fibnum, int flags);
 
-int kern_flowtable_insert(struct flowtable *ft, struct sockaddr *ssa,
-    struct sockaddr *dsa, struct route *ro, uint32_t fibnum, int flags);
+int kern_flowtable_insert(struct flowtable *ft, struct sockaddr_storage *ssa,
+    struct sockaddr_storage *dsa, struct route *ro, uint32_t fibnum, int flags);
 
 void flow_invalidate(struct flentry *fl);
 void flowtable_route_flush(struct flowtable *ft, struct rtentry *rt);

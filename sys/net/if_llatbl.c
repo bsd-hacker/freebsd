@@ -117,7 +117,7 @@ llentry_free(struct llentry *lle)
  */
 int
 llentry_update(struct llentry **llep, struct lltable *lt,
-    struct sockaddr *dst, struct ifnet *ifp)
+    struct sockaddr_storage *dst, struct ifnet *ifp)
 {
 	struct llentry *la;
 
