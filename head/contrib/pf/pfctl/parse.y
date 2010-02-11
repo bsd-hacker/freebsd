@@ -709,7 +709,7 @@ varstring	: numberstring varstring 		{
 
 numberstring	: NUMBER				{
 			char	*s;
-			if (asprintf(&s, "%lld", (int64_t)$1) == -1) {
+			if (asprintf(&s, "%lld", (long long)$1) == -1) {
 				yyerror("string: asprintf");
 				YYERROR;
 			}
@@ -2843,7 +2843,7 @@ host		: STRING			{
 		| STRING '/' NUMBER		{
 			char	*buf;
 
-			if (asprintf(&buf, "%s/%lld", $1, $3) == -1)
+			if (asprintf(&buf, "%s/%lld", $1, (long long)$3) == -1)
 				err(1, "host: asprintf");
 			free($1);
 			if (($$ = host(buf)) == NULL)	{
@@ -2859,7 +2859,7 @@ host		: STRING			{
 
 			/* ie. for 10/8 parsing */
 #ifdef __FreeBSD__
-			if (asprintf(&buf, "%lld/%lld", (int64_t)$1, (int64_t)$3) == -1)
+			if (asprintf(&buf, "%lld/%lld", (long long)$1, (long long)$3) == -1)
 #else
 			if (asprintf(&buf, "%lld/%lld", $1, $3) == -1)
 #endif

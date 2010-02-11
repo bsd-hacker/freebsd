@@ -576,7 +576,7 @@ print_status(struct pf_status *s, int opts)
 		for (i = 0; i < SCNT_MAX; i++) {
 			printf("  %-25s %14lld ", pf_scounters[i],
 #ifdef __FreeBSD__
-				    (int64_t)s->scounters[i]);
+				    (long long)s->scounters[i]);
 #else
 				    s->scounters[i]);
 #endif

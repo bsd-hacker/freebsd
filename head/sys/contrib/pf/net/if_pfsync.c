@@ -2805,7 +2805,7 @@ pfsync_q_ins(struct pf_state *st, int q)
 #if 1 || defined(PFSYNC_DEBUG)
 	if (sc->sc_len < PFSYNC_MINPKT)
 #ifdef __FreeBSD__
-		panic("pfsync pkt len is too low %ld", sc->sc_len);
+		panic("pfsync pkt len is too low %zu", sc->sc_len);
 #else
 		panic("pfsync pkt len is too low %d", sc->sc_len);
 #endif
