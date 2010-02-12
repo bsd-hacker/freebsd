@@ -1023,15 +1023,16 @@ flowtable_lookup(struct flowtable *ft, struct sockaddr_storage *ssa,
 
 	sro.ro_rt = sro6.ro_rt = NULL;
 	sro.ro_lle = sro6.ro_lle = NULL;
-	ro = &sro;
+	ro = NULL;
 	hash = 0;
 	flags |= ft->ft_flags;
 	proto = flags_to_proto(flags);
 #ifdef INET
 	if (ssa->ss_family == AF_INET) {
 		struct sockaddr_in *ssin, *dsin;
-		memcpy(&ro->ro_dst, &dsa, sizeof(struct sockaddr_in));
 
+		ro = &sro;
+		memcpy(&ro->ro_dst, &dsa, sizeof(struct sockaddr_in));
 		dsin = (struct sockaddr_in *)dsa;
 		ssin = (struct sockaddr_in *)ssa;
 		if ((ntohl(dsin->sin_addr.s_addr) >> IN_CLASSA_NSHIFT) == IN_LOOPBACKNET ||
@@ -1046,7 +1047,7 @@ flowtable_lookup(struct flowtable *ft, struct sockaddr_storage *ssa,
 		struct sockaddr_in6 *ssin6, *dsin6;
 
 		ro = (struct route *)&sro6;
-		memcpy(&ro->ro_dst, &dsa,
+		memcpy(&sro6.ro_dst, &dsa,
 		    sizeof(struct sockaddr_in6));
 		dsin6 = (struct sockaddr_in6 *)dsa;
 		ssin6 = (struct sockaddr_in6 *)ssa;
@@ -1107,6 +1108,10 @@ uncached:
 	 * receive the route locked
 	 */
 
+	if ((ro->ro_dst.sa_family != AF_INET) &&
+	    (ro->ro_dst.sa_family != AF_INET6))
+		panic("sa_family == %d\n", ro->ro_dst.sa_family);
+	    
 	ft->ft_rtalloc(ro, hash, fibnum);
 	if (ro->ro_rt == NULL) 
 		error = ENETUNREACH;

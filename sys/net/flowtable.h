@@ -46,6 +46,8 @@ $FreeBSD$
 
 struct flowtable;
 struct flentry;
+struct route;
+struct route_in6;
 
 VNET_DECLARE(struct flowtable *, ip_ft);
 #define	V_ip_ft			VNET(ip_ft)
