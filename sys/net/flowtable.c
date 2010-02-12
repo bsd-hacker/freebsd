@@ -1032,7 +1032,7 @@ flowtable_lookup(struct flowtable *ft, struct sockaddr_storage *ssa,
 		struct sockaddr_in *ssin, *dsin;
 
 		ro = &sro;
-		memcpy(&ro->ro_dst, &dsa, sizeof(struct sockaddr_in));
+		memcpy(&ro->ro_dst, dsa, sizeof(struct sockaddr_in));
 		dsin = (struct sockaddr_in *)dsa;
 		ssin = (struct sockaddr_in *)ssa;
 		if ((ntohl(dsin->sin_addr.s_addr) >> IN_CLASSA_NSHIFT) == IN_LOOPBACKNET ||
@@ -1047,7 +1047,7 @@ flowtable_lookup(struct flowtable *ft, struct sockaddr_storage *ssa,
 		struct sockaddr_in6 *ssin6, *dsin6;
 
 		ro = (struct route *)&sro6;
-		memcpy(&sro6.ro_dst, &dsa,
+		memcpy(&sro6.ro_dst, dsa,
 		    sizeof(struct sockaddr_in6));
 		dsin6 = (struct sockaddr_in6 *)dsa;
 		ssin6 = (struct sockaddr_in6 *)ssa;
