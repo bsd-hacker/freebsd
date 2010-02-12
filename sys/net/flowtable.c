@@ -1021,9 +1021,9 @@ flowtable_lookup(struct flowtable *ft, struct sockaddr_storage *ssa,
 	struct route sro, *ro;
 	struct route_in6 sro6;
 
+	sro.ro_rt = sro6.ro_rt = NULL;
+	sro.ro_lle = sro6.ro_lle = NULL;
 	ro = &sro;
-	ro->ro_rt = NULL;
-	ro->ro_lle = NULL;
 	hash = 0;
 	flags |= ft->ft_flags;
 	proto = flags_to_proto(flags);
