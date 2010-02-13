@@ -102,9 +102,9 @@ sunpos(int inYY, int inMM, int inDD, double UTCOFFSET, int inHOUR, int inMIN,
 	if (inMM <= 2 && isleap(inYY))
 		ZJ -= 1.0;
 
-	UTHM = inHOUR + inMIN / 60.0 + UTCOFFSET;
+	UTHM = inHOUR + inMIN / FSECSPERMINUTE + UTCOFFSET;
 	Y = inYY - 1900;						/*  1 */
-	D = floor(365.25 * Y) + ZJ + inDD + UTHM / 24;			/*  3 */
+	D = floor(365.25 * Y) + ZJ + inDD + UTHM / FHOURSPERDAY;	/*  3 */
 	T = D / 36525.0;						/*  4 */
 	*L = 279.697 + 36000.769 * T;					/*  5 */
 	fixup(L);
@@ -113,12 +113,12 @@ sunpos(int inYY, int inMM, int inDD, double UTCOFFSET, int inHOUR, int inMIN,
 	epsilon = 23.452 - 0.013 * T;					/*  7 */
 	fixup(&epsilon);
 
-	lambda = *L + (1.919 - 0.005 * T) * SIN(M) + 0.020 * SIN(2 * M);	/*  8 */
+	lambda = *L + (1.919 - 0.005 * T) * SIN(M) + 0.020 * SIN(2 * M);/*  8 */
 	fixup(&lambda);
 	alpha = ATAN(TAN(lambda) * COS(epsilon));			/*  9 */
 
 	/* Alpha should be in the same quadrant as lamba */
-	if (1) {
+	{
 		int lssign = sin(D2R(lambda)) < 0 ? -1 : 1;
 		int lcsign = cos(D2R(lambda)) < 0 ? -1 : 1;
 		while (((sin(D2R(alpha)) < 0) ? -1 : 1) != lssign
@@ -206,7 +206,7 @@ equinoxsolstice(int year, double UTCoffset, int *equinoxdays, int *solsticedays)
 	found = 0;
 	prevdec = 350;
 	for (d = 18; d < 31; d++) {
-		for (h = 0; h < 4 * 24; h++) {
+		for (h = 0; h < 4 * HOURSPERDAY; h++) {
 			sunpos(year, 3, d, UTCoffset, HOUR(h), MIN(h),
 			    0.0, 0.0, &L, &dec);
 			if (SIGN(prevdec) != SIGN(dec)) {
@@ -231,7 +231,7 @@ equinoxsolstice(int year, double UTCoffset, int *equinoxdays, int *solsticedays)
 	found = 0;
 	prevdec = 10;
 	for (d = 18; d < 31; d++) {
-		for (h = 0; h < 4 * 24; h++) {
+		for (h = 0; h < 4 * HOURSPERDAY; h++) {
 			sunpos(year, 9, d, UTCoffset, HOUR(h), MIN(h),
 			    0.0, 0.0, &L, &dec);
 			if (SIGN(prevdec) != SIGN(dec)) {
@@ -258,7 +258,7 @@ equinoxsolstice(int year, double UTCoffset, int *equinoxdays, int *solsticedays)
 	prevdec = 0;
 	prevangle = 1;
 	for (d = 18; d < 31; d++) {
-		for (h = 0; h < 4 * 24; h++) {
+		for (h = 0; h < 4 * HOURSPERDAY; h++) {
 			sunpos(year, 6, d, UTCoffset, HOUR(h), MIN(h),
 			    0.0, 0.0, &L, &dec);
 			angle = ANGLE(prevdec, dec);
@@ -287,7 +287,7 @@ equinoxsolstice(int year, double UTCoffset, int *equinoxdays, int *solsticedays)
 	prevdec = 360;
 	prevangle = -1;
 	for (d = 18; d < 31; d++) {
-		for (h = 0; h < 4 * 24; h++) {
+		for (h = 0; h < 4 * HOURSPERDAY; h++) {
 			sunpos(year, 12, d, UTCoffset, HOUR(h), MIN(h),
 			    0.0, 0.0, &L, &dec);
 			angle = ANGLE(prevdec, dec);
@@ -329,7 +329,7 @@ calculatesunlongitude30(int year, int degreeGMToffset, int *ichinesemonths)
 
 	for (m = 1; m <= 12; m++) {
 		for (d = 1; d <= monthdays[m]; d++) {
-			for (h = 0; h < 4 * 24; h++) {
+			for (h = 0; h < 4 * HOURSPERDAY; h++) {
 				sunpos(year, m, d,
 				    -24 * (degreeGMToffset / 360.0),
 				    HOUR(h), MIN(h), 0.0, 0.0, &curL, &dec);
@@ -358,7 +358,7 @@ printf("%04d-%02d-%02d %02d:%02d - %d %g\n",
 			}
 		}
 	}
-	*pichinesemonths = 0;
+	*pichinesemonths = -1;
 	return (firstmonth330);
 }
 

@@ -189,6 +189,8 @@ cal(void)
 			tm.tm_year = year[i] - 1900;
 			(void)strftime(dbuf, sizeof(dbuf),
 			    d_first ? "%e %b" : "%b %e", &tm);
+			if (debug)
+				fprintf(stderr, "got %s\n", pp);
 			events[i] = event_add(year[i], month[i], day[i], dbuf,
 			    ((flags &= F_VARIABLE) != 0) ? 1 : 0, pp);
 		}

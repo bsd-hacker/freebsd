@@ -52,14 +52,21 @@ __FBSDID("$FreeBSD$");
 #include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include <unistd.h>
 
 #include "calendar.h"
 
+#define	UTCOFFSET_NOTSET	100	/* Expected between -24 and +24 */
+#define	LONGITUDE_NOTSET	1000	/* Expected between -360 and +360 */
+
 struct passwd	*pw;
 int		doall = 0;
 int		debug = 0;
+char		*DEBUG = NULL;
+double		UTCoffset = UTCOFFSET_NOTSET;
+int		eastlongitude = LONGITUDE_NOTSET;
 time_t		f_time = 0;
 
 int	f_dayAfter = 0;		/* days after current date */
@@ -75,7 +82,7 @@ main(int argc, char *argv[])
 
 	(void)setlocale(LC_ALL, "");
 
-	while ((ch = getopt(argc, argv, "-A:aB:dF:f:t:W:")) != -1)
+	while ((ch = getopt(argc, argv, "-A:aB:dD:F:f:l:t:U:W:")) != -1)
 		switch (ch) {
 		case '-':		/* backward contemptible */
 		case 'a':
@@ -90,10 +97,6 @@ main(int argc, char *argv[])
 			calendarFile = optarg;
 			break;
 
-		case 't': /* other date, undocumented, for tests */
-			f_time = Mktime(optarg);
-			break;
-
 		case 'W': /* we don't need no steenking Fridays */
 			Friday = -1;
 			/* FALLTHROUGH */
@@ -106,12 +109,24 @@ main(int argc, char *argv[])
 			f_dayBefore = atoi(optarg);
 			break;
 
-		case 'F':
+		case 'F': /* Change the time: When does weekend start? */
 			Friday = atoi(optarg);
+			break;
+		case 'l': /* Change longitudal position */
+			eastlongitude = strtol(optarg, NULL, 10);
+			break;
+		case 'U': /* Change UTC offset */
+			UTCoffset = strtod(optarg, NULL);
 			break;
 
 		case 'd':
 			debug = 1;
+			break;
+		case 'D':
+			DEBUG = optarg;
+			break;
+		case 't': /* other date, undocumented, for tests */
+			f_time = Mktime(optarg);
 			break;
 
 		case '?':
@@ -129,8 +144,60 @@ main(int argc, char *argv[])
 	if (f_time <= 0)
 		(void)time(&f_time);
 
+	/* if not set, determine where I could be */
+	{
+		if (UTCoffset == UTCOFFSET_NOTSET &&
+		    eastlongitude == LONGITUDE_NOTSET) {
+			/* Calculate on difference between here and UTC */
+			time_t t;
+			struct tm tm;
+			long utcoffset, hh, mm, ss;
+			double uo;
+
+			time(&t);
+			localtime_r(&t, &tm);
+			utcoffset = tm.tm_gmtoff;
+			/* seconds -> hh:mm:ss */
+			hh = utcoffset / SECSPERHOUR;
+			utcoffset %= SECSPERHOUR;
+			mm = utcoffset / SECSPERMINUTE;
+			utcoffset %= SECSPERMINUTE;
+			ss = utcoffset;
+
+			/* hh:mm:ss -> hh.mmss */
+			uo = mm + (100.0 * (ss / 60.0));
+			uo /=  60.0 / 100.0;
+			uo = hh + uo / 100;
+
+			UTCoffset = uo;
+			eastlongitude = UTCoffset * 15;
+		} else if (UTCoffset == UTCOFFSET_NOTSET) {
+			/* Base on information given */
+			UTCoffset = eastlongitude / 15;
+		} else {
+			/* Base on information given */
+			eastlongitude = UTCoffset * 15;
+		}
+	}
+
 	settimes(f_time, f_dayBefore, f_dayAfter, &tp1, &tp2);
 	generatedates(&tp1, &tp2);
+
+	/*
+	 * FROM now on, we are working in UTC.
+	 * This will only affect moon and sun related events anyway.
+	 */
+	if (setenv("TZ", "UTC", 1) != 0)
+		errx(1, "setenv: %s", strerror(errno));
+	tzset();
+
+	if (debug)
+		dumpdates();
+
+	if (DEBUG != NULL) {
+		dodebug(DEBUG);
+		exit(0);
+	}
 
 	if (doall)
 		while ((pw = getpwent()) != NULL) {

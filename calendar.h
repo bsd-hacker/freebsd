@@ -36,7 +36,17 @@
 #include <sys/types.h>
 #include <sys/uio.h>
 
-#define	SECSPERDAY	24 * 60 * 60
+#define	SECSPERDAY	(24 * 60 * 60)
+#define	SECSPERHOUR	(60 * 60)
+#define	SECSPERMINUTE	(60)
+#define	HOURSPERDAY	(24)
+#define	FSECSPERDAY	(24.0 * 60.0 * 60.0)
+#define	FSECSPERHOUR	(60.0 * 60.0)
+#define	FSECSPERMINUTE	(60.0)
+#define	FHOURSPERDAY	(24.0)
+
+#define	DAYSPERYEAR	365
+#define	DAYSPERLEAPYEAR	366
 
 /* Not yet categorized */
 
@@ -49,6 +59,8 @@ extern const char *calendarFile;
 extern int yrdays;
 extern struct fixs neaster, npaskha, ncny, nfullmoon, nnewmoon;
 extern struct fixs nmarequinox, nsepequinox, njunsolstice, ndecsolstice;
+extern double UTCoffset;
+extern int eastlongitude;
 
 #define isleap(y) ((((y) % 4) == 0 && ((y) % 100) != 0) || ((y) % 400) == 0)
 
@@ -73,15 +85,21 @@ extern struct fixs nmarequinox, nsepequinox, njunsolstice, ndecsolstice;
 #define	F_JUNSOLSTICE		0x10000
 #define	F_DECSOLSTICE		0x20000
 
-#define	STRING_EASTER	"Easter"
-#define	STRING_PASKHA	"Paskha"
-#define	STRING_CNY	"ChineseNewYear"
-#define STRING_NEWMOON	"NewMoon"
-#define STRING_FULLMOON	"FullMoon"
+#define	STRING_EASTER		"Easter"
+#define	STRING_PASKHA		"Paskha"
+#define	STRING_CNY		"ChineseNewYear"
+#define STRING_NEWMOON		"NewMoon"
+#define STRING_FULLMOON		"FullMoon"
 #define STRING_MAREQUINOX	"MarEquinox"
 #define STRING_SEPEQUINOX	"SepEquinox"
 #define STRING_JUNSOLSTICE	"JunSolstice"
 #define STRING_DECSOLSTICE	"DecSolstice"
+
+/* 
+ * All the astronomical calculations are carried out for the meridian 120
+ * degrees east of Greenwich.
+ */
+#define UTCOFFSET_CNY		8.0		
 
 extern int	debug;		/* show parsing of the input */
 extern int	f_dayAfter;	/* days after current date */
@@ -134,6 +152,7 @@ time_t	Mktime(char *);
 
 /* parsedata.c */
 int	parsedaymonth(char *, int *, int *, int *, int *);
+void	dodebug(char *type);
 
 /* io.c */
 void	cal(void);
@@ -158,8 +177,9 @@ int	walkthrough_dates(struct event **e);
 void	addtodate(struct event *e, int year, int month, int day);
 
 /* pom.c */
-#define	MAXMOONS	15
-void	pom(int year, int *fms, int *nms);
+#define	MAXMOONS	18
+void	pom(int year, double UTCoffset, int *fms, int *nms);
+void	fpom(int year, double utcoffset, double *ffms, double *fnms);
 
 /* sunpos.c */
 void	equinoxsolstice(int year, double UTCoffset, int *equinoxdays, int *solsticedays);

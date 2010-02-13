@@ -28,6 +28,7 @@
 __FBSDID("$FreeBSD: user/edwin/calendar/day.c 200813 2009-12-21 21:17:59Z edwin $");
 
 #include <ctype.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,6 +45,7 @@ static int checkdayofweek(char *s, int *len, int *offset, char **dow);
 static int isonlydigits(char *s, int nostar);
 static int indextooffset(char *s);
 static int parseoffset(char *s);
+static char *floattoday(int year, double f);
 
 /*
  * Expected styles:
@@ -332,8 +334,9 @@ debug_determinestyle(int dateonly, char *date, int flags, char *month,
 struct yearinfo {
 	int year;
 	int ieaster, ipaskha, firstcnyday;
-	int ifullmoon[MAXMOONS], inewmoon[MAXMOONS],
-	    ichinesemonths[MAXMOONS], equinoxdays[2], solsticedays[2];
+	double ffullmoon[MAXMOONS], fnewmoon[MAXMOONS];
+	double ffullmooncny[MAXMOONS], fnewmooncny[MAXMOONS];
+	int ichinesemonths[MAXMOONS], equinoxdays[2], solsticedays[2];
 	int *mondays;
 	struct yearinfo *next;
 };
@@ -406,7 +409,10 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 
 			yearinfo->mondays = mondaytab[isleap(year)];
 			yearinfo->ieaster = easter(year);
-			pom(year, yearinfo->ifullmoon, yearinfo->inewmoon);
+			fpom(year, UTCoffset, yearinfo->ffullmoon,
+			    yearinfo->fnewmoon);
+			fpom(year, UTCOFFSET_CNY, yearinfo->ffullmooncny,
+			    yearinfo->fnewmooncny);
 			equinoxsolstice(year, 0.0,
 			    yearinfo->equinoxdays, yearinfo->solsticedays);
 
@@ -415,12 +421,12 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 			 * moon
 			 */
 			yearinfo->firstcnyday = calculatesunlongitude30(year,
-			    120, yearinfo->ichinesemonths);
-			for (m = 0; yearinfo->inewmoon[m] != 0; m++) {
-				if (yearinfo->inewmoon[m] >
+			    UTCOFFSET_CNY, yearinfo->ichinesemonths);
+			for (m = 0; yearinfo->fnewmooncny[m] >= 0; m++) {
+				if (yearinfo->fnewmooncny[m] >
 				    yearinfo->firstcnyday) {
 					yearinfo->firstcnyday =
-					    yearinfo->inewmoon[m - 1];
+					    floor(yearinfo->fnewmooncny[m - 1]);
 					break;
 				}
 			}
@@ -576,9 +582,10 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 			offset = 0;
 			if ((*flags & F_MODIFIEROFFSET) != 0)
 				offset = parseoffset(modifieroffset);
-			for (i = 0; yearinfo->ifullmoon[i] != 0; i++) {
+			for (i = 0; yearinfo->ffullmoon[i] > 0; i++) {
 				if (remember_yd(year,
-				    yearinfo->ifullmoon[i] + offset, &rm, &rd))
+				    floor(yearinfo->ffullmoon[i]) + offset,
+					&rm, &rd))
 					remember(index++, yearp, monthp, dayp,
 						year, rm, rd);
 			}
@@ -593,9 +600,10 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 			offset = 0;
 			if ((*flags & F_MODIFIEROFFSET) != 0)
 				offset = parseoffset(modifieroffset);
-			for (i = 0; yearinfo->ifullmoon[i] != 0; i++) {
+			for (i = 0; yearinfo->ffullmoon[i] > 0; i++) {
 				if (remember_yd(year,
-				    yearinfo->inewmoon[i] + offset, &rm, &rd))
+				    floor(yearinfo->fnewmoon[i]) + offset,
+				    &rm, &rd))
 					remember(index++, yearp, monthp, dayp,
 						year, rm, rd);
 			}
@@ -843,4 +851,77 @@ parseoffset(char *s)
 {
 
 	return strtol(s, NULL, 10);
+}
+
+static char *
+floattoday(int year, double f)
+{
+	static char buf[100];
+	int i, m, d, hh, mm, ss;
+	int *cumdays = cumdaytab[isleap(year)];
+
+	for (i = 0; 1 + cumdays[i] < f; i++)
+		;;
+	m = --i;
+	d = floor(f - 1 - cumdays[i]);
+	f -= floor(f);
+	i = f * SECSPERDAY;
+
+	hh = i / SECSPERHOUR;
+	i %= SECSPERHOUR;
+	mm = i / SECSPERMINUTE;
+	i %= SECSPERMINUTE;
+	ss = i;
+
+	sprintf(buf, "%02d-%02d %02d:%02d:%02d", m, d, hh, mm, ss);
+	return (buf);
+}
+
+char *
+inttoday(int year, int f)
+{
+	static char buf[100];
+	int i, m, d;
+	int *cumdays = cumdaytab[isleap(year)];
+
+	for (i = 0; 1 + cumdays[i] < f; i++)
+		;;
+	m = --i;
+	d = floor(f - 1 - cumdays[i]);
+	f -= floor(f);
+
+	sprintf(buf, "%02d-%02d", m, d);
+	return (buf);
+}
+
+void
+dodebug(char *what)
+{
+	int year;
+
+	printf("UTFOffset: %g\n", UTCoffset);
+	printf("eastlongitude: %d\n", eastlongitude);
+
+	if (strcmp(what, "moon") == 0) {
+		double ffullmoon[MAXMOONS], fnewmoon[MAXMOONS];
+		int i;
+
+		for (year = year1; year <= year2; year++) {
+			fpom(year, UTCoffset, ffullmoon, fnewmoon);
+			printf("Full moon %d:\t", year);
+			for (i = 0; ffullmoon[i] >= 0; i++) {
+				printf("%g (%s) ", ffullmoon[i],
+				    floattoday(year, ffullmoon[i]));
+			}
+			printf("\nNew moon %d:\t", year);
+			for (i = 0; fnewmoon[i] >= 0; i++) {
+				printf("%g (%s) ", fnewmoon[i],
+				    floattoday(year, fnewmoon[i]));
+			}
+			printf("\n");
+
+		}
+	
+		return;
+	}
 }

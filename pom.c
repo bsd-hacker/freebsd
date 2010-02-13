@@ -65,6 +65,8 @@ __FBSDID("$FreeBSD: head/games/pom/pom.c 201613 2010-01-05 21:14:48Z edwin $");
 #include <time.h>
 #include <unistd.h> 
 
+#include "calendar.h"
+
 #ifndef	PI
 #define	PI	  3.14159265358979323846
 #endif
@@ -80,9 +82,27 @@ __FBSDID("$FreeBSD: head/games/pom/pom.c 201613 2010-01-05 21:14:48Z edwin $");
 static void	adj360(double *);
 static double	dtor(double);
 static double	potm(double);
+static double	potm_minute(double days, int olddir);
 
 void
-pom(int year, int *fms, int *nms)
+pom(int year, double utcoffset, int *fms, int *nms)
+{
+	double ffms[MAXMOONS];
+	double fnms[MAXMOONS];
+	int i, j;
+
+	fpom(year, utcoffset, ffms, fnms);
+
+	for (i = 0; ffms[i] != 0; i++)
+		fms[j++] = round(ffms[i]);
+	fms[i] = -1;
+	for (i = 0; fnms[i] != 0; i++)
+		nms[i] = round(fnms[i]);
+	nms[i] = -1;
+}
+
+void
+fpom(int year, double utcoffset, double *ffms, double *fnms)
 {
 	time_t tt;
 	struct tm GMT, tmd_today, tmd_tomorrow;
@@ -90,10 +110,10 @@ pom(int year, int *fms, int *nms)
 	int cnt, d;
 	int yeardays;
 	int olddir, newdir;
-	int *pnms, *pfms;
+	double *pfnms, *pffms, t;
 
-	pnms = nms;
-	pfms = fms;
+	pfnms = fnms;
+	pffms = ffms;
 
 	/*
 	 * We take the phase of the moon one second before and one second
@@ -102,14 +122,14 @@ pom(int year, int *fms, int *nms)
 	memset(&tmd_today, 0, sizeof(tmd_today));
 	tmd_today.tm_year = year - 1900;
 	tmd_today.tm_mon = 0;
-	tmd_today.tm_mday = 0;		/* 31 December */
+	tmd_today.tm_mday = -1;		/* 31 December */
 	tmd_today.tm_hour = 23;
 	tmd_today.tm_min = 59;
 	tmd_today.tm_sec = 59;
 	memset(&tmd_tomorrow, 0, sizeof(tmd_tomorrow));
 	tmd_tomorrow.tm_year = year - 1900;
 	tmd_tomorrow.tm_mon = 0;
-	tmd_tomorrow.tm_mday = 1;	/* 1 January */
+	tmd_tomorrow.tm_mday = 0;	/* 01 January */
 	tmd_tomorrow.tm_hour = 0;
 	tmd_tomorrow.tm_min = 0;
 	tmd_tomorrow.tm_sec = 1;
@@ -118,48 +138,85 @@ pom(int year, int *fms, int *nms)
 	gmtime_r(&tt, &GMT);
 	yeardays = 0;
 	for (cnt = EPOCH; cnt < GMT.tm_year; ++cnt)
-		yeardays += isleap(1900 + cnt) ? 366 : 365;
+		yeardays += isleap(1900 + cnt) ? DAYSPERLEAPYEAR : DAYSPERYEAR;
 	days_today = (GMT.tm_yday + 1) + ((GMT.tm_hour +
-	    (GMT.tm_min / 60.0) + (GMT.tm_sec / 3600.0)) / 24.0);
+	    (GMT.tm_min / FSECSPERMINUTE) + (GMT.tm_sec / FSECSPERHOUR)) /
+	    FHOURSPERDAY);
 	days_today += yeardays;
 
 	tt = mktime(&tmd_tomorrow);
 	gmtime_r(&tt, &GMT);
 	yeardays = 0;
 	for (cnt = EPOCH; cnt < GMT.tm_year; ++cnt)
-		yeardays += isleap(1900 + cnt) ? 366 : 365;
+		yeardays += isleap(1900 + cnt) ? DAYSPERLEAPYEAR : DAYSPERYEAR;
 	days_tomorrow = (GMT.tm_yday + 1) + ((GMT.tm_hour +
-	    (GMT.tm_min / 60.0) + (GMT.tm_sec / 3600.0)) / 24.0);
+	    (GMT.tm_min / FSECSPERMINUTE) + (GMT.tm_sec / FSECSPERHOUR)) /
+	    FHOURSPERDAY);
 	days_tomorrow += yeardays;
 
 	today = potm(days_today);		/* 30 December 23:59:59 */
 	tomorrow = potm(days_tomorrow);		/* 31 December 00:00:01 */
 	olddir = today > tomorrow ? -1 : +1;
 
-	yeardays = isleap(year) ? 366 : 365;	/* reuse */
+	yeardays = 1 + isleap(year) ? DAYSPERLEAPYEAR : DAYSPERYEAR; /* reuse */
 	for (d = 0; d <= yeardays; d++) {
 		today = potm(days_today);
 		tomorrow = potm(days_tomorrow);
 		newdir = today > tomorrow ? -1 : +1;
-		if (olddir == -1 && newdir == +1) {
-			*pnms = d;
-			pnms++;
-		}
-		if (olddir == +1 && newdir == -1) {
-			*pfms = d;
-			pfms++;
+		if (olddir != newdir) {
+			t = potm_minute(days_today - 1, olddir) +
+			     utcoffset / FHOURSPERDAY;
+			if (olddir == -1 && newdir == +1) {
+				*pfnms = d - 1 + t;
+				pfnms++;
+			} else if (olddir == +1 && newdir == -1) {
+				*pffms = d - 1 + t;
+				pffms++;
+			}
 		}
 		olddir = newdir;
 		days_today++;
 		days_tomorrow++;
 	}
-	*pfms = 0;
-	*pnms = 0;
+	*pffms = -1;
+	*pfnms = -1;
+}
+
+static double
+potm_minute(double days, int olddir) {
+	double period = FSECSPERDAY / 2.0;
+	double p1, p2;
+	double before, after;
+	int newdir;
+
+//	printf("---> days:%g olddir:%d\n", days, olddir);
+
+	p1 = days + (period / SECSPERDAY);
+	period /= 2;
+
+	while (period > 30) {	/* half a minute */
+//		printf("period:%g - p1:%g - ", period, p1);
+		p2 = p1 + (2.0 / SECSPERDAY);
+		before = potm(p1);
+		after = potm(p2);
+//		printf("before:%10.10g - after:%10.10g\n", before, after);
+		newdir = before < after ? -1 : +1;
+		if (olddir != newdir)
+			p1 += (period / SECSPERDAY);
+		else
+			p1 -= (period / SECSPERDAY);
+		period /= 2;
+//		printf("newdir:%d - p1:%10.10f - period:%g\n",
+//		    newdir, p1, period);
+	}
+	p1 -= floor(p1);
+	//exit(0);
+	return (p1);
 }
 
 /*
  * potm --
- *	return phase of the moon
+ *	return phase of the moon, as a percentage [0 ... 100]
  */
 static double
 potm(double days)
