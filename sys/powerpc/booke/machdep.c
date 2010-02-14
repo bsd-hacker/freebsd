@@ -507,57 +507,6 @@ cpu_pcpu_init(struct pcpu *pcpu, int cpuid, size_t sz)
 #endif
 }
 
-/* Set set up registers on exec. */
-void
-exec_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings)
-{
-	struct trapframe *tf;
-	struct ps_strings arginfo;
-
-	tf = trapframe(td);
-	bzero(tf, sizeof *tf);
-	tf->fixreg[1] = -roundup(-stack + 8, 16);
-
-	/*
-	 * XXX Machine-independent code has already copied arguments and
-	 * XXX environment to userland.  Get them back here.
-	 */
-	(void)copyin((char *)PS_STRINGS, &arginfo, sizeof(arginfo));
-
-	/*
-	 * Set up arguments for _start():
-	 *	_start(argc, argv, envp, obj, cleanup, ps_strings);
-	 *
-	 * Notes:
-	 *	- obj and cleanup are the auxilliary and termination
-	 *	  vectors.  They are fixed up by ld.elf_so.
-	 *	- ps_strings is a NetBSD extention, and will be
-	 * 	  ignored by executables which are strictly
-	 *	  compliant with the SVR4 ABI.
-	 *
-	 * XXX We have to set both regs and retval here due to different
-	 * XXX calling convention in trap.c and init_main.c.
-	 */
-	/*
-	 * XXX PG: these get overwritten in the syscall return code.
-	 * execve() should return EJUSTRETURN, like it does on NetBSD.
-	 * Emulate by setting the syscall return value cells. The
-	 * registers still have to be set for init's fork trampoline.
-	 */
-	td->td_retval[0] = arginfo.ps_nargvstr;
-	td->td_retval[1] = (register_t)arginfo.ps_argvstr;
-	tf->fixreg[3] = arginfo.ps_nargvstr;
-	tf->fixreg[4] = (register_t)arginfo.ps_argvstr;
-	tf->fixreg[5] = (register_t)arginfo.ps_envstr;
-	tf->fixreg[6] = 0;			/* auxillary vector */
-	tf->fixreg[7] = 0;			/* termination vector */
-	tf->fixreg[8] = (register_t)PS_STRINGS;	/* NetBSD extension */
-
-	tf->srr0 = entry;
-	tf->srr1 = PSL_USERSET;
-	td->td_pcb->pcb_flags = 0;
-}
-
 int
 fill_regs(struct thread *td, struct reg *regs)
 {
