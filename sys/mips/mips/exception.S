@@ -146,19 +146,10 @@ VECTOR_END(MipsTLBMiss)
  *----------------------------------------------------------------------------
  */
 MipsDoTLBMiss:
-#xxx mips64 unsafe?
-#ifndef SMP
-	lui	k1, %hi(_C_LABEL(pcpup))
-#endif
 						#k0 already has BadVA
 	bltz	k0, 1f				#02: k0<0 -> 1f (kernel fault)
 	srl	k0, k0, SEGSHIFT - 2		#03: k0=seg offset (almost)
-#xxx mips64 unsafe?
-#ifdef SMP
 	GET_CPU_PCPU(k1)
-#else
-	lw	k1, %lo(_C_LABEL(pcpup))(k1)
-#endif
 	lw	k1, PC_SEGBASE(k1)
 	beqz	k1, 2f			      #05: make sure segbase is not null
 	andi	k0, k0, 0x7fc			#06: k0=seg offset (mask 0x3)
@@ -737,6 +728,18 @@ NNON_LEAF(MipsUserIntr, STAND_FRAME_SIZE, ra)
 	sw	a3, STAND_RA_OFFSET(sp)	# for debugging
 
 /*
+ * Enable interrupts before doing ast().
+ *
+ * On SMP kernels the AST processing might trigger IPI to other processors.
+ * If that processor is also doing AST processing with interrupts disabled
+ * then we may deadlock.
+ */
+	mfc0	a0, COP_0_STATUS_REG
+	or	a0, a0, SR_INT_ENAB
+	mtc0	a0, COP_0_STATUS_REG
+	ITLBNOPFIX
+
+/*
  * DO_AST enabled interrupts
  */
 	DO_AST
@@ -821,12 +824,7 @@ NLEAF(MipsKernTLBInvalidException)
 	sltu	k1, k0, k1
 	beqz	k1, 1f
 	nop
-#ifdef SMP
 	GET_CPU_PCPU(k1)
-#else
-	lui	k1, %hi(_C_LABEL(pcpup))
-	lw	k1, %lo(_C_LABEL(pcpup))(k1)
-#endif
 	lw	k1, PC_SEGBASE(k1)		 # works for single cpu????
 	beqz	k1, _C_LABEL(MipsKernGenException)   # seg tab is null
 	nop
@@ -917,13 +915,7 @@ NLEAF(MipsUserTLBInvalidException)
 	sltu	k1, k0, k1
 	beqz	k1, _C_LABEL(MipsUserGenException)
 	nop
-#xxx mips64 unsafe?
-#ifdef SMP
 	GET_CPU_PCPU(k1)
-#else
-	lui	k1, %hi(_C_LABEL(pcpup))
-	lw	k1, %lo(_C_LABEL(pcpup))(k1)
-#endif
 	lw	k1, PC_SEGBASE(k1)		 # works for single cpu????
 	beqz	k1, _C_LABEL(MipsUserGenException)  # seg tab is null
 	nop
