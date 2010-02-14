@@ -213,9 +213,9 @@ cpu_startup(void *dummy)
 			int size1 = phys_avail[indx + 1] - phys_avail[indx];
 
 			#ifdef __powerpc64__
-			printf("0x%16lx - 0x%16lx, %d bytes (%d pages)\n",
+			printf("0x%16lx - 0x%16lx, %d bytes (%ld pages)\n",
 			#else
-			printf("0x%08x - 0x%08x, %d bytes (%d pages)\n",
+			printf("0x%08x - 0x%08x, %d bytes (%ld pages)\n",
 			#endif
 			    phys_avail[indx], phys_avail[indx + 1] - 1, size1,
 			    size1 / PAGE_SIZE);
