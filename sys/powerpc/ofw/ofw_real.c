@@ -99,6 +99,8 @@ static ssize_t ofw_real_package_to_path(ofw_t, phandle_t package, char *buf,
     size_t len);
 static int ofw_real_call_method(ofw_t, ihandle_t instance, const char *method, 
     int nargs, int nreturns, cell_t *args_and_returns);
+static int ofw_real_interpret(ofw_t ofw, const char *cmd, int nreturns,
+    unsigned long *returns);
 static ihandle_t ofw_real_open(ofw_t, const char *device);
 static void ofw_real_close(ofw_t, ihandle_t instance);
 static ssize_t ofw_real_read(ofw_t, ihandle_t instance, void *addr, size_t len);
@@ -127,6 +129,7 @@ static ofw_method_t ofw_real_methods[] = {
 
 	OFWMETHOD(ofw_test,			ofw_real_test),
 	OFWMETHOD(ofw_call_method,		ofw_real_call_method),
+	OFWMETHOD(ofw_interpret,		ofw_real_interpret),
 	OFWMETHOD(ofw_open,			ofw_real_open),
 	OFWMETHOD(ofw_close,			ofw_real_close),
 	OFWMETHOD(ofw_read,			ofw_real_read),
@@ -717,6 +720,36 @@ ofw_real_call_method(ofw_t ofw, ihandle_t instance, const char *method,
 	for (cp = args.args_n_results + nargs + (n = args.nreturns); --n > 0;)
 		*(ap++) = *--cp;
 	return (0);
+}
+
+static int
+ofw_real_interpret(ofw_t ofw, const char *cmd, int nreturns,
+    unsigned long *returns)
+{
+	static struct {
+		cell_t name;
+		cell_t nargs;
+		cell_t nreturns;
+		cell_t slot[16];
+	} args;
+	cell_t status;
+	int i = 0, j = 0;
+
+	args.name = (cell_t)(uintptr_t)"interpret";
+	args.nargs = 1;
+
+	ofw_real_start();
+	args.nreturns = ++nreturns;
+	args.slot[i++] = ofw_real_map(cmd, strlen(cmd) + 1);
+	if (openfirmware(&args) == -1) {
+		ofw_real_stop();
+		return (-1);
+	}
+	status = args.slot[i++];
+	while (i < 1 + nreturns)
+		returns[j++] = args.slot[i++];
+	ofw_real_stop();
+	return (status);
 }
 
 /*
