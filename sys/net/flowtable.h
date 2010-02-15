@@ -73,13 +73,9 @@ int kern_flowtable_insert(struct flowtable *ft, struct sockaddr_storage *ssa,
 void flow_invalidate(struct flentry *fl);
 void flowtable_route_flush(struct flowtable *ft, struct rtentry *rt);
 
-#ifdef INET
 void flow_to_route(struct flentry *fl, struct route *ro);
-#endif
 
-#ifdef INET6
 void flow_to_route_in6(struct flentry *fl, struct route_in6 *ro);
-#endif
 
 
 #endif /* _KERNEL */
