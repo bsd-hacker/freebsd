@@ -54,5 +54,12 @@ ENTRY(sbrk)
 	mr      %r3,%r6				/* set return value */
 	blr
 2:
-	b	PIC_PLT(HIDENAME(cerror))
+	mflr	%r0
+	std	%r0,16(%r1)
+	stdu	%r1,-48(%r1)
+	bl	PIC_PLT(HIDENAME(cerror))
 	nop
+	ld	%r1,0(%r1)
+	ld	%r0,16(%r1)
+	mtlr	%r0
+	blr
