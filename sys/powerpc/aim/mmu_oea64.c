@@ -1367,6 +1367,7 @@ moea64_enter_locked(pmap_t pmap, vm_offset_t va, vm_page_t m, vm_prot_t prot,
 static void
 moea64_syncicache(pmap_t pmap, vm_offset_t va, vm_offset_t pa, vm_size_t sz)
 {
+
 	/*
 	 * This is much trickier than on older systems because
 	 * we can't sync the icache on physical addresses directly
@@ -1389,8 +1390,9 @@ moea64_syncicache(pmap_t pmap, vm_offset_t va, vm_offset_t pa, vm_size_t sz)
 
 		mtx_lock(&moea64_scratchpage_mtx);
 
-		moea64_set_scratchpage_pa(1,pa);
-		__syncicache((void *)moea64_scratchpage_va[1], sz);
+		moea64_set_scratchpage_pa(1,pa & ~ADDR_POFF);
+		__syncicache((void *)(moea64_scratchpage_va[1] + 
+		    (va & ADDR_POFF)), sz);
 
 		mtx_unlock(&moea64_scratchpage_mtx);
 	}
