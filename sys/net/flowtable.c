@@ -1035,14 +1035,15 @@ flowtable_lookup(struct flowtable *ft, struct sockaddr_storage *ssa,
 		memcpy(&ro->ro_dst, dsa, sizeof(struct sockaddr_in));
 		dsin = (struct sockaddr_in *)dsa;
 		ssin = (struct sockaddr_in *)ssa;
-		if ((ntohl(dsin->sin_addr.s_addr) >> IN_CLASSA_NSHIFT) == IN_LOOPBACKNET ||
+		if ((dsin->sin_addr.s_addr == ssin->sin_addr.s_addr) ||
+		    (ntohl(dsin->sin_addr.s_addr) >> IN_CLASSA_NSHIFT) == IN_LOOPBACKNET ||
 		    (ntohl(ssin->sin_addr.s_addr) >> IN_CLASSA_NSHIFT) == IN_LOOPBACKNET)
 			return (NULL);
 
 		hash = ipv4_flow_lookup_hash_internal(ssin, dsin, key, flags);
 	}
-#endif	
-#ifdef INET6		
+#endif
+#ifdef INET6
 	if (ssa->ss_family == AF_INET6) {
 		struct sockaddr_in6 *ssin6, *dsin6;
 
@@ -1111,7 +1112,7 @@ uncached:
 	if ((ro->ro_dst.sa_family != AF_INET) &&
 	    (ro->ro_dst.sa_family != AF_INET6))
 		panic("sa_family == %d\n", ro->ro_dst.sa_family);
-	    
+
 	ft->ft_rtalloc(ro, hash, fibnum);
 	if (ro->ro_rt == NULL) 
 		error = ENETUNREACH;
@@ -1126,7 +1127,7 @@ uncached:
 			ro->ro_rt = NULL;
 			return (NULL);
 		}
-#ifdef INET6		
+#ifdef INET6
 		if (ssa->ss_family == AF_INET6) {
 			if (rt->rt_flags & RTF_GATEWAY)
 				l3addr = (struct sockaddr_storage *)rt->rt_gateway;
@@ -1136,7 +1137,7 @@ uncached:
 			llentry_update(&lle, LLTABLE6(ifp), l3addr, ifp);
 		}
 #endif	
-#ifdef INET			
+#ifdef INET
 		if (ssa->ss_family == AF_INET) {
 			if (rt->rt_flags & RTF_GATEWAY)
 				l3addr = (struct sockaddr_storage *)rt->rt_gateway;
@@ -1154,7 +1155,7 @@ uncached:
 			return (NULL);
 		}
 		error = flowtable_insert(ft, hash, key, fibnum, ro, flags);
-				
+
 		if (error) {
 			RTFREE(rt);
 			LLE_FREE(lle);
