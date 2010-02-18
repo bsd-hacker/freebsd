@@ -174,7 +174,7 @@ main(int argc, char *argv[])
 		} else if (UTCoffset == UTCOFFSET_NOTSET) {
 			/* Base on information given */
 			UTCoffset = eastlongitude / 15;
-		} else {
+		} else if (eastlongitude == LONGITUDE_NOTSET) {
 			/* Base on information given */
 			eastlongitude = UTCoffset * 15;
 		}
@@ -218,9 +218,11 @@ static void __dead2
 usage(void)
 {
 
-	fprintf(stderr, "%s\n%s\n",
+	fprintf(stderr, "%s\n%s\n%s\n",
 	    "usage: calendar [-a] [-A days] [-B days] [-F friday] "
 	    "[-f calendarfile]",
-	    "                [-d] [-t dd[.mm[.year]]] [-W days]");
+	    "                [-d] [-t dd[.mm[.year]]] [-W days]",
+	    "                [-U utcoffset] [-l longitude]"
+	    );
 	exit(1);
 }

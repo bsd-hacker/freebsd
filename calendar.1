@@ -54,6 +54,8 @@
 .Ek
 .Oc
 .Op Fl W Ar num
+.Op Fl U Ar UTF-offset
+.Op Fl l Ar longitude
 .Sh DESCRIPTION
 The
 .Nm
@@ -93,6 +95,12 @@ as the default calendar file.
 .Sm on
 .Xc
 For test purposes only: set date directly to argument values.
+.It Fl l Ar longitude , Fl U Ar UTC-offset
+Only one is needed:
+Perform lunar and solar calculations from this longitude or from
+this UTC offset.
+If neither is specified, the calculations will be based on the
+difference between UTC time and localtime.
 .It Fl W Ar num
 Print lines from today and the next
 .Ar num
