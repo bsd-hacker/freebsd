@@ -1109,9 +1109,11 @@ uncached:
 	 * receive the route locked
 	 */
 
+#ifdef INVARIANTS
 	if ((ro->ro_dst.sa_family != AF_INET) &&
 	    (ro->ro_dst.sa_family != AF_INET6))
 		panic("sa_family == %d\n", ro->ro_dst.sa_family);
+#endif
 
 	ft->ft_rtalloc(ro, hash, fibnum);
 	if (ro->ro_rt == NULL) 
