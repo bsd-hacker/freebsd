@@ -899,7 +899,7 @@ dodebug(char *what)
 {
 	int year;
 
-	printf("UTFOffset: %g\n", UTCoffset);
+	printf("UTCOffset: %g\n", UTCoffset);
 	printf("eastlongitude: %d\n", eastlongitude);
 
 	if (strcmp(what, "moon") == 0) {
