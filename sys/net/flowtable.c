@@ -1053,10 +1053,6 @@ flowtable_lookup(struct flowtable *ft, struct sockaddr_storage *ssa,
 		dsin6 = (struct sockaddr_in6 *)dsa;
 		ssin6 = (struct sockaddr_in6 *)ssa;
 
-		if (in6_localaddr(&dsin6->sin6_addr) ||
-		    in6_localaddr(&ssin6->sin6_addr))
-			return (NULL);
-
 		flags |= FL_IPV6;
 		hash = ipv6_flow_lookup_hash_internal(ssin6, dsin6, key, flags);
 	}
@@ -1133,6 +1129,15 @@ uncached:
 		}
 #ifdef INET6
 		if (ssa->ss_family == AF_INET6) {
+			struct sockaddr_in6 *dsin6;
+
+			dsin6 = (struct sockaddr_in6 *)dsa;			
+			if (in6_localaddr(&dsin6->sin6_addr)) {
+				RTFREE(rt);
+				ro->ro_rt = NULL;
+				return (NULL);				
+			}
+
 			if (rt->rt_flags & RTF_GATEWAY)
 				l3addr = (struct sockaddr_storage *)rt->rt_gateway;
 			
