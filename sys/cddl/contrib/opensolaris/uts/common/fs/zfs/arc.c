@@ -189,6 +189,8 @@ extern kmem_cache_t	*zio_buf_cache[];
 extern kmem_cache_t	*zio_data_buf_cache[];
 #endif
 
+#define	ddi_get_lbolt()		(LBOLT)
+
 /*
  * Note that buffers can be in one of 6 states:
  *	ARC_anon	- anonymous (discussed below)
@@ -567,8 +569,9 @@ uint64_t zfs_crc64_table[256];
  */
 
 #define	L2ARC_WRITE_SIZE	(8 * 1024 * 1024)	/* initial write max */
-#define	L2ARC_HEADROOM		4		/* num of writes */
-#define	L2ARC_FEED_SECS		1		/* caching interval */
+#define	L2ARC_HEADROOM		2		/* num of writes */
+#define	L2ARC_FEED_SECS		1		/* caching interval secs */
+#define	L2ARC_FEED_MIN_MS	200		/* min caching interval ms */
 
 #define	l2arc_writes_sent	ARCSTAT(arcstat_l2_writes_sent)
 #define	l2arc_writes_done	ARCSTAT(arcstat_l2_writes_done)
@@ -580,7 +583,29 @@ uint64_t l2arc_write_max = L2ARC_WRITE_SIZE;	/* default max write size */
 uint64_t l2arc_write_boost = L2ARC_WRITE_SIZE;	/* extra write during warmup */
 uint64_t l2arc_headroom = L2ARC_HEADROOM;	/* number of dev writes */
 uint64_t l2arc_feed_secs = L2ARC_FEED_SECS;	/* interval seconds */
+uint64_t l2arc_feed_min_ms = L2ARC_FEED_MIN_MS;	/* min interval milliseconds */
 boolean_t l2arc_noprefetch = B_TRUE;		/* don't cache prefetch bufs */
+boolean_t l2arc_feed_again = B_TRUE;		/* turbo warmup */
+boolean_t l2arc_norw = B_TRUE;			/* no reads during writes */
+
+SYSCTL_QUAD(_vfs_zfs, OID_AUTO, l2arc_write_max, CTLFLAG_RW,
+    &l2arc_write_max, 0, "max write size");
+SYSCTL_QUAD(_vfs_zfs, OID_AUTO, l2arc_write_boost, CTLFLAG_RW,
+    &l2arc_write_boost, 0, "extra write during warmup");
+SYSCTL_QUAD(_vfs_zfs, OID_AUTO, l2arc_headroom, CTLFLAG_RW,
+    &l2arc_headroom, 0, "number of dev writes");
+SYSCTL_QUAD(_vfs_zfs, OID_AUTO, l2arc_feed_secs, CTLFLAG_RW,
+    &l2arc_feed_secs, 0, "interval seconds");
+SYSCTL_QUAD(_vfs_zfs, OID_AUTO, l2arc_feed_min_ms, CTLFLAG_RW,
+    &l2arc_feed_min_ms, 0, "min interval milliseconds");
+
+SYSCTL_INT(_vfs_zfs, OID_AUTO, l2arc_noprefetch, CTLFLAG_RW,
+    &l2arc_noprefetch, 0, "don't cache prefetch bufs");
+SYSCTL_INT(_vfs_zfs, OID_AUTO, l2arc_feed_again, CTLFLAG_RW,
+    &l2arc_feed_again, 0, "turb warmup");
+SYSCTL_INT(_vfs_zfs, OID_AUTO, l2arc_norw, CTLFLAG_RW,
+    &l2arc_norw, 0, "no reads during writes");
+
 
 /*
  * L2ARC Internals
@@ -3891,7 +3916,69 @@ arc_fini(void)
  *
  * Tunables may be removed or added as future performance improvements are
  * integrated, and also may become zpool properties.
+ *
+ * There are three key functions that control how the L2ARC warms up:
+ *
+ *	l2arc_write_eligible()	check if a buffer is eligible to cache
+ *	l2arc_write_size()	calculate how much to write
+ *	l2arc_write_interval()	calculate sleep delay between writes
+ *
+ * These three functions determine what to write, how much, and how quickly
+ * to send writes.
  */
+
+static boolean_t
+l2arc_write_eligible(spa_t *spa, arc_buf_hdr_t *ab)
+{
+	/*
+	 * A buffer is *not* eligible for the L2ARC if it:
+	 * 1. belongs to a different spa.
+	 * 2. is already cached on the L2ARC.
+	 * 3. has an I/O in progress (it may be an incomplete read).
+	 * 4. is flagged not eligible (zfs property).
+	 */
+	if (ab->b_spa != spa || ab->b_l2hdr != NULL ||
+	    HDR_IO_IN_PROGRESS(ab) || !HDR_L2CACHE(ab))
+		return (B_FALSE);
+
+	return (B_TRUE);
+}
+
+static uint64_t
+l2arc_write_size(l2arc_dev_t *dev)
+{
+	uint64_t size;
+
+	size = dev->l2ad_write;
+
+	if (arc_warm == B_FALSE)
+		size += dev->l2ad_boost;
+
+	return (size);
+
+}
+
+static clock_t
+l2arc_write_interval(clock_t began, uint64_t wanted, uint64_t wrote)
+{
+	clock_t interval, next, now;
+
+	/*
+	 * If the ARC lists are busy, increase our write rate; if the
+	 * lists are stale, idle back.  This is achieved by checking
+	 * how much we previously wrote - if it was more than half of
+	 * what we wanted, schedule the next write much sooner.
+	 */
+	if (l2arc_feed_again && wrote > (wanted / 2))
+		interval = (hz * l2arc_feed_min_ms) / 1000;
+	else
+		interval = hz * l2arc_feed_secs;
+
+	now = ddi_get_lbolt();
+	next = MAX(now, MIN(now + interval, began + interval));
+
+	return (next);
+}
 
 static void
 l2arc_hdr_stat_add(void)
@@ -4313,7 +4400,7 @@ top:
  * An ARC_L2_WRITING flag is set so that the L2ARC buffers are not valid
  * for reading until they have completed writing.
  */
-static void
+static uint64_t
 l2arc_write_buffers(spa_t *spa, l2arc_dev_t *dev, uint64_t target_sz)
 {
 	arc_buf_hdr_t *ab, *ab_prev, *head;
@@ -4379,20 +4466,7 @@ l2arc_write_buffers(spa_t *spa, l2arc_dev_t *dev, uint64_t target_sz)
 				break;
 			}
 
-			if (ab->b_spa != spa) {
-				mutex_exit(hash_lock);
-				continue;
-			}
-
-			if (ab->b_l2hdr != NULL) {
-				/*
-				 * Already in L2ARC.
-				 */
-				mutex_exit(hash_lock);
-				continue;
-			}
-
-			if (HDR_IO_IN_PROGRESS(ab) || !HDR_L2CACHE(ab)) {
+			if (!l2arc_write_eligible(spa, ab)) {
 				mutex_exit(hash_lock);
 				continue;
 			}
@@ -4401,12 +4475,6 @@ l2arc_write_buffers(spa_t *spa, l2arc_dev_t *dev, uint64_t target_sz)
 				full = B_TRUE;
 				mutex_exit(hash_lock);
 				break;
-			}
-
-			if (ab->b_buf == NULL) {
-				DTRACE_PROBE1(l2arc__buf__null, void *, ab);
-				mutex_exit(hash_lock);
-				continue;
 			}
 
 			if (pio == NULL) {
@@ -4475,7 +4543,7 @@ l2arc_write_buffers(spa_t *spa, l2arc_dev_t *dev, uint64_t target_sz)
 	if (pio == NULL) {
 		ASSERT3U(write_sz, ==, 0);
 		kmem_cache_free(hdr_cache, head);
-		return;
+		return (0);
 	}
 
 	ASSERT3U(write_sz, <=, target_sz);
@@ -4496,6 +4564,8 @@ l2arc_write_buffers(spa_t *spa, l2arc_dev_t *dev, uint64_t target_sz)
 	}
 
 	(void) zio_wait(pio);
+
+	return (write_sz);
 }
 
 /*
@@ -4508,20 +4578,19 @@ l2arc_feed_thread(void *dummy __unused)
 	callb_cpr_t cpr;
 	l2arc_dev_t *dev;
 	spa_t *spa;
-	uint64_t size;
+	uint64_t size, wrote;
+	clock_t begin, next = ddi_get_lbolt();
 
 	CALLB_CPR_INIT(&cpr, &l2arc_feed_thr_lock, callb_generic_cpr, FTAG);
 
 	mutex_enter(&l2arc_feed_thr_lock);
 
 	while (l2arc_thread_exit == 0) {
-		/*
-		 * Pause for l2arc_feed_secs seconds between writes.
-		 */
 		CALLB_CPR_SAFE_BEGIN(&cpr);
 		(void) cv_timedwait(&l2arc_feed_thr_cv, &l2arc_feed_thr_lock,
-		    hz * l2arc_feed_secs);
+		    next);
 		CALLB_CPR_SAFE_END(&cpr, &l2arc_feed_thr_lock);
+		next = ddi_get_lbolt() + hz;
 
 		/*
 		 * Quick check for L2ARC devices.
@@ -4532,6 +4601,7 @@ l2arc_feed_thread(void *dummy __unused)
 			continue;
 		}
 		mutex_exit(&l2arc_dev_mtx);
+		begin = ddi_get_lbolt();
 
 		/*
 		 * This selects the next l2arc device to write to, and in
@@ -4560,9 +4630,7 @@ l2arc_feed_thread(void *dummy __unused)
 
 		ARCSTAT_BUMP(arcstat_l2_feeds);
 
-		size = dev->l2ad_write;
-		if (arc_warm == B_FALSE)
-			size += dev->l2ad_boost;
+		size = l2arc_write_size(dev);
 
 		/*
 		 * Evict L2ARC buffers that will be overwritten.
@@ -4572,7 +4640,12 @@ l2arc_feed_thread(void *dummy __unused)
 		/*
 		 * Write ARC buffers.
 		 */
-		l2arc_write_buffers(spa, dev, size);
+		wrote = l2arc_write_buffers(spa, dev, size);
+
+		/*
+		 * Calculate interval between writes.
+		 */
+		next = l2arc_write_interval(begin, size, wrote);
 		spa_config_exit(spa, SCL_L2ARC, dev);
 	}
 
