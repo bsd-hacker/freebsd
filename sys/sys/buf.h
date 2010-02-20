@@ -257,6 +257,8 @@ extern const char *buf_wmesg;		/* Default buffer lock message */
 #include <sys/proc.h>			/* XXX for curthread */
 #include <sys/mutex.h>
 
+extern int vfs_read_max;
+
 /*
  * Initialize a lock.
  */

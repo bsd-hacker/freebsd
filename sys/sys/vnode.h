@@ -38,6 +38,7 @@
 #include <sys/lock.h>
 #include <sys/lockmgr.h>
 #include <sys/mutex.h>
+#include <sys/rangelock.h>
 #include <sys/selinfo.h>
 #include <sys/uio.h>
 #include <sys/acl.h>
@@ -168,7 +169,8 @@ struct vnode {
 	 */
 	struct vpollinfo *v_pollinfo;		/* G Poll events, p for *v_pi */
 	struct label *v_label;			/* MAC label for vnode */
-	struct lockf *v_lockf;			/* Byte-level lock list */
+	struct lockf *v_lockf;			/* Byte-level adv lock list */
+	struct rangelock v_rl;			/* Byte-range lock */
 };
 
 #endif /* defined(_KERNEL) || defined(_KVM_VNODE) */
@@ -655,6 +657,8 @@ int	vn_rdwr_inchunks(enum uio_rw rw, struct vnode *vp, void *base,
 	    size_t len, off_t offset, enum uio_seg segflg, int ioflg,
 	    struct ucred *active_cred, struct ucred *file_cred, size_t *aresid,
 	    struct thread *td);
+int	vn_read_chunk(struct vnode *vp, struct uio *uio,
+	    struct ucred *active_cred, struct ucred *f_cred, int ioflag);
 int	vn_stat(struct vnode *vp, struct stat *sb, struct ucred *active_cred,
 	    struct ucred *file_cred, struct thread *td);
 int	vn_start_write(struct vnode *vp, struct mount **mpp, int flags);

@@ -84,5 +84,8 @@ void vm_thread_dispose(struct thread *td);
 int vm_thread_new(struct thread *td, int pages);
 void vm_thread_swapin(struct thread *td);
 void vm_thread_swapout(struct thread *td);
+int vnode_pager_read(struct vnode *vp, struct uio *uio, int ioflags);
+int vnode_pager_write(struct vnode *vp, struct uio *uio, int ioflags);
+
 #endif				/* _KERNEL */
 #endif				/* !_VM_EXTERN_H_ */

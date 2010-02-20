@@ -195,6 +195,7 @@ extern struct vpglocks vm_page_queue_free_lock;
 #define PG_WINATCFLS	0x0004		/* flush dirty page on inactive q */
 #define	PG_FICTITIOUS	0x0008		/* physical page doesn't exist (O) */
 #define	PG_WRITEABLE	0x0010		/* page is mapped writeable */
+#define	PG_WRITEDIRTY	0x0020		/* dirtied by vmio write */
 #define	PG_ZERO		0x0040		/* page is zeroed */
 #define PG_REFERENCED	0x0080		/* page has been referenced */
 #define PG_UNMANAGED	0x0800		/* No PV management for page */

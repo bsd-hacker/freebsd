@@ -77,6 +77,8 @@ static int	dirent_exists(struct vnode *vp, const char *dirname,
 
 #define DIRENT_MINSIZE (sizeof(struct dirent) - (MAXNAMLEN+1) + 4)
 
+static int vop_stdextend(struct vop_extend_args *ap);
+
 /*
  * This vnode table stores what we want to do if the filesystem doesn't
  * implement a particular VOP.
@@ -118,6 +120,7 @@ struct vop_vector default_vnodeops = {
 	.vop_unlock =		vop_stdunlock,
 	.vop_vptocnp =		vop_stdvptocnp,
 	.vop_vptofh =		vop_stdvptofh,
+	.vop_extend =		vop_stdextend,
 };
 
 /*
@@ -823,6 +826,23 @@ out:
 	}
 	vn_lock(vp, locked | LK_RETRY);
 	return (error);
+}
+
+static int
+vop_stdextend(struct vop_extend_args *ap)
+{
+	struct vattr vattr, oattr;
+	int error;
+
+
+	error = VOP_GETATTR(ap->a_vp, &oattr, ap->a_cred);
+	if (error != 0)
+		return (error);
+	if (oattr.va_size >= ap->a_size)
+		return (0);
+	VATTR_NULL(&vattr);
+	vattr.va_size = ap->a_size;
+	return (VOP_SETATTR(ap->a_vp, &vattr, ap->a_cred));
 }
 
 /*

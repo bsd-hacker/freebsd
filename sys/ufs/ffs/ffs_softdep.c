@@ -1651,7 +1651,7 @@ softdep_setup_allocdirect(ip, lbn, newblkno, oldblkno, newsize, oldsize, bp)
 	ufs2_daddr_t newblkno;	/* disk block number being added */
 	ufs2_daddr_t oldblkno;	/* previous block number, 0 unless frag */
 	long newsize;		/* size of new block */
-	long oldsize;		/* size of new block */
+	long oldsize;		/* size of old block */
 	struct buf *bp;		/* bp for allocated block */
 {
 	struct allocdirect *adp, *oldadp;
@@ -1765,8 +1765,8 @@ allocdirect_merge(adphead, newadp, oldadp)
 	if (newadp->ad_oldblkno != oldadp->ad_newblkno ||
 	    newadp->ad_oldsize != oldadp->ad_newsize ||
 	    newadp->ad_lbn >= NDADDR)
-		panic("%s %jd != new %jd || old size %ld != new %ld",
-		    "allocdirect_merge: old blkno",
+		panic("allocdirect_merge: old blkno"
+		    " %jd != new %jd || old size %ld != new %ld",
 		    (intmax_t)newadp->ad_oldblkno,
 		    (intmax_t)oldadp->ad_newblkno,
 		    newadp->ad_oldsize, oldadp->ad_newsize);
@@ -2813,7 +2813,11 @@ handle_workitem_freeblocks(freeblks, flags)
 #ifdef INVARIANTS
 	if (freeblks->fb_chkcnt != blocksreleased &&
 	    ((fs->fs_flags & FS_UNCLEAN) == 0 || (flags & LK_NOWAIT) != 0))
-		printf("handle_workitem_freeblocks: block count\n");
+		printf("handle_workitem_freeblocks: ino %jd block count "
+		    "check %jd real %jd diff %jd\n",
+		    (intmax_t)freeblks->fb_previousinum,
+		    (intmax_t)freeblks->fb_chkcnt, (intmax_t)blocksreleased,
+		    (intmax_t)(freeblks->fb_chkcnt - blocksreleased));
 	if (allerror)
 		softdep_error("handle_workitem_freeblks", allerror);
 #endif /* INVARIANTS */

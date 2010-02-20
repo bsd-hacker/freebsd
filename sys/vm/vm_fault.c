@@ -157,18 +157,22 @@ static void
 unlock_and_deallocate(struct faultstate *fs)
 {
 
-	vm_object_pip_wakeup(fs->object);
-	VM_OBJECT_UNLOCK(fs->object);
-	if (fs->object != fs->first_object) {
-		VM_OBJECT_LOCK(fs->first_object);
-		vm_page_lock_queues();
-		vm_page_free(fs->first_m);
-		vm_page_unlock_queues();
-		vm_object_pip_wakeup(fs->first_object);
-		VM_OBJECT_UNLOCK(fs->first_object);
-		fs->first_m = NULL;
+	if (fs->object != NULL) {
+		vm_object_pip_wakeup(fs->object);
+		VM_OBJECT_UNLOCK(fs->object);
+		if (fs->object != fs->first_object &&
+		    fs->first_object != NULL) {
+			VM_OBJECT_LOCK(fs->first_object);
+			vm_page_lock_queues();
+			vm_page_free(fs->first_m);
+			vm_page_unlock_queues();
+			vm_object_pip_wakeup(fs->first_object);
+			VM_OBJECT_UNLOCK(fs->first_object);
+			fs->first_m = NULL;
+		}
+		vm_object_deallocate(fs->first_object);
+		fs->object = fs->first_object = NULL;
 	}
-	vm_object_deallocate(fs->first_object);
 	unlock_map(fs);	
 	if (fs->vp != NULL) { 
 		vput(fs->vp);
@@ -219,14 +223,15 @@ vm_fault(vm_map_t map, vm_offset_t vaddr, vm_prot_t fault_type,
 	int faultcount, ahead, behind;
 	struct faultstate fs;
 	struct vnode *vp;
+	struct thread *td;
 	int locked, error;
 
 	hardfault = 0;
 	growstack = TRUE;
 	PCPU_INC(cnt.v_vm_faults);
-	fs.vp = NULL;
-	fs.vfslocked = 0;
+	memset(&fs, 0, sizeof(fs));
 	faultcount = behind = 0;
+	td = curthread;
 
 RetryFault:;
 
@@ -241,11 +246,14 @@ RetryFault:;
 		if (growstack && result == KERN_INVALID_ADDRESS &&
 		    map != kernel_map) {
 			result = vm_map_growstack(curproc, vaddr);
-			if (result != KERN_SUCCESS)
+			if (result != KERN_SUCCESS) {
+				unlock_and_deallocate(&fs);
 				return (KERN_FAILURE);
+			}
 			growstack = FALSE;
 			goto RetryFault;
 		}
+		unlock_and_deallocate(&fs);
 		return (result);
 	}
 
@@ -367,7 +375,8 @@ RetryFault:;
 			 */
 			vm_page_busy(fs.m);
 			if (fs.m->valid != VM_PAGE_BITS_ALL &&
-				fs.m->object != kernel_object && fs.m->object != kmem_object) {
+			    fs.m->object != kernel_object &&
+			    fs.m->object != kmem_object) {
 				goto readrest;
 			}
 
@@ -523,7 +532,7 @@ vnode_lock:
 					locked = LK_SHARED;
 				/* Do not sleep for vnode lock while fs.m is busy */
 				error = vget(vp, locked | LK_CANRECURSE |
-				    LK_NOWAIT, curthread);
+				    LK_NOWAIT, td);
 				if (error != 0) {
 					int vfslocked;
 
@@ -533,7 +542,7 @@ vnode_lock:
 					release_page(&fs);
 					unlock_and_deallocate(&fs);
 					error = vget(vp, locked | LK_RETRY |
-					    LK_CANRECURSE, curthread);
+					    LK_CANRECURSE, td);
 					vdrop(vp);
 					fs.vp = vp;
 					fs.vfslocked = vfslocked;
@@ -937,9 +946,9 @@ vnode_locked:
 	 */
 	unlock_and_deallocate(&fs);
 	if (hardfault)
-		curthread->td_ru.ru_majflt++;
+		td->td_ru.ru_majflt++;
 	else
-		curthread->td_ru.ru_minflt++;
+		td->td_ru.ru_minflt++;
 
 	return (KERN_SUCCESS);
 }

@@ -111,7 +111,6 @@ __FBSDID("$FreeBSD$");
 
 /* the kernel process "vm_pageout"*/
 static void vm_pageout(void);
-static int vm_pageout_clean(vm_page_t);
 static void vm_pageout_scan(int pass);
 
 struct proc *pageproc;
@@ -274,7 +273,7 @@ vm_pageout_fallback_object_lock(vm_page_t m, vm_page_t *next)
  * block.  Note the careful timing, however, the busy bit isn't set till
  * late and we cannot do anything that will mess with the page.
  */
-static int
+int
 vm_pageout_clean(m)
 	vm_page_t m;
 {
@@ -349,7 +348,7 @@ more:
 		}
 		vm_page_test_dirty(p);
 		if (p->dirty == 0 ||
-		    p->queue != PQ_INACTIVE ||
+		    (p->queue != PQ_INACTIVE && p->queue != PQ_ACTIVE) ||
 		    p->wire_count != 0 ||	/* may be held by buf cache */
 		    p->hold_count != 0) {	/* may be undergoing I/O */
 			ib = 0;
@@ -377,7 +376,7 @@ more:
 		}
 		vm_page_test_dirty(p);
 		if (p->dirty == 0 ||
-		    p->queue != PQ_INACTIVE ||
+		    (p->queue != PQ_INACTIVE && p->queue != PQ_ACTIVE) ||
 		    p->wire_count != 0 ||	/* may be held by buf cache */
 		    p->hold_count != 0) {	/* may be undergoing I/O */
 			break;
@@ -416,7 +415,7 @@ vm_pageout_flush(vm_page_t *mc, int count, int flags)
 	vm_object_t object = mc[0]->object;
 	int pageout_status[count];
 	int numpagedout = 0;
-	int i;
+	int i, wd_cleaned;
 
 	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
 	VM_OBJECT_LOCK_ASSERT(object, MA_OWNED);
@@ -442,6 +441,7 @@ vm_pageout_flush(vm_page_t *mc, int count, int flags)
 
 	vm_pager_put_pages(object, mc, count, flags, pageout_status);
 
+	wd_cleaned = 0;
 	vm_page_lock_queues();
 	for (i = 0; i < count; i++) {
 		vm_page_t mt = mc[i];
@@ -484,10 +484,18 @@ vm_pageout_flush(vm_page_t *mc, int count, int flags)
 		if (pageout_status[i] != VM_PAGER_PEND) {
 			vm_object_pip_wakeup(object);
 			vm_page_io_finish(mt);
-			if (vm_page_count_severe())
+			if (mt->queue == PQ_INACTIVE && vm_page_count_severe())
 				vm_page_try_to_cache(mt);
+			if ((mt->flags & PG_WRITEDIRTY) != 0 &&
+			    (pageout_status[i] == VM_PAGER_OK ||
+			     pageout_status[i] == VM_PAGER_BAD)) {
+				mt->flags &= ~PG_WRITEDIRTY;
+				wd_cleaned++;
+			}
 		}
 	}
+	if (wd_cleaned != 0)
+		vm_writedirty_cleaned(wd_cleaned);
 	return numpagedout;
 }
 
@@ -1180,7 +1188,6 @@ unlock_and_continue:
 		vm_pageout_oom(VM_OOM_MEM);
 }
 
-
 void
 vm_pageout_oom(int shortage)
 {
@@ -1391,12 +1398,17 @@ vm_pageout()
 		vm_pageout_page_count = 8;
 
 	/*
+	 * Try to allow not more then 1/4 of usable pages for write.
+	 */
+	vmio_max_writedirty = cnt.v_page_count / 4;
+
+	/*
 	 * v_free_reserved needs to include enough for the largest
 	 * swap pager structures plus enough for any pv_entry structs
 	 * when paging. 
 	 */
 	if (cnt.v_page_count > 1024)
-		cnt.v_free_min = 4 + (cnt.v_page_count - 1024) / 200;
+		cnt.v_free_min = 4 + (cnt.v_page_count - 1024) / 100;
 	else
 		cnt.v_free_min = 4;
 	cnt.v_pageout_free_min = (2*MAXBSIZE)/PAGE_SIZE +

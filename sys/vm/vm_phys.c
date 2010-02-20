@@ -778,4 +778,24 @@ DB_SHOW_COMMAND(freepages, db_show_freepages)
 		db_printf("\n");
 	}
 }
+
+DB_SHOW_COMMAND(vpo_dw, vpo_dw)
+{
+	struct vm_phys_seg *seg;
+	vm_page_t m;
+	int segind;
+	long npages, i;
+
+	for (segind = 0; segind < vm_phys_nsegs; segind++) {
+		seg = &vm_phys_segs[segind];
+		npages = seg->end - seg->start;
+		npages /= PAGE_SIZE;
+		m = seg->first_page;
+		for (i = 0; i < npages; i++, m++) {
+			if (m->flags & PG_WRITEDIRTY)
+				printf("%p\n", m);
+		}
+	}
+}
+
 #endif

@@ -119,7 +119,7 @@ static vop_listextattr_t	ffs_listextattr;
 static vop_openextattr_t	ffs_openextattr;
 static vop_setextattr_t	ffs_setextattr;
 static vop_vptofh_t	ffs_vptofh;
-
+static vop_extend_t	ffs_extend;
 
 /* Global vfs data structures for ufs. */
 struct vop_vector ffs_vnodeops1 = {
@@ -131,6 +131,7 @@ struct vop_vector ffs_vnodeops1 = {
 	.vop_reallocblks =	ffs_reallocblks,
 	.vop_write =		ffs_write,
 	.vop_vptofh =		ffs_vptofh,
+	.vop_extend =		ffs_extend,
 };
 
 struct vop_vector ffs_fifoops1 = {
@@ -156,6 +157,7 @@ struct vop_vector ffs_vnodeops2 = {
 	.vop_openextattr =	ffs_openextattr,
 	.vop_setextattr =	ffs_setextattr,
 	.vop_vptofh =		ffs_vptofh,
+	.vop_extend =		ffs_extend,
 };
 
 struct vop_vector ffs_fifoops2 = {
@@ -1782,4 +1784,67 @@ vop_vptofh {
 	ufhp->ufid_ino = ip->i_number;
 	ufhp->ufid_gen = ip->i_gen;
 	return (0);
+}
+
+static int
+ffs_extend(struct vop_extend_args *ap)
+{
+	struct vnode *vp;
+	struct inode *ip;
+	struct buf *bp;
+	struct fs *fs;
+	off_t osize, xosize;
+	u_quad_t size;
+	ufs_lbn_t lastlbn;
+	ufs2_daddr_t nb;
+	int error, flags;
+
+	vp = ap->a_vp;
+	ip = VTOI(vp);
+	size = ap->a_size;
+	osize = ip->i_size;
+	if (osize >= size)
+		return (0);
+
+	vnode_pager_setsize(vp, size);
+	fs = ip->i_fs;
+	flags = ap->a_flags & IO_SYNC;
+	if (flags != 0)
+		goto slow;
+
+	lastlbn = lblkno(fs, osize);
+	if (lastlbn < NDADDR) {
+		xosize = fragroundup(fs, blkoff(fs, osize));
+		if (xosize < fs->fs_bsize && xosize > 0) {
+			if (ip->i_ump->um_fstype == UFS1)
+				nb = ip->i_din1->di_db[lastlbn];
+			else
+				nb = ip->i_din2->di_db[lastlbn];
+			/* Need to extend fragment */
+			if (nb != 0)
+				goto slow;
+		}
+	}
+	ip->i_size = size;
+	DIP_SET(ip, i_size, size);
+	ip->i_flag |= IN_CHANGE | IN_UPDATE;
+	return (0);
+
+ slow:
+	error = UFS_BALLOC(vp, size - 1, 1, ap->a_cred, flags|BA_CLRBUF, &bp);
+	if (error) {
+		vnode_pager_setsize(vp, osize);
+		return (error);
+	}
+	ip->i_size = size;
+	DIP_SET(ip, i_size, size);
+	ip->i_flag |= IN_CHANGE | IN_UPDATE;
+	if (bp->b_bufsize == fs->fs_bsize)
+		bp->b_flags |= B_CLUSTEROK;
+	if (flags & IO_SYNC) {
+		bwrite(bp);
+		error = ffs_update(vp, 1);
+	} else
+		bawrite(bp);
+	return (error);
 }

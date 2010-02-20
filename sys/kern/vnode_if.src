@@ -611,3 +611,12 @@ vop_vptocnp {
 	INOUT char *buf;
 	INOUT int *buflen;
 };
+
+%% extend		vp	L L L
+
+vop_extend {
+	IN struct vnode *vp;
+	IN struct ucred *cred;
+	IN u_quad_t size;
+	IN int flags;
+};

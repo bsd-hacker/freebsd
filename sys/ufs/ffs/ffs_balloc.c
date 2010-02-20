@@ -634,7 +634,7 @@ ffs_balloc_ufs2(struct vnode *vp, off_t startoffset, int size,
 	if (lastlbn < NDADDR && lastlbn < lbn) {
 		nb = lastlbn;
 		osize = blksize(fs, ip, nb);
-		if (osize < fs->fs_bsize && osize > 0) {
+		if (osize < fs->fs_bsize && osize > 0 && dp->di_db[nb] != 0) {
 			UFS_LOCK(ump);
 			error = ffs_realloccg(ip, nb, dp->di_db[nb],
 				ffs_blkpref_ufs2(ip, lastlbn, (int)nb,
@@ -701,9 +701,17 @@ ffs_balloc_ufs2(struct vnode *vp, off_t startoffset, int size,
 					    nsize, osize, bp);
 			}
 		} else {
-			if (ip->i_size < smalllblktosize(fs, lbn + 1))
+			if (ip->i_size < smalllblktosize(fs, lbn))
 				nsize = fragroundup(fs, size);
-			else
+			else if (ip->i_size < smalllblktosize(fs, lbn + 1)) {
+				/*
+				 * Allocate entire tail of the file.
+				 * Write may cover subpart of the extended
+				 * area.
+				 */
+				nsize = fragroundup(fs, max(size,
+				    blkoff(fs, ip->i_size)));
+			} else
 				nsize = fs->fs_bsize;
 			UFS_LOCK(ump);
 			error = ffs_alloc(ip, lbn,

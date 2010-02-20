@@ -85,6 +85,7 @@
 #include <vm/vm.h>
 #include <vm/vm_object.h>
 #include <vm/vm_page.h>
+#include <vm/vm_pageout.h>
 #include <vm/vm_pager.h>
 #include <vm/swap_pager.h>
 #include <vm/uma.h>
@@ -587,7 +588,7 @@ mdstart_swap(struct md_s *sc, struct bio *bp)
 {
 	struct sf_buf *sf;
 	int rv, offs, len, lastend;
-	vm_pindex_t i, lastp;
+	vm_pindex_t i, firstp, lastp;
 	vm_page_t m;
 	u_char *p;
 
@@ -610,18 +611,26 @@ mdstart_swap(struct md_s *sc, struct bio *bp)
 	 * we're operating on complete aligned pages).
 	 */
 	offs = bp->bio_offset % PAGE_SIZE;
+	firstp = bp->bio_offset / PAGE_SIZE;
 	lastp = (bp->bio_offset + bp->bio_length - 1) / PAGE_SIZE;
 	lastend = (bp->bio_offset + bp->bio_length - 1) % PAGE_SIZE + 1;
+
+	vm_page_t ma[lastp - firstp + 1];
 
 	rv = VM_PAGER_OK;
 	VM_OBJECT_LOCK(sc->object);
 	vm_object_pip_add(sc->object, 1);
-	for (i = bp->bio_offset / PAGE_SIZE; i <= lastp; i++) {
+	for (i = firstp; i <= lastp; i++) {
 		len = ((i == lastp) ? lastend : PAGE_SIZE) - offs;
 
-		m = vm_page_grab(sc->object, i,
-		    VM_ALLOC_NORMAL|VM_ALLOC_RETRY);
+		/*
+		 * Write cleans pages of the buffer, give it a
+		 * priority.
+		 */
+		m = vm_page_grab(sc->object, i, (bp->bio_cmd == BIO_WRITE ?
+		    VM_ALLOC_SYSTEM : VM_ALLOC_NORMAL) | VM_ALLOC_RETRY);
 		VM_OBJECT_UNLOCK(sc->object);
+		ma[i - firstp] = m;
 		sched_pin();
 		sf = sf_buf_alloc(m, SFB_CPUPRIVATE);
 		VM_OBJECT_LOCK(sc->object);
@@ -683,6 +692,12 @@ printf("wire_count %d busy %d flags %x hold_count %d act_count %d queue %d valid
 	}
 	vm_object_pip_subtract(sc->object, 1);
 	vm_object_set_writeable_dirty(sc->object);
+	if (rv != VM_PAGER_ERROR && bp->bio_cmd == BIO_WRITE &&
+	    vm_page_count_severe()) {
+		vm_page_lock_queues();
+		vm_pageout_flush(ma, lastp - firstp + 1, IO_SYNC);
+		vm_page_unlock_queues();
+	}
 	VM_OBJECT_UNLOCK(sc->object);
 	return (rv != VM_PAGER_ERROR ? 0 : ENOSPC);
 }

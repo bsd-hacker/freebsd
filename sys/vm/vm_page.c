@@ -731,6 +731,10 @@ vm_page_remove(vm_page_t m)
 		m->oflags &= ~VPO_BUSY;
 		vm_page_flash(m);
 	}
+	if (m->flags & PG_WRITEDIRTY) {
+		m->flags &= ~PG_WRITEDIRTY;
+		vm_writedirty_cleaned(1);
+	}
 	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
 
 	/*
@@ -1188,6 +1192,19 @@ vm_page_alloc(vm_object_t object, vm_pindex_t pindex, int req)
 	return (m);
 }
 
+void
+vm_wait_queue_free(const char *wmsg)
+{
+
+	mtx_assert(&vm_page_queue_free_mtx, MA_OWNED);
+	if (!vm_pages_needed) {
+		vm_pages_needed = 1;
+		wakeup(&vm_pages_needed);
+	}
+	msleep(&cnt.v_free_count, &vm_page_queue_free_mtx, PDROP | PVM, wmsg,
+	    0);
+}
+
 /*
  *	vm_wait:	(also see VM_WAIT macro)
  *
@@ -1203,14 +1220,8 @@ vm_wait(void)
 		vm_pageout_pages_needed = 1;
 		msleep(&vm_pageout_pages_needed, &vm_page_queue_free_mtx,
 		    PDROP | PSWP, "VMWait", 0);
-	} else {
-		if (!vm_pages_needed) {
-			vm_pages_needed = 1;
-			wakeup(&vm_pages_needed);
-		}
-		msleep(&cnt.v_free_count, &vm_page_queue_free_mtx, PDROP | PVM,
-		    "vmwait", 0);
-	}
+	} else
+		vm_wait_queue_free("vmwait");
 }
 
 /*
@@ -1685,6 +1696,11 @@ vm_page_cache(vm_page_t m)
 	 */
 	if (pmap_page_get_memattr(m) != VM_MEMATTR_DEFAULT)
 		pmap_page_set_memattr(m, VM_MEMATTR_DEFAULT);
+
+	if (m->flags & PG_WRITEDIRTY) {
+		m->flags &= ~PG_WRITEDIRTY;
+		vm_writedirty_cleaned(1);
+	}
 
 	/*
 	 * Insert the page into the object's collection of cached pages

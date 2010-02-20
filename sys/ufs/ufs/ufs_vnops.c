@@ -2072,7 +2072,8 @@ ufs_readdir(ap)
 	uio->uio_iov->iov_len = count;
 #	if (BYTE_ORDER == LITTLE_ENDIAN)
 		if (ap->a_vp->v_mount->mnt_maxsymlinklen > 0) {
-			error = VOP_READ(ap->a_vp, uio, 0, ap->a_cred);
+			error = vn_read_chunk(ap->a_vp, uio, ap->a_cred,
+			    ap->a_cred, IO_NODELOCKED);
 		} else {
 			struct dirent *dp, *edp;
 			struct uio auio;
@@ -2088,7 +2089,8 @@ ufs_readdir(ap)
 			aiov.iov_len = count;
 			dirbuf = malloc(count, M_TEMP, M_WAITOK);
 			aiov.iov_base = dirbuf;
-			error = VOP_READ(ap->a_vp, &auio, 0, ap->a_cred);
+			error = vn_read_chunk(ap->a_vp, &auio, ap->a_cred,
+			    ap->a_cred, IO_NODELOCKED);
 			if (error == 0) {
 				readcnt = count - auio.uio_resid;
 				edp = (struct dirent *)&dirbuf[readcnt];
@@ -2110,7 +2112,8 @@ ufs_readdir(ap)
 			free(dirbuf, M_TEMP);
 		}
 #	else
-		error = VOP_READ(ap->a_vp, uio, 0, ap->a_cred);
+		error = vn_read_chunk(ap->a_vp, uio, ap->a_cred,
+		    ap->a_cred, IO_NODELOCKED);
 #	endif
 	if (!error && ap->a_ncookies != NULL) {
 		struct dirent* dpStart;

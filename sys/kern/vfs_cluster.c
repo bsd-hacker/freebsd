@@ -71,8 +71,8 @@ static int write_behind = 1;
 SYSCTL_INT(_vfs, OID_AUTO, write_behind, CTLFLAG_RW, &write_behind, 0,
     "Cluster write-behind; 0: disable, 1: enable, 2: backed off");
 
-static int read_max = 8;
-SYSCTL_INT(_vfs, OID_AUTO, read_max, CTLFLAG_RW, &read_max, 0,
+int vfs_read_max = 8;
+SYSCTL_INT(_vfs, OID_AUTO, read_max, CTLFLAG_RW, &vfs_read_max, 0,
     "Cluster read-ahead max block count");
 
 /* Page expended to mark partially backed buffers */
@@ -109,7 +109,7 @@ cluster_read(vp, filesize, lblkno, size, cred, totread, seqcount, bpp)
 	 */
 	racluster = vp->v_mount->mnt_iosize_max / size;
 	maxra = seqcount;
-	maxra = min(read_max, maxra);
+	maxra = min(vfs_read_max, maxra);
 	maxra = min(nbuf/8, maxra);
 	if (((u_quad_t)(lblkno + maxra + 1) * size) > filesize)
 		maxra = (filesize / size) - lblkno;
@@ -803,7 +803,9 @@ cluster_wbuild(vp, size, start_lbn, len)
 		  (tbp->b_bcount != tbp->b_bufsize) ||
 		  (tbp->b_bcount != size) ||
 		  (len == 1) ||
-		  ((bp = getpbuf(&cluster_pbuf_freecnt)) == NULL)) {
+		  ((bp = (vp->v_vflag & VV_MD) ?
+		    trypbuf(&cluster_pbuf_freecnt) :
+		    getpbuf(&cluster_pbuf_freecnt)) == NULL)) {
 			totalwritten += tbp->b_bufsize;
 			bawrite(tbp);
 			++start_lbn;

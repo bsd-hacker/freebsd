@@ -697,6 +697,7 @@ vnode_pager_generic_getpages(vp, m, bytecount, reqpage)
 
 	object = vp->v_object;
 	count = bytecount / PAGE_SIZE;
+/* printf("vpgg: %p %jd %x %d\n", vp, m[0]->pindex, count, reqpage); */
 
 	KASSERT(vp->v_type != VCHR && vp->v_type != VBLK,
 	    ("vnode_pager_generic_getpages does not support devices"));
@@ -1081,6 +1082,7 @@ vnode_pager_generic_putpages(vp, m, bytecount, flags, rtvals)
 
 	object = vp->v_object;
 	count = bytecount / PAGE_SIZE;
+/* printf("vpgp: %p %jd %x %d\n", vp, m[0]->pindex, m[0]->dirty, count); */
 
 	for (i = 0; i < count; i++)
 		rtvals[i] = VM_PAGER_AGAIN;
