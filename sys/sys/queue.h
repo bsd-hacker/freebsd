@@ -35,6 +35,11 @@
 
 #include <sys/cdefs.h>
 
+#if 0
+#ifdef _KERNEL
+#define QUEUE_MACRO_DEBUG
+#endif
+#endif
 /*
  * This file defines four types of data structures: singly-linked lists,
  * singly-linked tail queues, lists and tail queues.
