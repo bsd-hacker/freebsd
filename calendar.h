@@ -95,6 +95,15 @@ extern int eastlongitude;
 #define STRING_JUNSOLSTICE	"JunSolstice"
 #define STRING_DECSOLSTICE	"DecSolstice"
 
+#define	MAXCOUNT		125	/* Random number of maximum number of
+					 * repeats of an event. Should be 52
+					 * (number of weeks per year), if you
+					 * want to show two years then it
+					 * should be 104. If you are seeing
+					 * more than this you are using this
+					 * program wrong.
+					 */
+
 /* 
  * All the astronomical calculations are carried out for the meridian 120
  * degrees east of Greenwich.

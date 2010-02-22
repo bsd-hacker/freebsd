@@ -82,7 +82,6 @@ struct iovec header[] = {
 	{"'s Calendar\nPrecedence: bulk\n\n", 30},
 };
 
-#define MAXCOUNT	55
 #define	REPLACE(string, slen, struct_) \
 		if (strncasecmp(buf, (string), (slen)) == 0 && buf[(slen)]) { \
 			if (struct_.name != NULL)			      \

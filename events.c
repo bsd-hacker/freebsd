@@ -62,7 +62,7 @@ event_add(int year, int month, int day, char *date, int var, char *txt,
 	if (e->text == NULL)
 		errx(1, "event_add: cannot allocate memory");
 	e->extra = NULL;
-	if (extra != NULL)
+	if (extra != NULL && extra[0] != '\0')
 		e->extra = strdup(extra);
 	addtodate(e, year, month, day);
 	return (e);

@@ -298,17 +298,25 @@ allfine:
 }
 
 static void
-remember(int index, int *y, int *m, int *d, char **ed, int yy, int mm, int dd,
+remember(int *index, int *y, int *m, int *d, char **ed, int yy, int mm, int dd,
     char *extra)
 {
+	static int warned = 0;
 
-	y[index] = yy;
-	m[index] = mm;
-	d[index] = dd;
+	if (*index >= MAXCOUNT - 1) {
+		if (warned == 0)
+			warnx("Index > %d, ignored", MAXCOUNT);
+		warned++;
+		return;
+	}
+	y[*index] = yy;
+	m[*index] = mm;
+	d[*index] = dd;
 	if (extra != NULL)
-		strcpy(ed[index], extra);
+		strcpy(ed[*index], extra);
 	else
-		ed[index][0] = '\0';
+		ed[*index][0] = '\0';
+	*index += 1;
 }
 
 static void
@@ -445,7 +453,7 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags,
 		if (*flags == (F_MONTH | F_DAYOFMONTH)) {
 			if (!remember_ymd(year, imonth, idayofmonth))
 				continue;
-			remember(index++, yearp, monthp, dayp, edp,
+			remember(&index, yearp, monthp, dayp, edp,
 			    year, imonth, idayofmonth, NULL);
 			continue;
 		}
@@ -455,7 +463,7 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags,
 			for (m = 1; m <= 12; m++) {
 				if (!remember_ymd(year, m, idayofmonth))
 					continue;
-				remember(index++, yearp, monthp, dayp, edp,
+				remember(&index, yearp, monthp, dayp, edp,
 				    year, m, idayofmonth, NULL);
 			}
 			continue;
@@ -466,7 +474,7 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags,
 			for (d = 1; d <= yearinfo->mondays[imonth]; d++) {
 				if (!remember_ymd(year, imonth, d))
 					continue;
-				remember(index++, yearp, monthp, dayp, edp,
+				remember(&index, yearp, monthp, dayp, edp,
 				    year, imonth, d, NULL);
 			}
 			continue;
@@ -477,7 +485,7 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags,
 			for (m = 1; m <= 12; m++) {
 				if (!remember_ymd(year, m, idayofmonth))
 					continue;
-				remember(index++, yearp, monthp, dayp, edp,
+				remember(&index, yearp, monthp, dayp, edp,
 				    year, m, idayofmonth, NULL);
 			}
 			continue;
@@ -489,7 +497,7 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags,
 			d = (idayofweek - dow + 8) % 7;
 			while (d <= 366) {
 				if (remember_yd(year, d, &rm, &rd))
-					remember(index++,
+					remember(&index,
 					    yearp, monthp, dayp, edp,
 					    year, rm, rd, NULL);
 				d += 7;
@@ -508,7 +516,7 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags,
 				while (d <= yearinfo->mondays[imonth]) {
 					if (--offset == 0
 					 && remember_ymd(year, imonth, d)) {
-						remember(index++,
+						remember(&index,
 						    yearp, monthp, dayp, edp,
 						    year, imonth, d, NULL);
 						continue;
@@ -525,7 +533,7 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags,
 					d -= 7;
 				}
 				if (remember_ymd(year, imonth, d))
-					remember(index++,
+					remember(&index,
 					    yearp, monthp, dayp, edp,
 					    year, imonth, d, NULL);
 				continue;
@@ -539,7 +547,7 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags,
 			d = (idayofweek - dow + 8) % 7;
 			while (d <= yearinfo->mondays[imonth]) {
 				if (remember_ymd(year, imonth, d))
-					remember(index++,
+					remember(&index,
 					    yearp, monthp, dayp, edp,
 					    year, imonth, d, NULL);
 				d += 7;
@@ -555,7 +563,7 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags,
 				offset = parseoffset(modifieroffset);
 			if (remember_yd(year, yearinfo->ieaster + offset,
 			    &rm, &rd))
-				remember(index++, yearp, monthp, dayp, edp,
+				remember(&index, yearp, monthp, dayp, edp,
 				    year, rm, rd, NULL);
 			continue;
 		}
@@ -568,7 +576,7 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags,
 				offset = parseoffset(modifieroffset);
 			if (remember_yd(year, yearinfo->ipaskha + offset,
 			    &rm, &rd))
-				remember(index++, yearp, monthp, dayp, edp,
+				remember(&index, yearp, monthp, dayp, edp,
 				    year, rm, rd, NULL);
 			continue;
 		}
@@ -581,7 +589,7 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags,
 				offset = parseoffset(modifieroffset);
 			if (remember_yd(year, yearinfo->firstcnyday + offset,
 			    &rm, &rd))
-				remember(index++, yearp, monthp, dayp, edp,
+				remember(&index, yearp, monthp, dayp, edp,
 				    year, rm, rd, NULL);
 			continue;
 		}
@@ -600,7 +608,7 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags,
 					&rm, &rd)) {
 					ed = floattotime(
 					    yearinfo->ffullmoon[i]);
-					remember(index++,
+					remember(&index,
 					    yearp, monthp, dayp, edp,
 					    year, rm, rd, ed);
 				}
@@ -621,7 +629,7 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags,
 				    floor(yearinfo->fnewmoon[i]) + offset,
 				    &rm, &rd)) {
 					ed = floattotime(yearinfo->fnewmoon[i]);
-					remember(index++,
+					remember(&index,
 					    yearp, monthp, dayp, edp,
 					    year, rm, rd, ed);
 				}
@@ -638,7 +646,7 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags,
 			if (remember_yd(year, yearinfo->equinoxdays[0] + offset,
 			    &rm, &rd)) {
 				ed = floattotime(yearinfo->equinoxdays[0]);
-				remember(index++, yearp, monthp, dayp, edp,
+				remember(&index, yearp, monthp, dayp, edp,
 				    year, rm, rd, ed);
 			}
 			continue;
@@ -651,7 +659,7 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags,
 			if (remember_yd(year, yearinfo->equinoxdays[1] + offset,
 			    &rm, &rd)) {
 				ed = floattotime(yearinfo->equinoxdays[1]);
-				remember(index++, yearp, monthp, dayp, edp,
+				remember(&index, yearp, monthp, dayp, edp,
 				    year, rm, rd, ed);
 			}
 			continue;
@@ -666,7 +674,7 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags,
 			if (remember_yd(year,
 			    yearinfo->solsticedays[0] + offset, &rm, &rd)) {
 				ed = floattotime(yearinfo->solsticedays[0]);
-				remember(index++, yearp, monthp, dayp, edp,
+				remember(&index, yearp, monthp, dayp, edp,
 				    year, rm, rd, ed);
 			}
 			continue;
@@ -679,7 +687,7 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags,
 			if (remember_yd(year,
 			    yearinfo->solsticedays[1] + offset, &rm, &rd)) {
 				ed = floattotime(yearinfo->solsticedays[1]);
-				remember(index++, yearp, monthp, dayp, edp,
+				remember(&index, yearp, monthp, dayp, edp,
 				    year, rm, rd, ed);
 			}
 			continue;
