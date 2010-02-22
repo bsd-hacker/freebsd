@@ -109,9 +109,13 @@ struct vm_object {
 		 * VNode pager
 		 *
 		 *	vnp_size - current size of file
+		 *	wpos - start write position for seq write detector
+		 *	off - offset from wpos for current write
 		 */
 		struct {
 			off_t vnp_size;
+			off_t wpos;
+			ssize_t off;
 		} vnp;
 
 		/*

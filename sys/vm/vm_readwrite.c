@@ -715,10 +715,10 @@ vnode_pager_write(struct vnode *vp, struct uio *uio, int ioflags)
 	vm_pindex_t idx, clean_start, clean_end;
 	vm_page_t reserv;
 	struct vattr vattr;
-	ssize_t size, size1, osize, osize1, resid, sresid;
-	int error, vn_locked, wpmax, wp, i;
+	ssize_t size, size1, osize, osize1, resid, sresid, written;
+	int error, vn_locked, wpmax, wp, i, pflags;
 	u_int bits;
-	boolean_t vnode_locked;
+	boolean_t vnode_locked, freed, freed1;
 	struct thread *td;
 
 	if (ioflags & (IO_EXT|IO_INVAL|IO_DIRECT))
@@ -734,6 +734,16 @@ vnode_pager_write(struct vnode *vp, struct uio *uio, int ioflags)
 	vn_locked = VOP_ISLOCKED(vp);
 	vnode_locked = TRUE;
 	error = 0;
+
+	/*
+	 * Reversed logic from vnode_generic_putpages().
+	 */
+	if (ioflags & IO_SYNC)
+		pflags = VM_PAGER_PUT_SYNC;
+	else if (ioflags & IO_ASYNC)
+		pflags = 0;
+	else
+		pflags = VM_PAGER_CLUSTER_OK;
 
 	wpmax = atomic_load_acq_int(&vmio_write_pack);
 	vm_page_t ma[wpmax + 1];
@@ -1002,6 +1012,7 @@ vnode_pager_write(struct vnode *vp, struct uio *uio, int ioflags)
 		error = uiomove_fromphys(ma, off, size, uio);
 		td->td_pflags &= ~TDP_VMIO;
 
+		freed = FALSE;
 		VM_OBJECT_LOCK(obj);
 		vm_page_lock_queues();
 		for (i = 0; i < wp; i++) {
@@ -1019,12 +1030,50 @@ vnode_pager_write(struct vnode *vp, struct uio *uio, int ioflags)
 				ma[i]->flags |= PG_WRITEDIRTY;
 				vmio_writedirty++;
 			}
+			freed1 = FALSE;
+			if (VM_PAGE_GETQUEUE(ma[i]) == PQ_HOLD)
+				freed = freed1 = TRUE;
 			vm_page_unhold(ma[i]);
-			vm_page_activate(ma[i]);
+			if (!freed1)
+				vm_page_activate(ma[i]);
 		}
-		vm_page_unlock_queues();
 		/* See the comment above about page dirtiness. */
 		vm_object_set_writeable_dirty(obj);
+
+		/*
+		 * Try to cluster writes.
+		 */
+		written = sresid - uio->uio_resid;
+		if (obj->un_pager.vnp.wpos + obj->un_pager.vnp.off ==
+		    uio->uio_offset - written) {
+			/*
+			 * Sequential writes detected, make a note and
+			 * try to take immediate advantage of it.
+			 */
+			if (!freed && OFF_TO_IDX(uio->uio_offset) >
+				OFF_TO_IDX(uio->uio_offset - written) &&
+			    vn_lock(vp, vn_locked | LK_NOWAIT) == 0) {
+				vm_pageout_flush(ma, wp, pflags);
+				VOP_UNLOCK(vp, 0);
+			}
+/* printf("seq write, wpos %jd off %jd written %d\n", (intmax_t)obj->un_pager.vnp.wpos, (intmax_t)obj->un_pager.vnp.off, written); */
+			obj->un_pager.vnp.off += written;
+		} else {
+			/*
+			 * Not a sequential write situation, still
+			 * might be good to not split large write in
+			 * the daemons struggling under pressure.
+			 */
+			if (!freed && wp >= vm_pageout_page_count &&
+			    vn_lock(vp, vn_locked | LK_NOWAIT) == 0) {
+				vm_pageout_flush(ma, wp, pflags);
+				VOP_UNLOCK(vp, 0);
+			}
+/* printf("nonseq write, wpos %jd off %jd wp %d\n", (intmax_t)obj->un_pager.vnp.wpos, (intmax_t)obj->un_pager.vnp.off, wp); */
+			obj->un_pager.vnp.wpos = uio->uio_offset;
+			obj->un_pager.vnp.off = 0;
+		}
+		vm_page_unlock_queues();
 		vm_object_pip_wakeup(obj);
 		VM_OBJECT_UNLOCK(obj);
 		if (error != 0)
