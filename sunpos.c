@@ -191,6 +191,18 @@ sunpos(int inYY, int inMM, int inDD, double UTCOFFSET, int inHOUR, int inMIN,
 void
 equinoxsolstice(int year, double UTCoffset, int *equinoxdays, int *solsticedays)
 {
+	double fe[2], fs[2];
+
+	fequinoxsolstice(year, UTCoffset, fe, fs);
+	equinoxdays[0] = round(fe[0]);
+	equinoxdays[1] = round(fe[1]);
+	solsticedays[0] = round(fs[0]);
+	solsticedays[1] = round(fs[1]);
+}
+
+void
+fequinoxsolstice(int year, double UTCoffset, double *equinoxdays, double *solsticedays)
+{
 	double dec, prevdec, L;
 	int h, d, prevangle, angle;
 	int found = 0;
@@ -214,7 +226,8 @@ equinoxsolstice(int year, double UTCoffset, int *equinoxdays, int *solsticedays)
 				DEBUG1(year, 3, d, HOUR(h), MIN(h),
 				    prevdec, dec);
 #endif
-				equinoxdays[0] = cumdays[3] + d;
+				equinoxdays[0] = 1 + cumdays[3] + d +
+				    ((h / 4.0) / 24.0);
 				found = 1;
 				break;
 			}
@@ -239,7 +252,8 @@ equinoxsolstice(int year, double UTCoffset, int *equinoxdays, int *solsticedays)
 				DEBUG1(year, 9, d, HOUR(h), MIN(h),
 				    prevdec, dec);
 #endif
-				equinoxdays[1] = cumdays[9] + d;
+				equinoxdays[1] = 1 + cumdays[9] + d +
+				    ((h / 4.0) / 24.0);
 				found = 1;
 				break;
 			}
@@ -267,7 +281,8 @@ equinoxsolstice(int year, double UTCoffset, int *equinoxdays, int *solsticedays)
 				DEBUG2(year, 6, d, HOUR(h), MIN(h),
 				    prevdec, dec, prevangle, angle);
 #endif
-				solsticedays[0] = cumdays[6] + d;
+				solsticedays[0] = 1 + cumdays[6] + d +
+				    ((h / 4.0) / 24.0);
 				found = 1;
 				break;
 			}
@@ -296,7 +311,8 @@ equinoxsolstice(int year, double UTCoffset, int *equinoxdays, int *solsticedays)
 				DEBUG2(year, 12, d, HOUR(h), MIN(h),
 				    prevdec, dec, prevangle, angle);
 #endif
-				solsticedays[1] = cumdays[12] + d;
+				solsticedays[1] = 1 + cumdays[12] + d +
+				    ((h / 4.0) / 24.0);
 				found = 1;
 				break;
 			}

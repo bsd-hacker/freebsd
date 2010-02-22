@@ -46,6 +46,7 @@ static int isonlydigits(char *s, int nostar);
 static int indextooffset(char *s);
 static int parseoffset(char *s);
 static char *floattoday(int year, double f);
+static char *floattotime(double f);
 
 /*
  * Expected styles:
@@ -297,12 +298,17 @@ allfine:
 }
 
 static void
-remember(int index, int *y, int *m, int *d, int yy, int mm, int dd)
+remember(int index, int *y, int *m, int *d, char **ed, int yy, int mm, int dd,
+    char *extra)
 {
 
 	y[index] = yy;
 	m[index] = mm;
 	d[index] = dd;
+	if (extra != NULL)
+		strcpy(ed[index], extra);
+	else
+		ed[index][0] = '\0';
 }
 
 static void
@@ -336,7 +342,8 @@ struct yearinfo {
 	int ieaster, ipaskha, firstcnyday;
 	double ffullmoon[MAXMOONS], fnewmoon[MAXMOONS];
 	double ffullmooncny[MAXMOONS], fnewmooncny[MAXMOONS];
-	int ichinesemonths[MAXMOONS], equinoxdays[2], solsticedays[2];
+	int ichinesemonths[MAXMOONS];
+	double equinoxdays[2], solsticedays[2];
 	int *mondays;
 	struct yearinfo *next;
 };
@@ -351,12 +358,14 @@ struct yearinfo {
  * along with the matched line.
  */
 int
-parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
+parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags,
+    char **edp)
 {
 	char month[100], dayofmonth[100], dayofweek[100], modifieroffset[100];
 	char modifierindex[100], specialday[100];
 	int idayofweek, imonth, idayofmonth, year, index;
 	int d, m, dow, rm, rd, offset;
+	char *ed;
 
 	static struct yearinfo *years, *yearinfo;
 
@@ -413,7 +422,7 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 			    yearinfo->fnewmoon);
 			fpom(year, UTCOFFSET_CNY, yearinfo->ffullmooncny,
 			    yearinfo->fnewmooncny);
-			equinoxsolstice(year, 0.0,
+			fequinoxsolstice(year, UTCoffset,
 			    yearinfo->equinoxdays, yearinfo->solsticedays);
 
 			/*
@@ -436,8 +445,8 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 		if (*flags == (F_MONTH | F_DAYOFMONTH)) {
 			if (!remember_ymd(year, imonth, idayofmonth))
 				continue;
-			remember(index++, yearp, monthp, dayp,
-			    year, imonth, idayofmonth);
+			remember(index++, yearp, monthp, dayp, edp,
+			    year, imonth, idayofmonth, NULL);
 			continue;
 		}
 
@@ -446,8 +455,8 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 			for (m = 1; m <= 12; m++) {
 				if (!remember_ymd(year, m, idayofmonth))
 					continue;
-				remember(index++, yearp, monthp, dayp,
-				    year, m, idayofmonth);
+				remember(index++, yearp, monthp, dayp, edp,
+				    year, m, idayofmonth, NULL);
 			}
 			continue;
 		}
@@ -457,8 +466,8 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 			for (d = 1; d <= yearinfo->mondays[imonth]; d++) {
 				if (!remember_ymd(year, imonth, d))
 					continue;
-				remember(index++, yearp, monthp, dayp,
-				    year, imonth, d);
+				remember(index++, yearp, monthp, dayp, edp,
+				    year, imonth, d, NULL);
 			}
 			continue;
 		}
@@ -468,8 +477,8 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 			for (m = 1; m <= 12; m++) {
 				if (!remember_ymd(year, m, idayofmonth))
 					continue;
-				remember(index++, yearp, monthp, dayp,
-				    year, m, idayofmonth);
+				remember(index++, yearp, monthp, dayp, edp,
+				    year, m, idayofmonth, NULL);
 			}
 			continue;
 		}
@@ -480,8 +489,9 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 			d = (idayofweek - dow + 8) % 7;
 			while (d <= 366) {
 				if (remember_yd(year, d, &rm, &rd))
-					remember(index++, yearp, monthp, dayp,
-					    year, rm, rd);
+					remember(index++,
+					    yearp, monthp, dayp, edp,
+					    year, rm, rd, NULL);
 				d += 7;
 			}
 			continue;
@@ -498,9 +508,9 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 				while (d <= yearinfo->mondays[imonth]) {
 					if (--offset == 0
 					 && remember_ymd(year, imonth, d)) {
-						remember(index++, yearp,
-						    monthp, dayp, year, imonth,
-						    d);
+						remember(index++,
+						    yearp, monthp, dayp, edp,
+						    year, imonth, d, NULL);
 						continue;
 					}
 					d += 7;
@@ -515,8 +525,9 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 					d -= 7;
 				}
 				if (remember_ymd(year, imonth, d))
-					remember(index++, yearp,
-					    monthp, dayp, year, imonth, d);
+					remember(index++,
+					    yearp, monthp, dayp, edp,
+					    year, imonth, d, NULL);
 				continue;
 			}
 			continue;
@@ -528,8 +539,9 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 			d = (idayofweek - dow + 8) % 7;
 			while (d <= yearinfo->mondays[imonth]) {
 				if (remember_ymd(year, imonth, d))
-					remember(index++, yearp, monthp, dayp,
-					    year, imonth, d);
+					remember(index++,
+					    yearp, monthp, dayp, edp,
+					    year, imonth, d, NULL);
 				d += 7;
 			}
 			continue;
@@ -543,8 +555,8 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 				offset = parseoffset(modifieroffset);
 			if (remember_yd(year, yearinfo->ieaster + offset,
 			    &rm, &rd))
-				remember(index++, yearp, monthp, dayp,
-				    year, rm, rd);
+				remember(index++, yearp, monthp, dayp, edp,
+				    year, rm, rd, NULL);
 			continue;
 		}
 
@@ -556,8 +568,8 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 				offset = parseoffset(modifieroffset);
 			if (remember_yd(year, yearinfo->ipaskha + offset,
 			    &rm, &rd))
-				remember(index++, yearp, monthp, dayp,
-				    year, rm, rd);
+				remember(index++, yearp, monthp, dayp, edp,
+				    year, rm, rd, NULL);
 			continue;
 		}
 
@@ -569,8 +581,8 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 				offset = parseoffset(modifieroffset);
 			if (remember_yd(year, yearinfo->firstcnyday + offset,
 			    &rm, &rd))
-				remember(index++, yearp, monthp, dayp,
-				    year, rm, rd);
+				remember(index++, yearp, monthp, dayp, edp,
+				    year, rm, rd, NULL);
 			continue;
 		}
 
@@ -585,9 +597,13 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 			for (i = 0; yearinfo->ffullmoon[i] > 0; i++) {
 				if (remember_yd(year,
 				    floor(yearinfo->ffullmoon[i]) + offset,
-					&rm, &rd))
-					remember(index++, yearp, monthp, dayp,
-						year, rm, rd);
+					&rm, &rd)) {
+					ed = floattotime(
+					    yearinfo->ffullmoon[i]);
+					remember(index++,
+					    yearp, monthp, dayp, edp,
+					    year, rm, rd, ed);
+				}
 			}
 			continue;
 		}
@@ -603,9 +619,12 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 			for (i = 0; yearinfo->ffullmoon[i] > 0; i++) {
 				if (remember_yd(year,
 				    floor(yearinfo->fnewmoon[i]) + offset,
-				    &rm, &rd))
-					remember(index++, yearp, monthp, dayp,
-						year, rm, rd);
+				    &rm, &rd)) {
+					ed = floattotime(yearinfo->fnewmoon[i]);
+					remember(index++,
+					    yearp, monthp, dayp, edp,
+					    year, rm, rd, ed);
+				}
 			}
 			continue;
 		}
@@ -617,9 +636,11 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 			if ((*flags & F_MODIFIEROFFSET) != 0)
 				offset = parseoffset(modifieroffset);
 			if (remember_yd(year, yearinfo->equinoxdays[0] + offset,
-			    &rm, &rd))
-				remember(index++, yearp, monthp, dayp,
-				    year, rm, rd);
+			    &rm, &rd)) {
+				ed = floattotime(yearinfo->equinoxdays[0]);
+				remember(index++, yearp, monthp, dayp, edp,
+				    year, rm, rd, ed);
+			}
 			continue;
 		}
 		if ((*flags & ~F_MODIFIEROFFSET) ==
@@ -628,9 +649,11 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 			if ((*flags & F_MODIFIEROFFSET) != 0)
 				offset = parseoffset(modifieroffset);
 			if (remember_yd(year, yearinfo->equinoxdays[1] + offset,
-			    &rm, &rd))
-				remember(index++, yearp, monthp, dayp,
-				    year, rm, rd);
+			    &rm, &rd)) {
+				ed = floattotime(yearinfo->equinoxdays[1]);
+				remember(index++, yearp, monthp, dayp, edp,
+				    year, rm, rd, ed);
+			}
 			continue;
 		}
 
@@ -641,9 +664,11 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 			if ((*flags & F_MODIFIEROFFSET) != 0)
 				offset = parseoffset(modifieroffset);
 			if (remember_yd(year,
-			    yearinfo->solsticedays[0] + offset, &rm, &rd))
-				remember(index++, yearp, monthp, dayp,
-				    year, rm, rd);
+			    yearinfo->solsticedays[0] + offset, &rm, &rd)) {
+				ed = floattotime(yearinfo->solsticedays[0]);
+				remember(index++, yearp, monthp, dayp, edp,
+				    year, rm, rd, ed);
+			}
 			continue;
 		}
 		if ((*flags & ~F_MODIFIEROFFSET) ==
@@ -652,9 +677,11 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags)
 			if ((*flags & F_MODIFIEROFFSET) != 0)
 				offset = parseoffset(modifieroffset);
 			if (remember_yd(year,
-			    yearinfo->solsticedays[1] + offset, &rm, &rd))
-				remember(index++, yearp, monthp, dayp,
-				    year, rm, rd);
+			    yearinfo->solsticedays[1] + offset, &rm, &rd)) {
+				ed = floattotime(yearinfo->solsticedays[1]);
+				remember(index++, yearp, monthp, dayp, edp,
+				    year, rm, rd, ed);
+			}
 			continue;
 		}
 
@@ -854,6 +881,25 @@ parseoffset(char *s)
 }
 
 static char *
+floattotime(double f)
+{
+	static char buf[100];
+	int hh, mm, ss, i;
+
+	f -= floor(f);
+	i = f * SECSPERDAY;
+
+	hh = i / SECSPERHOUR;
+	i %= SECSPERHOUR;
+	mm = i / SECSPERMINUTE;
+	i %= SECSPERMINUTE;
+	ss = i;
+
+	sprintf(buf, "%02d:%02d:%02d", hh, mm, ss);
+	return (buf);
+}
+
+static char *
 floattoday(int year, double f)
 {
 	static char buf[100];
@@ -922,6 +968,28 @@ dodebug(char *what)
 
 		}
 	
+		return;
+	}
+
+	if (strcmp(what, "sun") == 0) {
+		double equinoxdays[2], solsticedays[2];
+		for (year = year1; year <= year2; year++) {
+			printf("Sun in %d:\n", year);
+			fequinoxsolstice(year, UTCoffset, equinoxdays,
+			    solsticedays);
+			printf("e[0] - %g (%s)\n",
+			    equinoxdays[0],
+			    floattoday(year, equinoxdays[0]));
+			printf("e[1] - %g (%s)\n",
+			    equinoxdays[1],
+			    floattoday(year, equinoxdays[1]));
+			printf("s[0] - %g (%s)\n",
+			    solsticedays[0],
+			    floattoday(year, solsticedays[0]));
+			printf("s[1] - %g (%s)\n",
+			    solsticedays[1],
+			    floattoday(year, solsticedays[1]));
+		}
 		return;
 	}
 }

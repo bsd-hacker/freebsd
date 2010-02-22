@@ -114,7 +114,7 @@ extern int	year1, year2;
  * - Use event_continue() to add more text to the last added event
  * - Use event_print_all() to display them in time chronological order
  */
-struct event *event_add(int, int, int, char *, int, char *);
+struct event *event_add(int, int, int, char *, int, char *, char *);
 void	event_continue(struct event *events, char *txt);
 void	event_print_all(FILE *fp);
 struct event {
@@ -124,6 +124,7 @@ struct event {
 	int	var;
 	char	*date;
 	char	*text;
+	char	*extra;
 	struct event *next;
 };
 
@@ -151,7 +152,7 @@ void	settimes(time_t,int, int, struct tm *tp1, struct tm *tp2);
 time_t	Mktime(char *);
 
 /* parsedata.c */
-int	parsedaymonth(char *, int *, int *, int *, int *);
+int	parsedaymonth(char *, int *, int *, int *, int *, char **);
 void	dodebug(char *type);
 
 /* io.c */
@@ -183,4 +184,5 @@ void	fpom(int year, double utcoffset, double *ffms, double *fnms);
 
 /* sunpos.c */
 void	equinoxsolstice(int year, double UTCoffset, int *equinoxdays, int *solsticedays);
+void	fequinoxsolstice(int year, double UTCoffset, double *equinoxdays, double *solsticedays);
 int	calculatesunlongitude30(int year, int degreeGMToffset, int *ichinesemonths);

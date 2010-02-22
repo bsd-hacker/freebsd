@@ -102,12 +102,18 @@ cal(void)
 	int month[MAXCOUNT];
 	int day[MAXCOUNT];
 	int year[MAXCOUNT];
+	char **extradata;	/* strings of 20 length */
 	int flags;
 	static int d_first = -1;
 	char buf[2048 + 1];
 	struct event *events[MAXCOUNT];
 	struct tm tm;
 	char dbuf[80];
+
+	extradata = (char **)calloc(MAXCOUNT, sizeof(char *));
+	for (i = 0; i < MAXCOUNT; i++) {
+		extradata[i] = (char *)calloc(1, 20);
+	}
 
 	/* Unused */
 	tm.tm_sec = 0;
@@ -172,7 +178,8 @@ cal(void)
 
 		p = *pp;
 		*pp = '\0';
-		if ((count = parsedaymonth(buf, year, month, day, &flags)) == 0)
+		if ((count = parsedaymonth(buf, year, month, day, &flags,
+		    extradata)) == 0)
 			continue;
 		*pp = p;
 
@@ -192,7 +199,8 @@ cal(void)
 			if (debug)
 				fprintf(stderr, "got %s\n", pp);
 			events[i] = event_add(year[i], month[i], day[i], dbuf,
-			    ((flags &= F_VARIABLE) != 0) ? 1 : 0, pp);
+			    ((flags &= F_VARIABLE) != 0) ? 1 : 0, pp,
+			    extradata[i]);
 		}
 	}
 

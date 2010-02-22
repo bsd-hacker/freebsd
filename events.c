@@ -37,7 +37,8 @@ __FBSDID("$FreeBSD: user/edwin/calendar/io.c 200813 2009-12-21 21:17:59Z edwin $
 #include "calendar.h"
 
 struct event *
-event_add(int year, int month, int day, char *date, int var, char *txt)
+event_add(int year, int month, int day, char *date, int var, char *txt,
+    char *extra)
 {
 	struct event *e;
 
@@ -60,6 +61,9 @@ event_add(int year, int month, int day, char *date, int var, char *txt)
 	e->text = strdup(txt);
 	if (e->text == NULL)
 		errx(1, "event_add: cannot allocate memory");
+	e->extra = NULL;
+	if (extra != NULL)
+		e->extra = strdup(extra);
 	addtodate(e, year, month, day);
 	return (e);
 }
@@ -108,8 +112,13 @@ event_print_all(FILE *fp)
 		 * dates
 		 */
 		while (e != NULL) {
-			(void)fprintf(fp, "%s%c%s\n", e->date,
-			    e->var ? '*' : ' ', e->text);
+			(void)fprintf(fp, "%s%c%s%s%s%s\n", e->date,
+			    e->var ? '*' : ' ', e->text,
+			    e->extra != NULL ? " (" : "",
+			    e->extra != NULL ? e->extra : "",
+			    e->extra != NULL ? ")" : ""
+			);
+
 			e = e->next;
 		}
 	}
