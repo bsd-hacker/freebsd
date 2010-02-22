@@ -89,6 +89,8 @@ ar5416InitState(struct ath_hal_5416 *ahp5416, uint16_t devid, HAL_SOFTC sc,
 	ah->ah_perCalibrationN		= ar5416PerCalibrationN,
 	ah->ah_resetCalValid		= ar5416ResetCalValid,
 	ah->ah_setTxPowerLimit		= ar5416SetTxPowerLimit;
+	ah->ah_setTxPower		= ar5416SetTransmitPower;
+	ah->ah_setBoardValues		= ar5416SetBoardValues;
 
 	/* Transmit functions */
 	ah->ah_stopTxDma		= ar5416StopTxDma;
@@ -352,7 +354,7 @@ ar5416Attach(uint16_t devid, HAL_SOFTC sc,
 	}
 
 	ar5416AniSetup(ah);			/* Anti Noise Immunity */
-	ar5416InitNfHistBuff(ah, AH5416(ah)->ah_cal.nfCalHist);
+	ar5416InitNfHistBuff(AH5416(ah)->ah_cal.nfCalHist);
 
 	HALDEBUG(ah, HAL_DEBUG_ATTACH, "%s: return\n", __func__);
 

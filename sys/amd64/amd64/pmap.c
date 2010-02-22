@@ -151,7 +151,11 @@ __FBSDID("$FreeBSD$");
 #endif
 
 #if !defined(DIAGNOSTIC)
+#ifdef __GNUC_GNU_INLINE__
+#define PMAP_INLINE	inline
+#else
 #define PMAP_INLINE	extern inline
+#endif
 #else
 #define PMAP_INLINE
 #endif
@@ -568,8 +572,6 @@ pmap_bootstrap(vm_paddr_t *firstaddr)
 	SYSMAP(caddr_t, unused, crashdumpmap, MAXDUMPPGS)
 
 	virtual_avail = va;
-
-	*CMAP1 = 0;
 
 	invltlb();
 

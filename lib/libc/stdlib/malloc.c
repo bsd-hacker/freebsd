@@ -215,10 +215,12 @@ __FBSDID("$FreeBSD$");
 #  define LG_QUANTUM		4
 #  define LG_SIZEOF_PTR		2
 #  define CPU_SPINWAIT		__asm__ volatile("pause")
+#  define TLS_MODEL		__attribute__((tls_model("initial-exec")))
 #endif
 #ifdef __ia64__
 #  define LG_QUANTUM		4
 #  define LG_SIZEOF_PTR		3
+#  define TLS_MODEL		/* default */
 #endif
 #ifdef __alpha__
 #  define LG_QUANTUM		4
@@ -234,6 +236,7 @@ __FBSDID("$FreeBSD$");
 #  define LG_QUANTUM		4
 #  define LG_SIZEOF_PTR		3
 #  define CPU_SPINWAIT		__asm__ volatile("pause")
+#  define TLS_MODEL		__attribute__((tls_model("initial-exec")))
 #endif
 #ifdef __arm__
 #  define LG_QUANTUM		3
@@ -248,9 +251,11 @@ __FBSDID("$FreeBSD$");
 #ifdef __powerpc64__
 #  define LG_QUANTUM		4
 #  define LG_SIZEOF_PTR		3
+#  define TLS_MODEL		/* default */
 #elif defined(__powerpc__)
 #  define LG_QUANTUM		4
 #  define LG_SIZEOF_PTR		2
+#  define TLS_MODEL		/* default */
 #endif
 #ifdef __s390x__
 #  define LG_QUANTUM		4
@@ -1094,14 +1099,12 @@ static pthread_mutex_t	arenas_lock; /* Protects arenas initialization. */
  * Map of _pthread_self() --> arenas[???], used for selecting an arena to use
  * for allocations.
  */
-static __thread arena_t		*arenas_map
-    __attribute__((tls_model("initial-exec")));
+static __thread arena_t		*arenas_map TLS_MODEL;
 #endif
 
 #ifdef MALLOC_TCACHE
 /* Map of thread-specific caches. */
-static __thread tcache_t	*tcache_tls
-    __attribute__((tls_model("initial-exec")));
+static __thread tcache_t	*tcache_tls TLS_MODEL;
 
 /*
  * Number of cache slots for each bin in the thread cache, or 0 if tcache is
@@ -1119,15 +1122,12 @@ unsigned			tcache_gc_incr;
  * since the state of mmap_unaligned only affects performance, rather than
  * correct function.
  */
-static
 #ifndef NO_TLS
-       __thread
+static __thread bool	mmap_unaligned TLS_MODEL;
+#else
+static		bool	mmap_unaligned;
 #endif
-       bool	mmap_unaligned
-#ifndef NO_TLS
-       __attribute__((tls_model("initial-exec")))
-#endif
-       ;
+
 #ifdef MALLOC_STATS
 static malloc_mutex_t	chunks_mtx;
 /* Chunk statistics. */
