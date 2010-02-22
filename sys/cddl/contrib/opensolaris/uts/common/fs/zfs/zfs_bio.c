@@ -1025,6 +1025,9 @@ _zio_cache_valid(void *data, uint64_t size)
 	buf_t bp;
 	int i;
 
+	if (zfs_page_cache_disable)
+		return;
+
 	bp = zio_buf_va_lookup(data, size);
 	if ((bp->b_flags & B_VMIO) == 0)
 		return;
