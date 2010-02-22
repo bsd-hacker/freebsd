@@ -1,0 +1,77 @@
+Current location: Home page > Calendar > Seasons Calculator - UTC years
+2000-2049
+
+		Seasons Calculator - UTC years 2000-2049
+
+The Seasons Calculator calculates the approximate time and date of
+the March equinox, the June solstice, the September equinox and the
+December solstice. These dates mark the beginning of the four seasons
+of the year in many countries: spring, summer, autumn (or fall) and
+winter.
+
+It is important to note that the seasons in the northern hemisphere
+are opposite to those in the southern hemisphere. For example,
+spring in the northern hemisphere is autumn (or fall) in the southern
+hemisphere.  Therefore the March equinox is known as the spring or
+vernal equinox in the northern hemisphere and the autumnal equinox
+in the southern hemisphere. The September equinox is known as the
+autumnal equinox in the northern hemisphere and the spring or vernal
+equinox in the southern hemisphere.
+
+Reference to the start of the seasons on this page are taken from
+an astronomical viewpoint. In meteorological terms the start dates
+for the seasons are different. So spring in many countries in the
+northern hemisphere begins on March 1, summer on June 1, autumn (or
+fall) on September 1, and winter on December 1.
+
+Year  March Equinox   June Solstice  September Equinox December Solstice
+2000 20 Mar 07:35     21 Jun 01:48     22 Sep  17:28      21 Dec  13:38   
+2001 20 Mar 13:31     21 Jun 07:38     22 Sep  23:05      21 Dec  19:21   
+2002 20 Mar 19:16     21 Jun 13:25     23 Sep  04:55      22 Dec  01:14   
+2003 21 Mar 01:00     21 Jun 19:11     23 Sep  10:47      22 Dec  07:04   
+2004 20 Mar 06:48     21 Jun 12:57     22 Sep  16:30      21 Dec  12:42   
+2005 20 Mar 12:33     21 Jun 06:46     22 Sep  22:23      21 Dec  18:35   
+2006 20 Mar 18:25     21 Jun 12:26     23 Sep  04:04      22 Dec  12:22   
+2007 21 Mar 12:07     21 Jun 18:06     23 Sep  09:51      22 Dec  06:07   
+2008 20 Mar 05:48     20 Jun 23:59     22 Sep  15:44      21 Dec  12:04   
+2009 20 Mar 11:44     21 Jun 05:46     22 Sep  21:19      21 Dec  17:47   
+2010 20 Mar 17:32     21 Jun 11:29     23 Sep  03:09      21 Dec  23:38   
+2011 20 Mar 23:21     21 Jun 17:16     23 Sep  09:04      22 Dec  05:30   
+2012 20 Mar 05:14     20 Jun 23:08     22 Sep  14:49      21 Dec  11:12   
+2013 20 Mar 11:02     21 Jun 05:04     22 Sep  20:44      21 Dec  17:11   
+2014 20 Mar 16:57     21 Jun 10:52     23 Sep  02:29      21 Dec  23:03   
+2015 20 Mar 22:45     21 Jun 16:38     23 Sep  08:21      22 Dec  04:48   
+2016 20 Mar 04:30     20 Jun 22:35     22 Sep  14:21      21 Dec  10:44   
+2017 20 Mar 10:29     21 Jun 04:24     22 Sep  20:02      21 Dec  16:28   
+2018 20 Mar 16:15     21 Jun 10:07     23 Sep  01:54      21 Dec  22:22   
+2019 20 Mar 21:59     21 Jun 15:54     23 Sep  07:50      22 Dec  04:19   
+2020 20 Mar 03:50     20 Jun 21:44     22 Sep  13:31      21 Dec  10:03   
+2021 20 Mar 09:37     21 Jun 03:32     22 Sep  19:21      21 Dec  15:59   
+2022 20 Mar 15:33     21 Jun 09:14     23 Sep  01:04      21 Dec  21:48   
+2023 20 Mar 21:24     21 Jun 14:57     23 Sep  06:50      22 Dec  03:27   
+2024 20 Mar 03:06     20 Jun 20:51     22 Sep  12:44      21 Dec  09:20   
+2025 20 Mar 09:02     21 Jun 02:42     22 Sep  18:20      21 Dec  15:03   
+2026 20 Mar 14:46     21 Jun 08:25     23 Sep  12:05      21 Dec  20:50   
+2027 20 Mar 20:25     21 Jun 14:11     23 Sep  06:02      22 Dec  02:42   
+2028 20 Mar 02:17     20 Jun 20:02     22 Sep  11:45      21 Dec  08:20   
+2029 20 Mar 08:02     21 Jun 01:48     22 Sep  17:38      21 Dec  14:14   
+2030 20 Mar 13:52     21 Jun 07:31     22 Sep  23:27      21 Dec  20:10   
+2031 20 Mar 19:41     21 Jun 13:17     23 Sep  05:15      22 Dec  01:56   
+2032 20 Mar 01:22     20 Jun 19:09     22 Sep  11:11      21 Dec  07:56   
+2033 20 Mar 07:23     21 Jun 01:01     22 Sep  16:52      21 Dec  13:46   
+2034 20 Mar 13:18     21 Jun 06:44     22 Sep  22:40      21 Dec  19:34   
+2035 20 Mar 19:03     21 Jun 12:33     23 Sep  04:39      22 Dec  01:31   
+2036 20 Mar 01:03     20 Jun 18:32     22 Sep  10:24      21 Dec  07:13   
+2037 20 Mar 06:50     21 Jun 12:22     22 Sep  16:13      21 Dec  13:08   
+2038 20 Mar 12:40     21 Jun 06:09     22 Sep  22:02      21 Dec  19:02   
+2039 20 Mar 18:32     21 Jun 11:57     23 Sep  03:50      22 Dec  12:40   
+2040 20 Mar 12:11     20 Jun 17:47     22 Sep  09:45      21 Dec  06:33   
+2041 20 Mar 06:07     20 Jun 23:36     22 Sep  15:27      21 Dec  12:18   
+2042 20 Mar 11:53     21 Jun 05:16     22 Sep  21:12      21 Dec  18:04   
+2043 20 Mar 17:28     21 Jun 10:58     23 Sep  03:07      22 Dec  12:01   
+2044 19 Mar 23:20     20 Jun 16:51     22 Sep  08:48      21 Dec  05:44   
+2045 20 Mar 05:07     20 Jun 22:34     22 Sep  14:33      21 Dec  11:35   
+2046 20 Mar 10:58     21 Jun 04:15     22 Sep  20:22      21 Dec  17:28   
+2047 20 Mar 16:53     21 Jun 10:03     23 Sep  02:08      21 Dec  23:07   
+2048 19 Mar 22:34     20 Jun 15:54     22 Sep  08:01      21 Dec  05:02   
+2049 20 Mar 04:29     20 Jun 21:47     22 Sep  13:43      21 Dec  10:52   
