@@ -374,6 +374,7 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags,
 	int idayofweek, imonth, idayofmonth, year, index;
 	int d, m, dow, rm, rd, offset;
 	char *ed;
+	int retvalsign = 1;
 
 	static struct yearinfo *years, *yearinfo;
 
@@ -451,6 +452,15 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags,
 
 		/* Same day every year */
 		if (*flags == (F_MONTH | F_DAYOFMONTH)) {
+			if (!remember_ymd(year, imonth, idayofmonth))
+				continue;
+			remember(&index, yearp, monthp, dayp, edp,
+			    year, imonth, idayofmonth, NULL);
+			continue;
+		}
+
+		/* XXX Same day every year, but variable */
+		if (*flags == (F_MONTH | F_DAYOFMONTH | F_VARIABLE)) {
 			if (!remember_ymd(year, imonth, idayofmonth))
 				continue;
 			remember(&index, yearp, monthp, dayp, edp,
@@ -697,9 +707,13 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags,
 		debug_determinestyle(2, date, *flags, month, imonth,
 		    dayofmonth, idayofmonth, dayofweek, idayofweek,
 		    modifieroffset, modifierindex, specialday);
+		retvalsign = -1;
 	}
 
-	return (index);
+	if (retvalsign == -1)
+		return (-index - 1);
+	else
+		return (index);
 }
 
 static char *
