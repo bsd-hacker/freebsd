@@ -180,6 +180,8 @@ sunpos(int inYY, int inMM, int inDD, double UTCOFFSET, int inHOUR, int inMIN,
 
 #define	SIGN(a)	(((a) > 180) ? -1 : 1)
 #define ANGLE(a, b) (((a) < (b)) ? 1 : -1)
+#define SHOUR(s) ((s) / 3600)
+#define SMIN(s) (((s) % 3600) / 60)
 #define HOUR(h) ((h) / 4)
 #define MIN(h) (15 * ((h) % 4))
 #define	DEBUG1(y, m, d, hh, mm, pdec, dec) \
@@ -207,6 +209,9 @@ fequinoxsolstice(int year, double UTCoffset, double *equinoxdays, double *solsti
 	int h, d, prevangle, angle;
 	int found = 0;
 
+	double decleft, decright, decmiddle;
+	int dial, s;
+
 	int *cumdays;
 	cumdays = cumdaytab[isleap(year)];
 
@@ -218,23 +223,35 @@ fequinoxsolstice(int year, double UTCoffset, double *equinoxdays, double *solsti
 	found = 0;
 	prevdec = 350;
 	for (d = 18; d < 31; d++) {
-		for (h = 0; h < 4 * HOURSPERDAY; h++) {
-			sunpos(year, 3, d, UTCoffset, HOUR(h), MIN(h),
-			    0.0, 0.0, &L, &dec);
-			if (SIGN(prevdec) != SIGN(dec)) {
-#ifdef NOTDEF
-				DEBUG1(year, 3, d, HOUR(h), MIN(h),
-				    prevdec, dec);
-#endif
-				equinoxdays[0] = 1 + cumdays[3] + d +
-				    ((h / 4.0) / 24.0);
-				found = 1;
-				break;
+//		printf("Comparing day %d to %d.\n", d, d+1);
+		sunpos(year, 3, d, UTCoffset, 0, 0, 0.0, 0.0, &L, &decleft);
+		sunpos(year, 3, d + 1, UTCoffset, 0, 0, 0.0, 0.0,
+		    &L, &decright);
+//		printf("Found %g and %g.\n", decleft, decright);
+		if (SIGN(decleft) == SIGN(decright))
+			continue;
+
+		dial = SECSPERDAY;
+		s = SECSPERDAY / 2;
+		while (s > 0) {
+//			printf("Obtaining %d (%02d:%02d)\n",
+//			    dial, SHOUR(dial), SMIN(dial));
+			sunpos(year, 3, d, UTCoffset, SHOUR(dial), SMIN(dial),
+			    0.0, 0.0, &L, &decmiddle);
+//			printf("Found %g\n", decmiddle);
+			if (SIGN(decleft) == SIGN(decmiddle)) {
+				decleft = decmiddle;
+				dial += s;
+			} else {
+				decright = decmiddle;
+				dial -= s;
 			}
-			prevdec = dec;
+//			printf("New boundaries: %g - %g\n", decleft, decright);
+
+			s /= 2;
 		}
-		if (found)
-			break;
+		equinoxdays[0] = 1 + cumdays[3] + d + (dial / FSECSPERDAY);
+		break;
 	}
 
 	/* Find the second equinox, somewhere in September:
@@ -244,23 +261,35 @@ fequinoxsolstice(int year, double UTCoffset, double *equinoxdays, double *solsti
 	found = 0;
 	prevdec = 10;
 	for (d = 18; d < 31; d++) {
-		for (h = 0; h < 4 * HOURSPERDAY; h++) {
-			sunpos(year, 9, d, UTCoffset, HOUR(h), MIN(h),
-			    0.0, 0.0, &L, &dec);
-			if (SIGN(prevdec) != SIGN(dec)) {
-#ifdef NOTDEF
-				DEBUG1(year, 9, d, HOUR(h), MIN(h),
-				    prevdec, dec);
-#endif
-				equinoxdays[1] = 1 + cumdays[9] + d +
-				    ((h / 4.0) / 24.0);
-				found = 1;
-				break;
+		printf("Comparing day %d to %d.\n", d, d+1);
+		sunpos(year, 9, d, UTCoffset, 0, 0, 0.0, 0.0, &L, &decleft);
+		sunpos(year, 9, d + 1, UTCoffset, 0, 0, 0.0, 0.0,
+		    &L, &decright);
+		printf("Found %g and %g.\n", decleft, decright);
+		if (SIGN(decleft) == SIGN(decright))
+			continue;
+
+		dial = SECSPERDAY;
+		s = SECSPERDAY / 2;
+		while (s > 0) {
+//			printf("Obtaining %d (%02d:%02d)\n",
+//			    dial, SHOUR(dial), SMIN(dial));
+			sunpos(year, 9, d, UTCoffset, SHOUR(dial), SMIN(dial),
+			    0.0, 0.0, &L, &decmiddle);
+//			printf("Found %g\n", decmiddle);
+			if (SIGN(decleft) == SIGN(decmiddle)) {
+				decleft = decmiddle;
+				dial += s;
+			} else {
+				decright = decmiddle;
+				dial -= s;
 			}
-			prevdec = dec;
+//			printf("New boundaries: %g - %g\n", decleft, decright);
+
+			s /= 2;
 		}
-		if (found)
-			break;
+		equinoxdays[1] = 1 + cumdays[9] + d + (dial / FSECSPERDAY);
+		break;
 	}
 
 	/*
