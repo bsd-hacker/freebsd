@@ -93,7 +93,7 @@ static double ZJtable[] = {
 
 static void
 sunpos(int inYY, int inMM, int inDD, double UTCOFFSET, int inHOUR, int inMIN,
-    double eastlongitude, double latitude, double *L, double *DEC)
+    int inSEC, double eastlongitude, double latitude, double *L, double *DEC)
 {
 	int Y;
 	double ZJ, D, T, M, epsilon, lambda, alpha, HA, UTHM;
@@ -102,7 +102,7 @@ sunpos(int inYY, int inMM, int inDD, double UTCOFFSET, int inHOUR, int inMIN,
 	if (inMM <= 2 && isleap(inYY))
 		ZJ -= 1.0;
 
-	UTHM = inHOUR + inMIN / FSECSPERMINUTE + UTCOFFSET;
+	UTHM = inHOUR + inMIN / FMINSPERHOUR + inSEC / FSECSPERHOUR + UTCOFFSET;
 	Y = inYY - 1900;						/*  1 */
 	D = floor(365.25 * Y) + ZJ + inDD + UTHM / FHOURSPERDAY;	/*  3 */
 	T = D / 36525.0;						/*  4 */
@@ -134,8 +134,8 @@ sunpos(int inYY, int inMM, int inDD, double UTCOFFSET, int inHOUR, int inMIN,
 	fixup(&HA);
 	fixup(&latitude);
 #ifdef NOTDEF
-	printf("%02d/%02d %02d: l:%g d:%g h:%g\n",
-	    inMM, inDD, inHOUR, latitude, *DEC, HA);
+	printf("%02d/%02d %02d:%02d:%02d l:%g d:%g h:%g\n",
+	    inMM, inDD, inHOUR, inMIN, inSEC, latitude, *DEC, HA);
 #endif
 	return;
 
@@ -182,8 +182,10 @@ sunpos(int inYY, int inMM, int inDD, double UTCOFFSET, int inHOUR, int inMIN,
 #define ANGLE(a, b) (((a) < (b)) ? 1 : -1)
 #define SHOUR(s) ((s) / 3600)
 #define SMIN(s) (((s) % 3600) / 60)
+#define SSEC(s) ((s) % 60)
 #define HOUR(h) ((h) / 4)
 #define MIN(h) (15 * ((h) % 4))
+#define SEC(h)	0
 #define	DEBUG1(y, m, d, hh, mm, pdec, dec) \
 	printf("%4d-%02d-%02d %02d:%02d:00 - %7.7g -> %7.7g\n", \
 	    y, m, d, hh, mm, pdec, dec)
@@ -224,8 +226,8 @@ fequinoxsolstice(int year, double UTCoffset, double *equinoxdays, double *solsti
 	prevdec = 350;
 	for (d = 18; d < 31; d++) {
 //		printf("Comparing day %d to %d.\n", d, d+1);
-		sunpos(year, 3, d, UTCoffset, 0, 0, 0.0, 0.0, &L, &decleft);
-		sunpos(year, 3, d + 1, UTCoffset, 0, 0, 0.0, 0.0,
+		sunpos(year, 3, d, UTCoffset, 0, 0, 0, 0.0, 0.0, &L, &decleft);
+		sunpos(year, 3, d + 1, UTCoffset, 0, 0, 0, 0.0, 0.0,
 		    &L, &decright);
 //		printf("Found %g and %g.\n", decleft, decright);
 		if (SIGN(decleft) == SIGN(decright))
@@ -236,7 +238,8 @@ fequinoxsolstice(int year, double UTCoffset, double *equinoxdays, double *solsti
 		while (s > 0) {
 //			printf("Obtaining %d (%02d:%02d)\n",
 //			    dial, SHOUR(dial), SMIN(dial));
-			sunpos(year, 3, d, UTCoffset, SHOUR(dial), SMIN(dial),
+			sunpos(year, 3, d, UTCoffset,
+			    SHOUR(dial), SMIN(dial), SSEC(dial),
 			    0.0, 0.0, &L, &decmiddle);
 //			printf("Found %g\n", decmiddle);
 			if (SIGN(decleft) == SIGN(decmiddle)) {
@@ -261,11 +264,11 @@ fequinoxsolstice(int year, double UTCoffset, double *equinoxdays, double *solsti
 	found = 0;
 	prevdec = 10;
 	for (d = 18; d < 31; d++) {
-		printf("Comparing day %d to %d.\n", d, d+1);
-		sunpos(year, 9, d, UTCoffset, 0, 0, 0.0, 0.0, &L, &decleft);
-		sunpos(year, 9, d + 1, UTCoffset, 0, 0, 0.0, 0.0,
+//		printf("Comparing day %d to %d.\n", d, d+1);
+		sunpos(year, 9, d, UTCoffset, 0, 0, 0, 0.0, 0.0, &L, &decleft);
+		sunpos(year, 9, d + 1, UTCoffset, 0, 0, 0, 0.0, 0.0,
 		    &L, &decright);
-		printf("Found %g and %g.\n", decleft, decright);
+//		printf("Found %g and %g.\n", decleft, decright);
 		if (SIGN(decleft) == SIGN(decright))
 			continue;
 
@@ -274,7 +277,8 @@ fequinoxsolstice(int year, double UTCoffset, double *equinoxdays, double *solsti
 		while (s > 0) {
 //			printf("Obtaining %d (%02d:%02d)\n",
 //			    dial, SHOUR(dial), SMIN(dial));
-			sunpos(year, 9, d, UTCoffset, SHOUR(dial), SMIN(dial),
+			sunpos(year, 9, d, UTCoffset,
+			    SHOUR(dial), SMIN(dial), SSEC(dial),
 			    0.0, 0.0, &L, &decmiddle);
 //			printf("Found %g\n", decmiddle);
 			if (SIGN(decleft) == SIGN(decmiddle)) {
@@ -302,7 +306,7 @@ fequinoxsolstice(int year, double UTCoffset, double *equinoxdays, double *solsti
 	prevangle = 1;
 	for (d = 18; d < 31; d++) {
 		for (h = 0; h < 4 * HOURSPERDAY; h++) {
-			sunpos(year, 6, d, UTCoffset, HOUR(h), MIN(h),
+			sunpos(year, 6, d, UTCoffset, HOUR(h), MIN(h), SEC(h),
 			    0.0, 0.0, &L, &dec);
 			angle = ANGLE(prevdec, dec);
 			if (prevangle != angle) {
@@ -332,7 +336,7 @@ fequinoxsolstice(int year, double UTCoffset, double *equinoxdays, double *solsti
 	prevangle = -1;
 	for (d = 18; d < 31; d++) {
 		for (h = 0; h < 4 * HOURSPERDAY; h++) {
-			sunpos(year, 12, d, UTCoffset, HOUR(h), MIN(h),
+			sunpos(year, 12, d, UTCoffset, HOUR(h), MIN(h), SEC(h),
 			    0.0, 0.0, &L, &dec);
 			angle = ANGLE(prevdec, dec);
 			if (prevangle != angle) {
@@ -370,14 +374,15 @@ calculatesunlongitude30(int year, int degreeGMToffset, int *ichinesemonths)
 
 	sunpos(year - 1, 12, 31,
 	    -24 * (degreeGMToffset / 360.0),
-	    HOUR(h), MIN(h), 0.0, 0.0, &prevL, &dec);
+	    HOUR(h), MIN(h), SEC(h), 0.0, 0.0, &prevL, &dec);
 
 	for (m = 1; m <= 12; m++) {
 		for (d = 1; d <= monthdays[m]; d++) {
 			for (h = 0; h < 4 * HOURSPERDAY; h++) {
 				sunpos(year, m, d,
 				    -24 * (degreeGMToffset / 360.0),
-				    HOUR(h), MIN(h), 0.0, 0.0, &curL, &dec);
+				    HOUR(h), MIN(h), SEC(h),
+				    0.0, 0.0, &curL, &dec);
 				if (curL < 180 && prevL > 180) {
 					*pichinesemonths = cumdays[m] + d;
 #ifdef DEBUG
