@@ -1,0 +1,1 @@
+#define VIMAGE 1

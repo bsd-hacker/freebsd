@@ -1,0 +1,10 @@
+# $FreeBSD: user/eri/pf45/head/sys/mips/rmi/std.xlr 202175 2010-01-12 21:36:08Z imp $
+files	"../rmi/files.xlr"
+
+#
+# XXXMIPS: It's a stub, isn't it?
+#
+cpu     CPU_MIPS4KC
+option	NOFPU
+# Kludge for now
+options TARGET_XLR_XLS

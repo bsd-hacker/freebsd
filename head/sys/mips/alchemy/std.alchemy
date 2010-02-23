@@ -1,0 +1,8 @@
+# $FreeBSD: user/eri/pf45/head/sys/mips/alchemy/std.alchemy 202175 2010-01-12 21:36:08Z imp $
+# Standard include file for Alchemy Au1xxx CPUs: 
+# Au1000, Au1200, Au1250, Au1500 and Au1550
+
+files	"../alchemy/files.alchemy"
+
+cpu		CPU_MIPS4KC
+options		ISA_MIPS32
