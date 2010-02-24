@@ -238,6 +238,7 @@ TLBIE(pmap_t pmap, vm_offset_t va) {
 
 #define	VSID_MAKE(sr, hash)	((sr) | (((hash) & 0xfffff) << 4))
 #define	VSID_TO_HASH(vsid)	(((vsid) >> 4) & 0xfffff)
+#define	VSID_HASH_MASK		0x0000007fffffffffULL
 
 #define	PVO_PTEGIDX_MASK	0x007UL		/* which PTEG slot */
 #define	PVO_PTEGIDX_VALID	0x008UL		/* slot is valid */
@@ -479,9 +480,9 @@ MMU_DEF(oea64_bridge_mmu);
 static __inline u_int
 va_to_pteg(uint64_t vsid, vm_offset_t addr)
 {
-	u_int hash;
+	uint64_t hash;
 
-	hash = vsid ^ (((uint64_t)addr & ADDR_PIDX) >>
+	hash = (vsid & VSID_HASH_MASK) ^ (((uint64_t)addr & ADDR_PIDX) >>
 	    ADDR_PIDX_SHFT);
 	return (hash & moea64_pteg_mask);
 }
@@ -1075,6 +1076,7 @@ moea64_bridge_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernele
 		    moea64_scratchpage_va[i],&j);
 		moea64_scratchpage_pte[i] = moea64_pvo_to_pte(
 		    moea64_scratchpage_pvo[i],j);
+		moea64_scratchpage_pte[i]->pte_hi |= LPTE_LOCKED;
 		UNLOCK_TABLE();
 	}
 
@@ -1169,15 +1171,6 @@ moea64_change_wiring(mmu_t mmu, pmap_t pm, vm_offset_t va, boolean_t wired)
 }
 
 /*
- * Zero a page of physical memory by temporarily mapping it into the tlb.
- */
-void
-moea64_zero_page(mmu_t mmu, vm_page_t m)
-{
-	moea64_zero_page_area(mmu,m,0,PAGE_SIZE);
-}
-
-/*
  * This goes through and sets the physical address of our
  * special scratch PTE to the PA we want to zero or copy. Because
  * of locking issues (this can get called in pvo_enter() by
@@ -1186,8 +1179,10 @@ moea64_zero_page(mmu_t mmu, vm_page_t m)
 
 static __inline
 void moea64_set_scratchpage_pa(int which, vm_offset_t pa) {
+	mtx_assert(&moea64_scratchpage_mtx, MA_OWNED);
+
 	moea64_scratchpage_pvo[which]->pvo_pte.lpte.pte_lo &= 
-	    (~LPTE_WIMG & ~LPTE_RPGN);
+	    ~(LPTE_WIMG | LPTE_RPGN);
 	moea64_scratchpage_pvo[which]->pvo_pte.lpte.pte_lo |= 
 	    moea64_calc_wimg(pa) | (uint64_t)pa;
 
@@ -1236,6 +1231,27 @@ moea64_zero_page_area(mmu_t mmu, vm_page_t m, int off, int size)
 
 	moea64_set_scratchpage_pa(0,pa);
 	bzero((caddr_t)moea64_scratchpage_va[0] + off, size);
+	mtx_unlock(&moea64_scratchpage_mtx);
+}
+
+/*
+ * Zero a page of physical memory by temporarily mapping it
+ */
+void
+moea64_zero_page(mmu_t mmu, vm_page_t m)
+{
+	vm_offset_t pa = VM_PAGE_TO_PHYS(m);
+	vm_offset_t off;
+
+	if (!moea64_initialized)
+		panic("moea64_zero_page: can't zero pa %#x", pa);
+
+	mtx_lock(&moea64_scratchpage_mtx);
+
+	moea64_set_scratchpage_pa(0,pa);
+	for (off = 0; off < PAGE_SIZE; off += cacheline_size)
+		__asm __volatile("dcbz 0,%0" ::
+		    "r"(moea64_scratchpage_va[0] + off));
 	mtx_unlock(&moea64_scratchpage_mtx);
 }
 
@@ -2307,18 +2323,16 @@ moea64_pvo_remove(struct pvo_entry *pvo, int pteidx)
 static __inline int
 moea64_pvo_pte_index(const struct pvo_entry *pvo, int ptegidx)
 {
-	int	pteidx;
 
 	/*
 	 * We can find the actual pte entry without searching by grabbing
-	 * the PTEG index from 3 unused bits in pte_lo[11:9] and by
+	 * the PTEG index from 3 unused bits in pvo_vaddr and by
 	 * noticing the HID bit.
 	 */
-	pteidx = ptegidx * 8 + PVO_PTEGIDX_GET(pvo);
 	if (pvo->pvo_pte.lpte.pte_hi & LPTE_HID)
-		pteidx ^= moea64_pteg_mask * 8;
+		ptegidx ^= moea64_pteg_mask;
 
-	return (pteidx);
+	return ((ptegidx << 3) | PVO_PTEGIDX_GET(pvo));
 }
 
 static struct pvo_entry *
@@ -2415,7 +2429,8 @@ moea64_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
 	 * First try primary hash.
 	 */
 	for (pt = moea64_pteg_table[ptegidx].pt, i = 0; i < 8; i++, pt++) {
-		if ((pt->pte_hi & LPTE_VALID) == 0) {
+		if ((pt->pte_hi & LPTE_VALID) == 0 &&
+		    (pt->pte_hi & LPTE_LOCKED) == 0) {
 			pvo_pt->pte_hi &= ~LPTE_HID;
 			moea64_pte_set(pt, pvo_pt);
 			return (i);
@@ -2428,7 +2443,8 @@ moea64_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
 	ptegidx ^= moea64_pteg_mask;
 
 	for (pt = moea64_pteg_table[ptegidx].pt, i = 0; i < 8; i++, pt++) {
-		if ((pt->pte_hi & LPTE_VALID) == 0) {
+		if ((pt->pte_hi & LPTE_VALID) == 0 &&
+		    (pt->pte_hi & LPTE_LOCKED) == 0) {
 			pvo_pt->pte_hi |= LPTE_HID;
 			moea64_pte_set(pt, pvo_pt);
 			return (i);

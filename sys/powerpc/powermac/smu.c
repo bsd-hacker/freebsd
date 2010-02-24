@@ -44,6 +44,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/bus.h>
 #include <machine/md_var.h>
 
+#include <dev/led/led.h>
 #include <dev/ofw/openfirm.h>
 #include <dev/ofw/ofw_bus.h>
 #include <powerpc/powermac/macgpiovar.h>
@@ -114,6 +115,8 @@ struct smu_softc {
 	/* Thermal management parameters */
 	int		sc_target_temp;		/* Default 55 C */
 	int		sc_critical_temp;	/* Default 90 C */
+
+	struct cdev 	*sc_leddev;
 };
 
 /* regular bus attachment functions */
@@ -133,6 +136,8 @@ static int	smu_get_datablock(device_t dev, int8_t id, uint8_t *buf,
 static void	smu_attach_fans(device_t dev, phandle_t fanroot);
 static void	smu_attach_sensors(device_t dev, phandle_t sensroot);
 static void	smu_fanmgt_callout(void *xdev);
+static void	smu_set_sleepled(void *xdev, int onoff);
+static int	smu_server_mode(SYSCTL_HANDLER_ARGS);
 
 /* where to find the doorbell GPIO */
 
@@ -170,6 +175,16 @@ MALLOC_DEFINE(M_SMU, "smu", "SMU Sensor Information");
 #define  SMU_MISC_GET_DATA	0x02
 #define  SMU_MISC_LED_CTRL	0x04
 #define SMU_POWER		0xaa
+#define SMU_POWER_EVENTS	0x8f
+#define  SMU_PWR_GET_POWERUP	0x00
+#define  SMU_PWR_SET_POWERUP	0x01
+#define  SMU_PWR_CLR_POWERUP	0x02
+
+/* Power event types */
+#define SMU_WAKEUP_KEYPRESS	0x01
+#define SMU_WAKEUP_AC_INSERT	0x02
+#define SMU_WAKEUP_AC_CHANGE	0x04
+#define SMU_WAKEUP_RING		0x10
 
 /* Data blocks */
 #define SMU_CPUTEMP_CAL		0x18
@@ -291,6 +306,20 @@ smu_attach(device_t dev)
 
 	callout_init(&sc->sc_fanmgt_callout, 1);
 	smu_fanmgt_callout(dev);
+
+	/*
+	 * Set up LED interface
+	 */
+	sc->sc_leddev = led_create(smu_set_sleepled, dev, "sleepled");
+
+	/*
+	 * Reset on power loss behavior
+	 */
+
+	SYSCTL_ADD_PROC(device_get_sysctl_ctx(dev),
+            SYSCTL_CHILDREN(device_get_sysctl_tree(dev)), OID_AUTO,
+	    "server_mode", CTLTYPE_INT | CTLFLAG_RW, dev, 0,
+	    smu_server_mode, "I", "Enable reboot after power failure");
 
 	return (0);
 }
@@ -851,5 +880,58 @@ smu_fanmgt_callout(void *xdev) {
 
 	callout_reset(&sc->sc_fanmgt_callout,
 	    ms_to_ticks(SMU_FANMGT_INTERVAL), smu_fanmgt_callout, smu);
+}
+
+static void
+smu_set_sleepled(void *xdev, int onoff)
+{
+	struct smu_cmd cmd;
+	device_t smu = xdev;
+
+	cmd.cmd = SMU_MISC;
+	cmd.len = 3;
+	cmd.data[0] = SMU_MISC_LED_CTRL;
+	cmd.data[1] = 0;
+	cmd.data[2] = onoff; 
+
+	smu_run_cmd(smu, &cmd);
+}
+
+static int
+smu_server_mode(SYSCTL_HANDLER_ARGS)
+{
+	struct smu_cmd cmd;
+	u_int server_mode;
+	device_t smu = arg1;
+	int error;
+	
+	cmd.cmd = SMU_POWER_EVENTS;
+	cmd.len = 1;
+	cmd.data[0] = SMU_PWR_GET_POWERUP;
+
+	error = smu_run_cmd(smu, &cmd);
+
+	if (error)
+		return (error);
+
+	server_mode = (cmd.data[1] & SMU_WAKEUP_AC_INSERT) ? 1 : 0;
+
+	error = sysctl_handle_int(oidp, &server_mode, 0, req);
+
+	if (error || !req->newptr)
+		return (error);
+
+	if (server_mode == 1)
+		cmd.data[0] = SMU_PWR_SET_POWERUP;
+	else if (server_mode == 0)
+		cmd.data[0] = SMU_PWR_CLR_POWERUP;
+	else
+		return (EINVAL);
+
+	cmd.len = 3;
+	cmd.data[1] = 0;
+	cmd.data[2] = SMU_WAKEUP_AC_INSERT;
+
+	return (smu_run_cmd(smu, &cmd));
 }
 
