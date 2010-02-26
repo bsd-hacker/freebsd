@@ -62,10 +62,15 @@ const char *months[] = {
 	"Jul", "Aug", "Sep", "Oct", "Nov", "Dec", NULL,
 };
 
+const char *sequences[] = {
+	"First", "Second", "Third", "Fourth", "Fifth", "Last"
+};
+
 struct fixs fndays[8];		/* full national days names */
 struct fixs ndays[8];		/* short national days names */
 struct fixs fnmonths[13];	/* full national months names */
 struct fixs nmonths[13];	/* short national month names */
+struct fixs nsequences[10];	/* national sequence names */
 
 
 void
@@ -128,4 +133,36 @@ setnnames(void)
 			errx(1, "cannot allocate memory");
 		fnmonths[i].len = strlen(buf);
 	}
+}
+
+void
+setnsequences(char *seq)
+{
+	int i;
+	char *p;
+
+	p = seq;
+	for (i = 0; i < 5; i++) {
+		nsequences[i].name = p;
+		if ((p = strchr(p, ' ')) == NULL) {
+			for (i = 0; i < 5; i++) {
+				nsequences[i].name = NULL;
+				nsequences[i].len = -1;
+				return;
+			}
+			
+		}
+		*p = '\0';
+		p++;
+	}
+	nsequences[i].name = p;
+
+	for (i = 0; i < 5; i++) {
+		nsequences[i].name = strdup(nsequences[i].name);
+		nsequences[i].len = nsequences[i + 1].name - nsequences[i].name;
+	}
+	nsequences[i].name = strdup(nsequences[i].name);
+	nsequences[i].len = strlen(nsequences[i].name);
+
+	return;
 }

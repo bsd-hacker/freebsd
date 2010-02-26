@@ -152,6 +152,10 @@ cal(void)
 		REPLACE("SepEquinox=", 11, nsepequinox);
 		REPLACE("JunSolstice=", 12, njunsolstice);
 		REPLACE("DecSolstice=", 12, ndecsolstice);
+		if (strncmp(buf, "SEQUENCE=", 9) == 0) {
+			setnsequences(buf + 9);
+			continue;
+		}
 
 		/*
 		 * If the line starts with a tab, the data has to be

@@ -880,18 +880,26 @@ isonlydigits(char *s, int nostar)
 static int
 indextooffset(char *s)
 {
-	if (strcasecmp(s, "first") == 0)
-		return (1);
-	if (strcasecmp(s, "second") == 0)
-		return (2);
-	if (strcasecmp(s, "third") == 0)
-		return (3);
-	if (strcasecmp(s, "fourth") == 0)
-		return (4);
-	if (strcasecmp(s, "fifth") == 0)
-		return (5);
-	if (strcasecmp(s, "last") == 0)
-		return (-1);
+	int i;
+	struct fixs *n;
+
+	for (i = 0; i < 6; i++) {
+		if (strcasecmp(s, sequences[i]) == 0) {
+			if (i == 5)
+				return (-1);
+			return (i + 1);
+		}
+	}
+	for (i = 0; i < 6; i++) {
+		n = nsequences + i;
+		if (n->len == -1)
+			continue;
+		if (strncasecmp(s, n->name, n->len) == 0) {
+			if (i == 5)
+				return (-1);
+			return (i + 1);
+		}
+	}
 	return (0);
 }
 
