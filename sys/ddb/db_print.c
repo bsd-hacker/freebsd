@@ -56,7 +56,11 @@ db_show_regs(intptr_t _1, boolean_t _2, db_expr_t _3, char *_4)
 	for (regp = db_regs; regp < db_eregs; regp++) {
 		if (!db_read_variable(regp, &value))
 			continue;
-		db_printf("%-12s%#10lr", regp->name, (unsigned long)value);
+#if 0 /* XXX n32 MIPS has 32-bit longs, 64-bit regs and GCC won't take %llr  */
+		db_printf("%-12s%#18llr", regp->name, (unsigned long long)value);
+#else
+		db_printf("%-12s%#18llx", regp->name, (unsigned long long)value);
+#endif
 		db_find_xtrn_sym_and_offset((db_addr_t)value, &name, &offset);
 		if (name != NULL && offset <= (unsigned long)db_maxoff &&
 		    offset != value) {
