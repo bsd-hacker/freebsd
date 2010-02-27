@@ -67,14 +67,14 @@ device		ether
 device		md
 device		uart
 nodevice	uart_ns8250
-device	 	rgmii
+#device	 	rgmii
 #options 	VERBOSE_SYSINIT
 
 
 #
 # Use the following for  Compact Flash file-system
 device 		cf
-options         ROOTDEVNAME = \"ufs:cf0s2a\"	# Unmask if compact flash is needed as RFS
+options 	ROOTDEVNAME=\"ufs:cf0s1\"
 
 #
 # Use the following for RFS in mem-device
