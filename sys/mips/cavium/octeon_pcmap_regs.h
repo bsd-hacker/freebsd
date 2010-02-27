@@ -94,19 +94,19 @@ extern struct pcpu *cpuid_to_pcpu[];
 
 static inline void oct_write64 (uint64_t csr_addr, uint64_t val64)
 {
-    uint64_t *ptr = (uint64_t *) csr_addr;
+    uint64_t *ptr = (uint64_t *)(intptr_t)csr_addr;
     *ptr = val64;
 }
 
 static inline void oct_write64_int64 (uint64_t csr_addr, int64_t val64i)
 {
-    int64_t *ptr = (int64_t *) csr_addr;
+    int64_t *ptr = (int64_t *)(intptr_t)csr_addr;
     *ptr = val64i;
 }
 
 static inline void oct_write8_x8 (uint64_t csr_addr, uint8_t val8)
 {
-    uint64_t *ptr = (uint64_t *) csr_addr;
+    uint64_t *ptr = (uint64_t *)(intptr_t)csr_addr;
     *ptr = (uint64_t) val8;
 }
 
@@ -127,32 +127,32 @@ static inline void oct_write32 (uint64_t csr_addr, uint32_t val32)
 
 static inline uint8_t oct_read8 (uint64_t csr_addr)
 {
-    uint8_t *ptr = (uint8_t *) csr_addr;
+    uint8_t *ptr = (uint8_t *)(intptr_t)csr_addr;
     return (*ptr);
 }
 
 static inline uint8_t oct_read16 (uint64_t csr_addr)
 {
-    uint16_t *ptr = (uint16_t *) csr_addr;
+    uint16_t *ptr = (uint16_t *)(intptr_t)csr_addr;
     return (*ptr);
 }
 
 
 static inline uint32_t oct_read32 (uint64_t csr_addr)
 {
-    uint32_t *ptr = (uint32_t *) csr_addr;
+    uint32_t *ptr = (uint32_t *)(intptr_t)csr_addr;
     return (*ptr);
 }
 
 static inline uint64_t oct_read64 (uint64_t csr_addr)
 {
-    uint64_t *ptr = (uint64_t *) csr_addr;
+    uint64_t *ptr = (uint64_t *)(intptr_t)csr_addr;
     return (*ptr);
 }
 
 static inline int32_t oct_readint32 (uint64_t csr_addr)
 {
-    int32_t *ptr = (int32_t *) csr_addr;
+    int32_t *ptr = (int32_t *)(intptr_t)csr_addr;
     return (*ptr);
 }
 
@@ -160,6 +160,14 @@ static inline int32_t oct_readint32 (uint64_t csr_addr)
 
 #else
 
+
+/*
+ * XXX
+ * These cannot possibly work unless the exception handlers in an o32 kernel
+ * are careful to not trash the upper 32 bits of saved/restored registers, or
+ * actually save and restore them as 64-bit quantities, which seems possible
+ * but is quite ugly.
+ */
 
 /*  ABI o32 */
 
