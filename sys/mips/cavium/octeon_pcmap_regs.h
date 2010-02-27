@@ -594,7 +594,7 @@ typedef enum {
 
 /*  PTR_SIZE == sizeof(uint32_t)  */
 
-#ifdef ISA_MIPS32
+#ifdef __mips_n32
 #define mipsx_addr_size				uint32_t	// u_int64
 #define MIPSX_ADDR_SIZE_KSEGX_BIT_SHIFT		30		// 62
 #define MIPSX_ADDR_SIZE_KSEGX_MASK_REMOVED	0x1fffffff	// 0x1fffffff
