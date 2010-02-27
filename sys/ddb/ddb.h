@@ -94,7 +94,7 @@ extern struct command_table db_show_all_table;
 /*
  * Type signature for a function implementing a ddb command.
  */
-typedef void db_cmdfcn_t(db_expr_t addr, boolean_t have_addr, db_expr_t count,
+typedef void db_cmdfcn_t(intptr_t addr, boolean_t have_addr, db_expr_t count,
 	    char *modif);
 
 /*
@@ -149,7 +149,7 @@ SYSUNINIT(__CONCAT(_name,_suffix), SI_SUB_KLD, SI_ORDER_ANY,	\
 static db_cmdfcn_t _func;					\
 _DB_SET(_suffix, _name, _func, list, _flag, _more);		\
 static void							\
-_func(db_expr_t addr, boolean_t have_addr, db_expr_t count, char *modif)
+_func(intptr_t addr, boolean_t have_addr, db_expr_t count, char *modif)
 
 /* common idom provided for backwards compatibility */
 #define DB_FUNC(_name, _func, list, _flag, _more)		\
@@ -190,13 +190,13 @@ void		db_error(const char *s);
 int		db_expression(db_expr_t *valuep);
 int		db_get_variable(db_expr_t *valuep);
 void		db_iprintf(const char *,...) __printflike(1, 2);
-struct proc	*db_lookup_proc(db_expr_t addr);
-struct thread	*db_lookup_thread(db_expr_t addr, boolean_t check_pid);
+struct proc	*db_lookup_proc(intptr_t addr);
+struct thread	*db_lookup_thread(intptr_t addr, boolean_t check_pid);
 struct vm_map	*db_map_addr(vm_offset_t);
 boolean_t	db_map_current(struct vm_map *);
 boolean_t	db_map_equal(struct vm_map *, struct vm_map *);
-int		db_md_set_watchpoint(db_expr_t addr, db_expr_t size);
-int		db_md_clr_watchpoint(db_expr_t addr, db_expr_t size);
+int		db_md_set_watchpoint(intptr_t addr, db_expr_t size);
+int		db_md_clr_watchpoint(intptr_t addr, db_expr_t size);
 void		db_md_list_watchpoints(void);
 void		db_print_loc_and_inst(db_addr_t loc);
 void		db_print_thread(void);

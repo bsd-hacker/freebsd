@@ -266,27 +266,27 @@ loop:
 			mask |= (1 << i.IType.rt);
 			switch (i.IType.rt) {
 			case 4:/* a0 */
-				args[0] = kdbpeek((int *)(sp + (short)i.IType.imm));
+				args[0] = kdbpeek((int *)((intptr_t)sp + (short)i.IType.imm));
 				valid_args[0] = 1;
 				break;
 
 			case 5:/* a1 */
-				args[1] = kdbpeek((int *)(sp + (short)i.IType.imm));
+				args[1] = kdbpeek((int *)((intptr_t)sp + (short)i.IType.imm));
 				valid_args[1] = 1;
 				break;
 
 			case 6:/* a2 */
-				args[2] = kdbpeek((int *)(sp + (short)i.IType.imm));
+				args[2] = kdbpeek((int *)((intptr_t)sp + (short)i.IType.imm));
 				valid_args[2] = 1;
 				break;
 
 			case 7:/* a3 */
-				args[3] = kdbpeek((int *)(sp + (short)i.IType.imm));
+				args[3] = kdbpeek((int *)((intptr_t)sp + (short)i.IType.imm));
 				valid_args[3] = 1;
 				break;
 
 			case 31:	/* ra */
-				ra = kdbpeek((int *)(sp + (short)i.IType.imm));
+				ra = kdbpeek((int *)((intptr_t)sp + (short)i.IType.imm));
 			}
 			break;
 
@@ -300,27 +300,27 @@ loop:
 			mask |= (1 << i.IType.rt);
 			switch (i.IType.rt) {
 			case 4:/* a0 */
-				args[0] = kdbpeekD((int *)(sp + (short)i.IType.imm));
+				args[0] = kdbpeekD((int *)((intptr_t)sp + (short)i.IType.imm));
 				valid_args[0] = 1;
 				break;
 
 			case 5:/* a1 */
-				args[1] = kdbpeekD((int *)(sp + (short)i.IType.imm));
+				args[1] = kdbpeekD((int *)((intptr_t)sp + (short)i.IType.imm));
 				valid_args[1] = 1;
 				break;
 
 			case 6:/* a2 */
-				args[2] = kdbpeekD((int *)(sp + (short)i.IType.imm));
+				args[2] = kdbpeekD((int *)((intptr_t)sp + (short)i.IType.imm));
 				valid_args[2] = 1;
 				break;
 
 			case 7:/* a3 */
-				args[3] = kdbpeekD((int *)(sp + (short)i.IType.imm));
+				args[3] = kdbpeekD((int *)((intptr_t)sp + (short)i.IType.imm));
 				valid_args[3] = 1;
 				break;
 
 			case 31:	/* ra */
-				ra = kdbpeekD((int *)(sp + (short)i.IType.imm));
+				ra = kdbpeekD((int *)((intptr_t)sp + (short)i.IType.imm));
 			}
 			break;
 
@@ -366,7 +366,7 @@ finish:
 
 
 int
-db_md_set_watchpoint(db_expr_t addr, db_expr_t size)
+db_md_set_watchpoint(intptr_t addr, db_expr_t size)
 {
 
 	return(0);
@@ -374,7 +374,7 @@ db_md_set_watchpoint(db_expr_t addr, db_expr_t size)
 
 
 int
-db_md_clr_watchpoint( db_expr_t addr, db_expr_t size)
+db_md_clr_watchpoint(intptr_t addr, db_expr_t size)
 {
 
 	return(0);
@@ -400,8 +400,8 @@ db_trace_thread(struct thread *thr, int count)
 	struct pcb *ctx;
 
 	if (thr == curthread) {
-		sp = (register_t)__builtin_frame_address(0);
-		ra = (register_t)__builtin_return_address(0);
+		sp = (register_t)(intptr_t)__builtin_frame_address(0);
+		ra = (register_t)(intptr_t)__builtin_return_address(0);
 
         	__asm __volatile(
 			"jal 99f\n"

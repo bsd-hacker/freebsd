@@ -539,7 +539,7 @@ typedef db_expr_t __db_f(db_expr_t, db_expr_t, db_expr_t, db_expr_t,
 static __inline int
 db_fncall_generic(db_expr_t addr, db_expr_t *rv, int nargs, db_expr_t args[])
 {
-	__db_f *f = (__db_f *)addr;
+	__db_f *f = (__db_f *)(intptr_t)addr;
 
 	if (nargs > 10) {
 		db_printf("Too many arguments (max 10)\n");
@@ -552,7 +552,7 @@ db_fncall_generic(db_expr_t addr, db_expr_t *rv, int nargs, db_expr_t args[])
 
 static void
 db_fncall(dummy1, dummy2, dummy3, dummy4)
-	db_expr_t	dummy1;
+	intptr_t	dummy1;
 	boolean_t	dummy2;
 	db_expr_t	dummy3;
 	char *		dummy4;
@@ -602,7 +602,7 @@ db_fncall(dummy1, dummy2, dummy3, dummy4)
 }
 
 static void
-db_halt(db_expr_t dummy, boolean_t dummy2, db_expr_t dummy3, char *dummy4)
+db_halt(intptr_t dummy, boolean_t dummy2, db_expr_t dummy3, char *dummy4)
 {
 
 	cpu_halt();
@@ -610,7 +610,7 @@ db_halt(db_expr_t dummy, boolean_t dummy2, db_expr_t dummy3, char *dummy4)
 
 static void
 db_kill(dummy1, dummy2, dummy3, dummy4)
-	db_expr_t	dummy1;
+	intptr_t	dummy1;
 	boolean_t	dummy2;
 	db_expr_t	dummy3;
 	char *		dummy4;
@@ -663,7 +663,7 @@ out:
 
 static void
 db_reset(dummy1, dummy2, dummy3, dummy4)
-	db_expr_t	dummy1;
+	intptr_t	dummy1;
 	boolean_t	dummy2;
 	db_expr_t	dummy3;
 	char *		dummy4;
@@ -674,7 +674,7 @@ db_reset(dummy1, dummy2, dummy3, dummy4)
 
 static void
 db_watchdog(dummy1, dummy2, dummy3, dummy4)
-	db_expr_t	dummy1;
+	intptr_t	dummy1;
 	boolean_t	dummy2;
 	db_expr_t	dummy3;
 	char *		dummy4;
@@ -691,7 +691,7 @@ db_watchdog(dummy1, dummy2, dummy3, dummy4)
 }
 
 static void
-db_gdb(db_expr_t dummy1, boolean_t dummy2, db_expr_t dummy3, char *dummy4)
+db_gdb(intptr_t dummy1, boolean_t dummy2, db_expr_t dummy3, char *dummy4)
 {
 
 	if (kdb_dbbe_select("gdb") != 0)
@@ -701,9 +701,11 @@ db_gdb(db_expr_t dummy1, boolean_t dummy2, db_expr_t dummy3, char *dummy4)
 }
 
 static void
-db_stack_trace(db_expr_t tid, boolean_t hastid, db_expr_t count, char *modif)
+db_stack_trace(intptr_t addr, boolean_t hasaddr, db_expr_t count, char *modif)
 {
 	struct thread *td;
+	boolean_t hastid;
+	db_expr_t tid;
 	db_expr_t radix;
 	pid_t pid;
 	int t;
@@ -747,7 +749,7 @@ db_stack_trace(db_expr_t tid, boolean_t hastid, db_expr_t count, char *modif)
 }
 
 static void
-db_stack_trace_all(db_expr_t dummy, boolean_t dummy2, db_expr_t dummy3,
+db_stack_trace_all(intptr_t dummy, boolean_t dummy2, db_expr_t dummy3,
     char *dummy4)
 {
 	struct proc *p;

@@ -302,7 +302,7 @@ extern int	db_cmd_loop_done;
 /*ARGSUSED*/
 void
 db_single_step_cmd(addr, have_addr, count, modif)
-	db_expr_t	addr;
+	intptr_t	addr;
 	boolean_t	have_addr;
 	db_expr_t	count;
 	char *		modif;
@@ -329,7 +329,7 @@ db_single_step_cmd(addr, have_addr, count, modif)
 /*ARGSUSED*/
 void
 db_trace_until_call_cmd(addr, have_addr, count, modif)
-	db_expr_t	addr;
+	intptr_t	addr;
 	boolean_t	have_addr;
 	db_expr_t	count;
 	char *		modif;
@@ -351,7 +351,7 @@ db_trace_until_call_cmd(addr, have_addr, count, modif)
 /*ARGSUSED*/
 void
 db_trace_until_matching_cmd(addr, have_addr, count, modif)
-	db_expr_t	addr;
+	intptr_t	addr;
 	boolean_t	have_addr;
 	db_expr_t	count;
 	char *		modif;
@@ -375,7 +375,7 @@ db_trace_until_matching_cmd(addr, have_addr, count, modif)
 /*ARGSUSED*/
 void
 db_continue_cmd(addr, have_addr, count, modif)
-	db_expr_t	addr;
+	intptr_t	addr;
 	boolean_t	have_addr;
 	db_expr_t	count;
 	char *		modif;

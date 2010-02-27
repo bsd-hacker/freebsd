@@ -145,13 +145,13 @@ cpu_fork(register struct thread *td1,register struct proc *p2,
 	if (td1 == PCPU_GET(fpcurthread))
 		MipsSaveCurFPState(td1);
 
-	pcb2->pcb_context[PCB_REG_RA] = (register_t)fork_trampoline;
+	pcb2->pcb_context[PCB_REG_RA] = (register_t)(intptr_t)fork_trampoline;
 	/* Make sp 64-bit aligned */
 	pcb2->pcb_context[PCB_REG_SP] = (register_t)(((vm_offset_t)td2->td_pcb &
 	    ~(sizeof(__int64_t) - 1)) - STAND_FRAME_SIZE);
-	pcb2->pcb_context[PCB_REG_S0] = (register_t)fork_return;
-	pcb2->pcb_context[PCB_REG_S1] = (register_t)td2;
-	pcb2->pcb_context[PCB_REG_S2] = (register_t)td2->td_frame;
+	pcb2->pcb_context[PCB_REG_S0] = (register_t)(intptr_t)fork_return;
+	pcb2->pcb_context[PCB_REG_S1] = (register_t)(intptr_t)td2;
+	pcb2->pcb_context[PCB_REG_S2] = (register_t)(intptr_t)td2->td_frame;
 	pcb2->pcb_context[PCB_REG_SR] = SR_INT_MASK & mips_rd_status();
 	/*
 	 * FREEBSD_DEVELOPERS_FIXME:
@@ -182,8 +182,8 @@ cpu_set_fork_handler(struct thread *td, void (*func) __P((void *)), void *arg)
 	 * Note that the trap frame follows the args, so the function
 	 * is really called like this:	func(arg, frame);
 	 */
-	td->td_pcb->pcb_context[PCB_REG_S0] = (register_t) func;
-	td->td_pcb->pcb_context[PCB_REG_S1] = (register_t) arg;
+	td->td_pcb->pcb_context[PCB_REG_S0] = (register_t)(intptr_t)func;
+	td->td_pcb->pcb_context[PCB_REG_S1] = (register_t)(intptr_t)arg;
 }
 
 void
@@ -352,13 +352,13 @@ cpu_set_upcall(struct thread *td, struct thread *td0)
 	 * Set registers for trampoline to user mode.
 	 */
 
-	pcb2->pcb_context[PCB_REG_RA] = (register_t)fork_trampoline;
+	pcb2->pcb_context[PCB_REG_RA] = (register_t)(intptr_t)fork_trampoline;
 	/* Make sp 64-bit aligned */
 	pcb2->pcb_context[PCB_REG_SP] = (register_t)(((vm_offset_t)td->td_pcb &
 	    ~(sizeof(__int64_t) - 1)) - STAND_FRAME_SIZE);
-	pcb2->pcb_context[PCB_REG_S0] = (register_t)fork_return;
-	pcb2->pcb_context[PCB_REG_S1] = (register_t)td;
-	pcb2->pcb_context[PCB_REG_S2] = (register_t)td->td_frame;
+	pcb2->pcb_context[PCB_REG_S0] = (register_t)(intptr_t)fork_return;
+	pcb2->pcb_context[PCB_REG_S1] = (register_t)(intptr_t)td;
+	pcb2->pcb_context[PCB_REG_S2] = (register_t)(intptr_t)td->td_frame;
 	/* Dont set IE bit in SR. sched lock release will take care of it */
 	pcb2->pcb_context[PCB_REG_SR] = SR_INT_MASK & mips_rd_status();
 
@@ -401,7 +401,7 @@ cpu_set_upcall_kse(struct thread *td, void (*entry)(void *), void *arg,
 	* byte aligned[for compatibility with 64-bit CPUs]
 	* in ``See MIPS Run'' by D. Sweetman, p. 269
 	* align stack */
-	sp = ((register_t)(stack->ss_sp + stack->ss_size) & ~0x7) -
+	sp = ((register_t)(intptr_t)(stack->ss_sp + stack->ss_size) & ~0x7) -
 	    STAND_FRAME_SIZE;
 
 	/*
@@ -410,14 +410,14 @@ cpu_set_upcall_kse(struct thread *td, void (*entry)(void *), void *arg,
 	 */
 	tf = td->td_frame;
 	bzero(tf, sizeof(struct trapframe));
-	tf->sp = (register_t)sp;
-	tf->pc = (register_t)entry;
+	tf->sp = sp;
+	tf->pc = (register_t)(intptr_t)entry;
 	/* 
 	 * MIPS ABI requires T9 to be the same as PC 
 	 * in subroutine entry point
 	 */
-	tf->t9 = (register_t)entry; 
-	tf->a0 = (register_t)arg;
+	tf->t9 = (register_t)(intptr_t)entry; 
+	tf->a0 = (register_t)(intptr_t)arg;
 
 	/*
 	 * Keep interrupt mask
@@ -447,7 +447,7 @@ kvtop(void *addr)
 	va = pmap_kextract((vm_offset_t)addr);
 	if (va == 0)
 		panic("kvtop: zero page frame");
-	return((int)va);
+	return((intptr_t)va);
 }
 
 /*
@@ -594,10 +594,10 @@ cpu_throw(struct thread *old, struct thread *new)
 #include <ddb/ddb.h>
 
 #define DB_PRINT_REG(ptr, regname)			\
-	db_printf("  %-12s 0x%lx\n", #regname, (long)((ptr)->regname))
+	db_printf("  %-12s %p\n", #regname, (void *)(intptr_t)((ptr)->regname))
 
 #define DB_PRINT_REG_ARRAY(ptr, arrname, regname)	\
-	db_printf("  %-12s 0x%lx\n", #regname, (long)((ptr)->arrname[regname]))
+	db_printf("  %-12s %p\n", #regname, (void *)(intptr_t)((ptr)->arrname[regname]))
 
 static void
 dump_trapframe(struct trapframe *trapframe)

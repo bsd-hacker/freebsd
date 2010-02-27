@@ -394,7 +394,7 @@ db_search_symbol( val, strategy, offp)
 {
 	register
 	unsigned int	diff;
-	size_t		newdiff;
+	db_expr_t	newdiff;
 	register int	i;
 	c_db_sym_t	ret = C_DB_SYM_NULL, sym;
 

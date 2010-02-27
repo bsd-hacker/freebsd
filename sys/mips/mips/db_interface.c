@@ -120,7 +120,7 @@ db_frame(struct db_variable *vp, db_expr_t *valuep, int op)
 	if (kdb_frame == NULL)
 		return (0);
 
-	reg = (int *)((uintptr_t)kdb_frame + (db_expr_t)vp->valuep);
+	reg = (int *)((uintptr_t)kdb_frame + (size_t)(intptr_t)vp->valuep);
 	if (op == DB_VAR_GET)
 		*valuep = *reg;
 	else

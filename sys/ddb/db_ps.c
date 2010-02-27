@@ -75,7 +75,7 @@ DB_SHOW_ALL_COMMAND(procs, db_procs_cmd)
  * characters.
  */
 void
-db_ps(db_expr_t addr, boolean_t hasaddr, db_expr_t count, char *modif)
+db_ps(intptr_t addr, boolean_t hasaddr, db_expr_t count, char *modif)
 {
 	volatile struct proc *p, *pp;
 	volatile struct thread *td;

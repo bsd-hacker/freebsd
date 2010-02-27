@@ -281,7 +281,7 @@ db_list_breakpoints()
 /*ARGSUSED*/
 void
 db_delete_cmd(addr, have_addr, count, modif)
-	db_expr_t	addr;
+	intptr_t	addr;
 	boolean_t	have_addr;
 	db_expr_t	count;
 	char *		modif;
@@ -293,7 +293,7 @@ db_delete_cmd(addr, have_addr, count, modif)
 /*ARGSUSED*/
 void
 db_breakpoint_cmd(addr, have_addr, count, modif)
-	db_expr_t	addr;
+	intptr_t	addr;
 	boolean_t	have_addr;
 	db_expr_t	count;
 	char *		modif;
@@ -307,7 +307,7 @@ db_breakpoint_cmd(addr, have_addr, count, modif)
 /* list breakpoints */
 void
 db_listbreak_cmd(dummy1, dummy2, dummy3, dummy4)
-	db_expr_t	dummy1;
+	intptr_t	dummy1;
 	boolean_t	dummy2;
 	db_expr_t	dummy3;
 	char *		dummy4;

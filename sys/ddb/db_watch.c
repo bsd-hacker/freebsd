@@ -190,7 +190,7 @@ db_list_watchpoints()
 /*ARGSUSED*/
 void
 db_deletewatch_cmd(addr, have_addr, count, modif)
-	db_expr_t	addr;
+	intptr_t	addr;
 	boolean_t	have_addr;
 	db_expr_t	count;
 	char *		modif;
@@ -202,7 +202,7 @@ db_deletewatch_cmd(addr, have_addr, count, modif)
 /*ARGSUSED*/
 void
 db_watchpoint_cmd(addr, have_addr, count, modif)
-	db_expr_t	addr;
+	intptr_t	addr;
 	boolean_t	have_addr;
 	db_expr_t	count;
 	char *		modif;
@@ -296,7 +296,7 @@ db_find_watchpoint(map, addr, regs)
 /*ARGSUSED*/
 void
 db_deletehwatch_cmd(addr, have_addr, count, modif)
-	db_expr_t	addr;
+	intptr_t	addr;
 	boolean_t	have_addr;
 	db_expr_t	count;
 	char *		modif;
@@ -315,7 +315,7 @@ db_deletehwatch_cmd(addr, have_addr, count, modif)
 /*ARGSUSED*/
 void
 db_hwatchpoint_cmd(addr, have_addr, count, modif)
-	db_expr_t	addr;
+	intptr_t	addr;
 	boolean_t	have_addr;
 	db_expr_t	count;
 	char *		modif;

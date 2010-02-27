@@ -52,9 +52,11 @@ db_print_thread(void)
 }
 
 void
-db_set_thread(db_expr_t tid, boolean_t hastid, db_expr_t cnt, char *mod)
+db_set_thread(intptr_t addr, boolean_t hasaddr, db_expr_t cnt, char *mod)
 {
 	struct thread *thr;
+	boolean_t hastid;
+	db_expr_t tid;
 	db_expr_t radix;
 	int err;
 
@@ -88,7 +90,7 @@ db_set_thread(db_expr_t tid, boolean_t hastid, db_expr_t cnt, char *mod)
 }
 
 void
-db_show_threads(db_expr_t addr, boolean_t hasaddr, db_expr_t cnt, char *mod)
+db_show_threads(intptr_t addr, boolean_t hasaddr, db_expr_t cnt, char *mod)
 {
 	jmp_buf jb;
 	void *prev_jb;
@@ -141,7 +143,7 @@ hex2dec(db_expr_t expr)
  * process.  Otherwise, we treat the addr as a pointer to a thread.
  */
 struct thread *
-db_lookup_thread(db_expr_t addr, boolean_t check_pid)
+db_lookup_thread(intptr_t addr, boolean_t check_pid)
 {
 	struct thread *td;
 	db_expr_t decaddr;
@@ -178,7 +180,7 @@ db_lookup_thread(db_expr_t addr, boolean_t check_pid)
  * If that fails we treat the addr as a pointer to a process.
  */
 struct proc *
-db_lookup_proc(db_expr_t addr)
+db_lookup_proc(intptr_t addr)
 {
 	db_expr_t decaddr;
 	struct proc *p;

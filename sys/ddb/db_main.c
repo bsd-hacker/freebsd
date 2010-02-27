@@ -156,7 +156,7 @@ X_db_symbol_values(db_symtab_t *symtab, c_db_sym_t sym, const char **namep,
 		if (namep != NULL)
 			*namep = (const char*)lval.name;
 		if (valp != NULL)
-			*valp = (db_expr_t)lval.value;
+			*valp = (db_expr_t)(intptr_t)lval.value;
 	} else {
 		if (namep != NULL)
 			*namep = (const char *)symtab->private +

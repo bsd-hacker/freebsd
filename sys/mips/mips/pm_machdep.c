@@ -140,16 +140,16 @@ sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 
 	/* Build the argument list for the signal handler. */
 	regs->a0 = sig;
-	regs->a2 = (register_t)&sfp->sf_uc;
+	regs->a2 = (register_t)(intptr_t)&sfp->sf_uc;
 	if (SIGISMEMBER(psp->ps_siginfo, sig)) {
 		/* Signal handler installed with SA_SIGINFO. */
-		regs->a1 = (register_t)&sfp->sf_si;
+		regs->a1 = (register_t)(intptr_t)&sfp->sf_si;
 		/* sf.sf_ahu.sf_action = (__siginfohandler_t *)catcher; */
 
 		/* fill siginfo structure */
 		sf.sf_si.si_signo = sig;
 		sf.sf_si.si_code = ksi->ksi_code;
-		sf.sf_si.si_addr = (void*)regs->badvaddr;
+		sf.sf_si.si_addr = (void*)(intptr_t)regs->badvaddr;
 	} else {
 		/* Old FreeBSD-style arguments. */
 		regs->a1 = ksi->ksi_code;
@@ -172,13 +172,13 @@ sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 		sigexit(td, SIGILL);
 	}
 
-	regs->pc = (register_t) catcher;
-	regs->t9 = (register_t) catcher;
-	regs->sp = (register_t) sfp;
+	regs->pc = (register_t)(intptr_t)catcher;
+	regs->t9 = (register_t)(intptr_t)catcher;
+	regs->sp = (register_t)(intptr_t)sfp;
 	/*
 	 * Signal trampoline code is at base of user stack.
 	 */
-	regs->ra = (register_t) PS_STRINGS - *(p->p_sysent->sv_szsigcode);
+	regs->ra = (register_t)(intptr_t)PS_STRINGS - *(p->p_sysent->sv_szsigcode);
 	PROC_LOCK(p);
 	mtx_lock(&psp->ps_mtx);
 }
@@ -231,12 +231,12 @@ sigreturn(struct thread *td, struct sigreturn_args *uap)
 	if (ucp->uc_mcontext.mc_regs[ZERO] != UCONTEXT_MAGIC) {
 		printf("sigreturn: pid %d, ucp %p\n", td->td_proc->p_pid, ucp);
 		printf("  old sp %p ra %p pc %p\n",
-		    (void *)regs->sp, (void *)regs->ra, (void *)regs->pc);
+		    (void *)(intptr_t)regs->sp, (void *)(intptr_t)regs->ra, (void *)(intptr_t)regs->pc);
 		printf("  new sp %p ra %p pc %p z %p\n",
-		    (void *)ucp->uc_mcontext.mc_regs[SP],
-		    (void *)ucp->uc_mcontext.mc_regs[RA],
-		    (void *)ucp->uc_mcontext.mc_regs[PC],
-		    (void *)ucp->uc_mcontext.mc_regs[ZERO]);
+		    (void *)(intptr_t)ucp->uc_mcontext.mc_regs[SP],
+		    (void *)(intptr_t)ucp->uc_mcontext.mc_regs[RA],
+		    (void *)(intptr_t)ucp->uc_mcontext.mc_regs[PC],
+		    (void *)(intptr_t)ucp->uc_mcontext.mc_regs[ZERO]);
 		return EINVAL;
 	}
 /* #endif */

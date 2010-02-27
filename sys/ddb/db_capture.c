@@ -331,7 +331,7 @@ db_capture_usage(void)
 }
 
 void
-db_capture_cmd(db_expr_t addr, boolean_t have_addr, db_expr_t count,
+db_capture_cmd(intptr_t addr, boolean_t have_addr, db_expr_t count,
     char *modif)
 {
 	int t;

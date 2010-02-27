@@ -1161,7 +1161,7 @@ retry_flush:
 LIST_HEAD(pagedep_hashhead, pagedep) *pagedep_hashtbl;
 u_long	pagedep_hash;		/* size of hash table - 1 */
 #define	PAGEDEP_HASH(mp, inum, lbn) \
-	(&pagedep_hashtbl[((((register_t)(mp)) >> 13) + (inum) + (lbn)) & \
+	(&pagedep_hashtbl[((((uintptr_t)(mp)) >> 13) + (inum) + (lbn)) & \
 	    pagedep_hash])
 
 static int
@@ -1245,7 +1245,7 @@ LIST_HEAD(inodedep_hashhead, inodedep) *inodedep_hashtbl;
 static u_long	inodedep_hash;	/* size of hash table - 1 */
 static long	num_inodedep;	/* number of inodedep allocated */
 #define	INODEDEP_HASH(fs, inum) \
-      (&inodedep_hashtbl[((((register_t)(fs)) >> 13) + (inum)) & inodedep_hash])
+      (&inodedep_hashtbl[((((uintptr_t)(fs)) >> 13) + (inum)) & inodedep_hash])
 
 static int
 inodedep_find(inodedephd, fs, inum, inodedeppp)
@@ -1333,7 +1333,7 @@ inodedep_lookup(mp, inum, flags, inodedeppp)
 LIST_HEAD(newblk_hashhead, newblk) *newblk_hashtbl;
 u_long	newblk_hash;		/* size of hash table - 1 */
 #define	NEWBLK_HASH(fs, inum) \
-	(&newblk_hashtbl[((((register_t)(fs)) >> 13) + (inum)) & newblk_hash])
+	(&newblk_hashtbl[((((uintptr_t)(fs)) >> 13) + (inum)) & newblk_hash])
 
 static int
 newblk_find(newblkhd, fs, newblkno, newblkpp)
