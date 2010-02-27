@@ -136,7 +136,9 @@ struct rgmx_softc_dev {
 	u_int			idx;
         u_char                  ieee[6];
 
+#if 0
         char const * typestr;   /* printable name of the interface.  */
+#endif
         u_short txb_size;       /* size of TX buffer, in bytes  */
 
         /* Transmission buffer management.  */
@@ -350,7 +352,9 @@ static int octeon_rgmx_init_ifnet (struct rgmx_softc_dev *sc)
 
         ether_ifattach(sc->ifp, sc->ieee);
         /* Print additional info when attached.  */
+#if 0
         device_printf(sc->sc_dev, "type %s, full duplex\n", sc->typestr);
+#endif
 
         return (0);
 }
@@ -2181,7 +2185,7 @@ static int octeon_has_4ports (void)
     u_int chipid;
     int retcode = 1;
 
-    chipid = octeon_get_chipid() & 0xffffff00;
+    chipid = octeon_get_chipid();
 
     switch (chipid) {
         case OCTEON_CN31XX_CHIP:
