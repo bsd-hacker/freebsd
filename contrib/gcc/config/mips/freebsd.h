@@ -170,14 +170,21 @@ Boston, MA 02110-1301, USA.  */
 								\
       if (mips_abi == ABI_EABI)					\
 	builtin_define ("__mips_eabi");				\
-      else if (mips_abi == ABI_N32)				\
+      else if (mips_abi == ABI_N32) {				\
+        builtin_define ("_ABIN32=2");				\
+        builtin_define ("_MIPS_SIM=_ABIN32");			\
 	builtin_define ("__mips_n32");				\
-      else if (mips_abi == ABI_64)				\
+      } else if (mips_abi == ABI_64) {				\
+        builtin_define ("_ABI64=3");				\
+        builtin_define ("_MIPS_SIM=_ABI64");			\
 	builtin_define ("__mips_n64");				\
-      else if (mips_abi == ABI_O64)				\
+      } else if (mips_abi == ABI_O64)				\
 	builtin_define ("__mips_o64");				\
-      else							\
+      else {							\
+        builtin_define ("_ABIO32=1");				\
+        builtin_define ("_MIPS_SIM=_ABIO32");			\
 	builtin_define ("__mips_o32");				\
+      }								\
 								\
       if (TARGET_ABICALLS)					\
 	builtin_define ("__ABICALLS__");			\
