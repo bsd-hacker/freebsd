@@ -35,10 +35,10 @@
  * Bus address and size types
  */
 #include "opt_cputype.h" 
-#if !(defined(TARGET_OCTEON) && defined(ISA_MIPS32))
-typedef uintptr_t bus_addr_t;
-#else
+#if defined(TARGET_OCTEON) && defined(__mips_n32)
 typedef uint64_t bus_addr_t;
+#else
+typedef uintptr_t bus_addr_t;
 #endif
 typedef uintptr_t bus_size_t;
 
