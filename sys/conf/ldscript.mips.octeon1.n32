@@ -6,6 +6,7 @@ ENTRY(_start)
 PROVIDE (_DYNAMIC = 0);
 
 SECTIONS {
+	. = KERNLOADADDR + SIZEOF_HEADERS;
 
 	.text . : {
 	    	*(.text)
