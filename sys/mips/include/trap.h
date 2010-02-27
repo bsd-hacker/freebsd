@@ -74,13 +74,13 @@
 #if !defined(SMP) && (defined(DDB) || defined(DEBUG))
 
 struct trapdebug {		/* trap history buffer for debugging */
-	u_int	status;
-	u_int	cause;
-	u_int	vadr;
-	u_int	pc;
-	u_int	ra;
-	u_int	sp;
-	u_int	code;
+	register_t	status;
+	register_t	cause;
+	register_t	vadr;
+	register_t	pc;
+	register_t	ra;
+	register_t	sp;
+	register_t	code;
 };
 
 #define	trapdebug_enter(x, cd) {	\
@@ -117,7 +117,7 @@ void MipsUserGenException(void);
 void MipsUserIntr(void);
 void MipsUserTLBInvalidException(void);
 
-u_int trap(struct trapframe *);
+register_t trap(struct trapframe *);
 
 #ifndef LOCORE /* XXX */
 int check_address(void *);

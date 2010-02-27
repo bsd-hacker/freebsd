@@ -96,6 +96,9 @@
 #define	MIPS3_VA_TO_CINDEX(x) \
 		((unsigned)(x) & 0xffffff | MIPS_KSEG0_START)
 
+#define	MIPS_XKPHYS_CCA_UC		0x02	/* Uncached.  */
+#define	MIPS_XKPHYS_CCA_CNC		0x03	/* Cacheable non-coherent.  */
+
 #define	MIPS_PHYS_TO_XKPHYS(cca,x) \
 	((0x2ULL << 62) | ((unsigned long long)(cca) << 59) | (x))
 #define	MIPS_XKPHYS_TO_PHYS(x)	((x) & 0x0effffffffffffffULL)

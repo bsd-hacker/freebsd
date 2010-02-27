@@ -274,7 +274,7 @@ extern char *syscallnames[];
  * In the case of a kernel trap, we return the pc where to resume if
  * p->p_addr->u_pcb.pcb_onfault is set, otherwise, return old pc.
  */
-u_int
+register_t
 trap(struct trapframe *trapframe)
 {
 	int type, usermode;
@@ -1001,11 +1001,11 @@ trapDump(char *msg)
 		if (trp->cause == 0)
 			break;
 
-		printf("%s: ADR %x PC %x CR %x SR %x\n",
+		printf("%s: ADR %jx PC %jx CR %jx SR %jx\n",
 		    trap_type[(trp->cause & CR_EXC_CODE) >> CR_EXC_CODE_SHIFT],
-		    trp->vadr, trp->pc, trp->cause, trp->status);
+		    (intmax_t)trp->vadr, (intmax_t)trp->pc, (intmax_t)trp->cause, (intmax_t)trp->status);
 
-		printf("   RA %x SP %x code %d\n", trp->ra, trp->sp, trp->code);
+		printf("   RA %jx SP %jx code %d\n", (intmax_t)trp->ra, (intmax_t)trp->sp, (int)trp->code);
 	}
 	restoreintr(s);
 }
