@@ -140,7 +140,7 @@ loop:
 	}
 	/* check for bad SP: could foul up next frame */
 	/*XXX MIPS64 bad: this hard-coded SP is lame */
-	if (sp & 3 || sp < 0x80000000) {
+	if (sp & 3 || (uintptr_t)sp < 0x80000000u) {
 		(*printfn) ("SP 0x%x: not in kernel\n", sp);
 		ra = 0;
 		subr = 0;
