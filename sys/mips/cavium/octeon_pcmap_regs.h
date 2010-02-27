@@ -90,7 +90,7 @@ extern struct pcpu *cpuid_to_pcpu[];
 #define OCTEON_SYNCW	__asm __volatile (".word  0x10f" : : )
 #define OCTEON_SYNCWS	__asm __volatile (".word  0x14f" : : )
 
-#if defined(__mips_n32) || defined(__mips_n64)
+#if defined(__mips_n64)
 
 static inline void oct_write64 (uint64_t csr_addr, uint64_t val64)
 {
@@ -158,7 +158,7 @@ static inline int32_t oct_readint32 (uint64_t csr_addr)
 
 
 
-#else
+#elif defined(__mips_n32)
 
 
 /*
@@ -168,9 +168,6 @@ static inline int32_t oct_readint32 (uint64_t csr_addr)
  * actually save and restore them as 64-bit quantities, which seems possible
  * but is quite ugly.
  */
-
-/*  ABI o32 */
-
 
 /*
  * Read/write functions
