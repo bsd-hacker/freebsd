@@ -69,7 +69,7 @@ device		ether
 device		md
 device		uart
 nodevice	uart_ns8250
-#device	 	rgmii
+device	 	rgmii
 #options 	VERBOSE_SYSINIT
 
 
