@@ -90,6 +90,11 @@ TPBIT_FUNCS = _pack_tf _unpack_tf _addsub_tf _mul_tf _div_tf \
     _lt_tf _le_tf _unord_tf _si_to_tf _tf_to_si _negate_tf _make_tf \
     _tf_to_df _tf_to_sf _thenan_tf _tf_to_usi _usi_to_tf
 
+.if ${TARGET_ARCH} == "mips"
+FPBIT_FUNCS += _sf_to_tf
+DPBIT_FUNCS += _df_to_tf
+.endif
+
 # These might cause a divide overflow trap and so are compiled with
 # unwinder info.
 LIB2_DIVMOD_FUNCS = _divdi3 _moddi3 _udivdi3 _umoddi3 _udiv_w_sdiv _udivmoddi4
@@ -116,7 +121,8 @@ LIB2FUNCS_EXTRA = floatunsidf.c floatunsisf.c
 .endif
 
 .if ${TARGET_ARCH} == "mips"
-LIB2FUNCS_EXTRA = floatunsidf.c floatunsisf.c
+CFLAGS+=	-D__LDBL_MANT_DIG__=113
+#LIB2FUNCS_EXTRA = floatunsidf.c floatunsisf.c
 .endif
 
 .if ${TARGET_ARCH} == "ia64"
@@ -183,7 +189,7 @@ OBJ_GRPS =	STD DIV
 #
 # Floating point emulation functions
 #
-.if ${TARGET_ARCH} == "armNOT_YET" || \
+.if ${TARGET_ARCH} == "armNOT_YET" || ${TARGET_ARCH} == "mips" || \
     ${TARGET_ARCH} == "powerpc" || ${TARGET_ARCH} == "sparc64"
 
 FPBIT_CFLAGS =	-DFINE_GRAINED_LIBRARIES -DFLOAT
@@ -193,6 +199,14 @@ FPBIT_CFILE =	config/fp-bit.c
 DPBIT_CFILE =	config/fp-bit.c
 
 OBJ_GRPS +=	FPBIT DPBIT
+.endif
+
+.if ${TARGET_ARCH} == "mips"
+TPBIT_CFLAGS =	-DFINE_GRAINED_LIBRARIES -DTFLOAT
+
+TPBIT_CFILE =	config/fp-bit.c
+
+OBJ_GRPS +=	TPBIT
 .endif
 
 #-----------------------------------------------------------------------
