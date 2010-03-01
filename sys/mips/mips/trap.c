@@ -286,7 +286,6 @@ trap(struct trapframe *trapframe)
 	pt_entry_t *pte;
 	unsigned int entry;
 	pmap_t pmap;
-	int quad_syscall = 0;
 	int access_type;
 	ksiginfo_t ksi;
 	char *msg = NULL;
@@ -632,6 +631,7 @@ dofault:
 
 			switch (code) {
 			case SYS_syscall:
+			case SYS___syscall:
 				/*
 				 * Code is first argument, followed by
 				 * actual args.
@@ -640,24 +640,11 @@ dofault:
 				args[0] = locr0->a1;
 				args[1] = locr0->a2;
 				args[2] = locr0->a3;
-				nsaved = 3;
-				break;
-
-			case SYS___syscall:
-				/*
-				 * Like syscall, but code is a quad, so as
-				 * to maintain quad alignment for the rest
-				 * of the arguments.
-				 */
-				if (_QUAD_LOWWORD == 0) {
-					code = locr0->a0;
-				} else {
-					code = locr0->a1;
-				}
-				args[0] = locr0->a2;
-				args[1] = locr0->a3;
-				nsaved = 2;
-				quad_syscall = 1;
+				args[3] = locr0->t4;
+				args[4] = locr0->t5;
+				args[5] = locr0->t6;
+				args[6] = locr0->t7;
+				nsaved = 7;
 				break;
 
 			default:
@@ -665,7 +652,11 @@ dofault:
 				args[1] = locr0->a1;
 				args[2] = locr0->a2;
 				args[3] = locr0->a3;
-				nsaved = 4;
+				args[4] = locr0->t4;
+				args[5] = locr0->t5;
+				args[6] = locr0->t6;
+				args[7] = locr0->t7;
+				nsaved = 8;
 			}
 #ifdef TRAP_DEBUG
 			printf("SYSCALL #%d pid:%u\n", code, p->p_pid);
@@ -695,6 +686,11 @@ dofault:
 					goto done;
 				}
 			}
+#ifdef TRAP_DEBUG
+			for (i = 0; i < nargs; i++) {
+				printf("args[%d] = %#llx\n", i, args[i]);
+			}
+#endif
 #ifdef KTRACE
 			if (KTRPOINT(td, KTR_SYSCALL))
 				ktrsyscall(code, nargs, args);
