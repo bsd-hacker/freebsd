@@ -362,16 +362,13 @@ _C_LABEL(x):
  * ABI calls.
  */
 
-#if !defined(_MIPS_BSD_API) || _MIPS_BSD_API == _MIPS_BSD_API_LP32
-/* #if !defined(__mips_n64) */
+#if !defined(__mips_n32) && !defined(__mips_n64)
 #define	REG_L		lw
 #define	REG_S		sw
 #define	REG_LI		li
 #define	REG_PROLOGUE	.set push
 #define	REG_EPILOGUE	.set pop
 #define	SZREG		4
-#define	PTR_LA		la
-#define	PTR_ADDU	addu
 #else
 #define	REG_L		ld
 #define	REG_S		sd
@@ -379,9 +376,19 @@ _C_LABEL(x):
 #define	REG_PROLOGUE	.set push ; .set mips3
 #define	REG_EPILOGUE	.set pop
 #define	SZREG		8
+#endif
+
+#if !defined(__mips_n64)
+#define	PTR_LA		la
+#define	PTR_ADDU	addu
+#define	PTR_L		lw
+#define	PTR_S		sw
+#else
 #define	PTR_LA		dla
 #define	PTR_ADDU	daddu
-#endif	/* _MIPS_BSD_API */
+#define	PTR_L		ld
+#define	PTR_S		sd
+#endif
 
 #define	mfc0_macro(data, spr)						\
 	__asm __volatile ("mfc0 %0, $%1"				\
