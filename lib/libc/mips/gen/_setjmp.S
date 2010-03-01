@@ -65,21 +65,21 @@ LEAF(_setjmp)
 	.cprestore 16
 #endif
 	li	v0, _JB_MAGIC__SETJMP
-	sw	v0, (_JB_MAGIC  * SZREG)(a0)
-	sw	ra, (_JB_REG_RA * SZREG)(a0)
-	sw	s0, (_JB_REG_S0 * SZREG)(a0)
-	sw	s1, (_JB_REG_S1 * SZREG)(a0)
-	sw	s2, (_JB_REG_S2 * SZREG)(a0)
-	sw	s3, (_JB_REG_S3 * SZREG)(a0)
-	sw	s4, (_JB_REG_S4 * SZREG)(a0)
-	sw	s5, (_JB_REG_S5 * SZREG)(a0)
-	sw	s6, (_JB_REG_S6 * SZREG)(a0)
-	sw	s7, (_JB_REG_S7 * SZREG)(a0)
-	sw	s8, (_JB_REG_S8 * SZREG)(a0)
+	REG_S	v0, (_JB_MAGIC  * SZREG)(a0)
+	REG_S	ra, (_JB_REG_RA * SZREG)(a0)
+	REG_S	s0, (_JB_REG_S0 * SZREG)(a0)
+	REG_S	s1, (_JB_REG_S1 * SZREG)(a0)
+	REG_S	s2, (_JB_REG_S2 * SZREG)(a0)
+	REG_S	s3, (_JB_REG_S3 * SZREG)(a0)
+	REG_S	s4, (_JB_REG_S4 * SZREG)(a0)
+	REG_S	s5, (_JB_REG_S5 * SZREG)(a0)
+	REG_S	s6, (_JB_REG_S6 * SZREG)(a0)
+	REG_S	s7, (_JB_REG_S7 * SZREG)(a0)
+	REG_S	s8, (_JB_REG_S8 * SZREG)(a0)
 #ifdef __ABICALLS__
 	addu	sp, sp, CALLFRAME_SIZ	# un-allocate the stack frame
 #endif	
-	sw	sp, (_JB_REG_SP * SZREG)(a0)
+	REG_S	sp, (_JB_REG_SP * SZREG)(a0)
 	j	ra
 	move	v0, zero
 END(_setjmp)
@@ -91,20 +91,20 @@ LEAF(_longjmp)
 	subu	sp, sp, CALLFRAME_SIZ	# allocate stack frame
 	.cprestore 16
 #endif  
-	lw	v0, (_JB_MAGIC  * SZREG)(a0)
-	lw	ra, (_JB_REG_RA * SZREG)(a0)
+	REG_L	v0, (_JB_MAGIC  * SZREG)(a0)
+	REG_L	ra, (_JB_REG_RA * SZREG)(a0)
 	li	t0, _JB_MAGIC__SETJMP
 	bne	v0, t0, botch		# jump if error
-	lw	s0, (_JB_REG_S0 * SZREG)(a0)
-	lw	s1, (_JB_REG_S1 * SZREG)(a0)
-	lw	s2, (_JB_REG_S2 * SZREG)(a0)
-	lw	s3, (_JB_REG_S3 * SZREG)(a0)
-	lw	s4, (_JB_REG_S4 * SZREG)(a0)
-	lw	s5, (_JB_REG_S5 * SZREG)(a0)
-	lw	s6, (_JB_REG_S6 * SZREG)(a0)
-	lw	s7, (_JB_REG_S7 * SZREG)(a0)
-	lw	sp, (_JB_REG_SP * SZREG)(a0)
-	lw	s8, (_JB_REG_S8 * SZREG)(a0)
+	REG_L	s0, (_JB_REG_S0 * SZREG)(a0)
+	REG_L	s1, (_JB_REG_S1 * SZREG)(a0)
+	REG_L	s2, (_JB_REG_S2 * SZREG)(a0)
+	REG_L	s3, (_JB_REG_S3 * SZREG)(a0)
+	REG_L	s4, (_JB_REG_S4 * SZREG)(a0)
+	REG_L	s5, (_JB_REG_S5 * SZREG)(a0)
+	REG_L	s6, (_JB_REG_S6 * SZREG)(a0)
+	REG_L	s7, (_JB_REG_S7 * SZREG)(a0)
+	REG_L	sp, (_JB_REG_SP * SZREG)(a0)
+	REG_L	s8, (_JB_REG_S8 * SZREG)(a0)
 
 	j	ra
 	move	v0, a1

@@ -64,10 +64,10 @@ LEAF(sigsetjmp)
 #endif
 	bne	a1, 0x0, 1f			# do saving of signal mask?
 	la	t9, _setjmp
-	jr t9
+	jr	t9
 
 1:	la	t9, setjmp
-	jr t9
+	jr	t9
 END(sigsetjmp)
 
 LEAF(siglongjmp)
@@ -76,7 +76,7 @@ LEAF(siglongjmp)
 	.cpload	t9
 	.set	reorder
 #endif
-	lw	t0, (_JB_MAGIC  * SZREG)(a0)
+	REG_L	t0, (_JB_MAGIC  * SZREG)(a0)
 	li	t1, _JB_MAGIC__SETJMP
 	bne	t0, t1, 1f			# setjmp or _setjmp magic?
 	la	t9, _longjmp
