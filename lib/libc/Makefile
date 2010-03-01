@@ -51,7 +51,8 @@ NOASM=
 .include "${.CURDIR}/posix1e/Makefile.inc"
 .if ${MACHINE_ARCH} != "amd64" && \
     ${MACHINE_ARCH} != "ia64" && \
-    ${MACHINE_ARCH} != "sparc64"
+    ${MACHINE_ARCH} != "sparc64" && \
+    ${MACHINE_ARCH} != "mips"
 .include "${.CURDIR}/quad/Makefile.inc"
 .endif
 .include "${.CURDIR}/regex/Makefile.inc"
