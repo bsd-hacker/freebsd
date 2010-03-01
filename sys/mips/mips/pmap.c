@@ -297,13 +297,21 @@ again:
 		phys_avail[i] = round_page(phys_avail[i]);
 		phys_avail[i + 1] = trunc_page(phys_avail[i + 1]);
 
-		if (phys_avail[i + 1] >= MIPS_KSEG0_LARGEST_PHYS)
+		if (phys_avail[i] >= MIPS_KSEG0_LARGEST_PHYS) {
+			phys_avail[i] = 0;
+			phys_avail[i + 1] = 0;
+		}
+
+		if (phys_avail[i + 1] >= MIPS_KSEG0_LARGEST_PHYS) {
+#if 0
 			memory_larger_than_512meg++;
+#endif
+			phys_avail[i + 1] = trunc_page(MIPS_KSEG0_LARGEST_PHYS - 1);
+		}
 		if (i < 2)
 			continue;
 		if (phys_avail[i - 2] > phys_avail[i]) {
 			vm_paddr_t ptemp[2];
-
 
 			ptemp[0] = phys_avail[i + 0];
 			ptemp[1] = phys_avail[i + 1];

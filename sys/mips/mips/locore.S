@@ -178,8 +178,8 @@ VECTOR(_locore, unknown)
 	nop
 
 	PTR_LA	sp, _C_LABEL(thread0)
-	lw      a0, TD_PCB(sp)
-	li	t0, ~7
+	REG_L	a0, TD_PCB(sp)
+	REG_LI	t0, ~7
 	and	a0, a0, t0
 	subu    sp, a0, START_FRAME
 
