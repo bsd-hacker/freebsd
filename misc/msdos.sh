@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2008 Peter Holm <pho@FreeBSD.org>
+# Copyright (c) 2008-2010 Peter Holm <pho@FreeBSD.org>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -30,32 +30,24 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
-# Causes this: panic: mutex Giant not owned at ../../../kern/vfs_subr.c:1968
-# with a kernel compiled with "options QUOTA"
+# LOR seen. Fixed by r204467.
 
 . ../default.cfg
 
-unmount() {
-	while mount | grep $mntpoint | grep -q md${mdstart}; do
-		umount $mntpoint > /dev/null 2>&1
-	done
-}
+mount | grep "$mntpoint" | grep -q md$mdstart && umount -f ${mntpoint}
+mdconfig -l | grep -q ${mdstart} &&  mdconfig -d -u $mdstart
 
-D=$diskimage
-dede $D 1m 128 || exit 
-
-unmount
-mdconfig -l | grep ${mdstart} > /dev/null &&  mdconfig -d -u $mdstart
-
-mdconfig -a -t vnode -f $D -u $mdstart
-
+mdconfig -a -t swap -s 1g -u $mdstart
 bsdlabel -w md${mdstart} auto
-newfs_msdos -F 16 -b 8192 /dev/md${mdstart}a
+newfs_msdos /dev/md${mdstart}a > /dev/null
 mount -t msdosfs /dev/md${mdstart}a $mntpoint
-df -h $mntpoint
+
 export RUNDIR=$mntpoint/stressX
 export runRUNTIME=10m            # Run tests for 10 minutes
-(cd /home/pho/stress2; ./run.sh disk.cfg) 
-unmount
+(cd ..; ./run.sh disk.cfg) 
+
+while mount | grep "$mntpoint" | grep -q md$mdstart; do
+	umount $mntpoint || sleep 1
+done
+fsck -t msdosfs -y /dev/md${mdstart}a
 mdconfig -d -u $mdstart
-rm -f $D
