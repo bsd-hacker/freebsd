@@ -297,16 +297,8 @@ again:
 		phys_avail[i] = round_page(phys_avail[i]);
 		phys_avail[i + 1] = trunc_page(phys_avail[i + 1]);
 
-		if (phys_avail[i] >= MIPS_KSEG0_LARGEST_PHYS) {
-			phys_avail[i] = 0;
-			phys_avail[i + 1] = 0;
-		}
-
 		if (phys_avail[i + 1] >= MIPS_KSEG0_LARGEST_PHYS) {
-#if 0
 			memory_larger_than_512meg++;
-#endif
-			phys_avail[i + 1] = trunc_page(MIPS_KSEG0_LARGEST_PHYS - 1);
 		}
 		if (i < 2)
 			continue;
@@ -704,7 +696,7 @@ pmap_kenter(vm_offset_t va, vm_paddr_t pa)
 	pt_entry_t npte, opte;
 
 #ifdef PMAP_DEBUG
-	printf("pmap_kenter:  va: 0x%08x -> pa: 0x%08x\n", va, pa);
+	printf("pmap_kenter:  va: %p -> pa: %p\n", (void *)va, (void *)pa);
 #endif
 	npte = mips_paddr_to_tlbpfn(pa) | PTE_RW | PTE_V | PTE_G | PTE_W;
 
@@ -1916,7 +1908,7 @@ validate:
 	rw = init_pte_prot(va, m, prot);
 
 #ifdef PMAP_DEBUG
-	printf("pmap_enter:  va: 0x%08x -> pa: 0x%08x\n", va, pa);
+	printf("pmap_enter:  va: %p -> pa: %p\n", (void *)va, (void *)pa);
 #endif
 	/*
 	 * Now validate mapping with desired protection/wiring.

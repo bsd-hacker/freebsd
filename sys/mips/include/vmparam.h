@@ -97,17 +97,17 @@
 
 /* user/kernel map constants */
 #define	VM_MIN_ADDRESS		((vm_offset_t)0x00000000)
-#define	VM_MAXUSER_ADDRESS	((vm_offset_t)0x80000000)
+#define	VM_MAXUSER_ADDRESS	((vm_offset_t)(intptr_t)(int32_t)0x80000000)
 #define	VM_MAX_MMAP_ADDR	VM_MAXUSER_ADDRESS
-#define	VM_MAX_ADDRESS		((vm_offset_t)0x80000000)
+#define	VM_MAX_ADDRESS		((vm_offset_t)(intptr_t)(int32_t)0x80000000)
 
 #ifndef VM_KERNEL_ALLOC_OFFSET
 #define	VM_KERNEL_ALLOC_OFFSET	((vm_offset_t)0x00000000)
 #endif
 
-#define	VM_MIN_KERNEL_ADDRESS		((vm_offset_t)0xC0000000)
+#define	VM_MIN_KERNEL_ADDRESS		((vm_offset_t)(intptr_t)(int32_t)0xC0000000)
 #define	VM_KERNEL_WIRED_ADDR_END	(VM_MIN_KERNEL_ADDRESS + VM_KERNEL_ALLOC_OFFSET)
-#define	VM_MAX_KERNEL_ADDRESS	((vm_offset_t)0xFFFFC000)
+#define	VM_MAX_KERNEL_ADDRESS	((vm_offset_t)(intptr_t)(int32_t)0xFFFFC000)
 
 /*
  * Disable superpage reservations. (not sure if this is right
