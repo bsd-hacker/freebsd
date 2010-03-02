@@ -113,7 +113,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/sockio.h>
 #include <sys/queue.h>
 #include <sys/sysctl.h>
-#include <sys/taskqueue.h>
 
 #include <net/bpf.h>
 #include <net/ethernet.h>
@@ -257,9 +256,7 @@ static int msk_attach(device_t);
 static int msk_detach(device_t);
 
 static void msk_tick(void *);
-static void msk_legacy_intr(void *);
-static int msk_intr(void *);
-static void msk_int_task(void *, int);
+static void msk_intr(void *);
 static void msk_intr_phy(struct msk_if_softc *);
 static void msk_intr_gmac(struct msk_if_softc *);
 static __inline void msk_rxput(struct msk_if_softc *);
@@ -273,8 +270,8 @@ static void msk_rxeof(struct msk_if_softc *, uint32_t, uint32_t, int);
 static void msk_jumbo_rxeof(struct msk_if_softc *, uint32_t, uint32_t, int);
 static void msk_txeof(struct msk_if_softc *, int);
 static int msk_encap(struct msk_if_softc *, struct mbuf **);
-static void msk_tx_task(void *, int);
 static void msk_start(struct ifnet *);
+static void msk_start_locked(struct ifnet *);
 static int msk_ioctl(struct ifnet *, u_long, caddr_t);
 static void msk_set_prefetch(struct msk_softc *, int, bus_addr_t, uint32_t);
 static void msk_set_rambuffer(struct msk_if_softc *);
@@ -532,28 +529,25 @@ msk_miibus_statchg(device_t dev)
 			break;
 		}
 
-		if (((mii->mii_media_active & IFM_GMASK) & IFM_FDX) != 0)
-			gmac |= GM_GPCR_DUP_FULL;
 		/* Disable Rx flow control. */
-		if (((mii->mii_media_active & IFM_GMASK) & IFM_FLAG0) == 0)
+		if ((IFM_OPTIONS(mii->mii_media_active) & IFM_FLAG0) == 0)
 			gmac |= GM_GPCR_FC_RX_DIS;
 		/* Disable Tx flow control. */
-		if (((mii->mii_media_active & IFM_GMASK) & IFM_FLAG1) == 0)
+		if ((IFM_OPTIONS(mii->mii_media_active) & IFM_FLAG1) == 0)
 			gmac |= GM_GPCR_FC_TX_DIS;
+		if ((IFM_OPTIONS(mii->mii_media_active) & IFM_FDX) != 0)
+			gmac |= GM_GPCR_DUP_FULL;
+		else
+			gmac |= GM_GPCR_FC_RX_DIS | GM_GPCR_FC_TX_DIS;
 		gmac |= GM_GPCR_RX_ENA | GM_GPCR_TX_ENA;
 		GMAC_WRITE_2(sc, sc_if->msk_port, GM_GP_CTRL, gmac);
 		/* Read again to ensure writing. */
 		GMAC_READ_2(sc, sc_if->msk_port, GM_GP_CTRL);
-
-		gmac = GMC_PAUSE_ON;
-		if (((mii->mii_media_active & IFM_GMASK) &
-		    (IFM_FLAG0 | IFM_FLAG1)) == 0)
-			gmac = GMC_PAUSE_OFF;
-		/* Diable pause for 10/100 Mbps in half-duplex mode. */
-		if ((((mii->mii_media_active & IFM_GMASK) & IFM_FDX) == 0) &&
-		    (IFM_SUBTYPE(mii->mii_media_active) == IFM_100_TX ||
-		    IFM_SUBTYPE(mii->mii_media_active) == IFM_10_T))
-			gmac = GMC_PAUSE_OFF;
+		gmac = GMC_PAUSE_OFF;
+		if ((IFM_OPTIONS(mii->mii_media_active) & IFM_FDX) != 0) {
+			if ((IFM_OPTIONS(mii->mii_media_active) & IFM_FLAG0) != 0)
+				gmac = GMC_PAUSE_ON;
+		}
 		CSR_WRITE_4(sc, MR_ADDR(sc_if->msk_port, GMAC_CTRL), gmac);
 
 		/* Enable PHY interrupt for FIFO underrun/overflow. */
@@ -1514,9 +1508,6 @@ msk_attach(device_t dev)
 	IFQ_SET_MAXLEN(&ifp->if_snd, MSK_TX_RING_CNT - 1);
 	ifp->if_snd.ifq_drv_maxlen = MSK_TX_RING_CNT - 1;
 	IFQ_SET_READY(&ifp->if_snd);
-
-	TASK_INIT(&sc_if->msk_tx_task, 1, msk_tx_task, ifp);
-
 	/*
 	 * Get station address for this interface. Note that
 	 * dual port cards actually come with three station
@@ -1661,6 +1652,14 @@ mskc_attach(device_t dev)
 			sc->msk_process_limit = MSK_PROC_DEFAULT;
 		}
 	}
+
+	sc->msk_int_holdoff = MSK_INT_HOLDOFF_DEFAULT;
+	SYSCTL_ADD_INT(device_get_sysctl_ctx(dev),
+	    SYSCTL_CHILDREN(device_get_sysctl_tree(dev)), OID_AUTO,
+	    "int_holdoff", CTLFLAG_RW, &sc->msk_int_holdoff, 0,
+	    "Maximum number of time to delay interrupts");
+	resource_int_value(device_get_name(dev), device_get_unit(dev),
+	    "int_holdoff", &sc->msk_int_holdoff);
 
 	/* Soft reset. */
 	CSR_WRITE_2(sc, B0_CTST, CS_RST_SET);
@@ -1831,25 +1830,10 @@ mskc_attach(device_t dev)
 	}
 
 	/* Hook interrupt last to avoid having to lock softc. */
-	if (legacy_intr)
-		error = bus_setup_intr(dev, sc->msk_irq[0], INTR_TYPE_NET |
-		    INTR_MPSAFE, NULL, msk_legacy_intr, sc,
-		    &sc->msk_intrhand);
-	else {
-		TASK_INIT(&sc->msk_int_task, 0, msk_int_task, sc);
-		sc->msk_tq = taskqueue_create_fast("msk_taskq", M_WAITOK,
-		    taskqueue_thread_enqueue, &sc->msk_tq);
-		taskqueue_start_threads(&sc->msk_tq, 1, PI_NET, "%s taskq",
-		    device_get_nameunit(sc->msk_dev));
-		error = bus_setup_intr(dev, sc->msk_irq[0], INTR_TYPE_NET |
-		    INTR_MPSAFE, msk_intr, NULL, sc, &sc->msk_intrhand);
-	}
-
+	error = bus_setup_intr(dev, sc->msk_irq[0], INTR_TYPE_NET |
+	    INTR_MPSAFE, NULL, msk_intr, sc, &sc->msk_intrhand);
 	if (error != 0) {
 		device_printf(dev, "couldn't set up interrupt handler\n");
-		if (legacy_intr == 0)
-			taskqueue_free(sc->msk_tq);
-		sc->msk_tq = NULL;
 		goto fail;
 	}
 fail:
@@ -1886,7 +1870,6 @@ msk_detach(device_t dev)
 		/* Can't hold locks while calling detach. */
 		MSK_IF_UNLOCK(sc_if);
 		callout_drain(&sc_if->msk_tick_ch);
-		taskqueue_drain(taskqueue_fast, &sc_if->msk_tx_task);
 		ether_ifdetach(ifp);
 		MSK_IF_LOCK(sc_if);
 	}
@@ -1951,11 +1934,6 @@ mskc_detach(device_t dev)
 
 	msk_status_dma_free(sc);
 
-	if (legacy_intr == 0 && sc->msk_tq != NULL) {
-		taskqueue_drain(sc->msk_tq, &sc->msk_int_task);
-		taskqueue_free(sc->msk_tq);
-		sc->msk_tq = NULL;
-	}
 	if (sc->msk_intrhand) {
 		bus_teardown_intr(dev, sc->msk_irq[0], sc->msk_intrhand);
 		sc->msk_intrhand = NULL;
@@ -2735,30 +2713,29 @@ msk_encap(struct msk_if_softc *sc_if, struct mbuf **m_head)
 }
 
 static void
-msk_tx_task(void *arg, int pending)
+msk_start(struct ifnet *ifp)
 {
-	struct ifnet *ifp;
+	struct msk_if_softc *sc_if;
 
-	ifp = arg;
-	msk_start(ifp);
+	sc_if = ifp->if_softc;
+	MSK_IF_LOCK(sc_if);
+	msk_start_locked(ifp);
+	MSK_IF_UNLOCK(sc_if);
 }
 
 static void
-msk_start(struct ifnet *ifp)
+msk_start_locked(struct ifnet *ifp)
 {
-        struct msk_if_softc *sc_if;
-        struct mbuf *m_head;
+	struct msk_if_softc *sc_if;
+	struct mbuf *m_head;
 	int enq;
 
 	sc_if = ifp->if_softc;
-
-	MSK_IF_LOCK(sc_if);
+	MSK_IF_LOCK_ASSERT(sc_if);
 
 	if ((ifp->if_drv_flags & (IFF_DRV_RUNNING | IFF_DRV_OACTIVE)) !=
-	    IFF_DRV_RUNNING || (sc_if->msk_flags & MSK_FLAG_LINK) == 0) {
-		MSK_IF_UNLOCK(sc_if);
+	    IFF_DRV_RUNNING || (sc_if->msk_flags & MSK_FLAG_LINK) == 0)
 		return;
-	}
 
 	for (enq = 0; !IFQ_DRV_IS_EMPTY(&ifp->if_snd) &&
 	    sc_if->msk_cdata.msk_tx_cnt <
@@ -2796,16 +2773,12 @@ msk_start(struct ifnet *ifp)
 		/* Set a timeout in case the chip goes out to lunch. */
 		sc_if->msk_watchdog_timer = MSK_TX_TIMEOUT;
 	}
-
-	MSK_IF_UNLOCK(sc_if);
 }
 
 static void
 msk_watchdog(struct msk_if_softc *sc_if)
 {
 	struct ifnet *ifp;
-	uint32_t ridx;
-	int idx;
 
 	MSK_IF_LOCK_ASSERT(sc_if);
 
@@ -2822,30 +2795,12 @@ msk_watchdog(struct msk_if_softc *sc_if)
 		return;
 	}
 
-	/*
-	 * Reclaim first as there is a possibility of losing Tx completion
-	 * interrupts.
-	 */
-	ridx = sc_if->msk_port == MSK_PORT_A ? STAT_TXA1_RIDX : STAT_TXA2_RIDX;
-	idx = CSR_READ_2(sc_if->msk_softc, ridx);
-	if (sc_if->msk_cdata.msk_tx_cons != idx) {
-		msk_txeof(sc_if, idx);
-		if (sc_if->msk_cdata.msk_tx_cnt == 0) {
-			if_printf(ifp, "watchdog timeout (missed Tx interrupts) "
-			    "-- recovering\n");
-			if (!IFQ_DRV_IS_EMPTY(&ifp->if_snd))
-				taskqueue_enqueue(taskqueue_fast,
-				    &sc_if->msk_tx_task);
-			return;
-		}
-	}
-
 	if_printf(ifp, "watchdog timeout\n");
 	ifp->if_oerrors++;
 	ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
 	msk_init_locked(sc_if);
 	if (!IFQ_DRV_IS_EMPTY(&ifp->if_snd))
-		taskqueue_enqueue(taskqueue_fast, &sc_if->msk_tx_task);
+		msk_start_locked(ifp);
 }
 
 static int
@@ -3169,6 +3124,7 @@ msk_tick(void *xsc_if)
 	mii_tick(mii);
 	if ((sc_if->msk_flags & MSK_FLAG_LINK) == 0)
 		msk_miibus_statchg(sc_if->msk_if_dev);
+	msk_handle_events(sc_if->msk_softc);
 	msk_watchdog(sc_if);
 	callout_reset(&sc_if->msk_tick_ch, hz, msk_tick, sc_if);
 }
@@ -3367,32 +3323,20 @@ msk_handle_events(struct msk_softc *sc)
 	int rxput[2];
 	struct msk_stat_desc *sd;
 	uint32_t control, status;
-	int cons, idx, len, port, rxprog;
-
-	idx = CSR_READ_2(sc, STAT_PUT_IDX);
-	if (idx == sc->msk_stat_cons)
-		return (0);
+	int cons, len, port, rxprog;
 
 	/* Sync status LEs. */
 	bus_dmamap_sync(sc->msk_stat_tag, sc->msk_stat_map,
 	    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
-	/* XXX Sync Rx LEs here. */
 
 	rxput[MSK_PORT_A] = rxput[MSK_PORT_B] = 0;
-
 	rxprog = 0;
-	for (cons = sc->msk_stat_cons; cons != idx;) {
+	cons = sc->msk_stat_cons;
+	for (;;) {
 		sd = &sc->msk_stat_ring[cons];
 		control = le32toh(sd->msk_control);
 		if ((control & HW_OWNER) == 0)
 			break;
-		/*
-		 * Marvell's FreeBSD driver updates status LE after clearing
-		 * HW_OWNER. However we don't have a way to sync single LE
-		 * with bus_dma(9) API. bus_dma(9) provides a way to sync
-		 * an entire DMA map. So don't sync LE until we have a better
-		 * way to sync LEs.
-		 */
 		control &= ~HW_OWNER;
 		sd->msk_control = htole32(control);
 		status = le32toh(sd->msk_status);
@@ -3453,24 +3397,25 @@ msk_handle_events(struct msk_softc *sc)
 	}
 
 	sc->msk_stat_cons = cons;
-	/* XXX We should sync status LEs here. See above notes. */
+	bus_dmamap_sync(sc->msk_stat_tag, sc->msk_stat_map,
+	    BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
 
 	if (rxput[MSK_PORT_A] > 0)
 		msk_rxput(sc->msk_if[MSK_PORT_A]);
 	if (rxput[MSK_PORT_B] > 0)
 		msk_rxput(sc->msk_if[MSK_PORT_B]);
 
-	return (sc->msk_stat_cons != CSR_READ_2(sc, STAT_PUT_IDX));
+	return (rxprog > sc->msk_process_limit ? EAGAIN : 0);
 }
 
-/* Legacy interrupt handler for shared interrupt. */
 static void
-msk_legacy_intr(void *xsc)
+msk_intr(void *xsc)
 {
 	struct msk_softc *sc;
 	struct msk_if_softc *sc_if0, *sc_if1;
 	struct ifnet *ifp0, *ifp1;
 	uint32_t status;
+	int domore;
 
 	sc = xsc;
 	MSK_LOCK(sc);
@@ -3515,113 +3460,21 @@ msk_legacy_intr(void *xsc)
 	if ((status & Y2_IS_HW_ERR) != 0)
 		msk_intr_hwerr(sc);
 
-	while (msk_handle_events(sc) != 0)
-		;
-	if ((status & Y2_IS_STAT_BMU) != 0)
-		CSR_WRITE_4(sc, STAT_CTRL, SC_STAT_CLR_IRQ);
-
-	/* Reenable interrupts. */
-	CSR_WRITE_4(sc, B0_Y2_SP_ICR, 2);
-
-	if (ifp0 != NULL && (ifp0->if_drv_flags & IFF_DRV_RUNNING) != 0 &&
-	    !IFQ_DRV_IS_EMPTY(&ifp0->if_snd))
-		taskqueue_enqueue(taskqueue_fast, &sc_if0->msk_tx_task);
-	if (ifp1 != NULL && (ifp1->if_drv_flags & IFF_DRV_RUNNING) != 0 &&
-	    !IFQ_DRV_IS_EMPTY(&ifp1->if_snd))
-		taskqueue_enqueue(taskqueue_fast, &sc_if1->msk_tx_task);
-
-	MSK_UNLOCK(sc);
-}
-
-static int
-msk_intr(void *xsc)
-{
-	struct msk_softc *sc;
-	uint32_t status;
-
-	sc = xsc;
-	status = CSR_READ_4(sc, B0_Y2_SP_ISRC2);
-	/* Reading B0_Y2_SP_ISRC2 masks further interrupts. */
-	if (status == 0 || status == 0xffffffff) {
-		CSR_WRITE_4(sc, B0_Y2_SP_ICR, 2);
-		return (FILTER_STRAY);
-	}
-
-	taskqueue_enqueue(sc->msk_tq, &sc->msk_int_task);
-	return (FILTER_HANDLED);
-}
-
-static void
-msk_int_task(void *arg, int pending)
-{
-	struct msk_softc *sc;
-	struct msk_if_softc *sc_if0, *sc_if1;
-	struct ifnet *ifp0, *ifp1;
-	uint32_t status;
-	int domore;
-
-	sc = arg;
-	MSK_LOCK(sc);
-
-	/* Get interrupt source. */
-	status = CSR_READ_4(sc, B0_ISRC);
-	if (status == 0 || status == 0xffffffff ||
-	    (sc->msk_pflags & MSK_FLAG_SUSPEND) != 0 ||
-	    (status & sc->msk_intrmask) == 0)
-		goto done;
-
-	sc_if0 = sc->msk_if[MSK_PORT_A];
-	sc_if1 = sc->msk_if[MSK_PORT_B];
-	ifp0 = ifp1 = NULL;
-	if (sc_if0 != NULL)
-		ifp0 = sc_if0->msk_ifp;
-	if (sc_if1 != NULL)
-		ifp1 = sc_if1->msk_ifp;
-
-	if ((status & Y2_IS_IRQ_PHY1) != 0 && sc_if0 != NULL)
-		msk_intr_phy(sc_if0);
-	if ((status & Y2_IS_IRQ_PHY2) != 0 && sc_if1 != NULL)
-		msk_intr_phy(sc_if1);
-	if ((status & Y2_IS_IRQ_MAC1) != 0 && sc_if0 != NULL)
-		msk_intr_gmac(sc_if0);
-	if ((status & Y2_IS_IRQ_MAC2) != 0 && sc_if1 != NULL)
-		msk_intr_gmac(sc_if1);
-	if ((status & (Y2_IS_CHK_RX1 | Y2_IS_CHK_RX2)) != 0) {
-		device_printf(sc->msk_dev, "Rx descriptor error\n");
-		sc->msk_intrmask &= ~(Y2_IS_CHK_RX1 | Y2_IS_CHK_RX2);
-		CSR_WRITE_4(sc, B0_IMSK, sc->msk_intrmask);
-		CSR_READ_4(sc, B0_IMSK);
-	}
-        if ((status & (Y2_IS_CHK_TXA1 | Y2_IS_CHK_TXA2)) != 0) {
-		device_printf(sc->msk_dev, "Tx descriptor error\n");
-		sc->msk_intrmask &= ~(Y2_IS_CHK_TXA1 | Y2_IS_CHK_TXA2);
-		CSR_WRITE_4(sc, B0_IMSK, sc->msk_intrmask);
-		CSR_READ_4(sc, B0_IMSK);
-	}
-	if ((status & Y2_IS_HW_ERR) != 0)
-		msk_intr_hwerr(sc);
-
 	domore = msk_handle_events(sc);
-	if ((status & Y2_IS_STAT_BMU) != 0)
+	if ((status & Y2_IS_STAT_BMU) != 0 && domore == 0)
 		CSR_WRITE_4(sc, STAT_CTRL, SC_STAT_CLR_IRQ);
-
-	if (ifp0 != NULL && (ifp0->if_drv_flags & IFF_DRV_RUNNING) != 0 &&
-	    !IFQ_DRV_IS_EMPTY(&ifp0->if_snd))
-		taskqueue_enqueue(taskqueue_fast, &sc_if0->msk_tx_task);
-	if (ifp1 != NULL && (ifp1->if_drv_flags & IFF_DRV_RUNNING) != 0 &&
-	    !IFQ_DRV_IS_EMPTY(&ifp1->if_snd))
-		taskqueue_enqueue(taskqueue_fast, &sc_if1->msk_tx_task);
-
-	if (domore > 0) {
-		taskqueue_enqueue(sc->msk_tq, &sc->msk_int_task);
-		MSK_UNLOCK(sc);
-		return;
-	}
-done:
-	MSK_UNLOCK(sc);
 
 	/* Reenable interrupts. */
 	CSR_WRITE_4(sc, B0_Y2_SP_ICR, 2);
+
+	if (ifp0 != NULL && (ifp0->if_drv_flags & IFF_DRV_RUNNING) != 0 &&
+	    !IFQ_DRV_IS_EMPTY(&ifp0->if_snd))
+		msk_start_locked(ifp0);
+	if (ifp1 != NULL && (ifp1->if_drv_flags & IFF_DRV_RUNNING) != 0 &&
+	    !IFQ_DRV_IS_EMPTY(&ifp1->if_snd))
+		msk_start_locked(ifp1);
+
+	MSK_UNLOCK(sc);
 }
 
 static void
@@ -3913,6 +3766,17 @@ msk_init_locked(struct msk_if_softc *sc_if)
 	} else {
 		sc->msk_intrmask |= Y2_IS_PORT_B;
 		sc->msk_intrhwemask |= Y2_HWE_L2_MASK;
+	}
+	/* Configure IRQ moderation mask. */
+	CSR_WRITE_4(sc, B2_IRQM_MSK, sc->msk_intrmask);
+	if (sc->msk_int_holdoff > 0) {
+		/* Configure initial IRQ moderation timer value. */
+		CSR_WRITE_4(sc, B2_IRQM_INI,
+		    MSK_USECS(sc, sc->msk_int_holdoff));
+		CSR_WRITE_4(sc, B2_IRQM_VAL,
+		    MSK_USECS(sc, sc->msk_int_holdoff));
+		/* Start IRQ moderation. */
+		CSR_WRITE_1(sc, B2_IRQM_CTRL, TIM_START);
 	}
 	CSR_WRITE_4(sc, B0_HWE_IMSK, sc->msk_intrhwemask);
 	CSR_READ_4(sc, B0_HWE_IMSK);

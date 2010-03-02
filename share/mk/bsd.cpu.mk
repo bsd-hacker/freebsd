@@ -208,9 +208,8 @@ LD += -EB
 CFLAGS += -EL
 LD += -EL
 . endif
-# XXX What if 64-bit?  Need TARGET_ABI?
 CFLAGS += -mabi=n32
-CFLAGS += -msoft-float -G0 -mno-dsp -mabicalls
+CFLAGS += -G0
 .endif
 
 # NB: COPTFLAGS is handled in /usr/src/sys/conf/kern.pre.mk
