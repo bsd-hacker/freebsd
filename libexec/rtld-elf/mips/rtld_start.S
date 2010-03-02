@@ -44,15 +44,15 @@ LEAF(rtld_start)
 	.cprestore 0			/* -> 0(sp) for gp		*/
 					/* -> 4(sp) for atexit		*/
 					/* -> 8(sp) for obj_main	*/
-	move	s0,a0			/* save stack pointer from a0	*/
-	move	s1,a3			/* save ps_strings pointer	*/
+	move	s0, a0			/* save stack pointer from a0	*/
+	move	s1, a3			/* save ps_strings pointer	*/
 
 	la	a1, 1f
 	bal	1f
 	nop
 1:	subu	a1, ra, a1		/* relocbase */
 	la	t9,_C_LABEL(_rtld_relocate_nonplt_self)
-	move	s2,a1
+	move	s2, a1
 	la	a0,_DYNAMIC
 	addu	t9, a1, t9
 	jalr	t9
@@ -72,8 +72,8 @@ LEAF(rtld_start)
 	lw	a1, 4(sp)		/* our atexit function		*/
 	lw	a2, 8(sp)		/* obj_main entry		*/
 	addu	sp, sp, 16		/* readjust stack		*/
-	move	t9,v0
-	move	a2,s1			/* restore ps_strings		*/
+	move	t9, v0
+	move	a2, s1			/* restore ps_strings		*/
 	jr	t9			/* _start(ap, cleanup, obj, ps_strings);	*/
 	nop
 
@@ -91,37 +91,37 @@ _rtld_bind_start:
 	move	v1,gp			/* save old GP			*/
 	add	t9,8			/* modify T9 to point at .cpload */
 	.cpload	t9
-	subu	sp,48			/* save arguments and sp value	*/
+	subu	sp, 48			/* save arguments and sp value	*/
 	.cprestore 36
-	sw	a0,16(sp)
-	sw	a1,20(sp)
-	sw	a2,24(sp)
-	sw	a3,28(sp)
-	sw	s0,32(sp)
-	sw	t7,40(sp)
-	move	s0,sp
-	move	a0,v1			/* old GP			*/
-	subu	a0,a0,0x7ff0		/* The offset of $gp from the	*/
+	sw	a0, 16(sp)
+	sw	a1, 20(sp)
+	sw	a2, 24(sp)
+	sw	a3, 28(sp)
+	sw	s0, 32(sp)
+	sw	t7, 40(sp)
+	move	s0, sp
+	move	a0, v1			/* old GP			*/
+	subu	a0, a0,0x7ff0		/* The offset of $gp from the	*/
 					/* beginning of the .got section: */
 					/* $gp = .got + 0x7ff0, so	*/
 					/* .got = $gp - 0x7ff0		*/
 					/* Simple math as you can see.	*/
 
-	lw	a0,4(a0)		/* object = pltgot[1] & 0x7fffffff */
-	and	a0,a0,0x7fffffff
-	move	a1,t8			/* symbol index */
+	lw	a0, 4(a0)		/* object = pltgot[1] & 0x7fffffff */
+	and	a0, a0,0x7fffffff
+	move	a1, t8			/* symbol index */
 					
 	jal	_C_LABEL(_mips_rtld_bind)
 	nop
-	move	sp,s0
-	lw	ra,40(sp)
-	lw	a0,16(sp)
-	lw	a1,20(sp)
-	lw	a2,24(sp)
-	lw	a3,28(sp)
-	lw	s0,32(sp)
-	addu	sp,48
-	move	t9,v0
+	move	sp, s0
+	lw	ra, 40(sp)
+	lw	a0, 16(sp)
+	lw	a1, 20(sp)
+	lw	a2, 24(sp)
+	lw	a3, 28(sp)
+	lw	s0, 32(sp)
+	addu	sp, 48
+	move	t9, v0
 	jr	t9
 	nop
 	.end	_rtld_bind_start
