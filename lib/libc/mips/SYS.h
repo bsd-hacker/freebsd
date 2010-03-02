@@ -79,19 +79,10 @@
  */
 #ifdef __ABICALLS__
 	.abicalls
-#if defined (__mips_n64) || defined(__mips_n32)
-# define PIC_PROLOGUE(x,sr)     subu sp,sp,8; sd gp, 0(sp); .cpsetup $25, $24, ## x;
-# define PIC_RESTORE            ld  gp, 0(sp); addu sp,sp,8;
-# define PIC_CALL(l,sr)		la sr, _C_LABEL(l); ld  gp, 0(sp); addu sp,sp,8; jr sr
-#else
-# define PIC_PROLOGUE(x,sr)	.set noreorder; .cpload sr; .set reorder 
-# define PIC_RESTORE            
+# define PIC_PROLOGUE(x,sr)	.set noreorder; .cpload sr; .set reorder
 # define PIC_CALL(l,sr)		la sr, _C_LABEL(l); jr sr
-#endif
-
 #else
 # define PIC_PROLOGUE(x,sr)
-# define PIC_RESTORE
 # define PIC_CALL(l,sr)		j  _C_LABEL(l)
 #endif
 
@@ -132,8 +123,6 @@ LEAF(__sys_ ## x);							\
 	PIC_PROLOGUE(x,t9);						\
 	SYSTRAP(x);							\
 	bne a3,zero,err;						\
-	nop;								\
-	PIC_RESTORE;							\
 	j ra;								\
 err:									\
 	PIC_CALL(__cerror,t9);						\
