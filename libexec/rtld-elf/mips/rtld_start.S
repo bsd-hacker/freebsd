@@ -1,5 +1,4 @@
 /*	$NetBSD: rtld_start.S,v 1.9 2002/10/05 11:59:05 mycroft Exp $	*/
-/* $FreeBSD$ */
 
 /*
  * Copyright 1997 Michael L. Hitch <mhitch@montana.edu>
@@ -34,16 +33,32 @@
 .globl _C_LABEL(_rtld_relocate_nonplt_self)
 .globl _C_LABEL(_rtld)
 
+/*
+ *      a0      stack pointer
+ *      a1      rtld cleanup (filled in by dynamic loader)
+ *      a2      rtld object (filled in by dynamic loader)
+ *      a3      ps_strings
+ */
 LEAF(rtld_start)
 	.abicalls
 	.set	noreorder
 
+#if defined(__mips_n32) || defined(__mips_n64)
+	.cpsetup $25, $24, rtld_start
+#else
 	.cpload t9
+#endif
+
 	addu	sp, sp, -16		/* adjust stack pointer		*/
 					/*	keep it aligned		*/
+
+#if defined(__mips_n32) || defined(__mips_n64)
+	sw	gp, 0(sp)
+#else
 	.cprestore 0			/* -> 0(sp) for gp		*/
-					/* -> 4(sp) for atexit		*/
-					/* -> 8(sp) for obj_main	*/
+#endif
+	sw	a1, 4(sp)		/* -> 4(sp) for atexit		*/
+	sw	a2, 8(sp)		/* -> 8(sp) for obj_main	*/
 	move	s0, a0			/* save stack pointer from a0	*/
 	move	s1, a3			/* save ps_strings pointer	*/
 
@@ -51,32 +66,31 @@ LEAF(rtld_start)
 	bal	1f
 	nop
 1:	subu	a1, ra, a1		/* relocbase */
-	la	t9,_C_LABEL(_rtld_relocate_nonplt_self)
+	la	t9, _C_LABEL(_rtld_relocate_nonplt_self)
 	move	s2, a1
-	la	a0,_DYNAMIC
+	la	a0, _DYNAMIC
 	addu	t9, a1, t9
 	jalr	t9
 	addu	a0, a1, a0		/* &_DYNAMIC */
 
+	move	a0, s0	 		/* stack pointer		*/
+	addu	a1, sp, 4 		/* &exit_proc			*/
+	addu	a2, sp, 8 		/* &objp			*/
 
-	move	a0, s0			/* stack pointer		*/
-	addu	a1, sp, 4		/* &exit_proc			*/
-	addu	a2, sp, 8		/* &objp			*/
-	addu	sp, sp, -16		/* arguments slot		*/
-	jal	_C_LABEL(_rtld)		/* v0 = _rtld(sp, exit_proc, objp) */
+	jal	_C_LABEL(_rtld) 	/* v0 = _rtld(sp, exit_proc, objp) */
 	nop
-	addu	sp, sp, 16		
 
-	move	a0, s0			/* arguments pointer		*/
-	move	a3, s1			/* arguments pointer		*/
 	lw	a1, 4(sp)		/* our atexit function		*/
 	lw	a2, 8(sp)		/* obj_main entry		*/
-	addu	sp, sp, 16		/* readjust stack		*/
-	move	t9, v0
-	move	a2, s1			/* restore ps_strings		*/
-	jr	t9			/* _start(ap, cleanup, obj, ps_strings);	*/
-	nop
 
+	addu	sp, sp, 16		/* readjust stack		*/
+
+	move	t9, v0
+
+	move	a0, s0			/* restore stack pointer from a0*/
+	move	a3, s1			/* restore ps_strings		*/
+	jr      t9                      /* _start(ap, cleanup, obj, ps_strings);        */
+	nop
 END(rtld_start)
 
 	.globl	_rtld_bind_start
@@ -88,39 +102,73 @@ _rtld_bind_start:
 	 */
 	.frame sp, 0, ra		/* satisfy compiler		*/
 
-	move	v1,gp			/* save old GP			*/
-	add	t9,8			/* modify T9 to point at .cpload */
+	move	v1, gp			/* save old GP			 */
+	
+#if defined(__mips_n32) || defined(__mips_n64)
+	subu	sp, 60			/* save arguments and sp value	*/
+	sw	gp, 36(sp)
+	.cpsetup $25, $12, _rtld_bind_start  
+#else
+	add	t9, 8			/* modify T9 to point at .cpload */
 	.cpload	t9
-	subu	sp, 48			/* save arguments and sp value	*/
+	subu	sp, 44			/* save arguments and sp value	*/
 	.cprestore 36
+#endif
 	sw	a0, 16(sp)
 	sw	a1, 20(sp)
 	sw	a2, 24(sp)
 	sw	a3, 28(sp)
 	sw	s0, 32(sp)
+#if defined(__mips_n64) || defined(__mips_n32)
+	sw	t3, 40(sp)
+	sw	a4, 44(sp)
+	sw	a5, 48(sp)
+	sw	a6, 52(sp)
+	sw	a7, 56(sp)
+#else
 	sw	t7, 40(sp)
+#endif
 	move	s0, sp
 	move	a0, v1			/* old GP			*/
-	subu	a0, a0,0x7ff0		/* The offset of $gp from the	*/
+	subu	a0, a0, 0x7ff0		/* The offset of $gp from the	*/
 					/* beginning of the .got section: */
 					/* $gp = .got + 0x7ff0, so	*/
 					/* .got = $gp - 0x7ff0		*/
 					/* Simple math as you can see.	*/
-
+#if defined(__mips_n64) 
+	ld	a0, 8(a0)		/* object = pltgot[1] & 0x7fffffff */
+#else
 	lw	a0, 4(a0)		/* object = pltgot[1] & 0x7fffffff */
-	and	a0, a0,0x7fffffff
+#endif
+	and	a0, a0, 0x7fffffff
 	move	a1, t8			/* symbol index */
 					
 	jal	_C_LABEL(_mips_rtld_bind)
 	nop
+
 	move	sp, s0
+	
+#if defined(__mips_n64) || defined(__mips_n32)
+	lw	gp, 36(sp)
+#endif
+	
 	lw	ra, 40(sp)
 	lw	a0, 16(sp)
-	lw	a1, 20(sp)
+ 	lw	a1, 20(sp)
 	lw	a2, 24(sp)
 	lw	a3, 28(sp)
 	lw	s0, 32(sp)
-	addu	sp, 48
+	
+#if defined(__mips_n64) || defined(__mips_n32)
+	lw	a4, 44(sp)
+	lw	a5, 48(sp)
+	lw	a6, 52(sp)
+	lw	a7, 56(sp)
+	addu	sp, 60
+	
+#else
+	addu	sp, 44
+#endif
 	move	t9, v0
 	jr	t9
 	nop
