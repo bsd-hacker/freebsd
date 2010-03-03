@@ -84,8 +84,9 @@ device		md
 device		uart
 nodevice	uart_ns8250
 device		rgmii
-options 	VERBOSE_SYSINIT
+#options 	VERBOSE_SYSINIT
 
+device		bpf
 
 #
 # Use the following for  Compact Flash file-system
