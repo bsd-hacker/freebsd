@@ -101,6 +101,7 @@ NESTED(setjmp, SETJMP_FRAME_SIZE, ra)
 	REG_EPILOGUE
 
 	move	v0, zero
+	jr	ra
 END(setjmp)
 
 #define LONGJMP_FRAME_SIZE	(CALLFRAME_SIZ + (SZREG * 2))
