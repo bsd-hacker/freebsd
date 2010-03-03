@@ -118,7 +118,7 @@ vm_offset_t kstack0;
 /*
  * Each entry in the pcpu_space[] array is laid out in the following manner:
  * struct pcpu for cpu 'n'	pcpu_space[n]
- * boot stack for cpu 'n'	pcpu_space[n] + PAGE_SIZE * 2 - START_FRAME
+ * boot stack for cpu 'n'	pcpu_space[n] + PAGE_SIZE * 2 - CALLFRAME_SIZ
  *
  * Note that the boot stack grows downwards and we assume that we never
  * use enough stack space to trample over the 'struct pcpu' that is at
