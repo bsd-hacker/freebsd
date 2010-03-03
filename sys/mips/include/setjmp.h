@@ -39,7 +39,7 @@
 
 #include <sys/cdefs.h>
 
-#define	_JBLEN	95		/* size, in longs, of a jmp_buf */
+#define	_JBLEN	95		/* size, in longs (or long longs), of a jmp_buf */
 
 /*
  * jmp_buf and sigjmp_buf are encapsulated in different structs to force
