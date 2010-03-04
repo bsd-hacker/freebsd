@@ -131,7 +131,7 @@ static inline uint8_t oct_read8 (uint64_t csr_addr)
     return (*ptr);
 }
 
-static inline uint8_t oct_read16 (uint64_t csr_addr)
+static inline uint16_t oct_read16 (uint64_t csr_addr)
 {
     volatile uint16_t *ptr = (volatile uint16_t *) csr_addr;
     return (*ptr);
