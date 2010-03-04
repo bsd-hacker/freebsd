@@ -186,45 +186,51 @@ Boston, MA 02110-1301, USA.  */
       MIPS_CPP_SET_PROCESSOR ("_MIPS_ARCH", mips_arch_info);	\
       MIPS_CPP_SET_PROCESSOR ("_MIPS_TUNE", mips_tune_info);	\
 								\
-      if (ISA_MIPS1)						\
-	{							\
-	  builtin_define ("__mips=1");				\
-	  builtin_define ("_MIPS_ISA=_MIPS_ISA_MIPS1");		\
+      if (ISA_MIPS1)                                            \
+        {                                                       \
+          builtin_define ("__mips=1");                          \
+          builtin_define ("_MIPS_ISA=_MIPS_ISA_MIPS1");         \
 	}							\
-      else if (ISA_MIPS2)					\
-	{							\
-	  builtin_define ("__mips=2");				\
-	  builtin_define ("_MIPS_ISA=_MIPS_ISA_MIPS2");		\
+      else if (ISA_MIPS2)                                       \
+        {                                                       \
+          builtin_define ("__mips=2");                          \
+          builtin_define ("_MIPS_ISA=_MIPS_ISA_MIPS2");         \
 	}							\
       else if (ISA_MIPS3)					\
-	{							\
-	  builtin_define ("__mips=3");				\
-	  builtin_define ("_MIPS_ISA=_MIPS_ISA_MIPS3");		\
+        {                                                       \
+          builtin_define ("__mips=3");                          \
+          builtin_define ("_MIPS_ISA=_MIPS_ISA_MIPS3");         \
 	}							\
       else if (ISA_MIPS4)					\
-	{							\
-	  builtin_define ("__mips=4");				\
-	  builtin_define ("_MIPS_ISA=_MIPS_ISA_MIPS4");		\
+        {                                                       \
+          builtin_define ("__mips=4");                          \
+          builtin_define ("_MIPS_ISA=_MIPS_ISA_MIPS4");         \
 	}							\
       else if (ISA_MIPS32)					\
 	{							\
 	  builtin_define ("__mips=32");				\
+          builtin_define ("_MIPS_ISA=_MIPS_ISA_MIPS32");        \
 	  builtin_define ("__mips_isa_rev=1");			\
-	  builtin_define ("_MIPS_ISA=_MIPS_ISA_MIPS32");	\
 	}							\
       else if (ISA_MIPS32R2)					\
 	{							\
 	  builtin_define ("__mips=32");				\
+          builtin_define ("_MIPS_ISA=_MIPS_ISA_MIPS32");        \
 	  builtin_define ("__mips_isa_rev=2");			\
-	  builtin_define ("_MIPS_ISA=_MIPS_ISA_MIPS32");	\
 	}							\
       else if (ISA_MIPS64)					\
 	{							\
 	  builtin_define ("__mips=64");				\
+          builtin_define ("_MIPS_ISA=_MIPS_ISA_MIPS64");        \
 	  builtin_define ("__mips_isa_rev=1");			\
-	  builtin_define ("_MIPS_ISA=_MIPS_ISA_MIPS64");	\
 	}							\
-	    							\
+/*      else if (ISA_MIPS64R2)					\
+	{							\
+	  builtin_define ("__mips=64");				\
+          builtin_define ("_MIPS_ISA=_MIPS_ISA_MIPS64");        \
+	  builtin_define ("__mips_isa_rev=2");			\
+	}							\
+*/								\
       if (TARGET_HARD_FLOAT)					\
 	builtin_define ("__mips_hard_float");			\
       else if (TARGET_SOFT_FLOAT)				\
@@ -300,6 +306,18 @@ Boston, MA 02110-1301, USA.  */
 /* Standard AT&T UNIX 'as' local label spelling.  */
 #undef  LOCAL_LABEL_PREFIX
 #define LOCAL_LABEL_PREFIX "."
+
+#if 0
+/* Currently we don't support 128bit long doubles, so for now we force
+   n32 to be 64bit.  */
+#undef	LONG_DOUBLE_TYPE_SIZE
+#define	LONG_DOUBLE_TYPE_SIZE 64
+ 
+#ifdef IN_LIBGCC2
+#undef	LIBGCC2_LONG_DOUBLE_TYPE_SIZE
+#define	LIBGCC2_LONG_DOUBLE_TYPE_SIZE 64
+#endif
+#endif
 
 /************************[  Debugger stuff  ]*********************************/
 
