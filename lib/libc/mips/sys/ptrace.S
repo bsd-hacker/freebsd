@@ -41,32 +41,27 @@ __FBSDID("$FreeBSD$");
 	ASMSTR("$NetBSD: ptrace.S,v 1.9 2003/08/07 16:42:17 agc Exp $")
 #endif /* LIBC_SCCS and not lint */
 
-LEAF(ptrace)
-	.frame	sp, 40, ra
-	.mask	0x80000000, -8
-#ifdef __ABICALLS__
-	.set    noreorder
-	.cpload t9
-	.set    reorder
-#endif
-	subu	sp, sp, 40
-	sw	ra,  32(sp)
-#ifdef __ABICALLS__
-	.cprestore 16
-#endif
-	la	t9, _C_LABEL(__error)	# locate address of errno
+NESTED_NOPROFILE(ptrace, CALLFRAME_SIZ, ra)
+	.mask	0x80000000, (CALLFRAME_RA - CALLFRAME_SIZ)
+	PIC_PROLOGUE(ptrace)
+	PTR_SUBU sp, sp, CALLFRAME_SP
+	REG_S	ra, CALLFRAME_RA(sp)
+
+	SAVE_GP(CALLFRAME_GP)
+
+	PTR_LA	t9, _C_LABEL(__error)	# locate address of errno
 	jalr	t9
-#ifdef __ABICALLS__
-	lw	gp, 16(sp)
-#endif
-	sw	zero, 0(v0)
-	lw	ra, 32(sp)
-	addu	sp, sp, 40
+
+	INT_S	zero, 0(v0)
+
+	REG_L	ra, CALLFRAME_RA(sp)
+	PTR_ADDU sp, sp, CALLFRAME_SIZ
+
 	li	v0, SYS_ptrace
 	syscall
+
 	bne	a3, zero, 1f
-	j	ra
+	PIC_RETURN()
 1:
-	la	t9, _C_LABEL(__cerror)
-	jr	t9
+	PIC_TAILCALL(__cerror)
 END(ptrace)
