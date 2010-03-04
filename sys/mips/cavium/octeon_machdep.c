@@ -730,7 +730,9 @@ platform_start(__register_t a0, __register_t a1, __register_t a2 __unused,
 {
 	uint64_t platform_counter_freq;
 
+#if defined(__mips_o32)
 	boothowto |= RB_SINGLE;
+#endif
 
 	/* Initialize pcpu stuff */
 	mips_pcpu0_init();

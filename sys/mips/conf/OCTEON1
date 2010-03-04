@@ -44,7 +44,6 @@ hints		"OCTEON1.hints"		#Default places to look for devices.
 
 makeoptions	DEBUG=-g		#Build kernel with gdb(1) debug symbols
 
-#XXXimp: Need to make work with 64-bit too
 options 	ISA_MIPS64
 
 options		DDB
@@ -59,10 +58,10 @@ options		_KPOSIX_PRIORITY_SCHEDULING #Posix P1003_1B real-time extensions
 #options	ROOTDEVNAME=\"ufs:ad0s1a\"	# Original
 options		NO_SWAPPING
 
-options 	BOOTP
-options 	BOOTP_NFSROOT
-options 	BOOTP_NFSV3
-options 	BOOTP_COMPAT
+#options 	BOOTP
+#options 	BOOTP_NFSROOT
+#options 	BOOTP_NFSV3
+#options 	BOOTP_COMPAT
 
 options         FFS                     #Berkeley Fast Filesystem
 options         SOFTUPDATES             #Enable FFS soft updates support
@@ -87,11 +86,12 @@ device		rgmii
 #options 	VERBOSE_SYSINIT
 
 device		bpf
+device		random
 
 #
 # Use the following for  Compact Flash file-system
 device 		cf
-#options         ROOTDEVNAME = \"ufs:cf0s2\"	# Unmask if compact flash is needed as RFS
+options 	ROOTDEVNAME=\"ufs:cf0s1\"
 
 #
 # Use the following for RFS in mem-device
