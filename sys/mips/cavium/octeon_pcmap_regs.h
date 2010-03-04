@@ -94,19 +94,19 @@ extern struct pcpu *cpuid_to_pcpu[];
 
 static inline void oct_write64 (uint64_t csr_addr, uint64_t val64)
 {
-    volatile uint64_t *ptr = (volatile uint64_t *)(intptr_t)csr_addr;
+    volatile uint64_t *ptr = (volatile uint64_t *) csr_addr;
     *ptr = val64;
 }
 
 static inline void oct_write64_int64 (uint64_t csr_addr, int64_t val64i)
 {
-    volatile int64_t *ptr = (volatile int64_t *)(intptr_t)csr_addr;
+    volatile int64_t *ptr = (volatile int64_t *) csr_addr;
     *ptr = val64i;
 }
 
 static inline void oct_write8_x8 (uint64_t csr_addr, uint8_t val8)
 {
-    volatile uint64_t *ptr = (volatile uint64_t *)(intptr_t)csr_addr;
+    volatile uint64_t *ptr = (volatile uint64_t *) csr_addr;
     *ptr = (uint64_t) val8;
 }
 
@@ -127,32 +127,32 @@ static inline void oct_write32 (uint64_t csr_addr, uint32_t val32)
 
 static inline uint8_t oct_read8 (uint64_t csr_addr)
 {
-    volatile uint8_t *ptr = (volatile uint8_t *)(intptr_t)csr_addr;
+    volatile uint8_t *ptr = (volatile uint8_t *) csr_addr;
     return (*ptr);
 }
 
 static inline uint8_t oct_read16 (uint64_t csr_addr)
 {
-    volatile uint16_t *ptr = (volatile uint16_t *)(intptr_t)csr_addr;
+    volatile uint16_t *ptr = (volatile uint16_t *) csr_addr;
     return (*ptr);
 }
 
 
 static inline uint32_t oct_read32 (uint64_t csr_addr)
 {
-    volatile uint32_t *ptr = (volatile uint32_t *)(intptr_t)csr_addr;
+    volatile uint32_t *ptr = (volatile uint32_t *) csr_addr;
     return (*ptr);
 }
 
 static inline uint64_t oct_read64 (uint64_t csr_addr)
 {
-    volatile uint64_t *ptr = (volatile uint64_t *)(intptr_t)csr_addr;
+    volatile uint64_t *ptr = (volatile uint64_t *) csr_addr;
     return (*ptr);
 }
 
 static inline int32_t oct_readint32 (uint64_t csr_addr)
 {
-    volatile int32_t *ptr = (volatile int32_t *)(intptr_t)csr_addr;
+    volatile int32_t *ptr = (volatile int32_t *) csr_addr;
     return (*ptr);
 }
 

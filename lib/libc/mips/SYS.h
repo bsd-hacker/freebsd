@@ -1,4 +1,5 @@
 /*	$NetBSD: SYS.h,v 1.19 2009/12/14 01:07:41 matt Exp $ */
+/* $FreeBSD$ */
 
 /*-
  * Copyright (c) 1996 Jonathan Stone
@@ -66,8 +67,8 @@
  */
 
 #include <sys/syscall.h>
-#include <machine/asm.h>
 
+#include <machine/asm.h>
 
 /*
  * If compiling for shared libs, Emit sysV ABI PIC segment pseudo-ops.
