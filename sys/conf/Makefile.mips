@@ -61,6 +61,9 @@ HACK_EXTRA_FLAGS+=-Wl,-m,elf64btsmip_fbsd
 .if defined(TARGET_N32)
 SYSTEM_LD+=-m elf32btsmipn32_fbsd
 HACK_EXTRA_FLAGS+=-Wl,-m,elf32btsmipn32_fbsd
+.else
+SYSTEM_LD+=-m elf32btsmip_fbsd
+HACK_EXTRA_FLAGS+=-Wl,-m,elf32btsmip_fbsd
 .endif
 .else
 CFLAGS+=-EL
@@ -75,6 +78,9 @@ HACK_EXTRA_FLAGS+=-Wl,-m,elf64ltsmip_fbsd
 .if defined(TARGET_N32)
 SYSTEM_LD+=-m elf32ltsmipn32_fbsd
 HACK_EXTRA_FLAGS+=-Wl,-m,elf32ltsmipn32_fbsd
+.else
+SYSTEM_LD+=-m elf32ltsmip_fbsd
+HACK_EXTRA_FLAGS+=-Wl,-m,elf32ltsmip_fbsd
 .endif
 .endif
 

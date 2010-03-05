@@ -198,7 +198,7 @@ static struct bus_space generic_space = {
 
 /* Ultra-gross kludge */
 #include "opt_cputype.h"
-#if defined(TARGET_OCTEON) && defined(__mips_n32)
+#if defined(TARGET_OCTEON) && (defined(__mips_n32) || defined(__mips_o32))
 #include <mips/cavium/octeon_pcmap_regs.h>
 #define rd8(a) oct_read8(a)
 #define rd16(a) oct_read16(a)

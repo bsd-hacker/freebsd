@@ -35,7 +35,7 @@
  * Bus address and size types
  */
 #include "opt_cputype.h" 
-#if defined(TARGET_OCTEON) && defined(__mips_n32)
+#if defined(TARGET_OCTEON) && (defined(__mips_n32) || defined(__mips_o32))
 typedef uint64_t bus_addr_t;
 #else
 typedef uintptr_t bus_addr_t;
