@@ -65,7 +65,8 @@ NOASM=
 .include "${.CURDIR}/rpc/Makefile.inc"
 .include "${.CURDIR}/uuid/Makefile.inc"
 .include "${.CURDIR}/xdr/Makefile.inc"
-.if ${MACHINE_ARCH} == "arm"
+.if ${MACHINE_ARCH} == "arm" || \
+    ${MACHINE_ARCH} == "mips"
 .include "${.CURDIR}/softfloat/Makefile.inc"
 .endif
 .if ${MK_NIS} != "no"

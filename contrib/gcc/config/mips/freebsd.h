@@ -307,7 +307,6 @@ Boston, MA 02110-1301, USA.  */
 #undef  LOCAL_LABEL_PREFIX
 #define LOCAL_LABEL_PREFIX "."
 
-#if 0
 /* Currently we don't support 128bit long doubles, so for now we force
    n32 to be 64bit.  */
 #undef	LONG_DOUBLE_TYPE_SIZE
@@ -316,7 +315,6 @@ Boston, MA 02110-1301, USA.  */
 #ifdef IN_LIBGCC2
 #undef	LIBGCC2_LONG_DOUBLE_TYPE_SIZE
 #define	LIBGCC2_LONG_DOUBLE_TYPE_SIZE 64
-#endif
 #endif
 
 /************************[  Debugger stuff  ]*********************************/

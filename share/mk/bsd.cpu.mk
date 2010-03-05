@@ -208,7 +208,6 @@ LD += -EB
 CFLAGS += -EL
 LD += -EL
 . endif
-CFLAGS += -mabi=n32
 CFLAGS += -G0
 .endif
 

@@ -5,9 +5,9 @@
 # of mipsel and mips.
 _sz?=32
 .if defined(TARGET_BIG_ENDIAN)
-NATIVE_EMULATION=elf${_sz}btsmipn32_fbsd
+NATIVE_EMULATION=elf${_sz}btsmip_fbsd
 .else
-NATIVE_EMULATION=elf${_sz}ltsmipn32_fbsd
+NATIVE_EMULATION=elf${_sz}ltsmip_fbsd
 .endif
 
 MIPS_ABIS=elf32btsmip_fbsd elf32ltsmip_fbsd elf64btsmip_fbsd elf64ltsmip_fbsd \
