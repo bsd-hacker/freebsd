@@ -608,6 +608,8 @@ dofault:
 			int nargs, nsaved;
 			register_t args[8];
 
+			bzero(args, sizeof args);
+
 			/*
 			 * note: PCPU_LAZY_INC() can only be used if we can
 			 * afford occassional inaccuracy in the count.
@@ -630,8 +632,16 @@ dofault:
 			code = locr0->v0;
 
 			switch (code) {
-			case SYS_syscall:
+#if defined(__mips_n32) || defined(__mips_n64)
 			case SYS___syscall:
+				/*
+				 * Quads fit in a single register in
+				 * new ABIs.
+				 *
+				 * XXX o64?
+				 */
+#endif
+			case SYS_syscall:
 				/*
 				 * Code is first argument, followed by
 				 * actual args.
@@ -640,23 +650,47 @@ dofault:
 				args[0] = locr0->a1;
 				args[1] = locr0->a2;
 				args[2] = locr0->a3;
+				nsaved = 3;
+#if defined(__mips_n32) || defined(__mips_n64)
 				args[3] = locr0->t4;
 				args[4] = locr0->t5;
 				args[5] = locr0->t6;
 				args[6] = locr0->t7;
-				nsaved = 7;
+				nsaved += 4;
+#endif
 				break;
+
+#if defined(__mips_o32)
+			case SYS___syscall:
+				/*
+				 * Like syscall, but code is a quad, so as
+				 * to maintain quad alignment for the rest
+				 * of the arguments.
+				 */
+				if (_QUAD_LOWWORD == 0) {
+					code = locr0->a0;
+				} else {
+					code = locr0->a1;
+				}
+				args[0] = locr0->a2;
+				args[1] = locr0->a3;
+				nsaved = 2;
+				break;
+#endif
 
 			default:
 				args[0] = locr0->a0;
 				args[1] = locr0->a1;
 				args[2] = locr0->a2;
 				args[3] = locr0->a3;
+				nsaved = 4;
+#if defined (__mips_n32) || defined(__mips_n64)
 				args[4] = locr0->t4;
 				args[5] = locr0->t5;
 				args[6] = locr0->t6;
 				args[7] = locr0->t7;
-				nsaved = 8;
+				nsaved += 4;
+#endif
 			}
 #ifdef TRAP_DEBUG
 			printf("SYSCALL #%d pid:%u\n", code, p->p_pid);
@@ -673,6 +707,15 @@ dofault:
 			nargs = callp->sy_narg;
 
 			if (nargs > nsaved) {
+#if defined(__mips_n32) || defined(__mips_n64)
+				/*
+				 * XXX
+				 * Is this right for new ABIs?  I think the 4 there
+				 * should be 8, size there are 8 registers to skip,
+				 * not 4, but I'm not certain.
+				 */
+				printf("SYSCALL #%u pid:%u, nargs > nsaved.\n", code, p->p_pid);
+#endif
 				i = copyin((caddr_t)(intptr_t)(locr0->sp +
 				    4 * sizeof(register_t)), (caddr_t)&args[nsaved],
 				    (u_int)(nargs - nsaved) * sizeof(register_t));
