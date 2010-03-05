@@ -595,6 +595,12 @@ fsk_detach(struct dn_fsk *fs, int flags)
 		h = fs->sched ? &fs->sched->fsk_list : &dn_cfg.fsu;
 		SLIST_REMOVE(h, fs, dn_fsk, sch_chain);
 	}
+	/* Free the RED parameters, they will be recomputed on
+	 * subsequent attach if needed.
+	 */
+	if (fs->w_q_lookup)
+		free(fs->w_q_lookup, M_DUMMYNET);
+	fs->w_q_lookup = NULL;
 	qht_delete(fs, flags);
 	if (fs->sched && fs->sched->fp->free_fsk)
 		fs->sched->fp->free_fsk(fs);
@@ -1314,12 +1320,13 @@ config_sched(struct dn_sch *_nsch, struct dn_id *arg)
 	struct schk_new_arg a; /* argument for schk_new */
 	int i;
 	struct dn_link p;	/* copy of oldlink */
-	struct dn_profile *pf;	/* copy of old link profile */
+	struct dn_profile *pf = NULL;	/* copy of old link profile */
 	/* Used to preserv mask parameter */
 	struct ipfw_flow_id new_mask;
 	int new_buckets = 0;
 	int new_flags = 0;
 	int pipe_cmd;
+	int err = ENOMEM;
 
 	a.sch = _nsch;
 	if (a.sch->oid.len != sizeof(*a.sch)) {
@@ -1335,11 +1342,6 @@ config_sched(struct dn_sch *_nsch, struct dn_id *arg)
 			1, dn_cfg.max_hash_size, "sched buckets");
 	/* XXX other sanity checks */
 	bzero(&p, sizeof(p));
-	pf = malloc(sizeof(struct dn_profile), M_DUMMYNET, M_NOWAIT | M_ZERO);
-	if (pf == NULL) {
-		D("Error allocating profile");
-		return ENOMEM;
-	}
 
 	pipe_cmd = a.sch->flags & DN_PIPE_CMD;
 	a.sch->flags &= ~DN_PIPE_CMD; //XXX do it even if is not set?
@@ -1384,27 +1386,33 @@ again: /* run twice, for wfq and fifo */
 			goto again;
 		}
 	} else {
-		DN_BH_WUNLOCK();
 		D("invalid scheduler type %d %s",
 			a.sch->oid.subtype, a.sch->name);
-		return EINVAL;
+		err = EINVAL;
+		goto error;
 	}
 	/* normalize name and subtype */
 	a.sch->oid.subtype = a.fp->type;
 	bzero(a.sch->name, sizeof(a.sch->name));
 	strlcpy(a.sch->name, a.fp->name, sizeof(a.sch->name));
 	if (s == NULL) {
-		DN_BH_WUNLOCK();
 		D("cannot allocate scheduler %d", i);
-		return ENOMEM;
+		goto error;
 	}
 	/* restore existing link if any */
 	if (p.link_nr) {
 		s->link = p;
-		if (pf->link_nr == p.link_nr) /* Restore profile */
-			s->profile = pf;
-		else
+		if (!pf || pf->link_nr != p.link_nr) { /* no saved value */
 			s->profile = NULL; /* XXX maybe not needed */
+		} else {
+			s->profile = malloc(sizeof(struct dn_profile),
+					     M_DUMMYNET, M_NOWAIT | M_ZERO);
+			if (s->profile == NULL) {
+				D("cannot allocate profile");
+				goto error; //XXX
+			}
+			bcopy(pf, s->profile, sizeof(*pf));
+		}
 	}
 	p.link_nr = 0;
 	if (s->fp == NULL) {
@@ -1420,8 +1428,13 @@ again: /* run twice, for wfq and fifo */
 		if (s->link.link_nr == 0)
 			D("XXX WARNING link 0 for sched %d", i);
 		p = s->link;	/* preserve link */
-		if (s->profile) /* preserve profile */
-			bcopy(s->profile, pf, sizeof(struct dn_profile));
+		if (s->profile) {/* preserve profile */
+			if (!pf)
+				pf = malloc(sizeof(*pf),
+				    M_DUMMYNET, M_NOWAIT | M_ZERO);
+			if (pf)	/* XXX should issue a warning otherwise */
+				bcopy(s->profile, pf, sizeof(*pf));
+		}
 		/* remove from the hash */
 		dn_ht_find(dn_cfg.schedhash, i, DNHT_REMOVE, NULL);
 		/* Detach flowsets, preserve queues. */
@@ -1453,8 +1466,7 @@ again: /* run twice, for wfq and fifo */
 		if (!s->fs) {
 			schk_delete_cb(s, (void *)DN_DESTROY);
 			D("error creating internal fs for %d", i);
-			DN_BH_WUNLOCK();
-			return ENOMEM;
+			goto error;
 		}
 	}
 	/* call init function after the flowset is created */
@@ -1473,8 +1485,7 @@ next:
 			/* sched config shouldn't modify the FIFO scheduler */
 			if (dn_ht_find(dn_cfg.schedhash, i, 0, &a) != NULL) {
 				/* FIFO already exist, don't touch it */
-				DN_BH_WUNLOCK();
-				return 0;
+				goto error;
 			}
 		}
 		a.sch->sched_nr = i;
@@ -1482,8 +1493,12 @@ next:
 		bzero(a.sch->name, sizeof(a.sch->name));
 		goto again;
 	}
+	err = 0;
+error:
 	DN_BH_WUNLOCK();
-	return 0;
+	if (pf)
+		free(pf, M_DUMMYNET);
+	return err;
 }
 
 /*
@@ -1690,8 +1705,8 @@ compute_space(struct dn_id *cmd, int *to_copy)
 	 *                             link, scheduler template, flowset
 	 *                             integrated in scheduler and header
 	 *                             for flowset list
-	 *   (NSI)*(dn_flow + dn_queue) all scheduler instance + one
-	 *                              queue per instance
+	 *   (NSI)*(dn_flow) all scheduler instance (includes
+	 *                              the queue instance)
 	 * - ipfw sched show
 	 *   (NP/2)*(dn_link + dn_sch + dn_id + dn_fs) only half scheduler
 	 *                             link, scheduler template, flowset
@@ -1708,11 +1723,13 @@ compute_space(struct dn_id *cmd, int *to_copy)
 	default:
 		return -1;
 	/* XXX where do LINK and SCH differ ? */
+	/* 'ipfw sched show' could list all queues associated to
+	 * a scheduler. This feature for now is disabled
+	 */
 	case DN_LINK:	/* pipe show */
 		x = DN_C_LINK | DN_C_SCH | DN_C_FLOW;
 		need += dn_cfg.schk_count *
 			(sizeof(struct dn_fs) + profile_size) / 2;
-		need += dn_cfg.si_count * sizeof(struct dn_queue);
 		need += dn_cfg.fsk_count * sizeof(uint32_t);
 		break;
 	case DN_SCH:	/* sched show */
@@ -2072,11 +2089,12 @@ ip_dn_init(void)
 static void
 ip_dn_destroy(void)
 {
+	callout_drain(&dn_timeout);
+
 	DN_BH_WLOCK();
 	ip_dn_ctl_ptr = NULL;
 	ip_dn_io_ptr = NULL;
 
-	callout_stop(&dn_timeout);
 	dummynet_flush();
 	DN_BH_WUNLOCK();
 	taskqueue_drain(dn_tq, &dn_task);

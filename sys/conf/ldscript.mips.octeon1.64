@@ -1,3 +1,5 @@
+/* $FreeBSD$ */
+
 TARGET(elf64-tradbigmips)
 OUTPUT_FORMAT("elf64-tradbigmips", "elf64-tradbigmips", "elf64-tradlittlemips")
 OUTPUT_ARCH(mips)

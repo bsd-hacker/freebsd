@@ -29,9 +29,7 @@
  */
 
 #include <sys/cdefs.h>
-#ifndef lint
-__RCSID("$NetBSD: mips_reloc.c,v 1.58 2010/01/14 11:57:06 skrll Exp $");
-#endif /* not lint */
+__FBSDID("$FreeBSD$");
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -42,10 +40,6 @@ __RCSID("$NetBSD: mips_reloc.c,v 1.58 2010/01/14 11:57:06 skrll Exp $");
 
 #include "debug.h"
 #include "rtld.h"
-
-#ifdef __mips_o32
-#define SUPPORT_OLD_BROKEN_LD
-#endif
 
 void
 init_pltgot(Obj_Entry *obj)
@@ -70,7 +64,6 @@ void _rtld_relocate_nonplt_self(Elf_Dyn *, Elf_Addr);
  * It is possible for the compiler to emit relocations for unaligned data.
  * We handle this situation with these inlines.
  */
-
 #if ELFSIZE == 64
 /*
  * ELF64 MIPS encodes the relocs uniquely.  The first 32-bits of info contain
@@ -134,7 +127,6 @@ store_ptr(void *where, Elf_Sxword val, size_t len)
 	(void)memcpy(where, (const uint8_t *)((&val)+1) - len, len);
 #endif
 }
-
 
 void
 _rtld_relocate_nonplt_self(Elf_Dyn *dynp, Elf_Addr relocbase)
