@@ -159,6 +159,8 @@ OCT_READ(64, uint64_t, "ld");
  * I'd be a lot happier if csr_addr were a physical address and we mapped it
  * into XKPHYS here so that we could guarantee that interrupts were the only
  * kind of exception we needed to worry about.
+ *
+ * Also, some of this inline assembly is needlessly verbose.  Oh, well.
  */
 static inline void oct_write64 (uint64_t csr_addr, uint64_t val64)
 {
@@ -169,6 +171,9 @@ static inline void oct_write64 (uint64_t csr_addr, uint64_t val64)
 	uint32_t tmp1;
 	uint32_t tmp2;
 	uint32_t tmp3;
+	register_t sr;
+
+	sr = intr_disable();
 
 	__asm __volatile (
 	    ".set push\n"
@@ -187,6 +192,8 @@ static inline void oct_write64 (uint64_t csr_addr, uint64_t val64)
             ".set pop\n"
 	    : "=&r" (tmp1), "=&r" (tmp2), "=&r" (tmp3)
 	    : "r" (valh), "r" (vall), "r" (csr_addrh), "r" (csr_addrl));
+
+	intr_restore(sr);
 }
 
 static inline void oct_write8_x8 (uint64_t csr_addr, uint8_t val8)
@@ -195,6 +202,9 @@ static inline void oct_write8_x8 (uint64_t csr_addr, uint8_t val8)
 	uint32_t csr_addrl = csr_addr;
 	uint32_t tmp1;
 	uint32_t tmp2;
+	register_t sr;
+
+	sr = intr_disable();
 
 	__asm __volatile (
 	    ".set push\n"
@@ -209,6 +219,8 @@ static inline void oct_write8_x8 (uint64_t csr_addr, uint8_t val8)
             ".set pop\n"
 	    : "=&r" (tmp1), "=&r" (tmp2)
 	    : "r" (val8), "r" (csr_addrh), "r" (csr_addrl));
+
+	intr_restore(sr);
 }
 
 #define	OCT_READ(n, t, insn)						\
@@ -217,6 +229,9 @@ static inline t oct_read ## n(uint64_t csr_addr)			\
 	uint32_t csr_addrh = csr_addr >> 32;				\
 	uint32_t csr_addrl = csr_addr;					\
 	uint32_t tmp1, tmp2;						\
+	register_t sr;							\
+									\
+	sr = intr_disable();						\
 									\
 	__asm __volatile (						\
 	    ".set push\n"						\
@@ -231,6 +246,9 @@ static inline t oct_read ## n(uint64_t csr_addr)			\
 	    ".set pop\n"						\
 	    : "=&r" (tmp1), "=&r" (tmp2)				\
 	    : "r" (csr_addrh), "r" (csr_addrl));			\
+									\
+	intr_restore(sr);						\
+									\
 	return ((t)tmp2);						\
 }
 
@@ -244,6 +262,9 @@ static inline uint64_t oct_read64 (uint64_t csr_addr)
 	uint32_t csr_addrl = csr_addr;
 	uint32_t valh;
 	uint32_t vall;
+	register_t sr;
+
+	sr = intr_disable();
 
 	__asm __volatile (
 	    ".set push\n"
@@ -261,6 +282,9 @@ static inline uint64_t oct_read64 (uint64_t csr_addr)
 	    ".set pop\n"
 	    : "=&r" (valh), "=&r" (vall)
 	    : "r" (csr_addrh), "r" (csr_addrl));
+
+	intr_restore(sr);
+
 	return ((uint64_t)valh << 32) | vall;
 }
 #endif
