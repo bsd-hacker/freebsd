@@ -57,9 +57,6 @@
 #define	NKPDE		255	/* addressable number of page tables/pde's */
 #endif
 
-#define	KPTDI		(VM_MIN_KERNEL_ADDRESS >> SEGSHIFT)
-#define	NUSERPGTBLS	(VM_MAXUSER_ADDRESS >> SEGSHIFT)
-
 #ifndef LOCORE
 
 #include <sys/queue.h>

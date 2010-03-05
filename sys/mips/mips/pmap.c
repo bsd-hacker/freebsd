@@ -117,8 +117,10 @@ __FBSDID("$FreeBSD$");
 /*
  * Get PDEs and PTEs for user/kernel address space
  */
-#define	pmap_pde(m, v)	       (&((m)->pm_segtab[(vm_offset_t)(v) >> SEGSHIFT]))
-#define	segtab_pde(m, v)	(m[(vm_offset_t)(v) >> SEGSHIFT])
+#define	pmap_segshift(v)	((uintptr_t)(((v) & 0xffffffffu) >> SEGSHIFT))
+#define	pmap_segbase(v)		((vm_offset_t)(intptr_t)(int32_t)((v) << SEGSHIFT))
+#define	pmap_pde(m, v)		(&((m)->pm_segtab[pmap_segshift((v))]))
+#define	segtab_pde(m, v)	((m)[pmap_segshift((v))])
 
 #define	pmap_pte_w(pte)		((*(int *)pte & PTE_W) != 0)
 #define	pmap_pde_v(pte)		((*(int *)pte) != 0)
@@ -128,6 +130,7 @@ __FBSDID("$FreeBSD$");
 #define	pmap_pte_set_w(pte, v)	((v)?(*(int *)pte |= PTE_W):(*(int *)pte &= ~PTE_W))
 #define	pmap_pte_set_prot(pte, v) ((*(int *)pte &= ~PG_PROT), (*(int *)pte |= (v)))
 
+#define	NUSERPGTBLS		(pmap_segshift(VM_MAXUSER_ADDRESS))
 #define	MIPS_SEGSIZE		(1L << SEGSHIFT)
 #define	mips_segtrunc(va)	((va) & ~(MIPS_SEGSIZE-1))
 #define	pmap_TLB_invalidate_all() MIPS_TBIAP()
@@ -217,7 +220,7 @@ pd_entry_t
 pmap_segmap(pmap_t pmap, vm_offset_t va)
 {
 	if (pmap->pm_segtab)
-		return (pmap->pm_segtab[((vm_offset_t)(va) >> SEGSHIFT)]);
+		return (*pmap_pde(pmap, va));
 	else
 		return ((pd_entry_t)0);
 }
@@ -418,9 +421,9 @@ again:
 		 * be somewhere above 0xC0000000 - 0xFFFFFFFF which results
 		 * in about 256 entries or so instead of the 120.
 		 */
-		nkpt = (PAGE_SIZE / sizeof(pd_entry_t)) - (virtual_avail >> SEGSHIFT);
+		nkpt = ((PAGE_SIZE * 2) / sizeof(pd_entry_t)) - pmap_segshift(virtual_avail);
 	}
-	pgtab = (pt_entry_t *)pmap_steal_memory(PAGE_SIZE * nkpt);
+	pgtab = (pt_entry_t *)pmap_steal_memory((PAGE_SIZE * 2) * nkpt);
 
 	/*
 	 * The R[4-7]?00 stores only one copy of the Global bit in the
@@ -436,7 +439,7 @@ again:
 	 * The segment table contains the KVA of the pages in the second
 	 * level page table.
 	 */
-	for (i = 0, j = (virtual_avail >> SEGSHIFT); i < nkpt; i++, j++)
+	for (i = 0, j = pmap_segshift(virtual_avail); i < nkpt; i++, j++)
 		kernel_segmap[j] = (pd_entry_t)(pgtab + (i * NPTEPG));
 
 	/*
@@ -988,7 +991,7 @@ pmap_unuse_pt(pmap_t pmap, vm_offset_t va, vm_page_t mpte)
 		return (0);
 
 	if (mpte == NULL) {
-		ptepindex = (va >> SEGSHIFT);
+		ptepindex = pmap_segshift(va);
 		if (pmap->pm_ptphint &&
 		    (pmap->pm_ptphint->pindex == ptepindex)) {
 			mpte = pmap->pm_ptphint;
@@ -1150,7 +1153,7 @@ pmap_allocpte(pmap_t pmap, vm_offset_t va, int flags)
 	/*
 	 * Calculate pagetable page index
 	 */
-	ptepindex = va >> SEGSHIFT;
+	ptepindex = pmap_segshift(va);
 retry:
 	/*
 	 * Get the page directory entry
@@ -2009,7 +2012,7 @@ pmap_enter_quick_locked(pmap_t pmap, vm_offset_t va, vm_page_t m,
 		/*
 		 * Calculate pagetable page index
 		 */
-		ptepindex = va >> SEGSHIFT;
+		ptepindex = pmap_segshift(va);
 		if (mpte && (mpte->pindex == ptepindex)) {
 			mpte->wire_count++;
 		} else {
@@ -3047,7 +3050,7 @@ pmap_pid_dump(int pid)
 			for (i = 0; i < NUSERPGTBLS; i++) {
 				pd_entry_t *pde;
 				pt_entry_t *pte;
-				unsigned base = i << SEGSHIFT;
+				unsigned base = pmap_segbase(i);
 
 				pde = &pmap->pm_segtab[i];
 				if (pde && pmap_pde_v(pde)) {
@@ -3107,7 +3110,7 @@ pads(pmap_t pm)
 	for (i = 0; i < NPTEPG; i++)
 		if (pm->pm_segtab[i])
 			for (j = 0; j < NPTEPG; j++) {
-				va = (i << SEGSHIFT) + (j << PAGE_SHIFT);
+				va = pmap_segbase(i) + (j << PAGE_SHIFT);
 				if (pm == kernel_pmap && va < KERNBASE)
 					continue;
 				if (pm != kernel_pmap &&
