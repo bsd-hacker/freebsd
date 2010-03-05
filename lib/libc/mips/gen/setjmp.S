@@ -97,7 +97,9 @@ NESTED(setjmp, SETJMP_FRAME_SIZE, ra)
 	REG_S	s7, (_JB_REG_S7 * SZREG)(a0)
 	REG_S	sp, (_JB_REG_SP * SZREG)(a0)
 	REG_S	s8, (_JB_REG_S8 * SZREG)(a0)
+#if defined(__mips_n32) || defined(__mips_n64)
 	REG_S	gp, (_JB_REG_GP * SZREG)(a0)
+#endif
 	REG_EPILOGUE
 
 	move	v0, zero
@@ -144,7 +146,9 @@ NESTED(longjmp, LONGJMP_FRAME_SIZE, ra)
 	REG_L	s7, (_JB_REG_S7 * SZREG)(a0)
 	REG_L	sp, (_JB_REG_SP * SZREG)(a0)
 	REG_L	s8, (_JB_REG_S8 * SZREG)(a0)
+#if defined(__mips_n32) || defined(__mips_n64)
 	REG_L	gp, (_JB_REG_GP * SZREG)(a0)
+#endif
 
 	REG_EPILOGUE
 	move	v0, a1
