@@ -94,13 +94,7 @@
 # define PIC_RETURN()
 #endif /* __ABICALLS__ */
 
-
-#ifdef __STDC__
 # define SYSTRAP(x)	li v0,SYS_ ## x; syscall;
-#else
-# define SYSTRAP(x)	li v0,SYS_/**/x; syscall;
-#endif
-
 
 /*
  * Do a syscall that cannot fail (sync, get{p,u,g,eu,eg)id)
