@@ -1682,10 +1682,7 @@ static int octeon_rgmx_ioctl (struct ifnet * ifp, u_long command, caddr_t data)
                          * Restart or Start now, if driver is not running currently.
                          */
                         if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0) {
-                            printf(" SIOCSTIFFLAGS  UP/Not-running\n"); break;
                             octeon_rgmx_init(sc);
-                        } else {
-                            printf(" SIOCSTIFFLAGS  UP/Running\n"); break;
                         }
                     } else {
                         /*
@@ -1693,10 +1690,7 @@ static int octeon_rgmx_ioctl (struct ifnet * ifp, u_long command, caddr_t data)
                          * Stop & shut it down now, if driver is running currently.
                          */
                         if ((ifp->if_drv_flags & IFF_DRV_RUNNING) != 0) {
-                            printf(" SIOCSTIFFLAGS  Down/Running\n"); break;
                             octeon_rgmx_stop(sc);
-                        } else {
-                            printf(" SIOCSTIFFLAGS  Down/Not-Running\n"); break;
                         }
                     }
                     break;
