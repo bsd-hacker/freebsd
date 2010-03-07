@@ -341,9 +341,9 @@ again:
 				goto again;
 			fsize = obj->un_pager.vnp.vnp_size;
 			vm_page_busy(m);
-			vm_page_lock_queues();
+			vm_page_lock(m);
 			vm_page_undirty(m);
-			vm_page_unlock_queues();
+			vm_page_unlock(m);
 			VM_OBJECT_UNLOCK(obj);
 			if (dirbytes > 0) {
 				error = dmu_write_uio(os, zp->z_id, uio,
