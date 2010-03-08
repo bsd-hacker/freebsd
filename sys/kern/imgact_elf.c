@@ -70,7 +70,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/elf.h>
 #include <machine/md_var.h>
 
-#if defined(COMPAT_IA32) && __ELF_WORD_SIZE == 32
+#if (defined(__amd64__) || defined(__ia64__)) && __ELF_WORD_SIZE == 32
 #include <machine/fpu.h>
 #include <compat/ia32/ia32_reg.h>
 #endif

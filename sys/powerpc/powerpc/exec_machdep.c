@@ -555,7 +555,7 @@ exec_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings,
 	td->td_pcb->pcb_flags = 0;
 }
 
-#ifdef COMPAT_PPC32
+#ifdef COMPAT_FREEBSD32
 void
 ppc32_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings,
     struct image_params *imgp)
@@ -649,7 +649,7 @@ set_fpregs(struct thread *td, struct fpreg *fpregs)
 	return (0);
 }
 
-#ifdef COMPAT_PPC32
+#ifdef COMPAT_FREEBSD32
 int
 set_regs32(struct thread *td, struct reg32 *regs)
 {

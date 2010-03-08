@@ -6,7 +6,6 @@ E500			opt_global.h
 CELL
 MAMBO
 
-COMPAT_PPC32		opt_compat.h
 COMPAT_FREEBSD32	opt_compat.h
 
 GFB_DEBUG		opt_gfb.h

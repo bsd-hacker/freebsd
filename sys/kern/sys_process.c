@@ -65,7 +65,7 @@ __FBSDID("$FreeBSD$");
 #ifdef COMPAT_FREEBSD32
 #include <sys/procfs.h>
 
-#ifdef COMPAT_IA32
+#if defined(__ia64__) || defined(__amd64__)
 #include <machine/fpu.h>
 #include <compat/ia32/ia32_reg.h>
 #endif
@@ -476,7 +476,7 @@ ptrace_vm_entry(struct thread *td, struct proc *p, struct ptrace_vm_entry *pve)
 	return (error);
 }
 
-#ifdef COMPAT_IA32
+#ifdef COMPAT_FREEBSD32
 static int      
 ptrace_vm_entry32(struct thread *td, struct proc *p,
     struct ptrace_vm_entry32 *pve32)
@@ -503,7 +503,7 @@ ptrace_vm_entry32(struct thread *td, struct proc *p,
 	pve32->pve_pathlen = pve.pve_pathlen;
 	return (error);
 }
-#endif /* COMPAT_IA32 */
+#endif /* COMPAT_FREEBSD32 */
 
 /*
  * Process debugging system call.
@@ -1150,7 +1150,7 @@ kern_ptrace(struct thread *td, int req, pid_t pid, void *addr, int data)
 
 	case PT_VM_ENTRY:
 		PROC_UNLOCK(p);
-#ifdef COMPAT_IA32
+#ifdef COMPAT_FREEBSD32
 		if (wrap32)
 			error = ptrace_vm_entry32(td, p, addr);
 		else

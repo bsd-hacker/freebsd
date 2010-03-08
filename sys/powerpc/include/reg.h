@@ -28,7 +28,7 @@ struct dbreg {
 	unsigned int	junk;
 };
 
-#ifdef COMPAT_PPC32
+#ifdef COMPAT_FREEBSD32
 /* Must match struct trapframe */
 struct reg32 {
 	int32_t fixreg[32];
@@ -59,7 +59,7 @@ int	set_fpregs(struct thread *, struct fpreg *);
 int	fill_dbregs(struct thread *, struct dbreg *);
 int	set_dbregs(struct thread *, struct dbreg *);
 
-#ifdef COMPAT_PPC32
+#ifdef COMPAT_FREEBSD32
 struct image_params;
 
 int	fill_regs32(struct thread *, struct reg32 *);

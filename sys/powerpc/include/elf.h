@@ -137,7 +137,7 @@ __ElfType(Auxinfo);
 #include "opt_compat.h"
 #endif
 
-#ifdef COMPAT_PPC32
+#ifdef COMPAT_FREEBSD32
 /*
  * Alternative layouts for <sys/procfs.h>
  * Used in core dumps, the reason for this file existing.
