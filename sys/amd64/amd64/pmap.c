@@ -2943,23 +2943,14 @@ restart:
 		for (pte = pmap_pde_to_pte(pde, sva); sva != va_next; pte++,
 		    sva += PAGE_SIZE) {
 			int ret;
-			vm_page_t m = NULL;
 
 			if (*pte == 0)
 				continue;
 
-			if  (*pte & PG_MANAGED) {
-				m = PHYS_TO_VM_PAGE(*pte & PG_FRAME);
-				if (vm_page_trylock(m) == 0) {
-					PMAP_UNLOCK(pmap);
-					vm_page_lock(m);
-					PMAP_LOCK(pmap);
-				}
-				if (*pte != *pmap_pde_to_pte(pde, sva)) {
-					vm_page_unlock(m);
-					goto restart;
-				}
-			}
+			if  ((*pte & PG_MANAGED) &&
+			    pa_tryrelock(pmap, *pte & PG_FRAME, &pa))
+				goto restart;
+
 			/*
 			 * The TLB entry for a PG_G mapping is invalidated
 			 * by pmap_remove_pte().
@@ -2968,8 +2959,10 @@ restart:
 				anyvalid = 1;
 			ret = pmap_remove_pte(pmap, pte, sva, ptpaddr, &free);
 
-			if (m != NULL)
-				vm_page_unlock(m);
+			if (pa) {
+				PA_UNLOCK(pa);
+				pa = 0;
+			}
 			if (ret)
 				break;
 		}
