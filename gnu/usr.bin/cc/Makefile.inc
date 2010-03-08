@@ -30,8 +30,22 @@ CFLAGS+=	-DLONG_TYPE_SIZE=${LONG_TYPE_SIZE}
 CFLAGS+=	-DCROSS_COMPILE
 .endif
 
-.if ${TARGET_ARCH} == "mips" && !defined(TARGET_BIG_ENDIAN)
+.if ${TARGET_ARCH} == "mips"
+# XXX This is backwards, MIPS should default to BE.
+.if !defined(TARGET_BIG_ENDIAN)
 CFLAGS += -DTARGET_ENDIAN_DEFAULT=0
+.endif
+
+.if defined(TARGET_ABI) && ${TARGET_ABI} != "o32"
+.if ${TARGET_ABI} == "n32"
+MIPS_ABI_DEFAULT=ABI_N32
+.elif ${TARGET_ABI} == "n64"
+MIPS_ABI_DEFAULT=ABI_64
+.endif
+.endif
+
+MIPS_ABI_DEFAULT?=ABI_32
+CFLAGS += -DMIPS_ABI_DEFAULT=${MIPS_ABI_DEFAULT}
 .endif
 
 .if defined(WANT_FORCE_OPTIMIZATION_DOWNGRADE)

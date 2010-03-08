@@ -55,6 +55,10 @@ NOASM=
     ${MACHINE_ARCH} != "mips"
 .include "${.CURDIR}/quad/Makefile.inc"
 .endif
+.if ${MACHINE_ARCH} == "mips" && \
+    (!defined(TARGET_ABI) || ${TARGET_ABI} == "o32")
+.include "${.CURDIR}/quad/Makefile.inc"
+.endif
 .include "${.CURDIR}/regex/Makefile.inc"
 .include "${.CURDIR}/resolv/Makefile.inc"
 .include "${.CURDIR}/stdio/Makefile.inc"
@@ -65,8 +69,7 @@ NOASM=
 .include "${.CURDIR}/rpc/Makefile.inc"
 .include "${.CURDIR}/uuid/Makefile.inc"
 .include "${.CURDIR}/xdr/Makefile.inc"
-.if ${MACHINE_ARCH} == "arm" || \
-    ${MACHINE_ARCH} == "mips"
+.if ${MACHINE_ARCH} == "arm" || ${MACHINE_ARCH} == "mips"
 .include "${.CURDIR}/softfloat/Makefile.inc"
 .endif
 .if ${MK_NIS} != "no"
