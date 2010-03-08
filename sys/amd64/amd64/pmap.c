@@ -2719,7 +2719,7 @@ static void
 pmap_remove_page(pmap_t pmap, vm_offset_t va, pd_entry_t *pde, vm_page_t *free)
 {
 	pt_entry_t *pte;
-	vm_page_t m = NULL;
+	vm_paddr_t pa = 0;
 
 	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
 	if ((*pde & PG_V) == 0)
@@ -2727,17 +2727,12 @@ pmap_remove_page(pmap_t pmap, vm_offset_t va, pd_entry_t *pde, vm_page_t *free)
 	pte = pmap_pde_to_pte(pde, va);
 	if ((*pte & PG_V) == 0)
 		return;
-	if  (*pte & PG_MANAGED) {
-		m = PHYS_TO_VM_PAGE(*pte & PG_FRAME);
-		if (vm_page_trylock(m) == 0) {
-			PMAP_UNLOCK(pmap);
-			vm_page_lock(m);
-			PMAP_LOCK(pmap);
-		}
-	}
+	if  (*pte & PG_MANAGED)
+		(void)pa_tryrelock(pmap, *pte & PG_FRAME, &pa);
+
 	pmap_remove_pte(pmap, pte, va, *pde, free);
-	if (m != NULL)
-		vm_page_unlock(m);
+	if (pa)
+		PA_UNLOCK(pa);
 	pmap_invalidate_page(pmap, va);
 }
 
@@ -2959,10 +2954,6 @@ restart:
 				anyvalid = 1;
 			ret = pmap_remove_pte(pmap, pte, sva, ptpaddr, &free);
 
-			if (pa) {
-				PA_UNLOCK(pa);
-				pa = 0;
-			}
 			if (ret)
 				break;
 		}
