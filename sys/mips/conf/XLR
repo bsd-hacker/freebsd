@@ -50,7 +50,6 @@ cpu 		CPU_MIPS4KC
 ident 		XLR
 
 makeoptions	MODULES_OVERRIDE=""
-makeoptions     TARGET_BIG_ENDIAN
 #
 
 include		"../rmi/std.xlr"
