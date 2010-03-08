@@ -277,8 +277,7 @@ vm_pageout_fallback_object_lock(vm_page_t m, vm_page_t *next)
  * late and we cannot do anything that will mess with the page.
  */
 static int
-vm_pageout_clean(m)
-	vm_page_t m;
+vm_pageout_clean(vm_page_t m)
 {
 	vm_object_t object;
 	vm_page_t mc[2*vm_pageout_page_count];
@@ -286,7 +285,8 @@ vm_pageout_clean(m)
 	int ib, is, page_base;
 	vm_pindex_t pindex = m->pindex;
 
-	vm_page_lock_assert(m, MA_OWNED);
+	vm_page_lock_assert(m, MA_NOTOWNED);
+	vm_page_lock(m);
 	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 
 	/*
@@ -303,6 +303,7 @@ vm_pageout_clean(m)
 	 */
 	if ((m->hold_count != 0) ||
 	    ((m->busy != 0) || (m->oflags & VPO_BUSY))) {
+		vm_page_unlock(m);
 		return 0;
 	}
 	mc[vm_pageout_page_count] = m;
@@ -402,6 +403,7 @@ more:
 	if (ib && pageout_count < vm_pageout_page_count)
 		goto more;
 
+	vm_page_unlock(m);
 	/*
 	 * we allow reads during pageouts...
 	 */
@@ -437,6 +439,10 @@ vm_pageout_flush(vm_page_t *mc, int count, int flags)
 		KASSERT(mc[i]->valid == VM_PAGE_BITS_ALL,
 		    ("vm_pageout_flush: partially invalid page %p index %d/%d",
 			mc[i], i, count));
+		vm_page_io_start(mc[i]);
+		vm_page_lock(mc[i]);
+		pmap_remove_write(mc[i]);
+		vm_page_unlock(mc[i]);
 	}
 	vm_object_pip_add(object, count);
 
@@ -1019,6 +1025,8 @@ rescan0:
 					goto unlock_and_continue;
 				}
 			}
+			vm_page_unlock(m);
+			
 
 			/*
 			 * If a page is dirty, then it is either being washed
