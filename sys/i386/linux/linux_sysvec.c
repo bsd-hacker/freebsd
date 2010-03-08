@@ -932,7 +932,7 @@ exec_linux_setregs(struct thread *td, u_long entry,
 {
 	struct pcb *pcb = td->td_pcb;
 
-	exec_setregs(td, entry, stack, ps_strings);
+	exec_setregs(td, entry, stack, ps_strings, imgp);
 
 	/* Linux sets %gs to 0, we default to _udatasel */
 	pcb->pcb_gs = 0;

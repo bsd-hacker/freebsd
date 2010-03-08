@@ -484,6 +484,7 @@ options 	PMAP_SHPGPERPROC=201
 
 # Enable 32-bit runtime support for FreeBSD/i386 binaries.
 options 	COMPAT_IA32
+options		COMPAT_FREEBSD32
 
 # Enable iBCS2 runtime support for SCO and ISC binaries
 #XXX#options 	IBCS2
