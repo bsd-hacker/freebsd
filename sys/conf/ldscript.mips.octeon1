@@ -1,7 +1,5 @@
-/* $FreeBSD$ */
+/* $FreeBSD: user/jmallett/octeon/sys/conf/ldscript.mips.octeon1.32 204784 2010-03-05 23:14:01Z jmallett $ */
 
-TARGET(elf32-tradbigmips)
-OUTPUT_FORMAT("elf32-tradbigmips", "elf32-tradbigmips", "elf32-tradlittlemips")
 OUTPUT_ARCH(mips)
 ENTRY(_start)
    __DYNAMIC = 0;

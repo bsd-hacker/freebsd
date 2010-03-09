@@ -24,7 +24,7 @@ ident		OCTEON1
 # Don't build any modules yet.
 makeoptions	MODULES_OVERRIDE=""
 makeoptions	ARCH_FLAGS="-march=mips64"
-makeoptions     LDSCRIPT_NAME=ldscript.mips.octeon1.32
+makeoptions     LDSCRIPT_NAME=ldscript.mips.octeon1
 
 makeoptions	KERNLOADADDR=0xffffffff81000000
 
