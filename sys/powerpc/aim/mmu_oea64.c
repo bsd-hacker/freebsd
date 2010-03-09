@@ -1260,7 +1260,7 @@ moea64_zero_page(mmu_t mmu, vm_page_t m)
 	vm_offset_t off;
 
 	if (!moea64_initialized)
-		panic("moea64_zero_page: can't zero pa %#x", pa);
+		panic("moea64_zero_page: can't zero pa %#zx", pa);
 
 	mtx_lock(&moea64_scratchpage_mtx);
 
