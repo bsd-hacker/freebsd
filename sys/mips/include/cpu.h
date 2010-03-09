@@ -51,9 +51,7 @@
 #include <machine/endian.h>
 
 #define	MIPS_KSEG0_LARGEST_PHYS         (0x20000000)
-
 #define	MIPS_PHYS_MASK			(0x1fffffff)
-#define	MIPS_PA_2_K1VA(x)		(MIPS_KSEG1_START | ((x) & MIPS_PHYS_MASK))
 
 #define	MIPS_PHYS_TO_KSEG0(x)		((uintptr_t)(x) | MIPS_KSEG0_START)
 #define	MIPS_PHYS_TO_KSEG1(x)		((uintptr_t)(x) | MIPS_KSEG1_START)

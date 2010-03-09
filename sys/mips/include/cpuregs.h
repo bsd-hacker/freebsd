@@ -103,10 +103,6 @@
 #define MIPS_KSEG2_START		MIPS_KSSEG_START
 #define MIPS_KSEG2_END			MIPS_KSSEG_END
 
-/* Map virtual address to index in mips3 r4k virtually-indexed cache */
-#define	MIPS3_VA_TO_CINDEX(x) \
-		((unsigned)(x) & 0xffffff | MIPS_KSEG0_START)
-
 #define	MIPS_XKPHYS_CCA_UC		0x02	/* Uncached.  */
 #define	MIPS_XKPHYS_CCA_CNC		0x03	/* Cacheable non-coherent.  */
 
