@@ -52,12 +52,13 @@ TARGET_INC+=	${GCC_CPU}/elf.h
 .if ${TARGET_ARCH} == "arm"
 TARGET_INC+=	${GCC_CPU}/aout.h
 .endif
+.if ${TARGET_ARCH} == "powerpc64"
+TARGET_INC+=	${GCC_CPU}/biarch64.h
+TARGET_INC+=    ${GCC_CPU}/default64.h
+.endif
 TARGET_INC+=	${GCC_CPU}/freebsd.h
 .if ${TARGET_ARCH} == "amd64"
 TARGET_INC+=	${GCC_CPU}/freebsd64.h
-.endif
-.if ${TARGET_ARCH} == "powerpc64"
-TARGET_INC+=    ${GCC_CPU}/default64.h
 .endif
 .if ${TARGET_ARCH} == "arm"
 TARGET_INC+=	${GCC_CPU}/arm.h

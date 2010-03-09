@@ -107,7 +107,11 @@ static Elf32_Brandinfo freebsd_brand_info = {
 	.emul_path	= NULL,
 	.interp_path	= "/libexec/ld-elf.so.1",
 	.sysvec		= &elf32_freebsd_sysvec,
+#ifdef __powerpc64__
+	.interp_newpath	= "/libexec/ld-elf32.so.1",
+#else
 	.interp_newpath	= NULL,
+#endif
 	.brand_note	= &elf32_freebsd_brandnote,
 	.flags		= BI_CAN_EXEC_DYN | BI_BRAND_NOTE
 };

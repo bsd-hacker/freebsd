@@ -152,6 +152,43 @@
 #undef  ASM_APP_OFF
 #define ASM_APP_OFF "#NO_APP\n"
 
+/* Tell the assembler we want 32/64-bit binaries if -m32 or -m64 is passed */
+#if (TARGET_DEFAULT & MASK_64BIT)
+#define	SVR4_ASM_SPEC "%(asm_cpu) \
+%{.s: %{mregnames} %{mno-regnames}} %{.S: %{mregnames} %{mno-regnames}} \
+%{v:-V} %{Qy:} %{!Qn:-Qy} %{n} %{T} %{Ym,*} %{Yd,*} %{Wa,*:%*} \
+%{mrelocatable} %{mrelocatable-lib} %{fpic|fpie|fPIC|fPIE:-K PIC} \
+%{memb|msdata|msdata=eabi: -memb} \
+%{mlittle|mlittle-endian:-mlittle; \
+  mbig|mbig-endian      :-mbig;    \
+  mcall-aixdesc |		   \
+  mcall-freebsd |		   \
+  mcall-netbsd  |		   \
+  mcall-openbsd |		   \
+  mcall-linux   |		   \
+  mcall-gnu             :-mbig;    \
+  mcall-i960-old        :-mlittle}"
+#define LINK_OS_FREEBSD_SPEC_DEF "\
+  %{p:%nconsider using `-pg' instead of `-p' with gprof(1)} \
+  %{v:-V} \
+  %{assert*} %{R*} %{rpath*} %{defsym*} \
+  %{shared:-Bshareable %{h*} %{soname*}} \
+  %{!shared: \
+    %{!static: \
+      %{rdynamic: -export-dynamic} \
+      %{!dynamic-linker:-dynamic-linker %(fbsd_dynamic_linker) }} \
+    %{static:-Bstatic}} \
+  %{symbolic:-Bsymbolic}"
+
+
+#undef	ASM_DEFAULT_SPEC
+#undef	ASM_SPEC
+#undef	LINK_OS_FREEBSD_SPEC
+#define	ASM_DEFAULT_SPEC	"-mppc%{!m32:64}"
+#define	ASM_SPEC		"%{m32:-a32}%{!m32:-a64} " SVR4_ASM_SPEC
+#define	LINK_OS_FREEBSD_SPEC	"%{m32:-melf32ppc}%{!m32:-melf64ppc} " LINK_OS_FREEBSD_SPEC_DEF
+#endif
+
 /* _init and _fini functions are built from bits spread across many
    object files, each potentially with a different TOC pointer.  For
    that reason, place a nop after the call so that the linker can
