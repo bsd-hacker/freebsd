@@ -1076,6 +1076,7 @@ bwn_attach_post(struct bwn_softc *sc)
 	ic->ic_caps =
 		  IEEE80211_C_STA		/* station mode supported */
 		| IEEE80211_C_MONITOR		/* monitor mode */
+		| IEEE80211_C_AHDEMO		/* adhoc demo mode */
 		| IEEE80211_C_SHPREAMBLE	/* short preamble supported */
 		| IEEE80211_C_SHSLOT		/* short slot time supported */
 		| IEEE80211_C_WME		/* WME/WMM supported */
@@ -7788,8 +7789,9 @@ bwn_fw_get(struct bwn_mac *mac, enum bwn_fwtype type,
 		bwn_do_release_fw(bfw);
 	}
 
-	snprintf(namebuf, sizeof(namebuf), "bwn%s_v4_%s",
-	    (type == BWN_FWTYPE_OPENSOURCE) ? "-open" : "", name);
+	snprintf(namebuf, sizeof(namebuf), "bwn%s_v4_%s%s",
+	    (type == BWN_FWTYPE_OPENSOURCE) ? "-open" : "",
+	    (mac->mac_phy.type == BWN_PHYTYPE_LP) ? "lp_" : "", name);
 	/* XXX Sleeping on "fwload" with the non-sleepable locks held */
 	fw = firmware_get(namebuf);
 	if (fw == NULL) {
@@ -8447,7 +8449,8 @@ bwn_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 		}
 	}
 
-	if (vap->iv_opmode == IEEE80211_M_MONITOR) {
+	if (vap->iv_opmode == IEEE80211_M_MONITOR ||
+	    vap->iv_opmode == IEEE80211_M_AHDEMO) {
 		/* XXX nothing to do? */
 	} else if (nstate == IEEE80211_S_RUN) {
 		memcpy(sc->sc_bssid, vap->iv_bss->ni_bssid, IEEE80211_ADDR_LEN);
@@ -9395,8 +9398,6 @@ bwn_rxeof(struct bwn_mac *mac, struct mbuf *m, const void *_rxhdr)
 		device_printf(sc->sc_dev, "TODO RX: RX_FLAG_FAILED_FCS_CRC\n");
 	if (phystat0 & (BWN_RX_PHYST0_PLCPHCF | BWN_RX_PHYST0_PLCPFV))
 		device_printf(sc->sc_dev, "TODO RX: RX_FLAG_FAILED_PLCP_CRC\n");
-	if (phystat0 & BWN_RX_PHYST0_SHORTPRMBL)
-		device_printf(sc->sc_dev, "TODO RX: RX_FLAG_SHORTPRE\n");
 	if (macstat & BWN_RX_MAC_DECERR)
 		goto drop;
 
@@ -12845,7 +12846,6 @@ bwn_phy_lp_clear_deaf(struct bwn_mac *mac, uint8_t user)
 static unsigned int
 bwn_sqrt(struct bwn_mac *mac, unsigned int x)
 {
-	struct bwn_softc *sc = mac->mac_sc;
 	/* Table holding (10 * sqrt(x)) for x between 1 and 256. */
 	static uint8_t sqrt_table[256] = {
 		10, 14, 17, 20, 22, 24, 26, 28,
@@ -12885,9 +12885,11 @@ bwn_sqrt(struct bwn_mac *mac, unsigned int x)
 	if (x == 0)
 		return (0);
 	if (x >= 256) {
-		device_printf(sc->sc_dev,
-		    "out of bounds of the square-root table (%d)\n", x);
-		return (16);
+		unsigned int tmp;
+
+		for (tmp = 0; x >= (2 * tmp) + 1; x -= (2 * tmp++) + 1)
+			/* do nothing */ ;
+		return (tmp);
 	}
 	return (sqrt_table[x - 1] / 10);
 }
@@ -14310,16 +14312,8 @@ bwn_sysctl_node(struct bwn_softc *sc)
 #endif
 }
 
-static void
-bwn_identify(driver_t *driver, device_t parent)
-{
-
-	BUS_ADD_CHILD(parent, 0, "bwn", -1);
-}
-
 static device_method_t bwn_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_identify,	bwn_identify),
 	DEVMETHOD(device_probe,		bwn_probe),
 	DEVMETHOD(device_attach,	bwn_attach),
 	DEVMETHOD(device_detach,	bwn_detach),

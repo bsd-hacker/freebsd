@@ -1058,7 +1058,7 @@ sys_stk_chk:
 	nop
 
 # stack overflow
-	PTR_LA	a0, _C_LABEL(_start) - START_FRAME - 8  # set sp to a valid place
+	PTR_LA	a0, _C_LABEL(_start) - CALLFRAME_SIZ - 8  # set sp to a valid place
 	sw	sp, 24(a0)
 	move	sp, a0
 	PTR_LA	a0, 1f
@@ -1072,7 +1072,7 @@ sys_stk_chk:
 	jalr	k0
 	mfc0	a3, COP_0_BAD_VADDR
 
-	PTR_LA	sp, _C_LABEL(_start) - START_FRAME  # set sp to a valid place
+	PTR_LA	sp, _C_LABEL(_start) - CALLFRAME_SIZ  # set sp to a valid place
 
 #if !defined(SMP) && defined(DDB)
 	PTR_LA	a0, 2f
@@ -1253,7 +1253,7 @@ VECTOR(MipsCache, unknown)
 	PTR_LA	k0, _C_LABEL(MipsCacheException)
 	li	k1, MIPS_PHYS_MASK
 	and	k0, k1
-	li	k1, MIPS_UNCACHED_MEMORY_ADDR
+	li	k1, MIPS_KSEG1_START
 	or	k0, k1
 	j	k0
 	nop
