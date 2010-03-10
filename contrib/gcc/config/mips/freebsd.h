@@ -259,22 +259,18 @@ Boston, MA 02110-1301, USA.  */
 #if MIPS_ABI_DEFAULT == ABI_N32
 #define DRIVER_SELF_SPECS \
 	"%{!EB:%{!EL:%(endian_spec)}}", \
-	"%{!march=*: -march=mips64}",   \
 	"%{!mabi=*: -mabi=n32}"
 #elif MIPS_ABI_DEFAULT == ABI_64
 #define DRIVER_SELF_SPECS \
 	"%{!EB:%{!EL:%(endian_spec)}}", \
-	"%{!march=*: -march=mips64}",   \
 	"%{!mabi=*: -mabi=64}"
 #elif MIPS_ABI_DEFAULT == ABI_O64
 #define DRIVER_SELF_SPECS \
 	"%{!EB:%{!EL:%(endian_spec)}}", \
-	"%{!march=*: -march=mips64}",   \
 	"%{!mabi=*: -mabi=o64}"
 #else /* default to o32 */
 #define DRIVER_SELF_SPECS \
 	"%{!EB:%{!EL:%(endian_spec)}}", \
-	"%{!march=*: -march=mips32}",   \
 	"%{!mabi=*: -mabi=32}"
 #endif
 
