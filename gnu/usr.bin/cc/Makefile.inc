@@ -44,6 +44,30 @@ MIPS_ABI_DEFAULT=ABI_64
 .endif
 .endif
 
+# GCC by default takes the ISA from the ABI's requirements.  If world is built
+# with a superior ISA, since we lack multilib, we have to set the right
+# default ISA to be able to link against what's in /usr/lib.  Terrible stuff.
+.if defined(TARGET_CPUTYPE)
+.if ${TARGET_CPUTYPE} == "mips1"
+MIPS_ISA_DEFAULT=1
+.elif ${TARGET_CPUTYPE} == "mips2"
+MIPS_ISA_DEFAULT=2
+.elif ${TARGET_CPUTYPE} == "mips3"
+MIPS_ISA_DEFAULT=3
+.elif ${TARGET_CPUTYPE} == "mips4"
+MIPS_ISA_DEFAULT=4
+.elif ${TARGET_CPUTYPE} == "mips32"
+MIPS_ISA_DEFAULT=32
+.elif ${TARGET_CPUTYPE} == "mips32r2"
+MIPS_ISA_DEFAULT=32r2
+.elif ${TARGET_CPUTYPE} == "mips64"
+MIPS_ISA_DEFAULT=64
+.else
+# Let's hope from-abi is good enough.
+.endif
+CFLAGS += -DMIPS_ISA_DEFAULT=${MIPS_ISA_DEFAULT}
+.endif
+
 MIPS_ABI_DEFAULT?=ABI_32
 CFLAGS += -DMIPS_ABI_DEFAULT=${MIPS_ABI_DEFAULT}
 .endif
