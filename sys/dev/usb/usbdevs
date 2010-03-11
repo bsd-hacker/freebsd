@@ -400,6 +400,7 @@ vendor STSN		0x07ef	STSN
 vendor CENTURY		0x07f7	Century Corp
 vendor ZOOM		0x0803	Zoom Telephonics
 vendor PCS		0x0810	Personal Communication Systems
+vendor ALPHASMART	0x081e	AlphaSmart, Inc.
 vendor BROADLOGIC	0x0827	BroadLogic
 vendor HANDSPRING	0x082d	Handspring
 vendor PALM		0x0830	Palm Computing
@@ -537,6 +538,7 @@ vendor FALCOM		0x0f94	Falcom Wireless Communications GmbH
 vendor RIM		0x0fca	Research In Motion
 vendor DYNASTREAM	0x0fcf	Dynastream Innovations
 vendor QUALCOMM		0x1004	Qualcomm
+vendor APACER		0x1005	Apacer
 vendor DESKNOTE		0x1019	Desknote
 vendor GIGABYTE		0x1044	GIGABYTE
 vendor WESTERN		0x1058	Western Digital
@@ -884,6 +886,10 @@ product ALTEC ASC495		0xff05	ASC495 Speakers
 
 /* Allied Telesyn International products */
 product ALLIEDTELESYN ATUSB100	0xb100	AT-USB100
+
+/* AlphaSmart, Inc. products */
+product ALPHASMART DANA_KB	0xdbac	AlphaSmart Dana Keyboard
+product ALPHASMART DANA_SYNC	0xdf00	AlphaSmart Dana HotSync
 
 /* Amoi products */
 product AMOI H01		0x0800	H01 3G modem
@@ -2003,9 +2009,6 @@ product MSI RT3070_7		0x899a	RT3070
 product MSI RT2573_3		0xa861	RT2573
 product MSI RT2573_4		0xa874	RT2573
 
-/* Microdia products */
-product MICRODIA TWINKLECAM	0x600d	TwinkleCam USB camera
-
 /* Microsoft products */
 product MICROSOFT SIDEPREC	0x0008	SideWinder Precision Pro
 product MICROSOFT INTELLIMOUSE	0x0009	IntelliMouse
@@ -2768,6 +2771,7 @@ product SMC 2202USB		0x0200	10/100 Ethernet
 product SMC 2206USB		0x0201	EZ Connect USB Ethernet
 product SMC 2862WG		0xee13	EZ Connect Wireless Adapter
 product SMC2 2020HUB		0x2020	USB Hub
+product SMC2 2514HUB		0x2514	USB Hub
 product SMC3 2662WUSB		0xa002	2662W-AR Wireless
 
 /* SOHOware products */
