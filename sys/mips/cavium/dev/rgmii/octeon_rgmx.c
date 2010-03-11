@@ -136,9 +136,6 @@ struct rgmx_softc_dev {
 	u_int			idx;
         u_char                  ieee[6];
 
-#if 0
-        char const * typestr;   /* printable name of the interface.  */
-#endif
         u_short txb_size;       /* size of TX buffer, in bytes  */
 
         /* Transmission buffer management.  */
@@ -350,10 +347,6 @@ static int octeon_rgmx_init_ifnet (struct rgmx_softc_dev *sc)
         ifmedia_set(&sc->media, bit2media[0]);
 
         ether_ifattach(sc->ifp, sc->ieee);
-        /* Print additional info when attached.  */
-#if 0
-        device_printf(sc->sc_dev, "type %s, full duplex\n", sc->typestr);
-#endif
 
         return (0);
 }
