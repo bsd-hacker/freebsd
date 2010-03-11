@@ -111,25 +111,6 @@ platform_reset(void)
 	oct_write64(OCTEON_CIU_SOFT_RST, 1);
 }
 
-
-static inline uint32_t
-octeon_disable_interrupts(void)
-{
-	uint32_t status_bits;
-
-	status_bits = mips_rd_status();
-	mips_wr_status(status_bits & ~MIPS_SR_INT_IE);
-	return (status_bits);
-}
-
-
-static inline void
-octeon_set_interrupts(uint32_t status_bits)
-{
-	mips_wr_status(status_bits);
-}
-
-
 void
 octeon_led_write_char(int char_position, char val)
 {
@@ -315,7 +296,7 @@ octeon_wait_uart_flush(int uart_index, uint8_t ch)
 	if (uart_index < 0 || uart_index > 1)
 		return;
 
-	cpu_status_bits = octeon_disable_interrupts();
+	cpu_status_bits = intr_disable();
 	/* Force Flush the IOBus */
 	oct_read64(OCTEON_MIO_BOOT_BIST_STAT);
 	for (val3 = 0xfffffffff; val3 > 0; val3--) {
@@ -323,7 +304,7 @@ octeon_wait_uart_flush(int uart_index, uint8_t ch)
 		if (((uint8_t) val) & LSR_TEMT)
 			break;
 	}
-	octeon_set_interrupts(cpu_status_bits);
+	intr_restore(cpu_status_bits);
 }
 
 
@@ -450,17 +431,17 @@ ciu_get_en_reg_addr_new(int corenum, int intx, int enx, int ciu_ip)
 	/* XXX kasserts? */
 	if (enx < CIU_EN_0 || enx > CIU_EN_1) {
 		printf("%s: invalid enx value %d, should be %d or %d\n",
-		    __FUNCTION__, enx, CIU_EN_0, CIU_EN_1);
+		    __func__, enx, CIU_EN_0, CIU_EN_1);
 		return 0;
 	}
 	if (intx < CIU_INT_0 || intx > CIU_INT_1) {
 		printf("%s: invalid intx value %d, should be %d or %d\n",
-		    __FUNCTION__, enx, CIU_INT_0, CIU_INT_1);
+		    __func__, enx, CIU_INT_0, CIU_INT_1);
 		return 0;
 	}
 	if (ciu_ip < CIU_MIPS_IP2 || ciu_ip > CIU_MIPS_IP3) {
 		printf("%s: invalid ciu_ip value %d, should be %d or %d\n",
-		    __FUNCTION__, ciu_ip, CIU_MIPS_IP2, CIU_MIPS_IP3);
+		    __func__, ciu_ip, CIU_MIPS_IP2, CIU_MIPS_IP3);
 		return 0;
 	}
 
@@ -517,7 +498,7 @@ ciu_clear_int_summary(int core_num, int intx, int enx, uint64_t write_bits)
 	    core_num, intx, enx, write_bits);
 #endif
 
-	cpu_status_bits = octeon_disable_interrupts();
+	cpu_status_bits = intr_disable();
 
 	ciu_intr_sum_reg_addr = ciu_get_intr_sum_reg_addr(core_num, intx, enx);
 
@@ -535,7 +516,7 @@ ciu_clear_int_summary(int core_num, int intx, int enx, uint64_t write_bits)
         printf(" Readback: 0x%llX\n\n   ", (uint64_t) oct_read64(ciu_intr_sum_reg_addr));
 #endif
     
-	octeon_set_interrupts(cpu_status_bits);
+	intr_restore(cpu_status_bits);
 }
 
 /*
@@ -550,7 +531,7 @@ ciu_disable_intr(int core_num, int intx, int enx)
 	if (core_num == CIU_THIS_CORE)
         	core_num = octeon_get_core_num();
 
-	cpu_status_bits = octeon_disable_interrupts();
+	cpu_status_bits = intr_disable();
     
 	ciu_intr_reg_addr = ciu_get_intr_en_reg_addr(core_num, intx, enx);
 
@@ -559,7 +540,7 @@ ciu_disable_intr(int core_num, int intx, int enx)
 	oct_write64(ciu_intr_reg_addr, 0LL);
 	oct_read64(OCTEON_MIO_BOOT_BIST_STAT);	/* Bus Barrier */
 
-	octeon_set_interrupts(cpu_status_bits);
+	intr_restore(cpu_status_bits);
 }
 
 void
@@ -580,7 +561,7 @@ ciu_dump_interrutps_enabled(int core_num, int intx, int enx, int ciu_ip)
 #endif
 
         if (!ciu_intr_reg_addr) {
-            printf("Bad call to %s\n", __FUNCTION__);
+            printf("Bad call to %s\n", __func__);
             while(1);
             return;
         }
@@ -612,7 +593,7 @@ void ciu_enable_interrupts(int core_num, int intx, int enx,
 	    core_num, intx, enx, ciu_ip, set_these_interrupt_bits);
 #endif
 
-	cpu_status_bits = octeon_disable_interrupts();
+	cpu_status_bits = intr_disable();
 
 #ifndef OCTEON_SMP_1
 	ciu_intr_reg_addr = ciu_get_intr_en_reg_addr(core_num, intx, enx);
@@ -621,7 +602,7 @@ void ciu_enable_interrupts(int core_num, int intx, int enx,
 #endif
 
         if (!ciu_intr_reg_addr) {
-		printf("Bad call to %s\n", __FUNCTION__);
+		printf("Bad call to %s\n", __func__);
 		while(1);
 		return;	/* XXX */
         }
@@ -644,7 +625,7 @@ void ciu_enable_interrupts(int core_num, int intx, int enx,
 	    (uint64_t)oct_read64(ciu_intr_reg_addr));
 #endif
 
-	octeon_set_interrupts(cpu_status_bits);
+	intr_restore(cpu_status_bits);
 }
 
 unsigned long
