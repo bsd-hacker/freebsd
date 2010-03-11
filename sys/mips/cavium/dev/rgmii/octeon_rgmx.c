@@ -1768,12 +1768,6 @@ static void  octeon_rgmx_init (void *xsc)
 	struct rgmx_softc_dev *sc = xsc;
 	octeon_rgmx_rxx_rx_inbnd_t link_status;
 
-	/*
-	 * Called mostly from ifnet interface  ifp->if_init();
-	 * I think we can anchor most of our iniialization here and
-	 * not do it in different places  from driver_attach().
-	 */
-
         /* Enable interrupts.  */
     	/* For RGMX they are already enabled earlier */
 
@@ -1801,11 +1795,10 @@ static void  octeon_rgmx_init (void *xsc)
 	 */
 	link_status.word64 = sc->link_status;
 
-	if (link_status.bits.status) {
+	if (link_status.bits.status)
 		if_link_state_change(sc->ifp, LINK_STATE_UP);
-	} else {
+	else
 		if_link_state_change(sc->ifp, LINK_STATE_DOWN);
-	}
 	RGMX_UNLOCK(sc);
 }
 
