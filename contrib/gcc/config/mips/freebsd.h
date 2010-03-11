@@ -255,23 +255,37 @@ Boston, MA 02110-1301, USA.  */
   while (0)
 
 /* Default ABI and ISA */
+/*
+ * XXX/juli
+ * Shouldn't this also be dependent on !mips*?
+ */
+#ifdef MIPS_CPU_STRING_DEFAULT
+#define DRIVER_SELF_ISA_SPEC	"{!march=*: -march=" MIPS_CPU_STRING_DEFAULT "}"
+#else
+#define	DRIVER_SELF_ISA_SPEC	"{!march=*: -march=from-abi}"
+#endif
+
 #undef DRIVER_SELF_SPECS
 #if MIPS_ABI_DEFAULT == ABI_N32
 #define DRIVER_SELF_SPECS \
 	"%{!EB:%{!EL:%(endian_spec)}}", \
-	"%{!mabi=*: -mabi=n32}"
+	"%{!mabi=*: -mabi=n32}", \
+	DRIVER_SELF_ISA_SPEC
 #elif MIPS_ABI_DEFAULT == ABI_64
 #define DRIVER_SELF_SPECS \
 	"%{!EB:%{!EL:%(endian_spec)}}", \
-	"%{!mabi=*: -mabi=64}"
+	"%{!mabi=*: -mabi=64}", \
+	DRIVER_SELF_ISA_SPEC
 #elif MIPS_ABI_DEFAULT == ABI_O64
 #define DRIVER_SELF_SPECS \
 	"%{!EB:%{!EL:%(endian_spec)}}", \
-	"%{!mabi=*: -mabi=o64}"
+	"%{!mabi=*: -mabi=o64}", \
+	DRIVER_SELF_ISA_SPEC
 #else /* default to o32 */
 #define DRIVER_SELF_SPECS \
 	"%{!EB:%{!EL:%(endian_spec)}}", \
-	"%{!mabi=*: -mabi=32}"
+	"%{!mabi=*: -mabi=32}", \
+	DRIVER_SELF_ISA_SPEC
 #endif
 
 #if 0
