@@ -260,9 +260,9 @@ Boston, MA 02110-1301, USA.  */
  * Shouldn't this also be dependent on !mips*?
  */
 #ifdef MIPS_CPU_STRING_DEFAULT
-#define DRIVER_SELF_ISA_SPEC	"{!march=*: -march=" MIPS_CPU_STRING_DEFAULT "}"
+#define DRIVER_SELF_ISA_SPEC	"%{!march=*: -march=" MIPS_CPU_STRING_DEFAULT "}"
 #else
-#define	DRIVER_SELF_ISA_SPEC	"{!march=*: -march=from-abi}"
+#define	DRIVER_SELF_ISA_SPEC	"%{!march=*: -march=from-abi}"
 #endif
 
 #undef DRIVER_SELF_SPECS
