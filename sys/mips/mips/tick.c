@@ -117,8 +117,8 @@ tick_ticker(void)
 	 * from the time counter, so I'm not sure why all these hoops
 	 * are even necessary.
 	 */
-	ticktock = mips_rd_count();
 	critical_enter();
+	ticktock = mips_rd_count();
 	if (ticktock < counter_lower_last)
 		counter_upper++;
 	counter_lower_last = ticktock;
