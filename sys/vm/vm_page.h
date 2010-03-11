@@ -275,17 +275,13 @@ extern struct vpglocks vm_page_queue_lock;
 
 #ifdef VM_PAGE_LOCK
 #define	vm_page_lockptr(m)		pmap_page_lockptr(m)
-#define	vm_page_lock(m)		mtx_lock(vm_page_lockptr((m)))
-#define	vm_page_unlock(m)	mtx_unlock(vm_page_lockptr((m)))
-#define	vm_page_trylock(m)	mtx_trylock(vm_page_lockptr((m)))
-#define	vm_page_lock_assert(m, a)	mtx_assert(vm_page_lockptr((m)), (a))
 #else
-#define	vm_page_lockptr(m)	(&vm_page_queue_mtx)
+#define	vm_page_lockptr(m)		(&vm_page_queue_mtx)
+#endif
 #define	vm_page_lock(m)		mtx_lock(vm_page_lockptr((m)))
 #define	vm_page_unlock(m)	mtx_unlock(vm_page_lockptr((m)))
 #define	vm_page_trylock(m)	mtx_trylock(vm_page_lockptr((m)))
 #define	vm_page_lock_assert(m, a)	mtx_assert(vm_page_lockptr((m)), (a))
-#endif
 
 
 #if PAGE_SIZE == 4096
