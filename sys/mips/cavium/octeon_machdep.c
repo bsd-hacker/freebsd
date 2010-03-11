@@ -760,7 +760,7 @@ platform_start(__register_t a0, __register_t a1, __register_t a2 __unused,
 		kdb_enter(KDB_WHY_BOOTFLAGS, "Boot flags requested debugger");
 #endif
 	platform_counter_freq = octeon_get_clock_rate();
-	mips_timer_init_params(platform_counter_freq, 1);
+	mips_timer_init_params(platform_counter_freq, 0);
 }
 
 /* impSTART: This stuff should move back into the Cavium SDK */
