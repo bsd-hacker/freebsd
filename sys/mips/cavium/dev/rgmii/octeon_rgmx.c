@@ -1652,9 +1652,47 @@ static int octeon_rgmx_medchange (struct ifnet *ifp)
 
 static void octeon_rgmx_medstat (struct ifnet *ifp, struct ifmediareq *ifm)
 {
-    /*
-     * No support for Media Status callback
-     */
+    	struct rgmx_softc_dev *sc = ifp->if_softc;
+	octeon_rgmx_rxx_rx_inbnd_t link_status;
+
+	octeon_rgmx_config_speed(sc->port, 1);
+
+	RGMX_LOCK(sc);
+
+	ifm->ifm_status = IFM_AVALID;
+	ifm->ifm_active = IFM_ETHER;
+
+	/*
+	 * Parse link status.
+	 */
+	link_status.word64 = sc->link_status;
+
+	if (!link_status.bits.status) {
+		RGMX_UNLOCK(sc);
+		return;
+	}
+
+	ifm->ifm_status |= IFM_ACTIVE;
+
+	switch (link_status.bits.speed) {
+	case 0:
+		ifm->ifm_active |= IFM_10_T;
+		break;
+	case 1:
+		ifm->ifm_active |= IFM_100_TX;
+		break;
+	case 2:
+		ifm->ifm_active |= IFM_1000_T;;
+		break;
+	default:
+		/* Unknown!  */
+		break;
+	}
+
+	/* Always full duplex.  */
+	ifm->ifm_active |= IFM_FDX;
+
+	RGMX_UNLOCK(sc);
 }
 
 static int octeon_rgmx_ioctl (struct ifnet * ifp, u_long command, caddr_t data)
