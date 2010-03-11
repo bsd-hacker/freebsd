@@ -65,11 +65,6 @@ __FBSDID("$FreeBSD$");
 #ifdef COMPAT_FREEBSD32
 #include <sys/procfs.h>
 
-#if defined(__ia64__) || defined(__amd64__)
-#include <machine/fpu.h>
-#include <compat/ia32/ia32_reg.h>
-#endif
-
 struct ptrace_io_desc32 {
 	int		piod_op;
 	u_int32_t	piod_offs;

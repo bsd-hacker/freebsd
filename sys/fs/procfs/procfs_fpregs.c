@@ -57,10 +57,6 @@
 #include <sys/procfs.h>
 #include <machine/fpu.h>
 
-#if defined(__amd64__) || defined(__ia64__)
-#include <compat/ia32/ia32_reg.h>
-#endif
-
 /*
  * PROC(write, fpregs, td2, &r) becomes
  * proc_write_fpregs(td2, &r)   or
