@@ -184,7 +184,6 @@ static u_int get_rgmx_port_ordinal(u_int port);
 static void octeon_rgmx_set_mac(u_int port);
 static void octeon_rgmx_init_sc(struct rgmx_softc_dev *sc, device_t dev, u_int port, u_int num_devices);
 static int octeon_rgmx_init_ifnet(struct rgmx_softc_dev *sc);
-static void octeon_rgmx_mark_ready(struct rgmx_softc_dev *sc);
 static void octeon_rgmx_stop(struct rgmx_softc_dev *sc);
 static void octeon_rgmx_config_speed(u_int port, u_int);
 #ifdef DEBUG_RGMX_DUMP
@@ -451,12 +450,6 @@ static int rgmii_attach (device_t dev)
                             	device_printf(dev, "  ifinit failed for rgmx port %u\n", port);
                                 return (ENOSPC);
                         }
-/*
- * Don't call octeon_rgmx_mark_ready()
- * ifnet will call it indirectly via  octeon_rgmx_init()
- *
- *                         octeon_rgmx_mark_ready(sc);
- */
                         num_devices++;
                 }
 	}
@@ -1770,17 +1763,16 @@ static int octeon_rgmx_ioctl (struct ifnet * ifp, u_long command, caddr_t data)
         return (error);
 }
 
-
-
-
-/*
- * octeon_rgmx_mark_ready
- *
- * Initialize the rgmx driver for this instance
- * Initialize device.
- */
-static void octeon_rgmx_mark_ready (struct rgmx_softc_dev *sc)
+static void  octeon_rgmx_init (void *xsc)
 {
+	struct rgmx_softc_dev *sc = xsc;
+	octeon_rgmx_rxx_rx_inbnd_t link_status;
+
+	/*
+	 * Called mostly from ifnet interface  ifp->if_init();
+	 * I think we can anchor most of our iniialization here and
+	 * not do it in different places  from driver_attach().
+	 */
 
         /* Enable interrupts.  */
     	/* For RGMX they are already enabled earlier */
@@ -1799,21 +1791,22 @@ static void octeon_rgmx_mark_ready (struct rgmx_softc_dev *sc)
 
         /* Kick start the output */
         /* Hopefully PKO is running and will pick up packets via the timer  or receive loop */
-}
 
+	/* Set link status.  */
+	octeon_rgmx_config_speed(sc->port, 0);
 
-static void  octeon_rgmx_init (void *xsc)
-{
+	RGMX_LOCK(sc);
+	/*
+	 * Parse link status.
+	 */
+	link_status.word64 = sc->link_status;
 
-    /*
-     * Called mostly from ifnet interface  ifp->if_init();
-     * I think we can anchor most of our iniialization here and
-     * not do it in different places  from driver_attach().
-     */
-    /*
-     * For now, we only mark the interface ready
-     */
-    octeon_rgmx_mark_ready((struct rgmx_softc_dev *) xsc);
+	if (link_status.bits.status) {
+		if_link_state_change(sc->ifp, LINK_STATE_UP);
+	} else {
+		if_link_state_change(sc->ifp, LINK_STATE_DOWN);
+	}
+	RGMX_UNLOCK(sc);
 }
 
 
