@@ -50,7 +50,11 @@
 #define	KERNEL_SEGMENT	(0xfffff0 + KERNEL_SR)
 #define	KERNEL2_SEGMENT	(0xfffff0 + KERNEL2_SR)
 #define	EMPTY_SEGMENT	0xfffff0
-#define	USER_ADDR	((void *)((register_t)USER_SR << ADDR_SR_SHFT))
+#ifdef __powerpc64__
+#define	USER_ADDR	0xcffffffff0000000UL
+#else
+#define	USER_ADDR	((uintptr_t)USER_SR << ADDR_SR_SHFT)
+#endif
 #define	SEGMENT_LENGTH	0x10000000UL
 #define	SEGMENT_INVMASK	0x0fffffffUL
 #define	SEGMENT_MASK	~SEGMENT_INVMASK

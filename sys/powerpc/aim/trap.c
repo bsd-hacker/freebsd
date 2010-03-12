@@ -560,7 +560,7 @@ trap_pfault(struct trapframe *frame, int user)
 	if (user) {
 		map = &p->p_vmspace->vm_map;
 	} else {
-		if ((eva >> ADDR_SR_SHFT) == USER_SR) {
+		if ((eva >> ADDR_SR_SHFT) == (USER_ADDR >> ADDR_SR_SHFT)) {
 			if (p->p_vmspace == NULL)
 				return (SIGSEGV);
 

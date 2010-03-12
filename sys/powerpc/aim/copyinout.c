@@ -82,7 +82,7 @@ set_user_sr(pmap_t pm, const void *addr)
 {
 	register_t esid, vsid, slb1, slb2;
 
-	esid = USER_SR;
+	esid = USER_ADDR >> ADDR_SR_SHFT;
 	PMAP_LOCK(pm);
 	vsid = va_to_vsid(pm, (vm_offset_t)addr);
 	PMAP_UNLOCK(pm);
@@ -245,7 +245,7 @@ subyte(void *addr, int byte)
 
 	td = PCPU_GET(curthread);
 	pm = &td->td_proc->p_vmspace->vm_pmap;
-	p = (char *)((uintptr_t)USER_ADDR + ((uintptr_t)addr & ~SEGMENT_MASK));
+	p = (char *)(USER_ADDR + ((uintptr_t)addr & ~SEGMENT_MASK));
 
 	if (setfault(env)) {
 		td->td_pcb->pcb_onfault = NULL;
@@ -271,7 +271,7 @@ suword32(void *addr, int word)
 
 	td = PCPU_GET(curthread);
 	pm = &td->td_proc->p_vmspace->vm_pmap;
-	p = (int *)((uintptr_t)USER_ADDR + ((uintptr_t)addr & ~SEGMENT_MASK));
+	p = (int *)(USER_ADDR + ((uintptr_t)addr & ~SEGMENT_MASK));
 
 	if (setfault(env)) {
 		td->td_pcb->pcb_onfault = NULL;
@@ -297,7 +297,7 @@ suword(void *addr, long word)
 
 	td = PCPU_GET(curthread);
 	pm = &td->td_proc->p_vmspace->vm_pmap;
-	p = (long *)((uintptr_t)USER_ADDR + ((uintptr_t)addr & ~SEGMENT_MASK));
+	p = (long *)(USER_ADDR + ((uintptr_t)addr & ~SEGMENT_MASK));
 
 	if (setfault(env)) {
 		td->td_pcb->pcb_onfault = NULL;
@@ -337,8 +337,7 @@ fubyte(const void *addr)
 
 	td = PCPU_GET(curthread);
 	pm = &td->td_proc->p_vmspace->vm_pmap;
-	p = (u_char *)((uintptr_t)USER_ADDR +
-	    ((uintptr_t)addr & ~SEGMENT_MASK));
+	p = (u_char *)(USER_ADDR + ((uintptr_t)addr & ~SEGMENT_MASK));
 
 	if (setfault(env)) {
 		td->td_pcb->pcb_onfault = NULL;
@@ -364,7 +363,7 @@ fuword32(const void *addr)
 
 	td = PCPU_GET(curthread);
 	pm = &td->td_proc->p_vmspace->vm_pmap;
-	p = (int32_t *)((uintptr_t)USER_ADDR + ((uintptr_t)addr & ~SEGMENT_MASK));
+	p = (int32_t *)(USER_ADDR + ((uintptr_t)addr & ~SEGMENT_MASK));
 
 	if (setfault(env)) {
 		td->td_pcb->pcb_onfault = NULL;
@@ -390,7 +389,7 @@ fuword(const void *addr)
 
 	td = PCPU_GET(curthread);
 	pm = &td->td_proc->p_vmspace->vm_pmap;
-	p = (long *)((uintptr_t)USER_ADDR + ((uintptr_t)addr & ~SEGMENT_MASK));
+	p = (long *)(USER_ADDR + ((uintptr_t)addr & ~SEGMENT_MASK));
 
 	if (setfault(env)) {
 		td->td_pcb->pcb_onfault = NULL;
@@ -423,8 +422,7 @@ casuword32(volatile uint32_t *addr, uint32_t old, uint32_t new)
 
 	td = PCPU_GET(curthread);
 	pm = &td->td_proc->p_vmspace->vm_pmap;
-	p = (uint32_t *)((uintptr_t)USER_ADDR +
-	    ((uintptr_t)addr & ~SEGMENT_MASK));
+	p = (uint32_t *)(USER_ADDR + ((uintptr_t)addr & ~SEGMENT_MASK));
 
 	set_user_sr(pm,(const void *)(vm_offset_t)addr);
 
@@ -469,8 +467,7 @@ casuword(volatile u_long *addr, u_long old, u_long new)
 
 	td = PCPU_GET(curthread);
 	pm = &td->td_proc->p_vmspace->vm_pmap;
-	p = (u_long *)((uintptr_t)USER_ADDR +
-	    ((uintptr_t)addr & ~SEGMENT_MASK));
+	p = (u_long *)(USER_ADDR + ((uintptr_t)addr & ~SEGMENT_MASK));
 
 	set_user_sr(pm,(const void *)(vm_offset_t)addr);
 
