@@ -2,7 +2,6 @@
 # Octeon Support Files
 #
 mips/mips/mp_machdep.c				optional smp
-mips/cavium/dev/rgmii/octeon_fau.c		optional rgmii
 mips/cavium/dev/rgmii/octeon_fpa.c		optional rgmii
 mips/cavium/dev/rgmii/octeon_ipd.c 		optional rgmii
 mips/cavium/dev/rgmii/octeon_pko.c		optional rgmii
