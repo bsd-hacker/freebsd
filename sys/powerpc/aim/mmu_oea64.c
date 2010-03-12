@@ -1055,7 +1055,8 @@ moea64_bridge_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernele
 	 */
 
 	PMAP_LOCK(kernel_pmap);
-	while (moea64_pvo_find_va(kernel_pmap, virtual_end+1, NULL) == NULL)
+	while (virtual_end < VM_MAX_KERNEL_ADDRESS &&
+	    moea64_pvo_find_va(kernel_pmap, virtual_end+1, NULL) == NULL)
 		virtual_end += PAGE_SIZE;
 	PMAP_UNLOCK(kernel_pmap);
 
