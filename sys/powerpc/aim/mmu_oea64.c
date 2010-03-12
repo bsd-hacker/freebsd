@@ -946,13 +946,14 @@ moea64_bridge_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernele
 	 * Initialize the kernel pmap (which is statically allocated).
 	 */
 	#ifdef __powerpc64__
-	for (i = 0; i < 16; i++) {
-		kernel_pmap->pm_slb[i].slbv = ((KERNEL_VSIDBITS << 17) | i) <<
-		    SLBV_VSID_SHIFT;
-		kernel_pmap->pm_slb[i].slbe = ((uint64_t)i << SLBE_ESID_SHIFT) |
-		    SLBE_VALID | i;
+	for (i = 0; i < 64; i++) {
+		kernel_pmap->pm_slb[i].slbv = 0;
+		kernel_pmap->pm_slb[i].slbe = 0;
 	}
-	kernel_pmap->pm_slb[USER_SR].slbe = 0;
+	/* prefault some bits */
+	(void)va_to_vsid(kernel_pmap, VM_MAX_KERNEL_ADDRESS);
+	(void)va_to_vsid(kernel_pmap, VM_MIN_KERNEL_ADDRESS);
+	(void)va_to_vsid(kernel_pmap, kernelstart);
 	#else
 	for (i = 0; i < 16; i++) 
 		kernel_pmap->pm_sr[i] = EMPTY_SEGMENT + i;
@@ -1054,11 +1055,13 @@ moea64_bridge_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernele
 	 * step on.
 	 */
 
+	#ifndef __powerpc64__	/* KVA is in high memory on PPC64 */
 	PMAP_LOCK(kernel_pmap);
 	while (virtual_end < VM_MAX_KERNEL_ADDRESS &&
 	    moea64_pvo_find_va(kernel_pmap, virtual_end+1, NULL) == NULL)
 		virtual_end += PAGE_SIZE;
 	PMAP_UNLOCK(kernel_pmap);
+	#endif
 
 	/*
 	 * Allocate some things for page zeroing. We put this directly

@@ -68,10 +68,11 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_page.h>
 #include <vm/pmap.h>
 
-#include <machine/stdarg.h>
 #include <machine/bus.h>
-#include <machine/pmap.h>
+#include <machine/md_var.h>
 #include <machine/ofw_machdep.h>
+#include <machine/pmap.h>
+#include <machine/stdarg.h>
 
 #include <dev/ofw/openfirm.h>
 #include <dev/ofw/ofwvar.h>
@@ -212,16 +213,16 @@ ofw_real_bounce_alloc(void *junk)
 	of_bounce_virt = contigmalloc(PAGE_SIZE, M_OFWREAL, 0,
 			     0, BUS_SPACE_MAXADDR_32BIT, PAGE_SIZE, PAGE_SIZE);
 
-	/*
-	 * XXX: Use of_bounce_virt in 32-bit mode. This assumes that kernel
-	 * VA space is always < 0xffffffff.
-	 */
-	if (ofw_real_mode)
-		of_bounce_phys = vtophys(of_bounce_virt);
-	else
-		of_bounce_phys = (vm_offset_t)of_bounce_virt;
-
+	of_bounce_phys = vtophys(of_bounce_virt);
 	of_bounce_size = PAGE_SIZE;
+
+	/*
+	 * For virtual-mode OF, direct map this physical address so that
+	 * we have a 32-bit virtual address to give OF.
+	 */
+
+	if (!ofw_real_mode && !hw_direct_map) 
+		pmap_kenter(of_bounce_phys, of_bounce_phys);
 
 	mtx_unlock(&of_bounce_mtx);
 }

@@ -919,7 +919,7 @@ cpu_thread_alloc(struct thread *td)
 	struct pcb *pcb;
 
 	pcb = (struct pcb *)((td->td_kstack + td->td_kstack_pages * PAGE_SIZE -
-	    sizeof(struct pcb)) & ~0x2fU);
+	    sizeof(struct pcb)) & ~0x2fUL);
 	td->td_pcb = pcb;
 	td->td_frame = (struct trapframe *)pcb - 1;
 }

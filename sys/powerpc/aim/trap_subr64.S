@@ -446,6 +446,8 @@ generictrap:
 	std	%r29,(PC_TEMPSAVE+CPUSAVE_R29)(%r1)
 	std	%r30,(PC_TEMPSAVE+CPUSAVE_R30)(%r1)
 	std	%r31,(PC_TEMPSAVE+CPUSAVE_R31)(%r1)
+	mfdar	%r30
+	std	%r30,(PC_TEMPSAVE+CPUSAVE_AIM_DAR)(%r1)
 	mfsprg1	%r1			/* restore SP, in case of branch */
 	mfsprg2	%r28			/* save LR */
 	mfcr	%r29			/* save CR */

@@ -493,7 +493,7 @@ powerpc_init(vm_offset_t startkernel, vm_offset_t endkernel,
 	bcopy(&dsitrap,  (void *)(EXC_DSI + trap_offset),  (size_t)&dsisize);
 	bcopy(generictrap, (void *)EXC_ISI,  (size_t)&trapsize);
 	#ifdef __powerpc64__
-	bcopy(&dsitrap,	   (void *)EXC_DSE,  (size_t)&dsisize);
+	bcopy(generictrap, (void *)EXC_DSE,  (size_t)&trapsize);
 	bcopy(generictrap, (void *)EXC_ISE,  (size_t)&trapsize);
 	#endif
 	bcopy(generictrap, (void *)EXC_EXI,  (size_t)&trapsize);
@@ -851,9 +851,18 @@ va_to_vsid(pmap_t pm, vm_offset_t va)
 	if (slbv == 0) {
 		slbv = moea64_get_unique_vsid() << SLBV_VSID_SHIFT;
 		for (i = 0; i < sizeof(pm->pm_slb)/sizeof(pm->pm_slb[0]); i++) {
+			if (pm == kernel_pmap && i == USER_SR)
+				continue;
+
 			if (!(pm->pm_slb[i].slbe & SLBE_VALID)) {
 				pm->pm_slb[i].slbv = slbv;
 				pm->pm_slb[i].slbe = slbe | i;
+
+				if (pm == kernel_pmap && pmap_bootstrapped) {
+					__asm __volatile ("slbmte %0, %1" :: 
+					    "r"(kernel_pmap->pm_slb[i].slbv),
+					    "r"(kernel_pmap->pm_slb[i].slbe)); 
+				}
 				break;
 			}
 		}

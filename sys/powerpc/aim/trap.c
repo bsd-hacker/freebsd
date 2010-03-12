@@ -256,6 +256,16 @@ trap(struct trapframe *frame)
 			if (trap_pfault(frame, 0) == 0)
  				return;
 			break;
+#ifdef __powerpc64__
+		case EXC_ISE:
+		case EXC_DSE:
+			PMAP_LOCK(kernel_pmap);
+			(void)va_to_vsid(kernel_pmap,
+			    (type == EXC_ISE) ? frame->srr0 :
+			    frame->cpu.aim.dar);
+			PMAP_UNLOCK(kernel_pmap);
+			return;
+#endif
 		case EXC_MCHK:
 			if (handle_onfault(frame))
  				return;

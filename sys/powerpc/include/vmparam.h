@@ -80,14 +80,14 @@
  */
 #if !defined(LOCORE)
 #define	VM_MIN_ADDRESS		((vm_offset_t)0)
-
+#ifdef __powerpc64__
+#define	VM_MAXUSER_ADDRESS	((vm_offset_t)0x4fffff000)
+#else
 #define	VM_MAXUSER_ADDRESS	((vm_offset_t)0x7ffff000)
-
+#endif
 #else
 #define	VM_MIN_ADDRESS		0
-
 #define	VM_MAXUSER_ADDRESS	0x7ffff000
-
 #endif /* LOCORE */
 
 #define	VM_MAX_ADDRESS		VM_MAXUSER_ADDRESS
@@ -98,9 +98,15 @@
 
 #define	KERNBASE		0x00100000UL	/* start of kernel virtual */
 
+#ifdef __powerpc64__
+#define	VM_MIN_KERNEL_ADDRESS		0xc000000000000000UL
+#define	VM_MAX_KERNEL_ADDRESS		0xcfffffffffffffffUL
+#define	VM_MAX_SAFE_KERNEL_ADDRESS	VM_MAX_KERNEL_ADDRESS
+#else
 #define	VM_MIN_KERNEL_ADDRESS	((vm_offset_t)KERNEL_SR << ADDR_SR_SHFT)
 #define	VM_MAX_SAFE_KERNEL_ADDRESS (VM_MIN_KERNEL_ADDRESS + 2*SEGMENT_LENGTH -1)
 #define	VM_MAX_KERNEL_ADDRESS	(VM_MIN_KERNEL_ADDRESS + 3*SEGMENT_LENGTH - 1)
+#endif
 
 /*
  * Use the direct-mapped BAT registers for UMA small allocs. This
