@@ -486,8 +486,7 @@ set_mcontext(struct thread *td, const mcontext_t *mcp)
  * Set set up registers on exec.
  */
 void
-exec_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings,
-    struct image_params *imgp)
+exec_setregs(struct thread *td, struct image_params *imgp, u_long stack)
 {
 	struct trapframe	*tf;
 	struct ps_strings	arginfo;
@@ -543,13 +542,13 @@ exec_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings,
 	 * 2. Environment pointer (r11)
 	 */
 
-	(void)copyin((void *)entry, entry_desc, sizeof(entry_desc));
+	(void)copyin((void *)imgp->entry_addr, entry_desc, sizeof(entry_desc));
 	tf->srr0 = entry_desc[0] + imgp->reloc_base;
 	tf->fixreg[2] = entry_desc[1] + imgp->reloc_base;
 	tf->fixreg[11] = entry_desc[2] + imgp->reloc_base;
 	tf->srr1 = PSL_SF | PSL_MBO | PSL_USERSET | PSL_FE_DFLT;
 	#else
-	tf->srr0 = entry;
+	tf->srr0 = imgp->entry_addr;
 	tf->srr1 = PSL_MBO | PSL_USERSET | PSL_FE_DFLT;
 	#endif
 	td->td_pcb->pcb_flags = 0;
@@ -557,8 +556,7 @@ exec_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings,
 
 #ifdef COMPAT_FREEBSD32
 void
-ppc32_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings,
-    struct image_params *imgp)
+ppc32_setregs(struct thread *td, struct image_params *imgp, u_long stack)
 {
 	struct trapframe		*tf;
 	struct freebsd32_ps_strings	arginfo;
@@ -578,7 +576,7 @@ ppc32_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings,
 	tf->fixreg[7] = 0;			/* termination vector */
 	tf->fixreg[8] = (register_t)FREEBSD32_PS_STRINGS; /* NetBSD extension */
 
-	tf->srr0 = entry;
+	tf->srr0 = imgp->entry_addr;
 	tf->srr1 = PSL_MBO | PSL_USERSET | PSL_FE_DFLT;
 	tf->srr1 &= ~PSL_SF;
 	td->td_pcb->pcb_flags = 0;

@@ -1172,12 +1172,7 @@ void (*cpu_idle_hook)(void) = cpu_idle_default;
  * Reset registers to default values on exec.
  */
 void
-exec_setregs(td, entry, stack, ps_strings, imgp)
-	struct thread *td;
-	u_long entry;
-	u_long stack;
-	u_long ps_strings;
-	struct image_params *imgp;
+exec_setregs(struct thread *td, struct image_params *imgp, u_long stack)
 {
 	struct trapframe *regs = td->td_frame;
 	struct pcb *pcb = td->td_pcb;
@@ -1193,7 +1188,7 @@ exec_setregs(td, entry, stack, ps_strings, imgp)
 		mtx_unlock_spin(&dt_lock);
   
 	bzero((char *)regs, sizeof(struct trapframe));
-	regs->tf_eip = entry;
+	regs->tf_eip = imgp->entry_addr;
 	regs->tf_esp = stack;
 	regs->tf_eflags = PSL_USER | (regs->tf_eflags & PSL_T);
 	regs->tf_ss = _udatasel;
@@ -1203,7 +1198,7 @@ exec_setregs(td, entry, stack, ps_strings, imgp)
 	regs->tf_cs = _ucodesel;
 
 	/* PS_STRINGS value for BSD/OS binaries.  It is 0 for non-BSD/OS. */
-	regs->tf_ebx = ps_strings;
+	regs->tf_ebx = imgp->ps_strings;
 
         /*
          * Reset the hardware debug registers if they were in use.

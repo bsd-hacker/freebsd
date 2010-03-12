@@ -1328,8 +1328,7 @@ set_mcontext(struct thread *td, const mcontext_t *mc)
  * Clear registers on exec.
  */
 void
-exec_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings,
-    struct image_params *imgp)
+exec_setregs(struct thread *td, struct image_params *imgp, u_long stack)
 {
 	struct trapframe *tf;
 	uint64_t *ksttop, *kst;
@@ -1386,7 +1385,7 @@ exec_setregs(struct thread *td, u_long entry, u_long stack, u_long ps_strings,
 		suword((caddr_t)tf->tf_special.bspstore -  8, 0);
 	}
 
-	tf->tf_special.iip = entry;
+	tf->tf_special.iip = imgp->entry_addr;
 	tf->tf_special.sp = (stack & ~15) - 16;
 	tf->tf_special.rsc = 0xf;
 	tf->tf_special.fpsr = IA64_FPSR_DEFAULT;
