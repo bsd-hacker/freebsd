@@ -1015,10 +1015,9 @@ static u_int octeon_rgmx_pko_xmit_packet (struct rgmx_softc_dev *sc, void *out_b
          * 3 words or less are left. We write our 2nd word now and then put in a chain link
          * to new PKO cmd buf.
          */
-        void *pko_cmd_buf = octeon_fpa_alloc(OCTEON_FPA_TX_CMDBUF_POOL);
-        uint64_t phys_cmd_buf;
+        uint64_t phys_cmd_buf = octeon_fpa_alloc_phys(OCTEON_FPA_TX_CMDBUF_POOL);
 
-        if (!pko_cmd_buf) {
+        if (!phys_cmd_buf) {
             /*
              * FPA pool for xmit-buffer-commands is empty.
              */
@@ -1026,7 +1025,6 @@ static u_int octeon_rgmx_pko_xmit_packet (struct rgmx_softc_dev *sc, void *out_b
             octeon_spinlock_unlock(&(sc->outq_ptr[queue].lock));
             return (0);
         }
-        phys_cmd_buf = OCTEON_PTR2PHYS(pko_cmd_buf);
 
         xmit_cmd_ptr[1] = pko_pkt_word.word64;
         xmit_cmd_ptr[2] = phys_cmd_buf;
