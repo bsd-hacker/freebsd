@@ -275,8 +275,10 @@ extern struct vpglocks vm_page_queue_lock;
 
 #ifdef VM_PAGE_LOCK
 #define	vm_page_lockptr(m)		pmap_page_lockptr(m)
+#define	vm_page_lock_queues_assert_notowned()   mtx_assert(vm_page_lockptr((m)), MA_NOTOWNED)
 #else
 #define	vm_page_lockptr(m)		(&vm_page_queue_mtx)
+#define	vm_page_lock_queues_assert_notowned()   
 #endif
 #define	vm_page_lock(m)		mtx_lock(vm_page_lockptr((m)))
 #define	vm_page_unlock(m)	mtx_unlock(vm_page_lockptr((m)))

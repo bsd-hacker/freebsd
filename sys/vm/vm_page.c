@@ -1318,7 +1318,7 @@ vm_pageq_remove_locked(vm_page_t m)
 void
 vm_pageq_remove(vm_page_t m)
 {
-	mtx_assert(&vm_page_queue_mtx, MA_NOTOWNED);
+	vm_page_lock_queues_assert_notowned();
 	_vm_pageq_remove(m, FALSE);
 }
 
@@ -1335,7 +1335,7 @@ _vm_page_enqueue(int queue, vm_page_t m, boolean_t locked)
 	struct vpgqueues *vpq;
 
 	if (locked == FALSE) {
-		mtx_assert(&vm_page_queue_mtx, MA_NOTOWNED);
+		vm_page_lock_queues_assert_notowned();
 		vm_page_lock_queues();
 	}
 #ifdef INVARIANTS
