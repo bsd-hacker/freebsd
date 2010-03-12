@@ -209,7 +209,7 @@ static int octeon_rgmx_intr(void *arg);
 /* Standard driver entry points.  These can be static.  */
 static void  octeon_rgmx_init	      (void *);
 //static driver_intr_t    rgmx_intr;
-static void  octeon_rgmx_rx_promiscuous (struct ifnet *, int);
+static void  octeon_rgmx_config_cam   (struct ifnet *);
 static int   octeon_rgmx_ioctl        (struct ifnet *, u_long, caddr_t);
 static void  octeon_rgmx_output_start (struct ifnet *);
 static void  octeon_rgmx_output_start_locked (struct ifnet *);
@@ -1684,7 +1684,7 @@ static void octeon_rgmx_medstat (struct ifnet *ifp, struct ifmediareq *ifm)
 	RGMX_UNLOCK(sc);
 }
 
-static void octeon_rgmx_rx_promiscuous (struct ifnet *ifp, int promisc)
+static void octeon_rgmx_config_cam(struct ifnet *ifp)
 {
     	struct rgmx_softc_dev *sc = ifp->if_softc;
 	u_int port = sc->port;
@@ -1704,7 +1704,11 @@ static void octeon_rgmx_rx_promiscuous (struct ifnet *ifp, int promisc)
 		adr_ctl |= OCTEON_RGMX_ADRCTL_ACCEPT_BROADCAST;
 
 	/*
-	 * For now always accept all multicast.
+	 * Accept all multicast in all multicast mode and in
+	 * promiscuous mode.
+	 *
+	 * XXX Since we don't handle programming the CAM for
+	 * multicast filtering, always accept all multicast.
 	 */
 	adr_ctl &= ~OCTEON_RGMX_ADRCTL_REJECT_ALL_MULTICAST;
 	adr_ctl |= OCTEON_RGMX_ADRCTL_ACCEPT_ALL_MULTICAST;
@@ -1713,7 +1717,7 @@ static void octeon_rgmx_rx_promiscuous (struct ifnet *ifp, int promisc)
 	 * In promiscuous mode, the CAM is shut off, so reject everything.
 	 * Otherwise, filter using the CAM.
 	 */
-	if (promisc) {
+	if ((ifp->if_flags & IFF_PROMISC) != 0) {
 		adr_ctl &= ~OCTEON_RGMX_ADRCTL_CAM_MODE_ACCEPT_DMAC;
 		adr_ctl |= OCTEON_RGMX_ADRCTL_CAM_MODE_REJECT_DMAC;
 	} else {
@@ -1726,7 +1730,7 @@ static void octeon_rgmx_rx_promiscuous (struct ifnet *ifp, int promisc)
 	/*
 	 * If in promiscuous mode, disable the CAM.
 	 */
-	if (promisc)
+	if ((ifp->if_flags & IFF_PROMISC) != 0)
 		oct_write64(OCTEON_RGMX_RXX_ADR_CAM_EN(index, iface), 0);
 	else
 		oct_write64(OCTEON_RGMX_RXX_ADR_CAM_EN(index, iface), 1);
@@ -1759,11 +1763,7 @@ static int octeon_rgmx_ioctl (struct ifnet * ifp, u_long command, caddr_t data)
                         if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0) {
                             octeon_rgmx_init(sc);
                         }
-
-			if ((ifp->if_flags & IFF_PROMISC) == 0)
-				octeon_rgmx_rx_promiscuous(ifp, 0);
-			else
-				octeon_rgmx_rx_promiscuous(ifp, 1);
+			octeon_rgmx_config_cam(ifp);
                     } else {
                         /*
                          * New state is IFF_DOWN.
