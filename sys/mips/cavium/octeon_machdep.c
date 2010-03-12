@@ -184,82 +184,6 @@ octeon_led_run_wheel(int *prog_count, int led_position)
 	*prog_count &= 0x7;
 }
 
-#define LSR_DATAREADY        0x01    /* Data ready */
-#define LSR_THRE             0x20    /* Transmit holding register empty */
-#define LSR_TEMT	     0x40    /* Transmitter Empty. THR, TSR & FIFO */
-#define USR_TXFIFO_NOTFULL   0x02    /* Uart TX FIFO Not full */
-
-/*
- * octeon_uart_write_byte
- * 
- * Put out a single byte off of uart port.
- */
-
-void
-octeon_uart_write_byte(int uart_index, uint8_t ch)
-{
-	uint64_t val, val2;
-	if (uart_index < 0 || uart_index > 1)
-		return;
-
-	while (1) {
-		val = oct_read64(OCTEON_MIO_UART0_LSR + (uart_index * 0x400));
-		val2 = oct_read64(OCTEON_MIO_UART0_USR + (uart_index * 0x400));
-		if ((((uint8_t) val) & LSR_THRE) ||
-		    (((uint8_t) val2) & USR_TXFIFO_NOTFULL)) {
-			break;
-		}
-	}
-
-	/* Write the byte */
-	oct_write8(OCTEON_MIO_UART0_THR + (uart_index * 0x400), (uint64_t) ch);
-
-	/* Force Flush the IOBus */
-	oct_read64(OCTEON_MIO_BOOT_BIST_STAT);
-}
-
-
-void
-octeon_uart_write_byte0(uint8_t ch)
-{
-	uint64_t val, val2;
-
-	while (1) {
-		val = oct_read64(OCTEON_MIO_UART0_LSR);
-		val2 = oct_read64(OCTEON_MIO_UART0_USR);
-		if ((((uint8_t) val) & LSR_THRE) ||
-		    (((uint8_t) val2) & USR_TXFIFO_NOTFULL)) {
-			break;
-		}
-	}
-
-	/* Write the byte */
-	oct_write8(OCTEON_MIO_UART0_THR, (uint64_t) ch);
-
-	/* Force Flush the IOBus */
-	oct_read64(OCTEON_MIO_BOOT_BIST_STAT);
-}
-
-/*
- * octeon_uart_write_string
- * 
- */
-void
-octeon_uart_write_string(int uart_index, const char *str)
-{
-	/* Just loop writing one byte at a time */
-    
-	while (*str) {
-		octeon_uart_write_byte(uart_index, *str);
-		if (*str == '\n') {
-			octeon_uart_write_byte(uart_index, '\r');
-		}
-		str++;
-	}
-}
-
-static char wstr[30];
-
 void
 octeon_led_write_hex(uint32_t wl)
 {
@@ -267,44 +191,6 @@ octeon_led_write_hex(uint32_t wl)
 
 	sprintf(nbuf, "%X", wl);
 	octeon_led_write_string(nbuf);
-}
-
-
-void octeon_uart_write_hex2(uint32_t wl, uint32_t wh)
-{
-	sprintf(wstr, "0x%X-0x%X  ", wh, wl);
-	octeon_uart_write_string(0, wstr);
-}
-
-void
-octeon_uart_write_hex(uint32_t wl)
-{
-	sprintf(wstr, " 0x%X  ", wl);
-	octeon_uart_write_string(0, wstr);
-}
-
-/*
- * octeon_wait_uart_flush
- */
-void
-octeon_wait_uart_flush(int uart_index, uint8_t ch)
-{
-	uint64_t val;
-	int64_t val3;
-	uint32_t cpu_status_bits;
-
-	if (uart_index < 0 || uart_index > 1)
-		return;
-
-	cpu_status_bits = intr_disable();
-	/* Force Flush the IOBus */
-	oct_read64(OCTEON_MIO_BOOT_BIST_STAT);
-	for (val3 = 0xfffffffff; val3 > 0; val3--) {
-		val = oct_read64(OCTEON_MIO_UART0_LSR + (uart_index * 0x400));
-		if (((uint8_t) val) & LSR_TEMT)
-			break;
-	}
-	intr_restore(cpu_status_bits);
 }
 
 
