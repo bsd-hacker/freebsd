@@ -722,7 +722,7 @@ ia32_setregs(struct thread *td, struct image_params *imgp, u_long stack)
 	regs->tf_rflags = PSL_USER | (regs->tf_rflags & PSL_T);
 	regs->tf_ss = _udatasel;
 	regs->tf_cs = _ucode32sel;
-	regs->tf_rbx = ps_strings;
+	regs->tf_rbx = imgp->ps_strings;
 	regs->tf_ds = _udatasel;
 	regs->tf_es = _udatasel;
 	regs->tf_fs = _ufssel;

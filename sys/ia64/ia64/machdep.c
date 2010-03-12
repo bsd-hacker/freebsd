@@ -1366,7 +1366,7 @@ exec_setregs(struct thread *td, struct image_params *imgp, u_long stack)
 		*kst-- = 0;
 		if (((uintptr_t)kst & 0x1ff) == 0x1f8)
 			*kst-- = 0;
-		*kst-- = ps_strings;
+		*kst-- = imgp->ps_strings;
 		if (((uintptr_t)kst & 0x1ff) == 0x1f8)
 			*kst-- = 0;
 		*kst = stack;
