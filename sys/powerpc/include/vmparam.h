@@ -189,4 +189,14 @@ struct pmap_physseg {
 #define	VM_KMEM_SIZE		(12 * 1024 * 1024)
 #endif
 
+#ifdef __powerpc64__
+#ifndef VM_KMEM_SIZE_SCALE
+#define VM_KMEM_SIZE_SCALE      (3)
+#endif
+
+#ifndef VM_KMEM_SIZE_MAX
+#define VM_KMEM_SIZE_MAX        0x200000000  /* XXX: 8 GB until SLB long list */
+#endif
+#endif
+
 #endif /* _MACHINE_VMPARAM_H_ */
