@@ -209,6 +209,7 @@ static int octeon_rgmx_intr(void *arg);
 /* Standard driver entry points.  These can be static.  */
 static void  octeon_rgmx_init	      (void *);
 //static driver_intr_t    rgmx_intr;
+static void  octeon_rgmx_rx_promiscuous (struct ifnet *, int);
 static int   octeon_rgmx_ioctl        (struct ifnet *, u_long, caddr_t);
 static void  octeon_rgmx_output_start (struct ifnet *);
 static void  octeon_rgmx_output_start_locked (struct ifnet *);
@@ -1225,6 +1226,8 @@ static void octeon_rgmx_output_start_locked (struct ifnet *ifp)
                 for (ii = 0; ii < len; ii++) printf(" %X", dc[ii]); printf("\n");
 #endif
 
+		ETHER_BPF_MTAP(ifp, m);
+
         	IF_ENQUEUE(&sc->tx_pending_queue, m);
 
                 /*
@@ -1681,6 +1684,56 @@ static void octeon_rgmx_medstat (struct ifnet *ifp, struct ifmediareq *ifm)
 	RGMX_UNLOCK(sc);
 }
 
+static void octeon_rgmx_rx_promiscuous (struct ifnet *ifp, int promisc)
+{
+    	struct rgmx_softc_dev *sc = ifp->if_softc;
+	u_int port = sc->port;
+    	int index = INDEX(port);
+        int iface = INTERFACE(port);
+	u_int last_enabled;
+	uint64_t adr_ctl;
+
+	last_enabled = octeon_rgmx_stop_port(port);
+
+	adr_ctl = oct_read64(OCTEON_RGMX_RXX_ADR_CTL(index, iface));
+
+	/*
+	 * Always accept broadcast traffic.
+	 */
+	if ((adr_ctl & OCTEON_RGMX_ADRCTL_ACCEPT_BROADCAST) == 0)
+		adr_ctl |= OCTEON_RGMX_ADRCTL_ACCEPT_BROADCAST;
+
+	/*
+	 * For now always accept all multicast.
+	 */
+	adr_ctl &= ~OCTEON_RGMX_ADRCTL_REJECT_ALL_MULTICAST;
+	adr_ctl |= OCTEON_RGMX_ADRCTL_ACCEPT_ALL_MULTICAST;
+
+	/*
+	 * In promiscuous mode, the CAM is shut off, so reject everything.
+	 * Otherwise, filter using the CAM.
+	 */
+	if (promisc) {
+		adr_ctl &= ~OCTEON_RGMX_ADRCTL_CAM_MODE_ACCEPT_DMAC;
+		adr_ctl |= OCTEON_RGMX_ADRCTL_CAM_MODE_REJECT_DMAC;
+	} else {
+		adr_ctl &= ~OCTEON_RGMX_ADRCTL_CAM_MODE_REJECT_DMAC;
+		adr_ctl |= OCTEON_RGMX_ADRCTL_CAM_MODE_ACCEPT_DMAC;
+	}
+
+	oct_write64(OCTEON_RGMX_RXX_ADR_CTL(index, iface), adr_ctl);
+
+	/*
+	 * If in promiscuous mode, disable the CAM.
+	 */
+	if (promisc)
+		oct_write64(OCTEON_RGMX_RXX_ADR_CAM_EN(index, iface), 0);
+	else
+		oct_write64(OCTEON_RGMX_RXX_ADR_CAM_EN(index, iface), 1);
+
+	if (last_enabled) octeon_rgmx_start_port(port);
+}
+
 static int octeon_rgmx_ioctl (struct ifnet * ifp, u_long command, caddr_t data)
 {
     	struct rgmx_softc_dev *sc = ifp->if_softc;
@@ -1699,8 +1752,6 @@ static int octeon_rgmx_ioctl (struct ifnet * ifp, u_long command, caddr_t data)
                      * "stopped", reflecting the UP flag.
                      */
                     if (ifp->if_flags & IFF_UP) {
-
-
                         /*
                          * New state is IFF_UP
                          * Restart or Start now, if driver is not running currently.
@@ -1708,6 +1759,11 @@ static int octeon_rgmx_ioctl (struct ifnet * ifp, u_long command, caddr_t data)
                         if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0) {
                             octeon_rgmx_init(sc);
                         }
+
+			if ((ifp->if_flags & IFF_PROMISC) == 0)
+				octeon_rgmx_rx_promiscuous(ifp, 0);
+			else
+				octeon_rgmx_rx_promiscuous(ifp, 1);
                     } else {
                         /*
                          * New state is IFF_DOWN.
