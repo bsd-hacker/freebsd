@@ -63,6 +63,7 @@ powerpc/aim/nexus.c		optional	aim
 powerpc/aim/ofw_machdep.c	optional	aim
 powerpc/aim/ofwmagic.S		optional	aim
 powerpc/aim/platform_chrp.c	optional	aim
+powerpc/aim/slb.c		optional	aim
 powerpc/aim/swtch64.S		optional	aim
 powerpc/aim/trap.c		optional	aim
 powerpc/aim/uma_machdep.c	optional	aim
