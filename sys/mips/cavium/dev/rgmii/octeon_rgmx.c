@@ -1813,7 +1813,6 @@ static int octeon_rgmx_ioctl (struct ifnet * ifp, u_long command, caddr_t data)
 static void  octeon_rgmx_init (void *xsc)
 {
 	struct rgmx_softc_dev *sc = xsc;
-	octeon_rgmx_rxx_rx_inbnd_t link_status;
 
         /* Enable interrupts.  */
     	/* For RGMX they are already enabled earlier */
@@ -1834,19 +1833,7 @@ static void  octeon_rgmx_init (void *xsc)
         /* Hopefully PKO is running and will pick up packets via the timer  or receive loop */
 
 	/* Set link status.  */
-	octeon_rgmx_config_speed(sc->port, 0);
-
-	RGMX_LOCK(sc);
-	/*
-	 * Parse link status.
-	 */
-	link_status.word64 = sc->link_status;
-
-	if (link_status.bits.status)
-		if_link_state_change(sc->ifp, LINK_STATE_UP);
-	else
-		if_link_state_change(sc->ifp, LINK_STATE_DOWN);
-	RGMX_UNLOCK(sc);
+	octeon_rgmx_config_speed(sc->port, 1);
 }
 
 
@@ -1861,7 +1848,6 @@ static void octeon_rgmx_config_speed (u_int port, u_int report_link)
         uint64_t			val64_tx_clk, val64_tx_slot, val64_tx_burst;
         u_int				last_enabled;
 
-
         sc = get_rgmx_softc(port);
         if (!sc) {
             printf(" config_speed didn't find sc int:%u port:%u", iface, port);
@@ -1873,79 +1859,96 @@ static void octeon_rgmx_config_speed (u_int port, u_int report_link)
          */
         link_status.word64 = oct_read64(OCTEON_RGMX_RXX_RX_INBND(index, iface));
 
+        RGMX_LOCK(sc);
+
         /*
          * Compre to prev known state. If same then nothing to do.
          */
         if (link_status.word64 == sc->link_status) {
+		RGMX_UNLOCK(sc);
             	return;
         }
-
-        RGMX_LOCK(sc);
-
         old_link_status.word64 = sc->link_status;
 
-        sc->link_status = link_status.word64;
+	/*
+	 * Compare to previous state modulo link status.  If only link
+	 * status is different, we don't need to change media.
+	 */
+	if (old_link_status.bits.duplex != link_status.bits.duplex ||
+	    old_link_status.bits.speed != link_status.bits.speed) {
+		last_enabled = octeon_rgmx_stop_port(port);
+		
+		gmx_cfg.word64 = oct_read64(OCTEON_RGMX_PRTX_CFG(index, iface));
 
-        last_enabled = octeon_rgmx_stop_port(port);
+		/*
+		 * Duplex
+		 * XXX Set based on link_status.bits.duplex?
+		 */
+		gmx_cfg.bits.duplex = 1;
+		
+		switch (link_status.bits.speed) {
+		case 0:	/* 10Mbps */
+			gmx_cfg.bits.speed = 0;
+			gmx_cfg.bits.slottime = 0;
+			val64_tx_clk = 50; val64_tx_slot = 0x40; val64_tx_burst = 0;
+			break;
 
-        gmx_cfg.word64 = oct_read64(OCTEON_RGMX_PRTX_CFG(index, iface));
+		case 1:	/* 100Mbps */
+			gmx_cfg.bits.speed = 0;
+			gmx_cfg.bits.slottime = 0;
+			val64_tx_clk = 5; val64_tx_slot = 0x40; val64_tx_burst = 0;
+			break;
 
-        /*
-         * Duplex
-         */
-        gmx_cfg.bits.duplex = 1;
+		case 2:	/* 1Gbps */
+			gmx_cfg.bits.speed = 1;
+			gmx_cfg.bits.slottime = 1;
+			val64_tx_clk = 1; val64_tx_slot = 0x200; val64_tx_burst = 0x2000;
+			break;
 
-        switch (link_status.bits.speed) {
-        case 0:	/* 10Mbps */
-            gmx_cfg.bits.speed = 0;
-            gmx_cfg.bits.slottime = 0;
-            val64_tx_clk = 50; val64_tx_slot = 0x40; val64_tx_burst = 0;
-            break;
-        case 1:	/* 100Mbps */
-            gmx_cfg.bits.speed = 0;
-            gmx_cfg.bits.slottime = 0;
-            val64_tx_clk = 5; val64_tx_slot = 0x40; val64_tx_burst = 0;
-            break;
+		case 3:	/* ?? */
+		default:
+			gmx_cfg.bits.speed = 1;
+			gmx_cfg.bits.slottime = 1;
+			val64_tx_clk = 1; val64_tx_slot = 0x200; val64_tx_burst = 0x2000;
+			break;
+		}
 
-        case 2:	/* 1Gbps */
-            gmx_cfg.bits.speed = 1;
-            gmx_cfg.bits.slottime = 1;
-            val64_tx_clk = 1; val64_tx_slot = 0x200; val64_tx_burst = 0x2000;
-            break;
+		oct_write64(OCTEON_RGMX_TXX_CLK(index, iface), val64_tx_clk);
+		oct_write64(OCTEON_RGMX_TXX_SLOT(index, iface), val64_tx_slot);
+		oct_write64(OCTEON_RGMX_TXX_BURST(index, iface), val64_tx_burst);
+		
+		oct_write64(OCTEON_RGMX_PRTX_CFG(index, iface), gmx_cfg.word64);
+		
+		if (last_enabled) octeon_rgmx_start_port(port);
+	}
 
-        case 3:	/* ?? */
-        default:
-            gmx_cfg.bits.speed = 1;
-            gmx_cfg.bits.slottime = 1;
-            val64_tx_clk = 1; val64_tx_slot = 0x200; val64_tx_burst = 0x2000;
-            break;
-        }
+	/*
+	 * Now check and possibly change link status.
+	 */
+	if (link_status.bits.status != old_link_status.bits.status) {
+		if (report_link) {
+			if (link_status.bits.status) {
+				if_link_state_change(sc->ifp, LINK_STATE_UP);
+			} else {
+				if_link_state_change(sc->ifp, LINK_STATE_DOWN);
+			}
+		}
+	}
 
-        oct_write64(OCTEON_RGMX_TXX_CLK(index, iface), val64_tx_clk);
-        oct_write64(OCTEON_RGMX_TXX_SLOT(index, iface), val64_tx_slot);
-        oct_write64(OCTEON_RGMX_TXX_BURST(index, iface), val64_tx_burst);
+	if (report_link) {
+		sc->link_status = link_status.word64;
+	} else {
+		/*
+		 * We can't update link status proper since we can't
+		 * change it in the interface, so keep the old link
+		 * status intact but note the current speed and duplex
+		 * settings.
+		 */
+		link_status.bits.status = old_link_status.bits.status;
+		sc->link_status = link_status.word64;
+	}
 
-        oct_write64(OCTEON_RGMX_PRTX_CFG(index, iface), gmx_cfg.word64);
-
-        if (last_enabled) octeon_rgmx_start_port(port);
-
-        if (link_status.bits.status != old_link_status.bits.status) {
-
-//#define DEBUG_LINESTATUS
-            if (link_status.bits.status) {
-#ifdef DEBUG_LINESTATUS
-                printf(" %u/%u: Interface is now alive\n", iface, port);
-#endif
-                if (report_link)  if_link_state_change(sc->ifp, LINK_STATE_UP);
-            } else {
-#ifdef DEBUG_LINESTATUS
-                printf(" %u/%u: Interface went down\n", iface, port);
-#endif
-                if (report_link)  if_link_state_change(sc->ifp, LINK_STATE_DOWN);
-            }
-        }
         RGMX_UNLOCK(sc);
-
 }
 
 
@@ -2164,7 +2167,6 @@ static void octeon_config_rgmii_port (u_int port)
         gmx_cfg.word64 = oct_read64(OCTEON_RGMX_PRTX_CFG(index, iface));
         gmx_cfg.bits.en = 1;
         oct_write64(OCTEON_RGMX_PRTX_CFG(index, iface), gmx_cfg.word64);
-
 
         octeon_rgmx_config_speed(port, 0);
 
