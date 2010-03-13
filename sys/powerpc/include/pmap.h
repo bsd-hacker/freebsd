@@ -69,8 +69,8 @@
 #include <sys/_mutex.h>
 #include <machine/sr.h>
 #include <machine/pte.h>
-#include <machine/tlb.h>
 #include <machine/slb.h>
+#include <machine/tlb.h>
 
 struct pmap_md {
 	u_int		md_index;
@@ -124,12 +124,16 @@ struct	md_page {
 
 /*
  * Return the VSID corresponding to a given virtual address.
- * If no VSID is currently defined, it will allocate one, and add it to
- * a free SLB slot if available.
+ * If no VSID is currently defined, it will allocate one, and add
+ * it to a free slot if available.
  *
  * NB: The PMAP MUST be locked already.
  */
 uint64_t va_to_vsid(pmap_t pm, vm_offset_t va);
+uint64_t va_to_vsid_noalloc(pmap_t pm, vm_offset_t va);
+
+uint64_t allocate_vsid(pmap_t pm, uint64_t esid);
+void     slb_spill(pmap_t pm, uint64_t esid, uint64_t vsid);
 
 #else
 

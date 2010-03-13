@@ -79,28 +79,26 @@
  * Would like to have MAX addresses = 0, but this doesn't (currently) work
  */
 #if !defined(LOCORE)
-#define	VM_MIN_ADDRESS		((vm_offset_t)0)
 #ifdef __powerpc64__
-#define	VM_MAXUSER_ADDRESS	((vm_offset_t)0x4fffff000)
+#define	VM_MIN_ADDRESS		(0x0000000000000000UL)
+#define	VM_MAXUSER_ADDRESS	(0x00000004fffff000UL)
+#define	VM_MAX_ADDRESS		(0xffffffffffffffffUL)
 #else
+#define	VM_MIN_ADDRESS		((vm_offset_t)0)
 #define	VM_MAXUSER_ADDRESS	((vm_offset_t)0x7ffff000)
+#define	VM_MAX_ADDRESS		VM_MAXUSER_ADDRESS
 #endif
-#else
-#define	VM_MIN_ADDRESS		0
-#define	VM_MAXUSER_ADDRESS	0x7ffff000
 #endif /* LOCORE */
 
-#define	VM_MAX_ADDRESS		VM_MAXUSER_ADDRESS
 #define	FREEBSD32_USRSTACK	0x7ffff000
 
 
-#if defined(AIM)	/* AIM */
-
+#ifdef AIM
 #define	KERNBASE		0x00100000UL	/* start of kernel virtual */
 
 #ifdef __powerpc64__
 #define	VM_MIN_KERNEL_ADDRESS		0xc000000000000000UL
-#define	VM_MAX_KERNEL_ADDRESS		0xcfffffffefffffffUL
+#define	VM_MAX_KERNEL_ADDRESS		0xc0000001c8000000UL
 #define	VM_MAX_SAFE_KERNEL_ADDRESS	VM_MAX_KERNEL_ADDRESS
 #else
 #define	VM_MIN_KERNEL_ADDRESS	((vm_offset_t)KERNEL_SR << ADDR_SR_SHFT)
@@ -114,7 +112,7 @@
  */
 #define UMA_MD_SMALL_ALLOC
 
-#else
+#else /* Book-E */
 
 /*
  * Kernel CCSRBAR location. We make this the reset location.
@@ -195,7 +193,7 @@ struct pmap_physseg {
 #endif
 
 #ifndef VM_KMEM_SIZE_MAX
-#define VM_KMEM_SIZE_MAX        0x200000000  /* XXX: 8 GB until SLB long list */
+#define VM_KMEM_SIZE_MAX        0x1c0000000  /* 7 GB */
 #endif
 #endif
 

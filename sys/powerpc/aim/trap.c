@@ -87,6 +87,11 @@ static int	ppc_instr_emulate(struct trapframe *frame);
 static int	handle_onfault(struct trapframe *frame);
 static void	syscall(struct trapframe *frame);
 
+#ifdef __powerpc64__
+static void	handle_slb_spill(pmap_t pm, vm_offset_t addr);
+static uint64_t	slb_esid_lookup(pmap_t pm, uint64_t vsid);
+#endif
+
 int	setfault(faultbuf);		/* defined in locore.S */
 
 /* Why are these not defined in a header? */
@@ -182,22 +187,9 @@ trap(struct trapframe *frame)
 #ifdef __powerpc64__
 		case EXC_ISE:
 		case EXC_DSE:
-			/*
-			 * Once we support more segments per process
-			 * than the SLB size, we should reload the SLB
-			 * cache here from the longer segment list.
-			 *
-			 * For now, we assume a miss, and call va_to_vsid()
-			 * to allocate a new segment. This will then likely
-			 * trigger a page fault immediately after.
-			 */
-
-			PMAP_LOCK(&p->p_vmspace->vm_pmap);
-			(void)va_to_vsid(&p->p_vmspace->vm_pmap,
+			handle_slb_spill(&p->p_vmspace->vm_pmap,
 			    (type == EXC_ISE) ? frame->srr0 :
 			    frame->cpu.aim.dar);
-			PMAP_UNLOCK(&p->p_vmspace->vm_pmap);
-
 			break;
 #endif
 		case EXC_DSI:
@@ -259,11 +251,9 @@ trap(struct trapframe *frame)
 #ifdef __powerpc64__
 		case EXC_ISE:
 		case EXC_DSE:
-			PMAP_LOCK(kernel_pmap);
-			(void)va_to_vsid(kernel_pmap,
+			handle_slb_spill(kernel_pmap,
 			    (type == EXC_ISE) ? frame->srr0 :
 			    frame->cpu.aim.dar);
-			PMAP_UNLOCK(kernel_pmap);
 			return;
 #endif
 		case EXC_MCHK:
@@ -530,6 +520,21 @@ slb_esid_lookup(pmap_t pm, uint64_t vsid)
 	}
 
 	return (0);
+}
+
+static void
+handle_slb_spill(pmap_t pm, vm_offset_t addr)
+{
+	uint64_t vsid, esid;
+
+	PMAP_LOCK(pm);
+	esid = addr >> ADDR_SR_SHFT;
+	vsid = va_to_vsid_noalloc(pm, addr);
+	if (vsid == 0)
+		(void)va_to_vsid(pm, addr);
+	else
+		slb_spill(pm, esid, vsid);
+	PMAP_UNLOCK(pm);
 }
 #endif
 

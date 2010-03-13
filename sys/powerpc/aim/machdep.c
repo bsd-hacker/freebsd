@@ -822,56 +822,7 @@ db_trap_glue(struct trapframe *frame)
 	return (0);
 }
 
-#ifdef __powerpc64__
-uintptr_t moea64_get_unique_vsid(void);
-
-uint64_t
-va_to_vsid(pmap_t pm, vm_offset_t va)
-{
-	uint64_t slbe, slbv, i;
-
-	slbe = (uintptr_t)va >> ADDR_SR_SHFT;
-	slbe = (slbe << SLBE_ESID_SHIFT) | SLBE_VALID;
-	slbv = 0;
-
-	for (i = 0; i < sizeof(pm->pm_slb)/sizeof(pm->pm_slb[0]); i++) {
-		if (pm->pm_slb[i].slbe == (slbe | i)) {
-			slbv = pm->pm_slb[i].slbv;
-			break;
-		}
-	}
-
-	/* XXX: Have a long list for processes mapping more than 16 GB */
-
-	/*
-	 * If there is no vsid for this VA, we need to add a new entry
-	 * to the PMAP's segment table.
-	 */
-
-	if (slbv == 0) {
-		slbv = moea64_get_unique_vsid() << SLBV_VSID_SHIFT;
-		for (i = 0; i < sizeof(pm->pm_slb)/sizeof(pm->pm_slb[0]); i++) {
-			if (pm == kernel_pmap && i == USER_SR)
-				continue;
-
-			if (!(pm->pm_slb[i].slbe & SLBE_VALID)) {
-				pm->pm_slb[i].slbv = slbv;
-				pm->pm_slb[i].slbe = slbe | i;
-
-				if (pm == kernel_pmap && pmap_bootstrapped) {
-					__asm __volatile ("slbmte %0, %1" :: 
-					    "r"(kernel_pmap->pm_slb[i].slbv),
-					    "r"(kernel_pmap->pm_slb[i].slbe)); 
-				}
-				break;
-			}
-		}
-	}
-
-	return ((slbv & SLBV_VSID_MASK) >> SLBV_VSID_SHIFT);
-}
-
-#else
+#ifndef __powerpc64__
 
 uint64_t
 va_to_vsid(pmap_t pm, vm_offset_t va)
