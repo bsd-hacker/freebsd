@@ -1676,8 +1676,13 @@ static void octeon_rgmx_medstat (struct ifnet *ifp, struct ifmediareq *ifm)
 		break;
 	}
 
-	/* Always full duplex.  */
-	ifm->ifm_active |= IFM_FDX;
+	/*
+	 * Check duplex.
+	 */
+	if (link_status.bits.duplex == 1)
+		ifm->ifm_active |= IFM_FDX;
+	else
+		ifm->ifm_active |= IFM_HDX;
 
 	RGMX_UNLOCK(sc);
 }
