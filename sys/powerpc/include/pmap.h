@@ -130,10 +130,10 @@ struct	md_page {
  * NB: The PMAP MUST be locked already.
  */
 uint64_t va_to_vsid(pmap_t pm, vm_offset_t va);
-uint64_t va_to_vsid_noalloc(pmap_t pm, vm_offset_t va);
+struct slb *va_to_slb_entry(pmap_t pm, vm_offset_t va);
 
-uint64_t allocate_vsid(pmap_t pm, uint64_t esid);
-void     slb_spill(pmap_t pm, uint64_t esid, uint64_t vsid);
+uint64_t allocate_vsid(pmap_t pm, uint64_t esid, int large);
+void     slb_insert(pmap_t pm, struct slb *, int prefer_empty);
 
 #else
 

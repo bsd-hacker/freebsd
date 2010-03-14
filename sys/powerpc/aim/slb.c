@@ -34,20 +34,17 @@
 
 #include <machine/vmparam.h>
 
-uint64_t
-va_to_vsid_noalloc(pmap_t pm, vm_offset_t va)
+struct slb *
+va_to_slb_entry(pmap_t pm, vm_offset_t va)
 {
-	uint64_t slbe, slbv, i;
+	uint64_t slbe, i;
 
 	slbe = (uintptr_t)va >> ADDR_SR_SHFT;
 	slbe = (slbe << SLBE_ESID_SHIFT) | SLBE_VALID;
-	slbv = 0;
 
 	for (i = 0; i < sizeof(pm->pm_slb)/sizeof(pm->pm_slb[0]); i++) {
-		if (pm->pm_slb[i].slbe == (slbe | i)) {
-			slbv = pm->pm_slb[i].slbv;
-			return ((slbv & SLBV_VSID_MASK) >> SLBV_VSID_SHIFT);
-		}
+		if (pm->pm_slb[i].slbe == (slbe | i))
+			return &pm->pm_slb[i];
 	}
 
 	/* XXX: Have a long list for processes mapping more than 16 GB */
@@ -58,35 +55,44 @@ va_to_vsid_noalloc(pmap_t pm, vm_offset_t va)
 uint64_t
 va_to_vsid(pmap_t pm, vm_offset_t va)
 {
-	uint64_t vsid;
+	struct slb *entry;
 
-	vsid = va_to_vsid_noalloc(pm, va);
+	entry = va_to_slb_entry(pm, va);
 
 	/*
 	 * If there is no vsid for this VA, we need to add a new entry
 	 * to the PMAP's segment table.
+	 * 
+	 * XXX We assume (for now) that we are not mapping large pages.
 	 */
 
-	if (vsid == 0)
-		vsid = allocate_vsid(pm, (uintptr_t)va >> ADDR_SR_SHFT);
+	if (entry == NULL)
+		return (allocate_vsid(pm, (uintptr_t)va >> ADDR_SR_SHFT, 0));
 
-	return (vsid);
+	return ((entry->slbv & SLBV_VSID_MASK) >> SLBV_VSID_SHIFT);
 }
 
 uintptr_t moea64_get_unique_vsid(void);
 
 uint64_t
-allocate_vsid(pmap_t pm, uint64_t esid)
+allocate_vsid(pmap_t pm, uint64_t esid, int large)
 {
 	uint64_t vsid;
+	struct slb slb_entry;
 
 	vsid = moea64_get_unique_vsid();
+
+	slb_entry.slbe = (esid << SLBE_ESID_SHIFT) | SLBE_VALID;
+	slb_entry.slbv = vsid << SLBV_VSID_SHIFT;
+
+	if (large)
+		slb_entry.slbv |= SLBV_L;
 
 	/*
 	 * Someone probably wants this soon, and it may be a wired
 	 * SLB mapping, so pre-spill this entry.
 	 */
-	slb_spill(pm, esid, vsid);
+	slb_insert(pm, &slb_entry, 1);
 
 	return (vsid);
 }
@@ -103,13 +109,14 @@ allocate_vsid(pmap_t pm, uint64_t esid)
 #endif
 
 void
-slb_spill(pmap_t pm, uint64_t esid, uint64_t vsid)
+slb_insert(pmap_t pm, struct slb *slb_entry, int prefer_empty)
 {
 	uint64_t slbe, slbv;
-	int i, j;
+	int i, j, to_spill;
 
-	slbv = vsid << SLBV_VSID_SHIFT;
-	slbe = (esid << SLBE_ESID_SHIFT) | SLBE_VALID;
+	to_spill = -1;
+	slbv = slb_entry->slbv;
+	slbe = slb_entry->slbe;
 
 	/* Hunt for a likely candidate */
 
@@ -117,21 +124,31 @@ slb_spill(pmap_t pm, uint64_t esid, uint64_t vsid)
 		if (pm == kernel_pmap && i == USER_SR)
 				continue;
 
-		if (!(pm->pm_slb[i].slbe & SLBE_VALID) ||
-		    SLB_SPILLABLE(pm->pm_slb[i].slbe)) {
-			pm->pm_slb[i].slbv = slbv;
-			pm->pm_slb[i].slbe = slbe | i;
+		if (to_spill == 0 && (pm->pm_slb[i].slbe & SLBE_VALID) &&
+		    (pm != kernel_pmap || SLB_SPILLABLE(pm->pm_slb[i].slbe))) {
+			to_spill = i;
+			if (!prefer_empty)
+				break;
+		}
 
-			if (pm == kernel_pmap && pmap_bootstrapped) {
-				/* slbie not required */
-				__asm __volatile ("slbmte %0, %1" :: 
-				    "r"(kernel_pmap->pm_slb[i].slbv),
-				    "r"(kernel_pmap->pm_slb[i].slbe)); 
-			}
-			return;
+		if (!(pm->pm_slb[i].slbe & SLBE_VALID)) {
+			to_spill = i;
+			break;
 		}
 	}
 
-	panic("SLB spill on ESID %#lx, but no available candidates!\n", esid);
+	if (to_spill < 0)
+		panic("SLB spill on ESID %#lx, but no available candidates!\n",
+		   (slbe & SLBE_ESID_MASK) >> SLBE_ESID_SHIFT);
+
+	pm->pm_slb[to_spill].slbv = slbv;
+	pm->pm_slb[to_spill].slbe = slbe | to_spill;
+
+	if (pm == kernel_pmap && pmap_bootstrapped) {
+		/* slbie not required */
+		__asm __volatile ("slbmte %0, %1" :: 
+		    "r"(kernel_pmap->pm_slb[i].slbv),
+		    "r"(kernel_pmap->pm_slb[i].slbe)); 
+	}
 }
 

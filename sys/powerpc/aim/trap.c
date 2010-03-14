@@ -525,15 +525,14 @@ slb_esid_lookup(pmap_t pm, uint64_t vsid)
 static void
 handle_slb_spill(pmap_t pm, vm_offset_t addr)
 {
-	uint64_t vsid, esid;
+	struct slb *slb_entry;
 
 	PMAP_LOCK(pm);
-	esid = addr >> ADDR_SR_SHFT;
-	vsid = va_to_vsid_noalloc(pm, addr);
-	if (vsid == 0)
+	slb_entry = va_to_slb_entry(pm, addr);
+	if (slb_entry == NULL)
 		(void)va_to_vsid(pm, addr);
 	else
-		slb_spill(pm, esid, vsid);
+		slb_insert(pm, slb_entry, 0 /* Don't prefer empty */);
 	PMAP_UNLOCK(pm);
 }
 #endif
