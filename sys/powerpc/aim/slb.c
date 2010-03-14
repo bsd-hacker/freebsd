@@ -91,12 +91,16 @@ allocate_vsid(pmap_t pm, uint64_t esid)
 	return (vsid);
 }
 
+#ifdef NOTYET /* We don't have a back-up list. Spills are a bad idea. */
 /* Lock entries mapping kernel text and stacks */
 
 #define SLB_SPILLABLE(slbe) \
 	(((slbe & SLBE_ESID_MASK) < VM_MIN_KERNEL_ADDRESS && \
 	    (slbe & SLBE_ESID_MASK) > SEGMENT_LENGTH) || \
 	    (slbe & SLBE_ESID_MASK) > VM_MAX_KERNEL_ADDRESS)
+#else
+#define SLB_SPILLABLE(slbe) 0
+#endif
 
 void
 slb_spill(pmap_t pm, uint64_t esid, uint64_t vsid)
