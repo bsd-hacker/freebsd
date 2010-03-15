@@ -818,6 +818,7 @@ moea64_setup_direct_map(mmu_t mmup, vm_offset_t kernelstart,
 	register_t msr;
 	vm_paddr_t pa;
 	vm_offset_t size, off;
+	uint64_t pte_lo;
 	int i;
 
 	if (moea64_large_page_size == 0) 
@@ -827,9 +828,26 @@ moea64_setup_direct_map(mmu_t mmup, vm_offset_t kernelstart,
 	if (hw_direct_map) {
 		PMAP_LOCK(kernel_pmap);
 		for (i = 0; i < pregions_sz; i++) {
-		  for (pa = pregions[i].mr_start & ~moea64_large_page_mask; 
-			pa < (pregions[i].mr_start + pregions[i].mr_size);
-			pa += moea64_large_page_size) {
+		  for (pa = pregions[i].mr_start; pa < pregions[i].mr_start +
+		     pregions[i].mr_size; pa += moea64_large_page_size) {
+			pte_lo = LPTE_M;
+
+			/*
+			 * Set memory access as guarded if prefetch within
+			 * the page could exit the available physmem area.
+			 */
+			if (pa & moea64_large_page_mask) {
+				pa &= moea64_large_page_mask;
+				pte_lo |= LPTE_G;
+			}
+			if (pa + moea64_large_page_size >
+			    pregions[i].mr_start + pregions[i].mr_size)
+				pte_lo |= LPTE_G;
+
+			/*
+			 * Allocate a new SLB entry to make sure it is
+			 * for large pages.
+			 */
 			if (va_to_slb_entry(kernel_pmap, pa) == NULL)
 			  allocate_vsid(kernel_pmap, pa, 1 /* large */);
 	
@@ -1795,6 +1813,13 @@ moea64_kextract(mmu_t mmu, vm_offset_t va)
 {
 	struct		pvo_entry *pvo;
 	vm_paddr_t pa;
+
+	/*
+	 * Shortcut the direct-mapped case when applicable.  We never put
+	 * anything but 1:1 mappings below VM_MIN_KERNEL_ADDRESS.
+	 */
+	if (va < VM_MIN_KERNEL_ADDRESS)
+		return (va);
 
 	PMAP_LOCK(kernel_pmap);
 	pvo = moea64_pvo_find_va(kernel_pmap, va, NULL);
@@ -2778,7 +2803,7 @@ moea64_sync_icache(mmu_t mmu, pmap_t pm, vm_offset_t va, vm_size_t sz)
 		len = MIN(lim - va, sz);
 		pvo = moea64_pvo_find_va(pm, va & ~ADDR_POFF, NULL);
 		if (pvo != NULL) {
-			pa = (pvo->pvo_pte.pte.pte_lo & PTE_RPGN) |
+			pa = (pvo->pvo_pte.pte.pte_lo & LPTE_RPGN) |
 			    (va & ADDR_POFF);
 			moea64_syncicache(pm, va, pa, len);
 		}
