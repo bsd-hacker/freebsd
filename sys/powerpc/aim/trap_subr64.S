@@ -267,7 +267,7 @@ CNAME(rstcode):
 	mfmsr	%r9
 	li	%r8,1
 	insrdi	%r9,%r8,1,0
-	mtsmrd	%r9
+	mtmsrd	%r9
 	isync
 
 	ba	cpu_reset
