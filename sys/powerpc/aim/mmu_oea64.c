@@ -1443,6 +1443,8 @@ moea64_enter_locked(pmap_t pmap, vm_offset_t va, vm_page_t m, vm_prot_t prot,
 		zone = moea64_upvo_zone;
 		pvo_flags = 0;
 	} else {
+		mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+
 		pvo_head = vm_page_to_pvoh(m);
 		pg = m;
 		zone = moea64_mpvo_zone;
@@ -1729,10 +1731,10 @@ moea64_remove_write(mmu_t mmu, vm_page_t m)
 		return;
 	lo = moea64_attr_fetch(m);
 	SYNC();
-	LOCK_TABLE();
 	LIST_FOREACH(pvo, vm_page_to_pvoh(m), pvo_vlink) {
 		pmap = pvo->pvo_pmap;
 		PMAP_LOCK(pmap);
+		LOCK_TABLE();
 		if ((pvo->pvo_pte.lpte.pte_lo & LPTE_PP) != LPTE_BR) {
 			pt = moea64_pvo_to_pte(pvo, -1);
 			pvo->pvo_pte.lpte.pte_lo &= ~LPTE_PP;
@@ -1745,9 +1747,9 @@ moea64_remove_write(mmu_t mmu, vm_page_t m)
 				    pvo->pvo_pmap, PVO_VADDR(pvo));
 			}
 		}
+		UNLOCK_TABLE();
 		PMAP_UNLOCK(pmap);
 	}
-	UNLOCK_TABLE();
 	if ((lo & LPTE_CHG) != 0) {
 		moea64_attr_clear(m, LPTE_CHG);
 		vm_page_dirty(m);
@@ -1891,17 +1893,15 @@ moea64_page_exists_quick(mmu_t mmu, pmap_t pmap, vm_page_t m)
         if (!moea64_initialized || (m->flags & PG_FICTITIOUS))
                 return FALSE;
 
+	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+
 	loops = 0;
-	LOCK_TABLE();
 	LIST_FOREACH(pvo, vm_page_to_pvoh(m), pvo_vlink) {
-		if (pvo->pvo_pmap == pmap) {
-			UNLOCK_TABLE();
+		if (pvo->pvo_pmap == pmap) 
 			return (TRUE);
-		}
 		if (++loops >= 16)
 			break;
 	}
-	UNLOCK_TABLE();
 
 	return (FALSE);
 }
@@ -1920,11 +1920,9 @@ moea64_page_wired_mappings(mmu_t mmu, vm_page_t m)
 	if (!moea64_initialized || (m->flags & PG_FICTITIOUS) != 0)
 		return (count);
 	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
-	LOCK_TABLE();
 	LIST_FOREACH(pvo, vm_page_to_pvoh(m), pvo_vlink)
 		if ((pvo->pvo_vaddr & PVO_WIRED) != 0)
 			count++;
-	UNLOCK_TABLE();
 	return (count);
 }
 
@@ -2185,7 +2183,6 @@ moea64_remove_all(mmu_t mmu, vm_page_t m)
 	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
 
 	pvo_head = vm_page_to_pvoh(m);
-	LOCK_TABLE();
 	for (pvo = LIST_FIRST(pvo_head); pvo != NULL; pvo = next_pvo) {
 		next_pvo = LIST_NEXT(pvo, pvo_vlink);
 
@@ -2195,7 +2192,6 @@ moea64_remove_all(mmu_t mmu, vm_page_t m)
 		moea64_pvo_remove(pvo, -1);
 		PMAP_UNLOCK(pmap);
 	}
-	UNLOCK_TABLE();
 	if ((m->flags & PG_WRITEABLE) && moea64_is_modified(mmu, m)) {
 		moea64_attr_clear(m, LPTE_CHG);
 		vm_page_dirty(m);
@@ -2643,7 +2639,8 @@ moea64_query_bit(vm_page_t m, u_int64_t ptebit)
 	if (moea64_attr_fetch(m) & ptebit)
 		return (TRUE);
 
-	LOCK_TABLE();
+	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+
 	LIST_FOREACH(pvo, vm_page_to_pvoh(m), pvo_vlink) {
 		MOEA_PVO_CHECK(pvo);	/* sanity check */
 
@@ -2653,7 +2650,6 @@ moea64_query_bit(vm_page_t m, u_int64_t ptebit)
 		 */
 		if (pvo->pvo_pte.lpte.pte_lo & ptebit) {
 			moea64_attr_save(m, ptebit);
-			UNLOCK_TABLE();
 			MOEA_PVO_CHECK(pvo);	/* sanity check */
 			return (TRUE);
 		}
@@ -2673,6 +2669,7 @@ moea64_query_bit(vm_page_t m, u_int64_t ptebit)
 		 * REF/CHG bits from the valid PTE.  If the appropriate
 		 * ptebit is set, cache it and return success.
 		 */
+		LOCK_TABLE();
 		pt = moea64_pvo_to_pte(pvo, -1);
 		if (pt != NULL) {
 			moea64_pte_synch(pt, &pvo->pvo_pte.lpte);
@@ -2684,8 +2681,8 @@ moea64_query_bit(vm_page_t m, u_int64_t ptebit)
 				return (TRUE);
 			}
 		}
+		UNLOCK_TABLE();
 	}
-	UNLOCK_TABLE();
 
 	return (FALSE);
 }
@@ -2697,6 +2694,8 @@ moea64_clear_bit(vm_page_t m, u_int64_t ptebit, u_int64_t *origbit)
 	struct	pvo_entry *pvo;
 	struct	lpte *pt;
 	uint64_t rv;
+
+	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
 
 	/*
 	 * Clear the cached value.
@@ -2718,10 +2717,10 @@ moea64_clear_bit(vm_page_t m, u_int64_t ptebit, u_int64_t *origbit)
 	 * valid pte clear the ptebit from the valid pte.
 	 */
 	count = 0;
-	LOCK_TABLE();
 	LIST_FOREACH(pvo, vm_page_to_pvoh(m), pvo_vlink) {
 		MOEA_PVO_CHECK(pvo);	/* sanity check */
 
+		LOCK_TABLE();
 		pt = moea64_pvo_to_pte(pvo, -1);
 		if (pt != NULL) {
 			moea64_pte_synch(pt, &pvo->pvo_pte.lpte);
@@ -2733,8 +2732,8 @@ moea64_clear_bit(vm_page_t m, u_int64_t ptebit, u_int64_t *origbit)
 		rv |= pvo->pvo_pte.lpte.pte_lo;
 		pvo->pvo_pte.lpte.pte_lo &= ~ptebit;
 		MOEA_PVO_CHECK(pvo);	/* sanity check */
+		UNLOCK_TABLE();
 	}
-	UNLOCK_TABLE();
 
 	if (origbit != NULL) {
 		*origbit = rv;
