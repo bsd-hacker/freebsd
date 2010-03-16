@@ -263,6 +263,13 @@ nslb:
  */
 	.globl	CNAME(rstcode), CNAME(rstsize)
 CNAME(rstcode):
+	/* Explicitly set MSR[SF] */
+	mfmsr	%r9
+	li	%r8,1
+	insrdi	%r9,%r8,1,0
+	mtsmrd	%r9
+	isync
+
 	ba	cpu_reset
 CNAME(rstsize) = . - CNAME(rstcode)
 
