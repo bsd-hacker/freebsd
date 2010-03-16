@@ -47,21 +47,26 @@ __FBSDID("$FreeBSD$");
 	.globl	_C_LABEL(__error)
 NESTED_NOPROFILE(__cerror, CALLFRAME_SIZ, ra)
 	.mask	0x80000000, (CALLFRAME_RA - CALLFRAME_SIZ)
-	PIC_PROLOGUE(__cerror)
+	SETUP_GP
 	PTR_SUBU	sp, sp, CALLFRAME_SIZ
-	PTR_S		ra, CALLFRAME_RA(sp)
-	INT_S		v0, CALLFRAME_S0(sp)	# save errno value
-
+	SETUP_GP64(CALLFRAME_GP, __cerror)
 	SAVE_GP(CALLFRAME_GP)
+
+	PTR_S		ra, CALLFRAME_RA(sp)
+	REG_S		v0, CALLFRAME_S0(sp)	# save errno value
 
 	PTR_LA		t9, _C_LABEL(__error)	# locate address of errno
 	jalr		t9
 
-	INT_L		t0, CALLFRAME_S0(sp)
+	REG_L		t0, CALLFRAME_S0(sp)
 	PTR_L		ra, CALLFRAME_RA(sp)
 	INT_S		t0, 0(v0)		# update errno value
+
+	RESTORE_GP64
 	PTR_ADDU	sp, sp, CALLFRAME_SIZ
+
 	li		v0, -1
 	li		v1, -1
-	PIC_RETURN()
+
+	j		ra
 END(__cerror)
