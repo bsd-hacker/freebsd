@@ -149,6 +149,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/md_var.h>
 #include <machine/psl.h>
 #include <machine/bat.h>
+#include <machine/hid.h>
 #include <machine/pte.h>
 #include <machine/sr.h>
 #include <machine/trap.h>
@@ -722,8 +723,12 @@ moea64_cpu_bootstrap(mmu_t mmup, int ap)
 		slbia();
 
 		for (i = 0; i < 64; i++) {
-			if (!(kernel_pmap->pm_slb[i].slbe & SLBE_VALID))
-				continue;
+			/*
+			 * Note: set all SLB entries. Apparently, slbia()
+			 * is not quite sufficient to make the CPU
+			 * forget about bridge-mode mappings mode by OFW
+			 * on the PPC 970.
+			 */
 
 			__asm __volatile ("slbmte %0, %1" :: 
 			    "r"(kernel_pmap->pm_slb[i].slbv),
@@ -782,6 +787,10 @@ moea64_add_ofw_mappings(mmu_t mmup, phandle_t mmu, size_t sz)
 
 		DISABLE_TRANS(msr);
 		for (off = 0; off < translations[i].om_len; off += PAGE_SIZE) {
+			if (moea64_pvo_find_va(kernel_pmap,
+			    translations[i].om_va + off, NULL) != NULL)
+				continue;
+
 			moea64_kenter(mmup, translations[i].om_va + off,
 			    pa_base + off);
 
@@ -800,6 +809,11 @@ moea64_probe_large_page(void)
 	case IBM970:
 	case IBM970FX:
 	case IBM970MP:
+		powerpc_sync(); isync();
+		mtspr(SPR_HID4, mfspr(SPR_HID4) & ~HID4_970_DISABLE_LG_PG);
+		powerpc_sync(); isync();
+		
+		/* FALLTHROUGH */
 	case IBMCELLBE:
 		moea64_large_page_size = 0x1000000; /* 16 MB */
 		moea64_large_page_shift = 24;
@@ -849,7 +863,8 @@ moea64_setup_direct_map(mmu_t mmup, vm_offset_t kernelstart,
 			 * for large pages.
 			 */
 			if (va_to_slb_entry(kernel_pmap, pa) == NULL)
-			  allocate_vsid(kernel_pmap, pa, 1 /* large */);
+				allocate_vsid(kernel_pmap, pa >> ADDR_SR_SHFT,
+				    1 /* large */);
 	
 			moea64_pvo_enter(kernel_pmap, moea64_upvo_zone,
 				    &moea64_pvo_kunmanaged, pa, pa,
@@ -1054,9 +1069,11 @@ moea64_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernelend)
 	/*
 	 * Make sure kernel vsid is allocated as well as VSID 0.
 	 */
+	#ifndef __powerpc64__
 	moea64_vsid_bitmap[(KERNEL_VSIDBITS & (NVSIDS - 1)) / VSID_NBPW]
 		|= 1 << (KERNEL_VSIDBITS % VSID_NBPW);
 	moea64_vsid_bitmap[0] |= 1;
+	#endif
 
 	/*
 	 * Initialize the kernel pmap (which is statically allocated).
@@ -2493,7 +2510,8 @@ moea64_pvo_find_va(pmap_t pm, vm_offset_t va, int *pteidx_p)
 	struct slb	*slb;
 
 	slb = va_to_slb_entry(pm, va);
-	KASSERT(slb != NULL, ("Cannot find SLB values for VA %#lx", va));
+	if (slb == NULL) /* The page is not mapped if the segment isn't */
+		return NULL;
 
 	vsid = (slb->slbv & SLBV_VSID_MASK) >> SLBV_VSID_SHIFT;
 	if (slb->slbv & SLBV_L)

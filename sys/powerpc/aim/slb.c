@@ -34,6 +34,8 @@
 
 #include <machine/vmparam.h>
 
+uintptr_t moea64_get_unique_vsid(void);
+
 struct slb *
 va_to_slb_entry(pmap_t pm, vm_offset_t va)
 {
@@ -49,7 +51,7 @@ va_to_slb_entry(pmap_t pm, vm_offset_t va)
 
 	/* XXX: Have a long list for processes mapping more than 16 GB */
 
-	return (0);
+	return (NULL);
 }
 
 uint64_t
@@ -71,8 +73,6 @@ va_to_vsid(pmap_t pm, vm_offset_t va)
 
 	return ((entry->slbv & SLBV_VSID_MASK) >> SLBV_VSID_SHIFT);
 }
-
-uintptr_t moea64_get_unique_vsid(void);
 
 uint64_t
 allocate_vsid(pmap_t pm, uint64_t esid, int large)
@@ -124,16 +124,16 @@ slb_insert(pmap_t pm, struct slb *slb_entry, int prefer_empty)
 		if (pm == kernel_pmap && i == USER_SR)
 				continue;
 
-		if (to_spill == 0 && (pm->pm_slb[i].slbe & SLBE_VALID) &&
-		    (pm != kernel_pmap || SLB_SPILLABLE(pm->pm_slb[i].slbe))) {
-			to_spill = i;
-			if (!prefer_empty)
-				break;
-		}
-
 		if (!(pm->pm_slb[i].slbe & SLBE_VALID)) {
 			to_spill = i;
 			break;
+		}
+
+		if (to_spill < 0 && (pm != kernel_pmap ||
+		    SLB_SPILLABLE(pm->pm_slb[i].slbe))) {
+			to_spill = i;
+			if (!prefer_empty)
+				break;
 		}
 	}
 
@@ -142,13 +142,13 @@ slb_insert(pmap_t pm, struct slb *slb_entry, int prefer_empty)
 		   (slbe & SLBE_ESID_MASK) >> SLBE_ESID_SHIFT);
 
 	pm->pm_slb[to_spill].slbv = slbv;
-	pm->pm_slb[to_spill].slbe = slbe | to_spill;
+	pm->pm_slb[to_spill].slbe = slbe | (uint64_t)to_spill;
 
 	if (pm == kernel_pmap && pmap_bootstrapped) {
 		/* slbie not required */
 		__asm __volatile ("slbmte %0, %1" :: 
-		    "r"(kernel_pmap->pm_slb[i].slbv),
-		    "r"(kernel_pmap->pm_slb[i].slbe)); 
+		    "r"(kernel_pmap->pm_slb[to_spill].slbv),
+		    "r"(kernel_pmap->pm_slb[to_spill].slbe)); 
 	}
 }
 
