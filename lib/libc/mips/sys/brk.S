@@ -49,6 +49,7 @@ __FBSDID("$FreeBSD$");
 _C_LABEL(minbrk):
 	.word	_C_LABEL(_end)
 
+	.text
 LEAF(__sys_brk)
 	WEAK_ALIAS(brk, __sys_brk)
 	WEAK_ALIAS(_brk, __sys_brk)
