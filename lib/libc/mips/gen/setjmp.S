@@ -83,7 +83,6 @@ NESTED(setjmp, SETJMP_FRAME_SIZE, ra)
 	REG_L	ra, CALLFRAME_RA(sp)		# restore RA
 	PTR_ADDU sp, sp, SETJMP_FRAME_SIZE	# pop stack frame
 
-	REG_PROLOGUE
 	REG_LI	v0, _JB_MAGIC_SETJMP
 	REG_S	v0, (_JB_MAGIC  * SZREG)(a0)
 	REG_S	ra, (_JB_REG_RA * SZREG)(a0)
@@ -100,7 +99,6 @@ NESTED(setjmp, SETJMP_FRAME_SIZE, ra)
 #if defined(__mips_n32) || defined(__mips_n64)
 	REG_S	gp, (_JB_REG_GP * SZREG)(a0)
 #endif
-	REG_EPILOGUE
 
 	move	v0, zero
 	jr	ra
@@ -134,7 +132,6 @@ NESTED(longjmp, LONGJMP_FRAME_SIZE, ra)
 	REG_L	a0, CALLFRAME_SIZ(sp)		# restore env
 	REG_L	a1, (CALLFRAME_SIZ + SZREG)(sp)	# restore return value
 
-	REG_PROLOGUE
 	REG_L	ra, (_JB_REG_RA * SZREG)(a0)
 	REG_L	s0, (_JB_REG_S0 * SZREG)(a0)
 	REG_L	s1, (_JB_REG_S1 * SZREG)(a0)
@@ -150,7 +147,6 @@ NESTED(longjmp, LONGJMP_FRAME_SIZE, ra)
 	REG_L	gp, (_JB_REG_GP * SZREG)(a0)
 #endif
 
-	REG_EPILOGUE
 	move	v0, a1
 	j	ra
 	nop
@@ -165,7 +161,4 @@ botch:
 	nop
 
 	PIC_TAILCALL(abort)
-	PTR_LA	t9, _C_LABEL(abort)
-	jal	t9
-	nop
 END(longjmp)
