@@ -102,6 +102,8 @@ ASSYM(TLBSAVE_BOOKE_R31, TLBSAVE_BOOKE_R31*sizeof(register_t));
 ASSYM(MTX_LOCK, offsetof(struct mtx, mtx_lock));
 
 #if defined(AIM)
+ASSYM(USER_SR, USER_SR);
+ASSYM(USER_ADDR, USER_ADDR);
 #ifdef __powerpc64__
 ASSYM(PM_SLB, offsetof(struct pmap, pm_slb));
 #else

@@ -63,7 +63,6 @@
 
 #include <machine/trap.h>
 #include <machine/param.h>
-#include <machine/sr.h>
 #include <machine/psl.h>
 #include <machine/asm.h>
 
@@ -223,8 +222,10 @@ blocked_loop:
 	ld	%r1,PCB_SP(%r3)		/* Load the stack pointer */
 	ld	%r2,PCB_TOC(%r3)	/* Load the TOC pointer */
 
-	li	%r5,USER_SR		/* Load the USER_SR segment reg */
-	sldi	%r5,%r5,28
+	lis	%r5,USER_ADDR@highesta	/* Load the USER_SR segment reg */
+	ori	%r5,%r5,USER_ADDR@highera
+	sldi	%r5,%r5,32
+	oris	%r5,%r5,USER_ADDR@ha
 	slbie	%r5
 	ld	%r5,PCB_AIM_USR_VSID(%r3)
 	ld	%r6,PCB_AIM_USR_ESID(%r3)

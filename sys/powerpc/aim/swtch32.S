@@ -63,7 +63,6 @@
 
 #include <machine/trap.h>
 #include <machine/param.h>
-#include <machine/sr.h>
 #include <machine/psl.h>
 #include <machine/asm.h>
 
