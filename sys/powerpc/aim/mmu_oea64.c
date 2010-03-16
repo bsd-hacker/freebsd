@@ -723,12 +723,8 @@ moea64_cpu_bootstrap(mmu_t mmup, int ap)
 		slbia();
 
 		for (i = 0; i < 64; i++) {
-			/*
-			 * Note: set all SLB entries. Apparently, slbia()
-			 * is not quite sufficient to make the CPU
-			 * forget about bridge-mode mappings mode by OFW
-			 * on the PPC 970.
-			 */
+			if (!(kernel_pmap->pm_slb[i].slbe & SLBE_VALID))
+				continue;
 
 			__asm __volatile ("slbmte %0, %1" :: 
 			    "r"(kernel_pmap->pm_slb[i].slbv),
@@ -868,7 +864,7 @@ moea64_setup_direct_map(mmu_t mmup, vm_offset_t kernelstart,
 	
 			moea64_pvo_enter(kernel_pmap, moea64_upvo_zone,
 				    &moea64_pvo_kunmanaged, pa, pa,
-				    LPTE_M, PVO_WIRED | PVO_LARGE |
+				    pte_lo, PVO_WIRED | PVO_LARGE |
 				    VM_PROT_EXECUTE);
 		  }
 		}
@@ -2287,7 +2283,10 @@ tlbia(void)
 static void
 slbia(void)
 {
+	register_t seg0;
+
 	__asm __volatile ("slbia");
+	__asm __volatile ("slbmfee %0,%1; slbie %0;" : "=r"(seg0) : "r"(0));
 }
 #endif
 

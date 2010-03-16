@@ -50,14 +50,16 @@
  */
 
 restoresrs: 
-	slbia;
-	li	%r29, 0;		/* Set the counter to zero */
+	li	%r29, 0			/* Set the counter to zero */
+
+	slbia
+	slbmfee	%r31,%r29		
+	slbie	%r31
 instslb:
 	ld	%r31, PM_SLB+8(%r28);	/* Load SLBE */
 
 	cmpli	0, %r31, 0;		/* If SLBE is not valid, get the next */
 	beq	nslb;
-		
 
 	ld	%r30, PM_SLB(%r28)	/* Load SLBV */
 	slbmte	%r30, %r31;		/* Install SLB entry */
