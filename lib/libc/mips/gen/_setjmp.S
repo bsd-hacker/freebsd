@@ -123,7 +123,4 @@ botch:
 	nop
 
 	PIC_TAILCALL(abort)
-	PTR_LA	t9, _C_LABEL(abort)
-	jal	t9
-	nop
 END(_longjmp)
