@@ -425,7 +425,7 @@ cpu_set_upcall_kse(struct thread *td, void (*entry)(void *), void *arg,
 	tf->sr = SR_KSU_USER | SR_EXL | (SR_INT_MASK & mips_rd_status()) |
 	    MIPS_SR_INT_IE;
 #ifdef TARGET_OCTEON
-	tf->sr |=  MIPS_SR_INT_IE | MIPS_SR_COP_0_BIT | MIPS_SR_UX |
+	tf->sr |=  MIPS_SR_INT_IE | MIPS_SR_COP_0_BIT | MIPS32_SR_PX | MIPS_SR_UX |
 	  MIPS_SR_KX;
 #endif
 /*	tf->sr |= (ALL_INT_MASK & idle_mask) | SR_INT_ENAB; */
