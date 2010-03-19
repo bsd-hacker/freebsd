@@ -1443,8 +1443,6 @@ moea64_enter_locked(pmap_t pmap, vm_offset_t va, vm_page_t m, vm_prot_t prot,
 		zone = moea64_upvo_zone;
 		pvo_flags = 0;
 	} else {
-		mtx_assert(&vm_page_queue_mtx, MA_OWNED);
-
 		pvo_head = vm_page_to_pvoh(m);
 		pg = m;
 		zone = moea64_mpvo_zone;
