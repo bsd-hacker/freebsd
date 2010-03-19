@@ -174,10 +174,8 @@ slb_insert(pmap_t pm, struct slb *slbcache, struct slb *slb_entry)
 	uint64_t slbe, slbv;
 	int i, j, to_spill;
 
-	/*
-	 * Note: no locking is necessary in this function because all slbcaches
-	 * are either for the current thread or per-CPU.
-	 */
+	/* We don't want to be preempted while modifying the kernel map */
+	critical_enter();
 
 	to_spill = -1;
 	slbv = slb_entry->slbv;
@@ -203,6 +201,11 @@ slb_insert(pmap_t pm, struct slb *slbcache, struct slb *slb_entry)
 		panic("SLB spill on ESID %#lx, but no available candidates!\n",
 		   (slbe & SLBE_ESID_MASK) >> SLBE_ESID_SHIFT);
 
+	if (slbcache[to_spill].slbe & SLBE_VALID) {
+		/* Invalidate this first to avoid races */
+		slbcache[to_spill].slbe = 0;
+		mb();
+	}
 	slbcache[to_spill].slbv = slbv;
 	slbcache[to_spill].slbe = slbe | (uint64_t)to_spill;
 
@@ -213,6 +216,8 @@ slb_insert(pmap_t pm, struct slb *slbcache, struct slb *slb_entry)
 		    "r"(slbcache[to_spill].slbv),
 		    "r"(slbcache[to_spill].slbe)); 
 	}
+
+	critical_exit();
 }
 
 int
