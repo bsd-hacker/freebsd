@@ -229,6 +229,15 @@ db_backtrace(struct thread *td, db_addr_t fp, int count)
 				    tf->cpu.aim.dar,
 				    (uint32_t)tf->cpu.aim.dsisr);
 				goto print_trap;
+#ifdef __powerpc64__
+			case EXC_DSE:
+				db_printf("DSE trap @ %#zx by ",
+				    tf->cpu.aim.dar);
+				goto print_trap;
+			case EXC_ISE:
+				db_printf("ISE trap @ %#zx by ", tf->srr0);
+				goto print_trap;
+#endif
 			case EXC_ISI: trapstr = "ISI"; break;
 			case EXC_PGM: trapstr = "PGM"; break;
 			case EXC_SC: trapstr = "SC"; break;
