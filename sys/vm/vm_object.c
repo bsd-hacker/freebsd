@@ -964,8 +964,6 @@ vm_object_page_collect_flush(vm_object_t object, vm_page_t p, int curgeneration,
 		}
 		vm_page_lock(p);
 	}
-	vm_page_io_start(p);
-	pmap_remove_write(p);
 	vm_page_unlock(p);
 
 	maxf = 0;
@@ -985,11 +983,6 @@ vm_object_page_collect_flush(vm_object_t object, vm_page_t p, int curgeneration,
 				tp->oflags &= ~VPO_CLEANCHK;
 				break;
 			}
-#ifdef notyet
-			/* XXX */
-			vm_page_io_start(tp);
-			pmap_remove_write(tp);
-#endif
  			vm_page_unlock(tp);			
 			maf[ i - 1 ] = tp;
 			maxf++;
@@ -1017,10 +1010,6 @@ vm_object_page_collect_flush(vm_object_t object, vm_page_t p, int curgeneration,
 					tp->oflags &= ~VPO_CLEANCHK;
 					break;
 				}
-#ifdef notyet				
- 				vm_page_io_start(tp);
- 				pmap_remove_write(tp);
-#endif				
  				vm_page_unlock(tp);
 				mab[ i - 1 ] = tp;
 				maxb++;
