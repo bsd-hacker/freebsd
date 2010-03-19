@@ -859,7 +859,6 @@ moea64_setup_direct_map(mmu_t mmup, vm_offset_t kernelstart,
 
 	DISABLE_TRANS(msr);
 	if (hw_direct_map) {
-		#ifdef __powerpc64__
 		PMAP_LOCK(kernel_pmap);
 		for (i = 0; i < pregions_sz; i++) {
 		  for (pa = pregions[i].mr_start; pa < pregions[i].mr_start +
@@ -885,7 +884,6 @@ moea64_setup_direct_map(mmu_t mmup, vm_offset_t kernelstart,
 		  }
 		}
 		PMAP_UNLOCK(kernel_pmap);
-		#endif
 	} else {
 		size = moea64_pteg_count * sizeof(struct lpteg);
 		off = (vm_offset_t)(moea64_pteg_table);
@@ -1869,7 +1867,8 @@ moea64_kextract(mmu_t mmu, vm_offset_t va)
 
 	PMAP_LOCK(kernel_pmap);
 	pvo = moea64_pvo_find_va(kernel_pmap, va, NULL);
-	KASSERT(pvo != NULL, ("moea64_kextract: no addr found for %#lx", va));
+	KASSERT(pvo != NULL, ("moea64_kextract: no addr found for %#" PRIxPTR,
+	    va));
 	pa = (pvo->pvo_pte.lpte.pte_lo & LPTE_RPGN) + (va - PVO_VADDR(pvo));
 	PMAP_UNLOCK(kernel_pmap);
 	return (pa);
@@ -2016,6 +2015,7 @@ moea64_pinit(mmu_t mmu, pmap_t pmap)
 #else
 void
 moea64_pinit(mmu_t mmu, pmap_t pmap)
+{
 	int	i;
 	register_t hash;
 
