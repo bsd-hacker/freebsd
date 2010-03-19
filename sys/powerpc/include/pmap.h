@@ -65,6 +65,7 @@
 #define	_MACHINE_PMAP_H_
 
 #include <sys/queue.h>
+#include <sys/tree.h>
 #include <sys/_lock.h>
 #include <sys/_mutex.h>
 #include <machine/sr.h>
@@ -85,11 +86,16 @@ struct pmap_md {
 #define	NPMAPS		32768
 #endif /* !defined(NPMAPS) */
 
+struct	slbcontainer;
+
+SPLAY_HEAD(slb_tree, slbcontainer);
+
 struct	pmap {
 	struct	mtx	pm_mtx;
 	
     #ifdef __powerpc64__
-	struct slb	pm_slb[64];
+	struct slb_tree	pm_slbtree;
+	struct slb	*pm_slb;
     #else
 	register_t	pm_sr[16];
     #endif
@@ -110,6 +116,7 @@ struct pvo_entry {
 	} pvo_pte;
 	pmap_t		pvo_pmap;		/* Owning pmap */
 	vm_offset_t	pvo_vaddr;		/* VA of entry */
+	uint64_t	pvo_vpn;		/* Virtual page number */
 };
 LIST_HEAD(pvo_head, pvo_entry);
 
@@ -130,10 +137,14 @@ struct	md_page {
  * NB: The PMAP MUST be locked already.
  */
 uint64_t va_to_vsid(pmap_t pm, vm_offset_t va);
-struct slb *va_to_slb_entry(pmap_t pm, vm_offset_t va);
+int      va_to_slb_entry(pmap_t pm, vm_offset_t va, struct slb *);
 
 uint64_t allocate_vsid(pmap_t pm, uint64_t esid, int large);
-void     slb_insert(pmap_t pm, struct slb *, int prefer_empty);
+void     slb_insert(pmap_t pm, struct slb *dst, struct slb *);
+int      vsid_to_esid(pmap_t pm, uint64_t vsid, uint64_t *esid);
+void     free_vsids(pmap_t pm);
+struct slb *slb_alloc_user_cache(void);
+void	slb_free_user_cache(struct slb *);
 
 #else
 

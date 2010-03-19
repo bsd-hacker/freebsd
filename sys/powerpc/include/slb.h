@@ -47,6 +47,8 @@
 #define	SLBV_VSID_MASK	0xfffffffffffff000UL /* Virtual segment ID mask */
 #define	SLBV_VSID_SHIFT	12
 
+#define	KERNEL_VSID_BIT	0x0000001000000000UL /* Bit set in all kernel VSIDs */
+
 #define	SLBE_VALID	0x0000000008000000UL /* SLB entry valid */
 #define	SLBE_INDEX_MASK	0x0000000000000fffUL /* SLB index mask*/
 #define	SLBE_ESID_MASK	0xfffffffff0000000UL /* Effective segment ID mask */

@@ -738,7 +738,10 @@ kdb_cpu_set_singlestep(void)
 void
 cpu_pcpu_init(struct pcpu *pcpu, int cpuid, size_t sz)
 {
-
+#ifdef __powerpc64__
+/* Copy the SLB contents from the current CPU */
+memcpy(pcpu->pc_slb, PCPU_GET(slb), sizeof(pcpu->pc_slb));
+#endif
 }
 
 void

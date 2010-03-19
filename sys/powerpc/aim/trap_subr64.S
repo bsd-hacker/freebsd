@@ -46,7 +46,7 @@
 /*
  * Restore SRs for a pmap
  *
- * Requires that r28-r31 be scratch, with r28 initialized to the pmap
+ * Requires that r28-r31 be scratch, with r28 initialized to the SLB cache
  */
 
 restoresrs: 
@@ -54,14 +54,15 @@ restoresrs:
 
 	slbia
 	slbmfee	%r31,%r29		
+	clrrdi	%r31,%r31,28
 	slbie	%r31
 instslb:
-	ld	%r31, PM_SLB+8(%r28);	/* Load SLBE */
+	ld	%r31, 8(%r28);		/* Load SLBE */
 
 	cmpli	0, %r31, 0;		/* If SLBE is not valid, get the next */
 	beq	nslb;
 
-	ld	%r30, PM_SLB(%r28)	/* Load SLBV */
+	ld	%r30, 0(%r28)		/* Load SLBV */
 	slbmte	%r30, %r31;		/* Install SLB entry */
 
 nslb:
@@ -77,15 +78,15 @@ nslb:
  */
 #define RESTORE_USER_SRS() \
 	GET_CPUINFO(%r28); \
-	ld	%r28,PC_CURPMAP(%r28); \
+	ld	%r28,PC_USERSLB(%r28); \
 	bl	restoresrs;
 
 /*
  * Kernel SRs are loaded directly from kernel_pmap_
  */
 #define RESTORE_KERN_SRS() \
-	lis	%r28,CNAME(kernel_pmap_store)@ha; \
-	addi	%r28,%r28,CNAME(kernel_pmap_store)@l; \
+	GET_CPUINFO(%r28); \
+	addi	%r28,%r28,PC_KERNSLB; \
 	bl	restoresrs;
 
 /*

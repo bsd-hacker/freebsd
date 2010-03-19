@@ -105,7 +105,8 @@ ASSYM(MTX_LOCK, offsetof(struct mtx, mtx_lock));
 ASSYM(USER_SR, USER_SR);
 ASSYM(USER_ADDR, USER_ADDR);
 #ifdef __powerpc64__
-ASSYM(PM_SLB, offsetof(struct pmap, pm_slb));
+ASSYM(PC_KERNSLB, offsetof(struct pcpu, pc_slb));
+ASSYM(PC_USERSLB, offsetof(struct pcpu, pc_userslb));
 #else
 ASSYM(PM_SR, offsetof(struct pmap, pm_sr));
 #endif

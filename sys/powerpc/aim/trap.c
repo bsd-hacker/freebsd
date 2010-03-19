@@ -88,8 +88,7 @@ static int	handle_onfault(struct trapframe *frame);
 static void	syscall(struct trapframe *frame);
 
 #ifdef __powerpc64__
-static void	handle_slb_spill(pmap_t pm, vm_offset_t addr);
-static uint64_t	slb_esid_lookup(pmap_t pm, uint64_t vsid);
+static int	handle_slb_spill(pmap_t pm, vm_offset_t addr);
 #endif
 
 int	setfault(faultbuf);		/* defined in locore.S */
@@ -187,9 +186,10 @@ trap(struct trapframe *frame)
 #ifdef __powerpc64__
 		case EXC_ISE:
 		case EXC_DSE:
-			handle_slb_spill(&p->p_vmspace->vm_pmap,
+			if (handle_slb_spill(&p->p_vmspace->vm_pmap,
 			    (type == EXC_ISE) ? frame->srr0 :
-			    frame->cpu.aim.dar);
+			    frame->cpu.aim.dar) != 0)
+				sig = SIGSEGV;
 			break;
 #endif
 		case EXC_DSI:
@@ -251,9 +251,10 @@ trap(struct trapframe *frame)
 #ifdef __powerpc64__
 		case EXC_ISE:
 		case EXC_DSE:
-			handle_slb_spill(kernel_pmap,
+			if (handle_slb_spill(kernel_pmap,
 			    (type == EXC_ISE) ? frame->srr0 :
-			    frame->cpu.aim.dar);
+			    frame->cpu.aim.dar) != 0)
+				panic("Fault handling kernel SLB miss");
 			return;
 #endif
 		case EXC_MCHK:
@@ -503,37 +504,40 @@ syscall(struct trapframe *frame)
 }
 
 #ifdef __powerpc64__
-static uint64_t
-slb_esid_lookup(pmap_t pm, uint64_t vsid)
-{
-	uint64_t esid;
-	int i;
-
-	vsid <<= SLBV_VSID_SHIFT;
-
-	for (i = 0; i < sizeof(pm->pm_slb)/sizeof(pm->pm_slb[0]); i++) {
-		if ((pm->pm_slb[i].slbv & SLBV_VSID_MASK) == vsid) {
-			esid = pm->pm_slb[i].slbe & SLBE_ESID_MASK;
-			esid >>= SLBE_ESID_SHIFT;
-			return (esid);
-		}
-	}
-
-	return (0);
-}
-
-static void
+static int 
 handle_slb_spill(pmap_t pm, vm_offset_t addr)
 {
-	struct slb *slb_entry;
+	struct slb slb_entry;
+	int error, i;
+
+	if (pm == kernel_pmap) {
+		error = va_to_slb_entry(pm, addr, &slb_entry);
+		if (error)
+			return (error);
+
+		slb_insert(pm, PCPU_GET(slb), &slb_entry);
+		return (0);
+	}
 
 	PMAP_LOCK(pm);
-	slb_entry = va_to_slb_entry(pm, addr);
-	if (slb_entry == NULL)
-		(void)va_to_vsid(pm, addr);
-	else
-		slb_insert(pm, slb_entry, 0 /* Don't prefer empty */);
+	error = va_to_slb_entry(pm, addr, &slb_entry);
+	if (error != 0)
+		(void)allocate_vsid(pm, (uintptr_t)addr >> ADDR_SR_SHFT, 0);
+	else {
+		/*
+		 * Check that another CPU has not already mapped this.
+		 * XXX: Per-thread SLB caches would be better.
+		 */
+		for (i = 0; i < 64; i++)
+			if (pm->pm_slb[i].slbe == (slb_entry.slbe | i))
+				break;
+
+		if (i == 64)
+			slb_insert(pm, pm->pm_slb, &slb_entry);
+	}
 	PMAP_UNLOCK(pm);
+
+	return (0);
 }
 #endif
 
@@ -568,15 +572,22 @@ trap_pfault(struct trapframe *frame, int user)
 			if (p->p_vmspace == NULL)
 				return (SIGSEGV);
 
+			map = &p->p_vmspace->vm_map;
+
 			#ifdef __powerpc64__
 			user_sr = 0;
 			__asm ("slbmfev %0, %1"
 			    : "=r"(user_sr)
 			    : "r"(USER_SR));
 
-			user_sr = (user_sr & SLBV_VSID_MASK) >> SLBV_VSID_SHIFT;
-			user_sr = slb_esid_lookup(&p->p_vmspace->vm_pmap, user_sr);
+			PMAP_LOCK(&p->p_vmspace->vm_pmap);
+			user_sr >>= SLBV_VSID_SHIFT;
+			rv = vsid_to_esid(&p->p_vmspace->vm_pmap, user_sr,
+			    &user_sr);
+			PMAP_UNLOCK(&p->p_vmspace->vm_pmap);
 
+			if (rv != 0) 
+				return (SIGSEGV);
 			#else
 			__asm ("mfsr %0, %1"
 			    : "=r"(user_sr)
@@ -584,7 +595,6 @@ trap_pfault(struct trapframe *frame, int user)
 			#endif
 			eva &= ADDR_PIDX | ADDR_POFF;
 			eva |= user_sr << ADDR_SR_SHFT;
-			map = &p->p_vmspace->vm_map;
 		} else {
 			map = kernel_map;
 		}

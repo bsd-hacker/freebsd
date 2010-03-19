@@ -25,94 +25,159 @@
  */
 
 #include <sys/param.h>
-#include <sys/kdb.h>
+#include <sys/kernel.h>
+#include <sys/lock.h>
+#include <sys/mutex.h>
 #include <sys/proc.h>
 #include <sys/systm.h>
+#include <sys/tree.h>
 
 #include <vm/vm.h>
 #include <vm/pmap.h>
+#include <vm/uma.h>
+#include <vm/vm_map.h>
 
+#include <machine/md_var.h>
+#include <machine/pmap.h>
 #include <machine/vmparam.h>
 
 uintptr_t moea64_get_unique_vsid(void);
+void moea64_release_vsid(uint64_t vsid);
 
-struct slb *
-va_to_slb_entry(pmap_t pm, vm_offset_t va)
+struct slbcontainer {
+	struct slb slb;
+	SPLAY_ENTRY(slbcontainer) slb_node;
+};
+
+static int slb_compare(struct slbcontainer *a, struct slbcontainer *b);
+static void slb_zone_init(void *);
+
+SPLAY_PROTOTYPE(slb_tree, slbcontainer, slb_node, slb_compare);
+SPLAY_GENERATE(slb_tree, slbcontainer, slb_node, slb_compare);
+
+uma_zone_t slb_zone;
+uma_zone_t slb_cache_zone;
+
+SYSINIT(slb_zone_init, SI_SUB_KMEM, SI_ORDER_ANY, slb_zone_init, NULL);
+
+int
+va_to_slb_entry(pmap_t pm, vm_offset_t va, struct slb *slb)
 {
-	uint64_t slbe, i;
+	struct slbcontainer cont, *found;
+	uint64_t esid;
 
-	slbe = (uintptr_t)va >> ADDR_SR_SHFT;
-	slbe = (slbe << SLBE_ESID_SHIFT) | SLBE_VALID;
+	esid = (uintptr_t)va >> ADDR_SR_SHFT;
+	slb->slbe = (esid << SLBE_ESID_SHIFT) | SLBE_VALID;
 
-	for (i = 0; i < sizeof(pm->pm_slb)/sizeof(pm->pm_slb[0]); i++) {
-		if (pm->pm_slb[i].slbe == (slbe | i))
-			return &pm->pm_slb[i];
+	if (pm == kernel_pmap) {
+		/* Set kernel VSID to ESID | KERNEL_VSID_BIT */
+		slb->slbv = (esid | KERNEL_VSID_BIT) << SLBV_VSID_SHIFT;
+
+		/* Figure out if this is a large-page mapping */
+		if (hw_direct_map && va < VM_MIN_KERNEL_ADDRESS) {
+			/*
+			 * XXX: If we have set up a direct map, assumes
+			 * all physical memory is mapped with large pages.
+			 */
+			if (mem_valid(va, 0) == 0)
+				slb->slbv |= SLBV_L;
+		}
+			
+		return (0);
 	}
 
-	/* XXX: Have a long list for processes mapping more than 16 GB */
+	PMAP_LOCK_ASSERT(pm, MA_OWNED);
 
-	return (NULL);
+	cont.slb.slbe = slb->slbe;
+	found = SPLAY_FIND(slb_tree, &pm->pm_slbtree, &cont);
+
+	if (found == NULL)
+		return (-1);
+
+	slb->slbv = found->slb.slbv;
+	return (0);
 }
 
 uint64_t
 va_to_vsid(pmap_t pm, vm_offset_t va)
 {
-	struct slb *entry;
+	struct slb entry;
 
-	entry = va_to_slb_entry(pm, va);
+	/* Shortcut kernel case: VSID = ESID | KERNEL_VSID_BIT */
 
+	if (pm == kernel_pmap) 
+		return (((uintptr_t)va >> ADDR_SR_SHFT) | KERNEL_VSID_BIT);
 	/*
 	 * If there is no vsid for this VA, we need to add a new entry
 	 * to the PMAP's segment table.
-	 * 
-	 * XXX We assume (for now) that we are not mapping large pages.
 	 */
 
-	if (entry == NULL)
+	if (va_to_slb_entry(pm, va, &entry) != 0)
 		return (allocate_vsid(pm, (uintptr_t)va >> ADDR_SR_SHFT, 0));
 
-	return ((entry->slbv & SLBV_VSID_MASK) >> SLBV_VSID_SHIFT);
+	return ((entry.slbv & SLBV_VSID_MASK) >> SLBV_VSID_SHIFT);
 }
 
 uint64_t
 allocate_vsid(pmap_t pm, uint64_t esid, int large)
 {
 	uint64_t vsid;
-	struct slb slb_entry;
+	struct slbcontainer *slb_entry, kern_entry;
+	struct slb *prespill;
 
-	vsid = moea64_get_unique_vsid();
+	prespill = NULL;
 
-	slb_entry.slbe = (esid << SLBE_ESID_SHIFT) | SLBE_VALID;
-	slb_entry.slbv = vsid << SLBV_VSID_SHIFT;
+	if (pm == kernel_pmap) {
+		vsid = esid | KERNEL_VSID_BIT;
+		slb_entry = &kern_entry;
+		prespill = PCPU_GET(slb);
+	} else {
+		vsid = moea64_get_unique_vsid();
+		slb_entry = uma_zalloc(slb_zone, M_NOWAIT);
+
+		if (slb_entry == NULL)
+			panic("Could not allocate SLB mapping!");
+
+		prespill = pm->pm_slb;
+	}
+
+	slb_entry->slb.slbe = (esid << SLBE_ESID_SHIFT) | SLBE_VALID;
+	slb_entry->slb.slbv = vsid << SLBV_VSID_SHIFT;
 
 	if (large)
-		slb_entry.slbv |= SLBV_L;
+		slb_entry->slb.slbv |= SLBV_L;
+
+	if (pm != kernel_pmap) {
+		PMAP_LOCK_ASSERT(pm, MA_OWNED);
+		SPLAY_INSERT(slb_tree, &pm->pm_slbtree, slb_entry);
+	}
 
 	/*
 	 * Someone probably wants this soon, and it may be a wired
 	 * SLB mapping, so pre-spill this entry.
 	 */
-	slb_insert(pm, &slb_entry, 1);
+	if (prespill != NULL)
+		slb_insert(pm, prespill, &slb_entry->slb);
 
 	return (vsid);
 }
 
-#ifdef NOTYET /* We don't have a back-up list. Spills are a bad idea. */
 /* Lock entries mapping kernel text and stacks */
 
 #define SLB_SPILLABLE(slbe) \
 	(((slbe & SLBE_ESID_MASK) < VM_MIN_KERNEL_ADDRESS && \
-	    (slbe & SLBE_ESID_MASK) > SEGMENT_LENGTH) || \
+	    (slbe & SLBE_ESID_MASK) > 16*SEGMENT_LENGTH) || \
 	    (slbe & SLBE_ESID_MASK) > VM_MAX_KERNEL_ADDRESS)
-#else
-#define SLB_SPILLABLE(slbe) 0
-#endif
-
 void
-slb_insert(pmap_t pm, struct slb *slb_entry, int prefer_empty)
+slb_insert(pmap_t pm, struct slb *slbcache, struct slb *slb_entry)
 {
 	uint64_t slbe, slbv;
 	int i, j, to_spill;
+
+	/*
+	 * Note: no locking is necessary in this function because all slbcaches
+	 * are either for the current thread or per-CPU.
+	 */
 
 	to_spill = -1;
 	slbv = slb_entry->slbv;
@@ -124,31 +189,104 @@ slb_insert(pmap_t pm, struct slb *slb_entry, int prefer_empty)
 		if (pm == kernel_pmap && i == USER_SR)
 				continue;
 
-		if (!(pm->pm_slb[i].slbe & SLBE_VALID)) {
+		if (!(slbcache[i].slbe & SLBE_VALID)) {
 			to_spill = i;
 			break;
 		}
 
 		if (to_spill < 0 && (pm != kernel_pmap ||
-		    SLB_SPILLABLE(pm->pm_slb[i].slbe))) {
+		    SLB_SPILLABLE(slbcache[i].slbe)))
 			to_spill = i;
-			if (!prefer_empty)
-				break;
-		}
 	}
 
 	if (to_spill < 0)
 		panic("SLB spill on ESID %#lx, but no available candidates!\n",
 		   (slbe & SLBE_ESID_MASK) >> SLBE_ESID_SHIFT);
 
-	pm->pm_slb[to_spill].slbv = slbv;
-	pm->pm_slb[to_spill].slbe = slbe | (uint64_t)to_spill;
+	slbcache[to_spill].slbv = slbv;
+	slbcache[to_spill].slbe = slbe | (uint64_t)to_spill;
 
+	/* If it is for this CPU, put it in the SLB right away */
 	if (pm == kernel_pmap && pmap_bootstrapped) {
 		/* slbie not required */
 		__asm __volatile ("slbmte %0, %1" :: 
-		    "r"(kernel_pmap->pm_slb[to_spill].slbv),
-		    "r"(kernel_pmap->pm_slb[to_spill].slbe)); 
+		    "r"(slbcache[to_spill].slbv),
+		    "r"(slbcache[to_spill].slbe)); 
 	}
 }
 
+int
+vsid_to_esid(pmap_t pm, uint64_t vsid, uint64_t *esid)
+{
+	uint64_t slbv;
+	struct slbcontainer *entry;
+
+#ifdef INVARIANTS
+	if (pm == kernel_pmap)
+		panic("vsid_to_esid only works on user pmaps");
+
+	PMAP_LOCK_ASSERT(pm, MA_OWNED);
+#endif
+
+	slbv = vsid << SLBV_VSID_SHIFT;
+
+	SPLAY_FOREACH(entry, slb_tree, &pm->pm_slbtree) {
+		if (slbv == entry->slb.slbv) {
+			*esid = entry->slb.slbe >> SLBE_ESID_SHIFT;
+			return (0);
+		}
+	}
+
+	return (-1);
+}
+
+void
+free_vsids(pmap_t pm)
+{
+	struct slbcontainer *entry;
+
+	while (!SPLAY_EMPTY(&pm->pm_slbtree)) {
+		entry = SPLAY_MIN(slb_tree, &pm->pm_slbtree);
+
+		SPLAY_REMOVE(slb_tree, &pm->pm_slbtree, entry);
+
+		moea64_release_vsid(entry->slb.slbv >> SLBV_VSID_SHIFT);
+		uma_zfree(slb_zone, entry);
+	}
+}
+
+static int
+slb_compare(struct slbcontainer *a, struct slbcontainer *b)
+{
+	if (a->slb.slbe == b->slb.slbe)
+		return (0);
+	else if (a->slb.slbe < b->slb.slbe)
+		return (-1);
+	else
+		return (1);
+}
+
+static void
+slb_zone_init(void *dummy)
+{
+
+	slb_zone = uma_zcreate("SLB segment", sizeof(struct slbcontainer),
+	    NULL, NULL, NULL, NULL, UMA_ALIGN_PTR, UMA_ZONE_VM);
+	slb_cache_zone = uma_zcreate("SLB cache", 64*sizeof(struct slb),
+	    NULL, NULL, NULL, NULL, UMA_ALIGN_PTR, UMA_ZONE_VM);
+}
+
+struct slb *
+slb_alloc_user_cache(void)
+{
+	struct slb *tmp;
+	tmp = uma_zalloc(slb_cache_zone, M_NOWAIT | M_ZERO);
+	bzero(tmp,64*sizeof(struct slb));
+	return (tmp);
+}
+
+void
+slb_free_user_cache(struct slb *slb)
+{
+	uma_zfree(slb_cache_zone, slb);
+}

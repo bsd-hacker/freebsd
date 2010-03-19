@@ -31,6 +31,7 @@
 #define	_MACHINE_PCPU_H_
 
 #include <machine/cpufunc.h>
+#include <machine/slb.h>
 #include <machine/tlb.h>
 
 struct pmap;
@@ -50,7 +51,17 @@ struct pmap;
 	register_t	pc_disisave[CPUSAVE_LEN];			\
 	register_t	pc_dbsave[CPUSAVE_LEN];
 
-#define PCPU_MD_AIM_FIELDS
+#define PCPU_MD_AIM32_FIELDS
+
+#define PCPU_MD_AIM64_FIELDS						\
+	struct slb	pc_slb[64];					\
+	struct slb	*pc_userslb;
+
+#ifdef __powerpc64__
+#define PCPU_MD_AIM_FIELDS	PCPU_MD_AIM64_FIELDS
+#else
+#define PCPU_MD_AIM_FIELDS	PCPU_MD_AIM32_FIELDS
+#endif
 
 #define	BOOKE_CRITSAVE_LEN	(CPUSAVE_LEN + 2)
 #define	BOOKE_TLB_MAXNEST	3
