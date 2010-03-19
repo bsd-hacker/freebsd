@@ -68,7 +68,7 @@ instslb:
 nslb:
 	addi	%r28, %r28, 16;		/* Advance */
 	addi	%r29, %r29, 1;
-	cmpli	0, %r29, 63;		/* Repeat if we are not at the end */
+	cmpli	0, %r29, 64;		/* Repeat if we are not at the end */
 	blt instslb;
 
 	blr;
