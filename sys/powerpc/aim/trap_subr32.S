@@ -294,6 +294,7 @@ cpu_reset:
 	addi	%r1,%r1,(124-16)@l
 
 	lis	%r3,1@l
+	bla	CNAME(cpudep_ap_early_bootstrap)
 	bla	CNAME(pmap_cpu_bootstrap)
 	bla	CNAME(cpudep_ap_bootstrap)
 	mr	%r1,%r3

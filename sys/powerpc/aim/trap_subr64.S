@@ -281,12 +281,14 @@ cpu_reset:
 	lis	%r3,tocbase@ha
 	ld	%r2,tocbase@l(%r3)
 	lis	%r3,1@l
-	bl	CNAME(.pmap_cpu_bootstrap)
+	bl	CNAME(.cpudep_ap_early_bootstrap) /* Set PCPU */
 	nop
-	bl	CNAME(.cpudep_ap_bootstrap)
+	bl	CNAME(.pmap_cpu_bootstrap)	/* Turn on virtual memory */
 	nop
-	mr	%r1,%r3
-	bl	CNAME(.machdep_ap_bootstrap)
+	bl	CNAME(.cpudep_ap_bootstrap)	/* Set up PCPU and stack */
+	nop
+	mr	%r1,%r3				/* Use new stack */
+	bl	CNAME(.machdep_ap_bootstrap)	/* And away! */
 	nop
 
 	/* Should not be reached */

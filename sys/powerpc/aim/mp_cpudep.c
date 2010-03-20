@@ -55,6 +55,31 @@ static register_t bsp_state[8] __aligned(8);
 static void cpudep_save_config(void *dummy);
 SYSINIT(cpu_save_config, SI_SUB_CPU, SI_ORDER_ANY, cpudep_save_config, NULL);
 
+void
+cpudep_ap_early_bootstrap(void)
+{
+	register_t reg;
+
+	__asm __volatile("mtsprg 0, %0" :: "r"(ap_pcpu));
+	powerpc_sync();
+
+	switch (mfpvr() >> 16) {
+	case IBM970:
+	case IBM970FX:
+	case IBM970MP:
+		/* Restore HID4 and HID5, which are necessary for the MMU */
+
+		__asm __volatile("ld %0, 16(%2); sync; isync;	\
+		    mtspr %1, %0; sync; isync;"
+		    : "=r"(reg) : "K"(SPR_HID4), "r"(bsp_state));
+		__asm __volatile("ld %0, 24(%2); sync; isync;	\
+		    mtspr %1, %0; sync; isync;"
+		    : "=r"(reg) : "K"(SPR_HID5), "r"(bsp_state));
+		powerpc_sync();
+		break;
+	}
+}
+
 uintptr_t
 cpudep_ap_bootstrap(void)
 {
@@ -63,9 +88,6 @@ cpudep_ap_bootstrap(void)
 	msr = PSL_KERNSET & ~PSL_EE;
 	mtmsr(msr);
 	isync();
-
-	__asm __volatile("mtsprg 0, %0" :: "r"(ap_pcpu));
-	powerpc_sync();
 
 	pcpup->pc_curthread = pcpup->pc_idlethread;
 	pcpup->pc_curpcb = pcpup->pc_curthread->td_pcb;
