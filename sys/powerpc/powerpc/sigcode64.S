@@ -58,6 +58,7 @@ CNAME(sigcode64):
 	sc				/* sigreturn(scp) */
 	li	0,SYS_exit
 	sc				/* exit(errno) */
+	nop				/* align to doubleword */
 endsigcode64:
 	
 	.data

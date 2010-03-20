@@ -496,7 +496,11 @@ exec_setregs(struct thread *td, struct image_params *imgp, u_long stack)
 
 	tf = trapframe(td);
 	bzero(tf, sizeof *tf);
+	#ifdef __powerpc64__
+	tf->fixreg[1] = -roundup(-stack + 48, 16);
+	#else
 	tf->fixreg[1] = -roundup(-stack + 8, 16);
+	#endif
 
 	/*
 	 * XXX Machine-independent code has already copied arguments and
@@ -1000,8 +1004,13 @@ cpu_set_upcall_kse(struct thread *td, void (*entry)(void *), void *arg,
 
 	tf = td->td_frame;
 	/* align stack and alloc space for frame ptr and saved LR */
-	sp = ((uintptr_t)stack->ss_sp + stack->ss_size - sizeof(uint64_t)) &
+	#ifdef __powerpc64__
+	sp = ((uintptr_t)stack->ss_sp + stack->ss_size - 48) &
 	    ~0x1f;
+	#else
+	sp = ((uintptr_t)stack->ss_sp + stack->ss_size - 8) &
+	    ~0x1f;
+	#endif
 	bzero(tf, sizeof(struct trapframe));
 
 	tf->fixreg[1] = (register_t)sp;
