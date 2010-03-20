@@ -88,6 +88,11 @@
 #define	VM_MAXUSER_ADDRESS	((vm_offset_t)0x7ffff000)
 #define	VM_MAX_ADDRESS		VM_MAXUSER_ADDRESS
 #endif
+#else /* LOCORE */
+#ifndef __powerpc64__
+#define	VM_MIN_ADDRESS		0
+#define	VM_MAXUSER_ADDRESS	0x7ffff000
+#endif
 #endif /* LOCORE */
 
 #define	FREEBSD32_USRSTACK	0x7ffff000

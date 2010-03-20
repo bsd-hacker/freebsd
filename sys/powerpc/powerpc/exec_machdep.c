@@ -283,7 +283,7 @@ sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
 		    tf->cpu.aim.dar : tf->srr0;
 		#else
 		tf->fixreg[FIRSTARG+3] = (tf->exc == EXC_DSI) ? 
-		    tf->cpu.booke.dear : tf->srr0);
+		    tf->cpu.booke.dear : tf->srr0;
 		#endif
 	}
 	mtx_unlock(&psp->ps_mtx);
@@ -381,6 +381,7 @@ grab_mcontext(struct thread *td, mcontext_t *mcp, int flags)
 		mcp->mc_gpr[4] = 0;
 	}
 
+#ifdef AIM
 	/*
 	 * This assumes that floating-point context is *not* lazy,
 	 * so if the thread has used FP there would have been a
@@ -413,6 +414,7 @@ grab_mcontext(struct thread *td, mcontext_t *mcp, int flags)
 		mcp->mc_vrsave =  pcb->pcb_vec.vrsave;
 		memcpy(mcp->mc_avec, pcb->pcb_vec.vr, sizeof(mcp->mc_avec));
 	}
+#endif
 
 	mcp->mc_len = sizeof(*mcp);
 
@@ -457,6 +459,7 @@ set_mcontext(struct thread *td, const mcontext_t *mcp)
 
 	memcpy(tf, mcp->mc_frame, sizeof(mcp->mc_frame));
 
+#ifdef AIM
 	if (mcp->mc_flags & _MC_FP_VALID) {
 		if ((pcb->pcb_flags & PCB_FPU) != PCB_FPU) {
 			critical_enter();
@@ -477,7 +480,7 @@ set_mcontext(struct thread *td, const mcontext_t *mcp)
 		pcb->pcb_vec.vrsave = mcp->mc_vrsave;
 		memcpy(pcb->pcb_vec.vr, mcp->mc_avec, sizeof(mcp->mc_avec));
 	}
-
+#endif
 
 	return (0);
 }
@@ -550,10 +553,10 @@ exec_setregs(struct thread *td, struct image_params *imgp, u_long stack)
 	tf->srr0 = entry_desc[0] + imgp->reloc_base;
 	tf->fixreg[2] = entry_desc[1] + imgp->reloc_base;
 	tf->fixreg[11] = entry_desc[2] + imgp->reloc_base;
-	tf->srr1 = PSL_SF | PSL_MBO | PSL_USERSET | PSL_FE_DFLT;
+	tf->srr1 = PSL_SF | PSL_USERSET | PSL_FE_DFLT;
 	#else
 	tf->srr0 = imgp->entry_addr;
-	tf->srr1 = PSL_MBO | PSL_USERSET | PSL_FE_DFLT;
+	tf->srr1 = PSL_USERSET | PSL_FE_DFLT;
 	#endif
 	td->td_pcb->pcb_flags = 0;
 }
@@ -641,12 +644,14 @@ set_dbregs(struct thread *td, struct dbreg *dbregs)
 int
 set_fpregs(struct thread *td, struct fpreg *fpregs)
 {
+#ifdef AIM
 	struct pcb *pcb;
 
 	pcb = td->td_pcb;
 	if ((pcb->pcb_flags & PCB_FPU) == 0)
 		enable_fpu(td);
 	memcpy(&pcb->pcb_fpu, fpregs, sizeof(struct fpreg));
+#endif
 
 	return (0);
 }

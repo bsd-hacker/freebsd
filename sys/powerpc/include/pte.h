@@ -190,7 +190,7 @@ extern u_int dsisr(void);
  */
 #define PTBL_SHIFT	PAGE_SHIFT
 #define PTBL_SIZE	PAGE_SIZE		/* va range mapped by ptbl entry */
-#define PTBL_MASK	((PDIR_SIZE - 1) & ~PAGE_MASK)
+#define PTBL_MASK	((PDIR_SIZE - 1) & ~((1 << PAGE_SHIFT) - 1))
 #define PTBL_NENTRIES	1024			/* number of pages mapped by ptbl */
 
 /* Returns ptbl entry number for given va */

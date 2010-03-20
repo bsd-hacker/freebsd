@@ -209,7 +209,7 @@ cpu_e500_startup(void *dummy)
 		for (indx = 0; phys_avail[indx + 1] != 0; indx += 2) {
 			size = phys_avail[indx + 1] - phys_avail[indx];
 
-			printf("0x%08x - 0x%08x, %d bytes (%d pages)\n",
+			printf("0x%08x - 0x%08x, %d bytes (%ld pages)\n",
 			    phys_avail[indx], phys_avail[indx + 1] - 1,
 			    size, size / PAGE_SIZE);
 		}
@@ -507,24 +507,6 @@ cpu_pcpu_init(struct pcpu *pcpu, int cpuid, size_t sz)
 #endif
 }
 
-int
-fill_regs(struct thread *td, struct reg *regs)
-{
-	struct trapframe *tf;
-
-	tf = td->td_frame;
-	memcpy(regs, tf, sizeof(struct reg));
-
-	return (0);
-}
-
-int
-fill_fpregs(struct thread *td, struct fpreg *fpregs)
-{
-
-	return (0);
-}
-
 /*
  * Flush the D-cache for non-DMA I/O so that the I-cache can
  * be made coherent later.
@@ -533,106 +515,6 @@ void
 cpu_flush_dcache(void *ptr, size_t len)
 {
 	/* TBD */
-}
-
-/*
- * Construct a PCB from a trapframe. This is called from kdb_trap() where
- * we want to start a backtrace from the function that caused us to enter
- * the debugger. We have the context in the trapframe, but base the trace
- * on the PCB. The PCB doesn't have to be perfect, as long as it contains
- * enough for a backtrace.
- */
-void
-makectx(struct trapframe *tf, struct pcb *pcb)
-{
-
-	pcb->pcb_lr = tf->srr0;
-	pcb->pcb_sp = tf->fixreg[1];
-}
-
-/*
- * get_mcontext/sendsig helper routine that doesn't touch the
- * proc lock.
- */
-static int
-grab_mcontext(struct thread *td, mcontext_t *mcp, int flags)
-{
-	struct pcb *pcb;
-
-	pcb = td->td_pcb;
-	memset(mcp, 0, sizeof(mcontext_t));
-
-	mcp->mc_vers = _MC_VERSION;
-	mcp->mc_flags = 0;
-	memcpy(&mcp->mc_frame, td->td_frame, sizeof(struct trapframe));
-	if (flags & GET_MC_CLEAR_RET) {
-		mcp->mc_gpr[3] = 0;
-		mcp->mc_gpr[4] = 0;
-	}
-
-	/* XXX Altivec context ? */
-
-	mcp->mc_len = sizeof(*mcp);
-	return (0);
-}
-
-int
-get_mcontext(struct thread *td, mcontext_t *mcp, int flags)
-{
-	int error;
-
-	error = grab_mcontext(td, mcp, flags);
-	if (error == 0) {
-		PROC_LOCK(curthread->td_proc);
-		mcp->mc_onstack = sigonstack(td->td_frame->fixreg[1]);
-		PROC_UNLOCK(curthread->td_proc);
-	}
-
-	return (error);
-}
-
-int
-set_mcontext(struct thread *td, const mcontext_t *mcp)
-{
-	struct pcb *pcb;
-	struct trapframe *tf;
-
-	pcb = td->td_pcb;
-	tf = td->td_frame;
-
-	if (mcp->mc_vers != _MC_VERSION || mcp->mc_len != sizeof(*mcp))
-		return (EINVAL);
-
-	memcpy(tf, mcp->mc_frame, sizeof(mcp->mc_frame));
-
-	/* XXX Altivec context? */
-
-	return (0);
-}
-
-int
-sigreturn(struct thread *td, struct sigreturn_args *uap)
-{
-	ucontext_t uc;
-	int error;
-
-	CTR2(KTR_SIG, "sigreturn: td=%p ucp=%p", td, uap->sigcntxp);
-
-	if (copyin(uap->sigcntxp, &uc, sizeof(uc)) != 0) {
-		CTR1(KTR_SIG, "sigreturn: efault td=%p", td);
-		return (EFAULT);
-	}
-
-	error = set_mcontext(td, &uc.uc_mcontext);
-	if (error != 0)
-		return (error);
-
-	kern_sigprocmask(td, SIG_SETMASK, &uc.uc_sigmask, NULL, 0);
-
-	CTR3(KTR_SIG, "sigreturn: return td=%p pc=%#x sp=%#x",
-	    td, uc.uc_mcontext.mc_srr0, uc.uc_mcontext.mc_gpr[1]);
-
-	return (EJUSTRETURN);
 }
 
 #ifdef COMPAT_FREEBSD4
@@ -718,39 +600,6 @@ cpu_halt(void)
 }
 
 int
-set_regs(struct thread *td, struct reg *regs)
-{
-	struct trapframe *tf;
-
-	tf = td->td_frame;
-	memcpy(tf, regs, sizeof(struct reg));
-	return (0);
-}
-
-int
-fill_dbregs(struct thread *td, struct dbreg *dbregs)
-{
-
-	/* No debug registers on PowerPC */
-	return (ENOSYS);
-}
-
-int
-set_dbregs(struct thread *td, struct dbreg *dbregs)
-{
-
-	/* No debug registers on PowerPC */
-	return (ENOSYS);
-}
-
-int
-set_fpregs(struct thread *td, struct fpreg *fpregs)
-{
-
-	return (0);
-}
-
-int
 ptrace_set_pc(struct thread *td, unsigned long addr)
 {
 	struct trapframe *tf;
@@ -801,124 +650,6 @@ kdb_cpu_set_singlestep(void)
 	r = mfspr(SPR_DBCR0);
 	mtspr(SPR_DBCR0, r | DBCR0_IC | DBCR0_IDM);
 	kdb_frame->srr1 |= PSL_DE;
-}
-
-void
-sendsig(sig_t catcher, ksiginfo_t *ksi, sigset_t *mask)
-{
-	struct trapframe *tf;
-	struct sigframe *sfp;
-	struct sigacts *psp;
-	struct sigframe sf;
-	struct thread *td;
-	struct proc *p;
-	int oonstack, rndfsize;
-	int sig, code;
-
-	td = curthread;
-	p = td->td_proc;
-	PROC_LOCK_ASSERT(p, MA_OWNED);
-	sig = ksi->ksi_signo;
-	code = ksi->ksi_code;
-	psp = p->p_sigacts;
-	mtx_assert(&psp->ps_mtx, MA_OWNED);
-	tf = td->td_frame;
-	oonstack = sigonstack(tf->fixreg[1]);
-
-	rndfsize = ((sizeof(sf) + 15) / 16) * 16;
-
-	CTR4(KTR_SIG, "sendsig: td=%p (%s) catcher=%p sig=%d", td, p->p_comm,
-	    catcher, sig);
-
-	/*
-	 * Save user context
-	 */
-	memset(&sf, 0, sizeof(sf));
-	grab_mcontext(td, &sf.sf_uc.uc_mcontext, 0);
-	sf.sf_uc.uc_sigmask = *mask;
-	sf.sf_uc.uc_stack = td->td_sigstk;
-	sf.sf_uc.uc_stack.ss_flags = (td->td_pflags & TDP_ALTSTACK)
-		? ((oonstack) ? SS_ONSTACK : 0) : SS_DISABLE;
-
-	sf.sf_uc.uc_mcontext.mc_onstack = (oonstack) ? 1 : 0;
-
-	/*
-	 * Allocate and validate space for the signal handler context.
-	 */
-	if ((td->td_pflags & TDP_ALTSTACK) != 0 && !oonstack &&
-	    SIGISMEMBER(psp->ps_sigonstack, sig)) {
-		sfp = (struct sigframe *)((caddr_t)td->td_sigstk.ss_sp +
-		    td->td_sigstk.ss_size - rndfsize);
-	} else {
-		sfp = (struct sigframe *)(tf->fixreg[1] - rndfsize);
-	}
-
-	/*
-	 * Translate the signal if appropriate (Linux emu ?)
-	 */
-	if (p->p_sysent->sv_sigtbl && sig <= p->p_sysent->sv_sigsize)
-		sig = p->p_sysent->sv_sigtbl[_SIG_IDX(sig)];
-
-	/*
-	 * Save the floating-point state, if necessary, then copy it.
-	 */
-	/* XXX */
-
-	/*
-	 * Set up the registers to return to sigcode.
-	 *
-	 *   r1/sp - sigframe ptr
-	 *   lr    - sig function, dispatched to by blrl in trampoline
-	 *   r3    - sig number
-	 *   r4    - SIGINFO ? &siginfo : exception code
-	 *   r5    - user context
-	 *   srr0  - trampoline function addr
-	 */
-	tf->lr = (register_t)catcher;
-	tf->fixreg[1] = (register_t)sfp;
-	tf->fixreg[FIRSTARG] = sig;
-	tf->fixreg[FIRSTARG+2] = (register_t)&sfp->sf_uc;
-	if (SIGISMEMBER(psp->ps_siginfo, sig)) {
-		/*
-		 * Signal handler installed with SA_SIGINFO.
-		 */
-		tf->fixreg[FIRSTARG+1] = (register_t)&sfp->sf_si;
-
-		/*
-		 * Fill siginfo structure.
-		 */
-		sf.sf_si = ksi->ksi_info;
-		sf.sf_si.si_signo = sig;
-		sf.sf_si.si_addr = (void *) ((tf->exc == EXC_DSI) ?
-		    tf->cpu.booke.dear : tf->srr0);
-	} else {
-		/* Old FreeBSD-style arguments. */
-		tf->fixreg[FIRSTARG+1] = code;
-		tf->fixreg[FIRSTARG+3] = (tf->exc == EXC_DSI) ?
-		    tf->cpu.booke.dear : tf->srr0;
-	}
-	mtx_unlock(&psp->ps_mtx);
-	PROC_UNLOCK(p);
-
-	tf->srr0 = (register_t)(PS_STRINGS - *(p->p_sysent->sv_szsigcode));
-
-	/*
-	 * copy the frame out to userland.
-	 */
-	if (copyout((caddr_t)&sf, (caddr_t)sfp, sizeof(sf)) != 0) {
-		/*
-		 * Process has trashed its stack. Kill it.
-		 */
-		CTR2(KTR_SIG, "sendsig: sigexit td=%p sfp=%p", td, sfp);
-		PROC_LOCK(p);
-		sigexit(td, SIGILL);
-	}
-
-	CTR3(KTR_SIG, "sendsig: return td=%p pc=%#x sp=%#x", td,
-	    tf->srr0, tf->fixreg[1]);
-
-	PROC_LOCK(p);
-	mtx_lock(&psp->ps_mtx);
 }
 
 void
