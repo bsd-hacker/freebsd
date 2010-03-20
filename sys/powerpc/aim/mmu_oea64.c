@@ -2607,7 +2607,7 @@ moea64_pvo_to_pte(const struct pvo_entry *pvo, int pteidx)
 		}
 
 		if (((pt->pte_lo ^ pvo->pvo_pte.lpte.pte_lo) & 
-		    ~(LPTE_CHG|LPTE_REF)) != 0) {
+		    ~(LPTE_M|LPTE_CHG|LPTE_REF)) != 0) {
 			panic("moea64_pvo_to_pte: pvo %p pte does not match "
 			    "pte %p in moea64_pteg_table difference is %#x", 
 			    pvo, pt,
