@@ -60,8 +60,6 @@
 #define PSL_DS		0x00000010	/* Data address space */
 #define PSL_PMM		0x00000004	/* Performance monitor mark */
 
-#define PSL_PMM		0x00000004	/* Performance monitor mark */
-
 #define PSL_FE_DFLT	0x00000000	/* default == none */
 
 /* Initial kernel MSR, use IS=1 ad DS=1. */
