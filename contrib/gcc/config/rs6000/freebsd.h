@@ -237,3 +237,9 @@
    are compatible. */
 #define OS_MISSING_POWERPC64 !TARGET_64BIT
 
+/* Function profiling bits */
+#undef  RS6000_MCOUNT
+#define RS6000_MCOUNT ((TARGET_64BIT) ? "._mcount" : "_mcount")
+#define PROFILE_HOOK(LABEL) \
+  do { if (TARGET_64BIT) output_profile_hook (LABEL); } while (0)
+

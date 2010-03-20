@@ -76,10 +76,47 @@ typedef __ptrdiff_t	fptrdiff_t;
  */
 
 #ifdef __powerpc64__
-/* XXX not implemented */
-
-#define MCOUNT int _mcount(void) {return (0);}
-
+#define	MCOUNT					\
+__asm(	"	.text				\n" \
+	"	.align	2			\n" \
+	"	.globl	_mcount			\n" \
+	"	.section \".opd\",\"aw\"	\n" \
+	"	.align	3			\n" \
+	"_mcount:				\n" \
+	"	.quad ._mcount,.TOC.@tocbase,0	\n" \
+	"	.previous			\n" \
+	"	.align	4			\n" \
+	"	.globl	._mcount		\n" \
+	"	.type	._mcount,@function	\n" \
+	"._mcount:				\n" \
+	"	stdu	%r1,-(288+120)(%r1)	\n" \
+	"	std	%r3,48(%r1)		\n" \
+	"	std	%r4,56(%r1)		\n" \
+	"	std	%r5,64(%r1)		\n" \
+	"	std	%r6,72(%r1)		\n" \
+	"	std	%r7,80(%r1)		\n" \
+	"	std	%r8,88(%r1)		\n" \
+	"	std	%r9,96(%r1)		\n" \
+	"	std	%r10,104(%r1)		\n" \
+	"	mflr	%r4			\n" \
+	"	std	%r4,112(%r1)		\n" \
+	"	ld	%r3,0(%r1)		\n" \
+	"	ld	%r3,0(%r3)		\n" \
+	"	ld	%r3,16(%r3)		\n" \
+	"	bl	.__mcount		\n" \
+	"	nop				\n" \
+	"	ld	%r4,112(%r1)		\n" \
+	"	mtlr	%r4			\n" \
+	"	ld	%r3,48(%r1)		\n" \
+	"	ld	%r4,56(%r1)		\n" \
+	"	ld	%r5,64(%r1)		\n" \
+	"	ld	%r6,72(%r1)		\n" \
+	"	ld	%r7,80(%r1)		\n" \
+	"	ld	%r8,88(%r1)		\n" \
+	"	ld	%r9,96(%r1)		\n" \
+	"	ld	%r10,104(%r1)		\n" \
+	"	addi	%r1,%r1,(288+120)	\n" \
+	"	blr				\n");
 #else
 
 #ifdef PIC
