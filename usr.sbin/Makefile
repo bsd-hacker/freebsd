@@ -503,7 +503,7 @@ _mount_smbfs=	mount_smbfs
 _zzz=		zzz
 .endif
 
-.if ${MACHINE_ARCH} == "powerpc"
+.if ${MACHINE_ARCH} == "powerpc" || ${MACHINE_ARCH} == "powerpc64"
 _mount_smbfs=	mount_smbfs
 _nvram=		nvram
 _ofwdump=	ofwdump
