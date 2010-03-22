@@ -244,20 +244,9 @@ SlowFault:
  *
  *----------------------------------------------------------------------------
  */
-#if defined(ISA_MIPS32)
-#define	STORE	sw	/* 32 bit mode regsave instruction */
-#define	LOAD	lw	/* 32 bit mode regload instruction */
-#define	RSIZE	4	/* 32 bit mode register size */
-#elif defined(ISA_MIPS64)
-#define	STORE	sd	/* 64 bit mode regsave instruction */
-#define	LOAD	ld	/* 64 bit mode regload instruction */
-#define	RSIZE	8	/* 64 bit mode register size */
-#else
-#error "Please write code for this isa."	
-#endif
 
 #define	SAVE_REG(reg, offs, base) \
-	STORE	reg, STAND_ARG_SIZE + (RSIZE * offs) (base)
+	REG_S	reg, CALLFRAME_SIZ + (SZREG * offs) (base)
 
 #ifdef TARGET_OCTEON
 #define CLEAR_STATUS \
@@ -332,11 +321,11 @@ SlowFault:
 	PTR_ADDU v0, sp, KERN_EXC_FRAME_SIZE ;\
 	SAVE_REG(v0, SP, sp)		;\
 	CLEAR_STATUS			;\
-	PTR_ADDU a0, sp, STAND_ARG_SIZE	;\
+	PTR_ADDU a0, sp, CALLFRAME_SIZ	;\
 	ITLBNOPFIX
 
 #define	RESTORE_REG(reg, offs, base) \
-	LOAD	reg, STAND_ARG_SIZE + (RSIZE * offs) (base)
+	REG_L	reg, CALLFRAME_SIZ + (SZREG * offs) (base)
 
 #define	RESTORE_CPU \
 	mtc0	zero,COP_0_STATUS_REG	;\
@@ -384,13 +373,13 @@ SlowFault:
  * the status register and the multiply lo and high registers.
  * In addition, we set this up for linkage conventions.
  */
-#define	KERN_REG_SIZE		(NUMSAVEREGS * RSIZE)
-#define	KERN_EXC_FRAME_SIZE	(STAND_FRAME_SIZE + KERN_REG_SIZE + 16)
+#define	KERN_REG_SIZE		(NUMSAVEREGS * SZREG)
+#define	KERN_EXC_FRAME_SIZE	(CALLFRAME_SIZ + KERN_REG_SIZE + 16)
 
 NNON_LEAF(MipsKernGenException, KERN_EXC_FRAME_SIZE, ra)
 	.set	noat
 	subu	sp, sp, KERN_EXC_FRAME_SIZE
-	.mask	0x80000000, (STAND_RA_OFFSET - KERN_EXC_FRAME_SIZE)
+	.mask	0x80000000, (CALLFRAME_RA - KERN_EXC_FRAME_SIZE)
 /*
  *  Save CPU state, building 'frame'.
  */
@@ -401,7 +390,7 @@ NNON_LEAF(MipsKernGenException, KERN_EXC_FRAME_SIZE, ra)
 	PTR_LA	gp, _C_LABEL(_gp)
 	PTR_LA	k0, _C_LABEL(trap)
 	jalr	k0
-	sw	a3, STAND_RA_OFFSET + KERN_REG_SIZE(sp)		# for debugging
+	sw	a3, CALLFRAME_RA + KERN_REG_SIZE(sp)		# for debugging
 
 	/*
 	 * Update interrupt mask in saved status register
@@ -424,10 +413,10 @@ END(MipsKernGenException)
 
 
 #define	SAVE_U_PCB_REG(reg, offs, base) \
-	STORE	reg, U_PCB_REGS + (RSIZE * offs) (base)
+	REG_S	reg, U_PCB_REGS + (SZREG * offs) (base)
 
 #define	RESTORE_U_PCB_REG(reg, offs, base) \
-	LOAD	reg, U_PCB_REGS + (RSIZE * offs) (base)
+	REG_L	reg, U_PCB_REGS + (SZREG * offs) (base)
 
 /*----------------------------------------------------------------------------
  *
@@ -443,9 +432,9 @@ END(MipsKernGenException)
  *
  *----------------------------------------------------------------------------
  */
-NNON_LEAF(MipsUserGenException, STAND_FRAME_SIZE, ra)
+NNON_LEAF(MipsUserGenException, CALLFRAME_SIZ, ra)
 	.set	noat
-	.mask	0x80000000, (STAND_RA_OFFSET - STAND_FRAME_SIZE)
+	.mask	0x80000000, (CALLFRAME_RA - CALLFRAME_SIZ)
 /*
  * Save all of the registers except for the kernel temporaries in u.u_pcb.
  */
@@ -486,7 +475,7 @@ NNON_LEAF(MipsUserGenException, STAND_FRAME_SIZE, ra)
 	SAVE_U_PCB_REG(gp, GP, k1)
 	SAVE_U_PCB_REG(sp, SP, k1)
 	SAVE_U_PCB_REG(s8, S8, k1)
-	subu	sp, k1, STAND_FRAME_SIZE	 # switch to kernel SP
+	subu	sp, k1, CALLFRAME_SIZ	 # switch to kernel SP
 	SAVE_U_PCB_REG(ra, RA, k1)
 	SAVE_U_PCB_REG(v0, MULLO, k1)
 	SAVE_U_PCB_REG(v1, MULHI, k1)
@@ -494,7 +483,7 @@ NNON_LEAF(MipsUserGenException, STAND_FRAME_SIZE, ra)
 	SAVE_U_PCB_REG(a1, CAUSE, k1)
 	SAVE_U_PCB_REG(a2, BADVADDR, k1)
 	SAVE_U_PCB_REG(a3, PC, k1)
-	sw	a3, STAND_RA_OFFSET(sp)	# for debugging
+	sw	a3, CALLFRAME_RA(sp)	# for debugging
 	PTR_LA	gp, _C_LABEL(_gp)	# switch to kernel GP
 # Turn off fpu and enter kernel mode
 	and	t0, a0, ~(SR_COP_1_BIT | SR_EXL | SR_KSU_MASK | SR_INT_ENAB)
@@ -611,7 +600,7 @@ END(MipsUserGenException)
 NNON_LEAF(MipsKernIntr, KERN_EXC_FRAME_SIZE, ra)
 	.set	noat
 	subu	sp, sp, KERN_EXC_FRAME_SIZE
-	.mask	0x80000000, (STAND_RA_OFFSET - KERN_EXC_FRAME_SIZE)
+	.mask	0x80000000, (CALLFRAME_RA - KERN_EXC_FRAME_SIZE)
 /*
  * Save the relevant kernel registers onto the stack.
  */
@@ -621,10 +610,10 @@ NNON_LEAF(MipsKernIntr, KERN_EXC_FRAME_SIZE, ra)
  * Call the interrupt handler.
  */
 	PTR_LA	gp, _C_LABEL(_gp)
-	PTR_ADDU a0, sp, STAND_ARG_SIZE
+	PTR_ADDU a0, sp, CALLFRAME_SIZ
 	PTR_LA	k0, _C_LABEL(cpu_intr)
 	jalr	k0
-	sw	a3, STAND_RA_OFFSET + KERN_REG_SIZE(sp)
+	sw	a3, CALLFRAME_RA + KERN_REG_SIZE(sp)
 	/* Why no AST processing here? */
 
 	/*
@@ -642,7 +631,7 @@ NNON_LEAF(MipsKernIntr, KERN_EXC_FRAME_SIZE, ra)
 /*
  * Restore registers and return from the interrupt.
  */
-	lw	v0, STAND_RA_OFFSET + KERN_REG_SIZE(sp)
+	lw	v0, CALLFRAME_RA + KERN_REG_SIZE(sp)
 	RESTORE_CPU
 	sync
 	eret
@@ -668,9 +657,9 @@ END(MipsKernIntr)
  *
  *----------------------------------------------------------------------------
  */
-NNON_LEAF(MipsUserIntr, STAND_FRAME_SIZE, ra)
+NNON_LEAF(MipsUserIntr, CALLFRAME_SIZ, ra)
 	.set	noat
-	.mask	0x80000000, (STAND_RA_OFFSET - STAND_FRAME_SIZE)
+	.mask	0x80000000, (CALLFRAME_RA - CALLFRAME_SIZ)
 /*
  * Save the relevant user registers into the u.u_pcb struct.
  * We don't need to save s0 - s8 because the compiler does it for us.
@@ -721,7 +710,7 @@ NNON_LEAF(MipsUserIntr, STAND_FRAME_SIZE, ra)
 	SAVE_U_PCB_REG(a0, SR, k1)
 	SAVE_U_PCB_REG(a1, CAUSE, k1)
 	SAVE_U_PCB_REG(a3, PC, k1)	# PC in a3, note used later!
-	subu	sp, k1, STAND_FRAME_SIZE  # switch to kernel SP
+	subu	sp, k1, CALLFRAME_SIZ  # switch to kernel SP
 	PTR_LA	gp, _C_LABEL(_gp)	# switch to kernel GP
 
 # Turn off fpu, disable interrupts, set kernel mode kernel mode, clear exception level.
@@ -737,7 +726,7 @@ NNON_LEAF(MipsUserIntr, STAND_FRAME_SIZE, ra)
  */
 	PTR_LA	k0, _C_LABEL(cpu_intr)
 	jalr	k0
-	sw	a3, STAND_RA_OFFSET(sp)	# for debugging
+	sw	a3, CALLFRAME_RA(sp)	# for debugging
 
 /*
  * Enable interrupts before doing ast().
@@ -1132,11 +1121,11 @@ END(MipsTLBMissException)
  *
  *----------------------------------------------------------------------------
  */
-NON_LEAF(MipsFPTrap, STAND_FRAME_SIZE, ra)
-	subu	sp, sp, STAND_FRAME_SIZE
+NON_LEAF(MipsFPTrap, CALLFRAME_SIZ, ra)
+	subu	sp, sp, CALLFRAME_SIZ
 	mfc0	t0, COP_0_STATUS_REG
-	sw	ra, STAND_RA_OFFSET(sp)
-	.mask	0x80000000, (STAND_RA_OFFSET - STAND_FRAME_SIZE)
+	sw	ra, CALLFRAME_RA(sp)
+	.mask	0x80000000, (CALLFRAME_RA - CALLFRAME_SIZ)
 
 	or	t1, t0, SR_COP_1_BIT
 	mtc0	t1, COP_0_STATUS_REG
@@ -1157,7 +1146,7 @@ NON_LEAF(MipsFPTrap, STAND_FRAME_SIZE, ra)
  * The instruction is in the branch delay slot so the branch will have to
  * be emulated to get the resulting PC.
  */
-	sw	a2, STAND_FRAME_SIZE + 8(sp)
+	sw	a2, CALLFRAME_SIZ + 8(sp)
 	GET_CPU_PCPU(a0)
 #mips64 unsafe?
 	lw	a0, PC_CURPCB(a0)
@@ -1171,7 +1160,7 @@ NON_LEAF(MipsFPTrap, STAND_FRAME_SIZE, ra)
  * Now load the floating-point instruction in the branch delay slot
  * to be emulated.
  */
-	lw	a2, STAND_FRAME_SIZE + 8(sp)	# restore EXC pc
+	lw	a2, CALLFRAME_SIZ + 8(sp)	# restore EXC pc
 	b	2f
 	lw	a0, 4(a2)			# a0 = coproc instruction
 /*
@@ -1220,12 +1209,12 @@ NON_LEAF(MipsFPTrap, STAND_FRAME_SIZE, ra)
  */
 FPReturn:
 	mfc0	t0, COP_0_STATUS_REG
-	lw	ra, STAND_RA_OFFSET(sp)
+	lw	ra, CALLFRAME_RA(sp)
 	and	t0, t0, ~SR_COP_1_BIT
 	mtc0	t0, COP_0_STATUS_REG
 	ITLBNOPFIX
 	j	ra
-	PTR_ADDU sp, sp, STAND_FRAME_SIZE
+	PTR_ADDU sp, sp, CALLFRAME_SIZ
 END(MipsFPTrap)
 
 /*

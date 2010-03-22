@@ -102,8 +102,6 @@ __FBSDID("$FreeBSD$");
 int trap_debug = 1;
 #endif
 
-extern unsigned onfault_table[];
-
 static void log_illegal_instruction(const char *, struct trapframe *);
 static void log_bad_page_fault(char *, struct trapframe *, int);
 static void log_frame_dump(struct trapframe *frame);
@@ -267,6 +265,7 @@ SYSCTL_INT(_vm, OID_AUTO, allow_unaligned_acc, CTLFLAG_RW,
 static int emulate_unaligned_access(struct trapframe *frame);
 
 extern char *syscallnames[];
+extern void fswintrberr(void); /* XXX */
 
 /*
  * Handle an exception.
@@ -291,6 +290,7 @@ trap(struct trapframe *trapframe)
 	ksiginfo_t ksi;
 	char *msg = NULL;
 	intptr_t addr = 0;
+	register_t pc;
 
 	trapdebug_enter(trapframe, 0);
 	
@@ -333,9 +333,9 @@ trap(struct trapframe *trapframe)
 		printf("cpuid = %d\n", PCPU_GET(cpuid));
 #endif
 		MachTLBGetPID(pid);
-		printf("badaddr = 0x%0x, pc = 0x%0x, ra = 0x%0x, sp = 0x%0x, sr = 0x%x, pid = %d, ASID = 0x%x\n",
-		    trapframe->badvaddr, trapframe->pc, trapframe->ra,
-		    trapframe->sp, trapframe->sr,
+		printf("badaddr = %#jx, pc = %#jx, ra = %#jx, sp = %#jx, sr = %jx, pid = %d, ASID = %u\n",
+		    (intmax_t)trapframe->badvaddr, (intmax_t)trapframe->pc, (intmax_t)trapframe->ra,
+		    (intmax_t)trapframe->sp, (intmax_t)trapframe->sr,
 		    (curproc ? curproc->p_pid : -1), pid);
 
 		switch (type & ~T_USER) {
@@ -476,22 +476,29 @@ trap(struct trapframe *trapframe)
 			rv = vm_fault(kernel_map, va, ftype, VM_FAULT_NORMAL);
 			if (rv == KERN_SUCCESS)
 				return (trapframe->pc);
-			if ((i = td->td_pcb->pcb_onfault) != 0) {
-				td->td_pcb->pcb_onfault = 0;
-				return (onfault_table[i]);
+			if (td->td_pcb->pcb_onfault != NULL) {
+				pc = (register_t)(intptr_t)td->td_pcb->pcb_onfault;
+				td->td_pcb->pcb_onfault = NULL;
+				return (pc);
 			}
 			goto err;
 		}
-		/*
+
+                /*
 		 * It is an error for the kernel to access user space except
 		 * through the copyin/copyout routines.
 		 */
-		if ((i = td->td_pcb->pcb_onfault) == 0)
+		if (td->td_pcb->pcb_onfault == NULL)
 			goto err;
+
 		/* check for fuswintr() or suswintr() getting a page fault */
-		if (i == 4) {
-			return (onfault_table[i]);
+		/* XXX There must be a nicer way to do this.  */
+		if (td->td_pcb->pcb_onfault == fswintrberr) {
+			pc = (register_t)(intptr_t)td->td_pcb->pcb_onfault;
+			td->td_pcb->pcb_onfault = NULL;
+			return (pc);
 		}
+
 		goto dofault;
 
 	case T_TLB_LD_MISS + T_USER:
@@ -545,9 +552,10 @@ dofault:
 			}
 	nogo:
 			if (!usermode) {
-				if ((i = td->td_pcb->pcb_onfault) != 0) {
-					td->td_pcb->pcb_onfault = 0;
-					return (onfault_table[i]);
+				if (td->td_pcb->pcb_onfault != NULL) {
+					pc = (register_t)(intptr_t)td->td_pcb->pcb_onfault;
+					td->td_pcb->pcb_onfault = NULL;
+					return (pc);
 				}
 				goto err;
 			}
@@ -937,8 +945,8 @@ dofault:
 	case T_ADDR_ERR_LD:	/* misaligned access */
 	case T_ADDR_ERR_ST:	/* misaligned access */
 #ifdef TRAP_DEBUG
-		printf("+++ ADDR_ERR: type = %d, badvaddr = %x\n", type,
-		    trapframe->badvaddr);
+		printf("+++ ADDR_ERR: type = %d, badvaddr = %#jx\n", type,
+		    (intmax_t)trapframe->badvaddr);
 #endif
 		/* Only allow emulation on a user address */
 		if (allow_unaligned_acc &&
@@ -970,10 +978,12 @@ dofault:
 		/* FALLTHROUGH */
 
 	case T_BUS_ERR_LD_ST:	/* BERR asserted to cpu */
-		if ((i = td->td_pcb->pcb_onfault) != 0) {
-			td->td_pcb->pcb_onfault = 0;
-			return (onfault_table[i]);
+		if (td->td_pcb->pcb_onfault != NULL) {
+			pc = (register_t)(intptr_t)td->td_pcb->pcb_onfault;
+			td->td_pcb->pcb_onfault = NULL;
+			return (pc);
 		}
+
 		/* FALLTHROUGH */
 
 	default:
@@ -995,9 +1005,9 @@ err:
 			printf("kernel mode)\n");
 
 #ifdef TRAP_DEBUG
-		printf("badvaddr = %x, pc = %x, ra = %x, sr = 0x%x\n",
-		       trapframe->badvaddr, trapframe->pc, trapframe->ra,
-		       trapframe->sr);
+		printf("badvaddr = %#jx, pc = %#jx, ra = %#jx, sr = %#jxx\n",
+		       (intmax_t)trapframe->badvaddr, (intmax_t)trapframe->pc, (intmax_t)trapframe->ra,
+		       (intmax_t)trapframe->sr);
 #endif
 
 #ifdef KDB
@@ -1213,39 +1223,39 @@ static void
 log_frame_dump(struct trapframe *frame)
 {
 	log(LOG_ERR, "Trapframe Register Dump:\n");
-	log(LOG_ERR, "\tzero: %p\tat: %p\tv0: %p\tv1: %p\n",
-	    (void *)(intptr_t)0, (void *)(intptr_t)frame->ast, (void *)(intptr_t)frame->v0, (void *)(intptr_t)frame->v1);
+	log(LOG_ERR, "\tzero: %#jx\tat: %#jx\tv0: %#jx\tv1: %#jx\n",
+	    (intmax_t)0, (intmax_t)frame->ast, (intmax_t)frame->v0, (intmax_t)frame->v1);
 
-	log(LOG_ERR, "\ta0: %p\ta1: %p\ta2: %p\ta3: %p\n",
-	    (void *)(intptr_t)frame->a0, (void *)(intptr_t)frame->a1, (void *)(intptr_t)frame->a2, (void *)(intptr_t)frame->a3);
+	log(LOG_ERR, "\ta0: %#jx\ta1: %#jx\ta2: %#jx\ta3: %#jx\n",
+	    (intmax_t)frame->a0, (intmax_t)frame->a1, (intmax_t)frame->a2, (intmax_t)frame->a3);
 
-	log(LOG_ERR, "\tt0: %p\tt1: %p\tt2: %p\tt3: %p\n",
-	    (void *)(intptr_t)frame->t0, (void *)(intptr_t)frame->t1, (void *)(intptr_t)frame->t2, (void *)(intptr_t)frame->t3);
+	log(LOG_ERR, "\tt0: %#jx\tt1: %#jx\tt2: %#jx\tt3: %#jx\n",
+	    (intmax_t)frame->t0, (intmax_t)frame->t1, (intmax_t)frame->t2, (intmax_t)frame->t3);
 
-	log(LOG_ERR, "\tt4: %p\tt5: %p\tt6: %p\tt7: %p\n",
-	    (void *)(intptr_t)frame->t4, (void *)(intptr_t)frame->t5, (void *)(intptr_t)frame->t6, (void *)(intptr_t)frame->t7);
+	log(LOG_ERR, "\tt4: %#jx\tt5: %#jx\tt6: %#jx\tt7: %#jx\n",
+	    (intmax_t)frame->t4, (intmax_t)frame->t5, (intmax_t)frame->t6, (intmax_t)frame->t7);
 
-	log(LOG_ERR, "\tt8: %p\tt9: %p\ts0: %p\ts1: %p\n",
-	    (void *)(intptr_t)frame->t8, (void *)(intptr_t)frame->t9, (void *)(intptr_t)frame->s0, (void *)(intptr_t)frame->s1);
+	log(LOG_ERR, "\tt8: %#jx\tt9: %#jx\ts0: %#jx\ts1: %#jx\n",
+	    (intmax_t)frame->t8, (intmax_t)frame->t9, (intmax_t)frame->s0, (intmax_t)frame->s1);
 
-	log(LOG_ERR, "\ts2: %p\ts3: %p\ts4: %p\ts5: %p\n",
-	    (void *)(intptr_t)frame->s2, (void *)(intptr_t)frame->s3, (void *)(intptr_t)frame->s4, (void *)(intptr_t)frame->s5);
+	log(LOG_ERR, "\ts2: %#jx\ts3: %#jx\ts4: %#jx\ts5: %#jx\n",
+	    (intmax_t)frame->s2, (intmax_t)frame->s3, (intmax_t)frame->s4, (intmax_t)frame->s5);
 
-	log(LOG_ERR, "\ts6: %p\ts7: %p\tk0: %p\tk1: %p\n",
-	    (void *)(intptr_t)frame->s6, (void *)(intptr_t)frame->s7, (void *)(intptr_t)frame->k0, (void *)(intptr_t)frame->k1);
+	log(LOG_ERR, "\ts6: %#jx\ts7: %#jx\tk0: %#jx\tk1: %#jx\n",
+	    (intmax_t)frame->s6, (intmax_t)frame->s7, (intmax_t)frame->k0, (intmax_t)frame->k1);
 
-	log(LOG_ERR, "\tgp: %p\tsp: %p\ts8: %p\tra: %p\n",
-	    (void *)(intptr_t)frame->gp, (void *)(intptr_t)frame->sp, (void *)(intptr_t)frame->s8, (void *)(intptr_t)frame->ra);
+	log(LOG_ERR, "\tgp: %#jx\tsp: %#jx\ts8: %#jx\tra: %#jx\n",
+	    (intmax_t)frame->gp, (intmax_t)frame->sp, (intmax_t)frame->s8, (intmax_t)frame->ra);
 
-	log(LOG_ERR, "\tsr: %p\tmullo: %p\tmulhi: %p\tbadvaddr: %p\n",
-	    (void *)(intptr_t)frame->sr, (void *)(intptr_t)frame->mullo, (void *)(intptr_t)frame->mulhi, (void *)(intptr_t)frame->badvaddr);
+	log(LOG_ERR, "\tsr: %#jx\tmullo: %#jx\tmulhi: %#jx\tbadvaddr: %#jx\n",
+	    (intmax_t)frame->sr, (intmax_t)frame->mullo, (intmax_t)frame->mulhi, (intmax_t)frame->badvaddr);
 
 #ifdef IC_REG
-	log(LOG_ERR, "\tcause: %p\tpc: %p\tic: %p\n",
-	    (void *)(intptr_t)frame->cause, (void *)(intptr_t)frame->pc, (void *)(intptr_t)frame->ic);
+	log(LOG_ERR, "\tcause: %#jx\tpc: %#jx\tic: %#jx\n",
+	    (intmax_t)frame->cause, (intmax_t)frame->pc, (intmax_t)frame->ic);
 #else
-	log(LOG_ERR, "\tcause: %p\tpc: %p\n",
-	    (void *)(intptr_t)frame->cause, (void *)(intptr_t)frame->pc);
+	log(LOG_ERR, "\tcause: %#jx\tpc: %#jx\n",
+	    (intmax_t)frame->cause, (intmax_t)frame->pc);
 #endif
 }
 
@@ -1254,39 +1264,39 @@ static void
 trap_frame_dump(struct trapframe *frame)
 {
 	printf("Trapframe Register Dump:\n");
-	printf("\tzero: %p\tat: %p\tv0: %p\tv1: %p\n",
-	    (void *)(intptr_t)0, (void *)(intptr_t)frame->ast, (void *)(intptr_t)frame->v0, (void *)(intptr_t)frame->v1);
+	printf("\tzero: %#jx\tat: %#jx\tv0: %#jx\tv1: %#jx\n",
+	    (intmax_t)0, (intmax_t)frame->ast, (intmax_t)frame->v0, (intmax_t)frame->v1);
 
-	printf("\ta0: %p\ta1: %p\ta2: %p\ta3: %p\n",
-	    (void *)(intptr_t)frame->a0, (void *)(intptr_t)frame->a1, (void *)(intptr_t)frame->a2, (void *)(intptr_t)frame->a3);
+	printf("\ta0: %#jx\ta1: %#jx\ta2: %#jx\ta3: %#jx\n",
+	    (intmax_t)frame->a0, (intmax_t)frame->a1, (intmax_t)frame->a2, (intmax_t)frame->a3);
 
-	printf("\tt0: %p\tt1: %p\tt2: %p\tt3: %p\n",
-	    (void *)(intptr_t)frame->t0, (void *)(intptr_t)frame->t1, (void *)(intptr_t)frame->t2, (void *)(intptr_t)frame->t3);
+	printf("\tt0: %#jx\tt1: %#jx\tt2: %#jx\tt3: %#jx\n",
+	    (intmax_t)frame->t0, (intmax_t)frame->t1, (intmax_t)frame->t2, (intmax_t)frame->t3);
 
-	printf("\tt4: %p\tt5: %p\tt6: %p\tt7: %p\n",
-	    (void *)(intptr_t)frame->t4, (void *)(intptr_t)frame->t5, (void *)(intptr_t)frame->t6, (void *)(intptr_t)frame->t7);
+	printf("\tt4: %#jx\tt5: %#jx\tt6: %#jx\tt7: %#jx\n",
+	    (intmax_t)frame->t4, (intmax_t)frame->t5, (intmax_t)frame->t6, (intmax_t)frame->t7);
 
-	printf("\tt8: %p\tt9: %p\ts0: %p\ts1: %p\n",
-	    (void *)(intptr_t)frame->t8, (void *)(intptr_t)frame->t9, (void *)(intptr_t)frame->s0, (void *)(intptr_t)frame->s1);
+	printf("\tt8: %#jx\tt9: %#jx\ts0: %#jx\ts1: %#jx\n",
+	    (intmax_t)frame->t8, (intmax_t)frame->t9, (intmax_t)frame->s0, (intmax_t)frame->s1);
 
-	printf("\ts2: %p\ts3: %p\ts4: %p\ts5: %p\n",
-	    (void *)(intptr_t)frame->s2, (void *)(intptr_t)frame->s3, (void *)(intptr_t)frame->s4, (void *)(intptr_t)frame->s5);
+	printf("\ts2: %#jx\ts3: %#jx\ts4: %#jx\ts5: %#jx\n",
+	    (intmax_t)frame->s2, (intmax_t)frame->s3, (intmax_t)frame->s4, (intmax_t)frame->s5);
 
-	printf("\ts6: %p\ts7: %p\tk0: %p\tk1: %p\n",
-	    (void *)(intptr_t)frame->s6, (void *)(intptr_t)frame->s7, (void *)(intptr_t)frame->k0, (void *)(intptr_t)frame->k1);
+	printf("\ts6: %#jx\ts7: %#jx\tk0: %#jx\tk1: %#jx\n",
+	    (intmax_t)frame->s6, (intmax_t)frame->s7, (intmax_t)frame->k0, (intmax_t)frame->k1);
 
-	printf("\tgp: %p\tsp: %p\ts8: %p\tra: %p\n",
-	    (void *)(intptr_t)frame->gp, (void *)(intptr_t)frame->sp, (void *)(intptr_t)frame->s8, (void *)(intptr_t)frame->ra);
+	printf("\tgp: %#jx\tsp: %#jx\ts8: %#jx\tra: %#jx\n",
+	    (intmax_t)frame->gp, (intmax_t)frame->sp, (intmax_t)frame->s8, (intmax_t)frame->ra);
 
-	printf("\tsr: %p\tmullo: %p\tmulhi: %p\tbadvaddr: %p\n",
-	    (void *)(intptr_t)frame->sr, (void *)(intptr_t)frame->mullo, (void *)(intptr_t)frame->mulhi, (void *)(intptr_t)frame->badvaddr);
+	printf("\tsr: %#jx\tmullo: %#jx\tmulhi: %#jx\tbadvaddr: %#jx\n",
+	    (intmax_t)frame->sr, (intmax_t)frame->mullo, (intmax_t)frame->mulhi, (intmax_t)frame->badvaddr);
 
 #ifdef IC_REG
-	printf("\tcause: %p\tpc: %p\tic: %p\n",
-	    (void *)(intptr_t)frame->cause, (void *)(intptr_t)frame->pc, (void *)(intptr_t)frame->ic);
+	printf("\tcause: %#jx\tpc: %#jx\tic: %#jx\n",
+	    (intmax_t)frame->cause, (intmax_t)frame->pc, (intmax_t)frame->ic);
 #else
-	printf("\tcause: %p\tpc: %p\n",
-	    (void *)(intptr_t)frame->cause, (void *)(intptr_t)frame->pc);
+	printf("\tcause: %#jx\tpc: %#jx\n",
+	    (intmax_t)frame->cause, (intmax_t)frame->pc);
 #endif
 }
 
@@ -1323,11 +1333,11 @@ log_illegal_instruction(const char *msg, struct trapframe *frame)
 	printf("cpuid = %d\n", PCPU_GET(cpuid));
 #endif
 	pc = frame->pc + (DELAYBRANCH(frame->cause) ? 4 : 0);
-	log(LOG_ERR, "%s: pid %d (%s), uid %d: pc %p ra %p\n",
+	log(LOG_ERR, "%s: pid %d (%s), uid %d: pc %#jx ra %#jx\n",
 	    msg, p->p_pid, p->p_comm,
 	    p->p_ucred ? p->p_ucred->cr_uid : -1,
-	    (void *)(intptr_t)pc,
-	    (void *)(intptr_t)frame->ra);
+	    (intmax_t)pc,
+	    (intmax_t)frame->ra);
 
 	/* log registers in trap frame */
 	log_frame_dump(frame);
@@ -1341,8 +1351,8 @@ log_illegal_instruction(const char *msg, struct trapframe *frame)
 	if (!(pc & 3) &&
 	    useracc((caddr_t)(intptr_t)pc, sizeof(int) * 4, VM_PROT_READ)) {
 		/* dump page table entry for faulting instruction */
-		log(LOG_ERR, "Page table info for pc address %p: pde = %p, pte = 0x%lx\n",
-		    (void *)(intptr_t)pc, *pdep, ptep ? *ptep : 0);
+		log(LOG_ERR, "Page table info for pc address %#jx: pde = %p, pte = 0x%lx\n",
+		    (intmax_t)pc, *pdep, ptep ? *ptep : 0);
 
 		addr = (unsigned int *)(intptr_t)pc;
 		log(LOG_ERR, "Dumping 4 words starting at pc address %p: \n",
@@ -1350,8 +1360,8 @@ log_illegal_instruction(const char *msg, struct trapframe *frame)
 		log(LOG_ERR, "%08x %08x %08x %08x\n",
 		    addr[0], addr[1], addr[2], addr[3]);
 	} else {
-		log(LOG_ERR, "pc address %p is inaccessible, pde = 0x%p, pte = 0x%lx\n",
-		    (void *)(intptr_t)pc, *pdep, ptep ? *ptep : 0);
+		log(LOG_ERR, "pc address %#jx is inaccessible, pde = 0x%p, pte = 0x%lx\n",
+		    (intmax_t)pc, *pdep, ptep ? *ptep : 0);
 	}
 }
 
@@ -1385,12 +1395,12 @@ log_bad_page_fault(char *msg, struct trapframe *frame, int trap_type)
 	}
 
 	pc = frame->pc + (DELAYBRANCH(frame->cause) ? 4 : 0);
-	log(LOG_ERR, "%s: pid %d (%s), uid %d: pc %p got a %s fault at %p\n",
+	log(LOG_ERR, "%s: pid %d (%s), uid %d: pc %#jx got a %s fault at %#jx\n",
 	    msg, p->p_pid, p->p_comm,
 	    p->p_ucred ? p->p_ucred->cr_uid : -1,
-	    (void *)(intptr_t)pc,
+	    (intmax_t)pc,
 	    read_or_write,
-	    (void *)(intptr_t)frame->badvaddr);
+	    (intmax_t)frame->badvaddr);
 
 	/* log registers in trap frame */
 	log_frame_dump(frame);
@@ -1405,8 +1415,8 @@ log_bad_page_fault(char *msg, struct trapframe *frame, int trap_type)
 	    (trap_type != T_BUS_ERR_IFETCH) &&
 	    useracc((caddr_t)(intptr_t)pc, sizeof(int) * 4, VM_PROT_READ)) {
 		/* dump page table entry for faulting instruction */
-		log(LOG_ERR, "Page table info for pc address %p: pde = %p, pte = 0x%lx\n",
-		    (void *)(intptr_t)pc, *pdep, ptep ? *ptep : 0);
+		log(LOG_ERR, "Page table info for pc address %#jx: pde = %p, pte = 0x%lx\n",
+		    (intmax_t)pc, *pdep, ptep ? *ptep : 0);
 
 		addr = (unsigned int *)(intptr_t)pc;
 		log(LOG_ERR, "Dumping 4 words starting at pc address %p: \n",
@@ -1414,8 +1424,8 @@ log_bad_page_fault(char *msg, struct trapframe *frame, int trap_type)
 		log(LOG_ERR, "%08x %08x %08x %08x\n",
 		    addr[0], addr[1], addr[2], addr[3]);
 	} else {
-		log(LOG_ERR, "pc address %p is inaccessible, pde = 0x%p, pte = 0x%lx\n",
-		    (void *)(intptr_t)pc, *pdep, ptep ? *ptep : 0);
+		log(LOG_ERR, "pc address %#jx is inaccessible, pde = 0x%p, pte = 0x%lx\n",
+		    (intmax_t)pc, *pdep, ptep ? *ptep : 0);
 	}
 	/*	panic("Bad trap");*/
 }
@@ -1524,9 +1534,9 @@ emulate_unaligned_access(struct trapframe *frame)
 			else
 				frame->pc += 4;
 
-			log(LOG_INFO, "Unaligned %s: pc=%p, badvaddr=%p\n",
-			    access_name[access_type - 1], (void *)(intptr_t)pc,
-			    (void *)(intptr_t)frame->badvaddr);
+			log(LOG_INFO, "Unaligned %s: pc=%#jx, badvaddr=%#jx\n",
+			    access_name[access_type - 1], (intmax_t)pc,
+			    (intmax_t)frame->badvaddr);
 		}
 	}
 	return access_type;

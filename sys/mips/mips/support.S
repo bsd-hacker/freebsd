@@ -70,47 +70,22 @@
  * Primitives
  */
 
-/*
- * This table is indexed by u.u_pcb.pcb_onfault in trap().
- * The reason for using this table rather than storing an address in
- * u.u_pcb.pcb_onfault is simply to make the code faster.
- */
-	.globl	onfault_table
-	.data
-	.align	3
-onfault_table:
-	.word	0			# invalid index number
-#define	BADERR		1
-	.word	baderr
-#define	COPYERR		2
-	.word	copyerr
-#define	FSWBERR		3
-	.word	fswberr
-#define	FSWINTRBERR	4
-	.word	fswintrberr
-#if defined(DDB) || defined(DEBUG)
-#define	DDBERR	5
-	.word	ddberr
-#else
-	.word	0
-#endif
-
 	.text
 
 /*
  * See if access to addr with a len type instruction causes a machine check.
- * len is length of access (1=byte, 2=short, 4=long)
+ * len is length of access (1=byte, 2=short, 4=int)
  *
  * badaddr(addr, len)
  *	char *addr;
  *	int len;
  */
 LEAF(badaddr)
-	li	v0, BADERR
+	PTR_LA	v0, baderr
 	GET_CPU_PCPU(v1)
-	lw	v1, PC_CURPCB(v1)
+	PTR_L	v1, PC_CURPCB(v1)
 	bne	a1, 1, 2f
-	sw	v0, U_PCB_ONFAULT(v1)
+	PTR_S	v0, U_PCB_ONFAULT(v1)
 	b	5f
 	lbu	v0, (a0)
 2:
@@ -121,7 +96,7 @@ LEAF(badaddr)
 4:
 	lw	v0, (a0)
 5:
-	sw	zero, U_PCB_ONFAULT(v1)
+	PTR_S	zero, U_PCB_ONFAULT(v1)
 	j	ra
 	move	v0, zero		# made it w/o errors
 baderr:
@@ -310,22 +285,22 @@ END(outsl)
  *		u_int maxlength;
  *		u_int *lencopied;
  */
-NON_LEAF(copyinstr, STAND_FRAME_SIZE, ra)
-	subu	sp, sp, STAND_FRAME_SIZE
-	.mask	0x80000000, (STAND_RA_OFFSET - STAND_FRAME_SIZE)
-	sw	ra, STAND_RA_OFFSET(sp)
+NON_LEAF(copyinstr, CALLFRAME_SIZ, ra)
+	PTR_SUBU	sp, sp, CALLFRAME_SIZ
+	.mask	0x80000000, (CALLFRAME_RA - CALLFRAME_SIZ)
+	PTR_LA	v0, copyerr
 	blt	a0, zero, _C_LABEL(copyerr)  # make sure address is in user space
-	li	v0, COPYERR
+	REG_S	ra, CALLFRAME_RA(sp)
 	GET_CPU_PCPU(v1)
-	lw	v1, PC_CURPCB(v1)
+	PTR_L	v1, PC_CURPCB(v1)
 	jal	_C_LABEL(copystr)
-	sw	v0, U_PCB_ONFAULT(v1)
-	lw	ra, STAND_RA_OFFSET(sp)
+	PTR_S	v0, U_PCB_ONFAULT(v1)
+	REG_L	ra, CALLFRAME_RA(sp)
 	GET_CPU_PCPU(v1)
-	lw	v1, PC_CURPCB(v1)
-	sw	zero, U_PCB_ONFAULT(v1)
+	PTR_L	v1, PC_CURPCB(v1)
+	PTR_S	zero, U_PCB_ONFAULT(v1)
 	j	ra
-	addu	sp, sp, STAND_FRAME_SIZE
+	PTR_ADDU	sp, sp, CALLFRAME_SIZ
 END(copyinstr)
 
 /*
@@ -338,22 +313,22 @@ END(copyinstr)
  *		u_int maxlength;
  *		u_int *lencopied;
  */
-NON_LEAF(copyoutstr, STAND_FRAME_SIZE, ra)
-	subu	sp, sp, STAND_FRAME_SIZE
-	.mask	0x80000000, (STAND_RA_OFFSET - STAND_FRAME_SIZE)
-	sw	ra, STAND_RA_OFFSET(sp)
+NON_LEAF(copyoutstr, CALLFRAME_SIZ, ra)
+	PTR_SUBU	sp, sp, CALLFRAME_SIZ
+	.mask	0x80000000, (CALLFRAME_RA - CALLFRAME_SIZ)
+	PTR_LA	v0, copyerr
 	blt	a1, zero, _C_LABEL(copyerr)  # make sure address is in user space
-	li	v0, COPYERR
+	REG_S	ra, CALLFRAME_RA(sp)
 	GET_CPU_PCPU(v1)
-	lw	v1, PC_CURPCB(v1)
+	PTR_L	v1, PC_CURPCB(v1)
 	jal	_C_LABEL(copystr)
-	sw	v0, U_PCB_ONFAULT(v1)
-	lw	ra, STAND_RA_OFFSET(sp)
+	PTR_S	v0, U_PCB_ONFAULT(v1)
+	REG_L	ra, CALLFRAME_RA(sp)
 	GET_CPU_PCPU(v1)
-	lw	v1, PC_CURPCB(v1)
-	sw	zero, U_PCB_ONFAULT(v1)
+	PTR_L	v1, PC_CURPCB(v1)
+	PTR_S	zero, U_PCB_ONFAULT(v1)
 	j	ra
-	addu	sp, sp, STAND_FRAME_SIZE
+	PTR_ADDU	sp, sp, CALLFRAME_SIZ
 END(copyoutstr)
 
 /*
@@ -363,21 +338,21 @@ END(copyoutstr)
  *		caddr_t *to;	(kernel destination address)
  *		unsigned len;
  */
-NON_LEAF(copyin, STAND_FRAME_SIZE, ra)
-	subu	sp, sp, STAND_FRAME_SIZE
-	.mask	0x80000000, (STAND_RA_OFFSET - STAND_FRAME_SIZE)
-	sw	ra, STAND_RA_OFFSET(sp)
+NON_LEAF(copyin, CALLFRAME_SIZ, ra)
+	PTR_SUBU	sp, sp, CALLFRAME_SIZ
+	.mask	0x80000000, (CALLFRAME_RA - CALLFRAME_SIZ)
+	PTR_LA	v0, copyerr
 	blt	a0, zero, _C_LABEL(copyerr)  # make sure address is in user space
-	li	v0, COPYERR
+	REG_S	ra, CALLFRAME_RA(sp)
 	GET_CPU_PCPU(v1)
-	lw	v1, PC_CURPCB(v1)
+	PTR_L	v1, PC_CURPCB(v1)
 	jal	_C_LABEL(bcopy)
-	sw	v0, U_PCB_ONFAULT(v1)
-	lw	ra, STAND_RA_OFFSET(sp)
+	PTR_S	v0, U_PCB_ONFAULT(v1)
+	REG_L	ra, CALLFRAME_RA(sp)
 	GET_CPU_PCPU(v1)
-	lw	v1, PC_CURPCB(v1)	 	# bcopy modified v1, so reload
-	sw	zero, U_PCB_ONFAULT(v1)
-	addu	sp, sp, STAND_FRAME_SIZE
+	PTR_L	v1, PC_CURPCB(v1)	 	# bcopy modified v1, so reload
+	PTR_S	zero, U_PCB_ONFAULT(v1)
+	PTR_ADDU	sp, sp, CALLFRAME_SIZ
 	j	ra
 	move	v0, zero
 END(copyin)
@@ -389,31 +364,28 @@ END(copyin)
  *		caddr_t *to;	(user destination address)
  *		unsigned len;
  */
-NON_LEAF(copyout, STAND_FRAME_SIZE, ra)
-	subu	sp, sp, STAND_FRAME_SIZE
-	.mask	0x80000000, (STAND_RA_OFFSET - STAND_FRAME_SIZE)
-	sw	ra, STAND_RA_OFFSET(sp)
+NON_LEAF(copyout, CALLFRAME_SIZ, ra)
+	PTR_SUBU	sp, sp, CALLFRAME_SIZ
+	.mask	0x80000000, (CALLFRAME_RA - CALLFRAME_SIZ)
+	PTR_LA	v0, copyerr
 	blt	a1, zero, _C_LABEL(copyerr) # make sure address is in user space
-	li	v0, COPYERR
+	REG_S	ra, CALLFRAME_RA(sp)
 	GET_CPU_PCPU(v1)
-	lw	v1, PC_CURPCB(v1)
+	PTR_L	v1, PC_CURPCB(v1)
 	jal	_C_LABEL(bcopy)
-	sw	v0, U_PCB_ONFAULT(v1)
-	lw	ra, STAND_RA_OFFSET(sp)
+	PTR_S	v0, U_PCB_ONFAULT(v1)
+	REG_L	ra, CALLFRAME_RA(sp)
 	GET_CPU_PCPU(v1)
-	lw	v1, PC_CURPCB(v1)		# bcopy modified v1, so reload
-	sw	zero, U_PCB_ONFAULT(v1)
-	addu	sp, sp, STAND_FRAME_SIZE
+	PTR_L	v1, PC_CURPCB(v1)	 	# bcopy modified v1, so reload
+	PTR_S	zero, U_PCB_ONFAULT(v1)
+	PTR_ADDU	sp, sp, CALLFRAME_SIZ
 	j	ra
 	move	v0, zero
 END(copyout)
 
 LEAF(copyerr)
-	lw	ra, STAND_RA_OFFSET(sp)
-	GET_CPU_PCPU(v1)
-	lw	v1, PC_CURPCB(v1)
-	sw	zero, U_PCB_ONFAULT(v1)
-	addu	sp, sp, STAND_FRAME_SIZE
+	REG_L	ra, CALLFRAME_RA(sp)
+	PTR_ADDU	sp, sp, CALLFRAME_SIZ
 	j	ra
 	li	v0, EFAULT			# return error
 END(copyerr)
@@ -427,51 +399,55 @@ END(copyerr)
 LEAF(fuword)
 ALEAF(fuword32)
 ALEAF(fuiword)
+	PTR_LA	v0, fswberr
 	blt	a0, zero, fswberr	# make sure address is in user space
-	li	v0, FSWBERR
+	nop
 	GET_CPU_PCPU(v1)
-	lw	v1, PC_CURPCB(v1)
-	sw	v0, U_PCB_ONFAULT(v1)
+	PTR_L	v1, PC_CURPCB(v1)
+	PTR_S	v0, U_PCB_ONFAULT(v1)
 	lw	v0, 0(a0)		# fetch word
 	j	ra
-	sw	zero, U_PCB_ONFAULT(v1)
+	PTR_S	zero, U_PCB_ONFAULT(v1)
 END(fuword)
 
 LEAF(fusword)
 ALEAF(fuisword)
+	PTR_LA	v0, fswberr
 	blt	a0, zero, fswberr	# make sure address is in user space
-	li	v0, FSWBERR
+	nop
 	GET_CPU_PCPU(v1)
-	lw	v1, PC_CURPCB(v1)
-	sw	v0, U_PCB_ONFAULT(v1)
+	PTR_L	v1, PC_CURPCB(v1)
+	PTR_S	v0, U_PCB_ONFAULT(v1)
 	lhu	v0, 0(a0)		# fetch short
 	j	ra
-	sw	zero, U_PCB_ONFAULT(v1)
+	PTR_S	zero, U_PCB_ONFAULT(v1)
 END(fusword)
 
 LEAF(fubyte)
 ALEAF(fuibyte)
+	PTR_LA	v0, fswberr
 	blt	a0, zero, fswberr	# make sure address is in user space
-	li	v0, FSWBERR
+	nop
 	GET_CPU_PCPU(v1)
-	lw	v1, PC_CURPCB(v1)
-	sw	v0, U_PCB_ONFAULT(v1)
+	PTR_L	v1, PC_CURPCB(v1)
+	PTR_S	v0, U_PCB_ONFAULT(v1)
 	lbu	v0, 0(a0)		# fetch byte
 	j	ra
-	sw	zero, U_PCB_ONFAULT(v1)
+	PTR_S	zero, U_PCB_ONFAULT(v1)
 END(fubyte)
 
 LEAF(suword32)
 #ifndef __mips_n64
 XLEAF(suword)
 #endif
+	PTR_LA	v0, fswberr
 	blt	a0, zero, fswberr	# make sure address is in user space
-	li	v0, FSWBERR
+	nop
 	GET_CPU_PCPU(v1)
-	lw	v1, PC_CURPCB(v1)
-	sw	v0, U_PCB_ONFAULT(v1)
+	PTR_L	v1, PC_CURPCB(v1)
+	PTR_S	v0, U_PCB_ONFAULT(v1)
 	sw	a1, 0(a0)		# store word
-	sw	zero, U_PCB_ONFAULT(v1)
+	PTR_S	zero, U_PCB_ONFAULT(v1)
 	j	ra
 	move	v0, zero
 END(suword32)
@@ -479,13 +455,14 @@ END(suword32)
 #ifdef __mips_n64
 LEAF(suword64)
 XLEAF(suword)
+	PTR_LA	v0, fswberr
 	blt	a0, zero, fswberr	# make sure address is in user space
-	li	v0, FSWBERR
+	nop
 	GET_CPU_PCPU(v1)
-	lw	v1, PC_CURPCB(v1)
-	sw	v0, U_PCB_ONFAULT(v1)
+	PTR_L	v1, PC_CURPCB(v1)
+	PTR_S	v0, U_PCB_ONFAULT(v1)
 	sd	a1, 0(a0)		# store word
-	sw	zero, U_PCB_ONFAULT(v1)
+	PTR_S	zero, U_PCB_ONFAULT(v1)
 	j	ra
 	move	v0, zero
 END(suword64)
@@ -504,11 +481,12 @@ LEAF(casuword32)
 #ifndef __mips_n64
 XLEAF(casuword)
 #endif
+	PTR_LA	v0, fswberr
 	blt	a0, zero, fswberr	# make sure address is in user space
-	li	v0, FSWBERR
+	nop
 	GET_CPU_PCPU(v1)
-	lw	v1, PC_CURPCB(v1)
-	sw	v0, U_PCB_ONFAULT(v1)
+	PTR_L	v1, PC_CURPCB(v1)
+	PTR_S	v0, U_PCB_ONFAULT(v1)
 1:
 	move	t0, a2
 	ll	v0, 0(a0)
@@ -522,7 +500,7 @@ XLEAF(casuword)
 2:
 	li	v0, -1
 3:
-	sw	zero, U_PCB_ONFAULT(v1)
+	PTR_S	zero, U_PCB_ONFAULT(v1)
 	jr	ra
 	nop
 END(casuword32)
@@ -530,11 +508,12 @@ END(casuword32)
 #ifdef __mips_n64
 LEAF(casuword64)
 XLEAF(casuword)
+	PTR_LA	v0, fswberr
 	blt	a0, zero, fswberr	# make sure address is in user space
-	li	v0, FSWBERR
+	nop
 	GET_CPU_PCPU(v1)
-	lw	v1, PC_CURPCB(v1)
-	sw	v0, U_PCB_ONFAULT(v1)
+	PTR_L	v1, PC_CURPCB(v1)
+	PTR_S	v0, U_PCB_ONFAULT(v1)
 1:
 	move	t0, a2
 	lld	v0, 0(a0)
@@ -548,7 +527,7 @@ XLEAF(casuword)
 2:
 	li	v0, -1
 3:
-	sw	zero, U_PCB_ONFAULT(v1)
+	PTR_S	zero, U_PCB_ONFAULT(v1)
 	jr	ra
 	nop
 END(casuword64)
@@ -560,13 +539,14 @@ END(casuword64)
  * Have to flush instruction cache afterwards.
  */
 LEAF(suiword)
+	PTR_LA	v0, fswberr
 	blt	a0, zero, fswberr	# make sure address is in user space
-	li	v0, FSWBERR
+	nop
 	GET_CPU_PCPU(v1)
-	lw	v1, PC_CURPCB(v1)
-	sw	v0, U_PCB_ONFAULT(v1)
+	PTR_L	v1, PC_CURPCB(v1)
+	PTR_S	v0, U_PCB_ONFAULT(v1)
 	sw	a1, 0(a0)		# store word
-	sw	zero, U_PCB_ONFAULT(v1)
+	PTR_S	zero, U_PCB_ONFAULT(v1)
 	j	_C_LABEL(Mips_SyncICache)  # FlushICache sets v0 = 0. (Ugly)
 	li	a1, 4			# size of word
 END(suiword)
@@ -577,26 +557,28 @@ END(suiword)
  */
 LEAF(susword)
 ALEAF(suisword)
+	PTR_LA	v0, fswberr
 	blt	a0, zero, fswberr	# make sure address is in user space
-	li	v0, FSWBERR
+	nop
 	GET_CPU_PCPU(v1)
-	lw	v1, PC_CURPCB(v1)
-	sw	v0, U_PCB_ONFAULT(v1)
+	PTR_L	v1, PC_CURPCB(v1)
+	PTR_S	v0, U_PCB_ONFAULT(v1)
 	sh	a1, 0(a0)		# store short
-	sw	zero, U_PCB_ONFAULT(v1)
+	PTR_S	zero, U_PCB_ONFAULT(v1)
 	j	ra
 	move	v0, zero
 END(susword)
 
 LEAF(subyte)
 ALEAF(suibyte)
+	PTR_LA	v0, fswberr
 	blt	a0, zero, fswberr	# make sure address is in user space
-	li	v0, FSWBERR
+	nop
 	GET_CPU_PCPU(v1)
-	lw	v1, PC_CURPCB(v1)
-	sw	v0, U_PCB_ONFAULT(v1)
+	PTR_L	v1, PC_CURPCB(v1)
+	PTR_S	v0, U_PCB_ONFAULT(v1)
 	sb	a1, 0(a0)		# store byte
-	sw	zero, U_PCB_ONFAULT(v1)
+	PTR_S	zero, U_PCB_ONFAULT(v1)
 	j	ra
 	move	v0, zero
 END(subyte)
@@ -612,24 +594,26 @@ END(fswberr)
  * The important thing is to prevent sleep() and switch().
  */
 LEAF(fuswintr)
+	PTR_LA	v0, fswintrberr
 	blt	a0, zero, fswintrberr	# make sure address is in user space
-	li	v0, FSWINTRBERR
+	nop
 	GET_CPU_PCPU(v1)
-	lw	v1, PC_CURPCB(v1)
-	sw	v0, U_PCB_ONFAULT(v1)
+	PTR_L	v1, PC_CURPCB(v1)
+	PTR_S	v0, U_PCB_ONFAULT(v1)
 	lhu	v0, 0(a0)		# fetch short
 	j	ra
-	sw	zero, U_PCB_ONFAULT(v1)
+	PTR_S	zero, U_PCB_ONFAULT(v1)
 END(fuswintr)
 
 LEAF(suswintr)
+	PTR_LA	v0, fswintrberr
 	blt	a0, zero, fswintrberr	# make sure address is in user space
-	li	v0, FSWINTRBERR
+	nop
 	GET_CPU_PCPU(v1)
-	lw	v1, PC_CURPCB(v1)
-	sw	v0, U_PCB_ONFAULT(v1)
+	PTR_L	v1, PC_CURPCB(v1)
+	PTR_S	v0, U_PCB_ONFAULT(v1)
 	sh	a1, 0(a0)		# store short
-	sw	zero, U_PCB_ONFAULT(v1)
+	PTR_S	zero, U_PCB_ONFAULT(v1)
 	j	ra
 	move	v0, zero
 END(suswintr)
@@ -1393,22 +1377,22 @@ END(atomic_load_64)
 #if defined(DDB) || defined(DEBUG)
 
 LEAF(kdbpeek)
-	li	v1, DDBERR
+	PTR_LA	v1, ddberr
 	and	v0, a0, 3			# unaligned ?
 	GET_CPU_PCPU(t1)
-	lw	t1, PC_CURPCB(t1)
+	PTR_L	t1, PC_CURPCB(t1)
 	bne	v0, zero, 1f
-	sw	v1, U_PCB_ONFAULT(t1)
+	PTR_S	v1, U_PCB_ONFAULT(t1)
 
 	lw	v0, (a0)
 	jr	ra
-	sw	zero, U_PCB_ONFAULT(t1)
+	PTR_S	zero, U_PCB_ONFAULT(t1)
 
 1:
 	LWHI	v0, 0(a0)
 	LWLO	v0, 3(a0)
 	jr	ra
-	sw	zero, U_PCB_ONFAULT(t1)
+	PTR_S	zero, U_PCB_ONFAULT(t1)
 END(kdbpeek)
 
 ddberr:
@@ -1417,43 +1401,30 @@ ddberr:
 
 #if defined(DDB)
 LEAF(kdbpoke)
-	li	v1, DDBERR
+	PTR_LA	v1, ddberr
 	and	v0, a0, 3			# unaligned ?
 	GET_CPU_PCPU(t1)
-	lw	t1, PC_CURPCB(t1)
+	PTR_L	t1, PC_CURPCB(t1)
 	bne	v0, zero, 1f
-	sw	v1, U_PCB_ONFAULT(t1)
+	PTR_S	v1, U_PCB_ONFAULT(t1)
 
 	sw	a1, (a0)
 	jr	ra
-	sw	zero, U_PCB_ONFAULT(t1)
+	PTR_S	zero, U_PCB_ONFAULT(t1)
 
 1:
 	SWHI	a1, 0(a0)
 	SWLO	a1, 3(a0)
 	jr	ra
-	sw	zero, U_PCB_ONFAULT(t1)
+	PTR_S	zero, U_PCB_ONFAULT(t1)
 END(kdbpoke)
 
 	.data
 	.globl	esym
 esym:	.word	0
 
-#ifndef _MIPS_ARCH_XLR
-	.set	mips2
-#endif
 #endif /* DDB */
 #endif /* DDB || DEBUG */
-
-#ifndef MIPS_ISAIII
-#define	STORE	sw	/* 32 bit mode regsave instruction */
-#define	LOAD	lw	/* 32 bit mode regload instruction */
-#define	RSIZE	4	/* 32 bit mode register size */
-#else
-#define	STORE	sd	/* 64 bit mode regsave instruction */
-#define	LOAD	ld	/* 64 bit mode regload instruction */
-#define	RSIZE	8	/* 64 bit mode register size */
-#endif
 
 #define	ITLBNOPFIX	nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;
 
@@ -1466,35 +1437,35 @@ LEAF(breakpoint)
 
 LEAF(setjmp)
 	mfc0	v0, COP_0_STATUS_REG	# Later the "real" spl value!
-	STORE	s0, (RSIZE * PREG_S0)(a0)
-	STORE	s1, (RSIZE * PREG_S1)(a0)
-	STORE	s2, (RSIZE * PREG_S2)(a0)
-	STORE	s3, (RSIZE * PREG_S3)(a0)
-	STORE	s4, (RSIZE * PREG_S4)(a0)
-	STORE	s5, (RSIZE * PREG_S5)(a0)
-	STORE	s6, (RSIZE * PREG_S6)(a0)
-	STORE	s7, (RSIZE * PREG_S7)(a0)
-	STORE	s8, (RSIZE * PREG_S8)(a0)
-	STORE	sp, (RSIZE * PREG_SP)(a0)
-	STORE	ra, (RSIZE * PREG_RA)(a0)
-	STORE	v0, (RSIZE * PREG_SR)(a0)
+	REG_S	s0, (SZREG * PREG_S0)(a0)
+	REG_S	s1, (SZREG * PREG_S1)(a0)
+	REG_S	s2, (SZREG * PREG_S2)(a0)
+	REG_S	s3, (SZREG * PREG_S3)(a0)
+	REG_S	s4, (SZREG * PREG_S4)(a0)
+	REG_S	s5, (SZREG * PREG_S5)(a0)
+	REG_S	s6, (SZREG * PREG_S6)(a0)
+	REG_S	s7, (SZREG * PREG_S7)(a0)
+	REG_S	s8, (SZREG * PREG_S8)(a0)
+	REG_S	sp, (SZREG * PREG_SP)(a0)
+	REG_S	ra, (SZREG * PREG_RA)(a0)
+	REG_S	v0, (SZREG * PREG_SR)(a0)
 	jr	ra
 	li	v0, 0			# setjmp return
 END(setjmp)
 
 LEAF(longjmp)
-	LOAD	v0, (RSIZE * PREG_SR)(a0)
-	LOAD	ra, (RSIZE * PREG_RA)(a0)
-	LOAD	s0, (RSIZE * PREG_S0)(a0)
-	LOAD	s1, (RSIZE * PREG_S1)(a0)
-	LOAD	s2, (RSIZE * PREG_S2)(a0)
-	LOAD	s3, (RSIZE * PREG_S3)(a0)
-	LOAD	s4, (RSIZE * PREG_S4)(a0)
-	LOAD	s5, (RSIZE * PREG_S5)(a0)
-	LOAD	s6, (RSIZE * PREG_S6)(a0)
-	LOAD	s7, (RSIZE * PREG_S7)(a0)
-	LOAD	s8, (RSIZE * PREG_S8)(a0)
-	LOAD	sp, (RSIZE * PREG_SP)(a0)
+	REG_L	v0, (SZREG * PREG_SR)(a0)
+	REG_L	ra, (SZREG * PREG_RA)(a0)
+	REG_L	s0, (SZREG * PREG_S0)(a0)
+	REG_L	s1, (SZREG * PREG_S1)(a0)
+	REG_L	s2, (SZREG * PREG_S2)(a0)
+	REG_L	s3, (SZREG * PREG_S3)(a0)
+	REG_L	s4, (SZREG * PREG_S4)(a0)
+	REG_L	s5, (SZREG * PREG_S5)(a0)
+	REG_L	s6, (SZREG * PREG_S6)(a0)
+	REG_L	s7, (SZREG * PREG_S7)(a0)
+	REG_L	s8, (SZREG * PREG_S8)(a0)
+	REG_L	sp, (SZREG * PREG_SP)(a0)
 	mtc0	v0, COP_0_STATUS_REG	# Later the "real" spl value!
 	ITLBNOPFIX
 	jr	ra
@@ -1505,7 +1476,6 @@ LEAF(fusufault)
 	GET_CPU_PCPU(t0)
 	lw	t0, PC_CURTHREAD(t0)
 	lw	t0, TD_PCB(t0)
-	sw	zero, U_PCB_ONFAULT(t0)
 	li	v0, -1
 	j	ra
 END(fusufault)
@@ -1523,8 +1493,8 @@ LEAF(casuptr)
 	lw	t1, PC_CURTHREAD(t1)
 	lw	t1, TD_PCB(t1)
 
-	lw	t2, fusufault
-	sw	t2, U_PCB_ONFAULT(t1)
+	PTR_LA	t2, fusufault
+	PTR_S	t2, U_PCB_ONFAULT(t1)
 1:
 	ll	v0, 0(a0)		/* try to load the old value */
 	beq	v0, a1, 2f		/* compare */
@@ -1532,7 +1502,7 @@ LEAF(casuptr)
 	sc	t0, 0(a0)		/* write if address still locked */
 	beq	t0, zero, 1b			/* if it failed, spin */
 2:
-	sw	zero, U_PCB_ONFAULT(t1) /* clean up */
+	PTR_S	zero, U_PCB_ONFAULT(t1) /* clean up */
 	j	ra
 END(casuptr)
 
@@ -1560,7 +1530,7 @@ END(octeon_get_shadow)
  * octeon_set_control(addr, uint32_t val)
  */
 LEAF(octeon_set_control)
-	.set mips64r2
+	.set push
 	or      t1, a1, zero
 /*	dmfc0   a1, 9, 7*/
 	.word 0x40254807
@@ -1570,19 +1540,20 @@ LEAF(octeon_set_control)
 	.word 0x40a54807
 	jr	ra
 	nop
-        .set	mips0
+	.set pop
 END(octeon_set_control)
 
 /*
  * octeon_get_control(addr)
  */
 LEAF(octeon_get_control)
+	.set push
 	.set mips64r2
 /*	dmfc0   a1, 9, 7 */
 	.word 0x40254807
 	sd	a1, 0(a0)
 	jr	ra
 	nop
-        .set	mips0
+	.set pop
 END(octeon_get_control)
 #endif

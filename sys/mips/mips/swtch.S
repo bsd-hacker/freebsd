@@ -265,7 +265,7 @@ END(savectx)
 
 KSEG0TEXT_START;
 
-NON_LEAF(mips_cpu_throw, STAND_FRAME_SIZE, ra)
+NON_LEAF(mips_cpu_throw, CALLFRAME_SIZ, ra)
 	mfc0	t0, COP_0_STATUS_REG		# t0 = saved status register
 	nop
 	nop
@@ -285,7 +285,7 @@ END(mips_cpu_throw)
  *	a2 - mtx
  * Find the highest priority process and resume it.
  */
-NON_LEAF(cpu_switch, STAND_FRAME_SIZE, ra)
+NON_LEAF(cpu_switch, CALLFRAME_SIZ, ra)
 	mfc0	t0, COP_0_STATUS_REG		# t0 = saved status register
 	nop
 	nop
@@ -296,9 +296,9 @@ NON_LEAF(cpu_switch, STAND_FRAME_SIZE, ra)
 	move	a3, a0
 	lw	a0, TD_PCB(a0)		# load PCB addr of curproc
 	SAVE_U_PCB_CONTEXT(sp, PREG_SP, a0)		# save old sp
-	subu	sp, sp, STAND_FRAME_SIZE
-	sw	ra, STAND_RA_OFFSET(sp)
-	.mask	0x80000000, (STAND_RA_OFFSET - STAND_FRAME_SIZE)
+	subu	sp, sp, CALLFRAME_SIZ
+	sw	ra, CALLFRAME_RA(sp)
+	.mask	0x80000000, (CALLFRAME_RA - CALLFRAME_SIZ)
 	SAVE_U_PCB_CONTEXT(s0, PREG_S0, a0)		# do a 'savectx()'
 	SAVE_U_PCB_CONTEXT(s1, PREG_S1, a0)
 	SAVE_U_PCB_CONTEXT(s2, PREG_S2, a0)

@@ -56,6 +56,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysctl.h>
 #include <sys/unistd.h>
 
+#include <machine/asm.h>
 #include <machine/cache.h>
 #include <machine/clock.h>
 #include <machine/cpu.h>
@@ -148,7 +149,7 @@ cpu_fork(register struct thread *td1,register struct proc *p2,
 	pcb2->pcb_context[PCB_REG_RA] = (register_t)(intptr_t)fork_trampoline;
 	/* Make sp 64-bit aligned */
 	pcb2->pcb_context[PCB_REG_SP] = (register_t)(((vm_offset_t)td2->td_pcb &
-	    ~(sizeof(__int64_t) - 1)) - STAND_FRAME_SIZE);
+	    ~(sizeof(__int64_t) - 1)) - CALLFRAME_SIZ);
 	pcb2->pcb_context[PCB_REG_S0] = (register_t)(intptr_t)fork_return;
 	pcb2->pcb_context[PCB_REG_S1] = (register_t)(intptr_t)td2;
 	pcb2->pcb_context[PCB_REG_S2] = (register_t)(intptr_t)td2->td_frame;
@@ -355,7 +356,7 @@ cpu_set_upcall(struct thread *td, struct thread *td0)
 	pcb2->pcb_context[PCB_REG_RA] = (register_t)(intptr_t)fork_trampoline;
 	/* Make sp 64-bit aligned */
 	pcb2->pcb_context[PCB_REG_SP] = (register_t)(((vm_offset_t)td->td_pcb &
-	    ~(sizeof(__int64_t) - 1)) - STAND_FRAME_SIZE);
+	    ~(sizeof(__int64_t) - 1)) - CALLFRAME_SIZ);
 	pcb2->pcb_context[PCB_REG_S0] = (register_t)(intptr_t)fork_return;
 	pcb2->pcb_context[PCB_REG_S1] = (register_t)(intptr_t)td;
 	pcb2->pcb_context[PCB_REG_S2] = (register_t)(intptr_t)td->td_frame;
@@ -402,7 +403,7 @@ cpu_set_upcall_kse(struct thread *td, void (*entry)(void *), void *arg,
 	* in ``See MIPS Run'' by D. Sweetman, p. 269
 	* align stack */
 	sp = ((register_t)(intptr_t)(stack->ss_sp + stack->ss_size) & ~0x7) -
-	    STAND_FRAME_SIZE;
+	    CALLFRAME_SIZ;
 
 	/*
 	 * Set the trap frame to point at the beginning of the uts
@@ -682,7 +683,7 @@ DB_SHOW_COMMAND(pcb, ddb_dump_pcb)
 	DB_PRINT_REG_ARRAY(pcb, pcb_context, PCB_REG_GP);
 	DB_PRINT_REG_ARRAY(pcb, pcb_context, PCB_REG_PC);
 
-	db_printf("PCB onfault = %d\n", pcb->pcb_onfault);
+	db_printf("PCB onfault = %p\n", pcb->pcb_onfault);
 	db_printf("md_saved_intr = 0x%0lx\n", (long)td->td_md.md_saved_intr);
 	db_printf("md_spinlock_count = %d\n", td->td_md.md_spinlock_count);
 
