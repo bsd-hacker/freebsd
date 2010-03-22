@@ -102,7 +102,7 @@ sunpos(int inYY, int inMM, int inDD, double UTCOFFSET, int inHOUR, int inMIN,
 	if (inMM <= 2 && isleap(inYY))
 		ZJ -= 1.0;
 
-	UTHM = inHOUR + inMIN / FMINSPERHOUR + inSEC / FSECSPERHOUR + UTCOFFSET;
+	UTHM = inHOUR + inMIN / FMINSPERHOUR + inSEC / FSECSPERHOUR - UTCOFFSET;
 	Y = inYY - 1900;						/*  1 */
 	D = floor(365.25 * Y) + ZJ + inDD + UTHM / FHOURSPERDAY;	/*  3 */
 	T = D / 36525.0;						/*  4 */
