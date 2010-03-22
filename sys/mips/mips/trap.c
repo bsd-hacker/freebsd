@@ -104,7 +104,7 @@ int trap_debug = 1;
 
 extern unsigned onfault_table[];
 
-static void log_reserved_instruction(struct trapframe *);
+static void log_illegal_instruction(const char *, struct trapframe *);
 static void log_bad_page_fault(char *, struct trapframe *, int);
 static void log_frame_dump(struct trapframe *frame);
 static void get_mapping_info(vm_offset_t, pd_entry_t **, pt_entry_t **);
@@ -884,7 +884,7 @@ dofault:
 		}
 
 	case T_RES_INST + T_USER:
-		log_reserved_instruction(trapframe);
+		log_illegal_instruction("RES_INST", trapframe);
 		i = SIGILL;
 		addr = trapframe->pc;
 		break;
@@ -899,11 +899,13 @@ dofault:
 #if !defined(CPU_HAVEFPU)
 		/* FP (COP1) instruction */
 		if ((trapframe->cause & CR_COP_ERR) == 0x10000000) {
+			log_illegal_instruction("COP1_UNUSABLE", trapframe);
 			i = SIGILL;
 			break;
 		}
 #endif
 		if ((trapframe->cause & CR_COP_ERR) != 0x10000000) {
+			log_illegal_instruction("COPn_UNUSABLE", trapframe);
 			i = SIGILL;	/* only FPU instructions allowed */
 			break;
 		}
@@ -1309,7 +1311,7 @@ get_mapping_info(vm_offset_t va, pd_entry_t **pdepp, pt_entry_t **ptepp)
 }
 
 static void
-log_reserved_instruction(struct trapframe *frame)
+log_illegal_instruction(const char *msg, struct trapframe *frame)
 {
 	pt_entry_t *ptep;
 	pd_entry_t *pdep;
@@ -1321,8 +1323,8 @@ log_reserved_instruction(struct trapframe *frame)
 	printf("cpuid = %d\n", PCPU_GET(cpuid));
 #endif
 	pc = frame->pc + (DELAYBRANCH(frame->cause) ? 4 : 0);
-	log(LOG_ERR, "RES_INST: pid %d (%s), uid %d: pc %p ra %p\n",
-	    p->p_pid, p->p_comm,
+	log(LOG_ERR, "%s: pid %d (%s), uid %d: pc %p ra %p\n",
+	    msg, p->p_pid, p->p_comm,
 	    p->p_ucred ? p->p_ucred->cr_uid : -1,
 	    (void *)(intptr_t)pc,
 	    (void *)(intptr_t)frame->ra);
