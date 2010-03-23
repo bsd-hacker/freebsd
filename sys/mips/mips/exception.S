@@ -150,11 +150,11 @@ MipsDoTLBMiss:
 	bltz	k0, 1f				#02: k0<0 -> 1f (kernel fault)
 	srl	k0, k0, SEGSHIFT - 2		#03: k0=seg offset (almost)
 	GET_CPU_PCPU(k1)
-	lw	k1, PC_SEGBASE(k1)
+	PTR_L	k1, PC_SEGBASE(k1)
 	beqz	k1, 2f			      #05: make sure segbase is not null
 	andi	k0, k0, 0x7fc			#06: k0=seg offset (mask 0x3)
 #xxx mips64 unsafe?
-	addu	k1, k0, k1			#07: k1=seg entry address
+	PTR_ADDU	k1, k0, k1			#07: k1=seg entry address
 	lw	k1, 0(k1)			#08: k1=seg entry
 	mfc0	k0, COP_0_BAD_VADDR		#09: k0=bad address (again)
 	beq	k1, zero, 2f			#0a: ==0 -- no page table
@@ -162,7 +162,7 @@ MipsDoTLBMiss:
 
 	andi	k0, k0, ((NPTEPG/2) - 1) << 3	#0c: k0=page tab offset
 #xxx mips64 unsafe?
-	addu	k1, k1, k0			#0d: k1=pte address
+	PTR_ADDU	k1, k1, k0			#0d: k1=pte address
 	lw	k0, 0(k1)			#0e: k0=lo0 pte
 	lw	k1, 4(k1)			#0f: k1=lo1 pte
 	_SLL	k0, k0, WIRED_SHIFT		#10: keep bottom 30 bits
@@ -197,7 +197,11 @@ VECTOR(MipsException, unknown)
 	and	k0, k0, SR_KSU_USER		# test for user mode
 						# sneaky but the bits are
 						# with us........
+#if defined(__mips_n64)
+	sll	k0, k0, 4			# shift user bit for cause index
+#else
 	sll	k0, k0, 3			# shift user bit for cause index
+#endif
 	and	k1, k1, CR_EXC_CODE		# Mask out the cause bits.
 	or	k1, k1, k0			# change index to user table
 1:
@@ -207,7 +211,7 @@ VECTOR(MipsException, unknown)
 						#  the cause is already
 						#  shifted left by 2 bits so
 						#  we dont have to shift.
-	lw	k0, 0(k0)			# Get the function address
+	PTR_L	k0, 0(k0)			# Get the function address
 	nop
 	j	k0				# Jump to the function.
 	nop
@@ -378,7 +382,7 @@ SlowFault:
 
 NNON_LEAF(MipsKernGenException, KERN_EXC_FRAME_SIZE, ra)
 	.set	noat
-	subu	sp, sp, KERN_EXC_FRAME_SIZE
+	PTR_SUBU	sp, sp, KERN_EXC_FRAME_SIZE
 	.mask	0x80000000, (CALLFRAME_RA - KERN_EXC_FRAME_SIZE)
 /*
  *  Save CPU state, building 'frame'.
@@ -390,7 +394,7 @@ NNON_LEAF(MipsKernGenException, KERN_EXC_FRAME_SIZE, ra)
 	PTR_LA	gp, _C_LABEL(_gp)
 	PTR_LA	k0, _C_LABEL(trap)
 	jalr	k0
-	sw	a3, CALLFRAME_RA + KERN_REG_SIZE(sp)		# for debugging
+	REG_S	a3, CALLFRAME_RA + KERN_REG_SIZE(sp)		# for debugging
 
 	/*
 	 * Update interrupt mask in saved status register
@@ -439,7 +443,7 @@ NNON_LEAF(MipsUserGenException, CALLFRAME_SIZ, ra)
  * Save all of the registers except for the kernel temporaries in u.u_pcb.
  */
 	GET_CPU_PCPU(k1)
-	lw	k1, PC_CURPCB(k1)
+	PTR_L	k1, PC_CURPCB(k1)
 	SAVE_U_PCB_REG(AT, AST, k1)
 	.set	at
 	SAVE_U_PCB_REG(v0, V0, k1)
@@ -475,7 +479,7 @@ NNON_LEAF(MipsUserGenException, CALLFRAME_SIZ, ra)
 	SAVE_U_PCB_REG(gp, GP, k1)
 	SAVE_U_PCB_REG(sp, SP, k1)
 	SAVE_U_PCB_REG(s8, S8, k1)
-	subu	sp, k1, CALLFRAME_SIZ	 # switch to kernel SP
+	PTR_SUBU	sp, k1, CALLFRAME_SIZ	 # switch to kernel SP
 	SAVE_U_PCB_REG(ra, RA, k1)
 	SAVE_U_PCB_REG(v0, MULLO, k1)
 	SAVE_U_PCB_REG(v1, MULHI, k1)
@@ -483,7 +487,7 @@ NNON_LEAF(MipsUserGenException, CALLFRAME_SIZ, ra)
 	SAVE_U_PCB_REG(a1, CAUSE, k1)
 	SAVE_U_PCB_REG(a2, BADVADDR, k1)
 	SAVE_U_PCB_REG(a3, PC, k1)
-	sw	a3, CALLFRAME_RA(sp)	# for debugging
+	REG_S	a3, CALLFRAME_RA(sp)	# for debugging
 	PTR_LA	gp, _C_LABEL(_gp)	# switch to kernel GP
 # Turn off fpu and enter kernel mode
 	and	t0, a0, ~(SR_COP_1_BIT | SR_EXL | SR_KSU_MASK | SR_INT_ENAB)
@@ -518,7 +522,7 @@ NNON_LEAF(MipsUserGenException, CALLFRAME_SIZ, ra)
  * by the interrupt code.
  */
 	GET_CPU_PCPU(k1)
-	lw	k1, PC_CURPCB(k1)
+	PTR_L	k1, PC_CURPCB(k1)
 
 	/*
 	 * Update interrupt mask in saved status register
@@ -599,7 +603,7 @@ END(MipsUserGenException)
 
 NNON_LEAF(MipsKernIntr, KERN_EXC_FRAME_SIZE, ra)
 	.set	noat
-	subu	sp, sp, KERN_EXC_FRAME_SIZE
+	PTR_SUBU	sp, sp, KERN_EXC_FRAME_SIZE
 	.mask	0x80000000, (CALLFRAME_RA - KERN_EXC_FRAME_SIZE)
 /*
  * Save the relevant kernel registers onto the stack.
@@ -613,7 +617,7 @@ NNON_LEAF(MipsKernIntr, KERN_EXC_FRAME_SIZE, ra)
 	PTR_ADDU a0, sp, CALLFRAME_SIZ
 	PTR_LA	k0, _C_LABEL(cpu_intr)
 	jalr	k0
-	sw	a3, CALLFRAME_RA + KERN_REG_SIZE(sp)
+	REG_S	a3, CALLFRAME_RA + KERN_REG_SIZE(sp)
 	/* Why no AST processing here? */
 
 	/*
@@ -631,7 +635,7 @@ NNON_LEAF(MipsKernIntr, KERN_EXC_FRAME_SIZE, ra)
 /*
  * Restore registers and return from the interrupt.
  */
-	lw	v0, CALLFRAME_RA + KERN_REG_SIZE(sp)
+	REG_L	v0, CALLFRAME_RA + KERN_REG_SIZE(sp)
 	RESTORE_CPU
 	sync
 	eret
@@ -665,7 +669,7 @@ NNON_LEAF(MipsUserIntr, CALLFRAME_SIZ, ra)
  * We don't need to save s0 - s8 because the compiler does it for us.
  */
 	GET_CPU_PCPU(k1)
-	lw	k1, PC_CURPCB(k1)
+	PTR_L	k1, PC_CURPCB(k1)
 	SAVE_U_PCB_REG(AT, AST, k1)
 	.set	at
 	SAVE_U_PCB_REG(v0, V0, k1)
@@ -710,7 +714,7 @@ NNON_LEAF(MipsUserIntr, CALLFRAME_SIZ, ra)
 	SAVE_U_PCB_REG(a0, SR, k1)
 	SAVE_U_PCB_REG(a1, CAUSE, k1)
 	SAVE_U_PCB_REG(a3, PC, k1)	# PC in a3, note used later!
-	subu	sp, k1, CALLFRAME_SIZ  # switch to kernel SP
+	PTR_SUBU	sp, k1, CALLFRAME_SIZ  # switch to kernel SP
 	PTR_LA	gp, _C_LABEL(_gp)	# switch to kernel GP
 
 # Turn off fpu, disable interrupts, set kernel mode kernel mode, clear exception level.
@@ -726,7 +730,7 @@ NNON_LEAF(MipsUserIntr, CALLFRAME_SIZ, ra)
  */
 	PTR_LA	k0, _C_LABEL(cpu_intr)
 	jalr	k0
-	sw	a3, CALLFRAME_RA(sp)	# for debugging
+	REG_S	a3, CALLFRAME_RA(sp)	# for debugging
 
 /*
  * Enable interrupts before doing ast().
@@ -754,7 +758,7 @@ NNON_LEAF(MipsUserIntr, CALLFRAME_SIZ, ra)
 	ITLBNOPFIX
 
 	GET_CPU_PCPU(k1)
-	lw	k1, PC_CURPCB(k1)
+	PTR_L	k1, PC_CURPCB(k1)
 
 	/*
 	 * Update interrupt mask in saved status register
@@ -830,12 +834,12 @@ NLEAF(MipsTLBInvalidException)
 	/* badvaddr = kernel address */
 	lui	k1, %hi(_C_LABEL(kernel_segmap))
 	b	2f
-	lw	k1, %lo(_C_LABEL(kernel_segmap))(k1)
+	PTR_L	k1, %lo(_C_LABEL(kernel_segmap))(k1)
 
 1:
 	/* badvaddr = user address */
 	GET_CPU_PCPU(k1)
-	lw	k1, PC_SEGBASE(k1)
+	PTR_L	k1, PC_SEGBASE(k1)
 
 2:
 	beqz	k1, 3f			/* invalid page directory pointer */
@@ -843,7 +847,7 @@ NLEAF(MipsTLBInvalidException)
 
 	srl	k0, SEGSHIFT - 2
 	andi	k0, 0xffc
-	addu	k1, k1, k0
+	PTR_ADDU	k1, k1, k0
 	lw	k1, 0(k1)
 	beqz	k1, 3f			/* invalid page table page pointer */
 	nop
@@ -851,7 +855,7 @@ NLEAF(MipsTLBInvalidException)
 	mfc0	k0, COP_0_BAD_VADDR
 	srl	k0, PGSHIFT - 2
 	andi	k0, 0xffc
-	addu	k1, k1, k0
+	PTR_ADDU	k1, k1, k0
 
 	lw	k0, 0(k1)
 	andi	k0, PTE_V
@@ -916,8 +920,8 @@ tlb_insert_random:
 	 * Check for kernel stack overflow.
 	 */
 	GET_CPU_PCPU(k1)
-	lw	k0, PC_CURTHREAD(k1)
-	lw	k0, TD_REALKSTACK(k0)
+	PTR_L	k0, PC_CURTHREAD(k1)
+	PTR_L	k0, TD_REALKSTACK(k0)
 	sltu	k0, k0, sp
 	bnez	k0, _C_LABEL(MipsKernGenException)
 	nop
@@ -933,8 +937,8 @@ tlb_insert_random:
 	sll	k1, k1, PAGE_SHIFT + 1
 
 	PTR_LA	k0, _C_LABEL(pcpu_space)
-	addiu	k0, (NBPG * 2)
-	addu	k0, k0, k1
+	PTR_ADDU	k0, (NBPG * 2)
+	PTR_ADDU	k0, k0, k1
 
 	/*
 	 * Stash the original value of 'sp' so we can update trapframe later.
@@ -943,12 +947,12 @@ tlb_insert_random:
 	move	k1, sp
 
 	move	sp, k0
-	subu	sp, sp, KERN_EXC_FRAME_SIZE
+	PTR_SUBU	sp, sp, KERN_EXC_FRAME_SIZE
 
 	move	k0, ra
 	move	ra, zero
-	sw	ra, CALLFRAME_RA(sp)	/* stop the ddb backtrace right here */
-	sw	zero, CALLFRAME_SP(sp)
+	REG_S	ra, CALLFRAME_RA(sp)	/* stop the ddb backtrace right here */
+	REG_S	zero, CALLFRAME_SP(sp)
 	move	ra, k0
 
 	SAVE_CPU
@@ -963,8 +967,8 @@ tlb_insert_random:
 	 * Squelch any more overflow checks by setting the stack base to 0.
 	 */
 	GET_CPU_PCPU(k1)
-	lw	k0, PC_CURTHREAD(k1)
-	sw	zero, TD_REALKSTACK(k0)
+	PTR_L	k0, PC_CURTHREAD(k1)
+	PTR_S	zero, TD_REALKSTACK(k0)
 
 	move	a1, a0
 	PANIC("kernel stack overflow - trapframe at %p")
@@ -1003,18 +1007,18 @@ NLEAF(MipsTLBMissException)
 	bnez	k1, _C_LABEL(MipsKernGenException)  # out of bound
 	lui	k1, %hi(_C_LABEL(kernel_segmap))  # k1=hi of segbase
 	srl	k0, 20				# k0=seg offset (almost)
-	lw	k1, %lo(_C_LABEL(kernel_segmap))(k1)  # k1=segment tab base
+	PTR_L	k1, %lo(_C_LABEL(kernel_segmap))(k1)  # k1=segment tab base
 	beq	k1, zero, _C_LABEL(MipsKernGenException)  # ==0 -- no seg tab
 	andi	k0, k0, 0xffc			# k0=seg offset (mask 0x3)
 #xxx mips64 unsafe
-	addu	k1, k0, k1			# k1=seg entry address
+	PTR_ADDU	k1, k0, k1			# k1=seg entry address
 	lw	k1, 0(k1)			# k1=seg entry
 	mfc0	k0, COP_0_BAD_VADDR		# k0=bad address (again)
 	beq	k1, zero, _C_LABEL(MipsKernGenException)  # ==0 -- no page table
 	srl	k0, 10				# k0=VPN (aka va>>10)
 	andi	k0, k0, 0xff8			# k0=page tab offset
 #xxx mips64 unsafe
-	addu	k1, k1, k0			# k1=pte address
+	PTR_ADDU	k1, k1, k0			# k1=pte address
 	lw	k0, 0(k1)			# k0=lo0 pte
 	lw	k1, 4(k1)			# k1=lo1 pte
 	_SLL	k0, WIRED_SHIFT			# chop bits [31..30]
@@ -1051,9 +1055,9 @@ END(MipsTLBMissException)
  *----------------------------------------------------------------------------
  */
 NON_LEAF(MipsFPTrap, CALLFRAME_SIZ, ra)
-	subu	sp, sp, CALLFRAME_SIZ
+	PTR_SUBU	sp, sp, CALLFRAME_SIZ
 	mfc0	t0, COP_0_STATUS_REG
-	sw	ra, CALLFRAME_RA(sp)
+	REG_S	ra, CALLFRAME_RA(sp)
 	.mask	0x80000000, (CALLFRAME_RA - CALLFRAME_SIZ)
 
 	or	t1, t0, SR_COP_1_BIT
@@ -1075,10 +1079,10 @@ NON_LEAF(MipsFPTrap, CALLFRAME_SIZ, ra)
  * The instruction is in the branch delay slot so the branch will have to
  * be emulated to get the resulting PC.
  */
-	sw	a2, CALLFRAME_SIZ + 8(sp)
+	PTR_S	a2, CALLFRAME_SIZ + 8(sp)
 	GET_CPU_PCPU(a0)
 #mips64 unsafe?
-	lw	a0, PC_CURPCB(a0)
+	PTR_L	a0, PC_CURPCB(a0)
 	PTR_ADDU a0, a0, U_PCB_REGS		# first arg is ptr to CPU registers
 	move	a1, a2				# second arg is instruction PC
 	move	a2, t1				# third arg is floating point CSR
@@ -1089,7 +1093,7 @@ NON_LEAF(MipsFPTrap, CALLFRAME_SIZ, ra)
  * Now load the floating-point instruction in the branch delay slot
  * to be emulated.
  */
-	lw	a2, CALLFRAME_SIZ + 8(sp)	# restore EXC pc
+	PTR_L	a2, CALLFRAME_SIZ + 8(sp)	# restore EXC pc
 	b	2f
 	lw	a0, 4(a2)			# a0 = coproc instruction
 /*
@@ -1099,10 +1103,10 @@ NON_LEAF(MipsFPTrap, CALLFRAME_SIZ, ra)
 1:
 	lw	a0, 0(a2)			# a0 = coproc instruction
 #xxx mips64 unsafe?
-	addu	v0, a2, 4			# v0 = next pc
+	PTR_ADDU	v0, a2, 4			# v0 = next pc
 2:
 	GET_CPU_PCPU(t2)
-	lw	t2, PC_CURPCB(t2)
+	PTR_L	t2, PC_CURPCB(t2)
 	SAVE_U_PCB_REG(v0, PC, t2)		# save new pc
 /*
  * Check to see if the instruction to be emulated is a floating-point
@@ -1116,7 +1120,7 @@ NON_LEAF(MipsFPTrap, CALLFRAME_SIZ, ra)
  */
 3:
 	GET_CPU_PCPU(a0)
-	lw	a0, PC_CURTHREAD(a0)		# get current thread
+	PTR_L	a0, PC_CURTHREAD(a0)		# get current thread
 	cfc1	a2, FPC_CSR			# code = FP execptions
 	ctc1	zero, FPC_CSR			# Clear exceptions
 	PTR_LA	t3, _C_LABEL(trapsignal)
@@ -1138,7 +1142,7 @@ NON_LEAF(MipsFPTrap, CALLFRAME_SIZ, ra)
  */
 FPReturn:
 	mfc0	t0, COP_0_STATUS_REG
-	lw	ra, CALLFRAME_RA(sp)
+	PTR_L	ra, CALLFRAME_RA(sp)
 	and	t0, t0, ~SR_COP_1_BIT
 	mtc0	t0, COP_0_STATUS_REG
 	ITLBNOPFIX
