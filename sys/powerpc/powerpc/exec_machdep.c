@@ -492,7 +492,7 @@ void
 exec_setregs(struct thread *td, struct image_params *imgp, u_long stack)
 {
 	struct trapframe	*tf;
-	struct ps_strings	arginfo;
+	register_t		argc;
 	#ifdef __powerpc64__
 	register_t		entry_desc[3];
 	#endif
@@ -504,12 +504,6 @@ exec_setregs(struct thread *td, struct image_params *imgp, u_long stack)
 	#else
 	tf->fixreg[1] = -roundup(-stack + 8, 16);
 	#endif
-
-	/*
-	 * XXX Machine-independent code has already copied arguments and
-	 * XXX environment to userland.  Get them back here.
-	 */
-	(void)copyin((char *)PS_STRINGS, &arginfo, sizeof(arginfo));
 
 	/*
 	 * Set up arguments for _start():
@@ -525,20 +519,24 @@ exec_setregs(struct thread *td, struct image_params *imgp, u_long stack)
 	 * XXX We have to set both regs and retval here due to different
 	 * XXX calling convention in trap.c and init_main.c.
 	 */
+
+	/* Collect argc from the user stack */
+	argc = fuword((void *)stack);
+
         /*
          * XXX PG: these get overwritten in the syscall return code.
          * execve() should return EJUSTRETURN, like it does on NetBSD.
          * Emulate by setting the syscall return value cells. The
          * registers still have to be set for init's fork trampoline.
          */
-        td->td_retval[0] = arginfo.ps_nargvstr;
-        td->td_retval[1] = (register_t)arginfo.ps_argvstr;
-	tf->fixreg[3] = arginfo.ps_nargvstr;
-	tf->fixreg[4] = (register_t)arginfo.ps_argvstr;
-	tf->fixreg[5] = (register_t)arginfo.ps_envstr;
-	tf->fixreg[6] = 0;			/* auxillary vector */
-	tf->fixreg[7] = 0;			/* termination vector */
-	tf->fixreg[8] = (register_t)PS_STRINGS;	/* NetBSD extension */
+        td->td_retval[0] = argc;
+        td->td_retval[1] = stack + sizeof(register_t);
+	tf->fixreg[3] = argc;
+	tf->fixreg[4] = stack + sizeof(register_t);
+	tf->fixreg[5] = stack + (2 + argc)*sizeof(register_t);
+	tf->fixreg[6] = 0;				/* auxillary vector */
+	tf->fixreg[7] = 0;				/* termination vector */
+	tf->fixreg[8] = (register_t)imgp->ps_strings;	/* NetBSD extension */
 
 	#ifdef __powerpc64__
 	/*
