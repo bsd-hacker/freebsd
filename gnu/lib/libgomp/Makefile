@@ -23,6 +23,7 @@ CFLAGS+= -I${.CURDIR} -I. -I${SRCDIR} -I${SRCDIR}/config/posix
 VERSION_MAP=	${SRCDIR}/libgomp.map
 
 # Target-specific OpenMP configuration
+# XXX/juli Need to handle different MIPS ABIs here properly.
 .if ${MACHINE_ARCH} == arm || ${MACHINE_ARCH} == i386 || \
     ${MACHINE_ARCH} == mips || ${MACHINE_ARCH} == powerpc
 OMP_LOCK_ALIGN	=	4
