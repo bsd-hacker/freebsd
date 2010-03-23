@@ -890,7 +890,7 @@ cpu_set_syscall_retval(struct thread *td, int error)
 			tf->fixreg[FIRSTARG] = td->td_retval[0];
 			tf->fixreg[FIRSTARG + 1] = td->td_retval[1];
 		}
-		tf->cr &= ~0x10000000;		/* XXX: Magic number */
+		tf->cr &= ~0x10000000;		/* Unset summary overflow */
 		break;
 	case ERESTART:
 		/*
@@ -904,7 +904,7 @@ cpu_set_syscall_retval(struct thread *td, int error)
 			    p->p_sysent->sv_errtbl[error] : -1;
 		}
 		tf->fixreg[FIRSTARG] = error;
-		tf->cr |= 0x10000000;		/* XXX: Magic number */
+		tf->cr |= 0x10000000;		/* Set summary overflow */
 		break;
 	}
 }
