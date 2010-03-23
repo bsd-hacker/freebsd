@@ -385,9 +385,6 @@ openfirmware(void *args)
 	 */
 	oldmsr = intr_disable();
 
-	if (pmap_bootstrapped && ofw_real_mode)
-		args = (void *)pmap_kextract((vm_offset_t)args);
-
 	mtx_lock(&ofw_mutex);
 
 	ofw_sprg_prepare();

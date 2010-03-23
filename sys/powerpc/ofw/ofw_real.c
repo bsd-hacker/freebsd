@@ -304,6 +304,7 @@ ofw_real_init(ofw_t ofw, void *openfirm)
 static int
 ofw_real_test(ofw_t ofw, const char *name)
 {
+	vm_offset_t argsptr;
 	struct {
 		cell_t name;
 		cell_t nargs;
@@ -319,10 +320,12 @@ ofw_real_test(ofw_t ofw, const char *name)
 	ofw_real_start();
 
 	args.service = ofw_real_map(name, strlen(name) + 1);
-	if (args.service == 0 || openfirmware(&args) == -1) {
+	argsptr = ofw_real_map(&args, sizeof(args));
+	if (args.service == 0 || openfirmware((void *)argsptr) == -1) {
 		ofw_real_stop();
 		return (-1);
 	}
+	ofw_real_unmap(argsptr, &args, sizeof(args));
 	ofw_real_stop();
 	return (args.missing);
 }
@@ -335,6 +338,7 @@ ofw_real_test(ofw_t ofw, const char *name)
 static phandle_t
 ofw_real_peer(ofw_t ofw, phandle_t node)
 {
+	vm_offset_t argsptr;
 	struct {
 		cell_t name;
 		cell_t nargs;
@@ -348,8 +352,14 @@ ofw_real_peer(ofw_t ofw, phandle_t node)
 	args.nreturns = 1;
 
 	args.node = node;
-	if (openfirmware(&args) == -1)
+	ofw_real_start();
+	argsptr = ofw_real_map(&args, sizeof(args));
+	if (openfirmware((void *)argsptr) == -1) {
+		ofw_real_stop();
 		return (-1);
+	}
+	ofw_real_unmap(argsptr, &args, sizeof(args));
+	ofw_real_stop();
 	return (args.next);
 }
 
@@ -357,6 +367,7 @@ ofw_real_peer(ofw_t ofw, phandle_t node)
 static phandle_t
 ofw_real_child(ofw_t ofw, phandle_t node)
 {
+	vm_offset_t argsptr;
 	struct {
 		cell_t name;
 		cell_t nargs;
@@ -370,8 +381,14 @@ ofw_real_child(ofw_t ofw, phandle_t node)
 	args.nreturns = 1;
 
 	args.node = node;
-	if (openfirmware(&args) == -1)
+	ofw_real_start();
+	argsptr = ofw_real_map(&args, sizeof(args));
+	if (openfirmware((void *)argsptr) == -1) {
+		ofw_real_stop();
 		return (-1);
+	}
+	ofw_real_unmap(argsptr, &args, sizeof(args));
+	ofw_real_stop();
 	return (args.child);
 }
 
@@ -379,6 +396,7 @@ ofw_real_child(ofw_t ofw, phandle_t node)
 static phandle_t
 ofw_real_parent(ofw_t ofw, phandle_t node)
 {
+	vm_offset_t argsptr;
 	struct {
 		cell_t name;
 		cell_t nargs;
@@ -392,8 +410,14 @@ ofw_real_parent(ofw_t ofw, phandle_t node)
 	args.nreturns = 1;
 
 	args.node = node;
-	if (openfirmware(&args) == -1)
+	ofw_real_start();
+	argsptr = ofw_real_map(&args, sizeof(args));
+	if (openfirmware((void *)argsptr) == -1) {
+		ofw_real_stop();
 		return (-1);
+	}
+	ofw_real_unmap(argsptr, &args, sizeof(args));
+	ofw_real_stop();
 	return (args.parent);
 }
 
@@ -401,6 +425,7 @@ ofw_real_parent(ofw_t ofw, phandle_t node)
 static phandle_t
 ofw_real_instance_to_package(ofw_t ofw, ihandle_t instance)
 {
+	vm_offset_t argsptr;
 	struct {
 		cell_t name;
 		cell_t nargs;
@@ -414,8 +439,14 @@ ofw_real_instance_to_package(ofw_t ofw, ihandle_t instance)
 	args.nreturns = 1;
 
 	args.instance = instance;
-	if (openfirmware(&args) == -1)
+	ofw_real_start();
+	argsptr = ofw_real_map(&args, sizeof(args));
+	if (openfirmware((void *)argsptr) == -1) {
+		ofw_real_stop();
 		return (-1);
+	}
+	ofw_real_unmap(argsptr, &args, sizeof(args));
+	ofw_real_stop();
 	return (args.package);
 }
 
@@ -423,6 +454,7 @@ ofw_real_instance_to_package(ofw_t ofw, ihandle_t instance)
 static ssize_t
 ofw_real_getproplen(ofw_t ofw, phandle_t package, const char *propname)
 {
+	vm_offset_t argsptr;
 	struct {
 		cell_t name;
 		cell_t nargs;
@@ -440,10 +472,12 @@ ofw_real_getproplen(ofw_t ofw, phandle_t package, const char *propname)
 
 	args.package = package;
 	args.propname = ofw_real_map(propname, strlen(propname) + 1);
-	if (args.propname == 0 || openfirmware(&args) == -1) {
+	argsptr = ofw_real_map(&args, sizeof(args));
+	if (args.propname == 0 || openfirmware((void *)argsptr) == -1) {
 		ofw_real_stop();
 		return (-1);
 	}
+	ofw_real_unmap(argsptr, &args, sizeof(args));
 	ofw_real_stop();
 	return (args.proplen);
 }
@@ -453,6 +487,7 @@ static ssize_t
 ofw_real_getprop(ofw_t ofw, phandle_t package, const char *propname, void *buf, 
     size_t buflen)
 {
+	vm_offset_t argsptr;
 	struct {
 		cell_t name;
 		cell_t nargs;
@@ -474,10 +509,13 @@ ofw_real_getprop(ofw_t ofw, phandle_t package, const char *propname, void *buf,
 	args.propname = ofw_real_map(propname, strlen(propname) + 1);
 	args.buf = ofw_real_map(buf, buflen);
 	args.buflen = buflen;
-	if (args.propname == 0 || args.buf == 0 || openfirmware(&args) == -1) {
+	argsptr = ofw_real_map(&args, sizeof(args));
+	if (args.propname == 0 || args.buf == 0 ||
+	    openfirmware((void *)argsptr) == -1) {
 		ofw_real_stop();
 		return (-1);
 	}
+	ofw_real_unmap(argsptr, &args, sizeof(args));
 	ofw_real_unmap(args.buf, buf, buflen);
 
 	ofw_real_stop();
@@ -489,6 +527,7 @@ static int
 ofw_real_nextprop(ofw_t ofw, phandle_t package, const char *previous, 
     char *buf, size_t size)
 {
+	vm_offset_t argsptr;
 	struct {
 		cell_t name;
 		cell_t nargs;
@@ -508,10 +547,13 @@ ofw_real_nextprop(ofw_t ofw, phandle_t package, const char *previous,
 	args.package = package;
 	args.previous = ofw_real_map(previous, strlen(previous) + 1);
 	args.buf = ofw_real_map(buf, size);
-	if (args.previous == 0 || args.buf == 0 || openfirmware(&args) == -1) {
+	argsptr = ofw_real_map(&args, sizeof(args));
+	if (args.previous == 0 || args.buf == 0 ||
+	    openfirmware((void *)argsptr) == -1) {
 		ofw_real_stop();
 		return (-1);
 	}
+	ofw_real_unmap(argsptr, &args, sizeof(args));
 	ofw_real_unmap(args.buf, buf, size);
 
 	ofw_real_stop();
@@ -524,6 +566,7 @@ static int
 ofw_real_setprop(ofw_t ofw, phandle_t package, const char *propname,
     const void *buf, size_t len)
 {
+	vm_offset_t argsptr;
 	struct {
 		cell_t name;
 		cell_t nargs;
@@ -545,10 +588,13 @@ ofw_real_setprop(ofw_t ofw, phandle_t package, const char *propname,
 	args.propname = ofw_real_map(propname, strlen(propname) + 1);
 	args.buf = ofw_real_map(buf, len);
 	args.len = len;
-	if (args.propname == 0 || args.buf == 0 || openfirmware(&args) == -1) {
+	argsptr = ofw_real_map(&args, sizeof(args));
+	if (args.propname == 0 || args.buf == 0 ||
+	    openfirmware((void *)argsptr) == -1) {
 		ofw_real_stop();
 		return (-1);
 	}
+	ofw_real_unmap(argsptr, &args, sizeof(args));
 	ofw_real_stop();
 	return (args.size);
 }
@@ -557,6 +603,7 @@ ofw_real_setprop(ofw_t ofw, phandle_t package, const char *propname,
 static ssize_t
 ofw_real_canon(ofw_t ofw, const char *device, char *buf, size_t len)
 {
+	vm_offset_t argsptr;
 	struct {
 		cell_t name;
 		cell_t nargs;
@@ -576,10 +623,13 @@ ofw_real_canon(ofw_t ofw, const char *device, char *buf, size_t len)
 	args.device = ofw_real_map(device, strlen(device) + 1);
 	args.buf = ofw_real_map(buf, len);
 	args.len = len;
-	if (args.device == 0 || args.buf == 0 || openfirmware(&args) == -1) {
+	argsptr = ofw_real_map(&args, sizeof(args));
+	if (args.device == 0 || args.buf == 0 ||
+	    openfirmware((void *)argsptr) == -1) {
 		ofw_real_stop();
 		return (-1);
 	}
+	ofw_real_unmap(argsptr, &args, sizeof(args));
 	ofw_real_unmap(args.buf, buf, len);
 
 	ofw_real_stop();
@@ -590,6 +640,7 @@ ofw_real_canon(ofw_t ofw, const char *device, char *buf, size_t len)
 static phandle_t
 ofw_real_finddevice(ofw_t ofw, const char *device)
 {
+	vm_offset_t argsptr;
 	struct {
 		cell_t name;
 		cell_t nargs;
@@ -605,10 +656,13 @@ ofw_real_finddevice(ofw_t ofw, const char *device)
 	ofw_real_start();
 
 	args.device = ofw_real_map(device, strlen(device) + 1);
-	if (args.device == 0 || openfirmware(&args) == -1) {
+	argsptr = ofw_real_map(&args, sizeof(args));
+	if (args.device == 0 ||
+	    openfirmware((void *)argsptr) == -1) {
 		ofw_real_stop();
 		return (-1);
 	}
+	ofw_real_unmap(argsptr, &args, sizeof(args));
 	ofw_real_stop();
 	return (args.package);
 }
@@ -617,6 +671,7 @@ ofw_real_finddevice(ofw_t ofw, const char *device)
 static ssize_t
 ofw_real_instance_to_path(ofw_t ofw, ihandle_t instance, char *buf, size_t len)
 {
+	vm_offset_t argsptr;
 	struct {
 		cell_t name;
 		cell_t nargs;
@@ -636,10 +691,13 @@ ofw_real_instance_to_path(ofw_t ofw, ihandle_t instance, char *buf, size_t len)
 	args.instance = instance;
 	args.buf = ofw_real_map(buf, len);
 	args.len = len;
-	if (args.buf == 0 || openfirmware(&args) == -1) {
+	argsptr = ofw_real_map(&args, sizeof(args));
+	if (args.buf == 0 ||
+	    openfirmware((void *)argsptr) == -1) {
 		ofw_real_stop();
 		return (-1);
 	}
+	ofw_real_unmap(argsptr, &args, sizeof(args));
 	ofw_real_unmap(args.buf, buf, len);
 
 	ofw_real_stop();
@@ -650,6 +708,7 @@ ofw_real_instance_to_path(ofw_t ofw, ihandle_t instance, char *buf, size_t len)
 static ssize_t
 ofw_real_package_to_path(ofw_t ofw, phandle_t package, char *buf, size_t len)
 {
+	vm_offset_t argsptr;
 	struct {
 		cell_t name;
 		cell_t nargs;
@@ -669,10 +728,13 @@ ofw_real_package_to_path(ofw_t ofw, phandle_t package, char *buf, size_t len)
 	args.package = package;
 	args.buf = ofw_real_map(buf, len);
 	args.len = len;
-	if (args.buf == 0 || openfirmware(&args) == -1) {
+	argsptr = ofw_real_map(&args, sizeof(args));
+	if (args.buf == 0 ||
+	    openfirmware((void *)argsptr) == -1) {
 		ofw_real_stop();
 		return (-1);
 	}
+	ofw_real_unmap(argsptr, &args, sizeof(args));
 	ofw_real_unmap(args.buf, buf, len);
 
 	ofw_real_stop();
@@ -684,6 +746,7 @@ static int
 ofw_real_call_method(ofw_t ofw, ihandle_t instance, const char *method, 
     int nargs, int nreturns, cell_t *args_and_returns)
 {
+	vm_offset_t argsptr;
 	struct {
 		cell_t name;
 		cell_t nargs;
@@ -711,10 +774,13 @@ ofw_real_call_method(ofw_t ofw, ihandle_t instance, const char *method,
 	ap = args_and_returns;
 	for (cp = args.args_n_results + (n = nargs); --n >= 0;)
 		*--cp = *(ap++);
-	if (args.method == 0 || openfirmware(&args) == -1) {
+	argsptr = ofw_real_map(&args, sizeof(args));
+	if (args.method == 0 ||
+	    openfirmware((void *)argsptr) == -1) {
 		ofw_real_stop();
 		return (-1);
 	}
+	ofw_real_unmap(argsptr, &args, sizeof(args));
 	ofw_real_stop();
 	if (args.args_n_results[nargs])
 		return (args.args_n_results[nargs]);
@@ -727,6 +793,7 @@ static int
 ofw_real_interpret(ofw_t ofw, const char *cmd, int nreturns,
     unsigned long *returns)
 {
+	vm_offset_t argsptr;
 	struct {
 		cell_t name;
 		cell_t nargs;
@@ -742,14 +809,16 @@ ofw_real_interpret(ofw_t ofw, const char *cmd, int nreturns,
 	ofw_real_start();
 	args.nreturns = ++nreturns;
 	args.slot[i++] = ofw_real_map(cmd, strlen(cmd) + 1);
-	if (openfirmware(&args) == -1) {
+	argsptr = ofw_real_map(&args, sizeof(args));
+	if (openfirmware((void *)argsptr) == -1) {
 		ofw_real_stop();
 		return (-1);
 	}
+	ofw_real_unmap(argsptr, &args, sizeof(args));
+	ofw_real_stop();
 	status = args.slot[i++];
 	while (i < 1 + nreturns)
 		returns[j++] = args.slot[i++];
-	ofw_real_stop();
 	return (status);
 }
 
@@ -761,6 +830,7 @@ ofw_real_interpret(ofw_t ofw, const char *cmd, int nreturns,
 static ihandle_t
 ofw_real_open(ofw_t ofw, const char *device)
 {
+	vm_offset_t argsptr;
 	struct {
 		cell_t name;
 		cell_t nargs;
@@ -776,11 +846,13 @@ ofw_real_open(ofw_t ofw, const char *device)
 	ofw_real_start();
 
 	args.device = ofw_real_map(device, strlen(device) + 1);
-	if (args.device == 0 || openfirmware(&args) == -1 
+	argsptr = ofw_real_map(&args, sizeof(args));
+	if (args.device == 0 || openfirmware((void *)argsptr) == -1 
 	    || args.instance == 0) {
 		ofw_real_stop();
 		return (-1);
 	}
+	ofw_real_unmap(argsptr, &args, sizeof(args));
 	ofw_real_stop();
 	return (args.instance);
 }
@@ -789,6 +861,7 @@ ofw_real_open(ofw_t ofw, const char *device)
 static void
 ofw_real_close(ofw_t ofw, ihandle_t instance)
 {
+	vm_offset_t argsptr;
 	struct {
 		cell_t name;
 		cell_t nargs;
@@ -800,13 +873,17 @@ ofw_real_close(ofw_t ofw, ihandle_t instance)
 	args.nargs = 1;
 
 	args.instance = instance;
-	openfirmware(&args);
+	ofw_real_start();
+	argsptr = ofw_real_map(&args, sizeof(args));
+	openfirmware((void *)argsptr);
+	ofw_real_stop();
 }
 
 /* Read from an instance. */
 static ssize_t
 ofw_real_read(ofw_t ofw, ihandle_t instance, void *addr, size_t len)
 {
+	vm_offset_t argsptr;
 	struct {
 		cell_t name;
 		cell_t nargs;
@@ -826,10 +903,12 @@ ofw_real_read(ofw_t ofw, ihandle_t instance, void *addr, size_t len)
 	args.instance = instance;
 	args.addr = ofw_real_map(addr, len);
 	args.len = len;
-	if (args.addr == 0 || openfirmware(&args) == -1) {
+	argsptr = ofw_real_map(&args, sizeof(args));
+	if (args.addr == 0 || openfirmware((void *)argsptr) == -1) {
 		ofw_real_stop();
 		return (-1);
 	}
+	ofw_real_unmap(argsptr, &args, sizeof(args));
 	ofw_real_unmap(args.addr, addr, len);
 
 	ofw_real_stop();
@@ -840,6 +919,7 @@ ofw_real_read(ofw_t ofw, ihandle_t instance, void *addr, size_t len)
 static ssize_t
 ofw_real_write(ofw_t ofw, ihandle_t instance, const void *addr, size_t len)
 {
+	vm_offset_t argsptr;
 	struct {
 		cell_t name;
 		cell_t nargs;
@@ -859,10 +939,12 @@ ofw_real_write(ofw_t ofw, ihandle_t instance, const void *addr, size_t len)
 	args.instance = instance;
 	args.addr = ofw_real_map(addr, len);
 	args.len = len;
-	if (args.addr == 0 || openfirmware(&args) == -1) {
+	argsptr = ofw_real_map(&args, sizeof(args));
+	if (args.addr == 0 || openfirmware((void *)argsptr) == -1) {
 		ofw_real_stop();
 		return (-1);
 	}
+	ofw_real_unmap(argsptr, &args, sizeof(args));
 	ofw_real_stop();
 	return (args.actual);
 }
@@ -871,6 +953,7 @@ ofw_real_write(ofw_t ofw, ihandle_t instance, const void *addr, size_t len)
 static int
 ofw_real_seek(ofw_t ofw, ihandle_t instance, u_int64_t pos)
 {
+	vm_offset_t argsptr;
 	struct {
 		cell_t name;
 		cell_t nargs;
@@ -888,8 +971,14 @@ ofw_real_seek(ofw_t ofw, ihandle_t instance, u_int64_t pos)
 	args.instance = instance;
 	args.poshi = pos >> 32;
 	args.poslo = pos;
-	if (openfirmware(&args) == -1)
+	ofw_real_start();
+	argsptr = ofw_real_map(&args, sizeof(args));
+	if (openfirmware((void *)argsptr) == -1) {
+		ofw_real_stop();
 		return (-1);
+	}
+	ofw_real_unmap(argsptr, &args, sizeof(args));
+	ofw_real_stop();
 	return (args.status);
 }
 
@@ -901,6 +990,7 @@ ofw_real_seek(ofw_t ofw, ihandle_t instance, u_int64_t pos)
 static caddr_t
 ofw_real_claim(ofw_t ofw, void *virt, size_t size, u_int align)
 {
+	vm_offset_t argsptr;
 	struct {
 		cell_t name;
 		cell_t nargs;
@@ -918,8 +1008,14 @@ ofw_real_claim(ofw_t ofw, void *virt, size_t size, u_int align)
 	args.virt = (cell_t)(uintptr_t)virt;
 	args.size = size;
 	args.align = align;
-	if (openfirmware(&args) == -1)
+	ofw_real_start();
+	argsptr = ofw_real_map(&args, sizeof(args));
+	if (openfirmware((void *)argsptr) == -1) {
+		ofw_real_stop();
 		return ((void *)-1);
+	}
+	ofw_real_unmap(argsptr, &args, sizeof(args));
+	ofw_real_stop();
 	return ((void *)(uintptr_t)args.baseaddr);
 }
 
@@ -927,6 +1023,7 @@ ofw_real_claim(ofw_t ofw, void *virt, size_t size, u_int align)
 static void
 ofw_real_release(ofw_t ofw, void *virt, size_t size)
 {
+	vm_offset_t argsptr;
 	struct {
 		cell_t name;
 		cell_t nargs;
@@ -940,7 +1037,10 @@ ofw_real_release(ofw_t ofw, void *virt, size_t size)
 
 	args.virt = (cell_t)(uintptr_t)virt;
 	args.size = size;
-	openfirmware(&args);
+	ofw_real_start();
+	argsptr = ofw_real_map(&args, sizeof(args));
+	openfirmware((void *)argsptr);
+	ofw_real_stop();
 }
 
 /*
@@ -951,6 +1051,7 @@ ofw_real_release(ofw_t ofw, void *virt, size_t size)
 static void
 ofw_real_enter(ofw_t ofw)
 {
+	vm_offset_t argsptr;
 	struct {
 		cell_t name;
 		cell_t nargs;
@@ -959,14 +1060,18 @@ ofw_real_enter(ofw_t ofw)
 
 	args.name = (cell_t)(uintptr_t)"enter";
 
-	openfirmware(&args);
+	ofw_real_start();
+	argsptr = ofw_real_map(&args, sizeof(args));
+	openfirmware((void *)argsptr);
 	/* We may come back. */
+	ofw_real_stop();
 }
 
 /* Shut down and drop back to the Open Firmware interface. */
 static void
 ofw_real_exit(ofw_t ofw)
 {
+	vm_offset_t argsptr;
 	struct {
 		cell_t name;
 		cell_t nargs;
@@ -975,8 +1080,11 @@ ofw_real_exit(ofw_t ofw)
 
 	args.name = (cell_t)(uintptr_t)"exit";
 
-	openfirmware(&args);
+	ofw_real_start();
+	argsptr = ofw_real_map(&args, sizeof(args));
+	openfirmware((void *)argsptr);
 	for (;;)			/* just in case */
 		;
+	ofw_real_stop();
 }
 
