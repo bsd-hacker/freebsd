@@ -304,7 +304,7 @@ ofw_real_init(ofw_t ofw, void *openfirm)
 static int
 ofw_real_test(ofw_t ofw, const char *name)
 {
-	static struct {
+	struct {
 		cell_t name;
 		cell_t nargs;
 		cell_t nreturns;
@@ -335,7 +335,7 @@ ofw_real_test(ofw_t ofw, const char *name)
 static phandle_t
 ofw_real_peer(ofw_t ofw, phandle_t node)
 {
-	static struct {
+	struct {
 		cell_t name;
 		cell_t nargs;
 		cell_t nreturns;
@@ -357,7 +357,7 @@ ofw_real_peer(ofw_t ofw, phandle_t node)
 static phandle_t
 ofw_real_child(ofw_t ofw, phandle_t node)
 {
-	static struct {
+	struct {
 		cell_t name;
 		cell_t nargs;
 		cell_t nreturns;
@@ -379,7 +379,7 @@ ofw_real_child(ofw_t ofw, phandle_t node)
 static phandle_t
 ofw_real_parent(ofw_t ofw, phandle_t node)
 {
-	static struct {
+	struct {
 		cell_t name;
 		cell_t nargs;
 		cell_t nreturns;
@@ -401,7 +401,7 @@ ofw_real_parent(ofw_t ofw, phandle_t node)
 static phandle_t
 ofw_real_instance_to_package(ofw_t ofw, ihandle_t instance)
 {
-	static struct {
+	struct {
 		cell_t name;
 		cell_t nargs;
 		cell_t nreturns;
@@ -423,7 +423,7 @@ ofw_real_instance_to_package(ofw_t ofw, ihandle_t instance)
 static ssize_t
 ofw_real_getproplen(ofw_t ofw, phandle_t package, const char *propname)
 {
-	static struct {
+	struct {
 		cell_t name;
 		cell_t nargs;
 		cell_t nreturns;
@@ -453,7 +453,7 @@ static ssize_t
 ofw_real_getprop(ofw_t ofw, phandle_t package, const char *propname, void *buf, 
     size_t buflen)
 {
-	static struct {
+	struct {
 		cell_t name;
 		cell_t nargs;
 		cell_t nreturns;
@@ -489,7 +489,7 @@ static int
 ofw_real_nextprop(ofw_t ofw, phandle_t package, const char *previous, 
     char *buf, size_t size)
 {
-	static struct {
+	struct {
 		cell_t name;
 		cell_t nargs;
 		cell_t nreturns;
@@ -524,7 +524,7 @@ static int
 ofw_real_setprop(ofw_t ofw, phandle_t package, const char *propname,
     const void *buf, size_t len)
 {
-	static struct {
+	struct {
 		cell_t name;
 		cell_t nargs;
 		cell_t nreturns;
@@ -557,7 +557,7 @@ ofw_real_setprop(ofw_t ofw, phandle_t package, const char *propname,
 static ssize_t
 ofw_real_canon(ofw_t ofw, const char *device, char *buf, size_t len)
 {
-	static struct {
+	struct {
 		cell_t name;
 		cell_t nargs;
 		cell_t nreturns;
@@ -590,7 +590,7 @@ ofw_real_canon(ofw_t ofw, const char *device, char *buf, size_t len)
 static phandle_t
 ofw_real_finddevice(ofw_t ofw, const char *device)
 {
-	static struct {
+	struct {
 		cell_t name;
 		cell_t nargs;
 		cell_t nreturns;
@@ -617,7 +617,7 @@ ofw_real_finddevice(ofw_t ofw, const char *device)
 static ssize_t
 ofw_real_instance_to_path(ofw_t ofw, ihandle_t instance, char *buf, size_t len)
 {
-	static struct {
+	struct {
 		cell_t name;
 		cell_t nargs;
 		cell_t nreturns;
@@ -650,7 +650,7 @@ ofw_real_instance_to_path(ofw_t ofw, ihandle_t instance, char *buf, size_t len)
 static ssize_t
 ofw_real_package_to_path(ofw_t ofw, phandle_t package, char *buf, size_t len)
 {
-	static struct {
+	struct {
 		cell_t name;
 		cell_t nargs;
 		cell_t nreturns;
@@ -684,7 +684,7 @@ static int
 ofw_real_call_method(ofw_t ofw, ihandle_t instance, const char *method, 
     int nargs, int nreturns, cell_t *args_and_returns)
 {
-	static struct {
+	struct {
 		cell_t name;
 		cell_t nargs;
 		cell_t nreturns;
@@ -727,7 +727,7 @@ static int
 ofw_real_interpret(ofw_t ofw, const char *cmd, int nreturns,
     unsigned long *returns)
 {
-	static struct {
+	struct {
 		cell_t name;
 		cell_t nargs;
 		cell_t nreturns;
@@ -761,7 +761,7 @@ ofw_real_interpret(ofw_t ofw, const char *cmd, int nreturns,
 static ihandle_t
 ofw_real_open(ofw_t ofw, const char *device)
 {
-	static struct {
+	struct {
 		cell_t name;
 		cell_t nargs;
 		cell_t nreturns;
@@ -789,7 +789,7 @@ ofw_real_open(ofw_t ofw, const char *device)
 static void
 ofw_real_close(ofw_t ofw, ihandle_t instance)
 {
-	static struct {
+	struct {
 		cell_t name;
 		cell_t nargs;
 		cell_t nreturns;
@@ -807,7 +807,7 @@ ofw_real_close(ofw_t ofw, ihandle_t instance)
 static ssize_t
 ofw_real_read(ofw_t ofw, ihandle_t instance, void *addr, size_t len)
 {
-	static struct {
+	struct {
 		cell_t name;
 		cell_t nargs;
 		cell_t nreturns;
@@ -840,7 +840,7 @@ ofw_real_read(ofw_t ofw, ihandle_t instance, void *addr, size_t len)
 static ssize_t
 ofw_real_write(ofw_t ofw, ihandle_t instance, const void *addr, size_t len)
 {
-	static struct {
+	struct {
 		cell_t name;
 		cell_t nargs;
 		cell_t nreturns;
@@ -871,7 +871,7 @@ ofw_real_write(ofw_t ofw, ihandle_t instance, const void *addr, size_t len)
 static int
 ofw_real_seek(ofw_t ofw, ihandle_t instance, u_int64_t pos)
 {
-	static struct {
+	struct {
 		cell_t name;
 		cell_t nargs;
 		cell_t nreturns;
@@ -901,7 +901,7 @@ ofw_real_seek(ofw_t ofw, ihandle_t instance, u_int64_t pos)
 static caddr_t
 ofw_real_claim(ofw_t ofw, void *virt, size_t size, u_int align)
 {
-	static struct {
+	struct {
 		cell_t name;
 		cell_t nargs;
 		cell_t nreturns;
@@ -927,7 +927,7 @@ ofw_real_claim(ofw_t ofw, void *virt, size_t size, u_int align)
 static void
 ofw_real_release(ofw_t ofw, void *virt, size_t size)
 {
-	static struct {
+	struct {
 		cell_t name;
 		cell_t nargs;
 		cell_t nreturns;
@@ -951,7 +951,7 @@ ofw_real_release(ofw_t ofw, void *virt, size_t size)
 static void
 ofw_real_enter(ofw_t ofw)
 {
-	static struct {
+	struct {
 		cell_t name;
 		cell_t nargs;
 		cell_t nreturns;
@@ -967,7 +967,7 @@ ofw_real_enter(ofw_t ofw)
 static void
 ofw_real_exit(ofw_t ofw)
 {
-	static struct {
+	struct {
 		cell_t name;
 		cell_t nargs;
 		cell_t nreturns;

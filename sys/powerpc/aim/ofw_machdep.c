@@ -63,6 +63,8 @@ __FBSDID("$FreeBSD$");
 static struct mem_region OFmem[OFMEM_REGIONS + 1], OFavail[OFMEM_REGIONS + 3];
 static struct mem_region OFfree[OFMEM_REGIONS + 3];
 
+static struct mtx ofw_mutex;
+
 extern register_t ofmsr[5];
 extern struct	pmap ofw_pmap;
 static int	(*ofwcall)(void *);
@@ -337,6 +339,8 @@ OF_bootstrap()
 {
 	boolean_t status = FALSE;
 
+	mtx_init(&ofw_mutex, "open firmware", NULL, MTX_DEF);
+
 	if (ofwcall != NULL) {
 		if (ofw_real_mode) {
 			status = OF_install(OFW_STD_REAL, 0);
@@ -384,6 +388,8 @@ openfirmware(void *args)
 	if (pmap_bootstrapped && ofw_real_mode)
 		args = (void *)pmap_kextract((vm_offset_t)args);
 
+	mtx_lock(&ofw_mutex);
+
 	ofw_sprg_prepare();
 
       #ifndef __powerpc64__
@@ -428,6 +434,8 @@ openfirmware(void *args)
 	ofw_sprg_restore();
 
 	intr_restore(oldmsr);
+
+	mtx_unlock(&ofw_mutex);
 
 	return (result);
 }
