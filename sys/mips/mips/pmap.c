@@ -219,11 +219,11 @@ struct local_sysmaps {
 static struct local_sysmaps sysmap_lmem[MAXCPU];
 caddr_t virtual_sys_start = (caddr_t)0;
 
-pd_entry_t
+pt_entry_t *
 pmap_segmap(pmap_t pmap, vm_offset_t va)
 {
 	if (pmap->pm_segtab)
-		return (*pmap_pde(pmap, va));
+		return ((pt_entry_t *)(intptr_t)*pmap_pde(pmap, va));
 	else
 		return ((pd_entry_t)0);
 }
@@ -240,7 +240,7 @@ pmap_pte(pmap_t pmap, vm_offset_t va)
 	pt_entry_t *pdeaddr;
 
 	if (pmap) {
-		pdeaddr = (pt_entry_t *)pmap_segmap(pmap, va);
+		pdeaddr = pmap_segmap(pmap, va);
 		if (pdeaddr) {
 			return pdeaddr + vad_to_pte_offset(va);
 		}
@@ -424,9 +424,9 @@ again:
 		 * be somewhere above 0xC0000000 - 0xFFFFFFFF which results
 		 * in about 256 entries or so instead of the 120.
 		 */
-		nkpt = ((PAGE_SIZE * 2) / sizeof(pd_entry_t)) - pmap_segshift(virtual_avail);
+		nkpt = (PAGE_SIZE / sizeof(pd_entry_t)) - pmap_segshift(virtual_avail);
 	}
-	pgtab = (pt_entry_t *)pmap_steal_memory((PAGE_SIZE * 2) * nkpt);
+	pgtab = (pt_entry_t *)pmap_steal_memory(PAGE_SIZE * nkpt);
 
 	/*
 	 * The R[4-7]?00 stores only one copy of the Global bit in the
@@ -443,7 +443,7 @@ again:
 	 * level page table.
 	 */
 	for (i = 0, j = pmap_segshift(virtual_avail); i < nkpt; i++, j++)
-		kernel_segmap[j] = (pd_entry_t)(pgtab + (i * NPTEPG));
+		kernel_segmap[j] = (pd_entry_t)(intptr_t)(pgtab + (i * NPTEPG));
 
 	/*
 	 * The kernel's pmap is statically allocated so we don't have to use
@@ -1333,7 +1333,7 @@ pmap_growkernel(vm_offset_t addr)
 			panic("Gak, can't handle a k-page table outside of lower 512Meg");
 		}
 		pte = (pt_entry_t *)MIPS_PHYS_TO_KSEG0(ptppaddr);
-		segtab_pde(kernel_segmap, kernel_vm_end) = (pd_entry_t)pte;
+		segtab_pde(kernel_segmap, kernel_vm_end) = (pd_entry_t)(intptr_t)pte;
 
 		/*
 		 * The R[4-7]?00 stores only one copy of the Global bit in
@@ -1990,7 +1990,7 @@ validate:
 			if (origpte & PTE_M) {
 				KASSERT((origpte & PTE_RW),
 				    ("pmap_enter: modified page not writable:"
-				    " va: %p, pte: 0x%lx", (void *)va, origpte));
+				    " va: %p, pte: 0x%x", (void *)va, origpte));
 				if (page_is_managed(opa))
 					vm_page_dirty(om);
 			}
@@ -2636,7 +2636,7 @@ pmap_remove_pages(pmap_t pmap)
 		m = PHYS_TO_VM_PAGE(mips_tlbpfn_to_paddr(tpte));
 
 		KASSERT(m < &vm_page_array[vm_page_array_size],
-		    ("pmap_remove_pages: bad tpte %lx", tpte));
+		    ("pmap_remove_pages: bad tpte %x", tpte));
 
 		pv->pv_pmap->pm_stats.resident_count--;
 

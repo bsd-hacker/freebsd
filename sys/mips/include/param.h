@@ -111,18 +111,7 @@
 #define	PAGE_MASK	(PAGE_SIZE-1)
 #define	NPTEPG		(PAGE_SIZE/(sizeof (pt_entry_t)))
 
-#define	NBSEG		0x400000	/* bytes/segment */
-#define	SEGOFSET	(NBSEG-1)	/* byte offset into segment */
-#define	SEGSHIFT	22		/* LOG2(NBSEG) */
-
 #define	MAXPAGESIZES	1		/* maximum number of supported page sizes */
-
-/* XXXimp: This has moved to vmparam.h */
-/* Also, this differs from the mips2 definition, but likely is better */
-/* since this means the kernel won't chew up TLBs when it is executing */
-/* code */
-#define	KERNBASE	0x80000000	/* start of kernel virtual */
-#define	BTOPKERNBASE	((u_long)KERNBASE >> PGSHIFT)
 
 #define	BLKDEV_IOSIZE	2048		/* xxx: Why is this 1/2 page? */
 #define	MAXDUMPPGS	1		/* xxx: why is this only one? */

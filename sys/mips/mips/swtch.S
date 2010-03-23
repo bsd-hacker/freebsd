@@ -65,37 +65,7 @@
 
 #include "assym.s"
 
-#if defined(ISA_MIPS32)
-#undef WITH_64BIT_CP0
-#elif defined(ISA_MIPS64)
-#define WITH_64BIT_CP0
-#elif defined(ISA_MIPS3)
-#define WITH_64BIT_CP0
-#else
-#error "Please write the code for this ISA"
-#endif
-
-#ifdef WITH_64BIT_CP0
-#define _SLL	dsll
-#define	_SRL	dsrl
-#define	_MFC0	dmfc0
-#define	_MTC0	dmtc0
-#define WIRED_SHIFT 34
-#else
-#define _SLL	sll
-#define	_SRL	srl
-#define	_MFC0	mfc0
-#define	_MTC0	mtc0
-#define WIRED_SHIFT 2
-#endif
 	.set	noreorder			# Noreorder is default style!
-#if defined(ISA_MIPS32)
-	.set	mips32
-#elif defined(ISA_MIPS64)
-	.set	mips64
-#elif defined(ISA_MIPS3)
-	.set	mips3
-#endif
 
 /*
  * FREEBSD_DEVELOPERS_FIXME
@@ -165,7 +135,7 @@ LEAF(fork_trampoline)
 	RESTORE_U_PCB_REG(a0, PC, k1)
 	RESTORE_U_PCB_REG(AT, AST, k1)
 	RESTORE_U_PCB_REG(v0, V0, k1)
-	_MTC0	a0, COP_0_EXC_PC	# set return address
+	MTC0	a0, COP_0_EXC_PC	# set return address
 
 	RESTORE_U_PCB_REG(v1, V1, k1)
 	RESTORE_U_PCB_REG(a0, A0, k1)

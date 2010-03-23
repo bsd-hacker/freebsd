@@ -108,6 +108,11 @@
 #define	VM_MIN_KERNEL_ADDRESS		((vm_offset_t)(intptr_t)(int32_t)0xC0000000)
 #define	VM_KERNEL_WIRED_ADDR_END	(VM_MIN_KERNEL_ADDRESS + VM_KERNEL_ALLOC_OFFSET)
 #define	VM_MAX_KERNEL_ADDRESS	((vm_offset_t)(intptr_t)(int32_t)0xFFFFC000)
+#if 0
+#define	KERNBASE		(VM_MIN_KERNEL_ADDRESS)
+#else
+#define	KERNBASE		((vm_offset_t)(intptr_t)(int32_t)0x80000000)
+#endif
 
 /*
  * Disable superpage reservations. (not sure if this is right
@@ -178,21 +183,6 @@
  * The largest allocation size is 1MB.
  */
 #define	VM_NFREEORDER		9
-
-/*
- * XXXMIPS: This values need to be changed!!!
- */ 
-#if 0
-#define VM_MIN_ADDRESS		((vm_offset_t)0x0000000000010000)
-#define VM_MAXUSER_ADDRESS	((vm_offset_t)MIPS_KSEG0_START-1)
-#define VM_MAX_ADDRESS		((vm_offset_t)0x0000000100000000)
-#define VM_MIN_KERNEL_ADDRESS	((vm_offset_t)MIPS_KSEG3_START)
-#define VM_MAX_KERNEL_ADDRESS	((vm_offset_t)MIPS_KSEG3_END)
-#define	KERNBASE		(VM_MIN_KERNEL_ADDRESS)
-
-/* virtual sizes (bytes) for various kernel submaps */
-#define	VM_KMEM_SIZE		(16*1024*1024)		/* XXX ??? */
-#endif
 
 #define NBSEG		0x400000	/* bytes/segment */
 #define SEGOFSET	(NBSEG-1)	/* byte offset into segment */

@@ -1290,9 +1290,6 @@ END(atomic_subtract_8)
  */
 
 	.set	noreorder		# Noreorder is default style!
-#ifndef _MIPS_ARCH_XLR
-	.set	mips3
-#endif
 
 #if !defined(__mips_n64) && !defined(__mips_n32)	
 	/*

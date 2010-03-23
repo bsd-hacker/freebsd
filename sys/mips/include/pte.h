@@ -83,8 +83,8 @@ struct tlb {
 	int	tlb_lo1;
 };
 
-typedef unsigned long pt_entry_t;
-typedef pt_entry_t *pd_entry_t;
+typedef int32_t pt_entry_t;
+typedef int32_t pd_entry_t;
 
 #define	PDESIZE		sizeof(pd_entry_t)	/* for assembly files */
 #define	PTESIZE		sizeof(pt_entry_t)	/* for assembly files */

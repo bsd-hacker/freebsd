@@ -100,7 +100,7 @@ typedef struct pmap *pmap_t;
 #ifdef	_KERNEL
 
 pt_entry_t *pmap_pte(pmap_t, vm_offset_t);
-pd_entry_t pmap_segmap(pmap_t pmap, vm_offset_t va);
+pt_entry_t *pmap_segmap(pmap_t pmap, vm_offset_t va);
 vm_offset_t pmap_kextract(vm_offset_t va);
 
 #define	vtophys(va)	pmap_kextract(((vm_offset_t) (va)))
