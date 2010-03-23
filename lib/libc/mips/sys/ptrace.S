@@ -59,13 +59,13 @@ NESTED_NOPROFILE(ptrace, CALLFRAME_SIZ, ra)
 	li		v0, SYS_ptrace
 	syscall
 
+	# Load __cerror's address using our gp, then restore it.
+	PTR_LA		t9, __cerror
 	RESTORE_GP64
 	PTR_ADDU	sp, sp, CALLFRAME_SIZ
 
 	bne		a3, zero, 1f
 
 	j		ra
-1:
-	PTR_LA		t9, __cerror
-	jalr		t9
+1:	j		t9
 END(ptrace)
