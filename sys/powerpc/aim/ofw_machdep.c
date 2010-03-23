@@ -378,14 +378,14 @@ openfirmware(void *args)
 	u_int		i;
 	#endif
 
+	mtx_lock(&ofw_mutex);
+
 	/*
 	 * Turn off exceptions - we really don't want to end up
 	 * anywhere unexpected with PCPU set to something strange,
 	 * the stack pointer wrong, or the OFW mapping enabled.
 	 */
 	oldmsr = intr_disable();
-
-	mtx_lock(&ofw_mutex);
 
 	ofw_sprg_prepare();
 
