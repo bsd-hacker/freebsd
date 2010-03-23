@@ -97,22 +97,6 @@
 	.set	mips3
 #endif
 
-#if defined(ISA_MIPS32)
-#define	STORE		sw		/* 32 bit mode regsave instruction */
-#define	LOAD		lw		/* 32 bit mode regload instruction */
-#define	RSIZE		4		/* 32 bit mode register size */
-#define	STORE_FP	swc1		/* 32 bit mode fp regsave instruction */
-#define	LOAD_FP		lwc1		/* 32 bit mode fp regload instruction */
-#define	FP_RSIZE	4		/* 32 bit mode fp register size */
-#else
-#define	STORE		sd		/* 64 bit mode regsave instruction */
-#define	LOAD		ld		/* 64 bit mode regload instruction */
-#define	RSIZE		8		/* 64 bit mode register size */
-#define	STORE_FP	sdc1		/* 64 bit mode fp regsave instruction */
-#define	LOAD_FP		ldc1		/* 64 bit mode fp regload instruction */
-#define	FP_RSIZE	8		/* 64 bit mode fp register size */
-#endif
-
 /*
  * FREEBSD_DEVELOPERS_FIXME
  * Some MIPS CPU may need delays using nops between executing CP0 Instructions
@@ -125,28 +109,28 @@
 #endif
 
 #define	SAVE_U_PCB_REG(reg, offs, base) \
-	STORE	reg, U_PCB_REGS + (RSIZE * offs) (base)
+	REG_S	reg, U_PCB_REGS + (SZREG * offs) (base)
 
 #define	RESTORE_U_PCB_REG(reg, offs, base) \
-	LOAD	reg, U_PCB_REGS + (RSIZE * offs) (base)
+	REG_L	reg, U_PCB_REGS + (SZREG * offs) (base)
 
 #define	SAVE_U_PCB_FPREG(reg, offs, base) \
-	STORE_FP reg, U_PCB_FPREGS + (FP_RSIZE * offs) (base)
+	FP_S	reg, U_PCB_FPREGS + (SZFPREG * offs) (base)
 
 #define	RESTORE_U_PCB_FPREG(reg, offs, base) \
-	LOAD_FP	reg, U_PCB_FPREGS + (FP_RSIZE * offs) (base)
+	FP_L	reg, U_PCB_FPREGS + (SZFPREG * offs) (base)
 
 #define	SAVE_U_PCB_FPSR(reg, offs, base) \
-	STORE	reg, U_PCB_FPREGS + (FP_RSIZE * offs) (base)
+	REG_S	reg, U_PCB_FPREGS + (SZFPREG * offs) (base)
 
 #define	RESTORE_U_PCB_FPSR(reg, offs, base) \
-	LOAD	reg, U_PCB_FPREGS + (FP_RSIZE * offs) (base)
+	REG_L	reg, U_PCB_FPREGS + (SZFPREG * offs) (base)
 
 #define	SAVE_U_PCB_CONTEXT(reg, offs, base) \
-	STORE	reg, U_PCB_CONTEXT + (RSIZE * offs) (base)
+	REG_S	reg, U_PCB_CONTEXT + (SZREG * offs) (base)
 
 #define	RESTORE_U_PCB_CONTEXT(reg, offs, base) \
-	LOAD	reg, U_PCB_CONTEXT + (RSIZE * offs) (base)
+	REG_L	reg, U_PCB_CONTEXT + (SZREG * offs) (base)
 
 #define	ITLBNOPFIX	nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;
 
