@@ -1689,9 +1689,9 @@ static void octeon_rgmx_medstat (struct ifnet *ifp, struct ifmediareq *ifm)
 
 static void octeon_rgmx_config_cam(struct ifnet *ifp)
 {
-    	struct rgmx_softc_dev *sc = ifp->if_softc;
+	struct rgmx_softc_dev *sc = ifp->if_softc;
 	u_int port = sc->port;
-    	int index = INDEX(port);
+	int index = INDEX(port);
         int iface = INTERFACE(port);
 	u_int last_enabled;
 	uint64_t adr_ctl;

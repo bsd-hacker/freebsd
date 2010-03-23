@@ -163,7 +163,7 @@ __FBSDID("$FreeBSD$");
 
 #if !defined(DIAGNOSTIC)
 #ifdef __GNUC_GNU_INLINE__
-#define PMAP_INLINE	inline
+#define PMAP_INLINE	__attribute__((__gnu_inline__)) inline
 #else
 #define PMAP_INLINE	extern inline
 #endif
@@ -1014,7 +1014,7 @@ pmap_invalidate_cache_range(vm_offset_t sva, vm_offset_t eva)
 
 		/*
 		 * No targeted cache flush methods are supported by CPU,
-		 * or the supplied range is bigger then 2MB.
+		 * or the supplied range is bigger than 2MB.
 		 * Globally invalidate cache.
 		 */
 		pmap_invalidate_cache();
