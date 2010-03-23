@@ -39,9 +39,9 @@
  */
 
 #if defined(__mips_n64)
-#define	PRI64		"ld"
+#define	PRI64		"l"
 #else
-#define	PRI64		"lld"
+#define	PRI64		"ll"
 #endif
 
 /* fprintf(3) macros for signed integers. */
