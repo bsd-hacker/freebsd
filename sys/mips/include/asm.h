@@ -314,8 +314,8 @@ _C_LABEL(x):
 	nop                                         ;\
 	move	a0, v0                              ;\
 	GET_CPU_PCPU(s1)                            ;\
-	lw	s3, PC_CURPCB(s1)                   ;\
-	lw	s1, PC_CURTHREAD(s1)                ;\
+	PTR_L	s3, PC_CURPCB(s1)                   ;\
+	PTR_L	s1, PC_CURTHREAD(s1)                ;\
 	lw	s2, TD_FLAGS(s1)                    ;\
 	li	s0, TDF_ASTPENDING | TDF_NEEDRESCHED;\
 	and	s2, s0                              ;\
@@ -765,7 +765,7 @@ _C_LABEL(x):
 #endif
 
 #define	GET_CPU_PCPU(reg)		\
-	lw	reg, _C_LABEL(pcpup);
+	PTR_L	reg, _C_LABEL(pcpup);
 
 /*
  * Description of the setjmp buffer

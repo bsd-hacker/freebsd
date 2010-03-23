@@ -98,11 +98,11 @@ END(copystr)
 LEAF(copyinstr)
 	.set noreorder
 	.set noat
-	lw	t2, pcpup
-	lw	v1, PC_CURPCB(t2)
+	GET_CPU_PCPU(t2)
+	PTR_L	v1, PC_CURPCB(t2)
 	PTR_LA	v0, _C_LABEL(copystrerr)
 	blt	a0, zero, _C_LABEL(copystrerr)
-	sw	v0, PCB_ONFAULT(v1)
+	PTR_S	v0, PCB_ONFAULT(v1)
 	move	t0, a2
 	beq	a2, zero, 4f
 1:
@@ -121,7 +121,7 @@ LEAF(copyinstr)
 	sw	a2, 0(a3)		/*xxx mips64 unsafe -- long */
 3:
 	j	ra				# v0 is 0 or ENAMETOOLONG
-	sw	zero, PCB_ONFAULT(v1)
+	PTR_S	zero, PCB_ONFAULT(v1)
 	.set reorder
 	.set at
 END(copyinstr)
@@ -136,11 +136,11 @@ END(copyinstr)
 LEAF(copyoutstr)
 	.set noreorder
 	.set noat
-	lw	t2, pcpup
-	lw	v1, PC_CURPCB(t2)
+	GET_CPU_PCPU(t2)
+	PTR_L	v1, PC_CURPCB(t2)
 	PTR_LA	v0, _C_LABEL(copystrerr)
 	blt	a1, zero, _C_LABEL(copystrerr)
-	sw	v0, PCB_ONFAULT(v1)
+	PTR_S	v0, PCB_ONFAULT(v1)
 	move	t0, a2
 	beq	a2, zero, 4f
 1:
@@ -159,13 +159,12 @@ LEAF(copyoutstr)
 	sw	a2, 0(a3)		/*xxx mips64 unsafe -- long */
 3:
 	j	ra				# v0 is 0 or ENAMETOOLONG
-	sw	zero, PCB_ONFAULT(v1)
+	PTR_S	zero, PCB_ONFAULT(v1)
 	.set reorder
 	.set at
 END(copyoutstr)
 
 LEAF(copystrerr)
-	sw	zero, PCB_ONFAULT(v1)
 	j	ra
 	li	v0, EFAULT			# return EFAULT
 END(copystrerr)

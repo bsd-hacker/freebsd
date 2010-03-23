@@ -156,7 +156,7 @@ LEAF(fork_trampoline)
  */
 	.set	noat
 	GET_CPU_PCPU(k1)
-	lw	k1, PC_CURPCB(k1)
+	PTR_L	k1, PC_CURPCB(k1)
 
 	RESTORE_U_PCB_REG(t0, MULLO, k1)
 	RESTORE_U_PCB_REG(t1, MULHI, k1)
@@ -278,10 +278,10 @@ NON_LEAF(cpu_switch, CALLFRAME_SIZ, ra)
 	ITLBNOPFIX
 	beqz	a0, mips_sw1
 	move	a3, a0
-	lw	a0, TD_PCB(a0)		# load PCB addr of curproc
+	PTR_L	a0, TD_PCB(a0)		# load PCB addr of curproc
 	SAVE_U_PCB_CONTEXT(sp, PREG_SP, a0)		# save old sp
-	subu	sp, sp, CALLFRAME_SIZ
-	sw	ra, CALLFRAME_RA(sp)
+	PTR_SUBU	sp, sp, CALLFRAME_SIZ
+	REG_S	ra, CALLFRAME_RA(sp)
 	.mask	0x80000000, (CALLFRAME_RA - CALLFRAME_SIZ)
 	SAVE_U_PCB_CONTEXT(s0, PREG_S0, a0)		# do a 'savectx()'
 	SAVE_U_PCB_CONTEXT(s1, PREG_S1, a0)
@@ -305,13 +305,13 @@ getpc:
 	 * to be saved with the other registers do so here.
 	 */
 
-	sw	a2, TD_LOCK(a3)			# Switchout td_lock 
+	PTR_S	a2, TD_LOCK(a3)			# Switchout td_lock 
 
 mips_sw1:
 #if defined(SMP) && defined(SCHED_ULE)
 	PTR_LA	t0, _C_LABEL(blocked_lock)
 blocked_loop:
-	lw	t1, TD_LOCK(a1)
+	PTR_L	t1, TD_LOCK(a1)
 	beq	t0, t1, blocked_loop
 	nop
 #endif
@@ -320,10 +320,10 @@ blocked_loop:
  * Switch to new context.
  */
 	GET_CPU_PCPU(a3)
-	sw	a1, PC_CURTHREAD(a3)
-	lw	a2, TD_PCB(a1)
-	sw	a2, PC_CURPCB(a3)
-	lw	v0, TD_REALKSTACK(a1)
+	PTR_S	a1, PC_CURTHREAD(a3)
+	PTR_L	a2, TD_PCB(a1)
+	PTR_S	a2, PC_CURPCB(a3)
+	PTR_L	v0, TD_REALKSTACK(a1)
 	li	s0, (MIPS_KSEG2_START+VM_KERNEL_ALLOC_OFFSET)		# If Uarea addr is below kseg2,
 	bltu	v0, s0, sw2			# no need to insert in TLB.
 	lw	a1, TD_UPTE+0(s7)		# t0 = first u. pte
@@ -350,7 +350,7 @@ entry0:
 	nop
 pgm:
 	bltz	s0, entry0set
-	li	t1, MIPS_KSEG0_START		# invalidate tlb entry
+	REG_LI	t1, MIPS_KSEG0_START		# invalidate tlb entry
 	sll	s0, PAGE_SHIFT + 1
 	addu	t1, s0
 	mtc0	t1, COP_0_TLB_HI
@@ -380,7 +380,7 @@ sw2:
 /*
  * Restore registers and return.
  */
-	lw	a0, TD_PCB(s7)
+	PTR_L	a0, TD_PCB(s7)
 	RESTORE_U_PCB_CONTEXT(gp, PREG_GP, a0)
 	RESTORE_U_PCB_CONTEXT(v0, PREG_SR, a0)	# restore kernel context
 	RESTORE_U_PCB_CONTEXT(ra, PREG_RA, a0)
@@ -441,7 +441,7 @@ LEAF(MipsSwitchFPState)
  * First read out the status register to make sure that all FP operations
  * have completed.
  */
-	lw	a0, TD_PCB(a0)			# get pointer to pcb for proc
+	PTR_L	a0, TD_PCB(a0)			# get pointer to pcb for proc
 	cfc1	t0, FPC_CSR			# stall til FP done
 	cfc1	t0, FPC_CSR			# now get status
 	li	t3, ~SR_COP_1_BIT
@@ -551,13 +551,13 @@ END(MipsSwitchFPState)
  *----------------------------------------------------------------------------
  */
 LEAF(MipsSaveCurFPState)
-	lw	a0, TD_PCB(a0)			# get pointer to pcb for thread
+	PTR_L	a0, TD_PCB(a0)			# get pointer to pcb for thread
 	mfc0	t1, COP_0_STATUS_REG		# Disable interrupts and
 	li	t0, SR_COP_1_BIT		#  enable the coprocessor
 	mtc0	t0, COP_0_STATUS_REG
 	ITLBNOPFIX
 	GET_CPU_PCPU(a1)
-	sw	zero, PC_FPCURTHREAD(a1)	# indicate state has been saved
+	PTR_S	zero, PC_FPCURTHREAD(a1)	# indicate state has been saved
 /*
  * First read out the status register to make sure that all FP operations
  * have completed.
