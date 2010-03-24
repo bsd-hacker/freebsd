@@ -43,7 +43,7 @@ __FBSDID("$FreeBSD$");
 
 #include "calendar.h"
 
-struct tm		tp1, tp2;
+//struct tm		tp1, tp2;
 time_t			time1, time2;
 const struct tm		tm0;
 char			dayname[10];
@@ -51,7 +51,7 @@ int			year1, year2;
 
 
 void
-settimes(time_t now, int before, int after, struct tm *tp1, struct tm *tp2)
+settimes(time_t now, int before, int after, int friday, struct tm *tp1, struct tm *tp2)
 {
 	char *oldl, *lbufp;
 	struct tm tp;
@@ -59,13 +59,13 @@ settimes(time_t now, int before, int after, struct tm *tp1, struct tm *tp2)
 	localtime_r(&now, &tp);
 
 	/* Friday displays Monday's events */
-	if (f_dayAfter == 0 && f_dayBefore == 0 && Friday != -1)
-		f_dayAfter = tp.tm_wday == Friday ? 3 : 1;
+	if (after == 0 && before == 0 && friday != -1)
+		after = tp.tm_wday == friday ? 3 : 1;
 
-	time1 = now - SECSPERDAY * f_dayBefore;
+	time1 = now - SECSPERDAY * before;
 	localtime_r(&time1, tp1);
 	year1 = 1900 + tp1->tm_year;
-	time2 = now + SECSPERDAY * f_dayAfter;
+	time2 = now + SECSPERDAY * after;
 	localtime_r(&time2, tp2);
 	year2 = 1900 + tp2->tm_year;
 
@@ -121,49 +121,3 @@ Mktime(char *dp)
 #endif
 	return (mktime(&tm));
 }
-
-
-
-/* return offset for variable weekdays
- * -1 -> last weekday in month
- * +1 -> first weekday in month
- * ... etc ...
- */
-int
-getdayvar(char *s)
-{
-	int offs;
-
-	offs = strlen(s);
-
-	/* Sun+1 or Wednesday-2
-	 *    ^              ^   */
-
-	/* fprintf(stderr, "x: %s %s %d\n", s, s + offs - 2, offs); */
-	switch (*(s + offs - 2)) {
-	case '-':
-		return (-(atoi(s + offs - 1)));
-	case '+':
-		return (atoi(s + offs - 1));
-	}
-
-	/*
-	 * some aliases: last, first, second, third, fourth
-	 */
-
-	/* last */
-	if      (offs > 4 && !strcasecmp(s + offs - 4, "last"))
-		return (-1);
-	else if (offs > 5 && !strcasecmp(s + offs - 5, "first"))
-		return (+1);
-	else if (offs > 6 && !strcasecmp(s + offs - 6, "second"))
-		return (+2);
-	else if (offs > 5 && !strcasecmp(s + offs - 5, "third"))
-		return (+3);
-	else if (offs > 6 && !strcasecmp(s + offs - 6, "fourth"))
-		return (+4);
-
-	/* no offset detected */
-	return (0);
-}
-

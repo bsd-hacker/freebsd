@@ -147,7 +147,7 @@ setnsequences(char *seq)
 		if ((p = strchr(p, ' ')) == NULL) {
 			for (i = 0; i < 5; i++) {
 				nsequences[i].name = NULL;
-				nsequences[i].len = -1;
+				nsequences[i].len = 0;
 				return;
 			}
 			

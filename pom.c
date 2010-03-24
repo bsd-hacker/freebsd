@@ -81,8 +81,8 @@ __FBSDID("$FreeBSD$");
 
 static void	adj360(double *);
 static double	dtor(double);
-static double	potm(double);
-static double	potm_minute(double days, int olddir);
+static double	potm(double onday);
+static double	potm_minute(double onday, int olddir);
 
 void
 pom(int year, double utcoffset, int *fms, int *nms)
@@ -93,6 +93,7 @@ pom(int year, double utcoffset, int *fms, int *nms)
 
 	fpom(year, utcoffset, ffms, fnms);
 
+	j = 0;
 	for (i = 0; ffms[i] != 0; i++)
 		fms[j++] = round(ffms[i]);
 	fms[i] = -1;
@@ -183,7 +184,7 @@ fpom(int year, double utcoffset, double *ffms, double *fnms)
 }
 
 static double
-potm_minute(double days, int olddir) {
+potm_minute(double onday, int olddir) {
 	double period = FSECSPERDAY / 2.0;
 	double p1, p2;
 	double before, after;
@@ -191,7 +192,7 @@ potm_minute(double days, int olddir) {
 
 //	printf("---> days:%g olddir:%d\n", days, olddir);
 
-	p1 = days + (period / SECSPERDAY);
+	p1 = onday + (period / SECSPERDAY);
 	period /= 2;
 
 	while (period > 30) {	/* half a minute */
@@ -219,23 +220,23 @@ potm_minute(double days, int olddir) {
  *	return phase of the moon, as a percentage [0 ... 100]
  */
 static double
-potm(double days)
+potm(double onday)
 {
 	double N, Msol, Ec, LambdaSol, l, Mm, Ev, Ac, A3, Mmprime;
 	double A4, lprime, V, ldprime, D, Nm;
 
-	N = 360 * days / 365.2422;				/* sec 42 #3 */
+	N = 360 * onday / 365.2422;				/* sec 42 #3 */
 	adj360(&N);
 	Msol = N + EPSILONg - RHOg;				/* sec 42 #4 */
 	adj360(&Msol);
 	Ec = 360 / PI * ECCEN * sin(dtor(Msol));		/* sec 42 #5 */
 	LambdaSol = N + Ec + EPSILONg;				/* sec 42 #6 */
 	adj360(&LambdaSol);
-	l = 13.1763966 * days + lzero;				/* sec 61 #4 */
+	l = 13.1763966 * onday + lzero;				/* sec 61 #4 */
 	adj360(&l);
-	Mm = l - (0.1114041 * days) - Pzero;			/* sec 61 #5 */
+	Mm = l - (0.1114041 * onday) - Pzero;			/* sec 61 #5 */
 	adj360(&Mm);
-	Nm = Nzero - (0.0529539 * days);			/* sec 61 #6 */
+	Nm = Nzero - (0.0529539 * onday);			/* sec 61 #6 */
 	adj360(&Nm);
 	Ev = 1.2739 * sin(dtor(2*(l - LambdaSol) - Mm));	/* sec 61 #7 */
 	Ac = 0.1858 * sin(dtor(Msol));				/* sec 61 #8 */

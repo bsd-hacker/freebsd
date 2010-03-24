@@ -366,12 +366,13 @@ calculatesunlongitude30(int year, int degreeGMToffset, int *ichinesemonths)
 	double dec;
 	double curL, prevL;
 	int *pichinesemonths, *monthdays, *cumdays, i;
-	int firstmonth330;
+	int firstmonth330 = -1;
 
 	cumdays = cumdaytab[isleap(year)];
 	monthdays = mondaytab[isleap(year)];
 	pichinesemonths = ichinesemonths;
 
+	h = 0;
 	sunpos(year - 1, 12, 31,
 	    -24 * (degreeGMToffset / 360.0),
 	    HOUR(h), MIN(h), SEC(h), 0.0, 0.0, &prevL, &dec);

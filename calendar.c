@@ -65,20 +65,21 @@ struct passwd	*pw;
 int		doall = 0;
 int		debug = 0;
 char		*DEBUG = NULL;
-double		UTCoffset = UTCOFFSET_NOTSET;
-int		eastlongitude = LONGITUDE_NOTSET;
 time_t		f_time = 0;
-
-int	f_dayAfter = 0;		/* days after current date */
-int	f_dayBefore = 0;	/* days before current date */
-int	Friday = 5;		/* day before weekend */
+double		UTCOffset = UTCOFFSET_NOTSET;
+int		EastLongitude = LONGITUDE_NOTSET;
 
 static void	usage(void) __dead2;
 
 int
 main(int argc, char *argv[])
 {
+	int	f_dayAfter = 0;		/* days after current date */
+	int	f_dayBefore = 0;	/* days before current date */
+	int	Friday = 5;		/* day before weekend */
+
 	int ch;
+	struct tm tp1, tp2;
 
 	(void)setlocale(LC_ALL, "");
 
@@ -113,10 +114,10 @@ main(int argc, char *argv[])
 			Friday = atoi(optarg);
 			break;
 		case 'l': /* Change longitudal position */
-			eastlongitude = strtol(optarg, NULL, 10);
+			EastLongitude = strtol(optarg, NULL, 10);
 			break;
 		case 'U': /* Change UTC offset */
-			UTCoffset = strtod(optarg, NULL);
+			UTCOffset = strtod(optarg, NULL);
 			break;
 
 		case 'd':
@@ -146,8 +147,8 @@ main(int argc, char *argv[])
 
 	/* if not set, determine where I could be */
 	{
-		if (UTCoffset == UTCOFFSET_NOTSET &&
-		    eastlongitude == LONGITUDE_NOTSET) {
+		if (UTCOffset == UTCOFFSET_NOTSET &&
+		    EastLongitude == LONGITUDE_NOTSET) {
 			/* Calculate on difference between here and UTC */
 			time_t t;
 			struct tm tm;
@@ -169,18 +170,18 @@ main(int argc, char *argv[])
 			uo /=  60.0 / 100.0;
 			uo = hh + uo / 100;
 
-			UTCoffset = uo;
-			eastlongitude = UTCoffset * 15;
-		} else if (UTCoffset == UTCOFFSET_NOTSET) {
+			UTCOffset = uo;
+			EastLongitude = UTCOffset * 15;
+		} else if (UTCOffset == UTCOFFSET_NOTSET) {
 			/* Base on information given */
-			UTCoffset = eastlongitude / 15;
-		} else if (eastlongitude == LONGITUDE_NOTSET) {
+			UTCOffset = EastLongitude / 15;
+		} else if (EastLongitude == LONGITUDE_NOTSET) {
 			/* Base on information given */
-			eastlongitude = UTCoffset * 15;
+			EastLongitude = UTCOffset * 15;
 		}
 	}
 
-	settimes(f_time, f_dayBefore, f_dayAfter, &tp1, &tp2);
+	settimes(f_time, f_dayBefore, f_dayAfter, Friday, &tp1, &tp2);
 	generatedates(&tp1, &tp2);
 
 	/*

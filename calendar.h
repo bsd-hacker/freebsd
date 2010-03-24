@@ -55,14 +55,13 @@
 extern struct passwd *pw;
 extern int doall;
 extern struct iovec header[];
-extern struct tm tp1, tp2;
 extern time_t t1, t2;
 extern const char *calendarFile;
 extern int yrdays;
 extern struct fixs neaster, npaskha, ncny, nfullmoon, nnewmoon;
 extern struct fixs nmarequinox, nsepequinox, njunsolstice, ndecsolstice;
-extern double UTCoffset;
-extern int eastlongitude;
+extern double UTCOffset;
+extern int EastLongitude;
 
 #define isleap(y) ((((y) % 4) == 0 && ((y) % 100) != 0) || ((y) % 400) == 0)
 
@@ -113,9 +112,6 @@ extern int eastlongitude;
 #define UTCOFFSET_CNY		8.0		
 
 extern int	debug;		/* show parsing of the input */
-extern int	f_dayAfter;	/* days after current date */
-extern int	f_dayBefore;	/* days before current date */
-extern int	Friday;		/* day before weekend */
 extern int	year1, year2;
 
 /* events.c */
@@ -143,7 +139,7 @@ struct event {
 
 struct fixs {
 	char	*name;
-	int	len;
+	size_t	len;
 };
 
 extern const char *days[];
@@ -162,7 +158,7 @@ void	setnsequences(char *);
 
 /* day.c */
 extern const struct tm tm0;
-void	settimes(time_t,int, int, struct tm *tp1, struct tm *tp2);
+void	settimes(time_t,int before, int after, int friday, struct tm *tp1, struct tm *tp2);
 time_t	Mktime(char *);
 
 /* parsedata.c */

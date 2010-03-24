@@ -171,7 +171,6 @@ generatedates(struct tm *tp1, struct tm *tp2)
 	int y1, m1, d1;
 	int y2, m2, d2;
 	int y, m, d;
-	int *mondays;
 
 	y1 = tp1->tm_year;
 	m1 = tp1->tm_mon + 1;
