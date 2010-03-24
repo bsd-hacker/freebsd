@@ -570,7 +570,7 @@ ppc32_setregs(struct thread *td, struct image_params *imgp, u_long stack)
 	bzero(tf, sizeof *tf);
 	tf->fixreg[1] = -roundup(-stack + 8, 16);
 
-	argc = fuword32(stack);
+	argc = fuword32((void *)stack);
 
         td->td_retval[0] = argc;
         td->td_retval[1] = stack + sizeof(uint32_t);
