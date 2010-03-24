@@ -83,6 +83,7 @@
 #define	EF_MIPS_NOREORDER	1		/* .noreorder was used */
 #define	EF_MIPS_PIC		2		/* Contains PIC code */
 #define	EF_MIPS_CPIC		4		/* Uses PIC calling sequence */
+#define	EF_MIPS_ABI2		32		/* Use new ABI */
 #define	EF_MIPS_ARCH		0xf0000000	/* MIPS architecture level */
 
 /*
