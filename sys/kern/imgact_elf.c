@@ -833,8 +833,13 @@ __CONCAT(exec_, __elfN(imgact))(struct image_params *imgp)
 
 			/*
 			 * Make the largest executable segment the official
-			 * text segment and all others data. The data_addr
-			 * and data_size parameters are used for obreak().
+			 * text segment and all others data.
+			 *
+			 * Note that obreak() assumes that data_addr + 
+			 * data_size == end of data load area, and the ELF
+			 * file format expects segments to be sorted by
+			 * address.  If multiple data segments exist, the
+			 * last one will be used.
 			 */
 
 			if (phdr[i].p_flags & PF_X && text_size < seg_size) {
