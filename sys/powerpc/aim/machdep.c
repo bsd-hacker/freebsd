@@ -158,13 +158,11 @@ SYSCTL_INT(_machdep, CPU_CACHELINE, cacheline_size,
 uintptr_t	powerpc_init(vm_offset_t, vm_offset_t, vm_offset_t, void *);
 
 int             setfault(faultbuf);             /* defined in locore.S */
-void		asm_panic(char *);
 
 long		Maxmem = 0;
 long		realmem = 0;
 
 struct pmap	ofw_pmap;
-extern register_t ofmsr;
 
 #ifndef __powerpc64__
 struct bat	battable[16];
@@ -796,12 +794,6 @@ kcopy(const void *src, void *dst, size_t len)
 
 	td->td_pcb->pcb_onfault = oldfault;
 	return (0);
-}
-
-void
-asm_panic(char *pstr)
-{
-	panic(pstr);
 }
 
 int db_trap_glue(struct trapframe *);		/* Called from trap_subr.S */
