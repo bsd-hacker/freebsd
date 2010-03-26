@@ -34,6 +34,10 @@
 #ifndef _MACHINE__LIMITS_H_
 #define	_MACHINE__LIMITS_H_
 
+#if _MIPS_SZLONG == 64
+#define	_LARGE_LONG
+#endif
+
 /*
  * According to ANSI (section 2.2.4.2), the values below must be usable by
  * #if preprocessing directives.  Additionally, the expression must have the
