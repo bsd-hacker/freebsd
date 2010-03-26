@@ -75,7 +75,10 @@ Boston, MA 02110-1301, USA.  */
     %{mabi=o64:-melf64%{EB:b}%{EL:l}tsmip_fbsd} \
     %(fbsd_link_spec)"
 
-    
+#undef	LINK_GCC_C_SEQUENCE_SPEC
+#define LINK_GCC_C_SEQUENCE_SPEC \
+  "%{static:--start-group} %G %L %{static:--end-group}%{!static:%G}"
+
 /* Reset our STARTFILE_SPEC which was properly set in config/freebsd.h
    but trashed by config/mips/elf.h.  */
 #undef  STARTFILE_SPEC
