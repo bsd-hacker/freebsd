@@ -66,12 +66,15 @@ stack_capture(struct stack *st, u_register_t pc, u_register_t sp)
 			switch (insn.IType.op) {
 			case OP_ADDI:
 			case OP_ADDIU:
+			case OP_DADDI:
+			case OP_DADDIU:
 				if (insn.IType.rs != SP || insn.IType.rt != SP)
 					break;
 				stacksize = -(short)insn.IType.imm;
 				break;
 
 			case OP_SW:
+			case OP_SD:
 				if (insn.IType.rs != SP || insn.IType.rt != RA)
 					break;
 				ra_stack_pos = (short)insn.IType.imm;
