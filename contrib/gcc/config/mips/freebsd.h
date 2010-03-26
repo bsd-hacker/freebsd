@@ -124,7 +124,7 @@ Boston, MA 02110-1301, USA.  */
       builtin_define ("__mips__");				\
 								\
       if (TARGET_64BIT)						\
-	builtin_define ("__mips64__");				\
+	builtin_define ("__mips64");				\
 								\
       if (TARGET_FLOAT64)					\
 	builtin_define ("__mips_fpr=64");			\
