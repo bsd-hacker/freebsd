@@ -206,12 +206,11 @@ ia64_ap_startup(void)
 
 	CTR1(KTR_SMP, "SMP: cpu%d launched", PCPU_GET(cpuid));
 
-	/* kick off the clock on this AP */
-	pcpu_initclock();
-
+	/* Mask interval timer interrupts on APs. */
+	ia64_set_itv(0x10000);
 	ia64_set_tpr(0);
 	ia64_srlz_d();
-	enable_intr();
+	ia64_enable_intr();
 
 	sched_throw(NULL);
 	/* NOTREACHED */
