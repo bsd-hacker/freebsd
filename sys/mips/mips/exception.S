@@ -203,6 +203,9 @@ VECTOR(MipsException, unknown)
 	sll	k0, k0, 3			# shift user bit for cause index
 #endif
 	and	k1, k1, CR_EXC_CODE		# Mask out the cause bits.
+#if defined(__mips_n64)
+	sll	k1, k1, 1			# shift code to get 8-byte offset
+#endif
 	or	k1, k1, k0			# change index to user table
 1:
 	PTR_LA	k0, _C_LABEL(machExceptionTable)  # get base of the jump table
