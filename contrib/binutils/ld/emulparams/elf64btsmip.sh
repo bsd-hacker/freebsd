@@ -13,4 +13,6 @@ OTHER_SECTIONS='
   .gptab.sbss : { *(.gptab.bss) *(.gptab.sbss) }
 '
 
-TEXT_START_ADDR="0x120000000"
+# XXX/juli
+# We really only have 32-bit pmap on FreeBSD right now, so don't override the start addr.
+#TEXT_START_ADDR="0x120000000"
