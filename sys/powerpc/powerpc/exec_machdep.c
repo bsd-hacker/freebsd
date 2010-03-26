@@ -552,6 +552,8 @@ exec_setregs(struct thread *td, struct image_params *imgp, u_long stack)
 	tf->fixreg[2] = entry_desc[1] + imgp->reloc_base;
 	tf->fixreg[11] = entry_desc[2] + imgp->reloc_base;
 	tf->srr1 = PSL_SF | PSL_USERSET | PSL_FE_DFLT;
+	if (mfmsr() & PSL_HV)
+		tf->srr1 |= PSL_HV;
 	#else
 	tf->srr0 = imgp->entry_addr;
 	tf->srr1 = PSL_USERSET | PSL_FE_DFLT;
@@ -584,6 +586,8 @@ ppc32_setregs(struct thread *td, struct image_params *imgp, u_long stack)
 	tf->srr0 = imgp->entry_addr;
 	tf->srr1 = PSL_MBO | PSL_USERSET | PSL_FE_DFLT;
 	tf->srr1 &= ~PSL_SF;
+	if (mfmsr() & PSL_HV)
+		tf->srr1 |= PSL_HV;
 	td->td_pcb->pcb_flags = 0;
 }
 #endif
@@ -1033,8 +1037,15 @@ cpu_set_upcall_kse(struct thread *td, void (*entry)(void *), void *arg,
 		tf->fixreg[2] = entry_desc[1];
 		tf->fixreg[11] = entry_desc[2];
 		tf->srr1 = PSL_SF | PSL_MBO | PSL_USERSET | PSL_FE_DFLT;
+		if (mfmsr() & PSL_HV)
+			tf->srr1 |= PSL_HV;
 	    #endif
 	}
+
+	#ifdef __powerpc64__
+	if (mfmsr() & PSL_HV)
+		tf->srr1 |= PSL_HV;
+	#endif
 	td->td_pcb->pcb_flags = 0;
 
 	td->td_retval[0] = (register_t)entry;

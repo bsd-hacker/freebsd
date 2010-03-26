@@ -63,7 +63,6 @@
 #include <machine/trap.h>
 #include <machine/param.h>
 #include <machine/spr.h>
-#include <machine/psl.h>
 #include <machine/asm.h>
 
 /* Locate the per-CPU data structure */
