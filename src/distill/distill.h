@@ -40,6 +40,7 @@
 #include <subversion-1/svn_client.h>
 #include <subversion-1/svn_delta.h>
 #include <subversion-1/svn_error.h>
+#include <subversion-1/svn_path.h>
 #include <subversion-1/svn_ra.h>
 
 #include "svnsup.h"

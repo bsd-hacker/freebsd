@@ -31,6 +31,7 @@
 #include "config.h"
 #endif
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -49,6 +50,7 @@ distill(const char *url, unsigned long revision)
 	svn_auth_provider_object_t *auth_provider;
 	apr_array_header_t *auth_providers;
 	svn_ra_session_t *ra_session;
+	const char *root, *subdir, *uuid;
 	svn_error_t *error;
 	svnsup_delta_t sd;
 	svnsup_err_t err;
@@ -56,6 +58,9 @@ distill(const char *url, unsigned long revision)
 	/* our root pool */
 	status = apr_pool_create(&pool, NULL);
 	SVNSUP_APR_ERROR(status, "apr_pool_create()");
+
+	/* canonicalize URL */
+	url = svn_path_canonicalize(url, pool);
 
 	/* set up our authentication system */
 	/* XXX check for errors */
@@ -72,9 +77,30 @@ distill(const char *url, unsigned long revision)
 	    NULL, config, pool);
 	SVNSUP_SVN_ERROR(error, "svn_ra_open3()");
 
+	/* get repo uuid */
+	error = svn_ra_get_uuid2(ra_session, &uuid, pool);
+	SVNSUP_SVN_ERROR(error, "svn_ra_get_uuid2()");
+
+	/* get repo root */
+	error = svn_ra_get_repos_root2(ra_session, &root, pool);
+	SVNSUP_SVN_ERROR(error, "svn_ra_get_repos_root2()");
+
+	/* get subdirectory; libsvn guarantees root is a prefix of url */
+	assert(strstr(url, root) == url);
+	subdir = url + strlen(root);
+	assert(*subdir == '/' || *subdir == '\0');
+	if (*subdir == '/')
+		++subdir;
+
 	/* XXX create delta */
 	err = svnsup_create_delta(&sd);
 	SVNSUP_SVNSUP_ERROR(err, "svnsup_delta_create()");
+	err = svnsup_delta_root(sd, root);
+	SVNSUP_SVNSUP_ERROR(err, "svnsup_delta_root()");
+	err = svnsup_delta_uuid(sd, uuid);
+	SVNSUP_SVNSUP_ERROR(err, "svnsup_delta_uuid()");
+	err = svnsup_delta_path(sd, subdir);
+	SVNSUP_SVNSUP_ERROR(err, "svnsup_delta_path()");
 
 	/* get revision metadata */
 	error = svn_ra_get_log2(ra_session, NULL, revision, revision, 0,

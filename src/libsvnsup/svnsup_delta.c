@@ -45,6 +45,9 @@
 
 struct svnsup_delta {
 	FILE *f;
+	const char *root;
+	const char *uuid;
+	const char *path;
 	struct svnsup_delta_file *sdf;
 	unsigned int ntxt;
 };
@@ -72,13 +75,25 @@ svnsup_delta_file_alloc(svnsup_delta_t sd, const char *fn)
 	return (sdf);
 }
 
-void
+static void
 svnsup_delta_file_free(svnsup_delta_file_t sdf)
 {
 
 	sdf->sd->sdf = NULL;
 	free(sdf->fn);
 	free(sdf);
+}
+
+static const char *
+svnsup_delta_shorten_path(svnsup_delta_t sd, const char *pn)
+{
+
+	assert(strstr(pn, sd->path) == pn);
+	pn += strlen(sd->path);
+	assert(*pn == '/' || *pn == '\0');
+	if (*pn == '/')
+		++pn;
+	return (pn);
 }
 
 /*
@@ -144,10 +159,71 @@ svnsup_delta_comment(svnsup_delta_t sd, const char *fmt, ...)
 int
 svnsup_delta_meta(svnsup_delta_t sd, const char *key, const char *fmt, ...)
 {
+	va_list ap;
+	char *value;
 
-	(void)sd;
-	(void)key;
-	(void)fmt;
+	assert(sd != NULL);
+	assert(key != NULL);
+	assert(fmt != NULL);
+	va_start(ap, fmt);
+	vasprintf(&value, fmt, ap);
+	va_end(ap);
+	fprintf(sd->f, "@meta ");
+	svnsup_string_fencode(sd->f, key);
+	fprintf(sd->f, " ");
+	svnsup_string_fencode(sd->f, value);
+	fprintf(sd->f, "\n");
+	return (SVNSUP_ERR_NONE);
+}
+
+/*
+ * Repository root
+ */
+int
+svnsup_delta_root(svnsup_delta_t sd, const char *root)
+{
+
+	assert(sd->root == NULL);
+	sd->root = strdup(root);
+	if (sd->root == NULL)
+		return (SVNSUP_ERR_MEMORY);
+	fprintf(sd->f, "@root ");
+	svnsup_string_fencode(sd->f, sd->root);
+	fprintf(sd->f, "\n");
+	return (SVNSUP_ERR_NONE);
+}
+
+/*
+ * Repository UUID
+ */
+int
+svnsup_delta_uuid(svnsup_delta_t sd, const char *uuid)
+{
+
+	assert(sd->uuid == NULL);
+	sd->uuid = strdup(uuid);
+	if (sd->uuid == NULL)
+		return (SVNSUP_ERR_MEMORY);
+	fprintf(sd->f, "@uuid ");
+	svnsup_string_fencode(sd->f, sd->uuid);
+	fprintf(sd->f, "\n");
+	return (SVNSUP_ERR_NONE);
+}
+
+/*
+ * Repository path (branch / subdir)
+ */
+int
+svnsup_delta_path(svnsup_delta_t sd, const char *path)
+{
+
+	assert(sd->path == NULL);
+	sd->path = strdup(path);
+	if (sd->path == NULL)
+		return (SVNSUP_ERR_MEMORY);
+	fprintf(sd->f, "@path ");
+	svnsup_string_fencode(sd->f, sd->path);
+	fprintf(sd->f, "\n");
 	return (SVNSUP_ERR_NONE);
 }
 
@@ -161,6 +237,7 @@ svnsup_delta_create_directory(svnsup_delta_t sd, const char *dn)
 	assert(sd != NULL);
 	assert(dn != NULL && *dn != '\0');
 	assert(sd->sdf == NULL);
+	dn = svnsup_delta_shorten_path(sd, dn);
 	fprintf(sd->f, "@mkdir ");
 	svnsup_string_fencode(sd->f, dn);
 	fprintf(sd->f, "\n");
@@ -177,6 +254,7 @@ svnsup_delta_remove(svnsup_delta_t sd, const char *fn)
 	assert(sd != NULL);
 	assert(fn != NULL && *fn != '\0');
 	assert(sd->sdf == NULL);
+	fn = svnsup_delta_shorten_path(sd, fn);
 	fprintf(sd->f, "@remove ");
 	svnsup_string_fencode(sd->f, fn);
 	fprintf(sd->f, "\n");
@@ -215,6 +293,7 @@ svnsup_delta_create_file(svnsup_delta_t sd, svnsup_delta_file_t *sdfp,
 	assert(sd->sdf == NULL);
 	assert(sdfp != NULL);
 	assert(fn != NULL && *fn != '\0');
+	fn = svnsup_delta_shorten_path(sd, fn);
 	if ((sdf = svnsup_delta_file_alloc(sd, fn)) == NULL)
 		return (SVNSUP_ERR_MEMORY);
 	sdf->create = 1;
@@ -238,6 +317,7 @@ svnsup_delta_open_file(svnsup_delta_t sd, svnsup_delta_file_t *sdfp,
 	assert(sd->sdf == NULL);
 	assert(sdfp != NULL);
 	assert(fn != NULL && *fn != '\0');
+	fn = svnsup_delta_shorten_path(sd, fn);
 	if ((sdf = svnsup_delta_file_alloc(sd, fn)) == NULL)
 		return (SVNSUP_ERR_MEMORY);
 	*sdfp = sdf;
