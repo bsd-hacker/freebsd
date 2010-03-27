@@ -72,13 +72,13 @@ int svnsup_delta_close_file(svnsup_delta_file_t, const char *);
  * svnsup_string.c
  */
 int svnsup_string_is_safe(const char *);
-int svnsup_buf_is_safe(const char *, size_t);
+int svnsup_buf_is_safe(const unsigned char *, size_t);
 char *svnsup_string_encode(const char *);
-char *svnsup_buf_encode(const char *, size_t);
+char *svnsup_buf_encode(const unsigned char *, size_t);
 
 #ifdef FOPEN_MAX /* defined by stdio.h, cf. IEEE 1003.1 */
 size_t svnsup_string_fencode(FILE *, const char *);
-size_t svnsup_buf_fencode(FILE *, const char *, size_t);
+size_t svnsup_buf_fencode(FILE *, const unsigned char *, size_t);
 #endif
 
 /*

@@ -275,7 +275,7 @@ svnsup_delta_text(svnsup_delta_t sd, const char *src, size_t len,
 	assert(txtid != NULL);
 	*txtid = sd->ntxt++;
 	fprintf(sd->f, "@text %u ", *txtid);
-	svnsup_buf_fencode(sd->f, src, len);
+	svnsup_buf_fencode(sd->f, (const unsigned char *)src, len);
 	fprintf(sd->f, "\n");
 	return (SVNSUP_ERR_NONE);
 }

@@ -59,7 +59,7 @@ svnsup_string_is_safe(const char *str)
  * Safe to send as is
  */
 int
-svnsup_buf_is_safe(const char *buf, size_t size)
+svnsup_buf_is_safe(const unsigned char *buf, size_t size)
 {
 
 	while (size > 0) {
@@ -81,7 +81,7 @@ svnsup_string_encode(const char *str)
 }
 
 char *
-svnsup_buf_encode(const char *buf, size_t size)
+svnsup_buf_encode(const unsigned char *buf, size_t size)
 {
 
 	assert(0);
@@ -94,11 +94,11 @@ size_t
 svnsup_string_fencode(FILE *f, const char *str)
 {
 
-	return (svnsup_buf_fencode(f, str, strlen(str)));
+	return (svnsup_buf_fencode(f, (const unsigned char *)str, strlen(str)));
 }
 
 size_t
-svnsup_buf_fencode(FILE *f, const char *buf, size_t size)
+svnsup_buf_fencode(FILE *f, const unsigned char *buf, size_t size)
 {
 	int len;
 
