@@ -79,8 +79,8 @@
  */
 
 #ifdef __powerpc64__
-#define PSL_SF		0x1000000000000000UL	/* 64-bit addressing */
-#define PSL_HV		0x3000000000000000UL	/* hyper-privileged mode */
+#define PSL_SF		0x8000000000000000UL	/* 64-bit addressing */
+#define PSL_HV		0x1000000000000000UL	/* hyper-privileged mode */
 #endif
 
 #define	PSL_VEC		0x02000000UL	/* AltiVec vector unit available */
