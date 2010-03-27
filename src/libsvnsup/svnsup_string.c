@@ -90,14 +90,14 @@ svnsup_buf_encode(const char *buf, size_t size)
 	return (NULL);
 }
 
-int
+size_t
 svnsup_string_fencode(FILE *f, const char *str)
 {
 
 	return (svnsup_buf_fencode(f, str, strlen(str)));
 }
 
-int
+size_t
 svnsup_buf_fencode(FILE *f, const char *buf, size_t size)
 {
 	int len;

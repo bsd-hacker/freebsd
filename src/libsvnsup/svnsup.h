@@ -74,15 +74,18 @@ char *svnsup_string_encode(const char *);
 char *svnsup_buf_encode(const char *, size_t);
 
 #ifdef FOPEN_MAX /* defined by stdio.h, cf. IEEE 1003.1 */
-int svnsup_string_fencode(FILE *, const char *);
-int svnsup_buf_fencode(FILE *, const char *, size_t);
+size_t svnsup_string_fencode(FILE *, const char *);
+size_t svnsup_buf_fencode(FILE *, const char *, size_t);
 #endif
 
 /*
  * svnsup_base64.c
  */
+size_t svnsup_base64_encode(char *, const unsigned char *, size_t);
+size_t svnsup_base64_decode(unsigned char *, const char *, size_t);
 #ifdef FOPEN_MAX /* defined by stdio.h, cf. IEEE 1003.1 */
-int svnsup_base64_fencode(FILE *, const unsigned char *, size_t);
+size_t svnsup_base64_fencode(FILE *, const unsigned char *, size_t);
+/* no fdecode yet */
 #endif
 
 #endif
