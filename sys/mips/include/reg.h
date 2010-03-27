@@ -42,6 +42,10 @@
 #ifndef _MACHINE_REG_H_
 #define	_MACHINE_REG_H_
 
+#if defined(_KERNEL) && !defined(_STANDALONE)
+#include "opt_compat.h"
+#endif
+
 /*
  * Location of the users' stored registers relative to ZERO.
  * must be visible to assembly code.
@@ -66,6 +70,20 @@ struct dbreg {
 	unsigned long junk;
 };
 
+#if defined(COMPAT_FREEBSD32)
+struct reg32 {
+	register_t r_regs[NUMSAVEREGS];	/* numbered as above */
+};
+
+struct fpreg32 {
+	f_register_t r_regs[NUMFPREGS];
+};
+
+struct dbreg32 {
+	unsigned long junk;
+};
+#endif
+
 #ifdef _KERNEL
 int	fill_fpregs(struct thread *, struct fpreg *);
 int	fill_regs(struct thread *, struct reg *);
@@ -73,6 +91,15 @@ int	set_fpregs(struct thread *, struct fpreg *);
 int	set_regs(struct thread *, struct reg *);
 int	fill_dbregs(struct thread *, struct dbreg *);
 int	set_dbregs(struct thread *, struct dbreg *);
+
+#ifdef COMPAT_FREEBSD32
+int	fill_fpregs32(struct thread *, struct fpreg32 *);
+int	fill_regs32(struct thread *, struct reg32 *);
+int	set_fpregs32(struct thread *, struct fpreg32 *);
+int	set_regs32(struct thread *, struct reg32 *);
+int	fill_dbregs32(struct thread *, struct dbreg32 *);
+int	set_dbregs32(struct thread *, struct dbreg32 *);
+#endif
 #endif
 
 #endif /* !_MACHINE_REG_H_ */

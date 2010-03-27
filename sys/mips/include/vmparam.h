@@ -43,6 +43,10 @@
 #ifndef _MACHINE_VMPARAM_H_
 #define	_MACHINE_VMPARAM_H_
 
+#if defined(_KERNEL) && !defined(_STANDALONE)
+#include "opt_compat.h"
+#endif
+
 /*
  * Machine dependent constants mips processors.
  */
@@ -57,6 +61,9 @@
  * offset is calculated.
  */
 #define	USRSTACK	0x7ffff000	/* Start of user stack */
+#if defined(COMPAT_FREEBSD32)
+#define	FREEBSD32_USRSTACK	USRSTACK
+#endif
 
 /*
  * Virtual memory related constants, all in bytes

@@ -80,7 +80,7 @@ struct sysentvec elf64_freebsd_sysvec = {
 	.sv_flags	= SV_ABI_FREEBSD | SV_LP64
 };
 
-static Elf64_Brandinfo freebsd_brand_info = {
+static Elf64_Brandinfo freebsd64_brand_info = {
 	.brand		= ELFOSABI_FREEBSD,
 	.machine	= EM_MIPS,
 	.compat_3_brand	= "FreeBSD",
@@ -93,7 +93,7 @@ static Elf64_Brandinfo freebsd_brand_info = {
 
 SYSINIT(elf64, SI_SUB_EXEC, SI_ORDER_ANY,
     (sysinit_cfunc_t) elf64_insert_brand_entry,
-    &freebsd_brand_info);
+    &freebsd64_brand_info);
 
 void
 elf64_dump_thread(struct thread *td __unused, void *dst __unused,
@@ -101,6 +101,10 @@ elf64_dump_thread(struct thread *td __unused, void *dst __unused,
 {
 }
 #else
+/*
+ * XXX
+ * Add a mechanism to distinguish between n32 and o32.
+ */
 struct sysentvec elf32_freebsd_sysvec = {
 	.sv_size	= SYS_MAXSYSCALL,
 	.sv_table	= sysent,
@@ -132,7 +136,7 @@ struct sysentvec elf32_freebsd_sysvec = {
 	.sv_flags	= SV_ABI_FREEBSD | SV_ILP32
 };
 
-static Elf32_Brandinfo freebsd_brand_info = {
+static Elf32_Brandinfo freebsd32_brand_info = {
 	.brand		= ELFOSABI_FREEBSD,
 	.machine	= EM_MIPS,
 	.compat_3_brand	= "FreeBSD",
@@ -145,7 +149,7 @@ static Elf32_Brandinfo freebsd_brand_info = {
 
 SYSINIT(elf32, SI_SUB_EXEC, SI_ORDER_FIRST,
     (sysinit_cfunc_t) elf32_insert_brand_entry,
-    &freebsd_brand_info);
+    &freebsd32_brand_info);
 
 void
 elf32_dump_thread(struct thread *td __unused, void *dst __unused,

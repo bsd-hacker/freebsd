@@ -38,6 +38,10 @@
 #ifndef _MACHINE_ELF_H_
 #define	_MACHINE_ELF_H_
 
+#if defined(_KERNEL) && !defined(_STANDALONE)
+#include "opt_compat.h"
+#endif
+
 /* Information taken from MIPS ABI supplemental */
 
 #ifndef __ELF_WORD_SIZE
@@ -52,6 +56,9 @@
 #include <sys/elf_generic.h>
 
 #define	ELF_ARCH	EM_MIPS
+#if defined(COMPAT_FREEBSD32)
+#define	ELF_ARCH32	ELF_ARCH
+#endif
 #define	ELF_MACHINE_OK(x) ((x) == EM_MIPS || (x) == EM_MIPS_RS4_BE)
 
 /* Architecture dependent Segment types - p_type */
