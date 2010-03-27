@@ -751,7 +751,14 @@ pmap_kremove(vm_offset_t va)
 vm_offset_t
 pmap_map(vm_offset_t *virt, vm_offset_t start, vm_offset_t end, int prot)
 {
+#if defined(__mips_n64)
+	return (MIPS_PHYS_TO_XKPHYS(MIPS_XKPHYS_CCA_CNC, start));
+#else
 	vm_offset_t va, sva;
+
+	if (end <= MIPS_KSEG0_LARGEST_PHYS) {
+		return (MIPS_PHYS_TO_KSEG0(start));
+	}
 
 	va = sva = *virt;
 	while (start < end) {
@@ -761,6 +768,7 @@ pmap_map(vm_offset_t *virt, vm_offset_t start, vm_offset_t end, int prot)
 	}
 	*virt = va;
 	return (sva);
+#endif
 }
 
 /*
