@@ -866,7 +866,8 @@ xpt_rescan(union ccb *ccb)
 	struct ccb_hdr *hdr;
 
 	/* Prepare request */
-	if(ccb->ccb_h.path->target->target_id == CAM_TARGET_WILDCARD)
+	if (ccb->ccb_h.path->target->target_id == CAM_TARGET_WILDCARD ||
+	    ccb->ccb_h.path->device->lun_id == CAM_LUN_WILDCARD)
 		ccb->ccb_h.func_code = XPT_SCAN_BUS;
 	else
 		ccb->ccb_h.func_code = XPT_SCAN_LUN;
@@ -1095,7 +1096,7 @@ xpt_announce_periph(struct cam_periph *periph, char *announce_string)
 	/* Announce command queueing. */
 	if (path->device->inq_flags & SID_CmdQue
 	 || path->device->flags & CAM_DEV_TAG_AFTER_COUNT) {
-		printf("\n%s%d: Command Queueing enabled",
+		printf("%s%d: Command Queueing enabled\n",
 		       periph->periph_name, periph->unit_number);
 	}
 	/* Announce caller's details if they've passed in. */

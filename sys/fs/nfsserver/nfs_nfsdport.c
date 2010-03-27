@@ -2443,6 +2443,9 @@ nfsvno_fhtovp(struct mount *mp, fhandle_t *fhp, struct sockaddr *nam,
 	*credp = NULL;
 	exp->nes_numsecflavor = 0;
 	error = VFS_FHTOVP(mp, &fhp->fh_fid, vpp);
+	if (error != 0)
+		/* Make sure the server replies ESTALE to the client. */
+		error = ESTALE;
 	if (nam && !error) {
 		error = VFS_CHECKEXP(mp, nam, &exp->nes_exflag, credp,
 		    &exp->nes_numsecflavor, &secflavors);
@@ -2671,24 +2674,23 @@ nfsrv_getsocksndseq(struct socket *so, tcp_seq *maxp, tcp_seq *unap)
 {
 	struct inpcb *inp;
 	struct tcpcb *tp;
-	int error = EPIPE;
 
-	INP_INFO_RLOCK(&V_tcbinfo);
 	inp = sotoinpcb(so);
-	if (inp == NULL) {
-		INP_INFO_RUNLOCK(&V_tcbinfo);
-		return (error);
-	}
+	KASSERT(inp != NULL, ("nfsrv_getsocksndseq: inp == NULL"));
 	INP_RLOCK(inp);
-	INP_INFO_RUNLOCK(&V_tcbinfo);
-	tp = intotcpcb(inp);
-	if (tp != NULL && tp->t_state == TCPS_ESTABLISHED) {
-		*maxp = tp->snd_max;
-		*unap = tp->snd_una;
-		error = 0;
+	if (inp->inp_flags & (INP_TIMEWAIT | INP_DROPPED)) {
+		INP_RUNLOCK(inp);
+		return (EPIPE);
 	}
+	tp = intotcpcb(inp);
+	if (tp->t_state != TCPS_ESTABLISHED) {
+		INP_RUNLOCK(inp);
+		return (EPIPE);
+	}
+	*maxp = tp->snd_max;
+	*unap = tp->snd_una;
 	INP_RUNLOCK(inp);
-	return (error);
+	return (0);
 }
 
 /*

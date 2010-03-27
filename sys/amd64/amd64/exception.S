@@ -572,7 +572,7 @@ ENTRY(fork_trampoline)
  * included.
  */
 
-#ifdef COMPAT_IA32
+#ifdef COMPAT_FREEBSD32
 	.data
 	.p2align 4
 	.text
@@ -595,7 +595,7 @@ MCOUNT_LABEL(bintr)
 	.text
 	SUPERALIGN_TEXT
 
-#include <amd64/isa/atpic_vector.S>
+#include <amd64/amd64/atpic_vector.S>
 #endif
 
 	.text

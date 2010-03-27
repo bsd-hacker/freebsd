@@ -42,6 +42,7 @@ SUBDIR=	${_3dfx} \
 	${_bm} \
 	bridgestp \
 	bwi \
+	bwn \
 	cam \
 	${_canbepm} \
 	${_canbus} \
@@ -272,7 +273,7 @@ SUBDIR=	${_3dfx} \
 	sysvipc \
 	ti \
 	tl \
-	${_tmpfs} \
+	tmpfs \
 	trm \
 	${_twa} \
 	twe \
@@ -415,7 +416,6 @@ _sppp=		sppp
 _stg=		stg
 _streams=	streams
 _svr4=		svr4
-_tmpfs=		tmpfs
 _wi=		wi
 _xe=		xe
 .if ${MK_ZFS} != "no" || defined(ALL_MODULES)
@@ -553,7 +553,6 @@ _sound=		sound
 _speaker=	speaker
 _splash=	splash
 _sppp=		sppp
-_tmpfs=		tmpfs
 _twa=		twa
 _vesa=		vesa
 _x86bios=	x86bios
@@ -566,10 +565,7 @@ _zfs=		zfs
 .endif
 
 .if ${MACHINE_ARCH} == "ia64"
-# Modules not enabled on ia64 (as compared to i386) include:
-#	aac acpi aout apm atspeaker drm ibcs2 linprocfs linux ncv
-#	nsp s3 sbni stg vesa
-# acpi is not enabled because it is broken as a module on ia64
+_aac=		aac
 _aic=		aic
 _an=		an
 _arcnet=	arcnet
@@ -582,12 +578,17 @@ _cm=		cm
 _cmx=		cmx
 _coff=		coff
 _cpufreq=	cpufreq
+_dpt=		dpt
 _em=		em
 _ep=		ep
+_et=		et
 _exca=		exca
 _fe=		fe
+_hptiop=	hptiop
+_ida=		ida
 _igb=		igb
 _iir=		iir
+_ips=		ips
 _mly=		mly
 _pccard=	pccard
 _scsi_low=	scsi_low
@@ -596,6 +597,7 @@ _sound=		sound
 _splash=	splash
 _sppp=		sppp
 _streams=	streams
+_twa=		twa
 _wi=		wi
 _xe=		xe
 .endif
