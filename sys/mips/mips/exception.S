@@ -147,7 +147,7 @@ MipsDoTLBMiss:
 	PTR_L	k1, 0(k1)			#08: k1=seg entry
 	mfc0	k0, COP_0_BAD_VADDR		#09: k0=bad address (again)
 	beq	k1, zero, 2f			#0a: ==0 -- no page table
-	srl	k0, PGSHIFT - 2			#0b: k0=VPN (aka va>>10)
+	srl	k0, PAGE_SHIFT - 2			#0b: k0=VPN (aka va>>10)
 
 	andi	k0, k0, ((NPTEPG/2) - 1) << 3	#0c: k0=page tab offset
 #xxx mips64 unsafe?
@@ -849,7 +849,7 @@ NLEAF(MipsTLBInvalidException)
 	nop
 
 	mfc0	k0, COP_0_BAD_VADDR
-	srl	k0, PGSHIFT - 2
+	srl	k0, PAGE_SHIFT - 2
 	andi	k0, 0xffc
 	PTR_ADDU	k1, k1, k0
 
@@ -933,7 +933,7 @@ tlb_insert_random:
 	sll	k1, k1, PAGE_SHIFT + 1
 
 	PTR_LA	k0, _C_LABEL(pcpu_space)
-	PTR_ADDU	k0, (NBPG * 2)
+	PTR_ADDU	k0, (PAGE_SIZE * 2)
 	PTR_ADDU	k0, k0, k1
 
 	/*

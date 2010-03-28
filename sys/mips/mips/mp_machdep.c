@@ -246,7 +246,7 @@ smp_init_secondary(u_int32_t cpuid)
 	mips_dcache_wbinv_all();
 	mips_icache_sync_all();
 
-	MachSetPID(0);
+	Mips_SetPID(0);
 
 	pcpu_init(PCPU_ADDR(cpuid), cpuid, sizeof(struct pcpu));
 	dpcpu_init(dpcpu, cpuid);

@@ -225,7 +225,7 @@ LEAF(Mips_TLBFlush)
 	# MIPS_KSEG0_START + 2 * i * PAGE_SIZE;
 	# One bogus value for every TLB entry might cause MCHECK exception
 	#
-	sll	t3, t1, PGSHIFT + 1
+	sll	t3, t1, PAGE_SHIFT + 1
 	li	v0, MIPS_KSEG0_START		# invalid address
 	addu	v0, t3
 /*
@@ -284,7 +284,7 @@ LEAF(Mips_TLBFlushAddr)
 	# address calculated by following expression:
 	# MIPS_KSEG0_START + 2 * i * PAGE_SIZE;
 	# One bogus value for every TLB entry might cause MCHECK exception
-	sll	v0, PGSHIFT + 1
+	sll	v0, PAGE_SHIFT + 1
 	addu	t1, v0
 	MTC0	t1, COP_0_TLB_HI		# Mark entry high as invalid
 
@@ -467,7 +467,7 @@ LEAF(mips_TBIAP)
 	# MIPS_KSEG0_START + 2 * i * PAGE_SIZE;
 	# One bogus value for every TLB entry might cause MCHECK exception
 	#
-	sll	t3, t1, PGSHIFT + 1
+	sll	t3, t1, PAGE_SHIFT + 1
 	li	v0, MIPS_KSEG0_START		# invalid address
 	addu	v0, t3
 
@@ -492,7 +492,7 @@ LEAF(mips_TBIAP)
 	tlbwi					# invalidate the TLB entry
 2:
 	addu	t1, t1, 1
-	addu	v0, 1 << (PGSHIFT + 1)
+	addu	v0, 1 << (PAGE_SHIFT + 1)
 	bne	t1, t2, 1b
 	nop
 

@@ -330,7 +330,7 @@ trap(struct trapframe *trapframe)
 #ifdef SMP
 		printf("cpuid = %d\n", PCPU_GET(cpuid));
 #endif
-		MachTLBGetPID(pid);
+		pid = Mips_TLBGetPID();
 		printf("badaddr = %#jx, pc = %#jx, ra = %#jx, sp = %#jx, sr = %jx, pid = %d, ASID = %u\n",
 		    (intmax_t)trapframe->badvaddr, (intmax_t)trapframe->pc, (intmax_t)trapframe->ra,
 		    (intmax_t)trapframe->sp, (intmax_t)trapframe->sr,
@@ -379,12 +379,12 @@ trap(struct trapframe *trapframe)
 			if (!(pte = pmap_segmap(kernel_pmap,
 			    trapframe->badvaddr)))
 				panic("trap: ktlbmod: invalid segmap");
-			pte += (trapframe->badvaddr >> PGSHIFT) & (NPTEPG - 1);
+			pte += (trapframe->badvaddr >> PAGE_SHIFT) & (NPTEPG - 1);
 			entry = *pte;
 #ifdef SMP
 			/* It is possible that some other CPU changed m-bit */
 			if (!mips_pg_v(entry) || (entry & mips_pg_m_bit())) {
-				trapframe->badvaddr &= ~PGOFSET;
+				trapframe->badvaddr &= ~PAGE_MASK;
 				pmap_update_page(kernel_pmap,
 				    trapframe->badvaddr, entry);
 				PMAP_UNLOCK(kernel_pmap);
@@ -402,7 +402,7 @@ trap(struct trapframe *trapframe)
 			}
 			entry |= mips_pg_m_bit();
 			*pte = entry;
-			trapframe->badvaddr &= ~PGOFSET;
+			trapframe->badvaddr &= ~PAGE_MASK;
 			pmap_update_page(kernel_pmap, trapframe->badvaddr, entry);
 			pa = mips_tlbpfn_to_paddr(entry);
 			if (!page_is_managed(pa))
@@ -422,12 +422,12 @@ trap(struct trapframe *trapframe)
 			PMAP_LOCK(pmap);
 			if (!(pte = pmap_segmap(pmap, trapframe->badvaddr)))
 				panic("trap: utlbmod: invalid segmap");
-			pte += (trapframe->badvaddr >> PGSHIFT) & (NPTEPG - 1);
+			pte += (trapframe->badvaddr >> PAGE_SHIFT) & (NPTEPG - 1);
 			entry = *pte;
 #ifdef SMP
 			/* It is possible that some other CPU changed m-bit */
 			if (!mips_pg_v(entry) || (entry & mips_pg_m_bit())) {
-				trapframe->badvaddr = (trapframe->badvaddr & ~PGOFSET);
+				trapframe->badvaddr = (trapframe->badvaddr & ~PAGE_MASK);
 				pmap_update_page(pmap, trapframe->badvaddr, entry);
 				PMAP_UNLOCK(pmap);
 				goto out;
@@ -446,7 +446,7 @@ trap(struct trapframe *trapframe)
 			}
 			entry |= mips_pg_m_bit();
 			*pte = entry;
-			trapframe->badvaddr = (trapframe->badvaddr & ~PGOFSET);
+			trapframe->badvaddr = (trapframe->badvaddr & ~PAGE_MASK);
 			pmap_update_page(pmap, trapframe->badvaddr, entry);
 			trapframe->badvaddr |= (pmap->pm_asid[PCPU_GET(cpuid)].asid << VMTLB_PID_SHIFT);
 			pa = mips_tlbpfn_to_paddr(entry);
@@ -932,7 +932,7 @@ dofault:
 #endif
 
 	case T_FPE + T_USER:
-		MachFPTrap(trapframe->sr, trapframe->cause, trapframe->pc);
+		MipsFPTrap(trapframe->sr, trapframe->cause, trapframe->pc);
 		goto out;
 
 	case T_OVFLOW + T_USER:

@@ -102,10 +102,6 @@
 #define	CACHE_LINE_SHIFT	6
 #define	CACHE_LINE_SIZE		(1 << CACHE_LINE_SHIFT)
 
-#define	NBPG		4096		/* bytes/page */
-#define	PGOFSET		(NBPG-1)	/* byte offset into page */
-#define	PGSHIFT		12		/* LOG2(NBPG) */
-
 #define	PAGE_SHIFT	12		/* LOG2(PAGE_SIZE) */
 #define	PAGE_SIZE	(1<<PAGE_SHIFT) /* bytes/page */
 #define	PAGE_MASK	(PAGE_SIZE-1)
@@ -128,8 +124,8 @@
 #define	UPAGES			2
 
 /* pages ("clicks") (4096 bytes) to disk blocks */
-#define	ctod(x)		((x) << (PGSHIFT - DEV_BSHIFT))
-#define	dtoc(x)		((x) >> (PGSHIFT - DEV_BSHIFT))
+#define	ctod(x)		((x) << (PAGE_SHIFT - DEV_BSHIFT))
+#define	dtoc(x)		((x) >> (PAGE_SHIFT - DEV_BSHIFT))
 
 /*
  * Map a ``block device block'' to a file system block.
@@ -140,18 +136,18 @@
 #define	bdbtofsb(bn)	((bn) / (BLKDEV_IOSIZE/DEV_BSIZE))
 
 /*
- * Conversion macros
+ * Mach derived conversion macros
  */
-#define	mips_round_page(x)	((((unsigned long)(x)) + NBPG - 1) & ~(NBPG-1))
-#define	mips_trunc_page(x)	((unsigned long)(x) & ~(NBPG-1))
-#define	mips_btop(x)		((unsigned long)(x) >> PGSHIFT)
-#define	mips_ptob(x)		((unsigned long)(x) << PGSHIFT)
-#define	round_page		mips_round_page
-#define	trunc_page		mips_trunc_page
-#define	atop(x)			((unsigned long)(x) >> PAGE_SHIFT)
-#define	ptoa(x)			((unsigned long)(x) << PAGE_SHIFT)
+#define round_page(x)		(((unsigned long)(x) + PAGE_MASK) & ~PAGE_MASK)
+#define trunc_page(x)		((unsigned long)(x) & ~PAGE_MASK)
 
-#define	pgtok(x)		((x) * (PAGE_SIZE / 1024))
+#define atop(x)			((unsigned long)(x) >> PAGE_SHIFT)
+#define ptoa(x)			((unsigned long)(x) << PAGE_SHIFT)
+
+#define mips_btop(x)		((unsigned long)(x) >> PAGE_SHIFT)
+#define mips_ptob(x)		((unsigned long)(x) << PAGE_SHIFT)
+
+#define	pgtok(x)		((unsigned long)(x) * (PAGE_SIZE / 1024))
 
 #ifndef _KERNEL
 #define	DELAY(n)	{ register int N = (n); while (--N > 0); }

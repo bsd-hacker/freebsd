@@ -516,16 +516,6 @@ extern int intr_nesting_level;
 			: "r" (func), "r" (arg0), "r" (arg1), "r" (arg2)  /* inputs */ \
 			: "$31", "$4", "$5", "$6");
 
-#define	MachSetPID			Mips_SetPID
-#define	MachTLBUpdate   		Mips_TLBUpdate
-#define	mips_TBIS			Mips_TLBFlushAddr
-#define	MIPS_TBIAP()			mips_TBIAP(num_tlbentries)
-#define	MachSetWIRED(index)		Mips_SetWIRED(index)
-#define	MachTLBFlush(count)		Mips_TLBFlush(count)
-#define	MachTLBGetPID(pid)		(pid = Mips_TLBGetPID())
-#define	MachTLBRead(tlbno, tlbp)	Mips_TLBRead(tlbno, tlbp)
-#define	MachFPTrap(sr, cause, pc)	MipsFPTrap(sr, cause, pc)
-
 /*
  * Enable realtime clock (always enabled).
  */

@@ -134,7 +134,7 @@ __FBSDID("$FreeBSD$");
 #define	NUSERPGTBLS		(pmap_segshift(VM_MAXUSER_ADDRESS))
 #define	MIPS_SEGSIZE		(1L << SEGSHIFT)
 #define	mips_segtrunc(va)	((va) & ~(MIPS_SEGSIZE-1))
-#define	pmap_TLB_invalidate_all() MIPS_TBIAP()
+#define	pmap_TLB_invalidate_all() mips_TBIAP(num_tlbentries)
 #define	pmap_va_asid(pmap, va)	((va) | ((pmap)->pm_asid[PCPU_GET(cpuid)].asid << VMTLB_PID_SHIFT))
 #define	is_kernel_pmap(x)	((x) == kernel_pmap)
 
@@ -471,7 +471,7 @@ again:
 	kernel_pmap->pm_asid[0].asid = PMAP_ASID_RESERVED;
 	kernel_pmap->pm_asid[0].gen = 0;
 	pmap_max_asid = VMNUM_PIDS;
-	MachSetPID(0);
+	Mips_SetPID(0);
 }
 
 /*
@@ -587,8 +587,8 @@ pmap_invalidate_page_action(void *arg)
 		pmap->pm_asid[PCPU_GET(cpuid)].gen = 0;
 		return;
 	}
-	va = pmap_va_asid(pmap, (va & ~PGOFSET));
-	mips_TBIS(va);
+	va = pmap_va_asid(pmap, (va & ~PAGE_MASK));
+	Mips_TLBFlushAddr(va);
 }
 
 static void
@@ -596,9 +596,9 @@ pmap_TLB_invalidate_kernel(vm_offset_t va)
 {
 	u_int32_t pid;
 
-	MachTLBGetPID(pid);
+	pid = Mips_TLBGetPID();
 	va = va | (pid << VMTLB_PID_SHIFT);
-	mips_TBIS(va);
+	Mips_TLBFlushAddr(va);
 }
 
 struct pmap_update_page_arg {
@@ -639,7 +639,7 @@ pmap_update_page_action(void *arg)
 		return;
 	}
 	va = pmap_va_asid(pmap, va);
-	MachTLBUpdate(va, pte);
+	Mips_TLBUpdate(va, pte);
 }
 
 static void
@@ -647,10 +647,10 @@ pmap_TLB_update_kernel(vm_offset_t va, pt_entry_t pte)
 {
 	u_int32_t pid;
 
-	MachTLBGetPID(pid);
+	pid = Mips_TLBGetPID();
 	va = va | (pid << VMTLB_PID_SHIFT);
 
-	MachTLBUpdate(va, pte);
+	Mips_TLBUpdate(va, pte);
 }
 
 /*
@@ -743,7 +743,7 @@ pmap_kremove(vm_offset_t va)
 	/*
 	 * Write back all caches from the page being destroyed
 	 */
-	mips_dcache_wbinv_range_index(va, NBPG);
+	mips_dcache_wbinv_range_index(va, PAGE_SIZE);
 
 	pte = pmap_pte(kernel_pmap, va);
 	*pte = PTE_G;
@@ -866,19 +866,19 @@ pmap_init_fpage()
 	 * Make up start at an even page number so we can wire down the
 	 * fpage area in the tlb with a single tlb entry.
 	 */
-	if ((((vm_offset_t)kva) >> PGSHIFT) & 1) {
+	if ((((vm_offset_t)kva) >> PAGE_SHIFT) & 1) {
 		/*
 		 * 'kva' is not even-page aligned. Adjust it and free the
 		 * first page which is unused.
 		 */
-		kmem_free(kernel_map, (vm_offset_t)kva, NBPG);
-		kva = ((vm_offset_t)kva) + NBPG;
+		kmem_free(kernel_map, (vm_offset_t)kva, PAGE_SIZE);
+		kva = ((vm_offset_t)kva) + PAGE_SIZE;
 	} else {
 		/*
 		 * 'kva' is even page aligned. We don't need the last page,
 		 * free it.
 		 */
-		kmem_free(kernel_map, ((vm_offset_t)kva) + FSPACE, NBPG);
+		kmem_free(kernel_map, ((vm_offset_t)kva) + FSPACE, PAGE_SIZE);
 	}
 
 	for (i = 0; i < MAXCPU; i++) {
@@ -1655,7 +1655,7 @@ pmap_remove_page(struct pmap *pmap, vm_offset_t va)
 	/*
 	 * Write back all caches from the page being destroyed
 	 */
-	mips_dcache_wbinv_range_index(va, NBPG);
+	mips_dcache_wbinv_range_index(va, PAGE_SIZE);
 
 	/*
 	 * get a local va for mappings for this pmap.
@@ -1742,7 +1742,7 @@ pmap_remove_all(vm_page_t m)
 		 * the page being destroyed
 	 	 */
 		if (m->md.pv_list_count == 1) 
-			mips_dcache_wbinv_range_index(pv->pv_va, NBPG);
+			mips_dcache_wbinv_range_index(pv->pv_va, PAGE_SIZE);
 
 		pv->pv_pmap->pm_stats.resident_count--;
 
@@ -2041,8 +2041,8 @@ validate:
 	 */
 	if (!is_kernel_pmap(pmap) && (pmap == &curproc->p_vmspace->vm_pmap) &&
 	    (prot & VM_PROT_EXECUTE)) {
-		mips_icache_sync_range(va, NBPG);
-		mips_dcache_wbinv_range(va, NBPG);
+		mips_icache_sync_range(va, PAGE_SIZE);
+		mips_dcache_wbinv_range(va, PAGE_SIZE);
 	}
 	vm_page_unlock_queues();
 	PMAP_UNLOCK(pmap);
@@ -2171,8 +2171,8 @@ pmap_enter_quick_locked(pmap_t pmap, vm_offset_t va, vm_page_t m,
 		 * unresolvable TLB miss may occur. */
 		if (pmap == &curproc->p_vmspace->vm_pmap) {
 			va &= ~PAGE_MASK;
-			mips_icache_sync_range(va, NBPG);
-			mips_dcache_wbinv_range(va, NBPG);
+			mips_icache_sync_range(va, PAGE_SIZE);
+			mips_dcache_wbinv_range(va, PAGE_SIZE);
 		}
 	}
 	return (mpte);
@@ -2577,7 +2577,7 @@ pmap_copy_page(vm_page_t src, vm_page_t dst)
 	{
 #if defined(__mips_n64)
 		pmap_flush_pvcache(src);
-		mips_dcache_wbinv_range_index(MIPS_PHYS_TO_XKPHYS(MIPS_XKPHYS_CCA_CNC, phy_dst), NBPG);
+		mips_dcache_wbinv_range_index(MIPS_PHYS_TO_XKPHYS(MIPS_XKPHYS_CCA_CNC, phy_dst), PAGE_SIZE);
 		va_src = MIPS_PHYS_TO_XKPHYS(MIPS_XKPHYS_CCA_CNC, phy_src);
 		va_dst = MIPS_PHYS_TO_XKPHYS(MIPS_XKPHYS_CCA_CNC, phy_dst);
 		bcopy((caddr_t)va_src, (caddr_t)va_dst, PAGE_SIZE);
@@ -2591,7 +2591,7 @@ pmap_copy_page(vm_page_t src, vm_page_t dst)
 			 */
 			pmap_flush_pvcache(src);
 			mips_dcache_wbinv_range_index(
-			    MIPS_PHYS_TO_KSEG0(phy_dst), NBPG);
+			    MIPS_PHYS_TO_KSEG0(phy_dst), PAGE_SIZE);
 			va_src = MIPS_PHYS_TO_KSEG0(phy_src);
 			va_dst = MIPS_PHYS_TO_KSEG0(phy_dst);
 			bcopy((caddr_t)va_src, (caddr_t)va_dst, PAGE_SIZE);
@@ -3112,7 +3112,7 @@ pmap_activate(struct thread *td)
 	pmap_asid_alloc(pmap);
 	if (td == curthread) {
 		PCPU_SET(segbase, pmap->pm_segtab);
-		MachSetPID(pmap->pm_asid[PCPU_GET(cpuid)].asid);
+		Mips_SetPID(pmap->pm_asid[PCPU_GET(cpuid)].asid);
 	}
 
 	PCPU_SET(curpmap, pmap);
@@ -3285,7 +3285,7 @@ pmap_asid_alloc(pmap)
 	    pmap->pm_asid[PCPU_GET(cpuid)].gen == PCPU_GET(asid_generation));
 	else {
 		if (PCPU_GET(next_asid) == pmap_max_asid) {
-			MIPS_TBIAP();
+			mips_TBIAP(num_tlbentries);
 			PCPU_SET(asid_generation,
 			    (PCPU_GET(asid_generation) + 1) & ASIDGEN_MASK);
 			if (PCPU_GET(asid_generation) == 0) {
@@ -3451,7 +3451,7 @@ pmap_flush_pvcache(vm_page_t m)
 	if (m != NULL) {
 		for (pv = TAILQ_FIRST(&m->md.pv_list); pv;
 	    	    pv = TAILQ_NEXT(pv, pv_list)) {
-			mips_dcache_wbinv_range_index(pv->pv_va, NBPG);
+			mips_dcache_wbinv_range_index(pv->pv_va, PAGE_SIZE);
 		}
 	}
 }
@@ -3464,7 +3464,7 @@ pmap_save_tlb(void)
 	cpu = PCPU_GET(cpuid);
 
 	for (tlbno = 0; tlbno < num_tlbentries; ++tlbno)
-		MachTLBRead(tlbno, &tlbstash[cpu][tlbno]);
+		Mips_TLBRead(tlbno, &tlbstash[cpu][tlbno]);
 }
 
 #ifdef DDB

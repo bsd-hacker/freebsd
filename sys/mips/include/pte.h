@@ -121,12 +121,11 @@ typedef pt_entry_t *pd_entry_t;
 
 #define	PTE_SHIFT	6
 #define	pfn_is_ext(x)	((x) & 0x3c000000)
-#define	vad_to_pfn(x)	(((unsigned)(x) >> PTE_SHIFT) & PTE_FRAME)
-#define	vad_to_pfn64(x)	((quad_t)(x) >> PTE_SHIFT) & PTE_FRAME)
+#define	vad_to_pfn(x)	(((vm_offset_t)(x) >> PTE_SHIFT) & PTE_FRAME)
 #define	pfn_to_vad(x)	(((x) & PTE_FRAME) << PTE_SHIFT)
 
 /* User virtual to pte offset in page table */
-#define	vad_to_pte_offset(adr)	(((adr) >> PGSHIFT) & (NPTEPG -1))
+#define	vad_to_pte_offset(adr)	(((adr) >> PAGE_SHIFT) & (NPTEPG -1))
 
 #define	mips_pg_v(entry)	((entry) & PTE_V)
 #define	mips_pg_wired(entry)	((entry) & PTE_WIRED)
