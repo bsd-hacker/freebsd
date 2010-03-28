@@ -456,11 +456,6 @@ struct user;
 
 u_int32_t mips_cp0_config1_read(void);
 int Mips_ConfigCache(void);
-void Mips_SetWIRED(int);
-void Mips_SetPID(int);
-u_int Mips_GetCOUNT(void);
-void Mips_SetCOMPARE(u_int);
-u_int Mips_GetCOMPARE(void);
 
 void Mips_SyncCache(void);
 void Mips_SyncDCache(vm_offset_t, int);
@@ -538,13 +533,9 @@ void setsoftintr1(void);
 void clearsoftintr1(void);
 
 
-u_int32_t mips_cp0_status_read(void);
-void mips_cp0_status_write(u_int32_t);
-
 int disableintr(void);
 void restoreintr(int);
 int enableintr(void);
-int Mips_TLBGetPID(void);
 
 void swi_vm(void *);
 void cpu_halt(void);

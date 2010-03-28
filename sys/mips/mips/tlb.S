@@ -134,68 +134,6 @@ END(Mips_TLBWriteIndexed)
 
 /*--------------------------------------------------------------------------
  *
- * Mips_SetPID(int pid);
- *
- *	Write the given pid into the TLB pid reg.
- *
- * Results:
- *	None.
- *
- * Side effects:
- *	PID set in the entry hi register.
- *
- *--------------------------------------------------------------------------
- */
-LEAF(Mips_SetPID)
-	MTC0	a0, COP_0_TLB_HI		# Write the hi reg value
-	nop					# required for QED5230
-	nop					# required for QED5230
-	j	ra
-	nop
-END(Mips_SetPID)
-
-/*--------------------------------------------------------------------------
- *
- * Mips_SetWIRED(int wired);
- *
- *	Write the given value into the TLB wired reg.
- *
- * Results:
- *	None.
- *
- * Side effects:
- *	WIRED set in the wired register.
- *
- *--------------------------------------------------------------------------
- */
-LEAF(Mips_SetWIRED)
-	mtc0	a0, COP_0_TLB_WIRED
-	j	ra
-	nop
-END(Mips_SetWIRED)
-
-/*--------------------------------------------------------------------------
- *
- * Mips_GetWIRED(void);
- *
- *	Get the value from the TLB wired reg.
- *
- * Results:
- *	Value of wired reg.
- *
- * Side effects:
- *	None.
- *
- *--------------------------------------------------------------------------
- */
-LEAF(Mips_GetWIRED)
-	mfc0	v0, COP_0_TLB_WIRED
-	j	ra
-	nop
-END(Mips_GetWIRED)
-
-/*--------------------------------------------------------------------------
- *
  * Mips_TLBFlush(tlbsize);
  *
  *	Flush the "random" entries from the TLB.
@@ -424,26 +362,6 @@ LEAF(Mips_TLBRead)
 	j	ra
 	sw	ta1, 12(a1)
 END(Mips_TLBRead)
-
-/*--------------------------------------------------------------------------
- *
- * Mips_TLBGetPID(void);
- *
- * Results:
- *	Returns the current TLB pid reg.
- *
- * Side effects:
- *	None.
- *
- *--------------------------------------------------------------------------
- */
-LEAF(Mips_TLBGetPID)
-	MFC0	v0, COP_0_TLB_HI		# get PID
-	j	ra
-	and	v0, v0, VMTLB_PID		# mask off PID
-END(Mips_TLBGetPID)
-
-
 
 /*--------------------------------------------------------------------------
  *

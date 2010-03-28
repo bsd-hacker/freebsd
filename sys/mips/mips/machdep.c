@@ -377,7 +377,7 @@ mips_vector_init(void)
 	enableintr();
 
 	/* Clear BEV in SR so we start handling our own exceptions */
-	mips_cp0_status_write(mips_cp0_status_read() & ~SR_BOOT_EXC_VEC);
+	mips_wr_status(mips_rd_status() & ~SR_BOOT_EXC_VEC);
 
 }
 
@@ -507,7 +507,7 @@ get_cyclecount(void)
 void
 cpu_idle(int busy)
 {
-	if (mips_cp0_status_read() & SR_INT_ENAB)
+	if (mips_rd_status() & SR_INT_ENAB)
 		__asm __volatile ("wait");
 	else
 		panic("ints disabled in idleproc!");

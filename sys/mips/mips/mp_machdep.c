@@ -235,9 +235,9 @@ smp_init_secondary(u_int32_t cpuid)
 	int ipi_int_mask, clock_int_mask;
 
 	/* TLB */
-	Mips_SetWIRED(0);
+	mips_wr_wired(0);
 	Mips_TLBFlush(num_tlbentries);
-	Mips_SetWIRED(VMWIRED_ENTRIES);
+	mips_wr_wired(VMWIRED_ENTRIES);
 
 	/*
 	 * We assume that the L1 cache on the APs is identical to the one
@@ -246,7 +246,7 @@ smp_init_secondary(u_int32_t cpuid)
 	mips_dcache_wbinv_all();
 	mips_icache_sync_all();
 
-	Mips_SetPID(0);
+	mips_wr_entryhi(0 << VMTLB_PID_SHIFT);
 
 	pcpu_init(PCPU_ADDR(cpuid), cpuid, sizeof(struct pcpu));
 	dpcpu_init(dpcpu, cpuid);

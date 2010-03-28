@@ -471,7 +471,7 @@ again:
 	kernel_pmap->pm_asid[0].asid = PMAP_ASID_RESERVED;
 	kernel_pmap->pm_asid[0].gen = 0;
 	pmap_max_asid = VMNUM_PIDS;
-	Mips_SetPID(0);
+	mips_wr_entryhi(0 << VMTLB_PID_SHIFT);
 }
 
 /*
@@ -596,7 +596,7 @@ pmap_TLB_invalidate_kernel(vm_offset_t va)
 {
 	u_int32_t pid;
 
-	pid = Mips_TLBGetPID();
+	pid = mips_rd_entryhi() & VMTLB_PID;
 	va = va | (pid << VMTLB_PID_SHIFT);
 	Mips_TLBFlushAddr(va);
 }
@@ -647,7 +647,7 @@ pmap_TLB_update_kernel(vm_offset_t va, pt_entry_t pte)
 {
 	u_int32_t pid;
 
-	pid = Mips_TLBGetPID();
+	pid = mips_rd_entryhi() & VMTLB_PID;
 	va = va | (pid << VMTLB_PID_SHIFT);
 
 	Mips_TLBUpdate(va, pte);
@@ -3112,7 +3112,7 @@ pmap_activate(struct thread *td)
 	pmap_asid_alloc(pmap);
 	if (td == curthread) {
 		PCPU_SET(segbase, pmap->pm_segtab);
-		Mips_SetPID(pmap->pm_asid[PCPU_GET(cpuid)].asid);
+		mips_wr_entryhi(pmap->pm_asid[PCPU_GET(cpuid)].asid << VMTLB_PID_SHIFT);
 	}
 
 	PCPU_SET(curpmap, pmap);
