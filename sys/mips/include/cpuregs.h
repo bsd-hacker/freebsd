@@ -103,6 +103,9 @@
 #define MIPS_KSEG2_START		MIPS_KSSEG_START
 #define MIPS_KSEG2_END			MIPS_KSSEG_END
 
+#define	MIPS_XKPHYS_START		0x8000000000000000
+#define	MIPS_XKPHYS_END			0xbfffffffffffffff
+
 #define	MIPS_XKPHYS_CCA_UC		0x02	/* Uncached.  */
 #define	MIPS_XKPHYS_CCA_CNC		0x03	/* Cacheable non-coherent.  */
 

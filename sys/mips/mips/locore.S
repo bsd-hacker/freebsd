@@ -181,7 +181,7 @@ VECTOR(_locore, unknown)
 	PTR_L	a0, TD_PCB(sp)
 	REG_LI	t0, ~7
 	and	a0, a0, t0
-	subu    sp, a0, CALLFRAME_SIZ
+	PTR_SUBU	sp, a0, CALLFRAME_SIZ
 
 	jal	_C_LABEL(mi_startup)		# mi_startup(frame)
 	sw	zero, CALLFRAME_SIZ - 8(sp)	# Zero out old fp for debugger

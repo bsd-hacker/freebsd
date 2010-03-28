@@ -77,26 +77,12 @@
 #endif
 
 #ifdef WITH_64BIT_CP0
-#define _SLL	dsll
-#define	_SRL	dsrl
-#define	_MFC0	dmfc0
-#define	_MTC0	dmtc0
 #define WIRED_SHIFT 34
 #else
-#define _SLL	sll
-#define	_SRL	srl
-#define	_MFC0	mfc0
-#define	_MTC0	mtc0
 #define WIRED_SHIFT 2
 #endif
+
 	.set	noreorder			# Noreorder is default style!
-#if defined(ISA_MIPS32)
-	.set	mips32
-#elif defined(ISA_MIPS64)
-	.set	mips64
-#elif defined(ISA_MIPS3)
-	.set	mips3
-#endif
 
 /*
  * Reasonable limit
@@ -152,10 +138,13 @@ MipsDoTLBMiss:
 	GET_CPU_PCPU(k1)
 	PTR_L	k1, PC_SEGBASE(k1)
 	beqz	k1, 2f			      #05: make sure segbase is not null
+#if defined(__mips_n64)
+	andi	k0, k0, 0x7f8			#06: k0=seg offset (mask 0x7)
+#else
 	andi	k0, k0, 0x7fc			#06: k0=seg offset (mask 0x3)
-#xxx mips64 unsafe?
+#endif
 	PTR_ADDU	k1, k0, k1			#07: k1=seg entry address
-	lw	k1, 0(k1)			#08: k1=seg entry
+	PTR_L	k1, 0(k1)			#08: k1=seg entry
 	mfc0	k0, COP_0_BAD_VADDR		#09: k0=bad address (again)
 	beq	k1, zero, 2f			#0a: ==0 -- no page table
 	srl	k0, PGSHIFT - 2			#0b: k0=VPN (aka va>>10)
@@ -165,12 +154,12 @@ MipsDoTLBMiss:
 	PTR_ADDU	k1, k1, k0			#0d: k1=pte address
 	lw	k0, 0(k1)			#0e: k0=lo0 pte
 	lw	k1, 4(k1)			#0f: k1=lo1 pte
-	_SLL	k0, k0, WIRED_SHIFT		#10: keep bottom 30 bits
-	_SRL	k0, k0, WIRED_SHIFT		#11: keep bottom 30 bits
-	_MTC0	k0, COP_0_TLB_LO0		#12: lo0 is loaded
-	_SLL	k1, k1, WIRED_SHIFT		#13: keep bottom 30 bits
-	_SRL	k1, k1, WIRED_SHIFT		#14: keep bottom 30 bits
-	_MTC0	k1, COP_0_TLB_LO1		#15: lo1 is loaded
+	PTR_SLL	k0, k0, WIRED_SHIFT		#10: keep bottom 30 bits
+	PTR_SRL	k0, k0, WIRED_SHIFT		#11: keep bottom 30 bits
+	MTC0	k0, COP_0_TLB_LO0		#12: lo0 is loaded
+	PTR_SLL	k1, k1, WIRED_SHIFT		#13: keep bottom 30 bits
+	PTR_SRL	k1, k1, WIRED_SHIFT		#14: keep bottom 30 bits
+	MTC0	k1, COP_0_TLB_LO1		#15: lo1 is loaded
 	HAZARD_DELAY
 	tlbwr					#1a: write to tlb
 	HAZARD_DELAY
@@ -341,7 +330,7 @@ SlowFault:
 	RESTORE_REG(t1, MULHI, sp)	;\
 	mtlo	t0			;\
 	mthi	t1			;\
-	_MTC0	v0, COP_0_EXC_PC	;\
+	MTC0	v0, COP_0_EXC_PC	;\
 	.set noat		        ;\
 	RESTORE_REG(AT, AST, sp)	;\
 	RESTORE_REG(v0, V0, sp)		;\
@@ -545,7 +534,7 @@ NNON_LEAF(MipsUserGenException, CALLFRAME_SIZ, ra)
 	mthi	t1
 	RESTORE_U_PCB_REG(a0, PC, k1)
 	RESTORE_U_PCB_REG(v0, V0, k1)
-        _MTC0	a0, COP_0_EXC_PC	# set return address
+        MTC0	a0, COP_0_EXC_PC	# set return address
 	RESTORE_U_PCB_REG(v1, V1, k1)
 	RESTORE_U_PCB_REG(a0, A0, k1)
 	RESTORE_U_PCB_REG(a1, A1, k1)
@@ -789,7 +778,7 @@ NNON_LEAF(MipsUserIntr, CALLFRAME_SIZ, ra)
 	RESTORE_U_PCB_REG(t2, PC, k1)
 	mtlo	t0
 	mthi	t1
-	_MTC0	t2, COP_0_EXC_PC	# set return address
+	MTC0	t2, COP_0_EXC_PC	# set return address
 	RESTORE_U_PCB_REG(v0, V0, k1)
 	RESTORE_U_PCB_REG(v1, V1, k1)
 	RESTORE_U_PCB_REG(a0, A0, k1)
@@ -849,9 +838,13 @@ NLEAF(MipsTLBInvalidException)
 	nop
 
 	srl	k0, SEGSHIFT - 2
+#if defined(__mips_n64)
+	andi	k0, 0xff8
+#else
 	andi	k0, 0xffc
+#endif
 	PTR_ADDU	k1, k1, k0
-	lw	k1, 0(k1)
+	PTR_L	k1, 0(k1)
 	beqz	k1, 3f			/* invalid page table page pointer */
 	nop
 
@@ -871,28 +864,28 @@ NLEAF(MipsTLBInvalidException)
 
 even_page:
 	lw	k0, 0(k1)
-	_SLL	k0, k0, WIRED_SHIFT
-	_SRL	k0, k0, WIRED_SHIFT
-	_MTC0	k0, COP_0_TLB_LO0
+	PTR_SLL	k0, k0, WIRED_SHIFT
+	PTR_SRL	k0, k0, WIRED_SHIFT
+	MTC0	k0, COP_0_TLB_LO0
 
 	lw	k0, 4(k1)
-	_SLL	k0, k0, WIRED_SHIFT
-	_SRL	k0, k0, WIRED_SHIFT
-	_MTC0	k0, COP_0_TLB_LO1
+	PTR_SLL	k0, k0, WIRED_SHIFT
+	PTR_SRL	k0, k0, WIRED_SHIFT
+	MTC0	k0, COP_0_TLB_LO1
 
 	b	tlb_insert_entry
 	nop
 
 odd_page:
 	lw	k0, 0(k1)
-	_SLL	k0, k0, WIRED_SHIFT
-	_SRL	k0, k0, WIRED_SHIFT
-	_MTC0	k0, COP_0_TLB_LO1
+	PTR_SLL	k0, k0, WIRED_SHIFT
+	PTR_SRL	k0, k0, WIRED_SHIFT
+	MTC0	k0, COP_0_TLB_LO1
 
 	lw	k0, -4(k1)
-	_SLL	k0, k0, WIRED_SHIFT
-	_SRL	k0, k0, WIRED_SHIFT
-	_MTC0	k0, COP_0_TLB_LO0
+	PTR_SLL	k0, k0, WIRED_SHIFT
+	PTR_SRL	k0, k0, WIRED_SHIFT
+	MTC0	k0, COP_0_TLB_LO0
 
 tlb_insert_entry:
 	tlbp
@@ -1012,10 +1005,13 @@ NLEAF(MipsTLBMissException)
 	srl	k0, 20				# k0=seg offset (almost)
 	PTR_L	k1, %lo(_C_LABEL(kernel_segmap))(k1)  # k1=segment tab base
 	beq	k1, zero, _C_LABEL(MipsKernGenException)  # ==0 -- no seg tab
+#if defined(__mips_n64)
+	andi	k0, k0, 0xff8			# k0=seg offset (mask 0x7)
+#else
 	andi	k0, k0, 0xffc			# k0=seg offset (mask 0x3)
-#xxx mips64 unsafe
+#endif
 	PTR_ADDU	k1, k0, k1			# k1=seg entry address
-	lw	k1, 0(k1)			# k1=seg entry
+	PTR_L	k1, 0(k1)			# k1=seg entry
 	mfc0	k0, COP_0_BAD_VADDR		# k0=bad address (again)
 	beq	k1, zero, _C_LABEL(MipsKernGenException)  # ==0 -- no page table
 	srl	k0, 10				# k0=VPN (aka va>>10)
@@ -1024,12 +1020,12 @@ NLEAF(MipsTLBMissException)
 	PTR_ADDU	k1, k1, k0			# k1=pte address
 	lw	k0, 0(k1)			# k0=lo0 pte
 	lw	k1, 4(k1)			# k1=lo1 pte
-	_SLL	k0, WIRED_SHIFT			# chop bits [31..30]
-	_SRL	k0, WIRED_SHIFT			# chop bits [31..30]
-	_MTC0	k0, COP_0_TLB_LO0		# lo0 is loaded
-	_SLL	k1, WIRED_SHIFT			# chop bits [31..30]
-	_SRL	k1, WIRED_SHIFT			# chop bits [31..30]
-	_MTC0	k1, COP_0_TLB_LO1		# lo1 is loaded
+	PTR_SLL	k0, WIRED_SHIFT			# chop bits [31..30]
+	PTR_SRL	k0, WIRED_SHIFT			# chop bits [31..30]
+	MTC0	k0, COP_0_TLB_LO0		# lo0 is loaded
+	PTR_SLL	k1, WIRED_SHIFT			# chop bits [31..30]
+	PTR_SRL	k1, WIRED_SHIFT			# chop bits [31..30]
+	MTC0	k1, COP_0_TLB_LO1		# lo1 is loaded
 
 	HAZARD_DELAY
 	tlbwr					# write to tlb
@@ -1196,10 +1192,10 @@ NESTED_NOPROFILE(MipsCacheException, KERN_EXC_FRAME_SIZE, ra)
 	.mask	0x80000000, -4
 	PTR_LA	k0, _C_LABEL(panic)		# return to panic
 	PTR_LA	a0, 9f				# panicstr
-	_MFC0	a1, COP_0_ERROR_PC
+	MFC0	a1, COP_0_ERROR_PC
 	mfc0	a2, COP_0_CACHE_ERR		# 3rd arg cache error
 
-	_MTC0	k0, COP_0_ERROR_PC		# set return address
+	MTC0	k0, COP_0_ERROR_PC		# set return address
 
 	mfc0	k0, COP_0_STATUS_REG		# restore status
 	li	k1, SR_DIAG_DE			# ignore further errors
