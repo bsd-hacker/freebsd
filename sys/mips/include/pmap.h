@@ -49,13 +49,7 @@
 #include <machine/vmparam.h>
 #include <machine/pte.h>
 
-#define	VADDR(pdi, pti)	((vm_offset_t)(((pdi)<<PDRSHIFT)|((pti)<<PAGE_SHIFT)))
-
 #define	NKPT		120	/* actual number of kernel page tables */
-
-#ifndef NKPDE
-#define	NKPDE		255	/* addressable number of page tables/pde's */
-#endif
 
 #ifndef LOCORE
 
