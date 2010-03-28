@@ -490,7 +490,6 @@
  *				     (3=32bit, 6=64bit, i=impl dep)
  *  0	MIPS_COP_0_TLB_INDEX	3333 TLB Index.
  *  1	MIPS_COP_0_TLB_RANDOM	3333 TLB Random.
- *  2	MIPS_COP_0_TLB_LOW	3... r3k TLB entry low.
  *  2	MIPS_COP_0_TLB_LO0	.636 r4k TLB entry low.
  *  3	MIPS_COP_0_TLB_LO1	.636 r4k TLB entry low, extended.
  *  4	MIPS_COP_0_TLB_CONTEXT	3636 TLB Context.
@@ -549,10 +548,6 @@
 #define	MIPS_COP_0_CAUSE	_(13)
 #define	MIPS_COP_0_EXC_PC	_(14)
 #define	MIPS_COP_0_PRID		_(15)
-
-
-/* MIPS-I */
-#define	MIPS_COP_0_TLB_LOW	_(2)
 
 /* MIPS-III */
 #define	MIPS_COP_0_TLB_LO0	_(2)

@@ -87,10 +87,6 @@ mips_wbflush(void)
 {
 	__asm __volatile ("sync" : : : "memory");
 	mips_barrier();
-#if 0
-	__asm __volatile("mtc0 %0, $12\n" /* MIPS_COP_0_STATUS */
-	   : : "r" (flag));
-#endif
 }
 
 static __inline void
@@ -112,16 +108,6 @@ mips_tlbp(void)
 {
 	__asm __volatile ("tlbp");
 	mips_barrier();
-#if 0
-	register_t ret;
-	register_t tmp;
-
-	__asm __volatile("mfc0	%0, $12\n" /* MIPS_COP_0_STATUS */
-	 		 "and	%1, %0, $~1\n" /* MIPS_SR_INT_IE */
-			 "mtc0	%1, $12\n" /* MIPS_COP_0_STATUS */
-			 : "=r" (ret), "=r" (tmp));
-	return (ret);
-#endif
 }
 
 static __inline void
@@ -136,12 +122,6 @@ mips_tlbwi(void)
 {
 	__asm __volatile ("tlbwi");
 	mips_barrier();
-#if 0
-	__asm __volatile("mfc %0, $12\n" /* MIPS_COP_0_STATUS */
-	    		 "or  %0, %0, $1\n" /* MIPS_SR_INT_IE */
-			 "mtc0 %0, $12\n" /* MIPS_COP_0_STATUS */
-			 : "=r" (tmp));
-#endif
 }
 
 static __inline void
@@ -152,8 +132,7 @@ mips_tlbwr(void)
 }
 
 
-#if 0	/* XXX mips64 */
-
+#if defined(__mips_n32) || defined(__mips_n64)
 #define	MIPS_RDRW64_COP0(n,r)					\
 static __inline uint64_t					\
 mips_rd_ ## n (void)						\
@@ -176,10 +155,12 @@ mips_wr_ ## n (uint64_t a0)					\
 	mips_barrier();						\
 } struct __hack
 
+#if defined(__mips_n64)
 MIPS_RDRW64_COP0(entrylo0, MIPS_COP_0_TLB_LO0);
 MIPS_RDRW64_COP0(entrylo1, MIPS_COP_0_TLB_LO1);
 MIPS_RDRW64_COP0(entryhi, MIPS_COP_0_TLB_HI);
 MIPS_RDRW64_COP0(pagemask, MIPS_COP_0_TLB_PG_MASK);
+#endif
 MIPS_RDRW64_COP0(xcontext, MIPS_COP_0_TLB_XCONTEXT);
 
 #undef	MIPS_RDRW64_COP0
@@ -254,11 +235,12 @@ MIPS_RDRW32_COP0(cause, MIPS_COP_0_CAUSE);
 MIPS_RDRW32_COP0(status, MIPS_COP_0_STATUS);
 
 /* XXX: Some of these registers are specific to MIPS32. */
+#if !defined(__mips_n64)
 MIPS_RDRW32_COP0(entrylo0, MIPS_COP_0_TLB_LO0);
 MIPS_RDRW32_COP0(entrylo1, MIPS_COP_0_TLB_LO1);
-MIPS_RDRW32_COP0(entrylow, MIPS_COP_0_TLB_LOW);
 MIPS_RDRW32_COP0(entryhi, MIPS_COP_0_TLB_HI);
 MIPS_RDRW32_COP0(pagemask, MIPS_COP_0_TLB_PG_MASK);
+#endif
 MIPS_RDRW32_COP0(prid, MIPS_COP_0_PRID);
 MIPS_RDRW32_COP0(watchlo, MIPS_COP_0_WATCH_LO);
 MIPS_RDRW32_COP0_SEL(watchlo, MIPS_COP_0_WATCH_LO, 1);
