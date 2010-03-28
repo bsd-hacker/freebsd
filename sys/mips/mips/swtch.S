@@ -319,8 +319,9 @@ entry0:
 	mfc0	s0, COP_0_TLB_INDEX
 	nop
 pgm:
-	bltz	s0, entry0set
 	REG_LI	t1, MIPS_KSEG0_START		# invalidate tlb entry
+	bltz	s0, entry0set
+	nop
 	sll	s0, PAGE_SHIFT + 1
 	addu	t1, s0
 	mtc0	t1, COP_0_TLB_HI
