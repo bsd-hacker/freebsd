@@ -43,10 +43,9 @@ __FBSDID("$FreeBSD$");
 
 #include "calendar.h"
 
-//struct tm		tp1, tp2;
 time_t			time1, time2;
 const struct tm		tm0;
-char			dayname[10];
+char			dayname[100];
 int			year1, year2;
 
 
@@ -69,14 +68,13 @@ settimes(time_t now, int before, int after, int friday, struct tm *tp1, struct t
 	localtime_r(&time2, tp2);
 	year2 = 1900 + tp2->tm_year;
 
-	header[5].iov_base = dayname;
+	strftime(dayname, sizeof(dayname) - 1, "%A, %d %B %Y", tp1);
 
 	oldl = NULL;
 	lbufp = setlocale(LC_TIME, NULL);
 	if (lbufp != NULL && (oldl = strdup(lbufp)) == NULL)
 		errx(1, "cannot allocate memory");
 	(void)setlocale(LC_TIME, "C");
-	header[5].iov_len = strftime(dayname, sizeof(dayname), "%A", &tp);
 	(void)setlocale(LC_TIME, (oldl != NULL ? oldl : ""));
 	if (oldl != NULL)
 		free(oldl);

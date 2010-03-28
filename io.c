@@ -72,16 +72,6 @@ char	path[MAXPATHLEN];
 struct fixs neaster, npaskha, ncny, nfullmoon, nnewmoon;
 struct fixs nmarequinox, nsepequinox, njunsolstice, ndecsolstice;
 
-struct iovec header[] = {
-	{"From: ", 6},
-	{NULL, 0},
-	{" (Reminder Service)\nTo: ", 24},
-	{NULL, 0},
-	{"\nSubject: ", 10},
-	{NULL, 0},
-	{"'s Calendar\nPrecedence: bulk\n\n", 30},
-};
-
 #define	REPLACE(string, slen, struct_) \
 		if (strncasecmp(buf, (string), (slen)) == 0 && buf[(slen)]) { \
 			if (struct_.name != NULL)			      \
@@ -120,6 +110,7 @@ cal(void)
 	tm.tm_hour = 0;
 	tm.tm_wday = 0;
 
+	count = 0;
 	if ((fp = opencal()) == NULL)
 		return;
 	while (fgets(buf, sizeof(buf), stdin) != NULL) {
@@ -351,9 +342,14 @@ closecal(FILE *fp)
 	/* parent -- write to pipe input */
 	(void)close(pdes[0]);
 
-	header[1].iov_base = header[3].iov_base = pw->pw_name;
-	header[1].iov_len = header[3].iov_len = strlen(pw->pw_name);
-	writev(pdes[1], header, 7);
+	write(pdes[1], "From: \"Reminder Service\" <", 26);
+	write(pdes[1], pw->pw_name, strlen(pw->pw_name));
+	write(pdes[1], ">\nTo: <", 7);
+	write(pdes[1], pw->pw_name, strlen(pw->pw_name));
+	write(pdes[1], ">\nSubject: ", 12);
+	write(pdes[1], dayname, strlen(dayname));
+	write(pdes[1], "'s Calendar\nPrecedence: bulk\n\n", 30);
+
 	while ((nread = read(fileno(fp), buf, sizeof(buf))) > 0)
 		(void)write(pdes[1], buf, nread);
 	(void)close(pdes[1]);

@@ -54,7 +54,6 @@
 
 extern struct passwd *pw;
 extern int doall;
-extern struct iovec header[];
 extern time_t t1, t2;
 extern const char *calendarFile;
 extern int yrdays;
@@ -158,6 +157,7 @@ void	setnsequences(char *);
 
 /* day.c */
 extern const struct tm tm0;
+extern char dayname[];
 void	settimes(time_t,int before, int after, int friday, struct tm *tp1, struct tm *tp2);
 time_t	Mktime(char *);
 
