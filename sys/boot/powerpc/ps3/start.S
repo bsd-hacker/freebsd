@@ -56,11 +56,12 @@ secondary_spin_sem:
 	.long	0
 
 . = 0x60
-thread1_start:
+thread1_start_kboot:
 	ba	thread1_start	/* kboot copies the first 256 bytes to
 				 * address 0, so we are safe to jump
 				 * (and stay) there */
 
+thread1_start:
 	li	%r0,secondary_spin_sem@l
 1:	lwz	%r1,0(%r0)	/* Spin on SECONDARY_SPIN_SEM_ADDRESS */
 	cmpwi	%r1,0
@@ -93,8 +94,8 @@ relocate_self:
 	blt	1b
 
 	/* Now invalidate the icache */
-2:	li	%r5,0
-	dcbst	0,%r5
+	li	%r5,0
+2:	dcbst	0,%r5
 	icbi	0,%r5
 	cmpw	%r5,%r8
 	addi	%r5,%r5,CACHELINE_SIZE
