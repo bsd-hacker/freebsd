@@ -27,45 +27,68 @@
 __FBSDID("$FreeBSD: head/sys/boot/powerpc/ofw/start.c 174722 2007-12-17 22:18:07Z marcel $");
 
 #include <stand.h>
+#include <stdint.h>
+
+#define _KERNEL
+#include <machine/cpufunc.h>
+#include <machine/psl.h>
+#include <machine/pte.h>
+#include <machine/slb.h>
+
 #include "bootstrap.h"
+#include "lv1call.h"
 
-	int mambocall(int, ...);
-	__asm(".text; .globl mambocall; mambocall: .long 0x000EAEB0; blr");
-	#define mambo_print(a) mambocall(0,a,strlen(a));
+#define PS3_LPAR_VAS_ID_CURRENT 0
 
-struct arch_switch	archsw;
-
-int ps3mmu_init(int maxmem);
-
-int
-main(void)
-{
-	ps3mmu_init(128*1024*1024);
-	mambo_print("Hello world\n");
-
-	return (0);
-}
+register_t pteg_count, pteg_mask;
 
 void
-exit(int code)
+ps3mmu_map(uint64_t va, uint64_t pa)
 {
-}
+	struct lpte pt, expt;
+	struct lpteg pteg;
+	uint64_t idx, vsid, ptegidx;
+	
+	if (pa < 0x8000000) { /* Phys mem? */
+		pt.pte_hi = LPTE_BIG;
+		pt.pte_lo = LPTE_M;
+		vsid = 0;
+	} else {
+		pt.pte_hi = 0;
+		pt.pte_lo = LPTE_I | LPTE_G;
+		vsid = 1;
+	}
 
-void
-delay(int usecs)
-{
+	pt.pte_hi |= (vsid << LPTE_VSID_SHIFT) |
+            (((uint64_t)(va & ADDR_PIDX) >> ADDR_API_SHFT64) & LPTE_API);
+	pt.pte_hi |= LPTE_VALID;
+
+	ptegidx = vsid ^ (((uint64_t)va & ADDR_PIDX) >> ADDR_PIDX_SHFT);
+	ptegidx &= pteg_mask;
+
+	lv1_insert_htab_entry(PS3_LPAR_VAS_ID_CURRENT, ptegidx, pt.pte_hi,
+	    pt.pte_lo, 0x10, 0, &idx, &expt.pte_hi, &expt.pte_lo);
 }
 
 int
-getsecs()
+ps3mmu_init(int maxmem)
 {
-	return (0);
-}
+	uint64_t as, ptsize;
+	int i;
 
-time_t
-time(time_t *tloc)
-{
-	return (0);
-}
+	lv1_construct_virtual_address_space(18 /* log2 256 KB */, 1,
+	    24ULL << 56, &as, &ptsize);
+	pteg_count = ptsize / sizeof(struct lpteg);
+	pteg_mask = pteg_count - 1;
 
+	lv1_select_virtual_address_space(as);
+	for (i = 0; i < maxmem; i += 16*1024*1024)
+		ps3mmu_map(i,i);
+	__asm __volatile ("slbia; slbmte %0, %1; slbmte %2,%3" ::
+	    "r"(0 | SLBV_L), "r"(0 | SLBE_VALID),
+	    "r"(1 << SLBV_VSID_SHIFT),
+	    "r"((0xf << SLBE_ESID_SHIFT) | SLBE_VALID | 1));
+
+	mtmsr(mfmsr() | PSL_IR | PSL_DR);
+}
 

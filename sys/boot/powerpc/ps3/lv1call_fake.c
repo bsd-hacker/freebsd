@@ -26,46 +26,72 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD: head/sys/boot/powerpc/ofw/start.c 174722 2007-12-17 22:18:07Z marcel $");
 
+
 #include <stand.h>
+#include <machine/pte.h>
+
 #include "bootstrap.h"
+#include "lv1call.h"
+
+#define PTEG_COUNT	2048
+#define PTEG_MASK	((uint64_t)PTEG_COUNT - 1)
+
+static struct lpteg *pagetable = (struct lpteg *)0x80000;
 
 	int mambocall(int, ...);
-	__asm(".text; .globl mambocall; mambocall: .long 0x000EAEB0; blr");
 	#define mambo_print(a) mambocall(0,a,strlen(a));
 
-struct arch_switch	archsw;
+int
+lv1_insert_htab_entry(register_t htab_id, register_t ptegidx, 
+    uint64_t pte_hi, uint64_t pte_lo, register_t lockflags,
+    register_t flags, uint64_t *evict_index, uint64_t *ev_pte_hi,
+    uint64_t *ev_pte_lo)
+{
+	struct  lpte *pt;
+	int     i;
 
-int ps3mmu_init(int maxmem);
+	/*
+	 * First try primary hash.
+	 */
+	for (pt = pagetable[ptegidx].pt, i = 0; i < 8; i++, pt++) {
+		if (!(pt->pte_hi & LPTE_VALID)) {
+			pte_hi &= ~LPTE_HID;
+			pt->pte_lo = pte_lo;
+			pt->pte_hi = pte_hi;
+			return (0);
+		}
+	}
+
+	/*
+	 * Now try secondary hash.
+	 */
+        ptegidx ^= PTEG_MASK;
+
+	for (pt = pagetable[ptegidx].pt, i = 0; i < 8; i++, pt++) {
+		if (!(pt->pte_hi & LPTE_VALID)) {
+			pte_hi |= LPTE_HID;
+			pt->pte_lo = pte_lo;
+			pt->pte_hi = pte_hi;
+			return (0);
+		}
+        }
+
+	return (-1);
+}
 
 int
-main(void)
+lv1_construct_virtual_address_space(int htab_size, int npgsizes,
+    uint64_t page_sizes, uint64_t *as_id, uint64_t *ptsize)
 {
-	ps3mmu_init(128*1024*1024);
-	mambo_print("Hello world\n");
-
+	*ptsize = PTEG_COUNT * sizeof(struct lpteg);
+	*as_id = 0;
 	return (0);
-}
-
-void
-exit(int code)
-{
-}
-
-void
-delay(int usecs)
-{
 }
 
 int
-getsecs()
+lv1_select_virtual_address_space(uint64_t as)
 {
+	__asm __volatile("ptesync; mtsdr1 %0; isync" :: "r"((u_int)pagetable | ffs(PTEG_MASK >> 7)));
 	return (0);
 }
-
-time_t
-time(time_t *tloc)
-{
-	return (0);
-}
-
 

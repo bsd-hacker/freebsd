@@ -9,7 +9,7 @@ BINDIR?=	/boot
 INSTALLFLAGS=	-b
 
 # Architecture-specific loader code
-SRCS=		start.S conf.c metadata.c vers.c main.c
+SRCS=		start.S conf.c metadata.c vers.c main.c lv1call_fake.c ps3mmu.c
 SRCS+=		ucmpdi2.c
 
 LOADER_DISK_SUPPORT?=	no
@@ -70,7 +70,7 @@ CFLAGS+=	-I.
 
 CLEANFILES+=	vers.c loader.help
 
-CFLAGS+=	-ffreestanding -msoft-float
+CFLAGS+=	-ffreestanding -msoft-float -DAIM
 # load address. set in linker script
 RELOC?=		0x0
 CFLAGS+=	-DRELOC=${RELOC}
