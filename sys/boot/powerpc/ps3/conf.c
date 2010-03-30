@@ -101,16 +101,11 @@ struct file_format *file_formats[] = {
 
 /* 
  * Consoles 
- *
- * We don't prototype these in libofw.h because they require
- * data structures from bootstrap.h as well.
  */
-extern struct console ofwconsole;
+extern struct console ps3console;
 
 struct console *consoles[] = {
-#if 0
-    &mamboconsole,
-#endif
+    &ps3console,
     NULL
 };
 

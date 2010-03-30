@@ -34,17 +34,15 @@ __FBSDID("$FreeBSD: head/sys/boot/powerpc/ofw/start.c 174722 2007-12-17 22:18:07
 #include <machine/psl.h>
 #include <machine/pte.h>
 #include <machine/slb.h>
+#include <machine/param.h>
 
 #include "bootstrap.h"
 #include "lv1call.h"
-
-#define PS3_LPAR_VAS_ID_CURRENT 0
+#include "ps3.h"
 
 register_t pteg_count, pteg_mask;
 uint64_t as_id;
-
-extern uint64_t fb_paddr;
-extern uint32_t *fb_vaddr;
+uint64_t virtual_avail;
 
 int
 ps3mmu_map(uint64_t va, uint64_t pa)
@@ -76,6 +74,25 @@ ps3mmu_map(uint64_t va, uint64_t pa)
 	return (lv1_insert_pte(ptegidx, &pt, LPTE_LOCKED));
 }
 
+void *
+ps3mmu_mapdev(uint64_t pa, size_t length)
+{
+	uint64_t spa;
+	void *mapstart;
+	int err;
+	
+	mapstart = (void *)(uintptr_t)virtual_avail;
+
+	for (spa = pa; spa < pa + length; spa += PAGE_SIZE) {
+		err = ps3mmu_map(virtual_avail, spa);
+		virtual_avail += PAGE_SIZE;
+		if (err != 0)
+			return (NULL);
+	}
+
+	return (mapstart);
+}
+
 int
 ps3mmu_init(int maxmem)
 {
@@ -89,9 +106,7 @@ ps3mmu_init(int maxmem)
 	for (i = 0; i < maxmem; i += 16*1024*1024)
 		ps3mmu_map(i,i);
 
-	for (i = 0; i < 16*1024*1024; i += 4096)
-		ps3mmu_map(0x10000000 + i, fb_paddr + i);
-	fb_vaddr = (uint32_t *)0x10000000;
+	virtual_avail = 0x10000000;
 
 	__asm __volatile ("slbia; slbmte %0, %1; slbmte %2,%3" ::
 	    "r"((0 << SLBV_VSID_SHIFT) | SLBV_L), "r"(0 | SLBE_VALID),
@@ -99,5 +114,7 @@ ps3mmu_init(int maxmem)
 	    "r"((1 << SLBE_ESID_SHIFT) | SLBE_VALID | 1));
 
 	mtmsr(mfmsr() | PSL_IR | PSL_DR | PSL_RI | PSL_ME);
+
+	return (0);
 }
 

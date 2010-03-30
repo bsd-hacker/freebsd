@@ -9,8 +9,8 @@ BINDIR?=	/boot
 INSTALLFLAGS=	-b
 
 # Architecture-specific loader code
-SRCS=		start.S conf.c metadata.c vers.c main.c lv1call.S ps3mmu.c
-#SRCS=		start.S conf.c metadata.c vers.c main.c lv1call_fake.c ps3mmu.c
+SRCS=		start.S conf.c metadata.c vers.c main.c lv1call.S
+SRCS+=		ps3cons.c font.h ps3mmu.c 
 SRCS+=		ucmpdi2.c
 
 LOADER_DISK_SUPPORT?=	no
@@ -71,7 +71,7 @@ CFLAGS+=	-I.
 
 CLEANFILES+=	vers.c loader.help
 
-CFLAGS+=	-ffreestanding -msoft-float -DAIM
+CFLAGS+=	-Wall -ffreestanding -msoft-float -DAIM
 # load address. set in linker script
 RELOC?=		0x0
 CFLAGS+=	-DRELOC=${RELOC}
@@ -90,6 +90,11 @@ CFLAGS+=	-I${.CURDIR}/../../../../lib/libstand/
 
 DPADD=		${LIBFICL} ${LIBOFW} ${LIBSTAND}
 LDADD=		${LIBFICL} ${LIBOFW} -lstand
+
+SC_DFLT_FONT=cp437
+
+font.h:
+	uudecode < /usr/share/syscons/fonts/${SC_DFLT_FONT}-8x16.fnt && file2c 'u_char dflt_font_16[16*256] = {' '};' < ${SC_DFLT_FONT}-8x16 > font.h && uudecode < /usr/share/syscons/fonts/${SC_DFLT_FONT}-8x14.fnt && file2c 'u_char dflt_font_14[14*256] = {' '};' < ${SC_DFLT_FONT}-8x14 >> font.h && uudecode < /usr/share/syscons/fonts/${SC_DFLT_FONT}-8x8.fnt && file2c 'u_char dflt_font_8[8*256] = {' '};' < ${SC_DFLT_FONT}-8x8 >> font.h
 
 vers.c:	${.CURDIR}/../../common/newvers.sh ${.CURDIR}/version
 	sh ${.CURDIR}/../../common/newvers.sh ${.CURDIR}/version ${NEWVERSWHAT}

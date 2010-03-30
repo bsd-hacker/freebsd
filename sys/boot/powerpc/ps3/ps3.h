@@ -23,83 +23,11 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD: head/sys/boot/powerpc/ofw/start.c 174722 2007-12-17 22:18:07Z marcel $");
+#ifndef _PS3_H
+#define _PS3_H
 
-#include <stand.h>
-#include <sys/param.h>
+int ps3mmu_init(int maxmem);
+int ps3mmu_map(uint64_t va, uint64_t pa);
+void *ps3mmu_mapdev(uint64_t pa, size_t length);
 
-#include "bootstrap.h"
-#include "lv1call.h"
-#include "ps3.h"
-
-struct arch_switch	archsw;
-extern void *_end;
-
-extern char bootprog_name[];
-extern char bootprog_rev[];
-extern char bootprog_date[];
-extern char bootprog_maker[];
-
-int
-main(void)
-{
-	uint64_t maxmem = 0;
-	void *heapbase;
-	int i;
-
-	lv1_get_physmem(&maxmem);
-	
-	ps3mmu_init(maxmem);
-
-	/*
-	 * Set up console.
-	 */
-	cons_probe();
-
-	/*
-	 * Set the heap to one page after the end of the loader.
-	 */
-	heapbase = (void *)((((u_long)&_end) + PAGE_SIZE) & ~PAGE_MASK);
-	setheap(heapbase, heapbase + 0x80000);
-
-	/*
-	 * March through the device switch probing for things.
-	 */
-	for (i = 0; devsw[i] != NULL; i++)
-		if (devsw[i]->dv_init != NULL)
-			(devsw[i]->dv_init)();
-
-	printf("\n");
-	printf("%s, Revision %s\n", bootprog_name, bootprog_rev);
-	printf("(%s, %s)\n", bootprog_maker, bootprog_date);
-	printf("Memory: %lldKB\n", maxmem / 1024);
-
-	interact();			/* doesn't return */
-
-	return (0);
-}
-
-void
-exit(int code)
-{
-}
-
-void
-delay(int usecs)
-{
-}
-
-int
-getsecs()
-{
-	return (0);
-}
-
-time_t
-time(time_t *tloc)
-{
-	return (0);
-}
-
-
+#endif
