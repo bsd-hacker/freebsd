@@ -43,6 +43,10 @@
 /* KBoot thread 0 entry -- do relocation, then jump to main */
 .global _start
 _start:
+	mfmsr   %r31
+	clrldi  %r31,%r31,1
+	mtmsrd  %r31
+	isync
 	cmpwi	%r4,0
 	bne	relocate_self
 relocated_start:
@@ -50,20 +54,25 @@ relocated_start:
 	addi	%r1,%r1,(tmpstk+TMPSTKSZ-16)@l
 	bl	main
 
-. = 0x20
+. = 0x40
 .global secondary_spin_sem
 secondary_spin_sem:
 	.long	0
 
 . = 0x60
 thread1_start_kboot:
+	mfmsr   %r31
+	clrldi  %r31,%r31,1
+	mtmsrd  %r31
+	isync
+
 	ba	thread1_start	/* kboot copies the first 256 bytes to
 				 * address 0, so we are safe to jump
 				 * (and stay) there */
 
 thread1_start:
-	li	%r0,secondary_spin_sem@l
-1:	lwz	%r1,0(%r0)	/* Spin on SECONDARY_SPIN_SEM_ADDRESS */
+	li	%r3,secondary_spin_sem@l
+1:	lwz	%r1,0(%r3)	/* Spin on SECONDARY_SPIN_SEM_ADDRESS */
 	cmpwi	%r1,0
 	beq	1b
 	li	%r0,0x100	/* Invalidate reset vector cache line */
@@ -72,6 +81,11 @@ thread1_start:
 
 . = 0x100
 exc_rst:
+	mfmsr   %r31
+	clrldi  %r31,%r31,1
+	mtmsrd  %r31
+	isync
+
 	mfspr	%r0,SPR_CTRL
 	/* The first two bits of r0 are 01 (thread 1) or 10 (thread 0) */
 	cntlzd	%r0,%r0		/* Now 0 for thread 0, 1 for thread 1 */

@@ -41,51 +41,57 @@ __FBSDID("$FreeBSD: head/sys/boot/powerpc/ofw/start.c 174722 2007-12-17 22:18:07
 #define PS3_LPAR_VAS_ID_CURRENT 0
 
 register_t pteg_count, pteg_mask;
+uint64_t as_id;
 
 void
 ps3mmu_map(uint64_t va, uint64_t pa)
 {
-	struct lpte pt, expt;
-	struct lpteg pteg;
-	uint64_t idx, vsid, ptegidx;
+	struct lpte pt;
+	int shift;
+	uint64_t vsid, ptegidx;
 	
 	if (pa < 0x8000000) { /* Phys mem? */
 		pt.pte_hi = LPTE_BIG;
 		pt.pte_lo = LPTE_M;
+		shift = 24;
 		vsid = 0;
 	} else {
 		pt.pte_hi = 0;
 		pt.pte_lo = LPTE_I | LPTE_G;
+		shift = ADDR_PIDX_SHFT;
 		vsid = 1;
 	}
 
 	pt.pte_hi |= (vsid << LPTE_VSID_SHIFT) |
             (((uint64_t)(va & ADDR_PIDX) >> ADDR_API_SHFT64) & LPTE_API);
-	pt.pte_hi |= LPTE_VALID;
+	pt.pte_lo |= pa;
+	ptegidx = vsid ^ (((uint64_t)va & ADDR_PIDX) >> shift);
 
-	ptegidx = vsid ^ (((uint64_t)va & ADDR_PIDX) >> ADDR_PIDX_SHFT);
+	pt.pte_hi |= LPTE_LOCKED | LPTE_VALID;
 	ptegidx &= pteg_mask;
 
-	lv1_insert_htab_entry(PS3_LPAR_VAS_ID_CURRENT, ptegidx, pt.pte_hi,
-	    pt.pte_lo, 0x10, 0, &idx, &expt.pte_hi, &expt.pte_lo);
+	i = lv1_insert_htab_entry(0, ptegidx * 8, pt.pte_hi, pt.pte_lo,
+	    LPTE_LOCKED, 0);
 }
 
 int
 ps3mmu_init(int maxmem)
 {
-	uint64_t as, ptsize;
+	uint64_t ptsize;
 	int i;
 
-	lv1_construct_virtual_address_space(18 /* log2 256 KB */, 1,
-	    24ULL << 56, &as, &ptsize);
+	lv1_construct_virtual_address_space(18 /* log2 256 KB */, 2,
+	    (24ULL << 56) | (16ULL << 48), &as_id, &ptsize);
 	pteg_count = ptsize / sizeof(struct lpteg);
 	pteg_mask = pteg_count - 1;
 
-	lv1_select_virtual_address_space(as);
+	lv1_select_virtual_address_space(as_id);
+
 	for (i = 0; i < maxmem; i += 16*1024*1024)
 		ps3mmu_map(i,i);
+
 	__asm __volatile ("slbia; slbmte %0, %1; slbmte %2,%3" ::
-	    "r"(0 | SLBV_L), "r"(0 | SLBE_VALID),
+	    "r"((0 << SLBV_VSID_SHIFT) | SLBV_L), "r"(0 | SLBE_VALID),
 	    "r"(1 << SLBV_VSID_SHIFT),
 	    "r"((0xf << SLBE_ESID_SHIFT) | SLBE_VALID | 1));
 

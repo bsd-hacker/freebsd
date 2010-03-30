@@ -38,14 +38,13 @@ __FBSDID("$FreeBSD: head/sys/boot/powerpc/ofw/start.c 174722 2007-12-17 22:18:07
 
 static struct lpteg *pagetable = (struct lpteg *)0x80000;
 
-	int mambocall(int, ...);
-	#define mambo_print(a) mambocall(0,a,strlen(a));
+int mambocall(int, ...);
+#define mambo_print(a) mambocall(0,a,strlen(a));
 
 int
 lv1_insert_htab_entry(register_t htab_id, register_t ptegidx, 
     uint64_t pte_hi, uint64_t pte_lo, register_t lockflags,
-    register_t flags, uint64_t *evict_index, uint64_t *ev_pte_hi,
-    uint64_t *ev_pte_lo)
+    register_t flags)
 {
 	struct  lpte *pt;
 	int     i;
@@ -95,3 +94,8 @@ lv1_select_virtual_address_space(uint64_t as)
 	return (0);
 }
 
+int
+lv1_panic(int val)
+{
+	mambo_print("lv1_panic\n");
+}

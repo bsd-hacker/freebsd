@@ -28,6 +28,7 @@ __FBSDID("$FreeBSD: head/sys/boot/powerpc/ofw/start.c 174722 2007-12-17 22:18:07
 
 #include <stand.h>
 #include "bootstrap.h"
+#include "lv1call.h"
 
 	int mambocall(int, ...);
 	__asm(".text; .globl mambocall; mambocall: .long 0x000EAEB0; blr");
@@ -40,7 +41,13 @@ int ps3mmu_init(int maxmem);
 int
 main(void)
 {
-	ps3mmu_init(128*1024*1024);
+	int maxmem = 16*1024*1024;
+	uint64_t puid, lpar_id;
+
+	lv1_get_logical_pu_id(&puid);
+	lv1_get_logical_partition_id(&lpar_id);
+
+	ps3mmu_init(maxmem);
 	mambo_print("Hello world\n");
 
 	return (0);

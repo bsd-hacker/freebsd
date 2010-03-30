@@ -9,7 +9,8 @@ BINDIR?=	/boot
 INSTALLFLAGS=	-b
 
 # Architecture-specific loader code
-SRCS=		start.S conf.c metadata.c vers.c main.c lv1call_fake.c ps3mmu.c
+SRCS=		start.S conf.c metadata.c vers.c main.c lv1call.S ps3mmu.c
+#SRCS=		start.S conf.c metadata.c vers.c main.c lv1call_fake.c ps3mmu.c
 SRCS+=		ucmpdi2.c
 
 LOADER_DISK_SUPPORT?=	no

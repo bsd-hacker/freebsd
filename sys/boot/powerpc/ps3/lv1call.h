@@ -26,13 +26,15 @@
 #ifndef _PS3_LV1CALL_H
 #define _PS3_LV1CALL_H
 
+int lv1_get_logical_pu_id(uint64_t *puid);
+int lv1_get_logical_partition_id(uint64_t *puid);
 int lv1_insert_htab_entry(register_t htab_id, register_t ptegidx, 
 	uint64_t pte_hi, uint64_t pte_lo, register_t lockflags,
-	register_t flags, uint64_t *evict_index, uint64_t *ev_pte_hi,
-	uint64_t *ev_pte_lo);
+	register_t flags);
 int lv1_construct_virtual_address_space(int htab_size, int npgsizes,
 	uint64_t page_sizes, uint64_t *as_id, uint64_t *ptsize);
 int lv1_select_virtual_address_space(uint64_t as);
+int lv1_panic(int reboot);
 
 #endif
 
