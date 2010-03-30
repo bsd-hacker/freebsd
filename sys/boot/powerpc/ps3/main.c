@@ -30,25 +30,52 @@ __FBSDID("$FreeBSD: head/sys/boot/powerpc/ofw/start.c 174722 2007-12-17 22:18:07
 #include "bootstrap.h"
 #include "lv1call.h"
 
-	int mambocall(int, ...);
-	__asm(".text; .globl mambocall; mambocall: .long 0x000EAEB0; blr");
-	#define mambo_print(a) mambocall(0,a,strlen(a));
-
 struct arch_switch	archsw;
 
 int ps3mmu_init(int maxmem);
 
+uint64_t fb_paddr = 0;
+uint32_t *fb_vaddr;
+
+int
+fb_init(void)
+{
+	uint64_t fbhandle, fbcontext;
+
+	lv1_gpu_open(0);
+	lv1_gpu_context_attribute(0, L1GPU_CONTEXT_ATTRIBUTE_DISPLAY_MODE_SET,
+	    0,0,0,0);
+	lv1_gpu_context_attribute(0, L1GPU_CONTEXT_ATTRIBUTE_DISPLAY_MODE_SET,
+	    0,0,1,0);
+	lv1_gpu_context_attribute(0, L1GPU_CONTEXT_ATTRIBUTE_DISPLAY_SYNC,
+	    0,L1GPU_DISPLAY_SYNC_VSYNC,0,0);
+	lv1_gpu_context_attribute(0, L1GPU_CONTEXT_ATTRIBUTE_DISPLAY_SYNC,
+	    1,L1GPU_DISPLAY_SYNC_VSYNC,0,0);
+	lv1_gpu_memory_allocate(16*1024*1024, 0, 0, 0, 0, &fbhandle, &fb_paddr);
+	lv1_gpu_context_allocate(fbhandle, 0, &fbcontext);
+
+	lv1_gpu_context_attribute(fbcontext,
+	    L1GPU_CONTEXT_ATTRIBUTE_DISPLAY_FLIP, 0, 0, 0, 0);
+	lv1_gpu_context_attribute(fbcontext,
+	    L1GPU_CONTEXT_ATTRIBUTE_DISPLAY_FLIP, 1, 0, 0, 0);
+}
+
 int
 main(void)
 {
-	int maxmem = 16*1024*1024;
-	uint64_t puid, lpar_id;
+	int i = 0;
+	uint64_t maxmem = 0;
 
-	lv1_get_logical_pu_id(&puid);
-	lv1_get_logical_partition_id(&lpar_id);
-
+	lv1_get_physmem(&maxmem);
+	
+	fb_init();
 	ps3mmu_init(maxmem);
-	mambo_print("Hello world\n");
+
+	/* Turn the top of the screen red */
+	for (i = 0; i < 81920; i++)
+		fb_vaddr[i] = 0x00ff0000;
+
+	while (1) {}
 
 	return (0);
 }

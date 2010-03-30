@@ -43,7 +43,10 @@ __FBSDID("$FreeBSD: head/sys/boot/powerpc/ofw/start.c 174722 2007-12-17 22:18:07
 register_t pteg_count, pteg_mask;
 uint64_t as_id;
 
-void
+extern uint64_t fb_paddr;
+extern uint32_t *fb_vaddr;
+
+int
 ps3mmu_map(uint64_t va, uint64_t pa)
 {
 	struct lpte pt;
@@ -57,7 +60,7 @@ ps3mmu_map(uint64_t va, uint64_t pa)
 		vsid = 0;
 	} else {
 		pt.pte_hi = 0;
-		pt.pte_lo = LPTE_I | LPTE_G;
+		pt.pte_lo = LPTE_I | LPTE_G | LPTE_M | LPTE_NOEXEC;
 		shift = ADDR_PIDX_SHFT;
 		vsid = 1;
 	}
@@ -70,8 +73,7 @@ ps3mmu_map(uint64_t va, uint64_t pa)
 	pt.pte_hi |= LPTE_LOCKED | LPTE_VALID;
 	ptegidx &= pteg_mask;
 
-	lv1_insert_htab_entry(0, ptegidx * 8, pt.pte_hi, pt.pte_lo,
-	    LPTE_LOCKED, 0);
+	return (lv1_insert_pte(ptegidx, &pt, LPTE_LOCKED));
 }
 
 int
@@ -80,21 +82,22 @@ ps3mmu_init(int maxmem)
 	uint64_t ptsize;
 	int i;
 
-	lv1_construct_virtual_address_space(18 /* log2 256 KB */, 2,
-	    (24ULL << 56) | (16ULL << 48), &as_id, &ptsize);
+	i = lv1_setup_address_space(&as_id, &ptsize);
 	pteg_count = ptsize / sizeof(struct lpteg);
 	pteg_mask = pteg_count - 1;
-
-	lv1_select_virtual_address_space(as_id);
 
 	for (i = 0; i < maxmem; i += 16*1024*1024)
 		ps3mmu_map(i,i);
 
+	for (i = 0; i < 16*1024*1024; i += 4096)
+		ps3mmu_map(0x10000000 + i, fb_paddr + i);
+	fb_vaddr = (uint32_t *)0x10000000;
+
 	__asm __volatile ("slbia; slbmte %0, %1; slbmte %2,%3" ::
 	    "r"((0 << SLBV_VSID_SHIFT) | SLBV_L), "r"(0 | SLBE_VALID),
 	    "r"(1 << SLBV_VSID_SHIFT),
-	    "r"((0xf << SLBE_ESID_SHIFT) | SLBE_VALID | 1));
+	    "r"((1 << SLBE_ESID_SHIFT) | SLBE_VALID | 1));
 
-	mtmsr(mfmsr() | PSL_IR | PSL_DR);
+	mtmsr(mfmsr() | PSL_IR | PSL_DR | PSL_RI | PSL_ME);
 }
 
