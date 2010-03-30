@@ -70,7 +70,7 @@ ps3mmu_map(uint64_t va, uint64_t pa)
 	pt.pte_hi |= LPTE_LOCKED | LPTE_VALID;
 	ptegidx &= pteg_mask;
 
-	i = lv1_insert_htab_entry(0, ptegidx * 8, pt.pte_hi, pt.pte_lo,
+	lv1_insert_htab_entry(0, ptegidx * 8, pt.pte_hi, pt.pte_lo,
 	    LPTE_LOCKED, 0);
 }
 
