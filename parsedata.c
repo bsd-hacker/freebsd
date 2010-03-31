@@ -1,5 +1,6 @@
 /*-
- * Copyright (c) 1992-2009 Edwin Groothuis. All rights reserved.
+ * Copyright (c) 1992-2009 Edwin Groothuis <edwin@FreeBSD.org>.
+ * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -39,9 +40,9 @@ __FBSDID("$FreeBSD$");
 static char *showflags(int flags);
 static int isonlydigits(char *s, int nostar);
 static const char *getmonthname(int i);
-static int checkmonth(char *s, int *len, int *offset, const char **month);
+static int checkmonth(char *s, size_t *len, size_t *offset, const char **month);
 static const char *getdayofweekname(int i);
-static int checkdayofweek(char *s, int *len, int *offset, const char **dow);
+static int checkdayofweek(char *s, size_t *len, size_t *offset, const char **dow);
 static int indextooffset(char *s);
 static int parseoffset(char *s);
 static char *floattoday(int year, double f);
@@ -771,7 +772,7 @@ getmonthname(int i)
 }
 
 static int
-checkmonth(char *s, int *len, int *offset, const char **month)
+checkmonth(char *s, size_t *len, size_t *offset, const char **month)
 {
 	struct fixs *n;
 	int i;
@@ -822,7 +823,7 @@ getdayofweekname(int i)
 }
 
 static int
-checkdayofweek(char *s, int *len, int *offset, const char **dow)
+checkdayofweek(char *s, size_t *len, size_t *offset, const char **dow)
 {
 	struct fixs *n;
 	int i;
