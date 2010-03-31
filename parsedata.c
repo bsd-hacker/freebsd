@@ -884,6 +884,11 @@ indextooffset(char *s)
 	int i;
 	struct fixs *n;
 
+	if (s[0] == '+')
+		return(strtoll(s + 1, NULL, 10));
+	if (s[0] == '-')
+		return(-strtoll(s + 1, NULL, 10));
+
 	for (i = 0; i < 6; i++) {
 		if (strcasecmp(s, sequences[i]) == 0) {
 			if (i == 5)
