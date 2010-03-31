@@ -55,6 +55,7 @@ x2i(char x)
 		return (x - 'a');
 	}
 	assert(0);
+	return (0);
 }
 
 void

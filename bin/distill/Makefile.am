@@ -15,11 +15,11 @@ svnsup_distill_SOURCES = \
 	txdelta.c
 
 svnsup_distill_CPPFLAGS = \
-	-I$(top_builddir)/src/libsvnsup \
+	-I$(top_srcdir)/include/svnsup \
 	${APR_1_CFLAGS}
 
 svnsup_distill_LDADD = \
-	$(top_builddir)/src/libsvnsup/libsvnsup.a \
+	$(top_builddir)/lib/libsvnsup/libsvnsup.a \
 	${APR_1_LDADD} \
 	${SVN_DELTA_1_LIBS} \
 	${SVN_CLIENT_1_LIBS} \

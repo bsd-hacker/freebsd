@@ -3,7 +3,7 @@
 #
 AC_PREREQ([2.59])
 AC_INIT([svnsup], [1.0], [des@des.no])
-AC_CONFIG_SRCDIR([src/distill/distill.c])
+AC_CONFIG_SRCDIR([include/svnsup/svnsup.h])
 AM_CONFIG_HEADER([config.h])
 AM_INIT_AUTOMAKE
 
@@ -131,9 +131,12 @@ AS_IF([test x"$enable_distill" = x"yes"], [
 #
 AC_CONFIG_FILES([
 	Makefile
-	src/Makefile
-	src/libsvnsup/Makefile
-	src/distill/Makefile
-	src/apply/Makefile
+	include/Makefile
+	include/svnsup/Makefile
+	lib/Makefile
+	lib/libsvnsup/Makefile
+	bin/Makefile
+	bin/apply/Makefile
+	bin/distill/Makefile
 ])
 AC_OUTPUT

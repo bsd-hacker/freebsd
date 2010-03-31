@@ -1,0 +1,11 @@
+# $Id$
+
+if ENABLE_DISTILL
+DISTILL_SUBDIR = distill
+endif
+
+if ENABLE_APPLY
+APPLY_SUBDIR = apply
+endif
+
+SUBDIRS = ${DISTILL_SUBDIR} ${APPLY_SUBDIR}
