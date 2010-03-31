@@ -105,7 +105,7 @@ svnsup_buf_fencode(FILE *f, const unsigned char *buf, size_t size)
 	if (svnsup_buf_is_safe(buf, size))
 		return (fprintf(f, "%zu[%.*s]", size, (int)size, buf));
 	len = fprintf(f, "%zu{", size);
-	len += svnsup_base64_fencode(f, (const unsigned char *)buf, size);
+	len += svnsup_base64_fencode(f, buf, size);
 	len += fprintf(f, "}");
 	return (len);
 }
