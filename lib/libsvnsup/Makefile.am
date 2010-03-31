@@ -8,8 +8,5 @@ libsvnsup_a_SOURCES = \
 	svnsup_md5.c \
 	svnsup_string.c
 
-noinst_HEADERS = \
-	svnsup_md5.h
-
 libsvnsup_a_CPPFLAGS = \
-	-I$(top_srcdir)/include/svnsup
+	-I$(top_srcdir)/include

@@ -36,7 +36,7 @@
 #include <assert.h>
 #include <stdio.h>
 
-#include "svnsup.h"
+#include <svnsup/base64.h>
 
 static const char b64enc[64] = {
 	'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',

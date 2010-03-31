@@ -27,86 +27,35 @@
  * $Id$
  */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
+#ifndef SVNSUP_DELTA_H_INCLUDED
+#define SVNSUP_DELTA_H_INCLUDED
+
+typedef struct svnsup_delta *svnsup_delta_t;
+typedef struct svnsup_delta_file *svnsup_delta_file_t;
+
+int svnsup_create_delta(svnsup_delta_t *);
+int svnsup_close_delta(svnsup_delta_t);
+
+int svnsup_delta_root(svnsup_delta_t, const char *);
+int svnsup_delta_uuid(svnsup_delta_t, const char *);
+int svnsup_delta_path(svnsup_delta_t, const char *);
+int svnsup_delta_comment(svnsup_delta_t, const char *, ...);
+int svnsup_delta_meta(svnsup_delta_t, const char *, const char *, ...);
+int svnsup_delta_create_directory(svnsup_delta_t, const char *);
+int svnsup_delta_remove(svnsup_delta_t, const char *);
+int svnsup_delta_text(svnsup_delta_t, const char *, size_t,
+    unsigned int *);
+
+int svnsup_delta_create_file(svnsup_delta_t, svnsup_delta_file_t *,
+    const char *);
+int svnsup_delta_open_file(svnsup_delta_t, svnsup_delta_file_t *,
+    const char *);
+int svnsup_delta_file_checksum(svnsup_delta_file_t, const char *);
+int svnsup_delta_file_text(svnsup_delta_file_t, const char *, size_t,
+    unsigned int *);
+int svnsup_delta_file_copy(svnsup_delta_file_t, off_t, size_t);
+int svnsup_delta_file_repeat(svnsup_delta_file_t, off_t, size_t);
+int svnsup_delta_file_insert(svnsup_delta_file_t, unsigned int, off_t, size_t);
+int svnsup_delta_close_file(svnsup_delta_file_t, const char *);
+
 #endif
-
-#include <sys/types.h>
-
-#include <assert.h>
-#include <ctype.h>
-#include <stdio.h>
-#include <string.h>
-
-#include <svnsup/base64.h>
-#include <svnsup/string.h>
-
-/*
- * Safe to send as is
- */
-int
-svnsup_string_is_safe(const char *str)
-{
-
-	while (*str != '\0') {
-		if (!isprint(*str) || isspace(*str))
-			return (0);
-		++str;
-	}
-	return (1);
-}
-
-/*
- * Safe to send as is
- */
-int
-svnsup_buf_is_safe(const unsigned char *buf, size_t size)
-{
-
-	while (size > 0) {
-		if (!isprint(*buf) || isspace(*buf))
-			return (0);
-		++buf;
-		--size;
-	}
-	return (1);
-}
-
-char *
-svnsup_string_encode(const char *str)
-{
-
-	assert(0);
-	(void)str;
-	return (NULL);
-}
-
-char *
-svnsup_buf_encode(const unsigned char *buf, size_t size)
-{
-
-	assert(0);
-	(void)buf;
-	(void)size;
-	return (NULL);
-}
-
-size_t
-svnsup_string_fencode(FILE *f, const char *str)
-{
-
-	return (svnsup_buf_fencode(f, (const unsigned char *)str, strlen(str)));
-}
-
-size_t
-svnsup_buf_fencode(FILE *f, const unsigned char *buf, size_t size)
-{
-	int len;
-
-	if (svnsup_buf_is_safe(buf, size))
-		return (fprintf(f, "%zu[%.*s]", size, (int)size, buf));
-	len = fprintf(f, "%zu{", size);
-	len += svnsup_base64_fencode(f, buf, size);
-	len += fprintf(f, "}");
-	return (len);
-}

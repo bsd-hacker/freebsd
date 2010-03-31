@@ -39,7 +39,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "svnsup.h"
+#include <svnsup/delta.h>
+#include <svnsup/error.h>
+#include <svnsup/string.h>
 
 // XXX missing I/O error handling
 

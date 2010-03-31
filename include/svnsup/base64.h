@@ -27,86 +27,14 @@
  * $Id$
  */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
+#ifndef SVNSUP_BASE64_H_INCLUDED
+#define SVNSUP_BASE64_H_INCLUDED
+
+size_t svnsup_base64_encode(char *, const unsigned char *, size_t);
+size_t svnsup_base64_decode(unsigned char *, const char *, size_t);
+#ifdef FOPEN_MAX /* defined by stdio.h, cf. IEEE 1003.1 */
+size_t svnsup_base64_fencode(FILE *, const unsigned char *, size_t);
+/* no fdecode yet */
 #endif
 
-#include <sys/types.h>
-
-#include <assert.h>
-#include <ctype.h>
-#include <stdio.h>
-#include <string.h>
-
-#include <svnsup/base64.h>
-#include <svnsup/string.h>
-
-/*
- * Safe to send as is
- */
-int
-svnsup_string_is_safe(const char *str)
-{
-
-	while (*str != '\0') {
-		if (!isprint(*str) || isspace(*str))
-			return (0);
-		++str;
-	}
-	return (1);
-}
-
-/*
- * Safe to send as is
- */
-int
-svnsup_buf_is_safe(const unsigned char *buf, size_t size)
-{
-
-	while (size > 0) {
-		if (!isprint(*buf) || isspace(*buf))
-			return (0);
-		++buf;
-		--size;
-	}
-	return (1);
-}
-
-char *
-svnsup_string_encode(const char *str)
-{
-
-	assert(0);
-	(void)str;
-	return (NULL);
-}
-
-char *
-svnsup_buf_encode(const unsigned char *buf, size_t size)
-{
-
-	assert(0);
-	(void)buf;
-	(void)size;
-	return (NULL);
-}
-
-size_t
-svnsup_string_fencode(FILE *f, const char *str)
-{
-
-	return (svnsup_buf_fencode(f, (const unsigned char *)str, strlen(str)));
-}
-
-size_t
-svnsup_buf_fencode(FILE *f, const unsigned char *buf, size_t size)
-{
-	int len;
-
-	if (svnsup_buf_is_safe(buf, size))
-		return (fprintf(f, "%zu[%.*s]", size, (int)size, buf));
-	len = fprintf(f, "%zu{", size);
-	len += svnsup_base64_fencode(f, buf, size);
-	len += fprintf(f, "}");
-	return (len);
-}
+#endif

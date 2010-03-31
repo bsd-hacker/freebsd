@@ -36,7 +36,7 @@
 #include <assert.h>
 #include <ctype.h>
 
-#include "svnsup_md5.h"
+#include <svnsup/md5.h>
 
 // XXX error handling and documentation
 

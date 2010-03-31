@@ -43,7 +43,7 @@
 #include <subversion-1/svn_path.h>
 #include <subversion-1/svn_ra.h>
 
-#include "svnsup.h"
+#include "svnsup/svnsup.h"
 
 extern int debug;
 extern int verbose;
