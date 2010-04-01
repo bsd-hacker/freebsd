@@ -1318,6 +1318,7 @@ vm_pageq_remove_locked(vm_page_t m)
 void
 vm_pageq_remove(vm_page_t m)
 {
+
 	vm_page_lock_queues_assert_notowned();
 	_vm_pageq_remove(m, FALSE);
 }
