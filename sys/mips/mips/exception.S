@@ -106,7 +106,7 @@
 	.set	noat
 VECTOR(MipsTLBMiss, unknown)
 	j	_C_LABEL(MipsDoTLBMiss)
-	mfc0	k0, COP_0_BAD_VADDR		# get the fault address
+	MFC0	k0, COP_0_BAD_VADDR		# get the fault address
 	nop
 VECTOR_END(MipsTLBMiss)
 
@@ -136,7 +136,7 @@ MipsDoTLBMiss:
 #endif
 	PTR_ADDU	k1, k0, k1			#07: k1=seg entry address
 	PTR_L	k1, 0(k1)			#08: k1=seg entry
-	mfc0	k0, COP_0_BAD_VADDR		#09: k0=bad address (again)
+	MFC0	k0, COP_0_BAD_VADDR		#09: k0=bad address (again)
 	beq	k1, zero, 2f			#0a: ==0 -- no page table
 	srl	k0, PAGE_SHIFT - 2			#0b: k0=VPN (aka va>>10)
 
@@ -291,8 +291,8 @@ SlowFault:
 	mfhi	v1			;\
 	mfc0	a0, COP_0_STATUS_REG	;\
 	mfc0	a1, COP_0_CAUSE_REG	;\
-	mfc0	a2, COP_0_BAD_VADDR	;\
-	mfc0	a3, COP_0_EXC_PC	;\
+	MFC0	a2, COP_0_BAD_VADDR	;\
+	MFC0	a3, COP_0_EXC_PC	;\
 	SAVE_REG(v0, MULLO, sp)		;\
 	SAVE_REG(v1, MULHI, sp)		;\
 	SAVE_REG(a0, SR, sp)		;\
@@ -450,12 +450,12 @@ NNON_LEAF(MipsUserGenException, CALLFRAME_SIZ, ra)
 	SAVE_U_PCB_REG(s2, S2, k1)
 	SAVE_U_PCB_REG(s3, S3, k1)
 	SAVE_U_PCB_REG(s4, S4, k1)
-	mfc0	a2, COP_0_BAD_VADDR		# Third arg is the fault addr
+	MFC0	a2, COP_0_BAD_VADDR		# Third arg is the fault addr
 	SAVE_U_PCB_REG(s5, S5, k1)
 	SAVE_U_PCB_REG(s6, S6, k1)
 	SAVE_U_PCB_REG(s7, S7, k1)
 	SAVE_U_PCB_REG(t8, T8, k1)
-	mfc0	a3, COP_0_EXC_PC		# Fourth arg is the pc.
+	MFC0	a3, COP_0_EXC_PC		# Fourth arg is the pc.
 	SAVE_U_PCB_REG(t9, T9, k1)
 	SAVE_U_PCB_REG(gp, GP, k1)
 	SAVE_U_PCB_REG(sp, SP, k1)
@@ -689,7 +689,7 @@ NNON_LEAF(MipsUserIntr, CALLFRAME_SIZ, ra)
 	mfhi	v1
 	mfc0	a0, COP_0_STATUS_REG
 	mfc0	a1, COP_0_CAUSE_REG
-	mfc0	a3, COP_0_EXC_PC
+	MFC0	a3, COP_0_EXC_PC
 	SAVE_U_PCB_REG(v0, MULLO, k1)
 	SAVE_U_PCB_REG(v1, MULHI, k1)
 	SAVE_U_PCB_REG(a0, SR, k1)
@@ -806,7 +806,7 @@ NLEAF(MipsTLBInvalidException)
 	.set noat
 	.set noreorder
 
-	mfc0	k0, COP_0_BAD_VADDR
+	MFC0	k0, COP_0_BAD_VADDR
 	li	k1, VM_MAXUSER_ADDRESS
 	sltu	k1, k0, k1
 	bnez	k1, 1f
@@ -837,7 +837,7 @@ NLEAF(MipsTLBInvalidException)
 	beqz	k1, 3f			/* invalid page table page pointer */
 	nop
 
-	mfc0	k0, COP_0_BAD_VADDR
+	MFC0	k0, COP_0_BAD_VADDR
 	srl	k0, PAGE_SHIFT - 2
 	andi	k0, 0xffc
 	PTR_ADDU	k1, k1, k0
@@ -982,7 +982,7 @@ END(MipsTLBInvalidException)
  */
 NLEAF(MipsTLBMissException)
 	.set	noat
-	mfc0	k0, COP_0_BAD_VADDR		# k0=bad address
+	MFC0	k0, COP_0_BAD_VADDR		# k0=bad address
 	li	k1, (VM_MAX_KERNEL_ADDRESS)	# check fault address against
 	sltu	k1, k1, k0			# upper bound of kernel_segmap
 	bnez	k1, _C_LABEL(MipsKernGenException)  # out of bound
@@ -997,7 +997,7 @@ NLEAF(MipsTLBMissException)
 #endif
 	PTR_ADDU	k1, k0, k1			# k1=seg entry address
 	PTR_L	k1, 0(k1)			# k1=seg entry
-	mfc0	k0, COP_0_BAD_VADDR		# k0=bad address (again)
+	MFC0	k0, COP_0_BAD_VADDR		# k0=bad address (again)
 	beq	k1, zero, _C_LABEL(MipsKernGenException)  # ==0 -- no page table
 	srl	k0, 10				# k0=VPN (aka va>>10)
 	andi	k0, k0, 0xff8			# k0=page tab offset
