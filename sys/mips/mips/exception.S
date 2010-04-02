@@ -105,7 +105,7 @@
 
 	.set	noat
 VECTOR(MipsTLBMiss, unknown)
-	j	_C_LABEL(MipsDoTLBMiss)
+	j	MipsDoTLBMiss
 	MFC0	k0, COP_0_BAD_VADDR		# get the fault address
 	nop
 VECTOR_END(MipsTLBMiss)
@@ -153,7 +153,7 @@ MipsDoTLBMiss:
 	tlbwr					#1a: write to tlb
 	HAZARD_DELAY
 	eret					#1f: retUrn from exception
-1:	j _C_LABEL(MipsTLBMissException)	#20: kernel exception
+1:	j	MipsTLBMissException		#20: kernel exception
 	nop					#21: branch delay slot
 2:	j	SlowFault			#22: no page table present
 	nop					#23: branch delay slot
@@ -813,9 +813,9 @@ NLEAF(MipsTLBInvalidException)
 	nop
 
 	/* badvaddr = kernel address */
-	lui	k1, %hi(_C_LABEL(kernel_segmap))
+	lui	k1, %hi(kernel_segmap)
 	b	2f
-	PTR_L	k1, %lo(_C_LABEL(kernel_segmap))(k1)
+	PTR_L	k1, %lo(kernel_segmap)(k1)
 
 1:
 	/* badvaddr = user address */
@@ -985,11 +985,11 @@ NLEAF(MipsTLBMissException)
 	MFC0	k0, COP_0_BAD_VADDR		# k0=bad address
 	li	k1, (VM_MAX_KERNEL_ADDRESS)	# check fault address against
 	sltu	k1, k1, k0			# upper bound of kernel_segmap
-	bnez	k1, _C_LABEL(MipsKernGenException)  # out of bound
-	lui	k1, %hi(_C_LABEL(kernel_segmap))  # k1=hi of segbase
+	bnez	k1, MipsKernGenException	# out of bound
+	lui	k1, %hi(kernel_segmap)		# k1=hi of segbase
 	srl	k0, 20				# k0=seg offset (almost)
-	PTR_L	k1, %lo(_C_LABEL(kernel_segmap))(k1)  # k1=segment tab base
-	beq	k1, zero, _C_LABEL(MipsKernGenException)  # ==0 -- no seg tab
+	PTR_L	k1, %lo(kernel_segmap)(k1)	# k1=segment tab base
+	beq	k1, zero, MipsKernGenException	# ==0 -- no seg tab
 #if defined(__mips_n64)
 	andi	k0, k0, 0xff8			# k0=seg offset (mask 0x7)
 #else
@@ -998,7 +998,7 @@ NLEAF(MipsTLBMissException)
 	PTR_ADDU	k1, k0, k1			# k1=seg entry address
 	PTR_L	k1, 0(k1)			# k1=seg entry
 	MFC0	k0, COP_0_BAD_VADDR		# k0=bad address (again)
-	beq	k1, zero, _C_LABEL(MipsKernGenException)  # ==0 -- no page table
+	beq	k1, zero, MipsKernGenException	# ==0 -- no page table
 	srl	k0, 10				# k0=VPN (aka va>>10)
 	andi	k0, k0, 0xff8			# k0=page tab offset
 #xxx mips64 unsafe
