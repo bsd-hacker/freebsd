@@ -126,7 +126,11 @@ VECTOR_END(MipsTLBMiss)
 	.set noat
 MipsDoTLBMiss:
 	bltz		k0, 1f				#02: k0<0 -> 1f (kernel fault)
-	srl		k0, k0, SEGSHIFT - 2		#03: k0=seg offset (almost)
+#if defined(__mips_n64)
+	PTR_SRL		k0, k0, SEGSHIFT - 3		#03: k0=seg offset (almost)
+#else
+	PTR_SRL		k0, k0, SEGSHIFT - 2		#03: k0=seg offset (almost)
+#endif
 
 	GET_CPU_PCPU(k1)
 	PTR_L		k1, PC_SEGBASE(k1)
