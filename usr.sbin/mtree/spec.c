@@ -1,3 +1,5 @@
+/*	$NetBSD: spec.c,v 1.78 2009/09/22 04:38:21 apb Exp $	*/
+
 /*-
  * Copyright (c) 1989, 1993
  *	The Regents of the University of California.  All rights reserved.
@@ -134,181 +136,515 @@ mtree_readspec(FILE *fi)
 			last->flags |= F_DONE;
 			continue;
 
-noparent:		errx(1, "line %d: no parent node", lineno);
+noparent:		mtree_err("no parent node");
+		}
+
+		plen = strlen(p) + 1;
+		if (plen > tnamelen) {
+			if ((ntname = realloc(tname, plen)) == NULL)
+				mtree_err("realloc: %s", strerror(errno));
+			tname = ntname;
+			tnamelen = plen;
+		}
+		if (strunvis(tname, p) == -1)
+			mtree_err("strunvis failed on `%s'", p);
+		p = tname;
+
+		pathparent = NULL;
+		if (strchr(p, '/') != NULL) {
+			cur = root;
+			for (; (e = strchr(p, '/')) != NULL; p = e+1) {
+				if (p == e)
+					continue;	/* handle // */
+				*e = '\0';
+				if (strcmp(p, ".") != 0) {
+					while (cur &&
+					    strcmp(cur->name, p) != 0) {
+						cur = cur->next;
+					}
+				}
+				if (cur == NULL || cur->type != F_DIR) {
+					mtree_err("%s: %s", tname,
+					"missing directory in specification");
+				}
+				*e = '/';
+				pathparent = cur;
+				cur = cur->child;
+			}
+			if (*p == '\0')
+				mtree_err("%s: empty leaf element", tname);
 		}
 
 		if ((centry = calloc(1, sizeof(NODE) + strlen(p))) == NULL)
-			errx(1, "calloc");
+			mtree_err("%s", strerror(errno));
 		*centry = ginfo;
+		centry->lineno = mtree_lineno;
+		strcpy(centry->name, p);
 #define	MAGIC	"?*["
 		if (strpbrk(p, MAGIC))
 			centry->flags |= F_MAGIC;
-		if (strunvis(centry->name, p) == -1)
-			errx(1, "filename %s is ill-encoded", p);
-		set(NULL, centry);
+		set(next, centry);
 
-		if (!root) {
+		if (root == NULL) {
+				/*
+				 * empty tree
+				 */
+			if (strcmp(centry->name, ".") != 0 ||
+			    centry->type != F_DIR)
+				mtree_err(
+				    "root node must be the directory `.'");
 			last = root = centry;
 			root->parent = root;
+		} else if (pathparent != NULL) {
+				/*
+				 * full path entry; add or replace
+				 */
+			centry->parent = pathparent;
+			addchild(pathparent, centry);
+			last = centry;
+		} else if (strcmp(centry->name, ".") == 0) {
+				/*
+				 * duplicate "." entry; always replace
+				 */
+			replacenode(root, centry);
 		} else if (last->type == F_DIR && !(last->flags & F_DONE)) {
+				/*
+				 * new relative child in current dir;
+				 * add or replace
+				 */
 			centry->parent = last;
-			last = last->child = centry;
+			addchild(last, centry);
+			last = centry;
 		} else {
+				/*
+				 * new relative child in parent dir
+				 * (after encountering ".." entry);
+				 * add or replace
+				 */
 			centry->parent = last->parent;
-			centry->prev = last;
-			last = last->next = centry;
+			addchild(last->parent, centry);
+			last = centry;
 		}
 	}
 	return (root);
 }
 
+void
+free_nodes(NODE *root)
+{
+	NODE	*cur, *next;
+
+	if (root == NULL)
+		return;
+
+	next = NULL;
+	for (cur = root; cur != NULL; cur = next) {
+		next = cur->next;
+		free_nodes(cur->child);
+		REPLACEPTR(cur->slink, NULL);
+		REPLACEPTR(cur->md5digest, NULL);
+		REPLACEPTR(cur->rmd160digest, NULL);
+		REPLACEPTR(cur->sha1digest, NULL);
+		REPLACEPTR(cur->sha256digest, NULL);
+		REPLACEPTR(cur->sha384digest, NULL);
+		REPLACEPTR(cur->sha512digest, NULL);
+		REPLACEPTR(cur->tags, NULL);
+		REPLACEPTR(cur, NULL);
+	}
+}
+
+/*
+ * appendfield --
+ *	Like printf(), but output a space either before or after
+ *	the regular output, according to the pathlast flag.
+ */
+static int
+appendfield(int pathlast, const char *fmt, ...)
+{
+	va_list ap;
+	int result;
+
+	va_start(ap, fmt);
+	if (!pathlast)
+		printf(" ");
+	result = vprintf(fmt, ap);
+	if (pathlast)
+		printf(" ");
+	va_end(ap);
+	return result;
+}
+
+/*
+ * dump_nodes --
+ *	dump the NODEs from `cur', based in the directory `dir'.
+ *	if pathlast is none zero, print the path last, otherwise print
+ *	it first.
+ */
+void
+dump_nodes(const char *dir, NODE *root, int pathlast)
+{
+	NODE	*cur;
+	char	path[MAXPATHLEN];
+	const char *name;
+	char	*str;
+	char	*p, *q;
+
+	for (cur = root; cur != NULL; cur = cur->next) {
+		if (cur->type != F_DIR && !matchtags(cur))
+			continue;
+
+		if (snprintf(path, sizeof(path), "%s%s%s",
+		    dir, *dir ? "/" : "", cur->name)
+		    >= (int)sizeof(path))
+			mtree_err("Pathname too long.");
+
+		if (!pathlast)
+			printf("%s", vispath(path));
+
+#define MATCHFLAG(f)	((keys & (f)) && (cur->flags & (f)))
+		if (MATCHFLAG(F_TYPE))
+			appendfield(pathlast, "type=%s", nodetype(cur->type));
+		if (MATCHFLAG(F_UID | F_UNAME)) {
+			if (keys & F_UNAME &&
+			    (name = user_from_uid(cur->st_uid, 1)) != NULL)
+				appendfield(pathlast, "uname=%s", name);
+			else
+				appendfield(pathlast, "uid=%u", cur->st_uid);
+		}
+		if (MATCHFLAG(F_GID | F_GNAME)) {
+			if (keys & F_GNAME &&
+			    (name = group_from_gid(cur->st_gid, 1)) != NULL)
+				appendfield(pathlast, "gname=%s", name);
+			else
+				appendfield(pathlast, "gid=%u", cur->st_gid);
+		}
+		if (MATCHFLAG(F_MODE))
+			appendfield(pathlast, "mode=%#o", cur->st_mode);
+#if 0
+		if (MATCHFLAG(F_DEV) &&
+		    (cur->type == F_BLOCK || cur->type == F_CHAR))
+			appendfield(pathlast, "device=%#llx", (long long)cur->st_rdev);
+#endif
+		if (MATCHFLAG(F_NLINK))
+			appendfield(pathlast, "nlink=%d", cur->st_nlink);
+		if (MATCHFLAG(F_SLINK))
+			appendfield(pathlast, "link=%s", vispath(cur->slink));
+		if (MATCHFLAG(F_SIZE))
+			appendfield(pathlast, "size=%lld", (long long)cur->st_size);
+		if (MATCHFLAG(F_TIME))
+			appendfield(pathlast, "time=%lld.%ld ",
+			    (long long)cur->st_mtimespec.tv_sec,
+			    cur->st_mtimespec.tv_nsec);
+		if (MATCHFLAG(F_CKSUM))
+			appendfield(pathlast, "cksum=%lu", cur->cksum);
+		if (MATCHFLAG(F_MD5))
+			appendfield(pathlast, "md5=%s", cur->md5digest);
+		if (MATCHFLAG(F_RMD160))
+			appendfield(pathlast, "rmd160=%s", cur->rmd160digest);
+		if (MATCHFLAG(F_SHA1))
+			appendfield(pathlast, "sha1=%s", cur->sha1digest);
+		if (MATCHFLAG(F_SHA256))
+			appendfield(pathlast, "sha256=%s", cur->sha256digest);
+		if (MATCHFLAG(F_SHA384))
+			appendfield(pathlast, "sha384=%s", cur->sha384digest);
+		if (MATCHFLAG(F_SHA512))
+			appendfield(pathlast, "sha512=%s", cur->sha512digest);
+		if (MATCHFLAG(F_FLAGS)) {
+			str = flags_to_string(cur->st_flags);
+			appendfield(pathlast, "flags=%s", str);
+			free(str);
+		}
+		if (MATCHFLAG(F_IGN))
+			appendfield(pathlast, "ignore");
+		if (MATCHFLAG(F_OPT))
+			appendfield(pathlast, "optional");
+		if (MATCHFLAG(F_TAGS)) {
+			/* don't output leading or trailing commas */
+			p = cur->tags;
+			while (*p == ',')
+				p++;
+			q = p + strlen(p);
+			while(q > p && q[-1] == ',')
+				q--;
+			appendfield(pathlast, "tags=%.*s", (int)(q - p), p);
+		}
+		puts(pathlast ? vispath(path) : "");
+
+		if (cur->child)
+			dump_nodes(path, cur->child, pathlast);
+	}
+}
+
+/*
+ * vispath --
+ *	strsvis(3) encodes path, which must not be longer than MAXPATHLEN
+ *	characters long, and returns a pointer to a static buffer containing
+ *	the result.
+ */
+char *
+vispath(const char *path)
+{
+//	const char extra[] = { ' ', '\t', '\n', '\\', '#', '\0' };
+	static char pathbuf[4*MAXPATHLEN + 1];
+
+//	strsvis(pathbuf, path, VIS_CSTYLE, extra);
+	strvis(pathbuf, path, VIS_CSTYLE);
+	return(pathbuf);
+}
+
+#if 0
+static dev_t
+parsedev(char *arg)
+{
+#define MAX_PACK_ARGS	3
+	u_long	numbers[MAX_PACK_ARGS];
+	char	*p, *ep, *dev;
+	int	argc;
+	pack_t	*pack;
+	dev_t	result;
+	const char *error = NULL;
+
+	if ((dev = strchr(arg, ',')) != NULL) {
+		*dev++='\0';
+		if ((pack = pack_find(arg)) == NULL)
+			mtree_err("unknown format `%s'", arg);
+		argc = 0;
+		while ((p = strsep(&dev, ",")) != NULL) {
+			if (*p == '\0')
+				mtree_err("missing number");
+			numbers[argc++] = strtoul(p, &ep, 0);
+			if (*ep != '\0')
+				mtree_err("invalid number `%s'",
+				    p);
+			if (argc > MAX_PACK_ARGS)
+				mtree_err("too many arguments");
+		}
+		if (argc < 2)
+			mtree_err("not enough arguments");
+		result = (*pack)(argc, numbers, &error);
+		if (error != NULL)
+			mtree_err("%s", error);
+	} else {
+		result = (dev_t)strtoul(arg, &ep, 0);
+		if (*ep != '\0')
+			mtree_err("invalid device `%s'", arg);
+	}
+	return (result);
+}
+#endif
+
+static void
+replacenode(NODE *cur, NODE *new)
+{
+
+#define REPLACE(x)	cur->x = new->x
+#define REPLACESTR(x)	REPLACEPTR(cur->x,new->x)
+
+	if (cur->type != new->type) {
+		if (mtree_Mflag) {
+				/*
+				 * merge entries with different types; we
+				 * don't want children retained in this case.
+				 */
+			REPLACE(type);
+			free_nodes(cur->child);
+			cur->child = NULL;
+		} else {
+			mtree_err(
+			    "existing entry for `%s', type `%s'"
+			    " does not match type `%s'",
+			    cur->name, nodetype(cur->type),
+			    nodetype(new->type));
+		}
+	}
+
+	REPLACE(st_size);
+	REPLACE(st_mtimespec);
+	REPLACESTR(slink);
+	if (cur->slink != NULL) {
+		if ((cur->slink = strdup(new->slink)) == NULL)
+			mtree_err("memory allocation error");
+		if (strunvis(cur->slink, new->slink) == -1)
+			mtree_err("strunvis failed on `%s'", new->slink);
+		free(new->slink);
+	}
+	REPLACE(st_uid);
+	REPLACE(st_gid);
+	REPLACE(st_mode);
+//	REPLACE(st_rdev);
+	REPLACE(st_flags);
+	REPLACE(st_nlink);
+	REPLACE(cksum);
+	REPLACESTR(md5digest);
+	REPLACESTR(rmd160digest);
+	REPLACESTR(sha1digest);
+	REPLACESTR(sha256digest);
+	REPLACESTR(sha384digest);
+	REPLACESTR(sha512digest);
+	REPLACESTR(tags);
+	REPLACE(lineno);
+	REPLACE(flags);
+	free(new);
+}
+
 static void
 set(char *t, NODE *ip)
 {
-	int type;
-	char *kw, *val = NULL;
+	int	type, value, len;
+	char	*kw, *val, *md, *ep;
+	void	*m;
 	struct group *gr;
 	struct passwd *pw;
-	mode_t *m;
-	int value;
-	char *ep;
 
-	for (; (kw = strtok(t, "= \t\n")); t = NULL) {
+	while ((kw = strsep(&t, "= \t")) != NULL) {
+		if (*kw == '\0')
+			continue;
+		if (strcmp(kw, "all") == 0)
+			mtree_err("invalid keyword `all'");
 		ip->flags |= type = parsekey(kw, &value);
-		if (value && (val = strtok(NULL, " \t\n")) == NULL)
-			errx(1, "line %d: missing value", lineno);
-		switch(type) {
+		if (!value)
+			/* Just set flag bit (F_IGN and F_OPT) */
+			continue;
+		while ((val = strsep(&t, " \t")) != NULL && *val == '\0')
+			continue;
+		if (val == NULL)
+			mtree_err("missing value");
+		switch (type) {
 		case F_CKSUM:
 			ip->cksum = strtoul(val, &ep, 10);
 			if (*ep)
-				errx(1, "line %d: invalid checksum %s",
-				lineno, val);
+				mtree_err("invalid checksum `%s'", val);
 			break;
-		case F_MD5:
-			ip->md5digest = strdup(val);
-			if(!ip->md5digest)
-				errx(1, "strdup");
+#if 0
+		case F_DEV:
+			ip->st_rdev = parsedev(val);
 			break;
-		case F_SHA1:
-			ip->sha1digest = strdup(val);
-			if(!ip->sha1digest)
-				errx(1, "strdup");
-			break;
-		case F_SHA256:
-			ip->sha256digest = strdup(val);
-			if(!ip->sha256digest)
-				errx(1, "strdup");
-			break;
-		case F_RMD160:
-			ip->rmd160digest = strdup(val);
-			if(!ip->rmd160digest)
-				errx(1, "strdup");
-			break;
+#endif
 		case F_FLAGS:
 			if (strcmp("none", val) == 0)
 				ip->st_flags = 0;
 			else if (strtofflags(&val, &ip->st_flags, NULL) != 0)
-				errx(1, "line %d: invalid flag %s",lineno, val);
- 			break;
+				mtree_err("invalid flag `%s'", val);
+			break;
 		case F_GID:
-			ip->st_gid = strtoul(val, &ep, 10);
+			ip->st_gid = (gid_t)strtoul(val, &ep, 10);
 			if (*ep)
-				errx(1, "line %d: invalid gid %s", lineno, val);
+				mtree_err("invalid gid `%s'", val);
 			break;
 		case F_GNAME:
+			if (mtree_Wflag)	/* don't parse if whacking */
+				break;
 			if ((gr = getgrnam(val)) == NULL)
-			    errx(1, "line %d: unknown group %s", lineno, val);
+				mtree_err("unknown group %s", val);
 			ip->st_gid = gr->gr_gid;
 			break;
-		case F_IGN:
-			/* just set flag bit */
+		case F_MD5:
+			if (val[0]=='0' && val[1]=='x')
+				md=&val[2];
+			else
+				md=val;
+			if ((ip->md5digest = strdup(md)) == NULL)
+				mtree_err("memory allocation error");
 			break;
 		case F_MODE:
 			if ((m = setmode(val)) == NULL)
-				errx(1, "line %d: invalid file mode %s",
-				lineno, val);
+				mtree_err("cannot set file mode `%s' (%s)",
+				    val, strerror(errno));
 			ip->st_mode = getmode(m, 0);
 			free(m);
 			break;
 		case F_NLINK:
-			ip->st_nlink = strtoul(val, &ep, 10);
+			ip->st_nlink = (nlink_t)strtoul(val, &ep, 10);
 			if (*ep)
-				errx(1, "line %d: invalid link count %s",
-				lineno,  val);
+				mtree_err("invalid link count `%s'", val);
 			break;
-		case F_OPT:
-			/* just set flag bit */
+		case F_RMD160:
+			if (val[0]=='0' && val[1]=='x')
+				md=&val[2];
+			else
+				md=val;
+			if ((ip->rmd160digest = strdup(md)) == NULL)
+				mtree_err("memory allocation error");
+			break;
+		case F_SHA1:
+			if (val[0]=='0' && val[1]=='x')
+				md=&val[2];
+			else
+				md=val;
+			if ((ip->sha1digest = strdup(md)) == NULL)
+				mtree_err("memory allocation error");
 			break;
 		case F_SIZE:
-			ip->st_size = strtoq(val, &ep, 10);
+			ip->st_size = (off_t)strtoll(val, &ep, 10);
 			if (*ep)
-				errx(1, "line %d: invalid size %s",
-				lineno, val);
+				mtree_err("invalid size `%s'", val);
 			break;
 		case F_SLINK:
-			ip->slink = malloc(strlen(val) + 1);
-			if (ip->slink == NULL)
-				errx(1, "malloc");
+			if ((ip->slink = strdup(val)) == NULL)
+				mtree_err("memory allocation error");
 			if (strunvis(ip->slink, val) == -1)
-				errx(1, "symlink %s is ill-encoded", val);
+				mtree_err("strunvis failed on `%s'", val);
+			break;
+		case F_TAGS:
+			len = strlen(val) + 3;	/* "," + str + ",\0" */
+			if ((ip->tags = malloc(len)) == NULL)
+				mtree_err("memory allocation error");
+			snprintf(ip->tags, len, ",%s,", val);
 			break;
 		case F_TIME:
-			ip->st_mtimespec.tv_sec = strtoul(val, &ep, 10);
-			if (*ep == '.') {
-				/* Note: we require exactly nine
-				 * digits after the decimal point. */
-				val = ep + 1;
-				ip->st_mtimespec.tv_nsec
-				    = strtoul(val, &ep, 10);
-			} else
-				ip->st_mtimespec.tv_nsec = 0;
+			ip->st_mtimespec.tv_sec =
+			    (time_t)strtoll(val, &ep, 10);
+			if (*ep != '.')
+				mtree_err("invalid time `%s'", val);
+			val = ep + 1;
+			ip->st_mtimespec.tv_nsec = strtol(val, &ep, 10);
 			if (*ep)
-				errx(1, "line %d: invalid time %s",
-				    lineno, val);
+				mtree_err("invalid time `%s'", val);
 			break;
 		case F_TYPE:
-			switch(*val) {
-			case 'b':
-				if (!strcmp(val, "block"))
-					ip->type = F_BLOCK;
-				break;
-			case 'c':
-				if (!strcmp(val, "char"))
-					ip->type = F_CHAR;
-				break;
-			case 'd':
-				if (!strcmp(val, "dir"))
-					ip->type = F_DIR;
-				break;
-			case 'f':
-				if (!strcmp(val, "file"))
-					ip->type = F_FILE;
-				if (!strcmp(val, "fifo"))
-					ip->type = F_FIFO;
-				break;
-			case 'l':
-				if (!strcmp(val, "link"))
-					ip->type = F_LINK;
-				break;
-			case 's':
-				if (!strcmp(val, "socket"))
-					ip->type = F_SOCK;
-				break;
-			default:
-				errx(1, "line %d: unknown file type %s",
-				lineno, val);
-			}
+			ip->type = parsetype(val);
 			break;
 		case F_UID:
-			ip->st_uid = strtoul(val, &ep, 10);
+			ip->st_uid = (uid_t)strtoul(val, &ep, 10);
 			if (*ep)
-				errx(1, "line %d: invalid uid %s", lineno, val);
+				mtree_err("invalid uid `%s'", val);
 			break;
 		case F_UNAME:
+			if (mtree_Wflag)	/* don't parse if whacking */
+				break;
 			if ((pw = getpwnam(val)) == NULL)
-			    errx(1, "line %d: unknown user %s", lineno, val);
+				mtree_err("unknown user %s", val);
 			ip->st_uid = pw->pw_uid;
 			break;
+		case F_SHA256:
+			if (val[0]=='0' && val[1]=='x')
+				md=&val[2];
+			else
+				md=val;
+			if ((ip->sha256digest = strdup(md)) == NULL)
+				mtree_err("memory allocation error");
+			break;
+		case F_SHA384:
+			if (val[0]=='0' && val[1]=='x')
+				md=&val[2];
+			else
+				md=val;
+			if ((ip->sha384digest = strdup(md)) == NULL)
+				mtree_err("memory allocation error");
+			break;
+		case F_SHA512:
+			if (val[0]=='0' && val[1]=='x')
+				md=&val[2];
+			else
+				md=val;
+			if ((ip->sha512digest = strdup(md)) == NULL)
+				mtree_err("memory allocation error");
+			break;
+		default:
+			mtree_err(
+			    "set(): unsupported key type 0x%x (INTERNAL ERROR)",
+			    type);
+			/* NOTREACHED */
 		}
 	}
 }
@@ -318,6 +654,152 @@ unset(char *t, NODE *ip)
 {
 	char *p;
 
-	while ((p = strtok(t, "\n\t ")))
+	while ((p = strsep(&t, " \t")) != NULL) {
+		if (*p == '\0')
+			continue;
 		ip->flags &= ~parsekey(p, NULL);
+	}
+}
+
+/*
+ * addchild --
+ *	Add the centry node as a child of the pathparent node.	If
+ *	centry is a duplicate, call replacenode().  If centry is not
+ *	a duplicate, insert it into the linked list referenced by
+ *	pathparent->child.  Keep the list sorted if Sflag is set.
+ */
+static void
+addchild(NODE *pathparent, NODE *centry)
+{
+	NODE *samename;      /* node with the same name as centry */
+	NODE *replacepos;    /* if non-NULL, centry should replace this node */
+	NODE *insertpos;     /* if non-NULL, centry should be inserted
+			      * after this node */
+	NODE *cur;           /* for stepping through the list */
+	NODE *last;          /* the last node in the list */
+	int cmp;
+
+	samename = NULL;
+	replacepos = NULL;
+	insertpos = NULL;
+	last = NULL;
+	cur = pathparent->child;
+	if (cur == NULL) {
+		/* centry is pathparent's first and only child node so far */
+		pathparent->child = centry;
+		return;
+	}
+
+	/*
+	 * pathparent already has at least one other child, so add the
+	 * centry node to the list.
+	 *
+	 * We first scan through the list looking for an existing node
+	 * with the same name (setting samename), and also looking
+	 * for the correct position to replace or insert the new node
+	 * (setting replacepos and/or insertpos).
+	 */
+	for (; cur != NULL; last = cur, cur = cur->next) {
+		if (strcmp(centry->name, cur->name) == 0) {
+			samename = cur;
+		}
+		if (mtree_Sflag) {
+			cmp = nodecmp(centry, cur);
+			if (cmp == 0) {
+				replacepos = cur;
+			} else if (cmp > 0) {
+				insertpos = cur;
+			}
+		}
+	}
+	if (! mtree_Sflag) {
+		if (samename != NULL) {
+			/* replace node with same name */
+			replacepos = samename;
+		} else {
+			/* add new node at end of list */
+			insertpos = last;
+		}
+	}
+
+	if (samename != NULL) {
+		/*
+		 * We found a node with the same name above.  Call
+		 * replacenode(), which will either exit with an error,
+		 * or replace the information in the samename node and
+		 * free the information in the centry node.
+		 */
+		replacenode(samename, centry);
+		if (samename == replacepos) {
+			/* The just-replaced node was in the correct position */
+			return;
+		}
+		if (samename == insertpos || samename->prev == insertpos) {
+			/*
+			 * We thought the new node should be just before
+			 * or just after the replaced node, but that would
+			 * be equivalent to just retaining the replaced node.
+			 */
+			return;
+		}
+
+		/*
+		 * The just-replaced node is in the wrong position in
+		 * the list.  This can happen if sort order depends on
+		 * criteria other than the node name.
+		 *
+		 * Make centry point to the just-replaced node.	 Unlink
+		 * the just-replaced node from the list, and allow it to
+		 * be insterted in the correct position later.
+		 */
+		centry = samename;
+		if (centry->prev)
+			centry->prev->next = centry->next;
+		else {
+			/* centry->next is the new head of the list */
+			pathparent->child = centry->next;
+			assert(centry->next != NULL);
+		}
+		if (centry->next)
+			centry->next->prev = centry->prev;
+		centry->prev = NULL;
+		centry->next = NULL;
+	}
+
+	if (insertpos == NULL) {
+		/* insert centry at the beginning of the list */
+		pathparent->child->prev = centry;
+		centry->next = pathparent->child;
+		centry->prev = NULL;
+		pathparent->child = centry;
+	} else {
+		/* insert centry into the list just after insertpos */
+		centry->next = insertpos->next;
+		insertpos->next = centry;
+		centry->prev = insertpos;
+		if (centry->next)
+			centry->next->prev = centry;
+	}
+	return;
+}
+
+/*
+ * nodecmp --
+ *	used as a comparison function by addchild() to control the order
+ *	in which entries appear within a list of sibling nodes.	 We make
+ *	directories sort after non-directories, but otherwise sort in
+ *	strcmp() order.
+ *
+ * Keep this in sync with dcmp() in create.c.
+ */
+static int
+nodecmp(const NODE *a, const NODE *b)
+{
+
+	if ((a->type & F_DIR) != 0) {
+		if ((b->type & F_DIR) == 0)
+			return 1;
+	} else if ((b->type & F_DIR) != 0)
+		return -1;
+	return strcmp(a->name, b->name);
 }

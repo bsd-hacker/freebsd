@@ -39,6 +39,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/stat.h>
 #include <err.h>
 #include <fts.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <unistd.h>
 #include "mtree.h"
@@ -83,6 +84,21 @@ static KEY keylist[] = {
 	{"uname",	F_UNAME,	NEEDVALUE},
 };
 
+static KEY typelist[] = {
+	{"block",	F_BLOCK,	0},
+	{"char",	F_CHAR,		0},
+	{"dir",		F_DIR,		0},
+#ifdef S_IFDOOR
+	{"door",	F_DOOR,		0},
+#endif
+	{"fifo",	F_FIFO,		0},
+	{"file",	F_FILE,		0},
+	{"link",	F_LINK,		0},
+	{"socket",	F_SOCK,		0},
+};
+
+slist_t	excludetags, includetags;
+
 int keycompare(const void *, const void *);
 
 u_int
@@ -94,10 +110,24 @@ parsekey(char *name, int *needvaluep)
 	k = (KEY *)bsearch(&tmp, keylist, sizeof(keylist) / sizeof(KEY),
 	    sizeof(KEY), keycompare);
 	if (k == NULL)
-		errx(1, "line %d: unknown keyword %s", lineno, name);
+		mtree_err("unknown keyword %s", name);
 
 	if (needvaluep)
 		*needvaluep = k->flags & NEEDVALUE ? 1 : 0;
+	return (k->val);
+}
+
+u_int
+parsetype(const char *name)
+{
+	KEY *k, tmp;
+
+	tmp.name = name;
+	k = (KEY *)bsearch(&tmp, typelist, sizeof(typelist) / sizeof(KEY),
+	    sizeof(KEY), keycompare);
+	if (k == NULL)
+		mtree_err("unknown file type `%s'", name);
+
 	return (k->val);
 }
 
@@ -122,3 +152,123 @@ flags_to_string(u_long fflags)
 
 	return string;
 }
+
+void
+mtree_err(const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	vwarnx(fmt, ap);
+	va_end(ap);
+	if (mtree_lineno)
+		warnx("failed at line %lu of the specification",
+		    (u_long) mtree_lineno);
+	exit(1);
+	/* NOTREACHED */
+}
+
+void
+addtag(slist_t *list, char *elem)
+{
+
+#define	TAG_CHUNK 20
+
+	if ((list->count % TAG_CHUNK) == 0) {
+		char **new;
+
+		new = (char **)realloc(list->list, (list->count + TAG_CHUNK)
+		    * sizeof(char *));
+		if (new == NULL)
+			mtree_err("memory allocation error");
+		list->list = new;
+	}
+	list->list[list->count] = elem;
+	list->count++;
+}
+
+void
+parsetags(slist_t *list, char *args)
+{
+	char	*p, *e;
+	int	len;
+
+	if (args == NULL) {
+		addtag(list, NULL);
+		return;
+	}
+	while ((p = strsep(&args, ",")) != NULL) {
+		if (*p == '\0')
+			continue;
+		len = strlen(p) + 3;	/* "," + p + ",\0" */
+		if ((e = malloc(len)) == NULL)
+			mtree_err("memory allocation error");
+		snprintf(e, len, ",%s,", p);
+		addtag(list, e);
+	}
+}
+
+/*
+ * matchtags
+ *	returns 0 if there's a match from the exclude list in the node's tags,
+ *	or there's an include list and no match.
+ *	return 1 otherwise.
+ */
+int
+matchtags(NODE *node)
+{
+	int	i;
+
+	if (node->tags) {
+		for (i = 0; i < excludetags.count; i++)
+			if (strstr(node->tags, excludetags.list[i]))
+				break;
+		if (i < excludetags.count)
+			return (0);
+
+		for (i = 0; i < includetags.count; i++)
+			if (strstr(node->tags, includetags.list[i]))
+				break;
+		if (i > 0 && i == includetags.count)
+			return (0);
+	} else if (includetags.count > 0) {
+		return (0);
+	}
+	return (1);
+}
+
+u_int
+nodetoino(u_int type)
+{
+
+	switch (type) {
+	case F_BLOCK:
+		return S_IFBLK;
+	case F_CHAR:
+		return S_IFCHR;
+	case F_DIR:
+		return S_IFDIR;
+	case F_FIFO:
+		return S_IFIFO;
+	case F_FILE:
+		return S_IFREG;
+	case F_LINK:
+		return S_IFLNK;
+#ifdef S_IFSOCK
+	case F_SOCK:
+		return S_IFSOCK;
+#endif
+	default:
+		printf("unknown type %d", type);
+		abort();
+	}
+	/* NOTREACHED */
+}
+
+const char *
+nodetype(u_int type)
+{
+
+	return (inotype(nodetoino(type)));
+}
+

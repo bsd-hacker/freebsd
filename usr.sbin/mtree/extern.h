@@ -31,19 +31,26 @@
  */
 extern uint32_t crc_total;
 
+void	 addtag(slist_t *, char *);
 #ifdef _FTS_H_
 int	 compare(char *, NODE *, FTSENT *);
 #endif
 int	 crc(int, uint32_t *, off_t *);
 void	 cwalk(void);
+void	 dump_nodes(const char *, NODE *, int);
 char	*flags_to_string(u_long);
 
-const char	*inotype(u_int);
+int	 matchtags(NODE *);
+const char *nodetype(u_int);
 u_int	 parsekey(char *, int *);
+void	 parsetags(slist_t *, char *);
+u_int	 parsetype(const char *);
 char	*rlink(char *);
 NODE	*mtree_readspec(FILE *fi);
 int	mtree_verifyspec(FILE *fi);
 int	mtree_specspec(FILE *fi, FILE *fj);
+void	 mtree_err(const char *, ...)
+	    __attribute__((__format__(__printf__, 1, 2)));
 
 int	 check_excludes(const char *, const char *);
 void	 init_excludes(void);
@@ -52,7 +59,7 @@ const char * ftype(u_int type);
 
 extern int ftsoptions;
 extern u_int keys;
-extern int lineno;
+extern size_t mtree_lineno;
 extern int dflag, eflag, iflag, nflag, qflag, rflag, sflag, uflag, wflag;
 #ifdef MAXPATHLEN
 extern char fullpath[MAXPATHLEN];

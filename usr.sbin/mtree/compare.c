@@ -381,7 +381,7 @@ rlink(char *name)
 	char tbuf[MAXPATHLEN];
 
 	if ((len = readlink(name, tbuf, sizeof(tbuf) - 1)) == -1)
-		err(1, "line %d: %s", lineno, name);
+		mtree_err("%s", name);
 	tbuf[len] = '\0';
 	strvis(lbuf, tbuf, VIS_WHITE | VIS_OCTAL);
 	return (lbuf);

@@ -48,6 +48,12 @@ typedef struct _node {
 	char	*sha1digest;			/* SHA-1 digest */
 	char	*sha256digest;			/* SHA-256 digest */
 	char	*rmd160digest;			/* RIPEMD160 digest */
+	char	*sha384digest;			/* SHA384 digest */
+	char	*sha512digest;			/* SHA512 digest */
+	char	*tags;				/* tags, comma delimited,
+						 * also with leading and
+						 * trailing commas */
+	size_t	lineno;				/* line # entry came from */
 	char	*slink;				/* symbolic link reference */
 	uid_t	st_uid;				/* uid */
 	gid_t	st_gid;				/* gid */
@@ -56,29 +62,32 @@ typedef struct _node {
 	u_long	st_flags;			/* flags */
 	nlink_t	st_nlink;			/* link count */
 
-#define	F_CKSUM	0x0001				/* check sum */
-#define	F_DONE	0x0002				/* directory done */
-#define	F_GID	0x0004				/* gid */
-#define	F_GNAME	0x0008				/* group name */
-#define	F_IGN	0x0010				/* ignore */
-#define	F_MAGIC	0x0020				/* name has magic chars */
-#define	F_MODE	0x0040				/* mode */
-#define	F_NLINK	0x0080				/* number of links */
-#define	F_SIZE	0x0100				/* size */
-#define	F_SLINK	0x0200				/* link count */
-#define	F_TIME	0x0400				/* modification time */
-#define	F_TYPE	0x0800				/* file type */
-#define	F_UID	0x1000				/* uid */
-#define	F_UNAME	0x2000				/* user name */
-#define	F_VISIT	0x4000				/* file visited */
-#define F_MD5	0x8000				/* MD5 digest */
-#define F_NOCHANGE 0x10000			/* If owner/mode "wrong", do */
-						/* not change */
-#define	F_SHA1	0x20000				/* SHA-1 digest */
-#define	F_RMD160 0x40000			/* RIPEMD160 digest */
-#define	F_FLAGS	0x80000				/* file flags */
-#define	F_SHA256	0x100000				/* SHA-256 digest */
-#define F_OPT	0x200000			/* existence optional */
+#define	F_CKSUM		0x00000001		/* cksum(1) check sum */
+#define	F_DEV		0x00000002		/* device type */
+#define	F_DONE		0x00000004		/* directory done */
+#define	F_FLAGS		0x00000008		/* file flags */
+#define	F_GID		0x00000010		/* gid */
+#define	F_GNAME		0x00000020		/* group name */
+#define	F_IGN		0x00000040		/* ignore */
+#define	F_MAGIC		0x00000080		/* name has magic chars */
+#define	F_MD5		0x00000100		/* MD5 digest */
+#define	F_MODE		0x00000200		/* mode */
+#define	F_NLINK		0x00000400		/* number of links */
+#define	F_OPT		0x00000800		/* existence optional */
+#define	F_RMD160	0x00001000		/* RMD-160 digest */
+#define	F_SHA1		0x00002000		/* SHA1 digest */
+#define	F_SIZE		0x00004000		/* size */
+#define	F_SLINK		0x00008000		/* symbolic link */
+#define	F_TAGS		0x00010000		/* tags */
+#define	F_TIME		0x00020000		/* modification time */
+#define	F_TYPE		0x00040000		/* file type */
+#define	F_UID		0x00080000		/* uid */
+#define	F_UNAME		0x00100000		/* user name */
+#define	F_VISIT		0x00200000		/* file visited */
+#define	F_SHA256	0x00800000		/* SHA256 digest */
+#define	F_SHA384	0x01000000		/* SHA384 digest */
+#define	F_SHA512	0x02000000		/* SHA512 digest */
+#define F_NOCHANGE	0x04000000		/* No change */	
 	u_int	flags;				/* items set */
 
 #define	F_BLOCK	0x001				/* block special */
@@ -93,6 +102,22 @@ typedef struct _node {
 	char	name[1];			/* file name (must be last) */
 } NODE;
 
+typedef struct {
+	char  **list;
+	int	count;
+} slist_t;
+
 #define	RP(p)	\
 	((p)->fts_path[0] == '.' && (p)->fts_path[1] == '/' ? \
 	    (p)->fts_path + 2 : (p)->fts_path)
+
+/*
+ * prototypes for functions published to other programs which want to use
+ * the specfile parser but don't want to pull in all of "extern.h"
+ */
+const char	*inotype(u_int);
+u_int		 nodetoino(u_int);
+int		 setup_getid(const char *);
+NODE		*spec(FILE *);
+void		 free_nodes(NODE *);
+char		*vispath(const char *);
