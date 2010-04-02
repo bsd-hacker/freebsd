@@ -29,6 +29,35 @@
  * SUCH DAMAGE.
  */
 
+/*-
+ * Copyright (c) 2001-2004 The NetBSD Foundation, Inc.
+ * All rights reserved.
+ *
+ * This code is derived from software contributed to The NetBSD Foundation
+ * by Luke Mewburn of Wasabi Systems.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE NETBSD FOUNDATION, INC. AND CONTRIBUTORS
+ * ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+ * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION OR CONTRIBUTORS
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
 #if 0
 #ifndef lint
 static char sccsid[] = "@(#)spec.c	8.1 (Berkeley) 6/6/93";
@@ -36,97 +65,94 @@ static char sccsid[] = "@(#)spec.c	8.1 (Berkeley) 6/6/93";
 #endif
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
+__RCSID("$NetBSD: spec.c,v 1.78 2009/09/22 04:38:21 apb Exp $");
 
-#include <sys/types.h>
+#include <sys/param.h>
 #include <sys/stat.h>
+
+#include <assert.h>
 #include <ctype.h>
-#include <err.h>
 #include <errno.h>
-#include <fts.h>
 #include <grp.h>
 #include <pwd.h>
+#include <stdarg.h>
+#include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 #include <vis.h>
+#include <libutil.h>
+
 #include "mtree.h"
 #include "extern.h"
 
-int lineno;				/* Current spec line number. */
+size_t	mtree_lineno;			/* Current spec line number */
+int	mtree_Mflag;			/* Merge duplicate entries */
+int	mtree_Wflag;			/* Don't "whack" permissions */
+int	mtree_Sflag;			/* Sort entries */
 
-static void	 set(char *, NODE *);
-static void	 unset(char *, NODE *);
+#if 0
+static	dev_t	parsedev(char *);
+#endif
+static	void	replacenode(NODE *, NODE *);
+static	void	set(char *, NODE *);
+static	void	unset(char *, NODE *);
+static	void	addchild(NODE *, NODE *);
+static	int	nodecmp(const NODE *, const NODE *);
+static	int	appendfield(int, const char *, ...);
+
+#define REPLACEPTR(x,v)	do { if ((x)) free((x)); (x) = (v); } while (0)
 
 NODE *
-mtree_readspec(FILE *fi)
+mtree_readspec(FILE *fp)
 {
-	NODE *centry, *last;
-	char *p;
+	NODE *centry, *last, *pathparent, *cur;
+	char *p, *e, *next;
 	NODE ginfo, *root;
-	int c_cur, c_next;
-	char buf[2048];
+	char *buf, *tname, *ntname;
+	size_t tnamelen, plen;
 
-	centry = last = root = NULL;
-	bzero(&ginfo, sizeof(ginfo));
-	c_cur = c_next = 0;
-	for (lineno = 1; fgets(buf, sizeof(buf), fi);
-	    ++lineno, c_cur = c_next, c_next = 0) {
-		/* Skip empty lines. */
-		if (buf[0] == '\n')
+	root = NULL;
+	centry = last = NULL;
+	tname = NULL;
+	tnamelen = 0;
+	memset(&ginfo, 0, sizeof(ginfo));
+	for (mtree_lineno = 0;
+	    (buf = fparseln(fp, NULL, &mtree_lineno, NULL,
+		FPARSELN_UNESCCOMM));
+	    free(buf)) {
+		/* Skip leading whitespace. */
+		for (p = buf; *p && isspace((unsigned char)*p); ++p)
 			continue;
 
-		/* Find end of line. */
-		if ((p = index(buf, '\n')) == NULL)
-			errx(1, "line %d too long", lineno);
-
-		/* See if next line is continuation line. */
-		if (p[-1] == '\\') {
-			--p;
-			c_next = 1;
-		}
-
-		/* Null-terminate the line. */
-		*p = '\0';
-
-		/* Skip leading whitespace. */
-		for (p = buf; *p && isspace(*p); ++p);
-
-		/* If nothing but whitespace or comment char, continue. */
-		if (!*p || *p == '#')
+		/* If nothing but whitespace, continue. */
+		if (!*p)
 			continue;
 
 #ifdef DEBUG
-		(void)fprintf(stderr, "line %d: {%s}\n", lineno, p);
+		fprintf(stderr, "line %lu: {%s}\n",
+		    (u_long)mtree_lineno, p);
 #endif
-		if (c_cur) {
-			set(p, centry);
+		/* Grab file name, "$", "set", or "unset". */
+		next = buf;
+		while ((p = strsep(&next, " \t")) != NULL && *p == '\0')
+			continue;
+		if (p == NULL)
+			mtree_err("missing field");
+
+		if (p[0] == '/') {
+			if (strcmp(p + 1, "set") == 0)
+				set(next, &ginfo);
+			else if (strcmp(p + 1, "unset") == 0)
+				unset(next, &ginfo);
+			else
+				mtree_err("invalid specification `%s'", p);
 			continue;
 		}
 
-		/* Grab file name, "$", "set", or "unset". */
-		if ((p = strtok(p, "\n\t ")) == NULL)
-			errx(1, "line %d: missing field", lineno);
-
-		if (p[0] == '/')
-			switch(p[1]) {
-			case 's':
-				if (strcmp(p + 1, "set"))
-					break;
-				set(NULL, &ginfo);
-				continue;
-			case 'u':
-				if (strcmp(p + 1, "unset"))
-					break;
-				unset(NULL, &ginfo);
-				continue;
-			}
-
-		if (index(p, '/'))
-			errx(1, "line %d: slash character in file name",
-			lineno);
-
-		if (!strcmp(p, "..")) {
+		if (strcmp(p, "..") == 0) {
 			/* Don't go up, if haven't gone down. */
-			if (!root)
+			if (root == NULL)
 				goto noparent;
 			if (last->type != F_DIR || last->flags & F_DONE) {
 				if (last == root)
