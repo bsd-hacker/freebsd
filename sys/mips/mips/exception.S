@@ -66,21 +66,12 @@
 
 #include "assym.s"
 
-#if defined(ISA_MIPS32)
-#undef WITH_64BIT_CP0
-#elif defined(ISA_MIPS64)
-#define WITH_64BIT_CP0
-#elif defined(ISA_MIPS3)
-#define WITH_64BIT_CP0
-#else
-#error "Please write the code for this ISA"
-#endif
-
-#ifdef WITH_64BIT_CP0
-#define WIRED_SHIFT 34
-#else
-#define WIRED_SHIFT 2
-#endif
+/*
+ * Clear the software-managed bits in a PTE in register pr.
+ */
+#define	CLEAR_PTE_WIRED(pr)							\
+	sll		pr, 2 ;							\
+	srl		pr, 2			# keep bottom 30 bits
 
 	.set	noreorder			# Noreorder is default style!
 
@@ -154,11 +145,9 @@ MipsDoTLBMiss:
 	PTR_ADDU	k1, k1, k0			#0d: k1=pte address
 	lw	k0, 0(k1)			#0e: k0=lo0 pte
 	lw	k1, 4(k1)			#0f: k1=lo1 pte
-	PTR_SLL	k0, k0, WIRED_SHIFT		#10: keep bottom 30 bits
-	PTR_SRL	k0, k0, WIRED_SHIFT		#11: keep bottom 30 bits
+	CLEAR_PTE_WIRED(k0)
 	MTC0	k0, COP_0_TLB_LO0		#12: lo0 is loaded
-	PTR_SLL	k1, k1, WIRED_SHIFT		#13: keep bottom 30 bits
-	PTR_SRL	k1, k1, WIRED_SHIFT		#14: keep bottom 30 bits
+	CLEAR_PTE_WIRED(k1)
 	MTC0	k1, COP_0_TLB_LO1		#15: lo1 is loaded
 	HAZARD_DELAY
 	tlbwr					#1a: write to tlb
@@ -864,13 +853,11 @@ NLEAF(MipsTLBInvalidException)
 
 even_page:
 	lw	k0, 0(k1)
-	PTR_SLL	k0, k0, WIRED_SHIFT
-	PTR_SRL	k0, k0, WIRED_SHIFT
+	CLEAR_PTE_WIRED(k0)
 	MTC0	k0, COP_0_TLB_LO0
 
 	lw	k0, 4(k1)
-	PTR_SLL	k0, k0, WIRED_SHIFT
-	PTR_SRL	k0, k0, WIRED_SHIFT
+	CLEAR_PTE_WIRED(k0)
 	MTC0	k0, COP_0_TLB_LO1
 
 	b	tlb_insert_entry
@@ -878,13 +865,11 @@ even_page:
 
 odd_page:
 	lw	k0, 0(k1)
-	PTR_SLL	k0, k0, WIRED_SHIFT
-	PTR_SRL	k0, k0, WIRED_SHIFT
+	CLEAR_PTE_WIRED(k0)
 	MTC0	k0, COP_0_TLB_LO1
 
 	lw	k0, -4(k1)
-	PTR_SLL	k0, k0, WIRED_SHIFT
-	PTR_SRL	k0, k0, WIRED_SHIFT
+	CLEAR_PTE_WIRED(k0)
 	MTC0	k0, COP_0_TLB_LO0
 
 tlb_insert_entry:
@@ -1020,11 +1005,9 @@ NLEAF(MipsTLBMissException)
 	PTR_ADDU	k1, k1, k0			# k1=pte address
 	lw	k0, 0(k1)			# k0=lo0 pte
 	lw	k1, 4(k1)			# k1=lo1 pte
-	PTR_SLL	k0, WIRED_SHIFT			# chop bits [31..30]
-	PTR_SRL	k0, WIRED_SHIFT			# chop bits [31..30]
+	CLEAR_PTE_WIRED(k0)
 	MTC0	k0, COP_0_TLB_LO0		# lo0 is loaded
-	PTR_SLL	k1, WIRED_SHIFT			# chop bits [31..30]
-	PTR_SRL	k1, WIRED_SHIFT			# chop bits [31..30]
+	CLEAR_PTE_WIRED(k1)
 	MTC0	k1, COP_0_TLB_LO1		# lo1 is loaded
 
 	HAZARD_DELAY

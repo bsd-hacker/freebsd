@@ -65,21 +65,13 @@
 
 #include "assym.s"
 
-#if defined(ISA_MIPS32)
-#undef WITH_64BIT_CP0
-#elif defined(ISA_MIPS64)
-#define WITH_64BIT_CP0
-#elif defined(ISA_MIPS3)
-#define WITH_64BIT_CP0
-#else
-#error "Please write the code for this ISA"
-#endif
+/*
+ * Clear the software-managed bits in a PTE in register pr.
+ */
+#define	CLEAR_PTE_WIRED(pr)							\
+	sll		pr, 2 ;							\
+	srl		pr, 2			# keep bottom 30 bits
 
-#ifdef WITH_64BIT_CP0
-#define WIRED_SHIFT 34
-#else
-#define WIRED_SHIFT 2
-#endif
 	.set	noreorder			# Noreorder is default style!
 
 #define	ITLBNOPFIX	nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;
@@ -266,8 +258,7 @@ LEAF(Mips_TLBUpdate)
 	and	a2, a1, PTE_G			# Copy global bit
 	MIPS_CPU_NOP_DELAY
 	tlbp					# Probe for the entry.
-	PTR_SLL	a1, a1, WIRED_SHIFT
-	PTR_SRL	a1, a1, WIRED_SHIFT
+	CLEAR_PTE_WIRED(a1)
 	nop
 	mfc0	v0, COP_0_TLB_INDEX		# See what we got
 	bne	t1, zero, 2f			# Decide even odd
