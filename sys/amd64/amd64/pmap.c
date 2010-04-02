@@ -160,15 +160,13 @@ __FBSDID("$FreeBSD$");
 #define PMAP_INLINE
 #endif
 
-#define PV_STATS
 #ifdef PV_STATS
 #define PV_STAT(x)	do { x ; } while (0)
 #else
 #define PV_STAT(x)	do { } while (0)
 #endif
 
-#define	CACHE_LINE_FETCH_SIZE	128
-#define	PA_LOCK_PAD		CACHE_LINE_FETCH_SIZE
+#define	PA_LOCK_PAD	CACHE_LINE_SIZE
 
 struct vp_lock {
 	struct mtx	vp_lock;
@@ -184,10 +182,10 @@ struct vp_lock {
 #define	PA_UNLOCK(pa)	mtx_unlock(PA_LOCKPTR(pa))
 #define	PA_LOCK_ASSERT(pa, a)	mtx_assert(PA_LOCKPTR(pa), (a))
 
-#define	PA_LOCK_COUNT	64
+#define	PA_LOCK_COUNT	256
 
-struct mtx pv_lock __aligned(128);
-struct vp_lock pa_lock[PA_LOCK_COUNT] __aligned(128);
+struct mtx pv_lock __aligned(CACHE_LINE_SIZE);
+struct vp_lock pa_lock[PA_LOCK_COUNT] __aligned(CACHE_LINE_SIZE);
 
 
 struct pmap kernel_pmap_store;
@@ -228,7 +226,8 @@ static u_int64_t	DMPDPphys;	/* phys addr of direct mapped level 3 */
 /*
  * Data for the pv entry allocation mechanism
  */
-static int pv_entry_count = 0, pv_entry_max = 0, pv_entry_high_water = 0;
+static int pv_entry_count __aligned(CACHE_LINE_SIZE);
+static int pv_entry_max = 0, pv_entry_high_water = 0;
 static struct md_page *pv_table;
 static int shpgperproc = PMAP_SHPGPERPROC;
 
@@ -313,17 +312,23 @@ ls_init(struct lock_stack *ls)
 	ls->ls_top = 0;
 }
 
+
+#define ls_push(ls, m)	_ls_push((ls), (m), LOCK_FILE, LOCK_LINE)
+
 static void
-ls_push(struct lock_stack *ls, struct mtx *lock)
+_ls_push(struct lock_stack *ls, struct mtx *lock, char *file, int line)
 {
 
 	KASSERT(ls->ls_top < LS_MAX, ("lock stack overflow"));
 	
 	ls->ls_array[ls->ls_top] = lock;
 	ls->ls_top++;
-	mtx_lock(lock);
+#if LOCK_DEBUG > 0 || defined(MUTEX_NOINLINE)	
+	_mtx_lock_flags(lock, 0, file, line);
+#else
+	_get_sleep_lock(lock, curthread, 0, file, line);
+#endif
 }
-
 
 static int
 ls_trypush(struct lock_stack *ls, struct mtx *lock)
@@ -542,9 +547,9 @@ pa_tryrelock(pmap_t pmap, vm_paddr_t pa, vm_paddr_t *locked)
 	if (PA_TRYLOCK(pa))
 		return 0;
 	PMAP_UNLOCK(pmap);
+	atomic_add_int((volatile int *)&pmap_tryrelock_restart, 1);
 	PA_LOCK(pa);
 	PMAP_LOCK(pmap);
-	atomic_add_int((volatile int *)&pmap_tryrelock_restart, 1);
 
 	return (EAGAIN);
 }
@@ -2122,10 +2127,11 @@ free_pv_entry(pmap_t pmap, pv_entry_t pv)
 	int idx, field, bit;
 
 	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
-	mtx_lock(&pv_lock);
+
+	atomic_add_int(&pv_entry_count, -1);
 	PV_STAT(pv_entry_frees++);
 	PV_STAT(pv_entry_spare++);
-	pv_entry_count--;
+	mtx_lock(&pv_lock);
 	pc = pv_to_chunk(pv);
 	idx = pv - &pc->pc_pventry[0];
 	field = idx / 64;
@@ -2169,9 +2175,10 @@ get_pv_entry(pmap_t pmap)
 	vm_page_t m;
 
 	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
-	mtx_lock(&pv_lock);
+
+	atomic_add_int(&pv_entry_count, 1);
 	PV_STAT(pv_entry_allocs++);
-	pv_entry_count++;
+	mtx_lock(&pv_lock);
 	if (pv_entry_count > pv_entry_high_water)
 		if (ratecheck(&lastprint, &printinterval))
 			printf("Approaching the limit on PV entries, consider "
@@ -2195,8 +2202,8 @@ get_pv_entry(pmap_t pmap)
 				TAILQ_REMOVE(&pmap->pm_pvchunk, pc, pc_list);
 				TAILQ_INSERT_TAIL(&pmap->pm_pvchunk, pc, pc_list);
 			}
-			PV_STAT(pv_entry_spare--);
 			mtx_unlock(&pv_lock);
+			PV_STAT(pv_entry_spare--);
 			return (pv);
 		}
 	}
@@ -2205,9 +2212,9 @@ get_pv_entry(pmap_t pmap)
 	    VM_ALLOC_SYSTEM : VM_ALLOC_NORMAL) | VM_ALLOC_NOOBJ |
 	    VM_ALLOC_WIRED);
 	if (m == NULL) {
-		pv_entry_count--;
-		PV_STAT(pc_chunk_tryfail++);
 		mtx_unlock(&pv_lock);
+		PV_STAT(pc_chunk_tryfail++);
+		atomic_add_int(&pv_entry_count, -1);
 		return (NULL);
 	}
 	PV_STAT(pc_chunk_count++);
@@ -4366,12 +4373,10 @@ restart:
 					} else
 						vm_page_dirty(m);
 				}
-				mtx_lock(&pv_lock);
 				/* Mark free */
 				PV_STAT(pv_entry_frees++);
 				PV_STAT(pv_entry_spare++);
-				pv_entry_count--;
-				mtx_unlock(&pv_lock);
+				atomic_add_int(&pv_entry_count, -1);
 				pc->pc_map[field] |= bitmask;
 				if ((tpte & PG_PS) != 0) {
 					pmap->pm_stats.resident_count -= NBPDR / PAGE_SIZE;
