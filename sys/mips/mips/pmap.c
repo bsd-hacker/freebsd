@@ -2030,7 +2030,7 @@ validate:
 			if (origpte & PTE_M) {
 				KASSERT((origpte & PTE_RW),
 				    ("pmap_enter: modified page not writable:"
-				    " va: %p, pte: 0x%lx", (void *)va, origpte));
+				    " va: %p, pte: 0x%x", (void *)va, origpte));
 				if (page_is_managed(opa))
 					vm_page_dirty(om);
 			}
@@ -2724,7 +2724,7 @@ pmap_remove_pages(pmap_t pmap)
 		m = PHYS_TO_VM_PAGE(mips_tlbpfn_to_paddr(tpte));
 
 		KASSERT(m < &vm_page_array[vm_page_array_size],
-		    ("pmap_remove_pages: bad tpte %lx", tpte));
+		    ("pmap_remove_pages: bad tpte %x", tpte));
 
 		pv->pv_pmap->pm_stats.resident_count--;
 
