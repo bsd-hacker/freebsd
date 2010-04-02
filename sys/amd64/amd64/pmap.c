@@ -184,7 +184,6 @@ struct vp_lock {
 
 #define	PA_LOCK_COUNT	256
 
-struct mtx pv_lock __aligned(CACHE_LINE_SIZE);
 struct vp_lock pa_lock[PA_LOCK_COUNT] __aligned(CACHE_LINE_SIZE);
 
 
@@ -720,7 +719,6 @@ pmap_bootstrap(vm_paddr_t *firstaddr)
 	for (i = 0; i < PA_LOCK_COUNT; i++)
 		mtx_init(&pa_lock[i].vp_lock, "page lock", NULL,
 		    MTX_DEF | MTX_RECURSE | MTX_DUPOK);
-	mtx_init(&pv_lock, "pv list lock", NULL, MTX_DEF);
 
 }
 
@@ -2131,7 +2129,6 @@ free_pv_entry(pmap_t pmap, pv_entry_t pv)
 	atomic_add_int(&pv_entry_count, -1);
 	PV_STAT(pv_entry_frees++);
 	PV_STAT(pv_entry_spare++);
-	mtx_lock(&pv_lock);
 	pc = pv_to_chunk(pv);
 	idx = pv - &pc->pc_pventry[0];
 	field = idx / 64;
@@ -2142,7 +2139,6 @@ free_pv_entry(pmap_t pmap, pv_entry_t pv)
 	if (pc->pc_map[0] != PC_FREE0 || pc->pc_map[1] != PC_FREE1 ||
 	    pc->pc_map[2] != PC_FREE2) {
 		TAILQ_INSERT_HEAD(&pmap->pm_pvchunk, pc, pc_list);
-		mtx_unlock(&pv_lock);
 		return;
 	}
 	PV_STAT(pv_entry_spare -= _NPCPV);
@@ -2151,7 +2147,6 @@ free_pv_entry(pmap_t pmap, pv_entry_t pv)
 	/* entire chunk is free, return it */
 	m = PHYS_TO_VM_PAGE(DMAP_TO_PHYS((vm_offset_t)pc));
 	dump_drop_page(m->phys_addr);
-	mtx_unlock(&pv_lock);
 	KASSERT(m->wire_count == 1, ("wire_count == %d", m->wire_count));
 	m->wire_count--;
 	atomic_subtract_int(&cnt.v_wire_count, 1);
@@ -2178,7 +2173,6 @@ get_pv_entry(pmap_t pmap)
 
 	atomic_add_int(&pv_entry_count, 1);
 	PV_STAT(pv_entry_allocs++);
-	mtx_lock(&pv_lock);
 	if (pv_entry_count > pv_entry_high_water)
 		if (ratecheck(&lastprint, &printinterval))
 			printf("Approaching the limit on PV entries, consider "
@@ -2202,7 +2196,6 @@ get_pv_entry(pmap_t pmap)
 				TAILQ_REMOVE(&pmap->pm_pvchunk, pc, pc_list);
 				TAILQ_INSERT_TAIL(&pmap->pm_pvchunk, pc, pc_list);
 			}
-			mtx_unlock(&pv_lock);
 			PV_STAT(pv_entry_spare--);
 			return (pv);
 		}
@@ -2212,7 +2205,6 @@ get_pv_entry(pmap_t pmap)
 	    VM_ALLOC_SYSTEM : VM_ALLOC_NORMAL) | VM_ALLOC_NOOBJ |
 	    VM_ALLOC_WIRED);
 	if (m == NULL) {
-		mtx_unlock(&pv_lock);
 		PV_STAT(pc_chunk_tryfail++);
 		atomic_add_int(&pv_entry_count, -1);
 		return (NULL);
@@ -2230,7 +2222,6 @@ get_pv_entry(pmap_t pmap)
 	TAILQ_INSERT_HEAD(&pmap->pm_pvchunk, pc, pc_list);
 	PV_STAT(pv_entry_spare += _NPCPV - 1);
 
-	mtx_unlock(&pv_lock);
 	return (pv);
 }
 
@@ -4410,14 +4401,12 @@ restart:
 			}
 		}
 		if (allfree) {
-			mtx_lock(&pv_lock);
 			PV_STAT(pv_entry_spare -= _NPCPV);
 			PV_STAT(pc_chunk_count--);
 			PV_STAT(pc_chunk_frees++);
 			TAILQ_REMOVE(&pmap->pm_pvchunk, pc, pc_list);
 			m = PHYS_TO_VM_PAGE(DMAP_TO_PHYS((vm_offset_t)pc));
 			dump_drop_page(m->phys_addr);
-			mtx_unlock(&pv_lock);
 			KASSERT(m->wire_count == 1,
 			    ("wire_count == %d", m->wire_count));
 			m->wire_count = 0;
