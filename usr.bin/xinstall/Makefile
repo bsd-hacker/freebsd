@@ -5,4 +5,9 @@ PROG=		xinstall
 PROGNAME=	install
 MAN=		install.1
 
+.PATH:		${.CURDIR}/../../usr.sbin/mtree
+CFLAGS+=	-I${.CURDIR}/../../usr.sbin/mtree
+LDADD+=		-lmd
+DPADD+=		${LIBMD}
+
 .include <bsd.prog.mk>

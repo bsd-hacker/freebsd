@@ -64,6 +64,16 @@ __FBSDID("$FreeBSD$");
 #include <string.h>
 #include <sysexits.h>
 #include <unistd.h>
+#include <vis.h>
+
+#include <md5.h>
+#if 0
+#include <rmd160.h>
+#include <sha1.h>
+#include <sha2.h>
+#endif
+
+#include "mtree.h"
 
 /* Bootstrap aid - this doesn't exist in most older releases */
 #ifndef MAP_FAILED
@@ -82,11 +92,29 @@ struct group *gp;
 gid_t gid;
 uid_t uid;
 int dobackup, docompare, dodir, dopreserve, dostrip, nommap, safecopy, verbose;
+char	*group, *owner, *fflags, *tags;
 mode_t mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
 const char *suffix = BACKUP_SUFFIX;
+const char *metafile = NULL;
+FILE *metafp;
+char *destdir;
+
+enum {
+        DIGEST_NONE = 0,
+        DIGEST_MD5,
+#if 0
+        DIGEST_RMD160,
+        DIGEST_SHA1,
+        DIGEST_SHA256,
+        DIGEST_SHA384,
+        DIGEST_SHA512,
+#endif
+} digesttype = DIGEST_NONE;
+char    *digest;
+
 
 static int	compare(int, const char *, size_t, int, const char *, size_t);
-static void	copy(int, const char *, int, const char *, off_t);
+static char    *copy(int, const char *, int, const char *, off_t);
 static int	create_newfile(const char *, int, struct stat *);
 static int	create_tempfile(const char *, char *, size_t);
 static void	install(const char *, const char *, u_long, u_int);
@@ -95,6 +123,8 @@ static u_long	numeric_id(const char *, const char *);
 static void	strip(const char *);
 static int	trymmap(int);
 static void	usage(void);
+static void	metadata_log(const char *, const char *, struct timeval *,
+	            const char *, const char *, off_t);
 
 int
 main(int argc, char *argv[])
@@ -104,13 +134,15 @@ main(int argc, char *argv[])
 	u_long fset;
 	int ch, no_target;
 	u_int iflags;
-	char *flags;
-	const char *group, *owner, *to_name;
+	const char *to_name;
 
 	iflags = 0;
 	group = owner = NULL;
-	while ((ch = getopt(argc, argv, "B:bCcdf:g:Mm:o:pSsv")) != -1)
+	while ((ch = getopt(argc, argv, "a:B:bCcdf:g:Mm:o:pSsv")) != -1)
 		switch((char)ch) {
+		case 'a':
+			metafile = optarg;
+			break;
 		case 'B':
 			suffix = optarg;
 			/* FALLTHROUGH */
@@ -127,13 +159,16 @@ main(int argc, char *argv[])
 			dodir = 1;
 			break;
 		case 'f':
-			flags = optarg;
-			if (strtofflags(&flags, &fset, NULL))
-				errx(EX_USAGE, "%s: invalid flag", flags);
+			fflags = optarg;
+			if (strtofflags(&fflags, &fset, NULL))
+				errx(EX_USAGE, "%s: invalid flag", fflags);
 			iflags |= SETFLAGS;
 			break;
 		case 'g':
 			group = optarg;
+			break;
+		case 'h':
+			digest = optarg;
 			break;
 		case 'M':
 			nommap = 1;
@@ -160,6 +195,9 @@ main(int argc, char *argv[])
 		case 'v':
 			verbose = 1;
 			break;
+		case 'T':
+			tags = optarg;
+			break;
 		case '?':
 		default:
 			usage();
@@ -182,6 +220,30 @@ main(int argc, char *argv[])
 	if (argc == 0 || (argc == 1 && !dodir))
 		usage();
 
+        if (digest) {
+                if (0) {
+                } else if (strcmp(digest, "none") == 0) {
+                        digesttype = DIGEST_NONE;
+                } else if (strcmp(digest, "md5") == 0) {
+                        digesttype = DIGEST_MD5;
+#if 0
+                } else if (strcmp(digest, "rmd160") == 0) {
+                        digesttype = DIGEST_RMD160;
+                } else if (strcmp(digest, "sha1") == 0) {
+                        digesttype = DIGEST_SHA1;
+                } else if (strcmp(digest, "sha256") == 0) {
+                        digesttype = DIGEST_SHA256;
+                } else if (strcmp(digest, "sha384") == 0) {
+                        digesttype = DIGEST_SHA384;
+                } else if (strcmp(digest, "sha512") == 0) {
+                        digesttype = DIGEST_SHA512;
+                } else {
+#endif
+                        warnx("unknown digest `%s'", digest);
+                        usage();
+                }
+        }
+                                
 	/* need to make a temp copy so we can compare stripped version */
 	if (docompare && dostrip)
 		safecopy = 1;
@@ -202,6 +264,12 @@ main(int argc, char *argv[])
 			uid = (uid_t)numeric_id(owner, "user");
 	} else
 		uid = (uid_t)-1;
+
+	if (metafile) {
+		if ((metafp = fopen(metafile, "a")) == NULL)
+			warn("open %s", metafile);
+	} else
+		digesttype = DIGEST_NONE;
 
 	if (dodir) {
 		for (; *argv != NULL; ++argv)
@@ -277,10 +345,19 @@ install(const char *from_name, const char *to_name, u_long fset, u_int flags)
 	int devnull, files_match, from_fd, serrno, target;
 	int tempcopy, temp_fd, to_fd;
 	char backup[MAXPATHLEN], *p, pathbuf[MAXPATHLEN], tempfile[MAXPATHLEN];
+	char *digestresult = NULL;
+	struct timeval	tv[2];
+	off_t		size;
 
 	files_match = 0;
 	from_fd = -1;
 	to_fd = -1;
+
+	if (stat(from_name, &from_sb))
+		err(1, "%s: stat", from_name);
+	size = from_sb.st_size;
+	TIMESPEC_TO_TIMEVAL(&tv[0], &from_sb.st_atimespec);
+	TIMESPEC_TO_TIMEVAL(&tv[1], &from_sb.st_mtimespec);
 
 	/* If try to install NULL file to a directory, fails. */
 	if (flags & DIRECTORY || strcmp(from_name, _PATH_DEVNULL)) {
@@ -348,7 +425,7 @@ install(const char *from_name, const char *to_name, u_long fset, u_int flags)
 				    from_name, to_name);
 		}
 		if (!devnull)
-			copy(from_fd, from_name, to_fd,
+			digestresult = copy(from_fd, from_name, to_fd,
 			     tempcopy ? tempfile : to_name, from_sb.st_size);
 	}
 
@@ -514,6 +591,8 @@ install(const char *from_name, const char *to_name, u_long fset, u_int flags)
 		}
 	}
 
+	metadata_log(to_name, "file", /* tv */NULL, NULL, digestresult, size);
+	free(digestresult);
 	(void)close(to_fd);
 	if (!devnull)
 		(void)close(from_fd);
@@ -650,7 +729,7 @@ create_newfile(const char *path, int target, struct stat *sbp)
  * copy --
  *	copy from one file to another
  */
-static void
+static char *
 copy(int from_fd, const char *from_name, int to_fd, const char *to_name,
     off_t size)
 {
@@ -658,6 +737,42 @@ copy(int from_fd, const char *from_name, int to_fd, const char *to_name,
 	int serrno;
 	char *p, buf[MAXBSIZE];
 	int done_copy;
+	MD5_CTX		ctxMD5;
+#if 0
+	RMD160_CTX	ctxRMD160;
+	SHA1_CTX	ctxSHA1;
+	SHA256_CTX	ctxSHA256;
+	SHA384_CTX	ctxSHA384;
+	SHA512_CTX	ctxSHA512;
+#endif
+
+	switch (digesttype) {
+	case DIGEST_MD5:
+		MD5Init(&ctxMD5);
+		break;
+#if 0
+	case DIGEST_RMD160:
+		RMD160Init(&ctxRMD160);
+		break;
+	case DIGEST_SHA1:
+		SHA1Init(&ctxSHA1);
+		break;
+	case DIGEST_SHA256:
+		SHA256_Init(&ctxSHA256);
+		break;
+	case DIGEST_SHA384:
+		SHA384_Init(&ctxSHA384);
+		break;
+	case DIGEST_SHA512:
+		SHA512_Init(&ctxSHA512);
+		break;
+#endif
+	case DIGEST_NONE:
+		if (to_fd < 0)
+			return NULL; /* no need to do anything */
+	default:
+		break;
+	}
 
 	/* Rewind file descriptors. */
 	if (lseek(from_fd, (off_t)0, SEEK_SET) == (off_t)-1)
@@ -680,6 +795,30 @@ copy(int from_fd, const char *from_name, int to_fd, const char *to_name,
 			errno = nw > 0 ? EIO : serrno;
 			err(EX_OSERR, "%s", to_name);
 		}
+		switch (digesttype) {
+		case DIGEST_MD5:
+			MD5Update(&ctxMD5, p, size);
+			break;
+#if 0
+		case DIGEST_RMD160:
+			RMD160Update(&ctxRMD160, p, size);
+			break;
+		case DIGEST_SHA1:
+			SHA1Update(&ctxSHA1, p, size);
+			break;
+		case DIGEST_SHA256:
+			SHA256_Update(&ctxSHA256, p, size);
+			break;
+		case DIGEST_SHA384:
+			SHA384_Update(&ctxSHA384, p, size);
+			break;
+		case DIGEST_SHA512:
+			SHA512_Update(&ctxSHA512, p, size);
+			break;
+#endif
+		default:
+			break;
+		}
 		done_copy = 1;
 	}
 	if (!done_copy) {
@@ -690,12 +829,54 @@ copy(int from_fd, const char *from_name, int to_fd, const char *to_name,
 				errno = nw > 0 ? EIO : serrno;
 				err(EX_OSERR, "%s", to_name);
 			}
+		switch (digesttype) {
+		case DIGEST_MD5:
+			MD5Update(&ctxMD5, buf, nr);
+			break;
+#if 0
+		case DIGEST_RMD160:
+			RMD160Update(&ctxRMD160, buf, nr);
+			break;
+		case DIGEST_SHA1:
+			SHA1Update(&ctxSHA1, buf, nr);
+			break;
+		case DIGEST_SHA256:
+			SHA256_Update(&ctxSHA256, buf, nr);
+			break;
+		case DIGEST_SHA384:
+			SHA384_Update(&ctxSHA384, buf, nr);
+			break;
+		case DIGEST_SHA512:
+			SHA512_Update(&ctxSHA512, buf, nr);
+			break;
+#endif
+		default:
+			break;
+		}
 		if (nr != 0) {
 			serrno = errno;
 			(void)unlink(to_name);
 			errno = serrno;
 			err(EX_OSERR, "%s", from_name);
 		}
+	}
+	switch (digesttype) {
+	case DIGEST_MD5:
+		return MD5End(&ctxMD5, NULL);
+#if 0
+	case DIGEST_RMD160:
+		return RMD160End(&ctxRMD160, NULL);
+	case DIGEST_SHA1:
+		return SHA1End(&ctxSHA1, NULL);
+	case DIGEST_SHA256:
+		return SHA256_End(&ctxSHA256, NULL);
+	case DIGEST_SHA384:
+		return SHA384_End(&ctxSHA384, NULL);
+	case DIGEST_SHA512:
+		return SHA512_End(&ctxSHA512, NULL);
+#endif
+	default:
+		return NULL;
 	}
 }
 
@@ -803,4 +984,92 @@ trymmap(int fd)
 		return (1);
 #endif
 	return (0);
+}
+
+/*
+ * metadata_log --
+ *	if metafp is not NULL, output mtree(8) full path name and settings to
+ *	metafp, to allow permissions to be set correctly by other tools,
+ *	or to allow integrity checks to be performed.
+ */
+static void
+metadata_log(const char *path, const char *type, struct timeval *tv,
+	const char *slink, const char *digestresult, off_t size)
+{
+#if 0
+	static const char	extra[] = { ' ', '\t', '\n', '\\', '#', '\0' };
+#endif
+	const char	*p;
+	char		*buf;
+	size_t		destlen;
+	struct flock	metalog_lock;
+
+	if (!metafp)	
+		return;
+	buf = (char *)malloc(4 * strlen(path) + 1);	/* buf for strsvis(3) */
+	if (buf == NULL) {
+		warnx("%s", strerror(ENOMEM));
+		return;
+	}
+							/* lock log file */
+	metalog_lock.l_start = 0;
+	metalog_lock.l_len = 0;
+	metalog_lock.l_whence = SEEK_SET;
+	metalog_lock.l_type = F_WRLCK;
+	if (fcntl(fileno(metafp), F_SETLKW, &metalog_lock) == -1) {
+		warn("can't lock %s", metafile);
+		free(buf);
+		return;
+	}
+
+	p = path;					/* remove destdir */
+	if (destdir) {
+		destlen = strlen(destdir);
+		if (strncmp(p, destdir, destlen) == 0 &&
+		    (p[destlen] == '/' || p[destlen] == '\0'))
+			p += destlen;
+	}
+	while (*p && *p == '/')				/* remove leading /s */
+		p++;
+#if 0
+	/* Need to import this to do things totally right */
+	strsvis(buf, p, VIS_CSTYLE, extra);		/* encode name */
+#else
+	strvis(buf, p, VIS_CSTYLE);		/* encode name */
+#endif
+	p = buf;
+							/* print details */
+	fprintf(metafp, ".%s%s type=%s", *p ? "/" : "", p, type);
+	if (owner)
+		fprintf(metafp, " uname=%s", owner);
+	if (group)
+		fprintf(metafp, " gname=%s", group);
+	fprintf(metafp, " mode=%#o", mode);
+	if (slink) {
+#if 0
+		strsvis(buf, slink, VIS_CSTYLE, extra);	/* encode link */
+#else
+		strvis(buf, slink, VIS_CSTYLE);	/* encode link */
+#endif
+		fprintf(metafp, " link=%s", buf);
+	}
+	if (*type == 'f') /* type=file */
+		fprintf(metafp, " size=%lld", (long long)size);
+	if (tv != NULL && dopreserve)
+		fprintf(metafp, " time=%lld.%ld",
+			(long long)tv[1].tv_sec, (long)tv[1].tv_usec);
+	if (digestresult && digest)
+		fprintf(metafp, " %s=%s", digest, digestresult);
+	if (fflags)
+		fprintf(metafp, " flags=%s", fflags);
+	if (tags)
+		fprintf(metafp, " tags=%s", tags);
+	fputc('\n', metafp);
+	fflush(metafp);					/* flush output */
+							/* unlock log file */
+	metalog_lock.l_type = F_UNLCK;
+	if (fcntl(fileno(metafp), F_SETLKW, &metalog_lock) == -1) {
+		warn("can't unlock %s", metafile);
+	}
+	free(buf);
 }
