@@ -974,11 +974,14 @@ pmap_unmap_fpage(vm_paddr_t pa, struct fpage *fp)
 static int
 _pmap_unwire_pte_hold(pmap_t pmap, vm_page_t m)
 {
+#if !defined(__mips_n64)
 	vm_offset_t pteva;
+#endif
 
 	/*
 	 * unmap the page table page
 	 */
+#if !defined(__mips_n64)
 	pteva = (vm_offset_t)pmap->pm_segtab[m->pindex];
 	if (pteva >= VM_MIN_KERNEL_ADDRESS) {
 		pmap_kremove(pteva);
@@ -988,6 +991,7 @@ _pmap_unwire_pte_hold(pmap_t pmap, vm_page_t m)
 		    ("_pmap_unwire_pte_hold: 0x%0lx is not in kseg0",
 		    (long)pteva));
 	}
+#endif
 
 	pmap->pm_segtab[m->pindex] = 0;
 	--pmap->pm_stats.resident_count;
@@ -1285,6 +1289,7 @@ pmap_release(pmap_t pmap)
 	ptdva = (vm_offset_t)pmap->pm_segtab;
 	ptdpg = PHYS_TO_VM_PAGE(vtophys(ptdva));
 
+#if !defined(__mips_n64)
 	if (ptdva >= VM_MIN_KERNEL_ADDRESS) {
 		pmap_kremove(ptdva);
 		kmem_free(kernel_map, ptdva, PAGE_SIZE);
@@ -1292,6 +1297,7 @@ pmap_release(pmap_t pmap)
 		KASSERT(MIPS_IS_KSEG0_ADDR(ptdva),
 		    ("pmap_release: 0x%0lx is not in kseg0", (long)ptdva));
 	}
+#endif
 
 	ptdpg->wire_count--;
 	atomic_subtract_int(&cnt.v_wire_count, 1);
@@ -2024,7 +2030,7 @@ validate:
 			if (origpte & PTE_M) {
 				KASSERT((origpte & PTE_RW),
 				    ("pmap_enter: modified page not writable:"
-				    " va: %p, pte: 0x%x", (void *)va, origpte));
+				    " va: %p, pte: 0x%lx", (void *)va, origpte));
 				if (page_is_managed(opa))
 					vm_page_dirty(om);
 			}
@@ -2718,7 +2724,7 @@ pmap_remove_pages(pmap_t pmap)
 		m = PHYS_TO_VM_PAGE(mips_tlbpfn_to_paddr(tpte));
 
 		KASSERT(m < &vm_page_array[vm_page_array_size],
-		    ("pmap_remove_pages: bad tpte %x", tpte));
+		    ("pmap_remove_pages: bad tpte %lx", tpte));
 
 		pv->pv_pmap->pm_stats.resident_count--;
 
