@@ -69,7 +69,7 @@
 /*
  * Clear the software-managed bits in a PTE in register pr.
  */
-#define	CLEAR_PTE_WIRED(pr)							\
+#define	CLEAR_PTE_SWBITS(pr)							\
 	sll		pr, 2 ;							\
 	srl		pr, 2			# keep bottom 30 bits
 
@@ -148,9 +148,9 @@ MipsDoTLBMiss:
 	andi		k0, k0, 0xff8			#0c: k0=page tab offset
 	PTR_ADDU	k1, k1, k0			#0d: k1=pte address
 	lw		k0, 0(k1)			#0e: k0=lo0 pte
-	CLEAR_PTE_WIRED(k0)
+	CLEAR_PTE_SWBITS(k0)
 	MTC0		k0, COP_0_TLB_LO0		#12: lo0 is loaded
-	addu		k0, PTE_ODDPG
+	addu		k0, TLBLO_PFN_ODD
 	MTC0		k0, COP_0_TLB_LO1		#15: lo1 is loaded
 	HAZARD_DELAY
 	tlbwr						#1a: write to tlb
@@ -852,14 +852,14 @@ NLEAF(MipsTLBInvalidException)
 	lw		k0, 0(k1)			# k0=this PTE
 
 	/* Validate page table entry.  */
-	andi		k0, PTE_V
+	andi		k0, PG_V
 	beqz		k0, 3f
 	nop
 
 	lw		k0, 0(k1)
-	CLEAR_PTE_WIRED(k0)
+	CLEAR_PTE_SWBITS(k0)
 	MTC0		k0, COP_0_TLB_LO0
-	addu		k0, PTE_ODDPG
+	addu		k0, TLBLO_PFN_ODD
 	MTC0		k0, COP_0_TLB_LO1
 
 	tlbp
@@ -996,9 +996,9 @@ NLEAF(MipsTLBMissException)
 	andi		k0, k0, 0xff8			# k0=page tab offset
 	PTR_ADDU	k1, k1, k0			# k1=pte address
 	lw		k0, 0(k1)			# k0=lo0 pte
-	CLEAR_PTE_WIRED(k0)
+	CLEAR_PTE_SWBITS(k0)
 	MTC0		k0, COP_0_TLB_LO0		# lo0 is loaded
-	addu		k0, PTE_ODDPG
+	addu		k0, TLBLO_PFN_ODD
 	MTC0		k0, COP_0_TLB_LO1		# lo1 is loaded
 	HAZARD_DELAY
 	tlbwr					# write to tlb

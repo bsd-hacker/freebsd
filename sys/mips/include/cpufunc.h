@@ -102,36 +102,6 @@ mips_write_membar(void)
 }
 
 #ifdef _KERNEL
-
-static __inline void
-mips_tlbp(void)
-{
-	__asm __volatile ("tlbp");
-	mips_barrier();
-}
-
-static __inline void
-mips_tlbr(void)
-{
-	__asm __volatile ("tlbr");
-	mips_barrier();
-}
-
-static __inline void
-mips_tlbwi(void)
-{
-	__asm __volatile ("tlbwi");
-	mips_barrier();
-}
-
-static __inline void
-mips_tlbwr(void)
-{
-	__asm __volatile ("tlbwr");
-	mips_barrier();
-}
-
-
 #if defined(__mips_n32) || defined(__mips_n64)
 #define	MIPS_RDRW64_COP0(n,r)					\
 static __inline uint64_t					\

@@ -49,6 +49,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/intr_machdep.h>
 #include <machine/locore.h>
 #include <machine/pte.h>
+#include <machine/tlb.h>
 #include <machine/hwfunc.h>
 
 struct mips_cpuinfo cpuinfo;
@@ -136,7 +137,7 @@ mips_cpu_init(void)
 	mips_get_identity(&cpuinfo);
 	num_tlbentries = cpuinfo.tlb_nentries;
 	mips_wr_wired(0);
-	Mips_TLBFlush(num_tlbentries);
+	tlb_invalidate_all();
 	mips_wr_wired(VMWIRED_ENTRIES);
 	mips_config_cache(&cpuinfo);
 	mips_vector_init();

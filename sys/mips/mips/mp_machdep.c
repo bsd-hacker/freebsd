@@ -128,7 +128,6 @@ mips_ipi_handler(void *arg)
 			CTR0(KTR_SMP, "IPI_STOP or IPI_STOP_HARD");
 
 			savectx(&stoppcbs[cpu]);
-			pmap_save_tlb();
 
 			/* Indicate we are stopped */
 			atomic_set_int(&stopped_cpus, cpumask);
@@ -236,7 +235,7 @@ smp_init_secondary(u_int32_t cpuid)
 
 	/* TLB */
 	mips_wr_wired(0);
-	Mips_TLBFlush(num_tlbentries);
+	tlb_invalidate_all();
 	mips_wr_wired(VMWIRED_ENTRIES);
 
 	/*

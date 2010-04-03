@@ -98,6 +98,7 @@ pt_entry_t *pmap_segmap(pmap_t pmap, vm_offset_t va);
 vm_offset_t pmap_kextract(vm_offset_t va);
 
 #define	vtophys(va)	pmap_kextract(((vm_offset_t) (va)))
+#define	pmap_asid(pmap)	(pmap)->pm_asid[PCPU_GET(cpuid)].asid
 
 extern struct pmap	kernel_pmap_store;
 #define kernel_pmap	(&kernel_pmap_store)
@@ -209,11 +210,6 @@ vm_offset_t
 pmap_map_fpage(vm_paddr_t pa, struct fpage *fp,
     boolean_t check_unmaped);
 void pmap_unmap_fpage(vm_paddr_t pa, struct fpage *fp);
-
-/*
- * Function to save TLB contents so that they may be inspected in the debugger.
- */
-extern void pmap_save_tlb(void);
 
 #endif				/* _KERNEL */
 

@@ -283,7 +283,6 @@ trap(struct trapframe *trapframe)
 	struct proc *p = curproc;
 	vm_prot_t ftype;
 	pt_entry_t *pte;
-	unsigned int entry;
 	pmap_t pmap;
 	int access_type;
 	ksiginfo_t ksi;
@@ -380,32 +379,30 @@ trap(struct trapframe *trapframe)
 			if (!(pte = pmap_segmap(kernel_pmap,
 			    trapframe->badvaddr)))
 				panic("trap: ktlbmod: invalid segmap");
-			pte += (trapframe->badvaddr >> PAGE_SHIFT) & (NPTEPG - 1);
-			entry = *pte;
+			pte += PDE_OFFSET(trapframe->badvaddr);
 #ifdef SMP
 			/* It is possible that some other CPU changed m-bit */
-			if (!mips_pg_v(entry) || (entry & mips_pg_m_bit())) {
+			if (!pte_test(pte, PG_V) || pte_test(pte, PG_D)) {
 				trapframe->badvaddr &= ~PAGE_MASK;
 				pmap_update_page(kernel_pmap,
-				    trapframe->badvaddr, entry);
+				    trapframe->badvaddr, *pte);
 				PMAP_UNLOCK(kernel_pmap);
 				return (trapframe->pc);
 			}
 #else
-			if (!mips_pg_v(entry) || (entry & mips_pg_m_bit()))
+			if (!pte_test(pte, PG_V) || pte_test(pte, PG_D))
 				panic("trap: ktlbmod: invalid pte");
 #endif
-			if (entry & mips_pg_ro_bit()) {
+			if (pte_test(pte, PG_RO)) {
 				/* write to read only page in the kernel */
 				ftype = VM_PROT_WRITE;
 				PMAP_UNLOCK(kernel_pmap);
 				goto kernel_fault;
 			}
-			entry |= mips_pg_m_bit();
-			*pte = entry;
+			pte_set(pte, PG_D);
 			trapframe->badvaddr &= ~PAGE_MASK;
-			pmap_update_page(kernel_pmap, trapframe->badvaddr, entry);
-			pa = mips_tlbpfn_to_paddr(entry);
+			pmap_update_page(kernel_pmap, trapframe->badvaddr, *pte);
+			pa = TLBLO_PTE_TO_PA(*pte);
 			if (!page_is_managed(pa))
 				panic("trap: ktlbmod: unmanaged page");
 			pmap_set_modified(pa);
@@ -423,34 +420,31 @@ trap(struct trapframe *trapframe)
 			PMAP_LOCK(pmap);
 			if (!(pte = pmap_segmap(pmap, trapframe->badvaddr)))
 				panic("trap: utlbmod: invalid segmap");
-			pte += (trapframe->badvaddr >> PAGE_SHIFT) & (NPTEPG - 1);
-			entry = *pte;
+			pte += PDE_OFFSET(trapframe->badvaddr);
 #ifdef SMP
 			/* It is possible that some other CPU changed m-bit */
-			if (!mips_pg_v(entry) || (entry & mips_pg_m_bit())) {
+			if (!pte_test(pte, PG_V) || pte_test(pte, PG_D)) {
 				trapframe->badvaddr = (trapframe->badvaddr & ~PAGE_MASK);
 				pmap_update_page(pmap, trapframe->badvaddr, entry);
 				PMAP_UNLOCK(pmap);
 				goto out;
 			}
 #else
-			if (!mips_pg_v(entry) || (entry & mips_pg_m_bit())) {
+			if (!pte_test(pte, PG_V) || pte_test(pte, PG_D))
 				panic("trap: utlbmod: invalid pte");
-			}
 #endif
 
-			if (entry & mips_pg_ro_bit()) {
+			if (pte_test(pte, PG_RO)) {
 				/* write to read only page */
 				ftype = VM_PROT_WRITE;
 				PMAP_UNLOCK(pmap);
 				goto dofault;
 			}
-			entry |= mips_pg_m_bit();
-			*pte = entry;
+			pte_set(pte, PG_D);
 			trapframe->badvaddr = (trapframe->badvaddr & ~PAGE_MASK);
-			pmap_update_page(pmap, trapframe->badvaddr, entry);
+			pmap_update_page(pmap, trapframe->badvaddr, *pte);
 			trapframe->badvaddr |= (pmap->pm_asid[PCPU_GET(cpuid)].asid << VMTLB_PID_SHIFT);
-			pa = mips_tlbpfn_to_paddr(entry);
+			pa = TLBLO_PTE_TO_PA(*pte);
 			if (!page_is_managed(pa))
 				panic("trap: utlbmod: unmanaged page");
 			pmap_set_modified(pa);

@@ -227,7 +227,7 @@ cpu_thread_swapin(struct thread *td)
 	pte += ((vm_offset_t)td->td_kstack >> PAGE_SHIFT) & (NPTEPG - 1);
 
 	for (i = 0; i < KSTACK_PAGES; i++) {
-		td->td_md.md_upte[i] = *pte & ~(PTE_RO|PTE_WIRED);
+		td->td_md.md_upte[i] = *pte & ~(PG_RO | PG_W);
 		pte++;
 	}
 }
@@ -252,7 +252,7 @@ cpu_thread_alloc(struct thread *td)
 	pte += ((vm_offset_t)td->td_kstack >> PAGE_SHIFT) & (NPTEPG - 1);
 
 	for (i = 0; i < KSTACK_PAGES; i++) {
-		td->td_md.md_upte[i] = *pte & ~(PTE_RO|PTE_WIRED);
+		td->td_md.md_upte[i] = *pte & ~(PG_RO | PG_W);
 		pte++;
 	}
 }

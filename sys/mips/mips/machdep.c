@@ -428,7 +428,7 @@ mips_pcpu_tlb_init(struct pcpu *pcpu)
 	 */
 	memset(&tlb, 0, sizeof(tlb));
 	pa = vtophys(pcpu);
-	lobits = PTE_RW | PTE_V | PTE_G | PTE_CACHE;
+	lobits = PG_D | PG_V | PG_G | PG_C_CNC;
 	tlb.tlb_hi = (vm_offset_t)pcpup;
 	tlb.tlb_lo0 = mips_paddr_to_tlbpfn(pa) | lobits;
 	tlb.tlb_lo1 = mips_paddr_to_tlbpfn(pa + PAGE_SIZE) | lobits;

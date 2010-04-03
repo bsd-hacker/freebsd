@@ -451,7 +451,6 @@ extern union cpuprid cpu_id;
 #if defined(_KERNEL) && !defined(_LOCORE)
 extern union cpuprid fpu_id;
 
-struct tlb;
 struct user;
 
 u_int32_t mips_cp0_config1_read(void);
@@ -466,12 +465,6 @@ void Mips_HitInvalidateDCache(vm_offset_t, int);
 void Mips_SyncICache(vm_offset_t, int);
 void Mips_InvalidateICache(vm_offset_t, int);
 
-void Mips_TLBFlush(int);
-void Mips_TLBFlushAddr(vm_offset_t);
-void Mips_TLBWriteIndexed(int, struct tlb *);
-void Mips_TLBUpdate(vm_offset_t, unsigned);
-void Mips_TLBRead(int, struct tlb *);
-void mips_TBIAP(int);
 void wbflush(void);
 
 extern u_int32_t cpu_counter_interval;	/* Number of counter ticks/tick */

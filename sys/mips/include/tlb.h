@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2009 Alan L. Cox <alc@cs.rice.edu>
+ * Copyright (c) 2004-2010 Juli Mallett <jmallett@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -26,15 +26,11 @@
  * $FreeBSD$
  */
 
-#ifndef _MACHINE_VM_H_
-#define	_MACHINE_VM_H_
+#ifndef	_MACHINE_TLB_H_
+#define	_MACHINE_TLB_H_
 
-#include <machine/pte.h>
+void tlb_invalidate_address(struct pmap *, vm_offset_t);
+void tlb_invalidate_all(void);
+void tlb_update(struct pmap *, vm_offset_t, pt_entry_t);
 
-/* Memory attributes. */
-#define	VM_MEMATTR_UNCACHED			((vm_memattr_t)PG_C_UC)
-#define	VM_MEMATTR_CACHEABLE_NONCOHERENT	((vm_memattr_t)PG_C_CNC)
-
-#define	VM_MEMATTR_DEFAULT		VM_MEMATTR_CACHEABLE_NONCOHERENT
-
-#endif /* !_MACHINE_VM_H_ */
+#endif /* !_MACHINE_TLB_H_ */

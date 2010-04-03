@@ -328,7 +328,7 @@ entry0set:
 /* SMP!! - Works only for  unshared TLB case - i.e. no v-cpus */
 	mtc0	zero, COP_0_TLB_INDEX		# TLB entry #0
 	mtc0	a1, COP_0_TLB_LO0		# upte
-	addu	a1, PTE_ODDPG
+	addu	a1, TLBLO_PFN_ODD
 	mtc0	a1, COP_0_TLB_LO1		# upte + odd
 	HAZARD_DELAY
 	tlbwi					# set TLB entry #0
