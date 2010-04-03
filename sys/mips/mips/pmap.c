@@ -729,7 +729,13 @@ pmap_kenter(vm_offset_t va, vm_paddr_t pa)
 	opte = *pte;
 	*pte = npte;
 
-	pmap_update_page(kernel_pmap, va, npte);
+	/*
+	 * The original code did an update_page() here, but
+	 * we often do a lot of pmap_kenter() calls and then
+	 * start using the addresses later, at which point
+	 * the TLB has overflown many times.
+	 */
+	pmap_invalidate_page(kernel_pmap, va);
 }
 
 /*
@@ -851,35 +857,10 @@ pmap_init_fpage()
 	int i, j;
 	struct sysmaps *sysmaps;
 
-	/*
-	 * We allocate a total of (FPAGES*MAXCPU + FPAGES_SHARED + 1) pages
-	 * at first. FPAGES & FPAGES_SHARED should be EVEN Then we'll adjust
-	 * 'kva' to be even-page aligned so that the fpage area can be wired
-	 * in the TLB with a single TLB entry.
-	 */
 	kva = kmem_alloc_nofault(kernel_map,
-	    (FPAGES * MAXCPU + 1 + FPAGES_SHARED) * PAGE_SIZE);
+	    (FPAGES * MAXCPU + FPAGES_SHARED) * PAGE_SIZE);
 	if ((void *)kva == NULL)
 		panic("pmap_init_fpage: fpage allocation failed");
-
-	/*
-	 * Make up start at an even page number so we can wire down the
-	 * fpage area in the tlb with a single tlb entry.
-	 */
-	if ((((vm_offset_t)kva) >> PAGE_SHIFT) & 1) {
-		/*
-		 * 'kva' is not even-page aligned. Adjust it and free the
-		 * first page which is unused.
-		 */
-		kmem_free(kernel_map, (vm_offset_t)kva, PAGE_SIZE);
-		kva = ((vm_offset_t)kva) + PAGE_SIZE;
-	} else {
-		/*
-		 * 'kva' is even page aligned. We don't need the last page,
-		 * free it.
-		 */
-		kmem_free(kernel_map, ((vm_offset_t)kva) + FSPACE, PAGE_SIZE);
-	}
 
 	for (i = 0; i < MAXCPU; i++) {
 		sysmaps = &sysmaps_pcpu[i];

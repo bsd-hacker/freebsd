@@ -215,16 +215,6 @@ cpu_thread_swapin(struct thread *td)
 {
 	pt_entry_t *pte;
 	int i;
-	vm_offset_t unused_kstack_page;
-
-	/*
-	 * Unmap the unused kstack page.
-	 */
-	unused_kstack_page = td->td_kstack;
-	if (td->td_md.md_realstack == td->td_kstack)
-		unused_kstack_page += (KSTACK_PAGES - 1) * PAGE_SIZE;
-
-	pmap_kremove(unused_kstack_page);
 
 	/*
 	 * The kstack may be at a different physical address now.
@@ -232,11 +222,11 @@ cpu_thread_swapin(struct thread *td)
 	 * part of the thread struct so cpu_switch() can quickly map in
 	 * the pcb struct and kernel stack.
 	 */
-	if (!(pte = pmap_segmap(kernel_pmap, td->td_md.md_realstack)))
+	if (!(pte = pmap_segmap(kernel_pmap, td->td_kstack)))
 		panic("cpu_thread_swapin: invalid segmap");
-	pte += ((vm_offset_t)td->td_md.md_realstack >> PAGE_SHIFT) & (NPTEPG - 1);
+	pte += ((vm_offset_t)td->td_kstack >> PAGE_SHIFT) & (NPTEPG - 1);
 
-	for (i = 0; i < KSTACK_PAGES - 1; i++) {
+	for (i = 0; i < KSTACK_PAGES; i++) {
 		td->td_md.md_upte[i] = *pte & ~(PTE_RO|PTE_WIRED);
 		pte++;
 	}
@@ -250,29 +240,18 @@ cpu_thread_swapout(struct thread *td)
 void
 cpu_thread_alloc(struct thread *td)
 {
-	vm_offset_t unused_kstack_page;
 	pt_entry_t *pte;
 	int i;
 
-	if (td->td_kstack & (1 << PAGE_SHIFT)) {
-		td->td_md.md_realstack = td->td_kstack + PAGE_SIZE;
-		unused_kstack_page = td->td_kstack;
-	} else {
-		td->td_md.md_realstack = td->td_kstack;
-		unused_kstack_page = td->td_kstack +
-					(KSTACK_PAGES - 1) * PAGE_SIZE;
-	}
-	pmap_kremove(unused_kstack_page);
-
-	td->td_pcb = (struct pcb *)(td->td_md.md_realstack +
-	    (td->td_kstack_pages - 1) * PAGE_SIZE) - 1;
+	td->td_pcb = (struct pcb *)(td->td_kstack +
+	    td->td_kstack_pages * PAGE_SIZE) - 1;
 	td->td_frame = &td->td_pcb->pcb_regs;
 
-	if (!(pte = pmap_segmap(kernel_pmap, td->td_md.md_realstack)))
+	if (!(pte = pmap_segmap(kernel_pmap, td->td_kstack)))
 		panic("cpu_thread_alloc: invalid segmap");
-	pte += ((vm_offset_t)td->td_md.md_realstack >> PAGE_SHIFT) & (NPTEPG - 1);
+	pte += ((vm_offset_t)td->td_kstack >> PAGE_SHIFT) & (NPTEPG - 1);
 
-	for (i = 0; i < KSTACK_PAGES - 1; i++) {
+	for (i = 0; i < KSTACK_PAGES; i++) {
 		td->td_md.md_upte[i] = *pte & ~(PTE_RO|PTE_WIRED);
 		pte++;
 	}

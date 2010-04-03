@@ -148,11 +148,10 @@ MipsDoTLBMiss:
 	andi		k0, k0, 0xff8			#0c: k0=page tab offset
 	PTR_ADDU	k1, k1, k0			#0d: k1=pte address
 	lw		k0, 0(k1)			#0e: k0=lo0 pte
-	lw		k1, 4(k1)			#0f: k1=lo1 pte
 	CLEAR_PTE_WIRED(k0)
 	MTC0		k0, COP_0_TLB_LO0		#12: lo0 is loaded
-	CLEAR_PTE_WIRED(k1)
-	MTC0		k1, COP_0_TLB_LO1		#15: lo1 is loaded
+	addu		k0, PTE_ODDPG
+	MTC0		k0, COP_0_TLB_LO1		#15: lo1 is loaded
 	HAZARD_DELAY
 	tlbwr						#1a: write to tlb
 	HAZARD_DELAY
@@ -857,33 +856,12 @@ NLEAF(MipsTLBInvalidException)
 	beqz		k0, 3f
 	nop
 
-	/* Is this the odd or even entry?  */
-	andi		k0, k1, 4
-	bnez		k0, odd_page
-	nop
-
-even_page:
 	lw		k0, 0(k1)
 	CLEAR_PTE_WIRED(k0)
 	MTC0		k0, COP_0_TLB_LO0
-
-	lw		k0, 4(k1)
-	CLEAR_PTE_WIRED(k0)
+	addu		k0, PTE_ODDPG
 	MTC0		k0, COP_0_TLB_LO1
 
-	b		tlb_insert_entry
-	nop
-
-odd_page:
-	lw		k0, 0(k1)
-	CLEAR_PTE_WIRED(k0)
-	MTC0		k0, COP_0_TLB_LO1
-
-	lw		k0, -4(k1)
-	CLEAR_PTE_WIRED(k0)
-	MTC0		k0, COP_0_TLB_LO0
-
-tlb_insert_entry:
 	tlbp
 	HAZARD_DELAY
 	mfc0		k0, COP_0_TLB_INDEX
@@ -913,7 +891,7 @@ tlb_insert_random:
 	 */
 	GET_CPU_PCPU(k1)
 	PTR_L	k0, PC_CURTHREAD(k1)
-	PTR_L	k0, TD_REALKSTACK(k0)
+	PTR_L	k0, TD_KSTACK(k0)
 	sltu	k0, k0, sp
 	bnez	k0, _C_LABEL(MipsKernGenException)
 	nop
@@ -929,7 +907,7 @@ tlb_insert_random:
 	sll	k1, k1, PAGE_SHIFT + 1
 
 	PTR_LA	k0, _C_LABEL(pcpu_space)
-	PTR_ADDU	k0, (PAGE_SIZE * 2)
+	PTR_ADDU	k0, PAGE_SIZE * 2
 	PTR_ADDU	k0, k0, k1
 
 	/*
@@ -960,7 +938,7 @@ tlb_insert_random:
 	 */
 	GET_CPU_PCPU(k1)
 	PTR_L	k0, PC_CURTHREAD(k1)
-	PTR_S	zero, TD_REALKSTACK(k0)
+	PTR_S	zero, TD_KSTACK(k0)
 
 	move	a1, a0
 	PANIC("kernel stack overflow - trapframe at %p")
@@ -1018,12 +996,10 @@ NLEAF(MipsTLBMissException)
 	andi		k0, k0, 0xff8			# k0=page tab offset
 	PTR_ADDU	k1, k1, k0			# k1=pte address
 	lw		k0, 0(k1)			# k0=lo0 pte
-	lw		k1, 4(k1)			# k1=lo1 pte
 	CLEAR_PTE_WIRED(k0)
 	MTC0		k0, COP_0_TLB_LO0		# lo0 is loaded
-	CLEAR_PTE_WIRED(k1)
-	MTC0		k1, COP_0_TLB_LO1		# lo1 is loaded
-
+	addu		k0, PTE_ODDPG
+	MTC0		k0, COP_0_TLB_LO1		# lo1 is loaded
 	HAZARD_DELAY
 	tlbwr					# write to tlb
 	HAZARD_DELAY

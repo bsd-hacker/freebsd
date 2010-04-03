@@ -293,36 +293,28 @@ blocked_loop:
 	PTR_S	a1, PC_CURTHREAD(a3)
 	PTR_L	a2, TD_PCB(a1)
 	PTR_S	a2, PC_CURPCB(a3)
-	PTR_L	v0, TD_REALKSTACK(a1)
+	PTR_L	v0, TD_KSTACK(a1)
 	li	s0, (MIPS_KSEG2_START+VM_KERNEL_ALLOC_OFFSET)		# If Uarea addr is below kseg2,
 	bltu	v0, s0, sw2			# no need to insert in TLB.
-	lw	a1, TD_UPTE+0(s7)		# t0 = first u. pte
-	lw	a2, TD_UPTE+4(s7)		# t1 = 2nd u. pte
-	and	s0, v0, PTE_ODDPG
-	beq	s0, zero, entry0
-	nop
-
-	PANIC_KSEG0("USPACE sat on odd page boundary", t1)
-
+	lw	a1, TD_UPTE(s7)			# t0 = u. pte
 /*
  * Wiredown the USPACE of newproc in TLB entry#0.  Check whether target
  * USPACE is already in another place of TLB before that, and if so
  * invalidate that TLB entry.
- * NOTE: This is hard coded to UPAGES == 2.
+ * NOTE: This is hard coded to UPAGES == 1.
  * Also, there should be no TLB faults at this point.
  */
-entry0:
-	mtc0	v0, COP_0_TLB_HI		# VPN = va
+	MTC0	v0, COP_0_TLB_HI		# VPN = va
 	HAZARD_DELAY
 	tlbp					# probe VPN
 	HAZARD_DELAY
 	mfc0	s0, COP_0_TLB_INDEX
 	nop
-pgm:
-	REG_LI	t1, MIPS_KSEG0_START		# invalidate tlb entry
+
+	li	t1, MIPS_KSEG0_START		# invalidate tlb entry
 	bltz	s0, entry0set
 	nop
-	sll	s0, PAGE_SHIFT + 1
+	sll	s0, PAGE_SHIFT
 	addu	t1, s0
 	mtc0	t1, COP_0_TLB_HI
 	mtc0	zero, COP_0_TLB_LO0
@@ -331,13 +323,13 @@ pgm:
 	tlbwi
 	HAZARD_DELAY
 	mtc0	v0, COP_0_TLB_HI		# set VPN again
+
 entry0set:
 /* SMP!! - Works only for  unshared TLB case - i.e. no v-cpus */
 	mtc0	zero, COP_0_TLB_INDEX		# TLB entry #0
-#	or	a1, PG_G
-	mtc0	a1, COP_0_TLB_LO0		# upte[0]
-#	or	a2, PG_G
-	mtc0	a2, COP_0_TLB_LO1		# upte[1]
+	mtc0	a1, COP_0_TLB_LO0		# upte
+	addu	a1, PTE_ODDPG
+	mtc0	a1, COP_0_TLB_LO1		# upte + odd
 	HAZARD_DELAY
 	tlbwi					# set TLB entry #0
 	HAZARD_DELAY

@@ -96,6 +96,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/syslog.h>
 
 
+#define TRAP_DEBUG
 #ifdef TRAP_DEBUG
 int trap_debug = 1;
 #endif

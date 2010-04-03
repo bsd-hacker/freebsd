@@ -102,7 +102,7 @@ typedef pt_entry_t *pd_entry_t;
 /*#define	PTE_NV		0x00000000       Not Used */
 #define	PTE_M		0x00000004
 #define	PTE_RW		PTE_M
-#define PTE_ODDPG       0x00001000 
+#define PTE_ODDPG       0x00000040 
 /*#define	PG_ATTR		0x0000003f  Not Used */
 #define	PTE_UNCACHED	0x00000010
 #ifdef CPU_SB1
@@ -119,10 +119,11 @@ typedef pt_entry_t *pd_entry_t;
 #define PTE_HVPN        0xffffe000      /* Hardware page no mask */
 #define PTE_ASID        0x000000ff      /* Address space ID */
 
+#define	TLB_PAGE_SHIFT	(PAGE_SHIFT - 1)
 #define	PTE_SHIFT	6
 #define	pfn_is_ext(x)	((x) & 0x3c000000)
-#define	vad_to_pfn(x)	(((vm_offset_t)(x) >> PTE_SHIFT) & PTE_FRAME)
-#define	pfn_to_vad(x)	(((x) & PTE_FRAME) << PTE_SHIFT)
+#define	vad_to_pfn(x)	((((vm_offset_t)(x) >> TLB_PAGE_SHIFT) << PTE_SHIFT) & PTE_FRAME)
+#define	pfn_to_vad(x)	((((x) & PTE_FRAME) >> PTE_SHIFT) << TLB_PAGE_SHIFT)
 
 /* User virtual to pte offset in page table */
 #define	vad_to_pte_offset(adr)	(((adr) >> PAGE_SHIFT) & (NPTEPG -1))

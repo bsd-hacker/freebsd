@@ -152,10 +152,10 @@ LEAF(Mips_TLBFlush)
 	#
 	# Load invalid entry, each TLB entry should have it's own bogus 
 	# address calculated by following expression:
-	# MIPS_KSEG0_START + 2 * i * PAGE_SIZE;
+	# MIPS_KSEG0_START + i * PAGE_SIZE;
 	# One bogus value for every TLB entry might cause MCHECK exception
 	#
-	sll	t3, t1, PAGE_SHIFT + 1
+	sll	t3, t1, PAGE_SHIFT
 	li	v0, MIPS_KSEG0_START		# invalid address
 	addu	v0, t3
 /*
@@ -166,7 +166,7 @@ LEAF(Mips_TLBFlush)
 	ITLBNOPFIX
 	MTC0	v0, COP_0_TLB_HI		# Mark entry high as invalid
 	addu	t1, t1, 1			# Increment index.
-	addu	v0, v0, 8 * 1024
+	addu	v0, v0, PAGE_SIZE
 	MIPS_CPU_NOP_DELAY
 	tlbwi					# Write the TLB entry.
 	MIPS_CPU_NOP_DELAY
@@ -212,9 +212,9 @@ LEAF(Mips_TLBFlushAddr)
 	nop
 	# Load invalid entry, each TLB entry should have it's own bogus 
 	# address calculated by following expression:
-	# MIPS_KSEG0_START + 2 * i * PAGE_SIZE;
+	# MIPS_KSEG0_START + i * PAGE_SIZE;
 	# One bogus value for every TLB entry might cause MCHECK exception
-	sll	v0, PAGE_SHIFT + 1
+	sll	v0, PAGE_SHIFT
 	addu	t1, v0
 	MTC0	t1, COP_0_TLB_HI		# Mark entry high as invalid
 
@@ -250,26 +250,24 @@ LEAF(Mips_TLBUpdate)
 	mfc0	v1, COP_0_STATUS_REG		# Save the status register.
 	mtc0	zero, COP_0_STATUS_REG		# Disable interrupts
 	ITLBNOPFIX
-	and	t1, a0, 0x1000			# t1 = Even/Odd flag
 	li	v0, (PTE_HVPN | PTE_ASID)
 	and	a0, a0, v0
 	MFC0	t0, COP_0_TLB_HI		# Save current PID
 	MTC0	a0, COP_0_TLB_HI		# Init high reg
-	and	a2, a1, PTE_G			# Copy global bit
 	MIPS_CPU_NOP_DELAY
 	tlbp					# Probe for the entry.
 	CLEAR_PTE_WIRED(a1)
 	nop
+
 	mfc0	v0, COP_0_TLB_INDEX		# See what we got
-	bne	t1, zero, 2f			# Decide even odd
-# EVEN
-	nop
 	bltz	v0, 1f				# index < 0 => !found
 	MIPS_CPU_NOP_DELAY
 
 	tlbr					# update, read entry first
 	MIPS_CPU_NOP_DELAY
 	MTC0	a1, COP_0_TLB_LO0		# init low reg0.
+	addu	a1, PTE_ODDPG
+	MTC0	a1, COP_0_TLB_LO1		# init low reg1.
 	MIPS_CPU_NOP_DELAY
 	tlbwi					# update slot found
 	b	4f
@@ -278,34 +276,11 @@ LEAF(Mips_TLBUpdate)
 	mtc0	zero, COP_0_TLB_PG_MASK 	# init mask.
 	MTC0	a0, COP_0_TLB_HI		# init high reg.
 	MTC0	a1, COP_0_TLB_LO0		# init low reg0.
-	MTC0	a2, COP_0_TLB_LO1		# init low reg1.
-	MIPS_CPU_NOP_DELAY
-	tlbwr					# enter into a random slot
-	MIPS_CPU_NOP_DELAY
-	b	4f
-	nop
-# ODD
-2:
-	nop
-	bltz	v0, 3f				# index < 0 => !found
-	MIPS_CPU_NOP_DELAY
-
-	tlbr					# read the entry first
-	MIPS_CPU_NOP_DELAY
-	MTC0	a1, COP_0_TLB_LO1		# init low reg1.
-	MIPS_CPU_NOP_DELAY
-	tlbwi					# update slot found
-	MIPS_CPU_NOP_DELAY
-	b	4f
-	nop
-3:
-	mtc0	zero, COP_0_TLB_PG_MASK		# init mask.
-	MTC0	a0, COP_0_TLB_HI		# init high reg.
-	MTC0	a2, COP_0_TLB_LO0		# init low reg0.
+	addu	a1, PTE_ODDPG
 	MTC0	a1, COP_0_TLB_LO1		# init low reg1.
 	MIPS_CPU_NOP_DELAY
 	tlbwr					# enter into a random slot
-
+	MIPS_CPU_NOP_DELAY
 4:						# Make shure pipeline
 	MIPS_CPU_NOP_DELAY
 	MTC0	t0, COP_0_TLB_HI		# restore PID
@@ -373,10 +348,10 @@ LEAF(mips_TBIAP)
 	#
 	# Load invalid entry, each TLB entry should have it's own bogus 
 	# address calculated by following expression:
-	# MIPS_KSEG0_START + 2 * i * PAGE_SIZE;
+	# MIPS_KSEG0_START + i * PAGE_SIZE;
 	# One bogus value for every TLB entry might cause MCHECK exception
 	#
-	sll	t3, t1, PAGE_SHIFT + 1
+	sll	t3, t1, PAGE_SHIFT
 	li	v0, MIPS_KSEG0_START		# invalid address
 	addu	v0, t3
 
@@ -401,7 +376,7 @@ LEAF(mips_TBIAP)
 	tlbwi					# invalidate the TLB entry
 2:
 	addu	t1, t1, 1
-	addu	v0, 1 << (PAGE_SHIFT + 1)
+	addu	v0, PAGE_SIZE
 	bne	t1, t2, 1b
 	nop
 
