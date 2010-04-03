@@ -96,14 +96,11 @@ typedef	pt_entry_t *pd_entry_t;
 #define	TLBHI_R_KERNEL		(0x03UL << TLBHI_R_SHIFT)
 #define	TLBHI_R_MASK		(0x03UL << TLBHI_R_SHIFT)
 #define	TLBHI_VA_R(va)		((va) & TLBHI_R_MASK)
-#define	TLBHI_FILL_SHIFT	48
-#define	TLBHI_FILL_MASK		((0x7FFFFUL) << TLBHI_FILL_SHIFT)
-#define	TLBHI_VA_FILL(va)	((((va) & (1UL << 63)) != 0 ? TLBHI_FILL_MASK : 0))
+#define	TLBHI_FILL_SHIFT	40
 #define	TLBHI_VPN2_SHIFT	(PAGE_SHIFT)
 #define	TLBHI_VPN2_MASK		(((~((1UL << TLBHI_VPN2_SHIFT) - 1)) << (63 - TLBHI_FILL_SHIFT)) >> (63 - TLBHI_FILL_SHIFT))
 #define	TLBHI_VA_TO_VPN2(va)	((va) & TLBHI_VPN2_MASK)
 #define	TLBHI_ENTRY(va, asid)	((TLBHI_VA_R((va))) /* Region. */ | \
-				 (TLBHI_VA_FILL((va))) /* Fill. */ | \
 				 (TLBHI_VA_TO_VPN2((va))) /* VPN2. */ | \
 				 ((asid)))
 #else
