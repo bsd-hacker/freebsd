@@ -145,7 +145,7 @@ MipsDoTLBMiss:
 	MFC0		k0, COP_0_BAD_VADDR		#09: k0=bad address (again)
 	beq		k1, zero, 2f			#0a: ==0 -- no page table
 	srl		k0, PAGE_SHIFT - 2		#0b: k0=VPN (aka va>>10)
-	andi		k0, k0, 0xff8			#0c: k0=page tab offset
+	andi		k0, k0, 0xffc			#0c: k0=page tab offset
 	PTR_ADDU	k1, k1, k0			#0d: k1=pte address
 	lw		k0, 0(k1)			#0e: k0=lo0 pte
 	CLEAR_PTE_SWBITS(k0)
@@ -993,7 +993,7 @@ NLEAF(MipsTLBMissException)
 	MFC0		k0, COP_0_BAD_VADDR		# k0=bad address (again)
 	beq		k1, zero, MipsKernGenException	# ==0 -- no page table
 	PTR_SRL		k0, PAGE_SHIFT - 2		# k0=VPN
-	andi		k0, k0, 0xff8			# k0=page tab offset
+	andi		k0, k0, 0xffc			# k0=page tab offset
 	PTR_ADDU	k1, k1, k0			# k1=pte address
 	lw		k0, 0(k1)			# k0=lo0 pte
 	CLEAR_PTE_SWBITS(k0)
