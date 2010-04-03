@@ -26,6 +26,8 @@
  * $FreeBSD$
  */
 
+#include "opt_ddb.h"
+
 #include <sys/param.h>
 #include <sys/kernel.h>
 #include <sys/systm.h>
@@ -137,3 +139,37 @@ tlb_invalidate_one(unsigned i)
 	mips_wr_index(i);
 	tlb_write_indexed();
 }
+
+#ifdef DDB
+#include <ddb/ddb.h>
+
+DB_SHOW_COMMAND(tlb, ddb_dump_tlb)
+{
+	register_t ehi, elo0, elo1;
+	unsigned i;
+
+	db_printf("Beginning TLB dump...\n");
+	for (i = 0; i < num_tlbentries; i++) {
+		if (i == mips_rd_wired()) {
+			if (i != 0)
+				db_printf("^^^ WIRED ENTRIES ^^^\n");
+			else
+				db_printf("(No wired entries.)\n");
+		}
+		mips_wr_index(i);
+		tlb_read();
+
+		ehi = mips_rd_entryhi();
+		elo0 = mips_rd_entrylo0();
+		elo1 = mips_rd_entrylo1();
+
+		if (elo0 == 0 && elo1 == 0)
+			continue;
+
+		db_printf("#%u\t=> %jx\n", i, (intmax_t)ehi);
+		db_printf(" Lo0\t%jx\n", (intmax_t)elo0);
+		db_printf(" Lo1\t%jx\n", (intmax_t)elo1);
+	}
+	db_printf("Finished.\n");
+}
+#endif

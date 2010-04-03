@@ -68,7 +68,6 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include "opt_ddb.h"
 #include "opt_msgbuf.h"
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -3406,53 +3405,3 @@ pmap_flush_pvcache(vm_page_t m)
 		}
 	}
 }
-
-#if 0
-#ifdef DDB
-#include <ddb/ddb.h>
-
-DB_SHOW_COMMAND(tlb, ddb_dump_tlb)
-{
-	int cpu, tlbno;
-	struct tlb *tlb;
-
-	if (have_addr)
-		cpu = ((addr >> 4) % 16) * 10 + (addr % 16);
-	else
-		cpu = PCPU_GET(cpuid);
-
-	if (cpu < 0 || cpu >= mp_ncpus) {
-		db_printf("Invalid CPU %d\n", cpu);
-		return;
-	} else
-		db_printf("CPU %d:\n", cpu);
-
-	if (cpu == PCPU_GET(cpuid))
-		pmap_save_tlb();
-
-	for (tlbno = 0; tlbno < num_tlbentries; ++tlbno) {
-		tlb = &tlbstash[cpu][tlbno];
-		if (pte_test(&tlb->tlb_lo0, PG_V) ||
-		    pte_test(&tlb->tlb_lo1, PG_V)) {
-			printf("TLB %2d vad 0x%0lx ",
-				tlbno, (long)(tlb->tlb_hi & 0xffffff00));
-		} else {
-			printf("TLB*%2d vad 0x%0lx ",
-				tlbno, (long)(tlb->tlb_hi & 0xffffff00));
-		}
-		printf("0=0x%0lx ", pfn_to_vad((long)tlb->tlb_lo0));
-		printf("%c", tlb->tlb_lo0 & PG_V ? 'V' : '-');
-		printf("%c", tlb->tlb_lo0 & PG_D ? 'D' : '-');
-		printf("%c", tlb->tlb_lo0 & PG_G ? 'G' : '-');
-		printf(" atr %x ", (tlb->tlb_lo0 >> 3) & 7);
-		printf("1=0x%0lx ", pfn_to_vad((long)tlb->tlb_lo1));
-		printf("%c", tlb->tlb_lo1 & PG_V ? 'V' : '-');
-		printf("%c", tlb->tlb_lo1 & PG_D ? 'D' : '-');
-		printf("%c", tlb->tlb_lo1 & PG_G ? 'G' : '-');
-		printf(" atr %x ", (tlb->tlb_lo1 >> 3) & 7);
-		printf(" sz=%x pid=%x\n", tlb->tlb_mask,
-		       (tlb->tlb_hi & 0x000000ff));
-	}
-}
-#endif	/* DDB */
-#endif
