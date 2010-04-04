@@ -191,8 +191,8 @@
  */
 #define	VM_NFREEORDER		9
 
-#define NBSEG		0x400000	/* bytes/segment */
+#define SEGSHIFT	24		/* LOG2(NBSEG) */
+#define NBSEG		(1 << SEGSHIFT)	/* bytes/segment */
 #define SEGOFSET	(NBSEG-1)	/* byte offset into segment */
-#define SEGSHIFT	22		/* LOG2(NBSEG) */
 
 #endif /* !_MACHINE_VMPARAM_H_ */
