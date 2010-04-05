@@ -151,10 +151,10 @@ MipsDoTLBMiss:
 	lw		k0, 0(k1)			#0e: k0=lo0 pte
 	CLEAR_PTE_SWBITS(k0)
 	MTC0		k0, COP_0_TLB_LO0		#12: lo0 is loaded
-	HAZARD_DELAY
+	COP0_SYNC
 	addu		k0, TLBLO_PFN_ODD
 	MTC0		k0, COP_0_TLB_LO1		#15: lo1 is loaded
-	HAZARD_DELAY
+	COP0_SYNC
 	tlbwr						#1a: write to tlb
 	HAZARD_DELAY
 	eret						#1f: retUrn from exception
@@ -861,15 +861,14 @@ NLEAF(MipsTLBInvalidException)
 	lw		k0, 0(k1)
 	CLEAR_PTE_SWBITS(k0)
 	MTC0		k0, COP_0_TLB_LO0
-	HAZARD_DELAY
+	COP0_SYNC
 	addu		k0, TLBLO_PFN_ODD
 	MTC0		k0, COP_0_TLB_LO1
-	HAZARD_DELAY
+	COP0_SYNC
 
 	tlbp
 	HAZARD_DELAY
 	mfc0		k0, COP_0_TLB_INDEX
-	HAZARD_DELAY
 	bltz		k0, tlb_insert_random
 	nop
 	tlbwi
@@ -1002,10 +1001,10 @@ NLEAF(MipsTLBMissException)
 	lw		k0, 0(k1)			# k0=lo0 pte
 	CLEAR_PTE_SWBITS(k0)
 	MTC0		k0, COP_0_TLB_LO0		# lo0 is loaded
-	HAZARD_DELAY
+	COP0_SYNC
 	addu		k0, TLBLO_PFN_ODD
 	MTC0		k0, COP_0_TLB_LO1		# lo1 is loaded
-	HAZARD_DELAY
+	COP0_SYNC
 	tlbwr					# write to tlb
 	HAZARD_DELAY
 	eret					# return from exception
@@ -1179,7 +1178,7 @@ NESTED_NOPROFILE(MipsCacheException, KERN_EXC_FRAME_SIZE, ra)
 	li	k1, SR_DIAG_DE			# ignore further errors
 	or	k0, k1
 	mtc0	k0, COP_0_STATUS_REG		# restore status
-	HAZARD_DELAY
+	COP0_SYNC
 
 	eret
 

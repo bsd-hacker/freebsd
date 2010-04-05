@@ -84,7 +84,7 @@ struct trapdebug {		/* trap history buffer for debugging */
 };
 
 #define	trapdebug_enter(x, cd) {	\
-	intrmask_t s = disableintr();	\
+	register_t s = intr_disable();	\
 	trp->status = x->sr;		\
 	trp->cause = x->cause;		\
 	trp->vadr = x->badvaddr;	\
@@ -94,7 +94,7 @@ struct trapdebug {		/* trap history buffer for debugging */
 	trp->code = cd;			\
 	if (++trp == &trapdebug[TRAPSIZE])	\
 		trp = trapdebug;	\
-	restoreintr(s);			\
+	intr_restore(s);		\
 }
 
 #define	TRAPSIZE 10		/* Trap log buffer length */

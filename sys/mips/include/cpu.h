@@ -275,27 +275,6 @@
 #define	OPCODE_C1		0x11
 
 /*
- * The low part of the TLB entry.
- */
-#define	VMTLB_PF_NUM		0x3fffffc0
-#define	VMTLB_ATTR_MASK		0x00000038
-#define	VMTLB_MOD_BIT		0x00000004
-#define	VMTLB_VALID_BIT		0x00000002
-#define	VMTLB_GLOBAL_BIT	0x00000001
-
-#define	VMTLB_PHYS_PAGE_SHIFT	6
-
-/*
- * The high part of the TLB entry.
- */
-#define	VMTLB_VIRT_PAGE_NUM		0xffffe000
-#define	VMTLB_PID			0x000000ff
-#define	VMTLB_PID_R9K			0x00000fff
-#define	VMTLB_PID_SHIFT			0
-#define	VMTLB_VIRT_PAGE_SHIFT		12
-#define	VMTLB_VIRT_PAGE_SHIFT_R9K	13
-
-/*
  * The first TLB entry that write random hits.
  * TLB entry 0 maps the kernel stack of the currently running thread
  * TLB entry 1 maps the pcpu area of processor (only for SMP builds)
@@ -314,14 +293,6 @@
 #define	VMNUM_PIDS		256
 
 /*
- * TLB probe return codes.
- */
-#define	VMTLB_NOT_FOUND		0
-#define	VMTLB_FOUND		1
-#define	VMTLB_FOUND_WITH_PATCH	2
-#define	VMTLB_PROBE_ERROR	3
-
-/*
  * Exported definitions unique to mips cpu support.
  */
 
@@ -334,7 +305,9 @@
 #define	cpu_swapout(p)		panic("cpu_swapout: can't get here");
 
 #ifndef _LOCORE
+#include <machine/cpufunc.h>
 #include <machine/frame.h>
+
 /*
  * Arguments to hardclock and gatherstats encapsulate the previous
  * machine state in an opaque clockframe.
@@ -349,6 +322,11 @@
 #define	TRAPF_USERMODE(framep)  (((framep)->sr & SR_KSU_USER) != 0)
 #define	TRAPF_PC(framep)	((framep)->pc)
 #define	cpu_getstack(td)	((td)->td_frame->sp)
+
+/*
+ * A machine-independent interface to the CPU's counter.
+ */
+#define	get_cyclecount()	mips_rd_count()
 
 /*
  * CPU identification, from PRID register.
@@ -453,7 +431,6 @@ extern union cpuprid fpu_id;
 
 struct user;
 
-u_int32_t mips_cp0_config1_read(void);
 int Mips_ConfigCache(void);
 
 void Mips_SyncCache(void);
@@ -520,23 +497,12 @@ extern int intr_nesting_level;
  *  Low level access routines to CPU registers
  */
 
-void setsoftintr0(void);
-void clearsoftintr0(void);
-void setsoftintr1(void);
-void clearsoftintr1(void);
-
-
-int disableintr(void);
-void restoreintr(int);
-int enableintr(void);
-
 void swi_vm(void *);
 void cpu_halt(void);
 void cpu_reset(void);
 
 u_int32_t set_intr_mask(u_int32_t);
 u_int32_t get_intr_mask(void);
-u_int32_t get_cyclecount(void);
 
 #define	cpu_spinwait()		/* nothing */
 

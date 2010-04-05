@@ -83,6 +83,12 @@ mips_barrier(void)
 }
 
 static __inline void
+mips_cp0_sync(void)
+{
+	__asm __volatile (__XSTRING(COP0_SYNC));
+}
+
+static __inline void
 mips_wbflush(void)
 {
 	__asm __volatile ("sync" : : : "memory");
@@ -237,7 +243,7 @@ intr_disable(void)
 	s = mips_rd_status();
 	mips_wr_status(s & ~MIPS_SR_INT_IE);
 
-	return (s);
+	return (s & MIPS_SR_INT_IE);
 }
 
 static __inline register_t
@@ -251,7 +257,13 @@ intr_enable(void)
 	return (s);
 }
 
-#define	intr_restore(s)	mips_wr_status((s))
+static __inline void
+intr_restore(register_t ie)
+{
+	if (ie == MIPS_SR_INT_IE) {
+		intr_enable();
+	}
+}
 
 static __inline void
 breakpoint(void)

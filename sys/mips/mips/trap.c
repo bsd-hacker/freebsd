@@ -307,9 +307,9 @@ trap(struct trapframe *trapframe)
 	 */
 	if (trapframe->sr & SR_INT_ENAB) {
 		set_intr_mask(~(trapframe->sr & ALL_INT_MASK));
-		enableintr();
+		intr_enable();
 	} else {
-		disableintr();
+		intr_disable();
 	}
 
 #ifdef TRAP_DEBUG
@@ -330,7 +330,7 @@ trap(struct trapframe *trapframe)
 #ifdef SMP
 		printf("cpuid = %d\n", PCPU_GET(cpuid));
 #endif
-		pid = mips_rd_entryhi() & VMTLB_PID;
+		pid = mips_rd_entryhi() & TLBHI_ASID_MASK;
 		printf("badaddr = %#jx, pc = %#jx, ra = %#jx, sp = %#jx, sr = %jx, pid = %d, ASID = %u\n",
 		    (intmax_t)trapframe->badvaddr, (intmax_t)trapframe->pc, (intmax_t)trapframe->ra,
 		    (intmax_t)trapframe->sp, (intmax_t)trapframe->sr,
@@ -383,7 +383,6 @@ trap(struct trapframe *trapframe)
 #ifdef SMP
 			/* It is possible that some other CPU changed m-bit */
 			if (!pte_test(pte, PG_V) || pte_test(pte, PG_D)) {
-				trapframe->badvaddr &= ~PAGE_MASK;
 				pmap_update_page(kernel_pmap,
 				    trapframe->badvaddr, *pte);
 				PMAP_UNLOCK(kernel_pmap);
@@ -400,7 +399,6 @@ trap(struct trapframe *trapframe)
 				goto kernel_fault;
 			}
 			pte_set(pte, PG_D);
-			trapframe->badvaddr &= ~PAGE_MASK;
 			pmap_update_page(kernel_pmap, trapframe->badvaddr, *pte);
 			pa = TLBLO_PTE_TO_PA(*pte);
 			if (!page_is_managed(pa))
@@ -424,7 +422,6 @@ trap(struct trapframe *trapframe)
 #ifdef SMP
 			/* It is possible that some other CPU changed m-bit */
 			if (!pte_test(pte, PG_V) || pte_test(pte, PG_D)) {
-				trapframe->badvaddr = (trapframe->badvaddr & ~PAGE_MASK);
 				pmap_update_page(pmap, trapframe->badvaddr, entry);
 				PMAP_UNLOCK(pmap);
 				goto out;
@@ -441,9 +438,7 @@ trap(struct trapframe *trapframe)
 				goto dofault;
 			}
 			pte_set(pte, PG_D);
-			trapframe->badvaddr = (trapframe->badvaddr & ~PAGE_MASK);
 			pmap_update_page(pmap, trapframe->badvaddr, *pte);
-			trapframe->badvaddr |= (pmap->pm_asid[PCPU_GET(cpuid)].asid << VMTLB_PID_SHIFT);
 			pa = TLBLO_PTE_TO_PA(*pte);
 			if (!page_is_managed(pa))
 				panic("trap: utlbmod: unmanaged page");
@@ -1033,9 +1028,10 @@ out:
 void
 trapDump(char *msg)
 {
-	int i, s;
+	register_t s;
+	int i;
 
-	s = disableintr();
+	s = intr_disable();
 	printf("trapDump(%s)\n", msg);
 	for (i = 0; i < TRAPSIZE; i++) {
 		if (trp == trapdebug) {
@@ -1053,7 +1049,7 @@ trapDump(char *msg)
 
 		printf("   RA %jx SP %jx code %d\n", (intmax_t)trp->ra, (intmax_t)trp->sp, (int)trp->code);
 	}
-	restoreintr(s);
+	intr_restore(s);
 }
 
 #endif

@@ -167,8 +167,8 @@ DB_SHOW_COMMAND(tlb, ddb_dump_tlb)
 			continue;
 
 		db_printf("#%u\t=> %jx\n", i, (intmax_t)ehi);
-		db_printf(" Lo0\t%jx\n", (intmax_t)elo0);
-		db_printf(" Lo1\t%jx\n", (intmax_t)elo1);
+		db_printf(" Lo0\t%jx\t(%#jx)\n", (intmax_t)elo0, (intmax_t)TLBLO_PTE_TO_PA(elo0));
+		db_printf(" Lo1\t%jx\t(%#jx)\n", (intmax_t)elo1, (intmax_t)TLBLO_PTE_TO_PA(elo1));
 	}
 	db_printf("Finished.\n");
 }

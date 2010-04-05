@@ -89,6 +89,7 @@ typedef	pt_entry_t *pd_entry_t;
  *
  * Note that in FreeBSD, we map 2 TLB pages is equal to 1 VM page.
  */
+#define	TLBHI_ASID_MASK		(0xff)
 #if defined(__mips_n64)
 #define	TLBHI_R_SHIFT		62
 #define	TLBHI_R_USER		(0x00UL << TLBHI_R_SHIFT)
@@ -102,9 +103,9 @@ typedef	pt_entry_t *pd_entry_t;
 #define	TLBHI_VA_TO_VPN2(va)	((va) & TLBHI_VPN2_MASK)
 #define	TLBHI_ENTRY(va, asid)	((TLBHI_VA_R((va))) /* Region. */ | \
 				 (TLBHI_VA_TO_VPN2((va))) /* VPN2. */ | \
-				 ((asid)))
+				 ((asid) & TLBHI_ASID_MASK))
 #else
-#define	TLBHI_ENTRY(va, asid)	(((va) & ~PAGE_MASK) | (asid))
+#define	TLBHI_ENTRY(va, asid)	(((va) & ~PAGE_MASK) | ((asid) & TLBHI_ASID_MASK))
 #endif
 
 /*
