@@ -128,6 +128,7 @@ tlb_update(struct pmap *pmap, vm_offset_t va, pt_entry_t pte)
 	int i;
 
 	va &= ~PAGE_MASK;
+	pte &= ~TLBLO_SWBITS_MASK;
 
 	s = intr_disable();
 	mask = mips_rd_pagemask();
