@@ -2945,6 +2945,9 @@ pmap_clear_reference(vm_page_t m)
 void *
 pmap_mapdev(vm_offset_t pa, vm_size_t size)
 {
+#if defined(__mips_n64)
+	return ((void *)MIPS_PHYS_TO_XKPHYS(MIPS_XKPHYS_CCA_UC, pa));
+#else
         vm_offset_t va, tmpva, offset;
 
 	/* 
@@ -2970,11 +2973,13 @@ pmap_mapdev(vm_offset_t pa, vm_size_t size)
 	}
 
 	return ((void *)(va + offset));
+#endif
 }
 
 void
 pmap_unmapdev(vm_offset_t va, vm_size_t size)
 {
+#if !defined(__mips_n64)
 	vm_offset_t base, offset, tmpva;
 
 	/* If the address is within KSEG1 then there is nothing to do */
@@ -2987,6 +2992,7 @@ pmap_unmapdev(vm_offset_t va, vm_size_t size)
 	for (tmpva = base; tmpva < base + size; tmpva += PAGE_SIZE)
 		pmap_kremove(tmpva);
 	kmem_free(kernel_map, base, size);
+#endif
 }
 
 /*
