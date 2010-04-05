@@ -60,7 +60,7 @@
  * and some QED CPUs perform some virtual address checks before the
  * offset is calculated.
  */
-#define	USRSTACK	0x7ffff000	/* Start of user stack */
+#define	USRSTACK	0x7fffe000	/* Start of user stack */
 #if defined(COMPAT_FREEBSD32)
 #define	FREEBSD32_USRSTACK	USRSTACK
 #endif
