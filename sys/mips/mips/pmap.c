@@ -124,8 +124,7 @@ __FBSDID("$FreeBSD$");
 #define	segtab_pde(m, v)	((m)[pmap_segshift((v))])
 
 #define	NUSERPGTBLS		(pmap_segshift(VM_MAXUSER_ADDRESS))
-#define	MIPS_SEGSIZE		(1L << SEGSHIFT)
-#define	mips_segtrunc(va)	((va) & ~(MIPS_SEGSIZE-1))
+#define	mips_segtrunc(va)	((va) & ~SEGOFSET)
 #define	is_kernel_pmap(x)	((x) == kernel_pmap)
 
 struct pmap kernel_pmap_store;
@@ -1655,7 +1654,7 @@ pmap_remove(struct pmap *pmap, vm_offset_t sva, vm_offset_t eva)
 	}
 	for (va = sva; va < eva; va = nva) {
 		if (!*pmap_pde(pmap, va)) {
-			nva = mips_segtrunc(va + MIPS_SEGSIZE);
+			nva = mips_segtrunc(va + NBSEG);
 			continue;
 		}
 		pmap_remove_page(pmap, va);
@@ -1771,7 +1770,7 @@ pmap_protect(pmap_t pmap, vm_offset_t sva, vm_offset_t eva, vm_prot_t prot)
 		 * If segment table entry is empty, skip this segment.
 		 */
 		if (!*pmap_pde(pmap, sva)) {
-			sva = mips_segtrunc(sva + MIPS_SEGSIZE);
+			sva = mips_segtrunc(sva + NBSEG);
 			continue;
 		}
 		/*
