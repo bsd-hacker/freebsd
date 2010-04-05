@@ -50,6 +50,7 @@ static inline void
 tlb_probe(void)
 {
 	__asm __volatile ("tlbp" : : : "memory");
+	mips_cp0_sync();
 	mips_barrier();
 }
 
@@ -57,6 +58,7 @@ static inline void
 tlb_read(void)
 {
 	__asm __volatile ("tlbr" : : : "memory");
+	mips_cp0_sync();
 	mips_barrier();
 }
 
@@ -64,6 +66,7 @@ static inline void
 tlb_write_indexed(void)
 {
 	__asm __volatile ("tlbwi" : : : "memory");
+	mips_cp0_sync();
 	mips_barrier();
 }
 
@@ -71,6 +74,7 @@ static inline void
 tlb_write_random(void)
 {
 	__asm __volatile ("tlbwr" : : : "memory");
+	mips_cp0_sync();
 	mips_barrier();
 }
 
@@ -79,43 +83,56 @@ static void tlb_invalidate_one(unsigned);
 void
 tlb_invalidate_address(struct pmap *pmap, vm_offset_t va)
 {
+	register_t mask, asid;
 	register_t s;
 	int i;
 
 	va &= ~PAGE_MASK;
 
 	s = intr_disable();
+	mask = mips_rd_pagemask();
+	asid = mips_rd_entryhi() & TLBHI_ASID_MASK;
+	mips_wr_pagemask(0);
 	mips_wr_entryhi(TLBHI_ENTRY(va, pmap_asid(pmap)));
 	tlb_probe();
 	i = mips_rd_index();
 	if (i >= 0)
 		tlb_invalidate_one(i);
+	mips_wr_entryhi(asid);
+	mips_wr_pagemask(mask);
 	intr_restore(s);
 }
 
 void
 tlb_invalidate_all(void)
 {
+	register_t mask, asid;
 	register_t s;
 	unsigned i;
 
 	s = intr_disable();
+	mask = mips_rd_pagemask();
+	asid = mips_rd_entryhi() & TLBHI_ASID_MASK;
 	for (i = mips_rd_wired(); i < num_tlbentries; i++)
 		tlb_invalidate_one(i);
+	mips_wr_entryhi(asid);
+	mips_wr_pagemask(mask);
 	intr_restore(s);
 }
 
 void
 tlb_update(struct pmap *pmap, vm_offset_t va, pt_entry_t pte)
 {
-	register_t asid;
+	register_t mask, asid;
 	register_t s;
 	int i;
 
 	va &= ~PAGE_MASK;
 
 	s = intr_disable();
-	asid = mips_rd_entryhi();
+	mask = mips_rd_pagemask();
+	asid = mips_rd_entryhi() & TLBHI_ASID_MASK;
+	mips_wr_pagemask(0);
 	mips_wr_entryhi(TLBHI_ENTRY(va, pmap_asid(pmap)));
 	tlb_probe();
 	i = mips_rd_index();
@@ -126,6 +143,7 @@ tlb_update(struct pmap *pmap, vm_offset_t va, pt_entry_t pte)
 	else
 		tlb_write_random();
 	mips_wr_entryhi(asid);
+	mips_wr_pagemask(mask);
 	intr_restore(s);
 }
 
@@ -136,6 +154,7 @@ tlb_invalidate_one(unsigned i)
 	mips_wr_entryhi(TLBHI_ENTRY(MIPS_KSEG0_START + (i * PAGE_SIZE), 0));
 	mips_wr_entrylo0(0);
 	mips_wr_entrylo1(0);
+	mips_wr_pagemask(0);
 	mips_wr_index(i);
 	tlb_write_indexed();
 }
