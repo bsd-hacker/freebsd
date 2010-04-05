@@ -9,18 +9,18 @@ BINDIR?=	/boot
 INSTALLFLAGS=	-b
 
 # Architecture-specific loader code
-SRCS=		start.S conf.c metadata.c vers.c main.c lv1call.S
-SRCS+=		ps3cons.c font.h ps3mmu.c 
+SRCS=		start.S conf.c metadata.c vers.c main.c devicename.c
+SRCS+=		lv1call.S ps3cons.c font.h ps3mmu.c ps3net.c
 SRCS+=		ucmpdi2.c
 
-LOADER_DISK_SUPPORT?=	no
-LOADER_UFS_SUPPORT?=	no
-LOADER_CD9660_SUPPORT?=	no
+LOADER_DISK_SUPPORT?=	yes
+LOADER_UFS_SUPPORT?=	yes
+LOADER_CD9660_SUPPORT?=	yes
 LOADER_EXT2FS_SUPPORT?=	no
-LOADER_NET_SUPPORT?=	no
-LOADER_NFS_SUPPORT?=	no
+LOADER_NET_SUPPORT?=	yes
+LOADER_NFS_SUPPORT?=	yes
 LOADER_TFTP_SUPPORT?=	no
-LOADER_GZIP_SUPPORT?=	no
+LOADER_GZIP_SUPPORT?=	yes
 LOADER_BZIP2_SUPPORT?=	no
 
 .if ${LOADER_DISK_SUPPORT} == "yes"

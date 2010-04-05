@@ -45,5 +45,26 @@ int lv1_gpu_memory_allocate(int size, int, int, int, int, uint64_t *handle,
 	uint64_t *paddr);
 int lv1_gpu_context_allocate(uint64_t handle, int, uint64_t *context);
 
+int lv1_open_device(int, int, int /* 0 */);
+int lv1_close_device(int, int);
+int lv1_setup_dma(int, int, uint64_t *dmabase);
+
+#define GELIC_GET_MAC_ADDRESS	0x0001
+#define GELIC_GET_LINK_STATUS	0x0002
+#define  GELIC_LINK_UP		0x0001
+#define  GELIC_FULL_DUPLEX	0x0002
+#define  GELIC_AUTO_NEG		0x0004
+#define  GELIC_SPEED_10		0x0010
+#define  GELIC_SPEED_100	0x0020
+#define  GELIC_SPEED_1000	0x0040
+#define GELIC_GET_VLAN_ID	0x0004
+
+int lv1_net_init(int bus, int dev);
+int lv1_net_control(int bus, int dev, int, int, int, int, uint64_t *);
+int lv1_net_start_tx_dma(int bus, int dev, uint32_t addr, int);
+int lv1_net_start_rx_dma(int bus, int dev, uint32_t addr, int);
+int lv1_net_stop_tx_dma(int bus, int dev, int);
+int lv1_net_stop_rx_dma(int bus, int dev, int);
+
 #endif
 

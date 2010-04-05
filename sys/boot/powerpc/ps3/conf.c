@@ -46,7 +46,9 @@ __FBSDID("$FreeBSD: projects/ppc64/sys/boot/powerpc/ofw/conf.c 196951 2009-09-07
 /* Exported for libstand */
 struct devsw *devsw[] = {
 #if defined(LOADER_DISK_SUPPORT) || defined(LOADER_CD9660_SUPPORT)
-    &ofwdisk,
+#ifdef NOTYET
+    &ps3disk,
+#endif
 #endif
 #if defined(LOADER_NET_SUPPORT)
     &netdev,
@@ -79,9 +81,11 @@ struct fs_ops *file_system[] = {
     NULL
 };
 
+extern struct netif_driver ps3net;
+
 struct netif_driver *netif_drivers[] = {
 #if defined(LOADER_NET_SUPPORT)
-	&ofwnet,
+	&ps3net,
 #endif
 	NULL,
 };

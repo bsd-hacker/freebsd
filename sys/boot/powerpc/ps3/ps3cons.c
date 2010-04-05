@@ -115,41 +115,44 @@ ps3cons_putchar(int c)
 	int i, j, k;
 	u_char *p;
 
-	if (c == 0 || c == '\r')
-		return;
-
-	/* Move down on newlines */
-	if (c == '\n') {
-		y += FONT_SIZE;
-		x = 0;
-		return;
-	}
-
-	/* Wrap long lines */
-	if (x + XMARGIN + FONT_SIZE > fb_width - XMARGIN) {
-		y += FONT_SIZE;
-		x = 0;
-	}
-		
-
 	fg = FG_COLOR;
 	bg = BG_COLOR;
 
-	addr = fb_vaddr + (y + YMARGIN)*fb_width + (x + XMARGIN);
-	p = FONT + c*FONT_SIZE;
+	switch (c) {
+	case '\0':
+	case '\r':
+		break;
+	case '\n':
+		y += FONT_SIZE;
+		x = 0;
+		break;
+	case '\b':
+		x = max(0, x - 8);
+		break;
+	default:
+		/* Wrap long lines */
+		if (x + XMARGIN + FONT_SIZE > fb_width - XMARGIN) {
+			y += FONT_SIZE;
+			x = 0;
+		}
+		
+		addr = fb_vaddr + (y + YMARGIN)*fb_width + (x + XMARGIN);
+		p = FONT + c*FONT_SIZE;
 
-	for (i = 0; i < FONT_SIZE; i++) {
-		for (j = 0, k = 7; j < 8; j++, k--) {
-			if ((p[i] & (1 << k)) == 0)
-				*(addr + j) = bg;
-			else
-				*(addr + j) = fg;
+		for (i = 0; i < FONT_SIZE; i++) {
+			for (j = 0, k = 7; j < 8; j++, k--) {
+				if ((p[i] & (1 << k)) == 0)
+					*(addr + j) = bg;
+				else
+					*(addr + j) = fg;
+			}
+
+			addr += fb_width;
 		}
 
-		addr += fb_width;
+		x += 8;
+		break;
 	}
-
-	x += 8;
 }
 
 static int

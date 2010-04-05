@@ -29,6 +29,9 @@ __FBSDID("$FreeBSD: head/sys/boot/powerpc/ofw/start.c 174722 2007-12-17 22:18:07
 #include <stand.h>
 #include <sys/param.h>
 
+#define _KERNEL
+#include <machine/cpufunc.h>
+
 #include "bootstrap.h"
 #include "lv1call.h"
 #include "ps3.h"
@@ -40,6 +43,10 @@ extern char bootprog_name[];
 extern char bootprog_rev[];
 extern char bootprog_date[];
 extern char bootprog_maker[];
+
+int ps3_getdev(void **vdev, const char *devspec, const char **path);
+
+static uint64_t basetb;
 
 int
 main(void)
@@ -70,15 +77,27 @@ main(void)
 		if (devsw[i]->dv_init != NULL)
 			(devsw[i]->dv_init)();
 
+	/*
+	 * Get timebase at boot.
+	 */
+	basetb = mftb();
+
+	archsw.arch_getdev = ps3_getdev;
+
 	printf("\n");
 	printf("%s, Revision %s\n", bootprog_name, bootprog_rev);
 	printf("(%s, %s)\n", bootprog_maker, bootprog_date);
 	printf("Memory: %lldKB\n", maxmem / 1024);
 
+	env_setenv("currdev", EV_VOLATILE, "net", NULL, NULL);
+	env_setenv("loaddev", EV_VOLATILE, "net", NULL, NULL);
+
 	interact();			/* doesn't return */
 
 	return (0);
 }
+
+const u_int ns_per_tick = 12;
 
 void
 exit(int code)
@@ -88,12 +107,18 @@ exit(int code)
 void
 delay(int usecs)
 {
+	uint64_t tb,ttb;
+	tb = mftb();
+
+	ttb = tb + (usecs * 1000 + ns_per_tick - 1) / ns_per_tick;
+	while (tb < ttb)
+		tb = mftb();
 }
 
 int
 getsecs()
 {
-	return (0);
+	return ((mftb() - basetb)*ns_per_tick/1000000000);
 }
 
 time_t
@@ -101,5 +126,4 @@ time(time_t *tloc)
 {
 	return (0);
 }
-
 

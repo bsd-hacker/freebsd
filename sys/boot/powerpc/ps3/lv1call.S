@@ -9,6 +9,36 @@
 	addis	r,r,high; \
 	addi	r,r,low;
 
+#define SIMPLE_HVCALL(x, c) \
+.global x;			\
+x:				\
+	mflr	%r0;		\
+	stw	%r0,4(%r1);	\
+	clrldi	%r3,%r3,32;	\
+	clrldi	%r4,%r4,32;	\
+	clrldi	%r5,%r5,32;	\
+	clrldi	%r6,%r6,32;	\
+	clrldi	%r7,%r7,32;	\
+	clrldi	%r8,%r8,32;	\
+	clrldi	%r9,%r9,32;	\
+	clrldi	%r10,%r10,32;	\
+	li	%r11,c;		\
+	hc;			\
+	extsw	%r3,%r3;	\
+	lwz	%r0,4(%r1);	\
+	mtlr	%r0;		\
+	blr
+
+SIMPLE_HVCALL(lv1_open_device, 170)
+SIMPLE_HVCALL(lv1_close_device, 171)
+SIMPLE_HVCALL(lv1_gpu_open, 210)
+SIMPLE_HVCALL(lv1_gpu_context_attribute, 225)
+SIMPLE_HVCALL(lv1_panic, 255)
+SIMPLE_HVCALL(lv1_net_start_tx_dma, 187)
+SIMPLE_HVCALL(lv1_net_stop_tx_dma, 188)
+SIMPLE_HVCALL(lv1_net_start_rx_dma, 189)
+SIMPLE_HVCALL(lv1_net_stop_rx_dma, 190)
+
 .global lv1_get_physmem
 lv1_get_physmem:
 	mflr	%r0
@@ -98,45 +128,6 @@ lv1_insert_pte:
 	mtlr	%r0
 	blr
 
-.global lv1_panic
-lv1_panic:
-	mflr	%r0
-	stw	%r0,4(%r1)
-
-	li	%r11,255
-	hc
-	extsw	%r3,%r3
-
-	lwz	%r0,4(%r1)
-	mtlr	%r0
-	blr
-
-.global lv1_gpu_open
-lv1_gpu_open:
-	mflr	%r0
-	stw	%r0,4(%r1)
-
-	li	%r11,210
-	hc
-	extsw	%r3,%r3
-
-	lwz	%r0,4(%r1)
-	mtlr	%r0
-	blr
-
-.global lv1_gpu_context_attribute
-lv1_gpu_context_attribute:
-	mflr	%r0
-	stw	%r0,4(%r1)
-
-	li	%r11,225
-	hc
-	extsw	%r3,%r3
-
-	lwz	%r0,4(%r1)
-	mtlr	%r0
-	blr
-	
 .global lv1_gpu_context_allocate
 lv1_gpu_context_allocate:
 	mflr	%r0
@@ -177,6 +168,62 @@ lv1_gpu_memory_allocate:
 	std	%r5,0(%r9)
 
 	lwz	%r0,4(%r1)
+	mtlr	%r0
+	blr
+
+.global lv1_net_control
+lv1_net_control:
+	mflr	%r0
+	stw	%r0,4(%r1)
+	stw	%r9,-4(%r1)
+
+	li	%r11,194
+	hc
+	extsw	%r3,%r3
+
+	lwz	%r8,-4(%r1)
+	std	%r4,0(%r8)
+
+	lwz	%r0,4(%r1)
+	mtlr	%r0
+	blr
+
+.global lv1_setup_dma
+lv1_setup_dma:
+	mflr	%r0
+	stw	%r0,4(%r1)
+	stw	%r3,-4(%r1)
+	stw	%r4,-8(%r1)
+	stw	%r5,-12(%r1)
+
+	lwz	%r3,-4(%r1)
+	lwz	%r4,-8(%r1)
+	lis	%r5,0x0800	/* 128 MB */
+	li	%r6,24		/* log2(IO_PAGESIZE) */
+	li	%r7,0		/* flags */
+	li	%r11,174	/* lv1_allocate_device_dma_region */
+	hc
+	extsw	%r3,%r3
+	cmpdi	%r3,0
+	bne	1f
+	std	%r4,-24(%r1)
+
+	lwz	%r3,-4(%r1)
+	lwz	%r4,-8(%r1)
+	li	%r5,0
+	ld	%r6,-24(%r1)
+	lis	%r7,0x0800	/* 128 MB */
+	lis	%r8,0xf800	/* flags */
+	sldi	%r8,%r8,32
+	li	%r11,176	/* lv1_map_device_dma_region */
+	hc
+	extsw	%r3,%r3
+
+	lwz	%r9,-12(%r1)
+	ld	%r6,-24(%r1)
+	std	%r6,0(%r9)
+
+1:	lwz	%r0,4(%r1)
 	mtlr	%r0
 	blr
 
