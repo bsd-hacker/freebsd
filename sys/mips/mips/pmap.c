@@ -389,8 +389,8 @@ again:
 	 */
 	if (memory_larger_than_512meg) {
 		for (i = 0; i < MAXCPU; i++) {
-			pte_set(&sysmap_lmem[i].CMAP1, PG_G);
-			pte_set(&sysmap_lmem[i].CMAP2, PG_G);
+			sysmap_lmem[i].CMAP1 = PG_G;
+			sysmap_lmem[i].CMAP2 = PG_G;
 			sysmap_lmem[i].CADDR1 = (caddr_t)virtual_avail;
 			virtual_avail += PAGE_SIZE;
 			sysmap_lmem[i].CADDR2 = (caddr_t)virtual_avail;
@@ -2175,7 +2175,7 @@ pmap_kenter_temporary(vm_paddr_t pa, int i)
 		cpu = PCPU_GET(cpuid);
 		sysm = &sysmap_lmem[cpu];
 		/* Since this is for the debugger, no locks or any other fun */
-		sysm->CMAP1 = TLBLO_PA_TO_PFN(pa) | PG_D | PG_V | PG_G | PG_G | PG_C_CNC;
+		sysm->CMAP1 = TLBLO_PA_TO_PFN(pa) | PG_D | PG_V | PG_G | PG_W | PG_C_CNC;
 		sysm->valid1 = 1;
 		pmap_update_page(kernel_pmap, (vm_offset_t)sysm->CADDR1, sysm->CMAP1);
 		va = (vm_offset_t)sysm->CADDR1;
