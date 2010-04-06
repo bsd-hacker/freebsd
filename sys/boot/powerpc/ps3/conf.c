@@ -96,10 +96,10 @@ struct netif_driver *netif_drivers[] = {
  * rather than reading the file go first.
  */
 
+extern struct file_format ppc_elf64;
+
 struct file_format *file_formats[] = {
-#if 0
-    &ofw_elf64,
-#endif
+    &ppc_elf64,
     NULL
 };
 

@@ -31,7 +31,7 @@ CFLAGS+=	-mno-sse3
 CFLAGS+=	-Os
 .endif
 .if ${MACHINE_ARCH} == "powerpc" || ${MACHINE_ARCH} == "powerpc64"
-CFLAGS+=	-msoft-float -D_STANDALONE
+CFLAGS+=	-msoft-float -D_STANDALONE -DNETIF_DEBUG
 .endif
 .if ${MACHINE_ARCH} == "amd64" || ${MACHINE_ARCH} == "powerpc64"
 CFLAGS+=	-m32 -I.

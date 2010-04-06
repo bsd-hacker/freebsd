@@ -68,7 +68,6 @@ __FBSDID("$FreeBSD$");
 
 #define	X86BIOS_R_DS		_pad1
 #define	X86BIOS_R_SS		_pad2
-#define	X86BIOS_R_SP		_pad3.I16_reg.x_reg
 
 static struct x86emu x86bios_emu;
 
@@ -112,17 +111,16 @@ x86bios_set_fault(struct x86emu *emu, uint32_t addr)
 static void *
 x86bios_get_pages(uint32_t offset, size_t size)
 {
-	int i;
+	vm_offset_t page;
 
 	if (offset + size > X86BIOS_MEM_SIZE + X86BIOS_IVT_SIZE)
 		return (NULL);
 
 	if (offset >= X86BIOS_MEM_SIZE)
 		offset -= X86BIOS_MEM_SIZE;
-	i = offset / X86BIOS_PAGE_SIZE;
-	if (x86bios_map[i] != 0)
-		return ((void *)(x86bios_map[i] + offset -
-		    i * X86BIOS_PAGE_SIZE));
+	page = x86bios_map[offset / X86BIOS_PAGE_SIZE];
+	if (page != 0)
+		return ((void *)(page + offset % X86BIOS_PAGE_SIZE));
 
 	return (NULL);
 }
@@ -307,8 +305,8 @@ x86bios_emu_get_intr(struct x86emu *emu, int intno)
 	sp[2] = htole16(emu->x86.R_FLG);
 
 	iv = x86bios_get_intr(intno);
-	emu->x86.R_IP = iv & 0x000f;
-	emu->x86.R_CS = (iv >> 12) & 0xffff;
+	emu->x86.R_IP = iv & 0xffff;
+	emu->x86.R_CS = (iv >> 16) & 0xffff;
 	emu->x86.R_FLG &= ~(F_IF | F_TF);
 }
 
@@ -355,7 +353,6 @@ x86bios_init_regs(struct x86regs *regs)
 	bzero(regs, sizeof(*regs));
 	regs->X86BIOS_R_DS = 0x40;
 	regs->X86BIOS_R_SS = x86bios_seg_phys >> 4;
-	regs->X86BIOS_R_SP = 0xfffe;
 }
 
 void

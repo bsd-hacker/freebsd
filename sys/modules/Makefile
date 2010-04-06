@@ -20,6 +20,7 @@ SUBDIR=	${_3dfx} \
 	aio \
 	alc \
 	ale \
+	alq \
 	${_amd} \
 	${_amdsbwd} \
 	${_amdtemp} \
@@ -34,15 +35,15 @@ SUBDIR=	${_3dfx} \
 	ata \
 	ath \
 	${_auxio} \
-	bce \
+	${_bce} \
 	bfe \
 	bge \
 	${_bios} \
 	${_bktr} \
 	${_bm} \
 	bridgestp \
-	bwi \
-	bwn \
+	${_bwi} \
+	${_bwn} \
 	cam \
 	${_canbepm} \
 	${_canbus} \
@@ -66,7 +67,7 @@ SUBDIR=	${_3dfx} \
 	${_cryptodev} \
 	${_cs} \
 	${_ctau} \
-	cxgb \
+	${_cxgb} \
 	${_cyclic} \
 	dc \
 	dcons \
@@ -175,13 +176,13 @@ SUBDIR=	${_3dfx} \
 	mcd \
 	md \
 	mem \
-	mfi \
+	${_mfi} \
 	mii \
 	mlx \
 	${_mly} \
 	mmc \
 	mmcsd \
-	mpt \
+	${_mpt} \
 	mqueue \
 	msdosfs \
 	msdosfs_iconv \
@@ -251,7 +252,7 @@ SUBDIR=	${_3dfx} \
 	sdhci \
 	sem \
 	sf \
-	siba_bwn \
+	${_siba_bwn} \
 	siis \
 	sis \
 	sk \
@@ -268,7 +269,7 @@ SUBDIR=	${_3dfx} \
 	stge \
 	${_streams} \
 	${_svr4} \
-	sym \
+	${_sym} \
 	${_syscons} \
 	sysvipc \
 	ti \
@@ -279,7 +280,7 @@ SUBDIR=	${_3dfx} \
 	twe \
 	tx \
 	txp \
-	uart \
+	${_uart} \
 	ubsec \
 	udf \
 	udf_iconv \
@@ -312,9 +313,26 @@ SUBDIR=	${_3dfx} \
 	${_zfs} \
 	zlib \
 
-.if ${MACHINE_ARCH} != "powerpc" && ${MACHINE_ARCH} != "powerpc64"
+.if ${MACHINE_ARCH} != "powerpc" && ${MACHINE_ARCH} != "powerpc64" && \
+	&& ${MACHINE_ARCH} != "arm" && ${MACHINE_ARCH} != "mips"
 _syscons=	syscons
 _vpo=		vpo
+.endif
+
+.if ${MACHINE_ARCH} != "arm" && ${MACHINE_ARCH} != "mips"
+# no BUS_SPACE_UNSPECIFIED
+_bce=		bce
+_bwi=		bwi
+_bwn=		bwn
+_mfi=		mfi
+_mpt=		mpt
+_siba_bwn=	siba_bwn
+# No barrier instruction support (specific to this driver)
+_sym=		sym
+# no uart_cpu_$MACHINE_ARCH
+_uart=		uart
+# intr_disable() is a macro, causes problems
+_cxgb=		cxgb
 .endif
 
 .if ${MK_CRYPT} != "no" || defined(ALL_MODULES)
@@ -565,10 +583,7 @@ _zfs=		zfs
 .endif
 
 .if ${MACHINE_ARCH} == "ia64"
-# Modules not enabled on ia64 (as compared to i386) include:
-#	aac acpi aout apm atspeaker drm ibcs2 linprocfs linux ncv
-#	nsp s3 sbni stg vesa
-# acpi is not enabled because it is broken as a module on ia64
+_aac=		aac
 _aic=		aic
 _an=		an
 _arcnet=	arcnet
@@ -581,12 +596,17 @@ _cm=		cm
 _cmx=		cmx
 _coff=		coff
 _cpufreq=	cpufreq
+_dpt=		dpt
 _em=		em
 _ep=		ep
+_et=		et
 _exca=		exca
 _fe=		fe
+_hptiop=	hptiop
+_ida=		ida
 _igb=		igb
 _iir=		iir
+_ips=		ips
 _mly=		mly
 _pccard=	pccard
 _scsi_low=	scsi_low
@@ -595,6 +615,7 @@ _sound=		sound
 _splash=	splash
 _sppp=		sppp
 _streams=	streams
+_twa=		twa
 _wi=		wi
 _xe=		xe
 .endif

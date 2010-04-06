@@ -135,6 +135,9 @@ ps3cons_putchar(int c)
 			y += FONT_SIZE;
 			x = 0;
 		}
+
+		if (y + YMARGIN + FONT_SIZE > fb_height - YMARGIN)
+			y = 0;
 		
 		addr = fb_vaddr + (y + YMARGIN)*fb_width + (x + XMARGIN);
 		p = FONT + c*FONT_SIZE;

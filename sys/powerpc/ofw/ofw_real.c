@@ -871,7 +871,7 @@ ofw_real_close(ofw_t ofw, ihandle_t instance)
 
 	args.name = (cell_t)(uintptr_t)"close";
 	args.nargs = 1;
-
+	args.nreturns = 0;
 	args.instance = instance;
 	ofw_real_start();
 	argsptr = ofw_real_map(&args, sizeof(args));
@@ -1034,6 +1034,7 @@ ofw_real_release(ofw_t ofw, void *virt, size_t size)
 
 	args.name = (cell_t)(uintptr_t)"release";
 	args.nargs = 2;
+	args.nreturns = 0;
 
 	args.virt = (cell_t)(uintptr_t)virt;
 	args.size = size;
@@ -1059,6 +1060,8 @@ ofw_real_enter(ofw_t ofw)
 	} args;
 
 	args.name = (cell_t)(uintptr_t)"enter";
+	args.nargs = 0;
+	args.nreturns = 0;
 
 	ofw_real_start();
 	argsptr = ofw_real_map(&args, sizeof(args));
@@ -1079,6 +1082,8 @@ ofw_real_exit(ofw_t ofw)
 	} args;
 
 	args.name = (cell_t)(uintptr_t)"exit";
+	args.nargs = 0;
+	args.nreturns = 0;
 
 	ofw_real_start();
 	argsptr = ofw_real_map(&args, sizeof(args));

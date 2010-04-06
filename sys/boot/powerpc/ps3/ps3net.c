@@ -120,8 +120,10 @@ ps3net_put(struct iodesc *desc, void *pkt, size_t len)
 	printf("type: 0x%x\n", eh->ether_type & 0xffff);
 #endif
 
-	while (txdesc.cmd_stat & GELIC_DESCR_OWNED)
+	while (txdesc.cmd_stat & GELIC_DESCR_OWNED) {
+		printf("Stalled XMIT!\n");
 		delay(10);
+	}
 
 	/*
 	 * We must add 4 extra bytes to this packet to store the destination
@@ -152,6 +154,8 @@ ps3net_put(struct iodesc *desc, void *pkt, size_t len)
 		err = lv1_net_start_tx_dma(busid, devid,
 		    dma_base + (uint32_t)&txdesc, 0);
 		delay(1);
+		if (err != 0)
+			printf("TX Error: %d\n",err);
 	} while (err != 0);
 
 	return (len);
@@ -261,6 +265,7 @@ ps3net_init(struct iodesc *desc, void *machdep_hint)
 	 */
 
 	ps3net_get(NULL, NULL, 0, 0);
+	debug = 1;
 }
 
 static void

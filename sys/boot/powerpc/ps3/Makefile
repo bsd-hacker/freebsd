@@ -9,7 +9,7 @@ BINDIR?=	/boot
 INSTALLFLAGS=	-b
 
 # Architecture-specific loader code
-SRCS=		start.S conf.c metadata.c vers.c main.c devicename.c
+SRCS=		start.S conf.c metadata.c vers.c main.c devicename.c ppc64_elf_freebsd.c
 SRCS+=		lv1call.S ps3cons.c font.h ps3mmu.c ps3net.c
 SRCS+=		ucmpdi2.c
 
@@ -71,7 +71,7 @@ CFLAGS+=	-I.
 
 CLEANFILES+=	vers.c loader.help
 
-CFLAGS+=	-Wall -ffreestanding -msoft-float -DAIM
+CFLAGS+=	-Wall -ffreestanding -msoft-float -DAIM -DNETIF_DEBUG
 # load address. set in linker script
 RELOC?=		0x0
 CFLAGS+=	-DRELOC=${RELOC}
