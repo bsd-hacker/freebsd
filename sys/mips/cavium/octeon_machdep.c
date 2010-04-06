@@ -526,12 +526,8 @@ octeon_memory_init(void)
 	uint32_t realmem_bytes;
 
 	if (octeon_board_real()) {
-		printf("octeon_dram == %jx\n", (intmax_t)octeon_dram);
-		printf("reduced to ram: %u MB", (uint32_t)octeon_dram >> 20);
-
 		realmem_bytes = (octeon_dram - PAGE_SIZE);
 		realmem_bytes &= ~(PAGE_SIZE - 1);
-		printf("Real memory bytes is %x\n", realmem_bytes);
 	} else {
 		/* Simulator we limit to 96 meg */
 		realmem_bytes = (96 << 20);
@@ -545,8 +541,6 @@ octeon_memory_init(void)
 			phys_avail[1] = realmem_bytes;
 		realmem_bytes -= OCTEON_DRAM_FIRST_256_END;
 		realmem_bytes &= ~(PAGE_SIZE - 1);
-		printf("phys_avail[0] = %#lx phys_avail[1] = %#lx\n",
-		       (long)phys_avail[0], (long)phys_avail[1]);
 	} else {
 		/* Simulator gets 96Meg period. */
 		phys_avail[1] = (96 << 20);
@@ -572,23 +566,14 @@ octeon_memory_init(void)
 		realmem_bytes &= ~(PAGE_SIZE - 1);
 		/* Now map the rest of the memory */
 		phys_avail[2] = 0x20000000;
-		printf("realmem_bytes is now at %x\n", realmem_bytes);
 		phys_avail[3] = ((uint32_t) 0x20000000 + realmem_bytes);
-		printf("Next block of memory goes from %#lx to %#lx\n",
-		    (long)phys_avail[2], (long)phys_avail[3]);
 		physmem += btoc(phys_avail[3] - phys_avail[2]);
-	} else {
-		printf("realmem_bytes is %d\n", realmem_bytes);
 	}
 	realmem = physmem;
 
 	printf("Total DRAM Size %#X\n", (uint32_t) octeon_dram);
 	printf("Bank 0 = %#08lX   ->  %#08lX\n", (long)phys_avail[0], (long)phys_avail[1]);
 	printf("Bank 1 = %#08lX   ->  %#08lX\n", (long)phys_avail[2], (long)phys_avail[3]);
-	printf("physmem: %#lx\n", physmem);
-
-	Maxmem = physmem;
-
 }
 
 void
