@@ -118,8 +118,7 @@ __FBSDID("$FreeBSD$");
 /*
  * Get PDEs and PTEs for user/kernel address space
  */
-#define	pmap_segshift(v)	((uintptr_t)(((v) & 0xffffffffu) >> SEGSHIFT))
-#define	pmap_segbase(v)		((vm_offset_t)(intptr_t)(int32_t)((v) << SEGSHIFT))
+#define	pmap_segshift(v)	(((v) >> SEGSHIFT) & (NPDEPG - 1))
 #define	pmap_pde(m, v)		(&((m)->pm_segtab[pmap_segshift((v))]))
 #define	segtab_pde(m, v)	((m)[pmap_segshift((v))])
 
@@ -3098,127 +3097,6 @@ pmap_align_superpage(vm_object_t object, vm_ooffset_t offset,
 	else
 		*addr = ((*addr + SEGOFSET) & ~SEGOFSET) + superpage_offset;
 }
-
-int pmap_pid_dump(int pid);
-
-int
-pmap_pid_dump(int pid)
-{
-	pmap_t pmap;
-	struct proc *p;
-	int npte = 0;
-	int index;
-
-	sx_slock(&allproc_lock);
-	LIST_FOREACH(p, &allproc, p_list) {
-		if (p->p_pid != pid)
-			continue;
-
-		if (p->p_vmspace) {
-			int i, j;
-
-			printf("vmspace is %p\n",
-			       p->p_vmspace);
-			index = 0;
-			pmap = vmspace_pmap(p->p_vmspace);
-			printf("pmap asid:%x generation:%x\n",
-			       pmap->pm_asid[0].asid,
-			       pmap->pm_asid[0].gen);
-			for (i = 0; i < NUSERPGTBLS; i++) {
-				pd_entry_t *pde;
-				pt_entry_t *pte;
-				unsigned base = pmap_segbase(i);
-
-				pde = &pmap->pm_segtab[i];
-				if (pde && *pde != 0) {
-					for (j = 0; j < 1024; j++) {
-						vm_offset_t va = base +
-						(j << PAGE_SHIFT);
-
-						pte = pmap_pte(pmap, va);
-						if (pte && pte_test(pte, PG_V)) {
-							vm_offset_t pa;
-							vm_page_t m;
-
-							pa = TLBLO_PTE_TO_PA(*pte);
-							m = PHYS_TO_VM_PAGE(pa);
-							printf("va: %p, pt: %p, h: %d, w: %d, f: 0x%x",
-							    (void *)va,
-							    (void *)pa,
-							    m->hold_count,
-							    m->wire_count,
-							    m->flags);
-							npte++;
-							index++;
-							if (index >= 2) {
-								index = 0;
-								printf("\n");
-							} else {
-								printf(" ");
-							}
-						}
-					}
-				}
-			}
-		} else {
-		  printf("Process pid:%d has no vm_space\n", pid);
-		}
-		break;
-	}
-	sx_sunlock(&allproc_lock);
-	return npte;
-}
-
-
-#if defined(DEBUG)
-
-static void pads(pmap_t pm);
-void pmap_pvdump(vm_offset_t pa);
-
-/* print address space of pmap*/
-static void
-pads(pmap_t pm)
-{
-	unsigned va, i, j;
-	pt_entry_t *ptep;
-
-	if (pm == kernel_pmap)
-		return;
-	for (i = 0; i < NPTEPG; i++)
-		if (pm->pm_segtab[i])
-			for (j = 0; j < NPTEPG; j++) {
-				va = pmap_segbase(i) + (j << PAGE_SHIFT);
-				if (pm == kernel_pmap && va < KERNBASE)
-					continue;
-				if (pm != kernel_pmap &&
-				    va >= VM_MAXUSER_ADDRESS)
-					continue;
-				ptep = pmap_pte(pm, va);
-				if (pmap_pte_v(ptep))
-					printf("%x:%x ", va, *(int *)ptep);
-			}
-
-}
-
-void
-pmap_pvdump(vm_offset_t pa)
-{
-	pv_entry_t pv;
-	vm_page_t m;
-
-	printf("pa %x", pa);
-	m = PHYS_TO_VM_PAGE(pa);
-	for (pv = TAILQ_FIRST(&m->md.pv_list); pv;
-	    pv = TAILQ_NEXT(pv, pv_list)) {
-		printf(" -> pmap %p, va %x", (void *)pv->pv_pmap, pv->pv_va);
-		pads(pv->pv_pmap);
-	}
-	printf(" ");
-}
-
-/* N/C */
-#endif
-
 
 /*
  * Allocate TLB address space tag (called ASID or TLBPID) and return it.
