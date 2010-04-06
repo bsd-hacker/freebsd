@@ -213,7 +213,7 @@ cpu_establish_softintr(const char *name, driver_filter_t *filt,
 	mips_intrcnt_setname(mips_intr_counters[irq], event->ie_fullname);
 }
 
-void
+register_t
 cpu_intr(struct trapframe *tf)
 {
 	struct intr_event *event;
@@ -266,4 +266,6 @@ cpu_intr(struct trapframe *tf)
 	KASSERT(i == 0, ("all interrupts handled"));
 
 	critical_exit();
+
+	return (tf->pc);
 }

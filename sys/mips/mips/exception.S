@@ -591,24 +591,22 @@ NNON_LEAF(MipsKernIntr, KERN_EXC_FRAME_SIZE, ra)
 	PTR_SUBU	sp, sp, KERN_EXC_FRAME_SIZE
 	.mask	0x80000000, (CALLFRAME_RA - KERN_EXC_FRAME_SIZE)
 /*
- * Save the relevant kernel registers onto the stack.
+ *  Save CPU state, building 'frame'.
  */
 	SAVE_CPU
-        
 /*
- * Call the interrupt handler.
+ *  Call the interrupt handler. a0 points at the saved frame.
  */
 	PTR_LA	gp, _C_LABEL(_gp)
-	PTR_ADDU a0, sp, CALLFRAME_SIZ
 	PTR_LA	k0, _C_LABEL(cpu_intr)
 	jalr	k0
-	REG_S	a3, CALLFRAME_RA + KERN_REG_SIZE(sp)
-	/* Why no AST processing here? */
+	REG_S	a3, CALLFRAME_RA + KERN_REG_SIZE(sp)		# for debugging
 
 	/*
 	 * Update interrupt mask in saved status register
 	 * Some of interrupts could be disabled by
-	 * intr filters
+	 * intr filters if interrupts are enabled later
+	 * in trap handler
 	 */
 	mfc0	a0, COP_0_STATUS_REG
 	and	a0, a0, SR_INT_MASK
@@ -616,12 +614,7 @@ NNON_LEAF(MipsKernIntr, KERN_EXC_FRAME_SIZE, ra)
 	and	a1, a1, ~SR_INT_MASK
 	or	a1, a1, a0
 	SAVE_REG(a1, SR, sp)
-
-/*
- * Restore registers and return from the interrupt.
- */
-	REG_L	v0, CALLFRAME_RA + KERN_REG_SIZE(sp)
-	RESTORE_CPU
+	RESTORE_CPU			# v0 contains the return address.
 	sync
 	eret
 	.set	at

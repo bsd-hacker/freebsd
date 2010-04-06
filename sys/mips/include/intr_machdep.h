@@ -43,7 +43,7 @@ void cpu_establish_hardintr(const char *, driver_filter_t *, driver_intr_t *,
     void *, int, int, void **);
 void cpu_establish_softintr(const char *, driver_filter_t *, void (*)(void*), 
     void *, int, int, void **);
-void cpu_intr(struct trapframe *);
+register_t cpu_intr(struct trapframe *);
 
 /*
  * Allow a platform to override the default hard interrupt mask and unmask
