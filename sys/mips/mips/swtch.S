@@ -294,7 +294,7 @@ blocked_loop:
 	PTR_L	a2, TD_PCB(a1)
 	PTR_S	a2, PC_CURPCB(a3)
 	PTR_L	v0, TD_KSTACK(a1)
-	li	s0, (MIPS_KSEG2_START+VM_KERNEL_ALLOC_OFFSET)		# If Uarea addr is below kseg2,
+	PTR_LI	s0, (MIPS_KSEG2_START+VM_KERNEL_ALLOC_OFFSET)		# If Uarea addr is below kseg2,
 	bltu	v0, s0, sw2			# no need to insert in TLB.
 	lw	a1, TD_UPTE(s7)			# t0 = u. pte
 /*
@@ -311,7 +311,7 @@ blocked_loop:
 	mfc0	s0, COP_0_TLB_INDEX
 	nop
 
-	li	t1, MIPS_KSEG0_START		# invalidate tlb entry
+	PTR_LI	t1, MIPS_KSEG0_START		# invalidate tlb entry
 	bltz	s0, entry0set
 	nop
 	sll	s0, PAGE_SHIFT

@@ -811,7 +811,7 @@ NLEAF(MipsTLBInvalidException)
 	.set noreorder
 
 	MFC0		k0, COP_0_BAD_VADDR
-	li		k1, VM_MAXUSER_ADDRESS
+	PTR_LI		k1, VM_MAXUSER_ADDRESS
 	sltu		k1, k0, k1
 	bnez		k1, 1f
 	nop
@@ -975,7 +975,7 @@ END(MipsTLBInvalidException)
 NLEAF(MipsTLBMissException)
 	.set	noat
 	MFC0		k0, COP_0_BAD_VADDR		# k0=bad address
-	li		k1, VM_MAX_KERNEL_ADDRESS	# check fault address against
+	PTR_LI		k1, VM_MAX_KERNEL_ADDRESS	# check fault address against
 	sltu		k1, k1, k0			# upper bound of kernel_segmap
 	bnez		k1, MipsKernGenException	# out of bound
 	lui		k1, %hi(kernel_segmap)		# k1=hi of segbase
@@ -1151,7 +1151,7 @@ VECTOR(MipsCache, unknown)
 	PTR_LA	k0, _C_LABEL(MipsCacheException)
 	li	k1, MIPS_PHYS_MASK
 	and	k0, k1
-	li	k1, MIPS_KSEG1_START
+	PTR_LI	k1, MIPS_KSEG1_START
 	or	k0, k1
 	j	k0
 	nop

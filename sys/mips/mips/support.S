@@ -1409,8 +1409,7 @@ END(fusufault)
        a pointer that is in user space.	 It will be used as the basic primitive
        for a kernel supported user space lock implementation. */
 LEAF(casuptr)
-
-	li	t0, VM_MAXUSER_ADDRESS /* verify address validity */
+	PTR_LI	t0, VM_MAXUSER_ADDRESS /* verify address validity */
 	blt	a0, t0, fusufault		/* trap faults */
 	nop
 
