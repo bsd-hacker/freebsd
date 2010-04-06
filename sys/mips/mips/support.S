@@ -171,12 +171,12 @@ END(copystr)
  */
 LEAF(fillw)
 1:
-	addiu	a2, a2, -1
-	sh	a0, 0(a1)
-	bne	a2,zero, 1b
-	addiu	a1, a1, 2
+	PTR_ADDU	a2, a2, -1
+	sh		a0, 0(a1)
+	bne		a2,zero, 1b
+	PTR_ADDU	a1, a1, 2
 
-	jr	ra
+	jr		ra
 	nop
 END(fillw)
 
@@ -185,13 +185,13 @@ END(fillw)
  * mem_zero_page(addr);
  */
 LEAF(mem_zero_page)
-	li	v0, PAGE_SIZE
+	li		v0, PAGE_SIZE
 1:
-	subu	v0, 8
-	sd	zero, 0(a0)
-	bne	zero, v0, 1b
-	addu	a0, 8
-	jr	ra
+	PTR_SUBU	v0, 8
+	sd		zero, 0(a0)
+	bne		zero, v0, 1b
+	PTR_ADDU	a0, 8
+	jr		ra
 	nop
 END(mem_zero_page)
 
@@ -203,56 +203,56 @@ END(mem_zero_page)
  *			a2 = count
  */
 LEAF(insb)
-	beq	a2, zero, 2f
-	addu	a2, a1
+	beq		a2, zero, 2f
+	PTR_ADDU	a2, a1
 1:
-	lbu	v0, 0(a0)
-	addiu	a1, 1
-	bne	a1, a2, 1b
-	sb	v0, -1(a1)
+	lbu		v0, 0(a0)
+	PTR_ADDU	a1, 1
+	bne		a1, a2, 1b
+	sb		v0, -1(a1)
 2:
-	jr	ra
+	jr		ra
 	nop
 END(insb)
 
 LEAF(insw)
-	beq	a2, zero, 2f
-	addu	a2, a2
-	addu	a2, a1
+	beq		a2, zero, 2f
+	PTR_ADDU	a2, a2
+	PTR_ADDU	a2, a1
 1:
-	lhu	v0, 0(a0)
-	addiu	a1, 2
-	bne	a1, a2, 1b
-	sh	v0, -2(a1)
+	lhu		v0, 0(a0)
+	PTR_ADDU	a1, 2
+	bne		a1, a2, 1b
+	sh		v0, -2(a1)
 2:
-	jr	ra
+	jr		ra
 	nop
 END(insw)
 
 LEAF(insl)
-	beq	a2, zero, 2f
-	sll	a2, 2
-	addu	a2, a1
+	beq		a2, zero, 2f
+	sll		a2, 2
+	PTR_ADDU	a2, a1
 1:
-	lw	v0, 0(a0)
-	addiu	a1, 4
-	bne	a1, a2, 1b
-	sw	v0, -4(a1)
+	lw		v0, 0(a0)
+	PTR_ADDU	a1, 4
+	bne		a1, a2, 1b
+	sw		v0, -4(a1)
 2:
-	jr	ra
+	jr		ra
 	nop
 END(insl)
 
 LEAF(outsb)
-	beq	a2, zero, 2f
-	addu	a2, a1
+	beq		a2, zero, 2f
+	PTR_ADDU	a2, a1
 1:
-	lbu	v0, 0(a1)
-	addiu	a1, 1
-	bne	a1, a2, 1b
-	sb	v0, 0(a0)
+	lbu		v0, 0(a1)
+	PTR_ADDU	a1, 1
+	bne		a1, a2, 1b
+	sb		v0, 0(a0)
 2:
-	jr	ra
+	jr		ra
 	nop
 END(outsb)
 
