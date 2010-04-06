@@ -117,12 +117,22 @@ __FBSDID("$FreeBSD$");
 
 /*
  * Get PDEs and PTEs for user/kernel address space
+ *
+ * XXX The & for pmap_segshift() is wrong, as is the fact that it doesn't
+ *     trim off gratuitous bits of the address space.  By having the &
+ *     there, we break defining NUSERPGTBLS below because the address space
+ *     is defined such that it ends immediately after NPDEPG*NPTEPG*PAGE_SIZE,
+ *     so we end up getting NUSERPGTBLS of 0.
  */
 #define	pmap_segshift(v)	(((v) >> SEGSHIFT) & (NPDEPG - 1))
 #define	pmap_pde(m, v)		(&((m)->pm_segtab[pmap_segshift((v))]))
 #define	segtab_pde(m, v)	((m)[pmap_segshift((v))])
 
+#if defined(__mips_n64)
+#define	NUSERPGTBLS		(NPDEPG)
+#else
 #define	NUSERPGTBLS		(pmap_segshift(VM_MAXUSER_ADDRESS))
+#endif
 #define	mips_segtrunc(va)	((va) & ~SEGOFSET)
 #define	is_kernel_pmap(x)	((x) == kernel_pmap)
 

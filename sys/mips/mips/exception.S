@@ -472,7 +472,7 @@ NNON_LEAF(MipsUserGenException, CALLFRAME_SIZ, ra)
 # Turn off fpu and enter kernel mode
 	and	t0, a0, ~(SR_COP_1_BIT | SR_EXL | SR_KSU_MASK | SR_INT_ENAB)
 #ifdef TARGET_OCTEON
-	or      t0, t0, (MIPS_SR_KX | MIPS_SR_SX | MIPS_SR_UX)
+	or      t0, t0, (MIPS_SR_KX | MIPS_SR_SX | MIPS_SR_UX | MIPS32_SR_PX)
 #endif	
 	mtc0	t0, COP_0_STATUS_REG
 	PTR_ADDU a0, k1, U_PCB_REGS
@@ -491,10 +491,7 @@ NNON_LEAF(MipsUserGenException, CALLFRAME_SIZ, ra)
  */
 	DO_AST
 
-	mfc0	t0, COP_0_STATUS_REG	# disable int
-	and	t0, t0, ~(MIPS_SR_INT_IE)
-	mtc0	t0, COP_0_STATUS_REG
-	ITLBNOPFIX
+	CLEAR_STATUS
 
 /*
  * The use of k1 for storing the PCB pointer must be done only
@@ -551,9 +548,6 @@ NNON_LEAF(MipsUserGenException, CALLFRAME_SIZ, ra)
 	RESTORE_U_PCB_REG(k0, SR, k1)
 	RESTORE_U_PCB_REG(s8, S8, k1)
 	RESTORE_U_PCB_REG(ra, RA, k1)
-#ifdef TARGET_OCTEON
-	and k0, k0, ~(MIPS_SR_KX | MIPS_SR_SX | MIPS_SR_UX)
-#endif
 	.set noat
 	RESTORE_U_PCB_REG(AT, AST, k1)
 
@@ -693,7 +687,7 @@ NNON_LEAF(MipsUserIntr, CALLFRAME_SIZ, ra)
 # Turn off fpu, disable interrupts, set kernel mode kernel mode, clear exception level.
 	and	t0, a0, ~(SR_COP_1_BIT | SR_EXL | SR_INT_ENAB | SR_KSU_MASK)
 #ifdef TARGET_OCTEON
-	or      t0, t0, (MIPS_SR_KX | MIPS_SR_SX | MIPS_SR_UX)
+	or      t0, t0, (MIPS_SR_KX | MIPS_SR_SX | MIPS_SR_UX | MIPS32_SR_PX)
 #endif	
 	mtc0	t0, COP_0_STATUS_REG
 	ITLBNOPFIX
@@ -725,10 +719,7 @@ NNON_LEAF(MipsUserIntr, CALLFRAME_SIZ, ra)
 /*
  * Restore user registers and return. 
  */
-	mfc0	t0, COP_0_STATUS_REG	# disable int
-	and	t0, t0, ~(MIPS_SR_INT_IE)
-	mtc0	t0, COP_0_STATUS_REG
-	ITLBNOPFIX
+ 	CLEAR_STATUS
 
 	GET_CPU_PCPU(k1)
 	PTR_L	k1, PC_CURPCB(k1)
@@ -780,9 +771,6 @@ NNON_LEAF(MipsUserIntr, CALLFRAME_SIZ, ra)
 	RESTORE_U_PCB_REG(k0, SR, k1)
 	RESTORE_U_PCB_REG(sp, SP, k1)
 	RESTORE_U_PCB_REG(ra, RA, k1)
-#ifdef TARGET_OCTEON
-	and k0, k0, ~(MIPS_SR_KX | MIPS_SR_SX | MIPS_SR_UX)
-#endif
 	.set	noat
 	RESTORE_U_PCB_REG(AT, AST, k1)
 
@@ -986,6 +974,10 @@ NLEAF(MipsTLBMissException)
 	PTR_SRL		k0, PAGE_SHIFT - 2		# k0=VPN
 	andi		k0, k0, 0x1ffc			# k0=page tab offset
 	PTR_ADDU	k1, k1, k0			# k1=pte address
+	lw		k0, 0(k1)			# k0=lo0 pte
+	andi		k0, PG_V
+	beqz		k0, MipsKernGenException	# no PTE
+	nop
 	lw		k0, 0(k1)			# k0=lo0 pte
 	CLEAR_PTE_SWBITS(k0)
 	MTC0		k0, COP_0_TLB_LO0		# lo0 is loaded
