@@ -144,24 +144,24 @@ END(badaddr)
  * string is too long, return ENAMETOOLONG; else return 0.
  */
 LEAF(copystr)
-	move	t0, a2
-	beq	a2, zero, 4f
+	move		t0, a2
+	beq		a2, zero, 4f
 1:
-	lbu	v0, 0(a0)
-	subu	a2, a2, 1
-	beq	v0, zero, 2f
-	sb	v0, 0(a1)		# each byte until NIL
-	addu	a0, a0, 1
-	bne	a2, zero, 1b		# less than maxlen
-	addu	a1, a1, 1
+	lbu		v0, 0(a0)
+	PTR_SUBU	a2, a2, 1
+	beq		v0, zero, 2f
+	sb		v0, 0(a1)		# each byte until NIL
+	PTR_ADDU	a0, a0, 1
+	bne		a2, zero, 1b		# less than maxlen
+	PTR_ADDU	a1, a1, 1
 4:
-	li	v0, ENAMETOOLONG	# run out of space
+	li		v0, ENAMETOOLONG	# run out of space
 2:
-	beq	a3, zero, 3f		# return num. of copied bytes
-	subu	a2, t0, a2		# if the 4th arg was non-NULL
-	sw	a2, 0(a3)
+	beq		a3, zero, 3f		# return num. of copied bytes
+	PTR_SUBU	a2, t0, a2		# if the 4th arg was non-NULL
+	sw		a2, 0(a3)
 3:
-	j	ra			# v0 is 0 or ENAMETOOLONG
+	j		ra			# v0 is 0 or ENAMETOOLONG
 	nop
 END(copystr)
 
