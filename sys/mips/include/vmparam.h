@@ -106,10 +106,11 @@
 #define	VM_MIN_ADDRESS		((vm_offset_t)0x00000000)
 #define	VM_MAX_ADDRESS		((vm_offset_t)(intptr_t)(int32_t)0xffffffff)
 
+#define	VM_MINUSER_ADDRESS	((vm_offset_t)0x00000000)
 #if defined(__mips_n64)
-#define	VM_MAXUSER_ADDRESS	((vm_offset_t)0x0000010000000000)	/* XUSEG_END */
+#define	VM_MAXUSER_ADDRESS	(VM_MINUSER_ADDRESS + (NPDEPG * NPTEPG * PAGE_SIZE))
 #else
-#define	VM_MAXUSER_ADDRESS	((vm_offset_t)0x80000000)		/* USEG_END */
+#define	VM_MAXUSER_ADDRESS	((vm_offset_t)0x80000000)
 #endif
 #define	VM_MAX_MMAP_ADDR	VM_MAXUSER_ADDRESS
 
@@ -121,8 +122,8 @@
 #define	VM_MIN_KERNEL_ADDRESS		((vm_offset_t)0xc000000000000000)
 #define	VM_MAX_KERNEL_ADDRESS		(VM_MIN_KERNEL_ADDRESS + (NPDEPG * NPTEPG * PAGE_SIZE))
 #else
-#define	VM_MIN_KERNEL_ADDRESS		((vm_offset_t)(intptr_t)(int32_t)0xC0000000)
-#define	VM_MAX_KERNEL_ADDRESS		((vm_offset_t)(intptr_t)(int32_t)0xFFFFC000)
+#define	VM_MIN_KERNEL_ADDRESS		((vm_offset_t)0xC0000000)
+#define	VM_MAX_KERNEL_ADDRESS		((vm_offset_t)0xFFFFC000)
 #endif
 #define	VM_KERNEL_WIRED_ADDR_END	(VM_MIN_KERNEL_ADDRESS + VM_KERNEL_ALLOC_OFFSET)
 #if 0

@@ -88,7 +88,7 @@
 #define	KSEG_ADDRESS(x)	((intptr_t)(int32_t)__CONCAT(0x, x))
 #endif
 
-#define	MIPS_KUSEG_START		0x0
+#define	MIPS_KUSEG_START		0x00000000
 #define	MIPS_KSEG0_START		KSEG_ADDRESS(80000000)
 #define	MIPS_KSEG0_END			KSEG_ADDRESS(9fffffff)
 #define	MIPS_KSEG1_START		KSEG_ADDRESS(a0000000)
@@ -112,6 +112,9 @@
 #define	MIPS_PHYS_TO_XKPHYS(cca,x) \
 	((0x2ULL << 62) | ((unsigned long long)(cca) << 59) | (x))
 #define	MIPS_XKPHYS_TO_PHYS(x)	((x) & 0x07ffffffffffffffULL)
+
+#define	MIPS_XUSEG_START		0x0000000000000000
+#define	MIPS_XUSEG_END			0x0000010000000000
 
 #define	MIPS_XKSEG_START		0xc000000000000000
 #define	MIPS_XKSEG_END			0xc00000ff80000000
