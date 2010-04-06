@@ -64,12 +64,15 @@ __FBSDID("$FreeBSD$");
 #include <machine/pcb.h>
 
 #include <vm/vm.h>
-#include <vm/vm_param.h>
-#include <sys/lock.h>
-#include <vm/vm_kern.h>
-#include <vm/vm_page.h>
-#include <vm/vm_map.h>
 #include <vm/vm_extern.h>
+#include <vm/pmap.h>
+#include <vm/vm_kern.h>
+#include <vm/vm_map.h>
+#include <vm/vm_page.h>
+#include <vm/vm_pageout.h>
+#include <vm/vm_param.h>
+#include <vm/uma.h>
+#include <vm/uma_int.h>
 
 #include <sys/user.h>
 #include <sys/mbuf.h>
@@ -569,6 +572,56 @@ void
 swi_vm(void *dummy)
 {
 }
+
+#if defined(__mips_n64)
+void *
+uma_small_alloc(uma_zone_t zone, int bytes, u_int8_t *flags, int wait)
+{
+	static vm_pindex_t color;
+	vm_paddr_t pa;
+	vm_page_t m;
+	int pflags;
+	void *va;
+
+	*flags = UMA_SLAB_PRIV;
+
+	if ((wait & (M_NOWAIT|M_USE_RESERVE)) == M_NOWAIT)
+		pflags = VM_ALLOC_INTERRUPT | VM_ALLOC_WIRED;
+	else
+		pflags = VM_ALLOC_SYSTEM | VM_ALLOC_WIRED;
+
+	if (wait & M_ZERO)
+		pflags |= VM_ALLOC_ZERO;
+
+	for (;;) {
+		m = vm_page_alloc(NULL, color++, pflags | VM_ALLOC_NOOBJ);
+		if (m == NULL) {
+			if (wait & M_NOWAIT)
+				return (NULL);
+			else
+				VM_WAIT;
+		} else
+			break;
+	}
+
+	pa = VM_PAGE_TO_PHYS(m);
+	va = (void *)MIPS_PHYS_TO_XKPHYS(MIPS_XKPHYS_CCA_CNC, pa);
+	if ((wait & M_ZERO) && (m->flags & PG_ZERO) == 0)
+		bzero(va, PAGE_SIZE);
+	return (va);
+}
+
+void
+uma_small_free(void *mem, int size, u_int8_t flags)
+{
+	vm_page_t m;
+
+	m = PHYS_TO_VM_PAGE(MIPS_XKPHYS_TO_PHYS((vm_offset_t)mem));
+	m->wire_count--;
+	vm_page_free(m);
+	atomic_subtract_int(&cnt.v_wire_count, 1);
+}
+#endif
 
 int
 cpu_set_user_tls(struct thread *td, void *tls_base)
