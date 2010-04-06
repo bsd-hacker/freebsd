@@ -252,7 +252,7 @@ SlowFault:
 	and     a0, a0, a2              ; \
 	mtc0	a0, COP_0_STATUS_REG
 #endif
-	
+
 /*
  * Save CPU and CP0 register state.
  *
@@ -317,7 +317,7 @@ SlowFault:
 	REG_L	reg, CALLFRAME_SIZ + (SZREG * offs) (base)
 
 #define	RESTORE_CPU \
-	mtc0	zero,COP_0_STATUS_REG	;\
+	CLEAR_STATUS			;\
 	RESTORE_REG(k0, SR, sp)		;\
 	RESTORE_REG(t0, MULLO, sp)	;\
 	RESTORE_REG(t1, MULHI, sp)	;\
