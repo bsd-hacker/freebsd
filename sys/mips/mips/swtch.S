@@ -294,8 +294,10 @@ blocked_loop:
 	PTR_L	a2, TD_PCB(a1)
 	PTR_S	a2, PC_CURPCB(a3)
 	PTR_L	v0, TD_KSTACK(a1)
+#if !defined(__mips_n64)
 	PTR_LI	s0, (MIPS_KSEG2_START+VM_KERNEL_ALLOC_OFFSET)		# If Uarea addr is below kseg2,
 	bltu	v0, s0, sw2			# no need to insert in TLB.
+#endif
 	lw	a1, TD_UPTE(s7)			# t0 = u. pte
 /*
  * Wiredown the USPACE of newproc in TLB entry#0.  Check whether target
@@ -309,24 +311,25 @@ blocked_loop:
 	tlbp					# probe VPN
 	HAZARD_DELAY
 	mfc0	s0, COP_0_TLB_INDEX
-	nop
+	HAZARD_DELAY
 
 	PTR_LI	t1, MIPS_KSEG0_START		# invalidate tlb entry
 	bltz	s0, entry0set
 	nop
 	sll	s0, PAGE_SHIFT
 	addu	t1, s0
-	mtc0	t1, COP_0_TLB_HI
+	MTC0	t1, COP_0_TLB_HI
 	mtc0	zero, COP_0_TLB_LO0
 	mtc0	zero, COP_0_TLB_LO1
 	HAZARD_DELAY
 	tlbwi
 	HAZARD_DELAY
-	mtc0	v0, COP_0_TLB_HI		# set VPN again
+	MTC0	v0, COP_0_TLB_HI		# set VPN again
 
 entry0set:
 /* SMP!! - Works only for  unshared TLB case - i.e. no v-cpus */
 	mtc0	zero, COP_0_TLB_INDEX		# TLB entry #0
+	HAZARD_DELAY
 	mtc0	a1, COP_0_TLB_LO0		# upte
 	HAZARD_DELAY
 	addu	a1, TLBLO_PFN_ODD
