@@ -75,7 +75,6 @@ __FBSDID("$FreeBSD$");
 #include <net/netisr.h>
 
 #include <machine/trap.h>
-#include <machine/psl.h>
 #include <machine/cpu.h>
 #include <machine/pte.h>
 #include <machine/pmap.h>
@@ -293,7 +292,7 @@ trap(struct trapframe *trapframe)
 	trapdebug_enter(trapframe, 0);
 	
 	type = (trapframe->cause & CR_EXC_CODE) >> CR_EXC_CODE_SHIFT;
-	if (USERMODE(trapframe->sr)) {
+	if (TRAPF_USERMODE(trapframe)) {
 		type |= T_USER;
 		usermode = 1;
 	} else {

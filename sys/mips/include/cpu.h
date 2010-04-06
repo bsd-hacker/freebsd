@@ -47,7 +47,6 @@
 #ifndef _MACHINE_CPU_H_
 #define	_MACHINE_CPU_H_
 
-#include <machine/psl.h>
 #include <machine/endian.h>
 
 #define	MIPS_KSEG0_LARGEST_PHYS         (0x20000000)
@@ -315,7 +314,6 @@
 #define	clockframe trapframe	/* Use normal trap frame */
 
 #define	CLKF_USERMODE(framep)	((framep)->sr & SR_KSU_USER)
-#define	CLKF_BASEPRI(framep)	((framep)->cpl == 0)
 #define	CLKF_PC(framep)		((framep)->pc)
 #define	CLKF_INTR(framep)	(0)
 #define	MIPS_CLKF_INTR()	(intr_nesting_level >= 1)
