@@ -225,8 +225,8 @@ void stacktrace(struct trapframe *);
 void logstacktrace(struct trapframe *);
 #endif
 
-#define	KERNLAND(x) ((int)(x) < 0)
-#define	DELAYBRANCH(x) ((int)(x) < 0)
+#define	KERNLAND(x)	((vm_offset_t)(x) >= VM_MIN_KERNEL_ADDRESS && (vm_offset_t)(x) < VM_MAX_KERNEL_ADDRESS)
+#define	DELAYBRANCH(x)	((int)(x) < 0)
 
 /*
  * MIPS load/store access type
@@ -503,7 +503,7 @@ dofault:
 			vm = p->p_vmspace;
 			map = &vm->vm_map;
 			va = trunc_page((vm_offset_t)trapframe->badvaddr);
-			if ((vm_offset_t)trapframe->badvaddr >= VM_MIN_KERNEL_ADDRESS) {
+			if (KERNLAND(trapframe->badvaddr)) {
 				/*
 				 * Don't allow user-mode faults in kernel
 				 * address space.
