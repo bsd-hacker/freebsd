@@ -111,7 +111,7 @@
 
 #define	MIPS_PHYS_TO_XKPHYS(cca,x) \
 	((0x2ULL << 62) | ((unsigned long long)(cca) << 59) | (x))
-#define	MIPS_XKPHYS_TO_PHYS(x)	((x) & 0x0effffffffffffffULL)
+#define	MIPS_XKPHYS_TO_PHYS(x)	((x) & 0x07ffffffffffffffULL)
 
 /* CPU dependent mtc0 hazard hook */
 #ifdef TARGET_OCTEON
