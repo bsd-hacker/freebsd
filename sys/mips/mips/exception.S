@@ -179,16 +179,12 @@ VECTOR(MipsException, unknown)
 	and	k0, k0, SR_KSU_USER		# test for user mode
 						# sneaky but the bits are
 						# with us........
-#if defined(__mips_n64)
-	sll	k0, k0, 4			# shift user bit for cause index
-#else
 	sll	k0, k0, 3			# shift user bit for cause index
-#endif
 	and	k1, k1, CR_EXC_CODE		# Mask out the cause bits.
-#if defined(__mips_n64)
-	sll	k1, k1, 1			# shift code to get 8-byte offset
-#endif
 	or	k1, k1, k0			# change index to user table
+#if defined(__mips_n64)
+	PTR_SLL	k1, k1, 1			# shift to get 8-byte offset
+#endif
 1:
 	PTR_LA	k0, _C_LABEL(machExceptionTable)  # get base of the jump table
 	PTR_ADDU k0, k0, k1			# Get the address of the
@@ -388,7 +384,6 @@ NNON_LEAF(MipsKernGenException, KERN_EXC_FRAME_SIZE, ra)
 	 * in trap handler
 	 */
 	mfc0	a0, COP_0_STATUS_REG
-	mtc0	zero, COP_0_STATUS_REG
 	and	a0, a0, SR_INT_MASK
 	RESTORE_REG(a1, SR, sp)
 	and	a1, a1, ~SR_INT_MASK
