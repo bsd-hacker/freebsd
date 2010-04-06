@@ -117,8 +117,13 @@
 #define	VM_KERNEL_ALLOC_OFFSET	((vm_offset_t)0x00000000)
 #endif
 
+#if defined(__mips_n64)
+#define	VM_MIN_KERNEL_ADDRESS		((vm_offset_t)0xc000000000000000)
+#define	VM_MAX_KERNEL_ADDRESS		(VM_MIN_KERNEL_ADDRESS + (NPDEPG * NPTEPG * PAGE_SIZE))
+#else
 #define	VM_MIN_KERNEL_ADDRESS		((vm_offset_t)(intptr_t)(int32_t)0xC0000000)
 #define	VM_MAX_KERNEL_ADDRESS		((vm_offset_t)(intptr_t)(int32_t)0xFFFFC000)
+#endif
 #define	VM_KERNEL_WIRED_ADDR_END	(VM_MIN_KERNEL_ADDRESS + VM_KERNEL_ALLOC_OFFSET)
 #if 0
 #define	KERNBASE		(VM_MIN_KERNEL_ADDRESS)

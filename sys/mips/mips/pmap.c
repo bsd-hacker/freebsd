@@ -3246,16 +3246,29 @@ pmap_kextract(vm_offset_t va)
 	/*
 	 * Kernel virtual.
 	 */
+#if defined(__mips_n64)
+	if (va >= MIPS_XKSEG_START && va < MIPS_XKSEG_END) {
+		pt_entry_t *ptep;
+
+		/* Is the kernel pmap initialized? */
+		if (kernel_pmap->pm_active) {
+			/* It's inside the virtual address range */
+			ptep = pmap_pte(kernel_pmap, va);
+			if (ptep) {
+				return (TLBLO_PTE_TO_PA(*ptep) |
+				    (va & PAGE_MASK));
+			}
+		}
+	}
+#else
 	if (va >= MIPS_KSEG2_START && va < MIPS_KSEG2_END) {
 		pt_entry_t *ptep;
 
 		/* Is the kernel pmap initialized? */
 		if (kernel_pmap->pm_active) {
-#if !defined(__mips_n64)
 			if (va < (vm_offset_t)virtual_sys_start) {
 				panic("%s for special address %p.", __func__, (void *)va);
 			}
-#endif
 
 			/* Its inside the virtual address range */
 			ptep = pmap_pte(kernel_pmap, va);
@@ -3266,6 +3279,7 @@ pmap_kextract(vm_offset_t va)
 			return (0);
 		}
 	}
+#endif
 
 	panic("%s for unknown address space %p.", __func__, (void *)va);
 }
