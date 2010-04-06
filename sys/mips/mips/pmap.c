@@ -3329,73 +3329,67 @@ pmap_set_modified(vm_offset_t pa)
  /* PMAP_INLINE */ vm_offset_t
 pmap_kextract(vm_offset_t va)
 {
-	vm_offset_t pa = 0;
+	/*
+	 * First, the direct-mapped regions.
+	 */
+#if defined(__mips_n64)
+	if (va >= MIPS_XKPHYS_START && va < MIPS_XKPHYS_END)
+		return (MIPS_XKPHYS_TO_PHYS(va));
+#endif
 
-	if (va < MIPS_KSEG0_START) {
-		/* user virtual address */
+	if (va >= MIPS_KSEG0_START && va < MIPS_KSEG0_END)
+		return (MIPS_KSEG0_TO_PHYS(va));
+
+	if (va >= MIPS_KSEG1_START && va < MIPS_KSEG1_END)
+		return (MIPS_KSEG1_TO_PHYS(va));
+
+	/*
+	 * User virtual addresses.
+	 */
+	if (va < VM_MAXUSER_ADDRESS) {
 		pt_entry_t *ptep;
 
 		if (curproc && curproc->p_vmspace) {
 			ptep = pmap_pte(&curproc->p_vmspace->vm_pmap, va);
-			if (ptep)
-				pa = TLBLO_PTE_TO_PA(*ptep) |
-				    (va & PAGE_MASK);
+			if (ptep) {
+				return (TLBLO_PTE_TO_PA(*ptep) |
+				    (va & PAGE_MASK));
+			}
+			return (0);
 		}
-	} else if (va >= MIPS_KSEG0_START &&
-	    va < MIPS_KSEG1_START)
-		pa = MIPS_KSEG0_TO_PHYS(va);
-	else if (va >= MIPS_KSEG1_START &&
-	    va < MIPS_KSEG2_START)
-		pa = MIPS_KSEG1_TO_PHYS(va);
+	}
+
 #ifdef VM_ALLOC_WIRED_TLB_PG_POOL
-	else if (need_wired_tlb_page_pool && ((va >= VM_MIN_KERNEL_ADDRESS) &&
+	if (need_wired_tlb_page_pool && ((va >= VM_MIN_KERNEL_ADDRESS) &&
 	    (va < (VM_MIN_KERNEL_ADDRESS + VM_KERNEL_ALLOC_OFFSET))))
-		pa = MIPS_KSEG0_TO_PHYS(va);
+		return (MIPS_KSEG0_TO_PHYS(va));
 #endif
-#if defined(__mips_n64)
-	else if (va >= MIPS_XKPHYS_START && va < MIPS_XKPHYS_END)
-		pa = MIPS_XKPHYS_TO_PHYS(va);
-#endif
-	else if (va >= MIPS_KSEG2_START && va < VM_MAX_KERNEL_ADDRESS) {
+
+	/*
+	 * Kernel virtual.
+	 */
+	if (va >= MIPS_KSEG2_START && va < MIPS_KSEG2_END) {
 		pt_entry_t *ptep;
 
 		/* Is the kernel pmap initialized? */
 		if (kernel_pmap->pm_active) {
 #if !defined(__mips_n64)
-			if (va >= (vm_offset_t)virtual_sys_start) {
-#endif
-				/* Its inside the virtual address range */
-				ptep = pmap_pte(kernel_pmap, va);
-				if (ptep)
-					pa = TLBLO_PTE_TO_PA(*ptep) |
-					    (va & PAGE_MASK);
-#if !defined(__mips_n64)
-			} else {
-				int i;
-
-				/*
-				 * its inside the special mapping area, I
-				 * don't think this should happen, but if it
-				 * does I want it toa all work right :-)
-				 * Note if it does happen, we assume the
-				 * caller has the lock? FIXME, this needs to
-				 * be checked FIXEM - RRS.
-				 */
-				for (i = 0; i < MAXCPU; i++) {
-					if ((sysmap_lmem[i].valid1) && ((vm_offset_t)sysmap_lmem[i].CADDR1 == va)) {
-						pa = TLBLO_PTE_TO_PA(sysmap_lmem[i].CMAP1);
-						break;
-					}
-					if ((sysmap_lmem[i].valid2) && ((vm_offset_t)sysmap_lmem[i].CADDR2 == va)) {
-						pa = TLBLO_PTE_TO_PA(sysmap_lmem[i].CMAP2);
-						break;
-					}
-				}
+			if (va < (vm_offset_t)virtual_sys_start) {
+				panic("%s for special address %p.", __func__, (void *)va);
 			}
 #endif
+
+			/* Its inside the virtual address range */
+			ptep = pmap_pte(kernel_pmap, va);
+			if (ptep) {
+				return (TLBLO_PTE_TO_PA(*ptep) |
+				    (va & PAGE_MASK));
+			}
+			return (0);
 		}
 	}
-	return pa;
+
+	panic("%s for unknown address space %p.", __func__, (void *)va);
 }
 
 void 
