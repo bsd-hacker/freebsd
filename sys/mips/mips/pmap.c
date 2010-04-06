@@ -3259,7 +3259,7 @@ page_is_managed(vm_offset_t pa)
 {
 	vm_offset_t pgnum = mips_btop(pa);
 
-	if (pgnum >= first_page && (pgnum < (first_page + vm_page_array_size))) {
+	if (pgnum >= first_page) {
 		vm_page_t m;
 
 		m = PHYS_TO_VM_PAGE(pa);
