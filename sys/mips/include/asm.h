@@ -98,21 +98,43 @@
 
 #define	_C_LABEL(x)	x
 
-/* 
- *  Endian-independent assembly-code aliases for unaligned memory accesses.
+/*
+ *   Endian-independent assembly-code aliases for unaligned memory accesses.
  */
-#if BYTE_ORDER == LITTLE_ENDIAN
-#define	LWLO	lwl
-#define	LWHI	lwr
-#define	SWLO	swl
-#define	SWHI	swr
+#if _BYTE_ORDER == _LITTLE_ENDIAN
+# define LWHI lwr
+# define LWLO lwl
+# define SWHI swr
+# define SWLO swl
+# if SZREG == 4
+#  define REG_LHI   lwr
+#  define REG_LLO   lwl
+#  define REG_SHI   swr
+#  define REG_SLO   swl
+# else
+#  define REG_LHI   ldr
+#  define REG_LLO   ldl
+#  define REG_SHI   sdr
+#  define REG_SLO   sdl
+# endif
 #endif
 
-#if BYTE_ORDER == BIG_ENDIAN
-#define	LWLO	lwr
-#define	LWHI	lwl
-#define	SWLO	swr
-#define	SWHI	swl
+#if _BYTE_ORDER == _BIG_ENDIAN
+# define LWHI lwl
+# define LWLO lwr
+# define SWHI swl
+# define SWLO swr
+# if SZREG == 4
+#  define REG_LHI   lwl
+#  define REG_LLO   lwr
+#  define REG_SHI   swl
+#  define REG_SLO   swr
+# else
+#  define REG_LHI   ldl
+#  define REG_LLO   ldr
+#  define REG_SHI   sdl
+#  define REG_SLO   sdr
+# endif
 #endif
 
 #ifdef USE_AENT
