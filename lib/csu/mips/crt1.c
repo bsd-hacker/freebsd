@@ -79,7 +79,7 @@ __start(char **ap,
 	char **argv;
 	char **env;
 
-	argc = * (int *) ap;
+	argc = * (long *) ap;
 	argv = ap + 1;
 	env  = ap + 2 + argc;
 	environ = env;
