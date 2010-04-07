@@ -314,7 +314,7 @@ SUBDIR=	${_3dfx} \
 	zlib \
 
 .if ${MACHINE_ARCH} != "powerpc" && ${MACHINE_ARCH} != "powerpc64" && \
-	&& ${MACHINE_ARCH} != "arm" && ${MACHINE_ARCH} != "mips"
+	${MACHINE_ARCH} != "arm" && ${MACHINE_ARCH} != "mips"
 _syscons=	syscons
 _vpo=		vpo
 .endif
