@@ -265,19 +265,29 @@ cpu_set_syscall_retval(struct thread *td, int error)
 {
 	struct trapframe *locr0 = td->td_frame;
 	unsigned int code;
+#if defined(__mips_o32)
 	int quad_syscall;
+#endif
 
 	code = locr0->v0;
+#if defined(__mips_o32)
 	quad_syscall = 0;
+#endif
+
 	if (code == SYS_syscall)
 		code = locr0->a0;
 	else if (code == SYS___syscall) {
+#if defined(__mips_o32)
 		code = _QUAD_LOWWORD ? locr0->a1 : locr0->a0;
 		quad_syscall = 1;
+#else
+		code = locr0->a0;
+#endif
 	}
 
 	switch (error) {
 	case 0:
+#if defined(__mips_o32)
 		if (quad_syscall && code != SYS_lseek) {
 			/*
 			 * System call invoked through the
@@ -290,10 +300,13 @@ cpu_set_syscall_retval(struct thread *td, int error)
 				locr0->v1 = td->td_retval[0];
 			locr0->a3 = 0;
 		} else {
+#endif
 			locr0->v0 = td->td_retval[0];
 			locr0->v1 = td->td_retval[1];
 			locr0->a3 = 0;
+#if defined(__mips_o32)
 		}
+#endif
 		break;
 
 	case ERESTART:
@@ -304,15 +317,19 @@ cpu_set_syscall_retval(struct thread *td, int error)
 		break;	/* nothing to do */
 
 	default:
+#if defined(__mips_o32)
 		if (quad_syscall && code != SYS_lseek) {
 			locr0->v0 = error;
 			if (_QUAD_LOWWORD)
 				locr0->v1 = error;
 			locr0->a3 = 1;
 		} else {
+#endif
 			locr0->v0 = error;
 			locr0->a3 = 1;
+#if defined(__mips_o32)
 		}
+#endif
 	}
 }
 
