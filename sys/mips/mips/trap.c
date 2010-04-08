@@ -525,9 +525,9 @@ dofault:
 			--p->p_lock;
 			PROC_UNLOCK(p);
 #ifdef VMFAULT_TRACE
-			printf("vm_fault(%p (pmap %p), %x (%x), %x, %d) -> %x at pc %x\n",
-			    map, &vm->vm_pmap, va, trapframe->badvaddr, ftype, VM_FAULT_NORMAL,
-			    rv, trapframe->pc);
+			printf("vm_fault(%p (pmap %p), %p (%p), %x, %d) -> %x at pc %p\n",
+			    map, &vm->vm_pmap, (void *)va, (void *)(intptr_t)trapframe->badvaddr,
+			    ftype, VM_FAULT_NORMAL, rv, (void *)(intptr_t)trapframe->pc);
 #endif
 
 			if (rv == KERN_SUCCESS) {
@@ -728,6 +728,13 @@ dofault:
 			for (i = 0; i < nargs; i++) {
 				printf("args[%d] = %#jx\n", i, (intmax_t)args[i]);
 			}
+#endif
+#ifdef SYSCALL_TRACING
+			printf("%s(", syscallnames[code]);
+			for (i = 0; i < nargs; i++) {
+				printf("%s%#jx", i == 0 ? "" : ", ", (intmax_t)args[i]);
+			}
+			printf(")\n");
 #endif
 #ifdef KTRACE
 			if (KTRPOINT(td, KTR_SYSCALL))
@@ -1414,7 +1421,10 @@ log_bad_page_fault(char *msg, struct trapframe *frame, int trap_type)
 		log(LOG_ERR, "pc address %#jx is inaccessible, pde = %p, pte = %#x\n",
 		    (intmax_t)pc, (void *)(intptr_t)*pdep, ptep ? *ptep : 0);
 	}
-	/*	panic("Bad trap");*/
+
+	get_mapping_info((vm_offset_t)frame->badvaddr, &pdep, &ptep);
+	log(LOG_ERR, "Page table info for bad address %#jx: pde = %p, pte = %#x\n",
+	    (intmax_t)frame->badvaddr, (void *)(intptr_t)*pdep, ptep ? *ptep : 0);
 }
 
 
