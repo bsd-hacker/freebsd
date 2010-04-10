@@ -61,7 +61,7 @@ __FBSDID("$FreeBSD: user/jmallett/octeon/sys/mips/mips/elf_machdep.c 204031 2010
  */
 struct sysentvec elf32_freebsd_sysvec = {
 	.sv_size	= SYS_MAXSYSCALL,
-	.sv_table	= sysent,
+	.sv_table	= freebsd32_sysent,
 	.sv_mask	= 0,
 	.sv_sigsize	= 0,
 	.sv_sigtbl	= NULL,
@@ -79,11 +79,11 @@ struct sysentvec elf32_freebsd_sysvec = {
 	.sv_minsigstksz	= MINSIGSTKSZ,
 	.sv_pagesize	= PAGE_SIZE,
 	.sv_minuser	= VM_MIN_ADDRESS,
-	.sv_maxuser	= VM_MAXUSER_ADDRESS,
+	.sv_maxuser	= (vm_offset_t)0x80000000,
 	.sv_usrstack	= FREEBSD32_USRSTACK,
-	.sv_psstrings	= PS_STRINGS,
+	.sv_psstrings	= FREEBSD32_USRSTACK - sizeof(struct ps_strings),
 	.sv_stackprot	= VM_PROT_ALL,
-	.sv_copyout_strings = exec_copyout_strings,
+	.sv_copyout_strings = freebsd32_copyout_strings,
 	.sv_setregs	= exec_setregs,
 	.sv_fixlimit	= NULL,
 	.sv_maxssiz	= NULL,

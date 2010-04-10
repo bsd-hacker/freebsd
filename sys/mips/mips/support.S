@@ -159,7 +159,7 @@ LEAF(copystr)
 2:
 	beq		a3, zero, 3f		# return num. of copied bytes
 	PTR_SUBU	a2, t0, a2		# if the 4th arg was non-NULL
-	sw		a2, 0(a3)
+	PTR_S		a2, 0(a3)
 3:
 	j		ra			# v0 is 0 or ENAMETOOLONG
 	nop

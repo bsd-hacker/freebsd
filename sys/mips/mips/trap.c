@@ -1304,7 +1304,7 @@ get_mapping_info(vm_offset_t va, pd_entry_t **pdepp, pt_entry_t **ptepp)
 	pd_entry_t *pdep;
 	struct proc *p = curproc;
 
-	pdep = (&(p->p_vmspace->vm_pmap.pm_segtab[(uint32_t)va >> SEGSHIFT]));
+	pdep = (&(p->p_vmspace->vm_pmap.pm_segtab[(va >> SEGSHIFT) & (NPDEPG - 1)]));
 	if (*pdep)
 		ptep = pmap_pte(&p->p_vmspace->vm_pmap, va);
 	else

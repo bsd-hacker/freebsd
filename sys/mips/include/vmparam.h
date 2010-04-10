@@ -60,9 +60,9 @@
  * and some QED CPUs perform some virtual address checks before the
  * offset is calculated.
  */
-#define	USRSTACK	0x7fffe000	/* Start of user stack */
+#define	USRSTACK	(VM_MAXUSER_ADDRESS - PAGE_SIZE)	/* Start of user stack */
 #if defined(COMPAT_FREEBSD32)
-#define	FREEBSD32_USRSTACK	USRSTACK
+#define	FREEBSD32_USRSTACK	(0x80000000 - PAGE_SIZE)
 #endif
 
 /*
