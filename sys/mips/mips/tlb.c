@@ -51,7 +51,6 @@ tlb_probe(void)
 {
 	__asm __volatile ("tlbp" : : : "memory");
 	mips_cp0_sync();
-	mips_barrier();
 }
 
 static inline void
@@ -59,7 +58,6 @@ tlb_read(void)
 {
 	__asm __volatile ("tlbr" : : : "memory");
 	mips_cp0_sync();
-	mips_barrier();
 }
 
 static inline void
@@ -67,7 +65,6 @@ tlb_write_indexed(void)
 {
 	__asm __volatile ("tlbwi" : : : "memory");
 	mips_cp0_sync();
-	mips_barrier();
 }
 
 static inline void
@@ -75,17 +72,10 @@ tlb_write_random(void)
 {
 	__asm __volatile ("tlbwr" : : : "memory");
 	mips_cp0_sync();
-	mips_barrier();
 }
 
 static void tlb_invalidate_one(unsigned);
 
-/*
- * XXX
- * We invalidate the whole pair.  Would be nice to just
- * invalidate the single entry instead of forcing a reload
- * of the other one.
- */
 void
 tlb_invalidate_address(struct pmap *pmap, vm_offset_t va)
 {
