@@ -588,13 +588,14 @@ pmap_invalidate_all_action(void *arg)
 
 #endif
 
-	if (pmap->pm_active & PCPU_GET(cpumask)) {
-		/*
-		 * XXX/juli
-		 * Add something like TBIAP.
-		 */
+	if (pmap == kernel_pmap) {
 		tlb_invalidate_all();
-	} else
+		return;
+	}
+
+	if (pmap->pm_active & PCPU_GET(cpumask))
+		tlb_invalidate_all_user(pmap);
+	else
 		pmap->pm_asid[PCPU_GET(cpuid)].gen = 0;
 }
 
@@ -2907,11 +2908,7 @@ pmap_asid_alloc(pmap)
 	    pmap->pm_asid[PCPU_GET(cpuid)].gen == PCPU_GET(asid_generation));
 	else {
 		if (PCPU_GET(next_asid) == pmap_max_asid) {
-			/*
-			 * XXX/juli
-			 * Add something like TBIAP.
-			 */
-			tlb_invalidate_all();
+			tlb_invalidate_all_user(NULL);
 			PCPU_SET(asid_generation,
 			    (PCPU_GET(asid_generation) + 1) & ASIDGEN_MASK);
 			if (PCPU_GET(asid_generation) == 0) {

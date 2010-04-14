@@ -31,6 +31,7 @@
 
 void tlb_invalidate_address(struct pmap *, vm_offset_t);
 void tlb_invalidate_all(void);
+void tlb_invalidate_all_user(struct pmap *);
 void tlb_update(struct pmap *, vm_offset_t, pt_entry_t);
 
 #endif /* !_MACHINE_TLB_H_ */
