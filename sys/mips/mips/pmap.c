@@ -750,19 +750,9 @@ pmap_kenter(vm_offset_t va, vm_paddr_t pa)
 		npte |= PG_C_UC;
 
 	pte = pmap_pte(kernel_pmap, va);
+	KASSERT(!pte_test(pte, PG_V) || *pte == npte,
+		("pmap_kenter for %p with different valid entry", (void *)va));
 	*pte = npte;
-
-#if 0
-	/*
-	 * The original code did an update_page() here, but
-	 * we often do a lot of pmap_kenter() calls and then
-	 * start using the addresses later, at which point
-	 * the TLB has overflown many times.
-	 */
-	pmap_invalidate_page(kernel_pmap, va);
-#else
-	pmap_update_page(kernel_pmap, va, npte);
-#endif
 }
 
 /*
@@ -2741,6 +2731,10 @@ pmap_mapdev(vm_offset_t pa, vm_size_t size)
 		if (!va)
 			panic("pmap_mapdev: Couldn't alloc kernel virtual memory");
 		pa = trunc_page(pa);
+		/*
+		 * XXX
+		 * Shouldn't we make these pages uncached?
+		 */
 		for (tmpva = va; size > 0;) {
 			pmap_kenter(tmpva, pa);
 			size -= PAGE_SIZE;
