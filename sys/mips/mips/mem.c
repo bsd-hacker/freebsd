@@ -67,8 +67,10 @@ __FBSDID("$FreeBSD$");
 #include <machine/atomic.h>
 #include <machine/memdev.h>
 
-
+#if !defined(__mips_n64)
 extern struct sysmaps sysmaps_pcpu[];
+#endif
+
 /*ARGSUSED*/
 int
 memrw(dev, uio, flags)
@@ -116,7 +118,7 @@ memrw(dev, uio, flags)
 #if !defined(__mips_n64)
 				va = pmap_map_fpage(pa, fp, FALSE);
 #else
-				va = MIPS_PHYS_TO_XKPHYS(XKPHYS_CCA, pa);
+				va = MIPS_PHYS_TO_XKPHYS(MIPS_XKPHYS_CCA_CNC, pa);
 #endif
 				o = (int)uio->uio_offset & PAGE_MASK;
 				c = (u_int)(PAGE_SIZE -
