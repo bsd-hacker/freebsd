@@ -58,6 +58,11 @@ __FBSDID("$FreeBSD: user/jmallett/octeon/sys/mips/mips/elf_machdep.c 204031 2010
 /*
  * XXX
  * Add a mechanism to distinguish between n32 and o32.
+ *
+ * For now this file is only for running n32 world on an n64 kernel.  Note also
+ * that it is pretty naive and incomplete and that at least sysarch and the
+ * mcontext-related functions are wrong due to pointer width.  Trivial to fix,
+ * but not done yet.
  */
 struct sysentvec elf32_freebsd_sysvec = {
 	.sv_size	= SYS_MAXSYSCALL,
