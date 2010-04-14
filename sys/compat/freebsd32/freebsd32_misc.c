@@ -119,6 +119,7 @@ CTASSERT(sizeof(struct sigaction32) == 24);
 static int freebsd32_kevent_copyout(void *arg, struct kevent *kevp, int count);
 static int freebsd32_kevent_copyin(void *arg, struct kevent *kevp, int count);
 
+#ifdef QUAD_SPLIT_REQUIRED
 #if BYTE_ORDER == BIG_ENDIAN
 #define PAIR32TO64(type, name) ((name ## 2) | ((type)(name ## 1) << 32))
 #define RETVAL_HI 0	
@@ -127,6 +128,9 @@ static int freebsd32_kevent_copyin(void *arg, struct kevent *kevp, int count);
 #define PAIR32TO64(type, name) ((name ## 1) | ((type)(name ## 2) << 32))
 #define RETVAL_HI 1	
 #define RETVAL_LO 0	
+#endif
+#else
+#define PAIR32TO64(type, name) (name)
 #endif
 
 int
@@ -1429,16 +1433,20 @@ freebsd32_lseek(struct thread *td, struct freebsd32_lseek_args *uap)
 {
 	int error;
 	struct lseek_args ap;
+#ifdef QUAD_SPLIT_REQUIRED
 	off_t pos;
+#endif
 
 	ap.fd = uap->fd;
 	ap.offset = PAIR32TO64(off_t,uap->offset);
 	ap.whence = uap->whence;
 	error = lseek(td, &ap);
 	/* Expand the quad return into two parts for eax and edx */
+#ifdef QUAD_SPLIT_REQUIRED
 	pos = *(off_t *)(td->td_retval);
 	td->td_retval[RETVAL_LO] = pos & 0xffffffff;	/* %eax */
 	td->td_retval[RETVAL_HI] = pos >> 32;		/* %edx */
+#endif
 	return error;
 }
 
@@ -1511,16 +1519,20 @@ freebsd6_freebsd32_lseek(struct thread *td, struct freebsd6_freebsd32_lseek_args
 {
 	int error;
 	struct lseek_args ap;
+#ifdef QUAD_SPLIT_REQUIRED
 	off_t pos;
+#endif
 
 	ap.fd = uap->fd;
 	ap.offset = PAIR32TO64(off_t,uap->offset);
 	ap.whence = uap->whence;
 	error = lseek(td, &ap);
 	/* Expand the quad return into two parts for eax and edx */
+#ifdef QUAD_SPLIT_REQUIRED
 	pos = *(off_t *)(td->td_retval);
 	td->td_retval[RETVAL_LO] = pos & 0xffffffff;	/* %eax */
 	td->td_retval[RETVAL_HI] = pos >> 32;		/* %edx */
+#endif
 	return error;
 }
 

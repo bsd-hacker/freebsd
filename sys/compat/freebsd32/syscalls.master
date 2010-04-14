@@ -56,6 +56,13 @@
 #define PAD64_REQUIRED
 #endif
 
+; At present MIPS only supports running n32 world on n64 kernels and n32
+; binaries fit 64-bit quantities into a single register.  Don't split 64-bit
+; values on MIPS into 2 values.
+#if !defined(QUAD_SPLIT_REQUIRED) && !defined(__mips__)
+#define QUAD_SPLIT_REQUIRED
+#endif
+
 ; Reserved/unimplemented system calls in the range 0-150 inclusive
 ; are reserved for use in future Berkeley releases.
 ; Additional system calls implemented in vendor and other
@@ -316,12 +323,21 @@
 171	AUE_SHMSYS	NOSTD	{ int freebsd32_shmsys(uint32_t which, uint32_t a2, \
 				    uint32_t a3, uint32_t a4); }
 172	AUE_NULL	UNIMPL	nosys
+#ifdef QUAD_SPLIT_REQUIRED
 173	AUE_PREAD	COMPAT6	{ ssize_t freebsd32_pread(int fd, void *buf, \
 				    size_t nbyte, int pad, \
 				    u_int32_t offset1, u_int32_t offset2); }
 174	AUE_PWRITE	COMPAT6	{ ssize_t freebsd32_pwrite(int fd, \
 				    const void *buf, size_t nbyte, int pad, \
 				    u_int32_t offset1, u_int32_t offset2); }
+#else
+173	AUE_PREAD	COMPAT6	{ ssize_t freebsd32_pread(int fd, void *buf, \
+				    size_t nbyte, int pad, \
+				    off_t offset); }
+174	AUE_PWRITE	COMPAT6	{ ssize_t freebsd32_pwrite(int fd, \
+				    const void *buf, size_t nbyte, int pad, \
+				    off_t offset); }
+#endif
 175	AUE_NULL	UNIMPL	nosys
 176	AUE_NTP_ADJTIME	NOPROTO	{ int ntp_adjtime(struct timex *tp); }
 177	AUE_NULL	UNIMPL	sfork (BSD/OS 2.x)
@@ -354,11 +370,18 @@
 				    __setrlimit_args int
 196	AUE_GETDIRENTRIES	STD	{ int freebsd32_getdirentries(int fd, \
 				    char *buf, u_int count, int32_t *basep); }
+#ifdef QUAD_SPLIT_REQUIRED
 197	AUE_MMAP	COMPAT6	{ caddr_t freebsd32_mmap(caddr_t addr, \
 				    size_t len, int prot, int flags, int fd, \
 				    int pad, u_int32_t pos1, u_int32_t pos2); }
+#else
+197	AUE_MMAP	COMPAT6	{ caddr_t freebsd32_mmap(caddr_t addr, \
+				    size_t len, int prot, int flags, int fd, \
+				    int pad, off_t pos); }
+#endif
 198	AUE_NULL	NOPROTO	{ int nosys(void); } __syscall \
 				    __syscall_args int
+#ifdef QUAD_SPLIT_REQUIRED
 199	AUE_LSEEK	COMPAT6	{ off_t freebsd32_lseek(int fd, int pad, \
 				    u_int32_t offset1, u_int32_t offset2, \
 				    int whence); }
@@ -367,6 +390,15 @@
 				    u_int32_t length2); }
 201	AUE_FTRUNCATE	COMPAT6	{ int freebsd32_ftruncate(int fd, int pad, \
 				    u_int32_t length1, u_int32_t length2); }
+#else
+199	AUE_LSEEK	COMPAT6	{ off_t freebsd32_lseek(int fd, int pad, \
+				    off_t offset, \
+				    int whence); }
+200	AUE_TRUNCATE	COMPAT6	{ int freebsd32_truncate(char *path, \
+				    int pad, off_t length); }
+201	AUE_FTRUNCATE	COMPAT6	{ int freebsd32_ftruncate(int fd, int pad, \
+				    off_t length); }
+#endif
 202	AUE_SYSCTL	STD	{ int freebsd32_sysctl(int *name, \
 				    u_int namelen, void *old, \
 				    u_int32_t *oldlenp, void *new, \
@@ -501,6 +533,7 @@
 287	AUE_NULL	UNIMPL	nosys
 288	AUE_NULL	UNIMPL	nosys
 ; 289 and 290 from NetBSD (OpenBSD: 267 and 268)
+#ifdef QUAD_SPLIT_REQUIRED
 289	AUE_PREADV	STD	{ ssize_t freebsd32_preadv(int fd, \
 					struct iovec32 *iovp, \
 					u_int iovcnt, \
@@ -509,6 +542,16 @@
 					struct iovec32 *iovp, \
 					u_int iovcnt, \
 					u_int32_t offset1, u_int32_t offset2); }
+#else
+289	AUE_PREADV	STD	{ ssize_t freebsd32_preadv(int fd, \
+					struct iovec32 *iovp, \
+					u_int iovcnt, \
+					off_t offset); }
+290	AUE_PWRITEV	STD	{ ssize_t freebsd32_pwritev(int fd, \
+					struct iovec32 *iovp, \
+					u_int iovcnt, \
+					off_t offset); }
+#endif
 291	AUE_NULL	UNIMPL	nosys
 292	AUE_NULL	UNIMPL	nosys
 293	AUE_NULL	UNIMPL	nosys
@@ -581,10 +624,17 @@
 334	AUE_NULL	NOPROTO	{ int sched_rr_get_interval (pid_t pid, \
 				    struct timespec *interval); }
 335	AUE_NULL	NOPROTO	{ int utrace(const void *addr, size_t len); }
+#ifdef QUAD_SPLIT_REQUIRED
 336	AUE_SENDFILE	COMPAT4	{ int freebsd32_sendfile(int fd, int s, \
 				    u_int32_t offset1, u_int32_t offset2, \
 				    size_t nbytes, struct sf_hdtr32 *hdtr, \
 				    off_t *sbytes, int flags); }
+#else
+336	AUE_SENDFILE	COMPAT4	{ int freebsd32_sendfile(int fd, int s, \
+				    off_t offset, \
+				    size_t nbytes, struct sf_hdtr32 *hdtr, \
+				    off_t *sbytes, int flags); }
+#endif
 337	AUE_NULL	NOPROTO	{ int kldsym(int fileid, int cmd, \
 				    void *data); }
 338	AUE_JAIL	STD	{ int freebsd32_jail(struct jail32 *jail); }
@@ -684,10 +734,17 @@
 391	AUE_LCHFLAGS	NOPROTO	{ int lchflags(const char *path, int flags); }
 392	AUE_NULL	NOPROTO	{ int uuidgen(struct uuid *store, \
 				    int count); }
+#ifdef QUAD_SPLIT_REQUIRED
 393	AUE_SENDFILE	STD	{ int freebsd32_sendfile(int fd, int s, \
 				    u_int32_t offset1, u_int32_t offset2, \
 				    size_t nbytes, struct sf_hdtr32 *hdtr, \
 				    off_t *sbytes, int flags); }
+#else
+393	AUE_SENDFILE	STD	{ int freebsd32_sendfile(int fd, int s, \
+				    off_t offset, \
+				    size_t nbytes, struct sf_hdtr32 *hdtr, \
+				    off_t *sbytes, int flags); }
+#endif
 394	AUE_NULL	UNIMPL	mac_syscall
 395	AUE_GETFSSTAT	NOPROTO	{ int getfsstat(struct statfs *buf, \
 				    long bufsize, int flags); }
@@ -858,6 +915,7 @@
 				    int pad, \
 				    u_int32_t length1, u_int32_t length2); }
 #else
+#ifdef QUAD_SPLIT_REQUIRED
 475	AUE_PREAD	STD	{ ssize_t freebsd32_pread(int fd, \
 				    void *buf,size_t nbyte, \
 				    u_int32_t offset1, u_int32_t offset2); }
@@ -874,6 +932,24 @@
 				    u_int32_t length1, u_int32_t length2); }
 480	AUE_FTRUNCATE	STD	{ int freebsd32_ftruncate(int fd, \
 				    u_int32_t length1, u_int32_t length2); }
+#else
+475	AUE_PREAD	STD	{ ssize_t freebsd32_pread(int fd, \
+				    void *buf,size_t nbyte, \
+				    off_t offset); }
+476	AUE_PWRITE	STD	{ ssize_t freebsd32_pwrite(int fd, \
+				    const void *buf, size_t nbyte, \
+				    off_t offset); }
+477	AUE_MMAP	STD 	{ caddr_t freebsd32_mmap(caddr_t addr, \
+				    size_t len, int prot, int flags, int fd, \
+				    off_t pos); }
+478	AUE_LSEEK	STD	{ off_t freebsd32_lseek(int fd, \
+				    off_t offset, \
+				    int whence); }
+479	AUE_TRUNCATE	STD	{ int freebsd32_truncate(char *path, \
+				    off_t length); }
+480	AUE_FTRUNCATE	STD	{ int freebsd32_ftruncate(int fd, \
+				    off_t length); }
+#endif
 #endif
 481	AUE_KILL	NOPROTO	{ int thr_kill2(pid_t pid, long id, int sig); }
 482	AUE_SHMOPEN	NOPROTO	{ int shm_open(const char *path, int flags, \
@@ -886,10 +962,17 @@
 				    u_int32_t id1, u_int32_t id2, \
 				    cpusetid_t setid); }
 #else
+#ifdef QUAD_SPLIT_REQUIRED
 485	AUE_NULL	STD	{ int freebsd32_cpuset_setid(cpuwhich_t which, \
 				    u_int32_t id1, u_int32_t id2, \
 				    cpusetid_t setid); }
+#else
+485	AUE_NULL	STD	{ int freebsd32_cpuset_setid(cpuwhich_t which, \
+				    id_t id, \
+				    cpusetid_t setid); }
 #endif
+#endif
+#ifdef QUAD_SPLIT_REQUIRED
 486	AUE_NULL	STD	{ int freebsd32_cpuset_getid(cpulevel_t level, \
 				    cpuwhich_t which, \
 				    u_int32_t id1, u_int32_t id2, \
@@ -904,6 +987,22 @@
 				    u_int32_t id1, u_int32_t id2, \
 				    size_t cpusetsize, \
 				    const cpuset_t *mask); }
+#else
+486	AUE_NULL	STD	{ int freebsd32_cpuset_getid(cpulevel_t level, \
+				    cpuwhich_t which, \
+				    id_t id, \
+				    cpusetid_t *setid); }
+487	AUE_NULL	STD	{ int freebsd32_cpuset_getaffinity( \
+				    cpulevel_t level, cpuwhich_t which, \
+				    id_t id, \
+				    size_t cpusetsize, \
+				    cpuset_t *mask); }
+488	AUE_NULL	STD	{ int freebsd32_cpuset_setaffinity( \
+				    cpulevel_t level, cpuwhich_t which, \
+				    id_t id, \
+				    size_t cpusetsize, \
+				    const cpuset_t *mask); }
+#endif
 489	AUE_FACCESSAT	NOPROTO	{ int faccessat(int fd, char *path, int mode, \
 				    int flag); }
 490	AUE_FCHMODAT	NOPROTO	{ int fchmodat(int fd, const char *path, \
