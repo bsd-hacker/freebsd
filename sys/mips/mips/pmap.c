@@ -203,10 +203,7 @@ static void pmap_update_page_action(void *arg);
 #if !defined(__mips_n64)
 struct local_sysmaps {
 	struct mtx lock;
-	pt_entry_t CMAP1;
-	pt_entry_t CMAP2;
-	caddr_t CADDR1;
-	caddr_t CADDR2;
+	vm_offset_t base;
 	uint16_t valid1, valid2;
 };
 
@@ -219,6 +216,60 @@ struct local_sysmaps {
  */
 static struct local_sysmaps sysmap_lmem[MAXCPU];
 caddr_t virtual_sys_start = (caddr_t)0;
+
+#define	PMAP_LMEM_MAP1(va, phys)					\
+	int cpu;							\
+	struct local_sysmaps *sysm;					\
+	pt_entry_t *pte, npte;						\
+									\
+	cpu = PCPU_GET(cpuid);						\
+	sysm = &sysmap_lmem[cpu];					\
+	PMAP_LGMEM_LOCK(sysm);						\
+	intr = intr_disable();						\
+	sched_pin();							\
+	va = sysm->base;						\
+	npte = TLBLO_PA_TO_PFN(phys) |					\
+	    PG_D | PG_V | PG_G | PG_W | PG_C_CNC;			\
+	pte = pmap_pte(kernel_pmap, va);				\
+	*pte = npte;							\
+	sysm->valid1 = 1;
+
+#define	PMAP_LMEM_MAP2(va1, phys1, va2, phys2)				\
+	int cpu;							\
+	struct local_sysmaps *sysm;					\
+	pt_entry_t *pte, npte;						\
+									\
+	cpu = PCPU_GET(cpuid);						\
+	sysm = &sysmap_lmem[cpu];					\
+	PMAP_LGMEM_LOCK(sysm);						\
+	intr = intr_disable();						\
+	sched_pin();							\
+	va1 = sysm->base;						\
+	va2 = sysm->base + PAGE_SIZE;					\
+	npte = TLBLO_PA_TO_PFN(phys2) |					\
+	    PG_D | PG_V | PG_G | PG_W | PG_C_CNC;			\
+	pte = pmap_pte(kernel_pmap, va1);				\
+	*pte = npte;							\
+	npte = TLBLO_PA_TO_PFN(phys2) |					\
+	    PG_D | PG_V | PG_G | PG_W | PG_C_CNC;			\
+	pte = pmap_pte(kernel_pmap, va2);				\
+	*pte = npte;							\
+	sysm->valid1 = 1;						\
+	sysm->valid2 = 1;
+
+#define	PMAP_LMEM_UNMAP()						\
+	pte = pmap_pte(kernel_pmap, sysm->base);			\
+	*pte = PG_G;							\
+	pmap_invalidate_page(kernel_pmap, sysm->base);			\
+	sysm->valid1 = 0;						\
+	pte = pmap_pte(kernel_pmap, sysm->base + PAGE_SIZE);		\
+	*pte = PG_G;							\
+	pmap_invalidate_page(kernel_pmap, sysm->base + PAGE_SIZE);	\
+	sysm->valid2 = 0;						\
+	sched_unpin();							\
+	intr_restore(intr);						\
+	PMAP_LGMEM_UNLOCK(sysm);
+
 #endif
 
 pt_entry_t *
@@ -401,12 +452,8 @@ again:
 	 */
 	if (memory_larger_than_512meg) {
 		for (i = 0; i < MAXCPU; i++) {
-			sysmap_lmem[i].CMAP1 = PG_G;
-			sysmap_lmem[i].CMAP2 = PG_G;
-			sysmap_lmem[i].CADDR1 = (caddr_t)virtual_avail;
-			virtual_avail += PAGE_SIZE;
-			sysmap_lmem[i].CADDR2 = (caddr_t)virtual_avail;
-			virtual_avail += PAGE_SIZE;
+			sysmap_lmem[i].base = virtual_avail;
+			virtual_avail += PAGE_SIZE * 2;
 			sysmap_lmem[i].valid1 = sysmap_lmem[i].valid2 = 0;
 			PMAP_LGMEM_LOCK_INIT(&sysmap_lmem[i]);
 		}
@@ -2184,6 +2231,8 @@ pmap_kenter_temporary(vm_paddr_t pa, int i)
 	} else {
 		int cpu;
 		struct local_sysmaps *sysm;
+		pt_entry_t *pte, npte;
+
 		/* If this is used other than for dumps, we may need to leave
 		 * interrupts disasbled on return. If crash dumps don't work when
 		 * we get to this point, we might want to consider this (leaving things
@@ -2193,10 +2242,12 @@ pmap_kenter_temporary(vm_paddr_t pa, int i)
 		cpu = PCPU_GET(cpuid);
 		sysm = &sysmap_lmem[cpu];
 		/* Since this is for the debugger, no locks or any other fun */
-		sysm->CMAP1 = TLBLO_PA_TO_PFN(pa) | PG_D | PG_V | PG_G | PG_W | PG_C_CNC;
+		npte = TLBLO_PA_TO_PFN(pa) | PG_D | PG_V | PG_G | PG_W | PG_C_CNC;
+		pte = pmap_pte(kernel_pmap, sysm->base);
+		*pte = npte;
 		sysm->valid1 = 1;
-		pmap_update_page(kernel_pmap, (vm_offset_t)sysm->CADDR1, sysm->CMAP1);
-		va = (vm_offset_t)sysm->CADDR1;
+		pmap_update_page(kernel_pmap, sysm->base, npte);
+		va = sysm->base;
 		intr_restore(intr);
 	}
 #endif
@@ -2218,10 +2269,13 @@ pmap_kenter_temporary_free(vm_paddr_t pa)
 	cpu = PCPU_GET(cpuid);
 	sysm = &sysmap_lmem[cpu];
 	if (sysm->valid1) {
+		pt_entry_t *pte;
+
 		intr = intr_disable();
-		pmap_invalidate_page(kernel_pmap, (vm_offset_t)sysm->CADDR1);
+		pte = pmap_pte(kernel_pmap, sysm->base);
+		*pte = PG_G;
+		pmap_invalidate_page(kernel_pmap, sysm->base);
 		intr_restore(intr);
-		sysm->CMAP1 = 0;
 		sysm->valid1 = 0;
 	}
 #endif
@@ -2359,36 +2413,23 @@ pmap_zero_page(vm_page_t m)
 #if defined(__mips_n64)
 	{
 		va = MIPS_PHYS_TO_XKPHYS(MIPS_XKPHYS_CCA_CNC, phys);
-		bzero((caddr_t)va, PAGE_SIZE);
 
+		bzero((caddr_t)va, PAGE_SIZE);
 		mips_dcache_wbinv_range(va, PAGE_SIZE);
 	}
 #else
 	if (phys < MIPS_KSEG0_LARGEST_PHYS) {
-
 		va = MIPS_PHYS_TO_KSEG0(phys);
 
 		bzero((caddr_t)va, PAGE_SIZE);
 		mips_dcache_wbinv_range(va, PAGE_SIZE);
 	} else {
-		int cpu;
-		struct local_sysmaps *sysm;
+		PMAP_LMEM_MAP1(va, phys);
 
-		cpu = PCPU_GET(cpuid);
-		sysm = &sysmap_lmem[cpu];
-		PMAP_LGMEM_LOCK(sysm);
-		sched_pin();
-		intr = intr_disable();
-		sysm->CMAP1 = TLBLO_PA_TO_PFN(phys) | PG_D | PG_V | PG_G | PG_W | PG_C_CNC;
-		sysm->valid1 = 1;
-		pmap_update_page(kernel_pmap, (vm_offset_t)sysm->CADDR1, sysm->CMAP1);
-		bzero(sysm->CADDR1, PAGE_SIZE);
-		pmap_invalidate_page(kernel_pmap, (vm_offset_t)sysm->CADDR1);
-		intr_restore(intr);
-		sysm->CMAP1 = 0;
-		sysm->valid1 = 0;
-		sched_unpin();
-		PMAP_LGMEM_UNLOCK(sysm);
+		bzero((caddr_t)va, PAGE_SIZE);
+		mips_dcache_wbinv_range(va, PAGE_SIZE);
+
+		PMAP_LMEM_UNMAP();
 	}
 #endif
 }
@@ -2437,24 +2478,12 @@ pmap_zero_page_area(vm_page_t m, int off, int size)
 		bzero((char *)(caddr_t)va + off, size);
 		mips_dcache_wbinv_range(va + off, size);
 	} else {
-		int cpu;
-		struct local_sysmaps *sysm;
+		PMAP_LMEM_MAP1(va, phys);
 
-		cpu = PCPU_GET(cpuid);
-		sysm = &sysmap_lmem[cpu];
-		PMAP_LGMEM_LOCK(sysm);
-		intr = intr_disable();
-		sched_pin();
-		sysm->CMAP1 = TLBLO_PA_TO_PFN(phys) | PG_D | PG_V | PG_G | PG_W | PG_C_CNC;
-		sysm->valid1 = 1;
-		pmap_update_page(kernel_pmap, (vm_offset_t)sysm->CADDR1, sysm->CMAP1);
-		bzero((char *)sysm->CADDR1 + off, size);
-		pmap_invalidate_page(kernel_pmap, (vm_offset_t)sysm->CADDR1);
-		intr_restore(intr);
-		sysm->CMAP1 = 0;
-		sysm->valid1 = 0;
-		sched_unpin();
-		PMAP_LGMEM_UNLOCK(sysm);
+		bzero((char *)va + off, size);
+		mips_dcache_wbinv_range(va + off, size);
+
+		PMAP_LMEM_UNMAP();
 	}
 #endif
 }
@@ -2488,24 +2517,12 @@ pmap_zero_page_idle(vm_page_t m)
 		bzero((caddr_t)va, PAGE_SIZE);
 		mips_dcache_wbinv_range(va, PAGE_SIZE);
 	} else {
-		int cpu;
-		struct local_sysmaps *sysm;
+		PMAP_LMEM_MAP1(va, phys);
 
-		cpu = PCPU_GET(cpuid);
-		sysm = &sysmap_lmem[cpu];
-		PMAP_LGMEM_LOCK(sysm);
-		intr = intr_disable();
-		sched_pin();
-		sysm->CMAP1 = TLBLO_PA_TO_PFN(phys) | PG_D | PG_V | PG_G | PG_W | PG_C_CNC;
-		sysm->valid1 = 1;
-		pmap_update_page(kernel_pmap, (vm_offset_t)sysm->CADDR1, sysm->CMAP1);
-		bzero(sysm->CADDR1, PAGE_SIZE);
-		pmap_invalidate_page(kernel_pmap, (vm_offset_t)sysm->CADDR1);
-		intr_restore(intr);
-		sysm->CMAP1 = 0;
-		sysm->valid1 = 0;
-		sched_unpin();
-		PMAP_LGMEM_UNLOCK(sysm);
+		bzero((caddr_t)va, PAGE_SIZE);
+		mips_dcache_wbinv_range(va, PAGE_SIZE);
+
+		PMAP_LMEM_UNMAP();
 	}
 #endif
 }
@@ -2575,52 +2592,12 @@ pmap_copy_page(vm_page_t src, vm_page_t dst)
 			bcopy((caddr_t)va_src, (caddr_t)va_dst, PAGE_SIZE);
 			mips_dcache_wbinv_range(va_dst, PAGE_SIZE);
 		} else {
-			int cpu;
-			struct local_sysmaps *sysm;
+			PMAP_LMEM_MAP2(va_src, phy_src, va_dst, phy_dst);
 
-			cpu = PCPU_GET(cpuid);
-			sysm = &sysmap_lmem[cpu];
-			PMAP_LGMEM_LOCK(sysm);
-			sched_pin();
-			intr = intr_disable();
-			if (phy_src < MIPS_KSEG0_LARGEST_PHYS) {
-				/* one side needs mapping - dest */
-				va_src = MIPS_PHYS_TO_KSEG0(phy_src);
-				sysm->CMAP2 = TLBLO_PA_TO_PFN(phy_dst) | PG_D | PG_V | PG_G | PG_W | PG_C_CNC;
-				pmap_update_page(kernel_pmap, (vm_offset_t)sysm->CADDR2, sysm->CMAP2);
-				sysm->valid2 = 1;
-				va_dst = (vm_offset_t)sysm->CADDR2;
-			} else if (phy_dst < MIPS_KSEG0_LARGEST_PHYS) {
-				/* one side needs mapping - src */
-				va_dst = MIPS_PHYS_TO_KSEG0(phy_dst);
-				sysm->CMAP1 = TLBLO_PA_TO_PFN(phy_src) | PG_D | PG_V | PG_G | PG_W | PG_C_CNC;
-				pmap_update_page(kernel_pmap, (vm_offset_t)sysm->CADDR1, sysm->CMAP1);
-				va_src = (vm_offset_t)sysm->CADDR1;
-				sysm->valid1 = 1;
-			} else {
-				/* all need mapping */
-				sysm->CMAP1 = TLBLO_PA_TO_PFN(phy_src) | PG_D | PG_V | PG_G | PG_W | PG_C_CNC;
-				sysm->CMAP2 = TLBLO_PA_TO_PFN(phy_dst) | PG_D | PG_V | PG_G | PG_W | PG_C_CNC;
-				pmap_update_page(kernel_pmap, (vm_offset_t)sysm->CADDR1, sysm->CMAP1);
-				pmap_update_page(kernel_pmap, (vm_offset_t)sysm->CADDR2, sysm->CMAP2);
-				sysm->valid1 = sysm->valid2 = 1;
-				va_src = (vm_offset_t)sysm->CADDR1;
-				va_dst = (vm_offset_t)sysm->CADDR2;
-			}
 			bcopy((void *)va_src, (void *)va_dst, PAGE_SIZE);
-			if (sysm->valid1) {
-				pmap_invalidate_page(kernel_pmap, (vm_offset_t)sysm->CADDR1);
-				sysm->CMAP1 = 0;
-				sysm->valid1 = 0;
-			}
-			if (sysm->valid2) {
-				pmap_invalidate_page(kernel_pmap, (vm_offset_t)sysm->CADDR2);
-				sysm->CMAP2 = 0;
-				sysm->valid2 = 0;
-			}
-			intr_restore(intr);
-			sched_unpin();
-			PMAP_LGMEM_UNLOCK(sysm);
+			mips_dcache_wbinv_range(va_dst, PAGE_SIZE);
+
+			PMAP_LMEM_UNMAP();
 		}
 #endif
 	}
