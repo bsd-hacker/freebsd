@@ -67,10 +67,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/atomic.h>
 #include <machine/memdev.h>
 
-#if !defined(__mips_n64)
-extern struct sysmaps sysmaps_pcpu[];
-#endif
-
 /*ARGSUSED*/
 int
 memrw(dev, uio, flags)
@@ -98,41 +94,26 @@ memrw(dev, uio, flags)
 			v = uio->uio_offset;
 			c = iov->iov_len;
 
+#if defined(__mips_n64)
 			vm_offset_t va;
 			vm_paddr_t pa;
 			register int o;
 
 			if (is_cacheable_mem(v) &&
 			    is_cacheable_mem(v + c - 1)) {
-#if !defined(__mips_n64)
-				struct fpage *fp;
-				struct sysmaps *sysmaps;
-
-				sysmaps = &sysmaps_pcpu[PCPU_GET(cpuid)];
-				mtx_lock(&sysmaps->lock);
-				sched_pin();
-
-				fp = &sysmaps->fp[PMAP_FPAGE1];
-#endif
 				pa = uio->uio_offset & ~PAGE_MASK;
-#if !defined(__mips_n64)
-				va = pmap_map_fpage(pa, fp, FALSE);
-#else
 				va = MIPS_PHYS_TO_XKPHYS(MIPS_XKPHYS_CCA_CNC, pa);
-#endif
 				o = (int)uio->uio_offset & PAGE_MASK;
 				c = (u_int)(PAGE_SIZE -
 					    ((uintptr_t)iov->iov_base & PAGE_MASK));
 				c = min(c, (u_int)(PAGE_SIZE - o));
 				c = min(c, (u_int)iov->iov_len);
 				error = uiomove((caddr_t)(va + o), (int)c, uio);
-#if !defined(__mips_n64)
-				pmap_unmap_fpage(pa, fp);
-				sched_unpin();
-				mtx_unlock(&sysmaps->lock);
-#endif
 			} else
 				return (EFAULT);
+#else
+			return (ENOTSUP);
+#endif
 			continue;
 		}
 
@@ -142,7 +123,6 @@ memrw(dev, uio, flags)
 			c = min(iov->iov_len, MAXPHYS);
 
 			vm_offset_t addr, eaddr;
-			vm_offset_t wired_tlb_virtmem_end;
 
 			/*
 			 * Make sure that all of the pages are currently
@@ -152,24 +132,15 @@ memrw(dev, uio, flags)
 			eaddr = round_page(uio->uio_offset + c);
 
 			if (addr > (vm_offset_t) VM_MIN_KERNEL_ADDRESS) {
-				wired_tlb_virtmem_end = VM_MIN_KERNEL_ADDRESS +
-				    VM_KERNEL_ALLOC_OFFSET;
-				if ((addr < wired_tlb_virtmem_end) &&
-				    (eaddr >= wired_tlb_virtmem_end))
-					addr = wired_tlb_virtmem_end;
+				for (; addr < eaddr; addr += PAGE_SIZE) 
+					if (pmap_extract(kernel_pmap, addr) == 0)
+						return EFAULT;
 
-				if (addr >= wired_tlb_virtmem_end) {
-					for (; addr < eaddr; addr += PAGE_SIZE) 
-						if (pmap_extract(kernel_pmap,
-						    addr) == 0)
-							return EFAULT;
-
-					if (!kernacc(
-					    (caddr_t)(uintptr_t)uio->uio_offset, c,
-					    uio->uio_rw == UIO_READ ?
-					    VM_PROT_READ : VM_PROT_WRITE))
-						return (EFAULT);
-				}
+				if (!kernacc(
+				    (caddr_t)(uintptr_t)uio->uio_offset, c,
+				    uio->uio_rw == UIO_READ ?
+				    VM_PROT_READ : VM_PROT_WRITE))
+					return (EFAULT);
 			}
 			else if (MIPS_IS_KSEG0_ADDR(v)) {
 				if (MIPS_KSEG0_TO_PHYS(v + c) >= ctob(physmem))

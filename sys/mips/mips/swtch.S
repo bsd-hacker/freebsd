@@ -295,7 +295,7 @@ blocked_loop:
 	PTR_S	a2, PC_CURPCB(a3)
 	PTR_L	v0, TD_KSTACK(a1)
 #if !defined(__mips_n64)
-	PTR_LI	s0, (MIPS_KSEG2_START+VM_KERNEL_ALLOC_OFFSET)		# If Uarea addr is below kseg2,
+	PTR_LI	s0, MIPS_KSEG2_START		# If Uarea addr is below kseg2,
 	bltu	v0, s0, sw2			# no need to insert in TLB.
 #endif
 	lw	a1, TD_UPTE + 0(s7)		# a1 = u. pte #0
