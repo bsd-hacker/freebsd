@@ -374,10 +374,9 @@ trap(struct trapframe *trapframe)
 			vm_offset_t pa;
 
 			PMAP_LOCK(kernel_pmap);
-			if (!(pte = pmap_segmap(kernel_pmap,
-			    trapframe->badvaddr)))
-				panic("trap: ktlbmod: invalid segmap");
-			pte += PDE_OFFSET(trapframe->badvaddr);
+			pte = pmap_pte(kernel_pmap, trapframe->badvaddr);
+			if (pte == NULL)
+				panic("trap: ktlbmod: can't find PTE");
 #ifdef SMP
 			/* It is possible that some other CPU changed m-bit */
 			if (!pte_test(pte, PG_V) || pte_test(pte, PG_D)) {
@@ -414,9 +413,9 @@ trap(struct trapframe *trapframe)
 			pmap = &p->p_vmspace->vm_pmap;
 
 			PMAP_LOCK(pmap);
-			if (!(pte = pmap_segmap(pmap, trapframe->badvaddr)))
-				panic("trap: utlbmod: invalid segmap");
-			pte += PDE_OFFSET(trapframe->badvaddr);
+			pte = pmap_pte(pmap, trapframe->badvaddr);
+			if (pte == NULL)
+				panic("trap: utlbmod: can't find PTE");
 #ifdef SMP
 			/* It is possible that some other CPU changed m-bit */
 			if (!pte_test(pte, PG_V) || pte_test(pte, PG_D)) {

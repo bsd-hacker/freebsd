@@ -38,12 +38,6 @@ typedef	pt_entry_t *pd_entry_t;
 #endif
 
 /*
- * Given a virtual address, get the offset of its PTE within its page
- * directory page.
- */
-#define	PDE_OFFSET(va)	(((vm_offset_t)(va) >> PAGE_SHIFT) & (NPTEPG - 1))
-
-/*
  * TLB and PTE management.  Most things operate within the context of
  * EntryLo0,1, and begin with TLBLO_.  Things which work with EntryHi
  * start with TLBHI_.  PTE bits begin with PG_.

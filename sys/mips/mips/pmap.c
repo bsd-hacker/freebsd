@@ -136,6 +136,12 @@ __FBSDID("$FreeBSD$");
 #define	mips_segtrunc(va)	((va) & ~SEGOFSET)
 #define	is_kernel_pmap(x)	((x) == kernel_pmap)
 
+/*
+ * Given a virtual address, get the offset of its PTE within its page
+ * directory page.
+ */
+#define	PDE_OFFSET(va)	(((vm_offset_t)(va) >> PAGE_SHIFT) & (NPTEPG - 1))
+
 struct pmap kernel_pmap_store;
 pd_entry_t *kernel_segmap;
 

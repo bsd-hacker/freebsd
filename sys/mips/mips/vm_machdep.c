@@ -225,13 +225,9 @@ cpu_thread_swapin(struct thread *td)
 	 * part of the thread struct so cpu_switch() can quickly map in
 	 * the pcb struct and kernel stack.
 	 */
-	if (!(pte = pmap_segmap(kernel_pmap, td->td_kstack)))
-		panic("cpu_thread_swapin: invalid segmap");
-	pte += PDE_OFFSET(td->td_kstack);
-
 	for (i = 0; i < KSTACK_PAGES; i++) {
+		pte = pmap_pte(kernel_pmap, td->td_kstack + i * PAGE_SIZE);
 		td->td_md.md_upte[i] = *pte & ~TLBLO_SWBITS_MASK;
-		pte++;
 	}
 }
 
@@ -250,13 +246,9 @@ cpu_thread_alloc(struct thread *td)
 	    td->td_kstack_pages * PAGE_SIZE) - 1;
 	td->td_frame = &td->td_pcb->pcb_regs;
 
-	if (!(pte = pmap_segmap(kernel_pmap, td->td_kstack)))
-		panic("cpu_thread_alloc: invalid segmap");
-	pte += PDE_OFFSET(td->td_kstack);
-
 	for (i = 0; i < KSTACK_PAGES; i++) {
+		pte = pmap_pte(kernel_pmap, td->td_kstack + i * PAGE_SIZE);
 		td->td_md.md_upte[i] = *pte & ~TLBLO_SWBITS_MASK;
-		pte++;
 	}
 }
 
