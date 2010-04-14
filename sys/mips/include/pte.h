@@ -48,18 +48,16 @@ typedef	pt_entry_t *pd_entry_t;
  * EntryLo0,1, and begin with TLBLO_.  Things which work with EntryHi
  * start with TLBHI_.  PTE bits begin with PG_.
  *
- * Note that while the TLB uses 4K pages, our PTEs correspond to VM pages,
- * which in turn are 8K.  This corresponds well to the fact that each TLB
- * entry maps 2 TLB pages (one even, one odd.)
+ * Note that we use the same size VM and TLB pages.
  */
-#define	TLB_PAGE_SHIFT	(PAGE_SHIFT - 1)
+#define	TLB_PAGE_SHIFT	(PAGE_SHIFT)
 #define	TLB_PAGE_SIZE	(1 << TLB_PAGE_SHIFT)
 #define	TLB_PAGE_MASK	(TLB_PAGE_SIZE - 1)
 
 /*
  * TLB PageMask register.  Has mask bits set above the default, 4K, page mask.
  */
-#define	TLBMASK_SHIFT	(TLB_PAGE_SHIFT + 1)
+#define	TLBMASK_SHIFT	(13)
 #define	TLBMASK_MASK	((PAGE_MASK >> TLBMASK_SHIFT) << TLBMASK_SHIFT)
 
 /*
@@ -73,10 +71,9 @@ typedef	pt_entry_t *pd_entry_t;
  */
 #define	TLBLO_SWBITS_SHIFT	(30)
 #define	TLBLO_SWBITS_MASK	(0x3U << TLBLO_SWBITS_SHIFT)
-#define	TLBLO_PFN_SHIFT		(6 + (PAGE_SHIFT - TLBMASK_SHIFT))
+#define	TLBLO_PFN_SHIFT		(6)
 #define	TLBLO_PFN_MASK		(0x03FFFFFC0)
 #define	TLBLO_PA_TO_PFN(pa)	((((pa) >> TLB_PAGE_SHIFT) << TLBLO_PFN_SHIFT) & TLBLO_PFN_MASK)
-#define	TLBLO_PFN_ODD		(TLBLO_PA_TO_PFN(TLB_PAGE_SIZE))
 #define	TLBLO_PFN_TO_PA(pfn)	(((pfn) >> TLBLO_PFN_SHIFT) << TLB_PAGE_SHIFT)
 #define	TLBLO_PTE_TO_PFN(pte)	((pte) & TLBLO_PFN_MASK)
 #define	TLBLO_PTE_TO_PA(pte)	(TLBLO_PFN_TO_PA(TLBLO_PTE_TO_PFN((pte))))
@@ -98,7 +95,7 @@ typedef	pt_entry_t *pd_entry_t;
 #define	TLBHI_R_MASK		(0x03UL << TLBHI_R_SHIFT)
 #define	TLBHI_VA_R(va)		((va) & TLBHI_R_MASK)
 #define	TLBHI_FILL_SHIFT	40
-#define	TLBHI_VPN2_SHIFT	(PAGE_SHIFT)
+#define	TLBHI_VPN2_SHIFT	(TLB_PAGE_SHIFT + 1)
 #define	TLBHI_VPN2_MASK		(((~((1UL << TLBHI_VPN2_SHIFT) - 1)) << (63 - TLBHI_FILL_SHIFT)) >> (63 - TLBHI_FILL_SHIFT))
 #define	TLBHI_VA_TO_VPN2(va)	((va) & TLBHI_VPN2_MASK)
 #define	TLBHI_ENTRY(va, asid)	((TLBHI_VA_R((va))) /* Region. */ | \
@@ -144,7 +141,5 @@ typedef	pt_entry_t *pd_entry_t;
 #define	pte_clear(pte, bit)	((*pte) &= ~(bit))
 #define	pte_set(pte, bit)	((*pte) |= (bit))
 #define	pte_test(pte, bit)	(((*pte) & (bit)) == (bit))
-
-	/* Internal API for the MIPS PMAP.  */
 
 #endif /* !_MACHINE_PTE_H_ */

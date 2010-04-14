@@ -80,6 +80,12 @@ tlb_write_random(void)
 
 static void tlb_invalidate_one(unsigned);
 
+/*
+ * XXX
+ * We invalidate the whole pair.  Would be nice to just
+ * invalidate the single entry instead of forcing a reload
+ * of the other one.
+ */
 void
 tlb_invalidate_address(struct pmap *pmap, vm_offset_t va)
 {
@@ -137,12 +143,16 @@ tlb_update(struct pmap *pmap, vm_offset_t va, pt_entry_t pte)
 	mips_wr_entryhi(TLBHI_ENTRY(va, pmap_asid(pmap)));
 	tlb_probe();
 	i = mips_rd_index();
-	mips_wr_entrylo0(pte);
-	mips_wr_entrylo1(pte + TLBLO_PFN_ODD);
-	if (i >= 0)
+	if (i >= 0) {
+		tlb_read();
+
+		if ((va & PAGE_SIZE) == 0) {
+			mips_wr_entrylo0(pte);
+		} else {
+			mips_wr_entrylo1(pte);
+		}
 		tlb_write_indexed();
-	else
-		tlb_write_random();
+	}
 	mips_wr_entryhi(asid);
 	mips_wr_pagemask(mask);
 	intr_restore(s);
@@ -152,7 +162,7 @@ static void
 tlb_invalidate_one(unsigned i)
 {
 	/* XXX an invalid ASID? */
-	mips_wr_entryhi(TLBHI_ENTRY(MIPS_KSEG0_START + (i * PAGE_SIZE), 0));
+	mips_wr_entryhi(TLBHI_ENTRY(MIPS_KSEG0_START + (2 * i * PAGE_SIZE), 0));
 	mips_wr_entrylo0(0);
 	mips_wr_entrylo1(0);
 	mips_wr_pagemask(0);

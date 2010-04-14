@@ -136,9 +136,9 @@ MipsDoTLBMiss:
 	PTR_L		k1, PC_SEGBASE(k1)
 	beqz		k1, 2f				#05: make sure segbase is not null
 #if defined(__mips_n64)
-	andi		k0, k0, 0x1ff8			#06: k0=seg offset (mask 0x7)
+	andi		k0, k0, 0xff8			#06: k0=seg offset (mask 0x7)
 #else
-	andi		k0, k0, 0x1ffc			#06: k0=seg offset (mask 0x3)
+	andi		k0, k0, 0xffc			#06: k0=seg offset (mask 0x3)
 #endif
 	PTR_ADDU	k1, k0, k1			#07: k1=seg entry address
 
@@ -146,14 +146,15 @@ MipsDoTLBMiss:
 	MFC0		k0, COP_0_BAD_VADDR		#09: k0=bad address (again)
 	beq		k1, zero, 2f			#0a: ==0 -- no page table
 	srl		k0, PAGE_SHIFT - 2		#0b: k0=VPN (aka va>>10)
-	andi		k0, k0, 0x1ffc			#0c: k0=page tab offset
+	andi		k0, k0, 0xff8			#0c: k0=page tab offset
 	PTR_ADDU	k1, k1, k0			#0d: k1=pte address
 	lw		k0, 0(k1)			#0e: k0=lo0 pte
+	lw		k1, 4(k1)			#0f: k1=lo0 pte
 	CLEAR_PTE_SWBITS(k0)
 	MTC0		k0, COP_0_TLB_LO0		#12: lo0 is loaded
 	COP0_SYNC
-	addu		k0, TLBLO_PFN_ODD
-	MTC0		k0, COP_0_TLB_LO1		#15: lo1 is loaded
+	CLEAR_PTE_SWBITS(k1)
+	MTC0		k1, COP_0_TLB_LO1		#15: lo1 is loaded
 	COP0_SYNC
 	tlbwr						#1a: write to tlb
 	HAZARD_DELAY
@@ -812,9 +813,9 @@ NLEAF(MipsTLBInvalidException)
 #endif
 	beq		k1, zero, MipsKernGenException	# ==0 -- no seg tab
 #if defined(__mips_n64)
-	andi		k0, k0, 0x1ff8			# k0=seg offset (mask 0x7)
+	andi		k0, k0, 0xff8			# k0=seg offset (mask 0x7)
 #else
-	andi		k0, k0, 0x1ffc			# k0=seg offset (mask 0x3)
+	andi		k0, k0, 0xffc			# k0=seg offset (mask 0x3)
 #endif
 	PTR_ADDU	k1, k0, k1			# k1=seg entry address
 	PTR_L		k1, 0(k1)			# k1=seg entry
@@ -825,7 +826,7 @@ NLEAF(MipsTLBInvalidException)
 
 	MFC0		k0, COP_0_BAD_VADDR		# k0=bad address (again)
 	PTR_SRL		k0, PAGE_SHIFT - 2		# k0=VPN
-	andi		k0, k0, 0x1ffc			# k0=page tab offset
+	andi		k0, k0, 0xffc			# k0=page tab offset
 	PTR_ADDU	k1, k1, k0			# k1=pte address
 	lw		k0, 0(k1)			# k0=this PTE
 
@@ -834,14 +835,34 @@ NLEAF(MipsTLBInvalidException)
 	beqz		k0, 3f
 	nop
 
+	/* Check whether this is an even or odd entry.  */
+	andi		k0, k1, 4
+	bnez		k0, odd_page
+	nop
+
 	lw		k0, 0(k1)
+	lw		k1, 4(k1)
 	CLEAR_PTE_SWBITS(k0)
 	MTC0		k0, COP_0_TLB_LO0
 	COP0_SYNC
-	addu		k0, TLBLO_PFN_ODD
-	MTC0		k0, COP_0_TLB_LO1
+	CLEAR_PTE_SWBITS(k1)
+	MTC0		k1, COP_0_TLB_LO1
 	COP0_SYNC
 
+	b		tlb_insert_entry
+	nop
+
+odd_page:
+	lw		k0, -4(k1)
+	lw		k1, 0(k1)
+	CLEAR_PTE_SWBITS(k0)
+	MTC0		k0, COP_0_TLB_LO0
+	COP0_SYNC
+	CLEAR_PTE_SWBITS(k1)
+	MTC0		k1, COP_0_TLB_LO1
+	COP0_SYNC
+
+tlb_insert_entry:
 	tlbp
 	HAZARD_DELAY
 	mfc0		k0, COP_0_TLB_INDEX
@@ -963,27 +984,24 @@ NLEAF(MipsTLBMissException)
 	PTR_L		k1, %lo(kernel_segmap)(k1)	# k1=segment tab base
 	beq		k1, zero, MipsKernGenException	# ==0 -- no seg tab
 #if defined(__mips_n64)
-	andi		k0, k0, 0x1ff8			# k0=seg offset (mask 0x7)
+	andi		k0, k0, 0xff8			# k0=seg offset (mask 0x7)
 #else
-	andi		k0, k0, 0x1ffc			# k0=seg offset (mask 0x3)
+	andi		k0, k0, 0xffc			# k0=seg offset (mask 0x3)
 #endif
 	PTR_ADDU	k1, k0, k1			# k1=seg entry address
 	PTR_L		k1, 0(k1)			# k1=seg entry
 	MFC0		k0, COP_0_BAD_VADDR		# k0=bad address (again)
 	beq		k1, zero, MipsKernGenException	# ==0 -- no page table
 	PTR_SRL		k0, PAGE_SHIFT - 2		# k0=VPN
-	andi		k0, k0, 0x1ffc			# k0=page tab offset
+	andi		k0, k0, 0xff8			# k0=page tab offset
 	PTR_ADDU	k1, k1, k0			# k1=pte address
 	lw		k0, 0(k1)			# k0=lo0 pte
-	andi		k0, PG_V
-	beqz		k0, MipsKernGenException	# no PTE
-	nop
-	lw		k0, 0(k1)			# k0=lo0 pte
+	lw		k1, 4(k1)			# k1=lo1 pte
 	CLEAR_PTE_SWBITS(k0)
 	MTC0		k0, COP_0_TLB_LO0		# lo0 is loaded
 	COP0_SYNC
-	addu		k0, TLBLO_PFN_ODD
-	MTC0		k0, COP_0_TLB_LO1		# lo1 is loaded
+	CLEAR_PTE_SWBITS(k1)
+	MTC0		k1, COP_0_TLB_LO1		# lo1 is loaded
 	COP0_SYNC
 	tlbwr					# write to tlb
 	HAZARD_DELAY

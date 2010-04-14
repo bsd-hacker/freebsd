@@ -298,7 +298,8 @@ blocked_loop:
 	PTR_LI	s0, (MIPS_KSEG2_START+VM_KERNEL_ALLOC_OFFSET)		# If Uarea addr is below kseg2,
 	bltu	v0, s0, sw2			# no need to insert in TLB.
 #endif
-	lw	a1, TD_UPTE(s7)			# t0 = u. pte
+	lw	a1, TD_UPTE + 0(s7)		# a1 = u. pte #0
+	lw	a2, TD_UPTE + 4(s7)		# a2 = u. pte #1
 /*
  * Wiredown the USPACE of newproc in TLB entry#0.  Check whether target
  * USPACE is already in another place of TLB before that, and if so
@@ -316,7 +317,7 @@ blocked_loop:
 	PTR_LI	t1, MIPS_KSEG0_START		# invalidate tlb entry
 	bltz	s0, entry0set
 	nop
-	sll	s0, PAGE_SHIFT
+	sll	s0, PAGE_SHIFT + 1
 	addu	t1, s0
 	MTC0	t1, COP_0_TLB_HI
 	mtc0	zero, COP_0_TLB_LO0
@@ -330,10 +331,9 @@ entry0set:
 /* SMP!! - Works only for  unshared TLB case - i.e. no v-cpus */
 	mtc0	zero, COP_0_TLB_INDEX		# TLB entry #0
 	HAZARD_DELAY
-	mtc0	a1, COP_0_TLB_LO0		# upte
+	mtc0	a1, COP_0_TLB_LO0		# upte[0]
 	HAZARD_DELAY
-	addu	a1, TLBLO_PFN_ODD
-	mtc0	a1, COP_0_TLB_LO1		# upte + odd
+	mtc0	a2, COP_0_TLB_LO1		# upte[1]
 	HAZARD_DELAY
 	tlbwi					# set TLB entry #0
 	HAZARD_DELAY

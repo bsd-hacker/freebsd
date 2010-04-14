@@ -100,7 +100,7 @@
 #define	CACHE_LINE_SHIFT	6
 #define	CACHE_LINE_SIZE		(1 << CACHE_LINE_SHIFT)
 
-#define	PAGE_SHIFT	13		/* LOG2(PAGE_SIZE) */
+#define	PAGE_SHIFT	12		/* LOG2(PAGE_SIZE) */
 #define	PAGE_SIZE	(1<<PAGE_SHIFT) /* bytes/page */
 #define	PAGE_MASK	(PAGE_SIZE-1)
 #define	NPTEPG		(PAGE_SIZE/(sizeof (pt_entry_t)))
@@ -108,13 +108,13 @@
 
 #define	MAXPAGESIZES	1		/* maximum number of supported page sizes */
 
-#define	BLKDEV_IOSIZE	2048		/* xxx: Why is this 1/4 page? */
+#define	BLKDEV_IOSIZE	2048		/* xxx: Why is this 1/2 page? */
 #define	MAXDUMPPGS	1		/* xxx: why is this only one? */
 
-#define	KSTACK_PAGES		1	/* kernel stack*/
-#define	KSTACK_GUARD_PAGES	1	/* pages of kstack guard; 0 disables */
+#define	KSTACK_PAGES		2	/* kernel stack*/
+#define	KSTACK_GUARD_PAGES	2	/* pages of kstack guard; 0 disables */
 
-#define	UPAGES			1
+#define	UPAGES			2
 
 /* pages ("clicks") (4096 bytes) to disk blocks */
 #define	ctod(x)		((x) << (PAGE_SHIFT - DEV_BSHIFT))
