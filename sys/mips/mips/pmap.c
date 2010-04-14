@@ -160,9 +160,11 @@ static uma_zone_t pvzone;
 static struct vm_object pvzone_obj;
 static int pv_entry_count = 0, pv_entry_max = 0, pv_entry_high_water = 0;
 
+#if !defined(__mips_n64)
 struct fpage fpages_shared[FPAGES_SHARED];
 
 struct sysmaps sysmaps_pcpu[MAXCPU];
+#endif
 
 static PMAP_INLINE void free_pv_entry(pv_entry_t pv);
 static pv_entry_t get_pv_entry(pmap_t locked_pmap);
@@ -187,7 +189,9 @@ static vm_page_t pmap_allocpte(pmap_t pmap, vm_offset_t va, int flags);
 static vm_page_t _pmap_allocpte(pmap_t pmap, unsigned ptepindex, int flags);
 static int pmap_unuse_pt(pmap_t, vm_offset_t, vm_page_t);
 static int init_pte_prot(vm_offset_t va, vm_page_t m, vm_prot_t prot);
+#if !defined(__mips_n64)
 static void pmap_init_fpage(void);
+#endif
 
 #ifdef SMP
 static void pmap_invalidate_page_action(void *arg);
@@ -493,8 +497,10 @@ void
 pmap_init(void)
 {
 
+#if !defined(__mips_n64)
 	if (need_wired_tlb_page_pool)
 		pmap_init_fpage();
+#endif
 	/*
 	 * Initialize the address space (zone) for the pv entries.  Set a
 	 * high water mark so that the system can recover from excessive
@@ -816,6 +822,7 @@ pmap_qremove(vm_offset_t va, int count)
  * Page table page management routines.....
  ***************************************************/
 
+#if !defined(__mips_n64)
 /*
  * floating pages (FPAGES) management routines
  *
@@ -921,6 +928,7 @@ pmap_unmap_fpage(vm_paddr_t pa, struct fpage *fp)
 	 * Should there be any flush operation at the end?
 	 */
 }
+#endif
 
 /*  Revision 1.507
  *

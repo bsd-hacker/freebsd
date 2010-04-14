@@ -180,6 +180,7 @@ int pmap_compute_pages_to_dump(void);
 void pmap_update_page(pmap_t pmap, vm_offset_t va, pt_entry_t pte);
 void pmap_flush_pvcache(vm_page_t m);
 
+#if !defined(__mips_n64)
 /*
  * floating virtual pages (FPAGES)
  *
@@ -210,6 +211,7 @@ vm_offset_t
 pmap_map_fpage(vm_paddr_t pa, struct fpage *fp,
     boolean_t check_unmaped);
 void pmap_unmap_fpage(vm_paddr_t pa, struct fpage *fp);
+#endif
 
 #endif				/* _KERNEL */
 

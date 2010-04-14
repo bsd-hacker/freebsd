@@ -102,6 +102,7 @@ memrw(dev, uio, flags)
 
 			if (is_cacheable_mem(v) &&
 			    is_cacheable_mem(v + c - 1)) {
+#if !defined(__mips_n64)
 				struct fpage *fp;
 				struct sysmaps *sysmaps;
 
@@ -110,17 +111,24 @@ memrw(dev, uio, flags)
 				sched_pin();
 
 				fp = &sysmaps->fp[PMAP_FPAGE1];
+#endif
 				pa = uio->uio_offset & ~PAGE_MASK;
+#if !defined(__mips_n64)
 				va = pmap_map_fpage(pa, fp, FALSE);
+#else
+				va = MIPS_PHYS_TO_XKPHYS(XKPHYS_CCA, pa);
+#endif
 				o = (int)uio->uio_offset & PAGE_MASK;
 				c = (u_int)(PAGE_SIZE -
 					    ((uintptr_t)iov->iov_base & PAGE_MASK));
 				c = min(c, (u_int)(PAGE_SIZE - o));
 				c = min(c, (u_int)iov->iov_len);
 				error = uiomove((caddr_t)(va + o), (int)c, uio);
+#if !defined(__mips_n64)
 				pmap_unmap_fpage(pa, fp);
 				sched_unpin();
 				mtx_unlock(&sysmaps->lock);
+#endif
 			} else
 				return (EFAULT);
 			continue;
