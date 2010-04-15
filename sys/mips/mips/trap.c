@@ -419,7 +419,7 @@ trap(struct trapframe *trapframe)
 #ifdef SMP
 			/* It is possible that some other CPU changed m-bit */
 			if (!pte_test(pte, PG_V) || pte_test(pte, PG_D)) {
-				pmap_update_page(pmap, trapframe->badvaddr, entry);
+				pmap_update_page(pmap, trapframe->badvaddr, *pte);
 				PMAP_UNLOCK(pmap);
 				goto out;
 			}
@@ -920,8 +920,8 @@ dofault:
 #if !defined(SMP) && (defined(DDB) || defined(DEBUG))
 		trapDump("fpintr");
 #else
-		printf("FPU Trap: PC %x CR %x SR %x\n",
-		    trapframe->pc, trapframe->cause, trapframe->sr);
+		printf("FPU Trap: PC %#jx CR %x SR %x\n",
+		    (intmax_t)trapframe->pc, (unsigned)trapframe->cause, (unsigned)trapframe->sr);
 		goto err;
 #endif
 

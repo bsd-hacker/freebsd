@@ -89,6 +89,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/hwfunc.h>
 #include <machine/intr_machdep.h>
 #include <machine/md_var.h>
+#include <machine/tlb.h>
 #ifdef DDB
 #include <sys/kdb.h>
 #include <ddb/ddb.h>
@@ -413,20 +414,17 @@ void
 mips_pcpu_tlb_init(struct pcpu *pcpu)
 {
 	vm_paddr_t pa;
-	struct tlb tlb;
-	int lobits;
+	pt_entry_t pte;
 
 	/*
 	 * Map the pcpu structure at the virtual address 'pcpup'.
 	 * We use a wired tlb index to do this one-time mapping.
 	 */
-	memset(&tlb, 0, sizeof(tlb));
 	pa = vtophys(pcpu);
-	lobits = PG_D | PG_V | PG_G | PG_C_CNC;
-	tlb.tlb_hi = (vm_offset_t)pcpup;
-	tlb.tlb_lo0 = mips_paddr_to_tlbpfn(pa) | lobits;
-	tlb.tlb_lo1 = mips_paddr_to_tlbpfn(pa + PAGE_SIZE) | lobits;
-	Mips_TLBWriteIndexed(PCPU_TLB_ENTRY, &tlb);
+	pte = PG_D | PG_V | PG_G | PG_C_CNC;
+	tlb_insert_wired(PCPU_TLB_ENTRY, (vm_offset_t)pcpup,
+			 TLBLO_PA_TO_PFN(pa) | pte,
+			 TLBLO_PA_TO_PFN(pa + PAGE_SIZE) | pte);
 }
 #endif
 

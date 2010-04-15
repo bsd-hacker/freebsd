@@ -29,6 +29,7 @@
 #ifndef	_MACHINE_TLB_H_
 #define	_MACHINE_TLB_H_
 
+void tlb_insert_wired(unsigned, vm_offset_t, pt_entry_t, pt_entry_t);
 void tlb_invalidate_address(struct pmap *, vm_offset_t);
 void tlb_invalidate_all(void);
 void tlb_invalidate_all_user(struct pmap *);
