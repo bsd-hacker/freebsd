@@ -501,7 +501,7 @@ void ciu_enable_interrupts(int core_num, int intx, int enx,
 #endif
 	ciu_intr_bits |=  set_these_interrupt_bits;
 	oct_write64(ciu_intr_reg_addr, ciu_intr_bits);
-#ifdef OCTEON_SMP
+#ifdef SMP
 	mips_wbflush();
 #endif
 	oct_read64(OCTEON_MIO_BOOT_BIST_STAT);	/* Bus Barrier */
@@ -613,6 +613,14 @@ platform_start(__register_t a0, __register_t a1, __register_t a2 __unused,
 #endif
 	platform_counter_freq = octeon_get_clock_rate();
 	mips_timer_init_params(platform_counter_freq, 0);
+
+#ifdef SMP
+	/*
+	 * Clear any pending IPIs and enable the IPI interrupt.
+	 */
+	oct_write64(OCTEON_CIU_MBOX_CLRX(0), 0xffffffff);
+	ciu_enable_interrupts(0, CIU_INT_1, CIU_EN_0, OCTEON_CIU_ENABLE_MBOX_INTR, CIU_MIPS_IP3);
+#endif
 }
 
 /* impSTART: This stuff should move back into the Cavium SDK */

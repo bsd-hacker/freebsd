@@ -43,13 +43,18 @@ unsigned octeon_ap_boot = ~0;
 void
 platform_ipi_send(int cpuid)
 {
-	panic("%s: not yet implemented.", __func__);
+	oct_write64(OCTEON_CIU_MBOX_SETX(cpuid), 1);
+	mips_wbflush();
 }
 
 void
 platform_ipi_clear(void)
 {
-	panic("%s: not yet implemented.", __func__);
+	uint64_t action;
+
+	action = oct_read64(OCTEON_CIU_MBOX_CLRX(PCPU_GET(cpuid)));
+	KASSERT(action == 1, ("unexpected IPIs: %#jx", (uintmax_t)action));
+	oct_write64(OCTEON_CIU_MBOX_CLRX(PCPU_GET(cpuid)), action);
 }
 
 int
@@ -63,10 +68,18 @@ platform_init_ap(int cpuid)
 {
 	/*
 	 * Set the exception base.
-	 *
-	 * XXX Low bits seem to be used for cpuid?
 	 */
-	mips_wr_prid1(0x80000000);
+	mips_wr_prid1(0x80000000 | cpuid);
+
+	/*
+	 * Set up interrupts, clear IPIs and unmask the IPI interrupt.
+	 */
+	octeon_ciu_reset();
+
+	oct_write64(OCTEON_CIU_MBOX_CLRX(cpuid), 0xffffffff);
+	ciu_enable_interrupts(cpuid, CIU_INT_1, CIU_EN_0, OCTEON_CIU_ENABLE_MBOX_INTR, CIU_MIPS_IP3);
+
+	mips_wbflush();
 }
 
 int

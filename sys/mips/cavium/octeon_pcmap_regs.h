@@ -54,14 +54,6 @@
 
 #ifndef LOCORE
 
-/* XXXimp: From Cavium's include/pcpu.h, need to port that over */
-#ifndef OCTEON_SMP
-#define OCTEON_CORE_ID 0
-#else
-extern struct pcpu *cpuid_to_pcpu[];
-#define OCTEON_CORE_ID (mips_rd_coreid())
-#endif
-
 /*
  * Utility inlines & macros
  */
