@@ -89,5 +89,4 @@ options 	ROOTDEVNAME=\"ufs:cf0s1\"
 #options         ROOTDEVNAME = \"ufs:md0\"
 
 #options         MD_ROOT_SIZE = 21264
-#XXX: Bring up UP first, then generalize.
-#options		SMP
+options		SMP
