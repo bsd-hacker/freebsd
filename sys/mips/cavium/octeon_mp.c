@@ -61,6 +61,12 @@ platform_ipi_intrnum(void)
 void
 platform_init_ap(int cpuid)
 {
+	/*
+	 * Set the exception base.
+	 *
+	 * XXX Low bits seem to be used for cpuid?
+	 */
+	mips_wr_prid1(0x80000000);
 }
 
 int
