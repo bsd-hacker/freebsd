@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2010 Neelkanth Natu
+ * Copyright (c) 2004-2010 Juli Mallett <jmallett@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -25,49 +25,51 @@
  *
  * $FreeBSD$
  */
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
 
-#include <machine/asm.h>
-#include <machine/cpu.h>
-#include <machine/cpuregs.h>
+#include <sys/param.h>
+#include <sys/conf.h>
+#include <sys/kernel.h>
+#include <sys/systm.h>
 
-#include "assym.s"
+#include <machine/hwfunc.h>
+#include <machine/smp.h>
 
-	.text
-	.set	noat
-	.set	noreorder
+void
+platform_ipi_send(int cpuid)
+{
+	panic("%s: not yet implemented.", __func__);
+}
 
-GLOBAL(mpentry)
-	/* XXX On n64 this will be a problem.  */
-	mtc0	zero, COP_0_STATUS_REG	/* disable interrupts */
+void
+platform_ipi_clear(void)
+{
+	panic("%s: not yet implemented.", __func__);
+}
 
-	mtc0	zero, COP_0_CAUSE_REG	/* clear soft interrupts */
+int
+platform_ipi_intrnum(void)
+{
+	panic("%s: not yet implemented.", __func__);
+}
 
-	li	t0, CFG_K0_CACHED	/* make sure kseg0 is cached */
-	mtc0	t0, MIPS_COP_0_CONFIG
-	COP0_SYNC
+void
+platform_init_ap(int cpuid)
+{
+	panic("%s: not yet implemented.", __func__);
 
-	jal	platform_processor_id	/* get the processor number */
-	nop
-	move	s0, v0
+	KASSERT(cpuid == 1, ("AP has an invalid cpu id %d", cpuid));
+}
 
-	/*
-	 * Initialize stack and call machine startup
-	 */
-	PTR_LA	sp, _C_LABEL(pcpu_space)
-	addiu	sp, (PAGE_SIZE * 2) - CALLFRAME_SIZ
-	sll	t0, s0, PAGE_SHIFT + 1
-	addu	sp, sp, t0
+int
+platform_num_processors(void)
+{
+	panic("%s: not yet implemented.", __func__);
+}
 
-	/* Zero out old ra and old fp for debugger */
-	sw      zero, CALLFRAME_SIZ - 4(sp)
-	sw      zero, CALLFRAME_SIZ - 8(sp)
-
-	PTR_LA	gp, _C_LABEL(_gp)
-
-	jal	platform_init_ap
-	move	a0, s0
-
-	jal	smp_init_secondary
-	move	a0, s0
-
-	PANIC("AP startup failed!")
+int
+platform_start_ap(int cpuid)
+{
+	panic("%s: not yet implemented.", __func__);
+}
