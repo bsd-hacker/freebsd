@@ -162,6 +162,18 @@ VECTOR(_locore, unknown)
 	sw	a2, _C_LABEL(fenvp)
 #endif
 
+#if defined(TARGET_OCTEON) && defined(SMP)
+	.set push
+	.set mips32r2
+	rdhwr	t2, $0
+	beqz	t2, 1f
+	nop
+	j	octeon_ap_wait
+	nop
+	.set pop
+1:
+#endif
+
 	/*
 	 * Initialize stack and call machine startup.
 	 */

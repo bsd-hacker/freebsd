@@ -25,7 +25,10 @@
  *
  * $FreeBSD$
  */
+
 #include <machine/asm.h>
+
+	.set noreorder
 
 #ifdef SMP
 /*
@@ -33,7 +36,31 @@
  * in AP boot without a valid stack.
  */
 LEAF(platform_processor_id)
-	li	v0, 0
+	.set push
+	.set mips32r2
 	jr	ra
+	rdhwr	v0, $0
+	.set pop
 END(platform_processor_id)
+
+/*
+ * Called on APs to wait until they are told to launch.
+ */
+LEAF(octeon_ap_wait)
+	jal	platform_processor_id
+	nop
+
+1:	ll	t0, octeon_ap_boot
+	bne	v0, t0, 1b
+	nop
+
+	move	t0, zero
+	sc	t0, octeon_ap_boot
+
+	beqz	t0, 1b
+	nop
+
+	j	mpentry
+	nop
+END(octeon_ap_wait)
 #endif

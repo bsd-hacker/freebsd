@@ -834,7 +834,7 @@ octeon_boot_params_init(register_t ptr)
 
         printf("Boot Descriptor Ver: %u -> %u/%u",
                octeon_bd_ver, octeon_cvmx_bd_ver/100, octeon_cvmx_bd_ver%100);
-        printf("  CPU clock: %uMHz\n", octeon_cpu_clock/1000000);
+        printf("  CPU clock: %uMHz  Core Mask: %#x\n", octeon_cpu_clock/1000000, octeon_core_mask);
         printf("  Dram: %u MB", (uint32_t)(octeon_dram >> 20));
         printf("  Board Type: %u  Revision: %u/%u\n",
                octeon_board_type, octeon_board_rev_major, octeon_board_rev_minor);

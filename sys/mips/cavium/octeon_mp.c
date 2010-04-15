@@ -36,6 +36,10 @@ __FBSDID("$FreeBSD$");
 #include <machine/hwfunc.h>
 #include <machine/smp.h>
 
+#include <mips/cavium/octeon_pcmap_regs.h>
+
+unsigned octeon_ap_boot = ~0;
+
 void
 platform_ipi_send(int cpuid)
 {
@@ -51,25 +55,29 @@ platform_ipi_clear(void)
 int
 platform_ipi_intrnum(void)
 {
-	panic("%s: not yet implemented.", __func__);
+	return (1);
 }
 
 void
 platform_init_ap(int cpuid)
 {
-	panic("%s: not yet implemented.", __func__);
-
-	KASSERT(cpuid == 1, ("AP has an invalid cpu id %d", cpuid));
 }
 
 int
 platform_num_processors(void)
 {
-	panic("%s: not yet implemented.", __func__);
+	return (fls(octeon_core_mask));
 }
 
 int
 platform_start_ap(int cpuid)
 {
-	panic("%s: not yet implemented.", __func__);
+	if (atomic_cmpset_32(&octeon_ap_boot, ~0, cpuid) == 0)
+		return (-1);
+	for (;;) {
+		DELAY(1000);
+		if (atomic_cmpset_32(&octeon_ap_boot, 0, ~0) != 0)
+			return (0);
+		printf("Waiting for cpu%d to start\n", cpuid);
+	}
 }
