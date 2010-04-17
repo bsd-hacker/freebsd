@@ -274,8 +274,13 @@ nfscl_open(vnode_t vp, u_int8_t *nfhp, int fhlen, u_int32_t amode, int usedeleg,
 		*owpp = owp;
 	if (opp != NULL)
 		*opp = op;
-	if (retp != NULL)
-		*retp = NFSCLOPEN_OK;
+	if (retp != NULL) {
+		if (nfhp != NULL && dp != NULL && nop == NULL)
+			/* new local open on delegation */
+			*retp = NFSCLOPEN_SETCRED;
+		else
+			*retp = NFSCLOPEN_OK;
+	}
 
 	/*
 	 * Now, check the mode on the open and return the appropriate
@@ -2313,7 +2318,9 @@ nfscl_renewthread(struct nfsclclient *clp, NFSPROC_T *p)
 	int error, cbpathdown, islept, igotlock, ret, clearok;
 
 	cred = newnfs_getcred();
+	NFSLOCKCLSTATE();
 	clp->nfsc_flags |= NFSCLFLAGS_HASTHREAD;
+	NFSUNLOCKCLSTATE();
 	for(;;) {
 		newnfs_setroot(cred);
 		cbpathdown = 0;
@@ -2326,9 +2333,11 @@ nfscl_renewthread(struct nfsclclient *clp, NFSPROC_T *p)
 			error = nfsrpc_renew(clp, cred, p);
 			if (error == NFSERR_CBPATHDOWN)
 			    cbpathdown = 1;
-			else if (error == NFSERR_STALECLIENTID)
+			else if (error == NFSERR_STALECLIENTID) {
+			    NFSLOCKCLSTATE();
 			    clp->nfsc_flags |= NFSCLFLAGS_RECOVER;
-			else if (error == NFSERR_EXPIRED)
+			    NFSUNLOCKCLSTATE();
+			} else if (error == NFSERR_EXPIRED)
 			    (void) nfscl_hasexpired(clp, clidrev, p);
 		}
 

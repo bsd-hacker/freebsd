@@ -1055,7 +1055,6 @@ trapDump(char *msg)
 	}
 	intr_restore(s);
 }
-
 #endif
 
 
