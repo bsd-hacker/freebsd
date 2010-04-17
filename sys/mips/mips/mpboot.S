@@ -46,10 +46,7 @@
         mtc0    a0, COP_0_STATUS_REG    
 #else
 #define CLEAR_STATUS \
-	mfc0    a0, COP_0_STATUS_REG    ;\
-	li      a2, ~(MIPS_SR_INT_IE | MIPS_SR_EXL | SR_KSU_USER)   ; \
-	and     a0, a0, a2              ; \
-	mtc0	a0, COP_0_STATUS_REG
+	mtc0	zero, COP_0_STATUS_REG
 #endif
 
 GLOBAL(mpentry)
