@@ -557,23 +557,6 @@ pmap_init(void)
  * Low level helper routines.....
  ***************************************************/
 
-#if defined(PMAP_DIAGNOSTIC)
-
-/*
- * This code checks for non-writeable/modified pages.
- * This should be an invalid condition.
- */
-static int
-pmap_nw_modified(pt_entry_t pte)
-{
-	if (pte_test(&pte, PG_RO) == pte_est(&pte, PG_D))
-		return (1);
-	else
-		return (0);
-}
-
-#endif
-
 static void
 pmap_invalidate_all(pmap_t pmap)
 {
@@ -1502,16 +1485,8 @@ pmap_remove_pte(struct pmap *pmap, pt_entry_t *ptq, vm_offset_t va)
 
 	if (page_is_managed(pa)) {
 		m = PHYS_TO_VM_PAGE(pa);
-		if (pte_test(&oldpte, PG_D)) {
-#if defined(PMAP_DIAGNOSTIC)
-			if (pmap_nw_modified(oldpte)) {
-				printf(
-				    "pmap_remove: modified page not writable: va: 0x%x, pte: 0x%x\n",
-				    va, oldpte);
-			}
-#endif
+		if (pte_test(&oldpte, PG_D))
 			vm_page_dirty(m);
-		}
 		if (m->md.pv_flags & PV_TABLE_REF)
 			vm_page_flag_set(m, PG_REFERENCED);
 		m->md.pv_flags &= ~(PV_TABLE_REF | PV_TABLE_MOD);
@@ -1646,16 +1621,8 @@ pmap_remove_all(vm_page_t m)
 		/*
 		 * Update the vm_page_t clean and reference bits.
 		 */
-		if (pte_test(&tpte, PG_D)) {
-#if defined(PMAP_DIAGNOSTIC)
-			if (pmap_nw_modified(tpte)) {
-				printf(
-				    "pmap_remove_all: modified page not writable: va: 0x%x, pte: 0x%x\n",
-				    pv->pv_va, tpte);
-			}
-#endif
+		if (pte_test(&tpte, PG_D))
 			vm_page_dirty(m);
-		}
 		pmap_invalidate_page(pv->pv_pmap, pv->pv_va);
 
 		TAILQ_REMOVE(&pv->pv_pmap->pm_pvlist, pv, pv_plist);
@@ -1811,14 +1778,6 @@ pmap_enter(pmap_t pmap, vm_offset_t va, vm_prot_t access, vm_page_t m,
 			pmap->pm_stats.wired_count++;
 		else if (!wired && pte_test(&origpte, PG_W))
 			pmap->pm_stats.wired_count--;
-
-#if defined(PMAP_DIAGNOSTIC)
-		if (pmap_nw_modified(origpte)) {
-			printf(
-			    "pmap_enter: modified page not writable: va: 0x%x, pte: 0x%x\n",
-			    va, origpte);
-		}
-#endif
 
 		/*
 		 * Remove extra pte reference
