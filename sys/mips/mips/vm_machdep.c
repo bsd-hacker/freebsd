@@ -78,6 +78,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/mbuf.h>
 #include <sys/sf_buf.h>
 
+#if !defined(__mips_n64)
 #ifndef NSFBUFS
 #define	NSFBUFS		(512 + maxusers * 16)
 #endif
@@ -95,6 +96,7 @@ static struct {
 } sf_freelist;
 
 static u_int	sf_buf_alloc_want;
+#endif
 
 /*
  * Finish a fork operation, with process p2 nearly set up.
@@ -458,6 +460,7 @@ kvtop(void *addr)
 #define	ZIDLE_LO(v)	((v) * 2 / 3)
 #define	ZIDLE_HI(v)	((v) * 4 / 5)
 
+#if !defined(__mips_n64)
 /*
  * Allocate a pool of sf_bufs (sendfile(2) or "super-fast" if you prefer. :-))
  */
@@ -485,6 +488,11 @@ sf_buf_init(void *arg)
 
 /*
  * Get an sf_buf from the freelist.  Will block if none are available.
+ *
+ * XXX
+ * If the physical address of m is within range of KSEG0, we should not do the
+ * qenter, and we should make sf_buf_kva() check the physical address and give
+ * the direct-mapped virutal address instead.
  */
 struct sf_buf *
 sf_buf_alloc(struct vm_page *m, int flags)
@@ -534,6 +542,26 @@ sf_buf_free(struct sf_buf *sf)
 		wakeup_one(&sf_freelist);
 	mtx_unlock(&sf_freelist.sf_lock);
 }
+#else
+/*
+ * Allocate an sf_buf.  We just return the vm_page and use XKPHYS.
+ */
+struct sf_buf *
+sf_buf_alloc(struct vm_page *m, int flags)
+{
+	return ((struct sf_buf *)m);
+}
+
+/*
+ * Release resources back to the system.
+ *
+ * XXX Invalidate dcache?
+ */
+void
+sf_buf_free(struct sf_buf *sf)
+{
+}
+#endif
 
 /*
  * Software interrupt handler for queued VM system processing.
