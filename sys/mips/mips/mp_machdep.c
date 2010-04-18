@@ -129,6 +129,7 @@ mips_ipi_handler(void *arg)
 			CTR0(KTR_SMP, "IPI_STOP or IPI_STOP_HARD");
 
 			savectx(&stoppcbs[cpu]);
+			tlb_save();
 
 			/* Indicate we are stopped */
 			atomic_set_int(&stopped_cpus, cpumask);

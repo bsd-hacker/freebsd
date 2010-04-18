@@ -32,12 +32,24 @@
 #include <sys/kernel.h>
 #include <sys/systm.h>
 #include <sys/pcpu.h>
+#include <sys/smp.h>
 
 #include <vm/vm.h>
 #include <vm/vm_page.h>
 
 #include <machine/pte.h>
 #include <machine/tlb.h>
+
+struct tlb_state {
+	unsigned wired;
+	struct tlb_entry {
+		register_t entryhi;
+		register_t entrylo0;
+		register_t entrylo1;
+	} entry[MIPS_MAX_TLB_ENTRIES];
+};
+
+static struct tlb_state tlb_state[MAXCPU];
 
 #if 0
 /*
@@ -183,6 +195,25 @@ tlb_invalidate_all_user(struct pmap *pmap)
 	intr_restore(s);
 }
 
+/* XXX Only if DDB?  */
+void
+tlb_save(void)
+{
+	unsigned i, cpu;
+
+	cpu = PCPU_GET(cpuid);
+
+	tlb_state[cpu].wired = mips_rd_wired();
+	for (i = 0; i < num_tlbentries; i++) {
+		mips_wr_index(i);
+		tlb_read();
+
+		tlb_state[cpu].entry[i].entryhi = mips_rd_entryhi();
+		tlb_state[cpu].entry[i].entrylo0 = mips_rd_entrylo0();
+		tlb_state[cpu].entry[i].entrylo1 = mips_rd_entrylo1();
+	}
+}
+
 void
 tlb_update(struct pmap *pmap, vm_offset_t va, pt_entry_t pte)
 {
@@ -235,22 +266,38 @@ tlb_invalidate_one(unsigned i)
 DB_SHOW_COMMAND(tlb, ddb_dump_tlb)
 {
 	register_t ehi, elo0, elo1;
-	unsigned i;
+	unsigned i, cpu;
 
-	db_printf("Beginning TLB dump...\n");
+	/*
+	 * XXX
+	 * The worst conversion from hex to decimal ever.
+	 */
+	if (have_addr)
+		cpu = ((addr >> 4) % 16) * 10 + (addr % 16);
+	else
+		cpu = PCPU_GET(cpuid);
+
+	if (cpu < 0 || cpu >= mp_ncpus) {
+		db_printf("Invalid CPU %u\n", cpu);
+		return;
+	}
+
+	if (cpu == PCPU_GET(cpuid))
+		tlb_save();
+
+	db_printf("Beginning TLB dump for CPU %u...\n", cpu);
 	for (i = 0; i < num_tlbentries; i++) {
-		if (i == mips_rd_wired()) {
+		if (i == tlb_state[cpu].wired) {
 			if (i != 0)
 				db_printf("^^^ WIRED ENTRIES ^^^\n");
 			else
 				db_printf("(No wired entries.)\n");
 		}
-		mips_wr_index(i);
-		tlb_read();
 
-		ehi = mips_rd_entryhi();
-		elo0 = mips_rd_entrylo0();
-		elo1 = mips_rd_entrylo1();
+		/* XXX PageMask.  */
+		ehi = tlb_state[cpu].entry[i].entryhi;
+		elo0 = tlb_state[cpu].entry[i].entrylo0;
+		elo1 = tlb_state[cpu].entry[i].entrylo1;
 
 		if (elo0 == 0 && elo1 == 0)
 			continue;
