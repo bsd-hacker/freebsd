@@ -147,7 +147,6 @@ kmem_alloc_nofault_space(map, size, find_space)
 	return (addr);
 }
 
-
 /*
  *	Allocate wired-down memory in the kernel's address map
  *	or a submap.

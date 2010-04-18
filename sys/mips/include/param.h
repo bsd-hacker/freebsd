@@ -111,6 +111,9 @@
 #define	BLKDEV_IOSIZE	2048		/* xxx: Why is this 1/2 page? */
 #define	MAXDUMPPGS	1		/* xxx: why is this only one? */
 
+/*
+ * The kernel stack needs to be aligned on a (PAGE_SIZE * 2) boundary.
+ */
 #define	KSTACK_PAGES		2	/* kernel stack*/
 #define	KSTACK_GUARD_PAGES	2	/* pages of kstack guard; 0 disables */
 
