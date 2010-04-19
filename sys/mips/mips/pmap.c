@@ -735,7 +735,7 @@ pmap_kenter(vm_offset_t va, vm_paddr_t pa)
 	opte = *pte;
 	*pte = npte;
 
-	if (pte_test(pte, PG_V) && opte != npte) {
+	if (pte_test(&opte, PG_V) && opte != npte) {
 		/* XXX dcache wbinv?  */
 		pmap_update_page(kernel_pmap, va, npte);
 	}
