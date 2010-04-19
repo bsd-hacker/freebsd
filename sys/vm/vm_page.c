@@ -818,6 +818,7 @@ void
 vm_page_rename(vm_page_t m, vm_object_t new_object, vm_pindex_t new_pindex)
 {
 
+	vm_page_lock_assert(m, MA_OWNED);
 	vm_page_remove(m);
 	vm_page_insert(m, new_object, new_pindex);
 	vm_page_dirty(m);
@@ -2234,10 +2235,9 @@ vm_page_cowfault(vm_page_t m)
 	vm_object_t object;
 	vm_pindex_t pindex;
 
-	/* XXX Not properly locked. */
-	panic("vm_page_cowfault: Not properly locked\n");
 	object = m->object;
 	VM_OBJECT_LOCK_ASSERT(object, MA_OWNED);
+	vm_page_lock_assert(m, MA_OWNED);
 	KASSERT(object->paging_in_progress != 0,
 	    ("vm_page_cowfault: object %p's paging-in-progress count is zero.",
 	    object)); 
@@ -2271,15 +2271,19 @@ vm_page_cowfault(vm_page_t m)
 		 * waiting to allocate a page.  If so, put things back 
 		 * the way they were 
 		 */
+		vm_page_lock(mnew);
 		vm_page_free(mnew);
+		vm_page_unlock(mnew);
 		vm_page_insert(m, object, pindex);
 	} else { /* clear COW & copy page */
 		if (!so_zerocp_fullpage)
 			pmap_copy_page(m, mnew);
+		vm_page_lock(mnew);
 		mnew->valid = VM_PAGE_BITS_ALL;
 		vm_page_dirty(mnew);
 		mnew->wire_count = m->wire_count - m->cow;
 		m->wire_count = m->cow;
+		vm_page_unlock(mnew);
 	}
 }
 
