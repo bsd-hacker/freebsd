@@ -78,30 +78,20 @@
  * Caching of mapped addresses is controlled by bits in the TLB entry.
  */
 
-#if defined(_LOCORE) || defined(LOCORE)
-#ifdef __mips_n64
-#define	KSEG_ADDRESS(x)	__CONCAT(0xffffffff, x)
-#else
-#define	KSEG_ADDRESS(x)	__CONCAT(0x, x)
-#endif
-#else
-#define	KSEG_ADDRESS(x)	((intptr_t)(int32_t)__CONCAT(0x, x))
-#endif
-
+#if !defined(_LOCORE)
 #define	MIPS_KUSEG_START		0x00000000
-#define	MIPS_KSEG0_START		KSEG_ADDRESS(80000000)
-#define	MIPS_KSEG0_END			KSEG_ADDRESS(9fffffff)
-#define	MIPS_KSEG1_START		KSEG_ADDRESS(a0000000)
-#define	MIPS_KSEG1_END			KSEG_ADDRESS(bfffffff)
-#define	MIPS_KSSEG_START		KSEG_ADDRESS(c0000000)
-#define	MIPS_KSSEG_END			KSEG_ADDRESS(dfffffff)
-#define	MIPS_KSEG3_START		KSEG_ADDRESS(e0000000)
-#define	MIPS_KSEG3_END			KSEG_ADDRESS(ffffffff)
-#define	MIPS_MAX_MEM_ADDR		KSEG_ADDRESS(be000000)
-#define	MIPS_RESERVED_ADDR		KSEG_ADDRESS(bfc80000)
+#define	MIPS_KSEG0_START		((intptr_t)(int32_t)0x80000000)
+#define	MIPS_KSEG0_END			((intptr_t)(int32_t)0x9fffffff)
+#define	MIPS_KSEG1_START		((intptr_t)(int32_t)0xa0000000)
+#define	MIPS_KSEG1_END			((intptr_t)(int32_t)0xbfffffff)
+#define	MIPS_KSSEG_START		((intptr_t)(int32_t)0xc0000000)
+#define	MIPS_KSSEG_END			((intptr_t)(int32_t)0xdfffffff)
+#define	MIPS_KSEG3_START		((intptr_t)(int32_t)0xe0000000)
+#define	MIPS_KSEG3_END			((intptr_t)(int32_t)0xffffffff)
 
 #define MIPS_KSEG2_START		MIPS_KSSEG_START
 #define MIPS_KSEG2_END			MIPS_KSSEG_END
+#endif
 
 #define	MIPS_XKPHYS_START		0x8000000000000000
 #define	MIPS_XKPHYS_END			0xbfffffffffffffff
