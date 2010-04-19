@@ -1436,15 +1436,14 @@ retry:
 		 * We do not have to VM_PROT_NONE the page as mappings should
 		 * not be changed by this operation.
 		 */
-		vm_page_lock(m);
 		if ((m->oflags & VPO_BUSY) || m->busy) {
-			vm_page_unlock(m);
 			VM_OBJECT_UNLOCK(new_object);
 			m->oflags |= VPO_WANTED;
 			msleep(m, VM_OBJECT_MTX(orig_object), PVM, "spltwt", 0);
 			VM_OBJECT_LOCK(new_object);
 			goto retry;
 		}
+		vm_page_lock(m);
 		vm_page_rename(m, new_object, idx);
 		/* page automatically made dirty by rename and cache handled */
 		vm_page_busy(m);
