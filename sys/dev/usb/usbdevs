@@ -2416,6 +2416,7 @@ product PROLIFIC PL2303		0x2303	PL2303 Serial (ATEN/IOGEAR UC232A)
 product PROLIFIC PL2305		0x2305	Parallel printer
 product PROLIFIC ATAPI4		0x2307	ATAPI-4 Controller
 product PROLIFIC PL2501		0x2501	PL2501 Host-Host interface
+product PROLIFIC PL2506		0x2506	PL2506 USB to IDE Bridge
 product PROLIFIC PHAROS		0xaaa0	Prolific Pharos
 product PROLIFIC RSAQ3		0xaaa2	PL2303 Serial Adapter (IODATA USB-RSAQ3)
 product PROLIFIC2 WSIM		0x2001	Willcom WSIM
@@ -2515,13 +2516,15 @@ product QUALCOMMINC E2002	0x2002	3G modem
 product QUALCOMMINC E2003	0x2003	3G modem
 
 /* Quanta products */
-/* Quanta products */
+product QUANTA RW6815_1		0x00ce	HP iPAQ rw6815
 product QUANTA RT3070		0x0304	RT3070
+product QUANTA Q101_STOR	0x1000	USB Q101 Storage
 product QUANTA Q101		0xea02	HSDPA modem
 product QUANTA Q111		0xea03	HSDPA modem
 product QUANTA GLX		0xea04	HSDPA modem
 product QUANTA GKE		0xea05	HSDPA modem
 product QUANTA GLE		0xea06	HSDPA modem
+product QUANTA RW6815_2		0xf003	HP iPAQ rw6815
 
 /* Qtronix products */
 product QTRONIX 980N		0x2011	Scorpion-980N keyboard
@@ -2729,6 +2732,7 @@ product SIERRA AIRCARD875	0x6820	Aircard 875 HSDPA
 product SIERRA TRUINSTALL	0x0fff	Aircard Tru Installer
 
 /* Sigmatel products */
+product SIGMATEL WBT_3052	0x4200	WBT-3052 IrDA/USB Bridge
 product SIGMATEL I_BEAD100	0x8008	i-Bead 100 MP3 Player
 
 /* SIIG products */

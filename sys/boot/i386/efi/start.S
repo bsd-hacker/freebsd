@@ -1,11 +1,6 @@
-/*	$OpenBSD: psl.h,v 1.2 1998/01/28 13:46:25 pefo Exp $	*/
-
 /*-
- * Copyright (c) 1992, 1993
- *	The Regents of the University of California.  All rights reserved.
- *
- * This code is derived from software contributed to Berkeley by
- * Ralph Campbell.
+ * Copyright (c) 2008-2010 Rui Paulo <rpaulo@FreeBSD.org>
+ * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -15,14 +10,11 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
- *    may be used to endorse or promote products derived from this software
- *    without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
  * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
  * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
@@ -31,20 +23,48 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- *	from: @(#)psl.h 8.1 (Berkeley) 6/10/93
- *	JNPR: psl.h,v 1.1 2006/08/07 05:38:57 katta
- * $FreeBSD$
+ *	$FreeBSD$
  */
 
-#ifndef _MACHINE_PSL_H_
-#define	_MACHINE_PSL_H_
+	.text
 
-#include <machine/cpu.h>
+#include <machine/asm.h>
+
+#define EFI_SUCCESS		0
 
 /*
- * Macros to decode processor status word.
+ * EFI entry point. 
+ * _start(EFI_IMAGE image_handle, EFI_SYSTEM_TABLE *system_table);
+ *
+ * We calculate the base address along with _DYNAMIC, relocate us and finally
+ * pass control to efi_main.
  */
-#define	USERMODE(ps)	(((ps) & SR_KSU_MASK) == SR_KSU_USER)
-#define	BASEPRI(ps)	(((ps) & (INT_MASK | SR_INT_ENA_PREV)) \
-			    == (INT_MASK | SR_INT_ENA_PREV))
-#endif	/* _MACHINE_PSL_H_ */
+
+ENTRY(_start)
+	pushl	%ebp
+	movl	%esp, %ebp
+
+	pushl	12(%ebp)	/* image_handle */
+	pushl	8(%ebp)		/* system_table */
+	call	0f
+0:	popl	%eax
+	movl	%eax, %ebx
+	addl	$ImageBase-0b, %eax
+	addl	$_DYNAMIC-0b, %ebx
+	pushl	%ebx		/* dynamic */
+	pushl	%eax		/* ImageBase */
+	call	_reloc
+	cmpl	$EFI_SUCCESS, %eax
+	jne	1f
+	popl	%ebx		/* remove ImageBase from the stack */
+	popl	%ebx		/* remove dynamic from the stack */
+	call	efi_main
+1:	leave
+	ret
+END(_start)
+
+	.data
+	.section .reloc, "a"
+	.long	0
+	.long	10
+	.word	0

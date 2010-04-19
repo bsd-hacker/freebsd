@@ -349,7 +349,6 @@ more:
 		vm_page_test_dirty(p);
 		if (p->dirty == 0 ||
 		    (p->queue != PQ_INACTIVE && p->queue != PQ_ACTIVE) ||
-		    p->wire_count != 0 ||	/* may be held by buf cache */
 		    p->hold_count != 0) {	/* may be undergoing I/O */
 			ib = 0;
 			break;
@@ -377,7 +376,6 @@ more:
 		vm_page_test_dirty(p);
 		if (p->dirty == 0 ||
 		    (p->queue != PQ_INACTIVE && p->queue != PQ_ACTIVE) ||
-		    p->wire_count != 0 ||	/* may be held by buf cache */
 		    p->hold_count != 0) {	/* may be undergoing I/O */
 			break;
 		}
@@ -1213,10 +1211,10 @@ vm_pageout_oom(int shortage)
 		if (PROC_TRYLOCK(p) == 0)
 			continue;
 		/*
-		 * If this is a system or protected process, skip it.
+		 * If this is a system, protected or killed process, skip it.
 		 */
 		if ((p->p_flag & (P_INEXEC | P_PROTECTED | P_SYSTEM)) ||
-		    (p->p_pid == 1) ||
+		    (p->p_pid == 1) || P_KILLED(p) ||
 		    ((p->p_pid < 48) && (swap_pager_avail != 0))) {
 			PROC_UNLOCK(p);
 			continue;
