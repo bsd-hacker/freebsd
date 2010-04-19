@@ -125,7 +125,6 @@ __FBSDID("$FreeBSD$");
  *     so we end up getting NUSERPGTBLS of 0.
  */
 #define	pmap_segshift(v)	(((v) >> SEGSHIFT) & (NPDEPG - 1))
-#define	pmap_pde(m, v)		(&((m)->pm_segtab[pmap_segshift((v))]))
 #define	segtab_pde(m, v)	((m)[pmap_segshift((v))])
 
 #if defined(__mips_n64)
@@ -272,10 +271,10 @@ caddr_t virtual_sys_start = (caddr_t)0;
 static inline pt_entry_t *
 pmap_segmap(pmap_t pmap, vm_offset_t va)
 {
-	if (pmap->pm_segtab)
-		return (*pmap_pde(pmap, va));
+	if (pmap->pm_segtab != NULL)
+		return (segtab_pde(pmap->pm_segtab, va));
 	else
-		return ((pd_entry_t)0);
+		return (NULL);
 }
 
 /*
@@ -912,7 +911,7 @@ pmap_unuse_pt(pmap_t pmap, vm_offset_t va, vm_page_t mpte)
 		    (pmap->pm_ptphint->pindex == ptepindex)) {
 			mpte = pmap->pm_ptphint;
 		} else {
-			pteva = *pmap_pde(pmap, va);
+			pteva = pmap_segmap(pmap, va);
 			mpte = PHYS_TO_VM_PAGE(vtophys(pteva));
 			pmap->pm_ptphint = mpte;
 		}
@@ -1558,7 +1557,7 @@ pmap_remove(struct pmap *pmap, vm_offset_t sva, vm_offset_t eva)
 		goto out;
 	}
 	for (va = sva; va < eva; va = nva) {
-		if (!*pmap_pde(pmap, va)) {
+		if (pmap_segmap(pmap, va) == NULL) {
 			nva = mips_segtrunc(va + NBSEG);
 			continue;
 		}
@@ -1666,7 +1665,7 @@ pmap_protect(pmap_t pmap, vm_offset_t sva, vm_offset_t eva, vm_prot_t prot)
 		/*
 		 * If segment table entry is empty, skip this segment.
 		 */
-		if (!*pmap_pde(pmap, sva)) {
+		if (pmap_segmap(pmap, sva) == NULL) {
 			sva = mips_segtrunc(sva + NBSEG);
 			continue;
 		}
@@ -2611,7 +2610,7 @@ pmap_is_prefaultable(pmap_t pmap, vm_offset_t addr)
 
 	rv = FALSE;
 	PMAP_LOCK(pmap);
-	if (*pmap_pde(pmap, addr)) {
+	if (pmap_segmap(pmap, addr) != NULL) {
 		pte = pmap_pte(pmap, addr);
 		rv = (*pte == 0);
 	}
