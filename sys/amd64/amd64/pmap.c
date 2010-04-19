@@ -388,7 +388,7 @@ pmap_kmem_choose(vm_offset_t addr)
 	vm_offset_t newaddr = addr;
 
 	newaddr = (addr + (NBPDR - 1)) & ~(NBPDR - 1);
-	return newaddr;
+	return (newaddr);
 }
 
 /********************/
@@ -399,7 +399,7 @@ pmap_kmem_choose(vm_offset_t addr)
 static __inline vm_pindex_t
 pmap_pde_pindex(vm_offset_t va)
 {
-	return va >> PDRSHIFT;
+	return (va >> PDRSHIFT);
 }
 
 
@@ -458,7 +458,7 @@ pmap_pdpe(pmap_t pmap, vm_offset_t va)
 
 	pml4e = pmap_pml4e(pmap, va);
 	if ((*pml4e & PG_V) == 0)
-		return NULL;
+		return (NULL);
 	return (pmap_pml4e_to_pdpe(pml4e, va));
 }
 
@@ -480,7 +480,7 @@ pmap_pde(pmap_t pmap, vm_offset_t va)
 
 	pdpe = pmap_pdpe(pmap, va);
 	if (pdpe == NULL || (*pdpe & PG_V) == 0)
-		 return NULL;
+		return (NULL);
 	return (pmap_pdpe_to_pde(pdpe, va));
 }
 
@@ -502,7 +502,7 @@ pmap_pte(pmap_t pmap, vm_offset_t va)
 
 	pde = pmap_pde(pmap, va);
 	if (pde == NULL || (*pde & PG_V) == 0)
-		return NULL;
+		return (NULL);
 	if ((*pde & PG_PS) != 0)	/* compat with i386 pmap_pte() */
 		return ((pt_entry_t *)pde);
 	return (pmap_pde_to_pte(pde, va));
@@ -547,7 +547,7 @@ pa_tryrelock(pmap_t pmap, vm_paddr_t pa, vm_paddr_t *locked)
 		PA_UNLOCK(lockpa);
 	}
 	if (PA_TRYLOCK(pa))
-		return 0;
+		return (0);
 	PMAP_UNLOCK(pmap);
 	atomic_add_int((volatile int *)&pmap_tryrelock_restart, 1);
 	PA_LOCK(pa);
@@ -1395,7 +1395,7 @@ pmap_kextract(vm_offset_t va)
 			pa = (pa & PG_FRAME) | (va & PAGE_MASK);
 		}
 	}
-	return pa;
+	return (pa);
 }
 
 /***************************************************
@@ -1625,9 +1625,9 @@ pmap_unwire_pte_hold(pmap_t pmap, vm_offset_t va, vm_page_t m, vm_page_t *free)
 
 	--m->wire_count;
 	if (m->wire_count == 0)
-		return _pmap_unwire_pte_hold(pmap, va, m, free);
+		return (_pmap_unwire_pte_hold(pmap, va, m, free));
 	else
-		return 0;
+		return (0);
 }
 
 static int 
@@ -1635,6 +1635,7 @@ _pmap_unwire_pte_hold(pmap_t pmap, vm_offset_t va, vm_page_t m,
     vm_page_t *free)
 {
 
+	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
 	/*
 	 * unmap the page table page
 	 */
@@ -1654,7 +1655,7 @@ _pmap_unwire_pte_hold(pmap_t pmap, vm_offset_t va, vm_page_t m,
 		pd = pmap_pde(pmap, va);
 		*pd = 0;
 	}
-	--pmap->pm_stats.resident_count;
+	pmap->pm_stats.resident_count--;
 	if (m->pindex < NUPDE) {
 		/* We just released a PT, unhold the matching PD */
 		vm_page_t pdpg;
@@ -1683,7 +1684,7 @@ _pmap_unwire_pte_hold(pmap_t pmap, vm_offset_t va, vm_page_t m,
 	 */
 	pmap_add_delayed_free_list(m, free, TRUE);
 	
-	return 1;
+	return (1);
 }
 
 /*
@@ -1696,10 +1697,10 @@ pmap_unuse_pt(pmap_t pmap, vm_offset_t va, pd_entry_t ptepde, vm_page_t *free)
 	vm_page_t mpte;
 
 	if (va >= VM_MAXUSER_ADDRESS)
-		return 0;
+		return (0);
 	KASSERT(ptepde != 0, ("pmap_unuse_pt: ptepde != 0"));
 	mpte = PHYS_TO_VM_PAGE(ptepde & PG_FRAME);
-	return pmap_unwire_pte_hold(pmap, va, mpte, free);
+	return (pmap_unwire_pte_hold(pmap, va, mpte, free));
 }
 
 void
@@ -1771,6 +1772,7 @@ _pmap_allocpte(pmap_t pmap, vm_paddr_t pa, vm_pindex_t ptepindex, int flags)
 	    (flags & (M_NOWAIT | M_WAITOK)) == M_WAITOK,
 	    ("_pmap_allocpte: flags is neither M_NOWAIT nor M_WAITOK"));
 
+	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
 	/*
 	 * Allocate a page table page.
 	 */
@@ -1890,7 +1892,7 @@ _pmap_allocpte(pmap_t pmap, vm_paddr_t pa, vm_pindex_t ptepindex, int flags)
 
 	pmap->pm_stats.resident_count++;
 
-	return m;
+	return (m);
 }
 
 static vm_page_t
@@ -2198,6 +2200,7 @@ pmap_collect(pmap_t locked_pmap, struct vpgqueues *vpq)
 				PMAP_LOCK(pmap);
 			else if (pmap != locked_pmap && !PMAP_TRYLOCK(pmap))
 				continue;
+			PMAP_LOCK_ASSERT(pmap, MA_OWNED);
 			pmap->pm_stats.resident_count--;
 			pde = pmap_pde(pmap, va);
 			KASSERT((*pde & PG_PS) == 0, ("pmap_collect: found"
@@ -2662,7 +2665,9 @@ pmap_demote_pde(pmap_t pmap, pd_entry_t *pde, vm_offset_t va,
 			pmap->pm_stats.resident_count++;
 	}
 	if (TAILQ_EMPTY(pv_list) && ((oldpde & PG_MANAGED) != 0)) {
-		if (pmap_pv_list_try_alloc(pmap, NPTEPG-1, pv_list) == FALSE)
+		if (pmap_pv_list_try_alloc(pmap, NPTEPG-1, pv_list) == FALSE) {
+			if (mpte == NULL && (va < VM_MAXUSER_ADDRESS))
+				pmap->pm_stats.resident_count--;
 			return (FALSE);
 	}
 	mptepa = VM_PAGE_TO_PHYS(mpte);
@@ -2818,7 +2823,7 @@ pmap_remove_pte(pmap_t pmap, pt_entry_t *ptq, vm_offset_t va,
 	 */
 	if (oldpte & PG_G)
 		pmap_invalidate_page(kernel_pmap, va);
-	pmap->pm_stats.resident_count -= 1;
+	pmap->pm_stats.resident_count--;
 	if (oldpte & PG_MANAGED) {
 		m = PHYS_TO_VM_PAGE(oldpte & PG_FRAME);
 		vm_page_lock_assert(m, MA_OWNED);
@@ -3503,15 +3508,15 @@ pmap_enter(pmap_t pmap, vm_offset_t va, vm_prot_t access, vm_page_t m,
 			ls_push(&ls, PMAP_LOCKPTR(pmap));
 		}
 	}
-	
-restart:
+
 	/*
 	 * In the case that a page table page is not
 	 * resident, we are creating it here.
 	 */
-	if (va < VM_MAXUSER_ADDRESS && mpte == NULL)
+	if (va < VM_MAXUSER_ADDRESS)
 		mpte = pmap_allocpte(pmap, lockedpa, va, M_WAITOK);
 
+restart:
 	pde = pmap_pde(pmap, va);
 	if (pde != NULL && (*pde & PG_V) != 0) {
 		if ((*pde & PG_PS) != 0)
@@ -3917,7 +3922,7 @@ pmap_enter_quick_locked(pmap_t pmap, vm_offset_t va, vm_page_t m,
 		pte_store(pte, pa | PG_V | PG_U);
 	else
 		pte_store(pte, pa | PG_V | PG_U | PG_MANAGED);
-	return mpte;
+	return (mpte);
 }
 
 /*
@@ -4311,12 +4316,12 @@ pmap_page_exists_quick(pmap_t pmap, vm_page_t m)
 	int loops = 0;
 
 	if (m->flags & PG_FICTITIOUS)
-		return FALSE;
+		return (FALSE);
 
 	vm_page_lock_assert(m, MA_OWNED);
 	TAILQ_FOREACH(pv, &m->md.pv_list, pv_list) {
 		if (PV_PMAP(pv) == pmap) {
-			return TRUE;
+			return (TRUE);
 		}
 		loops++;
 		if (loops >= 16)
@@ -5312,7 +5317,7 @@ pmap_mincore(pmap_t pmap, vm_offset_t addr)
 	if (pte != 0) {
 		val |= MINCORE_INCORE;
 		if ((pte & PG_MANAGED) == 0)
-			return val;
+			return (val);
 
 		m = PHYS_TO_VM_PAGE(pa);
 
@@ -5348,7 +5353,7 @@ pmap_mincore(pmap_t pmap, vm_offset_t addr)
 			vm_page_unlock(m);
 		}
 	} 
-	return val;
+	return (val);
 }
 
 void
