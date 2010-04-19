@@ -604,6 +604,7 @@ NNON_LEAF(MipsKernIntr, KERN_EXC_FRAME_SIZE, ra)
 	and	a1, a1, ~SR_INT_MASK
 	or	a1, a1, a0
 	SAVE_REG(a1, SR, sp)
+	REG_L	v0, CALLFRAME_RA + KERN_REG_SIZE(sp)
 	RESTORE_CPU			# v0 contains the return address.
 	sync
 	eret
