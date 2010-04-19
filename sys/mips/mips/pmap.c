@@ -719,7 +719,7 @@ pmap_extract_and_hold(pmap_t pmap, vm_offset_t va, vm_prot_t prot)
 pmap_kenter(vm_offset_t va, vm_paddr_t pa)
 {
 	pt_entry_t *pte;
-	pt_entry_t npte;
+	pt_entry_t opte, npte;
 
 #ifdef PMAP_DEBUG
 	printf("pmap_kenter:  va: %p -> pa: %p\n", (void *)va, (void *)pa);
@@ -732,9 +732,13 @@ pmap_kenter(vm_offset_t va, vm_paddr_t pa)
 		npte |= PG_C_UC;
 
 	pte = pmap_pte(kernel_pmap, va);
-	KASSERT(!pte_test(pte, PG_V) || *pte == npte,
-		("pmap_kenter for %p with different valid entry", (void *)va));
+	opte = *pte;
 	*pte = npte;
+
+	if (pte_test(pte, PG_V) && opte != npte) {
+		/* XXX dcache wbinv?  */
+		pmap_update_page(kernel_pmap, va, npte);
+	}
 }
 
 /*
