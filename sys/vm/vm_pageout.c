@@ -1043,7 +1043,7 @@ rescan0:
 			}
 			vm_page_lock_queues();
 unlock_and_continue:
-			vm_page_lock_assert(m, MA_NOTOWNED);
+			vm_page_lock_queues_assert_notowned();
 			VM_OBJECT_UNLOCK(object);
 			if (mp != NULL) {
 				vm_page_unlock_queues();
