@@ -2762,17 +2762,21 @@ pmap_remove_pde(pmap_t pmap, pd_entry_t *pdq, vm_offset_t sva,
 		eva = sva + NBPDR;
 		for (va = sva, m = PHYS_TO_VM_PAGE(oldpde & PG_PS_FRAME);
 		    va < eva; va += PAGE_SIZE, m++) {
-			/*
-			 * XXX do we need to individually lock each page? 
-			 *
-			 */
-			if ((oldpde & (PG_M | PG_RW)) == (PG_M | PG_RW))
-				vm_page_dirty(m);
-			if (oldpde & PG_A)
-				vm_page_flag_set(m, PG_REFERENCED);
-			if (TAILQ_EMPTY(&m->md.pv_list) &&
-			    TAILQ_EMPTY(&pvh->pv_list))
-				vm_page_flag_clear(m, PG_WRITEABLE);
+
+			if ((oldpde & (PG_M | PG_RW | PG_A)) ||
+			    (TAILQ_EMPTY(&m->md.pv_list) &&
+				TAILQ_EMPTY(&pvh->pv_list))) {
+				vm_page_lock(m);
+			
+				if ((oldpde & (PG_M | PG_RW)) == (PG_M | PG_RW))
+					vm_page_dirty(m);
+				if (oldpde & PG_A)
+					vm_page_flag_set(m, PG_REFERENCED);
+				if (TAILQ_EMPTY(&m->md.pv_list) &&
+				    TAILQ_EMPTY(&pvh->pv_list))
+					vm_page_flag_clear(m, PG_WRITEABLE);
+				vm_page_unlock(m);
+			}
 		}
 	}
 	if (pmap == kernel_pmap) {
