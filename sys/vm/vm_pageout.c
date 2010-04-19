@@ -1043,7 +1043,7 @@ rescan0:
 			}
 			vm_page_lock_queues();
 unlock_and_continue:
-			vm_page_lock_queues_assert_notowned();
+			vm_page_lock_assert_notowned(m);
 			VM_OBJECT_UNLOCK(object);
 			if (mp != NULL) {
 				vm_page_unlock_queues();
@@ -1057,9 +1057,7 @@ unlock_and_continue:
 			next = TAILQ_NEXT(&marker, pageq);
 			TAILQ_REMOVE(&vm_page_queues[PQ_INACTIVE].pl,
 				     &marker, pageq);
-#ifdef VM_PAGE_LOCK
-			vm_page_lock_assert(m, MA_NOTOWNED);
-#endif			
+			vm_page_lock_assert_notowned(m);
 			continue;
 		}
 		vm_page_unlock(m);
