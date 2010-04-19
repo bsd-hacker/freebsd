@@ -1778,25 +1778,31 @@ vm_map_pmap_enter(vm_map_t map, vm_offset_t addr, vm_prot_t prot,
 				p_start = p;
 			}
 		} else if (p_start != NULL) {
+#ifndef VM_PAGE_LOCK
 			if (!are_queues_locked) {
 				are_queues_locked = TRUE;
 				vm_page_lock_queues();
 			}
+#endif			
 			pmap_enter_object(map->pmap, start, addr +
 			    ptoa(tmpidx), p_start, prot);
 			p_start = NULL;
 		}
 	}
 	if (p_start != NULL) {
+#ifndef VM_PAGE_LOCK
 		if (!are_queues_locked) {
 			are_queues_locked = TRUE;
 			vm_page_lock_queues();
 		}
+#endif		
 		pmap_enter_object(map->pmap, start, addr + ptoa(psize),
 		    p_start, prot);
 	}
+#ifndef VM_PAGE_LOCK
 	if (are_queues_locked)
 		vm_page_unlock_queues();
+#endif	
 unlock_return:
 	VM_OBJECT_UNLOCK(object);
 }

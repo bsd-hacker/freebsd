@@ -134,12 +134,13 @@ ncl_getpages(struct vop_getpages_args *ap)
 	 */
 	VM_OBJECT_LOCK(object);
 	if (pages[ap->a_reqpage]->valid != 0) {
-		vm_page_lock_queues();
 		for (i = 0; i < npages; ++i) {
-			if (i != ap->a_reqpage)
+			if (i != ap->a_reqpage) {
+				vm_page_lock(pages[i]);
 				vm_page_free(pages[i]);
+				vm_page_unlock(pages[i]);
+			}
 		}
-		vm_page_unlock_queues();
 		VM_OBJECT_UNLOCK(object);
 		return (0);
 	}
@@ -174,12 +175,13 @@ ncl_getpages(struct vop_getpages_args *ap)
 	if (error && (uio.uio_resid == count)) {
 		ncl_printf("nfs_getpages: error %d\n", error);
 		VM_OBJECT_LOCK(object);
-		vm_page_lock_queues();
 		for (i = 0; i < npages; ++i) {
-			if (i != ap->a_reqpage)
+			if (i != ap->a_reqpage) {
+				vm_page_lock(pages[i]);
 				vm_page_free(pages[i]);
+				vm_page_unlock(pages[i]);
+			}
 		}
-		vm_page_unlock_queues();
 		VM_OBJECT_UNLOCK(object);
 		return (VM_PAGER_ERROR);
 	}
@@ -192,12 +194,13 @@ ncl_getpages(struct vop_getpages_args *ap)
 
 	size = count - uio.uio_resid;
 	VM_OBJECT_LOCK(object);
-	vm_page_lock_queues();
+
 	for (i = 0, toff = 0; i < npages; i++, toff = nextoff) {
 		vm_page_t m;
 		nextoff = toff + PAGE_SIZE;
 		m = pages[i];
 
+		vm_page_lock(m);
 		if (nextoff <= size) {
 			/*
 			 * Read operation filled an entire page
@@ -239,13 +242,15 @@ ncl_getpages(struct vop_getpages_args *ap)
 					vm_page_activate(m);
 				else
 					vm_page_deactivate(m);
+				vm_page_unlock(m);
 				vm_page_wakeup(m);
 			} else {
 				vm_page_free(m);
+				vm_page_unlock(m);
 			}
-		}
+		} else
+			vm_page_unlock(m);
 	}
-	vm_page_unlock_queues();
 	VM_OBJECT_UNLOCK(object);
 	return (0);
 }

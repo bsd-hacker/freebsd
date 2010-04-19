@@ -88,6 +88,12 @@
 #define	UMA_MD_SMALL_ALLOC
 
 /*
+ * We support hashing pages to an entry in array of locks on amd64
+ */
+
+#define VM_PAGE_LOCK
+
+/*
  * The physical address space is densely populated.
  */
 #define	VM_PHYSSEG_DENSE

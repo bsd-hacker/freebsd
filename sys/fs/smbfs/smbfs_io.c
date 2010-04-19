@@ -450,12 +450,13 @@ smbfs_getpages(ap)
 
 	VM_OBJECT_LOCK(object);
 	if (m->valid != 0) {
-		vm_page_lock_queues();
 		for (i = 0; i < npages; ++i) {
-			if (i != reqpage)
+			if (i != reqpage) {
+				vm_page_lock(pages[i]);
 				vm_page_free(pages[i]);
+				vm_page_unlock(pages[i]);
+			}
 		}
-		vm_page_unlock_queues();
 		VM_OBJECT_UNLOCK(object);
 		return 0;
 	}
@@ -488,24 +489,26 @@ smbfs_getpages(ap)
 	VM_OBJECT_LOCK(object);
 	if (error && (uio.uio_resid == count)) {
 		printf("smbfs_getpages: error %d\n",error);
-		vm_page_lock_queues();
 		for (i = 0; i < npages; i++) {
-			if (reqpage != i)
+			if (reqpage != i) {
+				vm_page_lock(pages[i]);
 				vm_page_free(pages[i]);
+				vm_page_unlock(pages[i]);
+			}
+			
 		}
-		vm_page_unlock_queues();
 		VM_OBJECT_UNLOCK(object);
 		return VM_PAGER_ERROR;
 	}
 
 	size = count - uio.uio_resid;
 
-	vm_page_lock_queues();
 	for (i = 0, toff = 0; i < npages; i++, toff = nextoff) {
 		vm_page_t m;
 		nextoff = toff + PAGE_SIZE;
 		m = pages[i];
 
+		vm_page_lock(m);
 		if (nextoff <= size) {
 			/*
 			 * Read operation filled an entire page
@@ -548,13 +551,15 @@ smbfs_getpages(ap)
 					vm_page_activate(m);
 				else
 					vm_page_deactivate(m);
+				vm_page_unlock(m);
 				vm_page_wakeup(m);
 			} else {
 				vm_page_free(m);
+				vm_page_unlock(m);
 			}
-		}
+		} else
+			vm_page_unlock(m);
 	}
-	vm_page_unlock_queues();
 	VM_OBJECT_UNLOCK(object);
 	return 0;
 #endif /* SMBFS_RWGENERIC */
@@ -644,12 +649,13 @@ smbfs_putpages(ap)
 
 	if (!error) {
 		int nwritten = round_page(count - uio.uio_resid) / PAGE_SIZE;
-		vm_page_lock_queues();
+
 		for (i = 0; i < nwritten; i++) {
 			rtvals[i] = VM_PAGER_OK;
+			vm_page_lock(pages[i]);
 			vm_page_undirty(pages[i]);
+			vm_page_unlock(pages[i]);
 		}
-		vm_page_unlock_queues();
 	}
 	return rtvals[0];
 #endif /* SMBFS_RWGENERIC */

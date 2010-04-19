@@ -460,9 +460,9 @@ tmpfs_nocacheread(vm_object_t tobj, vm_pindex_t idx,
 	error = uiomove_fromphys(&m, offset, tlen, uio);
 	VM_OBJECT_LOCK(tobj);
 out:
-	vm_page_lock_queues();
+	vm_page_lock(m);
 	vm_page_unwire(m, TRUE);
-	vm_page_unlock_queues();
+	vm_page_unlock(m);
 	vm_page_wakeup(m);
 	vm_object_pip_subtract(tobj, 1);
 	VM_OBJECT_UNLOCK(tobj);
@@ -630,9 +630,9 @@ lookupvpg:
 		if (vm_page_sleep_if_busy(vpg, FALSE, "tmfsmw"))
 			goto lookupvpg;
 		vm_page_busy(vpg);
-		vm_page_lock_queues();
+		vm_page_lock(vpg);
 		vm_page_undirty(vpg);
-		vm_page_unlock_queues();
+		vm_page_unlock(vpg);
 		VM_OBJECT_UNLOCK(vobj);
 		error = uiomove_fromphys(&vpg, offset, tlen, uio);
 	} else {
@@ -667,14 +667,14 @@ nocache:
 out:
 	if (vobj != NULL)
 		VM_OBJECT_LOCK(vobj);
-	vm_page_lock_queues();
+	vm_page_lock(tpg);
 	if (error == 0) {
 		KASSERT(tpg->valid == VM_PAGE_BITS_ALL,
 		    ("parts of tpg invalid"));
 		vm_page_dirty(tpg);
 	}
 	vm_page_unwire(tpg, TRUE);
-	vm_page_unlock_queues();
+	vm_page_unlock(tpg);
 	vm_page_wakeup(tpg);
 	if (vpg != NULL)
 		vm_page_wakeup(vpg);
