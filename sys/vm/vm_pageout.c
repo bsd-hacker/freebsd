@@ -1057,7 +1057,9 @@ unlock_and_continue:
 			next = TAILQ_NEXT(&marker, pageq);
 			TAILQ_REMOVE(&vm_page_queues[PQ_INACTIVE].pl,
 				     &marker, pageq);
+#ifdef VM_PAGE_LOCK
 			vm_page_lock_assert(m, MA_NOTOWNED);
+#endif			
 			continue;
 		}
 		vm_page_unlock(m);
