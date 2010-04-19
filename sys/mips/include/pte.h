@@ -66,9 +66,9 @@ typedef	pt_entry_t *pd_entry_t;
 #define	TLBLO_SWBITS_SHIFT	(30)
 #define	TLBLO_SWBITS_MASK	(0x3U << TLBLO_SWBITS_SHIFT)
 #define	TLBLO_PFN_SHIFT		(6)
-#define	TLBLO_PFN_MASK		(0x03FFFFFC0)
+#define	TLBLO_PFN_MASK		(0x3FFFFFC0)
 #define	TLBLO_PA_TO_PFN(pa)	((((pa) >> TLB_PAGE_SHIFT) << TLBLO_PFN_SHIFT) & TLBLO_PFN_MASK)
-#define	TLBLO_PFN_TO_PA(pfn)	(((pfn) >> TLBLO_PFN_SHIFT) << TLB_PAGE_SHIFT)
+#define	TLBLO_PFN_TO_PA(pfn)	((vm_paddr_t)((pfn) >> TLBLO_PFN_SHIFT) << TLB_PAGE_SHIFT)
 #define	TLBLO_PTE_TO_PFN(pte)	((pte) & TLBLO_PFN_MASK)
 #define	TLBLO_PTE_TO_PA(pte)	(TLBLO_PFN_TO_PA(TLBLO_PTE_TO_PFN((pte))))
 
