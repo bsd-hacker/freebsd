@@ -304,7 +304,7 @@ blocked_loop:
  * Wiredown the USPACE of newproc in TLB entry#0.  Check whether target
  * USPACE is already in another place of TLB before that, and if so
  * invalidate that TLB entry.
- * NOTE: This is hard coded to UPAGES == 1.
+ * NOTE: This is hard coded to UPAGES == 2.
  * Also, there should be no TLB faults at this point.
  */
 	MTC0	v0, COP_0_TLB_HI		# VPN = va
