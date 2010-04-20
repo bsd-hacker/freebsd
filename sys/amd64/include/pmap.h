@@ -237,8 +237,6 @@ struct md_page {
 	int			pat_mode;
 };
 
-#define PMAP_IN_RETRY		0x1
-
 /*
  * The kernel virtual address (KVA) of the level 4 page table page is always
  * within the direct map (DMAP) region.
@@ -249,7 +247,7 @@ struct pmap {
 	TAILQ_HEAD(,pv_chunk)	pm_pvchunk;	/* list of mappings in pmap */
 	u_int			pm_active;	/* active on cpus */
 	uint16_t		pm_gen_count;	/* generation count (pmap lock dropped) */
-	uint16_t		pm_flags;
+	uint16_t		pm_retry_depth;	/* number of cases in retry */
 	struct pmap_statistics	pm_stats;	/* pmap statistics */
 	vm_page_t		pm_root;	/* spare page table pages */
 	vm_page_t		pm_free;	/* Temporary free pages. */
@@ -263,7 +261,7 @@ extern struct pmap	kernel_pmap_store;
 
 #define PMAP_UPDATE_GEN_COUNT(pmap)				\
 	do {							\
-		if (pmap->pm_flags & PMAP_IN_RETRY)		\
+		if (pmap->pm_retry_depth)			\
 			pmap->pm_gen_count++;			\
 	} while (0)
 

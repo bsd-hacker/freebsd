@@ -213,6 +213,10 @@ static int pmap_tryrelock_restart;
 SYSCTL_INT(_vm_pmap, OID_AUTO, tryrelock_restart, CTLFLAG_RD,
     &pmap_tryrelock_restart, 0, "Number of tryrelock restarts");
 
+static int pmap_tryrelock_race;
+SYSCTL_INT(_vm_pmap, OID_AUTO, tryrelock_race, CTLFLAG_RD,
+    &pmap_tryrelock_race, 0, "Number of tryrelock pmap race cases");
+
 
 static u_int64_t	KPTphys;	/* phys addr of kernel level 1 */
 static u_int64_t	KPDphys;	/* phys addr of kernel level 2 */
@@ -549,8 +553,10 @@ static int
 pa_tryrelock(pmap_t pmap, vm_paddr_t pa, vm_paddr_t *locked)
 {
 	vm_paddr_t lockpa;
+	uint16_t gen_count;
 
 	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
+	gen_count = pmap->pm_gen_count;
 	atomic_add_long((volatile long *)&pmap_tryrelock_calls, 1);
 	lockpa = *locked;
 	*locked = pa;
@@ -562,14 +568,20 @@ pa_tryrelock(pmap_t pmap, vm_paddr_t pa, vm_paddr_t *locked)
 	}
 	if (PA_TRYLOCK(pa))
 		return (0);
-	pmap->pm_flags |= PMAP_IN_RETRY;
+	pmap->pm_retry_depth++;
 	PMAP_UNLOCK(pmap);
 	atomic_add_int((volatile int *)&pmap_tryrelock_restart, 1);
 	PA_LOCK(pa);
 	mtx_lock(&(pmap)->pm_mtx);
-	pmap->pm_flags &= ~PMAP_IN_RETRY;
+	pmap->pm_retry_depth--;
+	if (pmap->pm_retry_depth)
+		pmap->pm_gen_count++;
 
-	return (EAGAIN);
+	if (gen_count != pmap->pm_gen_count) {
+		atomic_add_int((volatile int *)&pmap_tryrelock_race, 1);
+		return (EAGAIN);
+	}
+	return (0);
 }
 
 static u_int64_t
