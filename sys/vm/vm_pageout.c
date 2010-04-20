@@ -1357,7 +1357,7 @@ vm_pageout_page_stats()
 			m = next;
 			continue;
 		}
-		vm_page_lock_assert(m, MA_NOTOWNED);
+		vm_page_lock_assert_notowned(m);
 		if (vm_page_trylock(m) == 0 || (object = m->object) == NULL) {
 			m = next;
 			continue;
