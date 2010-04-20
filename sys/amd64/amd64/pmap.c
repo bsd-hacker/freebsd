@@ -566,6 +566,7 @@ pa_tryrelock(pmap_t pmap, vm_paddr_t pa, vm_paddr_t *locked)
 	atomic_add_int((volatile int *)&pmap_tryrelock_restart, 1);
 	PA_LOCK(pa);
 	PMAP_LOCK(pmap);
+	pmap->pm_gen_count++;
 
 	return (EAGAIN);
 }
@@ -2707,23 +2708,17 @@ pmap_remove_pde(pmap_t pmap, pd_entry_t *pdq, vm_offset_t sva,
 		pvh = pa_to_pvh(oldpde & PG_PS_FRAME);
 		pmap_pvh_free(pvh, pmap, sva);
 		eva = sva + NBPDR;
+		panic("XXX - not properly locked");
 		for (va = sva, m = PHYS_TO_VM_PAGE(oldpde & PG_PS_FRAME);
 		    va < eva; va += PAGE_SIZE, m++) {
 
-			if ((oldpde & (PG_M | PG_RW | PG_A)) ||
-			    (TAILQ_EMPTY(&m->md.pv_list) &&
-				TAILQ_EMPTY(&pvh->pv_list))) {
-				vm_page_lock(m);
-			
-				if ((oldpde & (PG_M | PG_RW)) == (PG_M | PG_RW))
-					vm_page_dirty(m);
-				if (oldpde & PG_A)
-					vm_page_flag_set(m, PG_REFERENCED);
-				if (TAILQ_EMPTY(&m->md.pv_list) &&
-				    TAILQ_EMPTY(&pvh->pv_list))
-					vm_page_flag_clear(m, PG_WRITEABLE);
-				vm_page_unlock(m);
-			}
+			if ((oldpde & (PG_M | PG_RW)) == (PG_M | PG_RW))
+				vm_page_dirty(m);
+			if (oldpde & PG_A)
+				vm_page_flag_set(m, PG_REFERENCED);
+			if (TAILQ_EMPTY(&m->md.pv_list) &&
+			    TAILQ_EMPTY(&pvh->pv_list))
+				vm_page_flag_clear(m, PG_WRITEABLE);
 		}
 	}
 	if (pmap == kernel_pmap) {
@@ -2991,6 +2986,11 @@ restart:
 				continue;
 			} else
 				ptpaddr = *pde;
+
+			/*
+			 * XXX do we need to check if pmap_demote_pde dropped the lock?
+			 *
+			 */
 		}
 
 		/*
@@ -3017,6 +3017,10 @@ restart:
 			 */
 			if ((*pte & PG_G) == 0)
 				anyvalid = 1;
+			/*
+			 * XXX check if the pmap lock was dropped - maybe we need 
+			 * to restart
+			 */
 			if (pmap_remove_pte(pmap, pte, sva, ptpaddr, &free))
 				break;
 		}
@@ -3091,7 +3095,13 @@ pmap_remove_all(vm_page_t m)
 		if ((tpte & (PG_M | PG_RW)) == (PG_M | PG_RW))
 			vm_page_dirty(m);
 		free = NULL;
+
+		/*
+		 * XXX pmap_unuse_pt can drop the pmap lock
+		 *
+		 */
 		pmap_unuse_pt(pmap, pv->pv_va, *pde, &free);
+
 		pmap_invalidate_page(pmap, pv->pv_va);
 		pmap_free_zero_pages(free);
 		TAILQ_REMOVE(&m->md.pv_list, pv, pv_list);
@@ -4004,6 +4014,9 @@ retry:
 	}
 	if ((*pde & PG_PS) != 0) {
 		if (!wired != ((*pde & PG_W) == 0)) {
+			/*
+			 * XXX do we need to check if the pmap lock was dropped
+			 */
 			if (!pmap_demote_pde(pmap, pde, va, &pv_list))
 				panic("pmap_change_wiring: demotion failed");
 		} else
@@ -4460,6 +4473,10 @@ restart:
 							vm_page_flag_clear(m, PG_WRITEABLE);
 					}
 				}
+				/*
+				 *
+				 * XXX check if the pmap lock has been dropped
+				 */
 				pmap_unuse_pt(pmap, pv->pv_va, ptepde, &free);
 			}
 		}
@@ -5104,6 +5121,10 @@ pmap_change_attr_locked(vm_offset_t va, vm_size_t size, int mode)
 				tmpva += NBPDR;
 				continue;
 			}
+			/*
+			 * XXX do we need to check if the lock was dropped
+			 *
+			 */
 			if (!pmap_demote_pde(kernel_pmap, pde, tmpva, &pv_list))
 				return (ENOMEM);
 		}
