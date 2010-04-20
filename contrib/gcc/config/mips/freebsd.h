@@ -231,13 +231,13 @@ Boston, MA 02110-1301, USA.  */
           builtin_define ("_MIPS_ISA=_MIPS_ISA_MIPS64");        \
 	  builtin_define ("__mips_isa_rev=1");			\
 	}							\
-/*      else if (ISA_MIPS64R2)					\
+      else if (ISA_MIPS64R2)					\
 	{							\
 	  builtin_define ("__mips=64");				\
           builtin_define ("_MIPS_ISA=_MIPS_ISA_MIPS64");        \
 	  builtin_define ("__mips_isa_rev=2");			\
 	}							\
-*/								\
+	    							\
       if (TARGET_HARD_FLOAT)					\
 	builtin_define ("__mips_hard_float");			\
       else if (TARGET_SOFT_FLOAT)				\
