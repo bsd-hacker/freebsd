@@ -103,6 +103,8 @@
     /* To build the simple exec toolchain runtime (newlib) library. We
        should only use features available on all Octeon models.  */
     #define CVMX_BUILD_FOR_TOOLCHAIN
+#elif defined(__FreeBSD__) && defined(_KERNEL)
+    #define CVMX_BUILD_FOR_FREEBSD
 #else
     /* We are building a simple exec standalone image for Octeon */
     #define CVMX_BUILD_FOR_STANDALONE
@@ -186,6 +188,10 @@
     #include <stdarg.h>
     #include <string.h>
     #include <assert.h>
+
+#elif defined(CVMX_BUILD_FOR_FREEBSD)
+
+    #include <mips/cavium/cvmx_config.h>
 
 #else
 
