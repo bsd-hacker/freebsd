@@ -2172,76 +2172,6 @@ SYSCTL_LONG(_vm_pmap, OID_AUTO, pv_entry_allocs, CTLFLAG_RD, &pv_entry_allocs, 0
 SYSCTL_INT(_vm_pmap, OID_AUTO, pv_entry_spare, CTLFLAG_RD, &pv_entry_spare, 0,
 	"Current number of spare pv entries");
 
-static int pmap_collect_inactive, pmap_collect_active;
-
-SYSCTL_INT(_vm_pmap, OID_AUTO, pmap_collect_inactive, CTLFLAG_RD, &pmap_collect_inactive, 0,
-	"Current number times pmap_collect called on inactive queue");
-SYSCTL_INT(_vm_pmap, OID_AUTO, pmap_collect_active, CTLFLAG_RD, &pmap_collect_active, 0,
-	"Current number times pmap_collect called on active queue");
-#endif
-
-/*
- * We are in a serious low memory condition.  Resort to
- * drastic measures to free some pages so we can allocate
- * another pv entry chunk.  This is normally called to
- * unmap inactive pages, and if necessary, active pages.
- *
- * We do not, however, unmap 2mpages because subsequent accesses will
- * allocate per-page pv entries until repromotion occurs, thereby
- * exacerbating the shortage of free pv entries.
- */
-#ifdef nomore
-static void
-pmap_collect(pmap_t locked_pmap, struct vpgqueues *vpq)
-{
-	struct md_page *pvh;
-	pd_entry_t *pde;
-	pmap_t pmap;
-	pt_entry_t *pte, tpte;
-	pv_entry_t next_pv, pv;
-	vm_offset_t va;
-	vm_page_t m, free;
-
-	TAILQ_FOREACH(m, &vpq->pl, pageq) {
-		if (m->hold_count || m->busy)
-			continue;
-		TAILQ_FOREACH_SAFE(pv, &m->md.pv_list, pv_list, next_pv) {
-			pmap = PV_PMAP(pv);
-			va = pv->pv_va;
-			/* Avoid deadlock and lock recursion. */
-			if (pmap > locked_pmap)
-				PMAP_LOCK(pmap);
-			else if (pmap != locked_pmap && !PMAP_TRYLOCK(pmap))
-				continue;
-			PMAP_LOCK_ASSERT(pmap, MA_OWNED);
-			pmap_resident_count_dec(pmap, 1);
-			pde = pmap_pde(pmap, va);
-			KASSERT((*pde & PG_PS) == 0, ("pmap_collect: found"
-			    " a 2mpage in page %p's pv list", m));
-			pte = pmap_pde_to_pte(pde, va);
-			tpte = pte_load_clear(pte);
-			KASSERT((tpte & PG_W) == 0,
-			    ("pmap_collect: wired pte %#lx", tpte));
-			if (tpte & PG_A)
-				vm_page_flag_set(m, PG_REFERENCED);
-			if ((tpte & (PG_M | PG_RW)) == (PG_M | PG_RW))
-				vm_page_dirty(m);
-			free = NULL;
-			pmap_unuse_pt(pmap, va, *pde, &free);
-			pmap_invalidate_page(pmap, va);
-			pmap_free_zero_pages(free);
-			TAILQ_REMOVE(&m->md.pv_list, pv, pv_list);
-			if (TAILQ_EMPTY(&m->md.pv_list)) {
-				pvh = pa_to_pvh(VM_PAGE_TO_PHYS(m));
-				if (TAILQ_EMPTY(&pvh->pv_list))
-					vm_page_flag_clear(m, PG_WRITEABLE);
-			}
-			free_pv_entry(pmap, pv);
-			if (pmap != locked_pmap)
-				PMAP_UNLOCK(pmap);
-		}
-	}
-}
 #endif
 
 /*
@@ -2509,10 +2439,7 @@ pmap_pv_promote_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa)
 
 	/*
 	 * Transfer the first page's pv entry for this mapping to the
-	 * 2mpage's pv list.  Aside from avoiding the cost of a call
-	 * to get_pv_entry(), a transfer avoids the possibility that
-	 * get_pv_entry() calls pmap_collect() and that pmap_collect()
-	 * removes one of the mappings that is being promoted.
+	 * 2mpage's pv list. 
 	 */
 	m = PHYS_TO_VM_PAGE(pa);
 	va = trunc_2mpage(va);
