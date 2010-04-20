@@ -440,7 +440,7 @@ static inline void octeon_pow_tag_switch_wait (void)
 
     do
     {
-        OCTEON_CHORD_HEX(&switch_complete);
+        CVMX_MF_CHORD(switch_complete);
     } while (!switch_complete);
 
     return;
@@ -517,8 +517,8 @@ static inline octeon_wqe_t *octeon_pow_work_response_async(int scratch_addr)
 {
     octeon_pow_tag_load_resp_t result;
 
-    OCTEON_SYNCIOBDMA;
-    result.word64 = oct_scratch_read64(scratch_addr);
+    CVMX_SYNCIOBDMA;
+    result.word64 = cvmx_scratch_read64(scratch_addr);
 
     if (result.s_work.no_work) {
         return NULL;

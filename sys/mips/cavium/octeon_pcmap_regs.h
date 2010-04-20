@@ -62,26 +62,6 @@
 #define OCTEON_TMP_STR(x) OCTEON_TMP_STR2(x)
 #define OCTEON_TMP_STR2(x) #x
 
-#define OCTEON_PREFETCH_PREF0(address, offset) \
-	__asm __volatile (	".set mips64\n"	     \
-			".set noreorder\n"   \
-			"pref 0, " OCTEON_TMP_STR(offset) "(%0)\n" \
-			".set reorder\n"     \
-			".set mips0\n"	     \
-			 : \
-			 : "r" (address) );
-
-#define OCTEON_PREFETCH(address, offset) OCTEON_PREFETCH_PREF0(address,offset)
-
-#define OCTEON_PREFETCH0(address) OCTEON_PREFETCH(address, 0)
-#define OCTEON_PREFETCH128(address) OCTEON_PREFETCH(address, 128)
-
-#define OCTEON_SYNCIOBDMA __asm __volatile (".word 0x8f" : : :"memory")
-
-#define OCTEON_SYNCW	__asm __volatile (".word  0x10f" : : )
-#define OCTEON_SYNCW	__asm __volatile (".word  0x10f" : : )
-#define OCTEON_SYNCWS	__asm __volatile (".word  0x14f" : : )
-
 #if defined(__mips_n64)
 #define	oct_write64(a, v)	(*(volatile uint64_t *)(a) = (uint64_t)(v))
 #define	oct_write8_x8(a, v)	(*(volatile uint8_t *)(a) = (uint8_t)(v))
@@ -305,45 +285,6 @@ static inline void oct_write32 (uint64_t csr_addr, uint32_t val32)
 
 #define	oct_readint32(a)	((int32_t)oct_read32((a)))
 
-#define OCTEON_HW_BASE		((volatile uint64_t *) 0L)
-#define OCTEON_REG_OFFSET	(-4 * 1024ll)  /* local scratchpad reg base */
-#define OCTEON_SCRATCH_BASE	((volatile uint8_t *)(OCTEON_HW_BASE +	\
-                                                      OCTEON_REG_OFFSET))
-
-#define OCTEON_SCR_SCRATCH   8
-#define OCTEON_SCRATCH_0   16
-#define OCTEON_SCRATCH_1   24
-#define OCTEON_SCRATCH_2   32
-
-
-
-#define OCTEON_CHORD_HEX(dest_ptr)  \
-    ({ __asm __volatile( \
-            ".set push\n" \
-            ".set mips3\n" \
-            ".set noreorder\n" \
-            ".set noat\n" \
-	    ".word 0x7c02f03b \n"\
-            "nop\n" \
-            "nop\n" \
-            "nop\n" \
-            "nop\n" \
-            "sd $2,0(%0)\n" \
-            ".set pop" \
-            : /* no outputs */ : "r" (dest_ptr) : "$2"); \
-    })
-
-static inline uint64_t oct_scratch_read64 (uint64_t address)
-{
-    return(*((volatile uint64_t *)(OCTEON_SCRATCH_BASE + address)));
-}
-
-static inline void oct_scratch_write64 (uint64_t address, uint64_t value)
-{
-    *((volatile uint64_t *)(OCTEON_SCRATCH_BASE + address)) = value;
-}
-
-
 /*
  * Octeon Address Space Definitions
  */
@@ -552,63 +493,6 @@ static inline uint64_t octeon_build_bits (uint64_t high_bit, uint64_t low_bit,
 }
 
 
-/**********************  simple spinlocks ***************/
-typedef struct {
-    volatile uint32_t value;
-} octeon_spinlock_t;
-
-// note - macros not expanded in inline ASM, so values hardcoded
-#define  OCTEON_SPINLOCK_UNLOCKED_VAL  0
-#define  OCTEON_SPINLOCK_LOCKED_VAL    1
-
-/**
- * Initialize a spinlock
- *
- * @param lock   Lock to initialize
- */
-static inline void octeon_spinlock_init(octeon_spinlock_t *lock)
-{
-    lock->value = OCTEON_SPINLOCK_UNLOCKED_VAL;
-}
-/**
- * Releases lock
- *
- * @param lock   pointer to lock structure
- */
-static inline void octeon_spinlock_unlock(octeon_spinlock_t *lock)
-{
-    OCTEON_SYNCWS;
-
-    lock->value = 0;
-    OCTEON_SYNCWS;
-}
-
-/**
- * Gets lock, spins until lock is taken
- *
- * @param lock   pointer to lock structure
- */
-static inline void octeon_spinlock_lock(octeon_spinlock_t *lock)
-{
-    unsigned int tmp;
-    __asm __volatile(
-    ".set noreorder         \n"
-    "1: ll   %1, %0  \n"
-    "   bnez %1, 1b     \n"
-    "   li   %1, 1      \n"
-    "   sc   %1, %0 \n"
-    "   beqz %1, 1b     \n"
-    "   nop                \n"
-    ".set reorder           \n"
-    :  "+m" (lock->value), "=&r" (tmp )
-    :
-    : "memory");
-}
-
-/********************** end simple spinlocks ***************/
-
-
-
 /* ------------------------------------------------------------------- *
  *                      octeon_get_chipid()                               *
  * ------------------------------------------------------------------- */
@@ -627,23 +511,6 @@ static inline uint32_t octeon_get_chipid(void)
 }
 
 
-static inline uint32_t octeon_get_except_base_reg (void)
-{
-    uint32_t tmp;
-
-    __asm volatile (
-    "    .set mips64r2            \n"
-    "    .set noreorder         \n"
-    "    mfc0   %0, $15, 1  \n"
-    "    .set reorder           \n"
-     :  "=&r" (tmp) : );
-
-    return(tmp);
-}
-
-
-
-
 static inline unsigned int get_coremask (void)
 {
     return(~(oct_read64(OCTEON_CIU_PP_RST)) & 0xffff);
@@ -653,7 +520,7 @@ static inline unsigned int get_coremask (void)
 static inline uint32_t octeon_get_core_num (void)
 {
 
-    return (0x3FF & octeon_get_except_base_reg());
+    return (0x3FF & mips_rd_ebase());
 }
 
 
@@ -742,23 +609,6 @@ typedef union {
 
 
 #endif	/* LOCORE */
-
-
-/*
- * R4K Address space definitions
- */
-#define ADRSPC_K0BASE    (0x80000000)
-#define ADRSPC_K0SIZE    (0x20000000)
-#define ADRSPC_K1BASE    (0xA0000000)
-#define ADRSPC_K1SIZE    (0x20000000)
-#define ADRSPC_KSBASE    (0xC0000000)
-#define ADRSPC_KSSIZE    (0x20000000)
-#define ADRSPC_K3BASE    (0xE0000000)
-#define ADRSPC_K3SIZE    (0x20000000)
-#define ADRSPC_KUBASE    (0x00000000)
-#define ADRSPC_KUSIZE    (0x80000000)
-#define KSEG_MSB_ADDR    0xFFFFFFFF
-
 
 
 #define OCTEON_CLOCK_DEFAULT (500 * 1000 * 1000)

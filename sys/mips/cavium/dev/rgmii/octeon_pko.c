@@ -51,6 +51,10 @@ __FBSDID("$FreeBSD$");
 #include <vm/pmap.h>
 
 #include <mips/cavium/octeon_pcmap_regs.h>
+
+#include <contrib/octeon-sdk/cvmx.h>
+#include <contrib/octeon-sdk/cvmx-spinlock.h>
+
 #include "octeon_fau.h"
 #include "octeon_fpa.h"
 #include "octeon_pko.h"
@@ -355,7 +359,7 @@ octeon_pko_status_t octeon_pko_config_port (u_int port,
             }
 
             sw_queues[queue].xmit_command_state = (buf_ptr << OCTEON_PKO_INDEX_BITS);
-            octeon_spinlock_init(&(sw_queues[queue].lock));
+            cvmx_spinlock_init(&(sw_queues[queue].lock));
 
 //#define DEBUG_TX
 

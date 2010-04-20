@@ -49,7 +49,6 @@
 #define ___OCTEON_PKO__H___
 
 
-
 /*
  * PKO Command Buffer Register.
  * Specify Pool-# and Size of each entry in Pool. For Output Cmd Buffers.
@@ -225,7 +224,7 @@ typedef union {
 typedef struct octeon_pko_sw_queue_info_t_
 {
     uint64_t xmit_command_state;
-    octeon_spinlock_t lock;
+    cvmx_spinlock_t lock;
     uint32_t pad[29];
 } octeon_pko_sw_queue_info_t;
 
@@ -260,7 +259,7 @@ static inline void octeon_pko_ring_doorbell (u_int port, u_int queue,
    ptr.bits.is_io      = 1;
    ptr.bits.port       = port;
    ptr.bits.queue      = queue;
-   OCTEON_SYNCWS;
+   CVMX_SYNCWS;
    oct_write64(ptr.word64, len);
 }
 

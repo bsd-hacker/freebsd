@@ -88,6 +88,10 @@ __FBSDID("$FreeBSD$");
 
 #include <mips/cavium/octeon_pcmap_regs.h>
 
+#include <contrib/octeon-sdk/cvmx.h>
+#include <contrib/octeon-sdk/cvmx-scratch.h>
+#include <contrib/octeon-sdk/cvmx-spinlock.h>
+
 #include "octeon_fau.h"
 #include "octeon_fpa.h"
 #include "octeon_ipd.h"
@@ -981,7 +985,7 @@ static u_int octeon_rgmx_pko_xmit_packet (struct rgmx_softc_dev *sc, void *out_b
     /*
      * Get the queue command ptr location from the per port per queue, pko info struct.
      */
-    octeon_spinlock_lock(&(sc->outq_ptr[queue].lock));
+    cvmx_spinlock_lock(&(sc->outq_ptr[queue].lock));
 #ifdef DEBUG_TX
     printf(" xmit: sc->outq_ptr[queue].xmit_command_state: 0x%llX  ", sc->outq_ptr[queue].xmit_command_state);
 #endif
@@ -1022,7 +1026,7 @@ static u_int octeon_rgmx_pko_xmit_packet (struct rgmx_softc_dev *sc, void *out_b
              * FPA pool for xmit-buffer-commands is empty.
              */
             sc->outq_ptr[queue].xmit_command_state -= 2;
-            octeon_spinlock_unlock(&(sc->outq_ptr[queue].lock));
+            cvmx_spinlock_unlock(&(sc->outq_ptr[queue].lock));
             return (0);
         }
 
@@ -1034,7 +1038,7 @@ static u_int octeon_rgmx_pko_xmit_packet (struct rgmx_softc_dev *sc, void *out_b
     /*
      * Unlock queue structures.
      */
-    octeon_spinlock_unlock(&(sc->outq_ptr[queue].lock));
+    cvmx_spinlock_unlock(&(sc->outq_ptr[queue].lock));
 
     /*
      * 2 words incremented in PKO. Ring the doorbell.
