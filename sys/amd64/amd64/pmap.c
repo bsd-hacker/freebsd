@@ -3076,7 +3076,6 @@ restart:
 
 		for (pte = pmap_pde_to_pte(pde, sva); sva != va_next; pte++,
 		    sva += PAGE_SIZE) {
-			int ret;
 
 			if (*pte == 0)
 				continue;
@@ -3091,9 +3090,7 @@ restart:
 			 */
 			if ((*pte & PG_G) == 0)
 				anyvalid = 1;
-			ret = pmap_remove_pte(pmap, pte, sva, ptpaddr, &free);
-
-			if (ret)
+			if (pmap_remove_pte(pmap, pte, sva, ptpaddr, &free))
 				break;
 		}
 	}
