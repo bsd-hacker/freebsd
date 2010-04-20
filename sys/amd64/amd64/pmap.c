@@ -4131,8 +4131,10 @@ pmap_copy(pmap_t dst_pmap, pmap_t src_pmap, vm_offset_t dst_addr, vm_size_t len,
 				continue;
 
 			dstmpde = pmap_allocpde(dst_pmap, pa, addr, M_NOWAIT);
-			if (dstmpde == NULL)
+			if (dstmpde == NULL) {
+				PA_UNLOCK(pa);
 				break;
+			}
 			pde = (pd_entry_t *)
 			    PHYS_TO_DMAP(VM_PAGE_TO_PHYS(dstmpde));
 			pde = &pde[pmap_pde_index(addr)];
