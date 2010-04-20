@@ -3317,21 +3317,18 @@ retry:
 			obits = pbits = *pte;
 			if ((pbits & PG_V) == 0)
 				continue;
-			if (pbits & PG_MANAGED) {
-				m = NULL;
+			if ((pbits & PG_MANAGED) &&
+			    (pbits & (PG_M | PG_A))) {
 				if (pa_tryrelock(pmap, pbits & PG_FRAME, &pa))
 					goto restart;
+
+				m = PHYS_TO_VM_PAGE(pbits & PG_FRAME);
 				if (pbits & PG_A) {
-					m = PHYS_TO_VM_PAGE(pbits & PG_FRAME);
 					vm_page_flag_set(m, PG_REFERENCED);
 					pbits &= ~PG_A;
 				}
-				if ((pbits & (PG_M | PG_RW)) == (PG_M | PG_RW)) {
-					if (m == NULL)
-						m = PHYS_TO_VM_PAGE(pbits &
-						    PG_FRAME);
+				if ((pbits & (PG_M | PG_RW)) == (PG_M | PG_RW))
 					vm_page_dirty(m);
-				}
 			}
 
 			if ((prot & VM_PROT_WRITE) == 0)
