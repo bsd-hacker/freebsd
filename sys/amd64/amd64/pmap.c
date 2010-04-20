@@ -2689,6 +2689,7 @@ pmap_remove_pde(pmap_t pmap, pd_entry_t *pdq, vm_offset_t sva,
 	pd_entry_t oldpde;
 	vm_offset_t eva, va;
 	vm_page_t m, mpte;
+	vm_paddr_t paddr, pa = 0;
 
 	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
 	KASSERT((sva & PDRMASK) == 0,
@@ -2708,9 +2709,13 @@ pmap_remove_pde(pmap_t pmap, pd_entry_t *pdq, vm_offset_t sva,
 		pvh = pa_to_pvh(oldpde & PG_PS_FRAME);
 		pmap_pvh_free(pvh, pmap, sva);
 		eva = sva + NBPDR;
-		panic("XXX - not properly locked");
-		for (va = sva, m = PHYS_TO_VM_PAGE(oldpde & PG_PS_FRAME);
-		    va < eva; va += PAGE_SIZE, m++) {
+		paddr = oldpde & PG_PS_FRAME;
+		for (va = sva, m = PHYS_TO_VM_PAGE(paddr);
+		     va < eva; va += PAGE_SIZE, paddr += PAGE_SIZE, m++) {
+			if ((oldpde & PG_A) ||
+			    (TAILQ_EMPTY(&m->md.pv_list) &&
+				TAILQ_EMPTY(&pvh->pv_list)))
+				pa_tryrelock(pmap, paddr, &pa);
 
 			if ((oldpde & (PG_M | PG_RW)) == (PG_M | PG_RW))
 				vm_page_dirty(m);
@@ -2720,6 +2725,8 @@ pmap_remove_pde(pmap_t pmap, pd_entry_t *pdq, vm_offset_t sva,
 			    TAILQ_EMPTY(&pvh->pv_list))
 				vm_page_flag_clear(m, PG_WRITEABLE);
 		}
+		if (pa)
+			PA_UNLOCK(pa);
 	}
 	if (pmap == kernel_pmap) {
 		if (!pmap_demote_pde(pmap, pdq, sva, pv_list))
