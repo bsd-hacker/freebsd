@@ -562,11 +562,12 @@ pa_tryrelock(pmap_t pmap, vm_paddr_t pa, vm_paddr_t *locked)
 	}
 	if (PA_TRYLOCK(pa))
 		return (0);
+	pmap->pm_flags |= PMAP_IN_RETRY;
 	PMAP_UNLOCK(pmap);
 	atomic_add_int((volatile int *)&pmap_tryrelock_restart, 1);
 	PA_LOCK(pa);
-	PMAP_LOCK(pmap);
-	pmap->pm_gen_count++;
+	mtx_lock(&(pmap)->pm_mtx);
+	pmap->pm_flags &= ~PMAP_IN_RETRY;
 
 	return (EAGAIN);
 }
@@ -2677,7 +2678,6 @@ pmap_demote_pde(pmap_t pmap, pd_entry_t *pde, vm_offset_t va,
 	return (TRUE);
 }
 	
-
 /*
  * pmap_remove_pde: do the things to unmap a superpage in a process
  */
@@ -3453,12 +3453,14 @@ pmap_enter(pmap_t pmap, vm_offset_t va, vm_prot_t access, vm_page_t m,
 	ls_init(&ls);
 	ls_push(&ls, PA_LOCKPTR(lockedpa));
 	ls_push(&ls, PMAP_LOCKPTR(pmap));
+	PMAP_UPDATE_GEN_COUNT(pmap);
 	if ((m->flags & (PG_FICTITIOUS | PG_UNMANAGED)) == 0) {
 		while ((pv = get_pv_entry(pmap)) == NULL) {
 			ls_popa(&ls);
 			VM_WAIT;
 			ls_push(&ls, PA_LOCKPTR(lockedpa));
 			ls_push(&ls, PMAP_LOCKPTR(pmap));
+			PMAP_UPDATE_GEN_COUNT(pmap);
 		}
 	}
 
@@ -3484,6 +3486,7 @@ restart:
 		ls_popa(&ls);
 		ls_push(&ls, PA_LOCKPTR(lockedpa));
 		ls_push(&ls, PMAP_LOCKPTR(pmap));
+		PMAP_UPDATE_GEN_COUNT(pmap);
 		opalocked = FALSE;
 		opa = 0;
 		goto restart;
@@ -3503,6 +3506,7 @@ restart:
 				ls_push(&ls, PA_LOCKPTR(lockedpa));
 			}
 			ls_push(&ls, PMAP_LOCKPTR(pmap));
+			PMAP_UPDATE_GEN_COUNT(pmap);
 			goto restart;
 		}
 	}
