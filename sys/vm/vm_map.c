@@ -330,8 +330,10 @@ vmspace_dofree(struct vmspace *vm)
 	(void)vm_map_remove(&vm->vm_map, vm->vm_map.min_offset,
 	    vm->vm_map.max_offset);
 
+#ifndef VM_PAGE_LOCK
 	pmap_release(vmspace_pmap(vm));
 	vm->vm_map.pmap = NULL;
+#endif	
 	uma_zfree(vmspace_zone, vm);
 }
 
