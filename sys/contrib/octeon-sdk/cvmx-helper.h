@@ -52,8 +52,10 @@
 #ifndef __CVMX_HELPER_H__
 #define __CVMX_HELPER_H__
 
+#ifndef CVMX_DONT_INCLUDE_CONFIG
 #include "executive-config.h"
 #include "cvmx-config.h"
+#endif
 #include "cvmx-fpa.h"
 #include "cvmx-wqe.h"
 
