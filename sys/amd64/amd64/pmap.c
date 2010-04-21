@@ -553,7 +553,7 @@ static int
 pa_tryrelock(pmap_t pmap, vm_paddr_t pa, vm_paddr_t *locked)
 {
 	vm_paddr_t lockpa;
-	uint16_t gen_count;
+	uint32_t gen_count;
 
 	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
 	gen_count = pmap->pm_gen_count;
@@ -568,16 +568,13 @@ pa_tryrelock(pmap_t pmap, vm_paddr_t pa, vm_paddr_t *locked)
 	}
 	if (PA_TRYLOCK(pa))
 		return (0);
-	pmap->pm_retry_depth++;
 	PMAP_UNLOCK(pmap);
 	atomic_add_int((volatile int *)&pmap_tryrelock_restart, 1);
 	PA_LOCK(pa);
-	mtx_lock(&(pmap)->pm_mtx);
-	pmap->pm_retry_depth--;
-	if (pmap->pm_retry_depth)
-		pmap->pm_gen_count++;
+	PMAP_LOCK(pmap);
 
-	if (gen_count != pmap->pm_gen_count) {
+	if (pmap->pm_gen_count != gen_count + 1) {
+		pmap->pm_retries++;
 		atomic_add_int((volatile int *)&pmap_tryrelock_race, 1);
 		return (EAGAIN);
 	}
@@ -2021,8 +2018,8 @@ pmap_release(pmap_t pmap)
 	vm_page_t m;
 
 	KASSERT(pmap->pm_stats.resident_count == 0,
-	    ("pmap_release: pmap resident count %ld != 0 gen_count == %d ",
-		pmap->pm_stats.resident_count, pmap->pm_gen_count));
+	    ("pmap_release: pmap resident count %ld != 0 retries == %d ",
+		pmap->pm_stats.resident_count, pmap->pm_retries));
 	KASSERT(pmap->pm_root == NULL,
 	    ("pmap_release: pmap has reserved page table page(s)"));
 
