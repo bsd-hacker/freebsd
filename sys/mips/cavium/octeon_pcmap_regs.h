@@ -46,8 +46,6 @@
 #ifndef __OCTEON_PCMAP_REGS_H__
 #define __OCTEON_PCMAP_REGS_H__
 
-#include "opt_cputype.h" 
-
 #ifndef LOCORE
 
 /*
@@ -277,201 +275,6 @@ static inline void oct_write32 (uint64_t csr_addr, uint32_t val32)
 
 #define	oct_readint32(a)	((int32_t)oct_read32((a)))
 
-/*
- * Octeon Address Space Definitions
- */
-typedef enum {
-   OCTEON_MIPS_SPACE_XKSEG = 3LL,
-   OCTEON_MIPS_SPACE_XKPHYS = 2LL,
-   OCTEON_MIPS_SPACE_XSSEG = 1LL,
-   OCTEON_MIPS_SPACE_XUSEG = 0LL
-} octeon_mips_space_t;
-
-typedef enum {
-   OCTEON_MIPS_XKSEG_SPACE_KSEG0 = 0LL,
-   OCTEON_MIPS_XKSEG_SPACE_KSEG1 = 1LL,
-   OCTEON_MIPS_XKSEG_SPACE_SSEG = 2LL,
-   OCTEON_MIPS_XKSEG_SPACE_KSEG3 = 3LL
-} octeon_mips_xkseg_space_t;
-
-
-/*
-***********************************************************************
- * 32 bit mode alert
- * The kseg0 calc below might fail in xkphys.
- */
-
-/*
- * We limit the allocated device physical blocks to low mem. So use Kseg0
- */
-
-/*
- * Need to go back to kernel to find v->p mappings & vice-versa
- * We are getting non 1-1 mappings.
- * #define OCTEON_PTR2PHYS(addr)  ((unsigned long) addr & 0x7fffffff)
- */
-#define OCTEON_PTR2PHYS(addr) octeon_ptr_to_phys(addr)
-
-
-
-/*  PTR_SIZE == sizeof(uint32_t)  */
-
-#if defined(__mips_n32) || defined(__mips_o32)
-#define mipsx_addr_size				uint32_t	// u_int64
-#define MIPSX_ADDR_SIZE_KSEGX_BIT_SHIFT		30		// 62
-#define MIPSX_ADDR_SIZE_KSEGX_MASK_REMOVED	0x1fffffff	// 0x1fffffff
-#else
-#define mipsx_addr_size				uint64_t
-#define MIPSX_ADDR_SIZE_KSEGX_BIT_SHIFT		62
-#define MIPSX_ADDR_SIZE_KSEGX_MASK_REMOVED	0x1fffffffffffffff
-#endif
-
-
-#define octeon_ptr_to_phys(ptr)                                           \
-   (((((mipsx_addr_size) ptr) >> MIPSX_ADDR_SIZE_KSEGX_BIT_SHIFT) == 2) ? \
-    	((mipsx_addr_size) ptr & MIPSX_ADDR_SIZE_KSEGX_MASK_REMOVED)  :   \
-        (vtophys(ptr)))
-
-#ifdef CODE_FOR_64_BIT_NEEDED
-static inline mipsx_addr_size octeon_ptr_to_phys (void *ptr)
-{
-    if ((((mipsx_addr_size) ptr) >> MIPSX_ADDR_SIZE_KSEGX_BIT_SHIFT) == 2) {
-        /*
-         * KSEG0 based address ?
-         */
-        return ((mipsx_addr_size) ptr & MIPSX_ADDR_SIZE_KSEGX_MASK_REMOVED);
-    } else {
-        /*
-         * Ask kernel/vm to give us the phys translation.
-         */
-        return (vtophys(ptr));
-    }
-}
-#endif
-
-#define OCTEON_IO_SEG OCTEON_MIPS_SPACE_XKPHYS
-
-/*
- * octeon_addr_t
- */
-typedef union {
-   uint64_t         word64;
-
-   struct {
-       octeon_mips_space_t          R   : 2;
-       uint64_t               offset :62;
-   } sva; // mapped or unmapped virtual address
-
-   struct {
-       uint64_t               zeroes :33;
-       uint64_t               offset :31;
-   } suseg; // mapped USEG virtual addresses (typically)
-
-   struct {
-       uint64_t                ones  :33;
-       octeon_mips_xkseg_space_t   sp   : 2;
-       uint64_t               offset :29;
-   } sxkseg; // mapped or unmapped virtual address
-
-   struct {
-       octeon_mips_space_t         R    :2; // CVMX_MIPS_SPACE_XKPHYS in this case
-       uint64_t                 cca  : 3; // ignored by octeon
-       uint64_t                 mbz  :10;
-       uint64_t                  pa  :49; // physical address
-   } sxkphys; // physical address accessed through xkphys unmapped virtual address
-
-   struct {
-       uint64_t                 mbz  :15;
-       uint64_t                is_io : 1; // if set, the address is uncached and resides on MCB bus
-       uint64_t                 did  : 8; // the hardware ignores this field when is_io==0, else device ID
-       uint64_t                unaddr: 4; // the hardware ignores <39:36> in Octeon I
-       uint64_t               offset :36;
-   } sphys; // physical address
-
-    struct {
-        uint64_t               zeroes :24; // techically, <47:40> are dont-cares
-        uint64_t                unaddr: 4; // the hardware ignores <39:36> in Octeon I
-        uint64_t               offset :36;
-    } smem; // physical mem address
-
-    struct {
-        uint64_t                 mem_region  :2;
-        uint64_t                 mbz  :13;
-        uint64_t                is_io : 1; // 1 in this case
-        uint64_t                 did  : 8; // the hardware ignores this field when is_io==0, else device ID
-        uint64_t                unaddr: 4; // the hardware ignores <39:36> in Octeon I
-        uint64_t               offset :36;
-    } sio; // physical IO address
-
-    struct {
-        uint64_t                didspace : 24;
-        uint64_t                unused   : 40;
-    } sfilldidspace;
-
-} octeon_addr_t;
-
-
-typedef union {
-    uint64_t	    word64;
-    struct {
-        uint32_t    word32hi;
-        uint32_t    word32lo;
-    } bits;
-} octeon_word_t;
-
-
-
-
-/*
- * octeon_build_io_address
- *
- * Builds a memory address for I/O based on the Major 5bits and Sub DID 3bits
- */
-static inline uint64_t octeon_build_io_address (uint64_t major_did,
-                                                uint64_t sub_did)
-{
-    return ((0x1ull << 48) | (major_did << 43) | (sub_did << 40));
-}
-
-/*
- * octeon_build_mask
- *
- * Builds a bit mask given the required size in bits.
- *
- * @param bits   Number of bits in the mask
- * @return The mask
- */
-static inline uint64_t octeon_build_mask (uint64_t bits)
-{
-    return ~((~0x0ull) << bits);
-}
-
-/*
- * octeon_build_bits
- *
- * Perform mask and shift to place the supplied value into
- * the supplied bit rage.
- *
- * Example: octeon_build_bits(39,24,value)
- * <pre>
- * 6       5       4       3       3       2       1
- * 3       5       7       9       1       3       5       7      0
- * +-------+-------+-------+-------+-------+-------+-------+------+
- * 000000000000000000000000___________value000000000000000000000000
- * </pre>
- *
- * @param high_bit Highest bit value can occupy (inclusive) 0-63
- * @param low_bit  Lowest bit value can occupy inclusive 0-high_bit
- * @param value    Value to use
- * @return Value masked and shifted
- */
-static inline uint64_t octeon_build_bits (uint64_t high_bit, uint64_t low_bit,
-                                          uint64_t value)
-{
-    return ((value & octeon_build_mask(high_bit - low_bit + 1)) << low_bit);
-}
-
-
 /* ------------------------------------------------------------------- *
  *                      octeon_get_chipid()                               *
  * ------------------------------------------------------------------- */
@@ -479,63 +282,6 @@ static inline uint64_t octeon_build_bits (uint64_t high_bit, uint64_t low_bit,
 #define OCTEON_CN30XX_CHIP  0x000d0200
 #define OCTEON_CN3020_CHIP  0x000d0112
 #define OCTEON_CN5020_CHIP  0x000d0601
-
-static inline uint32_t octeon_get_chipid(void)
-{
-    uint32_t id;
-
-    __asm __volatile ("mfc0 %0, $15,0" : "=r" (id));
-
-    return (id);
-}
-
-
-static inline uint32_t octeon_get_core_num (void)
-{
-
-    return (0x3FF & mips_rd_ebase());
-}
-
-
-static inline uint64_t octeon_get_cycle(void)
-{
-
-/*  ABI == 32 */
-
-    uint32_t tmp_low, tmp_hi;
-
-    __asm __volatile (
-               "   .set push                  \n"
-               "   .set mips64r2                \n"
-               "   .set noreorder               \n"
-               "   rdhwr %[tmpl], $31           \n"
-               "   dadd  %[tmph], %[tmpl], $0   \n"
-               "   dsrl  %[tmph], 32            \n"
-               "   dsll  %[tmpl], 32            \n"
-               "   dsrl  %[tmpl], 32            \n"
-               "   .set pop                 \n"
-                  : [tmpl] "=&r" (tmp_low), [tmph] "=&r" (tmp_hi) : );
-
-    return(((uint64_t)tmp_hi << 32) + tmp_low);
-}
-
-
-/**
- * Wait for the specified number of cycle
- *
- * @param cycles
- */
-static inline void octeon_wait (uint64_t cycles)
-{
-    uint64_t done = octeon_get_cycle() + cycles;
-
-    while (octeon_get_cycle() < done)
-    {
-        /* Spin */
-    }
-}
-
-
 
 /*
  * octeon_machdep.c
@@ -555,42 +301,15 @@ extern uint8_t octeon_mac_addr[6];
 extern int octeon_core_mask, octeon_mac_addr_count;
 extern void octeon_ciu_reset(void);
 extern int octeon_board_real(void);
-extern unsigned long octeon_get_clock_rate(void);
 #endif	/* LOCORE */
 
 
 #define OCTEON_CLOCK_DEFAULT (500 * 1000 * 1000)
 
-
-/*
- * Octeon Boot Bus BIST Status
- * Mostly used for dummy read to ensure all prev I/Os are write-complete.
- */
-#define  OCTEON_MIO_BOOT_BIST_STAT      0x80011800000000F8ull
-
-/*
- * Octeon UART unit
- */
-#define  OCTEON_MIO_UART0               0x8001180000000800ull
-#define  OCTEON_MIO_UART1               0x8001180000000C00ull
-#define  OCTEON_MIO_UART0_THR           0x8001180000000840ull
-#define  OCTEON_MIO_UART1_THR           0x8001180000000C40ull
-#define  OCTEON_MIO_UART0_LSR           0x8001180000000828ull
-#define  OCTEON_MIO_UART1_LSR           0x8001180000000C28ull
-#define  OCTEON_MIO_UART0_RBR           0x8001180000000800ull
-#define  OCTEON_MIO_UART1_RBR           0x8001180000000C00ull
-#define  OCTEON_MIO_UART0_USR           0x8001180000000938ull
-#define  OCTEON_MIO_UART1_USR           0x8001180000000D38ull
-#define  OCTEON_MIO_ADDR_HI24           0x800118
-#define  OCTEON_MIO_UART_SIZE           0x400ull
-
-
 /*
  * EBT3000 LED Unit
  */
 #define  OCTEON_CHAR_LED_BASE_ADDR	(0x1d020000 | (0x1ffffffffull << 31))
-
-#define  OCTEON_FPA_QUEUES		8
 
 /*
  * Physical Memory Banks

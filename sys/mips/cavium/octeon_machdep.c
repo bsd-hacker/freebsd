@@ -159,7 +159,7 @@ octeon_led_write_string(const char *str)
 			oct_write8_x8(ptr, *str++);
 		else
 			oct_write8_x8(ptr, ' ');
-		oct_read64(OCTEON_MIO_BOOT_BIST_STAT);
+		oct_read64(CVMX_MIO_BOOT_BIST_STAT);
 	}
 }
 

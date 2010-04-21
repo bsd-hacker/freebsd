@@ -56,6 +56,8 @@ __FBSDID("$FreeBSD$");
 #include <mips/cavium/octeon_pcmap_regs.h>
 #include <mips/cavium/obiovar.h>
 
+#include <contrib/octeon-sdk/cvmx.h>
+
 extern struct bus_space octeon_uart_tag;
 
 int	obio_probe(device_t);
@@ -83,7 +85,13 @@ obio_attach(device_t dev)
 	struct obio_softc *sc = device_get_softc(dev);
 
 	sc->oba_st = mips_bus_space_generic;
-	sc->oba_addr = OCTEON_MIO_UART0;
+	/*
+	 * XXX
+	 * Here and elsewhere using RBR as a base address because it kind of
+	 * is, but that feels pretty sloppy.  Should consider adding a define
+	 * that's more semantic, at least.
+	 */
+	sc->oba_addr = CVMX_MIO_UARTX_RBR(0);
 	sc->oba_size = 0x10000;
 	sc->oba_rman.rm_type = RMAN_ARRAY;
 	sc->oba_rman.rm_descr = "OBIO I/O";
@@ -128,8 +136,7 @@ obio_alloc_resource(device_t bus, device_t child, int type, int *rid,
 	case SYS_RES_IOPORT:
 		rm = &sc->oba_rman;
 		bt = &octeon_uart_tag;
-		bh = device_get_unit(child) ?
-		    OCTEON_MIO_UART1 : OCTEON_MIO_UART0;
+		bh = CVMX_MIO_UARTX_RBR(device_get_unit(child));
 		start = bh;
 		break;
 	default:
