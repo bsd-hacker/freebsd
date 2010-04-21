@@ -75,12 +75,14 @@ platform_init_ap(int cpuid)
 	mips_wr_ebase(0x80000000 | cpuid);
 
 	/*
-	 * Set up interrupts, clear IPIs and unmask the IPI interrupt.
+	 * Clear any pending IPIs.
+	 */
+	oct_write64(CVMX_CIU_MBOX_CLRX(cpuid), 0xffffffff);
+
+	/*
+	 * Set up interrupts.
 	 */
 	octeon_ciu_reset();
-
-	oct_write64(CVMX_CIU_MBOX_CLRX(cpuid), 0xffffffff);
-	cvmx_interrupt_unmask_irq(CVMX_IRQ_MBOX0);
 
 	mips_wbflush();
 }

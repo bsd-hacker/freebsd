@@ -209,6 +209,13 @@ octeon_ciu_reset(void)
 	cvmx_write_csr(CVMX_CIU_INTX_EN0(cvmx_get_core_num()*2+1), 0);
 	cvmx_write_csr(CVMX_CIU_INTX_EN1(cvmx_get_core_num()*2), 0);
 	cvmx_write_csr(CVMX_CIU_INTX_EN1(cvmx_get_core_num()*2+1), 0);
+
+#ifdef SMP
+	/* Enable the MBOX interrupts.  */
+	cvmx_write_csr(CVMX_CIU_INTX_EN0(cvmx_get_core_num()*2+1),
+		       (1ull << (CVMX_IRQ_MBOX0 - 8)) |
+		       (1ull << (CVMX_IRQ_MBOX1 - 8)));
+#endif
 }
 
 static void
@@ -307,10 +314,9 @@ platform_start(__register_t a0, __register_t a1, __register_t a2 __unused,
 
 #ifdef SMP
 	/*
-	 * Clear any pending IPIs and enable the IPI interrupt.
+	 * Clear any pending IPIs.
 	 */
 	oct_write64(CVMX_CIU_MBOX_CLRX(0), 0xffffffff);
-	cvmx_interrupt_unmask_irq(CVMX_IRQ_MBOX0);
 #endif
 }
 
