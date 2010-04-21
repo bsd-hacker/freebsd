@@ -92,8 +92,10 @@
 #ifndef __CVMX_CMD_QUEUE_H__
 #define __CVMX_CMD_QUEUE_H__
 
+#ifndef CVMX_DONT_INCLUDE_CONFIG
 #include "executive-config.h"
 #include "cvmx-config.h"
+#endif
 #include "cvmx-fpa.h"
 
 #ifdef	__cplusplus

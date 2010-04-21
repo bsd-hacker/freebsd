@@ -119,7 +119,11 @@
  * This is for data structures use by software ONLY,
  * as it is not 1-1 VA-PA mapped.
  */
+#if defined(CVMX_BUILD_FOR_FREEBSD)
+#define CVMX_SHARED
+#else
 #define CVMX_SHARED __attribute__ ((cvmx_shared))
+#endif
 
 
 #if defined(CVMX_BUILD_FOR_UBOOT)
