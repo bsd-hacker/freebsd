@@ -49,10 +49,6 @@
  *
  * <hr>$Revision: 42417 $<hr>
  */
-#include "executive-config.h"
-#include "cvmx-config.h"
-#ifdef CVMX_ENABLE_PKO_FUNCTIONS
-
 #include "cvmx.h"
 #include "cvmx-sysinfo.h"
 #include "cvmx-mdio.h"
@@ -60,6 +56,7 @@
 #include "cvmx-helper.h"
 #include "cvmx-helper-board.h"
 
+#ifdef CVMX_ENABLE_PKO_FUNCTIONS
 /**
  * @INTERNAL
  * Probe RGMII ports and determine the number present
