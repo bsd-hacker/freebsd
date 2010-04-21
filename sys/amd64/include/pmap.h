@@ -259,10 +259,7 @@ typedef struct pmap	*pmap_t;
 extern struct pmap	kernel_pmap_store;
 #define kernel_pmap	(&kernel_pmap_store)
 
-#define PMAP_UPDATE_GEN_COUNT(pmap)				\
-	do {							\
-		pmap->pm_gen_count++;				\
-	} while (0)
+#define PMAP_UPDATE_GEN_COUNT(pmap) (pmap)->pm_gen_count++
 
 #define	PMAP_LOCK(pmap)						\
 	do {							\
