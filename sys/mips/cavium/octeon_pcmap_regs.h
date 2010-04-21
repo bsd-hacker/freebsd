@@ -48,19 +48,11 @@
 
 #include "opt_cputype.h" 
 
-#define OCTEON_CACHE_LINE_SIZE	0x80	/* 128 bytes cache line size */
-#define IS_OCTEON_ALIGNED(p)	(!((u_long)(p) & 0x7f))
-#define OCTEON_ALIGN(p)		(((u_long)(p) + ((OCTEON_CACHE_LINE_SIZE) - 1)) & ~((OCTEON_CACHE_LINE_SIZE) - 1))
-
 #ifndef LOCORE
 
 /*
  * Utility inlines & macros
  */
-
-/* turn the variable name into a string */
-#define OCTEON_TMP_STR(x) OCTEON_TMP_STR2(x)
-#define OCTEON_TMP_STR2(x) #x
 
 #if defined(__mips_n64)
 #define	oct_write64(a, v)	(*(volatile uint64_t *)(a) = (uint64_t)(v))
@@ -359,19 +351,6 @@ static inline mipsx_addr_size octeon_ptr_to_phys (void *ptr)
 
 #define OCTEON_IO_SEG OCTEON_MIPS_SPACE_XKPHYS
 
-
-#define OCTEON_ADD_SEG(segment, add)	((((uint64_t)segment) << 62) | (add))
-
-#define OCTEON_ADD_IO_SEG(add)		OCTEON_ADD_SEG(OCTEON_IO_SEG, (add))
-#define OCTEON_ADDR_DID(did)		(OCTEON_ADDR_DIDSPACE(did) << 40)
-#define OCTEON_ADDR_DIDSPACE(did)	(((OCTEON_IO_SEG) << 22) | ((1ULL) << 8) | (did))
-#define OCTEON_ADDR_FULL_DID(did,subdid)	(((did) << 3) | (subdid))
-
-
-#define OCTEON_CIU_PP_RST	OCTEON_ADD_IO_SEG(0x0001070000000700ull)
-#define OCTEON_CIU_SOFT_RST	OCTEON_ADD_IO_SEG(0x0001070000000740ull)
-#define OCTEON_OCTEON_DID_TAG	12ULL
-
 /*
  * octeon_addr_t
  */
@@ -511,12 +490,6 @@ static inline uint32_t octeon_get_chipid(void)
 }
 
 
-static inline unsigned int get_coremask (void)
-{
-    return(~(oct_read64(OCTEON_CIU_PP_RST)) & 0xffff);
-}
-
-
 static inline uint32_t octeon_get_core_num (void)
 {
 
@@ -577,37 +550,12 @@ extern void octeon_reset(void);
 extern void octeon_led_write_char0(char val);
 extern void octeon_led_run_wheel(int *pos, int led_position);
 extern void octeon_debug_symbol(void);
-extern void mips_disable_interrupt_controls(void);
-extern uint32_t octeon_cpu_clock;
 extern uint64_t octeon_dram;
-extern uint32_t octeon_bd_ver, octeon_board_rev_major, octeon_board_rev_minor, octeon_board_type;
 extern uint8_t octeon_mac_addr[6];
-extern int octeon_core_mask, octeon_mac_addr_count, octeon_chip_rev_major, octeon_chip_rev_minor, octeon_chip_type;
-extern void bzero_64(void *str, size_t len);
-extern void bzero_32(void *str, size_t len);
-extern void bzero_16(void *str, size_t len);
-extern void bzero_old(void *str, size_t len);
+extern int octeon_core_mask, octeon_mac_addr_count;
 extern void octeon_ciu_reset(void);
-extern void ciu_disable_intr(int core_num, int intx, int enx);
-extern void ciu_enable_interrupts (int core_num, int intx, int enx, uint64_t set_these_interrupt_bits, int ciu_ip);
-extern void ciu_clear_int_summary(int core_num, int intx, int enx, uint64_t write_bits);
-extern uint64_t ciu_get_int_summary(int core_num, int intx, int enx);
-extern void octeon_ciu_start_gtimer(int timer, u_int one_shot, uint64_t time_cycles);
-extern void octeon_ciu_stop_gtimer(int timer);
 extern int octeon_board_real(void);
 extern unsigned long octeon_get_clock_rate(void);
-
-typedef union {
-    uint64_t word64;
-    struct {
-        uint64_t reserved             : 27;     /* Not used */
-        uint64_t one_shot             : 1;      /* Oneshot ? */
-        uint64_t len                  : 36;     /* len of timer in clock cycles - 1 */
-    } bits;
-} octeon_ciu_gentimer;
-
-
-
 #endif	/* LOCORE */
 
 
@@ -643,96 +591,6 @@ typedef union {
 #define  OCTEON_CHAR_LED_BASE_ADDR	(0x1d020000 | (0x1ffffffffull << 31))
 
 #define  OCTEON_FPA_QUEUES		8
-
-/*
- * Octeon FPA I/O Registers
- */
-#define  OCTEON_FPA_CTL_STATUS		0x8001180028000050ull
-#define  OCTEON_FPA_FPF_SIZE		0x8001180028000058ull
-#define  OCTEON_FPA_FPF_MARKS		0x8001180028000000ull
-#define  OCTEON_FPA_INT_SUMMARY		0x8001180028000040ull
-#define  OCTEON_FPA_INT_ENABLE		0x8001180028000048ull
-#define  OCTEON_FPA_QUEUE_AVAILABLE	0x8001180028000098ull
-#define  OCTEON_FPA_PAGE_INDEX		0x80011800280000f0ull
-
-/*
- * Octeon PKO Unit
- */
-#define	 OCTEON_PKO_REG_FLAGS		0x8001180050000000ull
-#define	 OCTEON_PKO_REG_READ_IDX	0x8001180050000008ull
-#define	 OCTEON_PKO_CMD_BUF		0x8001180050000010ull
-#define	 OCTEON_PKO_GMX_PORT_MODE	0x8001180050000018ull
-#define	 OCTEON_PKO_REG_CRC_ENABLE	0x8001180050000020ull
-#define	 OCTEON_PKO_QUEUE_MODE		0x8001180050000048ull
-#define  OCTEON_PKO_MEM_QUEUE_PTRS     	0x8001180050001000ull
-#define	 OCTEON_PKO_MEM_COUNT0		0x8001180050001080ull
-#define	 OCTEON_PKO_MEM_COUNT1		0x8001180050001088ull
-#define	 OCTEON_PKO_MEM_DEBUG0		0x8001180050001100ull
-#define	 OCTEON_PKO_MEM_DEBUG1		0x8001180050001108ull
-#define	 OCTEON_PKO_MEM_DEBUG2		0x8001180050001110ull
-#define	 OCTEON_PKO_MEM_DEBUG3		0x8001180050001118ull
-#define	 OCTEON_PKO_MEM_DEBUG4		0x8001180050001120ull
-#define	 OCTEON_PKO_MEM_DEBUG5		0x8001180050001128ull
-#define	 OCTEON_PKO_MEM_DEBUG6		0x8001180050001130ull
-#define	 OCTEON_PKO_MEM_DEBUG7		0x8001180050001138ull
-#define	 OCTEON_PKO_MEM_DEBUG8		0x8001180050001140ull
-#define	 OCTEON_PKO_MEM_DEBUG9		0x8001180050001148ull
-
-
-/*
- * Octeon IPD Unit
- */
-#define  OCTEON_IPD_1ST_MBUFF_SKIP		0x80014F0000000000ull
-#define  OCTEON_IPD_NOT_1ST_MBUFF_SKIP		0x80014F0000000008ull
-#define  OCTEON_IPD_PACKET_MBUFF_SIZE		0x80014F0000000010ull
-#define  OCTEON_IPD_1ST_NEXT_PTR_BACK		0x80014F0000000150ull
-#define  OCTEON_IPD_2ND_NEXT_PTR_BACK		0x80014F0000000158ull
-#define  OCTEON_IPD_WQE_FPA_QUEUE		0x80014F0000000020ull
-#define  OCTEON_IPD_CTL_STATUS			0x80014F0000000018ull
-#define	 OCTEON_IPD_QOSX_RED_MARKS(queue)      (0x80014F0000000178ull + ((queue) * 8))
-#define	 OCTEON_IPD_RED_Q_PARAM(queue)	       (0x80014F00000002E0ull + ((queue) * 8))
-#define	 OCTEON_IPD_PORT_BP_PAGE_COUNT(port)   (0x80014F0000000028ull + ((port) * 8))
-#define	 OCTEON_IPD_BP_PORT_RED_END		0x80014F0000000328ull
-#define	 OCTEON_IPD_RED_PORT_ENABLE		0x80014F00000002D8ull
-
-/*
- * Octeon CIU Unit
- */
-#define OCTEON_CIU_ENABLE_BASE_ADDR	0x8001070000000200ull
-#define OCTEON_CIU_SUMMARY_BASE_ADDR	0x8001070000000000ull
-#define OCTEON_CIU_SUMMARY_INT1_ADDR	0x8001070000000108ull
-
-#define OCTEON_CIU_MBOX_SETX(offset)    (0x8001070000000600ull+((offset)*8))
-#define OCTEON_CIU_MBOX_CLRX(offset)    (0x8001070000000680ull+((offset)*8))
-#define OCTEON_CIU_ENABLE_MBOX_INTR	 0x0000000300000000ull /* bits 32, 33 */
-
-#define CIU_MIPS_IP2		0
-#define CIU_MIPS_IP3		1
-
-#define CIU_INT_0		CIU_MIPS_IP2
-#define CIU_INT_1		CIU_MIPS_IP3
-
-#define CIU_EN_0		0
-#define CIU_EN_1		1
-
-#define CIU_THIS_CORE		-1
-
-#define CIU_UART_BITS_UART0		      (0x1ull << 34)		// Bit 34
-#define CIU_UART_BITS_UART1		      (0x1ull << 35)		// Bit 35
-#define CIU_GENTIMER_BITS_ENABLE(timer)	      (0x1ull << (52 + (timer)))	// Bit 52..55
-
-#define CIU_GENTIMER_NUM_0			0
-#define CIU_GENTIMER_NUM_1			1
-#define CIU_GENTIMER_NUM_2			2
-#define CIU_GENTIMER_NUM_3			3
-#define OCTEON_GENTIMER_ONESHOT			1
-#define OCTEON_GENTIMER_PERIODIC		0
-
-#define OCTEON_CIU_GENTIMER_ADDR(timer)	     (0x8001070000000480ull + ((timer) * 0x8))
-
-
-#define OCTEON_GENTIMER_LEN_1MS		(0x7a120ull)   /* Back of envelope. 500Mhz Octeon */ // FIXME IF WRONG
-#define OCTEON_GENTIMER_LEN_1SEC	((OCTEON_GENTIMER_LEN_1MS) * 1000)
 
 /*
  * Physical Memory Banks

@@ -70,6 +70,9 @@ __FBSDID("$FreeBSD$");
 #include <machine/trap.h>
 #include <machine/vmparam.h>
 
+#include <contrib/octeon-sdk/cvmx.h>
+#include <contrib/octeon-sdk/cvmx-interrupt.h>
+
 #if defined(__mips_n64) 
 #define MAX_APP_DESC_ADDR     0xffffffffafffffff
 #else
@@ -83,8 +86,6 @@ uint64_t ciu_get_en_reg_addr_new(int corenum, int intx, int enx, int ciu_ip);
 void ciu_dump_interrutps_enabled(int core_num, int intx, int enx, int ciu_ip);
 
 static void octeon_boot_params_init(register_t ptr);
-static uint64_t ciu_get_intr_sum_reg_addr(int core_num, int intx, int enx);
-static uint64_t ciu_get_intr_en_reg_addr(int core_num, int intx, int enx);
 
 void
 platform_cpu_init()
@@ -98,7 +99,7 @@ platform_cpu_init()
 void
 platform_reset(void)
 {
-	oct_write64(OCTEON_CIU_SOFT_RST, 1);
+	oct_write64(CVMX_CIU_SOFT_RST, 1);
 }
 
 void
@@ -195,23 +196,6 @@ octeon_debug_symbol(void)
 {
 }
 
-void
-octeon_ciu_stop_gtimer(int timer)
-{
-	oct_write64(OCTEON_CIU_GENTIMER_ADDR(timer), 0ll);
-}
-
-void
-octeon_ciu_start_gtimer(int timer, u_int one_shot, uint64_t time_cycles)
-{
-    	octeon_ciu_gentimer gentimer;
-
-        gentimer.word64 = 0;
-        gentimer.bits.one_shot = one_shot;
-        gentimer.bits.len = time_cycles - 1;
-        oct_write64(OCTEON_CIU_GENTIMER_ADDR(timer), gentimer.word64);
-}
-
 /*
  * octeon_ciu_reset
  *
@@ -220,294 +204,11 @@ octeon_ciu_start_gtimer(int timer, u_int one_shot, uint64_t time_cycles)
 void
 octeon_ciu_reset(void)
 {
-
-	octeon_ciu_stop_gtimer(CIU_GENTIMER_NUM_0);
-	octeon_ciu_stop_gtimer(CIU_GENTIMER_NUM_1);
-	octeon_ciu_stop_gtimer(CIU_GENTIMER_NUM_2);
-	octeon_ciu_stop_gtimer(CIU_GENTIMER_NUM_3);
-
-	ciu_disable_intr(CIU_THIS_CORE, CIU_INT_0, CIU_EN_0);
-	ciu_disable_intr(CIU_THIS_CORE, CIU_INT_0, CIU_EN_1);
-	ciu_disable_intr(CIU_THIS_CORE, CIU_INT_1, CIU_EN_0);
-	ciu_disable_intr(CIU_THIS_CORE, CIU_INT_1, CIU_EN_1);
-
-	ciu_clear_int_summary(CIU_THIS_CORE, CIU_INT_0, CIU_EN_0, 0ll);
-	ciu_clear_int_summary(CIU_THIS_CORE, CIU_INT_1, CIU_EN_0, 0ll);
-	ciu_clear_int_summary(CIU_THIS_CORE, CIU_INT_1, CIU_EN_1, 0ll);
-}
-
-/*
- * mips_disable_interrupt_controllers
- *
- * Disable interrupts in the CPU controller
- */
-void
-mips_disable_interrupt_controls(void)
-{
-	/*
-	 * Disable interrupts in CIU.
-	 */
-	octeon_ciu_reset();
-}
-
-/*
- * ciu_get_intr_sum_reg_addr
- */
-static uint64_t
-ciu_get_intr_sum_reg_addr(int core_num, int intx, int enx)
-{
-	uint64_t ciu_intr_sum_reg_addr;
-
-    	if (enx == CIU_EN_0)
-            	ciu_intr_sum_reg_addr = OCTEON_CIU_SUMMARY_BASE_ADDR +
-		    (core_num * 0x10) + (intx * 0x8);
-	else
-            	ciu_intr_sum_reg_addr = OCTEON_CIU_SUMMARY_INT1_ADDR;
-
-        return (ciu_intr_sum_reg_addr);
-}
-
-
-/*
- * ciu_get_intr_en_reg_addr
- */
-static uint64_t
-ciu_get_intr_en_reg_addr(int core_num, int intx, int enx)
-{
-	uint64_t ciu_intr_reg_addr;
-
-    	ciu_intr_reg_addr = OCTEON_CIU_ENABLE_BASE_ADDR + 
-	    ((enx == 0) ? 0x0 : 0x8) + (intx * 0x10) +  (core_num * 0x20);
-        return (ciu_intr_reg_addr);
-}
-
-
-
-
-/*
- * ciu_get_intr_reg_addr
- *
- * 200 ---int0,en0 ip2
- * 208 ---int0,en1 ip2 ----> this is wrong... this is watchdog
- * 
- * 210 ---int0,en0 ip3 --
- * 218 ---int0,en1 ip3 ----> same here.. .this is watchdog... right?
- * 
- * 220 ---int1,en0 ip2
- * 228 ---int1,en1 ip2
- * 230 ---int1,en0 ip3 --
- * 238 ---int1,en1 ip3
- *
- */
-uint64_t
-ciu_get_en_reg_addr_new(int corenum, int intx, int enx, int ciu_ip)
-{
-	uint64_t ciu_intr_reg_addr = OCTEON_CIU_ENABLE_BASE_ADDR;
-
-	/* XXX kasserts? */
-	if (enx < CIU_EN_0 || enx > CIU_EN_1) {
-		printf("%s: invalid enx value %d, should be %d or %d\n",
-		    __func__, enx, CIU_EN_0, CIU_EN_1);
-		return 0;
-	}
-	if (intx < CIU_INT_0 || intx > CIU_INT_1) {
-		printf("%s: invalid intx value %d, should be %d or %d\n",
-		    __func__, enx, CIU_INT_0, CIU_INT_1);
-		return 0;
-	}
-	if (ciu_ip < CIU_MIPS_IP2 || ciu_ip > CIU_MIPS_IP3) {
-		printf("%s: invalid ciu_ip value %d, should be %d or %d\n",
-		    __func__, ciu_ip, CIU_MIPS_IP2, CIU_MIPS_IP3);
-		return 0;
-	}
-
-	ciu_intr_reg_addr += (enx    * 0x8);
-	ciu_intr_reg_addr += (ciu_ip * 0x10);
-	ciu_intr_reg_addr += (intx   * 0x20);
-	return (ciu_intr_reg_addr);
-}
-
-/*
- * ciu_get_int_summary
- */
-uint64_t
-ciu_get_int_summary(int core_num, int intx, int enx)
-{
-	uint64_t ciu_intr_sum_reg_addr;
-
-	if (core_num == CIU_THIS_CORE)
-        	core_num = octeon_get_core_num();
-	ciu_intr_sum_reg_addr = ciu_get_intr_sum_reg_addr(core_num, intx, enx);
-	return (oct_read64(ciu_intr_sum_reg_addr));
-}
-
-//#define DEBUG_CIU 1
-
-#ifdef DEBUG_CIU
-#define DEBUG_CIU_SUM 1
-#define DEBUG_CIU_EN 1
-#endif
-
-
-/*
- * ciu_clear_int_summary
- */
-void
-ciu_clear_int_summary(int core_num, int intx, int enx, uint64_t write_bits)
-{
-	uint32_t cpu_status_bits;
-	uint64_t ciu_intr_sum_reg_addr;
-
-//#define DEBUG_CIU_SUM 1
-
-#ifdef DEBUG_CIU_SUM
-	uint64_t ciu_intr_sum_bits;
-#endif
-
-
-	if (core_num == CIU_THIS_CORE) {
-        	core_num = octeon_get_core_num();
-	}
-
-#ifdef DEBUG_CIU_SUM
-        printf(" CIU: core %u clear sum IntX %u  Enx %u  Bits: 0x%llX\n",
-	    core_num, intx, enx, write_bits);
-#endif
-
-	cpu_status_bits = intr_disable();
-
-	ciu_intr_sum_reg_addr = ciu_get_intr_sum_reg_addr(core_num, intx, enx);
-
-#ifdef DEBUG_CIU_SUM
-    	ciu_intr_sum_bits =  oct_read64(ciu_intr_sum_reg_addr);	/* unneeded dummy read */
-        printf(" CIU: status: 0x%X  reg_addr: 0x%llX   Val: 0x%llX   ->  0x%llX",
-	    cpu_status_bits, ciu_intr_sum_reg_addr, ciu_intr_sum_bits,
-	    ciu_intr_sum_bits | write_bits);
-#endif
-
-	oct_write64(ciu_intr_sum_reg_addr, write_bits);
-	oct_read64(OCTEON_MIO_BOOT_BIST_STAT);	/* Bus Barrier */
-
-#ifdef DEBUG_CIU_SUM
-        printf(" Readback: 0x%llX\n\n   ", (uint64_t) oct_read64(ciu_intr_sum_reg_addr));
-#endif
-    
-	intr_restore(cpu_status_bits);
-}
-
-/*
- * ciu_disable_intr
- */
-void
-ciu_disable_intr(int core_num, int intx, int enx)
-{
-	uint32_t cpu_status_bits;
-	uint64_t ciu_intr_reg_addr;
-
-	if (core_num == CIU_THIS_CORE)
-        	core_num = octeon_get_core_num();
-
-	cpu_status_bits = intr_disable();
-    
-	ciu_intr_reg_addr = ciu_get_intr_en_reg_addr(core_num, intx, enx);
-
-	oct_read64(ciu_intr_reg_addr);	/* Dummy read */
-
-	oct_write64(ciu_intr_reg_addr, 0LL);
-	oct_read64(OCTEON_MIO_BOOT_BIST_STAT);	/* Bus Barrier */
-
-	intr_restore(cpu_status_bits);
-}
-
-void
-ciu_dump_interrutps_enabled(int core_num, int intx, int enx, int ciu_ip)
-{
-
-	uint64_t ciu_intr_reg_addr;
-	uint64_t ciu_intr_bits;
-
-        if (core_num == CIU_THIS_CORE) {
-            	core_num = octeon_get_core_num();
-        }
-
-#ifndef OCTEON_SMP_1
-	ciu_intr_reg_addr = ciu_get_intr_en_reg_addr(core_num, intx, enx);
-#else
-	ciu_intr_reg_addr = ciu_get_en_reg_addr_new(core_num, intx, enx, ciu_ip);
-#endif
-
-        if (!ciu_intr_reg_addr) {
-            printf("Bad call to %s\n", __func__);
-            while(1);
-            return;
-        }
-
-	ciu_intr_bits =  oct_read64(ciu_intr_reg_addr);
-        printf(" CIU core %d  int: %d  en: %d  ip: %d  Add: %#llx  enabled: %#llx  SR: %x\n",
-	    core_num, intx, enx, ciu_ip, (unsigned long long)ciu_intr_reg_addr,
-	    (unsigned long long)ciu_intr_bits, mips_rd_status());
-}
-
-
-/*
- * ciu_enable_interrupts
- */
-void ciu_enable_interrupts(int core_num, int intx, int enx,
-    uint64_t set_these_interrupt_bits, int ciu_ip)
-{
-	uint32_t cpu_status_bits;
-	uint64_t ciu_intr_reg_addr;
-	uint64_t ciu_intr_bits;
-
-        if (core_num == CIU_THIS_CORE)
-            	core_num = octeon_get_core_num();
-
-//#define DEBUG_CIU_EN 1
-
-#ifdef DEBUG_CIU_EN
-        printf(" CIU: core %u enabling Intx %u  Enx %u IP %d  Bits: 0x%llX\n",
-	    core_num, intx, enx, ciu_ip, set_these_interrupt_bits);
-#endif
-
-	cpu_status_bits = intr_disable();
-
-#ifndef OCTEON_SMP_1
-	ciu_intr_reg_addr = ciu_get_intr_en_reg_addr(core_num, intx, enx);
-#else
-	ciu_intr_reg_addr = ciu_get_en_reg_addr_new(core_num, intx, enx, ciu_ip);
-#endif
-
-        if (!ciu_intr_reg_addr) {
-		printf("Bad call to %s\n", __func__);
-		while(1);
-		return;	/* XXX */
-        }
-
-	ciu_intr_bits =  oct_read64(ciu_intr_reg_addr);
-
-#ifdef DEBUG_CIU_EN
-        printf(" CIU: status: 0x%X  reg_addr: 0x%llX   Val: 0x%llX   ->  0x%llX",
-	    cpu_status_bits, ciu_intr_reg_addr, ciu_intr_bits, ciu_intr_bits | set_these_interrupt_bits);
-#endif
-	ciu_intr_bits |=  set_these_interrupt_bits;
-	oct_write64(ciu_intr_reg_addr, ciu_intr_bits);
-#ifdef SMP
-	mips_wbflush();
-#endif
-	oct_read64(OCTEON_MIO_BOOT_BIST_STAT);	/* Bus Barrier */
-
-#ifdef DEBUG_CIU_EN
-        printf(" Readback: 0x%llX\n\n   ",
-	    (uint64_t)oct_read64(ciu_intr_reg_addr));
-#endif
-
-	intr_restore(cpu_status_bits);
-}
-
-unsigned long
-octeon_get_clock_rate(void)
-{
-	return octeon_cpu_clock;
+	/* Disable all CIU interrupts by default */
+	cvmx_write_csr(CVMX_CIU_INTX_EN0(cvmx_get_core_num()*2), 0);
+	cvmx_write_csr(CVMX_CIU_INTX_EN0(cvmx_get_core_num()*2+1), 0);
+	cvmx_write_csr(CVMX_CIU_INTX_EN1(cvmx_get_core_num()*2), 0);
+	cvmx_write_csr(CVMX_CIU_INTX_EN1(cvmx_get_core_num()*2+1), 0);
 }
 
 static void
@@ -601,15 +302,15 @@ platform_start(__register_t a0, __register_t a1, __register_t a2 __unused,
 	if (boothowto & RB_KDB)
 		kdb_enter(KDB_WHY_BOOTFLAGS, "Boot flags requested debugger");
 #endif
-	platform_counter_freq = octeon_get_clock_rate();
+	platform_counter_freq = cvmx_sysinfo_get()->cpu_clock_hz;
 	mips_timer_init_params(platform_counter_freq, 0);
 
 #ifdef SMP
 	/*
 	 * Clear any pending IPIs and enable the IPI interrupt.
 	 */
-	oct_write64(OCTEON_CIU_MBOX_CLRX(0), 0xffffffff);
-	ciu_enable_interrupts(0, CIU_INT_1, CIU_EN_0, OCTEON_CIU_ENABLE_MBOX_INTR, CIU_MIPS_IP3);
+	oct_write64(CVMX_CIU_MBOX_CLRX(0), 0xffffffff);
+	cvmx_interrupt_unmask_irq(CVMX_IRQ_MBOX0);
 #endif
 }
 
@@ -641,7 +342,6 @@ platform_start(__register_t a0, __register_t a1, __register_t a2 __unused,
 #define OCTEON_CURRENT_DESC_VERSION     6
 #define OCTEON_ARGV_MAX_ARGS            (64)
 #define OCTOEN_SERIAL_LEN 20
-
 
 typedef struct {
 	/* Start of block referenced by assembly code - do not change! */
@@ -680,43 +380,10 @@ typedef struct {
 	uint64_t cvmx_desc_vaddr;
 } octeon_boot_descriptor_t;
 
-
-typedef struct {
-	uint32_t major_version;
-	uint32_t minor_version;
-
-	uint64_t stack_top;
-	uint64_t heap_base;
-	uint64_t heap_end;
-	uint64_t desc_vaddr;
-
-	uint32_t exception_base_addr;
-	uint32_t stack_size;
-	uint32_t flags;
-	uint32_t core_mask;
-	uint32_t dram_size;  /**< DRAM size in megabyes */
-	uint32_t phy_mem_desc_addr;  /**< physical address of free memory descriptor block*/
-	uint32_t debugger_flags_base_addr;  /**< used to pass flags from app to debugger */
-	uint32_t eclock_hz;  /**< CPU clock speed, in hz */
-	uint32_t dclock_hz;  /**< DRAM clock speed, in hz */
-	uint32_t spi_clock_hz;  /**< SPI4 clock in hz */
-	uint16_t board_type;
-	uint8_t board_rev_major;
-	uint8_t board_rev_minor;
-	uint16_t chip_type;
-	uint8_t chip_rev_major;
-	uint8_t chip_rev_minor;
-	char board_serial_number[OCTOEN_SERIAL_LEN];
-	uint8_t mac_addr_base[6];
-	uint8_t mac_addr_count;
-} cvmx_bootinfo_t;
-
-uint32_t octeon_cpu_clock;
 uint64_t octeon_dram;
-uint32_t octeon_bd_ver = 0, octeon_cvmx_bd_ver = 0, octeon_board_rev_major, octeon_board_rev_minor, octeon_board_type;
+static uint32_t octeon_bd_ver = 0, octeon_cvmx_bd_ver = 0;
 uint8_t octeon_mac_addr[6] = { 0 };
 int octeon_core_mask, octeon_mac_addr_count;
-int octeon_chip_rev_major = 0, octeon_chip_rev_minor = 0, octeon_chip_type = 0;
 
 static octeon_boot_descriptor_t *app_desc_ptr;
 static cvmx_bootinfo_t *cvmx_desc_ptr;
@@ -735,7 +402,7 @@ static cvmx_bootinfo_t *cvmx_desc_ptr;
 int
 octeon_board_real(void)
 {
-	switch (octeon_board_type) {
+	switch (cvmx_sysinfo_get()->board_type) {
 	case OCTEON_BOARD_TYPE_NONE:
 	case OCTEON_BOARD_TYPE_SIM:
 		return 0;
@@ -748,7 +415,7 @@ octeon_board_real(void)
 		 */
 		return 1;
 	default:
-		if (octeon_board_rev_major == 0)
+		if (cvmx_sysinfo_get()->board_rev_major == 0)
 			return 0;
 		return 1;
 	}
@@ -759,15 +426,15 @@ octeon_process_app_desc_ver_unknown(void)
 {
     	printf(" Unknown Boot-Descriptor: Using Defaults\n");
 
-    	octeon_cpu_clock = OCTEON_CLOCK_DEFAULT;
         octeon_dram = OCTEON_DRAM_DEFAULT;
-        octeon_board_rev_major = octeon_board_rev_minor = octeon_board_type = 0;
         octeon_core_mask = 1;
-        octeon_chip_type = octeon_chip_rev_major = octeon_chip_rev_minor = 0;
         octeon_mac_addr[0] = 0x00; octeon_mac_addr[1] = 0x0f;
         octeon_mac_addr[2] = 0xb7; octeon_mac_addr[3] = 0x10;
         octeon_mac_addr[4] = 0x09; octeon_mac_addr[5] = 0x06;
         octeon_mac_addr_count = 1;
+
+	cvmx_sysinfo_minimal_initialize(NULL, CVMX_BOARD_TYPE_NULL,
+					0, 0, OCTEON_CLOCK_DEFAULT);
 }
 
 static int
@@ -792,13 +459,6 @@ octeon_process_app_desc_ver_6(void)
         }
 
         octeon_core_mask = cvmx_desc_ptr->core_mask;
-        octeon_cpu_clock  = cvmx_desc_ptr->eclock_hz;
-        octeon_board_type = cvmx_desc_ptr->board_type;
-        octeon_board_rev_major = cvmx_desc_ptr->board_rev_major;
-        octeon_board_rev_minor = cvmx_desc_ptr->board_rev_minor;
-        octeon_chip_type = cvmx_desc_ptr->chip_type;
-        octeon_chip_rev_major = cvmx_desc_ptr->chip_rev_major;
-        octeon_chip_rev_minor = cvmx_desc_ptr->chip_rev_minor;
         octeon_mac_addr[0] = cvmx_desc_ptr->mac_addr_base[0];
         octeon_mac_addr[1] = cvmx_desc_ptr->mac_addr_base[1];
         octeon_mac_addr[2] = cvmx_desc_ptr->mac_addr_base[2];
@@ -811,6 +471,15 @@ octeon_process_app_desc_ver_6(void)
             	octeon_dram = (uint64_t)app_desc_ptr->dram_size;
 	else
             	octeon_dram = (uint64_t)app_desc_ptr->dram_size << 20;
+
+	/*
+	 * XXX
+	 * We could pass in phy_mem_desc_ptr, but why bother?
+	 */
+	cvmx_sysinfo_minimal_initialize(NULL, cvmx_desc_ptr->board_type,
+					cvmx_desc_ptr->board_rev_major,
+					cvmx_desc_ptr->board_rev_minor,
+					cvmx_desc_ptr->eclock_hz);
         return 0;
 }
 
@@ -831,13 +500,19 @@ octeon_boot_params_init(register_t ptr)
         	octeon_process_app_desc_ver_unknown();
 
         printf("Boot Descriptor Ver: %u -> %u/%u",
-               octeon_bd_ver, octeon_cvmx_bd_ver/100, octeon_cvmx_bd_ver%100);
-        printf("  CPU clock: %uMHz  Core Mask: %#x\n", octeon_cpu_clock/1000000, octeon_core_mask);
+               octeon_bd_ver, octeon_cvmx_bd_ver / 100,
+	       octeon_cvmx_bd_ver % 100);
+        printf("  CPU clock: %uMHz  Core Mask: %#x\n",
+	       cvmx_sysinfo_get()->cpu_clock_hz / 1000000, octeon_core_mask);
         printf("  Dram: %u MB", (uint32_t)(octeon_dram >> 20));
         printf("  Board Type: %u  Revision: %u/%u\n",
-               octeon_board_type, octeon_board_rev_major, octeon_board_rev_minor);
+               cvmx_sysinfo_get()->board_type,
+	       cvmx_sysinfo_get()->board_rev_major,
+	       cvmx_sysinfo_get()->board_rev_minor);
+#if 0
         printf("  Octeon Chip: %u  Rev %u/%u",
                octeon_chip_type, octeon_chip_rev_major, octeon_chip_rev_minor);
+#endif
 
         printf("  Mac Address %02X.%02X.%02X.%02X.%02X.%02X (%d)\n",
 	    octeon_mac_addr[0], octeon_mac_addr[1], octeon_mac_addr[2],

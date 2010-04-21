@@ -38,12 +38,15 @@ __FBSDID("$FreeBSD$");
 
 #include <mips/cavium/octeon_pcmap_regs.h>
 
+#include <contrib/octeon-sdk/cvmx.h>
+#include <contrib/octeon-sdk/cvmx-interrupt.h>
+
 unsigned octeon_ap_boot = ~0;
 
 void
 platform_ipi_send(int cpuid)
 {
-	oct_write64(OCTEON_CIU_MBOX_SETX(cpuid), 1);
+	oct_write64(CVMX_CIU_MBOX_SETX(cpuid), 1);
 	mips_wbflush();
 }
 
@@ -52,9 +55,9 @@ platform_ipi_clear(void)
 {
 	uint64_t action;
 
-	action = oct_read64(OCTEON_CIU_MBOX_CLRX(PCPU_GET(cpuid)));
+	action = oct_read64(CVMX_CIU_MBOX_CLRX(PCPU_GET(cpuid)));
 	KASSERT(action == 1, ("unexpected IPIs: %#jx", (uintmax_t)action));
-	oct_write64(OCTEON_CIU_MBOX_CLRX(PCPU_GET(cpuid)), action);
+	oct_write64(CVMX_CIU_MBOX_CLRX(PCPU_GET(cpuid)), action);
 }
 
 int
@@ -76,8 +79,8 @@ platform_init_ap(int cpuid)
 	 */
 	octeon_ciu_reset();
 
-	oct_write64(OCTEON_CIU_MBOX_CLRX(cpuid), 0xffffffff);
-	ciu_enable_interrupts(cpuid, CIU_INT_1, CIU_EN_0, OCTEON_CIU_ENABLE_MBOX_INTR, CIU_MIPS_IP3);
+	oct_write64(CVMX_CIU_MBOX_CLRX(cpuid), 0xffffffff);
+	cvmx_interrupt_unmask_irq(CVMX_IRQ_MBOX0);
 
 	mips_wbflush();
 }
