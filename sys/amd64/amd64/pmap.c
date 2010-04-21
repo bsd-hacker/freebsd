@@ -2021,8 +2021,8 @@ pmap_release(pmap_t pmap)
 	vm_page_t m;
 
 	KASSERT(pmap->pm_stats.resident_count == 0,
-	    ("pmap_release: pmap resident count %ld != 0",
-	    pmap->pm_stats.resident_count));
+	    ("pmap_release: pmap resident count %ld != 0 gen_count == %d ",
+		pmap->pm_stats.resident_count, pmap->pm_gen_count));
 	KASSERT(pmap->pm_root == NULL,
 	    ("pmap_release: pmap has reserved page table page(s)"));
 
