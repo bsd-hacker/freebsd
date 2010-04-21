@@ -4200,6 +4200,7 @@ pmap_copy(pmap_t dst_pmap, pmap_t src_pmap, vm_offset_t dst_addr, vm_size_t len,
 					 	    addr);
 				    	    	pmap_free_zero_pages(free);
 					}
+					PA_UNLOCK(pa);
 					goto out;
 				}
 				PA_UNLOCK(pa);
