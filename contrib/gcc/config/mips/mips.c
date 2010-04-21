@@ -763,6 +763,9 @@ const struct mips_cpu_info mips_cpu_info_table[] = {
   { "sb1a", PROCESSOR_SB1A, 64 },
   { "sr71000", PROCESSOR_SR71000, 64 },
 
+  /* MIPS64R2 */
+  { "octeon", PROCESSOR_OCTEON, 65 },
+
   /* End marker */
   { 0, 0, 0 }
 };
@@ -9944,6 +9947,7 @@ mips_issue_rate (void)
     case PROCESSOR_R5500:
     case PROCESSOR_R7000:
     case PROCESSOR_R9000:
+    case PROCESSOR_OCTEON:
       return 2;
 
     case PROCESSOR_SB1:
