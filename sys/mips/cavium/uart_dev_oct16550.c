@@ -460,8 +460,6 @@ oct16550_bus_attach (struct uart_softc *sc)
 	uart_setreg(bas, REG_IER, oct16550->ier);
 	uart_barrier(bas);
 
-	uint32_t status_bits = mips_rd_status();
-	mips_wr_status(status_bits & ~MIPS_SR_INT_IE);
 	/*
 	 * Enable the interrupt in CIU.     // UART-x2 @ IP2
 	 */
