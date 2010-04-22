@@ -28,7 +28,7 @@ machine		mips
 cpu		CPU_MIPS4KC
 ident		OCTEON1
 
-makeoptions	ARCH_FLAGS="-march=mips64r2"
+makeoptions	ARCH_FLAGS="-march=octeon"
 makeoptions	LDSCRIPT_NAME=ldscript.mips.octeon1
 
 # Don't build any modules yet.
@@ -82,7 +82,8 @@ device		ether
 device		md
 device		uart
 nodevice	uart_ns8250
-device		rgmii
+device		octe
+#device		rgmii
 #options 	VERBOSE_SYSINIT
 
 device		bpf
