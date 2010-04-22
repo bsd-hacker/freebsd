@@ -26,10 +26,17 @@ TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE SOFTWARE IS PROVIDED "AS IS"
 AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR WARRANTIES, EITHER EXPRESS, IMPLIED, STATUTORY, OR OTHERWISE, WITH RESPECT TO THE SOFTWARE, INCLUDING ITS CONDITION, ITS CONFORMITY TO ANY REPRESENTATION OR DESCRIPTION, OR THE EXISTENCE OF ANY LATENT OR PATENT DEFECTS, AND CAVIUM SPECIFICALLY DISCLAIMS ALL IMPLIED (IF ANY) WARRANTIES OF TITLE, MERCHANTABILITY, NONINFRINGEMENT, FITNESS FOR A PARTICULAR PURPOSE, LACK OF VIRUSES, ACCURACY OR COMPLETENESS, QUIET ENJOYMENT, QUIET POSSESSION OR CORRESPONDENCE TO DESCRIPTION. THE ENTIRE  RISK ARISING OUT OF USE OR PERFORMANCE OF THE SOFTWARE LIES WITH YOU.
 
 *************************************************************************/
-#include <linux/kernel.h>
-#include <linux/netdevice.h>
-#include <linux/mii.h>
-#include <net/dst.h>
+
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/bus.h>
+#include <sys/endian.h>
+#include <sys/kernel.h>
+#include <sys/mbuf.h>
+#include <sys/socket.h>
+
+#include <net/ethernet.h>
+#include <net/if.h>
 
 #include "wrapper-cvmx-includes.h"
 #include "ethernet-headers.h"
@@ -46,15 +53,19 @@ static int cvm_oct_fill_hw_mbuf(int pool, int size, int elements)
 	int freed = elements;
 	while (freed) {
 
+#if 0
 		struct mbuf *m = dev_alloc_m(size + 128);
-		if (unlikely(m == NULL)) {
-			pr_warning("Failed to allocate m for hardware pool %d\n", pool);
+		if (__predict_false(m == NULL)) {
+			printf("Failed to allocate m for hardware pool %d\n", pool);
 			break;
 		}
 
 		m_reserve(m, 128 - (((unsigned long)m->data) & 0x7f));
 		*(struct mbuf **)(m->data - sizeof(void *)) = m;
 		cvmx_fpa_free(m->data, pool, DONT_WRITEBACK(size/128));
+#else
+		panic("%s: need to implement mbuf allocation.", __func__);
+#endif
 		freed--;
 	}
 	return (elements - freed);
@@ -77,7 +88,7 @@ static void cvm_oct_free_hw_mbuf(int pool, int size, int elements)
 		if (memory) {
 			struct mbuf *m = *(struct mbuf **)(memory - sizeof(void *));
 			elements--;
-			dev_kfree_m(m);
+			m_freem(m);
 		}
 	} while (memory);
 
@@ -104,6 +115,7 @@ static int cvm_oct_fill_hw_memory(int pool, int size, int elements)
 	int freed = elements;
 
 	if (USE_32BIT_SHARED) {
+#if 0
 		extern uint64_t octeon_reserve32_memory;
 
 		memory = cvmx_bootmem_alloc_range(elements*size, 128, octeon_reserve32_memory,
@@ -118,12 +130,19 @@ static int cvm_oct_fill_hw_memory(int pool, int size, int elements)
 			memory += size;
 			freed--;
 		}
+#else
+		panic("%s: may need to implement using shared memory.", __func__);
+#endif
 	} else {
 		while (freed) {
 			/* We need to force alignment to 128 bytes here */
+#if 0
 			memory = kmalloc(size + 127, GFP_ATOMIC);
-			if (unlikely(memory == NULL)) {
-				pr_warning("Unable to allocate %u bytes for FPA pool %d\n", elements*size, pool);
+#else
+			panic("%s: not yet implemented.", __func__);
+#endif
+			if (__predict_false(memory == NULL)) {
+				printf("Unable to allocate %u bytes for FPA pool %d\n", elements*size, pool);
 				break;
 			}
 			memory = (char *)(((unsigned long)memory+127) & -128);
@@ -152,7 +171,11 @@ static void cvm_oct_free_hw_memory(int pool, int size, int elements)
 			memory = cvmx_fpa_alloc(pool);
 			if (memory) {
 				elements--;
+#if 0
 				kfree(phys_to_virt(cvmx_ptr_to_phys(memory)));
+#else
+				panic("%s: not yet implemented.", __func__);
+#endif
 			}
 		} while (memory);
 

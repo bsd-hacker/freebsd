@@ -342,7 +342,9 @@ static int cvm_oct_init_module(void)
 
 	printf("cavium-ethernet: %s\n", OCTEON_SDK_VERSION_STRING);
 
+#if 0
 	cvm_oct_proc_initialize();
+#endif
 	cvm_oct_rx_initialize();
 	cvm_oct_configure_common_hw();
 
@@ -569,7 +571,9 @@ static void cvm_oct_cleanup_module(void)
 	}
 
 	cvmx_pko_shutdown();
+#if 0
 	cvm_oct_proc_shutdown();
+#endif
 
 	cvmx_ipd_free_ptr();
 
