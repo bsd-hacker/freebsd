@@ -183,4 +183,9 @@
 #define CVMX_FPA_OUTPUT_BUFFER_POOL         (2)             /**< PKO queue command buffers */
 #define CVMX_FPA_OUTPUT_BUFFER_POOL_SIZE    CVMX_FPA_POOL_2_SIZE
 
+/*************************  FAU allocation ********************************/
+#define	CVMX_FAU_REG_END                    2048
+
+#define	CVMX_SCR_SCRATCH                    0
+
 #endif /* !_CVMX_CONFIG_H */
