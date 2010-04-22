@@ -565,7 +565,7 @@ int cvm_oct_transmit_qos(struct ifnet *ifp, void *work_queue_entry, int do_free,
 
 
 /**
- * This function frees all m that are currenty queued for TX.
+ * This function frees all mbufs that are currenty queued for TX.
  *
  * @param dev    Device being shutdown
  */

@@ -52,20 +52,17 @@ static int cvm_oct_fill_hw_mbuf(int pool, int size, int elements)
 {
 	int freed = elements;
 	while (freed) {
+		KASSERT(size <= MCLBYTES - 128, ("mbuf clusters are too small"));
 
-#if 0
-		struct mbuf *m = dev_alloc_m(size + 128);
+		struct mbuf *m = m_getcl(M_DONTWAIT, MT_DATA, M_PKTHDR);
 		if (__predict_false(m == NULL)) {
-			printf("Failed to allocate m for hardware pool %d\n", pool);
+			printf("Failed to allocate mbuf for hardware pool %d\n", pool);
 			break;
 		}
 
-		m_reserve(m, 128 - (((unsigned long)m->data) & 0x7f));
-		*(struct mbuf **)(m->data - sizeof(void *)) = m;
-		cvmx_fpa_free(m->data, pool, DONT_WRITEBACK(size/128));
-#else
-		panic("%s: need to implement mbuf allocation.", __func__);
-#endif
+		m->m_data += 128 - (((uintptr_t)m->m_data) & 0x7f);
+		*(struct mbuf **)(m->m_data - sizeof(void *)) = m;
+		cvmx_fpa_free(m->m_data, pool, DONT_WRITEBACK(size/128));
 		freed--;
 	}
 	return (elements - freed);

@@ -166,7 +166,7 @@
 
 /************************* FPA allocation *********************************/
 /* Pool sizes in bytes, must be multiple of a cache line */
-#define CVMX_FPA_POOL_0_SIZE (16 * CVMX_CACHE_LINE_SIZE)
+#define CVMX_FPA_POOL_0_SIZE (15 * CVMX_CACHE_LINE_SIZE)
 #define CVMX_FPA_POOL_1_SIZE (1 * CVMX_CACHE_LINE_SIZE)
 #define CVMX_FPA_POOL_2_SIZE (8 * CVMX_CACHE_LINE_SIZE)
 #define CVMX_FPA_POOL_3_SIZE (0 * CVMX_CACHE_LINE_SIZE)
