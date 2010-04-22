@@ -26,22 +26,17 @@ TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE SOFTWARE IS PROVIDED "AS IS"
 AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR WARRANTIES, EITHER EXPRESS, IMPLIED, STATUTORY, OR OTHERWISE, WITH RESPECT TO THE SOFTWARE, INCLUDING ITS CONDITION, ITS CONFORMITY TO ANY REPRESENTATION OR DESCRIPTION, OR THE EXISTENCE OF ANY LATENT OR PATENT DEFECTS, AND CAVIUM SPECIFICALLY DISCLAIMS ALL IMPLIED (IF ANY) WARRANTIES OF TITLE, MERCHANTABILITY, NONINFRINGEMENT, FITNESS FOR A PARTICULAR PURPOSE, LACK OF VIRUSES, ACCURACY OR COMPLETENESS, QUIET ENJOYMENT, QUIET POSSESSION OR CORRESPONDENCE TO DESCRIPTION. THE ENTIRE  RISK ARISING OUT OF USE OR PERFORMANCE OF THE SOFTWARE LIES WITH YOU.
 
 *************************************************************************/
-#include <linux/module.h>
-#include <linux/kernel.h>
-#include <linux/netdevice.h>
-#include <linux/init.h>
-#include <linux/etherdevice.h>
-#include <linux/ip.h>
-#include <linux/string.h>
-#include <linux/ethtool.h>
-#include <linux/mii.h>
-#include <linux/seq_file.h>
-#include <linux/proc_fs.h>
-#include <net/dst.h>
-#ifdef CONFIG_XFRM
-#include <linux/xfrm.h>
-#include <net/xfrm.h>
-#endif  /* CONFIG_XFRM */
+
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/bus.h>
+#include <sys/endian.h>
+#include <sys/kernel.h>
+#include <sys/mbuf.h>
+#include <sys/socket.h>
+
+#include <net/ethernet.h>
+#include <net/if.h>
 
 #include "wrapper-cvmx-includes.h"
 #include "ethernet-headers.h"
@@ -77,7 +72,9 @@ int cvm_oct_xmit(struct mbuf *m, struct ifnet *ifp)
 	int32_t in_use;
 	int32_t buffers_to_free;
 #if REUSE_MBUFS_WITHOUT_FREE
+#if 0
 	unsigned char *fpa_head;
+#endif
 #endif
 
 	/* Prefetch the private data structure.
@@ -118,7 +115,7 @@ int cvm_oct_xmit(struct mbuf *m, struct ifnet *ifp)
 	   68 bytes whenever we are in half duplex mode. We don't handle
 	   the case of having a small packet but no room to add the padding.
 	   The kernel should always give us at least a cache line */
-	if ((m->len < 64) && OCTEON_IS_MODEL(OCTEON_CN3XXX)) {
+	if ((m->m_pkthdr.len < 64) && OCTEON_IS_MODEL(OCTEON_CN3XXX)) {
 		cvmx_gmxx_prtx_cfg_t gmx_prt_cfg;
 		int interface = INTERFACE(priv->port);
 		int index = INDEX(priv->port);
@@ -127,24 +124,33 @@ int cvm_oct_xmit(struct mbuf *m, struct ifnet *ifp)
 			/* We only need to pad packet in half duplex mode */
 			gmx_prt_cfg.u64 = cvmx_read_csr(CVMX_GMXX_PRTX_CFG(index, interface));
 			if (gmx_prt_cfg.s.duplex == 0) {
+				panic("%s: small packet padding not yet implemented.", __func__);
+#if 0
 				int add_bytes = 64 - m->len;
 				if ((m_tail_pointer(m) + add_bytes) <= m_end_pointer(m))
 					memset(__m_put(m, add_bytes), 0, add_bytes);
+#endif
 			}
 		}
 	}
 
 	/* Build the PKO buffer pointer */
+	/*
+	 * XXX/juli
+	 * Implement mbuf loading.
+	 */
+#if 0
 	hw_buffer.u64 = 0;
-	hw_buffer.s.addr = cvmx_ptr_to_phys(m->data);
+	hw_buffer.s.addr = cvmx_ptr_to_phys(m->m_data);
 	hw_buffer.s.pool = 0;
 	hw_buffer.s.size = (unsigned long)m_end_pointer(m) - (unsigned long)m->head;
+#endif
 
 	/* Build the PKO command */
 	pko_command.u64 = 0;
 	pko_command.s.n2 = 1; /* Don't pollute L2 with the outgoing packet */
 	pko_command.s.segs = 1;
-	pko_command.s.total_bytes = m->len;
+	pko_command.s.total_bytes = m->m_pkthdr.len;
 	pko_command.s.size0 = CVMX_FAU_OP_SIZE_32;
 	pko_command.s.subone0 = 1;
 
@@ -158,6 +164,7 @@ int cvm_oct_xmit(struct mbuf *m, struct ifnet *ifp)
 	   the define REUSE_MBUFS_WITHOUT_FREE. The reuse of buffers has
 	   shown a 25% increase in performance under some loads */
 #if REUSE_MBUFS_WITHOUT_FREE
+#if 0
 	fpa_head = m->head + 128 - ((unsigned long)m->head&0x7f);
 	if (unlikely(m->data < fpa_head)) {
 		/*
@@ -241,9 +248,13 @@ int cvm_oct_xmit(struct mbuf *m, struct ifnet *ifp)
 #endif /* CONFIG_NET_SCHED */
 
 dont_put_mbuf_in_hw:
+#else
+#endif
+	panic("%s: not ready for REUSE_MBUFS_WITHOUT_FREE yet.", __func__);
 #endif /* REUSE_MBUFS_WITHOUT_FREE */
 
 	/* Check if we can use the hardware checksumming */
+#if 0
 	if (USE_HW_TCPUDP_CHECKSUM && (m->protocol == htons(ETH_P_IP)) &&
 	    (ip_hdr(m)->version == 4) && (ip_hdr(m)->ihl == 5) &&
 	    ((ip_hdr(m)->frag_off == 0) || (ip_hdr(m)->frag_off == 1<<14)) &&
@@ -251,6 +262,7 @@ dont_put_mbuf_in_hw:
 		/* Use hardware checksum calc */
 		pko_command.s.ipoffp1 = sizeof(struct ethhdr) + 1;
 	}
+#endif
 
 	if (USE_ASYNC_IOBDMA) {
 		/* Get the number of mbufs in use by the hardware */
@@ -273,7 +285,8 @@ dont_put_mbuf_in_hw:
 	cvmx_pko_send_packet_prepare(priv->port, priv->queue + qos, CVMX_PKO_LOCK_CMD_QUEUE);
 
 	/* Drop this packet if we have too many already queued to the HW */
-	if (unlikely(m_queue_len(&priv->tx_free_list[qos]) >= MAX_OUT_QUEUE_DEPTH)) {
+#if 0
+	if ((m_queue_len(&priv->tx_free_list[qos]) >= MAX_OUT_QUEUE_DEPTH)) {
 		/*
 		DEBUGPRINT("%s: Tx dropped. Too many queued\n", if_name(ifp));
 		*/
@@ -281,7 +294,10 @@ dont_put_mbuf_in_hw:
 	}
 	/* Send the packet to the output queue */
 	else
-	if (unlikely(cvmx_pko_send_packet_finish(priv->port, priv->queue + qos, pko_command, hw_buffer, CVMX_PKO_LOCK_CMD_QUEUE))) {
+#else
+	panic("%s: free queues really not implemented.", __func__);
+#endif
+	if ((cvmx_pko_send_packet_finish(priv->port, priv->queue + qos, pko_command, hw_buffer, CVMX_PKO_LOCK_CMD_QUEUE))) {
 		DEBUGPRINT("%s: Failed to send the packet\n", if_name(ifp));
 		dropped = 1;
 	}
@@ -292,26 +308,28 @@ dont_put_mbuf_in_hw:
 		cvmx_scratch_write64(CVMX_SCR_SCRATCH+8, old_scratch2);
 	}
 
-	if (unlikely(dropped)) {
-		dev_kfree_m_any(m);
+	if ((dropped)) {
+		m_freem(m);
 		cvmx_fau_atomic_add32(priv->fau+qos*4, -1);
-		priv->stats.tx_dropped++;
+		ifp->if_oerrors++;
 	} else {
 		if (USE_MBUFS_IN_HW) {
 			/* Put this packet on the queue to be freed later */
 			if (pko_command.s.dontfree)
-				m_queue_tail(&priv->tx_free_list[qos], m);
+				panic("%s: need to queue mbuf to free it later.", __func__);
 			else {
 				cvmx_fau_atomic_add32(FAU_NUM_PACKET_BUFFERS_TO_FREE, -1);
 				cvmx_fau_atomic_add32(priv->fau+qos*4, -1);
 			}
 		} else {
 			/* Put this packet on the queue to be freed later */
-			m_queue_tail(&priv->tx_free_list[qos], m);
+			panic("%s: need to queue mbuf to free it later. (2)", __func__);
 		}
 	}
 
 	/* Free mbufs not in use by the hardware, possibly two at a time */
+	panic("%s: need to free queued mbufs.", __func__);
+#if 0
 	if (m_queue_len(&priv->tx_free_list[qos]) > in_use) {
 		spin_lock(&priv->tx_free_list[qos].lock);
 		/* Check again now that we have the lock. It might have changed */
@@ -321,6 +339,7 @@ dont_put_mbuf_in_hw:
 			dev_kfree_m(__m_dequeue(&priv->tx_free_list[qos]));
 		spin_unlock(&priv->tx_free_list[qos].lock);
 	}
+#endif
 
 	return 0;
 }
@@ -336,26 +355,26 @@ dont_put_mbuf_in_hw:
 int cvm_oct_xmit_pow(struct mbuf *m, struct ifnet *ifp)
 {
 	cvm_oct_private_t  *priv = (cvm_oct_private_t *)ifp->if_softc;
-	void               *packet_buffer;
-	void               *copy_location;
+	char               *packet_buffer;
+	char               *copy_location;
 
 	/* Get a work queue entry */
 	cvmx_wqe_t *work = cvmx_fpa_alloc(CVMX_FPA_WQE_POOL);
-	if (unlikely(work == NULL)) {
+	if ((work == NULL)) {
 		DEBUGPRINT("%s: Failed to allocate a work queue entry\n", if_name(ifp));
-		priv->stats.tx_dropped++;
-		dev_kfree_m(m);
+		ifp->if_oerrors++;
+		m_freem(m);
 		return 0;
 	}
 
 	/* Get a packet buffer */
 	packet_buffer = cvmx_fpa_alloc(CVMX_FPA_PACKET_POOL);
-	if (unlikely(packet_buffer == NULL)) {
+	if ((packet_buffer == NULL)) {
 		DEBUGPRINT("%s: Failed to allocate a packet buffer\n",
 			   if_name(ifp));
 		cvmx_fpa_free(work, CVMX_FPA_WQE_POOL, DONT_WRITEBACK(1));
-		priv->stats.tx_dropped++;
-		dev_kfree_m(m);
+		ifp->if_oerrors++;
+		m_freem(m);
 		return 0;
 	}
 
@@ -370,12 +389,18 @@ int cvm_oct_xmit_pow(struct mbuf *m, struct ifnet *ifp)
 	/* We have to copy the packet since whoever processes this packet
 	   will free it to a hardware pool. We can't use the trick of
 	   counting outstanding packets like in cvm_oct_xmit */
+#if 0
 	memcpy(copy_location, m->data, m->len);
+#else
+	panic("%s: need to implement mbuf loading.", __func__);
+#endif
 
 	/* Fill in some of the work queue fields. We may need to add more
 	   if the software at the other end needs them */
+#if 0
 	work->hw_chksum     = m->csum;
-	work->len           = m->len;
+#endif
+	work->len           = m->m_pkthdr.len;
 	work->ipprt         = priv->port;
 	work->qos           = priv->port & 0x7;
 	work->grp           = pow_send_group;
@@ -389,6 +414,7 @@ int cvm_oct_xmit_pow(struct mbuf *m, struct ifnet *ifp)
 	work->packet_ptr.s.size = CVMX_FPA_PACKET_POOL_SIZE;
 	work->packet_ptr.s.back = (copy_location - packet_buffer)>>7;
 
+#if 0
 	if (m->protocol == htons(ETH_P_IP)) {
 		work->word2.s.ip_offset     = 14;
 		#if 0
@@ -437,12 +463,13 @@ int cvm_oct_xmit_pow(struct mbuf *m, struct ifnet *ifp)
 		#endif
 		memcpy(work->packet_data, m->data, sizeof(work->packet_data));
 	}
+#endif
 
 	/* Submit the packet to the POW */
 	cvmx_pow_work_submit(work, work->tag, work->tag_type, work->qos, work->grp);
-	priv->stats.tx_packets++;
-	priv->stats.tx_bytes += m->len;
-	dev_kfree_m(m);
+	ifp->if_opackets++;
+	ifp->if_obytes += m->m_pkthdr.len;
+	m_freem(m);
 	return 0;
 }
 
@@ -467,14 +494,13 @@ int cvm_oct_xmit_pow(struct mbuf *m, struct ifnet *ifp)
  */
 int cvm_oct_transmit_qos(struct ifnet *ifp, void *work_queue_entry, int do_free, int qos)
 {
-	unsigned long              flags;
 	cvmx_buf_ptr_t             hw_buffer;
 	cvmx_pko_command_word0_t   pko_command;
 	int                        dropped;
 	cvm_oct_private_t         *priv = (cvm_oct_private_t *)ifp->if_softc;
 	cvmx_wqe_t                *work = work_queue_entry;
 
-	if (!(ifp->flags & IFF_UP)) {
+	if (!(ifp->if_flags & IFF_UP)) {
 		DEBUGPRINT("%s: Device not up\n", if_name(ifp));
 		if (do_free)
 			cvm_oct_free_work(work);
@@ -496,7 +522,7 @@ int cvm_oct_transmit_qos(struct ifnet *ifp, void *work_queue_entry, int do_free,
 	/* Start off assuming no drop */
 	dropped = 0;
 
-	local_irq_save(flags);
+	critical_enter();
 	cvmx_pko_send_packet_prepare(priv->port, priv->queue + qos, CVMX_PKO_LOCK_CMD_QUEUE);
 
 	/* Build the PKO buffer pointer */
@@ -514,29 +540,28 @@ int cvm_oct_transmit_qos(struct ifnet *ifp, void *work_queue_entry, int do_free,
 	pko_command.s.total_bytes = work->len;
 
 	/* Check if we can use the hardware checksumming */
-	if (unlikely(work->word2.s.not_IP || work->word2.s.IP_exc))
+	if ((work->word2.s.not_IP || work->word2.s.IP_exc))
 		pko_command.s.ipoffp1 = 0;
 	else
-		pko_command.s.ipoffp1 = sizeof(struct ethhdr) + 1;
+		pko_command.s.ipoffp1 = ETHER_HDR_LEN + 1;
 
 	/* Send the packet to the output queue */
-	if (unlikely(cvmx_pko_send_packet_finish(priv->port, priv->queue + qos, pko_command, hw_buffer, CVMX_PKO_LOCK_CMD_QUEUE))) {
+	if ((cvmx_pko_send_packet_finish(priv->port, priv->queue + qos, pko_command, hw_buffer, CVMX_PKO_LOCK_CMD_QUEUE))) {
 		DEBUGPRINT("%s: Failed to send the packet\n", if_name(ifp));
 		dropped = -1;
 	}
-	local_irq_restore(flags);
+	critical_exit();
 
-	if (unlikely(dropped)) {
+	if ((dropped)) {
 		if (do_free)
 			cvm_oct_free_work(work);
-		priv->stats.tx_dropped++;
+		ifp->if_oerrors++;
 	} else
 	if (do_free)
 		cvmx_fpa_free(work, CVMX_FPA_WQE_POOL, DONT_WRITEBACK(1));
 
 	return dropped;
 }
-EXPORT_SYMBOL(cvm_oct_transmit_qos);
 
 
 /**
@@ -546,6 +571,7 @@ EXPORT_SYMBOL(cvm_oct_transmit_qos);
  */
 void cvm_oct_tx_shutdown(struct ifnet *ifp)
 {
+#if 0
 	cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
 	unsigned long flags;
 	int qos;
@@ -556,4 +582,7 @@ void cvm_oct_tx_shutdown(struct ifnet *ifp)
 			dev_kfree_m_any(__m_dequeue(&priv->tx_free_list[qos]));
 		spin_unlock_irqrestore(&priv->tx_free_list[qos].lock, flags);
 	}
+#else
+	panic("%s: not yet implemented.", __func__);
+#endif
 }
