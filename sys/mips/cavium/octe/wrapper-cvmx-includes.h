@@ -29,22 +29,19 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 #ifndef __WRAPPER_CVMX_INCLUDES_H__
 #define __WRAPPER_CVMX_INCLUDES_H__
 
-#undef OCTEON_MODEL
-#define USE_RUNTIME_MODEL_CHECKS 1
-
-#include "cvmx.h"
-#include "cvmx-version.h"
-#include "cvmx-atomic.h"
-#include "cvmx-ciu.h"
-#include "cvmx-pip.h"
-#include "cvmx-ipd.h"
-#include "cvmx-pko.h"
-#include "cvmx-pow.h"
-#include "cvmx-gmx.h"
-#include "cvmx-spi.h"
-#include "cvmx-bootmem.h"
-#include "cvmx-app-init.h"
-#include "cvmx-helper.h"
-#include "cvmx-helper-board.h"
+#include <contrib/octeon-sdk/cvmx.h>
+#include <contrib/octeon-sdk/cvmx-version.h>
+#include <contrib/octeon-sdk/cvmx-atomic.h>
+#include <contrib/octeon-sdk/cvmx-ciu.h>
+#include <contrib/octeon-sdk/cvmx-pip.h>
+#include <contrib/octeon-sdk/cvmx-ipd.h>
+#include <contrib/octeon-sdk/cvmx-pko.h>
+#include <contrib/octeon-sdk/cvmx-pow.h>
+#include <contrib/octeon-sdk/cvmx-gmx.h>
+#include <contrib/octeon-sdk/cvmx-spi.h>
+#include <contrib/octeon-sdk/cvmx-bootmem.h>
+#include <contrib/octeon-sdk/cvmx-app-init.h>
+#include <contrib/octeon-sdk/cvmx-helper.h>
+#include <contrib/octeon-sdk/cvmx-helper-board.h>
 
 #endif

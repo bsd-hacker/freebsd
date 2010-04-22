@@ -27,8 +27,7 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 
 *************************************************************************/
 
-int cvm_oct_xmit(struct sk_buff *skb, struct net_device *dev);
-int cvm_oct_xmit_pow(struct sk_buff *skb, struct net_device *dev);
-int cvm_oct_transmit_qos(struct net_device *dev, void *work_queue_entry, int do_free, int qos);
-void cvm_oct_tx_shutdown(struct net_device *dev);
+int cvm_oct_xmit(struct mbuf *m, struct ifnet *ifp);
+int cvm_oct_xmit_pow(struct mbuf *m, struct ifnet *ifp);
+void cvm_oct_tx_shutdown(struct ifnet *ifp);
 

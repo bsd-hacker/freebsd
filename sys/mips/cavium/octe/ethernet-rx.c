@@ -49,7 +49,7 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 #include "ethernet-headers.h"
 
 extern int pow_receive_group;
-extern struct net_device *cvm_oct_device[];
+extern struct ifnet *cvm_oct_device[];
 struct cvm_tasklet_wrapper
 {
 	struct tasklet_struct t;
@@ -70,7 +70,7 @@ static struct cvm_tasklet_wrapper cvm_oct_tasklet[NR_CPUS]; // __cacheline_align
  * @param regs
  * @return
  */
-irqreturn_t cvm_oct_do_interrupt(int cpl, void *dev_id)
+int cvm_oct_do_interrupt(int cpl, void *dev_id)
 {
 	/* Acknowledge the interrupt */
 	if (INTERRUPT_LIMIT)
@@ -93,7 +93,7 @@ irqreturn_t cvm_oct_do_interrupt(int cpl, void *dev_id)
  *
  * @param dev    Device to poll. Unused
  */
-void cvm_oct_poll_controller(struct net_device *dev)
+void cvm_oct_poll_controller(struct ifnet *ifp)
 {
 	preempt_disable();
 	tasklet_schedule(&cvm_oct_tasklet[smp_processor_id()].t);
@@ -206,9 +206,9 @@ void cvm_oct_tasklet_rx(unsigned long unused)
 		cvmx_pow_work_request_async(CVMX_SCR_SCRATCH, CVMX_POW_NO_WAIT);
 
 	while (1) {
-		struct sk_buff *skb = NULL;
+		struct mbuf *m = NULL;
 		cvm_oct_callback_result_t callback_result;
-		int skb_in_hw;
+		int m_in_hw;
 		cvmx_wqe_t *work;
 
 		if (USE_ASYNC_IOBDMA) {
@@ -235,14 +235,14 @@ void cvm_oct_tasklet_rx(unsigned long unused)
 			}
 		}
 
-		skb_in_hw = USE_SKBUFFS_IN_HW && work->word2.s.bufs == 1;
-		if (likely(skb_in_hw)) {
-			skb = *(struct sk_buff **)(cvm_oct_get_buffer_ptr(work->packet_ptr) - sizeof(void *));
-			CVMX_PREFETCH(skb, offsetof(struct sk_buff, head));
-			CVMX_PREFETCH(skb, offsetof(struct sk_buff, len));
+		m_in_hw = USE_MBUFS_IN_HW && work->word2.s.bufs == 1;
+		if (likely(m_in_hw)) {
+			m = *(struct mbuf **)(cvm_oct_get_buffer_ptr(work->packet_ptr) - sizeof(void *));
+			CVMX_PREFETCH(m, offsetof(struct mbuf, head));
+			CVMX_PREFETCH(m, offsetof(struct mbuf, len));
 		}
 		CVMX_PREFETCH(cvm_oct_device[work->ipprt], 0);
-		//CVMX_PREFETCH(skb, 0);
+		//CVMX_PREFETCH(m, 0);
 
 
 		rx_count++;
@@ -252,24 +252,24 @@ void cvm_oct_tasklet_rx(unsigned long unused)
 				continue;
 		}
 
-		/* We can only use the zero copy path if skbuffs are in the FPA pool
+		/* We can only use the zero copy path if mbufs are in the FPA pool
 		   and the packet fits in a single buffer */
-		if (likely(skb_in_hw)) {
-			/* This calculation was changed in case the skb header is using a
+		if (likely(m_in_hw)) {
+			/* This calculation was changed in case the m header is using a
 			   different address aliasing type than the buffer. It doesn't make
 			   any differnece now, but the new one is more correct */
-			skb->data = skb->head + work->packet_ptr.s.addr - cvmx_ptr_to_phys(skb->head);
-			CVMX_PREFETCH(skb->data, 0);
-			skb->len = work->len;
-			skb_set_tail_pointer(skb, skb->len);
+			m->data = m->head + work->packet_ptr.s.addr - cvmx_ptr_to_phys(m->head);
+			CVMX_PREFETCH(m->data, 0);
+			m->len = work->len;
+			m_set_tail_pointer(m, m->len);
 			packet_not_copied = 1;
 		} else {
 
 			/* We have to copy the packet. First allocate an
-			   skbuff for it */
-			skb = dev_alloc_skb(work->len);
-			if (!skb) {
-				DEBUGPRINT("Port %d failed to allocate skbuff, packet dropped\n", work->ipprt);
+			   mbuf for it */
+			m = dev_alloc_m(work->len);
+			if (!m) {
+				DEBUGPRINT("Port %d failed to allocate mbuf, packet dropped\n", work->ipprt);
 				cvm_oct_free_work(work);
 				continue;
 			}
@@ -287,7 +287,7 @@ void cvm_oct_tasklet_rx(unsigned long unused)
 					else
 						ptr += 6;
 				}
-				memcpy(skb_put(skb, work->len), ptr, work->len);
+				memcpy(m_put(m, work->len), ptr, work->len);
 				/* No packet buffers to free */
 			} else {
 				int segments = work->word2.s.bufs;
@@ -309,7 +309,7 @@ void cvm_oct_tasklet_rx(unsigned long unused)
 					if (segment_size > len)
 						segment_size = len;
 					/* Copy the data into the packet */
-					memcpy(skb_put(skb, segment_size), cvmx_phys_to_ptr(segment_ptr.s.addr), segment_size);
+					memcpy(m_put(m, segment_size), cvmx_phys_to_ptr(segment_ptr.s.addr), segment_size);
 					/* Reduce the amount of bytes left
 					   to copy */
 					len -= segment_size;
@@ -321,40 +321,40 @@ void cvm_oct_tasklet_rx(unsigned long unused)
 
 		if (likely((work->ipprt < TOTAL_NUMBER_OF_PORTS) &&
 		    cvm_oct_device[work->ipprt])) {
-			struct net_device *dev = cvm_oct_device[work->ipprt];
-			cvm_oct_private_t *priv = (cvm_oct_private_t *)netdev_priv(dev);
+			struct ifnet *ifp = cvm_oct_device[work->ipprt];
+			cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
 
 			/* Only accept packets for devices
 			   that are currently up */
-			if (likely(dev->flags & IFF_UP)) {
-				skb->protocol = eth_type_trans(skb, dev);
-				skb->dev = dev;
+			if (likely(ifp->flags & IFF_UP)) {
+				m->protocol = eth_type_trans(m, dev);
+				m->dev = dev;
 
 				if (unlikely(work->word2.s.not_IP || work->word2.s.IP_exc || work->word2.s.L4_error))
-					skb->ip_summed = CHECKSUM_NONE;
+					m->ip_summed = CHECKSUM_NONE;
 				else
-					skb->ip_summed = CHECKSUM_UNNECESSARY;
+					m->ip_summed = CHECKSUM_UNNECESSARY;
 
 				/* Increment RX stats for virtual ports */
 				if (work->ipprt >= CVMX_PIP_NUM_INPUT_PORTS) {
 #ifdef CONFIG_64BIT
 					cvmx_atomic_add64_nosync(&priv->stats.rx_packets, 1);
-					cvmx_atomic_add64_nosync(&priv->stats.rx_bytes, skb->len);
+					cvmx_atomic_add64_nosync(&priv->stats.rx_bytes, m->len);
 #else
 					cvmx_atomic_add32_nosync((int32_t *)&priv->stats.rx_packets, 1);
-					cvmx_atomic_add32_nosync((int32_t *)&priv->stats.rx_bytes, skb->len);
+					cvmx_atomic_add32_nosync((int32_t *)&priv->stats.rx_bytes, m->len);
 #endif
 				}
 
 				if (priv->intercept_cb) {
-					callback_result = priv->intercept_cb(dev, work, skb);
+					callback_result = priv->intercept_cb(ifp, work, m);
 
 					switch (callback_result) {
 					case CVM_OCT_PASS:
-						netif_receive_skb(skb);
+						netif_receive_m(m);
 						break;
 					case CVM_OCT_DROP:
-						dev_kfree_skb_irq(skb);
+						dev_kfree_m_irq(m);
 #ifdef CONFIG_64BIT
 						cvmx_atomic_add64_nosync(&priv->stats.rx_dropped, 1);
 #else
@@ -363,41 +363,41 @@ void cvm_oct_tasklet_rx(unsigned long unused)
 						break;
 					case CVM_OCT_TAKE_OWNERSHIP_WORK:
 						/* Interceptor stole our work, but
-						   we need to free the skbuff */
-						if (USE_SKBUFFS_IN_HW && likely(packet_not_copied)) {
-							/* We can't free the skbuff since its data is
+						   we need to free the mbuf */
+						if (USE_MBUFS_IN_HW && likely(packet_not_copied)) {
+							/* We can't free the mbuf since its data is
 							the same as the work. In this case we don't
 							do anything */
 						} else
-							dev_kfree_skb_irq(skb);
+							dev_kfree_m_irq(m);
 						break;
 					case CVM_OCT_TAKE_OWNERSHIP_SKB:
 						/* Interceptor stole our packet */
 						break;
 					}
 				} else {
-					netif_receive_skb(skb);
+					netif_receive_m(m);
 					callback_result = CVM_OCT_PASS;
 				}
 			} else {
 				/* Drop any packet received for a device that isn't up */
 				/*
 				DEBUGPRINT("%s: Device not up, packet dropped\n",
-					   dev->name);
+					   if_name(ifp));
 				*/
 #ifdef CONFIG_64BIT
 				cvmx_atomic_add64_nosync(&priv->stats.rx_dropped, 1);
 #else
 				cvmx_atomic_add32_nosync((int32_t *)&priv->stats.rx_dropped, 1);
 #endif
-				dev_kfree_skb_irq(skb);
+				dev_kfree_m_irq(m);
 				callback_result = CVM_OCT_DROP;
 			}
 		} else {
 			/* Drop any packet received for a device that
 			   doesn't exist */
 			DEBUGPRINT("Port %d not controlled by Linux, packet dropped\n", work->ipprt);
-			dev_kfree_skb_irq(skb);
+			dev_kfree_m_irq(m);
 			callback_result = CVM_OCT_DROP;
 		}
 
@@ -405,9 +405,9 @@ void cvm_oct_tasklet_rx(unsigned long unused)
 		   take over ownership of it */
 		if (callback_result != CVM_OCT_TAKE_OWNERSHIP_WORK) {
 
-			/* Check to see if the skbuff and work share
+			/* Check to see if the mbuf and work share
 			   the same packet buffer */
-			if (USE_SKBUFFS_IN_HW && likely(packet_not_copied)) {
+			if (USE_MBUFS_IN_HW && likely(packet_not_copied)) {
 				/* This buffer needs to be replaced, increment
 				the number of buffers we need to free by one */
 				cvmx_fau_atomic_add32(
@@ -427,7 +427,7 @@ void cvm_oct_tasklet_rx(unsigned long unused)
 		cvmx_scratch_write64(CVMX_SCR_SCRATCH, old_scratch);
 	}
 
-	if (USE_SKBUFFS_IN_HW) {
+	if (USE_MBUFS_IN_HW) {
 		/* Refill the packet buffer pool */
 		number_to_free =
 		  cvmx_fau_fetch_and_add32(FAU_NUM_PACKET_BUFFERS_TO_FREE, 0);

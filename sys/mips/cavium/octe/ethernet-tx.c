@@ -46,13 +46,13 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 #include "wrapper-cvmx-includes.h"
 #include "ethernet-headers.h"
 
-/* You can define GET_SKBUFF_QOS() to override how the skbuff output function
+/* You can define GET_MBUF_QOS() to override how the mbuf output function
    determines which output queue is used. The default implementation
    always uses the base queue for the port. If, for example, you wanted
-   to use the skb->priority fieid, define GET_SKBUFF_QOS as:
-   #define GET_SKBUFF_QOS(skb) ((skb)->priority) */
-#ifndef GET_SKBUFF_QOS
-    #define GET_SKBUFF_QOS(skb) 0
+   to use the m->priority fieid, define GET_MBUF_QOS as:
+   #define GET_MBUF_QOS(m) ((m)->priority) */
+#ifndef GET_MBUF_QOS
+    #define GET_MBUF_QOS(m) 0
 #endif
 
 extern int pow_send_group;
@@ -61,11 +61,11 @@ extern int pow_send_group;
 /**
  * Packet transmit
  *
- * @param skb    Packet to send
+ * @param m    Packet to send
  * @param dev    Device info structure
  * @return Always returns zero
  */
-int cvm_oct_xmit(struct sk_buff *skb, struct net_device *dev)
+int cvm_oct_xmit(struct mbuf *m, struct ifnet *ifp)
 {
 	cvmx_pko_command_word0_t    pko_command;
 	cvmx_buf_ptr_t              hw_buffer;
@@ -73,10 +73,10 @@ int cvm_oct_xmit(struct sk_buff *skb, struct net_device *dev)
 	uint64_t                    old_scratch2;
 	int                         dropped;
 	int                         qos;
-	cvm_oct_private_t          *priv = (cvm_oct_private_t *)netdev_priv(dev);
+	cvm_oct_private_t          *priv = (cvm_oct_private_t *)ifp->if_softc;
 	int32_t in_use;
 	int32_t buffers_to_free;
-#if REUSE_SKBUFFS_WITHOUT_FREE
+#if REUSE_MBUFS_WITHOUT_FREE
 	unsigned char *fpa_head;
 #endif
 
@@ -92,7 +92,7 @@ int cvm_oct_xmit(struct sk_buff *skb, struct net_device *dev)
 	   per port */
 	if ((CVMX_PKO_QUEUES_PER_PORT_INTERFACE0 > 1) ||
 	    (CVMX_PKO_QUEUES_PER_PORT_INTERFACE1 > 1)) {
-		qos = GET_SKBUFF_QOS(skb);
+		qos = GET_MBUF_QOS(m);
 		if (qos <= 0)
 			qos = 0;
 		else if (qos >= cvmx_pko_get_num_queues(priv->port))
@@ -118,7 +118,7 @@ int cvm_oct_xmit(struct sk_buff *skb, struct net_device *dev)
 	   68 bytes whenever we are in half duplex mode. We don't handle
 	   the case of having a small packet but no room to add the padding.
 	   The kernel should always give us at least a cache line */
-	if ((skb->len < 64) && OCTEON_IS_MODEL(OCTEON_CN3XXX)) {
+	if ((m->len < 64) && OCTEON_IS_MODEL(OCTEON_CN3XXX)) {
 		cvmx_gmxx_prtx_cfg_t gmx_prt_cfg;
 		int interface = INTERFACE(priv->port);
 		int index = INDEX(priv->port);
@@ -127,85 +127,85 @@ int cvm_oct_xmit(struct sk_buff *skb, struct net_device *dev)
 			/* We only need to pad packet in half duplex mode */
 			gmx_prt_cfg.u64 = cvmx_read_csr(CVMX_GMXX_PRTX_CFG(index, interface));
 			if (gmx_prt_cfg.s.duplex == 0) {
-				int add_bytes = 64 - skb->len;
-				if ((skb_tail_pointer(skb) + add_bytes) <= skb_end_pointer(skb))
-					memset(__skb_put(skb, add_bytes), 0, add_bytes);
+				int add_bytes = 64 - m->len;
+				if ((m_tail_pointer(m) + add_bytes) <= m_end_pointer(m))
+					memset(__m_put(m, add_bytes), 0, add_bytes);
 			}
 		}
 	}
 
 	/* Build the PKO buffer pointer */
 	hw_buffer.u64 = 0;
-	hw_buffer.s.addr = cvmx_ptr_to_phys(skb->data);
+	hw_buffer.s.addr = cvmx_ptr_to_phys(m->data);
 	hw_buffer.s.pool = 0;
-	hw_buffer.s.size = (unsigned long)skb_end_pointer(skb) - (unsigned long)skb->head;
+	hw_buffer.s.size = (unsigned long)m_end_pointer(m) - (unsigned long)m->head;
 
 	/* Build the PKO command */
 	pko_command.u64 = 0;
 	pko_command.s.n2 = 1; /* Don't pollute L2 with the outgoing packet */
 	pko_command.s.segs = 1;
-	pko_command.s.total_bytes = skb->len;
+	pko_command.s.total_bytes = m->len;
 	pko_command.s.size0 = CVMX_FAU_OP_SIZE_32;
 	pko_command.s.subone0 = 1;
 
 	pko_command.s.dontfree = 1;
 	pko_command.s.reg0 = priv->fau+qos*4;
-	/* See if we can put this skb in the FPA pool. Any strange behavior
+	/* See if we can put this m in the FPA pool. Any strange behavior
 	   from the Linux networking stack will most likely be caused by a bug
 	   in the following code. If some field is in use by the network stack
 	   and get carried over when a buffer is reused, bad thing may happen.
 	   If in doubt and you dont need the absolute best performance, disable
-	   the define REUSE_SKBUFFS_WITHOUT_FREE. The reuse of buffers has
+	   the define REUSE_MBUFS_WITHOUT_FREE. The reuse of buffers has
 	   shown a 25% increase in performance under some loads */
-#if REUSE_SKBUFFS_WITHOUT_FREE
-	fpa_head = skb->head + 128 - ((unsigned long)skb->head&0x7f);
-	if (unlikely(skb->data < fpa_head)) {
+#if REUSE_MBUFS_WITHOUT_FREE
+	fpa_head = m->head + 128 - ((unsigned long)m->head&0x7f);
+	if (unlikely(m->data < fpa_head)) {
 		/*
-		printk("TX buffer beginning can't meet FPA alignment constraints\n");
+		printf("TX buffer beginning can't meet FPA alignment constraints\n");
 		*/
-		goto dont_put_skbuff_in_hw;
+		goto dont_put_mbuf_in_hw;
 	}
-	if (unlikely((skb_end_pointer(skb) - fpa_head) < CVMX_FPA_PACKET_POOL_SIZE)) {
+	if (unlikely((m_end_pointer(m) - fpa_head) < CVMX_FPA_PACKET_POOL_SIZE)) {
 		/*
-		printk("TX buffer isn't large enough for the FPA\n");
+		printf("TX buffer isn't large enough for the FPA\n");
 		*/
-		goto dont_put_skbuff_in_hw;
+		goto dont_put_mbuf_in_hw;
 	}
-	if (unlikely(skb_shared(skb))) {
+	if (unlikely(m_shared(m))) {
 		/*
-		printk("TX buffer sharing data with someone else\n");
+		printf("TX buffer sharing data with someone else\n");
 		*/
-		goto dont_put_skbuff_in_hw;
+		goto dont_put_mbuf_in_hw;
 	}
-	if (unlikely(skb_cloned(skb))) {
+	if (unlikely(m_cloned(m))) {
 		/*
-		printk("TX buffer has been cloned\n");
+		printf("TX buffer has been cloned\n");
 		*/
-		goto dont_put_skbuff_in_hw;
+		goto dont_put_mbuf_in_hw;
 	}
-	if (unlikely(skb_header_cloned(skb))) {
+	if (unlikely(m_header_cloned(m))) {
 		/*
-		printk("TX buffer header has been cloned\n");
+		printf("TX buffer header has been cloned\n");
 		*/
-		goto dont_put_skbuff_in_hw;
+		goto dont_put_mbuf_in_hw;
 	}
-	if (unlikely(skb->destructor)) {
+	if (unlikely(m->destructor)) {
 		/*
-		printk("TX buffer has a destructor\n");
+		printf("TX buffer has a destructor\n");
 		*/
-		goto dont_put_skbuff_in_hw;
+		goto dont_put_mbuf_in_hw;
 	}
-	if (unlikely(skb_shinfo(skb)->nr_frags)) {
+	if (unlikely(m_shinfo(m)->nr_frags)) {
 		/*
-		printk("TX buffer has fragments\n");
+		printf("TX buffer has fragments\n");
 		*/
-		goto dont_put_skbuff_in_hw;
+		goto dont_put_mbuf_in_hw;
 	}
-	if (unlikely(skb->truesize != sizeof(*skb) + skb_end_pointer(skb) - skb->head)) {
+	if (unlikely(m->truesize != sizeof(*m) + m_end_pointer(m) - m->head)) {
 		/*
-		printk("TX buffer truesize has been changed\n");
+		printf("TX buffer truesize has been changed\n");
 		*/
-		goto dont_put_skbuff_in_hw;
+		goto dont_put_mbuf_in_hw;
 	}
 
 	/* We can use this buffer in the FPA.
@@ -213,52 +213,52 @@ int cvm_oct_xmit(struct sk_buff *skb, struct net_device *dev)
 	pko_command.s.reg0 = 0;
 	pko_command.s.dontfree = 0;
 
-	hw_buffer.s.back = (skb->data - fpa_head)>>7;
-	*(struct sk_buff **)(fpa_head-sizeof(void *)) = skb;
+	hw_buffer.s.back = (m->data - fpa_head)>>7;
+	*(struct mbuf **)(fpa_head-sizeof(void *)) = m;
 
-	/* The skbuff will be reused without ever being freed. We must cleanup a
+	/* The mbuf will be reused without ever being freed. We must cleanup a
 	   bunch of Linux stuff */
-	dst_release(skb->dst);
-	skb->dst = NULL;
+	dst_release(m->dst);
+	m->dst = NULL;
 #ifdef CONFIG_XFRM
-	secpath_put(skb->sp);
-	skb->sp = NULL;
+	secpath_put(m->sp);
+	m->sp = NULL;
 #endif
-	nf_reset(skb);
+	nf_reset(m);
 #ifdef CONFIG_BRIDGE_NETFILTER
 	/* The next two lines are done in nf_reset() for 2.6.21. 2.6.16 needs
 	   them. I'm leaving it for all versions since the compiler will
 	   optimize them away when they aren't needed. It can tell that
-	   skb->nf_bridge was set to NULL in the inlined nf_reset(). */
-	nf_bridge_put(skb->nf_bridge);
-	skb->nf_bridge = NULL;
+	   m->nf_bridge was set to NULL in the inlined nf_reset(). */
+	nf_bridge_put(m->nf_bridge);
+	m->nf_bridge = NULL;
 #endif /* CONFIG_BRIDGE_NETFILTER */
 #ifdef CONFIG_NET_SCHED
-	skb->tc_index = 0;
+	m->tc_index = 0;
 #ifdef CONFIG_NET_CLS_ACT
-	skb->tc_verd = 0;
+	m->tc_verd = 0;
 #endif /* CONFIG_NET_CLS_ACT */
 #endif /* CONFIG_NET_SCHED */
 
-dont_put_skbuff_in_hw:
-#endif /* REUSE_SKBUFFS_WITHOUT_FREE */
+dont_put_mbuf_in_hw:
+#endif /* REUSE_MBUFS_WITHOUT_FREE */
 
 	/* Check if we can use the hardware checksumming */
-	if (USE_HW_TCPUDP_CHECKSUM && (skb->protocol == htons(ETH_P_IP)) &&
-	    (ip_hdr(skb)->version == 4) && (ip_hdr(skb)->ihl == 5) &&
-	    ((ip_hdr(skb)->frag_off == 0) || (ip_hdr(skb)->frag_off == 1<<14)) &&
-	    ((ip_hdr(skb)->protocol == IP_PROTOCOL_TCP) || (ip_hdr(skb)->protocol == IP_PROTOCOL_UDP))) {
+	if (USE_HW_TCPUDP_CHECKSUM && (m->protocol == htons(ETH_P_IP)) &&
+	    (ip_hdr(m)->version == 4) && (ip_hdr(m)->ihl == 5) &&
+	    ((ip_hdr(m)->frag_off == 0) || (ip_hdr(m)->frag_off == 1<<14)) &&
+	    ((ip_hdr(m)->protocol == IP_PROTOCOL_TCP) || (ip_hdr(m)->protocol == IP_PROTOCOL_UDP))) {
 		/* Use hardware checksum calc */
 		pko_command.s.ipoffp1 = sizeof(struct ethhdr) + 1;
 	}
 
 	if (USE_ASYNC_IOBDMA) {
-		/* Get the number of skbuffs in use by the hardware */
+		/* Get the number of mbufs in use by the hardware */
 		CVMX_SYNCIOBDMA;
 		in_use = cvmx_scratch_read64(CVMX_SCR_SCRATCH);
 		buffers_to_free = cvmx_scratch_read64(CVMX_SCR_SCRATCH+8);
 	} else {
-		/* Get the number of skbuffs in use by the hardware */
+		/* Get the number of mbufs in use by the hardware */
 		in_use = cvmx_fau_fetch_and_add32(priv->fau+qos*4, 1);
 		buffers_to_free = cvmx_fau_fetch_and_add32(FAU_NUM_PACKET_BUFFERS_TO_FREE, 0);
 	}
@@ -273,16 +273,16 @@ dont_put_skbuff_in_hw:
 	cvmx_pko_send_packet_prepare(priv->port, priv->queue + qos, CVMX_PKO_LOCK_CMD_QUEUE);
 
 	/* Drop this packet if we have too many already queued to the HW */
-	if (unlikely(skb_queue_len(&priv->tx_free_list[qos]) >= MAX_OUT_QUEUE_DEPTH)) {
+	if (unlikely(m_queue_len(&priv->tx_free_list[qos]) >= MAX_OUT_QUEUE_DEPTH)) {
 		/*
-		DEBUGPRINT("%s: Tx dropped. Too many queued\n", dev->name);
+		DEBUGPRINT("%s: Tx dropped. Too many queued\n", if_name(ifp));
 		*/
 		dropped = 1;
 	}
 	/* Send the packet to the output queue */
 	else
 	if (unlikely(cvmx_pko_send_packet_finish(priv->port, priv->queue + qos, pko_command, hw_buffer, CVMX_PKO_LOCK_CMD_QUEUE))) {
-		DEBUGPRINT("%s: Failed to send the packet\n", dev->name);
+		DEBUGPRINT("%s: Failed to send the packet\n", if_name(ifp));
 		dropped = 1;
 	}
 
@@ -293,32 +293,32 @@ dont_put_skbuff_in_hw:
 	}
 
 	if (unlikely(dropped)) {
-		dev_kfree_skb_any(skb);
+		dev_kfree_m_any(m);
 		cvmx_fau_atomic_add32(priv->fau+qos*4, -1);
 		priv->stats.tx_dropped++;
 	} else {
-		if (USE_SKBUFFS_IN_HW) {
+		if (USE_MBUFS_IN_HW) {
 			/* Put this packet on the queue to be freed later */
 			if (pko_command.s.dontfree)
-				skb_queue_tail(&priv->tx_free_list[qos], skb);
+				m_queue_tail(&priv->tx_free_list[qos], m);
 			else {
 				cvmx_fau_atomic_add32(FAU_NUM_PACKET_BUFFERS_TO_FREE, -1);
 				cvmx_fau_atomic_add32(priv->fau+qos*4, -1);
 			}
 		} else {
 			/* Put this packet on the queue to be freed later */
-			skb_queue_tail(&priv->tx_free_list[qos], skb);
+			m_queue_tail(&priv->tx_free_list[qos], m);
 		}
 	}
 
-	/* Free skbuffs not in use by the hardware, possibly two at a time */
-	if (skb_queue_len(&priv->tx_free_list[qos]) > in_use) {
+	/* Free mbufs not in use by the hardware, possibly two at a time */
+	if (m_queue_len(&priv->tx_free_list[qos]) > in_use) {
 		spin_lock(&priv->tx_free_list[qos].lock);
 		/* Check again now that we have the lock. It might have changed */
-		if (skb_queue_len(&priv->tx_free_list[qos]) > in_use)
-			dev_kfree_skb(__skb_dequeue(&priv->tx_free_list[qos]));
-		if (skb_queue_len(&priv->tx_free_list[qos]) > in_use)
-			dev_kfree_skb(__skb_dequeue(&priv->tx_free_list[qos]));
+		if (m_queue_len(&priv->tx_free_list[qos]) > in_use)
+			dev_kfree_m(__m_dequeue(&priv->tx_free_list[qos]));
+		if (m_queue_len(&priv->tx_free_list[qos]) > in_use)
+			dev_kfree_m(__m_dequeue(&priv->tx_free_list[qos]));
 		spin_unlock(&priv->tx_free_list[qos].lock);
 	}
 
@@ -329,22 +329,22 @@ dont_put_skbuff_in_hw:
 /**
  * Packet transmit to the POW
  *
- * @param skb    Packet to send
+ * @param m    Packet to send
  * @param dev    Device info structure
  * @return Always returns zero
  */
-int cvm_oct_xmit_pow(struct sk_buff *skb, struct net_device *dev)
+int cvm_oct_xmit_pow(struct mbuf *m, struct ifnet *ifp)
 {
-	cvm_oct_private_t  *priv = (cvm_oct_private_t *)netdev_priv(dev);
+	cvm_oct_private_t  *priv = (cvm_oct_private_t *)ifp->if_softc;
 	void               *packet_buffer;
 	void               *copy_location;
 
 	/* Get a work queue entry */
 	cvmx_wqe_t *work = cvmx_fpa_alloc(CVMX_FPA_WQE_POOL);
 	if (unlikely(work == NULL)) {
-		DEBUGPRINT("%s: Failed to allocate a work queue entry\n", dev->name);
+		DEBUGPRINT("%s: Failed to allocate a work queue entry\n", if_name(ifp));
 		priv->stats.tx_dropped++;
-		dev_kfree_skb(skb);
+		dev_kfree_m(m);
 		return 0;
 	}
 
@@ -352,10 +352,10 @@ int cvm_oct_xmit_pow(struct sk_buff *skb, struct net_device *dev)
 	packet_buffer = cvmx_fpa_alloc(CVMX_FPA_PACKET_POOL);
 	if (unlikely(packet_buffer == NULL)) {
 		DEBUGPRINT("%s: Failed to allocate a packet buffer\n",
-			   dev->name);
+			   if_name(ifp));
 		cvmx_fpa_free(work, CVMX_FPA_WQE_POOL, DONT_WRITEBACK(1));
 		priv->stats.tx_dropped++;
-		dev_kfree_skb(skb);
+		dev_kfree_m(m);
 		return 0;
 	}
 
@@ -370,12 +370,12 @@ int cvm_oct_xmit_pow(struct sk_buff *skb, struct net_device *dev)
 	/* We have to copy the packet since whoever processes this packet
 	   will free it to a hardware pool. We can't use the trick of
 	   counting outstanding packets like in cvm_oct_xmit */
-	memcpy(copy_location, skb->data, skb->len);
+	memcpy(copy_location, m->data, m->len);
 
 	/* Fill in some of the work queue fields. We may need to add more
 	   if the software at the other end needs them */
-	work->hw_chksum     = skb->csum;
-	work->len           = skb->len;
+	work->hw_chksum     = m->csum;
+	work->len           = m->len;
 	work->ipprt         = priv->port;
 	work->qos           = priv->port & 0x7;
 	work->grp           = pow_send_group;
@@ -389,7 +389,7 @@ int cvm_oct_xmit_pow(struct sk_buff *skb, struct net_device *dev)
 	work->packet_ptr.s.size = CVMX_FPA_PACKET_POOL_SIZE;
 	work->packet_ptr.s.back = (copy_location - packet_buffer)>>7;
 
-	if (skb->protocol == htons(ETH_P_IP)) {
+	if (m->protocol == htons(ETH_P_IP)) {
 		work->word2.s.ip_offset     = 14;
 		#if 0
 		work->word2.s.vlan_valid  = 0; /* FIXME */
@@ -397,19 +397,19 @@ int cvm_oct_xmit_pow(struct sk_buff *skb, struct net_device *dev)
 		work->word2.s.vlan_id     = 0; /* FIXME */
 		work->word2.s.dec_ipcomp  = 0; /* FIXME */
 		#endif
-		work->word2.s.tcp_or_udp    = (ip_hdr(skb)->protocol == IP_PROTOCOL_TCP) || (ip_hdr(skb)->protocol == IP_PROTOCOL_UDP);
+		work->word2.s.tcp_or_udp    = (ip_hdr(m)->protocol == IP_PROTOCOL_TCP) || (ip_hdr(m)->protocol == IP_PROTOCOL_UDP);
 		#if 0
 		work->word2.s.dec_ipsec   = 0; /* FIXME */
 		work->word2.s.is_v6       = 0; /* We only support IPv4 right now */
 		work->word2.s.software    = 0; /* Hardware would set to zero */
 		work->word2.s.L4_error    = 0; /* No error, packet is internal */
 		#endif
-		work->word2.s.is_frag       = !((ip_hdr(skb)->frag_off == 0) || (ip_hdr(skb)->frag_off == 1<<14));
+		work->word2.s.is_frag       = !((ip_hdr(m)->frag_off == 0) || (ip_hdr(m)->frag_off == 1<<14));
 		#if 0
 		work->word2.s.IP_exc      = 0;  /* Assume Linux is sending a good packet */
 		#endif
-		work->word2.s.is_bcast      = (skb->pkt_type == PACKET_BROADCAST);
-		work->word2.s.is_mcast      = (skb->pkt_type == PACKET_MULTICAST);
+		work->word2.s.is_bcast      = (m->pkt_type == PACKET_BROADCAST);
+		work->word2.s.is_mcast      = (m->pkt_type == PACKET_MULTICAST);
 		#if 0
 		work->word2.s.not_IP      = 0; /* This is an IP packet */
 		work->word2.s.rcv_error   = 0; /* No error, packet is internal */
@@ -418,7 +418,7 @@ int cvm_oct_xmit_pow(struct sk_buff *skb, struct net_device *dev)
 
 		/* When copying the data, include 4 bytes of the ethernet header to
 		   align the same way hardware does */
-		memcpy(work->packet_data, skb->data + 10, sizeof(work->packet_data));
+		memcpy(work->packet_data, m->data + 10, sizeof(work->packet_data));
 	} else {
 		#if 0
 		work->word2.snoip.vlan_valid  = 0; /* FIXME */
@@ -426,23 +426,23 @@ int cvm_oct_xmit_pow(struct sk_buff *skb, struct net_device *dev)
 		work->word2.snoip.vlan_id     = 0; /* FIXME */
 		work->word2.snoip.software    = 0; /* Hardware would set to zero */
 		#endif
-		work->word2.snoip.is_rarp       = skb->protocol == htons(ETH_P_RARP);
-		work->word2.snoip.is_arp        = skb->protocol == htons(ETH_P_ARP);
-		work->word2.snoip.is_bcast      = (skb->pkt_type == PACKET_BROADCAST);
-		work->word2.snoip.is_mcast      = (skb->pkt_type == PACKET_MULTICAST);
+		work->word2.snoip.is_rarp       = m->protocol == htons(ETH_P_RARP);
+		work->word2.snoip.is_arp        = m->protocol == htons(ETH_P_ARP);
+		work->word2.snoip.is_bcast      = (m->pkt_type == PACKET_BROADCAST);
+		work->word2.snoip.is_mcast      = (m->pkt_type == PACKET_MULTICAST);
 		work->word2.snoip.not_IP        = 1; /* IP was done up above */
 		#if 0
 		work->word2.snoip.rcv_error   = 0; /* No error, packet is internal */
 		work->word2.snoip.err_code    = 0; /* No error, packet is internal */
 		#endif
-		memcpy(work->packet_data, skb->data, sizeof(work->packet_data));
+		memcpy(work->packet_data, m->data, sizeof(work->packet_data));
 	}
 
 	/* Submit the packet to the POW */
 	cvmx_pow_work_submit(work, work->tag, work->tag_type, work->qos, work->grp);
 	priv->stats.tx_packets++;
-	priv->stats.tx_bytes += skb->len;
-	dev_kfree_skb(skb);
+	priv->stats.tx_bytes += m->len;
+	dev_kfree_m(m);
 	return 0;
 }
 
@@ -465,17 +465,17 @@ int cvm_oct_xmit_pow(struct sk_buff *skb, struct net_device *dev)
  *
  * @return Zero on success, negative on failure.
  */
-int cvm_oct_transmit_qos(struct net_device *dev, void *work_queue_entry, int do_free, int qos)
+int cvm_oct_transmit_qos(struct ifnet *ifp, void *work_queue_entry, int do_free, int qos)
 {
 	unsigned long              flags;
 	cvmx_buf_ptr_t             hw_buffer;
 	cvmx_pko_command_word0_t   pko_command;
 	int                        dropped;
-	cvm_oct_private_t         *priv = (cvm_oct_private_t *)netdev_priv(dev);
+	cvm_oct_private_t         *priv = (cvm_oct_private_t *)ifp->if_softc;
 	cvmx_wqe_t                *work = work_queue_entry;
 
-	if (!(dev->flags & IFF_UP)) {
-		DEBUGPRINT("%s: Device not up\n", dev->name);
+	if (!(ifp->flags & IFF_UP)) {
+		DEBUGPRINT("%s: Device not up\n", if_name(ifp));
 		if (do_free)
 			cvm_oct_free_work(work);
 		return -1;
@@ -521,7 +521,7 @@ int cvm_oct_transmit_qos(struct net_device *dev, void *work_queue_entry, int do_
 
 	/* Send the packet to the output queue */
 	if (unlikely(cvmx_pko_send_packet_finish(priv->port, priv->queue + qos, pko_command, hw_buffer, CVMX_PKO_LOCK_CMD_QUEUE))) {
-		DEBUGPRINT("%s: Failed to send the packet\n", dev->name);
+		DEBUGPRINT("%s: Failed to send the packet\n", if_name(ifp));
 		dropped = -1;
 	}
 	local_irq_restore(flags);
@@ -540,20 +540,20 @@ EXPORT_SYMBOL(cvm_oct_transmit_qos);
 
 
 /**
- * This function frees all skb that are currenty queued for TX.
+ * This function frees all m that are currenty queued for TX.
  *
  * @param dev    Device being shutdown
  */
-void cvm_oct_tx_shutdown(struct net_device *dev)
+void cvm_oct_tx_shutdown(struct ifnet *ifp)
 {
-	cvm_oct_private_t *priv = (cvm_oct_private_t *)netdev_priv(dev);
+	cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
 	unsigned long flags;
 	int qos;
 
 	for (qos = 0; qos < 16; qos++) {
 		spin_lock_irqsave(&priv->tx_free_list[qos].lock, flags);
-		while (skb_queue_len(&priv->tx_free_list[qos]))
-			dev_kfree_skb_any(__skb_dequeue(&priv->tx_free_list[qos]));
+		while (m_queue_len(&priv->tx_free_list[qos]))
+			dev_kfree_m_any(__m_dequeue(&priv->tx_free_list[qos]));
 		spin_unlock_irqrestore(&priv->tx_free_list[qos].lock, flags);
 	}
 }

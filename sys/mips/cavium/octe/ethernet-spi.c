@@ -37,9 +37,9 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 static int number_spi_ports;
 static int need_retrain[2] = {0, 0};
 
-static irqreturn_t cvm_oct_spi_rml_interrupt(int cpl, void *dev_id)
+static int cvm_oct_spi_rml_interrupt(int cpl, void *dev_id)
 {
-	irqreturn_t return_status = IRQ_NONE;
+	int return_status = IRQ_NONE;
 	cvmx_npi_rsl_int_blocks_t rsl_int_blocks;
 
 	/* Check and see if this interrupt was caused by the GMX block */
@@ -206,10 +206,10 @@ static void cvm_oct_spi_enable_error_reporting(int interface)
 	cvmx_write_csr(CVMX_STXX_INT_MSK(interface), stxx_int_msk.u64);
 }
 
-static void cvm_oct_spi_poll(struct net_device *dev)
+static void cvm_oct_spi_poll(struct ifnet *ifp)
 {
 	static int spi4000_port;
-	cvm_oct_private_t *priv = (cvm_oct_private_t *)netdev_priv(dev);
+	cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
 	int interface;
 
 	for (interface = 0; interface < 2; interface++) {
@@ -241,10 +241,10 @@ static void cvm_oct_spi_poll(struct net_device *dev)
 }
 
 
-int cvm_oct_spi_init(struct net_device *dev)
+int cvm_oct_spi_init(struct ifnet *ifp)
 {
 	int r;
-	cvm_oct_private_t *priv = (cvm_oct_private_t *)netdev_priv(dev);
+	cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
 
 	if (number_spi_ports == 0) {
 		r = request_irq(OCTEON_IRQ_RML, cvm_oct_spi_rml_interrupt, IRQF_SHARED,
@@ -256,15 +256,15 @@ int cvm_oct_spi_init(struct net_device *dev)
 		cvm_oct_spi_enable_error_reporting(INTERFACE(priv->port));
 		priv->poll = cvm_oct_spi_poll;
 	}
-	cvm_oct_common_init(dev);
+	cvm_oct_common_init(ifp);
 	return 0;
 }
 
-void cvm_oct_spi_uninit(struct net_device *dev)
+void cvm_oct_spi_uninit(struct ifnet *ifp)
 {
 	int interface;
 
-	cvm_oct_common_uninit(dev);
+	cvm_oct_common_uninit(ifp);
 	number_spi_ports--;
 	if (number_spi_ports == 0) {
 		for (interface = 0; interface < 2; interface++) {

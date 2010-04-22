@@ -27,6 +27,18 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 
 *************************************************************************/
 
-int cvm_oct_common_init(struct net_device *dev);
-void cvm_oct_common_uninit(struct net_device *dev);
+int cvm_oct_common_init(struct ifnet *ifp);
+void cvm_oct_common_uninit(struct ifnet *ifp);
 
+/*
+ * XXX/juli
+ * These belong elsewhere but we can't stomach the nested extern.
+ */
+int cvm_oct_rgmii_init(struct ifnet *ifp);
+void cvm_oct_rgmii_uninit(struct ifnet *ifp);
+int cvm_oct_sgmii_init(struct ifnet *ifp);
+void cvm_oct_sgmii_uninit(struct ifnet *ifp);
+int cvm_oct_spi_init(struct ifnet *ifp);
+void cvm_oct_spi_uninit(struct ifnet *ifp);
+int cvm_oct_xaui_init(struct ifnet *ifp);
+void cvm_oct_xaui_uninit(struct ifnet *ifp);

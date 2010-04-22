@@ -27,8 +27,8 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 
 *************************************************************************/
 
-irqreturn_t cvm_oct_do_interrupt(int cpl, void *dev_id);
-void cvm_oct_poll_controller(struct net_device *dev);
+int cvm_oct_do_interrupt(int cpl, void *dev_id);
+void cvm_oct_poll_controller(struct ifnet *ifp);
 void cvm_oct_tasklet_rx(unsigned long unused);
 
 void cvm_oct_rx_initialize(void);

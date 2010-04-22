@@ -35,26 +35,26 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 #include "ethernet-headers.h"
 
 /**
- * Fill the supplied hardware pool with skbuffs
+ * Fill the supplied hardware pool with mbufs
  *
- * @param pool     Pool to allocate an skbuff for
+ * @param pool     Pool to allocate an mbuf for
  * @param size     Size of the buffer needed for the pool
  * @param elements Number of buffers to allocate
  */
-static int cvm_oct_fill_hw_skbuff(int pool, int size, int elements)
+static int cvm_oct_fill_hw_mbuf(int pool, int size, int elements)
 {
 	int freed = elements;
 	while (freed) {
 
-		struct sk_buff *skb = dev_alloc_skb(size + 128);
-		if (unlikely(skb == NULL)) {
-			pr_warning("Failed to allocate skb for hardware pool %d\n", pool);
+		struct mbuf *m = dev_alloc_m(size + 128);
+		if (unlikely(m == NULL)) {
+			pr_warning("Failed to allocate m for hardware pool %d\n", pool);
 			break;
 		}
 
-		skb_reserve(skb, 128 - (((unsigned long)skb->data) & 0x7f));
-		*(struct sk_buff **)(skb->data - sizeof(void *)) = skb;
-		cvmx_fpa_free(skb->data, pool, DONT_WRITEBACK(size/128));
+		m_reserve(m, 128 - (((unsigned long)m->data) & 0x7f));
+		*(struct mbuf **)(m->data - sizeof(void *)) = m;
+		cvmx_fpa_free(m->data, pool, DONT_WRITEBACK(size/128));
 		freed--;
 	}
 	return (elements - freed);
@@ -62,29 +62,29 @@ static int cvm_oct_fill_hw_skbuff(int pool, int size, int elements)
 
 
 /**
- * Free the supplied hardware pool of skbuffs
+ * Free the supplied hardware pool of mbufs
  *
- * @param pool     Pool to allocate an skbuff for
+ * @param pool     Pool to allocate an mbuf for
  * @param size     Size of the buffer needed for the pool
  * @param elements Number of buffers to allocate
  */
-static void cvm_oct_free_hw_skbuff(int pool, int size, int elements)
+static void cvm_oct_free_hw_mbuf(int pool, int size, int elements)
 {
 	char *memory;
 
 	do {
 		memory = cvmx_fpa_alloc(pool);
 		if (memory) {
-			struct sk_buff *skb = *(struct sk_buff **)(memory - sizeof(void *));
+			struct mbuf *m = *(struct mbuf **)(memory - sizeof(void *));
 			elements--;
-			dev_kfree_skb(skb);
+			dev_kfree_m(m);
 		}
 	} while (memory);
 
 	if (elements < 0)
-		printk("Warning: Freeing of pool %u had too many skbuffs (%d)\n", pool, elements);
+		printf("Warning: Freeing of pool %u had too many mbufs (%d)\n", pool, elements);
 	else if (elements > 0)
-		printk("Warning: Freeing of pool %u is missing %d skbuffs\n", pool, elements);
+		printf("Warning: Freeing of pool %u is missing %d mbufs\n", pool, elements);
 }
 
 
@@ -111,7 +111,7 @@ static int cvm_oct_fill_hw_memory(int pool, int size, int elements)
 		if (memory == NULL)
 			panic("Unable to allocate %u bytes for FPA pool %d\n", elements*size, pool);
 
-		printk("Memory range %p - %p reserved for hardware\n", memory, memory + elements*size - 1);
+		printf("Memory range %p - %p reserved for hardware\n", memory, memory + elements*size - 1);
 
 		while (freed) {
 			cvmx_fpa_free(memory, pool, 0);
@@ -145,7 +145,7 @@ static int cvm_oct_fill_hw_memory(int pool, int size, int elements)
 static void cvm_oct_free_hw_memory(int pool, int size, int elements)
 {
 	if (USE_32BIT_SHARED) {
-		printk("Warning: 32 shared memory is not freeable\n");
+		printf("Warning: 32 shared memory is not freeable\n");
 	} else {
 		char *memory;
 		do {
@@ -157,9 +157,9 @@ static void cvm_oct_free_hw_memory(int pool, int size, int elements)
 		} while (memory);
 
 		if (elements < 0)
-			printk("Freeing of pool %u had too many buffers (%d)\n", pool, elements);
+			printf("Freeing of pool %u had too many buffers (%d)\n", pool, elements);
 		else if (elements > 0)
-			printk("Warning: Freeing of pool %u is missing %d buffers\n", pool, elements);
+			printf("Warning: Freeing of pool %u is missing %d buffers\n", pool, elements);
 	}
 }
 
@@ -167,8 +167,8 @@ static void cvm_oct_free_hw_memory(int pool, int size, int elements)
 int cvm_oct_mem_fill_fpa(int pool, int size, int elements)
 {
 	int freed;
-	if (USE_SKBUFFS_IN_HW)
-		freed = cvm_oct_fill_hw_skbuff(pool, size, elements);
+	if (USE_MBUFS_IN_HW)
+		freed = cvm_oct_fill_hw_mbuf(pool, size, elements);
 	else
 		freed = cvm_oct_fill_hw_memory(pool, size, elements);
 	return (freed);
@@ -176,8 +176,8 @@ int cvm_oct_mem_fill_fpa(int pool, int size, int elements)
 
 void cvm_oct_mem_empty_fpa(int pool, int size, int elements)
 {
-	if (USE_SKBUFFS_IN_HW)
-		cvm_oct_free_hw_skbuff(pool, size, elements);
+	if (USE_MBUFS_IN_HW)
+		cvm_oct_free_hw_mbuf(pool, size, elements);
 	else
 		cvm_oct_free_hw_memory(pool, size, elements);
 }

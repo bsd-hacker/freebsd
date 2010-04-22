@@ -27,9 +27,7 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 
 *************************************************************************/
 
-#define DEBUGPRINT(format, ...) do { if (printk_ratelimit()) 		\
-					printk(format, ##__VA_ARGS__);	\
-				} while (0)
+#define DEBUGPRINT(format, ...) printf(format, ##__VA_ARGS__)
 
 /**
  * Given a packet data address, return a pointer to the

@@ -49,18 +49,18 @@ typedef enum {
 					callback didn't exist */
 	CVM_OCT_DROP,               /**< The ethernet driver will drop the packet,
 					cleaning of the work queue entry and the
-					skbuff */
+					mbuf */
 	CVM_OCT_TAKE_OWNERSHIP_WORK,/**< The intercept callback takes over
 					ownership of the work queue entry. It is
 					the responsibility of the callback to free
 					the work queue entry and all associated
 					packet buffers. The ethernet driver will
-					dispose of the skbuff without affecting the
+					dispose of the mbuf without affecting the
 					work queue entry */
 	CVM_OCT_TAKE_OWNERSHIP_SKB  /**< The intercept callback takes over
-					ownership of the skbuff. The work queue
+					ownership of the mbuf. The work queue
 					entry and packet buffer will be disposed of
-					in a way keeping the skbuff valid */
+					in a way keeping the mbuf valid */
 } cvm_oct_callback_result_t;
 
 
@@ -74,26 +74,35 @@ typedef enum {
  * The second parameter is the raw work queue entry from the
  * hardware.
  * Th third parameter is the packet converted into a Linux
- * skbuff.
+ * mbuf.
  */
-typedef cvm_oct_callback_result_t (*cvm_oct_callback_t)(struct net_device *dev, void *work_queue_entry, struct sk_buff *skb);
+typedef cvm_oct_callback_result_t (*cvm_oct_callback_t)(struct ifnet *ifp, void *work_queue_entry, struct mbuf *m);
 
 /**
  * This is the definition of the Ethernet driver's private
- * driver state stored in netdev_priv(dev).
+ * driver state stored in ifp->if_softc.
  */
 typedef struct {
 	int                     port;           /* PKO hardware output port */
 	int                     queue;          /* PKO hardware queue for the port */
 	int                     fau;            /* Hardware fetch and add to count outstanding tx buffers */
 	int                     imode;          /* Type of port. This is one of the enums in cvmx_helper_interface_mode_t */
-	struct sk_buff_head     tx_free_list[16];/* List of outstanding tx buffers per queue */
+	struct mbuf             *tx_free_list[16];/* List of outstanding tx buffers per queue */
 	/* Keeping intercept_cb close the the part of stats that is most often modified helps throughput. */
 	cvm_oct_callback_t      intercept_cb;   /* Optional intecept callback defined above */
-	struct net_device_stats stats;          /* Device statistics */
+#if 0
+	struct ifnet_stats stats;          /* Device statistics */
 	struct mii_if_info      mii_info;       /* Generic MII info structure */
+#endif
 	uint64_t                link_info;      /* Last negotiated link state */
-	void (*poll)(struct net_device *dev);   /* Called periodically to check link status */
+	void (*poll)(struct ifnet *ifp);   /* Called periodically to check link status */
+
+	/*
+	 * XXX/juli
+	 * I think we'll need to wrap these with the normal ifnet glue.
+	 */
+	int (*open)(struct ifnet *ifp);
+	int (*stop)(struct ifnet *ifp);
 } cvm_oct_private_t;
 
 
@@ -111,7 +120,7 @@ typedef struct {
  * @param callback Intercept callback to set.
  * @return Device structure for the ethernet port or NULL on failure.
  */
-struct net_device *cvm_oct_register_callback(const char *device_name, cvm_oct_callback_t callback);
+struct ifnet *cvm_oct_register_callback(const char *device_name, cvm_oct_callback_t callback);
 
 
 /**
@@ -142,7 +151,7 @@ int cvm_oct_free_work(void *work_queue_entry);
  *
  * @return Zero on success, negative on failure.
  */
-int cvm_oct_transmit_qos(struct net_device *dev, void *work_queue_entry, int do_free, int qos);
+int cvm_oct_transmit_qos(struct ifnet *ifp, void *work_queue_entry, int do_free, int qos);
 
 
 /**
@@ -159,9 +168,9 @@ int cvm_oct_transmit_qos(struct net_device *dev, void *work_queue_entry, int do_
  *
  * @return Zero on success, negative on failure.
  */
-static inline int cvm_oct_transmit(struct net_device *dev, void *work_queue_entry, int do_free)
+static inline int cvm_oct_transmit(struct ifnet *ifp, void *work_queue_entry, int do_free)
 {
-	return cvm_oct_transmit_qos(dev, work_queue_entry, do_free, 0);
+	return cvm_oct_transmit_qos(ifp, work_queue_entry, do_free, 0);
 }
 
 #endif

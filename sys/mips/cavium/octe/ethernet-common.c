@@ -26,9 +26,17 @@ TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE SOFTWARE IS PROVIDED "AS IS"
 AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR WARRANTIES, EITHER EXPRESS, IMPLIED, STATUTORY, OR OTHERWISE, WITH RESPECT TO THE SOFTWARE, INCLUDING ITS CONDITION, ITS CONFORMITY TO ANY REPRESENTATION OR DESCRIPTION, OR THE EXISTENCE OF ANY LATENT OR PATENT DEFECTS, AND CAVIUM SPECIFICALLY DISCLAIMS ALL IMPLIED (IF ANY) WARRANTIES OF TITLE, MERCHANTABILITY, NONINFRINGEMENT, FITNESS FOR A PARTICULAR PURPOSE, LACK OF VIRUSES, ACCURACY OR COMPLETENESS, QUIET ENJOYMENT, QUIET POSSESSION OR CORRESPONDENCE TO DESCRIPTION. THE ENTIRE  RISK ARISING OUT OF USE OR PERFORMANCE OF THE SOFTWARE LIES WITH YOU.
 
 *************************************************************************/
-#include <linux/kernel.h>
-#include <linux/mii.h>
-#include <net/dst.h>
+
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/bus.h>
+#include <sys/endian.h>
+#include <sys/kernel.h>
+#include <sys/mbuf.h>
+#include <sys/socket.h>
+
+#include <net/ethernet.h>
+#include <net/if.h>
 
 #include "wrapper-cvmx-includes.h"
 #include "ethernet-headers.h"
@@ -46,11 +54,12 @@ extern char pow_send_list[];
  * @param dev    Device to get the statistics from
  * @return Pointer to the statistics
  */
-static struct net_device_stats *cvm_oct_common_get_stats(struct net_device *dev)
+#if 0
+static struct ifnet_stats *cvm_oct_common_get_stats(struct ifnet *ifp)
 {
 	cvmx_pip_port_status_t rx_status;
 	cvmx_pko_port_status_t tx_status;
-	cvm_oct_private_t *priv = (cvm_oct_private_t *)netdev_priv(dev);
+	cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
 
 	if (priv->port < CVMX_PIP_NUM_INPUT_PORTS) {
 		if (octeon_is_simulation()) {
@@ -81,6 +90,7 @@ static struct net_device_stats *cvm_oct_common_get_stats(struct net_device *dev)
 
 	return &priv->stats;
 }
+#endif
 
 
 /**
@@ -88,10 +98,11 @@ static struct net_device_stats *cvm_oct_common_get_stats(struct net_device *dev)
  *
  * @param dev    Device to work on
  */
-static void cvm_oct_common_set_multicast_list(struct net_device *dev)
+static void cvm_oct_common_set_multicast_list(struct ifnet *ifp)
 {
+#if 0
 	cvmx_gmxx_prtx_cfg_t gmx_cfg;
-	cvm_oct_private_t *priv = (cvm_oct_private_t *)netdev_priv(dev);
+	cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
 	int interface = INTERFACE(priv->port);
 	int index = INDEX(priv->port);
 
@@ -100,13 +111,13 @@ static void cvm_oct_common_set_multicast_list(struct net_device *dev)
 		control.u64 = 0;
 		control.s.bcst = 1;     /* Allow broadcast MAC addresses */
 
-		if (dev->mc_list || (dev->flags&IFF_ALLMULTI) ||
-		    (dev->flags & IFF_PROMISC))
+		if (ifp->mc_list || (ifp->flags&IFF_ALLMULTI) ||
+		    (ifp->flags & IFF_PROMISC))
 			control.s.mcst = 2; /* Force accept multicast packets */
 		else
 			control.s.mcst = 1; /* Force reject multicat packets */
 
-		if (dev->flags & IFF_PROMISC)
+		if (ifp->flags & IFF_PROMISC)
 			control.s.cam_mode = 0; /* Reject matches if promisc. Since CAM is shut off, should accept everything */
 		else
 			control.s.cam_mode = 1; /* Filter packets based on the CAM */
@@ -115,13 +126,14 @@ static void cvm_oct_common_set_multicast_list(struct net_device *dev)
 		cvmx_write_csr(CVMX_GMXX_PRTX_CFG(index, interface), gmx_cfg.u64 & ~1ull);
 
 		cvmx_write_csr(CVMX_GMXX_RXX_ADR_CTL(index, interface), control.u64);
-		if (dev->flags&IFF_PROMISC)
+		if (ifp->flags&IFF_PROMISC)
 			cvmx_write_csr(CVMX_GMXX_RXX_ADR_CAM_EN(index, interface), 0);
 		else
 			cvmx_write_csr(CVMX_GMXX_RXX_ADR_CAM_EN(index, interface), 1);
 
 		cvmx_write_csr(CVMX_GMXX_PRTX_CFG(index, interface), gmx_cfg.u64);
 	}
+#endif
 }
 
 
@@ -132,14 +144,12 @@ static void cvm_oct_common_set_multicast_list(struct net_device *dev)
  * @param addr   Address structure to change it too. MAC address is addr + 2.
  * @return Zero on success
  */
-static int cvm_oct_common_set_mac_address(struct net_device *dev, void *addr)
+static int cvm_oct_common_set_mac_address(struct ifnet *ifp, void *addr)
 {
-	cvm_oct_private_t *priv = (cvm_oct_private_t *)netdev_priv(dev);
+	cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
 	cvmx_gmxx_prtx_cfg_t gmx_cfg;
 	int interface = INTERFACE(priv->port);
 	int index = INDEX(priv->port);
-
-	memcpy(dev->dev_addr, addr + 2, 6);
 
 	if ((interface < 2) && (cvmx_helper_interface_get_mode(interface) != CVMX_HELPER_INTERFACE_MODE_SPI)) {
 		int i;
@@ -158,7 +168,7 @@ static int cvm_oct_common_set_mac_address(struct net_device *dev, void *addr)
 		cvmx_write_csr(CVMX_GMXX_RXX_ADR_CAM3(index, interface), ptr[5]);
 		cvmx_write_csr(CVMX_GMXX_RXX_ADR_CAM4(index, interface), ptr[6]);
 		cvmx_write_csr(CVMX_GMXX_RXX_ADR_CAM5(index, interface), ptr[7]);
-		cvm_oct_common_set_multicast_list(dev);
+		cvm_oct_common_set_multicast_list(ifp);
 		cvmx_write_csr(CVMX_GMXX_PRTX_CFG(index, interface), gmx_cfg.u64);
 	}
 	return 0;
@@ -172,9 +182,9 @@ static int cvm_oct_common_set_mac_address(struct net_device *dev, void *addr)
  * @param new_mtu The new MTU
  * @return Zero on success
  */
-static int cvm_oct_common_change_mtu(struct net_device *dev, int new_mtu)
+static int cvm_oct_common_change_mtu(struct ifnet *ifp, int new_mtu)
 {
-	cvm_oct_private_t *priv = (cvm_oct_private_t *)netdev_priv(dev);
+	cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
 	int interface = INTERFACE(priv->port);
 	int index = INDEX(priv->port);
 #if defined(CONFIG_VLAN_8021Q) || defined(CONFIG_VLAN_8021Q_MODULE)
@@ -186,10 +196,10 @@ static int cvm_oct_common_change_mtu(struct net_device *dev, int new_mtu)
 	/* Limit the MTU to make sure the ethernet packets are between 64 bytes
 	   and 65535 bytes */
 	if ((new_mtu + 14 + 4 + vlan_bytes < 64) || (new_mtu + 14 + 4 + vlan_bytes > 65392)) {
-		printk("MTU must be between %d and %d.\n", 64-14-4-vlan_bytes, 65392-14-4-vlan_bytes);
+		printf("MTU must be between %d and %d.\n", 64-14-4-vlan_bytes, 65392-14-4-vlan_bytes);
 		return -EINVAL;
 	}
-	dev->mtu = new_mtu;
+	ifp->if_mtu = new_mtu;
 
 	if ((interface < 2) && (cvmx_helper_interface_get_mode(interface) != CVMX_HELPER_INTERFACE_MODE_SPI)) {
 		int max_packet = new_mtu + 14 + 4 + vlan_bytes; /* Add ethernet header and FCS, and VLAN if configured. */
@@ -220,7 +230,7 @@ static int cvm_oct_common_change_mtu(struct net_device *dev, int new_mtu)
  * @param dev    Device to initialize
  * @return Zero on success
  */
-int cvm_oct_common_init(struct net_device *dev)
+int cvm_oct_common_init(struct ifnet *ifp)
 {
 	static int count;
 	char mac[8] = {0x00, 0x00,
@@ -230,45 +240,56 @@ int cvm_oct_common_init(struct net_device *dev)
 		octeon_bootinfo->mac_addr_base[3],
 		octeon_bootinfo->mac_addr_base[4],
 		octeon_bootinfo->mac_addr_base[5] + count};
-	cvm_oct_private_t *priv = (cvm_oct_private_t *)netdev_priv(dev);
+	cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
 
 
 	/* Force the interface to use the POW send if always_use_pow was
 	   specified or it is in the pow send list */
-	if ((pow_send_group != -1) && (always_use_pow || strstr(pow_send_list, dev->name)))
+	if ((pow_send_group != -1) && (always_use_pow || strstr(pow_send_list, if_name(ifp))))
 		priv->queue = -1;
 
+	ifp->if_mtu = ETHERMTU;
+
+#if 0
 	if (priv->queue != -1) {
-		dev->hard_start_xmit = cvm_oct_xmit;
+		ifp->hard_start_xmit = cvm_oct_xmit;
 		if (USE_HW_TCPUDP_CHECKSUM)
-			dev->features |= NETIF_F_IP_CSUM;
+			ifp->features |= NETIF_F_IP_CSUM;
 	} else
-		dev->hard_start_xmit = cvm_oct_xmit_pow;
+		ifp->hard_start_xmit = cvm_oct_xmit_pow;
+#endif
 	count++;
 
-	dev->get_stats          = cvm_oct_common_get_stats;
-	dev->set_mac_address    = cvm_oct_common_set_mac_address;
-	dev->set_multicast_list = cvm_oct_common_set_multicast_list;
-	dev->change_mtu         = cvm_oct_common_change_mtu;
-	dev->do_ioctl           = cvm_oct_ioctl;
-	dev->features           |= NETIF_F_LLTX; /* We do our own locking, Linux doesn't need to */
-	SET_ETHTOOL_OPS(dev, &cvm_oct_ethtool_ops);
+#if 0
+	ifp->get_stats          = cvm_oct_common_get_stats;
+	ifp->set_mac_address    = cvm_oct_common_set_mac_address;
+	ifp->set_multicast_list = cvm_oct_common_set_multicast_list;
+	ifp->change_mtu         = cvm_oct_common_change_mtu;
+	ifp->do_ioctl           = cvm_oct_ioctl;
+	ifp->features           |= NETIF_F_LLTX; /* We do our own locking, Linux doesn't need to */
+	SET_ETHTOOL_OPS(ifp, &cvm_oct_ethtool_ops);
 #ifdef CONFIG_NET_POLL_CONTROLLER
-	dev->poll_controller    = cvm_oct_poll_controller;
+	ifp->poll_controller    = cvm_oct_poll_controller;
+#endif
 #endif
 
-	cvm_oct_mdio_setup_device(dev);
-	dev->set_mac_address(dev, mac);
-	dev->change_mtu(dev, dev->mtu);
+	cvm_oct_mdio_setup_device(ifp);
 
+	cvm_oct_common_set_mac_address(ifp, mac);
+	cvm_oct_common_change_mtu(ifp, ifp->if_mtu);
+
+#if 0
 	/* Zero out stats for port so we won't mistakenly show counters from the
 	   bootloader */
-	memset(dev->get_stats(dev), 0, sizeof(struct net_device_stats));
+	memset(ifp->get_stats(ifp), 0, sizeof(struct ifnet_stats));
+#endif
+
+	ether_ifattach(ifp, mac);
 
 	return 0;
 }
 
-void cvm_oct_common_uninit(struct net_device *dev)
+void cvm_oct_common_uninit(struct ifnet *ifp)
 {
     /* Currently nothing to do */
 }
