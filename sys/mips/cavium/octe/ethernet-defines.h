@@ -100,7 +100,7 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 #define MAX_RX_PACKETS 120 /* Maximum number of packets to process per interrupt. */
 #define MAX_OUT_QUEUE_DEPTH 1000
 
-#ifndef CONFIG_SMP
+#ifndef SMP
 #undef USE_MULTICORE_RECEIVE
 #define USE_MULTICORE_RECEIVE 0
 #endif

@@ -182,7 +182,7 @@ static __init void cvm_oct_configure_common_hw(void)
 	/* Register an IRQ hander for to receive POW interrupts */
 	r = request_irq(OCTEON_IRQ_WORKQ0 + pow_receive_group, cvm_oct_do_interrupt, IRQF_SHARED, "Ethernet", cvm_oct_device);
 
-#ifdef CONFIG_SMP
+#ifdef SMP
 	if (USE_MULTICORE_RECEIVE) {
 		preempt_disable();
 		{
