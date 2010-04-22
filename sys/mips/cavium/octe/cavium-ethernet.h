@@ -103,6 +103,9 @@ typedef struct {
 	 */
 	int (*open)(struct ifnet *ifp);
 	int (*stop)(struct ifnet *ifp);
+
+	int (*init)(struct ifnet *ifp);
+	void (*uninit)(struct ifnet *ifp);
 } cvm_oct_private_t;
 
 
