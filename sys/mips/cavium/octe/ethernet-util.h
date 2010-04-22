@@ -36,7 +36,7 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
  * @param packet_ptr Packet data hardware address
  * @return Packet buffer pointer
  */
-static inline void *cvm_oct_get_buffer_ptr(cvmx_buf_ptr_t packet_ptr)
+static inline char *cvm_oct_get_buffer_ptr(cvmx_buf_ptr_t packet_ptr)
 {
 	return cvmx_phys_to_ptr(((packet_ptr.s.addr >> 7) - packet_ptr.s.back) << 7);
 }

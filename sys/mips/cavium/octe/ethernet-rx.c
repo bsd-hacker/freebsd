@@ -26,30 +26,24 @@ TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE SOFTWARE IS PROVIDED "AS IS"
 AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR WARRANTIES, EITHER EXPRESS, IMPLIED, STATUTORY, OR OTHERWISE, WITH RESPECT TO THE SOFTWARE, INCLUDING ITS CONDITION, ITS CONFORMITY TO ANY REPRESENTATION OR DESCRIPTION, OR THE EXISTENCE OF ANY LATENT OR PATENT DEFECTS, AND CAVIUM SPECIFICALLY DISCLAIMS ALL IMPLIED (IF ANY) WARRANTIES OF TITLE, MERCHANTABILITY, NONINFRINGEMENT, FITNESS FOR A PARTICULAR PURPOSE, LACK OF VIRUSES, ACCURACY OR COMPLETENESS, QUIET ENJOYMENT, QUIET POSSESSION OR CORRESPONDENCE TO DESCRIPTION. THE ENTIRE  RISK ARISING OUT OF USE OR PERFORMANCE OF THE SOFTWARE LIES WITH YOU.
 
 *************************************************************************/
-#include <linux/module.h>
-#include <linux/kernel.h>
-#include <linux/cache.h>
-#include <linux/netdevice.h>
-#include <linux/init.h>
-#include <linux/etherdevice.h>
-#include <linux/ip.h>
-#include <linux/string.h>
-#include <linux/prefetch.h>
-#include <linux/ethtool.h>
-#include <linux/mii.h>
-#include <linux/seq_file.h>
-#include <linux/proc_fs.h>
-#include <net/dst.h>
-#ifdef CONFIG_XFRM
-#include <linux/xfrm.h>
-#include <net/xfrm.h>
-#endif  /* CONFIG_XFRM */
+
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/bus.h>
+#include <sys/endian.h>
+#include <sys/kernel.h>
+#include <sys/mbuf.h>
+#include <sys/socket.h>
+
+#include <net/ethernet.h>
+#include <net/if.h>
 
 #include "wrapper-cvmx-includes.h"
 #include "ethernet-headers.h"
 
 extern int pow_receive_group;
 extern struct ifnet *cvm_oct_device[];
+#if 0
 struct cvm_tasklet_wrapper
 {
 	struct tasklet_struct t;
@@ -60,6 +54,7 @@ struct cvm_tasklet_wrapper
  * cache lines containing the locks. */
 
 static struct cvm_tasklet_wrapper cvm_oct_tasklet[NR_CPUS]; // __cacheline_aligned_in_smp;
+#endif
 
 /**
  * Interrupt handler. The interrupt occurs whenever the POW
@@ -72,6 +67,7 @@ static struct cvm_tasklet_wrapper cvm_oct_tasklet[NR_CPUS]; // __cacheline_align
  */
 int cvm_oct_do_interrupt(int cpl, void *dev_id)
 {
+#if 0
 	/* Acknowledge the interrupt */
 	if (INTERRUPT_LIMIT)
 		cvmx_write_csr(CVMX_POW_WQ_INT, 1<<pow_receive_group);
@@ -81,6 +77,8 @@ int cvm_oct_do_interrupt(int cpl, void *dev_id)
 	tasklet_schedule(&cvm_oct_tasklet[smp_processor_id()].t);
 	preempt_enable();
 	return IRQ_HANDLED;
+#endif
+	panic("%s: not yet implemented.", __func__);
 }
 
 
@@ -208,18 +206,20 @@ void cvm_oct_tasklet_rx(unsigned long unused)
 	while (1) {
 		struct mbuf *m = NULL;
 		cvm_oct_callback_result_t callback_result;
-		int m_in_hw;
+		int mbuf_in_hw;
 		cvmx_wqe_t *work;
 
 		if (USE_ASYNC_IOBDMA) {
 			work = cvmx_pow_work_response_async(CVMX_SCR_SCRATCH);
 		} else {
-			if ((INTERRUPT_LIMIT == 0) || likely(rx_count < MAX_RX_PACKETS))
+			if ((INTERRUPT_LIMIT == 0) || (rx_count < MAX_RX_PACKETS))
 				work = cvmx_pow_work_request_sync(CVMX_POW_NO_WAIT);
 			else
 				work = NULL;
 		}
+#if 0
 		prefetch(work);
+#endif
 		if (work == NULL)
 			break;
 
@@ -227,7 +227,7 @@ void cvm_oct_tasklet_rx(unsigned long unused)
 		   This way the RX can't starve the TX task. */
 		if (USE_ASYNC_IOBDMA) {
 
-			if ((INTERRUPT_LIMIT == 0) || likely(rx_count < MAX_RX_PACKETS))
+			if ((INTERRUPT_LIMIT == 0) || (rx_count < MAX_RX_PACKETS))
 				cvmx_pow_work_request_async_nocheck(CVMX_SCR_SCRATCH, CVMX_POW_NO_WAIT);
 			else {
 				cvmx_scratch_write64(CVMX_SCR_SCRATCH, 0x8000000000000000ull);
@@ -235,11 +235,13 @@ void cvm_oct_tasklet_rx(unsigned long unused)
 			}
 		}
 
-		m_in_hw = USE_MBUFS_IN_HW && work->word2.s.bufs == 1;
-		if (likely(m_in_hw)) {
+		mbuf_in_hw = USE_MBUFS_IN_HW && work->word2.s.bufs == 1;
+		if ((mbuf_in_hw)) {
 			m = *(struct mbuf **)(cvm_oct_get_buffer_ptr(work->packet_ptr) - sizeof(void *));
+#if 0
 			CVMX_PREFETCH(m, offsetof(struct mbuf, head));
 			CVMX_PREFETCH(m, offsetof(struct mbuf, len));
+#endif
 		}
 		CVMX_PREFETCH(cvm_oct_device[work->ipprt], 0);
 		//CVMX_PREFETCH(m, 0);
@@ -247,28 +249,25 @@ void cvm_oct_tasklet_rx(unsigned long unused)
 
 		rx_count++;
 		/* Immediately throw away all packets with receive errors */
-		if (unlikely(work->word2.snoip.rcv_error)) {
+		if ((work->word2.snoip.rcv_error)) {
 			if (cvm_oct_check_rcv_error(work))
 				continue;
 		}
 
 		/* We can only use the zero copy path if mbufs are in the FPA pool
 		   and the packet fits in a single buffer */
-		if (likely(m_in_hw)) {
-			/* This calculation was changed in case the m header is using a
-			   different address aliasing type than the buffer. It doesn't make
-			   any differnece now, but the new one is more correct */
-			m->data = m->head + work->packet_ptr.s.addr - cvmx_ptr_to_phys(m->head);
-			CVMX_PREFETCH(m->data, 0);
-			m->len = work->len;
-			m_set_tail_pointer(m, m->len);
+		if ((mbuf_in_hw)) {
+			CVMX_PREFETCH(m->m_data, 0);
+
+			m->m_pkthdr.len = m->m_len = work->len;
+
 			packet_not_copied = 1;
 		} else {
 
 			/* We have to copy the packet. First allocate an
 			   mbuf for it */
-			m = dev_alloc_m(work->len);
-			if (!m) {
+			MGETHDR(m, M_DONTWAIT, MT_DATA);
+			if (m == NULL) {
 				DEBUGPRINT("Port %d failed to allocate mbuf, packet dropped\n", work->ipprt);
 				cvm_oct_free_work(work);
 				continue;
@@ -276,7 +275,7 @@ void cvm_oct_tasklet_rx(unsigned long unused)
 
 			/* Check if we've received a packet that was entirely
 			   stored in the work entry. This is untested */
-			if (unlikely(work->word2.s.bufs == 0)) {
+			if ((work->word2.s.bufs == 0)) {
 				uint8_t *ptr = work->packet_data;
 
 				if (cvmx_likely(!work->word2.s.not_IP)) {
@@ -287,7 +286,7 @@ void cvm_oct_tasklet_rx(unsigned long unused)
 					else
 						ptr += 6;
 				}
-				memcpy(m_put(m, work->len), ptr, work->len);
+				panic("%s: not yet implemented; copy in small packet.", __func__);
 				/* No packet buffers to free */
 			} else {
 				int segments = work->word2.s.bufs;
@@ -309,7 +308,10 @@ void cvm_oct_tasklet_rx(unsigned long unused)
 					if (segment_size > len)
 						segment_size = len;
 					/* Copy the data into the packet */
+					panic("%s: not yet implemented; copy in packet segments.", __func__);
+#if 0
 					memcpy(m_put(m, segment_size), cvmx_phys_to_ptr(segment_ptr.s.addr), segment_size);
+#endif
 					/* Reduce the amount of bytes left
 					   to copy */
 					len -= segment_size;
@@ -319,31 +321,21 @@ void cvm_oct_tasklet_rx(unsigned long unused)
 			packet_not_copied = 0;
 		}
 
-		if (likely((work->ipprt < TOTAL_NUMBER_OF_PORTS) &&
+		if (((work->ipprt < TOTAL_NUMBER_OF_PORTS) &&
 		    cvm_oct_device[work->ipprt])) {
 			struct ifnet *ifp = cvm_oct_device[work->ipprt];
 			cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
 
 			/* Only accept packets for devices
 			   that are currently up */
-			if (likely(ifp->flags & IFF_UP)) {
-				m->protocol = eth_type_trans(m, dev);
-				m->dev = dev;
+			if ((ifp->if_flags & IFF_UP)) {
+				m->m_pkthdr.rcvif = ifp;
 
-				if (unlikely(work->word2.s.not_IP || work->word2.s.IP_exc || work->word2.s.L4_error))
-					m->ip_summed = CHECKSUM_NONE;
-				else
-					m->ip_summed = CHECKSUM_UNNECESSARY;
-
-				/* Increment RX stats for virtual ports */
-				if (work->ipprt >= CVMX_PIP_NUM_INPUT_PORTS) {
-#ifdef CONFIG_64BIT
-					cvmx_atomic_add64_nosync(&priv->stats.rx_packets, 1);
-					cvmx_atomic_add64_nosync(&priv->stats.rx_bytes, m->len);
-#else
-					cvmx_atomic_add32_nosync((int32_t *)&priv->stats.rx_packets, 1);
-					cvmx_atomic_add32_nosync((int32_t *)&priv->stats.rx_bytes, m->len);
-#endif
+				if ((work->word2.s.not_IP || work->word2.s.IP_exc || work->word2.s.L4_error))
+					m->m_pkthdr.csum_flags = 0; /* XXX */
+				else {
+					m->m_pkthdr.csum_flags = CSUM_IP_CHECKED | CSUM_IP_VALID | CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
+					m->m_pkthdr.csum_data = 0xffff;
 				}
 
 				if (priv->intercept_cb) {
@@ -351,32 +343,33 @@ void cvm_oct_tasklet_rx(unsigned long unused)
 
 					switch (callback_result) {
 					case CVM_OCT_PASS:
-						netif_receive_m(m);
+						ifp->if_ipackets++;
+
+						(*ifp->if_input)(ifp, m);
 						break;
 					case CVM_OCT_DROP:
-						dev_kfree_m_irq(m);
-#ifdef CONFIG_64BIT
-						cvmx_atomic_add64_nosync(&priv->stats.rx_dropped, 1);
-#else
-						cvmx_atomic_add32_nosync((int32_t *)&priv->stats.rx_dropped, 1);
-#endif
+						m_freem(m);
+						ifp->if_ierrors++;
 						break;
 					case CVM_OCT_TAKE_OWNERSHIP_WORK:
 						/* Interceptor stole our work, but
 						   we need to free the mbuf */
-						if (USE_MBUFS_IN_HW && likely(packet_not_copied)) {
+						if (USE_MBUFS_IN_HW && (packet_not_copied)) {
 							/* We can't free the mbuf since its data is
 							the same as the work. In this case we don't
 							do anything */
 						} else
-							dev_kfree_m_irq(m);
+							m_freem(m);
 						break;
 					case CVM_OCT_TAKE_OWNERSHIP_SKB:
 						/* Interceptor stole our packet */
 						break;
 					}
 				} else {
-					netif_receive_m(m);
+					ifp->if_ipackets++;
+
+					(*ifp->if_input)(ifp, m);
+
 					callback_result = CVM_OCT_PASS;
 				}
 			} else {
@@ -385,19 +378,14 @@ void cvm_oct_tasklet_rx(unsigned long unused)
 				DEBUGPRINT("%s: Device not up, packet dropped\n",
 					   if_name(ifp));
 				*/
-#ifdef CONFIG_64BIT
-				cvmx_atomic_add64_nosync(&priv->stats.rx_dropped, 1);
-#else
-				cvmx_atomic_add32_nosync((int32_t *)&priv->stats.rx_dropped, 1);
-#endif
-				dev_kfree_m_irq(m);
+				m_freem(m);
 				callback_result = CVM_OCT_DROP;
 			}
 		} else {
 			/* Drop any packet received for a device that
 			   doesn't exist */
 			DEBUGPRINT("Port %d not controlled by Linux, packet dropped\n", work->ipprt);
-			dev_kfree_m_irq(m);
+			m_freem(m);
 			callback_result = CVM_OCT_DROP;
 		}
 
@@ -407,7 +395,7 @@ void cvm_oct_tasklet_rx(unsigned long unused)
 
 			/* Check to see if the mbuf and work share
 			   the same packet buffer */
-			if (USE_MBUFS_IN_HW && likely(packet_not_copied)) {
+			if (USE_MBUFS_IN_HW && (packet_not_copied)) {
 				/* This buffer needs to be replaced, increment
 				the number of buffers we need to free by one */
 				cvmx_fau_atomic_add32(
@@ -451,17 +439,21 @@ void cvm_oct_tasklet_rx(unsigned long unused)
 
 void cvm_oct_rx_initialize(void)
 {
+#if 0
 	int i;
 	/* Initialize all of the tasklets */
 	for (i = 0; i < NR_CPUS; i++)
 		tasklet_init(&cvm_oct_tasklet[i].t, cvm_oct_tasklet_rx, 0);
+#endif
 }
 
 void cvm_oct_rx_shutdown(void)
 {
+#if 0
 	int i;
 	/* Shutdown all of the tasklets */
 	for (i = 0; i < NR_CPUS; i++)
 		tasklet_kill(&cvm_oct_tasklet[i].t);
+#endif
 }
 

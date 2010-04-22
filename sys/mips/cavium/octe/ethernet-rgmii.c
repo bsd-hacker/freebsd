@@ -26,10 +26,19 @@ TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE SOFTWARE IS PROVIDED "AS IS"
 AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR WARRANTIES, EITHER EXPRESS, IMPLIED, STATUTORY, OR OTHERWISE, WITH RESPECT TO THE SOFTWARE, INCLUDING ITS CONDITION, ITS CONFORMITY TO ANY REPRESENTATION OR DESCRIPTION, OR THE EXISTENCE OF ANY LATENT OR PATENT DEFECTS, AND CAVIUM SPECIFICALLY DISCLAIMS ALL IMPLIED (IF ANY) WARRANTIES OF TITLE, MERCHANTABILITY, NONINFRINGEMENT, FITNESS FOR A PARTICULAR PURPOSE, LACK OF VIRUSES, ACCURACY OR COMPLETENESS, QUIET ENJOYMENT, QUIET POSSESSION OR CORRESPONDENCE TO DESCRIPTION. THE ENTIRE  RISK ARISING OUT OF USE OR PERFORMANCE OF THE SOFTWARE LIES WITH YOU.
 
 *************************************************************************/
-#include <linux/kernel.h>
-#include <linux/netdevice.h>
-#include <linux/mii.h>
-#include <net/dst.h>
+
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/bus.h>
+#include <sys/endian.h>
+#include <sys/kernel.h>
+#include <sys/mbuf.h>
+#include <sys/socket.h>
+#include <sys/lock.h>
+#include <sys/mutex.h>
+
+#include <net/ethernet.h>
+#include <net/if.h>
 
 #include "wrapper-cvmx-includes.h"
 #include "ethernet-headers.h"
@@ -37,19 +46,20 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 extern int octeon_is_simulation(void);
 extern struct ifnet *cvm_oct_device[];
 
-DEFINE_SPINLOCK(global_register_lock);
+static struct mtx global_register_lock;
+MTX_SYSINIT(global_register_lock, &global_register_lock,
+	    "RGMII Global", MTX_SPIN);
 
 static int number_rgmii_ports;
 
 static void cvm_oct_rgmii_poll(struct ifnet *ifp)
 {
 	cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
-	unsigned long flags;
 	cvmx_helper_link_info_t link_info;
 
 	/* Take the global register lock since we are going to touch
 	   registers that affect more than one port */
-	spin_lock_irqsave(&global_register_lock, flags);
+	mtx_lock_spin(&global_register_lock);
 
 	link_info = cvmx_helper_link_get(priv->port);
 	if (link_info.u64 == priv->link_info) {
@@ -89,7 +99,7 @@ static void cvm_oct_rgmii_poll(struct ifnet *ifp)
 				DEBUGPRINT("%s: Using 10Mbps with software preamble removal\n", if_name(ifp));
 			}
 		}
-		spin_unlock_irqrestore(&global_register_lock, flags);
+		mtx_unlock_spin(&global_register_lock);
 		return;
 	}
 
@@ -120,13 +130,12 @@ static void cvm_oct_rgmii_poll(struct ifnet *ifp)
 
 	link_info = cvmx_helper_link_autoconf(priv->port);
 	priv->link_info = link_info.u64;
-	spin_unlock_irqrestore(&global_register_lock, flags);
+	mtx_unlock_spin(&global_register_lock);
 
 	/* Tell Linux */
 	if (link_info.s.link_up) {
 
-		if (!netif_carrier_ok(ifp))
-			netif_carrier_on(ifp);
+		if_link_state_change(ifp, LINK_STATE_UP);
 		if (priv->queue != -1)
 			DEBUGPRINT("%s: %u Mbps %s duplex, port %2d, queue %2d\n",
 				   if_name(ifp), link_info.s.speed,
@@ -139,13 +148,13 @@ static void cvm_oct_rgmii_poll(struct ifnet *ifp)
 				   priv->port);
 	} else {
 
-		if (netif_carrier_ok(ifp))
-			netif_carrier_off(ifp);
+		if_link_state_change(ifp, LINK_STATE_DOWN);
 		DEBUGPRINT("%s: Link down\n", if_name(ifp));
 	}
 }
 
 
+#if 0
 static int cvm_oct_rgmii_rml_interrupt(int cpl, void *dev_id)
 {
 	cvmx_npi_rsl_int_blocks_t rsl_int_blocks;
@@ -209,6 +218,7 @@ static int cvm_oct_rgmii_rml_interrupt(int cpl, void *dev_id)
 	}
 	return return_status;
 }
+#endif
 
 
 static int cvm_oct_rgmii_open(struct ifnet *ifp)
@@ -226,7 +236,9 @@ static int cvm_oct_rgmii_open(struct ifnet *ifp)
         if (!octeon_is_simulation()) {
              link_info = cvmx_helper_link_get(priv->port);
              if (!link_info.s.link_up)
-                netif_carrier_off(ifp);
+		if_link_state_change(ifp, LINK_STATE_DOWN);
+	     else
+		if_link_state_change(ifp, LINK_STATE_UP);
         }
 
 	return 0;
@@ -248,12 +260,14 @@ static int cvm_oct_rgmii_stop(struct ifnet *ifp)
 int cvm_oct_rgmii_init(struct ifnet *ifp)
 {
 	cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
+#if 0
 	int r;
+#endif
 
 	cvm_oct_common_init(ifp);
-	ifp->open = cvm_oct_rgmii_open;
-	ifp->stop = cvm_oct_rgmii_stop;
-	ifp->stop(ifp);
+	priv->open = cvm_oct_rgmii_open;
+	priv->stop = cvm_oct_rgmii_stop;
+	priv->stop(ifp);
 
 	/* Due to GMX errata in CN3XXX series chips, it is necessary to take the
 	   link down immediately whne the PHY changes state. In order to do this
@@ -261,7 +275,9 @@ int cvm_oct_rgmii_init(struct ifnet *ifp)
 	   This may cause problems if the PHY doesn't implement inband status
 	   properly */
 	if (number_rgmii_ports == 0) {
+#if 0
 		r = request_irq(OCTEON_IRQ_RML, cvm_oct_rgmii_rml_interrupt, IRQF_SHARED, "RGMII", &number_rgmii_ports);
+#endif
 	}
 	number_rgmii_ports++;
 
@@ -316,7 +332,9 @@ void cvm_oct_rgmii_uninit(struct ifnet *ifp)
 
 	/* Remove the interrupt handler when the last port is removed */
 	number_rgmii_ports--;
+#if 0
 	if (number_rgmii_ports == 0)
 		free_irq(OCTEON_IRQ_RML, &number_rgmii_ports);
+#endif
 }
 

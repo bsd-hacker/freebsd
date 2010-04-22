@@ -88,7 +88,11 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 #define USE_HW_TCPUDP_CHECKSUM      1
 #define USE_MULTICORE_RECEIVE       1
 #define USE_RED                     1	/* Enable Random Early Dropping under load */
+#if 0
 #define USE_ASYNC_IOBDMA            (CONFIG_CAVIUM_OCTEON_CVMSEG_SIZE > 0)
+#else
+#define USE_ASYNC_IOBDMA            0
+#endif
 #define USE_10MBPS_PREAMBLE_WORKAROUND 1    /* Allow SW based preamble removal at 10Mbps to workaround PHYs giving us bad preambles */
 #define DONT_WRITEBACK(x)           (x) /* Use this to have all FPA frees also tell the L2 not to write data to memory */
 /*#define DONT_WRITEBACK(x)         0   *//* Use this to not have FPA frees control L2 */

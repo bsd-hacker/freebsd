@@ -26,10 +26,17 @@ TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE SOFTWARE IS PROVIDED "AS IS"
 AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR WARRANTIES, EITHER EXPRESS, IMPLIED, STATUTORY, OR OTHERWISE, WITH RESPECT TO THE SOFTWARE, INCLUDING ITS CONDITION, ITS CONFORMITY TO ANY REPRESENTATION OR DESCRIPTION, OR THE EXISTENCE OF ANY LATENT OR PATENT DEFECTS, AND CAVIUM SPECIFICALLY DISCLAIMS ALL IMPLIED (IF ANY) WARRANTIES OF TITLE, MERCHANTABILITY, NONINFRINGEMENT, FITNESS FOR A PARTICULAR PURPOSE, LACK OF VIRUSES, ACCURACY OR COMPLETENESS, QUIET ENJOYMENT, QUIET POSSESSION OR CORRESPONDENCE TO DESCRIPTION. THE ENTIRE  RISK ARISING OUT OF USE OR PERFORMANCE OF THE SOFTWARE LIES WITH YOU.
 
 *************************************************************************/
-#include <linux/kernel.h>
-#include <linux/netdevice.h>
-#include <linux/mii.h>
-#include <net/dst.h>
+
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/bus.h>
+#include <sys/endian.h>
+#include <sys/kernel.h>
+#include <sys/mbuf.h>
+#include <sys/socket.h>
+
+#include <net/ethernet.h>
+#include <net/if.h>
 
 #include "wrapper-cvmx-includes.h"
 #include "ethernet-headers.h"
@@ -37,6 +44,7 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 static int number_spi_ports;
 static int need_retrain[2] = {0, 0};
 
+#if 0
 static int cvm_oct_spi_rml_interrupt(int cpl, void *dev_id)
 {
 	int return_status = IRQ_NONE;
@@ -175,6 +183,7 @@ static int cvm_oct_spi_rml_interrupt(int cpl, void *dev_id)
 
 	return return_status;
 }
+#endif
 
 static void cvm_oct_spi_enable_error_reporting(int interface)
 {
@@ -243,12 +252,16 @@ static void cvm_oct_spi_poll(struct ifnet *ifp)
 
 int cvm_oct_spi_init(struct ifnet *ifp)
 {
+#if 0
 	int r;
+#endif
 	cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
 
 	if (number_spi_ports == 0) {
+#if 0
 		r = request_irq(OCTEON_IRQ_RML, cvm_oct_spi_rml_interrupt, IRQF_SHARED,
 				"SPI", &number_spi_ports);
+#endif
 	}
 	number_spi_ports++;
 
@@ -271,6 +284,8 @@ void cvm_oct_spi_uninit(struct ifnet *ifp)
 			cvmx_write_csr(CVMX_SPXX_INT_MSK(interface), 0);
 			cvmx_write_csr(CVMX_STXX_INT_MSK(interface), 0);
 		}
+#if 0
 		free_irq(8 + 46, &number_spi_ports);
+#endif
 	}
 }
