@@ -47,17 +47,11 @@
 #include <vm/pmap.h>
 
 #include <machine/pmap.h>
+#include <machine/stdarg.h>
 
 #define	asm		__asm
 
 #define	CVMX_DONT_INCLUDE_CONFIG
-
-#define CVMX_FPA_PACKET_POOL			0
-#define CVMX_FPA_WQE_POOL			1
-#define CVMX_FPA_OUTPUT_BUFFER_POOL		2
-#define CVMX_FPA_WQE_POOL_SIZE			(1 *  CVMX_CACHE_LINE_SIZE)
-#define CVMX_FPA_OUTPUT_BUFFER_POOL_SIZE	(8 *  CVMX_CACHE_LINE_SIZE)
-#define CVMX_FPA_PACKET_POOL_SIZE		(16 * CVMX_CACHE_LINE_SIZE)
 
 /* Define to enable the use of simple executive packet output functions.
 ** For packet I/O setup enable the helper functions below. 
@@ -169,5 +163,24 @@
 #define CVMX_PKO_MAX_PORTS_INTERFACE1 CVMX_HELPER_PKO_MAX_PORTS_INTERFACE1 /**< Limit on the number of PKO ports enabled for interface 1 */
 #define CVMX_PKO_QUEUES_PER_PORT_PCI 1				/**< PKO queues per port for PCI (ports 32-35) */
 #define CVMX_PKO_QUEUES_PER_PORT_LOOP 1				/**< PKO queues per port for Loop devices (ports 36-39) */
+
+/************************* FPA allocation *********************************/
+/* Pool sizes in bytes, must be multiple of a cache line */
+#define CVMX_FPA_POOL_0_SIZE (16 * CVMX_CACHE_LINE_SIZE)
+#define CVMX_FPA_POOL_1_SIZE (1 * CVMX_CACHE_LINE_SIZE)
+#define CVMX_FPA_POOL_2_SIZE (8 * CVMX_CACHE_LINE_SIZE)
+#define CVMX_FPA_POOL_3_SIZE (0 * CVMX_CACHE_LINE_SIZE)
+#define CVMX_FPA_POOL_4_SIZE (0 * CVMX_CACHE_LINE_SIZE)
+#define CVMX_FPA_POOL_5_SIZE (0 * CVMX_CACHE_LINE_SIZE)
+#define CVMX_FPA_POOL_6_SIZE (0 * CVMX_CACHE_LINE_SIZE)
+#define CVMX_FPA_POOL_7_SIZE (0 * CVMX_CACHE_LINE_SIZE)
+
+/* Pools in use */
+#define CVMX_FPA_PACKET_POOL                (0)             /**< Packet buffers */
+#define CVMX_FPA_PACKET_POOL_SIZE           CVMX_FPA_POOL_0_SIZE
+#define CVMX_FPA_WQE_POOL                   (1)             /**< Work queue entrys */
+#define CVMX_FPA_WQE_POOL_SIZE              CVMX_FPA_POOL_1_SIZE
+#define CVMX_FPA_OUTPUT_BUFFER_POOL         (2)             /**< PKO queue command buffers */
+#define CVMX_FPA_OUTPUT_BUFFER_POOL_SIZE    CVMX_FPA_POOL_2_SIZE
 
 #endif /* !_CVMX_CONFIG_H */
