@@ -17,6 +17,17 @@ mips/mips/tick.c				standard
 #mips/cavium/dev/rgmii/octeon_pko.c		optional rgmii
 #mips/cavium/dev/rgmii/octeon_rgmx.c		optional rgmii
 
+mips/cavium/octe/ethernet.c			optional octe
+mips/cavium/octe/ethernet-common.c		optional octe
+mips/cavium/octe/ethernet-mdio.c		optional octe
+mips/cavium/octe/ethernet-mem.c			optional octe
+mips/cavium/octe/ethernet-rgmii.c		optional octe
+mips/cavium/octe/ethernet-rx.c			optional octe
+mips/cavium/octe/ethernet-sgmii.c		optional octe
+mips/cavium/octe/ethernet-spi.c			optional octe
+mips/cavium/octe/ethernet-tx.c			optional octe
+mips/cavium/octe/ethernet-xaui.c		optional octe
+
 contrib/octeon-sdk/cvmx-bootmem.c		optional octe
 contrib/octeon-sdk/cvmx-cmd-queue.c		optional octe
 contrib/octeon-sdk/cvmx-fpa.c			optional octe

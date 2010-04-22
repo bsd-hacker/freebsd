@@ -558,7 +558,7 @@ static void cf_swap_ascii (unsigned char str1[], char str2[])
 
 static int cf_probe (device_t dev)
 {
-    	if (!octeon_board_real()) return 1;
+    	if (octeon_is_simulation()) return 1;
 
 	if (device_get_unit(dev) != 0) {
                 panic("can't attach more devices\n");
@@ -585,7 +585,7 @@ static void cf_identify (driver_t *drv, device_t parent)
 	int count = 0;
         octeon_mio_boot_reg_cfgx_t cfg;
 
-    	if (!octeon_board_real())
+    	if (octeon_is_simulation())
 		return;
 
 	base_addr = (void *) MIPS_PHYS_TO_KSEG0(OCTEON_CF_COMMON_BASE_ADDR);
@@ -664,7 +664,7 @@ static int cf_attach (device_t dev)
 {
 	struct cf_priv *cf_priv;
 
-    	if (!octeon_board_real()) return 1;
+    	if (octeon_is_simulation()) return 1;
 
 	cf_priv = device_get_softc(dev);
 	cf_priv->dev = dev;

@@ -300,7 +300,7 @@ extern uint64_t octeon_dram;
 extern uint8_t octeon_mac_addr[6];
 extern int octeon_core_mask, octeon_mac_addr_count;
 extern void octeon_ciu_reset(void);
-extern int octeon_board_real(void);
+extern int octeon_is_simulation(void);
 #endif	/* LOCORE */
 
 

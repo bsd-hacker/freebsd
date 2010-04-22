@@ -107,7 +107,7 @@ octeon_led_write_char(int char_position, char val)
 {
 	uint64_t ptr = (OCTEON_CHAR_LED_BASE_ADDR | 0xf8);
 
-	if (!octeon_board_real())
+	if (octeon_is_simulation())
 		return;
 
 	char_position &= 0x7;  /* only 8 chars */
@@ -120,7 +120,7 @@ octeon_led_write_char0(char val)
 {
 	uint64_t ptr = (OCTEON_CHAR_LED_BASE_ADDR | 0xf8);
 
-	if (!octeon_board_real())
+	if (octeon_is_simulation())
 		return;
 	oct_write8_x8(ptr, val);
 }
@@ -131,7 +131,7 @@ octeon_led_write_hexchar(int char_position, char hexval)
 	uint64_t ptr = (OCTEON_CHAR_LED_BASE_ADDR | 0xf8);
 	char char1, char2;
 
-	if (!octeon_board_real())
+	if (octeon_is_simulation())
 		return;
 
 	char1 = (hexval >> 4) & 0x0f; char1 = (char1 < 10)?char1+'0':char1+'7';
@@ -151,7 +151,7 @@ octeon_led_write_string(const char *str)
 	uint64_t ptr = (OCTEON_CHAR_LED_BASE_ADDR | 0xf8);
 	int i;
 
-	if (!octeon_board_real())
+	if (octeon_is_simulation())
 		return;
 
 	for (i=0; i<8; i++, ptr++) {
@@ -168,7 +168,7 @@ static char progress[8] = { '-', '/', '|', '\\', '-', '/', '|', '\\'};
 void
 octeon_led_run_wheel(int *prog_count, int led_position)
 {
-	if (!octeon_board_real())
+	if (octeon_is_simulation())
 		return;
 	octeon_led_write_char(led_position, progress[*prog_count]);
 	*prog_count += 1;
@@ -223,7 +223,7 @@ octeon_memory_init(void)
 {
 	uint32_t realmem_bytes;
 
-	if (octeon_board_real()) {
+	if (!octeon_is_simulation()) {
 		realmem_bytes = (octeon_dram - PAGE_SIZE);
 		realmem_bytes &= ~(PAGE_SIZE - 1);
 	} else {
@@ -232,7 +232,7 @@ octeon_memory_init(void)
 	}
 	/* phys_avail regions are in bytes */
 	phys_avail[0] = (MIPS_KSEG0_TO_PHYS((vm_offset_t)&end) + PAGE_SIZE) & ~(PAGE_SIZE - 1);
-	if (octeon_board_real()) {
+	if (!octeon_is_simulation()) {
 		if (realmem_bytes > OCTEON_DRAM_FIRST_256_END)
 			phys_avail[1] = OCTEON_DRAM_FIRST_256_END;
 		else
@@ -257,7 +257,7 @@ octeon_memory_init(void)
 	 *
 	 */
 	physmem = btoc(phys_avail[1] - phys_avail[0]);
-	if ((octeon_board_real()) &&
+	if ((!octeon_is_simulation()) &&
 	    (realmem_bytes > OCTEON_DRAM_FIRST_256_END)) {
 		/* take out the upper non-cached 1/2 */
 		realmem_bytes -= OCTEON_DRAM_FIRST_256_END;
@@ -390,9 +390,9 @@ uint64_t octeon_dram;
 static uint32_t octeon_bd_ver = 0, octeon_cvmx_bd_ver = 0;
 uint8_t octeon_mac_addr[6] = { 0 };
 int octeon_core_mask, octeon_mac_addr_count;
+cvmx_bootinfo_t *octeon_bootinfo;
 
 static octeon_boot_descriptor_t *app_desc_ptr;
-static cvmx_bootinfo_t *cvmx_desc_ptr;
 
 #define OCTEON_BOARD_TYPE_NONE 			0
 #define OCTEON_BOARD_TYPE_SIM  			1
@@ -404,14 +404,13 @@ static cvmx_bootinfo_t *cvmx_desc_ptr;
 #define OCTEON_DRAM_MIN	     30
 #define OCTEON_DRAM_MAX	     3000
 
-
 int
-octeon_board_real(void)
+octeon_is_simulation(void)
 {
 	switch (cvmx_sysinfo_get()->board_type) {
 	case OCTEON_BOARD_TYPE_NONE:
 	case OCTEON_BOARD_TYPE_SIM:
-		return 0;
+		return 1;
 	case OCTEON_BOARD_TYPE_CN3010_EVB_HS5:
 		/*
 		 * XXX
@@ -419,11 +418,11 @@ octeon_board_real(void)
 		 * despite its being rather real.  Disable the revision check
 		 * for type 11.
 		 */
-		return 1;
+		return 0;
 	default:
 		if (cvmx_sysinfo_get()->board_rev_major == 0)
-			return 0;
-		return 1;
+			return 1;
+		return 0;
 	}
 }
 
@@ -449,29 +448,29 @@ octeon_process_app_desc_ver_6(void)
 	/* XXX Why is 0x00000000ffffffffULL a bad value?  */
 	if (app_desc_ptr->cvmx_desc_vaddr == 0 ||
 	    app_desc_ptr->cvmx_desc_vaddr == 0xfffffffful) {
-            	printf ("Bad cvmx_desc_ptr %p\n", cvmx_desc_ptr);
+            	printf ("Bad octeon_bootinfo %p\n", octeon_bootinfo);
                 return 1;
 	}
-    	cvmx_desc_ptr =
+    	octeon_bootinfo =
 	    (cvmx_bootinfo_t *)(intptr_t)app_desc_ptr->cvmx_desc_vaddr;
-        cvmx_desc_ptr =
-	    (cvmx_bootinfo_t *) ((intptr_t)cvmx_desc_ptr | MIPS_KSEG0_START);
-        octeon_cvmx_bd_ver = (cvmx_desc_ptr->major_version * 100) +
-	    cvmx_desc_ptr->minor_version;
-        if (cvmx_desc_ptr->major_version != 1) {
+        octeon_bootinfo =
+	    (cvmx_bootinfo_t *) ((intptr_t)octeon_bootinfo | MIPS_KSEG0_START);
+        octeon_cvmx_bd_ver = (octeon_bootinfo->major_version * 100) +
+	    octeon_bootinfo->minor_version;
+        if (octeon_bootinfo->major_version != 1) {
             	panic("Incompatible CVMX descriptor from bootloader: %d.%d %p\n",
-                       (int) cvmx_desc_ptr->major_version,
-                       (int) cvmx_desc_ptr->minor_version, cvmx_desc_ptr);
+                       (int) octeon_bootinfo->major_version,
+                       (int) octeon_bootinfo->minor_version, octeon_bootinfo);
         }
 
-        octeon_core_mask = cvmx_desc_ptr->core_mask;
-        octeon_mac_addr[0] = cvmx_desc_ptr->mac_addr_base[0];
-        octeon_mac_addr[1] = cvmx_desc_ptr->mac_addr_base[1];
-        octeon_mac_addr[2] = cvmx_desc_ptr->mac_addr_base[2];
-        octeon_mac_addr[3] = cvmx_desc_ptr->mac_addr_base[3];
-        octeon_mac_addr[4] = cvmx_desc_ptr->mac_addr_base[4];
-        octeon_mac_addr[5] = cvmx_desc_ptr->mac_addr_base[5];
-        octeon_mac_addr_count = cvmx_desc_ptr->mac_addr_count;
+        octeon_core_mask = octeon_bootinfo->core_mask;
+        octeon_mac_addr[0] = octeon_bootinfo->mac_addr_base[0];
+        octeon_mac_addr[1] = octeon_bootinfo->mac_addr_base[1];
+        octeon_mac_addr[2] = octeon_bootinfo->mac_addr_base[2];
+        octeon_mac_addr[3] = octeon_bootinfo->mac_addr_base[3];
+        octeon_mac_addr[4] = octeon_bootinfo->mac_addr_base[4];
+        octeon_mac_addr[5] = octeon_bootinfo->mac_addr_base[5];
+        octeon_mac_addr_count = octeon_bootinfo->mac_addr_count;
 
         if (app_desc_ptr->dram_size > 16*1024*1024)
             	octeon_dram = (uint64_t)app_desc_ptr->dram_size;
@@ -482,10 +481,10 @@ octeon_process_app_desc_ver_6(void)
 	 * XXX
 	 * We could pass in phy_mem_desc_ptr, but why bother?
 	 */
-	cvmx_sysinfo_minimal_initialize(NULL, cvmx_desc_ptr->board_type,
-					cvmx_desc_ptr->board_rev_major,
-					cvmx_desc_ptr->board_rev_minor,
-					cvmx_desc_ptr->eclock_hz);
+	cvmx_sysinfo_minimal_initialize(NULL, octeon_bootinfo->board_type,
+					octeon_bootinfo->board_rev_major,
+					octeon_bootinfo->board_rev_minor,
+					octeon_bootinfo->eclock_hz);
         return 0;
 }
 
