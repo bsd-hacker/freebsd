@@ -166,49 +166,49 @@ int cvm_oct_xmit(struct mbuf *m, struct ifnet *ifp)
 #if REUSE_MBUFS_WITHOUT_FREE
 #if 0
 	fpa_head = m->head + 128 - ((unsigned long)m->head&0x7f);
-	if (unlikely(m->data < fpa_head)) {
+	if (__predict_false(m->data < fpa_head)) {
 		/*
 		printf("TX buffer beginning can't meet FPA alignment constraints\n");
 		*/
 		goto dont_put_mbuf_in_hw;
 	}
-	if (unlikely((m_end_pointer(m) - fpa_head) < CVMX_FPA_PACKET_POOL_SIZE)) {
+	if (__predict_false((m_end_pointer(m) - fpa_head) < CVMX_FPA_PACKET_POOL_SIZE)) {
 		/*
 		printf("TX buffer isn't large enough for the FPA\n");
 		*/
 		goto dont_put_mbuf_in_hw;
 	}
-	if (unlikely(m_shared(m))) {
+	if (__predict_false(m_shared(m))) {
 		/*
 		printf("TX buffer sharing data with someone else\n");
 		*/
 		goto dont_put_mbuf_in_hw;
 	}
-	if (unlikely(m_cloned(m))) {
+	if (__predict_false(m_cloned(m))) {
 		/*
 		printf("TX buffer has been cloned\n");
 		*/
 		goto dont_put_mbuf_in_hw;
 	}
-	if (unlikely(m_header_cloned(m))) {
+	if (__predict_false(m_header_cloned(m))) {
 		/*
 		printf("TX buffer header has been cloned\n");
 		*/
 		goto dont_put_mbuf_in_hw;
 	}
-	if (unlikely(m->destructor)) {
+	if (__predict_false(m->destructor)) {
 		/*
 		printf("TX buffer has a destructor\n");
 		*/
 		goto dont_put_mbuf_in_hw;
 	}
-	if (unlikely(m_shinfo(m)->nr_frags)) {
+	if (__predict_false(m_shinfo(m)->nr_frags)) {
 		/*
 		printf("TX buffer has fragments\n");
 		*/
 		goto dont_put_mbuf_in_hw;
 	}
-	if (unlikely(m->truesize != sizeof(*m) + m_end_pointer(m) - m->head)) {
+	if (__predict_false(m->truesize != sizeof(*m) + m_end_pointer(m) - m->head)) {
 		/*
 		printf("TX buffer truesize has been changed\n");
 		*/

@@ -30,7 +30,9 @@
 #define	_CAVIUM_OCTE_OCTEBUSVAR_H_
 
 struct octebus_softc {
+	device_t sc_dev;
 	struct resource *sc_rx_irq;
+	struct resource *sc_spi_irq;
 };
 
 #endif /* !_CAVIUM_OCTE_OCTEBUSVAR_H_ */

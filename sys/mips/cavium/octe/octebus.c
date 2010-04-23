@@ -96,7 +96,11 @@ octebus_probe(device_t dev)
 static int
 octebus_attach(device_t dev)
 {
+	struct octebus_softc *sc;
 	int rv;
+
+	sc = device_get_softc(dev);
+	sc->sc_dev = dev;
 
 	rv = cvm_oct_init_module(dev);
 	if (rv != 0)
