@@ -233,7 +233,7 @@ octeon_memory_init(void)
 		phys_avail[0] = phys_end;
 		phys_avail[1] = 96 << 20;
 
-		physmem = phys_avail[1] - phys_avail[0];
+		realmem = physmem = btoc(phys_avail[1] - phys_avail[0]);
 		return;
 	}
 
@@ -248,7 +248,7 @@ octeon_memory_init(void)
 		if (addr == -1)
 			break;
 
-		physmem += 1 << 20;
+		physmem += btoc(1 << 20);
 
 		if (i > 0 && phys_avail[i - 1] == addr) {
 			phys_avail[i - 1] += 1 << 20;
@@ -260,6 +260,8 @@ octeon_memory_init(void)
 
 		i += 2;
 	}
+
+	realmem = physmem;
 }
 
 void
