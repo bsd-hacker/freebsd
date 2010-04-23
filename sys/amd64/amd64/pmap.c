@@ -2272,8 +2272,7 @@ get_pv_entry(pmap_t pmap)
 		}
 	}
 	/* No free items, allocate another chunk */
-	m = vm_page_alloc(NULL, colour, (pq == &vm_page_queues[PQ_ACTIVE] ?
-	    VM_ALLOC_SYSTEM : VM_ALLOC_NORMAL) | VM_ALLOC_NOOBJ |
+	m = vm_page_alloc(NULL, colour, VM_ALLOC_NORMAL | VM_ALLOC_NOOBJ |
 	    VM_ALLOC_WIRED);
 	if (m == NULL) {
 		PV_STAT(pc_chunk_tryfail++);
@@ -2738,6 +2737,11 @@ pmap_remove_pde(pmap_t pmap, pd_entry_t *pdq, vm_offset_t sva,
 			PA_UNLOCK(pa);
 	}
 	if (pmap == kernel_pmap) {
+		/*
+		 *
+		 * Our inability to fail here implies that we should
+		 * always be passed a pv_list if pmap == kernel_pmap
+		 */
 		if (!pmap_demote_pde(pmap, pdq, sva, pv_list))
 			panic("pmap_remove_pde: failed demotion");
 	} else {
