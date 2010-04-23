@@ -2,6 +2,7 @@
 # Octeon Support Files
 #
 mips/cavium/asm_octeon.S			optional smp
+mips/cavium/ciu.c				standard
 mips/cavium/obio.c				optional uart
 mips/cavium/octeon_ebt3000_cf.c			optional cf
 mips/cavium/octeon_machdep.c			standard

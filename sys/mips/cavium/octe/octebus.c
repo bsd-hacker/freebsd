@@ -73,7 +73,7 @@ static driver_t octebus_driver = {
 
 static devclass_t octebus_devclass;
 
-DRIVER_MODULE(octebus, nexus, octebus_driver, octebus_devclass, 0, 0);
+DRIVER_MODULE(octebus, ciu, octebus_driver, octebus_devclass, 0, 0);
 
 static void
 octebus_identify(driver_t *drv, device_t parent)

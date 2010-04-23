@@ -87,7 +87,7 @@ TUNABLE_INT("hw.octe.always_use_pow", &always_use_pow);
 		 "\t\tthis option." */
 
 char pow_send_list[128] = "";
-TUNABLE_STRING("hw.octe.pow_send_list", pow_send_list, sizeof pow_send_list);
+TUNABLE_STR("hw.octe.pow_send_list", pow_send_list, sizeof pow_send_list);
 /*
 		 "\t\tComma separated list of ethernet devices that should use the\n"
 		 "\t\tPOW for transmit instead of the actual ethernet hardware. This\n"
