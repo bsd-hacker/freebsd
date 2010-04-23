@@ -53,37 +53,30 @@ int num_packet_buffers = CONFIG_CAVIUM_OCTEON_NUM_PACKET_BUFFERS;
 #else
 int num_packet_buffers = 1024;
 #endif
-#if 0
-module_param(num_packet_buffers, int, 0444);
-MODULE_PARM_DESC(num_packet_buffers, "\n"
+TUNABLE_INT("hw.octe.num_packet_buffers", &num_packet_buffers);
+/*
 		 "\t\tNumber of packet buffers to allocate and store in the\n"
 		 "\t\tFPA. By default, 1024 packet buffers are used unless\n"
-		 "\t\tCONFIG_CAVIUM_OCTEON_NUM_PACKET_BUFFERS is defined.");
-#endif
+		 "\t\tCONFIG_CAVIUM_OCTEON_NUM_PACKET_BUFFERS is defined." */
 
 int pow_receive_group = 15;
-#if 0
-module_param(pow_receive_group, int, 0444);
-MODULE_PARM_DESC(pow_receive_group, "\n"
+TUNABLE_INT("hw.octe.pow_receive_group", &pow_receive_group);
+/*
 		 "\t\tPOW group to receive packets from. All ethernet hardware\n"
 		 "\t\twill be configured to send incomming packets to this POW\n"
 		 "\t\tgroup. Also any other software can submit packets to this\n"
-		 "\t\tgroup for the kernel to process.");
-#endif
+		 "\t\tgroup for the kernel to process." */
 
-int pow_send_group = -1;
-#if 0
-module_param(pow_send_group, int, 0644);
-MODULE_PARM_DESC(pow_send_group, "\n"
+int pow_send_group = -1; /* XXX Should be a sysctl.  */
+TUNABLE_INT("hw.octe.pow_send_group", &pow_send_group);
+/*
 		 "\t\tPOW group to send packets to other software on. This\n"
 		 "\t\tcontrols the creation of the virtual device pow0.\n"
-		 "\t\talways_use_pow also depends on this value.");
-#endif
+		 "\t\talways_use_pow also depends on this value." */
 
 int always_use_pow;
-#if 0
-module_param(always_use_pow, int, 0444);
-MODULE_PARM_DESC(always_use_pow, "\n"
+TUNABLE_INT("hw.octe.always_use_pow", &always_use_pow);
+/*
 		 "\t\tWhen set, always send to the pow group. This will cause\n"
 		 "\t\tpackets sent to real ethernet devices to be sent to the\n"
 		 "\t\tPOW group instead of the hardware. Unless some other\n"
@@ -91,30 +84,25 @@ MODULE_PARM_DESC(always_use_pow, "\n"
 		 "\t\treceived from the low level hardware. Use this option\n"
 		 "\t\tto allow a CVMX app to intercept all packets from the\n"
 		 "\t\tlinux kernel. You must specify pow_send_group along with\n"
-		 "\t\tthis option.");
-#endif
+		 "\t\tthis option." */
 
 char pow_send_list[128] = "";
-#if 0
-module_param_string(pow_send_list, pow_send_list, sizeof(pow_send_list), 0444);
-MODULE_PARM_DESC(pow_send_list, "\n"
+TUNABLE_STRING("hw.octe.pow_send_list", pow_send_list, sizeof pow_send_list);
+/*
 		 "\t\tComma separated list of ethernet devices that should use the\n"
 		 "\t\tPOW for transmit instead of the actual ethernet hardware. This\n"
 		 "\t\tis a per port version of always_use_pow. always_use_pow takes\n"
 		 "\t\tprecedence over this list. For example, setting this to\n"
 		 "\t\t\"eth2,spi3,spi7\" would cause these three devices to transmit\n"
-		 "\t\tusing the pow_send_group.");
-#endif
+		 "\t\tusing the pow_send_group." */
 
 
-#if 0
 static int disable_core_queueing = 1;
-module_param(disable_core_queueing, int, 0444);
-MODULE_PARM_DESC(disable_core_queueing, "\n"
+TUNABLE_INT("hw.octe.disable_core_queueing", &disable_core_queueing);
+/*
 		"\t\tWhen set the networking core's tx_queue_len is set to zero.  This\n"
 		"\t\tallows packets to be sent without lock contention in the packet scheduler\n"
-		"\t\tresulting in some cases in improved throughput.\n");
-#endif
+		"\t\tresulting in some cases in improved throughput.\n" */
 
 extern int octeon_is_simulation(void);
 
@@ -363,8 +351,6 @@ int cvm_oct_init_module(void)
 
 	memset(cvm_oct_device, 0, sizeof(cvm_oct_device));
 
-	ifnum = 0;
-
 	/* Initialize the FAU used for counting packet buffers that need to be freed */
 	cvmx_fau_atomic_write32(FAU_NUM_PACKET_BUFFERS_TO_FREE, 0);
 
@@ -383,7 +369,7 @@ int cvm_oct_init_module(void)
 			priv->port = CVMX_PIP_NUM_INPUT_PORTS;
 			priv->queue = -1;
 
-			if_initname(ifp, "octe", ifnum++);
+			if_initname(ifp, "pow", 0);
 			if_printf(ifp, "Cavium Octeon POW Ethernet\n");
 #if 0
 			for (qos = 0; qos < 16; qos++)
@@ -405,6 +391,7 @@ int cvm_oct_init_module(void)
 		}
 	}
 
+	ifnum = 0;
 	num_interfaces = cvmx_helper_get_number_of_interfaces();
 	for (interface = 0; interface < num_interfaces; interface++) {
 		cvmx_helper_interface_mode_t imode = cvmx_helper_interface_get_mode(interface);
