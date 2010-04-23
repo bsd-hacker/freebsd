@@ -262,15 +262,17 @@ int cvm_oct_spi_init(struct ifnet *ifp)
 		sc = device_get_softc(device_get_parent(priv->dev));
 
 		rid = 0;
-		sc->sc_spi_irq = bus_alloc_resource(sc->sc_dev, SYS_RES_IRQ, &rid,
-						    CVMX_IRQ_RML, CVMX_IRQ_RML,
-						    1, RF_ACTIVE);
+		sc->sc_spi_irq = bus_alloc_resource(sc->sc_dev, SYS_RES_IRQ,
+						    &rid, CVMX_IRQ_RML,
+						    CVMX_IRQ_RML, 1,
+						    RF_ACTIVE);
 		if (sc->sc_spi_irq == NULL) {
 			device_printf(sc->sc_dev, "could not allocate SPI irq");
 			return ENXIO;
 		}
 
-		error = bus_setup_intr(sc->sc_dev, sc->sc_spi_irq, INTR_TYPE_NET,
+		error = bus_setup_intr(sc->sc_dev, sc->sc_spi_irq,
+				       INTR_TYPE_NET | INTR_MPSAFE,
 				       cvm_oct_spi_rml_interrupt, NULL,
 				       &number_spi_ports, NULL);
 		if (error != 0) {

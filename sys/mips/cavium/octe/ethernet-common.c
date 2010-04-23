@@ -261,6 +261,15 @@ int cvm_oct_common_init(struct ifnet *ifp)
 #endif
 	count++;
 
+	/*
+	 * XXX
+	 * Need to set:
+	 * 	if_init
+	 * 	if_ioctl
+	 * 	if_start
+	 */
+	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
+
 #if 0
 	ifp->get_stats          = cvm_oct_common_get_stats;
 	ifp->set_mac_address    = cvm_oct_common_set_mac_address;

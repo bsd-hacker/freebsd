@@ -279,15 +279,17 @@ int cvm_oct_rgmii_init(struct ifnet *ifp)
 		sc = device_get_softc(device_get_parent(priv->dev));
 
 		rid = 0;
-		sc->sc_rgmii_irq = bus_alloc_resource(sc->sc_dev, SYS_RES_IRQ, &rid,
-						      CVMX_IRQ_RML, CVMX_IRQ_RML,
-						      1, RF_ACTIVE);
+		sc->sc_rgmii_irq = bus_alloc_resource(sc->sc_dev, SYS_RES_IRQ,
+						      &rid, CVMX_IRQ_RML,
+						      CVMX_IRQ_RML, 1,
+						      RF_ACTIVE);
 		if (sc->sc_rgmii_irq == NULL) {
 			device_printf(sc->sc_dev, "could not allocate RGMII irq");
 			return ENXIO;
 		}
 
-		error = bus_setup_intr(sc->sc_dev, sc->sc_rgmii_irq, INTR_TYPE_NET,
+		error = bus_setup_intr(sc->sc_dev, sc->sc_rgmii_irq,
+				       INTR_TYPE_NET | INTR_MPSAFE,
 				       cvm_oct_rgmii_rml_interrupt, NULL,
 				       &number_rgmii_ports, NULL);
 		if (error != 0) {

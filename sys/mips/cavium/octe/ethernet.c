@@ -240,7 +240,7 @@ static void cvm_oct_configure_common_hw(device_t bus)
 		return;
         }
 
-        error = bus_setup_intr(bus, sc->sc_rx_irq, INTR_TYPE_NET,
+        error = bus_setup_intr(bus, sc->sc_rx_irq, INTR_TYPE_NET | INTR_MPSAFE,
 			       cvm_oct_do_interrupt, NULL, cvm_oct_device,
 			       NULL);
         if (error != 0) {
