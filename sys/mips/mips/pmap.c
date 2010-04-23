@@ -198,7 +198,6 @@ static void pmap_update_page_action(void *arg);
 
 #if !defined(__mips_n64)
 struct local_sysmaps {
-	struct mtx lock;
 	vm_offset_t base;
 	uint16_t valid1, valid2;
 };
@@ -218,28 +217,24 @@ caddr_t virtual_sys_start = (caddr_t)0;
 	struct local_sysmaps *sysm;					\
 	pt_entry_t *pte, npte;						\
 									\
+	intr = intr_disable();						\
 	cpu = PCPU_GET(cpuid);						\
 	sysm = &sysmap_lmem[cpu];					\
-	PMAP_LGMEM_LOCK(sysm);						\
-	intr = intr_disable();						\
-	sched_pin();							\
 	va = sysm->base;						\
 	npte = TLBLO_PA_TO_PFN(phys) |					\
 	    PG_D | PG_V | PG_G | PG_W | PG_C_CNC;			\
 	pte = pmap_pte(kernel_pmap, va);				\
 	*pte = npte;							\
-	sysm->valid1 = 1;
+	sysm->valid1 = 1
 
 #define	PMAP_LMEM_MAP2(va1, phys1, va2, phys2)				\
 	int cpu;							\
 	struct local_sysmaps *sysm;					\
 	pt_entry_t *pte, npte;						\
 									\
+	intr = intr_disable();						\
 	cpu = PCPU_GET(cpuid);						\
 	sysm = &sysmap_lmem[cpu];					\
-	PMAP_LGMEM_LOCK(sysm);						\
-	intr = intr_disable();						\
-	sched_pin();							\
 	va1 = sysm->base;						\
 	va2 = sysm->base + PAGE_SIZE;					\
 	npte = TLBLO_PA_TO_PFN(phys2) |					\
@@ -251,20 +246,18 @@ caddr_t virtual_sys_start = (caddr_t)0;
 	pte = pmap_pte(kernel_pmap, va2);				\
 	*pte = npte;							\
 	sysm->valid1 = 1;						\
-	sysm->valid2 = 1;
+	sysm->valid2 = 1
 
 #define	PMAP_LMEM_UNMAP()						\
 	pte = pmap_pte(kernel_pmap, sysm->base);			\
 	*pte = PG_G;							\
-	pmap_invalidate_page(kernel_pmap, sysm->base);			\
+	tlb_invalidate_address(kernel_pmap, sysm->base);		\
 	sysm->valid1 = 0;						\
 	pte = pmap_pte(kernel_pmap, sysm->base + PAGE_SIZE);		\
 	*pte = PG_G;							\
-	pmap_invalidate_page(kernel_pmap, sysm->base + PAGE_SIZE);	\
+	tlb_invalidate_address(kernel_pmap, sysm->base + PAGE_SIZE);	\
 	sysm->valid2 = 0;						\
-	sched_unpin();							\
-	intr_restore(intr);						\
-	PMAP_LGMEM_UNLOCK(sysm);
+	intr_restore(intr)
 
 #endif
 
@@ -451,7 +444,6 @@ again:
 			sysmap_lmem[i].base = virtual_avail;
 			virtual_avail += PAGE_SIZE * 2;
 			sysmap_lmem[i].valid1 = sysmap_lmem[i].valid2 = 0;
-			PMAP_LGMEM_LOCK_INIT(&sysmap_lmem[i]);
 		}
 	}
 	virtual_sys_start = (caddr_t)virtual_avail;
@@ -2181,6 +2173,8 @@ pmap_change_wiring(pmap_t pmap, vm_offset_t va, boolean_t wired)
 	 */
 	if (wired)
 		pte_set(pte, PG_W);
+	else
+		pte_clear(pte, PG_W);
 	PMAP_UNLOCK(pmap);
 }
 
