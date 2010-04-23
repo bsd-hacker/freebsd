@@ -230,10 +230,14 @@ int cvm_oct_ioctl(struct ifnet *ifp, struct ifreq *rq, int cmd)
  */
 int cvm_oct_mdio_setup_device(struct ifnet *ifp)
 {
+	/*
+	 * XXX/juli
+	 * Once we have a device_t for this interface, attach the MII bus to it.
+	 */
+#if 0
 	cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
 	int phy_id = cvmx_helper_board_get_mii_address(priv->port);
 	if (phy_id != -1) {
-#if 0
 		priv->mii_info.dev = dev;
 		priv->mii_info.phy_id = phy_id;
 		priv->mii_info.phy_id_mask = 0xff;
@@ -241,10 +245,8 @@ int cvm_oct_mdio_setup_device(struct ifnet *ifp)
 		priv->mii_info.reg_num_mask = 0x1f;
 		priv->mii_info.mdio_read = cvm_oct_mdio_read;
 		priv->mii_info.mdio_write = cvm_oct_mdio_write;
-#else
-		panic("%s: need add MII hooks.", __func__);
-#endif
 	}
+#endif
 	return 0;
 }
 
