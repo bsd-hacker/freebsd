@@ -255,9 +255,6 @@ octeon_memory_init(void)
 			continue;
 		}
 
-		printf("phys_avail[%u] = { %#jx - %#jx }\n", i / 2, addr,
-		       addr + (1 << 20));
-
 		phys_avail[i + 0] = addr;
 		phys_avail[i + 1] = addr + (1 << 20);
 
