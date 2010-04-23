@@ -327,15 +327,13 @@ int cvm_oct_free_work(void *work_queue_entry)
  *
  * @return Zero on success
  */
-static int cvm_oct_init_module(void)
+int cvm_oct_init_module(void)
 {
-	device_t dev;
+	int ifnum;
 	int num_interfaces;
 	int interface;
 	int fau = FAU_NUM_PACKET_BUFFERS_TO_FREE;
 	int qos;
-
-	dev = NULL;
 
 	printf("cavium-ethernet: %s\n", OCTEON_SDK_VERSION_STRING);
 
@@ -365,6 +363,8 @@ static int cvm_oct_init_module(void)
 
 	memset(cvm_oct_device, 0, sizeof(cvm_oct_device));
 
+	ifnum = 0;
+
 	/* Initialize the FAU used for counting packet buffers that need to be freed */
 	cvmx_fau_atomic_write32(FAU_NUM_PACKET_BUFFERS_TO_FREE, 0);
 
@@ -382,7 +382,9 @@ static int cvm_oct_init_module(void)
 			priv->imode = CVMX_HELPER_INTERFACE_MODE_DISABLED;
 			priv->port = CVMX_PIP_NUM_INPUT_PORTS;
 			priv->queue = -1;
-			device_set_desc(dev, "Cavium Octeon POW Ethernet");
+
+			if_initname(ifp, "octe", ifnum++);
+			if_printf(ifp, "Cavium Octeon POW Ethernet\n");
 #if 0
 			for (qos = 0; qos < 16; qos++)
 				m_queue_head_init(&priv->tx_free_list[qos]);
@@ -438,6 +440,8 @@ static int cvm_oct_init_module(void)
 			for (qos = 0; qos < cvmx_pko_get_num_queues(port); qos++)
 				cvmx_fau_atomic_write32(priv->fau+qos*4, 0);
 
+			if_initname(ifp, "octe", ifnum++);
+
 			switch (priv->imode) {
 
 			/* These types don't support ports to IPD/PKO */
@@ -449,43 +453,43 @@ static int cvm_oct_init_module(void)
 			case CVMX_HELPER_INTERFACE_MODE_NPI:
 				priv->init = cvm_oct_common_init;
 				priv->uninit = cvm_oct_common_uninit;
-				device_set_desc(dev, "Cavium Octeon NPI Ethernet");
+				if_printf(ifp, "Cavium Octeon NPI Ethernet\n");
 				break;
 
 			case CVMX_HELPER_INTERFACE_MODE_XAUI:
 				priv->init = cvm_oct_xaui_init;
 				priv->uninit = cvm_oct_xaui_uninit;
-				device_set_desc(dev, "Cavium Octeon XAUI Ethernet");
+				if_printf(ifp, "Cavium Octeon XAUI Ethernet\n");
 				break;
 
 			case CVMX_HELPER_INTERFACE_MODE_LOOP:
 				priv->init = cvm_oct_common_init;
 				priv->uninit = cvm_oct_common_uninit;
-				device_set_desc(dev, "Cavium Octeon LOOP Ethernet");
+				if_printf(ifp, "Cavium Octeon LOOP Ethernet\n");
 				break;
 
 			case CVMX_HELPER_INTERFACE_MODE_SGMII:
 				priv->init = cvm_oct_sgmii_init;
 				priv->uninit = cvm_oct_sgmii_uninit;
-				device_set_desc(dev, "Cavium Octeon SGMII Ethernet");
+				if_printf(ifp, "Cavium Octeon SGMII Ethernet\n");
 				break;
 
 			case CVMX_HELPER_INTERFACE_MODE_SPI:
 				priv->init = cvm_oct_spi_init;
 				priv->uninit = cvm_oct_spi_uninit;
-				device_set_desc(dev, "Cavium Octeon SPI Ethernet");
+				if_printf(ifp, "Cavium Octeon SPI Ethernet\n");
 				break;
 
 			case CVMX_HELPER_INTERFACE_MODE_RGMII:
 				priv->init = cvm_oct_rgmii_init;
 				priv->uninit = cvm_oct_rgmii_uninit;
-				device_set_desc(dev, "Cavium Octeon RGMII Ethernet");
+				if_printf(ifp, "Cavium Octeon RGMII Ethernet\n");
 				break;
 
 			case CVMX_HELPER_INTERFACE_MODE_GMII:
 				priv->init = cvm_oct_rgmii_init;
 				priv->uninit = cvm_oct_rgmii_uninit;
-				device_set_desc(dev, "Cavium Octeon GMII Ethernet");
+				if_printf(ifp, "Cavium Octeon GMII Ethernet\n");
 				break;
 			}
 
@@ -533,7 +537,7 @@ static int cvm_oct_init_module(void)
  *
  * @return Zero on success
  */
-static void cvm_oct_cleanup_module(void)
+void cvm_oct_cleanup_module(void)
 {
 	int port;
 
@@ -580,22 +584,3 @@ static void cvm_oct_cleanup_module(void)
 	if (CVMX_FPA_OUTPUT_BUFFER_POOL != CVMX_FPA_PACKET_POOL)
 		cvm_oct_mem_empty_fpa(CVMX_FPA_OUTPUT_BUFFER_POOL, CVMX_FPA_OUTPUT_BUFFER_POOL_SIZE, 128);
 }
-
-static int
-cvm_oct_modevent(module_t mod __unused, int type, void *data __unused)
-{
-	switch(type) {
-	case MOD_LOAD:
-		cvm_oct_init_module();
-		break;
-	case MOD_UNLOAD:
-	case MOD_SHUTDOWN:
-		cvm_oct_cleanup_module();
-		break;
-	default:
-		return (EOPNOTSUPP);
-        }
-	return (0);
-}
-DEV_MODULE(octe, cvm_oct_modevent, NULL);
-MODULE_VERSION(octe, 1);

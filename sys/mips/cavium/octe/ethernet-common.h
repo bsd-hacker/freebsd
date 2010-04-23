@@ -30,6 +30,9 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 int cvm_oct_common_init(struct ifnet *ifp);
 void cvm_oct_common_uninit(struct ifnet *ifp);
 
+int cvm_oct_init_module(void);
+void cvm_oct_cleanup_module(void);
+
 /*
  * XXX/juli
  * These belong elsewhere but we can't stomach the nested extern.
