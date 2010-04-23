@@ -33,6 +33,7 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 #include <sys/endian.h>
 #include <sys/kernel.h>
 #include <sys/mbuf.h>
+#include <sys/rman.h>
 #include <sys/socket.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
@@ -42,6 +43,8 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 
 #include "wrapper-cvmx-includes.h"
 #include "ethernet-headers.h"
+
+#include "octebusvar.h"
 
 extern int octeon_is_simulation(void);
 extern struct ifnet *cvm_oct_device[];
@@ -154,12 +157,11 @@ static void cvm_oct_rgmii_poll(struct ifnet *ifp)
 }
 
 
-#if 0
-static int cvm_oct_rgmii_rml_interrupt(int cpl, void *dev_id)
+static int cvm_oct_rgmii_rml_interrupt(void *dev_id)
 {
 	cvmx_npi_rsl_int_blocks_t rsl_int_blocks;
 	int index;
-	int return_status = IRQ_NONE;
+	int return_status = FILTER_STRAY;
 
 	rsl_int_blocks.u64 = cvmx_read_csr(CVMX_NPI_RSL_INT_BLOCKS);
 
@@ -185,7 +187,7 @@ static int cvm_oct_rgmii_rml_interrupt(int cpl, void *dev_id)
 				gmx_rx_int_reg.s.phy_link = 1;
 				gmx_rx_int_reg.s.phy_spd = 1;
 				cvmx_write_csr(CVMX_GMXX_RXX_INT_REG(index, interface), gmx_rx_int_reg.u64);
-				return_status = IRQ_HANDLED;
+				return_status = FILTER_HANDLED;
 			}
 		}
 	}
@@ -212,13 +214,12 @@ static int cvm_oct_rgmii_rml_interrupt(int cpl, void *dev_id)
 				gmx_rx_int_reg.s.phy_link = 1;
 				gmx_rx_int_reg.s.phy_spd = 1;
 				cvmx_write_csr(CVMX_GMXX_RXX_INT_REG(index, interface), gmx_rx_int_reg.u64);
-				return_status = IRQ_HANDLED;
+				return_status = FILTER_HANDLED;
 			}
 		}
 	}
 	return return_status;
 }
-#endif
 
 
 static int cvm_oct_rgmii_open(struct ifnet *ifp)
@@ -259,10 +260,10 @@ static int cvm_oct_rgmii_stop(struct ifnet *ifp)
 
 int cvm_oct_rgmii_init(struct ifnet *ifp)
 {
+	struct octebus_softc *sc;
 	cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
-#if 0
-	int r;
-#endif
+	int error;
+	int rid;
 
 	cvm_oct_common_init(ifp);
 	priv->open = cvm_oct_rgmii_open;
@@ -275,9 +276,24 @@ int cvm_oct_rgmii_init(struct ifnet *ifp)
 	   This may cause problems if the PHY doesn't implement inband status
 	   properly */
 	if (number_rgmii_ports == 0) {
-#if 0
-		r = request_irq(OCTEON_IRQ_RML, cvm_oct_rgmii_rml_interrupt, IRQF_SHARED, "RGMII", &number_rgmii_ports);
-#endif
+		sc = device_get_softc(device_get_parent(priv->dev));
+
+		rid = 0;
+		sc->sc_rgmii_irq = bus_alloc_resource(sc->sc_dev, SYS_RES_IRQ, &rid,
+						      CVMX_IRQ_RML, CVMX_IRQ_RML,
+						      1, RF_ACTIVE);
+		if (sc->sc_rgmii_irq == NULL) {
+			device_printf(sc->sc_dev, "could not allocate RGMII irq");
+			return ENXIO;
+		}
+
+		error = bus_setup_intr(sc->sc_dev, sc->sc_rgmii_irq, INTR_TYPE_NET,
+				       cvm_oct_rgmii_rml_interrupt, NULL,
+				       &number_rgmii_ports, NULL);
+		if (error != 0) {
+			device_printf(sc->sc_dev, "could not setup RGMII irq");
+			return error;
+		}
 	}
 	number_rgmii_ports++;
 
@@ -332,9 +348,7 @@ void cvm_oct_rgmii_uninit(struct ifnet *ifp)
 
 	/* Remove the interrupt handler when the last port is removed */
 	number_rgmii_ports--;
-#if 0
 	if (number_rgmii_ports == 0)
-		free_irq(OCTEON_IRQ_RML, &number_rgmii_ports);
-#endif
+		panic("%s: need to implement IRQ release.", __func__);
 }
 
