@@ -71,6 +71,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/vmparam.h>
 
 #include <contrib/octeon-sdk/cvmx.h>
+#include <contrib/octeon-sdk/cvmx-bootmem.h>
 #include <contrib/octeon-sdk/cvmx-interrupt.h>
 
 #if defined(__mips_n64) 
@@ -221,57 +222,47 @@ octeon_ciu_reset(void)
 static void
 octeon_memory_init(void)
 {
-	uint32_t realmem_bytes;
+	vm_paddr_t phys_end;
+	int64_t addr;
+	unsigned i;
 
-	if (!octeon_is_simulation()) {
-		realmem_bytes = (octeon_dram - PAGE_SIZE);
-		realmem_bytes &= ~(PAGE_SIZE - 1);
-	} else {
+	phys_end = round_page(MIPS_KSEG0_TO_PHYS((vm_offset_t)&end));
+
+	if (octeon_is_simulation()) {
 		/* Simulator we limit to 96 meg */
-		realmem_bytes = (96 << 20);
-	}
-	/* phys_avail regions are in bytes */
-	phys_avail[0] = (MIPS_KSEG0_TO_PHYS((vm_offset_t)&end) + PAGE_SIZE) & ~(PAGE_SIZE - 1);
-	if (!octeon_is_simulation()) {
-		if (realmem_bytes > OCTEON_DRAM_FIRST_256_END)
-			phys_avail[1] = OCTEON_DRAM_FIRST_256_END;
-		else
-			phys_avail[1] = realmem_bytes;
-		realmem_bytes -= OCTEON_DRAM_FIRST_256_END;
-		realmem_bytes &= ~(PAGE_SIZE - 1);
-	} else {
-		/* Simulator gets 96Meg period. */
-		phys_avail[1] = (96 << 20);
-	}
-	/*-
-	 * Octeon Memory looks as follows:
-         *   PA
-	 * 0000 0000 to                                       0x0 0000 0000 0000
-	 * 0FFF FFFF      First 256 MB memory   Maps to       0x0 0000 0FFF FFFF
-	 *
-	 * 1000 0000 to                                       0x1 0000 1000 0000
-	 * 1FFF FFFF      Uncached Bu I/O space.converted to  0x1 0000 1FFF FFFF
-	 *
-	 * 2FFF FFFF to            Cached                     0x0 0000 2000 0000
-	 * FFFF FFFF      all dram mem above the first 512M   0x3 FFFF FFFF FFFF
-	 *
-	 */
-	physmem = btoc(phys_avail[1] - phys_avail[0]);
-	if ((!octeon_is_simulation()) &&
-	    (realmem_bytes > OCTEON_DRAM_FIRST_256_END)) {
-		/* take out the upper non-cached 1/2 */
-		realmem_bytes -= OCTEON_DRAM_FIRST_256_END;
-		realmem_bytes &= ~(PAGE_SIZE - 1);
-		/* Now map the rest of the memory */
-		phys_avail[2] = 0x20000000;
-		phys_avail[3] = ((uint32_t) 0x20000000 + realmem_bytes);
-		physmem += btoc(phys_avail[3] - phys_avail[2]);
-	}
-	realmem = physmem;
+		phys_avail[0] = phys_end;
+		phys_avail[1] = 96 << 20;
 
-	printf("Total DRAM Size %#X\n", (uint32_t) octeon_dram);
-	printf("Bank 0 = %#08lX   ->  %#08lX\n", (long)phys_avail[0], (long)phys_avail[1]);
-	printf("Bank 1 = %#08lX   ->  %#08lX\n", (long)phys_avail[2], (long)phys_avail[3]);
+		physmem = phys_avail[1] - phys_avail[0];
+		return;
+	}
+
+	/*
+	 * Allocate memory from bootmem 1MB at a time and merge
+	 * adjacent entries.
+	 */
+	i = 0;
+	while (i < PHYS_AVAIL_ENTRIES) {
+		addr = cvmx_bootmem_phy_alloc(1 << 20, phys_end,
+					      ~(vm_paddr_t)0, PAGE_SIZE, 0);
+		if (addr == -1)
+			break;
+
+		physmem += 1 << 20;
+
+		if (i > 0 && phys_avail[i - 1] == addr) {
+			phys_avail[i - 1] += 1 << 20;
+			continue;
+		}
+
+		printf("phys_avail[%u] = { %#jx - %#jx }\n", i / 2, addr,
+		       addr + (1 << 20));
+
+		phys_avail[i + 0] = addr;
+		phys_avail[i + 1] = addr + (1 << 20);
+
+		i += 2;
+	}
 }
 
 void
@@ -445,6 +436,8 @@ octeon_process_app_desc_ver_unknown(void)
 static int
 octeon_process_app_desc_ver_6(void)
 {
+	void *phy_mem_desc_ptr;
+
 	/* XXX Why is 0x00000000ffffffffULL a bad value?  */
 	if (app_desc_ptr->cvmx_desc_vaddr == 0 ||
 	    app_desc_ptr->cvmx_desc_vaddr == 0xfffffffful) {
@@ -477,11 +470,10 @@ octeon_process_app_desc_ver_6(void)
 	else
             	octeon_dram = (uint64_t)app_desc_ptr->dram_size << 20;
 
-	/*
-	 * XXX
-	 * We could pass in phy_mem_desc_ptr, but why bother?
-	 */
-	cvmx_sysinfo_minimal_initialize(NULL, octeon_bootinfo->board_type,
+	phy_mem_desc_ptr =
+	    (void *)MIPS_PHYS_TO_KSEG0(octeon_bootinfo->phy_mem_desc_addr);
+	cvmx_sysinfo_minimal_initialize(phy_mem_desc_ptr,
+					octeon_bootinfo->board_type,
 					octeon_bootinfo->board_rev_major,
 					octeon_bootinfo->board_rev_minor,
 					octeon_bootinfo->eclock_hz);
@@ -503,6 +495,10 @@ octeon_boot_params_init(register_t ptr)
         }
         if (bad_desc)
         	octeon_process_app_desc_ver_unknown();
+
+	if (cvmx_sysinfo_get()->phy_mem_desc_ptr == NULL)
+		panic("Your boot loader did not supply a memory descriptor.\n");
+	cvmx_bootmem_init(cvmx_sysinfo_get()->phy_mem_desc_ptr);
 
         printf("Boot Descriptor Ver: %u -> %u/%u",
                octeon_bd_ver, octeon_cvmx_bd_ver / 100,
