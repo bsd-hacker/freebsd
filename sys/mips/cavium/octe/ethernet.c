@@ -32,6 +32,7 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 #include <sys/conf.h>
 #include <sys/endian.h>
 #include <sys/kernel.h>
+#include <sys/rman.h>
 #include <sys/mbuf.h>
 #include <sys/socket.h>
 #include <sys/module.h>
@@ -43,6 +44,8 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 
 #include "wrapper-cvmx-includes.h"
 #include "ethernet-headers.h"
+
+#include "octebusvar.h"
 
 /*
  * XXX/juli
@@ -204,11 +207,14 @@ static void cvm_do_timer(unsigned long arg)
 /**
  * Configure common hardware for all interfaces
  */
-static void cvm_oct_configure_common_hw(void)
+static void cvm_oct_configure_common_hw(device_t bus)
 {
-#if 0
-	int r;
-#endif
+	struct octebus_softc *sc;
+	int error;
+	int rid;
+
+        sc = device_get_softc(bus);
+
 	/* Setup the FPA */
 	cvmx_fpa_enable();
 	cvm_oct_mem_fill_fpa(CVMX_FPA_PACKET_POOL, CVMX_FPA_PACKET_POOL_SIZE, num_packet_buffers);
@@ -223,10 +229,25 @@ static void cvm_oct_configure_common_hw(void)
 	if (!octeon_is_simulation())
 		cvmx_write_csr(CVMX_SMI_EN, 1);
 
-#if 0
 	/* Register an IRQ hander for to receive POW interrupts */
-	r = request_irq(OCTEON_IRQ_WORKQ0 + pow_receive_group, cvm_oct_do_interrupt, IRQF_SHARED, "Ethernet", cvm_oct_device);
-#endif
+        rid = 0;
+        sc->sc_rx_irq = bus_alloc_resource(bus, SYS_RES_IRQ, &rid,
+					   CVMX_IRQ_WORKQ0 + pow_receive_group,
+					   CVMX_IRQ_WORKQ0 + pow_receive_group,
+					   1, RF_ACTIVE);
+        if (sc->sc_rx_irq == NULL) {
+                device_printf(bus, "could not allocate workq irq");
+		return;
+        }
+
+        error = bus_setup_intr(bus, sc->sc_rx_irq, INTR_TYPE_NET,
+			       cvm_oct_do_interrupt, NULL, cvm_oct_device,
+			       NULL);
+        if (error != 0) {
+                device_printf(bus, "could not setup workq irq");
+		return;
+        }
+
 
 #ifdef SMP
 	if (USE_MULTICORE_RECEIVE) {
@@ -330,7 +351,7 @@ int cvm_oct_init_module(device_t bus)
 	cvm_oct_proc_initialize();
 #endif
 	cvm_oct_rx_initialize();
-	cvm_oct_configure_common_hw();
+	cvm_oct_configure_common_hw(bus);
 
 	cvmx_helper_initialize_packet_io_global();
 

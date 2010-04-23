@@ -46,6 +46,8 @@
 
 #include "ethernet-common.h"
 
+#include "octebusvar.h"
+
 static void		octebus_identify(driver_t *drv, device_t parent);
 static int		octebus_probe(device_t dev);
 static int		octebus_attach(device_t dev);
@@ -69,7 +71,7 @@ static device_method_t octebus_methods[] = {
 static driver_t octebus_driver = {
 	"octebus",
 	octebus_methods,
-	1,
+	sizeof (struct octebus_softc),
 };
 
 static devclass_t octebus_devclass;

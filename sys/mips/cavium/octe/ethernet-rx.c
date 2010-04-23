@@ -35,6 +35,7 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 #include <sys/mbuf.h>
 #include <sys/socket.h>
 #include <sys/smp.h>
+#include <sys/taskqueue.h>
 
 #include <net/ethernet.h>
 #include <net/if.h>
@@ -44,18 +45,9 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 
 extern int pow_receive_group;
 extern struct ifnet *cvm_oct_device[];
-#if 0
-struct cvm_tasklet_wrapper
-{
-	struct tasklet_struct t;
-};// ____cacheline_aligned_in_smp;
 
-/* Aligning the tasklet_struct on cachline boundries seems to decrease
- * throughput even though in theory it would reduce contantion on the
- * cache lines containing the locks. */
-
-static struct cvm_tasklet_wrapper cvm_oct_tasklet[MAXCPU]; // __cacheline_aligned_in_smp;
-#endif
+static struct task cvm_oct_task;
+static struct taskqueue *cvm_oct_taskq;
 
 /**
  * Interrupt handler. The interrupt occurs whenever the POW
@@ -66,20 +58,15 @@ static struct cvm_tasklet_wrapper cvm_oct_tasklet[MAXCPU]; // __cacheline_aligne
  * @param regs
  * @return
  */
-int cvm_oct_do_interrupt(int cpl, void *dev_id)
+int cvm_oct_do_interrupt(void *dev_id)
 {
-#if 0
 	/* Acknowledge the interrupt */
 	if (INTERRUPT_LIMIT)
 		cvmx_write_csr(CVMX_POW_WQ_INT, 1<<pow_receive_group);
 	else
 		cvmx_write_csr(CVMX_POW_WQ_INT, 0x10001<<pow_receive_group);
-	preempt_disable();
-	tasklet_schedule(&cvm_oct_tasklet[smp_processor_id()].t);
-	preempt_enable();
-	return IRQ_HANDLED;
-#endif
-	panic("%s: not yet implemented.", __func__);
+	taskqueue_enqueue(cvm_oct_taskq, &cvm_oct_task);
+	return FILTER_HANDLED;
 }
 
 
@@ -94,9 +81,7 @@ int cvm_oct_do_interrupt(int cpl, void *dev_id)
  */
 void cvm_oct_poll_controller(struct ifnet *ifp)
 {
-	preempt_disable();
-	tasklet_schedule(&cvm_oct_tasklet[smp_processor_id()].t);
-	preempt_enable();
+	taskqueue_enqueue(cvm_oct_taskq, &cvm_oct_task);
 }
 #endif
 
@@ -177,7 +162,7 @@ static inline int cvm_oct_check_rcv_error(cvmx_wqe_t *work)
  *
  * @param unused
  */
-void cvm_oct_tasklet_rx(unsigned long unused)
+void cvm_oct_tasklet_rx(void *context, int pending)
 {
 	const int           coreid = cvmx_get_core_num();
 	uint64_t            old_group_mask;
@@ -440,21 +425,17 @@ void cvm_oct_tasklet_rx(unsigned long unused)
 
 void cvm_oct_rx_initialize(void)
 {
-#if 0
-	int i;
-	/* Initialize all of the tasklets */
-	for (i = 0; i < min(mp_ncpus, MAXCPU); i++)
-		tasklet_init(&cvm_oct_tasklet[i].t, cvm_oct_tasklet_rx, 0);
-#endif
+	TASK_INIT(&cvm_oct_task, 0, cvm_oct_tasklet_rx, NULL);
+
+	cvm_oct_taskq = taskqueue_create_fast("oct_rx", M_NOWAIT,
+					      taskqueue_thread_enqueue,
+					      &cvm_oct_taskq);
+	taskqueue_start_threads(&cvm_oct_taskq, min(mp_ncpus, MAXCPU),
+				PI_NET, "octe taskq");
 }
 
 void cvm_oct_rx_shutdown(void)
 {
-#if 0
-	int i;
-	/* Shutdown all of the tasklets */
-	for (i = 0; i < min(mp_ncpus, MAXCPU); i++)
-		tasklet_kill(&cvm_oct_tasklet[i].t);
-#endif
+	panic("%s: not yet implemented.", __func__);
 }
 
