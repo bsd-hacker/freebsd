@@ -156,7 +156,7 @@ static int cvm_oct_common_set_mac_address(struct ifnet *ifp, void *addr)
 		uint8_t *ptr = addr;
 		uint64_t mac = 0;
 		for (i = 0; i < 6; i++)
-			mac = (mac<<8) | (uint64_t)(ptr[i+2]);
+			mac = (mac<<8) | (uint64_t)(ptr[i]);
 
 		gmx_cfg.u64 = cvmx_read_csr(CVMX_GMXX_PRTX_CFG(index, interface));
 		cvmx_write_csr(CVMX_GMXX_PRTX_CFG(index, interface), gmx_cfg.u64 & ~1ull);
@@ -233,7 +233,7 @@ static int cvm_oct_common_change_mtu(struct ifnet *ifp, int new_mtu)
 int cvm_oct_common_init(struct ifnet *ifp)
 {
 	static int count;
-	char mac[8] = {0x00, 0x00,
+	char mac[6] = {
 		octeon_bootinfo->mac_addr_base[0],
 		octeon_bootinfo->mac_addr_base[1],
 		octeon_bootinfo->mac_addr_base[2],
