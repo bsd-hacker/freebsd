@@ -35,6 +35,7 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 #include <sys/mbuf.h>
 #include <sys/socket.h>
 #include <sys/module.h>
+#include <sys/smp.h>
 
 #include <net/ethernet.h>
 #include <net/if.h>
@@ -241,24 +242,20 @@ static void cvm_oct_configure_common_hw(void)
 
 #ifdef SMP
 	if (USE_MULTICORE_RECEIVE) {
-#if 0
-		preempt_disable();
+		critical_enter();
 		{
 			int cpu;
-			for (cpu = 0; cpu < NR_CPUS; cpu++) {
-				if (cpu_online(cpu) &&
-				   (cpu != smp_processor_id())) {
+			for (cpu = 0; cpu < mp_maxid; cpu++) {
+				if (!CPU_ABSENT(cpu) &&
+				   (cpu != PCPU_GET(cpuid))) {
 					cvmx_ciu_intx0_t en;
-					en.u64 = cvmx_read_csr(CVMX_CIU_INTX_EN0(cpu_logical_map(cpu)*2));
+					en.u64 = cvmx_read_csr(CVMX_CIU_INTX_EN0(cpu*2));
 					en.s.workq |= (1<<pow_receive_group);
-					cvmx_write_csr(CVMX_CIU_INTX_EN0(cpu_logical_map(cpu)*2), en.u64);
+					cvmx_write_csr(CVMX_CIU_INTX_EN0(cpu*2), en.u64);
 				}
 			}
 		}
-		preempt_enable();
-#else
-		panic("%s: need to implement CPU enumeration.", __func__);
-#endif
+		critical_exit();
 	}
 #endif
 }

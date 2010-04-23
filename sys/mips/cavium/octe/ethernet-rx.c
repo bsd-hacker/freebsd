@@ -34,6 +34,7 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 #include <sys/kernel.h>
 #include <sys/mbuf.h>
 #include <sys/socket.h>
+#include <sys/smp.h>
 
 #include <net/ethernet.h>
 #include <net/if.h>
@@ -53,7 +54,7 @@ struct cvm_tasklet_wrapper
  * throughput even though in theory it would reduce contantion on the
  * cache lines containing the locks. */
 
-static struct cvm_tasklet_wrapper cvm_oct_tasklet[NR_CPUS]; // __cacheline_aligned_in_smp;
+static struct cvm_tasklet_wrapper cvm_oct_tasklet[MAXCPU]; // __cacheline_aligned_in_smp;
 #endif
 
 /**
@@ -442,7 +443,7 @@ void cvm_oct_rx_initialize(void)
 #if 0
 	int i;
 	/* Initialize all of the tasklets */
-	for (i = 0; i < NR_CPUS; i++)
+	for (i = 0; i < min(mp_ncpus, MAXCPU); i++)
 		tasklet_init(&cvm_oct_tasklet[i].t, cvm_oct_tasklet_rx, 0);
 #endif
 }
@@ -452,7 +453,7 @@ void cvm_oct_rx_shutdown(void)
 #if 0
 	int i;
 	/* Shutdown all of the tasklets */
-	for (i = 0; i < NR_CPUS; i++)
+	for (i = 0; i < min(mp_ncpus, MAXCPU); i++)
 		tasklet_kill(&cvm_oct_tasklet[i].t);
 #endif
 }
