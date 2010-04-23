@@ -27,7 +27,7 @@
  */
 
 /*
- * Cavium Octeon Ethernet pseudo-bus attachment.
+ * Cavium Octeon Ethernet devices.
  */
 
 #include <sys/param.h>
@@ -44,74 +44,64 @@
 #include <sys/sockio.h>
 #include <sys/sysctl.h>
 
-#include "ethernet-common.h"
+#include "wrapper-cvmx-includes.h"
+#include "cavium-ethernet.h"
 
-static void		octebus_identify(driver_t *drv, device_t parent);
-static int		octebus_probe(device_t dev);
-static int		octebus_attach(device_t dev);
-static int		octebus_detach(device_t dev);
-static int		octebus_shutdown(device_t dev);
+static int		octe_probe(device_t dev);
+static int		octe_attach(device_t dev);
+static int		octe_detach(device_t dev);
+static int		octe_shutdown(device_t dev);
 
-static device_method_t octebus_methods[] = {
+static device_method_t octe_methods[] = {
 	/* Device interface */
-	DEVMETHOD(device_identify,	octebus_identify),
-	DEVMETHOD(device_probe,		octebus_probe),
-	DEVMETHOD(device_attach,	octebus_attach),
-	DEVMETHOD(device_detach,	octebus_detach),
-	DEVMETHOD(device_shutdown,	octebus_shutdown),
-
-	/* Bus interface.  */
-	DEVMETHOD(bus_add_child,	bus_generic_add_child),
+	DEVMETHOD(device_probe,		octe_probe),
+	DEVMETHOD(device_attach,	octe_attach),
+	DEVMETHOD(device_detach,	octe_detach),
+	DEVMETHOD(device_shutdown,	octe_shutdown),
 
 	{ 0, 0 }
 };
 
-static driver_t octebus_driver = {
-	"octebus",
-	octebus_methods,
-	1,
+static driver_t octe_driver = {
+	"octe",
+	octe_methods,
+	sizeof (cvm_oct_private_t),
 };
 
-static devclass_t octebus_devclass;
+static devclass_t octe_devclass;
 
-DRIVER_MODULE(octebus, ciu, octebus_driver, octebus_devclass, 0, 0);
+DRIVER_MODULE(octe, octebus, octe_driver, octe_devclass, 0, 0);
 
-static void
-octebus_identify(driver_t *drv, device_t parent)
-{
-	BUS_ADD_CHILD(parent, 0, "octebus", 0);
-}
+static driver_t pow_driver = {
+	"pow",
+	octe_methods,
+	sizeof (cvm_oct_private_t),
+};
+
+static devclass_t pow_devclass;
+
+DRIVER_MODULE(pow, octebus, pow_driver, pow_devclass, 0, 0);
 
 static int
-octebus_probe(device_t dev)
+octe_probe(device_t dev)
 {
-	if (device_get_unit(dev) != 0)
-		return (ENXIO);
-	device_set_desc(dev, "Cavium Octeon Ethernet pseudo-bus");
 	return (0);
 }
 
 static int
-octebus_attach(device_t dev)
+octe_attach(device_t dev)
 {
-	int rv;
-
-	rv = cvm_oct_init_module(dev);
-	if (rv != 0)
-		return (ENXIO);
-
 	return (0);
 }
 
 static int
-octebus_detach(device_t dev)
+octe_detach(device_t dev)
 {
-	cvm_oct_cleanup_module();
 	return (0);
 }
 
 static int
-octebus_shutdown(device_t dev)
+octe_shutdown(device_t dev)
 {
-	return (octebus_detach(dev));
+	return (octe_detach(dev));
 }

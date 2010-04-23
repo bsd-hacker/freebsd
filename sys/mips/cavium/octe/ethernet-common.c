@@ -242,6 +242,7 @@ int cvm_oct_common_init(struct ifnet *ifp)
 		octeon_bootinfo->mac_addr_base[5] + count};
 	cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
 
+	device_attach(priv->dev);
 
 	/* Force the interface to use the POW send if always_use_pow was
 	   specified or it is in the pow send list */
@@ -284,6 +285,7 @@ int cvm_oct_common_init(struct ifnet *ifp)
 	memset(ifp->get_stats(ifp), 0, sizeof(struct ifnet_stats));
 #endif
 
+	if_initname(ifp, device_get_name(priv->dev), device_get_unit(priv->dev));
 	ether_ifattach(ifp, mac);
 
 	return 0;

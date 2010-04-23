@@ -98,9 +98,11 @@ typedef struct {
 	void (*poll)(struct ifnet *ifp);   /* Called periodically to check link status */
 
 	/*
-	 * XXX/juli
-	 * I think we'll need to wrap these with the normal ifnet glue.
+	 * FreeBSD additions.
 	 */
+	device_t dev;
+	struct ifnet *ifp;
+
 	int (*open)(struct ifnet *ifp);
 	int (*stop)(struct ifnet *ifp);
 

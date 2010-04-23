@@ -315,8 +315,9 @@ int cvm_oct_free_work(void *work_queue_entry)
  *
  * @return Zero on success
  */
-int cvm_oct_init_module(void)
+int cvm_oct_init_module(device_t bus)
 {
+	device_t dev;
 	int ifnum;
 	int num_interfaces;
 	int interface;
@@ -358,19 +359,24 @@ int cvm_oct_init_module(void)
 		struct ifnet *ifp;
 
 		printf("\tConfiguring device for POW only access\n");
-		ifp = if_alloc(IFT_ETHER);
-		if (ifp) {
+		dev = BUS_ADD_CHILD(bus, 0, "pow", 0);
+		if (dev != NULL)
+			ifp = if_alloc(IFT_ETHER);
+		if (dev != NULL && ifp != NULL) {
 			/* Initialize the device private structure. */
 			cvm_oct_private_t *priv;
-			
-			priv = malloc(sizeof(cvm_oct_private_t), M_TEMP, M_WAITOK | M_ZERO);
+
+			device_probe(dev);
+			priv = device_get_softc(dev);
+			priv->dev = dev;
+			priv->ifp = ifp;
 			priv->init = cvm_oct_common_init;
 			priv->imode = CVMX_HELPER_INTERFACE_MODE_DISABLED;
 			priv->port = CVMX_PIP_NUM_INPUT_PORTS;
 			priv->queue = -1;
 
 			if_initname(ifp, "pow", 0);
-			if_printf(ifp, "Cavium Octeon POW Ethernet\n");
+			device_set_desc(dev, "Cavium Octeon POW Ethernet\n");
 #if 0
 			for (qos = 0; qos < 16; qos++)
 				m_queue_head_init(&priv->tx_free_list[qos]);
@@ -402,8 +408,10 @@ int cvm_oct_init_module(void)
 			cvm_oct_private_t *priv;
 			struct ifnet *ifp;
 			
-			ifp = if_alloc(IFT_ETHER);
-			if (!ifp) {
+			dev = BUS_ADD_CHILD(bus, 0, "octe", ifnum++);
+			if (dev != NULL)
+				ifp = if_alloc(IFT_ETHER);
+			if (dev == NULL || ifp == NULL) {
 				printf("\t\tFailed to allocate ethernet device for port %d\n", port);
 				continue;
 			}
@@ -414,7 +422,10 @@ int cvm_oct_init_module(void)
 #endif
 
 			/* Initialize the device private structure. */
-			priv = malloc(sizeof(cvm_oct_private_t), M_TEMP, M_WAITOK | M_ZERO);
+			device_probe(dev);
+			priv = device_get_softc(dev);
+			priv->dev = dev;
+			priv->ifp = ifp;
 			priv->imode = imode;
 			priv->port = port;
 			priv->queue = cvmx_pko_get_base_queue(priv->port);
@@ -427,8 +438,6 @@ int cvm_oct_init_module(void)
 			for (qos = 0; qos < cvmx_pko_get_num_queues(port); qos++)
 				cvmx_fau_atomic_write32(priv->fau+qos*4, 0);
 
-			if_initname(ifp, "octe", ifnum++);
-
 			switch (priv->imode) {
 
 			/* These types don't support ports to IPD/PKO */
@@ -440,43 +449,43 @@ int cvm_oct_init_module(void)
 			case CVMX_HELPER_INTERFACE_MODE_NPI:
 				priv->init = cvm_oct_common_init;
 				priv->uninit = cvm_oct_common_uninit;
-				if_printf(ifp, "Cavium Octeon NPI Ethernet\n");
+				device_set_desc(dev, "Cavium Octeon NPI Ethernet");
 				break;
 
 			case CVMX_HELPER_INTERFACE_MODE_XAUI:
 				priv->init = cvm_oct_xaui_init;
 				priv->uninit = cvm_oct_xaui_uninit;
-				if_printf(ifp, "Cavium Octeon XAUI Ethernet\n");
+				device_set_desc(dev, "Cavium Octeon XAUI Ethernet");
 				break;
 
 			case CVMX_HELPER_INTERFACE_MODE_LOOP:
 				priv->init = cvm_oct_common_init;
 				priv->uninit = cvm_oct_common_uninit;
-				if_printf(ifp, "Cavium Octeon LOOP Ethernet\n");
+				device_set_desc(dev, "Cavium Octeon LOOP Ethernet");
 				break;
 
 			case CVMX_HELPER_INTERFACE_MODE_SGMII:
 				priv->init = cvm_oct_sgmii_init;
 				priv->uninit = cvm_oct_sgmii_uninit;
-				if_printf(ifp, "Cavium Octeon SGMII Ethernet\n");
+				device_set_desc(dev, "Cavium Octeon SGMII Ethernet");
 				break;
 
 			case CVMX_HELPER_INTERFACE_MODE_SPI:
 				priv->init = cvm_oct_spi_init;
 				priv->uninit = cvm_oct_spi_uninit;
-				if_printf(ifp, "Cavium Octeon SPI Ethernet\n");
+				device_set_desc(dev, "Cavium Octeon SPI Ethernet");
 				break;
 
 			case CVMX_HELPER_INTERFACE_MODE_RGMII:
 				priv->init = cvm_oct_rgmii_init;
 				priv->uninit = cvm_oct_rgmii_uninit;
-				if_printf(ifp, "Cavium Octeon RGMII Ethernet\n");
+				device_set_desc(dev, "Cavium Octeon RGMII Ethernet");
 				break;
 
 			case CVMX_HELPER_INTERFACE_MODE_GMII:
 				priv->init = cvm_oct_rgmii_init;
 				priv->uninit = cvm_oct_rgmii_uninit;
-				if_printf(ifp, "Cavium Octeon GMII Ethernet\n");
+				device_set_desc(dev, "Cavium Octeon GMII Ethernet");
 				break;
 			}
 
