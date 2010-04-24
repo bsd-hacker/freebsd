@@ -203,9 +203,7 @@ void cvm_oct_tasklet_rx(void *context, int pending)
 			else
 				work = NULL;
 		}
-#if 0
-		prefetch(work);
-#endif
+		CVMX_PREFETCH(work, 0);
 		if (work == NULL)
 			break;
 
@@ -224,10 +222,8 @@ void cvm_oct_tasklet_rx(void *context, int pending)
 		mbuf_in_hw = USE_MBUFS_IN_HW && work->word2.s.bufs == 1;
 		if ((mbuf_in_hw)) {
 			m = *(struct mbuf **)(cvm_oct_get_buffer_ptr(work->packet_ptr) - sizeof(void *));
-#if 0
-			CVMX_PREFETCH(m, offsetof(struct mbuf, head));
-			CVMX_PREFETCH(m, offsetof(struct mbuf, len));
-#endif
+			CVMX_PREFETCH(m, offsetof(struct mbuf, m_data));
+			CVMX_PREFETCH(m, offsetof(struct mbuf, m_pkthdr));
 		}
 		CVMX_PREFETCH(cvm_oct_device[work->ipprt], 0);
 		//CVMX_PREFETCH(m, 0);
@@ -248,6 +244,12 @@ void cvm_oct_tasklet_rx(void *context, int pending)
 			m->m_pkthdr.len = m->m_len = work->len;
 
 			packet_not_copied = 1;
+
+			/*
+			 * Adjust the data pointer based on the offset
+			 * of the packet within the buffer.
+			 */
+			m->m_data += (work->packet_ptr.s.back << 7) + (work->packet_ptr.s.addr & 0x7f);
 		} else {
 
 			/* We have to copy the packet. First allocate an
