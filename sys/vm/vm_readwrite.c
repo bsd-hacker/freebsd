@@ -718,7 +718,7 @@ vnode_pager_write(struct vnode *vp, struct uio *uio, int ioflags)
 	ssize_t size, size1, osize, osize1, resid, sresid, written;
 	int error, vn_locked, wpmax, wp, i, pflags;
 	u_int bits;
-	boolean_t vnode_locked, freed, freed1;
+	boolean_t vnode_locked, freed, freed1, first_extend;
 	struct thread *td;
 
 	if (ioflags & (IO_EXT|IO_INVAL|IO_DIRECT))
@@ -734,6 +734,7 @@ vnode_pager_write(struct vnode *vp, struct uio *uio, int ioflags)
 	vn_locked = VOP_ISLOCKED(vp);
 	vnode_locked = TRUE;
 	error = 0;
+	first_extend = TRUE;
 
 	/*
 	 * Reversed logic from vnode_generic_putpages().
@@ -840,7 +841,7 @@ vnode_pager_write(struct vnode *vp, struct uio *uio, int ioflags)
 		/*
 		 * Extend the file if writing past end.
 		 */
-		if (osize1 < uio->uio_offset + size) {
+		if (osize1 < uio->uio_offset + size || first_extend) {
 			if (VOP_ISLOCKED(vp) != LK_EXCLUSIVE) {
 				VOP_UNLOCK(vp, 0);
 				vnode_locked = FALSE;
@@ -856,6 +857,7 @@ vnode_pager_write(struct vnode *vp, struct uio *uio, int ioflags)
 			vattr.va_size = uio->uio_offset + size;
 			error = VOP_EXTEND(vp, td->td_ucred, uio->uio_offset +
 			    size, ioflags);
+			first_extend = FALSE;
 		}
 		if (error != 0)
 			break;

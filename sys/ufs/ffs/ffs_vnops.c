@@ -175,6 +175,18 @@ struct vop_vector ffs_fifoops2 = {
 	.vop_vptofh =		ffs_vptofh,
 };
 
+static void
+ffs_drop_suid(struct inode *ip, struct ucred *cred)
+{
+
+	if (ip->i_mode & (ISUID | ISGID)) {
+		if (priv_check_cred(cred, PRIV_VFS_RETAINSUGID, 0)) {
+			ip->i_mode &= ~(ISUID | ISGID);
+			DIP_SET(ip, i_mode, ip->i_mode);
+		}
+	}
+}
+
 /*
  * Synch an open file.
  */
@@ -818,13 +830,8 @@ ffs_write(ap)
 	 * we clear the setuid and setgid bits as a precaution against
 	 * tampering.
 	 */
-	if ((ip->i_mode & (ISUID | ISGID)) && resid > uio->uio_resid &&
-	    ap->a_cred) {
-		if (priv_check_cred(ap->a_cred, PRIV_VFS_RETAINSUGID, 0)) {
-			ip->i_mode &= ~(ISUID | ISGID);
-			DIP_SET(ip, i_mode, ip->i_mode);
-		}
-	}
+	if (resid > uio->uio_resid && ap->a_cred != NULL)
+		ffs_drop_suid(ip, ap->a_cred);
 	if (error) {
 		if (ioflag & IO_UNIT) {
 			(void)ffs_truncate(vp, osize,
@@ -1829,6 +1836,7 @@ ffs_extend(struct vop_extend_args *ap)
 	ip->i_size = size;
 	DIP_SET(ip, i_size, size);
 	ip->i_flag |= IN_CHANGE | IN_UPDATE;
+	ffs_drop_suid(ip, ap->a_cred);
 	return (0);
 
  slow:
@@ -1847,5 +1855,7 @@ ffs_extend(struct vop_extend_args *ap)
 		error = ffs_update(vp, 1);
 	} else
 		bawrite(bp);
+	if (error == 0)
+		ffs_drop_suid(ip, ap->a_cred);
 	return (error);
 }
