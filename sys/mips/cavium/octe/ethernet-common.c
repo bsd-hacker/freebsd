@@ -182,7 +182,7 @@ static int cvm_oct_common_set_mac_address(struct ifnet *ifp, void *addr)
  * @param new_mtu The new MTU
  * @return Zero on success
  */
-static int cvm_oct_common_change_mtu(struct ifnet *ifp, int new_mtu)
+int cvm_oct_common_change_mtu(struct ifnet *ifp, int new_mtu)
 {
 	cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
 	int interface = INTERFACE(priv->port);
@@ -261,20 +261,10 @@ int cvm_oct_common_init(struct ifnet *ifp)
 #endif
 	count++;
 
-	/*
-	 * XXX
-	 * Need to set:
-	 * 	if_init
-	 * 	if_ioctl
-	 * 	if_start
-	 */
-	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
-
 #if 0
 	ifp->get_stats          = cvm_oct_common_get_stats;
 	ifp->set_mac_address    = cvm_oct_common_set_mac_address;
 	ifp->set_multicast_list = cvm_oct_common_set_multicast_list;
-	ifp->change_mtu         = cvm_oct_common_change_mtu;
 	ifp->do_ioctl           = cvm_oct_ioctl;
 	ifp->features           |= NETIF_F_LLTX; /* We do our own locking, Linux doesn't need to */
 	SET_ETHTOOL_OPS(ifp, &cvm_oct_ethtool_ops);

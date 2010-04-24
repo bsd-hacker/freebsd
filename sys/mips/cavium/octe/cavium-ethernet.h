@@ -112,6 +112,7 @@ typedef struct {
 	void (*uninit)(struct ifnet *ifp);
 
 	struct ifmedia media;
+	int if_flags;
 } cvm_oct_private_t;
 
 

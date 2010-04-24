@@ -30,6 +30,8 @@
  * Cavium Octeon Ethernet devices.
  *
  * XXX This file should be moved to if_octe.c
+ * XXX The driver may have sufficient locking but we need locking to protect
+ *     the interfaces presented here, right?
  */
 
 #include <sys/param.h>
@@ -53,10 +55,15 @@
 #include "wrapper-cvmx-includes.h"
 #include "cavium-ethernet.h"
 
+#include "ethernet-common.h"
+
 static int		octe_probe(device_t);
 static int		octe_attach(device_t);
 static int		octe_detach(device_t);
 static int		octe_shutdown(device_t);
+
+static void		octe_init(void *);
+static void		octe_stop(void *);
 
 static int		octe_medchange(struct ifnet *);
 static void		octe_medstat(struct ifnet *, struct ifmediareq *);
@@ -114,7 +121,11 @@ octe_attach(device_t dev)
 	ifmedia_add(&priv->media, IFM_ETHER | IFM_AUTO, 0, NULL);
 	ifmedia_set(&priv->media, IFM_ETHER | IFM_AUTO);
 
+	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
+	ifp->if_init = octe_init;
 	ifp->if_ioctl = octe_ioctl;
+
+	priv->if_flags = ifp->if_flags;
 
 	return (0);
 }
@@ -129,6 +140,32 @@ static int
 octe_shutdown(device_t dev)
 {
 	return (octe_detach(dev));
+}
+
+static void
+octe_init(void *arg)
+{
+	struct ifnet *ifp;
+	cvm_oct_private_t *priv;
+
+	priv = arg;
+	ifp = priv->ifp;
+
+	if (priv->open != NULL)
+		priv->open(ifp);
+}
+
+static void
+octe_stop(void *arg)
+{
+	struct ifnet *ifp;
+	cvm_oct_private_t *priv;
+
+	priv = arg;
+	ifp = priv->ifp;
+
+	if (priv->stop != NULL)
+		priv->stop(ifp);
 }
 
 static int
@@ -191,6 +228,23 @@ octe_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	ifr = (struct ifreq *)data;
 
 	switch (cmd) {
+	case SIOCSIFFLAGS:
+		if ((ifp->if_flags & IFF_UP) != 0) {
+			if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0)
+				octe_init(ifp);
+		} else {
+			if ((ifp->if_drv_flags & IFF_DRV_RUNNING) != 0)
+				octe_stop(ifp);
+		}
+		priv->if_flags = ifp->if_flags;
+		return (0);
+
+	case SIOCSIFMTU:
+		error = cvm_oct_common_change_mtu(ifp, ifr->ifr_mtu);
+		if (error != 0)
+			return (EINVAL);
+		return (0);
+
 	case SIOCSIFMEDIA:
 	case SIOCGIFMEDIA:
 		error = ifmedia_ioctl(ifp, ifr, &priv->media, cmd);

@@ -30,6 +30,8 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 int cvm_oct_common_init(struct ifnet *ifp);
 void cvm_oct_common_uninit(struct ifnet *ifp);
 
+int cvm_oct_common_change_mtu(struct ifnet *ifp, int new_mtu);
+
 int cvm_oct_init_module(device_t);
 void cvm_oct_cleanup_module(void);
 
