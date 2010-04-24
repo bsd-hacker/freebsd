@@ -253,11 +253,9 @@ int cvm_oct_common_init(struct ifnet *ifp)
 
 #if 0
 	if (priv->queue != -1) {
-		ifp->hard_start_xmit = cvm_oct_xmit;
 		if (USE_HW_TCPUDP_CHECKSUM)
 			ifp->features |= NETIF_F_IP_CSUM;
-	} else
-		ifp->hard_start_xmit = cvm_oct_xmit_pow;
+	}
 #endif
 	count++;
 

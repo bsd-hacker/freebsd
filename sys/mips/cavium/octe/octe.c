@@ -48,6 +48,7 @@
 #include <sys/sockio.h>
 #include <sys/sysctl.h>
 
+#include <net/bpf.h>
 #include <net/ethernet.h>
 #include <net/if.h>
 #include <net/if_media.h>
@@ -60,7 +61,9 @@
 #include "cavium-ethernet.h"
 
 #include "ethernet-common.h"
+#include "ethernet-defines.h"
 #include "ethernet-mdio.h"
+#include "ethernet-tx.h"
 
 #include "miibus_if.h"
 
@@ -74,6 +77,7 @@ static int		octe_miibus_writereg(device_t, int, int, int);
 
 static void		octe_init(void *);
 static void		octe_stop(void *);
+static void		octe_start(struct ifnet *);
 
 static int		octe_mii_medchange(struct ifnet *);
 static void		octe_mii_medstat(struct ifnet *, struct ifmediareq *);
@@ -129,6 +133,7 @@ octe_attach(device_t dev)
 {
 	struct ifnet *ifp;
 	cvm_oct_private_t *priv;
+	unsigned qos;
 	int error;
 
 	priv = device_get_softc(dev);
@@ -153,10 +158,20 @@ octe_attach(device_t dev)
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
 	ifp->if_init = octe_init;
 	ifp->if_ioctl = octe_ioctl;
+	ifp->if_start = octe_start;
 
 	priv->if_flags = ifp->if_flags;
 
+	for (qos = 0; qos < 16; qos++) {
+		mtx_init(&priv->tx_free_queue[qos].ifq_mtx, ifp->if_xname, "octe tx free queue", MTX_DEF);
+		IFQ_SET_MAXLEN(&priv->tx_free_queue[qos], MAX_OUT_QUEUE_DEPTH);
+	}
+
 	ether_ifattach(ifp, priv->mac);
+
+	IFQ_SET_MAXLEN(&ifp->if_snd, 16);
+	ifp->if_snd.ifq_drv_maxlen = 16; /* XXX */
+	IFQ_SET_READY(&ifp->if_snd);
 
 	return (0);
 }
@@ -211,6 +226,9 @@ octe_init(void *arg)
 
 	if (priv->miibus != NULL)
 		mii_mediachg(device_get_softc(priv->miibus));
+
+        ifp->if_drv_flags |= IFF_DRV_RUNNING;
+        ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
 }
 
 static void
@@ -224,6 +242,46 @@ octe_stop(void *arg)
 
 	if (priv->stop != NULL)
 		priv->stop(ifp);
+
+	ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
+}
+
+static void
+octe_start(struct ifnet *ifp)
+{
+	cvm_oct_private_t *priv;
+	struct mbuf *m;
+	int error;
+
+	priv = ifp->if_softc;
+
+	if ((ifp->if_drv_flags & (IFF_DRV_RUNNING | IFF_DRV_OACTIVE)) != IFF_DRV_RUNNING)
+		return;
+
+	while (!IFQ_DRV_IS_EMPTY(&ifp->if_snd)) {
+		IFQ_DRV_DEQUEUE(&ifp->if_snd, m);
+
+		if (priv->queue != -1) {
+			error = cvm_oct_xmit(m, ifp);
+		} else {
+			error = cvm_oct_xmit_pow(m, ifp);
+		}
+
+		if (error != 0) {
+			/*
+			 * XXX
+			 * Need to implement freeing and clearing of
+			 * OACTIVE at some point.
+			 *
+			 * XXX
+			 * Incremenet errors?  Maybe make xmit functions
+			 * not free the packets?
+			 */
+			ifp->if_drv_flags |= IFF_DRV_OACTIVE;
+		}
+
+		BPF_MTAP(ifp, m);
+	}
 }
 
 static int
@@ -283,7 +341,7 @@ octe_medstat(struct ifnet *ifp, struct ifmediareq *ifm)
 
 	link_info.u64 = priv->link_info;
 
-        if (!link_info.s.link_up)
+	if (!link_info.s.link_up)
 		return;
 
 	ifm->ifm_status |= IFM_ACTIVE;

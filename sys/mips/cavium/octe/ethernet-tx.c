@@ -72,9 +72,7 @@ int cvm_oct_xmit(struct mbuf *m, struct ifnet *ifp)
 	int32_t in_use;
 	int32_t buffers_to_free;
 #if REUSE_MBUFS_WITHOUT_FREE
-#if 0
 	unsigned char *fpa_head;
-#endif
 #endif
 
 	/* Prefetch the private data structure.
@@ -115,7 +113,7 @@ int cvm_oct_xmit(struct mbuf *m, struct ifnet *ifp)
 	   68 bytes whenever we are in half duplex mode. We don't handle
 	   the case of having a small packet but no room to add the padding.
 	   The kernel should always give us at least a cache line */
-	if ((m->m_pkthdr.len < 64) && OCTEON_IS_MODEL(OCTEON_CN3XXX)) {
+	if (__predict_false(m->m_pkthdr.len < 64) && OCTEON_IS_MODEL(OCTEON_CN3XXX)) {
 		cvmx_gmxx_prtx_cfg_t gmx_prt_cfg;
 		int interface = INTERFACE(priv->port);
 		int index = INDEX(priv->port);
@@ -124,27 +122,25 @@ int cvm_oct_xmit(struct mbuf *m, struct ifnet *ifp)
 			/* We only need to pad packet in half duplex mode */
 			gmx_prt_cfg.u64 = cvmx_read_csr(CVMX_GMXX_PRTX_CFG(index, interface));
 			if (gmx_prt_cfg.s.duplex == 0) {
-				panic("%s: small packet padding not yet implemented.", __func__);
-#if 0
-				int add_bytes = 64 - m->len;
-				if ((m_tail_pointer(m) + add_bytes) <= m_end_pointer(m))
-					memset(__m_put(m, add_bytes), 0, add_bytes);
-#endif
+				static uint8_t pad[64];
+
+				if (!m_append(m, sizeof pad - m->m_pkthdr.len, pad))
+					printf("%s: unable to padd small packet.", __func__);
 			}
 		}
 	}
 
 	/* Build the PKO buffer pointer */
-	/*
-	 * XXX/juli
-	 * Implement mbuf loading.
-	 */
-#if 0
+	if (m->m_pkthdr.len != m->m_len) {
+		m = m_defrag(m, M_DONTWAIT);
+		if (m->m_pkthdr.len != m->m_len)
+			panic("%s: need to load multiple segments.", __func__);
+	}
+
 	hw_buffer.u64 = 0;
 	hw_buffer.s.addr = cvmx_ptr_to_phys(m->m_data);
 	hw_buffer.s.pool = 0;
-	hw_buffer.s.size = (unsigned long)m_end_pointer(m) - (unsigned long)m->head;
-#endif
+	hw_buffer.s.size = m->m_len;
 
 	/* Build the PKO command */
 	pko_command.u64 = 0;
@@ -164,7 +160,6 @@ int cvm_oct_xmit(struct mbuf *m, struct ifnet *ifp)
 	   the define REUSE_MBUFS_WITHOUT_FREE. The reuse of buffers has
 	   shown a 25% increase in performance under some loads */
 #if REUSE_MBUFS_WITHOUT_FREE
-#if 0
 	fpa_head = m->head + 128 - ((unsigned long)m->head&0x7f);
 	if (__predict_false(m->data < fpa_head)) {
 		/*
@@ -248,9 +243,6 @@ int cvm_oct_xmit(struct mbuf *m, struct ifnet *ifp)
 #endif /* CONFIG_NET_SCHED */
 
 dont_put_mbuf_in_hw:
-#else
-#endif
-	panic("%s: not ready for REUSE_MBUFS_WITHOUT_FREE yet.", __func__);
 #endif /* REUSE_MBUFS_WITHOUT_FREE */
 
 	/* Check if we can use the hardware checksumming */
@@ -285,19 +277,12 @@ dont_put_mbuf_in_hw:
 	cvmx_pko_send_packet_prepare(priv->port, priv->queue + qos, CVMX_PKO_LOCK_CMD_QUEUE);
 
 	/* Drop this packet if we have too many already queued to the HW */
-#if 0
-	if ((m_queue_len(&priv->tx_free_list[qos]) >= MAX_OUT_QUEUE_DEPTH)) {
-		/*
-		DEBUGPRINT("%s: Tx dropped. Too many queued\n", if_name(ifp));
-		*/
+	if (_IF_QFULL(&priv->tx_free_queue[qos])) {
 		dropped = 1;
 	}
 	/* Send the packet to the output queue */
 	else
-#else
-	panic("%s: free queues really not implemented.", __func__);
-#endif
-	if ((cvmx_pko_send_packet_finish(priv->port, priv->queue + qos, pko_command, hw_buffer, CVMX_PKO_LOCK_CMD_QUEUE))) {
+	if (__predict_false(cvmx_pko_send_packet_finish(priv->port, priv->queue + qos, pko_command, hw_buffer, CVMX_PKO_LOCK_CMD_QUEUE))) {
 		DEBUGPRINT("%s: Failed to send the packet\n", if_name(ifp));
 		dropped = 1;
 	}
@@ -308,7 +293,7 @@ dont_put_mbuf_in_hw:
 		cvmx_scratch_write64(CVMX_SCR_SCRATCH+8, old_scratch2);
 	}
 
-	if ((dropped)) {
+	if (__predict_false(dropped)) {
 		m_freem(m);
 		cvmx_fau_atomic_add32(priv->fau+qos*4, -1);
 		ifp->if_oerrors++;
@@ -316,30 +301,26 @@ dont_put_mbuf_in_hw:
 		if (USE_MBUFS_IN_HW) {
 			/* Put this packet on the queue to be freed later */
 			if (pko_command.s.dontfree)
-				panic("%s: need to queue mbuf to free it later.", __func__);
+				IF_ENQUEUE(&priv->tx_free_queue[qos], m);
 			else {
 				cvmx_fau_atomic_add32(FAU_NUM_PACKET_BUFFERS_TO_FREE, -1);
 				cvmx_fau_atomic_add32(priv->fau+qos*4, -1);
 			}
 		} else {
 			/* Put this packet on the queue to be freed later */
-			panic("%s: need to queue mbuf to free it later. (2)", __func__);
+			IF_ENQUEUE(&priv->tx_free_queue[qos], m);
 		}
 	}
 
-	/* Free mbufs not in use by the hardware, possibly two at a time */
-	panic("%s: need to free queued mbufs.", __func__);
-#if 0
-	if (m_queue_len(&priv->tx_free_list[qos]) > in_use) {
-		spin_lock(&priv->tx_free_list[qos].lock);
-		/* Check again now that we have the lock. It might have changed */
-		if (m_queue_len(&priv->tx_free_list[qos]) > in_use)
-			dev_kfree_m(__m_dequeue(&priv->tx_free_list[qos]));
-		if (m_queue_len(&priv->tx_free_list[qos]) > in_use)
-			dev_kfree_m(__m_dequeue(&priv->tx_free_list[qos]));
-		spin_unlock(&priv->tx_free_list[qos].lock);
+	/* Free mbufs not in use by the hardware */
+	if (_IF_QLEN(&priv->tx_free_queue[qos]) > in_use) {
+		IF_LOCK(&priv->tx_free_queue[qos]);
+		while (_IF_QLEN(&priv->tx_free_queue[qos]) > in_use) {
+			_IF_DEQUEUE(&priv->tx_free_queue[qos], m);
+			m_freem(m);
+		}
+		IF_UNLOCK(&priv->tx_free_queue[qos]);
 	}
-#endif
 
 	return 0;
 }
@@ -360,7 +341,7 @@ int cvm_oct_xmit_pow(struct mbuf *m, struct ifnet *ifp)
 
 	/* Get a work queue entry */
 	cvmx_wqe_t *work = cvmx_fpa_alloc(CVMX_FPA_WQE_POOL);
-	if ((work == NULL)) {
+	if (__predict_false(work == NULL)) {
 		DEBUGPRINT("%s: Failed to allocate a work queue entry\n", if_name(ifp));
 		ifp->if_oerrors++;
 		m_freem(m);
@@ -369,7 +350,7 @@ int cvm_oct_xmit_pow(struct mbuf *m, struct ifnet *ifp)
 
 	/* Get a packet buffer */
 	packet_buffer = cvmx_fpa_alloc(CVMX_FPA_PACKET_POOL);
-	if ((packet_buffer == NULL)) {
+	if (__predict_false(packet_buffer == NULL)) {
 		DEBUGPRINT("%s: Failed to allocate a packet buffer\n",
 			   if_name(ifp));
 		cvmx_fpa_free(work, CVMX_FPA_WQE_POOL, DONT_WRITEBACK(1));
@@ -389,11 +370,7 @@ int cvm_oct_xmit_pow(struct mbuf *m, struct ifnet *ifp)
 	/* We have to copy the packet since whoever processes this packet
 	   will free it to a hardware pool. We can't use the trick of
 	   counting outstanding packets like in cvm_oct_xmit */
-#if 0
-	memcpy(copy_location, m->data, m->len);
-#else
-	panic("%s: need to implement mbuf loading.", __func__);
-#endif
+	m_copydata(m, 0, m->m_pkthdr.len, copy_location);
 
 	/* Fill in some of the work queue fields. We may need to add more
 	   if the software at the other end needs them */
@@ -414,6 +391,7 @@ int cvm_oct_xmit_pow(struct mbuf *m, struct ifnet *ifp)
 	work->packet_ptr.s.size = CVMX_FPA_PACKET_POOL_SIZE;
 	work->packet_ptr.s.back = (copy_location - packet_buffer)>>7;
 
+	panic("%s: POW transmit not quite implemented yet.", __func__);
 #if 0
 	if (m->protocol == htons(ETH_P_IP)) {
 		work->word2.s.ip_offset     = 14;
@@ -540,19 +518,19 @@ int cvm_oct_transmit_qos(struct ifnet *ifp, void *work_queue_entry, int do_free,
 	pko_command.s.total_bytes = work->len;
 
 	/* Check if we can use the hardware checksumming */
-	if ((work->word2.s.not_IP || work->word2.s.IP_exc))
+	if (__predict_false(work->word2.s.not_IP || work->word2.s.IP_exc))
 		pko_command.s.ipoffp1 = 0;
 	else
 		pko_command.s.ipoffp1 = ETHER_HDR_LEN + 1;
 
 	/* Send the packet to the output queue */
-	if ((cvmx_pko_send_packet_finish(priv->port, priv->queue + qos, pko_command, hw_buffer, CVMX_PKO_LOCK_CMD_QUEUE))) {
+	if (__predict_false(cvmx_pko_send_packet_finish(priv->port, priv->queue + qos, pko_command, hw_buffer, CVMX_PKO_LOCK_CMD_QUEUE))) {
 		DEBUGPRINT("%s: Failed to send the packet\n", if_name(ifp));
 		dropped = -1;
 	}
 	critical_exit();
 
-	if ((dropped)) {
+	if (__predict_false(dropped)) {
 		if (do_free)
 			cvm_oct_free_work(work);
 		ifp->if_oerrors++;
@@ -571,18 +549,10 @@ int cvm_oct_transmit_qos(struct ifnet *ifp, void *work_queue_entry, int do_free,
  */
 void cvm_oct_tx_shutdown(struct ifnet *ifp)
 {
-#if 0
 	cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
-	unsigned long flags;
 	int qos;
 
 	for (qos = 0; qos < 16; qos++) {
-		spin_lock_irqsave(&priv->tx_free_list[qos].lock, flags);
-		while (m_queue_len(&priv->tx_free_list[qos]))
-			dev_kfree_m_any(__m_dequeue(&priv->tx_free_list[qos]));
-		spin_unlock_irqrestore(&priv->tx_free_list[qos].lock, flags);
+		IF_DRAIN(&priv->tx_free_queue[qos]);
 	}
-#else
-	panic("%s: not yet implemented.", __func__);
-#endif
 }

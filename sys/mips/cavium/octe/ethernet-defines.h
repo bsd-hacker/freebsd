@@ -76,11 +76,15 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 #else
 	#define USE_32BIT_SHARED            0
 	#define USE_MBUFS_IN_HW           1
+#if 0
 	#ifdef CONFIG_NETFILTER
 		#define REUSE_MBUFS_WITHOUT_FREE  0
 	#else
 		#define REUSE_MBUFS_WITHOUT_FREE  1
 	#endif
+#else
+	#define REUSE_MBUFS_WITHOUT_FREE  0
+#endif
 #endif
 
 #define INTERRUPT_LIMIT             10000   /* Max interrupts per second per core */

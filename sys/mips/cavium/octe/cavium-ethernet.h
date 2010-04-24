@@ -92,12 +92,10 @@ typedef struct {
 	int                     queue;          /* PKO hardware queue for the port */
 	int                     fau;            /* Hardware fetch and add to count outstanding tx buffers */
 	int                     imode;          /* Type of port. This is one of the enums in cvmx_helper_interface_mode_t */
-	struct mbuf             *tx_free_list[16];/* List of outstanding tx buffers per queue */
 	/* Keeping intercept_cb close the the part of stats that is most often modified helps throughput. */
 	cvm_oct_callback_t      intercept_cb;   /* Optional intecept callback defined above */
 #if 0
 	struct ifnet_stats stats;          /* Device statistics */
-	struct mii_if_info      mii_info;       /* Generic MII info structure */
 #endif
 	uint64_t                link_info;      /* Last negotiated link state */
 	void (*poll)(struct ifnet *ifp);   /* Called periodically to check link status */
@@ -116,6 +114,8 @@ typedef struct {
 
 	uint8_t mac[6];
 	int phy_id;
+
+	struct ifqueue tx_free_queue[16];
 
 	struct ifmedia media;
 	int if_flags;

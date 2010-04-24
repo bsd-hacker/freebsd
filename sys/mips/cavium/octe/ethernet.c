@@ -396,12 +396,7 @@ int cvm_oct_init_module(device_t bus)
 			priv->port = CVMX_PIP_NUM_INPUT_PORTS;
 			priv->queue = -1;
 
-			if_initname(ifp, "pow", 0);
 			device_set_desc(dev, "Cavium Octeon POW Ethernet\n");
-#if 0
-			for (qos = 0; qos < 16; qos++)
-				m_queue_head_init(&priv->tx_free_list[qos]);
-#endif
 
 			ifp->if_softc = priv;
 
@@ -452,10 +447,6 @@ int cvm_oct_init_module(device_t bus)
 			priv->queue = cvmx_pko_get_base_queue(priv->port);
 			priv->intercept_cb = NULL;
 			priv->fau = fau - cvmx_pko_get_num_queues(port) * 4;
-#if 0
-			for (qos = 0; qos < 16; qos++)
-				m_queue_head_init(&priv->tx_free_list[qos]);
-#endif
 			for (qos = 0; qos < cvmx_pko_get_num_queues(port); qos++)
 				cvmx_fau_atomic_write32(priv->fau+qos*4, 0);
 
