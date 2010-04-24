@@ -46,19 +46,22 @@
 #include <sys/sockio.h>
 #include <sys/sysctl.h>
 
+#include <net/ethernet.h>
 #include <net/if.h>
 #include <net/if_types.h>
 
 #include "wrapper-cvmx-includes.h"
 #include "cavium-ethernet.h"
 
-static int		octe_probe(device_t dev);
-static int		octe_attach(device_t dev);
-static int		octe_detach(device_t dev);
-static int		octe_shutdown(device_t dev);
+static int		octe_probe(device_t);
+static int		octe_attach(device_t);
+static int		octe_detach(device_t);
+static int		octe_shutdown(device_t);
 
-static int		octe_medchange(struct ifnet *ifp);
-static void		octe_medstat(struct ifnet *ifp, struct ifmediareq *ifm);
+static int		octe_medchange(struct ifnet *);
+static void		octe_medstat(struct ifnet *, struct ifmediareq *);
+
+static int		octe_ioctl(struct ifnet *, u_long, caddr_t);
 
 static device_method_t octe_methods[] = {
 	/* Device interface */
@@ -111,6 +114,8 @@ octe_attach(device_t dev)
 	ifmedia_add(&priv->media, IFM_ETHER | IFM_AUTO, 0, NULL);
 	ifmedia_set(&priv->media, IFM_ETHER | IFM_AUTO);
 
+	ifp->if_ioctl = octe_ioctl;
+
 	return (0);
 }
 
@@ -138,10 +143,13 @@ octe_medstat(struct ifnet *ifp, struct ifmediareq *ifm)
 	cvm_oct_private_t *priv;
 	cvmx_helper_link_info_t link_info;
 
+	priv = ifp->if_softc;
+
 	ifm->ifm_status = IFM_AVALID;
 	ifm->ifm_active = IFT_ETHER;
 
-	priv = ifp->if_softc;
+	if (priv->poll == NULL)
+		return;
 	priv->poll(ifp);
 
 	link_info.u64 = priv->link_info;
@@ -170,4 +178,30 @@ octe_medstat(struct ifnet *ifp, struct ifmediareq *ifm)
 		ifm->ifm_active |= IFM_FDX;
 	else
 		ifm->ifm_active |= IFM_HDX;
+}
+
+static int
+octe_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
+{
+	cvm_oct_private_t *priv;
+	struct ifreq *ifr;
+	int error;
+
+	priv = ifp->if_softc;
+	ifr = (struct ifreq *)data;
+
+	switch (cmd) {
+	case SIOCSIFMEDIA:
+	case SIOCGIFMEDIA:
+		error = ifmedia_ioctl(ifp, ifr, &priv->media, cmd);
+		if (error != 0)
+			return (error);
+		return (0);
+	
+	default:
+		error = ether_ioctl(ifp, cmd, data);
+		if (error != 0)
+			return (error);
+		return (0);
+	}
 }
