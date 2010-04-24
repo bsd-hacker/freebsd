@@ -294,7 +294,6 @@ int cvm_oct_common_init(struct ifnet *ifp)
 	memset(ifp->get_stats(ifp), 0, sizeof(struct ifnet_stats));
 #endif
 
-	if_initname(ifp, device_get_name(priv->dev), device_get_unit(priv->dev));
 	ether_ifattach(ifp, mac);
 
 	return 0;

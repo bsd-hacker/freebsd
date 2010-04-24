@@ -28,6 +28,8 @@
 
 /*
  * Cavium Octeon Ethernet devices.
+ *
+ * XXX This file should be moved to if_octe.c
  */
 
 #include <sys/param.h>
@@ -44,6 +46,9 @@
 #include <sys/sockio.h>
 #include <sys/sysctl.h>
 
+#include <net/if.h>
+#include <net/if_types.h>
+
 #include "wrapper-cvmx-includes.h"
 #include "cavium-ethernet.h"
 
@@ -51,6 +56,9 @@ static int		octe_probe(device_t dev);
 static int		octe_attach(device_t dev);
 static int		octe_detach(device_t dev);
 static int		octe_shutdown(device_t dev);
+
+static int		octe_medchange(struct ifnet *ifp);
+static void		octe_medstat(struct ifnet *ifp, struct ifmediareq *ifm);
 
 static device_method_t octe_methods[] = {
 	/* Device interface */
@@ -91,6 +99,18 @@ octe_probe(device_t dev)
 static int
 octe_attach(device_t dev)
 {
+	struct ifnet *ifp;
+	cvm_oct_private_t *priv;
+
+	priv = device_get_softc(dev);
+	ifp = priv->ifp;
+
+	if_initname(ifp, device_get_name(dev), device_get_unit(dev));
+
+	ifmedia_init(&priv->media, 0, octe_medchange, octe_medstat);
+	ifmedia_add(&priv->media, IFM_ETHER | IFM_AUTO, 0, NULL);
+	ifmedia_set(&priv->media, IFM_ETHER | IFM_AUTO);
+
 	return (0);
 }
 
@@ -104,4 +124,50 @@ static int
 octe_shutdown(device_t dev)
 {
 	return (octe_detach(dev));
+}
+
+static int
+octe_medchange(struct ifnet *ifp)
+{
+	return (ENOTSUP);
+}
+
+static void
+octe_medstat(struct ifnet *ifp, struct ifmediareq *ifm)
+{
+	cvm_oct_private_t *priv;
+	cvmx_helper_link_info_t link_info;
+
+	ifm->ifm_status = IFM_AVALID;
+	ifm->ifm_active = IFT_ETHER;
+
+	priv = ifp->if_softc;
+	priv->poll(ifp);
+
+	link_info.u64 = priv->link_info;
+
+        if (!link_info.s.link_up)
+		return;
+
+	ifm->ifm_status |= IFM_ACTIVE;
+
+	switch (link_info.s.speed) {
+	case 10:
+		ifm->ifm_active |= IFM_10_T;
+		break;
+	case 100:
+		ifm->ifm_active |= IFM_100_TX;
+		break;
+	case 1000:
+		ifm->ifm_active |= IFM_1000_T;
+		break;
+	case 10000:
+		ifm->ifm_active |= IFM_10G_T;
+		break;
+	}
+
+	if (link_info.s.full_duplex)
+		ifm->ifm_active |= IFM_FDX;
+	else
+		ifm->ifm_active |= IFM_HDX;
 }

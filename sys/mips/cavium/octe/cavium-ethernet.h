@@ -37,6 +37,8 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 #ifndef CAVIUM_ETHERNET_H
 #define CAVIUM_ETHERNET_H
 
+#include <net/if_media.h>
+
 /**
  * These enumerations are the return codes for the Ethernet
  * driver intercept callback. Depending on the return code,
@@ -108,6 +110,8 @@ typedef struct {
 
 	int (*init)(struct ifnet *ifp);
 	void (*uninit)(struct ifnet *ifp);
+
+	struct ifmedia media;
 } cvm_oct_private_t;
 
 
