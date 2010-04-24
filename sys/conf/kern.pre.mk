@@ -91,8 +91,8 @@ CFLAGS=	${COPTFLAGS} ${C_DIALECT} ${DEBUG} ${CWARNFLAGS}
 CFLAGS+= ${INCLUDES} -D_KERNEL -DHAVE_KERNEL_OPTION_HEADERS -include opt_global.h
 .if ${CC} != "icc"
 CFLAGS+= -fno-common -finline-limit=${INLINE_LIMIT}
-CFLAGS+= --param inline-unit-growth=100
-CFLAGS+= --param large-function-growth=1000
+CFLAGS+= --param inline-unit-growth=1000
+CFLAGS+= --param large-function-growth=100000
 WERROR?= -Werror
 .endif
 
