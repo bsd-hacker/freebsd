@@ -1300,7 +1300,8 @@ retry:
 	if (pdep != NULL && (pde = *pdep)) {
 		if (pde & PG_PS) {
 			if ((pde & PG_RW) || (prot & VM_PROT_WRITE) == 0) {
-				if (pa_tryrelock(pmap, pde & PG_PS_FRAME, &pa))
+				if (pa_tryrelock(pmap, (pde & PG_PS_FRAME) |
+				       (va & PDRMASK), &pa))
 					goto retry;
 
 				m = PHYS_TO_VM_PAGE((pde & PG_PS_FRAME) |
@@ -2356,7 +2357,6 @@ pmap_pv_demote_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa,
 		TAILQ_INSERT_TAIL(&m->md.pv_list, pv, pv_list);
 		vm_page_unlock(m);
 	} while (va < va_last);
-
 }
 
 /*
@@ -2599,12 +2599,9 @@ pmap_demote_pde(pmap_t pmap, pd_entry_t *pde, vm_offset_t va,
 
 	/*
 	 * Demote the pv entry.  This depends on the earlier demotion
-	 * of the mapping.  Specifically, the (re)creation of a per-
-	 * page pv entry might trigger the execution of pmap_collect(),
-	 * which might reclaim a newly (re)created per-page pv entry
-	 * and destroy the associated mapping.  In order to destroy
-	 * the mapping, the PDE must have already changed from mapping
-	 * the 2mpage to referencing the page table page.
+	 * of the mapping.  In order to destroy the mapping, the PDE
+	 * must have already changed from mapping the 2mpage to
+	 * referencing the page table page.
 	 */
 	if ((oldpde & PG_MANAGED) != 0)
 		pmap_pv_demote_pde(pmap, va, oldpde & PG_PS_FRAME, pv_list);
@@ -2687,7 +2684,6 @@ pmap_remove_pde(pmap_t pmap, pd_entry_t *pdq, vm_offset_t sva,
 	}
 	return (pmap_unuse_pt(pmap, sva, *pmap_pdpe(pmap, sva), free));
 }
-
 
 /*
  * pmap_remove_pte: do the things to unmap a page in a process
