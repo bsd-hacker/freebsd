@@ -278,6 +278,7 @@ octe_start(struct ifnet *ifp)
 			 * not free the packets?
 			 */
 			ifp->if_drv_flags |= IFF_DRV_OACTIVE;
+			return;
 		}
 
 		BPF_MTAP(ifp, m);

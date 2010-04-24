@@ -322,7 +322,7 @@ dont_put_mbuf_in_hw:
 		IF_UNLOCK(&priv->tx_free_queue[qos]);
 	}
 
-	return 0;
+	return dropped;
 }
 
 
