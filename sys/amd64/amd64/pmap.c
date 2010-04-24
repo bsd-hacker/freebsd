@@ -2336,7 +2336,12 @@ pmap_pv_demote_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa,
 	vm_page_lock(m);
 	TAILQ_INSERT_TAIL(&m->md.pv_list, pv, pv_list);
 	vm_page_unlock(m);
-	
+	/* We open ourselves up to an LOR by doing the page lock acquisitions
+	 * with the pmap lock held - which raises the question as to whether
+	 * we should use pa_tryrelock (can the pmap be corrupted if we allow it
+	 * to be changed during a demotion?) or should we lock the entire range
+	 * in advance? Either option is a bit awkward.
+	 */
 	/* Instantiate the remaining NPTEPG - 1 pv entries. */
 	va_last = va + NBPDR - PAGE_SIZE;
 	do {
@@ -2908,6 +2913,13 @@ restart:
 		 * Check for large page.
 		 */
 		if ((ptpaddr & PG_PS) != 0) {
+			/*
+			 * I think we only need this in case pmap_demote_pde
+			 * is called and the page is managed, so in principle
+			 * we should check if the page is managed - but we
+			 * also potentially need the whole range so this
+			 * acquisition may provide no benefit at all
+			 */
 			if (pa_tryrelock(pmap, ptpaddr & PG_FRAME, &pa)) {
 				va_next = sva;
 				continue;
