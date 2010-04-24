@@ -85,6 +85,9 @@ typedef cvm_oct_callback_result_t (*cvm_oct_callback_t)(struct ifnet *ifp, void 
  * driver state stored in ifp->if_softc.
  */
 typedef struct {
+	/* XXX FreeBSD device softcs must start with an ifnet pointer.  */
+	struct ifnet *ifp;
+
 	int                     port;           /* PKO hardware output port */
 	int                     queue;          /* PKO hardware queue for the port */
 	int                     fau;            /* Hardware fetch and add to count outstanding tx buffers */
@@ -103,13 +106,16 @@ typedef struct {
 	 * FreeBSD additions.
 	 */
 	device_t dev;
-	struct ifnet *ifp;
+	device_t miibus;
 
 	int (*open)(struct ifnet *ifp);
 	int (*stop)(struct ifnet *ifp);
 
 	int (*init)(struct ifnet *ifp);
 	void (*uninit)(struct ifnet *ifp);
+
+	uint8_t mac[6];
+	int phy_id;
 
 	struct ifmedia media;
 	int if_flags;

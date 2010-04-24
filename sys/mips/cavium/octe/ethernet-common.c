@@ -151,6 +151,8 @@ static int cvm_oct_common_set_mac_address(struct ifnet *ifp, void *addr)
 	int interface = INTERFACE(priv->port);
 	int index = INDEX(priv->port);
 
+	memcpy(priv->mac, addr, 6);
+
 	if ((interface < 2) && (cvmx_helper_interface_get_mode(interface) != CVMX_HELPER_INTERFACE_MODE_SPI)) {
 		int i;
 		uint8_t *ptr = addr;
@@ -242,8 +244,6 @@ int cvm_oct_common_init(struct ifnet *ifp)
 		octeon_bootinfo->mac_addr_base[5] + count};
 	cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
 
-	device_attach(priv->dev);
-
 	/* Force the interface to use the POW send if always_use_pow was
 	   specified or it is in the pow send list */
 	if ((pow_send_group != -1) && (always_use_pow || strstr(pow_send_list, if_name(ifp))))
@@ -265,9 +265,7 @@ int cvm_oct_common_init(struct ifnet *ifp)
 	ifp->get_stats          = cvm_oct_common_get_stats;
 	ifp->set_mac_address    = cvm_oct_common_set_mac_address;
 	ifp->set_multicast_list = cvm_oct_common_set_multicast_list;
-	ifp->do_ioctl           = cvm_oct_ioctl;
 	ifp->features           |= NETIF_F_LLTX; /* We do our own locking, Linux doesn't need to */
-	SET_ETHTOOL_OPS(ifp, &cvm_oct_ethtool_ops);
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	ifp->poll_controller    = cvm_oct_poll_controller;
 #endif
@@ -284,7 +282,7 @@ int cvm_oct_common_init(struct ifnet *ifp)
 	memset(ifp->get_stats(ifp), 0, sizeof(struct ifnet_stats));
 #endif
 
-	ether_ifattach(ifp, mac);
+	device_attach(priv->dev);
 
 	return 0;
 }

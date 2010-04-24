@@ -50,20 +50,33 @@
 
 #include <net/ethernet.h>
 #include <net/if.h>
+#include <net/if_media.h>
 #include <net/if_types.h>
+
+#include <dev/mii/mii.h>
+#include <dev/mii/miivar.h>
 
 #include "wrapper-cvmx-includes.h"
 #include "cavium-ethernet.h"
 
 #include "ethernet-common.h"
+#include "ethernet-mdio.h"
+
+#include "miibus_if.h"
 
 static int		octe_probe(device_t);
 static int		octe_attach(device_t);
 static int		octe_detach(device_t);
 static int		octe_shutdown(device_t);
 
+static int		octe_miibus_readreg(device_t, int, int);
+static int		octe_miibus_writereg(device_t, int, int, int);
+
 static void		octe_init(void *);
 static void		octe_stop(void *);
+
+static int		octe_mii_medchange(struct ifnet *);
+static void		octe_mii_medstat(struct ifnet *, struct ifmediareq *);
 
 static int		octe_medchange(struct ifnet *);
 static void		octe_medstat(struct ifnet *, struct ifmediareq *);
@@ -77,6 +90,10 @@ static device_method_t octe_methods[] = {
 	DEVMETHOD(device_detach,	octe_detach),
 	DEVMETHOD(device_shutdown,	octe_shutdown),
 
+	/* MII interface */
+	DEVMETHOD(miibus_readreg,	octe_miibus_readreg),
+	DEVMETHOD(miibus_writereg,	octe_miibus_writereg),
+
 	{ 0, 0 }
 };
 
@@ -89,6 +106,7 @@ static driver_t octe_driver = {
 static devclass_t octe_devclass;
 
 DRIVER_MODULE(octe, octebus, octe_driver, octe_devclass, 0, 0);
+DRIVER_MODULE(miibus, octe, miibus_driver, miibus_devclass, 0, 0);
 
 static driver_t pow_driver = {
 	"pow",
@@ -111,6 +129,7 @@ octe_attach(device_t dev)
 {
 	struct ifnet *ifp;
 	cvm_oct_private_t *priv;
+	int error;
 
 	priv = device_get_softc(dev);
 	ifp = priv->ifp;
@@ -118,14 +137,26 @@ octe_attach(device_t dev)
 	if_initname(ifp, device_get_name(dev), device_get_unit(dev));
 
 	ifmedia_init(&priv->media, 0, octe_medchange, octe_medstat);
-	ifmedia_add(&priv->media, IFM_ETHER | IFM_AUTO, 0, NULL);
-	ifmedia_set(&priv->media, IFM_ETHER | IFM_AUTO);
+	if (priv->phy_id == -1) {
+		ifmedia_add(&priv->media, IFM_ETHER | IFM_AUTO, 0, NULL);
+		ifmedia_set(&priv->media, IFM_ETHER | IFM_AUTO);
+	} else {
+		error = mii_phy_probe(dev, &priv->miibus, octe_mii_medchange,
+				      octe_mii_medstat);
+		if (error != 0) {
+			device_printf(dev, "could not find PHY!\n");
+			/* XXX Cleanup.  */
+			return (error);
+		}
+	}
 
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
 	ifp->if_init = octe_init;
 	ifp->if_ioctl = octe_ioctl;
 
 	priv->if_flags = ifp->if_flags;
+
+	ether_ifattach(ifp, priv->mac);
 
 	return (0);
 }
@@ -142,6 +173,28 @@ octe_shutdown(device_t dev)
 	return (octe_detach(dev));
 }
 
+static int
+octe_miibus_readreg(device_t dev, int phy, int reg)
+{
+	cvm_oct_private_t *priv;
+
+	priv = device_get_softc(dev);
+
+	return (cvm_oct_mdio_read(priv->ifp, phy, reg));
+}
+
+static int
+octe_miibus_writereg(device_t dev, int phy, int reg, int val)
+{
+	cvm_oct_private_t *priv;
+
+	priv = device_get_softc(dev);
+
+	cvm_oct_mdio_write(priv->ifp, phy, reg, val);
+
+	return (0);
+}
+
 static void
 octe_init(void *arg)
 {
@@ -151,8 +204,13 @@ octe_init(void *arg)
 	priv = arg;
 	ifp = priv->ifp;
 
+	octe_stop(priv);
+
 	if (priv->open != NULL)
 		priv->open(ifp);
+
+	if (priv->miibus != NULL)
+		mii_mediachg(device_get_softc(priv->miibus));
 }
 
 static void
@@ -166,6 +224,40 @@ octe_stop(void *arg)
 
 	if (priv->stop != NULL)
 		priv->stop(ifp);
+}
+
+static int
+octe_mii_medchange(struct ifnet *ifp)
+{
+	cvm_oct_private_t *priv;
+	struct mii_data *mii;
+
+	priv = ifp->if_softc;
+	mii = device_get_softc(priv->miibus);
+
+	if (mii->mii_instance) {
+		struct mii_softc *miisc;
+
+		LIST_FOREACH(miisc, &mii->mii_phys, mii_list)
+			mii_phy_reset(miisc);
+	}
+	mii_mediachg(mii);
+
+	return (0);
+}
+
+static void
+octe_mii_medstat(struct ifnet *ifp, struct ifmediareq *ifm)
+{
+	cvm_oct_private_t *priv;
+	struct mii_data *mii;
+
+	priv = ifp->if_softc;
+	mii = device_get_softc(priv->miibus);
+
+	mii_pollstat(mii);
+	ifm->ifm_active = mii->mii_media_active;
+	ifm->ifm_status = mii->mii_media_status;
 }
 
 static int
@@ -221,6 +313,7 @@ static int
 octe_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 {
 	cvm_oct_private_t *priv;
+	struct mii_data *mii;
 	struct ifreq *ifr;
 	int error;
 
@@ -231,10 +324,10 @@ octe_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	case SIOCSIFFLAGS:
 		if ((ifp->if_flags & IFF_UP) != 0) {
 			if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0)
-				octe_init(ifp);
+				octe_init(priv);
 		} else {
 			if ((ifp->if_drv_flags & IFF_DRV_RUNNING) != 0)
-				octe_stop(ifp);
+				octe_stop(priv);
 		}
 		priv->if_flags = ifp->if_flags;
 		return (0);
@@ -247,6 +340,13 @@ octe_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 
 	case SIOCSIFMEDIA:
 	case SIOCGIFMEDIA:
+		if (priv->miibus != NULL) {
+			mii = device_get_softc(priv->miibus);
+			error = ifmedia_ioctl(ifp, ifr, &mii->mii_media, cmd);
+			if (error != 0)
+				return (error);
+			return (0);
+		}
 		error = ifmedia_ioctl(ifp, ifr, &priv->media, cmd);
 		if (error != 0)
 			return (error);

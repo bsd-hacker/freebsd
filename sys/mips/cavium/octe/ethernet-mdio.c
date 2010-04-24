@@ -49,7 +49,6 @@ MTX_SYSINIT(cvm_oct_mdio, &mdio_mtx, "MDIO", MTX_DEF);
 #define	MDIO_LOCK()	mtx_lock(&mdio_mtx)
 #define	MDIO_UNLOCK()	mtx_unlock(&mdio_mtx)
 
-#if 0
 /**
  * Perform an MII read. Called by the generic MII routines
  *
@@ -58,11 +57,12 @@ MTX_SYSINIT(cvm_oct_mdio, &mdio_mtx, "MDIO", MTX_DEF);
  * @param location Register location to read
  * @return Result from the read or zero on failure
  */
-static int cvm_oct_mdio_read(struct ifnet *ifp, int phy_id, int location)
+int cvm_oct_mdio_read(struct ifnet *ifp, int phy_id, int location)
 {
 	cvmx_smi_cmd_t          smi_cmd;
 	cvmx_smi_rd_dat_t       smi_rd;
 
+	MDIO_LOCK();
 	smi_cmd.u64 = 0;
 	smi_cmd.s.phy_op = 1;
 	smi_cmd.s.phy_adr = phy_id;
@@ -70,20 +70,19 @@ static int cvm_oct_mdio_read(struct ifnet *ifp, int phy_id, int location)
 	cvmx_write_csr(CVMX_SMI_CMD, smi_cmd.u64);
 
 	do {
+#if 0
 		if (!in_interrupt())
 			yield();
+#endif
 		smi_rd.u64 = cvmx_read_csr(CVMX_SMI_RD_DAT);
 	} while (smi_rd.s.pending);
+
+	MDIO_UNLOCK();
 
 	if (smi_rd.s.val)
 		return smi_rd.s.dat;
 	else
 		return 0;
-}
-
-static int cvm_oct_mdio_dummy_read(struct ifnet *ifp, int phy_id, int location)
-{
-    return 0xffff;
 }
 
 
@@ -95,11 +94,12 @@ static int cvm_oct_mdio_dummy_read(struct ifnet *ifp, int phy_id, int location)
  * @param location Register location to write
  * @param val      Value to write
  */
-static void cvm_oct_mdio_write(struct ifnet *ifp, int phy_id, int location, int val)
+void cvm_oct_mdio_write(struct ifnet *ifp, int phy_id, int location, int val)
 {
 	cvmx_smi_cmd_t          smi_cmd;
 	cvmx_smi_wr_dat_t       smi_wr;
 
+	MDIO_LOCK();
 	smi_wr.u64 = 0;
 	smi_wr.s.dat = val;
 	cvmx_write_csr(CVMX_SMI_WR_DAT, smi_wr.u64);
@@ -111,115 +111,14 @@ static void cvm_oct_mdio_write(struct ifnet *ifp, int phy_id, int location, int 
 	cvmx_write_csr(CVMX_SMI_CMD, smi_cmd.u64);
 
 	do {
+#if 0
 		if (!in_interrupt())
 			yield();
+#endif
 		smi_wr.u64 = cvmx_read_csr(CVMX_SMI_WR_DAT);
 	} while (smi_wr.s.pending);
-}
-
-static void cvm_oct_mdio_dummy_write(struct ifnet *ifp, int phy_id, int location, int val)
-{
-}
-
-
-static void cvm_oct_get_drvinfo(struct ifnet *ifp, struct ethtool_drvinfo *info)
-{
-	strcpy(info->driver, "cavium-ethernet");
-	strcpy(info->version, OCTEON_SDK_VERSION_STRING);
-	strcpy(info->bus_info, "Builtin");
-}
-
-
-static int cvm_oct_get_settings(struct ifnet *ifp, struct ethtool_cmd *cmd)
-{
-	cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
-	int ret; 
-
-	MDIO_LOCK();
-	ret = mii_ethtool_gset(&priv->mii_info, cmd);
 	MDIO_UNLOCK();
-
-	return ret;
 }
-
-
-static int cvm_oct_set_settings(struct ifnet *ifp, struct ethtool_cmd *cmd)
-{
-	cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
-	int ret;
-
-	MDIO_LOCK();
-	ret =  mii_ethtool_sset(&priv->mii_info, cmd);
-	MDIO_UNLOCK();
-
-	return ret;
-}
-
-
-static int cvm_oct_nway_reset(struct ifnet *ifp)
-{
-	cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
-	int ret;
-	
-	MDIO_LOCK();
-	ret = mii_nway_restart(&priv->mii_info);
-	MDIO_UNLOCK();
-
-	return ret; 
-}
-
-
-static u32 cvm_oct_get_link(struct ifnet *ifp)
-{
-	cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
-	u32 ret;
-
-	MDIO_LOCK();
-	ret = mii_link_ok(&priv->mii_info);
-	MDIO_UNLOCK();
-
-	return ret; 
-}
-
-
-struct ethtool_ops cvm_oct_ethtool_ops = {
-	.get_drvinfo    = cvm_oct_get_drvinfo,
-	.get_settings   = cvm_oct_get_settings,
-	.set_settings   = cvm_oct_set_settings,
-	.nway_reset     = cvm_oct_nway_reset,
-	.get_link       = cvm_oct_get_link,
-	.get_sg         = ethtool_op_get_sg,
-	.get_tx_csum    = ethtool_op_get_tx_csum,
-};
-#endif
-
-
-/**
- * IOCTL support for PHY control
- *
- * @param dev    Device to change
- * @param rq     the request
- * @param cmd    the command
- * @return Zero on success
- */
-int cvm_oct_ioctl(struct ifnet *ifp, struct ifreq *rq, int cmd)
-{
-#if 0
-	cvm_oct_private_t      *priv = (cvm_oct_private_t *)ifp->if_softc;
-	struct mii_ioctl_data  *data = if_mii(rq);
-	unsigned int            duplex_chg;
-	int ret;
-
-	MDIO_LOCK();
-	ret = generic_mii_ioctl(&priv->mii_info, data, cmd, &duplex_chg);
-	MDIO_UNLOCK();
-
-	return ret; 
-#else
-	panic("%s: not yet implemented.", __func__);
-#endif
-}
-
 
 /**
  * Setup the MDIO device structures
@@ -230,23 +129,10 @@ int cvm_oct_ioctl(struct ifnet *ifp, struct ifreq *rq, int cmd)
  */
 int cvm_oct_mdio_setup_device(struct ifnet *ifp)
 {
-	/*
-	 * XXX/juli
-	 * Once we have a device_t for this interface, attach the MII bus to it.
-	 */
-#if 0
 	cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
-	int phy_id = cvmx_helper_board_get_mii_address(priv->port);
-	if (phy_id != -1) {
-		priv->mii_info.dev = dev;
-		priv->mii_info.phy_id = phy_id;
-		priv->mii_info.phy_id_mask = 0xff;
-		priv->mii_info.supports_gmii = 1;
-		priv->mii_info.reg_num_mask = 0x1f;
-		priv->mii_info.mdio_read = cvm_oct_mdio_read;
-		priv->mii_info.mdio_write = cvm_oct_mdio_write;
-	}
-#endif
+
+	priv->phy_id = cvmx_helper_board_get_mii_address(priv->port);
+
 	return 0;
 }
 
