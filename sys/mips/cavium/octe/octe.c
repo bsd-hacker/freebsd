@@ -250,7 +250,7 @@ static void
 octe_start(struct ifnet *ifp)
 {
 	cvm_oct_private_t *priv;
-	struct mbuf *m;
+	struct mbuf *m, *n;
 	int error;
 
 	priv = ifp->if_softc;
@@ -260,6 +260,31 @@ octe_start(struct ifnet *ifp)
 
 	while (!IFQ_DRV_IS_EMPTY(&ifp->if_snd)) {
 		IFQ_DRV_DEQUEUE(&ifp->if_snd, m);
+
+		/*
+		 * XXX
+		 *
+		 * We may not be able to pass the mbuf up to BPF for one of
+		 * two very good reasons:
+		 * (1) immediately after our inserting it another CPU may be
+		 *     kind enough to free it for us.
+		 * (2) m_defrag gets called on m and we don't get back the
+		 *     modified pointer.
+		 *
+		 * We have some options other than this m_dup route:
+		 * (1) use a mutex or spinlock to prevent another CPU from
+		 *     freeing it.  We could lock the tx_free_list's lock,
+		 *     that would make sense.
+		 * (2) get back the new mbuf pointer.
+		 * (3) do the defrag here.
+		 *
+		 * #3 makes sense in the long run when we have code that can
+		 * load mbufs into any number of segments, but for now the
+		 * transmit code is called with the assumption that it knows
+		 * how to defrag mbufs for itself and that it will handle the
+		 * failure cases internally.
+		 */
+		n = m_dup(m, M_DONTWAIT);
 
 		if (priv->queue != -1) {
 			error = cvm_oct_xmit(m, ifp);
@@ -272,16 +297,17 @@ octe_start(struct ifnet *ifp)
 			 * XXX
 			 * Need to implement freeing and clearing of
 			 * OACTIVE at some point.
-			 *
-			 * XXX
-			 * Incremenet errors?  Maybe make xmit functions
-			 * not free the packets?
 			 */
+			if (n != NULL)
+				IFQ_DRV_PREPEND(&ifp->if_snd, n);
 			ifp->if_drv_flags |= IFF_DRV_OACTIVE;
 			return;
 		}
 
-		BPF_MTAP(ifp, m);
+		if (n != NULL) {
+			BPF_MTAP(ifp, n);
+			m_freem(n);
+		}
 	}
 }
 
