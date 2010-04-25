@@ -251,11 +251,11 @@ caddr_t virtual_sys_start = (caddr_t)0;
 #define	PMAP_LMEM_UNMAP()						\
 	pte = pmap_pte(kernel_pmap, sysm->base);			\
 	*pte = PTE_G;							\
-	pmap_invalidate_page(kernel_pmap, sysm->base);			\
+	pmap_TLB_invalidate_kernel(sysm->base);				\
 	sysm->valid1 = 0;						\
 	pte = pmap_pte(kernel_pmap, sysm->base + PAGE_SIZE);		\
 	*pte = PTE_G;							\
-	pmap_invalidate_page(kernel_pmap, sysm->base + PAGE_SIZE);	\
+	pmap_TLB_invalidate_kernel(sysm->base + PAGE_SIZE);		\
 	sysm->valid2 = 0;						\
 	sched_unpin();							\
 	intr_restore(intr);						\
@@ -2381,8 +2381,7 @@ pmap_remove_pages(pmap_t pmap)
 		*pte = is_kernel_pmap(pmap) ? PTE_G : 0;
 
 		m = PHYS_TO_VM_PAGE(mips_tlbpfn_to_paddr(tpte));
-
-		KASSERT(m < &vm_page_array[vm_page_array_size],
+		KASSERT(m != NULL,
 		    ("pmap_remove_pages: bad tpte %x", tpte));
 
 		pv->pv_pmap->pm_stats.resident_count--;
@@ -2627,6 +2626,20 @@ pmap_clear_modify(vm_page_t m)
 }
 
 /*
+ *	pmap_is_referenced:
+ *
+ *	Return whether or not the specified physical page was referenced
+ *	in any physical maps.
+ */
+boolean_t
+pmap_is_referenced(vm_page_t m)
+{
+
+	return ((m->flags & PG_FICTITIOUS) == 0 &&
+	    (m->md.pv_flags & PV_TABLE_REF) != 0);
+}
+
+/*
  *	pmap_clear_reference:
  *
  *	Clear the reference bit on the specified physical page.
@@ -2751,10 +2764,8 @@ pmap_mincore(pmap_t pmap, vm_offset_t addr)
 		 * Referenced by us or someone
 		 */
 		vm_page_lock_queues();
-		if ((m->flags & PG_REFERENCED) || pmap_ts_referenced(m)) {
+		if ((m->flags & PG_REFERENCED) || pmap_is_referenced(m))
 			val |= MINCORE_REFERENCED | MINCORE_REFERENCED_OTHER;
-			vm_page_flag_set(m, PG_REFERENCED);
-		}
 		vm_page_unlock_queues();
 	}
 	return val;
@@ -2984,10 +2995,12 @@ page_is_managed(vm_offset_t pa)
 {
 	vm_offset_t pgnum = mips_btop(pa);
 
-	if (pgnum >= first_page && (pgnum < (first_page + vm_page_array_size))) {
+	if (pgnum >= first_page) {
 		vm_page_t m;
 
 		m = PHYS_TO_VM_PAGE(pa);
+		if (m == NULL)
+			return 0;
 		if ((m->flags & (PG_FICTITIOUS | PG_UNMANAGED)) == 0)
 			return 1;
 	}
