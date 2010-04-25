@@ -247,7 +247,7 @@ static caddr_t crashdumpmap;
 
 static void	free_pv_entry(pmap_t pmap, pv_entry_t pv);
 static pv_entry_t get_pv_entry(pmap_t locked_pmap);
-static void pmap_pv_demote_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa,
+static void	pmap_pv_demote_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa,
 	struct pv_list_head *pv_list);
 static boolean_t pmap_pv_insert_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa);
 static void	pmap_pv_promote_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa);
@@ -305,10 +305,6 @@ static vm_offset_t pmap_kmem_choose(vm_offset_t addr);
 CTASSERT(1 << PDESHIFT == sizeof(pd_entry_t));
 CTASSERT(1 << PTESHIFT == sizeof(pt_entry_t));
 
-
-#ifdef INVARIANTS
-extern void kdb_backtrace(void);
-#endif
 /*
  * Move the kernel virtual free pointer to the next
  * 2MB.  This is used to help improve performance
@@ -1845,6 +1841,7 @@ _pmap_allocpte(pmap_t pmap, vm_paddr_t pa, vm_pindex_t ptepindex, int flags)
 		pd = &pd[ptepindex & ((1ul << NPDEPGSHIFT) - 1)];
 		*pd = VM_PAGE_TO_PHYS(m) | PG_U | PG_RW | PG_V | PG_A | PG_M;
 	}
+
 	pmap_resident_count_inc(pmap, 1);
 
 	return (m);
@@ -2222,7 +2219,6 @@ get_pv_entry(pmap_t pmap)
 	pv = &pc->pc_pventry[0];
 	TAILQ_INSERT_HEAD(&pmap->pm_pvchunk, pc, pc_list);
 	PV_STAT(pv_entry_spare += _NPCPV - 1);
-
 	return (pv);
 }
 
@@ -2937,7 +2933,6 @@ restart:
 
 		for (pte = pmap_pde_to_pte(pde, sva); sva != va_next; pte++,
 		    sva += PAGE_SIZE) {
-
 			if (*pte == 0)
 				continue;
 
