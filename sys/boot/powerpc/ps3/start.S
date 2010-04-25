@@ -23,6 +23,7 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <machine/trap_aim.h>
 
 /*
  * KBoot and simulators will start this program from the _start symbol, with
@@ -38,7 +39,6 @@
 
 #define CACHELINE_SIZE			128
 #define SPR_CTRL			136
-#define TMPSTKSZ			4096
 
 /* KBoot thread 0 entry -- do relocation, then jump to main */
 .global _start
@@ -50,8 +50,7 @@ _start:
 	cmpwi	%r4,0
 	bne	relocate_self
 relocated_start:
-	lis	%r1,(tmpstk+TMPSTKSZ-16)@ha
-	addi	%r1,%r1,(tmpstk+TMPSTKSZ-16)@l
+	lis	%r1,0x100
 	bl	main
 
 . = 0x40
@@ -74,43 +73,89 @@ thread1_start:
 	li	%r3,secondary_spin_sem@l
 1:	lwz	%r1,0(%r3)	/* Spin on SECONDARY_SPIN_SEM_ADDRESS */
 	cmpwi	%r1,0
-	beq	1b
+	beq	1b		/* If the semaphore is still zero, spin again */
+
+	/* We have been woken up by thread 0 */
 	li	%r0,0x100	/* Invalidate reset vector cache line */
 	icbi	0,%r0
-	ba	0x100		/* If non-zero, jump to the reset vector */
+	isync
+	sync
+	ba	0x100		/* Jump to the reset vector */
 
-. = 0x100
+. = EXC_RST
 exc_rst:
 	mfmsr   %r31
 	clrldi  %r31,%r31,1
 	mtmsrd  %r31
 	isync
 
-	mfspr	%r0,SPR_CTRL
+	mfspr	%r3,SPR_CTRL
 	/* The first two bits of r0 are 01 (thread 1) or 10 (thread 0) */
-	cntlzd	%r0,%r0		/* Now 0 for thread 0, 1 for thread 1 */
+	cntlzw	%r3,%r3		/* Now 0 for thread 0, 1 for thread 1 */
 
-	cmpwi	%r0,0
+	cmpwi	%r3,0
 	bne	thread1_start	/* Send thread 1 to wait */
 
 	b	relocated_start /* Main entry point for thread 0 */
+
+#define EXCEPTION_HANDLER(exc) \
+. = exc; \
+	li	%r3, exc; \
+	mfsrr0	%r4; \
+	mfmsr	%r5; \
+	clrldi  %r6,%r6,1; \
+	mtmsrd  %r31; \
+	isync; \
+	lis	%r1,0x100; \
+	bl	ppc_exception
+
+EXCEPTION_HANDLER(EXC_MCHK)
+EXCEPTION_HANDLER(EXC_DSI)
+EXCEPTION_HANDLER(EXC_DSE)
+EXCEPTION_HANDLER(EXC_ISI)
+EXCEPTION_HANDLER(EXC_ISE)
+EXCEPTION_HANDLER(EXC_EXI)
+EXCEPTION_HANDLER(EXC_ALI)
+EXCEPTION_HANDLER(EXC_PGM)
+EXCEPTION_HANDLER(EXC_FPU)
+EXCEPTION_HANDLER(EXC_DECR)
+EXCEPTION_HANDLER(EXC_SC)
 
 relocate_self:
 	/* We enter this with r4 the physical offset for our relocation */
 	lis	%r8,_end@ha	/* r8: copy length */
 	addi	%r8,%r8,_end@l
-	li	%r5,0		/* r5: dest address */
+	li	%r5,0x100	/* r5: dest address */
 1:	add	%r6,%r4,%r5	/* r6: source address */
 	ld	%r7,0(%r6)
 	std	%r7,0(%r5)
-	cmpw	%r5,%r8
 	addi	%r5,%r5,8
+	cmpw	%r5,%r8
 	blt	1b
 
+	/*
+	 * Now invalidate the cacheline with the second half of relocate_self,
+	 * and do an absolute branch there in case we overwrote part of
+	 * ourselves.
+	 */
+	
+	lis	%r9,relocate_self_cache@ha
+	addi	%r9,%r9,relocate_self_cache@l
+	dcbst	0,%r9
+	sync
+	icbi	0,%r9
+	sync
+	isync
+	ba	relocate_self_cache
+
+relocate_self_cache:
 	/* Now invalidate the icache */
-	li	%r5,0
+	li	%r5,0x100
 2:	dcbst	0,%r5
+	sync
 	icbi	0,%r5
+	sync
+	isync
 	cmpw	%r5,%r8
 	addi	%r5,%r5,CACHELINE_SIZE
 	blt	2b
@@ -118,7 +163,3 @@ relocate_self:
 	/* All done: absolute jump to relocated entry point */
 	ba	relocated_start
 
-.data
-.align 4
-tmpstk:
-        .space  TMPSTKSZ

@@ -120,11 +120,12 @@ ps3cons_putchar(int c)
 
 	switch (c) {
 	case '\0':
+		break;
 	case '\r':
+		x = 0;
 		break;
 	case '\n':
 		y += FONT_SIZE;
-		x = 0;
 		break;
 	case '\b':
 		x = max(0, x - 8);

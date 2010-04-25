@@ -46,7 +46,7 @@ int
 ps3_getdev(void **vdev, const char *devspec, const char **path)
 {
 	struct devdesc **dev = (struct devdesc **)vdev;
-	int rv;
+	int rv = 0;
 
 	/*
 	 * If it looks like this is just a path and no
@@ -54,10 +54,10 @@ ps3_getdev(void **vdev, const char *devspec, const char **path)
 	 */
 	if ((devspec == NULL) || (devspec[0] == '/') ||
 	    (strchr(devspec, ':') == NULL)) {
+		rv = ps3_parsedev(dev, getenv("currdev"), NULL);
 
-		if (((rv = ps3_parsedev(dev, getenv("currdev"), NULL)) == 0)
-		    && (path != NULL))
-		*path = devspec;
+		if (rv == 0 && path != NULL)
+			*path = devspec;
 		return(rv);
 	}
 
@@ -157,24 +157,13 @@ ps3_parsedev(struct devdesc **dev, const char *devspec, const char **path)
 #endif
 
 	case DEVT_NET:
-		unit = 0;
+		/*
+		 * PS3 only has one network interface (well, two, but
+		 * netbooting over wireless is not something I'm going
+		 * to worry about.
+		 */
 
-		if (*np && (*np != ':')) {
-			/* get unit number if present */
-			unit = strtol(np, &cp, 0);
-			if (cp == np) {
-				err = EUNIT;
-				goto fail;
-			}
-		}
-		if (*cp && (*cp != ':')) {
-			err = EINVAL;
-			goto fail;
-		}
-		idev->d_unit = unit;
-
-		if (path != NULL)
-			*path = (*cp == 0) ? cp : cp + 1;
+		idev->d_unit = 0;
 		break;
 
 	default:

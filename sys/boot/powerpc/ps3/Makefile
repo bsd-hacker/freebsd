@@ -61,7 +61,7 @@ LIBFICL=	${.OBJDIR}/../../ficl/libficl.a
 # Avoid the open-close-dance for every file access as some firmwares perform
 # an auto-negotiation on every open of the network interface and thus causes
 # netbooting to take horribly long.
-CFLAGS+=	-DNETIF_OPEN_CLOSE_ONCE
+CFLAGS+=	-DNETIF_OPEN_CLOSE_ONCE -mcpu=powerpc64
 
 # Always add MI sources
 .PATH:		${.CURDIR}/../../common ${.CURDIR}/../../../libkern
@@ -71,7 +71,7 @@ CFLAGS+=	-I.
 
 CLEANFILES+=	vers.c loader.help
 
-CFLAGS+=	-Wall -ffreestanding -msoft-float -DAIM -DNETIF_DEBUG
+CFLAGS+=	-Wall -ffreestanding -msoft-float -DAIM
 # load address. set in linker script
 RELOC?=		0x0
 CFLAGS+=	-DRELOC=${RELOC}

@@ -106,7 +106,7 @@ static int
 ps3net_put(struct iodesc *desc, void *pkt, size_t len)
 {
 	volatile static struct gelic_dmadesc txdesc __aligned(32);
-	volatile static uint64_t txbuf[200] __aligned(128);
+	volatile static char txbuf[1536] __aligned(128);
 	size_t sendlen;
 	int err;
 
@@ -165,7 +165,7 @@ static int
 ps3net_get(struct iodesc *desc, void *pkt, size_t len, time_t timeout)
 {
 	volatile static struct gelic_dmadesc rxdesc __aligned(32);
-	volatile static uint64_t rxbuf[200] __aligned(128);
+	volatile static char rxbuf[1536] __aligned(128);
 	int err = 0;
 
 	if (len == 0)
@@ -206,11 +206,14 @@ ps3net_get(struct iodesc *desc, void *pkt, size_t len, time_t timeout)
 #endif
 
 restartdma:
+	lv1_net_stop_rx_dma(busid, devid, 0);
+	powerpc_sync();
+
 	bzero(&rxdesc, sizeof(rxdesc));
 	rxdesc.paddr = dma_base + (uint32_t)rxbuf;
 	rxdesc.len = sizeof(rxbuf);
+	rxdesc.next = 0;
 	rxdesc.cmd_stat = GELIC_DESCR_OWNED;
-
 	powerpc_sync();
 
 	lv1_net_start_rx_dma(busid, devid, dma_base + (uint32_t)&rxdesc, 0);
@@ -265,7 +268,6 @@ ps3net_init(struct iodesc *desc, void *machdep_hint)
 	 */
 
 	ps3net_get(NULL, NULL, 0, 0);
-	debug = 1;
 }
 
 static void

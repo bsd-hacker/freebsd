@@ -45,6 +45,11 @@ extern char bootprog_date[];
 extern char bootprog_maker[];
 
 int ps3_getdev(void **vdev, const char *devspec, const char **path);
+ssize_t ps3_copyin(const void *src, vm_offset_t dest, const size_t len);
+ssize_t ps3_copyout(vm_offset_t src, void *dest, const size_t len);
+ssize_t ps3_readin(const int fd, vm_offset_t dest, const size_t len);
+int ps3_autoload(void);
+int ps3_setcurrdev(struct env_var *ev, int flags, const void *value);
 
 static uint64_t basetb;
 
@@ -67,8 +72,8 @@ main(void)
 	/*
 	 * Set the heap to one page after the end of the loader.
 	 */
-	heapbase = (void *)((((u_long)&_end) + PAGE_SIZE) & ~PAGE_MASK);
-	setheap(heapbase, heapbase + 0x80000);
+	heapbase = (void *)(maxmem - 0x80000);
+	setheap(heapbase, maxmem);
 
 	/*
 	 * March through the device switch probing for things.
@@ -83,18 +88,33 @@ main(void)
 	basetb = mftb();
 
 	archsw.arch_getdev = ps3_getdev;
+	archsw.arch_copyin = ps3_copyin;
+	archsw.arch_copyout = ps3_copyout;
+	archsw.arch_readin = ps3_readin;
+	archsw.arch_autoload = ps3_autoload;
 
 	printf("\n");
 	printf("%s, Revision %s\n", bootprog_name, bootprog_rev);
 	printf("(%s, %s)\n", bootprog_maker, bootprog_date);
 	printf("Memory: %lldKB\n", maxmem / 1024);
 
-	env_setenv("currdev", EV_VOLATILE, "net", NULL, NULL);
-	env_setenv("loaddev", EV_VOLATILE, "net", NULL, NULL);
+	env_setenv("currdev", EV_VOLATILE, "net", ps3_setcurrdev, env_nounset);
+	env_setenv("loaddev", EV_VOLATILE, "net", env_noset, env_nounset);
+	setenv("LINES", "24", 1);
 
 	interact();			/* doesn't return */
 
 	return (0);
+}
+
+void
+ppc_exception(int code, vm_offset_t where, register_t msr)
+{
+	mtmsr(PSL_IR | PSL_DR | PSL_RI);
+	printf("Exception %x at %#lx!\n", code, where);
+	printf("Rebooting in 5 seconds...\n");
+	delay(10000000);
+	lv1_panic(1);
 }
 
 const u_int ns_per_tick = 12;
@@ -102,6 +122,7 @@ const u_int ns_per_tick = 12;
 void
 exit(int code)
 {
+	lv1_panic(code);
 }
 
 void
@@ -124,6 +145,66 @@ getsecs()
 time_t
 time(time_t *tloc)
 {
+	time_t rv;
+	
+	rv = getsecs();
+	if (tloc != NULL)
+		*tloc = rv;
+
+	return (rv);
+}
+
+ssize_t
+ps3_copyin(const void *src, vm_offset_t dest, const size_t len)
+{
+	bcopy(src, (void *)dest, len);
+	return (len);
+}
+
+ssize_t
+ps3_copyout(vm_offset_t src, void *dest, const size_t len)
+{
+	bcopy((void *)src, dest, len);
+	return (len);
+}
+
+ssize_t
+ps3_readin(const int fd, vm_offset_t dest, const size_t len)
+{
+	void            *buf;
+	size_t          resid, chunk, get;
+	ssize_t         got;
+	vm_offset_t     p;
+
+	p = dest;
+
+	chunk = min(PAGE_SIZE, len);
+	buf = malloc(chunk);
+	if (buf == NULL) {
+		printf("ps3_readin: buf malloc failed\n");
+		return(0);
+	}
+
+	for (resid = len; resid > 0; resid -= got, p += got) {
+		get = min(chunk, resid);
+		got = read(fd, buf, get);
+		if (got <= 0) {
+			if (got < 0)
+				printf("ps3_readin: read failed\n");
+			break;
+		}
+
+		bcopy(buf, (void *)p, got);
+	}
+
+	free(buf);
+	return (len - resid);
+}
+
+int
+ps3_autoload(void)
+{
+	/* XXX Load PS3 FDT? */
 	return (0);
 }
 

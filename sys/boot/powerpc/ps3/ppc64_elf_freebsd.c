@@ -68,7 +68,7 @@ ppc64_elf_exec(struct preloaded_file *fp)
 	vm_offset_t		mdp;
 	Elf_Ehdr		*e;
 	int			error;
-	intptr_t		entry;
+	int (*entry)(u_long, u_long, u_long, void *, u_long);
 
 	if ((fmp = file_findmetadata(fp, MODINFOMD_ELFHDR)) == NULL) {
 		return(EFTYPE);
@@ -76,19 +76,17 @@ ppc64_elf_exec(struct preloaded_file *fp)
 	e = (Elf_Ehdr *)&fmp->md_data;
 	
 	/* Handle function descriptor */
-	entry = *(uint64_t *)e->e_entry;
+	entry = (void *)(uintptr_t)(*(uint64_t *)e->e_entry);
 
 	if ((error = md_load64(fp->f_args, &mdp)) != 0)
 		return (error);
 
-	printf("Kernel entry at 0x%lx ...\n", entry);
+	printf("Kernel entry at %p ...\n", entry);
 
 	dev_cleanup();
 
-#if 0
-	OF_chain((void *)reloc, end - (char *)reloc, (void *)entry,
-	    (void *)mdp, sizeof(mdp));
-#endif
+	entry(0 /* FDT */, 0 /* Phys. mem offset */, 0 /* OF entry */,
+	     (void *)mdp, sizeof(mdp));
 
 	panic("exec returned");
 }
