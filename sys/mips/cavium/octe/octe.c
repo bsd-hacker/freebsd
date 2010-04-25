@@ -32,6 +32,10 @@
  * XXX This file should be moved to if_octe.c
  * XXX The driver may have sufficient locking but we need locking to protect
  *     the interfaces presented here, right?
+ * XXX There is a common MII bus on Octeon, we get the identifier of our PHY
+ *     in priv->phy_id; right now we attach all the PHYs to each interface,
+ *     which is clearly wrong.  Need to either modify miibus or probe and
+ *     attach the specific PHY for each interface without an miibus in between.
  */
 
 #include <sys/param.h>
