@@ -145,18 +145,19 @@ octe_attach(device_t dev)
 
 	if_initname(ifp, device_get_name(dev), device_get_unit(dev));
 
-	ifmedia_init(&priv->media, 0, octe_medchange, octe_medstat);
-	if (priv->phy_id == -1) {
-		ifmedia_add(&priv->media, IFM_ETHER | IFM_AUTO, 0, NULL);
-		ifmedia_set(&priv->media, IFM_ETHER | IFM_AUTO);
-	} else {
+	if (priv->phy_id != -1) {
 		error = mii_phy_probe(dev, &priv->miibus, octe_mii_medchange,
 				      octe_mii_medstat);
 		if (error != 0) {
-			device_printf(dev, "could not find PHY!\n");
-			/* XXX Cleanup.  */
-			return (error);
+			device_printf(dev, "missing phy %u\n", priv->phy_id);
 		}
+	}
+
+	if (priv->miibus == NULL) {
+		ifmedia_init(&priv->media, 0, octe_medchange, octe_medstat);
+
+		ifmedia_add(&priv->media, IFM_ETHER | IFM_AUTO, 0, NULL);
+		ifmedia_set(&priv->media, IFM_ETHER | IFM_AUTO);
 	}
 
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
@@ -199,6 +200,9 @@ octe_miibus_readreg(device_t dev, int phy, int reg)
 
 	priv = device_get_softc(dev);
 
+	if (phy != priv->phy_id)
+		return (0);
+
 	return (cvm_oct_mdio_read(priv->ifp, phy, reg));
 }
 
@@ -208,6 +212,9 @@ octe_miibus_writereg(device_t dev, int phy, int reg, int val)
 	cvm_oct_private_t *priv;
 
 	priv = device_get_softc(dev);
+
+	KASSERT(phy == priv->phy_id,
+	    ("write to phy %u but our phy is %u", phy, priv->phy_id));
 
 	cvm_oct_mdio_write(priv->ifp, phy, reg, val);
 
