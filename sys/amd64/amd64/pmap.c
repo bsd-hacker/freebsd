@@ -2328,12 +2328,6 @@ pmap_pv_demote_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa,
 	pv = pmap_pvh_remove(pvh, pmap, va);
 	KASSERT(pv != NULL, ("pmap_pv_demote_pde: pv not found"));
 	m = PHYS_TO_VM_PAGE(pa);
-#ifdef INVARIANTS
-		if (va == 0) {
-			printf("inserting va==0\n");
-			kdb_backtrace();
-		}
-#endif
 	vm_page_lock(m);
 	TAILQ_INSERT_TAIL(&m->md.pv_list, pv, pv_list);
 	vm_page_unlock(m);
@@ -2352,12 +2346,6 @@ pmap_pv_demote_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa,
 		va += PAGE_SIZE;
 		pv = TAILQ_FIRST(pv_list);
 		TAILQ_REMOVE(pv_list, pv, pv_list);
-#ifdef INVARIANTS
-		if (va == 0) {
-			printf("inserting va==0\n");
-			kdb_backtrace();
-		}
-#endif		
 		pv->pv_va = va;
 		vm_page_lock(m);
 		TAILQ_INSERT_TAIL(&m->md.pv_list, pv, pv_list);
@@ -2443,12 +2431,6 @@ pmap_try_insert_pv_entry(pmap_t pmap, vm_offset_t va, vm_page_t m)
 	vm_page_lock_assert(m, MA_OWNED);
 	if (pv_entry_count < pv_entry_high_water && 
 	    (pv = get_pv_entry(pmap)) != NULL) {
-#ifdef INVARIANTS
-		if (va == 0) {
-			printf("inserting va==0\n");
-			kdb_backtrace();
-		}
-#endif		
 		pv->pv_va = va;
 		TAILQ_INSERT_TAIL(&m->md.pv_list, pv, pv_list);
 		return (TRUE);
@@ -2469,12 +2451,6 @@ pmap_pv_insert_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t pa)
 	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
 	if (pv_entry_count < pv_entry_high_water && 
 	    (pv = get_pv_entry(pmap)) != NULL) {
-#ifdef INVARIANTS
-		if (va == 0) {
-			printf("inserting va==0\n");
-			kdb_backtrace();
-		}
-#endif		
 		pv->pv_va = va;
 		pvh = pa_to_pvh(pa);
 		TAILQ_INSERT_TAIL(&pvh->pv_list, pv, pv_list);
@@ -3089,18 +3065,9 @@ retry:
 	if (oldpde & PG_MANAGED) {
 		eva = sva + NBPDR;
 		for (va = sva, m = PHYS_TO_VM_PAGE(oldpde & PG_PS_FRAME);
-		    va < eva; va += PAGE_SIZE, m++) {
-			/*
-			 * In contrast to the analogous operation on a 4KB page
-			 * mapping, the mapping's PG_A flag is not cleared and
-			 * the page's PG_REFERENCED flag is not set.  The
-			 * reason is that pmap_demote_pde() expects that a 2MB
-			 * page mapping with a stored page table page has PG_A
-			 * set.
-			 */
+		    va < eva; va += PAGE_SIZE, m++)
 			if ((oldpde & (PG_M | PG_RW)) == (PG_M | PG_RW))
 				vm_page_dirty(m);
-		}
 	}
 	if ((prot & VM_PROT_WRITE) == 0)
 		newpde &= ~(PG_RW | PG_M);
@@ -3473,7 +3440,6 @@ restart:
 			goto restart;
 		}
 	}
-	    
 	/*
 	 * Mapping has not changed, must be protection or wiring change.
 	 */
@@ -3505,7 +3471,6 @@ restart:
 		}
 		goto validate;
 	} 
-	
 	/*
 	 * Mapping has changed, invalidate old range and fall through to
 	 * handle validating new mapping.
@@ -3533,12 +3498,6 @@ restart:
 	if ((m->flags & (PG_FICTITIOUS | PG_UNMANAGED)) == 0) {
 		KASSERT(va < kmi.clean_sva || va >= kmi.clean_eva,
 		    ("pmap_enter: managed mapping within the clean submap"));
-#ifdef INVARIANTS
-		if (va == 0) {
-			printf("inserting va==0\n");
-			kdb_backtrace();
-		}
-#endif		
 		pv->pv_va = va;
 		TAILQ_INSERT_TAIL(&m->md.pv_list, pv, pv_list);
 		pa |= PG_MANAGED;
@@ -4417,6 +4376,7 @@ restart:
 					} else
 						vm_page_dirty(m);
 				}
+
 				/* Mark free */
 				PV_STAT(pv_entry_frees++);
 				PV_STAT(pv_entry_spare++);
@@ -4434,7 +4394,7 @@ restart:
 					mpte = pmap_lookup_pt_page(pmap, pv->pv_va);
 					if (mpte != NULL) {
 						pmap_remove_pt_page(pmap, mpte);
-						pmap_resident_count_dec(pmap, 1);	
+						pmap_resident_count_dec(pmap, 1);
 						KASSERT(mpte->wire_count == NPTEPG,
 						    ("pmap_remove_pages: pte page wire count error"));
 						mpte->wire_count = 0;
