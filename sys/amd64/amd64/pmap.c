@@ -3035,7 +3035,6 @@ pmap_remove_all(vm_page_t m)
 		 *
 		 */
 		pmap_unuse_pt(pmap, pv->pv_va, *pde, &free);
-
 		pmap_invalidate_page(pmap, pv->pv_va);
 		pmap_free_zero_pages(free);
 		TAILQ_REMOVE(&m->md.pv_list, pv, pv_list);
@@ -3179,22 +3178,17 @@ retry:
 			obits = pbits = *pte;
 			if ((pbits & PG_V) == 0)
 				continue;
-			if ((pbits & PG_MANAGED) &&
-			    (pbits & (PG_M | PG_A))) {
-				if (pa_tryrelock(pmap, pbits & PG_FRAME, &pa))
-					goto restart;
 
-				m = PHYS_TO_VM_PAGE(pbits & PG_FRAME);
-				if (pbits & PG_A) {
-					vm_page_flag_set(m, PG_REFERENCED);
-					pbits &= ~PG_A;
-				}
-				if ((pbits & (PG_M | PG_RW)) == (PG_M | PG_RW))
+			if ((prot & VM_PROT_WRITE) == 0) {
+				if ((pbits & (PG_MANAGED | PG_M | PG_RW)) ==
+				    (PG_MANAGED | PG_M | PG_RW)) {
+					m = PHYS_TO_VM_PAGE(pbits & PG_FRAME);
+					if (pa_tryrelock(pmap, pbits & PG_FRAME, &pa))
+					    goto restart;
 					vm_page_dirty(m);
-			}
-
-			if ((prot & VM_PROT_WRITE) == 0)
+				}
 				pbits &= ~(PG_RW | PG_M);
+			}
 			if ((prot & VM_PROT_EXECUTE) == 0)
 				pbits |= pg_nx;
 
