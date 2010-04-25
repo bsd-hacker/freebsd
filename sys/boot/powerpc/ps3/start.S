@@ -103,8 +103,8 @@ exc_rst:
 	li	%r3, exc; \
 	mfsrr0	%r4; \
 	mfmsr	%r5; \
-	clrldi  %r6,%r6,1; \
-	mtmsrd  %r31; \
+	clrldi  %r6,%r5,1; \
+	mtmsrd  %r6; \
 	isync; \
 	lis	%r1,0x100; \
 	bl	ppc_exception
