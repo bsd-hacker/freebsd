@@ -261,7 +261,7 @@ static void
 octe_start(struct ifnet *ifp)
 {
 	cvm_oct_private_t *priv;
-	struct mbuf *m, *n;
+	struct mbuf *m;
 	int error;
 
 	priv = ifp->if_softc;
@@ -295,7 +295,6 @@ octe_start(struct ifnet *ifp)
 		 * how to defrag mbufs for itself and that it will handle the
 		 * failure cases internally.
 		 */
-		n = m_dup(m, M_DONTWAIT);
 
 		if (priv->queue != -1) {
 			error = cvm_oct_xmit(m, ifp);
@@ -304,20 +303,8 @@ octe_start(struct ifnet *ifp)
 		}
 
 		if (error != 0) {
-			/*
-			 * XXX
-			 * Need to implement freeing and clearing of
-			 * OACTIVE at some point.
-			 */
-			if (n != NULL)
-				IFQ_DRV_PREPEND(&ifp->if_snd, n);
 			ifp->if_drv_flags |= IFF_DRV_OACTIVE;
 			return;
-		}
-
-		if (n != NULL) {
-			BPF_MTAP(ifp, n);
-			m_freem(n);
 		}
 	}
 }
