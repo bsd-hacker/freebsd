@@ -2946,10 +2946,6 @@ restart:
 			 */
 			if ((*pte & PG_G) == 0)
 				anyvalid = 1;
-			/*
-			 * XXX check if the pmap lock was dropped - maybe we need 
-			 * to restart
-			 */
 			if (pmap_remove_pte(pmap, pte, sva, ptpaddr, &free))
 				break;
 		}
@@ -3024,11 +3020,6 @@ pmap_remove_all(vm_page_t m)
 		if ((tpte & (PG_M | PG_RW)) == (PG_M | PG_RW))
 			vm_page_dirty(m);
 		free = NULL;
-
-		/*
-		 * XXX pmap_unuse_pt can drop the pmap lock
-		 *
-		 */
 		pmap_unuse_pt(pmap, pv->pv_va, *pde, &free);
 		pmap_invalidate_page(pmap, pv->pv_va);
 		pmap_free_zero_pages(free);
@@ -3106,6 +3097,7 @@ pmap_protect(pmap_t pmap, vm_offset_t sva, vm_offset_t eva, vm_prot_t prot)
 	TAILQ_INIT(&pv_list);
 	pa = 0;
 	anychanged = 0;
+
 	PMAP_LOCK(pmap);
 restart:	
 	for (; sva < eva; sva = va_next) {
@@ -3690,7 +3682,6 @@ void
 pmap_enter_quick(pmap_t pmap, vm_offset_t va, vm_page_t m, vm_prot_t prot)
 {
 
-	vm_page_lock_assert(m, MA_OWNED);
 	PMAP_LOCK(pmap);
 	(void) pmap_enter_quick_locked(pmap, va, m, prot, NULL);
 	PMAP_UNLOCK(pmap);
@@ -3913,9 +3904,9 @@ pmap_change_wiring(pmap_t pmap, vm_offset_t va, boolean_t wired)
 {
 	pd_entry_t *pde;
 	pt_entry_t *pte;
-	vm_paddr_t pa;
-	boolean_t slept;
 	struct pv_list_head pv_list;
+	uint32_t gen_count;
+	vm_paddr_t pa = 0;
 
 	TAILQ_INIT(&pv_list);
 
@@ -3923,27 +3914,23 @@ pmap_change_wiring(pmap_t pmap, vm_offset_t va, boolean_t wired)
 	 * Wiring is not a hardware characteristic so there is no need to
 	 * invalidate TLB.
 	 */
-	pa = 0;
 	PMAP_LOCK(pmap);
 retry:
-	slept = FALSE;
 	pde = pmap_pde(pmap, va);
 	if ((*pde & PG_PS) && (!wired != ((*pde & PG_W) == 0))) {
-		if (TAILQ_EMPTY(&pv_list))
-			slept = pmap_pv_list_alloc(pmap, NPTEPG-1, &pv_list);
-		if (slept)
+		if (TAILQ_EMPTY(&pv_list) &&
+		    pmap_pv_list_alloc(pmap, NPTEPG-1, &pv_list))
 			goto retry;
-		
 		if (pa_tryrelock(pmap, *pde & PG_FRAME, &pa))
 			goto retry;
 	}
 	if ((*pde & PG_PS) != 0) {
 		if (!wired != ((*pde & PG_W) == 0)) {
-			/*
-			 * XXX do we need to check if the pmap lock was dropped
-			 */
+			gen_count = pmap->pm_gen_count;
 			if (!pmap_demote_pde(pmap, pde, va, &pv_list))
 				panic("pmap_change_wiring: demotion failed");
+			if (gen_count != pmap->pm_gen_count)
+				goto retry;
 		} else
 			goto out;
 	}
@@ -4298,6 +4285,7 @@ pmap_remove_pages(pmap_t pmap)
 	int field, idx, iter;
 	int64_t bit;
 	uint64_t inuse, bitmask;
+	uint32_t gen_count;
 	int allfree;
 
 	if (pmap != vmspace_pmap(curthread->td_proc->p_vmspace)) {
@@ -4402,11 +4390,11 @@ restart:
 							vm_page_flag_clear(m, PG_WRITEABLE);
 					}
 				}
-				/*
-				 *
-				 * XXX check if the pmap lock has been dropped
-				 */
+				gen_count = pmap->pm_gen_count;
 				pmap_unuse_pt(pmap, pv->pv_va, ptepde, &free);
+				if (pmap->pm_gen_count != gen_count &&
+				    pmap->pm_gen_count != gen_count + 1)
+					goto restart;
 			}
 		}
 		if (allfree) {
