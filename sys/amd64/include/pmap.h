@@ -267,8 +267,6 @@ extern struct pmap	kernel_pmap_store;
 		PMAP_UPDATE_GEN_COUNT((pmap));			\
 	} while (0)
 
-#define	PMAP_LOCKPTR(pmap)	(&(pmap)->pm_mtx)
-
 #define	PMAP_LOCK_ASSERT(pmap, type)					\
 				mtx_assert(&(pmap)->pm_mtx, (type))
 #define	PMAP_LOCK_DESTROY(pmap)	mtx_destroy(&(pmap)->pm_mtx)
