@@ -43,11 +43,8 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 #include "wrapper-cvmx-includes.h"
 #include "ethernet-headers.h"
 
-static struct mtx mdio_mtx;
-MTX_SYSINIT(cvm_oct_mdio, &mdio_mtx, "MDIO", MTX_DEF);
-
-#define	MDIO_LOCK()	mtx_lock(&mdio_mtx)
-#define	MDIO_UNLOCK()	mtx_unlock(&mdio_mtx)
+struct mtx cvm_oct_mdio_mtx;
+MTX_SYSINIT(cvm_oct_mdio, &cvm_oct_mdio_mtx, "MDIO", MTX_DEF);
 
 /**
  * Perform an MII read. Called by the generic MII routines

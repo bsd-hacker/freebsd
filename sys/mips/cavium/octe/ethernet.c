@@ -115,16 +115,10 @@ extern int octeon_is_simulation(void);
  */
 extern cvmx_bootinfo_t *octeon_bootinfo;
 
-/*
- * XXX
- * This should be a per-if callout?
- */
-#if 0
 /**
  * Periodic timer to check auto negotiation
  */
-static struct timer_list cvm_oct_poll_timer;
-#endif
+static struct callout cvm_oct_poll_timer;
 
 /**
  * Array of every ethernet device owned by this driver indexed by
@@ -132,76 +126,63 @@ static struct timer_list cvm_oct_poll_timer;
  */
 struct ifnet *cvm_oct_device[TOTAL_NUMBER_OF_PORTS];
 
-#if 0
-extern struct semaphore mdio_sem;
-#endif
-
 
 /**
  * Periodic timer tick for slow management operations
  *
  * @param arg    Device to check
  */
-#if 0
-static void cvm_do_timer(unsigned long arg)
+static void cvm_do_timer(void *arg)
 {
 	static int port;
 	if (port < CVMX_PIP_NUM_INPUT_PORTS) {
 		if (cvm_oct_device[port]) {
 			int queues_per_port;
-#if 0
 			int qos;
-#endif
 			cvm_oct_private_t *priv = (cvm_oct_private_t *)cvm_oct_device[port]->if_softc;
 			if (priv->poll) 
 			{
-#if 0
 				/* skip polling if we don't get the lock */
-				if(!down_trylock(&mdio_sem)) {
+				if (MDIO_TRYLOCK()) {
 					priv->poll(cvm_oct_device[port]);
-					up(&mdio_sem);
+					MDIO_UNLOCK();
 				}
-#else
-				panic("%s: wrap priv->poll with an mdio lock.", __func__);
-#endif
 			}
 
 			queues_per_port = cvmx_pko_get_num_queues(port);
 			/* Drain any pending packets in the free list */
-#if 0
 			for (qos = 0; qos < queues_per_port; qos++) {
-				if (m_queue_len(&priv->tx_free_list[qos])) {
-					spin_lock(&priv->tx_free_list[qos].lock);
-					while (m_queue_len(&priv->tx_free_list[qos]) > cvmx_fau_fetch_and_add32(priv->fau+qos*4, 0))
-						dev_kfree_m(__m_dequeue(&priv->tx_free_list[qos]));
-					spin_unlock(&priv->tx_free_list[qos].lock);
+				if (_IF_QLEN(&priv->tx_free_queue[qos]) > 0) {
+					IF_LOCK(&priv->tx_free_queue[qos]);
+					while (_IF_QLEN(&priv->tx_free_queue[qos]) > cvmx_fau_fetch_and_add32(priv->fau+qos*4, 0)) {
+						struct mbuf *m;
+
+						_IF_DEQUEUE(&priv->tx_free_queue[qos], m);
+						m_freem(m);
+					}
+					IF_UNLOCK(&priv->tx_free_queue[qos]);
+
+					/*
+					 * XXX locking!
+					 */
+					priv->ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
 				}
 			}
-#else
-			panic("%s: need to implement Tx queue draining.", __func__);
-#endif
 #if 0
 			cvm_oct_device[port]->get_stats(cvm_oct_device[port]);
-#else
-			panic("%s: need to implement stats getting.", __func__);
 #endif
 		}
 		port++;
-#if 0
 		/* Poll the next port in a 50th of a second.
 		   This spreads the polling of ports out a little bit */
-		mod_timer(&cvm_oct_poll_timer, jiffies + HZ/50);
-#endif
+		callout_reset(&cvm_oct_poll_timer, hz / 50, cvm_do_timer, NULL);
 	} else {
 		port = 0;
-#if 0
 		/* All ports have been polled. Start the next iteration through
 		   the ports in one second */
-		mod_timer(&cvm_oct_poll_timer, jiffies + HZ);
-#endif
+		callout_reset(&cvm_oct_poll_timer, hz, cvm_do_timer, NULL);
 	}
 }
-#endif
 
 
 /**
@@ -528,13 +509,8 @@ int cvm_oct_init_module(device_t bus)
 		cvmx_write_csr(CVMX_POW_WQ_INT_THRX(pow_receive_group), 0x1001);
 	}
 
-#if 0
-	/* Enable the poll timer for checking RGMII status */
-	init_timer(&cvm_oct_poll_timer);
-	cvm_oct_poll_timer.data = 0;
-	cvm_oct_poll_timer.function = cvm_do_timer;
-	mod_timer(&cvm_oct_poll_timer, jiffies + HZ);
-#endif
+	callout_init(&cvm_oct_poll_timer, CALLOUT_MPSAFE);
+	callout_reset(&cvm_oct_poll_timer, hz, cvm_do_timer, NULL);
 
 	return 0;
 }
@@ -559,9 +535,7 @@ void cvm_oct_cleanup_module(void)
 	free_irq(8 + pow_receive_group, cvm_oct_device);
 #endif
 
-#if 0
-	del_timer(&cvm_oct_poll_timer);
-#endif
+	callout_stop(&cvm_oct_poll_timer);
 	cvm_oct_rx_shutdown();
 	cvmx_pko_disable();
 

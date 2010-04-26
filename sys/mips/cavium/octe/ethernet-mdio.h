@@ -27,6 +27,12 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 
 *************************************************************************/
 
+extern struct mtx cvm_oct_mdio_mtx;
+
+#define	MDIO_LOCK()	mtx_lock(&cvm_oct_mdio_mtx)
+#define	MDIO_UNLOCK()	mtx_unlock(&cvm_oct_mdio_mtx)
+#define	MDIO_TRYLOCK()	mtx_trylock(&cvm_oct_mdio_mtx)
+
 int cvm_oct_mdio_read(struct ifnet *ifp, int phy_id, int location);
 void cvm_oct_mdio_write(struct ifnet *ifp, int phy_id, int location, int val);
 int cvm_oct_mdio_setup_device(struct ifnet *ifp);
