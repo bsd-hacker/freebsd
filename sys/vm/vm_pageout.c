@@ -306,6 +306,7 @@ vm_pageout_clean(vm_page_t m)
 		vm_page_unlock(m);
 		return 0;
 	}
+
 	mc[vm_pageout_page_count] = m;
 	pageout_count = 1;
 	page_base = vm_pageout_page_count;
@@ -777,13 +778,14 @@ rescan0:
 		 * queue, most likely are being paged out.
 		 */
 		if (!VM_OBJECT_TRYLOCK(object) &&
-		    !vm_pageout_fallback_object_lock(m, &next)) {
+		    (!vm_pageout_fallback_object_lock(m, &next) ||
+			m->hold_count != 0)) {
 			VM_OBJECT_UNLOCK(object);
 			vm_page_unlock(m);
 			addl_page_shortage++;
 			continue;
 		}
-		if (m->busy || (m->oflags & VPO_BUSY) || m->hold_count) {
+		if (m->busy || (m->oflags & VPO_BUSY)) {
 			vm_page_unlock(m);
 			VM_OBJECT_UNLOCK(object);
 			addl_page_shortage++;
