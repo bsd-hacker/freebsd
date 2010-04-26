@@ -2218,6 +2218,10 @@ get_pv_entry(pmap_t pmap)
 	return (pv);
 }
 
+/*
+ * Utility functions for managing pv lists
+ * essentially handling pre-allocation and failure of pre-allocation
+ */
 static void
 pmap_pv_list_free(pmap_t pmap, struct pv_list_head *pv_list)
 {
@@ -2269,6 +2273,80 @@ pmap_pv_list_try_alloc(pmap_t pmap, int count, struct pv_list_head *pv_list)
 	}
 done:
 	return (success);
+}
+
+static void
+pmap_prealloc_pv_list(pmap_t pmap, vm_offset_t sva, vm_offset_t eva,
+	struct pv_list_head *pv_list)
+{
+	vm_offset_t va_next;
+	pml4_entry_t *pml4e;
+	pdp_entry_t *pdpe;
+	pd_entry_t ptpaddr, *pde;
+	pt_entry_t *pte;
+	int i, alloc_count;
+
+	alloc_count = 0;
+	PMAP_LOCK(pmap);
+	for (; sva < eva; sva = va_next) {
+
+		pml4e = pmap_pml4e(pmap, sva);
+		if ((*pml4e & PG_V) == 0) {
+			va_next = (sva + NBPML4) & ~PML4MASK;
+			if (va_next < sva)
+				va_next = eva;
+			continue;
+		}
+
+		pdpe = pmap_pml4e_to_pdpe(pml4e, sva);
+		if ((*pdpe & PG_V) == 0) {
+			va_next = (sva + NBPDP) & ~PDPMASK;
+			if (va_next < sva)
+				va_next = eva;
+			continue;
+		}
+
+		/*
+		 * Calculate index for next page table.
+		 */
+		va_next = (sva + NBPDR) & ~PDRMASK;
+		if (va_next < sva)
+			va_next = eva;
+
+		pde = pmap_pdpe_to_pde(pdpe, sva);
+		ptpaddr = *pde;
+
+		/*
+		 * Weed out invalid mappings.
+		 */
+		if (ptpaddr == 0)
+			continue;
+
+		/*
+		 * Check for large page.
+		 */
+		if ((ptpaddr & PG_PS) != 0) {
+			alloc_count++;
+			continue;
+		}
+		/*
+		 * Limit our scan to either the end of the va represented
+		 * by the current page table page, or to the end of the
+		 * range being removed.
+		 */
+		if (va_next > eva)
+			va_next = eva;
+
+		for (pte = pmap_pde_to_pte(pde, sva); sva != va_next; pte++,
+		    sva += PAGE_SIZE) {
+			if (*pte == 0)
+				continue;
+		}
+	}
+	for (i = 0; i < alloc_count; i++)
+		pmap_pv_list_alloc(pmap, NPTEPG-1, pv_list);
+
+	PMAP_UNLOCK(pmap);
 }
 
 /*
@@ -2714,80 +2792,6 @@ pmap_remove_page(pmap_t pmap, vm_offset_t va, pd_entry_t *pde, vm_page_t *free)
 	if (pa)
 		PA_UNLOCK(pa);
 	pmap_invalidate_page(pmap, va);
-}
-
-static void
-pmap_prealloc_pv_list(pmap_t pmap, vm_offset_t sva, vm_offset_t eva,
-	struct pv_list_head *pv_list)
-{
-	vm_offset_t va_next;
-	pml4_entry_t *pml4e;
-	pdp_entry_t *pdpe;
-	pd_entry_t ptpaddr, *pde;
-	pt_entry_t *pte;
-	int i, alloc_count;
-
-	alloc_count = 0;
-	PMAP_LOCK(pmap);
-	for (; sva < eva; sva = va_next) {
-
-		pml4e = pmap_pml4e(pmap, sva);
-		if ((*pml4e & PG_V) == 0) {
-			va_next = (sva + NBPML4) & ~PML4MASK;
-			if (va_next < sva)
-				va_next = eva;
-			continue;
-		}
-
-		pdpe = pmap_pml4e_to_pdpe(pml4e, sva);
-		if ((*pdpe & PG_V) == 0) {
-			va_next = (sva + NBPDP) & ~PDPMASK;
-			if (va_next < sva)
-				va_next = eva;
-			continue;
-		}
-
-		/*
-		 * Calculate index for next page table.
-		 */
-		va_next = (sva + NBPDR) & ~PDRMASK;
-		if (va_next < sva)
-			va_next = eva;
-
-		pde = pmap_pdpe_to_pde(pdpe, sva);
-		ptpaddr = *pde;
-
-		/*
-		 * Weed out invalid mappings.
-		 */
-		if (ptpaddr == 0)
-			continue;
-
-		/*
-		 * Check for large page.
-		 */
-		if ((ptpaddr & PG_PS) != 0) {
-			alloc_count++;
-			continue;
-		}
-		/*
-		 * Limit our scan to either the end of the va represented
-		 * by the current page table page, or to the end of the
-		 * range being removed.
-		 */
-		if (va_next > eva)
-			va_next = eva;
-
-		for (pte = pmap_pde_to_pte(pde, sva); sva != va_next; pte++,
-		    sva += PAGE_SIZE) {
-			if (*pte == 0)
-				continue;
-		}
-	}
-	for (i = 0; i < alloc_count; i++)
-		pmap_pv_list_alloc(pmap, NPTEPG-1, pv_list);
-
-	PMAP_UNLOCK(pmap);
 }
 
 /*
