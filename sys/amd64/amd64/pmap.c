@@ -2146,9 +2146,7 @@ free_pv_entry(pmap_t pmap, pv_entry_t pv)
 	/* entire chunk is free, return it */
 	m = PHYS_TO_VM_PAGE(DMAP_TO_PHYS((vm_offset_t)pc));
 	dump_drop_page(m->phys_addr);
-	KASSERT(m->wire_count == 1, ("wire_count == %d", m->wire_count));
-	m->wire_count--;
-	atomic_subtract_int(&cnt.v_wire_count, 1);
+	vm_page_unwire(m, 0);
 	vm_page_free(m);
 }
 
@@ -3339,15 +3337,14 @@ pmap_enter(pmap_t pmap, vm_offset_t va, vm_prot_t access, vm_page_t m,
 	vm_paddr_t pa;
 	pd_entry_t *pde;
 	pt_entry_t *pte;
-	vm_paddr_t opa, lockedpa;
 	pt_entry_t origpte, newpte;
 	vm_page_t mpte, om;
 	boolean_t invlva, opalocked;
+	vm_paddr_t lockedpa, opa = 0;
 	pv_entry_t pv;
 	struct lock_stack ls;
 
 	va = trunc_page(va);
-
 	KASSERT(va <= VM_MAX_KERNEL_ADDRESS, ("pmap_enter: toobig"));
 	KASSERT(va < UPT_MIN_ADDRESS || va >= UPT_MAX_ADDRESS,
 	    ("pmap_enter: invalid to pmap_enter page table pages (va: 0x%lx)", va));
@@ -3355,7 +3352,6 @@ pmap_enter(pmap_t pmap, vm_offset_t va, vm_prot_t access, vm_page_t m,
 	mpte = NULL;
 	pv = NULL;
 	lockedpa = pa = VM_PAGE_TO_PHYS(m);
-	opa = 0;
 	opalocked = FALSE;
 	ls_init(&ls);
 	ls_push(&ls, &lock_class_mtx_sleep,
@@ -4413,10 +4409,7 @@ restart:
 			TAILQ_REMOVE(&pmap->pm_pvchunk, pc, pc_list);
 			m = PHYS_TO_VM_PAGE(DMAP_TO_PHYS((vm_offset_t)pc));
 			dump_drop_page(m->phys_addr);
-			KASSERT(m->wire_count == 1,
-			    ("wire_count == %d", m->wire_count));
-			m->wire_count = 0;
-			atomic_subtract_int(&cnt.v_wire_count, 1);
+			vm_page_unwire(m, 0);
 			vm_page_free(m);
 		}
 	}
