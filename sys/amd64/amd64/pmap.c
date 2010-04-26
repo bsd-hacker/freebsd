@@ -2124,10 +2124,9 @@ free_pv_entry(pmap_t pmap, pv_entry_t pv)
 	int idx, field, bit;
 
 	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
-
-	atomic_add_int(&pv_entry_count, -1);
 	PV_STAT(pv_entry_frees++);
 	PV_STAT(pv_entry_spare++);
+	atomic_add_int(&pv_entry_count, -1);
 	pc = pv_to_chunk(pv);
 	idx = pv - &pc->pc_pventry[0];
 	field = idx / 64;
@@ -2167,9 +2166,8 @@ get_pv_entry(pmap_t pmap)
 	vm_page_t m;
 
 	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
-
-	atomic_add_int(&pv_entry_count, 1);
 	PV_STAT(pv_entry_allocs++);
+	atomic_add_int(&pv_entry_count, 1);
 	if (pv_entry_count > pv_entry_high_water)
 		if (ratecheck(&lastprint, &printinterval))
 			printf("Approaching the limit on PV entries, consider "
@@ -3647,15 +3645,19 @@ pmap_enter_object(pmap_t pmap, vm_offset_t start, vm_offset_t end,
 	vm_offset_t va;
 	vm_page_t m, mpte;
 	vm_pindex_t diff, psize;
+	vm_paddr_t pa;
 
 	VM_OBJECT_LOCK_ASSERT(m_start->object, MA_OWNED);
 	psize = atop(end - start);
 	mpte = NULL;
 	m = m_start;
+	pa = 0;
+	PMAP_LOCK(pmap);
+restart:	
 	while (m != NULL && (diff = m->pindex - m_start->pindex) < psize) {
 		va = start + ptoa(diff);
-		vm_page_lock(m);
-		PMAP_LOCK(pmap);
+		if (pa_tryrelock(pmap, VM_PAGE_TO_PHYS(m), &pa))
+			goto restart;
 		if ((va & PDRMASK) == 0 && va + NBPDR <= end &&
 		    (VM_PAGE_TO_PHYS(m) & PDRMASK) == 0 &&
 		    pg_ps_enabled && vm_reserv_level_iffullpop(m) == 0 &&
@@ -3664,10 +3666,11 @@ pmap_enter_object(pmap_t pmap, vm_offset_t start, vm_offset_t end,
 		else
 			mpte = pmap_enter_quick_locked(pmap, va, m, prot,
 			    mpte);
-		PMAP_UNLOCK(pmap);
-		vm_page_unlock(m);
 		m = TAILQ_NEXT(m, listq);
 	}
+	if (pa)
+		PA_UNLOCK(pa);
+	PMAP_UNLOCK(pmap);
 }
 
 /*
