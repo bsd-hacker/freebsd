@@ -1595,10 +1595,13 @@ void
 vm_page_unwire(vm_page_t m, int activate)
 {
 
-	vm_page_lock_assert(m, MA_OWNED);
 	if (m->flags & PG_FICTITIOUS)
 		return;
 	if (m->wire_count > 0) {
+#ifdef INVARIANTS
+		if ((m->wire_count > 1) || !(m->flags & PG_UNMANAGED))
+			vm_page_lock_assert(m, MA_OWNED);
+#endif		
 		m->wire_count--;
 		if (m->wire_count == 0) {
 			atomic_subtract_int(&cnt.v_wire_count, 1);
