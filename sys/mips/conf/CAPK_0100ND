@@ -1,0 +1,7 @@
+#
+# $FreeBSD$
+#
+
+options 	OCTEON_BOARD_CAPK_0100ND
+
+include		OCTEON1-32

@@ -85,6 +85,26 @@ CVMX_SHARED cvmx_helper_link_info_t (*cvmx_override_board_link_get)(int ipd_port
  */
 int cvmx_helper_board_get_mii_address(int ipd_port)
 {
+    /*
+     * Board types we have to know at compile-time.
+     */
+#ifdef OCTEON_BOARD_CAPK_0100ND
+    switch (ipd_port) {
+    case 0:
+	return 2;
+    case 1:
+	return 3;
+    case 2:
+	/* XXX Switch PHY?  */
+	return -1;
+    default:
+	return -1;
+    }
+#endif
+
+    /*
+     * For board types we can determine at runtime.
+     */
     switch (cvmx_sysinfo_get()->board_type)
     {
         case CVMX_BOARD_TYPE_SIM:
@@ -195,6 +215,7 @@ cvmx_helper_link_info_t __cvmx_helper_board_link_get(int ipd_port)
     /* Unless we fix it later, all links are defaulted to down */
     result.u64 = 0;
 
+#if !defined(OCTEON_BOARD_CAPK_0100ND)
     /* This switch statement should handle all ports that either don't use
         Marvell PHYS, or don't support in-band status */
     switch (cvmx_sysinfo_get()->board_type)
@@ -249,6 +270,7 @@ cvmx_helper_link_info_t __cvmx_helper_board_link_get(int ipd_port)
             }
             break;
     }
+#endif
 
     phy_addr = cvmx_helper_board_get_mii_address(ipd_port);
     if (phy_addr != -1)
@@ -322,7 +344,11 @@ cvmx_helper_link_info_t __cvmx_helper_board_link_get(int ipd_port)
                 and set the resolved bit (bit 11) */
             if (phy_status & (1<<11))
             {
+#if defined(OCTEON_BOARD_CAPK_0100ND)
+                result.s.link_up = (phy_status>>10)&1;
+#else
                 result.s.link_up = 1;
+#endif
                 result.s.full_duplex = ((phy_status>>13)&1);
                 switch ((phy_status>>14)&3)
                 {

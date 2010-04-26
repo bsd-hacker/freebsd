@@ -199,6 +199,16 @@ int __cvmx_helper_rgmii_enable(int interface)
         cvmx_write_csr(CVMX_GMXX_TXX_PAUSE_PKT_TIME(port, interface), 20000);
         cvmx_write_csr(CVMX_GMXX_TXX_PAUSE_PKT_INTERVAL(port, interface), 19000);
 
+        /*
+         * Board types we have to know at compile-time.
+         */
+#if defined(OCTEON_BOARD_CAPK_0100ND)
+        cvmx_write_csr(CVMX_ASXX_TX_CLK_SETX(port, interface), 26);
+        cvmx_write_csr(CVMX_ASXX_RX_CLK_SETX(port, interface), 26);
+#else
+        /*
+         * For board types we can determine at runtime.
+         */
         if (OCTEON_IS_MODEL(OCTEON_CN50XX))
         {
             cvmx_write_csr(CVMX_ASXX_TX_CLK_SETX(port, interface), 16);
@@ -209,6 +219,7 @@ int __cvmx_helper_rgmii_enable(int interface)
             cvmx_write_csr(CVMX_ASXX_TX_CLK_SETX(port, interface), 24);
             cvmx_write_csr(CVMX_ASXX_RX_CLK_SETX(port, interface), 24);
         }
+#endif
     }
 
     __cvmx_helper_setup_gmx(interface, num_ports);

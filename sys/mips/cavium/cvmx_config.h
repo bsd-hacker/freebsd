@@ -39,6 +39,8 @@
 #ifndef	_CVMX_CONFIG_H
 #define	_CVMX_CONFIG_H
 
+#include "opt_cvmx.h"
+
 #include <sys/types.h>
 #include <sys/param.h>
 #include <sys/systm.h>
