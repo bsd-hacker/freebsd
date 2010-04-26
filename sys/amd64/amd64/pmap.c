@@ -675,7 +675,7 @@ pmap_bootstrap(vm_paddr_t *firstaddr)
 	/* Initialize the PAT MSR. */
 	pmap_init_pat();
 
-		/* Setup page locks. */
+	/* Setup page locks. */
 	for (i = 0; i < PA_LOCK_COUNT; i++)
 		mtx_init(&pa_lock[i].vp_lock, "page lock", NULL,
 		    MTX_DEF | MTX_RECURSE | MTX_DUPOK);
@@ -2560,11 +2560,13 @@ pmap_demote_pde(pmap_t pmap, pd_entry_t *pde, vm_offset_t va,
 	pt_entry_t *firstpte, newpte;
 	vm_paddr_t mptepa;
 	vm_page_t free, mpte;
+	boolean_t inc;
 
 	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
 	oldpde = *pde;
 	KASSERT((oldpde & (PG_PS | PG_V)) == (PG_PS | PG_V),
 	    ("pmap_demote_pde: oldpde is missing PG_PS and/or PG_V"));
+	inc = FALSE;
 	mpte = pmap_lookup_pt_page(pmap, va);
 	if (mpte != NULL)
 		pmap_remove_pt_page(pmap, mpte);
@@ -2597,12 +2599,14 @@ pmap_demote_pde(pmap_t pmap, pd_entry_t *pde, vm_offset_t va,
 			    " in pmap %p", va, pmap);
 			return (FALSE);
 		}
-		if (va < VM_MAXUSER_ADDRESS)
+		if (va < VM_MAXUSER_ADDRESS) {
 			pmap_resident_count_inc(pmap, 1);
+			inc = TRUE;
+		}
 	}
 	if (TAILQ_EMPTY(pv_list) && ((oldpde & PG_MANAGED) != 0)) {
 		if (pmap_pv_list_try_alloc(pmap, NPTEPG-1, pv_list) == FALSE) {
-			if (mpte == NULL && (va < VM_MAXUSER_ADDRESS))
+			if (inc)
 				pmap_resident_count_dec(pmap, 1);
 			return (FALSE);
 		}
