@@ -38,6 +38,8 @@
  *     attach the specific PHY for each interface without an miibus in between.
  */
 
+#include "opt_inet.h"
+
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/bus.h>
@@ -57,6 +59,11 @@
 #include <net/if.h>
 #include <net/if_media.h>
 #include <net/if_types.h>
+
+#ifdef INET
+#include <netinet/in.h>
+#include <netinet/if_ether.h>
+#endif
 
 #include <dev/mii/mii.h>
 #include <dev/mii/miivar.h>
@@ -230,15 +237,14 @@ octe_init(void *arg)
 	priv = arg;
 	ifp = priv->ifp;
 
-	octe_stop(priv);
+	if ((ifp->if_drv_flags & IFF_DRV_RUNNING) != 0)
+		octe_stop(priv);
 
 	if (priv->open != NULL)
 		priv->open(ifp);
 
 	if (priv->miibus != NULL)
 		mii_mediachg(device_get_softc(priv->miibus));
-
-	cvm_oct_common_set_multicast_list(ifp);
 
 	ifp->if_drv_flags |= IFF_DRV_RUNNING;
 	ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
@@ -252,6 +258,9 @@ octe_stop(void *arg)
 
 	priv = arg;
 	ifp = priv->ifp;
+
+	if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0)
+		return;
 
 	if (priv->stop != NULL)
 		priv->stop(ifp);
@@ -394,12 +403,37 @@ octe_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	cvm_oct_private_t *priv;
 	struct mii_data *mii;
 	struct ifreq *ifr;
+#ifdef INET
+	struct ifaddr *ifa;
+#endif
 	int error;
 
 	priv = ifp->if_softc;
 	ifr = (struct ifreq *)data;
+#ifdef INET
+	ifa = (struct ifaddr *)data;
+#endif
 
 	switch (cmd) {
+	case SIOCSIFADDR:
+#ifdef INET
+		/*
+		 * Avoid reinitialization unless it's necessary.
+		 */
+		if (ifa->ifa_addr->sa_family == AF_INET) {
+			ifp->if_flags |= IFF_UP;
+			if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0)
+				octe_init(priv);
+			arp_ifinit(ifp, ifa);
+
+			return (0);
+		}
+#endif
+		error = ether_ioctl(ifp, cmd, data);
+		if (error != 0)
+			return (error);
+		return (0);
+
 	case SIOCSIFFLAGS:
 		if ((ifp->if_flags & IFF_UP) != 0) {
 			if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0)

@@ -100,6 +100,7 @@ static struct ifnet_stats *cvm_oct_common_get_stats(struct ifnet *ifp)
  */
 void cvm_oct_common_set_multicast_list(struct ifnet *ifp)
 {
+#if 0
 	cvmx_gmxx_prtx_cfg_t gmx_cfg;
 	cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
 	int interface = INTERFACE(priv->port);
@@ -132,6 +133,7 @@ void cvm_oct_common_set_multicast_list(struct ifnet *ifp)
 
 		cvmx_write_csr(CVMX_GMXX_PRTX_CFG(index, interface), gmx_cfg.u64);
 	}
+#endif
 }
 
 
