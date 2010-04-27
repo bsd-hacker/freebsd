@@ -13,11 +13,6 @@ mips/cavium/uart_dev_oct16550.c			optional uart
 mips/mips/intr_machdep.c			standard
 mips/mips/tick.c				standard
 
-#mips/cavium/dev/rgmii/octeon_fpa.c		optional rgmii
-#mips/cavium/dev/rgmii/octeon_ipd.c 		optional rgmii
-#mips/cavium/dev/rgmii/octeon_pko.c		optional rgmii
-#mips/cavium/dev/rgmii/octeon_rgmx.c		optional rgmii
-
 mips/cavium/octe/ethernet.c			optional octe
 mips/cavium/octe/ethernet-common.c		optional octe
 mips/cavium/octe/ethernet-mdio.c		optional octe

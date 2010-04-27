@@ -84,7 +84,6 @@ device		md
 device		uart
 nodevice	uart_ns8250
 device		octe
-#device		rgmii
 #options 	VERBOSE_SYSINIT
 
 device		bpf
