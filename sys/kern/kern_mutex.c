@@ -97,6 +97,7 @@ static void	lock_spin(struct lock_object *lock, int how);
 static int	owner_mtx(struct lock_object *lock, struct thread **owner);
 #endif
 static int	unlock_mtx(struct lock_object *lock);
+static int	unlock_recursable_mtx(struct lock_object *lock);
 static int	unlock_spin(struct lock_object *lock);
 
 /*
@@ -111,6 +112,7 @@ struct lock_class lock_class_mtx_sleep = {
 #endif
 	.lc_lock = lock_mtx,
 	.lc_unlock = unlock_mtx,
+	.lc_unlock_recursable = unlock_recursable_mtx,
 #ifdef KDTRACE_HOOKS
 	.lc_owner = owner_mtx,
 #endif
@@ -181,6 +183,17 @@ lock_spin(struct lock_object *lock, int how)
 
 int
 unlock_mtx(struct lock_object *lock)
+{
+	struct mtx *m;
+
+	m = (struct mtx *)lock;
+	mtx_assert(m, MA_NOTRECURSED|MA_OWNED);
+	mtx_unlock(m);
+	return (0);
+}
+
+int
+unlock_recursable_mtx(struct lock_object *lock)
 {
 	struct mtx *m;
 

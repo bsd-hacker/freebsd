@@ -65,6 +65,7 @@ struct lock_class {
 	int	(*lc_unlock)(struct lock_object *lock);
 	void	(*lc_lock_full)(struct lock_object *lock, char *file, int line);
 	int	(*lc_trylock)(struct lock_object *lock);
+	int	(*lc_unlock_recursable)(struct lock_object *lock);	
 };
 
 #define	LC_SLEEPLOCK	0x00000001	/* Sleep lock. */

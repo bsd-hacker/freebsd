@@ -714,7 +714,7 @@ ls_pop(struct lock_stack *ls)
 	ls->ls_top--;
 	lock = ls->ls_array[ls->ls_top].lse_lock;
 	class = ls->ls_array[ls->ls_top].lse_class;	
-	class->lc_unlock(lock);
+	class->lc_unlock_recursable(lock);
 }
 
 void
@@ -729,7 +729,7 @@ ls_popa(struct lock_stack *ls)
 		ls->ls_top--;
 		lock = ls->ls_array[ls->ls_top].lse_lock;
 		class = ls->ls_array[ls->ls_top].lse_class;
-		class->lc_unlock(lock);
+		class->lc_unlock_recursable(lock);
 	}
 }
 
