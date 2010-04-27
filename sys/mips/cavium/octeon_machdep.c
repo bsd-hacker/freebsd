@@ -207,7 +207,6 @@ octeon_led_write_hex(uint32_t wl)
 	octeon_led_write_string(nbuf);
 }
 
-
 /*
  * octeon_debug_symbol
  *
@@ -418,11 +417,8 @@ static octeon_boot_descriptor_t *app_desc_ptr;
 #define OCTEON_BOARD_TYPE_SIM  			1
 #define	OCTEON_BOARD_TYPE_CN3010_EVB_HS5	11
 
-#define OCTEON_CLOCK_MIN     (100 * 1000 * 1000)
-#define OCTEON_CLOCK_MAX     (800 * 1000 * 1000)
+#define OCTEON_CLOCK_DEFAULT (500 * 1000 * 1000)
 #define OCTEON_DRAM_DEFAULT  (256 * 1024 * 1024)
-#define OCTEON_DRAM_MIN	     30
-#define OCTEON_DRAM_MAX	     3000
 
 int
 octeon_is_simulation(void)

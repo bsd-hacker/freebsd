@@ -275,14 +275,6 @@ static inline void oct_write32 (uint64_t csr_addr, uint32_t val32)
 
 #define	oct_readint32(a)	((int32_t)oct_read32((a)))
 
-/* ------------------------------------------------------------------- *
- *                      octeon_get_chipid()                               *
- * ------------------------------------------------------------------- */
-#define OCTEON_CN31XX_CHIP  0x000d0100
-#define OCTEON_CN30XX_CHIP  0x000d0200
-#define OCTEON_CN3020_CHIP  0x000d0112
-#define OCTEON_CN5020_CHIP  0x000d0601
-
 /*
  * octeon_machdep.c
  *
@@ -303,31 +295,9 @@ extern void octeon_ciu_reset(void);
 extern int octeon_is_simulation(void);
 #endif	/* LOCORE */
 
-
-#define OCTEON_CLOCK_DEFAULT (500 * 1000 * 1000)
-
 /*
  * EBT3000 LED Unit
  */
 #define  OCTEON_CHAR_LED_BASE_ADDR	(0x1d020000 | (0x1ffffffffull << 31))
-
-/*
- * Physical Memory Banks
- */
-/* 1st BANK */
-#define OCTEON_DRAM_FIRST_256_START	0x00000000ull
-#define OCTEON_DRAM_FIRST_256_END	(0x10000000ull - 1ull)
-#define OCTEON_DRAM_RESERVED_END        0X1FFF000ULL	/* 32 Meg Reserved for Mips Kernel MD Ops */
-#define OCTEON_DRAM_FIRST_BANK_SIZE	(OCTEON_DRAM_FIRST_256_END - OCTEON_DRAM_FIRST_256_START + 1)
-
-/* 2nd BANK */
-#define OCTEON_DRAM_SECOND_256_START	(0x0000000410000000ull)
-#define OCTEON_DRAM_SECOND_256_END	(0x0000000420000000ull - 1ull)  /* Requires 64 bit paddr */
-#define OCTEON_DRAM_SECOND_BANK_SIZE	(OCTEON_DRAM_SECOND_256_END - OCTEON_DRAM_SECOND_256_START + 1ull)
-
-/* 3rd BANK */
-#define OCTEON_DRAM_ABOVE_512_START	0x20000000ull
-#define OCTEON_DRAM_ABOVE_512_END	(0x0000000300000000ull - 1ull)  /* To be calculated as remaining */
-#define OCTEON_DRAM_THIRD_BANK_SIZE	(OCTEON_DRAM_ABOVE_512_END - OCTEON_DRAM_ABOVE_512_START + 1ull)
 
 #endif /* !OCTEON_PCMAP_REGS_H__ */
