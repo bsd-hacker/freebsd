@@ -118,9 +118,8 @@ struct lock_class lock_class_mtx_sleep = {
 #endif
 	.lc_lock_full = lock_full_mtx,
 	.lc_trylock = trylock_mtx,
-	
-	
 };
+
 struct lock_class lock_class_mtx_spin = {
 	.lc_name = "spin mutex",
 	.lc_flags = LC_SPINLOCK | LC_RECURSABLE,
