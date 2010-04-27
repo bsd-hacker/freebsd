@@ -66,8 +66,9 @@ __FBSDID("$FreeBSD$");
 #include <machine/md_var.h>
 #include <machine/cpuregs.h>
 
-#include "octeon_ebt3000_cf.h"
 #include <mips/cavium/octeon_pcmap_regs.h>
+
+#include <contrib/octeon-sdk/cvmx.h>
 
 /* ATA Commands */
 #define CMD_READ_SECTOR		0x20
@@ -99,6 +100,8 @@ __FBSDID("$FreeBSD$");
 #define SWAP_SHORT(x)		((x << 8) | (x >> 8))
 #define MODEL_STR_SIZE		40
 
+/* XXX */
+extern cvmx_bootinfo_t *octeon_bootinfo;
 
 /* Globals */
 int	bus_width;
@@ -582,19 +585,19 @@ static void cf_identify (driver_t *drv, device_t parent)
 	uint8_t status;
         int bus_region;
 	int count = 0;
-        octeon_mio_boot_reg_cfgx_t cfg;
+        cvmx_mio_boot_reg_cfgx_t cfg;
 
     	if (octeon_is_simulation())
 		return;
 
-	base_addr = (void *) MIPS_PHYS_TO_KSEG0(OCTEON_CF_COMMON_BASE_ADDR);
+	base_addr = cvmx_phys_to_ptr(octeon_bootinfo->compact_flash_common_base_addr);
 
         for (bus_region = 0; bus_region < 8; bus_region++)
         {
-                cfg.word64 = oct_read64(OCTEON_MIO_BOOT_REG_CFGX(bus_region));
-                if (cfg.bits.base == OCTEON_CF_COMMON_BASE_ADDR >> 16)
+                cfg.u64 = oct_read64(CVMX_MIO_BOOT_REG_CFGX(bus_region));
+                if (cfg.s.base == octeon_bootinfo->compact_flash_common_base_addr >> 16)
                 {
-                        bus_width = (cfg.bits.width) ? 16: 8;
+                        bus_width = (cfg.s.width) ? 16: 8;
                         printf("Compact flash found in bootbus region %d (%d bit).\n", bus_region, bus_width);
                         break;
                 }
