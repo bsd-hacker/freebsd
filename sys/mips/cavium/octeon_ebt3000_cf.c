@@ -594,7 +594,7 @@ static void cf_identify (driver_t *drv, device_t parent)
 
         for (bus_region = 0; bus_region < 8; bus_region++)
         {
-                cfg.u64 = oct_read64(CVMX_MIO_BOOT_REG_CFGX(bus_region));
+                cfg.u64 = cvmx_read_csr(CVMX_MIO_BOOT_REG_CFGX(bus_region));
                 if (cfg.s.base == octeon_bootinfo->compact_flash_common_base_addr >> 16)
                 {
                         bus_width = (cfg.s.width) ? 16: 8;

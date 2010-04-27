@@ -80,6 +80,9 @@ __FBSDID("$FreeBSD$");
 #define MAX_APP_DESC_ADDR     0xafffffff
 #endif
 
+#define OCTEON_CLOCK_DEFAULT (500 * 1000 * 1000)
+#define OCTEON_DRAM_DEFAULT  (256 * 1024 * 1024)
+
 struct octeon_feature_description {
 	octeon_feature_t ofd_feature;
 	const char *ofd_string;
@@ -88,7 +91,7 @@ struct octeon_feature_description {
 extern int	*edata;
 extern int	*end;
 
-static struct octeon_feature_description octeon_feature_descriptions[] = {
+static const struct octeon_feature_description octeon_feature_descriptions[] = {
 	{ OCTEON_FEATURE_SAAD,			"SAAD" },
 	{ OCTEON_FEATURE_ZIP,			"ZIP" },
 	{ OCTEON_FEATURE_CRYPTO,		"CRYPTO" },
@@ -122,7 +125,7 @@ platform_cpu_init()
 void
 platform_reset(void)
 {
-	oct_write64(CVMX_CIU_SOFT_RST, 1);
+	cvmx_write_csr(CVMX_CIU_SOFT_RST, 1);
 }
 
 void
@@ -182,7 +185,7 @@ octeon_led_write_string(const char *str)
 			oct_write8_x8(ptr, *str++);
 		else
 			oct_write8_x8(ptr, ' ');
-		oct_read64(CVMX_MIO_BOOT_BIST_STAT);
+		(void)cvmx_read_csr(CVMX_MIO_BOOT_BIST_STAT);
 	}
 }
 
@@ -289,7 +292,7 @@ void
 platform_start(__register_t a0, __register_t a1, __register_t a2 __unused,
     __register_t a3)
 {
-	struct octeon_feature_description *ofd;
+	const struct octeon_feature_description *ofd;
 	uint64_t platform_counter_freq;
 
 	/* Initialize pcpu stuff */
@@ -328,7 +331,7 @@ platform_start(__register_t a0, __register_t a1, __register_t a2 __unused,
 	/*
 	 * Clear any pending IPIs.
 	 */
-	oct_write64(CVMX_CIU_MBOX_CLRX(0), 0xffffffff);
+	cvmx_write_csr(CVMX_CIU_MBOX_CLRX(0), 0xffffffff);
 #endif
 
 	printf("Available Octeon features:");
@@ -416,9 +419,6 @@ static octeon_boot_descriptor_t *app_desc_ptr;
 #define OCTEON_BOARD_TYPE_NONE 			0
 #define OCTEON_BOARD_TYPE_SIM  			1
 #define	OCTEON_BOARD_TYPE_CN3010_EVB_HS5	11
-
-#define OCTEON_CLOCK_DEFAULT (500 * 1000 * 1000)
-#define OCTEON_DRAM_DEFAULT  (256 * 1024 * 1024)
 
 int
 octeon_is_simulation(void)

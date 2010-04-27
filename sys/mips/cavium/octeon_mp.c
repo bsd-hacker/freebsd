@@ -46,7 +46,7 @@ unsigned octeon_ap_boot = ~0;
 void
 platform_ipi_send(int cpuid)
 {
-	oct_write64(CVMX_CIU_MBOX_SETX(cpuid), 1);
+	cvmx_write_csr(CVMX_CIU_MBOX_SETX(cpuid), 1);
 	mips_wbflush();
 }
 
@@ -55,9 +55,9 @@ platform_ipi_clear(void)
 {
 	uint64_t action;
 
-	action = oct_read64(CVMX_CIU_MBOX_CLRX(PCPU_GET(cpuid)));
+	action = cvmx_read_csr(CVMX_CIU_MBOX_CLRX(PCPU_GET(cpuid)));
 	KASSERT(action == 1, ("unexpected IPIs: %#jx", (uintmax_t)action));
-	oct_write64(CVMX_CIU_MBOX_CLRX(PCPU_GET(cpuid)), action);
+	cvmx_write_csr(CVMX_CIU_MBOX_CLRX(PCPU_GET(cpuid)), action);
 }
 
 int
@@ -77,7 +77,7 @@ platform_init_ap(int cpuid)
 	/*
 	 * Clear any pending IPIs.
 	 */
-	oct_write64(CVMX_CIU_MBOX_CLRX(cpuid), 0xffffffff);
+	cvmx_write_csr(CVMX_CIU_MBOX_CLRX(cpuid), 0xffffffff);
 
 	/*
 	 * Set up interrupts.
