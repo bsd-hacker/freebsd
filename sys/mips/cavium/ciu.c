@@ -39,6 +39,7 @@ __FBSDID("$FreeBSD: user/jmallett/octeon/sys/mips/cavium/ciu.c 206986 2010-04-21
 #include <sys/malloc.h>
 
 #include <machine/bus.h>
+#include <machine/intr_machdep.h>
 
 #include <contrib/octeon-sdk/cvmx.h>
 #include <contrib/octeon-sdk/cvmx-interrupt.h>
@@ -52,18 +53,23 @@ __FBSDID("$FreeBSD: user/jmallett/octeon/sys/mips/cavium/ciu.c 206986 2010-04-21
 #define	CIU_IRQ_HARD		(0)
 
 #define	CIU_IRQ_EN0_BEGIN	CVMX_IRQ_WORKQ0
-#define	CIU_IRQ_EN0_END		(CVMX_IRQ_BOOTDMA + 1)
+#define	CIU_IRQ_EN0_END		CVMX_IRQ_BOOTDMA
+#define	CIU_IRQ_EN0_COUNT	((CIU_IRQ_EN0_END - CIU_IRQ_EN0_BEGIN) + 1)
 
 #define	CIU_IRQ_EN1_BEGIN	CVMX_IRQ_WDOG0
-#define	CIU_IRQ_EN1_END		(CVMX_IRQ_WDOG15 + 1)
+#define	CIU_IRQ_EN1_END		CVMX_IRQ_WDOG15
+#define	CIU_IRQ_EN1_COUNT	((CIU_IRQ_EN1_END - CIU_IRQ_EN1_BEGIN) + 1)
 
 struct ciu_softc {
 	struct rman irq_rman;
 	struct resource *ciu_irq;
 };
 
-static struct intr_event *ciu_en0_intr_events[CIU_IRQ_EN0_END - CIU_IRQ_EN0_BEGIN];
-static struct intr_event *ciu_en1_intr_events[CIU_IRQ_EN1_END - CIU_IRQ_EN1_BEGIN];
+static mips_intrcnt_t ciu_en0_intrcnt[CIU_IRQ_EN0_COUNT];
+static mips_intrcnt_t ciu_en1_intrcnt[CIU_IRQ_EN1_COUNT];
+
+static struct intr_event *ciu_en0_intr_events[CIU_IRQ_EN0_COUNT];
+static struct intr_event *ciu_en1_intr_events[CIU_IRQ_EN1_COUNT];
 
 static int		ciu_probe(device_t);
 static int		ciu_attach(device_t);
@@ -95,7 +101,9 @@ ciu_probe(device_t dev)
 static int
 ciu_attach(device_t dev)
 {
+	char name[MAXCOMLEN + 1];
 	struct ciu_softc *sc;
+	unsigned i;
 	int error;
 	int rid;
 
@@ -130,6 +138,16 @@ ciu_attach(device_t dev)
 				   CIU_IRQ_EN1_END);
 	if (error != 0)
 		return (error);
+
+	for (i = 0; i < CIU_IRQ_EN0_COUNT; i++) {
+		snprintf(name, sizeof name, "int%d:", i + CIU_IRQ_EN0_BEGIN);
+		ciu_en0_intrcnt[i] = mips_intrcnt_create(name);
+	}
+
+	for (i = 0; i < CIU_IRQ_EN1_COUNT; i++) {
+		snprintf(name, sizeof name, "int%d:", i + CIU_IRQ_EN1_BEGIN);
+		ciu_en1_intrcnt[i] = mips_intrcnt_create(name);
+	}
 
 	bus_generic_probe(dev);
 	bus_generic_attach(dev);
@@ -176,16 +194,19 @@ ciu_setup_intr(device_t bus, device_t child, struct resource *res, int flags,
 	struct intr_event *event, **eventp;
 	void (*mask_func)(void *);
 	void (*unmask_func)(void *);
+	mips_intrcnt_t intrcnt;
 	int error;
 	int irq;
 
 	irq = rman_get_start(res);
-	if (irq < CIU_IRQ_EN0_END) {
+	if (irq <= CIU_IRQ_EN0_END) {
 		eventp = &ciu_en0_intr_events[irq - CIU_IRQ_EN0_BEGIN];
+		intrcnt = ciu_en0_intrcnt[irq - CIU_IRQ_EN0_BEGIN];
 		mask_func = ciu_en0_intr_mask;
 		unmask_func = ciu_en0_intr_unmask;
 	} else {
 		eventp = &ciu_en1_intr_events[irq - CIU_IRQ_EN1_BEGIN];
+		intrcnt = ciu_en1_intrcnt[irq - CIU_IRQ_EN1_BEGIN];
 		mask_func = ciu_en1_intr_mask;
 		unmask_func = ciu_en1_intr_unmask;
 	}
@@ -203,6 +224,8 @@ ciu_setup_intr(device_t bus, device_t child, struct resource *res, int flags,
 
 	intr_event_add_handler(event, device_get_nameunit(child),
 	    filter, intr, arg, intr_priority(flags), flags, cookiep);
+
+	mips_intrcnt_setname(intrcnt, event->ie_fullname);
 
 	return (0);
 }
@@ -290,6 +313,8 @@ ciu_intr(void *arg)
 		if ((en0_sum & 1) == 0)
 			continue;
 
+		mips_intrcnt_inc(ciu_en0_intrcnt[irq_index]);
+
 		error = intr_event_handle(ciu_en0_intr_events[irq_index], NULL);
 		if (error != 0)
 			printf("%s: stray en0 irq%d\n", __func__, irq_index);
@@ -299,6 +324,8 @@ ciu_intr(void *arg)
 	for (irq_index = 0; en1_sum != 0; irq_index++, en1_sum >>= 1) {
 		if ((en1_sum & 1) == 0)
 			continue;
+
+		mips_intrcnt_inc(ciu_en1_intrcnt[irq_index]);
 
 		error = intr_event_handle(ciu_en1_intr_events[irq_index], NULL);
 		if (error != 0)
