@@ -288,9 +288,6 @@ extern void octeon_reset(void);
 extern void octeon_led_write_char0(char val);
 extern void octeon_led_run_wheel(int *pos, int led_position);
 extern void octeon_debug_symbol(void);
-extern uint64_t octeon_dram;
-extern uint8_t octeon_mac_addr[6];
-extern int octeon_core_mask, octeon_mac_addr_count;
 extern void octeon_ciu_reset(void);
 extern int octeon_is_simulation(void);
 #endif	/* LOCORE */

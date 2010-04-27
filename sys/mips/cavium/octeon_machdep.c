@@ -81,7 +81,6 @@ __FBSDID("$FreeBSD$");
 #endif
 
 #define OCTEON_CLOCK_DEFAULT (500 * 1000 * 1000)
-#define OCTEON_DRAM_DEFAULT  (256 * 1024 * 1024)
 
 struct octeon_feature_description {
 	octeon_feature_t ofd_feature;
@@ -408,10 +407,7 @@ typedef struct {
 	uint64_t cvmx_desc_vaddr;
 } octeon_boot_descriptor_t;
 
-uint64_t octeon_dram;
-static uint32_t octeon_bd_ver = 0, octeon_cvmx_bd_ver = 0;
-uint8_t octeon_mac_addr[6] = { 0 };
-int octeon_core_mask, octeon_mac_addr_count;
+int octeon_core_mask;
 cvmx_bootinfo_t *octeon_bootinfo;
 
 static octeon_boot_descriptor_t *app_desc_ptr;
@@ -443,57 +439,23 @@ octeon_is_simulation(void)
 }
 
 static void
-octeon_process_app_desc_ver_unknown(void)
-{
-    	printf(" Unknown Boot-Descriptor: Using Defaults\n");
-
-        octeon_dram = OCTEON_DRAM_DEFAULT;
-        octeon_core_mask = 1;
-        octeon_mac_addr[0] = 0x00; octeon_mac_addr[1] = 0x0f;
-        octeon_mac_addr[2] = 0xb7; octeon_mac_addr[3] = 0x10;
-        octeon_mac_addr[4] = 0x09; octeon_mac_addr[5] = 0x06;
-        octeon_mac_addr_count = 1;
-
-	cvmx_sysinfo_minimal_initialize(NULL, CVMX_BOARD_TYPE_NULL,
-					0, 0, OCTEON_CLOCK_DEFAULT);
-}
-
-static int
 octeon_process_app_desc_ver_6(void)
 {
 	void *phy_mem_desc_ptr;
 
 	/* XXX Why is 0x00000000ffffffffULL a bad value?  */
 	if (app_desc_ptr->cvmx_desc_vaddr == 0 ||
-	    app_desc_ptr->cvmx_desc_vaddr == 0xfffffffful) {
-            	printf ("Bad octeon_bootinfo %p\n", octeon_bootinfo);
-                return 1;
-	}
+	    app_desc_ptr->cvmx_desc_vaddr == 0xfffffffful)
+            	panic("Bad octeon_bootinfo %p", octeon_bootinfo);
+
     	octeon_bootinfo =
 	    (cvmx_bootinfo_t *)(intptr_t)app_desc_ptr->cvmx_desc_vaddr;
         octeon_bootinfo =
 	    (cvmx_bootinfo_t *) ((intptr_t)octeon_bootinfo | MIPS_KSEG0_START);
-        octeon_cvmx_bd_ver = (octeon_bootinfo->major_version * 100) +
-	    octeon_bootinfo->minor_version;
-        if (octeon_bootinfo->major_version != 1) {
-            	panic("Incompatible CVMX descriptor from bootloader: %d.%d %p\n",
+        if (octeon_bootinfo->major_version != 1)
+            	panic("Incompatible CVMX descriptor from bootloader: %d.%d %p",
                        (int) octeon_bootinfo->major_version,
                        (int) octeon_bootinfo->minor_version, octeon_bootinfo);
-        }
-
-        octeon_core_mask = octeon_bootinfo->core_mask;
-        octeon_mac_addr[0] = octeon_bootinfo->mac_addr_base[0];
-        octeon_mac_addr[1] = octeon_bootinfo->mac_addr_base[1];
-        octeon_mac_addr[2] = octeon_bootinfo->mac_addr_base[2];
-        octeon_mac_addr[3] = octeon_bootinfo->mac_addr_base[3];
-        octeon_mac_addr[4] = octeon_bootinfo->mac_addr_base[4];
-        octeon_mac_addr[5] = octeon_bootinfo->mac_addr_base[5];
-        octeon_mac_addr_count = octeon_bootinfo->mac_addr_count;
-
-        if (app_desc_ptr->dram_size > 16*1024*1024)
-            	octeon_dram = (uint64_t)app_desc_ptr->dram_size;
-	else
-            	octeon_dram = (uint64_t)app_desc_ptr->dram_size << 20;
 
 	phy_mem_desc_ptr =
 	    (void *)MIPS_PHYS_TO_KSEG0(octeon_bootinfo->phy_mem_desc_addr);
@@ -502,47 +464,43 @@ octeon_process_app_desc_ver_6(void)
 					octeon_bootinfo->board_rev_major,
 					octeon_bootinfo->board_rev_minor,
 					octeon_bootinfo->eclock_hz);
-        return 0;
 }
 
 static void
 octeon_boot_params_init(register_t ptr)
 {
-	int bad_desc = 1;
-	
-    	if (ptr != 0 && ptr < MAX_APP_DESC_ADDR) {
-	        app_desc_ptr = (octeon_boot_descriptor_t *)(intptr_t)ptr;
-		octeon_bd_ver = app_desc_ptr->desc_version;
-		if (app_desc_ptr->desc_version < 6)
-			panic("Your boot code is too old to be supported.\n");
-		if (app_desc_ptr->desc_version >= 6)
-			bad_desc = octeon_process_app_desc_ver_6();
-        }
-        if (bad_desc)
-        	octeon_process_app_desc_ver_unknown();
+	if (ptr == 0 || ptr >= MAX_APP_DESC_ADDR)
+		panic("app descriptor passed at invalid address %#jx", (uintmax_t)ptr);
+
+	app_desc_ptr = (octeon_boot_descriptor_t *)(intptr_t)ptr;
+	if (app_desc_ptr->desc_version < 6)
+		panic("Your boot code is too old to be supported.");
+	octeon_process_app_desc_ver_6();
+
+	KASSERT(octeon_bootinfo != NULL, ("octeon_bootinfo should be set"));
 
 	if (cvmx_sysinfo_get()->phy_mem_desc_ptr == NULL)
-		panic("Your boot loader did not supply a memory descriptor.\n");
+		panic("Your boot loader did not supply a memory descriptor.");
 	cvmx_bootmem_init(cvmx_sysinfo_get()->phy_mem_desc_ptr);
 
         printf("Boot Descriptor Ver: %u -> %u/%u",
-               octeon_bd_ver, octeon_cvmx_bd_ver / 100,
-	       octeon_cvmx_bd_ver % 100);
+               app_desc_ptr->desc_version, octeon_bootinfo->major_version,
+	       octeon_bootinfo->minor_version);
         printf("  CPU clock: %uMHz  Core Mask: %#x\n",
-	       cvmx_sysinfo_get()->cpu_clock_hz / 1000000, octeon_core_mask);
-        printf("  Dram: %u MB", (uint32_t)(octeon_dram >> 20));
+	       cvmx_sysinfo_get()->cpu_clock_hz / 1000000,
+	       cvmx_sysinfo_get()->core_mask);
         printf("  Board Type: %u  Revision: %u/%u\n",
                cvmx_sysinfo_get()->board_type,
 	       cvmx_sysinfo_get()->board_rev_major,
 	       cvmx_sysinfo_get()->board_rev_minor);
-#if 0
-        printf("  Octeon Chip: %u  Rev %u/%u",
-               octeon_chip_type, octeon_chip_rev_major, octeon_chip_rev_minor);
-#endif
 
         printf("  Mac Address %02X.%02X.%02X.%02X.%02X.%02X (%d)\n",
-	    octeon_mac_addr[0], octeon_mac_addr[1], octeon_mac_addr[2],
-	    octeon_mac_addr[3], octeon_mac_addr[4], octeon_mac_addr[5],
-	    octeon_mac_addr_count);
+	    octeon_bootinfo->mac_addr_base[0],
+	    octeon_bootinfo->mac_addr_base[1],
+	    octeon_bootinfo->mac_addr_base[2],
+	    octeon_bootinfo->mac_addr_base[3],
+	    octeon_bootinfo->mac_addr_base[4],
+	    octeon_bootinfo->mac_addr_base[5],
+	    octeon_bootinfo->mac_addr_count);
 }
 /* impEND: This stuff should move back into the Cavium SDK */
