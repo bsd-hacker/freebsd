@@ -80,8 +80,30 @@ __FBSDID("$FreeBSD$");
 #define MAX_APP_DESC_ADDR     0xafffffff
 #endif
 
+struct octeon_feature_description {
+	octeon_feature_t ofd_feature;
+	const char *ofd_string;
+};
+
 extern int	*edata;
 extern int	*end;
+
+static struct octeon_feature_description octeon_feature_descriptions[] = {
+	{ OCTEON_FEATURE_SAAD,			"SAAD" },
+	{ OCTEON_FEATURE_ZIP,			"ZIP" },
+	{ OCTEON_FEATURE_CRYPTO,		"CRYPTO" },
+	{ OCTEON_FEATURE_PCIE,			"PCIE" },
+	{ OCTEON_FEATURE_KEY_MEMORY,		"KEY_MEMORY" },
+	{ OCTEON_FEATURE_LED_CONTROLLER,	"LED_CONTROLLER" },
+	{ OCTEON_FEATURE_TRA,			"TRA" },
+	{ OCTEON_FEATURE_MGMT_PORT,		"MGMT_PORT" },
+	{ OCTEON_FEATURE_RAID,			"RAID" },
+	{ OCTEON_FEATURE_USB,			"USB" },
+	{ OCTEON_FEATURE_NO_WPTR,		"NO_WPTR" },
+	{ OCTEON_FEATURE_DFA,			"DFA" },
+	{ OCTEON_FEATURE_MDIO_CLAUSE_45,	"MDIO_CLAUSE_45" },
+	{ 0,					NULL }
+};
 
 uint64_t ciu_get_en_reg_addr_new(int corenum, int intx, int enx, int ciu_ip);
 void ciu_dump_interrutps_enabled(int core_num, int intx, int enx, int ciu_ip);
@@ -268,6 +290,7 @@ void
 platform_start(__register_t a0, __register_t a1, __register_t a2 __unused,
     __register_t a3)
 {
+	struct octeon_feature_description *ofd;
 	uint64_t platform_counter_freq;
 
 	/* Initialize pcpu stuff */
@@ -308,6 +331,13 @@ platform_start(__register_t a0, __register_t a1, __register_t a2 __unused,
 	 */
 	oct_write64(CVMX_CIU_MBOX_CLRX(0), 0xffffffff);
 #endif
+
+	printf("Available Octeon features:");
+	for (ofd = octeon_feature_descriptions; ofd->ofd_string != NULL; ofd++) {
+		if (octeon_has_feature(ofd->ofd_feature))
+			printf(" %s", ofd->ofd_string);
+	}
+	printf("\n");
 }
 
 /* impSTART: This stuff should move back into the Cavium SDK */
