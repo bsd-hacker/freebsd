@@ -181,8 +181,8 @@ octe_attach(device_t dev)
 
 	ether_ifattach(ifp, priv->mac);
 
-	IFQ_SET_MAXLEN(&ifp->if_snd, 16);
-	ifp->if_snd.ifq_drv_maxlen = 16; /* XXX */
+	IFQ_SET_MAXLEN(&ifp->if_snd, MAX_OUT_QUEUE_DEPTH);
+	ifp->if_snd.ifq_drv_maxlen = MAX_OUT_QUEUE_DEPTH;
 	IFQ_SET_READY(&ifp->if_snd);
 
 	return (0);
