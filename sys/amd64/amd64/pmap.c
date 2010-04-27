@@ -166,34 +166,8 @@ __FBSDID("$FreeBSD$");
 #define PV_STAT(x)	do { } while (0)
 #endif
 
-#define	PA_LOCK_PAD	CACHE_LINE_SIZE
-
-struct vp_lock {
-	struct mtx	vp_lock;
-	unsigned char	pad[(PA_LOCK_PAD - sizeof(struct mtx))];
-};
-
-#define	pa_index(pa)	((pa) >> PDRSHIFT)
-#define	pa_to_pvh(pa)	(&pv_table[pa_index(pa)])
-
-#define	PA_LOCKPTR(pa)	&pa_lock[pa_index((pa)) % PA_LOCK_COUNT].vp_lock
-#define	PA_LOCKOBJPTR(pa)	((struct lock_object *)PA_LOCKPTR((pa)))
-#define	PA_LOCK(pa)	mtx_lock(PA_LOCKPTR(pa))
-#define	PA_TRYLOCK(pa)	mtx_trylock(PA_LOCKPTR(pa))
-#define	PA_UNLOCK(pa)	mtx_unlock(PA_LOCKPTR(pa))
-#define PA_UNLOCK_COND(pa) 			\
-	do {		   			\
-		if (pa) 			\
-			PA_UNLOCK(pa);		\
-	} while (0)
-
-#define	PA_LOCK_ASSERT(pa, a)	mtx_assert(PA_LOCKPTR(pa), (a))
+#define	pa_to_pvh(pa)		(&pv_table[pa_index(pa)])
 #define	PMAP_LOCKOBJPTR(pmap)	((struct lock_object *)(&(pmap)->pm_mtx))
-
-#define	PA_LOCK_COUNT	256
-
-struct vp_lock pa_lock[PA_LOCK_COUNT] __aligned(CACHE_LINE_SIZE);
-
 
 struct pmap kernel_pmap_store;
 
@@ -212,19 +186,6 @@ SYSCTL_NODE(_vm, OID_AUTO, pmap, CTLFLAG_RD, 0, "VM/pmap parameters");
 static int pg_ps_enabled = 1;
 SYSCTL_INT(_vm_pmap, OID_AUTO, pg_ps_enabled, CTLFLAG_RDTUN, &pg_ps_enabled, 0,
     "Are large page mappings enabled?");
-
-static uint64_t pmap_tryrelock_calls;
-SYSCTL_QUAD(_vm_pmap, OID_AUTO, tryrelock_calls, CTLFLAG_RD,
-    &pmap_tryrelock_calls, 0, "Number of tryrelock calls");
-
-static int pmap_tryrelock_restart;
-SYSCTL_INT(_vm_pmap, OID_AUTO, tryrelock_restart, CTLFLAG_RD,
-    &pmap_tryrelock_restart, 0, "Number of tryrelock restarts");
-
-static int pmap_tryrelock_race;
-SYSCTL_INT(_vm_pmap, OID_AUTO, tryrelock_race, CTLFLAG_RD,
-    &pmap_tryrelock_race, 0, "Number of tryrelock pmap race cases");
-
 
 static u_int64_t	KPTphys;	/* phys addr of kernel level 1 */
 static u_int64_t	KPDphys;	/* phys addr of kernel level 2 */
@@ -477,44 +438,6 @@ vtopde(vm_offset_t va)
 	return (PDmap + ((va >> PDRSHIFT) & mask));
 }
 
-/*
- * Try to acquire a physical address lock while a pmap is locked.  If we
- * fail to trylock we unlock and lock the pmap directly and cache the
- * locked pa in *locked.  The caller should then restart their loop in case
- * the virtual to physical mapping has changed.
- */
-static int
-pa_tryrelock(pmap_t pmap, vm_paddr_t pa, vm_paddr_t *locked)
-{
-	vm_paddr_t lockpa;
-	uint32_t gen_count;
-
-	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
-	gen_count = pmap->pm_gen_count;
-	atomic_add_long((volatile long *)&pmap_tryrelock_calls, 1);
-	lockpa = *locked;
-	*locked = pa;
-	if (lockpa) {
-		PA_LOCK_ASSERT(lockpa, MA_OWNED);
-		if (PA_LOCKPTR(pa) == PA_LOCKPTR(lockpa))
-			return (0);
-		PA_UNLOCK(lockpa);
-	}
-	if (PA_TRYLOCK(pa))
-		return (0);
-	PMAP_UNLOCK(pmap);
-	atomic_add_int((volatile int *)&pmap_tryrelock_restart, 1);
-	PA_LOCK(pa);
-	PMAP_LOCK(pmap);
-
-	if (pmap->pm_gen_count != gen_count + 1) {
-		pmap->pm_retries++;
-		atomic_add_int((volatile int *)&pmap_tryrelock_race, 1);
-		return (EAGAIN);
-	}
-	return (0);
-}
-
 static u_int64_t
 allocpages(vm_paddr_t *firstaddr, int n)
 {
@@ -624,7 +547,6 @@ pmap_bootstrap(vm_paddr_t *firstaddr)
 {
 	vm_offset_t va;
 	pt_entry_t *pte, *unused;
-	int i;	
 
 	/*
 	 * Create an initial set of page tables to run the kernel in.
@@ -674,12 +596,6 @@ pmap_bootstrap(vm_paddr_t *firstaddr)
 
 	/* Initialize the PAT MSR. */
 	pmap_init_pat();
-
-	/* Setup page locks. */
-	for (i = 0; i < PA_LOCK_COUNT; i++)
-		mtx_init(&pa_lock[i].vp_lock, "page lock", NULL,
-		    MTX_DEF | MTX_RECURSE | MTX_DUPOK);
-
 }
 
 /*
@@ -751,14 +667,6 @@ pmap_page_init(vm_page_t m)
 
 	TAILQ_INIT(&m->md.pv_list);
 	m->md.pat_mode = PAT_WRITE_BACK;
-}
-
-struct mtx *
-pmap_page_lockptr(vm_page_t m)
-{
-
-	KASSERT(m != NULL, ("pmap_page_lockptr: NULL page"));
-	return (PA_LOCKPTR(VM_PAGE_TO_PHYS(m)));
 }
 
 /*
@@ -886,7 +794,6 @@ SYSCTL_NODE(_vm_pmap, OID_AUTO, pdpe, CTLFLAG_RD, 0,
 static u_long pmap_pdpe_demotions;
 SYSCTL_ULONG(_vm_pmap_pdpe, OID_AUTO, demotions, CTLFLAG_RD,
     &pmap_pdpe_demotions, 0, "1GB page demotions");
-
 
 /***************************************************
  * Low level helper routines.....
@@ -1305,7 +1212,7 @@ retry:
 	if (pdep != NULL && (pde = *pdep)) {
 		if (pde & PG_PS) {
 			if ((pde & PG_RW) || (prot & VM_PROT_WRITE) == 0) {
-				if (pa_tryrelock(pmap, (pde & PG_PS_FRAME) |
+				if (vm_page_pa_tryrelock(pmap, (pde & PG_PS_FRAME) |
 				       (va & PDRMASK), &pa))
 					goto retry;
 				m = PHYS_TO_VM_PAGE((pde & PG_PS_FRAME) |
@@ -1316,7 +1223,7 @@ retry:
 			pte = *pmap_pde_to_pte(pdep, va);
 			if ((pte & PG_V) &&
 			    ((pte & PG_RW) || (prot & VM_PROT_WRITE) == 0)) {
-				if (pa_tryrelock(pmap, pte & PG_FRAME, &pa))
+				if (vm_page_pa_tryrelock(pmap, pte & PG_FRAME, &pa))
 					goto retry;
 				m = PHYS_TO_VM_PAGE(pte & PG_FRAME);
 				vm_page_hold(m);
@@ -2408,7 +2315,7 @@ pmap_pv_demote_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t paddr,
 	TAILQ_INSERT_TAIL(&m->md.pv_list, pv, pv_list);
 	/* We open ourselves up to an LOR by doing the page lock acquisitions
 	 * with the pmap lock held - which raises the question as to whether
-	 * we should use pa_tryrelock (can the pmap be corrupted if we allow it
+	 * we should use vm_page_pa_tryrelock (can the pmap be corrupted if we allow it
 	 * to be changed during a demotion?) or should we lock the entire range
 	 * in advance? Either option is a bit awkward.
 	 */
@@ -2422,7 +2329,7 @@ pmap_pv_demote_pde(pmap_t pmap, vm_offset_t va, vm_paddr_t paddr,
 		pv = TAILQ_FIRST(pv_list);
 		TAILQ_REMOVE(pv_list, pv, pv_list);
 		pv->pv_va = va;
-		pa_tryrelock(pmap, VM_PAGE_TO_PHYS(m), &pa);
+		vm_page_pa_tryrelock(pmap, VM_PAGE_TO_PHYS(m), &pa);
 		TAILQ_INSERT_TAIL(&m->md.pv_list, pv, pv_list);
 	} while (va < va_last);
 	PA_UNLOCK_COND(pa);
@@ -2710,7 +2617,7 @@ pmap_remove_pde(pmap_t pmap, pd_entry_t *pdq, vm_offset_t sva,
 			if ((oldpde & PG_A) ||
 			    (TAILQ_EMPTY(&m->md.pv_list) &&
 				TAILQ_EMPTY(&pvh->pv_list)))
-				pa_tryrelock(pmap, paddr, &pa);
+				vm_page_pa_tryrelock(pmap, paddr, &pa);
 
 			if ((oldpde & (PG_M | PG_RW)) == (PG_M | PG_RW))
 				vm_page_dirty(m);
@@ -2794,7 +2701,7 @@ pmap_remove_page(pmap_t pmap, vm_offset_t va, pd_entry_t *pde, vm_page_t *free)
 	if ((*pte & PG_V) == 0)
 		return;
 	if  (*pte & PG_MANAGED)
-		(void)pa_tryrelock(pmap, *pte & PG_FRAME, &pa);
+		(void)vm_page_pa_tryrelock(pmap, *pte & PG_FRAME, &pa);
 
 	pmap_remove_pte(pmap, pte, va, *pde, free);
 	PA_UNLOCK_COND(pa);
@@ -2900,7 +2807,7 @@ restart:
 			 * also potentially need the whole range so this
 			 * acquisition may provide no benefit at all
 			 */
-			if (pa_tryrelock(pmap, ptpaddr & PG_FRAME, &pa)) {
+			if (vm_page_pa_tryrelock(pmap, ptpaddr & PG_FRAME, &pa)) {
 				va_next = sva;
 				continue;
 			}
@@ -2944,7 +2851,7 @@ restart:
 				continue;
 
 			if  ((*pte & PG_MANAGED) &&
-			    pa_tryrelock(pmap, *pte & PG_FRAME, &pa))
+			    vm_page_pa_tryrelock(pmap, *pte & PG_FRAME, &pa))
 				goto restart;
 			/*
 			 * The TLB entry for a PG_G mapping is invalidated
@@ -3175,7 +3082,7 @@ retry:
 				if ((pbits & (PG_MANAGED | PG_M | PG_RW)) ==
 				    (PG_MANAGED | PG_M | PG_RW)) {
 					m = PHYS_TO_VM_PAGE(pbits & PG_FRAME);
-					if (pa_tryrelock(pmap, pbits & PG_FRAME, &pa))
+					if (vm_page_pa_tryrelock(pmap, pbits & PG_FRAME, &pa))
 					    goto restart;
 					vm_page_dirty(m);
 				}
@@ -3644,7 +3551,7 @@ pmap_enter_object(pmap_t pmap, vm_offset_t start, vm_offset_t end,
 restart:	
 	while (m != NULL && (diff = m->pindex - m_start->pindex) < psize) {
 		va = start + ptoa(diff);
-		if (pa_tryrelock(pmap, VM_PAGE_TO_PHYS(m), &pa))
+		if (vm_page_pa_tryrelock(pmap, VM_PAGE_TO_PHYS(m), &pa))
 			goto restart;
 		if ((va & PDRMASK) == 0 && va + NBPDR <= end &&
 		    (VM_PAGE_TO_PHYS(m) & PDRMASK) == 0 &&
@@ -3912,7 +3819,7 @@ retry:
 		if (TAILQ_EMPTY(&pv_list) &&
 		    pmap_pv_list_alloc(pmap, NPTEPG-1, &pv_list))
 			goto retry;
-		if (pa_tryrelock(pmap, *pde & PG_FRAME, &pa))
+		if (vm_page_pa_tryrelock(pmap, *pde & PG_FRAME, &pa))
 			goto retry;
 	}
 	if ((*pde & PG_PS) != 0) {
@@ -4321,7 +4228,7 @@ restart:
 					continue;
 				}
 
-				if (pa_tryrelock(pmap, tpte & PG_FRAME, &pa))
+				if (vm_page_pa_tryrelock(pmap, tpte & PG_FRAME, &pa))
 					goto restart;
 
 				m = PHYS_TO_VM_PAGE(tpte & PG_FRAME);
