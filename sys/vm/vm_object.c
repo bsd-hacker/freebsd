@@ -844,6 +844,7 @@ vm_object_page_clean(vm_object_t object, vm_pindex_t start, vm_pindex_t end, int
 			 * page (i.e. had to sleep) and always unlocks p.
 			 */
 			tscan += vm_object_page_collect_flush(object, p, curgeneration, pagerflags);
+			vm_page_unlock(p);
 		}
 
 		/*
@@ -920,17 +921,21 @@ again:
 		/* Always unlocks p. */
 		n = vm_object_page_collect_flush(object, p,
 			curgeneration, pagerflags);
-		if (n == 0)
+		if (n == 0) {
+			vm_page_unlock(p);
 			goto rescan;
+		}
 
-		if (object->generation != curgeneration)
+		if (object->generation != curgeneration) {
+			vm_page_unlock(p);
 			goto rescan;
-
+		}
 		/*
 		 * Try to optimize the next page.  If we can't we pick up
 		 * our (random) scan where we left off.
 		 */
 		if (msync_flush_flags & MSYNC_FLUSH_SOFTSEQ) {
+			vm_page_unlock(p);
 			if ((p = vm_page_lookup(object, pi + n)) != NULL)
 				goto again;
 		}
