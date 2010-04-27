@@ -238,8 +238,10 @@ octe_init(void *arg)
 	if (priv->miibus != NULL)
 		mii_mediachg(device_get_softc(priv->miibus));
 
-        ifp->if_drv_flags |= IFF_DRV_RUNNING;
-        ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
+	cvm_oct_common_set_multicast_list(ifp);
+
+	ifp->if_drv_flags |= IFF_DRV_RUNNING;
+	ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
 }
 
 static void
@@ -279,21 +281,15 @@ octe_start(struct ifnet *ifp)
 		 * two very good reasons:
 		 * (1) immediately after our inserting it another CPU may be
 		 *     kind enough to free it for us.
-		 * (2) m_defrag gets called on m and we don't get back the
+		 * (2) m_collapse gets called on m and we don't get back the
 		 *     modified pointer.
 		 *
-		 * We have some options other than this m_dup route:
+		 * We have some options other than an m_dup route:
 		 * (1) use a mutex or spinlock to prevent another CPU from
 		 *     freeing it.  We could lock the tx_free_list's lock,
 		 *     that would make sense.
 		 * (2) get back the new mbuf pointer.
-		 * (3) do the defrag here.
-		 *
-		 * #3 makes sense in the long run when we have code that can
-		 * load mbufs into any number of segments, but for now the
-		 * transmit code is called with the assumption that it knows
-		 * how to defrag mbufs for itself and that it will handle the
-		 * failure cases internally.
+		 * (3) do the collapse here.
 		 */
 
 		if (priv->queue != -1) {

@@ -98,9 +98,8 @@ static struct ifnet_stats *cvm_oct_common_get_stats(struct ifnet *ifp)
  *
  * @param dev    Device to work on
  */
-static void cvm_oct_common_set_multicast_list(struct ifnet *ifp)
+void cvm_oct_common_set_multicast_list(struct ifnet *ifp)
 {
-#if 0
 	cvmx_gmxx_prtx_cfg_t gmx_cfg;
 	cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
 	int interface = INTERFACE(priv->port);
@@ -111,13 +110,13 @@ static void cvm_oct_common_set_multicast_list(struct ifnet *ifp)
 		control.u64 = 0;
 		control.s.bcst = 1;     /* Allow broadcast MAC addresses */
 
-		if (ifp->mc_list || (ifp->flags&IFF_ALLMULTI) ||
-		    (ifp->flags & IFF_PROMISC))
+		if (/*ifp->mc_list || */(ifp->if_flags&IFF_ALLMULTI) ||
+		    (ifp->if_flags & IFF_PROMISC))
 			control.s.mcst = 2; /* Force accept multicast packets */
 		else
 			control.s.mcst = 1; /* Force reject multicat packets */
 
-		if (ifp->flags & IFF_PROMISC)
+		if (ifp->if_flags & IFF_PROMISC)
 			control.s.cam_mode = 0; /* Reject matches if promisc. Since CAM is shut off, should accept everything */
 		else
 			control.s.cam_mode = 1; /* Filter packets based on the CAM */
@@ -126,14 +125,13 @@ static void cvm_oct_common_set_multicast_list(struct ifnet *ifp)
 		cvmx_write_csr(CVMX_GMXX_PRTX_CFG(index, interface), gmx_cfg.u64 & ~1ull);
 
 		cvmx_write_csr(CVMX_GMXX_RXX_ADR_CTL(index, interface), control.u64);
-		if (ifp->flags&IFF_PROMISC)
+		if (ifp->if_flags&IFF_PROMISC)
 			cvmx_write_csr(CVMX_GMXX_RXX_ADR_CAM_EN(index, interface), 0);
 		else
 			cvmx_write_csr(CVMX_GMXX_RXX_ADR_CAM_EN(index, interface), 1);
 
 		cvmx_write_csr(CVMX_GMXX_PRTX_CFG(index, interface), gmx_cfg.u64);
 	}
-#endif
 }
 
 
@@ -262,7 +260,6 @@ int cvm_oct_common_init(struct ifnet *ifp)
 #if 0
 	ifp->get_stats          = cvm_oct_common_get_stats;
 	ifp->set_mac_address    = cvm_oct_common_set_mac_address;
-	ifp->set_multicast_list = cvm_oct_common_set_multicast_list;
 	ifp->features           |= NETIF_F_LLTX; /* We do our own locking, Linux doesn't need to */
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	ifp->poll_controller    = cvm_oct_poll_controller;
