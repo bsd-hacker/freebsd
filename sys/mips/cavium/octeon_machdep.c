@@ -299,6 +299,8 @@ platform_start(__register_t a0, __register_t a1, __register_t a2 __unused,
 	mips_timer_early_init(OCTEON_CLOCK_DEFAULT);
 	cninit();
 
+	printf("Model: %s\n", octeon_model_get_string(cvmx_get_proc_id()));
+
 	octeon_ciu_reset();
 	octeon_boot_params_init(a3);
 	bootverbose = 1;
