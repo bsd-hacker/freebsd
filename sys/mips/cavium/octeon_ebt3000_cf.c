@@ -48,6 +48,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/bio.h>
 #include <sys/systm.h>
 #include <sys/sysctl.h>
+#include <sys/ata.h>
 #include <sys/bus.h>
 #include <sys/kernel.h>
 #include <sys/module.h>
@@ -66,7 +67,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/cpuregs.h>
 
 #include "octeon_ebt3000_cf.h"
-#include "driveid.h"
 #include <mips/cavium/octeon_pcmap_regs.h>
 
 /* ATA Commands */
@@ -97,8 +97,6 @@ __FBSDID("$FreeBSD$");
 #define WAIT_DELAY		1000
 #define NR_TRIES		1000
 #define SWAP_SHORT(x)		((x << 8) | (x >> 8))
-#define SWAP_LONG(x)		(((x << 24) & 0xFF000000) | ((x <<  8) & 0x00FF0000) | \
-				 ((x >> 8) & 0x0000FF00)  | ((x << 24) & 0x000000FF) )
 #define MODEL_STR_SIZE		40
 
 
@@ -122,7 +120,7 @@ struct cf_priv {
 struct drive_param{
 	union {
 		char buf[SECTOR_SIZE];
-		struct hd_driveid driveid;
+		struct ata_params driveid;
 	} u;
 
 	char model[MODEL_STR_SIZE];
@@ -415,10 +413,11 @@ static int cf_cmd_identify (void)
 	cf_swap_ascii(drive_param.u.driveid.model, drive_param.model);
 
 	drive_param.sector_size =  512;   //=  SWAP_SHORT (drive_param.u.driveid.sector_bytes);
-	drive_param.heads 	=  SWAP_SHORT (drive_param.u.driveid.cur_heads);
-	drive_param.tracks	=  SWAP_SHORT (drive_param.u.driveid.cur_cyls); 
-	drive_param.sec_track   =  SWAP_SHORT (drive_param.u.driveid.cur_sectors);
-	drive_param.nr_sectors  =  SWAP_LONG  (drive_param.u.driveid.lba_capacity);
+	drive_param.heads 	=  SWAP_SHORT (drive_param.u.driveid.current_heads);
+	drive_param.tracks	=  SWAP_SHORT (drive_param.u.driveid.current_cylinders); 
+	drive_param.sec_track   =  SWAP_SHORT (drive_param.u.driveid.current_sectors);
+	drive_param.nr_sectors  = (uint32_t)SWAP_SHORT (drive_param.u.driveid.lba_size_1) |
+	    ((uint32_t)SWAP_SHORT (drive_param.u.driveid.lba_size_2));
 
 	return (0);
 }
