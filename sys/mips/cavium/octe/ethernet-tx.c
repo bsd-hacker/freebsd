@@ -74,6 +74,7 @@ int cvm_oct_xmit(struct mbuf *m, struct ifnet *ifp)
 #if REUSE_MBUFS_WITHOUT_FREE
 	unsigned char *fpa_head;
 #endif
+	cvmx_wqe_t *work;
 
 	/* Prefetch the private data structure.
 	   It is larger that one cache line */
@@ -130,28 +131,72 @@ int cvm_oct_xmit(struct mbuf *m, struct ifnet *ifp)
 		}
 	}
 
-	/* Build the PKO buffer pointer */
-	if (m->m_pkthdr.len != m->m_len) {
-		m = m_defrag(m, M_DONTWAIT);
-		if (m->m_pkthdr.len != m->m_len)
-			panic("%s: need to load multiple segments.", __func__);
+	/*
+	 * If the packet is not fragmented.
+	 */
+	if (m->m_pkthdr.len == m->m_len) {
+		/* Build the PKO buffer pointer */
+		hw_buffer.u64 = 0;
+		hw_buffer.s.addr = cvmx_ptr_to_phys(m->m_data);
+		hw_buffer.s.pool = 0;
+		hw_buffer.s.size = m->m_len;
+
+		/* Build the PKO command */
+		pko_command.u64 = 0;
+		pko_command.s.segs = 1;
+
+		work = NULL;
+	} else {
+		struct mbuf *n;
+		unsigned segs;
+		uint64_t *gp;
+
+		/*
+		 * The packet is fragmented, we need to send a list of segments
+		 * in memory we borrow from the WQE pool.
+		 */
+		work = cvmx_fpa_alloc(CVMX_FPA_WQE_POOL);
+		gp = (uint64_t *)work;
+
+		segs = 0;
+		for (n = m; n != NULL; n = n->m_next) {
+			if (segs == CVMX_FPA_WQE_POOL_SIZE / sizeof (uint64_t))
+				panic("%s: too many segments in packet; call m_collapse().", __func__);
+
+			/* Build the PKO buffer pointer */
+			hw_buffer.u64 = 0;
+			hw_buffer.s.addr = cvmx_ptr_to_phys(n->m_data);
+			hw_buffer.s.pool = 0;
+			hw_buffer.s.size = n->m_len;
+
+			*gp++ = hw_buffer.u64;
+			segs++;
+		}
+
+		/* Build the PKO buffer gather list pointer */
+		hw_buffer.u64 = 0;
+		hw_buffer.s.addr = cvmx_ptr_to_phys(work);
+		hw_buffer.s.pool = CVMX_FPA_WQE_POOL;
+		hw_buffer.s.size = segs;
+
+		/* Build the PKO command */
+		pko_command.u64 = 0;
+		pko_command.s.segs = segs;
+		pko_command.s.gather = 1;
 	}
 
-	hw_buffer.u64 = 0;
-	hw_buffer.s.addr = cvmx_ptr_to_phys(m->m_data);
-	hw_buffer.s.pool = 0;
-	hw_buffer.s.size = m->m_len;
-
-	/* Build the PKO command */
-	pko_command.u64 = 0;
+	/* Finish building the PKO command */
 	pko_command.s.n2 = 1; /* Don't pollute L2 with the outgoing packet */
-	pko_command.s.segs = 1;
+	pko_command.s.dontfree = 1;
+	pko_command.s.reg0 = priv->fau+qos*4;
+	pko_command.s.reg0 = priv->fau+qos*4;
 	pko_command.s.total_bytes = m->m_pkthdr.len;
 	pko_command.s.size0 = CVMX_FAU_OP_SIZE_32;
 	pko_command.s.subone0 = 1;
 
 	pko_command.s.dontfree = 1;
 	pko_command.s.reg0 = priv->fau+qos*4;
+
 	/* See if we can put this m in the FPA pool. Any strange behavior
 	   from the Linux networking stack will most likely be caused by a bug
 	   in the following code. If some field is in use by the network stack
@@ -311,6 +356,8 @@ dont_put_mbuf_in_hw:
 			IF_ENQUEUE(&priv->tx_free_queue[qos], m);
 		}
 	}
+	if (work != NULL)
+		cvmx_fpa_free(work, CVMX_FPA_WQE_POOL, DONT_WRITEBACK(1));
 
 	/* Free mbufs not in use by the hardware */
 	if (_IF_QLEN(&priv->tx_free_queue[qos]) > in_use) {
