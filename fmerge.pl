@@ -63,13 +63,6 @@ sub error(@) {
     exit(1);
 }
 
-sub svn_check($@) {
-    my ($cond, @msg) = @_;
-    if (!$cond) {
-	error(@msg);
-    }
-}
-
 sub svn_do(@) {
     my @argv = @_;
     unshift(@argv, '--dry-run')
@@ -114,7 +107,9 @@ sub examine() {
 	my ($key, $value) = split(/:\s+/, $_, 2);
 	next unless $key && $value;
 	if ($key eq 'Path') {
-	    svn_check($value eq $tgt_dir, "path mismatch: $value != $tgt_dir");
+	    if (!$value eq $tgt_dir) {
+		error("path mismatch: $value != $tgt_dir");
+	    }
 	} elsif ($key eq 'URL') {
 	    $tgt_url = $value;
 	} elsif ($key eq 'Repository Root') {
@@ -123,7 +118,8 @@ sub examine() {
     }
     close($fh);
 
-    svn_check($tgt_url =~ m@^\Q$svn_root\E(/.*)$@, "invalid svn URL: $tgt_url");
+    $tgt_url =~ m@^\Q$svn_root\E(/.*)$@
+	or error("invalid svn URL: $tgt_url");
     $svn_path = $1;
 
     debug("guessing merge source / target directory");
@@ -150,7 +146,6 @@ sub examine() {
 	last;
     }
     close($fh);
-
     if (!$src_branch) {
 	error("not enough information to deduce source or target");
     }
@@ -162,7 +157,9 @@ sub examine() {
 	$svn_path =~ s@^/(head|\w+/\d+(?:\.\d+)*)/?@@;
 	$tgt_branch = $1;
     }
-    svn_check($tgt_branch, "unable to figure out source branch");
+    if (!$tgt_branch) {
+	error("unable to figure out source branch");
+    }
     debug("tgt_branch = '$tgt_branch'");
     debug("svn_path = '$svn_path'");
 }
