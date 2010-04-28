@@ -35,7 +35,7 @@ our $already;
 our $debug;
 our $pretend;
 
-our $src_branch = "head";	# where we merge from
+our $src_branch;		# where we merge from
 our $src_path;			# path relative to source branch
 our $src_url;			# source URL
 our $tgt_branch;		# where we merge to
@@ -58,11 +58,15 @@ sub debug(@) {
 	if $debug;
 }
 
+sub error(@) {
+    info(@_);
+    exit(1);
+}
+
 sub svn_check($@) {
     my ($cond, @msg) = @_;
     if (!$cond) {
-	info(@msg);
-	exit(1);
+	error(@msg);
     }
 }
 
@@ -126,9 +130,19 @@ sub examine() {
     $fh = svn_catch('propget', 'svn:mergeinfo', $tgt_dir);
     while (<$fh>) {
 	chomp();
-	debug("'$_' =~ m\@^\Q/$src_branch\E((?:/[\\w.-]+)*):\@");
-	next unless m@^\Q/$src_branch\E((?:/[\w.-]+)*):@;
-	my $subdir = $1;
+	my $subdir;
+	if ($src_branch) {
+	    debug("have src_branch = $src_branch");
+	    debug("'$_' =~ m\@^\Q/$src_branch\E((?:/[\\w.-]+)*):\@");
+	    next unless m@^\Q/$src_branch\E((?:/[\w.-]+)*):@;
+	    $subdir = 1;
+	} else {
+	    debug("no src_branch");
+	    next unless m@^((?:/[\w.-]+)*):@;
+	    $src_branch = $1;
+	    $subdir = "";
+	}
+	debug("subdir = $subdir");
 	debug("'$svn_path' =~ m\@^((?:/[\\w.-]+)+)\Q$subdir\E\$\@");
 	next unless $svn_path =~ m@^((?:/[\w.-]+)+)\Q$subdir\E$@;
 	$svn_path = $subdir;
@@ -136,6 +150,10 @@ sub examine() {
 	last;
     }
     close($fh);
+
+    if (!$src_branch) {
+	error("not enough information to deduce source or target");
+    }
 
     if (!$tgt_branch) {
 	# try to guess a stable / releng / release branch
