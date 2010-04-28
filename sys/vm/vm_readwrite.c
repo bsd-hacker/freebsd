@@ -437,13 +437,11 @@ vnode_grab_pages(struct vnode *vp, vm_page_t *ma, int *wp, vm_pindex_t pindex,
 				m = *reserv;
 				*reserv = NULL;
 				atomic_add_int(&vmio_reserv_used, 1);
+				m->flags &= ~PG_UNMANAGED;
 				if (object->memattr != VM_MEMATTR_DEFAULT)
 					pmap_page_set_memattr(m,
 					    object->memattr);
 				vm_page_insert(m, object, pindex);
-				vm_page_lock_queues();
-				vm_page_flag_clear(m, PG_UNMANAGED);
-				vm_page_unlock_queues();
 				ma[i] = m;
 				i++;
 			}
