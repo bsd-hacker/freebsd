@@ -224,10 +224,10 @@ static void	pmap_pvh_free(struct md_page *pvh, pmap_t pmap, vm_offset_t va);
 static pv_entry_t pmap_pvh_remove(struct md_page *pvh, pmap_t pmap,
 		    vm_offset_t va);
 static int	pmap_pvh_wired_mappings(struct md_page *pvh, int count);
-
-static int pmap_change_attr_locked(vm_offset_t va, vm_size_t size, int mode);
-static boolean_t pmap_demote_pde(pmap_t pmap, pd_entry_t *pde, vm_offset_t va,
-	struct pv_list_head *pv_list);
+static int pmap_change_attr_locked(vm_offset_t, vm_size_t, int);
+static boolean_t pmap_demote_pde_pv_list(pmap_t, pd_entry_t *, vm_offset_t,
+	struct pv_list_head *);
+static boolean_t pmap_demote_pde(pmap_t, pd_entry_t *, vm_offset_t);
 static boolean_t pmap_demote_pdpe(pmap_t pmap, pdp_entry_t *pdpe,
     vm_offset_t va);
 static boolean_t pmap_enter_pde(pmap_t pmap, vm_offset_t va, vm_page_t m,
@@ -1793,7 +1793,6 @@ pmap_allocpte(pmap_t pmap, vm_paddr_t pa, vm_offset_t va, int flags)
 	vm_pindex_t ptepindex;
 	pd_entry_t *pd;
 	vm_page_t m;
-	struct pv_list_head pv_list;
 
 	KASSERT((flags & (M_NOWAIT | M_WAITOK)) == M_NOWAIT ||
 	    (flags & (M_NOWAIT | M_WAITOK)) == M_WAITOK,
@@ -1814,8 +1813,7 @@ retry:
 	 * normal 4K page.
 	 */
 	if (pd != NULL && (*pd & (PG_PS | PG_V)) == (PG_PS | PG_V)) {
-		TAILQ_INIT(&pv_list);
-		if (!pmap_demote_pde(pmap, pd, va, &pv_list)) {
+		if (!pmap_demote_pde(pmap, pd, va)) {
 			/*
 			 * Invalidation of the 2MB page mapping may have caused
 			 * the deallocation of the underlying PD page.
@@ -2460,20 +2458,18 @@ pmap_fill_ptp(pt_entry_t *firstpte, pt_entry_t newpte)
  * mapping is invalidated.
  */
 static boolean_t
-pmap_demote_pde(pmap_t pmap, pd_entry_t *pde, vm_offset_t va,
+pmap_demote_pde_pv_list(pmap_t pmap, pd_entry_t *pde, vm_offset_t va,
 	struct pv_list_head *pv_list)
 {
 	pd_entry_t newpde, oldpde;
 	pt_entry_t *firstpte, newpte;
 	vm_paddr_t mptepa;
 	vm_page_t free, mpte;
-	boolean_t inc;
 
 	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
 	oldpde = *pde;
 	KASSERT((oldpde & (PG_PS | PG_V)) == (PG_PS | PG_V),
 	    ("pmap_demote_pde: oldpde is missing PG_PS and/or PG_V"));
-	inc = FALSE;
 	mpte = pmap_lookup_pt_page(pmap, va);
 	if (mpte != NULL)
 		pmap_remove_pt_page(pmap, mpte);
@@ -2506,17 +2502,8 @@ pmap_demote_pde(pmap_t pmap, pd_entry_t *pde, vm_offset_t va,
 			    " in pmap %p", va, pmap);
 			return (FALSE);
 		}
-		if (va < VM_MAXUSER_ADDRESS) {
+		if (va < VM_MAXUSER_ADDRESS)
 			pmap_resident_count_inc(pmap, 1);
-			inc = TRUE;
-		}
-	}
-	if (TAILQ_EMPTY(pv_list) && ((oldpde & PG_MANAGED) != 0)) {
-		if (pmap_pv_list_try_alloc(pmap, NPTEPG-1, pv_list) == FALSE) {
-			if (inc)
-				pmap_resident_count_dec(pmap, 1);
-			return (FALSE);
-		}
 	}
 	mptepa = VM_PAGE_TO_PHYS(mpte);
 	firstpte = (pt_entry_t *)PHYS_TO_DMAP(mptepa);
@@ -2571,15 +2558,35 @@ pmap_demote_pde(pmap_t pmap, pd_entry_t *pde, vm_offset_t va,
 	 * must have already changed from mapping the 2mpage to
 	 * referencing the page table page.
 	 */
-	if ((oldpde & PG_MANAGED) != 0)
+	if ((oldpde & PG_MANAGED) != 0) {
+		KASSERT(!TAILQ_EMPTY(pv_list), ("passed empty pv_list"));
 		pmap_pv_demote_pde(pmap, va, oldpde & PG_PS_FRAME, pv_list);
-
+	}
 	pmap_pde_demotions++;
 	CTR2(KTR_PMAP, "pmap_demote_pde: success for va %#lx"
 	    " in pmap %p", va, pmap);
 	return (TRUE);
 }
-	
+
+static boolean_t
+pmap_demote_pde(pmap_t pmap, pd_entry_t *pde, vm_offset_t va)
+{
+	struct pv_list_head pv_list;
+	boolean_t ret;
+
+	TAILQ_INIT(&pv_list);
+	if ((*pde & PG_MANAGED) != 0) {
+		if (pmap_pv_list_try_alloc(pmap, NPTEPG-1, &pv_list) == FALSE) 
+			return (FALSE);
+	}
+
+	ret = pmap_demote_pde_pv_list(pmap, pde, va, &pv_list);
+	if (!TAILQ_EMPTY(&pv_list))
+		pmap_pv_list_free(pmap, &pv_list);
+
+	return (ret);
+}
+
 /*
  * pmap_remove_pde: do the things to unmap a superpage in a process
  */
@@ -2635,7 +2642,7 @@ pmap_remove_pde(pmap_t pmap, pd_entry_t *pdq, vm_offset_t sva,
 		 * Our inability to fail here implies that we should
 		 * always be passed a pv_list if pmap == kernel_pmap
 		 */
-		if (!pmap_demote_pde(pmap, pdq, sva, pv_list))
+		if (!pmap_demote_pde_pv_list(pmap, pdq, sva, pv_list))
 			panic("pmap_remove_pde: failed demotion");
 	} else {
 		mpte = pmap_lookup_pt_page(pmap, sva);
@@ -2825,7 +2832,7 @@ restart:
 					anyvalid = 1;
 				pmap_remove_pde(pmap, pde, sva, &free, &pv_list);
 				continue;
-			} else if (!pmap_demote_pde(pmap, pde, sva, &pv_list)) {
+			} else if (!pmap_demote_pde(pmap, pde, sva)) {
 				/* The large page mapping was destroyed. */
 				continue;
 			} else
@@ -2897,9 +2904,7 @@ pmap_remove_all(vm_page_t m)
 	pd_entry_t *pde;
 	vm_offset_t va;
 	vm_page_t free;
-	struct pv_list_head pv_list;
 	
-	TAILQ_INIT(&pv_list);
 	KASSERT((m->flags & PG_FICTITIOUS) == 0,
 	    ("pmap_remove_all: page %p is fictitious", m));
 	vm_page_lock_assert(m, MA_OWNED);
@@ -2909,7 +2914,7 @@ pmap_remove_all(vm_page_t m)
 		PMAP_LOCK(pmap);
 		va = pv->pv_va;
 		pde = pmap_pde(pmap, va);
-		(void)pmap_demote_pde(pmap, pde, va, &pv_list);
+		(void)pmap_demote_pde(pmap, pde, va);
 		PMAP_UNLOCK(pmap);
 	}
 	while ((pv = TAILQ_FIRST(&m->md.pv_list)) != NULL) {
@@ -2995,7 +3000,6 @@ pmap_protect(pmap_t pmap, vm_offset_t sva, vm_offset_t eva, vm_prot_t prot)
 	pt_entry_t *pte;
 	int anychanged;
 	vm_paddr_t pa;
-	struct pv_list_head pv_list;
 
 	if ((prot & VM_PROT_READ) == VM_PROT_NONE) {
 		pmap_remove(pmap, sva, eva);
@@ -3006,7 +3010,6 @@ pmap_protect(pmap_t pmap, vm_offset_t sva, vm_offset_t eva, vm_prot_t prot)
 	    (VM_PROT_WRITE|VM_PROT_EXECUTE))
 		return;
 
-	TAILQ_INIT(&pv_list);
 	pa = 0;
 	anychanged = 0;
 
@@ -3059,7 +3062,7 @@ restart:
 				if (pmap_protect_pde(pmap, pde, sva, prot))
 					anychanged = 1;
 				continue;
-			} else if (!pmap_demote_pde(pmap, pde, sva, &pv_list)) {
+			} else if (!pmap_demote_pde(pmap, pde, sva)) {
 				/* The large page mapping was destroyed. */
 				continue;
 			}
@@ -3825,7 +3828,7 @@ retry:
 	if ((*pde & PG_PS) != 0) {
 		if (!wired != ((*pde & PG_W) == 0)) {
 			gen_count = pmap->pm_gen_count;
-			if (!pmap_demote_pde(pmap, pde, va, &pv_list))
+			if (!pmap_demote_pde_pv_list(pmap, pde, va, &pv_list))
 				panic("pmap_change_wiring: demotion failed");
 			if (gen_count != pmap->pm_gen_count)
 				goto retry;
@@ -4433,13 +4436,11 @@ pmap_remove_write(vm_page_t m)
 	pd_entry_t *pde;
 	pt_entry_t oldpte, *pte;
 	vm_offset_t va;
-	struct pv_list_head pv_list;
 
 	if ((m->flags & PG_FICTITIOUS) != 0 ||
 	    (m->flags & PG_WRITEABLE) == 0)
 		return;
 
-	TAILQ_INIT(&pv_list);
 	vm_page_lock_assert(m, MA_OWNED);
 	pvh = pa_to_pvh(VM_PAGE_TO_PHYS(m));
 	TAILQ_FOREACH_SAFE(pv, &pvh->pv_list, pv_list, next_pv) {
@@ -4448,7 +4449,7 @@ pmap_remove_write(vm_page_t m)
 		va = pv->pv_va;
 		pde = pmap_pde(pmap, va);
 		if ((*pde & PG_RW) != 0)
-			(void)pmap_demote_pde(pmap, pde, va, &pv_list);
+			(void)pmap_demote_pde(pmap, pde, va);
 		PMAP_UNLOCK(pmap);
 	}
 	TAILQ_FOREACH(pv, &m->md.pv_list, pv_list) {
@@ -4495,12 +4496,10 @@ pmap_ts_referenced(vm_page_t m)
 	pt_entry_t *pte;
 	vm_offset_t va;
 	int rtval = 0;
-	struct pv_list_head pv_list;
 
 	if (m->flags & PG_FICTITIOUS)
 		return (rtval);
 
-	TAILQ_INIT(&pv_list);
 	vm_page_lock_assert(m, MA_OWNED);
 	pvh = pa_to_pvh(VM_PAGE_TO_PHYS(m));
 	TAILQ_FOREACH_SAFE(pv, &pvh->pv_list, pv_list, pvn) {
@@ -4510,7 +4509,7 @@ pmap_ts_referenced(vm_page_t m)
 		pde = pmap_pde(pmap, va);
 		oldpde = *pde;
 		if ((oldpde & PG_A) != 0) {
-			if (pmap_demote_pde(pmap, pde, va, &pv_list)) {
+			if (pmap_demote_pde(pmap, pde, va)) {
 				if ((oldpde & PG_W) == 0) {
 					/*
 					 * Remove the mapping to a single page
@@ -4570,11 +4569,9 @@ pmap_clear_modify(vm_page_t m)
 	pd_entry_t oldpde, *pde;
 	pt_entry_t oldpte, *pte;
 	vm_offset_t va;
-	struct pv_list_head pv_list;
 
 	if ((m->flags & PG_FICTITIOUS) != 0)
 		return;
-	TAILQ_INIT(&pv_list);
 	vm_page_lock_assert(m, MA_OWNED);
 	pvh = pa_to_pvh(VM_PAGE_TO_PHYS(m));
 	TAILQ_FOREACH_SAFE(pv, &pvh->pv_list, pv_list, next_pv) {
@@ -4584,7 +4581,7 @@ pmap_clear_modify(vm_page_t m)
 		pde = pmap_pde(pmap, va);
 		oldpde = *pde;
 		if ((oldpde & PG_RW) != 0) {
-			if (pmap_demote_pde(pmap, pde, va, &pv_list)) {
+			if (pmap_demote_pde(pmap, pde, va)) {
 				if ((oldpde & PG_W) == 0) {
 					/*
 					 * Write protect the mapping to a
@@ -4637,11 +4634,9 @@ pmap_clear_reference(vm_page_t m)
 	pd_entry_t oldpde, *pde;
 	pt_entry_t *pte;
 	vm_offset_t va;
-	struct pv_list_head pv_list;
 
 	if ((m->flags & PG_FICTITIOUS) != 0)
 		return;
-	TAILQ_INIT(&pv_list);
 	vm_page_lock_assert(m, MA_OWNED);
 	pvh = pa_to_pvh(VM_PAGE_TO_PHYS(m));
 	TAILQ_FOREACH_SAFE(pv, &pvh->pv_list, pv_list, next_pv) {
@@ -4651,7 +4646,7 @@ pmap_clear_reference(vm_page_t m)
 		pde = pmap_pde(pmap, va);
 		oldpde = *pde;
 		if ((oldpde & PG_A) != 0) {
-			if (pmap_demote_pde(pmap, pde, va, &pv_list)) {
+			if (pmap_demote_pde(pmap, pde, va)) {
 				/*
 				 * Remove the mapping to a single page so
 				 * that a subsequent access may repromote.
@@ -4898,7 +4893,6 @@ pmap_change_attr_locked(vm_offset_t va, vm_size_t size, int mode)
 	pt_entry_t *pte;
 	int cache_bits_pte, cache_bits_pde, error;
 	boolean_t changed;
-	struct pv_list_head pv_list;
 
 	PMAP_LOCK_ASSERT(kernel_pmap, MA_OWNED);
 	base = trunc_page(va);
@@ -4915,7 +4909,6 @@ pmap_change_attr_locked(vm_offset_t va, vm_size_t size, int mode)
 	cache_bits_pde = pmap_cache_bits(mode, 1);
 	cache_bits_pte = pmap_cache_bits(mode, 0);
 	changed = FALSE;
-	TAILQ_INIT(&pv_list);
 
 	/*
 	 * Pages that aren't mapped aren't supported.  Also break down 2MB pages
@@ -4977,7 +4970,7 @@ pmap_change_attr_locked(vm_offset_t va, vm_size_t size, int mode)
 			 * XXX do we need to check if the lock was dropped
 			 *
 			 */
-			if (!pmap_demote_pde(kernel_pmap, pde, tmpva, &pv_list))
+			if (!pmap_demote_pde(kernel_pmap, pde, tmpva))
 				return (ENOMEM);
 		}
 		pte = pmap_pde_to_pte(pde, tmpva);
