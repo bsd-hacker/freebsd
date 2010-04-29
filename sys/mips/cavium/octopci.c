@@ -61,17 +61,28 @@ __FBSDID("$FreeBSD$");
 
 struct octopci_softc {
 	device_t sc_dev;
+
 	unsigned sc_domain;
 	unsigned sc_bus;
+
+	struct rman sc_io;
+	struct rman sc_irq;
+	struct rman sc_mem1;
 };
 
-static void	octopci_identify(driver_t *, device_t);
-static int	octopci_probe(device_t);
-static int	octopci_attach(device_t);
-static int	octopci_read_ivar(device_t, device_t, int, uintptr_t *);
+static void		octopci_identify(driver_t *, device_t);
+static int		octopci_probe(device_t);
+static int		octopci_attach(device_t);
+static int		octopci_read_ivar(device_t, device_t, int,
+					  uintptr_t *);
+static struct resource	*octopci_alloc_resource(device_t, device_t, int, int *,
+						u_long, u_long, u_long, u_int);
+static int		octopci_activate_resource(device_t, device_t, int, int,
+						  struct resource *);
 static int	octopci_maxslots(device_t);
 static uint32_t	octopci_read_config(device_t, u_int, u_int, u_int, u_int, int);
-static void	octopci_write_config(device_t, u_int, u_int, u_int, u_int, uint32_t, int);
+static void	octopci_write_config(device_t, u_int, u_int, u_int, u_int,
+				     uint32_t, int);
 
 static uint64_t	octopci_cs_addr(unsigned, unsigned, unsigned, unsigned);
 
@@ -95,11 +106,36 @@ static int
 octopci_attach(device_t dev)
 {
 	struct octopci_softc *sc;
+	int error;
 
 	sc = device_get_softc(dev);
 	sc->sc_dev = dev;
 	sc->sc_domain = 0;
 	sc->sc_bus = 0;
+
+	sc->sc_io.rm_type = RMAN_ARRAY;
+	sc->sc_io.rm_descr = "Cavium Octeon PCI I/O Ports";
+	error = rman_init(&sc->sc_io);
+	if (error != 0)
+		return (error);
+
+	error = rman_manage_region(&sc->sc_io, CVMX_OCT_PCI_IO_BASE,
+	    CVMX_OCT_PCI_IO_BASE + CVMX_OCT_PCI_IO_SIZE);
+	if (error != 0)
+		return (error);
+
+	sc->sc_mem1.rm_type = RMAN_ARRAY;
+	sc->sc_mem1.rm_descr = "Cavium Octeon PCI Memory";
+	error = rman_init(&sc->sc_mem1);
+	if (error != 0)
+		return (error);
+
+	error = rman_manage_region(&sc->sc_mem1, CVMX_OCT_PCI_MEM1_BASE,
+	    CVMX_OCT_PCI_MEM1_BASE + CVMX_OCT_PCI_MEM1_SIZE);
+	if (error != 0)
+		return (error);
+
+	/* XXX IRQs? */
 
 	device_add_child(dev, "pci", 0);
 
@@ -123,6 +159,87 @@ octopci_read_ivar(device_t dev, device_t child, int which, uintptr_t *result)
 		
 	}
 	return (ENOENT);
+}
+
+static struct resource *
+octopci_alloc_resource(device_t bus, device_t child, int type, int *rid,
+    u_long start, u_long end, u_long count, u_int flags)
+{
+	struct octopci_softc *sc;
+	struct resource *res;
+	struct rman *rm;
+	int error;
+
+	sc = device_get_softc(bus);
+
+	switch (type) {
+	case SYS_RES_IRQ:
+		rm = &sc->sc_irq;
+		break;
+	case SYS_RES_MEMORY:
+		rm = &sc->sc_mem1;
+		break;
+	case SYS_RES_IOPORT:
+		rm = &sc->sc_io;
+		break;
+	default:
+		return (NULL);
+	}
+
+	res = rman_reserve_resource(rm, start, end, count, flags, child);
+	if (res == NULL)
+		return (NULL);
+
+	if (type == SYS_RES_IRQ)
+		return (res);
+	
+	rman_set_rid(res, *rid);
+	rman_set_bustag(res, mips_bus_space_generic);
+
+	switch (type) {
+	case SYS_RES_MEMORY:
+		rman_set_bushandle(res, CVMX_ADDR_DID(CVMX_FULL_DID(CVMX_OCT_DID_PCI, CVMX_OCT_SUBDID_PCI_MEM1)));
+		break;
+	case SYS_RES_IOPORT:
+		rman_set_bushandle(res, CVMX_ADDR_DID(CVMX_FULL_DID(CVMX_OCT_DID_PCI, CVMX_OCT_SUBDID_PCI_IO)));
+		break;
+	}
+
+	if ((flags & RF_ACTIVE) != 0) {
+		error = bus_activate_resource(child, type, *rid, res);
+		if (error != 0) {
+			rman_release_resource(res);
+			return (NULL);
+		}
+	}
+
+	return (res);
+}
+
+static int
+octopci_activate_resource(device_t bus, device_t child, int type, int rid,
+    struct resource *res)
+{
+	bus_space_handle_t bh;
+	int error;
+
+	switch (type) {
+	case SYS_RES_MEMORY:
+	case SYS_RES_IOPORT:
+		error = bus_space_map(rman_get_bustag(res),
+		    rman_get_bushandle(res), rman_get_size(res), 0, &bh);
+		if (error != 0)
+			return (error);
+		rman_set_bushandle(res, bh);
+		break;
+	default:
+		break;
+	}
+
+	error = rman_activate_resource(res);
+	if (error != 0)
+		return (error);
+	return (0);
 }
 
 static int
@@ -159,8 +276,8 @@ octopci_read_config(device_t dev, u_int bus, u_int slot, u_int func, u_int reg,
 }
 
 static void
-octopci_write_config(device_t dev, u_int bus, u_int slot, u_int func, u_int reg,
-    uint32_t data, int bytes)
+octopci_write_config(device_t dev, u_int bus, u_int slot, u_int func,
+    u_int reg, uint32_t data, int bytes)
 {
 	struct octopci_softc *sc;
 	uint64_t addr;
@@ -212,6 +329,10 @@ static device_method_t octopci_methods[] = {
 	/* Bus interface */
 	DEVMETHOD(bus_read_ivar,	octopci_read_ivar),
 	DEVMETHOD(bus_print_child,	bus_generic_print_child),
+	DEVMETHOD(bus_alloc_resource,	octopci_alloc_resource),
+	DEVMETHOD(bus_release_resource,	bus_generic_release_resource),
+	DEVMETHOD(bus_activate_resource,octopci_activate_resource),
+	DEVMETHOD(bus_deactivate_resource,bus_generic_deactivate_resource),
 
 	/* pcib interface */
 	DEVMETHOD(pcib_maxslots,	octopci_maxslots),
