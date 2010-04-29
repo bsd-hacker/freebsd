@@ -174,6 +174,22 @@ int cvmx_helper_board_get_mii_address(int ipd_port)
                 return -1;
         case CVMX_BOARD_TYPE_BBGW_REF:
             return -1;  /* No PHYs are connected to Octeon, everything is through switch */
+
+	/* Private vendor-defined boards.  */
+#if defined(OCTEON_VENDOR_LANNER)
+	case CVMX_BOARD_TYPE_CUST_LANNER_MR320:
+	    switch (ipd_port) {
+	    case 0:
+		/* XXX Switch PHY?  */
+		return -1;
+	    case 1:
+		return 1;
+	    case 2:
+		return 2;
+	    default:
+		return -1;
+	    }
+#endif
     }
 
     /* Some unknown board. Somebody forgot to update this function... */
@@ -269,6 +285,19 @@ cvmx_helper_link_info_t __cvmx_helper_board_link_get(int ipd_port)
                 return result;
             }
             break;
+	/* Private vendor-defined boards.  */
+#if defined(OCTEON_VENDOR_LANNER)
+	case CVMX_BOARD_TYPE_CUST_LANNER_MR320:
+	    /* Port 0 connects to the switch */
+	    if (ipd_port == 0)
+	    {
+                result.s.link_up = 1;
+                result.s.full_duplex = 1;
+                result.s.speed = 1000;
+		return result;
+	    }
+	    break;
+#endif
     }
 #endif
 
