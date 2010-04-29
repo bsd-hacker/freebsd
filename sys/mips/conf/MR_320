@@ -1,0 +1,7 @@
+#
+# $FreeBSD$
+#
+
+options 	OCTEON_VENDOR_LANNER
+
+include		OCTEON1-32
