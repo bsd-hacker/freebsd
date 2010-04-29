@@ -206,6 +206,21 @@ int __cvmx_helper_rgmii_enable(int interface)
         cvmx_write_csr(CVMX_ASXX_TX_CLK_SETX(port, interface), 26);
         cvmx_write_csr(CVMX_ASXX_RX_CLK_SETX(port, interface), 26);
 #else
+	/*
+	 * Vendor-defined board types.
+	 */
+#if defined(OCTEON_VENDOR_LANNER)
+	switch (cvmx_sysinfo_get()->board_type) {
+	case CVMX_BOARD_TYPE_CUST_LANNER_MR320:
+            if (port == 0) {
+                cvmx_write_csr(CVMX_ASXX_TX_CLK_SETX(port, interface), 4);
+	    } else {
+                cvmx_write_csr(CVMX_ASXX_TX_CLK_SETX(port, interface), 7);
+            }
+            cvmx_write_csr(CVMX_ASXX_RX_CLK_SETX(port, interface), 0);
+	    break;
+	}
+#else
         /*
          * For board types we can determine at runtime.
          */
@@ -219,6 +234,7 @@ int __cvmx_helper_rgmii_enable(int interface)
             cvmx_write_csr(CVMX_ASXX_TX_CLK_SETX(port, interface), 24);
             cvmx_write_csr(CVMX_ASXX_RX_CLK_SETX(port, interface), 24);
         }
+#endif
 #endif
     }
 
