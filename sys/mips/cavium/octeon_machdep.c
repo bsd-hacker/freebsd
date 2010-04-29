@@ -294,15 +294,30 @@ platform_start(__register_t a0, __register_t a1, __register_t a2 __unused,
 	const struct octeon_feature_description *ofd;
 	uint64_t platform_counter_freq;
 
+	/*
+	 * XXX
+	 * octeon_boot_params_init() should be called before anything else,
+	 * certainly before any output; we may find out from the boot
+	 * descriptor's flags that we're supposed to use the PCI or UART1
+	 * consoles rather than UART0.  No point doing that reorganization
+	 * until we actually intercept UART_DEV_CONSOLE for the UART1 case
+	 * and somehow handle the PCI console, which we lack code for
+	 * entirely.
+	 */
+
 	/* Initialize pcpu stuff */
 	mips_pcpu0_init();
 	mips_timer_early_init(OCTEON_CLOCK_DEFAULT);
 	cninit();
 
-	printf("Model: %s\n", octeon_model_get_string(cvmx_get_proc_id()));
-
 	octeon_ciu_reset();
 	octeon_boot_params_init(a3);
+	/*
+	 * XXX
+	 * We can certainly parse command line arguments or U-Boot environment
+	 * to determine whether to bootverbose / single user / ...  I think
+	 * stass has patches to add support for loader things to U-Boot even.
+	 */
 	bootverbose = 1;
 
 	/*
@@ -336,10 +351,9 @@ platform_start(__register_t a0, __register_t a1, __register_t a2 __unused,
 #endif
 
 	printf("Available Octeon features:");
-	for (ofd = octeon_feature_descriptions; ofd->ofd_string != NULL; ofd++) {
+	for (ofd = octeon_feature_descriptions; ofd->ofd_string != NULL; ofd++)
 		if (octeon_has_feature(ofd->ofd_feature))
 			printf(" %s", ofd->ofd_string);
-	}
 	printf("\n");
 }
 
@@ -409,33 +423,17 @@ typedef struct {
 	uint64_t cvmx_desc_vaddr;
 } octeon_boot_descriptor_t;
 
-int octeon_core_mask;
 cvmx_bootinfo_t *octeon_bootinfo;
 
 static octeon_boot_descriptor_t *app_desc_ptr;
-
-#define OCTEON_BOARD_TYPE_NONE 			0
-#define OCTEON_BOARD_TYPE_SIM  			1
-#define	OCTEON_BOARD_TYPE_CN3010_EVB_HS5	11
 
 int
 octeon_is_simulation(void)
 {
 	switch (cvmx_sysinfo_get()->board_type) {
-	case OCTEON_BOARD_TYPE_NONE:
-	case OCTEON_BOARD_TYPE_SIM:
+	case CVMX_BOARD_TYPE_SIM:
 		return 1;
-	case OCTEON_BOARD_TYPE_CN3010_EVB_HS5:
-		/*
-		 * XXX
-		 * The CAM-0100 identifies itself as type 11, revision 0.0,
-		 * despite its being rather real.  Disable the revision check
-		 * for type 11.
-		 */
-		return 0;
 	default:
-		if (cvmx_sysinfo_get()->board_rev_major == 0)
-			return 1;
 		return 0;
 	}
 }
@@ -472,7 +470,8 @@ static void
 octeon_boot_params_init(register_t ptr)
 {
 	if (ptr == 0 || ptr >= MAX_APP_DESC_ADDR)
-		panic("app descriptor passed at invalid address %#jx", (uintmax_t)ptr);
+		panic("app descriptor passed at invalid address %#jx",
+		    (uintmax_t)ptr);
 
 	app_desc_ptr = (octeon_boot_descriptor_t *)(intptr_t)ptr;
 	if (app_desc_ptr->desc_version < 6)
@@ -504,5 +503,15 @@ octeon_boot_params_init(register_t ptr)
 	    octeon_bootinfo->mac_addr_base[4],
 	    octeon_bootinfo->mac_addr_base[5],
 	    octeon_bootinfo->mac_addr_count);
+
+#if defined(OCTEON_BOARD_CAPK_0100ND)
+	if (cvmx_sysinfo_get()->board_type != CVMX_BOARD_TYPE_CN3010_EVB_HS5)
+		printf("Compiled for CAPK-0100ND, but board type is %s\n",
+		    cvmx_board_type_to_string(cvmx_sysinfo_get()->board_type));
+#else
+	printf("Board: %s\n",
+	    cvmx_board_type_to_string(cvmx_sysinfo_get()->board_type));
+#endif
+	printf("Model: %s\n", octeon_model_get_string(cvmx_get_proc_id()));
 }
 /* impEND: This stuff should move back into the Cavium SDK */
