@@ -1545,12 +1545,15 @@ vm_page_wire(vm_page_t m)
 	 * and only unqueue the page if it is on some queue (if it is unmanaged
 	 * it is already off the queues).
 	 */
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
 	if (m->flags & PG_FICTITIOUS)
 		return;
+	vm_page_lock_assert(m, MA_OWNED);
 	if (m->wire_count == 0) {
-		if ((m->flags & PG_UNMANAGED) == 0)
+		if ((m->flags & PG_UNMANAGED) == 0) {
+			vm_page_lock_queues();
 			vm_pageq_remove(m);
+			vm_page_unlock_queues();
+		}
 		atomic_add_int(&cnt.v_wire_count, 1);
 	}
 	m->wire_count++;
@@ -1586,31 +1589,46 @@ vm_page_wire(vm_page_t m)
  *	This routine may not block.
  */
 void
-vm_page_unwire(vm_page_t m, int activate)
+vm_page_unwire_exclusive(vm_page_t m, int activate)
 {
+	boolean_t locked;
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
 	if (m->flags & PG_FICTITIOUS)
 		return;
 	if (m->wire_count > 0) {
 		m->wire_count--;
 		if (m->wire_count == 0) {
 			atomic_subtract_int(&cnt.v_wire_count, 1);
+
 			if (m->flags & PG_UNMANAGED) {
-				;
-			} else if (activate)
+				locked = FALSE;
+			} else if (activate) {
+				locked = TRUE;
+				vm_page_lock_queues();
 				vm_page_enqueue(PQ_ACTIVE, m);
-			else {
+			} else {
+				locked = TRUE;
+				vm_page_lock_queues();
 				vm_page_flag_clear(m, PG_WINATCFLS);
 				vm_page_enqueue(PQ_INACTIVE, m);
 			}
+			if (locked)
+				vm_page_unlock_queues();
 		}
 	} else {
 		panic("vm_page_unwire: invalid wire count: %d", m->wire_count);
 	}
 }
 
+void
+vm_page_unwire(vm_page_t m, int activate)
+{
 
+	vm_page_lock_assert(m, MA_OWNED);
+	vm_page_unwire_exclusive(m, activate);
+}
+
+	
 /*
  * Move the specified page to the inactive queue.  If the page has
  * any associated swap, the swap is deallocated.
@@ -1902,9 +1920,9 @@ retrylookup:
 			goto retrylookup;
 		} else {
 			if ((allocflags & VM_ALLOC_WIRED) != 0) {
-				vm_page_lock_queues();
+				vm_page_lock(m);
 				vm_page_wire(m);
-				vm_page_unlock_queues();
+				vm_page_unlock(m);
 			}
 			if ((allocflags & VM_ALLOC_NOBUSY) == 0)
 				vm_page_busy(m);
@@ -2254,7 +2272,7 @@ void
 vm_page_cowclear(vm_page_t m)
 {
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	vm_page_lock_assert(m, MA_OWNED);
 	if (m->cow) {
 		m->cow--;
 		/* 
@@ -2270,6 +2288,7 @@ int
 vm_page_cowsetup(vm_page_t m)
 {
 
+	vm_page_lock_assert(m, MA_OWNED);
 	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
 	if (m->cow == USHRT_MAX - 1)
 		return (EBUSY);

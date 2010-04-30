@@ -2231,7 +2231,7 @@ free_pv_entry(pmap_t pmap, pv_entry_t pv)
 	/* entire chunk is free, return it */
 	m = PHYS_TO_VM_PAGE(pmap_kextract((vm_offset_t)pc));
 	pmap_qremove((vm_offset_t)pc, 1);
-	vm_page_unwire(m, 0);
+	vm_page_unwire_exclusive(m, 0);
 	vm_page_free(m);
 	pmap_ptelist_free(&pv_vafree, (vm_offset_t)pc);
 }
@@ -4265,7 +4265,7 @@ pmap_remove_pages(pmap_t pmap)
 			TAILQ_REMOVE(&pmap->pm_pvchunk, pc, pc_list);
 			m = PHYS_TO_VM_PAGE(pmap_kextract((vm_offset_t)pc));
 			pmap_qremove((vm_offset_t)pc, 1);
-			vm_page_unwire(m, 0);
+			vm_page_unwire_exclusive(m, 0);
 			vm_page_free(m);
 			pmap_ptelist_free(&pv_vafree, (vm_offset_t)pc);
 		}

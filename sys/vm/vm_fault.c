@@ -799,15 +799,11 @@ vnode_locked:
 				if (wired && (fault_flags &
 				    VM_FAULT_CHANGE_WIRING) == 0) {
 					vm_page_lock(fs.first_m);
-					vm_page_lock_queues();
 					vm_page_wire(fs.first_m);
-					vm_page_unlock_queues();
 					vm_page_unlock(fs.first_m);
 					
 					vm_page_lock(fs.m);
-					vm_page_lock_queues();
 					vm_page_unwire(fs.m, FALSE);
-					vm_page_unlock_queues();
 					vm_page_unlock(fs.m);
 				}
 				/*
@@ -959,7 +955,6 @@ vnode_locked:
 		vm_fault_prefault(fs.map->pmap, vaddr, fs.entry);
 	VM_OBJECT_LOCK(fs.object);
 	vm_page_lock(fs.m);
-	vm_page_lock_queues();
 
 	/*
 	 * If the page is not wired down, then put it where the pageout daemon
@@ -971,9 +966,10 @@ vnode_locked:
 		else
 			vm_page_unwire(fs.m, 1);
 	} else {
+		vm_page_lock_queues();
 		vm_page_activate(fs.m);
+		vm_page_unlock_queues();
 	}
-	vm_page_unlock_queues();
 	vm_page_unlock(fs.m);
 	vm_page_wakeup(fs.m);
 
@@ -1132,9 +1128,7 @@ vm_fault_unwire(vm_map_t map, vm_offset_t start, vm_offset_t end,
 			pmap_change_wiring(pmap, va, FALSE);
 			if (!fictitious) {
 				vm_page_lock(PHYS_TO_VM_PAGE(pa));
-				vm_page_lock_queues();
 				vm_page_unwire(PHYS_TO_VM_PAGE(pa), 1);
-				vm_page_unlock_queues();
 				vm_page_unlock(PHYS_TO_VM_PAGE(pa));
 			}
 		}
@@ -1281,21 +1275,15 @@ vm_fault_copy_entry(vm_map_t dst_map, vm_map_t src_map,
 		
 		if (upgrade) {
 			vm_page_lock(src_m);
-			vm_page_lock_queues();
 			vm_page_unwire(src_m, 0);
-			vm_page_unlock_queues();
 			vm_page_lock(src_m);
 
 			vm_page_lock(dst_m);
-			vm_page_lock_queues();
 			vm_page_wire(dst_m);
-			vm_page_unlock_queues();
 			vm_page_lock(dst_m);
 		} else {
 			vm_page_lock(dst_m);
-			vm_page_lock_queues();
 			vm_page_activate(dst_m);
-			vm_page_unlock_queues();
 			vm_page_lock(dst_m);
 		}
 		vm_page_wakeup(dst_m);

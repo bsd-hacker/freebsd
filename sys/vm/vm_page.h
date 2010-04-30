@@ -359,6 +359,7 @@ void vm_page_sleep(vm_page_t m, const char *msg);
 vm_page_t vm_page_splay(vm_pindex_t, vm_page_t);
 vm_offset_t vm_page_startup(vm_offset_t vaddr);
 void vm_page_unwire (vm_page_t, int);
+void vm_page_unwire_exclusive(vm_page_t, int);
 void vm_page_wire (vm_page_t);
 void vm_page_set_validclean (vm_page_t, int, int);
 void vm_page_clear_dirty (vm_page_t, int, int);
