@@ -131,6 +131,7 @@ struct cpcht_irq {
 	vm_offset_t	ht_base;
 	vm_offset_t	apple_eoi;
 	uint32_t	eoi_data;
+	int		edge;
 };
 
 static struct cpcht_irq *cpcht_irqmap = NULL;
@@ -437,6 +438,10 @@ cpcht_alloc_resource(device_t bus, device_t child, int type, int *rid,
 	err = 0;
 
 	switch (type) {
+	case SYS_RES_IOPORT:
+		end = min(end, start + count);
+
+		/* FALLTHROUGH */
 	case SYS_RES_MEMORY:
 		rm = &sc->sc_mem_rman;
 		err = rman_manage_region(&sc->sc_mem_rman, start, end);
@@ -620,6 +625,7 @@ static void
 openpic_cpcht_config(device_t dev, u_int irq, enum intr_trigger trig,
     enum intr_polarity pol)
 {
+#ifdef NOTYET
 	uint32_t ht_irq;
 
 	/*
@@ -629,7 +635,8 @@ openpic_cpcht_config(device_t dev, u_int irq, enum intr_trigger trig,
 	 * link.
 	 */
 
-	if (cpcht_irqmap != NULL && irq < 128 && cpcht_irqmap[irq].ht_base > 0) {
+	if (cpcht_irqmap != NULL && irq < 128 &&
+	    cpcht_irqmap[irq].ht_base > 0) {
 		/* Program the data port */
 		out8rb(cpcht_irqmap[irq].ht_base + PCIR_HT_COMMAND,
 		    0x10 + (cpcht_irqmap[irq].ht_source << 1));
@@ -637,11 +644,14 @@ openpic_cpcht_config(device_t dev, u_int irq, enum intr_trigger trig,
 		/* Grab the IRQ config register */
 		ht_irq = in32rb(cpcht_irqmap[irq].ht_base + 4) & ~23;
 		
-		if (trig != INTR_TRIGGER_EDGE)
-			ht_irq |= 0x02;
+		if (trig == INTR_TRIGGER_EDGE)
+			cpcht_irqmap[irq].edge = 1;
+		else
+			ht_irq |= 0x22;
 
 		out32rb(cpcht_irqmap[irq].ht_base + 4, ht_irq);
 	}
+#endif
 		
 }
 
@@ -667,7 +677,8 @@ openpic_cpcht_eoi(device_t dev, u_int irq)
 	if (irq == 255)
 		return;
 
-	if (cpcht_irqmap != NULL && irq < 128 && cpcht_irqmap[irq].ht_base > 0) {
+	if (cpcht_irqmap != NULL && irq < 128 &&
+	    cpcht_irqmap[irq].ht_base > 0 && !cpcht_irqmap[irq].edge) {
 		/* If this is an HT IRQ, acknowledge it at the remote APIC */
 
 		if (cpcht_irqmap[irq].apple_eoi) {
