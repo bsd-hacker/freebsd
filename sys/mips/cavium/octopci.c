@@ -49,6 +49,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/pmap.h>
 
 #include <contrib/octeon-sdk/cvmx.h>
+#include <contrib/octeon-sdk/cvmx-interrupt.h>
 
 #include <dev/pci/pcireg.h>
 #include <dev/pci/pcivar.h>
@@ -66,7 +67,6 @@ struct octopci_softc {
 	unsigned sc_bus;
 
 	struct rman sc_io;
-	struct rman sc_irq;
 	struct rman sc_mem1;
 };
 
@@ -83,6 +83,7 @@ static int	octopci_maxslots(device_t);
 static uint32_t	octopci_read_config(device_t, u_int, u_int, u_int, u_int, int);
 static void	octopci_write_config(device_t, u_int, u_int, u_int, u_int,
 				     uint32_t, int);
+static int	octopci_route_interrupt(device_t, device_t, int);
 
 static uint64_t	octopci_cs_addr(unsigned, unsigned, unsigned, unsigned);
 
@@ -135,13 +136,6 @@ octopci_attach(device_t dev)
 	if (error != 0)
 		return (error);
 
-	/* XXX IRQs? */
-	sc->sc_irq.rm_type = RMAN_ARRAY;
-	sc->sc_irq.rm_descr = "Cavium Octeon PCI Interrupts";
-	error = rman_init(&sc->sc_irq);
-	if (error != 0)
-		return (error);
-
 	device_add_child(dev, "pci", 0);
 
 	return (bus_generic_attach(dev));
@@ -179,8 +173,11 @@ octopci_alloc_resource(device_t bus, device_t child, int type, int *rid,
 
 	switch (type) {
 	case SYS_RES_IRQ:
-		rm = &sc->sc_irq;
-		break;
+		res = bus_generic_alloc_resource(bus, child, type, rid, start,
+		    end, count, flags);
+		if (res != NULL)
+			return (res);
+		return (NULL);
 	case SYS_RES_MEMORY:
 		rm = &sc->sc_mem1;
 		break;
@@ -195,9 +192,6 @@ octopci_alloc_resource(device_t bus, device_t child, int type, int *rid,
 	if (res == NULL)
 		return (NULL);
 
-	if (type == SYS_RES_IRQ)
-		return (res);
-	
 	rman_set_rid(res, *rid);
 	rman_set_bustag(res, mips_bus_space_generic);
 
@@ -229,6 +223,12 @@ octopci_activate_resource(device_t bus, device_t child, int type, int rid,
 	int error;
 
 	switch (type) {
+	case SYS_RES_IRQ:
+		error = bus_generic_activate_resource(bus, child, type, rid,
+						      res);
+		if (error != 0)
+			return (error);
+		return (0);
 	case SYS_RES_MEMORY:
 	case SYS_RES_IOPORT:
 		error = bus_space_map(rman_get_bustag(res),
@@ -238,7 +238,7 @@ octopci_activate_resource(device_t bus, device_t child, int type, int rid,
 		rman_set_bushandle(res, bh);
 		break;
 	default:
-		break;
+		return (ENXIO);
 	}
 
 	error = rman_activate_resource(res);
@@ -306,6 +306,34 @@ octopci_write_config(device_t dev, u_int bus, u_int slot, u_int func,
 	}
 }
 
+static int
+octopci_route_interrupt(device_t dev, device_t child, int pin)
+{
+	struct octopci_softc *sc;
+	unsigned bus, slot, func;
+	unsigned irq;
+
+	sc = device_get_softc(dev);
+
+        bus = pci_get_bus(child);
+        slot = pci_get_slot(child);
+        func = pci_get_function(child);
+
+#if defined(OCTEON_VENDOR_LANNER)
+	if (slot < 32) {
+		if (slot == 3)
+			irq = pin;
+		else
+			irq = pin - 1;
+		return (CVMX_IRQ_PCI_INT0 + (irq & 3));
+	}
+#endif
+
+	irq = slot + pin - 3;
+
+	return (CVMX_IRQ_PCI_INT0 + (irq & 3));
+}
+
 static uint64_t
 octopci_cs_addr(unsigned bus, unsigned slot, unsigned func, unsigned reg)
 {
@@ -338,11 +366,13 @@ static device_method_t octopci_methods[] = {
 	DEVMETHOD(bus_release_resource,	bus_generic_release_resource),
 	DEVMETHOD(bus_activate_resource,octopci_activate_resource),
 	DEVMETHOD(bus_deactivate_resource,bus_generic_deactivate_resource),
+	DEVMETHOD(bus_setup_intr,	bus_generic_setup_intr),
 
 	/* pcib interface */
 	DEVMETHOD(pcib_maxslots,	octopci_maxslots),
 	DEVMETHOD(pcib_read_config,	octopci_read_config),
 	DEVMETHOD(pcib_write_config,	octopci_write_config),
+	DEVMETHOD(pcib_route_interrupt,	octopci_route_interrupt),
 
 	{0, 0}
 };
