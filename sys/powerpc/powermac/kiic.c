@@ -144,6 +144,7 @@ static driver_t kiic_driver = {
 static devclass_t kiic_devclass;
 
 DRIVER_MODULE(kiic, macio, kiic_driver, kiic_devclass, 0, 0);
+DRIVER_MODULE(kiic, unin, kiic_driver, kiic_devclass, 0, 0);
 
 static int
 kiic_probe(device_t self)
