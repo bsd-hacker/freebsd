@@ -136,6 +136,11 @@ octopci_attach(device_t dev)
 		return (error);
 
 	/* XXX IRQs? */
+	sc->sc_irq.rm_type = RMAN_ARRAY;
+	sc->sc_irq.rm_descr = "Cavium Octeon PCI Interrupts";
+	error = rman_init(&sc->sc_irq);
+	if (error != 0)
+		return (error);
 
 	device_add_child(dev, "pci", 0);
 
