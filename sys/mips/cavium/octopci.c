@@ -197,10 +197,10 @@ octopci_alloc_resource(device_t bus, device_t child, int type, int *rid,
 
 	switch (type) {
 	case SYS_RES_MEMORY:
-		rman_set_bushandle(res, CVMX_ADDR_DID(CVMX_FULL_DID(CVMX_OCT_DID_PCI, CVMX_OCT_SUBDID_PCI_MEM1)));
+		rman_set_bushandle(res, CVMX_ADDR_DID(CVMX_FULL_DID(CVMX_OCT_DID_PCI, CVMX_OCT_SUBDID_PCI_MEM1)) + rman_get_start(res));
 		break;
 	case SYS_RES_IOPORT:
-		rman_set_bushandle(res, CVMX_ADDR_DID(CVMX_FULL_DID(CVMX_OCT_DID_PCI, CVMX_OCT_SUBDID_PCI_IO)));
+		rman_set_bushandle(res, CVMX_ADDR_DID(CVMX_FULL_DID(CVMX_OCT_DID_PCI, CVMX_OCT_SUBDID_PCI_IO)) + rman_get_start(res));
 		break;
 	}
 
