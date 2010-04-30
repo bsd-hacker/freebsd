@@ -321,7 +321,7 @@ octopci_route_interrupt(device_t dev, device_t child, int pin)
 
 #if defined(OCTEON_VENDOR_LANNER)
 	if (slot < 32) {
-		if (slot == 3)
+		if (slot == 3 || slot == 9)
 			irq = pin;
 		else
 			irq = pin - 1;
