@@ -237,7 +237,7 @@ caddr_t virtual_sys_start = (caddr_t)0;
 	sysm = &sysmap_lmem[cpu];					\
 	va1 = sysm->base;						\
 	va2 = sysm->base + PAGE_SIZE;					\
-	npte = TLBLO_PA_TO_PFN(phys2) |					\
+	npte = TLBLO_PA_TO_PFN(phys1) |					\
 	    PG_D | PG_V | PG_G | PG_W | PG_C_CNC;			\
 	pte = pmap_pte(kernel_pmap, va1);				\
 	*pte = npte;							\
