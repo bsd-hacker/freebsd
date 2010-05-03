@@ -86,8 +86,8 @@ ar9280Attach(uint16_t devid, HAL_SOFTC sc,
 	HAL_STATUS ecode;
 	HAL_BOOL rfStatus;
 
-	HALDEBUG(AH_NULL, HAL_DEBUG_ATTACH, "%s: sc %p st %p sh %p\n",
-	    __func__, sc, (void*) st, (void*) sh);
+	HALDEBUG(AH_NULL, HAL_DEBUG_ATTACH, "%s: sc %p st %p sh %#jx\n",
+	    __func__, sc, (void*) st, (uintmax_t) sh);
 
 	/* NB: memory is returned zero'd */
 	ahp9280 = ath_hal_malloc(sizeof (struct ath_hal_9280));

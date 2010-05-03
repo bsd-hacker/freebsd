@@ -180,8 +180,8 @@ ar5210Attach(uint16_t devid, HAL_SOFTC sc, HAL_BUS_TAG st, HAL_BUS_HANDLE sh,
 	int i;
 
 	HALDEBUG(AH_NULL, HAL_DEBUG_ATTACH,
-	    "%s: devid 0x%x sc %p st %p sh %p\n", __func__, devid,
-	    sc, (void*) st, (void*) sh);
+	    "%s: devid 0x%x sc %p st %p sh %#jx\n", __func__, devid,
+	    sc, (void*) st, (uintmax_t) sh);
 
 	/* NB: memory is returned zero'd */
 	ahp = ath_hal_malloc(sizeof (struct ath_hal_5210));
