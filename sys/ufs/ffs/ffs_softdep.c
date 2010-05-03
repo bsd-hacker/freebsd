@@ -4258,7 +4258,7 @@ softdep_setup_blkmapdep(bp, mp, newblkno, frags, oldfrags)
 }
 
 #define	BMSAFEMAP_HASH(fs, cg) \
-      (&bmsafemap_hashtbl[((((register_t)(fs)) >> 13) + (cg)) & bmsafemap_hash])
+      (&bmsafemap_hashtbl[((((uintptr_t)(fs)) >> 13) + (cg)) & bmsafemap_hash])
 
 static int
 bmsafemap_find(bmsafemaphd, mp, cg, bmsafemapp)
