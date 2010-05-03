@@ -153,7 +153,6 @@ unsigned pmap_max_asid;		/* max ASID supported by the system */
 
 #define	PMAP_ASID_RESERVED	0
 
-
 vm_offset_t kernel_vm_end;
 
 static void pmap_asid_alloc(pmap_t pmap);
@@ -684,18 +683,22 @@ pmap_extract_and_hold(pmap_t pmap, vm_offset_t va, vm_prot_t prot)
 {
 	pt_entry_t *pte;
 	vm_page_t m;
+	vm_paddr_t pa;
 
 	m = NULL;
-	vm_page_lock_queues();
+	pa = 0;
 	PMAP_LOCK(pmap);
-
+retry:
 	pte = pmap_pte(pmap, va);
-	if (pte_test(pte, PG_V) && (pte_test(pte, PG_D) ||
-	    (prot & VM_PROT_WRITE) == 0)) {
+	if (pte != NULL && pte_test(pte, PG_V) &&
+	    (pte_test(pte, PG_D) || (prot & VM_PROT_WRITE) == 0)) {
+		if (vm_page_pa_tryrelock(pmap, TLBLO_PTE_TO_PA(*pte), &pa))
+			goto retry;
+
 		m = PHYS_TO_VM_PAGE(TLBLO_PTE_TO_PA(*pte));
 		vm_page_hold(m);
 	}
-	vm_page_unlock_queues();
+	PA_UNLOCK_COND(pa);
 	PMAP_UNLOCK(pmap);
 	return (m);
 }
@@ -1677,16 +1680,10 @@ retry:
 		obits = pbits = *pte;
 		pa = TLBLO_PTE_TO_PA(pbits);
 
-		if (page_is_managed(pa)) {
+		if (page_is_managed(pa) && pte_test(&pbits, PG_D)) {
 			m = PHYS_TO_VM_PAGE(pa);
-			if (m->md.pv_flags & PV_TABLE_REF) {
-				vm_page_flag_set(m, PG_REFERENCED);
-				m->md.pv_flags &= ~PV_TABLE_REF;
-			}
-			if (pte_test(&pbits, PG_D)) {
-				vm_page_dirty(m);
-				m->md.pv_flags &= ~PV_TABLE_MOD;
-			}
+			vm_page_dirty(m);
+			m->md.pv_flags &= ~PV_TABLE_MOD;
 		}
 		pte_clear(&pbits, PG_D);
 		pte_set(&pbits, PG_RO);
@@ -2399,8 +2396,7 @@ pmap_remove_pages(pmap_t pmap)
 		*pte = is_kernel_pmap(pmap) ? PG_G : 0;
 
 		m = PHYS_TO_VM_PAGE(TLBLO_PTE_TO_PA(tpte));
-
-		KASSERT(m < &vm_page_array[vm_page_array_size],
+		KASSERT(m != NULL,
 		    ("pmap_remove_pages: bad tpte %x", tpte));
 
 		pv->pv_pmap->pm_stats.resident_count--;
@@ -2632,6 +2628,20 @@ pmap_clear_modify(vm_page_t m)
 }
 
 /*
+ *	pmap_is_referenced:
+ *
+ *	Return whether or not the specified physical page was referenced
+ *	in any physical maps.
+ */
+boolean_t
+pmap_is_referenced(vm_page_t m)
+{
+
+	return ((m->flags & PG_FICTITIOUS) == 0 &&
+	    (m->md.pv_flags & PV_TABLE_REF) != 0);
+}
+
+/*
  *	pmap_clear_reference:
  *
  *	Clear the reference bit on the specified physical page.
@@ -2765,10 +2775,8 @@ pmap_mincore(pmap_t pmap, vm_offset_t addr)
 		 * Referenced by us or someone
 		 */
 		vm_page_lock_queues();
-		if ((m->flags & PG_REFERENCED) || pmap_ts_referenced(m)) {
+		if ((m->flags & PG_REFERENCED) || pmap_is_referenced(m))
 			val |= MINCORE_REFERENCED | MINCORE_REFERENCED_OTHER;
-			vm_page_flag_set(m, PG_REFERENCED);
-		}
 		vm_page_unlock_queues();
 	}
 	return val;
@@ -2881,6 +2889,8 @@ page_is_managed(vm_offset_t pa)
 		vm_page_t m;
 
 		m = PHYS_TO_VM_PAGE(pa);
+		if (m == NULL)
+			return 0;
 		if ((m->flags & (PG_FICTITIOUS | PG_UNMANAGED)) == 0)
 			return 1;
 	}

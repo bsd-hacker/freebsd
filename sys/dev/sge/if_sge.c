@@ -137,6 +137,7 @@ static int	sge_get_mac_addr_eeprom(struct sge_softc *, uint8_t *);
 static uint16_t	sge_read_eeprom(struct sge_softc *, int);
 
 static void	sge_rxfilter(struct sge_softc *);
+static void	sge_setvlan(struct sge_softc *);
 static void	sge_reset(struct sge_softc *);
 static int	sge_list_rx_init(struct sge_softc *);
 static int	sge_list_rx_free(struct sge_softc *);
@@ -453,8 +454,9 @@ sge_rxfilter(struct sge_softc *sc)
 	SGE_LOCK_ASSERT(sc);
 
 	ifp = sc->sge_ifp;
-	hashes[0] = hashes[1] = 0;
-	rxfilt = AcceptMyPhys;
+	rxfilt = CSR_READ_2(sc, RxMacControl);
+	rxfilt &= ~(AcceptBroadcast | AcceptAllPhys | AcceptMulticast);
+	rxfilt |= AcceptMyPhys;
 	if ((ifp->if_flags & IFF_BROADCAST) != 0)
 		rxfilt |= AcceptBroadcast;
 	if ((ifp->if_flags & (IFF_PROMISC | IFF_ALLMULTI)) != 0) {
@@ -463,23 +465,42 @@ sge_rxfilter(struct sge_softc *sc)
 		rxfilt |= AcceptMulticast;
 		hashes[0] = 0xFFFFFFFF;
 		hashes[1] = 0xFFFFFFFF;
-		goto done;
+	} else {
+		rxfilt |= AcceptMulticast;
+		hashes[0] = hashes[1] = 0;
+		/* Now program new ones. */
+		if_maddr_rlock(ifp);
+		TAILQ_FOREACH(ifma, &ifp->if_multiaddrs, ifma_link) {
+			if (ifma->ifma_addr->sa_family != AF_LINK)
+				continue;
+			crc = ether_crc32_be(LLADDR((struct sockaddr_dl *)
+			    ifma->ifma_addr), ETHER_ADDR_LEN);
+			hashes[crc >> 31] |= 1 << ((crc >> 26) & 0x1f);
+		}
+		if_maddr_runlock(ifp);
 	}
-	rxfilt |= AcceptMulticast;
-	/* Now program new ones. */
-	if_maddr_rlock(ifp);
-	TAILQ_FOREACH(ifma, &ifp->if_multiaddrs, ifma_link) {
-		if (ifma->ifma_addr->sa_family != AF_LINK)
-			continue;
-		crc = ether_crc32_be(LLADDR((struct sockaddr_dl *)
-		    ifma->ifma_addr), ETHER_ADDR_LEN);
-		hashes[crc >> 31] |= 1 << ((crc >> 26) & 0x1f);
-	}
-	if_maddr_runlock(ifp);
-done:
 	CSR_WRITE_2(sc, RxMacControl, rxfilt | 0x02);
 	CSR_WRITE_4(sc, RxHashTable, hashes[0]);
 	CSR_WRITE_4(sc, RxHashTable2, hashes[1]);
+}
+
+static void
+sge_setvlan(struct sge_softc *sc)
+{
+	struct ifnet *ifp;
+	uint16_t rxfilt;
+
+	SGE_LOCK_ASSERT(sc);
+
+	ifp = sc->sge_ifp;
+	if ((ifp->if_capabilities & IFCAP_VLAN_HWTAGGING) == 0)
+		return;
+	rxfilt = CSR_READ_2(sc, RxMacControl);
+	if ((ifp->if_capenable & IFCAP_VLAN_HWTAGGING) != 0)
+		rxfilt |= RXMAC_STRIP_VLAN;
+	else
+		rxfilt &= ~RXMAC_STRIP_VLAN;
+	CSR_WRITE_2(sc, RxMacControl, rxfilt);
 }
 
 static void
@@ -571,7 +592,7 @@ sge_attach(device_t dev)
 	}
 	sc->sge_rev = pci_get_revid(dev);
 	if (pci_get_device(dev) == SIS_DEVICEID_190)
-		sc->sge_flags |= SGE_FLAG_FASTETHER;
+		sc->sge_flags |= SGE_FLAG_FASTETHER | SGE_FLAG_SIS190;
 	/* Reset the adapter. */
 	sge_reset(sc);
 
@@ -618,6 +639,9 @@ sge_attach(device_t dev)
 	ether_ifattach(ifp, eaddr);
 
 	/* VLAN setup. */
+	if ((sc->sge_flags & SGE_FLAG_SIS190) == 0)
+		ifp->if_capabilities |= IFCAP_VLAN_HWTAGGING |
+		    IFCAP_VLAN_HWCSUM;
 	ifp->if_capabilities |= IFCAP_VLAN_MTU;
 	ifp->if_capenable = ifp->if_capabilities;
 	/* Tell the upper layer(s) we support long frames. */
@@ -1143,7 +1167,8 @@ sge_rxeof(struct sge_softc *sc)
 		if ((rxinfo & RDC_OWN) != 0)
 			break;
 		rxstat = le32toh(cur_rx->sge_sts_size);
-		if (SGE_RX_ERROR(rxstat) != 0 || SGE_RX_NSEGS(rxstat) != 1) {
+		if ((rxstat & RDS_CRCOK) == 0 || SGE_RX_ERROR(rxstat) != 0 ||
+		    SGE_RX_NSEGS(rxstat) != 1) {
 			/* XXX We don't support multi-segment frames yet. */
 #ifdef SGE_SHOW_ERRORS
 			device_printf(sc->sge_dev, "Rx error : 0x%b\n", rxstat,
@@ -1173,14 +1198,29 @@ sge_rxeof(struct sge_softc *sc)
 				m->m_pkthdr.csum_data = 0xffff;
 			}
 		}
-		/*
-		 * TODO : VLAN hardware tag stripping.
-		 */
-		m->m_pkthdr.len = m->m_len =
-		    SGE_RX_BYTES(rxstat) - ETHER_CRC_LEN;
+		/* Check for VLAN tagged frame. */
+		if ((ifp->if_capenable & IFCAP_VLAN_HWTAGGING) != 0 &&
+		    (rxstat & RDS_VLAN) != 0) {
+			m->m_pkthdr.ether_vtag = rxinfo & RDC_VLAN_MASK;
+			m->m_flags |= M_VLANTAG;
+		}
+		if ((sc->sge_flags & SGE_FLAG_SIS190) == 0) {
+			/*
+			 * Account for 10bytes auto padding which is used
+			 * to align IP header on 32bit boundary.  Also note,
+			 * CRC bytes is automatically removed by the
+			 * hardware.
+			 */
+			m->m_data += SGE_RX_PAD_BYTES;
+			m->m_pkthdr.len = m->m_len = SGE_RX_BYTES(rxstat) -
+			    SGE_RX_PAD_BYTES;
+		} else {
+			m->m_pkthdr.len = m->m_len = SGE_RX_BYTES(rxstat) -
+			    ETHER_CRC_LEN;
 #ifndef __NO_STRICT_ALIGNMENT
-		sge_fixup_rx(m);
+			sge_fixup_rx(m);
 #endif
+		}
 		m->m_pkthdr.rcvif = ifp;
 		ifp->if_ipackets++;
 		SGE_UNLOCK(sc);
@@ -1381,7 +1421,7 @@ sge_encap(struct sge_softc *sc, struct mbuf **m_head)
 		}
 		*m_head = m;
 	}
-	error = bus_dmamap_load_mbuf_sg(sc->sge_cdata.sge_tx_tag, map,
+	error = bus_dmamap_load_mbuf_sg(sc->sge_cdata.sge_txmbuf_tag, map,
 	    *m_head, txsegs, &nsegs, 0);
 	if (error != 0) {
 		m_freem(*m_head);
@@ -1390,10 +1430,11 @@ sge_encap(struct sge_softc *sc, struct mbuf **m_head)
 	}
 	/* Check descriptor overrun. */
 	if (sc->sge_cdata.sge_tx_cnt + nsegs >= SGE_TX_RING_CNT) {
-		bus_dmamap_unload(sc->sge_cdata.sge_tx_tag, map);
+		bus_dmamap_unload(sc->sge_cdata.sge_txmbuf_tag, map);
 		return (ENOBUFS);
 	}
-	bus_dmamap_sync(sc->sge_cdata.sge_tx_tag, map, BUS_DMASYNC_PREWRITE);
+	bus_dmamap_sync(sc->sge_cdata.sge_txmbuf_tag, map,
+	    BUS_DMASYNC_PREWRITE);
 
 	cflags = 0;
 	if ((*m_head)->m_pkthdr.csum_flags & CSUM_IP)
@@ -1408,6 +1449,11 @@ sge_encap(struct sge_softc *sc, struct mbuf **m_head)
 	desc->sge_flags = htole32(txsegs[0].ds_len);
 	if (prod == SGE_TX_RING_CNT - 1)
 		desc->sge_flags |= htole32(RING_END);
+	/* Configure VLAN. */
+	if(((*m_head)->m_flags & M_VLANTAG) != 0) {
+		cflags |= (*m_head)->m_pkthdr.ether_vtag;
+		desc->sge_sts_size |= htole32(TDS_INS_VLAN);
+	}
 	desc->sge_cmdsts = htole32(TDC_DEF | TDC_CRC | TDC_PAD | cflags);
 #if 1
 	if ((sc->sge_flags & SGE_FLAG_SPEED_1000) != 0)
@@ -1502,6 +1548,7 @@ sge_init_locked(struct sge_softc *sc)
 {
 	struct ifnet *ifp;
 	struct mii_data *mii;
+	uint16_t rxfilt;
 	int i;
 
 	SGE_LOCK_ASSERT(sc);
@@ -1534,11 +1581,21 @@ sge_init_locked(struct sge_softc *sc)
 	CSR_WRITE_4(sc, RxWakeOnLan, 0);
 	CSR_WRITE_4(sc, RxWakeOnLanData, 0);
 	/* Allow receiving VLAN frames. */
-	CSR_WRITE_2(sc, RxMPSControl, ETHER_MAX_LEN + ETHER_VLAN_ENCAP_LEN);
+	if ((sc->sge_flags & SGE_FLAG_SIS190) == 0)
+		CSR_WRITE_2(sc, RxMPSControl,
+		    ETHER_MAX_LEN + ETHER_VLAN_ENCAP_LEN + SGE_RX_PAD_BYTES);
+	else
+		CSR_WRITE_2(sc, RxMPSControl, ETHER_MAX_LEN + ETHER_VLAN_ENCAP_LEN);
 
 	for (i = 0; i < ETHER_ADDR_LEN; i++)
 		CSR_WRITE_1(sc, RxMacAddr + i, IF_LLADDR(ifp)[i]);
+	/* Configure RX MAC. */
+	rxfilt = 0;
+	if ((sc->sge_flags & SGE_FLAG_SIS190) == 0)
+		rxfilt |= RXMAC_STRIP_FCS | RXMAC_PAD_ENB;
+	CSR_WRITE_2(sc, RxMacControl, rxfilt);
 	sge_rxfilter(sc);
+	sge_setvlan(sc);
 
 	/* Initialize default speed/duplex information. */
 	if ((sc->sge_flags & SGE_FLAG_FASTETHER) == 0)
@@ -1551,10 +1608,13 @@ sge_init_locked(struct sge_softc *sc)
 	/*
 	 * XXX Try to mitigate interrupts.
 	 */
+	CSR_WRITE_4(sc, IntrControl, 0x08880000);
+#ifdef notyet
 	if (sc->sge_intrcontrol != 0)
 		CSR_WRITE_4(sc, IntrControl, sc->sge_intrcontrol);
 	if (sc->sge_intrtimer != 0)
 		CSR_WRITE_4(sc, IntrTimer, sc->sge_intrtimer);
+#endif
 
 	/*
 	 * Clear and enable interrupts.
@@ -1587,7 +1647,6 @@ sge_ifmedia_upd(struct ifnet *ifp)
 	sc = ifp->if_softc;
 	SGE_LOCK(sc);
 	mii = device_get_softc(sc->sge_miibus);
-	sc->sge_flags &= ~SGE_FLAG_LINK;
 	if (mii->mii_instance) {
 		struct mii_softc *miisc;
 		LIST_FOREACH(miisc, &mii->mii_phys, mii_list)
@@ -1627,7 +1686,7 @@ sge_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 	struct sge_softc *sc;
 	struct ifreq *ifr;
 	struct mii_data *mii;
-	int error = 0, mask;
+	int error = 0, mask, reinit;
 
 	sc = ifp->if_softc;
 	ifr = (struct ifreq *)data;
@@ -1649,6 +1708,7 @@ sge_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 		break;
 	case SIOCSIFCAP:
 		SGE_LOCK(sc);
+		reinit = 0;
 		mask = ifr->ifr_reqcap ^ ifp->if_capenable;
 		if ((mask & IFCAP_TXCSUM) != 0 &&
 		    (ifp->if_capabilities & IFCAP_TXCSUM) != 0) {
@@ -1661,7 +1721,24 @@ sge_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 		if ((mask & IFCAP_RXCSUM) != 0 &&
 		    (ifp->if_capabilities & IFCAP_RXCSUM) != 0)
 			ifp->if_capenable ^= IFCAP_RXCSUM;
+		if ((mask & IFCAP_VLAN_HWCSUM) != 0 &&
+		    (ifp->if_capabilities & IFCAP_VLAN_HWCSUM) != 0)
+			ifp->if_capenable ^= IFCAP_VLAN_HWCSUM;
+		if ((mask & IFCAP_VLAN_HWTAGGING) != 0 &&
+		    (ifp->if_capabilities & IFCAP_VLAN_HWTAGGING) != 0) {
+			/*
+			 * Due to unknown reason, toggling VLAN hardware
+			 * tagging require interface reinitialization.
+			 */
+			ifp->if_capenable ^= IFCAP_VLAN_HWTAGGING;
+			reinit = 1;
+		}
+		if (reinit > 0 && (ifp->if_drv_flags & IFF_DRV_RUNNING) != 0) {
+			ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
+			sge_init_locked(sc);
+		}
 		SGE_UNLOCK(sc);
+		VLAN_CAPABILITIES(ifp);
 		break;
 	case SIOCADDMULTI:
 	case SIOCDELMULTI:
