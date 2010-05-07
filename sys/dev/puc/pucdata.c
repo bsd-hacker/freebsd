@@ -643,6 +643,12 @@ const struct puc_cfg puc_pci_devices[] = {
 	    PUC_PORT_4S, 0x10, 0, 8,
 	},
 
+	{   0x1415, 0x950c, 0xffff, 0,
+	    "Oxford Semiconductor OX16PCI954 UARTs (function 0)",
+	    DEFAULT_RCLK,
+	    PUC_PORT_4S, 0x10, 0, 8,
+	},
+
 	{   0x1415, 0x9511, 0xffff, 0,
 	    "Oxford Semiconductor OX9160/OX16PCI954 UARTs (function 1)",
 	    DEFAULT_RCLK,

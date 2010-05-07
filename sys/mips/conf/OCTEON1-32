@@ -71,6 +71,7 @@ device          miibus          # MII bus support
 device		loop
 device		ether
 device		md
+device		puc
 device		uart
 nodevice	uart_ns8250
 device		octe
