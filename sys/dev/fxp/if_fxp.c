@@ -106,9 +106,8 @@ static int tx_threshold = 64;
 
 /*
  * The configuration byte map has several undefined fields which
- * must be one or must be zero.  Set up a template for these bits
- * only, (assuming a 82557 chip) leaving the actual configuration
- * to fxp_init.
+ * must be one or must be zero.  Set up a template for these bits.
+ * The actual configuration is performed in fxp_init.
  *
  * See struct fxp_cb_config for the bit definitions.
  */
@@ -137,7 +136,17 @@ static u_char fxp_cb_config_template[] = {
 	0xf0,	/* 18 */
 	0x0,	/* 19 */
 	0x3f,	/* 20 */
-	0x5	/* 21 */
+	0x5,	/* 21 */
+	0x0,	/* 22 */
+	0x0,	/* 23 */
+	0x0,	/* 24 */
+	0x0,	/* 25 */
+	0x0,	/* 26 */
+	0x0,	/* 27 */
+	0x0,	/* 28 */
+	0x0,	/* 29 */
+	0x0,	/* 30 */
+	0x0	/* 31 */
 };
 
 /*
@@ -2345,7 +2354,7 @@ fxp_init_body(struct fxp_softc *sc)
 	cbp->force_fdx =	0;	/* (don't) force full duplex */
 	cbp->fdx_pin_en =	1;	/* (enable) FDX# pin */
 	cbp->multi_ia =		0;	/* (don't) accept multiple IAs */
-	cbp->mc_all =		ifp->if_flags & IFF_ALLMULTI ? 1 : 0;
+	cbp->mc_all =		ifp->if_flags & IFF_ALLMULTI ? 1 : prm;
 	cbp->gamla_rx =		sc->flags & FXP_FLAG_EXT_RFA ? 1 : 0;
 	cbp->vlan_strip_en =	((sc->flags & FXP_FLAG_EXT_RFA) != 0 &&
 	    (ifp->if_capenable & IFCAP_VLAN_HWTAGGING) != 0) ? 1 : 0;

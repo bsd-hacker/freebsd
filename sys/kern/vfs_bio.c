@@ -1571,7 +1571,6 @@ vfs_vmio_release(struct buf *bp)
 		 * everything on the inactive queue.
 		 */
 		vm_page_lock(m);
-		vm_page_lock_queues();
 		vm_page_unwire(m, 0);
 		/*
 		 * We don't mess with busy pages, it is
@@ -1594,7 +1593,6 @@ vfs_vmio_release(struct buf *bp)
 				vm_page_try_to_cache(m);
 			}
 		}
-		vm_page_unlock_queues();
 		vm_page_unlock(m);
 	}
 	VM_OBJECT_UNLOCK(bp->b_bufobj->bo_object);
@@ -2942,7 +2940,6 @@ allocbuf(struct buf *bp, int size)
 				vm_page_t m;
 
 				VM_OBJECT_LOCK(bp->b_bufobj->bo_object);
-				vm_page_lock_queues();
 				for (i = desiredpages; i < bp->b_npages; i++) {
 					/*
 					 * the page is not freed here -- it
@@ -2952,13 +2949,15 @@ allocbuf(struct buf *bp, int size)
 					m = bp->b_pages[i];
 					KASSERT(m != bogus_page,
 					    ("allocbuf: bogus page found"));
-					while (vm_page_sleep_if_busy(m, TRUE, "biodep"))
-						vm_page_lock_queues();
+					while (vm_page_sleep_if_busy(m, TRUE,
+					    "biodep"))
+						continue;
 
 					bp->b_pages[i] = NULL;
+					vm_page_lock(m);
 					vm_page_unwire(m, 0);
+					vm_page_unlock(m);
 				}
-				vm_page_unlock_queues();
 				VM_OBJECT_UNLOCK(bp->b_bufobj->bo_object);
 				pmap_qremove((vm_offset_t) trunc_page((vm_offset_t)bp->b_data) +
 				    (desiredpages << PAGE_SHIFT), (bp->b_npages - desiredpages));
@@ -3039,9 +3038,9 @@ allocbuf(struct buf *bp, int size)
 				/*
 				 * We have a good page.
 				 */
-				vm_page_lock_queues();
+				vm_page_lock(m);
 				vm_page_wire(m);
-				vm_page_unlock_queues();
+				vm_page_unlock(m);
 				bp->b_pages[bp->b_npages] = m;
 				++bp->b_npages;
 			}

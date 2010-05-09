@@ -2475,7 +2475,8 @@ softdep_prealloc(vp, waitok)
 	 * Attempt to sync this vnode once to flush any journal
 	 * work attached to it.
 	 */
-	ffs_syncvnode(vp, waitok);
+	if ((curthread->td_pflags & TDP_COWINPROGRESS) == 0)
+		ffs_syncvnode(vp, waitok);
 	ACQUIRE_LOCK(&lk);
 	process_removes(vp);
 	if (journal_space(ump, 0) == 0) {
@@ -9301,7 +9302,7 @@ handle_written_inodeblock(inodedep, bp)
 			hadchanges = 1;
 	}
 	/* Leave this inodeblock dirty until it's in the list. */
-	if ((inodedep->id_state & (UNLINKED | DEPCOMPLETE)) == UNLINKED)
+	if ((inodedep->id_state & (UNLINKED | UNLINKONLIST)) == UNLINKED)
 		hadchanges = 1;
 	/*
 	 * If we had to rollback the inode allocation because of

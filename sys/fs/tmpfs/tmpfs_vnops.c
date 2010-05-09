@@ -42,7 +42,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/namei.h>
 #include <sys/priv.h>
 #include <sys/proc.h>
-#include <sys/resourcevar.h>
 #include <sys/sched.h>
 #include <sys/sf_buf.h>
 #include <sys/stat.h>
@@ -460,9 +459,9 @@ tmpfs_nocacheread(vm_object_t tobj, vm_pindex_t idx,
 	error = uiomove_fromphys(&m, offset, tlen, uio);
 	VM_OBJECT_LOCK(tobj);
 out:
-	vm_page_lock_queues();
+	vm_page_lock(m);
 	vm_page_unwire(m, TRUE);
-	vm_page_unlock_queues();
+	vm_page_unlock(m);
 	vm_page_wakeup(m);
 	vm_object_pip_subtract(tobj, 1);
 	VM_OBJECT_UNLOCK(tobj);
@@ -691,6 +690,7 @@ nocache:
 out:
 	if (vobj != NULL)
 		VM_OBJECT_LOCK(vobj);
+	vm_page_lock(tpg);
 	vm_page_lock_queues();
 	if (error == 0) {
 		KASSERT(tpg->valid == VM_PAGE_BITS_ALL,
@@ -699,6 +699,7 @@ out:
 	}
 	vm_page_unwire(tpg, TRUE);
 	vm_page_unlock_queues();
+	vm_page_unlock(tpg);
 	vm_page_wakeup(tpg);
 	if (vpg != NULL)
 		vm_page_wakeup(vpg);
@@ -716,7 +717,6 @@ tmpfs_write(struct vop_write_args *v)
 	struct vnode *vp = v->a_vp;
 	struct uio *uio = v->a_uio;
 	int ioflag = v->a_ioflag;
-	struct thread *td = uio->uio_td;
 
 	boolean_t extended;
 	int error = 0;
@@ -746,16 +746,8 @@ tmpfs_write(struct vop_write_args *v)
 	  VFS_TO_TMPFS(vp->v_mount)->tm_maxfilesize)
 		return (EFBIG);
 
-	if (vp->v_type == VREG && td != NULL) {
-		PROC_LOCK(td->td_proc);
-		if (uio->uio_offset + uio->uio_resid >
-		  lim_cur(td->td_proc, RLIMIT_FSIZE)) {
-			psignal(td->td_proc, SIGXFSZ);
-			PROC_UNLOCK(td->td_proc);
-			return (EFBIG);
-		}
-		PROC_UNLOCK(td->td_proc);
-	}
+	if (vn_rlimit_fsize(vp, uio, uio->uio_td))
+		return (EFBIG);
 
 	extended = uio->uio_offset + uio->uio_resid > node->tn_size;
 	if (extended) {
