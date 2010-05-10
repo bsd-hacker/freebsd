@@ -130,6 +130,7 @@ struct device {
 #define	DF_DONENOMATCH	32		/* don't execute DEVICE_NOMATCH again */
 #define	DF_EXTERNALSOFTC 64		/* softc not allocated by us */
 #define	DF_REBID	128		/* Can rebid after attach */
+#define DF_REMAPPED	256		/* all remapping completed */
 	u_char	order;			/**< order from device_add_child_ordered() */
 	u_char	pad;
 	void	*ivars;			/**< instance variables  */
@@ -141,6 +142,35 @@ struct device {
 
 static MALLOC_DEFINE(M_BUS, "bus", "Bus data structures");
 static MALLOC_DEFINE(M_BUS_SC, "bus-sc", "Bus data structures, softc");
+
+/**
+ * @brief Generic remapping glue
+ */
+typedef TAILQ_HEAD(bus_map_attr_list, bus_map_attr) bus_map_attr_list_t;
+typedef TAILQ_HEAD(bus_map_entry_list, bus_map_entry) bus_map_entry_list_t;
+typedef TAILQ_HEAD(bus_remap_list, bus_remap) bus_remap_list_t;
+
+struct bus_map_attr
+{
+	TAILQ_ENTRY(bus_map_attr) link; /**< list of buses */
+	const char*	name;
+	const char*	value;
+};
+
+struct bus_map_entry
+{
+	TAILQ_ENTRY(bus_map_entry) link; /**< list of buses */
+	bus_map_attr_list_t match_list;
+	bus_map_attr_list_t map_list;
+};
+
+struct bus_remap
+{
+	TAILQ_ENTRY(bus_remap) link; /**< list of buses */
+	const char*	name;		/**< Name of bus for this table */
+	bus_map_entry_list_t map_list;
+};
+static bus_remap_list_t bus_remaps = TAILQ_HEAD_INITIALIZER(bus_remaps);
 
 #ifdef BUS_DEBUG
 
@@ -1915,6 +1945,81 @@ next_matching_driver(devclass_t dc, device_t dev, driverlink_t last)
 
 /**
  * @internal
+ *
+ * See if we can find remapping information for this device.  Remapping a
+ * device means that we change, based on user input, the pnp information that
+ * the bus layer reports to the device.  This is primarily intended to allow
+ * for fast updates in supported devices that are largely compatible with
+ * some prior device that's completely supported by the kernel.  This pnp
+ * information is exported via the BUS_READ_ATTR and BUS_WRITE_ATTR functions
+ * and should be documented in each bus' man page.
+ */
+static void
+device_remap_child(device_t bus, device_t child)
+{
+	char buffer[128];
+	int rv;
+	struct bus_remap *busmap;
+	struct bus_map_entry *mapentry;
+	struct bus_map_attr *attr;
+
+	/*
+	 * XXXimp: Locking note
+	 * When getting rid of GIANT, we need a global lock to regulate
+	 * access to the device mapping structures.  We also assume that
+	 * @p child's parent is @p bus and that won't change until after
+	 * we return.
+	 */
+	GIANT_REQUIRED;
+
+	/*
+	 * Only do the mapping once.
+	 */
+	if (child->flags & DF_REMAPPED)
+		return;
+	child->flags |= DF_REMAPPED;
+
+	/*
+	 * Check to see if this bus has a mapping table.  If so, see if
+	 * we can find a mapping entry that matches this device.  If we
+	 * find that, then remap the attributes in the remapping entry.
+	 */
+	TAILQ_FOREACH(busmap, &bus_remaps, link) {
+		if (strcmp(busmap->name, device_get_name(bus)) != 0)
+			continue;
+		break;
+	}
+	if (busmap == NULL)
+		return;
+	TAILQ_FOREACH(mapentry, &busmap->map_list, link) {
+		TAILQ_FOREACH(attr, &mapentry->match_list, link) {
+			if ((rv = BUS_READ_ATTR(bus, child, attr->name,
+			    buffer, sizeof(buffer))) != 0) {
+				device_printf(bus, "Bad read attr %d, aborted rule.\n", rv);
+				break;
+			}
+			if (strcmp(attr->value, buffer) != 0)
+				break;
+		}
+		if (attr != NULL)
+			continue;
+		TAILQ_FOREACH(attr, &mapentry->map_list, link) {
+			rv = BUS_WRITE_ATTR(bus, child, attr->name,
+			    attr->value);
+			if (rv != 0) {
+				device_printf(bus,
+				    "Cannot map attribute %s to %s: error %d",
+				    attr->name, attr->value, rv);
+				/* XXX Reset?  Some other error recovery? */
+				return;
+			}
+		}
+	}
+	return;
+}
+
+/**
+ * @internal
  */
 int
 device_probe_child(device_t dev, device_t child)
@@ -1935,8 +2040,16 @@ device_probe_child(device_t dev, device_t child)
 	 * If the state is already probed, then return.  However, don't
 	 * return if we can rebid this object.
 	 */
-	if (child->state == DS_ALIVE && (child->flags & DF_REBID) == 0)
+	if ((child->state == DS_ALIVE && (child->flags & DF_REBID) == 0) ||
+	    child->state > DS_ALIVE)
 		return (0);
+
+	/*
+	 * Try to remap the pnp info for this device, if we haven't already
+	 * done so.  Remapping is a property of the DEVICE, not the driver
+	 * that has attached to it.
+	 */
+	device_remap_child(dev, child);
 
 	for (; dc; dc = dc->parent) {
 		for (dl = first_matching_driver(dc, child);
