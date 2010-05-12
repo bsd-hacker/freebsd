@@ -319,6 +319,7 @@ bus_dma_tag_t
 struct resource_list *
 	bus_generic_get_resource_list (device_t, device_t);
 void	bus_generic_new_pass(device_t dev);
+int	bus_generic_reset_attr(device_t dev, device_t child);
 int	bus_print_child_header(device_t dev, device_t child);
 int	bus_print_child_footer(device_t dev, device_t child);
 int	bus_generic_print_child(device_t dev, device_t child);

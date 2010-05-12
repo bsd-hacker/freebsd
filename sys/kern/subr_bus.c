@@ -3385,6 +3385,13 @@ bus_generic_add_child(device_t dev, int order, const char *name, int unit)
 	return (device_add_child_ordered(dev, order, name, unit));
 }
 
+int
+bus_generic_reset_attr(device_t dev, device_t child)
+{
+
+	return (EINVAL);
+}
+
 /**
  * @brief Helper function for implementing DEVICE_PROBE()
  *

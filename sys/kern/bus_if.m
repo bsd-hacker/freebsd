@@ -201,13 +201,20 @@ METHOD int write_attr {
  * only be enumerated once).  Buses should make no assumptions about which
  * devices have this called on them, nor the order of the calls.
  *
+ * When this routine returns EINVAL, the bus cannot cope with the new mapping
+ * API.  When the driver returns EINVAL, then bus_add_driver() isn't called
+ * when new mapping data is loaded into the kernel.
+ *
  * @param _dev		the bus which the device to reset
  * @param _child	the child device to reset attributes for
+ *
+ * @retval 0		success
+ * @retval EINVAL	Default return value -- disable mapping
  */
-METHOD void reset_attr {
+METHOD int reset_attr {
 	device_t _dev;
 	device_t _child;
-};
+} DEFAULT bus_generic_reset_attr;
 
 /**
  * @brief Notify a bus that a child was detached
