@@ -53,6 +53,7 @@ atomic_init(void)
 #endif
 
 #ifndef __LP64__
+#if !defined(__mips_n32)
 void
 atomic_add_64(volatile uint64_t *target, int64_t delta)
 {
@@ -61,6 +62,7 @@ atomic_add_64(volatile uint64_t *target, int64_t delta)
 	*target += delta;
 	mtx_unlock(&atomic_mtx);
 }
+#endif
 
 void
 atomic_dec_64(volatile uint64_t *target)

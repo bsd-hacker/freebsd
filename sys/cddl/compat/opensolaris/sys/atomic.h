@@ -37,7 +37,9 @@
 #define cas32	atomic_cmpset_32
 
 #ifndef __LP64__
+#if !defined(__mips_n32)
 extern void atomic_add_64(volatile uint64_t *target, int64_t delta);
+#endif
 extern void atomic_dec_64(volatile uint64_t *target);
 extern void *atomic_cas_ptr(volatile void *target, void *cmp,  void *newval);
 #endif
