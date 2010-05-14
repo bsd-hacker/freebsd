@@ -62,7 +62,7 @@
 static int		cpcht_probe(device_t);
 static int		cpcht_attach(device_t);
 
-static void		cpcht_build_htirq_map(device_t);
+static void		cpcht_configure_htbridge(device_t, phandle_t);
 
 /*
  * Bus interface.
@@ -140,7 +140,7 @@ struct cpcht_softc {
 	device_t		sc_dev;
 	phandle_t		sc_node;
 	vm_offset_t		sc_data;
-	int			sc_bus;
+	uint64_t		sc_populated_slots;
 	struct			rman sc_mem_rman;
 
 	struct cpcht_irq	htirq_map[128];
@@ -155,6 +155,17 @@ static driver_t	cpcht_driver = {
 static devclass_t	cpcht_devclass;
 
 DRIVER_MODULE(cpcht, nexus, cpcht_driver, cpcht_devclass, 0, 0);
+
+struct cpcht_range {
+	u_int32_t       pci_hi;
+	u_int32_t       pci_mid;
+	u_int32_t       pci_lo;
+	u_int32_t       junk;
+	u_int32_t       host_hi;
+	u_int32_t       host_lo;
+	u_int32_t       size_hi;
+	u_int32_t       size_lo;
+};
 
 static int
 cpcht_probe(device_t dev)
@@ -182,7 +193,7 @@ static int
 cpcht_attach(device_t dev)
 {
 	struct		cpcht_softc *sc;
-	phandle_t	node;
+	phandle_t	node, child;
 	u_int32_t	reg[3];
 	int		error;
 
@@ -194,10 +205,8 @@ cpcht_attach(device_t dev)
 
 	sc->sc_dev = dev;
 	sc->sc_node = node;
-	sc->sc_bus = 0;
+	sc->sc_populated_slots = 0;
 	sc->sc_data = (vm_offset_t)pmap_mapdev(reg[1], reg[2]);
-
-	device_add_child(dev, "pci", device_get_unit(dev));
 
 	sc->sc_mem_rman.rm_type = RMAN_ARRAY;
 	sc->sc_mem_rman.rm_descr = "CPCHT Device Memory";
@@ -208,30 +217,75 @@ cpcht_attach(device_t dev)
 		return (error);
 	}
 
-	/* Build up the HT->MPIC mapping */
-	cpcht_build_htirq_map(dev);
+	/*
+	 * Set up the resource manager and the HT->MPIC mapping. For cpcht,
+	 * the ranges are properties of the child bridges, and this is also
+	 * where we get the HT interrupts properties.
+	 */
+
+	bzero(sc->htirq_map, sizeof(sc->htirq_map));
+	for (child = OF_child(node); child != 0; child = OF_peer(child))
+		cpcht_configure_htbridge(dev, child);
+
+	/* Now make the mapping table available to the MPIC */
+	cpcht_irqmap = sc->htirq_map;
+
+	device_add_child(dev, "pci", device_get_unit(dev));
 
 	return (bus_generic_attach(dev));
 }
 
 static void
-cpcht_build_htirq_map(device_t dev)
+cpcht_configure_htbridge(device_t dev, phandle_t child)
 {
 	struct cpcht_softc *sc;
-	int pcifunchigh, hdrtype;
-	int ptr, nextptr;
+	struct ofw_pci_register pcir;
+	struct cpcht_range ranges[6], *rp;
+	int nranges, ptr, nextptr;
 	uint32_t vend, val;
-	int nirq, irq;
-	int i, s, f;
+	int i, nirq, irq;
+	u_int f, s;
 
 	sc = device_get_softc(dev);
-	bzero(sc->htirq_map, sizeof(sc->htirq_map));
+	if (OF_getprop(child, "reg", &pcir, sizeof(pcir)) == -1)
+		return;
+
+	s = OFW_PCI_PHYS_HI_DEVICE(pcir.phys_hi);
+	f = OFW_PCI_PHYS_HI_FUNCTION(pcir.phys_hi);
 
 	/*
-	 * Now we need to build up the HT->MPIC IRQ map. One would naively
-	 * hope that enabling, disabling, and EOIing interrupts would cause
-	 * the appropriate HT bus transactions to that effect. This is not
-	 * the case.
+	 * Mark this slot is populated. The remote south bridge does
+	 * not like us talking to unpopulated slots on the root bus.
+	 */
+	sc->sc_populated_slots |= (1 << s);
+
+	/*
+	 * Next grab this child bus's bus ranges.
+	 */
+	bzero(ranges, sizeof(ranges));
+	nranges = OF_getprop(child, "ranges", ranges, sizeof(ranges));
+	
+	ranges[6].pci_hi = 0;
+	for (rp = ranges; rp->pci_hi != 0; rp++) {
+		switch (rp->pci_hi & OFW_PCI_PHYS_HI_SPACEMASK) {
+		case OFW_PCI_PHYS_HI_SPACE_CONFIG:
+			break;
+		case OFW_PCI_PHYS_HI_SPACE_IO:
+		case OFW_PCI_PHYS_HI_SPACE_MEM32:
+			rman_manage_region(&sc->sc_mem_rman, rp->pci_lo,
+			    rp->pci_lo + rp->size_lo - 1);
+			break;
+		case OFW_PCI_PHYS_HI_SPACE_MEM64:
+			panic("64-bit CPCHT reserved memory!");
+			break;
+		}
+	}
+
+	/*
+	 * Next build up any HT->MPIC mappings for this sub-bus. One would
+	 * naively hope that enabling, disabling, and EOIing interrupts would
+	 * cause the appropriate HT bus transactions to that effect. This is
+	 * not the case.
 	 *
 	 * Instead, we have to muck about on the HT peer's root PCI bridges,
 	 * figure out what interrupts they send, enable them, and cache
@@ -239,89 +293,68 @@ cpcht_build_htirq_map(device_t dev)
 	 * send EOIs later.
 	 */
 
-	for (s = 0; s < 0x1f; s++) {
-	    pcifunchigh = 0;
-	    hdrtype = PCIB_READ_CONFIG(dev, 0, s, 0, PCIR_HDRTYPE, 1);
+	/* All the devices we are interested in have caps */
+	if (!(PCIB_READ_CONFIG(dev, 0, s, f, PCIR_STATUS, 2)
+	    & PCIM_STATUS_CAPPRESENT))
+		return;
 
-	    if ((hdrtype & PCIM_HDRTYPE) > PCI_MAXHDRTYPE)
-		continue;
-	    if (hdrtype & PCIM_MFDEV)
-		pcifunchigh = PCI_FUNCMAX;
-	    for (f = 0; f <= pcifunchigh; f++) {
-		vend = PCIB_READ_CONFIG(dev, 0, s, f, PCIR_DEVVENDOR, 4);
-		if (vend == 0xfffffffful)
+	nextptr = PCIB_READ_CONFIG(dev, 0, s, f, PCIR_CAP_PTR, 1);
+	while (nextptr != 0) {
+		ptr = nextptr;
+		nextptr = PCIB_READ_CONFIG(dev, 0, s, f,
+		    ptr + PCICAP_NEXTPTR, 1);
+
+		/* Find the HT IRQ capabilities */
+		if (PCIB_READ_CONFIG(dev, 0, s, f,
+		    ptr + PCICAP_ID, 1) != PCIY_HT)
 			continue;
 
-		/* All the devices we are interested in have caps */
-		if (!(PCIB_READ_CONFIG(dev, 0, s, f, PCIR_STATUS, 2)
-		    & PCIM_STATUS_CAPPRESENT))
+		val = PCIB_READ_CONFIG(dev, 0, s, f, ptr + PCIR_HT_COMMAND, 2);
+		if ((val & PCIM_HTCMD_CAP_MASK) != PCIM_HTCAP_INTERRUPT)
 			continue;
 
-		nextptr = PCIB_READ_CONFIG(dev, 0, s, f, PCIR_CAP_PTR, 1);
-		while (nextptr != 0) {
-			ptr = nextptr;
-			nextptr = PCIB_READ_CONFIG(dev, 0, s, f,
-			    ptr + PCICAP_NEXTPTR, 1);
+		/* Ask for the IRQ count */
+		PCIB_WRITE_CONFIG(dev, 0, s, f, ptr + PCIR_HT_COMMAND, 0x1, 1);
+		nirq = PCIB_READ_CONFIG(dev, 0, s, f, ptr + 4, 4);
+		nirq = (nirq >> 16) & 0xff;
 
-			/* Find the HT IRQ capabilities */
-			if (PCIB_READ_CONFIG(dev, 0, s, f,
-			    ptr + PCICAP_ID, 1) != PCIY_HT)
-				continue;
+		device_printf(dev, "%d HT IRQs on device %d.%d\n", nirq, s, f);
 
-			val = PCIB_READ_CONFIG(dev, 0, s, f,
-			    ptr + PCIR_HT_COMMAND, 2);
-			if ((val & PCIM_HTCMD_CAP_MASK) !=
-			    PCIM_HTCAP_INTERRUPT)
-				continue;
-
-			/* Ask for the IRQ count */
+		for (i = 0; i <= nirq; i++) {
 			PCIB_WRITE_CONFIG(dev, 0, s, f,
-			     ptr + PCIR_HT_COMMAND, 0x1, 1);
-			nirq = PCIB_READ_CONFIG(dev, 0, s, f, ptr + 4, 4);
-			nirq = (nirq >> 16) & 0xff;
+			     ptr + PCIR_HT_COMMAND, 0x10 + (i << 1), 1);
+			irq = PCIB_READ_CONFIG(dev, 0, s, f, ptr + 4, 4);
 
-			device_printf(dev, "%d HT IRQs on device %d.%d\n",
-			    nirq, s, f);
+			/*
+			 * Enable immediately as a level interrupt.
+			 * It is still masked in the MPIC.
+			 */
+			PCIB_WRITE_CONFIG(dev, 0, s, f, ptr + 4,
+			    (irq & ~0x23) | 0x22, 4);
+			irq = (irq >> 16) & 0xff;
 
-			for (i = 0; i <= nirq; i++) {
-				PCIB_WRITE_CONFIG(dev, 0, s, f,
-				     ptr + PCIR_HT_COMMAND, 0x10 + (i << 1), 1);
-				irq = PCIB_READ_CONFIG(dev, 0, s, f, ptr + 4, 4);
+			sc->htirq_map[irq].ht_source = i;
+			sc->htirq_map[irq].ht_base = sc->sc_data + 
+			    (((((s & 0x1f) << 3) | (f & 0x07)) << 8) | (ptr));
 
-				/*
-				 * Enable immediately as a level interrupt.
-				 * It is still masked in the MPIC.
-				 */
-				PCIB_WRITE_CONFIG(dev, 0, s, f, ptr + 4,
-				    (irq & ~0x23) | 0x22, 4);
-				irq = (irq >> 16) & 0xff;
+			PCIB_WRITE_CONFIG(dev, 0, s, f,
+			     ptr + PCIR_HT_COMMAND, 0x11 + (i << 1), 1);
+			sc->htirq_map[irq].eoi_data =
+			    PCIB_READ_CONFIG(dev, 0, s, f, ptr + 4, 4) |
+			    0x80000000;
 
-				sc->htirq_map[irq].ht_source = i;
-				sc->htirq_map[irq].ht_base = sc->sc_data + 
-				    (((((s & 0x1f) << 3) | (f & 0x07)) << 8)
-				    | (ptr));
-
-				PCIB_WRITE_CONFIG(dev, 0, s, f,
-				     ptr + PCIR_HT_COMMAND, 0x11 + (i << 1), 1);
-				sc->htirq_map[irq].eoi_data =
-				    PCIB_READ_CONFIG(dev, 0, s, f, ptr + 4, 4) |
-				    0x80000000;
-
-				/*
-				 * Apple uses a non-compliant IO/APIC that differs
-				 * in how we signal EOIs. Check if this device was 
-				 * made by Apple, and act accordingly.
-				 */
-				if ((vend & 0xffff) == 0x106b)
-					sc->htirq_map[irq].apple_eoi = 
-					 (sc->htirq_map[irq].ht_base - ptr) + 0x60;
-			}
+			/*
+			 * Apple uses a non-compliant IO/APIC that differs
+			 * in how we signal EOIs. Check if this device was 
+			 * made by Apple, and act accordingly.
+			 */
+			vend = PCIB_READ_CONFIG(dev, 0, s, f,
+			    PCIR_DEVVENDOR, 4);
+			if ((vend & 0xffff) == 0x106b)
+				sc->htirq_map[irq].apple_eoi = 
+				 (sc->htirq_map[irq].ht_base - ptr) + 0x60;
 		}
-	    }
 	}
-
-	/* Now make this table available to the MPIC */
-	cpcht_irqmap = sc->htirq_map;
 }
 
 static int
@@ -341,6 +374,9 @@ cpcht_read_config(device_t dev, u_int bus, u_int slot, u_int func, u_int reg,
 	sc = device_get_softc(dev);
 	caoff = sc->sc_data + 
 		(((((slot & 0x1f) << 3) | (func & 0x07)) << 8) | reg);
+
+	if (bus == 0 && !(sc->sc_populated_slots & (1 << slot)))
+		return (0xffffffff);
 
 	if (bus > 0)
 		caoff += 0x01000000UL + (bus << 16);
@@ -371,6 +407,9 @@ cpcht_write_config(device_t dev, u_int bus, u_int slot, u_int func,
 	caoff = sc->sc_data + 
 		(((((slot & 0x1f) << 3) | (func & 0x07)) << 8) | reg);
 
+	if (bus == 0 && !(sc->sc_populated_slots & (1 << slot)))
+		return;
+
 	if (bus > 0)
 		caoff += 0x01000000UL + (bus << 16);
 
@@ -399,7 +438,7 @@ cpcht_read_ivar(device_t dev, device_t child, int which, uintptr_t *result)
 		*result = device_get_unit(dev);
 		return (0);
 	case PCIB_IVAR_BUS:
-		*result = sc->sc_bus;
+		*result = 0;	/* Root bus */
 		return (0);
 	}
 
@@ -444,11 +483,6 @@ cpcht_alloc_resource(device_t bus, device_t child, int type, int *rid,
 		/* FALLTHROUGH */
 	case SYS_RES_MEMORY:
 		rm = &sc->sc_mem_rman;
-		err = rman_manage_region(&sc->sc_mem_rman, start, end);
-		if (err)
-			device_printf(bus, "failed to manage memory region "
-			    "%#lx - %#lx for %s\n", start, end,
-			    device_get_nameunit(child));
 		break;
 
 	case SYS_RES_IRQ:
@@ -519,6 +553,7 @@ static int
 cpcht_release_resource(device_t bus, device_t child, int type, int rid,
     struct resource *res)
 {
+
 	if (rman_get_flags(res) & RF_ACTIVE) {
 		int error = bus_deactivate_resource(child, type, rid, res);
 		if (error)
@@ -532,6 +567,7 @@ static int
 cpcht_deactivate_resource(device_t bus, device_t child, int type, int rid,
     struct resource *res)
 {
+
 	/*
 	 * If this is a memory resource, unmap it.
 	 */
