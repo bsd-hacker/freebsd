@@ -63,7 +63,7 @@ struct uninorth_softc {
 	bus_dma_tag_t		sc_dmat;
 	struct ofw_bus_iinfo	sc_pci_iinfo;
 
-	int			sc_u3;
+	int			sc_ver;
 };
 
 struct unin_chip_softc {

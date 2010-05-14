@@ -151,8 +151,11 @@ uninorth_probe(device_t dev)
 	if (strcmp(compatible, "uni-north") == 0) {
 		device_set_desc(dev, "Apple UniNorth Host-PCI bridge");
 		return (0);
-	} else if (strcmp(compatible,"u3-agp") == 0) {
+	} else if (strcmp(compatible, "u3-agp") == 0) {
 		device_set_desc(dev, "Apple U3 Host-AGP bridge");
+		return (0);
+	} else if (strcmp(compatible, "u4-pcie") == 0) {
+		device_set_desc(dev, "IBM CPC945 PCI Express Root");
 		return (0);
 	}
 	
@@ -165,7 +168,7 @@ uninorth_attach(device_t dev)
 	struct		uninorth_softc *sc;
 	const char	*compatible;
 	phandle_t	node;
-	u_int32_t	reg[2], busrange[2];
+	u_int32_t	reg[3], busrange[2];
 	struct		uninorth_range *rp, *io, *mem[2];
 	int		nmem, i, error;
 
@@ -178,14 +181,16 @@ uninorth_attach(device_t dev)
 	if (OF_getprop(node, "bus-range", busrange, sizeof(busrange)) != 8)
 		return (ENXIO);
 
-	sc->sc_u3 = 0;
+	sc->sc_ver = 0;
 	compatible = ofw_bus_get_compat(dev);
-	if (strcmp(compatible,"u3-agp") == 0)
-		sc->sc_u3 = 1;
+	if (strcmp(compatible, "u3-agp") == 0)
+		sc->sc_ver = 3;
+	if (strcmp(compatible, "u4-pcie") == 0)
+		sc->sc_ver = 4;
 
 	sc->sc_dev = dev;
 	sc->sc_node = node;
-	if (sc->sc_u3) {
+	if (sc->sc_ver >= 3) {
 	   sc->sc_addr = (vm_offset_t)pmap_mapdev(reg[1] + 0x800000, PAGE_SIZE);
 	   sc->sc_data = (vm_offset_t)pmap_mapdev(reg[1] + 0xc00000, PAGE_SIZE);
 	} else {
@@ -195,7 +200,7 @@ uninorth_attach(device_t dev)
 	sc->sc_bus = busrange[0];
 
 	bzero(sc->sc_range, sizeof(sc->sc_range));
-	if (sc->sc_u3) {
+	if (sc->sc_ver >= 3) {
 		/*
 		 * On Apple U3 systems, we have an otherwise standard
 		 * Uninorth controller driving AGP. The one difference
@@ -495,9 +500,16 @@ uninorth_enable_config(struct uninorth_softc *sc, u_int bus, u_int slot,
 			return (0);
 	}
 
-	if (sc->sc_bus == bus) {
+	/*
+	 * Issue type 0 configuration space accesses for the root bus.
+	 *
+	 * NOTE: On U4, issue only type 1 accesses. There is a secret
+	 * PCI Express <-> PCI Express bridge not present in the device tree,
+	 * and we need to route all of our configuration space through it.
+	 */
+	if (sc->sc_bus == bus && sc->sc_ver < 4) {
 		/*
-		 * No slots less than 11 on the primary bus
+		 * No slots less than 11 on the primary bus on U3 and lower
 		 */
 		if (slot < 11)
 			return (0);
@@ -507,6 +519,10 @@ uninorth_enable_config(struct uninorth_softc *sc, u_int bus, u_int slot,
 		cfgval = (bus << 16) | (slot << 11) | (func << 8) |
 		    (reg & 0xfc) | 1;
 	}
+
+	/* Set extended register bits on U4 */
+	if (sc->sc_ver == 4)
+		cfgval |= (reg >> 8) << 28;
 
 	do {
 		out32rb(sc->sc_addr, cfgval);
@@ -525,45 +541,4 @@ uninorth_get_node(device_t bus, device_t dev)
 
 	return sc->sc_node;
 }
-
-/*
- * Driver to swallow UniNorth host bridges from the PCI bus side.
- */
-static int
-unhb_probe(device_t dev)
-{
-
-	if (pci_get_class(dev) == PCIC_BRIDGE &&
-	    pci_get_subclass(dev) == PCIS_BRIDGE_HOST) {
-		device_set_desc(dev, "Host to PCI bridge");
-		device_quiet(dev);
-		return (-10000);
-	}
-
-	return (ENXIO);
-}
-
-static int
-unhb_attach(device_t dev)
-{
-
-	return (0);
-}
-
-static device_method_t unhb_methods[] = {
-	/* Device interface */
-	DEVMETHOD(device_probe,         unhb_probe),
-	DEVMETHOD(device_attach,        unhb_attach),
-
-	{ 0, 0 }
-};
-
-static driver_t unhb_driver = {
-	"unhb",
-	unhb_methods,
-	1,
-};
-static devclass_t unhb_devclass;
-
-DRIVER_MODULE(unhb, pci, unhb_driver, unhb_devclass, 0, 0);
 
