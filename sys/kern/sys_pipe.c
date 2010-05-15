@@ -756,17 +756,16 @@ pipe_build_write_buffer(wpipe, uio)
 	if (endaddr < addr)
 		return (EFAULT);
 	for (i = 0; addr < endaddr; addr += PAGE_SIZE, i++) {
-		/*
-		 * vm_fault_quick() can sleep.  Consequently,
-		 * vm_page_lock_queue() and vm_page_unlock_queue()
-		 * should not be performed outside of this loop.
-		 */
 	race:
 		if (vm_fault_quick((caddr_t)addr, VM_PROT_READ) < 0) {
-			vm_page_lock_queues();
-			for (j = 0; j < i; j++)
-				vm_page_unhold(wpipe->pipe_map.ms[j]);
-			vm_page_unlock_queues();
+			for (j = 0; j < i; j++) {
+				vm_page_t m;
+
+				m = wpipe->pipe_map.ms[j];
+				vm_page_lock(m);
+				vm_page_unhold(m);
+				vm_page_unlock(m);
+			}
 			return (EFAULT);
 		}
 		wpipe->pipe_map.ms[i] = pmap_extract_and_hold(pmap, addr,
@@ -803,14 +802,16 @@ static void
 pipe_destroy_write_buffer(wpipe)
 	struct pipe *wpipe;
 {
+	vm_page_t m;
 	int i;
 
 	PIPE_LOCK_ASSERT(wpipe, MA_OWNED);
-	vm_page_lock_queues();
 	for (i = 0; i < wpipe->pipe_map.npages; i++) {
+		m = wpipe->pipe_map.ms[i];
+		vm_page_lock(m);
 		vm_page_unhold(wpipe->pipe_map.ms[i]);
+		vm_page_unlock(m);
 	}
-	vm_page_unlock_queues();
 	wpipe->pipe_map.npages = 0;
 }
 

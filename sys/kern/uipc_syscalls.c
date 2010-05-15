@@ -1716,7 +1716,7 @@ sf_buf_mext(void *addr, void *args)
 
 	m = sf_buf_page(args);
 	sf_buf_free(args);
-	vm_page_lock_queues();
+	vm_page_lock(m);
 	vm_page_unwire(m, 0);
 	/*
 	 * Check for the object going away on us. This can
@@ -1725,7 +1725,7 @@ sf_buf_mext(void *addr, void *args)
 	 */
 	if (m->wire_count == 0 && m->object == NULL)
 		vm_page_free(m);
-	vm_page_unlock_queues();
+	vm_page_unlock(m);
 }
 
 /*
@@ -2094,7 +2094,7 @@ retry_space:
 				mbstat.sf_iocnt++;
 			}
 			if (error) {
-				vm_page_lock_queues();
+				vm_page_lock(pg);
 				vm_page_unwire(pg, 0);
 				/*
 				 * See if anyone else might know about
@@ -2106,7 +2106,7 @@ retry_space:
 				    pg->hold_count == 0) {
 					vm_page_free(pg);
 				}
-				vm_page_unlock_queues();
+				vm_page_unlock(pg);
 				VM_OBJECT_UNLOCK(obj);
 				if (error == EAGAIN)
 					error = 0;	/* not a real error */
@@ -2120,14 +2120,14 @@ retry_space:
 			if ((sf = sf_buf_alloc(pg,
 			    (mnw ? SFB_NOWAIT : SFB_CATCH))) == NULL) {
 				mbstat.sf_allocfail++;
-				vm_page_lock_queues();
+				vm_page_lock(pg);
 				vm_page_unwire(pg, 0);
 				/*
 				 * XXX: Not same check as above!?
 				 */
 				if (pg->wire_count == 0 && pg->object == NULL)
 					vm_page_free(pg);
-				vm_page_unlock_queues();
+				vm_page_unlock(pg);
 				error = (mnw ? EAGAIN : EINTR);
 				break;
 			}

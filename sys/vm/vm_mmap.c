@@ -851,7 +851,7 @@ RestartScan:
 				 */
 				if (m != NULL && m->valid != 0) {
 					mincoreinfo = MINCORE_INCORE;
-					vm_page_lock_queues();
+					vm_page_lock(m);
 					if (m->dirty ||
 						pmap_is_modified(m))
 						mincoreinfo |= MINCORE_MODIFIED_OTHER;
@@ -860,7 +860,7 @@ RestartScan:
 						vm_page_flag_set(m, PG_REFERENCED);
 						mincoreinfo |= MINCORE_REFERENCED_OTHER;
 					}
-					vm_page_unlock_queues();
+					vm_page_unlock(m);
 				}
 				VM_OBJECT_UNLOCK(current->object.vm_object);
 			}

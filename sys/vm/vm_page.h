@@ -272,6 +272,13 @@ PHYS_TO_VM_PAGE(vm_paddr_t pa)
 extern struct mtx vm_page_queue_mtx;
 #define vm_page_lock_queues()   mtx_lock(&vm_page_queue_mtx)
 #define vm_page_unlock_queues() mtx_unlock(&vm_page_queue_mtx)
+#define	vm_page_trylock_queues() mtx_trylock(&vm_page_queue_mtx)
+
+#define	vm_page_lockptr(m)		pmap_page_lockptr(m)
+#define	vm_page_lock(m)		mtx_lock(vm_page_lockptr((m)))
+#define	vm_page_unlock(m)	mtx_unlock(vm_page_lockptr((m)))
+#define	vm_page_trylock(m)	mtx_trylock(vm_page_lockptr((m)))
+#define	vm_page_lock_assert(m, a)	mtx_assert(vm_page_lockptr((m)), (a))
 
 #if PAGE_SIZE == 4096
 #define VM_PAGE_BITS_ALL 0xffu
@@ -311,11 +318,14 @@ void vm_page_dirty(vm_page_t m);
 void vm_page_wakeup(vm_page_t m);
 
 void vm_pageq_remove(vm_page_t m);
+void vm_pageq_remove_locked(vm_page_t m);
 
 void vm_page_activate (vm_page_t);
+void vm_page_activate_locked (vm_page_t);
 vm_page_t vm_page_alloc (vm_object_t, vm_pindex_t, int);
 vm_page_t vm_page_grab (vm_object_t, vm_pindex_t, int);
 void vm_page_cache (register vm_page_t);
+void vm_page_cache_locked (register vm_page_t);
 void vm_page_cache_free(vm_object_t, vm_pindex_t, vm_pindex_t);
 void vm_page_cache_remove(vm_page_t);
 void vm_page_cache_transfer(vm_object_t, vm_pindex_t, vm_object_t);
@@ -323,11 +333,14 @@ int vm_page_try_to_cache (vm_page_t);
 int vm_page_try_to_free (vm_page_t);
 void vm_page_dontneed (register vm_page_t);
 void vm_page_deactivate (vm_page_t);
+void vm_page_deactivate_locked (vm_page_t);
 void vm_page_insert (vm_page_t, vm_object_t, vm_pindex_t);
 vm_page_t vm_page_lookup (vm_object_t, vm_pindex_t);
 void vm_page_remove (vm_page_t);
+void vm_page_remove_locked (vm_page_t);
 void vm_page_rename (vm_page_t, vm_object_t, vm_pindex_t);
 void vm_page_requeue(vm_page_t m);
+void vm_page_requeue_locked(vm_page_t m);
 void vm_page_sleep(vm_page_t m, const char *msg);
 vm_page_t vm_page_splay(vm_pindex_t, vm_page_t);
 vm_offset_t vm_page_startup(vm_offset_t vaddr);
@@ -341,6 +354,7 @@ void vm_page_test_dirty (vm_page_t);
 int vm_page_bits (int, int);
 void vm_page_zero_invalid(vm_page_t m, boolean_t setvalid);
 void vm_page_free_toq(vm_page_t m);
+void vm_page_free_locked(vm_page_t m);
 void vm_page_zero_idle_wakeup(void);
 void vm_page_cowfault (vm_page_t);
 int vm_page_cowsetup(vm_page_t);
@@ -349,7 +363,7 @@ void vm_page_cowclear (vm_page_t);
 /*
  *	vm_page_sleep_if_busy:
  *
- *	Sleep and release the page queues lock if VPO_BUSY is set or,
+ *	Sleep and release the page lock if VPO_BUSY is set or,
  *	if also_m_busy is TRUE, busy is non-zero.  Returns TRUE if the
  *	thread slept and the page queues lock was released.
  *	Otherwise, retains the page queues lock and returns FALSE.

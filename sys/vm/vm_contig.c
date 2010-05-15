@@ -105,6 +105,11 @@ vm_contig_launder_page(vm_page_t m, vm_page_t *next)
 		VM_OBJECT_UNLOCK(object);
 		return (EAGAIN);
 	}
+	if (vm_page_trylock(m) == 0) {
+		VM_OBJECT_UNLOCK(object);
+		return (EAGAIN);
+	}
+	vm_page_unlock_queues();
 	if (vm_page_sleep_if_busy(m, TRUE, "vpctw0")) {
 		VM_OBJECT_UNLOCK(object);
 		vm_page_lock_queues();
@@ -115,11 +120,13 @@ vm_contig_launder_page(vm_page_t m, vm_page_t *next)
 		pmap_remove_all(m);
 	if (m->dirty) {
 		if ((object->flags & OBJ_DEAD) != 0) {
+			vm_page_unlock(m);
 			VM_OBJECT_UNLOCK(object);
+			vm_page_lock_queues();
 			return (EAGAIN);
 		}
 		if (object->type == OBJT_VNODE) {
-			vm_page_unlock_queues();
+			vm_page_unlock(m);
 			vp = object->handle;
 			vm_object_reference_locked(object);
 			VM_OBJECT_UNLOCK(object);
@@ -140,11 +147,14 @@ vm_contig_launder_page(vm_page_t m, vm_page_t *next)
 			m_tmp = m;
 			vm_pageout_flush(&m_tmp, 1, VM_PAGER_PUT_SYNC);
 			VM_OBJECT_UNLOCK(object);
+			vm_page_lock_queues();
 			return (0);
 		}
 	} else if (m->hold_count == 0)
 		vm_page_cache(m);
+	vm_page_unlock(m);
 	VM_OBJECT_UNLOCK(object);
+	vm_page_lock_queues();
 	return (0);
 }
 

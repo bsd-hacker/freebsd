@@ -260,16 +260,16 @@ vm_imgact_hold_page(vm_object_t object, vm_ooffset_t offset)
 		if (m == NULL)
 			goto out;
 		if (m->valid == 0 || rv != VM_PAGER_OK) {
-			vm_page_lock_queues();
+			vm_page_lock(m);
 			vm_page_free(m);
-			vm_page_unlock_queues();
+			vm_page_unlock(m);
 			m = NULL;
 			goto out;
 		}
 	}
-	vm_page_lock_queues();
+	vm_page_lock(m);
 	vm_page_hold(m);
-	vm_page_unlock_queues();
+	vm_page_unlock(m);
 	vm_page_wakeup(m);
 out:
 	VM_OBJECT_UNLOCK(object);
@@ -303,9 +303,9 @@ vm_imgact_unmap_page(struct sf_buf *sf)
 	m = sf_buf_page(sf);
 	sf_buf_free(sf);
 	sched_unpin();
-	vm_page_lock_queues();
+	vm_page_lock(m);
 	vm_page_unhold(m);
-	vm_page_unlock_queues();
+	vm_page_unlock(m);
 }
 
 #ifndef KSTACK_MAX_PAGES
@@ -395,10 +395,10 @@ vm_thread_dispose(struct thread *td)
 		m = vm_page_lookup(ksobj, i);
 		if (m == NULL)
 			panic("vm_thread_dispose: kstack already missing?");
-		vm_page_lock_queues();
+		vm_page_lock(m);
 		vm_page_unwire(m, 0);
 		vm_page_free(m);
-		vm_page_unlock_queues();
+		vm_page_unlock(m);
 	}
 	VM_OBJECT_UNLOCK(ksobj);
 	vm_object_deallocate(ksobj);
@@ -426,10 +426,10 @@ vm_thread_swapout(struct thread *td)
 		m = vm_page_lookup(ksobj, i);
 		if (m == NULL)
 			panic("vm_thread_swapout: kstack already missing?");
-		vm_page_lock_queues();
+		vm_page_lock(m);
 		vm_page_dirty(m);
 		vm_page_unwire(m, 0);
-		vm_page_unlock_queues();
+		vm_page_unlock(m);
 	}
 	VM_OBJECT_UNLOCK(ksobj);
 }
@@ -457,9 +457,9 @@ vm_thread_swapin(struct thread *td)
 			m->valid = VM_PAGE_BITS_ALL;
 		}
 		ma[i] = m;
-		vm_page_lock_queues();
+		vm_page_lock(m);
 		vm_page_wire(m);
-		vm_page_unlock_queues();
+		vm_page_unlock(m);
 		vm_page_wakeup(m);
 	}
 	VM_OBJECT_UNLOCK(ksobj);

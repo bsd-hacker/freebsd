@@ -232,6 +232,7 @@ extern pt_entry_t pg_nx;
  */
 struct	pv_entry;
 struct	pv_chunk;
+TAILQ_HEAD(pv_list_head, pv_entry);
 
 struct md_page {
 	int			pat_mode;
@@ -250,6 +251,7 @@ struct pmap {
 	/* spare u_int here due to padding */
 	struct pmap_statistics	pm_stats;	/* pmap statistics */
 	vm_page_t		pm_root;	/* spare page table pages */
+	vm_page_t		pm_free;	/* Temporary free pages. */
 };
 
 typedef struct pmap	*pmap_t;
@@ -259,7 +261,9 @@ extern struct pmap	kernel_pmap_store;
 #define kernel_pmap	(&kernel_pmap_store)
 
 #define	PMAP_LOCK(pmap)		mtx_lock(&(pmap)->pm_mtx)
-#define	PMAP_LOCK_ASSERT(pmap, type) \
+#define	PMAP_LOCKPTR(pmap)	(&(pmap)->pm_mtx)
+
+#define	PMAP_LOCK_ASSERT(pmap, type)					\
 				mtx_assert(&(pmap)->pm_mtx, (type))
 #define	PMAP_LOCK_DESTROY(pmap)	mtx_destroy(&(pmap)->pm_mtx)
 #define	PMAP_LOCK_INIT(pmap)	mtx_init(&(pmap)->pm_mtx, "pmap", \
