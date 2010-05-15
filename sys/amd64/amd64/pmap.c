@@ -295,73 +295,6 @@ static vm_offset_t pmap_kmem_choose(vm_offset_t addr);
 CTASSERT(1 << PDESHIFT == sizeof(pd_entry_t));
 CTASSERT(1 << PTESHIFT == sizeof(pt_entry_t));
 
-
-#define LS_MAX		4
-struct lock_stack {
-	struct mtx *ls_array[LS_MAX];
-	int ls_top;
-};
-
-static void
-ls_init(struct lock_stack *ls)
-{
-
-	ls->ls_top = 0;
-}
-
-static void
-ls_push(struct lock_stack *ls, struct mtx *lock)
-{
-
-	KASSERT(ls->ls_top < LS_MAX, ("lock stack overflow"));
-	
-	ls->ls_array[ls->ls_top] = lock;
-	ls->ls_top++;
-	mtx_lock(lock);
-}
-
-
-static int
-ls_trypush(struct lock_stack *ls, struct mtx *lock)
-{
-
-	KASSERT(ls->ls_top < LS_MAX, ("lock stack overflow"));
-
-	if (mtx_trylock(lock) == 0)
-		return (0);
-	
-	ls->ls_array[ls->ls_top] = lock;
-	ls->ls_top++;
-	return (1);
-}
-
-#ifdef notyet
-static void
-ls_pop(struct lock_stack *ls)
-{
-	struct mtx *lock;
-
-	KASSERT(ls->ls_top > 0, ("lock stack underflow"));
-
-	ls->ls_top--;
-	lock = ls->ls_array[ls->ls_top];
-	mtx_unlock(lock);
-}
-#endif
-
-static void
-ls_popa(struct lock_stack *ls)
-{
-	struct mtx *lock;
-
-	KASSERT(ls->ls_top > 0, ("lock stack underflow"));
-
-	while (ls->ls_top > 0) {
-		ls->ls_top--;
-		lock = ls->ls_array[ls->ls_top];
-		mtx_unlock(lock);
-	}
-}
 #ifdef INVARIANTS
 extern void kdb_backtrace(void);
 #endif
@@ -3453,14 +3386,18 @@ pmap_enter(pmap_t pmap, vm_offset_t va, vm_prot_t access, vm_page_t m,
 	opa = 0;
 	opalocked = FALSE;
 	ls_init(&ls);
-	ls_push(&ls, PA_LOCKPTR(lockedpa));
-	ls_push(&ls, PMAP_LOCKPTR(pmap));
+	ls_push(&ls, &lock_class_mtx_sleep,
+	    (struct lock_object *)PA_LOCKPTR(lockedpa));
+	ls_push(&ls, &lock_class_mtx_sleep,
+	    (struct lock_object *)PMAP_LOCKPTR(pmap));
 	if ((m->flags & (PG_FICTITIOUS | PG_UNMANAGED)) == 0) {
 		while ((pv = get_pv_entry(pmap)) == NULL) {
 			ls_popa(&ls);
 			VM_WAIT;
-			ls_push(&ls, PA_LOCKPTR(lockedpa));
-			ls_push(&ls, PMAP_LOCKPTR(pmap));
+			ls_push(&ls, &lock_class_mtx_sleep,
+			    (struct lock_object *)PA_LOCKPTR(lockedpa));
+			ls_push(&ls, &lock_class_mtx_sleep,
+			    (struct lock_object *)PMAP_LOCKPTR(pmap));
 		}
 	}
 	
@@ -3484,8 +3421,10 @@ restart:
 	origpte = *pte;
 	if (opa && (opa != (origpte & PG_FRAME))) {
 		ls_popa(&ls);
-		ls_push(&ls, PA_LOCKPTR(lockedpa));
-		ls_push(&ls, PMAP_LOCKPTR(pmap));
+		ls_push(&ls, &lock_class_mtx_sleep,
+			    (struct lock_object *)PA_LOCKPTR(lockedpa));
+		ls_push(&ls, &lock_class_mtx_sleep,
+			    (struct lock_object *)PMAP_LOCKPTR(pmap));
 		opalocked = FALSE;
 		opa = 0;
 		goto restart;
@@ -3494,17 +3433,23 @@ restart:
 	opa = origpte & PG_FRAME;
 	if (opa && (opa != lockedpa) && (opalocked == FALSE)) {
 		opalocked = TRUE;
-		if (ls_trypush(&ls, PA_LOCKPTR(opa)) == 0) {
+		if (ls_trypush(&ls, &lock_class_mtx_sleep,
+			(struct lock_object *)PA_LOCKPTR(opa)) == 0) {
 			ls_popa(&ls);
 			if ((uintptr_t)PA_LOCKPTR(lockedpa) <
 			    (uintptr_t)PA_LOCKPTR(opa)) {
-				ls_push(&ls, PA_LOCKPTR(lockedpa));
-				ls_push(&ls, PA_LOCKPTR(opa));
+				ls_push(&ls, &lock_class_mtx_sleep,
+				    (struct lock_object *)PA_LOCKPTR(lockedpa));
+				ls_push(&ls, &lock_class_mtx_sleep,
+				    (struct lock_object *)PA_LOCKPTR(opa));
 			} else {
-				ls_push(&ls, PA_LOCKPTR(opa));
-				ls_push(&ls, PA_LOCKPTR(lockedpa));
+				ls_push(&ls, &lock_class_mtx_sleep,
+				    (struct lock_object *)PA_LOCKPTR(opa));
+				ls_push(&ls, &lock_class_mtx_sleep,
+				    (struct lock_object *)PA_LOCKPTR(lockedpa));
 			}
-			ls_push(&ls, PMAP_LOCKPTR(pmap));
+			ls_push(&ls, &lock_class_mtx_sleep,
+			    (struct lock_object *)PMAP_LOCKPTR(pmap));
 			goto restart;
 		}
 	}

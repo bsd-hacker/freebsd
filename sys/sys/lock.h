@@ -60,6 +60,8 @@ struct lock_class {
 	void	(*lc_ddb_show)(struct lock_object *lock);
 	void	(*lc_lock)(struct lock_object *lock, int how);
 	int	(*lc_unlock)(struct lock_object *lock);
+	void	(*lc_lock_full)(struct lock_object *lock, char *file, int line);
+	int	(*lc_trylock)(struct lock_object *lock);
 };
 
 #define	LC_SLEEPLOCK	0x00000001	/* Sleep lock. */
@@ -247,6 +249,29 @@ void	witness_assert(struct lock_object *, int, const char *, int);
 void	witness_display_spinlock(struct lock_object *, struct thread *);
 int	witness_line(struct lock_object *);
 const char *witness_file(struct lock_object *);
+
+
+#define LS_MAX		4
+struct lock_stack_entry {
+	struct lock_object	*lse_lock;
+	struct lock_class	*lse_class;
+};
+
+struct lock_stack {
+	struct lock_stack_entry ls_array[LS_MAX];
+	int ls_top;
+};
+
+
+#define ls_push(ls, class, m)	_ls_push((ls), (class), (m), LOCK_FILE, LOCK_LINE)
+
+void	ls_init(struct lock_stack *ls);
+void 	_ls_push(struct lock_stack *ls, struct lock_class *class,
+    struct lock_object *lock, char *file, int line);
+int 	ls_trypush(struct lock_stack *ls, struct lock_class *class,
+    struct lock_object *lock);
+void 	ls_pop(struct lock_stack *ls);
+void 	ls_popa(struct lock_stack *ls);
 
 #ifdef	WITNESS
 

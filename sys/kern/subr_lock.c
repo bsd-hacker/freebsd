@@ -354,3 +354,69 @@ void _lock_profile_release_lock(struct lock_object *lo)
         l->lpo_contest_holding = 0;
 }
 #endif
+
+void
+ls_init(struct lock_stack *ls)
+{
+
+	ls->ls_top = 0;
+}
+
+void
+_ls_push(struct lock_stack *ls, struct lock_class *class, struct lock_object *lock,
+    char *file, int line)
+{
+
+	KASSERT(ls->ls_top < LS_MAX, ("lock stack overflow"));
+	
+	ls->ls_array[ls->ls_top].lse_lock = lock;
+	ls->ls_array[ls->ls_top].lse_class = class;
+	ls->ls_top++;
+	class->lc_lock_full(lock, file, line);
+}
+
+int
+ls_trypush(struct lock_stack *ls, struct lock_class *class, struct lock_object *lock)
+{
+
+	KASSERT(ls->ls_top < LS_MAX, ("lock stack overflow"));
+
+	if (class->lc_trylock(lock) == 0)
+		return (0);
+	
+	ls->ls_array[ls->ls_top].lse_lock = lock;
+	ls->ls_array[ls->ls_top].lse_class = class;
+	ls->ls_top++;
+	return (1);
+}
+
+void
+ls_pop(struct lock_stack *ls)
+{
+	struct lock_object *lock;
+	struct lock_class *class;
+
+	KASSERT(ls->ls_top > 0, ("lock stack underflow"));
+
+	ls->ls_top--;
+	lock = ls->ls_array[ls->ls_top].lse_lock;
+	class = ls->ls_array[ls->ls_top].lse_class;	
+	class->lc_unlock(lock);
+}
+
+void
+ls_popa(struct lock_stack *ls)
+{
+	struct lock_object *lock;
+	struct lock_class *class;
+
+	KASSERT(ls->ls_top > 0, ("lock stack underflow"));
+
+	while (ls->ls_top > 0) {
+		ls->ls_top--;
+		lock = ls->ls_array[ls->ls_top].lse_lock;
+		class = ls->ls_array[ls->ls_top].lse_class;
+		class->lc_unlock(lock);
+	}
+}
+

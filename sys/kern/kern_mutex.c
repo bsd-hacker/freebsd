@@ -88,6 +88,8 @@ __FBSDID("$FreeBSD$");
 static void	db_show_mtx(struct lock_object *lock);
 #endif
 static void	lock_mtx(struct lock_object *lock, int how);
+static void	lock_full_mtx(struct lock_object *lock, char *file, int line);
+static int	trylock_mtx(struct lock_object *lock);
 static void	lock_spin(struct lock_object *lock, int how);
 static int	unlock_mtx(struct lock_object *lock);
 static int	unlock_spin(struct lock_object *lock);
@@ -103,6 +105,10 @@ struct lock_class lock_class_mtx_sleep = {
 #endif
 	.lc_lock = lock_mtx,
 	.lc_unlock = unlock_mtx,
+	.lc_lock_full = lock_full_mtx,
+	.lc_trylock = trylock_mtx,
+	
+	
 };
 struct lock_class lock_class_mtx_spin = {
 	.lc_name = "spin mutex",
@@ -142,6 +148,25 @@ lock_mtx(struct lock_object *lock, int how)
 }
 
 void
+lock_full_mtx(struct lock_object *lock, char *file, int line)
+{
+
+#if LOCK_DEBUG > 0 || defined(MUTEX_NOINLINE)
+	_mtx_lock_flags((struct mtx *)lock, 0, file, line);
+#else
+	_get_sleep_lock((struct mtx *)lock, curthread, 0, file, line);
+#endif	
+	
+}
+
+int
+trylock_mtx(struct lock_object *lock)
+{
+
+	return (mtx_trylock((struct mtx *)lock));
+}
+
+void
 lock_spin(struct lock_object *lock, int how)
 {
 
@@ -154,7 +179,7 @@ unlock_mtx(struct lock_object *lock)
 	struct mtx *m;
 
 	m = (struct mtx *)lock;
-	mtx_assert(m, MA_OWNED | MA_NOTRECURSED);
+	mtx_assert(m, MA_OWNED);
 	mtx_unlock(m);
 	return (0);
 }
