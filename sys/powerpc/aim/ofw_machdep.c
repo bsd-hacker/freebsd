@@ -128,9 +128,9 @@ memr_overlap(struct mem_region *r1, struct mem_region *r2)
 static void
 memr_merge(struct mem_region *from, struct mem_region *to)
 {
-	int end;
-	end = imax(to->mr_start + to->mr_size, from->mr_start + from->mr_size);
-	to->mr_start = imin(from->mr_start, to->mr_start);
+	vm_offset_t end;
+	end = ulmax(to->mr_start + to->mr_size, from->mr_start + from->mr_size);
+	to->mr_start = ulmin(from->mr_start, to->mr_start);
 	to->mr_size = end - to->mr_start;
 }
 
@@ -229,7 +229,6 @@ parse_ofw_memory(phandle_t node, const char *prop, struct mem_region *output)
 		int hisz;
 
 		hisz = parse_ofw_memory(node, "reg", himem);
-		j = sz/sizeof(output[0]);
 		for (i = 0; i < hisz/sizeof(himem[0]); i++) {
 			if (himem[i].mr_start > BUS_SPACE_MAXADDR_32BIT) {
 				output[j].mr_start = himem[i].mr_start;
