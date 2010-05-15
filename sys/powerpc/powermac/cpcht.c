@@ -156,6 +156,10 @@ static devclass_t	cpcht_devclass;
 
 DRIVER_MODULE(cpcht, nexus, cpcht_driver, cpcht_devclass, 0, 0);
 
+#define HTAPIC_REQUEST_EOI	0x20
+#define HTAPIC_TRIGGER_LEVEL	0x02
+#define HTAPIC_MASK		0x01
+
 struct cpcht_range {
 	u_int32_t       pci_hi;
 	u_int32_t       pci_mid;
@@ -316,21 +320,20 @@ cpcht_configure_htbridge(device_t dev, phandle_t child)
 		/* Ask for the IRQ count */
 		PCIB_WRITE_CONFIG(dev, 0, s, f, ptr + PCIR_HT_COMMAND, 0x1, 1);
 		nirq = PCIB_READ_CONFIG(dev, 0, s, f, ptr + 4, 4);
-		nirq = (nirq >> 16) & 0xff;
+		nirq = ((nirq >> 16) & 0xff) + 1;
 
 		device_printf(dev, "%d HT IRQs on device %d.%d\n", nirq, s, f);
 
-		for (i = 0; i <= nirq; i++) {
+		for (i = 0; i < nirq; i++) {
 			PCIB_WRITE_CONFIG(dev, 0, s, f,
 			     ptr + PCIR_HT_COMMAND, 0x10 + (i << 1), 1);
 			irq = PCIB_READ_CONFIG(dev, 0, s, f, ptr + 4, 4);
 
 			/*
-			 * Enable immediately as a level interrupt.
-			 * It is still masked in the MPIC.
+			 * Mask this interrupt for now.
 			 */
 			PCIB_WRITE_CONFIG(dev, 0, s, f, ptr + 4,
-			    (irq & ~0x23) | 0x22, 4);
+			    irq | HTAPIC_MASK, 4);
 			irq = (irq >> 16) & 0xff;
 
 			sc->htirq_map[irq].ht_source = i;
@@ -612,6 +615,12 @@ static device_method_t  openpic_cpcht_methods[] = {
 	{ 0, 0 },
 };
 
+struct openpic_cpcht_softc {
+	struct openpic_softc sc_openpic;
+
+	struct mtx sc_ht_mtx;
+};
+
 static driver_t openpic_cpcht_driver = {
 	"htpic",
 	openpic_cpcht_methods,
@@ -635,11 +644,19 @@ openpic_cpcht_probe(device_t dev)
 static int
 openpic_cpcht_attach(device_t dev)
 {
+	struct openpic_cpcht_softc *sc;
 	int err, irq;
 
 	err = openpic_attach(dev);
 	if (err != 0)
 		return (err);
+
+	/*
+	 * The HT APIC stuff is not thread-safe, so we need a mutex to
+	 * protect it.
+	 */
+	sc = device_get_softc(dev);
+	mtx_init(&sc->sc_ht_mtx, "htpic", NULL, MTX_SPIN);
 
 	/*
 	 * Interrupts 0-3 are internally sourced and are level triggered
@@ -661,7 +678,7 @@ static void
 openpic_cpcht_config(device_t dev, u_int irq, enum intr_trigger trig,
     enum intr_polarity pol)
 {
-#ifdef NOTYET
+	struct openpic_cpcht_softc *sc;
 	uint32_t ht_irq;
 
 	/*
@@ -671,47 +688,104 @@ openpic_cpcht_config(device_t dev, u_int irq, enum intr_trigger trig,
 	 * link.
 	 */
 
+	sc = device_get_softc(dev);
+
 	if (cpcht_irqmap != NULL && irq < 128 &&
-	    cpcht_irqmap[irq].ht_base > 0) {
+	    cpcht_irqmap[irq].ht_base > 0 && !cpcht_irqmap[irq].edge) {
+		mtx_lock_spin(&sc->sc_ht_mtx);
+
 		/* Program the data port */
 		out8rb(cpcht_irqmap[irq].ht_base + PCIR_HT_COMMAND,
 		    0x10 + (cpcht_irqmap[irq].ht_source << 1));
 
 		/* Grab the IRQ config register */
-		ht_irq = in32rb(cpcht_irqmap[irq].ht_base + 4) & ~23;
-		
-		if (trig == INTR_TRIGGER_EDGE)
-			cpcht_irqmap[irq].edge = 1;
-		else
-			ht_irq |= 0x22;
+		ht_irq = in32rb(cpcht_irqmap[irq].ht_base + 4);
 
-		out32rb(cpcht_irqmap[irq].ht_base + 4, ht_irq);
-	}
-#endif
+		/* Mask the IRQ while we fiddle settings */
+		out32rb(cpcht_irqmap[irq].ht_base + 4, ht_irq | HTAPIC_MASK);
 		
+		/* Program the interrupt sense */
+		ht_irq &= ~(HTAPIC_TRIGGER_LEVEL | HTAPIC_REQUEST_EOI);
+		if (trig == INTR_TRIGGER_EDGE) {
+			cpcht_irqmap[irq].edge = 1;
+		} else {
+			cpcht_irqmap[irq].edge = 0;
+			ht_irq |= HTAPIC_TRIGGER_LEVEL | HTAPIC_REQUEST_EOI;
+		}
+		out32rb(cpcht_irqmap[irq].ht_base + 4, ht_irq);
+
+		mtx_unlock_spin(&sc->sc_ht_mtx);
+	}
 }
 
 static void
 openpic_cpcht_enable(device_t dev, u_int irq, u_int vec)
 {
+	struct openpic_cpcht_softc *sc;
+	uint32_t ht_irq;
+
 	openpic_enable(dev, irq, vec);
+
+	sc = device_get_softc(dev);
+
+	if (cpcht_irqmap != NULL && irq < 128 &&
+	    cpcht_irqmap[irq].ht_base > 0) {
+		mtx_lock_spin(&sc->sc_ht_mtx);
+
+		/* Program the data port */
+		out8rb(cpcht_irqmap[irq].ht_base + PCIR_HT_COMMAND,
+		    0x10 + (cpcht_irqmap[irq].ht_source << 1));
+
+		/* Unmask the interrupt */
+		ht_irq = in32rb(cpcht_irqmap[irq].ht_base + 4);
+		ht_irq &= ~HTAPIC_MASK;
+		out32rb(cpcht_irqmap[irq].ht_base + 4, ht_irq);
+
+		mtx_unlock_spin(&sc->sc_ht_mtx);
+	}
+		
 	openpic_cpcht_eoi(dev, irq);
 }
 
 static void
 openpic_cpcht_unmask(device_t dev, u_int irq)
 {
+	struct openpic_cpcht_softc *sc;
+	uint32_t ht_irq;
+
 	openpic_unmask(dev, irq);
+
+	sc = device_get_softc(dev);
+
+	if (cpcht_irqmap != NULL && irq < 128 &&
+	    cpcht_irqmap[irq].ht_base > 0) {
+		mtx_lock_spin(&sc->sc_ht_mtx);
+
+		/* Program the data port */
+		out8rb(cpcht_irqmap[irq].ht_base + PCIR_HT_COMMAND,
+		    0x10 + (cpcht_irqmap[irq].ht_source << 1));
+
+		/* Unmask the interrupt */
+		ht_irq = in32rb(cpcht_irqmap[irq].ht_base + 4);
+		ht_irq &= ~HTAPIC_MASK;
+		out32rb(cpcht_irqmap[irq].ht_base + 4, ht_irq);
+
+		mtx_unlock_spin(&sc->sc_ht_mtx);
+	}
+
 	openpic_cpcht_eoi(dev, irq);
 }
 
 static void
 openpic_cpcht_eoi(device_t dev, u_int irq)
 {
+	struct openpic_cpcht_softc *sc;
 	uint32_t off, mask;
 
 	if (irq == 255)
 		return;
+
+	sc = device_get_softc(dev);
 
 	if (cpcht_irqmap != NULL && irq < 128 &&
 	    cpcht_irqmap[irq].ht_base > 0 && !cpcht_irqmap[irq].edge) {
@@ -722,10 +796,14 @@ openpic_cpcht_eoi(device_t dev, u_int irq)
 			mask = 1 << (cpcht_irqmap[irq].ht_source & 0x1f);
 			out32rb(cpcht_irqmap[irq].apple_eoi + off, mask);
 		} else {
+			mtx_lock_spin(&sc->sc_ht_mtx);
+
 			out8rb(cpcht_irqmap[irq].ht_base + PCIR_HT_COMMAND,
 			    0x11 + (cpcht_irqmap[irq].ht_source << 1));
 			out32rb(cpcht_irqmap[irq].ht_base + 4,
 			    cpcht_irqmap[irq].eoi_data);
+
+			mtx_unlock_spin(&sc->sc_ht_mtx);
 		}
 	}
 
