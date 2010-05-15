@@ -166,6 +166,7 @@ __FBSDID("$FreeBSD$");
 #endif
 
 #define	pa_to_pvh(pa)		(&pv_table[pa_index(pa)])
+#define	PMAP_LOCKOBJPTR(pmap)	((struct lock_object *)(&(pmap)->pm_mtx))
 
 struct pmap kernel_pmap_store;
 
@@ -3194,18 +3195,14 @@ pmap_enter(pmap_t pmap, vm_offset_t va, vm_prot_t access, vm_page_t m,
 	opa = 0;
 	opalocked = FALSE;
 	ls_init(&ls);
-	ls_push(&ls, &lock_class_mtx_sleep,
-	    (struct lock_object *)PA_LOCKPTR(lockedpa));
-	ls_push(&ls, &lock_class_mtx_sleep,
-	    (struct lock_object *)PMAP_LOCKPTR(pmap));
+	ls_push(&ls, &lock_class_mtx_sleep, PA_LOCKOBJPTR(lockedpa));
+	ls_push(&ls, &lock_class_mtx_sleep, PMAP_LOCKOBJPTR(pmap));
 	if ((m->flags & (PG_FICTITIOUS | PG_UNMANAGED)) == 0) {
 		while ((pv = get_pv_entry(pmap)) == NULL) {
 			ls_popa(&ls);
 			VM_WAIT;
-			ls_push(&ls, &lock_class_mtx_sleep,
-			    (struct lock_object *)PA_LOCKPTR(lockedpa));
-			ls_push(&ls, &lock_class_mtx_sleep,
-			    (struct lock_object *)PMAP_LOCKPTR(pmap));
+			ls_push(&ls, &lock_class_mtx_sleep, PA_LOCKOBJPTR(lockedpa));
+			ls_push(&ls, &lock_class_mtx_sleep, PMAP_LOCKOBJPTR(pmap));
 		}
 	}
 	
@@ -3229,10 +3226,8 @@ restart:
 	origpte = *pte;
 	if (opa && (opa != (origpte & PG_FRAME))) {
 		ls_popa(&ls);
-		ls_push(&ls, &lock_class_mtx_sleep,
-			    (struct lock_object *)PA_LOCKPTR(lockedpa));
-		ls_push(&ls, &lock_class_mtx_sleep,
-			    (struct lock_object *)PMAP_LOCKPTR(pmap));
+		ls_push(&ls, &lock_class_mtx_sleep, PA_LOCKOBJPTR(lockedpa));
+		ls_push(&ls, &lock_class_mtx_sleep, PMAP_LOCKOBJPTR(pmap));
 		opalocked = FALSE;
 		opa = 0;
 		goto restart;
@@ -3241,23 +3236,17 @@ restart:
 	opa = origpte & PG_FRAME;
 	if (opa && (opa != lockedpa) && (opalocked == FALSE)) {
 		opalocked = TRUE;
-		if (ls_trypush(&ls, &lock_class_mtx_sleep,
-			(struct lock_object *)PA_LOCKPTR(opa)) == 0) {
+		if (ls_trypush(&ls, &lock_class_mtx_sleep, PA_LOCKOBJPTR(opa)) == 0) {
 			ls_popa(&ls);
 			if ((uintptr_t)PA_LOCKPTR(lockedpa) <
 			    (uintptr_t)PA_LOCKPTR(opa)) {
-				ls_push(&ls, &lock_class_mtx_sleep,
-				    (struct lock_object *)PA_LOCKPTR(lockedpa));
-				ls_push(&ls, &lock_class_mtx_sleep,
-				    (struct lock_object *)PA_LOCKPTR(opa));
+				ls_push(&ls, &lock_class_mtx_sleep, PA_LOCKOBJPTR(lockedpa));
+				ls_push(&ls, &lock_class_mtx_sleep, PA_LOCKOBJPTR(opa));
 			} else {
-				ls_push(&ls, &lock_class_mtx_sleep,
-				    (struct lock_object *)PA_LOCKPTR(opa));
-				ls_push(&ls, &lock_class_mtx_sleep,
-				    (struct lock_object *)PA_LOCKPTR(lockedpa));
+				ls_push(&ls, &lock_class_mtx_sleep, PA_LOCKOBJPTR(opa));
+				ls_push(&ls, &lock_class_mtx_sleep, PA_LOCKOBJPTR(lockedpa));
 			}
-			ls_push(&ls, &lock_class_mtx_sleep,
-			    (struct lock_object *)PMAP_LOCKPTR(pmap));
+			ls_push(&ls, &lock_class_mtx_sleep, PMAP_LOCKOBJPTR(pmap));
 			goto restart;
 		}
 	}
