@@ -181,7 +181,36 @@ struct vpgqueues {
 };
 
 extern struct vpgqueues vm_page_queues[PQ_COUNT];
-extern struct mtx vm_page_queue_free_mtx;
+
+struct vpglocks {
+	struct mtx	data;
+	char		pad[CACHE_LINE_SIZE - sizeof(struct mtx)];
+} __aligned(CACHE_LINE_SIZE);
+
+extern struct vpglocks vm_page_queue_free_lock;
+extern struct vpglocks pa_lock[];
+
+#define	pa_index(pa)	((pa) >> PDRSHIFT)
+#define	PA_LOCKPTR(pa)	&pa_lock[pa_index((pa)) % PA_LOCK_COUNT].data
+#define	PA_LOCKOBJPTR(pa)	((struct lock_object *)PA_LOCKPTR((pa)))
+#define	PA_LOCK(pa)	mtx_lock(PA_LOCKPTR(pa))
+#define	PA_TRYLOCK(pa)	mtx_trylock(PA_LOCKPTR(pa))
+#define	PA_UNLOCK(pa)	mtx_unlock(PA_LOCKPTR(pa))
+#define	PA_UNLOCK_COND(pa) 			\
+	do {		   			\
+		if (pa) 			\
+			PA_UNLOCK(pa);		\
+	} while (0)
+
+#define	PA_LOCK_ASSERT(pa, a)	mtx_assert(PA_LOCKPTR(pa), (a))
+
+#define	vm_page_lockptr(m)	(PA_LOCKPTR(VM_PAGE_TO_PHYS((m))))
+#define	vm_page_lock(m)		mtx_lock(vm_page_lockptr((m)))
+#define	vm_page_unlock(m)	mtx_unlock(vm_page_lockptr((m)))
+#define	vm_page_trylock(m)	mtx_trylock(vm_page_lockptr((m)))
+#define	vm_page_lock_assert(m, a)	mtx_assert(vm_page_lockptr((m)), (a))
+
+#define	vm_page_queue_free_mtx	vm_page_queue_free_lock.data
 
 /*
  * These are the flags defined for vm_page.
@@ -269,12 +298,37 @@ PHYS_TO_VM_PAGE(vm_paddr_t pa)
 #endif
 }
 
-extern struct mtx vm_page_queue_mtx;
+extern struct vpglocks vm_page_queue_lock;
+
+#define	vm_page_queue_mtx	vm_page_queue_lock.data
 #define vm_page_lock_queues()   mtx_lock(&vm_page_queue_mtx)
 #define vm_page_unlock_queues() mtx_unlock(&vm_page_queue_mtx)
 #define	vm_page_trylock_queues() mtx_trylock(&vm_page_queue_mtx)
 
-#define	vm_page_lockptr(m)		pmap_page_lockptr(m)
+#ifdef VM_PAGE_LOCK
+#define	vm_page_lock_queues_assert_notowned()   mtx_assert(&vm_page_queue_mtx, MA_NOTOWNED)
+#define	vm_page_lock_assert_notowned(m)   	vm_page_lock_assert((m), MA_NOTOWNED)
+#define	vm_page_lock_queues_cond(x)
+#define	vm_page_unlock_queues_cond(x)
+#else
+#define	vm_page_lock_queues_assert_notowned()
+#define	vm_page_lock_assert_notowned(m)  
+#define	vm_page_lock_queues_cond(x)			\
+	do {						\
+		if (x == FALSE) {			\
+			are_queues_locked = TRUE;	\
+			vm_page_lock_queues();		\
+		}					\
+	} while (0)
+#define	vm_page_unlock_queues_cond(x)			\
+	do {						\
+		if (x == TRUE) {			\
+			are_queues_locked = FALSE;	\
+			vm_page_unlock_queues();	\
+		}					\
+	} while (0)
+#endif
+
 #define	vm_page_lock(m)		mtx_lock(vm_page_lockptr((m)))
 #define	vm_page_unlock(m)	mtx_unlock(vm_page_lockptr((m)))
 #define	vm_page_trylock(m)	mtx_trylock(vm_page_lockptr((m)))
@@ -336,6 +390,7 @@ void vm_page_deactivate (vm_page_t);
 void vm_page_deactivate_locked (vm_page_t);
 void vm_page_insert (vm_page_t, vm_object_t, vm_pindex_t);
 vm_page_t vm_page_lookup (vm_object_t, vm_pindex_t);
+int vm_page_pa_tryrelock(pmap_t, vm_paddr_t, vm_paddr_t *);
 void vm_page_remove (vm_page_t);
 void vm_page_remove_locked (vm_page_t);
 void vm_page_rename (vm_page_t, vm_object_t, vm_pindex_t);

@@ -129,14 +129,33 @@ __FBSDID("$FreeBSD$");
 
 #include <machine/md_var.h>
 
+#if defined(__amd64__) || defined (__i386__) 
+extern struct sysctl_oid_list sysctl__vm_pmap_children;
+#else
+SYSCTL_NODE(_vm, OID_AUTO, pmap, CTLFLAG_RD, 0, "VM/pmap parameters");
+#endif
+
+static uint64_t pmap_tryrelock_calls;
+SYSCTL_QUAD(_vm_pmap, OID_AUTO, tryrelock_calls, CTLFLAG_RD,
+    &pmap_tryrelock_calls, 0, "Number of tryrelock calls");
+
+static int pmap_tryrelock_restart;
+SYSCTL_INT(_vm_pmap, OID_AUTO, tryrelock_restart, CTLFLAG_RD,
+    &pmap_tryrelock_restart, 0, "Number of tryrelock restarts");
+
+static int pmap_tryrelock_race;
+SYSCTL_INT(_vm_pmap, OID_AUTO, tryrelock_race, CTLFLAG_RD,
+    &pmap_tryrelock_race, 0, "Number of tryrelock pmap race cases");
+
 /*
  *	Associated with page of user-allocatable memory is a
  *	page structure.
  */
 
 struct vpgqueues vm_page_queues[PQ_COUNT];
-struct mtx vm_page_queue_mtx;
-struct mtx vm_page_queue_free_mtx;
+struct vpglocks vm_page_queue_lock;
+struct vpglocks vm_page_queue_free_lock;
+struct vpglocks	pa_lock[PA_LOCK_COUNT] __aligned(CACHE_LINE_SIZE);
 
 vm_page_t vm_page_array = 0;
 int vm_page_array_size = 0;
@@ -149,6 +168,44 @@ SYSCTL_INT(_vm, OID_AUTO, boot_pages, CTLFLAG_RD, &boot_pages, 0,
 	"number of pages allocated for bootstrapping the VM system");
 
 static void _vm_page_free_toq(vm_page_t m, boolean_t locked);
+
+/*
+ * Try to acquire a physical address lock while a pmap is locked.  If we
+ * fail to trylock we unlock and lock the pmap directly and cache the
+ * locked pa in *locked.  The caller should then restart their loop in case
+ * the virtual to physical mapping has changed.
+ */
+int
+vm_page_pa_tryrelock(pmap_t pmap, vm_paddr_t pa, vm_paddr_t *locked)
+{
+	vm_paddr_t lockpa;
+	uint32_t gen_count;
+
+	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
+	gen_count = pmap->pm_gen_count;
+	atomic_add_long((volatile long *)&pmap_tryrelock_calls, 1);
+	lockpa = *locked;
+	*locked = pa;
+	if (lockpa) {
+		PA_LOCK_ASSERT(lockpa, MA_OWNED);
+		if (PA_LOCKPTR(pa) == PA_LOCKPTR(lockpa))
+			return (0);
+		PA_UNLOCK(lockpa);
+	}
+	if (PA_TRYLOCK(pa))
+		return (0);
+	PMAP_UNLOCK(pmap);
+	atomic_add_int((volatile int *)&pmap_tryrelock_restart, 1);
+	PA_LOCK(pa);
+	PMAP_LOCK(pmap);
+
+	if (pmap->pm_gen_count != gen_count + 1) {
+		pmap->pm_retries++;
+		atomic_add_int((volatile int *)&pmap_tryrelock_race, 1);
+		return (EAGAIN);
+	}
+	return (0);
+}
 
 /*
  *	vm_set_page_size:
@@ -259,6 +316,11 @@ vm_page_startup(vm_offset_t vaddr)
 	    MTX_RECURSE);
 	mtx_init(&vm_page_queue_free_mtx, "vm page queue free mutex", NULL,
 	    MTX_DEF);
+
+	/* Setup page locks. */
+	for (i = 0; i < PA_LOCK_COUNT; i++)
+		mtx_init(&pa_lock[i].data, "page lock", NULL,
+		    MTX_DEF | MTX_RECURSE | MTX_DUPOK);
 
 	/*
 	 * Initialize the queue headers for the free queue, the active queue
