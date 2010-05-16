@@ -378,7 +378,7 @@ cpcht_read_config(device_t dev, u_int bus, u_int slot, u_int func, u_int reg,
 	caoff = sc->sc_data + 
 		(((((slot & 0x1f) << 3) | (func & 0x07)) << 8) | reg);
 
-	if (bus == 0 && !(sc->sc_populated_slots & (1 << slot)))
+	if (bus == 0 && (!(sc->sc_populated_slots & (1 << slot)) || func > 0))
 		return (0xffffffff);
 
 	if (bus > 0)
@@ -410,7 +410,7 @@ cpcht_write_config(device_t dev, u_int bus, u_int slot, u_int func,
 	caoff = sc->sc_data + 
 		(((((slot & 0x1f) << 3) | (func & 0x07)) << 8) | reg);
 
-	if (bus == 0 && !(sc->sc_populated_slots & (1 << slot)))
+	if (bus == 0 && (!(sc->sc_populated_slots & (1 << slot)) || func > 0))
 		return;
 
 	if (bus > 0)
