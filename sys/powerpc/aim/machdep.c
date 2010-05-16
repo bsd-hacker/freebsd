@@ -261,8 +261,6 @@ extern void	*decrint, *decrsize;
 extern void     *extint, *extsize;
 extern void	*dblow, *dbsize;
 
-void ofw_real_quiesce(void);
-
 uintptr_t
 powerpc_init(vm_offset_t startkernel, vm_offset_t endkernel,
     vm_offset_t basekernel, void *mdp)
