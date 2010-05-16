@@ -46,7 +46,7 @@ int             ixgbe_display_debug_stats = 0;
 /*********************************************************************
  *  Driver version
  *********************************************************************/
-char ixgbe_driver_version[] = "2.1.7";
+char ixgbe_driver_version[] = "2.1.8";
 
 /*********************************************************************
  *  PCI Device ID Table
@@ -412,7 +412,6 @@ ixgbe_attach(device_t dev)
 			break;
 		case IXGBE_DEV_ID_82598 :
 		case IXGBE_DEV_ID_82598AF_DUAL_PORT :
-		case IXGBE_DEV_ID_82598_DA_DUAL_PORT :
 		case IXGBE_DEV_ID_82598AF_SINGLE_PORT :
 		case IXGBE_DEV_ID_82598_SR_DUAL_PORT_EM :
 		case IXGBE_DEV_ID_82598EB_SFP_LOM :
@@ -424,6 +423,9 @@ ixgbe_attach(device_t dev)
 			break;
 		case IXGBE_DEV_ID_82598EB_XF_LR :
 			adapter->optics = IFM_10G_LR;
+			break;
+		case IXGBE_DEV_ID_82598_DA_DUAL_PORT :
+			adapter->optics = IFM_10G_TWINAX;
 			break;
 		case IXGBE_DEV_ID_82599_SFP :
 			adapter->optics = IFM_10G_SR;
@@ -759,6 +761,7 @@ ixgbe_start_locked(struct tx_ring *txr, struct ifnet * ifp)
 
 		/* Set watchdog on */
 		txr->watchdog_check = TRUE;
+		txr->watchdog_time = ticks;
 
 	}
 	return;
@@ -798,8 +801,6 @@ ixgbe_mq_start(struct ifnet *ifp, struct mbuf *m)
 	/* Which queue to use */
 	if ((m->m_flags & M_FLOWID) != 0)
 		i = m->m_pkthdr.flowid % adapter->num_queues;
-	else	/* use the cpu we're on */
-		i = curcpu % adapter->num_queues;
 
 	txr = &adapter->tx_rings[i];
 
@@ -856,8 +857,11 @@ ixgbe_mq_start_locked(struct ifnet *ifp, struct tx_ring *txr, struct mbuf *m)
 		next = drbr_dequeue(ifp, txr->br);
 	}
 
-	if (enqueued > 0) 
+	if (enqueued > 0) {
+		/* Set watchdog on */
 		txr->watchdog_check = TRUE;
+		txr->watchdog_time = ticks;
+	}
 
 	return (err);
 }
@@ -1156,6 +1160,9 @@ ixgbe_init_locked(struct adapter *adapter)
         	}
 	}
 
+	/* Set moderation on the Link interrupt */
+	IXGBE_WRITE_REG(hw, IXGBE_EITR(adapter->linkvec), IXGBE_LINK_ITR);
+
 	/* Config/Enable Link */
 	ixgbe_config_link(adapter);
 
@@ -1251,16 +1258,12 @@ ixgbe_handle_que(void *context, int pending)
 	struct adapter  *adapter = que->adapter;
 	struct tx_ring  *txr = que->txr;
 	struct ifnet    *ifp = adapter->ifp;
-	u32		loop = MAX_LOOP;
-	bool		more_rx, more_tx;
-
-	IXGBE_TX_LOCK(txr);
-	do {
-		more_rx = ixgbe_rxeof(que, adapter->rx_process_limit);
-		more_tx = ixgbe_txeof(txr);
-	} while (loop-- && (more_rx || more_tx));
+	bool		more;
 
 	if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
+		more = ixgbe_rxeof(que, adapter->rx_process_limit);
+		IXGBE_TX_LOCK(txr);
+		ixgbe_txeof(txr);
 #if __FreeBSD_version >= 800000
 		if (!drbr_empty(ifp, txr->br))
 			ixgbe_mq_start_locked(ifp, txr, NULL);
@@ -1268,11 +1271,16 @@ ixgbe_handle_que(void *context, int pending)
 		if (!IFQ_DRV_IS_EMPTY(&ifp->if_snd))
 			ixgbe_start_locked(txr, ifp);
 #endif
+		IXGBE_TX_UNLOCK(txr);
+		if (more) {
+			taskqueue_enqueue(que->tq, &que->que_task);
+			return;
+		}
 	}
 
-	IXGBE_TX_UNLOCK(txr);
 	/* Reenable this interrupt */
 	ixgbe_enable_queue(adapter, que->msix);
+	return;
 }
 
 
@@ -1718,7 +1726,6 @@ ixgbe_xmit(struct tx_ring *txr, struct mbuf **m_headp)
 	 * hardware that this frame is available to transmit.
 	 */
 	++txr->total_packets;
-	txr->watchdog_time = ticks;
 	IXGBE_WRITE_REG(&adapter->hw, IXGBE_TDT(txr->me), i);
 
 	/* Do a clean if descriptors are low */
@@ -3636,13 +3643,11 @@ ixgbe_setup_receive_ring(struct rx_ring *rxr)
 	/*
 	** Now set up the LRO interface:
 	** 82598 uses software LRO, the
-	** 82599 additionally uses a
-	** hardware assist.
-	**
-	** Disable RSC when RXCSUM is off
+	** 82599 uses a hardware assist.
 	*/
 	if ((adapter->hw.mac.type == ixgbe_mac_82599EB) &&
-	    (ifp->if_capenable & IFCAP_RXCSUM))
+	    (ifp->if_capenable & IFCAP_RXCSUM) &&
+	    (ifp->if_capenable & IFCAP_LRO))
 		ixgbe_setup_hw_rsc(rxr);
 	else if (ifp->if_capenable & IFCAP_LRO) {
 		int err = tcp_lro_init(lro);
@@ -4659,7 +4664,7 @@ ixgbe_update_stats_counters(struct adapter *adapter)
 		adapter->stats.lxoffrxc += IXGBE_READ_REG(hw, IXGBE_LXOFFRXC);
 		/* 82598 only has a counter in the high register */
 		adapter->stats.gorc += IXGBE_READ_REG(hw, IXGBE_GORCH);
-		adapter->stats.gorc += IXGBE_READ_REG(hw, IXGBE_GOTCH);
+		adapter->stats.gotc += IXGBE_READ_REG(hw, IXGBE_GOTCH);
 		adapter->stats.tor += IXGBE_READ_REG(hw, IXGBE_TORH);
 	}
 

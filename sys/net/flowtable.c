@@ -1389,8 +1389,10 @@ fle_free(struct flentry *fle, struct flowtable *ft)
 
 	rt = __DEVOLATILE(struct rtentry *, fle->f_rt);
 	lle = __DEVOLATILE(struct llentry *, fle->f_lle);
-	RTFREE(rt);
-	LLE_FREE(lle);
+	if (rt != NULL)
+		RTFREE(rt);
+	if (lle != NULL)
+		LLE_FREE(lle);
 	flow_free(fle, ft);
 }
 
@@ -1626,7 +1628,7 @@ flowtable_init(const void *unused __unused)
 	    EVENTHANDLER_PRI_ANY);
 	flowclean_freq = 20*hz;
 }
-SYSINIT(flowtable_init, SI_SUB_SMP, SI_ORDER_MIDDLE,
+SYSINIT(flowtable_init, SI_SUB_KTHREAD_INIT, SI_ORDER_FIRST,
     flowtable_init, NULL);
 
 

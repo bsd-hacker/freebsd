@@ -220,6 +220,7 @@ MAN=	aac.4 \
 	msk.4 \
 	mtio.4 \
 	multicast.4 \
+	mvs.4 \
 	mwl.4 \
 	mwlfw.4 \
 	mxge.4 \
@@ -350,6 +351,7 @@ MAN=	aac.4 \
 	sem.4 \
 	ses.4 \
 	sf.4 \
+	sge.4 \
 	si.4 \
 	siba.4 \
 	sio.4 \

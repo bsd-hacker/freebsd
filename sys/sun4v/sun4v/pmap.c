@@ -1211,8 +1211,11 @@ pmap_enter_object(pmap_t pmap, vm_offset_t start, vm_offset_t end,
 void
 pmap_enter_quick(pmap_t pmap, vm_offset_t va, vm_page_t m, vm_prot_t prot)
 {
+
+	vm_page_lock_queues();
 	PMAP_LOCK(pmap);
 	pmap_enter_quick_locked(pmap, va, m, prot);
+	vm_page_unlock_queues();
 	PMAP_UNLOCK(pmap);
 }
 
@@ -1275,17 +1278,21 @@ pmap_extract_and_hold(pmap_t pmap, vm_offset_t va, vm_prot_t prot)
 {
 	tte_t tte_data;
 	vm_page_t m;
+	vm_paddr_t pa;
 
 	m = NULL;
-	vm_page_lock_queues();
+	pa = 0;
 	PMAP_LOCK(pmap);
+retry:	
 	tte_data = tte_hash_lookup(pmap->pm_hash, va);
 	if (tte_data != 0 && 
 	    ((tte_data & VTD_SW_W) || (prot & VM_PROT_WRITE) == 0)) {
+		if (vm_page_pa_tryrelock(pmap, TTE_GET_PA(tte_data), &pa))
+			goto retry;
 		m = PHYS_TO_VM_PAGE(TTE_GET_PA(tte_data));
 		vm_page_hold(m);
 	}
-	vm_page_unlock_queues();
+	PA_UNLOCK_COND(pa);
 	PMAP_UNLOCK(pmap);
 
 	return (m);
@@ -1592,6 +1599,17 @@ pmap_is_prefaultable(pmap_t pmap, vm_offset_t va)
 }
 
 /*
+ * Return whether or not the specified physical page was referenced
+ * in any physical maps.
+ */
+boolean_t
+pmap_is_referenced(vm_page_t m)
+{
+
+	return (tte_get_phys_bit(m, VTD_REF));
+}
+
+/*
  * Extract the physical page address associated with the given kernel virtual
  * address.
  */
@@ -1699,7 +1717,7 @@ pmap_page_wired_mappings(vm_page_t m)
 	count = 0;
 	if ((m->flags & PG_FICTITIOUS) != 0)
 		return (count);
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	vm_page_lock_queues();
 	TAILQ_FOREACH(pv, &m->md.pv_list, pv_list) {
 		pmap = pv->pv_pmap;
 		PMAP_LOCK(pmap);
@@ -1708,6 +1726,7 @@ pmap_page_wired_mappings(vm_page_t m)
 			count++;
 		PMAP_UNLOCK(pmap);
 	}
+	vm_page_unlock_queues();
 	return (count);
 }
 
@@ -1717,12 +1736,15 @@ pmap_page_wired_mappings(vm_page_t m)
 void
 pmap_remove_write(vm_page_t m)
 {
+
 	if ((m->flags & PG_WRITEABLE) == 0)
 		return;
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	vm_page_lock_queues();
 	tte_clear_phys_bit(m, VTD_SW_W|VTD_W);
 	vm_page_flag_clear(m, PG_WRITEABLE);
+	vm_page_unlock_queues();
 }
+
 /*
  * Initialize the pmap associated with process 0.
  */
@@ -1813,17 +1835,10 @@ pmap_protect(pmap_t pmap, vm_offset_t sva, vm_offset_t eva, vm_prot_t prot)
 		if (!anychanged && (otte_data & VTD_W))
 			anychanged = 1;
 		
-		if (otte_data & VTD_MANAGED) {
-			m = NULL;
-
-			if (otte_data & VTD_REF) {
-				m = PHYS_TO_VM_PAGE(TTE_GET_PA(otte_data));
-				vm_page_flag_set(m, PG_REFERENCED);
-			}
-			if (otte_data & VTD_W) {
-				m = PHYS_TO_VM_PAGE(TTE_GET_PA(otte_data));
-				vm_page_dirty(m);
-			}
+		if ((otte_data & (VTD_MANAGED | VTD_W)) == (VTD_MANAGED |
+		    VTD_W)) {
+			m = PHYS_TO_VM_PAGE(TTE_GET_PA(otte_data));
+			vm_page_dirty(m);
 		} 
 	}
 
@@ -1948,7 +1963,7 @@ pmap_remove_all(vm_page_t m)
 	uint64_t tte_data;
 	DPRINTF("pmap_remove_all 0x%lx\n", VM_PAGE_TO_PHYS(m));
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	vm_page_lock_queues();
 	while ((pv = TAILQ_FIRST(&m->md.pv_list)) != NULL) {
 		PMAP_LOCK(pv->pv_pmap);
 		pv->pv_pmap->pm_stats.resident_count--;
@@ -1978,6 +1993,7 @@ pmap_remove_all(vm_page_t m)
 		free_pv_entry(pv);
 	}
 	vm_page_flag_clear(m, PG_WRITEABLE);
+	vm_page_unlock_queues();
 }
 
 static void

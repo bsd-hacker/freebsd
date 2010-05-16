@@ -308,20 +308,18 @@ dbuf_verify(dmu_buf_impl_t *db)
 		ASSERT3U(db->db.db_offset, ==, db->db_blkid * db->db.db_size);
 	}
 
-	if (db->db_level == 0) {
-		/* we can be momentarily larger in dnode_set_blksz() */
-		if (db->db_blkid != DB_BONUS_BLKID && dn) {
-			ASSERT3U(db->db.db_size, >=, dn->dn_datablksz);
-		}
-		if (db->db.db_object == DMU_META_DNODE_OBJECT) {
-			dbuf_dirty_record_t *dr = db->db_data_pending;
-			/*
-			 * it should only be modified in syncing
-			 * context, so make sure we only have
-			 * one copy of the data.
-			 */
-			ASSERT(dr == NULL || dr->dt.dl.dr_data == db->db_buf);
-		}
+	/*
+	 * We can't assert that db_size matches dn_datablksz because it
+	 * can be momentarily different when another thread is doing
+	 * dnode_set_blksz().
+	 */
+	if (db->db_level == 0 && db->db.db_object == DMU_META_DNODE_OBJECT) {
+		dbuf_dirty_record_t *dr = db->db_data_pending;
+		/*
+		 * It should only be modified in syncing context, so
+		 * make sure we only have one copy of the data.
+		 */
+		ASSERT(dr == NULL || dr->dt.dl.dr_data == db->db_buf);
 	}
 
 	/* verify db->db_blkptr */
@@ -464,15 +462,15 @@ dbuf_read_impl(dmu_buf_impl_t *db, zio_t *zio, uint32_t *flags)
 	ASSERT(db->db_buf == NULL);
 
 	if (db->db_blkid == DB_BONUS_BLKID) {
-		int bonuslen = dn->dn_bonuslen;
+		int bonuslen = MIN(dn->dn_bonuslen, dn->dn_phys->dn_bonuslen);
 
 		ASSERT3U(bonuslen, <=, db->db.db_size);
 		db->db.db_data = zio_buf_alloc(DN_MAX_BONUSLEN);
 		arc_space_consume(DN_MAX_BONUSLEN);
 		if (bonuslen < DN_MAX_BONUSLEN)
 			bzero(db->db.db_data, DN_MAX_BONUSLEN);
-		bcopy(DN_BONUS(dn->dn_phys), db->db.db_data,
-		    bonuslen);
+		if (bonuslen)
+			bcopy(DN_BONUS(dn->dn_phys), db->db.db_data, bonuslen);
 		dbuf_update_data(db);
 		db->db_state = DB_CACHED;
 		mutex_exit(&db->db_mtx);
@@ -1917,7 +1915,6 @@ dbuf_sync_leaf(dbuf_dirty_record_t *dr, dmu_tx_t *tx)
 	dnode_t *dn = db->db_dnode;
 	objset_impl_t *os = dn->dn_objset;
 	uint64_t txg = tx->tx_txg;
-	int blksz;
 
 	ASSERT(dmu_tx_is_syncing(tx));
 
@@ -2027,23 +2024,24 @@ dbuf_sync_leaf(dbuf_dirty_record_t *dr, dmu_tx_t *tx)
 		return;
 	}
 
-	blksz = arc_buf_size(*datap);
-
-	if (dn->dn_object != DMU_META_DNODE_OBJECT) {
+	if (dn->dn_object != DMU_META_DNODE_OBJECT &&
+	    refcount_count(&db->db_holds) > 1 &&
+	    *datap == db->db_buf) {
 		/*
-		 * If this buffer is currently "in use" (i.e., there are
-		 * active holds and db_data still references it), then make
-		 * a copy before we start the write so that any modifications
-		 * from the open txg will not leak into this write.
+		 * If this buffer is currently "in use" (i.e., there
+		 * are active holds and db_data still references it),
+		 * then make a copy before we start the write so that
+		 * any modifications from the open txg will not leak
+		 * into this write.
 		 *
-		 * NOTE: this copy does not need to be made for objects only
-		 * modified in the syncing context (e.g. DNONE_DNODE blocks).
+		 * NOTE: this copy does not need to be made for
+		 * objects only modified in the syncing context (e.g.
+		 * DNONE_DNODE blocks).
 		 */
-		if (refcount_count(&db->db_holds) > 1 && *datap == db->db_buf) {
-			arc_buf_contents_t type = DBUF_GET_BUFC_TYPE(db);
-			*datap = arc_buf_alloc(os->os_spa, blksz, db, type);
-			bcopy(db->db.db_data, (*datap)->b_data, blksz);
-		}
+		int blksz = arc_buf_size(*datap);
+		arc_buf_contents_t type = DBUF_GET_BUFC_TYPE(db);
+		*datap = arc_buf_alloc(os->os_spa, blksz, db, type);
+		bcopy(db->db.db_data, (*datap)->b_data, blksz);
 	}
 
 	ASSERT(*datap != NULL);

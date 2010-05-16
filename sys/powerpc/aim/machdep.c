@@ -328,11 +328,10 @@ powerpc_init(vm_offset_t startkernel, vm_offset_t endkernel,
 	mutex_init();
 
 	/*
-	 * Install the OF client interface and then take over the machine
+	 * Install the OF client interface
 	 */
 
 	OF_bootstrap();
-	OF_quiesce();
 
 	/*
 	 * Initialize the console before printing anything.

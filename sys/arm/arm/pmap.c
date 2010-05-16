@@ -3118,18 +3118,11 @@ pmap_remove_all(vm_page_t m)
 	pmap_t curpm;
 	int flags = 0;
 
-#if defined(PMAP_DEBUG)
-	/*
-	 * XXX This makes pmap_remove_all() illegal for non-managed pages!
-	 */
-	if (m->flags & PG_FICTITIOUS) {
-		panic("pmap_remove_all: illegal for unmanaged page, va: 0x%x", VM_PAGE_TO_PHYS(m));
-	}
-#endif
-
+	KASSERT((m->flags & PG_FICTITIOUS) == 0,
+	    ("pmap_remove_all: page %p is fictitious", m));
 	if (TAILQ_EMPTY(&m->md.pv_list))
 		return;
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	vm_page_lock_queues();
 	pmap_remove_write(m);
 	curpm = vmspace_pmap(curproc->p_vmspace);
 	while ((pv = TAILQ_FIRST(&m->md.pv_list)) != NULL) {
@@ -3180,6 +3173,7 @@ pmap_remove_all(vm_page_t m)
 			pmap_tlb_flushD(curpm);
 	}
 	vm_page_flag_clear(m, PG_WRITEABLE);
+	vm_page_unlock_queues();
 }
 
 
@@ -3615,9 +3609,11 @@ void
 pmap_enter_quick(pmap_t pmap, vm_offset_t va, vm_page_t m, vm_prot_t prot)
 {
 
+	vm_page_lock_queues();
  	PMAP_LOCK(pmap);
 	pmap_enter_locked(pmap, va, m, prot & (VM_PROT_READ | VM_PROT_EXECUTE),
 	    FALSE, M_NOWAIT);
+	vm_page_unlock_queues();
  	PMAP_UNLOCK(pmap);
 }
 
@@ -3740,13 +3736,14 @@ pmap_extract_and_hold(pmap_t pmap, vm_offset_t va, vm_prot_t prot)
 	struct l2_dtable *l2;
 	pd_entry_t l1pd;
 	pt_entry_t *ptep, pte;
-	vm_paddr_t pa;
+	vm_paddr_t pa, paddr;
 	vm_page_t m = NULL;
 	u_int l1idx;
 	l1idx = L1_IDX(va);
+	paddr = 0;
 
-	vm_page_lock_queues();
  	PMAP_LOCK(pmap);
+retry:
 	l1pd = pmap->pm_l1->l1_kva[l1idx];
 	if (l1pte_section_p(l1pd)) {
 		/*
@@ -3758,6 +3755,8 @@ pmap_extract_and_hold(pmap_t pmap, vm_offset_t va, vm_prot_t prot)
 			pa = (l1pd & L1_SUP_FRAME) | (va & L1_SUP_OFFSET);
 		else
 			pa = (l1pd & L1_S_FRAME) | (va & L1_S_OFFSET);
+		if (vm_page_pa_tryrelock(pmap, pa & PG_FRAME, &paddr))
+			goto retry;
 		if (l1pd & L1_S_PROT_W || (prot & VM_PROT_WRITE) == 0) {
 			m = PHYS_TO_VM_PAGE(pa);
 			vm_page_hold(m);
@@ -3774,7 +3773,6 @@ pmap_extract_and_hold(pmap_t pmap, vm_offset_t va, vm_prot_t prot)
 		if (l2 == NULL ||
 		    (ptep = l2->l2_bucket[L2_BUCKET(l1idx)].l2b_kva) == NULL) {
 		 	PMAP_UNLOCK(pmap);
-			vm_page_unlock_queues();
 			return (NULL);
 		}
 
@@ -3783,7 +3781,6 @@ pmap_extract_and_hold(pmap_t pmap, vm_offset_t va, vm_prot_t prot)
 
 		if (pte == 0) {
 		 	PMAP_UNLOCK(pmap);
-			vm_page_unlock_queues();
 			return (NULL);
 		}
 		if (pte & L2_S_PROT_W || (prot & VM_PROT_WRITE) == 0) {
@@ -3796,13 +3793,15 @@ pmap_extract_and_hold(pmap_t pmap, vm_offset_t va, vm_prot_t prot)
 				pa = (pte & L2_S_FRAME) | (va & L2_S_OFFSET);
 				break;
 			}
+			if (vm_page_pa_tryrelock(pmap, pa & PG_FRAME, &paddr))
+				goto retry;		
 			m = PHYS_TO_VM_PAGE(pa);
 			vm_page_hold(m);
 		}
 	}
 
  	PMAP_UNLOCK(pmap);
-	vm_page_unlock_queues();
+	PA_UNLOCK_COND(paddr);
 	return (m);
 }
 
@@ -4447,10 +4446,11 @@ pmap_page_wired_mappings(vm_page_t m)
 	count = 0;
 	if ((m->flags & PG_FICTITIOUS) != 0)
 		return (count);
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	vm_page_lock_queues();
 	TAILQ_FOREACH(pv, &m->md.pv_list, pv_list)
 		if ((pv->pv_flags & PVF_WIRED) != 0)
 			count++;
+	vm_page_unlock_queues();
 	return (count);
 }
 
@@ -4493,6 +4493,20 @@ pmap_clear_modify(vm_page_t m)
 
 
 /*
+ *	pmap_is_referenced:
+ *
+ *	Return whether or not the specified physical page was referenced
+ *	in any physical maps.
+ */
+boolean_t
+pmap_is_referenced(vm_page_t m)
+{
+
+	return ((m->flags & (PG_FICTITIOUS | PG_UNMANAGED)) == 0 &&
+	    (m->md.pvh_attrs & PVF_REF) != 0);
+}
+
+/*
  *	pmap_clear_reference:
  *
  *	Clear the reference bit on the specified physical page.
@@ -4513,8 +4527,11 @@ void
 pmap_remove_write(vm_page_t m)
 {
 
-	if (m->flags & PG_WRITEABLE)
+	if (m->flags & PG_WRITEABLE) {
+		vm_page_lock_queues();
 		pmap_clearbit(m, PVF_WRITE);
+		vm_page_unlock_queues();
+	}
 }
 
 

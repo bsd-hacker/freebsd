@@ -213,6 +213,8 @@ struct ieee80211com {
 	enum ieee80211_protmode	ic_htprotmode;	/* HT protection mode */
 	int			ic_lastnonerp;	/* last time non-ERP sta noted*/
 	int			ic_lastnonht;	/* last time non-HT sta noted */
+	uint8_t			ic_rxstream;    /* # RX streams */
+	uint8_t			ic_txstream;    /* # TX streams */
 
 	/* optional state for Atheros SuperG protocol extensions */
 	struct ieee80211_superg	*ic_superg;
@@ -315,7 +317,6 @@ struct ieee80211com {
 	void			(*ic_ampdu_rx_stop)(struct ieee80211_node *,
 				    struct ieee80211_rx_ampdu *);
 	uint64_t		ic_spare[7];
-	uint32_t		ic_spare2;
 };
 
 struct ieee80211_aclator;
@@ -436,6 +437,9 @@ struct ieee80211vap {
 	const struct ieee80211_aclator *iv_acl;	/* acl glue */
 	void			*iv_as;		/* private aclator state */
 
+	const struct ieee80211_ratectl *iv_rate;
+	void			*iv_rs;		/* private ratectl state */
+
 	struct ieee80211_tdma_state *iv_tdma;	/* tdma state */
 	struct ieee80211_mesh_state *iv_mesh;	/* MBSS state */
 	struct ieee80211_hwmp_state *iv_hwmp;	/* HWMP state */
@@ -471,7 +475,7 @@ struct ieee80211vap {
 	/* 802.3 output method for raw frame xmit */
 	int			(*iv_output)(struct ifnet *, struct mbuf *,
 				    struct sockaddr *, struct route *);
-	uint64_t		iv_spare[8];
+	uint64_t		iv_spare[6];
 };
 MALLOC_DECLARE(M_80211_VAP);
 

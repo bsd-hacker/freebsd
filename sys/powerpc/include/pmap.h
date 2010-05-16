@@ -100,6 +100,8 @@ struct	pmap {
 	register_t	pm_sr[16];
     #endif
 	u_int		pm_active;
+	uint32_t	pm_gen_count;	/* generation count (pmap lock dropped) */
+	u_int		pm_retries;
 
 	struct pmap	*pmap_phys;
 	struct		pmap_statistics	pm_stats;

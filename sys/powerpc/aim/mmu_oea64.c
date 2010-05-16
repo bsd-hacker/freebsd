@@ -402,6 +402,7 @@ vm_paddr_t moea64_extract(mmu_t, pmap_t, vm_offset_t);
 vm_page_t moea64_extract_and_hold(mmu_t, pmap_t, vm_offset_t, vm_prot_t);
 void moea64_init(mmu_t);
 boolean_t moea64_is_modified(mmu_t, vm_page_t);
+boolean_t moea64_is_referenced(mmu_t, vm_page_t);
 boolean_t moea64_ts_referenced(mmu_t, vm_page_t);
 vm_offset_t moea64_map(mmu_t, vm_offset_t *, vm_offset_t, vm_offset_t, int);
 boolean_t moea64_page_exists_quick(mmu_t, pmap_t, vm_page_t);
@@ -439,6 +440,7 @@ static mmu_method_t moea64_methods[] = {
 	MMUMETHOD(mmu_extract_and_hold,	moea64_extract_and_hold),
 	MMUMETHOD(mmu_init,		moea64_init),
 	MMUMETHOD(mmu_is_modified,	moea64_is_modified),
+	MMUMETHOD(mmu_is_referenced,	moea64_is_referenced),
 	MMUMETHOD(mmu_ts_referenced,	moea64_ts_referenced),
 	MMUMETHOD(mmu_map,     		moea64_map),
 	MMUMETHOD(mmu_page_exists_quick,moea64_page_exists_quick),
@@ -1590,11 +1592,13 @@ void
 moea64_enter_quick(mmu_t mmu, pmap_t pm, vm_offset_t va, vm_page_t m,
     vm_prot_t prot)
 {
+
+	vm_page_lock_queues();
 	PMAP_LOCK(pm);
 	moea64_enter_locked(pm, va, m, prot & (VM_PROT_READ | VM_PROT_EXECUTE),
 	    FALSE);
+	vm_page_unlock_queues();
 	PMAP_UNLOCK(pm);
-
 }
 
 vm_paddr_t
@@ -1624,18 +1628,23 @@ moea64_extract_and_hold(mmu_t mmu, pmap_t pmap, vm_offset_t va, vm_prot_t prot)
 {
 	struct	pvo_entry *pvo;
 	vm_page_t m;
+        vm_paddr_t pa;
         
 	m = NULL;
-	vm_page_lock_queues();
+	pa = 0;
 	PMAP_LOCK(pmap);
-	pvo = moea64_pvo_find_va(pmap, va, NULL);
+retry:
+	pvo = moea64_pvo_find_va(pmap, va & ~ADDR_POFF, NULL);
 	if (pvo != NULL && (pvo->pvo_pte.lpte.pte_hi & LPTE_VALID) &&
 	    ((pvo->pvo_pte.lpte.pte_lo & LPTE_PP) == LPTE_RW ||
 	     (prot & VM_PROT_WRITE) == 0)) {
+		if (vm_page_pa_tryrelock(pmap,
+			pvo->pvo_pte.lpte.pte_lo & LPTE_RPGN, &pa))
+			goto retry;
 		m = PHYS_TO_VM_PAGE(pvo->pvo_pte.lpte.pte_lo & LPTE_RPGN);
 		vm_page_hold(m);
 	}
-	vm_page_unlock_queues();
+	PA_UNLOCK_COND(pa);
 	PMAP_UNLOCK(pmap);
 	return (m);
 }
@@ -1715,6 +1724,15 @@ moea64_init(mmu_t mmu)
 }
 
 boolean_t
+moea64_is_referenced(mmu_t mmu, vm_page_t m)
+{
+
+	if ((m->flags & (PG_FICTITIOUS | PG_UNMANAGED)) != 0)
+		return (FALSE);
+	return (moea64_query_bit(m, PTE_REF));
+}
+
+boolean_t
 moea64_is_modified(mmu_t mmu, vm_page_t m)
 {
 
@@ -1753,10 +1771,10 @@ moea64_remove_write(mmu_t mmu, vm_page_t m)
 	pmap_t	pmap;
 	uint64_t lo;
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
 	if ((m->flags & (PG_FICTITIOUS | PG_UNMANAGED)) != 0 ||
 	    (m->flags & PG_WRITEABLE) == 0)
 		return;
+	vm_page_lock_queues();
 	lo = moea64_attr_fetch(m);
 	SYNC();
 	LIST_FOREACH(pvo, vm_page_to_pvoh(m), pvo_vlink) {
@@ -1785,6 +1803,7 @@ moea64_remove_write(mmu_t mmu, vm_page_t m)
 		vm_page_dirty(m);
 	}
 	vm_page_flag_clear(m, PG_WRITEABLE);
+	vm_page_unlock_queues();
 }
 
 /*
@@ -1950,10 +1969,11 @@ moea64_page_wired_mappings(mmu_t mmu, vm_page_t m)
 	count = 0;
 	if (!moea64_initialized || (m->flags & PG_FICTITIOUS) != 0)
 		return (count);
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	vm_page_lock_queues();
 	LIST_FOREACH(pvo, vm_page_to_pvoh(m), pvo_vlink)
 		if ((pvo->pvo_vaddr & PVO_WIRED) != 0)
 			count++;
+	vm_page_unlock_queues();
 	return (count);
 }
 
@@ -2204,8 +2224,7 @@ moea64_remove_all(mmu_t mmu, vm_page_t m)
 	struct	pvo_entry *pvo, *next_pvo;
 	pmap_t	pmap;
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
-
+	vm_page_lock_queues();
 	pvo_head = vm_page_to_pvoh(m);
 	for (pvo = LIST_FIRST(pvo_head); pvo != NULL; pvo = next_pvo) {
 		next_pvo = LIST_NEXT(pvo, pvo_vlink);
@@ -2221,6 +2240,7 @@ moea64_remove_all(mmu_t mmu, vm_page_t m)
 		vm_page_dirty(m);
 	}
 	vm_page_flag_clear(m, PG_WRITEABLE);
+	vm_page_unlock_queues();
 }
 
 /*

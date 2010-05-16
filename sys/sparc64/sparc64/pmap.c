@@ -528,7 +528,8 @@ pmap_bootstrap(u_int cpu_impl)
 			tp->tte_data =
 			    ((translations[i].om_tte &
 			    ~((TD_SOFT2_MASK << TD_SOFT2_SHIFT) |
-			    (cpu_impl < CPU_IMPL_ULTRASPARCIII ?
+			    (cpu_impl >= CPU_IMPL_ULTRASPARCI &&
+			    cpu_impl < CPU_IMPL_ULTRASPARCIII ?
 			    (TD_DIAG_SF_MASK << TD_DIAG_SF_SHIFT) :
 			    (TD_RSVD_CH_MASK << TD_RSVD_CH_SHIFT)) |
 			    (TD_SOFT_MASK << TD_SOFT_SHIFT))) | TD_EXEC) +
@@ -694,31 +695,35 @@ pmap_extract_and_hold(pmap_t pm, vm_offset_t va, vm_prot_t prot)
 {
 	struct tte *tp;
 	vm_page_t m;
+	vm_paddr_t pa;
 
 	m = NULL;
-	vm_page_lock_queues();
+	pa = 0;
+	PMAP_LOCK(pm);
+retry:
 	if (pm == kernel_pmap) {
 		if (va >= VM_MIN_DIRECT_ADDRESS) {
 			tp = NULL;
 			m = PHYS_TO_VM_PAGE(TLB_DIRECT_TO_PHYS(va));
+			(void)vm_page_pa_tryrelock(pm, TLB_DIRECT_TO_PHYS(va),
+			    &pa);
 			vm_page_hold(m);
 		} else {
 			tp = tsb_kvtotte(va);
 			if ((tp->tte_data & TD_V) == 0)
 				tp = NULL;
 		}
-	} else {
-		PMAP_LOCK(pm);
+	} else
 		tp = tsb_tte_lookup(pm, va);
-	}
 	if (tp != NULL && ((tp->tte_data & TD_SW) ||
 	    (prot & VM_PROT_WRITE) == 0)) {
+		if (vm_page_pa_tryrelock(pm, TTE_GET_PA(tp), &pa))
+			goto retry;
 		m = PHYS_TO_VM_PAGE(TTE_GET_PA(tp));
 		vm_page_hold(m);
 	}
-	vm_page_unlock_queues();
-	if (pm != kernel_pmap)
-		PMAP_UNLOCK(pm);
+	PA_UNLOCK_COND(pa);
+	PMAP_UNLOCK(pm);
 	return (m);
 }
 
@@ -1086,7 +1091,7 @@ pmap_pinit(pmap_t pm)
 	 * Allocate an object for it.
 	 */
 	if (pm->pm_tsb_obj == NULL)
-		pm->pm_tsb_obj = vm_object_allocate(OBJT_DEFAULT, TSB_PAGES);
+		pm->pm_tsb_obj = vm_object_allocate(OBJT_PHYS, TSB_PAGES);
 
 	VM_OBJECT_LOCK(pm->pm_tsb_obj);
 	for (i = 0; i < TSB_PAGES; i++) {
@@ -1147,16 +1152,10 @@ pmap_release(pmap_t pm)
 	KASSERT(obj->ref_count == 1, ("pmap_release: tsbobj ref count != 1"));
 	while (!TAILQ_EMPTY(&obj->memq)) {
 		m = TAILQ_FIRST(&obj->memq);
-		vm_page_lock_queues();
-		if (vm_page_sleep_if_busy(m, FALSE, "pmaprl"))
-			continue;
-		KASSERT(m->hold_count == 0,
-		    ("pmap_release: freeing held tsb page"));
 		m->md.pmap = NULL;
 		m->wire_count--;
 		atomic_subtract_int(&cnt.v_wire_count, 1);
 		vm_page_free_zero(m);
-		vm_page_unlock_queues();
 	}
 	VM_OBJECT_UNLOCK(obj);
 	pmap_qremove((vm_offset_t)pm->pm_tsb, TSB_PAGES);
@@ -1241,7 +1240,7 @@ pmap_remove_all(vm_page_t m)
 	struct tte *tp;
 	vm_offset_t va;
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	vm_page_lock_queues();
 	for (tp = TAILQ_FIRST(&m->md.tte_list); tp != NULL; tp = tpn) {
 		tpn = TAILQ_NEXT(tp, tte_link);
 		if ((tp->tte_data & TD_PV) == 0)
@@ -1264,6 +1263,7 @@ pmap_remove_all(vm_page_t m)
 		PMAP_UNLOCK(pm);
 	}
 	vm_page_flag_clear(m, PG_WRITEABLE);
+	vm_page_unlock_queues();
 }
 
 int
@@ -1273,13 +1273,10 @@ pmap_protect_tte(struct pmap *pm, struct pmap *pm2, struct tte *tp,
 	u_long data;
 	vm_page_t m;
 
-	data = atomic_clear_long(&tp->tte_data, TD_REF | TD_SW | TD_W);
-	if ((data & TD_PV) != 0) {
+	data = atomic_clear_long(&tp->tte_data, TD_SW | TD_W);
+	if ((data & (TD_PV | TD_W)) == (TD_PV | TD_W)) {
 		m = PHYS_TO_VM_PAGE(TD_PA(data));
-		if ((data & TD_REF) != 0)
-			vm_page_flag_set(m, PG_REFERENCED);
-		if ((data & TD_W) != 0)
-			vm_page_dirty(m);
+		vm_page_dirty(m);
 	}
 	return (1);
 }
@@ -1506,9 +1503,11 @@ void
 pmap_enter_quick(pmap_t pm, vm_offset_t va, vm_page_t m, vm_prot_t prot)
 {
 
+	vm_page_lock_queues();
 	PMAP_LOCK(pm);
 	pmap_enter_locked(pm, va, m, prot & (VM_PROT_READ | VM_PROT_EXECUTE),
 	    FALSE);
+	vm_page_unlock_queues();
 	PMAP_UNLOCK(pm);
 }
 
@@ -1813,10 +1812,11 @@ pmap_page_wired_mappings(vm_page_t m)
 	count = 0;
 	if ((m->flags & PG_FICTITIOUS) != 0)
 		return (count);
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	vm_page_lock_queues();
 	TAILQ_FOREACH(tp, &m->md.tte_list, tte_link)
 		if ((tp->tte_data & (TD_PV | TD_WIRED)) == (TD_PV | TD_WIRED))
 			count++;
+	vm_page_unlock_queues();
 	return (count);
 }
 
@@ -1838,14 +1838,19 @@ boolean_t
 pmap_page_is_mapped(vm_page_t m)
 {
 	struct tte *tp;
+	boolean_t rv;
 
+	rv = FALSE;
 	if ((m->flags & (PG_FICTITIOUS | PG_UNMANAGED)) != 0)
-		return (FALSE);
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+		return (rv);
+	vm_page_lock_queues();
 	TAILQ_FOREACH(tp, &m->md.tte_list, tte_link)
-		if ((tp->tte_data & TD_PV) != 0)
-			return (TRUE);
-	return (FALSE);
+		if ((tp->tte_data & TD_PV) != 0) {
+			rv = TRUE;
+			break;
+		}
+	vm_page_unlock_queues();
+	return (rv);
 }
 
 /*
@@ -1917,6 +1922,27 @@ pmap_is_prefaultable(pmap_t pmap, vm_offset_t addr)
 	return (FALSE);
 }
 
+/*
+ * Return whether or not the specified physical page was referenced
+ * in any physical maps.
+ */
+boolean_t
+pmap_is_referenced(vm_page_t m)
+{
+	struct tte *tp;
+
+	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	if ((m->flags & (PG_FICTITIOUS | PG_UNMANAGED)) != 0)
+		return (FALSE);
+	TAILQ_FOREACH(tp, &m->md.tte_list, tte_link) {
+		if ((tp->tte_data & TD_PV) == 0)
+			continue;
+		if ((tp->tte_data & TD_REF) != 0)
+			return (TRUE);
+	}
+	return (FALSE);
+}
+
 void
 pmap_clear_modify(vm_page_t m)
 {
@@ -1959,10 +1985,10 @@ pmap_remove_write(vm_page_t m)
 	struct tte *tp;
 	u_long data;
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
 	if ((m->flags & (PG_FICTITIOUS | PG_UNMANAGED)) != 0 ||
 	    (m->flags & PG_WRITEABLE) == 0)
 		return;
+	vm_page_lock_queues();
 	TAILQ_FOREACH(tp, &m->md.tte_list, tte_link) {
 		if ((tp->tte_data & TD_PV) == 0)
 			continue;
@@ -1973,6 +1999,7 @@ pmap_remove_write(vm_page_t m)
 		}
 	}
 	vm_page_flag_clear(m, PG_WRITEABLE);
+	vm_page_unlock_queues();
 }
 
 int
