@@ -160,6 +160,10 @@ struct pmap {
 	/* Page table directory, array of pointers to page tables. */
 	pte_t			*pm_pdir[PDIR_NENTRIES];
 
+	/* generation count (pmap lock dropped) */
+	uint32_t		pm_gen_count;
+	u_int			pm_retries;
+
 	/* List of allocated ptbl bufs (ptbl kva regions). */
 	TAILQ_HEAD(, ptbl_buf)	pm_ptbl_list;
 };
