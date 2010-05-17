@@ -70,8 +70,8 @@ va_to_slb_entry(pmap_t pm, vm_offset_t va, struct slb *slb)
 	slb->slbe = (esid << SLBE_ESID_SHIFT) | SLBE_VALID;
 
 	if (pm == kernel_pmap) {
-		/* Set kernel VSID to ESID | KERNEL_VSID_BIT */
-		slb->slbv = (esid | KERNEL_VSID_BIT) << SLBV_VSID_SHIFT;
+		/* Set kernel VSID to deterministic value */
+		slb->slbv = va_to_vsid(kernel_pmap, va) << SLBV_VSID_SHIFT;
 
 		/* Figure out if this is a large-page mapping */
 		if (hw_direct_map && va < VM_MIN_KERNEL_ADDRESS) {
@@ -102,11 +102,18 @@ uint64_t
 va_to_vsid(pmap_t pm, vm_offset_t va)
 {
 	struct slb entry;
+	int large;
 
-	/* Shortcut kernel case: VSID = ESID | KERNEL_VSID_BIT */
+	/* Shortcut kernel case */
+	if (pm == kernel_pmap) {
+		large = 0;
+		if (hw_direct_map && va < VM_MIN_KERNEL_ADDRESS &&
+		    mem_valid(va, 0) == 0)
+			large = 1;
 
-	if (pm == kernel_pmap) 
-		return (((uintptr_t)va >> ADDR_SR_SHFT) | KERNEL_VSID_BIT);
+		return (KERNEL_VSID((uintptr_t)va >> ADDR_SR_SHFT, large));
+	}
+
 	/*
 	 * If there is no vsid for this VA, we need to add a new entry
 	 * to the PMAP's segment table.
@@ -128,7 +135,7 @@ allocate_vsid(pmap_t pm, uint64_t esid, int large)
 	prespill = NULL;
 
 	if (pm == kernel_pmap) {
-		vsid = esid | KERNEL_VSID_BIT;
+		vsid = va_to_vsid(pm, esid << ADDR_SR_SHFT);
 		slb_entry = &kern_entry;
 		prespill = PCPU_GET(slb);
 	} else {

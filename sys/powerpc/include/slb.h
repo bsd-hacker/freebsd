@@ -49,6 +49,13 @@
 
 #define	KERNEL_VSID_BIT	0x0000001000000000UL /* Bit set in all kernel VSIDs */
 
+/*
+ * Shift large-page VSIDs one place left. At present, they are only used in the
+ * kernel direct map, and we already assume in the placement of KVA that the
+ * CPU cannot address more than 63 bits of memory.
+ */
+#define KERNEL_VSID(esid, large) (((uint64_t)(esid) << (large ? 1 : 0)) | KERNEL_VSID_BIT)
+
 #define	SLBE_VALID	0x0000000008000000UL /* SLB entry valid */
 #define	SLBE_INDEX_MASK	0x0000000000000fffUL /* SLB index mask*/
 #define	SLBE_ESID_MASK	0xfffffffff0000000UL /* Effective segment ID mask */

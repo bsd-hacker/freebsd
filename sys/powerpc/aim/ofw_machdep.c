@@ -62,6 +62,7 @@ __FBSDID("$FreeBSD$");
 #define	OFMEM_REGIONS	32
 static struct mem_region OFmem[OFMEM_REGIONS + 1], OFavail[OFMEM_REGIONS + 3];
 static struct mem_region OFfree[OFMEM_REGIONS + 3];
+static int nOFmem;
 
 static struct mtx ofw_mutex;
 
@@ -270,10 +271,11 @@ ofw_mem_regions(struct mem_region **memp, int *memsz,
 		phandle = OF_finddevice("/memory@0");
 
 	msz = parse_ofw_memory(phandle, "reg", OFmem);
+	nOFmem = msz / sizeof(struct mem_region);
 	asz = parse_ofw_memory(phandle, "available", OFavail);
 
 	*memp = OFmem;
-	*memsz = msz / sizeof(struct mem_region);
+	*memsz = nOFmem;
 	
 	/*
 	 * OFavail may have overlapping regions - collapse these
@@ -640,7 +642,7 @@ mem_valid(vm_offset_t addr, int len)
 {
 	int i;
 
-	for (i = 0; i < OFMEM_REGIONS; i++)
+	for (i = 0; i < nOFmem; i++)
 		if ((addr >= OFmem[i].mr_start) 
 		    && (addr + len < OFmem[i].mr_start + OFmem[i].mr_size))
 			return (0);
