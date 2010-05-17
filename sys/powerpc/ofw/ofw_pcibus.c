@@ -216,7 +216,8 @@ ofw_pcibus_enum_devtree(device_t dev, u_int domain, u_int busno)
 					intr[0] = INTR_VEC(iparent, intr[0]);
 
 				if (iparent != 0 && icells > 1) {
-					powerpc_config_intr(intr[0],
+					powerpc_config_intr(
+					    INTR_VEC(iparent, intr[0]),
 					    (intr[1] & 1) ? INTR_TRIGGER_LEVEL :
 					    INTR_TRIGGER_EDGE,
 					    INTR_POLARITY_HIGH);
