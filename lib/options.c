@@ -144,9 +144,6 @@ void
 options(int argc, char **argv)
 {
 	int ch;
-	int days;
-	time_t t;
-	char buf[80];
 
 	op = &opt;
 
@@ -206,6 +203,14 @@ options(int argc, char **argv)
 		op->run_time = 15;
 	if (op->load < 0 || op->load > 100)
 		op->load = 100;
+}
+
+void
+show_status(void)
+{
+	char buf[80];
+	int days;
+	time_t t;
 
 	if (op->verbose > 0) {
 		t = op->run_time;
@@ -217,7 +222,6 @@ options(int argc, char **argv)
 			op->verbose);
 	}
 }
-
 
 void
 rmval(void)

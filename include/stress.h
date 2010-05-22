@@ -60,6 +60,7 @@ extern void putval(unsigned long);
 extern unsigned long getval(void);
 extern void getdf(int64_t *, int64_t *);
 extern void reservedf(int64_t, int64_t);
+extern void show_status(void);
 extern int64_t swap(void);
 extern unsigned long usermem(void);
 #endif

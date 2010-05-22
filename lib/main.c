@@ -152,6 +152,8 @@ run_test(void)
 	if (random_int(1,100) > op->load)
 		return (status);
 
+	show_status();
+
 	start = time(NULL);
 	done_testing = 0;
 	fflush(stdout);
