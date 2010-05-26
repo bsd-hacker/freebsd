@@ -78,6 +78,9 @@
 
 #include "miibus_if.h"
 
+#define	OCTE_TX_LOCK(priv)	mtx_lock(&(priv)->tx_mtx)
+#define	OCTE_TX_UNLOCK(priv)	mtx_unlock(&(priv)->tx_mtx)
+
 static int		octe_probe(device_t);
 static int		octe_attach(device_t);
 static int		octe_detach(device_t);
@@ -174,6 +177,8 @@ octe_attach(device_t dev)
 
 	priv->if_flags = ifp->if_flags;
 
+	mtx_init(&priv->tx_mtx, ifp->if_xname, "octe tx send queue", MTX_DEF);
+
 	for (qos = 0; qos < 16; qos++) {
 		mtx_init(&priv->tx_free_queue[qos].ifq_mtx, ifp->if_xname, "octe tx free queue", MTX_DEF);
 		IFQ_SET_MAXLEN(&priv->tx_free_queue[qos], MAX_OUT_QUEUE_DEPTH);
@@ -181,9 +186,11 @@ octe_attach(device_t dev)
 
 	ether_ifattach(ifp, priv->mac);
 
+	OCTE_TX_LOCK(priv);
 	IFQ_SET_MAXLEN(&ifp->if_snd, MAX_OUT_QUEUE_DEPTH);
 	ifp->if_snd.ifq_drv_maxlen = MAX_OUT_QUEUE_DEPTH;
 	IFQ_SET_READY(&ifp->if_snd);
+	OCTE_TX_UNLOCK(priv);
 
 	return (0);
 }
@@ -280,8 +287,11 @@ octe_start(struct ifnet *ifp)
 	if ((ifp->if_drv_flags & (IFF_DRV_RUNNING | IFF_DRV_OACTIVE)) != IFF_DRV_RUNNING)
 		return;
 
+	OCTE_TX_LOCK(priv);
 	while (!IFQ_DRV_IS_EMPTY(&ifp->if_snd)) {
 		IFQ_DRV_DEQUEUE(&ifp->if_snd, m);
+
+		OCTE_TX_UNLOCK(priv);
 
 		/*
 		 * XXX
@@ -312,6 +322,7 @@ octe_start(struct ifnet *ifp)
 			return;
 		}
 	}
+	OCTE_TX_UNLOCK(priv);
 }
 
 static int

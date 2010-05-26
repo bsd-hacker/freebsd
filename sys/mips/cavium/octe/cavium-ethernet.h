@@ -119,6 +119,8 @@ typedef struct {
 
 	struct ifmedia media;
 	int if_flags;
+
+	struct mtx tx_mtx;
 } cvm_oct_private_t;
 
 
