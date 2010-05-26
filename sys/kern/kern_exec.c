@@ -871,6 +871,10 @@ exec_fail_dealloc:
 	free(imgp->freepath, M_TEMP);
 
 	if (error == 0) {
+		PROC_LOCK(p);
+		td->td_dbgflags |= TDB_EXEC;
+		PROC_UNLOCK(p);
+
 		/*
 		 * Stop the process here if its stop event mask has
 		 * the S_EXEC bit set.
@@ -948,10 +952,10 @@ exec_map_first_page(imgp)
 		rv = vm_pager_get_pages(object, ma, initial_pagein, 0);
 		ma[0] = vm_page_lookup(object, 0);
 		if ((rv != VM_PAGER_OK) || (ma[0] == NULL)) {
-			if (ma[0]) {
-				vm_page_lock_queues();
+			if (ma[0] != NULL) {
+				vm_page_lock(ma[0]);
 				vm_page_free(ma[0]);
-				vm_page_unlock_queues();
+				vm_page_unlock(ma[0]);
 			}
 			VM_OBJECT_UNLOCK(object);
 			return (EIO);

@@ -61,7 +61,7 @@
  * Define this unconditionally in case a kernel module is loaded that
  * has been compiled with debugging options.
  */
-int	usb_debug = 0;
+int	usb_debug = ~0;
 
 SYSCTL_NODE(_hw, OID_AUTO, usb, CTLFLAG_RW, 0, "USB debugging");
 SYSCTL_INT(_hw_usb, OID_AUTO, debug, CTLFLAG_RW,
