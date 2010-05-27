@@ -94,7 +94,7 @@ platform_init_ap(int cpuid)
 int
 platform_num_processors(void)
 {
-	return (fls(octeon_bootinfo->core_mask));
+	return (bitcount32(octeon_bootinfo->core_mask));
 }
 
 struct cpu_group *
