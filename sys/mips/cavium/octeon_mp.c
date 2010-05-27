@@ -31,6 +31,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/conf.h>
 #include <sys/kernel.h>
+#include <sys/smp.h>
 #include <sys/systm.h>
 
 #include <machine/hwfunc.h>
@@ -94,6 +95,12 @@ int
 platform_num_processors(void)
 {
 	return (fls(octeon_bootinfo->core_mask));
+}
+
+struct cpu_group *
+platform_smp_topo(void)
+{
+	return (smp_topo_none());
 }
 
 int

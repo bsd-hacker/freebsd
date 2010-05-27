@@ -201,6 +201,7 @@ static void pmap_ptpgzone_dtor(void *mem, int size, void *arg);
 static void *pmap_ptpgzone_allocf(uma_zone_t, int, u_int8_t *, int);
 static uma_zone_t ptpgzone;
 
+#if !defined(__mips_n64)
 struct local_sysmaps {
 	vm_offset_t base;
 	uint16_t valid1, valid2;
@@ -857,7 +858,6 @@ pmap_qremove(vm_offset_t va, int count)
 static int
 _pmap_unwire_pte_hold(pmap_t pmap, vm_page_t m)
 {
-#endif
 
 	/*
 	 * unmap the page table page
@@ -1213,7 +1213,6 @@ pmap_growkernel(vm_offset_t addr)
 
 		nkpt++;
 		pte = (pt_entry_t *)pageva;
-#endif
 		segtab_pde(kernel_segmap, kernel_vm_end) = pte;
 
 		/*
@@ -2584,7 +2583,7 @@ pmap_is_modified(vm_page_t m)
 	/*
 	 * If the page is not VPO_BUSY, then PG_WRITEABLE cannot be
 	 * concurrently set while the object is locked.  Thus, if PG_WRITEABLE
-	 * is clear, no PTEs can have PTE_M set.
+	 * is clear, no PTEs can have PG_D set.
 	 */
 	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 	if ((m->oflags & VPO_BUSY) == 0 &&
@@ -2594,7 +2593,7 @@ pmap_is_modified(vm_page_t m)
 	if (m->md.pv_flags & PV_TABLE_MOD)
 		rv = TRUE;
 	else
-		rv = pmap_testbit(m, PTE_M);
+		rv = pmap_check_modified_bit(m);
 	vm_page_unlock_queues();
 	return (rv);
 }
@@ -2637,7 +2636,7 @@ pmap_clear_modify(vm_page_t m)
 	    ("pmap_clear_modify: page %p is busy", m));
 
 	/*
-	 * If the page is not PG_WRITEABLE, then no PTEs can have PTE_M set.
+	 * If the page is not PG_WRITEABLE, then no PTEs can have PG_D set.
 	 * If the object containing the page is locked and the page is not
 	 * VPO_BUSY, then PG_WRITEABLE cannot be concurrently set.
 	 */
@@ -2774,14 +2773,14 @@ pmap_mincore(pmap_t pmap, vm_offset_t addr, vm_paddr_t *locked_pa)
 retry:
 	ptep = pmap_pte(pmap, addr);
 	pte = (ptep != NULL) ? *ptep : 0;
-	if (!mips_pg_v(pte)) {
+	if (!pte_test(&pte, PG_V)) {
 		val = 0;
 		goto out;
 	}
 	val = MINCORE_INCORE;
-	if ((pte & PTE_M) != 0)
+	if (pte_test(&pte, PG_D))
 		val |= MINCORE_MODIFIED | MINCORE_MODIFIED_OTHER;
-	pa = mips_tlbpfn_to_paddr(pte);
+	pa = TLBLO_PTE_TO_PA(pte);
 	managed = page_is_managed(pa);
 	if (managed) {
 		/*
