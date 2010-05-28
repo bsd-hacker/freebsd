@@ -672,11 +672,7 @@ out:
 #endif
 
 static void
-db_reset(dummy1, dummy2, dummy3, dummy4)
-	intptr_t	dummy1;
-	boolean_t	dummy2;
-	db_expr_t	dummy3;
-	char *		dummy4;
+db_reset(intptr_t addr, boolean_t have_addr, db_expr_t count, char *modif)
 {
 	int delay, loop;
 

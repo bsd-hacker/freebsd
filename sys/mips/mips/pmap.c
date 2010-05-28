@@ -3032,10 +3032,6 @@ pmap_kextract(vm_offset_t va)
 
 		/* Is the kernel pmap initialized? */
 		if (kernel_pmap->pm_active) {
-			if (va < (vm_offset_t)virtual_sys_start) {
-				panic("%s for special address %p.", __func__, (void *)va);
-			}
-
 			/* Its inside the virtual address range */
 			ptep = pmap_pte(kernel_pmap, va);
 			if (ptep) {
