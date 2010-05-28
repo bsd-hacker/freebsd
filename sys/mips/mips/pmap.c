@@ -215,7 +215,6 @@ struct local_sysmaps {
  * bit mode this goes away.
  */
 static struct local_sysmaps sysmap_lmem[MAXCPU];
-caddr_t virtual_sys_start = (caddr_t)0;
 
 #define	PMAP_LMEM_MAP1(va, phys)					\
 	int cpu;							\
@@ -451,7 +450,7 @@ again:
 			sysmap_lmem[i].valid1 = sysmap_lmem[i].valid2 = 0;
 		}
 	}
-	virtual_sys_start = (caddr_t)virtual_avail;
+
 #endif
 	/*
 	 * Allocate segment table for the kernel
@@ -871,8 +870,12 @@ _pmap_unwire_pte_hold(pmap_t pmap, vm_page_t m)
 	/*
 	 * If the page is finally unwired, simply free it.
 	 */
-	pmap_release_pte_page(m);
 	atomic_subtract_int(&cnt.v_wire_count, 1);
+	PMAP_UNLOCK(pmap);
+	vm_page_unlock_queues();
+	pmap_release_pte_page(m);
+	vm_page_lock_queues();
+	PMAP_LOCK(pmap);
 	return (1);
 }
 
@@ -954,10 +957,15 @@ pmap_ptpgzone_allocf(uma_zone_t zone, int bytes, u_int8_t *flags, int wait)
 		("pmap_ptpgzone_allocf: invalid allocation size %d", bytes));
 
 	*flags = UMA_SLAB_PRIV;
-	m = vm_phys_alloc_contig(1, 0, MIPS_KSEG0_LARGEST_PHYS,
-	     PAGE_SIZE, PAGE_SIZE);
-	if (m == NULL)
-		return (NULL);
+	for (;;) {
+		m = vm_phys_alloc_contig(1, 0, MIPS_KSEG0_LARGEST_PHYS,
+		    PAGE_SIZE, PAGE_SIZE);
+		if (m != NULL)
+			break;
+		if ((wait & M_WAITOK) == 0)
+			return (NULL);
+		VM_WAIT;
+	}
 
 	paddr = VM_PAGE_TO_PHYS(m);
 	return ((void *)MIPS_PHYS_TO_KSEG0(paddr));
@@ -988,9 +996,14 @@ pmap_alloc_pte_page(pmap_t pmap, unsigned int index, int wait, vm_offset_t *vap)
 	paddr = MIPS_KSEG0_TO_PHYS(va);
 	m = PHYS_TO_VM_PAGE(paddr);
 	
+	if (!locked)
+		vm_page_lock_queues();
 	m->pindex = index;
 	m->valid = VM_PAGE_BITS_ALL;
 	m->wire_count = 1;
+	if (!locked)
+		vm_page_unlock_queues();
+
 	atomic_add_int(&cnt.v_wire_count, 1);
 	*vap = (vm_offset_t)va;
 	return (m);
@@ -1024,8 +1037,10 @@ pmap_pinit(pmap_t pmap)
 	 * allocate the page directory page
 	 */
 	ptdpg = pmap_alloc_pte_page(pmap, NUSERPGTBLS, M_WAITOK, &ptdva);
-	pmap->pm_segtab = (pd_entry_t *)ptdva;
+	if (ptdpg == NULL)
+		return (0);
 
+	pmap->pm_segtab = (pd_entry_t *)ptdva;
 	pmap->pm_active = 0;
 	pmap->pm_ptphint = NULL;
 	for (i = 0; i < MAXCPU; i++) {
@@ -1047,13 +1062,11 @@ _pmap_allocpte(pmap_t pmap, unsigned ptepindex, int flags)
 {
 	vm_offset_t pteva;
 	vm_page_t m;
-	int req;
 
 	KASSERT((flags & (M_NOWAIT | M_WAITOK)) == M_NOWAIT ||
 	    (flags & (M_NOWAIT | M_WAITOK)) == M_WAITOK,
 	    ("_pmap_allocpte: flags is neither M_NOWAIT nor M_WAITOK"));
 
-	req = VM_ALLOC_WIRED | VM_ALLOC_ZERO | VM_ALLOC_NOOBJ;
 	/*
 	 * Find or fabricate a new pagetable page
 	 */

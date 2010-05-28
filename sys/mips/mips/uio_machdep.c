@@ -51,6 +51,7 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_page.h>
 #include <vm/vm_param.h>
 
+#include <machine/cache.h>
 #include <machine/tlb.h>
 
 /*
@@ -98,8 +99,14 @@ uiomove_fromphys(vm_page_t ma[], vm_offset_t offset, int n, struct uio *uio)
 		cp = (char *)MIPS_PHYS_TO_XKPHYS(MIPS_XKPHYS_CCA_CNC, pa);
 #else
 		if (pa < MIPS_KSEG0_LARGEST_PHYS) {
-			cp = (char *)MIPS_PHYS_TO_KSEG0(pa);
 			sf = NULL;
+			cp = (char *)MIPS_PHYS_TO_KSEG0(pa) + page_offset;
+			/*
+			 * flush all mappings to this page, KSEG0 address first
+			 * in order to get it overwritten by correct data
+			 */
+			mips_dcache_wbinv_range((vm_offset_t)cp, cnt);
+			pmap_flush_pvcache(m);
 		} else {
 			sf = sf_buf_alloc(m, 0);
 			cp = (char *)sf_buf_kva(sf) + page_offset;
@@ -133,7 +140,9 @@ uiomove_fromphys(vm_page_t ma[], vm_offset_t offset, int n, struct uio *uio)
 #if !defined(__mips_n64)
 		if (sf != NULL)
 			sf_buf_free(sf);
+		else
 #endif
+			mips_dcache_wbinv_range((vm_offset_t)cp, cnt);
 		iov->iov_base = (char *)iov->iov_base + cnt;
 		iov->iov_len -= cnt;
 		uio->uio_resid -= cnt;
