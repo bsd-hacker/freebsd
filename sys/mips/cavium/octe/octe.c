@@ -321,6 +321,8 @@ octe_start(struct ifnet *ifp)
 			ifp->if_drv_flags |= IFF_DRV_OACTIVE;
 			return;
 		}
+
+		OCTE_TX_LOCK(priv);
 	}
 	OCTE_TX_UNLOCK(priv);
 }
