@@ -73,7 +73,6 @@ device		ether
 device		md
 device		puc
 device		uart
-nodevice	uart_ns8250
 device		octe
 #options 	VERBOSE_SYSINIT
 
