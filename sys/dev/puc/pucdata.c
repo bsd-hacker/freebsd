@@ -826,6 +826,12 @@ const struct puc_cfg puc_pci_devices[] = {
 	    PUC_PORT_4S1P, 0x10, 4, 0,
 	},
 
+	{   0x9710, 0x9865, 0xa000, 0x1000,
+	    "NetMos NM9865 UART",
+	    DEFAULT_RCLK,
+	    PUC_PORT_1S, 0x10, 4, 0,
+	},
+
 	{   0x9710, 0x9865, 0xa000, 0x3002,
 	    "NetMos NM9865 Dual UART",
 	    DEFAULT_RCLK,
