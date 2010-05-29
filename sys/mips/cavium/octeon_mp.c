@@ -73,6 +73,8 @@ platform_ipi_intrnum(void)
 void
 platform_init_ap(int cpuid)
 {
+	unsigned ipi_int_mask, clock_int_mask;
+
 	/*
 	 * Set the exception base.
 	 */
@@ -87,6 +89,13 @@ platform_init_ap(int cpuid)
 	 * Set up interrupts.
 	 */
 	octeon_ciu_reset();
+
+	/*
+	 * Unmask the clock and ipi interrupts.
+	 */
+	clock_int_mask = hard_int_mask(5);
+	ipi_int_mask = hard_int_mask(platform_ipi_intrnum());
+	set_intr_mask(ALL_INT_MASK & ~(ipi_int_mask | clock_int_mask));
 
 	mips_wbflush();
 }
