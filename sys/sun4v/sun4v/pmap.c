@@ -341,8 +341,6 @@ retry:
 			pmap_invalidate_page(pmap, va, TRUE);
 			TAILQ_REMOVE(&pmap->pm_pvlist, pv, pv_plist);
 			TAILQ_REMOVE(&m->md.pv_list, pv, pv_list);
-			if (TAILQ_EMPTY(&m->md.pv_list))
-				vm_page_flag_clear(m, PG_WRITEABLE);
 			m->md.pv_list_count--;
 
 			if (pmap != locked_pmap)
@@ -352,6 +350,8 @@ retry:
 			else
 				free_pv_entry(pv);
 		}
+		if (TAILQ_EMPTY(&m->md.pv_list))
+			vm_page_flag_clear(m, PG_WRITEABLE);
 	}
 	if (allocated_pv == NULL) {
 		if (vpq == &vm_page_queues[PQ_INACTIVE]) {
@@ -1133,10 +1133,6 @@ pmap_enter(pmap_t pmap, vm_offset_t va, vm_prot_t access, vm_page_t m,
 		else if (!wired && (otte_data & VTD_WIRED))
 			pmap->pm_stats.wired_count--;
 
-		/*
-		 * We might be turning off write access to the page,
-		 * so we go ahead and sense modify status.
-		 */
 		if (otte_data & VTD_MANAGED) {
 			om = m;
 			tte_data |= VTD_MANAGED;
