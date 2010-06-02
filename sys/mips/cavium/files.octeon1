@@ -27,6 +27,7 @@ mips/cavium/octe/octe.c				optional octe
 mips/cavium/octe/octebus.c			optional octe
 
 mips/cavium/octopci.c				optional pci
+mips/cavium/octopci_bus_space.c			optional pci
 
 contrib/octeon-sdk/cvmx-cmd-queue.c		optional octe
 contrib/octeon-sdk/cvmx-fpa.c			optional octe

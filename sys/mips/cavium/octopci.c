@@ -57,6 +57,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/pci/pcib_private.h>
 
 #include <mips/cavium/octopcireg.h>
+#include <mips/cavium/octopcivar.h>
 
 #include "pcib_if.h"
 
@@ -193,7 +194,7 @@ octopci_alloc_resource(device_t bus, device_t child, int type, int *rid,
 		return (NULL);
 
 	rman_set_rid(res, *rid);
-	rman_set_bustag(res, mips_bus_space_generic);
+	rman_set_bustag(res, octopci_bus_space);
 
 	switch (type) {
 	case SYS_RES_MEMORY:
