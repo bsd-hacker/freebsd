@@ -208,6 +208,15 @@ octopci_alloc_resource(device_t bus, device_t child, int type, int *rid,
 		break;
 	case SYS_RES_IOPORT:
 		rman_set_bushandle(res, CVMX_ADDR_DID(CVMX_FULL_DID(CVMX_OCT_DID_PCI, CVMX_OCT_SUBDID_PCI_IO)) + rman_get_start(res));
+		/*
+		 * XXX
+		 * We should just disallow use of io ports on !n64 since without
+		 * 64-bit PTEs we can't even do a 32-bit virtual address
+		 * mapped to them.
+		 */
+#if 0
+		rman_set_virtual(res, (void *)rman_get_bushandle(res));
+#endif
 		break;
 	}
 
