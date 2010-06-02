@@ -99,6 +99,16 @@ device		ohci		# OHCI PCI->USB interface
 device		ehci		# EHCI PCI->USB interface (USB 2.0)
 device		usb		# USB Bus (required)
 
+# ATA and ATAPI devices
+device		ata
+device		atadisk		# ATA disk drives
+device		ataraid		# ATA RAID drives
+device		atapicd		# ATAPI CDROM drives
+options 	ATA_STATIC_ID	# Static device numbering
+
+# PCI Ethernet
+device		re
+
 #
 # Use the following for  Compact Flash file-system
 device 		cf
