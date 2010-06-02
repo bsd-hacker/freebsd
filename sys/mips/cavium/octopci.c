@@ -110,6 +110,12 @@ octopci_attach(device_t dev)
 	struct octopci_softc *sc;
 	int error;
 
+	/*
+	 * XXX
+	 * We currently rely on U-Boot to set up the PCI in host state.  We
+	 * should properly initialize the PCI bus here.
+	 */
+
 	sc = device_get_softc(dev);
 	sc->sc_dev = dev;
 	sc->sc_domain = 0;
