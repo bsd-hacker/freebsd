@@ -2367,7 +2367,7 @@ sched_pctcpu(struct thread *td)
 	if (ts == NULL)
 		return (0);
 
-	thread_lock(td);
+	THREAD_LOCK_ASSERT(td, MA_OWNED);
 	if (ts->ts_ticks) {
 		int rtick;
 
@@ -2376,7 +2376,6 @@ sched_pctcpu(struct thread *td)
 		rtick = min(SCHED_TICK_HZ(ts) / SCHED_TICK_SECS, hz);
 		pctcpu = (FSCALE * ((FSCALE * rtick)/hz)) >> FSHIFT;
 	}
-	thread_unlock(td);
 
 	return (pctcpu);
 }
@@ -2427,6 +2426,7 @@ sched_bind(struct thread *td, int cpu)
 	struct td_sched *ts;
 
 	THREAD_LOCK_ASSERT(td, MA_OWNED|MA_NOTRECURSED);
+	KASSERT(td == curthread, ("sched_bind: can only bind curthread"));
 	ts = td->td_sched;
 	if (ts->ts_flags & TSF_BOUND)
 		sched_unbind(td);
@@ -2448,6 +2448,7 @@ sched_unbind(struct thread *td)
 	struct td_sched *ts;
 
 	THREAD_LOCK_ASSERT(td, MA_OWNED);
+	KASSERT(td == curthread, ("sched_unbind: can only bind curthread"));
 	ts = td->td_sched;
 	if ((ts->ts_flags & TSF_BOUND) == 0)
 		return;

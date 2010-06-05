@@ -55,6 +55,8 @@
 #ifdef __powerpc64__
 #include <compat/freebsd32/freebsd32_proto.h>
 #include <compat/freebsd32/freebsd32_util.h>
+
+extern const char *freebsd32_syscallnames[];
 #endif
 
 struct sysentvec elf32_freebsd_sysvec = {
@@ -88,16 +90,20 @@ struct sysentvec elf32_freebsd_sysvec = {
 	.sv_psstrings	= FREEBSD32_PS_STRINGS,
 	.sv_copyout_strings = freebsd32_copyout_strings,
 	.sv_setregs	= ppc32_setregs,
+	.sv_syscallnames = freebsd32_syscallnames,
 #else
 	.sv_maxuser	= VM_MAXUSER_ADDRESS,
 	.sv_usrstack	= USRSTACK,
 	.sv_psstrings	= PS_STRINGS,
 	.sv_copyout_strings = exec_copyout_strings,
 	.sv_setregs	= exec_setregs,
+	.sv_syscallnames = syscallnames,
 #endif
 	.sv_fixlimit	= NULL,
 	.sv_maxssiz	= NULL,
-	.sv_flags	= SV_ABI_FREEBSD | SV_ILP32
+	.sv_flags	= SV_ABI_FREEBSD | SV_ILP32,
+	.sv_set_syscall_retval = cpu_set_syscall_retval,
+	.sv_fetch_syscall_args = cpu_fetch_syscall_args,
 };
 
 static Elf32_Brandinfo freebsd_brand_info = {

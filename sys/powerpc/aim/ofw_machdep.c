@@ -41,6 +41,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/disk.h>
 #include <sys/fcntl.h>
 #include <sys/malloc.h>
+#include <sys/smp.h>
 #include <sys/stat.h>
 
 #include <net/ethernet.h>
@@ -63,8 +64,6 @@ __FBSDID("$FreeBSD$");
 static struct mem_region OFmem[OFMEM_REGIONS + 1], OFavail[OFMEM_REGIONS + 3];
 static struct mem_region OFfree[OFMEM_REGIONS + 3];
 static int nOFmem;
-
-static struct mtx ofw_mutex;
 
 extern register_t ofmsr[5];
 extern struct	pmap ofw_pmap;
@@ -341,8 +340,6 @@ OF_bootstrap()
 {
 	boolean_t status = FALSE;
 
-	mtx_init(&ofw_mutex, "open firmware", NULL, MTX_DEF);
-
 	if (ofwcall != NULL) {
 		if (ofw_real_mode) {
 			status = OF_install(OFW_STD_REAL, 0);
@@ -410,7 +407,7 @@ ofw_quiesce(void)
 }
 
 static int
-openfirmware(void *args)
+openfirmware_core(void *args)
 {
 	int		result;
 	register_t	oldmsr;
@@ -418,8 +415,6 @@ openfirmware(void *args)
 	register_t	srsave[16];
 	u_int		i;
 	#endif
-
-	mtx_lock(&ofw_mutex);
 
 	/*
 	 * Turn off exceptions - we really don't want to end up
@@ -473,7 +468,60 @@ openfirmware(void *args)
 
 	intr_restore(oldmsr);
 
-	mtx_unlock(&ofw_mutex);
+	return (result);
+}
+
+#ifdef SMP
+struct ofw_rv_args {
+	void *args;
+	int retval;
+	volatile int in_progress;
+};
+
+static void
+ofw_rendezvous_dispatch(void *xargs)
+{
+	struct ofw_rv_args *rv_args = xargs;
+
+	/* NOTE: Interrupts are disabled here */
+
+	if (PCPU_GET(cpuid) == 0) {
+		/*
+		 * Execute all OF calls on CPU 0
+		 */
+		rv_args->retval = openfirmware_core(rv_args->args);
+		rv_args->in_progress = 0;
+	} else {
+		/*
+		 * Spin with interrupts off on other CPUs while OF has
+		 * control of the machine.
+		 */
+		while (rv_args->in_progress)
+			cpu_spinwait();
+	}
+}
+#endif
+
+static int
+openfirmware(void *args)
+{
+	int result;
+	#ifdef SMP
+	struct ofw_rv_args rv_args;
+	#endif
+
+	if (pmap_bootstrapped && ofw_real_mode)
+		args = (void *)pmap_kextract((vm_offset_t)args);
+
+	#ifdef SMP
+	rv_args.args = args;
+	rv_args.in_progress = 1;
+	smp_rendezvous(smp_no_rendevous_barrier, ofw_rendezvous_dispatch,
+	    smp_no_rendevous_barrier, &rv_args);
+	result = rv_args.retval;
+	#else
+	result = openfirmware_core(args);
+	#endif
 
 	return (result);
 }

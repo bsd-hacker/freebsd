@@ -53,6 +53,7 @@ node [color=lightblue2, style=filled, bgcolor=black];
 # Current src committers go here. Try to keep things sorted.
 
 ache [label="Andrey Chernov\nache@FreeBSD.org\n1993/10/31"]
+ae [label="Andrey V. Elsukov\nae@FreeBSD.org\n2010/06/03"]
 akiyama [label="Shunsuke Akiyama\nakiyama@FreeBSD.org\n2000/06/19"]
 ambrisko [label="Doug Ambrisko\nambrisko@FreeBSD.org\n2001/12/19"]
 anchie [label="Ana Kukec\nanchie@FreeBSD.org\n2010/04/14"]
@@ -111,11 +112,12 @@ ivoras [label="Ivan Voras\nivoras@FreeBSD.org\n2008/06/10"]
 jake [label="Jake Burkholder\njake@FreeBSD.org\n2000/05/16"]
 jamie [label="Jamie Gritton\njamie@FreeBSD.org\n2009/01/28"]
 jayanth [label="Jayanth Vijayaraghavan\njayanth@FreeBSD.org\n2000/05/08"]
+jchandra [label="Jayachandran C.\njchandra@FreeBSD.org\n2010/05/19"]
+jdp [label="John Polstra\njdp@FreeBSD.org\n????/??/??"]
 jh [label="Jaakko Heinonen\njh@FreeBSD.org\n2009/10/02"]
+jhb [label="John Baldwin\njhb@FreeBSD.org\n1999/08/23"]
 jilles [label="Jilles Tjoelker\njilles@FreeBSD.org\n2009/05/22"]
 jinmei [label="JINMEI Tatuya\njinmei@FreeBSD.org\n2007/03/17"]
-jdp [label="John Polstra\njdp@FreeBSD.org\n????/??/??"]
-jhb [label="John Baldwin\njhb@FreeBSD.org\n1999/08/23"]
 jkh [label="Jordan K. Hubbard\njkh@FreeBSD.org\n1993/06/12"]
 jkim [label="Jung-uk Kim\njkim@FreeBSD.org\n2005/07/06"]
 jkoshy [label="A. Joseph Koshy\njkoshy@FreeBSD.org\n1998/05/13"]
@@ -140,6 +142,7 @@ markus [label="Markus Brueffer\nmarkus@FreeBSD.org\n2006/06/01"]
 matteo [label="Matteo Riondato\nmatteo@FreeBSD.org\n2006/01/18"]
 mav [label="Alexander Motin\nmav@FreeBSD.org\n2007/04/12"]
 maxim [label="Maxim Konovalov\nmaxim@FreeBSD.org\n2002/02/07"]
+mdf [label="Matthew Fleming\nmdf@FreeBSD.org\n2010/06/04"]
 mjacob [label="Matt Jacob\nmjacob@FreeBSD.org\n1997/08/13"]
 mlaier [label="Max Laier\nmlaier@FreeBSD.org\n2004/02/10"]
 mr [label="Michael Reifenberger\nmr@FreeBSD.org\n2001/09/30"]
@@ -365,6 +368,7 @@ julian -> zec
 
 kan -> kib
 
+kib -> ae
 kib -> dchagin
 kib -> lulf
 kib -> pho
@@ -379,6 +383,8 @@ marcel -> marius
 marcel -> nwhitehorn
 
 markm -> sheldonh
+
+mav -> ae
 
 mdodd -> jake
 
@@ -423,6 +429,7 @@ rpaulo -> avg
 rpaulo -> bschmidt
 
 rrs -> brucec
+rrs -> jchandra
 rrs -> tuexen
 
 ru -> ceri
@@ -479,5 +486,7 @@ ume -> tshiozak
 wes -> scf
 
 wollman -> gad
+
+zml -> mdf
 
 }

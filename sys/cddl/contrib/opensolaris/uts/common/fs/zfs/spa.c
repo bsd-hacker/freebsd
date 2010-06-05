@@ -1425,6 +1425,12 @@ spa_load(spa_t *spa, nvlist_t *config, spa_load_state_t state, int mosconfig)
 		 */
 		if (need_update)
 			spa_async_request(spa, SPA_ASYNC_CONFIG_UPDATE);
+
+		/*
+		 * Check all DTLs to see if anything needs resilvering.
+		 */
+		if (vdev_resilver_needed(rvd, NULL, NULL))
+			spa_async_request(spa, SPA_ASYNC_RESILVER);
 	}
 
 	error = 0;
@@ -2082,9 +2088,9 @@ spa_create(const char *pool, nvlist_t *nvroot, nvlist_t *props,
 	if (version >= SPA_VERSION_ZPOOL_HISTORY && history_str != NULL)
 		(void) spa_history_log(spa, history_str, LOG_CMD_POOL_CREATE);
 
-	mutex_exit(&spa_namespace_lock);
-
 	spa->spa_minref = refcount_count(&spa->spa_refcount);
+
+	mutex_exit(&spa_namespace_lock);
 
 	return (0);
 }
@@ -2478,6 +2484,7 @@ spa_tryimport(nvlist_t *tryconfig)
 	char *poolname;
 	spa_t *spa;
 	uint64_t state;
+	int error;
 
 	if (nvlist_lookup_string(tryconfig, ZPOOL_CONFIG_POOL_NAME, &poolname))
 		return (NULL);
@@ -2497,7 +2504,7 @@ spa_tryimport(nvlist_t *tryconfig)
 	 * Pass TRUE for mosconfig because the user-supplied config
 	 * is actually the one to trust when doing an import.
 	 */
-	(void) spa_load(spa, tryconfig, SPA_LOAD_TRYIMPORT, B_TRUE);
+	error = spa_load(spa, tryconfig, SPA_LOAD_TRYIMPORT, B_TRUE);
 
 	/*
 	 * If 'tryconfig' was at least parsable, return the current config.
@@ -2516,7 +2523,7 @@ spa_tryimport(nvlist_t *tryconfig)
 		 * copy it out so that external consumers can tell which
 		 * pools are bootable.
 		 */
-		if (spa->spa_bootfs) {
+		if ((!error || error == EEXIST) && spa->spa_bootfs) {
 			char *tmpname = kmem_alloc(MAXPATHLEN, KM_SLEEP);
 
 			/*

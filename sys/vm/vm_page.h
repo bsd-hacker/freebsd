@@ -194,8 +194,10 @@ extern struct vpglocks pa_lock[];
 #define	PA_UNLOCK(pa)	mtx_unlock(PA_LOCKPTR(pa))
 #define	PA_UNLOCK_COND(pa) 			\
 	do {		   			\
-		if (pa) 			\
-			PA_UNLOCK(pa);		\
+		if ((pa) != 0) {		\
+			PA_UNLOCK((pa));	\
+			(pa) = 0;		\
+		}				\
 	} while (0)
 
 #define	PA_LOCK_ASSERT(pa, a)	mtx_assert(PA_LOCKPTR(pa), (a))
@@ -217,8 +219,8 @@ extern struct vpglocks pa_lock[];
  *	 pte mappings, nor can they be removed from their objects via 
  *	 the object, and such pages are also not on any PQ queue.
  *
- * PG_WRITEABLE is set exclusively by pmap_enter().  When it does so, the page
- * must be VPO_BUSY.
+ * PG_WRITEABLE is set exclusively on managed pages by pmap_enter().  When it
+ * does so, the page must be VPO_BUSY.
  */
 #define	PG_CACHED	0x0001		/* page is cached */
 #define	PG_FREE		0x0002		/* page is free */

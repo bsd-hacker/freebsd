@@ -97,11 +97,6 @@ int	setfault(faultbuf);		/* defined in locore.S */
 int	badaddr(void *, size_t);
 int	badaddr_read(void *, size_t, int *);
 
-extern char	*syscallnames[];
-#ifdef COMPAT_FREEBSD32
-extern char	*freebsd32_syscallnames[];
-#endif
-
 struct powerpc_exception {
 	u_int	vector;
 	char	*name;
@@ -351,43 +346,31 @@ handle_onfault(struct trapframe *frame)
 	return (0);
 }
 
-void
-syscall(struct trapframe *frame)
+int
+cpu_fetch_syscall_args(struct thread *td, struct syscall_args *sa)
 {
-	caddr_t		params;
-	struct		sysent *callp;
-	struct		thread *td;
-	struct		proc *p;
-	int		error, n, i;
-	size_t		narg, argsz;
-	u_register_t	args[10];
-	u_int		code;
-	char		**scall_names;
+	struct proc *p;
+	struct trapframe *frame;
+	caddr_t	params;
+	size_t argsz;
+	int error, n, i;
 
-	td = PCPU_GET(curthread);
 	p = td->td_proc;
+	frame = td->td_frame;
 
-	PCPU_INC(cnt.v_syscall);
-
-	code = frame->fixreg[0];
+	sa->code = frame->fixreg[0];
 	params = (caddr_t)(frame->fixreg + FIRSTARG);
 	n = NARGREG;
 
-	if (p->p_sysent->sv_prepsyscall) {
-		/*
-		 * The prep code is MP aware.
-		 */
-		(*p->p_sysent->sv_prepsyscall)(frame, (int *)args, &code,
-		    &params);
-	} else if (code == SYS_syscall) {
+	if (sa->code == SYS_syscall) {
 		/*
 		 * code is first argument,
 		 * followed by actual args.
 		 */
-		code = *(register_t *) params;
+		sa->code = *(register_t *) params;
 		params += sizeof(register_t);
 		n -= 1;
-	} else if (code == SYS___syscall) {
+	} else if (sa->code == SYS___syscall) {
 		/*
 		 * Like syscall, but code is a quad,
 		 * so as to maintain quad alignment
@@ -395,112 +378,72 @@ syscall(struct trapframe *frame)
 		 */
 		if (p->p_sysent->sv_flags & SV_ILP32) {
 			params += sizeof(register_t);
-			code = *(register_t *) params;
+			sa->code = *(register_t *) params;
 			params += sizeof(register_t);
 			n -= 2;
 		} else {
-			code = *(register_t *) params;
+			sa->code = *(register_t *) params;
 			params += sizeof(register_t);
 			n -= 1;
 		}
 	}
 
  	if (p->p_sysent->sv_mask)
- 		code &= p->p_sysent->sv_mask;
+		sa->code &= p->p_sysent->sv_mask;
+	if (sa->code >= p->p_sysent->sv_size)
+		sa->callp = &p->p_sysent->sv_table[0];
+	else
+		sa->callp = &p->p_sysent->sv_table[sa->code];
 
- 	if (code >= p->p_sysent->sv_size)
- 		callp = &p->p_sysent->sv_table[0];
-  	else
- 		callp = &p->p_sysent->sv_table[code];
-
-	narg = callp->sy_narg;
+	sa->narg = sa->callp->sy_narg;
 
 	if (p->p_sysent->sv_flags & SV_ILP32) {
 		argsz = sizeof(uint32_t);
-		#ifdef COMPAT_FREEBSD32
-		scall_names = freebsd32_syscallnames;
-		#else
-		scall_names = syscallnames;
-		#endif
 
 		for (i = 0; i < n; i++)
-			args[i] = ((u_register_t *)(params))[i] & 0xffffffff;
+			sa->args[i] = ((u_register_t *)(params))[i] &
+			    0xffffffff;
 	} else {
 		argsz = sizeof(uint64_t);
-		scall_names = syscallnames;
 
 		for (i = 0; i < n; i++)
-			args[i] = ((u_register_t *)(params))[i];
+			sa->args[i] = ((u_register_t *)(params))[i];
 	}
 
-	if (narg > n)
-		error = copyin(MOREARGS(frame->fixreg[1]), args + n,
-			       (narg - n) * argsz);
+	if (sa->narg > n)
+		error = copyin(MOREARGS(frame->fixreg[1]), sa->args + n,
+			       (sa->narg - n) * argsz);
 	else
 		error = 0;
 
 #ifdef __powerpc64__
-	if (p->p_sysent->sv_flags & SV_ILP32 && narg > n) {
+	if (p->p_sysent->sv_flags & SV_ILP32 && sa->narg > n) {
 		/* Expand the size of arguments copied from the stack */
 
-		for (i = narg; i >= n; i--)
-			args[i] = ((uint32_t *)(&args[n]))[i-n];
+		for (i = sa->narg; i >= n; i--)
+			sa->args[i] = ((uint32_t *)(&sa->args[n]))[i-n];
 	}
 #endif
-
-	CTR5(KTR_SYSC, "syscall: p=%s %s(%x %x %x)", td->td_name,
-	     scall_names[code],
-	     args[0], args[1], args[2]);
-
-#ifdef	KTRACE
-	if (KTRPOINT(td, KTR_SYSCALL))
-		ktrsyscall(code, narg, args);
-#endif
-
-	td->td_syscalls++;
 
 	if (error == 0) {
 		td->td_retval[0] = 0;
 		td->td_retval[1] = frame->fixreg[FIRSTARG + 1];
-
-		STOPEVENT(p, S_SCE, narg);
-
-		PTRACESTOP_SC(p, td, S_PT_SCE);
-
-		AUDIT_SYSCALL_ENTER(code, td);
-		error = (*callp->sy_call)(td, args);
-		AUDIT_SYSCALL_EXIT(error, td);
-
-		CTR3(KTR_SYSC, "syscall: p=%s %s ret=%x", td->td_name,
-		     scall_names[code], td->td_retval[0]);
 	}
+	return (error);
+}
 
-	cpu_set_syscall_retval(td, error);
+void
+syscall(struct trapframe *frame)
+{
+	struct thread *td;
+	struct syscall_args sa;
+	int error;
 
-	/*
-	 * Check for misbehavior.
-	 */
-	WITNESS_WARN(WARN_PANIC, NULL, "System call %s returning",
-	    (code >= 0 && code < SYS_MAXSYSCALL) ? scall_names[code] : "???");
-	KASSERT(td->td_critnest == 0,
-	    ("System call %s returning in a critical section",
-	    (code >= 0 && code < SYS_MAXSYSCALL) ? scall_names[code] : "???"));
-	KASSERT(td->td_locks == 0,
-	    ("System call %s returning with %d locks held",
-	    (code >= 0 && code < SYS_MAXSYSCALL) ? scall_names[code] : "???",
-	    td->td_locks));
+	td = PCPU_GET(curthread);
+	td->td_frame = frame;
 
-#ifdef	KTRACE
-	if (KTRPOINT(td, KTR_SYSRET))
-		ktrsysret(code, error, td->td_retval[0]);
-#endif
-
-	/*
-	 * Does the comment in the i386 code about errno apply here?
-	 */
-	STOPEVENT(p, S_SCX, code);
- 
-	PTRACESTOP_SC(p, td, S_PT_SCX);
+	error = syscallenter(td, &sa);
+	syscallret(td, error, &sa);
 }
 
 #ifdef __powerpc64__

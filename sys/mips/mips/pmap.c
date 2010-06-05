@@ -110,10 +110,6 @@ __FBSDID("$FreeBSD$");
 #define	PMAP_SHPGPERPROC 200
 #endif
 
-#if defined(TARGET_XLR_XLS)
-#define HIGHMEM_SUPPORT
-#endif
-
 #if !defined(PMAP_DIAGNOSTIC)
 #define	PMAP_INLINE __inline
 #else
@@ -167,6 +163,9 @@ static int pv_entry_count = 0, pv_entry_max = 0, pv_entry_high_water = 0;
 
 static PMAP_INLINE void free_pv_entry(pv_entry_t pv);
 static pv_entry_t get_pv_entry(pmap_t locked_pmap);
+static void pmap_pvh_free(struct md_page *pvh, pmap_t pmap, vm_offset_t va);
+static pv_entry_t pmap_pvh_remove(struct md_page *pvh, pmap_t pmap,
+    vm_offset_t va);
 static __inline void pmap_changebit(vm_page_t m, int bit, boolean_t setem);
 
 static vm_page_t pmap_enter_quick_locked(pmap_t pmap, vm_offset_t va,
@@ -175,9 +174,6 @@ static int pmap_remove_pte(struct pmap *pmap, pt_entry_t *ptq, vm_offset_t va);
 static void pmap_remove_page(struct pmap *pmap, vm_offset_t va);
 static void pmap_remove_entry(struct pmap *pmap, vm_page_t m, vm_offset_t va);
 static boolean_t pmap_testbit(vm_page_t m, int bit);
-static void 
-pmap_insert_entry(pmap_t pmap, vm_offset_t va, vm_page_t mpte,
-    vm_page_t m, boolean_t wired);
 static boolean_t pmap_try_insert_pv_entry(pmap_t pmap, vm_page_t mpte,
     vm_offset_t va, vm_page_t m);
 
@@ -197,10 +193,9 @@ static void pmap_invalidate_all_action(void *arg);
 static void pmap_update_page_action(void *arg);
 #endif
 
-#ifdef HIGHMEM_SUPPORT
-static void * pmap_ptpgzone_allocf(uma_zone_t, int, u_int8_t*, int);
+static void pmap_ptpgzone_dtor(void *mem, int size, void *arg);
+static void *pmap_ptpgzone_allocf(uma_zone_t, int, u_int8_t *, int);
 static uma_zone_t ptpgzone;
-#endif
 
 struct local_sysmaps {
 	struct mtx lock;
@@ -216,7 +211,6 @@ struct local_sysmaps {
  * bit mode this goes away.
  */
 static struct local_sysmaps sysmap_lmem[MAXCPU];
-caddr_t virtual_sys_start = (caddr_t)0;
 
 #define	PMAP_LMEM_MAP1(va, phys)					\
 	int cpu;							\
@@ -448,7 +442,7 @@ again:
 			PMAP_LGMEM_LOCK_INIT(&sysmap_lmem[i]);
 		}
 	}
-	virtual_sys_start = (caddr_t)virtual_avail;
+
 	/*
 	 * Allocate segment table for the kernel
 	 */
@@ -542,11 +536,9 @@ pmap_init(void)
 	pv_entry_high_water = 9 * (pv_entry_max / 10);
 	uma_zone_set_obj(pvzone, &pvzone_obj, pv_entry_max);
 
-#ifdef HIGHMEM_SUPPORT
-	ptpgzone = uma_zcreate("PT ENTRY", PAGE_SIZE, NULL,
-	    NULL, NULL, NULL, PAGE_SIZE-1, UMA_ZONE_NOFREE);
+	ptpgzone = uma_zcreate("PT ENTRY", PAGE_SIZE, NULL, pmap_ptpgzone_dtor,
+	    NULL, NULL, PAGE_SIZE - 1, UMA_ZONE_NOFREE | UMA_ZONE_ZINIT);
 	uma_zone_set_allocf(ptpgzone, pmap_ptpgzone_allocf);
-#endif
 }
 
 /***************************************************
@@ -880,21 +872,10 @@ pmap_qremove(vm_offset_t va, int count)
 static int
 _pmap_unwire_pte_hold(pmap_t pmap, vm_page_t m)
 {
-	vm_offset_t pteva;
 
 	/*
 	 * unmap the page table page
 	 */
-	pteva = (vm_offset_t)pmap->pm_segtab[m->pindex];
-	if (pteva >= VM_MIN_KERNEL_ADDRESS) {
-		pmap_kremove(pteva);
-		kmem_free(kernel_map, pteva, PAGE_SIZE);
-	} else {
-		KASSERT(MIPS_IS_KSEG0_ADDR(pteva),
-		    ("_pmap_unwire_pte_hold: 0x%0lx is not in kseg0",
-		    (long)pteva));
-	}
-
 	pmap->pm_segtab[m->pindex] = 0;
 	--pmap->pm_stats.resident_count;
 
@@ -904,8 +885,12 @@ _pmap_unwire_pte_hold(pmap_t pmap, vm_page_t m)
 	/*
 	 * If the page is finally unwired, simply free it.
 	 */
-	pmap_release_pte_page(m);
 	atomic_subtract_int(&cnt.v_wire_count, 1);
+	PMAP_UNLOCK(pmap);
+	vm_page_unlock_queues();
+	pmap_release_pte_page(m);
+	vm_page_lock_queues();
+	PMAP_LOCK(pmap);
 	return (1);
 }
 
@@ -939,7 +924,7 @@ pmap_unuse_pt(pmap_t pmap, vm_offset_t va, vm_page_t mpte)
 			mpte = pmap->pm_ptphint;
 		} else {
 			pteva = *pmap_pde(pmap, va);
-			mpte = PHYS_TO_VM_PAGE(vtophys(pteva));
+			mpte = PHYS_TO_VM_PAGE(MIPS_KSEG0_TO_PHYS(pteva));
 			pmap->pm_ptphint = mpte;
 		}
 	}
@@ -964,18 +949,42 @@ pmap_pinit0(pmap_t pmap)
 	bzero(&pmap->pm_stats, sizeof pmap->pm_stats);
 }
 
-#ifdef HIGHMEM_SUPPORT
+static void
+pmap_ptpgzone_dtor(void *mem, int size, void *arg)
+{
+#ifdef INVARIANTS
+	static char zeropage[PAGE_SIZE];
+
+	KASSERT(size == PAGE_SIZE,
+		("pmap_ptpgzone_dtor: invalid size %d", size));
+	KASSERT(bcmp(mem, zeropage, PAGE_SIZE) == 0,
+		("pmap_ptpgzone_dtor: freeing a non-zeroed page"));
+#endif
+}
+
 static void *
 pmap_ptpgzone_allocf(uma_zone_t zone, int bytes, u_int8_t *flags, int wait)
 {
 	vm_page_t m;
 	vm_paddr_t paddr;
+	int tries;
+	
+	KASSERT(bytes == PAGE_SIZE,
+		("pmap_ptpgzone_allocf: invalid allocation size %d", bytes));
 
 	*flags = UMA_SLAB_PRIV;
+	tries = 0;
+retry:
 	m = vm_phys_alloc_contig(1, 0, MIPS_KSEG0_LARGEST_PHYS,
-	     PAGE_SIZE, PAGE_SIZE);
-	if (m == NULL)
-		return (NULL);
+	    PAGE_SIZE, PAGE_SIZE);
+	if (m == NULL) {
+                if (tries < ((wait & M_NOWAIT) != 0 ? 1 : 3)) {
+			vm_contig_grow_cache(tries, 0, MIPS_KSEG0_LARGEST_PHYS);
+			tries++;
+			goto retry;
+		} else
+			return (NULL);
+	}
 
 	paddr = VM_PAGE_TO_PHYS(m);
 	return ((void *)MIPS_PHYS_TO_KSEG0(paddr));
@@ -1006,11 +1015,14 @@ pmap_alloc_pte_page(pmap_t pmap, unsigned int index, int wait, vm_offset_t *vap)
 	paddr = MIPS_KSEG0_TO_PHYS(va);
 	m = PHYS_TO_VM_PAGE(paddr);
 	
-	if ((m->flags & PG_ZERO) == 0)
-		bzero(va, PAGE_SIZE);
+	if (!locked)
+		vm_page_lock_queues();
 	m->pindex = index;
 	m->valid = VM_PAGE_BITS_ALL;
 	m->wire_count = 1;
+	if (!locked)
+		vm_page_unlock_queues();
+
 	atomic_add_int(&cnt.v_wire_count, 1);
 	*vap = (vm_offset_t)va;
 	return (m);
@@ -1026,55 +1038,6 @@ pmap_release_pte_page(vm_page_t m)
 	va = (void *)MIPS_PHYS_TO_KSEG0(paddr);
 	uma_zfree(ptpgzone, va);
 }
-#else
-static vm_page_t
-pmap_alloc_pte_page(pmap_t pmap, unsigned int index, int wait, vm_offset_t *vap)
-{
-	vm_offset_t va;
-	vm_page_t m;
-	int locked, req;
-
-	locked = mtx_owned(&pmap->pm_mtx);
-	req = VM_ALLOC_WIRED | VM_ALLOC_NOOBJ;
-	if (wait & M_WAITOK)
-		req |= VM_ALLOC_NORMAL;
-	else
-		req |= VM_ALLOC_INTERRUPT;
-
-	m = vm_page_alloc(NULL, index, req);
-	if (m == NULL) {
-		if (wait & M_WAITOK) {
-			if (locked) {
-				mtx_assert(&vm_page_queue_mtx, MA_OWNED);
-				PMAP_UNLOCK(pmap);
-				vm_page_unlock_queues();
-			}
-			VM_WAIT;
-			if (locked) {
-				vm_page_lock_queues();
-				PMAP_LOCK(pmap);
-			}
-		}
-		return NULL;
-	}
-	
-	va = MIPS_PHYS_TO_KSEG0(VM_PAGE_TO_PHYS(m));
-	if ((m->flags & PG_ZERO) == 0)
-		bzero((void *)va, PAGE_SIZE);
-	else
-		vm_page_flag_clear(m, PG_ZERO);
-	
-	m->valid = VM_PAGE_BITS_ALL;
-	*vap = (vm_offset_t)va;
-	return (m);
-}
-
-static void
-pmap_release_pte_page(vm_page_t m)
-{
-	vm_page_free(m);
-}
-#endif
 
 /*
  * Initialize a preallocated and zeroed pmap structure,
@@ -1093,8 +1056,10 @@ pmap_pinit(pmap_t pmap)
 	 * allocate the page directory page
 	 */
 	ptdpg = pmap_alloc_pte_page(pmap, NUSERPGTBLS, M_WAITOK, &ptdva);
-	pmap->pm_segtab = (pd_entry_t *)ptdva;
+	if (ptdpg == NULL)
+		return (0);
 
+	pmap->pm_segtab = (pd_entry_t *)ptdva;
 	pmap->pm_active = 0;
 	pmap->pm_ptphint = NULL;
 	for (i = 0; i < MAXCPU; i++) {
@@ -1116,13 +1081,11 @@ _pmap_allocpte(pmap_t pmap, unsigned ptepindex, int flags)
 {
 	vm_offset_t pteva;
 	vm_page_t m;
-	int req;
 
 	KASSERT((flags & (M_NOWAIT | M_WAITOK)) == M_NOWAIT ||
 	    (flags & (M_NOWAIT | M_WAITOK)) == M_WAITOK,
 	    ("_pmap_allocpte: flags is neither M_NOWAIT nor M_WAITOK"));
 
-	req = VM_ALLOC_WIRED | VM_ALLOC_ZERO | VM_ALLOC_NOOBJ;
 	/*
 	 * Find or fabricate a new pagetable page
 	 */
@@ -1178,7 +1141,7 @@ retry:
 		    (pmap->pm_ptphint->pindex == ptepindex)) {
 			m = pmap->pm_ptphint;
 		} else {
-			m = PHYS_TO_VM_PAGE(vtophys(pteva));
+			m = PHYS_TO_VM_PAGE(MIPS_KSEG0_TO_PHYS(pteva));
 			pmap->pm_ptphint = m;
 		}
 		m->wire_count++;
@@ -1226,10 +1189,7 @@ pmap_release(pmap_t pmap)
 	    pmap->pm_stats.resident_count));
 
 	ptdva = (vm_offset_t)pmap->pm_segtab;
-	ptdpg = PHYS_TO_VM_PAGE(vtophys(ptdva));
-
-	KASSERT(MIPS_IS_KSEG0_ADDR(ptdva),
-	    ("pmap_release: 0x%0lx is not in kseg0", (long)ptdva));
+	ptdpg = PHYS_TO_VM_PAGE(MIPS_KSEG0_TO_PHYS(ptdva));
 
 	ptdpg->wire_count--;
 	atomic_subtract_int(&cnt.v_wire_count, 1);
@@ -1386,10 +1346,6 @@ retry:
 			TAILQ_REMOVE(&pmap->pm_pvlist, pv, pv_plist);
 			m->md.pv_list_count--;
 			TAILQ_REMOVE(&m->md.pv_list, pv, pv_list);
-			if (TAILQ_EMPTY(&m->md.pv_list)) {
-				vm_page_flag_clear(m, PG_WRITEABLE);
-				m->md.pv_flags &= ~(PV_TABLE_REF | PV_TABLE_MOD);
-			}
 			pmap_unuse_pt(pmap, va, pv->pv_ptem);
 			if (pmap != locked_pmap)
 				PMAP_UNLOCK(pmap);
@@ -1397,6 +1353,10 @@ retry:
 				allocated_pv = pv;
 			else
 				free_pv_entry(pv);
+		}
+		if (TAILQ_EMPTY(&m->md.pv_list)) {
+			vm_page_flag_clear(m, PG_WRITEABLE);
+			m->md.pv_flags &= ~(PV_TABLE_REF | PV_TABLE_MOD);
 		}
 	}
 	if (allocated_pv == NULL) {
@@ -1429,15 +1389,15 @@ retry:
  * the entry.  In either case we free the now unused entry.
  */
 
-static void
-pmap_remove_entry(struct pmap *pmap, vm_page_t m, vm_offset_t va)
+static pv_entry_t
+pmap_pvh_remove(struct md_page *pvh, pmap_t pmap, vm_offset_t va)
 {
 	pv_entry_t pv;
 
 	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
 	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
-	if (m->md.pv_list_count < pmap->pm_stats.resident_count) {
-		TAILQ_FOREACH(pv, &m->md.pv_list, pv_list) {
+	if (pvh->pv_list_count < pmap->pm_stats.resident_count) {
+		TAILQ_FOREACH(pv, &pvh->pv_list, pv_list) {
 			if (pmap == pv->pv_pmap && va == pv->pv_va)
 				break;
 		}
@@ -1447,39 +1407,34 @@ pmap_remove_entry(struct pmap *pmap, vm_page_t m, vm_offset_t va)
 				break;
 		}
 	}
-
-	KASSERT(pv != NULL, ("pmap_remove_entry: pv not found, pa %lx va %lx",
-	     (u_long)VM_PAGE_TO_PHYS(m), (u_long)va));
-	TAILQ_REMOVE(&m->md.pv_list, pv, pv_list);
-	m->md.pv_list_count--;
-	if (TAILQ_FIRST(&m->md.pv_list) == NULL)
-		vm_page_flag_clear(m, PG_WRITEABLE);
-
-	TAILQ_REMOVE(&pmap->pm_pvlist, pv, pv_plist);
-	free_pv_entry(pv);
+	if (pv != NULL) {
+		TAILQ_REMOVE(&pvh->pv_list, pv, pv_list);
+		pvh->pv_list_count--;
+		TAILQ_REMOVE(&pmap->pm_pvlist, pv, pv_plist);
+	}
+	return (pv);
 }
 
-/*
- * Create a pv entry for page at pa for
- * (pmap, va).
- */
 static void
-pmap_insert_entry(pmap_t pmap, vm_offset_t va, vm_page_t mpte, vm_page_t m,
-    boolean_t wired)
+pmap_pvh_free(struct md_page *pvh, pmap_t pmap, vm_offset_t va)
 {
 	pv_entry_t pv;
 
-	pv = get_pv_entry(pmap);
-	pv->pv_va = va;
-	pv->pv_pmap = pmap;
-	pv->pv_ptem = mpte;
-	pv->pv_wired = wired;
+	pv = pmap_pvh_remove(pvh, pmap, va);
+	KASSERT(pv != NULL, ("pmap_pvh_free: pv not found, pa %lx va %lx",
+	     (u_long)VM_PAGE_TO_PHYS(member2struct(vm_page, md, pvh)),
+	     (u_long)va));
+	free_pv_entry(pv);
+}
 
-	PMAP_LOCK_ASSERT(pmap, MA_OWNED);
+static void
+pmap_remove_entry(pmap_t pmap, vm_page_t m, vm_offset_t va)
+{
+
 	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
-	TAILQ_INSERT_TAIL(&pmap->pm_pvlist, pv, pv_plist);
-	TAILQ_INSERT_TAIL(&m->md.pv_list, pv, pv_list);
-	m->md.pv_list_count++;
+	pmap_pvh_free(&m->md, pmap, va);
+	if (TAILQ_EMPTY(&m->md.pv_list))
+		vm_page_flag_clear(m, PG_WRITEABLE);
 }
 
 /*
@@ -1784,6 +1739,7 @@ pmap_enter(pmap_t pmap, vm_offset_t va, vm_prot_t access, vm_page_t m,
 	vm_offset_t pa, opa;
 	register pt_entry_t *pte;
 	pt_entry_t origpte, newpte;
+	pv_entry_t pv;
 	vm_page_t mpte, om;
 	int rw = 0;
 
@@ -1850,15 +1806,14 @@ pmap_enter(pmap_t pmap, vm_offset_t va, vm_prot_t access, vm_page_t m,
 		if (mpte)
 			mpte->wire_count--;
 
-		/*
-		 * We might be turning off write access to the page, so we
-		 * go ahead and sense modify status.
-		 */
 		if (page_is_managed(opa)) {
 			om = m;
 		}
 		goto validate;
 	}
+
+	pv = NULL;
+
 	/*
 	 * Mapping has changed, invalidate old range and fall through to
 	 * handle validating new mapping.
@@ -1869,7 +1824,7 @@ pmap_enter(pmap_t pmap, vm_offset_t va, vm_prot_t access, vm_page_t m,
 
 		if (page_is_managed(opa)) {
 			om = PHYS_TO_VM_PAGE(opa);
-			pmap_remove_entry(pmap, om, va);
+			pv = pmap_pvh_remove(&om->md, pmap, va);
 		}
 		if (mpte != NULL) {
 			mpte->wire_count--;
@@ -1888,8 +1843,18 @@ pmap_enter(pmap_t pmap, vm_offset_t va, vm_prot_t access, vm_page_t m,
 	if ((m->flags & (PG_FICTITIOUS | PG_UNMANAGED)) == 0) {
 		KASSERT(va < kmi.clean_sva || va >= kmi.clean_eva,
 		    ("pmap_enter: managed mapping within the clean submap"));
-		pmap_insert_entry(pmap, va, mpte, m, wired);
-	}
+		if (pv == NULL)
+			pv = get_pv_entry(pmap);
+		pv->pv_va = va;
+		pv->pv_pmap = pmap;
+		pv->pv_ptem = mpte;
+		pv->pv_wired = wired;
+		TAILQ_INSERT_TAIL(&pmap->pm_pvlist, pv, pv_plist);
+		TAILQ_INSERT_TAIL(&m->md.pv_list, pv, pv_list);
+		m->md.pv_list_count++;
+	} else if (pv != NULL)
+		free_pv_entry(pv);
+
 	/*
 	 * Increment counters
 	 */
@@ -1941,6 +1906,9 @@ validate:
 				if (page_is_managed(opa))
 					vm_page_dirty(om);
 			}
+			if (page_is_managed(opa) &&
+			    TAILQ_EMPTY(&om->md.pv_list))
+				vm_page_flag_clear(om, PG_WRITEABLE);
 		} else {
 			*pte = newpte;
 		}
@@ -2023,7 +1991,8 @@ pmap_enter_quick_locked(pmap_t pmap, vm_offset_t va, vm_page_t m,
 				    (pmap->pm_ptphint->pindex == ptepindex)) {
 					mpte = pmap->pm_ptphint;
 				} else {
-					mpte = PHYS_TO_VM_PAGE(vtophys(pteva));
+					mpte = PHYS_TO_VM_PAGE(
+						MIPS_KSEG0_TO_PHYS(pteva));
 					pmap->pm_ptphint = mpte;
 				}
 				mpte->wire_count++;
@@ -2186,12 +2155,14 @@ pmap_enter_object(pmap_t pmap, vm_offset_t start, vm_offset_t end,
 	psize = atop(end - start);
 	mpte = NULL;
 	m = m_start;
+	vm_page_lock_queues();
 	PMAP_LOCK(pmap);
 	while (m != NULL && (diff = m->pindex - m_start->pindex) < psize) {
 		mpte = pmap_enter_quick_locked(pmap, start + ptoa(diff), m,
 		    prot, mpte);
 		m = TAILQ_NEXT(m, listq);
 	}
+	vm_page_unlock_queues();
  	PMAP_UNLOCK(pmap);
 }
 
@@ -2642,13 +2613,27 @@ pmap_ts_referenced(vm_page_t m)
 boolean_t
 pmap_is_modified(vm_page_t m)
 {
-	if (m->flags & PG_FICTITIOUS)
-		return FALSE;
+	boolean_t rv;
 
+	KASSERT((m->flags & (PG_FICTITIOUS | PG_UNMANAGED)) == 0,
+	    ("pmap_is_modified: page %p is not managed", m));
+
+	/*
+	 * If the page is not VPO_BUSY, then PG_WRITEABLE cannot be
+	 * concurrently set while the object is locked.  Thus, if PG_WRITEABLE
+	 * is clear, no PTEs can have PTE_M set.
+	 */
+	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
+	if ((m->oflags & VPO_BUSY) == 0 &&
+	    (m->flags & PG_WRITEABLE) == 0)
+		return (FALSE);
+	vm_page_lock_queues();
 	if (m->md.pv_flags & PV_TABLE_MOD)
-		return TRUE;
+		rv = TRUE;
 	else
-		return pmap_testbit(m, PTE_M);
+		rv = pmap_testbit(m, PTE_M);
+	vm_page_unlock_queues();
+	return (rv);
 }
 
 /* N/C */
@@ -2681,13 +2666,26 @@ pmap_is_prefaultable(pmap_t pmap, vm_offset_t addr)
 void
 pmap_clear_modify(vm_page_t m)
 {
-	if (m->flags & PG_FICTITIOUS)
+
+	KASSERT((m->flags & (PG_FICTITIOUS | PG_UNMANAGED)) == 0,
+	    ("pmap_clear_modify: page %p is not managed", m));
+	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
+	KASSERT((m->oflags & VPO_BUSY) == 0,
+	    ("pmap_clear_modify: page %p is busy", m));
+
+	/*
+	 * If the page is not PG_WRITEABLE, then no PTEs can have PTE_M set.
+	 * If the object containing the page is locked and the page is not
+	 * VPO_BUSY, then PG_WRITEABLE cannot be concurrently set.
+	 */
+	if ((m->flags & PG_WRITEABLE) == 0)
 		return;
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	vm_page_lock_queues();
 	if (m->md.pv_flags & PV_TABLE_MOD) {
 		pmap_changebit(m, PTE_M, FALSE);
 		m->md.pv_flags &= ~PV_TABLE_MOD;
 	}
+	vm_page_unlock_queues();
 }
 
 /*
@@ -2700,8 +2698,9 @@ boolean_t
 pmap_is_referenced(vm_page_t m)
 {
 
-	return ((m->flags & PG_FICTITIOUS) == 0 &&
-	    (m->md.pv_flags & PV_TABLE_REF) != 0);
+	KASSERT((m->flags & (PG_FICTITIOUS | PG_UNMANAGED)) == 0,
+	    ("pmap_is_referenced: page %p is not managed", m));
+	return ((m->md.pv_flags & PV_TABLE_REF) != 0);
 }
 
 /*
@@ -2712,13 +2711,14 @@ pmap_is_referenced(vm_page_t m)
 void
 pmap_clear_reference(vm_page_t m)
 {
-	if (m->flags & PG_FICTITIOUS)
-		return;
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	KASSERT((m->flags & (PG_FICTITIOUS | PG_UNMANAGED)) == 0,
+	    ("pmap_clear_reference: page %p is not managed", m));
+	vm_page_lock_queues();
 	if (m->md.pv_flags & PV_TABLE_REF) {
 		m->md.pv_flags &= ~PV_TABLE_REF;
 	}
+	vm_page_unlock_queues();
 }
 
 /*
@@ -2789,51 +2789,48 @@ pmap_unmapdev(vm_offset_t va, vm_size_t size)
  * perform the pmap work for mincore
  */
 int
-pmap_mincore(pmap_t pmap, vm_offset_t addr)
+pmap_mincore(pmap_t pmap, vm_offset_t addr, vm_paddr_t *locked_pa)
 {
-
 	pt_entry_t *ptep, pte;
+	vm_offset_t pa;
 	vm_page_t m;
-	int val = 0;
+	int val;
+	boolean_t managed;
 
 	PMAP_LOCK(pmap);
+retry:
 	ptep = pmap_pte(pmap, addr);
 	pte = (ptep != NULL) ? *ptep : 0;
-	PMAP_UNLOCK(pmap);
-
-	if (mips_pg_v(pte)) {
-		vm_offset_t pa;
-
-		val = MINCORE_INCORE;
-		pa = mips_tlbpfn_to_paddr(pte);
-		if (!page_is_managed(pa))
-			return val;
-
-		m = PHYS_TO_VM_PAGE(pa);
-
-		/*
-		 * Modified by us
-		 */
-		if (pte & PTE_M)
-			val |= MINCORE_MODIFIED | MINCORE_MODIFIED_OTHER;
-		/*
-		 * Modified by someone
-		 */
-		else {
-			vm_page_lock_queues();
-			if (m->dirty || pmap_is_modified(m))
-				val |= MINCORE_MODIFIED_OTHER;
-			vm_page_unlock_queues();
-		}
-		/*
-		 * Referenced by us or someone
-		 */
-		vm_page_lock_queues();
-		if ((m->flags & PG_REFERENCED) || pmap_is_referenced(m))
-			val |= MINCORE_REFERENCED | MINCORE_REFERENCED_OTHER;
-		vm_page_unlock_queues();
+	if (!mips_pg_v(pte)) {
+		val = 0;
+		goto out;
 	}
-	return val;
+	val = MINCORE_INCORE;
+	if ((pte & PTE_M) != 0)
+		val |= MINCORE_MODIFIED | MINCORE_MODIFIED_OTHER;
+	pa = mips_tlbpfn_to_paddr(pte);
+	managed = page_is_managed(pa);
+	if (managed) {
+		/*
+		 * This may falsely report the given address as
+		 * MINCORE_REFERENCED.  Unfortunately, due to the lack of
+		 * per-PTE reference information, it is impossible to
+		 * determine if the address is MINCORE_REFERENCED.  
+		 */
+		m = PHYS_TO_VM_PAGE(pa);
+		if ((m->flags & PG_REFERENCED) != 0)
+			val |= MINCORE_REFERENCED | MINCORE_REFERENCED_OTHER;
+	}
+	if ((val & (MINCORE_MODIFIED_OTHER | MINCORE_REFERENCED_OTHER)) !=
+	    (MINCORE_MODIFIED_OTHER | MINCORE_REFERENCED_OTHER) && managed) {
+		/* Ensure that "PHYS_TO_VM_PAGE(pa)->object" doesn't change. */
+		if (vm_page_pa_tryrelock(pmap, pa, locked_pa))
+			goto retry;
+	} else
+out:
+		PA_UNLOCK_COND(*locked_pa);
+	PMAP_UNLOCK(pmap);
+	return (val);
 }
 
 void

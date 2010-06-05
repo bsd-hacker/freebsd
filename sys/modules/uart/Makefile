@@ -18,7 +18,7 @@ SRCS=	uart_bus_acpi.c ${uart_bus_ebus} uart_bus_isa.c uart_bus_pccard.c \
 SRCS+=	uart_cpu_sparc64.c
 .elif ${MACHINE} == "powerpc64"
 SRCS+=	uart_cpu_powerpc.c
-.elif exists(${CURDIR}/uart_cpu_${MACHINE}.c)
+.elif exists(${.CURDIR}/../../dev/uart/uart_cpu_${MACHINE}.c)
 SRCS+=	uart_cpu_${MACHINE}.c
 .endif
 SRCS+=	bus_if.h card_if.h device_if.h isa_if.h ${ofw_bus_if} pci_if.h \

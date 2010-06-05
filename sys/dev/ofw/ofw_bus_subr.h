@@ -70,4 +70,8 @@ int	ofw_bus_search_intrmap(void *, int, void *, int, void *, int, void *,
 /* Helper to get node's interrupt parent */
 void	ofw_bus_find_iparent(phandle_t);
 
+/* Helper routine for checking compat prop */
+int ofw_bus_is_compatible(device_t, const char *);
+int ofw_bus_is_compatible_strict(device_t, const char *);
+
 #endif /* !_DEV_OFW_OFW_BUS_SUBR_H_ */
