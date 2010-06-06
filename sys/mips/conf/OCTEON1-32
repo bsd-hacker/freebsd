@@ -66,7 +66,6 @@ options		INVARIANT_SUPPORT	#Extra sanity checks of internal structures, required
 #options		WITNESS			#Enable checks to detect deadlocks and cycles
 #options		WITNESS_SKIPSPIN	#Don't run witness on spinlocks for speed
 
-device          miibus          # MII bus support
 #XXXimp device		genclock
 device		loop
 device		ether
@@ -106,8 +105,37 @@ device		ataraid		# ATA RAID drives
 device		atapicd		# ATAPI CDROM drives
 options 	ATA_STATIC_ID	# Static device numbering
 
-# PCI Ethernet
-device		re
+# PCI Ethernet NICs that use the common MII bus controller code.
+# NOTE: Be sure to keep the 'device miibus' line in order to use these NICs!
+device		miibus		# MII bus support
+device		ae		# Attansic/Atheros L2 FastEthernet
+device		age		# Attansic/Atheros L1 Gigabit Ethernet
+device		alc		# Atheros AR8131/AR8132 Ethernet
+device		ale		# Atheros AR8121/AR8113/AR8114 Ethernet
+device		bce		# Broadcom BCM5706/BCM5708 Gigabit Ethernet
+device		bfe		# Broadcom BCM440x 10/100 Ethernet
+device		bge		# Broadcom BCM570xx Gigabit Ethernet
+device		dc		# DEC/Intel 21143 and various workalikes
+device		et		# Agere ET1310 10/100/Gigabit Ethernet
+device		fxp		# Intel EtherExpress PRO/100B (82557, 82558)
+device		jme		# JMicron JMC250 Gigabit/JMC260 Fast Ethernet
+device		lge		# Level 1 LXT1001 gigabit Ethernet
+device		msk		# Marvell/SysKonnect Yukon II Gigabit Ethernet
+device		nge		# NatSemi DP83820 gigabit Ethernet
+device		re		# RealTek 8139C+/8169/8169S/8110S
+device		rl		# RealTek 8129/8139
+device		sf		# Adaptec AIC-6915 (``Starfire'')
+device		sge		# Silicon Integrated Systems SiS190/191
+device		sis		# Silicon Integrated Systems SiS 900/SiS 7016
+device		sk		# SysKonnect SK-984x & SK-982x gigabit Ethernet
+device		ste		# Sundance ST201 (D-Link DFE-550TX)
+device		stge		# Sundance/Tamarack TC9021 gigabit Ethernet
+device		tl		# Texas Instruments ThunderLAN
+device		tx		# SMC EtherPower II (83c170 ``EPIC'')
+device		vge		# VIA VT612x gigabit Ethernet
+device		vr		# VIA Rhine, Rhine II
+device		wb		# Winbond W89C840F
+device		xl		# 3Com 3c90x (``Boomerang'', ``Cyclone'')
 
 #
 # Use the following for  Compact Flash file-system
