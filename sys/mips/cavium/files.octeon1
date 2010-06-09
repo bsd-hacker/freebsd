@@ -4,9 +4,11 @@
 mips/cavium/asm_octeon.S			optional smp
 mips/cavium/ciu.c				standard
 mips/cavium/obio.c				optional uart
+mips/cavium/octeon_ds1337.c			standard
 mips/cavium/octeon_ebt3000_cf.c			optional cf
 mips/cavium/octeon_machdep.c			standard
 mips/cavium/octeon_mp.c				optional smp
+mips/cavium/octeon_rtc.c			standard
 mips/cavium/uart_bus_octeonusart.c		optional uart
 mips/cavium/uart_cpu_octeonusart.c		optional uart
 mips/cavium/uart_dev_oct16550.c			optional uart
@@ -47,7 +49,10 @@ contrib/octeon-sdk/cvmx-spi.c			optional octe
 contrib/octeon-sdk/cvmx-spi4000.c		optional octe
 contrib/octeon-sdk/cvmx-twsi.c			optional octe
 
+# XXX Some files could be excluded in some configurations.  Making them
+#     optional but on in the default config would seem reasonable.
 contrib/octeon-sdk/cvmx-bootmem.c		standard
 contrib/octeon-sdk/cvmx-sysinfo.c		standard
+contrib/octeon-sdk/cvmx-thunder.c		standard
 contrib/octeon-sdk/cvmx-warn.c			standard
 contrib/octeon-sdk/octeon-model.c		standard

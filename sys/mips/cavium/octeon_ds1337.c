@@ -50,25 +50,16 @@
  *
  */
 
-#include <time.h>
-#include "cvmx-config.h"
-#include "cvmx.h"
-#include "cvmx-sysinfo.h"
-#include "cvmx-cn3010-evb-hs5.h"
-#include "cvmx-twsi.h"
+#include <sys/param.h>
+#include <sys/timespec.h>
+#include <sys/clock.h>
+#include <sys/libkern.h>
 
+#include <contrib/octeon-sdk/cvmx.h>
+#include <contrib/octeon-sdk/cvmx-cn3010-evb-hs5.h>
+#include <contrib/octeon-sdk/cvmx-twsi.h>
 
-static inline uint8_t bin2bcd(uint8_t bin)
-{
-    return (bin / 10) << 4 | (bin % 10);
-}
-
-static inline uint8_t bcd2bin(uint8_t bcd)
-{
-    return (bcd >> 4) * 10 + (bcd & 0xf);
-}
-
-#define TM_CHECK(_expr, _msg) \
+#define CT_CHECK(_expr, _msg) \
         do { \
             if (_expr) { \
                 cvmx_dprintf("Warning: RTC has invalid %s field\n", (_msg)); \
@@ -76,20 +67,20 @@ static inline uint8_t bcd2bin(uint8_t bcd)
             } \
         } while(0);
 
-static int validate_tm_struct(struct tm * tms)
+static int validate_ct_struct(struct clocktime *ct)
 {
     int rc = 0;
 
-    if (!tms)
+    if (!ct)
 	return -1;
 
-    TM_CHECK(tms->tm_sec < 0  || tms->tm_sec > 60,  "second"); /* + Leap sec */
-    TM_CHECK(tms->tm_min < 0  || tms->tm_min > 59,  "minute");
-    TM_CHECK(tms->tm_hour < 0 || tms->tm_hour > 23, "hour");
-    TM_CHECK(tms->tm_mday < 1 || tms->tm_mday > 31, "day");
-    TM_CHECK(tms->tm_wday < 0 || tms->tm_wday > 6,  "day of week");
-    TM_CHECK(tms->tm_mon < 0  || tms->tm_mon > 11,  "month");
-    TM_CHECK(tms->tm_year < 0 || tms->tm_year > 200,"year");
+    CT_CHECK(ct->sec < 0  || ct->sec > 60,  "second"); /* + Leap sec */
+    CT_CHECK(ct->min < 0  || ct->min > 59,  "minute");
+    CT_CHECK(ct->hour < 0 || ct->hour > 23, "hour");
+    CT_CHECK(ct->day < 1 || ct->day > 31, "day");
+    CT_CHECK(ct->dow < 0 || ct->dow > 6,  "day of week");
+    CT_CHECK(ct->mon < 0  || ct->mon > 11,  "month");
+    CT_CHECK(ct->year < 0 || ct->year > 200,"year");
 
     return rc;
 }
@@ -102,14 +93,14 @@ static int validate_tm_struct(struct tm * tms)
 uint32_t cvmx_rtc_ds1337_read(void)
 {
     int       i, retry;
-    uint32_t  time;
     uint8_t   reg[8];
     uint8_t   sec;
-    struct tm tms;
+    struct clocktime ct;
+    struct timespec ts;
 
 
     memset(&reg, 0, sizeof(reg));
-    memset(&tms, 0, sizeof(struct tm));
+    memset(&ct, 0, sizeof(ct));
 
     for(retry=0; retry<2; retry++)
     {
@@ -123,25 +114,28 @@ uint32_t cvmx_rtc_ds1337_read(void)
 	    break; /* Time did not roll-over, value is correct */
     }
 
-    tms.tm_sec  = bcd2bin(reg[0] & 0x7f);
-    tms.tm_min  = bcd2bin(reg[1] & 0x7f);
-    tms.tm_hour = bcd2bin(reg[2] & 0x3f);
+    ct.sec  = bcd2bin(reg[0] & 0x7f);
+    ct.min  = bcd2bin(reg[1] & 0x7f);
+    ct.hour = bcd2bin(reg[2] & 0x3f);
     if ((reg[2] & 0x40) && (reg[2] & 0x20))   /* AM/PM format and is PM time */
     {
-	tms.tm_hour = (tms.tm_hour + 12) % 24;
+	ct.hour = (ct.hour + 12) % 24;
     }
-    tms.tm_wday = (reg[3] & 0x7) - 1;         /* Day of week field is 0..6 */
-    tms.tm_mday = bcd2bin(reg[4] & 0x3f);
-    tms.tm_mon  = bcd2bin(reg[5] & 0x1f) - 1; /* Month field is 0..11 */
-    tms.tm_year = ((reg[5] & 0x80) ? 100 : 0) + bcd2bin(reg[6]);
+    ct.dow = (reg[3] & 0x7) - 1;         /* Day of week field is 0..6 */
+    ct.day = bcd2bin(reg[4] & 0x3f);
+    ct.mon  = bcd2bin(reg[5] & 0x1f) - 1; /* Month field is 0..11 */
+    ct.year = ((reg[5] & 0x80) ? 100 : 0) + bcd2bin(reg[6]);
 
 
-    if (validate_tm_struct(&tms))
+    if (validate_ct_struct(&ct))
 	cvmx_dprintf("Warning: RTC calendar is not configured properly\n");
 
-    time = mktime(&tms);
+    if (clock_ct_to_ts(&ct, &ts) != 0) {
+	cvmx_dprintf("Warning: RTC calendar is not configured properly\n");
+        return 0;
+    }
 
-    return time;
+    return ts.tv_sec;
 }
 
 /*
@@ -150,32 +144,34 @@ uint32_t cvmx_rtc_ds1337_read(void)
  */
 int cvmx_rtc_ds1337_write(uint32_t time)
 {
+    struct clocktime ct;
+    struct timespec ts;
     int       i, rc, retry;
-    struct tm tms;
     uint8_t   reg[8];
     uint8_t   sec;
-    time_t    time_from_epoch = time;
 
+    ts.tv_sec = time;
+    ts.tv_nsec = 0;
 
-    localtime_r(&time_from_epoch, &tms);
+    clock_ts_to_ct(&ts, &ct);
 
-    if (validate_tm_struct(&tms))
+    if (validate_ct_struct(&ct))
     {
 	cvmx_dprintf("Error: RTC was passed wrong calendar values, write failed\n");
-	goto tm_invalid;
+	goto ct_invalid;
     }
 
-    reg[0] = bin2bcd(tms.tm_sec);
-    reg[1] = bin2bcd(tms.tm_min);
-    reg[2] = bin2bcd(tms.tm_hour);      /* Force 0..23 format even if using AM/PM */
-    reg[3] = bin2bcd(tms.tm_wday + 1);
-    reg[4] = bin2bcd(tms.tm_mday);
-    reg[5] = bin2bcd(tms.tm_mon + 1);
-    if (tms.tm_year >= 100)             /* Set century bit*/
+    reg[0] = bin2bcd(ct.sec);
+    reg[1] = bin2bcd(ct.min);
+    reg[2] = bin2bcd(ct.hour);      /* Force 0..23 format even if using AM/PM */
+    reg[3] = bin2bcd(ct.dow + 1);
+    reg[4] = bin2bcd(ct.day);
+    reg[5] = bin2bcd(ct.mon + 1);
+    if (ct.year >= 100)             /* Set century bit*/
     {
 	reg[5] |= 0x80;
     }
-    reg[6] = bin2bcd(tms.tm_year % 100);
+    reg[6] = bin2bcd(ct.year % 100);
 
     /* Lockless write: detects the infrequent roll-over and retries */
     for(retry=0; retry<2; retry++)
@@ -193,7 +189,7 @@ int cvmx_rtc_ds1337_write(uint32_t time)
 
     return (rc ? -1 : 0);
 
- tm_invalid:
+ ct_invalid:
     return -1;
 }
 

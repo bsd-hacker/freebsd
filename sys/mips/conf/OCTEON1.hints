@@ -3,6 +3,7 @@
 # All these values are complete nonsense...
 hw.uart.console="io:0x1"
 hint.ciu.0.at="nexus"
+hint.rtc.0.at="nexus"
 hint.obio.0.at="ciu"
 hint.obio.0.maddr="0x1"
 hint.obio.0.msize="0x1"
