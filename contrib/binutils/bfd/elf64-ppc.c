@@ -6033,6 +6033,10 @@ ppc64_elf_size_dynamic_sections (bfd *output_bfd ATTRIBUTE_UNUSED,
 
   for (ibfd = info->input_bfds; ibfd != NULL; ibfd = ibfd->link_next)
     {
+      /* Skip this BFD if it is not ELF */
+      if (bfd_get_flavour (ibfd) != bfd_target_elf_flavour)
+	continue;
+
       s = ppc64_elf_tdata (ibfd)->got;
       if (s != NULL && s != htab->got)
 	{
@@ -9000,6 +9004,10 @@ ppc64_elf_finish_dynamic_sections (bfd *output_bfd,
   while ((dynobj = dynobj->link_next) != NULL)
     {
       asection *s;
+
+      if (bfd_get_flavour (dynobj) != bfd_target_elf_flavour)
+	continue;
+
       s = ppc64_elf_tdata (dynobj)->got;
       if (s != NULL
 	  && s->_raw_size != 0
