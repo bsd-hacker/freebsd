@@ -1898,7 +1898,7 @@ sctp_timeout_handler(void *t)
 		SCTP_INP_DECR_REF(inp);
 		sctp_timer_stop(SCTP_TIMER_TYPE_INPKILL, inp, NULL, NULL, SCTP_FROM_SCTPUTIL + SCTP_LOC_3);
 		sctp_inpcb_free(inp, SCTP_FREE_SHOULD_USE_ABORT,
-		    SCTP_CALLED_DIRECTLY_NOCMPSET);
+		    SCTP_CALLED_FROM_INPKILL_TIMER);
 		inp = NULL;
 		goto out_no_decr;
 	default:
@@ -3823,13 +3823,6 @@ sctp_abort_association(struct sctp_inpcb *inp, struct sctp_tcb *stcb,
 #if defined (__APPLE__) || defined(SCTP_SO_LOCK_TESTING)
 		SCTP_SOCKET_UNLOCK(so, 1);
 #endif
-	} else {
-		if (inp->sctp_flags & SCTP_PCB_FLAGS_SOCKET_GONE) {
-			if (LIST_FIRST(&inp->sctp_asoc_list) == NULL) {
-				sctp_inpcb_free(inp, SCTP_FREE_SHOULD_USE_ABORT,
-				    SCTP_CALLED_DIRECTLY_NOCMPSET);
-			}
-		}
 	}
 }
 
