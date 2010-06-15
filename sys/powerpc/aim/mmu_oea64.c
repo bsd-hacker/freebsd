@@ -1024,6 +1024,8 @@ moea64_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernelend)
 
 	while (moea64_pteg_count < physmem)
 		moea64_pteg_count <<= 1;
+
+	moea64_pteg_count >>= 1;
 #endif /* PTEGCOUNT */
 
 	size = moea64_pteg_count * sizeof(struct lpteg);
@@ -2625,6 +2627,8 @@ moea64_pvo_to_pte(const struct pvo_entry *pvo, int pteidx)
 {
 	struct lpte *pt;
 
+	ASSERT_TABLE_LOCK();
+
 	/*
 	 * If we haven't been supplied the ptegidx, calculate it.
 	 */
@@ -2651,6 +2655,10 @@ moea64_pvo_to_pte(const struct pvo_entry *pvo, int pteidx)
 		panic("moea64_pvo_to_pte: pvo %p has valid pte index in pvo "
 		    "pvo but no valid pte", pvo);
 	}
+
+	/* If the PTEG index is not set, then there is no page table entry */
+	if (!PVO_PTEGIDX_ISSET(pvo))
+		return (NULL);
 
 	if ((pt->pte_hi ^ (pvo->pvo_pte.lpte.pte_hi & ~LPTE_VALID)) == 
 	    LPTE_VALID) {
@@ -2679,10 +2687,47 @@ moea64_pvo_to_pte(const struct pvo_entry *pvo, int pteidx)
 	return (NULL);
 }
 
+static __inline int
+moea64_pte_spillable_ident(u_int ptegidx)
+{
+	struct	lpte *pt;
+	int	i, j, k;
+
+	/* Start at a random slot */
+	i = mftb() % 8;
+	k = -1;
+	for (j = 0; j < 8; j++) {
+		pt = &moea64_pteg_table[ptegidx].pt[(i + j) % 8];
+		if (pt->pte_hi & LPTE_LOCKED)
+			continue;
+
+		/* Don't spill kernel mappings */
+		#ifdef __powerpc64__
+		if ((pt->pte_hi >> LPTE_VSID_SHIFT) & KERNEL_VSID_BIT)
+			continue;
+		#else
+		if (((pt->pte_hi >> LPTE_VSID_SHIFT) & EMPTY_SEGMENT) ==
+		    EMPTY_SEGMENT)
+			continue;
+		#endif
+
+		/* This is a candidate, so remember it */
+		k = (i + j) % 8;
+
+		/* Try to get a page that has not been used lately */
+		if (!(pt->pte_lo & LPTE_REF))
+			return (k);
+	}
+	
+	return (k);
+}
+
 static int
 moea64_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
 {
 	struct	lpte *pt;
+	struct	pvo_entry *pvo;
+	u_int	pteg_bktidx;
 	int	i;
 
 	ASSERT_TABLE_LOCK();
@@ -2690,6 +2735,7 @@ moea64_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
 	/*
 	 * First try primary hash.
 	 */
+	pteg_bktidx = ptegidx;
 	for (pt = moea64_pteg_table[ptegidx].pt, i = 0; i < 8; i++, pt++) {
 		if ((pt->pte_hi & LPTE_VALID) == 0 &&
 		    (pt->pte_hi & LPTE_LOCKED) == 0) {
@@ -2702,7 +2748,7 @@ moea64_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
 	/*
 	 * Now try secondary hash.
 	 */
-	ptegidx ^= moea64_pteg_mask;
+	pteg_bktidx ^= moea64_pteg_mask;
 
 	for (pt = moea64_pteg_table[ptegidx].pt, i = 0; i < 8; i++, pt++) {
 		if ((pt->pte_hi & LPTE_VALID) == 0 &&
@@ -2713,8 +2759,50 @@ moea64_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
 		}
 	}
 
-	panic("moea64_pte_insert: overflow");
-	return (-1);
+	/*
+	 * Out of luck. Find a PTE to sacrifice.
+	 */
+	pteg_bktidx = ptegidx;
+	i = moea64_pte_spillable_ident(pteg_bktidx);
+	if (i < 0) {
+		pteg_bktidx ^= moea64_pteg_mask;
+		i = moea64_pte_spillable_ident(pteg_bktidx);
+	}
+
+	if (i < 0) {
+		/* No freeable slots in either PTEG? We're hosed. */
+		panic("moea64_pte_insert: overflow");
+		return (-1);
+	}
+
+	/*
+	 * Synchronize the sacrifice PTE with its PVO, then mark both
+	 * invalid. The PVO will be reused when/if the VM system comes
+	 * here after a fault.
+	 */
+	pt = &moea64_pteg_table[pteg_bktidx].pt[i];
+
+	if (pt->pte_hi & LPTE_HID)
+		pvo_pt->pte_hi |= LPTE_HID;
+
+	LIST_FOREACH(pvo, &moea64_pvo_table[ptegidx], pvo_olink) {
+		if (pvo->pvo_pte.lpte.pte_hi == pt->pte_hi) {
+			moea64_pte_unset(pt, &pvo->pvo_pte.lpte, pvo->pvo_vpn);
+			PVO_PTEGIDX_CLR(pvo);
+			moea64_pte_overflow++;
+			break;
+		}
+	}
+
+	KASSERT(pvo->pvo_pte.lpte.pte_hi == pt->pte_hi,
+	   ("Unable to find PVO for spilled PTE"));
+
+	/*
+	 * Set the new PTE.
+	 */
+	moea64_pte_set(pt, pvo_pt);
+
+	return (i);
 }
 
 static boolean_t
