@@ -1247,7 +1247,7 @@ cpususpend_handler(void)
 
 	rf = intr_disable();
 	cr3 = rcr3();
-	stopfpu = stopxpcbs[cpu]->xpcb_pcb.pcb_save;
+	stopfpu = &stopxpcbs[cpu]->xpcb_pcb.pcb_user_save;
 	if (savectx2(stopxpcbs[cpu])) {
 		fpugetregs(curthread, stopfpu);
 		wbinvd();
@@ -1264,6 +1264,7 @@ cpususpend_handler(void)
 
 	/* Restore CR3 and enable interrupts */
 	load_cr3(cr3);
+	mca_resume();
 	lapic_setup(0);
 	intr_restore(rf);
 }
