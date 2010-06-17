@@ -55,7 +55,8 @@ static int
 de_fslist_add(struct de_fslist *fslist, enum de_fstype type,
     const char *parttype, const char *partname, const char *devname,
     const char *scheme, const char *mntfrom, const char *mntto,
-    const char *mounted, const char *mntops, off_t size, void *priv)
+    const char *mounted, const char *mntops, off_t size,
+    int freq, int pass, void *priv)
 {
 	struct de_fs *fs;
 
@@ -81,6 +82,8 @@ de_fslist_add(struct de_fslist *fslist, enum de_fstype type,
 		fs->de_mntops = strdup(mntops);
 	fs->de_size = size;
 	fs->de_type = type;
+	fs->de_freq = freq;
+	fs->de_pass = pass;
 	fs->de_private = priv;
 	TAILQ_INSERT_TAIL(fslist, fs, de_fs);
 	return (0);
@@ -267,7 +270,7 @@ de_fslist_get(struct de_fslist *fslist)
 	struct statfs *psfs, *pmsfs;
 	enum de_fstype type;
 	char *mounted, *mntto, *mntops, *mntfrom, **labels;
-	int error, mntcnt;
+	int error, mntcnt, pass, freq;
 	void *priv;
 
 	assert(fslist != NULL);
@@ -286,6 +289,7 @@ de_fslist_get(struct de_fslist *fslist)
 			/* skip empty chunks */
 			if (ppart->de_type == NULL)
 				continue;
+			pass = freq = 0;
 			priv = mounted = mntops = mntto = mntfrom = NULL;
 			if (strcmp(ppart->de_type, "freebsd-swap") == 0) {
 				type = SWAP;
@@ -303,6 +307,8 @@ de_fslist_get(struct de_fslist *fslist)
 					mntto = pfstab->fs_file;
 					mntops = pfstab->fs_mntops;
 					mntfrom = pfstab->fs_spec;
+					freq = pfstab->fs_freq;
+					pass = pfstab->fs_passno;
 				}
 				if (type == UFS) {
 					pmsfs = de_mntinfo_get(psfs, mntcnt, labels);
@@ -314,7 +320,8 @@ de_fslist_get(struct de_fslist *fslist)
 			error = de_fslist_add(fslist, type, ppart->de_type,
 			    ppart->de_name, pdev->de_name, pdev->de_scheme,
 			    mntfrom, mntto, mounted, mntops, (1 + ppart->de_end -
-				ppart->de_start) * pdev->de_sectorsize, priv);
+				ppart->de_start) * pdev->de_sectorsize,
+			    freq, pass, priv);
 			if (error)
 				break;
 		}

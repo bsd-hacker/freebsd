@@ -45,6 +45,7 @@ __FBSDID("$FreeBSD$");
 #include <sade.h>
 #include <libsade.h>
 #include "customdlg.h"
+#include "mntopts.h"
 
 
 static char *ask_recreate_msg =
@@ -290,11 +291,26 @@ fsed_ufs_create(struct de_fs *pfs)
 	return (0);
 }
 
-#define MNT_OPS_CNT	9
-static char *mnt_ops[MNT_OPS_CNT] = {
-	"noauto", "read only", "async",
-	"noatime", "multilabel", "acls",
-	"nfsv4acl", "noexec", "nosuid"
+#define	MNT_OPS_CNT	10
+static struct opt {
+	int		o_opt;
+	const char*	o_name;
+} mntopt_names[MNT_OPS_CNT] = {
+	{ MNT_RDONLY,		"read-only" },
+	{ MNT_ASYNC,		"async" },
+	{ MNT_NOATIME,		"noatime" },
+	{ MNT_NOEXEC,		"noexec" },
+	{ MNT_SUIDDIR,		"suiddir" },
+	{ MNT_NOSUID,		"nosuid" },
+	{ MNT_MULTILABEL,	"multilabel" },
+	{ MNT_ACLS,		"acls" },
+	{ MNT_NFS4ACLS,		"nfsv4acls" },
+	{ 0,			"noauto"}
+};
+
+static struct mntopt mopts[] = {
+	MOPT_STDOPTS,
+	MOPT_END
 };
 
 static int
@@ -309,8 +325,9 @@ fsed_ufs_mountops(struct de_fs *pfs)
 	DLG_EDIT *eMnt, *eDumpFreq, *ePassno;
 	DLG_LIST *lMenu;
 	WINDOW *win;
+	char title_buf[100], label_buf[100], buf[32];
 	char **labels;
-	char title_buf[100], label_buf[100];
+	int mntflags;
 //	char newfs_cmd[255], tunefs_cmd[255];
 	int q, h, w, ret, cnt, i;
 
@@ -323,10 +340,12 @@ fsed_ufs_mountops(struct de_fs *pfs)
 	dlg_add_label(&dlg, 1, 2, 64, 2, title_buf);
 	eMnt = dlg_add_edit(&dlg, 3, 2, 30, "Mountpoint:",
 	    MAXVOLLEN, pfs->de_mntto);
+	snprintf(buf, sizeof(buf), "%d", pfs->de_freq);
 	eDumpFreq = dlg_add_edit(&dlg, 3, 34, 13, "Dump Freq:",
-	    10, "0");
+	    10, buf);
+	snprintf(buf, sizeof(buf), "%d", pfs->de_pass);
 	ePassno = dlg_add_edit(&dlg, 3, 49, 15, "Passno:",
-	    10, "0");
+	    10, buf);
 
 	labels = de_dev_aliases_get(pfs->de_partname);
 	assert(labels != NULL);
@@ -357,11 +376,22 @@ fsed_ufs_mountops(struct de_fs *pfs)
 		snprintf(label_buf, sizeof(label_buf), "%s%s", _PATH_DEV,
 		    pfs->de_partname);
 	lLabel = dlg_add_label(&dlg, 7, 18, 48, 1, label_buf);
-	assert(MNT_OPS_CNT >= 3);
-	for (h = 0, i = 0; MNT_OPS_CNT - i > 0; i++) {
-		cOps[0] = dlg_add_checkbox(&dlg, 8 + i % (MNT_OPS_CNT / 3),
-		    2 + 16 * (i / 3), 14, 1, 0, mnt_ops[i]);
+
+	mntflags = 0;
+	if (pfs->de_mntops != NULL)
+		getmntopts(pfs->de_mntops, mopts, &mntflags, 0);
+	for (i = 0; i < MNT_OPS_CNT - 1; i++) {
+		cOps[i] = dlg_add_checkbox(&dlg, 8 + i % (MNT_OPS_CNT / 3),
+				2 + 16 * (i / 3), 14, 1,
+				(mntflags & mntopt_names[i].o_opt) != 0,
+				mntopt_names[i].o_name);
 	}
+	cOps[i] = dlg_add_checkbox(&dlg, 8 + i % (MNT_OPS_CNT / 3),
+			2 + 16 * (i / 3), 14, 1,
+			(pfs->de_mntops != NULL) ?  strstr(pfs->de_mntops,
+			    mntopt_names[i].o_name) != NULL: 0,
+			mntopt_names[i].o_name);
+
 	btnOk = dlg_add_button(&dlg, 12, 24, "  Ok  ");
 	btnCancel = dlg_add_button(&dlg, 12, 36, "Cancel");
 	use_helpline("Press F1 for help");
@@ -406,9 +436,11 @@ fsed_ufs_mountops(struct de_fs *pfs)
 					    cnt - 1, (const char **)&labels[1]);
 					ret = dlg_popupmenu_proc(&popup, NULL);
 					if (ret == DE_CR) {
-						snprintf(label_buf, sizeof(label_buf),
+						snprintf(label_buf,
+						    sizeof(label_buf),
 						    "%s%s", _PATH_DEV,
-						    dlg_popupmenu_get_choice(&popup));
+						    dlg_popupmenu_get_choice(
+							&popup));
 						dlg_item_set_title(&dlg, lLabel,
 						    label_buf);
 					} else
@@ -494,6 +526,7 @@ fsed_open(void)
 		    "Create partitions and try again.");
 		return (0);
 	}
+	getmnt_silent = 1;	/* make getmntopts() silent */
 	hist = history_init();
 	win = savescr();
 	keypad(stdscr, TRUE);
@@ -535,12 +568,12 @@ resize:
 				selected = pfs;
 			}
 			if (view_mode)
-				mvprintw(row, 0, "%20s%30s%9s%15s%3s%3s",
+				mvprintw(row, 0, "%20s%30s%9s%15s%3d%3d",
 				    LABEL(pfs->de_mntfrom),
 				    LABEL(pfs->de_mntto),
 				    de_fstypestr(pfs->de_type),
 				    LABEL(pfs->de_mntops),
-				    "0", "0");
+				    pfs->de_freq, pfs->de_pass);
 			else
 				mvprintw(row, 0, "%12s%20s%9s%6s%33s",
 				    LABEL(pfs->de_partname),

@@ -89,6 +89,8 @@ struct de_fs {
 	char			*de_mounted;	/* where it is mounted now */
 	char			*de_mntops;	/* mount options */
 	off_t			de_size;	/* file system size */
+	int			de_freq;	/* dump frequency */
+	int			de_pass;	/* pass number on parallel fsck */
 
 	char			*de_devname;	/* parent device name */
 	char			*de_scheme;	/* partition scheme name */
