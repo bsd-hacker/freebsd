@@ -159,7 +159,8 @@ dlg_focus_prev(struct custom_dlg *dlg)
 }
 
 DLG_LABEL *
-dlg_add_label(struct custom_dlg *dlg, int y, int x, int w, int h, const char *title)
+dlg_add_label(struct custom_dlg *dlg, int y, int x, int w, int h,
+    const char *title)
 {
 	DLG_LABEL *item;
 
@@ -367,7 +368,8 @@ dlg_add_button(struct custom_dlg *dlg, int y, int x, const char *title)
 }
 
 static int
-dlg_button_proc(struct custom_dlg *dlg, DLG_BUTTON *item, int (*key_handler)(int ))
+dlg_button_proc(struct custom_dlg *dlg, DLG_BUTTON *item,
+    int (*key_handler)(int ))
 {
 	int key, ret = 0;
 
@@ -641,7 +643,8 @@ dlg_checkbox_toggle(struct custom_dlg *dlg __unused, DLG_CHECKBOX *item)
 }
 
 static int
-dlg_checkbox_proc(struct custom_dlg *dlg, DLG_CHECKBOX *item, int (*key_handler)(int ))
+dlg_checkbox_proc(struct custom_dlg *dlg, DLG_CHECKBOX *item,
+    int (*key_handler)(int ))
 {
 	int key, ret = 0;
 
@@ -760,8 +763,8 @@ dlg_proc(struct custom_dlg *dlg, int (*key_handler)(int ))
 				    key_handler);
 				break;
 			case CHECKBOX:
-				ret = dlg_checkbox_proc(dlg, (DLG_CHECKBOX *)item,
-				    key_handler);
+				ret = dlg_checkbox_proc(dlg,
+				    (DLG_CHECKBOX *)item, key_handler);
 				break;
 			default:
 				err(EX_SOFTWARE, "unknown dlg_item type");

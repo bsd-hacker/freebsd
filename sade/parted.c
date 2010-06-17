@@ -119,8 +119,8 @@ static char *set_label_title = "Please enter the slice label:";
 
 static const char *apm_aliases[] = { "freebsd", "freebsd-swap", "freebsd-ufs",
 	"freebsd-vinum", "freebsd-zfs", NULL };
-static const char *bsd_aliases[] = { "freebsd-swap", "freebsd-ufs", "freebsd-vinum",
-	"freebsd-zfs", NULL };
+static const char *bsd_aliases[] = { "freebsd-swap", "freebsd-ufs",
+	"freebsd-vinum", "freebsd-zfs", NULL };
 static const char *gpt_aliases[] = { "freebsd", "freebsd-boot", "freebsd-swap",
 	"freebsd-ufs", "freebsd-vinum", "freebsd-zfs", "apple-boot",
 	"apple-hfs", "apple-label", "apple-raid", "apple-raid-offline",
@@ -162,7 +162,8 @@ again:
 		if (ret == EINVAL && loaded == 0) {
 			loaded = dmenu_open_yesno(kldload_msg);
 			if (loaded == 0) {
-				loaded = kldload(sade_schemes[pitem->aux].module);
+				loaded = kldload(
+				    sade_schemes[pitem->aux].module);
 				if (loaded != -1)
 					goto again;
 				else
@@ -370,8 +371,8 @@ again:
 		}
 		if (list == apm_aliases || list == gpt_aliases)
 			label = dlg_edit_get_value(&dlg, eLabel);
-		ret = de_part_add(ppart->de_device, dlg_edit_get_value(&dlg, eType),
-		    (off_t)start, (off_t)size, label, 0);
+		ret = de_part_add(ppart->de_device, dlg_edit_get_value(&dlg,
+		    eType), (off_t)start, (off_t)size, label, 0);
 		if (ret != 0) {
 			dmenu_open_errormsg((ret < 0) ? de_error():
 			    strerror(ret));
@@ -673,10 +674,16 @@ resize:
 					selected = ppart;
 				}
 				mvprintw(row, 0, "%12s%20s%12s%11jd%11jd%6s%7s",
-				    hscroll_str(dname, 12, LABEL(ppart->de_name),
-					selected == ppart ? hsc: 0, HSCROLL_LEFT),
-				    hscroll_str(dtype, 19, LABEL(ppart->de_type), 0, HSCROLL_RIGHT),
-				    hscroll_str(dlabel,11, LABEL(ppart->de_label), 0, HSCROLL_RIGHT),
+				    hscroll_str(dname, 12,
+					LABEL(ppart->de_name),
+					selected == ppart ? hsc: 0,
+					HSCROLL_LEFT),
+				    hscroll_str(dtype, 19,
+					LABEL(ppart->de_type), 0,
+					HSCROLL_RIGHT),
+				    hscroll_str(dlabel,11,
+					LABEL(ppart->de_label), 0,
+					HSCROLL_RIGHT),
 				    ppart->de_start, ppart->de_end,
 				    fmtsize((ppart->de_end -
 					ppart->de_start + 1) *
@@ -707,7 +714,8 @@ resize:
 				    "L = Set Label");
 			}
 			mvprintw(height + PARTED_MENU_TOP + 8, 0,
-			    "Use F1 or ? to get more help, arrow keys to select");
+			    "Use F1 or ? to get more help, arrow keys to "
+			    "select");
 			set_statusline(msg);
 			if (msg)
 				msg = NULL;
@@ -721,7 +729,8 @@ resize:
 				if (selected->de_type == NULL || (
 				    strcmp(selected->de_type, "freebsd") != 0
 #ifdef WITH_ZFS
-				    && strcmp(selected->de_type, "freebsd-zfs") != 0
+				    && strcmp(selected->de_type,
+					"freebsd-zfs") != 0
 #endif
 				    )) {
 					msg = "This is not a freebsd slice "
@@ -771,9 +780,11 @@ resize:
 					break;
 				}
 				if (key == KEY_ESC)
-					ret = dmenu_open_noyes(pending_write_msg);
+					ret = dmenu_open_noyes(
+					    pending_write_msg);
 				else
-					ret = dmenu_open_yesno(pending_write_msg);
+					ret = dmenu_open_yesno(
+					    pending_write_msg);
 				if (ret)
 					error = de_dev_undo(pdev);
 				else
@@ -798,7 +809,8 @@ resize:
 				break;
 			case 'D':
 				if (count == 1 && selected->de_type == NULL) {
-					if (dmenu_open_noyes(destroy_scheme_msg))
+					if (dmenu_open_noyes(
+					    destroy_scheme_msg))
 						break;
 					error = de_dev_scheme_destroy(pdev);
 					if (error != 0)
@@ -834,8 +846,8 @@ resize:
 					break;
 				}
 				if (selected->de_type == NULL) {
-					msg = "Slice is unused, create it first "
-					    "or move to another one.";
+					msg = "Slice is unused, create it "
+					    "first or move to another one.";
 					break;
 				}
 				ret = parted_set_label(selected);
@@ -871,8 +883,8 @@ resize:
 				break;
 			case 'T':
 				if (selected->de_type == NULL) {
-					msg = "Slice in unused, create it first "
-					    "or move to another one.";
+					msg = "Slice in unused, create it "
+					    "first or move to another one.";
 					break;
 				}
 				ret = parted_set_type(selected);
