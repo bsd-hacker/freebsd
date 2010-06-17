@@ -155,6 +155,6 @@ struct gclass	*find_class(struct gmesh *mesh, const char *name);
 struct ggeom	*find_geom(struct gclass *classp, const char *name);
 const char	*find_geomcfg(struct ggeom *gp, const char *cfg);
 const char	*find_provcfg(struct gprovider *pp, const char *cfg);
-struct gprovider *find_provider(struct ggeom *gp, unsigned long long minsector);
+struct gprovider *find_provider(struct ggeom *gp, off_t minsector);
 
 #endif /* _SADE_H_ */

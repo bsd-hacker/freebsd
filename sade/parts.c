@@ -35,6 +35,7 @@ __FBSDID("$FreeBSD$");
 #include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <inttypes.h>
 #include <string.h>
 #include <sysexits.h>
 #include <errno.h>
@@ -109,7 +110,7 @@ de_partlist_get(struct de_device *pdev)
 	struct gclass *cp;
 	struct ggeom *gp;
 	struct gprovider *pp;
-	unsigned long long first, last, start, end;
+	off_t first, last, start, end;
 	const char *s;
 	int error;
 
@@ -133,23 +134,25 @@ de_partlist_get(struct de_device *pdev)
 	pdev->de_scheme = strdup(s);
 
         s = find_geomcfg(gp, "first");
-        first = atoll(s);
+        first = (off_t)strtoimax(s, NULL, 0);
         s = find_geomcfg(gp, "last");
-        last = atoll(s);
+        last = (off_t)strtoimax(s, NULL, 0);
 	while ((pp = find_provider(gp, first)) != NULL) {
 		s = find_provcfg(pp, "start");
 		if (s == NULL) {
 			s = find_provcfg(pp, "offset");
-			start = atoll(s) / pdev->de_sectorsize;
+			start =
+			    (off_t)strtoimax(s, NULL, 0) / pdev->de_sectorsize;
 		} else
-			start = atoll(s);
+			start = (off_t)strtoimax(s, NULL, 0);
 
 		s = find_provcfg(pp, "end");
 		if (s == NULL) {
 			s = find_provcfg(pp, "length");
-			end = start + atoll(s) / pdev->de_sectorsize - 1;
+			end = start - 1 +
+			    (off_t)strtoimax(s, NULL, 0) / pdev->de_sectorsize;
 		} else
-			end = atoll(s);
+			end = (off_t)strtoimax(s, NULL, 0);
 
 		if (first < start) {
 			error = de_partlist_add_unused(pdev, first, start - 1);
@@ -410,9 +413,10 @@ de_part_add_calculate_size(const char *devname, off_t *startp, off_t *sizep)
 	struct gclass *cp;
 	struct ggeom *gp;
 	struct gprovider *pp;
-	unsigned long long first, last;
-	unsigned long long size, start;
-	unsigned long long lba, len, grade;
+	off_t first, last;
+	off_t size, start;
+	off_t lba, len;
+	uintmax_t grade;
 	const char *s;
 	int error;
 
@@ -437,22 +441,24 @@ de_part_add_calculate_size(const char *devname, off_t *startp, off_t *sizep)
 		    devname);
 		goto fail;
 	}
-	first = strtoull(find_geomcfg(gp, "first"), NULL, 10);
-	last = strtoull(find_geomcfg(gp, "last"), NULL, 10);
+	first = (off_t)strtoimax(find_geomcfg(gp, "first"), NULL, 10);
+	last = (off_t)strtoimax(find_geomcfg(gp, "last"), NULL, 10);
 	grade = ~0ULL;
 	while ((pp = find_provider(gp, first)) != NULL) {
 		s = find_provcfg(pp, "start");
 		if (s == NULL) {
 			s = find_provcfg(pp, "offset");
-			lba = strtoull(s, NULL, 10) / pp->lg_sectorsize;
+			lba =
+			    (off_t)strtoimax(s, NULL, 10) / pp->lg_sectorsize;
 		} else
-			lba = strtoull(s, NULL, 10);
+			lba = (off_t)strtoimax(s, NULL, 10);
 
 		if (first < lba) {
 			/* Free space [first, lba> */
 			len = lba - first;
 			if (*sizep) {
-				if (len >= size && len - size < grade) {
+				if (len >= size &&
+				    (uintmax_t)(len - size) < grade) {
 					start = first;
 					grade = len - size;
 				}
@@ -473,15 +479,17 @@ de_part_add_calculate_size(const char *devname, off_t *startp, off_t *sizep)
 		s = find_provcfg(pp, "end");
 		if (s == NULL) {
 			s = find_provcfg(pp, "length");
-			first = lba + strtoull(s, NULL, 10) / pp->lg_sectorsize;
+			first = lba +
+			    (off_t)strtoimax(s, NULL, 10) / pp->lg_sectorsize;
 		} else
-			first = strtoull(s, NULL, 10) + 1;
+			first = (off_t)strtoimax(s, NULL, 10) + 1;
 	}
 	if (first <= last) {
 		/* Free space [first-last] */
 		len = last - first + 1;
 		if (*sizep) {
-			if (len >= size && len - size < grade) {
+			if (len >= size &&
+			    (uintmax_t)(len - size) < grade) {
 				start = first;
 				grade = len - size;
 			}
@@ -542,10 +550,10 @@ de_part_add(struct de_device *pdev, const char *type, off_t start, off_t size,
 			return (ENOMEM);
 	}
 	error = ENOMEM;
-	asprintf(&sstart, "%lu", start);
+	asprintf(&sstart, "%jd", (intmax_t)start);
 	if (sstart == NULL)
 		goto fail;
-	asprintf(&ssize, "%lu", size);
+	asprintf(&ssize, "%jd", (intmax_t)size);
 	if (ssize == NULL)
 		goto fail;
 	req = gctl_get_handle();
@@ -693,6 +701,7 @@ fail:
 	return (error);
 }
 
+/* XXX: Add VTOC8 support */
 int
 de_part_bootcode(struct de_part *ppart, const char *path)
 {

@@ -32,6 +32,8 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/types.h>
 #include <stdlib.h>
+#include <limits.h>
+#include <inttypes.h>
 #include <string.h>
 #include <libgeom.h>
 #include <libsade.h>
@@ -87,11 +89,11 @@ find_provcfg(struct gprovider *pp, const char *cfg)
 }
 
 struct gprovider *
-find_provider(struct ggeom *gp, unsigned long long minsector)
+find_provider(struct ggeom *gp, off_t minsector)
 {
 	struct gprovider *pp, *bestpp;
 	const char *s;
-	unsigned long long sector, bestsector;
+	off_t sector, bestsector;
 
 	bestpp = NULL;
 	bestsector = 0;
@@ -99,9 +101,10 @@ find_provider(struct ggeom *gp, unsigned long long minsector)
 		s = find_provcfg(pp, "start");
 		if (s == NULL) {
 			s = find_provcfg(pp, "offset");
-			sector = atoll(s) / pp->lg_sectorsize;
+			sector =
+			    (off_t)strtoimax(s, NULL, 0) / pp->lg_sectorsize;
 		} else
-			sector = atoll(s);
+			sector = (off_t)strtoimax(s, NULL, 0);
 
 		if (sector < minsector)
 			continue;
