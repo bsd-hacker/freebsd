@@ -242,6 +242,8 @@ de_ufs_check(const char *pname, void **priv)
 			if (pu != NULL) {
 				bzero(pu, sizeof(*pu));
 				pfs = &disk.d_fs;
+				pu->de_id[0] = pfs->fs_id[0];
+				pu->de_id[1] = pfs->fs_id[1];
 				pu->de_ufs1 = (disk.d_ufs == 1);
 				pu->de_su = ((pfs->fs_flags & FS_DOSOFTDEP) != 0);
 				pu->de_suj = ((pfs->fs_flags & FS_SUJ) != 0);

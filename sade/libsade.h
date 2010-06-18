@@ -101,6 +101,9 @@ struct de_fs {
 
 struct de_ufs_priv {
 	char			de_volname[MAXVOLLEN];	/* Volume label */
+	int32_t			de_id[2];	/* unique filesystem id */
+#define	HAS_UFSID(ppriv) \
+	((ppriv)->de_id[0] != 0 || (ppriv)->de_id[1] != 0)
 
 	int			de_ufs1:1;	/* UFS1 fs type */
 	int			de_su:1;	/* Soft Updates enabled */

@@ -349,7 +349,8 @@ fsed_ufs_mountops(struct de_fs *pfs)
 
 	labels = de_dev_aliases_get(pfs->de_partname);
 	assert(labels != NULL);
-	for (cnt = 0; labels[cnt]; cnt++);
+	for (cnt = 0; labels[cnt]; cnt++)
+		;
 	/* If FS is not yet in fstab and it has a volname, we can
 	 * suggest use volname by default.
 	 */
@@ -382,15 +383,15 @@ fsed_ufs_mountops(struct de_fs *pfs)
 		getmntopts(pfs->de_mntops, mopts, &mntflags, 0);
 	for (i = 0; i < MNT_OPS_CNT - 1; i++) {
 		cOps[i] = dlg_add_checkbox(&dlg, 8 + i % (MNT_OPS_CNT / 3),
-				2 + 16 * (i / 3), 14, 1,
-				(mntflags & mntopt_names[i].o_opt) != 0,
-				mntopt_names[i].o_name);
+		    2 + 16 * (i / 3), 14, 1,
+		    (mntflags & mntopt_names[i].o_opt) != 0,
+		    mntopt_names[i].o_name);
 	}
+	/* Last option is "noauto". Actually it hasn't special MNT_XXX flag. */
 	cOps[i] = dlg_add_checkbox(&dlg, 8 + i % (MNT_OPS_CNT / 3),
-			2 + 16 * (i / 3), 14, 1,
-			(pfs->de_mntops != NULL) ?  strstr(pfs->de_mntops,
-			    mntopt_names[i].o_name) != NULL: 0,
-			mntopt_names[i].o_name);
+	    2 + 16 * (i / 3), 14, 1,
+	    (pfs->de_mntops != NULL) ?  strstr(pfs->de_mntops,
+		mntopt_names[i].o_name) != NULL: 0, mntopt_names[i].o_name);
 
 	btnOk = dlg_add_button(&dlg, 12, 24, "  Ok  ");
 	btnCancel = dlg_add_button(&dlg, 12, 36, "Cancel");
@@ -428,8 +429,8 @@ fsed_ufs_mountops(struct de_fs *pfs)
 			if (item == cLabel) {
 				if (dlg_checkbox_checked(&dlg, item)) {
 					WINDOW *sw;
-					dlg_init(&popup);
 					sw = savescr();
+					dlg_init(&popup);
 					dlg_open_popupmenu(&popup, dlg.y + 8,
 					    dlg.x + 18, 48,
 					    cnt > 5 ? 7: cnt + 1,
