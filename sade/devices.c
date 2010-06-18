@@ -38,11 +38,12 @@ static struct de_class_desc {
 	const char	*de_name;
 	const char	*de_desc;
 } classes[] = {
-#define DISK_IDX	0
+#define	DISK_IDX	0
 	{"DISK",	"disk device"},
-	{"MD",		"memory backed virtual disk"},
-#define ZVOL_IDX	2
+#define	ZVOL_IDX	1
 	{"ZFS::ZVOL",	"ZFS volume"},
+	{"MD",		"memory backed virtual disk"},
+	{"NOP",		"transparent GEOM provider"},
 	{"MIRROR",	"GEOM based mirror (RAID1)"},
 	{"STRIPE",	"GEOM based stripe (RAID0)"},
 	{"RAID3",	"GEOM based RAID3 array"},
