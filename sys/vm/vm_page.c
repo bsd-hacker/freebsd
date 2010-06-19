@@ -170,6 +170,7 @@ TUNABLE_INT("vm.boot_pages", &boot_pages);
 SYSCTL_INT(_vm, OID_AUTO, boot_pages, CTLFLAG_RD, &boot_pages, 0,
 	"number of pages allocated for bootstrapping the VM system");
 
+static void vm_page_clear_dirty_mask(vm_page_t m, int pagebits);
 static void vm_page_queue_remove(int queue, vm_page_t m);
 static void vm_page_enqueue(int queue, vm_page_t m);
 
@@ -485,6 +486,13 @@ vm_page_flag_set(vm_page_t m, unsigned short bits)
 {
 
 	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	/*
+	 * The PG_WRITEABLE flag can only be set if the page is managed and
+	 * VPO_BUSY.  Currently, this flag is only set by pmap_enter().
+	 */
+	KASSERT((bits & PG_WRITEABLE) == 0 ||
+	    ((m->flags & (PG_UNMANAGED | PG_FICTITIOUS)) == 0 &&
+	    (m->oflags & VPO_BUSY) != 0), ("PG_WRITEABLE and !VPO_BUSY"));
 	m->flags |= bits;
 } 
 
@@ -493,6 +501,12 @@ vm_page_flag_clear(vm_page_t m, unsigned short bits)
 {
 
 	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	/*
+	 * The PG_REFERENCED flag can only be cleared if the object
+	 * containing the page is locked.
+	 */
+	KASSERT((bits & PG_REFERENCED) == 0 || VM_OBJECT_LOCKED(m->object),
+	    ("PG_REFERENCED and !VM_OBJECT_LOCKED"));
 	m->flags &= ~bits;
 }
 
@@ -1324,8 +1338,7 @@ vm_waitpfault(void)
 /*
  *	vm_page_requeue:
  *
- *	If the given page is contained within a page queue, move it to the tail
- *	of that queue.
+ *	Move the given page to the tail of its present page queue.
  *
  *	The page queues must be locked.
  */
@@ -1335,11 +1348,12 @@ vm_page_requeue(vm_page_t m)
 	int queue = VM_PAGE_GETQUEUE(m);
 	struct vpgqueues *vpq;
 
-	if (queue != PQ_NONE) {
-		vpq = &vm_page_queues[queue];
-		TAILQ_REMOVE(&vpq->pl, m, pageq);
-		TAILQ_INSERT_TAIL(&vpq->pl, m, pageq);
-	}
+	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
+	KASSERT(queue != PQ_NONE,
+	    ("vm_page_requeue: page %p is not queued", m));
+	vpq = &vm_page_queues[queue];
+	TAILQ_REMOVE(&vpq->pl, m, pageq);
+	TAILQ_INSERT_TAIL(&vpq->pl, m, pageq);
 }
 
 /*
@@ -1571,6 +1585,8 @@ vm_page_free_toq(vm_page_t m)
  *	another map, removing it from paging queues
  *	as necessary.
  *
+ *	If the page is fictitious, then its wire count must remain one.
+ *
  *	The page must be locked.
  *	This routine may not block.
  */
@@ -1584,8 +1600,12 @@ vm_page_wire(vm_page_t m)
 	 * it is already off the queues).
 	 */
 	vm_page_lock_assert(m, MA_OWNED);
-	if (m->flags & PG_FICTITIOUS)
+	if ((m->flags & PG_FICTITIOUS) != 0) {
+		KASSERT(m->wire_count == 1,
+		    ("vm_page_wire: fictitious page %p's wire count isn't one",
+		    m));
 		return;
+	}
 	if (m->wire_count == 0) {
 		if ((m->flags & PG_UNMANAGED) == 0)
 			vm_pageq_remove(m);
@@ -1596,32 +1616,20 @@ vm_page_wire(vm_page_t m)
 }
 
 /*
- *	vm_page_unwire:
+ * vm_page_unwire:
  *
- *	Release one wiring of this page, potentially
- *	enabling it to be paged again.
+ * Release one wiring of the specified page, potentially enabling it to be
+ * paged again.  If paging is enabled, then the value of the parameter
+ * "activate" determines to which queue the page is added.  If "activate" is
+ * non-zero, then the page is added to the active queue.  Otherwise, it is
+ * added to the inactive queue.
  *
- *	Many pages placed on the inactive queue should actually go
- *	into the cache, but it is difficult to figure out which.  What
- *	we do instead, if the inactive target is well met, is to put
- *	clean pages at the head of the inactive queue instead of the tail.
- *	This will cause them to be moved to the cache more quickly and
- *	if not actively re-referenced, freed more quickly.  If we just
- *	stick these pages at the end of the inactive queue, heavy filesystem
- *	meta-data accesses can cause an unnecessary paging load on memory bound 
- *	processes.  This optimization causes one-time-use metadata to be
- *	reused more quickly.
+ * However, unless the page belongs to an object, it is not enqueued because
+ * it cannot be paged out.
  *
- *	BUT, if we are in a low-memory situation we have no choice but to
- *	put clean pages on the cache queue.
+ * If a page is fictitious, then its wire count must alway be one.
  *
- *	A number of routines use vm_page_unwire() to guarantee that the page
- *	will go into either the inactive or active queues, and will NEVER
- *	be placed in the cache - for example, just after dirtying a page.
- *	dirty pages in the cache are not allowed.
- *
- *	The page must be locked.
- *	This routine may not block.
+ * A managed page must be locked.
  */
 void
 vm_page_unwire(vm_page_t m, int activate)
@@ -1629,13 +1637,17 @@ vm_page_unwire(vm_page_t m, int activate)
 
 	if ((m->flags & PG_UNMANAGED) == 0)
 		vm_page_lock_assert(m, MA_OWNED);
-	if (m->flags & PG_FICTITIOUS)
+	if ((m->flags & PG_FICTITIOUS) != 0) {
+		KASSERT(m->wire_count == 1,
+	    ("vm_page_unwire: fictitious page %p's wire count isn't one", m));
 		return;
+	}
 	if (m->wire_count > 0) {
 		m->wire_count--;
 		if (m->wire_count == 0) {
 			atomic_subtract_int(&cnt.v_wire_count, 1);
-			if ((m->flags & PG_UNMANAGED) != 0)
+			if ((m->flags & PG_UNMANAGED) != 0 ||
+			    m->object == NULL)
 				return;
 			vm_page_lock_queues();
 			if (activate)
@@ -1646,13 +1658,23 @@ vm_page_unwire(vm_page_t m, int activate)
 			}
 			vm_page_unlock_queues();
 		}
-	} else {
-		panic("vm_page_unwire: invalid wire count: %d", m->wire_count);
-	}
+	} else
+		panic("vm_page_unwire: page %p's wire count is zero", m);
 }
 
 /*
  * Move the specified page to the inactive queue.
+ *
+ * Many pages placed on the inactive queue should actually go
+ * into the cache, but it is difficult to figure out which.  What
+ * we do instead, if the inactive target is well met, is to put
+ * clean pages at the head of the inactive queue instead of the tail.
+ * This will cause them to be moved to the cache more quickly and
+ * if not actively re-referenced, reclaimed more quickly.  If we just
+ * stick these pages at the end of the inactive queue, heavy filesystem
+ * meta-data accesses can cause an unnecessary paging load on memory bound 
+ * processes.  This optimization causes one-time-use metadata to be
+ * reused more quickly.
  *
  * Normally athead is 0 resulting in LRU operation.  athead is set
  * to 1 if we want this page to be 'as if it were placed in the cache',
@@ -2073,6 +2095,28 @@ vm_page_set_valid(vm_page_t m, int base, int size)
 }
 
 /*
+ * Clear the given bits from the specified page's dirty field.
+ */
+static __inline void
+vm_page_clear_dirty_mask(vm_page_t m, int pagebits)
+{
+
+	/*
+	 * If the object is locked and the page is neither VPO_BUSY nor
+	 * PG_WRITEABLE, then the page's dirty field cannot possibly be
+	 * modified by a concurrent pmap operation. 
+	 */
+	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
+	if ((m->oflags & VPO_BUSY) == 0 && (m->flags & PG_WRITEABLE) == 0)
+		m->dirty &= ~pagebits;
+	else {
+		vm_page_lock_queues();
+		m->dirty &= ~pagebits;
+		vm_page_unlock_queues();
+	}
+}
+
+/*
  *	vm_page_set_validclean:
  *
  *	Sets portions of a page valid and clean.  The arguments are expected
@@ -2087,9 +2131,8 @@ vm_page_set_valid(vm_page_t m, int base, int size)
 void
 vm_page_set_validclean(vm_page_t m, int base, int size)
 {
-	int pagebits;
-	int frag;
-	int endoff;
+	u_long oldvalid;
+	int endoff, frag, pagebits;
 
 	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 	if (size == 0)	/* handle degenerate case */
@@ -2126,6 +2169,7 @@ vm_page_set_validclean(vm_page_t m, int base, int size)
 	 * clear dirty bits for DEV_BSIZE chunks that are fully within
 	 * the range.
 	 */
+	oldvalid = m->valid;
 	pagebits = vm_page_bits(base, size);
 	m->valid |= pagebits;
 #if 0	/* NOT YET */
@@ -2138,21 +2182,35 @@ vm_page_set_validclean(vm_page_t m, int base, int size)
 	}
 	pagebits = vm_page_bits(base, size & (DEV_BSIZE - 1));
 #endif
-	m->dirty &= ~pagebits;
 	if (base == 0 && size == PAGE_SIZE) {
-		pmap_clear_modify(m);
+		/*
+		 * The page can only be modified within the pmap if it is
+		 * mapped, and it can only be mapped if it was previously
+		 * fully valid.
+		 */
+		if (oldvalid == VM_PAGE_BITS_ALL)
+			/*
+			 * Perform the pmap_clear_modify() first.  Otherwise,
+			 * a concurrent pmap operation, such as
+			 * pmap_protect(), could clear a modification in the
+			 * pmap and set the dirty field on the page before
+			 * pmap_clear_modify() had begun and after the dirty
+			 * field was cleared here.
+			 */
+			pmap_clear_modify(m);
+		m->dirty = 0;
 		m->oflags &= ~VPO_NOSYNC;
-	}
+	} else if (oldvalid != VM_PAGE_BITS_ALL)
+		m->dirty &= ~pagebits;
+	else
+		vm_page_clear_dirty_mask(m, pagebits);
 }
 
 void
 vm_page_clear_dirty(vm_page_t m, int base, int size)
 {
 
-	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
-	if ((m->flags & PG_WRITEABLE) != 0)
-		mtx_assert(&vm_page_queue_mtx, MA_OWNED);
-	m->dirty &= ~vm_page_bits(base, size);
+	vm_page_clear_dirty_mask(m, vm_page_bits(base, size));
 }
 
 /*

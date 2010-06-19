@@ -649,7 +649,6 @@ tcpDeviceScan(void)
 	int s;
 	struct ifmediareq ifmr;
 	struct ifaddrs *ifap, *ifa;
-	struct if_data *ifd;
 	char *network_dev;
 
 	if ((s = socket(AF_LOCAL, SOCK_DGRAM, 0)) < 0)
@@ -731,6 +730,9 @@ tcpDeviceSelect(void)
 
 	return (NULL);
     }
+
+    devs = deviceFind(NULL, DEVICE_TYPE_NETWORK);
+    cnt = deviceCount(devs); 
 
     if ((!RunningAsInit) && (variable_check("NETWORK_CONFIGURED=NO") != TRUE)) {
 	if (!msgYesNo("Running multi-user, assume that the network is already configured?"))

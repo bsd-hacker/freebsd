@@ -822,19 +822,6 @@ static struct kproc_desc vnlru_kp = {
 SYSINIT(vnlru, SI_SUB_KTHREAD_UPDATE, SI_ORDER_FIRST, kproc_start,
     &vnlru_kp);
  
-static void
-vfs_lowmem(void *arg __unused)
-{
-
-	/*
-	 * On low memory condition free 1/8th of the free vnodes.
-	 */
-	mtx_lock(&vnode_free_list_mtx);
-	vnlru_free(freevnodes / 8);
-	mtx_unlock(&vnode_free_list_mtx);
-}
-EVENTHANDLER_DEFINE(vm_lowmem, vfs_lowmem, NULL, 0);
-
 /*
  * Routines having to do with the management of the vnode table.
  */
@@ -3793,9 +3780,10 @@ vop_rename_pre(void *ap)
 	ASSERT_VI_UNLOCKED(a->a_fdvp, "VOP_RENAME");
 
 	/* Check the source (from). */
-	if (a->a_tdvp != a->a_fdvp && a->a_tvp != a->a_fdvp)
+	if (a->a_tdvp->v_vnlock != a->a_fdvp->v_vnlock &&
+	    (a->a_tvp == NULL || a->a_tvp->v_vnlock != a->a_fdvp->v_vnlock))
 		ASSERT_VOP_UNLOCKED(a->a_fdvp, "vop_rename: fdvp locked");
-	if (a->a_tvp != a->a_fvp)
+	if (a->a_tvp == NULL || a->a_tvp->v_vnlock != a->a_fvp->v_vnlock)
 		ASSERT_VOP_UNLOCKED(a->a_fvp, "vop_rename: fvp locked");
 
 	/* Check the target. */

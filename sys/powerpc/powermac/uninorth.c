@@ -115,6 +115,8 @@ static device_method_t unin_chip_methods[] = {
 	DEVMETHOD(bus_deactivate_resource, unin_chip_deactivate_resource),
 	DEVMETHOD(bus_get_resource_list, unin_chip_get_resource_list),
 
+	DEVMETHOD(bus_child_pnpinfo_str, ofw_bus_gen_child_pnpinfo_str),
+
         /* ofw_bus interface */
 	DEVMETHOD(ofw_bus_get_devinfo,	unin_chip_get_devinfo),
 	DEVMETHOD(ofw_bus_get_compat,	ofw_bus_gen_get_compat),
@@ -142,9 +144,9 @@ DRIVER_MODULE(unin, nexus, unin_chip_driver, unin_chip_devclass, 0, 0);
 static void
 unin_chip_add_intr(phandle_t devnode, struct unin_chip_devinfo *dinfo)
 {
+	phandle_t iparent;
 	int	*intr;
 	int	i, nintr;
-	phandle_t iparent;
 	int 	icells;
 
 	if (dinfo->udi_ninterrupts >= 6) {
@@ -174,9 +176,17 @@ unin_chip_add_intr(phandle_t devnode, struct unin_chip_devinfo *dinfo)
 
 	for (i = 0; i < nintr; i+=icells) {
 		resource_list_add(&dinfo->udi_resources, SYS_RES_IRQ,
-		    dinfo->udi_ninterrupts, intr[i], intr[i], 1);
+		    dinfo->udi_ninterrupts, INTR_VEC(iparent, intr[i]),
+		    INTR_VEC(iparent, intr[i]), 1);
 
-		dinfo->udi_interrupts[dinfo->udi_ninterrupts] = intr[i];
+		if (icells > 1) {
+			powerpc_config_intr(INTR_VEC(iparent, intr[i]),
+			    (intr[i+1] & 1) ? INTR_TRIGGER_LEVEL :
+			    INTR_TRIGGER_EDGE, INTR_POLARITY_LOW);
+		}
+
+		dinfo->udi_interrupts[dinfo->udi_ninterrupts] =
+		    INTR_VEC(iparent, intr[i]);
 		dinfo->udi_ninterrupts++;
 	}
 }

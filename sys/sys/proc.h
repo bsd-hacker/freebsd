@@ -301,6 +301,7 @@ struct thread {
 	int		td_errno;	/* Error returned by last syscall. */
 	struct vnet	*td_vnet;	/* (k) Effective vnet. */
 	const char	*td_vnet_lpush;	/* (k) Debugging vnet push / pop. */
+	struct trapframe *td_intr_frame;/* (k) Frame of the current irq */
 };
 
 struct mtx *thread_lock_block(struct thread *);
@@ -323,6 +324,9 @@ do {									\
 #else
 #define	THREAD_LOCKPTR_ASSERT(td, lock)
 #endif
+
+#define	CRITICAL_ASSERT(td)						\
+    KASSERT((td)->td_critnest >= 1, ("Not in critical section"));
 
 /*
  * Flags kept in td_flags:

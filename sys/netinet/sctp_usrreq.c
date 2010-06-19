@@ -402,6 +402,9 @@ sctp_ctlinput(cmd, sa, vip)
 				SCTP_INP_DECR_REF(inp);
 				SCTP_INP_WUNLOCK(inp);
 			}
+			if (stcb) {
+				SCTP_TCB_UNLOCK(stcb);
+			}
 		}
 	}
 	return;
@@ -944,11 +947,30 @@ sctp_flush(struct socket *so, int how)
 	 * they will not be able to read the data, the socket will block
 	 * that from happening.
 	 */
+	struct sctp_inpcb *inp;
+
+	inp = (struct sctp_inpcb *)so->so_pcb;
+	if (inp == NULL) {
+		SCTP_LTRACE_ERR_RET(inp, NULL, NULL, SCTP_FROM_SCTP_USRREQ, EINVAL);
+		return EINVAL;
+	}
+	SCTP_INP_RLOCK(inp);
+	/* For the 1 to many model this does nothing */
+	if (inp->sctp_flags & SCTP_PCB_FLAGS_UDPTYPE) {
+		SCTP_INP_RUNLOCK(inp);
+		return (0);
+	}
+	SCTP_INP_RUNLOCK(inp);
 	if ((how == PRU_FLUSH_RD) || (how == PRU_FLUSH_RDWR)) {
 		/*
 		 * First make sure the sb will be happy, we don't use these
 		 * except maybe the count
 		 */
+		SCTP_INP_WLOCK(inp);
+		SCTP_INP_READ_LOCK(inp);
+		inp->sctp_flags |= SCTP_PCB_FLAGS_SOCKET_CANT_READ;
+		SCTP_INP_READ_UNLOCK(inp);
+		SCTP_INP_WUNLOCK(inp);
 		so->so_rcv.sb_cc = 0;
 		so->so_rcv.sb_mbcnt = 0;
 		so->so_rcv.sb_mb = NULL;
@@ -4678,6 +4700,8 @@ sctp_accept(struct socket *so, struct sockaddr **addr)
 			struct sockaddr_in *sin;
 
 			SCTP_MALLOC_SONAME(sin, struct sockaddr_in *, sizeof *sin);
+			if (sin == NULL)
+				return (ENOMEM);
 			sin->sin_family = AF_INET;
 			sin->sin_len = sizeof(*sin);
 			sin->sin_port = ((struct sockaddr_in *)&store)->sin_port;
@@ -4691,6 +4715,8 @@ sctp_accept(struct socket *so, struct sockaddr **addr)
 			struct sockaddr_in6 *sin6;
 
 			SCTP_MALLOC_SONAME(sin6, struct sockaddr_in6 *, sizeof *sin6);
+			if (sin6 == NULL)
+				return (ENOMEM);
 			sin6->sin6_family = AF_INET6;
 			sin6->sin6_len = sizeof(*sin6);
 			sin6->sin6_port = ((struct sockaddr_in6 *)&store)->sin6_port;
@@ -4756,6 +4782,8 @@ sctp_ingetaddr(struct socket *so, struct sockaddr **addr)
 	 * Do the malloc first in case it blocks.
 	 */
 	SCTP_MALLOC_SONAME(sin, struct sockaddr_in *, sizeof *sin);
+	if (sin == NULL)
+		return (ENOMEM);
 	sin->sin_family = AF_INET;
 	sin->sin_len = sizeof(*sin);
 	inp = (struct sctp_inpcb *)so->so_pcb;
@@ -4858,6 +4886,8 @@ sctp_peeraddr(struct socket *so, struct sockaddr **addr)
 		return (ENOTCONN);
 	}
 	SCTP_MALLOC_SONAME(sin, struct sockaddr_in *, sizeof *sin);
+	if (sin == NULL)
+		return (ENOMEM);
 	sin->sin_family = AF_INET;
 	sin->sin_len = sizeof(*sin);
 
