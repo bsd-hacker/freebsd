@@ -2814,8 +2814,8 @@ moea64_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
 
 	LIST_FOREACH(pvo, &moea64_pvo_table[pteg_bktidx], pvo_olink) {
 		if (pvo->pvo_pte.lpte.pte_hi == pt->pte_hi) {
-			if (!(pvo->pvo_pte.lpte.pte_hi & LPTE_VALID))
-				continue;
+			KASSERT(pvo->pvo_pte.lpte.pte_hi & LPTE_VALID, 
+			    ("Invalid PVO for valid PTE!\n"));
 			moea64_pte_unset(pt, &pvo->pvo_pte.lpte, pvo->pvo_vpn);
 			PVO_PTEGIDX_CLR(pvo);
 			moea64_pte_overflow++;
@@ -2827,9 +2827,9 @@ moea64_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
 		/* It could have landed in the secondary PTEG */
 		pteg_bktidx ^= moea64_pteg_mask;
 		LIST_FOREACH(pvo, &moea64_pvo_table[pteg_bktidx], pvo_olink) {
-			if (!(pvo->pvo_pte.lpte.pte_hi & LPTE_VALID))
-				continue;
 			if (pvo->pvo_pte.lpte.pte_hi == pt->pte_hi) {
+				KASSERT(pvo->pvo_pte.lpte.pte_hi & LPTE_VALID, 
+				    ("Invalid PVO for valid PTE!\n"));
 				moea64_pte_unset(pt, &pvo->pvo_pte.lpte,
 				    pvo->pvo_vpn);
 				PVO_PTEGIDX_CLR(pvo);
