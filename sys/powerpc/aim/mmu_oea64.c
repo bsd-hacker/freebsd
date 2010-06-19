@@ -2736,7 +2736,7 @@ moea64_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
 	 * First try primary hash.
 	 */
 	pteg_bktidx = ptegidx;
-	for (pt = moea64_pteg_table[ptegidx].pt, i = 0; i < 8; i++, pt++) {
+	for (pt = moea64_pteg_table[pteg_bktidx].pt, i = 0; i < 8; i++, pt++) {
 		if ((pt->pte_hi & LPTE_VALID) == 0 &&
 		    (pt->pte_hi & LPTE_LOCKED) == 0) {
 			pvo_pt->pte_hi &= ~LPTE_HID;
@@ -2749,8 +2749,7 @@ moea64_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
 	 * Now try secondary hash.
 	 */
 	pteg_bktidx ^= moea64_pteg_mask;
-
-	for (pt = moea64_pteg_table[ptegidx].pt, i = 0; i < 8; i++, pt++) {
+	for (pt = moea64_pteg_table[pteg_bktidx].pt, i = 0; i < 8; i++, pt++) {
 		if ((pt->pte_hi & LPTE_VALID) == 0 &&
 		    (pt->pte_hi & LPTE_LOCKED) == 0) {
 			pvo_pt->pte_hi |= LPTE_HID;
