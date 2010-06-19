@@ -2784,7 +2784,7 @@ moea64_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
 	if (pt->pte_hi & LPTE_HID)
 		pvo_pt->pte_hi |= LPTE_HID;
 
-	LIST_FOREACH(pvo, &moea64_pvo_table[ptegidx], pvo_olink) {
+	LIST_FOREACH(pvo, &moea64_pvo_table[pteg_bktidx], pvo_olink) {
 		if (pvo->pvo_pte.lpte.pte_hi == pt->pte_hi) {
 			moea64_pte_unset(pt, &pvo->pvo_pte.lpte, pvo->pvo_vpn);
 			PVO_PTEGIDX_CLR(pvo);
@@ -2793,6 +2793,19 @@ moea64_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
 		}
 	}
 
+	if (pvo->pvo_pte.lpte.pte_hi != pt->pte_hi) {
+		/* It could have landed in the secondary PTEG */
+		pteg_bktidx ^= moea64_pteg_mask;
+		LIST_FOREACH(pvo, &moea64_pvo_table[pteg_bktidx], pvo_olink) {
+			if (pvo->pvo_pte.lpte.pte_hi == pt->pte_hi) {
+				moea64_pte_unset(pt, &pvo->pvo_pte.lpte,
+				    pvo->pvo_vpn);
+				PVO_PTEGIDX_CLR(pvo);
+				moea64_pte_overflow++;
+				break;
+			}
+		}
+	}
 	KASSERT(pvo->pvo_pte.lpte.pte_hi == pt->pte_hi,
 	   ("Unable to find PVO for spilled PTE"));
 
