@@ -1312,20 +1312,52 @@ void
 moea64_change_wiring(mmu_t mmu, pmap_t pm, vm_offset_t va, boolean_t wired)
 {
 	struct	pvo_entry *pvo;
+	struct	lpte *pt;
+	uint64_t vsid;
+	int	i, ptegidx;
 
 	PMAP_LOCK(pm);
 	pvo = moea64_pvo_find_va(pm, va & ~ADDR_POFF, NULL);
 
 	if (pvo != NULL) {
+		LOCK_TABLE();
+		pt = moea64_pvo_to_pte(pvo, -1);
+		if (pt != NULL)
+			moea64_pte_synch(pt, &pvo->pvo_pte.lpte);
+
 		if (wired) {
 			if ((pvo->pvo_vaddr & PVO_WIRED) == 0)
 				pm->pm_stats.wired_count++;
 			pvo->pvo_vaddr |= PVO_WIRED;
+			pvo->pvo_pte.lpte.pte_hi |= LPTE_WIRED;
 		} else {
 			if ((pvo->pvo_vaddr & PVO_WIRED) != 0)
 				pm->pm_stats.wired_count--;
 			pvo->pvo_vaddr &= ~PVO_WIRED;
+			pvo->pvo_pte.lpte.pte_hi &= ~LPTE_WIRED;
 		}
+
+		if (pt != NULL) {
+			/* Update wiring flag in page table. */
+			moea64_pte_change(pt, &pvo->pvo_pte.lpte,
+			    pvo->pvo_vpn);
+		} else if (wired) {
+			/*
+			 * If we are wiring the page, and it wasn't in the
+			 * page table before, add it.
+			 */
+			vsid = PVO_VSID(pvo);
+			ptegidx = va_to_pteg(vsid, PVO_VADDR(pvo),
+			    pvo->pvo_vaddr & PVO_LARGE);
+
+			i = moea64_pte_insert(ptegidx, &pvo->pvo_pte.lpte);
+			if (i >= 0) {
+				PVO_PTEGIDX_CLR(pvo);
+				PVO_PTEGIDX_SET(pvo, i);
+			}
+		}
+			
+		UNLOCK_TABLE();
 	}
 	PMAP_UNLOCK(pm);
 }
@@ -2410,6 +2442,13 @@ moea64_pvo_enter(pmap_t pm, uma_zone_t zone, struct pvo_head *pvo_head,
 			if ((pvo->pvo_pte.lpte.pte_lo & LPTE_RPGN) == pa &&
 			    (pvo->pvo_pte.lpte.pte_lo & LPTE_PP) ==
 			    (pte_lo & LPTE_PP)) {
+			    	if (!(pvo->pvo_pte.lpte.pte_hi & LPTE_VALID)) {
+					/* Re-insert if spilled */
+					i = moea64_pte_insert(ptegidx,
+					    &pvo->pvo_pte.lpte);
+					if (i >= 0)
+						PVO_PTEGIDX_SET(pvo, i);
+				}
 				UNLOCK_TABLE();
 				return (0);
 			}
@@ -2479,8 +2518,10 @@ moea64_pvo_enter(pmap_t pm, uma_zone_t zone, struct pvo_head *pvo_head,
 		first = 1;
 	LIST_INSERT_HEAD(pvo_head, pvo, pvo_vlink);
 
-	if (pvo->pvo_vaddr & PVO_WIRED)
+	if (pvo->pvo_vaddr & PVO_WIRED) {
+		pvo->pvo_pte.lpte.pte_hi |= LPTE_WIRED;
 		pm->pm_stats.wired_count++;
+	}
 	pm->pm_stats.resident_count++;
 
 	/*
@@ -2627,8 +2668,6 @@ moea64_pvo_to_pte(const struct pvo_entry *pvo, int pteidx)
 {
 	struct lpte *pt;
 
-	ASSERT_TABLE_LOCK();
-
 	/*
 	 * If we haven't been supplied the ptegidx, calculate it.
 	 */
@@ -2641,8 +2680,6 @@ moea64_pvo_to_pte(const struct pvo_entry *pvo, int pteidx)
 		    pvo->pvo_vaddr & PVO_LARGE);
 		pteidx = moea64_pvo_pte_index(pvo, ptegidx);
 	}
-
-	pt = &moea64_pteg_table[pteidx >> 3].pt[pteidx & 7];
 
 	if ((pvo->pvo_pte.lpte.pte_hi & LPTE_VALID) && 
 	    !PVO_PTEGIDX_ISSET(pvo)) {
@@ -2660,6 +2697,8 @@ moea64_pvo_to_pte(const struct pvo_entry *pvo, int pteidx)
 	if (!PVO_PTEGIDX_ISSET(pvo))
 		return (NULL);
 
+	ASSERT_TABLE_LOCK();
+	pt = &moea64_pteg_table[pteidx >> 3].pt[pteidx & 7];
 	if ((pt->pte_hi ^ (pvo->pvo_pte.lpte.pte_hi & ~LPTE_VALID)) == 
 	    LPTE_VALID) {
 		if ((pvo->pvo_pte.lpte.pte_hi & LPTE_VALID) == 0) {
@@ -2675,7 +2714,6 @@ moea64_pvo_to_pte(const struct pvo_entry *pvo, int pteidx)
 			    (uint32_t)(pt->pte_lo ^ pvo->pvo_pte.lpte.pte_lo));
 		}
 
-		ASSERT_TABLE_LOCK();
 		return (pt);
 	}
 
@@ -2698,18 +2736,8 @@ moea64_pte_spillable_ident(u_int ptegidx)
 	k = -1;
 	for (j = 0; j < 8; j++) {
 		pt = &moea64_pteg_table[ptegidx].pt[(i + j) % 8];
-		if (pt->pte_hi & LPTE_LOCKED)
+		if (pt->pte_hi & (LPTE_LOCKED | LPTE_WIRED))
 			continue;
-
-		/* Don't spill kernel mappings */
-		#ifdef __powerpc64__
-		if ((pt->pte_hi >> LPTE_VSID_SHIFT) & KERNEL_VSID_BIT)
-			continue;
-		#else
-		if (((pt->pte_hi >> LPTE_VSID_SHIFT) & EMPTY_SEGMENT) ==
-		    EMPTY_SEGMENT)
-			continue;
-		#endif
 
 		/* This is a candidate, so remember it */
 		k = (i + j) % 8;
@@ -2786,6 +2814,8 @@ moea64_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
 
 	LIST_FOREACH(pvo, &moea64_pvo_table[pteg_bktidx], pvo_olink) {
 		if (pvo->pvo_pte.lpte.pte_hi == pt->pte_hi) {
+			if (!(pvo->pvo_pte.lpte.pte_hi & LPTE_VALID))
+				continue;
 			moea64_pte_unset(pt, &pvo->pvo_pte.lpte, pvo->pvo_vpn);
 			PVO_PTEGIDX_CLR(pvo);
 			moea64_pte_overflow++;
@@ -2797,6 +2827,8 @@ moea64_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
 		/* It could have landed in the secondary PTEG */
 		pteg_bktidx ^= moea64_pteg_mask;
 		LIST_FOREACH(pvo, &moea64_pvo_table[pteg_bktidx], pvo_olink) {
+			if (!(pvo->pvo_pte.lpte.pte_hi & LPTE_VALID))
+				continue;
 			if (pvo->pvo_pte.lpte.pte_hi == pt->pte_hi) {
 				moea64_pte_unset(pt, &pvo->pvo_pte.lpte,
 				    pvo->pvo_vpn);
