@@ -55,6 +55,8 @@ typedef	pt_entry_t *pd_entry_t;
 #define	TLBMASK_MASK	((PAGE_MASK >> TLBMASK_SHIFT) << TLBMASK_SHIFT)
 
 /*
+ * XXX This comment is not correct for FreeBSD.
+ *
  * PFN for EntryLo register.  Upper bits are 0, which is to say that
  * bit 29 is the last hardware bit;  Bits 30 and upwards (EntryLo is
  * 64 bit though it can be referred to in 32-bits providing 2 software
@@ -73,11 +75,14 @@ typedef	pt_entry_t *pd_entry_t;
 #define	TLBLO_PTE_TO_PA(pte)	(TLBLO_PFN_TO_PA(TLBLO_PTE_TO_PFN((pte))))
 
 /*
+ * XXX This comment is not correct for anything more modern than R4K.
+ *
  * VPN for EntryHi register.  Upper two bits select user, supervisor,
  * or kernel.  Bits 61 to 40 copy bit 63.  VPN2 is bits 39 and down to
  * as low as 13, down to PAGE_SHIFT, to index 2 TLB pages*.  From bit 12
  * to bit 8 there is a 5-bit 0 field.  Low byte is ASID.
  *
+ * XXX This comment is not correct for FreeBSD.
  * Note that in FreeBSD, we map 2 TLB pages is equal to 1 VM page.
  */
 #define	TLBHI_ASID_MASK		(0xff)
@@ -121,7 +126,9 @@ typedef	pt_entry_t *pd_entry_t;
  * VM flags managed in software:
  * 	RO:	Read only.  Never set PTE_D on this page, and don't
  * 		listen to requests to write to it.
- * 	W:	Wired.  ???
+ * 	W:	Wired.  Allows us to quickly increment and decrement
+ * 		the wired count by looking at the PTE and skip wired
+ * 		mappings when removing mappings from a process.
  */
 #define	PTE_RO	(0x01 << TLBLO_SWBITS_SHIFT)
 #define	PTE_W	(0x02 << TLBLO_SWBITS_SHIFT)
