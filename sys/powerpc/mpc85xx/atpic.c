@@ -338,6 +338,7 @@ atpic_unmask(device_t dev, u_int irq)
 static uint32_t
 atpic_id (device_t dev)
 {
-	return (0xff);
+
+	return (ATPIC_ID);
 }
 

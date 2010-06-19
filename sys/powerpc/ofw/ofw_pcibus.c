@@ -337,8 +337,8 @@ ofw_pcibus_assign_interrupt(device_t dev, device_t child)
 	 * PIC to use.
 	 */
 
-	if (OF_getprop(node, "interrupt-parent", &iparent, sizeof(iparent)) <
-	    sizeof(iparent))
+	iparent = -1;
+	if (OF_getprop(node, "interrupt-parent", &iparent, sizeof(iparent)) < 0)
 		iparent = -1;
 	
 	/*
@@ -347,9 +347,8 @@ ofw_pcibus_assign_interrupt(device_t dev, device_t child)
 	 */
 
 	isz = OF_getprop(node, "AAPL,interrupts", &intr, sizeof(intr));
-	if (isz == sizeof(intr)) {
+	if (isz == sizeof(intr))
 		return ((iparent == -1) ? intr : INTR_VEC(iparent, intr));
-	}
 
 	isz = OF_getprop(node, "interrupts", &intr, sizeof(intr));
 	if (isz == sizeof(intr)) {
