@@ -104,27 +104,27 @@ typedef	pt_entry_t *pd_entry_t;
  * 	C:	Cache attribute.
  * 	D:	Dirty bit.  This means a page is writable.  It is not
  * 		set at first, and a write is trapped, and the dirty
- * 		bit is set.  See also PG_RO.
+ * 		bit is set.  See also PTE_RO.
  * 	V:	Valid bit.  Obvious, isn't it?
  * 	G:	Global bit.  This means that this mapping is present
  * 		in EVERY address space, and to ignore the ASID when
  * 		it is matched.
  */
-#define	PG_C(attr)	((attr & 0x07) << 3)
-#define	PG_C_UC		(PG_C(0x02))
-#define	PG_C_CNC	(PG_C(0x03))
-#define	PG_D		0x04
-#define	PG_V		0x02
-#define	PG_G		0x01
+#define	PTE_C(attr)	((attr & 0x07) << 3)
+#define	PTE_C_UC		(PTE_C(0x02))
+#define	PTE_C_CNC	(PTE_C(0x03))
+#define	PTE_D		0x04
+#define	PTE_V		0x02
+#define	PTE_G		0x01
 
 /*
  * VM flags managed in software:
- * 	RO:	Read only.  Never set PG_D on this page, and don't
+ * 	RO:	Read only.  Never set PTE_D on this page, and don't
  * 		listen to requests to write to it.
  * 	W:	Wired.  ???
  */
-#define	PG_RO	(0x01 << TLBLO_SWBITS_SHIFT)
-#define	PG_W	(0x02 << TLBLO_SWBITS_SHIFT)
+#define	PTE_RO	(0x01 << TLBLO_SWBITS_SHIFT)
+#define	PTE_W	(0x02 << TLBLO_SWBITS_SHIFT)
 
 /*
  * PTE management functions for bits defined above.

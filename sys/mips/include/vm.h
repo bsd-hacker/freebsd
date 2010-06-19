@@ -32,8 +32,8 @@
 #include <machine/pte.h>
 
 /* Memory attributes. */
-#define	VM_MEMATTR_UNCACHED			((vm_memattr_t)PG_C_UC)
-#define	VM_MEMATTR_CACHEABLE_NONCOHERENT	((vm_memattr_t)PG_C_CNC)
+#define	VM_MEMATTR_UNCACHED			((vm_memattr_t)PTE_C_UC)
+#define	VM_MEMATTR_CACHEABLE_NONCOHERENT	((vm_memattr_t)PTE_C_CNC)
 
 #define	VM_MEMATTR_DEFAULT		VM_MEMATTR_CACHEABLE_NONCOHERENT
 

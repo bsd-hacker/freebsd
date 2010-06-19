@@ -834,7 +834,7 @@ NLEAF(MipsTLBInvalidException)
 	lw		k0, 0(k1)			# k0=this PTE
 
 	/* Validate page table entry.  */
-	andi		k0, PG_V
+	andi		k0, PTE_V
 	beqz		k0, 3f
 	nop
 

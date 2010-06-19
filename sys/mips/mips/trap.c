@@ -378,23 +378,23 @@ trap(struct trapframe *trapframe)
 				panic("trap: ktlbmod: can't find PTE");
 #ifdef SMP
 			/* It is possible that some other CPU changed m-bit */
-			if (!pte_test(pte, PG_V) || pte_test(pte, PG_D)) {
+			if (!pte_test(pte, PTE_V) || pte_test(pte, PTE_D)) {
 				pmap_update_page(kernel_pmap,
 				    trapframe->badvaddr, *pte);
 				PMAP_UNLOCK(kernel_pmap);
 				return (trapframe->pc);
 			}
 #else
-			if (!pte_test(pte, PG_V) || pte_test(pte, PG_D))
+			if (!pte_test(pte, PTE_V) || pte_test(pte, PTE_D))
 				panic("trap: ktlbmod: invalid pte");
 #endif
-			if (pte_test(pte, PG_RO)) {
+			if (pte_test(pte, PTE_RO)) {
 				/* write to read only page in the kernel */
 				ftype = VM_PROT_WRITE;
 				PMAP_UNLOCK(kernel_pmap);
 				goto kernel_fault;
 			}
-			pte_set(pte, PG_D);
+			pte_set(pte, PTE_D);
 			pmap_update_page(kernel_pmap, trapframe->badvaddr, *pte);
 			pa = TLBLO_PTE_TO_PA(*pte);
 			if (!page_is_managed(pa))
@@ -417,23 +417,23 @@ trap(struct trapframe *trapframe)
 				panic("trap: utlbmod: can't find PTE");
 #ifdef SMP
 			/* It is possible that some other CPU changed m-bit */
-			if (!pte_test(pte, PG_V) || pte_test(pte, PG_D)) {
+			if (!pte_test(pte, PTE_V) || pte_test(pte, PTE_D)) {
 				pmap_update_page(pmap, trapframe->badvaddr, *pte);
 				PMAP_UNLOCK(pmap);
 				goto out;
 			}
 #else
-			if (!pte_test(pte, PG_V) || pte_test(pte, PG_D))
+			if (!pte_test(pte, PTE_V) || pte_test(pte, PTE_D))
 				panic("trap: utlbmod: invalid pte");
 #endif
 
-			if (pte_test(pte, PG_RO)) {
+			if (pte_test(pte, PTE_RO)) {
 				/* write to read only page */
 				ftype = VM_PROT_WRITE;
 				PMAP_UNLOCK(pmap);
 				goto dofault;
 			}
-			pte_set(pte, PG_D);
+			pte_set(pte, PTE_D);
 			pmap_update_page(pmap, trapframe->badvaddr, *pte);
 			pa = TLBLO_PTE_TO_PA(*pte);
 			if (!page_is_managed(pa))
