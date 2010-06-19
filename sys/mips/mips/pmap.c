@@ -2948,21 +2948,16 @@ init_pte_prot(vm_offset_t va, vm_page_t m, vm_prot_t prot)
 
 	if (!(prot & VM_PROT_WRITE))
 		rw = PTE_V | PTE_RO | PTE_C_CNC;
-	else {
-		if (va >= VM_MIN_KERNEL_ADDRESS) {
-			/*
-			 * Don't bother to trap on kernel writes, just
-			 * record page as dirty.
-			 */
+	else if ((m->flags & (PG_FICTITIOUS | PG_UNMANAGED)) == 0) {
+		if ((m->md.pv_flags & PV_TABLE_MOD) ||
+		    m->dirty == VM_PAGE_BITS_ALL) {
 			rw = PTE_V | PTE_D | PTE_C_CNC;
-			vm_page_dirty(m);
-		} else if ((m->md.pv_flags & PV_TABLE_MOD) ||
-		    m->dirty == VM_PAGE_BITS_ALL)
-			rw = PTE_V | PTE_D | PTE_C_CNC;
-		else
+		} else
 			rw = PTE_V | PTE_C_CNC;
 		vm_page_flag_set(m, PG_WRITEABLE);
-	}
+	} else
+		/* Needn't emulate a modified bit for unmanaged pages. */
+		rw = PTE_V | PTE_D | PTE_C_CNC;
 	return rw;
 }
 
