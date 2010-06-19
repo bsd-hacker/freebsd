@@ -27,29 +27,22 @@
  * ---------------------------------------------------------------------------
  */
 
-#ifndef AUTOCONF_INCLUDED
-#include <linux/config.h>
-#endif
-#include <linux/module.h>
-#include <linux/init.h>
-#include <linux/list.h>
-#include <linux/slab.h>
-#include <linux/sched.h>
-#include <linux/wait.h>
-#include <linux/crypto.h>
-#include <linux/mm.h>
-#include <linux/skbuff.h>
-#include <linux/random.h>
-#include <linux/scatterlist.h>
+#include <sys/cdefs.h>
+__FBSDID("$FreeBSD$");
 
-#include <cryptodev.h>
-#include <uio.h>
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/kernel.h>
+#include <sys/module.h>
+#include <sys/malloc.h>
+
+#include <opencrypto/cryptodev.h>
+
+#include <contrib/octeon-sdk/cvmx.h>
 
 struct {
 	softc_device_decl	sc_dev;
 } octo_softc;
-
-#define offset_in_page(p) ((unsigned long)(p) & ~PAGE_MASK)
 
 struct octo_sess {
 	int					 octo_encalg;
@@ -66,34 +59,26 @@ struct octo_sess {
 	int					 octo_mlen;
 	int					 octo_ivsize;
 
-#if 0
-	int					(*octo_decrypt)(struct scatterlist *sg, int sg_len,
-							uint8_t *key, int key_len, uint8_t * iv,
-							uint64_t *hminner, uint64_t *hmouter);
-
-	int					(*octo_encrypt)(struct scatterlist *sg, int sg_len,
-							uint8_t *key, int key_len, uint8_t * iv,
-							uint64_t *hminner, uint64_t *hmouter);
-#else
 	int					(*octo_encrypt)(struct octo_sess *od,
-	                      struct scatterlist *sg, int sg_len,
+						  const uint8_t *buf, int buflen,
 						  int auth_off, int auth_len,
 						  int crypt_off, int crypt_len,
 						  int icv_off, uint8_t *ivp);
 	int					(*octo_decrypt)(struct octo_sess *od,
-	                      struct scatterlist *sg, int sg_len,
+						  const uint8_t *buf, int buflen,
 						  int auth_off, int auth_len,
 						  int crypt_off, int crypt_len,
 						  int icv_off, uint8_t *ivp);
-#endif
 
 	uint64_t			 octo_hminner[3];
 	uint64_t			 octo_hmouter[3];
 };
 
 int32_t octo_id = -1;
+#if 0
 module_param(octo_id, int, 0444);
 MODULE_PARM_DESC(octo_id, "Read-Only OCF ID for cryptocteon driver");
+#endif
 
 static struct octo_sess **octo_sessions = NULL;
 static u_int32_t octo_sesnum = 0;
@@ -109,11 +94,13 @@ static device_method_t octo_methods = {
 	DEVMETHOD(cryptodev_process,	octo_process),
 };
 
-#define debug octo_debug
 int octo_debug = 0;
+#if 0
 module_param(octo_debug, int, 0644);
 MODULE_PARM_DESC(octo_debug, "Enable debug");
+#endif
 
+#define	dprintf		printf
 
 #include "cavium_crypto.c"
 
@@ -130,9 +117,9 @@ octo_newsession(device_t dev, u_int32_t *sid, struct cryptoini *cri)
 	struct octo_sess **ocd;
 	int i;
 
-	dprintk("%s()\n", __FUNCTION__);
+	dprintf("%s()\n", __FUNCTION__);
 	if (sid == NULL || cri == NULL) {
-		dprintk("%s,%d - EINVAL\n", __FILE__, __LINE__);
+		dprintf("%s,%d - EINVAL\n", __FILE__, __LINE__);
 		return EINVAL;
 	}
 
@@ -163,12 +150,12 @@ octo_newsession(device_t dev, u_int32_t *sid, struct cryptoini *cri)
 		c = c->cri_next;
 	}
 	if (!macini && !encini) {
-		dprintk("%s,%d - EINVAL bad cipher/hash or combination\n",
+		dprintf("%s,%d - EINVAL bad cipher/hash or combination\n",
 				__FILE__, __LINE__);
 		return EINVAL;
 	}
 	if (c) {
-		dprintk("%s,%d - EINVAL cannot handle chained cipher/hash combos\n",
+		dprintf("%s,%d - EINVAL cannot handle chained cipher/hash combos\n",
 				__FILE__, __LINE__);
 		return EINVAL;
 	}
@@ -198,7 +185,7 @@ octo_newsession(device_t dev, u_int32_t *sid, struct cryptoini *cri)
 				octo_sesnum = 0;
 			else
 				octo_sesnum /= 2;
-			dprintk("%s,%d: ENOBUFS\n", __FILE__, __LINE__);
+			dprintf("%s,%d: ENOBUFS\n", __FILE__, __LINE__);
 			return ENOBUFS;
 		}
 		memset(ocd, 0, octo_sesnum * sizeof(struct octo_sess *));
@@ -220,7 +207,7 @@ octo_newsession(device_t dev, u_int32_t *sid, struct cryptoini *cri)
 	*ocd = (struct octo_sess *) kmalloc(sizeof(struct octo_sess), SLAB_ATOMIC);
 	if (*ocd == NULL) {
 		octo_freesession(NULL, i);
-		dprintk("%s,%d: ENOBUFS\n", __FILE__, __LINE__);
+		dprintf("%s,%d: ENOBUFS\n", __FILE__, __LINE__);
 		return ENOBUFS;
 	}
 	memset(*ocd, 0, sizeof(struct octo_sess));
@@ -271,7 +258,7 @@ octo_newsession(device_t dev, u_int32_t *sid, struct cryptoini *cri)
 			break;
 		default:
 			octo_freesession(NULL, i);
-			dprintk("%s,%d: EINVALn", __FILE__, __LINE__);
+			dprintf("%s,%d: EINVALn", __FILE__, __LINE__);
 			return EINVAL;
 		}
 		break;
@@ -296,7 +283,7 @@ octo_newsession(device_t dev, u_int32_t *sid, struct cryptoini *cri)
 			break;
 		default:
 			octo_freesession(NULL, i);
-			dprintk("%s,%d: EINVALn", __FILE__, __LINE__);
+			dprintf("%s,%d: EINVALn", __FILE__, __LINE__);
 			return EINVAL;
 		}
 		break;
@@ -314,7 +301,7 @@ octo_newsession(device_t dev, u_int32_t *sid, struct cryptoini *cri)
 		break;
 	default:
 		octo_freesession(NULL, i);
-		dprintk("%s,%d: EINVALn", __FILE__, __LINE__);
+		dprintf("%s,%d: EINVALn", __FILE__, __LINE__);
 		return EINVAL;
 	}
 
@@ -332,10 +319,10 @@ octo_freesession(device_t dev, u_int64_t tid)
 {
 	u_int32_t sid = CRYPTO_SESID2LID(tid);
 
-	dprintk("%s()\n", __FUNCTION__);
+	dprintf("%s()\n", __FUNCTION__);
 	if (sid > octo_sesnum || octo_sessions == NULL ||
 			octo_sessions[sid] == NULL) {
-		dprintk("%s,%d: EINVAL\n", __FILE__, __LINE__);
+		dprintf("%s,%d: EINVAL\n", __FILE__, __LINE__);
 		return(EINVAL);
 	}
 
@@ -358,27 +345,24 @@ octo_process(device_t dev, struct cryptop *crp, int hint)
 	struct cryptodesc *crd;
 	struct octo_sess *od;
 	u_int32_t lid;
-#define SCATTERLIST_MAX 16
-	struct scatterlist sg[SCATTERLIST_MAX];
-	int sg_num, sg_len;
-	struct sk_buff *skb = NULL;
+	struct mbuf *m = NULL;
 	struct uio *uiop = NULL;
 	struct cryptodesc *enccrd = NULL, *maccrd = NULL;
 	unsigned char *ivp = NULL;
 	unsigned char iv_data[HASH_MAX_LEN];
 	int auth_off = 0, auth_len = 0, crypt_off = 0, crypt_len = 0, icv_off = 0;
 
-	dprintk("%s()\n", __FUNCTION__);
+	dprintf("%s()\n", __FUNCTION__);
 	/* Sanity check */
 	if (crp == NULL) {
-		dprintk("%s,%d: EINVAL\n", __FILE__, __LINE__);
+		dprintf("%s,%d: EINVAL\n", __FILE__, __LINE__);
 		return EINVAL;
 	}
 
 	crp->crp_etype = 0;
 
 	if (crp->crp_desc == NULL || crp->crp_buf == NULL) {
-		dprintk("%s,%d: EINVAL\n", __FILE__, __LINE__);
+		dprintf("%s,%d: EINVAL\n", __FILE__, __LINE__);
 		crp->crp_etype = EINVAL;
 		goto done;
 	}
@@ -387,30 +371,33 @@ octo_process(device_t dev, struct cryptop *crp, int hint)
 	if (lid >= octo_sesnum || lid == 0 || octo_sessions == NULL ||
 			octo_sessions[lid] == NULL) {
 		crp->crp_etype = ENOENT;
-		dprintk("%s,%d: ENOENT\n", __FILE__, __LINE__);
+		dprintf("%s,%d: ENOENT\n", __FILE__, __LINE__);
 		goto done;
 	}
 	od = octo_sessions[lid];
 
+#if 0
 	/*
-	 * do some error checking outside of the loop for SKB and IOV processing
-	 * this leaves us with valid skb or uiop pointers for later
+	 * do some error checking outside of the loop for m and IOV processing
+	 * this leaves us with valid m or uiop pointers for later
 	 */
-	if (crp->crp_flags & CRYPTO_F_SKBUF) {
-		skb = (struct sk_buff *) crp->crp_buf;
-		if (skb_shinfo(skb)->nr_frags >= SCATTERLIST_MAX) {
-			printk("%s,%d: %d nr_frags > SCATTERLIST_MAX", __FILE__, __LINE__,
-					skb_shinfo(skb)->nr_frags);
+	if (crp->crp_flags & CRYPTO_F_MBUF) {
+		m = (struct mbuf *) crp->crp_buf;
+		if (m_shinfo(m)->nr_frags >= SCATTERLIST_MAX) {
+			printf("%s,%d: %d nr_frags > SCATTERLIST_MAX", __FILE__, __LINE__,
+					m_shinfo(m)->nr_frags);
 			goto done;
 		}
 	} else if (crp->crp_flags & CRYPTO_F_IOV) {
 		uiop = (struct uio *) crp->crp_buf;
 		if (uiop->uio_iovcnt > SCATTERLIST_MAX) {
-			printk("%s,%d: %d uio_iovcnt > SCATTERLIST_MAX", __FILE__, __LINE__,
+			printf("%s,%d: %d uio_iovcnt > SCATTERLIST_MAX", __FILE__, __LINE__,
 					uiop->uio_iovcnt);
 			goto done;
 		}
 	}
+#endif
+	panic("%s: check cryptop type.", __func__);
 
 	/* point our enccrd and maccrd appropriately */
 	crd = crp->crp_desc;
@@ -424,7 +411,7 @@ octo_process(device_t dev, struct cryptop *crp, int hint)
 	}
 	if (crd) {
 		crp->crp_etype = EINVAL;
-		dprintk("%s,%d: ENOENT - descriptors do not match session\n",
+		dprintf("%s,%d: ENOENT - descriptors do not match session\n",
 				__FILE__, __LINE__);
 		goto done;
 	}
@@ -453,27 +440,28 @@ octo_process(device_t dev, struct cryptop *crp, int hint)
 	}
 
 
+#if 0
 	/*
 	 * setup the SG list to cover the buffer
 	 */
 	memset(sg, 0, sizeof(sg));
-	if (crp->crp_flags & CRYPTO_F_SKBUF) {
+	if (crp->crp_flags & CRYPTO_F_MBUF) {
 		int i, len;
 
 		sg_num = 0;
 		sg_len = 0;
 
-		len = skb_headlen(skb);
-		sg_set_page(&sg[sg_num], virt_to_page(skb->data), len,
-				offset_in_page(skb->data));
+		len = m_headlen(m);
+		sg_set_page(&sg[sg_num], virt_to_page(m->data), len,
+				offset_in_page(m->data));
 		sg_len += len;
 		sg_num++;
 
-		for (i = 0; i < skb_shinfo(skb)->nr_frags && sg_num < SCATTERLIST_MAX;
+		for (i = 0; i < m_shinfo(m)->nr_frags && sg_num < SCATTERLIST_MAX;
 				i++) {
-			len = skb_shinfo(skb)->frags[i].size;
-			sg_set_page(&sg[sg_num], skb_shinfo(skb)->frags[i].page,
-					len, skb_shinfo(skb)->frags[i].page_offset);
+			len = m_shinfo(m)->frags[i].size;
+			sg_set_page(&sg[sg_num], m_shinfo(m)->frags[i].page,
+					len, m_shinfo(m)->frags[i].page_offset);
 			sg_len += len;
 			sg_num++;
 		}
@@ -496,6 +484,8 @@ octo_process(device_t dev, struct cryptop *crp, int hint)
 				offset_in_page(crp->crp_buf));
 		sg_num = 1;
 	}
+#endif
+	panic("%s: set up I/O vectors.", __func__);
 
 
 	/*
@@ -521,29 +511,32 @@ octo_process(device_t dev, struct cryptop *crp, int hint)
 	}
 
 
+#if 0
 	if (!enccrd || (enccrd->crd_flags & CRD_F_ENCRYPT))
 		(*od->octo_encrypt)(od, sg, sg_len,
 				auth_off, auth_len, crypt_off, crypt_len, icv_off, ivp);
 	else
 		(*od->octo_decrypt)(od, sg, sg_len,
 				auth_off, auth_len, crypt_off, crypt_len, icv_off, ivp);
+#endif
+	panic("%s: pass I/O vectors to encrypt/decrypt functions.", __func__);
 
 done:
 	crypto_done(crp);
 	return 0;
 }
-
+#if 0
 static int
 cryptocteon_init(void)
 {
-	dprintk("%s(%p)\n", __FUNCTION__, cryptocteon_init);
+	dprintf("%s(%p)\n", __FUNCTION__, cryptocteon_init);
 
 	softc_device_init(&octo_softc, "cryptocteon", 0, octo_methods);
 
 	octo_id = crypto_get_driverid(softc_get_device(&octo_softc),
 			CRYPTOCAP_F_HARDWARE | CRYPTOCAP_F_SYNC);
 	if (octo_id < 0) {
-		printk("Cryptocteon device cannot initialize!");
+		printf("Cryptocteon device cannot initialize!");
 		return -ENODEV;
 	}
 
@@ -561,14 +554,8 @@ cryptocteon_init(void)
 static void
 cryptocteon_exit(void)
 {
-	dprintk("%s()\n", __FUNCTION__);
+	dprintf("%s()\n", __FUNCTION__);
 	crypto_unregister_all(octo_id);
 	octo_id = -1;
 }
-
-module_init(cryptocteon_init);
-module_exit(cryptocteon_exit);
-
-MODULE_LICENSE("BSD");
-MODULE_AUTHOR("David McCullough <david_mccullough@securecomputing.com>");
-MODULE_DESCRIPTION("Cryptocteon (OCF module for Cavium OCTEON crypto)");
+#endif
