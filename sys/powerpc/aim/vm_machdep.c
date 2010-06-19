@@ -396,3 +396,19 @@ is_physical_memory(addr)
 	return 1;
 }
 
+/*
+ * CPU threading functions related to the VM layer. These could be used
+ * to map the SLB bits required for the kernel stack instead of forcing a
+ * fixed-size KVA.
+ */
+
+void
+cpu_thread_swapin(struct thread *td)
+{
+}
+
+void
+cpu_thread_swapout(struct thread *td)
+{
+}
+

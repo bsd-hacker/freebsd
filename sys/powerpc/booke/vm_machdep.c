@@ -379,3 +379,17 @@ is_physical_memory(vm_offset_t addr)
 	return (1);
 }
 
+/*
+ * CPU threading functions related to VM.
+ */
+
+void
+cpu_thread_swapin(struct thread *td)
+{
+}
+
+void
+cpu_thread_swapout(struct thread *td)
+{
+}
+

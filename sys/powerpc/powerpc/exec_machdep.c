@@ -940,16 +940,6 @@ cpu_thread_free(struct thread *td)
 {
 }
 
-void
-cpu_thread_swapin(struct thread *td)
-{
-}
-
-void
-cpu_thread_swapout(struct thread *td)
-{
-}
-
 int
 cpu_set_user_tls(struct thread *td, void *tls_base)
 {
