@@ -29,7 +29,14 @@
 #define	_OCTUSB_H_
 
 #define	OCTUSB_MAX_DEVICES MIN(USB_MAX_DEVICES, 64)
-#define	OCTUSB_MAX_PORTS	7	/* hardcoded */
+/*
+ * The second port is on a different IRQ and so we disable it for now.
+ */
+#if 1
+#define	OCTUSB_MAX_PORTS	1	/* hardcoded */
+#else
+#define	OCTUSB_MAX_PORTS	2	/* hardcoded */
+#endif
 #define	OCTUSB_MAX_FIXUP	4096	/* bytes */
 #define	OCTUSB_INTR_ENDPT	0x01
 
