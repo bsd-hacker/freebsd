@@ -365,9 +365,9 @@ static int		moea64_pte_insert(u_int, struct lpte *);
  */
 static int	moea64_pvo_enter(pmap_t, uma_zone_t, struct pvo_head *,
 		    vm_offset_t, vm_offset_t, uint64_t, int);
-static void	moea64_pvo_remove(struct pvo_entry *, int);
-static struct	pvo_entry *moea64_pvo_find_va(pmap_t, vm_offset_t, int *);
-static struct	lpte *moea64_pvo_to_pte(const struct pvo_entry *, int);
+static void	moea64_pvo_remove(struct pvo_entry *);
+static struct	pvo_entry *moea64_pvo_find_va(pmap_t, vm_offset_t);
+static struct	lpte *moea64_pvo_to_pte(const struct pvo_entry *);
 
 /*
  * Utility routines.
@@ -782,7 +782,7 @@ moea64_add_ofw_mappings(mmu_t mmup, phandle_t mmu, size_t sz)
 		DISABLE_TRANS(msr);
 		for (off = 0; off < translations[i].om_len; off += PAGE_SIZE) {
 			if (moea64_pvo_find_va(kernel_pmap,
-			    translations[i].om_va + off, NULL) != NULL)
+			    translations[i].om_va + off) != NULL)
 				continue;
 
 			moea64_kenter(mmup, translations[i].om_va + off,
@@ -1185,7 +1185,7 @@ moea64_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernelend)
 	#ifndef __powerpc64__	/* KVA is in high memory on PPC64 */
 	PMAP_LOCK(kernel_pmap);
 	while (virtual_end < VM_MAX_KERNEL_ADDRESS &&
-	    moea64_pvo_find_va(kernel_pmap, virtual_end+1, NULL) == NULL)
+	    moea64_pvo_find_va(kernel_pmap, virtual_end+1) == NULL)
 		virtual_end += PAGE_SIZE;
 	PMAP_UNLOCK(kernel_pmap);
 	#endif
@@ -1317,13 +1317,11 @@ moea64_change_wiring(mmu_t mmu, pmap_t pm, vm_offset_t va, boolean_t wired)
 	int	i, ptegidx;
 
 	PMAP_LOCK(pm);
-	pvo = moea64_pvo_find_va(pm, va & ~ADDR_POFF, NULL);
+	pvo = moea64_pvo_find_va(pm, va & ~ADDR_POFF);
 
 	if (pvo != NULL) {
 		LOCK_TABLE();
-		pt = moea64_pvo_to_pte(pvo, -1);
-		if (pt != NULL)
-			moea64_pte_synch(pt, &pvo->pvo_pte.lpte);
+		pt = moea64_pvo_to_pte(pvo);
 
 		if (wired) {
 			if ((pvo->pvo_vaddr & PVO_WIRED) == 0)
@@ -1648,7 +1646,7 @@ moea64_extract(mmu_t mmu, pmap_t pm, vm_offset_t va)
 	vm_paddr_t pa;
 
 	PMAP_LOCK(pm);
-	pvo = moea64_pvo_find_va(pm, va, NULL);
+	pvo = moea64_pvo_find_va(pm, va);
 	if (pvo == NULL)
 		pa = 0;
 	else
@@ -1674,7 +1672,7 @@ moea64_extract_and_hold(mmu_t mmu, pmap_t pmap, vm_offset_t va, vm_prot_t prot)
 	pa = 0;
 	PMAP_LOCK(pmap);
 retry:
-	pvo = moea64_pvo_find_va(pmap, va & ~ADDR_POFF, NULL);
+	pvo = moea64_pvo_find_va(pmap, va & ~ADDR_POFF);
 	if (pvo != NULL && (pvo->pvo_pte.lpte.pte_hi & LPTE_VALID) &&
 	    ((pvo->pvo_pte.lpte.pte_lo & LPTE_PP) == LPTE_RW ||
 	     (prot & VM_PROT_WRITE) == 0)) {
@@ -1851,7 +1849,7 @@ moea64_remove_write(mmu_t mmu, vm_page_t m)
 		PMAP_LOCK(pmap);
 		LOCK_TABLE();
 		if ((pvo->pvo_pte.lpte.pte_lo & LPTE_PP) != LPTE_BR) {
-			pt = moea64_pvo_to_pte(pvo, -1);
+			pt = moea64_pvo_to_pte(pvo);
 			pvo->pvo_pte.lpte.pte_lo &= ~LPTE_PP;
 			pvo->pvo_pte.lpte.pte_lo |= LPTE_BR;
 			if (pt != NULL) {
@@ -1951,7 +1949,7 @@ moea64_kextract(mmu_t mmu, vm_offset_t va)
 		return (va);
 
 	PMAP_LOCK(kernel_pmap);
-	pvo = moea64_pvo_find_va(kernel_pmap, va, NULL);
+	pvo = moea64_pvo_find_va(kernel_pmap, va);
 	KASSERT(pvo != NULL, ("moea64_kextract: no addr found for %#" PRIxPTR,
 	    va));
 	pa = (pvo->pvo_pte.lpte.pte_lo & LPTE_RPGN) + (va - PVO_VADDR(pvo));
@@ -2144,7 +2142,6 @@ moea64_protect(mmu_t mmu, pmap_t pm, vm_offset_t sva, vm_offset_t eva,
 {
 	struct	pvo_entry *pvo;
 	struct	lpte *pt;
-	int	pteidx;
 
 	CTR4(KTR_PMAP, "moea64_protect: pm=%p sva=%#x eva=%#x prot=%#x", pm, sva,
 	    eva, prot);
@@ -2161,7 +2158,7 @@ moea64_protect(mmu_t mmu, pmap_t pm, vm_offset_t sva, vm_offset_t eva,
 	vm_page_lock_queues();
 	PMAP_LOCK(pm);
 	for (; sva < eva; sva += PAGE_SIZE) {
-		pvo = moea64_pvo_find_va(pm, sva, &pteidx);
+		pvo = moea64_pvo_find_va(pm, sva);
 		if (pvo == NULL)
 			continue;
 
@@ -2170,7 +2167,7 @@ moea64_protect(mmu_t mmu, pmap_t pm, vm_offset_t sva, vm_offset_t eva,
 		 * copy.
 		 */
 		LOCK_TABLE();
-		pt = moea64_pvo_to_pte(pvo, pteidx);
+		pt = moea64_pvo_to_pte(pvo);
 
 		/*
 		 * Change the protection of the page.
@@ -2266,15 +2263,13 @@ void
 moea64_remove(mmu_t mmu, pmap_t pm, vm_offset_t sva, vm_offset_t eva)
 {
 	struct	pvo_entry *pvo;
-	int	pteidx;
 
 	vm_page_lock_queues();
 	PMAP_LOCK(pm);
 	for (; sva < eva; sva += PAGE_SIZE) {
-		pvo = moea64_pvo_find_va(pm, sva, &pteidx);
-		if (pvo != NULL) {
-			moea64_pvo_remove(pvo, pteidx);
-		}
+		pvo = moea64_pvo_find_va(pm, sva);
+		if (pvo != NULL)
+			moea64_pvo_remove(pvo);
 	}
 	vm_page_unlock_queues();
 	PMAP_UNLOCK(pm);
@@ -2299,7 +2294,7 @@ moea64_remove_all(mmu_t mmu, vm_page_t m)
 		MOEA_PVO_CHECK(pvo);	/* sanity check */
 		pmap = pvo->pvo_pmap;
 		PMAP_LOCK(pmap);
-		moea64_pvo_remove(pvo, -1);
+		moea64_pvo_remove(pvo);
 		PMAP_UNLOCK(pmap);
 	}
 	if ((m->flags & PG_WRITEABLE) && moea64_is_modified(mmu, m)) {
@@ -2448,11 +2443,12 @@ moea64_pvo_enter(pmap_t pm, uma_zone_t zone, struct pvo_head *pvo_head,
 					    &pvo->pvo_pte.lpte);
 					if (i >= 0)
 						PVO_PTEGIDX_SET(pvo, i);
+					moea64_pte_overflow--;
 				}
 				UNLOCK_TABLE();
 				return (0);
 			}
-			moea64_pvo_remove(pvo, -1);
+			moea64_pvo_remove(pvo);
 			break;
 		}
 	}
@@ -2553,7 +2549,7 @@ moea64_pvo_enter(pmap_t pm, uma_zone_t zone, struct pvo_head *pvo_head,
 }
 
 static void
-moea64_pvo_remove(struct pvo_entry *pvo, int pteidx)
+moea64_pvo_remove(struct pvo_entry *pvo)
 {
 	struct	lpte *pt;
 
@@ -2562,7 +2558,7 @@ moea64_pvo_remove(struct pvo_entry *pvo, int pteidx)
 	 * save the ref & cfg bits).
 	 */
 	LOCK_TABLE();
-	pt = moea64_pvo_to_pte(pvo, pteidx);
+	pt = moea64_pvo_to_pte(pvo);
 	if (pt != NULL) {
 		moea64_pte_unset(pt, &pvo->pvo_pte.lpte, pvo->pvo_vpn);
 		PVO_PTEGIDX_CLR(pvo);
@@ -2610,23 +2606,8 @@ moea64_pvo_remove(struct pvo_entry *pvo, int pteidx)
 	moea64_pvo_remove_calls++;
 }
 
-static __inline int
-moea64_pvo_pte_index(const struct pvo_entry *pvo, int ptegidx)
-{
-
-	/*
-	 * We can find the actual pte entry without searching by grabbing
-	 * the PTEG index from 3 unused bits in pvo_vaddr and by
-	 * noticing the HID bit.
-	 */
-	if (pvo->pvo_pte.lpte.pte_hi & LPTE_HID)
-		ptegidx ^= moea64_pteg_mask;
-
-	return ((ptegidx << 3) | PVO_PTEGIDX_GET(pvo));
-}
-
 static struct pvo_entry *
-moea64_pvo_find_va(pmap_t pm, vm_offset_t va, int *pteidx_p)
+moea64_pvo_find_va(pmap_t pm, vm_offset_t va)
 {
 	struct		pvo_entry *pvo;
 	int		ptegidx;
@@ -2652,11 +2633,8 @@ moea64_pvo_find_va(pmap_t pm, vm_offset_t va, int *pteidx_p)
 
 	LOCK_TABLE();
 	LIST_FOREACH(pvo, &moea64_pvo_table[ptegidx], pvo_olink) {
-		if (pvo->pvo_pmap == pm && PVO_VADDR(pvo) == va) {
-			if (pteidx_p)
-				*pteidx_p = moea64_pvo_pte_index(pvo, ptegidx);
+		if (pvo->pvo_pmap == pm && PVO_VADDR(pvo) == va)
 			break;
-		}
 	}
 	UNLOCK_TABLE();
 
@@ -2664,22 +2642,34 @@ moea64_pvo_find_va(pmap_t pm, vm_offset_t va, int *pteidx_p)
 }
 
 static struct lpte *
-moea64_pvo_to_pte(const struct pvo_entry *pvo, int pteidx)
+moea64_pvo_to_pte(const struct pvo_entry *pvo)
 {
-	struct lpte *pt;
+	struct lpte 	*pt;
+	int		pteidx, ptegidx;
+	uint64_t	vsid;
+
+	ASSERT_TABLE_LOCK();
+
+	/* If the PTEG index is not set, then there is no page table entry */
+	if (!PVO_PTEGIDX_ISSET(pvo))
+		return (NULL);
 
 	/*
-	 * If we haven't been supplied the ptegidx, calculate it.
+	 * Calculate the ptegidx
 	 */
-	if (pteidx == -1) {
-		int		ptegidx;
-		uint64_t	vsid;
+	vsid = PVO_VSID(pvo);
+	ptegidx = va_to_pteg(vsid, PVO_VADDR(pvo),
+	    pvo->pvo_vaddr & PVO_LARGE);
 
-		vsid = PVO_VSID(pvo);
-		ptegidx = va_to_pteg(vsid, PVO_VADDR(pvo),
-		    pvo->pvo_vaddr & PVO_LARGE);
-		pteidx = moea64_pvo_pte_index(pvo, ptegidx);
-	}
+	/*
+	 * We can find the actual pte entry without searching by grabbing
+	 * the PTEG index from 3 unused bits in pvo_vaddr and by
+	 * noticing the HID bit.
+	 */
+	if (pvo->pvo_pte.lpte.pte_hi & LPTE_HID)
+		ptegidx ^= moea64_pteg_mask;
+
+	pteidx = (ptegidx << 3) | PVO_PTEGIDX_GET(pvo);
 
 	if ((pvo->pvo_pte.lpte.pte_hi & LPTE_VALID) && 
 	    !PVO_PTEGIDX_ISSET(pvo)) {
@@ -2693,11 +2683,6 @@ moea64_pvo_to_pte(const struct pvo_entry *pvo, int pteidx)
 		    "pvo but no valid pte", pvo);
 	}
 
-	/* If the PTEG index is not set, then there is no page table entry */
-	if (!PVO_PTEGIDX_ISSET(pvo))
-		return (NULL);
-
-	ASSERT_TABLE_LOCK();
 	pt = &moea64_pteg_table[pteidx >> 3].pt[pteidx & 7];
 	if ((pt->pte_hi ^ (pvo->pvo_pte.lpte.pte_hi & ~LPTE_VALID)) == 
 	    LPTE_VALID) {
@@ -2765,8 +2750,7 @@ moea64_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
 	 */
 	pteg_bktidx = ptegidx;
 	for (pt = moea64_pteg_table[pteg_bktidx].pt, i = 0; i < 8; i++, pt++) {
-		if ((pt->pte_hi & LPTE_VALID) == 0 &&
-		    (pt->pte_hi & LPTE_LOCKED) == 0) {
+		if ((pt->pte_hi & (LPTE_VALID | LPTE_LOCKED)) == 0) {
 			pvo_pt->pte_hi &= ~LPTE_HID;
 			moea64_pte_set(pt, pvo_pt);
 			return (i);
@@ -2778,8 +2762,7 @@ moea64_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
 	 */
 	pteg_bktidx ^= moea64_pteg_mask;
 	for (pt = moea64_pteg_table[pteg_bktidx].pt, i = 0; i < 8; i++, pt++) {
-		if ((pt->pte_hi & LPTE_VALID) == 0 &&
-		    (pt->pte_hi & LPTE_LOCKED) == 0) {
+		if ((pt->pte_hi & (LPTE_VALID | LPTE_LOCKED)) == 0) {
 			pvo_pt->pte_hi |= LPTE_HID;
 			moea64_pte_set(pt, pvo_pt);
 			return (i);
@@ -2815,7 +2798,7 @@ moea64_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
 	LIST_FOREACH(pvo, &moea64_pvo_table[pteg_bktidx], pvo_olink) {
 		if (pvo->pvo_pte.lpte.pte_hi == pt->pte_hi) {
 			KASSERT(pvo->pvo_pte.lpte.pte_hi & LPTE_VALID, 
-			    ("Invalid PVO for valid PTE!\n"));
+			    ("Invalid PVO for valid PTE!"));
 			moea64_pte_unset(pt, &pvo->pvo_pte.lpte, pvo->pvo_vpn);
 			PVO_PTEGIDX_CLR(pvo);
 			moea64_pte_overflow++;
@@ -2829,7 +2812,7 @@ moea64_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
 		LIST_FOREACH(pvo, &moea64_pvo_table[pteg_bktidx], pvo_olink) {
 			if (pvo->pvo_pte.lpte.pte_hi == pt->pte_hi) {
 				KASSERT(pvo->pvo_pte.lpte.pte_hi & LPTE_VALID, 
-				    ("Invalid PVO for valid PTE!\n"));
+				    ("Invalid PVO for valid PTE!"));
 				moea64_pte_unset(pt, &pvo->pvo_pte.lpte,
 				    pvo->pvo_vpn);
 				PVO_PTEGIDX_CLR(pvo);
@@ -2890,7 +2873,7 @@ moea64_query_bit(vm_page_t m, u_int64_t ptebit)
 		 * ptebit is set, cache it and return success.
 		 */
 		LOCK_TABLE();
-		pt = moea64_pvo_to_pte(pvo, -1);
+		pt = moea64_pvo_to_pte(pvo);
 		if (pt != NULL) {
 			moea64_pte_synch(pt, &pvo->pvo_pte.lpte);
 			if (pvo->pvo_pte.lpte.pte_lo & ptebit) {
@@ -2941,7 +2924,7 @@ moea64_clear_bit(vm_page_t m, u_int64_t ptebit)
 		MOEA_PVO_CHECK(pvo);	/* sanity check */
 
 		LOCK_TABLE();
-		pt = moea64_pvo_to_pte(pvo, -1);
+		pt = moea64_pvo_to_pte(pvo);
 		if (pt != NULL) {
 			moea64_pte_synch(pt, &pvo->pvo_pte.lpte);
 			if (pvo->pvo_pte.lpte.pte_lo & ptebit) {
@@ -2967,7 +2950,7 @@ moea64_dev_direct_mapped(mmu_t mmu, vm_offset_t pa, vm_size_t size)
 
 	PMAP_LOCK(kernel_pmap);
 	for (ppa = pa & ~ADDR_POFF; ppa < pa + size; ppa += PAGE_SIZE) {
-		pvo = moea64_pvo_find_va(kernel_pmap, ppa, NULL);
+		pvo = moea64_pvo_find_va(kernel_pmap, ppa);
 		if (pvo == NULL ||
 		    (pvo->pvo_pte.lpte.pte_lo & LPTE_RPGN) != ppa) {
 			error = EFAULT;
@@ -3033,7 +3016,7 @@ moea64_sync_icache(mmu_t mmu, pmap_t pm, vm_offset_t va, vm_size_t sz)
 	while (sz > 0) {
 		lim = round_page(va);
 		len = MIN(lim - va, sz);
-		pvo = moea64_pvo_find_va(pm, va & ~ADDR_POFF, NULL);
+		pvo = moea64_pvo_find_va(pm, va & ~ADDR_POFF);
 		if (pvo != NULL) {
 			pa = (pvo->pvo_pte.pte.pte_lo & LPTE_RPGN) |
 			    (va & ADDR_POFF);
