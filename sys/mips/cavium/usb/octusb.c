@@ -337,7 +337,7 @@ octusb_host_control_data_tx(struct octusb_td *td)
 
 	if (td->remainder > rem) {
 		td->error_any = 1;
-		DPRINTF(1, "Excess setup transmit data\n");
+		DPRINTFN(1, "Excess setup transmit data\n");
 		return (0);		/* done */
 	}
 	usbd_copy_out(td->pc, td->offset, td->qh->fixup_buf + td->qh->fixup_off, td->remainder);
@@ -462,7 +462,7 @@ octusb_non_control_data_tx(struct octusb_td *td)
 
 		if (rem == 0) {
 			/* should not happen */
-			DPRINTF(1, "Fixup buffer is too small\n");
+			DPRINTFN(1, "Fixup buffer is too small\n");
 			td->error_any = 1;
 			return (0);	/* done */
 		}
@@ -590,7 +590,7 @@ octusb_non_control_data_rx(struct octusb_td *td)
 
 		if (rem == 0) {
 			/* should not happen */
-			DPRINTF(1, "Fixup buffer is too small\n");
+			DPRINTFN(1, "Fixup buffer is too small\n");
 			td->error_any = 1;
 			return (0);	/* done */
 		}
