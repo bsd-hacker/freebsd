@@ -2785,6 +2785,11 @@ moea64_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
 		return (-1);
 	}
 
+	if (pteg_bktidx == ptegidx)
+		pvo_pt->pte_hi &= ~LPTE_HID;
+	else
+		pvo_pt->pte_hi |= LPTE_HID;
+
 	/*
 	 * Synchronize the sacrifice PTE with its PVO, then mark both
 	 * invalid. The PVO will be reused when/if the VM system comes
@@ -2793,7 +2798,7 @@ moea64_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
 	pt = &moea64_pteg_table[pteg_bktidx].pt[i];
 
 	if (pt->pte_hi & LPTE_HID)
-		pvo_pt->pte_hi |= LPTE_HID;
+		pteg_bktidx ^= moea64_pteg_mask; /* PTEs indexed by primary */
 
 	LIST_FOREACH(pvo, &moea64_pvo_table[pteg_bktidx], pvo_olink) {
 		if (pvo->pvo_pte.lpte.pte_hi == pt->pte_hi) {
@@ -2806,21 +2811,6 @@ moea64_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
 		}
 	}
 
-	if (pvo->pvo_pte.lpte.pte_hi != pt->pte_hi) {
-		/* It could have landed in the secondary PTEG */
-		pteg_bktidx ^= moea64_pteg_mask;
-		LIST_FOREACH(pvo, &moea64_pvo_table[pteg_bktidx], pvo_olink) {
-			if (pvo->pvo_pte.lpte.pte_hi == pt->pte_hi) {
-				KASSERT(pvo->pvo_pte.lpte.pte_hi & LPTE_VALID, 
-				    ("Invalid PVO for valid PTE!"));
-				moea64_pte_unset(pt, &pvo->pvo_pte.lpte,
-				    pvo->pvo_vpn);
-				PVO_PTEGIDX_CLR(pvo);
-				moea64_pte_overflow++;
-				break;
-			}
-		}
-	}
 	KASSERT(pvo->pvo_pte.lpte.pte_hi == pt->pte_hi,
 	   ("Unable to find PVO for spilled PTE"));
 
