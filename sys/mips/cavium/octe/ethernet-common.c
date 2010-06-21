@@ -100,7 +100,6 @@ static struct ifnet_stats *cvm_oct_common_get_stats(struct ifnet *ifp)
  */
 void cvm_oct_common_set_multicast_list(struct ifnet *ifp)
 {
-#if 0
 	cvmx_gmxx_prtx_cfg_t gmx_cfg;
 	cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
 	int interface = INTERFACE(priv->port);
@@ -133,7 +132,6 @@ void cvm_oct_common_set_multicast_list(struct ifnet *ifp)
 
 		cvmx_write_csr(CVMX_GMXX_PRTX_CFG(index, interface), gmx_cfg.u64);
 	}
-#endif
 }
 
 
@@ -164,12 +162,12 @@ static int cvm_oct_common_set_mac_address(struct ifnet *ifp, void *addr)
 		cvmx_write_csr(CVMX_GMXX_PRTX_CFG(index, interface), gmx_cfg.u64 & ~1ull);
 
 		cvmx_write_csr(CVMX_GMXX_SMACX(index, interface), mac);
-		cvmx_write_csr(CVMX_GMXX_RXX_ADR_CAM0(index, interface), ptr[2]);
-		cvmx_write_csr(CVMX_GMXX_RXX_ADR_CAM1(index, interface), ptr[3]);
-		cvmx_write_csr(CVMX_GMXX_RXX_ADR_CAM2(index, interface), ptr[4]);
-		cvmx_write_csr(CVMX_GMXX_RXX_ADR_CAM3(index, interface), ptr[5]);
-		cvmx_write_csr(CVMX_GMXX_RXX_ADR_CAM4(index, interface), ptr[6]);
-		cvmx_write_csr(CVMX_GMXX_RXX_ADR_CAM5(index, interface), ptr[7]);
+		cvmx_write_csr(CVMX_GMXX_RXX_ADR_CAM0(index, interface), ptr[0]);
+		cvmx_write_csr(CVMX_GMXX_RXX_ADR_CAM1(index, interface), ptr[1]);
+		cvmx_write_csr(CVMX_GMXX_RXX_ADR_CAM2(index, interface), ptr[2]);
+		cvmx_write_csr(CVMX_GMXX_RXX_ADR_CAM3(index, interface), ptr[3]);
+		cvmx_write_csr(CVMX_GMXX_RXX_ADR_CAM4(index, interface), ptr[4]);
+		cvmx_write_csr(CVMX_GMXX_RXX_ADR_CAM5(index, interface), ptr[5]);
 		cvm_oct_common_set_multicast_list(ifp);
 		cvmx_write_csr(CVMX_GMXX_PRTX_CFG(index, interface), gmx_cfg.u64);
 	}
@@ -189,11 +187,7 @@ int cvm_oct_common_change_mtu(struct ifnet *ifp, int new_mtu)
 	cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
 	int interface = INTERFACE(priv->port);
 	int index = INDEX(priv->port);
-#if defined(CONFIG_VLAN_8021Q) || defined(CONFIG_VLAN_8021Q_MODULE)
 	int vlan_bytes = 4;
-#else
-	int vlan_bytes = 0;
-#endif
 
 	/* Limit the MTU to make sure the ethernet packets are between 64 bytes
 	   and 65535 bytes */
