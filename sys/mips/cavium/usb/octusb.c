@@ -374,7 +374,7 @@ octusb_host_control_data_rx(struct octusb_td *td)
 	td->remainder -= rem;
 	td->qh->fixup_off += rem;
 
-	return (1);			/* done */
+	return (0);			/* done */
 }
 
 static uint8_t
