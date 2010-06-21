@@ -174,7 +174,7 @@ cryptocteon_newsession(device_t dev, u_int32_t *sid, struct cryptoini *cri)
 			sc->sc_sesnum *= 2;
 
 		ocd = malloc(sc->sc_sesnum * sizeof(struct octo_sess *),
-			     M_DEVBUF, M_NOWAIT);
+			     M_DEVBUF, M_NOWAIT | M_ZERO);
 		if (ocd == NULL) {
 			/* Reset session number */
 			if (sc->sc_sesnum == CRYPTO_SW_SESSIONS)
@@ -184,7 +184,6 @@ cryptocteon_newsession(device_t dev, u_int32_t *sid, struct cryptoini *cri)
 			dprintf("%s,%d: ENOBUFS\n", __FILE__, __LINE__);
 			return ENOBUFS;
 		}
-		memset(ocd, 0, sc->sc_sesnum * sizeof(struct octo_sess *));
 
 		/* Copy existing sessions */
 		if (sc->sc_sessions) {
@@ -199,13 +198,12 @@ cryptocteon_newsession(device_t dev, u_int32_t *sid, struct cryptoini *cri)
 	ocd = &sc->sc_sessions[i];
 	*sid = i;
 
-	*ocd = malloc(sizeof(struct octo_sess), M_DEVBUF, M_NOWAIT);
+	*ocd = malloc(sizeof(struct octo_sess), M_DEVBUF, M_NOWAIT | M_ZERO);
 	if (*ocd == NULL) {
 		cryptocteon_freesession(NULL, i);
 		dprintf("%s,%d: ENOBUFS\n", __FILE__, __LINE__);
 		return ENOBUFS;
 	}
-	memset(*ocd, 0, sizeof(struct octo_sess));
 
 	if (encini && encini->cri_key) {
 		(*ocd)->octo_encklen = (encini->cri_klen + 7) / 8;
@@ -443,7 +441,6 @@ cryptocteon_process(device_t dev, struct cryptop *crp, int hint)
 	/*
 	 * setup the I/O vector to cover the buffer
 	 */
-	memset(od->octo_iov, 0, sizeof od->octo_iov);
 	if (crp->crp_flags & CRYPTO_F_IMBUF) {
 		iovcnt = 0;
 		iovlen = 0;
