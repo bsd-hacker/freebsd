@@ -690,6 +690,9 @@ cvmx_helper_board_usb_clock_types_t __cvmx_helper_board_usb_get_clock_type(void)
 {
     switch (cvmx_sysinfo_get()->board_type) {
     case CVMX_BOARD_TYPE_BBGW_REF:
+#if defined(OCTEON_VENDOR_LANNER)
+    case CVMX_BOARD_TYPE_CUST_LANNER_MR320:
+#endif
             return USB_CLOCK_TYPE_CRYSTAL_12;
     }
     return USB_CLOCK_TYPE_REF_48;
