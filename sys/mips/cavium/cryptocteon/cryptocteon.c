@@ -32,6 +32,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/bus.h>
 #include <sys/kernel.h>
 #include <sys/module.h>
 #include <sys/malloc.h>
@@ -40,70 +41,62 @@ __FBSDID("$FreeBSD$");
 
 #include <contrib/octeon-sdk/cvmx.h>
 
-struct {
-	softc_device_decl	sc_dev;
-} octo_softc;
+#include <mips/cavium/cryptocteon/cryptocteonvar.h>
 
-struct octo_sess {
-	int					 octo_encalg;
-	#define MAX_CIPHER_KEYLEN	64
-	char				 octo_enckey[MAX_CIPHER_KEYLEN];
-	int					 octo_encklen;
+#include "cryptodev_if.h"
 
-	int					 octo_macalg;
-	#define MAX_HASH_KEYLEN	64
-	char				 octo_mackey[MAX_HASH_KEYLEN];
-	int					 octo_macklen;
-	int					 octo_mackey_set;
-
-	int					 octo_mlen;
-	int					 octo_ivsize;
-
-	int					(*octo_encrypt)(struct octo_sess *od,
-						  const uint8_t *buf, int buflen,
-						  int auth_off, int auth_len,
-						  int crypt_off, int crypt_len,
-						  int icv_off, uint8_t *ivp);
-	int					(*octo_decrypt)(struct octo_sess *od,
-						  const uint8_t *buf, int buflen,
-						  int auth_off, int auth_len,
-						  int crypt_off, int crypt_len,
-						  int icv_off, uint8_t *ivp);
-
-	uint64_t			 octo_hminner[3];
-	uint64_t			 octo_hmouter[3];
+struct cryptocteon_softc {
+	int32_t			sc_cid;		/* opencrypto id */
+	struct octo_sess	**sc_sessions;
+	uint32_t		sc_sesnum;
 };
 
-int32_t octo_id = -1;
-#if 0
-module_param(octo_id, int, 0444);
-MODULE_PARM_DESC(octo_id, "Read-Only OCF ID for cryptocteon driver");
-#endif
+static void cryptocteon_identify(driver_t *, device_t);
+static int cryptocteon_probe(device_t);
+static int cryptocteon_attach(device_t);
 
-static struct octo_sess **octo_sessions = NULL;
-static u_int32_t octo_sesnum = 0;
+static int cryptocteon_process(device_t, struct cryptop *, int);
+static int cryptocteon_newsession(device_t, u_int32_t *, struct cryptoini *);
+static int cryptocteon_freesession(device_t, u_int64_t);
 
-static	int octo_process(device_t, struct cryptop *, int);
-static	int octo_newsession(device_t, u_int32_t *, struct cryptoini *);
-static	int octo_freesession(device_t, u_int64_t);
+int cryptocteon_debug = 0;
+TUNABLE_INT("hw.cryptocteon.debug", &cryptocteon_debug);
 
-static device_method_t octo_methods = {
-	/* crypto device methods */
-	DEVMETHOD(cryptodev_newsession,	octo_newsession),
-	DEVMETHOD(cryptodev_freesession,octo_freesession),
-	DEVMETHOD(cryptodev_process,	octo_process),
-};
+static void
+cryptocteon_identify(driver_t *drv, device_t parent)
+{
+	if (octeon_has_feature(OCTEON_FEATURE_CRYPTO))
+		BUS_ADD_CHILD(parent, 0, "cryptocteon", 0);
+}
 
-int octo_debug = 0;
-#if 0
-module_param(octo_debug, int, 0644);
-MODULE_PARM_DESC(octo_debug, "Enable debug");
-#endif
+static int
+cryptocteon_probe(device_t dev)
+{
+	device_set_desc(dev, "Octeon Secure Coprocessor");
+	return (0);
+}
 
-#define	dprintf		printf
+static int
+cryptocteon_attach(device_t dev)
+{
+	struct cryptocteon_softc *sc;
 
-#include "cavium_crypto.c"
+	sc = device_get_softc(dev);
 
+	sc->sc_cid = crypto_get_driverid(dev, CRYPTOCAP_F_HARDWARE | CRYPTOCAP_F_SYNC);
+	if (sc->sc_cid < 0) {
+		device_printf(dev, "crypto_get_driverid ret %d\n", sc->sc_cid);
+		return (ENXIO);
+	}
+
+	crypto_register(sc->sc_cid, CRYPTO_MD5_HMAC, 0, 0);
+	crypto_register(sc->sc_cid, CRYPTO_SHA1_HMAC, 0, 0);
+	crypto_register(sc->sc_cid, CRYPTO_DES_CBC, 0, 0);
+	crypto_register(sc->sc_cid, CRYPTO_3DES_CBC, 0, 0);
+	crypto_register(sc->sc_cid, CRYPTO_AES_CBC, 0, 0);
+
+	return (0);
+}
 
 /*
  * Generate a new octo session.  We artifically limit it to a single
@@ -111,17 +104,17 @@ MODULE_PARM_DESC(octo_debug, "Enable debug");
  * do not expect more than this anyway.
  */
 static int
-octo_newsession(device_t dev, u_int32_t *sid, struct cryptoini *cri)
+cryptocteon_newsession(device_t dev, u_int32_t *sid, struct cryptoini *cri)
 {
 	struct cryptoini *c, *encini = NULL, *macini = NULL;
+	struct cryptocteon_softc *sc;
 	struct octo_sess **ocd;
 	int i;
 
-	dprintf("%s()\n", __FUNCTION__);
-	if (sid == NULL || cri == NULL) {
-		dprintf("%s,%d - EINVAL\n", __FILE__, __LINE__);
-		return EINVAL;
-	}
+	sc = device_get_softc(dev);
+
+	if (sid == NULL || cri == NULL || sc == NULL)
+		return (EINVAL);
 
 	/*
 	 * To keep it simple, we only handle hash, cipher or hash/cipher in a
@@ -131,17 +124,17 @@ octo_newsession(device_t dev, u_int32_t *sid, struct cryptoini *cri)
 	 */
 	for (i = 0, c = cri; c && i < 2; i++) {
 		if (c->cri_alg == CRYPTO_MD5_HMAC ||
-				c->cri_alg == CRYPTO_SHA1_HMAC ||
-				c->cri_alg == CRYPTO_NULL_HMAC) {
+		    c->cri_alg == CRYPTO_SHA1_HMAC ||
+		    c->cri_alg == CRYPTO_NULL_HMAC) {
 			if (macini) {
 				break;
 			}
 			macini = c;
 		}
 		if (c->cri_alg == CRYPTO_DES_CBC ||
-				c->cri_alg == CRYPTO_3DES_CBC ||
-				c->cri_alg == CRYPTO_AES_CBC ||
-				c->cri_alg == CRYPTO_NULL_CBC) {
+		    c->cri_alg == CRYPTO_3DES_CBC ||
+		    c->cri_alg == CRYPTO_AES_CBC ||
+		    c->cri_alg == CRYPTO_NULL_CBC) {
 			if (encini) {
 				break;
 			}
@@ -164,49 +157,49 @@ octo_newsession(device_t dev, u_int32_t *sid, struct cryptoini *cri)
 	 * So we have something we can do, lets setup the session
 	 */
 
-	if (octo_sessions) {
-		for (i = 1; i < octo_sesnum; i++)
-			if (octo_sessions[i] == NULL)
+	if (sc->sc_sessions) {
+		for (i = 1; i < sc->sc_sesnum; i++)
+			if (sc->sc_sessions[i] == NULL)
 				break;
 	} else
 		i = 1;		/* NB: to silence compiler warning */
 
-	if (octo_sessions == NULL || i == octo_sesnum) {
-		if (octo_sessions == NULL) {
-			i = 1; /* We leave octo_sessions[0] empty */
-			octo_sesnum = CRYPTO_SW_SESSIONS;
+	if (sc->sc_sessions == NULL || i == sc->sc_sesnum) {
+		if (sc->sc_sessions == NULL) {
+			i = 1; /* We leave sc->sc_sessions[0] empty */
+			sc->sc_sesnum = CRYPTO_SW_SESSIONS;
 		} else
-			octo_sesnum *= 2;
+			sc->sc_sesnum *= 2;
 
-		ocd = kmalloc(octo_sesnum * sizeof(struct octo_sess *), SLAB_ATOMIC);
+		ocd = malloc(sc->sc_sesnum * sizeof(struct octo_sess *),
+			     M_DEVBUF, M_NOWAIT);
 		if (ocd == NULL) {
 			/* Reset session number */
-			if (octo_sesnum == CRYPTO_SW_SESSIONS)
-				octo_sesnum = 0;
+			if (sc->sc_sesnum == CRYPTO_SW_SESSIONS)
+				sc->sc_sesnum = 0;
 			else
-				octo_sesnum /= 2;
+				sc->sc_sesnum /= 2;
 			dprintf("%s,%d: ENOBUFS\n", __FILE__, __LINE__);
 			return ENOBUFS;
 		}
-		memset(ocd, 0, octo_sesnum * sizeof(struct octo_sess *));
+		memset(ocd, 0, sc->sc_sesnum * sizeof(struct octo_sess *));
 
 		/* Copy existing sessions */
-		if (octo_sessions) {
-			memcpy(ocd, octo_sessions,
-			    (octo_sesnum / 2) * sizeof(struct octo_sess *));
-			kfree(octo_sessions);
+		if (sc->sc_sessions) {
+			memcpy(ocd, sc->sc_sessions,
+			    (sc->sc_sesnum / 2) * sizeof(struct octo_sess *));
+			free(sc->sc_sessions, M_DEVBUF);
 		}
 
-		octo_sessions = ocd;
+		sc->sc_sessions = ocd;
 	}
 
-	ocd = &octo_sessions[i];
+	ocd = &sc->sc_sessions[i];
 	*sid = i;
 
-
-	*ocd = (struct octo_sess *) kmalloc(sizeof(struct octo_sess), SLAB_ATOMIC);
+	*ocd = malloc(sizeof(struct octo_sess), M_DEVBUF, M_NOWAIT);
 	if (*ocd == NULL) {
-		octo_freesession(NULL, i);
+		cryptocteon_freesession(NULL, i);
 		dprintf("%s,%d: ENOBUFS\n", __FILE__, __LINE__);
 		return ENOBUFS;
 	}
@@ -257,7 +250,7 @@ octo_newsession(device_t dev, u_int32_t *sid, struct cryptoini *cri)
 			(*ocd)->octo_decrypt = octo_des_cbc_decrypt;
 			break;
 		default:
-			octo_freesession(NULL, i);
+			cryptocteon_freesession(NULL, i);
 			dprintf("%s,%d: EINVALn", __FILE__, __LINE__);
 			return EINVAL;
 		}
@@ -282,7 +275,7 @@ octo_newsession(device_t dev, u_int32_t *sid, struct cryptoini *cri)
 			(*ocd)->octo_decrypt = octo_aes_cbc_decrypt;
 			break;
 		default:
-			octo_freesession(NULL, i);
+			cryptocteon_freesession(NULL, i);
 			dprintf("%s,%d: EINVALn", __FILE__, __LINE__);
 			return EINVAL;
 		}
@@ -300,7 +293,7 @@ octo_newsession(device_t dev, u_int32_t *sid, struct cryptoini *cri)
 				(*ocd)->octo_hmouter);
 		break;
 	default:
-		octo_freesession(NULL, i);
+		cryptocteon_freesession(NULL, i);
 		dprintf("%s,%d: EINVALn", __FILE__, __LINE__);
 		return EINVAL;
 	}
@@ -315,24 +308,27 @@ octo_newsession(device_t dev, u_int32_t *sid, struct cryptoini *cri)
  * Free a session.
  */
 static int
-octo_freesession(device_t dev, u_int64_t tid)
+cryptocteon_freesession(device_t dev, u_int64_t tid)
 {
+	struct cryptocteon_softc *sc;
 	u_int32_t sid = CRYPTO_SESID2LID(tid);
 
-	dprintf("%s()\n", __FUNCTION__);
-	if (sid > octo_sesnum || octo_sessions == NULL ||
-			octo_sessions[sid] == NULL) {
-		dprintf("%s,%d: EINVAL\n", __FILE__, __LINE__);
-		return(EINVAL);
-	}
+	sc = device_get_softc(dev);
+
+	if (sc == NULL)
+		return (EINVAL);
+
+	if (sid > sc->sc_sesnum || sc->sc_sessions == NULL ||
+	    sc->sc_sessions[sid] == NULL)
+		return (EINVAL);
 
 	/* Silently accept and return */
 	if (sid == 0)
 		return(0);
 
-	if (octo_sessions[sid])
-		kfree(octo_sessions[sid]);
-	octo_sessions[sid] = NULL;
+	if (sc->sc_sessions[sid])
+		free(sc->sc_sessions[sid], M_DEVBUF);
+	sc->sc_sessions[sid] = NULL;
 	return 0;
 }
 
@@ -340,24 +336,25 @@ octo_freesession(device_t dev, u_int64_t tid)
  * Process a request.
  */
 static int
-octo_process(device_t dev, struct cryptop *crp, int hint)
+cryptocteon_process(device_t dev, struct cryptop *crp, int hint)
 {
 	struct cryptodesc *crd;
 	struct octo_sess *od;
 	u_int32_t lid;
+#if 0
 	struct mbuf *m = NULL;
 	struct uio *uiop = NULL;
+#endif
 	struct cryptodesc *enccrd = NULL, *maccrd = NULL;
 	unsigned char *ivp = NULL;
 	unsigned char iv_data[HASH_MAX_LEN];
 	int auth_off = 0, auth_len = 0, crypt_off = 0, crypt_len = 0, icv_off = 0;
+	struct cryptocteon_softc *sc;
 
-	dprintf("%s()\n", __FUNCTION__);
-	/* Sanity check */
-	if (crp == NULL) {
-		dprintf("%s,%d: EINVAL\n", __FILE__, __LINE__);
+	sc = device_get_softc(dev);
+
+	if (sc == NULL || crp == NULL)
 		return EINVAL;
-	}
 
 	crp->crp_etype = 0;
 
@@ -368,13 +365,13 @@ octo_process(device_t dev, struct cryptop *crp, int hint)
 	}
 
 	lid = crp->crp_sid & 0xffffffff;
-	if (lid >= octo_sesnum || lid == 0 || octo_sessions == NULL ||
-			octo_sessions[lid] == NULL) {
+	if (lid >= sc->sc_sesnum || lid == 0 || sc->sc_sessions == NULL ||
+	    sc->sc_sessions[lid] == NULL) {
 		crp->crp_etype = ENOENT;
 		dprintf("%s,%d: ENOENT\n", __FILE__, __LINE__);
 		goto done;
 	}
-	od = octo_sessions[lid];
+	od = sc->sc_sessions[lid];
 
 #if 0
 	/*
@@ -438,7 +435,6 @@ octo_process(device_t dev, struct cryptop *crp, int hint)
 		auth_len = maccrd->crd_len;
 		icv_off  = maccrd->crd_inject;
 	}
-
 
 #if 0
 	/*
@@ -525,37 +521,25 @@ done:
 	crypto_done(crp);
 	return 0;
 }
-#if 0
-static int
-cryptocteon_init(void)
-{
-	dprintf("%s(%p)\n", __FUNCTION__, cryptocteon_init);
 
-	softc_device_init(&octo_softc, "cryptocteon", 0, octo_methods);
+static device_method_t cryptocteon_methods[] = {
+	/* device methods */
+	DEVMETHOD(device_identify,	cryptocteon_identify),
+	DEVMETHOD(device_probe,		cryptocteon_probe),
+	DEVMETHOD(device_attach,	cryptocteon_attach),
 
-	octo_id = crypto_get_driverid(softc_get_device(&octo_softc),
-			CRYPTOCAP_F_HARDWARE | CRYPTOCAP_F_SYNC);
-	if (octo_id < 0) {
-		printf("Cryptocteon device cannot initialize!");
-		return -ENODEV;
-	}
+	/* crypto device methods */
+	DEVMETHOD(cryptodev_newsession,	cryptocteon_newsession),
+	DEVMETHOD(cryptodev_freesession,cryptocteon_freesession),
+	DEVMETHOD(cryptodev_process,	cryptocteon_process),
 
-	crypto_register(octo_id, CRYPTO_MD5_HMAC, 0,0);
-	crypto_register(octo_id, CRYPTO_SHA1_HMAC, 0,0);
-	//crypto_register(octo_id, CRYPTO_MD5, 0,0);
-	//crypto_register(octo_id, CRYPTO_SHA1, 0,0);
-	crypto_register(octo_id, CRYPTO_DES_CBC, 0,0);
-	crypto_register(octo_id, CRYPTO_3DES_CBC, 0,0);
-	crypto_register(octo_id, CRYPTO_AES_CBC, 0,0);
+	{ 0, 0 }
+};
 
-	return(0);
-}
-
-static void
-cryptocteon_exit(void)
-{
-	dprintf("%s()\n", __FUNCTION__);
-	crypto_unregister_all(octo_id);
-	octo_id = -1;
-}
-#endif
+static driver_t cryptocteon_driver = {
+	"cryptocteon",
+	cryptocteon_methods,
+	sizeof (struct cryptocteon_softc),
+};
+static devclass_t cryptocteon_devclass;
+DRIVER_MODULE(cryptocteon, nexus, cryptocteon_driver, cryptocteon_devclass, 0, 0);

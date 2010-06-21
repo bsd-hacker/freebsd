@@ -65,8 +65,6 @@ __FBSDID("$FreeBSD$");
 struct octeon_cop2_state {
 };
 
-#define	dprintf	printf
-
 static inline unsigned long octeon_crypto_enable(struct octeon_cop2_state *state)
 {
     return (0);

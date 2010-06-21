@@ -57,6 +57,14 @@ struct octo_sess {
 	uint64_t			 octo_hmouter[3];
 };
 
+#define	dprintf(fmt, ...)						\
+	do {								\
+		if (cryptocteon_debug)					\
+			printf("%s: " fmt, __func__, ## __VA_ARGS__);	\
+	} while (0)
+
+extern int cryptocteon_debug;
+
 void octo_calc_hash(uint8_t, unsigned char *, uint64_t *, uint64_t *);
 
 /* XXX Actually just hashing functions, not encryption.  */
