@@ -36,6 +36,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/module.h>
 #include <sys/malloc.h>
+#include <sys/mbuf.h>
+#include <sys/uio.h>
 
 #include <opencrypto/cryptodev.h>
 
@@ -51,6 +53,9 @@ struct cryptocteon_softc {
 	uint32_t		sc_sesnum;
 };
 
+int cryptocteon_debug = 0;
+TUNABLE_INT("hw.cryptocteon.debug", &cryptocteon_debug);
+
 static void cryptocteon_identify(driver_t *, device_t);
 static int cryptocteon_probe(device_t);
 static int cryptocteon_attach(device_t);
@@ -58,9 +63,6 @@ static int cryptocteon_attach(device_t);
 static int cryptocteon_process(device_t, struct cryptop *, int);
 static int cryptocteon_newsession(device_t, u_int32_t *, struct cryptoini *);
 static int cryptocteon_freesession(device_t, u_int64_t);
-
-int cryptocteon_debug = 0;
-TUNABLE_INT("hw.cryptocteon.debug", &cryptocteon_debug);
 
 static void
 cryptocteon_identify(driver_t *drv, device_t parent)
@@ -341,10 +343,10 @@ cryptocteon_process(device_t dev, struct cryptop *crp, int hint)
 	struct cryptodesc *crd;
 	struct octo_sess *od;
 	u_int32_t lid;
-#if 0
+	struct iovec iov[UIO_MAXIOV];
+	size_t iovcnt, iovlen;
 	struct mbuf *m = NULL;
 	struct uio *uiop = NULL;
-#endif
 	struct cryptodesc *enccrd = NULL, *maccrd = NULL;
 	unsigned char *ivp = NULL;
 	unsigned char iv_data[HASH_MAX_LEN];
@@ -373,28 +375,31 @@ cryptocteon_process(device_t dev, struct cryptop *crp, int hint)
 	}
 	od = sc->sc_sessions[lid];
 
-#if 0
 	/*
 	 * do some error checking outside of the loop for m and IOV processing
 	 * this leaves us with valid m or uiop pointers for later
 	 */
-	if (crp->crp_flags & CRYPTO_F_MBUF) {
+	if (crp->crp_flags & CRYPTO_F_IMBUF) {
+		unsigned frags;
+
 		m = (struct mbuf *) crp->crp_buf;
-		if (m_shinfo(m)->nr_frags >= SCATTERLIST_MAX) {
-			printf("%s,%d: %d nr_frags > SCATTERLIST_MAX", __FILE__, __LINE__,
-					m_shinfo(m)->nr_frags);
+		for (frags = 0; m != NULL; frags++)
+			m = m->m_next;
+
+		if (frags >= UIO_MAXIOV) {
+			printf("%s,%d: %d frags > UIO_MAXIOV", __FILE__, __LINE__, frags);
 			goto done;
 		}
+
+		m = (struct mbuf *) crp->crp_buf;
 	} else if (crp->crp_flags & CRYPTO_F_IOV) {
 		uiop = (struct uio *) crp->crp_buf;
-		if (uiop->uio_iovcnt > SCATTERLIST_MAX) {
-			printf("%s,%d: %d uio_iovcnt > SCATTERLIST_MAX", __FILE__, __LINE__,
-					uiop->uio_iovcnt);
+		if (uiop->uio_iovcnt > UIO_MAXIOV) {
+			printf("%s,%d: %d uio_iovcnt > UIO_MAXIOV", __FILE__, __LINE__,
+			       uiop->uio_iovcnt);
 			goto done;
 		}
 	}
-#endif
-	panic("%s: check cryptop type.", __func__);
 
 	/* point our enccrd and maccrd appropriately */
 	crd = crp->crp_desc;
@@ -436,52 +441,35 @@ cryptocteon_process(device_t dev, struct cryptop *crp, int hint)
 		icv_off  = maccrd->crd_inject;
 	}
 
-#if 0
 	/*
-	 * setup the SG list to cover the buffer
+	 * setup the I/O vector to cover the buffer
 	 */
-	memset(sg, 0, sizeof(sg));
-	if (crp->crp_flags & CRYPTO_F_MBUF) {
-		int i, len;
+	memset(iov, 0, sizeof iov);
+	if (crp->crp_flags & CRYPTO_F_IMBUF) {
+		iovcnt = 0;
+		iovlen = 0;
 
-		sg_num = 0;
-		sg_len = 0;
+		while (m != NULL) {
+			iov[iovcnt].iov_base = mtod(m, void *);
+			iov[iovcnt].iov_len = m->m_len;
 
-		len = m_headlen(m);
-		sg_set_page(&sg[sg_num], virt_to_page(m->data), len,
-				offset_in_page(m->data));
-		sg_len += len;
-		sg_num++;
-
-		for (i = 0; i < m_shinfo(m)->nr_frags && sg_num < SCATTERLIST_MAX;
-				i++) {
-			len = m_shinfo(m)->frags[i].size;
-			sg_set_page(&sg[sg_num], m_shinfo(m)->frags[i].page,
-					len, m_shinfo(m)->frags[i].page_offset);
-			sg_len += len;
-			sg_num++;
+			m = m->m_next;
+			iovlen += iov[iovcnt++].iov_len;
 		}
 	} else if (crp->crp_flags & CRYPTO_F_IOV) {
-		int len;
+		iovlen = 0;
+		for (iovcnt = 0; iovcnt < uiop->uio_iovcnt; iovcnt++) {
+			iov[iovcnt].iov_base = uiop->uio_iov[iovcnt].iov_base;
+			iov[iovcnt].iov_len = uiop->uio_iov[iovcnt].iov_len;
 
-		sg_len = 0;
-		for (sg_num = 0; sg_len < crp->crp_ilen &&
-				sg_num < uiop->uio_iovcnt &&
-				sg_num < SCATTERLIST_MAX; sg_num++) {
-			len = uiop->uio_iov[sg_num].iov_len;
-			sg_set_page(&sg[sg_num],
-					virt_to_page(uiop->uio_iov[sg_num].iov_base), len,
-					offset_in_page(uiop->uio_iov[sg_num].iov_base));
-			sg_len += len;
+			iovlen += iov[iovcnt].iov_len;
 		}
 	} else {
-		sg_len = crp->crp_ilen;
-		sg_set_page(&sg[0], virt_to_page(crp->crp_buf), sg_len,
-				offset_in_page(crp->crp_buf));
-		sg_num = 1;
+		iovlen = crp->crp_ilen;
+		iov[0].iov_base = crp->crp_buf;
+		iov[0].iov_len = crp->crp_ilen;
+		iovcnt = 1;
 	}
-#endif
-	panic("%s: set up I/O vectors.", __func__);
 
 
 	/*
@@ -507,14 +495,12 @@ cryptocteon_process(device_t dev, struct cryptop *crp, int hint)
 	}
 
 
-#if 0
 	if (!enccrd || (enccrd->crd_flags & CRD_F_ENCRYPT))
-		(*od->octo_encrypt)(od, sg, sg_len,
+		(*od->octo_encrypt)(od, iov, iovcnt, iovlen,
 				auth_off, auth_len, crypt_off, crypt_len, icv_off, ivp);
 	else
-		(*od->octo_decrypt)(od, sg, sg_len,
+		(*od->octo_decrypt)(od, iov, iovcnt, iovlen,
 				auth_off, auth_len, crypt_off, crypt_len, icv_off, ivp);
-#endif
 	panic("%s: pass I/O vectors to encrypt/decrypt functions.", __func__);
 
 done:

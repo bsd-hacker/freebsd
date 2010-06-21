@@ -49,6 +49,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/module.h>
 #include <sys/malloc.h>
+#include <sys/uio.h>
 
 #include <opencrypto/cryptodev.h>
 
@@ -57,6 +58,34 @@ __FBSDID("$FreeBSD$");
 #include <mips/cavium/cryptocteon/cryptocteonvar.h>
 
 /****************************************************************************/
+
+#define	IOV_INIT(iov, ptr, idx, len)					\
+	do {								\
+	    (idx) = 0;							\
+	    (ptr) = (iov)[(idx)].iov_base;				\
+	    (len) = (iov)[(idx)].iov_len;				\
+	} while (0)
+
+/*
+ * XXX
+ * It would be better if this were an IOV_READ/IOV_WRITE macro instead so
+ * that we could detect overflow before it happens rather than right after,
+ * which is especially bad since there is usually no IOV_CONSUME after the
+ * final read or write.
+ */
+#define	IOV_CONSUME(iov, ptr, idx, len)					\
+	do {								\
+	    if ((len) > sizeof *(ptr)) {				\
+		(len) -= sizeof *(ptr);					\
+		(ptr)++;						\
+	    } else {							\
+		if ((len) != sizeof *(ptr))				\
+			panic("%s: went past end of iovec.", __func__);	\
+		(idx)++;						\
+		(ptr) = (iov)[(idx)].iov_base;				\
+		(len) = (iov)[(idx)].iov_len;				\
+	    }								\
+	} while (0)
 
 /*
  * XXX
@@ -226,6 +255,8 @@ octo_calc_hash(uint8_t auth, unsigned char *key, uint64_t *inner, uint64_t *oute
     struct octeon_cop2_state state;
     unsigned long flags;
 
+    dprintf("%s()\n", __func__);
+
     memset(hash_key, 0, sizeof(hash_key));
     memcpy(hash_key, (uint8_t *) key, (auth ? 20 : 16));
     key1 = (uint64_t *) hash_key;
@@ -312,25 +343,28 @@ octo_calc_hash(uint8_t auth, unsigned char *key, uint64_t *inner, uint64_t *oute
 int
 octo_des_cbc_encrypt(
     struct octo_sess *od,
-    void *buf, int buflen,
+    struct iovec *iov, size_t iovcnt, size_t iovlen,
     int auth_off, int auth_len,
     int crypt_off, int crypt_len,
     int icv_off, uint8_t *ivp)
 {
     uint64_t *data;
+    int data_i, data_l;
     struct octeon_cop2_state state;
     unsigned long flags;
 
-    if (__predict_false(od == NULL || buf==NULL || buflen==0 || ivp==NULL ||
-	    (crypt_off & 0x7) || (crypt_off + crypt_len > buflen))) {
-	dprintf("%s: Bad parameters od=%p buf=%p buflen=%d "
+    dprintf("%s()\n", __func__);
+
+    if (__predict_false(od == NULL || iov==NULL || iovlen==0 || ivp==NULL ||
+	    (crypt_off & 0x7) || (crypt_off + crypt_len > iovlen))) {
+	dprintf("%s: Bad parameters od=%p iov=%p iovlen=%d "
 		"auth_off=%d auth_len=%d crypt_off=%d crypt_len=%d "
-		"icv_off=%d ivp=%p\n", __func__, od, buf, buflen,
+		"icv_off=%d ivp=%p\n", __func__, od, iov, iovlen,
 		auth_off, auth_len, crypt_off, crypt_len, icv_off, ivp);
 	return -EINVAL;
     }
 
-    data = buf;
+    IOV_INIT(iov, data, data_i, data_l);
 
     CVMX_PREFETCH0(ivp);
     CVMX_PREFETCH0(od->octo_enckey);
@@ -354,15 +388,15 @@ octo_des_cbc_encrypt(
     CVMX_MT_3DES_IV(* (uint64_t *) ivp);
 
     while (crypt_off > 0) {
-	data++;
-	crypt_off -= sizeof *data;
+	IOV_CONSUME(iov, data, data_i, data_l);
+	crypt_off -= 8;
     }
 
     while (crypt_len > 0) {
 	CVMX_MT_3DES_ENC_CBC(*data);
 	CVMX_MF_3DES_RESULT(*data);
-	data++;
-	crypt_len -= sizeof *data;
+	IOV_CONSUME(iov, data, data_i, data_l);
+	crypt_len -= 8;
     }
 
     octeon_crypto_disable(&state, flags);
@@ -373,25 +407,28 @@ octo_des_cbc_encrypt(
 int
 octo_des_cbc_decrypt(
     struct octo_sess *od,
-    void *buf, int buflen,
+    struct iovec *iov, size_t iovcnt, size_t iovlen,
     int auth_off, int auth_len,
     int crypt_off, int crypt_len,
     int icv_off, uint8_t *ivp)
 {
     uint64_t *data;
+    int data_i, data_l;
     struct octeon_cop2_state state;
     unsigned long flags;
 
-    if (__predict_false(od == NULL || buf==NULL || buflen==0 || ivp==NULL ||
-	    (crypt_off & 0x7) || (crypt_off + crypt_len > buflen))) {
-	dprintf("%s: Bad parameters od=%p buf=%p buflen=%d "
+    dprintf("%s()\n", __func__);
+
+    if (__predict_false(od == NULL || iov==NULL || iovlen==0 || ivp==NULL ||
+	    (crypt_off & 0x7) || (crypt_off + crypt_len > iovlen))) {
+	dprintf("%s: Bad parameters od=%p iov=%p iovlen=%d "
 		"auth_off=%d auth_len=%d crypt_off=%d crypt_len=%d "
-		"icv_off=%d ivp=%p\n", __func__, od, buf, buflen,
+		"icv_off=%d ivp=%p\n", __func__, od, iov, iovlen,
 		auth_off, auth_len, crypt_off, crypt_len, icv_off, ivp);
 	return -EINVAL;
     }
 
-    data = buf;
+    IOV_INIT(iov, data, data_i, data_l);
 
     CVMX_PREFETCH0(ivp);
     CVMX_PREFETCH0(od->octo_enckey);
@@ -415,15 +452,15 @@ octo_des_cbc_decrypt(
     CVMX_MT_3DES_IV(* (uint64_t *) ivp);
 
     while (crypt_off > 0) {
-	data++;
-	crypt_off -= sizeof *data;
+	IOV_CONSUME(iov, data, data_i, data_l);
+	crypt_off -= 8;
     }
 
     while (crypt_len > 0) {
 	CVMX_MT_3DES_DEC_CBC(*data);
 	CVMX_MF_3DES_RESULT(*data);
-	data++;
-	crypt_len -= sizeof *data;
+	IOV_CONSUME(iov, data, data_i, data_l);
+	crypt_len -= 8;
     }
 
     octeon_crypto_disable(&state, flags);
@@ -436,25 +473,28 @@ octo_des_cbc_decrypt(
 int
 octo_aes_cbc_encrypt(
     struct octo_sess *od,
-    void *buf, int buflen,
+    struct iovec *iov, size_t iovcnt, size_t iovlen,
     int auth_off, int auth_len,
     int crypt_off, int crypt_len,
     int icv_off, uint8_t *ivp)
 {
-    uint64_t *data;
+    uint64_t *data, *pdata;
+    int data_i, data_l;
     struct octeon_cop2_state state;
     unsigned long flags;
 
-    if (__predict_false(od == NULL || buf==NULL || buflen==0 || ivp==NULL ||
-	    (crypt_off & 0x7) || (crypt_off + crypt_len > buflen))) {
-	dprintf("%s: Bad parameters od=%p buf=%p buflen=%d "
+    dprintf("%s()\n", __func__);
+
+    if (__predict_false(od == NULL || iov==NULL || iovlen==0 || ivp==NULL ||
+	    (crypt_off & 0x7) || (crypt_off + crypt_len > iovlen))) {
+	dprintf("%s: Bad parameters od=%p iov=%p iovlen=%d "
 		"auth_off=%d auth_len=%d crypt_off=%d crypt_len=%d "
-		"icv_off=%d ivp=%p\n", __func__, od, buf, buflen,
+		"icv_off=%d ivp=%p\n", __func__, od, iov, iovlen,
 		auth_off, auth_len, crypt_off, crypt_len, icv_off, ivp);
 	return -EINVAL;
     }
 
-    data = buf;
+    IOV_INIT(iov, data, data_i, data_l);
 
     CVMX_PREFETCH0(ivp);
     CVMX_PREFETCH0(od->octo_enckey);
@@ -485,17 +525,19 @@ octo_aes_cbc_encrypt(
     CVMX_MT_AES_IV(((uint64_t *) ivp)[1], 1);
 
     while (crypt_off > 0) {
-	data++;
-	crypt_off -= sizeof *data;
+	IOV_CONSUME(iov, data, data_i, data_l);
+	crypt_off -= 8;
     }
 
     while (crypt_len > 0) {
-	CVMX_MT_AES_ENC_CBC0(data[0]);
-	CVMX_MT_AES_ENC_CBC1(data[1]);
-	CVMX_MF_AES_RESULT(data[0], 0);
-	CVMX_MF_AES_RESULT(data[1], 1);
-	data += 2;
-	crypt_len -= 2 * sizeof *data;
+	pdata = data;
+	CVMX_MT_AES_ENC_CBC0(*data);
+	IOV_CONSUME(iov, data, data_i, data_l);
+	CVMX_MT_AES_ENC_CBC1(*data);
+	CVMX_MF_AES_RESULT(*pdata, 0);
+	CVMX_MF_AES_RESULT(*data, 1);
+	IOV_CONSUME(iov, data, data_i, data_l);
+	crypt_len -= 16;
     }
 
     octeon_crypto_disable(&state, flags);
@@ -506,25 +548,28 @@ octo_aes_cbc_encrypt(
 int
 octo_aes_cbc_decrypt(
     struct octo_sess *od,
-    void *buf, int buflen,
+    struct iovec *iov, size_t iovcnt, size_t iovlen,
     int auth_off, int auth_len,
     int crypt_off, int crypt_len,
     int icv_off, uint8_t *ivp)
 {
-    uint64_t *data;
+    uint64_t *data, *pdata;
+    int data_i, data_l;
     struct octeon_cop2_state state;
     unsigned long flags;
 
-    if (__predict_false(od == NULL || buf==NULL || buflen==0 || ivp==NULL ||
-	    (crypt_off & 0x7) || (crypt_off + crypt_len > buflen))) {
-	dprintf("%s: Bad parameters od=%p buf=%p buflen=%d "
+    dprintf("%s()\n", __func__);
+
+    if (__predict_false(od == NULL || iov==NULL || iovlen==0 || ivp==NULL ||
+	    (crypt_off & 0x7) || (crypt_off + crypt_len > iovlen))) {
+	dprintf("%s: Bad parameters od=%p iov=%p iovlen=%d "
 		"auth_off=%d auth_len=%d crypt_off=%d crypt_len=%d "
-		"icv_off=%d ivp=%p\n", __func__, od, buf, buflen,
+		"icv_off=%d ivp=%p\n", __func__, od, iov, iovlen,
 		auth_off, auth_len, crypt_off, crypt_len, icv_off, ivp);
 	return -EINVAL;
     }
 
-    data = buf;
+    IOV_INIT(iov, data, data_i, data_l);
 
     CVMX_PREFETCH0(ivp);
     CVMX_PREFETCH0(od->octo_enckey);
@@ -555,17 +600,19 @@ octo_aes_cbc_decrypt(
     CVMX_MT_AES_IV(((uint64_t *) ivp)[1], 1);
 
     while (crypt_off > 0) {
-	data++;
-	crypt_off -= sizeof *data;
+	IOV_CONSUME(iov, data, data_i, data_l);
+	crypt_off -= 8;
     }
 
     while (crypt_len > 0) {
-	CVMX_MT_AES_DEC_CBC0(data[0]);
-	CVMX_MT_AES_DEC_CBC1(data[1]);
-	CVMX_MF_AES_RESULT(data[0], 0);
-	CVMX_MF_AES_RESULT(data[1], 1);
-	data += 2;
-	crypt_len -= 2 * sizeof *data;
+	pdata = data;
+	CVMX_MT_AES_DEC_CBC0(*data);
+	IOV_CONSUME(iov, data, data_i, data_l);
+	CVMX_MT_AES_DEC_CBC1(*data);
+	CVMX_MF_AES_RESULT(*pdata, 0);
+	CVMX_MF_AES_RESULT(*data, 1);
+	IOV_CONSUME(iov, data, data_i, data_l);
+	crypt_len -= 16;
     }
 
     octeon_crypto_disable(&state, flags);
@@ -578,7 +625,7 @@ octo_aes_cbc_decrypt(
 int
 octo_null_md5_encrypt(
     struct octo_sess *od,
-    void *buf, int buflen,
+    struct iovec *iov, size_t iovcnt, size_t iovlen,
     int auth_off, int auth_len,
     int crypt_off, int crypt_len,
     int icv_off, uint8_t *ivp)
@@ -586,20 +633,22 @@ octo_null_md5_encrypt(
     register int next = 0;
     uint64_t *data;
     uint64_t tmp1, tmp2;
-    int alen = auth_len;
+    int data_i, data_l, alen = auth_len;
     struct octeon_cop2_state state;
     unsigned long flags;
 
-    if (__predict_false(od == NULL || buf==NULL || buflen==0 ||
-	    (auth_off & 0x7) || (auth_off + auth_len > buflen))) {
-	dprintf("%s: Bad parameters od=%p buf=%p buflen=%d "
+    dprintf("%s()\n", __func__);
+
+    if (__predict_false(od == NULL || iov==NULL || iovlen==0 ||
+	    (auth_off & 0x7) || (auth_off + auth_len > iovlen))) {
+	dprintf("%s: Bad parameters od=%p iov=%p iovlen=%d "
 		"auth_off=%d auth_len=%d crypt_off=%d crypt_len=%d "
-		"icv_off=%d ivp=%p\n", __func__, od, buf, buflen,
+		"icv_off=%d ivp=%p\n", __func__, od, iov, iovlen,
 		auth_off, auth_len, crypt_off, crypt_len, icv_off, ivp);
 	return -EINVAL;
     }
 
-    data = buf;
+    IOV_INIT(iov, data, data_i, data_l);
 
     flags = octeon_crypto_enable(&state);
 
@@ -608,14 +657,14 @@ octo_null_md5_encrypt(
     CVMX_MT_HSH_IV(od->octo_hminner[1], 1);
 
     while (auth_off > 0) {
-	data++;
-	auth_off -= sizeof *data;
+	IOV_CONSUME(iov, data, data_i, data_l);
+	auth_off -= 8;
     }
 
     while (auth_len > 0) {
 	CVM_LOAD_MD5_UNIT(*data, next);
-	data++;
-	auth_len -= sizeof *data;
+	auth_len -= 8;
+	IOV_CONSUME(iov, data, data_i, data_l);
     }
 
     /* finish the hash */
@@ -663,13 +712,13 @@ octo_null_md5_encrypt(
     CVMX_MT_HSH_STARTMD5(tmp1);
 
     /* save the HMAC */
-    data = buf;
+    IOV_INIT(iov, data, data_i, data_l);
     while (icv_off > 0) {
-	data++;
-	icv_off -= sizeof *data;
+	IOV_CONSUME(iov, data, data_i, data_l);
+	icv_off -= 8;
     }
     CVMX_MF_HSH_IV(*data, 0);
-    data++;
+    IOV_CONSUME(iov, data, data_i, data_l);
     CVMX_MF_HSH_IV(tmp1, 1);
     *(uint32_t *)data = (uint32_t) (tmp1 >> 32);
 
@@ -683,7 +732,7 @@ octo_null_md5_encrypt(
 int
 octo_null_sha1_encrypt(
     struct octo_sess *od,
-    void *buf, int buflen,
+    struct iovec *iov, size_t iovcnt, size_t iovlen,
     int auth_off, int auth_len,
     int crypt_off, int crypt_len,
     int icv_off, uint8_t *ivp)
@@ -691,20 +740,22 @@ octo_null_sha1_encrypt(
     register int next = 0;
     uint64_t *data;
     uint64_t tmp1, tmp2, tmp3;
-    int alen = auth_len;
+    int data_i, data_l, alen = auth_len;
     struct octeon_cop2_state state;
     unsigned long flags;
 
-    if (__predict_false(od == NULL || buf==NULL || buflen==0 ||
-	    (auth_off & 0x7) || (auth_off + auth_len > buflen))) {
-	dprintf("%s: Bad parameters od=%p buf=%p buflen=%d "
+    dprintf("%s()\n", __func__);
+
+    if (__predict_false(od == NULL || iov==NULL || iovlen==0 ||
+	    (auth_off & 0x7) || (auth_off + auth_len > iovlen))) {
+	dprintf("%s: Bad parameters od=%p iov=%p iovlen=%d "
 		"auth_off=%d auth_len=%d crypt_off=%d crypt_len=%d "
-		"icv_off=%d ivp=%p\n", __func__, od, buf, buflen,
+		"icv_off=%d ivp=%p\n", __func__, od, iov, iovlen,
 		auth_off, auth_len, crypt_off, crypt_len, icv_off, ivp);
 	return -EINVAL;
     }
 
-    data = buf;
+    IOV_INIT(iov, data, data_i, data_l);
 
     flags = octeon_crypto_enable(&state);
 
@@ -714,14 +765,14 @@ octo_null_sha1_encrypt(
     CVMX_MT_HSH_IV(od->octo_hminner[2], 2);
 
     while (auth_off > 0) {
-	data++;
-	auth_off -= sizeof *data;
+	IOV_CONSUME(iov, data, data_i, data_l);
+	auth_off -= 8;
     }
 
     while (auth_len > 0) {
 	CVM_LOAD_SHA_UNIT(*data, next);
-	data++;
-	auth_len -= sizeof *data;
+	auth_len -= 8;
+	IOV_CONSUME(iov, data, data_i, data_l);
     }
 
     /* finish the hash */
@@ -771,13 +822,13 @@ octo_null_sha1_encrypt(
     CVMX_MT_HSH_STARTSHA((uint64_t) ((64 + 20) << 3));
 
     /* save the HMAC */
-    data = buf;
+    IOV_INIT(iov, data, data_i, data_l);
     while (icv_off > 0) {
-	data++;
-	icv_off -= sizeof *data;
+	IOV_CONSUME(iov, data, data_i, data_l);
+	icv_off -= 8;
     }
     CVMX_MF_HSH_IV(*data, 0);
-    data++;
+    IOV_CONSUME(iov, data, data_i, data_l);
     CVMX_MF_HSH_IV(tmp1, 1);
     *(uint32_t *)data = (uint32_t) (tmp1 >> 32);
 
@@ -791,7 +842,7 @@ octo_null_sha1_encrypt(
 int
 octo_des_cbc_md5_encrypt(
     struct octo_sess *od,
-    void *buf, int buflen,
+    struct iovec *iov, size_t iovcnt, size_t iovlen,
     int auth_off, int auth_len,
     int crypt_off, int crypt_len,
     int icv_off, uint8_t *ivp)
@@ -804,23 +855,25 @@ octo_des_cbc_md5_encrypt(
     uint64_t *data = &mydata.data64[0];
     uint32_t *data32;
     uint64_t tmp1, tmp2;
-    int alen = auth_len;
+    int data_i, data_l, alen = auth_len;
     struct octeon_cop2_state state;
     unsigned long flags;
 
-    if (__predict_false(od == NULL || buf==NULL || buflen==0 || ivp==NULL ||
-	    (crypt_off & 0x3) || (crypt_off + crypt_len > buflen) ||
+    dprintf("%s()\n", __func__);
+
+    if (__predict_false(od == NULL || iov==NULL || iovlen==0 || ivp==NULL ||
+	    (crypt_off & 0x3) || (crypt_off + crypt_len > iovlen) ||
 	    (crypt_len  & 0x7) ||
 	    (auth_len  & 0x7) ||
-	    (auth_off & 0x3) || (auth_off + auth_len > buflen))) {
-	dprintf("%s: Bad parameters od=%p buf=%p buflen=%d "
+	    (auth_off & 0x3) || (auth_off + auth_len > iovlen))) {
+	dprintf("%s: Bad parameters od=%p iov=%p iovlen=%d "
 		"auth_off=%d auth_len=%d crypt_off=%d crypt_len=%d "
-		"icv_off=%d ivp=%p\n", __func__, od, buf, buflen,
+		"icv_off=%d ivp=%p\n", __func__, od, iov, iovlen,
 		auth_off, auth_len, crypt_off, crypt_len, icv_off, ivp);
 	return -EINVAL;
     }
 
-    data32 = buf;
+    IOV_INIT(iov, data32, data_i, data_l);
 
     CVMX_PREFETCH0(ivp);
     CVMX_PREFETCH0(od->octo_enckey);
@@ -848,14 +901,16 @@ octo_des_cbc_md5_encrypt(
     CVMX_MT_HSH_IV(od->octo_hminner[1], 1);
 
     while (crypt_off > 0 && auth_off > 0) {
-	data32++;
-	crypt_off -= sizeof *data32;
-	auth_off -= sizeof *data32;
+	IOV_CONSUME(iov, data32, data_i, data_l);
+	crypt_off -= 4;
+	auth_off -= 4;
     }
 
     while (crypt_len > 0 || auth_len > 0) {
-	mydata.data32[0] = data32[0];
-	mydata.data32[1] = data32[1];
+    	uint32_t *first = data32;
+	mydata.data32[0] = *first;
+	IOV_CONSUME(iov, data32, data_i, data_l);
+	mydata.data32[1] = *data32;
     	if (crypt_off <= 0) {
 	    if (crypt_len > 0) {
 		CVMX_MT_3DES_ENC_CBC(*data);
@@ -871,9 +926,9 @@ octo_des_cbc_md5_encrypt(
 	    }
 	} else
 	    auth_off -= 8;
-	data32[0] = mydata.data32[0];
-	data32[1] = mydata.data32[1];
-	data32 += 2;
+	*first = mydata.data32[0];
+	*data32 = mydata.data32[1];
+	IOV_CONSUME(iov, data32, data_i, data_l);
     }
 
     /* finish the hash */
@@ -921,14 +976,16 @@ octo_des_cbc_md5_encrypt(
     CVMX_MT_HSH_STARTMD5(tmp1);
 
     /* save the HMAC */
-    data32 = buf;
+    IOV_INIT(iov, data32, data_i, data_l);
     while (icv_off > 0) {
-	data32++;
-	icv_off -= sizeof *data32;
+	IOV_CONSUME(iov, data32, data_i, data_l);
+	icv_off -= 4;
     }
     CVMX_MF_HSH_IV(tmp1, 0);
-    *data32++ = (uint32_t) (tmp1 >> 32);
-    *data32++ = (uint32_t) tmp1;
+    *data32 = (uint32_t) (tmp1 >> 32);
+    IOV_CONSUME(iov, data32, data_i, data_l);
+    *data32 = (uint32_t) tmp1;
+    IOV_CONSUME(iov, data32, data_i, data_l);
     CVMX_MF_HSH_IV(tmp1, 1);
     *data32 = (uint32_t) (tmp1 >> 32);
 
@@ -939,7 +996,7 @@ octo_des_cbc_md5_encrypt(
 int
 octo_des_cbc_md5_decrypt(
     struct octo_sess *od,
-    void *buf, int buflen,
+    struct iovec *iov, size_t iovcnt, size_t iovlen,
     int auth_off, int auth_len,
     int crypt_off, int crypt_len,
     int icv_off, uint8_t *ivp)
@@ -952,23 +1009,25 @@ octo_des_cbc_md5_decrypt(
     uint64_t *data = &mydata.data64[0];
     uint32_t *data32;
     uint64_t tmp1, tmp2;
-    int alen = auth_len;
+    int data_i, data_l, alen = auth_len;
     struct octeon_cop2_state state;
     unsigned long flags;
 
-    if (__predict_false(od == NULL || buf==NULL || buflen==0 || ivp==NULL ||
-	    (crypt_off & 0x3) || (crypt_off + crypt_len > buflen) ||
+    dprintf("%s()\n", __func__);
+
+    if (__predict_false(od == NULL || iov==NULL || iovlen==0 || ivp==NULL ||
+	    (crypt_off & 0x3) || (crypt_off + crypt_len > iovlen) ||
 	    (crypt_len  & 0x7) ||
 	    (auth_len  & 0x7) ||
-	    (auth_off & 0x3) || (auth_off + auth_len > buflen))) {
-	dprintf("%s: Bad parameters od=%p buf=%p buflen=%d "
+	    (auth_off & 0x3) || (auth_off + auth_len > iovlen))) {
+	dprintf("%s: Bad parameters od=%p iov=%p iovlen=%d "
 		"auth_off=%d auth_len=%d crypt_off=%d crypt_len=%d "
-		"icv_off=%d ivp=%p\n", __func__, od, buf, buflen,
+		"icv_off=%d ivp=%p\n", __func__, od, iov, iovlen,
 		auth_off, auth_len, crypt_off, crypt_len, icv_off, ivp);
 	return -EINVAL;
     }
 
-    data32 = buf;
+    IOV_INIT(iov, data32, data_i, data_l);
 
     CVMX_PREFETCH0(ivp);
     CVMX_PREFETCH0(od->octo_enckey);
@@ -996,14 +1055,16 @@ octo_des_cbc_md5_decrypt(
     CVMX_MT_HSH_IV(od->octo_hminner[1], 1);
 
     while (crypt_off > 0 && auth_off > 0) {
-	data32++;
-	crypt_off -= sizeof *data32;
-	auth_off -= sizeof *data32;
+	IOV_CONSUME(iov, data32, data_i, data_l);
+	crypt_off -= 4;
+	auth_off -= 4;
     }
 
     while (crypt_len > 0 || auth_len > 0) {
-	mydata.data32[0] = data32[0];
-	mydata.data32[1] = data32[1];
+    	uint32_t *first = data32;
+	mydata.data32[0] = *first;
+	IOV_CONSUME(iov, data32, data_i, data_l);
+	mydata.data32[1] = *data32;
     	if (auth_off <= 0) {
 	    if (auth_len > 0) {
 		CVM_LOAD_MD5_UNIT(*data, next);
@@ -1019,9 +1080,9 @@ octo_des_cbc_md5_decrypt(
 	    }
 	} else
 	    crypt_off -= 8;
-	data32[0] = mydata.data32[0];
-	data32[1] = mydata.data32[1];
-	data32 += 2;
+	*first = mydata.data32[0];
+	*data32 = mydata.data32[1];
+	IOV_CONSUME(iov, data32, data_i, data_l);
     }
 
     /* finish the hash */
@@ -1069,14 +1130,16 @@ octo_des_cbc_md5_decrypt(
     CVMX_MT_HSH_STARTMD5(tmp1);
 
     /* save the HMAC */
-    data32 = buf;
+    IOV_INIT(iov, data32, data_i, data_l);
     while (icv_off > 0) {
-	data32++;
-	icv_off -= sizeof *data32;
+	IOV_CONSUME(iov, data32, data_i, data_l);
+	icv_off -= 4;
     }
     CVMX_MF_HSH_IV(tmp1, 0);
-    *data32++ = (uint32_t) (tmp1 >> 32);
-    *data32++ = (uint32_t) tmp1;
+    *data32 = (uint32_t) (tmp1 >> 32);
+    IOV_CONSUME(iov, data32, data_i, data_l);
+    *data32 = (uint32_t) tmp1;
+    IOV_CONSUME(iov, data32, data_i, data_l);
     CVMX_MF_HSH_IV(tmp1, 1);
     *data32 = (uint32_t) (tmp1 >> 32);
 
@@ -1090,7 +1153,7 @@ octo_des_cbc_md5_decrypt(
 int
 octo_des_cbc_sha1_encrypt(
     struct octo_sess *od,
-    void *buf, int buflen,
+    struct iovec *iov, size_t iovcnt, size_t iovlen,
     int auth_off, int auth_len,
     int crypt_off, int crypt_len,
     int icv_off, uint8_t *ivp)
@@ -1103,23 +1166,25 @@ octo_des_cbc_sha1_encrypt(
     uint64_t *data = &mydata.data64[0];
     uint32_t *data32;
     uint64_t tmp1, tmp2, tmp3;
-    int alen = auth_len;
+    int data_i, data_l, alen = auth_len;
     struct octeon_cop2_state state;
     unsigned long flags;
 
-    if (__predict_false(od == NULL || buf==NULL || buflen==0 || ivp==NULL ||
-	    (crypt_off & 0x3) || (crypt_off + crypt_len > buflen) ||
+    dprintf("%s()\n", __func__);
+
+    if (__predict_false(od == NULL || iov==NULL || iovlen==0 || ivp==NULL ||
+	    (crypt_off & 0x3) || (crypt_off + crypt_len > iovlen) ||
 	    (crypt_len  & 0x7) ||
 	    (auth_len  & 0x7) ||
-	    (auth_off & 0x3) || (auth_off + auth_len > buflen))) {
-	dprintf("%s: Bad parameters od=%p buf=%p buflen=%d "
+	    (auth_off & 0x3) || (auth_off + auth_len > iovlen))) {
+	dprintf("%s: Bad parameters od=%p iov=%p iovlen=%d "
 		"auth_off=%d auth_len=%d crypt_off=%d crypt_len=%d "
-		"icv_off=%d ivp=%p\n", __func__, od, buf, buflen,
+		"icv_off=%d ivp=%p\n", __func__, od, iov, iovlen,
 		auth_off, auth_len, crypt_off, crypt_len, icv_off, ivp);
 	return -EINVAL;
     }
 
-    data32 = buf;
+    IOV_INIT(iov, data32, data_i, data_l);
 
     CVMX_PREFETCH0(ivp);
     CVMX_PREFETCH0(od->octo_enckey);
@@ -1148,14 +1213,16 @@ octo_des_cbc_sha1_encrypt(
     CVMX_MT_HSH_IV(od->octo_hminner[2], 2);
 
     while (crypt_off > 0 && auth_off > 0) {
-	data32++;
-	crypt_off -= sizeof *data32;
-	auth_off -= sizeof *data32;
+	IOV_CONSUME(iov, data32, data_i, data_l);
+	crypt_off -= 4;
+	auth_off -= 4;
     }
 
     while (crypt_len > 0 || auth_len > 0) {
-	mydata.data32[0] = data32[0];
-	mydata.data32[1] = data32[1];
+    	uint32_t *first = data32;
+	mydata.data32[0] = *first;
+	IOV_CONSUME(iov, data32, data_i, data_l);
+	mydata.data32[1] = *data32;
     	if (crypt_off <= 0) {
 	    if (crypt_len > 0) {
 		CVMX_MT_3DES_ENC_CBC(*data);
@@ -1171,9 +1238,9 @@ octo_des_cbc_sha1_encrypt(
 	    }
 	} else
 	    auth_off -= 8;
-	data32[0] = mydata.data32[0];
-	data32[1] = mydata.data32[1];
-	data32 += 2;
+	*first = mydata.data32[0];
+	*data32 = mydata.data32[1];
+	IOV_CONSUME(iov, data32, data_i, data_l);
     }
 
     /* finish the hash */
@@ -1223,14 +1290,16 @@ octo_des_cbc_sha1_encrypt(
     CVMX_MT_HSH_STARTSHA((uint64_t) ((64 + 20) << 3));
 
     /* save the HMAC */
-    data32 = buf;
+    IOV_INIT(iov, data32, data_i, data_l);
     while (icv_off > 0) {
-	data32++;
-	icv_off -= sizeof *data32;
+	IOV_CONSUME(iov, data32, data_i, data_l);
+	icv_off -= 4;
     }
     CVMX_MF_HSH_IV(tmp1, 0);
-    *data32++ = (uint32_t) (tmp1 >> 32);
-    *data32++ = (uint32_t) tmp1;
+    *data32 = (uint32_t) (tmp1 >> 32);
+    IOV_CONSUME(iov, data32, data_i, data_l);
+    *data32 = (uint32_t) tmp1;
+    IOV_CONSUME(iov, data32, data_i, data_l);
     CVMX_MF_HSH_IV(tmp1, 1);
     *data32 = (uint32_t) (tmp1 >> 32);
 
@@ -1241,7 +1310,7 @@ octo_des_cbc_sha1_encrypt(
 int
 octo_des_cbc_sha1_decrypt(
     struct octo_sess *od,
-    void *buf, int buflen,
+    struct iovec *iov, size_t iovcnt, size_t iovlen,
     int auth_off, int auth_len,
     int crypt_off, int crypt_len,
     int icv_off, uint8_t *ivp)
@@ -1254,23 +1323,25 @@ octo_des_cbc_sha1_decrypt(
     uint64_t *data = &mydata.data64[0];
     uint32_t *data32;
     uint64_t tmp1, tmp2, tmp3;
-    int alen = auth_len;
+    int data_i, data_l, alen = auth_len;
     struct octeon_cop2_state state;
     unsigned long flags;
 
-    if (__predict_false(od == NULL || buf==NULL || buflen==0 || ivp==NULL ||
-	    (crypt_off & 0x3) || (crypt_off + crypt_len > buflen) ||
+    dprintf("%s()\n", __func__);
+
+    if (__predict_false(od == NULL || iov==NULL || iovlen==0 || ivp==NULL ||
+	    (crypt_off & 0x3) || (crypt_off + crypt_len > iovlen) ||
 	    (crypt_len  & 0x7) ||
 	    (auth_len  & 0x7) ||
-	    (auth_off & 0x3) || (auth_off + auth_len > buflen))) {
-	dprintf("%s: Bad parameters od=%p buf=%p buflen=%d "
+	    (auth_off & 0x3) || (auth_off + auth_len > iovlen))) {
+	dprintf("%s: Bad parameters od=%p iov=%p iovlen=%d "
 		"auth_off=%d auth_len=%d crypt_off=%d crypt_len=%d "
-		"icv_off=%d ivp=%p\n", __func__, od, buf, buflen,
+		"icv_off=%d ivp=%p\n", __func__, od, iov, iovlen,
 		auth_off, auth_len, crypt_off, crypt_len, icv_off, ivp);
 	return -EINVAL;
     }
 
-    data32 = buf;
+    IOV_INIT(iov, data32, data_i, data_l);
 
     CVMX_PREFETCH0(ivp);
     CVMX_PREFETCH0(od->octo_enckey);
@@ -1299,14 +1370,16 @@ octo_des_cbc_sha1_decrypt(
     CVMX_MT_HSH_IV(od->octo_hminner[2], 2);
 
     while (crypt_off > 0 && auth_off > 0) {
-	data32++;
-	crypt_off -= sizeof *data32;
-	auth_off -= sizeof *data32;
+	IOV_CONSUME(iov, data32, data_i, data_l);
+	crypt_off -= 4;
+	auth_off -= 4;
     }
 
     while (crypt_len > 0 || auth_len > 0) {
-	mydata.data32[0] = data32[0];
-	mydata.data32[1] = data32[1];
+    	uint32_t *first = data32;
+	mydata.data32[0] = *first;
+	IOV_CONSUME(iov, data32, data_i, data_l);
+	mydata.data32[1] = *data32;
     	if (auth_off <= 0) {
 	    if (auth_len > 0) {
 		CVM_LOAD_SHA_UNIT(*data, next);
@@ -1322,9 +1395,9 @@ octo_des_cbc_sha1_decrypt(
 	    }
 	} else
 	    crypt_off -= 8;
-	data32[0] = mydata.data32[0];
-	data32[1] = mydata.data32[1];
-	data32 += 2;
+	*first = mydata.data32[0];
+	*data32 = mydata.data32[1];
+	IOV_CONSUME(iov, data32, data_i, data_l);
     }
 
     /* finish the hash */
@@ -1373,14 +1446,16 @@ octo_des_cbc_sha1_decrypt(
     CVMX_MT_HSH_DATZ(6);
     CVMX_MT_HSH_STARTSHA((uint64_t) ((64 + 20) << 3));
     /* save the HMAC */
-    data32 = buf;
+    IOV_INIT(iov, data32, data_i, data_l);
     while (icv_off > 0) {
-	data32++;
-	icv_off -= sizeof *data32;
+	IOV_CONSUME(iov, data32, data_i, data_l);
+	icv_off -= 4;
     }
     CVMX_MF_HSH_IV(tmp1, 0);
-    *data32++ = (uint32_t) (tmp1 >> 32);
-    *data32++ = (uint32_t) tmp1;
+    *data32 = (uint32_t) (tmp1 >> 32);
+    IOV_CONSUME(iov, data32, data_i, data_l);
+    *data32 = (uint32_t) tmp1;
+    IOV_CONSUME(iov, data32, data_i, data_l);
     CVMX_MF_HSH_IV(tmp1, 1);
     *data32 = (uint32_t) (tmp1 >> 32);
 
@@ -1394,7 +1469,7 @@ octo_des_cbc_sha1_decrypt(
 int
 octo_aes_cbc_md5_encrypt(
     struct octo_sess *od,
-    void *buf, int buflen,
+    struct iovec *iov, size_t iovcnt, size_t iovlen,
     int auth_off, int auth_len,
     int crypt_off, int crypt_len,
     int icv_off, uint8_t *ivp)
@@ -1408,23 +1483,25 @@ octo_aes_cbc_md5_encrypt(
     uint64_t *data =  &mydata[1].data64[0];
     uint32_t *data32;
     uint64_t tmp1, tmp2;
-    int alen = auth_len;
+    int data_i, data_l, alen = auth_len;
     struct octeon_cop2_state state;
     unsigned long flags;
 
-    if (__predict_false(od == NULL || buf==NULL || buflen==0 || ivp==NULL ||
-	    (crypt_off & 0x3) || (crypt_off + crypt_len > buflen) ||
+    dprintf("%s()\n", __func__);
+
+    if (__predict_false(od == NULL || iov==NULL || iovlen==0 || ivp==NULL ||
+	    (crypt_off & 0x3) || (crypt_off + crypt_len > iovlen) ||
 	    (crypt_len  & 0x7) ||
 	    (auth_len  & 0x7) ||
-	    (auth_off & 0x3) || (auth_off + auth_len > buflen))) {
-	dprintf("%s: Bad parameters od=%p buf=%p buflen=%d "
+	    (auth_off & 0x3) || (auth_off + auth_len > iovlen))) {
+	dprintf("%s: Bad parameters od=%p iov=%p iovlen=%d "
 		"auth_off=%d auth_len=%d crypt_off=%d crypt_len=%d "
-		"icv_off=%d ivp=%p\n", __func__, od, buf, buflen,
+		"icv_off=%d ivp=%p\n", __func__, od, iov, iovlen,
 		auth_off, auth_len, crypt_off, crypt_len, icv_off, ivp);
 	return -EINVAL;
     }
 
-    data32 = buf;
+    IOV_INIT(iov, data32, data_i, data_l);
 
     CVMX_PREFETCH0(ivp);
     CVMX_PREFETCH0(od->octo_enckey);
@@ -1459,9 +1536,9 @@ octo_aes_cbc_md5_encrypt(
     CVMX_MT_HSH_IV(od->octo_hminner[1], 1);
 
     while (crypt_off > 0 && auth_off > 0) {
-	data32++;
-	crypt_off -= sizeof *data32;
-	auth_off -= sizeof *data32;
+	IOV_CONSUME(iov, data32, data_i, data_l);
+	crypt_off -= 4;
+	auth_off -= 4;
     }
 
     while (crypt_len > 0 || auth_len > 0) {
@@ -1469,15 +1546,15 @@ octo_aes_cbc_md5_encrypt(
 
 	pdata32[0] = data32;
 	mydata[0].data32[0] = *data32;
-	data32++;
+	IOV_CONSUME(iov, data32, data_i, data_l);
 
 	pdata32[1] = data32;
 	mydata[0].data32[1] = *data32;
-	data32++;
+	IOV_CONSUME(iov, data32, data_i, data_l);
 
 	pdata32[2] = data32;
 	mydata[1].data32[0] = *data32;
-	data32++;
+	IOV_CONSUME(iov, data32, data_i, data_l);
 
 	mydata[1].data32[1] = *data32;
 
@@ -1507,7 +1584,7 @@ octo_aes_cbc_md5_encrypt(
 	*pdata32[2] = mydata[1].data32[0];
 	*data32     = mydata[1].data32[1];
 
-	data32++;
+	IOV_CONSUME(iov, data32, data_i, data_l);
     }
 
     /* finish the hash */
@@ -1555,14 +1632,16 @@ octo_aes_cbc_md5_encrypt(
     CVMX_MT_HSH_STARTMD5(tmp1);
 
     /* save the HMAC */
-    data32 = buf;
+    IOV_INIT(iov, data32, data_i, data_l);
     while (icv_off > 0) {
-	data32++;
-	icv_off -= sizeof *data32;
+	IOV_CONSUME(iov, data32, data_i, data_l);
+	icv_off -= 4;
     }
     CVMX_MF_HSH_IV(tmp1, 0);
-    *data32++ = (uint32_t) (tmp1 >> 32);
-    *data32++ = (uint32_t) tmp1;
+    *data32 = (uint32_t) (tmp1 >> 32);
+    IOV_CONSUME(iov, data32, data_i, data_l);
+    *data32 = (uint32_t) tmp1;
+    IOV_CONSUME(iov, data32, data_i, data_l);
     CVMX_MF_HSH_IV(tmp1, 1);
     *data32 = (uint32_t) (tmp1 >> 32);
 
@@ -1573,7 +1652,7 @@ octo_aes_cbc_md5_encrypt(
 int
 octo_aes_cbc_md5_decrypt(
     struct octo_sess *od,
-    void *buf, int buflen,
+    struct iovec *iov, size_t iovcnt, size_t iovlen,
     int auth_off, int auth_len,
     int crypt_off, int crypt_len,
     int icv_off, uint8_t *ivp)
@@ -1587,23 +1666,25 @@ octo_aes_cbc_md5_decrypt(
     uint64_t *data =  &mydata[1].data64[0];
     uint32_t *data32;
     uint64_t tmp1, tmp2;
-    int alen = auth_len;
+    int data_i, data_l, alen = auth_len;
     struct octeon_cop2_state state;
     unsigned long flags;
 
-    if (__predict_false(od == NULL || buf==NULL || buflen==0 || ivp==NULL ||
-	    (crypt_off & 0x3) || (crypt_off + crypt_len > buflen) ||
+    dprintf("%s()\n", __func__);
+
+    if (__predict_false(od == NULL || iov==NULL || iovlen==0 || ivp==NULL ||
+	    (crypt_off & 0x3) || (crypt_off + crypt_len > iovlen) ||
 	    (crypt_len  & 0x7) ||
 	    (auth_len  & 0x7) ||
-	    (auth_off & 0x3) || (auth_off + auth_len > buflen))) {
-	dprintf("%s: Bad parameters od=%p buf=%p buflen=%d "
+	    (auth_off & 0x3) || (auth_off + auth_len > iovlen))) {
+	dprintf("%s: Bad parameters od=%p iov=%p iovlen=%d "
 		"auth_off=%d auth_len=%d crypt_off=%d crypt_len=%d "
-		"icv_off=%d ivp=%p\n", __func__, od, buf, buflen,
+		"icv_off=%d ivp=%p\n", __func__, od, iov, iovlen,
 		auth_off, auth_len, crypt_off, crypt_len, icv_off, ivp);
 	return -EINVAL;
     }
 
-    data32 = buf;
+    IOV_INIT(iov, data32, data_i, data_l);
 
     CVMX_PREFETCH0(ivp);
     CVMX_PREFETCH0(od->octo_enckey);
@@ -1638,9 +1719,9 @@ octo_aes_cbc_md5_decrypt(
     CVMX_MT_HSH_IV(od->octo_hminner[1], 1);
 
     while (crypt_off > 0 && auth_off > 0) {
-	data32++;
-	crypt_off -= sizeof *data32;
-	auth_off -= sizeof *data32;
+	IOV_CONSUME(iov, data32, data_i, data_l);
+	crypt_off -= 4;
+	auth_off -= 4;
     }
 
     while (crypt_len > 0 || auth_len > 0) {
@@ -1648,13 +1729,13 @@ octo_aes_cbc_md5_decrypt(
 
 	pdata32[0] = data32;
 	mydata[0].data32[0] = *data32;
-	data32++;
+	IOV_CONSUME(iov, data32, data_i, data_l);
 	pdata32[1] = data32;
 	mydata[0].data32[1] = *data32;
-	data32++;
+	IOV_CONSUME(iov, data32, data_i, data_l);
 	pdata32[2] = data32;
 	mydata[1].data32[0] = *data32;
-	data32++;
+	IOV_CONSUME(iov, data32, data_i, data_l);
 	mydata[1].data32[1] = *data32;
 
     	if (auth_off <= 0) {
@@ -1682,7 +1763,7 @@ octo_aes_cbc_md5_decrypt(
 	*pdata32[2] = mydata[1].data32[0];
 	*data32     = mydata[1].data32[1];
 
-	data32++;
+	IOV_CONSUME(iov, data32, data_i, data_l);
     }
 
     /* finish the hash */
@@ -1730,14 +1811,16 @@ octo_aes_cbc_md5_decrypt(
     CVMX_MT_HSH_STARTMD5(tmp1);
 
     /* save the HMAC */
-    data32 = buf;
+    IOV_INIT(iov, data32, data_i, data_l);
     while (icv_off > 0) {
-	data32++;
-	icv_off -= sizeof *data;
+	IOV_CONSUME(iov, data32, data_i, data_l);
+	icv_off -= 4;
     }
     CVMX_MF_HSH_IV(tmp1, 0);
-    *data32++ = (uint32_t) (tmp1 >> 32);
-    *data32++ = (uint32_t) tmp1;
+    *data32 = (uint32_t) (tmp1 >> 32);
+    IOV_CONSUME(iov, data32, data_i, data_l);
+    *data32 = (uint32_t) tmp1;
+    IOV_CONSUME(iov, data32, data_i, data_l);
     CVMX_MF_HSH_IV(tmp1, 1);
     *data32 = (uint32_t) (tmp1 >> 32);
 
@@ -1751,7 +1834,7 @@ octo_aes_cbc_md5_decrypt(
 int
 octo_aes_cbc_sha1_encrypt(
     struct octo_sess *od,
-    void *buf, int buflen,
+    struct iovec *iov, size_t iovcnt, size_t iovlen,
     int auth_off, int auth_len,
     int crypt_off, int crypt_len,
     int icv_off, uint8_t *ivp)
@@ -1765,23 +1848,25 @@ octo_aes_cbc_sha1_encrypt(
     uint64_t *data =  &mydata[1].data64[0];
     uint32_t *data32;
     uint64_t tmp1, tmp2, tmp3;
-    int alen = auth_len;
+    int data_i, data_l, alen = auth_len;
     struct octeon_cop2_state state;
     unsigned long flags;
 
-    if (__predict_false(od == NULL || buf==NULL || buflen==0 || ivp==NULL ||
-	    (crypt_off & 0x3) || (crypt_off + crypt_len > buflen) ||
+    dprintf("%s()\n", __func__);
+
+    if (__predict_false(od == NULL || iov==NULL || iovlen==0 || ivp==NULL ||
+	    (crypt_off & 0x3) || (crypt_off + crypt_len > iovlen) ||
 	    (crypt_len  & 0x7) ||
 	    (auth_len  & 0x7) ||
-	    (auth_off & 0x3) || (auth_off + auth_len > buflen))) {
-	dprintf("%s: Bad parameters od=%p buf=%p buflen=%d "
+	    (auth_off & 0x3) || (auth_off + auth_len > iovlen))) {
+	dprintf("%s: Bad parameters od=%p iov=%p iovlen=%d "
 		"auth_off=%d auth_len=%d crypt_off=%d crypt_len=%d "
-		"icv_off=%d ivp=%p\n", __func__, od, buf, buflen,
+		"icv_off=%d ivp=%p\n", __func__, od, iov, iovlen,
 		auth_off, auth_len, crypt_off, crypt_len, icv_off, ivp);
 	return -EINVAL;
     }
 
-    data32 = buf;
+    IOV_INIT(iov, data32, data_i, data_l);
 
     CVMX_PREFETCH0(ivp);
     CVMX_PREFETCH0(od->octo_enckey);
@@ -1817,9 +1902,9 @@ octo_aes_cbc_sha1_encrypt(
     CVMX_MT_HSH_IV(od->octo_hminner[2], 2);
 
     while (crypt_off > 0 && auth_off > 0) {
-	data32++;
-	crypt_off -= sizeof *data32;
-	auth_off -= sizeof *data32;
+	IOV_CONSUME(iov, data32, data_i, data_l);
+	crypt_off -= 4;
+	auth_off -= 4;
     }
 
     while (crypt_len > 0 || auth_len > 0) {
@@ -1827,13 +1912,13 @@ octo_aes_cbc_sha1_encrypt(
 
 	pdata32[0] = data32;
 	mydata[0].data32[0] = *data32;
-	data32++;
+	IOV_CONSUME(iov, data32, data_i, data_l);
 	pdata32[1] = data32;
 	mydata[0].data32[1] = *data32;
-	data32++;
+	IOV_CONSUME(iov, data32, data_i, data_l);
 	pdata32[2] = data32;
 	mydata[1].data32[0] = *data32;
-	data32++;
+	IOV_CONSUME(iov, data32, data_i, data_l);
 	mydata[1].data32[1] = *data32;
 
 
@@ -1862,7 +1947,7 @@ octo_aes_cbc_sha1_encrypt(
 	*pdata32[2] = mydata[1].data32[0];
 	*data32     = mydata[1].data32[1];
 
-	data32++;
+	IOV_CONSUME(iov, data32, data_i, data_l);
     }
 
     /* finish the hash */
@@ -1931,14 +2016,16 @@ octo_aes_cbc_sha1_encrypt(
 #endif
 
     /* save the HMAC */
-    data32 = buf;
+    IOV_INIT(iov, data32, data_i, data_l);
     while (icv_off > 0) {
-	data32++;
-	icv_off -= sizeof *data32;
+	IOV_CONSUME(iov, data32, data_i, data_l);
+	icv_off -= 4;
     }
     CVMX_MF_HSH_IV(tmp1, 0);
-    *data32++ = (uint32_t) (tmp1 >> 32);
-    *data32++ = (uint32_t) tmp1;
+    *data32 = (uint32_t) (tmp1 >> 32);
+    IOV_CONSUME(iov, data32, data_i, data_l);
+    *data32 = (uint32_t) tmp1;
+    IOV_CONSUME(iov, data32, data_i, data_l);
     CVMX_MF_HSH_IV(tmp1, 1);
     *data32 = (uint32_t) (tmp1 >> 32);
 
@@ -1949,7 +2036,7 @@ octo_aes_cbc_sha1_encrypt(
 int
 octo_aes_cbc_sha1_decrypt(
     struct octo_sess *od,
-    void *buf, int buflen,
+    struct iovec *iov, size_t iovcnt, size_t iovlen,
     int auth_off, int auth_len,
     int crypt_off, int crypt_len,
     int icv_off, uint8_t *ivp)
@@ -1963,23 +2050,25 @@ octo_aes_cbc_sha1_decrypt(
     uint64_t *data =  &mydata[1].data64[0];
     uint32_t *data32;
     uint64_t tmp1, tmp2, tmp3;
-    int alen = auth_len;
+    int data_i, data_l, alen = auth_len;
     struct octeon_cop2_state state;
     unsigned long flags;
 
-    if (__predict_false(od == NULL || buf==NULL || buflen==0 || ivp==NULL ||
-	    (crypt_off & 0x3) || (crypt_off + crypt_len > buflen) ||
+    dprintf("%s()\n", __func__);
+
+    if (__predict_false(od == NULL || iov==NULL || iovlen==0 || ivp==NULL ||
+	    (crypt_off & 0x3) || (crypt_off + crypt_len > iovlen) ||
 	    (crypt_len  & 0x7) ||
 	    (auth_len  & 0x7) ||
-	    (auth_off & 0x3) || (auth_off + auth_len > buflen))) {
-	dprintf("%s: Bad parameters od=%p buf=%p buflen=%d "
+	    (auth_off & 0x3) || (auth_off + auth_len > iovlen))) {
+	dprintf("%s: Bad parameters od=%p iov=%p iovlen=%d "
 		"auth_off=%d auth_len=%d crypt_off=%d crypt_len=%d "
-		"icv_off=%d ivp=%p\n", __func__, od, buf, buflen,
+		"icv_off=%d ivp=%p\n", __func__, od, iov, iovlen,
 		auth_off, auth_len, crypt_off, crypt_len, icv_off, ivp);
 	return -EINVAL;
     }
 
-    data32 = buf;
+    IOV_INIT(iov, data32, data_i, data_l);
 
     CVMX_PREFETCH0(ivp);
     CVMX_PREFETCH0(od->octo_enckey);
@@ -2015,9 +2104,9 @@ octo_aes_cbc_sha1_decrypt(
     CVMX_MT_HSH_IV(od->octo_hminner[2], 2);
 
     while (crypt_off > 0 && auth_off > 0) {
-	data32++;
-	crypt_off -= sizeof *data32;
-	auth_off -= sizeof *data32;
+	IOV_CONSUME(iov, data32, data_i, data_l);
+	crypt_off -= 4;
+	auth_off -= 4;
     }
 
     while (crypt_len > 0 || auth_len > 0) {
@@ -2025,13 +2114,13 @@ octo_aes_cbc_sha1_decrypt(
 
 	pdata32[0] = data32;
 	mydata[0].data32[0] = *data32;
-	data32++;
+	IOV_CONSUME(iov, data32, data_i, data_l);
 	pdata32[1] = data32;
 	mydata[0].data32[1] = *data32;
-	data32++;
+	IOV_CONSUME(iov, data32, data_i, data_l);
 	pdata32[2] = data32;
 	mydata[1].data32[0] = *data32;
-	data32++;
+	IOV_CONSUME(iov, data32, data_i, data_l);
 	mydata[1].data32[1] = *data32;
 
     	if (auth_off <= 0) {
@@ -2059,7 +2148,7 @@ octo_aes_cbc_sha1_decrypt(
 	*pdata32[2] = mydata[1].data32[0];
 	*data32     = mydata[1].data32[1];
 
-	data32++;
+	IOV_CONSUME(iov, data32, data_i, data_l);
     }
 
     /* finish the hash */
@@ -2128,14 +2217,16 @@ octo_aes_cbc_sha1_decrypt(
 #endif
 
     /* save the HMAC */
-    data32 = buf;
+    IOV_INIT(iov, data32, data_i, data_l);
     while (icv_off > 0) {
-	data32++;
-	icv_off -= sizeof *data32;
+	IOV_CONSUME(iov, data32, data_i, data_l);
+	icv_off -= 4;
     }
     CVMX_MF_HSH_IV(tmp1, 0);
-    *data32++ = (uint32_t) (tmp1 >> 32);
-    *data32++ = (uint32_t) tmp1;
+    *data32 = (uint32_t) (tmp1 >> 32);
+    IOV_CONSUME(iov, data32, data_i, data_l);
+    *data32 = (uint32_t) tmp1;
+    IOV_CONSUME(iov, data32, data_i, data_l);
     CVMX_MF_HSH_IV(tmp1, 1);
     *data32 = (uint32_t) (tmp1 >> 32);
 

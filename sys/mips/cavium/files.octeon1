@@ -18,7 +18,7 @@ mips/mips/tick.c				standard
 mips/cavium/octeon_rnd.c			optional random
 
 mips/cavium/cryptocteon/cavium_crypto.c		optional cryptocteon
-#mips/cavium/cryptocteon/cryptocteon.c		optional cryptocteon
+mips/cavium/cryptocteon/cryptocteon.c		optional cryptocteon
 
 mips/cavium/octe/ethernet.c			optional octe
 mips/cavium/octe/ethernet-common.c		optional octe
