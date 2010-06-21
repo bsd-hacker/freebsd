@@ -55,6 +55,8 @@ struct octo_sess {
 
 	uint64_t			 octo_hminner[3];
 	uint64_t			 octo_hmouter[3];
+
+	struct iovec				octo_iov[UIO_MAXIOV];
 };
 
 #define	dprintf(fmt, ...)						\

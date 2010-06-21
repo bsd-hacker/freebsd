@@ -343,7 +343,6 @@ cryptocteon_process(device_t dev, struct cryptop *crp, int hint)
 	struct cryptodesc *crd;
 	struct octo_sess *od;
 	u_int32_t lid;
-	struct iovec iov[UIO_MAXIOV];
 	size_t iovcnt, iovlen;
 	struct mbuf *m = NULL;
 	struct uio *uiop = NULL;
@@ -444,30 +443,30 @@ cryptocteon_process(device_t dev, struct cryptop *crp, int hint)
 	/*
 	 * setup the I/O vector to cover the buffer
 	 */
-	memset(iov, 0, sizeof iov);
+	memset(od->octo_iov, 0, sizeof od->octo_iov);
 	if (crp->crp_flags & CRYPTO_F_IMBUF) {
 		iovcnt = 0;
 		iovlen = 0;
 
 		while (m != NULL) {
-			iov[iovcnt].iov_base = mtod(m, void *);
-			iov[iovcnt].iov_len = m->m_len;
+			od->octo_iov[iovcnt].iov_base = mtod(m, void *);
+			od->octo_iov[iovcnt].iov_len = m->m_len;
 
 			m = m->m_next;
-			iovlen += iov[iovcnt++].iov_len;
+			iovlen += od->octo_iov[iovcnt++].iov_len;
 		}
 	} else if (crp->crp_flags & CRYPTO_F_IOV) {
 		iovlen = 0;
 		for (iovcnt = 0; iovcnt < uiop->uio_iovcnt; iovcnt++) {
-			iov[iovcnt].iov_base = uiop->uio_iov[iovcnt].iov_base;
-			iov[iovcnt].iov_len = uiop->uio_iov[iovcnt].iov_len;
+			od->octo_iov[iovcnt].iov_base = uiop->uio_iov[iovcnt].iov_base;
+			od->octo_iov[iovcnt].iov_len = uiop->uio_iov[iovcnt].iov_len;
 
-			iovlen += iov[iovcnt].iov_len;
+			iovlen += od->octo_iov[iovcnt].iov_len;
 		}
 	} else {
 		iovlen = crp->crp_ilen;
-		iov[0].iov_base = crp->crp_buf;
-		iov[0].iov_len = crp->crp_ilen;
+		od->octo_iov[0].iov_base = crp->crp_buf;
+		od->octo_iov[0].iov_len = crp->crp_ilen;
 		iovcnt = 1;
 	}
 
@@ -496,12 +495,11 @@ cryptocteon_process(device_t dev, struct cryptop *crp, int hint)
 
 
 	if (!enccrd || (enccrd->crd_flags & CRD_F_ENCRYPT))
-		(*od->octo_encrypt)(od, iov, iovcnt, iovlen,
+		(*od->octo_encrypt)(od, od->octo_iov, iovcnt, iovlen,
 				auth_off, auth_len, crypt_off, crypt_len, icv_off, ivp);
 	else
-		(*od->octo_decrypt)(od, iov, iovcnt, iovlen,
+		(*od->octo_decrypt)(od, od->octo_iov, iovcnt, iovlen,
 				auth_off, auth_len, crypt_off, crypt_len, icv_off, ivp);
-	panic("%s: pass I/O vectors to encrypt/decrypt functions.", __func__);
 
 done:
 	crypto_done(crp);

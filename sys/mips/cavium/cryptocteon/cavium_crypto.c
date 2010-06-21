@@ -87,6 +87,22 @@ __FBSDID("$FreeBSD$");
 	    }								\
 	} while (0)
 
+static inline unsigned long octeon_crypto_enable(void)
+{
+    register_t s;
+    
+    s = intr_disable();
+    mips_wr_status(mips_rd_status() | MIPS_SR_COP_2_BIT);
+
+    return (s);
+}
+
+static inline void octeon_crypto_disable(register_t s)
+{
+    mips_wr_status(mips_rd_status() & ~MIPS_SR_COP_2_BIT);
+    intr_restore(s);
+}
+
 #define ESP_HEADER_LENGTH     8
 #define DES_CBC_IV_LENGTH     8
 #define AES_CBC_IV_LENGTH     16
@@ -243,7 +259,7 @@ octo_calc_hash(uint8_t auth, unsigned char *key, uint64_t *inner, uint64_t *oute
     memset(hash_key, 0, sizeof(hash_key));
     memcpy(hash_key, (uint8_t *) key, (auth ? 20 : 16));
     key1 = (uint64_t *) hash_key;
-    s = intr_disable();
+    s = octeon_crypto_enable();
     if (auth) {
        CVMX_MT_HSH_IV(0x67452301EFCDAB89ULL, 0);
        CVMX_MT_HSH_IV(0x98BADCFE10325476ULL, 1);
@@ -316,7 +332,7 @@ octo_calc_hash(uint8_t auth, unsigned char *key, uint64_t *inner, uint64_t *oute
       outer[2] = 0;
       CVMX_MF_HSH_IV(outer[2], 2);
     }
-    intr_restore(s);
+    octeon_crypto_disable(s);
     return;
 }
 
@@ -351,7 +367,7 @@ octo_des_cbc_encrypt(
     CVMX_PREFETCH0(ivp);
     CVMX_PREFETCH0(od->octo_enckey);
 
-    s = intr_disable();
+    s = octeon_crypto_enable();
 
     /* load 3DES Key */
     CVMX_MT_3DES_KEY(((uint64_t *) od->octo_enckey)[0], 0);
@@ -362,7 +378,7 @@ octo_des_cbc_encrypt(
 	CVMX_MT_3DES_KEY(((uint64_t *) od->octo_enckey)[0], 1);
 	CVMX_MT_3DES_KEY(((uint64_t *) od->octo_enckey)[0], 2);
     } else {
-	intr_restore(s);
+	octeon_crypto_disable(s);
 	dprintf("%s: Bad key length %d\n", __func__, od->octo_encklen);
 	return -EINVAL;
     }
@@ -381,7 +397,7 @@ octo_des_cbc_encrypt(
 	crypt_len -= 8;
     }
 
-    intr_restore(s);
+    octeon_crypto_disable(s);
     return 0;
 }
 
@@ -414,7 +430,7 @@ octo_des_cbc_decrypt(
     CVMX_PREFETCH0(ivp);
     CVMX_PREFETCH0(od->octo_enckey);
 
-    s = intr_disable();
+    s = octeon_crypto_enable();
 
     /* load 3DES Key */
     CVMX_MT_3DES_KEY(((uint64_t *) od->octo_enckey)[0], 0);
@@ -425,7 +441,7 @@ octo_des_cbc_decrypt(
 	CVMX_MT_3DES_KEY(((uint64_t *) od->octo_enckey)[0], 1);
 	CVMX_MT_3DES_KEY(((uint64_t *) od->octo_enckey)[0], 2);
     } else {
-	intr_restore(s);
+	octeon_crypto_disable(s);
 	dprintf("%s: Bad key length %d\n", __func__, od->octo_encklen);
 	return -EINVAL;
     }
@@ -444,7 +460,7 @@ octo_des_cbc_decrypt(
 	crypt_len -= 8;
     }
 
-    intr_restore(s);
+    octeon_crypto_disable(s);
     return 0;
 }
 
@@ -479,7 +495,7 @@ octo_aes_cbc_encrypt(
     CVMX_PREFETCH0(ivp);
     CVMX_PREFETCH0(od->octo_enckey);
 
-    s = intr_disable();
+    s = octeon_crypto_enable();
 
     /* load AES Key */
     CVMX_MT_AES_KEY(((uint64_t *) od->octo_enckey)[0], 0);
@@ -495,7 +511,7 @@ octo_aes_cbc_encrypt(
 	CVMX_MT_AES_KEY(((uint64_t *) od->octo_enckey)[2], 2);
 	CVMX_MT_AES_KEY(((uint64_t *) od->octo_enckey)[3], 3);
     } else {
-	intr_restore(s);
+	octeon_crypto_disable(s);
 	dprintf("%s: Bad key length %d\n", __func__, od->octo_encklen);
 	return -EINVAL;
     }
@@ -520,7 +536,7 @@ octo_aes_cbc_encrypt(
 	crypt_len -= 16;
     }
 
-    intr_restore(s);
+    octeon_crypto_disable(s);
     return 0;
 }
 
@@ -553,7 +569,7 @@ octo_aes_cbc_decrypt(
     CVMX_PREFETCH0(ivp);
     CVMX_PREFETCH0(od->octo_enckey);
 
-    s = intr_disable();
+    s = octeon_crypto_enable();
 
     /* load AES Key */
     CVMX_MT_AES_KEY(((uint64_t *) od->octo_enckey)[0], 0);
@@ -569,7 +585,7 @@ octo_aes_cbc_decrypt(
 	CVMX_MT_AES_KEY(((uint64_t *) od->octo_enckey)[2], 2);
 	CVMX_MT_AES_KEY(((uint64_t *) od->octo_enckey)[3], 3);
     } else {
-	intr_restore(s);
+	octeon_crypto_disable(s);
 	dprintf("%s: Bad key length %d\n", __func__, od->octo_encklen);
 	return -EINVAL;
     }
@@ -594,7 +610,7 @@ octo_aes_cbc_decrypt(
 	crypt_len -= 16;
     }
 
-    intr_restore(s);
+    octeon_crypto_disable(s);
     return 0;
 }
 
@@ -628,7 +644,7 @@ octo_null_md5_encrypt(
 
     IOV_INIT(iov, data, data_i, data_l);
 
-    s = intr_disable();
+    s = octeon_crypto_enable();
 
     /* Load MD5 IV */
     CVMX_MT_HSH_IV(od->octo_hminner[0], 0);
@@ -700,7 +716,7 @@ octo_null_md5_encrypt(
     CVMX_MF_HSH_IV(tmp1, 1);
     *(uint32_t *)data = (uint32_t) (tmp1 >> 32);
 
-    intr_restore(s);
+    octeon_crypto_disable(s);
     return 0;
 }
 
@@ -734,7 +750,7 @@ octo_null_sha1_encrypt(
 
     IOV_INIT(iov, data, data_i, data_l);
 
-    s = intr_disable();
+    s = octeon_crypto_enable();
 
     /* Load SHA1 IV */
     CVMX_MT_HSH_IV(od->octo_hminner[0], 0);
@@ -809,7 +825,7 @@ octo_null_sha1_encrypt(
     CVMX_MF_HSH_IV(tmp1, 1);
     *(uint32_t *)data = (uint32_t) (tmp1 >> 32);
 
-    intr_restore(s);
+    octeon_crypto_disable(s);
     return 0;
 }
 
@@ -854,7 +870,7 @@ octo_des_cbc_md5_encrypt(
     CVMX_PREFETCH0(ivp);
     CVMX_PREFETCH0(od->octo_enckey);
 
-    s = intr_disable();
+    s = octeon_crypto_enable();
 
     /* load 3DES Key */
     CVMX_MT_3DES_KEY(((uint64_t *) od->octo_enckey)[0], 0);
@@ -865,7 +881,7 @@ octo_des_cbc_md5_encrypt(
 	CVMX_MT_3DES_KEY(((uint64_t *) od->octo_enckey)[0], 1);
 	CVMX_MT_3DES_KEY(((uint64_t *) od->octo_enckey)[0], 2);
     } else {
-	intr_restore(s);
+	octeon_crypto_disable(s);
 	dprintf("%s: Bad key length %d\n", __func__, od->octo_encklen);
 	return -EINVAL;
     }
@@ -965,7 +981,7 @@ octo_des_cbc_md5_encrypt(
     CVMX_MF_HSH_IV(tmp1, 1);
     *data32 = (uint32_t) (tmp1 >> 32);
 
-    intr_restore(s);
+    octeon_crypto_disable(s);
     return 0;
 }
 
@@ -1007,7 +1023,7 @@ octo_des_cbc_md5_decrypt(
     CVMX_PREFETCH0(ivp);
     CVMX_PREFETCH0(od->octo_enckey);
 
-    s = intr_disable();
+    s = octeon_crypto_enable();
 
     /* load 3DES Key */
     CVMX_MT_3DES_KEY(((uint64_t *) od->octo_enckey)[0], 0);
@@ -1018,7 +1034,7 @@ octo_des_cbc_md5_decrypt(
 	CVMX_MT_3DES_KEY(((uint64_t *) od->octo_enckey)[0], 1);
 	CVMX_MT_3DES_KEY(((uint64_t *) od->octo_enckey)[0], 2);
     } else {
-	intr_restore(s);
+	octeon_crypto_disable(s);
 	dprintf("%s: Bad key length %d\n", __func__, od->octo_encklen);
 	return -EINVAL;
     }
@@ -1118,7 +1134,7 @@ octo_des_cbc_md5_decrypt(
     CVMX_MF_HSH_IV(tmp1, 1);
     *data32 = (uint32_t) (tmp1 >> 32);
 
-    intr_restore(s);
+    octeon_crypto_disable(s);
     return 0;
 }
 
@@ -1163,7 +1179,7 @@ octo_des_cbc_sha1_encrypt(
     CVMX_PREFETCH0(ivp);
     CVMX_PREFETCH0(od->octo_enckey);
 
-    s = intr_disable();
+    s = octeon_crypto_enable();
 
     /* load 3DES Key */
     CVMX_MT_3DES_KEY(((uint64_t *) od->octo_enckey)[0], 0);
@@ -1174,7 +1190,7 @@ octo_des_cbc_sha1_encrypt(
 	CVMX_MT_3DES_KEY(((uint64_t *) od->octo_enckey)[0], 1);
 	CVMX_MT_3DES_KEY(((uint64_t *) od->octo_enckey)[0], 2);
     } else {
-	intr_restore(s);
+	octeon_crypto_disable(s);
 	dprintf("%s: Bad key length %d\n", __func__, od->octo_encklen);
 	return -EINVAL;
     }
@@ -1277,7 +1293,7 @@ octo_des_cbc_sha1_encrypt(
     CVMX_MF_HSH_IV(tmp1, 1);
     *data32 = (uint32_t) (tmp1 >> 32);
 
-    intr_restore(s);
+    octeon_crypto_disable(s);
     return 0;
 }
 
@@ -1319,7 +1335,7 @@ octo_des_cbc_sha1_decrypt(
     CVMX_PREFETCH0(ivp);
     CVMX_PREFETCH0(od->octo_enckey);
 
-    s = intr_disable();
+    s = octeon_crypto_enable();
 
     /* load 3DES Key */
     CVMX_MT_3DES_KEY(((uint64_t *) od->octo_enckey)[0], 0);
@@ -1330,7 +1346,7 @@ octo_des_cbc_sha1_decrypt(
 	CVMX_MT_3DES_KEY(((uint64_t *) od->octo_enckey)[0], 1);
 	CVMX_MT_3DES_KEY(((uint64_t *) od->octo_enckey)[0], 2);
     } else {
-	intr_restore(s);
+	octeon_crypto_disable(s);
 	dprintf("%s: Bad key length %d\n", __func__, od->octo_encklen);
 	return -EINVAL;
     }
@@ -1432,7 +1448,7 @@ octo_des_cbc_sha1_decrypt(
     CVMX_MF_HSH_IV(tmp1, 1);
     *data32 = (uint32_t) (tmp1 >> 32);
 
-    intr_restore(s);
+    octeon_crypto_disable(s);
     return 0;
 }
 
@@ -1478,7 +1494,7 @@ octo_aes_cbc_md5_encrypt(
     CVMX_PREFETCH0(ivp);
     CVMX_PREFETCH0(od->octo_enckey);
 
-    s = intr_disable();
+    s = octeon_crypto_enable();
 
     /* load AES Key */
     CVMX_MT_AES_KEY(((uint64_t *) od->octo_enckey)[0], 0);
@@ -1494,7 +1510,7 @@ octo_aes_cbc_md5_encrypt(
 	CVMX_MT_AES_KEY(((uint64_t *) od->octo_enckey)[2], 2);
 	CVMX_MT_AES_KEY(((uint64_t *) od->octo_enckey)[3], 3);
     } else {
-	intr_restore(s);
+	octeon_crypto_disable(s);
 	dprintf("%s: Bad key length %d\n", __func__, od->octo_encklen);
 	return -EINVAL;
     }
@@ -1617,7 +1633,7 @@ octo_aes_cbc_md5_encrypt(
     CVMX_MF_HSH_IV(tmp1, 1);
     *data32 = (uint32_t) (tmp1 >> 32);
 
-    intr_restore(s);
+    octeon_crypto_disable(s);
     return 0;
 }
 
@@ -1660,7 +1676,7 @@ octo_aes_cbc_md5_decrypt(
     CVMX_PREFETCH0(ivp);
     CVMX_PREFETCH0(od->octo_enckey);
 
-    s = intr_disable();
+    s = octeon_crypto_enable();
 
     /* load AES Key */
     CVMX_MT_AES_KEY(((uint64_t *) od->octo_enckey)[0], 0);
@@ -1676,7 +1692,7 @@ octo_aes_cbc_md5_decrypt(
 	CVMX_MT_AES_KEY(((uint64_t *) od->octo_enckey)[2], 2);
 	CVMX_MT_AES_KEY(((uint64_t *) od->octo_enckey)[3], 3);
     } else {
-	intr_restore(s);
+	octeon_crypto_disable(s);
 	dprintf("%s: Bad key length %d\n", __func__, od->octo_encklen);
 	return -EINVAL;
     }
@@ -1795,7 +1811,7 @@ octo_aes_cbc_md5_decrypt(
     CVMX_MF_HSH_IV(tmp1, 1);
     *data32 = (uint32_t) (tmp1 >> 32);
 
-    intr_restore(s);
+    octeon_crypto_disable(s);
     return 0;
 }
 
@@ -1841,7 +1857,7 @@ octo_aes_cbc_sha1_encrypt(
     CVMX_PREFETCH0(ivp);
     CVMX_PREFETCH0(od->octo_enckey);
 
-    s = intr_disable();
+    s = octeon_crypto_enable();
 
     /* load AES Key */
     CVMX_MT_AES_KEY(((uint64_t *) od->octo_enckey)[0], 0);
@@ -1857,7 +1873,7 @@ octo_aes_cbc_sha1_encrypt(
 	CVMX_MT_AES_KEY(((uint64_t *) od->octo_enckey)[2], 2);
 	CVMX_MT_AES_KEY(((uint64_t *) od->octo_enckey)[3], 3);
     } else {
-	intr_restore(s);
+	octeon_crypto_disable(s);
 	dprintf("%s: Bad key length %d\n", __func__, od->octo_encklen);
 	return -EINVAL;
     }
@@ -1999,7 +2015,7 @@ octo_aes_cbc_sha1_encrypt(
     CVMX_MF_HSH_IV(tmp1, 1);
     *data32 = (uint32_t) (tmp1 >> 32);
 
-    intr_restore(s);
+    octeon_crypto_disable(s);
     return 0;
 }
 
@@ -2042,7 +2058,7 @@ octo_aes_cbc_sha1_decrypt(
     CVMX_PREFETCH0(ivp);
     CVMX_PREFETCH0(od->octo_enckey);
 
-    s = intr_disable();
+    s = octeon_crypto_enable();
 
     /* load AES Key */
     CVMX_MT_AES_KEY(((uint64_t *) od->octo_enckey)[0], 0);
@@ -2058,7 +2074,7 @@ octo_aes_cbc_sha1_decrypt(
 	CVMX_MT_AES_KEY(((uint64_t *) od->octo_enckey)[2], 2);
 	CVMX_MT_AES_KEY(((uint64_t *) od->octo_enckey)[3], 3);
     } else {
-	intr_restore(s);
+	octeon_crypto_disable(s);
 	dprintf("%s: Bad key length %d\n", __func__, od->octo_encklen);
 	return -EINVAL;
     }
@@ -2199,7 +2215,7 @@ octo_aes_cbc_sha1_decrypt(
     CVMX_MF_HSH_IV(tmp1, 1);
     *data32 = (uint32_t) (tmp1 >> 32);
 
-    intr_restore(s);
+    octeon_crypto_disable(s);
     return 0;
 }
 
