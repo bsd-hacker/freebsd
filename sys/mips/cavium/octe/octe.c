@@ -32,10 +32,6 @@
  * XXX This file should be moved to if_octe.c
  * XXX The driver may have sufficient locking but we need locking to protect
  *     the interfaces presented here, right?
- * XXX There is a common MII bus on Octeon, we get the identifier of our PHY
- *     in priv->phy_id; right now we attach all the PHYs to each interface,
- *     which is clearly wrong.  Need to either modify miibus or probe and
- *     attach the specific PHY for each interface without an miibus in between.
  */
 
 #include "opt_inet.h"
@@ -59,6 +55,7 @@
 #include <net/if.h>
 #include <net/if_media.h>
 #include <net/if_types.h>
+#include <net/if_vlan_var.h>
 
 #ifdef INET
 #include <netinet/in.h>
@@ -185,6 +182,11 @@ octe_attach(device_t dev)
 	}
 
 	ether_ifattach(ifp, priv->mac);
+
+	ifp->if_data.ifi_hdrlen = sizeof(struct ether_vlan_header);
+	ifp->if_capabilities = IFCAP_VLAN_MTU | IFCAP_VLAN_HWTAGGING | IFCAP_HWCSUM;
+	ifp->if_capenable = ifp->if_capabilities;
+	ifp->if_hwassist = CSUM_TCP | CSUM_UDP;
 
 	OCTE_TX_LOCK(priv);
 	IFQ_SET_MAXLEN(&ifp->if_snd, MAX_OUT_QUEUE_DEPTH);

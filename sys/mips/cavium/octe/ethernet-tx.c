@@ -291,15 +291,11 @@ dont_put_mbuf_in_hw:
 #endif /* REUSE_MBUFS_WITHOUT_FREE */
 
 	/* Check if we can use the hardware checksumming */
-#if 0
-	if (USE_HW_TCPUDP_CHECKSUM && (m->protocol == htons(ETH_P_IP)) &&
-	    (ip_hdr(m)->version == 4) && (ip_hdr(m)->ihl == 5) &&
-	    ((ip_hdr(m)->frag_off == 0) || (ip_hdr(m)->frag_off == 1<<14)) &&
-	    ((ip_hdr(m)->protocol == IP_PROTOCOL_TCP) || (ip_hdr(m)->protocol == IP_PROTOCOL_UDP))) {
+	if (USE_HW_TCPUDP_CHECKSUM &&
+	    (m->m_pkthdr.csum_flags & (CSUM_TCP | CSUM_UDP)) != 0) {
 		/* Use hardware checksum calc */
-		pko_command.s.ipoffp1 = sizeof(struct ethhdr) + 1;
+		pko_command.s.ipoffp1 = ETHER_HDR_LEN + 1;
 	}
-#endif
 
 	if (USE_ASYNC_IOBDMA) {
 		/* Get the number of mbufs in use by the hardware */
