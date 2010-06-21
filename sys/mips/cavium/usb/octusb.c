@@ -867,6 +867,9 @@ octusb_init(struct octusb_softc *sc)
 	if (sc->sc_noport > OCTUSB_MAX_PORTS)
 		sc->sc_noport = OCTUSB_MAX_PORTS;
 
+	/* set USB revision */
+	sc->sc_bus.usbrev = USB_REV_2_0;
+
 	USB_BUS_LOCK(&sc->sc_bus);
 
 	/* setup all ports */
