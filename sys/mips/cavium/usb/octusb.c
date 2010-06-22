@@ -282,14 +282,14 @@ octusb_host_control_header_tx(struct octusb_td *td)
 	td->offset += 8;
 	td->remainder -= 8;
 
+	/* setup data length and offset */
 	td->qh->fixup_len = UGETW(td->qh->fixup_buf + 6);
+	td->qh->fixup_off = 0;
+
 	if (td->qh->fixup_len > (OCTUSB_MAX_FIXUP - 8)) {
 		td->error_any = 1;
 		return (0);		/* done */
 	}
-	td->qh->fixup_len += 8;
-	td->qh->fixup_off = 8;
-
 	/* do control IN request */
 	if (td->qh->fixup_buf[0] & UE_DIR_IN) {
 
@@ -304,7 +304,7 @@ octusb_host_control_header_tx(struct octusb_td *td)
 		status = cvmx_usb_submit_control(
 		    &sc->sc_port[td->qh->port_index].state,
 		    td->qh->ep_handle, td->qh->fixup_phys,
-		    td->qh->fixup_phys + 8ULL, td->qh->fixup_len - 8,
+		    td->qh->fixup_phys + 8, td->qh->fixup_len,
 		    &octusb_complete_cb, td);
 		/* check status */
 		if (status < 0) {
@@ -340,7 +340,8 @@ octusb_host_control_data_tx(struct octusb_td *td)
 		DPRINTFN(1, "Excess setup transmit data\n");
 		return (0);		/* done */
 	}
-	usbd_copy_out(td->pc, td->offset, td->qh->fixup_buf + td->qh->fixup_off, td->remainder);
+	usbd_copy_out(td->pc, td->offset, td->qh->fixup_buf +
+	    td->qh->fixup_off + 8, td->remainder);
 
 	td->offset += td->remainder;
 	td->qh->fixup_off += td->remainder;
@@ -363,12 +364,13 @@ octusb_host_control_data_rx(struct octusb_td *td)
 		return (0);		/* done */
 
 	/* copy data from buffer */
-	rem = 8 + td->qh->fixup_actlen - td->qh->fixup_off;
+	rem = td->qh->fixup_actlen - td->qh->fixup_off;
 
 	if (rem > td->remainder)
 		rem = td->remainder;
 
-	usbd_copy_in(td->pc, td->offset, td->qh->fixup_buf + td->qh->fixup_off, rem);
+	usbd_copy_in(td->pc, td->offset, td->qh->fixup_buf +
+	    td->qh->fixup_off + 8, rem);
 
 	td->offset += rem;
 	td->remainder -= rem;
@@ -411,7 +413,7 @@ octusb_host_control_status_tx(struct octusb_td *td)
 		status = cvmx_usb_submit_control(
 		    &sc->sc_port[td->qh->port_index].state,
 		    td->qh->ep_handle, td->qh->fixup_phys,
-		    td->qh->fixup_phys + 8ULL, td->qh->fixup_len - 8,
+		    td->qh->fixup_phys + 8, td->qh->fixup_len,
 		    &octusb_complete_cb, td);
 
 		/* check status */
@@ -1122,18 +1124,23 @@ octusb_setup_standard_chain(struct usb_xfer *xfer)
 static void
 octusb_device_done(struct usb_xfer *xfer, usb_error_t error)
 {
-	struct octusb_td *td;
-
 	USB_BUS_LOCK_ASSERT(xfer->xroot->bus, MA_OWNED);
 
 	DPRINTFN(2, "xfer=%p, endpoint=%p, error=%d\n",
 	    xfer, xfer->endpoint, error);
 
-	td = xfer->td_start[0];
+	/*
+	 * 1) Free any endpoints.
+	 * 2) Control transfers can be split and we should not re-open
+	 *    the data pipe between transactions unless there is an error.
+	 */
+	if ((xfer->flags_int.control_act == 0) || (error != 0)) {
+		struct octusb_td *td;
 
-	/* free any endpoints */
-	octusb_host_free_endpoint(td);
+		td = xfer->td_start[0];
 
+		octusb_host_free_endpoint(td);
+	}
 	/* dequeue transfer and start next transfer */
 	usbd_transfer_done(xfer, error);
 }
