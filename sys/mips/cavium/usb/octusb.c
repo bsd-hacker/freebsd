@@ -852,6 +852,7 @@ octusb_iterate_hw_softc(struct usb_bus *bus, usb_bus_mem_sub_cb_t *cb)
 usb_error_t
 octusb_init(struct octusb_softc *sc)
 {
+	cvmx_usb_initialize_flags_t flags;
 	int status;
 	uint8_t x;
 
@@ -872,13 +873,18 @@ octusb_init(struct octusb_softc *sc)
 	/* set USB revision */
 	sc->sc_bus.usbrev = USB_REV_2_0;
 
+	/* flags for port initialization */
+	flags = CVMX_USB_INITIALIZE_FLAGS_CLOCK_AUTO;
+#ifdef USB_DEBUG
+	if (octusbdebug > 100)
+		flags |= CVMX_USB_INITIALIZE_FLAGS_DEBUG_ALL;
+#endif
+
 	USB_BUS_LOCK(&sc->sc_bus);
 
 	/* setup all ports */
 	for (x = 0; x != sc->sc_noport; x++) {
-		status = cvmx_usb_initialize(
-		    &sc->sc_port[x].state, x,
-		    CVMX_USB_INITIALIZE_FLAGS_CLOCK_AUTO);
+		status = cvmx_usb_initialize(&sc->sc_port[x].state, x, flags);
 		if (status < 0)
 			sc->sc_port[x].disabled = 1;
 	}
