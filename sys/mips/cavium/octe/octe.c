@@ -53,8 +53,10 @@
 #include <net/bpf.h>
 #include <net/ethernet.h>
 #include <net/if.h>
+#include <net/if_dl.h>
 #include <net/if_media.h>
 #include <net/if_types.h>
+#include <net/if_var.h>
 #include <net/if_vlan_var.h>
 
 #ifdef INET
@@ -167,7 +169,13 @@ octe_attach(device_t dev)
 		ifmedia_set(&priv->media, IFM_ETHER | IFM_AUTO);
 	}
 
-	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
+	/*
+	 * XXX
+	 * We don't support programming the multicast filter right now, although it
+	 * ought to be easy enough.  (Presumably it's just a matter of putting
+	 * multicast addresses in the CAM?)
+	 */
+	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST | IFF_ALLMULTI;
 	ifp->if_init = octe_init;
 	ifp->if_ioctl = octe_ioctl;
 	ifp->if_start = octe_start;
@@ -251,6 +259,11 @@ octe_init(void *arg)
 
 	if (priv->open != NULL)
 		priv->open(ifp);
+
+	if (((ifp->if_flags ^ priv->if_flags) & (IFF_ALLMULTI | IFF_MULTICAST | IFF_PROMISC)) != 0)
+		cvm_oct_common_set_multicast_list(ifp);
+
+	cvm_oct_common_set_mac_address(ifp, IF_LLADDR(ifp));
 
 	if (priv->miibus != NULL)
 		mii_mediachg(device_get_softc(priv->miibus));
@@ -450,6 +463,8 @@ octe_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		return (0);
 
 	case SIOCSIFFLAGS:
+		if (ifp->if_flags == priv->if_flags)
+			return (0);
 		if ((ifp->if_flags & IFF_UP) != 0) {
 			if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0)
 				octe_init(priv);

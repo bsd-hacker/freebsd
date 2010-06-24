@@ -139,10 +139,9 @@ void cvm_oct_common_set_multicast_list(struct ifnet *ifp)
  * Set the hardware MAC address for a device
  *
  * @param dev    Device to change the MAC address for
- * @param addr   Address structure to change it too. MAC address is addr + 2.
- * @return Zero on success
+ * @param addr   Address structure to change it too.
  */
-static int cvm_oct_common_set_mac_address(struct ifnet *ifp, void *addr)
+void cvm_oct_common_set_mac_address(struct ifnet *ifp, const void *addr)
 {
 	cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
 	cvmx_gmxx_prtx_cfg_t gmx_cfg;
@@ -153,7 +152,7 @@ static int cvm_oct_common_set_mac_address(struct ifnet *ifp, void *addr)
 
 	if ((interface < 2) && (cvmx_helper_interface_get_mode(interface) != CVMX_HELPER_INTERFACE_MODE_SPI)) {
 		int i;
-		uint8_t *ptr = addr;
+		const uint8_t *ptr = addr;
 		uint64_t mac = 0;
 		for (i = 0; i < 6; i++)
 			mac = (mac<<8) | (uint64_t)(ptr[i]);
@@ -171,7 +170,6 @@ static int cvm_oct_common_set_mac_address(struct ifnet *ifp, void *addr)
 		cvm_oct_common_set_multicast_list(ifp);
 		cvmx_write_csr(CVMX_GMXX_PRTX_CFG(index, interface), gmx_cfg.u64);
 	}
-	return 0;
 }
 
 
@@ -245,18 +243,10 @@ int cvm_oct_common_init(struct ifnet *ifp)
 
 	ifp->if_mtu = ETHERMTU;
 
-#if 0
-	if (priv->queue != -1) {
-		if (USE_HW_TCPUDP_CHECKSUM)
-			ifp->features |= NETIF_F_IP_CSUM;
-	}
-#endif
 	count++;
 
 #if 0
 	ifp->get_stats          = cvm_oct_common_get_stats;
-	ifp->set_mac_address    = cvm_oct_common_set_mac_address;
-	ifp->features           |= NETIF_F_LLTX; /* We do our own locking, Linux doesn't need to */
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	ifp->poll_controller    = cvm_oct_poll_controller;
 #endif
