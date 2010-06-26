@@ -89,6 +89,15 @@
 #define	ITLBNOPFIX	nop;nop;nop;nop;nop;nop;nop;nop;nop;nop;
 #define	HAZARD_DELAY	nop;nop;nop;nop;nop;
 
+/* Pointer size and mask for n64 */
+#if defined(__mips_n64)
+#define	PTRSHIFT	3
+#define	PTRMASK		0xff8
+#else
+#define	PTRSHIFT	2
+#define	PTRMASK		0xffc
+#endif
+
 /*
  *----------------------------------------------------------------------------
  *
@@ -126,20 +135,12 @@ VECTOR_END(MipsTLBMiss)
 	.set noat
 MipsDoTLBMiss:
 	bltz		k0, 1f				#02: k0<0 -> 1f (kernel fault)
-#if defined(__mips_n64)
-	PTR_SRL		k0, k0, SEGSHIFT - 3		#03: k0=seg offset (almost)
-#else
-	PTR_SRL		k0, k0, SEGSHIFT - 2		#03: k0=seg offset (almost)
-#endif
+	PTR_SRL		k0, k0, SEGSHIFT - PTRSHIFT	#03: k0=seg offset (almost)
 
 	GET_CPU_PCPU(k1)
 	PTR_L		k1, PC_SEGBASE(k1)
 	beqz		k1, 2f				#05: make sure segbase is not null
-#if defined(__mips_n64)
-	andi		k0, k0, 0xff8			#06: k0=seg offset (mask 0x7)
-#else
-	andi		k0, k0, 0xffc			#06: k0=seg offset (mask 0x3)
-#endif
+	andi		k0, k0, PTRMASK			#06: k0=seg offset
 	PTR_ADDU	k1, k0, k1			#07: k1=seg entry address
 
 	PTR_L		k1, 0(k1)			#08: k1=seg entry
@@ -809,17 +810,9 @@ NLEAF(MipsTLBInvalidException)
 	beqz		k1, 3f
 	nop
 
-#if defined(__mips_n64)
-	PTR_SRL		k0, SEGSHIFT - 3		# k0=seg offset (almost)
-#else
-	PTR_SRL		k0, SEGSHIFT - 2		# k0=seg offset (almost)
-#endif
+	PTR_SRL		k0, SEGSHIFT - PTRSHIFT		# k0=seg offset (almost)
 	beq		k1, zero, MipsKernGenException	# ==0 -- no seg tab
-#if defined(__mips_n64)
-	andi		k0, k0, 0xff8			# k0=seg offset (mask 0x7)
-#else
-	andi		k0, k0, 0xffc			# k0=seg offset (mask 0x3)
-#endif
+	andi		k0, k0, PTRMASK			# k0=seg offset
 	PTR_ADDU	k1, k0, k1			# k1=seg entry address
 	PTR_L		k1, 0(k1)			# k1=seg entry
 
@@ -979,18 +972,10 @@ NLEAF(MipsTLBMissException)
 	sltu		k1, k1, k0			# upper bound of kernel_segmap
 	bnez		k1, MipsKernGenException	# out of bound
 	lui		k1, %hi(kernel_segmap)		# k1=hi of segbase
-#if defined(__mips_n64)
-	PTR_SRL		k0, SEGSHIFT - 3		# k0=seg offset (almost)
-#else
-	PTR_SRL		k0, SEGSHIFT - 2		# k0=seg offset (almost)
-#endif
+	PTR_SRL		k0, SEGSHIFT - PTRSHIFT		# k0=seg offset (almost)
 	PTR_L		k1, %lo(kernel_segmap)(k1)	# k1=segment tab base
 	beq		k1, zero, MipsKernGenException	# ==0 -- no seg tab
-#if defined(__mips_n64)
-	andi		k0, k0, 0xff8			# k0=seg offset (mask 0x7)
-#else
-	andi		k0, k0, 0xffc			# k0=seg offset (mask 0x3)
-#endif
+	andi		k0, k0, PTRMASK			# k0=seg offset
 	PTR_ADDU	k1, k0, k1			# k1=seg entry address
 	PTR_L		k1, 0(k1)			# k1=seg entry
 	MFC0		k0, COP_0_BAD_VADDR		# k0=bad address (again)

@@ -106,7 +106,7 @@ typedef	pt_entry_t *pd_entry_t;
 
 /*
  * TLB flags managed in hardware:
- * 	C:	Cache attribute.
+ * 	C:	Cache attribute.  Broken out into its own section.
  * 	D:	Dirty bit.  This means a page is writable.  It is not
  * 		set at first, and a write is trapped, and the dirty
  * 		bit is set.  See also PTE_RO.
@@ -116,11 +116,72 @@ typedef	pt_entry_t *pd_entry_t;
  * 		it is matched.
  */
 #define	PTE_C(attr)	((attr & 0x07) << 3)
-#define	PTE_C_UC		(PTE_C(0x02))
-#define	PTE_C_CNC	(PTE_C(0x03))
+#define	PTE_C_MASK	(PTE_C(0x07))
 #define	PTE_D		0x04
 #define	PTE_V		0x02
 #define	PTE_G		0x01
+
+/*
+ * TLB cache attributtes:
+ *	UC:	Uncached.
+ *	UA:	Uncached accelerated.
+ *	C:	Cacheable, coherency unspecified.
+ *	CNC:	Cacheable non-coherent.
+ *	CC:	Cacheable coherent.
+ *	CCE:	Cacheable coherent, exclusive read.
+ *	CCEW:	Cacheable coherent, exclusive write.
+ *	CCUOW:	Cacheable coherent, update on write.
+ *
+ * Note that some bits vary in meaning across implementations (and that the
+ * listing here is no doubt incomplete) and that the optimal cached mode varies
+ * between implementations.  0x02 is required to be UC and 0x03 is required to
+ * be a least C.
+ *
+ * We define the following logical bits:
+ * 	UNCACHED:
+ * 		The optimal uncached mode for the target CPU type.  This must
+ * 		be suitable for use in accessing memory-mapped devices.
+ * 	CACHE:	The optional cached mode for the target CPU type.
+ */
+#define	PTE_C_UC	(PTE_C(0x02))
+#define	PTE_C_C		(PTE_C(0x03))
+
+#if defined(CPU_R4000) || defined(CPU_R10000)
+#define	PTE_C_CNC	(PTE_C(0x03))
+#define	PTE_C_CCE	(PTE_C(0x04))
+#define	PTE_C_CCEW	(PTE_C(0x05))
+
+#ifdef CPU_R4000
+#define	PTE_C_CCUOW	(PTE_C(0x06))
+#endif
+
+#ifdef CPU_R10000
+#define	PTE_C_UA	(PTE_C(0x07))
+#endif
+
+#define	PTE_C_CACHE	PTE_C_CCEW
+#endif /* defined(CPU_R4000) || defined(CPU_R10000) */
+
+#if defined(CPU_SB1)
+#define	PTE_C_CC	(PTE_C(0x05))
+#endif
+
+#ifndef	PTE_C_UNCACHED
+#define	PTE_C_UNCACHED	PTE_C_UC
+#endif
+
+/*
+ * If we don't know which cached mode to use and there is a cache coherent
+ * mode, use it.  If there is not a cache coherent mode, use the required
+ * cacheable mode.
+ */
+#ifndef PTE_C_CACHE
+#ifdef PTE_C_CC
+#define	PTE_C_CACHE	PTE_C_CC
+#else
+#define	PTE_C_CACHE	PTE_C_C
+#endif
+#endif
 
 /*
  * VM flags managed in software:

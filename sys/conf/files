@@ -436,6 +436,7 @@ dev/acpi_support/acpi_ibm.c	optional acpi_ibm acpi
 dev/acpi_support/acpi_panasonic.c optional acpi_panasonic acpi
 dev/acpi_support/acpi_sony.c	optional acpi_sony acpi
 dev/acpi_support/acpi_toshiba.c	optional acpi_toshiba acpi
+dev/acpi_support/atk0110.c	optional aibs acpi
 dev/acpica/Osd/OsdDebug.c	optional acpi
 dev/acpica/Osd/OsdHardware.c	optional acpi
 dev/acpica/Osd/OsdInterrupt.c	optional acpi
@@ -2085,6 +2086,7 @@ kern/kern_context.c		standard
 kern/kern_descrip.c		standard
 kern/kern_dtrace.c		optional kdtrace_hooks
 kern/kern_environment.c		standard
+kern/kern_et.c			standard
 kern/kern_event.c		standard
 kern/kern_exec.c		standard
 kern/kern_exit.c		standard

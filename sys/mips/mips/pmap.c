@@ -226,7 +226,7 @@ static struct local_sysmaps sysmap_lmem[MAXCPU];
 	sysm = &sysmap_lmem[cpu];					\
 	va = sysm->base;						\
 	npte = TLBLO_PA_TO_PFN(phys) |					\
-	    PTE_D | PTE_V | PTE_G | PTE_W | PTE_C_CNC;			\
+	    PTE_D | PTE_V | PTE_G | PTE_W | PTE_C_CACHE;			\
 	pte = pmap_pte(kernel_pmap, va);				\
 	*pte = npte;							\
 	sysm->valid1 = 1
@@ -242,11 +242,11 @@ static struct local_sysmaps sysmap_lmem[MAXCPU];
 	va1 = sysm->base;						\
 	va2 = sysm->base + PAGE_SIZE;					\
 	npte = TLBLO_PA_TO_PFN(phys1) |					\
-	    PTE_D | PTE_V | PTE_G | PTE_W | PTE_C_CNC;			\
+	    PTE_D | PTE_V | PTE_G | PTE_W | PTE_C_CACHE;			\
 	pte = pmap_pte(kernel_pmap, va1);				\
 	*pte = npte;							\
 	npte = TLBLO_PA_TO_PFN(phys2) |					\
-	    PTE_D | PTE_V | PTE_G | PTE_W | PTE_C_CNC;			\
+	    PTE_D | PTE_V | PTE_G | PTE_W | PTE_C_CACHE;			\
 	pte = pmap_pte(kernel_pmap, va2);				\
 	*pte = npte;							\
 	sysm->valid1 = 1;						\
@@ -731,7 +731,7 @@ pmap_kenter(vm_offset_t va, vm_paddr_t pa)
 	npte = TLBLO_PA_TO_PFN(pa) | PTE_D | PTE_V | PTE_G | PTE_W;
 
 	if (is_cacheable_mem(pa))
-		npte |= PTE_C_CNC;
+		npte |= PTE_C_CACHE;
 	else
 		npte |= PTE_C_UC;
 
@@ -1833,7 +1833,7 @@ validate:
 	newpte = TLBLO_PA_TO_PFN(pa) | rw | PTE_V;
 
 	if (is_cacheable_mem(pa))
-		newpte |= PTE_C_CNC;
+		newpte |= PTE_C_CACHE;
 	else
 		newpte |= PTE_C_UC;
 
@@ -1998,7 +1998,7 @@ pmap_enter_quick_locked(pmap_t pmap, vm_offset_t va, vm_page_t m,
 	*pte = TLBLO_PA_TO_PFN(pa) | PTE_V;
 
 	if (is_cacheable_mem(pa))
-		*pte |= PTE_C_CNC;
+		*pte |= PTE_C_CACHE;
 	else
 		*pte |= PTE_C_UC;
 
@@ -2053,7 +2053,7 @@ pmap_kenter_temporary(vm_paddr_t pa, int i)
 		cpu = PCPU_GET(cpuid);
 		sysm = &sysmap_lmem[cpu];
 		/* Since this is for the debugger, no locks or any other fun */
-		npte = TLBLO_PA_TO_PFN(pa) | PTE_D | PTE_V | PTE_G | PTE_W | PTE_C_CNC;
+		npte = TLBLO_PA_TO_PFN(pa) | PTE_D | PTE_V | PTE_G | PTE_W | PTE_C_CACHE;
 		pte = pmap_pte(kernel_pmap, sysm->base);
 		*pte = npte;
 		sysm->valid1 = 1;
@@ -2947,17 +2947,17 @@ init_pte_prot(vm_offset_t va, vm_page_t m, vm_prot_t prot)
 	pt_entry_t rw;
 
 	if (!(prot & VM_PROT_WRITE))
-		rw = PTE_V | PTE_RO | PTE_C_CNC;
+		rw = PTE_V | PTE_RO | PTE_C_CACHE;
 	else if ((m->flags & (PG_FICTITIOUS | PG_UNMANAGED)) == 0) {
 		if ((m->md.pv_flags & PV_TABLE_MOD) ||
 		    m->dirty == VM_PAGE_BITS_ALL) {
-			rw = PTE_V | PTE_D | PTE_C_CNC;
+			rw = PTE_V | PTE_D | PTE_C_CACHE;
 		} else
-			rw = PTE_V | PTE_C_CNC;
+			rw = PTE_V | PTE_C_CACHE;
 		vm_page_flag_set(m, PG_WRITEABLE);
 	} else
 		/* Needn't emulate a modified bit for unmanaged pages. */
-		rw = PTE_V | PTE_D | PTE_C_CNC;
+		rw = PTE_V | PTE_D | PTE_C_CACHE;
 	return rw;
 }
 

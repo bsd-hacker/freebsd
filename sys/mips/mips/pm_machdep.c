@@ -483,12 +483,10 @@ exec_setregs(struct thread *td, struct image_params *imgp, u_long stack)
 	td->td_frame->sp = ((register_t) stack) & ~(sizeof(__int64_t) - 1);
 	td->td_frame->pc = imgp->entry_addr & ~3;
 	td->td_frame->t9 = imgp->entry_addr & ~3; /* abicall req */
-#if 0
-//	td->td_frame->sr = SR_KSU_USER | SR_EXL | SR_INT_ENAB;
-//?	td->td_frame->sr |=  idle_mask & ALL_INT_MASK;
-#else
 	td->td_frame->sr = SR_KSU_USER | SR_EXL | SR_INT_ENAB |
 	    (mips_rd_status() & ALL_INT_MASK);
+#if defined(__mips_n32) || defined(__mips_n64)
+	td->td_frame->sr |= SR_PX;
 #endif
 #ifdef TARGET_OCTEON
 	td->td_frame->sr |= MIPS_SR_COP_2_BIT | MIPS32_SR_PX | MIPS_SR_UX |

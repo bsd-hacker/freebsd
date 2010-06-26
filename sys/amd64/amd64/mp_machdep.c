@@ -707,9 +707,12 @@ init_secondary(void)
 	load_fs(_ufssel);
 	mtx_unlock_spin(&ap_boot_mtx);
 
-	/* wait until all the AP's are up */
+	/* Wait until all the AP's are up. */
 	while (smp_started == 0)
 		ia32_pause();
+
+	/* Start per-CPU event timers. */
+	cpu_initclocks_ap();
 
 	sched_throw(NULL);
 
