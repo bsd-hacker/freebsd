@@ -235,7 +235,7 @@ SlowFault:
 #define	SAVE_REG(reg, offs, base) \
 	REG_S	reg, CALLFRAME_SIZ + (SZREG * offs) (base)
 
-#ifdef TARGET_OCTEON
+#ifdef CPU_CNMIPS
 #define CLEAR_STATUS \
 	mfc0    a0, COP_0_STATUS_REG    ;\
 	li      a2, (MIPS_SR_KX | MIPS_SR_SX | MIPS_SR_UX) ; \
@@ -475,7 +475,7 @@ NNON_LEAF(MipsUserGenException, CALLFRAME_SIZ, ra)
 	PTR_LA	gp, _C_LABEL(_gp)	# switch to kernel GP
 # Turn off fpu and enter kernel mode
 	and	t0, a0, ~(SR_COP_1_BIT | SR_EXL | SR_KSU_MASK | SR_INT_ENAB)
-#ifdef TARGET_OCTEON
+#ifdef CPU_CNMIPS
 	or      t0, t0, (MIPS_SR_KX | MIPS_SR_SX | MIPS_SR_UX | MIPS32_SR_PX)
 #endif	
 	mtc0	t0, COP_0_STATUS_REG
@@ -691,7 +691,7 @@ NNON_LEAF(MipsUserIntr, CALLFRAME_SIZ, ra)
 
 # Turn off fpu, disable interrupts, set kernel mode kernel mode, clear exception level.
 	and	t0, a0, ~(SR_COP_1_BIT | SR_EXL | SR_INT_ENAB | SR_KSU_MASK)
-#ifdef TARGET_OCTEON
+#ifdef CPU_CNMIPS
 	or      t0, t0, (MIPS_SR_KX | MIPS_SR_SX | MIPS_SR_UX | MIPS32_SR_PX)
 #endif	
 	mtc0	t0, COP_0_STATUS_REG

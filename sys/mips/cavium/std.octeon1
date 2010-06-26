@@ -17,6 +17,3 @@ device	pci
 #device clock
 #device obio
 #device uart
-
-# Kludge
-options	TARGET_OCTEON

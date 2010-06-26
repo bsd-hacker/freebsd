@@ -50,7 +50,6 @@ CFE_ENV		opt_global.h
 CFE_ENV_SIZE	opt_global.h
 
 NOFPU		opt_global.h
-TARGET_OCTEON	opt_global.h
 TARGET_EMULATOR	opt_ddb.h
 TARGET_XLR_XLS  opt_global.h
 

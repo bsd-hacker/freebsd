@@ -161,7 +161,7 @@ cpu_fork(register struct thread *td1,register struct proc *p2,
 	td2->td_md.md_tls = td1->td_md.md_tls;
 	td2->td_md.md_saved_intr = MIPS_SR_INT_IE;
 	td2->td_md.md_spinlock_count = 1;
-#ifdef TARGET_OCTEON
+#ifdef CPU_CNMIPS
 	pcb2->pcb_context[PCB_REG_SR] |= MIPS_SR_COP_2_BIT | MIPS32_SR_PX | MIPS_SR_UX | MIPS_SR_KX | MIPS_SR_SX;
 #endif
 
@@ -364,7 +364,7 @@ cpu_set_upcall(struct thread *td, struct thread *td0)
 	/* Dont set IE bit in SR. sched lock release will take care of it */
 	pcb2->pcb_context[PCB_REG_SR] = SR_INT_MASK & mips_rd_status();
 
-#ifdef TARGET_OCTEON
+#ifdef CPU_CNMIPS
 	pcb2->pcb_context[PCB_REG_SR] |= MIPS_SR_COP_2_BIT | MIPS_SR_COP_0_BIT |
 	  MIPS32_SR_PX | MIPS_SR_UX | MIPS_SR_KX | MIPS_SR_SX;
 #endif
@@ -426,7 +426,7 @@ cpu_set_upcall_kse(struct thread *td, void (*entry)(void *), void *arg,
 	 */
 	tf->sr = SR_KSU_USER | SR_EXL | (SR_INT_MASK & mips_rd_status()) |
 	    MIPS_SR_INT_IE;
-#ifdef TARGET_OCTEON
+#ifdef CPU_CNMIPS
 	tf->sr |=  MIPS_SR_INT_IE | MIPS_SR_COP_0_BIT | MIPS32_SR_PX | MIPS_SR_UX |
 	  MIPS_SR_KX;
 #endif
