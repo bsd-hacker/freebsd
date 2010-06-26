@@ -192,7 +192,7 @@ octe_attach(device_t dev)
 	ether_ifattach(ifp, priv->mac);
 
 	ifp->if_data.ifi_hdrlen = sizeof(struct ether_vlan_header);
-	ifp->if_capabilities = IFCAP_VLAN_MTU | IFCAP_VLAN_HWTAGGING | IFCAP_HWCSUM;
+	ifp->if_capabilities = IFCAP_VLAN_MTU | IFCAP_HWCSUM;
 	ifp->if_capenable = ifp->if_capabilities;
 	ifp->if_hwassist = CSUM_TCP | CSUM_UDP;
 

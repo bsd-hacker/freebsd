@@ -326,11 +326,6 @@ void cvm_oct_tasklet_rx(void *context, int pending)
 					m->m_pkthdr.csum_data = 0xffff;
 				}
 
-				if (work->word2.s.vlan_valid) {
-					m->m_pkthdr.ether_vtag = work->word2.s.vlan_id;
-					m->m_flags |= M_VLANTAG;
-				}
-
 				if (priv->intercept_cb) {
 					callback_result = priv->intercept_cb(ifp, work, m);
 
