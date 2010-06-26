@@ -18,7 +18,7 @@
 # $FreeBSD: user/jmallett/octeon/sys/mips/conf/OCTEON1-32 204680 2010-03-04 00:40:53Z jmallett $
 
 machine		mips
-cpu		CPU_MIPS4KC
+cpu		CPU_CNMIPS
 ident		OCTEON1
 
 # Don't build any modules yet.

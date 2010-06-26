@@ -25,7 +25,7 @@
 ##############################################################################
 
 machine		mips
-cpu		CPU_MIPS4KC
+cpu		CPU_CNMIPS
 ident		OCTEON1
 
 makeoptions	ARCH_FLAGS="-march=octeon"
