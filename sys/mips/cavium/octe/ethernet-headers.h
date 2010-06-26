@@ -34,7 +34,6 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 #include "ethernet-defines.h"
 #include "ethernet-mdio.h"
 #include "ethernet-mem.h"
-#include "ethernet-proc.h"
 #include "ethernet-rx.h"
 #include "ethernet-tx.h"
 #include "ethernet-util.h"
