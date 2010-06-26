@@ -73,6 +73,7 @@ __FBSDID("$FreeBSD$");
 #include <contrib/octeon-sdk/cvmx.h>
 #include <contrib/octeon-sdk/cvmx-bootmem.h>
 #include <contrib/octeon-sdk/cvmx-interrupt.h>
+#include <contrib/octeon-sdk/cvmx-version.h>
 
 #if defined(__mips_n64) 
 #define MAX_APP_DESC_ADDR     0xffffffffafffffff
@@ -350,6 +351,7 @@ platform_start(__register_t a0, __register_t a1, __register_t a2 __unused,
 	cvmx_write_csr(CVMX_CIU_MBOX_CLRX(0), 0xffffffff);
 #endif
 
+	printf("Octeon SDK: %s\n", OCTEON_SDK_VERSION_STRING);
 	printf("Available Octeon features:");
 	for (ofd = octeon_feature_descriptions; ofd->ofd_string != NULL; ofd++)
 		if (octeon_has_feature(ofd->ofd_feature))
