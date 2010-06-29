@@ -317,11 +317,15 @@ void cvm_oct_tasklet_rx(void *context, int pending)
 			if ((ifp->if_flags & IFF_UP)) {
 				m->m_pkthdr.rcvif = ifp;
 
-				if ((work->word2.s.not_IP || work->word2.s.IP_exc || work->word2.s.L4_error))
+				if ((ifp->if_capenable & IFCAP_RXCSUM) != 0) {
+					if ((work->word2.s.not_IP || work->word2.s.IP_exc || work->word2.s.L4_error))
+						m->m_pkthdr.csum_flags = 0; /* XXX */
+					else {
+						m->m_pkthdr.csum_flags = CSUM_IP_CHECKED | CSUM_IP_VALID | CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
+						m->m_pkthdr.csum_data = 0xffff;
+					}
+				} else {
 					m->m_pkthdr.csum_flags = 0; /* XXX */
-				else {
-					m->m_pkthdr.csum_flags = CSUM_IP_CHECKED | CSUM_IP_VALID | CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
-					m->m_pkthdr.csum_data = 0xffff;
 				}
 
 				ifp->if_ipackets++;
