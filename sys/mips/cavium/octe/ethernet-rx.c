@@ -191,7 +191,6 @@ void cvm_oct_tasklet_rx(void *context, int pending)
 
 	while (1) {
 		struct mbuf *m = NULL;
-		cvm_oct_callback_result_t callback_result;
 		int mbuf_in_hw;
 		cvmx_wqe_t *work;
 
@@ -312,7 +311,6 @@ void cvm_oct_tasklet_rx(void *context, int pending)
 		if (((work->ipprt < TOTAL_NUMBER_OF_PORTS) &&
 		    cvm_oct_device[work->ipprt])) {
 			struct ifnet *ifp = cvm_oct_device[work->ipprt];
-			cvm_oct_private_t *priv = (cvm_oct_private_t *)ifp->if_softc;
 
 			/* Only accept packets for devices
 			   that are currently up */
@@ -326,40 +324,9 @@ void cvm_oct_tasklet_rx(void *context, int pending)
 					m->m_pkthdr.csum_data = 0xffff;
 				}
 
-				if (priv->intercept_cb) {
-					callback_result = priv->intercept_cb(ifp, work, m);
+				ifp->if_ipackets++;
 
-					switch (callback_result) {
-					case CVM_OCT_PASS:
-						ifp->if_ipackets++;
-
-						(*ifp->if_input)(ifp, m);
-						break;
-					case CVM_OCT_DROP:
-						m_freem(m);
-						ifp->if_ierrors++;
-						break;
-					case CVM_OCT_TAKE_OWNERSHIP_WORK:
-						/* Interceptor stole our work, but
-						   we need to free the mbuf */
-						if (USE_MBUFS_IN_HW && (packet_not_copied)) {
-							/* We can't free the mbuf since its data is
-							the same as the work. In this case we don't
-							do anything */
-						} else
-							m_freem(m);
-						break;
-					case CVM_OCT_TAKE_OWNERSHIP_SKB:
-						/* Interceptor stole our packet */
-						break;
-					}
-				} else {
-					ifp->if_ipackets++;
-
-					(*ifp->if_input)(ifp, m);
-
-					callback_result = CVM_OCT_PASS;
-				}
+				(*ifp->if_input)(ifp, m);
 			} else {
 				/* Drop any packet received for a device that isn't up */
 				/*
@@ -367,33 +334,26 @@ void cvm_oct_tasklet_rx(void *context, int pending)
 					   if_name(ifp));
 				*/
 				m_freem(m);
-				callback_result = CVM_OCT_DROP;
 			}
 		} else {
 			/* Drop any packet received for a device that
 			   doesn't exist */
 			DEBUGPRINT("Port %d not controlled by Linux, packet dropped\n", work->ipprt);
 			m_freem(m);
-			callback_result = CVM_OCT_DROP;
 		}
 
-		/* We only need to free the work if the interceptor didn't
-		   take over ownership of it */
-		if (callback_result != CVM_OCT_TAKE_OWNERSHIP_WORK) {
+		/* Check to see if the mbuf and work share
+		   the same packet buffer */
+		if (USE_MBUFS_IN_HW && (packet_not_copied)) {
+			/* This buffer needs to be replaced, increment
+			the number of buffers we need to free by one */
+			cvmx_fau_atomic_add32(
+				FAU_NUM_PACKET_BUFFERS_TO_FREE, 1);
 
-			/* Check to see if the mbuf and work share
-			   the same packet buffer */
-			if (USE_MBUFS_IN_HW && (packet_not_copied)) {
-				/* This buffer needs to be replaced, increment
-				the number of buffers we need to free by one */
-				cvmx_fau_atomic_add32(
-					FAU_NUM_PACKET_BUFFERS_TO_FREE, 1);
-
-				cvmx_fpa_free(work, CVMX_FPA_WQE_POOL,
-					      DONT_WRITEBACK(1));
-			} else
-				cvm_oct_free_work(work);
-		}
+			cvmx_fpa_free(work, CVMX_FPA_WQE_POOL,
+				      DONT_WRITEBACK(1));
+		} else
+			cvm_oct_free_work(work);
 	}
 
 	/* Restore the original POW group mask */

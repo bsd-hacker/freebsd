@@ -71,9 +71,6 @@ int cvm_oct_xmit(struct mbuf *m, struct ifnet *ifp)
 	cvm_oct_private_t          *priv = (cvm_oct_private_t *)ifp->if_softc;
 	int32_t in_use;
 	int32_t buffers_to_free;
-#if REUSE_MBUFS_WITHOUT_FREE
-	unsigned char *fpa_head;
-#endif
 	cvmx_wqe_t *work;
 
 	/* Prefetch the private data structure.
@@ -194,102 +191,6 @@ int cvm_oct_xmit(struct mbuf *m, struct ifnet *ifp)
 	pko_command.s.size0 = CVMX_FAU_OP_SIZE_32;
 	pko_command.s.subone0 = 1;
 
-	pko_command.s.dontfree = 1;
-	pko_command.s.reg0 = priv->fau+qos*4;
-
-	/* See if we can put this m in the FPA pool. Any strange behavior
-	   from the Linux networking stack will most likely be caused by a bug
-	   in the following code. If some field is in use by the network stack
-	   and get carried over when a buffer is reused, bad thing may happen.
-	   If in doubt and you dont need the absolute best performance, disable
-	   the define REUSE_MBUFS_WITHOUT_FREE. The reuse of buffers has
-	   shown a 25% increase in performance under some loads */
-#if REUSE_MBUFS_WITHOUT_FREE
-	fpa_head = m->head + 128 - ((unsigned long)m->head&0x7f);
-	if (__predict_false(m->data < fpa_head)) {
-		/*
-		printf("TX buffer beginning can't meet FPA alignment constraints\n");
-		*/
-		goto dont_put_mbuf_in_hw;
-	}
-	if (__predict_false((m_end_pointer(m) - fpa_head) < CVMX_FPA_PACKET_POOL_SIZE)) {
-		/*
-		printf("TX buffer isn't large enough for the FPA\n");
-		*/
-		goto dont_put_mbuf_in_hw;
-	}
-	if (__predict_false(m_shared(m))) {
-		/*
-		printf("TX buffer sharing data with someone else\n");
-		*/
-		goto dont_put_mbuf_in_hw;
-	}
-	if (__predict_false(m_cloned(m))) {
-		/*
-		printf("TX buffer has been cloned\n");
-		*/
-		goto dont_put_mbuf_in_hw;
-	}
-	if (__predict_false(m_header_cloned(m))) {
-		/*
-		printf("TX buffer header has been cloned\n");
-		*/
-		goto dont_put_mbuf_in_hw;
-	}
-	if (__predict_false(m->destructor)) {
-		/*
-		printf("TX buffer has a destructor\n");
-		*/
-		goto dont_put_mbuf_in_hw;
-	}
-	if (__predict_false(m_shinfo(m)->nr_frags)) {
-		/*
-		printf("TX buffer has fragments\n");
-		*/
-		goto dont_put_mbuf_in_hw;
-	}
-	if (__predict_false(m->truesize != sizeof(*m) + m_end_pointer(m) - m->head)) {
-		/*
-		printf("TX buffer truesize has been changed\n");
-		*/
-		goto dont_put_mbuf_in_hw;
-	}
-
-	/* We can use this buffer in the FPA.
-	   We don't need the FAU update anymore */
-	pko_command.s.reg0 = 0;
-	pko_command.s.dontfree = 0;
-
-	hw_buffer.s.back = (m->data - fpa_head)>>7;
-	*(struct mbuf **)(fpa_head-sizeof(void *)) = m;
-
-	/* The mbuf will be reused without ever being freed. We must cleanup a
-	   bunch of Linux stuff */
-	dst_release(m->dst);
-	m->dst = NULL;
-#ifdef CONFIG_XFRM
-	secpath_put(m->sp);
-	m->sp = NULL;
-#endif
-	nf_reset(m);
-#ifdef CONFIG_BRIDGE_NETFILTER
-	/* The next two lines are done in nf_reset() for 2.6.21. 2.6.16 needs
-	   them. I'm leaving it for all versions since the compiler will
-	   optimize them away when they aren't needed. It can tell that
-	   m->nf_bridge was set to NULL in the inlined nf_reset(). */
-	nf_bridge_put(m->nf_bridge);
-	m->nf_bridge = NULL;
-#endif /* CONFIG_BRIDGE_NETFILTER */
-#ifdef CONFIG_NET_SCHED
-	m->tc_index = 0;
-#ifdef CONFIG_NET_CLS_ACT
-	m->tc_verd = 0;
-#endif /* CONFIG_NET_CLS_ACT */
-#endif /* CONFIG_NET_SCHED */
-
-dont_put_mbuf_in_hw:
-#endif /* REUSE_MBUFS_WITHOUT_FREE */
-
 	/* Check if we can use the hardware checksumming */
 	if (USE_HW_TCPUDP_CHECKSUM &&
 	    (m->m_pkthdr.csum_flags & (CSUM_TCP | CSUM_UDP)) != 0) {
@@ -306,13 +207,6 @@ dont_put_mbuf_in_hw:
 		/* Get the number of mbufs in use by the hardware */
 		in_use = cvmx_fau_fetch_and_add32(priv->fau+qos*4, 1);
 		buffers_to_free = cvmx_fau_fetch_and_add32(FAU_NUM_PACKET_BUFFERS_TO_FREE, 0);
-	}
-
-	/* If we're sending faster than the receive can free them then don't do
-	   the HW free */
-	if ((buffers_to_free < -100) && !pko_command.s.dontfree) {
-		pko_command.s.dontfree = 1;
-		pko_command.s.reg0 = priv->fau+qos*4;
 	}
 
 	cvmx_pko_send_packet_prepare(priv->port, priv->queue + qos, CVMX_PKO_LOCK_CMD_QUEUE);
@@ -339,18 +233,8 @@ dont_put_mbuf_in_hw:
 		cvmx_fau_atomic_add32(priv->fau+qos*4, -1);
 		ifp->if_oerrors++;
 	} else {
-		if (USE_MBUFS_IN_HW) {
-			/* Put this packet on the queue to be freed later */
-			if (pko_command.s.dontfree)
-				IF_ENQUEUE(&priv->tx_free_queue[qos], m);
-			else {
-				cvmx_fau_atomic_add32(FAU_NUM_PACKET_BUFFERS_TO_FREE, -1);
-				cvmx_fau_atomic_add32(priv->fau+qos*4, -1);
-			}
-		} else {
-			/* Put this packet on the queue to be freed later */
-			IF_ENQUEUE(&priv->tx_free_queue[qos], m);
-		}
+		/* Put this packet on the queue to be freed later */
+		IF_ENQUEUE(&priv->tx_free_queue[qos], m);
 	}
 	if (work != NULL)
 		cvmx_fpa_free(work, CVMX_FPA_WQE_POOL, DONT_WRITEBACK(1));
@@ -492,96 +376,6 @@ int cvm_oct_xmit_pow(struct mbuf *m, struct ifnet *ifp)
 	ifp->if_obytes += m->m_pkthdr.len;
 	m_freem(m);
 	return 0;
-}
-
-
-/**
- * Transmit a work queue entry out of the ethernet port. Both
- * the work queue entry and the packet data can optionally be
- * freed. The work will be freed on error as well.
- *
- * @param dev     Device to transmit out.
- * @param work_queue_entry
- *                Work queue entry to send
- * @param do_free True if the work queue entry and packet data should be
- *                freed. If false, neither will be freed.
- * @param qos     Index into the queues for this port to transmit on. This
- *                is used to implement QoS if their are multiple queues per
- *                port. This parameter must be between 0 and the number of
- *                queues per port minus 1. Values outside of this range will
- *                be change to zero.
- *
- * @return Zero on success, negative on failure.
- */
-int cvm_oct_transmit_qos(struct ifnet *ifp, void *work_queue_entry, int do_free, int qos)
-{
-	cvmx_buf_ptr_t             hw_buffer;
-	cvmx_pko_command_word0_t   pko_command;
-	int                        dropped;
-	cvm_oct_private_t         *priv = (cvm_oct_private_t *)ifp->if_softc;
-	cvmx_wqe_t                *work = work_queue_entry;
-
-	if (!(ifp->if_flags & IFF_UP)) {
-		DEBUGPRINT("%s: Device not up\n", if_name(ifp));
-		if (do_free)
-			cvm_oct_free_work(work);
-		return -1;
-	}
-
-	/* The check on CVMX_PKO_QUEUES_PER_PORT_* is designed to completely
-	   remove "qos" in the event neither interface supports
-	   multiple queues per port */
-	if ((CVMX_PKO_QUEUES_PER_PORT_INTERFACE0 > 1) ||
-		(CVMX_PKO_QUEUES_PER_PORT_INTERFACE1 > 1)) {
-		if (qos <= 0)
-			qos = 0;
-		else if (qos >= cvmx_pko_get_num_queues(priv->port))
-			qos = 0;
-	} else
-		qos = 0;
-
-	/* Start off assuming no drop */
-	dropped = 0;
-
-	critical_enter();
-	cvmx_pko_send_packet_prepare(priv->port, priv->queue + qos, CVMX_PKO_LOCK_CMD_QUEUE);
-
-	/* Build the PKO buffer pointer */
-	hw_buffer.u64 = 0;
-	hw_buffer.s.addr = work->packet_ptr.s.addr;
-	hw_buffer.s.pool = CVMX_FPA_PACKET_POOL;
-	hw_buffer.s.size = CVMX_FPA_PACKET_POOL_SIZE;
-	hw_buffer.s.back = work->packet_ptr.s.back;
-
-	/* Build the PKO command */
-	pko_command.u64 = 0;
-	pko_command.s.n2 = 1; /* Don't pollute L2 with the outgoing packet */
-	pko_command.s.dontfree = !do_free;
-	pko_command.s.segs = work->word2.s.bufs;
-	pko_command.s.total_bytes = work->len;
-
-	/* Check if we can use the hardware checksumming */
-	if (__predict_false(work->word2.s.not_IP || work->word2.s.IP_exc))
-		pko_command.s.ipoffp1 = 0;
-	else
-		pko_command.s.ipoffp1 = ETHER_HDR_LEN + 1;
-
-	/* Send the packet to the output queue */
-	if (__predict_false(cvmx_pko_send_packet_finish(priv->port, priv->queue + qos, pko_command, hw_buffer, CVMX_PKO_LOCK_CMD_QUEUE))) {
-		DEBUGPRINT("%s: Failed to send the packet\n", if_name(ifp));
-		dropped = -1;
-	}
-	critical_exit();
-
-	if (__predict_false(dropped)) {
-		if (do_free)
-			cvm_oct_free_work(work);
-		ifp->if_oerrors++;
-	} else
-	if (do_free)
-		cvmx_fpa_free(work, CVMX_FPA_WQE_POOL, DONT_WRITEBACK(1));
-
-	return dropped;
 }
 
 

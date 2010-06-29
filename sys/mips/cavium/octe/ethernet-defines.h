@@ -58,12 +58,6 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
  *      Use asynchronous IO access to hardware. This uses Octeon's asynchronous
  *      IOBDMAs to issue IO accesses without stalling. Set this to zero
  *      to disable this. Note that IOBDMAs require CVMSEG.
- *  REUSE_MBUFS_WITHOUT_FREE
- *      Allows the TX path to free an mbuf into the FPA hardware pool. This
- *      can significantly improve performance for forwarding and bridging, but
- *      may be somewhat dangerous. Checks are made, but if any buffer is reused
- *      without the proper Linux cleanup, the networking stack may have very
- *      bizarre bugs.
  */
 #ifndef CONFIG_CAVIUM_RESERVE32
 #define CONFIG_CAVIUM_RESERVE32 0
@@ -72,19 +66,9 @@ AND WITH ALL FAULTS AND CAVIUM  NETWORKS MAKES NO PROMISES, REPRESENTATIONS OR W
 #if CONFIG_CAVIUM_RESERVE32
 	#define USE_32BIT_SHARED            1
 	#define USE_MBUFS_IN_HW           0
-	#define REUSE_MBUFS_WITHOUT_FREE  0
 #else
 	#define USE_32BIT_SHARED            0
 	#define USE_MBUFS_IN_HW           1
-#if 0
-	#ifdef CONFIG_NETFILTER
-		#define REUSE_MBUFS_WITHOUT_FREE  0
-	#else
-		#define REUSE_MBUFS_WITHOUT_FREE  1
-	#endif
-#else
-	#define REUSE_MBUFS_WITHOUT_FREE  0
-#endif
 #endif
 
 #define INTERRUPT_LIMIT             10000   /* Max interrupts per second per core */

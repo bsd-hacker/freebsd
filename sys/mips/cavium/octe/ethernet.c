@@ -252,40 +252,6 @@ static void cvm_oct_configure_common_hw(device_t bus)
 
 
 /**
- * Registers a intercept callback for the names ethernet
- * device. It returns the Linux device structure for the
- * ethernet port. Usign a callback of NULL will remove
- * the callback. Note that this callback must not disturb
- * scratch. It will be called with SYNCIOBDMAs in progress
- * and userspace may be using scratch. It also must not
- * disturb the group mask.
- *
- * @param device_name
- *                 Device name to register for. (Example: "eth0")
- * @param callback Intercept callback to set.
- * @return Device structure for the ethernet port or NULL on failure.
- */
-#if 0
-struct ifnet *cvm_oct_register_callback(const char *device_name, cvm_oct_callback_t callback)
-{
-	int port;
-
-	for (port = 0; port < TOTAL_NUMBER_OF_PORTS; port++) {
-		if (cvm_oct_device[port] &&
-		    (strcmp(device_name, cvm_oct_device[port]->name) == 0)) {
-			cvm_oct_private_t *priv = (cvm_oct_private_t *)cvm_oct_device[port]->if_softc;
-			priv->intercept_cb = callback;
-			wmb();
-			return cvm_oct_device[port];
-		}
-	}
-
-	return NULL;
-}
-#endif
-
-
-/**
  * Free a work queue entry received in a intercept callback.
  *
  * @param work_queue_entry
@@ -426,7 +392,6 @@ int cvm_oct_init_module(device_t bus)
 			priv->imode = imode;
 			priv->port = port;
 			priv->queue = cvmx_pko_get_base_queue(priv->port);
-			priv->intercept_cb = NULL;
 			priv->fau = fau - cvmx_pko_get_num_queues(port) * 4;
 			for (qos = 0; qos < cvmx_pko_get_num_queues(port); qos++)
 				cvmx_fau_atomic_write32(priv->fau+qos*4, 0);
