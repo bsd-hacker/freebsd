@@ -474,6 +474,15 @@ octe_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		}
 		priv->if_flags = ifp->if_flags;
 		return (0);
+	
+	case SIOCSIFCAP:
+		/*
+		 * Just change the capabilities in software, currently none
+		 * require reprogramming hardware, they just toggle whether we
+		 * make use of already-present facilities in software.
+		 */
+		ifp->if_capenable = ifr->ifr_reqcap;
+		return (0);
 
 	case SIOCSIFMTU:
 		error = cvm_oct_common_change_mtu(ifp, ifr->ifr_mtu);
