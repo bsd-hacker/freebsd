@@ -47,6 +47,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/signalvar.h>
 #include <sys/sysent.h>
 #include <sys/sysproto.h>
+#include <sys/time.h>
+#include <sys/timetc.h>
 #include <sys/user.h>
 
 #include <vm/vm.h>
@@ -111,7 +113,19 @@ static const struct octeon_feature_description octeon_feature_descriptions[] = {
 uint64_t ciu_get_en_reg_addr_new(int corenum, int intx, int enx, int ciu_ip);
 void ciu_dump_interrutps_enabled(int core_num, int intx, int enx, int ciu_ip);
 
+static uint64_t octeon_get_ticks(void);
+static unsigned octeon_get_timecount(struct timecounter *tc);
+
 static void octeon_boot_params_init(register_t ptr);
+
+static struct timecounter octeon_timecounter = {
+	octeon_get_timecount,	/* get_timecount */
+	0,			/* no poll_pps */
+	0xffffffffu,		/* octeon_mask */
+	0,			/* frequency */
+	"Octeon",		/* name */
+	900,			/* quality (adjusted in code) */
+};
 
 void
 platform_cpu_init()
@@ -342,7 +356,13 @@ platform_start(__register_t a0, __register_t a1, __register_t a2 __unused,
 		kdb_enter(KDB_WHY_BOOTFLAGS, "Boot flags requested debugger");
 #endif
 	platform_counter_freq = cvmx_sysinfo_get()->cpu_clock_hz;
+
+	octeon_timecounter.tc_frequency = cvmx_sysinfo_get()->cpu_clock_hz;
+	platform_timecounter = &octeon_timecounter;
+
 	mips_timer_init_params(platform_counter_freq, 0);
+
+	set_cputicker(octeon_get_ticks, cvmx_sysinfo_get()->cpu_clock_hz, 1);
 
 #ifdef SMP
 	/*
@@ -357,6 +377,21 @@ platform_start(__register_t a0, __register_t a1, __register_t a2 __unused,
 		if (octeon_has_feature(ofd->ofd_feature))
 			printf(" %s", ofd->ofd_string);
 	printf("\n");
+}
+
+static uint64_t
+octeon_get_ticks(void)
+{
+	uint64_t cvmcount;
+
+	CVMX_MF_CYCLE(cvmcount);
+	return (cvmcount);
+}
+
+static unsigned
+octeon_get_timecount(struct timecounter *tc)
+{
+	return ((unsigned)octeon_get_ticks());
 }
 
 /* impSTART: This stuff should move back into the Cavium SDK */
