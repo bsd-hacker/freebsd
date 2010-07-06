@@ -40,7 +40,6 @@ __FBSDID("$FreeBSD: src/sys/powerpc/powermac/openpic_macio.c,v 1.13 2008/10/14 1
 #include <dev/ofw/openfirm.h>
 
 #include <machine/bus.h>
-#include <machine/intr.h>
 #include <machine/intr_machdep.h>
 #include <machine/md_var.h>
 #include <machine/pio.h>

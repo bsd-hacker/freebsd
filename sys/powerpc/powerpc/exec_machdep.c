@@ -75,6 +75,7 @@ __FBSDID("$FreeBSD: projects/ppc64/sys/powerpc/aim/machdep.c 198753 2009-11-01 1
 #include <sys/malloc.h>
 #include <sys/mutex.h>
 #include <sys/signalvar.h>
+#include <sys/syscallsubr.h>
 #include <sys/syscall.h>
 #include <sys/sysent.h>
 #include <sys/sysproto.h>
