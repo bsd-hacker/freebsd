@@ -34,7 +34,7 @@
 
 #define	_MCOUNT_DECL	void __mcount
 
-#define FUNCTION_ALIGNMENT 16
+#define	FUNCTION_ALIGNMENT	4
 
 typedef __ptrdiff_t	fptrdiff_t;
 

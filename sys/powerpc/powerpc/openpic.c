@@ -35,7 +35,6 @@
 #include <sys/sched.h>
 
 #include <machine/bus.h>
-#include <machine/intr.h>
 #include <machine/intr_machdep.h>
 #include <machine/md_var.h>
 #include <machine/pio.h>
@@ -75,7 +74,7 @@ openpic_set_priority(struct openpic_softc *sc, int pri)
 	uint32_t x;
 
 	sched_pin();
-	tpr = OPENPIC_PCPU_TPR(PCPU_GET(cpuid));
+	tpr = OPENPIC_PCPU_TPR((sc->sc_dev == root_pic) ? PCPU_GET(cpuid) : 0);
 	x = openpic_read(sc, tpr);
 	x &= ~OPENPIC_TPR_MASK;
 	x |= pri;
@@ -199,10 +198,10 @@ openpic_attach(device_t dev)
 	for (irq = 0; irq < sc->sc_nirq; irq++)
 		openpic_write(sc, OPENPIC_IDEST(irq), 1 << 0);
 
-	/* clear all pending interrupts */
+	/* clear all pending interrupts from cpu 0 */
 	for (irq = 0; irq < sc->sc_nirq; irq++) {
-		(void)openpic_read(sc, OPENPIC_PCPU_IACK(PCPU_GET(cpuid)));
-		openpic_write(sc, OPENPIC_PCPU_EOI(PCPU_GET(cpuid)), 0);
+		(void)openpic_read(sc, OPENPIC_PCPU_IACK(0));
+		openpic_write(sc, OPENPIC_PCPU_EOI(0), 0);
 	}
 
 	for (cpu = 0; cpu < sc->sc_ncpu; cpu++)
@@ -273,7 +272,8 @@ openpic_dispatch(device_t dev, struct trapframe *tf)
 
 	CTR1(KTR_INTR, "%s: got interrupt", __func__);
 
-	cpuid = PCPU_GET(cpuid);
+	cpuid = (dev == root_pic) ? PCPU_GET(cpuid) : 0;
+
 	sc = device_get_softc(dev);
 
 	while (1) {
@@ -309,15 +309,20 @@ void
 openpic_eoi(device_t dev, u_int irq __unused)
 {
 	struct openpic_softc *sc;
+	u_int cpuid;
+
+	cpuid = (dev == root_pic) ? PCPU_GET(cpuid) : 0;
 
 	sc = device_get_softc(dev);
-	openpic_write(sc, OPENPIC_PCPU_EOI(PCPU_GET(cpuid)), 0);
+	openpic_write(sc, OPENPIC_PCPU_EOI(cpuid), 0);
 }
 
 void
 openpic_ipi(device_t dev, u_int cpu)
 {
 	struct openpic_softc *sc;
+
+	KASSERT(dev == root_pic, ("Cannot send IPIs from non-root OpenPIC"));
 
 	sc = device_get_softc(dev);
 	sched_pin();
@@ -342,7 +347,6 @@ openpic_mask(device_t dev, u_int irq)
 		x |= OPENPIC_IMASK;
 		openpic_write(sc, OPENPIC_IPI_VECTOR(0), x);
 	}
-	openpic_write(sc, OPENPIC_PCPU_EOI(PCPU_GET(cpuid)), 0);
 }
 
 void

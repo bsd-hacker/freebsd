@@ -35,7 +35,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/bus.h>
 
 #include <machine/bus.h>
-#include <machine/intr.h>
 #include <machine/intr_machdep.h>
 #include <machine/ocpbus.h>
 #include <machine/pio.h>
@@ -309,12 +308,10 @@ atpic_mask(device_t dev, u_int irq)
 	if (irq > 7) {
 		sc->sc_mask[ATPIC_SLAVE] |= 1 << (irq - 8);
 		atpic_write(sc, ATPIC_SLAVE, 1, sc->sc_mask[ATPIC_SLAVE]);
-		atpic_write(sc, ATPIC_SLAVE, 0, OCW2_EOI);
 	} else {
 		sc->sc_mask[ATPIC_MASTER] |= 1 << irq;
 		atpic_write(sc, ATPIC_MASTER, 1, sc->sc_mask[ATPIC_MASTER]);
 	}
-	atpic_write(sc, ATPIC_MASTER, 0, OCW2_EOI);
 }
 
 static void
