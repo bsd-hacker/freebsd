@@ -325,8 +325,7 @@ vm_pageout_clean(vm_page_t m)
 	int ib, is, page_base;
 	vm_pindex_t pindex = m->pindex;
 
-	vm_page_lock_assert(m, MA_NOTOWNED);
-	vm_page_lock(m);
+	vm_page_lock_assert(m, MA_OWNED);
 	VM_OBJECT_LOCK_ASSERT(m->object, MA_OWNED);
 
 	/*
@@ -341,11 +340,9 @@ vm_pageout_clean(vm_page_t m)
 	/*
 	 * Can't clean the page if it's busy or held.
 	 */
-	if ((m->hold_count != 0) ||
-	    ((m->busy != 0) || (m->oflags & VPO_BUSY))) {
-		vm_page_unlock(m);
-		return 0;
-	}
+	KASSERT(m->busy == 0 && (m->oflags & VPO_BUSY) == 0,
+	    ("vm_pageout_clean: page %p is busy", m));
+	KASSERT(m->hold_count == 0, ("vm_pageout_clean: page %p is held", m));
 
 	mc[vm_pageout_page_count] = pb = ps = m;
 	pageout_count = 1;
@@ -776,9 +773,8 @@ rescan0:
 
 		cnt.v_pdpages++;
 
-		if (VM_PAGE_GETQUEUE(m) != PQ_INACTIVE) {
+		if (m->queue != PQ_INACTIVE)
 			goto rescan0;
-		}
 
 		next = TAILQ_NEXT(m, pageq);
 
@@ -1028,7 +1024,7 @@ rescan0:
 				 * above.  The page might have been freed and
 				 * reused for another vnode.
 				 */
-				if (VM_PAGE_GETQUEUE(m) != PQ_INACTIVE ||
+				if (m->queue != PQ_INACTIVE ||
 				    m->object != object ||
 				    TAILQ_NEXT(m, pageq) != &marker) {
 					vm_page_unlock(m);
@@ -1060,7 +1056,6 @@ rescan0:
 					goto unlock_and_continue;
 				}
 			}
-			vm_page_unlock(m);
 
 			/*
 			 * If a page is dirty, then it is either being washed
@@ -1119,7 +1114,7 @@ unlock_and_continue:
 
 	while ((m != NULL) && (pcount-- > 0) && (page_shortage > 0)) {
 
-		KASSERT(VM_PAGE_INQUEUE2(m, PQ_ACTIVE),
+		KASSERT(m->queue == PQ_ACTIVE,
 		    ("vm_pageout_scan: page %p isn't active", m));
 
 		next = TAILQ_NEXT(m, pageq);
@@ -1360,7 +1355,6 @@ vm_pageout_page_stats()
 	static int fullintervalcount = 0;
 	int page_shortage;
 
-	mtx_assert(&vm_page_queue_mtx, MA_OWNED);
 	page_shortage = 
 	    (cnt.v_inactive_target + cnt.v_cache_max + cnt.v_free_min) -
 	    (cnt.v_free_count + cnt.v_inactive_count + cnt.v_cache_count);
@@ -1368,6 +1362,7 @@ vm_pageout_page_stats()
 	if (page_shortage <= 0)
 		return;
 
+	vm_page_lock_queues();
 	pcount = cnt.v_active_count;
 	fullintervalcount += vm_pageout_stats_interval;
 	if (fullintervalcount < vm_pageout_full_stats_interval) {
@@ -1383,7 +1378,7 @@ vm_pageout_page_stats()
 	while ((m != NULL) && (pcount-- > 0)) {
 		int actcount;
 
-		KASSERT(VM_PAGE_INQUEUE2(m, PQ_ACTIVE),
+		KASSERT(m->queue == PQ_ACTIVE,
 		    ("vm_pageout_page_stats: page %p isn't active", m));
 
 		next = TAILQ_NEXT(m, pageq);
@@ -1453,6 +1448,7 @@ vm_pageout_page_stats()
 		VM_OBJECT_UNLOCK(object);
 		m = next;
 	}
+	vm_page_unlock_queues();
 }
 
 /*
@@ -1574,9 +1570,7 @@ vm_pageout()
 			if (error && !vm_pages_needed) {
 				mtx_unlock(&vm_page_queue_free_mtx);
 				pass = 0;
-				vm_page_lock_queues();
 				vm_pageout_page_stats();
-				vm_page_unlock_queues();
 				continue;
 			}
 		}

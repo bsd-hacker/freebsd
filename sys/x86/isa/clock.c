@@ -511,7 +511,12 @@ attimer_probe(device_t dev)
 	int result;
 	
 	result = ISA_PNP_PROBE(device_get_parent(dev), dev, attimer_ids);
-	return(result);
+	/* ENOENT means no PnP-ID, device is hinted. */
+	if (result == ENOENT) {
+		device_set_desc(dev, "AT timer");
+		return (BUS_PROBE_LOW_PRIORITY);
+	}
+	return (result);
 }
 
 static int
@@ -535,7 +540,8 @@ attimer_attach(device_t dev)
 	tc_init(&sc->tc);
 	if (resource_int_value(device_get_name(dev), device_get_unit(dev),
 	    "clock", &i) != 0 || i != 0) {
-	    	sc->intr_rid = -1;
+	    	sc->intr_rid = 0;
+		bus_delete_resource(dev, SYS_RES_IRQ, sc->intr_rid);
 		if (!(sc->intr_res = bus_alloc_resource(dev, SYS_RES_IRQ,
 		    &sc->intr_rid, 0, 0, 1, RF_ACTIVE))) {
 			device_printf(dev,"Can't map interrupt.\n");

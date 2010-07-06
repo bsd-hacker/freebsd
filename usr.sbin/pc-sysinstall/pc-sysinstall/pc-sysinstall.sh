@@ -6,7 +6,7 @@
 #  system installations, as well as calls which a front-end can use
 #  to retrive information about the system
 #####################################################################
-# Copyright 2010 iX Systems
+# Copyright 2010 iXsystems
 # All rights reserved
 #
 # Redistribution and use in source and binary forms, with or without
@@ -146,6 +146,14 @@ case $1 in
 
   # Function which lists components available
   list-components) ${QUERYDIR}/list-components.sh
+  ;;
+
+  # Function which lists pc-sysinstall configuration
+  list-config) ${QUERYDIR}/list-config.sh
+  ;;
+
+  # Function which lists available FTP mirrors
+  list-mirrors) ${QUERYDIR}/list-mirrors.sh "${2}"
   ;;
 
   # Function which lists available backups on a rsync/ssh server
