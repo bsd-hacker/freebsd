@@ -101,7 +101,7 @@ typedef	pt_entry_t *pd_entry_t;
 				 (TLBHI_VA_TO_VPN2((va))) /* VPN2. */ | \
 				 ((asid) & TLBHI_ASID_MASK))
 #else
-#define	TLBHI_ENTRY(va, asid)	(((va) & ~(1 << TLBHI_VPN2_SHIFT)) | ((asid) & TLBHI_ASID_MASK))
+#define	TLBHI_ENTRY(va, asid)	(((va) & ~((1ULL << TLBHI_VPN2_SHIFT) - 1)) | ((asid) & TLBHI_ASID_MASK))
 #endif
 
 /*
