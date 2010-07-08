@@ -96,7 +96,9 @@ __FBSDID("$FreeBSD$");
 
 
 #ifdef TRAP_DEBUG
-int trap_debug = 1;
+int trap_debug = 0;
+SYSCTL_INT(_machdep, OID_AUTO, trap_debug, CTLFLAG_RW,
+    &trap_debug, 0, "Debug information on all traps");
 #endif
 
 static void log_illegal_instruction(const char *, struct trapframe *);
@@ -555,7 +557,10 @@ dofault:
 
 	case T_ADDR_ERR_LD + T_USER:	/* misaligned or kseg access */
 	case T_ADDR_ERR_ST + T_USER:	/* misaligned or kseg access */
-		if (allow_unaligned_acc) {
+		if (trapframe->badvaddr < 0 ||
+		    trapframe->badvaddr >= VM_MAXUSER_ADDRESS) {
+			msg = "ADDRESS_SPACE_ERR";
+		} else if (allow_unaligned_acc) {
 			int mode;
 
 			if (type == (T_ADDR_ERR_LD + T_USER))
@@ -566,8 +571,10 @@ dofault:
 			access_type = emulate_unaligned_access(trapframe, mode);
 			if (access_type != 0)
 				goto out;
+			msg = "ALIGNMENT_FIX_ERR";
+		} else {
+			msg = "ADDRESS_ERR";
 		}
-		msg = "ADDRESS_ERR";
 
 		/* FALL THROUGH */
 
@@ -674,7 +681,9 @@ dofault:
 #endif
 			}
 #ifdef TRAP_DEBUG
-			printf("SYSCALL #%d pid:%u\n", code, p->p_pid);
+			if (trap_debug) {
+				printf("SYSCALL #%d pid:%u\n", code, p->p_pid);
+			}
 #endif
 
 			if (p->p_sysent->sv_mask)
@@ -711,8 +720,10 @@ dofault:
 				}
 			}
 #ifdef TRAP_DEBUG
-			for (i = 0; i < nargs; i++) {
-				printf("args[%d] = %#jx\n", i, (intmax_t)args[i]);
+			if (trap_debug) {
+				for (i = 0; i < nargs; i++) {
+					printf("args[%d] = %#jx\n", i, (intmax_t)args[i]);
+				}
 			}
 #endif
 #ifdef SYSCALL_TRACING
@@ -924,8 +935,10 @@ dofault:
 	case T_ADDR_ERR_LD:	/* misaligned access */
 	case T_ADDR_ERR_ST:	/* misaligned access */
 #ifdef TRAP_DEBUG
-		printf("+++ ADDR_ERR: type = %d, badvaddr = %#jx\n", type,
-		    (intmax_t)trapframe->badvaddr);
+		if (trap_debug) {
+			printf("+++ ADDR_ERR: type = %d, badvaddr = %#jx\n", type,
+			    (intmax_t)trapframe->badvaddr);
+		}
 #endif
 		/* Only allow emulation on a user address */
 		if (allow_unaligned_acc &&
@@ -971,9 +984,10 @@ err:
 			printf("kernel mode)\n");
 
 #ifdef TRAP_DEBUG
-		printf("badvaddr = %#jx, pc = %#jx, ra = %#jx, sr = %#jxx\n",
-		       (intmax_t)trapframe->badvaddr, (intmax_t)trapframe->pc, (intmax_t)trapframe->ra,
-		       (intmax_t)trapframe->sr);
+		if (trap_debug)
+			printf("badvaddr = %#jx, pc = %#jx, ra = %#jx, sr = %#jxx\n",
+			       (intmax_t)trapframe->badvaddr, (intmax_t)trapframe->pc, (intmax_t)trapframe->ra,
+			       (intmax_t)trapframe->sr);
 #endif
 
 #ifdef KDB
