@@ -55,7 +55,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD: projects/ppc64/sys/powerpc/aim/machdep.c 198753 2009-11-01 16:54:20Z nwhitehorn $");
+__FBSDID("$FreeBSD$");
 
 #include "opt_compat.h"
 

@@ -22,7 +22,7 @@
  * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD: projects/ppc64/sys/powerpc/powermac/uninorth.c 205374 2010-03-20 14:53:52Z nwhitehorn $
+ * $FreeBSD$
  */
 
 #include <sys/param.h>

@@ -1,4 +1,4 @@
-/* $FreeBSD: projects/ppc64/sys/powerpc/aim/locore32.S -1   $ */
+/* $FreeBSD$ */
 
 #ifdef __powerpc64__
 #include <powerpc/aim/locore64.S>

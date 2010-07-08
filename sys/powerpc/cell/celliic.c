@@ -24,7 +24,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: projects/ppc64/sys/powerpc/powermac/celliic.c 183882 2008-10-14 14:54:14Z nwhitehorn $
+ * $FreeBSD$
  */
 
 /*

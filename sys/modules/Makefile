@@ -622,7 +622,6 @@ _cpufreq=	cpufreq
 _nvram=		powermac_nvram
 _smbfs=		smbfs
 _sound=		sound
-_tmpfs=		tmpfs
 .endif
 
 .if ${MACHINE_ARCH} == "powerpc64"
