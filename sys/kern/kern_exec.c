@@ -753,12 +753,11 @@ interpret:
 	p->p_flag &= ~P_INEXEC;
 
 	/*
-	 * If tracing the process, trap to debugger so breakpoints
-	 * can be set before the program executes.
-	 * Use tdsignal to deliver signal to current thread, using
-	 * psignal may cause the signal to be delivered to wrong thread
-	 * because that thread will exit, remember we are going to enter
-	 * single thread mode.
+	 * If tracing the process, trap to the debugger so that
+	 * breakpoints can be set before the program executes.  We
+	 * have to use tdsignal() to deliver the signal to the current
+	 * thread since any other threads in this process will exit if
+	 * execve() succeeds.
 	 */
 	if (p->p_flag & P_TRACED)
 		tdsignal(td, SIGTRAP);
