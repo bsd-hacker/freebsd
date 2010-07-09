@@ -3,8 +3,14 @@
 
 AIM			opt_global.h
 E500			opt_global.h
+CELL
+
+POWERPC
+POWERPC64
 
 FPU_EMU
+
+COMPAT_FREEBSD32	opt_compat.h
 
 GFB_DEBUG		opt_gfb.h
 GFB_NO_FONT_LOADING	opt_gfb.h
@@ -12,6 +18,7 @@ GFB_NO_MODE_CHANGE	opt_gfb.h
 
 POWERMAC		opt_platform.h
 MPC85XX			opt_platform.h
+MAMBO			opt_platform.h
 PSIM
 
 SC_OFWFB		opt_ofwfb.h

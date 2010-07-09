@@ -189,7 +189,7 @@ copies:
 	${INSTALL} -C -o ${BINOWN} -g ${BINGRP} -m 444 *.h \
 	    ${DESTDIR}${INCLUDEDIR}/machine/pc
 .endif
-.if defined(_MARCH)
+.if defined(_MARCH) && exists(${.CURDIR}/../sys/${_MARCH}/include)
 	${INSTALL} -d -o ${BINOWN} -g ${BINGRP} -m 755 \
 	    ${DESTDIR}${INCLUDEDIR}/${_MARCH}; \
 	cd ${.CURDIR}/../sys/${_MARCH}/include; \
@@ -276,7 +276,7 @@ symlinks:
 		    ${DESTDIR}${INCLUDEDIR}/machine/pc; \
 	done
 .endif
-.if defined(_MARCH)
+.if defined(_MARCH) && exists(${.CURDIR}/../sys/${_MARCH}/include)
 	${INSTALL} -d -o ${BINOWN} -g ${BINGRP} -m 755 \
 	    ${DESTDIR}${INCLUDEDIR}/${_MARCH}; \
 	cd ${.CURDIR}/../sys/${_MARCH}/include; \

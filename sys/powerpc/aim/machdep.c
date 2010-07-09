@@ -143,11 +143,7 @@ struct pcpu __pcpu[MAXCPU];
 
 static struct trapframe frame0;
 
-#ifdef __powerpc64__
-char		machine[] = "powerpc64";
-#else
 char		machine[] = "powerpc";
-#endif
 SYSCTL_STRING(_hw, HW_MACHINE, machine, CTLFLAG_RD, machine, 0, "");
 
 static void	cpu_startup(void *);
