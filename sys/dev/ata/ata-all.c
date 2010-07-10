@@ -105,7 +105,7 @@ SYSCTL_INT(_hw_ata, OID_AUTO, ata_dma, CTLFLAG_RDTUN, &ata_dma, 0,
 	   "ATA disk DMA mode control");
 TUNABLE_INT("hw.ata.ata_dma_check_80pin", &ata_dma_check_80pin);
 SYSCTL_INT(_hw_ata, OID_AUTO, ata_dma_check_80pin,
-	   CTLFLAG_RDTUN, &ata_dma_check_80pin, 1,
+	   CTLFLAG_RW, &ata_dma_check_80pin, 1,
 	   "Check for 80pin cable before setting ATA DMA mode");
 TUNABLE_INT("hw.ata.atapi_dma", &atapi_dma);
 SYSCTL_INT(_hw_ata, OID_AUTO, atapi_dma, CTLFLAG_RDTUN, &atapi_dma, 0,
@@ -185,27 +185,29 @@ ata_attach(device_t dev)
     if (ch->dma.alloc)
 	ch->dma.alloc(dev);
 
+    mtx_lock(&ch->state_mtx);
     /* setup interrupt delivery */
     rid = ATA_IRQ_RID;
     ch->r_irq = bus_alloc_resource_any(dev, SYS_RES_IRQ, &rid,
 				       RF_SHAREABLE | RF_ACTIVE);
     if (!ch->r_irq) {
 	device_printf(dev, "unable to allocate interrupt\n");
+	mtx_unlock(&ch->state_mtx);
 	return ENXIO;
     }
     if ((error = bus_setup_intr(dev, ch->r_irq, ATA_INTR_FLAGS, NULL,
 				ata_interrupt, ch, &ch->ih))) {
 	device_printf(dev, "unable to setup interrupt\n");
-	return error;
+	goto err1;
     }
 
 #ifndef ATA_CAM
+    mtx_unlock(&ch->state_mtx);
     /* probe and attach devices on this channel unless we are in early boot */
     if (!ata_delayed_attach)
 	ata_identify(dev);
     return (0);
 #else
-	mtx_lock(&ch->state_mtx);
 	/* Create the device queue for our SIM. */
 	devq = cam_simq_alloc(1);
 	if (devq == NULL) {
@@ -239,11 +241,11 @@ err3:
 	xpt_bus_deregister(cam_sim_path(ch->sim));
 err2:
 	cam_sim_free(ch->sim, /*free_devq*/TRUE);
+#endif
 err1:
 	bus_release_resource(dev, SYS_RES_IRQ, ATA_IRQ_RID, ch->r_irq);
 	mtx_unlock(&ch->state_mtx);
 	return (error);
-#endif
 }
 
 int
