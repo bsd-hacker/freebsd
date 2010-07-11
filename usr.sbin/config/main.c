@@ -291,7 +291,7 @@ static void
 usage(void)
 {
 
-	fprintf(stderr, "usage: config [-CgpV] [-d destdir] sysname\n");
+	fprintf(stderr, "usage: config [-CgmpV] [-d destdir] sysname\n");
 	fprintf(stderr, "       config -x kernel\n");
 	exit(EX_USAGE);
 }
