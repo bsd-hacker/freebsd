@@ -719,7 +719,11 @@ KERNCONF=${KERNFAST}
 KERNCONF=	${KERNEL}
 KERNWARN=
 .else
+.if ${TARGET_ARCH} == "powerpc64"
+KERNCONF?=	GENERIC64
+.else
 KERNCONF?=	GENERIC
+.endif
 .endif
 INSTKERNNAME?=	kernel
 
