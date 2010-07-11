@@ -282,6 +282,12 @@ tinderbox:
 #
 .if make(universe) || make(universe_kernels) || make(tinderbox)
 TARGETS?=amd64 arm i386 ia64 mips pc98 powerpc sparc64 sun4v
+TARGET_ARCHES_powerpc?=	powerpc powerpc64
+TARGET_ARCHES_sun4v?=	sparc64
+TARGET_ARCHES_pc98?=	i386
+.for target in ${TARGETS}
+TARGET_ARCHES_${target}?= ${target}
+.endfor
 
 .if defined(DOING_TINDERBOX)
 FAILFILE=tinderbox.failed
@@ -303,14 +309,19 @@ universe: universe_${target}
 .ORDER: universe_prologue universe_${target} universe_epilogue
 universe_${target}:
 .if !defined(MAKE_JUST_KERNELS)
-	@echo ">> ${target} started on `LC_ALL=C date`"
+.for target_arch in ${TARGET_ARCHES_${target}}
+universe_${target}: universe_${target}_${target_arch}
+universe_${target}_${target_arch}:
+	@echo ">> ${target}/${target_arch} started on `LC_ALL=C date`"
 	@(cd ${.CURDIR} && env __MAKE_CONF=/dev/null \
 	    ${MAKE} ${JFLAG} buildworld \
 	    TARGET=${target} \
+	    TARGET_ARCH=${target_arch} \
 	    > _.${target}.buildworld 2>&1 || \
 	    (echo "${target} world failed," \
 	    "check _.${target}.buildworld for details" | ${MAKEFAIL}))
-	@echo ">> ${target} buildworld completed on `LC_ALL=C date`"
+	@echo ">> ${target}/${target_arch} buildworld completed on `LC_ALL=C date`"
+.endfor
 .endif
 .if !defined(MAKE_JUST_WORLDS)
 .if exists(${.CURDIR}/sys/${target}/conf/NOTES)
@@ -333,9 +344,15 @@ KERNCONFS!=	cd ${.CURDIR}/sys/${TARGET}/conf && \
 		! -name DEFAULTS ! -name NOTES
 universe_kernconfs:
 .for kernel in ${KERNCONFS}
+TARGET_ARCH_${kernel}!=	cd ${.CURDIR}/sys/${TARGET}/conf && \
+			config -m ${.CURDIR}/sys/${TARGET}/conf/${kernel} | \
+			tail -n 1 | cut -f 2
+universe_kernconfs: universe_kernconf_${TARGET}_${kernel}
+universe_kernconf_${TARGET}_${kernel}:
 	@(cd ${.CURDIR} && env __MAKE_CONF=/dev/null \
 	    ${MAKE} ${JFLAG} buildkernel \
 	    TARGET=${TARGET} \
+	    TARGET_ARCH=${TARGET_ARCH_${kernel}} \
 	    KERNCONF=${kernel} \
 	    > _.${TARGET}.${kernel} 2>&1 || \
 	    (echo "${TARGET} ${kernel} kernel failed," \
