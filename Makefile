@@ -310,9 +310,9 @@ universe: universe_${target}
 universe_${target}:
 .if !defined(MAKE_JUST_KERNELS)
 .for target_arch in ${TARGET_ARCHES_${target}}
-universe_${target}: universe_${target}_${target_arch}
-universe_${target}_${target_arch}:
-	@echo ">> ${target}/${target_arch} started on `LC_ALL=C date`"
+universe_${target}: universe_${target_arch}_${target}
+universe_${target_arch}_${target}:
+	@echo ">> ${target_arch}/${target} started on `LC_ALL=C date`"
 	@(cd ${.CURDIR} && env __MAKE_CONF=/dev/null \
 	    ${MAKE} ${JFLAG} buildworld \
 	    TARGET=${target} \
@@ -320,7 +320,7 @@ universe_${target}_${target_arch}:
 	    > _.${target}.buildworld 2>&1 || \
 	    (echo "${target} world failed," \
 	    "check _.${target}.buildworld for details" | ${MAKEFAIL}))
-	@echo ">> ${target}/${target_arch} buildworld completed on `LC_ALL=C date`"
+	@echo ">> ${target_arch}/${target} buildworld completed on `LC_ALL=C date`"
 .endfor
 .endif
 .if !defined(MAKE_JUST_WORLDS)
