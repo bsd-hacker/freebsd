@@ -33,6 +33,8 @@ LDSCRIPT_NAME?= ldscript.${MACHINE_ARCH}
 
 .include "$S/conf/kern.pre.mk"
 
+INCLUDES+= -I$S/contrib/libfdt
+
 CFLAGS+= -msoft-float
 
 DDB_ENABLED!=	grep DDB opt_ddb.h || true
