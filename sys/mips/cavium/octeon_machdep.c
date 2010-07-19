@@ -362,7 +362,7 @@ platform_start(__register_t a0, __register_t a1, __register_t a2 __unused,
 
 	mips_timer_init_params(platform_counter_freq, 0);
 
-	set_cputicker(octeon_get_ticks, cvmx_sysinfo_get()->cpu_clock_hz, 1);
+	set_cputicker(octeon_get_ticks, cvmx_sysinfo_get()->cpu_clock_hz, 0);
 
 #ifdef SMP
 	/*
