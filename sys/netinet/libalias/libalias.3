@@ -1276,7 +1276,7 @@ module.
 From
 .Pa alias_dummy.c :
 .Bd -literal
-struct proto_handler handlers [] = {{666, IN|OUT, UDP|TCP,
+static struct proto_handler handlers [] = {{666, IN|OUT, UDP|TCP,
 				    &fingerprint, &protohandler}};
 .Ed
 .Pp

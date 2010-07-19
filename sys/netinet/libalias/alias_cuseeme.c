@@ -91,7 +91,7 @@ protohandlerout(struct libalias *la, struct ip *pip, struct alias_data *ah)
 }
 
 /* Kernel module definition. */
-struct proto_handler handlers[] = {
+static struct proto_handler handlers[] = {
 	{ 
 	  .pri = 120, 
 	  .dir = OUT, 
@@ -138,7 +138,7 @@ alias_mod = {
 };
 
 #ifdef	_KERNEL
-DECLARE_MODULE(alias_cuseeme, alias_mod, SI_SUB_DRIVERS, SI_ORDER_SECOND);
+DECLARE_MODULE(alias_cuseeme, alias_mod, SI_SUB_DRIVERS, SI_ORDER_THIRD);
 MODULE_VERSION(alias_cuseeme, 1);
 MODULE_DEPEND(alias_cuseeme, libalias, 1, 1, 1);
 #endif

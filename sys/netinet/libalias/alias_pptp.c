@@ -133,7 +133,7 @@ protohandlergreout(struct libalias *la, struct ip *pip, struct alias_data *ah)
 }
 
 /* Kernel module definition. */
-struct proto_handler handlers[] = {
+static struct proto_handler handlers[] = {
 	{ 
 	  .pri = 200, 
 	  .dir = IN, 
@@ -197,7 +197,7 @@ moduledata_t alias_mod = {
 };
 
 #ifdef	_KERNEL
-DECLARE_MODULE(alias_pptp, alias_mod, SI_SUB_DRIVERS, SI_ORDER_SECOND);
+DECLARE_MODULE(alias_pptp, alias_mod, SI_SUB_DRIVERS, SI_ORDER_THIRD);
 MODULE_VERSION(alias_pptp, 1);
 MODULE_DEPEND(alias_pptp, libalias, 1, 1, 1);
 #endif

@@ -101,7 +101,7 @@ protohandler(struct libalias *la, struct ip *pip, struct alias_data *ah)
  * ITS EXACT NAME: handlers.
  */
 
-struct proto_handler handlers [] = {
+static struct proto_handler handlers [] = {
 	{ 
 	  .pri = 666, 
 	  .dir = IN|OUT, 
@@ -140,7 +140,7 @@ moduledata_t alias_mod = {
 };
 
 #ifdef	_KERNEL
-DECLARE_MODULE(alias_dummy, alias_mod, SI_SUB_DRIVERS, SI_ORDER_SECOND);
+DECLARE_MODULE(alias_dummy, alias_mod, SI_SUB_DRIVERS, SI_ORDER_THIRD);
 MODULE_VERSION(alias_dummy, 1);
 MODULE_DEPEND(alias_dummy, libalias, 1, 1, 1);
 #endif
