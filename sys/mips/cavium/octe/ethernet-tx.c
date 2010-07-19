@@ -198,6 +198,7 @@ int cvm_oct_xmit(struct mbuf *m, struct ifnet *ifp)
 		pko_command.s.ipoffp1 = ETHER_HDR_LEN + 1;
 	}
 
+	IF_LOCK(&priv->tx_free_queue[qos]);
 	if (USE_ASYNC_IOBDMA) {
 		/* Get the number of mbufs in use by the hardware */
 		CVMX_SYNCIOBDMA;
@@ -241,13 +242,12 @@ int cvm_oct_xmit(struct mbuf *m, struct ifnet *ifp)
 
 	/* Free mbufs not in use by the hardware */
 	if (_IF_QLEN(&priv->tx_free_queue[qos]) > in_use) {
-		IF_LOCK(&priv->tx_free_queue[qos]);
 		while (_IF_QLEN(&priv->tx_free_queue[qos]) > in_use) {
 			_IF_DEQUEUE(&priv->tx_free_queue[qos], m);
 			m_freem(m);
 		}
-		IF_UNLOCK(&priv->tx_free_queue[qos]);
 	}
+	IF_UNLOCK(&priv->tx_free_queue[qos]);
 
 	return dropped;
 }
