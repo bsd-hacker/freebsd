@@ -35,6 +35,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 
 #include <machine/hwfunc.h>
+#include <machine/md_var.h>
 #include <machine/smp.h>
 
 #include <mips/cavium/octeon_pcmap_regs.h>
@@ -95,7 +96,7 @@ platform_init_ap(int cpuid)
 	 */
 	clock_int_mask = hard_int_mask(5);
 	ipi_int_mask = hard_int_mask(platform_ipi_intrnum());
-	set_intr_mask(ALL_INT_MASK & ~(ipi_int_mask | clock_int_mask));
+	set_intr_mask(MIPS_SR_INT_MASK & ~(ipi_int_mask | clock_int_mask));
 
 	mips_wbflush();
 }

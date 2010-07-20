@@ -453,8 +453,6 @@ again:
 		}
 	}
 #endif
-
-#endif
 	/*
 	 * Allocate segment table for the kernel
 	 */
