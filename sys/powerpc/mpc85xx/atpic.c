@@ -39,7 +39,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/ocpbus.h>
 #include <machine/pio.h>
 
-#include <powerpc/mpc85xx/ocpbus.h>
+#include <powerpc/mpc85xx/mpc85xx.h>
 
 #include <dev/ic/i8259.h>
 
@@ -308,12 +308,10 @@ atpic_mask(device_t dev, u_int irq)
 	if (irq > 7) {
 		sc->sc_mask[ATPIC_SLAVE] |= 1 << (irq - 8);
 		atpic_write(sc, ATPIC_SLAVE, 1, sc->sc_mask[ATPIC_SLAVE]);
-		atpic_write(sc, ATPIC_SLAVE, 0, OCW2_EOI);
 	} else {
 		sc->sc_mask[ATPIC_MASTER] |= 1 << irq;
 		atpic_write(sc, ATPIC_MASTER, 1, sc->sc_mask[ATPIC_MASTER]);
 	}
-	atpic_write(sc, ATPIC_MASTER, 0, OCW2_EOI);
 }
 
 static void

@@ -43,6 +43,10 @@ export PROGDIR
 COMPDIR="${PROGDIR}/components"
 export COMPDIR
 
+# Set this to the packages location
+PKGDIR="${PROGDIR}/conf"
+export PKGDIR
+
 # End of user-editable configuration
 #####################################################################
 
@@ -124,8 +128,8 @@ case $1 in
   detect-nics) ${QUERYDIR}/detect-nics.sh
   ;;
   
-  # The user is wanting to check if we are in vmware
-  detect-vmware) ${QUERYDIR}/detect-vmware.sh
+  # The user is wanting to check if we are in emulation
+  detect-emulation) ${QUERYDIR}/detect-emulation.sh
   ;;
 
   # The user is wanting to query a disk's information
@@ -156,6 +160,10 @@ case $1 in
   list-mirrors) ${QUERYDIR}/list-mirrors.sh "${2}"
   ;;
 
+  # Function which lists available packages
+  list-packages) ${QUERYDIR}/list-packages.sh "${2}" "${3}"
+  ;;
+
   # Function which lists available backups on a rsync/ssh server
   list-rsync-backups) ${QUERYDIR}/list-rsync-backups.sh "${2}" "${3}" "${4}"
   ;;
@@ -170,6 +178,10 @@ case $1 in
 
   # Function which creates a error report, and mails it to the specified address
   send-logs) ${QUERYDIR}/send-logs.sh ${2}
+  ;;
+
+  # Function to get package index
+  get-packages) ${QUERYDIR}/get-packages.sh "${2}"
   ;;
 
   # Function which allows setting up of SSH keys
@@ -209,4 +221,4 @@ case $1 in
 esac
 
 # Exit with success if we made it to the end
-exit 0
+exit $?

@@ -318,7 +318,7 @@ SUBDIR=	${_3dfx} \
 	${_zfs} \
 	zlib \
 
-.if ${MACHINE_ARCH} != "powerpc" && ${MACHINE_ARCH} != "arm" && \
+.if ${MACHINE_CPUARCH} != "powerpc" && ${MACHINE_ARCH} != "arm" && \
 	${MACHINE_ARCH} != "mips"
 _syscons=	syscons
 _vpo=		vpo
@@ -615,13 +615,22 @@ _wi=		wi
 _xe=		xe
 .endif
 
-.if ${MACHINE_ARCH} == "powerpc"
+.if ${MACHINE_CPUARCH} == "powerpc"
 _an=		an
 _bm=		bm
 _cpufreq=	cpufreq
 _nvram=		powermac_nvram
 _smbfs=		smbfs
 _sound=		sound
+.endif
+
+.if ${MACHINE_ARCH} == "powerpc64"
+.if ${MK_CDDL} != "no" || defined(ALL_MODULES)
+_opensolaris=	opensolaris
+.endif
+.if ${MK_ZFS} != "no" || defined(ALL_MODULES)
+_zfs=		zfs
+.endif
 .endif
 
 .if ${MACHINE_ARCH} == "sparc64"

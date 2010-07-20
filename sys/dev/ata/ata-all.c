@@ -105,7 +105,7 @@ SYSCTL_INT(_hw_ata, OID_AUTO, ata_dma, CTLFLAG_RDTUN, &ata_dma, 0,
 	   "ATA disk DMA mode control");
 TUNABLE_INT("hw.ata.ata_dma_check_80pin", &ata_dma_check_80pin);
 SYSCTL_INT(_hw_ata, OID_AUTO, ata_dma_check_80pin,
-	   CTLFLAG_RDTUN, &ata_dma_check_80pin, 1,
+	   CTLFLAG_RW, &ata_dma_check_80pin, 1,
 	   "Check for 80pin cable before setting ATA DMA mode");
 TUNABLE_INT("hw.ata.atapi_dma", &atapi_dma);
 SYSCTL_INT(_hw_ata, OID_AUTO, atapi_dma, CTLFLAG_RDTUN, &atapi_dma, 0,
@@ -195,6 +195,7 @@ ata_attach(device_t dev)
     }
     if ((error = bus_setup_intr(dev, ch->r_irq, ATA_INTR_FLAGS, NULL,
 				ata_interrupt, ch, &ch->ih))) {
+	bus_release_resource(dev, SYS_RES_IRQ, rid, ch->r_irq);
 	device_printf(dev, "unable to setup interrupt\n");
 	return error;
     }
@@ -218,8 +219,9 @@ ata_attach(device_t dev)
 	    device_get_unit(dev), &ch->state_mtx, 1, 0, devq);
 	if (ch->sim == NULL) {
 		device_printf(dev, "unable to allocate sim\n");
+		cam_simq_free(devq);
 		error = ENOMEM;
-		goto err2;
+		goto err1;
 	}
 	if (xpt_bus_register(ch->sim, dev, 0) != CAM_SUCCESS) {
 		device_printf(dev, "unable to register xpt bus\n");
@@ -239,8 +241,9 @@ err3:
 	xpt_bus_deregister(cam_sim_path(ch->sim));
 err2:
 	cam_sim_free(ch->sim, /*free_devq*/TRUE);
+	ch->sim = NULL;
 err1:
-	bus_release_resource(dev, SYS_RES_IRQ, ATA_IRQ_RID, ch->r_irq);
+	bus_release_resource(dev, SYS_RES_IRQ, rid, ch->r_irq);
 	mtx_unlock(&ch->state_mtx);
 	return (error);
 #endif
@@ -281,6 +284,7 @@ ata_detach(device_t dev)
 	xpt_free_path(ch->path);
 	xpt_bus_deregister(cam_sim_path(ch->sim));
 	cam_sim_free(ch->sim, /*free_devq*/TRUE);
+	ch->sim = NULL;
 	mtx_unlock(&ch->state_mtx);
 #endif
 
@@ -307,9 +311,12 @@ ata_conn_event(void *context, int dummy)
 	union ccb *ccb;
 
 	mtx_lock(&ch->state_mtx);
+	if (ch->sim == NULL) {
+		mtx_unlock(&ch->state_mtx);
+		return;
+	}
 	ata_reinit(dev);
-	mtx_unlock(&ch->state_mtx);
-	if ((ccb = xpt_alloc_ccb()) == NULL)
+	if ((ccb = xpt_alloc_ccb_nowait()) == NULL)
 		return;
 	if (xpt_create_path(&ccb->ccb_h.path, NULL,
 	    cam_sim_path(ch->sim),
@@ -318,6 +325,7 @@ ata_conn_event(void *context, int dummy)
 		return;
 	}
 	xpt_rescan(ccb);
+	mtx_unlock(&ch->state_mtx);
 #else
 	ata_reinit(dev);
 #endif

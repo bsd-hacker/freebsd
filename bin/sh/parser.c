@@ -554,6 +554,7 @@ TRACE(("expecting DO got %s %s\n", tokname[got], got == TWORD ? wordtext : ""));
 		checkkwd = 1;
 		break;
 	/* Handle an empty command like other simple commands.  */
+	case TBACKGND:
 	case TSEMI:
 	case TAND:
 	case TOR:
@@ -609,8 +610,7 @@ simplecmd(union node **rpp, union node *redir)
 {
 	union node *args, **app;
 	union node **orig_rpp = rpp;
-	union node *n = NULL, *n2;
-	int negate = 0;
+	union node *n = NULL;
 
 	/* If we don't have any redirections already, then we must reset */
 	/* rpp to be the address of the local redir variable.  */
@@ -625,12 +625,6 @@ simplecmd(union node **rpp, union node *redir)
 	 * the function name and the open parenthesis.
 	 */
 	orig_rpp = rpp;
-
-	while (readtoken() == TNOT) {
-		TRACE(("command: TNOT recognized\n"));
-		negate = !negate;
-	}
-	tokpushback++;
 
 	for (;;) {
 		if (readtoken() == TWORD) {
@@ -657,7 +651,7 @@ simplecmd(union node **rpp, union node *redir)
 			n->type = NDEFUN;
 			n->narg.next = command();
 			funclinno = 0;
-			goto checkneg;
+			return n;
 		} else {
 			tokpushback++;
 			break;
@@ -670,16 +664,7 @@ simplecmd(union node **rpp, union node *redir)
 	n->ncmd.backgnd = 0;
 	n->ncmd.args = args;
 	n->ncmd.redirect = redir;
-
-checkneg:
-	if (negate) {
-		n2 = (union node *)stalloc(sizeof (struct nnot));
-		n2->type = NNOT;
-		n2->nnot.com = n;
-		return n2;
-	}
-	else
-		return n;
+	return n;
 }
 
 STATIC union node *

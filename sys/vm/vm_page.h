@@ -312,7 +312,7 @@ extern struct vpglocks vm_page_queue_lock;
 /* page allocation flags: */
 #define	VM_ALLOC_WIRED		0x0020	/* non pageable */
 #define	VM_ALLOC_ZERO		0x0040	/* Try to obtain a zeroed page */
-#define	VM_ALLOC_RETRY		0x0080	/* vm_page_grab() only */
+#define	VM_ALLOC_RETRY		0x0080	/* Mandatory with vm_page_grab() */
 #define	VM_ALLOC_NOOBJ		0x0100	/* No associated object */
 #define	VM_ALLOC_NOBUSY		0x0200	/* Do not busy the page */
 #define	VM_ALLOC_IFCACHED	0x0400	/* Fail if the page is not cached */
@@ -321,7 +321,6 @@ extern struct vpglocks vm_page_queue_lock;
 
 #define	VM_ALLOC_COUNT_SHIFT	16
 #define	VM_ALLOC_COUNT(count)	((count) << VM_ALLOC_COUNT_SHIFT)
-#define	VM_ALLOC_COUNT_MASK	VM_ALLOC_COUNT(0xffff)
 
 void vm_page_flag_set(vm_page_t m, unsigned short bits);
 void vm_page_flag_clear(vm_page_t m, unsigned short bits);

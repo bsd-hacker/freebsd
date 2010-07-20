@@ -262,7 +262,6 @@ static struct local_sysmaps sysmap_lmem[MAXCPU];
 	tlb_invalidate_address(kernel_pmap, sysm->base + PAGE_SIZE);	\
 	sysm->valid2 = 0;						\
 	intr_restore(intr)
-
 #endif
 
 static inline pt_entry_t *
@@ -333,7 +332,7 @@ pmap_steal_memory(vm_size_t size)
 }
 
 /*
- *	Bootstrap the system enough to run with virtual memory.  This
+ * Bootstrap the system enough to run with virtual memory.  This
  * assumes that the phys_avail array has been initialized.
  */
 void
@@ -356,9 +355,8 @@ again:
 		phys_avail[i + 1] = trunc_page(phys_avail[i + 1]);
 
 #if !defined(__mips_n64)
-		if (phys_avail[i + 1] >= MIPS_KSEG0_LARGEST_PHYS) {
+		if (phys_avail[i + 1] >= MIPS_KSEG0_LARGEST_PHYS)
 			memory_larger_than_512meg++;
-		}
 #endif
 		if (i < 2)
 			continue;
@@ -376,6 +374,11 @@ again:
 			goto again;
 		}
 	}
+
+#if !defined(__mips_n64)
+	if (phys_avail[i - 1] >= MIPS_KSEG0_LARGEST_PHYS)
+		memory_larger_than_512meg = 1;
+#endif
 
 	/*
 	 * Copy the phys_avail[] array before we start stealing memory from it.
@@ -410,7 +413,6 @@ again:
 	 * Steal thread0 kstack.
 	 */
 	kstack0 = pmap_steal_memory(KSTACK_PAGES << PAGE_SHIFT);
-
 
 	virtual_avail = VM_MIN_KERNEL_ADDRESS;
 	virtual_end = VM_MAX_KERNEL_ADDRESS;
@@ -450,6 +452,7 @@ again:
 			sysmap_lmem[i].valid1 = sysmap_lmem[i].valid2 = 0;
 		}
 	}
+#endif
 
 #endif
 	/*
@@ -774,18 +777,23 @@ pmap_kremove(vm_offset_t va)
  *	architectures should map the pages starting at '*virt' and
  *	update '*virt' with the first usable address after the mapped
  *	region.
+ *
+ *	Use XKPHYS for 64 bit, and KSEG0 where possible for 32 bit.
  */
+#if defined(__mips_n64)
 vm_offset_t
 pmap_map(vm_offset_t *virt, vm_offset_t start, vm_offset_t end, int prot)
 {
-#if defined(__mips_n64)
-	return (MIPS_PHYS_TO_XKPHYS(MIPS_XKPHYS_CCA_CNC, start));
+	return (MIPS_PHYS_TO_XKPHYS_CACHED(start));
+}
 #else
+vm_offset_t
+pmap_map(vm_offset_t *virt, vm_offset_t start, vm_offset_t end, int prot)
+{
 	vm_offset_t va, sva;
 
-	if (end <= MIPS_KSEG0_LARGEST_PHYS) {
+	if (end <= MIPS_KSEG0_LARGEST_PHYS)
 		return (MIPS_PHYS_TO_KSEG0(start));
-	}
 
 	va = sva = *virt;
 	while (start < end) {
@@ -795,8 +803,8 @@ pmap_map(vm_offset_t *virt, vm_offset_t start, vm_offset_t end, int prot)
 	}
 	*virt = va;
 	return (sva);
-#endif
 }
+#endif
 
 /*
  * Add a list of wired pages to the kva
@@ -2022,7 +2030,20 @@ pmap_enter_quick_locked(pmap_t pmap, vm_offset_t va, vm_page_t m,
 /*
  * Make a temporary mapping for a physical address.  This is only intended
  * to be used for panic dumps.
+ *
+ * Use XKPHYS for 64 bit, and KSEG0 where possible for 32 bit.
  */
+#if defined(__mips_n64)
+void *
+pmap_kenter_temporary(vm_paddr_t pa, int i)
+{
+	return ((void *)MIPS_PHYS_TO_XKPHYS_CACHED(pa));
+}
+void
+pmap_kenter_temporary_free(vm_paddr_t pa)
+{
+}
+#else
 void *
 pmap_kenter_temporary(vm_paddr_t pa, int i)
 {
@@ -2091,6 +2112,7 @@ pmap_kenter_temporary_free(vm_paddr_t pa)
 	}
 #endif
 }
+#endif
 
 /*
  * Moved the code to Machine Independent
@@ -2196,13 +2218,26 @@ pmap_copy(pmap_t dst_pmap, pmap_t src_pmap, vm_offset_t dst_addr,
 /*
  *	pmap_zero_page zeros the specified hardware page by mapping
  *	the page into KVM and using bzero to clear its contents.
+ *
+ * 	Use XKPHYS for 64 bit, and KSEG0 where possible for 32 bit.
  */
+#if defined (__mips_n64)
 void
 pmap_zero_page(vm_page_t m)
 {
 	vm_offset_t va;
 	vm_paddr_t phys = VM_PAGE_TO_PHYS(m);
-#if !defined(__mips_n64)
+
+	va = MIPS_PHYS_TO_XKPHYS_CACHED(phys);
+	bzero((caddr_t)va, PAGE_SIZE);
+	mips_dcache_wbinv_range(va, PAGE_SIZE);
+}
+#else
+void
+pmap_zero_page(vm_page_t m)
+{
+	vm_offset_t va;
+	vm_paddr_t phys = VM_PAGE_TO_PHYS(m);
 	register_t intr;
 
 	if (phys < MIPS_KSEG0_LARGEST_PHYS) {
@@ -2218,26 +2253,31 @@ pmap_zero_page(vm_page_t m)
 
 		PMAP_LMEM_UNMAP();
 	}
-#else
-	va = MIPS_PHYS_TO_XKPHYS(MIPS_XKPHYS_CCA_CNC, phys);
-
-	bzero((caddr_t)va, PAGE_SIZE);
-	mips_dcache_wbinv_range(va, PAGE_SIZE);
-#endif
 }
-
+#endif
 /*
  *	pmap_zero_page_area zeros the specified hardware page by mapping
  *	the page into KVM and using bzero to clear its contents.
  *
  *	off and size may not cover an area beyond a single hardware page.
  */
+#if defined (__mips_n64)
 void
 pmap_zero_page_area(vm_page_t m, int off, int size)
 {
 	vm_offset_t va;
 	vm_paddr_t phys = VM_PAGE_TO_PHYS(m);
-#if !defined(__mips_n64)
+
+	va = MIPS_PHYS_TO_XKPHYS_CACHED(phys);
+	bzero((char *)(caddr_t)va + off, size);
+	mips_dcache_wbinv_range(va + off, size);
+}
+#else
+void
+pmap_zero_page_area(vm_page_t m, int off, int size)
+{
+	vm_offset_t va;
+	vm_paddr_t phys = VM_PAGE_TO_PHYS(m);
 	register_t intr;
 
 	if (phys < MIPS_KSEG0_LARGEST_PHYS) {
@@ -2252,19 +2292,26 @@ pmap_zero_page_area(vm_page_t m, int off, int size)
 
 		PMAP_LMEM_UNMAP();
 	}
-#else
-	va = MIPS_PHYS_TO_XKPHYS(MIPS_XKPHYS_CCA_CNC, phys);
-	bzero((char *)(caddr_t)va + off, size);
-	mips_dcache_wbinv_range(va + off, size);
-#endif
 }
+#endif
 
+#if defined (__mips_n64)
 void
 pmap_zero_page_idle(vm_page_t m)
 {
 	vm_offset_t va;
 	vm_paddr_t phys = VM_PAGE_TO_PHYS(m);
-#if !defined(__mips_n64)
+
+	va = MIPS_PHYS_TO_XKPHYS_CACHED(phys);
+	bzero((caddr_t)va, PAGE_SIZE);
+	mips_dcache_wbinv_range(va, PAGE_SIZE);
+}
+#else
+void
+pmap_zero_page_idle(vm_page_t m)
+{
+	vm_offset_t va;
+	vm_paddr_t phys = VM_PAGE_TO_PHYS(m);
 	register_t intr;
 
 	if (phys < MIPS_KSEG0_LARGEST_PHYS) {
@@ -2279,26 +2326,39 @@ pmap_zero_page_idle(vm_page_t m)
 
 		PMAP_LMEM_UNMAP();
 	}
-#else
-	va = MIPS_PHYS_TO_XKPHYS(MIPS_XKPHYS_CCA_CNC, phys);
-	bzero((caddr_t)va, PAGE_SIZE);
-	mips_dcache_wbinv_range(va, PAGE_SIZE);
-#endif
 }
+#endif
 
 /*
  *	pmap_copy_page copies the specified (machine independent)
  *	page by mapping the page into virtual memory and using
  *	bcopy to copy the page, one machine dependent page at a
  *	time.
+ *
+ * 	Use XKPHYS for 64 bit, and KSEG0 where possible for 32 bit.
  */
+#if defined (__mips_n64)
 void
 pmap_copy_page(vm_page_t src, vm_page_t dst)
 {
 	vm_offset_t va_src, va_dst;
 	vm_paddr_t phy_src = VM_PAGE_TO_PHYS(src);
 	vm_paddr_t phy_dst = VM_PAGE_TO_PHYS(dst);
-#if !defined(__mips_n64)
+
+	pmap_flush_pvcache(src);
+	mips_dcache_wbinv_range_index(MIPS_PHYS_TO_XKPHYS_CACHED(phy_dst), PAGE_SIZE);
+	va_src = MIPS_PHYS_TO_XKPHYS_CACHED(phy_src);
+	va_dst = MIPS_PHYS_TO_XKPHYS_CACHED(phy_dst);
+	bcopy((caddr_t)va_src, (caddr_t)va_dst, PAGE_SIZE);
+	mips_dcache_wbinv_range(va_dst, PAGE_SIZE);
+}
+#else
+void
+pmap_copy_page(vm_page_t src, vm_page_t dst)
+{
+	vm_offset_t va_src, va_dst;
+	vm_paddr_t phy_src = VM_PAGE_TO_PHYS(src);
+	vm_paddr_t phy_dst = VM_PAGE_TO_PHYS(dst);
 	register_t intr;
 
 	if ((phy_src < MIPS_KSEG0_LARGEST_PHYS) && (phy_dst < MIPS_KSEG0_LARGEST_PHYS)) {
@@ -2322,15 +2382,8 @@ pmap_copy_page(vm_page_t src, vm_page_t dst)
 
 		PMAP_LMEM_UNMAP();
 	}
-#else
-	pmap_flush_pvcache(src);
-	mips_dcache_wbinv_range_index(MIPS_PHYS_TO_XKPHYS(MIPS_XKPHYS_CCA_CNC, phy_dst), PAGE_SIZE);
-	va_src = MIPS_PHYS_TO_XKPHYS(MIPS_XKPHYS_CCA_CNC, phy_src);
-	va_dst = MIPS_PHYS_TO_XKPHYS(MIPS_XKPHYS_CCA_CNC, phy_dst);
-	bcopy((caddr_t)va_src, (caddr_t)va_dst, PAGE_SIZE);
-	mips_dcache_wbinv_range(va_dst, PAGE_SIZE);
-#endif
 }
+#endif
 
 /*
  * Returns true if the pmap's pv is one of the first
@@ -2720,13 +2773,24 @@ pmap_clear_reference(vm_page_t m)
  * address space. Return a pointer to where it is mapped. This
  * routine is intended to be used for mapping device memory,
  * NOT real memory.
+ *
+ * Use XKPHYS uncached for 64 bit, and KSEG1 where possible for 32 bit.
  */
+#if defined(__mips_n64)
 void *
 pmap_mapdev(vm_offset_t pa, vm_size_t size)
 {
-#if defined(__mips_n64)
-	return ((void *)MIPS_PHYS_TO_XKPHYS(MIPS_XKPHYS_CCA_UC, pa));
+	return ((void *)MIPS_PHYS_TO_XKPHYS_UNCACHED(pa));
+}
+
+void
+pmap_unmapdev(vm_offset_t va, vm_size_t size)
+{
+}
 #else
+void *
+pmap_mapdev(vm_offset_t pa, vm_size_t size)
+{
         vm_offset_t va, tmpva, offset;
 
 	/* 
@@ -2756,13 +2820,11 @@ pmap_mapdev(vm_offset_t pa, vm_size_t size)
 	}
 
 	return ((void *)(va + offset));
-#endif
 }
 
 void
 pmap_unmapdev(vm_offset_t va, vm_size_t size)
 {
-#if !defined(__mips_n64)
 	vm_offset_t base, offset, tmpva;
 
 	/* If the address is within KSEG1 then there is nothing to do */
@@ -2775,8 +2837,8 @@ pmap_unmapdev(vm_offset_t va, vm_size_t size)
 	for (tmpva = base; tmpva < base + size; tmpva += PAGE_SIZE)
 		pmap_kremove(tmpva);
 	kmem_free(kernel_map, base, size);
-#endif
 }
+#endif
 
 /*
  * perform the pmap work for mincore
@@ -2973,6 +3035,7 @@ pmap_set_modified(vm_offset_t pa)
 	PHYS_TO_VM_PAGE(pa)->md.pv_flags |= (PV_TABLE_REF | PV_TABLE_MOD);
 }
 
+
 /*
  *	Routine:	pmap_kextract
  *	Function:
@@ -2982,6 +3045,8 @@ pmap_set_modified(vm_offset_t pa)
  /* PMAP_INLINE */ vm_offset_t
 pmap_kextract(vm_offset_t va)
 {
+	int mapped;
+
 	/*
 	 * First, the direct-mapped regions.
 	 */
@@ -3011,12 +3076,18 @@ pmap_kextract(vm_offset_t va)
 			return (0);
 		}
 	}
-
+	/*
+	 * Should be kernel virtual here, otherwise fail
+	 */
+	mapped = (va >= MIPS_KSEG2_START || va < MIPS_KSEG2_END);
+#if defined(__mips_n64)
+	mapped = mapped || (va >= MIPS_XKSEG_START || va < MIPS_XKSEG_END);
+#endif 
 	/*
 	 * Kernel virtual.
 	 */
-#if defined(__mips_n64)
-	if (va >= MIPS_XKSEG_START && va < MIPS_XKSEG_END) {
+
+	if (mapped) {
 		pt_entry_t *ptep;
 
 		/* Is the kernel pmap initialized? */
@@ -3028,26 +3099,12 @@ pmap_kextract(vm_offset_t va)
 				    (va & PAGE_MASK));
 			}
 		}
+		return (0);
 	}
-#else
-	if (va >= MIPS_KSEG2_START && va < MIPS_KSEG2_END) {
-		pt_entry_t *ptep;
-
-		/* Is the kernel pmap initialized? */
-		if (kernel_pmap->pm_active) {
-			/* Its inside the virtual address range */
-			ptep = pmap_pte(kernel_pmap, va);
-			if (ptep) {
-				return (TLBLO_PTE_TO_PA(*ptep) |
-				    (va & PAGE_MASK));
-			}
-			return (0);
-		}
-	}
-#endif
 
 	panic("%s for unknown address space %p.", __func__, (void *)va);
 }
+
 
 void 
 pmap_flush_pvcache(vm_page_t m)
