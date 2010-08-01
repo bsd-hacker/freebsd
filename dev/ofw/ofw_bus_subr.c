@@ -193,7 +193,6 @@ ofw_bus_is_compatible_strict(device_t dev, const char *compatible)
 	return (0);
 }
 
-#ifndef FDT
 void
 ofw_bus_setup_iinfo(phandle_t node, struct ofw_bus_iinfo *ii, int intrsz)
 {
@@ -313,4 +312,4 @@ ofw_bus_search_intrmap(void *intr, int intrsz, void *regs, int physsz,
 	}
 	return (0);
 }
-#endif /* !FDT */
+

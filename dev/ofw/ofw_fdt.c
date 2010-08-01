@@ -120,11 +120,11 @@ fdt_phandle_offset(phandle_t p)
 
 	dt_struct = (const char *)fdtp + fdt_off_dt_struct(fdtp);
 
-	if (((const char *)p < dt_struct) ||
-	    (const char *)p > (dt_struct + fdt_size_dt_struct(fdtp)))
+	if (((const char *)(uintptr_t)p < dt_struct) ||
+	    (const char *)(uintptr_t)p > (dt_struct + fdt_size_dt_struct(fdtp)))
 		return (-1);
 
-	offset = (const char *)p - dt_struct;
+	offset = (const char *)(uintptr_t)p - dt_struct;
 	if (offset < 0)
 		return (-1);
 
@@ -141,7 +141,8 @@ ofw_fdt_peer(ofw_t ofw, phandle_t node)
 	if (node == 0) {
 		/* Find root node */
 		offset = fdt_path_offset(fdtp, "/");
-		p = (phandle_t)fdt_offset_ptr(fdtp, offset, sizeof(p));
+		p = (phandle_t)(uintptr_t)fdt_offset_ptr(fdtp, offset,
+		    sizeof(p));
 
 		return (p);
 	}
@@ -156,7 +157,8 @@ ofw_fdt_peer(ofw_t ofw, phandle_t node)
 		if (depth < 0)
 			return (0);
 		if (depth == 1) {
-			p = (phandle_t)fdt_offset_ptr(fdtp, offset, sizeof(p));
+			p = (phandle_t)(uintptr_t)fdt_offset_ptr(fdtp, offset,
+			    sizeof(p));
 			return (p);
 		}
 	}
@@ -181,7 +183,8 @@ ofw_fdt_child(ofw_t ofw, phandle_t node)
 		if (depth < 0)
 			return (0);
 		if (depth == 1) {
-			p = (phandle_t)fdt_offset_ptr(fdtp, offset, sizeof(p));
+			p = (phandle_t)(uintptr_t)fdt_offset_ptr(fdtp, offset,
+			    sizeof(p));
 			return (p);
 		}
 	}
@@ -201,7 +204,8 @@ ofw_fdt_parent(ofw_t ofw, phandle_t node)
 		return (0);
 
 	paroffset = fdt_parent_offset(fdtp, offset);
-	p = (phandle_t)fdt_offset_ptr(fdtp, paroffset, sizeof(phandle_t));
+	p = (phandle_t)(uintptr_t)fdt_offset_ptr(fdtp, paroffset,
+	    sizeof(phandle_t));
 	return (p);
 }
 
@@ -223,7 +227,8 @@ ofw_fdt_instance_to_package(ofw_t ofw, ihandle_t instance)
 	if (offset < 0)
 		return (0);
 
-	p = (phandle_t)fdt_offset_ptr(fdtp, offset, sizeof(phandle_t));
+	p = (phandle_t)(uintptr_t)fdt_offset_ptr(fdtp, offset,
+	    sizeof(phandle_t));
 	return (p);
 }
 
@@ -343,7 +348,7 @@ ofw_fdt_nextprop(ofw_t ofw, phandle_t package, const char *previous, char *buf,
 	if (prop == NULL)
 		return (0);
 
-	offset = fdt_phandle_offset((phandle_t)prop);
+	offset = fdt_phandle_offset((phandle_t)(uintptr_t)prop);
 	rv = fdt_nextprop(offset, buf, size);
 	return (rv);
 }
@@ -379,7 +384,7 @@ ofw_fdt_finddevice(ofw_t ofw, const char *device)
 
 	offset = fdt_path_offset(fdtp, device);
 
-	p = (phandle_t)fdt_offset_ptr(fdtp, offset, sizeof(p));
+	p = (phandle_t)(uintptr_t)fdt_offset_ptr(fdtp, offset, sizeof(p));
 
 	return (p);
 }

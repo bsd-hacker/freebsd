@@ -1,0 +1,16 @@
+/*
+ * Sony PS3 flattened device tree
+ *
+ * $FreeBSD$
+ */
+
+/dts-v1/;
+
+/ {
+	model = "SonyPS3";
+	compatible = "sony,ps3";
+	#size-cells = <2>;
+	#address-cells = <2>;
+
+	chosen {};
+};

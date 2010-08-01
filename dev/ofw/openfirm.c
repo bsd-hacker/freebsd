@@ -135,7 +135,6 @@ OF_init(void *cookie)
 	return (rv);
 }
 
-#ifndef FDT
 void
 OF_printf(const char *fmt, ...)
 {
@@ -159,7 +158,6 @@ OF_test(const char *name)
 
 	return (OFW_TEST(ofw_obj, name));
 }
-#endif
 
 int
 OF_interpret(const char *cmd, int nreturns, ...)
@@ -321,7 +319,6 @@ OF_package_to_path(phandle_t package, char *buf, size_t len)
 	return (OFW_PACKAGE_TO_PATH(ofw_obj, package, buf, len));
 }
 
-#ifndef FDT
 /*  Call the method in the scope of a given instance. */
 int
 OF_call_method(const char *method, ihandle_t instance, int nargs, int nreturns,
@@ -435,4 +432,3 @@ OF_exit()
 	for (;;)			/* just in case */
 		;
 }
-#endif

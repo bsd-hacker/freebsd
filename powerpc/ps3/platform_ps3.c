@@ -39,7 +39,6 @@ __FBSDID("$FreeBSD: user/nwhitehorn/ps3/powerpc/booke/platform_ps3.c 193492 2009
 #include <vm/vm.h>
 #include <vm/pmap.h>
 
-#include <machine/bootinfo.h>
 #include <machine/bus.h>
 #include <machine/cpu.h>
 #include <machine/hid.h>
