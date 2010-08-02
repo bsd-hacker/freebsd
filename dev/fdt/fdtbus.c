@@ -174,7 +174,7 @@ fdtbus_attach(device_t dev)
 	int error;
 
 	if ((root = OF_peer(0)) == 0)
-		panic("fdtbus_attach: no root node.");
+		return (ENXIO);
 
 	sc = device_get_softc(dev);
 

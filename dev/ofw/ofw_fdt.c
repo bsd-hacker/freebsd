@@ -385,6 +385,8 @@ ofw_fdt_finddevice(ofw_t ofw, const char *device)
 	offset = fdt_path_offset(fdtp, device);
 
 	p = (phandle_t)(uintptr_t)fdt_offset_ptr(fdtp, offset, sizeof(p));
+	if (p == 0)
+		p = -1;
 
 	return (p);
 }
