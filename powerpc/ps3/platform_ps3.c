@@ -54,6 +54,10 @@ __FBSDID("$FreeBSD: user/nwhitehorn/ps3/powerpc/booke/platform_ps3.c 193492 2009
 #include "platform_if.h"
 #include "ps3-hvcall.h"
 
+#ifdef SMP
+extern void *ap_pcpu;
+#endif
+
 static int ps3_probe(platform_t);
 static int ps3_attach(platform_t);
 static void ps3_mem_regions(platform_t, struct mem_region **phys, int *physsz,
@@ -141,14 +145,12 @@ static u_long
 ps3_timebase_freq(platform_t plat, struct cpuref *cpuref)
 {
 	uint64_t ticks, node_id, junk;
-	uint64_t lpar_id;
 
-	lv1_get_logical_partition_id(&lpar_id);
-	lv1_get_repository_node_value(lpar_id, PS3_LPAR_ID_PME, 
-	    lv1_repository_string("be") >> 32, 0, 0, &node_id, &junk);
-	lv1_get_repository_node_value(lpar_id, PS3_LPAR_ID_PME,
+	lv1_get_repository_node_value(PS3_LPAR_ID_PME, 
+	    lv1_repository_string("be") >> 32, 0, 0, 0, &node_id, &junk);
+	lv1_get_repository_node_value(PS3_LPAR_ID_PME,
 	    lv1_repository_string("be") >> 32, node_id,
-	    lv1_repository_string("clock"), &ticks, &junk);
+	    lv1_repository_string("clock"), 0, &ticks, &junk);
 
 	return (ticks);
 }
@@ -167,7 +169,13 @@ static int
 ps3_smp_next_cpu(platform_t plat, struct cpuref *cpuref)
 {
 
-	return (ENOENT);
+	if (cpuref->cr_cpuid >= 1)
+		return (ENOENT);
+
+	cpuref->cr_cpuid++;
+	cpuref->cr_hwref = cpuref->cr_cpuid;
+
+	return (0);
 }
 
 static int
@@ -183,7 +191,27 @@ ps3_smp_get_bsp(platform_t plat, struct cpuref *cpuref)
 static int
 ps3_smp_start_cpu(platform_t plat, struct pcpu *pc)
 {
+#ifdef SMP
+	/* loader(8) is spinning on 0x40 == 1 right now */
+	uint32_t *secondary_spin_sem = (uint32_t *)(0x40);
+	int timeout;
 
+	if (pc->pc_hwref != 1)
+		return (ENXIO);
+
+	ap_pcpu = pc;
+	*secondary_spin_sem = 1;
+	powerpc_sync();
+	DELAY(1);
+
+	timeout = 10000;
+	while (!pc->pc_awake && timeout--)
+		DELAY(100);
+
+	return ((pc->pc_awake) ? 0 : EBUSY);
+#else
 	/* No SMP support */
 	return (ENXIO);
+#endif
 }
+
