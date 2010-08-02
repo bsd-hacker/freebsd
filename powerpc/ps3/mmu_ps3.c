@@ -173,7 +173,6 @@ mps3_cpu_bootstrap(mmu_t mmup, int ap)
 		lv1_destruct_virtual_address_space(0);
 
 	lv1_select_virtual_address_space(mps3_vas_id);
-	mps3_vas_id = 0;	/* Now this is the current mapping */
 
 	if (!ap)
 		ps3fb_remap();
