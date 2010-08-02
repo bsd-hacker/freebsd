@@ -199,6 +199,12 @@ ps3_smp_start_cpu(platform_t plat, struct pcpu *pc)
 	if (pc->pc_hwref != 1)
 		return (ENXIO);
 
+	/*
+	 * XXX: Set local thread priority to low, to match remote.
+	 * XXX: Replace magic numbers with constants.
+	 */
+	mtspr(896, (mfspr(896) & 0xffffffff) | (0x1UL << 51));
+
 	ap_pcpu = pc;
 	*secondary_spin_sem = 1;
 	powerpc_sync();
