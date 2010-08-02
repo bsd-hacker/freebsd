@@ -154,9 +154,10 @@ platform_probe_and_attach()
 		}
 
 		/*
-		 * We can't free the KOBJ, since it is static. Luckily,
-		 * this has no ill effects since it gets reset every time.
+		 * We can't free the KOBJ, since it is static. Reset the ops
+		 * member of this class so that we can come back later.
 		 */
+		platp->ops = NULL;
 	}
 
 	if (plat_def_impl == NULL)
