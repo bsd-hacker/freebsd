@@ -333,6 +333,12 @@ OF_initial_setup(void *fdt_ptr, void *junk, int (*openfirm)(void *))
 	#endif
 
 	fdt = fdt_ptr;
+
+#ifdef FDT_DTB_STATIC
+	/* Check for a statically included blob */
+	if (fdt == NULL)
+		fdt = &fdt_static_dtb;
+#endif
 }
 
 boolean_t
@@ -362,6 +368,7 @@ OF_bootstrap()
 		 */
 		ofw_quiesce();
 	} else {
+		ofw_real_mode = 1;  /* XXX: don't use special virt mode code */
 		status = OF_install(OFW_FDT, 0);
 
 		if (status != TRUE)
