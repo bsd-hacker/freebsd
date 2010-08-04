@@ -86,7 +86,6 @@ __FBSDID("$FreeBSD$");
 #endif
 
 #include <vm/vm.h>
-#include <vm/vm_kern.h>
 #include <vm/vm_param.h>
 #include <vm/pmap.h>
 #include <vm/vm_map.h>
@@ -265,7 +264,7 @@ freebsd32_sigaltstack(struct thread *td,
  * Custom version of exec_copyin_args() so that we can translate
  * the pointers.
  */
-static int
+int
 freebsd32_exec_copyin_args(struct image_args *args, char *fname,
     enum uio_seg segflg, u_int32_t *argv, u_int32_t *envv)
 {
@@ -279,29 +278,29 @@ freebsd32_exec_copyin_args(struct image_args *args, char *fname,
 		return (EFAULT);
 
 	/*
-	 * Allocate temporary demand zeroed space for argument and
-	 *	environment strings
+	 * Allocate demand-paged memory for the file name, argument, and
+	 * environment strings.
 	 */
-	args->buf = (char *) kmem_alloc_wait(exec_map,
-	    PATH_MAX + ARG_MAX + MAXSHELLCMDLEN);
-	if (args->buf == NULL)
-		return (ENOMEM);
-	args->begin_argv = args->buf;
-	args->endp = args->begin_argv;
-	args->stringspace = ARG_MAX;
+	error = exec_alloc_args(args);
+	if (error != 0)
+		return (error);
 
 	/*
 	 * Copy the file name.
 	 */
 	if (fname != NULL) {
-		args->fname = args->buf + ARG_MAX;
+		args->fname = args->buf;
 		error = (segflg == UIO_SYSSPACE) ?
 		    copystr(fname, args->fname, PATH_MAX, &length) :
 		    copyinstr(fname, args->fname, PATH_MAX, &length);
 		if (error != 0)
 			goto err_exit;
 	} else
-		args->fname = NULL;
+		length = 0;
+
+	args->begin_argv = args->buf + length;
+	args->endp = args->begin_argv;
+	args->stringspace = ARG_MAX;
 
 	/*
 	 * extract arguments first
@@ -355,9 +354,7 @@ freebsd32_exec_copyin_args(struct image_args *args, char *fname,
 	return (0);
 
 err_exit:
-	kmem_free_wakeup(exec_map, (vm_offset_t)args->buf,
-	    PATH_MAX + ARG_MAX + MAXSHELLCMDLEN);
-	args->buf = NULL;
+	exec_free_args(args);
 	return (error);
 }
 
@@ -1062,6 +1059,8 @@ freebsd32_recvmsg(td, uap)
 		
 		if (control != NULL)
 			error = freebsd32_copy_msg_out(&msg, control);
+		else
+			msg.msg_controllen = 0;
 		
 		if (error == 0)
 			error = freebsd32_copyoutmsghdr(&msg, uap->msg);
@@ -1617,8 +1616,9 @@ freebsd32_sendfile(struct thread *td, struct freebsd32_sendfile_args *uap)
 }
 
 static void
-copy_stat( struct stat *in, struct stat32 *out)
+copy_stat(struct stat *in, struct stat32 *out)
 {
+
 	CP(*in, *out, st_dev);
 	CP(*in, *out, st_ino);
 	CP(*in, *out, st_mode);
@@ -1634,6 +1634,7 @@ copy_stat( struct stat *in, struct stat32 *out)
 	CP(*in, *out, st_blksize);
 	CP(*in, *out, st_flags);
 	CP(*in, *out, st_gen);
+	TS_CP(*in, *out, st_birthtim);
 }
 
 int
@@ -2208,7 +2209,7 @@ freebsd32_thr_suspend(struct thread *td, struct freebsd32_thr_suspend_args *uap)
 }
 
 void
-siginfo_to_siginfo32(siginfo_t *src, struct siginfo32 *dst)
+siginfo_to_siginfo32(const siginfo_t *src, struct siginfo32 *dst)
 {
 	bzero(dst, sizeof(*dst));
 	dst->si_signo = src->si_signo;

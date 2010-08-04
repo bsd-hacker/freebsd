@@ -62,6 +62,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sched.h>
 #include <sys/signalvar.h>
 #include <sys/syscall.h>
+#include <sys/syscallsubr.h>
 #include <sys/sysent.h>
 #include <sys/systm.h>
 #include <sys/vmmeter.h>
@@ -244,10 +245,12 @@ const char *
 syscallname(struct proc *p, u_int code)
 {
 	static const char unknown[] = "unknown";
+	struct sysentvec *sv;
 
-	if (p->p_sysent->sv_syscallnames == NULL)
+	sv = p->p_sysent;
+	if (sv->sv_syscallnames == NULL || code >= sv->sv_size)
 		return (unknown);
-	return (p->p_sysent->sv_syscallnames[code]);
+	return (sv->sv_syscallnames[code]);
 }
 
 int
@@ -258,7 +261,6 @@ syscallenter(struct thread *td, struct syscall_args *sa)
 
 	PCPU_INC(cnt.v_syscall);
 	p = td->td_proc;
-	td->td_syscalls++;
 
 	td->td_pticks = 0;
 	if (td->td_ucred != p->p_ucred)

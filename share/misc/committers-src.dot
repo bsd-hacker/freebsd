@@ -58,6 +58,7 @@ akiyama [label="Shunsuke Akiyama\nakiyama@FreeBSD.org\n2000/06/19"]
 ambrisko [label="Doug Ambrisko\nambrisko@FreeBSD.org\n2001/12/19"]
 anchie [label="Ana Kukec\nanchie@FreeBSD.org\n2010/04/14"]
 andre [label="Andre Oppermann\nandre@FreeBSD.org\n2003/11/12"]
+andrew [label="Andrew Turner\nandrew@FreeBSD.org\n2010/07/19"]
 anholt [label="Eric Anholt\nanholt@FreeBSD.org\n2002/04/22"]
 antoine [label="Antoine Brodin\nantoine@FreeBSD.org\n2008/02/03"]
 ariff [label="Ariff Abdullah\nariff@FreeBSD.org\n2005/11/14"]
@@ -192,6 +193,7 @@ syrinx [label="Shteryana Shopova\nsyrinx@FreeBSD.org\n2006/10/07"]
 takawata [label="Takanori Watanabe\ntakawata@FreeBSD.org\n2000/07/06"]
 thompsa [label="Andrew Thompson\nthompsa@FreeBSD.org\n2005/05/25"]
 ticso [label="Bernd Walter\nticso@FreeBSD.org\n2002/01/31"]
+tijl [label="Tijl Coosemans\ntijl@FreeBSD.org\n2010/07/16"]
 trasz [label="Edward Tomasz Napierala\ntrasz@FreeBSD.org\n2008/08/22"]
 trhodes [label="Tom Rhodes\ntrhodes@FreeBSD.org\n2002/05/28"]
 tuexen [label="Michael Tuexen\ntuexen@FreeBSD.org\n2009/06/06"]
@@ -375,6 +377,7 @@ kib -> pho
 kib -> rdivacky
 kib -> rmacklem
 kib -> stas
+kib -> tijl
 
 kmacy -> lstewart
 

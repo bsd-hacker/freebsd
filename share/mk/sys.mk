@@ -13,7 +13,7 @@ unix		?=	We run FreeBSD, not UNIX.
 # of size and/or endian.  This is called MACHINE_CPU in NetBSD, but
 # that's used for something different in FreeBSD.
 #
-MACHINE_CPUARCH=${MACHINE_ARCH:C/mipse[lb]/mips/:C/armeb/arm/}
+MACHINE_CPUARCH=${MACHINE_ARCH:C/mipse[lb]/mips/:C/armeb/arm/:C/powerpc64/powerpc/}
 .endif
 
 # If the special target .POSIX appears (without prerequisites or
@@ -156,11 +156,15 @@ YFLAGS		?=	-d
 # SINGLE SUFFIX RULES
 .c:
 	${CC} ${CFLAGS} ${LDFLAGS} -o ${.TARGET} ${.IMPSRC}
-	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || ${CTFCONVERT} ${CTFFLAGS} ${.TARGET}
+	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || \
+		(${ECHO} ${CTFCONVERT} ${CTFFLAGS} ${.TARGET} && \
+		${CTFCONVERT} ${CTFFLAGS} ${.TARGET})
 
 .f:
 	${FC} ${FFLAGS} ${LDFLAGS} -o ${.TARGET} ${.IMPSRC}
-	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || ${CTFCONVERT} ${CTFFLAGS} ${.TARGET}
+	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || \
+		(${ECHO} ${CTFCONVERT} ${CTFFLAGS} ${.TARGET} && \
+		${CTFCONVERT} ${CTFFLAGS} ${.TARGET})
 
 .sh:
 	cp ${.IMPSRC} ${.TARGET}
@@ -170,25 +174,33 @@ YFLAGS		?=	-d
 
 .c.o:
 	${CC} ${CFLAGS} -c ${.IMPSRC}
-	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || ${CTFCONVERT} ${CTFFLAGS} ${.TARGET}
+	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || \
+		(${ECHO} ${CTFCONVERT} ${CTFFLAGS} ${.TARGET} && \
+		${CTFCONVERT} ${CTFFLAGS} ${.TARGET})
 
 .f.o:
 	${FC} ${FFLAGS} -c ${.IMPSRC}
-	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || ${CTFCONVERT} ${CTFFLAGS} ${.TARGET}
+	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || \
+		(${ECHO} ${CTFCONVERT} ${CTFFLAGS} ${.TARGET} && \
+		${CTFCONVERT} ${CTFFLAGS} ${.TARGET})
 
 .y.o:
 	${YACC} ${YFLAGS} ${.IMPSRC}
 	${CC} ${CFLAGS} -c y.tab.c
 	rm -f y.tab.c
 	mv y.tab.o ${.TARGET}
-	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || ${CTFCONVERT} ${CTFFLAGS} ${.TARGET}
+	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || \
+		(${ECHO} ${CTFCONVERT} ${CTFFLAGS} ${.TARGET} && \
+		${CTFCONVERT} ${CTFFLAGS} ${.TARGET})
 
 .l.o:
 	${LEX} ${LFLAGS} ${.IMPSRC}
 	${CC} ${CFLAGS} -c lex.yy.c
 	rm -f lex.yy.c
 	mv lex.yy.o ${.TARGET}
-	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || ${CTFCONVERT} ${CTFFLAGS} ${.TARGET}
+	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || \
+		(${ECHO} ${CTFCONVERT} ${CTFFLAGS} ${.TARGET} && \
+		${CTFCONVERT} ${CTFFLAGS} ${.TARGET})
 
 .y.c:
 	${YACC} ${YFLAGS} ${.IMPSRC}
@@ -226,11 +238,15 @@ YFLAGS		?=	-d
 
 .c:
 	${CC} ${CFLAGS} ${LDFLAGS} ${.IMPSRC} ${LDLIBS} -o ${.TARGET}
-	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || ${CTFCONVERT} ${CTFFLAGS} ${.TARGET}
+	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || \
+		(${ECHO} ${CTFCONVERT} ${CTFFLAGS} ${.TARGET} && \
+		${CTFCONVERT} ${CTFFLAGS} ${.TARGET})
 
 .c.o:
 	${CC} ${CFLAGS} -c ${.IMPSRC}
-	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || ${CTFCONVERT} ${CTFFLAGS} ${.TARGET}
+	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || \
+		(${ECHO} ${CTFCONVERT} ${CTFFLAGS} ${.TARGET} && \
+		${CTFCONVERT} ${CTFFLAGS} ${.TARGET})
 
 .cc .cpp .cxx .C:
 	${CXX} ${CXXFLAGS} ${LDFLAGS} ${.IMPSRC} ${LDLIBS} -o ${.TARGET}
@@ -240,11 +256,15 @@ YFLAGS		?=	-d
 
 .m.o:
 	${OBJC} ${OBJCFLAGS} -c ${.IMPSRC}
-	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || ${CTFCONVERT} ${CTFFLAGS} ${.TARGET}
+	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || \
+		(${ECHO} ${CTFCONVERT} ${CTFFLAGS} ${.TARGET} && \
+		${CTFCONVERT} ${CTFFLAGS} ${.TARGET})
 
 .p.o:
 	${PC} ${PFLAGS} -c ${.IMPSRC}
-	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || ${CTFCONVERT} ${CTFFLAGS} ${.TARGET}
+	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || \
+		(${ECHO} ${CTFCONVERT} ${CTFFLAGS} ${.TARGET} && \
+		${CTFCONVERT} ${CTFFLAGS} ${.TARGET})
 
 .e .r .F .f:
 	${FC} ${RFLAGS} ${EFLAGS} ${FFLAGS} ${LDFLAGS} ${.IMPSRC} ${LDLIBS} \
@@ -255,28 +275,38 @@ YFLAGS		?=	-d
 
 .S.o:
 	${CC} ${CFLAGS} -c ${.IMPSRC}
-	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || ${CTFCONVERT} ${CTFFLAGS} ${.TARGET}
+	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || \
+		(${ECHO} ${CTFCONVERT} ${CTFFLAGS} ${.TARGET} && \
+		${CTFCONVERT} ${CTFFLAGS} ${.TARGET})
 
 .asm.o:
 	${CC} -x assembler-with-cpp ${CFLAGS} -c ${.IMPSRC}
-	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || ${CTFCONVERT} ${CTFFLAGS} ${.TARGET}
+	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || \
+		(${ECHO} ${CTFCONVERT} ${CTFFLAGS} ${.TARGET} && \
+		${CTFCONVERT} ${CTFFLAGS} ${.TARGET})
 
 .s.o:
 	${AS} ${AFLAGS} -o ${.TARGET} ${.IMPSRC}
-	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || ${CTFCONVERT} ${CTFFLAGS} ${.TARGET}
+	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || \
+		(${ECHO} ${CTFCONVERT} ${CTFFLAGS} ${.TARGET} && \
+		${CTFCONVERT} ${CTFFLAGS} ${.TARGET})
 
 # XXX not -j safe
 .y.o:
 	${YACC} ${YFLAGS} ${.IMPSRC}
 	${CC} ${CFLAGS} -c y.tab.c -o ${.TARGET}
 	rm -f y.tab.c
-	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || ${CTFCONVERT} ${CTFFLAGS} ${.TARGET}
+	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || \
+		(${ECHO} ${CTFCONVERT} ${CTFFLAGS} ${.TARGET} && \
+		${CTFCONVERT} ${CTFFLAGS} ${.TARGET})
 
 .l.o:
 	${LEX} -t ${LFLAGS} ${.IMPSRC} > ${.PREFIX}.tmp.c
 	${CC} ${CFLAGS} -c ${.PREFIX}.tmp.c -o ${.TARGET}
 	rm -f ${.PREFIX}.tmp.c
-	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || ${CTFCONVERT} ${CTFFLAGS} ${.TARGET}
+	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || \
+		(${ECHO} ${CTFCONVERT} ${CTFFLAGS} ${.TARGET} && \
+		${CTFCONVERT} ${CTFFLAGS} ${.TARGET})
 
 # XXX not -j safe
 .y.c:
@@ -288,26 +318,34 @@ YFLAGS		?=	-d
 
 .s.out .c.out .o.out:
 	${CC} ${CFLAGS} ${LDFLAGS} ${.IMPSRC} ${LDLIBS} -o ${.TARGET}
-	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || ${CTFCONVERT} ${CTFFLAGS} ${.TARGET}
+	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || \
+		(${ECHO} ${CTFCONVERT} ${CTFFLAGS} ${.TARGET} && \
+		${CTFCONVERT} ${CTFFLAGS} ${.TARGET})
 
 .f.out .F.out .r.out .e.out:
 	${FC} ${EFLAGS} ${RFLAGS} ${FFLAGS} ${LDFLAGS} ${.IMPSRC} \
 	    ${LDLIBS} -o ${.TARGET}
 	rm -f ${.PREFIX}.o
-	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || ${CTFCONVERT} ${CTFFLAGS} ${.TARGET}
+	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || \
+		(${ECHO} ${CTFCONVERT} ${CTFFLAGS} ${.TARGET} && \
+		${CTFCONVERT} ${CTFFLAGS} ${.TARGET})
 
 # XXX not -j safe
 .y.out:
 	${YACC} ${YFLAGS} ${.IMPSRC}
 	${CC} ${CFLAGS} ${LDFLAGS} y.tab.c ${LDLIBS} -ly -o ${.TARGET}
 	rm -f y.tab.c
-	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || ${CTFCONVERT} ${CTFFLAGS} ${.TARGET}
+	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || \
+		(${ECHO} ${CTFCONVERT} ${CTFFLAGS} ${.TARGET} && \
+		${CTFCONVERT} ${CTFFLAGS} ${.TARGET})
 
 .l.out:
 	${LEX} -t ${LFLAGS} ${.IMPSRC} > ${.PREFIX}.tmp.c
 	${CC} ${CFLAGS} ${LDFLAGS} ${.PREFIX}.tmp.c ${LDLIBS} -ll -o ${.TARGET}
 	rm -f ${.PREFIX}.tmp.c
-	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || ${CTFCONVERT} ${CTFFLAGS} ${.TARGET}
+	@[ -z "${CTFCONVERT}" -o -n "${NO_CTF}" ] || \
+		(${ECHO} ${CTFCONVERT} ${CTFFLAGS} ${.TARGET} && \
+		${CTFCONVERT} ${CTFFLAGS} ${.TARGET})
 
 # FreeBSD build pollution.  Hide it in the non-POSIX part of the ifdef.
 __MAKE_CONF?=/etc/make.conf

@@ -4830,9 +4830,17 @@ sctp_free_assoc(struct sctp_inpcb *inp, struct sctp_tcb *stcb, int from_inpcbfre
 		while (sp) {
 			TAILQ_REMOVE(&outs->outqueue, sp, next);
 			if (sp->data) {
-				sctp_m_freem(sp->data);
-				sp->data = NULL;
-				sp->tail_mbuf = NULL;
+				if (so) {
+					/* Still an open socket - report */
+					sctp_ulp_notify(SCTP_NOTIFY_SPECIAL_SP_FAIL, stcb,
+					    SCTP_NOTIFY_DATAGRAM_UNSENT,
+					    (void *)sp, 0);
+				}
+				if (sp->data) {
+					sctp_m_freem(sp->data);
+					sp->data = NULL;
+					sp->tail_mbuf = NULL;
+				}
 			}
 			sctp_free_remote_addr(sp->net);
 			sctp_free_spbufspace(stcb, asoc, sp);
@@ -4892,8 +4900,15 @@ sctp_free_assoc(struct sctp_inpcb *inp, struct sctp_tcb *stcb, int from_inpcbfre
 		while (chk) {
 			TAILQ_REMOVE(&asoc->send_queue, chk, sctp_next);
 			if (chk->data) {
-				sctp_m_freem(chk->data);
-				chk->data = NULL;
+				if (so) {
+					/* Still a socket? */
+					sctp_ulp_notify(SCTP_NOTIFY_DG_FAIL, stcb,
+					    SCTP_NOTIFY_DATAGRAM_UNSENT, chk, 0);
+				}
+				if (chk->data) {
+					sctp_m_freem(chk->data);
+					chk->data = NULL;
+				}
 			}
 			if (chk->holds_key_ref)
 				sctp_auth_key_release(stcb, chk->auth_keyid);
@@ -4917,8 +4932,15 @@ sctp_free_assoc(struct sctp_inpcb *inp, struct sctp_tcb *stcb, int from_inpcbfre
 		while (chk) {
 			TAILQ_REMOVE(&asoc->sent_queue, chk, sctp_next);
 			if (chk->data) {
-				sctp_m_freem(chk->data);
-				chk->data = NULL;
+				if (so) {
+					/* Still a socket? */
+					sctp_ulp_notify(SCTP_NOTIFY_DG_FAIL, stcb,
+					    SCTP_NOTIFY_DATAGRAM_SENT, chk, 0);
+				}
+				if (chk->data) {
+					sctp_m_freem(chk->data);
+					chk->data = NULL;
+				}
 			}
 			if (chk->holds_key_ref)
 				sctp_auth_key_release(stcb, chk->auth_keyid);
@@ -6499,7 +6521,7 @@ sctp_is_vtag_good(struct sctp_inpcb *inp, uint32_t tag, uint16_t lport, uint16_t
 				continue;
 			}
 			/* Its a used tag set */
-			SCTP_INP_INFO_WUNLOCK();
+			SCTP_INP_INFO_RUNLOCK();
 			return (0);
 		}
 	}
@@ -6528,7 +6550,7 @@ skip_vtag_check:
 					    (twait_block->vtag_block[i].lport == lport) &&
 				    (twait_block->vtag_block[i].rport == rport)) {
 					/* Bad tag, sorry :< */
-					SCTP_INP_INFO_WUNLOCK();
+					SCTP_INP_INFO_RUNLOCK();
 					return (0);
 				}
 			}

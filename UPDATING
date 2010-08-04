@@ -22,6 +22,37 @@ NOTE TO PEOPLE WHO THINK THAT FreeBSD 9.x IS SLOW:
 	machines to maximize performance.  (To disable malloc debugging, run
 	ln -s aj /etc/malloc.conf.)
 
+20100725:
+	The acpi_aiboost(4) driver has been removed in favor of the new
+	aibs(4) driver. You should update your kernel configuration file.
+
+20100722:
+	BSD grep has been imported to the base system and it is built by
+	default.  It is completely BSD licensed, highly GNU-compatible, uses
+	less memory than its GNU counterpart and has a small codebase.
+	However, it is slower than its GNU counterpart, which is mostly
+	noticeable for larger searches, for smaller ones it is measurable
+	but not significant.  The reason is complex, the most important factor
+	is that we lack a modern and efficient regex library and GNU
+	overcomes this by optimizing the searches internally.  Future work
+	on improving the regex performance is planned, for the meantime,
+	users that need better performance, can build GNU grep instead by
+	setting the WITH_GNU_GREP knob.
+
+20100713:
+	Due to the import of powerpc64 support, all existing powerpc kernel
+	configuration files must be updated with a machine directive like this:
+	    machine powerpc powerpc
+
+	In addition, an updated config(8) is required to build powerpc kernels
+	after this change.
+
+20100713:
+	A new version of ZFS (version 15) has been merged to -HEAD.
+	This version uses a python library for the following subcommands:
+	zfs allow, zfs unallow, zfs groupspace, zfs userspace.
+	For full functionality of these commands the following port must
+	be installed: sysutils/py-zfs
 
 20100429:
 	'vm_page's are now hashed by physical address to an array of mutexes.
@@ -963,6 +994,22 @@ COMMON ITEMS:
 	then do an upgrade to the new branch. This is the best-tested upgrade
 	path, and has the highest probability of being successful.  Please try
 	this approach before reporting problems with a major version upgrade.
+
+	ZFS notes
+	---------
+	When upgrading the boot ZFS pool to a new version, always follow
+	these two steps:
+
+	1.) recompile and reinstall the ZFS boot loader and boot block
+	(this is part of "make buildworld" and "make installworld")
+
+	2.) update the ZFS boot block on your boot drive
+
+	The following example updates the ZFS boot block on the first
+	partition (freebsd-boot) of a GPT partitioned drive ad0:
+	"gpart bootcode -p /boot/gptzfsboot -i 1 ad0"
+
+	Non-boot pools do not need these updates.
 
 	To build a kernel
 	-----------------

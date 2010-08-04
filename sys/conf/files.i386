@@ -112,6 +112,10 @@ bf_enc.o			optional crypto | ipsec	\
 	dependency	"$S/crypto/blowfish/arch/i386/bf_enc.S $S/crypto/blowfish/arch/i386/bf_enc_586.S $S/crypto/blowfish/arch/i386/bf_enc_686.S" \
 	compile-with	"${CC} -c -I$S/crypto/blowfish/arch/i386 ${ASM_CFLAGS} ${WERROR} ${.IMPSRC}" \
 	no-implicit-rule
+crypto/aesni/aesencdec_i386.S	optional aesni
+crypto/aesni/aeskeys_i386.S	optional aesni
+crypto/aesni/aesni.c		optional aesni
+crypto/aesni/aesni_wrap.c	optional aesni
 crypto/des/arch/i386/des_enc.S	optional crypto | ipsec | netsmb
 crypto/via/padlock.c		optional padlock
 crypto/via/padlock_cipher.c	optional padlock
@@ -347,6 +351,7 @@ i386/svr4/svr4_machdep.c	optional compat_svr4
 #
 isa/syscons_isa.c		optional sc
 isa/vga_isa.c			optional vga
+kern/kern_clocksource.c		standard
 kern/imgact_aout.c		optional compat_aout
 kern/imgact_gzip.c		optional gzip
 libkern/divdi3.c		standard
@@ -371,6 +376,7 @@ contrib/x86emu/x86emu.c		optional x86bios | atkbd | dpms | vesa
 #
 # x86 shared code between IA32, AMD64 and PC98 architectures
 #
+x86/acpica/srat.c		optional acpi
 x86/bios/smbios.c		optional smbios
 x86/bios/vpd.c			optional vpd
 x86/cpufreq/est.c		optional cpufreq
@@ -390,4 +396,3 @@ x86/x86/io_apic.c		optional apic
 x86/x86/local_apic.c		optional apic
 x86/x86/mca.c			standard
 x86/x86/msi.c			optional apic pci
-x86/x86/timeevents.c		standard

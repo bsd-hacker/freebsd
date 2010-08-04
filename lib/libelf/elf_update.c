@@ -297,7 +297,6 @@ _libelf_resync_sections(Elf *e, off_t rc)
 		else
 			sh_type = s->s_shdr.s_shdr64.sh_type;
 
-		/* XXX Do we need the 'size' field of an SHT_NOBITS section */
 		if (sh_type == SHT_NOBITS || sh_type == SHT_NULL)
 			continue;
 
@@ -423,8 +422,8 @@ _libelf_resync_elf(Elf *e)
 		(E)->e_ident[EI_VERSION] = (V);				\
 		(E)->e_ehsize = _libelf_fsize(ELF_T_EHDR, (EC), (V),	\
 		    (size_t) 1);					\
-		(E)->e_phentsize = _libelf_fsize(ELF_T_PHDR, (EC), (V),	\
-		    (size_t) 1);					\
+		(E)->e_phentsize = (phnum == 0) ? 0 : _libelf_fsize(	\
+		    ELF_T_PHDR, (EC), (V), (size_t) 1);			\
 		(E)->e_shentsize = _libelf_fsize(ELF_T_SHDR, (EC), (V),	\
 		    (size_t) 1);					\
 	} while (0)
@@ -472,6 +471,11 @@ _libelf_resync_elf(Elf *e)
 	 * Compute the layout of the sections associated with the
 	 * file.
 	 */
+
+	if (e->e_cmd != ELF_C_WRITE &&
+	    (e->e_flags & LIBELF_F_SHDRS_LOADED) == 0 &&
+	    _libelf_load_scn(e, ehdr) == 0)
+		return ((off_t) -1);
 
 	if ((rc = _libelf_resync_sections(e, rc)) < 0)
 		return ((off_t) -1);
@@ -535,21 +539,23 @@ _libelf_write_scn(Elf *e, char *nf, Elf_Scn *s, off_t rc)
 	int ec;
 	size_t fsz, msz, nobjects;
 	uint32_t sh_type;
-	uint64_t sh_off;
+	uint64_t sh_off, sh_size;
 	int elftype;
 	Elf_Data *d, dst;
 
-	if ((ec = e->e_class) == ELFCLASS32)
+	if ((ec = e->e_class) == ELFCLASS32) {
 		sh_type = s->s_shdr.s_shdr32.sh_type;
-	else
+		sh_size = (uint64_t) s->s_shdr.s_shdr32.sh_size;
+	} else {
 		sh_type = s->s_shdr.s_shdr64.sh_type;
+		sh_size = s->s_shdr.s_shdr64.sh_size;
+	}
 
 	/*
 	 * Ignore sections that do not allocate space in the file.
 	 */
-	if (sh_type == SHT_NOBITS || sh_type == SHT_NULL)
+	if (sh_type == SHT_NOBITS || sh_type == SHT_NULL || sh_size == 0)
 		return (rc);
-
 
 	elftype = _libelf_xlate_shtype(sh_type);
 	assert(elftype >= ELF_T_FIRST && elftype <= ELF_T_LAST);
@@ -725,14 +731,9 @@ _libelf_write_elf(Elf *e, off_t newsize)
 		assert(phoff % _libelf_falign(ELF_T_PHDR, ec) == 0);
 		assert(fsz > 0);
 
+		src.d_buf = _libelf_getphdr(e, ec);
 		src.d_version = dst.d_version = e->e_version;
 		src.d_type = ELF_T_PHDR;
-
-		if (ec == ELFCLASS32)
-			src.d_buf = e->e_u.e_elf.e_phdr.e_phdr32;
-		else
-			src.d_buf = e->e_u.e_elf.e_phdr.e_phdr64;
-
 		src.d_size = phnum * _libelf_msize(ELF_T_PHDR, ec,
 		    e->e_version);
 
@@ -854,11 +855,13 @@ _libelf_write_elf(Elf *e, off_t newsize)
 		e->e_u.e_elf.e_phdr.e_phdr64 = NULL;
 	}
 
+	free(newfile);
+
 	return (rc);
 
  error:
-	if (newfile)
-		free(newfile);
+	free(newfile);
+
 	return ((off_t) -1);
 }
 

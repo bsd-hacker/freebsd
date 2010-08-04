@@ -140,6 +140,7 @@ struct tty;
 struct ucred;
 struct uio;
 struct _jmp_buf;
+struct trapframe;
 
 int	setjmp(struct _jmp_buf *);
 void	longjmp(struct _jmp_buf *, int) __dead2;
@@ -242,6 +243,9 @@ void	statclock(int usermode);
 void	profclock(int usermode, uintfptr_t pc);
 void	timer1clock(int usermode, uintfptr_t pc);
 void	timer2clock(int usermode, uintfptr_t pc);
+
+int	hardclockintr(struct trapframe *frame);
+int	statclockintr(struct trapframe *frame);
 
 void	startprofclock(struct proc *);
 void	stopprofclock(struct proc *);
@@ -363,6 +367,7 @@ void delete_unrhdr(struct unrhdr *uh);
 void clean_unrhdr(struct unrhdr *uh);
 void clean_unrhdrl(struct unrhdr *uh);
 int alloc_unr(struct unrhdr *uh);
+int alloc_unr_specific(struct unrhdr *uh, u_int item);
 int alloc_unrl(struct unrhdr *uh);
 void free_unr(struct unrhdr *uh, u_int item);
 

@@ -50,11 +50,12 @@ __FBSDID("$FreeBSD$");
 #include <dev/ata/ata-pci.h>
 #include <dev/ata/ata-disk.h>
 #include <dev/ata/ata-raid.h>
+#include <dev/pci/pcivar.h>
 #include <ata_if.h>
 
 /* prototypes */
 static void ad_init(device_t dev);
-static void ad_get_geometry(device_t dev);
+static int ad_get_geometry(device_t dev);
 static void ad_set_geometry(device_t dev);
 static void ad_done(struct ata_request *request);
 static void ad_describe(device_t dev);
@@ -94,6 +95,7 @@ ad_attach(device_t dev)
     struct ata_channel *ch = device_get_softc(device_get_parent(dev));
     struct ata_device *atadev = device_get_softc(dev);
     struct ad_softc *adp;
+    device_t parent;
 
     /* check that we have a virgin disk to attach */
     if (device_get_ivars(dev))
@@ -106,7 +108,8 @@ ad_attach(device_t dev)
     device_set_ivars(dev, adp);
 
     /* get device geometry into internal structs */
-    ad_get_geometry(dev);
+    if (ad_get_geometry(dev))
+	return ENXIO;
 
     /* set the max size if configured */
     if (ata_setmax)
@@ -142,6 +145,17 @@ ad_attach(device_t dev)
 	adp->disk->d_flags |= DISKFLAG_CANDELETE;
     strlcpy(adp->disk->d_ident, atadev->param.serial,
 	sizeof(adp->disk->d_ident));
+    parent = device_get_parent(ch->dev);
+    if (parent != NULL && device_get_parent(parent) != NULL &&
+	    (device_get_devclass(parent) ==
+	     devclass_find("atapci") ||
+	     device_get_devclass(device_get_parent(parent)) ==
+	     devclass_find("pci"))) {
+	adp->disk->d_hba_vendor = pci_get_vendor(parent);
+	adp->disk->d_hba_device = pci_get_device(parent);
+	adp->disk->d_hba_subvendor = pci_get_subvendor(parent);
+	adp->disk->d_hba_subdevice = pci_get_subdevice(parent);
+    }
     ata_disk_firmware_geom_adjust(adp->disk);
     disk_create(adp->disk, DISK_VERSION);
     device_add_child(dev, "subdisk", device_get_unit(dev));
@@ -405,12 +419,14 @@ ad_init(device_t dev)
 
 	if (!ata_controlcmd(dev, ATA_SET_MULTI, 0, 0, secsperint))
 	    atadev->max_iosize = secsperint * DEV_BSIZE;
+	else
+	    atadev->max_iosize = DEV_BSIZE;
     }
     else
 	atadev->max_iosize = DEV_BSIZE;
 }
 
-static void
+static int
 ad_get_geometry(device_t dev)
 {
     struct ata_device *atadev = device_get_softc(dev);
@@ -432,6 +448,9 @@ ad_get_geometry(device_t dev)
     }
     lbasize = (u_int32_t)atadev->param.lba_size_1 |
 	      ((u_int32_t)atadev->param.lba_size_2 << 16);
+    /* This device exists, but has no size.  Filter out this bogus device. */
+    if (!lbasize && !adp->total_secs)
+	return ENXIO;
 
     /* does this device need oldstyle CHS addressing */
     if (!ad_version(atadev->param.version_major) || !lbasize)
@@ -449,6 +468,7 @@ ad_get_geometry(device_t dev)
     if ((atadev->param.support.command2 & ATA_SUPPORT_ADDRESS48) &&
 	lbasize48 > ATA_MAX_28BIT_LBA)
 	adp->total_secs = lbasize48;
+    return 0;
 }
 
 static void

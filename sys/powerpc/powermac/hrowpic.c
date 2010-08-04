@@ -45,7 +45,6 @@
 #include <dev/ofw/openfirm.h>
 
 #include <machine/bus.h>
-#include <machine/intr.h>
 #include <machine/intr_machdep.h>
 #include <machine/md_var.h>
 #include <machine/pio.h>
@@ -270,12 +269,9 @@ static void
 hrowpic_mask(device_t dev, u_int irq)
 {
 	struct hrowpic_softc *sc;
-	int bank;
 
 	sc = device_get_softc(dev);
 	hrowpic_toggle_irq(sc, irq, 0);
-	bank = (irq >= 32) ? HPIC_SECONDARY : HPIC_PRIMARY ;
-	hrowpic_write_reg(sc, HPIC_CLEAR, bank, 1U << (irq & 0x1f));
 }
 
 static void

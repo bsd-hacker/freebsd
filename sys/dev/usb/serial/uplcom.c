@@ -256,6 +256,8 @@ static const struct usb_device_id uplcom_devs[] = {
 	UPLCOM_DEV(PROLIFIC, RSAQ2, 0, 0xFFFF, PL2303),
 	/* I/O DATA USB-RSAQ3 */
 	UPLCOM_DEV(PROLIFIC, RSAQ3, 0, 0xFFFF, PL2303X),
+	/* I/O DATA USB-RSAQ5 */
+	UPLCOM_DEV(IODATA, USBRSAQ5, 0, 0xFFFF, PL2303X),
 	/* PLANEX USB-RS232 URS-03 */
 	UPLCOM_DEV(ATEN, UC232A, 0, 0xFFFF, PL2303),
 	/* TrendNet TU-S9 */
@@ -292,6 +294,8 @@ static const struct usb_device_id uplcom_devs[] = {
 	UPLCOM_DEV(PROLIFIC2, WSIM, 0, 0xFFFF, PL2303X),
 	/* Mobile Action MA-620 Infrared Adapter */
 	UPLCOM_DEV(MOBILEACTION, MA620, 0, 0xFFFF, PL2303X),
+	/* Corega CG-USBRS232R */
+	UPLCOM_DEV(COREGA, CGUSBRS232R, 0, 0xFFFF, PL2303X),
 };
 #undef UPLCOM_DEV
 
