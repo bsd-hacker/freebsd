@@ -36,9 +36,10 @@
 #include <string.h>
 #include <unistd.h>
 
-#define MINSIZE		512
+#define BSIZE		512
+#define MINSIZE		1024
 #define MAXSIZE		8192
-#define STEP		MAXSIZE
+#define STEP		(MAXSIZE * 4)
 #define COUNT		65536
 
 static int opt_r = 0;
@@ -137,9 +138,12 @@ main(int argc, char *argv[])
 	printf("%8s%8s%8s%8s%12s%8s%8s\n",
 	    "count", "size", "offset", "step",
 	    "msec", "tps", "kBps");
-	for (size_t size = MINSIZE; size <= MAXSIZE; size *= 2)
-		for (off_t offset = 0; offset < (off_t)size; offset += 512)
+	for (size_t size = MINSIZE; size <= MAXSIZE; size *= 2) {
+		printf("\n");
+		scan(fd, size, 0, STEP, COUNT);
+		for (off_t offset = BSIZE; offset <= (off_t)size; offset *= 2)
 			scan(fd, size, offset, STEP, COUNT);
+	}
 	close(fd);
 	exit(0);
 }
