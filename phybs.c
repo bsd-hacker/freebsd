@@ -164,10 +164,10 @@ main(int argc, char *argv[])
 	printf("%8s%8s%8s%8s%12s%8s%8s\n",
 	    "count", "size", "offset", "step",
 	    "msec", "tps", "kBps");
-	for (size_t size = minsize; size < maxsize; size *= 2) {
+	for (size_t size = minsize; size <= maxsize; size *= 2) {
 		printf("\n");
 		scan(fd, size, 0, STEP, total / size);
-		for (off_t offset = BSIZE; offset <= (off_t)size; offset *= 2)
+		for (off_t offset = BSIZE; offset < (off_t)size; offset *= 2)
 			scan(fd, size, offset, STEP, total / size);
 	}
 	close(fd);
