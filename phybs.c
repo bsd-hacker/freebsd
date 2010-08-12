@@ -31,16 +31,18 @@
 
 #include <err.h>
 #include <fcntl.h>
+#include <libutil.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 
-#define BSIZE		512
-#define MINSIZE		1024
-#define MAXSIZE		8192
-#define STEP		(MAXSIZE * 4)
-#define COUNT		65536
+#define BSIZE 512
+
+static unsigned int minsize = 1024;
+static unsigned int maxsize = 8192;
+#define STEP (maxsize * 4)
+static unsigned int total = (128 * 1024 * 1024);
 
 static int opt_r = 0;
 static int opt_w = 1;
@@ -95,13 +97,14 @@ static void
 usage(void)
 {
 
-	fprintf(stderr, "usage: phybs [-R | -r] [-W | -w] device\n");
+	fprintf(stderr, "usage: phybs [-R | -r] [-W | -w] device [min [max]]\n");
 	exit(1);
 }
 
 int
 main(int argc, char *argv[])
 {
+	int64_t tmp;
 	char *device;
 	int fd, opt;
 
@@ -126,23 +129,34 @@ main(int argc, char *argv[])
 	argc -= optind;
 	argv += optind;
 
-	if (argc != 1)
-		usage();
-
 	if (!opt_r && !opt_w)
 		opt_r = opt_w = 1;
-
+	if (argc < 1 || argc > 3)
+		usage();
 	device = argv[0];
+	if (argc > 1) {
+		if (expand_number(argv[1], &tmp) != 0 ||
+		    tmp < BSIZE || (tmp & (tmp - 1)) != 0)
+			usage();
+		minsize = tmp;
+	}
+	if (argc > 2) {
+		if (expand_number(argv[2], &tmp) != 0 ||
+		    tmp < minsize || (tmp & (tmp - 1)) != 0)
+			usage();
+		maxsize = tmp;
+	}
+
 	if ((fd = open(device, opt_w ? O_RDWR : O_RDONLY)) == -1)
 		err(1, "open(%s)", device);
 	printf("%8s%8s%8s%8s%12s%8s%8s\n",
 	    "count", "size", "offset", "step",
 	    "msec", "tps", "kBps");
-	for (size_t size = MINSIZE; size <= MAXSIZE; size *= 2) {
+	for (size_t size = minsize; size <= maxsize; size *= 2) {
 		printf("\n");
-		scan(fd, size, 0, STEP, COUNT);
+		scan(fd, size, 0, STEP, total / size);
 		for (off_t offset = BSIZE; offset <= (off_t)size; offset *= 2)
-			scan(fd, size, offset, STEP, COUNT);
+			scan(fd, size, offset, STEP, total / size);
 	}
 	close(fd);
 	exit(0);
