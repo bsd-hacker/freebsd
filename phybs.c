@@ -47,6 +47,10 @@ static unsigned int total = (128 * 1024 * 1024);
 static int opt_r = 0;
 static int opt_w = 1;
 
+static int tty = 0;
+static char progress[] = " [----------------]"
+    "\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b";
+
 static void
 scan(int fd, size_t size, off_t offset, off_t step, unsigned int count)
 {
@@ -55,7 +59,7 @@ scan(int fd, size_t size, off_t offset, off_t step, unsigned int count)
 	ssize_t rlen, wlen;
 	char *buf;
 
-	printf("%8u%8lu%8lu%8lu", count, (unsigned long)size,
+	printf("%8u%8lu%8lu%8lu  ", count, (unsigned long)size,
 	    (unsigned long)offset, (unsigned long)step);
 	fflush(stdout);
 	if ((buf = malloc(size)) == NULL)
@@ -82,12 +86,18 @@ scan(int fd, size_t size, off_t offset, off_t step, unsigned int count)
 				errx(1, "short write: %ld < %lu",
 				    (long)wlen, (unsigned long)size);
 		}
+		if (tty && i % 256 == 0) {
+			progress[2 + (i * 16) / count] = '|';
+			fputs(progress, stdout);
+			progress[2 + (i * 16) / count] = '-';
+			fflush(stdout);
+		}
 	}
 	if (gettimeofday(&t1, NULL) == -1)
 		err(1, "gettimeofday()");
 	usec = t1.tv_sec * 1000000 + t1.tv_usec;
 	usec -= t0.tv_sec * 1000000 + t0.tv_usec;
-	printf("%12lu%8lu%8lu\n", usec / 1000,
+	printf("%10lu%8lu%8lu\n", usec / 1000,
 	    count * 1000000 / usec,
 	    count * size * 1000000 / 1024 / usec);
 	free(buf);
@@ -146,6 +156,8 @@ main(int argc, char *argv[])
 			usage();
 		maxsize = tmp;
 	}
+
+	tty = isatty(STDIN_FILENO);
 
 	if ((fd = open(device, opt_w ? O_RDWR : O_RDONLY)) == -1)
 		err(1, "open(%s)", device);
