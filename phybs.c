@@ -157,14 +157,14 @@ main(int argc, char *argv[])
 		maxsize = tmp;
 	}
 
-	tty = isatty(STDIN_FILENO);
+	tty = isatty(STDOUT_FILENO);
 
 	if ((fd = open(device, opt_w ? O_RDWR : O_RDONLY)) == -1)
 		err(1, "open(%s)", device);
 	printf("%8s%8s%8s%8s%12s%8s%8s\n",
 	    "count", "size", "offset", "step",
 	    "msec", "tps", "kBps");
-	for (size_t size = minsize; size <= maxsize; size *= 2) {
+	for (size_t size = minsize; size < maxsize; size *= 2) {
 		printf("\n");
 		scan(fd, size, 0, STEP, total / size);
 		for (off_t offset = BSIZE; offset <= (off_t)size; offset *= 2)
