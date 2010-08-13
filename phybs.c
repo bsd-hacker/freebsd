@@ -41,7 +41,6 @@
 
 static unsigned int minsize = 1024;
 static unsigned int maxsize = 8192;
-#define STEP (maxsize * 4)
 static unsigned int total = (128 * 1024 * 1024);
 
 static int opt_r = 0;
@@ -166,9 +165,9 @@ main(int argc, char *argv[])
 	    "msec", "tps", "kBps");
 	for (size_t size = minsize; size <= maxsize; size *= 2) {
 		printf("\n");
-		scan(fd, size, 0, STEP, total / size);
+		scan(fd, size, 0, size * 4, total / size);
 		for (off_t offset = BSIZE; offset < (off_t)size; offset *= 2)
-			scan(fd, size, offset, STEP, total / size);
+			scan(fd, size, offset, size * 4, total / size);
 	}
 	close(fd);
 	exit(0);
