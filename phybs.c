@@ -32,6 +32,7 @@
 #include <err.h>
 #include <fcntl.h>
 #include <libutil.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -106,27 +107,48 @@ static void
 usage(void)
 {
 
-	fprintf(stderr, "usage: phybs [-R | -r] [-W | -w] device [min [max]]\n");
+	fprintf(stderr, "usage: phybs [-rw] [-l min] [-h max] device\n");
 	exit(1);
+}
+
+static unsigned int
+poweroftwo(char opt, const char *valstr, unsigned int min, unsigned int max)
+{
+	uint64_t val;
+
+	if (expand_number(valstr, &val) != 0) {
+		fprintf(stderr, "-%c: invalid number\n", opt);
+		usage();
+	}
+	if ((val & (val - 1)) != 0) {
+		fprintf(stderr, "-%c: not a power of two\n", opt);
+		usage();
+	}
+	if (val < min || (max != 0 && val > max) || val > UINT_MAX) {
+		fprintf(stderr, "-%c: out of range\n", opt);
+		usage();
+	}
+	return (val);
 }
 
 int
 main(int argc, char *argv[])
 {
-	int64_t tmp;
 	char *device;
 	int fd, opt;
 
-	while ((opt = getopt(argc, argv, "RrWw")) != -1)
+	tty = isatty(STDOUT_FILENO);
+
+	while ((opt = getopt(argc, argv, "h:l:rw")) != -1)
 		switch (opt) {
-		case 'R':
-			opt_r = 0;
+		case 'h':
+			maxsize = poweroftwo(opt, optarg, minsize, 0);
+			break;
+		case 'l':
+			minsize = poweroftwo(opt, optarg, BSIZE, maxsize);
 			break;
 		case 'r':
 			opt_r = 1;
-			break;
-		case 'W':
-			opt_w = 0;
 			break;
 		case 'w':
 			opt_w = 1;
@@ -140,23 +162,10 @@ main(int argc, char *argv[])
 
 	if (!opt_r && !opt_w)
 		opt_r = opt_w = 1;
-	if (argc < 1 || argc > 3)
+
+	if (argc != 1)
 		usage();
 	device = argv[0];
-	if (argc > 1) {
-		if (expand_number(argv[1], &tmp) != 0 ||
-		    tmp < BSIZE || (tmp & (tmp - 1)) != 0)
-			usage();
-		minsize = tmp;
-	}
-	if (argc > 2) {
-		if (expand_number(argv[2], &tmp) != 0 ||
-		    tmp < minsize || (tmp & (tmp - 1)) != 0)
-			usage();
-		maxsize = tmp;
-	}
-
-	tty = isatty(STDOUT_FILENO);
 
 	if ((fd = open(device, opt_w ? O_RDWR : O_RDONLY)) == -1)
 		err(1, "open(%s)", device);
