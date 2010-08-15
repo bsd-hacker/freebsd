@@ -27,7 +27,10 @@
  * $FreeBSD$
  */
 
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/time.h>
+#include <sys/disk.h>
 
 #include <err.h>
 #include <fcntl.h>
@@ -38,14 +41,15 @@
 #include <string.h>
 #include <unistd.h>
 
-#define BSIZE 512
+static const char *device;
 
-static unsigned int minsize = 1024;
-static unsigned int maxsize = 8192;
-static unsigned int total = (128 * 1024 * 1024);
+static unsigned int bsize;
+static unsigned int minsize;
+static unsigned int maxsize;
+static unsigned int total;
 
-static int opt_r = 0;
-static int opt_w = 1;
+static int opt_r;
+static int opt_w;
 
 static int tty = 0;
 static char progress[] = " [----------------]"
@@ -112,7 +116,7 @@ usage(void)
 }
 
 static unsigned int
-poweroftwo(char opt, const char *valstr, unsigned int min, unsigned int max)
+poweroftwo(char opt, const char *valstr)
 {
 	uint64_t val;
 
@@ -124,7 +128,7 @@ poweroftwo(char opt, const char *valstr, unsigned int min, unsigned int max)
 		fprintf(stderr, "-%c: not a power of two\n", opt);
 		usage();
 	}
-	if (val < min || (max != 0 && val > max) || val > UINT_MAX) {
+	if (val == 0 || val > UINT_MAX) {
 		fprintf(stderr, "-%c: out of range\n", opt);
 		usage();
 	}
@@ -134,21 +138,24 @@ poweroftwo(char opt, const char *valstr, unsigned int min, unsigned int max)
 int
 main(int argc, char *argv[])
 {
-	char *device;
+	struct stat st;
 	int fd, opt;
 
 	tty = isatty(STDOUT_FILENO);
 
-	while ((opt = getopt(argc, argv, "h:l:rw")) != -1)
+	while ((opt = getopt(argc, argv, "h:l:rt:w")) != -1)
 		switch (opt) {
 		case 'h':
-			maxsize = poweroftwo(opt, optarg, minsize, 0);
+			maxsize = poweroftwo(opt, optarg);
 			break;
 		case 'l':
-			minsize = poweroftwo(opt, optarg, BSIZE, maxsize);
+			minsize = poweroftwo(opt, optarg);
 			break;
 		case 'r':
 			opt_r = 1;
+			break;
+		case 't':
+			total = poweroftwo(opt, optarg);
 			break;
 		case 'w':
 			opt_w = 1;
@@ -160,24 +167,51 @@ main(int argc, char *argv[])
 	argc -= optind;
 	argv += optind;
 
-	if (!opt_r && !opt_w)
-		opt_r = opt_w = 1;
-
 	if (argc != 1)
 		usage();
 	device = argv[0];
 
+	if (!opt_r && !opt_w)
+		errx(1, "must specify -r and / or -w");
+
 	if ((fd = open(device, opt_w ? O_RDWR : O_RDONLY)) == -1)
 		err(1, "open(%s)", device);
+
+	if (fstat(fd, &st) != 0)
+		err(1, "stat(%s)", device);
+	bsize = 512;
+	if (S_ISCHR(st.st_mode) && ioctl(fd, DIOCGSECTORSIZE, &bsize) == -1)
+		err(1, "ioctl(%s, DIOCGSECTORSIZE)", device);
+
+	if (minsize == 0)
+		minsize = bsize * 2;
+	if (minsize % bsize != 0)
+		errx(1, "minsize (%u) is not a multiple of block size (%u)",
+		    minsize, bsize);
+
+	if (maxsize == 0)
+		maxsize = minsize * 8;
+	if (maxsize % minsize != 0)
+		errx(1, "maxsize (%u) is not a multiple of minsize (%u)",
+		    maxsize, minsize);
+
+	if (total == 0)
+		total = 128 * 1024 * 1024;
+	if (total % maxsize != 0)
+		errx(1, "total (%u) is not a multiple of maxsize (%u)",
+		    total, maxsize);
+
 	printf("%8s%8s%8s%8s%12s%8s%8s\n",
 	    "count", "size", "offset", "step",
 	    "msec", "tps", "kBps");
+
 	for (size_t size = minsize; size <= maxsize; size *= 2) {
 		printf("\n");
 		scan(fd, size, 0, size * 4, total / size);
-		for (off_t offset = BSIZE; offset < (off_t)size; offset *= 2)
+		for (off_t offset = bsize; offset < (off_t)size; offset *= 2)
 			scan(fd, size, offset, size * 4, total / size);
 	}
+
 	close(fd);
 	exit(0);
 }
