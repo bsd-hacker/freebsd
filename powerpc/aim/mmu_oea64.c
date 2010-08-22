@@ -2881,7 +2881,10 @@ moea64_query_bit(vm_page_t m, u_int64_t ptebit)
 		 * ptebit is set, cache it and return success.
 		 */
 		LOCK_TABLE();
-		pt = moea64_pvo_to_pte_native(pvo);
+		if (moea64_pvo_to_pte_hook)
+			pt = moea64_pvo_to_pte_hook(pvo);
+		else
+			pt = moea64_pvo_to_pte_native(pvo);
 		if (pt != NULL) {
 			if (moea64_pte_synch_hook != NULL)
 				moea64_pte_synch_hook(pt, &pvo->pvo_pte.lpte);
