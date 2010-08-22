@@ -128,31 +128,14 @@ glc_attach(device_t dev)
 	sc->next_txdma_slot = sc->first_used_txdma_slot = 0;
 
 	/*
-	 * Open device, and shut down existing tasks.
+	 * Shut down existing tasks.
 	 */
-
-	err = lv1_open_device(sc->sc_bus, sc->sc_dev, 0);
-	if (err) {
-		device_printf(dev, "Error opening device: %d\n", err);
-		mtx_destroy(&sc->sc_mtx);
-		return (ENXIO);
-	}
 
 	lv1_net_stop_tx_dma(sc->sc_bus, sc->sc_dev, 0);
 	lv1_net_stop_rx_dma(sc->sc_bus, sc->sc_dev, 0);
 
 	sc->sc_ifp = if_alloc(IFT_ETHER);
 	sc->sc_ifp->if_softc = sc;
-
-/* Wait for link */
-for (i = 0; i < 1000; i++) {
-	lv1_net_control(sc->sc_bus, sc->sc_dev, GELIC_GET_LINK_STATUS, 2, 0,
-	    0, &val, &junk);
-	if (val & GELIC_LINK_UP)
-		break;
-	DELAY(500);
-}
-
 
 	/*
 	 * Get MAC address and VLAN id
@@ -357,7 +340,6 @@ glc_start_locked(struct ifnet *ifp)
 	mtx_assert(&sc->sc_mtx, MA_OWNED);
 	first = 0;
 
-printf("Transmitting packet!\n");
 	while (!IFQ_DRV_IS_EMPTY(&ifp->if_snd)) {
 		IFQ_DRV_DEQUEUE(&ifp->if_snd, mb_head);
 
@@ -614,7 +596,6 @@ glc_rxintr(struct glc_softc *sc)
 {
 	int i, restart_rxdma;
 	struct mbuf *m;
-	uint16_t tag;
 	struct ifnet *ifp = sc->sc_ifp;
 
 	bus_dmamap_sync(sc->sc_dmadesc_tag, sc->sc_rxdmadesc_map,
@@ -640,27 +621,11 @@ glc_rxintr(struct glc_softc *sc)
 		m->m_len = sc->sc_rxdmadesc[i].valid_size;
 		m->m_pkthdr.len = m->m_len;
 		sc->sc_next_rxdma_slot++;
+		if (sc->sc_next_rxdma_slot >= GLC_MAX_RX_PACKETS)
+			sc->sc_next_rxdma_slot = 0;
 
-		if (sc->sc_rx_vlan >= 0) {
-			struct ether_vlan_header *evl;
-			if (m->m_len < sizeof(*evl) &&
-			    (m = m_pullup(m, sizeof(*evl))) == NULL) {
-				if_printf(ifp, "cannot pullup VLAN header\n");
-				return;
-			}
-			evl = mtod(m, struct ether_vlan_header *);
-			tag = EVL_VLANOFTAG(ntohs(evl->evl_tag));
-
-			/*
-			 * Remove the 802.1q header by copying the Ethernet
-			 * addresses over it and adjusting the beginning of
-			 * the data in the mbuf.  The encapsulated Ethernet
-			 * type field is already in place.
-			 */
-			bcopy((char *)evl, (char *)evl + ETHER_VLAN_ENCAP_LEN,
-			      ETHER_HDR_LEN - ETHER_TYPE_LEN);
-			m_adj(m, ETHER_VLAN_ENCAP_LEN);
-		}
+		if (sc->sc_rx_vlan >= 0)
+			m_adj(m, 2);
 
 		mtx_unlock(&sc->sc_mtx);
 		(*ifp->if_input)(ifp, m);
@@ -725,12 +690,11 @@ glc_intr(void *xsc)
 
 	mtx_lock(&sc->sc_mtx);
 
-	if (sc->sc_interrupt_status == 0) {
+	if (*sc->sc_interrupt_status == 0) {
 		device_printf(sc->sc_self, "stray interrupt!\n");
 		mtx_unlock(&sc->sc_mtx);
 		return;
 	}
-printf("GLC Interrupt!\n");
 
 	if (*sc->sc_interrupt_status & (GELIC_INT_RXDONE | GELIC_INT_RXFRAME))
 		glc_rxintr(sc);

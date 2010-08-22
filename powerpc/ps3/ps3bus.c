@@ -62,6 +62,12 @@ struct ps3bus_devinfo {
 
 static MALLOC_DEFINE(M_PS3BUS, "ps3bus", "PS3 system bus device information");
 
+enum ps3bus_irq_type {
+	SB_IRQ = 2,
+	OHCI_IRQ = 3,
+	EHCI_IRQ = 4,
+};
+
 static device_method_t ps3bus_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_identify,	ps3bus_identify),
@@ -75,6 +81,8 @@ static device_method_t ps3bus_methods[] = {
 	DEVMETHOD(bus_read_ivar,	ps3bus_read_ivar),
 	DEVMETHOD(bus_alloc_resource,	ps3bus_alloc_resource),
 	DEVMETHOD(bus_activate_resource, ps3bus_activate_resource),
+	DEVMETHOD(bus_setup_intr,	bus_generic_setup_intr),
+	DEVMETHOD(bus_teardown_intr,	bus_generic_teardown_intr),
 
 	{ 0, 0 }
 };
@@ -112,12 +120,17 @@ ps3bus_probe(device_t dev)
 static void
 ps3bus_resources_init(int bus_index, int dev_index, struct resource_list *rl)
 {
-	uint64_t irq_type, irq;
+	uint64_t irq_type, irq, outlet;
 	uint64_t reg_type, paddr, len;
+	uint64_t bus, dev, ppe;
 	uint64_t junk;
 	int i, result;
+	int thread;
 
 	resource_list_init(rl);
+
+	lv1_get_logical_ppe_id(&ppe);
+	thread = 32 - fls(mfctrl());
 
 	/* Scan for interrupts */
 	for (i = 0; i < 10; i++) {
@@ -129,7 +142,35 @@ ps3bus_resources_init(int bus_index, int dev_index, struct resource_list *rl)
 		if (result != 0)
 			break;
 
-		resource_list_add(rl, SYS_RES_IRQ, i, irq, irq, 1);
+		lv1_get_repository_node_value(PS3_LPAR_ID_PME,
+		    (lv1_repository_string("bus") >> 32) | bus_index,
+		    lv1_repository_string("id"), 0, 0, &bus, &junk);
+		lv1_get_repository_node_value(PS3_LPAR_ID_PME,
+		    (lv1_repository_string("bus") >> 32) | bus_index,
+		    lv1_repository_string("dev") | dev_index,
+		    lv1_repository_string("id"), 0, &dev, &junk);
+
+		switch (irq_type) {
+		case SB_IRQ:
+			lv1_construct_event_receive_port(&outlet);
+			lv1_connect_irq_plug_ext(ppe, thread, outlet, outlet,
+			    0);
+			lv1_connect_interrupt_event_receive_port(bus, dev,
+			    outlet, irq);
+			break;
+		case OHCI_IRQ:
+		case EHCI_IRQ:
+			lv1_construct_io_irq_outlet(irq, &outlet);
+			lv1_connect_irq_plug_ext(ppe, thread, outlet, outlet,
+			    0);
+			break;
+		default:
+			printf("Unknown IRQ type %ld for device %ld.%ld\n",
+			    irq_type, bus, dev);
+			break;
+		}
+
+		resource_list_add(rl, SYS_RES_IRQ, i, outlet, outlet, 1);
 	}
 
 	/* Scan for registers */
@@ -211,6 +252,9 @@ ps3bus_attach(device_t self)
 			dinfo->dev = dev;
 			dinfo->bustype = bustype;
 			dinfo->devtype = devtype;
+
+			if (dinfo->bustype == PS3_BUSTYPE_SYSBUS)
+				lv1_open_device(bus, dev, 0);
 
 			ps3bus_resources_init(bus_index, dev_index,
 			    &dinfo->resources);

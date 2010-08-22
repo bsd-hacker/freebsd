@@ -192,7 +192,7 @@ static int
 ps3_smp_start_cpu(platform_t plat, struct pcpu *pc)
 {
 #ifdef SMP
-	/* loader(8) is spinning on 0x40 == 1 right now */
+	/* loader(8) is spinning on 0x40 == 0 right now */
 	uint32_t *secondary_spin_sem = (uint32_t *)(0x40);
 	int timeout;
 

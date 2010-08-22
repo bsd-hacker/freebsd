@@ -31,7 +31,10 @@
 #include <sys/bus.h>
 #include <sys/conf.h>
 #include <sys/kernel.h>
-#include <sys/rman.h>
+#include <sys/malloc.h>
+
+#include <vm/vm.h>
+#include <vm/pmap.h>
 
 #include <machine/bus.h>
 #include <machine/intr_machdep.h>
@@ -52,6 +55,15 @@ static void	ps3pic_ipi(device_t, u_int);
 static void	ps3pic_mask(device_t, u_int);
 static void	ps3pic_unmask(device_t, u_int);
 static uint32_t ps3pic_id(device_t dev);
+
+struct ps3pic_softc {
+	uint64_t	*bitmap_thread0;
+	uint64_t	*mask_thread0;
+	uint64_t	*bitmap_thread1;
+	uint64_t	*mask_thread1;
+
+	int		sc_vector[64];
+};
 
 static device_method_t  ps3pic_methods[] = {
 	/* Device interface */
@@ -74,12 +86,14 @@ static device_method_t  ps3pic_methods[] = {
 static driver_t ps3pic_driver = {
 	"ps3pic",
 	ps3pic_methods,
-	0
+	sizeof(struct ps3pic_softc)
 };
 
 static devclass_t ps3pic_devclass;
 
 DRIVER_MODULE(ps3pic, nexus, ps3pic_driver, ps3pic_devclass, 0, 0);
+
+static MALLOC_DEFINE(M_PS3PIC, "ps3pic", "PS3 PIC");
 
 static void
 ps3pic_identify(driver_t *driver, device_t parent)
@@ -101,8 +115,30 @@ ps3pic_probe(device_t dev)
 static int
 ps3pic_attach(device_t dev)
 {
+	struct ps3pic_softc *sc;
+	uint64_t ppe;
+	int thread;
+
 	powerpc_register_pic(dev, 64);
 	root_pic = dev; /* PS3s have only one PIC */
+
+	sc = device_get_softc(dev);
+
+	sc->bitmap_thread0 = contigmalloc(128 /* 512 bits * 2 */, M_PS3PIC,
+	    M_NOWAIT | M_ZERO, 0, BUS_SPACE_MAXADDR, 64 /* alignment */,
+	    PAGE_SIZE /* boundary */);
+	sc->mask_thread0 = sc->bitmap_thread0 + 4;
+	sc->bitmap_thread1 = sc->bitmap_thread0 + 8;
+	sc->mask_thread1 = sc->bitmap_thread0 + 12;
+
+	lv1_get_logical_ppe_id(&ppe);
+	thread = 32 - fls(mfctrl());
+	lv1_configure_irq_state_bitmap(ppe, thread,
+	    vtophys(sc->bitmap_thread0));
+#ifdef SMP
+	lv1_configure_irq_state_bitmap(ppe, !thread,
+	    vtophys(sc->bitmap_thread1));
+#endif
 
 	return (0);
 }
@@ -114,16 +150,50 @@ ps3pic_attach(device_t dev)
 static void
 ps3pic_dispatch(device_t dev, struct trapframe *tf)
 {
+	uint64_t bitmap, mask;
+	int irq;
+	struct ps3pic_softc *sc;
+
+	sc = device_get_softc(dev);
+
+	if (PCPU_GET(cpuid) == 0) {
+		bitmap = sc->bitmap_thread0[0];
+		mask = sc->mask_thread0[0];
+	} else {
+		bitmap = sc->bitmap_thread1[0];
+		mask = sc->mask_thread1[0];
+	}
+
+	while ((irq = ffsl(bitmap & mask) - 1) != -1) {
+		bitmap &= ~(1UL << irq);
+		powerpc_dispatch_intr(sc->sc_vector[63 - irq], tf);
+	}
 }
 
 static void
 ps3pic_enable(device_t dev, u_int irq, u_int vector)
 {
+	struct ps3pic_softc *sc;
+
+	if (irq > 63) /* IPI */
+		return;
+
+	sc = device_get_softc(dev);
+	sc->sc_vector[irq] = vector;
+
+	ps3pic_unmask(dev, irq);
 }
 
 static void
-ps3pic_eoi(device_t dev __unused, u_int irq __unused)
+ps3pic_eoi(device_t dev, u_int irq)
 {
+	uint64_t ppe;
+	int thread;
+
+	lv1_get_logical_ppe_id(&ppe);
+	thread = 32 - fls(mfctrl());
+
+	lv1_end_of_interrupt_ext(ppe, thread, irq);
 }
 
 static void
@@ -134,11 +204,31 @@ ps3pic_ipi(device_t dev, u_int irq)
 static void
 ps3pic_mask(device_t dev, u_int irq)
 {
+	struct ps3pic_softc *sc;
+	uint64_t ppe;
+
+	sc = device_get_softc(dev);
+	sc->mask_thread0[0] &= ~(1UL << (63 - irq));
+	sc->mask_thread1[0] &= ~(1UL << (63 - irq));
+
+	lv1_get_logical_ppe_id(&ppe);
+	lv1_did_update_interrupt_mask(ppe, 0);
+	lv1_did_update_interrupt_mask(ppe, 1);
 }
 
 static void
 ps3pic_unmask(device_t dev, u_int irq)
 {
+	struct ps3pic_softc *sc;
+	uint64_t ppe;
+
+	sc = device_get_softc(dev);
+	sc->mask_thread0[0] |= (1UL << (63 - irq));
+	sc->mask_thread1[0] |= (1UL << (63 - irq));
+
+	lv1_get_logical_ppe_id(&ppe);
+	lv1_did_update_interrupt_mask(ppe, 0);
+	lv1_did_update_interrupt_mask(ppe, 1);
 }
 
 static uint32_t
