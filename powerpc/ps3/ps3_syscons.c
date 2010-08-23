@@ -214,9 +214,9 @@ ps3fb_pix32(int attr)
 {
 	u_int retval;
 
-	retval = (ps3fb_cmap[attr].blue  << 16) |
+	retval = (ps3fb_cmap[attr].red  << 16) |
 		(ps3fb_cmap[attr].green << 8) |
-		ps3fb_cmap[attr].red;
+		ps3fb_cmap[attr].blue;
 
 	return (retval);
 }
