@@ -991,38 +991,3 @@ dummy_kbd_configure(int flags)
 }
 KEYBOARD_DRIVER(dummy, dummysw, dummy_kbd_configure);
 
-/*
- * Utility routines from <dev/fb/fbreg.h>
- */
-void
-ofwfb_bcopy(const void *s, void *d, size_t c)
-{
-	bcopy(s, d, c);
-}
-
-void
-ofwfb_bzero(void *d, size_t c)
-{
-	bzero(d, c);
-}
-
-void
-ofwfb_fillw(int pat, void *base, size_t cnt)
-{
-	u_int16_t *bptr = base;
-
-	while (cnt--)
-		*bptr++ = pat;
-}
-
-u_int16_t
-ofwfb_readw(u_int16_t *addr)
-{
-	return (*addr);
-}
-
-void
-ofwfb_writew(u_int16_t *addr, u_int16_t val)
-{
-	*addr = val;
-}
