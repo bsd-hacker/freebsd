@@ -150,6 +150,7 @@ nfs_nget(struct mount *mntp, nfsfh_t *fhp, int fhsize, struct nfsnode **npp, int
 	/*
 	 * NFS supports recursive and shared locking.
 	 */
+	lockmgr(vp->v_vnlock, LK_EXCLUSIVE | LK_NOWITNESS, NULL);
 	VN_LOCK_AREC(vp);
 	VN_LOCK_ASHARE(vp);
 	if (fhsize > NFS_SMALLFH) {
@@ -158,7 +159,6 @@ nfs_nget(struct mount *mntp, nfsfh_t *fhp, int fhsize, struct nfsnode **npp, int
 		np->n_fhp = &np->n_fh;
 	bcopy((caddr_t)fhp, (caddr_t)np->n_fhp, fhsize);
 	np->n_fhsize = fhsize;
-	lockmgr(vp->v_vnlock, LK_EXCLUSIVE | LK_NOWITNESS, NULL);
 	error = insmntque(vp, mntp);
 	if (error != 0) {
 		*npp = NULL;
@@ -193,12 +193,14 @@ nfs_inactive(struct vop_inactive_args *ap)
 	np = VTONFS(ap->a_vp);
 	if (prtactive && vrefcnt(ap->a_vp) != 0)
 		vprint("nfs_inactive: pushing active", ap->a_vp);
+	mtx_lock(&np->n_mtx);
 	if (ap->a_vp->v_type != VDIR) {
 		sp = np->n_sillyrename;
 		np->n_sillyrename = NULL;
 	} else
 		sp = NULL;
 	if (sp) {
+		mtx_unlock(&np->n_mtx);
 		(void)nfs_vinvalbuf(ap->a_vp, 0, td, 1);
 		/*
 		 * Remove the silly file that was rename'd earlier
@@ -207,8 +209,10 @@ nfs_inactive(struct vop_inactive_args *ap)
 		crfree(sp->s_cred);
 		vrele(sp->s_dvp);
 		free((caddr_t)sp, M_NFSREQ);
+		mtx_lock(&np->n_mtx);
 	}
 	np->n_flag &= NMODIFIED;
+	mtx_unlock(&np->n_mtx);
 	return (0);
 }
 
