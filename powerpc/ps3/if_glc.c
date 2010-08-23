@@ -122,6 +122,7 @@ glc_attach(device_t dev)
 
 	sc->sc_bus = ps3bus_get_bus(dev);
 	sc->sc_dev = ps3bus_get_device(dev);
+	sc->sc_self = dev;
 
 	mtx_init(&sc->sc_mtx, device_get_nameunit(dev), MTX_NETWORK_LOCK,
 	    MTX_DEF);
@@ -377,14 +378,16 @@ glc_start_locked(struct ifnet *ifp)
 			 */
 
 			if (sc->sc_txdmadesc[i].cmd_stat & GELIC_DESCR_OWNED) {
-				//kickstart = 0;
+				kickstart = 0;
 				break;
 			}
 		}
 	}
 
-	if (kickstart && first != 0)
+	if (kickstart && first != 0) {
+		lv1_net_stop_tx_dma(sc->sc_bus, sc->sc_dev, 0);
 		lv1_net_start_tx_dma(sc->sc_bus, sc->sc_dev, first, 0);
+	}
 }
 
 static void
@@ -689,6 +692,7 @@ glc_intr(void *xsc)
 	struct glc_softc *sc = xsc; 
 
 	mtx_lock(&sc->sc_mtx);
+	powerpc_sync();
 
 	if (*sc->sc_interrupt_status == 0) {
 		device_printf(sc->sc_self, "stray interrupt!\n");
