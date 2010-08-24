@@ -13,11 +13,99 @@
 #define _calendar_judaic_
 
 /*
+ * The calendar below has gotten from the port deskutils/hebcal for
+ * the year of 2010 and for the city of New York.
+ * This should be updated every year!
+ */
+
+2010/Jan/16	Rosh Chodesh Sh'vat
+2010/Jan/30	Tu B'Shvat
+2010/Feb/13	Shabbat Shekalim
+2010/Feb/14	Rosh Chodesh Adar
+2010/Feb/15	Rosh Chodesh Adar
+2010/Feb/25	Ta'anit Esther
+2010/Feb/27	Shabbat Zachor
+2010/Feb/28	Purim
+2010/Mar/1	Shushan Purim
+2010/Mar/6	Shabbat Parah
+2010/Mar/13	Shabbat HaChodesh
+2010/Mar/16	Rosh Chodesh Nisan
+2010/Mar/27	Shabbat HaGadol
+2010/Mar/29	Ta'anit Bechorot
+2010/Mar/29	Erev Pesach
+2010/Mar/30	Pesach I
+2010/Mar/31	Pesach II
+2010/Apr/1	Pesach III (CH''M)
+2010/Apr/2	Pesach IV (CH''M)
+2010/Apr/3	Pesach V (CH''M)
+2010/Apr/4	Pesach VI (CH''M)
+2010/Apr/5	Pesach VII
+2010/Apr/6	Pesach VIII
+2010/Apr/11	Yom HaShoah
+2010/Apr/14	Rosh Chodesh Iyyar
+2010/Apr/15	Rosh Chodesh Iyyar
+2010/Apr/19	Yom HaZikaron
+2010/Apr/20	Yom HaAtzma'ut
+2010/May/2	Lag B'Omer
+2010/May/Dec	Yom Yerushalayim
+2010/May/14	Rosh Chodesh Sivan
+2010/May/18	Erev Shavuot
+2010/May/19	Shavuot I
+2010/May/20	Shavuot II
+2010/Jun/Dec	Rosh Chodesh Tamuz
+2010/Jun/13	Rosh Chodesh Tamuz
+2010/Jun/29	Tzom Tammuz
+2010/Jul/Dec	Rosh Chodesh Av
+2010/Jul/17	Shabbat Hazon
+2010/Jul/20	Tish'a B'Av
+2010/Jul/24	Shabbat Nachamu
+2010/Aug/Oct	Rosh Chodesh Elul
+2010/Aug/11	Rosh Chodesh Elul
+2010/Sep/8	Erev Rosh Hashana
+2010/Sep/9	Rosh Hashana 5771
+2010/Sep/Oct	Rosh Hashana II
+2010/Sep/11	Shabbat Shuva
+2010/Sep/Dec	Tzom Gedaliah
+2010/Sep/17	Erev Yom Kippur
+2010/Sep/18	Yom Kippur
+2010/Sep/22	Erev Sukkot
+2010/Sep/23	Sukkot I
+2010/Sep/24	Sukkot II
+2010/Sep/25	Sukkot III (CH''M)
+2010/Sep/26	Sukkot IV (CH''M)
+2010/Sep/27	Sukkot V (CH''M)
+2010/Sep/28	Sukkot VI (CH''M)
+2010/Sep/29	Sukkot VII (Hoshana Raba)
+2010/Sep/30	Shmini Atzeret
+2010/Oct/1	Simchat Torah
+2010/Oct/8	Rosh Chodesh Cheshvan
+2010/Oct/9	Rosh Chodesh Cheshvan
+2010/Nov/7	Rosh Chodesh Kislev
+2010/Nov/8	Rosh Chodesh Kislev
+2010/Dec/1	Chanukah: 1 Candle
+2010/Dec/2	Chanukah: 2 Candles
+2010/Dec/3	Chanukah: 3 Candles
+2010/Dec/4	Chanukah: 4 Candles
+2010/Dec/5	Chanukah: 5 Candles
+2010/Dec/6	Chanukah: 6 Candles
+2010/Dec/7	Rosh Chodesh Tevet
+2010/Dec/7	Chanukah: 7 Candles
+2010/Dec/8	Rosh Chodesh Tevet
+2010/Dec/8	Chanukah: 8 Candles
+2010/Dec/9	Chanukah: 8th Day
+2010/Dec/16	Asara B'Tevet
+
+
+/*
+ * The calendar data below was for 2007, so it is commented out.
+ */
+
+/*
  * Jewish calendar for the CE year 2007
  * 11 Tevet 5767 - 22 tevet 5768
  */
 
-
+/*
 01/06*	Parshas Vayechi
 01/13*	Parshas Shemos
 01/20*	Parshas Vaera
@@ -223,5 +311,6 @@
 12/22*	Parshas Vayechi
 12/29*	Parshas Shemos
 
+*/
 
 #endif /* !_calendar_judaic_ */
