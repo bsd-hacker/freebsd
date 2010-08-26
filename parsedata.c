@@ -87,9 +87,9 @@ static int
 determinestyle(char *date, int *flags,
     char *month, int *imonth, char *dayofmonth, int *idayofmonth,
     char *dayofweek, int *idayofweek, char *modifieroffset,
-    char *modifierindex, char *specialday)
+    char *modifierindex, char *specialday, char *year, int *iyear)
 {
-	char *p, *p1, *p2;
+	char *p, *p1, *p2, *py;
 	const char *dow, *pmonth;
 	char pold;
 	size_t len, offset;
@@ -97,6 +97,8 @@ determinestyle(char *date, int *flags,
 	*flags = F_NONE;
 	*month = '\0';
 	*imonth = 0;
+	*year = '\0';
+	*iyear = 0;
 	*dayofmonth = '\0';
 	*idayofmonth = 0;
 	*dayofweek = '\0';
@@ -190,6 +192,22 @@ determinestyle(char *date, int *flags,
 	p1 = date;
 	p2 = p + 1;
 	/* Now p2 points to the next field and p1 to the first field */
+
+	if ((py = strchr(p2, '/')) != NULL) {
+		/* We have a year in the string. Now this is getting tricky */
+		strcpy(year, p1);
+		*iyear = (int)strtol(year, NULL, 10);
+		p1 = p2;
+		p2 = py + 1;
+		*py = 0;
+		*flags |= F_YEAR;
+	}
+
+	/*
+	printf("p1: %s\n", p1);
+	printf("p2: %s\n", p2);
+	printf("year: %s\n", year);
+	*/
 
 	/* Check if there is a month-string in the date */
 	if ((checkmonth(p1, &len, &offset, &pmonth) != 0)
@@ -323,7 +341,8 @@ remember(int *rememberindex, int *y, int *m, int *d, char **ed, int yy, int mm,
 static void
 debug_determinestyle(int dateonly, char *date, int flags, char *month,
     int imonth, char *dayofmonth, int idayofmonth, char *dayofweek,
-    int idayofweek, char *modifieroffset, char *modifierindex, char *specialday)
+    int idayofweek, char *modifieroffset, char *modifierindex, char *specialday,
+    char *year, int iyear)
 {
 
 	if (dateonly != 0) {
@@ -336,6 +355,8 @@ debug_determinestyle(int dateonly, char *date, int flags, char *month,
 		printf("modifieroffset: |%s|\n", modifieroffset);
 	if (modifierindex[0] != '\0')
 		printf("modifierindex: |%s|\n", modifierindex);
+	if (year[0] != '\0')
+		printf("year: |%s| (%d)\n", year, iyear);
 	if (month[0] != '\0')
 		printf("month: |%s| (%d)\n", month, imonth);
 	if (dayofmonth[0] != '\0')
@@ -371,8 +392,10 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags,
     char **edp)
 {
 	char month[100], dayofmonth[100], dayofweek[100], modifieroffset[100];
+	char syear[100];
 	char modifierindex[100], specialday[100];
-	int idayofweek = -1, imonth = -1, idayofmonth = -1, year, remindex;
+	int idayofweek = -1, imonth = -1, idayofmonth = -1, iyear = -1;
+	int year, remindex;
 	int d, m, dow, rm, rd, offset;
 	char *ed;
 	int retvalsign = 1;
@@ -394,10 +417,10 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags,
 	if (debug)
 		debug_determinestyle(1, date, *flags, month, imonth,
 		    dayofmonth, idayofmonth, dayofweek, idayofweek,
-		    modifieroffset, modifierindex, specialday);
+		    modifieroffset, modifierindex, specialday, syear, iyear);
 	if (determinestyle(date, flags, month, &imonth, dayofmonth,
 	    &idayofmonth, dayofweek, &idayofweek, modifieroffset,
-	    modifierindex, specialday) == 0) {
+	    modifierindex, specialday, syear, &iyear) == 0) {
 		if (debug)
 			printf("Failed!\n");
 		return (0);
@@ -406,10 +429,17 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags,
 	if (debug)
 		debug_determinestyle(0, date, *flags, month, imonth,
 		    dayofmonth, idayofmonth, dayofweek, idayofweek,
-		    modifieroffset, modifierindex, specialday);
+		    modifieroffset, modifierindex, specialday, syear, iyear);
 
 	remindex = 0;
 	for (year = year1; year <= year2; year++) {
+
+		/* If the year is specified, only do it if it is this year! */
+		if ((*flags & F_YEAR) != 0)
+			if (iyear != year)
+				continue;
+		*flags &= ~F_YEAR;
+
 		/* Get important dates for this year */
 		yearinfo = years;
 		while (yearinfo != NULL) {
@@ -707,7 +737,7 @@ parsedaymonth(char *date, int *yearp, int *monthp, int *dayp, int *flags,
 		printf("Unprocessed:\n");
 		debug_determinestyle(2, date, *flags, month, imonth,
 		    dayofmonth, idayofmonth, dayofweek, idayofweek,
-		    modifieroffset, modifierindex, specialday);
+		    modifieroffset, modifierindex, specialday, syear, iyear);
 		retvalsign = -1;
 	}
 
@@ -723,6 +753,8 @@ showflags(int flags)
 	static char s[1000];
 	s[0] = '\0';
 
+	if ((flags & F_YEAR) != 0)
+		strcat(s, "year ");
 	if ((flags & F_MONTH) != 0)
 		strcat(s, "month ");
 	if ((flags & F_DAYOFWEEK) != 0)
