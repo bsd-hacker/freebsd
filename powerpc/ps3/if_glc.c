@@ -126,7 +126,8 @@ glc_attach(device_t dev)
 
 	mtx_init(&sc->sc_mtx, device_get_nameunit(dev), MTX_NETWORK_LOCK,
 	    MTX_DEF);
-	sc->next_txdma_slot = sc->first_used_txdma_slot = 0;
+	sc->next_txdma_slot = 0;
+	sc->first_used_txdma_slot = -1;
 
 	/*
 	 * Shut down existing tasks.
@@ -333,13 +334,15 @@ static void
 glc_start_locked(struct ifnet *ifp)
 {
 	struct glc_softc *sc = ifp->if_softc;
-	struct glc_txsoft *txs;
 	bus_addr_t first, pktdesc;
-	int i, kickstart;
+	int kickstart = 0;
 	struct mbuf *mb_head;
 
 	mtx_assert(&sc->sc_mtx, MA_OWNED);
 	first = 0;
+
+	if (STAILQ_EMPTY(&sc->sc_txdirtyq))
+		kickstart = 1;
 
 	while (!IFQ_DRV_IS_EMPTY(&ifp->if_snd)) {
 		IFQ_DRV_DEQUEUE(&ifp->if_snd, mb_head);
@@ -366,23 +369,8 @@ glc_start_locked(struct ifnet *ifp)
 	bus_dmamap_sync(sc->sc_dmadesc_tag, sc->sc_txdmadesc_map,
 	    BUS_DMASYNC_PREREAD);
 
+	/* XXX: kickstart always until problems are sorted out */
 	kickstart = 1;
-	STAILQ_FOREACH(txs, &sc->sc_txdirtyq, txs_q) {
-		for (i = txs->txs_firstdesc;
-		     i != (txs->txs_lastdesc+1) % GLC_MAX_TX_PACKETS;
-		     i = (i + 1) % GLC_MAX_TX_PACKETS) {
-			/*
-			 * Check if any segments are currently being processed.
-			 * If so, the DMA engine will pick up the bits we
-			 * added eventually, otherwise restart DMA
-			 */
-
-			if (sc->sc_txdmadesc[i].cmd_stat & GELIC_DESCR_OWNED) {
-				kickstart = 0;
-				break;
-			}
-		}
-	}
 
 	if (kickstart && first != 0) {
 		lv1_net_stop_tx_dma(sc->sc_bus, sc->sc_dev, 0);
@@ -505,6 +493,10 @@ glc_encap(struct glc_softc *sc, struct mbuf **m_head, bus_addr_t *pktdesc)
 	int nsegs = 16;
 	int err = 0;
 
+	/* Check if the ring buffer is full */
+	if (sc->next_txdma_slot == sc->first_used_txdma_slot)
+		return (-1);
+
 	/* Max number of segments is the number of free DMA slots */
 	if (sc->next_txdma_slot >= sc->first_used_txdma_slot)
 		nsegs = 128 - sc->next_txdma_slot + sc->first_used_txdma_slot;
@@ -578,15 +570,18 @@ glc_encap(struct glc_softc *sc, struct mbuf **m_head, bus_addr_t *pktdesc)
 		idx = (idx + 1) % GLC_MAX_TX_PACKETS;
 	}
 	sc->next_txdma_slot = idx;
-
-	bus_dmamap_sync(sc->sc_txdma_tag, txs->txs_dmamap,
-	    BUS_DMASYNC_PREWRITE);
-
 	idx = (txs->txs_firstdesc - 1) % GLC_MAX_TX_PACKETS;
 	sc->sc_txdmadesc[idx].next = firstslotphys;
 
+	if (sc->first_used_txdma_slot < 0)
+		sc->first_used_txdma_slot = txs->txs_firstdesc;
+
 	bus_dmamap_sync(sc->sc_txdma_tag, txs->txs_dmamap,
 	    BUS_DMASYNC_PREWRITE);
+
+	STAILQ_REMOVE_HEAD(&sc->sc_txfreeq, txs_q);
+	STAILQ_INSERT_TAIL(&sc->sc_txdirtyq, txs, txs_q);
+	txs->txs_mbuf = *m_head;
 
 	if (pktdesc != NULL)
 		*pktdesc = firstslotphys;
@@ -653,7 +648,7 @@ glc_txintr(struct glc_softc *sc)
 
 	while ((txs = STAILQ_FIRST(&sc->sc_txdirtyq)) != NULL) {
 		if (sc->sc_txdmadesc[txs->txs_lastdesc].cmd_stat
-		    != GELIC_CMDSTAT_DMA_DONE)
+		    & GELIC_DESCR_OWNED)
 			break;
 
 		STAILQ_REMOVE_HEAD(&sc->sc_txdirtyq, txs_q);
@@ -669,6 +664,11 @@ glc_txintr(struct glc_softc *sc)
 		ifp->if_opackets++;
 		progress = 1;
 	}
+
+	if (txs != NULL)
+		sc->first_used_txdma_slot = txs->txs_firstdesc;
+	else
+		sc->first_used_txdma_slot = -1;
 
 	if (progress) {
 		/*
