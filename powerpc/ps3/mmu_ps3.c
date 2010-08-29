@@ -51,7 +51,6 @@
 #include "ps3-hvcall.h"
 
 #define VSID_HASH_MASK		0x0000007fffffffffUL
-#define LV1_READ_HTAB_LO_MASK	0xfffUL
 
 extern int ps3fb_remap(void);
 
@@ -199,7 +198,6 @@ mps3_pte_synch(struct lpte *pt, struct lpte *pvo_pt)
 	uint64_t halfbucket[4], rcbits;
 	uint64_t slot = (uint64_t)(pt)-1;
 	
-	__asm __volatile("ptesync");
 	lv1_read_htab_entries(mps3_vas_id, slot & ~0x3UL, &halfbucket[0],
 	    &halfbucket[1], &halfbucket[2], &halfbucket[3], &rcbits);
 
@@ -213,9 +211,9 @@ mps3_pte_synch(struct lpte *pt, struct lpte *pvo_pt)
 	    ("PTE upper word %#lx != %#lx\n",
 	    halfbucket[slot & 0x3], pvo_pt->pte_hi));
 
-	pvo_pt->pte_lo &= ~LV1_READ_HTAB_LO_MASK;
+	pvo_pt->pte_lo &= ~(LPTE_CHG | LPTE_REF);
  	pvo_pt->pte_lo |= (rcbits >> ((3 - (slot & 0x3))*16)) &
-	    LV1_READ_HTAB_LO_MASK;
+	    (LPTE_CHG | LPTE_REF);
 }
 
 static void
@@ -245,11 +243,10 @@ mps3_pte_change(struct lpte *pt, struct lpte *pvo_pt, uint64_t vpn)
 	uint64_t slot = (uint64_t)(pt)-1;
  
 	mps3_pte_synch(pt, pvo_pt);
-	pvo_pt->pte_hi |= LPTE_VALID;
-	lv1_write_htab_entry(mps3_vas_id, slot & ~0x3UL, pvo_pt->pte_hi,
+	lv1_write_htab_entry(mps3_vas_id, slot, pvo_pt->pte_hi,
 	    pvo_pt->pte_lo);
 }
-	
+
 static int
 mps3_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
 {
@@ -292,7 +289,8 @@ mps3_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
 		ptegidx ^= moea64_pteg_mask; /* PTEs indexed by primary */
 
 	LIST_FOREACH(pvo, &moea64_pvo_table[ptegidx], pvo_olink) {
-		if (pvo->pvo_pte.lpte.pte_hi == evicted.pte_hi) {
+		if ((pvo->pvo_pte.lpte.pte_hi & LPTE_AVPN_MASK)
+		     == (evicted.pte_hi & LPTE_AVPN_MASK)) {
 			KASSERT(pvo->pvo_pte.lpte.pte_hi & LPTE_VALID,
 			    ("Invalid PVO for valid PTE!"));
 			pvo->pvo_pte.lpte.pte_hi &= ~LPTE_VALID;
