@@ -3,6 +3,7 @@
 
 AIM			opt_global.h
 E500			opt_global.h
+CELL
 
 POWERPC
 POWERPC64
