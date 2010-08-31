@@ -67,6 +67,7 @@ static int ps3_smp_first_cpu(platform_t, struct cpuref *cpuref);
 static int ps3_smp_next_cpu(platform_t, struct cpuref *cpuref);
 static int ps3_smp_get_bsp(platform_t, struct cpuref *cpuref);
 static int ps3_smp_start_cpu(platform_t, struct pcpu *cpu);
+static void ps3_reset(platform_t);
 
 static platform_method_t ps3_methods[] = {
 	PLATFORMMETHOD(platform_probe, 		ps3_probe),
@@ -78,6 +79,8 @@ static platform_method_t ps3_methods[] = {
 	PLATFORMMETHOD(platform_smp_next_cpu,	ps3_smp_next_cpu),
 	PLATFORMMETHOD(platform_smp_get_bsp,	ps3_smp_get_bsp),
 	PLATFORMMETHOD(platform_smp_start_cpu,	ps3_smp_start_cpu),
+
+	PLATFORMMETHOD(platform_reset,		ps3_reset),
 
 	{ 0, 0 }
 };
@@ -215,3 +218,8 @@ ps3_smp_start_cpu(platform_t plat, struct pcpu *pc)
 #endif
 }
 
+static void
+ps3_reset(platform_t plat)
+{
+	lv1_panic(1);
+}
