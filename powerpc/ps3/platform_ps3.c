@@ -62,6 +62,7 @@ static int ps3_probe(platform_t);
 static int ps3_attach(platform_t);
 static void ps3_mem_regions(platform_t, struct mem_region **phys, int *physsz,
     struct mem_region **avail, int *availsz);
+static vm_offset_t ps3_real_maxaddr(platform_t);
 static u_long ps3_timebase_freq(platform_t, struct cpuref *cpuref);
 static int ps3_smp_first_cpu(platform_t, struct cpuref *cpuref);
 static int ps3_smp_next_cpu(platform_t, struct cpuref *cpuref);
@@ -73,6 +74,7 @@ static platform_method_t ps3_methods[] = {
 	PLATFORMMETHOD(platform_probe, 		ps3_probe),
 	PLATFORMMETHOD(platform_attach,		ps3_attach),
 	PLATFORMMETHOD(platform_mem_regions,	ps3_mem_regions),
+	PLATFORMMETHOD(platform_real_maxaddr,	ps3_real_maxaddr),
 	PLATFORMMETHOD(platform_timebase_freq,	ps3_timebase_freq),
 
 	PLATFORMMETHOD(platform_smp_first_cpu,	ps3_smp_first_cpu),
@@ -114,24 +116,15 @@ ps3_probe(platform_t plat)
 #endif
 }
 
+#define MEM_REGIONS	2
+static struct mem_region avail_regions[MEM_REGIONS];
+
 static int
 ps3_attach(platform_t plat)
 {
-
-	pmap_mmu_install("mmu_ps3", BUS_PROBE_SPECIFIC);
-
-	return (0);
-}
-
-#define MEM_REGIONS	8
-static struct mem_region avail_regions[MEM_REGIONS];
-
-void
-ps3_mem_regions(platform_t plat, struct mem_region **phys, int *physsz,
-    struct mem_region **avail, int *availsz)
-{
 	uint64_t lpar_id, junk, ppe_id;
 
+	/* Get real mode memory region */
 	avail_regions[0].mr_start = 0;
 	lv1_get_logical_partition_id(&lpar_id);
 	lv1_get_logical_ppe_id(&ppe_id);
@@ -140,8 +133,31 @@ ps3_mem_regions(platform_t plat, struct mem_region **phys, int *physsz,
 	    ppe_id, lv1_repository_string("rm_size"),
 	    &avail_regions[0].mr_size, &junk);
 
+	/* Now get extended memory region */
+	lv1_get_repository_node_value(lpar_id,
+	    lv1_repository_string("bi") >> 32,
+	    lv1_repository_string("rgntotal"), 0, 0,
+	    &avail_regions[1].mr_size, &junk);
+
+	/* Convert to maximum amount we can allocate in 16 MB pages */
+	avail_regions[1].mr_size -= avail_regions[0].mr_size;
+	avail_regions[1].mr_size -= avail_regions[1].mr_size % (16*1024*1024);
+
+	lv1_allocate_memory(avail_regions[1].mr_size, 24 /* 16 MB pages */,
+	    0, 0x04 /* any address */, &avail_regions[1].mr_start, &junk);
+
+	pmap_mmu_install("mmu_ps3", BUS_PROBE_SPECIFIC);
+
+	return (0);
+}
+
+void
+ps3_mem_regions(platform_t plat, struct mem_region **phys, int *physsz,
+    struct mem_region **avail, int *availsz)
+{
+
 	*phys = *avail = avail_regions;
-	*physsz = *availsz = 1;
+	*physsz = *availsz = MEM_REGIONS;
 }
 
 static u_long
@@ -223,3 +239,10 @@ ps3_reset(platform_t plat)
 {
 	lv1_panic(1);
 }
+
+static vm_offset_t
+ps3_real_maxaddr(platform_t plat)
+{
+	return (avail_regions[0].mr_start + avail_regions[0].mr_size);
+}
+

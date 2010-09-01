@@ -142,7 +142,11 @@ struct pmap_physseg {
 /*
  * The physical address space is densely populated.
  */
+#ifdef __powerpc64__
+#define	VM_PHYSSEG_SPARSE
+#else
 #define	VM_PHYSSEG_DENSE
+#endif
 
 /*
  * Create three free page pools: VM_FREEPOOL_DEFAULT is the default pool

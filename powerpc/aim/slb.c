@@ -40,11 +40,14 @@
 #include <vm/vm_map.h>
 
 #include <machine/md_var.h>
+#include <machine/platform.h>
 #include <machine/pmap.h>
 #include <machine/vmparam.h>
 
 uintptr_t moea64_get_unique_vsid(void);
 void moea64_release_vsid(uint64_t vsid);
+void *uma_small_alloc_core(uma_zone_t zone, int bytes, u_int8_t *flags,
+    int wait, vm_offset_t minphys, vm_offset_t maxphys);
 
 struct slbcontainer {
 	struct slb slb;
@@ -273,6 +276,18 @@ slb_compare(struct slbcontainer *a, struct slbcontainer *b)
 		return (1);
 }
 
+static void *
+slb_uma_cache_alloc(uma_zone_t zone, int bytes, u_int8_t *flags, int wait)
+{
+	static vm_offset_t realmax = 0;
+
+	if (realmax == 0)
+		realmax = platform_real_maxaddr();
+
+        return (uma_small_alloc_core(zone, bytes, flags, wait, 0, realmax));
+}
+
+
 static void
 slb_zone_init(void *dummy)
 {
@@ -281,6 +296,9 @@ slb_zone_init(void *dummy)
 	    NULL, NULL, NULL, NULL, UMA_ALIGN_PTR, UMA_ZONE_VM);
 	slb_cache_zone = uma_zcreate("SLB cache", 64*sizeof(struct slb),
 	    NULL, NULL, NULL, NULL, UMA_ALIGN_PTR, UMA_ZONE_VM);
+
+	if (platform_real_maxaddr() != VM_MAX_ADDRESS)
+		uma_zone_set_allocf(slb_cache_zone, slb_uma_cache_alloc);
 }
 
 struct slb *

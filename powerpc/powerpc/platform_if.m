@@ -34,6 +34,7 @@
 #include <machine/platform.h>
 #include <machine/platformvar.h>
 #include <machine/smp.h>
+#include <machine/vmparam.h>
 
 /**
  * @defgroup PLATFORM platform - KObj methods for PowerPC platform
@@ -65,6 +66,10 @@ CODE {
 	    struct cpuref  *_cpuref)
 	{
 		return (ENOENT);
+	}
+	static vm_offset_t platform_null_real_maxaddr(platform_t plat)
+	{
+		return (VM_MAX_ADDRESS);
 	}
 };
 
@@ -107,6 +112,15 @@ METHOD void mem_regions {
 	struct mem_region **_availp;
 	int		   *_availsz;
 };
+
+/**
+ * @brief Return the maximum address accessible in real mode
+ *   (for use with hypervisors)
+ */
+METHOD vm_offset_t real_maxaddr {
+	platform_t	_plat;
+} DEFAULT platform_null_real_maxaddr;
+
 
 /**
  * @brief Get the CPU's timebase frequency, in ticks per second.

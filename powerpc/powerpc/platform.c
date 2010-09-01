@@ -69,6 +69,12 @@ mem_regions(struct mem_region **phys, int *physsz, struct mem_region **avail,
 	PLATFORM_MEM_REGIONS(plat_obj, phys, physsz, avail, availsz);
 }
 
+vm_offset_t
+platform_real_maxaddr(void)
+{
+	return (PLATFORM_REAL_MAXADDR(plat_obj));
+}
+
 const char *
 installed_platform()
 {

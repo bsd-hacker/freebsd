@@ -70,7 +70,7 @@ struct glc_softc {
 	int		sc_tx_vlan, sc_rx_vlan;
 	int		sc_ifpflags;
 
-	uint64_t	sc_dma_base;
+	uint64_t	sc_dma_base[5];
 	bus_dma_tag_t	sc_dmadesc_tag;
 
 	int		sc_irqid;

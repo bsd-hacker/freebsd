@@ -264,7 +264,7 @@ mps3_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
 
 	if (result != 0) {
 		/* No freeable slots in either PTEG? We're hosed. */
-		mtmsr(mfmsr() | PSL_DR); panic("moea64_pte_insert: overflow");
+		panic("mps3_pte_insert: overflow (%d)", result);
 		return (-1);
 	}
 
