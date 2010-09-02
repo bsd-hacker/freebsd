@@ -40,6 +40,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/ktr.h>
 #include <sys/mutex.h>
 #include <sys/systm.h>
+#include <sys/smp.h>
 #include <sys/sysctl.h>
 #include <sys/types.h>
 
@@ -110,6 +111,14 @@ platform_smp_start_cpu(struct pcpu *cpu)
 {
 	return (PLATFORM_SMP_START_CPU(plat_obj, cpu));
 }
+
+#ifdef SMP
+struct cpu_group *
+cpu_topo(void)
+{
+        return (PLATFORM_SMP_TOPO(plat_obj));
+}
+#endif
 
 /*
  * Reset back to firmware.

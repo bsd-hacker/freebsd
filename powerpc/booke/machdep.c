@@ -468,38 +468,6 @@ cpu_flush_dcache(void *ptr, size_t len)
 	/* TBD */
 }
 
-/*
- * cpu_idle
- *
- * Set Wait state enable.
- */
-void
-cpu_idle (int busy)
-{
-	register_t msr;
-
-	msr = mfmsr();
-
-#ifdef INVARIANTS
-	if ((msr & PSL_EE) != PSL_EE) {
-		struct thread *td = curthread;
-		printf("td msr %x\n", td->td_md.md_saved_msr);
-		panic("ints disabled in idleproc!");
-	}
-#endif
-
-	/* Freescale E500 core RM section 6.4.1. */
-	msr = msr | PSL_WE;
-	__asm __volatile("msync; mtmsr %0; isync" :: "r" (msr));
-}
-
-int
-cpu_idle_wakeup(int cpu)
-{
-
-	return (0);
-}
-
 void
 spinlock_enter(void)
 {

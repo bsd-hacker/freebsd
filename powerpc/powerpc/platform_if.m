@@ -30,6 +30,7 @@
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/systm.h>
+#include <sys/smp.h>
 
 #include <machine/platform.h>
 #include <machine/platformvar.h>
@@ -66,6 +67,14 @@ CODE {
 	    struct cpuref  *_cpuref)
 	{
 		return (ENOENT);
+	}
+	static struct cpu_group *platform_null_smp_topo(platform_t plat)
+	{
+#ifdef SMP
+		return (smp_topo_none());
+#else
+		return (NULL);
+#endif
 	}
 	static vm_offset_t platform_null_real_maxaddr(platform_t plat)
 	{
@@ -174,6 +183,13 @@ METHOD int smp_start_cpu {
 	platform_t	_plat;
 	struct pcpu	*_cpu;
 };
+
+/**
+ * @brief Return SMP topology
+ */
+METHOD cpu_group_t smp_topo {
+	platform_t	_plat;
+} DEFAULT platform_null_smp_topo;
 
 /**
  * @brief Reset system

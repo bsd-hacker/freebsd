@@ -64,11 +64,15 @@ static void ps3_mem_regions(platform_t, struct mem_region **phys, int *physsz,
     struct mem_region **avail, int *availsz);
 static vm_offset_t ps3_real_maxaddr(platform_t);
 static u_long ps3_timebase_freq(platform_t, struct cpuref *cpuref);
+#ifdef SMP
 static int ps3_smp_first_cpu(platform_t, struct cpuref *cpuref);
 static int ps3_smp_next_cpu(platform_t, struct cpuref *cpuref);
 static int ps3_smp_get_bsp(platform_t, struct cpuref *cpuref);
 static int ps3_smp_start_cpu(platform_t, struct pcpu *cpu);
+static struct cpu_group *ps3_smp_topo(platform_t);
+#endif
 static void ps3_reset(platform_t);
+static void ps3_cpu_idle(void);
 
 static platform_method_t ps3_methods[] = {
 	PLATFORMMETHOD(platform_probe, 		ps3_probe),
@@ -77,10 +81,13 @@ static platform_method_t ps3_methods[] = {
 	PLATFORMMETHOD(platform_real_maxaddr,	ps3_real_maxaddr),
 	PLATFORMMETHOD(platform_timebase_freq,	ps3_timebase_freq),
 
+#ifdef SMP
 	PLATFORMMETHOD(platform_smp_first_cpu,	ps3_smp_first_cpu),
 	PLATFORMMETHOD(platform_smp_next_cpu,	ps3_smp_next_cpu),
 	PLATFORMMETHOD(platform_smp_get_bsp,	ps3_smp_get_bsp),
 	PLATFORMMETHOD(platform_smp_start_cpu,	ps3_smp_start_cpu),
+	PLATFORMMETHOD(platform_smp_topo,	ps3_smp_topo),
+#endif
 
 	PLATFORMMETHOD(platform_reset,		ps3_reset),
 
@@ -147,6 +154,7 @@ ps3_attach(platform_t plat)
 	    0, 0x04 /* any address */, &avail_regions[1].mr_start, &junk);
 
 	pmap_mmu_install("mmu_ps3", BUS_PROBE_SPECIFIC);
+	cpu_idle_hook = ps3_cpu_idle;
 
 	return (0);
 }
@@ -174,6 +182,7 @@ ps3_timebase_freq(platform_t plat, struct cpuref *cpuref)
 	return (ticks);
 }
 
+#ifdef SMP
 static int
 ps3_smp_first_cpu(platform_t plat, struct cpuref *cpuref)
 {
@@ -210,7 +219,6 @@ ps3_smp_get_bsp(platform_t plat, struct cpuref *cpuref)
 static int
 ps3_smp_start_cpu(platform_t plat, struct pcpu *pc)
 {
-#ifdef SMP
 	/* loader(8) is spinning on 0x40 == 0 right now */
 	uint32_t *secondary_spin_sem = (uint32_t *)(0x40);
 	int timeout;
@@ -228,11 +236,14 @@ ps3_smp_start_cpu(platform_t plat, struct pcpu *pc)
 		DELAY(100);
 
 	return ((pc->pc_awake) ? 0 : EBUSY);
-#else
-	/* No SMP support */
-	return (ENXIO);
-#endif
 }
+
+static struct cpu_group *
+ps3_smp_topo(platform_t plat)
+{
+	return (smp_topo_1level(CG_SHARE_L1, 2, CG_FLAG_SMT));
+}
+#endif
 
 static void
 ps3_reset(platform_t plat)
@@ -244,5 +255,21 @@ static vm_offset_t
 ps3_real_maxaddr(platform_t plat)
 {
 	return (avail_regions[0].mr_start + avail_regions[0].mr_size);
+}
+
+static void
+ps3_cpu_idle(void)
+{
+	static volatile int pausing = 0;
+
+	/*
+	 * XXX: It appears that the PS3 can livelock if both threads
+	 * call lv1_pause(0) simultaneously.
+	 */
+	if (!atomic_cmpset_int(&pausing, 0, 1))
+		return;
+
+	lv1_pause(0);
+	pausing = 0;
 }
 

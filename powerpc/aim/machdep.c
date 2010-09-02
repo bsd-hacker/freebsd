@@ -623,52 +623,6 @@ cpu_halt(void)
 	OF_exit();
 }
 
-void
-cpu_idle(int busy)
-{
-	register_t msr;
-	uint16_t vers;
-
-	msr = mfmsr();
-	vers = mfpvr() >> 16;
-
-#ifdef INVARIANTS
-	if ((msr & PSL_EE) != PSL_EE) {
-		struct thread *td = curthread;
-		printf("td msr %#lx\n", (u_long)td->td_md.md_saved_msr);
-		panic("ints disabled in idleproc!");
-	}
-#endif
-	if (powerpc_pow_enabled) {
-		switch (vers) {
-		case IBM970:
-		case IBM970FX:
-		case IBM970MP:
-		case MPC7447A:
-		case MPC7448:
-		case MPC7450:
-		case MPC7455:
-		case MPC7457:
-			__asm __volatile("\
-			    dssall; sync; mtmsr %0; isync"
-			    :: "r"(msr | PSL_POW));
-			break;
-		default:
-			powerpc_sync();
-			mtmsr(msr | PSL_POW);
-			isync();
-			break;
-		}
-	}
-}
-
-int
-cpu_idle_wakeup(int cpu)
-{
-
-	return (0);
-}
-
 int
 ptrace_set_pc(struct thread *td, unsigned long addr)
 {

@@ -62,6 +62,7 @@ struct ps3pic_softc {
 	uint64_t	*bitmap_thread1;
 	uint64_t	*mask_thread1;
 
+	uint64_t	sc_ipi_outlet[2];
 	int		sc_vector[64];
 };
 
@@ -119,9 +120,6 @@ ps3pic_attach(device_t dev)
 	uint64_t ppe;
 	int thread;
 
-	powerpc_register_pic(dev, 64);
-	root_pic = dev; /* PS3s have only one PIC */
-
 	sc = device_get_softc(dev);
 
 	sc->bitmap_thread0 = contigmalloc(128 /* 512 bits * 2 */, M_PS3PIC,
@@ -138,7 +136,18 @@ ps3pic_attach(device_t dev)
 #ifdef SMP
 	lv1_configure_irq_state_bitmap(ppe, !thread,
 	    vtophys(sc->bitmap_thread1));
+
+	/* Map both IPIs to the same VIRQ to avoid changes in intr_machdep */
+	lv1_construct_event_receive_port(&sc->sc_ipi_outlet[0]);
+	lv1_connect_irq_plug_ext(ppe, thread, sc->sc_ipi_outlet[0],
+	    sc->sc_ipi_outlet[0], 0);
+	lv1_construct_event_receive_port(&sc->sc_ipi_outlet[1]);
+	lv1_connect_irq_plug_ext(ppe, !thread, sc->sc_ipi_outlet[0],
+	    sc->sc_ipi_outlet[1], 0);
 #endif
+
+	powerpc_register_pic(dev, sc->sc_ipi_outlet[0]);
+	root_pic = dev; /* PS3s have only one PIC */
 
 	return (0);
 }
@@ -175,9 +184,6 @@ ps3pic_enable(device_t dev, u_int irq, u_int vector)
 {
 	struct ps3pic_softc *sc;
 
-	if (irq > 63) /* IPI */
-		return;
-
 	sc = device_get_softc(dev);
 	sc->sc_vector[irq] = vector;
 
@@ -197,8 +203,12 @@ ps3pic_eoi(device_t dev, u_int irq)
 }
 
 static void
-ps3pic_ipi(device_t dev, u_int irq)
+ps3pic_ipi(device_t dev, u_int cpu)
 {
+	struct ps3pic_softc *sc;
+	sc = device_get_softc(dev);
+
+	lv1_send_event_locally(sc->sc_ipi_outlet[cpu]);
 }
 
 static void
@@ -208,6 +218,11 @@ ps3pic_mask(device_t dev, u_int irq)
 	uint64_t ppe;
 
 	sc = device_get_softc(dev);
+
+	/* Do not mask IPIs! */
+	if (irq == sc->sc_ipi_outlet[0])
+		return;
+
 	sc->mask_thread0[0] &= ~(1UL << (63 - irq));
 	sc->mask_thread1[0] &= ~(1UL << (63 - irq));
 
