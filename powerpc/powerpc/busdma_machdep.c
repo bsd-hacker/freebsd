@@ -53,7 +53,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/bus.h>
 #include <machine/md_var.h>
 
-#define MAX_BPAGES 8192
+#define MAX_BPAGES MIN(8192, physmem/40)
 
 struct bounce_zone;
 
