@@ -51,6 +51,7 @@
 #include "ps3-hvcall.h"
 
 #define VSID_HASH_MASK		0x0000007fffffffffUL
+#define PTESYNC()		__asm __volatile("ptesync")
 
 extern int ps3fb_remap(void);
 
@@ -198,6 +199,7 @@ mps3_pte_synch(struct lpte *pt, struct lpte *pvo_pt)
 	uint64_t halfbucket[4], rcbits;
 	uint64_t slot = (uint64_t)(pt)-1;
 	
+	PTESYNC();
 	lv1_read_htab_entries(mps3_vas_id, slot & ~0x3UL, &halfbucket[0],
 	    &halfbucket[1], &halfbucket[2], &halfbucket[3], &rcbits);
 
@@ -211,7 +213,6 @@ mps3_pte_synch(struct lpte *pt, struct lpte *pvo_pt)
 	    ("PTE upper word %#lx != %#lx\n",
 	    halfbucket[slot & 0x3], pvo_pt->pte_hi));
 
-	pvo_pt->pte_lo &= ~(LPTE_CHG | LPTE_REF);
  	pvo_pt->pte_lo |= (rcbits >> ((3 - (slot & 0x3))*16)) &
 	    (LPTE_CHG | LPTE_REF);
 }
@@ -285,12 +286,16 @@ mps3_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
 	 * here after a fault.
 	 */
 
+	ptegidx = index >> 3; /* Where the sacrifice PTE was found */
 	if (evicted.pte_hi & LPTE_HID)
 		ptegidx ^= moea64_pteg_mask; /* PTEs indexed by primary */
 
+	result = 0;
 	LIST_FOREACH(pvo, &moea64_pvo_table[ptegidx], pvo_olink) {
-		if ((pvo->pvo_pte.lpte.pte_hi & LPTE_AVPN_MASK)
-		     == (evicted.pte_hi & LPTE_AVPN_MASK)) {
+		if (!PVO_PTEGIDX_ISSET(pvo))
+			continue;
+
+		if (pvo->pvo_pte.lpte.pte_hi == (evicted.pte_hi | LPTE_VALID)) {
 			KASSERT(pvo->pvo_pte.lpte.pte_hi & LPTE_VALID,
 			    ("Invalid PVO for valid PTE!"));
 			pvo->pvo_pte.lpte.pte_hi &= ~LPTE_VALID;
@@ -299,9 +304,12 @@ mps3_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
 			PVO_PTEGIDX_CLR(pvo);
 			moea64_pte_valid--;
 			moea64_pte_overflow++;
+			result = 1;
 			break;
 		}
 	}
+
+	KASSERT(result == 1, ("PVO for sacrifice PTE not found"));
 
 	return (index & 0x7);
 }
