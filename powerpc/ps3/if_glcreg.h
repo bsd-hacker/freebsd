@@ -76,7 +76,8 @@ struct glc_softc {
 	int		sc_irqid;
 	struct resource	*sc_irq;
 	void		*sc_irqctx;
-	uint64_t	*sc_interrupt_status;
+	uint64_t	*sc_hwirq_status;
+	volatile uint64_t sc_interrupt_status;
 
 	/* Transmission */
 
@@ -100,6 +101,7 @@ struct glc_softc {
 	bus_addr_t	sc_rxdmadesc_phys;
 
 	int		sc_bus, sc_dev;
+	int		sc_wdog_timer;
 };
 
 #define GELIC_GET_MAC_ADDRESS   0x0001
@@ -119,7 +121,7 @@ struct glc_softc {
 /* Command status code */
 #define	GELIC_DESCR_OWNED	0xa0000000
 #define	GELIC_CMDSTAT_DMA_DONE	0x00000000
-#define	GELIC_CMDSTAT_RX_END	0x00000002
+#define	GELIC_CMDSTAT_CHAIN_END	0x00000002
 #define GELIC_CMDSTAT_NOIPSEC	0x00080000
 #define GELIC_CMDSTAT_LAST	0x00040000
 #define GELIC_RXERRORS		0x7def8000
@@ -128,6 +130,7 @@ struct glc_softc {
 #define GELIC_INT_RXDONE	0x0000000000004000UL
 #define GELIC_INT_RXFRAME	0x1000000000000000UL
 #define GELIC_INT_TXDONE	0x0080000000000000UL
+#define GELIC_INT_TX_CHAIN_END	0x0100000000000000UL
 #define GELIC_INT_PHY		0x0000000020000000UL
 
 /* Hardware DMA descriptor. Must be 32-byte aligned */

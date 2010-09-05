@@ -68,6 +68,7 @@ static int	glc_add_rxbuf(struct glc_softc *sc, int idx);
 static int	glc_add_rxbuf_dma(struct glc_softc *sc, int idx);
 static int	glc_encap(struct glc_softc *sc, struct mbuf **m_head,
 		    bus_addr_t *pktdesc);
+static int	glc_intr_filter(void *xsc);
 static void	glc_intr(void *xsc);
 
 static MALLOC_DEFINE(M_GLC, "gelic", "PS3 GELIC ethernet");
@@ -193,15 +194,15 @@ glc_attach(device_t dev)
 	}
 
 	bus_setup_intr(dev, sc->sc_irq,
-	    INTR_TYPE_MISC | INTR_MPSAFE | INTR_ENTROPY, NULL, glc_intr,
-	    sc, &sc->sc_irqctx);
-	sc->sc_interrupt_status = (uint64_t *)contigmalloc(8, M_GLC, M_ZERO, 0,
+	    INTR_TYPE_MISC | INTR_MPSAFE | INTR_ENTROPY,
+	    glc_intr_filter, glc_intr, sc, &sc->sc_irqctx);
+	sc->sc_hwirq_status = (uint64_t *)contigmalloc(8, M_GLC, M_ZERO, 0,
 	    BUS_SPACE_MAXADDR_32BIT, 8, PAGE_SIZE);
 	lv1_net_set_interrupt_status_indicator(sc->sc_bus, sc->sc_dev,
-	    vtophys(sc->sc_interrupt_status), 0);
+	    vtophys(sc->sc_hwirq_status), 0);
 	lv1_net_set_interrupt_mask(sc->sc_bus, sc->sc_dev,
 	    GELIC_INT_RXDONE | GELIC_INT_TXDONE | GELIC_INT_RXFRAME |
-	    GELIC_INT_PHY, 0);
+	    GELIC_INT_PHY | GELIC_INT_TX_CHAIN_END, 0);
 
 	/*
 	 * Set up DMA.
@@ -398,12 +399,9 @@ glc_start_locked(struct ifnet *ifp)
 	bus_dmamap_sync(sc->sc_dmadesc_tag, sc->sc_txdmadesc_map,
 	    BUS_DMASYNC_PREREAD);
 
-	/* XXX: kickstart always until problems are sorted out */
-	kickstart = 1;
-
 	if (kickstart && first != 0) {
-		lv1_net_stop_tx_dma(sc->sc_bus, sc->sc_dev, 0);
 		lv1_net_start_tx_dma(sc->sc_bus, sc->sc_dev, first, 0);
+		sc->sc_wdog_timer = 5;
 	}
 }
 
@@ -577,9 +575,6 @@ glc_encap(struct glc_softc *sc, struct mbuf **m_head, bus_addr_t *pktdesc)
 	    txs->txs_firstdesc*sizeof(struct glc_dmadesc));
 
 	for (i = 0; i < nsegs; i++) {
-		if (i+1 == nsegs)
-			txs->txs_lastdesc = sc->next_txdma_slot;
-
 		bzero(&sc->sc_txdmadesc[idx], sizeof(sc->sc_txdmadesc[idx]));
 		sc->sc_txdmadesc[idx].paddr = glc_map_addr(sc, segs[i].ds_addr);
 		sc->sc_txdmadesc[idx].len = segs[i].ds_len;
@@ -589,7 +584,7 @@ glc_encap(struct glc_softc *sc, struct mbuf **m_head, bus_addr_t *pktdesc)
 		sc->sc_txdmadesc[idx].cmd_stat |= GELIC_CMDSTAT_NOIPSEC;
 
 		if (i+1 == nsegs) {
-			txs->txs_lastdesc = sc->next_txdma_slot;
+			txs->txs_lastdesc = idx;
 			sc->sc_txdmadesc[idx].next = 0;
 			sc->sc_txdmadesc[idx].cmd_stat |= GELIC_CMDSTAT_LAST;
 		}
@@ -659,7 +654,7 @@ glc_rxintr(struct glc_softc *sc)
 		mtx_lock(&sc->sc_mtx);
 
 	    requeue:
-		if (sc->sc_rxdmadesc[i].cmd_stat & GELIC_CMDSTAT_RX_END)
+		if (sc->sc_rxdmadesc[i].cmd_stat & GELIC_CMDSTAT_CHAIN_END)
 			restart_rxdma = 1;
 		glc_add_rxbuf_dma(sc, i);	
 		if (restart_rxdma)
@@ -673,7 +668,7 @@ glc_txintr(struct glc_softc *sc)
 {
 	struct ifnet *ifp = sc->sc_ifp;
 	struct glc_txsoft *txs;
-	int progress = 0;
+	int progress = 0, kickstart = 0;
 
 	while ((txs = STAILQ_FIRST(&sc->sc_txdirtyq)) != NULL) {
 		if (sc->sc_txdmadesc[txs->txs_lastdesc].cmd_stat
@@ -688,8 +683,18 @@ glc_txintr(struct glc_softc *sc)
 			txs->txs_mbuf = NULL;
 		}
 
-		STAILQ_INSERT_TAIL(&sc->sc_txfreeq, txs, txs_q);
+		if ((sc->sc_txdmadesc[txs->txs_lastdesc].cmd_stat & 0xf0000000)
+		    != 0) {
+			lv1_net_stop_tx_dma(sc->sc_bus, sc->sc_dev, 0);
+			kickstart = 1;
+			ifp->if_oerrors++;
+		}
 
+		if (sc->sc_txdmadesc[txs->txs_lastdesc].cmd_stat &
+		    GELIC_CMDSTAT_CHAIN_END)
+			kickstart = 1;
+
+		STAILQ_INSERT_TAIL(&sc->sc_txfreeq, txs, txs_q);
 		ifp->if_opackets++;
 		progress = 1;
 	}
@@ -699,15 +704,19 @@ glc_txintr(struct glc_softc *sc)
 	else
 		sc->first_used_txdma_slot = -1;
 
+	if (kickstart && txs != NULL) {
+		lv1_net_start_tx_dma(sc->sc_bus, sc->sc_dev,
+		    glc_map_addr(sc, sc->sc_txdmadesc_phys +
+		    txs->txs_firstdesc*sizeof(struct glc_dmadesc)), 0);
+	}
+
 	if (progress) {
 		/*
 		 * We freed some descriptors, so reset IFF_DRV_OACTIVE
 		 * and restart.
 		 */
 		ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
-#if 0
 		sc->sc_wdog_timer = STAILQ_EMPTY(&sc->sc_txdirtyq) ? 0 : 5;
-#endif
 
 		if ((ifp->if_drv_flags & IFF_DRV_RUNNING) &&
 		    !IFQ_DRV_IS_EMPTY(&ifp->if_snd))
@@ -715,25 +724,37 @@ glc_txintr(struct glc_softc *sc)
 	}
 }
 
+static int
+glc_intr_filter(void *xsc)
+{
+	struct glc_softc *sc = xsc; 
+
+	powerpc_sync();
+	atomic_set_64(&sc->sc_interrupt_status, *sc->sc_hwirq_status);
+	return (FILTER_SCHEDULE_THREAD);
+}
+
 static void
 glc_intr(void *xsc)
 {
 	struct glc_softc *sc = xsc; 
+	uint64_t status;
 
 	mtx_lock(&sc->sc_mtx);
-	powerpc_sync();
 
-	if (*sc->sc_interrupt_status == 0) {
-		device_printf(sc->sc_self, "stray interrupt!\n");
+	status = atomic_readandclear_64(&sc->sc_interrupt_status);
+
+	if (status == 0) {
 		mtx_unlock(&sc->sc_mtx);
 		return;
 	}
 
-	if (*sc->sc_interrupt_status & (GELIC_INT_RXDONE | GELIC_INT_RXFRAME))
+	if (status & (GELIC_INT_RXDONE | GELIC_INT_RXFRAME))
 		glc_rxintr(sc);
 
-	if (*sc->sc_interrupt_status & GELIC_INT_TXDONE)
+	if (status & (GELIC_INT_TXDONE | GELIC_INT_TX_CHAIN_END))
 		glc_txintr(sc);
 
 	mtx_unlock(&sc->sc_mtx);
 }
+
