@@ -38,7 +38,6 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_kern.h>
 #include <vm/vm_pageout.h>
 #include <vm/vm_extern.h>
-#include <vm/vm_phys.h>
 #include <vm/uma.h>
 #include <vm/uma.h>
 #include <vm/uma_int.h>
@@ -49,19 +48,8 @@ static int hw_uma_mdpages;
 SYSCTL_INT(_hw, OID_AUTO, uma_mdpages, CTLFLAG_RD, &hw_uma_mdpages, 0,
 	   "UMA MD pages in use");
 
-void *uma_small_alloc_core(uma_zone_t zone, int bytes, u_int8_t *flags,
-    int wait, vm_offset_t minphys, vm_offset_t maxphys);
-
 void *
 uma_small_alloc(uma_zone_t zone, int bytes, u_int8_t *flags, int wait)
-{
-	return (uma_small_alloc_core(zone, bytes, flags, wait,
-	    0, VM_MAX_ADDRESS));
-}
-
-void *
-uma_small_alloc_core(uma_zone_t zone, int bytes, u_int8_t *flags, int wait,
-    vm_offset_t minphys, vm_offset_t maxphys)
 {
 	static vm_pindex_t color;
 	void *va;
@@ -77,12 +65,7 @@ uma_small_alloc_core(uma_zone_t zone, int bytes, u_int8_t *flags, int wait,
 		pflags |= VM_ALLOC_ZERO;
 
 	for (;;) {
-		if (minphys == 0 && maxphys == VM_MAX_ADDRESS)
-			m = vm_page_alloc(NULL, color++,
-			    pflags | VM_ALLOC_NOOBJ);
-		else
-			m = vm_phys_alloc_contig(1, minphys, maxphys, PAGE_SIZE,
-			    PAGE_SIZE);
+		m = vm_page_alloc(NULL, color++, pflags | VM_ALLOC_NOOBJ);
 		if (m == NULL) {
 			if (wait & M_NOWAIT)
 				return (NULL);

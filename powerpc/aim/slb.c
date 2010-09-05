@@ -37,7 +37,11 @@
 #include <vm/vm.h>
 #include <vm/pmap.h>
 #include <vm/uma.h>
+#include <vm/vm.h>
 #include <vm/vm_map.h>
+#include <vm/vm_page.h>
+#include <vm/vm_pageout.h>
+#include <vm/vm_phys.h>
 
 #include <machine/md_var.h>
 #include <machine/platform.h>
@@ -46,8 +50,6 @@
 
 uintptr_t moea64_get_unique_vsid(void);
 void moea64_release_vsid(uint64_t vsid);
-void *uma_small_alloc_core(uma_zone_t zone, int bytes, u_int8_t *flags,
-    int wait, vm_offset_t minphys, vm_offset_t maxphys);
 
 struct slbcontainer {
 	struct slb slb;
@@ -280,13 +282,57 @@ static void *
 slb_uma_cache_alloc(uma_zone_t zone, int bytes, u_int8_t *flags, int wait)
 {
 	static vm_offset_t realmax = 0;
+	void *va;
+	vm_page_t m;
+	int pflags;
 
 	if (realmax == 0)
 		realmax = platform_real_maxaddr();
 
-        return (uma_small_alloc_core(zone, bytes, flags, wait, 0, realmax));
+	*flags = UMA_SLAB_PRIV;
+	if ((wait & (M_NOWAIT|M_USE_RESERVE)) == M_NOWAIT)
+		pflags = VM_ALLOC_INTERRUPT | VM_ALLOC_WIRED;
+	else    
+		pflags = VM_ALLOC_SYSTEM | VM_ALLOC_WIRED;
+	if (wait & M_ZERO)
+		pflags |= VM_ALLOC_ZERO;
+
+	for (;;) {
+		m = vm_phys_alloc_contig(1, 0, realmax, PAGE_SIZE,
+			    PAGE_SIZE);
+		if (m == NULL) {
+			if (wait & M_NOWAIT)
+				return (NULL);
+			VM_WAIT;
+		} else
+                        break;
+        }
+
+	va = (void *) VM_PAGE_TO_PHYS(m);
+
+	if (!hw_direct_map)
+		pmap_kenter((vm_offset_t)va, VM_PAGE_TO_PHYS(m));
+
+	if ((wait & M_ZERO) && (m->flags & PG_ZERO) == 0)
+		bzero(va, PAGE_SIZE);
+
+        return (va);
 }
 
+static void
+slb_uma_cache_free(void *mem, int size, u_int8_t flags)
+{
+	vm_page_t m;
+
+	if (!hw_direct_map)
+		pmap_remove(kernel_pmap,(vm_offset_t)mem,
+		    (vm_offset_t)mem + PAGE_SIZE);
+
+	m = PHYS_TO_VM_PAGE((vm_offset_t)mem);
+	vm_page_lock_queues();
+	vm_phys_free_pages(m, 0);
+	vm_page_unlock_queues();
+}
 
 static void
 slb_zone_init(void *dummy)
@@ -297,8 +343,10 @@ slb_zone_init(void *dummy)
 	slb_cache_zone = uma_zcreate("SLB cache", 64*sizeof(struct slb),
 	    NULL, NULL, NULL, NULL, UMA_ALIGN_PTR, UMA_ZONE_VM);
 
-	if (platform_real_maxaddr() != VM_MAX_ADDRESS)
+	if (platform_real_maxaddr() != VM_MAX_ADDRESS) {
 		uma_zone_set_allocf(slb_cache_zone, slb_uma_cache_alloc);
+		uma_zone_set_freef(slb_cache_zone, slb_uma_cache_free);
+	}
 }
 
 struct slb *
