@@ -156,6 +156,9 @@ ps3_attach(platform_t plat)
 	pmap_mmu_install("mmu_ps3", BUS_PROBE_SPECIFIC);
 	cpu_idle_hook = ps3_cpu_idle;
 
+	/* Set a breakpoint to make NULL an invalid address */
+	lv1_set_dabr(0x7 /* read and write, MMU on */, 2 /* kernel accesses */);
+
 	return (0);
 }
 

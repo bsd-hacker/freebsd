@@ -95,6 +95,7 @@ OFW_DEF(ofw_fdt);
 
 static void *fdtp = NULL;
 
+extern int pmap_bootstrapped;
 static int
 ofw_fdt_init(ofw_t ofw, void *data)
 {
@@ -137,6 +138,9 @@ ofw_fdt_peer(ofw_t ofw, phandle_t node)
 {
 	phandle_t p;
 	int depth, offset;
+
+	if (fdtp == NULL)
+		return (-1);
 
 	if (node == 0) {
 		/* Find root node */
@@ -381,6 +385,9 @@ ofw_fdt_finddevice(ofw_t ofw, const char *device)
 {
 	phandle_t p;
 	int offset;
+
+	if (fdtp == NULL)
+		return (-1);
 
 	offset = fdt_path_offset(fdtp, device);
 
