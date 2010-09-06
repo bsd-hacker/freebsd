@@ -95,7 +95,7 @@ bridge_pcmcia_ack(int irq)
 
 static int
 iodi_setup_intr(device_t dev, device_t child,
-    struct resource *ires, int flags, driver_filter_t * filt,
+    struct resource *ires, int flags, driver_filter_t *filt,
     driver_intr_t *intr, void *arg, void **cookiep)
 {
 	const char *name = device_get_name(child);
@@ -104,7 +104,7 @@ iodi_setup_intr(device_t dev, device_t child,
 		/* FIXME uart 1? */
 		cpu_establish_hardintr("uart", filt, intr, arg,
 		    PIC_UART_0_IRQ, flags, cookiep);
-		pic_setup_intr(PIC_IRT_UART_0_INDEX, PIC_UART_0_IRQ, 0x1, 0);
+		pic_setup_intr(PIC_IRT_UART_0_INDEX, PIC_UART_0_IRQ, 0x1, 1);
 	} else if (strcmp(name, "rge") == 0 || strcmp(name, "nlge") == 0) {
 		int irq;
 
@@ -112,15 +112,15 @@ iodi_setup_intr(device_t dev, device_t child,
 		irq = (intptr_t)ires->__r_i;
 		cpu_establish_hardintr("rge", filt, intr, arg, irq, flags,
 		    cookiep);
-		pic_setup_intr(irq - PIC_IRQ_BASE, irq, 0x1, 0);
+		pic_setup_intr(irq - PIC_IRQ_BASE, irq, 0x1, 1);
 	} else if (strcmp(name, "ehci") == 0) {
 		cpu_establish_hardintr("ehci", filt, intr, arg, PIC_USB_IRQ, flags,
 		    cookiep);
-		pic_setup_intr(PIC_USB_IRQ - PIC_IRQ_BASE, PIC_USB_IRQ, 0x1, 0);
+		pic_setup_intr(PIC_USB_IRQ - PIC_IRQ_BASE, PIC_USB_IRQ, 0x1, 1);
 	} else if (strcmp(name, "ata") == 0) {
 		xlr_establish_intr("ata", filt, intr, arg, PIC_PCMCIA_IRQ, flags,
 		    cookiep, bridge_pcmcia_ack);
-		pic_setup_intr(PIC_PCMCIA_IRQ - PIC_IRQ_BASE, PIC_PCMCIA_IRQ, 0x1, 0);
+		pic_setup_intr(PIC_PCMCIA_IRQ - PIC_IRQ_BASE, PIC_PCMCIA_IRQ, 0x1, 1);
 	}
 	return (0);
 }
@@ -130,6 +130,7 @@ iodi_alloc_resource(device_t bus, device_t child, int type, int *rid,
     u_long start, u_long end, u_long count, u_int flags)
 {
 	struct resource *res = malloc(sizeof(*res), M_DEVBUF, M_WAITOK);
+	const char *name = device_get_name(child);
 	int unit;
 
 #ifdef DEBUG
@@ -151,7 +152,7 @@ iodi_alloc_resource(device_t bus, device_t child, int type, int *rid,
 	}
 #endif
 
-	if (strcmp(device_get_name(child), "uart") == 0) {
+	if (strcmp(name, "uart") == 0) {
 		if ((unit = device_get_unit(child)) == 0) {	/* uart 0 */
 			res->r_bushandle = (xlr_io_base + XLR_IO_UART_0_OFFSET);
 		} else if (unit == 1) {
@@ -160,13 +161,13 @@ iodi_alloc_resource(device_t bus, device_t child, int type, int *rid,
 			printf("%s: Unknown uart unit\n", __FUNCTION__);
 
 		res->r_bustag = uart_bus_space_mem;
-	} else if (strcmp(device_get_name(child), "ehci") == 0) {
+	} else if (strcmp(name, "ehci") == 0) {
 		res->r_bushandle = MIPS_PHYS_TO_KSEG1(0x1ef24000);
 		res->r_bustag = rmi_pci_bus_space;
-	} else if (strcmp(device_get_name(child), "cfi") == 0) {
+	} else if (strcmp(name, "cfi") == 0) {
 		res->r_bushandle = MIPS_PHYS_TO_KSEG1(0x1c000000);
 		res->r_bustag = 0;
-	} else if (strcmp(device_get_name(child), "ata") == 0) {
+	} else if (strcmp(name, "ata") == 0) {
 		res->r_bushandle = MIPS_PHYS_TO_KSEG1(0x1d000000);
 		res->r_bustag = rmi_pci_bus_space;  /* byte swapping (not really PCI) */
 	}

@@ -185,6 +185,7 @@ extern struct pmap ofw_pmap;
  * Lock for the pteg and pvo tables.
  */
 struct mtx	moea_table_mutex;
+struct mtx	moea_vsid_mutex;
 
 /* tlbie instruction synchronization */
 static struct mtx tlbie_mtx;
@@ -801,6 +802,7 @@ moea_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernelend)
 	 */
 	mtx_init(&moea_table_mutex, "pmap table", NULL, MTX_DEF |
 	    MTX_RECURSE);
+	mtx_init(&moea_vsid_mutex, "VSID table", NULL, MTX_DEF);
 
 	mtx_init(&tlbie_mtx, "tlbie", NULL, MTX_SPIN);
 
@@ -1571,6 +1573,7 @@ moea_pinit(mmu_t mmu, pmap_t pmap)
 	}
 	
 
+	mtx_lock(&moea_vsid_mutex);
 	/*
 	 * Allocate some segment registers for this pmap.
 	 */
@@ -1605,9 +1608,11 @@ moea_pinit(mmu_t mmu, pmap_t pmap)
 		moea_vsid_bitmap[n] |= mask;
 		for (i = 0; i < 16; i++)
 			pmap->pm_sr[i] = VSID_MAKE(i, hash);
+		mtx_unlock(&moea_vsid_mutex);
 		return;
 	}
 
+	mtx_unlock(&moea_vsid_mutex);
 	panic("moea_pinit: out of segments");
 }
 
@@ -1719,10 +1724,12 @@ moea_release(mmu_t mmu, pmap_t pmap)
         if (pmap->pm_sr[0] == 0)
                 panic("moea_release");
 
+	mtx_lock(&moea_vsid_mutex);
         idx = VSID_TO_HASH(pmap->pm_sr[0]) & (NPMAPS-1);
         mask = 1 << (idx % VSID_NBPW);
         idx /= VSID_NBPW;
         moea_vsid_bitmap[idx] &= ~mask;
+	mtx_unlock(&moea_vsid_mutex);
 	PMAP_LOCK_DESTROY(pmap);
 }
 

@@ -96,10 +96,10 @@ static size_t vesa_bios_size = 0;
 static video_adapter_t *vesa_adp = NULL;
 
 SYSCTL_NODE(_debug, OID_AUTO, vesa, CTLFLAG_RD, NULL, "VESA debugging");
-static int vesa_shadow_rom = 1;
+static int vesa_shadow_rom = 0;
 TUNABLE_INT("debug.vesa.shadow_rom", &vesa_shadow_rom);
 SYSCTL_INT(_debug_vesa, OID_AUTO, shadow_rom, CTLFLAG_RDTUN, &vesa_shadow_rom,
-    1, "Enable video BIOS shadow");
+    0, "Enable video BIOS shadow");
 
 /* VESA functions */
 #if 0
@@ -799,19 +799,25 @@ vesa_bios_init(void)
 	/*
 	 * Shadow video ROM.
 	 */
-	offs = BIOS_SADDRTOLADDR(vesa_bios_int10);
+	offs = vesa_bios_int10;
 	if (vesa_shadow_rom) {
 		vbios = x86bios_get_orm(vesa_bios_offs);
 		if (vbios != NULL) {
 			vesa_bios_size = vbios[2] * 512;
-			vesa_bios = x86bios_alloc(&vesa_bios_offs,
-			    vesa_bios_size, M_WAITOK);
-			memcpy(vesa_bios, vbios, vesa_bios_size);
-			offs = offs - VESA_BIOS_OFFSET + vesa_bios_offs;
-			offs = (X86BIOS_PHYSTOSEG(offs) << 16) +
-			    X86BIOS_PHYSTOOFF(offs);
-			x86bios_set_intr(0x10, offs);
-		} else
+			offs = BIOS_SADDRTOLADDR(vesa_bios_int10);
+			if (offs > vesa_bios_offs &&
+			    offs < vesa_bios_offs + vesa_bios_size) {
+				vesa_bios = x86bios_alloc(&vesa_bios_offs,
+				    vesa_bios_size, M_WAITOK);
+				memcpy(vesa_bios, vbios, vesa_bios_size);
+				offs = offs - VESA_BIOS_OFFSET + vesa_bios_offs;
+				offs = (X86BIOS_PHYSTOSEG(offs) << 16) +
+				    X86BIOS_PHYSTOOFF(offs);
+				x86bios_set_intr(0x10, offs);
+			} else
+				offs = vesa_bios_int10;
+		}
+		if (vesa_bios == NULL)
 			printf("VESA: failed to shadow video ROM\n");
 	}
 	if (bootverbose)

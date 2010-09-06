@@ -266,6 +266,7 @@ mips_init(void)
 	init_param2(physmem);
 
 	mips_cpu_init();
+	cpuinfo.cache_coherent_dma = TRUE;
 	pmap_bootstrap();
 #ifdef DDB
 	kdb_init();
@@ -296,25 +297,23 @@ xlr_pic_init(void)
 		2000,                   /* quality (adjusted in code) */
 	};
 	xlr_reg_t *mmio = xlr_io_mmio(XLR_IO_PIC_OFFSET);
-	int i, level, irq;
+	int i, irq;
 
+	write_c0_eimr64(0ULL);
 	mtx_init(&xlr_pic_lock, "pic", NULL, MTX_SPIN);
 	xlr_write_reg(mmio, PIC_CTRL, 0);
 
 	/* Initialize all IRT entries */
 	for (i = 0; i < PIC_NUM_IRTS; i++) {
 		irq = PIC_INTR_TO_IRQ(i);
-		level = PIC_IS_EDGE_TRIGGERED(i);
-
-		/* Bind all PIC irqs to cpu 0 */
-		xlr_write_reg(mmio, PIC_IRT_0(i), 0x01);
 
 		/*
-		 * Use local scheduling and high polarity for all IRTs
-		 * Invalidate all IRTs, by default
+		 * Disable all IRTs. Set defaults (local scheduling, high
+		 * polarity, level * triggered, and CPU irq)
 		 */
-		xlr_write_reg(mmio, PIC_IRT_1(i), (level << 30) | (1 << 6) |
-		    irq);
+		xlr_write_reg(mmio, PIC_IRT_1(i), (1 << 30) | (1 << 6) | irq);
+		/* Bind all PIC irqs to cpu 0 */
+		xlr_write_reg(mmio, PIC_IRT_0(i), 0x01);
 	}
 
 	/* Setup timer 7 of PIC as a timestamp, no interrupts */
@@ -574,6 +573,7 @@ platform_init_ap(int cpuid)
 	stat |= MIPS_SR_COP_2_BIT | MIPS_SR_COP_0_BIT;
 	mips_wr_status(stat);
 
+	write_c0_eimr64(0ULL);
 	xlr_enable_irq(IRQ_IPI);
 	xlr_enable_irq(IRQ_TIMER);
 	if (xlr_thr_id() == 0) {
