@@ -64,6 +64,7 @@ static int	glc_attach(device_t);
 static void	glc_init(void *xsc);
 static void	glc_start(struct ifnet *ifp);
 static int	glc_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data);
+static void	glc_set_multicast(struct glc_softc *sc);
 static int	glc_add_rxbuf(struct glc_softc *sc, int idx);
 static int	glc_add_rxbuf_dma(struct glc_softc *sc, int idx);
 static int	glc_encap(struct glc_softc *sc, struct mbuf **m_head,
@@ -71,6 +72,8 @@ static int	glc_encap(struct glc_softc *sc, struct mbuf **m_head,
 static int	glc_intr_filter(void *xsc);
 static void	glc_intr(void *xsc);
 static void	glc_tick(void *xsc);
+static void	glc_media_status(struct ifnet *ifp, struct ifmediareq *ifmr);
+static int	glc_media_change(struct ifnet *ifp);
 
 static MALLOC_DEFINE(M_GLC, "gelic", "PS3 GELIC ethernet");
 
@@ -297,9 +300,22 @@ glc_attach(device_t dev)
 	if_initname(sc->sc_ifp, device_get_name(dev), device_get_unit(dev));
 	sc->sc_ifp->if_mtu = ETHERMTU;
 	sc->sc_ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
+	sc->sc_ifp->if_hwassist = CSUM_TCP | CSUM_UDP;
+	sc->sc_ifp->if_capabilities = IFCAP_HWCSUM | IFCAP_RXCSUM;
+	sc->sc_ifp->if_capenable = IFCAP_HWCSUM | IFCAP_RXCSUM;
 	sc->sc_ifp->if_start = glc_start;
 	sc->sc_ifp->if_ioctl = glc_ioctl;
 	sc->sc_ifp->if_init = glc_init;
+
+	ifmedia_init(&sc->sc_media, IFM_IMASK, glc_media_change,
+	    glc_media_status);
+	ifmedia_add(&sc->sc_media, IFM_ETHER | IFM_10_T, 0, NULL);
+	ifmedia_add(&sc->sc_media, IFM_ETHER | IFM_10_T | IFM_FDX, 0, NULL);
+	ifmedia_add(&sc->sc_media, IFM_ETHER | IFM_100_TX, 0, NULL);
+	ifmedia_add(&sc->sc_media, IFM_ETHER | IFM_100_TX | IFM_FDX, 0, NULL);
+	ifmedia_add(&sc->sc_media, IFM_ETHER | IFM_1000_T | IFM_FDX, 0, NULL);
+	ifmedia_add(&sc->sc_media, IFM_ETHER | IFM_AUTO, 0, NULL);
+	ifmedia_set(&sc->sc_media, IFM_ETHER | IFM_AUTO);
 
 	IFQ_SET_MAXLEN(&sc->sc_ifp->if_snd, GLC_MAX_TX_PACKETS);
 	sc->sc_ifp->if_snd.ifq_drv_maxlen = GLC_MAX_TX_PACKETS;
@@ -327,6 +343,8 @@ glc_init_locked(struct glc_softc *sc)
 
 	lv1_net_stop_tx_dma(sc->sc_bus, sc->sc_dev, 0);
 	lv1_net_stop_rx_dma(sc->sc_bus, sc->sc_dev, 0);
+
+	glc_set_multicast(sc);
 
 	for (i = 0; i < GLC_MAX_RX_PACKETS; i++) {
 		rxs = &sc->sc_rxsoft[i];
@@ -362,6 +380,17 @@ glc_init_locked(struct glc_softc *sc)
 
 	sc->sc_wdog_timer = 0;
 	callout_reset(&sc->sc_tick_ch, hz, glc_tick, sc);
+}
+
+static void
+glc_stop(void *xsc)
+{
+	struct glc_softc *sc = xsc;
+
+	mtx_assert(&sc->sc_mtx, MA_OWNED);
+
+	lv1_net_stop_tx_dma(sc->sc_bus, sc->sc_dev, 0);
+	lv1_net_stop_rx_dma(sc->sc_bus, sc->sc_dev, 0);
 }
 
 static void
@@ -458,30 +487,34 @@ static int
 glc_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 {
 	struct glc_softc *sc = ifp->if_softc;
-#if 0
 	struct ifreq *ifr = (struct ifreq *)data;
-#endif
 	int err = 0;
 
 	switch (cmd) {
 	case SIOCSIFFLAGS:
                 mtx_lock(&sc->sc_mtx);
 		if ((ifp->if_flags & IFF_UP) != 0) {
-#if 0
 			if ((ifp->if_drv_flags & IFF_DRV_RUNNING) != 0 &&
 			   ((ifp->if_flags ^ sc->sc_ifpflags) &
 			    (IFF_ALLMULTI | IFF_PROMISC)) != 0)
-				bm_setladrf(sc);
+				glc_set_multicast(sc);
 			else
-#endif
 				glc_init_locked(sc);
 		}
-#if 0
 		else if ((ifp->if_drv_flags & IFF_DRV_RUNNING) != 0)
-			bm_stop(sc);
-#endif
+			glc_stop(sc);
 		sc->sc_ifpflags = ifp->if_flags;
 		mtx_unlock(&sc->sc_mtx);
+		break;
+	case SIOCADDMULTI:
+	case SIOCDELMULTI:
+                mtx_lock(&sc->sc_mtx);
+		glc_set_multicast(sc);
+                mtx_unlock(&sc->sc_mtx);
+		break;
+	case SIOCGIFMEDIA:
+	case SIOCSIFMEDIA:
+		err = ifmedia_ioctl(ifp, ifr, &sc->sc_media, cmd);
 		break;
 	default:
 		err = ether_ioctl(ifp, cmd, data);
@@ -489,6 +522,51 @@ glc_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	}
 
 	return (err);
+}
+
+static void
+glc_set_multicast(struct glc_softc *sc)
+{
+	struct ifnet *ifp = sc->sc_ifp;
+	struct ifmultiaddr *inm;
+	uint64_t addr;
+	int naddrs;
+
+	/* Clear multicast filter */
+	lv1_net_remove_multicast_address(sc->sc_bus, sc->sc_dev, 0, 1);
+
+	/* Add broadcast */
+	lv1_net_add_multicast_address(sc->sc_bus, sc->sc_dev,
+	    0xffffffffffffL, 0);
+
+	if ((ifp->if_flags & IFF_ALLMULTI) != 0) {
+		lv1_net_add_multicast_address(sc->sc_bus, sc->sc_dev, 0, 1);
+	} else {
+		if_maddr_rlock(ifp);
+		naddrs = 1; /* Include broadcast */
+		TAILQ_FOREACH(inm, &ifp->if_multiaddrs, ifma_link) {
+			if (inm->ifma_addr->sa_family != AF_LINK)
+				continue;
+			addr = 0;
+			memcpy(&((uint8_t *)(&addr))[2],
+			    LLADDR((struct sockaddr_dl *)inm->ifma_addr),
+			    ETHER_ADDR_LEN);
+
+			lv1_net_add_multicast_address(sc->sc_bus, sc->sc_dev,
+			    addr, 0);
+
+			/*
+			 * Filter can only hold 32 addresses, so fall back to
+			 * the IFF_ALLMULTI case if we have too many.
+			 */
+			if (++naddrs >= 32) {
+				lv1_net_add_multicast_address(sc->sc_bus,
+				    sc->sc_dev, 0, 1);
+				break;
+			}
+		}
+		if_maddr_runlock(ifp);
+	}
 }
 
 static int
@@ -624,6 +702,10 @@ glc_encap(struct glc_softc *sc, struct mbuf **m_head, bus_addr_t *pktdesc)
 			sc->sc_txdmadesc[idx].cmd_stat |= GELIC_CMDSTAT_LAST;
 		}
 
+		if ((*m_head)->m_pkthdr.csum_flags & CSUM_TCP)
+			sc->sc_txdmadesc[idx].cmd_stat |= GELIC_CMDSTAT_CSUM_TCP;
+		if ((*m_head)->m_pkthdr.csum_flags & CSUM_UDP)
+			sc->sc_txdmadesc[idx].cmd_stat |= GELIC_CMDSTAT_CSUM_UDP;
 		sc->sc_txdmadesc[idx].cmd_stat |= GELIC_DESCR_OWNED;
 
 		idx = (idx + 1) % GLC_MAX_TX_PACKETS;
@@ -670,6 +752,16 @@ glc_rxintr(struct glc_softc *sc)
 		}
 
 		m = sc->sc_rxsoft[i].rxs_mbuf;
+		if (sc->sc_rxdmadesc[i].data_stat & GELIC_RX_IPCSUM) {
+			m->m_pkthdr.csum_flags |=
+			    CSUM_IP_CHECKED | CSUM_IP_VALID;
+		}
+		if (sc->sc_rxdmadesc[i].data_stat & GELIC_RX_TCPUDPCSUM) {
+			m->m_pkthdr.csum_flags |=
+			    CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
+			m->m_pkthdr.csum_data = 0xffff;
+		}
+
 		if (glc_add_rxbuf(sc, i)) {
 			ifp->if_ierrors++;
 			goto requeue;
@@ -776,7 +868,7 @@ static void
 glc_intr(void *xsc)
 {
 	struct glc_softc *sc = xsc; 
-	uint64_t status;
+	uint64_t status, linkstat, junk;
 
 	mtx_lock(&sc->sc_mtx);
 
@@ -793,6 +885,80 @@ glc_intr(void *xsc)
 	if (status & (GELIC_INT_TXDONE | GELIC_INT_TX_CHAIN_END))
 		glc_txintr(sc);
 
+	if (status & GELIC_INT_PHY) {
+		lv1_net_control(sc->sc_bus, sc->sc_dev, GELIC_GET_LINK_STATUS,
+		    GELIC_VLAN_TX_ETHERNET, 0, 0, &linkstat, &junk);
+
+		linkstat = (linkstat & GELIC_LINK_UP) ?
+		    LINK_STATE_UP : LINK_STATE_DOWN;
+		if (linkstat != sc->sc_ifp->if_link_state)
+			if_link_state_change(sc->sc_ifp, linkstat);
+	}
+
 	mtx_unlock(&sc->sc_mtx);
+}
+
+static void
+glc_media_status(struct ifnet *ifp, struct ifmediareq *ifmr)
+{
+	struct glc_softc *sc = ifp->if_softc; 
+	uint64_t status, junk;
+
+	ifmr->ifm_status = IFM_AVALID;
+	ifmr->ifm_active = IFM_ETHER;
+
+	lv1_net_control(sc->sc_bus, sc->sc_dev, GELIC_GET_LINK_STATUS,
+	    GELIC_VLAN_TX_ETHERNET, 0, 0, &status, &junk);
+
+	if (status & GELIC_LINK_UP)
+		ifmr->ifm_status |= IFM_ACTIVE;
+
+	if (status & GELIC_SPEED_10)
+		ifmr->ifm_active |= IFM_10_T;
+	else if (status & GELIC_SPEED_100)
+		ifmr->ifm_active |= IFM_100_TX;
+	else if (status & GELIC_SPEED_1000)
+		ifmr->ifm_active |= IFM_1000_T;
+
+	if (status & GELIC_FULL_DUPLEX)
+		ifmr->ifm_active |= IFM_FDX;
+	else
+		ifmr->ifm_active |= IFM_HDX;
+}
+
+static int
+glc_media_change(struct ifnet *ifp)
+{
+	struct glc_softc *sc = ifp->if_softc; 
+	uint64_t mode, junk;
+	int result;
+
+	if (IFM_TYPE(sc->sc_media.ifm_media) != IFM_ETHER)
+		return (EINVAL);
+
+	switch (IFM_SUBTYPE(sc->sc_media.ifm_media)) {
+	case IFM_AUTO:
+		mode = GELIC_AUTO_NEG;
+		break;
+	case IFM_10_T:
+		mode = GELIC_SPEED_10;
+		break;
+	case IFM_100_TX:
+		mode = GELIC_SPEED_100;
+		break;
+	case IFM_1000_T:
+		mode = GELIC_SPEED_1000 | GELIC_FULL_DUPLEX;
+		break;
+	default:
+		return (EINVAL);
+	}
+
+	if (IFM_OPTIONS(sc->sc_media.ifm_media) & IFM_FDX)
+		mode |= GELIC_FULL_DUPLEX;
+
+	result = lv1_net_control(sc->sc_bus, sc->sc_dev, GELIC_SET_LINK_MODE,
+	    GELIC_VLAN_TX_ETHERNET, mode, 0, &junk, &junk);
+
+	return (result ? EIO : 0);
 }
 

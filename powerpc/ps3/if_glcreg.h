@@ -79,6 +79,8 @@ struct glc_softc {
 	uint64_t	*sc_hwirq_status;
 	volatile uint64_t sc_interrupt_status;
 
+	struct ifmedia	sc_media;
+
 	/* Transmission */
 
 	bus_dma_tag_t	sc_txdma_tag;
@@ -107,6 +109,7 @@ struct glc_softc {
 
 #define GELIC_GET_MAC_ADDRESS   0x0001
 #define GELIC_GET_LINK_STATUS   0x0002
+#define GELIC_SET_LINK_MODE     0x0003
 #define  GELIC_LINK_UP          0x0001
 #define  GELIC_FULL_DUPLEX      0x0002
 #define  GELIC_AUTO_NEG         0x0004
@@ -123,9 +126,15 @@ struct glc_softc {
 #define	GELIC_DESCR_OWNED	0xa0000000
 #define	GELIC_CMDSTAT_DMA_DONE	0x00000000
 #define	GELIC_CMDSTAT_CHAIN_END	0x00000002
+#define GELIC_CMDSTAT_CSUM_TCP	0x00020000
+#define GELIC_CMDSTAT_CSUM_UDP	0x00030000
 #define GELIC_CMDSTAT_NOIPSEC	0x00080000
 #define GELIC_CMDSTAT_LAST	0x00040000
 #define GELIC_RXERRORS		0x7def8000
+
+/* RX Data Status codes */
+#define GELIC_RX_IPCSUM		0x20000000
+#define GELIC_RX_TCPUDPCSUM	0x10000000
 
 /* Interrupt options */
 #define GELIC_INT_RXDONE	0x0000000000004000UL
