@@ -317,6 +317,7 @@ slb_uma_cache_alloc(uma_zone_t zone, int bytes, u_int8_t *flags, int wait)
 		bzero(va, PAGE_SIZE);
 
 	/* vm_phys_alloc_contig does not track wiring */
+	atomic_add_int(&cnt.v_wire_count, 1);
 	m->wire_count = 1;
 
 	return (va);
