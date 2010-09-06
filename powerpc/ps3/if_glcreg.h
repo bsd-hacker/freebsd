@@ -84,7 +84,7 @@ struct glc_softc {
 	bus_dma_tag_t	sc_txdma_tag;
 	struct glc_txsoft sc_txsoft[GLC_MAX_TX_PACKETS];
 	struct glc_dmadesc *sc_txdmadesc;
-	int		next_txdma_slot, first_used_txdma_slot;
+	int		next_txdma_slot, first_used_txdma_slot, bsy_txdma_slots;
 	bus_dmamap_t	sc_txdmadesc_map;
 	bus_addr_t	sc_txdmadesc_phys;
 
@@ -102,6 +102,7 @@ struct glc_softc {
 
 	int		sc_bus, sc_dev;
 	int		sc_wdog_timer;
+	struct callout	sc_tick_ch;
 };
 
 #define GELIC_GET_MAC_ADDRESS   0x0001

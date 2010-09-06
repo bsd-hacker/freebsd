@@ -70,6 +70,7 @@ static int	glc_encap(struct glc_softc *sc, struct mbuf **m_head,
 		    bus_addr_t *pktdesc);
 static int	glc_intr_filter(void *xsc);
 static void	glc_intr(void *xsc);
+static void	glc_tick(void *xsc);
 
 static MALLOC_DEFINE(M_GLC, "gelic", "PS3 GELIC ethernet");
 
@@ -151,7 +152,9 @@ glc_attach(device_t dev)
 
 	mtx_init(&sc->sc_mtx, device_get_nameunit(dev), MTX_NETWORK_LOCK,
 	    MTX_DEF);
+	callout_init_mtx(&sc->sc_tick_ch, &sc->sc_mtx, 0);
 	sc->next_txdma_slot = 0;
+	sc->bsy_txdma_slots = 0;
 	sc->first_used_txdma_slot = -1;
 
 	/*
@@ -318,6 +321,7 @@ glc_init_locked(struct glc_softc *sc)
 {
 	int i;
 	struct glc_rxsoft *rxs;
+	struct glc_txsoft *txs;
 
 	mtx_assert(&sc->sc_mtx, MA_OWNED);
 
@@ -342,12 +346,22 @@ glc_init_locked(struct glc_softc *sc)
 		    BUS_DMASYNC_PREREAD);
 	}
 
+	txs = STAILQ_FIRST(&sc->sc_txdirtyq);
+	if (txs != NULL) {
+		lv1_net_start_tx_dma(sc->sc_bus, sc->sc_dev,
+		    glc_map_addr(sc, sc->sc_txdmadesc_phys +
+		    txs->txs_firstdesc*sizeof(struct glc_dmadesc)), 0);
+	}
+
 	lv1_net_start_rx_dma(sc->sc_bus, sc->sc_dev,
 	    sc->sc_rxsoft[0].rxs_desc, 0);
 
 	sc->sc_ifp->if_drv_flags |= IFF_DRV_RUNNING;
 	sc->sc_ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
 	sc->sc_ifpflags = sc->sc_ifp->if_flags;
+
+	sc->sc_wdog_timer = 0;
+	callout_reset(&sc->sc_tick_ch, hz, glc_tick, sc);
 }
 
 static void
@@ -361,6 +375,24 @@ glc_init(void *xsc)
 }
 
 static void
+glc_tick(void *xsc)
+{
+	struct glc_softc *sc = xsc;
+
+	mtx_assert(&sc->sc_mtx, MA_OWNED);
+
+	if (sc->sc_wdog_timer == 0 || --sc->sc_wdog_timer != 0) {
+		callout_reset(&sc->sc_tick_ch, hz, glc_tick, sc);
+		return;
+	}
+
+	/* Problems */
+	device_printf(sc->sc_self, "device timeout\n");
+
+	glc_init_locked(sc);
+}
+
+static void
 glc_start_locked(struct ifnet *ifp)
 {
 	struct glc_softc *sc = ifp->if_softc;
@@ -371,6 +403,10 @@ glc_start_locked(struct ifnet *ifp)
 	mtx_assert(&sc->sc_mtx, MA_OWNED);
 	first = 0;
 
+	if ((ifp->if_drv_flags & (IFF_DRV_RUNNING | IFF_DRV_OACTIVE)) !=
+	    IFF_DRV_RUNNING)
+		return;
+
 	if (STAILQ_EMPTY(&sc->sc_txdirtyq))
 		kickstart = 1;
 
@@ -380,24 +416,27 @@ glc_start_locked(struct ifnet *ifp)
 		if (mb_head == NULL)
 			break;
 
-		BPF_MTAP(ifp, mb_head);
-
-		if (sc->sc_tx_vlan >= 0)
-			mb_head = ether_vlanencap(mb_head, sc->sc_tx_vlan);
-
-		if (glc_encap(sc, &mb_head, &pktdesc)) {
+		/* Check if the ring buffer is full */
+		if (sc->bsy_txdma_slots > 125) {
 			/* Put the packet back and stop */
 			ifp->if_drv_flags |= IFF_DRV_OACTIVE;
 			IFQ_DRV_PREPEND(&ifp->if_snd, mb_head);
 			break;
 		}
 
+		BPF_MTAP(ifp, mb_head);
+
+		if (sc->sc_tx_vlan >= 0)
+			mb_head = ether_vlanencap(mb_head, sc->sc_tx_vlan);
+
+		if (glc_encap(sc, &mb_head, &pktdesc)) {
+			ifp->if_drv_flags |= IFF_DRV_OACTIVE;
+			break;
+		}
+
 		if (first == 0)
 			first = pktdesc;
 	}
-
-	bus_dmamap_sync(sc->sc_dmadesc_tag, sc->sc_txdmadesc_map,
-	    BUS_DMASYNC_PREREAD);
 
 	if (kickstart && first != 0) {
 		lv1_net_start_tx_dma(sc->sc_bus, sc->sc_dev, first, 0);
@@ -516,50 +555,46 @@ glc_encap(struct glc_softc *sc, struct mbuf **m_head, bus_addr_t *pktdesc)
 	struct glc_txsoft *txs;
 	struct mbuf *m;
 	bus_addr_t firstslotphys;
-	int i, idx;
-	int nsegs = 16;
+	int i, idx, nsegs, nsegs_max;
 	int err = 0;
 
-	/* Check if the ring buffer is full */
-	if (sc->next_txdma_slot == sc->first_used_txdma_slot)
-		return (-1);
-
 	/* Max number of segments is the number of free DMA slots */
-	if (sc->next_txdma_slot >= sc->first_used_txdma_slot)
-		nsegs = 128 - sc->next_txdma_slot + sc->first_used_txdma_slot;
-	else
-		nsegs = sc->first_used_txdma_slot - sc->next_txdma_slot;
+	nsegs_max = 128 - sc->bsy_txdma_slots;
 
-	if (nsegs > 16)
-		nsegs = 16;
+	if (nsegs_max > 16 || sc->first_used_txdma_slot < 0)
+		nsegs_max = 16;
 
 	/* Get a work queue entry. */
 	if ((txs = STAILQ_FIRST(&sc->sc_txfreeq)) == NULL) {
 		/* Ran out of descriptors. */
 		return (ENOBUFS);
 	}
-	
-	err = bus_dmamap_load_mbuf_sg(sc->sc_txdma_tag, txs->txs_dmamap,
-	    *m_head, segs, &nsegs, BUS_DMA_NOWAIT);
 
-	if (err == EFBIG) {
-		m = m_collapse(*m_head, M_DONTWAIT, nsegs);
+	nsegs = 0;
+	for (m = *m_head; m != NULL; m = m->m_next)
+		nsegs++;
+
+	if (nsegs > nsegs_max) {
+		m = m_collapse(*m_head, M_DONTWAIT, nsegs_max);
 		if (m == NULL) {
 			m_freem(*m_head);
 			*m_head = NULL;
 			return (ENOBUFS);
 		}
 		*m_head = m;
-
-		err = bus_dmamap_load_mbuf_sg(sc->sc_txdma_tag,
-		    txs->txs_dmamap, *m_head, segs, &nsegs, BUS_DMA_NOWAIT);
-		if (err != 0) {
-			m_freem(*m_head);
-			*m_head = NULL;
-			return (err);
-		}
-	} else if (err != 0)
+	}
+	
+	err = bus_dmamap_load_mbuf_sg(sc->sc_txdma_tag, txs->txs_dmamap,
+	    *m_head, segs, &nsegs, BUS_DMA_NOWAIT);
+	if (err != 0) {
+		m_freem(*m_head);
+		*m_head = NULL;
 		return (err);
+	}
+
+	KASSERT(nsegs <= 128 - sc->bsy_txdma_slots,
+	    ("GLC: Mapped too many (%d) DMA segments with %d available",
+	    nsegs, 128 - sc->bsy_txdma_slots));
 
 	if (nsegs == 0) {
 		m_freem(*m_head);
@@ -594,21 +629,23 @@ glc_encap(struct glc_softc *sc, struct mbuf **m_head, bus_addr_t *pktdesc)
 		idx = (idx + 1) % GLC_MAX_TX_PACKETS;
 	}
 	sc->next_txdma_slot = idx;
-	idx = (txs->txs_firstdesc - 1) % GLC_MAX_TX_PACKETS;
-	sc->sc_txdmadesc[idx].next = firstslotphys;
+	sc->bsy_txdma_slots += nsegs;
+	if (txs->txs_firstdesc != 0)
+		idx = txs->txs_firstdesc - 1;
+	else
+		idx = GLC_MAX_TX_PACKETS - 1;
 
 	if (sc->first_used_txdma_slot < 0)
 		sc->first_used_txdma_slot = txs->txs_firstdesc;
 
 	bus_dmamap_sync(sc->sc_txdma_tag, txs->txs_dmamap,
 	    BUS_DMASYNC_PREWRITE);
+	sc->sc_txdmadesc[idx].next = firstslotphys;
 
 	STAILQ_REMOVE_HEAD(&sc->sc_txfreeq, txs_q);
 	STAILQ_INSERT_TAIL(&sc->sc_txdirtyq, txs, txs_q);
 	txs->txs_mbuf = *m_head;
-
-	if (pktdesc != NULL)
-		*pktdesc = firstslotphys;
+	*pktdesc = firstslotphys;
 
 	return (0);
 }
@@ -677,6 +714,7 @@ glc_txintr(struct glc_softc *sc)
 
 		STAILQ_REMOVE_HEAD(&sc->sc_txdirtyq, txs_q);
 		bus_dmamap_unload(sc->sc_txdma_tag, txs->txs_dmamap);
+		sc->bsy_txdma_slots -= txs->txs_ndescs;
 
 		if (txs->txs_mbuf != NULL) {
 			m_freem(txs->txs_mbuf);
