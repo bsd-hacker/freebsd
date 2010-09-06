@@ -316,22 +316,10 @@ slb_uma_cache_alloc(uma_zone_t zone, int bytes, u_int8_t *flags, int wait)
 	if ((wait & M_ZERO) && (m->flags & PG_ZERO) == 0)
 		bzero(va, PAGE_SIZE);
 
-        return (va);
-}
+	/* vm_phys_alloc_contig does not track wiring */
+	m->wire_count = 1;
 
-static void
-slb_uma_cache_free(void *mem, int size, u_int8_t flags)
-{
-	vm_page_t m;
-
-	if (!hw_direct_map)
-		pmap_remove(kernel_pmap,(vm_offset_t)mem,
-		    (vm_offset_t)mem + PAGE_SIZE);
-
-	m = PHYS_TO_VM_PAGE((vm_offset_t)mem);
-	vm_page_lock_queues();
-	vm_phys_free_pages(m, 0);
-	vm_page_unlock_queues();
+	return (va);
 }
 
 static void
@@ -343,10 +331,8 @@ slb_zone_init(void *dummy)
 	slb_cache_zone = uma_zcreate("SLB cache", 64*sizeof(struct slb),
 	    NULL, NULL, NULL, NULL, UMA_ALIGN_PTR, UMA_ZONE_VM);
 
-	if (platform_real_maxaddr() != VM_MAX_ADDRESS) {
+	if (platform_real_maxaddr() != VM_MAX_ADDRESS)
 		uma_zone_set_allocf(slb_cache_zone, slb_uma_cache_alloc);
-		uma_zone_set_freef(slb_cache_zone, slb_uma_cache_free);
-	}
 }
 
 struct slb *

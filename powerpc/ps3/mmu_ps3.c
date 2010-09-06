@@ -259,6 +259,7 @@ mps3_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
 	pvo_pt->pte_hi |= LPTE_VALID;
 	pvo_pt->pte_hi &= ~LPTE_HID;
 	evicted.pte_hi = 0;
+	PTESYNC();
 	result = lv1_insert_htab_entry(mps3_vas_id, ptegidx << 3,
 	    pvo_pt->pte_hi, pvo_pt->pte_lo, LPTE_LOCKED | LPTE_WIRED, 0,
 	    &index, &evicted.pte_hi, &evicted.pte_lo);
@@ -289,6 +290,9 @@ mps3_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
 	ptegidx = index >> 3; /* Where the sacrifice PTE was found */
 	if (evicted.pte_hi & LPTE_HID)
 		ptegidx ^= moea64_pteg_mask; /* PTEs indexed by primary */
+
+	KASSERT((evicted.pte_hi & (LPTE_WIRED | LPTE_LOCKED)) == 0,
+	    ("Evicted a wired PTE"));
 
 	result = 0;
 	LIST_FOREACH(pvo, &moea64_pvo_table[ptegidx], pvo_olink) {
