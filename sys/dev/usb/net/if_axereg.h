@@ -185,7 +185,7 @@ struct axe_sframe_hdr {
 	uint16_t ilen;
 } __packed;
 
-#define	GET_MII(sc)		uether_getmii(&(sc)->sc_ue)
+#define	GET_MII(sc)		(device_get_softc(sc->sc_miibus))
 
 /* The interrupt endpoint is currently unused by the ASIX part. */
 enum {
@@ -196,16 +196,26 @@ enum {
 };
 
 struct axe_softc {
-	struct usb_ether	sc_ue;
+	struct ifnet		*sc_ifp;
+	device_t		sc_dev;
+	device_t		sc_miibus;
+	struct usb_device	*sc_udev; /* used by uether_do_request() */
 	struct mtx		sc_mtx;
-	struct usb_xfer	*sc_xfer[AXE_N_TRANSFER];
-	int			sc_phyno;
+	struct usb_xfer		*sc_xfer[AXE_N_TRANSFER];
 
+	/* ethernet address from eeprom */
+	uint8_t			sc_eaddr[ETHER_ADDR_LEN];
+	struct ifqueue		sc_rxq;
+
+	struct sleepout		sc_sleepout;
+	struct sleepout_task	sc_watchdog;
+	struct task		sc_setmulti;
+
+	int			sc_phyno;
 	int			sc_flags;
 #define	AXE_FLAG_LINK		0x0001
 #define	AXE_FLAG_772		0x1000	/* AX88772 */
 #define	AXE_FLAG_178		0x2000	/* AX88178 */
-
 	uint8_t			sc_ipgs[3];
 	uint8_t			sc_phyaddrs[2];
 };
