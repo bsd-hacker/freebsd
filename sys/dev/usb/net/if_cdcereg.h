@@ -71,22 +71,25 @@ struct cdce_ncm {
 };
 
 struct cdce_softc {
-	struct usb_ether	sc_ue;
+	struct ifnet		*sc_ifp;
+	device_t		sc_dev;
+	struct usb_device	*sc_udev; /* used by uether_do_request() */
 	struct mtx		sc_mtx;
+	struct usb_xfer		*sc_xfer[CDCE_N_TRANSFER];
+	struct ifqueue		sc_rxq;
+	/* ethernet address from eeprom */
+	uint8_t			sc_eaddr[ETHER_ADDR_LEN];
 #if CDCE_HAVE_NCM
 	struct cdce_ncm		sc_ncm;
 #endif
-	struct usb_xfer	*sc_xfer[CDCE_N_TRANSFER];
 	struct mbuf		*sc_rx_buf[CDCE_FRAMES_MAX];
 	struct mbuf		*sc_tx_buf[CDCE_FRAMES_MAX];
-
 	int 			sc_flags;
 #define	CDCE_FLAG_ZAURUS	0x0001
 #define	CDCE_FLAG_NO_UNION	0x0002
 #define	CDCE_FLAG_RX_DATA	0x0010
-
-	uint8_t sc_eaddr_str_index;
-	uint8_t	sc_ifaces_index[2];
+	uint8_t			sc_eaddr_str_index;
+	uint8_t			sc_ifaces_index[2];
 };
 
 #define	CDCE_LOCK(_sc)			mtx_lock(&(_sc)->sc_mtx)
