@@ -126,7 +126,6 @@ enum {
 struct kue_softc {
 	struct ifnet		*sc_ifp;
 	device_t		sc_dev;
-	device_t		sc_miibus;
 	struct usb_device	*sc_udev; /* used by uether_do_request() */
 	struct usb_xfer		*sc_xfer[KUE_N_TRANSFER];
 	struct mtx		sc_mtx;

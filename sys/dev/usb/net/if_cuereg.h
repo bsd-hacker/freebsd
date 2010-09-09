@@ -122,7 +122,6 @@ struct cue_softc {
 	struct ifnet		*sc_ifp;
 	struct mtx		sc_mtx;
 	device_t		sc_dev;
-	device_t		sc_miibus;
 	struct usb_device	*sc_udev; /* used by uether_do_request() */
 	struct usb_xfer		*sc_xfer[CUE_N_TRANSFER];
 	struct sleepout		sc_sleepout;
