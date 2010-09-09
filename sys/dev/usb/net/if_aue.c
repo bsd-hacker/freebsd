@@ -81,12 +81,27 @@ __FBSDID("$FreeBSD$");
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/condvar.h>
+#include <sys/socket.h>
+#include <sys/sockio.h>
 #include <sys/sysctl.h>
 #include <sys/sx.h>
 #include <sys/unistd.h>
 #include <sys/callout.h>
 #include <sys/malloc.h>
 #include <sys/priv.h>
+
+#include <net/if.h>
+#include <net/if_arp.h>
+#include <net/if_dl.h>
+#include <net/if_media.h>
+#include <net/if_types.h>
+#include <net/bpf.h>
+#include <net/ethernet.h>
+
+#include "miibus_if.h"
+
+#include <dev/mii/mii.h>
+#include <dev/mii/miivar.h>
 
 #include <dev/usb/usb.h>
 #include <dev/usb/usbdi.h>
@@ -95,9 +110,7 @@ __FBSDID("$FreeBSD$");
 
 #define	USB_DEBUG_VAR aue_debug
 #include <dev/usb/usb_debug.h>
-#include <dev/usb/usb_process.h>
-
-#include <dev/usb/net/usb_ethernet.h>
+#include <dev/usb/usb_sleepout.h>
 #include <dev/usb/net/if_auereg.h>
 
 #ifdef USB_DEBUG
@@ -197,14 +210,6 @@ static usb_callback_t aue_intr_callback;
 static usb_callback_t aue_bulk_read_callback;
 static usb_callback_t aue_bulk_write_callback;
 
-static uether_fn_t aue_attach_post;
-static uether_fn_t aue_init;
-static uether_fn_t aue_stop;
-static uether_fn_t aue_start;
-static uether_fn_t aue_tick;
-static uether_fn_t aue_setmulti;
-static uether_fn_t aue_setpromisc;
-
 static uint8_t	aue_csr_read_1(struct aue_softc *, uint16_t);
 static uint16_t	aue_csr_read_2(struct aue_softc *, uint16_t);
 static void	aue_csr_write_1(struct aue_softc *, uint16_t, uint8_t);
@@ -214,12 +219,21 @@ static void	aue_read_eeprom(struct aue_softc *, uint8_t *, uint16_t,
 		    uint16_t);
 static void	aue_reset(struct aue_softc *);
 static void	aue_reset_pegasus_II(struct aue_softc *);
-
 static int	aue_ifmedia_upd(struct ifnet *);
 static void	aue_ifmedia_sts(struct ifnet *, struct ifmediareq *);
+static int	aue_ioctl(struct ifnet *, u_long, caddr_t);
+static void	aue_start(struct ifnet *);
+static void	aue_init(void *);
+static void	aue_setmulti(void *, int);
+static void	aue_setmulti_locked(struct aue_softc *);
+static void	aue_rxflush(struct aue_softc *);
+static int	aue_rxbuf(struct aue_softc *, struct usb_page_cache *, 
+		    unsigned int, unsigned int);
+static void	aue_setpromisc(struct aue_softc *);
+static void	aue_init_locked(struct aue_softc *);
+static void	aue_watchdog(void *);
 
 static const struct usb_config aue_config[AUE_N_TRANSFER] = {
-
 	[AUE_BULK_DT_WR] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
@@ -277,29 +291,23 @@ static devclass_t aue_devclass;
 
 DRIVER_MODULE(aue, uhub, aue_driver, aue_devclass, NULL, 0);
 DRIVER_MODULE(miibus, aue, miibus_driver, miibus_devclass, 0, 0);
-MODULE_DEPEND(aue, uether, 1, 1, 1);
 MODULE_DEPEND(aue, usb, 1, 1, 1);
 MODULE_DEPEND(aue, ether, 1, 1, 1);
 MODULE_DEPEND(aue, miibus, 1, 1, 1);
 MODULE_VERSION(aue, 1);
-
-static const struct usb_ether_methods aue_ue_methods = {
-	.ue_attach_post = aue_attach_post,
-	.ue_start = aue_start,
-	.ue_init = aue_init,
-	.ue_stop = aue_stop,
-	.ue_tick = aue_tick,
-	.ue_setmulti = aue_setmulti,
-	.ue_setpromisc = aue_setpromisc,
-	.ue_mii_upd = aue_ifmedia_upd,
-	.ue_mii_sts = aue_ifmedia_sts,
-};
 
 #define	AUE_SETBIT(sc, reg, x) \
 	aue_csr_write_1(sc, reg, aue_csr_read_1(sc, reg) | (x))
 
 #define	AUE_CLRBIT(sc, reg, x) \
 	aue_csr_write_1(sc, reg, aue_csr_read_1(sc, reg) & ~(x))
+
+static void
+aue_pause(struct aue_softc *sc, unsigned int _ticks)
+{
+
+	usb_pause_mtx(&sc->sc_mtx, _ticks);
+}
 
 static uint8_t
 aue_csr_read_1(struct aue_softc *sc, uint16_t reg)
@@ -314,7 +322,8 @@ aue_csr_read_1(struct aue_softc *sc, uint16_t reg)
 	USETW(req.wIndex, reg);
 	USETW(req.wLength, 1);
 
-	err = uether_do_request(&sc->sc_ue, &req, &val, 1000);
+	err = usbd_do_request_flags(sc->sc_udev, &sc->sc_mtx, &req, &val, 0,
+	    NULL, 1000);
 	if (err)
 		return (0);
 	return (val);
@@ -333,7 +342,8 @@ aue_csr_read_2(struct aue_softc *sc, uint16_t reg)
 	USETW(req.wIndex, reg);
 	USETW(req.wLength, 2);
 
-	err = uether_do_request(&sc->sc_ue, &req, &val, 1000);
+	err = usbd_do_request_flags(sc->sc_udev, &sc->sc_mtx, &req, &val, 0,
+	    NULL, 1000);
 	if (err)
 		return (0);
 	return (le16toh(val));
@@ -351,9 +361,9 @@ aue_csr_write_1(struct aue_softc *sc, uint16_t reg, uint8_t val)
 	USETW(req.wIndex, reg);
 	USETW(req.wLength, 1);
 
-	if (uether_do_request(&sc->sc_ue, &req, &val, 1000)) {
-		/* error ignored */
-	}
+	/* XXX error ignored */
+	(void)usbd_do_request_flags(sc->sc_udev, &sc->sc_mtx, &req, &val, 0,
+	    NULL, 1000);
 }
 
 static void
@@ -369,9 +379,9 @@ aue_csr_write_2(struct aue_softc *sc, uint16_t reg, uint16_t val)
 
 	val = htole16(val);
 
-	if (uether_do_request(&sc->sc_ue, &req, &val, 1000)) {
-		/* error ignored */
-	}
+	/* XXX error ignored */
+	(void)usbd_do_request_flags(sc->sc_udev, &sc->sc_mtx, &req, &val, 0,
+	    NULL, 1000);
 }
 
 /*
@@ -389,12 +399,11 @@ aue_eeprom_getword(struct aue_softc *sc, int addr, uint16_t *dest)
 	for (i = 0; i != AUE_TIMEOUT; i++) {
 		if (aue_csr_read_1(sc, AUE_EE_CTL) & AUE_EECTL_DONE)
 			break;
-		if (uether_pause(&sc->sc_ue, hz / 100))
-			break;
+		aue_pause(sc, hz / 100);
 	}
 
 	if (i == AUE_TIMEOUT)
-		device_printf(sc->sc_ue.ue_dev, "EEPROM read timed out\n");
+		device_printf(sc->sc_dev, "EEPROM read timed out\n");
 
 	word = aue_csr_read_2(sc, AUE_EE_DATA);
 	*dest = word;
@@ -446,12 +455,11 @@ aue_miibus_readreg(device_t dev, int phy, int reg)
 	for (i = 0; i != AUE_TIMEOUT; i++) {
 		if (aue_csr_read_1(sc, AUE_PHY_CTL) & AUE_PHYCTL_DONE)
 			break;
-		if (uether_pause(&sc->sc_ue, hz / 100))
-			break;
+		aue_pause(sc, hz / 100);
 	}
 
 	if (i == AUE_TIMEOUT)
-		device_printf(sc->sc_ue.ue_dev, "MII read timed out\n");
+		device_printf(sc->sc_dev, "MII read timed out\n");
 
 	val = aue_csr_read_2(sc, AUE_PHY_DATA);
 
@@ -482,12 +490,11 @@ aue_miibus_writereg(device_t dev, int phy, int reg, int data)
 	for (i = 0; i != AUE_TIMEOUT; i++) {
 		if (aue_csr_read_1(sc, AUE_PHY_CTL) & AUE_PHYCTL_DONE)
 			break;
-		if (uether_pause(&sc->sc_ue, hz / 100))
-			break;
+		aue_pause(sc, hz / 100);
 	}
 
 	if (i == AUE_TIMEOUT)
-		device_printf(sc->sc_ue.ue_dev, "MII write timed out\n");
+		device_printf(sc->sc_dev, "MII write timed out\n");
 
 	if (!locked)
 		AUE_UNLOCK(sc);
@@ -533,12 +540,21 @@ aue_miibus_statchg(device_t dev)
 		AUE_UNLOCK(sc);
 }
 
+static void
+aue_setmulti(void *arg, int npending)
+{
+	struct aue_softc *sc = arg;
+
+	AUE_LOCK(sc);
+	aue_setmulti_locked(sc);
+	AUE_UNLOCK(sc);
+}
+
 #define	AUE_BITS	6
 static void
-aue_setmulti(struct usb_ether *ue)
+aue_setmulti_locked(struct aue_softc *sc)
 {
-	struct aue_softc *sc = uether_getsc(ue);
-	struct ifnet *ifp = uether_getifp(ue);
+	struct ifnet *ifp = sc->sc_ifp;
 	struct ifmultiaddr *ifma;
 	uint32_t h = 0;
 	uint32_t i;
@@ -593,12 +609,11 @@ aue_reset(struct aue_softc *sc)
 	for (i = 0; i != AUE_TIMEOUT; i++) {
 		if (!(aue_csr_read_1(sc, AUE_CTL1) & AUE_CTL1_RESETMAC))
 			break;
-		if (uether_pause(&sc->sc_ue, hz / 100))
-			break;
+		aue_pause(sc, hz / 100);
 	}
 
 	if (i == AUE_TIMEOUT)
-		device_printf(sc->sc_ue.ue_dev, "reset failed\n");
+		device_printf(sc->sc_dev, "reset failed\n");
 
 	/*
 	 * The PHY(s) attached to the Pegasus chip may be held
@@ -625,19 +640,18 @@ aue_reset(struct aue_softc *sc)
 		aue_reset_pegasus_II(sc);
 
 	/* Wait a little while for the chip to get its brains in order: */
-	uether_pause(&sc->sc_ue, hz / 100);
+	aue_pause(sc, hz / 100);
 }
 
 static void
-aue_attach_post(struct usb_ether *ue)
+aue_attach_post(struct aue_softc *sc)
 {
-	struct aue_softc *sc = uether_getsc(ue);
 
 	/* reset the adapter */
 	aue_reset(sc);
 
 	/* get station address from the EEPROM */
-	aue_read_eeprom(sc, ue->ue_eaddr, 0, 3);
+	aue_read_eeprom(sc, sc->sc_eaddr, 0, 3);
 }
 
 /*
@@ -676,19 +690,25 @@ aue_attach(device_t dev)
 {
 	struct usb_attach_arg *uaa = device_get_ivars(dev);
 	struct aue_softc *sc = device_get_softc(dev);
-	struct usb_ether *ue = &sc->sc_ue;
+	struct ifnet *ifp;
 	uint8_t iface_index;
 	int error;
 
-	sc->sc_flags = USB_GET_DRIVER_INFO(uaa);
+	device_set_usb_desc(dev);
 
+	sc->sc_flags = USB_GET_DRIVER_INFO(uaa);
 	if (uaa->info.bcdDevice >= 0x0201) {
 		/* XXX currently undocumented */
 		sc->sc_flags |= AUE_FLAG_VER_2;
 	}
 
-	device_set_usb_desc(dev);
+	sc->sc_dev = dev;
+	sc->sc_udev = uaa->device;
+
 	mtx_init(&sc->sc_mtx, device_get_nameunit(dev), NULL, MTX_DEF);
+	sleepout_create(&sc->sc_sleepout, "aue sleepout");
+	sleepout_init_mtx(&sc->sc_sleepout, &sc->sc_watchdog, &sc->sc_mtx, 0);
+	TASK_INIT(&sc->sc_setmulti, 0, aue_setmulti, sc);
 
 	iface_index = AUE_IFACE_IDX;
 	error = usbd_transfer_setup(uaa->device, &iface_index,
@@ -699,19 +719,39 @@ aue_attach(device_t dev)
 		goto detach;
 	}
 
-	ue->ue_sc = sc;
-	ue->ue_dev = dev;
-	ue->ue_udev = uaa->device;
-	ue->ue_mtx = &sc->sc_mtx;
-	ue->ue_methods = &aue_ue_methods;
+	AUE_LOCK(sc);
+	aue_attach_post(sc);
+	AUE_UNLOCK(sc);
 
-	error = uether_ifattach(ue);
-	if (error) {
-		device_printf(dev, "could not attach interface\n");
+	sc->sc_ifp = ifp = if_alloc(IFT_ETHER);
+	if (ifp == NULL) {
+		device_printf(sc->sc_dev, "could not allocate ifnet\n");
 		goto detach;
 	}
-	return (0);			/* success */
 
+	ifp->if_softc = sc;
+	if_initname(ifp, device_get_name(sc->sc_dev),
+	    device_get_unit(sc->sc_dev));
+	ifp->if_mtu = ETHERMTU;
+	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
+	ifp->if_ioctl = aue_ioctl;
+	ifp->if_start = aue_start;
+	ifp->if_init = aue_init;
+	IFQ_SET_MAXLEN(&ifp->if_snd, ifqmaxlen);
+	ifp->if_snd.ifq_drv_maxlen = ifqmaxlen;
+	IFQ_SET_READY(&ifp->if_snd);
+
+	error = mii_phy_probe(sc->sc_dev, &sc->sc_miibus,
+	    aue_ifmedia_upd, aue_ifmedia_sts);
+	if (error) {
+		device_printf(sc->sc_dev, "MII without any PHY\n");
+		goto detach;
+	}
+
+	if_printf(ifp, "<USB Ethernet> on %s\n",
+	    device_get_nameunit(sc->sc_dev));
+	ether_ifattach(ifp, sc->sc_eaddr);
+	return (0);
 detach:
 	aue_detach(dev);
 	return (ENXIO);			/* failure */
@@ -721,10 +761,22 @@ static int
 aue_detach(device_t dev)
 {
 	struct aue_softc *sc = device_get_softc(dev);
-	struct usb_ether *ue = &sc->sc_ue;
+	struct ifnet *ifp = sc->sc_ifp;
 
+	sleepout_drain(&sc->sc_watchdog);
+	taskqueue_drain(sc->sc_sleepout.s_taskqueue, &sc->sc_setmulti);
 	usbd_transfer_unsetup(sc->sc_xfer, AUE_N_TRANSFER);
-	uether_ifdetach(ue);
+
+	if (sc->sc_miibus != NULL)
+		device_delete_child(sc->sc_dev, sc->sc_miibus);
+	if (ifp != NULL) {
+		AUE_LOCK(sc);
+		ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
+		AUE_UNLOCK(sc);
+		ether_ifdetach(ifp);
+		if_free(ifp);
+	}
+	sleepout_free(&sc->sc_sleepout);
 	mtx_destroy(&sc->sc_mtx);
 
 	return (0);
@@ -734,7 +786,7 @@ static void
 aue_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 {
 	struct aue_softc *sc = usbd_xfer_softc(xfer);
-	struct ifnet *ifp = uether_getifp(&sc->sc_ue);
+	struct ifnet *ifp = sc->sc_ifp;
 	struct aue_intrpkt pkt;
 	struct usb_page_cache *pc;
 	int actlen;
@@ -777,8 +829,7 @@ static void
 aue_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 {
 	struct aue_softc *sc = usbd_xfer_softc(xfer);
-	struct usb_ether *ue = &sc->sc_ue;
-	struct ifnet *ifp = uether_getifp(ue);
+	struct ifnet *ifp = sc->sc_ifp;
 	struct aue_rxpkt stat;
 	struct usb_page_cache *pc;
 	int actlen;
@@ -817,14 +868,14 @@ aue_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 			/* No errors; receive the packet. */
 			actlen -= (sizeof(stat) + ETHER_CRC_LEN);
 		}
-		uether_rxbuf(ue, pc, 0, actlen);
+		aue_rxbuf(sc, pc, 0, actlen);
 
 		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
 		usbd_transfer_submit(xfer);
-		uether_rxflush(ue);
+		aue_rxflush(sc);
 		return;
 
 	default:			/* Error */
@@ -844,7 +895,7 @@ static void
 aue_bulk_write_callback(struct usb_xfer *xfer, usb_error_t error)
 {
 	struct aue_softc *sc = usbd_xfer_softc(xfer);
-	struct ifnet *ifp = uether_getifp(&sc->sc_ue);
+	struct ifnet *ifp = sc->sc_ifp;
 	struct usb_page_cache *pc;
 	struct mbuf *m;
 	uint8_t buf[2];
@@ -925,9 +976,8 @@ tr_setup:
 }
 
 static void
-aue_tick(struct usb_ether *ue)
+aue_tick(struct aue_softc *sc)
 {
-	struct aue_softc *sc = uether_getsc(ue);
 	struct mii_data *mii = GET_MII(sc);
 
 	AUE_LOCK_ASSERT(sc, MA_OWNED);
@@ -937,14 +987,14 @@ aue_tick(struct usb_ether *ue)
 	    && mii->mii_media_status & IFM_ACTIVE &&
 	    IFM_SUBTYPE(mii->mii_media_active) != IFM_NONE) {
 		sc->sc_flags |= AUE_FLAG_LINK;
-		aue_start(ue);
+		aue_start(sc->sc_ifp);
 	}
 }
 
 static void
-aue_start(struct usb_ether *ue)
+aue_start(struct ifnet *ifp)
 {
-	struct aue_softc *sc = uether_getsc(ue);
+	struct aue_softc *sc = ifp->if_softc;
 
 	/*
 	 * start the USB transfers, if not already started:
@@ -955,10 +1005,19 @@ aue_start(struct usb_ether *ue)
 }
 
 static void
-aue_init(struct usb_ether *ue)
+aue_init(void *arg)
 {
-	struct aue_softc *sc = uether_getsc(ue);
-	struct ifnet *ifp = uether_getifp(ue);
+	struct aue_softc *sc = arg;
+
+	AUE_LOCK(sc);
+	aue_init_locked(sc);
+	AUE_UNLOCK(sc);
+}
+
+static void
+aue_init_locked(struct aue_softc *sc)
+{
+	struct ifnet *ifp = sc->sc_ifp;
 	int i;
 
 	AUE_LOCK_ASSERT(sc, MA_OWNED);
@@ -973,10 +1032,10 @@ aue_init(struct usb_ether *ue)
 		aue_csr_write_1(sc, AUE_PAR0 + i, IF_LLADDR(ifp)[i]);
 
 	/* update promiscuous setting */
-	aue_setpromisc(ue);
+	aue_setpromisc(sc);
 
 	/* Load the multicast filter. */
-	aue_setmulti(ue);
+	aue_setmulti_locked(sc);
 
 	/* Enable RX and TX */
 	aue_csr_write_1(sc, AUE_CTL0, AUE_CTL0_RXSTAT_APPEND | AUE_CTL0_RX_ENB);
@@ -986,14 +1045,14 @@ aue_init(struct usb_ether *ue)
 	usbd_xfer_set_stall(sc->sc_xfer[AUE_BULK_DT_WR]);
 
 	ifp->if_drv_flags |= IFF_DRV_RUNNING;
-	aue_start(ue);
+	sleepout_reset(&sc->sc_watchdog, hz, aue_watchdog, sc);
+	aue_start(sc->sc_ifp);
 }
 
 static void
-aue_setpromisc(struct usb_ether *ue)
+aue_setpromisc(struct aue_softc *sc)
 {
-	struct aue_softc *sc = uether_getsc(ue);
-	struct ifnet *ifp = uether_getifp(ue);
+	struct ifnet *ifp = sc->sc_ifp;
 
 	AUE_LOCK_ASSERT(sc, MA_OWNED);
 
@@ -1013,8 +1072,7 @@ aue_ifmedia_upd(struct ifnet *ifp)
 	struct aue_softc *sc = ifp->if_softc;
 	struct mii_data *mii = GET_MII(sc);
 
-	AUE_LOCK_ASSERT(sc, MA_OWNED);
-
+	AUE_LOCK(sc);
         sc->sc_flags &= ~AUE_FLAG_LINK;
 	if (mii->mii_instance) {
 		struct mii_softc *miisc;
@@ -1023,6 +1081,7 @@ aue_ifmedia_upd(struct ifnet *ifp)
 			mii_phy_reset(miisc);
 	}
 	mii_mediachg(mii);
+	AUE_UNLOCK(sc);
 	return (0);
 }
 
@@ -1047,10 +1106,9 @@ aue_ifmedia_sts(struct ifnet *ifp, struct ifmediareq *ifmr)
  * RX and TX lists.
  */
 static void
-aue_stop(struct usb_ether *ue)
+aue_stop(struct aue_softc *sc)
 {
-	struct aue_softc *sc = uether_getsc(ue);
-	struct ifnet *ifp = uether_getifp(ue);
+	struct ifnet *ifp = sc->sc_ifp;
 
 	AUE_LOCK_ASSERT(sc, MA_OWNED);
 
@@ -1067,4 +1125,121 @@ aue_stop(struct usb_ether *ue)
 	aue_csr_write_1(sc, AUE_CTL0, 0);
 	aue_csr_write_1(sc, AUE_CTL1, 0);
 	aue_reset(sc);
+}
+
+static int
+aue_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
+{
+	struct aue_softc *sc = ifp->if_softc;
+	struct ifreq *ifr = (struct ifreq *)data;
+	struct mii_data *mii = GET_MII(sc);
+	int error = 0;
+
+	switch (command) {
+	case SIOCSIFFLAGS:
+		AUE_LOCK(sc);
+		if (ifp->if_flags & IFF_UP) {
+			if (ifp->if_drv_flags & IFF_DRV_RUNNING)
+				aue_setpromisc(sc);
+			else
+				aue_init_locked(sc);
+		} else
+			aue_stop(sc);
+		AUE_UNLOCK(sc);
+		break;
+	case SIOCADDMULTI:
+	case SIOCDELMULTI:
+		if (ifp->if_flags & IFF_UP &&
+		    ifp->if_drv_flags & IFF_DRV_RUNNING)
+			taskqueue_enqueue(sc->sc_sleepout.s_taskqueue,
+			    &sc->sc_setmulti);
+		break;
+	case SIOCGIFMEDIA:
+	case SIOCSIFMEDIA:
+		error = ifmedia_ioctl(ifp, ifr, &mii->mii_media, command);
+		break;
+	default:
+		error = ether_ioctl(ifp, command, data);
+		break;
+	}
+	return (error);
+}
+
+static void
+aue_rxflush(struct aue_softc *sc)
+{
+	struct ifnet *ifp = sc->sc_ifp;
+	struct mbuf *m;
+
+	AUE_LOCK_ASSERT(sc, MA_OWNED);
+
+	for (;;) {
+		_IF_DEQUEUE(&sc->sc_rxq, m);
+		if (m == NULL)
+			break;
+
+		/*
+		 * The USB xfer has been resubmitted so its safe to unlock now.
+		 */
+		AUE_UNLOCK(sc);
+		ifp->if_input(ifp, m);
+		AUE_LOCK(sc);
+	}
+}
+
+static struct mbuf *
+aue_newbuf(void)
+{
+	struct mbuf *m_new;
+
+	m_new = m_getcl(M_DONTWAIT, MT_DATA, M_PKTHDR);
+	if (m_new == NULL)
+		return (NULL);
+	m_new->m_len = m_new->m_pkthdr.len = MCLBYTES;
+
+	m_adj(m_new, ETHER_ALIGN);
+	return (m_new);
+}
+
+static int
+aue_rxbuf(struct aue_softc *sc, struct usb_page_cache *pc, 
+    unsigned int offset, unsigned int len)
+{
+	struct ifnet *ifp = sc->sc_ifp;
+	struct mbuf *m;
+
+	AUE_LOCK_ASSERT(sc, MA_OWNED);
+
+	if (len < ETHER_HDR_LEN || len > MCLBYTES - ETHER_ALIGN)
+		return (1);
+
+	m = aue_newbuf();
+	if (m == NULL) {
+		ifp->if_ierrors++;
+		return (ENOMEM);
+	}
+
+	usbd_copy_out(pc, offset, mtod(m, uint8_t *), len);
+
+	/* finalize mbuf */
+	ifp->if_ipackets++;
+	m->m_pkthdr.rcvif = ifp;
+	m->m_pkthdr.len = m->m_len = len;
+
+	/* enqueue for later when the lock can be released */
+	_IF_ENQUEUE(&sc->sc_rxq, m);
+	return (0);
+}
+
+static void
+aue_watchdog(void *arg)
+{
+	struct aue_softc *sc = arg;
+	struct ifnet *ifp = sc->sc_ifp;
+
+	if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0)
+		return;
+
+	aue_tick(sc);
+	sleepout_reset(&sc->sc_watchdog, hz, aue_watchdog, sc);
 }

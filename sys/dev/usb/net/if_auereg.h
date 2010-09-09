@@ -183,7 +183,7 @@ enum {
 #define	AUE_RXSTAT_DRIBBLE	0x10
 #define	AUE_RXSTAT_MASK		0x1E
 
-#define	GET_MII(sc)		uether_getmii(&(sc)->sc_ue)
+#define	GET_MII(sc)		(device_get_softc(sc->sc_miibus))
 
 struct aue_intrpkt {
 	uint8_t	aue_txstat0;
@@ -202,10 +202,15 @@ struct aue_rxpkt {
 } __packed;
 
 struct aue_softc {
-	struct usb_ether	sc_ue;
+	struct ifnet		*sc_ifp;
+	device_t		sc_dev;
+	device_t		sc_miibus;
+	struct usb_device	*sc_udev; /* used by uether_do_request() */
+	struct usb_xfer		*sc_xfer[AUE_N_TRANSFER];
 	struct mtx		sc_mtx;
-	struct usb_xfer	*sc_xfer[AUE_N_TRANSFER];
-
+	struct ifqueue		sc_rxq;
+	/* ethernet address from eeprom */
+	uint8_t			sc_eaddr[ETHER_ADDR_LEN];
 	int			sc_flags;
 #define	AUE_FLAG_LSYS		0x0001	/* use Linksys reset */
 #define	AUE_FLAG_PNA		0x0002	/* has Home PNA */
@@ -213,6 +218,10 @@ struct aue_softc {
 #define	AUE_FLAG_LINK		0x0008	/* wait for link to come up */
 #define	AUE_FLAG_VER_2		0x0200	/* chip is version 2 */
 #define	AUE_FLAG_DUAL_PHY	0x0400	/* chip has two transcivers */
+
+	struct sleepout		sc_sleepout;
+	struct sleepout_task	sc_watchdog;
+	struct task		sc_setmulti;
 };
 
 #define	AUE_LOCK(_sc)		mtx_lock(&(_sc)->sc_mtx)
