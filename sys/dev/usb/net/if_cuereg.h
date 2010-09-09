@@ -119,10 +119,18 @@ enum {
 };
 
 struct cue_softc {
-	struct usb_ether	sc_ue;
+	struct ifnet		*sc_ifp;
 	struct mtx		sc_mtx;
-	struct usb_xfer	*sc_xfer[CUE_N_TRANSFER];
-
+	device_t		sc_dev;
+	device_t		sc_miibus;
+	struct usb_device	*sc_udev; /* used by uether_do_request() */
+	struct usb_xfer		*sc_xfer[CUE_N_TRANSFER];
+	struct sleepout		sc_sleepout;
+	struct sleepout_task	sc_watchdog;
+	struct task		sc_setmulti;
+	struct ifqueue		sc_rxq;
+	/* ethernet address from eeprom */
+	uint8_t			sc_eaddr[ETHER_ADDR_LEN];
 	int			sc_flags;
 #define	CUE_FLAG_LINK		0x0001	/* got a link */
 };
