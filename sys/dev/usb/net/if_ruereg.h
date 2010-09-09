@@ -144,7 +144,7 @@
 #define	RUE_RXSTAT_PMATCH	(0x04 << 12)
 #define	RUE_RXSTAT_MCAST	(0x08 << 12)
 
-#define	GET_MII(sc)		uether_getmii(&(sc)->sc_ue)
+#define	GET_MII(sc)		(device_get_softc(sc->sc_miibus))
 
 struct rue_intrpkt {
 	uint8_t	rue_tsr;
@@ -170,10 +170,18 @@ enum {
 };
 
 struct rue_softc {
-	struct usb_ether	sc_ue;
+	struct ifnet		*sc_ifp;
+	device_t		sc_dev;
+	device_t		sc_miibus;
 	struct mtx		sc_mtx;
-	struct usb_xfer	*sc_xfer[RUE_N_TRANSFER];
-
+	struct usb_device	*sc_udev; /* used by uether_do_request() */
+	struct usb_xfer		*sc_xfer[RUE_N_TRANSFER];
+	struct sleepout		sc_sleepout;
+	struct sleepout_task	sc_watchdog;
+	struct task		sc_setmulti;
+	struct ifqueue		sc_rxq;
+	/* ethernet address from eeprom */
+	uint8_t			sc_eaddr[ETHER_ADDR_LEN];
 	int			sc_flags;
 #define	RUE_FLAG_LINK		0x0001
 };
