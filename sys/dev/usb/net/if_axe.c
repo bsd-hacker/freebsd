@@ -847,13 +847,12 @@ axe_detach(device_t dev)
 	struct axe_softc *sc = device_get_softc(dev);
 	struct ifnet *ifp = sc->sc_ifp;
 
-	if (sc->sc_miibus != NULL)
-		device_delete_child(sc->sc_dev, sc->sc_miibus);
-
 	sleepout_drain(&sc->sc_watchdog);
 	taskqueue_drain(sc->sc_sleepout.s_taskqueue, &sc->sc_setmulti);
 	usbd_transfer_unsetup(sc->sc_xfer, AXE_N_TRANSFER);
 
+	if (sc->sc_miibus != NULL)
+		device_delete_child(sc->sc_dev, sc->sc_miibus);
 	if (ifp != NULL) {
 		AXE_LOCK(sc);
 		ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
