@@ -137,7 +137,7 @@
 #define	UDAV_GPR_GEPIO1		(1<<1)	/* General purpose 1 */
 #define	UDAV_GPR_GEPIO0		(1<<0)	/* General purpose 0 */
 
-#define	GET_MII(sc)		uether_getmii(&(sc)->sc_ue)
+#define	GET_MII(sc)		(device_get_softc(sc->sc_miibus))
 
 struct udav_rxpkt {
 	uint8_t	rxstat;
@@ -152,10 +152,18 @@ enum {
 };
 
 struct udav_softc {
-	struct usb_ether	sc_ue;
+	struct ifnet		*sc_ifp;
+	device_t		sc_dev;
+	device_t		sc_miibus;
+	struct usb_device	*sc_udev;
+	struct usb_xfer		*sc_xfer[UDAV_N_TRANSFER];
 	struct mtx		sc_mtx;
-	struct usb_xfer	*sc_xfer[UDAV_N_TRANSFER];
-
+	struct sleepout		sc_sleepout;
+	struct sleepout_task	sc_watchdog;
+	struct task		sc_setmulti;
+	struct ifqueue		sc_rxq;
+	/* ethernet address from eeprom */
+	uint8_t			sc_eaddr[ETHER_ADDR_LEN];
 	int			sc_flags;
 #define	UDAV_FLAG_LINK		0x0001
 #define	UDAV_FLAG_EXT_PHY	0x0040
