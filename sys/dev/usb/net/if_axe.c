@@ -1229,6 +1229,7 @@ axe_init_locked(struct axe_softc *sc)
 
 	ifp->if_drv_flags |= IFF_DRV_RUNNING;
 	sleepout_reset(&sc->sc_watchdog, hz, axe_watchdog, sc);
+	axe_start(sc->sc_ifp);
 }
 
 static void
