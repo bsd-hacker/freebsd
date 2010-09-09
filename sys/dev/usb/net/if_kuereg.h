@@ -124,15 +124,21 @@ enum {
 };
 
 struct kue_softc {
-	struct usb_ether	sc_ue;
+	struct ifnet		*sc_ifp;
+	device_t		sc_dev;
+	device_t		sc_miibus;
+	struct usb_device	*sc_udev; /* used by uether_do_request() */
+	struct usb_xfer		*sc_xfer[KUE_N_TRANSFER];
 	struct mtx		sc_mtx;
+	struct sleepout		sc_sleepout;
+	struct task		sc_setmulti;
+	struct ifqueue		sc_rxq;
+	/* ethernet address from eeprom */
+	uint8_t			sc_eaddr[ETHER_ADDR_LEN];
 	struct kue_ether_desc	sc_desc;
-	struct usb_xfer	*sc_xfer[KUE_N_TRANSFER];
 	uint8_t			*sc_mcfilters;
-
 	int			sc_flags;
 #define	KUE_FLAG_LINK		0x0001
-
 	uint16_t		sc_rxfilt;
 };
 
