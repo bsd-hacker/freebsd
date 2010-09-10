@@ -154,7 +154,6 @@ usb_pause_mtx(struct mtx *mtx, int _ticks)
 		/* convert to microseconds, rounded up */
 		_ticks = (_ticks + 1) * 1000;
 		DELAY(_ticks);
-
 	} else {
 
 		/*
