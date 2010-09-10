@@ -119,44 +119,11 @@ struct ucom_callback {
 #define	ULSR_RXRDY	0x01		/* Byte ready in Receive Buffer */
 #define	ULSR_RCV_MASK	0x1f		/* Mask for incoming data or error */
 
-struct ucom_cfg_task {
-	struct usb_proc_msg hdr;
-	struct ucom_softc *sc;
-};
-
-struct ucom_param_task {
-	struct usb_proc_msg hdr;
-	struct ucom_softc *sc;
-	struct termios termios_copy;
-};
-
-struct ucom_super_softc {
-	struct usb_process sc_tq;
-};
-
 struct ucom_softc {
-	/*
-	 * NOTE: To avoid loosing level change information we use two
-	 * tasks instead of one for all commands.
-	 *
-	 * Level changes are transitions like:
-	 *
-	 * ON->OFF
-	 * OFF->ON
-	 * OPEN->CLOSE
-	 * CLOSE->OPEN
-	 */
-	struct ucom_cfg_task	sc_start_task[2];
-	struct ucom_cfg_task	sc_open_task[2];
-	struct ucom_cfg_task	sc_close_task[2];
-	struct ucom_cfg_task	sc_line_state_task[2];
-	struct ucom_cfg_task	sc_status_task[2];
-	struct ucom_param_task	sc_param_task[2];
 	struct cv sc_cv;
 	/* Used to set "UCOM_FLAG_GP_DATA" flag: */
 	struct usb_proc_msg	*sc_last_start_xfer;
 	const struct ucom_callback *sc_callback;
-	struct ucom_super_softc *sc_super;
 	struct tty *sc_tty;
 	struct mtx *sc_mtx;
 	void   *sc_parent;
@@ -188,14 +155,13 @@ struct ucom_softc {
 #define	UCOM_LOCK(sc)		mtx_lock(sc->sc_mtx)
 #define	UCOM_UNLOCK(sc)		mtx_unlock(sc->sc_mtx)
 
-#define	ucom_cfg_do_request(udev,com,req,ptr,flags,timo) \
-    usbd_do_request_proc(udev,&(com)->sc_super->sc_tq,req,ptr,flags,NULL,timo)
+#define	ucom_cfg_do_request(udev, com, req, ptr, flags, timo)		\
+	usbd_do_request_flags(udev, (com)->sc_mtx, req, ptr,		\
+	    flags, NULL, timo)
 
-int	ucom_attach(struct ucom_super_softc *,
-	    struct ucom_softc *, uint32_t, void *,
+int	ucom_attach(struct ucom_softc *, uint32_t, void *,
 	    const struct ucom_callback *callback, struct mtx *);
-void	ucom_detach(struct ucom_super_softc *,
-	    struct ucom_softc *, uint32_t);
+void	ucom_detach(struct ucom_softc *, uint32_t);
 void	ucom_status_change(struct ucom_softc *);
 uint8_t	ucom_get_data(struct ucom_softc *, struct usb_page_cache *,
 	    uint32_t, uint32_t, uint32_t *);

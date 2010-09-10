@@ -68,7 +68,6 @@ __FBSDID("$FreeBSD$");
 
 #define	USB_DEBUG_VAR uftdi_debug
 #include <dev/usb/usb_debug.h>
-#include <dev/usb/usb_process.h>
 
 #include <dev/usb/serial/usb_serial.h>
 #include <dev/usb/serial/uftdi_reg.h>
@@ -94,7 +93,6 @@ enum {
 };
 
 struct uftdi_softc {
-	struct ucom_super_softc sc_super_ucom;
 	struct ucom_softc sc_ucom;
 
 	struct usb_device *sc_udev;
@@ -324,8 +322,7 @@ uftdi_attach(device_t dev)
 	    FTDI_SIO_SET_DATA_PARITY_NONE |
 	    FTDI_SIO_SET_DATA_BITS(8));
 
-	error = ucom_attach(&sc->sc_super_ucom, &sc->sc_ucom, 1, sc,
-	    &uftdi_callback, &sc->sc_mtx);
+	error = ucom_attach(&sc->sc_ucom, 1, sc, &uftdi_callback, &sc->sc_mtx);
 	if (error) {
 		goto detach;
 	}
@@ -341,7 +338,7 @@ uftdi_detach(device_t dev)
 {
 	struct uftdi_softc *sc = device_get_softc(dev);
 
-	ucom_detach(&sc->sc_super_ucom, &sc->sc_ucom, 1);
+	ucom_detach(&sc->sc_ucom, 1);
 	usbd_transfer_unsetup(sc->sc_xfer, UFTDI_N_TRANSFER);
 	mtx_destroy(&sc->sc_mtx);
 

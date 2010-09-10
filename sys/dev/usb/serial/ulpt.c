@@ -70,7 +70,6 @@ __FBSDID("$FreeBSD$");
 
 #define	USB_DEBUG_VAR ulpt_debug
 #include <dev/usb/usb_debug.h>
-#include <dev/usb/usb_process.h>
 
 #ifdef USB_DEBUG
 static int ulpt_debug = 0;

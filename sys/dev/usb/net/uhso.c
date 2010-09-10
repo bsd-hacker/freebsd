@@ -98,7 +98,6 @@ struct uhso_softc {
 	struct callout		sc_c;
 
 	/* TTY related structures */
-	struct ucom_super_softc sc_super_ucom;
 	int			sc_ttys;
 	struct uhso_tty		*sc_tty;
 	struct ucom_softc	*sc_ucom;
@@ -665,7 +664,7 @@ uhso_detach(device_t self)
 	usbd_transfer_unsetup(sc->sc_xfer, 3);
 	usbd_transfer_unsetup(sc->sc_ctrl_xfer, UHSO_CTRL_MAX);
 	if (sc->sc_ttys > 0) {
-		ucom_detach(&sc->sc_super_ucom, sc->sc_ucom, sc->sc_ttys);
+		ucom_detach(sc->sc_ucom, sc->sc_ttys);
 
 		for (i = 0; i < sc->sc_ttys; i++) {
 			if (sc->sc_tty[i].ht_muxport != -1) {
@@ -896,8 +895,8 @@ uhso_probe_iface(struct uhso_softc *sc, int index,
 		UHSO_DPRINTF(1, "Trying to attach mux. serial\n");
 		error = uhso_attach_muxserial(sc, iface, type);
 		if (error == 0 && sc->sc_ttys > 0) {
-			error = ucom_attach(&sc->sc_super_ucom, sc->sc_ucom,
-			    sc->sc_ttys, sc, &uhso_ucom_callback, &sc->sc_mtx);
+			error = ucom_attach(sc->sc_ucom, sc->sc_ttys, sc,
+			    &uhso_ucom_callback, &sc->sc_mtx);
 			if (error) {
 				device_printf(sc->sc_dev, "ucom_attach failed\n");
 				return (ENXIO);
@@ -914,8 +913,8 @@ uhso_probe_iface(struct uhso_softc *sc, int index,
 		if (error)
 			return (ENXIO);
 
-		error = ucom_attach(&sc->sc_super_ucom, sc->sc_ucom,
-		    sc->sc_ttys, sc, &uhso_ucom_callback, &sc->sc_mtx);
+		error = ucom_attach(sc->sc_ucom, sc->sc_ttys, sc,
+		    &uhso_ucom_callback, &sc->sc_mtx);
 		if (error) {
 			device_printf(sc->sc_dev, "ucom_attach failed\n");
 			return (ENXIO);

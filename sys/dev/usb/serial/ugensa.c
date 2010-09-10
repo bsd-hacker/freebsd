@@ -61,7 +61,6 @@
 
 #define	USB_DEBUG_VAR usb_debug
 #include <dev/usb/usb_debug.h>
-#include <dev/usb/usb_process.h>
 
 #include <dev/usb/serial/usb_serial.h>
 
@@ -82,7 +81,6 @@ struct ugensa_sub_softc {
 };
 
 struct ugensa_softc {
-	struct ucom_super_softc sc_super_ucom;
 	struct ucom_softc sc_ucom[UGENSA_IFACE_MAX];
 	struct ugensa_sub_softc sc_sub[UGENSA_IFACE_MAX];
 
@@ -240,7 +238,7 @@ ugensa_attach(device_t dev)
 	}
 	device_printf(dev, "Found %d interfaces.\n", sc->sc_niface);
 
-	error = ucom_attach(&sc->sc_super_ucom, sc->sc_ucom, sc->sc_niface, sc,
+	error = ucom_attach(sc->sc_ucom, sc->sc_niface, sc,
 	    &ugensa_callback, &sc->sc_mtx);
 	if (error) {
 		DPRINTF("attach failed\n");
@@ -259,7 +257,7 @@ ugensa_detach(device_t dev)
 	struct ugensa_softc *sc = device_get_softc(dev);
 	uint8_t x;
 
-	ucom_detach(&sc->sc_super_ucom, sc->sc_ucom, sc->sc_niface);
+	ucom_detach(sc->sc_ucom, sc->sc_niface);
 
 	for (x = 0; x < sc->sc_niface; x++) {
 		usbd_transfer_unsetup(sc->sc_sub[x].sc_xfer, UGENSA_N_TRANSFER);

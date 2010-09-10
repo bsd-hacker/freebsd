@@ -112,7 +112,6 @@ __FBSDID("$FreeBSD$");
 
 #define	USB_DEBUG_VAR uplcom_debug
 #include <dev/usb/usb_debug.h>
-#include <dev/usb/usb_process.h>
 
 #include <dev/usb/serial/usb_serial.h>
 
@@ -154,7 +153,6 @@ enum {
 };
 
 struct uplcom_softc {
-	struct ucom_super_softc sc_super_ucom;
 	struct ucom_softc sc_ucom;
 
 	struct usb_xfer *sc_xfer[UPLCOM_N_TRANSFER];
@@ -431,8 +429,7 @@ uplcom_attach(device_t dev)
 	usbd_xfer_set_stall(sc->sc_xfer[UPLCOM_BULK_DT_RD]);
 	mtx_unlock(&sc->sc_mtx);
 
-	error = ucom_attach(&sc->sc_super_ucom, &sc->sc_ucom, 1, sc,
-	    &uplcom_callback, &sc->sc_mtx);
+	error = ucom_attach(&sc->sc_ucom, 1, sc, &uplcom_callback, &sc->sc_mtx);
 	if (error) {
 		goto detach;
 	}
@@ -458,7 +455,7 @@ uplcom_detach(device_t dev)
 
 	DPRINTF("sc=%p\n", sc);
 
-	ucom_detach(&sc->sc_super_ucom, &sc->sc_ucom, 1);
+	ucom_detach(&sc->sc_ucom, 1);
 	usbd_transfer_unsetup(sc->sc_xfer, UPLCOM_N_TRANSFER);
 	mtx_destroy(&sc->sc_mtx);
 

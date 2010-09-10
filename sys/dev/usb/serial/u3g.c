@@ -58,7 +58,6 @@
 
 #define	USB_DEBUG_VAR u3g_debug
 #include <dev/usb/usb_debug.h>
-#include <dev/usb/usb_process.h>
 #include <dev/usb/usb_msctest.h>
 
 #include <dev/usb/serial/usb_serial.h>
@@ -101,7 +100,6 @@ enum {
 };
 
 struct u3g_softc {
-	struct ucom_super_softc sc_super_ucom;
 	struct ucom_softc sc_ucom[U3G_MAXPORTS];
 
 	struct usb_xfer *sc_xfer[U3G_MAXPORTS][U3G_N_TRANSFER];
@@ -803,8 +801,8 @@ u3g_attach(device_t dev)
 	}
 	sc->sc_numports = nports;
 
-	error = ucom_attach(&sc->sc_super_ucom, sc->sc_ucom,
-	    sc->sc_numports, sc, &u3g_callback, &sc->sc_mtx);
+	error = ucom_attach(sc->sc_ucom, sc->sc_numports, sc, &u3g_callback,
+	    &sc->sc_mtx);
 	if (error) {
 		DPRINTF("ucom_attach failed\n");
 		goto detach;
@@ -827,7 +825,7 @@ u3g_detach(device_t dev)
 	DPRINTF("sc=%p\n", sc);
 
 	/* NOTE: It is not dangerous to detach more ports than attached! */
-	ucom_detach(&sc->sc_super_ucom, sc->sc_ucom, U3G_MAXPORTS);
+	ucom_detach(sc->sc_ucom, U3G_MAXPORTS);
 
 	for (m = 0; m != U3G_MAXPORTS; m++)
 		usbd_transfer_unsetup(sc->sc_xfer[m], U3G_N_TRANSFER);
