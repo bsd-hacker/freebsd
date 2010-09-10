@@ -146,8 +146,7 @@ device_set_usb_desc(device_t dev)
 void
 usb_pause_mtx(struct mtx *mtx, int _ticks)
 {
-	if (mtx != NULL)
-		mtx_unlock(mtx);
+	int tmpchan;
 
 	if (cold) {
 		/* convert to milliseconds */
@@ -163,13 +162,12 @@ usb_pause_mtx(struct mtx *mtx, int _ticks)
 		 * too early!
 		 */
 		_ticks++;
-
-		if (pause("USBWAIT", _ticks)) {
-			/* ignore */
-		}
+		if (mtx != NULL)
+			(void)mtx_sleep(&tmpchan, mtx, USB_PRI_MED, "USBWAIT",
+			    _ticks);
+		else
+			(void)pause("USBWAIT", _ticks);
 	}
-	if (mtx != NULL)
-		mtx_lock(mtx);
 }
 
 /*------------------------------------------------------------------------*
