@@ -418,10 +418,10 @@ ucom_detach_tty(struct ucom_softc *sc)
 
 	/* the config thread has been stopped when we get here */
 
-	mtx_lock(sc->sc_mtx);
+	UCOM_LOCK(sc);
 	sc->sc_flag |= UCOM_FLAG_GONE;
 	sc->sc_flag &= ~(UCOM_FLAG_HL_READY | UCOM_FLAG_LL_READY);
-	mtx_unlock(sc->sc_mtx);
+	UCOM_UNLOCK(sc);
 	if (tp) {
 		tty_lock(tp);
 
@@ -429,7 +429,7 @@ ucom_detach_tty(struct ucom_softc *sc)
 
 		tty_rel_gone(tp);
 
-		mtx_lock(sc->sc_mtx);
+		UCOM_LOCK(sc);
 		/* Wait for the callback after the TTY is torn down */
 		while (sc->sc_ttyfreed == 0)
 			cv_wait(&sc->sc_cv, sc->sc_mtx);
@@ -442,7 +442,7 @@ ucom_detach_tty(struct ucom_softc *sc)
 		if (sc->sc_callback->ucom_stop_write) {
 			(sc->sc_callback->ucom_stop_write) (sc);
 		}
-		mtx_unlock(sc->sc_mtx);
+		UCOM_UNLOCK(sc);
 	}
 	cv_destroy(&sc->sc_cv);
 }
@@ -1283,10 +1283,10 @@ ucom_free(void *xsc)
 {
 	struct ucom_softc *sc = xsc;
 
-	mtx_lock(sc->sc_mtx);
+	UCOM_LOCK(sc);
 	sc->sc_ttyfreed = 1;
 	cv_signal(&sc->sc_cv);
-	mtx_unlock(sc->sc_mtx);
+	UCOM_UNLOCK(sc);
 }
 
 static cn_probe_t ucom_cnprobe;
@@ -1327,7 +1327,7 @@ ucom_cngetc(struct consdev *cd)
 	if (sc == NULL)
 		return (-1);
 
-	mtx_lock(sc->sc_mtx);
+	UCOM_LOCK(sc);
 
 	if (ucom_cons_rx_low != ucom_cons_rx_high) {
 		c = ucom_cons_rx_buf[ucom_cons_rx_low];
@@ -1340,7 +1340,7 @@ ucom_cngetc(struct consdev *cd)
 	/* start USB transfers */
 	ucom_outwakeup(sc->sc_tty);
 
-	mtx_unlock(sc->sc_mtx);
+	UCOM_UNLOCK(sc);
 
 	/* poll if necessary */
 	if (kdb_active && sc->sc_callback->ucom_poll)
@@ -1360,7 +1360,7 @@ ucom_cnputc(struct consdev *cd, int c)
 
  repeat:
 
-	mtx_lock(sc->sc_mtx);
+	UCOM_LOCK(sc);
 
 	/* compute maximum TX length */
 
@@ -1376,7 +1376,7 @@ ucom_cnputc(struct consdev *cd, int c)
 	/* start USB transfers */
 	ucom_outwakeup(sc->sc_tty);
 
-	mtx_unlock(sc->sc_mtx);
+	UCOM_UNLOCK(sc);
 
 	/* poll if necessary */
 	if (kdb_active && sc->sc_callback->ucom_poll) {
