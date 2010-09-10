@@ -118,7 +118,6 @@ __FBSDID("$FreeBSD$");
 
 #define	USB_DEBUG_VAR axe_debug
 #include <dev/usb/usb_debug.h>
-#include <dev/usb/usb_process.h>
 #include <dev/usb/usb_sleepout.h>
 
 #include <dev/usb/net/if_axereg.h>
