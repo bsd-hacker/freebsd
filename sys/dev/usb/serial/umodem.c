@@ -292,7 +292,6 @@ umodem_attach(device_t dev)
 	uint8_t i;
 	int error;
 
-	device_set_usb_desc(dev);
 	mtx_init(&sc->sc_mtx, "umodem", NULL, MTX_DEF);
 
 	sc->sc_ctrl_iface_no = uaa->info.bIfaceNum;

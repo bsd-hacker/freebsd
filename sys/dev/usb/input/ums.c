@@ -524,8 +524,6 @@ ums_attach(device_t dev)
 
 	DPRINTFN(11, "sc=%p\n", sc);
 
-	device_set_usb_desc(dev);
-
 	mtx_init(&sc->sc_mtx, "ums lock", NULL, MTX_DEF | MTX_RECURSE);
 
 	usb_callout_init_mtx(&sc->sc_callout, &sc->sc_mtx, 0);

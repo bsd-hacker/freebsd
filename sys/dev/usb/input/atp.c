@@ -1695,8 +1695,6 @@ atp_attach(device_t dev)
 		goto detach;
 	}
 
-	device_set_usb_desc(dev);
-
 	sc->sc_params           = &atp_dev_params[uaa->driver_info];
 
 	sc->sc_hw.buttons       = 3;

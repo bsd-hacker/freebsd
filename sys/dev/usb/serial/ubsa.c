@@ -305,7 +305,6 @@ ubsa_attach(device_t dev)
 
 	DPRINTF("sc=%p\n", sc);
 
-	device_set_usb_desc(dev);
 	mtx_init(&sc->sc_mtx, "ubsa", NULL, MTX_DEF);
 
 	sc->sc_udev = uaa->device;

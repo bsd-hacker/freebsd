@@ -217,7 +217,6 @@ ucycom_attach(device_t dev)
 
 	sc->sc_udev = uaa->device;
 
-	device_set_usb_desc(dev);
 	mtx_init(&sc->sc_mtx, "ucycom", NULL, MTX_DEF);
 
 	snprintf(sc->sc_name, sizeof(sc->sc_name),

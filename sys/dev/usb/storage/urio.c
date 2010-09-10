@@ -224,8 +224,6 @@ urio_attach(device_t dev)
 	struct urio_softc *sc = device_get_softc(dev);
 	int error;
 
-	device_set_usb_desc(dev);
-
 	sc->sc_udev = uaa->device;
 
 	mtx_init(&sc->sc_mtx, "urio lock", NULL, MTX_DEF | MTX_RECURSE);

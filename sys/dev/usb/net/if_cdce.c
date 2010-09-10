@@ -446,8 +446,6 @@ cdce_attach(device_t dev)
 	sc->sc_udev = uaa->device;
 	sc->sc_flags = USB_GET_DRIVER_INFO(uaa);
 
-	device_set_usb_desc(dev);
-
 	mtx_init(&sc->sc_mtx, device_get_nameunit(dev), NULL, MTX_DEF);
 
 	ud = usbd_find_descriptor

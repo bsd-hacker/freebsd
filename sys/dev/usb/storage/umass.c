@@ -903,8 +903,6 @@ umass_attach(device_t dev)
 	snprintf(sc->sc_name, sizeof(sc->sc_name),
 	    "%s", device_get_nameunit(dev));
 
-	device_set_usb_desc(dev);
-
         mtx_init(&sc->sc_mtx, device_get_nameunit(dev), 
 	    NULL, MTX_DEF | MTX_RECURSE);
 

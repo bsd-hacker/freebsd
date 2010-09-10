@@ -332,8 +332,6 @@ udbp_attach(device_t dev)
 	struct udbp_softc *sc = device_get_softc(dev);
 	int error;
 
-	device_set_usb_desc(dev);
-
 	snprintf(sc->sc_name, sizeof(sc->sc_name),
 	    "%s", device_get_nameunit(dev));
 

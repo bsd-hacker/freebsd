@@ -386,8 +386,6 @@ ustorage_fs_attach(device_t dev)
 		sc->sc_lun[0].removable = 1;
 	}
 
-	device_set_usb_desc(dev);
-
 	mtx_init(&sc->sc_mtx, "USTORAGE_FS lock",
 	    NULL, (MTX_DEF | MTX_RECURSE));
 

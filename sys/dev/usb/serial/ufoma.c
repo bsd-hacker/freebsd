@@ -382,8 +382,6 @@ ufoma_attach(device_t dev)
 	mtx_init(&sc->sc_mtx, "ufoma", NULL, MTX_DEF);
 	cv_init(&sc->sc_cv, "CWAIT");
 
-	device_set_usb_desc(dev);
-
 	snprintf(sc->sc_name, sizeof(sc->sc_name),
 	    "%s", device_get_nameunit(dev));
 

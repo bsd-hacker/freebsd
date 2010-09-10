@@ -793,8 +793,6 @@ urtw_attach(device_t dev)
 	uint32_t data;
 	usb_error_t error;
 
-	device_set_usb_desc(dev);
-
 	sc->sc_dev = dev;
 	sc->sc_udev = uaa->device;
 	if (USB_GET_DRIVER_INFO(uaa) == URTW_REV_RTL8187B)

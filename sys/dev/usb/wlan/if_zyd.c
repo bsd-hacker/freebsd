@@ -343,7 +343,6 @@ zyd_attach(device_t dev)
 		return (EINVAL);
 	}
 
-	device_set_usb_desc(dev);
 	sc->sc_dev = dev;
 	sc->sc_udev = uaa->device;
 	sc->sc_macrev = USB_GET_DRIVER_INFO(uaa);

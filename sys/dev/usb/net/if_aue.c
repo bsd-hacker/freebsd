@@ -694,8 +694,6 @@ aue_attach(device_t dev)
 	uint8_t iface_index;
 	int error;
 
-	device_set_usb_desc(dev);
-
 	sc->sc_flags = USB_GET_DRIVER_INFO(uaa);
 	if (uaa->info.bcdDevice >= 0x0201) {
 		/* XXX currently undocumented */

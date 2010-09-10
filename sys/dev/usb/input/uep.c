@@ -315,8 +315,6 @@ uep_attach(device_t dev)
 	struct uep_softc *sc = device_get_softc(dev);
 	int error;
 
-	device_set_usb_desc(dev);
-
 	mtx_init(&sc->mtx, "uep lock", NULL, MTX_DEF);
 
 	error = usbd_transfer_setup(uaa->device, &uaa->info.bIfaceIndex,

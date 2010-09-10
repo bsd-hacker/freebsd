@@ -242,7 +242,6 @@ ubser_attach(device_t dev)
 	uint8_t n;
 	int error;
 
-	device_set_usb_desc(dev);
 	mtx_init(&sc->sc_mtx, "ubser", NULL, MTX_DEF);
 
 	snprintf(sc->sc_name, sizeof(sc->sc_name), "%s",

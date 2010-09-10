@@ -745,7 +745,6 @@ u3g_attach(device_t dev)
 	for (n = 0; n != U3G_N_TRANSFER; n++) 
 		u3g_config_tmp[n] = u3g_config[n];
 
-	device_set_usb_desc(dev);
 	mtx_init(&sc->sc_mtx, "u3g", NULL, MTX_DEF);
 
 	sc->sc_udev = uaa->device;

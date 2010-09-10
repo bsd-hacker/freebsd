@@ -520,8 +520,6 @@ ulpt_attach(device_t dev)
 	sc->sc_dev = dev;
 	sc->sc_udev = uaa->device;
 
-	device_set_usb_desc(dev);
-
 	mtx_init(&sc->sc_mtx, "ulpt lock", NULL, MTX_DEF | MTX_RECURSE);
 
 	usb_callout_init_mtx(&sc->sc_watchdog, &sc->sc_mtx, 0);

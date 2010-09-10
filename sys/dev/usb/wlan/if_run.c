@@ -546,7 +546,6 @@ run_attach(device_t self)
 	int i, ntries, error;
 	uint8_t iface_index, bands;
 
-	device_set_usb_desc(self);
 	sc->sc_udev = uaa->device;
 	sc->sc_dev = self;
 

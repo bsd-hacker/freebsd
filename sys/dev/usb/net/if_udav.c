@@ -250,8 +250,6 @@ udav_attach(device_t dev)
 	sleepout_init_mtx(&sc->sc_sleepout, &sc->sc_watchdog, &sc->sc_mtx, 0);
 	TASK_INIT(&sc->sc_setmulti, 0, udav_setmulti, sc);
 
-	device_set_usb_desc(dev);
-
 	iface_index = UDAV_IFACE_INDEX;
 	error = usbd_transfer_setup(uaa->device, &iface_index,
 	    sc->sc_xfer, udav_config, UDAV_N_TRANSFER, sc, &sc->sc_mtx);

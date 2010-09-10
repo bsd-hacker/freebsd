@@ -274,7 +274,6 @@ usb_linux_attach(device_t dev)
 	}
 	if (usb_linux_create_usb_device(uaa->device, dev) != 0)
 		return (ENOMEM);
-	device_set_usb_desc(dev);
 
 	sc->sc_fbsd_udev = uaa->device;
 	sc->sc_fbsd_dev = dev;

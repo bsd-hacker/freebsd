@@ -200,7 +200,6 @@ uark_attach(device_t dev)
 	int32_t error;
 	uint8_t iface_index;
 
-	device_set_usb_desc(dev);
 	mtx_init(&sc->sc_mtx, "uark", NULL, MTX_DEF);
 
 	sc->sc_udev = uaa->device;

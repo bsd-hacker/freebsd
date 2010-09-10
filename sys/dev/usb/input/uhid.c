@@ -648,8 +648,6 @@ uhid_attach(device_t dev)
 
 	DPRINTFN(10, "sc=%p\n", sc);
 
-	device_set_usb_desc(dev);
-
 	mtx_init(&sc->sc_mtx, "uhid lock", NULL, MTX_DEF | MTX_RECURSE);
 
 	sc->sc_udev = uaa->device;

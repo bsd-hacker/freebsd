@@ -318,7 +318,6 @@ uchcom_attach(device_t dev)
 
 	DPRINTFN(11, "\n");
 
-	device_set_usb_desc(dev);
 	mtx_init(&sc->sc_mtx, "uchcom", NULL, MTX_DEF);
 
 	sc->sc_udev = uaa->device;

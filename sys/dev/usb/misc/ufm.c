@@ -149,8 +149,6 @@ ufm_attach(device_t dev)
 
 	mtx_init(&sc->sc_mtx, "ufm lock", NULL, MTX_DEF | MTX_RECURSE);
 
-	device_set_usb_desc(dev);
-
 	error = usb_fifo_attach(uaa->device, sc, &sc->sc_mtx,
 	    &ufm_fifo_methods, &sc->sc_fifo,
 	    device_get_unit(dev), 0 - 1, uaa->info.bIfaceIndex,

@@ -427,7 +427,6 @@ ural_attach(device_t self)
 	uint8_t iface_index, bands;
 	int error;
 
-	device_set_usb_desc(self);
 	sc->sc_udev = uaa->device;
 	sc->sc_dev = self;
 

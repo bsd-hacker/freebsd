@@ -779,8 +779,6 @@ axe_attach(device_t dev)
 	uint8_t iface_index;
 	int error;
 
-	device_set_usb_desc(dev);
-
 	sc->sc_flags = USB_GET_DRIVER_INFO(uaa);
 	sc->sc_dev = dev;
 	sc->sc_udev = uaa->device;

@@ -291,7 +291,6 @@ uvscom_attach(device_t dev)
 	struct uvscom_softc *sc = device_get_softc(dev);
 	int error;
 
-	device_set_usb_desc(dev);
 	mtx_init(&sc->sc_mtx, "uvscom", NULL, MTX_DEF);
 
 	sc->sc_udev = uaa->device;

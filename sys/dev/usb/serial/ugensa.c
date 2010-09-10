@@ -191,7 +191,6 @@ ugensa_attach(device_t dev)
 	uint8_t iface_index;
 	int x, cnt;
 
-	device_set_usb_desc(dev);
 	mtx_init(&sc->sc_mtx, "ugensa", NULL, MTX_DEF);
 
 	/* Figure out how many interfaces this device has got */

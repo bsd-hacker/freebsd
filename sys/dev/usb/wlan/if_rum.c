@@ -424,7 +424,6 @@ rum_attach(device_t self)
 	uint32_t tmp;
 	int error, ntries;
 
-	device_set_usb_desc(self);
 	sc->sc_udev = uaa->device;
 	sc->sc_dev = self;
 

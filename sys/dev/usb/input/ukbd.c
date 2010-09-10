@@ -819,8 +819,6 @@ ukbd_attach(device_t dev)
 
 	kbd->kb_data = (void *)sc;
 
-	device_set_usb_desc(dev);
-
 	sc->sc_udev = uaa->device;
 	sc->sc_iface = uaa->iface;
 	sc->sc_iface_index = uaa->info.bIfaceIndex;

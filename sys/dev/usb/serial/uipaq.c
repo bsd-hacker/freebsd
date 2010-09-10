@@ -1120,7 +1120,6 @@ uipaq_attach(device_t dev)
 
 	sc->sc_udev = uaa->device;
 
-	device_set_usb_desc(dev);
 	mtx_init(&sc->sc_mtx, "uipaq", NULL, MTX_DEF);
 
 	/*

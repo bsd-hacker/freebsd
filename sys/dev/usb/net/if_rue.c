@@ -582,7 +582,6 @@ rue_attach(device_t dev)
 	uint8_t iface_index;
 	int error;
 
-	device_set_usb_desc(dev);
 	sc->sc_dev = dev;
 	sc->sc_udev = uaa->device;
 	mtx_init(&sc->sc_mtx, device_get_nameunit(dev), NULL, MTX_DEF);

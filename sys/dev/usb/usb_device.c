@@ -1170,7 +1170,14 @@ usb_probe_and_attach_sub(struct usb_device *udev,
 	 */
 	iface->subdev = uaa->temp_dev;
 
-	if (device_probe_and_attach(iface->subdev) == 0) {
+	err = device_probe(iface->subdev);
+	if (err == -1)
+		goto attached;
+	else if (err != 0)
+		goto fail;
+	device_set_usb_desc(iface->subdev);
+	if (device_attach(iface->subdev) == 0) {
+attached:
 		/*
 		 * The USB attach arguments are only available during probe
 		 * and attach !
@@ -1184,10 +1191,10 @@ usb_probe_and_attach_sub(struct usb_device *udev,
 				device_printf(iface->subdev, "Suspend failed\n");
 		}
 		return (0);		/* success */
-	} else {
-		/* No USB driver found */
-		iface->subdev = NULL;
 	}
+fail:
+	/* No USB driver found */
+	iface->subdev = NULL;
 	return (1);			/* failure */
 }
 
