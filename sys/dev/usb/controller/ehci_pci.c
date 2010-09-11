@@ -305,12 +305,11 @@ ehci_pci_attach(device_t self)
 	sc->sc_bus.parent = self;
 	sc->sc_bus.devices = sc->sc_devices;
 	sc->sc_bus.devices_max = EHCI_MAX_DEVICES;
+	sc->sc_bus.busmem_func = ehci_iterate_hw_softc;
 
 	/* get all DMA memory */
-	if (usb_bus_mem_alloc_all(&sc->sc_bus,
-	    USB_GET_DMA_TAG(self), ehci_iterate_hw_softc)) {
+	if (usb_bus_mem_alloc_all(&sc->sc_bus, USB_GET_DMA_TAG(self)))
 		return (ENOMEM);
-	}
 
 	pci_enable_busmaster(self);
 
@@ -534,7 +533,7 @@ ehci_pci_detach(device_t self)
 		    sc->sc_io_res);
 		sc->sc_io_res = NULL;
 	}
-	usb_bus_mem_free_all(&sc->sc_bus, ehci_iterate_hw_softc);
+	usb_bus_mem_free_all(&sc->sc_bus);
 
 	return (0);
 }

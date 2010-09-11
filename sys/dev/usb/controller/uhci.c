@@ -638,9 +638,9 @@ uhci_init(uhci_softc_t *sc)
 			    sc->sc_isoc_p_last[x % UHCI_VFRAMELIST_COUNT]->td_self;
 		}
 	}
-	/* flush all cache into memory */
 
-	usb_bus_mem_flush_all(&sc->sc_bus, uhci_iterate_hw_softc);
+	/* flush all cache into memory */
+	usb_bus_mem_flush_all(&sc->sc_bus);
 
 	/* set up the bus struct */
 	sc->sc_bus.methods = &uhci_bus_methods;

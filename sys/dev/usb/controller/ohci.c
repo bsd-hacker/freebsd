@@ -397,7 +397,7 @@ ohci_init(ohci_softc_t *sc)
 	}
 	/* flush all cache into memory */
 
-	usb_bus_mem_flush_all(&sc->sc_bus, ohci_iterate_hw_softc);
+	usb_bus_mem_flush_all(&sc->sc_bus);
 
 	/* set up the bus struct */
 	sc->sc_bus.methods = &ohci_bus_methods;

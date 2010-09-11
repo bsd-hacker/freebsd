@@ -48,8 +48,6 @@ struct usb_endpoint_descriptor;
 typedef void	(usb_bus_mem_sub_callback_t)(struct usb_bus *,
 		    struct usb_page_cache *, struct usb_page *, usb_size_t,
 		    usb_size_t);
-typedef void	(usb_bus_mem_callback_t)(struct usb_bus *,
-		    usb_bus_mem_sub_callback_t *);
 
 /*
  * The following structure is used to define all the USB BUS
@@ -193,10 +191,9 @@ struct usb_temp_setup {
 
 /* prototypes */
 
-void	usb_bus_mem_flush_all(struct usb_bus *bus, usb_bus_mem_callback_t *cb);
-uint8_t	usb_bus_mem_alloc_all(struct usb_bus *bus, bus_dma_tag_t dmat,
-	    usb_bus_mem_callback_t *cb);
-void	usb_bus_mem_free_all(struct usb_bus *bus, usb_bus_mem_callback_t *cb);
+void	usb_bus_mem_flush_all(struct usb_bus *bus);
+uint8_t	usb_bus_mem_alloc_all(struct usb_bus *bus, bus_dma_tag_t dmat);
+void	usb_bus_mem_free_all(struct usb_bus *bus);
 uint16_t usb_isoc_time_expand(struct usb_bus *bus, uint16_t isoc_time_curr);
 uint16_t usbd_fs_isoc_schedule_isoc_time_expand(struct usb_device *udev, struct usb_fs_isoc_schedule **pp_start, struct usb_fs_isoc_schedule **pp_end, uint16_t isoc_time);
 uint8_t	usbd_fs_isoc_schedule_alloc(struct usb_fs_isoc_schedule *fss, uint8_t *pstart, uint16_t len);

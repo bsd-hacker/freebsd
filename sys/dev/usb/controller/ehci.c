@@ -482,9 +482,9 @@ ehci_init(ehci_softc_t *sc)
 		qh->qh_qtd.qtd_altnext = htohc32(sc, EHCI_LINK_TERMINATE);
 		qh->qh_qtd.qtd_status = htohc32(sc, EHCI_QTD_HALTED);
 	}
-	/* flush all cache into memory */
 
-	usb_bus_mem_flush_all(&sc->sc_bus, ehci_iterate_hw_softc);
+	/* flush all cache into memory */
+	usb_bus_mem_flush_all(&sc->sc_bus);
 
 #ifdef USB_DEBUG
 	if (ehcidebug) {
