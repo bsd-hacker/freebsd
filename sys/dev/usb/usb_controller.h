@@ -191,13 +191,18 @@ struct usb_temp_setup {
 
 /* prototypes */
 
-int	usb_bus_struct_init(struct usb_bus *, device_t, struct usb_device **,
-	    uint8_t, void (*busmem_func)(struct usb_bus *,
-	    usb_bus_mem_callback_t *));
-void	usb_bus_struct_fini(struct usb_bus *);
-void	usb_bus_mem_flush_all(struct usb_bus *bus);
-uint16_t usb_isoc_time_expand(struct usb_bus *bus, uint16_t isoc_time_curr);
-uint16_t usbd_fs_isoc_schedule_isoc_time_expand(struct usb_device *udev, struct usb_fs_isoc_schedule **pp_start, struct usb_fs_isoc_schedule **pp_end, uint16_t isoc_time);
-uint8_t	usbd_fs_isoc_schedule_alloc(struct usb_fs_isoc_schedule *fss, uint8_t *pstart, uint16_t len);
+int		usb_bus_struct_init(struct usb_bus *bus, device_t dev,
+		    struct usb_device **udevs, uint8_t udevsmax,
+		    void (*busmem_func)(struct usb_bus *,
+		        usb_bus_mem_callback_t *));
+void		usb_bus_struct_fini(struct usb_bus *bus);
+void		usb_bus_mem_flush_all(struct usb_bus *bus);
+uint16_t	usb_isoc_time_expand(struct usb_bus *bus,
+		    uint16_t isoc_time_curr);
+uint16_t	usbd_fs_isoc_schedule_isoc_time_expand(struct usb_device *udev,
+		    struct usb_fs_isoc_schedule **pp_start,
+		    struct usb_fs_isoc_schedule **pp_end, uint16_t isoc_time);
+uint8_t		usbd_fs_isoc_schedule_alloc(struct usb_fs_isoc_schedule *fss,
+		    uint8_t *pstart, uint16_t len);
 
 #endif					/* _USB_CONTROLLER_H_ */
