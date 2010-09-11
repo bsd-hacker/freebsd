@@ -261,6 +261,6 @@ void	ohci_detach(struct ohci_softc *sc);
 void	ohci_suspend(ohci_softc_t *sc);
 void	ohci_resume(ohci_softc_t *sc);
 void	ohci_interrupt(ohci_softc_t *sc);
-void	ohci_iterate_hw_softc(struct usb_bus *, usb_bus_mem_sub_callback_t *);
+void	ohci_iterate_hw_softc(struct usb_bus *, usb_bus_mem_callback_t *);
 
 #endif					/* _OHCI_H_ */

@@ -444,6 +444,6 @@ void	ehci_suspend(struct ehci_softc *sc);
 void	ehci_resume(struct ehci_softc *sc);
 void	ehci_shutdown(ehci_softc_t *sc);
 void	ehci_interrupt(ehci_softc_t *sc);
-void	ehci_iterate_hw_softc(struct usb_bus *, usb_bus_mem_sub_callback_t *);
+void	ehci_iterate_hw_softc(struct usb_bus *, usb_bus_mem_callback_t *);
 
 #endif					/* _EHCI_H_ */

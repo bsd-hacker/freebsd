@@ -86,7 +86,7 @@ struct usb_bus {
 	struct usb_bus_methods *methods;	/* filled by HC driver */
 	struct usb_device **devices;
 
-	void (*busmem_func)(struct usb_bus *, usb_bus_mem_sub_callback_t *);
+	void (*busmem_func)(struct usb_bus *, usb_bus_mem_callback_t *);
 
 	usb_power_mask_t hw_power_state;	/* see USB_HW_POWER_XXX */
 	usb_size_t uframe_usage[USB_HS_MICRO_FRAMES_MAX];

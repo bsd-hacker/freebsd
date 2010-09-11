@@ -143,7 +143,7 @@ ohci_get_hcca(ohci_softc_t *sc)
 }
 
 void
-ohci_iterate_hw_softc(struct usb_bus *bus, usb_bus_mem_sub_callback_t *func)
+ohci_iterate_hw_softc(struct usb_bus *bus, usb_bus_mem_callback_t *func)
 {
 	struct ohci_softc *sc = OHCI_BUS2SC(bus);
 	uint32_t i;

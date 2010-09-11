@@ -165,7 +165,7 @@ static uint8_t	uhci_check_transfer(struct usb_xfer *);
 static void	uhci_root_intr(uhci_softc_t *sc);
 
 void
-uhci_iterate_hw_softc(struct usb_bus *bus, usb_bus_mem_sub_callback_t *func)
+uhci_iterate_hw_softc(struct usb_bus *bus, usb_bus_mem_callback_t *func)
 {
 	struct uhci_softc *sc = UHCI_BUS2SC(bus);
 	uint32_t i;

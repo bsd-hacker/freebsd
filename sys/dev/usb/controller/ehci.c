@@ -149,7 +149,7 @@ struct ehci_std_temp {
 };
 
 void
-ehci_iterate_hw_softc(struct usb_bus *bus, usb_bus_mem_sub_callback_t *func)
+ehci_iterate_hw_softc(struct usb_bus *bus, usb_bus_mem_callback_t *func)
 {
 	ehci_softc_t *sc = EHCI_BUS2SC(bus);
 	uint32_t i;
