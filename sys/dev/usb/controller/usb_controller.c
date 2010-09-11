@@ -69,6 +69,7 @@ static device_attach_t usb_attach;
 static device_detach_t usb_detach;
 
 static void	usb_attach_sub(device_t, struct usb_bus *);
+static void	usb_bus_mem_free_all(struct usb_bus *);
 
 /* static variables */
 
@@ -518,31 +519,13 @@ usb_bus_mem_alloc_all_cb(struct usb_bus *bus, struct usb_page_cache *pc,
  *    0: Success
  * Else: Failure
  *------------------------------------------------------------------------*/
-uint8_t
+static uint8_t
 usb_bus_mem_alloc_all(struct usb_bus *bus, bus_dma_tag_t dmat)
 {
-
-	bus->alloc_failed = 0;
-
-	mtx_init(&bus->bus_mtx, device_get_nameunit(bus->parent),
-	    NULL, MTX_DEF | MTX_RECURSE);
-
-	usb_callout_init_mtx(&bus->power_wdog, &bus->bus_mtx, 0);
-
-	TAILQ_INIT(&bus->intr_q.head);
 
 #if USB_HAVE_BUSDMA
 	usb_dma_tag_setup(bus->dma_parent_tag, bus->dma_tags,
 	    dmat, &bus->bus_mtx, NULL, 32, USB_BUS_DMA_TAG_MAX);
-#endif
-	if ((bus->devices_max > USB_MAX_DEVICES) ||
-	    (bus->devices_max < USB_MIN_DEVICES) ||
-	    (bus->devices == NULL)) {
-		DPRINTFN(0, "Devices field has not been "
-		    "initialised properly\n");
-		bus->alloc_failed = 1;		/* failure */
-	}
-#if USB_HAVE_BUSDMA
 	if (bus->busmem_func != NULL)
 		bus->busmem_func(bus, usb_bus_mem_alloc_all_cb);
 #endif
@@ -567,7 +550,7 @@ usb_bus_mem_free_all_cb(struct usb_bus *bus, struct usb_page_cache *pc,
 /*------------------------------------------------------------------------*
  *	usb_bus_mem_free_all - factored out code
  *------------------------------------------------------------------------*/
-void
+static void
 usb_bus_mem_free_all(struct usb_bus *bus)
 {
 
@@ -576,6 +559,45 @@ usb_bus_mem_free_all(struct usb_bus *bus)
 		bus->busmem_func(bus, usb_bus_mem_free_all_cb);
 	usb_dma_tag_unsetup(bus->dma_parent_tag);
 #endif
+}
 
+int
+usb_bus_struct_init(struct usb_bus *bus, device_t dev,
+    struct usb_device **udevs, uint8_t udevsmax,
+    void (*busmem_func)(struct usb_bus *, usb_bus_mem_callback_t *))
+{
+
+	if (udevsmax > USB_MAX_DEVICES || udevsmax < USB_MIN_DEVICES ||
+	    udevs == NULL) {
+		DPRINTFN(0, "Devices field has not been "
+		    "initialised properly\n");
+		return (ENXIO);
+	}
+
+	/* initialise some bus fields */
+	bus->parent = dev;
+	bus->devices = udevs;
+	bus->devices_max = udevsmax;
+	bus->busmem_func = busmem_func;
+	bus->alloc_failed = 0;
+
+	mtx_init(&bus->bus_mtx, device_get_nameunit(bus->parent),
+	    NULL, MTX_DEF | MTX_RECURSE);
+
+	usb_callout_init_mtx(&bus->power_wdog, &bus->bus_mtx, 0);
+
+	TAILQ_INIT(&bus->intr_q.head);
+
+	/* get all DMA memory */
+	if (usb_bus_mem_alloc_all(bus, USB_GET_DMA_TAG(dev)))
+		return (ENOMEM);
+	return (0);
+}
+
+void
+usb_bus_struct_fini(struct usb_bus *bus)
+{
+
+	usb_bus_mem_free_all(bus);
 	mtx_destroy(&bus->bus_mtx);
 }

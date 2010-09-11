@@ -161,18 +161,14 @@ mv_ehci_attach(device_t self)
 	int err;
 	int rid;
 
-	/* initialise some bus fields */
-	sc->sc_bus.parent = self;
-	sc->sc_bus.devices = sc->sc_devices;
-	sc->sc_bus.devices_max = EHCI_MAX_DEVICES;
-	sc->sc_bus.busmem_func = ehci_iterate_hw_softc;
-
-	/* get all DMA memory */
-	if (usb_bus_mem_alloc_all(&sc->sc_bus, USB_GET_DMA_TAG(self)))
-		return (ENOMEM);
+	err = usb_bus_struct_init(&sc->sc_bus, self, sc->sc_devices,
+	    EHCI_MAX_DEVICES, ehci_iterate_hw_softc);
+	if (err != 0)
+		return (err);
 
 	rid = 0;
-	sc->sc_io_res = bus_alloc_resource_any(self, SYS_RES_MEMORY, &rid, RF_ACTIVE);
+	sc->sc_io_res = bus_alloc_resource_any(self, SYS_RES_MEMORY, &rid,
+	    RF_ACTIVE);
 	if (!sc->sc_io_res) {
 		device_printf(self, "Could not map memory\n");
 		goto error;
@@ -332,7 +328,7 @@ mv_ehci_detach(device_t self)
 		    sc->sc_io_res);
 		sc->sc_io_res = NULL;
 	}
-	usb_bus_mem_free_all(&sc->sc_bus);
+	usb_bus_struct_fini(&sc->sc_bus);
 
 	return (0);
 }

@@ -151,16 +151,11 @@ uss820_atmelarm_attach(device_t dev)
 	int err;
 	int rid;
 
-	/* initialise some bus fields */
-	sc->sc_bus.parent = dev;
-	sc->sc_bus.devices = sc->sc_devices;
-	sc->sc_bus.devices_max = USS820_MAX_DEVICES;
+	err = usb_bus_struct_init(&sc->sc_bus, dev, sc->sc_devices,
+	    USS820_MAX_DEVICES, NULL);
+	if (err != 0)
+		return (err);
 
-	/* get all DMA memory */
-	if (usb_bus_mem_alloc_all(&sc->sc_bus,
-	    USB_GET_DMA_TAG(dev), NULL)) {
-		return (ENOMEM);
-	}
 	rid = 0;
 	sc->sc_io_res =
 	    bus_alloc_resource_any(dev, SYS_RES_IOPORT, &rid, RF_ACTIVE);
@@ -247,7 +242,7 @@ uss820_atmelarm_detach(device_t dev)
 		    sc->sc_io_res);
 		sc->sc_io_res = NULL;
 	}
-	usb_bus_mem_free_all(&sc->sc_bus, NULL);
+	usb_bus_struct_fini(&sc->sc_bus);
 
 	return (0);
 }

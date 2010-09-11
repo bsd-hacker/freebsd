@@ -113,16 +113,11 @@ musbotg_attach(device_t dev)
 	sc->sc_otg.sc_clocks_off = &musbotg_clocks_off;
 	sc->sc_otg.sc_clocks_arg = sc;
 
-	/* initialise some bus fields */
-	sc->sc_otg.sc_bus.parent = dev;
-	sc->sc_otg.sc_bus.devices = sc->sc_otg.sc_devices;
-	sc->sc_otg.sc_bus.devices_max = MUSB2_MAX_DEVICES;
+	err = usb_bus_struct_init(&sc->sc_otg.sc_bus, dev,
+	    sc->sc_otg.sc_devices, MUSB2_MAX_DEVICES, NULL);
+	if (err != 0)
+		return (err);
 
-	/* get all DMA memory */
-	if (usb_bus_mem_alloc_all(&sc->sc_otg.sc_bus,
-	    USB_GET_DMA_TAG(dev), NULL)) {
-		return (ENOMEM);
-	}
 	rid = 0;
 	sc->sc_otg.sc_io_res =
 	    bus_alloc_resource_any(dev, SYS_RES_MEMORY, &rid, RF_ACTIVE);
@@ -212,7 +207,7 @@ musbotg_detach(device_t dev)
 		    sc->sc_otg.sc_io_res);
 		sc->sc_otg.sc_io_res = NULL;
 	}
-	usb_bus_mem_free_all(&sc->sc_otg.sc_bus, NULL);
+	usb_bus_struct_fini(&sc->sc_otg.sc_bus);
 
 	return (0);
 }

@@ -88,15 +88,10 @@ ohci_atmelarm_attach(device_t dev)
 	int err;
 	int rid;
 
-	/* initialise some bus fields */
-	sc->sc_ohci.sc_bus.parent = dev;
-	sc->sc_ohci.sc_bus.devices = sc->sc_ohci.sc_devices;
-	sc->sc_ohci.sc_bus.devices_max = OHCI_MAX_DEVICES;
-	sc->sc_ohci.sc_bus.busmem_func = ohci_iterate_hw_softc;
-
-	/* get all DMA memory */
-	if (usb_bus_mem_alloc_all(&sc->sc_ohci.sc_bus, USB_GET_DMA_TAG(dev)))
-		return (ENOMEM);
+	err = usb_bus_struct_init(&sc->sc_ohci.sc_bus, dev,
+	    sc->sc_ohci.sc_devices, OHCI_MAX_DEVICES, ohci_iterate_hw_softc);
+	if (err != 0)
+		return (err);
 
 	sc->iclk = at91_pmc_clock_ref("ohci_clk");
 	sc->fclk = at91_pmc_clock_ref("uhpck");
@@ -212,7 +207,7 @@ ohci_atmelarm_detach(device_t dev)
 		    sc->sc_ohci.sc_io_res);
 		sc->sc_ohci.sc_io_res = NULL;
 	}
-	usb_bus_mem_free_all(&sc->sc_ohci.sc_bus);
+	usb_bus_struct_fini(&sc->sc_ohci.sc_bus);
 
 	return (0);
 }
