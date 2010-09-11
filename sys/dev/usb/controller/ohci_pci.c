@@ -224,7 +224,7 @@ ohci_pci_attach(device_t self)
 
 	/* get all DMA memory */
 	if (usb_bus_mem_alloc_all(&sc->sc_bus, USB_GET_DMA_TAG(self),
-	    &ohci_iterate_hw_softc)) {
+	    ohci_iterate_hw_softc)) {
 		return (ENOMEM);
 	}
 	sc->sc_dev = self;
@@ -377,7 +377,7 @@ ohci_pci_detach(device_t self)
 		    sc->sc_io_res);
 		sc->sc_io_res = NULL;
 	}
-	usb_bus_mem_free_all(&sc->sc_bus, &ohci_iterate_hw_softc);
+	usb_bus_mem_free_all(&sc->sc_bus, ohci_iterate_hw_softc);
 
 	return (0);
 }

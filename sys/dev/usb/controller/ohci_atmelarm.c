@@ -95,7 +95,7 @@ ohci_atmelarm_attach(device_t dev)
 
 	/* get all DMA memory */
 	if (usb_bus_mem_alloc_all(&sc->sc_ohci.sc_bus,
-	    USB_GET_DMA_TAG(dev), &ohci_iterate_hw_softc)) {
+	    USB_GET_DMA_TAG(dev), ohci_iterate_hw_softc)) {
 		return (ENOMEM);
 	}
 	sc->iclk = at91_pmc_clock_ref("ohci_clk");
@@ -212,7 +212,7 @@ ohci_atmelarm_detach(device_t dev)
 		    sc->sc_ohci.sc_io_res);
 		sc->sc_ohci.sc_io_res = NULL;
 	}
-	usb_bus_mem_free_all(&sc->sc_ohci.sc_bus, &ohci_iterate_hw_softc);
+	usb_bus_mem_free_all(&sc->sc_ohci.sc_bus, ohci_iterate_hw_softc);
 
 	return (0);
 }

@@ -485,10 +485,10 @@ usb_bus_mem_flush_all_cb(struct usb_bus *bus, struct usb_page_cache *pc,
  *------------------------------------------------------------------------*/
 #if USB_HAVE_BUSDMA
 void
-usb_bus_mem_flush_all(struct usb_bus *bus, usb_bus_mem_cb_t *cb)
+usb_bus_mem_flush_all(struct usb_bus *bus, usb_bus_mem_callback_t *func)
 {
-	if (cb) {
-		cb(bus, &usb_bus_mem_flush_all_cb);
+	if (func != NULL) {
+		(*func)(bus, usb_bus_mem_flush_all_cb);
 	}
 }
 #endif
@@ -519,7 +519,7 @@ usb_bus_mem_alloc_all_cb(struct usb_bus *bus, struct usb_page_cache *pc,
  *------------------------------------------------------------------------*/
 uint8_t
 usb_bus_mem_alloc_all(struct usb_bus *bus, bus_dma_tag_t dmat,
-    usb_bus_mem_cb_t *cb)
+    usb_bus_mem_callback_t *func)
 {
 	bus->alloc_failed = 0;
 
@@ -543,12 +543,12 @@ usb_bus_mem_alloc_all(struct usb_bus *bus, bus_dma_tag_t dmat,
 		bus->alloc_failed = 1;		/* failure */
 	}
 #if USB_HAVE_BUSDMA
-	if (cb) {
-		cb(bus, &usb_bus_mem_alloc_all_cb);
+	if (func != NULL) {
+		(*func)(bus, usb_bus_mem_alloc_all_cb);
 	}
 #endif
 	if (bus->alloc_failed) {
-		usb_bus_mem_free_all(bus, cb);
+		usb_bus_mem_free_all(bus, func);
 	}
 	return (bus->alloc_failed);
 }
@@ -569,11 +569,11 @@ usb_bus_mem_free_all_cb(struct usb_bus *bus, struct usb_page_cache *pc,
  *	usb_bus_mem_free_all - factored out code
  *------------------------------------------------------------------------*/
 void
-usb_bus_mem_free_all(struct usb_bus *bus, usb_bus_mem_cb_t *cb)
+usb_bus_mem_free_all(struct usb_bus *bus, usb_bus_mem_callback_t *func)
 {
 #if USB_HAVE_BUSDMA
-	if (cb) {
-		cb(bus, &usb_bus_mem_free_all_cb);
+	if (func != NULL) {
+		(*func)(bus, usb_bus_mem_free_all_cb);
 	}
 	usb_dma_tag_unsetup(bus->dma_parent_tag);
 #endif

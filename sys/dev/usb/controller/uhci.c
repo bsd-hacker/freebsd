@@ -165,37 +165,37 @@ static uint8_t	uhci_check_transfer(struct usb_xfer *);
 static void	uhci_root_intr(uhci_softc_t *sc);
 
 void
-uhci_iterate_hw_softc(struct usb_bus *bus, usb_bus_mem_sub_cb_t *cb)
+uhci_iterate_hw_softc(struct usb_bus *bus, usb_bus_mem_sub_callback_t *func)
 {
 	struct uhci_softc *sc = UHCI_BUS2SC(bus);
 	uint32_t i;
 
-	cb(bus, &sc->sc_hw.pframes_pc, &sc->sc_hw.pframes_pg,
+	(*func)(bus, &sc->sc_hw.pframes_pc, &sc->sc_hw.pframes_pg,
 	    sizeof(uint32_t) * UHCI_FRAMELIST_COUNT, UHCI_FRAMELIST_ALIGN);
 
-	cb(bus, &sc->sc_hw.ls_ctl_start_pc, &sc->sc_hw.ls_ctl_start_pg,
+	(*func)(bus, &sc->sc_hw.ls_ctl_start_pc, &sc->sc_hw.ls_ctl_start_pg,
 	    sizeof(uhci_qh_t), UHCI_QH_ALIGN);
 
-	cb(bus, &sc->sc_hw.fs_ctl_start_pc, &sc->sc_hw.fs_ctl_start_pg,
+	(*func)(bus, &sc->sc_hw.fs_ctl_start_pc, &sc->sc_hw.fs_ctl_start_pg,
 	    sizeof(uhci_qh_t), UHCI_QH_ALIGN);
 
-	cb(bus, &sc->sc_hw.bulk_start_pc, &sc->sc_hw.bulk_start_pg,
+	(*func)(bus, &sc->sc_hw.bulk_start_pc, &sc->sc_hw.bulk_start_pg,
 	    sizeof(uhci_qh_t), UHCI_QH_ALIGN);
 
-	cb(bus, &sc->sc_hw.last_qh_pc, &sc->sc_hw.last_qh_pg,
+	(*func)(bus, &sc->sc_hw.last_qh_pc, &sc->sc_hw.last_qh_pg,
 	    sizeof(uhci_qh_t), UHCI_QH_ALIGN);
 
-	cb(bus, &sc->sc_hw.last_td_pc, &sc->sc_hw.last_td_pg,
+	(*func)(bus, &sc->sc_hw.last_td_pc, &sc->sc_hw.last_td_pg,
 	    sizeof(uhci_td_t), UHCI_TD_ALIGN);
 
 	for (i = 0; i != UHCI_VFRAMELIST_COUNT; i++) {
-		cb(bus, sc->sc_hw.isoc_start_pc + i,
+		(*func)(bus, sc->sc_hw.isoc_start_pc + i,
 		    sc->sc_hw.isoc_start_pg + i,
 		    sizeof(uhci_td_t), UHCI_TD_ALIGN);
 	}
 
 	for (i = 0; i != UHCI_IFRAMELIST_COUNT; i++) {
-		cb(bus, sc->sc_hw.intr_start_pc + i,
+		(*func)(bus, sc->sc_hw.intr_start_pc + i,
 		    sc->sc_hw.intr_start_pg + i,
 		    sizeof(uhci_qh_t), UHCI_QH_ALIGN);
 	}
@@ -640,7 +640,7 @@ uhci_init(uhci_softc_t *sc)
 	}
 	/* flush all cache into memory */
 
-	usb_bus_mem_flush_all(&sc->sc_bus, &uhci_iterate_hw_softc);
+	usb_bus_mem_flush_all(&sc->sc_bus, uhci_iterate_hw_softc);
 
 	/* set up the bus struct */
 	sc->sc_bus.methods = &uhci_bus_methods;

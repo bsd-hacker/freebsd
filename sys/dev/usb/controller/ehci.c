@@ -149,31 +149,31 @@ struct ehci_std_temp {
 };
 
 void
-ehci_iterate_hw_softc(struct usb_bus *bus, usb_bus_mem_sub_cb_t *cb)
+ehci_iterate_hw_softc(struct usb_bus *bus, usb_bus_mem_sub_callback_t *func)
 {
 	ehci_softc_t *sc = EHCI_BUS2SC(bus);
 	uint32_t i;
 
-	cb(bus, &sc->sc_hw.pframes_pc, &sc->sc_hw.pframes_pg,
+	(*func)(bus, &sc->sc_hw.pframes_pc, &sc->sc_hw.pframes_pg,
 	    sizeof(uint32_t) * EHCI_FRAMELIST_COUNT, EHCI_FRAMELIST_ALIGN);
 
-	cb(bus, &sc->sc_hw.async_start_pc, &sc->sc_hw.async_start_pg,
+	(*func)(bus, &sc->sc_hw.async_start_pc, &sc->sc_hw.async_start_pg,
 	    sizeof(ehci_qh_t), EHCI_QH_ALIGN);
 
 	for (i = 0; i != EHCI_VIRTUAL_FRAMELIST_COUNT; i++) {
-		cb(bus, sc->sc_hw.intr_start_pc + i,
+		(*func)(bus, sc->sc_hw.intr_start_pc + i,
 		    sc->sc_hw.intr_start_pg + i,
 		    sizeof(ehci_qh_t), EHCI_QH_ALIGN);
 	}
 
 	for (i = 0; i != EHCI_VIRTUAL_FRAMELIST_COUNT; i++) {
-		cb(bus, sc->sc_hw.isoc_hs_start_pc + i,
+		(*func)(bus, sc->sc_hw.isoc_hs_start_pc + i,
 		    sc->sc_hw.isoc_hs_start_pg + i,
 		    sizeof(ehci_itd_t), EHCI_ITD_ALIGN);
 	}
 
 	for (i = 0; i != EHCI_VIRTUAL_FRAMELIST_COUNT; i++) {
-		cb(bus, sc->sc_hw.isoc_fs_start_pc + i,
+		(*func)(bus, sc->sc_hw.isoc_fs_start_pc + i,
 		    sc->sc_hw.isoc_fs_start_pg + i,
 		    sizeof(ehci_sitd_t), EHCI_SITD_ALIGN);
 	}
@@ -484,7 +484,7 @@ ehci_init(ehci_softc_t *sc)
 	}
 	/* flush all cache into memory */
 
-	usb_bus_mem_flush_all(&sc->sc_bus, &ehci_iterate_hw_softc);
+	usb_bus_mem_flush_all(&sc->sc_bus, ehci_iterate_hw_softc);
 
 #ifdef USB_DEBUG
 	if (ehcidebug) {

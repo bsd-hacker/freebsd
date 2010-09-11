@@ -88,7 +88,7 @@ ohci_s3c24x0_attach(device_t dev)
 
 	/* get all DMA memory */
 	if (usb_bus_mem_alloc_all(&sc->sc_bus, USB_GET_DMA_TAG(dev),
-	    &ohci_iterate_hw_softc)) {
+	    ohci_iterate_hw_softc)) {
 		return (ENOMEM);
 	}
 
@@ -189,7 +189,7 @@ ohci_s3c24x0_detach(device_t dev)
 		    sc->sc_io_res);
 		sc->sc_io_res = NULL;
 	}
-	usb_bus_mem_free_all(&sc->sc_bus, &ohci_iterate_hw_softc);
+	usb_bus_mem_free_all(&sc->sc_bus, ohci_iterate_hw_softc);
 
 	return (0);
 }

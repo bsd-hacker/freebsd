@@ -143,25 +143,26 @@ ohci_get_hcca(ohci_softc_t *sc)
 }
 
 void
-ohci_iterate_hw_softc(struct usb_bus *bus, usb_bus_mem_sub_cb_t *cb)
+ohci_iterate_hw_softc(struct usb_bus *bus, usb_bus_mem_sub_callback_t *func)
 {
 	struct ohci_softc *sc = OHCI_BUS2SC(bus);
 	uint32_t i;
 
-	cb(bus, &sc->sc_hw.hcca_pc, &sc->sc_hw.hcca_pg,
+	(*func)(bus, &sc->sc_hw.hcca_pc, &sc->sc_hw.hcca_pg,
 	    sizeof(ohci_hcca_t), OHCI_HCCA_ALIGN);
 
-	cb(bus, &sc->sc_hw.ctrl_start_pc, &sc->sc_hw.ctrl_start_pg,
+	(*func)(bus, &sc->sc_hw.ctrl_start_pc, &sc->sc_hw.ctrl_start_pg,
 	    sizeof(ohci_ed_t), OHCI_ED_ALIGN);
 
-	cb(bus, &sc->sc_hw.bulk_start_pc, &sc->sc_hw.bulk_start_pg,
+	(*func)(bus, &sc->sc_hw.bulk_start_pc, &sc->sc_hw.bulk_start_pg,
 	    sizeof(ohci_ed_t), OHCI_ED_ALIGN);
 
-	cb(bus, &sc->sc_hw.isoc_start_pc, &sc->sc_hw.isoc_start_pg,
+	(*func)(bus, &sc->sc_hw.isoc_start_pc, &sc->sc_hw.isoc_start_pg,
 	    sizeof(ohci_ed_t), OHCI_ED_ALIGN);
 
 	for (i = 0; i != OHCI_NO_EDS; i++) {
-		cb(bus, sc->sc_hw.intr_start_pc + i, sc->sc_hw.intr_start_pg + i,
+		(*func)(bus, sc->sc_hw.intr_start_pc + i,
+		    sc->sc_hw.intr_start_pg + i,
 		    sizeof(ohci_ed_t), OHCI_ED_ALIGN);
 	}
 }
@@ -396,7 +397,7 @@ ohci_init(ohci_softc_t *sc)
 	}
 	/* flush all cache into memory */
 
-	usb_bus_mem_flush_all(&sc->sc_bus, &ohci_iterate_hw_softc);
+	usb_bus_mem_flush_all(&sc->sc_bus, ohci_iterate_hw_softc);
 
 	/* set up the bus struct */
 	sc->sc_bus.methods = &ohci_bus_methods;
