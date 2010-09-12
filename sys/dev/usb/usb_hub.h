@@ -74,6 +74,7 @@ void	usb_bus_port_set_device(struct usb_bus *bus, struct usb_port *up,
 struct usb_device *usb_bus_port_get_device(struct usb_bus *bus,
 	    struct usb_port *up);
 void	usb_needs_explore(struct usb_bus *bus, uint8_t do_probe);
+void	usb_needs_explore_locked(struct usb_bus *bus, uint8_t do_probe);
 void	usb_needs_explore_all(void);
 void	usb_bus_power_update(struct usb_bus *bus);
 void	usb_bus_powerd(struct usb_bus *bus);

@@ -540,7 +540,7 @@ uhub_root_intr(struct usb_bus *bus, const uint8_t *ptr, uint8_t len)
 {
 	USB_BUS_LOCK_ASSERT(bus, MA_OWNED);
 
-	usb_needs_explore(bus, 0);
+	usb_needs_explore_locked(bus, 0);
 }
 
 /*------------------------------------------------------------------------*
@@ -1587,7 +1587,20 @@ usb_bus_port_set_device(struct usb_bus *bus, struct usb_port *up,
 void
 usb_needs_explore(struct usb_bus *bus, uint8_t do_probe)
 {
-	uint8_t do_unlock;
+
+	DPRINTF("\n");
+	if (bus == NULL) {
+		DPRINTF("No bus pointer!\n");
+		return;
+	}
+	USB_BUS_LOCK(bus);
+	usb_needs_explore_locked(bus, do_probe);
+	USB_BUS_UNLOCK(bus);
+}
+
+void
+usb_needs_explore_locked(struct usb_bus *bus, uint8_t do_probe)
+{
 
 	DPRINTF("\n");
 
@@ -1595,16 +1608,13 @@ usb_needs_explore(struct usb_bus *bus, uint8_t do_probe)
 		DPRINTF("No bus pointer!\n");
 		return;
 	}
+
+	USB_BUS_LOCK_ASSERT(bus, MA_OWNED);
+
 	if ((bus->devices == NULL) ||
 	    (bus->devices[USB_ROOT_HUB_ADDR] == NULL)) {
 		DPRINTF("No root HUB\n");
 		return;
-	}
-	if (mtx_owned(&bus->bus_mtx)) {
-		do_unlock = 0;
-	} else {
-		USB_BUS_LOCK(bus);
-		do_unlock = 1;
 	}
 	if (do_probe) {
 		bus->do_probe = 1;
@@ -1612,9 +1622,6 @@ usb_needs_explore(struct usb_bus *bus, uint8_t do_probe)
 	if (usb_proc_msignal(&bus->explore_proc,
 	    &bus->explore_msg[0], &bus->explore_msg[1])) {
 		/* ignore */
-	}
-	if (do_unlock) {
-		USB_BUS_UNLOCK(bus);
 	}
 }
 
