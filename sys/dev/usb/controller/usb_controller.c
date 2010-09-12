@@ -582,7 +582,7 @@ usb_bus_struct_init(struct usb_bus *bus, device_t dev,
 	bus->alloc_failed = 0;
 
 	mtx_init(&bus->bus_mtx, device_get_nameunit(bus->parent),
-	    NULL, MTX_DEF | MTX_RECURSE);
+	    NULL, MTX_DEF);
 
 	usb_callout_init_mtx(&bus->power_wdog, &bus->bus_mtx, 0);
 
