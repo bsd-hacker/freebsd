@@ -402,6 +402,10 @@ usb_attach_sub(device_t dev, struct usb_bus *bus)
 	/* Initialise USB explore taskqueue and tasks */
 	bus->explore_tq = taskqueue_create("usb_explore_taskq", M_WAITOK,
 	    taskqueue_thread_enqueue, &bus->explore_tq);
+	/*
+	 * NOTE: the thread count always should be 1.  If more, it couldn't
+	 * guarantee the serialization between attach, detach and explore.
+	 */
 	taskqueue_start_threads(&bus->explore_tq, 1, USB_PRI_MED,
 	    "USB explore taskq");
 	TASK_INIT(&bus->attach_task, 0, usb_bus_attach, bus);
