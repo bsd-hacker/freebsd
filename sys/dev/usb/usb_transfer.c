@@ -2997,7 +2997,7 @@ usbd_transfer_poll(struct usb_xfer **ppxfer, uint16_t max)
 
 		/* Make sure cv_signal() and cv_broadcast() is not called */
 		udev->bus->control_xfer_proc.up_msleep = 0;
-		udev->bus->explore_proc.up_msleep = 0;
+		taskqueue_block(udev->bus->explore_tq);
 		udev->bus->giant_callback_proc.up_msleep = 0;
 		udev->bus->non_giant_callback_proc.up_msleep = 0;
 

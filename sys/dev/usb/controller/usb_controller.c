@@ -170,26 +170,15 @@ usb_detach(device_t dev)
 		bus->bus_roothold = NULL;
 	}
 
-	USB_BUS_LOCK(bus);
-	if (usb_proc_msignal(&bus->explore_proc,
-	    &bus->detach_msg[0], &bus->detach_msg[1])) {
-		/* ignore */
-	}
-	/* Wait for detach to complete */
-
-	usb_proc_mwait(&bus->explore_proc,
-	    &bus->detach_msg[0], &bus->detach_msg[1]);
-
-	USB_BUS_UNLOCK(bus);
+	taskqueue_enqueue(bus->explore_tq, &bus->detach_task);
+	taskqueue_drain(bus->explore_tq, &bus->detach_task);
 
 	/* Get rid of USB callback processes */
 
 	usb_proc_free(&bus->giant_callback_proc);
 	usb_proc_free(&bus->non_giant_callback_proc);
 
-	/* Get rid of USB explore process */
-
-	usb_proc_free(&bus->explore_proc);
+	taskqueue_free(bus->explore_tq);
 
 	/* Get rid of control transfer process */
 
@@ -204,16 +193,13 @@ usb_detach(device_t dev)
  * This function is used to explore the device tree from the root.
  *------------------------------------------------------------------------*/
 static void
-usb_bus_explore(struct usb_proc_msg *pm)
+usb_bus_explore(void *arg, int npending)
 {
-	struct usb_bus *bus;
-	struct usb_device *udev;
+	struct usb_bus *bus = arg;
+	struct usb_device *udev = bus->devices[USB_ROOT_HUB_ADDR];
 
-	bus = ((struct usb_bus_msg *)pm)->bus;
-	udev = bus->devices[USB_ROOT_HUB_ADDR];
-
+	USB_BUS_LOCK(bus);
 	if (udev && udev->hub) {
-
 		if (bus->do_probe) {
 			bus->do_probe = 0;
 			bus->driver_added_refcount++;
@@ -249,6 +235,7 @@ usb_bus_explore(struct usb_proc_msg *pm)
 		root_mount_rel(bus->bus_roothold);
 		bus->bus_roothold = NULL;
 	}
+	USB_BUS_UNLOCK(bus);
 }
 
 /*------------------------------------------------------------------------*
@@ -257,15 +244,13 @@ usb_bus_explore(struct usb_proc_msg *pm)
  * This function is used to detach the device tree from the root.
  *------------------------------------------------------------------------*/
 static void
-usb_bus_detach(struct usb_proc_msg *pm)
+usb_bus_detach(void *arg, int npending)
 {
-	struct usb_bus *bus;
-	struct usb_device *udev;
-	device_t dev;
+	struct usb_bus *bus = arg;
+	struct usb_device *udev = bus->devices[USB_ROOT_HUB_ADDR];
+	device_t dev = bus->bdev;
 
-	bus = ((struct usb_bus_msg *)pm)->bus;
-	udev = bus->devices[USB_ROOT_HUB_ADDR];
-	dev = bus->bdev;
+	USB_BUS_LOCK(bus);
 	/* clear the softc */
 	device_set_softc(dev, NULL);
 	USB_BUS_UNLOCK(bus);
@@ -283,6 +268,7 @@ usb_bus_detach(struct usb_proc_msg *pm)
 	USB_BUS_LOCK(bus);
 	/* clear bdev variable last */
 	bus->bdev = NULL;
+	USB_BUS_UNLOCK(bus);
 }
 
 static void
@@ -300,7 +286,7 @@ usb_power_wdog(void *arg)
 	 * The following line of code is only here to recover from
 	 * DDB:
 	 */
-	usb_proc_rewakeup(&bus->explore_proc);	/* recover from DDB */
+	taskqueue_unblock(bus->explore_tq);	/* recover from DDB */
 #endif
 
 #if USB_HAVE_POWERD
@@ -318,16 +304,13 @@ usb_power_wdog(void *arg)
  * This function attaches USB in context of the explore thread.
  *------------------------------------------------------------------------*/
 static void
-usb_bus_attach(struct usb_proc_msg *pm)
+usb_bus_attach(void *arg, int npending)
 {
-	struct usb_bus *bus;
+	struct usb_bus *bus = arg;
 	struct usb_device *child;
-	device_t dev;
+	device_t dev = bus->bdev;
 	usb_error_t err;
 	enum usb_dev_speed speed;
-
-	bus = ((struct usb_bus_msg *)pm)->bus;
-	dev = bus->bdev;
 
 	DPRINTF("\n");
 
@@ -356,8 +339,6 @@ usb_bus_attach(struct usb_proc_msg *pm)
 		device_printf(bus->bdev, "Unsupported USB revision\n");
 		return;
 	}
-
-	USB_BUS_UNLOCK(bus);
 
 	/* default power_mask value */
 	bus->hw_power_state =
@@ -390,18 +371,17 @@ usb_bus_attach(struct usb_proc_msg *pm)
 		err = USB_ERR_NOMEM;
 	}
 
-	USB_BUS_LOCK(bus);
-
 	if (err) {
 		device_printf(bus->bdev, "Root HUB problem, error=%s\n",
 		    usbd_errstr(err));
 	}
 
+	USB_BUS_LOCK(bus);
 	/* set softc - we are ready */
 	device_set_softc(dev, bus);
-
 	/* start watchdog */
 	usb_power_wdog(bus);
+	USB_BUS_UNLOCK(bus);
 }
 
 /*------------------------------------------------------------------------*
@@ -419,21 +399,14 @@ usb_attach_sub(device_t dev, struct usb_bus *bus)
 		usb_devclass_ptr = devclass_find("usbus");
 	mtx_unlock(&Giant);
 
-	/* Initialise USB process messages */
-	bus->explore_msg[0].hdr.pm_callback = &usb_bus_explore;
-	bus->explore_msg[0].bus = bus;
-	bus->explore_msg[1].hdr.pm_callback = &usb_bus_explore;
-	bus->explore_msg[1].bus = bus;
-
-	bus->detach_msg[0].hdr.pm_callback = &usb_bus_detach;
-	bus->detach_msg[0].bus = bus;
-	bus->detach_msg[1].hdr.pm_callback = &usb_bus_detach;
-	bus->detach_msg[1].bus = bus;
-
-	bus->attach_msg[0].hdr.pm_callback = &usb_bus_attach;
-	bus->attach_msg[0].bus = bus;
-	bus->attach_msg[1].hdr.pm_callback = &usb_bus_attach;
-	bus->attach_msg[1].bus = bus;
+	/* Initialise USB explore taskqueue and tasks */
+	bus->explore_tq = taskqueue_create("usb_explore_taskq", M_WAITOK,
+	    taskqueue_thread_enqueue, &bus->explore_tq);
+	taskqueue_start_threads(&bus->explore_tq, 1, USB_PRI_MED,
+	    "USB explore taskq");
+	TASK_INIT(&bus->attach_task, 0, usb_bus_attach, bus);
+	TASK_INIT(&bus->detach_task, 0, usb_bus_detach, bus);
+	TASK_INIT(&bus->explore_task, 0, usb_bus_explore, bus);
 
 	/* Create USB explore and callback processes */
 
@@ -445,22 +418,13 @@ usb_attach_sub(device_t dev, struct usb_bus *bus)
 	    &bus->bus_mtx, pname, USB_PRI_HIGH)) {
 		printf("WARNING: Creation of USB non-Giant "
 		    "callback process failed.\n");
-	} else if (usb_proc_create(&bus->explore_proc,
-	    &bus->bus_mtx, pname, USB_PRI_MED)) {
-		printf("WARNING: Creation of USB explore "
-		    "process failed.\n");
 	} else if (usb_proc_create(&bus->control_xfer_proc,
 	    &bus->bus_mtx, pname, USB_PRI_MED)) {
 		printf("WARNING: Creation of USB control transfer "
 		    "process failed.\n");
 	} else {
 		/* Get final attach going */
-		USB_BUS_LOCK(bus);
-		if (usb_proc_msignal(&bus->explore_proc,
-		    &bus->attach_msg[0], &bus->attach_msg[1])) {
-			/* ignore */
-		}
-		USB_BUS_UNLOCK(bus);
+		taskqueue_enqueue(bus->explore_tq, &bus->attach_task);
 
 		/* Do initial explore */
 		usb_needs_explore(bus, 1);

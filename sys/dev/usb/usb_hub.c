@@ -1619,10 +1619,7 @@ usb_needs_explore_locked(struct usb_bus *bus, uint8_t do_probe)
 	if (do_probe) {
 		bus->do_probe = 1;
 	}
-	if (usb_proc_msignal(&bus->explore_proc,
-	    &bus->explore_msg[0], &bus->explore_msg[1])) {
-		/* ignore */
-	}
+	taskqueue_enqueue(bus->explore_tq, &bus->explore_task);
 }
 
 /*------------------------------------------------------------------------*

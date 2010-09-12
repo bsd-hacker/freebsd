@@ -27,6 +27,8 @@
 #ifndef _USB_BUS_H_
 #define	_USB_BUS_H_
 
+#include <sys/taskqueue.h>
+
 /*
  * The following structure defines the USB explore message sent to the USB
  * explore process.
@@ -60,15 +62,15 @@ struct usb_bus {
 	struct usb_process giant_callback_proc;
 	struct usb_process non_giant_callback_proc;
 
-	/* Explore process */
-	struct usb_process explore_proc;
-
 	/* Control request process */
 	struct usb_process control_xfer_proc;
 
-	struct usb_bus_msg explore_msg[2];
-	struct usb_bus_msg detach_msg[2];
-	struct usb_bus_msg attach_msg[2];
+	/* Explore taskqueue */
+	struct taskqueue *explore_tq;
+	struct task attach_task;
+	struct task detach_task;
+	struct task explore_task;
+
 	/*
 	 * This mutex protects the USB hardware:
 	 */
