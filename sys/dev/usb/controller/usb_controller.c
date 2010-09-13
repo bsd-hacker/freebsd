@@ -394,6 +394,7 @@ usb_attach_sub(device_t dev, struct usb_bus *bus)
 {
 	const char *pname = device_get_nameunit(dev);
 
+	/* XXX devclass_find(9) needs Giant? */
 	GIANT_REQUIRED;
 	if (usb_devclass_ptr == NULL)
 		usb_devclass_ptr = devclass_find("usbus");
