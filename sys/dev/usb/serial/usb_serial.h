@@ -121,8 +121,6 @@ struct ucom_callback {
 
 struct ucom_softc {
 	struct cv sc_cv;
-	/* Used to set "UCOM_FLAG_GP_DATA" flag: */
-	struct usb_proc_msg	*sc_last_start_xfer;
 	const struct ucom_callback *sc_callback;
 	struct tty *sc_tty;
 	struct mtx *sc_mtx;
