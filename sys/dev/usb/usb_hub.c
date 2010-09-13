@@ -58,7 +58,6 @@
 #define	USB_DEBUG_VAR uhub_debug
 
 #include <dev/usb/usb_core.h>
-#include <dev/usb/usb_process.h>
 #include <dev/usb/usb_device.h>
 #include <dev/usb/usb_request.h>
 #include <dev/usb/usb_debug.h>

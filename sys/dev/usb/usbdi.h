@@ -35,7 +35,6 @@ struct usb_endpoint;
 struct usb_page_cache;
 struct usb_page_search;
 struct usb_process;
-struct usb_proc_msg;
 struct usb_mbuf;
 struct mbuf;
 
@@ -89,7 +88,6 @@ typedef enum {	/* keep in sync with usb_errstr_table */
 /* typedefs */
 
 typedef void (usb_callback_t)(struct usb_xfer *, usb_error_t);
-typedef void (usb_proc_callback_t)(struct usb_proc_msg *);
 typedef usb_error_t (usb_handle_req_t)(struct usb_device *,
     struct usb_device_request *, const void **, uint16_t *);
 
@@ -381,15 +379,6 @@ struct usb_callout {
  * transfer like defined by the "USB_ST_XXX" enums.
  */
 #define	USB_GET_STATE(xfer) (usbd_xfer_state(xfer))
-
-/*
- * The following structure defines the USB process message header.
- */
-struct usb_proc_msg {
-	TAILQ_ENTRY(usb_proc_msg) pm_qentry;
-	usb_proc_callback_t *pm_callback;
-	usb_size_t pm_num;
-};
 
 #define	USB_FIFO_TX 0
 #define	USB_FIFO_RX 1

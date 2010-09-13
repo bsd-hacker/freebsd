@@ -74,7 +74,6 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/usb_core.h>
 #include <dev/usb/usb_debug.h>
 #include <dev/usb/usb_busdma.h>
-#include <dev/usb/usb_process.h>
 #include <dev/usb/usb_transfer.h>
 #include <dev/usb/usb_device.h>
 #include <dev/usb/usb_hub.h>

@@ -48,7 +48,6 @@
 #include <dev/usb/usbdi.h>
 
 #include <dev/usb/usb_core.h>
-#include <dev/usb/usb_process.h>
 #include <dev/usb/usb_device.h>
 #include <dev/usb/usb_dynamic.h>
 

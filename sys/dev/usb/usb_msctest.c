@@ -59,7 +59,6 @@
 #define	USB_DEBUG_VAR usb_debug
 
 #include <dev/usb/usb_busdma.h>
-#include <dev/usb/usb_process.h>
 #include <dev/usb/usb_transfer.h>
 #include <dev/usb/usb_msctest.h>
 #include <dev/usb/usb_debug.h>

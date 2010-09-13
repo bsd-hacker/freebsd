@@ -50,7 +50,6 @@
 
 #include <dev/usb/usb_core.h>
 #include <dev/usb/usb_util.h>
-#include <dev/usb/usb_process.h>
 #include <dev/usb/usb_device.h>
 #include <dev/usb/usb_request.h>
 #include <dev/usb/usb_busdma.h>

@@ -58,7 +58,6 @@
 #include <dev/usb/usb_core.h>
 #include <dev/usb/usb_dynamic.h>
 #include <dev/usb/usb_busdma.h>
-#include <dev/usb/usb_process.h>
 #include <dev/usb/usb_device.h>
 
 #define	USB_DEBUG_VAR usb_debug

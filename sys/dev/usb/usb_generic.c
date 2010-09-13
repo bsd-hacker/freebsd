@@ -56,7 +56,6 @@
 #include <dev/usb/usb_core.h>
 #include <dev/usb/usb_dev.h>
 #include <dev/usb/usb_mbuf.h>
-#include <dev/usb/usb_process.h>
 #include <dev/usb/usb_device.h>
 #include <dev/usb/usb_debug.h>
 #include <dev/usb/usb_request.h>

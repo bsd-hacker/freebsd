@@ -54,7 +54,6 @@
 
 #include <dev/usb/usb_core.h>
 #include <dev/usb/usb_compat_linux.h>
-#include <dev/usb/usb_process.h>
 #include <dev/usb/usb_device.h>
 #include <dev/usb/usb_util.h>
 #include <dev/usb/usb_busdma.h>

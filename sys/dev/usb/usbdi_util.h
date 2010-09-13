@@ -39,10 +39,6 @@ struct usb_idesc_parse_state {
 
 /* prototypes */
 
-usb_error_t usbd_do_request_proc(struct usb_device *udev, struct usb_process *pproc,
-		    struct usb_device_request *req, void *data, uint16_t flags,
-		    uint16_t *actlen, usb_timeout_t timeout);
-
 struct usb_descriptor *usb_desc_foreach(struct usb_config_descriptor *cd,
 	    struct usb_descriptor *desc);
 struct usb_interface_descriptor *usb_idesc_foreach(

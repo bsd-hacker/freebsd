@@ -29,15 +29,8 @@
 
 #include <sys/taskqueue.h>
 
-/*
- * The following structure defines the USB explore message sent to the USB
- * explore process.
- */
-
-struct usb_bus_msg {
-	struct usb_proc_msg hdr;
-	struct usb_bus *bus;
-};
+#define	USB_PRI_HIGH	PI_NET
+#define	USB_PRI_MED	PI_DISK
 
 /*
  * The following structure defines the USB statistics structure.
