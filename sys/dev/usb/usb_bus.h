@@ -55,15 +55,14 @@ struct usb_bus {
 	struct usb_bus_stat stats_ok;
 	struct root_hold_token *bus_roothold;
 	/*
-	 * There are two callback processes. One for Giant locked
+	 * There are two taskqueues for callback. One for Giant locked
 	 * callbacks. One for non-Giant locked callbacks. This should
 	 * avoid congestion and reduce response time in most cases.
 	 */
-	struct usb_process giant_callback_proc;
-	struct usb_process non_giant_callback_proc;
-
-	/* Control request process */
-	struct usb_process control_xfer_proc;
+	struct taskqueue *giant_callback_tq;
+	struct taskqueue *non_giant_callback_tq;
+	/* Control request taskqueue */
+	struct taskqueue *control_xfer_tq;
 
 	/* Explore taskqueue */
 	struct taskqueue *explore_tq;

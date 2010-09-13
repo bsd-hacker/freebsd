@@ -27,14 +27,7 @@
 #ifndef _USB_TRANSFER_H_
 #define	_USB_TRANSFER_H_
 
-/*
- * The following structure defines the messages that is used to signal
- * the "done_p" USB process.
- */
-struct usb_done_msg {
-	struct usb_proc_msg hdr;
-	struct usb_xfer_root *xroot;
-};
+#include <sys/taskqueue.h>
 
 #define	USB_DMATAG_TO_XROOT(dpt)				\
   ((struct usb_xfer_root *)(					\
@@ -52,10 +45,10 @@ struct usb_xfer_root {
 	struct usb_xfer_queue dma_q;
 #endif
 	struct usb_xfer_queue done_q;
-	struct usb_done_msg done_m[2];
+	struct taskqueue *done_tq;	/* pointer to callback taskqueue */
+	struct task done_task;
 	struct cv cv_drain;
 
-	struct usb_process *done_p;	/* pointer to callback process */
 	void   *memory_base;
 	struct mtx *xfer_mtx;	/* cannot be changed during operation */
 #if USB_HAVE_BUSDMA

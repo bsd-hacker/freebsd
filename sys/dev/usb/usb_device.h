@@ -27,6 +27,8 @@
 #ifndef _USB_DEVICE_H_
 #define	_USB_DEVICE_H_
 
+#include <sys/taskqueue.h>
+
 struct usb_symlink;		/* UGEN */
 struct usb_device;		/* linux compat */
 
@@ -42,11 +44,6 @@ struct usb_device;		/* linux compat */
 
 #define	USB_UNCFG_FLAG_NONE 0x00
 #define	USB_UNCFG_FLAG_FREE_EP0	0x02		/* endpoint zero is freed */
-
-struct usb_clear_stall_msg {
-	struct usb_proc_msg hdr;
-	struct usb_device *udev;
-};
 
 /* The following four structures makes up a tree, where we have the
  * leaf structure, "usb_host_endpoint", first, and the root structure,
@@ -111,8 +108,8 @@ struct usb_power_save {
  * these structures for every USB device.
  */
 struct usb_device {
-	struct usb_clear_stall_msg cs_msg[2];	/* generic clear stall
-						 * messages */
+	struct task cs_task;		/* generic clear stall messages */
+
 	struct sx ctrl_sx;
 	struct sx enum_sx;
 	struct sx sr_sx;

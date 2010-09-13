@@ -173,16 +173,11 @@ usb_detach(device_t dev)
 	taskqueue_enqueue(bus->explore_tq, &bus->detach_task);
 	taskqueue_drain(bus->explore_tq, &bus->detach_task);
 
-	/* Get rid of USB callback processes */
-
-	usb_proc_free(&bus->giant_callback_proc);
-	usb_proc_free(&bus->non_giant_callback_proc);
-
+	/* Get rid of USB taskqueues */
+	taskqueue_free(bus->giant_callback_tq);
+	taskqueue_free(bus->non_giant_callback_tq);
+	taskqueue_free(bus->control_xfer_tq);
 	taskqueue_free(bus->explore_tq);
-
-	/* Get rid of control transfer process */
-
-	usb_proc_free(&bus->control_xfer_proc);
 
 	return (0);
 }
@@ -214,9 +209,9 @@ usb_bus_explore(void *arg, int npending)
 		 * The following three lines of code are only here to
 		 * recover from DDB:
 		 */
-		usb_proc_rewakeup(&bus->control_xfer_proc);
-		usb_proc_rewakeup(&bus->giant_callback_proc);
-		usb_proc_rewakeup(&bus->non_giant_callback_proc);
+		taskqueue_unblock(bus->control_xfer_tq);
+		taskqueue_unblock(bus->giant_callback_tq);
+		taskqueue_unblock(bus->non_giant_callback_tq);
 #endif
 
 		USB_BUS_UNLOCK(bus);
@@ -412,27 +407,26 @@ usb_attach_sub(device_t dev, struct usb_bus *bus)
 	TASK_INIT(&bus->detach_task, 0, usb_bus_detach, bus);
 	TASK_INIT(&bus->explore_task, 0, usb_bus_explore, bus);
 
-	/* Create USB explore and callback processes */
+	/* Creates USB taskqueues for callback and control transfer */
+	bus->giant_callback_tq = taskqueue_create("usb_giant_callback_taskq",
+	    M_WAITOK, taskqueue_thread_enqueue, &bus->giant_callback_tq);
+	bus->non_giant_callback_tq =
+	    taskqueue_create("usb_non_giant_callback_taskq", M_WAITOK,
+	    taskqueue_thread_enqueue, &bus->non_giant_callback_tq);
+	bus->control_xfer_tq = taskqueue_create("usb_ctrlxfer_taskq", M_WAITOK,
+	    taskqueue_thread_enqueue, &bus->control_xfer_tq);
+	/* Creates taskqueue threads */
+	taskqueue_start_threads(&bus->giant_callback_tq, 1, USB_PRI_MED,
+	    "%s giant callback taskq", pname);
+	taskqueue_start_threads(&bus->non_giant_callback_tq, 1, USB_PRI_HIGH,
+	    "%s non giant callback taskq", pname);
+	taskqueue_start_threads(&bus->control_xfer_tq, 1, USB_PRI_MED,
+	    "%s control xfer taskq", pname);
 
-	if (usb_proc_create(&bus->giant_callback_proc,
-	    &bus->bus_mtx, pname, USB_PRI_MED)) {
-		printf("WARNING: Creation of USB Giant "
-		    "callback process failed.\n");
-	} else if (usb_proc_create(&bus->non_giant_callback_proc,
-	    &bus->bus_mtx, pname, USB_PRI_HIGH)) {
-		printf("WARNING: Creation of USB non-Giant "
-		    "callback process failed.\n");
-	} else if (usb_proc_create(&bus->control_xfer_proc,
-	    &bus->bus_mtx, pname, USB_PRI_MED)) {
-		printf("WARNING: Creation of USB control transfer "
-		    "process failed.\n");
-	} else {
-		/* Get final attach going */
-		taskqueue_enqueue(bus->explore_tq, &bus->attach_task);
-
-		/* Do initial explore */
-		usb_needs_explore(bus, 1);
-	}
+	/* Get final attach going */
+	taskqueue_enqueue(bus->explore_tq, &bus->attach_task);
+	/* Do initial explore */
+	usb_needs_explore(bus, 1);
 }
 
 SYSUNINIT(usb_bus_unload, SI_SUB_KLD, SI_ORDER_ANY, usb_bus_unload, NULL);

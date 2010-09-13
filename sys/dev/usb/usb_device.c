@@ -89,7 +89,7 @@ static void	usb_init_attach_arg(struct usb_device *,
 		    struct usb_attach_arg *);
 static void	usb_suspend_resume_sub(struct usb_device *, device_t,
 		    uint8_t);
-static void	usbd_clear_stall_proc(struct usb_proc_msg *_pm);
+static void	usbd_clear_stall_proc(void *, int);
 usb_error_t	usb_config_parse(struct usb_device *, uint8_t, uint8_t);
 static void	usbd_set_device_strings(struct usb_device *);
 #if USB_HAVE_UGEN
@@ -1437,21 +1437,15 @@ usb_suspend_resume(struct usb_device *udev, uint8_t do_suspend)
  * This function performs generic USB clear stall operations.
  *------------------------------------------------------------------------*/
 static void
-usbd_clear_stall_proc(struct usb_proc_msg *_pm)
+usbd_clear_stall_proc(void *arg, int npending)
 {
-	struct usb_clear_stall_msg *pm = (void *)_pm;
-	struct usb_device *udev = pm->udev;
+	struct usb_device *udev = arg;
 
-	/* Change lock */
-	USB_BUS_UNLOCK(udev->bus);
 	mtx_lock(&udev->device_mtx);
-
 	/* Start clear stall callback */
 	usbd_transfer_start(udev->ctrl_xfer[1]);
-
 	/* Change lock */
 	mtx_unlock(&udev->device_mtx);
-	USB_BUS_LOCK(udev->bus);
 }
 
 /*------------------------------------------------------------------------*
@@ -1529,10 +1523,7 @@ usb_alloc_device(device_t parent_dev, struct usb_bus *bus,
 	mtx_init(&udev->device_mtx, "USB device mutex", NULL, MTX_DEF);
 
 	/* initialise generic clear stall */
-	udev->cs_msg[0].hdr.pm_callback = &usbd_clear_stall_proc;
-	udev->cs_msg[0].udev = udev;
-	udev->cs_msg[1].hdr.pm_callback = &usbd_clear_stall_proc;
-	udev->cs_msg[1].udev = udev;
+	TASK_INIT(&udev->cs_task, 0, usbd_clear_stall_proc, udev);
 
 	/* initialise some USB device fields */
 	udev->parent_hub = parent_hub;
@@ -2058,10 +2049,7 @@ usb_free_device(struct usb_device *udev, uint8_t flag)
 	 * Make sure that our clear-stall messages are not queued
 	 * anywhere:
 	 */
-	USB_BUS_LOCK(udev->bus);
-	usb_proc_mwait(&udev->bus->non_giant_callback_proc,
-	    &udev->cs_msg[0], &udev->cs_msg[1]);
-	USB_BUS_UNLOCK(udev->bus);
+	taskqueue_drain(udev->bus->non_giant_callback_tq, &udev->cs_task);
 
 	sx_destroy(&udev->ctrl_sx);
 	sx_destroy(&udev->enum_sx);
