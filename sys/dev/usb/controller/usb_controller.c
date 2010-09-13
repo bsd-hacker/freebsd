@@ -394,10 +394,9 @@ usb_attach_sub(device_t dev, struct usb_bus *bus)
 {
 	const char *pname = device_get_nameunit(dev);
 
-	mtx_lock(&Giant);
+	GIANT_REQUIRED;
 	if (usb_devclass_ptr == NULL)
 		usb_devclass_ptr = devclass_find("usbus");
-	mtx_unlock(&Giant);
 
 	/* Initialise USB explore taskqueue and tasks */
 	bus->explore_tq = taskqueue_create("usb_explore_taskq", M_WAITOK,
