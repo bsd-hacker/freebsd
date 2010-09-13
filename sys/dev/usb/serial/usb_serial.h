@@ -89,7 +89,8 @@ struct thread;
  * while it is open!
  */
 struct ucom_callback {
-	void    (*ucom_cfg_get_status) (struct ucom_softc *, uint8_t *plsr, uint8_t *pmsr);
+	void    (*ucom_cfg_get_status) (struct ucom_softc *, uint8_t *,
+		    uint8_t *);
 	void    (*ucom_cfg_set_dtr) (struct ucom_softc *, uint8_t);
 	void    (*ucom_cfg_set_rts) (struct ucom_softc *, uint8_t);
 	void    (*ucom_cfg_set_break) (struct ucom_softc *, uint8_t);
@@ -99,12 +100,14 @@ struct ucom_callback {
 	void    (*ucom_cfg_close) (struct ucom_softc *);
 	int     (*ucom_pre_open) (struct ucom_softc *);
 	int     (*ucom_pre_param) (struct ucom_softc *, struct termios *);
-	int     (*ucom_ioctl) (struct ucom_softc *, uint32_t, caddr_t, int, struct thread *);
+	int     (*ucom_ioctl) (struct ucom_softc *, uint32_t, caddr_t, int,
+		    struct thread *);
 	void    (*ucom_start_read) (struct ucom_softc *);
 	void    (*ucom_stop_read) (struct ucom_softc *);
 	void    (*ucom_start_write) (struct ucom_softc *);
 	void    (*ucom_stop_write) (struct ucom_softc *);
-	void    (*ucom_tty_name) (struct ucom_softc *, char *pbuf, uint16_t buflen, uint16_t local_subunit);
+	void    (*ucom_tty_name) (struct ucom_softc *, char *, uint16_t,
+		    uint16_t);
 	void    (*ucom_poll) (struct ucom_softc *);
 };
 
