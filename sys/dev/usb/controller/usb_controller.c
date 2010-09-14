@@ -198,10 +198,6 @@ usb_bus_explore(void *arg, int npending)
 			bus->do_probe = 0;
 			bus->generation++;
 		}
-		if (bus->generation == 0) {
-			/* avoid zero, hence that is memory default */
-			bus->generation = 1;
-		}
 
 #ifdef DDB
 		/*
@@ -541,6 +537,7 @@ usb_bus_struct_init(struct usb_bus *bus, device_t dev,
 	bus->devices_max = udevsmax;
 	bus->busmem_func = busmem_func;
 	bus->alloc_failed = 0;
+	bus->generation = 1;
 
 	mtx_init(&bus->bus_mtx, device_get_nameunit(bus->parent),
 	    NULL, MTX_DEF);
