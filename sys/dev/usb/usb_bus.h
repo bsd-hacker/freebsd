@@ -88,7 +88,7 @@ struct usb_bus {
 	uint16_t isoc_time_last;	/* in milliseconds */
 
 	uint8_t	alloc_failed;		/* Set if memory allocation failed. */
-	uint8_t	driver_added_refcount;	/* Current driver generation count */
+	uint8_t	generation;		/* Current driver generation count */
 	enum usb_revision usbrev;	/* USB revision. See "USB_REV_XXX". */
 
 	uint8_t	devices_max;		/* maximum number of USB devices */

@@ -220,14 +220,14 @@ uhub_explore_sub(struct uhub_softc *sc, struct usb_port *up)
 {
 	struct usb_bus *bus;
 	struct usb_device *child;
-	uint8_t refcount;
+	uint8_t generation;
 	usb_error_t err;
 
 	bus = sc->sc_udev->bus;
 	err = 0;
 
-	/* get driver added refcount from USB bus */
-	refcount = bus->driver_added_refcount;
+	/* get driver generation from USB bus */
+	generation = bus->generation;
 
 	/* get device assosiated with the given port */
 	child = usb_bus_port_get_device(bus, up);
@@ -237,8 +237,8 @@ uhub_explore_sub(struct uhub_softc *sc, struct usb_port *up)
 	}
 	/* check if probe and attach should be done */
 
-	if (child->driver_added_refcount != refcount) {
-		child->driver_added_refcount = refcount;
+	if (child->generation != generation) {
+		child->generation = generation;
 		err = usb_probe_and_attach(child,
 		    USB_IFACE_INDEX_ANY);
 		if (err) {

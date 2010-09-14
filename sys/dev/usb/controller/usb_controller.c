@@ -196,11 +196,11 @@ usb_bus_explore(void *arg, int npending)
 	if (udev && udev->hub) {
 		if (bus->do_probe) {
 			bus->do_probe = 0;
-			bus->driver_added_refcount++;
+			bus->generation++;
 		}
-		if (bus->driver_added_refcount == 0) {
+		if (bus->generation == 0) {
 			/* avoid zero, hence that is memory default */
-			bus->driver_added_refcount = 1;
+			bus->generation = 1;
 		}
 
 #ifdef DDB
