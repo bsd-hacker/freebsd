@@ -36,8 +36,9 @@
 #include <fcntl.h>
 #include <libutil.h>
 #include <limits.h>
-#include <stdlib.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -101,9 +102,9 @@ scan(int fd, size_t size, off_t offset, off_t step, unsigned int count)
 		err(1, "gettimeofday()");
 	usec = t1.tv_sec * 1000000 + t1.tv_usec;
 	usec -= t0.tv_sec * 1000000 + t0.tv_usec;
-	printf("%10lu%8lu%8lu\n", usec / 1000,
-	    count * 1000000 / usec,
-	    count * size * 1000000 / 1024 / usec);
+	printf("%10lu%8ju%8ju\n", usec / 1000,
+	    (uintmax_t)count * 1000000 / usec,
+	    (uintmax_t)count * size * 1000000 / 1024 / usec);
 	free(buf);
 }
 
