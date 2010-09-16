@@ -163,7 +163,7 @@ int
 OF_interpret(const char *cmd, int nreturns, ...)
 {
 	va_list ap;
-	unsigned long slots[16];
+	cell_t slots[16];
 	int i = 0;
 	int status;
 

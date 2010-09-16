@@ -427,12 +427,7 @@ static mmu_method_t moea64_methods[] = {
 	{ 0, 0 }
 };
 
-static mmu_def_t oea64_mmu = {
-	MMU_TYPE_G5,
-	moea64_methods,
-	0
-};
-MMU_DEF(oea64_mmu);
+MMU_DEF(oea64_mmu, MMU_TYPE_G5, moea64_methods, 0);
 
 static __inline u_int
 va_to_pteg(uint64_t vsid, vm_offset_t addr, int large)
@@ -796,7 +791,7 @@ moea64_bootstrap_slb_prefault(vm_offset_t va, int large)
 	if (large)
 		entry.slbv |= SLBV_L;
 
-	slb_insert(kernel_pmap, cache, &entry);
+	slb_insert_kernel(entry.slbe, entry.slbv);
 }
 #endif
 
@@ -2098,8 +2093,9 @@ moea64_pinit(mmu_t mmu, pmap_t pmap)
 {
 	PMAP_LOCK_INIT(pmap);
 
-	SPLAY_INIT(&pmap->pm_slbtree);
+	pmap->pm_slb_tree_root = slb_alloc_tree();
 	pmap->pm_slb = slb_alloc_user_cache();
+	pmap->pm_slb_len = 0;
 }
 #else
 void
@@ -2261,7 +2257,7 @@ moea64_release(mmu_t mmu, pmap_t pmap)
 	 * Free segment registers' VSIDs
 	 */
     #ifdef __powerpc64__
-	free_vsids(pmap);
+	slb_free_tree(pmap);
 	slb_free_user_cache(pmap->pm_slb);
     #else
 	KASSERT(pmap->pm_sr[0] != 0, ("moea64_release: pm_sr[0] = 0"));
@@ -2431,7 +2427,6 @@ moea64_pvo_enter(pmap_t pm, uma_zone_t zone, struct pvo_head *pvo_head,
 	 * the bootstrap pool.
 	 */
 
-	moea64_pvo_enter_calls++;
 	first = 0;
 	bootstrap = (flags & PVO_BOOTSTRAP);
 
@@ -2450,6 +2445,8 @@ moea64_pvo_enter(pmap_t pm, uma_zone_t zone, struct pvo_head *pvo_head,
 	 * there is a mapping.
 	 */
 	LOCK_TABLE();
+
+	moea64_pvo_enter_calls++;
 
 	LIST_FOREACH(pvo, &moea64_pvo_table[ptegidx], pvo_olink) {
 		if (pvo->pvo_pmap == pm && PVO_VADDR(pvo) == va) {
@@ -2628,14 +2625,15 @@ moea64_pvo_remove(struct pvo_entry *pvo)
 	 * if we aren't going to reuse it.
 	 */
 	LIST_REMOVE(pvo, pvo_olink);
+
+	moea64_pvo_entries--;
+	moea64_pvo_remove_calls++;
+
 	UNLOCK_TABLE();
 
 	if (!(pvo->pvo_vaddr & PVO_BOOTSTRAP))
 		uma_zfree((pvo->pvo_vaddr & PVO_MANAGED) ? moea64_mpvo_zone :
 		    moea64_upvo_zone, pvo);
-
-	moea64_pvo_entries--;
-	moea64_pvo_remove_calls++;
 }
 
 static struct pvo_entry *
@@ -2645,18 +2643,25 @@ moea64_pvo_find_va(pmap_t pm, vm_offset_t va)
 	int		ptegidx;
 	uint64_t	vsid;
 	#ifdef __powerpc64__
-	struct slb	slb;
+	uint64_t	slbv;
 
-	/* The page is not mapped if the segment isn't */
-	if (va_to_slb_entry(pm, va, &slb) != 0)
-		return NULL;
+	if (pm == kernel_pmap) {
+		slbv = kernel_va_to_slbv(va);
+	} else {
+		struct slb *slb;
+		slb = user_va_to_slb_entry(pm, va);
+		/* The page is not mapped if the segment isn't */
+		if (slb == NULL)
+			return NULL;
+		slbv = slb->slbv;
+	}
 
-	vsid = (slb.slbv & SLBV_VSID_MASK) >> SLBV_VSID_SHIFT;
-	if (slb.slbv & SLBV_L)
+	vsid = (slbv & SLBV_VSID_MASK) >> SLBV_VSID_SHIFT;
+	if (slbv & SLBV_L)
 		va &= ~moea64_large_page_mask;
 	else
 		va &= ~ADDR_POFF;
-	ptegidx = va_to_pteg(vsid, va, slb.slbv & SLBV_L);
+	ptegidx = va_to_pteg(vsid, va, slbv & SLBV_L);
 	#else
 	va &= ~ADDR_POFF;
 	vsid = va_to_vsid(pm, va);

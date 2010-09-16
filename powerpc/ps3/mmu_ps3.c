@@ -120,12 +120,7 @@ static mmu_method_t mps3_methods[] = {
         { 0, 0 }
 };
 
-static mmu_def_t ps3_mmu = {
-        "mmu_ps3",
-        mps3_methods,
-        0
-};
-MMU_DEF(ps3_mmu);
+MMU_DEF(ps3_mmu, "mmu_ps3", mps3_methods, 0);
 
 static void
 mps3_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernelend)

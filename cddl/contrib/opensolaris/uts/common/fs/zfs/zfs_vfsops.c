@@ -1163,8 +1163,7 @@ zfs_mount(vfs_t *vfsp)
 	 */
 	error = secpolicy_fs_mount(cr, mvp, vfsp);
 	if (error) {
-		error = dsl_deleg_access(osname, ZFS_DELEG_PERM_MOUNT, cr);
-		if (error != 0)
+		if (dsl_deleg_access(osname, ZFS_DELEG_PERM_MOUNT, cr) != 0)
 			goto out;
 
 		if (!(vfsp->vfs_flag & MS_REMOUNT)) {
@@ -1178,7 +1177,7 @@ zfs_mount(vfs_t *vfsp)
 			vattr.va_mask = AT_UID;
 
 			vn_lock(mvp, LK_SHARED | LK_RETRY);
-			if (error = VOP_GETATTR(mvp, &vattr, cr)) {
+			if (VOP_GETATTR(mvp, &vattr, cr)) {
 				VOP_UNLOCK(mvp, 0);
 				goto out;
 			}
@@ -1218,13 +1217,6 @@ zfs_mount(vfs_t *vfsp)
 	DROP_GIANT();
 	error = zfs_domount(vfsp, osname);
 	PICKUP_GIANT();
-
-	/*
-	 * Add an extra VFS_HOLD on our parent vfs so that it can't
-	 * disappear due to a forced unmount.
-	 */
-	if (error == 0 && ((zfsvfs_t *)vfsp->vfs_data)->z_issnap)
-		VFS_HOLD(mvp->v_vfsp);
 
 	/*
 	 * Add an extra VFS_HOLD on our parent vfs so that it can't
@@ -1440,9 +1432,8 @@ zfs_umount(vfs_t *vfsp, int fflag)
 
 	ret = secpolicy_fs_unmount(cr, vfsp);
 	if (ret) {
-		ret = dsl_deleg_access((char *)refstr_value(vfsp->vfs_resource),
-		    ZFS_DELEG_PERM_MOUNT, cr);
-		if (ret)
+		if (dsl_deleg_access((char *)refstr_value(vfsp->vfs_resource),
+		    ZFS_DELEG_PERM_MOUNT, cr))
 			return (ret);
 	}
 	/*

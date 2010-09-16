@@ -212,7 +212,7 @@ static struct aac_mntinforesp *
 
 static struct cdevsw aac_cdevsw = {
 	.d_version =	D_VERSION,
-	.d_flags =	D_NEEDGIANT,
+	.d_flags =	D_NEEDGIANT | D_TRACKCLOSE,
 	.d_open =	aac_open,
 	.d_close =	aac_close,
 	.d_ioctl =	aac_ioctl,
@@ -659,9 +659,6 @@ aac_detach(device_t dev)
 
 	sc = device_get_softc(dev);
 	fwprintf(sc, HBA_FLAGS_DBG_FUNCTION_ENTRY_B, "");
-
-	if (sc->aac_state & AAC_STATE_OPEN)
-		return(EBUSY);
 
 	callout_drain(&sc->aac_daemontime);
 
@@ -1129,6 +1126,11 @@ aac_complete(void *context, int pending)
 			AAC_PRINT_FIB(sc, fib);
 			break;
 		}
+		if ((cm->cm_flags & AAC_CMD_TIMEDOUT) != 0)
+			device_printf(sc->aac_dev,
+			    "COMMAND %p COMPLETED AFTER %d SECONDS\n",
+			    cm, (int)(time_uptime-cm->cm_timestamp));
+
 		aac_remove_busy(cm);
 
  		aac_unmap_command(cm);
@@ -2348,7 +2350,7 @@ aac_timeout(struct aac_softc *sc)
 	deadline = time_uptime - AAC_CMD_TIMEOUT;
 	TAILQ_FOREACH(cm, &sc->aac_busy, cm_link) {
 		if ((cm->cm_timestamp  < deadline)
-			/* && !(cm->cm_flags & AAC_CMD_TIMEDOUT) */) {
+		    && !(cm->cm_flags & AAC_CMD_TIMEDOUT)) {
 			cm->cm_flags |= AAC_CMD_TIMEDOUT;
 			device_printf(sc->aac_dev,
 			    "COMMAND %p (TYPE %d) TIMEOUT AFTER %d SECONDS\n",
@@ -2799,8 +2801,7 @@ aac_open(struct cdev *dev, int flags, int fmt, struct thread *td)
 
 	sc = dev->si_drv1;
 	fwprintf(sc, HBA_FLAGS_DBG_FUNCTION_ENTRY_B, "");
-	sc->aac_open_cnt++;
-	sc->aac_state |= AAC_STATE_OPEN;
+	device_busy(sc->aac_dev);
 
 	return 0;
 }
@@ -2812,10 +2813,7 @@ aac_close(struct cdev *dev, int flags, int fmt, struct thread *td)
 
 	sc = dev->si_drv1;
 	fwprintf(sc, HBA_FLAGS_DBG_FUNCTION_ENTRY_B, "");
-	sc->aac_open_cnt--;
-	/* Mark this unit as no longer open  */
-	if (sc->aac_open_cnt == 0)
-		sc->aac_state &= ~AAC_STATE_OPEN;
+	device_unbusy(sc->aac_dev);
 
 	return 0;
 }

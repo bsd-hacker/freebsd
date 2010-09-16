@@ -56,7 +56,7 @@ typedef struct fsid { int32_t val[2]; } fsid_t;	/* filesystem id type */
 
 struct fid {
 	u_short		fid_len;		/* length of data in bytes */
-	u_short		fid_reserved;		/* force longword alignment */
+	u_short		fid_data0;		/* force longword alignment */
 	char		fid_data[MAXFIDSZ];	/* data (variable length) */
 };
 
@@ -731,6 +731,7 @@ int	vfs_busy(struct mount *, int);
 int	vfs_export			 /* process mount export info */
 	    (struct mount *, struct export_args *);
 void	vfs_allocate_syncvnode(struct mount *);
+void	vfs_deallocate_syncvnode(struct mount *);
 int	vfs_donmount(struct thread *td, int fsflags, struct uio *fsoptions);
 void	vfs_getnewfsid(struct mount *);
 struct cdev *vfs_getrootfsid(struct mount *);

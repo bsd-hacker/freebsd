@@ -517,8 +517,21 @@ cpu_idle(int busy)
 	}
 #endif
 
-	if (cpu_idle_hook != NULL)
+	CTR2(KTR_SPARE2, "cpu_idle(%d) at %d",
+	    busy, curcpu);
+	if (cpu_idle_hook != NULL) {
+		if (!busy) {
+			critical_enter();
+			cpu_idleclock();
+		}
 		cpu_idle_hook();
+		if (!busy) {
+			cpu_activeclock();
+			critical_exit();
+		}
+	}
+	CTR2(KTR_SPARE2, "cpu_idle(%d) at %d done",
+	    busy, curcpu);
 }
 
 int
