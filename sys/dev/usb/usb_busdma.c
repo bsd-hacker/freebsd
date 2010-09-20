@@ -418,17 +418,9 @@ usb_pc_common_mem_cb(void *arg, bus_dma_segment_t *segs,
 	struct usb_page_cache *pc;
 	struct usb_page *pg;
 	usb_size_t rem;
-	uint8_t owned;
 
 	pc = arg;
 	uptag = pc->tag_parent;
-
-	/*
-	 * XXX There is sometimes recursive locking here.
-	 * XXX We should try to find a better solution.
-	 * XXX Until further the "owned" variable does
-	 * XXX the trick.
-	 */
 
 	if (error) {
 		goto done;
@@ -457,18 +449,14 @@ usb_pc_common_mem_cb(void *arg, bus_dma_segment_t *segs,
 	}
 
 done:
-	owned = mtx_owned(uptag->mtx);
-	if (!owned)
-		mtx_lock(uptag->mtx);
-
+	mtx_lock(uptag->mtx);
 	uptag->dma_error = (error ? 1 : 0);
 	if (isload) {
 		(uptag->func) (uptag);
 	} else {
 		cv_broadcast(uptag->cv);
 	}
-	if (!owned)
-		mtx_unlock(uptag->mtx);
+	mtx_unlock(uptag->mtx);
 }
 
 /*------------------------------------------------------------------------*
