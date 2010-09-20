@@ -425,12 +425,13 @@ usb_pc_common_mem_cb(void *arg, bus_dma_segment_t *segs,
 	if (error)
 		goto done;
 
+	USB_ASSERT(nseg == 1, ("too many segments (%d)", nseg));
+
 	pg = pc->page_start;
 	pg->physaddr = segs->ds_addr & ~(USB_PAGE_SIZE - 1);
 	rem = segs->ds_addr & (USB_PAGE_SIZE - 1);
 	pc->page_offset_buf = rem;
 	pc->page_offset_end += rem;
-	nseg--;
 #ifdef USB_DEBUG
 	if (rem != (USB_P2U(pc->buffer) & (USB_PAGE_SIZE - 1))) {
 		/*
@@ -441,12 +442,6 @@ usb_pc_common_mem_cb(void *arg, bus_dma_segment_t *segs,
 		goto done;
 	}
 #endif
-	while (nseg > 0) {
-		nseg--;
-		segs++;
-		pg++;
-		pg->physaddr = segs->ds_addr & ~(USB_PAGE_SIZE - 1);
-	}
 done:
 	mtx_lock(uptag->mtx);
 	uptag->dma_error = (error ? 1 : 0);
