@@ -418,6 +418,7 @@ usb_pc_common_mem_cb(void *arg, bus_dma_segment_t *segs,
 	struct usb_page_cache *pc;
 	struct usb_page *pg;
 	usb_size_t rem;
+	int i;
 
 	pc = arg;
 	uptag = pc->tag_parent;
@@ -444,6 +445,8 @@ usb_pc_common_mem_cb(void *arg, bus_dma_segment_t *segs,
 		goto done;
 	}
 #endif
+	for (i = 1; i < nseg; i++)
+		pg[i].physaddr = segs[i].ds_addr & ~(USB_PAGE_SIZE - 1);
 done:
 	uptag->dma_error = (error ? 1 : 0);
 	if (isload)
