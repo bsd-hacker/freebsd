@@ -430,8 +430,8 @@ usb_pc_common_mem_cb(void *arg, bus_dma_segment_t *segs,
 	USB_ASSERT(nseg == 1, ("too many segments (%d)", nseg));
 
 	pg = pc->page_start;
-	pg->physaddr = segs->ds_addr & ~(USB_PAGE_SIZE - 1);
-	rem = segs->ds_addr & (USB_PAGE_SIZE - 1);
+	pg->physaddr = segs[0].ds_addr & ~(USB_PAGE_SIZE - 1);
+	rem = segs[0].ds_addr & (USB_PAGE_SIZE - 1);
 	pc->page_offset_buf = rem;
 	pc->page_offset_end += rem;
 #ifdef USB_DEBUG
