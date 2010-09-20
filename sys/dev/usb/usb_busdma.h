@@ -88,6 +88,7 @@ struct usb_page_cache {
 	bus_dma_tag_t tag;
 	bus_dmamap_t map;
 	struct usb_page *page_start;
+	int npage;
 #endif
 	struct usb_dma_parent_tag *tag_parent;	/* always set */
 	void   *buffer;			/* virtual buffer pointer */
@@ -141,7 +142,7 @@ int	usb_uiomove(struct usb_page_cache *pc, struct uio *uio,
 struct usb_dma_tag *usb_dma_tag_find(struct usb_dma_parent_tag *udpt,
 	    usb_size_t size, usb_size_t align);
 uint8_t	usb_pc_alloc_mem(struct usb_page_cache *pc, struct usb_page *pg,
-	    usb_size_t size, usb_size_t align);
+	    int npg, usb_size_t size, usb_size_t align);
 uint8_t	usb_pc_dmamap_create(struct usb_page_cache *pc, usb_size_t size);
 uint8_t	usb_pc_load_mem(struct usb_page_cache *pc, usb_size_t size,
 	    uint8_t sync);

@@ -428,7 +428,7 @@ usb_pc_common_mem_cb(void *arg, bus_dma_segment_t *segs,
 	if (error)
 		goto done;
 
-	USB_ASSERT(nseg == 1, ("too many segments (%d)", nseg));
+	USB_ASSERT(nseg <= pc->npage, ("too many segments (%d)", nseg));
 
 	pg = pc->page_start;
 	pg->physaddr = segs[0].ds_addr & ~(USB_PAGE_SIZE - 1);
@@ -463,7 +463,7 @@ done:
  * Else: Failure
  *------------------------------------------------------------------------*/
 uint8_t
-usb_pc_alloc_mem(struct usb_page_cache *pc, struct usb_page *pg,
+usb_pc_alloc_mem(struct usb_page_cache *pc, struct usb_page *pg, int npg,
     usb_size_t size, usb_size_t align)
 {
 	struct usb_dma_parent_tag *uptag;
@@ -519,6 +519,7 @@ usb_pc_alloc_mem(struct usb_page_cache *pc, struct usb_page *pg,
 	/* setup page cache */
 	pc->buffer = ptr;
 	pc->page_start = pg;
+	pc->npage = npg;
 	pc->page_offset_buf = 0;
 	pc->page_offset_end = size;
 	pc->map = map;
@@ -552,6 +553,7 @@ error:
 	/* reset most of the page cache */
 	pc->buffer = NULL;
 	pc->page_start = NULL;
+	pc->npage = 0;
 	pc->page_offset_buf = 0;
 	pc->page_offset_end = 0;
 	pc->map = NULL;
@@ -910,6 +912,7 @@ usb_bdma_work_loop(struct usb_xfer_queue *pq)
 		 * the USB page caches.
 		 */
 		xfer->frbuffers[0].page_start = pg;
+		xfer->frbuffers[0].npage = (frlength_0 / USB_PAGE_SIZE) + 2;
 
 		info->dma_nframes = nframes;
 		info->dma_currframe = 0;
@@ -921,6 +924,8 @@ usb_bdma_work_loop(struct usb_xfer_queue *pq)
 		while (--nframes > 0) {
 			xfer->frbuffers[nframes].isread = isread;
 			xfer->frbuffers[nframes].page_start = pg;
+			xfer->frbuffers[nframes].npage =
+			    (xfer->frlengths[nframes] / USB_PAGE_SIZE);
 
 			pg += (xfer->frlengths[nframes] / USB_PAGE_SIZE);
 			pg += 2;

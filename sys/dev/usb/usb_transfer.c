@@ -268,7 +268,7 @@ usbd_transfer_setup_sub_malloc(struct usb_setup_params *parm,
 			n_obj = r;
 		}
 		if (usb_pc_alloc_mem(parm->dma_page_cache_ptr,
-		    pg, z, align)) {
+		    pg, 1, z, align)) {
 			return (1);	/* failure */
 		}
 		/* Set beginning of current buffer */
@@ -285,6 +285,7 @@ usbd_transfer_setup_sub_malloc(struct usb_setup_params *parm,
 			}
 			pc->buffer = USB_ADD_BYTES(buf, y * size);
 			pc->page_start = pg;
+			pc->npage = 1;
 
 			mtx_lock(pc->tag_parent->mtx);
 			if (usb_pc_load_mem(pc, size, 1 /* synchronous */ )) {
