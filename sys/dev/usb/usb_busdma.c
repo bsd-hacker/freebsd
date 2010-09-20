@@ -422,9 +422,9 @@ usb_pc_common_mem_cb(void *arg, bus_dma_segment_t *segs,
 	pc = arg;
 	uptag = pc->tag_parent;
 
-	if (error) {
+	if (error)
 		goto done;
-	}
+
 	pg = pc->page_start;
 	pg->physaddr = segs->ds_addr & ~(USB_PAGE_SIZE - 1);
 	rem = segs->ds_addr & (USB_PAGE_SIZE - 1);
@@ -447,15 +447,13 @@ usb_pc_common_mem_cb(void *arg, bus_dma_segment_t *segs,
 		pg++;
 		pg->physaddr = segs->ds_addr & ~(USB_PAGE_SIZE - 1);
 	}
-
 done:
 	mtx_lock(uptag->mtx);
 	uptag->dma_error = (error ? 1 : 0);
-	if (isload) {
+	if (isload)
 		(uptag->func) (uptag);
-	} else {
+	else
 		cv_broadcast(uptag->cv);
-	}
 	mtx_unlock(uptag->mtx);
 }
 
