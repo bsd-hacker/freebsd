@@ -67,7 +67,7 @@ static void	usb_dma_lock_cb(void *, bus_dma_lock_op_t);
 static void	usb_pc_alloc_mem_cb(void *, bus_dma_segment_t *, int, int);
 static void	usb_pc_load_mem_cb(void *, bus_dma_segment_t *, int, int);
 static void	usb_pc_common_mem_cb(void *, bus_dma_segment_t *, int, int,
-		    uint8_t);
+		    uint8_t, uint8_t);
 #endif
 
 /*------------------------------------------------------------------------*
@@ -394,7 +394,7 @@ static void
 usb_pc_alloc_mem_cb(void *arg, bus_dma_segment_t *segs,
     int nseg, int error)
 {
-	usb_pc_common_mem_cb(arg, segs, nseg, error, 0);
+	usb_pc_common_mem_cb(arg, segs, nseg, error, 0, 1);
 }
 
 /*------------------------------------------------------------------------*
@@ -404,7 +404,7 @@ static void
 usb_pc_load_mem_cb(void *arg, bus_dma_segment_t *segs,
     int nseg, int error)
 {
-	usb_pc_common_mem_cb(arg, segs, nseg, error, 1);
+	usb_pc_common_mem_cb(arg, segs, nseg, error, 1, 0);
 }
 
 /*------------------------------------------------------------------------*
@@ -412,7 +412,7 @@ usb_pc_load_mem_cb(void *arg, bus_dma_segment_t *segs,
  *------------------------------------------------------------------------*/
 static void
 usb_pc_common_mem_cb(void *arg, bus_dma_segment_t *segs,
-    int nseg, int error, uint8_t isload)
+    int nseg, int error, uint8_t isload, uint8_t needwakeup)
 {
 	struct usb_dma_parent_tag *uptag;
 	struct usb_page_cache *pc;
@@ -452,7 +452,7 @@ done:
 	uptag->dma_error = (error ? 1 : 0);
 	if (isload)
 		(uptag->func) (uptag);
-	else
+	if (needwakeup != 0)
 		cv_broadcast(uptag->cv);
 	mtx_unlock(uptag->mtx);
 }
