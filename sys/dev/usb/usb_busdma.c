@@ -434,6 +434,7 @@ usb_pc_common_mem_cb(void *arg, bus_dma_segment_t *segs,
 
 	pg = pc->pages;
 	pg->physaddr = segs[0].ds_addr & ~(USB_PAGE_SIZE - 1);
+	pg->physlen = segs[0].ds_len;
 	rem = segs[0].ds_addr & (USB_PAGE_SIZE - 1);
 	pc->page_offset_buf = rem;
 	pc->page_offset_end += rem;
@@ -447,8 +448,10 @@ usb_pc_common_mem_cb(void *arg, bus_dma_segment_t *segs,
 		goto done;
 	}
 #endif
-	for (i = 1; i < nseg; i++)
+	for (i = 1; i < nseg; i++) {
 		pg[i].physaddr = segs[i].ds_addr & ~(USB_PAGE_SIZE - 1);
+		pg[i].physlen = segs[i].ds_len;
+	}
 done:
 	uptag->dma_error = (error ? 1 : 0);
 	if (isload)
