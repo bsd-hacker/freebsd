@@ -73,7 +73,7 @@ struct usb_page {
 struct usb_page_search {
 	void   *buffer;
 #if USB_HAVE_BUSDMA
-	bus_size_t physaddr;
+	bus_addr_t physaddr;
 #endif
 	usb_size_t length;
 };
