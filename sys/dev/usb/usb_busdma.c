@@ -449,7 +449,15 @@ usb_pc_common_mem_cb(void *arg, bus_dma_segment_t *segs,
 	}
 #endif
 	for (i = 1; i < nseg; i++) {
-		pg[i].physaddr = segs[i].ds_addr & ~(USB_PAGE_SIZE - 1);
+		/*
+		 * XXX Currently USB stack has a assumption that after second
+		 * segments always the address would be aligned by
+		 * USB_PAGE_SIZE.  If it's failed, all DMA operations would
+		 * be wrong.
+		 */
+		USB_ASSERT((segs[i].ds_addr & (USB_PAGE_SIZE - 1)) == 0,
+		    ("wrong DMA alignment (%#jx)", segs[i].ds_addr));
+		pg[i].physaddr = segs[i].ds_addr;
 		pg[i].physlen = segs[i].ds_len;
 	}
 done:
