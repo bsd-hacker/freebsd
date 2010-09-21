@@ -34,6 +34,7 @@
 #include <sys/bus.h>
 #include <sys/linker_set.h>
 #include <sys/module.h>
+#include <sys/limits.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/condvar.h>
@@ -475,6 +476,12 @@ usb_pc_alloc_mem(struct usb_page_cache *pc, struct usb_page *pg, int npg,
 
 	uptag = pc->tag_parent;
 
+	/*
+	 * Checks the requested size first before allocating DMA-able buffer
+	 * that if the size is over 2G the alignment value could be overflowed.
+	 */
+	if (size >= INT_MAX)
+		panic("too big size (%d) for DMA-able buffer", size);
 	if (align == 0)
 		goto error;
 	if (align != 1) {
