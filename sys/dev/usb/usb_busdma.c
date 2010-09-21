@@ -913,6 +913,7 @@ usb_bdma_work_loop(struct usb_xfer_queue *pq)
 		 * the USB page caches.
 		 */
 		xfer->frbuffers[0].page_start = pg;
+		/* XXX why +2 here?  It looks it's a quirk */
 		xfer->frbuffers[0].npage = (frlength_0 / USB_PAGE_SIZE) + 2;
 
 		info->dma_nframes = nframes;
@@ -920,15 +921,18 @@ usb_bdma_work_loop(struct usb_xfer_queue *pq)
 		info->dma_frlength_0 = frlength_0;
 
 		pg += (frlength_0 / USB_PAGE_SIZE);
+		/* XXX why +2 here?  It looks it's a quirk */
 		pg += 2;
 
 		while (--nframes > 0) {
 			xfer->frbuffers[nframes].isread = isread;
 			xfer->frbuffers[nframes].page_start = pg;
+			/* XXX why +2 here?  It looks it's a quirk */
 			xfer->frbuffers[nframes].npage =
 			    (xfer->frlengths[nframes] / USB_PAGE_SIZE) + 2;
 
 			pg += (xfer->frlengths[nframes] / USB_PAGE_SIZE);
+			/* XXX why +2 here?  It looks it's a quirk */
 			pg += 2;
 		}
 
