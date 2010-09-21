@@ -214,7 +214,7 @@ usbd_transfer_setup_sub_malloc(struct usb_setup_params *parm,
 	/*
 	 * Make sure that the size is aligned properly.
 	 */
-	size = -((-size) & (-align));
+	size = roundup(size, align);
 
 	/*
 	 * Try multi-allocation chunks to reduce the number of DMA
