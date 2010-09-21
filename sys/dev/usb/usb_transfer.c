@@ -284,8 +284,8 @@ usbd_transfer_setup_sub_malloc(struct usb_setup_params *parm,
 				return (1);	/* failure */
 			}
 			pc->buffer = USB_ADD_BYTES(buf, y * size);
-			pc->page_start = pg;
-			pc->npage = 1;
+			pc->pages = pg;
+			pc->npages = 1;
 
 			mtx_lock(pc->tag_parent->mtx);
 			if (usb_pc_load_mem(pc, size, 1 /* synchronous */ )) {

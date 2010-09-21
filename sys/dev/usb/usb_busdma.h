@@ -87,8 +87,8 @@ struct usb_page_cache {
 #if USB_HAVE_BUSDMA
 	bus_dma_tag_t tag;
 	bus_dmamap_t map;
-	struct usb_page *page_start;
-	int npage;
+	struct usb_page *pages;		/* the array pointer of DMA segments */
+	int npages;			/* numbers of DMA segments */
 #endif
 	struct usb_dma_parent_tag *tag_parent;	/* always set */
 	void   *buffer;			/* virtual buffer pointer */

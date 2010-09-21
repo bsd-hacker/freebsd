@@ -83,7 +83,7 @@ usbd_get_page(struct usb_page_cache *pc, usb_frlength_t offset,
 	struct usb_page *page;
 
 #if USB_HAVE_BUSDMA
-	if (pc->page_start) {
+	if (pc->pages != NULL) {
 
 		/* Case 1 - something has been loaded into DMA */
 
@@ -97,7 +97,7 @@ usbd_get_page(struct usb_page_cache *pc, usb_frlength_t offset,
 
 		/* compute destination page */
 
-		page = pc->page_start;
+		page = pc->pages;
 
 		if (pc->ismultiseg) {
 
@@ -428,10 +428,10 @@ usb_pc_common_mem_cb(void *arg, bus_dma_segment_t *segs,
 	if (error)
 		goto done;
 
-	USB_ASSERT(nseg <= pc->npage,
-	    ("too many segments (%d <= %d)", nseg, pc->npage));
+	USB_ASSERT(nseg <= pc->npages,
+	    ("too many segments (%d <= %d)", nseg, pc->npages));
 
-	pg = pc->page_start;
+	pg = pc->pages;
 	pg->physaddr = segs[0].ds_addr & ~(USB_PAGE_SIZE - 1);
 	rem = segs[0].ds_addr & (USB_PAGE_SIZE - 1);
 	pc->page_offset_buf = rem;
@@ -519,8 +519,8 @@ usb_pc_alloc_mem(struct usb_page_cache *pc, struct usb_page *pg, int npg,
 	}
 	/* setup page cache */
 	pc->buffer = ptr;
-	pc->page_start = pg;
-	pc->npage = npg;
+	pc->pages = pg;
+	pc->npages = npg;
 	pc->page_offset_buf = 0;
 	pc->page_offset_end = size;
 	pc->map = map;
@@ -553,8 +553,8 @@ usb_pc_alloc_mem(struct usb_page_cache *pc, struct usb_page *pg, int npg,
 error:
 	/* reset most of the page cache */
 	pc->buffer = NULL;
-	pc->page_start = NULL;
-	pc->npage = 0;
+	pc->pages = NULL;
+	pc->npages = 0;
 	pc->page_offset_buf = 0;
 	pc->page_offset_end = 0;
 	pc->map = NULL;
@@ -912,9 +912,9 @@ usb_bdma_work_loop(struct usb_xfer_queue *pq)
 		 * page will be stored. Also initialise the "isread" field of
 		 * the USB page caches.
 		 */
-		xfer->frbuffers[0].page_start = pg;
+		xfer->frbuffers[0].pages = pg;
 		/* XXX why +2 here?  It looks it's a quirk */
-		xfer->frbuffers[0].npage = (frlength_0 / USB_PAGE_SIZE) + 2;
+		xfer->frbuffers[0].npages = (frlength_0 / USB_PAGE_SIZE) + 2;
 
 		info->dma_nframes = nframes;
 		info->dma_currframe = 0;
@@ -926,9 +926,9 @@ usb_bdma_work_loop(struct usb_xfer_queue *pq)
 
 		while (--nframes > 0) {
 			xfer->frbuffers[nframes].isread = isread;
-			xfer->frbuffers[nframes].page_start = pg;
+			xfer->frbuffers[nframes].pages = pg;
 			/* XXX why +2 here?  It looks it's a quirk */
-			xfer->frbuffers[nframes].npage =
+			xfer->frbuffers[nframes].npages =
 			    (xfer->frlengths[nframes] / USB_PAGE_SIZE) + 2;
 
 			pg += (xfer->frlengths[nframes] / USB_PAGE_SIZE);
