@@ -428,7 +428,8 @@ usb_pc_common_mem_cb(void *arg, bus_dma_segment_t *segs,
 	if (error)
 		goto done;
 
-	USB_ASSERT(nseg <= pc->npage, ("too many segments (%d)", nseg));
+	USB_ASSERT(nseg <= pc->npage,
+	    ("too many segments (%d <= %d)", nseg, pc->npage));
 
 	pg = pc->page_start;
 	pg->physaddr = segs[0].ds_addr & ~(USB_PAGE_SIZE - 1);
