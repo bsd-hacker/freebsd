@@ -223,6 +223,7 @@ static int	aue_ifmedia_upd(struct ifnet *);
 static void	aue_ifmedia_sts(struct ifnet *, struct ifmediareq *);
 static int	aue_ioctl(struct ifnet *, u_long, caddr_t);
 static void	aue_start(struct ifnet *);
+static void	aue_start_locked(struct ifnet *);
 static void	aue_init(void *);
 static void	aue_setmulti(void *, int);
 static void	aue_setmulti_locked(struct aue_softc *);
@@ -985,7 +986,7 @@ aue_tick(struct aue_softc *sc)
 	    && mii->mii_media_status & IFM_ACTIVE &&
 	    IFM_SUBTYPE(mii->mii_media_active) != IFM_NONE) {
 		sc->sc_flags |= AUE_FLAG_LINK;
-		aue_start(sc->sc_ifp);
+		aue_start_locked(sc->sc_ifp);
 	}
 }
 
@@ -993,6 +994,18 @@ static void
 aue_start(struct ifnet *ifp)
 {
 	struct aue_softc *sc = ifp->if_softc;
+
+	AUE_LOCK(sc);
+	aue_start_locked(ifp);
+	AUE_UNLOCK(sc);
+}
+
+static void
+aue_start_locked(struct ifnet *ifp)
+{
+	struct aue_softc *sc = ifp->if_softc;
+
+	AUE_LOCK_ASSERT(sc, MA_OWNED);
 
 	/*
 	 * start the USB transfers, if not already started:
@@ -1044,7 +1057,7 @@ aue_init_locked(struct aue_softc *sc)
 
 	ifp->if_drv_flags |= IFF_DRV_RUNNING;
 	sleepout_reset(&sc->sc_watchdog, hz, aue_watchdog, sc);
-	aue_start(sc->sc_ifp);
+	aue_start_locked(sc->sc_ifp);
 }
 
 static void

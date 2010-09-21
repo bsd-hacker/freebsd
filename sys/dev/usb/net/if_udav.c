@@ -113,6 +113,7 @@ static void	udav_init(void *);
 static void	udav_init_locked(struct udav_softc *);
 static int	udav_ioctl(struct ifnet *, u_long, caddr_t);
 static void	udav_start(struct ifnet *);
+static void	udav_start_locked(struct ifnet *);
 static void	udav_setmulti(void *, int);
 static void	udav_stop(struct udav_softc *);
 static void	udav_setpromisc(struct udav_softc *);
@@ -481,7 +482,7 @@ udav_init_locked(struct udav_softc *sc)
 
 	ifp->if_drv_flags |= IFF_DRV_RUNNING;
 	sleepout_reset(&sc->sc_watchdog, hz, udav_watchdog, sc);
-	udav_start(sc->sc_ifp);
+	udav_start_locked(sc->sc_ifp);
 }
 
 static void
@@ -577,6 +578,18 @@ static void
 udav_start(struct ifnet *ifp)
 {
 	struct udav_softc *sc = ifp->if_softc;
+
+	UDAV_LOCK(sc);
+	udav_start_locked(ifp);
+	UDAV_UNLOCK(sc);
+}
+
+static void
+udav_start_locked(struct ifnet *ifp)
+{
+	struct udav_softc *sc = ifp->if_softc;
+
+	UDAV_LOCK_ASSERT(sc, MA_OWNED);
 
 	/*
 	 * start the USB transfers, if not already started:
@@ -873,7 +886,7 @@ udav_tick(struct udav_softc *sc)
 	    && mii->mii_media_status & IFM_ACTIVE &&
 	    IFM_SUBTYPE(mii->mii_media_active) != IFM_NONE) {
 		sc->sc_flags |= UDAV_FLAG_LINK;
-		udav_start(sc->sc_ifp);
+		udav_start_locked(sc->sc_ifp);
 	}
 }
 

@@ -202,6 +202,7 @@ static void	axe_init(void *);
 static void	axe_init_locked(struct axe_softc *);
 static int	axe_ioctl(struct ifnet *, u_long, caddr_t);
 static void	axe_start(struct ifnet *);
+static void	axe_start_locked(struct ifnet *);
 static void	axe_tick(struct axe_softc *);
 static void	axe_stop(struct axe_softc *);
 static void	axe_setmulti_locked(struct axe_softc *);
@@ -1140,7 +1141,7 @@ axe_tick(struct axe_softc *sc)
 	if ((sc->sc_flags & AXE_FLAG_LINK) == 0) {
 		axe_miibus_statchg(sc->sc_dev);
 		if ((sc->sc_flags & AXE_FLAG_LINK) != 0)
-			axe_start(sc->sc_ifp);
+			axe_start_locked(sc->sc_ifp);
 	}
 }
 
@@ -1148,6 +1149,18 @@ static void
 axe_start(struct ifnet *ifp)
 {
 	struct axe_softc *sc = ifp->if_softc;
+
+	AXE_LOCK(sc);
+	axe_start_locked(ifp);
+	AXE_UNLOCK(sc);
+}
+
+static void
+axe_start_locked(struct ifnet *ifp)
+{
+	struct axe_softc *sc = ifp->if_softc;
+
+	AXE_LOCK_ASSERT(sc, MA_OWNED);
 
 	/*
 	 * start the USB transfers, if not already started:
@@ -1226,7 +1239,7 @@ axe_init_locked(struct axe_softc *sc)
 
 	ifp->if_drv_flags |= IFF_DRV_RUNNING;
 	sleepout_reset(&sc->sc_watchdog, hz, axe_watchdog, sc);
-	axe_start(sc->sc_ifp);
+	axe_start_locked(sc->sc_ifp);
 }
 
 static void

@@ -168,6 +168,7 @@ static void	kue_init(void *);
 static void	kue_init_locked(struct kue_softc *);
 static int	kue_ioctl(struct ifnet *, u_long, caddr_t);
 static void	kue_start(struct ifnet *);
+static void	kue_start_locked(struct ifnet *);
 
 #ifdef USB_DEBUG
 static int kue_debug = 0;
@@ -734,6 +735,18 @@ kue_start(struct ifnet *ifp)
 {
 	struct kue_softc *sc = ifp->if_softc;
 
+	KUE_LOCK(sc);
+	kue_start_locked(ifp);
+	KUE_UNLOCK(sc);
+}
+
+static void
+kue_start_locked(struct ifnet *ifp)
+{
+	struct kue_softc *sc = ifp->if_softc;
+
+	KUE_LOCK_ASSERT(sc, MA_OWNED);
+
 	/*
 	 * start the USB transfers, if not already started:
 	 */
@@ -778,7 +791,7 @@ kue_init_locked(struct kue_softc *sc)
 	usbd_xfer_set_stall(sc->sc_xfer[KUE_BULK_DT_WR]);
 
 	ifp->if_drv_flags |= IFF_DRV_RUNNING;
-	kue_start(sc->sc_ifp);
+	kue_start_locked(sc->sc_ifp);
 }
 
 static void

@@ -108,6 +108,7 @@ static usb_callback_t cdce_ncm_bulk_read_callback;
 static uint32_t	cdce_m_crc32(struct mbuf *, uint32_t, uint32_t);
 static int	cdce_ioctl(struct ifnet *, u_long, caddr_t);
 static void	cdce_start(struct ifnet *);
+static void	cdce_start_locked(struct ifnet *);
 static void	cdce_init(void *);
 static void	cdce_init_locked(struct cdce_softc *);
 static int	cdce_rxmbuf(struct cdce_softc *, struct mbuf *, unsigned int);
@@ -633,6 +634,18 @@ cdce_start(struct ifnet *ifp)
 {
 	struct cdce_softc *sc = ifp->if_softc;
 
+	CDCE_LOCK(sc);
+	cdce_start_locked(ifp);
+	CDCE_UNLOCK(sc);
+}
+
+static void
+cdce_start_locked(struct ifnet *ifp)
+{
+	struct cdce_softc *sc = ifp->if_softc;
+
+	CDCE_LOCK_ASSERT(sc, MA_OWNED);
+
 	/*
 	 * Start the USB transfers, if not already started:
 	 */
@@ -795,7 +808,7 @@ cdce_init_locked(struct cdce_softc *sc)
 	usbd_xfer_set_stall(sc->sc_xfer[CDCE_BULK_TX]);
 
 	/* start data transfers */
-	cdce_start(sc->sc_ifp);
+	cdce_start_locked(sc->sc_ifp);
 }
 
 static void

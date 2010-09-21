@@ -127,6 +127,7 @@ static void	cue_init(void *);
 static void	cue_init_locked(struct cue_softc *);
 static int	cue_ioctl(struct ifnet *, u_long, caddr_t);
 static void	cue_start(struct ifnet *);
+static void	cue_start_locked(struct ifnet *);
 static int	cue_rxbuf(struct cue_softc *, struct usb_page_cache *, 
 		    unsigned int, unsigned int);
 static void	cue_rxflush(struct cue_softc *);
@@ -599,6 +600,18 @@ cue_start(struct ifnet *ifp)
 {
 	struct cue_softc *sc = ifp->if_softc;
 
+	CUE_LOCK(sc);
+	cue_start_locked(ifp);
+	CUE_UNLOCK(sc);
+}
+
+static void
+cue_start_locked(struct ifnet *ifp)
+{
+	struct cue_softc *sc = ifp->if_softc;
+
+	CUE_LOCK_ASSERT(sc, MA_OWNED);
+
 	/*
 	 * start the USB transfers, if not already started:
 	 */
@@ -659,7 +672,7 @@ cue_init_locked(struct cue_softc *sc)
 
 	ifp->if_drv_flags |= IFF_DRV_RUNNING;
 	sleepout_reset(&sc->sc_watchdog, hz, cue_watchdog, sc);
-	cue_start(sc->sc_ifp);
+	cue_start_locked(sc->sc_ifp);
 }
 
 /*

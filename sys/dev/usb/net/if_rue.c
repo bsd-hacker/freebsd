@@ -157,6 +157,7 @@ static void	rue_init(void *);
 static void	rue_init_locked(struct rue_softc *);
 static int	rue_ioctl(struct ifnet *, u_long, caddr_t);
 static void	rue_start(struct ifnet *);
+static void	rue_start_locked(struct ifnet *);
 static void	rue_stop(struct rue_softc *);
 static void	rue_watchdog(void *);
 
@@ -901,7 +902,7 @@ rue_tick(struct rue_softc *sc)
 	    && mii->mii_media_status & IFM_ACTIVE &&
 	    IFM_SUBTYPE(mii->mii_media_active) != IFM_NONE) {
 		sc->sc_flags |= RUE_FLAG_LINK;
-		rue_start(sc->sc_ifp);
+		rue_start_locked(sc->sc_ifp);
 	}
 }
 
@@ -909,6 +910,18 @@ static void
 rue_start(struct ifnet *ifp)
 {
 	struct rue_softc *sc = ifp->if_softc;
+
+	RUE_LOCK(sc);
+	rue_start_locked(ifp);
+	RUE_UNLOCK(sc);
+}
+
+static void
+rue_start_locked(struct ifnet *ifp)
+{
+	struct rue_softc *sc = ifp->if_softc;
+
+	RUE_LOCK_ASSERT(sc, MA_OWNED);
 
 	/*
 	 * start the USB transfers, if not already started:
@@ -963,7 +976,7 @@ rue_init_locked(struct rue_softc *sc)
 
 	ifp->if_drv_flags |= IFF_DRV_RUNNING;
 	sleepout_reset(&sc->sc_watchdog, hz, rue_watchdog, sc);
-	rue_start(sc->sc_ifp);
+	rue_start_locked(sc->sc_ifp);
 }
 
 /*
