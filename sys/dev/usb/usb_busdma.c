@@ -907,7 +907,7 @@ usb_bdma_work_loop(struct usb_xfer_queue *pq)
 		}
 
 		/*
-		 * Setup the "page_start" pointer which points to an array of
+		 * Setup the "pages" pointer which points to an array of
 		 * USB pages where information about the physical address of a
 		 * page will be stored. Also initialise the "isread" field of
 		 * the USB page caches.
