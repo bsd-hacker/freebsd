@@ -926,7 +926,7 @@ usb_bdma_work_loop(struct usb_xfer_queue *pq)
 			xfer->frbuffers[nframes].isread = isread;
 			xfer->frbuffers[nframes].page_start = pg;
 			xfer->frbuffers[nframes].npage =
-			    (xfer->frlengths[nframes] / USB_PAGE_SIZE);
+			    (xfer->frlengths[nframes] / USB_PAGE_SIZE) + 2;
 
 			pg += (xfer->frlengths[nframes] / USB_PAGE_SIZE);
 			pg += 2;
