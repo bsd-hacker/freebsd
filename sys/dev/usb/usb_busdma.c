@@ -85,27 +85,17 @@ usbd_get_page(struct usb_page_cache *pc, usb_frlength_t offset,
 
 #if USB_HAVE_BUSDMA
 	if (pc->pages != NULL) {
-
 		/* Case 1 - something has been loaded into DMA */
-
 		if (pc->buffer) {
-
 			/* Case 1a - Kernel Virtual Address */
-
 			res->buffer = USB_ADD_BYTES(pc->buffer, offset);
 		}
 		offset += pc->page_offset_buf;
-
 		/* compute destination page */
-
 		page = pc->pages;
-
 		if (pc->ismultiseg) {
-
 			page += (offset / USB_PAGE_SIZE);
-
 			offset %= USB_PAGE_SIZE;
-
 			res->length = USB_PAGE_SIZE - offset;
 			res->physaddr = page->physaddr + offset;
 		} else {
@@ -113,16 +103,13 @@ usbd_get_page(struct usb_page_cache *pc, usb_frlength_t offset,
 			res->physaddr = page->physaddr + offset;
 		}
 		if (!pc->buffer) {
-
 			/* Case 1b - Non Kernel Virtual Address */
-
 			res->buffer = USB_ADD_BYTES(page->buffer, offset);
 		}
 		return;
 	}
 #endif
 	/* Case 2 - Plain PIO */
-
 	res->buffer = USB_ADD_BYTES(pc->buffer, offset);
 	res->length = 0 - 1;
 #if USB_HAVE_BUSDMA
