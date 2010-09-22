@@ -107,6 +107,8 @@ usbd_get_page(struct usb_page_cache *pc, usb_frlength_t offset0,
 			res->length = USB_PAGE_SIZE - offset;
 			res->physaddr = page[index].physaddr + offset;
 		} else {
+			USB_ASSERT(pc->npages == 1,
+			    ("multiple DMA segments without pc->ismultiseg"));
 			USB_ASSERT(page[index].physlen > offset0,
 			    ("wrong offset (%zd/ %d)", page[index].physlen,
 			    offset0));
