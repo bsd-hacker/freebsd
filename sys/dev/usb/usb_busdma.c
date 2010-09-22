@@ -82,7 +82,7 @@ usbd_get_page(struct usb_page_cache *pc, usb_frlength_t offset0,
     struct usb_page_search *res)
 {
 	struct usb_page *page;
-	usb_frlength_t offset = offset0;
+	usb_frlength_t end, offset = offset0;
 	int index;
 
 #if USB_HAVE_BUSDMA
@@ -104,7 +104,17 @@ usbd_get_page(struct usb_page_cache *pc, usb_frlength_t offset0,
 			    ("invalid index number (%d / %d)", index,
 			    pc->npages));
 			offset %= USB_PAGE_SIZE;
-			res->length = USB_PAGE_SIZE - offset;
+			/* If it's the last segment handle differently */
+			if ((index + 1) != pc->npages)
+				res->length = USB_PAGE_SIZE - offset;
+			else {
+				end = page[index].physlen;
+				if (index == 0)
+					end += pc->page_offset_buf;
+				USB_ASSERT(end >= offset,
+				    ("wrong offset (%d / %d)", end, offset));
+				res->length = end - offset;
+			}
 			res->physaddr = page[index].physaddr + offset;
 		} else {
 			USB_ASSERT(pc->npages == 1,
