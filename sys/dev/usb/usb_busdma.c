@@ -78,10 +78,11 @@ static void	usb_pc_common_mem_cb(void *, bus_dma_segment_t *, int, int,
  * been properly initialized !
  *------------------------------------------------------------------------*/
 void
-usbd_get_page(struct usb_page_cache *pc, usb_frlength_t offset,
+usbd_get_page(struct usb_page_cache *pc, usb_frlength_t offset0,
     struct usb_page_search *res)
 {
 	struct usb_page *page;
+	usb_frlength_t offset = offset0;
 	int index;
 
 #if USB_HAVE_BUSDMA
@@ -106,7 +107,10 @@ usbd_get_page(struct usb_page_cache *pc, usb_frlength_t offset,
 			res->length = USB_PAGE_SIZE - offset;
 			res->physaddr = page[index].physaddr + offset;
 		} else {
-			res->length = 0 - 1;
+			USB_ASSERT(page[index].physlen > offset0,
+			    ("wrong offset (%zd/ %d)", page[index].physlen,
+			    offset0));
+			res->length = page[index].physlen - offset0;
 			res->physaddr = page[index].physaddr + offset;
 		}
 		if (!pc->buffer) {
