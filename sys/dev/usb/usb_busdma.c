@@ -86,6 +86,8 @@ usbd_get_page(struct usb_page_cache *pc, usb_frlength_t offset,
 
 #if USB_HAVE_BUSDMA
 	if (pc->pages != NULL) {
+		USB_ASSERT(pc->npages > 0,
+		    ("wrong numbers of pages (%d)", pc->npages));
 		/* Case 1 - something has been loaded into DMA */
 		if (pc->buffer) {
 			/* Case 1a - Kernel Virtual Address */
@@ -97,6 +99,9 @@ usbd_get_page(struct usb_page_cache *pc, usb_frlength_t offset,
 		index = 0;
 		if (pc->ismultiseg) {
 			index += (offset / USB_PAGE_SIZE);
+			USB_ASSERT(index < pc->npages,
+			    ("invalid index number (%d / %d)", index,
+			    pc->npages));
 			offset %= USB_PAGE_SIZE;
 			res->length = USB_PAGE_SIZE - offset;
 			res->physaddr = page[index].physaddr + offset;
