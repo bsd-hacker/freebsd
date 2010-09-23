@@ -169,33 +169,33 @@ uhci_iterate_hw_softc(struct usb_bus *bus, usb_bus_mem_callback_t *func)
 	struct uhci_softc *sc = UHCI_BUS2SC(bus);
 	uint32_t i;
 
-	(*func)(bus, &sc->sc_hw.pframes_pc, &sc->sc_hw.pframes_pg, 1,
+	(*func)(bus, &sc->sc_hw.pframes_pc, &sc->sc_hw.pframes_pg,
 	    sizeof(uint32_t) * UHCI_FRAMELIST_COUNT, UHCI_FRAMELIST_ALIGN);
 
-	(*func)(bus, &sc->sc_hw.ls_ctl_start_pc, &sc->sc_hw.ls_ctl_start_pg, 1,
+	(*func)(bus, &sc->sc_hw.ls_ctl_start_pc, &sc->sc_hw.ls_ctl_start_pg,
 	    sizeof(uhci_qh_t), UHCI_QH_ALIGN);
 
-	(*func)(bus, &sc->sc_hw.fs_ctl_start_pc, &sc->sc_hw.fs_ctl_start_pg, 1,
+	(*func)(bus, &sc->sc_hw.fs_ctl_start_pc, &sc->sc_hw.fs_ctl_start_pg,
 	    sizeof(uhci_qh_t), UHCI_QH_ALIGN);
 
-	(*func)(bus, &sc->sc_hw.bulk_start_pc, &sc->sc_hw.bulk_start_pg, 1,
+	(*func)(bus, &sc->sc_hw.bulk_start_pc, &sc->sc_hw.bulk_start_pg,
 	    sizeof(uhci_qh_t), UHCI_QH_ALIGN);
 
-	(*func)(bus, &sc->sc_hw.last_qh_pc, &sc->sc_hw.last_qh_pg, 1,
+	(*func)(bus, &sc->sc_hw.last_qh_pc, &sc->sc_hw.last_qh_pg,
 	    sizeof(uhci_qh_t), UHCI_QH_ALIGN);
 
-	(*func)(bus, &sc->sc_hw.last_td_pc, &sc->sc_hw.last_td_pg, 1,
+	(*func)(bus, &sc->sc_hw.last_td_pc, &sc->sc_hw.last_td_pg,
 	    sizeof(uhci_td_t), UHCI_TD_ALIGN);
 
 	for (i = 0; i != UHCI_VFRAMELIST_COUNT; i++) {
 		(*func)(bus, sc->sc_hw.isoc_start_pc + i,
-		    sc->sc_hw.isoc_start_pg + i, 1,
+		    sc->sc_hw.isoc_start_pg + i,
 		    sizeof(uhci_td_t), UHCI_TD_ALIGN);
 	}
 
 	for (i = 0; i != UHCI_IFRAMELIST_COUNT; i++) {
 		(*func)(bus, sc->sc_hw.intr_start_pc + i,
-		    sc->sc_hw.intr_start_pg + i, 1,
+		    sc->sc_hw.intr_start_pg + i,
 		    sizeof(uhci_qh_t), UHCI_QH_ALIGN);
 	}
 }

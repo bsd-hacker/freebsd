@@ -78,61 +78,51 @@ static void	usb_pc_common_mem_cb(void *, bus_dma_segment_t *, int, int,
  * been properly initialized !
  *------------------------------------------------------------------------*/
 void
-usbd_get_page(struct usb_page_cache *pc, usb_frlength_t offset0,
+usbd_get_page(struct usb_page_cache *pc, usb_frlength_t offset,
     struct usb_page_search *res)
 {
 	struct usb_page *page;
-	usb_frlength_t end, offset = offset0;
-	int index;
 
 #if USB_HAVE_BUSDMA
-	if (pc->pages != NULL) {
-		USB_ASSERT(pc->npages > 0,
-		    ("wrong numbers of pages (%d)", pc->npages));
+	if (pc->page_start) {
+
 		/* Case 1 - something has been loaded into DMA */
+
 		if (pc->buffer) {
+
 			/* Case 1a - Kernel Virtual Address */
+
 			res->buffer = USB_ADD_BYTES(pc->buffer, offset);
 		}
 		offset += pc->page_offset_buf;
+
 		/* compute destination page */
-		page = pc->pages;
-		index = 0;
+
+		page = pc->page_start;
+
 		if (pc->ismultiseg) {
-			index += (offset / USB_PAGE_SIZE);
-			USB_ASSERT(index < pc->npages,
-			    ("invalid index number (%d / %d)", index,
-			    pc->npages));
+
+			page += (offset / USB_PAGE_SIZE);
+
 			offset %= USB_PAGE_SIZE;
-			/* If it's the last segment handle differently */
-			if ((index + 1) != pc->npages)
-				res->length = USB_PAGE_SIZE - offset;
-			else {
-				end = page[index].physlen;
-				if (index == 0)
-					end += pc->page_offset_buf;
-				USB_ASSERT(end >= offset,
-				    ("wrong offset (%d / %d)", end, offset));
-				res->length = end - offset;
-			}
-			res->physaddr = page[index].physaddr + offset;
+
+			res->length = USB_PAGE_SIZE - offset;
+			res->physaddr = page->physaddr + offset;
 		} else {
-			USB_ASSERT(pc->npages == 1,
-			    ("multiple DMA segments without pc->ismultiseg"));
-			USB_ASSERT(page[index].physlen > offset0,
-			    ("wrong offset (%zd/ %d)", page[index].physlen,
-			    offset0));
-			res->length = page[index].physlen - offset0;
-			res->physaddr = page[index].physaddr + offset;
+			res->length = 0 - 1;
+			res->physaddr = page->physaddr + offset;
 		}
 		if (!pc->buffer) {
+
 			/* Case 1b - Non Kernel Virtual Address */
-			res->buffer = USB_ADD_BYTES(page[index].buffer, offset);
+
+			res->buffer = USB_ADD_BYTES(page->buffer, offset);
 		}
 		return;
 	}
 #endif
 	/* Case 2 - Plain PIO */
+
 	res->buffer = USB_ADD_BYTES(pc->buffer, offset);
 	res->length = 0 - 1;
 #if USB_HAVE_BUSDMA
@@ -439,12 +429,8 @@ usb_pc_common_mem_cb(void *arg, bus_dma_segment_t *segs,
 	if (error)
 		goto done;
 
-	USB_ASSERT(nseg <= pc->npages,
-	    ("too many segments (%d <= %d)", nseg, pc->npages));
-
-	pg = pc->pages;
+	pg = pc->page_start;
 	pg->physaddr = segs[0].ds_addr & ~(USB_PAGE_SIZE - 1);
-	pg->physlen = segs[0].ds_len;
 	rem = segs[0].ds_addr & (USB_PAGE_SIZE - 1);
 	pc->page_offset_buf = rem;
 	pc->page_offset_end += rem;
@@ -458,18 +444,8 @@ usb_pc_common_mem_cb(void *arg, bus_dma_segment_t *segs,
 		goto done;
 	}
 #endif
-	for (i = 1; i < nseg; i++) {
-		/*
-		 * XXX Currently USB stack has a assumption that after second
-		 * segments always the address would be aligned by
-		 * USB_PAGE_SIZE.  If it's failed, all DMA operations would
-		 * be wrong.
-		 */
-		USB_ASSERT((segs[i].ds_addr & (USB_PAGE_SIZE - 1)) == 0,
-		    ("wrong DMA alignment (%#jx)", segs[i].ds_addr));
-		pg[i].physaddr = segs[i].ds_addr;
-		pg[i].physlen = segs[i].ds_len;
-	}
+	for (i = 1; i < nseg; i++)
+		pg[i].physaddr = segs[i].ds_addr & ~(USB_PAGE_SIZE - 1);
 done:
 	uptag->dma_error = (error ? 1 : 0);
 	if (isload)
@@ -486,7 +462,7 @@ done:
  * Else: Failure
  *------------------------------------------------------------------------*/
 uint8_t
-usb_pc_alloc_mem(struct usb_page_cache *pc, struct usb_page *pg, int npg,
+usb_pc_alloc_mem(struct usb_page_cache *pc, struct usb_page *pg,
     usb_size_t size, usb_size_t align)
 {
 	struct usb_dma_parent_tag *uptag;
@@ -547,8 +523,7 @@ usb_pc_alloc_mem(struct usb_page_cache *pc, struct usb_page *pg, int npg,
 	}
 	/* setup page cache */
 	pc->buffer = ptr;
-	pc->pages = pg;
-	pc->npages = npg;
+	pc->page_start = pg;
 	pc->page_offset_buf = 0;
 	pc->page_offset_end = size;
 	pc->map = map;
@@ -581,8 +556,7 @@ usb_pc_alloc_mem(struct usb_page_cache *pc, struct usb_page *pg, int npg,
 error:
 	/* reset most of the page cache */
 	pc->buffer = NULL;
-	pc->pages = NULL;
-	pc->npages = 0;
+	pc->page_start = NULL;
 	pc->page_offset_buf = 0;
 	pc->page_offset_end = 0;
 	pc->map = NULL;
@@ -935,32 +909,25 @@ usb_bdma_work_loop(struct usb_xfer_queue *pq)
 		}
 
 		/*
-		 * Setup the "pages" pointer which points to an array of
+		 * Setup the "page_start" pointer which points to an array of
 		 * USB pages where information about the physical address of a
 		 * page will be stored. Also initialise the "isread" field of
 		 * the USB page caches.
 		 */
-		xfer->frbuffers[0].pages = pg;
-		/* XXX why +2 here?  It looks it's a quirk */
-		xfer->frbuffers[0].npages = (frlength_0 / USB_PAGE_SIZE) + 2;
+		xfer->frbuffers[0].page_start = pg;
 
 		info->dma_nframes = nframes;
 		info->dma_currframe = 0;
 		info->dma_frlength_0 = frlength_0;
 
 		pg += (frlength_0 / USB_PAGE_SIZE);
-		/* XXX why +2 here?  It looks it's a quirk */
 		pg += 2;
 
 		while (--nframes > 0) {
 			xfer->frbuffers[nframes].isread = isread;
-			xfer->frbuffers[nframes].pages = pg;
-			/* XXX why +2 here?  It looks it's a quirk */
-			xfer->frbuffers[nframes].npages =
-			    (xfer->frlengths[nframes] / USB_PAGE_SIZE) + 2;
+			xfer->frbuffers[nframes].page_start = pg;
 
 			pg += (xfer->frlengths[nframes] / USB_PAGE_SIZE);
-			/* XXX why +2 here?  It looks it's a quirk */
 			pg += 2;
 		}
 

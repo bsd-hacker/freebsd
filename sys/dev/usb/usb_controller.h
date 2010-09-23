@@ -46,8 +46,8 @@ struct usb_endpoint_descriptor;
 /* typedefs */
 
 typedef void	(usb_bus_mem_callback_t)(struct usb_bus *,
-		    struct usb_page_cache *, struct usb_page *, int,
-		    usb_size_t, usb_size_t);
+		    struct usb_page_cache *, struct usb_page *, usb_size_t,
+		    usb_size_t);
 
 /*
  * The following structure is used to define all the USB BUS
