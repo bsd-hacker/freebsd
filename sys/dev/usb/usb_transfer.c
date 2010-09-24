@@ -628,6 +628,7 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 
 			xfer->local_buffer =
 			    USB_ADD_BYTES(parm->buf, parm->size[0]);
+			xfer->local_buflen = parm->bufsize;
 
 			usbd_xfer_set_frame_offset(xfer, 0, 0);
 

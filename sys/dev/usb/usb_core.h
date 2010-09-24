@@ -136,6 +136,7 @@ struct usb_xfer {
 	void   *priv_sc;		/* device driver data pointer 1 */
 	void   *priv_fifo;		/* device driver data pointer 2 */
 	void   *local_buffer;
+	int     local_buflen;
 	usb_frlength_t *frlengths;
 	struct usb_page_cache *frbuffers;
 	usb_callback_t *callback;
