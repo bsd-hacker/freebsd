@@ -112,12 +112,6 @@ usbd_get_page(struct usb_page_cache *pc, usb_frlength_t offset,
 			res->length = 0 - 1;
 			res->physaddr = page->physaddr + offset;
 		}
-		if (!pc->buffer) {
-
-			/* Case 1b - Non Kernel Virtual Address */
-
-			res->buffer = USB_ADD_BYTES(page->buffer, offset);
-		}
 		return;
 	}
 #endif

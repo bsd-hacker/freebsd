@@ -61,7 +61,6 @@ typedef void (usb_dma_callback_t)(struct usb_dma_parent_tag *udpt);
 struct usb_page {
 #if USB_HAVE_BUSDMA
 	bus_addr_t physaddr;
-	void   *buffer;			/* non Kernel Virtual Address */
 #endif
 };
 
