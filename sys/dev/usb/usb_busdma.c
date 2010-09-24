@@ -85,11 +85,8 @@ usbd_get_page(struct usb_page_cache *pc, usb_frlength_t offset,
 
 #if USB_HAVE_BUSDMA
 	if (pc->page_start) {
-		/* Case 1 - something has been loaded into DMA */
-		if (pc->buffer) {
-			/* Case 1a - Kernel Virtual Address */
-			res->buffer = USB_ADD_BYTES(pc->buffer, offset);
-		}
+		USB_ASSERT(pc->buffer != NULL, ("pc->buffer is NULL"));
+		res->buffer = USB_ADD_BYTES(pc->buffer, offset);
 		offset += pc->page_offset_buf;
 		/* compute destination page */
 		page = pc->page_start;
