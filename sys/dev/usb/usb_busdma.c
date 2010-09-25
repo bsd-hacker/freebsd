@@ -84,12 +84,10 @@ usbd_get_page(struct usb_page_cache *pc, usb_frlength_t offset,
 	struct usb_page *page;
 
 #if USB_HAVE_BUSDMA
-	if (pc->page_start) {
+	if ((page = pc->page_start) != NULL) {
 		USB_ASSERT(pc->buffer != NULL, ("pc->buffer is NULL"));
 		res->buffer = USB_ADD_BYTES(pc->buffer, offset);
 		offset += pc->page_offset_buf;
-		/* compute destination page */
-		page = pc->page_start;
 		if (pc->ismultiseg) {
 			page += (offset / USB_PAGE_SIZE);
 			offset %= USB_PAGE_SIZE;
