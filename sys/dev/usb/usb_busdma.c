@@ -126,6 +126,13 @@ usbd_copy_in(struct usb_page_cache *cache, usb_frlength_t offset,
 		if (buf_res.length > len) {
 			buf_res.length = len;
 		}
+
+		/* Checks the buffer boundary */
+		USB_ASSERT((char *)buf_res.buffer + buf_res.length <=
+		    (char *)cache->buffer + cache->buflen,
+		    ("overflow is happened (%p %d/%p %d)", buf_res.buffer,
+			buf_res.length, cache->buffer, cache->buflen));
+
 		bcopy(ptr, buf_res.buffer, buf_res.length);
 
 		offset += buf_res.length;
@@ -156,6 +163,13 @@ usbd_copy_in_user(struct usb_page_cache *cache, usb_frlength_t offset,
 		if (buf_res.length > len) {
 			buf_res.length = len;
 		}
+
+		/* Checks the buffer boundary */
+		USB_ASSERT((char *)buf_res.buffer + buf_res.length <=
+		    (char *)cache->buffer + cache->buflen,
+		    ("overflow is happened (%p %d/%p %d)", buf_res.buffer,
+			buf_res.length, cache->buffer, cache->buflen));
+
 		error = copyin(ptr, buf_res.buffer, buf_res.length);
 		if (error)
 			return (error);
@@ -216,6 +230,13 @@ usb_uiomove(struct usb_page_cache *pc, struct uio *uio,
 		if (res.length > len) {
 			res.length = len;
 		}
+
+		/* Checks the buffer boundary */
+		USB_ASSERT((char *)res.buffer + res.length <=
+		    (char *)pc->buffer + pc->buflen,
+		    ("overflow is happened (%p %d/%p %d)", res.buffer,
+			res.length, pc->buffer, pc->buflen));
+
 		/*
 		 * "uiomove()" can sleep so one needs to make a wrapper,
 		 * exiting the mutex and checking things
@@ -248,6 +269,13 @@ usbd_copy_out(struct usb_page_cache *cache, usb_frlength_t offset,
 		if (res.length > len) {
 			res.length = len;
 		}
+
+		/* Checks the buffer boundary */
+		USB_ASSERT((char *)res.buffer + res.length <=
+		    (char *)cache->buffer + cache->buflen,
+		    ("overflow is happened (%p %d/%p %d)", res.buffer,
+			res.length, cache->buffer, cache->buflen));
+
 		bcopy(res.buffer, ptr, res.length);
 
 		offset += res.length;
@@ -278,6 +306,13 @@ usbd_copy_out_user(struct usb_page_cache *cache, usb_frlength_t offset,
 		if (res.length > len) {
 			res.length = len;
 		}
+
+		/* Checks the buffer boundary */
+		USB_ASSERT((char *)res.buffer + res.length <=
+		    (char *)cache->buffer + cache->buflen,
+		    ("overflow is happened (%p %d/%p %d)", res.buffer,
+			res.length, cache->buffer, cache->buflen));
+
 		error = copyout(res.buffer, ptr, res.length);
 		if (error)
 			return (error);
@@ -306,6 +341,13 @@ usbd_frame_zero(struct usb_page_cache *cache, usb_frlength_t offset,
 		if (res.length > len) {
 			res.length = len;
 		}
+
+		/* Checks the buffer boundary */
+		USB_ASSERT((char *)res.buffer + res.length <=
+		    (char *)cache->buffer + cache->buflen,
+		    ("overflow is happened (%p %d/%p %d)", res.buffer,
+			res.length, cache->buffer, cache->buflen));
+
 		bzero(res.buffer, res.length);
 
 		offset += res.length;
