@@ -62,7 +62,8 @@
 #include <dev/usb/usb_bus.h>
 
 #if USB_HAVE_BUSDMA
-static void	usb_dma_tag_create(struct usb_dma_tag *, usb_size_t, usb_size_t);
+static void	usb_dma_tag_create(struct usb_dma_tag *, usb_size_t,
+		    usb_size_t);
 static void	usb_dma_tag_destroy(struct usb_dma_tag *);
 static void	usb_dma_lock_cb(void *, bus_dma_lock_op_t);
 static void	usb_pc_alloc_mem_cb(void *, bus_dma_segment_t *, int, int);
