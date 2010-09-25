@@ -90,6 +90,7 @@ struct usb_page_cache {
 #endif
 	struct usb_dma_parent_tag *tag_parent;	/* always set */
 	void   *buffer;			/* virtual buffer pointer */
+	int     buflen;
 #if USB_HAVE_BUSDMA
 	usb_size_t page_offset_buf;
 	usb_size_t page_offset_end;

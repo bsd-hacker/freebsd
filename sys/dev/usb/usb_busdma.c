@@ -503,6 +503,7 @@ usb_pc_alloc_mem(struct usb_page_cache *pc, struct usb_page *pg,
 	}
 	/* setup page cache */
 	pc->buffer = ptr;
+	pc->buflen = size;
 	pc->page_start = pg;
 	pc->page_offset_buf = 0;
 	pc->page_offset_end = size;
@@ -536,6 +537,7 @@ usb_pc_alloc_mem(struct usb_page_cache *pc, struct usb_page *pg,
 error:
 	/* reset most of the page cache */
 	pc->buffer = NULL;
+	pc->buflen = 0;
 	pc->page_start = NULL;
 	pc->page_offset_buf = 0;
 	pc->page_offset_end = 0;
@@ -559,6 +561,7 @@ usb_pc_free_mem(struct usb_page_cache *pc)
 		bus_dmamem_free(pc->tag, pc->buffer, pc->map);
 
 		pc->buffer = NULL;
+		pc->buflen = 0;
 	}
 }
 

@@ -284,6 +284,7 @@ usbd_transfer_setup_sub_malloc(struct usb_setup_params *parm,
 				return (1);	/* failure */
 			}
 			pc->buffer = USB_ADD_BYTES(buf, y * size);
+			pc->buflen = size;
 			pc->page_start = pg;
 
 			mtx_lock(pc->tag_parent->mtx);
@@ -1888,6 +1889,7 @@ usbd_xfer_set_frame_data(struct usb_xfer *xfer, usb_frcount_t frindex,
 
 	/* set virtual address to load and length */
 	xfer->frbuffers[frindex].buffer = ptr;
+	xfer->frbuffers[frindex].buflen = len;
 	usbd_xfer_set_frame_len(xfer, frindex, len);
 }
 
@@ -1934,6 +1936,7 @@ usbd_xfer_set_frame_offset(struct usb_xfer *xfer, usb_frlength_t offset,
 	/* set virtual address to load */
 	xfer->frbuffers[frindex].buffer =
 	    USB_ADD_BYTES(xfer->local_buffer, offset);
+	xfer->frbuffers[frindex].buflen = xfer->local_buflen - offset;
 }
 
 void
