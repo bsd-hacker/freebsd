@@ -117,27 +117,27 @@ void
 usbd_copy_in(struct usb_page_cache *cache, usb_frlength_t offset,
     const void *ptr, usb_frlength_t len)
 {
-	struct usb_page_search buf_res;
+	struct usb_page_search res;
 
 	while (len != 0) {
 
-		usbd_get_page(cache, offset, &buf_res);
+		usbd_get_page(cache, offset, &res);
 
-		if (buf_res.length > len) {
-			buf_res.length = len;
+		if (res.length > len) {
+			res.length = len;
 		}
 
 		/* Checks the buffer boundary */
-		USB_ASSERT((char *)buf_res.buffer + buf_res.length <=
+		USB_ASSERT((char *)res.buffer + res.length <=
 		    (char *)cache->buffer + cache->buflen,
-		    ("overflow is happened (%p %d/%p %d)", buf_res.buffer,
-			buf_res.length, cache->buffer, cache->buflen));
+		    ("overflow is happened (%p %d/%p %d)", res.buffer,
+			res.length, cache->buffer, cache->buflen));
 
-		bcopy(ptr, buf_res.buffer, buf_res.length);
+		bcopy(ptr, res.buffer, res.length);
 
-		offset += buf_res.length;
-		len -= buf_res.length;
-		ptr = USB_ADD_BYTES(ptr, buf_res.length);
+		offset += res.length;
+		len -= res.length;
+		ptr = USB_ADD_BYTES(ptr, res.length);
 	}
 }
 
@@ -153,30 +153,30 @@ int
 usbd_copy_in_user(struct usb_page_cache *cache, usb_frlength_t offset,
     const void *ptr, usb_frlength_t len)
 {
-	struct usb_page_search buf_res;
+	struct usb_page_search res;
 	int error;
 
 	while (len != 0) {
 
-		usbd_get_page(cache, offset, &buf_res);
+		usbd_get_page(cache, offset, &res);
 
-		if (buf_res.length > len) {
-			buf_res.length = len;
+		if (res.length > len) {
+			res.length = len;
 		}
 
 		/* Checks the buffer boundary */
-		USB_ASSERT((char *)buf_res.buffer + buf_res.length <=
+		USB_ASSERT((char *)res.buffer + res.length <=
 		    (char *)cache->buffer + cache->buflen,
-		    ("overflow is happened (%p %d/%p %d)", buf_res.buffer,
-			buf_res.length, cache->buffer, cache->buflen));
+		    ("overflow is happened (%p %d/%p %d)", res.buffer,
+			res.length, cache->buffer, cache->buflen));
 
-		error = copyin(ptr, buf_res.buffer, buf_res.length);
+		error = copyin(ptr, res.buffer, res.length);
 		if (error)
 			return (error);
 
-		offset += buf_res.length;
-		len -= buf_res.length;
-		ptr = USB_ADD_BYTES(ptr, buf_res.length);
+		offset += res.length;
+		len -= res.length;
+		ptr = USB_ADD_BYTES(ptr, res.length);
 	}
 	return (0);			/* success */
 }
