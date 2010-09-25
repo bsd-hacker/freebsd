@@ -32,7 +32,7 @@
 #ifndef _UHCI_H_
 #define	_UHCI_H_
 
-#define	UHCI_MAX_DEVICES MIN(USB_MAX_DEVICES, 128)
+#define	UHCI_MAX_DEVICES	MIN(USB_MAX_DEVICES, 128)
 
 #define	UHCI_FRAMELIST_COUNT	1024	/* units */
 #define	UHCI_FRAMELIST_ALIGN	4096	/* bytes */
@@ -41,8 +41,8 @@
 #define	UHCI_TD_ALIGN		16
 #define	UHCI_QH_ALIGN		16
 
-#if	((USB_PAGE_SIZE < UHCI_TD_ALIGN) || (UHCI_TD_ALIGN == 0) ||	\
-	(USB_PAGE_SIZE < UHCI_QH_ALIGN) || (UHCI_QH_ALIGN == 0))
+#if ((USB_PAGE_SIZE < UHCI_TD_ALIGN) || (UHCI_TD_ALIGN == 0) ||		\
+    (USB_PAGE_SIZE < UHCI_QH_ALIGN) || (UHCI_QH_ALIGN == 0))
 #error	"Invalid USB page size!"
 #endif
 
@@ -64,12 +64,12 @@ typedef uint32_t uhci_physaddr_t;
  */
 
 struct uhci_td {
-/*
- * Data used by the UHCI controller.
- * volatile is used in order to mantain struct members ordering.
- */
-	volatile uint32_t td_next;
-	volatile uint32_t td_status;
+	/*
+	 * Data used by the UHCI controller.
+	 * volatile is used in order to mantain struct members ordering.
+	 */
+	volatile uint32_t	td_next;
+	volatile uint32_t	td_status;
 #define	UHCI_TD_GET_ACTLEN(s)	(((s) + 1) & 0x3ff)
 #define	UHCI_TD_ZERO_ACTLEN(t)	((t) | 0x3ff)
 #define	UHCI_TD_BITSTUFF	0x00020000
@@ -85,7 +85,7 @@ struct uhci_td {
 #define	UHCI_TD_GET_ERRCNT(s)	(((s) >> 27) & 3)
 #define	UHCI_TD_SET_ERRCNT(n)	((n) << 27)
 #define	UHCI_TD_SPD		0x20000000
-	volatile uint32_t td_token;
+	volatile uint32_t	td_token;
 #define	UHCI_TD_PID		0x000000ff
 #define	UHCI_TD_PID_IN		0x00000069
 #define	UHCI_TD_PID_OUT		0x000000e1
@@ -100,55 +100,50 @@ struct uhci_td {
 #define	UHCI_TD_SET_MAXLEN(l)	(((l)-1) << 21)
 #define	UHCI_TD_GET_MAXLEN(s)	((((s) >> 21) + 1) & 0x7ff)
 #define	UHCI_TD_MAXLEN_MASK	0xffe00000
-	volatile uint32_t td_buffer;
-/*
- * Extra information needed:
- */
-	struct uhci_td *next;
-	struct uhci_td *prev;
-	struct uhci_td *obj_next;
-	struct usb_page_cache *page_cache;
-	struct usb_page_cache *fix_pc;
-	uint32_t td_self;
-	uint16_t len;
+	volatile uint32_t	td_buffer;
+	/*
+	 * Extra information needed:
+	 */
+	struct uhci_td		*next;
+	struct uhci_td		*prev;
+	struct uhci_td		*obj_next;
+	struct usb_page_cache	*page_cache;
+	struct usb_page_cache	*fix_pc;
+	uint32_t		td_self;
+	uint16_t		len;
 } __aligned(UHCI_TD_ALIGN);
 
 typedef struct uhci_td uhci_td_t;
 
-#define	UHCI_TD_ERROR	(UHCI_TD_BITSTUFF | UHCI_TD_CRCTO | 		\
-			UHCI_TD_BABBLE | UHCI_TD_DBUFFER | UHCI_TD_STALLED)
-
-#define	UHCI_TD_SETUP(len, endp, dev)	(UHCI_TD_SET_MAXLEN(len) |	\
-					UHCI_TD_SET_ENDPT(endp) |	\
-					UHCI_TD_SET_DEVADDR(dev) |	\
-					UHCI_TD_PID_SETUP)
-
-#define	UHCI_TD_OUT(len, endp, dev, dt)	(UHCI_TD_SET_MAXLEN(len) |	\
-					UHCI_TD_SET_ENDPT(endp) |	\
-					UHCI_TD_SET_DEVADDR(dev) |	\
-					UHCI_TD_PID_OUT | UHCI_TD_SET_DT(dt))
-
-#define	UHCI_TD_IN(len, endp, dev, dt)	(UHCI_TD_SET_MAXLEN(len) |	\
-					UHCI_TD_SET_ENDPT(endp) |	\
-					UHCI_TD_SET_DEVADDR(dev) |	\
-					UHCI_TD_PID_IN | UHCI_TD_SET_DT(dt))
+#define	UHCI_TD_ERROR							\
+	(UHCI_TD_BITSTUFF | UHCI_TD_CRCTO | UHCI_TD_BABBLE |		\
+	 UHCI_TD_DBUFFER | UHCI_TD_STALLED)
+#define	UHCI_TD_SETUP(len, endp, dev)					\
+	(UHCI_TD_SET_MAXLEN(len) | UHCI_TD_SET_ENDPT(endp) |		\
+	 UHCI_TD_SET_DEVADDR(dev) | UHCI_TD_PID_SETUP)
+#define	UHCI_TD_OUT(len, endp, dev, dt)					\
+	(UHCI_TD_SET_MAXLEN(len) | UHCI_TD_SET_ENDPT(endp) |		\
+	 UHCI_TD_SET_DEVADDR(dev) | UHCI_TD_PID_OUT | UHCI_TD_SET_DT(dt))
+#define	UHCI_TD_IN(len, endp, dev, dt)					\
+	(UHCI_TD_SET_MAXLEN(len) | UHCI_TD_SET_ENDPT(endp) |		\
+	 UHCI_TD_SET_DEVADDR(dev) | UHCI_TD_PID_IN | UHCI_TD_SET_DT(dt))
 
 struct uhci_qh {
-/*
- * Data used by the UHCI controller.
- */
-	volatile uint32_t qh_h_next;
-	volatile uint32_t qh_e_next;
-/*
- * Extra information needed:
- */
-	struct uhci_qh *h_next;
-	struct uhci_qh *h_prev;
-	struct uhci_qh *obj_next;
-	struct uhci_td *e_next;
-	struct usb_page_cache *page_cache;
-	uint32_t qh_self;
-	uint16_t intr_pos;
+	/*
+	 * Data used by the UHCI controller.
+	 */
+	volatile uint32_t	qh_h_next;
+	volatile uint32_t	qh_e_next;
+	/*
+	 * Extra information needed:
+	 */
+	struct uhci_qh		*h_next;
+	struct uhci_qh		*h_prev;
+	struct uhci_qh		*obj_next;
+	struct uhci_td		*e_next;
+	struct usb_page_cache	*page_cache;
+	uint32_t		qh_self;
+	uint16_t		intr_pos;
 } __aligned(UHCI_QH_ALIGN);
 
 typedef struct uhci_qh uhci_qh_t;
@@ -168,85 +163,88 @@ typedef struct uhci_qh uhci_qh_t;
 #endif
 
 struct uhci_config_desc {
-	struct usb_config_descriptor confd;
-	struct usb_interface_descriptor ifcd;
-	struct usb_endpoint_descriptor endpd;
+	struct usb_config_descriptor	confd;
+	struct usb_interface_descriptor	ifcd;
+	struct usb_endpoint_descriptor	endpd;
 } __packed;
 
 union uhci_hub_desc {
-	struct usb_status stat;
-	struct usb_port_status ps;
-	uint8_t	temp[128];
+	struct usb_status	stat;
+	struct usb_port_status	ps;
+	uint8_t			temp[128];
 };
 
 struct uhci_hw_softc {
-	struct usb_page_cache pframes_pc;
-	struct usb_page_cache isoc_start_pc[UHCI_VFRAMELIST_COUNT];
-	struct usb_page_cache intr_start_pc[UHCI_IFRAMELIST_COUNT];
-	struct usb_page_cache ls_ctl_start_pc;
-	struct usb_page_cache fs_ctl_start_pc;
-	struct usb_page_cache bulk_start_pc;
-	struct usb_page_cache last_qh_pc;
-	struct usb_page_cache last_td_pc;
+	struct usb_page_cache	pframes_pc;
+	struct usb_page_cache	isoc_start_pc[UHCI_VFRAMELIST_COUNT];
+	struct usb_page_cache	intr_start_pc[UHCI_IFRAMELIST_COUNT];
+	struct usb_page_cache	ls_ctl_start_pc;
+	struct usb_page_cache	fs_ctl_start_pc;
+	struct usb_page_cache	bulk_start_pc;
+	struct usb_page_cache	last_qh_pc;
+	struct usb_page_cache	last_td_pc;
 
-	struct usb_page pframes_pg;
-	struct usb_page isoc_start_pg[UHCI_VFRAMELIST_COUNT];
-	struct usb_page intr_start_pg[UHCI_IFRAMELIST_COUNT];
-	struct usb_page ls_ctl_start_pg;
-	struct usb_page fs_ctl_start_pg;
-	struct usb_page bulk_start_pg;
-	struct usb_page last_qh_pg;
-	struct usb_page last_td_pg;
+	struct usb_page		pframes_pg;
+	struct usb_page		isoc_start_pg[UHCI_VFRAMELIST_COUNT];
+	struct usb_page		intr_start_pg[UHCI_IFRAMELIST_COUNT];
+	struct usb_page		ls_ctl_start_pg;
+	struct usb_page		fs_ctl_start_pg;
+	struct usb_page		bulk_start_pg;
+	struct usb_page		last_qh_pg;
+	struct usb_page		last_td_pg;
 };
 
 typedef struct uhci_softc {
-	struct uhci_hw_softc sc_hw;
-	struct usb_bus sc_bus;		/* base device */
-	union uhci_hub_desc sc_hub_desc;
-	struct usb_callout sc_root_intr;
+	struct uhci_hw_softc	sc_hw;
+	struct usb_bus		sc_bus;		/* base device */
+	union uhci_hub_desc	sc_hub_desc;
+	struct usb_callout	sc_root_intr;
 
-	struct usb_device *sc_devices[UHCI_MAX_DEVICES];
+	struct usb_device	*sc_devices[UHCI_MAX_DEVICES];
 	/* pointer to last TD for isochronous */
-	struct uhci_td *sc_isoc_p_last[UHCI_VFRAMELIST_COUNT];
+	struct uhci_td		*sc_isoc_p_last[UHCI_VFRAMELIST_COUNT];
 	/* pointer to last QH for interrupt */
-	struct uhci_qh *sc_intr_p_last[UHCI_IFRAMELIST_COUNT];
+	struct uhci_qh		*sc_intr_p_last[UHCI_IFRAMELIST_COUNT];
 	/* pointer to last QH for low speed control */
-	struct uhci_qh *sc_ls_ctl_p_last;
+	struct uhci_qh		*sc_ls_ctl_p_last;
 	/* pointer to last QH for full speed control */
-	struct uhci_qh *sc_fs_ctl_p_last;
+	struct uhci_qh		*sc_fs_ctl_p_last;
 	/* pointer to last QH for bulk */
-	struct uhci_qh *sc_bulk_p_last;
-	struct uhci_qh *sc_reclaim_qh_p;
-	struct uhci_qh *sc_last_qh_p;
-	struct uhci_td *sc_last_td_p;
-	struct resource *sc_io_res;
-	struct resource *sc_irq_res;
-	void   *sc_intr_hdl;
-	device_t sc_dev;
-	bus_size_t sc_io_size;
-	bus_space_tag_t sc_io_tag;
-	bus_space_handle_t sc_io_hdl;
+	struct uhci_qh		*sc_bulk_p_last;
+	struct uhci_qh		*sc_reclaim_qh_p;
+	struct uhci_qh		*sc_last_qh_p;
+	struct uhci_td		*sc_last_td_p;
+	struct resource		*sc_io_res;
+	struct resource		*sc_irq_res;
+	void			*sc_intr_hdl;
+	device_t		sc_dev;
+	bus_size_t		sc_io_size;
+	bus_space_tag_t		sc_io_tag;
+	bus_space_handle_t	sc_io_hdl;
 
-	uint32_t sc_loops;		/* number of QHs that wants looping */
+	/* number of QHs that wants looping */
+	uint32_t		sc_loops;
 
-	uint16_t sc_intr_stat[UHCI_IFRAMELIST_COUNT];
-	uint16_t sc_saved_frnum;
+	uint16_t		sc_intr_stat[UHCI_IFRAMELIST_COUNT];
+	uint16_t		sc_saved_frnum;
 
-	uint8_t	sc_addr;		/* device address */
-	uint8_t	sc_conf;		/* device configuration */
-	uint8_t	sc_isreset;		/* bits set if a root hub is reset */
-	uint8_t	sc_isresumed;		/* bits set if a port was resumed */
-	uint8_t	sc_saved_sof;
-	uint8_t	sc_hub_idata[1];
+	uint8_t			sc_addr;	/* device address */
+	uint8_t			sc_conf;	/* device configuration */
+	/* bits set if a root hub is reset */
+	uint8_t			sc_isreset;
+	/* bits set if a port was resumed */
+	uint8_t			sc_isresumed;
+	uint8_t			sc_saved_sof;
+	uint8_t			sc_hub_idata[1];
 
-	char	sc_vendor[16];		/* vendor string for root hub */
+	char			sc_vendor[16];	/* vendor string for root hub */
 } uhci_softc_t;
 
-usb_error_t uhci_init(uhci_softc_t *sc);
-void	uhci_suspend(uhci_softc_t *sc);
-void	uhci_resume(uhci_softc_t *sc);
-void	uhci_reset(uhci_softc_t *sc);
-void	uhci_interrupt(uhci_softc_t *sc);
+usb_error_t uhci_init(uhci_softc_t *);
+void	uhci_suspend(uhci_softc_t *);
+void	uhci_resume(uhci_softc_t *);
+void	uhci_reset(uhci_softc_t *);
+void	uhci_interrupt(uhci_softc_t *);
 void	uhci_iterate_hw_softc(struct usb_bus *, usb_bus_mem_callback_t *);
 
-#endif					/* _UHCI_H_ */
+#endif /* _UHCI_H_ */
