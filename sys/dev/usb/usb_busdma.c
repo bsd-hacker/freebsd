@@ -117,12 +117,9 @@ usbd_copy_in(struct usb_page_cache *cache, usb_frlength_t offset,
 	struct usb_page_search res;
 
 	while (len != 0) {
-
 		usbd_get_page(cache, offset, &res);
-
-		if (res.length > len) {
+		if (res.length > len)
 			res.length = len;
-		}
 
 		/* Checks the buffer boundary */
 		USB_ASSERT((char *)res.buffer + res.length <=
@@ -154,12 +151,9 @@ usbd_copy_in_user(struct usb_page_cache *cache, usb_frlength_t offset,
 	int error;
 
 	while (len != 0) {
-
 		usbd_get_page(cache, offset, &res);
-
-		if (res.length > len) {
+		if (res.length > len)
 			res.length = len;
-		}
 
 		/* Checks the buffer boundary */
 		USB_ASSERT((char *)res.buffer + res.length <=
@@ -221,12 +215,9 @@ usb_uiomove(struct usb_page_cache *pc, struct uio *uio,
 	int error = 0;
 
 	while (len != 0) {
-
 		usbd_get_page(pc, pc_offset, &res);
-
-		if (res.length > len) {
+		if (res.length > len)
 			res.length = len;
-		}
 
 		/* Checks the buffer boundary */
 		USB_ASSERT((char *)res.buffer + res.length <=
@@ -239,7 +230,6 @@ usb_uiomove(struct usb_page_cache *pc, struct uio *uio,
 		 * exiting the mutex and checking things
 		 */
 		error = uiomove(res.buffer, res.length, uio);
-
 		if (error) {
 			break;
 		}
@@ -260,12 +250,9 @@ usbd_copy_out(struct usb_page_cache *cache, usb_frlength_t offset,
 	struct usb_page_search res;
 
 	while (len != 0) {
-
 		usbd_get_page(cache, offset, &res);
-
-		if (res.length > len) {
+		if (res.length > len)
 			res.length = len;
-		}
 
 		/* Checks the buffer boundary */
 		USB_ASSERT((char *)res.buffer + res.length <=
@@ -297,12 +284,9 @@ usbd_copy_out_user(struct usb_page_cache *cache, usb_frlength_t offset,
 	int error;
 
 	while (len != 0) {
-
 		usbd_get_page(cache, offset, &res);
-
-		if (res.length > len) {
+		if (res.length > len)
 			res.length = len;
-		}
 
 		/* Checks the buffer boundary */
 		USB_ASSERT((char *)res.buffer + res.length <=
@@ -332,12 +316,9 @@ usbd_frame_zero(struct usb_page_cache *cache, usb_frlength_t offset,
 	struct usb_page_search res;
 
 	while (len != 0) {
-
 		usbd_get_page(cache, offset, &res);
-
-		if (res.length > len) {
+		if (res.length > len)
 			res.length = len;
-		}
 
 		/* Checks the buffer boundary */
 		USB_ASSERT((char *)res.buffer + res.length <=
@@ -404,6 +385,7 @@ usb_dma_tag_create(struct usb_dma_tag *udt,
 static void
 usb_dma_tag_destroy(struct usb_dma_tag *udt)
 {
+
 	bus_dma_tag_destroy(udt->tag);
 }
 
@@ -414,6 +396,7 @@ static void
 usb_pc_alloc_mem_cb(void *arg, bus_dma_segment_t *segs,
     int nseg, int error)
 {
+
 	usb_pc_common_mem_cb(arg, segs, nseg, error, 0, 1);
 }
 
@@ -424,6 +407,7 @@ static void
 usb_pc_load_mem_cb(void *arg, bus_dma_segment_t *segs,
     int nseg, int error)
 {
+
 	usb_pc_common_mem_cb(arg, segs, nseg, error, 1, 0);
 }
 
@@ -525,21 +509,18 @@ usb_pc_alloc_mem(struct usb_page_cache *pc, struct usb_page *pg,
 		 * memory, hence we sometimes to a large number of
 		 * small allocations!
 		 */
-		if (size <= (USB_PAGE_SIZE / 2)) {
+		if (size <= (USB_PAGE_SIZE / 2))
 			size *= 2;
-		}
 #endif
 	}
 	/* get the correct DMA tag */
 	utag = usb_dma_tag_find(uptag, size, align);
-	if (utag == NULL) {
+	if (utag == NULL)
 		goto error;
-	}
 	/* allocate memory */
-	if (bus_dmamem_alloc(
-	    utag->tag, &ptr, (BUS_DMA_WAITOK | BUS_DMA_COHERENT), &map)) {
+	if (bus_dmamem_alloc(utag->tag, &ptr,
+	    (BUS_DMA_WAITOK | BUS_DMA_COHERENT), &map))
 		goto error;
-	}
 	/* setup page cache */
 	pc->buffer = ptr;
 	pc->buflen = size;
@@ -553,14 +534,13 @@ usb_pc_alloc_mem(struct usb_page_cache *pc, struct usb_page *pg,
 	mtx_lock(uptag->mtx);
 
 	/* load memory into DMA */
-	err = bus_dmamap_load(
-	    utag->tag, map, ptr, size, &usb_pc_alloc_mem_cb,
+	err = bus_dmamap_load(utag->tag, map, ptr, size, &usb_pc_alloc_mem_cb,
 	    pc, (BUS_DMA_WAITOK | BUS_DMA_COHERENT));
-
 	if (err == EINPROGRESS) {
 		cv_wait(uptag->cv, uptag->mtx);
 		err = 0;
 	}
+
 	mtx_unlock(uptag->mtx);
 
 	if (err || uptag->dma_error) {
@@ -593,12 +573,10 @@ error:
 void
 usb_pc_free_mem(struct usb_page_cache *pc)
 {
+
 	if (pc && pc->buffer) {
-
 		bus_dmamap_unload(pc->tag, pc->map);
-
 		bus_dmamem_free(pc->tag, pc->buffer, pc->map);
-
 		pc->buffer = NULL;
 		pc->buflen = 0;
 	}
@@ -614,6 +592,7 @@ usb_pc_free_mem(struct usb_page_cache *pc)
 uint8_t
 usb_pc_load_mem(struct usb_page_cache *pc, usb_size_t size, uint8_t sync)
 {
+
 	/* setup page cache */
 	pc->page_offset_buf = 0;
 	pc->page_offset_end = size;
@@ -637,16 +616,14 @@ usb_pc_load_mem(struct usb_page_cache *pc, usb_size_t size, uint8_t sync)
 			/*
 			 * Try to load memory into DMA.
 			 */
-			err = bus_dmamap_load(
-			    pc->tag, pc->map, pc->buffer, size,
-			    &usb_pc_alloc_mem_cb, pc, BUS_DMA_WAITOK);
+			err = bus_dmamap_load(pc->tag, pc->map, pc->buffer,
+			    size, &usb_pc_alloc_mem_cb, pc, BUS_DMA_WAITOK);
 			if (err == EINPROGRESS) {
 				cv_wait(uptag->cv, uptag->mtx);
 				err = 0;
 			}
-			if (err || uptag->dma_error) {
+			if (err || uptag->dma_error)
 				return (1);
-			}
 		} else {
 
 			/*
@@ -659,10 +636,8 @@ usb_pc_load_mem(struct usb_page_cache *pc, usb_size_t size, uint8_t sync)
 			 * Try to load memory into DMA. The callback
 			 * will be called in all cases:
 			 */
-			if (bus_dmamap_load(
-			    pc->tag, pc->map, pc->buffer, size,
-			    &usb_pc_load_mem_cb, pc, BUS_DMA_WAITOK)) {
-			}
+			(void)bus_dmamap_load(pc->tag, pc->map, pc->buffer,
+			    size, &usb_pc_load_mem_cb, pc, BUS_DMA_WAITOK);
 		}
 	} else {
 		if (!sync) {
@@ -683,6 +658,7 @@ usb_pc_load_mem(struct usb_page_cache *pc, usb_size_t size, uint8_t sync)
 void
 usb_pc_cpu_invalidate(struct usb_page_cache *pc)
 {
+
 	if (pc->page_offset_end == pc->page_offset_buf) {
 		/* nothing has been loaded into this page cache! */
 		return;
@@ -703,6 +679,7 @@ usb_pc_cpu_invalidate(struct usb_page_cache *pc)
 void
 usb_pc_cpu_flush(struct usb_page_cache *pc)
 {
+
 	if (pc->page_offset_end == pc->page_offset_buf) {
 		/* nothing has been loaded into this page cache! */
 		return;
@@ -723,24 +700,18 @@ usb_pc_dmamap_create(struct usb_page_cache *pc, usb_size_t size)
 	struct usb_xfer_root *info;
 	struct usb_dma_tag *utag;
 
-	/* get info */
+	/* get info and sanity check */
 	info = USB_DMATAG_TO_XROOT(pc->tag_parent);
-
-	/* sanity check */
-	if (info == NULL) {
+	if (info == NULL)
 		goto error;
-	}
 	utag = usb_dma_tag_find(pc->tag_parent, size, 1);
-	if (utag == NULL) {
+	if (utag == NULL)
 		goto error;
-	}
 	/* create DMA map */
-	if (bus_dmamap_create(utag->tag, 0, &pc->map)) {
+	if (bus_dmamap_create(utag->tag, 0, &pc->map))
 		goto error;
-	}
 	pc->tag = utag->tag;
 	return 0;			/* success */
-
 error:
 	pc->map = NULL;
 	pc->tag = NULL;
@@ -755,6 +726,7 @@ error:
 void
 usb_pc_dmamap_destroy(struct usb_page_cache *pc)
 {
+
 	if (pc && pc->tag) {
 		bus_dmamap_destroy(pc->tag, pc->map);
 		pc->tag = NULL;
@@ -769,29 +741,23 @@ struct usb_dma_tag *
 usb_dma_tag_find(struct usb_dma_parent_tag *udpt,
     usb_size_t size, usb_size_t align)
 {
-	struct usb_dma_tag *udt;
-	uint8_t nudt;
+	struct usb_dma_tag *udt = udpt->utag_first;
+	uint8_t nudt = udpt->utag_max;
 
 	USB_ASSERT(align > 0, ("Invalid parameter align = 0\n"));
 	USB_ASSERT(size > 0, ("Invalid parameter size = 0\n"));
 
-	udt = udpt->utag_first;
-	nudt = udpt->utag_max;
-
 	while (nudt--) {
-
 		if (udt->align == 0) {
 			usb_dma_tag_create(udt, size, align);
-			if (udt->tag == NULL) {
+			if (udt->tag == NULL)
 				return (NULL);
-			}
 			udt->align = align;
 			udt->size = size;
 			return (udt);
 		}
-		if ((udt->align == align) && (udt->size == size)) {
+		if ((udt->align == align) && (udt->size == size))
 			return (udt);
-		}
 		udt++;
 	}
 	return (NULL);
@@ -801,20 +767,17 @@ usb_dma_tag_find(struct usb_dma_parent_tag *udpt,
  *	usb_dma_tag_setup - initialise USB DMA tags
  *------------------------------------------------------------------------*/
 void
-usb_dma_tag_setup(struct usb_dma_parent_tag *udpt,
-    struct usb_dma_tag *udt, bus_dma_tag_t dmat,
-    struct mtx *mtx, usb_dma_callback_t *func,
+usb_dma_tag_setup(struct usb_dma_parent_tag *udpt, struct usb_dma_tag *udt,
+    bus_dma_tag_t dmat, struct mtx *mtx, usb_dma_callback_t *func,
     uint8_t ndmabits, uint8_t nudt)
 {
+
 	bzero(udpt, sizeof(*udpt));
 
 	/* sanity checking */
-	if ((nudt == 0) ||
-	    (ndmabits == 0) ||
-	    (mtx == NULL)) {
-		/* something is corrupt */
+	if (nudt == 0 || ndmabits == 0 || mtx == NULL)
 		return;
-	}
+
 	/* initialise condition variable */
 	cv_init(udpt->cv, "USB DMA CV");
 
@@ -839,14 +802,10 @@ usb_dma_tag_setup(struct usb_dma_parent_tag *udpt,
 void
 usb_dma_tag_unsetup(struct usb_dma_parent_tag *udpt)
 {
-	struct usb_dma_tag *udt;
-	uint8_t nudt;
-
-	udt = udpt->utag_first;
-	nudt = udpt->utag_max;
+	struct usb_dma_tag *udt = udpt->utag_first;
+	uint8_t nudt = udpt->utag_max;
 
 	while (nudt--) {
-
 		if (udt->align) {
 			/* destroy the USB DMA tag */
 			usb_dma_tag_destroy(udt);
@@ -961,7 +920,6 @@ usb_bdma_work_loop(struct usb_xfer_queue *pq)
 		return;
 	}
 	if (info->dma_currframe != info->dma_nframes) {
-
 		if (info->dma_currframe == 0) {
 			/* special case */
 			usb_pc_load_mem(xfer->frbuffers,
@@ -975,15 +933,12 @@ usb_bdma_work_loop(struct usb_xfer_queue *pq)
 
 		/* advance frame index */
 		info->dma_currframe++;
-
 		return;
 	}
 	/* go ahead */
 	usb_bdma_pre_sync(xfer);
-
 	/* start loading next USB transfer, if any */
 	usb_command_wrapper(pq, NULL);
-
 	/* finally start the hardware */
 	usbd_pipe_enter(xfer);
 }
@@ -997,9 +952,7 @@ usb_bdma_work_loop(struct usb_xfer_queue *pq)
 void
 usb_bdma_done_event(struct usb_dma_parent_tag *udpt)
 {
-	struct usb_xfer_root *info;
-
-	info = USB_DMATAG_TO_XROOT(udpt);
+	struct usb_xfer_root *info = USB_DMATAG_TO_XROOT(udpt);
 
 	mtx_assert(info->xfer_mtx, MA_OWNED);
 
@@ -1034,12 +987,10 @@ usb_bdma_pre_sync(struct usb_xfer *xfer)
 	pc = xfer->frbuffers;
 
 	while (nframes--) {
-
-		if (pc->isread) {
+		if (pc->isread)
 			usb_pc_cpu_invalidate(pc);
-		} else {
+		else
 			usb_pc_cpu_flush(pc);
-		}
 		pc++;
 	}
 }
@@ -1067,9 +1018,8 @@ usb_bdma_post_sync(struct usb_xfer *xfer)
 	pc = xfer->frbuffers;
 
 	while (nframes--) {
-		if (pc->isread) {
+		if (pc->isread)
 			usb_pc_cpu_invalidate(pc);
-		}
 		pc++;
 	}
 }
