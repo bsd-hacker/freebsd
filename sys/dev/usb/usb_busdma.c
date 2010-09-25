@@ -102,7 +102,6 @@ usbd_get_page(struct usb_page_cache *pc, usb_frlength_t offset,
 		return;
 	}
 #endif
-	/* Case 2 - Plain PIO */
 	res->buffer = USB_ADD_BYTES(pc->buffer, offset);
 	res->length = 0 - 1;
 #if USB_HAVE_BUSDMA
