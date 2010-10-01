@@ -1526,14 +1526,14 @@ usb_linux_non_isoc_callback(struct usb_xfer *xfer, usb_error_t error)
 	struct usb_host_endpoint *uhe = usbd_xfer_softc(xfer);
 	uint8_t *ptr;
 	usb_frlength_t max_bulk = usbd_xfer_max_len(xfer);
-	uint8_t data_frame = xfer->flags_int.control_xfr ? 1 : 0;
+	uint8_t data_frame = (xfer->status & XFER_STATUS_CTRLXFER) ? 1 : 0;
 
 	DPRINTF("\n");
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
 
-		if (xfer->flags_int.control_xfr) {
+		if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
 
 			/* don't transfer the setup packet again: */
 
@@ -1585,7 +1585,7 @@ tr_setup:
 		xfer->flags.force_short_xfer = 0;
 		xfer->timeout = urb->timeout;
 
-		if (xfer->flags_int.control_xfr) {
+		if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
 
 			/*
 		         * USB control transfers need special handling.
@@ -1627,7 +1627,7 @@ setup_bulk:
 
 		if ((max_bulk == urb->bsd_length_rem) &&
 		    (urb->transfer_flags & URB_ZERO_PACKET) &&
-		    (!xfer->flags_int.control_xfr)) {
+		    (xfer->status & XFER_STATUS_CTRLXFER) == 0) {
 			xfer->flags.force_short_xfer = 1;
 		}
 		/* check if we need to copy in data */
@@ -1642,7 +1642,7 @@ setup_bulk:
 			    urb->bsd_data_ptr, max_bulk);
 			usbd_xfer_set_frame_len(xfer, data_frame, max_bulk);
 		}
-		if (xfer->flags_int.control_xfr) {
+		if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
 			if (max_bulk > 0) {
 				xfer->nframes = 2;
 			} else {

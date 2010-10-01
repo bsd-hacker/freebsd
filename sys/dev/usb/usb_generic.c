@@ -1084,7 +1084,7 @@ ugen_fs_copy_in(struct usb_fifo *f, uint8_t ep_index)
 	/* reset first frame */
 	usbd_xfer_set_frame_offset(xfer, 0, 0);
 
-	if (xfer->flags_int.control_xfr) {
+	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
 
 		req = xfer->frbuffers[0].buffer;
 
@@ -1179,7 +1179,7 @@ ugen_fs_copy_in(struct usb_fifo *f, uint8_t ep_index)
 			if (error) {
 				break;
 			}
-			if (xfer->flags_int.isochronous_xfr) {
+			if ((xfer->status & XFER_STATUS_ISOCXFER) != 0) {
 				/* get kernel buffer address */
 				kaddr = xfer->frbuffers[0].buffer;
 				kaddr = USB_ADD_BYTES(kaddr, offset);
@@ -1250,7 +1250,7 @@ ugen_fs_copy_out(struct usb_fifo *f, uint8_t ep_index)
 	if (xfer->error) {
 		goto complete;
 	}
-	if (xfer->flags_int.control_xfr) {
+	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
 		req = xfer->frbuffers[0].buffer;
 
 		/* Host mode only ! */
@@ -1312,7 +1312,7 @@ ugen_fs_copy_out(struct usb_fifo *f, uint8_t ep_index)
 			if (error) {
 				return (error);
 			}
-			if (xfer->flags_int.isochronous_xfr) {
+			if ((xfer->status & XFER_STATUS_ISOCXFER) != 0) {
 				/* only one frame buffer */
 				kaddr = USB_ADD_BYTES(
 				    xfer->frbuffers[0].buffer, offset);

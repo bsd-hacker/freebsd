@@ -1708,9 +1708,9 @@ usbd_transfer_power_ref(struct usb_xfer *xfer, int val)
 	udev->pwr_save.last_xfer_time = ticks;
 	udev->pwr_save.type_refs[xfer_type] += val;
 
-	if (xfer->flags_int.control_xfr) {
+	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
 		udev->pwr_save.read_refs += val;
-		if (xfer->flags_int.usb_mode == USB_MODE_HOST) {
+		if (xfer->usb_mode == USB_MODE_HOST) {
 			/*
 			 * It is not allowed to suspend during a
 			 * control transfer:

@@ -120,7 +120,7 @@ static void	usbd_get_std_packet_size(struct usb_std_packet_size *ptr,
 static void
 usb_request_callback(struct usb_xfer *xfer, usb_error_t error)
 {
-	if (xfer->flags_int.usb_mode == USB_MODE_DEVICE)
+	if (xfer->usb_mode == USB_MODE_DEVICE)
 		usb_handle_request_callback(xfer, error);
 	else
 		usbd_do_request_callback(xfer, error);
@@ -351,7 +351,7 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 	xfer->max_packet_size = UGETW(edesc->wMaxPacketSize);
 	xfer->max_packet_count = 1;
 	/* make a shadow copy: */
-	xfer->flags_int.usb_mode = parm->udev->flags.usb_mode;
+	xfer->usb_mode = parm->udev->flags.usb_mode;
 
 	parm->bufsize = setup->bufsize;
 
@@ -407,7 +407,7 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 		uint16_t frame_limit;
 
 		xfer->interval = 0;	/* not used, must be zero */
-		xfer->flags_int.isochronous_xfr = 1;	/* set flag */
+		xfer->status |= XFER_STATUS_ISOCXFER;	/* set flag */
 
 		if (xfer->timeout == 0) {
 			/*
@@ -568,7 +568,7 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 	} else {
 
 		if (type == UE_CONTROL) {
-			xfer->flags_int.control_xfr = 1;
+			xfer->status |= XFER_STATUS_CTRLXFER;
 			if (xfer->nframes == 0) {
 				if (parm->bufsize <= REQ_SIZE) {
 					/*
@@ -650,7 +650,7 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 		parm->bufsize_max = parm->bufsize;
 	}
 #if USB_HAVE_BUSDMA
-	if (xfer->flags_int.bdma_enable) {
+	if ((xfer->status & XFER_STATUS_DMAENABLE) != 0) {
 		/*
 		 * Setup "dma_page_ptr".
 		 *
@@ -700,7 +700,7 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 			xfer->frbuffers[x].tag_parent =
 			    &xfer->xroot->dma_parent_tag;
 #if USB_HAVE_BUSDMA
-			if (xfer->flags_int.bdma_enable &&
+			if ((xfer->status & XFER_STATUS_DMAENABLE) != 0 &&
 			    (parm->bufsize_max > 0)) {
 
 				if (usb_pc_dmamap_create(
@@ -1186,7 +1186,7 @@ usbd_transfer_unsetup(struct usb_xfer **pxfer, uint16_t n_setup)
 		usbd_transfer_drain(xfer);
 
 #if USB_HAVE_BUSDMA
-		if (xfer->flags_int.bdma_enable)
+		if ((xfer->status & XFER_STATUS_DMAENABLE) != 0)
 			needs_delay = 1;
 #endif
 		/*
@@ -1237,7 +1237,7 @@ usbd_control_transfer_init(struct usb_xfer *xfer)
 
 	/* setup remainder */
 
-	xfer->flags_int.control_rem = UGETW(req.wLength);
+	xfer->control_rem = UGETW(req.wLength);
 
 	/* copy direction to endpoint variable */
 
@@ -1263,13 +1263,14 @@ usbd_setup_ctrl_transfer(struct usb_xfer *xfer)
 	usb_frlength_t len;
 
 	/* Check for control endpoint stall */
-	if (xfer->flags.stall_pipe && xfer->flags_int.control_act) {
+	if (xfer->flags.stall_pipe &&
+	    (xfer->status & XFER_STATUS_CTRLACTIVE) != 0) {
 		/* the control transfer is no longer active */
-		xfer->flags_int.control_stall = 1;
-		xfer->flags_int.control_act = 0;
+		xfer->status |= XFER_STATUS_CTRLSTALL;
+		xfer->status &= ~XFER_STATUS_CTRLACTIVE;
 	} else {
 		/* don't stall control transfer by default */
-		xfer->flags_int.control_stall = 0;
+		xfer->status &= ~XFER_STATUS_CTRLSTALL;
 	}
 
 	/* Check for invalid number of frames */
@@ -1289,16 +1290,13 @@ usbd_setup_ctrl_transfer(struct usb_xfer *xfer)
          * Check if there is a control
          * transfer in progress:
          */
-	if (xfer->flags_int.control_act) {
-
-		if (xfer->flags_int.control_hdr) {
-
+	if ((xfer->status & XFER_STATUS_CTRLACTIVE) != 0) {
+		if ((xfer->status & XFER_STATUS_CTRLHDR) != 0) {
 			/* clear send header flag */
-
-			xfer->flags_int.control_hdr = 0;
+			xfer->status &= ~XFER_STATUS_CTRLHDR;
 
 			/* setup control transfer */
-			if (xfer->flags_int.usb_mode == USB_MODE_DEVICE) {
+			if (xfer->usb_mode == USB_MODE_DEVICE) {
 				usbd_control_transfer_init(xfer);
 			}
 		}
@@ -1317,7 +1315,7 @@ usbd_setup_ctrl_transfer(struct usb_xfer *xfer)
 			goto error;
 		}
 		/* check USB mode */
-		if (xfer->flags_int.usb_mode == USB_MODE_DEVICE) {
+		if (xfer->usb_mode == USB_MODE_DEVICE) {
 
 			/* check number of frames */
 			if (xfer->nframes != 1) {
@@ -1334,7 +1332,7 @@ usbd_setup_ctrl_transfer(struct usb_xfer *xfer)
 			 * variable will be overwritten later by a
 			 * call to "usbd_control_transfer_init()" !
 			 */
-			xfer->flags_int.control_rem = 0xFFFF;
+			xfer->control_rem = 0xFFFF;
 		} else {
 
 			/* setup "endpoint" and "control_rem" */
@@ -1343,8 +1341,7 @@ usbd_setup_ctrl_transfer(struct usb_xfer *xfer)
 		}
 
 		/* set transfer-header flag */
-
-		xfer->flags_int.control_hdr = 1;
+		xfer->status |= XFER_STATUS_CTRLHDR;
 
 		/* get data length */
 
@@ -1353,36 +1350,36 @@ usbd_setup_ctrl_transfer(struct usb_xfer *xfer)
 
 	/* check if there is a length mismatch */
 
-	if (len > xfer->flags_int.control_rem) {
+	if (len > xfer->control_rem) {
 		DPRINTFN(0, "Length (%d) greater than "
 		    "remaining length (%d)\n", len,
-		    xfer->flags_int.control_rem);
+		    xfer->control_rem);
 		goto error;
 	}
 	/* check if we are doing a short transfer */
 
 	if (xfer->flags.force_short_xfer) {
-		xfer->flags_int.control_rem = 0;
+		xfer->control_rem = 0;
 	} else {
 		if ((len != xfer->max_data_length) &&
-		    (len != xfer->flags_int.control_rem) &&
+		    (len != xfer->control_rem) &&
 		    (xfer->nframes != 1)) {
 			DPRINTFN(0, "Short control transfer without "
 			    "force_short_xfer set\n");
 			goto error;
 		}
-		xfer->flags_int.control_rem -= len;
+		xfer->control_rem -= len;
 	}
 
 	/* the status part is executed when "control_act" is 0 */
 
-	if ((xfer->flags_int.control_rem > 0) ||
+	if ((xfer->control_rem > 0) ||
 	    (xfer->flags.manual_status)) {
 		/* don't execute the STATUS stage yet */
-		xfer->flags_int.control_act = 1;
+		xfer->status |= XFER_STATUS_CTRLACTIVE;
 
 		/* sanity check */
-		if ((!xfer->flags_int.control_hdr) &&
+		if ((xfer->status & XFER_STATUS_CTRLHDR) == 0 &&
 		    (xfer->nframes == 1)) {
 			/*
 		         * This is not a valid operation!
@@ -1393,7 +1390,7 @@ usbd_setup_ctrl_transfer(struct usb_xfer *xfer)
 		}
 	} else {
 		/* time to execute the STATUS stage */
-		xfer->flags_int.control_act = 0;
+		xfer->status &= ~XFER_STATUS_CTRLACTIVE;
 	}
 	return (0);			/* success */
 
@@ -1434,8 +1431,8 @@ usbd_transfer_submit(struct usb_xfer *xfer)
 	USB_BUS_LOCK_ASSERT(bus, MA_NOTOWNED);
 
 	/* Only open the USB transfer once! */
-	if (!xfer->flags_int.open) {
-		xfer->flags_int.open = 1;
+	if ((xfer->status & XFER_STATUS_OPENED) == 0) {
+		xfer->status |= XFER_STATUS_OPENED;
 
 		DPRINTF("open\n");
 
@@ -1444,7 +1441,7 @@ usbd_transfer_submit(struct usb_xfer *xfer)
 		USB_BUS_UNLOCK(bus);
 	}
 	/* set "transferring" flag */
-	xfer->flags_int.transferring = 1;
+	xfer->status |= XFER_STATUS_XFERRING;
 
 #if USB_HAVE_POWERD
 	/* increment power reference */
@@ -1459,18 +1456,14 @@ usbd_transfer_submit(struct usb_xfer *xfer)
 		usbd_transfer_dequeue(xfer);
 		USB_BUS_UNLOCK(bus);
 	}
-	/* clear "did_dma_delay" flag */
-	xfer->flags_int.did_dma_delay = 0;
-
-	/* clear "did_close" flag */
-	xfer->flags_int.did_close = 0;
+	xfer->status &= ~(XFER_STATUS_DMADELAYED | XFER_STATUS_CLOSED);
 
 #if USB_HAVE_BUSDMA
 	/* clear "bdma_setup" flag */
-	xfer->flags_int.bdma_setup = 0;
+	xfer->status &= ~XFER_STATUS_DMASETUP;
 #endif
 	/* by default we cannot cancel any USB transfer immediately */
-	xfer->flags_int.can_cancel_immed = 0;
+	xfer->status &= ~XFER_STATUS_CAN_CANCEL_IMMED;
 
 	/* clear lengths and frame counts by default */
 	xfer->sumlen = 0;
@@ -1502,7 +1495,7 @@ usbd_transfer_submit(struct usb_xfer *xfer)
 			DPRINTF("xfer=%p nframes=0: stall "
 			    "or clear stall!\n", xfer);
 			USB_BUS_LOCK(bus);
-			xfer->flags_int.can_cancel_immed = 1;
+			xfer->status |= XFER_STATUS_CAN_CANCEL_IMMED;
 			/* start the transfer */
 			usb_command_wrapper(&xfer->endpoint->endpoint_q, xfer);
 			USB_BUS_UNLOCK(bus);
@@ -1528,12 +1521,12 @@ usbd_transfer_submit(struct usb_xfer *xfer)
 
 	/* clear some internal flags */
 
-	xfer->flags_int.short_xfer_ok = 0;
-	xfer->flags_int.short_frames_ok = 0;
+	xfer->status &= ~XFER_STATUS_SHORTXFER_OK;
+	xfer->status &= ~XFER_STATUS_SHORTFRAME_OK;
 
 	/* check if this is a control transfer */
 
-	if (xfer->flags_int.control_xfr) {
+	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
 
 		if (usbd_setup_ctrl_transfer(xfer)) {
 			USB_BUS_LOCK(bus);
@@ -1549,13 +1542,13 @@ usbd_transfer_submit(struct usb_xfer *xfer)
 	if (USB_GET_DATA_ISREAD(xfer)) {
 
 		if (xfer->flags.short_frames_ok) {
-			xfer->flags_int.short_xfer_ok = 1;
-			xfer->flags_int.short_frames_ok = 1;
+			xfer->status |= XFER_STATUS_SHORTXFER_OK;
+			xfer->status |= XFER_STATUS_SHORTFRAME_OK;
 		} else if (xfer->flags.short_xfer_ok) {
-			xfer->flags_int.short_xfer_ok = 1;
+			xfer->status |= XFER_STATUS_SHORTXFER_OK;
 
 			/* check for control transfer */
-			if (xfer->flags_int.control_xfr) {
+			if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
 				/*
 				 * 1) Control transfers do not support
 				 * reception of multiple short USB
@@ -1569,7 +1562,7 @@ usbd_transfer_submit(struct usb_xfer *xfer)
 				 * The STATUS stage then becomes the
 				 * "alt_next" to the DATA stage.
 				 */
-				xfer->flags_int.short_frames_ok = 1;
+				xfer->status |= XFER_STATUS_SHORTFRAME_OK;
 			}
 		}
 	}
@@ -1578,7 +1571,7 @@ usbd_transfer_submit(struct usb_xfer *xfer)
 	 * buffers into DMA, if any:
 	 */
 #if USB_HAVE_BUSDMA
-	if (xfer->flags_int.bdma_enable) {
+	if ((xfer->status & XFER_STATUS_DMAENABLE) != 0) {
 		/* insert the USB transfer last in the BUS-DMA queue */
 		usb_command_wrapper(&xfer->xroot->dma_q, xfer);
 		return;
@@ -1610,7 +1603,7 @@ usbd_pipe_enter(struct usb_xfer *xfer)
 	/* enter the transfer */
 	(ep->methods->enter) (xfer);
 
-	xfer->flags_int.can_cancel_immed = 1;
+	xfer->status |= XFER_STATUS_CAN_CANCEL_IMMED;
 
 	/* check for transfer error */
 	if (xfer->error) {
@@ -1643,17 +1636,16 @@ usbd_transfer_start(struct usb_xfer *xfer)
 
 	/* mark the USB transfer started */
 
-	if (!xfer->flags_int.started) {
-		/* lock the BUS lock to avoid races updating flags_int */
+	if ((xfer->status & XFER_STATUS_STARTED) == 0) {
+		/* lock the BUS lock to avoid races updating status */
 		USB_BUS_LOCK(xfer->xroot->bus);
-		xfer->flags_int.started = 1;
+		xfer->status |= XFER_STATUS_STARTED;
 		USB_BUS_UNLOCK(xfer->xroot->bus);
 	}
 	/* check if the USB transfer callback is already transferring */
-
-	if (xfer->flags_int.transferring) {
+	if ((xfer->status & XFER_STATUS_XFERRING) != 0)
 		return;
-	}
+
 	USB_BUS_LOCK(xfer->xroot->bus);
 	/* call the USB transfer callback */
 	usbd_callback_ss_done_defer(xfer);
@@ -1681,12 +1673,12 @@ usbd_transfer_stop(struct usb_xfer *xfer)
 
 	/* check if the USB transfer was ever opened */
 
-	if (!xfer->flags_int.open) {
-		if (xfer->flags_int.started) {
+	if ((xfer->status & XFER_STATUS_OPENED) == 0) {
+		if ((xfer->status & XFER_STATUS_STARTED) != 0) {
 			/* nothing to do except clearing the "started" flag */
-			/* lock the BUS lock to avoid races updating flags_int */
+			/* lock the BUS lock to avoid races updating status */
 			USB_BUS_LOCK(xfer->xroot->bus);
-			xfer->flags_int.started = 0;
+			xfer->status &= ~XFER_STATUS_STARTED;
 			USB_BUS_UNLOCK(xfer->xroot->bus);
 		}
 		return;
@@ -1699,17 +1691,17 @@ usbd_transfer_stop(struct usb_xfer *xfer)
 
 	/*
 	 * Clear "open" and "started" when both private and USB lock
-	 * is locked so that we don't get a race updating "flags_int"
+	 * is locked so that we don't get a race updating "status"
 	 */
-	xfer->flags_int.open = 0;
-	xfer->flags_int.started = 0;
+	xfer->status &= ~XFER_STATUS_OPENED;
+	xfer->status &= ~XFER_STATUS_STARTED;
 
 	/*
 	 * Check if we can cancel the USB transfer immediately.
 	 */
-	if (xfer->flags_int.transferring) {
-		if (xfer->flags_int.can_cancel_immed &&
-		    (!xfer->flags_int.did_close)) {
+	if ((xfer->status & XFER_STATUS_XFERRING) != 0) {
+		if ((xfer->status & XFER_STATUS_CAN_CANCEL_IMMED) != 0 &&
+		    (xfer->status & XFER_STATUS_CLOSED) == 0) {
 			DPRINTF("close\n");
 			/*
 			 * The following will lead to an USB_ERR_CANCELLED
@@ -1717,7 +1709,7 @@ usbd_transfer_stop(struct usb_xfer *xfer)
 			 */
 			(xfer->endpoint->methods->close) (xfer);
 			/* only close once */
-			xfer->flags_int.did_close = 1;
+			xfer->status |= XFER_STATUS_CLOSED;
 		} else {
 			/* need to wait for the next done callback */
 		}
@@ -1771,10 +1763,8 @@ usbd_transfer_pending(struct usb_xfer *xfer)
 	}
 	USB_XFER_LOCK_ASSERT(xfer, MA_OWNED);
 
-	if (xfer->flags_int.transferring) {
-		/* trivial case */
+	if ((xfer->status & XFER_STATUS_XFERRING) != 0)
 		return (1);
-	}
 	USB_BUS_LOCK(xfer->xroot->bus);
 	if (xfer->wait_queue) {
 		/* we are waiting on a queue somewhere */
@@ -1820,7 +1810,7 @@ usbd_transfer_drain(struct usb_xfer *xfer)
 	usbd_transfer_stop(xfer);
 
 	while (usbd_transfer_pending(xfer) || 
-	    xfer->flags_int.doing_callback) {
+	    (xfer->status & XFER_STATUS_DOINGCALLBACK) != 0) {
 
 		/* 
 		 * It is allowed that the callback can drop its
@@ -1829,7 +1819,7 @@ usbd_transfer_drain(struct usb_xfer *xfer)
 		 * the USB transfer is fully drained. We also need to
 		 * check the internal "doing_callback" flag.
 		 */
-		xfer->flags_int.draining = 1;
+		xfer->status |= XFER_STATUS_DRAINING;
 
 		/*
 		 * Wait until the current outstanding USB
@@ -2086,15 +2076,15 @@ usbd_callback_wrapper(struct usb_xfer_queue *pq)
 	info->done_q.curr = NULL;
 
 	/* set flag in case of drain */
-	xfer->flags_int.doing_callback = 1;
+	xfer->status |= XFER_STATUS_DOINGCALLBACK;
 
 	USB_BUS_UNLOCK(info->bus);
 	USB_BUS_LOCK_ASSERT(info->bus, MA_NOTOWNED);
 
 	/* set correct USB state for callback */
-	if (!xfer->flags_int.transferring) {
+	if ((xfer->status & XFER_STATUS_XFERRING) == 0) {
 		xfer->usb_state = USB_ST_SETUP;
-		if (!xfer->flags_int.started) {
+		if ((xfer->status & XFER_STATUS_STARTED) == 0) {
 			/* we got stopped before we even got started */
 			USB_BUS_LOCK(info->bus);
 			goto done;
@@ -2110,7 +2100,7 @@ usbd_callback_wrapper(struct usb_xfer_queue *pq)
 		/* decrement power reference */
 		usbd_transfer_power_ref(xfer, -1);
 #endif
-		xfer->flags_int.transferring = 0;
+		xfer->status &= ~XFER_STATUS_XFERRING;
 
 		if (xfer->error) {
 			xfer->usb_state = USB_ST_ERROR;
@@ -2119,8 +2109,8 @@ usbd_callback_wrapper(struct usb_xfer_queue *pq)
 			xfer->usb_state = USB_ST_TRANSFERRED;
 #if USB_HAVE_BUSDMA
 			/* sync DMA memory, if any */
-			if (xfer->flags_int.bdma_enable &&
-			    (!xfer->flags_int.bdma_no_post_sync)) {
+			if ((xfer->status & XFER_STATUS_DMAENABLE) != 0 &&
+			    (xfer->status & XFER_STATUS_DMA_NOPOSTSYNC) == 0) {
 				usb_bdma_post_sync(xfer);
 			}
 #endif
@@ -2137,11 +2127,11 @@ usbd_callback_wrapper(struct usb_xfer_queue *pq)
 	 * Check if we got started after that we got cancelled, but
 	 * before we managed to do the callback.
 	 */
-	if ((!xfer->flags_int.open) &&
-	    (xfer->flags_int.started) &&
+	if ((xfer->status & XFER_STATUS_OPENED) == 0 &&
+	    (xfer->status & XFER_STATUS_STARTED) != 0 &&
 	    (xfer->usb_state == USB_ST_ERROR)) {
 		/* clear flag in case of drain */
-		xfer->flags_int.doing_callback = 0;
+		xfer->status &= ~XFER_STATUS_DOINGCALLBACK;
 		/* try to loop, but not recursivly */
 		usb_command_wrapper(&info->done_q, xfer);
 		return;
@@ -2149,15 +2139,15 @@ usbd_callback_wrapper(struct usb_xfer_queue *pq)
 
 done:
 	/* clear flag in case of drain */
-	xfer->flags_int.doing_callback = 0;
+	xfer->status &= ~XFER_STATUS_DOINGCALLBACK;
 
 	/*
 	 * Check if we are draining.
 	 */
-	if (xfer->flags_int.draining &&
-	    (!xfer->flags_int.transferring)) {
+	if ((xfer->status & XFER_STATUS_DRAINING) != 0 &&
+	    (xfer->status & XFER_STATUS_XFERRING) == 0) {
 		/* "usbd_transfer_drain()" is waiting for end of transfer */
-		xfer->flags_int.draining = 0;
+		xfer->status &= ~XFER_STATUS_DRAINING;
 		cv_broadcast(&info->cv_drain);
 	}
 
@@ -2250,10 +2240,10 @@ usbd_transfer_done(struct usb_xfer *xfer, usb_error_t error)
 	 * If we are not transferring then just return.
 	 * This can happen during transfer cancel.
 	 */
-	if (!xfer->flags_int.transferring) {
+	if ((xfer->status & XFER_STATUS_XFERRING) == 0) {
 		DPRINTF("not transferring\n");
 		/* end of control transfer, if any */
-		xfer->flags_int.control_act = 0;
+		xfer->status &= ~XFER_STATUS_CTRLACTIVE;
 		return;
 	}
 	/* only set transfer error if not already set */
@@ -2319,7 +2309,7 @@ usbd_transfer_start_cb(void *arg)
 	/* start the transfer */
 	(ep->methods->start) (xfer);
 
-	xfer->flags_int.can_cancel_immed = 1;
+	xfer->status |= XFER_STATUS_CAN_CANCEL_IMMED;
 
 	/* check for error */
 	if (xfer->error) {
@@ -2496,7 +2486,7 @@ usbd_pipe_start(struct usb_xfer_queue *pq)
 	/* start USB transfer */
 	(ep->methods->start) (xfer);
 
-	xfer->flags_int.can_cancel_immed = 1;
+	xfer->status |= XFER_STATUS_CAN_CANCEL_IMMED;
 
 	/* check for error */
 	if (xfer->error) {
@@ -2546,14 +2536,14 @@ usbd_callback_wrapper_sub(struct usb_xfer *xfer)
 	struct usb_endpoint *ep;
 	usb_frcount_t x;
 
-	if ((!xfer->flags_int.open) &&
-	    (!xfer->flags_int.did_close)) {
+	if ((xfer->status & XFER_STATUS_OPENED) == 0 &&
+	    (xfer->status & XFER_STATUS_CLOSED) == 0) {
 		DPRINTF("close\n");
 		USB_BUS_LOCK(xfer->xroot->bus);
 		(xfer->endpoint->methods->close) (xfer);
 		USB_BUS_UNLOCK(xfer->xroot->bus);
 		/* only close once */
-		xfer->flags_int.did_close = 1;
+		xfer->status |= XFER_STATUS_CLOSED;
 		return (1);		/* wait for new callback */
 	}
 	/*
@@ -2562,15 +2552,15 @@ usbd_callback_wrapper_sub(struct usb_xfer *xfer)
 	 */
 	if (((xfer->error == USB_ERR_CANCELLED) ||
 	    (xfer->error == USB_ERR_TIMEOUT)) &&
-	    (!xfer->flags_int.did_dma_delay)) {
+	    (xfer->status & XFER_STATUS_DMADELAYED) == 0) {
 
 		usb_timeout_t temp;
 
 		/* only delay once */
-		xfer->flags_int.did_dma_delay = 1;
+		xfer->status |= XFER_STATUS_DMADELAYED;
 
 		/* we can not cancel this delay */
-		xfer->flags_int.can_cancel_immed = 0;
+		xfer->status &= ~XFER_STATUS_CAN_CANCEL_IMMED;
 
 		temp = usbd_get_dma_delay(xfer->xroot->udev);
 
@@ -2629,7 +2619,7 @@ usbd_callback_wrapper_sub(struct usb_xfer *xfer)
 
 	if (xfer->error) {
 		/* end of control transfer, if any */
-		xfer->flags_int.control_act = 0;
+		xfer->status &= ~XFER_STATUS_CTRLACTIVE;
 
 		/* check if we should block the execution queue */
 		if ((xfer->error != USB_ERR_CANCELLED) &&
@@ -2643,9 +2633,9 @@ usbd_callback_wrapper_sub(struct usb_xfer *xfer)
 		if (xfer->actlen < xfer->sumlen) {
 
 			/* end of control transfer, if any */
-			xfer->flags_int.control_act = 0;
+			xfer->status &= ~XFER_STATUS_CTRLACTIVE;
 
-			if (!xfer->flags_int.short_xfer_ok) {
+			if ((xfer->status & XFER_STATUS_SHORTXFER_OK) == 0) {
 				xfer->error = USB_ERR_SHORT_XFER;
 				if (xfer->flags.pipe_bof) {
 					DPRINTFN(2, "xfer=%p: Block On Failure on "
@@ -2659,7 +2649,7 @@ usbd_callback_wrapper_sub(struct usb_xfer *xfer)
 			 * Check if we are in the middle of a
 			 * control transfer:
 			 */
-			if (xfer->flags_int.control_act) {
+			if ((xfer->status & XFER_STATUS_CTRLACTIVE) != 0) {
 				DPRINTFN(5, "xfer=%p: Control transfer "
 				    "active on endpoint=%p\n", xfer, xfer->endpoint);
 				goto done;

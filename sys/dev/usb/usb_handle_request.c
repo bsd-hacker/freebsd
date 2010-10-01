@@ -108,7 +108,7 @@ usb_handle_request_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	default:
 		/* check if a control transfer is active */
-		if (xfer->flags_int.control_rem != 0xFFFF) {
+		if (xfer->control_rem != 0xFFFF) {
 			/* handle the request */
 			err = usb_handle_request(xfer);
 		}
@@ -482,13 +482,13 @@ usb_handle_request(struct usb_xfer *xfer)
 	case USB_ST_SETUP:
 		state = USB_HR_NOT_COMPLETE;
 
-		if (!xfer->flags_int.control_act) {
+		if ((xfer->status & XFER_STATUS_CTRLACTIVE) == 0) {
 			/* nothing to do */
 			goto tr_stalled;
 		}
 		break;
 	case USB_ST_TRANSFERRED:
-		if (!xfer->flags_int.control_act) {
+		if ((xfer->status & XFER_STATUS_CTRLACTIVE) == 0) {
 			state = USB_HR_COMPLETE_OK;
 		} else {
 			state = USB_HR_NOT_COMPLETE;
@@ -510,13 +510,13 @@ usb_handle_request(struct usb_xfer *xfer)
 
 	usbd_copy_out(xfer->frbuffers, 0, &req, sizeof(req));
 
-	if (xfer->flags_int.control_rem == 0xFFFF) {
+	if (xfer->control_rem == 0xFFFF) {
 		/* first time - not initialised */
 		rem = UGETW(req.wLength);
 		off = 0;
 	} else {
 		/* not first time - initialised */
-		rem = xfer->flags_int.control_rem;
+		rem = xfer->control_rem;
 		off = UGETW(req.wLength) - rem;
 	}
 

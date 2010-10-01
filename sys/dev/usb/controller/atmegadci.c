@@ -800,16 +800,17 @@ atmegadci_setup_standard_chain(struct usb_xfer *xfer)
 	temp.td = NULL;
 	temp.td_next = xfer->td_start[0];
 	temp.offset = 0;
-	temp.setup_alt_next = xfer->flags_int.short_frames_ok;
-	temp.did_stall = !xfer->flags_int.control_stall;
+	temp.setup_alt_next = (xfer->status & XFER_STATUS_SHORTFRAME_OK) ?
+	    1 : 0;
+	temp.did_stall = !(xfer->status & XFER_STATUS_CTRLSTALL);
 
 	sc = ATMEGA_BUS2SC(xfer->xroot->bus);
 	ep_no = (xfer->endpointno & UE_ADDR);
 
 	/* check if we should prepend a setup message */
 
-	if (xfer->flags_int.control_xfr) {
-		if (xfer->flags_int.control_hdr) {
+	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
+		if ((xfer->status & XFER_STATUS_CTRLHDR) != 0) {
 
 			temp.func = &atmegadci_setup_rx;
 			temp.len = xfer->frlengths[0];
@@ -818,7 +819,8 @@ atmegadci_setup_standard_chain(struct usb_xfer *xfer)
 			/* check for last frame */
 			if (xfer->nframes == 1) {
 				/* no STATUS stage yet, SETUP is last */
-				if (xfer->flags_int.control_act)
+				if ((xfer->status &
+				    XFER_STATUS_CTRLACTIVE) != 0)
 					temp.setup_alt_next = 0;
 			}
 
@@ -852,8 +854,9 @@ atmegadci_setup_standard_chain(struct usb_xfer *xfer)
 		x++;
 
 		if (x == xfer->nframes) {
-			if (xfer->flags_int.control_xfr) {
-				if (xfer->flags_int.control_act) {
+			if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
+				if ((xfer->status &
+				    XFER_STATUS_CTRLACTIVE) != 0) {
 					temp.setup_alt_next = 0;
 				}
 			} else {
@@ -875,7 +878,7 @@ atmegadci_setup_standard_chain(struct usb_xfer *xfer)
 
 		atmegadci_setup_standard_chain_sub(&temp);
 
-		if (xfer->flags_int.isochronous_xfr) {
+		if ((xfer->status & XFER_STATUS_ISOCXFER) != 0) {
 			temp.offset += temp.len;
 		} else {
 			/* get next Page Cache pointer */
@@ -883,7 +886,7 @@ atmegadci_setup_standard_chain(struct usb_xfer *xfer)
 		}
 	}
 
-	if (xfer->flags_int.control_xfr) {
+	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
 
 		/* always setup a valid "pc" pointer for status and sync */
 		temp.pc = xfer->frbuffers + 0;
@@ -899,7 +902,7 @@ atmegadci_setup_standard_chain(struct usb_xfer *xfer)
 		}
 
 		/* check if we should append a status stage */
-		if (!xfer->flags_int.control_act) {
+		if ((xfer->status & XFER_STATUS_CTRLACTIVE) == 0) {
 
 			/*
 			 * Send a DATA1 message and invert the current
@@ -1006,7 +1009,7 @@ atmegadci_standard_done_sub(struct usb_xfer *xfer)
 		}
 		/* Check for short transfer */
 		if (len > 0) {
-			if (xfer->flags_int.short_frames_ok) {
+			if ((xfer->status & XFER_STATUS_SHORTFRAME_OK) != 0) {
 				/* follow alt next */
 				if (td->alt_next) {
 					td = td->obj_next;
@@ -1048,9 +1051,9 @@ atmegadci_standard_done(struct usb_xfer *xfer)
 
 	xfer->td_transfer_cache = xfer->td_transfer_first;
 
-	if (xfer->flags_int.control_xfr) {
+	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
 
-		if (xfer->flags_int.control_hdr) {
+		if ((xfer->status & XFER_STATUS_CTRLHDR) != 0) {
 
 			err = atmegadci_standard_done_sub(xfer);
 		}
@@ -1070,8 +1073,8 @@ atmegadci_standard_done(struct usb_xfer *xfer)
 		}
 	}
 
-	if (xfer->flags_int.control_xfr &&
-	    !xfer->flags_int.control_act) {
+	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0 &&
+	    (xfer->status & XFER_STATUS_CTRLACTIVE) == 0) {
 
 		err = atmegadci_standard_done_sub(xfer);
 	}
@@ -1096,7 +1099,7 @@ atmegadci_device_done(struct usb_xfer *xfer, usb_error_t error)
 	DPRINTFN(9, "xfer=%p, endpoint=%p, error=%d\n",
 	    xfer, xfer->endpoint, error);
 
-	if (xfer->flags_int.usb_mode == USB_MODE_DEVICE) {
+	if (xfer->usb_mode == USB_MODE_DEVICE) {
 		ep_no = (xfer->endpointno & UE_ADDR);
 
 		/* select endpoint number */

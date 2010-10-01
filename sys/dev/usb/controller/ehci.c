@@ -1207,7 +1207,7 @@ ehci_non_isoc_done_sub(struct usb_xfer *xfer)
 		}
 		/* Check for short transfer */
 		if (len > 0) {
-			if (xfer->flags_int.short_frames_ok) {
+			if ((xfer->status & XFER_STATUS_SHORTFRAME_OK) != 0) {
 				/* follow alt next */
 				td = td->alt_next;
 			} else {
@@ -1269,7 +1269,7 @@ ehci_non_isoc_done(struct usb_xfer *xfer)
 
 	/* extract data toggle directly from the QH's overlay area */
 
-	qh = xfer->qh_start[xfer->flags_int.curr_dma_set];
+	qh = xfer->qh_start[xfer->curr_dma_set];
 
 	usb_pc_cpu_invalidate(qh->page_cache);
 
@@ -1282,9 +1282,9 @@ ehci_non_isoc_done(struct usb_xfer *xfer)
 
 	xfer->td_transfer_cache = xfer->td_transfer_first;
 
-	if (xfer->flags_int.control_xfr) {
+	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
 
-		if (xfer->flags_int.control_hdr) {
+		if ((xfer->status & XFER_STATUS_CTRLHDR) != 0) {
 
 			err = ehci_non_isoc_done_sub(xfer);
 		}
@@ -1304,8 +1304,8 @@ ehci_non_isoc_done(struct usb_xfer *xfer)
 		}
 	}
 
-	if (xfer->flags_int.control_xfr &&
-	    !xfer->flags_int.control_act) {
+	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0 &&
+	    (xfer->status & XFER_STATUS_CTRLACTIVE) == 0) {
 
 		err = ehci_non_isoc_done_sub(xfer);
 	}
@@ -1395,7 +1395,7 @@ ehci_check_transfer(struct usb_xfer *xfer)
 		 */
 		td = xfer->td_transfer_cache;
 
-		qh = xfer->qh_start[xfer->flags_int.curr_dma_set];
+		qh = xfer->qh_start[xfer->curr_dma_set];
 
 		usb_pc_cpu_invalidate(qh->page_cache);
 
@@ -1443,7 +1443,8 @@ ehci_check_transfer(struct usb_xfer *xfer)
 			 * packet also makes the transfer done
 			 */
 			if (EHCI_QTD_GET_BYTES(status)) {
-				if (xfer->flags_int.short_frames_ok) {
+				if ((xfer->status &
+				    XFER_STATUS_SHORTFRAME_OK) != 0) {
 					/* follow alt next */
 					if (td->alt_next) {
 						td = td->alt_next;
@@ -1832,10 +1833,10 @@ ehci_setup_standard_chain(struct usb_xfer *xfer, ehci_qh_t **qh_last)
 	temp.sc = EHCI_BUS2SC(xfer->xroot->bus);
 
 	/* toggle the DMA set we are using */
-	xfer->flags_int.curr_dma_set ^= 1;
+	xfer->curr_dma_set ^= 1;
 
 	/* get next DMA set */
-	td = xfer->td_start[xfer->flags_int.curr_dma_set];
+	td = xfer->td_start[xfer->curr_dma_set];
 
 	xfer->td_transfer_first = td;
 	xfer->td_transfer_cache = td;
@@ -1844,11 +1845,12 @@ ehci_setup_standard_chain(struct usb_xfer *xfer, ehci_qh_t **qh_last)
 	temp.td_next = td;
 	temp.qtd_status = 0;
 	temp.last_frame = 0;
-	temp.setup_alt_next = xfer->flags_int.short_frames_ok;
-	temp.can_use_next = (xfer->flags_int.control_xfr ||
+	temp.setup_alt_next = (xfer->status & XFER_STATUS_SHORTFRAME_OK) ?
+	    1 : 0;
+	temp.can_use_next = ((xfer->status & XFER_STATUS_CTRLXFER) != 0 ||
 	    (UE_GET_DIR(xfer->endpointno) == UE_DIR_OUT));
 
-	if (xfer->flags_int.control_xfr) {
+	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
 		if (xfer->endpoint->toggle_next) {
 			/* DATA1 is next */
 			temp.qtd_status |=
@@ -1866,8 +1868,8 @@ ehci_setup_standard_chain(struct usb_xfer *xfer, ehci_qh_t **qh_last)
 	}
 	/* check if we should prepend a setup message */
 
-	if (xfer->flags_int.control_xfr) {
-		if (xfer->flags_int.control_hdr) {
+	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
+		if ((xfer->status & XFER_STATUS_CTRLHDR) != 0) {
 
 			temp.qtd_status &=
 			    htohc32(temp.sc, EHCI_QTD_SET_CERR(3));
@@ -1882,7 +1884,8 @@ ehci_setup_standard_chain(struct usb_xfer *xfer, ehci_qh_t **qh_last)
 			/* check for last frame */
 			if (xfer->nframes == 1) {
 				/* no STATUS stage yet, SETUP is last */
-				if (xfer->flags_int.control_act) {
+				if ((xfer->status &
+				    XFER_STATUS_CTRLACTIVE) != 0) {
 					temp.last_frame = 1;
 					temp.setup_alt_next = 0;
 				}
@@ -1904,9 +1907,10 @@ ehci_setup_standard_chain(struct usb_xfer *xfer, ehci_qh_t **qh_last)
 		x++;
 
 		if (x == xfer->nframes) {
-			if (xfer->flags_int.control_xfr) {
+			if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
 				/* no STATUS stage yet, DATA is last */
-				if (xfer->flags_int.control_act) {
+				if ((xfer->status &
+				    XFER_STATUS_CTRLACTIVE) != 0) {
 					temp.last_frame = 1;
 					temp.setup_alt_next = 0;
 				}
@@ -1948,8 +1952,8 @@ ehci_setup_standard_chain(struct usb_xfer *xfer, ehci_qh_t **qh_last)
 
 	/* check if we should append a status stage */
 
-	if (xfer->flags_int.control_xfr &&
-	    !xfer->flags_int.control_act) {
+	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0 &&
+	    (xfer->status & XFER_STATUS_CTRLACTIVE) == 0) {
 
 		/*
 		 * Send a DATA1 message and invert the current endpoint
@@ -1998,7 +2002,7 @@ ehci_setup_standard_chain(struct usb_xfer *xfer, ehci_qh_t **qh_last)
 
 	methods = xfer->endpoint->methods;
 
-	qh = xfer->qh_start[xfer->flags_int.curr_dma_set];
+	qh = xfer->qh_start[xfer->curr_dma_set];
 
 	/* the "qh_link" field is filled when the QH is added */
 
@@ -2242,11 +2246,11 @@ ehci_device_done(struct usb_xfer *xfer, usb_error_t error)
 		}
 #endif
 
-		EHCI_REMOVE_QH(xfer->qh_start[xfer->flags_int.curr_dma_set],
+		EHCI_REMOVE_QH(xfer->qh_start[xfer->curr_dma_set],
 		    sc->sc_async_p_last);
 	}
 	if (methods == &ehci_device_intr_methods) {
-		EHCI_REMOVE_QH(xfer->qh_start[xfer->flags_int.curr_dma_set],
+		EHCI_REMOVE_QH(xfer->qh_start[xfer->curr_dma_set],
 		    sc->sc_intr_p_last[xfer->qh_pos]);
 	}
 	/*
@@ -2574,10 +2578,10 @@ ehci_device_isoc_fs_enter(struct usb_xfer *xfer)
 	plen = xfer->frlengths;
 
 	/* toggle the DMA set we are using */
-	xfer->flags_int.curr_dma_set ^= 1;
+	xfer->curr_dma_set ^= 1;
 
 	/* get next DMA set */
-	td = xfer->td_start[xfer->flags_int.curr_dma_set];
+	td = xfer->td_start[xfer->curr_dma_set];
 	xfer->td_transfer_first = td;
 
 	pp_last = &sc->sc_isoc_fs_p_last[xfer->endpoint->isoc_next];
@@ -2866,10 +2870,10 @@ ehci_device_isoc_hs_enter(struct usb_xfer *xfer)
 	plen = xfer->frlengths;
 
 	/* toggle the DMA set we are using */
-	xfer->flags_int.curr_dma_set ^= 1;
+	xfer->curr_dma_set ^= 1;
 
 	/* get next DMA set */
-	td = xfer->td_start[xfer->flags_int.curr_dma_set];
+	td = xfer->td_start[xfer->curr_dma_set];
 	xfer->td_transfer_first = td;
 
 	pp_last = &sc->sc_isoc_hs_p_last[xfer->endpoint->isoc_next];
@@ -3552,7 +3556,7 @@ ehci_xfer_setup(struct usb_setup_params *parm)
 		parm->hc_max_packet_size = 0x400;
 		parm->hc_max_packet_count = 1;
 		parm->hc_max_frame_size = EHCI_QTD_PAYLOAD_MAX;
-		xfer->flags_int.bdma_enable = 1;
+		xfer->status |= XFER_STATUS_DMAENABLE;
 
 		usbd_transfer_setup_sub(parm);
 
@@ -3565,7 +3569,7 @@ ehci_xfer_setup(struct usb_setup_params *parm)
 		parm->hc_max_packet_size = 0x400;
 		parm->hc_max_packet_count = 1;
 		parm->hc_max_frame_size = EHCI_QTD_PAYLOAD_MAX;
-		xfer->flags_int.bdma_enable = 1;
+		xfer->status |= XFER_STATUS_DMAENABLE;
 
 		usbd_transfer_setup_sub(parm);
 
@@ -3587,7 +3591,7 @@ ehci_xfer_setup(struct usb_setup_params *parm)
 		}
 
 		parm->hc_max_frame_size = EHCI_QTD_PAYLOAD_MAX;
-		xfer->flags_int.bdma_enable = 1;
+		xfer->status |= XFER_STATUS_DMAENABLE;
 
 		usbd_transfer_setup_sub(parm);
 
@@ -3600,7 +3604,7 @@ ehci_xfer_setup(struct usb_setup_params *parm)
 		parm->hc_max_packet_size = 0x3FF;
 		parm->hc_max_packet_count = 1;
 		parm->hc_max_frame_size = 0x3FF;
-		xfer->flags_int.bdma_enable = 1;
+		xfer->status |= XFER_STATUS_DMAENABLE;
 
 		usbd_transfer_setup_sub(parm);
 
@@ -3611,7 +3615,7 @@ ehci_xfer_setup(struct usb_setup_params *parm)
 		parm->hc_max_packet_size = 0x400;
 		parm->hc_max_packet_count = 3;
 		parm->hc_max_frame_size = 0xC00;
-		xfer->flags_int.bdma_enable = 1;
+		xfer->status |= XFER_STATUS_DMAENABLE;
 
 		usbd_transfer_setup_sub(parm);
 
@@ -3709,7 +3713,7 @@ alloc_dma_set:
 			usb_pc_cpu_flush(pc + n);
 		}
 	}
-	xfer->td_start[xfer->flags_int.curr_dma_set] = last_obj;
+	xfer->td_start[xfer->curr_dma_set] = last_obj;
 
 	last_obj = NULL;
 
@@ -3737,10 +3741,10 @@ alloc_dma_set:
 			usb_pc_cpu_flush(pc + n);
 		}
 	}
-	xfer->qh_start[xfer->flags_int.curr_dma_set] = last_obj;
+	xfer->qh_start[xfer->curr_dma_set] = last_obj;
 
-	if (!xfer->flags_int.curr_dma_set) {
-		xfer->flags_int.curr_dma_set = 1;
+	if (!xfer->curr_dma_set) {
+		xfer->curr_dma_set = 1;
 		goto alloc_dma_set;
 	}
 }
@@ -3831,11 +3835,11 @@ ehci_device_resume(struct usb_device *udev)
 
 			if ((methods == &ehci_device_bulk_methods) ||
 			    (methods == &ehci_device_ctrl_methods)) {
-				EHCI_APPEND_QH(xfer->qh_start[xfer->flags_int.curr_dma_set],
+				EHCI_APPEND_QH(xfer->qh_start[xfer->curr_dma_set],
 				    sc->sc_async_p_last);
 			}
 			if (methods == &ehci_device_intr_methods) {
-				EHCI_APPEND_QH(xfer->qh_start[xfer->flags_int.curr_dma_set],
+				EHCI_APPEND_QH(xfer->qh_start[xfer->curr_dma_set],
 				    sc->sc_intr_p_last[xfer->qh_pos]);
 			}
 		}
@@ -3865,11 +3869,11 @@ ehci_device_suspend(struct usb_device *udev)
 
 			if ((methods == &ehci_device_bulk_methods) ||
 			    (methods == &ehci_device_ctrl_methods)) {
-				EHCI_REMOVE_QH(xfer->qh_start[xfer->flags_int.curr_dma_set],
+				EHCI_REMOVE_QH(xfer->qh_start[xfer->curr_dma_set],
 				    sc->sc_async_p_last);
 			}
 			if (methods == &ehci_device_intr_methods) {
-				EHCI_REMOVE_QH(xfer->qh_start[xfer->flags_int.curr_dma_set],
+				EHCI_REMOVE_QH(xfer->qh_start[xfer->curr_dma_set],
 				    sc->sc_intr_p_last[xfer->qh_pos]);
 			}
 		}

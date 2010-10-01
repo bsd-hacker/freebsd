@@ -846,18 +846,18 @@ usb_bdma_work_loop(struct usb_xfer_queue *pq)
 		USB_BUS_UNLOCK(info->bus);
 		return;
 	}
-	if (!xfer->flags_int.bdma_setup) {
+	if ((xfer->status & XFER_STATUS_DMASETUP) == 0) {
 		struct usb_page *pg;
 		usb_frlength_t frlength_0;
 		uint8_t isread;
 
-		xfer->flags_int.bdma_setup = 1;
+		xfer->status |= XFER_STATUS_DMASETUP;
 
 		/* reset BUS-DMA load state */
 
 		info->dma_error = 0;
 
-		if (xfer->flags_int.isochronous_xfr) {
+		if ((xfer->status & XFER_STATUS_ISOCXFER) != 0) {
 			/* only one frame buffer */
 			nframes = 1;
 			frlength_0 = xfer->sumlen;
@@ -875,10 +875,10 @@ usb_bdma_work_loop(struct usb_xfer_queue *pq)
 		isread = USB_GET_DATA_ISREAD(xfer);
 		pg = xfer->dma_page_ptr;
 
-		if (xfer->flags_int.control_xfr &&
-		    xfer->flags_int.control_hdr) {
+		if ((xfer->status & XFER_STATUS_CTRLXFER) != 0 &&
+		    (xfer->status & XFER_STATUS_CTRLHDR) != 0) {
 			/* special case */
-			if (xfer->flags_int.usb_mode == USB_MODE_DEVICE) {
+			if (xfer->usb_mode == USB_MODE_DEVICE) {
 				/* The device controller writes to memory */
 				xfer->frbuffers[0].isread = 1;
 			} else {
@@ -977,7 +977,7 @@ usb_bdma_pre_sync(struct usb_xfer *xfer)
 	struct usb_page_cache *pc;
 	usb_frcount_t nframes;
 
-	if (xfer->flags_int.isochronous_xfr) {
+	if ((xfer->status & XFER_STATUS_ISOCXFER) != 0) {
 		/* only one frame buffer */
 		nframes = 1;
 	} else {
@@ -1008,7 +1008,7 @@ usb_bdma_post_sync(struct usb_xfer *xfer)
 	struct usb_page_cache *pc;
 	usb_frcount_t nframes;
 
-	if (xfer->flags_int.isochronous_xfr) {
+	if ((xfer->status & XFER_STATUS_ISOCXFER) != 0) {
 		/* only one frame buffer */
 		nframes = 1;
 	} else {

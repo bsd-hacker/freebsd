@@ -35,7 +35,7 @@
  * The following macro will tell if an USB transfer is currently
  * receiving or transferring data.
  */
-#define	USB_GET_DATA_ISREAD(xfer) ((xfer)->flags_int.usb_mode == \
+#define	USB_GET_DATA_ISREAD(xfer) ((xfer)->usb_mode == \
 	USB_MODE_DEVICE ? (((xfer)->endpointno & UE_DIR_IN) ? 0 : 1) : \
 	(((xfer)->endpointno & UE_DIR_IN) ? 1 : 0))
 
@@ -73,47 +73,6 @@ struct usb_xfer_root;
 /* typedefs */
 
 /* structures */
-
-/*
- * The following structure defines a set of internal USB transfer
- * flags.
- */
-struct usb_xfer_flags_int {
-
-	enum usb_hc_mode usb_mode;	/* shadow copy of "udev->usb_mode" */
-	uint16_t control_rem;		/* remainder in bytes */
-
-	uint8_t	open:1;			/* set if USB pipe has been opened */
-	uint8_t	transferring:1;		/* set if an USB transfer is in
-					 * progress */
-	uint8_t	did_dma_delay:1;	/* set if we waited for HW DMA */
-	uint8_t	did_close:1;		/* set if we closed the USB transfer */
-	uint8_t	draining:1;		/* set if we are draining an USB
-					 * transfer */
-	uint8_t	started:1;		/* keeps track of started or stopped */
-	uint8_t	bandwidth_reclaimed:1;
-	uint8_t	control_xfr:1;		/* set if control transfer */
-	uint8_t	control_hdr:1;		/* set if control header should be
-					 * sent */
-	uint8_t	control_act:1;		/* set if control transfer is active */
-	uint8_t	control_stall:1;	/* set if control transfer should be stalled */
-
-	uint8_t	short_frames_ok:1;	/* filtered version */
-	uint8_t	short_xfer_ok:1;	/* filtered version */
-#if USB_HAVE_BUSDMA
-	uint8_t	bdma_enable:1;		/* filtered version (only set if
-					 * hardware supports DMA) */
-	uint8_t	bdma_no_post_sync:1;	/* set if the USB callback wrapper
-					 * should not do the BUS-DMA post sync
-					 * operation */
-	uint8_t	bdma_setup:1;		/* set if BUS-DMA has been setup */
-#endif
-	uint8_t	isochronous_xfr:1;	/* set if isochronous transfer */
-	uint8_t	curr_dma_set:1;		/* used by USB HC/DC driver */
-	uint8_t	can_cancel_immed:1;	/* set if USB transfer can be
-					 * cancelled immediately */
-	uint8_t	doing_callback:1;	/* set if executing the callback */
-};
 
 /*
  * The following structure defines an USB transfer.
@@ -168,7 +127,33 @@ struct usb_xfer {
 	usb_error_t error;
 
 	struct usb_xfer_flags flags;
-	struct usb_xfer_flags_int flags_int;
+	uint32_t status;
+#define	XFER_STATUS_OPENED	(1 << 0)	/* USB pipe has been opened */
+#define	XFER_STATUS_XFERRING	(1 << 1)	/* xfer is in progress */
+#define	XFER_STATUS_DMADELAYED	(1 << 2)	/* we waited for HW DMA */
+#define	XFER_STATUS_CLOSED	(1 << 3)	/* closed the USB xfer */
+#define	XFER_STATUS_DRAINING	(1 << 4)	/* draining an USB xfer */
+#define	XFER_STATUS_STARTED	(1 << 5)	/* track of started/stopped */
+#define	XFER_STATUS_CTRLXFER	(1 << 6)	/* set if control transfer */
+#define	XFER_STATUS_CTRLHDR	(1 << 7)	/* if ctrlhdr should be sent */
+#define	XFER_STATUS_CTRLACTIVE	(1 << 8)	/* if ctrlxfer is active */
+#define	XFER_STATUS_CTRLSTALL	(1 << 9)	/* if ctrlxfer should stalled */
+#define	XFER_STATUS_SHORTFRAME_OK (1 << 10)	/* filtered version */
+#define	XFER_STATUS_SHORTXFER_OK (1 << 11)	/* filtered version */
+#if USB_HAVE_BUSDMA
+#define	XFER_STATUS_DMAENABLE	(1 << 12)	/* hardware supports DMA */
+/* set if the USB callback wrapper should not do the BUS-DMA post sync */
+#define	XFER_STATUS_DMA_NOPOSTSYNC (1 << 13)
+#define	XFER_STATUS_DMASETUP	(1 << 14)	/* BUS-DMA has been setup */
+#endif
+#define	XFER_STATUS_ISOCXFER	(1 << 15)	/* set if isochronous xfer */
+/* set if USB transfer can be cancelled immediately */
+#define	XFER_STATUS_CAN_CANCEL_IMMED (1 << 16)
+#define	XFER_STATUS_DOINGCALLBACK (1 << 17)	/* set if executing the cb */
+#define	XFER_STATUS_BWRECLAIMED (1 << 18)
+	uint8_t curr_dma_set;
+	enum usb_hc_mode usb_mode;	/* shadow copy of "udev->usb_mode" */
+	uint16_t control_rem;		/* remainder in bytes */
 };
 
 /* external variables */
