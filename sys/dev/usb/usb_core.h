@@ -126,7 +126,7 @@ struct usb_xfer {
 
 	usb_error_t error;
 
-	struct usb_xfer_flags flags;
+	uint32_t flags;			/* see struct usb_config's flags */
 	uint32_t status;
 #define	XFER_STATUS_OPENED	(1 << 0)	/* USB pipe has been opened */
 #define	XFER_STATUS_XFERRING	(1 << 1)	/* xfer is in progress */

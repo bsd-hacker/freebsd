@@ -345,7 +345,7 @@ static const struct usb_config ums_config[UMS_N_TRANSFER] = {
 		.type = UE_INTERRUPT,
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
+		.flags = USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.bufsize = 0,	/* use wMaxPacketSize */
 		.callback = &ums_intr_callback,
 	},

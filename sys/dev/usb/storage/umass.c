@@ -141,9 +141,9 @@ __FBSDID("$FreeBSD$");
 #define UMASS_EXT_BUFFER
 #ifdef UMASS_EXT_BUFFER
 /* this enables loading of virtual buffers into DMA */
-#define	UMASS_USB_FLAGS .ext_buffer=1,
+#define	UMASS_USB_FLAGS	USBD_EXT_BUFFER
 #else
-#define	UMASS_USB_FLAGS
+#define	UMASS_USB_FLAGS 0
 #endif
 
 #ifdef USB_DEBUG
@@ -535,7 +535,8 @@ static struct usb_config umass_bbb_config[UMASS_T_BBB_MAX] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
 		.bufsize = UMASS_BULK_SIZE,
-		.flags = {.proxy_buffer = 1,.short_xfer_ok = 1, UMASS_USB_FLAGS},
+		.flags = USBD_PROXY_BUFFER | USBD_SHORT_XFER_OK |
+		    UMASS_USB_FLAGS,
 		.callback = &umass_t_bbb_data_read_callback,
 		.timeout = 0,	/* overwritten later */
 	},
@@ -554,7 +555,8 @@ static struct usb_config umass_bbb_config[UMASS_T_BBB_MAX] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_OUT,
 		.bufsize = UMASS_BULK_SIZE,
-		.flags = {.proxy_buffer = 1,.short_xfer_ok = 1, UMASS_USB_FLAGS},
+		.flags = USBD_PROXY_BUFFER | USBD_SHORT_XFER_OK |
+		    UMASS_USB_FLAGS,
 		.callback = &umass_t_bbb_data_write_callback,
 		.timeout = 0,	/* overwritten later */
 	},
@@ -573,7 +575,7 @@ static struct usb_config umass_bbb_config[UMASS_T_BBB_MAX] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
 		.bufsize = sizeof(umass_bbb_csw_t),
-		.flags = {.short_xfer_ok = 1,},
+		.flags = USBD_SHORT_XFER_OK,
 		.callback = &umass_t_bbb_status_callback,
 		.timeout = 5000,	/* ms */
 	},
@@ -626,7 +628,8 @@ static struct usb_config umass_cbi_config[UMASS_T_CBI_MAX] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
 		.bufsize = UMASS_BULK_SIZE,
-		.flags = {.proxy_buffer = 1,.short_xfer_ok = 1, UMASS_USB_FLAGS},
+		.flags = USBD_PROXY_BUFFER | USBD_SHORT_XFER_OK |
+		    UMASS_USB_FLAGS,
 		.callback = &umass_t_cbi_data_read_callback,
 		.timeout = 0,	/* overwritten later */
 	},
@@ -645,7 +648,8 @@ static struct usb_config umass_cbi_config[UMASS_T_CBI_MAX] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_OUT,
 		.bufsize = UMASS_BULK_SIZE,
-		.flags = {.proxy_buffer = 1,.short_xfer_ok = 1, UMASS_USB_FLAGS},
+		.flags = USBD_PROXY_BUFFER | USBD_SHORT_XFER_OK |
+		    UMASS_USB_FLAGS,
 		.callback = &umass_t_cbi_data_write_callback,
 		.timeout = 0,	/* overwritten later */
 	},
@@ -663,7 +667,7 @@ static struct usb_config umass_cbi_config[UMASS_T_CBI_MAX] = {
 		.type = UE_INTERRUPT,
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
-		.flags = {.short_xfer_ok = 1,.no_pipe_ok = 1,},
+		.flags = USBD_SHORT_XFER_OK | USBD_NO_PIPE_OK,
 		.bufsize = sizeof(umass_cbi_sbl_t),
 		.callback = &umass_t_cbi_status_callback,
 		.timeout = 5000,	/* ms */

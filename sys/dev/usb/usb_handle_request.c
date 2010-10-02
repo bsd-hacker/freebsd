@@ -125,8 +125,8 @@ tr_restart:
 	 */
 	usbd_xfer_set_frame_len(xfer, 0, sizeof(struct usb_device_request));
 	xfer->nframes = 1;
-	xfer->flags.manual_status = 1;
-	xfer->flags.force_short_xfer = 0;
+	xfer->flags |= USBD_MANUSL_STATUS;
+	xfer->flags &= ~USBD_FORCE_SHORT_XFER;
 	usbd_xfer_set_stall(xfer);	/* cancel previous transfer, if any */
 	usbd_transfer_submit(xfer);
 }
@@ -737,13 +737,13 @@ tr_valid:
 		 * If we don't transfer the data we can transfer, then
 		 * the transfer is short !
 		 */
-		xfer->flags.force_short_xfer = 1;
+		xfer->flags |= USBD_FORCE_SHORT_XFER;
 		xfer->nframes = 2;
 	} else {
 		/*
 		 * Default case
 		 */
-		xfer->flags.force_short_xfer = 0;
+		xfer->flags &= ~USBD_FORCE_SHORT_XFER;
 		xfer->nframes = max_len ? 2 : 1;
 	}
 	if (max_len > 0) {
@@ -758,7 +758,7 @@ tr_valid:
 		}
 	} else {
 		/* the end is reached, send status */
-		xfer->flags.manual_status = 0;
+		xfer->flags &= ~USBD_MANUSL_STATUS;
 		usbd_xfer_set_frame_len(xfer, 1, 0);
 	}
 	DPRINTF("success\n");

@@ -241,7 +241,7 @@ static const struct usb_config
 		.type = UE_INTERRUPT,
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
+		.flags = USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.bufsize = sizeof(struct usb_cdc_notification),
 		.callback = &ufoma_intr_callback,
 	},
@@ -251,7 +251,7 @@ static const struct usb_config
 		.endpoint = 0x00,	/* Control pipe */
 		.direction = UE_DIR_ANY,
 		.bufsize = (sizeof(struct usb_device_request) + UFOMA_CMD_BUF_SIZE),
-		.flags = {.short_xfer_ok = 1,},
+		.flags = USBD_SHORT_XFER_OK,
 		.callback = &ufoma_ctrl_read_callback,
 		.timeout = 1000,	/* 1 second */
 	},
@@ -273,7 +273,7 @@ static const struct usb_config
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_OUT,
 		.bufsize = UFOMA_BULK_BUF_SIZE,
-		.flags = {.pipe_bof = 1,.force_short_xfer = 1,},
+		.flags = USBD_PIPE_BOF | USBD_FORCE_SHORT_XFER,
 		.callback = &ufoma_bulk_write_callback,
 	},
 
@@ -282,7 +282,7 @@ static const struct usb_config
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
 		.bufsize = UFOMA_BULK_BUF_SIZE,
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
+		.flags = USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.callback = &ufoma_bulk_read_callback,
 	},
 };

@@ -244,7 +244,7 @@ static const struct usb_config uchcom_config_data[UCHCOM_N_TRANSFER] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_OUT,
 		.bufsize = UCHCOM_BULK_BUF_SIZE,
-		.flags = {.pipe_bof = 1,.force_short_xfer = 1,},
+		.flags = USBD_PIPE_BOF | USBD_FORCE_SHORT_XFER,
 		.callback = &uchcom_write_callback,
 	},
 
@@ -253,7 +253,7 @@ static const struct usb_config uchcom_config_data[UCHCOM_N_TRANSFER] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
 		.bufsize = UCHCOM_BULK_BUF_SIZE,
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
+		.flags = USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.callback = &uchcom_read_callback,
 	},
 
@@ -261,7 +261,7 @@ static const struct usb_config uchcom_config_data[UCHCOM_N_TRANSFER] = {
 		.type = UE_INTERRUPT,
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
+		.flags = USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.bufsize = 0,	/* use wMaxPacketSize */
 		.callback = &uchcom_intr_callback,
 	},

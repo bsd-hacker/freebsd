@@ -252,14 +252,14 @@ ugen_open_pipe_write(struct usb_fifo *f)
 	usb_config[0].endpoint = ed->bEndpointAddress & UE_ADDR;
 	usb_config[0].direction = UE_DIR_TX;
 	usb_config[0].interval = USB_DEFAULT_INTERVAL;
-	usb_config[0].flags.proxy_buffer = 1;
+	usb_config[0].flags |= USBD_PROXY_BUFFER;
 	usb_config[0].usb_mode = USB_MODE_DUAL;	/* both modes */
 
 	switch (ed->bmAttributes & UE_XFERTYPE) {
 	case UE_INTERRUPT:
 	case UE_BULK:
 		if (f->flag_short)
-			usb_config[0].flags.force_short_xfer = 1;
+			usb_config[0].flags |= USBD_FORCE_SHORT_XFER;
 		usb_config[0].callback = &ugen_ctrl_write_callback;
 		usb_config[0].timeout = f->timeout;
 		usb_config[0].frames = 1;
@@ -271,7 +271,7 @@ ugen_open_pipe_write(struct usb_fifo *f)
 		break;
 
 	case UE_ISOCHRONOUS:
-		usb_config[0].flags.short_xfer_ok = 1;
+		usb_config[0].flags |= USBD_SHORT_XFER_OK;
 		usb_config[0].bufsize = 0;	/* use default */
 		usb_config[0].frames = f->nframes;
 		usb_config[0].callback = &ugen_isoc_write_callback;
@@ -317,14 +317,14 @@ ugen_open_pipe_read(struct usb_fifo *f)
 	usb_config[0].endpoint = ed->bEndpointAddress & UE_ADDR;
 	usb_config[0].direction = UE_DIR_RX;
 	usb_config[0].interval = USB_DEFAULT_INTERVAL;
-	usb_config[0].flags.proxy_buffer = 1;
+	usb_config[0].flags |= USBD_PROXY_BUFFER;
 	usb_config[0].usb_mode = USB_MODE_DUAL;	/* both modes */
 
 	switch (ed->bmAttributes & UE_XFERTYPE) {
 	case UE_INTERRUPT:
 	case UE_BULK:
 		if (f->flag_short)
-			usb_config[0].flags.short_xfer_ok = 1;
+			usb_config[0].flags |= USBD_SHORT_XFER_OK;
 		usb_config[0].timeout = f->timeout;
 		usb_config[0].frames = 1;
 		usb_config[0].callback = &ugen_ctrl_read_callback;
@@ -337,7 +337,7 @@ ugen_open_pipe_read(struct usb_fifo *f)
 		break;
 
 	case UE_ISOCHRONOUS:
-		usb_config[0].flags.short_xfer_ok = 1;
+		usb_config[0].flags |= USBD_SHORT_XFER_OK;
 		usb_config[0].bufsize = 0;	/* use default */
 		usb_config[0].frames = f->nframes;
 		usb_config[0].callback = &ugen_isoc_read_callback;
@@ -1097,24 +1097,24 @@ ugen_fs_copy_in(struct usb_fifo *f, uint8_t ep_index)
 	if (xfer->timeout > 65535)
 		xfer->timeout = 65535;
 	if (fs_ep.flags & USB_FS_FLAG_SINGLE_SHORT_OK)
-		xfer->flags.short_xfer_ok = 1;
+		xfer->flags |= USBD_SHORT_XFER_OK;
 	else
-		xfer->flags.short_xfer_ok = 0;
+		xfer->flags &= ~USBD_SHORT_XFER_OK;
 
 	if (fs_ep.flags & USB_FS_FLAG_MULTI_SHORT_OK)
-		xfer->flags.short_frames_ok = 1;
+		xfer->flags |= USBD_SHORT_FRAME_OK;
 	else
-		xfer->flags.short_frames_ok = 0;
+		xfer->flags &= ~USBD_SHORT_FRAME_OK;
 
 	if (fs_ep.flags & USB_FS_FLAG_FORCE_SHORT)
-		xfer->flags.force_short_xfer = 1;
+		xfer->flags |= USBD_FORCE_SHORT_XFER;
 	else
-		xfer->flags.force_short_xfer = 0;
+		xfer->flags &= ~USBD_FORCE_SHORT_XFER;
 
 	if (fs_ep.flags & USB_FS_FLAG_CLEAR_STALL)
 		usbd_xfer_set_stall(xfer);
 	else
-		xfer->flags.stall_pipe = 0;
+		xfer->flags &= ~USBD_STALL_PIPE;
 
 	for (; n != xfer->nframes; n++) {
 		error = copyin(fs_ep.pLength + n,
@@ -1419,7 +1419,7 @@ ugen_ioctl(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 		usb_config[0].direction =
 		    ed->bEndpointAddress & (UE_DIR_OUT | UE_DIR_IN);
 		usb_config[0].interval = USB_DEFAULT_INTERVAL;
-		usb_config[0].flags.proxy_buffer = 1;
+		usb_config[0].flags |= USBD_PROXY_BUFFER;
 		usb_config[0].callback = &ugen_ctrl_fs_callback;
 		usb_config[0].timeout = 0;	/* no timeout */
 		usb_config[0].frames = u.popen->max_frames;

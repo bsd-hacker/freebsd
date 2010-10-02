@@ -356,7 +356,7 @@ static const struct usb_config uhso_ctrl_config[UHSO_CTRL_MAX] = {
 		.type = UE_CONTROL,
 		.endpoint = 0x00,
 		.direction = UE_DIR_ANY,
-		.flags = { .pipe_bof = 1, .short_xfer_ok = 1 },
+		.flags = USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.bufsize = sizeof(struct usb_device_request) + 1024,
 		.callback = &uhso_mux_read_callback
 	},
@@ -365,7 +365,7 @@ static const struct usb_config uhso_ctrl_config[UHSO_CTRL_MAX] = {
 		.type = UE_CONTROL,
 		.endpoint = 0x00,
 		.direction = UE_DIR_ANY,
-		.flags = { .pipe_bof = 1, .force_short_xfer = 1 },
+		.flags = USBD_PIPE_BOF | USBD_FORCE_SHORT_XFER,
 		.bufsize = sizeof(struct usb_device_request) + 1024,
 		.timeout = 1000,
 		.callback = &uhso_mux_write_callback
@@ -378,7 +378,7 @@ static const struct usb_config uhso_mux_config[UHSO_MUX_ENDPT_MAX] = {
 		.type = UE_INTERRUPT,
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
-		.flags = { .short_xfer_ok = 1 },
+		.flags = USBD_SHORT_XFER_OK,
 		.bufsize = 0,
 		.callback = &uhso_mux_intr_callback,
 	}
@@ -390,7 +390,7 @@ static const struct usb_config uhso_ifnet_config[UHSO_IFNET_MAX] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
-		.flags = { .pipe_bof = 1, .short_xfer_ok = 1 },
+		.flags = USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.bufsize = MCLBYTES,
 		.callback = &uhso_ifnet_read_callback
 	},
@@ -398,7 +398,7 @@ static const struct usb_config uhso_ifnet_config[UHSO_IFNET_MAX] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_OUT,
-		.flags = { .pipe_bof = 1, .force_short_xfer = 1 },
+		.flags = USBD_PIPE_BOF | USBD_FORCE_SHORT_XFER,
 		.bufsize = MCLBYTES,
 		.timeout = 5 * USB_MS_HZ,
 		.callback = &uhso_ifnet_write_callback
@@ -411,7 +411,7 @@ static const struct usb_config uhso_bs_config[UHSO_BULK_ENDPT_MAX] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
-		.flags = { .pipe_bof = 1, .short_xfer_ok = 1 },
+		.flags = USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.bufsize = 4096,
 		.callback = &uhso_bs_read_callback
 	},
@@ -420,7 +420,7 @@ static const struct usb_config uhso_bs_config[UHSO_BULK_ENDPT_MAX] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_OUT,
-		.flags = { .pipe_bof = 1, .force_short_xfer = 1 },
+		.flags = USBD_PIPE_BOF | USBD_FORCE_SHORT_XFER,
 		.bufsize = 8192,
 		.callback = &uhso_bs_write_callback
 	},
@@ -429,7 +429,7 @@ static const struct usb_config uhso_bs_config[UHSO_BULK_ENDPT_MAX] = {
 		.type = UE_INTERRUPT,
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
-		.flags = { .short_xfer_ok = 1 },
+		.flags = USBD_SHORT_XFER_OK,
 		.bufsize = 0,
 		.callback = &uhso_bs_intr_callback,
 	}

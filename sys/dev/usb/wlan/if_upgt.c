@@ -201,11 +201,8 @@ static const struct usb_config upgt_config[UPGT_N_XFERS] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_OUT,
 		.bufsize = MCLBYTES,
-		.flags = {
-			.ext_buffer = 1,
-			.force_short_xfer = 1,
-			.pipe_bof = 1
-		},
+		.flags = USBD_EXT_BUFFER | USBD_FORCE_SHORT_XFER |
+		    USBD_PIPE_BOF,
 		.callback = upgt_bulk_tx_callback,
 		.timeout = UPGT_USB_TIMEOUT,	/* ms */
 	},
@@ -214,11 +211,7 @@ static const struct usb_config upgt_config[UPGT_N_XFERS] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
 		.bufsize = MCLBYTES,
-		.flags = {
-			.ext_buffer = 1,
-			.pipe_bof = 1,
-			.short_xfer_ok = 1
-		},
+		.flags = USBD_EXT_BUFFER | USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.callback = upgt_bulk_rx_callback,
 	},
 };

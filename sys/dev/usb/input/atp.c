@@ -1612,10 +1612,7 @@ static const struct usb_config atp_config[ATP_N_TRANSFER] = {
 		.type      = UE_INTERRUPT,
 		.endpoint  = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
-		.flags = {
-			.pipe_bof = 1,
-			.short_xfer_ok = 1,
-		},
+		.flags     = USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.bufsize   = 0, /* use wMaxPacketSize */
 		.callback  = &atp_intr,
 	},

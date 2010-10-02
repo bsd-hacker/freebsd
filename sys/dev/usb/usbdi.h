@@ -174,27 +174,6 @@ struct usb_interface {
 };
 
 /*
- * The following structure defines a set of USB transfer flags.
- */
-struct usb_xfer_flags {
-	uint8_t	force_short_xfer:1;	/* force a short transmit transfer
-					 * last */
-	uint8_t	short_xfer_ok:1;	/* allow short receive transfers */
-	uint8_t	short_frames_ok:1;	/* allow short frames */
-	uint8_t	pipe_bof:1;		/* block pipe on failure */
-	uint8_t	proxy_buffer:1;		/* makes buffer size a factor of
-					 * "max_frame_size" */
-	uint8_t	ext_buffer:1;		/* uses external DMA buffer */
-	uint8_t	manual_status:1;	/* non automatic status stage on
-					 * control transfers */
-	uint8_t	no_pipe_ok:1;		/* set if "USB_ERR_NO_PIPE" error can
-					 * be ignored */
-	uint8_t	stall_pipe:1;		/* set if the endpoint belonging to
-					 * this USB transfer should be stalled
-					 * before starting this transfer! */
-};
-
-/*
  * The following structure define an USB configuration, that basically
  * is used when setting up an USB transfer.
  */
@@ -205,7 +184,23 @@ struct usb_config {
 	usb_timeout_t interval;	/* interval in milliseconds */
 #define	USB_DEFAULT_INTERVAL	0
 	usb_timeout_t timeout;		/* transfer timeout in milliseconds */
-	struct usb_xfer_flags flags;	/* transfer flags */
+	uint32_t flags;			/* transfer flags */
+#define	USBD_FORCE_SHORT_XFER	(1 << 0)	/* force a short xfer last */
+#define	USBD_SHORT_XFER_OK	(1 << 1)	/* allow short receive xfer */
+#define	USBD_SHORT_FRAME_OK	(1 << 2)	/* allow short frames */
+#define	USBD_PIPE_BOF		(1 << 3)	/* block pipe on failure */
+	/* makes buffer size a factor of "max_frame_size" */
+#define	USBD_PROXY_BUFFER	(1 << 4)
+#define	USBD_EXT_BUFFER		(1 << 5)	/* uses external DMA buffer */
+	/* non automatic status stage on control transfers */
+#define	USBD_MANUSL_STATUS	(1 << 6)
+	/* set if "USB_ERR_NO_PIPE" error can be ignored */
+#define	USBD_NO_PIPE_OK		(1 << 7)
+	/*
+	 * set if the endpoint belonging to this USB transfer should be
+	 * stalled before starting this transfer!
+	 */
+#define	USBD_STALL_PIPE		(1 << 8)
 	enum usb_hc_mode usb_mode;	/* host or device mode */
 	uint8_t	type;			/* pipe type */
 	uint8_t	endpoint;		/* pipe number */

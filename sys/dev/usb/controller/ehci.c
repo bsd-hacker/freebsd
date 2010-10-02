@@ -1860,7 +1860,10 @@ ehci_setup_standard_chain(struct usb_xfer *xfer, ehci_qh_t **qh_last)
 
 		} else {
 			/* regular data transfer */
-			temp.shortpkt = (xfer->flags.force_short_xfer) ? 0 : 1;
+			if ((xfer->flags & USBD_FORCE_SHORT_XFER) != 0)
+				temp.shortpkt = 0;
+			else
+				temp.shortpkt = 1;
 		}
 
 		/* set endpoint direction */
@@ -3425,8 +3428,9 @@ ehci_xfer_setup(struct usb_setup_params *parm)
 		 * For the remainder of an USB transfer modulo
 		 * "max_data_length" we need two USB transfer descriptors.
 		 * One to transfer the remaining data and one to finalise
-		 * with a zero length packet in case the "force_short_xfer"
-		 * flag is set. We only need two USB transfer descriptors in
+		 * with a zero length packet in case
+		 * the USBD_FORCE_SHORT_XFER flag is set.
+		 * We only need two USB transfer descriptors in
 		 * the case where the transfer length of the first one is a
 		 * factor of "max_frame_size". The rest of the needed USB
 		 * transfer descriptors is given by the buffer size divided

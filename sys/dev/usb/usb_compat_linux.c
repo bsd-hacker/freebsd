@@ -773,7 +773,7 @@ usb_setup_endpoint(struct usb_device *dev,
 		cfg[0].callback = &usb_linux_isoc_callback;
 		cfg[0].bufsize = 0;	/* use wMaxPacketSize */
 		cfg[0].frames = usb_max_isoc_frames(dev);
-		cfg[0].flags.proxy_buffer = 1;
+		cfg[0].flags |= USBD_PROXY_BUFFER;
 #if 0
 		/*
 		 * The Linux USB API allows non back-to-back
@@ -784,7 +784,7 @@ usb_setup_endpoint(struct usb_device *dev,
 		 */
 		cfg[0].flags.ext_buffer = 1;
 #endif
-		cfg[0].flags.short_xfer_ok = 1;
+		cfg[0].flags |= USBD_SHORT_XFER_OK;
 
 		bcopy(cfg, cfg + 1, sizeof(*cfg));
 
@@ -805,9 +805,9 @@ usb_setup_endpoint(struct usb_device *dev,
 		cfg[0].direction = addr & (UE_DIR_OUT | UE_DIR_IN);
 		cfg[0].callback = &usb_linux_non_isoc_callback;
 		cfg[0].bufsize = bufsize;
-		cfg[0].flags.ext_buffer = 1;	/* enable zero-copy */
-		cfg[0].flags.proxy_buffer = 1;
-		cfg[0].flags.short_xfer_ok = 1;
+		cfg[0].flags |= USBD_EXT_BUFFER;	/* enable zero-copy */
+		cfg[0].flags |= USBD_PROXY_BUFFER;
+		cfg[0].flags |= USBD_SHORT_XFER_OK;
 
 		if (usbd_transfer_setup(dev, &uhe->bsd_iface_index,
 		    uhe->bsd_xfer, cfg, 1, uhe, &Giant))
@@ -1338,7 +1338,7 @@ usb_linux_isoc_callback(struct usb_xfer *xfer, usb_error_t error)
 				} else
 					uipd->status = 0;
 				uipd->actual_length = xfer->frlengths[x];
-				if (!xfer->flags.ext_buffer) {
+				if ((xfer->flags & USBD_EXT_BUFFER) == 0) {
 					usbd_copy_out(xfer->frbuffers, offset,
 					    USB_ADD_BYTES(urb->transfer_buffer,
 					    uipd->offset), uipd->actual_length);
@@ -1399,7 +1399,7 @@ tr_setup:
 		urb->bsd_isread =
 		    (uhe->desc.bEndpointAddress & UE_DIR_IN) ? 1 : 0;
 
-		if (xfer->flags.ext_buffer) {
+		if ((xfer->flags & USBD_EXT_BUFFER) != 0) {
 			/* set virtual address to load */
 			usbd_xfer_set_frame_data(xfer, 0,
 			    urb->transfer_buffer, 0);
@@ -1412,7 +1412,7 @@ tr_setup:
 			for (x = 0; x < urb->number_of_packets; x++) {
 				uipd = urb->iso_frame_desc + x;
 				usbd_xfer_set_frame_len(xfer, x, uipd->length);
-				if (!xfer->flags.ext_buffer) {
+				if ((xfer->flags & USBD_EXT_BUFFER) == 0) {
 					usbd_copy_in(xfer->frbuffers, offset,
 					    USB_ADD_BYTES(urb->transfer_buffer,
 					    uipd->offset), uipd->length);
@@ -1435,7 +1435,7 @@ tr_setup:
 			}
 		}
 		usbd_xfer_set_priv(xfer, urb);
-		xfer->flags.force_short_xfer = 0;
+		xfer->flags &= ~USBD_FORCE_SHORT_XFER;
 		xfer->timeout = urb->timeout;
 		xfer->nframes = urb->number_of_packets;
 		usbd_transfer_submit(xfer);
@@ -1499,7 +1499,8 @@ usb_linux_non_isoc_callback(struct usb_xfer *xfer, usb_error_t error)
 
 			usbd_xfer_set_frame_len(xfer, 0, 0);
 		}
-		if (urb->bsd_isread && (!xfer->flags.ext_buffer)) {
+		if (urb->bsd_isread &&
+		    (xfer->flags & USBD_EXT_BUFFER) == 0) {
 			/* copy in data with regard to the URB */
 			usbd_copy_out(xfer->frbuffers + data_frame, 0,
 			    urb->bsd_data_ptr, xfer->frlengths[data_frame]);
@@ -1540,7 +1541,7 @@ tr_setup:
 		urb->bsd_urb_list.tqe_prev = NULL;
 
 		usbd_xfer_set_priv(xfer, urb);
-		xfer->flags.force_short_xfer = 0;
+		xfer->flags &= ~USBD_FORCE_SHORT_XFER;
 		xfer->timeout = urb->timeout;
 
 		if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
@@ -1548,7 +1549,7 @@ tr_setup:
 			 * USB control transfers need special handling.
 			 * First copy in the header, then copy in data!
 			 */
-			if (!xfer->flags.ext_buffer) {
+			if ((xfer->flags & USBD_EXT_BUFFER) == 0) {
 				usbd_copy_in(xfer->frbuffers, 0,
 				    urb->setup_packet, REQ_SIZE);
 				usbd_xfer_set_frame_len(xfer, 0, REQ_SIZE);
@@ -1583,10 +1584,10 @@ setup_bulk:
 		if ((max_bulk == urb->bsd_length_rem) &&
 		    (urb->transfer_flags & URB_ZERO_PACKET) &&
 		    (xfer->status & XFER_STATUS_CTRLXFER) == 0)
-			xfer->flags.force_short_xfer = 1;
+			xfer->flags |= USBD_FORCE_SHORT_XFER;
 		/* check if we need to copy in data */
 
-		if (xfer->flags.ext_buffer) {
+		if ((xfer->flags & USBD_EXT_BUFFER) != 0) {
 			/* set virtual address to load */
 			usbd_xfer_set_frame_data(xfer, data_frame,
 			    urb->bsd_data_ptr, max_bulk);

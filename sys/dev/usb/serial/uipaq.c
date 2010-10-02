@@ -121,7 +121,7 @@ static const struct usb_config uipaq_config_data[UIPAQ_N_TRANSFER] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_OUT,
 		.bufsize = UIPAQ_BUF_SIZE,
-		.flags = {.pipe_bof = 1,.force_short_xfer = 1,},
+		.flags = USBD_PIPE_BOF | USBD_FORCE_SHORT_XFER,
 		.callback = &uipaq_write_callback,
 	},
 
@@ -130,7 +130,7 @@ static const struct usb_config uipaq_config_data[UIPAQ_N_TRANSFER] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
 		.bufsize = UIPAQ_BUF_SIZE,
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
+		.flags = USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.callback = &uipaq_read_callback,
 	},
 };

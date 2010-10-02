@@ -898,7 +898,10 @@ uss820dci_setup_standard_chain(struct usb_xfer *xfer)
 
 		} else {
 			/* regular data transfer */
-			temp.short_pkt = (xfer->flags.force_short_xfer) ? 0 : 1;
+			if ((xfer->flags & USBD_FORCE_SHORT_XFER) != 0)
+				temp.short_pkt = 0;
+			else
+				temp.short_pkt = 1;
 		}
 
 		uss820dci_setup_standard_chain_sub(&temp);

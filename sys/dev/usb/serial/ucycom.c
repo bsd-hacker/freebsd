@@ -138,7 +138,7 @@ static const struct usb_config ucycom_config[UCYCOM_N_TRANSFER] = {
 		.type = UE_INTERRUPT,
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
+		.flags = USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.bufsize = UCYCOM_MAX_IOLEN,
 		.callback = &ucycom_intr_read_callback,
 	},

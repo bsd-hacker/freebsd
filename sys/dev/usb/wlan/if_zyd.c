@@ -257,7 +257,7 @@ static const struct usb_config zyd_config[ZYD_N_TRANSFER] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_OUT,
 		.bufsize = ZYD_MAX_TXBUFSZ,
-		.flags = {.pipe_bof = 1,.force_short_xfer = 1,},
+		.flags = USBD_PIPE_BOF | USBD_FORCE_SHORT_XFER,
 		.callback = zyd_bulk_write_callback,
 		.ep_index = 0,
 		.timeout = 10000,	/* 10 seconds */
@@ -267,7 +267,7 @@ static const struct usb_config zyd_config[ZYD_N_TRANSFER] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
 		.bufsize = ZYX_MAX_RXBUFSZ,
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
+		.flags = USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.callback = zyd_bulk_read_callback,
 		.ep_index = 0,
 	},
@@ -276,7 +276,7 @@ static const struct usb_config zyd_config[ZYD_N_TRANSFER] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_OUT,
 		.bufsize = sizeof(struct zyd_cmd),
-		.flags = {.pipe_bof = 1,.force_short_xfer = 1,},
+		.flags = USBD_PIPE_BOF | USBD_FORCE_SHORT_XFER,
 		.callback = zyd_intr_write_callback,
 		.timeout = 1000,	/* 1 second */
 		.ep_index = 1,
@@ -286,7 +286,7 @@ static const struct usb_config zyd_config[ZYD_N_TRANSFER] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
 		.bufsize = sizeof(struct zyd_cmd),
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
+		.flags = USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.callback = zyd_intr_read_callback,
 	},
 };

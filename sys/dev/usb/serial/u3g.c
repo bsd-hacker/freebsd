@@ -136,7 +136,7 @@ static const struct usb_config u3g_config[U3G_N_TRANSFER] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_OUT,
 		.bufsize = U3G_BSIZE,/* bytes */
-		.flags = {.pipe_bof = 1,.force_short_xfer = 1,},
+		.flags = USBD_PIPE_BOF | USBD_FORCE_SHORT_XFER,
 		.callback = &u3g_write_callback,
 	},
 
@@ -145,7 +145,7 @@ static const struct usb_config u3g_config[U3G_N_TRANSFER] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
 		.bufsize = U3G_BSIZE,/* bytes */
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
+		.flags = USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.callback = &u3g_read_callback,
 	},
 };

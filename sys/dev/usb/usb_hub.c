@@ -134,7 +134,7 @@ static const struct usb_config uhub_config[UHUB_N_TRANSFER] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_ANY,
 		.timeout = 0,
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
+		.flags = USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.bufsize = 0,	/* use wMaxPacketSize */
 		.callback = &uhub_intr_callback,
 		.interval = UHUB_INTR_INTERVAL,

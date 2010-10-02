@@ -240,7 +240,7 @@ static const struct usb_config aue_config[AUE_N_TRANSFER] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_OUT,
 		.bufsize = (MCLBYTES + 2),
-		.flags = {.pipe_bof = 1,.force_short_xfer = 1,},
+		.flags = USBD_PIPE_BOF | USBD_FORCE_SHORT_XFER,
 		.callback = aue_bulk_write_callback,
 		.timeout = 10000,	/* 10 seconds */
 	},
@@ -250,7 +250,7 @@ static const struct usb_config aue_config[AUE_N_TRANSFER] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
 		.bufsize = (MCLBYTES + 4 + ETHER_CRC_LEN),
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
+		.flags = USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.callback = aue_bulk_read_callback,
 	},
 
@@ -258,7 +258,7 @@ static const struct usb_config aue_config[AUE_N_TRANSFER] = {
 		.type = UE_INTERRUPT,
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
+		.flags = USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.bufsize = 0,	/* use wMaxPacketSize */
 		.callback = aue_intr_callback,
 	},

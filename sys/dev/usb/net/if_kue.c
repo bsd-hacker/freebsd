@@ -184,7 +184,7 @@ static const struct usb_config kue_config[KUE_N_TRANSFER] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_OUT,
 		.bufsize = (MCLBYTES + 2 + 64),
-		.flags = {.pipe_bof = 1,},
+		.flags = USBD_PIPE_BOF,
 		.callback = kue_bulk_write_callback,
 		.timeout = 10000,	/* 10 seconds */
 	},
@@ -194,7 +194,7 @@ static const struct usb_config kue_config[KUE_N_TRANSFER] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
 		.bufsize = (MCLBYTES + 2),
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
+		.flags = USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.callback = kue_bulk_read_callback,
 		.timeout = 0,	/* no timeout */
 	},

@@ -351,7 +351,7 @@ static const struct usb_config ulpt_config[ULPT_N_TRANSFER] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_OUT,
 		.bufsize = ULPT_BSIZE,
-		.flags = {.pipe_bof = 1,.proxy_buffer = 1},
+		.flags = USBD_PIPE_BOF | USBD_PROXY_BUFFER,
 		.callback = &ulpt_write_callback,
 	},
 
@@ -360,7 +360,7 @@ static const struct usb_config ulpt_config[ULPT_N_TRANSFER] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
 		.bufsize = ULPT_BSIZE,
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,.proxy_buffer = 1},
+		.flags = USBD_PIPE_BOF | USBD_SHORT_XFER_OK | USBD_PROXY_BUFFER,
 		.callback = &ulpt_read_callback,
 	},
 

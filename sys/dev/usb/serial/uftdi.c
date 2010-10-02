@@ -153,7 +153,7 @@ static const struct usb_config uftdi_config[UFTDI_N_TRANSFER] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_OUT,
 		.bufsize = UFTDI_OBUFSIZE,
-		.flags = {.pipe_bof = 1,},
+		.flags = USBD_PIPE_BOF,
 		.callback = &uftdi_write_callback,
 	},
 
@@ -162,7 +162,7 @@ static const struct usb_config uftdi_config[UFTDI_N_TRANSFER] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
 		.bufsize = 0,		/* use wMaxPacketSize */
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
+		.flags = USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.callback = &uftdi_read_callback,
 	},
 };

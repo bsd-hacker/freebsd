@@ -78,7 +78,7 @@ static const struct usb_config usb_control_ep_cfg[USB_CTRL_XFER_MAX] = {
 		.endpoint = 0x00,	/* Control endpoint */
 		.direction = UE_DIR_ANY,
 		.bufsize = USB_EP0_BUFSIZE,	/* bytes */
-		.flags = {.proxy_buffer = 1,},
+		.flags = USBD_PROXY_BUFFER,
 		.callback = &usb_request_callback,
 		.usb_mode = USB_MODE_DUAL,	/* both modes */
 	},
@@ -507,7 +507,7 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 	 * type of buffer:
 	 */
 
-	if (xfer->flags.proxy_buffer) {
+	if ((xfer->flags & USBD_PROXY_BUFFER) != 0) {
 		/* round bufsize up */
 		parm->bufsize += (xfer->max_frame_size - 1);
 
@@ -580,7 +580,7 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 	 * a local buffer:
 	 */
 
-	if (!xfer->flags.ext_buffer) {
+	if ((xfer->flags & USBD_EXT_BUFFER) == 0) {
 		/* align data */
 		parm->size[0] += ((-parm->size[0]) & (USB_HOST_ALIGN - 1));
 
@@ -824,7 +824,7 @@ usbd_transfer_setup(struct usb_device *udev,
 			    ifaces[setup->if_index], setup);
 
 			if ((ep == NULL) || (ep->methods == NULL)) {
-				if (setup->flags.no_pipe_ok)
+				if ((setup->flags & USBD_NO_PIPE_OK) != 0)
 					continue;
 				if ((setup->usb_mode != USB_MODE_DUAL) &&
 				    (setup->usb_mode != udev->flags.usb_mode))
@@ -1201,7 +1201,7 @@ usbd_setup_ctrl_transfer(struct usb_xfer *xfer)
 	usb_frlength_t len;
 
 	/* Check for control endpoint stall */
-	if (xfer->flags.stall_pipe &&
+	if ((xfer->flags & USBD_STALL_PIPE) != 0 &&
 	    (xfer->status & XFER_STATUS_CTRLACTIVE) != 0) {
 		/* the control transfer is no longer active */
 		xfer->status |= XFER_STATUS_CTRLSTALL;
@@ -1286,7 +1286,7 @@ usbd_setup_ctrl_transfer(struct usb_xfer *xfer)
 		goto error;
 	}
 	/* check if we are doing a short transfer */
-	if (xfer->flags.force_short_xfer)
+	if ((xfer->flags & USBD_FORCE_SHORT_XFER) != 0)
 		xfer->control_rem = 0;
 	else {
 		if ((len != xfer->max_data_length) &&
@@ -1301,7 +1301,7 @@ usbd_setup_ctrl_transfer(struct usb_xfer *xfer)
 
 	/* the status part is executed when "control_act" is 0 */
 	if ((xfer->control_rem > 0) ||
-	    (xfer->flags.manual_status)) {
+	    (xfer->flags & USBD_MANUSL_STATUS) != 0) {
 		/* don't execute the STATUS stage yet */
 		xfer->status |= XFER_STATUS_CTRLACTIVE;
 
@@ -1414,7 +1414,7 @@ usbd_transfer_submit(struct usb_xfer *xfer)
 
 	/* sanity check */
 	if (xfer->nframes == 0) {
-		if (xfer->flags.stall_pipe) {
+		if ((xfer->flags & USBD_STALL_PIPE) != 0) {
 			/*
 			 * Special case - want to stall without transferring
 			 * any data:
@@ -1463,10 +1463,10 @@ usbd_transfer_submit(struct usb_xfer *xfer)
 	 * in case of data read direction
 	 */
 	if (USB_GET_DATA_ISREAD(xfer)) {
-		if (xfer->flags.short_frames_ok) {
+		if ((xfer->flags & USBD_SHORT_FRAME_OK) != 0) {
 			xfer->status |= XFER_STATUS_SHORTXFER_OK;
 			xfer->status |= XFER_STATUS_SHORTFRAME_OK;
-		} else if (xfer->flags.short_xfer_ok) {
+		} else if ((xfer->flags & USBD_SHORT_XFER_OK) != 0) {
 			xfer->status |= XFER_STATUS_SHORTXFER_OK;
 
 			/* check for control transfer */
@@ -1843,8 +1843,8 @@ usbd_xfer_set_frame_offset(struct usb_xfer *xfer, usb_frlength_t offset,
     usb_frcount_t frindex)
 {
 
-	KASSERT(!xfer->flags.ext_buffer, ("Cannot offset data frame "
-	    "when the USB buffer is external\n"));
+	KASSERT(!(xfer->flags & USBD_EXT_BUFFER),
+	    ("Cannot offset data frame when the USB buffer is external\n"));
 	KASSERT(frindex < xfer->max_frame_count, ("frame index overflow"));
 
 	/* set virtual address to load */
@@ -2264,7 +2264,7 @@ usbd_xfer_set_stall(struct usb_xfer *xfer)
 
 	/* avoid any races by locking the USB mutex */
 	USB_BUS_LOCK(xfer->xroot->bus);
-	xfer->flags.stall_pipe = 1;
+	xfer->flags |= USBD_STALL_PIPE;
 	USB_BUS_UNLOCK(xfer->xroot->bus);
 }
 
@@ -2294,7 +2294,7 @@ usbd_transfer_clear_stall(struct usb_xfer *xfer)
 	/* avoid any races by locking the USB mutex */
 	USB_BUS_LOCK(xfer->xroot->bus);
 
-	xfer->flags.stall_pipe = 0;
+	xfer->flags &= ~USBD_STALL_PIPE;
 
 	USB_BUS_UNLOCK(xfer->xroot->bus);
 }
@@ -2324,12 +2324,12 @@ usbd_pipe_start(struct usb_xfer_queue *pq)
 	/*
 	 * Check if we are supposed to stall the endpoint:
 	 */
-	if (xfer->flags.stall_pipe) {
+	if ((xfer->flags & USBD_STALL_PIPE) != 0) {
 		struct usb_device *udev;
 		struct usb_xfer_root *info;
 
 		/* clear stall command */
-		xfer->flags.stall_pipe = 0;
+		xfer->flags &= ~USBD_STALL_PIPE;
 
 		/* get pointer to USB device */
 		info = xfer->xroot;
@@ -2550,7 +2550,7 @@ usbd_callback_wrapper_sub(struct usb_xfer *xfer)
 
 		/* check if we should block the execution queue */
 		if ((xfer->error != USB_ERR_CANCELLED) &&
-		    (xfer->flags.pipe_bof)) {
+		    (xfer->flags & USBD_PIPE_BOF) != 0) {
 			DPRINTFN(2, "xfer=%p: Block On Failure "
 			    "on endpoint=%p\n", xfer, xfer->endpoint);
 			goto done;
@@ -2563,7 +2563,7 @@ usbd_callback_wrapper_sub(struct usb_xfer *xfer)
 
 			if ((xfer->status & XFER_STATUS_SHORTXFER_OK) == 0) {
 				xfer->error = USB_ERR_SHORT_XFER;
-				if (xfer->flags.pipe_bof) {
+				if ((xfer->flags & USBD_PIPE_BOF) != 0) {
 					DPRINTFN(2,
 					    "xfer=%p: Block On Failure on "
 					    "Short Transfer on endpoint %p.\n",
@@ -3038,16 +3038,16 @@ usbd_xfer_set_flag(struct usb_xfer *xfer, int flag)
 
 	switch (flag) {
 		case USB_FORCE_SHORT_XFER:
-			xfer->flags.force_short_xfer = 1;
+			xfer->flags |= USBD_FORCE_SHORT_XFER;
 			break;
 		case USB_SHORT_XFER_OK:
-			xfer->flags.short_xfer_ok = 1;
+			xfer->flags |= USBD_SHORT_XFER_OK;
 			break;
 		case USB_MULTI_SHORT_OK:
-			xfer->flags.short_frames_ok = 1;
+			xfer->flags |= USBD_SHORT_FRAME_OK;
 			break;
 		case USB_MANUAL_STATUS:
-			xfer->flags.manual_status = 1;
+			xfer->flags |= USBD_MANUSL_STATUS;
 			break;
 	}
 }
@@ -3058,16 +3058,16 @@ usbd_xfer_clr_flag(struct usb_xfer *xfer, int flag)
 
 	switch (flag) {
 		case USB_FORCE_SHORT_XFER:
-			xfer->flags.force_short_xfer = 0;
+			xfer->flags &= ~USBD_FORCE_SHORT_XFER;
 			break;
 		case USB_SHORT_XFER_OK:
-			xfer->flags.short_xfer_ok = 0;
+			xfer->flags &= ~USBD_SHORT_XFER_OK;
 			break;
 		case USB_MULTI_SHORT_OK:
-			xfer->flags.short_frames_ok = 0;
+			xfer->flags &= ~USBD_SHORT_FRAME_OK;
 			break;
 		case USB_MANUAL_STATUS:
-			xfer->flags.manual_status = 0;
+			xfer->flags &= ~USBD_MANUSL_STATUS;
 			break;
 	}
 }

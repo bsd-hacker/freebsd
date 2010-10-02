@@ -145,7 +145,8 @@ static const struct usb_config urio_config[URIO_T_MAX] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_OUT,
 		.bufsize = URIO_BSIZE,
-		.flags = {.pipe_bof = 1,.force_short_xfer = 1,.proxy_buffer = 1,},
+		.flags = USBD_PIPE_BOF | USBD_FORCE_SHORT_XFER |
+		    USBD_PROXY_BUFFER,
 		.callback = &urio_write_callback,
 	},
 
@@ -154,7 +155,7 @@ static const struct usb_config urio_config[URIO_T_MAX] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
 		.bufsize = URIO_BSIZE,
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,.proxy_buffer = 1,},
+		.flags = USBD_PIPE_BOF | USBD_SHORT_XFER_OK | USBD_PROXY_BUFFER,
 		.callback = &urio_read_callback,
 	},
 

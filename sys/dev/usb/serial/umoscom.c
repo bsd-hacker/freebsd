@@ -216,7 +216,7 @@ static const struct usb_config umoscom_config_data[UMOSCOM_N_TRANSFER] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_OUT,
 		.bufsize = UMOSCOM_BUFSIZE,
-		.flags = {.pipe_bof = 1,.force_short_xfer = 1,},
+		.flags = USBD_PIPE_BOF | USBD_FORCE_SHORT_XFER,
 		.callback = &umoscom_write_callback,
 	},
 
@@ -225,7 +225,7 @@ static const struct usb_config umoscom_config_data[UMOSCOM_N_TRANSFER] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
 		.bufsize = UMOSCOM_BUFSIZE,
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
+		.flags = USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.callback = &umoscom_read_callback,
 	},
 
@@ -233,7 +233,7 @@ static const struct usb_config umoscom_config_data[UMOSCOM_N_TRANSFER] = {
 		.type = UE_INTERRUPT,
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
+		.flags = USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.bufsize = 0,	/* use wMaxPacketSize */
 		.callback = &umoscom_intr_callback,
 	},

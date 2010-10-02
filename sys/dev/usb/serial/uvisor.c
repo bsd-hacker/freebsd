@@ -208,7 +208,7 @@ static const struct usb_config uvisor_config[UVISOR_N_TRANSFER] = {
 		.direction = UE_DIR_OUT,
 		.bufsize = UVISOROBUFSIZE * UVISOROFRAMES,
 		.frames = UVISOROFRAMES,
-		.flags = {.pipe_bof = 1,.force_short_xfer = 1,},
+		.flags = USBD_PIPE_BOF | USBD_FORCE_SHORT_XFER,
 		.callback = &uvisor_write_callback,
 	},
 
@@ -217,7 +217,7 @@ static const struct usb_config uvisor_config[UVISOR_N_TRANSFER] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
 		.bufsize = UVISORIBUFSIZE,
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
+		.flags = USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.callback = &uvisor_read_callback,
 	},
 };

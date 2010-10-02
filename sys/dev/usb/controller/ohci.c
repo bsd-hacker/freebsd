@@ -1476,7 +1476,10 @@ ohci_setup_standard_chain(struct usb_xfer *xfer, ohci_ed_t **ed_last)
 
 		} else {
 			/* regular data transfer */
-			temp.shortpkt = (xfer->flags.force_short_xfer) ? 0 : 1;
+			if ((xfer->flags & USBD_FORCE_SHORT_XFER) != 0)
+				temp.shortpkt = 0;
+			else
+				temp.shortpkt = 1;
 		}
 
 		ohci_setup_standard_chain_sub(&temp);

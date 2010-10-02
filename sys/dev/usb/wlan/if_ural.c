@@ -362,7 +362,7 @@ static const struct usb_config ural_config[URAL_N_TRANSFER] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_OUT,
 		.bufsize = (RAL_FRAME_SIZE + RAL_TX_DESC_SIZE + 4),
-		.flags = {.pipe_bof = 1,.force_short_xfer = 1,},
+		.flags = USBD_PIPE_BOF | USBD_FORCE_SHORT_XFER,
 		.callback = ural_bulk_write_callback,
 		.timeout = 5000,	/* ms */
 	},
@@ -371,7 +371,7 @@ static const struct usb_config ural_config[URAL_N_TRANSFER] = {
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
 		.bufsize = (RAL_FRAME_SIZE + RAL_RX_DESC_SIZE),
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
+		.flags = USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.callback = ural_bulk_read_callback,
 	},
 };

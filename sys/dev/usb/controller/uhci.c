@@ -1691,7 +1691,10 @@ uhci_setup_standard_chain(struct usb_xfer *xfer)
 
 		} else {
 			/* regular data transfer */
-			temp.shortpkt = (xfer->flags.force_short_xfer) ? 0 : 1;
+			if ((xfer->flags & USBD_FORCE_SHORT_XFER) != 0)
+				temp.shortpkt = 0;
+			else
+				temp.shortpkt = 1;
 		}
 
 		/* set endpoint direction */

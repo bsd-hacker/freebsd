@@ -456,7 +456,7 @@ static const struct usb_config run_config[RUN_N_XFER] = {
 	.ep_index = 0,
 	.direction = UE_DIR_OUT,
 	.bufsize = RUN_MAX_TXSZ,
-	.flags = {.pipe_bof = 1,.force_short_xfer = 1,},
+	.flags = USBD_PIPE_BOF | USBD_FORCE_SHORT_XFER,
 	.callback = run_bulk_tx_callback0,
 	.timeout = 5000,	/* ms */
     },
@@ -466,7 +466,7 @@ static const struct usb_config run_config[RUN_N_XFER] = {
 	.direction = UE_DIR_OUT,
 	.ep_index = 1,
 	.bufsize = RUN_MAX_TXSZ,
-	.flags = {.pipe_bof = 1,.force_short_xfer = 1,},
+	.flags = USBD_PIPE_BOF | USBD_FORCE_SHORT_XFER,
 	.callback = run_bulk_tx_callback1,
 	.timeout = 5000,	/* ms */
     },
@@ -476,7 +476,7 @@ static const struct usb_config run_config[RUN_N_XFER] = {
 	.direction = UE_DIR_OUT,
 	.ep_index = 2,
 	.bufsize = RUN_MAX_TXSZ,
-	.flags = {.pipe_bof = 1,.force_short_xfer = 1,},
+	.flags = USBD_PIPE_BOF | USBD_FORCE_SHORT_XFER,
 	.callback = run_bulk_tx_callback2,
 	.timeout = 5000,	/* ms */
     },
@@ -486,7 +486,7 @@ static const struct usb_config run_config[RUN_N_XFER] = {
 	.direction = UE_DIR_OUT,
 	.ep_index = 3,
 	.bufsize = RUN_MAX_TXSZ,
-	.flags = {.pipe_bof = 1,.force_short_xfer = 1,},
+	.flags = USBD_PIPE_BOF | USBD_FORCE_SHORT_XFER,
 	.callback = run_bulk_tx_callback3,
 	.timeout = 5000,	/* ms */
     },
@@ -496,7 +496,7 @@ static const struct usb_config run_config[RUN_N_XFER] = {
 	.direction = UE_DIR_OUT,
 	.ep_index = 4,
 	.bufsize = RUN_MAX_TXSZ,
-	.flags = {.pipe_bof = 1,.force_short_xfer = 1,.no_pipe_ok = 1,},
+	.flags = USBD_PIPE_BOF | USBD_FORCE_SHORT_XFER | USBD_NO_PIPE_OK,
 	.callback = run_bulk_tx_callback4,
 	.timeout = 5000,	/* ms */
     },
@@ -506,7 +506,7 @@ static const struct usb_config run_config[RUN_N_XFER] = {
 	.direction = UE_DIR_OUT,
 	.ep_index = 5,
 	.bufsize = RUN_MAX_TXSZ,
-	.flags = {.pipe_bof = 1,.force_short_xfer = 1,.no_pipe_ok = 1,},
+	.flags = USBD_PIPE_BOF | USBD_FORCE_SHORT_XFER | USBD_NO_PIPE_OK,
 	.callback = run_bulk_tx_callback5,
 	.timeout = 5000,	/* ms */
     },
@@ -515,7 +515,7 @@ static const struct usb_config run_config[RUN_N_XFER] = {
 	.endpoint = UE_ADDR_ANY,
 	.direction = UE_DIR_IN,
 	.bufsize = RUN_MAX_RXSZ,
-	.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
+	.flags = USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 	.callback = run_bulk_rx_callback,
     }
 };

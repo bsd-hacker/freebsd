@@ -208,10 +208,7 @@ static const struct usb_config uath_usbconfig[UATH_N_XFERS] = {
 		.endpoint = 0x1,
 		.direction = UE_DIR_IN,
 		.bufsize = UATH_MAX_CMDSZ,
-		.flags = {
-			.pipe_bof = 1,
-			.short_xfer_ok = 1
-		},
+		.flags = USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.callback = uath_intr_rx_callback
 	},
 	[UATH_INTR_TX] = {
@@ -219,11 +216,8 @@ static const struct usb_config uath_usbconfig[UATH_N_XFERS] = {
 		.endpoint = 0x1,
 		.direction = UE_DIR_OUT,
 		.bufsize = UATH_MAX_CMDSZ,
-		.flags = {
-			.ext_buffer = 1,
-			.force_short_xfer = 1,
-			.pipe_bof = 1,
-		},
+		.flags = USBD_EXT_BUFFER | USBD_FORCE_SHORT_XFER |
+		    USBD_PIPE_BOF,
 		.callback = uath_intr_tx_callback,
 		.timeout = UATH_CMD_TIMEOUT
 	},
@@ -232,11 +226,7 @@ static const struct usb_config uath_usbconfig[UATH_N_XFERS] = {
 		.endpoint = 0x2,
 		.direction = UE_DIR_IN,
 		.bufsize = MCLBYTES,
-		.flags = {
-			.ext_buffer = 1,
-			.pipe_bof = 1,
-			.short_xfer_ok = 1
-		},
+		.flags = USBD_EXT_BUFFER | USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.callback = uath_bulk_rx_callback
 	},
 	[UATH_BULK_TX] = {
@@ -244,11 +234,8 @@ static const struct usb_config uath_usbconfig[UATH_N_XFERS] = {
 		.endpoint = 0x2,
 		.direction = UE_DIR_OUT,
 		.bufsize = UATH_MAX_TXBUFSZ,
-		.flags = {
-			.ext_buffer = 1,
-			.force_short_xfer = 1,
-			.pipe_bof = 1
-		},
+		.flags = USBD_EXT_BUFFER | USBD_FORCE_SHORT_XFER |
+		    USBD_PIPE_BOF,
 		.callback = uath_bulk_tx_callback,
 		.timeout = UATH_DATA_TIMEOUT
 	}

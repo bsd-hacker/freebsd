@@ -131,7 +131,8 @@ static const struct usb_config cdce_config[CDCE_N_TRANSFER] = {
 		.if_index = 0,
 		.frames = CDCE_FRAMES_MAX,
 		.bufsize = (CDCE_FRAMES_MAX * MCLBYTES),
-		.flags = {.pipe_bof = 1,.short_frames_ok = 1,.short_xfer_ok = 1,.ext_buffer = 1,},
+		.flags = USBD_PIPE_BOF | USBD_SHORT_FRAME_OK |
+		    USBD_SHORT_XFER_OK | USBD_EXT_BUFFER,
 		.callback = cdce_bulk_read_callback,
 		.timeout = 0,	/* no timeout */
 		.usb_mode = USB_MODE_DUAL,	/* both modes */
@@ -144,7 +145,8 @@ static const struct usb_config cdce_config[CDCE_N_TRANSFER] = {
 		.if_index = 0,
 		.frames = CDCE_FRAMES_MAX,
 		.bufsize = (CDCE_FRAMES_MAX * MCLBYTES),
-		.flags = {.pipe_bof = 1,.force_short_xfer = 1,.ext_buffer = 1,},
+		.flags = USBD_PIPE_BOF | USBD_FORCE_SHORT_XFER |
+		    USBD_EXT_BUFFER,
 		.callback = cdce_bulk_write_callback,
 		.timeout = 10000,	/* 10 seconds */
 		.usb_mode = USB_MODE_DUAL,	/* both modes */
@@ -156,7 +158,8 @@ static const struct usb_config cdce_config[CDCE_N_TRANSFER] = {
 		.direction = UE_DIR_RX,
 		.if_index = 1,
 		.bufsize = CDCE_IND_SIZE_MAX,
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,.no_pipe_ok = 1,},
+		.flags = USBD_PIPE_BOF | USBD_SHORT_XFER_OK |
+		    USBD_NO_PIPE_OK,
 		.callback = cdce_intr_read_callback,
 		.timeout = 0,
 		.usb_mode = USB_MODE_HOST,
@@ -168,7 +171,8 @@ static const struct usb_config cdce_config[CDCE_N_TRANSFER] = {
 		.direction = UE_DIR_TX,
 		.if_index = 1,
 		.bufsize = CDCE_IND_SIZE_MAX,
-		.flags = {.pipe_bof = 1,.force_short_xfer = 1,.no_pipe_ok = 1,},
+		.flags = USBD_PIPE_BOF | USBD_FORCE_SHORT_XFER |
+		    USBD_NO_PIPE_OK,
 		.callback = cdce_intr_write_callback,
 		.timeout = 10000,	/* 10 seconds */
 		.usb_mode = USB_MODE_DEVICE,
@@ -184,7 +188,8 @@ static const struct usb_config cdce_ncm_config[CDCE_N_TRANSFER] = {
 		.if_index = 0,
 		.frames = CDCE_NCM_RX_FRAMES_MAX,
 		.bufsize = (CDCE_NCM_RX_FRAMES_MAX * CDCE_NCM_RX_MAXLEN),
-		.flags = {.pipe_bof = 1,.short_frames_ok = 1,.short_xfer_ok = 1,},
+		.flags = USBD_PIPE_BOF | USBD_SHORT_FRAME_OK |
+		    USBD_SHORT_XFER_OK,
 		.callback = cdce_ncm_bulk_read_callback,
 		.timeout = 0,	/* no timeout */
 		.usb_mode = USB_MODE_DUAL,	/* both modes */
@@ -197,7 +202,7 @@ static const struct usb_config cdce_ncm_config[CDCE_N_TRANSFER] = {
 		.if_index = 0,
 		.frames = CDCE_NCM_TX_FRAMES_MAX,
 		.bufsize = (CDCE_NCM_TX_FRAMES_MAX * CDCE_NCM_TX_MAXLEN),
-		.flags = {.pipe_bof = 1,.force_short_xfer = 1,},
+		.flags = USBD_PIPE_BOF | USBD_FORCE_SHORT_XFER,
 		.callback = cdce_ncm_bulk_write_callback,
 		.timeout = 10000,	/* 10 seconds */
 		.usb_mode = USB_MODE_DUAL,	/* both modes */
@@ -209,7 +214,8 @@ static const struct usb_config cdce_ncm_config[CDCE_N_TRANSFER] = {
 		.direction = UE_DIR_RX,
 		.if_index = 1,
 		.bufsize = CDCE_IND_SIZE_MAX,
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,.no_pipe_ok = 1,},
+		.flags = USBD_PIPE_BOF | USBD_SHORT_XFER_OK |
+		    USBD_NO_PIPE_OK,
 		.callback = cdce_intr_read_callback,
 		.timeout = 0,
 		.usb_mode = USB_MODE_HOST,
@@ -221,7 +227,8 @@ static const struct usb_config cdce_ncm_config[CDCE_N_TRANSFER] = {
 		.direction = UE_DIR_TX,
 		.if_index = 1,
 		.bufsize = CDCE_IND_SIZE_MAX,
-		.flags = {.pipe_bof = 1,.force_short_xfer = 1,.no_pipe_ok = 1,},
+		.flags = USBD_PIPE_BOF | USBD_FORCE_SHORT_XFER |
+		    USBD_NO_PIPE_OK,
 		.callback = cdce_intr_write_callback,
 		.timeout = 10000,	/* 10 seconds */
 		.usb_mode = USB_MODE_DEVICE,

@@ -521,11 +521,7 @@ static const struct usb_config urtw_8187b_usbconfig[URTW_8187B_N_XFERS] = {
 		.endpoint = 0x83,
 		.direction = UE_DIR_IN,
 		.bufsize = MCLBYTES,
-		.flags = {
-			.ext_buffer = 1,
-			.pipe_bof = 1,
-			.short_xfer_ok = 1
-		},
+		.flags = USBD_EXT_BUFFER | USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.callback = urtw_bulk_rx_callback
 	},
 	[URTW_8187B_BULK_TX_STATUS] = {
@@ -533,11 +529,7 @@ static const struct usb_config urtw_8187b_usbconfig[URTW_8187B_N_XFERS] = {
 		.endpoint = 0x89,
 		.direction = UE_DIR_IN,
 		.bufsize = MCLBYTES,
-		.flags = {
-			.ext_buffer = 1,
-			.pipe_bof = 1,
-			.short_xfer_ok = 1
-		},
+		.flags = USBD_EXT_BUFFER | USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.callback = urtw_bulk_tx_status_callback
 	},
 	[URTW_8187B_BULK_TX_BE] = {
@@ -545,11 +537,8 @@ static const struct usb_config urtw_8187b_usbconfig[URTW_8187B_N_XFERS] = {
 		.endpoint = URTW_8187B_TXPIPE_BE,
 		.direction = UE_DIR_OUT,
 		.bufsize = URTW_TX_MAXSIZE,
-		.flags = {
-			.ext_buffer = 1,
-			.force_short_xfer = 1,
-			.pipe_bof = 1,
-		},
+		.flags = USBD_EXT_BUFFER | USBD_FORCE_SHORT_XFER |
+		    USBD_PIPE_BOF,
 		.callback = urtw_bulk_tx_callback,
 		.timeout = URTW_DATA_TIMEOUT
 	},
@@ -558,11 +547,8 @@ static const struct usb_config urtw_8187b_usbconfig[URTW_8187B_N_XFERS] = {
 		.endpoint = URTW_8187B_TXPIPE_BK,
 		.direction = UE_DIR_OUT,
 		.bufsize = URTW_TX_MAXSIZE,
-		.flags = {
-			.ext_buffer = 1,
-			.force_short_xfer = 1,
-			.pipe_bof = 1,
-		},
+		.flags = USBD_EXT_BUFFER | USBD_FORCE_SHORT_XFER |
+		    USBD_PIPE_BOF,
 		.callback = urtw_bulk_tx_callback,
 		.timeout = URTW_DATA_TIMEOUT
 	},
@@ -571,11 +557,8 @@ static const struct usb_config urtw_8187b_usbconfig[URTW_8187B_N_XFERS] = {
 		.endpoint = URTW_8187B_TXPIPE_VI,
 		.direction = UE_DIR_OUT,
 		.bufsize = URTW_TX_MAXSIZE,
-		.flags = {
-			.ext_buffer = 1,
-			.force_short_xfer = 1,
-			.pipe_bof = 1,
-		},
+		.flags = USBD_EXT_BUFFER | USBD_FORCE_SHORT_XFER |
+		    USBD_PIPE_BOF,
 		.callback = urtw_bulk_tx_callback,
 		.timeout = URTW_DATA_TIMEOUT
 	},
@@ -584,11 +567,8 @@ static const struct usb_config urtw_8187b_usbconfig[URTW_8187B_N_XFERS] = {
 		.endpoint = URTW_8187B_TXPIPE_VO,
 		.direction = UE_DIR_OUT,
 		.bufsize = URTW_TX_MAXSIZE,
-		.flags = {
-			.ext_buffer = 1,
-			.force_short_xfer = 1,
-			.pipe_bof = 1,
-		},
+		.flags = USBD_EXT_BUFFER | USBD_FORCE_SHORT_XFER |
+		    USBD_PIPE_BOF,
 		.callback = urtw_bulk_tx_callback,
 		.timeout = URTW_DATA_TIMEOUT
 	},
@@ -597,11 +577,8 @@ static const struct usb_config urtw_8187b_usbconfig[URTW_8187B_N_XFERS] = {
 		.endpoint = 0xc,
 		.direction = UE_DIR_OUT,
 		.bufsize = URTW_TX_MAXSIZE,
-		.flags = {
-			.ext_buffer = 1,
-			.force_short_xfer = 1,
-			.pipe_bof = 1,
-		},
+		.flags = USBD_EXT_BUFFER | USBD_FORCE_SHORT_XFER |
+		    USBD_PIPE_BOF,
 		.callback = urtw_bulk_tx_callback,
 		.timeout = URTW_DATA_TIMEOUT
 	}
@@ -613,11 +590,7 @@ static const struct usb_config urtw_8187l_usbconfig[URTW_8187L_N_XFERS] = {
 		.endpoint = 0x81,
 		.direction = UE_DIR_IN,
 		.bufsize = MCLBYTES,
-		.flags = {
-			.ext_buffer = 1,
-			.pipe_bof = 1,
-			.short_xfer_ok = 1
-		},
+		.flags = USBD_EXT_BUFFER | USBD_PIPE_BOF | USBD_SHORT_XFER_OK,
 		.callback = urtw_bulk_rx_callback
 	},
 	[URTW_8187L_BULK_TX_LOW] = {
@@ -625,11 +598,8 @@ static const struct usb_config urtw_8187l_usbconfig[URTW_8187L_N_XFERS] = {
 		.endpoint = 0x2,
 		.direction = UE_DIR_OUT,
 		.bufsize = URTW_TX_MAXSIZE,
-		.flags = {
-			.ext_buffer = 1,
-			.force_short_xfer = 1,
-			.pipe_bof = 1,
-		},
+		.flags = USBD_EXT_BUFFER | USBD_FORCE_SHORT_XFER |
+		    USBD_PIPE_BOF,
 		.callback = urtw_bulk_tx_callback,
 		.timeout = URTW_DATA_TIMEOUT
 	},
@@ -638,11 +608,8 @@ static const struct usb_config urtw_8187l_usbconfig[URTW_8187L_N_XFERS] = {
 		.endpoint = 0x3,
 		.direction = UE_DIR_OUT,
 		.bufsize = URTW_TX_MAXSIZE,
-		.flags = {
-			.ext_buffer = 1,
-			.force_short_xfer = 1,
-			.pipe_bof = 1,
-		},
+		.flags = USBD_EXT_BUFFER | USBD_FORCE_SHORT_XFER |
+		    USBD_PIPE_BOF,
 		.callback = urtw_bulk_tx_callback,
 		.timeout = URTW_DATA_TIMEOUT
 	},

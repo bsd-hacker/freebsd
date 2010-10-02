@@ -503,14 +503,14 @@ usbd_do_request_flags(struct usb_device *udev, struct mtx *mtx,
 	USB_XFER_LOCK(xfer);
 
 	if (flags & USB_DELAY_STATUS_STAGE)
-		xfer->flags.manual_status = 1;
+		xfer->flags |= USBD_MANUSL_STATUS;
 	else
-		xfer->flags.manual_status = 0;
+		xfer->flags &= ~USBD_MANUSL_STATUS;
 
 	if (flags & USB_SHORT_XFER_OK)
-		xfer->flags.short_xfer_ok = 1;
+		xfer->flags |= USBD_SHORT_XFER_OK;
 	else
-		xfer->flags.short_xfer_ok = 0;
+		xfer->flags &= ~USBD_SHORT_XFER_OK;
 
 	xfer->timeout = timeout;
 
@@ -568,7 +568,7 @@ usbd_do_request_flags(struct usb_device *udev, struct mtx *mtx,
 			usbd_xfer_set_frames(xfer, 2);
 		} else {
 			if (usbd_xfer_frame_len(xfer, 0) == 0) {
-				if (xfer->flags.manual_status) {
+				if ((xfer->flags & USBD_MANUSL_STATUS) != 0) {
 #ifdef USB_REQ_DEBUG
 					if (dbg.ss_fail) {
 						err = USB_ERR_INVAL;
@@ -582,7 +582,7 @@ usbd_do_request_flags(struct usb_device *udev, struct mtx *mtx,
 						start_ticks = ticks;
 					}
 #endif
-					xfer->flags.manual_status = 0;
+					xfer->flags &= ~USBD_MANUSL_STATUS;
 				} else
 					break;
 			}
