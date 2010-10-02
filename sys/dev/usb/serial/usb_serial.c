@@ -184,11 +184,8 @@ ucom_units_alloc(uint32_t sub_units, uint32_t *p_root_unit)
 	mtx_lock(&ucom_bitmap_mtx);
 
 	for (n = 0; n < max; n += sub_units) {
-
 		/* check for free consecutive bits */
-
 		for (o = 0; o < sub_units; o++) {
-
 			x = n + o;
 
 			if (ucom_bitmap[x / 8] & (1 << (x % 8))) {
@@ -197,9 +194,7 @@ ucom_units_alloc(uint32_t sub_units, uint32_t *p_root_unit)
 		}
 
 		/* allocate */
-
 		for (o = 0; o < sub_units; o++) {
-
 			x = n + o;
 
 			ucom_bitmap[x / 8] |= (1 << (x % 8));
@@ -297,7 +292,6 @@ ucom_detach(struct ucom_softc *sc, uint32_t sub_units)
 
 	for (n = 0; n != sub_units; n++, sc++) {
 		if (sc->sc_flag & UCOM_FLAG_ATTACHED) {
-
 			ucom_detach_tty(sc);
 
 			ucom_units_free(sc->sc_unit, 1);
@@ -355,7 +349,6 @@ ucom_attach_tty(struct ucom_softc *sc, uint32_t sub_units)
 	/* Check if this device should be a console */
 	if ((ucom_cons_softc == NULL) && 
 	    (sc->sc_unit == ucom_cons_unit)) {
-
 		struct termios t;
 
 		ucom_cons_softc = sc;
@@ -394,7 +387,6 @@ ucom_detach_tty(struct ucom_softc *sc)
 	}
 
 	/* the config thread has been stopped when we get here */
-
 	UCOM_LOCK(sc);
 	sc->sc_flag |= UCOM_FLAG_GONE;
 	sc->sc_flag &= ~(UCOM_FLAG_HL_READY | UCOM_FLAG_LL_READY);
@@ -487,11 +479,8 @@ ucom_cfg_open(struct ucom_softc *sc)
 	DPRINTF("\n");
 
 	if (sc->sc_flag & UCOM_FLAG_LL_READY) {
-
 		/* already opened */
-
 	} else {
-
 		sc->sc_flag |= UCOM_FLAG_LL_READY;
 
 		if (sc->sc_callback->ucom_cfg_open) {
@@ -652,7 +641,6 @@ ucom_modem(struct tty *tp, int sigon, int sigoff)
 		return (0);
 	}
 	if ((sigon == 0) && (sigoff == 0)) {
-
 		if (sc->sc_mcr & SER_DTR) {
 			sigon |= SER_DTR;
 		}
@@ -762,6 +750,7 @@ static void
 ucom_line_state(struct ucom_softc *sc,
     uint8_t set_bits, uint8_t clear_bits)
 {
+
 	mtx_assert(sc->sc_mtx, MA_OWNED);
 
 	if (!(sc->sc_flag & UCOM_FLAG_HL_READY)) {
@@ -782,6 +771,7 @@ ucom_line_state(struct ucom_softc *sc,
 static void
 ucom_ring(struct ucom_softc *sc, uint8_t onoff)
 {
+
 	DPRINTF("onoff = %d\n", onoff);
 
 	if (onoff)
@@ -793,6 +783,7 @@ ucom_ring(struct ucom_softc *sc, uint8_t onoff)
 static void
 ucom_break(struct ucom_softc *sc, uint8_t onoff)
 {
+
 	DPRINTF("onoff = %d\n", onoff);
 
 	if (onoff)
@@ -804,6 +795,7 @@ ucom_break(struct ucom_softc *sc, uint8_t onoff)
 static void
 ucom_dtr(struct ucom_softc *sc, uint8_t onoff)
 {
+
 	DPRINTF("onoff = %d\n", onoff);
 
 	if (onoff)
@@ -815,6 +807,7 @@ ucom_dtr(struct ucom_softc *sc, uint8_t onoff)
 static void
 ucom_rts(struct ucom_softc *sc, uint8_t onoff)
 {
+
 	DPRINTF("onoff = %d\n", onoff);
 
 	if (onoff)
@@ -842,7 +835,6 @@ ucom_cfg_status_change(struct ucom_softc *sc)
 		return;
 	}
 	/* get status */
-
 	new_msr = 0;
 	new_lsr = 0;
 
@@ -858,7 +850,6 @@ ucom_cfg_status_change(struct ucom_softc *sc)
 	sc->sc_lsr = new_lsr;
 
 	if (onoff) {
-
 		onoff = (sc->sc_msr & SER_DCD) ? 1 : 0;
 
 		DPRINTF("DCD changed to %d\n", onoff);
@@ -913,9 +904,7 @@ ucom_param(struct tty *tp, struct termios *t)
 	error = 0;
 
 	if (!(sc->sc_flag & UCOM_FLAG_HL_READY)) {
-
 		/* XXX the TTY layer should call "open()" first! */
-
 		error = ucom_open(tp);
 		if (error) {
 			goto done;
@@ -1005,12 +994,10 @@ ucom_get_data(struct ucom_softc *sc, struct usb_page_cache *pc,
 		unsigned int temp;
 
 		/* get total TX length */
-
 		temp = ucom_cons_tx_high - ucom_cons_tx_low;
 		temp %= UCOM_CONS_BUFSIZE;
 
 		/* limit TX length */
-
 		if (temp > (UCOM_CONS_BUFSIZE - ucom_cons_tx_low))
 			temp = (UCOM_CONS_BUFSIZE - ucom_cons_tx_low);
 
@@ -1018,16 +1005,13 @@ ucom_get_data(struct ucom_softc *sc, struct usb_page_cache *pc,
 			temp = len;
 
 		/* copy in data */
-
 		usbd_copy_in(pc, offset, ucom_cons_tx_buf + ucom_cons_tx_low, temp);
 
 		/* update counters */
-
 		ucom_cons_tx_low += temp;
 		ucom_cons_tx_low %= UCOM_CONS_BUFSIZE;
 
 		/* store actual length */
-
 		*actlen = temp;
 
 		return (temp ? 1 : 0);
@@ -1041,7 +1025,6 @@ ucom_get_data(struct ucom_softc *sc, struct usb_page_cache *pc,
 	offset_orig = offset;
 
 	while (len != 0) {
-
 		usbd_get_page(pc, offset, &res);
 
 		if (res.length > len) {
@@ -1084,12 +1067,10 @@ ucom_put_data(struct ucom_softc *sc, struct usb_page_cache *pc,
 		unsigned int temp;
 
 		/* get maximum RX length */
-
 		temp = (UCOM_CONS_BUFSIZE - 1) - ucom_cons_rx_high + ucom_cons_rx_low;
 		temp %= UCOM_CONS_BUFSIZE;
 
 		/* limit RX length */
-
 		if (temp > (UCOM_CONS_BUFSIZE - ucom_cons_rx_high))
 			temp = (UCOM_CONS_BUFSIZE - ucom_cons_rx_high);
 
@@ -1097,11 +1078,9 @@ ucom_put_data(struct ucom_softc *sc, struct usb_page_cache *pc,
 			temp = len;
 
 		/* copy out data */
-
 		usbd_copy_out(pc, offset, ucom_cons_rx_buf + ucom_cons_rx_high, temp);
 
 		/* update counters */
-
 		ucom_cons_rx_high += temp;
 		ucom_cons_rx_high %= UCOM_CONS_BUFSIZE;
 
@@ -1115,9 +1094,7 @@ ucom_put_data(struct ucom_softc *sc, struct usb_page_cache *pc,
 		return;			/* no data */
 
 	/* set a flag to prevent recursation ? */
-
 	while (len > 0) {
-
 		usbd_get_page(pc, offset, &res);
 
 		if (res.length > len) {
@@ -1127,12 +1104,10 @@ ucom_put_data(struct ucom_softc *sc, struct usb_page_cache *pc,
 		offset += res.length;
 
 		/* pass characters to tty layer */
-
 		buf = res.buffer;
 		cnt = res.length;
 
 		/* first check if we can pass the buffer directly */
-
 		if (ttydisc_can_bypass(tp)) {
 			if (ttydisc_rint_bypass(tp, buf, cnt) != cnt) {
 				DPRINTF("tp=%p, data lost\n", tp);
@@ -1140,11 +1115,9 @@ ucom_put_data(struct ucom_softc *sc, struct usb_page_cache *pc,
 			continue;
 		}
 		/* need to loop */
-
 		for (cnt = 0; cnt != res.length; cnt++) {
 			if (ttydisc_rint(tp, buf[cnt], 0) == -1) {
 				/* XXX what should we do? */
-
 				DPRINTF("tp=%p, lost %d "
 				    "chars\n", tp, res.length - cnt);
 				break;
@@ -1239,7 +1212,6 @@ ucom_cnputc(struct consdev *cd, int c)
 	UCOM_LOCK(sc);
 
 	/* compute maximum TX length */
-
 	temp = (UCOM_CONS_BUFSIZE - 1) - ucom_cons_tx_high + ucom_cons_tx_low;
 	temp %= UCOM_CONS_BUFSIZE;
 

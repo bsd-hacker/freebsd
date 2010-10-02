@@ -1239,6 +1239,7 @@ run_eeprom_read_2(struct run_softc *sc, uint16_t addr, uint16_t *val)
 static __inline int
 run_srom_read(struct run_softc *sc, uint16_t addr, uint16_t *val)
 {
+
 	/* either eFUSE ROM or EEPROM */
 	return sc->sc_srom_read(sc, addr, val);
 }
@@ -1414,6 +1415,7 @@ b4inc(uint32_t b32, int8_t delta)
 static const char *
 run_get_rf(int rev)
 {
+
 	switch (rev) {
 	case RT2860_RF_2820:	return "RT2820";
 	case RT2860_RF_2850:	return "RT2850";
@@ -1939,6 +1941,7 @@ run_wme_update(struct ieee80211com *ic)
 static void
 run_key_update_begin(struct ieee80211vap *vap)
 {
+
 	/*
 	 * To avoid out-of-order events, both run_key_set() and
 	 * _delete() are deferred and handled by run_cmdq_cb().
@@ -1949,6 +1952,7 @@ run_key_update_begin(struct ieee80211vap *vap)
 static void
 run_key_update_end(struct ieee80211vap *vap)
 {
+
 	/* null */
 }
 
@@ -2359,7 +2363,6 @@ run_newassoc(struct ieee80211_node *ni, int isnew)
 
 	/* only interested in true associations */
 	if (isnew && ni->ni_associd != 0) {
-
 		/*
 		 * This function could is called though timeout function.
 		 * Need to defer.
@@ -2617,7 +2620,6 @@ tr_setup:
 		return;
 
 	/* inputting all the frames must be last */
-
 	RUN_UNLOCK(sc);
 
 	m->m_pkthdr.len = m->m_len = xferlen;
@@ -2670,6 +2672,7 @@ static void
 run_tx_free(struct run_endpoint_queue *pq,
     struct run_tx_data *data, int txerr)
 {
+
 	if (data->m != NULL) {
 		if (data->m->m_flags & M_TXCB)
 			ieee80211_process_callback(data->ni, data->m,
@@ -4182,6 +4185,7 @@ run_updateslot(struct ifnet *ifp)
 static void
 run_update_mcast(struct ifnet *ifp)
 {
+
 	/* h/w filter supports getting everything or nothing */
 	ifp->if_flags |= IFF_ALLMULTI;
 }

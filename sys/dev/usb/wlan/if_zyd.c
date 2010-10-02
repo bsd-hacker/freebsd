@@ -1372,6 +1372,7 @@ fail:
 static int
 zyd_al2210_switch_radio(struct zyd_rf *rf, int on)
 {
+
 	/* vendor driver does nothing for this RF chip */
 
 	return (0);
@@ -2326,6 +2327,7 @@ tr_setup:
 static uint8_t
 zyd_plcp_signal(struct zyd_softc *sc, int rate)
 {
+
 	switch (rate) {
 	/* OFDM rates (cf IEEE Std 802.11a-1999, pp. 14 Table 80) */
 	case 12:

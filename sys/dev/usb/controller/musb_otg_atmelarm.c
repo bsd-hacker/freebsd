@@ -96,6 +96,7 @@ musbotg_clocks_off(void *arg)
 static int
 musbotg_probe(device_t dev)
 {
+
 	device_set_desc(dev, "MUSB OTG integrated USB controller");
 	return (0);
 }

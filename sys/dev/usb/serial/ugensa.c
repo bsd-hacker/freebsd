@@ -104,7 +104,6 @@ static void	ugensa_stop_write(struct ucom_softc *);
 static void	ugensa_poll(struct ucom_softc *ucom);
 
 static const struct usb_config ugensa_xfer_config[UGENSA_N_TRANSFER] = {
-
 	[UGENSA_BULK_DT_WR] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,

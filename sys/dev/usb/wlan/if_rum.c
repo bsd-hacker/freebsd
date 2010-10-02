@@ -963,6 +963,7 @@ tr_setup:
 static uint8_t
 rum_plcp_signal(int rate)
 {
+
 	switch (rate) {
 	/* OFDM rates (cf IEEE Std 802.11a-1999, pp. 14 Table 80) */
 	case 12:	return 0xb;
@@ -1825,6 +1826,7 @@ rum_update_mcast(struct ifnet *ifp)
 static const char *
 rum_get_rf(int rev)
 {
+
 	switch (rev) {
 	case RT2573_RF_2527:	return "RT2527 (MIMO XR)";
 	case RT2573_RF_2528:	return "RT2528";

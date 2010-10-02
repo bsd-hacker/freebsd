@@ -254,7 +254,6 @@ ulpt_read_callback(struct usb_xfer *xfer, usb_error_t error)
 	case USB_ST_TRANSFERRED:
 
 		if (actlen == 0) {
-
 			if (sc->sc_zlps == 4) {
 				/* enable BULK throttle */
 				usbd_xfer_set_interval(xfer, 500); /* ms */
@@ -263,7 +262,6 @@ ulpt_read_callback(struct usb_xfer *xfer, usb_error_t error)
 			}
 		} else {
 			/* disable BULK throttle */
-
 			usbd_xfer_set_interval(xfer, 0);
 			sc->sc_zlps = 0;
 		}
@@ -416,11 +414,8 @@ ulpt_open(struct usb_fifo *fifo, int fflags)
 	struct ulpt_softc *sc = usb_fifo_softc(fifo);
 
 	/* we assume that open is a serial process */
-
 	if (sc->sc_fflags == 0) {
-
 		/* reset USB paralell port */
-
 		ulpt_reset(sc);
 	}
 	return (unlpt_open(fifo, fflags));
@@ -524,7 +519,6 @@ ulpt_attach(device_t dev)
 	usb_callout_init_mtx(&sc->sc_watchdog, &sc->sc_mtx, 0);
 
 	/* search through all the descriptors looking for bidir mode */
-
 	id = usbd_get_interface_descriptor(uaa->iface);
 	alt_index = 0 - 1;
 	while (1) {
@@ -555,7 +549,6 @@ found:
 	    "config number: %d\n", alt_index);
 
 	if (alt_index) {
-
 		error = usbd_set_alt_interface_index
 		    (uaa->device, iface_index, alt_index);
 
@@ -627,7 +620,6 @@ found:
 		goto detach;
 	}
 	/* start reading of status */
-
 	mtx_lock(&sc->sc_mtx);
 	ulpt_watchdog(sc);
 	mtx_unlock(&sc->sc_mtx);
@@ -670,7 +662,6 @@ static uint8_t
 ieee1284_compare(const char *a, const char *b)
 {
 	while (1) {
-
 		if (*b == 0) {
 			break;
 		}

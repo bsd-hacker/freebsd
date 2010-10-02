@@ -169,7 +169,6 @@ static struct bbb_transfer *bbb_attach(struct usb_device *, uint8_t);
 static void	bbb_detach(struct bbb_transfer *);
 
 static const struct usb_config bbb_config[ST_MAX] = {
-
 	[ST_COMMAND] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
@@ -241,6 +240,7 @@ bbb_done(struct bbb_transfer *sc, int error)
 static void
 bbb_transfer_start(struct bbb_transfer *sc, uint8_t xfer_index)
 {
+
 	sc->state = xfer_index;
 	usbd_transfer_start(sc->xfer[xfer_index]);
 }
@@ -349,6 +349,7 @@ bbb_data_read_callback(struct usb_xfer *xfer, usb_error_t error)
 static void
 bbb_data_rd_cs_callback(struct usb_xfer *xfer, usb_error_t error)
 {
+
 	bbb_data_clear_stall_callback(xfer, ST_STATUS,
 	    ST_DATA_RD);
 }
@@ -418,7 +419,6 @@ bbb_status_callback(struct usb_xfer *xfer, usb_error_t error)
 	case USB_ST_TRANSFERRED:
 
 		/* very simple status check */
-
 		if (actlen < sizeof(sc->csw)) {
 			bbb_done(sc, USB_ERR_SHORT_XFER);
 		} else if (sc->csw.bCSWStatus == CSWSTATUS_GOOD) {
@@ -532,6 +532,7 @@ bbb_attach(struct usb_device *udev, uint8_t iface_index)
 static void
 bbb_detach(struct bbb_transfer *sc)
 {
+
 	usbd_transfer_unsetup(sc->xfer, ST_MAX);
 	mtx_destroy(&sc->mtx);
 	cv_destroy(&sc->cv);

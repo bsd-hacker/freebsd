@@ -69,6 +69,7 @@ static device_detach_t ohci_s3c24x0_detach;
 static int
 ohci_s3c24x0_probe(device_t dev)
 {
+
 	device_set_desc(dev, "S3C24x0 integrated OHCI controller");
 	return (BUS_PROBE_DEFAULT);
 }

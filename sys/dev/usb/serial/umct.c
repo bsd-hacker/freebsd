@@ -146,7 +146,6 @@ static void	umct_stop_write(struct ucom_softc *);
 static void	umct_poll(struct ucom_softc *ucom);
 
 static const struct usb_config umct_config[UMCT_N_TRANSFER] = {
-
 	[UMCT_BULK_DT_WR] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
@@ -272,9 +271,7 @@ umct_attach(device_t dev)
 	 */
 	maxp = usbd_xfer_max_framelen(sc->sc_xfer[UMCT_BULK_DT_RD]);
 	if (maxp == 0x2) {
-
 		/* guessed wrong - switch around endpoints */
-
 		struct usb_xfer *temp = sc->sc_xfer[UMCT_INTR_DT_RD];
 
 		sc->sc_xfer[UMCT_INTR_DT_RD] = sc->sc_xfer[UMCT_BULK_DT_RD];
@@ -580,7 +577,6 @@ tr_setup:
 		pc = usbd_xfer_get_frame(xfer, 0);
 		if (ucom_get_data(&sc->sc_ucom, pc, 0,
 		    sc->sc_obufsize, &actlen)) {
-
 			usbd_xfer_set_frame_len(xfer, 0, actlen);
 			usbd_transfer_submit(xfer);
 		}

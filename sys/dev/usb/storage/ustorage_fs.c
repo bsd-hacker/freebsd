@@ -161,7 +161,6 @@ typedef struct {
 #define	USTORAGE_FS_BBB_CSW_SIZE	13
 
 struct ustorage_fs_lun {
-
 	uint8_t	*memory_image;
 
 	uint32_t num_sectors;
@@ -176,7 +175,6 @@ struct ustorage_fs_lun {
 };
 
 struct ustorage_fs_softc {
-
 	ustorage_fs_bbb_cbw_t sc_cbw;	/* Command Wrapper Block */
 	ustorage_fs_bbb_csw_t sc_csw;	/* Command Status Block */
 
@@ -270,7 +268,6 @@ MODULE_VERSION(ustorage_fs, 0);
 MODULE_DEPEND(ustorage_fs, usb, 1, 1, 1);
 
 static struct usb_config ustorage_fs_bbb_config[USTORAGE_FS_T_BBB_MAX] = {
-
 	[USTORAGE_FS_T_BBB_COMMAND] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
@@ -390,7 +387,6 @@ ustorage_fs_attach(device_t dev)
 	    NULL, (MTX_DEF | MTX_RECURSE));
 
 	/* get interface index */
-
 	id = usbd_get_interface_descriptor(uaa->iface);
 	if (id == NULL) {
 		device_printf(dev, "failed to get "
@@ -408,7 +404,6 @@ ustorage_fs_attach(device_t dev)
 		goto detach;
 	}
 	/* start Mass Storage State Machine */
-
 	mtx_lock(&sc->sc_mtx);
 	ustorage_fs_transfer_start(sc, USTORAGE_FS_T_BBB_COMMAND);
 	mtx_unlock(&sc->sc_mtx);
@@ -426,7 +421,6 @@ ustorage_fs_detach(device_t dev)
 	struct ustorage_fs_softc *sc = device_get_softc(dev);
 
 	/* teardown our statemachine */
-
 	usbd_transfer_unsetup(sc->sc_xfer, USTORAGE_FS_T_BBB_MAX);
 
 	mtx_destroy(&sc->sc_mtx);
@@ -437,6 +431,7 @@ ustorage_fs_detach(device_t dev)
 static int
 ustorage_fs_suspend(device_t dev)
 {
+
 	device_printf(dev, "suspending\n");
 	return (0);			/* success */
 }
@@ -444,6 +439,7 @@ ustorage_fs_suspend(device_t dev)
 static int
 ustorage_fs_resume(device_t dev)
 {
+
 	device_printf(dev, "resuming\n");
 	return (0);			/* success */
 }
@@ -455,6 +451,7 @@ ustorage_fs_resume(device_t dev)
 static void
 ustorage_fs_transfer_start(struct ustorage_fs_softc *sc, uint8_t xfer_index)
 {
+
 	if (sc->sc_xfer[xfer_index]) {
 		sc->sc_last_xfer_index = xfer_index;
 		usbd_transfer_start(sc->sc_xfer[xfer_index]);
@@ -655,7 +652,6 @@ ustorage_fs_t_bbb_data_dump_callback(struct usb_xfer *xfer, usb_error_t error)
 			break;
 		}
 		/* Fallthrough */
-
 	case USB_ST_SETUP:
 tr_setup:
 		if (max_bulk > sc->sc_transfer.data_rem) {
@@ -708,7 +704,6 @@ ustorage_fs_t_bbb_data_read_callback(struct usb_xfer *xfer, usb_error_t error)
 			break;
 		}
 		/* Fallthrough */
-
 	case USB_ST_SETUP:
 tr_setup:
 		if (max_bulk > sc->sc_transfer.data_rem) {
@@ -1168,7 +1163,6 @@ ustorage_fs_mode_sense(struct ustorage_fs_softc *sc)
 	}
 
 	/* No block descriptors */
-
 	/*
 	 * The mode pages, in numerical order.
 	 */
@@ -1179,7 +1173,6 @@ ustorage_fs_mode_sense(struct ustorage_fs_softc *sc)
 		/* Page length */
 		memset(buf + 2, 0, 10);
 		/* None of the fields are changeable */
-
 		if (!changeable_values) {
 			buf[2] = 0x04;
 			/* Write cache enable, */
@@ -1474,8 +1467,8 @@ ustorage_fs_write(struct ustorage_fs_softc *sc)
 static uint8_t
 ustorage_fs_min_len(struct ustorage_fs_softc *sc, uint32_t len, uint32_t mask)
 {
-	if (len != sc->sc_transfer.data_rem) {
 
+	if (len != sc->sc_transfer.data_rem) {
 		if (sc->sc_transfer.cbw_dir == DIR_READ) {
 			/*
 			 * there must be something wrong about this SCSI
@@ -1485,14 +1478,12 @@ ustorage_fs_min_len(struct ustorage_fs_softc *sc, uint32_t len, uint32_t mask)
 			return (1);
 		}
 		/* compute the minimum length */
-
 		if (sc->sc_transfer.data_rem > len) {
 			/* data ends prematurely */
 			sc->sc_transfer.data_rem = len;
 			sc->sc_transfer.data_short = 1;
 		}
 		/* check length alignment */
-
 		if (sc->sc_transfer.data_rem & ~mask) {
 			/* data ends prematurely */
 			sc->sc_transfer.data_rem &= mask;
@@ -1532,7 +1523,6 @@ ustorage_fs_check_cmd(struct ustorage_fs_softc *sc, uint8_t min_cmd_size,
 
 	/* Check if LUN is correct */
 	if (lun != sc->sc_transfer.lun) {
-
 	}
 	/* Check the LUN */
 	if (sc->sc_transfer.lun <= sc->sc_last_lun) {
@@ -1924,7 +1914,6 @@ ustorage_fs_do_cmd(struct ustorage_fs_softc *sc)
 	case SC_RESERVE:
 	case SC_SEND_DIAGNOSTIC:
 		/* Fallthrough */
-
 	default:
 		error = ustorage_fs_min_len(sc, 0, 0 - 1);
 		if (error) {

@@ -626,7 +626,6 @@ usb_pc_load_mem(struct usb_page_cache *pc, usb_size_t size, uint8_t sync)
 			if (err || uptag->dma_error)
 				return (1);
 		} else {
-
 			/*
 			 * We have to unload the previous loaded DMA
 			 * pages before trying to load a new one!

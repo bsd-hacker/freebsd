@@ -162,7 +162,6 @@ static void	rue_stop(struct rue_softc *);
 static void	rue_watchdog(void *);
 
 static const struct usb_config rue_config[RUE_N_TRANSFER] = {
-
 	[RUE_BULK_DT_WR] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
@@ -407,6 +406,7 @@ done:
 static void
 rue_miibus_statchg(device_t dev)
 {
+
 	/*
 	 * When the code below is enabled the card starts doing weird
 	 * things after link going from UP to DOWN and back UP.
@@ -676,7 +676,6 @@ rue_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 
 		if (ifp && (ifp->if_drv_flags & IFF_DRV_RUNNING) &&
 		    actlen >= sizeof(pkt)) {
-
 			pc = usbd_xfer_get_frame(xfer, 0);
 			usbd_copy_out(pc, 0, &pkt, sizeof(pkt));
 

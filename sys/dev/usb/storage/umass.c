@@ -191,7 +191,6 @@ TUNABLE_INT("hw.usb.umass.debug", &umass_debug);
 #define	UMASS_MAX_CMDLEN MAX(12, CAM_MAX_CDBLEN)	/* bytes */
 
 /* USB transfer definitions */
-
 #define	UMASS_T_BBB_RESET1      0	/* Bulk-Only */
 #define	UMASS_T_BBB_RESET2      1
 #define	UMASS_T_BBB_RESET3      2
@@ -218,7 +217,6 @@ TUNABLE_INT("hw.usb.umass.debug", &umass_debug);
 #define	UMASS_T_MAX MAX(UMASS_T_CBI_MAX, UMASS_T_BBB_MAX)
 
 /* Generic definitions */
-
 /* Direction for transfer */
 #define	DIR_NONE	0
 #define	DIR_IN		1
@@ -236,12 +234,10 @@ TUNABLE_INT("hw.usb.umass.debug", &umass_debug);
 #define	UMASS_TIMEOUT			5000	/* ms */
 
 /* CAM specific definitions */
-
 #define	UMASS_SCSIID_MAX	1	/* maximum number of drives expected */
 #define	UMASS_SCSIID_HOST	UMASS_SCSIID_MAX
 
 /* Bulk-Only features */
-
 #define	UR_BBB_RESET		0xff	/* Bulk-Only reset */
 #define	UR_BBB_GET_MAX_LUN	0xfe	/* Get maximum lun */
 
@@ -279,7 +275,6 @@ typedef struct {
 #define	UMASS_BBB_CSW_SIZE	13
 
 /* CBI features */
-
 #define	UR_CBI_ADSC	0x00
 
 typedef union {
@@ -374,7 +369,6 @@ typedef uint8_t (umass_transform_t)(struct umass_softc *sc, uint8_t *cmd_ptr,
 #define	NO_SYNCHRONIZE_CACHE	0x4000
 
 struct umass_softc {
-
 	struct scsi_sense cam_scsi_sense;
 	struct scsi_test_unit_ready cam_scsi_test_unit_ready;
 	struct mtx sc_mtx;
@@ -497,7 +491,6 @@ static void	umass_dump_buffer(struct umass_softc *, uint8_t *, uint32_t,
 #endif
 
 static struct usb_config umass_bbb_config[UMASS_T_BBB_MAX] = {
-
 	[UMASS_T_BBB_RESET1] = {
 		.type = UE_CONTROL,
 		.endpoint = 0x00,	/* Control pipe */
@@ -587,7 +580,6 @@ static struct usb_config umass_bbb_config[UMASS_T_BBB_MAX] = {
 };
 
 static struct usb_config umass_cbi_config[UMASS_T_CBI_MAX] = {
-
 	[UMASS_T_CBI_RESET1] = {
 		.type = UE_CONTROL,
 		.endpoint = 0x00,	/* Control pipe */
@@ -784,7 +776,6 @@ umass_probe_proto(device_t dev, struct usb_attach_arg *uaa)
 	memset(&ret, 0, sizeof(ret));
 
 	/* Search for protocol enforcement */
-
 	if (usb_test_quirk(uaa, UQ_MSC_FORCE_WIRE_BBB)) {
 		proto &= ~UMASS_PROTO_WIRE;
 		proto |= UMASS_PROTO_BBB;
@@ -811,7 +802,6 @@ umass_probe_proto(device_t dev, struct usb_attach_arg *uaa)
 	}
 
 	/* Check if the protocol is invalid */
-
 	if ((proto & UMASS_PROTO_COMMAND) == 0) {
 		ret.error = ENXIO;
 		goto done;
@@ -823,7 +813,6 @@ umass_probe_proto(device_t dev, struct usb_attach_arg *uaa)
 	}
 
 	/* Search for quirks */
-
 	if (usb_test_quirk(uaa, UQ_MSC_NO_TEST_UNIT_READY))
 		quirks |= NO_TEST_UNIT_READY;
 	if (usb_test_quirk(uaa, UQ_MSC_NO_RS_CLEAR_UA))
@@ -907,7 +896,6 @@ umass_attach(device_t dev)
 	    NULL, MTX_DEF | MTX_RECURSE);
 
 	/* get interface index */
-
 	id = usbd_get_interface_descriptor(uaa->iface);
 	if (id == NULL) {
 		device_printf(dev, "failed to get "
@@ -969,9 +957,7 @@ umass_attach(device_t dev)
 		}
 	}
 	/* allocate all required USB transfers */
-
 	if (sc->sc_proto & UMASS_PROTO_BBB) {
-
 		err = usbd_transfer_setup(uaa->device,
 		    &uaa->info.bIfaceIndex, sc->sc_xfer, umass_bbb_config,
 		    UMASS_T_BBB_MAX, sc, &sc->sc_mtx);
@@ -980,7 +966,6 @@ umass_attach(device_t dev)
 		sc->sc_last_xfer_index = UMASS_T_BBB_COMMAND;
 
 	} else if (sc->sc_proto & (UMASS_PROTO_CBI | UMASS_PROTO_CBI_I)) {
-
 		err = usbd_transfer_setup(uaa->device,
 		    &uaa->info.bIfaceIndex, sc->sc_xfer, umass_cbi_config,
 		    UMASS_T_CBI_MAX, sc, &sc->sc_mtx);
@@ -1005,12 +990,10 @@ umass_attach(device_t dev)
 	    &umass_no_transform;
 
 	/* from here onwards the device can be used. */
-
 	if (sc->sc_quirks & SHUTTLE_INIT) {
 		umass_init_shuttle(sc);
 	}
 	/* get the maximum LUN supported by the device */
-
 	if (((sc->sc_proto & UMASS_PROTO_WIRE) == UMASS_PROTO_BBB) &&
 	    !(sc->sc_quirks & NO_GETMAXLUN))
 		sc->sc_maxlun = umass_bbb_get_max_lun(sc);
@@ -1052,7 +1035,6 @@ umass_detach(device_t dev)
 	DPRINTF(sc, UDMASS_USB, "\n");
 
 	/* teardown our statemachine */
-
 	usbd_transfer_unsetup(sc->sc_xfer, UMASS_T_MAX);
 
 #if (__FreeBSD_version >= 700037)
@@ -1098,6 +1080,7 @@ umass_init_shuttle(struct umass_softc *sc)
 static void
 umass_transfer_start(struct umass_softc *sc, uint8_t xfer_index)
 {
+
 	DPRINTF(sc, UDMASS_GEN, "transfer index = "
 	    "%d\n", xfer_index);
 
@@ -1112,6 +1095,7 @@ umass_transfer_start(struct umass_softc *sc, uint8_t xfer_index)
 static void
 umass_reset(struct umass_softc *sc)
 {
+
 	DPRINTF(sc, UDMASS_GEN, "resetting device\n");
 
 	/*
@@ -1145,7 +1129,6 @@ umass_tr_error(struct usb_xfer *xfer, usb_error_t error)
 	struct umass_softc *sc = usbd_xfer_softc(xfer);
 
 	if (error != USB_ERR_CANCELLED) {
-
 		DPRINTF(sc, UDMASS_GEN, "transfer error, %s -> "
 		    "reset\n", usbd_errstr(error));
 	}
@@ -1267,7 +1250,6 @@ umass_t_bbb_command_callback(struct usb_xfer *xfer, usb_error_t error)
 		sc->sc_status_try = 0;
 
 		if (ccb) {
-
 			/*
 		         * the initial value is not important,
 		         * as long as the values are unique:
@@ -1481,7 +1463,6 @@ umass_t_bbb_status_callback(struct usb_xfer *xfer, usb_error_t error)
 		sc->sc_status_try = 1;
 
 		/* Zero missing parts of the CSW: */
-
 		if (actlen < sizeof(sc->csw)) {
 			bzero(&sc->csw, sizeof(sc->csw));
 		}
@@ -1503,7 +1484,6 @@ umass_t_bbb_status_callback(struct usb_xfer *xfer, usb_error_t error)
 		}
 		/* translate weird command-status signatures: */
 		if (sc->sc_quirks & WRONG_CSWSIG) {
-
 			uint32_t temp = UGETDW(sc->csw.dCSWSignature);
 
 			if ((temp == CSWSIGNATURE_OLYMPUS_C1) ||
@@ -1810,7 +1790,6 @@ umass_t_cbi_command_callback(struct usb_xfer *xfer, usb_error_t error)
 	case USB_ST_SETUP:
 
 		if (ccb) {
-
 			/*
 		         * do a CBI transfer with cmd_len bytes from
 		         * cmd_data, possibly a data phase of data_len
@@ -2012,9 +1991,7 @@ umass_t_cbi_status_callback(struct usb_xfer *xfer, usb_error_t error)
 		    sc->sc_transfer.actlen);
 
 		/* dissect the information in the buffer */
-
 		if (sc->sc_proto & UMASS_PROTO_UFI) {
-
 			/*
 			 * Section 3.4.3.1.3 specifies that the UFI command
 			 * protocol returns an ASC and ASCQ in the interrupt
@@ -2039,14 +2016,11 @@ umass_t_cbi_status_callback(struct usb_xfer *xfer, usb_error_t error)
 			break;
 
 		} else {
-
 			/* Command Interrupt Data Block */
-
 			DPRINTF(sc, UDMASS_CBI, "type=0x%02x, value=0x%02x\n",
 			    sc->sbl.common.type, sc->sbl.common.value);
 
 			if (sc->sbl.common.type == IDB_TYPE_CCI) {
-
 				status = (sc->sbl.common.value & IDB_VALUE_STATUS_MASK);
 
 				status = ((status == IDB_VALUE_PASS) ? STATUS_CMD_OK :
@@ -2066,7 +2040,6 @@ umass_t_cbi_status_callback(struct usb_xfer *xfer, usb_error_t error)
 		}
 
 		/* fallthrough */
-
 	case USB_ST_SETUP:
 tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
@@ -2300,7 +2273,6 @@ umass_cam_action(struct cam_sim *sim, union ccb *ccb)
 			 * "sc->sc_transfer.cmd_data"
 			 */
 			if (umass_std_transform(sc, ccb, cmd, ccb->csio.cdb_len)) {
-
 				if (sc->sc_transfer.cmd_data[0] == INQUIRY) {
 					const char *pserial;
 
@@ -2570,7 +2542,6 @@ umass_cam_cb(struct umass_softc *sc, union ccb *ccb, uint32_t residue,
 	case STATUS_CMD_FAILED:
 
 		/* fetch sense data */
-
 		/* the rest of the command was filled in at attach */
 		sc->cam_scsi_sense.length = ccb->csio.sense_len;
 
@@ -2579,7 +2550,6 @@ umass_cam_cb(struct umass_softc *sc, union ccb *ccb, uint32_t residue,
 
 		if (umass_std_transform(sc, ccb, &sc->cam_scsi_sense.opcode,
 		    sizeof(sc->cam_scsi_sense))) {
-
 			if ((sc->sc_quirks & FORCE_SHORT_INQUIRY) &&
 			    (sc->sc_transfer.cmd_data[0] == INQUIRY)) {
 				ccb->csio.sense_len = SHORT_INQUIRY_LENGTH;
@@ -2675,7 +2645,6 @@ umass_cam_sense_cb(struct umass_softc *sc, union ccb *ccb, uint32_t residue,
 			    "TEST_UNIT_READY\n");
 
 			/* the rest of the command was filled in at attach */
-
 			if (umass_std_transform(sc, ccb,
 			    &sc->cam_scsi_test_unit_ready.opcode,
 			    sizeof(sc->cam_scsi_test_unit_ready))) {
@@ -2709,6 +2678,7 @@ static void
 umass_cam_quirk_cb(struct umass_softc *sc, union ccb *ccb, uint32_t residue,
     uint8_t status)
 {
+
 	DPRINTF(sc, UDMASS_SCSI, "Test unit ready "
 	    "returned status %d\n", status);
 

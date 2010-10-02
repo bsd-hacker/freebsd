@@ -91,7 +91,6 @@ SYSCTL_INT(_hw_usb_musbotg, OID_AUTO, debug, CTLFLAG_RW,
 #endif
 
 /* prototypes */
-
 struct usb_bus_methods musbotg_bus_methods;
 struct usb_pipe_methods musbotg_device_bulk_methods;
 struct usb_pipe_methods musbotg_device_ctrl_methods;
@@ -114,7 +113,6 @@ static void	musbotg_root_intr(struct musbotg_softc *);
  * Here is a configuration that the chip supports.
  */
 static const struct usb_hw_ep_profile musbotg_ep_profile[1] = {
-
 	[0] = {
 		.max_in_frame_size = 64,/* fixed */
 		.max_out_frame_size = 64,	/* fixed */
@@ -147,7 +145,6 @@ musbotg_clocks_on(struct musbotg_softc *sc)
 {
 	if (sc->sc_flags.clocks_off &&
 	    sc->sc_flags.port_powered) {
-
 		DPRINTFN(4, "\n");
 
 		if (sc->sc_clocks_on) {
@@ -163,11 +160,9 @@ static void
 musbotg_clocks_off(struct musbotg_softc *sc)
 {
 	if (!sc->sc_flags.clocks_off) {
-
 		DPRINTFN(4, "\n");
 
 		/* XXX disable Transceiver */
-
 		if (sc->sc_clocks_off) {
 			(sc->sc_clocks_off) (sc->sc_clocks_arg);
 		}
@@ -192,8 +187,8 @@ musbotg_pull_common(struct musbotg_softc *sc, uint8_t on)
 static void
 musbotg_pull_up(struct musbotg_softc *sc)
 {
-	/* pullup D+, if possible */
 
+	/* pullup D+, if possible */
 	if (!sc->sc_flags.d_pulled_up &&
 	    sc->sc_flags.port_powered) {
 		sc->sc_flags.d_pulled_up = 1;
@@ -204,8 +199,8 @@ musbotg_pull_up(struct musbotg_softc *sc)
 static void
 musbotg_pull_down(struct musbotg_softc *sc)
 {
-	/* pulldown D+, if possible */
 
+	/* pulldown D+, if possible */
 	if (sc->sc_flags.d_pulled_up) {
 		sc->sc_flags.d_pulled_up = 0;
 		musbotg_pull_common(sc, 0);
@@ -237,6 +232,7 @@ musbotg_wakeup_peer(struct musbotg_softc *sc)
 static void
 musbotg_set_address(struct musbotg_softc *sc, uint8_t addr)
 {
+
 	DPRINTFN(4, "addr=%d\n", addr);
 	addr &= 0x7F;
 	MUSB2_WRITE_1(sc, MUSB2_REG_FADDR, addr);
@@ -351,7 +347,6 @@ not_complete:
 }
 
 /* Control endpoint only data handling functions (RX/TX/SYNC) */
-
 static uint8_t
 musbotg_setup_data_rx(struct musbotg_td *td)
 {
@@ -430,7 +425,6 @@ musbotg_setup_data_rx(struct musbotg_td *td)
 		}
 		/* check for unaligned memory address */
 		if (USB_P2U(buf_res.buffer) & 3) {
-
 			temp = count & ~3;
 
 			if (temp) {
@@ -456,7 +450,6 @@ musbotg_setup_data_rx(struct musbotg_td *td)
 		}
 		/* check if we can optimise */
 		if (buf_res.length >= 4) {
-
 			/* receive data 4 bytes at a time */
 			bus_space_read_multi_4(sc->sc_io_tag, sc->sc_io_hdl,
 			    MUSB2_REG_EPFIFO(0), buf_res.buffer,
@@ -548,7 +541,6 @@ musbotg_setup_data_tx(struct musbotg_td *td)
 		}
 		/* check for unaligned memory address */
 		if (USB_P2U(buf_res.buffer) & 3) {
-
 			usbd_copy_out(td->pc, td->offset,
 			    sc->sc_bounce_buf, count);
 
@@ -574,7 +566,6 @@ musbotg_setup_data_tx(struct musbotg_td *td)
 		}
 		/* check if we can optimise */
 		if (buf_res.length >= 4) {
-
 			/* transmit data 4 bytes at a time */
 			bus_space_write_multi_4(sc->sc_io_tag, sc->sc_io_hdl,
 			    MUSB2_REG_EPFIFO(0), buf_res.buffer,
@@ -718,7 +709,6 @@ repeat:
 		}
 		/* check for unaligned memory address */
 		if (USB_P2U(buf_res.buffer) & 3) {
-
 			temp = count & ~3;
 
 			if (temp) {
@@ -744,7 +734,6 @@ repeat:
 		}
 		/* check if we can optimise */
 		if (buf_res.length >= 4) {
-
 			/* receive data 4 bytes at a time */
 			bus_space_read_multi_4(sc->sc_io_tag, sc->sc_io_hdl,
 			    MUSB2_REG_EPFIFO(td->ep_no), buf_res.buffer,
@@ -796,7 +785,6 @@ musbotg_data_tx(struct musbotg_td *td)
 	uint8_t to;
 
 	to = 8;				/* don't loop forever! */
-
 	/* get pointer to softc */
 	sc = MUSBOTG_PC2SC(td->pc);
 
@@ -836,7 +824,6 @@ repeat:
 		}
 		/* check for unaligned memory address */
 		if (USB_P2U(buf_res.buffer) & 3) {
-
 			usbd_copy_out(td->pc, td->offset,
 			    sc->sc_bounce_buf, count);
 
@@ -862,7 +849,6 @@ repeat:
 		}
 		/* check if we can optimise */
 		if (buf_res.length >= 4) {
-
 			/* transmit data 4 bytes at a time */
 			bus_space_write_multi_4(sc->sc_io_tag, sc->sc_io_hdl,
 			    MUSB2_REG_EPFIFO(td->ep_no), buf_res.buffer,
@@ -945,7 +931,6 @@ done:
 	sc = MUSBOTG_BUS2SC(xfer->xroot->bus);
 
 	/* compute all actual lengths */
-
 	musbotg_standard_done(xfer);
 
 	return (0);			/* complete */
@@ -968,6 +953,7 @@ repeat:
 void
 musbotg_vbus_interrupt(struct musbotg_softc *sc, uint8_t is_on)
 {
+
 	DPRINTFN(4, "vbus = %u\n", is_on);
 
 	USB_BUS_LOCK(&sc->sc_bus);
@@ -1015,14 +1001,11 @@ repeat:
 	tx_status = MUSB2_READ_2(sc, MUSB2_REG_INTTX);
 
 	/* check for any bus state change interrupts */
-
 	if (usb_status & (MUSB2_MASK_IRESET |
 	    MUSB2_MASK_IRESUME | MUSB2_MASK_ISUSP)) {
-
 		DPRINTFN(4, "real bus interrupt 0x%08x\n", usb_status);
 
 		if (usb_status & MUSB2_MASK_IRESET) {
-
 			/* set correct state */
 			sc->sc_flags.status_bus_reset = 1;
 			sc->sc_flags.status_suspend = 0;
@@ -1084,13 +1067,11 @@ repeat:
 		musbotg_root_intr(sc);
 	}
 	/* check for any endpoint interrupts */
-
 	if (rx_status || tx_status) {
 		DPRINTFN(4, "real endpoint interrupt "
 		    "rx=0x%04x, tx=0x%04x\n", rx_status, tx_status);
 	}
 	/* poll one time regardless of FIFO status */
-
 	musbotg_interrupt_poll(sc);
 
 	if (--to)
@@ -1142,7 +1123,6 @@ musbotg_setup_standard_chain(struct usb_xfer *xfer)
 	xfer->td_transfer_cache = td;
 
 	/* setup temp */
-
 	temp.pc = NULL;
 	temp.td = NULL;
 	temp.td_next = xfer->td_start[0];
@@ -1155,10 +1135,8 @@ musbotg_setup_standard_chain(struct usb_xfer *xfer)
 	ep_no = (xfer->endpointno & UE_ADDR);
 
 	/* check if we should prepend a setup message */
-
 	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
 		if ((xfer->status & XFER_STATUS_CTRLHDR) != 0) {
-
 			temp.func = &musbotg_setup_rx;
 			temp.len = xfer->frlengths[0];
 			temp.pc = xfer->frbuffers + 0;
@@ -1188,9 +1166,7 @@ musbotg_setup_standard_chain(struct usb_xfer *xfer)
 		temp.pc = xfer->frbuffers + x;
 	}
 	while (x != xfer->nframes) {
-
 		/* DATA0 / DATA1 message */
-
 		temp.len = xfer->frlengths[x];
 
 		x++;
@@ -1206,15 +1182,11 @@ musbotg_setup_standard_chain(struct usb_xfer *xfer)
 			}
 		}
 		if (temp.len == 0) {
-
 			/* make sure that we send an USB packet */
-
 			temp.short_pkt = 0;
 
 		} else {
-
 			/* regular data transfer */
-
 			temp.short_pkt = (xfer->flags.force_short_xfer) ? 0 : 1;
 		}
 
@@ -1230,7 +1202,6 @@ musbotg_setup_standard_chain(struct usb_xfer *xfer)
 
 	/* check for control transfer */
 	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
-
 		/* always setup a valid "pc" pointer for status and sync */
 		temp.pc = xfer->frbuffers + 0;
 		temp.len = 0;
@@ -1308,11 +1279,11 @@ musbotg_ep_int_set(struct usb_xfer *xfer, uint8_t on)
 static void
 musbotg_start_standard_chain(struct usb_xfer *xfer)
 {
+
 	DPRINTFN(8, "\n");
 
 	/* poll one time */
 	if (musbotg_xfer_do_fifo(xfer)) {
-
 		musbotg_ep_int_set(xfer, 1);
 
 		DPRINTFN(14, "enabled interrupts on endpoint\n");
@@ -1331,6 +1302,7 @@ musbotg_start_standard_chain(struct usb_xfer *xfer)
 static void
 musbotg_root_intr(struct musbotg_softc *sc)
 {
+
 	DPRINTFN(8, "\n");
 
 	USB_BUS_LOCK_ASSERT(&sc->sc_bus, MA_OWNED);
@@ -1399,7 +1371,6 @@ musbotg_standard_done_sub(struct usb_xfer *xfer)
 	} while (0);
 
 	/* update transfer cache */
-
 	xfer->td_transfer_cache = td;
 
 	return (error ?
@@ -1415,13 +1386,10 @@ musbotg_standard_done(struct usb_xfer *xfer)
 	    xfer, xfer->endpoint);
 
 	/* reset scanner */
-
 	xfer->td_transfer_cache = xfer->td_transfer_first;
 
 	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
-
 		if ((xfer->status & XFER_STATUS_CTRLHDR) != 0) {
-
 			err = musbotg_standard_done_sub(xfer);
 		}
 		xfer->aframes = 1;
@@ -1431,7 +1399,6 @@ musbotg_standard_done(struct usb_xfer *xfer)
 		}
 	}
 	while (xfer->aframes != xfer->nframes) {
-
 		err = musbotg_standard_done_sub(xfer);
 		xfer->aframes++;
 
@@ -1442,7 +1409,6 @@ musbotg_standard_done(struct usb_xfer *xfer)
 
 	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0 &&
 	    (xfer->status & XFER_STATUS_CTRLACTIVE) == 0) {
-
 		err = musbotg_standard_done_sub(xfer);
 	}
 done:
@@ -1458,13 +1424,13 @@ done:
 static void
 musbotg_device_done(struct usb_xfer *xfer, usb_error_t error)
 {
+
 	USB_BUS_LOCK_ASSERT(xfer->xroot->bus, MA_OWNED);
 
 	DPRINTFN(2, "xfer=%p, endpoint=%p, error=%d\n",
 	    xfer, xfer->endpoint, error);
 
 	if (xfer->usb_mode == USB_MODE_DEVICE) {
-
 		musbotg_ep_int_set(xfer, 0);
 
 		DPRINTFN(14, "disabled interrupts on endpoint\n");
@@ -1534,7 +1500,6 @@ musbotg_clear_stall_sub(struct musbotg_softc *sc, uint16_t wMaxPacket,
 	}
 
 	if (ep_dir == UE_DIR_IN) {
-
 		temp = 0;
 
 		/* Configure endpoint */
@@ -1595,7 +1560,6 @@ musbotg_clear_stall_sub(struct musbotg_softc *sc, uint16_t wMaxPacket,
 			csr = MUSB2_READ_1(sc, MUSB2_REG_TXCSRL);
 		}
 	} else {
-
 		temp = 0;
 
 		/* Configure endpoint */
@@ -1707,7 +1671,6 @@ musbotg_init(struct musbotg_softc *sc)
 	USB_BUS_LOCK(&sc->sc_bus);
 
 	/* turn on clocks */
-
 	if (sc->sc_clocks_on) {
 		(sc->sc_clocks_on) (sc->sc_clocks_arg);
 	}
@@ -1715,13 +1678,11 @@ musbotg_init(struct musbotg_softc *sc)
 	usb_pause_mtx(&sc->sc_bus.bus_mtx, hz / 1000);
 
 	/* disable all interrupts */
-
 	MUSB2_WRITE_1(sc, MUSB2_REG_INTUSBE, 0);
 	MUSB2_WRITE_2(sc, MUSB2_REG_INTTXE, 0);
 	MUSB2_WRITE_2(sc, MUSB2_REG_INTRXE, 0);
 
 	/* disable pullup */
-
 	musbotg_pull_common(sc, 0);
 
 	/* wait a little bit (10ms) */
@@ -1732,12 +1693,10 @@ musbotg_init(struct musbotg_softc *sc)
 	MUSB2_WRITE_2(sc, MUSB2_REG_TXDBDIS, 0xFFFF);
 
 	/* enable HighSpeed and ISO Update flags */
-
 	MUSB2_WRITE_1(sc, MUSB2_REG_POWER,
 	    MUSB2_MASK_HSENAB | MUSB2_MASK_ISOUPD);
 
 	/* clear Session bit, if set */
-
 	temp = MUSB2_READ_1(sc, MUSB2_REG_DEVCTL);
 	temp &= ~MUSB2_MASK_SESS;
 	MUSB2_WRITE_1(sc, MUSB2_REG_DEVCTL, temp);
@@ -1745,19 +1704,15 @@ musbotg_init(struct musbotg_softc *sc)
 	DPRINTF("DEVCTL=0x%02x\n", temp);
 
 	/* disable testmode */
-
 	MUSB2_WRITE_1(sc, MUSB2_REG_TESTMODE, 0);
 
 	/* set default value */
-
 	MUSB2_WRITE_1(sc, MUSB2_REG_MISC, 0);
 
 	/* select endpoint index 0 */
-
 	MUSB2_WRITE_1(sc, MUSB2_REG_EPINDEX, 0);
 
 	/* read out number of endpoints */
-
 	nrx =
 	    (MUSB2_READ_1(sc, MUSB2_REG_EPINFO) / 16);
 
@@ -1765,7 +1720,6 @@ musbotg_init(struct musbotg_softc *sc)
 	    (MUSB2_READ_1(sc, MUSB2_REG_EPINFO) % 16);
 
 	/* these numbers exclude the control endpoint */
-
 	DPRINTFN(2, "RX/TX endpoints: %u/%u\n", nrx, ntx);
 
 	sc->sc_ep_max = (nrx > ntx) ? nrx : ntx;
@@ -1773,7 +1727,6 @@ musbotg_init(struct musbotg_softc *sc)
 		DPRINTFN(2, "ERROR: Looks like the clocks are off!\n");
 	}
 	/* read out configuration data */
-
 	sc->sc_conf_data = MUSB2_READ_1(sc, MUSB2_REG_CONFDATA);
 
 	DPRINTFN(2, "Config Data: 0x%02x\n",
@@ -1790,7 +1743,6 @@ musbotg_init(struct musbotg_softc *sc)
 	    MUSB2_READ_1(sc, MUSB2_REG_HWVERS));
 
 	/* initialise endpoint profiles */
-
 	offset = 0;
 
 	for (temp = 1; temp <= sc->sc_ep_max; temp++) {
@@ -1875,7 +1827,6 @@ musbotg_init(struct musbotg_softc *sc)
 	DPRINTFN(2, "Dynamic FIFO size = %d bytes\n", offset);
 
 	/* turn on default interrupts */
-
 	MUSB2_WRITE_1(sc, MUSB2_REG_INTUSBE,
 	    MUSB2_MASK_IRESET);
 
@@ -1884,7 +1835,6 @@ musbotg_init(struct musbotg_softc *sc)
 	USB_BUS_UNLOCK(&sc->sc_bus);
 
 	/* catch any lost interrupts */
-
 	musbotg_do_poll(&sc->sc_bus);
 
 	return (0);			/* success */
@@ -1893,6 +1843,7 @@ musbotg_init(struct musbotg_softc *sc)
 void
 musbotg_uninit(struct musbotg_softc *sc)
 {
+
 	USB_BUS_LOCK(&sc->sc_bus);
 
 	/* disable all interrupts */
@@ -1915,12 +1866,14 @@ musbotg_uninit(struct musbotg_softc *sc)
 void
 musbotg_suspend(struct musbotg_softc *sc)
 {
+
 	return;
 }
 
 void
 musbotg_resume(struct musbotg_softc *sc)
 {
+
 	return;
 }
 
@@ -1940,24 +1893,28 @@ musbotg_do_poll(struct usb_bus *bus)
 static void
 musbotg_device_bulk_open(struct usb_xfer *xfer)
 {
+
 	return;
 }
 
 static void
 musbotg_device_bulk_close(struct usb_xfer *xfer)
 {
+
 	musbotg_device_done(xfer, USB_ERR_CANCELLED);
 }
 
 static void
 musbotg_device_bulk_enter(struct usb_xfer *xfer)
 {
+
 	return;
 }
 
 static void
 musbotg_device_bulk_start(struct usb_xfer *xfer)
 {
+
 	/* setup TDs */
 	musbotg_setup_standard_chain(xfer);
 	musbotg_start_standard_chain(xfer);
@@ -1977,24 +1934,28 @@ struct usb_pipe_methods musbotg_device_bulk_methods =
 static void
 musbotg_device_ctrl_open(struct usb_xfer *xfer)
 {
+
 	return;
 }
 
 static void
 musbotg_device_ctrl_close(struct usb_xfer *xfer)
 {
+
 	musbotg_device_done(xfer, USB_ERR_CANCELLED);
 }
 
 static void
 musbotg_device_ctrl_enter(struct usb_xfer *xfer)
 {
+
 	return;
 }
 
 static void
 musbotg_device_ctrl_start(struct usb_xfer *xfer)
 {
+
 	/* setup TDs */
 	musbotg_setup_standard_chain(xfer);
 	musbotg_start_standard_chain(xfer);
@@ -2014,24 +1975,28 @@ struct usb_pipe_methods musbotg_device_ctrl_methods =
 static void
 musbotg_device_intr_open(struct usb_xfer *xfer)
 {
+
 	return;
 }
 
 static void
 musbotg_device_intr_close(struct usb_xfer *xfer)
 {
+
 	musbotg_device_done(xfer, USB_ERR_CANCELLED);
 }
 
 static void
 musbotg_device_intr_enter(struct usb_xfer *xfer)
 {
+
 	return;
 }
 
 static void
 musbotg_device_intr_start(struct usb_xfer *xfer)
 {
+
 	/* setup TDs */
 	musbotg_setup_standard_chain(xfer);
 	musbotg_start_standard_chain(xfer);
@@ -2051,12 +2016,14 @@ struct usb_pipe_methods musbotg_device_intr_methods =
 static void
 musbotg_device_isoc_open(struct usb_xfer *xfer)
 {
+
 	return;
 }
 
 static void
 musbotg_device_isoc_close(struct usb_xfer *xfer)
 {
+
 	musbotg_device_done(xfer, USB_ERR_CANCELLED);
 }
 
@@ -2072,7 +2039,6 @@ musbotg_device_isoc_enter(struct usb_xfer *xfer)
 	    xfer, xfer->endpoint->isoc_next, xfer->nframes);
 
 	/* get the current frame index */
-
 	nframes = MUSB2_READ_2(sc, MUSB2_REG_FRAME);
 
 	/*
@@ -2122,6 +2088,7 @@ musbotg_device_isoc_enter(struct usb_xfer *xfer)
 static void
 musbotg_device_isoc_start(struct usb_xfer *xfer)
 {
+
 	/* start TD chain */
 	musbotg_start_standard_chain(xfer);
 }
@@ -2245,7 +2212,6 @@ musbotg_roothub_exec(struct usb_device *udev,
 	index = UGETW(req->wIndex);
 
 	/* demultiplex the control request */
-
 	switch (req->bmRequestType) {
 	case UT_READ_DEVICE:
 		switch (req->bRequest) {
@@ -2657,23 +2623,18 @@ musbotg_xfer_setup(struct usb_setup_params *parm)
 	 * compute maximum number of TDs
 	 */
 	if (parm->methods == &musbotg_device_ctrl_methods) {
-
 		ntd = xfer->nframes + 1 /* STATUS */ + 1 /* SYNC */ ;
 
 	} else if (parm->methods == &musbotg_device_bulk_methods) {
-
 		ntd = xfer->nframes + 1 /* SYNC */ ;
 
 	} else if (parm->methods == &musbotg_device_intr_methods) {
-
 		ntd = xfer->nframes + 1 /* SYNC */ ;
 
 	} else if (parm->methods == &musbotg_device_isoc_methods) {
-
 		ntd = xfer->nframes + 1 /* SYNC */ ;
 
 	} else {
-
 		ntd = 0;
 	}
 
@@ -2692,7 +2653,6 @@ musbotg_xfer_setup(struct usb_setup_params *parm)
 	 * get profile stuff
 	 */
 	if (ntd) {
-
 		ep_no = xfer->endpointno & UE_ADDR;
 		musbotg_get_hw_ep_profile(parm->udev, &pf, ep_no);
 
@@ -2710,11 +2670,9 @@ musbotg_xfer_setup(struct usb_setup_params *parm)
 	parm->size[0] += ((-parm->size[0]) & (USB_HOST_ALIGN - 1));
 
 	for (n = 0; n != ntd; n++) {
-
 		struct musbotg_td *td;
 
 		if (parm->buf) {
-
 			td = USB_ADD_BYTES(parm->buf, parm->size[0]);
 
 			/* init TD */
@@ -2748,7 +2706,6 @@ musbotg_ep_init(struct usb_device *udev, struct usb_endpoint_descriptor *edesc,
 	    sc->sc_rt_addr);
 
 	if (udev->device_index != sc->sc_rt_addr) {
-
 		if (udev->flags.usb_mode != USB_MODE_DEVICE) {
 			/* not supported */
 			return;

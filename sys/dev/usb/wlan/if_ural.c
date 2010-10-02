@@ -974,6 +974,7 @@ tr_setup:
 static uint8_t
 ural_plcp_signal(int rate)
 {
+
 	switch (rate) {
 	/* OFDM rates (cf IEEE Std 802.11a-1999, pp. 14 Table 80) */
 	case 12:	return 0xb;
@@ -1778,6 +1779,7 @@ ural_enable_tsf_sync(struct ural_softc *sc)
 static void
 ural_enable_tsf(struct ural_softc *sc)
 {
+
 	/* first, disable TSF synchronization */
 	ural_write(sc, RAL_TXRX_CSR19, 0);
 	ural_write(sc, RAL_TXRX_CSR19, RAL_ENABLE_TSF | RAL_ENABLE_TSF_SYNC(2));
@@ -1829,6 +1831,7 @@ ural_set_txpreamble(struct ural_softc *sc)
 static void
 ural_set_basicrates(struct ural_softc *sc, const struct ieee80211_channel *c)
 {
+
 	/* XXX wrong, take from rate set */
 	/* update basic rate set */
 	if (IEEE80211_IS_CHAN_5GHZ(c)) {
@@ -1911,6 +1914,7 @@ ural_update_promisc(struct ifnet *ifp)
 static const char *
 ural_get_rf(int rev)
 {
+
 	switch (rev) {
 	case RAL_RF_2522:	return "RT2522";
 	case RAL_RF_2523:	return "RT2523";

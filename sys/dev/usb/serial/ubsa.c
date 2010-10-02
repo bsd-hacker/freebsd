@@ -195,7 +195,6 @@ static void	ubsa_cfg_get_status(struct ucom_softc *, uint8_t *,
 static void	ubsa_poll(struct ucom_softc *ucom);
 
 static const struct usb_config ubsa_config[UBSA_N_TRANSFER] = {
-
 	[UBSA_BULK_DT_WR] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
@@ -561,7 +560,6 @@ tr_setup:
 		pc = usbd_xfer_get_frame(xfer, 0);
 		if (ucom_get_data(&sc->sc_ucom, pc, 0,
 		    UBSA_BSIZE, &actlen)) {
-
 			usbd_xfer_set_frame_len(xfer, 0, actlen);
 			usbd_transfer_submit(xfer);
 		}

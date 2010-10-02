@@ -116,7 +116,6 @@ static void	uark_poll(struct ucom_softc *ucom);
 
 static const struct usb_config
 	uark_xfer_config[UARK_N_TRANSFER] = {
-
 	[UARK_BULK_DT_WR] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,

@@ -72,9 +72,7 @@ struct usb_std_packet_size {
 static usb_callback_t usb_request_callback;
 
 static const struct usb_config usb_control_ep_cfg[USB_CTRL_XFER_MAX] = {
-
 	/* This transfer is used for generic control endpoint transfers */
-
 	[0] = {
 		.type = UE_CONTROL,
 		.endpoint = 0x00,	/* Control endpoint */
@@ -84,9 +82,7 @@ static const struct usb_config usb_control_ep_cfg[USB_CTRL_XFER_MAX] = {
 		.callback = &usb_request_callback,
 		.usb_mode = USB_MODE_DUAL,	/* both modes */
 	},
-
 	/* This transfer is used for generic clear stall only */
-
 	[1] = {
 		.type = UE_CONTROL,
 		.endpoint = 0x00,	/* Control pipe */
@@ -120,6 +116,7 @@ static void	usbd_get_std_packet_size(struct usb_std_packet_size *ptr,
 static void
 usb_request_callback(struct usb_xfer *xfer, usb_error_t error)
 {
+
 	if (xfer->usb_mode == USB_MODE_DEVICE)
 		usb_handle_request_callback(xfer, error);
 	else
@@ -135,8 +132,8 @@ usb_request_callback(struct usb_xfer *xfer, usb_error_t error)
 static void
 usbd_update_max_frame_size(struct usb_xfer *xfer)
 {
-	/* compute maximum frame size */
 
+	/* compute maximum frame size */
 	if (xfer->max_packet_count == 2) {
 		xfer->max_frame_size = 2 * xfer->max_packet_size;
 	} else if (xfer->max_packet_count == 3) {
@@ -261,7 +258,6 @@ usbd_transfer_setup_sub_malloc(struct usb_setup_params *parm,
 	pg = parm->dma_page_ptr;
 
 	for (x = 0; x != n_dma_pc; x++) {
-
 		if (r < n_obj) {
 			/* compute last remainder */
 			z = r * size;
@@ -278,7 +274,6 @@ usbd_transfer_setup_sub_malloc(struct usb_setup_params *parm,
 		pg++;
 
 		for (y = 0; (y != n_obj); y++, r--, pc++, pg++) {
-
 			/* Load sub-chunk into DMA */
 			if (usb_pc_dmamap_create(pc, size)) {
 				return (1);	/* failure */
@@ -360,22 +355,18 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 		xfer->max_packet_size &= 0x7FF;
 	}
 	/* range check "max_packet_count" */
-
 	if (xfer->max_packet_count > parm->hc_max_packet_count) {
 		xfer->max_packet_count = parm->hc_max_packet_count;
 	}
 	/* filter "wMaxPacketSize" according to HC capabilities */
-
 	if ((xfer->max_packet_size > parm->hc_max_packet_size) ||
 	    (xfer->max_packet_size == 0)) {
 		xfer->max_packet_size = parm->hc_max_packet_size;
 	}
 	/* filter "wMaxPacketSize" according to standard sizes */
-
 	usbd_get_std_packet_size(&std_size, type, parm->speed);
 
 	if (std_size.range.min || std_size.range.max) {
-
 		if (xfer->max_packet_size < std_size.range.min) {
 			xfer->max_packet_size = std_size.range.min;
 		}
@@ -383,7 +374,6 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 			xfer->max_packet_size = std_size.range.max;
 		}
 	} else {
-
 		if (xfer->max_packet_size >= std_size.fixed[3]) {
 			xfer->max_packet_size = std_size.fixed[3];
 		} else if (xfer->max_packet_size >= std_size.fixed[2]) {
@@ -397,13 +387,10 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 	}
 
 	/* compute "max_frame_size" */
-
 	usbd_update_max_frame_size(xfer);
 
 	/* check interrupt interval and transfer pre-delay */
-
 	if (type == UE_ISOCHRONOUS) {
-
 		uint16_t frame_limit;
 
 		xfer->interval = 0;	/* not used, must be zero */
@@ -448,15 +435,12 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 			goto done;
 		}
 	} else {
-
 		/*
 		 * if a value is specified use that else check the endpoint
 		 * descriptor
 		 */
 		if (xfer->interval == 0) {
-
 			if (type == UE_INTERRUPT) {
-
 				xfer->interval = edesc->bInterval;
 
 				switch (parm->speed) {
@@ -497,13 +481,11 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 
 	if ((xfer->max_frame_size == 0) ||
 	    (xfer->max_packet_size == 0)) {
-
 		zmps = 1;
 
 		if ((parm->bufsize <= MIN_PKT) &&
 		    (type != UE_CONTROL) &&
 		    (type != UE_BULK)) {
-
 			/* workaround */
 			xfer->max_packet_size = MIN_PKT;
 			xfer->max_packet_count = 1;
@@ -525,7 +507,6 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 	 */
 
 	if (parm->bufsize == 0) {
-
 		parm->bufsize = xfer->max_frame_size;
 
 		if (type == UE_ISOCHRONOUS) {
@@ -538,9 +519,7 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 	 */
 
 	if (xfer->flags.proxy_buffer) {
-
 		/* round bufsize up */
-
 		parm->bufsize += (xfer->max_frame_size - 1);
 
 		if (parm->bufsize < xfer->max_frame_size) {
@@ -549,11 +528,9 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 			goto done;
 		}
 		/* subtract remainder */
-
 		parm->bufsize -= (parm->bufsize % xfer->max_frame_size);
 
 		/* add length of USB device request structure, if any */
-
 		if (type == UE_CONTROL) {
 			parm->bufsize += REQ_SIZE;	/* SETUP message */
 		}
@@ -561,12 +538,10 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 	xfer->max_data_length = parm->bufsize;
 
 	/* Setup "n_frlengths" and "n_frbuffers" */
-
 	if (type == UE_ISOCHRONOUS) {
 		n_frlengths = xfer->nframes;
 		n_frbuffers = 1;
 	} else {
-
 		if (type == UE_CONTROL) {
 			xfer->status |= XFER_STATUS_CTRLXFER;
 			if (xfer->nframes == 0) {
@@ -596,7 +571,6 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 	 */
 
 	if (type == UE_CONTROL) {
-
 		if (xfer->max_data_length < REQ_SIZE) {
 			/* length wrapped around or too small bufsize */
 			parm->err = USB_ERR_INVAL;
@@ -621,12 +595,10 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 	 */
 
 	if (!xfer->flags.ext_buffer) {
-
 		/* align data */
 		parm->size[0] += ((-parm->size[0]) & (USB_HOST_ALIGN - 1));
 
 		if (parm->buf) {
-
 			xfer->local_buffer =
 			    USB_ADD_BYTES(parm->buf, parm->size[0]);
 			xfer->local_buflen = parm->bufsize;
@@ -683,7 +655,6 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 		xfer->max_data_length = 0;
 	}
 	/* subtract USB frame remainder from "hc_max_frame_size" */
-
 	xfer->max_hc_frame_size =
 	    (parm->hc_max_frame_size -
 	    (parm->hc_max_frame_size % xfer->max_frame_size));
@@ -694,7 +665,6 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 	}
 
 	/* initialize frame buffers */
-
 	if (parm->buf) {
 		for (x = 0; x != n_frbuffers; x++) {
 			xfer->frbuffers[x].tag_parent =
@@ -702,7 +672,6 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 #if USB_HAVE_BUSDMA
 			if ((xfer->status & XFER_STATUS_DMAENABLE) != 0 &&
 			    (parm->bufsize_max > 0)) {
-
 				if (usb_pc_dmamap_create(
 				    xfer->frbuffers + x,
 				    parm->bufsize_max)) {
@@ -765,7 +734,6 @@ usbd_transfer_setup(struct usb_device *udev,
 	    "usbd_transfer_setup can sleep!");
 
 	/* do some checking first */
-
 	if (n_setup == 0) {
 		DPRINTFN(6, "setup array has zero length!\n");
 		return (USB_ERR_INVAL);
@@ -806,9 +774,7 @@ usbd_transfer_setup(struct usb_device *udev,
 		goto done;
 	}
 	/* setup all transfers */
-
 	while (1) {
-
 		if (buf) {
 			/*
 			 * Initialize the "usb_xfer_root" structure,
@@ -861,14 +827,12 @@ usbd_transfer_setup(struct usb_device *udev,
 				    udev->bus->non_giant_callback_tq;
 		}
 		/* reset sizes */
-
 		parm.size[0] = 0;
 		parm.buf = buf;
 		parm.size[0] += sizeof(info[0]);
 
 		for (setup = setup_start, n = 0;
 		    setup != setup_end; setup++, n++) {
-
 			/* skip USB transfers without callbacks: */
 			if (setup->callback == NULL) {
 				continue;
@@ -1030,7 +994,6 @@ usbd_transfer_setup(struct usb_device *udev,
 		    ((uint8_t *)0);
 
 		/* store end offset temporarily */
-
 		parm.size[2] = parm.size[0];
 
 		/* align data properly */
@@ -1091,7 +1054,6 @@ usbd_transfer_unsetup_sub(struct usb_xfer_root *info, uint8_t needs_delay)
 	USB_BUS_LOCK_ASSERT(info->bus, MA_OWNED);
 
 	/* wait for any outstanding DMA operations */
-
 	if (needs_delay) {
 		usb_timeout_t temp;
 		temp = usbd_get_dma_delay(info->udev);
@@ -1232,15 +1194,12 @@ usbd_control_transfer_init(struct usb_xfer *xfer)
 	struct usb_device_request req;
 
 	/* copy out the USB request header */
-
 	usbd_copy_out(xfer->frbuffers, 0, &req, sizeof(req));
 
 	/* setup remainder */
-
 	xfer->control_rem = UGETW(req.wLength);
 
 	/* copy direction to endpoint variable */
-
 	xfer->endpointno &= ~(UE_DIR_IN | UE_DIR_OUT);
 	xfer->endpointno |=
 	    (req.bmRequestType & UT_READ) ? UE_DIR_IN : UE_DIR_OUT;
@@ -1301,13 +1260,10 @@ usbd_setup_ctrl_transfer(struct usb_xfer *xfer)
 			}
 		}
 		/* get data length */
-
 		len = xfer->sumlen;
 
 	} else {
-
 		/* the size of the SETUP structure is hardcoded ! */
-
 		if (xfer->frlengths[0] != sizeof(struct usb_device_request)) {
 			DPRINTFN(0, "Wrong framelength %u != %zu\n",
 			    xfer->frlengths[0], sizeof(struct
@@ -1316,7 +1272,6 @@ usbd_setup_ctrl_transfer(struct usb_xfer *xfer)
 		}
 		/* check USB mode */
 		if (xfer->usb_mode == USB_MODE_DEVICE) {
-
 			/* check number of frames */
 			if (xfer->nframes != 1) {
 				/*
@@ -1334,9 +1289,7 @@ usbd_setup_ctrl_transfer(struct usb_xfer *xfer)
 			 */
 			xfer->control_rem = 0xFFFF;
 		} else {
-
 			/* setup "endpoint" and "control_rem" */
-
 			usbd_control_transfer_init(xfer);
 		}
 
@@ -1344,12 +1297,10 @@ usbd_setup_ctrl_transfer(struct usb_xfer *xfer)
 		xfer->status |= XFER_STATUS_CTRLHDR;
 
 		/* get data length */
-
 		len = (xfer->sumlen - sizeof(struct usb_device_request));
 	}
 
 	/* check if there is a length mismatch */
-
 	if (len > xfer->control_rem) {
 		DPRINTFN(0, "Length (%d) greater than "
 		    "remaining length (%d)\n", len,
@@ -1357,7 +1308,6 @@ usbd_setup_ctrl_transfer(struct usb_xfer *xfer)
 		goto error;
 	}
 	/* check if we are doing a short transfer */
-
 	if (xfer->flags.force_short_xfer) {
 		xfer->control_rem = 0;
 	} else {
@@ -1372,7 +1322,6 @@ usbd_setup_ctrl_transfer(struct usb_xfer *xfer)
 	}
 
 	/* the status part is executed when "control_act" is 0 */
-
 	if ((xfer->control_rem > 0) ||
 	    (xfer->flags.manual_status)) {
 		/* don't execute the STATUS stage yet */
@@ -1507,7 +1456,6 @@ usbd_transfer_submit(struct usb_xfer *xfer)
 		return;
 	}
 	/* compute total transfer length */
-
 	for (x = 0; x != xfer->nframes; x++) {
 		xfer->sumlen += xfer->frlengths[x];
 		if (xfer->sumlen < xfer->frlengths[x]) {
@@ -1520,14 +1468,11 @@ usbd_transfer_submit(struct usb_xfer *xfer)
 	}
 
 	/* clear some internal flags */
-
 	xfer->status &= ~XFER_STATUS_SHORTXFER_OK;
 	xfer->status &= ~XFER_STATUS_SHORTFRAME_OK;
 
 	/* check if this is a control transfer */
-
 	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
-
 		if (usbd_setup_ctrl_transfer(xfer)) {
 			USB_BUS_LOCK(bus);
 			usbd_transfer_done(xfer, USB_ERR_STALLED);
@@ -1540,7 +1485,6 @@ usbd_transfer_submit(struct usb_xfer *xfer)
 	 * in case of data read direction
 	 */
 	if (USB_GET_DATA_ISREAD(xfer)) {
-
 		if (xfer->flags.short_frames_ok) {
 			xfer->status |= XFER_STATUS_SHORTXFER_OK;
 			xfer->status |= XFER_STATUS_SHORTFRAME_OK;
@@ -1628,6 +1572,7 @@ usbd_pipe_enter(struct usb_xfer *xfer)
 void
 usbd_transfer_start(struct usb_xfer *xfer)
 {
+
 	if (xfer == NULL) {
 		/* transfer is gone */
 		return;
@@ -1635,7 +1580,6 @@ usbd_transfer_start(struct usb_xfer *xfer)
 	USB_XFER_LOCK_ASSERT(xfer, MA_OWNED);
 
 	/* mark the USB transfer started */
-
 	if ((xfer->status & XFER_STATUS_STARTED) == 0) {
 		/* lock the BUS lock to avoid races updating status */
 		USB_BUS_LOCK(xfer->xroot->bus);
@@ -1672,7 +1616,6 @@ usbd_transfer_stop(struct usb_xfer *xfer)
 	USB_XFER_LOCK_ASSERT(xfer, MA_OWNED);
 
 	/* check if the USB transfer was ever opened */
-
 	if ((xfer->status & XFER_STATUS_OPENED) == 0) {
 		if ((xfer->status & XFER_STATUS_STARTED) != 0) {
 			/* nothing to do except clearing the "started" flag */
@@ -1684,7 +1627,6 @@ usbd_transfer_stop(struct usb_xfer *xfer)
 		return;
 	}
 	/* try to stop the current USB transfer */
-
 	USB_BUS_LOCK(xfer->xroot->bus);
 	/* override any previous error */
 	xfer->error = USB_ERR_CANCELLED;
@@ -1795,6 +1737,7 @@ usbd_transfer_pending(struct usb_xfer *xfer)
 void
 usbd_transfer_drain(struct usb_xfer *xfer)
 {
+
 	WITNESS_WARN(WARN_GIANTOK | WARN_SLEEPOK, NULL,
 	    "usbd_transfer_drain can sleep!");
 
@@ -1811,7 +1754,6 @@ usbd_transfer_drain(struct usb_xfer *xfer)
 
 	while (usbd_transfer_pending(xfer) || 
 	    (xfer->status & XFER_STATUS_DOINGCALLBACK) != 0) {
-
 		/* 
 		 * It is allowed that the callback can drop its
 		 * transfer mutex. In that case checking only
@@ -1833,6 +1775,7 @@ usbd_transfer_drain(struct usb_xfer *xfer)
 struct usb_page_cache *
 usbd_xfer_get_frame(struct usb_xfer *xfer, usb_frcount_t frindex)
 {
+
 	KASSERT(frindex < xfer->max_frame_count, ("frame index overflow"));
 
 	return (&xfer->frbuffers[frindex]);
@@ -1852,12 +1795,14 @@ usbd_xfer_get_frame(struct usb_xfer *xfer, usb_frcount_t frindex)
 uint8_t
 usbd_xfer_get_fps_shift(struct usb_xfer *xfer)
 {
+
 	return (xfer->fps_shift);
 }
 
 usb_frlength_t
 usbd_xfer_frame_len(struct usb_xfer *xfer, usb_frcount_t frindex)
 {
+
 	KASSERT(frindex < xfer->max_frame_count, ("frame index overflow"));
 
 	return (xfer->frlengths[frindex]);
@@ -1875,6 +1820,7 @@ void
 usbd_xfer_set_frame_data(struct usb_xfer *xfer, usb_frcount_t frindex,
     void *ptr, usb_frlength_t len)
 {
+
 	KASSERT(frindex < xfer->max_frame_count, ("frame index overflow"));
 
 	/* set virtual address to load and length */
@@ -1887,6 +1833,7 @@ void
 usbd_xfer_frame_data(struct usb_xfer *xfer, usb_frcount_t frindex,
     void **ptr, int *len)
 {
+
 	KASSERT(frindex < xfer->max_frame_count, ("frame index overflow"));
 
 	if (ptr != NULL)
@@ -1899,6 +1846,7 @@ void
 usbd_xfer_status(struct usb_xfer *xfer, int *actlen, int *sumlen, int *aframes,
     int *nframes)
 {
+
 	if (actlen != NULL)
 		*actlen = xfer->actlen;
 	if (sumlen != NULL)
@@ -1919,6 +1867,7 @@ void
 usbd_xfer_set_frame_offset(struct usb_xfer *xfer, usb_frlength_t offset,
     usb_frcount_t frindex)
 {
+
 	KASSERT(!xfer->flags.ext_buffer, ("Cannot offset data frame "
 	    "when the USB buffer is external\n"));
 	KASSERT(frindex < xfer->max_frame_count, ("frame index overflow"));
@@ -1932,36 +1881,42 @@ usbd_xfer_set_frame_offset(struct usb_xfer *xfer, usb_frlength_t offset,
 void
 usbd_xfer_set_interval(struct usb_xfer *xfer, int i)
 {
+
 	xfer->interval = i;
 }
 
 void
 usbd_xfer_set_timeout(struct usb_xfer *xfer, int t)
 {
+
 	xfer->timeout = t;
 }
 
 void
 usbd_xfer_set_frames(struct usb_xfer *xfer, usb_frcount_t n)
 {
+
 	xfer->nframes = n;
 }
 
 usb_frcount_t
 usbd_xfer_max_frames(struct usb_xfer *xfer)
 {
+
 	return (xfer->max_frame_count);
 }
 
 usb_frlength_t
 usbd_xfer_max_len(struct usb_xfer *xfer)
 {
+
 	return (xfer->max_data_length);
 }
 
 usb_frlength_t
 usbd_xfer_max_framelen(struct usb_xfer *xfer)
 {
+
 	return (xfer->max_frame_size);
 }
 
@@ -1969,6 +1924,7 @@ void
 usbd_xfer_set_frame_len(struct usb_xfer *xfer, usb_frcount_t frindex,
     usb_frlength_t len)
 {
+
 	KASSERT(frindex < xfer->max_frame_count, ("frame index overflow"));
 
 	xfer->frlengths[frindex] = len;
@@ -2017,7 +1973,6 @@ usbd_callback_ss_done_defer(struct usb_xfer *xfer)
 		usbd_transfer_enqueue(pq, xfer);
 	}
 	if (!pq->recurse_1) {
-
 		/*
 	         * We have to postpone the callback due to the fact we
 	         * will have a Lock Order Reversal, LOR, if we try to
@@ -2090,7 +2045,6 @@ usbd_callback_wrapper(struct usb_xfer_queue *pq)
 			goto done;
 		}
 	} else {
-
 		if (usbd_callback_wrapper_sub(xfer)) {
 			/* the callback has been deferred */
 			USB_BUS_LOCK(info->bus);
@@ -2208,6 +2162,7 @@ usbd_transfer_dequeue(struct usb_xfer *xfer)
 void
 usbd_transfer_enqueue(struct usb_xfer_queue *pq, struct usb_xfer *xfer)
 {
+
 	/*
 	 * Insert the USB transfer into the queue, if it is not
 	 * already on a USB transfer queue:
@@ -2232,6 +2187,7 @@ usbd_transfer_enqueue(struct usb_xfer_queue *pq, struct usb_xfer *xfer)
 void
 usbd_transfer_done(struct usb_xfer *xfer, usb_error_t error)
 {
+
 	USB_BUS_LOCK_ASSERT(xfer->xroot->bus, MA_OWNED);
 
 	DPRINTF("err=%s\n", usbd_errstr(error));
@@ -2327,6 +2283,7 @@ usbd_transfer_start_cb(void *arg)
 void
 usbd_xfer_set_stall(struct usb_xfer *xfer)
 {
+
 	if (xfer == NULL) {
 		/* tearing down */
 		return;
@@ -2342,6 +2299,7 @@ usbd_xfer_set_stall(struct usb_xfer *xfer)
 int
 usbd_xfer_is_stalled(struct usb_xfer *xfer)
 {
+
 	return (xfer->endpoint->is_stalled);
 }
 
@@ -2354,6 +2312,7 @@ usbd_xfer_is_stalled(struct usb_xfer *xfer)
 void
 usbd_transfer_clear_stall(struct usb_xfer *xfer)
 {
+
 	if (xfer == NULL) {
 		/* tearing down */
 		return;
@@ -2441,7 +2400,6 @@ usbd_pipe_start(struct usb_xfer_queue *pq)
 				return;
 			}
 		} else if (type == UE_ISOCHRONOUS) {
-
 			/* 
 			 * Make sure any FIFO overflow or other FIFO
 			 * error conditions go away by resetting the
@@ -2506,6 +2464,7 @@ void
 usbd_transfer_timeout_ms(struct usb_xfer *xfer,
     void (*cb) (void *arg), usb_timeout_t ms)
 {
+
 	USB_BUS_LOCK_ASSERT(xfer->xroot->bus, MA_OWNED);
 
 	/* defer delay */
@@ -2553,7 +2512,6 @@ usbd_callback_wrapper_sub(struct usb_xfer *xfer)
 	if (((xfer->error == USB_ERR_CANCELLED) ||
 	    (xfer->error == USB_ERR_TIMEOUT)) &&
 	    (xfer->status & XFER_STATUS_DMADELAYED) == 0) {
-
 		usb_timeout_t temp;
 
 		/* only delay once */
@@ -2631,7 +2589,6 @@ usbd_callback_wrapper_sub(struct usb_xfer *xfer)
 	} else {
 		/* check for short transfers */
 		if (xfer->actlen < xfer->sumlen) {
-
 			/* end of control transfer, if any */
 			xfer->status &= ~XFER_STATUS_CTRLACTIVE;
 
@@ -2689,6 +2646,7 @@ done:
 void
 usb_command_wrapper(struct usb_xfer_queue *pq, struct usb_xfer *xfer)
 {
+
 	if (xfer) {
 		/*
 		 * If the transfer is not already processing,
@@ -2708,9 +2666,7 @@ usb_command_wrapper(struct usb_xfer_queue *pq, struct usb_xfer *xfer)
 	}
 
 	if (!pq->recurse_1) {
-
 		do {
-
 			/* set both recurse flags */
 			pq->recurse_1 = 1;
 			pq->recurse_2 = 1;
@@ -2823,6 +2779,7 @@ repeat:
 void
 usbd_clear_data_toggle(struct usb_device *udev, struct usb_endpoint *ep)
 {
+
 	DPRINTFN(5, "udev=%p endpoint=%p\n", udev, ep);
 
 	USB_BUS_LOCK(udev->bus);
@@ -2884,7 +2841,6 @@ usbd_clear_stall_callback(struct usb_xfer *xfer1,
 		usbd_clear_data_toggle(xfer2->xroot->udev, xfer2->endpoint);
 
 		/* setup a clear-stall packet */
-
 		req.bmRequestType = UT_WRITE_ENDPOINT;
 		req.bRequest = UR_CLEAR_FEATURE;
 		USETW(req.wValue, UF_ENDPOINT_HALT);
@@ -2899,7 +2855,6 @@ usbd_clear_stall_callback(struct usb_xfer *xfer1,
 		 */
 
 		/* copy in the transfer */
-
 		usbd_copy_in(xfer1->frbuffers, 0, &req, sizeof(req));
 
 		/* set length */
@@ -2985,7 +2940,6 @@ usbd_transfer_poll(struct usb_xfer **ppxfer, uint16_t max)
 
 		/* check for clear stall */
 		if (udev->ctrl_xfer[1] != NULL) {
-
 			/* poll clear stall start */
 			task = &udev->cs_task;
 			task->ta_func(task->ta_context, task->ta_pending);
@@ -3086,30 +3040,35 @@ usbd_get_std_packet_size(struct usb_std_packet_size *ptr,
 void	*
 usbd_xfer_softc(struct usb_xfer *xfer)
 {
+
 	return (xfer->priv_sc);
 }
 
 void *
 usbd_xfer_get_priv(struct usb_xfer *xfer)
 {
+
 	return (xfer->priv_fifo);
 }
 
 void
 usbd_xfer_set_priv(struct usb_xfer *xfer, void *ptr)
 {
+
 	xfer->priv_fifo = ptr;
 }
 
 uint8_t
 usbd_xfer_state(struct usb_xfer *xfer)
 {
+
 	return (xfer->usb_state);
 }
 
 void
 usbd_xfer_set_flag(struct usb_xfer *xfer, int flag)
 {
+
 	switch (flag) {
 		case USB_FORCE_SHORT_XFER:
 			xfer->flags.force_short_xfer = 1;
@@ -3129,6 +3088,7 @@ usbd_xfer_set_flag(struct usb_xfer *xfer, int flag)
 void
 usbd_xfer_clr_flag(struct usb_xfer *xfer, int flag)
 {
+
 	switch (flag) {
 		case USB_FORCE_SHORT_XFER:
 			xfer->flags.force_short_xfer = 0;
@@ -3153,5 +3113,6 @@ usbd_xfer_clr_flag(struct usb_xfer *xfer, int flag)
 uint16_t
 usbd_xfer_get_timestamp(struct usb_xfer *xfer)
 {
+
 	return (xfer->isoc_time_complete);
 }

@@ -237,7 +237,6 @@ static int ufoma_sysctl_open(SYSCTL_HANDLER_ARGS);
 
 static const struct usb_config
 	ufoma_ctrl_config[UFOMA_CTRL_ENDPT_MAX] = {
-
 	[UFOMA_CTRL_ENDPT_INTR] = {
 		.type = UE_INTERRUPT,
 		.endpoint = UE_ADDR_ANY,
@@ -269,7 +268,6 @@ static const struct usb_config
 
 static const struct usb_config
 	ufoma_bulk_config[UFOMA_BULK_ENDPT_MAX] = {
-
 	[UFOMA_BULK_ENDPT_WRITE] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
@@ -386,7 +384,6 @@ ufoma_attach(device_t dev)
 	DPRINTF("\n");
 
 	/* setup control transfers */
-
 	cd = usbd_get_config_descriptor(uaa->device);
 	id = usbd_get_interface_descriptor(uaa->iface);
 	sc->sc_ctrl_iface_no = id->bInterfaceNumber;
@@ -422,7 +419,6 @@ ufoma_attach(device_t dev)
 	elements = (mad->bFunctionLength - sizeof(*mad) + 1);
 
 	/* initialize mode variables */
-
 	sc->sc_modetable = malloc(elements + 1, M_USBDEV, M_WAITOK);
 
 	if (sc->sc_modetable == NULL) {
@@ -496,7 +492,6 @@ ufoma_get_intconf(struct usb_config_descriptor *cd, struct usb_interface_descrip
 	struct usb_descriptor *desc = (void *)id;
 
 	while ((desc = usb_desc_foreach(cd, desc))) {
-
 		if (desc->bDescriptorType == UDESC_INTERFACE) {
 			return (NULL);
 		}
@@ -622,7 +617,6 @@ tr_transferred:
 tr_setup:
 		pc = usbd_xfer_get_frame(xfer, 1);
 		if (ucom_get_data(&sc->sc_ucom, pc, 0, 1, &actlen)) {
-
 			req.bmRequestType = UT_WRITE_CLASS_INTERFACE;
 			req.bRequest = UCDC_SEND_ENCAPSULATED_COMMAND;
 			USETW(req.wIndex, sc->sc_ctrl_iface_no);
@@ -829,7 +823,6 @@ ufoma_cfg_open(struct ucom_softc *ucom)
 	struct ufoma_softc *sc = ucom->sc_parent;
 
 	/* empty input queue */
-
 	if (sc->sc_num_msg != 0xFF) {
 		sc->sc_num_msg++;
 	}
@@ -1041,13 +1034,10 @@ ufoma_modem_setup(device_t dev, struct ufoma_softc *sc,
 	    sc->sc_acm_cap & USB_CDC_ACM_HAS_BREAK ? "" : "no ");
 
 	/* get the data interface too */
-
 	for (i = 0;; i++) {
-
 		iface = usbd_get_iface(uaa->device, i);
 
 		if (iface) {
-
 			id = usbd_get_interface_descriptor(iface);
 
 			if (id && (id->bInterfaceNumber == sc->sc_data_iface_no)) {

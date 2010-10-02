@@ -71,18 +71,21 @@ struct atmegadci_super_softc {
 static void
 atmegadci_clocks_on(struct usb_bus *bus)
 {
+
 	/* TODO */
 }
 
 static void
 atmegadci_clocks_off(struct usb_bus *bus)
 {
+
 	/* TODO */
 }
 
 static int
 atmegadci_probe(device_t dev)
 {
+
 	device_set_desc(dev, "ATMEL OTG integrated USB controller");
 	return (0);
 }

@@ -541,6 +541,7 @@ atp_reset_callback(struct usb_xfer *xfer, usb_error_t error)
 static int
 atp_enable(struct atp_softc *sc)
 {
+
 	/* Allocate the dynamic buffers */
 	if (atp_softc_populate(sc) != 0) {
 		atp_softc_unpopulate(sc);
@@ -561,6 +562,7 @@ atp_enable(struct atp_softc *sc)
 static void
 atp_disable(struct atp_softc *sc)
 {
+
 	atp_softc_unpopulate(sc);
 
 	sc->sc_state &= ~(ATP_ENABLED | ATP_VALID);
@@ -1120,6 +1122,7 @@ static __inline void
 atp_add_stroke(struct atp_softc *sc, const atp_pspan *pspan_x,
     const atp_pspan *pspan_y)
 {
+
 	atp_stroke *stroke;
 
 	if (sc->sc_n_strokes >= ATP_MAX_STROKES)
@@ -1341,6 +1344,7 @@ static void
 atp_terminate_stroke(struct atp_softc *sc,
     u_int index) /* index of the stroke to be terminated */
 {
+
 	atp_stroke *s = &sc->sc_strokes[index];
 
 	if (s->flags & ATSF_ZOMBIE) {
@@ -2003,6 +2007,7 @@ atp_add_to_queue(struct atp_softc *sc, int dx, int dy, uint32_t buttons_in)
 static void
 atp_reset_buf(struct atp_softc *sc)
 {
+
 	/* reset read queue */
 	usb_fifo_reset(sc->sc_fifo.fp[USB_FIFO_RX]);
 }
@@ -2043,6 +2048,7 @@ atp_stop_read(struct usb_fifo *fifo)
 static int
 atp_open(struct usb_fifo *fifo, int fflags)
 {
+
 	DPRINTFN(ATP_LLEVEL_INFO, "\n");
 
 	if (fflags & FREAD) {

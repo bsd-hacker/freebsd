@@ -154,7 +154,6 @@ usb_pause_mtx(struct mtx *mtx, int _ticks)
 		_ticks = (_ticks + 1) * 1000;
 		DELAY(_ticks);
 	} else {
-
 		/*
 		 * Add one to the number of ticks so that we don't return
 		 * too early!
@@ -178,6 +177,7 @@ usb_pause_mtx(struct mtx *mtx, int _ticks)
 void
 usb_printbcd(char *p, uint16_t p_len, uint16_t bcd)
 {
+
 	if (snprintf(p, p_len, "%x.%02x", bcd >> 8, bcd & 0xff)) {
 		/* ignore any errors */
 	}

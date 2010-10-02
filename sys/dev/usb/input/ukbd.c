@@ -345,11 +345,9 @@ ukbd_do_poll(struct ukbd_softc *sc, uint8_t wait)
 	}
 
 	while (sc->sc_inputs == 0) {
-
 		usbd_transfer_poll(sc->sc_xfer, UKBD_N_TRANSFER);
 
 		/* Delay-optimised support for repetition of keys */
-
 		if (ukbd_any_key_pressed(sc)) {
 			/* a key is pressed - need timekeeping */
 			DELAY(1000);
@@ -452,9 +450,7 @@ rfound:	;
 				continue;
 			}
 			if (key == sc->sc_odata.keycode[j]) {
-
 				/* key is still pressed */
-
 				sc->sc_ntime[i] = sc->sc_otime[j];
 				dtime = (sc->sc_otime[j] - now);
 
@@ -726,7 +722,6 @@ ukbd_set_leds_callback(struct usb_xfer *xfer, usb_error_t error)
 }
 
 static const struct usb_config ukbd_config[UKBD_N_TRANSFER] = {
-
 	[UKBD_INTR_DT] = {
 		.type = UE_INTERRUPT,
 		.endpoint = UE_ADDR_ANY,
@@ -836,7 +831,6 @@ ukbd_attach(device_t dev)
 		goto detach;
 	}
 	/* setup default keyboard maps */
-
 	sc->sc_keymap = key_map;
 	sc->sc_accmap = accent_map;
 	for (n = 0; n < UKBD_NFKEY; n++) {
@@ -941,11 +935,9 @@ ukbd_attach(device_t dev)
 		genkbd_diag(kbd, bootverbose);
 	}
 	/* lock keyboard mutex */
-
 	mtx_lock(&Giant);
 
 	/* start the keyboard */
-
 	usbd_transfer_start(sc->sc_xfer[UKBD_INTR_DT]);
 
 	mtx_unlock(&Giant);
@@ -1285,10 +1277,8 @@ ukbd_read_char(keyboard_t *kbd, int wait)
 next_code:
 
 	/* do we have a composed char to return ? */
-
 	if ((sc->sc_composed_char > 0) &&
 	    (!(sc->sc_flags & UKBD_FLAG_COMPOSE))) {
-
 		action = sc->sc_composed_char;
 		sc->sc_composed_char = 0;
 
@@ -1300,7 +1290,6 @@ next_code:
 #ifdef UKBD_EMULATE_ATSCANCODE
 
 	/* do we have a pending raw scan code? */
-
 	if (sc->sc_mode == K_RAW) {
 		scancode = sc->sc_buffered_char[0];
 		if (scancode) {
@@ -1709,17 +1698,16 @@ ukbd_poll(keyboard_t *kbd, int on)
 }
 
 /* local functions */
-
 static void
 ukbd_set_leds(struct ukbd_softc *sc, uint8_t leds)
 {
+
 	DPRINTF("leds=0x%02x\n", leds);
 
 	sc->sc_leds = leds;
 	sc->sc_flags |= UKBD_FLAG_SET_LEDS;
 
 	/* start transfer, if not already started */
-
 	usbd_transfer_start(sc->sc_xfer[UKBD_CTRL_LED]);
 }
 

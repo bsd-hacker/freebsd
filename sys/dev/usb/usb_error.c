@@ -87,5 +87,6 @@ static const char* usb_errstr_table[USB_ERR_MAX] = {
 const char *
 usbd_errstr(usb_error_t err)
 {
+
 	return (err < USB_ERR_MAX ? usb_errstr_table[err] : "USB_ERR_UNKNOWN");
 }

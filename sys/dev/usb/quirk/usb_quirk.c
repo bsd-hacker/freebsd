@@ -770,6 +770,7 @@ usb_quirk_ioctl(unsigned long cmd, caddr_t data,
 static void
 usb_quirk_init(void *arg)
 {
+
 	/* initialize mutex */
 	mtx_init(&usb_quirk_mtx, "USB quirk", NULL, MTX_DEF);
 
@@ -781,6 +782,7 @@ usb_quirk_init(void *arg)
 static void
 usb_quirk_uninit(void *arg)
 {
+
 	usb_quirk_unload(arg);
 
 	/* destroy mutex */

@@ -186,7 +186,6 @@ static uint16_t	uvscom_cfg_read_status(struct uvscom_softc *);
 static void	uvscom_poll(struct ucom_softc *ucom);
 
 static const struct usb_config uvscom_config[UVSCOM_N_TRANSFER] = {
-
 	[UVSCOM_BULK_DT_WR] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
@@ -337,7 +336,6 @@ uvscom_detach(device_t dev)
 	DPRINTF("sc=%p\n", sc);
 
 	/* stop interrupt pipe */
-
 	if (sc->sc_xfer[UVSCOM_INTR_DT_RD])
 		usbd_transfer_stop(sc->sc_xfer[UVSCOM_INTR_DT_RD]);
 
@@ -362,7 +360,6 @@ tr_setup:
 		pc = usbd_xfer_get_frame(xfer, 0);
 		if (ucom_get_data(&sc->sc_ucom, pc, 0,
 		    UVSCOM_BULK_BUF_SIZE, &actlen)) {
-
 			usbd_xfer_set_frame_len(xfer, 0, actlen);
 			usbd_transfer_submit(xfer);
 		}
@@ -421,7 +418,6 @@ uvscom_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
 		if (actlen >= 2) {
-
 			pc = usbd_xfer_get_frame(xfer, 0);
 			usbd_copy_out(pc, 0, buf, sizeof(buf));
 
@@ -622,7 +618,6 @@ uvscom_pre_open(struct ucom_softc *ucom)
 	DPRINTF("sc = %p\n", sc);
 
 	/* check if PC card was inserted */
-
 	if (sc->sc_unit_status & UVSCOM_NOCARD) {
 		DPRINTF("no PC card!\n");
 		return (ENXIO);

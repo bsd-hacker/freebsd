@@ -76,6 +76,7 @@ TUNABLE_INT("hw.usb.debug", &usb_debug);
 void
 usb_dump_iface(struct usb_interface *iface)
 {
+
 	printf("usb_dump_iface: iface=%p\n", iface);
 	if (iface == NULL) {
 		return;
@@ -92,6 +93,7 @@ usb_dump_iface(struct usb_interface *iface)
 void
 usb_dump_device(struct usb_device *udev)
 {
+
 	printf("usb_dump_device: dev=%p\n", udev);
 	if (udev == NULL) {
 		return;
@@ -129,6 +131,7 @@ usb_dump_queue(struct usb_endpoint *ep)
 void
 usb_dump_endpoint(struct usb_endpoint *ep)
 {
+
 	if (ep) {
 		printf("usb_dump_endpoint: endpoint=%p", ep);
 
@@ -155,6 +158,7 @@ void
 usb_dump_xfer(struct usb_xfer *xfer)
 {
 	struct usb_device *udev;
+
 	printf("usb_dump_xfer: xfer=%p\n", xfer);
 	if (xfer == NULL) {
 		return;

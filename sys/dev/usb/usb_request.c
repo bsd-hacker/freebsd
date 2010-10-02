@@ -137,7 +137,6 @@ usbd_get_debug_bits(struct usb_device *udev, struct usb_device_request *req,
 	memset(dbg, 0, sizeof(*dbg));
 
 	/* Compute data stage delay */
-
 	temp = usb_ctrl_debug.ds_delay;
 	if (temp < 0)
 		temp = 0;
@@ -147,7 +146,6 @@ usbd_get_debug_bits(struct usb_device *udev, struct usb_device_request *req,
 	dbg->ds_delay = temp;
 
 	/* Compute status stage delay */
-
 	temp = usb_ctrl_debug.ss_delay;
 	if (temp < 0)
 		temp = 0;
@@ -157,7 +155,6 @@ usbd_get_debug_bits(struct usb_device *udev, struct usb_device_request *req,
 	dbg->ss_delay = temp;
 
 	/* Check if this control request should be failed */
-
 	if (usbd_get_bus_index(udev) != usb_ctrl_debug.bus_index)
 		return;
 
@@ -196,7 +193,6 @@ usbd_get_debug_bits(struct usb_device *udev, struct usb_device_request *req,
 void
 usbd_do_request_callback(struct usb_xfer *xfer, usb_error_t error)
 {
-	;				/* workaround for a bug in "indent" */
 
 	DPRINTF("st=%u\n", USB_GET_STATE(xfer));
 
@@ -230,7 +226,6 @@ usb_do_clear_stall_callback(struct usb_xfer *xfer, usb_error_t error)
 	USB_BUS_LOCK(udev->bus);
 
 	/* round robin endpoint clear stall */
-
 	ep = udev->ep_curr;
 	ep_end = udev->endpoints + udev->endpoints_max;
 	ep_first = udev->endpoints;
@@ -258,9 +253,7 @@ tr_setup:
 			ep = ep_first;	/* endpoint wrapped around */
 		if (ep->edesc &&
 		    ep->is_stalled) {
-
 			/* setup a clear-stall packet */
-
 			req.bmRequestType = UT_WRITE_ENDPOINT;
 			req.bRequest = UR_CLEAR_FEATURE;
 			USETW(req.wValue, UF_ENDPOINT_HALT);
@@ -269,7 +262,6 @@ tr_setup:
 			USETW(req.wLength, 0);
 
 			/* copy in the transfer */
-
 			usbd_copy_in(xfer->frbuffers, 0, &req, sizeof(req));
 
 			/* set length */
@@ -301,6 +293,7 @@ tr_setup:
 static usb_handle_req_t *
 usbd_get_hr_func(struct usb_device *udev)
 {
+
 	/* figure out if there is a Handle Request function */
 	if (udev->flags.usb_mode == USB_MODE_DEVICE)
 		return (usb_temp_get_desc_p);
@@ -457,7 +450,6 @@ usbd_do_request_flags(struct usb_device *udev, struct mtx *mtx,
 		}
 
 		/* The root HUB code needs the BUS lock locked */
-
 		USB_BUS_LOCK(udev->bus);
 		err = (hr_func) (udev, req, &desc, &temp);
 		USB_BUS_UNLOCK(udev->bus);
@@ -614,7 +606,6 @@ usbd_do_request_flags(struct usb_device *udev, struct mtx *mtx,
 		}
 
 		/* get actual length of DATA stage */
-
 		if (xfer->aframes < 2) {
 			acttemp = 0;
 		} else {
@@ -622,7 +613,6 @@ usbd_do_request_flags(struct usb_device *udev, struct mtx *mtx,
 		}
 
 		/* check for short packet */
-
 		if (temp > acttemp) {
 			temp = acttemp;
 			length = temp;
@@ -659,7 +649,6 @@ usbd_do_request_flags(struct usb_device *udev, struct mtx *mtx,
 			(*actlen) += temp;
 		}
 		/* check for timeout */
-
 		delta_ticks = ticks - start_ticks;
 		if (delta_ticks > max_ticks) {
 			if (!err) {
@@ -831,7 +820,6 @@ usbd_req_get_desc(struct usb_device *udev,
 	USETW(req.wIndex, id);
 
 	while (1) {
-
 		if ((min_len < 2) || (max_len < 2)) {
 			err = USB_ERR_INVAL;
 			goto done;
@@ -854,7 +842,6 @@ usbd_req_get_desc(struct usb_device *udev,
 		buf = desc;
 
 		if (min_len == max_len) {
-
 			/* enforce correct length */
 			if ((buf[0] > min_len) && (actlen == NULL))
 				buf[0] = min_len;
@@ -865,19 +852,16 @@ usbd_req_get_desc(struct usb_device *udev,
 			goto done;
 		}
 		/* range check */
-
 		if (max_len > buf[0]) {
 			max_len = buf[0];
 		}
 		/* zero minimum data */
-
 		while (min_len > max_len) {
 			min_len--;
 			buf[min_len] = 0;
 		}
 
 		/* set new minimum length */
-
 		min_len = max_len;
 	}
 done:
@@ -1002,6 +986,7 @@ usbd_req_get_string_desc(struct usb_device *udev, struct mtx *mtx, void *sdesc,
     uint16_t max_len, uint16_t lang_id,
     uint8_t string_index)
 {
+
 	return (usbd_req_get_desc(udev, mtx, NULL, sdesc, 2, max_len, lang_id,
 	    UDESC_STRING, string_index, 0));
 }
@@ -1147,6 +1132,7 @@ usb_error_t
 usbd_req_get_device_desc(struct usb_device *udev, struct mtx *mtx,
     struct usb_device_descriptor *d)
 {
+
 	DPRINTFN(4, "\n");
 	return (usbd_req_get_desc(udev, mtx, NULL, d, sizeof(*d),
 	    sizeof(*d), 0, UDESC_DEVICE, 0, 3));
@@ -1563,7 +1549,6 @@ usbd_req_set_config(struct usb_device *udev, struct mtx *mtx, uint8_t conf)
 	DPRINTF("setting config %d\n", conf);
 
 	/* do "set configuration" request */
-
 	req.bmRequestType = UT_WRITE_DEVICE;
 	req.bRequest = UR_SET_CONFIG;
 	req.wValue[0] = conf;

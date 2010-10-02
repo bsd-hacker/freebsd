@@ -228,15 +228,12 @@ usbd_get_no_alts(struct usb_config_descriptor *cd,
 	uint8_t ifaceno;
 
 	/* Reset interface count */
-
 	n = 0;
 
 	/* Get the interface number */
-
 	ifaceno = id->bInterfaceNumber;
 
 	/* Iterate all the USB descriptors */
-
 	desc = NULL;
 	while ((desc = usb_desc_foreach(cd, desc))) {
 		if ((desc->bDescriptorType == UDESC_INTERFACE) &&

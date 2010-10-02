@@ -110,7 +110,6 @@ static void avr32dci_root_intr(struct avr32dci_softc *sc);
  */
 static const struct usb_hw_ep_profile
 	avr32dci_ep_profile[4] = {
-
 	[0] = {
 		.max_in_frame_size = 64,
 		.max_out_frame_size = 64,
@@ -155,6 +154,7 @@ static void
 avr32dci_get_hw_ep_profile(struct usb_device *udev,
     const struct usb_hw_ep_profile **ppf, uint8_t ep_addr)
 {
+
 	if (ep_addr == 0)
 		*ppf = avr32dci_ep_profile;
 	else if (ep_addr < 3)
@@ -192,9 +192,9 @@ avr32dci_mod_ien(struct avr32dci_softc *sc, uint32_t set, uint32_t clear)
 static void
 avr32dci_clocks_on(struct avr32dci_softc *sc)
 {
+
 	if (sc->sc_flags.clocks_off &&
 	    sc->sc_flags.port_powered) {
-
 		DPRINTFN(5, "\n");
 
 		/* turn on clocks */
@@ -209,8 +209,8 @@ avr32dci_clocks_on(struct avr32dci_softc *sc)
 static void
 avr32dci_clocks_off(struct avr32dci_softc *sc)
 {
-	if (!sc->sc_flags.clocks_off) {
 
+	if (!sc->sc_flags.clocks_off) {
 		DPRINTFN(5, "\n");
 
 		avr32dci_mod_ctrl(sc, 0, AVR32_CTRL_DEV_EN_USBA);
@@ -225,8 +225,8 @@ avr32dci_clocks_off(struct avr32dci_softc *sc)
 static void
 avr32dci_pull_up(struct avr32dci_softc *sc)
 {
-	/* pullup D+, if possible */
 
+	/* pullup D+, if possible */
 	if (!sc->sc_flags.d_pulled_up &&
 	    sc->sc_flags.port_powered) {
 		sc->sc_flags.d_pulled_up = 1;
@@ -237,8 +237,8 @@ avr32dci_pull_up(struct avr32dci_softc *sc)
 static void
 avr32dci_pull_down(struct avr32dci_softc *sc)
 {
-	/* pulldown D+, if possible */
 
+	/* pulldown D+, if possible */
 	if (sc->sc_flags.d_pulled_up) {
 		sc->sc_flags.d_pulled_up = 0;
 		avr32dci_mod_ctrl(sc, AVR32_CTRL_DEV_DETACH, 0);
@@ -248,6 +248,7 @@ avr32dci_pull_down(struct avr32dci_softc *sc)
 static void
 avr32dci_wakeup_peer(struct avr32dci_softc *sc)
 {
+
 	if (!sc->sc_flags.status_suspend) {
 		return;
 	}
@@ -263,6 +264,7 @@ avr32dci_wakeup_peer(struct avr32dci_softc *sc)
 static void
 avr32dci_set_address(struct avr32dci_softc *sc, uint8_t addr)
 {
+
 	DPRINTFN(5, "addr=%d\n", addr);
 
 	avr32dci_mod_ctrl(sc, AVR32_UDADDR_ADDEN | addr, 0);
@@ -453,7 +455,6 @@ avr32dci_data_tx(struct avr32dci_td *td)
 	uint32_t temp;
 
 	to = 4;				/* don't loop forever! */
-
 	/* get pointer to softc */
 	sc = AVR32_PC2SC(td->pc);
 
@@ -483,7 +484,6 @@ repeat:
 		count = td->remainder;
 	}
 	while (count > 0) {
-
 		usbd_get_page(td->pc, td->offset, &buf_res);
 
 		/* get correct length */
@@ -593,7 +593,6 @@ avr32dci_xfer_do_fifo(struct usb_xfer *xfer)
 
 done:
 	/* compute all actual lengths */
-
 	avr32dci_standard_done(xfer);
 	return (0);			/* complete */
 }
@@ -615,6 +614,7 @@ repeat:
 void
 avr32dci_vbus_interrupt(struct avr32dci_softc *sc, uint8_t is_on)
 {
+
 	DPRINTFN(5, "vbus = %u\n", is_on);
 
 	if (is_on) {
@@ -622,7 +622,6 @@ avr32dci_vbus_interrupt(struct avr32dci_softc *sc, uint8_t is_on)
 			sc->sc_flags.status_vbus = 1;
 
 			/* complete root HUB interrupt endpoint */
-
 			avr32dci_root_intr(sc);
 		}
 	} else {
@@ -634,7 +633,6 @@ avr32dci_vbus_interrupt(struct avr32dci_softc *sc, uint8_t is_on)
 			sc->sc_flags.change_connect = 1;
 
 			/* complete root HUB interrupt endpoint */
-
 			avr32dci_root_intr(sc);
 		}
 	}
@@ -657,7 +655,6 @@ avr32dci_interrupt(struct avr32dci_softc *sc)
 
 	/* check for any bus state change interrupts */
 	if (status & AVR32_INT_ENDRESET) {
-
 		DPRINTFN(5, "end of reset\n");
 
 		/* set correct state */
@@ -679,7 +676,6 @@ avr32dci_interrupt(struct avr32dci_softc *sc)
 	 * milliseconds of inactivity on the USB BUS.
 	 */
 	if (status & AVR32_INT_WAKE_UP) {
-
 		DPRINTFN(5, "resume interrupt\n");
 
 		if (sc->sc_flags.status_suspend) {
@@ -695,7 +691,6 @@ avr32dci_interrupt(struct avr32dci_softc *sc)
 			avr32dci_root_intr(sc);
 		}
 	} else if (status & AVR32_INT_DET_SUSPD) {
-
 		DPRINTFN(5, "suspend interrupt\n");
 
 		if (!sc->sc_flags.status_suspend) {
@@ -713,7 +708,6 @@ avr32dci_interrupt(struct avr32dci_softc *sc)
 	}
 	/* check for any endpoint interrupts */
 	if (status & -AVR32_INT_EPT_INT(0)) {
-
 		DPRINTFN(5, "real endpoint interrupt\n");
 
 		avr32dci_interrupt_poll(sc);
@@ -765,7 +759,6 @@ avr32dci_setup_standard_chain(struct usb_xfer *xfer)
 	xfer->td_transfer_cache = td;
 
 	/* setup temp */
-
 	temp.pc = NULL;
 	temp.td = NULL;
 	temp.td_next = xfer->td_start[0];
@@ -778,10 +771,8 @@ avr32dci_setup_standard_chain(struct usb_xfer *xfer)
 	ep_no = (xfer->endpoint & UE_ADDR);
 
 	/* check if we should prepend a setup message */
-
 	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
 		if ((xfer->status & XFER_STATUS_CTRLHDR) != 0) {
-
 			temp.func = &avr32dci_setup_rx;
 			temp.len = xfer->frlengths[0];
 			temp.pc = xfer->frbuffers + 0;
@@ -815,9 +806,7 @@ avr32dci_setup_standard_chain(struct usb_xfer *xfer)
 		need_sync = 0;
 	}
 	while (x != xfer->nframes) {
-
 		/* DATA0 / DATA1 message */
-
 		temp.len = xfer->frlengths[x];
 
 		x++;
@@ -833,15 +822,11 @@ avr32dci_setup_standard_chain(struct usb_xfer *xfer)
 			}
 		}
 		if (temp.len == 0) {
-
 			/* make sure that we send an USB packet */
-
 			temp.short_pkt = 0;
 
 		} else {
-
 			/* regular data transfer */
-
 			temp.short_pkt = (xfer->flags.force_short_xfer) ? 0 : 1;
 		}
 
@@ -856,7 +841,6 @@ avr32dci_setup_standard_chain(struct usb_xfer *xfer)
 	}
 
 	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
-
 		/* always setup a valid "pc" pointer for status and sync */
 		temp.pc = xfer->frbuffers + 0;
 		temp.len = 0;
@@ -871,7 +855,6 @@ avr32dci_setup_standard_chain(struct usb_xfer *xfer)
 		}
 		/* check if we should append a status stage */
 		if ((xfer->status & XFER_STATUS_CTRLACTIVE) == 0) {
-
 			/*
 			 * Send a DATA1 message and invert the current
 			 * endpoint direction.
@@ -913,6 +896,7 @@ avr32dci_timeout(void *arg)
 static void
 avr32dci_start_standard_chain(struct usb_xfer *xfer)
 {
+
 	DPRINTFN(9, "\n");
 
 	/* poll one time - will turn on interrupts */
@@ -935,6 +919,7 @@ avr32dci_start_standard_chain(struct usb_xfer *xfer)
 static void
 avr32dci_root_intr(struct avr32dci_softc *sc)
 {
+
 	DPRINTFN(9, "\n");
 
 	USB_BUS_LOCK_ASSERT(&sc->sc_bus, MA_OWNED);
@@ -1003,7 +988,6 @@ avr32dci_standard_done_sub(struct usb_xfer *xfer)
 	} while (0);
 
 	/* update transfer cache */
-
 	xfer->td_transfer_cache = td;
 
 	return (error ?
@@ -1019,13 +1003,10 @@ avr32dci_standard_done(struct usb_xfer *xfer)
 	    xfer, xfer->pipe);
 
 	/* reset scanner */
-
 	xfer->td_transfer_cache = xfer->td_transfer_first;
 
 	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
-
 		if ((xfer->status & XFER_STATUS_CTRLHDR) != 0) {
-
 			err = avr32dci_standard_done_sub(xfer);
 		}
 		xfer->aframes = 1;
@@ -1035,7 +1016,6 @@ avr32dci_standard_done(struct usb_xfer *xfer)
 		}
 	}
 	while (xfer->aframes != xfer->nframes) {
-
 		err = avr32dci_standard_done_sub(xfer);
 		xfer->aframes++;
 
@@ -1046,7 +1026,6 @@ avr32dci_standard_done(struct usb_xfer *xfer)
 
 	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0 &&
 	    (xfer->status & XFER_STATUS_CTRLACTIVE) == 0) {
-
 		err = avr32dci_standard_done_sub(xfer);
 	}
 done:
@@ -1240,13 +1219,11 @@ avr32dci_init(struct avr32dci_softc *sc)
 	}
 
 	/* turn off clocks */
-
 	avr32dci_clocks_off(sc);
 
 	USB_BUS_UNLOCK(&sc->sc_bus);
 
 	/* catch any lost interrupts */
-
 	avr32dci_do_poll(&sc->sc_bus);
 
 	return (0);			/* success */
@@ -1324,6 +1301,7 @@ avr32dci_device_non_isoc_open(struct usb_xfer *xfer)
 static void
 avr32dci_device_non_isoc_close(struct usb_xfer *xfer)
 {
+
 	avr32dci_device_done(xfer, USB_ERR_CANCELLED);
 }
 
@@ -1336,6 +1314,7 @@ avr32dci_device_non_isoc_enter(struct usb_xfer *xfer)
 static void
 avr32dci_device_non_isoc_start(struct usb_xfer *xfer)
 {
+
 	/* setup TDs */
 	avr32dci_setup_standard_chain(xfer);
 	avr32dci_start_standard_chain(xfer);
@@ -1355,12 +1334,14 @@ struct usb_pipe_methods avr32dci_device_non_isoc_methods =
 static void
 avr32dci_device_isoc_fs_open(struct usb_xfer *xfer)
 {
+
 	return;
 }
 
 static void
 avr32dci_device_isoc_fs_close(struct usb_xfer *xfer)
 {
+
 	avr32dci_device_done(xfer, USB_ERR_CANCELLED);
 }
 
@@ -1422,6 +1403,7 @@ avr32dci_device_isoc_fs_enter(struct usb_xfer *xfer)
 static void
 avr32dci_device_isoc_fs_start(struct usb_xfer *xfer)
 {
+
 	/* start TD chain */
 	avr32dci_start_standard_chain(xfer);
 }
@@ -1545,7 +1527,6 @@ avr32dci_roothub_exec(struct usb_device *udev,
 	index = UGETW(req->wIndex);
 
 	/* demultiplex the control request */
-
 	switch (req->bmRequestType) {
 	case UT_READ_DEVICE:
 		switch (req->bRequest) {
@@ -1899,7 +1880,6 @@ tr_handle_get_port_status:
 	}
 
 	/* Select Device Side Mode */
-
 	value = UPS_PORT_MODE_DEVICE;
 
 	/* Check for High Speed */
@@ -1979,11 +1959,9 @@ avr32dci_xfer_setup(struct usb_setup_params *parm)
 	 * compute maximum number of TDs
 	 */
 	if ((xfer->pipe->edesc->bmAttributes & UE_XFERTYPE) == UE_CONTROL) {
-
 		ntd = xfer->nframes + 1 /* STATUS */ + 1	/* SYNC 1 */
 		    + 1 /* SYNC 2 */ ;
 	} else {
-
 		ntd = xfer->nframes + 1 /* SYNC */ ;
 	}
 
@@ -2013,7 +1991,6 @@ avr32dci_xfer_setup(struct usb_setup_params *parm)
 	parm->size[0] += ((-parm->size[0]) & (USB_HOST_ALIGN - 1));
 
 	for (n = 0; n != ntd; n++) {
-
 		struct avr32dci_td *td;
 
 		if (parm->buf) {
@@ -2059,7 +2036,6 @@ avr32dci_ep_init(struct usb_device *udev, struct usb_endpoint_descriptor *edesc,
 	    sc->sc_rt_addr, udev->device_index);
 
 	if (udev->device_index != sc->sc_rt_addr) {
-
 		if (udev->flags.usb_mode != USB_MODE_DEVICE) {
 			/* not supported */
 			return;

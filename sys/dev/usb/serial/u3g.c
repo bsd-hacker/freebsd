@@ -131,7 +131,6 @@ static int u3g_driver_loaded(struct module *mod, int what, void *arg);
 static eventhandler_tag u3g_etag;
 
 static const struct usb_config u3g_config[U3G_N_TRANSFER] = {
-
 	[U3G_BULK_WR] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
@@ -589,7 +588,6 @@ u3g_sael_m460_init(struct usb_device *udev)
 	}
 
 	for (n = 0; n != (sizeof(setup)/sizeof(setup[0])); n++) {
-
 		memcpy(&req, setup[n], sizeof(req));
 
 		len = UGETW(req.wLength);

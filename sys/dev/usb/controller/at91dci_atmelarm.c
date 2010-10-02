@@ -94,11 +94,9 @@ at91_vbus_poll(struct at91_udp_softc *sc)
 	uint8_t vbus_val;
 
 	/* XXX temporary clear interrupts here */
-
 	temp = at91_pio_gpio_clear_interrupt(VBUS_BASE);
 
 	/* just forward it */
-
 	vbus_val = at91_pio_gpio_get(VBUS_BASE, VBUS_MASK);
 	at91dci_vbus_interrupt(&sc->sc_dci, vbus_val);
 }
@@ -124,18 +122,21 @@ at91_udp_clocks_off(void *arg)
 static void
 at91_udp_pull_up(void *arg)
 {
+
 	at91_pio_gpio_set(PULLUP_BASE, PULLUP_MASK);
 }
 
 static void
 at91_udp_pull_down(void *arg)
 {
+
 	at91_pio_gpio_clear(PULLUP_BASE, PULLUP_MASK);
 }
 
 static int
 at91_udp_probe(device_t dev)
 {
+
 	device_set_desc(dev, "AT91 integrated AT91_UDP controller");
 	return (0);
 }
@@ -148,7 +149,6 @@ at91_udp_attach(device_t dev)
 	int rid;
 
 	/* setup AT9100 USB device controller interface softc */
-
 	sc->sc_dci.sc_clocks_on = &at91_udp_clocks_on;
 	sc->sc_dci.sc_clocks_off = &at91_udp_clocks_off;
 	sc->sc_dci.sc_clocks_arg = sc;

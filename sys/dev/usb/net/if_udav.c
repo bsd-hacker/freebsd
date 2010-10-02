@@ -971,6 +971,7 @@ udav_miibus_writereg(device_t dev, int phy, int reg, int data)
 static void
 udav_miibus_statchg(device_t dev)
 {
+
 	/* nothing to do */
 }
 

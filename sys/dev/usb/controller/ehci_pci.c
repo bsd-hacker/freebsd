@@ -417,7 +417,6 @@ ehci_pci_attach(device_t self)
 	ehci_pci_takecontroller(self);
 
 	/* Undocumented quirks taken from Linux */
-
 	switch (pci_get_vendor(self)) {
 	case PCI_EHCI_VENDORID_ATI:
 		/* SB600 and SB700 EHCI quirk */

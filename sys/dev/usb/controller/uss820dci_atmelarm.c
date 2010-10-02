@@ -139,6 +139,7 @@ uss820_atmelarm_shutdown(device_t dev)
 static int
 uss820_atmelarm_probe(device_t dev)
 {
+
 	device_set_desc(dev, uss820_desc);
 	return (0);			/* success */
 }

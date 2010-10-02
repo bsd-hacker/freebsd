@@ -128,14 +128,12 @@ usb_make_raw_desc(struct usb_temp_setup *temp,
 			bcopy(raw, dst, len);
 
 			/* check if we have got a CDC union descriptor */
-
 			if ((raw[0] >= sizeof(struct usb_cdc_union_descriptor)) &&
 			    (raw[1] == UDESC_CS_INTERFACE) &&
 			    (raw[2] == UDESCSUB_CDC_UNION)) {
 				struct usb_cdc_union_descriptor *ud = (void *)dst;
 
 				/* update the interface numbers */
-
 				ud->bMasterInterface +=
 				    temp->bInterfaceNumber;
 				ud->bSlaveInterface[0] +=
@@ -216,7 +214,6 @@ usb_make_endpoint_desc(struct usb_temp_setup *temp,
 		USETW(ed->wMaxPacketSize, mps);
 
 		/* setup bInterval parameter */
-
 		if (ted->pIntervals &&
 		    ted->pIntervals->bInterval[temp->usb_speed]) {
 			ed->bInterval =
@@ -272,12 +269,10 @@ usb_make_interface_desc(struct usb_temp_setup *temp,
 	uint16_t old_size;
 
 	/* Reserve memory */
-
 	old_size = temp->size;
 	temp->size += sizeof(*id);
 
 	/* Update interface and alternate interface numbers */
-
 	if (tid->isAltInterface == 0) {
 		temp->bAlternateSetting = 0;
 		temp->bInterfaceNumber++;
@@ -286,7 +281,6 @@ usb_make_interface_desc(struct usb_temp_setup *temp,
 	}
 
 	/* Scan all Raw Descriptors first */
-
 	rd = tid->ppRawDesc;
 
 	if (rd) {
@@ -296,11 +290,9 @@ usb_make_interface_desc(struct usb_temp_setup *temp,
 		}
 	}
 	/* Reset some counters */
-
 	temp->bNumEndpoints = 0;
 
 	/* Scan all Endpoint Descriptors second */
-
 	ted = tid->ppEndpoints;
 	if (ted) {
 		while (*ted) {
@@ -342,17 +334,14 @@ usb_make_config_desc(struct usb_temp_setup *temp,
 	uint16_t old_size;
 
 	/* Reserve memory */
-
 	old_size = temp->size;
 	temp->size += sizeof(*cd);
 
 	/* Reset some counters */
-
 	temp->bInterfaceNumber = 0 - 1;
 	temp->bAlternateSetting = 0;
 
 	/* Scan all the USB interfaces */
-
 	tid = tcd->ppIfaceDesc;
 	if (tid) {
 		while (*tid) {
@@ -403,12 +392,10 @@ usb_make_device_desc(struct usb_temp_setup *temp,
 	uint16_t old_size;
 
 	/* Reserve memory */
-
 	old_size = temp->size;
 	temp->size += sizeof(*utd);
 
 	/* Scan all the USB configs */
-
 	temp->bConfigurationValue = 1;
 	tcd = tdd->ppConfigDesc;
 	if (tcd) {
@@ -494,6 +481,7 @@ static uint8_t
 usb_hw_ep_match(const struct usb_hw_ep_profile *pf,
     uint8_t ep_type, uint8_t ep_dir_in)
 {
+
 	if (ep_type == UE_CONTROL) {
 		/* special */
 		return (pf->support_control);
@@ -552,7 +540,6 @@ usb_hw_ep_find_match(struct usb_hw_ep_scratch *ues,
 	}
 
 	for (n = 1; n != (USB_EP_MAX / 2); n++) {
-
 		/* get HW endpoint profile */
 		(ues->methods->get_hw_ep_profile) (ues->udev, &pf, n);
 		if (pf == NULL) {
@@ -661,10 +648,8 @@ usb_hw_ep_get_needs(struct usb_hw_ep_scratch *ues,
 repeat:
 
 	while ((desc = usb_desc_foreach(ues->cd, desc))) {
-
 		if ((desc->bDescriptorType == UDESC_INTERFACE) &&
 		    (desc->bLength >= sizeof(*id))) {
-
 			id = (void *)desc;
 
 			if (id->bAlternateSetting == 0) {
@@ -677,7 +662,6 @@ repeat:
 		}
 		if ((desc->bDescriptorType == UDESC_ENDPOINT) &&
 		    (desc->bLength >= sizeof(*ed))) {
-
 			ed = (void *)desc;
 
 			goto handle_endpoint_desc;
@@ -690,7 +674,6 @@ handle_endpoint_desc:
 	temp = (ed->bmAttributes & UE_XFERTYPE);
 
 	if (temp == ep_type) {
-
 		if (ep_curr == ep_end) {
 			/* too many endpoints */
 			return (1);	/* failure */
@@ -713,7 +696,6 @@ handle_endpoint_desc:
 		 */
 		ep_no = (ed->bEndpointAddress & UE_ADDR);
 		if (ep_no != 0) {
-
 			/* get HW endpoint profile */
 			(ues->methods->get_hw_ep_profile)
 			    (ues->udev, &pf, ep_no);
@@ -753,7 +735,6 @@ handle_endpoint_desc:
 				}
 			}
 		} else if (is_complete) {
-
 			/* check if we have enough buffer space */
 			if (wMaxPacketSize >
 			    ep_curr->max_frame_size) {
@@ -768,7 +749,6 @@ handle_endpoint_desc:
 			}
 
 		} else {
-
 			/* compute the maximum frame size */
 			if (ep_curr->max_frame_size < wMaxPacketSize) {
 				ep_curr->max_frame_size = wMaxPacketSize;
@@ -825,7 +805,6 @@ usb_hw_ep_resolve(struct usb_device *udev,
 		return (USB_ERR_INVAL);
 	}
 	if (desc->bDescriptorType == UDESC_DEVICE) {
-
 		if (desc->bLength < sizeof(*dd)) {
 			return (USB_ERR_INVAL);
 		}
@@ -891,7 +870,6 @@ usb_hw_ep_resolve(struct usb_device *udev,
 	ues->udev = udev;
 
 	/* Get all the endpoints we need */
-
 	if (usb_hw_ep_get_needs(ues, UE_ISOCHRONOUS, 0) ||
 	    usb_hw_ep_get_needs(ues, UE_INTERRUPT, 0) ||
 	    usb_hw_ep_get_needs(ues, UE_CONTROL, 0) ||
@@ -900,9 +878,7 @@ usb_hw_ep_resolve(struct usb_device *udev,
 		return (USB_ERR_INVAL);
 	}
 	for (ep = ues->ep; ep != ues->ep_max; ep++) {
-
 		while (ep->needs_in || ep->needs_out) {
-
 			/*
 		         * First try to use a simplex endpoint.
 		         * Then try to use a duplex endpoint.
@@ -918,7 +894,6 @@ usb_hw_ep_resolve(struct usb_device *udev,
 	ues->ep_max = ues->ep;
 
 	/* Update all endpoint addresses */
-
 	if (usb_hw_ep_get_needs(ues, UE_ISOCHRONOUS, 1) ||
 	    usb_hw_ep_get_needs(ues, UE_INTERRUPT, 1) ||
 	    usb_hw_ep_get_needs(ues, UE_CONTROL, 1) ||
@@ -939,6 +914,7 @@ usb_hw_ep_resolve(struct usb_device *udev,
 static const struct usb_temp_device_desc *
 usb_temp_get_tdd(struct usb_device *udev)
 {
+
 	if (udev->usb_template_ptr == NULL) {
 		return (NULL);
 	}
@@ -1216,7 +1192,6 @@ usb_temp_setup(struct usb_device *udev,
 	uts->self_powered = udev->flags.self_powered;
 
 	/* first pass */
-
 	usb_make_device_desc(uts, tdd);
 
 	if (uts->err) {
@@ -1234,7 +1209,6 @@ usb_temp_setup(struct usb_device *udev,
 		return (USB_ERR_NOMEM);
 	}
 	/* second pass */
-
 	uts->size = 0;
 
 	usb_make_device_desc(uts, tdd);
@@ -1260,7 +1234,6 @@ usb_temp_setup(struct usb_device *udev,
 		goto error;
 	}
 	for (n = 0;; n++) {
-
 		buf = usb_temp_get_config_desc(udev, NULL, n);
 		if (buf == NULL) {
 			break;
@@ -1289,8 +1262,8 @@ error:
 void
 usb_temp_unsetup(struct usb_device *udev)
 {
-	if (udev->usb_template_ptr) {
 
+	if (udev->usb_template_ptr) {
 		free(udev->usb_template_ptr, M_USB);
 
 		udev->usb_template_ptr = NULL;
@@ -1322,6 +1295,7 @@ usb_temp_setup_by_index(struct usb_device *udev, uint16_t index)
 static void
 usb_temp_init(void *arg)
 {
+
 	/* register our functions */
 	usb_temp_get_desc_p = &usb_temp_get_desc;
 	usb_temp_setup_by_index_p = &usb_temp_setup_by_index;

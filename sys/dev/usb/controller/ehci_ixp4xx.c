@@ -151,7 +151,6 @@ ehci_ixp_attach(device_t self)
 		return (err);
 
 	/* NB: hints fix the memory location and irq */
-
 	rid = 0;
 	sc->sc_io_res = bus_alloc_resource_any(self, SYS_RES_MEMORY, &rid, RF_ACTIVE);
 	if (!sc->sc_io_res) {
@@ -292,7 +291,6 @@ ehci_ixp_detach(device_t self)
 /*
  * Bus space accessors for PIO operations.
  */
-
 static uint8_t
 ehci_bs_r_1(void *t, bus_space_handle_t h, bus_size_t o)
 {

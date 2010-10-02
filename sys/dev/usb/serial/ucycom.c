@@ -125,7 +125,6 @@ static void	ucycom_cfg_param(struct ucom_softc *, struct termios *);
 static void	ucycom_poll(struct ucom_softc *ucom);
 
 static const struct usb_config ucycom_config[UCYCOM_N_TRANSFER] = {
-
 	[UCYCOM_CTRL_RD] = {
 		.type = UE_CONTROL,
 		.endpoint = 0x00,	/* Control pipe */
@@ -231,7 +230,6 @@ ucycom_attach(device_t dev)
 	device_printf(dev, "Cypress CY7C%X USB to RS232 bridge\n", sc->sc_model);
 
 	/* get report descriptor */
-
 	error = usbd_req_get_hid_desc(uaa->device, NULL,
 	    &urd_ptr, &urd_len, M_USBDEV,
 	    UCYCOM_IFACE_INDEX);
@@ -243,7 +241,6 @@ ucycom_attach(device_t dev)
 		goto detach;
 	}
 	/* get report sizes */
-
 	sc->sc_flen = hid_report_size(urd_ptr, urd_len, hid_feature, &sc->sc_fid);
 	sc->sc_ilen = hid_report_size(urd_ptr, urd_len, hid_input, &sc->sc_iid);
 	sc->sc_olen = hid_report_size(urd_ptr, urd_len, hid_output, &sc->sc_oid);
@@ -370,7 +367,6 @@ tr_transferred:
 
 		if (ucom_get_data(&sc->sc_ucom, pc1, offset,
 		    sc->sc_olen - offset, &actlen)) {
-
 			req.bmRequestType = UT_WRITE_CLASS_INTERFACE;
 			req.bRequest = UR_SET_REPORT;
 			USETW2(req.wValue, UHID_OUTPUT_REPORT, sc->sc_oid);

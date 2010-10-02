@@ -86,7 +86,6 @@ usb_handle_request_callback(struct usb_xfer *xfer, usb_error_t error)
 	usb_error_t err;
 
 	/* check the current transfer state */
-
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_SETUP:
 	case USB_ST_TRANSFERRED:
@@ -95,7 +94,6 @@ usb_handle_request_callback(struct usb_xfer *xfer, usb_error_t error)
 		err = usb_handle_request(xfer);
 
 		if (err) {
-
 			if (err == USB_ERR_BAD_CONTEXT) {
 				/* we need to re-setup the control transfer */
 				usb_needs_explore(xfer->xroot->bus, 0);
@@ -247,11 +245,9 @@ tr_repeat:
 		goto tr_stalled;
 	}
 	/* set initial state */
-
 	temp_state = state;
 
 	/* forward request to interface, if any */
-
 	if ((error != 0) &&
 	    (error != ENOTTY) &&
 	    (iface->subdev != NULL) &&
@@ -271,7 +267,6 @@ tr_repeat:
 		iface_parent = NULL;
 	}
 	/* forward request to parent interface, if any */
-
 	if ((error != 0) &&
 	    (error != ENOTTY) &&
 	    (iface_parent != NULL) &&
@@ -500,14 +495,12 @@ usb_handle_request(struct usb_xfer *xfer)
 	}
 
 	/* reset frame stuff */
-
 	usbd_xfer_set_frame_len(xfer, 0, 0);
 
 	usbd_xfer_set_frame_offset(xfer, 0, 0);
 	usbd_xfer_set_frame_offset(xfer, sizeof(req), 1);
 
 	/* get the current request, if any */
-
 	usbd_copy_out(xfer->frbuffers, 0, &req, sizeof(req));
 
 	if (xfer->control_rem == 0xFFFF) {
@@ -521,14 +514,12 @@ usb_handle_request(struct usb_xfer *xfer)
 	}
 
 	/* set some defaults */
-
 	max_len = 0;
 	src_zcopy = NULL;
 	src_mcopy = NULL;
 	udev = xfer->xroot->udev;
 
 	/* get some request fields decoded */
-
 	wValue = UGETW(req.wValue);
 	wIndex = UGETW(req.wIndex);
 
@@ -537,7 +528,6 @@ usb_handle_request(struct usb_xfer *xfer)
 	    req.bRequest, wValue, wIndex, off, rem, state);
 
 	/* demultiplex the control request */
-
 	switch (req.bmRequestType) {
 	case UT_READ_DEVICE:
 		if (state != USB_HR_NOT_COMPLETE) {
@@ -742,11 +732,9 @@ tr_valid:
 		goto tr_stalled;
 	}
 	/* subtract offset from length */
-
 	max_len -= off;
 
 	/* Compute the real maximum data length */
-
 	if (max_len > xfer->max_data_length) {
 		max_len = usbd_xfer_max_len(xfer);
 	}

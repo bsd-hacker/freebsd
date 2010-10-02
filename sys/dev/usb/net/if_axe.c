@@ -208,7 +208,6 @@ static void	axe_stop(struct axe_softc *);
 static void	axe_setmulti_locked(struct axe_softc *);
 
 static const struct usb_config axe_config[AXE_N_TRANSFER] = {
-
 	[AXE_BULK_DT_WR] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
@@ -641,6 +640,7 @@ axe_ax88178_init(struct axe_softc *sc)
 static void
 axe_ax88772_init(struct axe_softc *sc)
 {
+
 	axe_cmd(sc, AXE_CMD_WRITE_GPIO, 0, 0x00b0, NULL);
 	axe_pause(sc, hz / 16);
 
@@ -1060,7 +1060,6 @@ tr_setup:
 		pc = usbd_xfer_get_frame(xfer, 0);
 
 		while (1) {
-
 			IFQ_DRV_DEQUEUE(&ifp->if_snd, m);
 
 			if (m == NULL) {
@@ -1072,7 +1071,6 @@ tr_setup:
 				m->m_pkthdr.len = MCLBYTES;
 			}
 			if (sc->sc_flags & (AXE_FLAG_772 | AXE_FLAG_178)) {
-
 				hdr.len = htole16(m->m_pkthdr.len);
 				hdr.ilen = ~hdr.len;
 

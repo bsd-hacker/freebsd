@@ -114,7 +114,6 @@ SYSCTL_INT(_hw_usb_udbp, OID_AUTO, debug, CTLFLAG_RW,
 #define	UDBP_Q_MAXLEN   50
 
 struct udbp_softc {
-
 	struct mtx sc_mtx;
 	struct ng_bt_mbufq sc_xmitq_hipri;	/* hi-priority transmit queue */
 	struct ng_bt_mbufq sc_xmitq;	/* low-priority transmit queue */
@@ -201,7 +200,6 @@ static struct ng_type ng_udbp_typestruct = {
 
 /* USB config */
 static const struct usb_config udbp_config[UDBP_T_MAX] = {
-
 	[UDBP_T_WR] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
@@ -348,7 +346,6 @@ udbp_attach(device_t dev)
 	NG_BT_MBUFQ_INIT(&sc->sc_xmitq_hipri, UDBP_Q_MAXLEN);
 
 	/* create Netgraph node */
-
 	if (ng_make_node_common(&ng_udbp_typestruct, &sc->sc_node) != 0) {
 		printf("%s: Could not create Netgraph node\n",
 		    sc->sc_name);
@@ -356,7 +353,6 @@ udbp_attach(device_t dev)
 		goto detach;
 	}
 	/* name node */
-
 	if (ng_name_node(sc->sc_node, sc->sc_name) != 0) {
 		printf("%s: Could not name node\n",
 		    sc->sc_name);
@@ -367,7 +363,6 @@ udbp_attach(device_t dev)
 	NG_NODE_SET_PRIVATE(sc->sc_node, sc);
 
 	/* the device is now operational */
-
 	return (0);			/* success */
 
 detach:
@@ -381,25 +376,21 @@ udbp_detach(device_t dev)
 	struct udbp_softc *sc = device_get_softc(dev);
 
 	/* destroy Netgraph node */
-
 	if (sc->sc_node != NULL) {
 		NG_NODE_SET_PRIVATE(sc->sc_node, NULL);
 		ng_rmnode_self(sc->sc_node);
 		sc->sc_node = NULL;
 	}
 	/* free USB transfers, if any */
-
 	usbd_transfer_unsetup(sc->sc_xfer, UDBP_T_MAX);
 
 	mtx_destroy(&sc->sc_mtx);
 
 	/* destroy queues */
-
 	NG_BT_MBUFQ_DESTROY(&sc->sc_xmitq);
 	NG_BT_MBUFQ_DESTROY(&sc->sc_xmitq_hipri);
 
 	/* extra check */
-
 	if (sc->sc_bulk_in_buffer) {
 		m_freem(sc->sc_bulk_in_buffer);
 		sc->sc_bulk_in_buffer = NULL;
@@ -421,7 +412,6 @@ udbp_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 	case USB_ST_TRANSFERRED:
 
 		/* allocate new mbuf */
-
 		MGETHDR(m, M_DONTWAIT, MT_DATA);
 
 		if (m == NULL) {
@@ -495,7 +485,6 @@ udbp_bulk_read_complete(node_p node, hook_p hook, void *arg1, int arg2)
 	m = sc->sc_bulk_in_buffer;
 
 	if (m) {
-
 		sc->sc_bulk_in_buffer = NULL;
 
 		if ((sc->sc_hook == NULL) ||
@@ -514,7 +503,6 @@ done:
 		m_freem(m);
 	}
 	/* start USB bulk-in transfer, if not already started */
-
 	usbd_transfer_start(sc->sc_xfer[UDBP_T_RD]);
 
 	mtx_unlock(&sc->sc_mtx);
@@ -538,7 +526,6 @@ udbp_bulk_write_callback(struct usb_xfer *xfer, usb_error_t error)
 			return;
 		}
 		/* get next mbuf, if any */
-
 		NG_BT_MBUFQ_DEQUEUE(&sc->sc_xmitq_hipri, m);
 		if (m == NULL) {
 			NG_BT_MBUFQ_DEQUEUE(&sc->sc_xmitq, m);
@@ -833,13 +820,11 @@ ng_udbp_disconnect(hook_p hook)
 	int error = 0;
 
 	if (sc != NULL) {
-
 		mtx_lock(&sc->sc_mtx);
 
 		if (hook != sc->sc_hook) {
 			error = EINVAL;
 		} else {
-
 			/* stop bulk-in transfer */
 			usbd_transfer_stop(sc->sc_xfer[UDBP_T_RD_CS]);
 			usbd_transfer_stop(sc->sc_xfer[UDBP_T_RD]);

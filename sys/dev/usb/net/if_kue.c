@@ -179,7 +179,6 @@ SYSCTL_INT(_hw_usb_kue, OID_AUTO, debug, CTLFLAG_RW, &kue_debug, 0,
 #endif
 
 static const struct usb_config kue_config[KUE_N_TRANSFER] = {
-
 	[KUE_BULK_DT_WR] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
@@ -691,7 +690,6 @@ tr_setup:
 		total_len = (temp_len + (64 - (temp_len % 64)));
 
 		/* the first two bytes are the frame length */
-
 		buf[0] = (uint8_t)(m->m_pkthdr.len);
 		buf[1] = (uint8_t)(m->m_pkthdr.len >> 8);
 

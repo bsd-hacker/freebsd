@@ -117,6 +117,7 @@ DRIVER_MODULE(usbus, uss820, usb_driver, usb_devclass, 0, 0);
 static int
 usb_probe(device_t dev)
 {
+
 	DPRINTF("\n");
 	return (0);
 }
@@ -339,13 +340,11 @@ usb_bus_attach(void *arg, int npending)
 	  USB_HW_POWER_NON_ROOT_HUB;
 
 	/* make sure power is set at least once */
-
 	if (bus->methods->set_hw_power != NULL) {
 		(bus->methods->set_hw_power) (bus);
 	}
 
 	/* Allocate the Root USB device */
-
 	child = usb_alloc_device(bus->bdev, bus, NULL, 0, 0, 1,
 	    speed, USB_MODE_HOST);
 	if (child) {

@@ -1890,12 +1890,14 @@ uath_raw_xmit(struct ieee80211_node *ni, struct mbuf *m,
 static void
 uath_scan_start(struct ieee80211com *ic)
 {
+
 	/* do nothing  */
 }
 
 static void
 uath_scan_end(struct ieee80211com *ic)
 {
+
 	/* do nothing  */
 }
 
@@ -1918,6 +1920,7 @@ uath_set_channel(struct ieee80211com *ic)
 static int
 uath_set_rxmulti_filter(struct uath_softc *sc)
 {
+
 	/* XXX broken */
 	return (0);
 }

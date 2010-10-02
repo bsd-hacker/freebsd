@@ -163,7 +163,6 @@ static void	ubser_stop_write(struct ucom_softc *);
 static void	ubser_poll(struct ucom_softc *ucom);
 
 static const struct usb_config ubser_config[UBSER_N_TRANSFER] = {
-
 	[UBSER_BULK_DT_WR] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
@@ -283,7 +282,6 @@ ubser_attach(device_t dev)
 		goto detach;
 	}
 	/* initialize port numbers */
-
 	for (n = 0; n < sc->sc_numser; n++) {
 		sc->sc_ucom[n].sc_portno = n;
 	}
@@ -324,6 +322,7 @@ ubser_detach(device_t dev)
 static int
 ubser_pre_param(struct ucom_softc *ucom, struct termios *t)
 {
+
 	DPRINTF("\n");
 
 	/*
@@ -397,7 +396,6 @@ tr_setup:
 			if (ucom_get_data(sc->sc_ucom + sc->sc_curr_tx_unit,
 			    pc, 1, sc->sc_tx_size - 1,
 			    &actlen)) {
-
 				buf[0] = sc->sc_curr_tx_unit;
 
 				usbd_copy_in(pc, 0, buf, 1);
@@ -477,7 +475,6 @@ ubser_cfg_set_break(struct ucom_softc *ucom, uint8_t onoff)
 	usb_error_t err;
 
 	if (onoff) {
-
 		req.bmRequestType = UT_READ_VENDOR_INTERFACE;
 		req.bRequest = VENDOR_SET_BREAK;
 		req.wValue[0] = x;
@@ -498,6 +495,7 @@ ubser_cfg_set_break(struct ucom_softc *ucom, uint8_t onoff)
 static void
 ubser_cfg_get_status(struct ucom_softc *ucom, uint8_t *lsr, uint8_t *msr)
 {
+
 	/* fake status bits */
 	*lsr = 0;
 	*msr = SER_DCD;

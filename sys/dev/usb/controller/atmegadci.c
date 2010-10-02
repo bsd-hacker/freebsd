@@ -110,7 +110,6 @@ static void atmegadci_root_intr(struct atmegadci_softc *sc);
  */
 static const struct usb_hw_ep_profile
 	atmegadci_ep_profile[2] = {
-
 	[0] = {
 		.max_in_frame_size = 64,
 		.max_out_frame_size = 64,
@@ -133,6 +132,7 @@ static void
 atmegadci_get_hw_ep_profile(struct usb_device *udev,
     const struct usb_hw_ep_profile **ppf, uint8_t ep_addr)
 {
+
 	if (ep_addr == 0)
 		*ppf = atmegadci_ep_profile;
 	else if (ep_addr < ATMEGA_EP_MAX)
@@ -144,9 +144,9 @@ atmegadci_get_hw_ep_profile(struct usb_device *udev,
 static void
 atmegadci_clocks_on(struct atmegadci_softc *sc)
 {
+
 	if (sc->sc_flags.clocks_off &&
 	    sc->sc_flags.port_powered) {
-
 		DPRINTFN(5, "\n");
 
 		/* turn on clocks */
@@ -166,12 +166,11 @@ atmegadci_clocks_on(struct atmegadci_softc *sc)
 static void
 atmegadci_clocks_off(struct atmegadci_softc *sc)
 {
-	if (!sc->sc_flags.clocks_off) {
 
+	if (!sc->sc_flags.clocks_off) {
 		DPRINTFN(5, "\n");
 
 		/* disable Transceiver ? */
-
 		ATMEGA_WRITE_1(sc, ATMEGA_USBCON,
 		    ATMEGA_USBCON_USBE |
 		    ATMEGA_USBCON_OTGPADE |
@@ -188,8 +187,8 @@ atmegadci_clocks_off(struct atmegadci_softc *sc)
 static void
 atmegadci_pull_up(struct atmegadci_softc *sc)
 {
-	/* pullup D+, if possible */
 
+	/* pullup D+, if possible */
 	if (!sc->sc_flags.d_pulled_up &&
 	    sc->sc_flags.port_powered) {
 		sc->sc_flags.d_pulled_up = 1;
@@ -200,8 +199,8 @@ atmegadci_pull_up(struct atmegadci_softc *sc)
 static void
 atmegadci_pull_down(struct atmegadci_softc *sc)
 {
-	/* pulldown D+, if possible */
 
+	/* pulldown D+, if possible */
 	if (sc->sc_flags.d_pulled_up) {
 		sc->sc_flags.d_pulled_up = 0;
 		ATMEGA_WRITE_1(sc, ATMEGA_UDCON, ATMEGA_UDCON_DETACH);
@@ -230,6 +229,7 @@ atmegadci_wakeup_peer(struct atmegadci_softc *sc)
 static void
 atmegadci_set_address(struct atmegadci_softc *sc, uint8_t addr)
 {
+
 	DPRINTFN(5, "addr=%d\n", addr);
 
 	addr |= ATMEGA_UDADDR_ADDEN;
@@ -446,7 +446,6 @@ atmegadci_data_tx(struct atmegadci_td *td)
 	uint8_t temp;
 
 	to = 3;				/* don't loop forever! */
-
 	/* get pointer to softc */
 	sc = ATMEGA_PC2SC(td->pc);
 
@@ -482,7 +481,6 @@ repeat:
 		count = td->remainder;
 	}
 	while (count > 0) {
-
 		usbd_get_page(td->pc, td->offset, &buf_res);
 
 		/* get correct length */
@@ -604,7 +602,6 @@ atmegadci_xfer_do_fifo(struct usb_xfer *xfer)
 
 done:
 	/* compute all actual lengths */
-
 	atmegadci_standard_done(xfer);
 	return (0);			/* complete */
 }
@@ -626,6 +623,7 @@ repeat:
 static void
 atmegadci_vbus_interrupt(struct atmegadci_softc *sc, uint8_t is_on)
 {
+
 	DPRINTFN(5, "vbus = %u\n", is_on);
 
 	if (is_on) {
@@ -633,7 +631,6 @@ atmegadci_vbus_interrupt(struct atmegadci_softc *sc, uint8_t is_on)
 			sc->sc_flags.status_vbus = 1;
 
 			/* complete root HUB interrupt endpoint */
-
 			atmegadci_root_intr(sc);
 		}
 	} else {
@@ -645,7 +642,6 @@ atmegadci_vbus_interrupt(struct atmegadci_softc *sc, uint8_t is_on)
 			sc->sc_flags.change_connect = 1;
 
 			/* complete root HUB interrupt endpoint */
-
 			atmegadci_root_intr(sc);
 		}
 	}
@@ -668,7 +664,6 @@ atmegadci_interrupt(struct atmegadci_softc *sc)
 
 	/* check for any bus state change interrupts */
 	if (status & ATMEGA_UDINT_EORSTI) {
-
 		DPRINTFN(5, "end of reset\n");
 
 		/* set correct state */
@@ -691,7 +686,6 @@ atmegadci_interrupt(struct atmegadci_softc *sc)
 	 * milliseconds of inactivity on the USB BUS.
 	 */
 	if (status & ATMEGA_UDINT_WAKEUPI) {
-
 		DPRINTFN(5, "resume interrupt\n");
 
 		if (sc->sc_flags.status_suspend) {
@@ -708,7 +702,6 @@ atmegadci_interrupt(struct atmegadci_softc *sc)
 			atmegadci_root_intr(sc);
 		}
 	} else if (status & ATMEGA_UDINT_SUSPI) {
-
 		DPRINTFN(5, "suspend interrupt\n");
 
 		if (!sc->sc_flags.status_suspend) {
@@ -743,7 +736,6 @@ atmegadci_interrupt(struct atmegadci_softc *sc)
 	status = ATMEGA_READ_1(sc, ATMEGA_UEINT);
 	/* the hardware will clear the UEINT bits automatically */
 	if (status) {
-
 		DPRINTFN(5, "real endpoint interrupt UEINT=0x%02x\n", status);
 
 		atmegadci_interrupt_poll(sc);
@@ -795,7 +787,6 @@ atmegadci_setup_standard_chain(struct usb_xfer *xfer)
 	xfer->td_transfer_cache = td;
 
 	/* setup temp */
-
 	temp.pc = NULL;
 	temp.td = NULL;
 	temp.td_next = xfer->td_start[0];
@@ -808,10 +799,8 @@ atmegadci_setup_standard_chain(struct usb_xfer *xfer)
 	ep_no = (xfer->endpointno & UE_ADDR);
 
 	/* check if we should prepend a setup message */
-
 	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
 		if ((xfer->status & XFER_STATUS_CTRLHDR) != 0) {
-
 			temp.func = &atmegadci_setup_rx;
 			temp.len = xfer->frlengths[0];
 			temp.pc = xfer->frbuffers + 0;
@@ -846,9 +835,7 @@ atmegadci_setup_standard_chain(struct usb_xfer *xfer)
 		need_sync = 0;
 	}
 	while (x != xfer->nframes) {
-
 		/* DATA0 / DATA1 message */
-
 		temp.len = xfer->frlengths[x];
 
 		x++;
@@ -864,15 +851,11 @@ atmegadci_setup_standard_chain(struct usb_xfer *xfer)
 			}
 		}
 		if (temp.len == 0) {
-
 			/* make sure that we send an USB packet */
-
 			temp.short_pkt = 0;
 
 		} else {
-
 			/* regular data transfer */
-
 			temp.short_pkt = (xfer->flags.force_short_xfer) ? 0 : 1;
 		}
 
@@ -887,7 +870,6 @@ atmegadci_setup_standard_chain(struct usb_xfer *xfer)
 	}
 
 	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
-
 		/* always setup a valid "pc" pointer for status and sync */
 		temp.pc = xfer->frbuffers + 0;
 		temp.len = 0;
@@ -903,7 +885,6 @@ atmegadci_setup_standard_chain(struct usb_xfer *xfer)
 
 		/* check if we should append a status stage */
 		if ((xfer->status & XFER_STATUS_CTRLACTIVE) == 0) {
-
 			/*
 			 * Send a DATA1 message and invert the current
 			 * endpoint direction.
@@ -945,11 +926,11 @@ atmegadci_timeout(void *arg)
 static void
 atmegadci_start_standard_chain(struct usb_xfer *xfer)
 {
+
 	DPRINTFN(9, "\n");
 
 	/* poll one time - will turn on interrupts */
 	if (atmegadci_xfer_do_fifo(xfer)) {
-
 		/* put transfer on interrupt queue */
 		usbd_transfer_enqueue(&xfer->xroot->bus->intr_q, xfer);
 
@@ -964,6 +945,7 @@ atmegadci_start_standard_chain(struct usb_xfer *xfer)
 static void
 atmegadci_root_intr(struct atmegadci_softc *sc)
 {
+
 	DPRINTFN(9, "\n");
 
 	USB_BUS_LOCK_ASSERT(&sc->sc_bus, MA_OWNED);
@@ -1032,7 +1014,6 @@ atmegadci_standard_done_sub(struct usb_xfer *xfer)
 	} while (0);
 
 	/* update transfer cache */
-
 	xfer->td_transfer_cache = td;
 
 	return (error ?
@@ -1048,13 +1029,10 @@ atmegadci_standard_done(struct usb_xfer *xfer)
 	    xfer, xfer->endpoint);
 
 	/* reset scanner */
-
 	xfer->td_transfer_cache = xfer->td_transfer_first;
 
 	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
-
 		if ((xfer->status & XFER_STATUS_CTRLHDR) != 0) {
-
 			err = atmegadci_standard_done_sub(xfer);
 		}
 		xfer->aframes = 1;
@@ -1064,7 +1042,6 @@ atmegadci_standard_done(struct usb_xfer *xfer)
 		}
 	}
 	while (xfer->aframes != xfer->nframes) {
-
 		err = atmegadci_standard_done_sub(xfer);
 		xfer->aframes++;
 
@@ -1075,7 +1052,6 @@ atmegadci_standard_done(struct usb_xfer *xfer)
 
 	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0 &&
 	    (xfer->status & XFER_STATUS_CTRLACTIVE) == 0) {
-
 		err = atmegadci_standard_done_sub(xfer);
 	}
 done:
@@ -1291,7 +1267,6 @@ atmegadci_init(struct atmegadci_softc *sc)
 
 	/* disable all endpoints */
 	for (n = 0; n != ATMEGA_EP_MAX; n++) {
-
 		/* select endpoint */
 		ATMEGA_WRITE_1(sc, ATMEGA_UENUM, n);
 
@@ -1303,18 +1278,15 @@ atmegadci_init(struct atmegadci_softc *sc)
 	}
 
 	/* turn off clocks */
-
 	atmegadci_clocks_off(sc);
 
 	/* read initial VBUS state */
-
 	n = ATMEGA_READ_1(sc, ATMEGA_USBSTA);
 	atmegadci_vbus_interrupt(sc, n & ATMEGA_USBSTA_VBUS);
 
 	USB_BUS_UNLOCK(&sc->sc_bus);
 
 	/* catch any lost interrupts */
-
 	atmegadci_do_poll(&sc->sc_bus);
 
 	return (0);			/* success */
@@ -1323,6 +1295,7 @@ atmegadci_init(struct atmegadci_softc *sc)
 void
 atmegadci_uninit(struct atmegadci_softc *sc)
 {
+
 	USB_BUS_LOCK(&sc->sc_bus);
 
 	/* turn on clocks */
@@ -1357,12 +1330,14 @@ atmegadci_uninit(struct atmegadci_softc *sc)
 void
 atmegadci_suspend(struct atmegadci_softc *sc)
 {
+
 	return;
 }
 
 void
 atmegadci_resume(struct atmegadci_softc *sc)
 {
+
 	return;
 }
 
@@ -1384,24 +1359,28 @@ atmegadci_do_poll(struct usb_bus *bus)
 static void
 atmegadci_device_non_isoc_open(struct usb_xfer *xfer)
 {
+
 	return;
 }
 
 static void
 atmegadci_device_non_isoc_close(struct usb_xfer *xfer)
 {
+
 	atmegadci_device_done(xfer, USB_ERR_CANCELLED);
 }
 
 static void
 atmegadci_device_non_isoc_enter(struct usb_xfer *xfer)
 {
+
 	return;
 }
 
 static void
 atmegadci_device_non_isoc_start(struct usb_xfer *xfer)
 {
+
 	/* setup TDs */
 	atmegadci_setup_standard_chain(xfer);
 	atmegadci_start_standard_chain(xfer);
@@ -1421,12 +1400,14 @@ struct usb_pipe_methods atmegadci_device_non_isoc_methods =
 static void
 atmegadci_device_isoc_fs_open(struct usb_xfer *xfer)
 {
+
 	return;
 }
 
 static void
 atmegadci_device_isoc_fs_close(struct usb_xfer *xfer)
 {
+
 	atmegadci_device_done(xfer, USB_ERR_CANCELLED);
 }
 
@@ -1441,7 +1422,6 @@ atmegadci_device_isoc_fs_enter(struct usb_xfer *xfer)
 	    xfer, xfer->endpoint->isoc_next, xfer->nframes);
 
 	/* get the current frame index */
-
 	nframes =
 	    (ATMEGA_READ_1(sc, ATMEGA_UDFNUMH) << 8) |
 	    (ATMEGA_READ_1(sc, ATMEGA_UDFNUML));
@@ -1489,6 +1469,7 @@ atmegadci_device_isoc_fs_enter(struct usb_xfer *xfer)
 static void
 atmegadci_device_isoc_fs_start(struct usb_xfer *xfer)
 {
+
 	/* start TD chain */
 	atmegadci_start_standard_chain(xfer);
 }
@@ -1612,7 +1593,6 @@ atmegadci_roothub_exec(struct usb_device *udev,
 	index = UGETW(req->wIndex);
 
 	/* demultiplex the control request */
-
 	switch (req->bmRequestType) {
 	case UT_READ_DEVICE:
 		switch (req->bRequest) {
@@ -1971,7 +1951,6 @@ tr_handle_get_port_status:
 	}
 
 	/* Select FULL-speed and Device Side Mode */
-
 	value = UPS_PORT_MODE_DEVICE;
 
 	if (sc->sc_flags.port_powered) {
@@ -2047,11 +2026,9 @@ atmegadci_xfer_setup(struct usb_setup_params *parm)
 	 * compute maximum number of TDs
 	 */
 	if ((xfer->endpoint->edesc->bmAttributes & UE_XFERTYPE) == UE_CONTROL) {
-
 		ntd = xfer->nframes + 1 /* STATUS */ + 1 /* SYNC 1 */
 		    + 1 /* SYNC 2 */ ;
 	} else {
-
 		ntd = xfer->nframes + 1 /* SYNC */ ;
 	}
 
@@ -2082,11 +2059,9 @@ atmegadci_xfer_setup(struct usb_setup_params *parm)
 	parm->size[0] += ((-parm->size[0]) & (USB_HOST_ALIGN - 1));
 
 	for (n = 0; n != ntd; n++) {
-
 		struct atmegadci_td *td;
 
 		if (parm->buf) {
-
 			td = USB_ADD_BYTES(parm->buf, parm->size[0]);
 
 			/* init TD */
@@ -2123,7 +2098,6 @@ atmegadci_ep_init(struct usb_device *udev, struct usb_endpoint_descriptor *edesc
 	    sc->sc_rt_addr, udev->device_index);
 
 	if (udev->device_index != sc->sc_rt_addr) {
-
 		if (udev->flags.usb_mode != USB_MODE_DEVICE) {
 			/* not supported */
 			return;

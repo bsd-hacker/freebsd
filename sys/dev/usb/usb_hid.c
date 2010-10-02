@@ -125,12 +125,10 @@ hid_switch_rid(struct hid_data *s, struct hid_item *c, int32_t next_rID)
 	uint8_t i;
 
 	/* check for same report ID - optimise */
-
 	if (c->report_ID == next_rID)
 		return;
 
 	/* save current position for current rID */
-
 	if (c->report_ID == 0) {
 		i = 0;
 	} else {
@@ -147,11 +145,9 @@ hid_switch_rid(struct hid_data *s, struct hid_item *c, int32_t next_rID)
 	}
 
 	/* store next report ID */
-
 	c->report_ID = next_rID;
 
 	/* lookup last position for next rID */
-
 	if (next_rID == 0) {
 		i = 0;
 	} else {
@@ -198,6 +194,7 @@ hid_start_parse(const void *d, usb_size_t len, int kindset)
 void
 hid_end_parse(struct hid_data *s)
 {
+
 	if (s == NULL)
 		return;
 
@@ -294,7 +291,6 @@ hid_get_item(struct hid_data *s, struct hid_item *h)
 
 	/* get next item */
 	while (s->p != s->end) {
-
 		bSize = hid_get_byte(s, 1);
 		if (bSize == 0xfe) {
 			/* long item */
@@ -692,12 +688,14 @@ hid_get_data_sub(const uint8_t *buf, usb_size_t len, struct hid_location *loc,
 int32_t
 hid_get_data(const uint8_t *buf, usb_size_t len, struct hid_location *loc)
 {
+
 	return (hid_get_data_sub(buf, len, loc, 1));
 }
 
 uint32_t
 hid_get_data_unsigned(const uint8_t *buf, usb_size_t len, struct hid_location *loc)
 {
+
         return (hid_get_data_sub(buf, len, loc, 0));
 }
 

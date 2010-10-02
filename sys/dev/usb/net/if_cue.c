@@ -96,7 +96,6 @@ __FBSDID("$FreeBSD$");
  */
 
 /* Belkin F5U111 adapter covered by NETMATE entry */
-
 static const struct usb_device_id cue_devs[] = {
 #define	CUE_DEV(v,p) { USB_VP(USB_VENDOR_##v, USB_PRODUCT_##v##_##p) }
 	CUE_DEV(CATC, NETMATE),
@@ -106,7 +105,6 @@ static const struct usb_device_id cue_devs[] = {
 };
 
 /* prototypes */
-
 static device_probe_t cue_probe;
 static device_attach_t cue_attach;
 static device_detach_t cue_detach;
@@ -545,7 +543,6 @@ tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, (m->m_pkthdr.len + 2));
 
 		/* the first two bytes are the frame length */
-
 		buf[0] = (uint8_t)(m->m_pkthdr.len);
 		buf[1] = (uint8_t)(m->m_pkthdr.len >> 8);
 

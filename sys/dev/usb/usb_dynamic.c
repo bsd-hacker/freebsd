@@ -69,24 +69,28 @@ devclass_t usb_devclass_ptr = NULL;
 static usb_error_t
 usb_temp_setup_by_index_w(struct usb_device *udev, uint16_t index)
 {
+
 	return (USB_ERR_INVAL);
 }
 
 static uint8_t
 usb_test_quirk_w(const struct usbd_lookup_info *info, uint16_t quirk)
 {
+
 	return (0);			/* no match */
 }
 
 static int
 usb_quirk_ioctl_w(unsigned long cmd, caddr_t data, int fflag, struct thread *td)
 {
+
 	return (ENOIOCTL);
 }
 
 static usb_error_t
 usb_temp_get_desc_w(struct usb_device *udev, struct usb_device_request *req, const void **pPtr, uint16_t *pLength)
 {
+
 	/* stall */
 	return (USB_ERR_STALLED);
 }
@@ -94,8 +98,8 @@ usb_temp_get_desc_w(struct usb_device *udev, struct usb_device_request *req, con
 static void
 usb_temp_unsetup_w(struct usb_device *udev)
 {
-	if (udev->usb_template_ptr) {
 
+	if (udev->usb_template_ptr) {
 		free(udev->usb_template_ptr, M_USB);
 
 		udev->usb_template_ptr = NULL;
@@ -105,44 +109,38 @@ usb_temp_unsetup_w(struct usb_device *udev)
 void
 usb_quirk_unload(void *arg)
 {
-	/* reset function pointers */
 
+	/* reset function pointers */
 	usb_test_quirk_p = &usb_test_quirk_w;
 	usb_quirk_ioctl_p = &usb_quirk_ioctl_w;
 
 	/* wait for CPU to exit the loaded functions, if any */
-
 	/* XXX this is a tradeoff */
-
 	pause("WAIT", hz);
 }
 
 void
 usb_temp_unload(void *arg)
 {
-	/* reset function pointers */
 
+	/* reset function pointers */
 	usb_temp_get_desc_p = &usb_temp_get_desc_w;
 	usb_temp_setup_by_index_p = &usb_temp_setup_by_index_w;
 	usb_temp_unsetup_p = &usb_temp_unsetup_w;
 
 	/* wait for CPU to exit the loaded functions, if any */
-
 	/* XXX this is a tradeoff */
-
 	pause("WAIT", hz);
 }
 
 void
 usb_bus_unload(void *arg)
 {
-	/* reset function pointers */
 
+	/* reset function pointers */
 	usb_devclass_ptr = NULL;
 
 	/* wait for CPU to exit the loaded functions, if any */
-
 	/* XXX this is a tradeoff */
-
 	pause("WAIT", hz);
 }

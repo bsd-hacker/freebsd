@@ -124,7 +124,6 @@ SYSCTL_INT(_hw_usb_cdce, OID_AUTO, debug, CTLFLAG_RW, &cdce_debug, 0,
 #endif
 
 static const struct usb_config cdce_config[CDCE_N_TRANSFER] = {
-
 	[CDCE_BULK_RX] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
@@ -178,7 +177,6 @@ static const struct usb_config cdce_config[CDCE_N_TRANSFER] = {
 
 #if CDCE_HAVE_NCM
 static const struct usb_config cdce_ncm_config[CDCE_N_TRANSFER] = {
-
 	[CDCE_BULK_RX] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
@@ -306,7 +304,6 @@ cdce_ncm_init(struct cdce_softc *sc)
 		return (1);
 
 	/* Read correct set of parameters according to device mode */
-
 	if (usbd_get_mode(sc->sc_udev) == USB_MODE_HOST) {
 		sc->sc_ncm.rx_max = UGETDW(temp.dwNtbInMaxSize);
 		sc->sc_ncm.tx_max = UGETDW(temp.dwNtbOutMaxSize);
@@ -322,7 +319,6 @@ cdce_ncm_init(struct cdce_softc *sc)
 	}
 
 	/* Verify maximum receive length */
-
 	if (err || (sc->sc_ncm.rx_max < 32) || 
 	    (sc->sc_ncm.rx_max > CDCE_NCM_RX_MAXLEN)) {
 		DPRINTFN(1, "Using default maximum receive length\n");
@@ -330,7 +326,6 @@ cdce_ncm_init(struct cdce_softc *sc)
 	}
 
 	/* Verify maximum transmit length */
-
 	if (err || (sc->sc_ncm.tx_max < 32) ||
 	    (sc->sc_ncm.tx_max > CDCE_NCM_TX_MAXLEN)) {
 		DPRINTFN(1, "Using default maximum transmit length\n");
@@ -366,14 +361,12 @@ cdce_ncm_init(struct cdce_softc *sc)
 	}
 
 	/* Verify that the payload remainder */
-
 	if (err || (sc->sc_ncm.tx_remainder >= sc->sc_ncm.tx_modulus)) {
 		DPRINTFN(1, "Using default transmit remainder: 0 bytes\n");
 		sc->sc_ncm.tx_remainder = 0;
 	}
 
 	/* Additional configuration, will fail in device side mode, which is OK. */
-
 	req.bmRequestType = UT_WRITE_CLASS_INTERFACE;
 	req.bRequest = UCDC_NCM_SET_NTB_INPUT_SIZE;
 	USETW(req.wValue, 0);
@@ -463,11 +456,9 @@ cdce_attach(device_t dev)
 	data_iface_no = ud->bSlaveInterface[0];
 
 	for (i = 0;; i++) {
-
 		iface = usbd_get_iface(uaa->device, i);
 
 		if (iface) {
-
 			id = usbd_get_interface_descriptor(iface);
 
 			if (id && (id->bInterfaceNumber == data_iface_no)) {
@@ -511,7 +502,6 @@ alloc_transfers:
 	pcfg = cdce_config;	/* Default Configuration */
 
 	for (i = 0; i != 32; i++) {
-
 		error = usbd_set_alt_interface_index(uaa->device,
 		    sc->sc_ifaces_index[0], i);
 		if (error)
@@ -546,20 +536,16 @@ alloc_transfers:
 	}
 
 	if (error) {
-
 		/* fake MAC address */
-
 		device_printf(dev, "faking MAC address\n");
 		sc->sc_eaddr[0] = 0x2a;
 		memcpy(&sc->sc_eaddr[1], &ticks, sizeof(uint32_t));
 		sc->sc_eaddr[5] = device_get_unit(dev);
 
 	} else {
-
 		bzero(sc->sc_eaddr, sizeof(sc->sc_eaddr));
 
 		for (i = 0; i != (ETHER_ADDR_LEN * 2); i++) {
-
 			char c = eaddr_str[i];
 
 			if ('0' <= c && c <= '9')
@@ -694,7 +680,6 @@ cdce_bulk_write_callback(struct usb_xfer *xfer, usb_error_t error)
 	case USB_ST_SETUP:
 tr_setup:
 		for (x = 0; x != CDCE_FRAMES_MAX; x++) {
-
 			IFQ_DRV_DEQUEUE(&ifp->if_snd, m);
 
 			if (m == NULL)
@@ -845,7 +830,6 @@ cdce_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 		DPRINTF("received %u bytes in %u frames\n", actlen, aframes);
 
 		for (x = 0; x != aframes; x++) {
-
 			m = sc->sc_rx_buf[x];
 			sc->sc_rx_buf[x] = NULL;
 			len = usbd_xfer_frame_len(xfer, x);
@@ -919,7 +903,6 @@ cdce_intr_read_callback(struct usb_xfer *xfer, usb_error_t error)
 		DPRINTF("Received %d bytes\n", actlen);
 
 		/* TODO: decode some indications */
-
 		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
@@ -1002,14 +985,11 @@ cdce_ncm_fill_tx_frames(struct usb_xfer *xfer, uint8_t index)
 	    ((0UL - offset) & (0UL - sc->sc_ncm.tx_modulus));
 
 	for (n = 0; n != CDCE_NCM_SUBFRAMES_MAX; n++) {
-
 		/* check if end of transmit buffer is reached */
-
 		if (offset >= sc->sc_ncm.tx_max)
 			break;
 
 		/* compute maximum buffer size */
-
 		rem = sc->sc_ncm.tx_max - offset;
 
 		IFQ_DRV_DEQUEUE(&(ifp->if_snd), m);
@@ -1052,11 +1032,9 @@ cdce_ncm_fill_tx_frames(struct usb_xfer *xfer, uint8_t index)
 		BPF_MTAP(ifp, m);
 
 		/* Free mbuf */
-
 		m_freem(m);
 
 		/* Pre-increment interface counter */
-
 		ifp->if_opackets++;
 	}
 
@@ -1244,7 +1222,6 @@ cdce_ncm_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 		sumdata = 0;
 
 		for (x = 0; x != nframes; x++) {
-
 			offset = UGETW(sc->sc_ncm.dp[x].wFrameIndex);
 			temp = UGETW(sc->sc_ncm.dp[x].wFrameLength);
 

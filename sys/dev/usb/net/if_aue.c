@@ -589,6 +589,7 @@ aue_setmulti_locked(struct aue_softc *sc)
 static void
 aue_reset_pegasus_II(struct aue_softc *sc)
 {
+
 	/* Magic constants taken from Linux driver. */
 	aue_csr_write_1(sc, AUE_REG_1D, 0);
 	aue_csr_write_1(sc, AUE_REG_7B, 2);
@@ -797,7 +798,6 @@ aue_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 
 		if ((ifp->if_drv_flags & IFF_DRV_RUNNING) &&
 		    actlen >= sizeof(pkt)) {
-
 			pc = usbd_xfer_get_frame(xfer, 0);
 			usbd_copy_out(pc, 0, &pkt, sizeof(pkt));
 
@@ -841,13 +841,11 @@ aue_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 		DPRINTFN(11, "received %d bytes\n", actlen);
 
 		if (sc->sc_flags & AUE_FLAG_VER_2) {
-
 			if (actlen == 0) {
 				ifp->if_ierrors++;
 				goto tr_setup;
 			}
 		} else {
-
 			if (actlen <= sizeof(stat) + ETHER_CRC_LEN) {
 				ifp->if_ierrors++;
 				goto tr_setup;
@@ -924,13 +922,11 @@ tr_setup:
 		if (m->m_pkthdr.len > MCLBYTES)
 			m->m_pkthdr.len = MCLBYTES;
 		if (sc->sc_flags & AUE_FLAG_VER_2) {
-
 			usbd_xfer_set_frame_len(xfer, 0, m->m_pkthdr.len);
 
 			usbd_m_copy_in(pc, 0, m, 0, m->m_pkthdr.len);
 
 		} else {
-
 			usbd_xfer_set_frame_len(xfer, 0, (m->m_pkthdr.len + 2));
 
 			/*

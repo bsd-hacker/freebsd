@@ -923,12 +923,14 @@ upgt_mem_alloc(struct upgt_softc *sc)
 static void
 upgt_scan_start(struct ieee80211com *ic)
 {
+
 	/* do nothing.  */
 }
 
 static void
 upgt_scan_end(struct ieee80211com *ic)
 {
+
 	/* do nothing.  */
 }
 

@@ -282,7 +282,6 @@ ums_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 
 		if (dx || dy || dz || dt || dw ||
 		    (buttons != sc->sc_status.button)) {
-
 			DPRINTFN(6, "x:%d y:%d z:%d t:%d w:%d buttons:0x%08x\n",
 			    dx, dy, dz, dt, dw, buttons);
 
@@ -314,11 +313,9 @@ ums_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 			if ((sc->sc_info[0].sc_flags & UMS_FLAG_SBU) &&
 			    (dx == 0) && (dy == 0) && (dz == 0) && (dt == 0) &&
 			    (dw == 0) && (buttons == 0)) {
-
 				usb_callout_reset(&sc->sc_callout, hz / 20,
 				    &ums_put_queue_timeout, sc);
 			} else {
-
 				usb_callout_stop(&sc->sc_callout);
 
 				ums_put_queue(sc, dx, dy, dz, dt, buttons);
@@ -345,7 +342,6 @@ tr_setup:
 }
 
 static const struct usb_config ums_config[UMS_N_TRANSFER] = {
-
 	[UMS_INTR_DT] = {
 		.type = UE_INTERRUPT,
 		.endpoint = UE_ADDR_ANY,
@@ -403,14 +399,12 @@ ums_hid_parse(struct ums_softc *sc, device_t dev, const uint8_t *buf,
 
 	if (hid_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_X),
 	    hid_input, index, &info->sc_loc_x, &flags, &info->sc_iid_x)) {
-
 		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS) {
 			info->sc_flags |= UMS_FLAG_X_AXIS;
 		}
 	}
 	if (hid_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_Y),
 	    hid_input, index, &info->sc_loc_y, &flags, &info->sc_iid_y)) {
-
 		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS) {
 			info->sc_flags |= UMS_FLAG_Y_AXIS;
 		}
@@ -432,7 +426,6 @@ ums_hid_parse(struct ums_softc *sc, device_t dev, const uint8_t *buf,
 		if (hid_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP,
 		    HUG_Z), hid_input, index, &info->sc_loc_w, &flags,
 		    &info->sc_iid_w)) {
-
 			if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS) {
 				info->sc_flags |= UMS_FLAG_W_AXIS;
 			}
@@ -440,7 +433,6 @@ ums_hid_parse(struct ums_softc *sc, device_t dev, const uint8_t *buf,
 	} else if (hid_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP,
 	    HUG_Z), hid_input, index, &info->sc_loc_z, &flags, 
 	    &info->sc_iid_z)) {
-
 		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS) {
 			info->sc_flags |= UMS_FLAG_Z_AXIS;
 		}
@@ -455,7 +447,6 @@ ums_hid_parse(struct ums_softc *sc, device_t dev, const uint8_t *buf,
 	if (hid_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP,
 	    HUG_TWHEEL), hid_input, index, &info->sc_loc_t, 
 	    &flags, &info->sc_iid_t)) {
-
 		info->sc_loc_t.pos += 8;
 
 		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS) {
@@ -464,12 +455,10 @@ ums_hid_parse(struct ums_softc *sc, device_t dev, const uint8_t *buf,
 	} else if (hid_locate(buf, len, HID_USAGE2(HUP_CONSUMER,
 		HUC_AC_PAN), hid_input, index, &info->sc_loc_t,
 		&flags, &info->sc_iid_t)) {
-
 		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS)
 			info->sc_flags |= UMS_FLAG_T_AXIS;
 	}
 	/* figure out the number of buttons */
-
 	for (i = 0; i < UMS_BUTTON_MAX; i++) {
 		if (!hid_locate(buf, len, HID_USAGE2(HUP_BUTTON, (i + 1)),
 		    hid_input, index, &info->sc_loc_btn[i], NULL, 
@@ -479,7 +468,6 @@ ums_hid_parse(struct ums_softc *sc, device_t dev, const uint8_t *buf,
 	}
 
 	/* detect other buttons */
-
 	for (j = 0; (i < UMS_BUTTON_MAX) && (j < 2); i++, j++) {
 		if (!hid_locate(buf, len, HID_USAGE2(HUP_MICROSOFT, (j + 1)),
 		    hid_input, index, &info->sc_loc_btn[i], NULL, 
@@ -564,7 +552,6 @@ ums_attach(device_t dev)
 	 * it has two addional buttons and a tilt wheel.
 	 */
 	if (usb_test_quirk(uaa, UQ_MS_BAD_CLASS)) {
-
 		sc->sc_iid = 0;
 
 		info = &sc->sc_info[0];
@@ -744,7 +731,6 @@ ums_put_queue(struct ums_softc *sc, int32_t dx, int32_t dy,
 	uint8_t buf[8];
 
 	if (1) {
-
 		if (dx > 254)
 			dx = 254;
 		if (dx < -256)
@@ -785,6 +771,7 @@ ums_put_queue(struct ums_softc *sc, int32_t dx, int32_t dy,
 static void
 ums_reset_buf(struct ums_softc *sc)
 {
+
 	/* reset read queue */
 	usb_fifo_reset(sc->sc_fifo.fp[USB_FIFO_RX]);
 }
@@ -797,9 +784,7 @@ ums_open(struct usb_fifo *fifo, int fflags)
 	DPRINTFN(2, "\n");
 
 	if (fflags & FREAD) {
-
 		/* reset status */
-
 		sc->sc_status.flags = 0;
 		sc->sc_status.button = 0;
 		sc->sc_status.obutton = 0;
@@ -807,7 +792,6 @@ ums_open(struct usb_fifo *fifo, int fflags)
 		sc->sc_status.dy = 0;
 		sc->sc_status.dz = 0;
 		/* sc->sc_status.dt = 0; */
-
 		if (usb_fifo_alloc_buffer(fifo,
 		    UMS_BUF_SIZE, UMS_IFQ_MAXLEN)) {
 			return (ENOMEM);
@@ -924,7 +908,6 @@ ums_ioctl(struct usb_fifo *fifo, u_long cmd, void *addr, int fflags)
 			sc->sc_status.dy = 0;
 			sc->sc_status.dz = 0;
 			/* sc->sc_status.dt = 0; */
-
 			if (status->dx || status->dy || status->dz /* || status->dt */ ) {
 				status->flags |= MOUSE_POSCHANGED;
 			}

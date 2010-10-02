@@ -148,7 +148,6 @@ static uint8_t	uftdi_8u232am_getrate(uint32_t, uint16_t *);
 static void	uftdi_poll(struct ucom_softc *ucom);
 
 static const struct usb_config uftdi_config[UFTDI_N_TRANSFER] = {
-
 	[UFTDI_BULK_DT_WR] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
@@ -263,7 +262,6 @@ uftdi_probe(device_t dev)
 		return (ENXIO);
 	}
 	/* attach to all present interfaces */
-
 	return (usbd_lookup_id_by_uaa(uftdi_devs, sizeof(uftdi_devs), uaa));
 }
 
@@ -316,7 +314,6 @@ uftdi_attach(device_t dev)
 	mtx_unlock(&sc->sc_mtx);
 
 	/* set a valid "lcr" value */
-
 	sc->sc_last_lcr =
 	    (FTDI_SIO_SET_DATA_STOP_BITS_2 |
 	    FTDI_SIO_SET_DATA_PARITY_NONE |
@@ -355,7 +352,6 @@ uftdi_cfg_open(struct ucom_softc *ucom)
 	DPRINTF("");
 
 	/* perform a full reset on the device */
-
 	req.bmRequestType = UT_WRITE_VENDOR_DEVICE;
 	req.bRequest = FTDI_SIO_RESET;
 	USETW(req.wValue, FTDI_SIO_RESET_SIO);
@@ -365,7 +361,6 @@ uftdi_cfg_open(struct ucom_softc *ucom)
 	    &req, NULL, 0, 1000);
 
 	/* turn on RTS/CTS flow control */
-
 	req.bmRequestType = UT_WRITE_VENDOR_DEVICE;
 	req.bRequest = FTDI_SIO_SET_FLOW_CTRL;
 	USETW(req.wValue, 0);
@@ -397,7 +392,6 @@ tr_setup:
 		if (ucom_get_data(&sc->sc_ucom, pc,
 		    sc->sc_hdrlen, UFTDI_OBUFSIZE - sc->sc_hdrlen,
 		    &actlen)) {
-
 			if (sc->sc_hdrlen > 0) {
 				buf[0] =
 				    FTDI_OUT_TAG(actlen, sc->sc_ucom.sc_portno);

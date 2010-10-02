@@ -239,7 +239,6 @@ static usb_callback_t uchcom_write_callback;
 static usb_callback_t uchcom_read_callback;
 
 static const struct usb_config uchcom_config_data[UCHCOM_N_TRANSFER] = {
-
 	[UCHCOM_BULK_DT_WR] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
@@ -411,6 +410,7 @@ static void
 uchcom_write_reg(struct uchcom_softc *sc,
     uint8_t reg1, uint8_t val1, uint8_t reg2, uint8_t val2)
 {
+
 	DPRINTF("0x%02X<-0x%02X, 0x%02X<-0x%02X\n",
 	    (unsigned)reg1, (unsigned)val1,
 	    (unsigned)reg2, (unsigned)val2);
@@ -773,7 +773,6 @@ tr_setup:
 		pc = usbd_xfer_get_frame(xfer, 0);
 		if (ucom_get_data(&sc->sc_ucom, pc, 0,
 		    usbd_xfer_max_len(xfer), &actlen)) {
-
 			DPRINTF("actlen = %d\n", actlen);
 
 			usbd_xfer_set_frame_len(xfer, 0, actlen);
