@@ -27,7 +27,7 @@
  */
 
 /*
- * USB spec: http://www.usb.org/developers/docs/usbspec.zip 
+ * USB spec: http://www.usb.org/developers/docs/usbspec.zip
  */
 
 #include <sys/stdint.h>
@@ -200,7 +200,8 @@ uhub_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 			 * the USB stack.
 			 */
 			usbd_xfer_set_stall(xfer);
-			usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
+			usbd_xfer_set_frame_len(xfer, 0,
+			    usbd_xfer_max_len(xfer));
 			usbd_transfer_submit(xfer);
 		}
 		break;
@@ -341,7 +342,7 @@ repeat:
 		}
 		/* USB Host Mode */
 		/* wait for maximum device power up time */
-		usb_pause_mtx(NULL, 
+		usb_pause_mtx(NULL,
 		    USB_MS_TO_TICKS(USB_PORT_POWERUP_DELAY));
 
 		/* reset port, which implies enabling it */
@@ -860,7 +861,8 @@ uhub_detach(device_t dev)
 
 	/* Detach all ports */
 	for (x = 0; x != hub->nports; x++) {
-		child = usb_bus_port_get_device(sc->sc_udev->bus, hub->ports + x);
+		child = usb_bus_port_get_device(sc->sc_udev->bus,
+		    hub->ports + x);
 
 		if (child == NULL)
 			continue;
@@ -967,8 +969,10 @@ uhub_child_location_string(device_t parent, device_t child,
 			buf[0] = '\0';
 		goto done;
 	}
-	snprintf(buf, buflen, "bus=%u hubaddr=%u port=%u devaddr=%u interface=%u",
-	    (res.udev->parent_hub != NULL) ? res.udev->parent_hub->device_index : 0,
+	snprintf(buf, buflen,
+	    "bus=%u hubaddr=%u port=%u devaddr=%u interface=%u",
+	    (res.udev->parent_hub != NULL) ?
+		res.udev->parent_hub->device_index : 0,
 	    res.portno, device_get_unit(res.udev->bus->bdev),
 	    res.udev->device_index, res.iface_index);
 done:
@@ -1131,11 +1135,11 @@ usb_hs_bandwidth_adjust(struct usb_device *udev, int16_t len,
 		if (speed == USB_SPEED_LOW)
 			len *= 8;
 		/*
-	         * The Host Controller Driver should have
-	         * performed checks so that the lookup
-	         * below does not result in a NULL pointer
-	         * access.
-	         */
+		 * The Host Controller Driver should have
+		 * performed checks so that the lookup
+		 * below does not result in a NULL pointer
+		 * access.
+		 */
 
 		hub = udev->parent_hs_hub->hub;
 		if (slot >= USB_HS_MICRO_FRAMES_MAX) {
@@ -1236,8 +1240,8 @@ usb_hs_bandwidth_alloc(struct usb_xfer *xfer)
 		break;
 	}
 
-	DPRINTFN(11, "slot=%d, mask=0x%02x\n", 
-	    xfer->endpoint->usb_uframe, 
+	DPRINTFN(11, "slot=%d, mask=0x%02x\n",
+	    xfer->endpoint->usb_uframe,
 	    xfer->endpoint->usb_smask >> xfer->endpoint->usb_uframe);
 }
 
@@ -1269,11 +1273,11 @@ usb_hs_bandwidth_free(struct usb_xfer *xfer)
 		slot = xfer->endpoint->usb_uframe;
 		mask = xfer->endpoint->usb_smask;
 
-		/* free microframe slot(s): */ 	  
+		/* free microframe slot(s): */
 		usb_hs_bandwidth_adjust(udev,
 		    -xfer->max_frame_size, slot, mask >> slot);
 
-		DPRINTFN(11, "slot=%d, mask=0x%02x\n", 
+		DPRINTFN(11, "slot=%d, mask=0x%02x\n",
 		    slot, mask >> slot);
 
 		xfer->endpoint->usb_uframe = 0;
@@ -1497,7 +1501,7 @@ usb_bus_port_set_device(struct usb_bus *bus, struct usb_port *up,
 	/*
 	 * There is only one case where we don't
 	 * have an USB port, and that is the Root Hub!
-         */
+	 */
 	if (up) {
 		if (udev) {
 			up->device_index = device_index;
@@ -2014,7 +2018,8 @@ repeat:
 			    NULL, udev->port_no, UHF_PORT_SUSPEND);
 
 			/* resume settle time */
-			usb_pause_mtx(NULL, USB_MS_TO_TICKS(USB_PORT_RESUME_DELAY));
+			usb_pause_mtx(NULL,
+			    USB_MS_TO_TICKS(USB_PORT_RESUME_DELAY));
 		}
 		DPRINTF("Suspend was cancelled!\n");
 		return;
@@ -2076,7 +2081,7 @@ usbd_set_power_mode(struct usb_device *udev, uint8_t power_mode)
 	    (power_mode != USB_POWER_MODE_OFF))
 		power_mode = USB_POWER_MODE_SAVE;
 
-	power_mode = usbd_filter_power_mode(udev, power_mode);	
+	power_mode = usbd_filter_power_mode(udev, power_mode);
 
 	udev->power_mode = power_mode;	/* update copy of power mode */
 

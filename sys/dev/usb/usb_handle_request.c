@@ -734,9 +734,9 @@ tr_valid:
 		rem = usbd_xfer_max_len(xfer);
 	if ((rem != max_len) && (is_complete != 0)) {
 		/*
-	         * If we don't transfer the data we can transfer, then
-	         * the transfer is short !
-	         */
+		 * If we don't transfer the data we can transfer, then
+		 * the transfer is short !
+		 */
 		xfer->flags.force_short_xfer = 1;
 		xfer->nframes = 2;
 	} else {

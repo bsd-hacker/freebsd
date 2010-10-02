@@ -93,7 +93,8 @@ typedef usb_error_t (usb_handle_req_t)(struct usb_device *,
 
 typedef int (usb_fifo_open_t)(struct usb_fifo *fifo, int fflags);
 typedef void (usb_fifo_close_t)(struct usb_fifo *fifo, int fflags);
-typedef int (usb_fifo_ioctl_t)(struct usb_fifo *fifo, u_long cmd, void *addr, int fflags);
+typedef int (usb_fifo_ioctl_t)(struct usb_fifo *fifo, u_long cmd, void *addr,
+    int fflags);
 typedef void (usb_fifo_cmd_t)(struct usb_fifo *fifo);
 typedef void (usb_fifo_filter_t)(struct usb_fifo *fifo, struct usb_mbuf *m);
 
@@ -424,9 +425,10 @@ struct usb_interface *usbd_get_iface(struct usb_device *udev,
 	    uint8_t iface_index);
 struct usb_interface_descriptor *usbd_get_interface_descriptor(
 	    struct usb_interface *iface);
-struct usb_endpoint *usbd_get_endpoint(struct usb_device *udev, uint8_t iface_index,
-		    const struct usb_config *setup);
-struct usb_endpoint *usbd_get_ep_by_addr(struct usb_device *udev, uint8_t ea_val);
+struct usb_endpoint *usbd_get_endpoint(struct usb_device *udev,
+	    uint8_t iface_index, const struct usb_config *setup);
+struct usb_endpoint *usbd_get_ep_by_addr(struct usb_device *udev,
+	    uint8_t ea_val);
 usb_error_t	usbd_interface_count(struct usb_device *udev, uint8_t *count);
 enum usb_hc_mode usbd_get_mode(struct usb_device *udev);
 enum usb_dev_speed usbd_get_speed(struct usb_device *udev);

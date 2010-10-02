@@ -394,11 +394,11 @@ usb_submit_urb(struct urb *urb, uint16_t mem_flags)
 	}
 
 	/*
-         * Check to see if the urb is in the process of being killed
-         * and stop a urb that is in the process of being killed from
-         * being re-submitted (e.g. from its completion callback
-         * function).
-         */
+	 * Check to see if the urb is in the process of being killed
+	 * and stop a urb that is in the process of being killed from
+	 * being re-submitted (e.g. from its completion callback
+	 * function).
+	 */
 	if (urb->kill_count != 0) {
 		err = -EPERM;
 		goto done;
@@ -871,8 +871,10 @@ usb_linux_create_usb_device(struct usb_device *udev, device_t dev)
 				    (iface_index == 0))
 					break;
 				if (p_uhe) {
-					bcopy(ed, &p_uhe->desc, sizeof(p_uhe->desc));
-					p_uhe->bsd_iface_index = iface_index - 1;
+					bcopy(ed, &p_uhe->desc,
+					    sizeof(p_uhe->desc));
+					p_uhe->bsd_iface_index =
+					    iface_index - 1;
 					TAILQ_INIT(&p_uhe->bsd_urb_list);
 					p_uhe++;
 				}
@@ -886,7 +888,8 @@ usb_linux_create_usb_device(struct usb_device *udev, device_t dev)
 				if (id->bLength < sizeof(*id))
 					break;
 				if (p_uhi) {
-					bcopy(id, &p_uhi->desc, sizeof(p_uhi->desc));
+					bcopy(id, &p_uhi->desc,
+					    sizeof(p_uhi->desc));
 					p_uhi->desc.bNumEndpoints = 0;
 					p_uhi->endpoint = p_uhe;
 					p_uhi->string = "";
@@ -898,9 +901,11 @@ usb_linux_create_usb_device(struct usb_device *udev, device_t dev)
 				if (iface_no_curr != iface_no) {
 					if (p_ui) {
 						p_ui->altsetting = p_uhi - 1;
-						p_ui->cur_altsetting = p_uhi - 1;
+						p_ui->cur_altsetting =
+						    p_uhi - 1;
 						p_ui->num_altsetting = 1;
-						p_ui->bsd_iface_index = iface_index;
+						p_ui->bsd_iface_index =
+						    iface_index;
 						p_ui->linux_udev = udev;
 						p_ui++;
 					}
@@ -960,9 +965,11 @@ usb_alloc_urb(uint16_t iso_packets, uint16_t mem_flags)
 		 * FreeBSD specific magic value to ask for control transfer
 		 * memory allocation:
 		 */
-		size = sizeof(*urb) + sizeof(struct usb_device_request) + mem_flags;
+		size = sizeof(*urb) + sizeof(struct usb_device_request) +
+		    mem_flags;
 	} else
-		size = sizeof(*urb) + (iso_packets * sizeof(urb->iso_frame_desc[0]));
+		size = sizeof(*urb) +
+		    (iso_packets * sizeof(urb->iso_frame_desc[0]));
 
 	urb = malloc(size, M_USBDEV, M_WAITOK | M_ZERO);
 	if (urb) {
@@ -1076,7 +1083,8 @@ usb_ifnum_to_if(struct usb_device *dev, uint8_t iface_no)
  *	usb_buffer_alloc
  *------------------------------------------------------------------------*/
 void   *
-usb_buffer_alloc(struct usb_device *dev, usb_size_t size, uint16_t mem_flags, uint8_t *dma_addr)
+usb_buffer_alloc(struct usb_device *dev, usb_size_t size, uint16_t mem_flags,
+    uint8_t *dma_addr)
 {
 
 	return (malloc(size, M_USBDEV, M_WAITOK | M_ZERO));
@@ -1321,7 +1329,8 @@ usb_linux_isoc_callback(struct usb_xfer *xfer, usb_error_t error)
 			for (x = 0; x < urb->number_of_packets; x++) {
 				uipd = urb->iso_frame_desc + x;
 				if (uipd->length > xfer->frlengths[x]) {
-					if (urb->transfer_flags & URB_SHORT_NOT_OK) {
+					if (urb->transfer_flags &
+					    URB_SHORT_NOT_OK) {
 						/* XXX should be EREMOTEIO */
 						uipd->status = -EPIPE;
 					} else
@@ -1387,11 +1396,13 @@ tr_setup:
 			urb = usbd_xfer_get_priv(xfer);
 		}
 
-		urb->bsd_isread = (uhe->desc.bEndpointAddress & UE_DIR_IN) ? 1 : 0;
+		urb->bsd_isread =
+		    (uhe->desc.bEndpointAddress & UE_DIR_IN) ? 1 : 0;
 
 		if (xfer->flags.ext_buffer) {
 			/* set virtual address to load */
-			usbd_xfer_set_frame_data(xfer, 0, urb->transfer_buffer, 0);
+			usbd_xfer_set_frame_data(xfer, 0,
+			    urb->transfer_buffer, 0);
 		}
 		if (!(urb->bsd_isread)) {
 			/* copy out data with regard to the URB */
@@ -1534,9 +1545,9 @@ tr_setup:
 
 		if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
 			/*
-		         * USB control transfers need special handling.
-		         * First copy in the header, then copy in data!
-		         */
+			 * USB control transfers need special handling.
+			 * First copy in the header, then copy in data!
+			 */
 			if (!xfer->flags.ext_buffer) {
 				usbd_copy_in(xfer->frbuffers, 0,
 				    urb->setup_packet, REQ_SIZE);
@@ -1661,7 +1672,7 @@ usb_bulk_msg(struct usb_device *udev, struct usb_host_endpoint *uhe,
 	if (urb == NULL)
 		return (-ENOMEM);
 
-        usb_fill_bulk_urb(urb, udev, uhe, data, len,
+	usb_fill_bulk_urb(urb, udev, uhe, data, len,
 	    usb_linux_wait_complete, NULL);
 
 	err = usb_start_wait_urb(urb, timeout, pactlen);

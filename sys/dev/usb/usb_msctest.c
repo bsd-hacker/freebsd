@@ -284,7 +284,8 @@ bbb_command_callback(struct usb_xfer *xfer, usb_error_t error)
 		USETDW(sc->cbw.dCBWSignature, CBWSIGNATURE);
 		USETDW(sc->cbw.dCBWTag, tag);
 		USETDW(sc->cbw.dCBWDataTransferLength, (uint32_t)sc->data_len);
-		sc->cbw.bCBWFlags = ((sc->dir == DIR_IN) ? CBWFLAGS_IN : CBWFLAGS_OUT);
+		sc->cbw.bCBWFlags =
+		    ((sc->dir == DIR_IN) ? CBWFLAGS_IN : CBWFLAGS_OUT);
 		sc->cbw.bCBWLUN = sc->lun;
 		sc->cbw.bCDBLength = sc->cmd_len;
 		if (sc->cbw.bCDBLength > sizeof(sc->cbw.CBWCDB)) {

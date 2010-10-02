@@ -74,7 +74,7 @@
 
 #define	UGEN_BULK_FS_BUFFER_SIZE	(64*32)	/* bytes */
 #define	UGEN_BULK_HS_BUFFER_SIZE	(1024*32)	/* bytes */
-#define	UGEN_HW_FRAMES	50		/* number of milliseconds per transfer */
+#define	UGEN_HW_FRAMES	50	/* number of milliseconds per transfer */
 
 /* function prototypes */
 
@@ -102,13 +102,14 @@ static int	ugen_set_config(struct usb_fifo *, uint8_t);
 static int	ugen_set_interface(struct usb_fifo *, uint8_t, uint8_t);
 static int	ugen_get_cdesc(struct usb_fifo *, struct usb_gen_descriptor *);
 static int	ugen_get_sdesc(struct usb_fifo *, struct usb_gen_descriptor *);
-static int	ugen_get_iface_driver(struct usb_fifo *f, struct usb_gen_descriptor *ugd);
+static int	ugen_get_iface_driver(struct usb_fifo *,
+		    struct usb_gen_descriptor *);
 static int	usb_gen_fill_deviceinfo(struct usb_fifo *,
 		    struct usb_device_info *);
 static int	ugen_re_enumerate(struct usb_fifo *);
 static int	ugen_iface_ioctl(struct usb_fifo *, u_long, void *, int);
 static uint8_t	ugen_fs_get_complete(struct usb_fifo *, uint8_t *);
-static int ugen_fs_uninit(struct usb_fifo *f);
+static int	ugen_fs_uninit(struct usb_fifo *);
 
 /* structures */
 
@@ -427,7 +428,8 @@ ugen_ctrl_read_callback(struct usb_xfer *xfer, usb_error_t error)
 		}
 		USB_IF_POLL(&f->free_q, m);
 		if (m) {
-			usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
+			usbd_xfer_set_frame_len(xfer, 0,
+			    usbd_xfer_max_len(xfer));
 			usbd_transfer_submit(xfer);
 		}
 		break;
@@ -805,8 +807,10 @@ usb_gen_fill_deviceinfo(struct usb_fifo *f, struct usb_device_info *di)
 	di->udi_addr = udev->address;
 	di->udi_index = udev->device_index;
 	strlcpy(di->udi_serial, usb_get_serial(udev), sizeof(di->udi_serial));
-	strlcpy(di->udi_vendor, usb_get_manufacturer(udev), sizeof(di->udi_vendor));
-	strlcpy(di->udi_product, usb_get_product(udev), sizeof(di->udi_product));
+	strlcpy(di->udi_vendor, usb_get_manufacturer(udev),
+	    sizeof(di->udi_vendor));
+	strlcpy(di->udi_product, usb_get_product(udev),
+	    sizeof(di->udi_product));
 	usb_printbcd(di->udi_release, sizeof(di->udi_release),
 	    UGETW(udev->ddesc.bcdDevice));
 	di->udi_vendorNo = UGETW(udev->ddesc.idVendor);
@@ -1412,7 +1416,8 @@ ugen_ioctl(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 
 		usb_config[0].type = ed->bmAttributes & UE_XFERTYPE;
 		usb_config[0].endpoint = ed->bEndpointAddress & UE_ADDR;
-		usb_config[0].direction = ed->bEndpointAddress & (UE_DIR_OUT | UE_DIR_IN);
+		usb_config[0].direction =
+		    ed->bEndpointAddress & (UE_DIR_OUT | UE_DIR_IN);
 		usb_config[0].interval = USB_DEFAULT_INTERVAL;
 		usb_config[0].flags.proxy_buffer = 1;
 		usb_config[0].callback = &ugen_ctrl_fs_callback;

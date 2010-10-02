@@ -22,7 +22,7 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- */ 
+ */
 
 #include <sys/stdint.h>
 #include <sys/stddef.h>
@@ -107,7 +107,7 @@ static void	usbd_callback_wrapper(struct usb_xfer_queue *);
 static void	usb_dma_delay_done_cb(void *);
 static void	usbd_transfer_start_cb(void *);
 static uint8_t	usbd_callback_wrapper_sub(struct usb_xfer *);
-static void	usbd_get_std_packet_size(struct usb_std_packet_size *ptr, 
+static void	usbd_get_std_packet_size(struct usb_std_packet_size *ptr,
 		    uint8_t type, enum usb_dev_speed speed);
 
 /*------------------------------------------------------------------------*
@@ -443,7 +443,7 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 					else if (xfer->interval > 16)
 						xfer->interval = (1<<(16-4));
 					else
-						xfer->interval = 
+						xfer->interval =
 						    (1 << (xfer->interval-4));
 					break;
 				case USB_SPEED_HIGH:
@@ -1225,9 +1225,9 @@ usbd_setup_ctrl_transfer(struct usb_xfer *xfer)
 	}
 
 	/*
-         * Check if there is a control
-         * transfer in progress:
-         */
+	 * Check if there is a control
+	 * transfer in progress:
+	 */
 	if ((xfer->status & XFER_STATUS_CTRLACTIVE) != 0) {
 		if ((xfer->status & XFER_STATUS_CTRLHDR) != 0) {
 			/* clear send header flag */
@@ -1253,10 +1253,10 @@ usbd_setup_ctrl_transfer(struct usb_xfer *xfer)
 			/* check number of frames */
 			if (xfer->nframes != 1) {
 				/*
-			         * We need to receive the setup
-			         * message first so that we know the
-			         * data direction!
-			         */
+				 * We need to receive the setup
+				 * message first so that we know the
+				 * data direction!
+				 */
 				DPRINTF("Misconfigured transfer\n");
 				goto error;
 			}
@@ -1309,8 +1309,8 @@ usbd_setup_ctrl_transfer(struct usb_xfer *xfer)
 		if ((xfer->status & XFER_STATUS_CTRLHDR) == 0 &&
 		    (xfer->nframes == 1)) {
 			/*
-		         * This is not a valid operation!
-		         */
+			 * This is not a valid operation!
+			 */
 			DPRINTFN(0, "Invalid parameter "
 			    "combination\n");
 			goto error;
@@ -1948,10 +1948,10 @@ usbd_callback_ss_done_defer(struct usb_xfer *xfer)
 		usbd_transfer_enqueue(pq, xfer);
 	if (!pq->recurse_1) {
 		/*
-	         * We have to postpone the callback due to the fact we
-	         * will have a Lock Order Reversal, LOR, if we try to
-	         * proceed !
-	         */
+		 * We have to postpone the callback due to the fact we
+		 * will have a Lock Order Reversal, LOR, if we try to
+		 * proceed !
+		 */
 		taskqueue_enqueue(info->done_tq, &info->done_task);
 	} else {
 		/* clear second recurse flag */
@@ -1978,17 +1978,17 @@ usbd_callback_wrapper(struct usb_xfer_queue *pq)
 	USB_BUS_LOCK_ASSERT(info->bus, MA_OWNED);
 	if (!mtx_owned(info->xfer_mtx)) {
 		/*
-	       	 * Cases that end up here:
+		 * Cases that end up here:
 		 *
 		 * 5) HW interrupt done callback or other source.
 		 */
 		DPRINTFN(3, "case 5\n");
 
 		/*
-	         * We have to postpone the callback due to the fact we
-	         * will have a Lock Order Reversal, LOR, if we try to
-	         * proceed !
-	         */
+		 * We have to postpone the callback due to the fact we
+		 * will have a Lock Order Reversal, LOR, if we try to
+		 * proceed !
+		 */
 		taskqueue_enqueue(info->done_tq, &info->done_task);
 		return;
 	}
@@ -2351,7 +2351,7 @@ usbd_pipe_start(struct usb_xfer_queue *pq)
 			} else if (udev->ctrl_xfer[1]) {
 				info = udev->ctrl_xfer[1]->xroot;
 				taskqueue_enqueue(
-				    info->bus->non_giant_callback_tq, 
+				    info->bus->non_giant_callback_tq,
 				    &udev->cs_task);
 			} else {
 				/* should not happen */
@@ -2371,7 +2371,7 @@ usbd_pipe_start(struct usb_xfer_queue *pq)
 				return;
 			}
 		} else if (type == UE_ISOCHRONOUS) {
-			/* 
+			/*
 			 * Make sure any FIFO overflow or other FIFO
 			 * error conditions go away by resetting the
 			 * endpoint FIFO through the clear stall
@@ -2539,7 +2539,8 @@ usbd_callback_wrapper_sub(struct usb_xfer *xfer)
 			xfer->actlen = xfer->sumlen;
 		}
 	}
-	DPRINTFN(1, "xfer=%p endpoint=%p sts=%d alen=%d, slen=%d, afrm=%d, nfrm=%d\n",
+	DPRINTFN(1,
+	    "xfer=%p endpoint=%p sts=%d alen=%d, slen=%d, afrm=%d, nfrm=%d\n",
 	    xfer, xfer->endpoint, xfer->error, xfer->actlen, xfer->sumlen,
 	    xfer->aframes, xfer->nframes);
 
@@ -2563,7 +2564,8 @@ usbd_callback_wrapper_sub(struct usb_xfer *xfer)
 			if ((xfer->status & XFER_STATUS_SHORTXFER_OK) == 0) {
 				xfer->error = USB_ERR_SHORT_XFER;
 				if (xfer->flags.pipe_bof) {
-					DPRINTFN(2, "xfer=%p: Block On Failure on "
+					DPRINTFN(2,
+					    "xfer=%p: Block On Failure on "
 					    "Short Transfer on endpoint %p.\n",
 					    xfer, xfer->endpoint);
 					goto done;
@@ -2576,7 +2578,8 @@ usbd_callback_wrapper_sub(struct usb_xfer *xfer)
 			 */
 			if ((xfer->status & XFER_STATUS_CTRLACTIVE) != 0) {
 				DPRINTFN(5, "xfer=%p: Control transfer "
-				    "active on endpoint=%p\n", xfer, xfer->endpoint);
+				    "active on endpoint=%p\n", xfer,
+				    xfer->endpoint);
 				goto done;
 			}
 		}
@@ -2705,9 +2708,9 @@ repeat:
 
 	if (no_resetup) {
 		/*
-	         * All parameters are exactly the same like before.
-	         * Just return.
-	         */
+		 * All parameters are exactly the same like before.
+		 * Just return.
+		 */
 		return;
 	}
 	/*

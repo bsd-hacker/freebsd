@@ -60,7 +60,8 @@ static usb_quirk_ioctl_t usb_quirk_ioctl_w;
 
 /* global variables */
 usb_handle_req_t *usb_temp_get_desc_p = &usb_temp_get_desc_w;
-usb_temp_setup_by_index_t *usb_temp_setup_by_index_p = &usb_temp_setup_by_index_w;
+usb_temp_setup_by_index_t *usb_temp_setup_by_index_p =
+    &usb_temp_setup_by_index_w;
 usb_temp_unsetup_t *usb_temp_unsetup_p = &usb_temp_unsetup_w;
 usb_test_quirk_t *usb_test_quirk_p = &usb_test_quirk_w;
 usb_quirk_ioctl_t *usb_quirk_ioctl_p = &usb_quirk_ioctl_w;
@@ -88,7 +89,8 @@ usb_quirk_ioctl_w(unsigned long cmd, caddr_t data, int fflag, struct thread *td)
 }
 
 static usb_error_t
-usb_temp_get_desc_w(struct usb_device *udev, struct usb_device_request *req, const void **pPtr, uint16_t *pLength)
+usb_temp_get_desc_w(struct usb_device *udev, struct usb_device_request *req,
+    const void **pPtr, uint16_t *pLength)
 {
 
 	/* stall */

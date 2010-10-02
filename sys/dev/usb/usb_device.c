@@ -92,7 +92,7 @@ static void	usbd_clear_stall_proc(void *, int);
 usb_error_t	usb_config_parse(struct usb_device *, uint8_t, uint8_t);
 static void	usbd_set_device_strings(struct usb_device *);
 #if USB_HAVE_UGEN
-static void	usb_notify_addq(const char *type, struct usb_device *);
+static void	usb_notify_addq(const char *, struct usb_device *);
 static void	usb_fifo_free_wrap(struct usb_device *, uint8_t, uint8_t);
 static struct cdev *usb_make_dev(struct usb_device *, int, int);
 static void	usb_cdev_create(struct usb_device *);
@@ -675,7 +675,10 @@ usb_config_parse(struct usb_device *udev, uint8_t iface_index, uint8_t cmd)
 				} else {
 					/* reset endpoint */
 					memset(ep, 0, sizeof(*ep));
-					/* make sure we don't zero the endpoint again */
+					/*
+					 * make sure we don't zero
+					 * the endpoint again
+					 */
 					ep->iface_index = USB_IFACE_INDEX_ANY;
 				}
 			}
@@ -699,7 +702,7 @@ usb_config_parse(struct usb_device *udev, uint8_t iface_index, uint8_t cmd)
 
 		/* check for specific interface match */
 		if (cmd == USB_CFG_INIT) {
-			if ((iface_index != USB_IFACE_INDEX_ANY) && 
+			if ((iface_index != USB_IFACE_INDEX_ANY) &&
 			    (iface_index != ips.iface_index)) {
 				/* wrong interface */
 				do_init = 0;
@@ -741,7 +744,7 @@ usb_config_parse(struct usb_device *udev, uint8_t iface_index, uint8_t cmd)
 			ep = udev->endpoints + temp;
 
 			if (do_init) {
-				usb_init_endpoint(udev, 
+				usb_init_endpoint(udev,
 				    ips.iface_index, ed, ep);
 			}
 
@@ -762,7 +765,7 @@ usb_config_parse(struct usb_device *udev, uint8_t iface_index, uint8_t cmd)
 		udev->ifaces = NULL;
 		if (udev->ifaces_max != 0) {
 			udev->ifaces = malloc(sizeof(*iface) * udev->ifaces_max,
-			        M_USB, M_WAITOK | M_ZERO);
+			    M_USB, M_WAITOK | M_ZERO);
 			if (udev->ifaces == NULL) {
 				err = USB_ERR_NOMEM;
 				goto done;
@@ -770,7 +773,7 @@ usb_config_parse(struct usb_device *udev, uint8_t iface_index, uint8_t cmd)
 		}
 		if (ep_max != 0) {
 			udev->endpoints = malloc(sizeof(*ep) * ep_max,
-			        M_USB, M_WAITOK | M_ZERO);
+			    M_USB, M_WAITOK | M_ZERO);
 			if (udev->endpoints == NULL) {
 				err = USB_ERR_NOMEM;
 				goto done;
@@ -842,7 +845,7 @@ usbd_set_alt_interface_index(struct usb_device *udev,
 		goto done;
 	}
 	if (iface->alt_index == alt_index) {
-		/* 
+		/*
 		 * Optimise away duplicate setting of
 		 * alternate setting in USB Host Mode!
 		 */
@@ -910,9 +913,9 @@ usbd_set_endpoint_stall(struct usb_device *udev, struct usb_endpoint *ep,
 	if ((et != UE_BULK) &&
 	    (et != UE_INTERRUPT)) {
 		/*
-	         * Should not stall control
-	         * nor isochronous endpoints.
-	         */
+		 * Should not stall control
+		 * nor isochronous endpoints.
+		 */
 		DPRINTF("Invalid endpoint\n");
 		return (0);
 	}
@@ -1150,7 +1153,8 @@ attached:
 		if (udev->flags.peer_suspended) {
 			err = DEVICE_SUSPEND(iface->subdev);
 			if (err)
-				device_printf(iface->subdev, "Suspend failed\n");
+				device_printf(iface->subdev,
+				    "Suspend failed\n");
 		}
 		return (0);		/* success */
 	}
@@ -1317,7 +1321,8 @@ done:
  * be executed on an USB device.
  *------------------------------------------------------------------------*/
 static void
-usb_suspend_resume_sub(struct usb_device *udev, device_t dev, uint8_t do_suspend)
+usb_suspend_resume_sub(struct usb_device *udev, device_t dev,
+    uint8_t do_suspend)
 {
 	int err;
 
@@ -1576,7 +1581,8 @@ usb_alloc_device(device_t parent_dev, struct usb_bus *bus,
 		/* Setup USB descriptors */
 		err = (usb_temp_setup_by_index_p) (udev, usb_template);
 		if (err) {
-			DPRINTFN(0, "setting up USB template failed maybe the USB "
+			DPRINTFN(0,
+			    "setting up USB template failed maybe the USB "
 			    "template module has not been loaded\n");
 			goto done;
 		}
@@ -1751,7 +1757,8 @@ repeat_set_config:
 		err = 0;
 		goto config_done;
 	}
-	if (!config_quirk && config_index + 1 < udev->ddesc.bNumConfigurations) {
+	if (!config_quirk &&
+	    config_index + 1 < udev->ddesc.bNumConfigurations) {
 		if ((udev->cdesc->bNumInterface < 2) &&
 		    usbd_get_no_descriptors(udev->cdesc, UDESC_ENDPOINT) == 0) {
 			DPRINTFN(0, "Found no endpoints, trying next config\n");

@@ -208,7 +208,8 @@ void	usb_devinfo(struct usb_device *udev, char *dst_ptr, uint16_t dst_len);
 void	usb_free_device(struct usb_device *, uint8_t);
 void	usb_linux_free_device(struct usb_device *dev);
 uint8_t	usb_peer_can_wakeup(struct usb_device *udev);
-struct usb_endpoint *usb_endpoint_foreach(struct usb_device *udev, struct usb_endpoint *ep);
+struct usb_endpoint *usb_endpoint_foreach(struct usb_device *udev,
+	    struct usb_endpoint *ep);
 void	usb_set_device_state(struct usb_device *udev,
 	    enum usb_dev_state state);
 void	usbd_enum_lock(struct usb_device *);

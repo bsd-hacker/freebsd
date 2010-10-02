@@ -24,7 +24,7 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- */ 
+ */
 
 #include <sys/stdint.h>
 #include <sys/stddef.h>
@@ -248,7 +248,7 @@ usb_do_clear_stall_callback(struct usb_xfer *xfer, usb_error_t error)
 	case USB_ST_SETUP:
 tr_setup:
 		if (to == 0)
-			break;			/* no endpoints - nothing to do */
+			break;		/* no endpoints - nothing to do */
 		if ((ep < ep_first) || (ep >= ep_end))
 			ep = ep_first;	/* endpoint wrapped around */
 		if (ep->edesc &&
@@ -539,7 +539,7 @@ usbd_do_request_flags(struct usb_device *udev, struct mtx *mtx,
 				if (dbg.ds_delay > 0) {
 					usb_pause_mtx(
 					    xfer->xroot->xfer_mtx,
-				            USB_MS_TO_TICKS(dbg.ds_delay));
+					    USB_MS_TO_TICKS(dbg.ds_delay));
 					/* make sure we don't time out */
 					start_ticks = ticks;
 				}
@@ -1405,8 +1405,8 @@ usbd_req_set_protocol(struct usb_device *udev, struct mtx *mtx,
  * Else: Failure
  *------------------------------------------------------------------------*/
 usb_error_t
-usbd_req_set_report(struct usb_device *udev, struct mtx *mtx, void *data, uint16_t len,
-    uint8_t iface_index, uint8_t type, uint8_t id)
+usbd_req_set_report(struct usb_device *udev, struct mtx *mtx,
+    void *data, uint16_t len, uint8_t iface_index, uint8_t type, uint8_t id)
 {
 	struct usb_interface *iface = usbd_get_iface(udev, iface_index);
 	struct usb_device_request req;
@@ -1579,7 +1579,7 @@ usbd_req_re_enumerate(struct usb_device *udev, struct mtx *mtx)
 retry:
 	err = usbd_req_reset_port(parent_hub, mtx, udev->port_no);
 	if (err) {
-		DPRINTFN(0, "addr=%d, port reset failed, %s\n", 
+		DPRINTFN(0, "addr=%d, port reset failed, %s\n",
 		    old_addr, usbd_errstr(err));
 		goto done;
 	}
@@ -1620,7 +1620,7 @@ retry:
 	err = usbd_req_get_device_desc(udev, mtx, &udev->ddesc);
 	if (err) {
 		DPRINTFN(0, "addr=%d, getting device "
-		    "descriptor failed, %s\n", old_addr, 
+		    "descriptor failed, %s\n", old_addr,
 		    usbd_errstr(err));
 		goto done;
 	}

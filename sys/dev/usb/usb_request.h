@@ -69,7 +69,9 @@ usb_error_t usbd_req_set_hub_feature(struct usb_device *udev, struct mtx *mtx,
 usb_error_t usbd_req_set_port_feature(struct usb_device *udev,
 		    struct mtx *mtx, uint8_t port, uint16_t sel);
 usb_error_t usbd_req_re_enumerate(struct usb_device *udev, struct mtx *mtx);
-usb_error_t usbd_req_clear_device_feature(struct usb_device *udev, struct mtx *mtx, uint16_t sel);
-usb_error_t usbd_req_set_device_feature(struct usb_device *udev, struct mtx *mtx, uint16_t sel);
+usb_error_t usbd_req_clear_device_feature(struct usb_device *udev,
+		    struct mtx *mtx, uint16_t sel);
+usb_error_t usbd_req_set_device_feature(struct usb_device *udev,
+		    struct mtx *mtx, uint16_t sel);
 
 #endif					/* _USB_REQUEST_H_ */

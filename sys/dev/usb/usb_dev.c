@@ -97,7 +97,7 @@ TUNABLE_INT("hw.usb.dev.debug", &usb_fifo_debug);
 
 /* prototypes */
 
-static int	usb_fifo_open(struct usb_cdev_privdata *, 
+static int	usb_fifo_open(struct usb_cdev_privdata *,
 		    struct usb_fifo *, int);
 static void	usb_fifo_close(struct usb_fifo *, int);
 static void	usb_dev_init(void *);
@@ -112,9 +112,12 @@ static struct	usb_endpoint *usb_dev_get_ep(struct usb_device *, uint8_t,
 static void	usb_loc_fill(struct usb_fs_privdata *,
 		    struct usb_cdev_privdata *);
 static void	usb_close(void *);
-static usb_error_t usb_ref_device(struct usb_cdev_privdata *, struct usb_cdev_refdata *, int);
-static usb_error_t usb_usb_ref_device(struct usb_cdev_privdata *, struct usb_cdev_refdata *);
-static void	usb_unref_device(struct usb_cdev_privdata *, struct usb_cdev_refdata *);
+static usb_error_t usb_ref_device(struct usb_cdev_privdata *,
+		    struct usb_cdev_refdata *, int);
+static usb_error_t usb_usb_ref_device(struct usb_cdev_privdata *,
+		    struct usb_cdev_refdata *);
+static void	usb_unref_device(struct usb_cdev_privdata *,
+		    struct usb_cdev_refdata *);
 
 static d_open_t usb_open;
 static d_ioctl_t usb_ioctl;
@@ -183,7 +186,7 @@ usb_loc_fill(struct usb_fs_privdata* pd, struct usb_cdev_privdata *cpd)
  *  Else: Failure.
  *------------------------------------------------------------------------*/
 static usb_error_t
-usb_ref_device(struct usb_cdev_privdata *cpd, 
+usb_ref_device(struct usb_cdev_privdata *cpd,
     struct usb_cdev_refdata *crd, int need_uref)
 {
 	struct usb_fifo **ppf;
@@ -223,7 +226,7 @@ usb_ref_device(struct usb_cdev_privdata *cpd,
 
 		mtx_lock(&usb_ref_lock);
 
-		/* 
+		/*
 		 * Set "is_uref" after grabbing the default SX lock
 		 */
 		crd->is_uref = 1;
@@ -637,7 +640,7 @@ usb_dev_get_ep(struct usb_device *udev, uint8_t ep_index, uint8_t dir)
  * Else: Failure
  *------------------------------------------------------------------------*/
 static int
-usb_fifo_open(struct usb_cdev_privdata *cpd, 
+usb_fifo_open(struct usb_cdev_privdata *cpd,
     struct usb_fifo *f, int fflags)
 {
 	int err;
@@ -930,7 +933,8 @@ usb_dev_init_post(void *arg)
 		DPRINTFN(0, "Could not create usb bus device\n");
 }
 
-SYSINIT(usb_dev_init_post, SI_SUB_KICK_SCHEDULER, SI_ORDER_FIRST, usb_dev_init_post, NULL);
+SYSINIT(usb_dev_init_post, SI_SUB_KICK_SCHEDULER, SI_ORDER_FIRST,
+    usb_dev_init_post, NULL);
 
 static void
 usb_dev_uninit(void *arg)
@@ -939,13 +943,13 @@ usb_dev_uninit(void *arg)
 	if (usb_dev != NULL) {
 		destroy_dev(usb_dev);
 		usb_dev = NULL;
-	
 	}
 	mtx_destroy(&usb_ref_lock);
 	sx_destroy(&usb_sym_lock);
 }
 
-SYSUNINIT(usb_dev_uninit, SI_SUB_KICK_SCHEDULER, SI_ORDER_ANY, usb_dev_uninit, NULL);
+SYSUNINIT(usb_dev_uninit, SI_SUB_KICK_SCHEDULER, SI_ORDER_ANY,
+    usb_dev_uninit, NULL);
 
 static int
 usb_ioctl_f_sub(struct usb_fifo *f, u_long cmd, void *addr,
@@ -957,11 +961,9 @@ usb_ioctl_f_sub(struct usb_fifo *f, u_long cmd, void *addr,
 	case FIODTYPE:
 		*(int *)addr = 0;	/* character device */
 		break;
-
 	case FIONBIO:
 		/* handled by upper FS layer */
 		break;
-
 	case FIOASYNC:
 		if (*(int *)addr) {
 			if (f->async_p != NULL) {
@@ -972,7 +974,6 @@ usb_ioctl_f_sub(struct usb_fifo *f, u_long cmd, void *addr,
 		} else
 			f->async_p = NULL;
 		break;
-
 		/* XXX this is not the most general solution */
 	case TIOCSPGRP:
 		if (f->async_p == NULL) {
@@ -995,7 +996,8 @@ usb_ioctl_f_sub(struct usb_fifo *f, u_long cmd, void *addr,
  *	usb_ioctl - cdev callback
  *------------------------------------------------------------------------*/
 static int
-usb_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int fflag, struct thread* td)
+usb_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int fflag,
+    struct thread* td)
 {
 	struct usb_cdev_refdata refs;
 	struct usb_cdev_privdata* cpd;
@@ -1009,7 +1011,7 @@ usb_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int fflag, struct thread* 
 	if (err != 0)
 		return (err);
 
-	/* 
+	/*
 	 * Performance optimisation: We try to check for IOCTL's that
 	 * don't need the USB reference first. Then we grab the USB
 	 * reference if we need it!
@@ -1678,7 +1680,8 @@ usb_fifo_attach(struct usb_device *udev, void *priv_sc,
 		 * Initialize device private data - this is used to find the
 		 * actual USB device itself.
 		 */
-		pd = malloc(sizeof(struct usb_fs_privdata), M_USBDEV, M_WAITOK | M_ZERO);
+		pd = malloc(sizeof(struct usb_fs_privdata), M_USBDEV,
+		    M_WAITOK | M_ZERO);
 		pd->bus_index = device_get_unit(udev->bus->bdev);
 		pd->dev_index = udev->device_index;
 		pd->ep_addr = -1;	/* not an endpoint */
@@ -1743,7 +1746,7 @@ usb_fifo_free_buffer(struct usb_fifo *f)
 }
 
 static void
-usb_fifo_cleanup(void* ptr) 
+usb_fifo_cleanup(void* ptr)
 {
 
 	free(ptr, M_USBDEV);
@@ -1762,7 +1765,7 @@ usb_fifo_detach(struct usb_fifo_sc *f_sc)
 	f_sc->fp[USB_FIFO_RX] = NULL;
 
 	if (f_sc->dev != NULL) {
-		destroy_dev_sched_cb(f_sc->dev, 
+		destroy_dev_sched_cb(f_sc->dev,
 		    usb_fifo_cleanup, f_sc->dev->si_drv1);
 		f_sc->dev = NULL;
 	}

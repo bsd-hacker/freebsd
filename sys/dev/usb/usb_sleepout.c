@@ -119,5 +119,4 @@ sleepout_drain(struct sleepout_task *st)
 
 	taskqueue_drain(s->s_taskqueue, &st->st_task);
 	return (callout_drain(&st->st_callout));
-	
 }

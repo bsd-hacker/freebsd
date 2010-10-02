@@ -485,10 +485,10 @@ usb_pc_alloc_mem(struct usb_page_cache *pc, struct usb_page *pg,
 		goto error;
 	if (align != 1) {
 		/*
-	         * The alignment must be greater or equal to the
-	         * "size" else the object can be split between two
-	         * memory pages and we get a problem!
-	         */
+		 * The alignment must be greater or equal to the
+		 * "size" else the object can be split between two
+		 * memory pages and we get a problem!
+		 */
 		while (align < size)
 			align *= 2;
 #if 1

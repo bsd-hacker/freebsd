@@ -56,12 +56,12 @@ struct usb_driver {
 	const char *name;
 
 	int     (*probe) (struct usb_interface *intf,
-	    	const	struct usb_device_id *id);
+		    const struct usb_device_id *id);
 
 	void    (*disconnect) (struct usb_interface *intf);
 
 	int     (*ioctl) (struct usb_interface *intf, unsigned int code,
-	    	void  *buf);
+		    void  *buf);
 
 	int     (*suspend) (struct usb_interface *intf, pm_message_t message);
 	int     (*resume) (struct usb_interface *intf);
@@ -264,7 +264,7 @@ struct urb {
 	uint8_t	bsd_isread;
 	uint8_t kill_count;		/* FreeBSD specific */
 
-	struct usb_iso_packet_descriptor iso_frame_desc[];	/* (in) ISO ONLY */
+	struct usb_iso_packet_descriptor iso_frame_desc[]; /* (in) ISO ONLY */
 };
 
 /* various prototypes */
@@ -291,7 +291,8 @@ void   *usb_buffer_alloc(struct usb_device *dev, usb_size_t size,
 	    uint16_t mem_flags, uint8_t *dma_addr);
 void   *usbd_get_intfdata(struct usb_interface *intf);
 
-void	usb_buffer_free(struct usb_device *dev, usb_size_t size, void *addr, uint8_t dma_addr);
+void	usb_buffer_free(struct usb_device *dev, usb_size_t size, void *addr,
+	    uint8_t dma_addr);
 void	usb_free_urb(struct urb *urb);
 void	usb_init_urb(struct urb *urb);
 void	usb_kill_urb(struct urb *urb);

@@ -96,9 +96,12 @@ struct usb_bus_methods {
 
 	/* USB Device mode only - Mandatory */
 
-	void    (*get_hw_ep_profile) (struct usb_device *udev, const struct usb_hw_ep_profile **ppf, uint8_t ep_addr);
-	void    (*set_stall) (struct usb_device *udev, struct usb_xfer *xfer, struct usb_endpoint *ep, uint8_t *did_stall);
-	void    (*clear_stall) (struct usb_device *udev, struct usb_endpoint *ep);
+	void    (*get_hw_ep_profile) (struct usb_device *udev,
+		    const struct usb_hw_ep_profile **ppf, uint8_t ep_addr);
+	void    (*set_stall) (struct usb_device *udev, struct usb_xfer *xfer,
+		    struct usb_endpoint *ep, uint8_t *did_stall);
+	void    (*clear_stall) (struct usb_device *udev,
+		    struct usb_endpoint *ep);
 
 	/* Optional transfer polling support */
 
@@ -194,7 +197,7 @@ struct usb_temp_setup {
 int		usb_bus_struct_init(struct usb_bus *bus, device_t dev,
 		    struct usb_device **udevs, uint8_t udevsmax,
 		    void (*busmem_func)(struct usb_bus *,
-		        usb_bus_mem_callback_t *));
+			usb_bus_mem_callback_t *));
 void		usb_bus_struct_fini(struct usb_bus *bus);
 void		usb_bus_mem_flush_all(struct usb_bus *bus);
 uint16_t	usb_isoc_time_expand(struct usb_bus *bus,
