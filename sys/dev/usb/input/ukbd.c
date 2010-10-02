@@ -379,9 +379,9 @@ ukbd_get_key(struct ukbd_softc *sc, uint8_t wait)
 	if (sc->sc_flags & UKBD_FLAG_POLLING)
 		ukbd_do_poll(sc, wait);
 
-	if (sc->sc_inputs == 0) {
+	if (sc->sc_inputs == 0)
 		c = -1;
-	} else {
+	else {
 		c = sc->sc_input[sc->sc_inputhead];
 		--(sc->sc_inputs);
 		++(sc->sc_inputhead);
@@ -513,9 +513,9 @@ ukbd_timeout(void *arg)
 	/* Make sure any leftover key events gets read out */
 	ukbd_event_keyinput(sc);
 
-	if (ukbd_any_key_pressed(sc) || (sc->sc_inputs != 0)) {
+	if (ukbd_any_key_pressed(sc) || (sc->sc_inputs != 0))
 		ukbd_start_timer(sc);
-	} else
+	else
 		sc->sc_flags &= ~UKBD_FLAG_TIMER_RUNNING;
 }
 

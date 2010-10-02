@@ -630,9 +630,9 @@ tr_setup:
 			return;
 		if (m->m_pkthdr.len > MCLBYTES)
 			m->m_pkthdr.len = MCLBYTES;
-		if (m->m_pkthdr.len < UDAV_MIN_FRAME_LEN) {
+		if (m->m_pkthdr.len < UDAV_MIN_FRAME_LEN)
 			extra_len = UDAV_MIN_FRAME_LEN - m->m_pkthdr.len;
-		} else
+		else
 			extra_len = 0;
 
 		temp_len = (m->m_pkthdr.len + extra_len);

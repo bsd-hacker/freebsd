@@ -2518,9 +2518,9 @@ zyd_tx_start(struct zyd_softc *sc, struct mbuf *m0, struct ieee80211_node *ni)
 	desc->flags = ZYD_TX_FLAG_BACKOFF;
 	if (!IEEE80211_IS_MULTICAST(wh->i_addr1)) {
 		/* multicast frames are not sent at OFDM rates in 802.11b/g */
-		if (totlen > vap->iv_rtsthreshold) {
+		if (totlen > vap->iv_rtsthreshold)
 			desc->flags |= ZYD_TX_FLAG_RTS;
-		} else if (ZYD_RATE_IS_OFDM(rate) &&
+		else if (ZYD_RATE_IS_OFDM(rate) &&
 		    (ic->ic_flags & IEEE80211_F_USEPROT)) {
 			if (ic->ic_protmode == IEEE80211_PROT_CTSONLY)
 				desc->flags |= ZYD_TX_FLAG_CTS_TO_SELF;

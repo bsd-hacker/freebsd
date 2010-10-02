@@ -474,9 +474,9 @@ uhub_suspend_resume_port(struct uhub_softc *sc, uint8_t portno)
 		goto done;
 	}
 	/* get current state */
-	if (sc->sc_st.port_status & UPS_SUSPEND) {
+	if (sc->sc_st.port_status & UPS_SUSPEND)
 		is_suspend = 1;
-	} else
+	else
 		is_suspend = 0;
 
 	DPRINTF("suspended=%u\n", is_suspend);
@@ -731,9 +731,9 @@ uhub_attach(device_t dev)
 	hub->hubudev = udev;
 
 	/* if self powered hub, give ports maximum current */
-	if (udev->flags.self_powered) {
+	if (udev->flags.self_powered)
 		hub->portpower = USB_MAX_POWER;
-	} else
+	else
 		hub->portpower = USB_MIN_POWER;
 
 	/* set up interrupt pipe */
@@ -1202,9 +1202,9 @@ usb_hs_bandwidth_alloc(struct usb_xfer *xfer)
 		xfer->endpoint->usb_smask = mask << slot;
 
 		if ((speed != USB_SPEED_FULL) &&
-		    (speed != USB_SPEED_LOW)) {
+		    (speed != USB_SPEED_LOW))
 			xfer->endpoint->usb_cmask = 0x00 ;
-		} else
+		else
 			xfer->endpoint->usb_cmask = (-(0x04 << slot)) & 0xFE;
 		break;
 
@@ -1503,9 +1503,9 @@ usb_bus_port_set_device(struct usb_bus *bus, struct usb_port *up,
 	 * have an USB port, and that is the Root Hub!
 	 */
 	if (up) {
-		if (udev) {
+		if (udev)
 			up->device_index = device_index;
-		} else {
+		else {
 			device_index = up->device_index;
 			up->device_index = 0;
 		}
@@ -1666,9 +1666,9 @@ usbd_transfer_power_ref(struct usb_xfer *xfer, int val)
 			 */
 			udev->pwr_save.write_refs += val;
 		}
-	} else if (USB_GET_DATA_ISREAD(xfer)) {
+	} else if (USB_GET_DATA_ISREAD(xfer))
 		udev->pwr_save.read_refs += val;
-	} else
+	else
 		udev->pwr_save.write_refs += val;
 
 	if (val > 0) {

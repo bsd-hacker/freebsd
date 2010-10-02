@@ -129,9 +129,9 @@ hid_switch_rid(struct hid_data *s, struct hid_item *c, int32_t next_rID)
 		return;
 
 	/* save current position for current rID */
-	if (c->report_ID == 0) {
+	if (c->report_ID == 0)
 		i = 0;
-	} else {
+	else {
 		for (i = 1; i != MAXID; i++) {
 			if (s->last_pos[i].rid == c->report_ID)
 				break;
@@ -148,9 +148,9 @@ hid_switch_rid(struct hid_data *s, struct hid_item *c, int32_t next_rID)
 	c->report_ID = next_rID;
 
 	/* lookup last position for next rID */
-	if (next_rID == 0) {
+	if (next_rID == 0)
 		i = 0;
-	} else {
+	else {
 		for (i = 1; i != MAXID; i++) {
 			if (s->last_pos[i].rid == next_rID)
 				break;

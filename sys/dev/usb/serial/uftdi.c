@@ -520,9 +520,9 @@ uftdi_cfg_set_break(struct ucom_softc *ucom, uint8_t onoff)
 	uint16_t wValue;
 	struct usb_device_request req;
 
-	if (onoff) {
+	if (onoff)
 		sc->sc_last_lcr |= FTDI_SIO_SET_BREAK;
-	} else
+	else
 		sc->sc_last_lcr &= ~FTDI_SIO_SET_BREAK;
 
 	wValue = sc->sc_last_lcr;
@@ -592,9 +592,9 @@ uftdi_set_parm_soft(struct termios *t,
 		cfg->lcr = FTDI_SIO_SET_DATA_STOP_BITS_1;
 
 	if (t->c_cflag & PARENB) {
-		if (t->c_cflag & PARODD) {
+		if (t->c_cflag & PARODD)
 			cfg->lcr |= FTDI_SIO_SET_DATA_PARITY_ODD;
-		} else
+		else
 			cfg->lcr |= FTDI_SIO_SET_DATA_PARITY_EVEN;
 	} else
 		cfg->lcr |= FTDI_SIO_SET_DATA_PARITY_NONE;
@@ -617,9 +617,9 @@ uftdi_set_parm_soft(struct termios *t,
 		break;
 	}
 
-	if (t->c_cflag & CRTSCTS) {
+	if (t->c_cflag & CRTSCTS)
 		cfg->v_flow = FTDI_SIO_RTS_CTS_HS;
-	} else if (t->c_iflag & (IXON | IXOFF)) {
+	else if (t->c_iflag & (IXON | IXOFF)) {
 		cfg->v_flow = FTDI_SIO_XON_XOFF_HS;
 		cfg->v_start = t->c_cc[VSTART];
 		cfg->v_stop = t->c_cc[VSTOP];

@@ -1036,9 +1036,9 @@ atp_update_strokes(struct atp_softc *sc, atp_pspan *pspans_x,
 	for (i = 0; i < sc->sc_n_strokes; i++) {
 		stroke = &sc->sc_strokes[i];
 		if (stroke->components[X].matched &&
-		    stroke->components[Y].matched) {
+		    stroke->components[Y].matched)
 			atp_advance_stroke_state(sc, stroke, &movement);
-		} else {
+		else {
 			/*
 			 * At least one component of this stroke
 			 * didn't match against current pspans;
@@ -1248,9 +1248,9 @@ atp_advance_stroke_state(struct atp_softc *sc, atp_stroke *stroke,
 		return;
 
 	/* Convert touch strokes to slides upon detecting movement or age. */
-	if (stroke->cum_movement >= atp_slide_min_movement) {
+	if (stroke->cum_movement >= atp_slide_min_movement)
 		atp_convert_to_slide(sc, stroke);
-	} else {
+	else {
 		/* If a touch stroke is found to be older than the
 		 * touch-timeout threshold, it should be converted to
 		 * a slide; except if there is a co-incident sibling

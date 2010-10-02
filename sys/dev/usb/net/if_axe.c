@@ -1247,9 +1247,9 @@ axe_setpromisc(struct axe_softc *sc)
 
 	rxmode = le16toh(rxmode);
 
-	if (ifp->if_flags & IFF_PROMISC) {
+	if (ifp->if_flags & IFF_PROMISC)
 		rxmode |= AXE_RXCMD_PROMISC;
-	} else
+	else
 		rxmode &= ~AXE_RXCMD_PROMISC;
 
 	axe_cmd(sc, AXE_CMD_RXCTL_WRITE, 0, rxmode, NULL);

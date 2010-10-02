@@ -651,15 +651,15 @@ uplcom_cfg_param(struct ucom_softc *ucom, struct termios *t)
 
 	USETDW(ls.dwDTERate, t->c_ospeed);
 
-	if (t->c_cflag & CSTOPB) {
+	if (t->c_cflag & CSTOPB)
 		ls.bCharFormat = UCDC_STOP_BIT_2;
-	} else
+	else
 		ls.bCharFormat = UCDC_STOP_BIT_1;
 
 	if (t->c_cflag & PARENB) {
-		if (t->c_cflag & PARODD) {
+		if (t->c_cflag & PARODD)
 			ls.bParityType = UCDC_PARITY_ODD;
-		} else
+		else
 			ls.bParityType = UCDC_PARITY_EVEN;
 	} else
 		ls.bParityType = UCDC_PARITY_NONE;

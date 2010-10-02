@@ -110,9 +110,9 @@ device_set_usb_desc(device_t dev)
 
 	if ((iface == NULL) ||
 	    (iface->idesc == NULL) ||
-	    (iface->idesc->iInterface == 0)) {
+	    (iface->idesc->iInterface == 0))
 		err = USB_ERR_INVAL;
-	} else
+	else
 		err = 0;
 
 	temp_p = (char *)udev->bus->scratch[0].data;

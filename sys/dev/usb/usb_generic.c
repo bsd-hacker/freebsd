@@ -404,9 +404,9 @@ ugen_ctrl_read_callback(struct usb_xfer *xfer, usb_error_t error)
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
 		if (xfer->actlen == 0) {
-			if (f->fifo_zlp != 4) {
+			if (f->fifo_zlp != 4)
 				f->fifo_zlp++;
-			} else {
+			else {
 				/*
 				 * Throttle a little bit we have multiple ZLPs
 				 * in a row!
@@ -708,9 +708,9 @@ ugen_get_sdesc(struct usb_fifo *f, struct usb_gen_descriptor *ugd)
 	int error;
 
 	if (usbd_req_get_string_desc(f->udev, NULL, ptr,
-	    size, ugd->ugd_lang_id, ugd->ugd_string_index)) {
+	    size, ugd->ugd_lang_id, ugd->ugd_string_index))
 		error = EINVAL;
-	} else {
+	else {
 		if (size > ((uint8_t *)ptr)[0])
 			size = ((uint8_t *)ptr)[0];
 		if (size > ugd->ugd_maxlen)

@@ -468,9 +468,9 @@ ucycom_cfg_param(struct ucom_softc *ucom, struct termios *t)
 
 	DPRINTF("\n");
 
-	if (t->c_cflag & CIGNORE) {
+	if (t->c_cflag & CIGNORE)
 		cfg = sc->sc_cfg;
-	} else {
+	else {
 		cfg = 0;
 		switch (t->c_cflag & CSIZE) {
 		default:

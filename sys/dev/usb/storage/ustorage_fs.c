@@ -535,12 +535,12 @@ ustorage_fs_t_bbb_command_callback(struct usb_xfer *xfer, usb_error_t error)
 		/* extract LUN */
 		sc->sc_transfer.lun = sc->sc_cbw.bCBWLUN;
 
-		if (sc->sc_transfer.data_rem == 0) {
+		if (sc->sc_transfer.data_rem == 0)
 			sc->sc_transfer.cbw_dir = DIR_NONE;
-		} else {
-			if (sc->sc_cbw.bCBWFlags & CBWFLAGS_IN) {
+		else {
+			if (sc->sc_cbw.bCBWFlags & CBWFLAGS_IN)
 				sc->sc_transfer.cbw_dir = DIR_WRITE;
-			} else
+			else
 				sc->sc_transfer.cbw_dir = DIR_READ;
 		}
 

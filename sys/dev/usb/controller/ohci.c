@@ -410,9 +410,9 @@ ohci_init(ohci_softc_t *sc)
 
 	sc->sc_bus.usbrev = USB_REV_1_0;
 
-	if (ohci_controller_init(sc)) {
+	if (ohci_controller_init(sc))
 		return (USB_ERR_INVAL);
-	} else {
+	else {
 		/* catch any lost interrupts */
 		ohci_do_poll(&sc->sc_bus);
 		return (USB_ERR_NORMAL_COMPLETION);
@@ -772,9 +772,9 @@ ohci_isoc_done(struct usb_xfer *xfer)
 		while (nframes--) {
 			len = le16toh(*olen);
 
-			if ((len >> 12) == OHCI_CC_NOT_ACCESSED) {
+			if ((len >> 12) == OHCI_CC_NOT_ACCESSED)
 				len = 0;
-			} else
+			else
 				len &= ((1 << 12) - 1);
 
 			if (len > *plen)
@@ -1010,9 +1010,9 @@ ohci_check_transfer_sub(struct usb_xfer *xfer)
 		 * Make sure that the OHCI re-scans the schedule by
 		 * writing the BLF and CLF bits:
 		 */
-		if (xfer->xroot->udev->flags.self_suspended) {
-			/* nothing to do */
-		} else if (xfer->endpoint->methods == &ohci_device_bulk_methods) {
+		if (xfer->xroot->udev->flags.self_suspended)
+			;	/* nothing to do */
+		else if (xfer->endpoint->methods == &ohci_device_bulk_methods) {
 			ohci_softc_t *sc = OHCI_BUS2SC(xfer->xroot->bus);
 
 			OWRITE4(sc, OHCI_COMMAND_STATUS, OHCI_BLF);
@@ -1060,9 +1060,9 @@ ohci_check_transfer(struct usb_xfer *xfer)
 				}
 			}
 			/* store data-toggle */
-			if (ed_headp & OHCI_TOGGLECARRY) {
+			if (ed_headp & OHCI_TOGGLECARRY)
 				xfer->endpoint->toggle_next = 1;
-			} else
+			else
 				xfer->endpoint->toggle_next = 0;
 
 			/* non-isochronous transfer */
@@ -1264,9 +1264,9 @@ ohci_setup_standard_chain_sub(struct ohci_std_temp *temp)
 	precompute = 1;
 
 	/* software is used to detect short incoming transfers */
-	if ((temp->td_flags & htole32(OHCI_TD_DP_MASK)) == htole32(OHCI_TD_IN)) {
+	if ((temp->td_flags & htole32(OHCI_TD_DP_MASK)) == htole32(OHCI_TD_IN))
 		temp->td_flags |= htole32(OHCI_TD_R);
-	} else
+	else
 		temp->td_flags &= ~htole32(OHCI_TD_R);
 
 restart:
@@ -1439,15 +1439,15 @@ ohci_setup_standard_chain(struct usb_xfer *xfer, ohci_ed_t **ed_last)
 	temp.td_flags = htole32(OHCI_TD_NOCC | OHCI_TD_NOINTR);
 
 	/* set data toggle */
-	if (xfer->endpoint->toggle_next) {
+	if (xfer->endpoint->toggle_next)
 		temp.td_flags |= htole32(OHCI_TD_TOGGLE_1);
-	} else
+	else
 		temp.td_flags |= htole32(OHCI_TD_TOGGLE_0);
 
 	/* set endpoint direction */
-	if (UE_GET_DIR(xfer->endpointno) == UE_DIR_IN) {
+	if (UE_GET_DIR(xfer->endpointno) == UE_DIR_IN)
 		temp.td_flags |= htole32(OHCI_TD_IN);
-	} else
+	else
 		temp.td_flags |= htole32(OHCI_TD_OUT);
 
 	while (x != xfer->nframes) {

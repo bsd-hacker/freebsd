@@ -608,9 +608,9 @@ ng_udbp_newhook(node_p node, hook_p hook, const char *name)
 		return (EINVAL);
 	mtx_lock(&sc->sc_mtx);
 
-	if (sc->sc_hook != NULL) {
+	if (sc->sc_hook != NULL)
 		error = EISCONN;
-	} else {
+	else {
 		sc->sc_hook = hook;
 		NG_HOOK_SET_PRIVATE(hook, NULL);
 	}
@@ -815,9 +815,9 @@ ng_udbp_disconnect(hook_p hook)
 	if (sc != NULL) {
 		mtx_lock(&sc->sc_mtx);
 
-		if (hook != sc->sc_hook) {
+		if (hook != sc->sc_hook)
 			error = EINVAL;
-		} else {
+		else {
 			/* stop bulk-in transfer */
 			usbd_transfer_stop(sc->sc_xfer[UDBP_T_RD_CS]);
 			usbd_transfer_stop(sc->sc_xfer[UDBP_T_RD]);

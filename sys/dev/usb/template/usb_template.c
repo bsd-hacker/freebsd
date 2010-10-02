@@ -367,9 +367,9 @@ usb_make_config_desc(struct usb_temp_setup *temp,
 		cd->bMaxPower = tcd->bMaxPower;
 		cd->bmAttributes |= (UC_REMOTE_WAKEUP | UC_BUS_POWERED);
 
-		if (temp->self_powered) {
+		if (temp->self_powered)
 			cd->bmAttributes |= UC_SELF_POWERED;
-		} else
+		else
 			cd->bmAttributes &= ~UC_SELF_POWERED;
 	}
 }
@@ -679,9 +679,9 @@ handle_endpoint_desc:
 			/* handle packet multiplier */
 			temp = (wMaxPacketSize >> 11) & 3;
 			wMaxPacketSize &= 0x7FF;
-			if (temp == 1) {
+			if (temp == 1)
 				wMaxPacketSize *= 2;
-			} else
+			else
 				wMaxPacketSize *= 3;
 		}
 		/*
@@ -749,9 +749,9 @@ handle_endpoint_desc:
 				ep_curr->needs_in = 1;
 				ep_curr->needs_out = 1;
 			} else {
-				if (ed->bEndpointAddress & UE_DIR_IN) {
+				if (ed->bEndpointAddress & UE_DIR_IN)
 					ep_curr->needs_in = 1;
-				} else
+				else
 					ep_curr->needs_out = 1;
 			}
 			ep_curr->needs_ep_type = ep_type;

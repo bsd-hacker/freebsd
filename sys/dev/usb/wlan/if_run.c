@@ -2395,9 +2395,9 @@ run_newassoc(struct ieee80211_node *ni, int isnew)
 			    rt2860_rates[rn->ridx[j]].phy)
 				break;
 		}
-		if (j >= 0) {
+		if (j >= 0)
 			rn->ctl_ridx[i] = rn->ridx[j];
-		} else {
+		else {
 			/* no basic rate found, use mandatory one */
 			rn->ctl_ridx[i] = rt2860_rates[ridx].ctl_ridx;
 		}
@@ -2678,9 +2678,9 @@ run_tx_free(struct run_endpoint_queue *pq,
 		m_freem(data->m);
 		data->m = NULL;
 
-		if (data->ni == NULL) {
+		if (data->ni == NULL)
 			DPRINTF("no node\n");
-		} else {
+		else {
 			ieee80211_free_node(data->ni);
 			data->ni = NULL;
 		}

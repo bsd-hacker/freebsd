@@ -571,9 +571,9 @@ atmegadci_xfer_do_fifo(struct usb_xfer *xfer)
 		}
 		if (((void *)td) == xfer->td_transfer_last)
 			goto done;
-		if (td->error) {
+		if (td->error)
 			goto done;
-		} else if (td->remainder > 0) {
+		else if (td->remainder > 0) {
 			/*
 			 * We had a short transfer. If there is no alternate
 			 * next, stop processing !
@@ -847,9 +847,9 @@ atmegadci_setup_standard_chain(struct usb_xfer *xfer)
 
 		atmegadci_setup_standard_chain_sub(&temp);
 
-		if ((xfer->status & XFER_STATUS_ISOCXFER) != 0) {
+		if ((xfer->status & XFER_STATUS_ISOCXFER) != 0)
 			temp.offset += temp.len;
-		} else {
+		else {
 			/* get next Page Cache pointer */
 			temp.pc = xfer->frbuffers + x;
 		}
@@ -962,9 +962,9 @@ atmegadci_standard_done_sub(struct usb_xfer *xfer)
 		         * Verify the length and subtract
 		         * the remainder from "frlengths[]":
 		         */
-			if (len > xfer->frlengths[xfer->aframes]) {
+			if (len > xfer->frlengths[xfer->aframes])
 				td->error = 1;
-			} else
+			else
 				xfer->frlengths[xfer->aframes] -= len;
 		}
 		/* Check for transfer error */
@@ -978,9 +978,9 @@ atmegadci_standard_done_sub(struct usb_xfer *xfer)
 		if (len > 0) {
 			if ((xfer->status & XFER_STATUS_SHORTFRAME_OK) != 0) {
 				/* follow alt next */
-				if (td->alt_next) {
+				if (td->alt_next)
 					td = td->obj_next;
-				} else
+				else
 					td = NULL;
 			} else {
 				/* the transfer is finished */
@@ -1131,11 +1131,11 @@ atmegadci_clear_stall_sub(struct atmegadci_softc *sc, uint8_t ep_no,
 	    ATMEGA_UECONX_STALLRQC);
 
 	do {
-		if (ep_type == UE_BULK) {
+		if (ep_type == UE_BULK)
 			temp = ATMEGA_UECFG0X_EPTYPE2;
-		} else if (ep_type == UE_INTERRUPT) {
+		else if (ep_type == UE_INTERRUPT)
 			temp = ATMEGA_UECFG0X_EPTYPE3;
-		} else
+		else
 			temp = ATMEGA_UECFG0X_EPTYPE1;
 		if (ep_dir & UE_DIR_IN)
 			temp |= ATMEGA_UECFG0X_EPDIR;

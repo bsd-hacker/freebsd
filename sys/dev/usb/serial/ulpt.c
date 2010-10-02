@@ -518,9 +518,9 @@ ulpt_attach(device_t dev)
 			break;
 		if ((id->bDescriptorType == UDESC_INTERFACE) &&
 		    (id->bLength >= sizeof(*id))) {
-			if (id->bInterfaceNumber != uaa->info.bIfaceNum) {
+			if (id->bInterfaceNumber != uaa->info.bIfaceNum)
 				break;
-			} else {
+			else {
 				alt_index++;
 				if ((id->bInterfaceClass == UICLASS_PRINTER) &&
 				    (id->bInterfaceSubClass == UISUBCLASS_PRINTER) &&
@@ -577,9 +577,9 @@ found:
 		USETW(req.wLength, sizeof devinfo - 1);
 		error = usbd_do_request_flags(dev, &req, devinfo, USB_SHORT_XFER_OK,
 		    &alen, USB_DEFAULT_TIMEOUT);
-		if (error) {
+		if (error)
 			device_printf(sc->sc_dev, "cannot get device id\n");
-		} else if (alen <= 2) {
+		else if (alen <= 2) {
 			device_printf(sc->sc_dev, "empty device id, no "
 			    "printer connected?\n");
 		} else {

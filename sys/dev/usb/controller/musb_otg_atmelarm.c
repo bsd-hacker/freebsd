@@ -154,9 +154,9 @@ musbotg_attach(device_t dev)
 	err = musbotg_init(&sc->sc_otg);
 	if (!err)
 		err = device_probe_and_attach(sc->sc_otg.sc_bus.bdev);
-	if (err) {
+	if (err)
 		goto error;
-	} else {
+	else {
 		/* poll VBUS one time */
 		musbotg_vbus_poll(sc);
 	}

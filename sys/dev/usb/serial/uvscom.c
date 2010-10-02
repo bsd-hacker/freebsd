@@ -572,9 +572,9 @@ uvscom_cfg_param(struct ucom_softc *ucom, struct termios *t)
 	if (t->c_cflag & CSTOPB)
 		value |= UVSCOM_STOP_BIT_2;
 	if (t->c_cflag & PARENB) {
-		if (t->c_cflag & PARODD) {
+		if (t->c_cflag & PARODD)
 			value |= UVSCOM_PARITY_ODD;
-		} else
+		else
 			value |= UVSCOM_PARITY_EVEN;
 	} else
 		value |= UVSCOM_PARITY_NONE;

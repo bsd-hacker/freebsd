@@ -526,9 +526,9 @@ alloc_transfers:
 	    (uaa->device, NULL, uaa->info.bIfaceIndex,
 	    UDESC_CS_INTERFACE, 0 - 1, UDESCSUB_CDC_ENF, 0 - 1);
 
-	if ((ued == NULL) || (ued->bLength < sizeof(*ued))) {
+	if ((ued == NULL) || (ued->bLength < sizeof(*ued)))
 		error = USB_ERR_INVAL;
-	} else {
+	else {
 		error = usbd_req_get_string_any(uaa->device, NULL, 
 		    eaddr_str, sizeof(eaddr_str), ued->iMacAddress);
 	}
@@ -1234,9 +1234,9 @@ cdce_ncm_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 				m = NULL;
 				/* silently ignore this frame */
 				continue;
-			} else if (temp > (MHLEN - ETHER_ALIGN)) {
+			} else if (temp > (MHLEN - ETHER_ALIGN))
 				m = m_getcl(M_DONTWAIT, MT_DATA, M_PKTHDR);
-			} else
+			else
 				m = m_gethdr(M_DONTWAIT, MT_DATA);
 
 			DPRINTFN(16, "frame %u, offset = %u, length = %u \n",

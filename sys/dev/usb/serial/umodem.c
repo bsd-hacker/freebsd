@@ -344,9 +344,9 @@ umodem_attach(device_t dev)
 		}
 	}
 
-	if (usb_test_quirk(uaa, UQ_ASSUME_CM_OVER_DATA)) {
+	if (usb_test_quirk(uaa, UQ_ASSUME_CM_OVER_DATA))
 		sc->sc_cm_over_data = 1;
-	} else {
+	else {
 		if (sc->sc_cm_cap & USB_CDC_CM_OVER_DATA) {
 			if (sc->sc_acm_cap & USB_CDC_ACM_HAS_FEATURE) {
 				error = umodem_set_comm_feature

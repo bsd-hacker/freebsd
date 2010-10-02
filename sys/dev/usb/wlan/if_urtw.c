@@ -3923,9 +3923,9 @@ urtw_rx_setconf(struct urtw_softc *sc)
 			data = data | URTW_RX_FILTER_CRCERR;
 
 		if (ic->ic_opmode == IEEE80211_M_MONITOR ||
-		    (ifp->if_flags & (IFF_ALLMULTI | IFF_PROMISC))) {
+		    (ifp->if_flags & (IFF_ALLMULTI | IFF_PROMISC)))
 			data = data | URTW_RX_FILTER_ALLMAC;
-		} else {
+		else {
 			data = data | URTW_RX_FILTER_NICMAC;
 			data = data | URTW_RX_CHECK_BSSID;
 		}

@@ -152,9 +152,9 @@ usb_handle_set_config(struct usb_xfer *xfer, uint8_t conf_no)
 
 	usbd_enum_lock(udev);
 
-	if (conf_no == USB_UNCONFIG_NO) {
+	if (conf_no == USB_UNCONFIG_NO)
 		conf_no = USB_UNCONFIG_INDEX;
-	} else {
+	else {
 		/*
 		 * The relationship between config number and config index
 		 * is very simple in our case:
@@ -186,9 +186,9 @@ usb_check_alt_setting(struct usb_device *udev,
 	usb_error_t err = 0;
 
 	/* automatic locking */
-	if (usbd_enum_is_locked(udev)) {
+	if (usbd_enum_is_locked(udev))
 		do_unlock = 0;
-	} else {
+	else {
 		do_unlock = 1;
 		usbd_enum_lock(udev);
 	}

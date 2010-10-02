@@ -1733,9 +1733,9 @@ restart:
 		precompute = 0;
 
 		/* setup alt next pointer, if any */
-		if (temp->last_frame) {
+		if (temp->last_frame)
 			td_alt_next = NULL;
-		} else {
+		else {
 			/* we use this field internally */
 			td_alt_next = td_next;
 		}
@@ -1935,9 +1935,9 @@ ehci_setup_standard_chain(struct usb_xfer *xfer, ehci_qh_t **qh_last)
 		if (methods != &ehci_device_intr_methods)
 			qh_endp |= EHCI_QH_SET_NRL(8);
 	} else {
-		if (usbd_get_speed(xfer->xroot->udev) == USB_SPEED_FULL) {
+		if (usbd_get_speed(xfer->xroot->udev) == USB_SPEED_FULL)
 			qh_endp |= EHCI_QH_SET_EPS(EHCI_QH_SPEED_FULL);
-		} else
+		else
 			qh_endp |= EHCI_QH_SET_EPS(EHCI_QH_SPEED_LOW);
 
 		if (methods == &ehci_device_ctrl_methods)
@@ -2043,9 +2043,9 @@ ehci_isoc_fs_done(ehci_softc_t *sc, struct usb_xfer *xfer)
 
 		DPRINTFN(2, "status=0x%08x, rem=%u\n", status, len);
 
-		if (*plen >= len) {
+		if (*plen >= len)
 			len = *plen - len;
-		} else
+		else
 			len = 0;
 
 		*plen = len;
@@ -2557,9 +2557,9 @@ ehci_device_isoc_fs_enter(struct usb_xfer *xfer)
 
 			tlen += sa;
 
-			if (tlen >= 8) {
+			if (tlen >= 8)
 				sb = 0;
-			} else
+			else
 				sb = (1 << tlen);
 
 			sa = (1 << sa);
@@ -3660,9 +3660,9 @@ ehci_ep_init(struct usb_device *udev, struct usb_endpoint_descriptor *edesc,
 			ep->methods = &ehci_device_intr_methods;
 			break;
 		case UE_ISOCHRONOUS:
-			if (udev->speed == USB_SPEED_HIGH) {
+			if (udev->speed == USB_SPEED_HIGH)
 				ep->methods = &ehci_device_isoc_hs_methods;
-			} else if (udev->speed == USB_SPEED_FULL)
+			else if (udev->speed == USB_SPEED_FULL)
 				ep->methods = &ehci_device_isoc_fs_methods;
 			break;
 		case UE_BULK:

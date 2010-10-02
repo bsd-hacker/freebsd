@@ -402,9 +402,9 @@ ufoma_attach(device_t dev)
 		goto detach;
 	}
 	if ((mad->bType == UMCPC_ACM_TYPE_AB5) ||
-	    (mad->bType == UMCPC_ACM_TYPE_AB6)) {
+	    (mad->bType == UMCPC_ACM_TYPE_AB6))
 		sc->sc_nobulk = 1;
-	} else {
+	else {
 		sc->sc_nobulk = 0;
 		if (ufoma_modem_setup(dev, sc, uaa))
 			goto detach;
@@ -580,9 +580,9 @@ tr_setup:
 		DPRINTF("error = %s\n",
 		    usbd_errstr(error));
 
-		if (error == USB_ERR_CANCELLED) {
+		if (error == USB_ERR_CANCELLED)
 			return;
-		} else
+		else
 			goto tr_setup;
 
 		goto tr_transferred;
@@ -624,9 +624,9 @@ tr_setup:
 	default:			/* Error */
 		DPRINTF("error = %s\n", usbd_errstr(error));
 
-		if (error == USB_ERR_CANCELLED) {
+		if (error == USB_ERR_CANCELLED)
 			return;
-		} else
+		else
 			goto tr_setup;
 
 		goto tr_transferred;
@@ -923,15 +923,15 @@ ufoma_cfg_param(struct ucom_softc *ucom, struct termios *t)
 
 	USETDW(ls.dwDTERate, t->c_ospeed);
 
-	if (t->c_cflag & CSTOPB) {
+	if (t->c_cflag & CSTOPB)
 		ls.bCharFormat = UCDC_STOP_BIT_2;
-	} else
+	else
 		ls.bCharFormat = UCDC_STOP_BIT_1;
 
 	if (t->c_cflag & PARENB) {
-		if (t->c_cflag & PARODD) {
+		if (t->c_cflag & PARODD)
 			ls.bParityType = UCDC_PARITY_ODD;
-		} else
+		else
 			ls.bParityType = UCDC_PARITY_EVEN;
 	} else
 		ls.bParityType = UCDC_PARITY_NONE;
@@ -1037,9 +1037,9 @@ ufoma_start_read(struct ucom_softc *ucom)
 	usbd_transfer_start(sc->sc_ctrl_xfer[UFOMA_CTRL_ENDPT_INTR]);
 
 	/* start data transfer */
-	if (sc->sc_nobulk) {
+	if (sc->sc_nobulk)
 		usbd_transfer_start(sc->sc_ctrl_xfer[UFOMA_CTRL_ENDPT_READ]);
-	} else
+	else
 		usbd_transfer_start(sc->sc_bulk_xfer[UFOMA_BULK_ENDPT_READ]);
 }
 
@@ -1052,9 +1052,9 @@ ufoma_stop_read(struct ucom_softc *ucom)
 	usbd_transfer_stop(sc->sc_ctrl_xfer[UFOMA_CTRL_ENDPT_INTR]);
 
 	/* stop data transfer */
-	if (sc->sc_nobulk) {
+	if (sc->sc_nobulk)
 		usbd_transfer_stop(sc->sc_ctrl_xfer[UFOMA_CTRL_ENDPT_READ]);
-	} else
+	else
 		usbd_transfer_stop(sc->sc_bulk_xfer[UFOMA_BULK_ENDPT_READ]);
 }
 
@@ -1063,9 +1063,9 @@ ufoma_start_write(struct ucom_softc *ucom)
 {
 	struct ufoma_softc *sc = ucom->sc_parent;
 
-	if (sc->sc_nobulk) {
+	if (sc->sc_nobulk)
 		usbd_transfer_start(sc->sc_ctrl_xfer[UFOMA_CTRL_ENDPT_WRITE]);
-	} else
+	else
 		usbd_transfer_start(sc->sc_bulk_xfer[UFOMA_BULK_ENDPT_WRITE]);
 }
 
@@ -1074,9 +1074,9 @@ ufoma_stop_write(struct ucom_softc *ucom)
 {
 	struct ufoma_softc *sc = ucom->sc_parent;
 
-	if (sc->sc_nobulk) {
+	if (sc->sc_nobulk)
 		usbd_transfer_stop(sc->sc_ctrl_xfer[UFOMA_CTRL_ENDPT_WRITE]);
-	} else
+	else
 		usbd_transfer_stop(sc->sc_bulk_xfer[UFOMA_BULK_ENDPT_WRITE]);
 }
 

@@ -816,9 +816,9 @@ ums_ioctl(struct usb_fifo *fifo, u_long cmd, void *addr, int fflags)
 	case MOUSE_SETMODE:
 		mode = *(mousemode_t *)addr;
 
-		if (mode.level == -1) {
-			/* don't change the current setting */
-		} else if ((mode.level < 0) || (mode.level > 1)) {
+		if (mode.level == -1)
+			;	/* don't change the current setting */
+		else if ((mode.level < 0) || (mode.level > 1)) {
 			error = EINVAL;
 			goto done;
 		} else

@@ -464,9 +464,9 @@ ucom_cfg_open(struct ucom_softc *sc)
 
 	DPRINTF("\n");
 
-	if (sc->sc_flag & UCOM_FLAG_LL_READY) {
-		/* already opened */
-	} else {
+	if (sc->sc_flag & UCOM_FLAG_LL_READY)
+		;	/* already opened */
+	else {
 		sc->sc_flag |= UCOM_FLAG_LL_READY;
 
 		if (sc->sc_callback->ucom_cfg_open) {

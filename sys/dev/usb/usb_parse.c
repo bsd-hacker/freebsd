@@ -139,9 +139,9 @@ usb_idesc_foreach(struct usb_config_descriptor *cd,
 		}
 	}
 
-	if (ps->desc == NULL) {
-		/* first time */
-	} else if (new_iface) {
+	if (ps->desc == NULL)
+		;	/* first time */
+	else if (new_iface) {
 		/* new interface */
 		ps->iface_index ++;
 		ps->iface_index_alt = 0;

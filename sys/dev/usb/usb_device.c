@@ -262,9 +262,9 @@ usbd_get_endpoint(struct usb_device *udev, uint8_t iface_index,
 	}
 
 	/* setup expected endpoint address */
-	if (setup->endpoint == UE_ADDR_ANY) {
-		/* match any endpoint address */
-	} else {
+	if (setup->endpoint == UE_ADDR_ANY)
+		;	/* match any endpoint address */
+	else {
 		/* match the given endpoint address */
 		ea_mask |= UE_ADDR;
 		ea_val |= (setup->endpoint & UE_ADDR);
@@ -429,9 +429,9 @@ usb_unconfigure(struct usb_device *udev, uint8_t flag)
 	uint8_t do_unlock;
 
 	/* automatic locking */
-	if (usbd_enum_is_locked(udev)) {
+	if (usbd_enum_is_locked(udev))
 		do_unlock = 0;
-	} else {
+	else {
 		do_unlock = 1;
 		usbd_enum_lock(udev);
 	}
@@ -498,9 +498,9 @@ usbd_set_config_index(struct usb_device *udev, uint8_t index)
 	DPRINTFN(6, "udev=%p index=%d\n", udev, index);
 
 	/* automatic locking */
-	if (usbd_enum_is_locked(udev)) {
+	if (usbd_enum_is_locked(udev))
 		do_unlock = 0;
-	} else {
+	else {
 		do_unlock = 1;
 		usbd_enum_lock(udev);
 	}
@@ -834,9 +834,9 @@ usbd_set_alt_interface_index(struct usb_device *udev,
 	uint8_t do_unlock;
 
 	/* automatic locking */
-	if (usbd_enum_is_locked(udev)) {
+	if (usbd_enum_is_locked(udev))
 		do_unlock = 0;
-	} else {
+	else {
 		do_unlock = 1;
 		usbd_enum_lock(udev);
 	}
@@ -1231,9 +1231,9 @@ usb_probe_and_attach(struct usb_device *udev, uint8_t iface_index)
 		return (USB_ERR_INVAL);
 	}
 	/* automatic locking */
-	if (usbd_enum_is_locked(udev)) {
+	if (usbd_enum_is_locked(udev))
 		do_unlock = 0;
-	} else {
+	else {
 		do_unlock = 1;
 		usbd_enum_lock(udev);
 	}
@@ -1660,9 +1660,9 @@ usb_alloc_device(device_t parent_dev, struct usb_bus *bus,
 	} else
 		err = USB_ERR_INVAL;
 
-	if (err || (scratch_ptr[0] < 4)) {
+	if (err || (scratch_ptr[0] < 4))
 		udev->flags.no_strings = 1;
-	} else {
+	else {
 		uint16_t langid;
 		uint16_t pref;
 		uint16_t mask;

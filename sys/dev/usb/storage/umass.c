@@ -1353,9 +1353,9 @@ umass_t_bbb_data_read_callback(struct usb_xfer *xfer, usb_error_t error)
 		return;
 
 	default:			/* Error */
-		if (error == USB_ERR_CANCELLED) {
+		if (error == USB_ERR_CANCELLED)
 			umass_tr_error(xfer, error);
-		} else
+		else
 			umass_transfer_start(sc, UMASS_T_BBB_DATA_RD_CS);
 		return;
 
@@ -1416,9 +1416,9 @@ umass_t_bbb_data_write_callback(struct usb_xfer *xfer, usb_error_t error)
 		return;
 
 	default:			/* Error */
-		if (error == USB_ERR_CANCELLED) {
+		if (error == USB_ERR_CANCELLED)
 			umass_tr_error(xfer, error);
-		} else
+		else
 			umass_transfer_start(sc, UMASS_T_BBB_DATA_WR_CS);
 		return;
 
@@ -1536,9 +1536,9 @@ tr_error:
 		    usbd_errstr(error), sc->sc_status_try);
 
 		if ((error == USB_ERR_CANCELLED) ||
-		    (sc->sc_status_try)) {
+		    (sc->sc_status_try))
 			umass_tr_error(xfer, error);
-		} else {
+		else {
 			sc->sc_status_try = 1;
 			umass_transfer_start(sc, UMASS_T_BBB_DATA_RD_CS);
 		}
@@ -1571,9 +1571,9 @@ umass_command_start(struct umass_softc *sc, uint8_t dir,
 	sc->sc_transfer.callback = callback;
 	sc->sc_transfer.ccb = ccb;
 
-	if (sc->sc_xfer[sc->sc_last_xfer_index]) {
+	if (sc->sc_xfer[sc->sc_last_xfer_index])
 		usbd_transfer_start(sc->sc_xfer[sc->sc_last_xfer_index]);
-	} else {
+	else {
 		ccb->ccb_h.status = CAM_TID_INVALID;
 		xpt_done(ccb);
 	}
@@ -1612,9 +1612,9 @@ umass_bbb_get_max_lun(struct umass_softc *sc)
 static void
 umass_cbi_start_status(struct umass_softc *sc)
 {
-	if (sc->sc_xfer[UMASS_T_CBI_STATUS]) {
+	if (sc->sc_xfer[UMASS_T_CBI_STATUS])
 		umass_transfer_start(sc, UMASS_T_CBI_STATUS);
-	} else {
+	else {
 		union ccb *ccb = sc->sc_transfer.ccb;
 
 		sc->sc_transfer.ccb = NULL;
@@ -1733,9 +1733,9 @@ umass_t_cbi_data_clear_stall_callback(struct usb_xfer *xfer,
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
 tr_transferred:
-		if (next_xfer == UMASS_T_CBI_STATUS) {
+		if (next_xfer == UMASS_T_CBI_STATUS)
 			umass_cbi_start_status(sc);
-		} else
+		else
 			umass_transfer_start(sc, next_xfer);
 		break;
 
@@ -1762,9 +1762,9 @@ umass_t_cbi_command_callback(struct usb_xfer *xfer, usb_error_t error)
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
 
-		if (sc->sc_transfer.dir == DIR_NONE) {
+		if (sc->sc_transfer.dir == DIR_NONE)
 			umass_cbi_start_status(sc);
-		} else {
+		else {
 			umass_transfer_start
 			    (sc, (sc->sc_transfer.dir == DIR_IN) ?
 			    UMASS_T_CBI_DATA_READ : UMASS_T_CBI_DATA_WRITE);
@@ -1866,9 +1866,9 @@ umass_t_cbi_data_read_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	default:			/* Error */
 		if ((error == USB_ERR_CANCELLED) ||
-		    (sc->sc_transfer.callback != &umass_cam_cb)) {
+		    (sc->sc_transfer.callback != &umass_cam_cb))
 			umass_tr_error(xfer, error);
-		} else
+		else
 			umass_transfer_start(sc, UMASS_T_CBI_DATA_RD_CS);
 		break;
 
@@ -1930,9 +1930,9 @@ umass_t_cbi_data_write_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	default:			/* Error */
 		if ((error == USB_ERR_CANCELLED) ||
-		    (sc->sc_transfer.callback != &umass_cam_cb)) {
+		    (sc->sc_transfer.callback != &umass_cam_cb))
 			umass_tr_error(xfer, error);
-		} else
+		else
 			umass_transfer_start(sc, UMASS_T_CBI_DATA_WR_CS);
 		break;
 
@@ -2205,9 +2205,9 @@ umass_cam_action(struct cam_sim *sim, union ccb *ccb)
 			uint8_t *cmd;
 			uint8_t dir;
 
-			if (ccb->csio.ccb_h.flags & CAM_CDB_POINTER) {
+			if (ccb->csio.ccb_h.flags & CAM_CDB_POINTER)
 				cmd = (uint8_t *)(ccb->csio.cdb_io.cdb_ptr);
-			} else
+			else
 				cmd = (uint8_t *)(ccb->csio.cdb_io.cdb_bytes);
 
 			DPRINTF(sc, UDMASS_SCSI, "%d:%d:%d:XPT_SCSI_IO: "
@@ -2568,9 +2568,9 @@ umass_cam_sense_cb(struct umass_softc *sc, union ccb *ccb, uint32_t residue,
 	case STATUS_CMD_UNKNOWN:
 	case STATUS_CMD_FAILED:
 
-		if (ccb->csio.ccb_h.flags & CAM_CDB_POINTER) {
+		if (ccb->csio.ccb_h.flags & CAM_CDB_POINTER)
 			cmd = (uint8_t *)(ccb->csio.cdb_io.cdb_ptr);
-		} else
+		else
 			cmd = (uint8_t *)(ccb->csio.cdb_io.cdb_bytes);
 
 		key = (ccb->csio.sense_data.flags & SSD_KEY);

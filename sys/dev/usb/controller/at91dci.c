@@ -202,9 +202,9 @@ at91dci_get_hw_ep_profile(struct usb_device *udev,
     const struct usb_hw_ep_profile **ppf, uint8_t ep_addr)
 {
 
-	if (ep_addr < AT91_UDP_EP_MAX) {
+	if (ep_addr < AT91_UDP_EP_MAX)
 		*ppf = (at91dci_ep_profile + ep_addr);
-	} else
+	else
 		*ppf = NULL;
 }
 
@@ -345,15 +345,15 @@ at91dci_setup_rx(struct at91dci_td *td)
 
 	/* sneak peek the set address */
 	if ((req.bmRequestType == UT_WRITE_DEVICE) &&
-	    (req.bRequest == UR_SET_ADDRESS)) {
+	    (req.bRequest == UR_SET_ADDRESS))
 		sc->sc_dv_addr = req.wValue[0] & 0x7F;
-	} else
+	else
 		sc->sc_dv_addr = 0xFF;
 
 	/* sneak peek the endpoint direction */
-	if (req.bmRequestType & UE_DIR_IN) {
+	if (req.bmRequestType & UE_DIR_IN)
 		csr |= AT91_UDP_CSR_DIR;
-	} else
+	else
 		csr &= ~AT91_UDP_CSR_DIR;
 
 	/* write the direction of the control transfer */
@@ -659,9 +659,9 @@ at91dci_xfer_do_fifo(struct usb_xfer *xfer)
 		}
 		if (((void *)td) == xfer->td_transfer_last)
 			goto done;
-		if (td->error) {
+		if (td->error)
 			goto done;
-		} else if (td->remainder > 0) {
+		else if (td->remainder > 0) {
 			/*
 			 * We had a short transfer. If there is no alternate
 			 * next, stop processing !
@@ -687,9 +687,9 @@ done:
 	temp = (xfer->endpointno & UE_ADDR);
 
 	/* update FIFO bank flag and multi buffer */
-	if (td->fifo_bank) {
+	if (td->fifo_bank)
 		sc->sc_ep_flags[temp].fifo_bank = 1;
-	} else
+	else
 		sc->sc_ep_flags[temp].fifo_bank = 0;
 
 	/* compute all actual lengths */
@@ -934,9 +934,9 @@ at91dci_setup_standard_chain(struct usb_xfer *xfer)
 
 		at91dci_setup_standard_chain_sub(&temp);
 
-		if ((xfer->status & XFER_STATUS_ISOCXFER) != 0) {
+		if ((xfer->status & XFER_STATUS_ISOCXFER) != 0)
 			temp.offset += temp.len;
-		} else {
+		else {
 			/* get next Page Cache pointer */
 			temp.pc = xfer->frbuffers + x;
 		}
@@ -1069,9 +1069,9 @@ at91dci_standard_done_sub(struct usb_xfer *xfer)
 		         * Verify the length and subtract
 		         * the remainder from "frlengths[]":
 		         */
-			if (len > xfer->frlengths[xfer->aframes]) {
+			if (len > xfer->frlengths[xfer->aframes])
 				td->error = 1;
-			} else
+			else
 				xfer->frlengths[xfer->aframes] -= len;
 		}
 		/* Check for transfer error */
@@ -1085,9 +1085,9 @@ at91dci_standard_done_sub(struct usb_xfer *xfer)
 		if (len > 0) {
 			if ((xfer->status & XFER_STATUS_SHORTFRAME_OK) != 0) {
 				/* follow alt next */
-				if (td->alt_next) {
+				if (td->alt_next)
 					td = td->obj_next;
-				} else
+				else
 					td = NULL;
 			} else {
 				/* the transfer is finished */
@@ -1274,14 +1274,14 @@ at91dci_clear_stall_sub(struct at91dci_softc *sc, uint8_t ep_no,
 	csr_val &= ~AT91_UDP_CSR_ET_MASK;
 	csr_val |= AT91_UDP_CSR_EPEDS;
 
-	if (ep_type == UE_CONTROL) {
+	if (ep_type == UE_CONTROL)
 		csr_val |= AT91_UDP_CSR_ET_CTRL;
-	} else {
-		if (ep_type == UE_BULK) {
+	else {
+		if (ep_type == UE_BULK)
 			csr_val |= AT91_UDP_CSR_ET_BULK;
-		} else if (ep_type == UE_INTERRUPT) {
+		else if (ep_type == UE_INTERRUPT)
 			csr_val |= AT91_UDP_CSR_ET_INT;
-		} else
+		else
 			csr_val |= AT91_UDP_CSR_ET_ISO;
 		if (ep_dir & UE_DIR_IN)
 			csr_val |= AT91_UDP_CSR_ET_DIR_IN;

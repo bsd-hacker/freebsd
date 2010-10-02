@@ -236,9 +236,9 @@ at91_udp_attach(device_t dev)
 	err = at91dci_init(&sc->sc_dci);
 	if (!err)
 		err = device_probe_and_attach(sc->sc_dci.sc_bus.bdev);
-	if (err) {
+	if (err)
 		goto error;
-	} else {
+	else {
 		/* poll VBUS one time */
 		at91_vbus_poll(sc);
 	}

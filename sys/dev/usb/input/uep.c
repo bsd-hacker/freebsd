@@ -246,9 +246,9 @@ uep_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 				goto tr_setup;
 
 			/* full packet: process */
-			if (pkt_len <= len) {
+			if (pkt_len <= len)
 				uep_process_pkt(sc, p);
-			} else {
+			else {
 				/* incomplete packet: save in buffer */
 				memcpy(sc->buf, p, len);
 				sc->buf_len = len;

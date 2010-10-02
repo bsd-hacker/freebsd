@@ -580,9 +580,9 @@ tr_setup:
 
 			pc = usbd_xfer_get_frame(xfer, x);
 			if (ucom_get_data(&sc->sc_ucom, pc, 0,
-			    UVISOROBUFSIZE, &actlen)) {
+			    UVISOROBUFSIZE, &actlen))
 				usbd_xfer_set_frame_len(xfer, x, actlen);
-			} else
+			else
 				break;
 		}
 		/* check for data */

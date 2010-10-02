@@ -562,9 +562,9 @@ avr32dci_xfer_do_fifo(struct usb_xfer *xfer)
 		}
 		if (((void *)td) == xfer->td_transfer_last)
 			goto done;
-		if (td->error) {
+		if (td->error)
 			goto done;
-		} else if (td->remainder > 0) {
+		else if (td->remainder > 0) {
 			/*
 			 * We had a short transfer. If there is no alternate
 			 * next, stop processing !
@@ -818,9 +818,9 @@ avr32dci_setup_standard_chain(struct usb_xfer *xfer)
 
 		avr32dci_setup_standard_chain_sub(&temp);
 
-		if ((xfer->status & XFER_STATUS_ISOCXFER) != 0) {
+		if ((xfer->status & XFER_STATUS_ISOCXFER) != 0)
 			temp.offset += temp.len;
-		} else {
+		else {
 			/* get next Page Cache pointer */
 			temp.pc = xfer->frbuffers + x;
 		}
@@ -936,9 +936,9 @@ avr32dci_standard_done_sub(struct usb_xfer *xfer)
 		         * Verify the length and subtract
 		         * the remainder from "frlengths[]":
 		         */
-			if (len > xfer->frlengths[xfer->aframes]) {
+			if (len > xfer->frlengths[xfer->aframes])
 				td->error = 1;
-			} else
+			else
 				xfer->frlengths[xfer->aframes] -= len;
 		}
 		/* Check for transfer error */
@@ -952,9 +952,9 @@ avr32dci_standard_done_sub(struct usb_xfer *xfer)
 		if (len > 0) {
 			if ((xfer->status & XFER_STATUS_SHORTFRAME_OK) != 0) {
 				/* follow alt next */
-				if (td->alt_next) {
+				if (td->alt_next)
 					td = td->obj_next;
-				} else
+				else
 					td = NULL;
 			} else {
 				/* the transfer is finished */
@@ -1088,14 +1088,12 @@ avr32dci_clear_stall_sub(struct avr32dci_softc *sc, uint8_t ep_no,
 	/* clear stall */
 	AVR32_WRITE_4(sc, AVR32_EPTCLRSTA(ep_no), AVR32_EPTSTA_FRCESTALL);
 
-	if (ep_type == UE_BULK) {
+	if (ep_type == UE_BULK)
 		temp = AVR32_EPTCFG_TYPE_BULK;
-	} else if (ep_type == UE_INTERRUPT) {
+	else if (ep_type == UE_INTERRUPT)
 		temp = AVR32_EPTCFG_TYPE_INTR;
-	} else {
-		temp = AVR32_EPTCFG_TYPE_ISOC |
-		    AVR32_EPTCFG_NB_TRANS(1);
-	}
+	else
+		temp = AVR32_EPTCFG_TYPE_ISOC | AVR32_EPTCFG_NB_TRANS(1);
 	if (ep_dir & UE_DIR_IN)
 		temp |= AVR32_EPTCFG_EPDIR_IN;
 	avr32dci_get_hw_ep_profile(NULL, &pf, ep_no);
@@ -1119,9 +1117,9 @@ avr32dci_clear_stall_sub(struct avr32dci_softc *sc, uint8_t ep_no,
 
 	temp = AVR32_READ_4(sc, AVR32_EPTCFG(ep_no));
 
-	if (!(temp & AVR32_EPTCFG_EPT_MAPD)) {
+	if (!(temp & AVR32_EPTCFG_EPT_MAPD))
 		device_printf(sc->sc_bus.bdev, "Chip rejected configuration\n");
-	} else {
+	else {
 		AVR32_WRITE_4(sc, AVR32_EPTCTLENB(ep_no),
 		    AVR32_EPTCTL_EPT_ENABL);
 	}

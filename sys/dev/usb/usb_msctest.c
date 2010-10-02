@@ -337,9 +337,9 @@ bbb_data_read_callback(struct usb_xfer *xfer, usb_error_t error)
 		break;
 
 	default:			/* Error */
-		if (error == USB_ERR_CANCELLED) {
+		if (error == USB_ERR_CANCELLED)
 			bbb_done(sc, error);
-		} else
+		else
 			bbb_transfer_start(sc, ST_DATA_RD_CS);
 		break;
 	}
@@ -388,9 +388,9 @@ bbb_data_write_callback(struct usb_xfer *xfer, usb_error_t error)
 		return;
 
 	default:			/* Error */
-		if (error == USB_ERR_CANCELLED) {
+		if (error == USB_ERR_CANCELLED)
 			bbb_done(sc, error);
-		} else
+		else
 			bbb_transfer_start(sc, ST_DATA_WR_CS);
 		return;
 
@@ -416,11 +416,11 @@ bbb_status_callback(struct usb_xfer *xfer, usb_error_t error)
 	case USB_ST_TRANSFERRED:
 
 		/* very simple status check */
-		if (actlen < sizeof(sc->csw)) {
+		if (actlen < sizeof(sc->csw))
 			bbb_done(sc, USB_ERR_SHORT_XFER);
-		} else if (sc->csw.bCSWStatus == CSWSTATUS_GOOD) {
+		else if (sc->csw.bCSWStatus == CSWSTATUS_GOOD)
 			bbb_done(sc, 0);	/* success */
-		} else
+		else
 			bbb_done(sc, ERR_CSW_FAILED);	/* error */
 		break;
 
@@ -433,9 +433,9 @@ bbb_status_callback(struct usb_xfer *xfer, usb_error_t error)
 		DPRINTF("Failed to read CSW: %s, try %d\n",
 		    usbd_errstr(error), sc->status_try);
 
-		if (error == USB_ERR_CANCELLED || sc->status_try) {
+		if (error == USB_ERR_CANCELLED || sc->status_try)
 			bbb_done(sc, error);
-		} else {
+		else {
 			sc->status_try = 1;
 			bbb_transfer_start(sc, ST_DATA_RD_CS);
 		}

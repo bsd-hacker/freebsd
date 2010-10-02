@@ -602,9 +602,9 @@ usbd_do_request_flags(struct usb_device *udev, struct mtx *mtx,
 			break;
 
 		/* get actual length of DATA stage */
-		if (xfer->aframes < 2) {
+		if (xfer->aframes < 2)
 			acttemp = 0;
-		} else
+		else
 			acttemp = usbd_xfer_frame_len(xfer, 1);
 
 		/* check for short packet */
@@ -702,9 +702,9 @@ usbd_req_reset_port(struct usb_device *udev, struct mtx *mtx, uint8_t port)
 #ifdef USB_DEBUG
 	/* range check input parameters */
 	pr_poll_delay = usb_pr_poll_delay;
-	if (pr_poll_delay < 1) {
+	if (pr_poll_delay < 1)
 		pr_poll_delay = 1;
-	} else if (pr_poll_delay > 1000)
+	else if (pr_poll_delay > 1000)
 		pr_poll_delay = 1000;
 	pr_recovery_delay = usb_pr_recovery_delay;
 	if (pr_recovery_delay > 1000)

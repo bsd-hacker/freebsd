@@ -1481,9 +1481,9 @@ uhci_setup_standard_chain_sub(struct uhci_std_temp *temp)
 	precompute = 1;
 
 	/* software is used to detect short incoming transfers */
-	if ((temp->td_token & htole32(UHCI_TD_PID)) == htole32(UHCI_TD_PID_IN)) {
+	if ((temp->td_token & htole32(UHCI_TD_PID)) == htole32(UHCI_TD_PID_IN))
 		temp->td_status |= htole32(UHCI_TD_SPD);
-	} else
+	else
 		temp->td_status &= ~htole32(UHCI_TD_SPD);
 
 	temp->ml.buf_offset = 0;
@@ -1571,9 +1571,9 @@ restart:
 		precompute = 0;
 
 		/* setup alt next pointer, if any */
-		if (temp->last_frame) {
+		if (temp->last_frame)
 			td_alt_next = NULL;
-		} else {
+		else {
 			/* we use this field internally */
 			td_alt_next = td_next;
 		}
@@ -1774,9 +1774,9 @@ uhci_device_done(struct usb_xfer *xfer, usb_error_t error)
 	if (methods == &uhci_device_bulk_methods)
 		UHCI_REMOVE_QH(qh, sc->sc_bulk_p_last);
 	if (methods == &uhci_device_ctrl_methods) {
-		if (xfer->xroot->udev->speed == USB_SPEED_LOW) {
+		if (xfer->xroot->udev->speed == USB_SPEED_LOW)
 			UHCI_REMOVE_QH(qh, sc->sc_ls_ctl_p_last);
-		} else
+		else
 			UHCI_REMOVE_QH(qh, sc->sc_fs_ctl_p_last);
 	}
 	if (methods == &uhci_device_intr_methods)
@@ -1894,9 +1894,9 @@ uhci_device_ctrl_start(struct usb_xfer *xfer)
 	 * transfers
 	 */
 	if (xfer->xroot->udev->flags.self_suspended == 0) {
-		if (xfer->xroot->udev->speed == USB_SPEED_LOW) {
+		if (xfer->xroot->udev->speed == USB_SPEED_LOW)
 			UHCI_APPEND_QH(qh, sc->sc_ls_ctl_p_last);
-		} else
+		else
 			UHCI_APPEND_QH(qh, sc->sc_fs_ctl_p_last);
 	} else
 		usb_pc_cpu_flush(qh->page_cache);
@@ -2989,9 +2989,9 @@ uhci_device_resume(struct usb_device *udev)
 				xfer->status |= XFER_STATUS_BWRECLAIMED;
 			}
 			if (methods == &uhci_device_ctrl_methods) {
-				if (xfer->xroot->udev->speed == USB_SPEED_LOW) {
+				if (xfer->xroot->udev->speed == USB_SPEED_LOW)
 					UHCI_APPEND_QH(qh, sc->sc_ls_ctl_p_last);
-				} else
+				else
 					UHCI_APPEND_QH(qh, sc->sc_fs_ctl_p_last);
 			}
 			if (methods == &uhci_device_intr_methods)
@@ -3028,9 +3028,9 @@ uhci_device_suspend(struct usb_device *udev)
 			if (methods == &uhci_device_bulk_methods)
 				UHCI_REMOVE_QH(qh, sc->sc_bulk_p_last);
 			if (methods == &uhci_device_ctrl_methods) {
-				if (xfer->xroot->udev->speed == USB_SPEED_LOW) {
+				if (xfer->xroot->udev->speed == USB_SPEED_LOW)
 					UHCI_REMOVE_QH(qh, sc->sc_ls_ctl_p_last);
-				} else
+				else
 					UHCI_REMOVE_QH(qh, sc->sc_fs_ctl_p_last);
 			}
 			if (methods == &uhci_device_intr_methods)

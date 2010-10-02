@@ -354,9 +354,9 @@ uhid_start_read(struct usb_fifo *fifo)
 {
 	struct uhid_softc *sc = usb_fifo_softc(fifo);
 
-	if (sc->sc_flags & UHID_FLAG_IMMED) {
+	if (sc->sc_flags & UHID_FLAG_IMMED)
 		usbd_transfer_start(sc->sc_xfer[UHID_CTRL_DT_RD]);
-	} else
+	else
 		usbd_transfer_start(sc->sc_xfer[UHID_INTR_DT_RD]);
 }
 
@@ -495,9 +495,9 @@ uhid_ioctl(struct usb_fifo *fifo, u_long cmd, void *addr,
 	switch (cmd) {
 	case USB_GET_REPORT_DESC:
 		ugd = addr;
-		if (sc->sc_repdesc_size > ugd->ugd_maxlen) {
+		if (sc->sc_repdesc_size > ugd->ugd_maxlen)
 			size = ugd->ugd_maxlen;
-		} else
+		else
 			size = sc->sc_repdesc_size;
 		ugd->ugd_actlen = size;
 		if (ugd->ugd_data == NULL)

@@ -233,9 +233,9 @@ usb_ref_device(struct usb_cdev_privdata *cpd,
 	}
 
 	/* check if we are doing an open */
-	if (cpd->fflags == 0) {
-		/* use zero defaults */
-	} else {
+	if (cpd->fflags == 0)
+		;	/* use zero defaults */
+	else {
 		/* check for write */
 		if (cpd->fflags & FWRITE) {
 			ppf = cpd->udev->fifo;
@@ -604,9 +604,9 @@ usb_dev_get_ep(struct usb_device *udev, uint8_t ep_index, uint8_t dir)
 	struct usb_endpoint *ep;
 	uint8_t ep_dir;
 
-	if (ep_index == 0) {
+	if (ep_index == 0)
 		ep = &udev->ctrl_ep;
-	} else {
+	else {
 		if (dir == USB_FIFO_RX) {
 			if (udev->flags.usb_mode == USB_MODE_HOST)
 				ep_dir = UE_DIR_IN;
@@ -1100,9 +1100,9 @@ usb_poll(struct cdev* dev, int events, struct thread* td)
 				m = NULL;
 		}
 
-		if (m) {
+		if (m)
 			revents |= events & (POLLOUT | POLLWRNORM);
-		} else {
+		else {
 			f->flag_isselect = 1;
 			selrecord(td, &f->selinfo);
 		}
@@ -1137,9 +1137,9 @@ usb_poll(struct cdev* dev, int events, struct thread* td)
 				m = NULL;
 		}
 
-		if (m) {
+		if (m)
 			revents |= events & (POLLIN | POLLRDNORM);
-		} else {
+		else {
 			f->flag_isselect = 1;
 			selrecord(td, &f->selinfo);
 

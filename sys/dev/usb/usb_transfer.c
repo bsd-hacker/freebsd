@@ -134,11 +134,11 @@ usbd_update_max_frame_size(struct usb_xfer *xfer)
 {
 
 	/* compute maximum frame size */
-	if (xfer->max_packet_count == 2) {
+	if (xfer->max_packet_count == 2)
 		xfer->max_frame_size = 2 * xfer->max_packet_size;
-	} else if (xfer->max_packet_count == 3) {
+	else if (xfer->max_packet_count == 3)
 		xfer->max_frame_size = 3 * xfer->max_packet_size;
-	} else
+	else
 		xfer->max_frame_size = xfer->max_packet_size;
 }
 
@@ -365,13 +365,13 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 		if (xfer->max_packet_size > std_size.range.max)
 			xfer->max_packet_size = std_size.range.max;
 	} else {
-		if (xfer->max_packet_size >= std_size.fixed[3]) {
+		if (xfer->max_packet_size >= std_size.fixed[3])
 			xfer->max_packet_size = std_size.fixed[3];
-		} else if (xfer->max_packet_size >= std_size.fixed[2]) {
+		else if (xfer->max_packet_size >= std_size.fixed[2])
 			xfer->max_packet_size = std_size.fixed[2];
-		} else if (xfer->max_packet_size >= std_size.fixed[1]) {
+		else if (xfer->max_packet_size >= std_size.fixed[1])
 			xfer->max_packet_size = std_size.fixed[1];
-		} else {
+		else {
 			/* only one possibility left */
 			xfer->max_packet_size = std_size.fixed[0];
 		}
@@ -1286,9 +1286,9 @@ usbd_setup_ctrl_transfer(struct usb_xfer *xfer)
 		goto error;
 	}
 	/* check if we are doing a short transfer */
-	if (xfer->flags.force_short_xfer) {
+	if (xfer->flags.force_short_xfer)
 		xfer->control_rem = 0;
-	} else {
+	else {
 		if ((len != xfer->max_data_length) &&
 		    (len != xfer->control_rem) &&
 		    (xfer->nframes != 1)) {
@@ -2030,9 +2030,9 @@ usbd_callback_wrapper(struct usb_xfer_queue *pq)
 #endif
 		xfer->status &= ~XFER_STATUS_XFERRING;
 
-		if (xfer->error) {
+		if (xfer->error)
 			xfer->usb_state = USB_ST_ERROR;
-		} else {
+		else {
 			/* set transferred state */
 			xfer->usb_state = USB_ST_TRANSFERRED;
 #if USB_HAVE_BUSDMA
@@ -2595,9 +2595,9 @@ usbd_callback_wrapper_sub(struct usb_xfer *xfer)
 	if (ep->endpoint_q.curr == xfer) {
 		usb_command_wrapper(&ep->endpoint_q, NULL);
 
-		if (ep->endpoint_q.curr || TAILQ_FIRST(&ep->endpoint_q.head)) {
-			/* there is another USB transfer waiting */
-		} else {
+		if (ep->endpoint_q.curr || TAILQ_FIRST(&ep->endpoint_q.head))
+			;	/* there is another USB transfer waiting */
+		else {
 			/* this is the last USB transfer */
 			/* clear isochronous sync flag */
 			xfer->endpoint->is_synced = 0;
