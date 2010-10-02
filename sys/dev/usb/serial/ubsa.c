@@ -281,15 +281,12 @@ ubsa_probe(device_t dev)
 {
 	struct usb_attach_arg *uaa = device_get_ivars(dev);
 
-	if (uaa->usb_mode != USB_MODE_HOST) {
+	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	}
-	if (uaa->info.bConfigIndex != UBSA_CONFIG_INDEX) {
+	if (uaa->info.bConfigIndex != UBSA_CONFIG_INDEX)
 		return (ENXIO);
-	}
-	if (uaa->info.bIfaceIndex != UBSA_IFACE_INDEX) {
+	if (uaa->info.bIfaceIndex != UBSA_IFACE_INDEX)
 		return (ENXIO);
-	}
 	return (usbd_lookup_id_by_uaa(ubsa_devs, sizeof(ubsa_devs), uaa));
 }
 
@@ -635,9 +632,8 @@ ubsa_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 			    sc->sc_lsr, sc->sc_msr);
 
 			ucom_status_change(&sc->sc_ucom);
-		} else {
+		} else
 			DPRINTF("ignoring short packet, %d bytes\n", actlen);
-		}
 
 	case USB_ST_SETUP:
 tr_setup:

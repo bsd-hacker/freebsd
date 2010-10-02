@@ -199,19 +199,16 @@ at91_udp_attach(device_t dev)
 	rid = 0;
 	sc->sc_dci.sc_irq_res =
 	    bus_alloc_resource_any(dev, SYS_RES_IRQ, &rid, RF_ACTIVE);
-	if (!(sc->sc_dci.sc_irq_res)) {
+	if (!(sc->sc_dci.sc_irq_res))
 		goto error;
-	}
 	rid = 1;
 	sc->sc_vbus_irq_res =
 	    bus_alloc_resource_any(dev, SYS_RES_IRQ, &rid, RF_ACTIVE);
-	if (!(sc->sc_vbus_irq_res)) {
+	if (!(sc->sc_vbus_irq_res))
 		goto error;
-	}
 	sc->sc_dci.sc_bus.bdev = device_add_child(dev, "usbus", -1);
-	if (!(sc->sc_dci.sc_bus.bdev)) {
+	if (!(sc->sc_dci.sc_bus.bdev))
 		goto error;
-	}
 	device_set_ivars(sc->sc_dci.sc_bus.bdev, &sc->sc_dci.sc_bus);
 
 #if (__FreeBSD_version >= 700031)
@@ -237,9 +234,8 @@ at91_udp_attach(device_t dev)
 		goto error;
 	}
 	err = at91dci_init(&sc->sc_dci);
-	if (!err) {
+	if (!err)
 		err = device_probe_and_attach(sc->sc_dci.sc_bus.bdev);
-	}
 	if (err) {
 		goto error;
 	} else {

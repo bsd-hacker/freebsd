@@ -223,15 +223,12 @@ umct_probe(device_t dev)
 {
 	struct usb_attach_arg *uaa = device_get_ivars(dev);
 
-	if (uaa->usb_mode != USB_MODE_HOST) {
+	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	}
-	if (uaa->info.bConfigIndex != UMCT_CONFIG_INDEX) {
+	if (uaa->info.bConfigIndex != UMCT_CONFIG_INDEX)
 		return (ENXIO);
-	}
-	if (uaa->info.bIfaceIndex != UMCT_IFACE_INDEX) {
+	if (uaa->info.bIfaceIndex != UMCT_IFACE_INDEX)
 		return (ENXIO);
-	}
 	return (usbd_lookup_id_by_uaa(umct_devs, sizeof(umct_devs), uaa));
 }
 
@@ -282,14 +279,12 @@ umct_attach(device_t dev)
 	sc->sc_obufsize = usbd_xfer_max_len(sc->sc_xfer[UMCT_BULK_DT_WR]);
 
 	if (uaa->info.idProduct == USB_PRODUCT_MCT_SITECOM_USB232) {
-		if (sc->sc_obufsize > 16) {
+		if (sc->sc_obufsize > 16)
 			sc->sc_obufsize = 16;
-		}
 	}
 	error = ucom_attach(&sc->sc_ucom, 1, sc, &umct_callback, &sc->sc_mtx);
-	if (error) {
+	if (error)
 		goto detach;
-	}
 	return (0);			/* success */
 
 detach:

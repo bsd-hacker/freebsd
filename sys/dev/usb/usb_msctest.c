@@ -328,9 +328,8 @@ bbb_data_read_callback(struct usb_xfer *xfer, usb_error_t error)
 			bbb_transfer_start(sc, ST_STATUS);
 			break;
 		}
-		if (max_bulk > sc->data_rem) {
+		if (max_bulk > sc->data_rem)
 			max_bulk = sc->data_rem;
-		}
 		usbd_xfer_set_timeout(xfer, sc->data_timeout);
 		usbd_xfer_set_frame_data(xfer, 0, sc->data_ptr, max_bulk);
 		usbd_transfer_submit(xfer);
@@ -339,9 +338,8 @@ bbb_data_read_callback(struct usb_xfer *xfer, usb_error_t error)
 	default:			/* Error */
 		if (error == USB_ERR_CANCELLED) {
 			bbb_done(sc, error);
-		} else {
+		} else
 			bbb_transfer_start(sc, ST_DATA_RD_CS);
-		}
 		break;
 	}
 }
@@ -381,9 +379,8 @@ bbb_data_write_callback(struct usb_xfer *xfer, usb_error_t error)
 			bbb_transfer_start(sc, ST_STATUS);
 			return;
 		}
-		if (max_bulk > sc->data_rem) {
+		if (max_bulk > sc->data_rem)
 			max_bulk = sc->data_rem;
-		}
 		usbd_xfer_set_timeout(xfer, sc->data_timeout);
 		usbd_xfer_set_frame_data(xfer, 0, sc->data_ptr, max_bulk);
 		usbd_transfer_submit(xfer);
@@ -392,9 +389,8 @@ bbb_data_write_callback(struct usb_xfer *xfer, usb_error_t error)
 	default:			/* Error */
 		if (error == USB_ERR_CANCELLED) {
 			bbb_done(sc, error);
-		} else {
+		} else
 			bbb_transfer_start(sc, ST_DATA_WR_CS);
-		}
 		return;
 
 	}
@@ -423,9 +419,8 @@ bbb_status_callback(struct usb_xfer *xfer, usb_error_t error)
 			bbb_done(sc, USB_ERR_SHORT_XFER);
 		} else if (sc->csw.bCSWStatus == CSWSTATUS_GOOD) {
 			bbb_done(sc, 0);	/* success */
-		} else {
+		} else
 			bbb_done(sc, ERR_CSW_FAILED);	/* error */
-		}
 		break;
 
 	case USB_ST_SETUP:
@@ -475,9 +470,8 @@ bbb_command_start(struct bbb_transfer *sc, uint8_t dir, uint8_t lun,
 	mtx_lock(&sc->mtx);
 	usbd_transfer_start(sc->xfer[sc->state]);
 
-	while (usbd_transfer_pending(sc->xfer[sc->state])) {
+	while (usbd_transfer_pending(sc->xfer[sc->state]))
 		cv_wait(&sc->cv, &sc->mtx);
-	}
 	mtx_unlock(&sc->mtx);
 	return (sc->error);
 }

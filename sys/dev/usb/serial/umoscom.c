@@ -287,15 +287,12 @@ umoscom_probe(device_t dev)
 {
 	struct usb_attach_arg *uaa = device_get_ivars(dev);
 
-	if (uaa->usb_mode != USB_MODE_HOST) {
+	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	}
-	if (uaa->info.bConfigIndex != UMOSCOM_CONFIG_INDEX) {
+	if (uaa->info.bConfigIndex != UMOSCOM_CONFIG_INDEX)
 		return (ENXIO);
-	}
-	if (uaa->info.bIfaceIndex != UMOSCOM_IFACE_INDEX) {
+	if (uaa->info.bIfaceIndex != UMOSCOM_IFACE_INDEX)
 		return (ENXIO);
-	}
 	return (usbd_lookup_id_by_uaa(umoscom_devs, sizeof(umoscom_devs), uaa));
 }
 
@@ -321,9 +318,8 @@ umoscom_attach(device_t dev)
 	    sc->sc_xfer, umoscom_config_data,
 	    UMOSCOM_N_TRANSFER, sc, &sc->sc_mtx);
 
-	if (error) {
+	if (error)
 		goto detach;
-	}
 	/* clear stall at first run */
 	mtx_lock(&sc->sc_mtx);
 	usbd_xfer_set_stall(sc->sc_xfer[UMOSCOM_BULK_DT_WR]);
@@ -332,9 +328,8 @@ umoscom_attach(device_t dev)
 
 	error = ucom_attach(&sc->sc_ucom, 1, sc, &umoscom_callback,
 	    &sc->sc_mtx);
-	if (error) {
+	if (error)
 		goto detach;
-	}
 	return (0);
 
 detach:

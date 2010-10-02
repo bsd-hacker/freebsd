@@ -222,9 +222,8 @@ ehci_ixp_attach(device_t self)
 		     ;
 
 	err = ehci_init(sc);
-	if (!err) {
+	if (!err)
 		err = device_probe_and_attach(sc->sc_bus.bdev);
-	}
 	if (err) {
 		device_printf(self, "USB init failed err=%d\n", err);
 		goto error;
@@ -255,9 +254,8 @@ ehci_ixp_detach(device_t self)
 	/*
 	 * disable interrupts that might have been switched on in ehci_init
 	 */
-	if (sc->sc_io_res) {
+	if (sc->sc_io_res)
 		EWRITE4(sc, EHCI_USBINTR, 0);
-	}
 
  	if (sc->sc_irq_res && sc->sc_intr_hdl) {
 		/*

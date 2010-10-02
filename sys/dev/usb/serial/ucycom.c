@@ -190,15 +190,12 @@ ucycom_probe(device_t dev)
 {
 	struct usb_attach_arg *uaa = device_get_ivars(dev);
 
-	if (uaa->usb_mode != USB_MODE_HOST) {
+	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	}
-	if (uaa->info.bConfigIndex != 0) {
+	if (uaa->info.bConfigIndex != 0)
 		return (ENXIO);
-	}
-	if (uaa->info.bIfaceIndex != UCYCOM_IFACE_INDEX) {
+	if (uaa->info.bIfaceIndex != UCYCOM_IFACE_INDEX)
 		return (ENXIO);
-	}
 	return (usbd_lookup_id_by_uaa(ucycom_devs, sizeof(ucycom_devs), uaa));
 }
 
@@ -266,18 +263,15 @@ ucycom_attach(device_t dev)
 	}
 	error = ucom_attach(&sc->sc_ucom, 1, sc, &ucycom_callback, &sc->sc_mtx);
 
-	if (error) {
+	if (error)
 		goto detach;
-	}
-	if (urd_ptr) {
+	if (urd_ptr)
 		free(urd_ptr, M_USBDEV);
-	}
 	return (0);			/* success */
 
 detach:
-	if (urd_ptr) {
+	if (urd_ptr)
 		free(urd_ptr, M_USBDEV);
-	}
 	ucycom_detach(dev);
 	return (ENXIO);
 }
@@ -397,9 +391,8 @@ tr_transferred:
 		return;
 
 	default:			/* Error */
-		if (error == USB_ERR_CANCELLED) {
+		if (error == USB_ERR_CANCELLED)
 			return;
-		}
 		DPRINTF("error=%s\n",
 		    usbd_errstr(error));
 		goto tr_transferred;
@@ -414,9 +407,8 @@ ucycom_cfg_write(struct ucycom_softc *sc, uint32_t baud, uint8_t cfg)
 	usb_error_t err;
 
 	len = sc->sc_flen;
-	if (len > sizeof(sc->sc_temp_cfg)) {
+	if (len > sizeof(sc->sc_temp_cfg))
 		len = sizeof(sc->sc_temp_cfg);
-	}
 	sc->sc_cfg = cfg;
 
 	req.bmRequestType = UT_WRITE_CLASS_INTERFACE;
@@ -520,9 +512,8 @@ ucycom_intr_read_callback(struct usb_xfer *xfer, usb_error_t error)
 	case USB_ST_TRANSFERRED:
 		switch (sc->sc_model) {
 		case MODEL_CY7C63743:
-			if (actlen < 1) {
+			if (actlen < 1)
 				goto tr_setup;
-			}
 			usbd_copy_out(pc, 0, buf, 1);
 
 			sc->sc_ist = buf[0] & ~0x07;
@@ -534,9 +525,8 @@ ucycom_intr_read_callback(struct usb_xfer *xfer, usb_error_t error)
 			break;
 
 		case MODEL_CY7C64013:
-			if (actlen < 2) {
+			if (actlen < 2)
 				goto tr_setup;
-			}
 			usbd_copy_out(pc, 0, buf, 2);
 
 			sc->sc_ist = buf[0] & ~0x07;

@@ -256,9 +256,8 @@ mv_ehci_attach(device_t self)
 	sc->sc_flags |= EHCI_SCFLG_FORCESPEED | EHCI_SCFLG_NORESTERM;
 
 	err = ehci_init(sc);
-	if (!err) {
+	if (!err)
 		err = device_probe_and_attach(sc->sc_bus.bdev);
-	}
 	if (err) {
 		device_printf(self, "USB init failed err=%d\n", err);
 		goto error;

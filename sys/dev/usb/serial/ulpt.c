@@ -257,9 +257,8 @@ ulpt_read_callback(struct usb_xfer *xfer, usb_error_t error)
 			if (sc->sc_zlps == 4) {
 				/* enable BULK throttle */
 				usbd_xfer_set_interval(xfer, 500); /* ms */
-			} else {
+			} else
 				sc->sc_zlps++;
-			}
 		} else {
 			/* disable BULK throttle */
 			usbd_xfer_set_interval(xfer, 0);
@@ -340,9 +339,8 @@ ulpt_status_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	default:			/* Error */
 		DPRINTF("error=%s\n", usbd_errstr(error));
-		if (error != USB_ERR_CANCELLED) {
-			/* wait for next watchdog timeout */
-		}
+		if (error != USB_ERR_CANCELLED)
+			;	/* wait for next watchdog timeout */
 		break;
 	}
 }
@@ -426,9 +424,8 @@ unlpt_open(struct usb_fifo *fifo, int fflags)
 {
 	struct ulpt_softc *sc = usb_fifo_softc(fifo);
 
-	if (sc->sc_fflags & fflags) {
+	if (sc->sc_fflags & fflags)
 		return (EBUSY);
-	}
 	if (fflags & FREAD) {
 		/* clear stall first */
 		mtx_lock(&sc->sc_mtx);
@@ -436,9 +433,8 @@ unlpt_open(struct usb_fifo *fifo, int fflags)
 		mtx_unlock(&sc->sc_mtx);
 		if (usb_fifo_alloc_buffer(fifo,
 		    usbd_xfer_max_len(sc->sc_xfer[ULPT_BULK_DT_RD]),
-		    ULPT_IFQ_MAXLEN)) {
+		    ULPT_IFQ_MAXLEN))
 			return (ENOMEM);
-		}
 		/* set which FIFO is opened */
 		sc->sc_fifo_open[USB_FIFO_RX] = fifo;
 	}
@@ -449,9 +445,8 @@ unlpt_open(struct usb_fifo *fifo, int fflags)
 		mtx_unlock(&sc->sc_mtx);
 		if (usb_fifo_alloc_buffer(fifo,
 		    usbd_xfer_max_len(sc->sc_xfer[ULPT_BULK_DT_WR]),
-		    ULPT_IFQ_MAXLEN)) {
+		    ULPT_IFQ_MAXLEN))
 			return (ENOMEM);
-		}
 		/* set which FIFO is opened */
 		sc->sc_fifo_open[USB_FIFO_TX] = fifo;
 	}
@@ -466,9 +461,8 @@ ulpt_close(struct usb_fifo *fifo, int fflags)
 
 	sc->sc_fflags &= ~(fflags & (FREAD | FWRITE));
 
-	if (fflags & (FREAD | FWRITE)) {
+	if (fflags & (FREAD | FWRITE))
 		usb_fifo_free_buffer(fifo);
-	}
 }
 
 static int
@@ -485,16 +479,14 @@ ulpt_probe(device_t dev)
 
 	DPRINTFN(11, "\n");
 
-	if (uaa->usb_mode != USB_MODE_HOST) {
+	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	}
 	if ((uaa->info.bInterfaceClass == UICLASS_PRINTER) &&
 	    (uaa->info.bInterfaceSubClass == UISUBCLASS_PRINTER) &&
 	    ((uaa->info.bInterfaceProtocol == UIPROTO_PRINTER_UNI) ||
 	    (uaa->info.bInterfaceProtocol == UIPROTO_PRINTER_BI) ||
-	    (uaa->info.bInterfaceProtocol == UIPROTO_PRINTER_1284))) {
+	    (uaa->info.bInterfaceProtocol == UIPROTO_PRINTER_1284)))
 		return (0);
-	}
 	return (ENXIO);
 }
 
@@ -522,9 +514,8 @@ ulpt_attach(device_t dev)
 	id = usbd_get_interface_descriptor(uaa->iface);
 	alt_index = 0 - 1;
 	while (1) {
-		if (id == NULL) {
+		if (id == NULL)
 			break;
-		}
 		if ((id->bDescriptorType == UDESC_INTERFACE) &&
 		    (id->bLength >= sizeof(*id))) {
 			if (id->bInterfaceNumber != uaa->info.bIfaceNum) {
@@ -533,9 +524,8 @@ ulpt_attach(device_t dev)
 				alt_index++;
 				if ((id->bInterfaceClass == UICLASS_PRINTER) &&
 				    (id->bInterfaceSubClass == UISUBCLASS_PRINTER) &&
-				    (id->bInterfaceProtocol == UIPROTO_PRINTER_BI)) {
+				    (id->bInterfaceProtocol == UIPROTO_PRINTER_BI))
 					goto found;
-				}
 			}
 		}
 		id = (void *)usb_desc_foreach(
@@ -609,16 +599,14 @@ found:
 	    &ulpt_fifo_methods, &sc->sc_fifo,
 	    unit, 0 - 1, uaa->info.bIfaceIndex,
 	    UID_ROOT, GID_OPERATOR, 0644);
-	if (error) {
+	if (error)
 		goto detach;
-	}
 	error = usb_fifo_attach(uaa->device, sc, &sc->sc_mtx,
 	    &unlpt_fifo_methods, &sc->sc_fifo_noreset,
 	    unit, 0 - 1, uaa->info.bIfaceIndex,
 	    UID_ROOT, GID_OPERATOR, 0644);
-	if (error) {
+	if (error)
 		goto detach;
-	}
 	/* start reading of status */
 	mtx_lock(&sc->sc_mtx);
 	ulpt_watchdog(sc);
@@ -662,12 +650,10 @@ static uint8_t
 ieee1284_compare(const char *a, const char *b)
 {
 	while (1) {
-		if (*b == 0) {
+		if (*b == 0)
 			break;
-		}
-		if (*a != *b) {
+		if (*a != *b)
 			return 1;
-		}
 		b++;
 		a++;
 	}

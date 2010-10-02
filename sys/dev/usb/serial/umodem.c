@@ -272,9 +272,8 @@ umodem_probe(device_t dev)
 
 	DPRINTFN(11, "\n");
 
-	if (uaa->usb_mode != USB_MODE_HOST) {
+	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	}
 	error = usbd_lookup_id_by_uaa(umodem_devs, sizeof(umodem_devs), uaa);
 	return (error);
 }
@@ -313,12 +312,10 @@ umodem_attach(device_t dev)
 			else
 				sc->sc_data_iface_no = 
 				    sc->sc_ctrl_iface_no + 1;
-		} else {
+		} else
 			sc->sc_data_iface_no = cud->bSlaveInterface[0];
-		}
-	} else {
+	} else
 		sc->sc_data_iface_no = cmd->bDataInterface;
-	}
 
 	device_printf(dev, "data interface %d, has %sCM over "
 	    "data, has %sbreak\n",
@@ -365,9 +362,8 @@ umodem_attach(device_t dev)
 	    sc->sc_iface_index, sc->sc_xfer,
 	    umodem_config, UMODEM_N_TRANSFER,
 	    sc, &sc->sc_mtx);
-	if (error) {
+	if (error)
 		goto detach;
-	}
 
 	/* clear stall at first run */
 	mtx_lock(&sc->sc_mtx);
@@ -376,9 +372,8 @@ umodem_attach(device_t dev)
 	mtx_unlock(&sc->sc_mtx);
 
 	error = ucom_attach(&sc->sc_ucom, 1, sc, &umodem_callback, &sc->sc_mtx);
-	if (error) {
+	if (error)
 		goto detach;
-	}
 	return (0);
 
 detach:
@@ -529,9 +524,8 @@ umodem_ioctl(struct ucom_softc *ucom, uint32_t cmd, caddr_t data,
 		break;
 
 	case USB_SET_CM_OVER_DATA:
-		if (*(int *)data != sc->sc_cm_over_data) {
-			/* XXX change it */
-		}
+		if (*(int *)data != sc->sc_cm_over_data)
+			;	/* XXX change it */
 		break;
 
 	default:
@@ -644,9 +638,8 @@ umodem_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 		actlen -= 8;
 
 		wLen = UGETW(pkt.wLength);
-		if (actlen > wLen) {
+		if (actlen > wLen)
 			actlen = wLen;
-		}
 		if (pkt.bmRequestType != UCDC_NOTIFICATION) {
 			DPRINTF("unknown message type, "
 			    "0x%02x, on notify pipe!\n",
@@ -672,15 +665,12 @@ umodem_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 			sc->sc_lsr = 0;
 			sc->sc_msr = 0;
 
-			if (pkt.data[0] & UCDC_N_SERIAL_RI) {
+			if (pkt.data[0] & UCDC_N_SERIAL_RI)
 				sc->sc_msr |= SER_RI;
-			}
-			if (pkt.data[0] & UCDC_N_SERIAL_DSR) {
+			if (pkt.data[0] & UCDC_N_SERIAL_DSR)
 				sc->sc_msr |= SER_DSR;
-			}
-			if (pkt.data[0] & UCDC_N_SERIAL_DCD) {
+			if (pkt.data[0] & UCDC_N_SERIAL_DCD)
 				sc->sc_msr |= SER_DCD;
-			}
 			ucom_status_change(&sc->sc_ucom);
 			break;
 

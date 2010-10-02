@@ -244,27 +244,22 @@ uhid_write_callback(struct usb_xfer *xfer, usb_error_t error)
 			pc = usbd_xfer_get_frame(xfer, 0);
 			if (usb_fifo_get_data(sc->sc_fifo.fp[USB_FIFO_TX], pc,
 			    0, 1, &actlen, 0)) {
-				if (actlen != 1) {
+				if (actlen != 1)
 					goto tr_error;
-				}
 				usbd_copy_out(pc, 0, &id, 1);
 
-			} else {
+			} else
 				return;
-			}
-			if (size) {
+			if (size)
 				size--;
-			}
-		} else {
+		} else
 			id = 0;
-		}
 
 		pc = usbd_xfer_get_frame(xfer, 1);
 		if (usb_fifo_get_data(sc->sc_fifo.fp[USB_FIFO_TX], pc,
 		    0, UHID_BSIZE, &actlen, 1)) {
-			if (actlen != size) {
+			if (actlen != size)
 				goto tr_error;
-			}
 			uhid_fill_set_report
 			    (&req, sc->sc_iface_no,
 			    UHID_OUTPUT_REPORT, id, size);
@@ -361,9 +356,8 @@ uhid_start_read(struct usb_fifo *fifo)
 
 	if (sc->sc_flags & UHID_FLAG_IMMED) {
 		usbd_transfer_start(sc->sc_xfer[UHID_CTRL_DT_RD]);
-	} else {
+	} else
 		usbd_transfer_start(sc->sc_xfer[UHID_INTR_DT_RD]);
-	}
 }
 
 static void
@@ -416,14 +410,12 @@ uhid_get_report(struct uhid_softc *sc, uint8_t type,
 	if (user_data) {
 		/* dummy buffer */
 		err = copyout(kern_data, user_data, len);
-		if (err) {
+		if (err)
 			goto done;
-		}
 	}
 done:
-	if (free_data) {
+	if (free_data)
 		free(kern_data, M_USBDEV);
-	}
 	return (err);
 }
 
@@ -443,9 +435,8 @@ uhid_set_report(struct uhid_softc *sc, uint8_t type,
 		}
 		free_data = 1;
 		err = copyin(user_data, kern_data, len);
-		if (err) {
+		if (err)
 			goto done;
-		}
 	}
 	err = usbd_req_set_report(sc->sc_udev, NULL, kern_data,
 	    len, sc->sc_iface_index, type, id);
@@ -454,9 +445,8 @@ uhid_set_report(struct uhid_softc *sc, uint8_t type,
 		goto done;
 	}
 done:
-	if (free_data) {
+	if (free_data)
 		free(kern_data, M_USBDEV);
-	}
 	return (err);
 }
 
@@ -474,15 +464,13 @@ uhid_open(struct usb_fifo *fifo, int fflags)
 		sc->sc_flags &= ~UHID_FLAG_IMMED;
 
 		if (usb_fifo_alloc_buffer(fifo,
-		    sc->sc_isize + 1, UHID_FRAME_NUM)) {
+		    sc->sc_isize + 1, UHID_FRAME_NUM))
 			return (ENOMEM);
-		}
 	}
 	if (fflags & FWRITE) {
 		if (usb_fifo_alloc_buffer(fifo,
-		    sc->sc_osize + 1, UHID_FRAME_NUM)) {
+		    sc->sc_osize + 1, UHID_FRAME_NUM))
 			return (ENOMEM);
-		}
 	}
 	return (0);
 }
@@ -490,9 +478,8 @@ uhid_open(struct usb_fifo *fifo, int fflags)
 static void
 uhid_close(struct usb_fifo *fifo, int fflags)
 {
-	if (fflags & (FREAD | FWRITE)) {
+	if (fflags & (FREAD | FWRITE))
 		usb_fifo_free_buffer(fifo);
-	}
 }
 
 static int
@@ -510,9 +497,8 @@ uhid_ioctl(struct usb_fifo *fifo, u_long cmd, void *addr,
 		ugd = addr;
 		if (sc->sc_repdesc_size > ugd->ugd_maxlen) {
 			size = ugd->ugd_maxlen;
-		} else {
+		} else
 			size = sc->sc_repdesc_size;
-		}
 		ugd->ugd_actlen = size;
 		if (ugd->ugd_data == NULL)
 			break;		/* descriptor length only */
@@ -528,9 +514,8 @@ uhid_ioctl(struct usb_fifo *fifo, u_long cmd, void *addr,
 			/* do a test read */
 			error = uhid_get_report(sc, UHID_INPUT_REPORT,
 			    sc->sc_iid, NULL, NULL, sc->sc_isize);
-			if (error) {
+			if (error)
 				break;
-			}
 			mtx_lock(&sc->sc_mtx);
 			sc->sc_flags |= UHID_FLAG_IMMED;
 			mtx_unlock(&sc->sc_mtx);
@@ -611,9 +596,8 @@ uhid_probe(device_t dev)
 
 	DPRINTFN(11, "\n");
 
-	if (uaa->usb_mode != USB_MODE_HOST) {
+	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	}
 	if (uaa->use_generic == 0) {
 		/* give Mouse and Keyboard drivers a try first */
 		return (ENXIO);
@@ -622,13 +606,11 @@ uhid_probe(device_t dev)
 		/* the Xbox 360 gamepad doesn't use the HID class */
 		if ((uaa->info.bInterfaceClass != UICLASS_VENDOR) ||
 		    (uaa->info.bInterfaceSubClass != UISUBCLASS_XBOX360_CONTROLLER) ||
-		    (uaa->info.bInterfaceProtocol != UIPROTO_XBOX360_GAMEPAD)) {
+		    (uaa->info.bInterfaceProtocol != UIPROTO_XBOX360_GAMEPAD))
 			return (ENXIO);
-		}
 	}
-	if (usb_test_quirk(uaa, UQ_HID_IGNORE)) {
+	if (usb_test_quirk(uaa, UQ_HID_IGNORE))
 		return (ENXIO);
-	}
 	return (BUS_PROBE_GENERIC);
 }
 
@@ -741,9 +723,8 @@ uhid_attach(device_t dev)
 	    &uhid_fifo_methods, &sc->sc_fifo,
 	    unit, 0 - 1, uaa->info.bIfaceIndex,
 	    UID_ROOT, GID_OPERATOR, 0644);
-	if (error) {
+	if (error)
 		goto detach;
-	}
 	return (0);			/* success */
 
 detach:
@@ -761,9 +742,8 @@ uhid_detach(device_t dev)
 	usbd_transfer_unsetup(sc->sc_xfer, UHID_N_TRANSFER);
 
 	if (sc->sc_repdesc_ptr) {
-		if (!(sc->sc_flags & UHID_FLAG_STATIC_DESC)) {
+		if (!(sc->sc_flags & UHID_FLAG_STATIC_DESC))
 			free(sc->sc_repdesc_ptr, M_USBDEV);
-		}
 	}
 	mtx_destroy(&sc->sc_mtx);
 

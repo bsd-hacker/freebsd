@@ -67,9 +67,8 @@ usbd_lookup_id_by_info(const struct usb_device_id *id, usb_size_t sizeof_id,
 {
 	const struct usb_device_id *id_end;
 
-	if (id == NULL) {
+	if (id == NULL)
 		goto done;
-	}
 	id_end = (const void *)(((const uint8_t *)id) + sizeof_id);
 
 	/*
@@ -78,52 +77,41 @@ usbd_lookup_id_by_info(const struct usb_device_id *id, usb_size_t sizeof_id,
 	 */
 	for (; id != id_end; id++) {
 		if ((id->match_flag_vendor) &&
-		    (id->idVendor != info->idVendor)) {
+		    (id->idVendor != info->idVendor))
 			continue;
-		}
 		if ((id->match_flag_product) &&
-		    (id->idProduct != info->idProduct)) {
+		    (id->idProduct != info->idProduct))
 			continue;
-		}
 		if ((id->match_flag_dev_lo) &&
-		    (id->bcdDevice_lo > info->bcdDevice)) {
+		    (id->bcdDevice_lo > info->bcdDevice))
 			continue;
-		}
 		if ((id->match_flag_dev_hi) &&
-		    (id->bcdDevice_hi < info->bcdDevice)) {
+		    (id->bcdDevice_hi < info->bcdDevice))
 			continue;
-		}
 		if ((id->match_flag_dev_class) &&
-		    (id->bDeviceClass != info->bDeviceClass)) {
+		    (id->bDeviceClass != info->bDeviceClass))
 			continue;
-		}
 		if ((id->match_flag_dev_subclass) &&
-		    (id->bDeviceSubClass != info->bDeviceSubClass)) {
+		    (id->bDeviceSubClass != info->bDeviceSubClass))
 			continue;
-		}
 		if ((id->match_flag_dev_protocol) &&
-		    (id->bDeviceProtocol != info->bDeviceProtocol)) {
+		    (id->bDeviceProtocol != info->bDeviceProtocol))
 			continue;
-		}
 		if ((info->bDeviceClass == 0xFF) &&
 		    (!(id->match_flag_vendor)) &&
 		    ((id->match_flag_int_class) ||
 		    (id->match_flag_int_subclass) ||
-		    (id->match_flag_int_protocol))) {
+		    (id->match_flag_int_protocol)))
 			continue;
-		}
 		if ((id->match_flag_int_class) &&
-		    (id->bInterfaceClass != info->bInterfaceClass)) {
+		    (id->bInterfaceClass != info->bInterfaceClass))
 			continue;
-		}
 		if ((id->match_flag_int_subclass) &&
-		    (id->bInterfaceSubClass != info->bInterfaceSubClass)) {
+		    (id->bInterfaceSubClass != info->bInterfaceSubClass))
 			continue;
-		}
 		if ((id->match_flag_int_protocol) &&
-		    (id->bInterfaceProtocol != info->bInterfaceProtocol)) {
+		    (id->bInterfaceProtocol != info->bInterfaceProtocol))
 			continue;
-		}
 		/* We found a match! */
 		return (id);
 	}

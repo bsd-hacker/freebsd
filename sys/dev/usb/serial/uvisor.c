@@ -288,15 +288,12 @@ uvisor_probe(device_t dev)
 {
 	struct usb_attach_arg *uaa = device_get_ivars(dev);
 
-	if (uaa->usb_mode != USB_MODE_HOST) {
+	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	}
-	if (uaa->info.bConfigIndex != UVISOR_CONFIG_INDEX) {
+	if (uaa->info.bConfigIndex != UVISOR_CONFIG_INDEX)
 		return (ENXIO);
-	}
-	if (uaa->info.bIfaceIndex != UVISOR_IFACE_INDEX) {
+	if (uaa->info.bIfaceIndex != UVISOR_IFACE_INDEX)
 		return (ENXIO);
-	}
 	return (usbd_lookup_id_by_uaa(uvisor_devs, sizeof(uvisor_devs), uaa));
 }
 
@@ -384,9 +381,8 @@ uvisor_init(struct uvisor_softc *sc, struct usb_device *udev, struct usb_config 
 		    &req, &coninfo, USB_SHORT_XFER_OK,
 		    &actlen, USB_DEFAULT_TIMEOUT);
 
-		if (err) {
+		if (err)
 			goto done;
-		}
 	}
 #ifdef USB_DEBUG
 	if (sc->sc_flag & UVISOR_FLAG_VISOR) {
@@ -394,9 +390,8 @@ uvisor_init(struct uvisor_softc *sc, struct usb_device *udev, struct usb_config 
 		const char *desc;
 
 		np = UGETW(coninfo.num_ports);
-		if (np > UVISOR_MAX_CONN) {
+		if (np > UVISOR_MAX_CONN)
 			np = UVISOR_MAX_CONN;
-		}
 		DPRINTF("Number of ports: %d\n", np);
 
 		for (i = 0; i < np; ++i) {
@@ -437,9 +432,8 @@ uvisor_init(struct uvisor_softc *sc, struct usb_device *udev, struct usb_config 
 		    (udev, NULL, &req, &pconinfo, USB_SHORT_XFER_OK,
 		    &actlen, USB_DEFAULT_TIMEOUT);
 
-		if (err) {
+		if (err)
 			goto done;
-		}
 		if (actlen < 12) {
 			DPRINTF("too little data\n");
 			err = USB_ERR_INVAL;
@@ -461,9 +455,8 @@ uvisor_init(struct uvisor_softc *sc, struct usb_device *udev, struct usb_config 
 		USETW(req.wIndex, 0);
 		USETW(req.wLength, UVISOR_GET_PALM_INFORMATION_LEN);
 		err = usbd_do_request(udev, &req, buffer);
-		if (err) {
+		if (err)
 			goto done;
-		}
 #endif
 	}
 	if (sc->sc_flag & UVISOR_FLAG_PALM35) {
@@ -476,9 +469,8 @@ uvisor_init(struct uvisor_softc *sc, struct usb_device *udev, struct usb_config 
 		USETW(req.wLength, 1);
 
 		err = usbd_do_request(udev, NULL, &req, buffer);
-		if (err) {
+		if (err)
 			goto done;
-		}
 		/* get the interface number */
 		DPRINTF("get the interface number\n");
 		req.bmRequestType = UT_READ_DEVICE;
@@ -487,9 +479,8 @@ uvisor_init(struct uvisor_softc *sc, struct usb_device *udev, struct usb_config 
 		USETW(req.wIndex, 0);
 		USETW(req.wLength, 1);
 		err = usbd_do_request(udev, NULL, &req, buffer);
-		if (err) {
+		if (err)
 			goto done;
-		}
 	}
 #if 0
 	uWord wAvail;
@@ -501,9 +492,8 @@ uvisor_init(struct uvisor_softc *sc, struct usb_device *udev, struct usb_config 
 	USETW(req.wIndex, 5);
 	USETW(req.wLength, sizeof(wAvail));
 	err = usbd_do_request(udev, NULL, &req, &wAvail);
-	if (err) {
+	if (err)
 		goto done;
-	}
 	DPRINTF("avail=%d\n", UGETW(wAvail));
 #endif
 
@@ -592,9 +582,8 @@ tr_setup:
 			if (ucom_get_data(&sc->sc_ucom, pc, 0,
 			    UVISOROBUFSIZE, &actlen)) {
 				usbd_xfer_set_frame_len(xfer, x, actlen);
-			} else {
+			} else
 				break;
-			}
 		}
 		/* check for data */
 		if (x != 0) {

@@ -276,15 +276,12 @@ uslcom_probe(device_t dev)
 
 	DPRINTFN(11, "\n");
 
-	if (uaa->usb_mode != USB_MODE_HOST) {
+	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	}
-	if (uaa->info.bConfigIndex != USLCOM_CONFIG_INDEX) {
+	if (uaa->info.bConfigIndex != USLCOM_CONFIG_INDEX)
 		return (ENXIO);
-	}
-	if (uaa->info.bIfaceIndex != USLCOM_IFACE_INDEX) {
+	if (uaa->info.bIfaceIndex != USLCOM_IFACE_INDEX)
 		return (ENXIO);
-	}
 	return (usbd_lookup_id_by_uaa(uslcom_devs, sizeof(uslcom_devs), uaa));
 }
 
@@ -316,9 +313,8 @@ uslcom_attach(device_t dev)
 	mtx_unlock(&sc->sc_mtx);
 
 	error = ucom_attach(&sc->sc_ucom, 1, sc, &uslcom_callback, &sc->sc_mtx);
-	if (error) {
+	if (error)
 		goto detach;
-	}
 	return (0);
 
 detach:
@@ -353,9 +349,8 @@ uslcom_open(struct ucom_softc *ucom)
 	USETW(req.wLength, 0);
 
         if (ucom_cfg_do_request(sc->sc_udev, &sc->sc_ucom, 
-	    &req, NULL, 0, 1000)) {
+	    &req, NULL, 0, 1000))
 		DPRINTF("UART enable failed (ignored)\n");
-	}
 }
 
 static void
@@ -371,9 +366,8 @@ uslcom_close(struct ucom_softc *ucom)
 	USETW(req.wLength, 0);
 
         if (ucom_cfg_do_request(sc->sc_udev, &sc->sc_ucom, 
-	    &req, NULL, 0, 1000)) {
+	    &req, NULL, 0, 1000))
 		DPRINTF("UART disable failed (ignored)\n");
-	}
 }
 
 static void
@@ -395,9 +389,8 @@ uslcom_set_dtr(struct ucom_softc *ucom, uint8_t onoff)
 	USETW(req.wLength, 0);
 
         if (ucom_cfg_do_request(sc->sc_udev, &sc->sc_ucom, 
-	    &req, NULL, 0, 1000)) {
+	    &req, NULL, 0, 1000))
 		DPRINTF("Setting DTR failed (ignored)\n");
-	}
 }
 
 static void
@@ -419,9 +412,8 @@ uslcom_set_rts(struct ucom_softc *ucom, uint8_t onoff)
 	USETW(req.wLength, 0);
 
         if (ucom_cfg_do_request(sc->sc_udev, &sc->sc_ucom, 
-	    &req, NULL, 0, 1000)) {
+	    &req, NULL, 0, 1000))
 		DPRINTF("Setting DTR failed (ignored)\n");
-	}
 }
 
 static int
@@ -448,9 +440,8 @@ uslcom_param(struct ucom_softc *ucom, struct termios *t)
 	USETW(req.wLength, 0);
 
         if (ucom_cfg_do_request(sc->sc_udev, &sc->sc_ucom, 
-	    &req, NULL, 0, 1000)) {
+	    &req, NULL, 0, 1000))
 		DPRINTF("Set baudrate failed (ignored)\n");
-	}
 
 	if (t->c_cflag & CSTOPB)
 		data = USLCOM_STOP_BITS_2;
@@ -485,9 +476,8 @@ uslcom_param(struct ucom_softc *ucom, struct termios *t)
 	USETW(req.wLength, 0);
 
         if (ucom_cfg_do_request(sc->sc_udev, &sc->sc_ucom, 
-	    &req, NULL, 0, 1000)) {
+	    &req, NULL, 0, 1000))
 		DPRINTF("Set format failed (ignored)\n");
-	}
 	return;
 }
 
@@ -516,9 +506,8 @@ uslcom_set_break(struct ucom_softc *ucom, uint8_t onoff)
 	USETW(req.wLength, 0);
 
         if (ucom_cfg_do_request(sc->sc_udev, &sc->sc_ucom, 
-	    &req, NULL, 0, 1000)) {
+	    &req, NULL, 0, 1000))
 		DPRINTF("Set BREAK failed (ignored)\n");
-	}
 }
 
 static void

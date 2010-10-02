@@ -1082,9 +1082,8 @@ uhso_mux_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 
 		i = *((unsigned char *)res.buffer);
 		mux = 0;
-		while (i >>= 1) {
+		while (i >>= 1)
 			mux++;
-		}
 
 		UHSO_DPRINTF(3, "mux port %d (%d)\n", mux, i);
 		if (mux > UHSO_MPORT_TYPE_NOMAX)
@@ -1495,9 +1494,8 @@ uhso_ucom_start_write(struct ucom_softc *ucom)
 		    sc->sc_tty[ucom->sc_local_unit].ht_xfer[UHSO_CTRL_WRITE]);
 
 	}
-	else if (UHSO_IFACE_USB_TYPE(sc->sc_type) & UHSO_IF_BULK) {
+	else if (UHSO_IFACE_USB_TYPE(sc->sc_type) & UHSO_IF_BULK)
 		usbd_transfer_start(sc->sc_xfer[UHSO_BULK_ENDPT_WRITE]);
-	}
 }
 
 static void
@@ -1509,9 +1507,8 @@ uhso_ucom_stop_write(struct ucom_softc *ucom)
 		usbd_transfer_stop(
 		    sc->sc_tty[ucom->sc_local_unit].ht_xfer[UHSO_CTRL_WRITE]);
 	}
-	else if (UHSO_IFACE_USB_TYPE(sc->sc_type) & UHSO_IF_BULK) {
+	else if (UHSO_IFACE_USB_TYPE(sc->sc_type) & UHSO_IF_BULK)
 		usbd_transfer_stop(sc->sc_xfer[UHSO_BULK_ENDPT_WRITE]);
-	}
 }
 
 static int
@@ -1596,9 +1593,8 @@ uhso_ifnet_read_callback(struct usb_xfer *xfer, usb_error_t error)
 			/* Enqueue frame for further processing */
 			_IF_ENQUEUE(&sc->sc_rxq, m);
 			if (!callout_pending(&sc->sc_c) ||
-			    !callout_active(&sc->sc_c)) {
+			    !callout_active(&sc->sc_c))
 				callout_schedule(&sc->sc_c, 1);
-			}
 		}
 	/* FALLTHROUGH */
 	case USB_ST_SETUP:
@@ -1811,9 +1807,8 @@ uhso_if_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	switch (cmd) {
 	case SIOCSIFFLAGS:
 		if (ifp->if_flags & IFF_UP) {
-			if (!(ifp->if_drv_flags & IFF_DRV_RUNNING)) {
+			if (!(ifp->if_drv_flags & IFF_DRV_RUNNING))
 				uhso_if_init(sc);
-			}
 		}
 		else {
 			if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
@@ -1861,9 +1856,8 @@ uhso_if_output(struct ifnet *ifp, struct mbuf *m0, struct sockaddr *dst,
 #ifdef INET6
 	   && dst->sa_family != AF_INET6
 #endif
-	 ) {
+	 )
 		return (EAFNOSUPPORT);
-	}
 
 	error = (ifp->if_transmit)(ifp, m0);
 	if (error) {

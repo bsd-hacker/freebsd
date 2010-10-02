@@ -292,9 +292,8 @@ udbp_probe(device_t dev)
 {
 	struct usb_attach_arg *uaa = device_get_ivars(dev);
 
-	if (uaa->usb_mode != USB_MODE_HOST) {
+	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	}
 	/*
 	 * XXX Julian, add the id of the device if you have one to test
 	 * things with. run 'usbdevs -v' and note the 3 ID's that appear.
@@ -414,9 +413,8 @@ udbp_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 		/* allocate new mbuf */
 		MGETHDR(m, M_DONTWAIT, MT_DATA);
 
-		if (m == NULL) {
+		if (m == NULL)
 			goto tr_setup;
-		}
 		MCLGET(m, M_DONTWAIT);
 
 		if (!(m->m_flags & M_EXT)) {
@@ -477,9 +475,8 @@ udbp_bulk_read_complete(node_p node, hook_p hook, void *arg1, int arg2)
 	struct mbuf *m;
 	int error;
 
-	if (sc == NULL) {
+	if (sc == NULL)
 		return;
-	}
 	mtx_lock(&sc->sc_mtx);
 
 	m = sc->sc_bulk_in_buffer;
@@ -499,9 +496,8 @@ udbp_bulk_read_complete(node_p node, hook_p hook, void *arg1, int arg2)
 		m = NULL;
 	}
 done:
-	if (m) {
+	if (m)
 		m_freem(m);
-	}
 	/* start USB bulk-in transfer, if not already started */
 	usbd_transfer_start(sc->sc_xfer[UDBP_T_RD]);
 
@@ -608,9 +604,8 @@ ng_udbp_newhook(node_p node, hook_p hook, const char *name)
 	struct udbp_softc *sc = NG_NODE_PRIVATE(node);
 	int32_t error = 0;
 
-	if (strcmp(name, NG_UDBP_HOOK_NAME)) {
+	if (strcmp(name, NG_UDBP_HOOK_NAME))
 		return (EINVAL);
-	}
 	mtx_lock(&sc->sc_mtx);
 
 	if (sc->sc_hook != NULL) {
@@ -753,9 +748,8 @@ ng_udbp_rmnode(node_p node)
 	NG_NODE_SET_PRIVATE(node, NULL);
 	NG_NODE_UNREF(node);		/* forget it ever existed */
 
-	if (sc == NULL) {
+	if (sc == NULL)
 		goto done;
-	}
 	/* Create Netgraph node */
 	if (ng_make_node_common(&ng_udbp_typestruct, &sc->sc_node) != 0) {
 		printf("%s: Could not create Netgraph node\n",
@@ -774,9 +768,8 @@ ng_udbp_rmnode(node_p node)
 	NG_NODE_SET_PRIVATE(sc->sc_node, sc);
 
 done:
-	if (sc) {
+	if (sc)
 		mtx_unlock(&sc->sc_mtx);
-	}
 	return (0);
 }
 

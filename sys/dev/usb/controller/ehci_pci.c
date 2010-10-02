@@ -230,9 +230,8 @@ ehci_pci_match(device_t self)
 
 	if ((pci_get_class(self) == PCIC_SERIALBUS)
 	    && (pci_get_subclass(self) == PCIS_SERIALBUS_USB)
-	    && (pci_get_progif(self) == PCI_INTERFACE_EHCI)) {
+	    && (pci_get_progif(self) == PCI_INTERFACE_EHCI))
 		return ("EHCI (generic) USB 2.0 controller");
-	}
 	return (NULL);			/* dunno */
 }
 
@@ -244,9 +243,8 @@ ehci_pci_probe(device_t self)
 	if (desc) {
 		device_set_desc(self, desc);
 		return (0);
-	} else {
+	} else
 		return (ENXIO);
-	}
 }
 
 static void
@@ -467,9 +465,8 @@ ehci_pci_attach(device_t self)
 	}
 
 	err = ehci_init(sc);
-	if (!err) {
+	if (!err)
 		err = device_probe_and_attach(sc->sc_bus.bdev);
-	}
 	if (err) {
 		device_printf(self, "USB init failed err=%d\n", err);
 		goto error;
@@ -500,9 +497,8 @@ ehci_pci_detach(device_t self)
 	/*
 	 * disable interrupts that might have been switched on in ehci_init
 	 */
-	if (sc->sc_io_res) {
+	if (sc->sc_io_res)
 		EWRITE4(sc, EHCI_USBINTR, 0);
-	}
 	if (sc->sc_irq_res && sc->sc_intr_hdl) {
 		/*
 		 * only call ehci_detach() after ehci_init()
@@ -547,14 +543,12 @@ ehci_pci_takecontroller(device_t self)
 	for (eecp = EHCI_HCC_EECP(cparams); eecp != 0;
 	    eecp = EHCI_EECP_NEXT(eec)) {
 		eec = pci_read_config(self, eecp, 4);
-		if (EHCI_EECP_ID(eec) != EHCI_EC_LEGSUP) {
+		if (EHCI_EECP_ID(eec) != EHCI_EC_LEGSUP)
 			continue;
-		}
 		bios_sem = pci_read_config(self, eecp +
 		    EHCI_LEGSUP_BIOS_SEM, 1);
-		if (bios_sem == 0) {
+		if (bios_sem == 0)
 			continue;
-		}
 		device_printf(sc->sc_bus.bdev, "waiting for BIOS "
 		    "to give up control\n");
 		pci_write_config(self, eecp +

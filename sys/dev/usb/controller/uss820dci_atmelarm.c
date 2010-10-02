@@ -102,9 +102,8 @@ uss820_atmelarm_suspend(device_t dev)
 	int err;
 
 	err = bus_generic_suspend(dev);
-	if (err == 0) {
+	if (err == 0)
 		uss820dci_suspend(sc);
-	}
 	return (err);
 }
 
@@ -160,9 +159,8 @@ uss820_atmelarm_attach(device_t dev)
 	sc->sc_io_res =
 	    bus_alloc_resource_any(dev, SYS_RES_IOPORT, &rid, RF_ACTIVE);
 
-	if (!sc->sc_io_res) {
+	if (!sc->sc_io_res)
 		goto error;
-	}
 	sc->sc_io_tag = rman_get_bustag(sc->sc_io_res);
 	sc->sc_io_hdl = rman_get_bushandle(sc->sc_io_res);
 	sc->sc_io_size = rman_get_size(sc->sc_io_res);
@@ -170,13 +168,11 @@ uss820_atmelarm_attach(device_t dev)
 	rid = 0;
 	sc->sc_irq_res = bus_alloc_resource_any(dev, SYS_RES_IRQ, &rid,
 	    RF_SHAREABLE | RF_ACTIVE);
-	if (sc->sc_irq_res == NULL) {
+	if (sc->sc_irq_res == NULL)
 		goto error;
-	}
 	sc->sc_bus.bdev = device_add_child(dev, "usbus", -1);
-	if (!(sc->sc_bus.bdev)) {
+	if (!(sc->sc_bus.bdev))
 		goto error;
-	}
 	device_set_ivars(sc->sc_bus.bdev, &sc->sc_bus);
 
 #if (__FreeBSD_version >= 700031)

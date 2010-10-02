@@ -102,9 +102,8 @@ ohci_pci_suspend(device_t self)
 	int err;
 
 	err = bus_generic_suspend(self);
-	if (err) {
+	if (err)
 		return (err);
-	}
 	ohci_suspend(sc);
 	return (0);
 }
@@ -190,9 +189,8 @@ ohci_pci_match(device_t self)
 	}
 	if ((pci_get_class(self) == PCIC_SERIALBUS) &&
 	    (pci_get_subclass(self) == PCIS_SERIALBUS_USB) &&
-	    (pci_get_progif(self) == PCI_INTERFACE_OHCI)) {
+	    (pci_get_progif(self) == PCI_INTERFACE_OHCI))
 		return ("OHCI (generic) USB controller");
-	}
 	return (NULL);
 }
 
@@ -204,9 +202,8 @@ ohci_pci_probe(device_t self)
 	if (desc) {
 		device_set_desc(self, desc);
 		return (0);
-	} else {
+	} else
 		return (ENXIO);
-	}
 }
 
 static int
@@ -316,9 +313,8 @@ ohci_pci_attach(device_t self)
 		goto error;
 	}
 	err = ohci_init(sc);
-	if (!err) {
+	if (!err)
 		err = device_probe_and_attach(sc->sc_bus.bdev);
-	}
 	if (err) {
 		device_printf(self, "USB init failed\n");
 		goto error;

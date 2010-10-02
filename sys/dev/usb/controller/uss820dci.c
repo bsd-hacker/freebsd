@@ -176,9 +176,8 @@ uss820dci_get_hw_ep_profile(struct usb_device *udev,
 		*ppf = uss820dci_ep_profile + 2;
 	} else if (ep_addr == 7) {
 		*ppf = uss820dci_ep_profile + 3;
-	} else {
+	} else
 		*ppf = NULL;
-	}
 }
 
 static void
@@ -219,9 +218,8 @@ uss820dci_pull_down(struct uss820dci_softc *sc)
 static void
 uss820dci_wakeup_peer(struct uss820dci_softc *sc)
 {
-	if (!(sc->sc_flags.status_suspend)) {
+	if (!(sc->sc_flags.status_suspend))
 		return;
-	}
 	DPRINTFN(0, "not supported\n");
 }
 
@@ -256,9 +254,8 @@ uss820dci_setup_rx(struct uss820dci_td *td)
 
 	DPRINTFN(5, "rx_stat=0x%02x rem=%u\n", rx_stat, td->remainder);
 
-	if (!(rx_stat & USS820_RXSTAT_RXSETUP)) {
+	if (!(rx_stat & USS820_RXSTAT_RXSETUP))
 		goto not_complete;
-	}
 	/* clear did stall */
 	td->did_stall = 0;
 
@@ -327,9 +324,8 @@ uss820dci_setup_rx(struct uss820dci_td *td)
 	if ((req.bmRequestType == UT_WRITE_DEVICE) &&
 	    (req.bRequest == UR_SET_ADDRESS)) {
 		sc->sc_dv_addr = req.wValue[0] & 0x7F;
-	} else {
+	} else
 		sc->sc_dv_addr = 0xFF;
-	}
 
 	/* reset TX FIFO */
 	temp = USS820_READ_1(sc, USS820_TXCON);
@@ -469,9 +465,8 @@ repeat:
 		usbd_get_page(td->pc, td->offset, &buf_res);
 
 		/* get correct length */
-		if (buf_res.length > count) {
+		if (buf_res.length > count)
 			buf_res.length = count;
-		}
 		/* receive data */
 		bus_space_read_multi_1(td->io_tag, td->io_hdl,
 		    USS820_RXDAT, buf_res.buffer, buf_res.length);
@@ -497,9 +492,8 @@ repeat:
 		}
 		/* else need to receive a zero length packet */
 	}
-	if (--to) {
+	if (--to)
 		goto repeat;
-	}
 	return (1);			/* not complete */
 }
 
@@ -546,15 +540,13 @@ repeat:
 		return (0);		/* complete */
 	}
 	if (tx_flag & USS820_TXFLG_TXFIF0) {
-		if (tx_flag & USS820_TXFLG_TXFIF1) {
+		if (tx_flag & USS820_TXFLG_TXFIF1)
 			return (1);	/* not complete */
-		}
 	}
 	if ((!td->support_multi_buffer) &&
 	    (tx_flag & (USS820_TXFLG_TXFIF0 |
-	    USS820_TXFLG_TXFIF1))) {
+	    USS820_TXFLG_TXFIF1)))
 		return (1);		/* not complete */
-	}
 	count = td->max_packet_size;
 	if (td->remainder < count) {
 		/* we have a short packet */
@@ -566,9 +558,8 @@ repeat:
 		usbd_get_page(td->pc, td->offset, &buf_res);
 
 		/* get correct length */
-		if (buf_res.length > count) {
+		if (buf_res.length > count)
 			buf_res.length = count;
-		}
 		/* transmit data */
 		bus_space_write_multi_1(td->io_tag, td->io_hdl,
 		    USS820_TXDAT, buf_res.buffer, buf_res.length);
@@ -598,14 +589,12 @@ repeat:
 	}
 	/* check remainder */
 	if (td->remainder == 0) {
-		if (td->short_pkt) {
+		if (td->short_pkt)
 			return (0);	/* complete */
-		}
 		/* else we need to transmit a short packet */
 	}
-	if (--to) {
+	if (--to)
 		goto repeat;
-	}
 	return (1);			/* not complete */
 }
 
@@ -646,9 +635,8 @@ uss820dci_data_tx_sync(struct uss820dci_td *td)
 		return (0);		/* complete */
 	}
 	if (tx_flag & (USS820_TXFLG_TXFIF0 |
-	    USS820_TXFLG_TXFIF1)) {
+	    USS820_TXFLG_TXFIF1))
 		return (1);		/* not complete */
-	}
 	sc = USS820_DCI_PC2SC(td->pc);
 	if (sc->sc_dv_addr != 0xFF) {
 		/* write function address */
@@ -670,9 +658,8 @@ uss820dci_xfer_do_fifo(struct usb_xfer *xfer)
 			/* operation in progress */
 			break;
 		}
-		if (((void *)td) == xfer->td_transfer_last) {
+		if (((void *)td) == xfer->td_transfer_last)
 			goto done;
-		}
 		if (td->error) {
 			goto done;
 		} else if (td->remainder > 0) {
@@ -680,9 +667,8 @@ uss820dci_xfer_do_fifo(struct usb_xfer *xfer)
 			 * We had a short transfer. If there is no alternate
 			 * next, stop processing !
 			 */
-			if (!td->alt_next) {
+			if (!td->alt_next)
 				goto done;
-			}
 		}
 		/*
 		 * Fetch the next transfer descriptor.
@@ -880,16 +866,14 @@ uss820dci_setup_standard_chain(struct usb_xfer *xfer)
 			uss820dci_setup_standard_chain_sub(&temp);
 		}
 		x = 1;
-	} else {
+	} else
 		x = 0;
-	}
 
 	if (x != xfer->nframes) {
 		if (xfer->endpointno & UE_DIR_IN) {
 			temp.func = &uss820dci_data_tx;
-		} else {
+		} else
 			temp.func = &uss820dci_data_rx;
-		}
 
 		/* setup "pc" pointer */
 		temp.pc = xfer->frbuffers + x;
@@ -903,12 +887,10 @@ uss820dci_setup_standard_chain(struct usb_xfer *xfer)
 		if (x == xfer->nframes) {
 			if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
 				if ((xfer->status &
-				    XFER_STATUS_CTRLACTIVE) != 0) {
+				    XFER_STATUS_CTRLACTIVE) != 0)
 					temp.setup_alt_next = 0;
-				}
-			} else {
+			} else
 				temp.setup_alt_next = 0;
-			}
 		}
 		if (temp.len == 0) {
 			/* make sure that we send an USB packet */
@@ -993,9 +975,8 @@ uss820dci_intr_set(struct usb_xfer *xfer, uint8_t set)
 
 	if (ep_no > 3) {
 		ep_reg = USS820_SBIE1;
-	} else {
+	} else
 		ep_reg = USS820_SBIE;
-	}
 
 	ep_no &= 3;
 	ep_no = 1 << (2 * ep_no);
@@ -1003,20 +984,17 @@ uss820dci_intr_set(struct usb_xfer *xfer, uint8_t set)
 	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
 		if ((xfer->status & XFER_STATUS_CTRLHDR) != 0) {
 			ep_no <<= 1;	/* RX interrupt only */
-		} else {
+		} else
 			ep_no |= (ep_no << 1);	/* RX and TX interrupt */
-		}
 	} else {
-		if (!(xfer->endpointno & UE_DIR_IN)) {
+		if (!(xfer->endpointno & UE_DIR_IN))
 			ep_no <<= 1;
-		}
 	}
 	temp = USS820_READ_1(sc, ep_reg);
 	if (set) {
 		temp |= ep_no;
-	} else {
+	} else
 		temp &= ~ep_no;
-	}
 	USS820_WRITE_1(sc, ep_reg, temp);
 }
 
@@ -1082,9 +1060,8 @@ uss820dci_standard_done_sub(struct usb_xfer *xfer)
 		         */
 			if (len > xfer->frlengths[xfer->aframes]) {
 				td->error = 1;
-			} else {
+			} else
 				xfer->frlengths[xfer->aframes] -= len;
-			}
 		}
 		/* Check for transfer error */
 		if (td->error) {
@@ -1099,9 +1076,8 @@ uss820dci_standard_done_sub(struct usb_xfer *xfer)
 				/* follow alt next */
 				if (td->alt_next) {
 					td = td->obj_next;
-				} else {
+				} else
 					td = NULL;
-				}
 			} else {
 				/* the transfer is finished */
 				td = NULL;
@@ -1136,28 +1112,24 @@ uss820dci_standard_done(struct usb_xfer *xfer)
 	xfer->td_transfer_cache = xfer->td_transfer_first;
 
 	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
-		if ((xfer->status & XFER_STATUS_CTRLHDR) != 0) {
+		if ((xfer->status & XFER_STATUS_CTRLHDR) != 0)
 			err = uss820dci_standard_done_sub(xfer);
-		}
 		xfer->aframes = 1;
 
-		if (xfer->td_transfer_cache == NULL) {
+		if (xfer->td_transfer_cache == NULL)
 			goto done;
-		}
 	}
 	while (xfer->aframes != xfer->nframes) {
 		err = uss820dci_standard_done_sub(xfer);
 		xfer->aframes++;
 
-		if (xfer->td_transfer_cache == NULL) {
+		if (xfer->td_transfer_cache == NULL)
 			goto done;
-		}
 	}
 
 	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0 &&
-	    (xfer->status & XFER_STATUS_CTRLACTIVE) == 0) {
+	    (xfer->status & XFER_STATUS_CTRLACTIVE) == 0)
 		err = uss820dci_standard_done_sub(xfer);
-	}
 done:
 	uss820dci_device_done(xfer, err);
 }
@@ -1177,9 +1149,8 @@ uss820dci_device_done(struct usb_xfer *xfer, usb_error_t error)
 	DPRINTFN(2, "xfer=%p, endpoint=%p, error=%d\n",
 	    xfer, xfer->endpoint, error);
 
-	if (xfer->usb_mode == USB_MODE_DEVICE) {
+	if (xfer->usb_mode == USB_MODE_DEVICE)
 		uss820dci_intr_set(xfer, 0);
-	}
 	/* dequeue transfer and start next transfer */
 	usbd_transfer_done(xfer, error);
 }
@@ -1216,9 +1187,8 @@ uss820dci_set_stall(struct usb_device *udev, struct usb_xfer *xfer,
 
 	if (ep_dir == UE_DIR_IN) {
 		temp = USS820_EPCON_TXSTL;
-	} else {
+	} else
 		temp = USS820_EPCON_RXSTL;
-	}
 	uss820dci_update_shared_1(sc, USS820_EPCON, 0xFF, temp);
 }
 
@@ -1326,9 +1296,8 @@ uss820dci_init(struct uss820dci_softc *sc)
 	for (n = 0;; n++) {
 		temp = USS820_READ_1(sc, USS820_MCSR);
 
-		if (temp & USS820_MCSR_INIT) {
+		if (temp & USS820_MCSR_INIT)
 			break;
-		}
 		if (n == 100) {
 			USB_BUS_UNLOCK(&sc->sc_bus);
 			return (USB_ERR_INVAL);
@@ -1444,9 +1413,8 @@ uss820dci_init(struct uss820dci_softc *sc)
 			    USS820_EPCON_RXEPEN |
 			    USS820_EPCON_TXOE |
 			    USS820_EPCON_TXEPEN;
-		} else {
+		} else
 			temp = USS820_EPCON_RXEPEN | USS820_EPCON_TXEPEN;
-		}
 
 		uss820dci_update_shared_1(sc, USS820_EPCON, 0xFF, temp);
 	}
@@ -1970,16 +1938,14 @@ uss820dci_roothub_exec(struct usb_device *udev,
 tr_handle_get_descriptor:
 	switch (value >> 8) {
 	case UDESC_DEVICE:
-		if (value & 0xff) {
+		if (value & 0xff)
 			goto tr_stalled;
-		}
 		len = sizeof(uss820dci_devd);
 		ptr = (const void *)&uss820dci_devd;
 		goto tr_valid;
 	case UDESC_CONFIG:
-		if (value & 0xff) {
+		if (value & 0xff)
 			goto tr_stalled;
-		}
 		len = sizeof(uss820dci_confd);
 		ptr = (const void *)&uss820dci_confd;
 		goto tr_valid;
@@ -2019,16 +1985,14 @@ tr_handle_get_status:
 	goto tr_valid;
 
 tr_handle_set_address:
-	if (value & 0xFF00) {
+	if (value & 0xFF00)
 		goto tr_stalled;
-	}
 	sc->sc_rt_addr = value;
 	goto tr_valid;
 
 tr_handle_set_config:
-	if (value >= 2) {
+	if (value >= 2)
 		goto tr_stalled;
-	}
 	sc->sc_conf = value;
 	goto tr_valid;
 
@@ -2053,9 +2017,8 @@ tr_handle_clear_halt:
 	goto tr_valid;
 
 tr_handle_clear_port_feature:
-	if (index != 1) {
+	if (index != 1)
 		goto tr_stalled;
-	}
 	DPRINTFN(9, "UR_CLEAR_PORT_FEATURE on port %d\n", index);
 
 	switch (value) {
@@ -2091,9 +2054,8 @@ tr_handle_clear_port_feature:
 	goto tr_valid;
 
 tr_handle_set_port_feature:
-	if (index != 1) {
+	if (index != 1)
 		goto tr_stalled;
-	}
 	DPRINTFN(9, "UR_SET_PORT_FEATURE\n");
 
 	switch (value) {
@@ -2119,49 +2081,40 @@ tr_handle_get_port_status:
 
 	DPRINTFN(9, "UR_GET_PORT_STATUS\n");
 
-	if (index != 1) {
+	if (index != 1)
 		goto tr_stalled;
-	}
 	if (sc->sc_flags.status_vbus) {
 		uss820dci_pull_up(sc);
-	} else {
+	} else
 		uss820dci_pull_down(sc);
-	}
 
 	/* Select FULL-speed and Device Side Mode */
 	value = UPS_PORT_MODE_DEVICE;
 
-	if (sc->sc_flags.port_powered) {
+	if (sc->sc_flags.port_powered)
 		value |= UPS_PORT_POWER;
-	}
-	if (sc->sc_flags.port_enabled) {
+	if (sc->sc_flags.port_enabled)
 		value |= UPS_PORT_ENABLED;
-	}
 	if (sc->sc_flags.status_vbus &&
-	    sc->sc_flags.status_bus_reset) {
+	    sc->sc_flags.status_bus_reset)
 		value |= UPS_CURRENT_CONNECT_STATUS;
-	}
-	if (sc->sc_flags.status_suspend) {
+	if (sc->sc_flags.status_suspend)
 		value |= UPS_SUSPEND;
-	}
 	USETW(sc->sc_hub_temp.ps.wPortStatus, value);
 
 	value = 0;
 
-	if (sc->sc_flags.change_connect) {
+	if (sc->sc_flags.change_connect)
 		value |= UPS_C_CONNECT_STATUS;
-	}
-	if (sc->sc_flags.change_suspend) {
+	if (sc->sc_flags.change_suspend)
 		value |= UPS_C_SUSPEND;
-	}
 	USETW(sc->sc_hub_temp.ps.wPortChange, value);
 	len = sizeof(sc->sc_hub_temp.ps);
 	goto tr_valid;
 
 tr_handle_get_class_descriptor:
-	if (value & 0xFF) {
+	if (value & 0xFF)
 		goto tr_stalled;
-	}
 	ptr = (const void *)&uss820dci_hubd;
 	len = sizeof(uss820dci_hubd);
 	goto tr_valid;
@@ -2215,16 +2168,14 @@ uss820dci_xfer_setup(struct usb_setup_params *parm)
 	} else if (parm->methods == &uss820dci_device_isoc_fs_methods) {
 		ntd = xfer->nframes + 1 /* SYNC */ ;
 
-	} else {
+	} else
 		ntd = 0;
-	}
 
 	/*
 	 * check if "usbd_transfer_setup_sub" set an error
 	 */
-	if (parm->err) {
+	if (parm->err)
 		return;
-	}
 	/*
 	 * allocate transfer descriptors
 	 */
@@ -2262,9 +2213,8 @@ uss820dci_xfer_setup(struct usb_setup_params *parm)
 			td->max_packet_size = xfer->max_packet_size;
 			td->ep_index = ep_no;
 			if (pf->support_multi_buffer &&
-			    (parm->methods != &uss820dci_device_ctrl_methods)) {
+			    (parm->methods != &uss820dci_device_ctrl_methods))
 				td->support_multi_buffer = 1;
-			}
 			td->obj_next = last_obj;
 
 			last_obj = td;

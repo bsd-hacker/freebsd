@@ -135,9 +135,8 @@ musbotg_get_hw_ep_profile(struct usb_device *udev,
 	} else if (ep_addr <= sc->sc_ep_max) {
 		/* other endpoints */
 		*ppf = sc->sc_hw_ep_profile + ep_addr;
-	} else {
+	} else
 		*ppf = NULL;
-	}
 }
 
 static void
@@ -147,9 +146,8 @@ musbotg_clocks_on(struct musbotg_softc *sc)
 	    sc->sc_flags.port_powered) {
 		DPRINTFN(4, "\n");
 
-		if (sc->sc_clocks_on) {
+		if (sc->sc_clocks_on)
 			(sc->sc_clocks_on) (sc->sc_clocks_arg);
-		}
 		sc->sc_flags.clocks_off = 0;
 
 		/* XXX enable Transceiver */
@@ -163,9 +161,8 @@ musbotg_clocks_off(struct musbotg_softc *sc)
 		DPRINTFN(4, "\n");
 
 		/* XXX disable Transceiver */
-		if (sc->sc_clocks_off) {
+		if (sc->sc_clocks_off)
 			(sc->sc_clocks_off) (sc->sc_clocks_arg);
-		}
 		sc->sc_flags.clocks_off = 1;
 	}
 }
@@ -212,9 +209,8 @@ musbotg_wakeup_peer(struct musbotg_softc *sc)
 {
 	uint8_t temp;
 
-	if (!(sc->sc_flags.status_suspend)) {
+	if (!(sc->sc_flags.status_suspend))
 		return;
-	}
 
 	temp = MUSB2_READ_1(sc, MUSB2_REG_POWER);
 	temp |= MUSB2_MASK_RESUME;
@@ -284,12 +280,10 @@ musbotg_setup_rx(struct musbotg_td *td)
 		/* update EP0 state */
 		sc->sc_ep0_busy = 0;
 	}
-	if (sc->sc_ep0_busy) {
+	if (sc->sc_ep0_busy)
 		goto not_complete;
-	}
-	if (!(csr & MUSB2_MASK_CSR0L_RXPKTRDY)) {
+	if (!(csr & MUSB2_MASK_CSR0L_RXPKTRDY))
 		goto not_complete;
-	}
 	/* clear did stall flag */
 	td->did_stall = 0;
 	/* get the packet byte count */
@@ -330,9 +324,8 @@ musbotg_setup_rx(struct musbotg_td *td)
 	if ((req.bmRequestType == UT_WRITE_DEVICE) &&
 	    (req.bRequest == UR_SET_ADDRESS)) {
 		sc->sc_dv_addr = req.wValue[0] & 0x7F;
-	} else {
+	} else
 		sc->sc_dv_addr = 0xFF;
-	}
 	return (0);			/* complete */
 
 not_complete:
@@ -390,9 +383,8 @@ musbotg_setup_data_rx(struct musbotg_td *td)
 		td->error = 1;
 		return (0);		/* complete */
 	}
-	if (!(csr & MUSB2_MASK_CSR0L_RXPKTRDY)) {
+	if (!(csr & MUSB2_MASK_CSR0L_RXPKTRDY))
 		return (1);		/* not complete */
-	}
 	/* get the packet byte count */
 	count = MUSB2_READ_2(sc, MUSB2_REG_RXCOUNT);
 
@@ -420,9 +412,8 @@ musbotg_setup_data_rx(struct musbotg_td *td)
 		usbd_get_page(td->pc, td->offset, &buf_res);
 
 		/* get correct length */
-		if (buf_res.length > count) {
+		if (buf_res.length > count)
 			buf_res.length = count;
-		}
 		/* check for unaligned memory address */
 		if (USB_P2U(buf_res.buffer) & 3) {
 			temp = count & ~3;
@@ -521,9 +512,8 @@ musbotg_setup_data_tx(struct musbotg_td *td)
 		td->error = 1;
 		return (0);		/* complete */
 	}
-	if (csr & MUSB2_MASK_CSR0L_TXPKTRDY) {
+	if (csr & MUSB2_MASK_CSR0L_TXPKTRDY)
 		return (1);		/* not complete */
-	}
 	count = td->max_frame_size;
 	if (td->remainder < count) {
 		/* we have a short packet */
@@ -536,9 +526,8 @@ musbotg_setup_data_tx(struct musbotg_td *td)
 		usbd_get_page(td->pc, td->offset, &buf_res);
 
 		/* get correct length */
-		if (buf_res.length > count) {
+		if (buf_res.length > count)
 			buf_res.length = count;
-		}
 		/* check for unaligned memory address */
 		if (USB_P2U(buf_res.buffer) & 3) {
 			usbd_copy_out(td->pc, td->offset,
@@ -670,9 +659,8 @@ repeat:
 		    MUSB2_MASK_CSRL_RXPKTRDY);
 	}
 	/* check status */
-	if (!(csr & MUSB2_MASK_CSRL_RXPKTRDY)) {
+	if (!(csr & MUSB2_MASK_CSRL_RXPKTRDY))
 		return (1);		/* not complete */
-	}
 	/* get the packet byte count */
 	count = MUSB2_READ_2(sc, MUSB2_REG_RXCOUNT);
 
@@ -704,9 +692,8 @@ repeat:
 		usbd_get_page(td->pc, td->offset, &buf_res);
 
 		/* get correct length */
-		if (buf_res.length > count) {
+		if (buf_res.length > count)
 			buf_res.length = count;
-		}
 		/* check for unaligned memory address */
 		if (USB_P2U(buf_res.buffer) & 3) {
 			temp = count & ~3;
@@ -769,9 +756,8 @@ repeat:
 		}
 		/* else need to receive a zero length packet */
 	}
-	if (--to) {
+	if (--to)
 		goto repeat;
-	}
 	return (1);			/* not complete */
 }
 
@@ -803,9 +789,8 @@ repeat:
 		/* clear status bits */
 		MUSB2_WRITE_1(sc, MUSB2_REG_TXCSRL, 0);
 	}
-	if (csr & MUSB2_MASK_CSRL_TXPKTRDY) {
+	if (csr & MUSB2_MASK_CSRL_TXPKTRDY)
 		return (1);		/* not complete */
-	}
 	/* check for short packet */
 	count = td->max_frame_size;
 	if (td->remainder < count) {
@@ -819,9 +804,8 @@ repeat:
 		usbd_get_page(td->pc, td->offset, &buf_res);
 
 		/* get correct length */
-		if (buf_res.length > count) {
+		if (buf_res.length > count)
 			buf_res.length = count;
-		}
 		/* check for unaligned memory address */
 		if (USB_P2U(buf_res.buffer) & 3) {
 			usbd_copy_out(td->pc, td->offset,
@@ -879,14 +863,12 @@ repeat:
 
 	/* check remainder */
 	if (td->remainder == 0) {
-		if (td->short_pkt) {
+		if (td->short_pkt)
 			return (0);	/* complete */
-		}
 		/* else we need to transmit a short packet */
 	}
-	if (--to) {
+	if (--to)
 		goto repeat;
-	}
 	return (1);			/* not complete */
 }
 
@@ -904,9 +886,8 @@ musbotg_xfer_do_fifo(struct usb_xfer *xfer)
 			/* operation in progress */
 			break;
 		}
-		if (((void *)td) == xfer->td_transfer_last) {
+		if (((void *)td) == xfer->td_transfer_last)
 			goto done;
-		}
 		if (td->error) {
 			goto done;
 		} else if (td->remainder > 0) {
@@ -914,9 +895,8 @@ musbotg_xfer_do_fifo(struct usb_xfer *xfer)
 			 * We had a short transfer. If there is no alternate
 			 * next, stop processing !
 			 */
-			if (!td->alt_next) {
+			if (!td->alt_next)
 				goto done;
-			}
 		}
 		/*
 		 * Fetch the next transfer descriptor and transfer
@@ -1145,9 +1125,8 @@ musbotg_setup_standard_chain(struct usb_xfer *xfer)
 			musbotg_setup_standard_chain_sub(&temp);
 		}
 		x = 1;
-	} else {
+	} else
 		x = 0;
-	}
 
 	if (x != xfer->nframes) {
 		if (xfer->endpointno & UE_DIR_IN) {
@@ -1174,12 +1153,10 @@ musbotg_setup_standard_chain(struct usb_xfer *xfer)
 		if (x == xfer->nframes) {
 			if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
 				if ((xfer->status &
-				    XFER_STATUS_CTRLACTIVE) != 0) {
+				    XFER_STATUS_CTRLACTIVE) != 0)
 					temp.setup_alt_next = 0;
-				}
-			} else {
+			} else
 				temp.setup_alt_next = 0;
-			}
 		}
 		if (temp.len == 0) {
 			/* make sure that we send an USB packet */
@@ -1335,9 +1312,8 @@ musbotg_standard_done_sub(struct usb_xfer *xfer)
 		         */
 			if (len > xfer->frlengths[xfer->aframes]) {
 				td->error = 1;
-			} else {
+			} else
 				xfer->frlengths[xfer->aframes] -= len;
-			}
 		}
 		/* Check for transfer error */
 		if (td->error) {
@@ -1352,9 +1328,8 @@ musbotg_standard_done_sub(struct usb_xfer *xfer)
 				/* follow alt next */
 				if (td->alt_next) {
 					td = td->obj_next;
-				} else {
+				} else
 					td = NULL;
-				}
 			} else {
 				/* the transfer is finished */
 				td = NULL;
@@ -1389,28 +1364,24 @@ musbotg_standard_done(struct usb_xfer *xfer)
 	xfer->td_transfer_cache = xfer->td_transfer_first;
 
 	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
-		if ((xfer->status & XFER_STATUS_CTRLHDR) != 0) {
+		if ((xfer->status & XFER_STATUS_CTRLHDR) != 0)
 			err = musbotg_standard_done_sub(xfer);
-		}
 		xfer->aframes = 1;
 
-		if (xfer->td_transfer_cache == NULL) {
+		if (xfer->td_transfer_cache == NULL)
 			goto done;
-		}
 	}
 	while (xfer->aframes != xfer->nframes) {
 		err = musbotg_standard_done_sub(xfer);
 		xfer->aframes++;
 
-		if (xfer->td_transfer_cache == NULL) {
+		if (xfer->td_transfer_cache == NULL)
 			goto done;
-		}
 	}
 
 	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0 &&
-	    (xfer->status & XFER_STATUS_CTRLACTIVE) == 0) {
+	    (xfer->status & XFER_STATUS_CTRLACTIVE) == 0)
 		err = musbotg_standard_done_sub(xfer);
-	}
 done:
 	musbotg_device_done(xfer, err);
 }
@@ -1614,9 +1585,8 @@ musbotg_clear_stall_sub(struct musbotg_softc *sc, uint16_t wMaxPacket,
 		MUSB2_WRITE_2(sc, MUSB2_REG_RXDBDIS, temp);
 
 		/* clear sent stall */
-		if (csr & MUSB2_MASK_CSRL_RXSENTSTALL) {
+		if (csr & MUSB2_MASK_CSRL_RXSENTSTALL)
 			MUSB2_WRITE_1(sc, MUSB2_REG_RXCSRL, 0);
-		}
 	}
 }
 
@@ -1671,9 +1641,8 @@ musbotg_init(struct musbotg_softc *sc)
 	USB_BUS_LOCK(&sc->sc_bus);
 
 	/* turn on clocks */
-	if (sc->sc_clocks_on) {
+	if (sc->sc_clocks_on)
 		(sc->sc_clocks_on) (sc->sc_clocks_arg);
-	}
 	/* wait a little for things to stabilise */
 	usb_pause_mtx(&sc->sc_bus.bus_mtx, hz / 1000);
 
@@ -1723,9 +1692,8 @@ musbotg_init(struct musbotg_softc *sc)
 	DPRINTFN(2, "RX/TX endpoints: %u/%u\n", nrx, ntx);
 
 	sc->sc_ep_max = (nrx > ntx) ? nrx : ntx;
-	if (sc->sc_ep_max == 0) {
+	if (sc->sc_ep_max == 0)
 		DPRINTFN(2, "ERROR: Looks like the clocks are off!\n");
-	}
 	/* read out configuration data */
 	sc->sc_conf_data = MUSB2_READ_1(sc, MUSB2_REG_CONFDATA);
 
@@ -2049,9 +2017,8 @@ musbotg_device_isoc_enter(struct usb_xfer *xfer)
 
 	if (usbd_get_speed(xfer->xroot->udev) == USB_SPEED_HIGH) {
 		fs_frames = (xfer->nframes + 7) / 8;
-	} else {
+	} else
 		fs_frames = xfer->nframes;
-	}
 
 	if ((xfer->endpoint->is_synced == 0) ||
 	    (temp < fs_frames)) {
@@ -2371,16 +2338,14 @@ musbotg_roothub_exec(struct usb_device *udev,
 tr_handle_get_descriptor:
 	switch (value >> 8) {
 	case UDESC_DEVICE:
-		if (value & 0xff) {
+		if (value & 0xff)
 			goto tr_stalled;
-		}
 		len = sizeof(musbotg_devd);
 		ptr = (const void *)&musbotg_devd;
 		goto tr_valid;
 	case UDESC_CONFIG:
-		if (value & 0xff) {
+		if (value & 0xff)
 			goto tr_stalled;
-		}
 		len = sizeof(musbotg_confd);
 		ptr = (const void *)&musbotg_confd;
 		goto tr_valid;
@@ -2420,16 +2385,14 @@ tr_handle_get_status:
 	goto tr_valid;
 
 tr_handle_set_address:
-	if (value & 0xFF00) {
+	if (value & 0xFF00)
 		goto tr_stalled;
-	}
 	sc->sc_rt_addr = value;
 	goto tr_valid;
 
 tr_handle_set_config:
-	if (value >= 2) {
+	if (value >= 2)
 		goto tr_stalled;
-	}
 	sc->sc_conf = value;
 	goto tr_valid;
 
@@ -2454,9 +2417,8 @@ tr_handle_clear_halt:
 	goto tr_valid;
 
 tr_handle_clear_port_feature:
-	if (index != 1) {
+	if (index != 1)
 		goto tr_stalled;
-	}
 	DPRINTFN(8, "UR_CLEAR_PORT_FEATURE on port %d\n", index);
 
 	switch (value) {
@@ -2493,9 +2455,8 @@ tr_handle_clear_port_feature:
 	goto tr_valid;
 
 tr_handle_set_port_feature:
-	if (index != 1) {
+	if (index != 1)
 		goto tr_stalled;
-	}
 	DPRINTFN(8, "UR_SET_PORT_FEATURE\n");
 
 	switch (value) {
@@ -2521,9 +2482,8 @@ tr_handle_get_port_status:
 
 	DPRINTFN(8, "UR_GET_PORT_STATUS\n");
 
-	if (index != 1) {
+	if (index != 1)
 		goto tr_stalled;
-	}
 	if (sc->sc_flags.status_vbus) {
 		musbotg_clocks_on(sc);
 		musbotg_pull_up(sc);
@@ -2535,22 +2495,17 @@ tr_handle_get_port_status:
 	/* Select Device Side Mode */
 	value = UPS_PORT_MODE_DEVICE;
 
-	if (sc->sc_flags.status_high_speed) {
+	if (sc->sc_flags.status_high_speed)
 		value |= UPS_HIGH_SPEED;
-	}
-	if (sc->sc_flags.port_powered) {
+	if (sc->sc_flags.port_powered)
 		value |= UPS_PORT_POWER;
-	}
-	if (sc->sc_flags.port_enabled) {
+	if (sc->sc_flags.port_enabled)
 		value |= UPS_PORT_ENABLED;
-	}
 	if (sc->sc_flags.status_vbus &&
-	    sc->sc_flags.status_bus_reset) {
+	    sc->sc_flags.status_bus_reset)
 		value |= UPS_CURRENT_CONNECT_STATUS;
-	}
-	if (sc->sc_flags.status_suspend) {
+	if (sc->sc_flags.status_suspend)
 		value |= UPS_SUSPEND;
-	}
 	USETW(sc->sc_hub_temp.ps.wPortStatus, value);
 
 	value = 0;
@@ -2565,17 +2520,15 @@ tr_handle_get_port_status:
 			sc->sc_ep0_cmd = 0;
 		}
 	}
-	if (sc->sc_flags.change_suspend) {
+	if (sc->sc_flags.change_suspend)
 		value |= UPS_C_SUSPEND;
-	}
 	USETW(sc->sc_hub_temp.ps.wPortChange, value);
 	len = sizeof(sc->sc_hub_temp.ps);
 	goto tr_valid;
 
 tr_handle_get_class_descriptor:
-	if (value & 0xFF) {
+	if (value & 0xFF)
 		goto tr_stalled;
-	}
 	ptr = (const void *)&musbotg_hubd;
 	len = sizeof(musbotg_hubd);
 	goto tr_valid;
@@ -2634,16 +2587,14 @@ musbotg_xfer_setup(struct usb_setup_params *parm)
 	} else if (parm->methods == &musbotg_device_isoc_methods) {
 		ntd = xfer->nframes + 1 /* SYNC */ ;
 
-	} else {
+	} else
 		ntd = 0;
-	}
 
 	/*
 	 * check if "usbd_transfer_setup_sub" set an error
 	 */
-	if (parm->err) {
+	if (parm->err)
 		return;
-	}
 	/*
 	 * allocate transfer descriptors
 	 */

@@ -72,9 +72,8 @@ device_delete_all_children(device_t dev)
 	if (error == 0) {
 		while (devcount-- > 0) {
 			error = device_delete_child(dev, devlist[devcount]);
-			if (error) {
+			if (error)
 				break;
-			}
 		}
 		free(devlist, M_TEMP);
 	}
@@ -113,9 +112,8 @@ device_set_usb_desc(device_t dev)
 	    (iface->idesc == NULL) ||
 	    (iface->idesc->iInterface == 0)) {
 		err = USB_ERR_INVAL;
-	} else {
+	} else
 		err = 0;
-	}
 
 	temp_p = (char *)udev->bus->scratch[0].data;
 
@@ -178,9 +176,8 @@ void
 usb_printbcd(char *p, uint16_t p_len, uint16_t bcd)
 {
 
-	if (snprintf(p, p_len, "%x.%02x", bcd >> 8, bcd & 0xff)) {
-		/* ignore any errors */
-	}
+	/* ignore any errors */
+	(void)snprintf(p, p_len, "%x.%02x", bcd >> 8, bcd & 0xff);
 }
 
 /*------------------------------------------------------------------------*
@@ -224,22 +221,18 @@ usb_make_str_desc(void *ptr, uint16_t max_len, const char *s)
 
 	j = strlen(s);
 
-	if (j < 0) {
+	if (j < 0)
 		j = 0;
-	}
-	if (j > 126) {
+	if (j > 126)
 		j = 126;
-	}
-	if (max_len > j) {
+	if (max_len > j)
 		max_len = j;
-	}
 	totlen = (max_len + 1) * 2;
 
 	p->bLength = totlen;
 	p->bDescriptorType = UDESC_STRING;
 
-	while (max_len--) {
+	while (max_len--)
 		USETW2(p->bString[max_len], 0, s[max_len]);
-	}
 	return (totlen);
 }

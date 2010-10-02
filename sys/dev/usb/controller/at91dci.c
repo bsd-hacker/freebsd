@@ -204,9 +204,8 @@ at91dci_get_hw_ep_profile(struct usb_device *udev,
 
 	if (ep_addr < AT91_UDP_EP_MAX) {
 		*ppf = (at91dci_ep_profile + ep_addr);
-	} else {
+	} else
 		*ppf = NULL;
-	}
 }
 
 static void
@@ -216,9 +215,8 @@ at91dci_clocks_on(struct at91dci_softc *sc)
 	if (sc->sc_flags.clocks_off &&
 	    sc->sc_flags.port_powered) {
 		DPRINTFN(5, "\n");
-		if (sc->sc_clocks_on) {
+		if (sc->sc_clocks_on)
 			(sc->sc_clocks_on) (sc->sc_clocks_arg);
-		}
 		sc->sc_flags.clocks_off = 0;
 
 		/* enable Transceiver */
@@ -236,9 +234,8 @@ at91dci_clocks_off(struct at91dci_softc *sc)
 		/* disable Transceiver */
 		AT91_UDP_WRITE_4(sc, AT91_UDP_TXVC, AT91_UDP_TXVC_DIS);
 
-		if (sc->sc_clocks_off) {
+		if (sc->sc_clocks_off)
 			(sc->sc_clocks_off) (sc->sc_clocks_arg);
-		}
 		sc->sc_flags.clocks_off = 1;
 	}
 }
@@ -270,9 +267,8 @@ static void
 at91dci_wakeup_peer(struct at91dci_softc *sc)
 {
 
-	if (!(sc->sc_flags.status_suspend)) {
+	if (!(sc->sc_flags.status_suspend))
 		return;
-	}
 
 	AT91_UDP_WRITE_4(sc, AT91_UDP_GSTATE, AT91_UDP_GSTATE_ESR);
 
@@ -315,9 +311,8 @@ at91dci_setup_rx(struct at91dci_td *td)
 	    AT91_UDP_CSR_RXSETUP |
 	    AT91_UDP_CSR_TXCOMP);
 
-	if (!(csr & AT91_UDP_CSR_RXSETUP)) {
+	if (!(csr & AT91_UDP_CSR_RXSETUP))
 		goto not_complete;
-	}
 	/* clear did stall */
 	td->did_stall = 0;
 
@@ -352,16 +347,14 @@ at91dci_setup_rx(struct at91dci_td *td)
 	if ((req.bmRequestType == UT_WRITE_DEVICE) &&
 	    (req.bRequest == UR_SET_ADDRESS)) {
 		sc->sc_dv_addr = req.wValue[0] & 0x7F;
-	} else {
+	} else
 		sc->sc_dv_addr = 0xFF;
-	}
 
 	/* sneak peek the endpoint direction */
 	if (req.bmRequestType & UE_DIR_IN) {
 		csr |= AT91_UDP_CSR_DIR;
-	} else {
+	} else
 		csr &= ~AT91_UDP_CSR_DIR;
-	}
 
 	/* write the direction of the control transfer */
 	AT91_CSR_ACK(csr, temp);
@@ -462,9 +455,8 @@ repeat:
 		usbd_get_page(td->pc, td->offset, &buf_res);
 
 		/* get correct length */
-		if (buf_res.length > count) {
+		if (buf_res.length > count)
 			buf_res.length = count;
-		}
 		/* receive data */
 		bus_space_read_multi_1(td->io_tag, td->io_hdl,
 		    td->fifo_reg, buf_res.buffer, buf_res.length);
@@ -507,9 +499,8 @@ repeat:
 		}
 		/* else need to receive a zero length packet */
 	}
-	if (--to) {
+	if (--to)
 		goto repeat;
-	}
 	return (1);			/* not complete */
 }
 
@@ -567,9 +558,8 @@ repeat:
 		usbd_get_page(td->pc, td->offset, &buf_res);
 
 		/* get correct length */
-		if (buf_res.length > count) {
+		if (buf_res.length > count)
 			buf_res.length = count;
-		}
 		/* transmit data */
 		bus_space_write_multi_1(td->io_tag, td->io_hdl,
 		    td->fifo_reg, buf_res.buffer, buf_res.length);
@@ -587,14 +577,12 @@ repeat:
 
 	/* check remainder */
 	if (td->remainder == 0) {
-		if (td->short_pkt) {
+		if (td->short_pkt)
 			return (0);	/* complete */
-		}
 		/* else we need to transmit a short packet */
 	}
-	if (--to) {
+	if (--to)
 		goto repeat;
-	}
 	return (1);			/* not complete */
 }
 
@@ -625,12 +613,10 @@ repeat:
 	    AT91_UDP_CSR_TXCOMP);
 
 	/* check status */
-	if (csr & AT91_UDP_CSR_TXPKTRDY) {
+	if (csr & AT91_UDP_CSR_TXPKTRDY)
 		goto not_complete;
-	}
-	if (!(csr & AT91_UDP_CSR_TXCOMP)) {
+	if (!(csr & AT91_UDP_CSR_TXCOMP))
 		goto not_complete;
-	}
 	sc = AT9100_DCI_PC2SC(td->pc);
 	if (sc->sc_dv_addr != 0xFF) {
 		/*
@@ -671,9 +657,8 @@ at91dci_xfer_do_fifo(struct usb_xfer *xfer)
 			/* operation in progress */
 			break;
 		}
-		if (((void *)td) == xfer->td_transfer_last) {
+		if (((void *)td) == xfer->td_transfer_last)
 			goto done;
-		}
 		if (td->error) {
 			goto done;
 		} else if (td->remainder > 0) {
@@ -681,9 +666,8 @@ at91dci_xfer_do_fifo(struct usb_xfer *xfer)
 			 * We had a short transfer. If there is no alternate
 			 * next, stop processing !
 			 */
-			if (!td->alt_next) {
+			if (!td->alt_next)
 				goto done;
-			}
 		}
 		/*
 		 * Fetch the next transfer descriptor and transfer
@@ -705,9 +689,8 @@ done:
 	/* update FIFO bank flag and multi buffer */
 	if (td->fifo_bank) {
 		sc->sc_ep_flags[temp].fifo_bank = 1;
-	} else {
+	} else
 		sc->sc_ep_flags[temp].fifo_bank = 0;
-	}
 
 	/* compute all actual lengths */
 	at91dci_standard_done(xfer);
@@ -910,9 +893,8 @@ at91dci_setup_standard_chain(struct usb_xfer *xfer)
 			at91dci_setup_standard_chain_sub(&temp);
 		}
 		x = 1;
-	} else {
+	} else
 		x = 0;
-	}
 
 	if (x != xfer->nframes) {
 		if (xfer->endpointno & UE_DIR_IN) {
@@ -925,9 +907,8 @@ at91dci_setup_standard_chain(struct usb_xfer *xfer)
 
 		/* setup "pc" pointer */
 		temp.pc = xfer->frbuffers + x;
-	} else {
+	} else
 		need_sync = 0;
-	}
 	while (x != xfer->nframes) {
 		/* DATA0 / DATA1 message */
 		temp.len = xfer->frlengths[x];
@@ -937,12 +918,10 @@ at91dci_setup_standard_chain(struct usb_xfer *xfer)
 		if (x == xfer->nframes) {
 			if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
 				if ((xfer->status &
-				    XFER_STATUS_CTRLACTIVE) != 0) {
+				    XFER_STATUS_CTRLACTIVE) != 0)
 					temp.setup_alt_next = 0;
-				}
-			} else {
+			} else
 				temp.setup_alt_next = 0;
-			}
 		}
 		if (temp.len == 0) {
 			/* make sure that we send an USB packet */
@@ -1092,9 +1071,8 @@ at91dci_standard_done_sub(struct usb_xfer *xfer)
 		         */
 			if (len > xfer->frlengths[xfer->aframes]) {
 				td->error = 1;
-			} else {
+			} else
 				xfer->frlengths[xfer->aframes] -= len;
-			}
 		}
 		/* Check for transfer error */
 		if (td->error) {
@@ -1109,9 +1087,8 @@ at91dci_standard_done_sub(struct usb_xfer *xfer)
 				/* follow alt next */
 				if (td->alt_next) {
 					td = td->obj_next;
-				} else {
+				} else
 					td = NULL;
-				}
 			} else {
 				/* the transfer is finished */
 				td = NULL;
@@ -1146,28 +1123,24 @@ at91dci_standard_done(struct usb_xfer *xfer)
 	xfer->td_transfer_cache = xfer->td_transfer_first;
 
 	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
-		if ((xfer->status & XFER_STATUS_CTRLHDR) != 0) {
+		if ((xfer->status & XFER_STATUS_CTRLHDR) != 0)
 			err = at91dci_standard_done_sub(xfer);
-		}
 		xfer->aframes = 1;
 
-		if (xfer->td_transfer_cache == NULL) {
+		if (xfer->td_transfer_cache == NULL)
 			goto done;
-		}
 	}
 	while (xfer->aframes != xfer->nframes) {
 		err = at91dci_standard_done_sub(xfer);
 		xfer->aframes++;
 
-		if (xfer->td_transfer_cache == NULL) {
+		if (xfer->td_transfer_cache == NULL)
 			goto done;
-		}
 	}
 
 	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0 &&
-	    (xfer->status & XFER_STATUS_CTRLACTIVE) == 0) {
+	    (xfer->status & XFER_STATUS_CTRLACTIVE) == 0)
 		err = at91dci_standard_done_sub(xfer);
-	}
 done:
 	at91dci_device_done(xfer, err);
 }
@@ -1283,9 +1256,8 @@ at91dci_clear_stall_sub(struct at91dci_softc *sc, uint8_t ep_no,
 				temp = (AT91_UDP_CSR_RX_DATA_BK0 |
 				    AT91_UDP_CSR_RX_DATA_BK1);
 			}
-		} else {
+		} else
 			temp = 0;
-		}
 
 		/* clear FORCESTALL */
 		temp |= AT91_UDP_CSR_STALLSENT;
@@ -1309,12 +1281,10 @@ at91dci_clear_stall_sub(struct at91dci_softc *sc, uint8_t ep_no,
 			csr_val |= AT91_UDP_CSR_ET_BULK;
 		} else if (ep_type == UE_INTERRUPT) {
 			csr_val |= AT91_UDP_CSR_ET_INT;
-		} else {
+		} else
 			csr_val |= AT91_UDP_CSR_ET_ISO;
-		}
-		if (ep_dir & UE_DIR_IN) {
+		if (ep_dir & UE_DIR_IN)
 			csr_val |= AT91_UDP_CSR_ET_DIR_IN;
-		}
 	}
 
 	/* enable endpoint */
@@ -1364,9 +1334,8 @@ at91dci_init(struct at91dci_softc *sc)
 	USB_BUS_LOCK(&sc->sc_bus);
 
 	/* turn on clocks */
-	if (sc->sc_clocks_on) {
+	if (sc->sc_clocks_on)
 		(sc->sc_clocks_on) (sc->sc_clocks_arg);
-	}
 	/* wait a little for things to stabilise */
 	usb_pause_mtx(&sc->sc_bus.bus_mtx, hz / 1000);
 
@@ -1912,16 +1881,14 @@ at91dci_roothub_exec(struct usb_device *udev,
 tr_handle_get_descriptor:
 	switch (value >> 8) {
 	case UDESC_DEVICE:
-		if (value & 0xff) {
+		if (value & 0xff)
 			goto tr_stalled;
-		}
 		len = sizeof(at91dci_devd);
 		ptr = (const void *)&at91dci_devd;
 		goto tr_valid;
 	case UDESC_CONFIG:
-		if (value & 0xff) {
+		if (value & 0xff)
 			goto tr_stalled;
-		}
 		len = sizeof(at91dci_confd);
 		ptr = (const void *)&at91dci_confd;
 		goto tr_valid;
@@ -1961,16 +1928,14 @@ tr_handle_get_status:
 	goto tr_valid;
 
 tr_handle_set_address:
-	if (value & 0xFF00) {
+	if (value & 0xFF00)
 		goto tr_stalled;
-	}
 	sc->sc_rt_addr = value;
 	goto tr_valid;
 
 tr_handle_set_config:
-	if (value >= 2) {
+	if (value >= 2)
 		goto tr_stalled;
-	}
 	sc->sc_conf = value;
 	goto tr_valid;
 
@@ -1995,9 +1960,8 @@ tr_handle_clear_halt:
 	goto tr_valid;
 
 tr_handle_clear_port_feature:
-	if (index != 1) {
+	if (index != 1)
 		goto tr_stalled;
-	}
 	DPRINTFN(9, "UR_CLEAR_PORT_FEATURE on port %d\n", index);
 
 	switch (value) {
@@ -2034,9 +1998,8 @@ tr_handle_clear_port_feature:
 	goto tr_valid;
 
 tr_handle_set_port_feature:
-	if (index != 1) {
+	if (index != 1)
 		goto tr_stalled;
-	}
 	DPRINTFN(9, "UR_SET_PORT_FEATURE\n");
 
 	switch (value) {
@@ -2062,9 +2025,8 @@ tr_handle_get_port_status:
 
 	DPRINTFN(9, "UR_GET_PORT_STATUS\n");
 
-	if (index != 1) {
+	if (index != 1)
 		goto tr_stalled;
-	}
 	if (sc->sc_flags.status_vbus) {
 		at91dci_clocks_on(sc);
 		at91dci_pull_up(sc);
@@ -2076,19 +2038,15 @@ tr_handle_get_port_status:
 	/* Select FULL-speed and Device Side Mode */
 	value = UPS_PORT_MODE_DEVICE;
 
-	if (sc->sc_flags.port_powered) {
+	if (sc->sc_flags.port_powered)
 		value |= UPS_PORT_POWER;
-	}
-	if (sc->sc_flags.port_enabled) {
+	if (sc->sc_flags.port_enabled)
 		value |= UPS_PORT_ENABLED;
-	}
 	if (sc->sc_flags.status_vbus &&
-	    sc->sc_flags.status_bus_reset) {
+	    sc->sc_flags.status_bus_reset)
 		value |= UPS_CURRENT_CONNECT_STATUS;
-	}
-	if (sc->sc_flags.status_suspend) {
+	if (sc->sc_flags.status_suspend)
 		value |= UPS_SUSPEND;
-	}
 	USETW(sc->sc_hub_temp.ps.wPortStatus, value);
 
 	value = 0;
@@ -2102,17 +2060,15 @@ tr_handle_get_port_status:
 			bzero(sc->sc_ep_flags, sizeof(sc->sc_ep_flags));
 		}
 	}
-	if (sc->sc_flags.change_suspend) {
+	if (sc->sc_flags.change_suspend)
 		value |= UPS_C_SUSPEND;
-	}
 	USETW(sc->sc_hub_temp.ps.wPortChange, value);
 	len = sizeof(sc->sc_hub_temp.ps);
 	goto tr_valid;
 
 tr_handle_get_class_descriptor:
-	if (value & 0xFF) {
+	if (value & 0xFF)
 		goto tr_stalled;
-	}
 	ptr = (const void *)&at91dci_hubd;
 	len = sizeof(at91dci_hubd);
 	goto tr_valid;
@@ -2167,16 +2123,14 @@ at91dci_xfer_setup(struct usb_setup_params *parm)
 	} else if (parm->methods == &at91dci_device_isoc_fs_methods) {
 		ntd = xfer->nframes + 1 /* SYNC */ ;
 
-	} else {
+	} else
 		ntd = 0;
-	}
 
 	/*
 	 * check if "usbd_transfer_setup_sub" set an error
 	 */
-	if (parm->err) {
+	if (parm->err)
 		return;
-	}
 	/*
 	 * allocate transfer descriptors
 	 */
@@ -2214,9 +2168,8 @@ at91dci_xfer_setup(struct usb_setup_params *parm)
 			td->max_packet_size = xfer->max_packet_size;
 			td->status_reg = AT91_UDP_CSR(ep_no);
 			td->fifo_reg = AT91_UDP_FDR(ep_no);
-			if (pf->support_multi_buffer) {
+			if (pf->support_multi_buffer)
 				td->support_multi_buffer = 1;
-			}
 			td->obj_next = last_obj;
 
 			last_obj = td;

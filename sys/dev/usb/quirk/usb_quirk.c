@@ -539,18 +539,16 @@ usb_test_quirk_by_info(const struct usbd_lookup_info *info, uint16_t quirk)
 	uint16_t x;
 	uint16_t y;
 
-	if (quirk == UQ_NONE) {
+	if (quirk == UQ_NONE)
 		return (0);
-	}
 	mtx_lock(&usb_quirk_mtx);
 
 	for (x = 0; x != USB_DEV_QUIRKS_MAX; x++) {
 		/* see if quirk information does not match */
 		if ((usb_quirks[x].vid != info->idVendor) ||
 		    (usb_quirks[x].lo_rev > info->bcdDevice) ||
-		    (usb_quirks[x].hi_rev < info->bcdDevice)) {
+		    (usb_quirks[x].hi_rev < info->bcdDevice))
 			continue;
-		}
 		/* see if quirk only should match vendor ID */
 		if (usb_quirks[x].pid != info->idProduct) {
 			if (usb_quirks[x].pid != 0)
@@ -596,9 +594,8 @@ usb_quirk_get_entry(uint16_t vid, uint16_t pid,
 		if ((usb_quirks[x].vid != vid) ||
 		    (usb_quirks[x].pid != pid) ||
 		    (usb_quirks[x].lo_rev != lo_rev) ||
-		    (usb_quirks[x].hi_rev != hi_rev)) {
+		    (usb_quirks[x].hi_rev != hi_rev))
 			continue;
-		}
 		return (usb_quirks + x);
 	}
 
@@ -612,9 +609,8 @@ usb_quirk_get_entry(uint16_t vid, uint16_t pid,
 		if ((usb_quirks[x].vid |
 		    usb_quirks[x].pid |
 		    usb_quirks[x].lo_rev |
-		    usb_quirks[x].hi_rev) != 0) {
+		    usb_quirks[x].hi_rev) != 0)
 			continue;
-		}
 		usb_quirks[x].vid = vid;
 		usb_quirks[x].pid = pid;
 		usb_quirks[x].lo_rev = lo_rev;
@@ -649,9 +645,8 @@ usb_quirk_ioctl(unsigned long cmd, caddr_t data,
 		pgq = (void *)data;
 		x = pgq->index % USB_SUB_QUIRKS_MAX;
 		y = pgq->index / USB_SUB_QUIRKS_MAX;
-		if (y >= USB_DEV_QUIRKS_MAX) {
+		if (y >= USB_DEV_QUIRKS_MAX)
 			return (EINVAL);
-		}
 		mtx_lock(&usb_quirk_mtx);
 		/* copy out data */
 		pgq->vid = usb_quirks[y].vid;
@@ -667,9 +662,8 @@ usb_quirk_ioctl(unsigned long cmd, caddr_t data,
 	case USB_QUIRK_NAME_GET:
 		pgq = (void *)data;
 		x = pgq->index;
-		if (x >= USB_QUIRK_MAX) {
+		if (x >= USB_QUIRK_MAX)
 			return (EINVAL);
-		}
 		strlcpy(pgq->quirkname,
 		    usb_quirkstr(x), sizeof(pgq->quirkname));
 		return (0);		/* success */
@@ -679,21 +673,17 @@ usb_quirk_ioctl(unsigned long cmd, caddr_t data,
 
 		/* check privileges */
 		err = priv_check(curthread, PRIV_DRIVER);
-		if (err) {
+		if (err)
 			return (err);
-		}
 		/* convert quirk string into numerical */
 		for (y = 0; y != USB_DEV_QUIRKS_MAX; y++) {
-			if (strcmp(pgq->quirkname, usb_quirkstr(y)) == 0) {
+			if (strcmp(pgq->quirkname, usb_quirkstr(y)) == 0)
 				break;
-			}
 		}
-		if (y == USB_DEV_QUIRKS_MAX) {
+		if (y == USB_DEV_QUIRKS_MAX)
 			return (EINVAL);
-		}
-		if (y == UQ_NONE) {
+		if (y == UQ_NONE)
 			return (EINVAL);
-		}
 		mtx_lock(&usb_quirk_mtx);
 		pqe = usb_quirk_get_entry(pgq->vid, pgq->pid,
 		    pgq->bcdDeviceLow, pgq->bcdDeviceHigh, 1);
@@ -708,30 +698,25 @@ usb_quirk_ioctl(unsigned long cmd, caddr_t data,
 			}
 		}
 		mtx_unlock(&usb_quirk_mtx);
-		if (x == USB_SUB_QUIRKS_MAX) {
+		if (x == USB_SUB_QUIRKS_MAX)
 			return (ENOMEM);
-		}
 		return (0);		/* success */
 
 	case USB_DEV_QUIRK_REMOVE:
 		pgq = (void *)data;
 		/* check privileges */
 		err = priv_check(curthread, PRIV_DRIVER);
-		if (err) {
+		if (err)
 			return (err);
-		}
 		/* convert quirk string into numerical */
 		for (y = 0; y != USB_DEV_QUIRKS_MAX; y++) {
-			if (strcmp(pgq->quirkname, usb_quirkstr(y)) == 0) {
+			if (strcmp(pgq->quirkname, usb_quirkstr(y)) == 0)
 				break;
-			}
 		}
-		if (y == USB_DEV_QUIRKS_MAX) {
+		if (y == USB_DEV_QUIRKS_MAX)
 			return (EINVAL);
-		}
-		if (y == UQ_NONE) {
+		if (y == UQ_NONE)
 			return (EINVAL);
-		}
 		mtx_lock(&usb_quirk_mtx);
 		pqe = usb_quirk_get_entry(pgq->vid, pgq->pid,
 		    pgq->bcdDeviceLow, pgq->bcdDeviceHigh, 0);
@@ -750,9 +735,8 @@ usb_quirk_ioctl(unsigned long cmd, caddr_t data,
 			return (ENOMEM);
 		}
 		for (x = 0; x != USB_SUB_QUIRKS_MAX; x++) {
-			if (pqe->quirks[x] != UQ_NONE) {
+			if (pqe->quirks[x] != UQ_NONE)
 				break;
-			}
 		}
 		if (x == USB_SUB_QUIRKS_MAX) {
 			/* all quirk entries are unused - release */

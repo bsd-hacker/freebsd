@@ -103,13 +103,11 @@ ohci_s3c24x0_attach(device_t dev)
 	rid = 0;
 	sc->sc_irq_res = bus_alloc_resource_any(dev, SYS_RES_IRQ, &rid,
 	    RF_ACTIVE);
-	if (!(sc->sc_irq_res)) {
+	if (!(sc->sc_irq_res))
 		goto error;
-	}
 	sc->sc_bus.bdev = device_add_child(dev, "usbus", -1);
-	if (!(sc->sc_bus.bdev)) {
+	if (!(sc->sc_bus.bdev))
 		goto error;
-	}
 	device_set_ivars(sc->sc_bus.bdev, &sc->sc_bus);
 
 	strlcpy(sc->sc_vendor, "Samsung", sizeof(sc->sc_vendor));
@@ -125,12 +123,10 @@ ohci_s3c24x0_attach(device_t dev)
 	    OHCI_CONTROL, 0);
 
 	err = ohci_init(sc);
-	if (!err) {
+	if (!err)
 		err = device_probe_and_attach(sc->sc_bus.bdev);
-	}
-	if (err) {
+	if (err)
 		goto error;
-	}
 	return (0);
 
 error:

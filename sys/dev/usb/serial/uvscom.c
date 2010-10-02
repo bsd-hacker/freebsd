@@ -269,15 +269,12 @@ uvscom_probe(device_t dev)
 {
 	struct usb_attach_arg *uaa = device_get_ivars(dev);
 
-	if (uaa->usb_mode != USB_MODE_HOST) {
+	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	}
-	if (uaa->info.bConfigIndex != UVSCOM_CONFIG_INDEX) {
+	if (uaa->info.bConfigIndex != UVSCOM_CONFIG_INDEX)
 		return (ENXIO);
-	}
-	if (uaa->info.bIfaceIndex != UVSCOM_IFACE_INDEX) {
+	if (uaa->info.bIfaceIndex != UVSCOM_IFACE_INDEX)
 		return (ENXIO);
-	}
 	return (usbd_lookup_id_by_uaa(uvscom_devs, sizeof(uvscom_devs), uaa));
 }
 
@@ -313,9 +310,8 @@ uvscom_attach(device_t dev)
 	mtx_unlock(&sc->sc_mtx);
 
 	error = ucom_attach(&sc->sc_ucom, 1, sc, &uvscom_callback, &sc->sc_mtx);
-	if (error) {
+	if (error)
 		goto detach;
-	}
 	/* start interrupt pipe */
 	mtx_lock(&sc->sc_mtx);
 	usbd_transfer_start(sc->sc_xfer[UVSCOM_INTR_DT_RD]);
@@ -425,21 +421,16 @@ uvscom_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 			sc->sc_msr = 0;
 			sc->sc_unit_status = buf[1];
 
-			if (buf[0] & UVSCOM_TXRDY) {
+			if (buf[0] & UVSCOM_TXRDY)
 				sc->sc_lsr |= ULSR_TXRDY;
-			}
-			if (buf[0] & UVSCOM_RXRDY) {
+			if (buf[0] & UVSCOM_RXRDY)
 				sc->sc_lsr |= ULSR_RXRDY;
-			}
-			if (buf[1] & UVSCOM_CTS) {
+			if (buf[1] & UVSCOM_CTS)
 				sc->sc_msr |= SER_CTS;
-			}
-			if (buf[1] & UVSCOM_DSR) {
+			if (buf[1] & UVSCOM_DSR)
 				sc->sc_msr |= SER_DSR;
-			}
-			if (buf[1] & UVSCOM_DCD) {
+			if (buf[1] & UVSCOM_DCD)
 				sc->sc_msr |= SER_DCD;
-			}
 			/*
 			 * the UCOM layer will ignore this call if the TTY
 			 * device is closed!
@@ -578,18 +569,15 @@ uvscom_cfg_param(struct ucom_softc *ucom, struct termios *t)
 
 	value = 0;
 
-	if (t->c_cflag & CSTOPB) {
+	if (t->c_cflag & CSTOPB)
 		value |= UVSCOM_STOP_BIT_2;
-	}
 	if (t->c_cflag & PARENB) {
 		if (t->c_cflag & PARODD) {
 			value |= UVSCOM_PARITY_ODD;
-		} else {
+		} else
 			value |= UVSCOM_PARITY_EVEN;
-		}
-	} else {
+	} else
 		value |= UVSCOM_PARITY_NONE;
-	}
 
 	switch (t->c_cflag & CSIZE) {
 	case CS5:

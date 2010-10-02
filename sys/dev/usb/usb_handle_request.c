@@ -221,11 +221,10 @@ usb_handle_iface_request(struct usb_xfer *xfer,
 	uint8_t iface_index;
 	uint8_t temp_state;
 
-	if ((req.bmRequestType & 0x1F) == UT_INTERFACE) {
+	if ((req.bmRequestType & 0x1F) == UT_INTERFACE)
 		iface_index = req.wIndex[0];	/* unicast */
-	} else {
+	else
 		iface_index = 0;	/* broadcast */
-	}
 
 	/*
 	 * We need to protect against other threads doing probe and
@@ -287,9 +286,8 @@ tr_repeat:
 			goto tr_short;
 		else
 			goto tr_valid;
-	} else if (error == ENOTTY) {
+	} else if (error == ENOTTY)
 		goto tr_stalled;
-	}
 	if ((req.bmRequestType & 0x1F) != UT_INTERFACE) {
 		iface_index++;		/* iterate */
 		goto tr_repeat;
@@ -424,11 +422,10 @@ usb_handle_remote_wakeup(struct usb_xfer *xfer, uint8_t is_on)
 
 	USB_BUS_LOCK(bus);
 
-	if (is_on) {
+	if (is_on)
 		udev->flags.remote_wakeup = 1;
-	} else {
+	else
 		udev->flags.remote_wakeup = 0;
-	}
 
 	USB_BUS_UNLOCK(bus);
 
@@ -483,11 +480,10 @@ usb_handle_request(struct usb_xfer *xfer)
 		}
 		break;
 	case USB_ST_TRANSFERRED:
-		if ((xfer->status & XFER_STATUS_CTRLACTIVE) == 0) {
+		if ((xfer->status & XFER_STATUS_CTRLACTIVE) == 0)
 			state = USB_HR_COMPLETE_OK;
-		} else {
+		else
 			state = USB_HR_NOT_COMPLETE;
-		}
 		break;
 	default:
 		state = USB_HR_COMPLETE_ERR;
@@ -530,9 +526,8 @@ usb_handle_request(struct usb_xfer *xfer)
 	/* demultiplex the control request */
 	switch (req.bmRequestType) {
 	case UT_READ_DEVICE:
-		if (state != USB_HR_NOT_COMPLETE) {
+		if (state != USB_HR_NOT_COMPLETE)
 			break;
-		}
 		switch (req.bRequest) {
 		case UR_GET_DESCRIPTOR:
 			goto tr_handle_get_descriptor;
@@ -611,9 +606,8 @@ usb_handle_request(struct usb_xfer *xfer)
 		if (err == 0) {
 			is_complete = 0;
 			goto tr_valid;
-		} else if (err == USB_ERR_SHORT_XFER) {
+		} else if (err == USB_ERR_SHORT_XFER)
 			goto tr_valid;
-		}
 		/*
 		 * Reset zero-copy pointer and max length
 		 * variable in case they were unintentionally
@@ -649,12 +643,10 @@ tr_handle_get_status:
 	wValue = 0;
 
 	USB_BUS_LOCK(udev->bus);
-	if (udev->flags.remote_wakeup) {
+	if (udev->flags.remote_wakeup)
 		wValue |= UDS_REMOTE_WAKEUP;
-	}
-	if (udev->flags.self_powered) {
+	if (udev->flags.self_powered)
 		wValue |= UDS_SELF_POWERED;
-	}
 	USB_BUS_UNLOCK(udev->bus);
 
 	USETW(temp.wStatus, wValue);
@@ -679,41 +671,36 @@ tr_handle_set_address:
 
 tr_handle_set_config:
 	if (state == USB_HR_NOT_COMPLETE) {
-		if (usb_handle_set_config(xfer, req.wValue[0])) {
+		if (usb_handle_set_config(xfer, req.wValue[0]))
 			goto tr_stalled;
-		}
 	}
 	goto tr_valid;
 
 tr_handle_clear_halt:
 	if (state == USB_HR_NOT_COMPLETE) {
-		if (usb_handle_set_stall(xfer, req.wIndex[0], 0)) {
+		if (usb_handle_set_stall(xfer, req.wIndex[0], 0))
 			goto tr_stalled;
-		}
 	}
 	goto tr_valid;
 
 tr_handle_clear_wakeup:
 	if (state == USB_HR_NOT_COMPLETE) {
-		if (usb_handle_remote_wakeup(xfer, 0)) {
+		if (usb_handle_remote_wakeup(xfer, 0))
 			goto tr_stalled;
-		}
 	}
 	goto tr_valid;
 
 tr_handle_set_halt:
 	if (state == USB_HR_NOT_COMPLETE) {
-		if (usb_handle_set_stall(xfer, req.wIndex[0], 1)) {
+		if (usb_handle_set_stall(xfer, req.wIndex[0], 1))
 			goto tr_stalled;
-		}
 	}
 	goto tr_valid;
 
 tr_handle_set_wakeup:
 	if (state == USB_HR_NOT_COMPLETE) {
-		if (usb_handle_remote_wakeup(xfer, 1)) {
+		if (usb_handle_remote_wakeup(xfer, 1))
 			goto tr_stalled;
-		}
 	}
 	goto tr_valid;
 
@@ -728,27 +715,23 @@ tr_handle_get_ep_status:
 	goto tr_valid;
 
 tr_valid:
-	if (state != USB_HR_NOT_COMPLETE) {
+	if (state != USB_HR_NOT_COMPLETE)
 		goto tr_stalled;
-	}
 	/* subtract offset from length */
 	max_len -= off;
 
 	/* Compute the real maximum data length */
-	if (max_len > xfer->max_data_length) {
+	if (max_len > xfer->max_data_length)
 		max_len = usbd_xfer_max_len(xfer);
-	}
-	if (max_len > rem) {
+	if (max_len > rem)
 		max_len = rem;
-	}
 	/*
 	 * If the remainder is greater than the maximum data length,
 	 * we need to truncate the value for the sake of the
 	 * comparison below:
 	 */
-	if (rem > xfer->max_data_length) {
+	if (rem > xfer->max_data_length)
 		rem = usbd_xfer_max_len(xfer);
-	}
 	if ((rem != max_len) && (is_complete != 0)) {
 		/*
 	         * If we don't transfer the data we can transfer, then

@@ -1089,15 +1089,12 @@ uipaq_probe(device_t dev)
 {
 	struct usb_attach_arg *uaa = device_get_ivars(dev);
 
-	if (uaa->usb_mode != USB_MODE_HOST) {
+	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	}
-	if (uaa->info.bConfigIndex != UIPAQ_CONFIG_INDEX) {
+	if (uaa->info.bConfigIndex != UIPAQ_CONFIG_INDEX)
 		return (ENXIO);
-	}
-	if (uaa->info.bIfaceIndex != UIPAQ_IFACE_INDEX) {
+	if (uaa->info.bIfaceIndex != UIPAQ_IFACE_INDEX)
 		return (ENXIO);
-	}
 	if (uaa->info.bInterfaceClass == UICLASS_IAD) {
 		DPRINTF("IAD detected - not UIPAQ serial device\n");
 		return (ENXIO);
@@ -1143,9 +1140,8 @@ uipaq_attach(device_t dev)
 	    sc->sc_xfer, uipaq_config_data,
 	    UIPAQ_N_TRANSFER, sc, &sc->sc_mtx);
 
-	if (error) {
+	if (error)
 		goto detach;
-	}
 	/* clear stall at first run */
 	mtx_lock(&sc->sc_mtx);
 	usbd_xfer_set_stall(sc->sc_xfer[UIPAQ_BULK_DT_WR]);
@@ -1153,9 +1149,8 @@ uipaq_attach(device_t dev)
 	mtx_unlock(&sc->sc_mtx);
 
 	error = ucom_attach(&sc->sc_ucom, 1, sc, &uipaq_callback, &sc->sc_mtx);
-	if (error) {
+	if (error)
 		goto detach;
-	}
 	return (0);
 
 detach:

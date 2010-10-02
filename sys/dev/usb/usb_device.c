@@ -187,13 +187,11 @@ usbd_get_ep_by_addr(struct usb_device *udev, uint8_t ea_val)
 	 * based on the endpoint address:
 	 */
 	for (; ep != ep_end; ep++) {
-		if (ep->edesc == NULL) {
+		if (ep->edesc == NULL)
 			continue;
-		}
 		/* do the mask and check the value */
-		if ((ep->edesc->bEndpointAddress & EA_MASK) == ea_val) {
+		if ((ep->edesc->bEndpointAddress & EA_MASK) == ea_val)
 			goto found;
-		}
 	}
 
 	/*
@@ -294,15 +292,13 @@ usbd_get_endpoint(struct usb_device *udev, uint8_t iface_index,
 	 */
 	for (; ep != ep_end; ep++) {
 		if ((ep->edesc == NULL) ||
-		    (ep->iface_index != iface_index)) {
+		    (ep->iface_index != iface_index))
 			continue;
-		}
 		/* do the masks and check the values */
 		if (((ep->edesc->bEndpointAddress & ea_mask) == ea_val) &&
 		    ((ep->edesc->bmAttributes & type_mask) == type_val)) {
-			if (!index--) {
+			if (!index--)
 				goto found;
-			}
 		}
 	}
 
@@ -532,9 +528,8 @@ usbd_set_config_index(struct usb_device *udev, uint8_t index)
 		err = usbd_req_get_config_desc_full(udev,
 		    NULL, &cdp, M_USB, index);
 	}
-	if (err) {
+	if (err)
 		goto done;
-	}
 	/* set the new config descriptor */
 	udev->cdesc = cdp;
 
@@ -551,9 +546,8 @@ usbd_set_config_index(struct usb_device *udev, uint8_t index)
 				DPRINTFN(0, "could not read "
 				    "device status: %s\n",
 				    usbd_errstr(err));
-			} else if (UGETW(ds.wStatus) & UDS_SELF_POWERED) {
+			} else if (UGETW(ds.wStatus) & UDS_SELF_POWERED)
 				selfpowered = 1;
-			}
 			DPRINTF("status=0x%04x \n",
 				UGETW(ds.wStatus));
 		} else
@@ -568,11 +562,10 @@ usbd_set_config_index(struct usb_device *udev, uint8_t index)
 	/* Check if we have enough power. */
 	power = cdp->bMaxPower * 2;
 
-	if (udev->parent_hub) {
+	if (udev->parent_hub)
 		max_power = udev->parent_hub->hub->portpower;
-	} else {
+	else
 		max_power = USB_MAX_POWER;
-	}
 
 	if (power > max_power) {
 		DPRINTFN(0, "power exceeded %d > %d\n", power, max_power);
@@ -580,9 +573,8 @@ usbd_set_config_index(struct usb_device *udev, uint8_t index)
 		goto done;
 	}
 	/* Only update "self_powered" in USB Host Mode */
-	if (udev->flags.usb_mode == USB_MODE_HOST) {
+	if (udev->flags.usb_mode == USB_MODE_HOST)
 		udev->flags.self_powered = selfpowered;
-	}
 	udev->power = power;
 	udev->curr_config_no = cdp->bConfigurationValue;
 	udev->curr_config_index = index;
@@ -590,19 +582,16 @@ usbd_set_config_index(struct usb_device *udev, uint8_t index)
 
 	/* Set the actual configuration value. */
 	err = usbd_req_set_config(udev, NULL, cdp->bConfigurationValue);
-	if (err) {
+	if (err)
 		goto done;
-	}
 
 	err = usb_config_parse(udev, USB_IFACE_INDEX_ANY, USB_CFG_ALLOC);
-	if (err) {
+	if (err)
 		goto done;
-	}
 
 	err = usb_config_parse(udev, USB_IFACE_INDEX_ANY, USB_CFG_INIT);
-	if (err) {
+	if (err)
 		goto done;
-	}
 
 #if USB_HAVE_UGEN
 	/* create device nodes for each endpoint */
@@ -611,9 +600,8 @@ usbd_set_config_index(struct usb_device *udev, uint8_t index)
 
 done:
 	DPRINTF("error=%s\n", usbd_errstr(err));
-	if (err) {
+	if (err)
 		usb_unconfigure(udev, 0);
-	}
 	if (do_unlock)
 		usbd_enum_unlock(udev);
 	return (err);
@@ -787,9 +775,8 @@ usb_config_parse(struct usb_device *udev, uint8_t iface_index, uint8_t cmd)
 				err = USB_ERR_NOMEM;
 				goto done;
 			}
-		} else {
+		} else
 			udev->endpoints = NULL;
-		}
 		USB_BUS_LOCK(udev->bus);
 		udev->endpoints_max = ep_max;
 		/* reset any ongoing clear-stall */
@@ -871,9 +858,8 @@ usbd_set_alt_interface_index(struct usb_device *udev,
 #endif
 
 	err = usb_config_parse(udev, iface_index, alt_index);
-	if (err) {
+	if (err)
 		goto done;
-	}
 	if (iface->alt_index != alt_index) {
 		/* the alternate setting does not exist */
 		err = USB_ERR_INVAL;
@@ -949,9 +935,8 @@ usbd_set_endpoint_stall(struct usb_device *udev, struct usb_endpoint *ep,
 		if (!was_stalled) {
 			/* lookup the current USB transfer, if any */
 			xfer = ep->endpoint_q.curr;
-		} else {
+		} else
 			xfer = NULL;
-		}
 
 		/*
 		 * If "xfer" is non-NULL the "set_stall" method will
@@ -987,9 +972,8 @@ usb_reset_iface_endpoints(struct usb_device *udev, uint8_t iface_index)
 
 	for (; ep != ep_end; ep++) {
 		if ((ep->edesc == NULL) ||
-		    (ep->iface_index != iface_index)) {
+		    (ep->iface_index != iface_index))
 			continue;
-		}
 		/* simulate a clear stall from the peer */
 		usbd_set_endpoint_stall(udev, ep, 0);
 	}
@@ -1028,17 +1012,14 @@ usb_detach_device_sub(struct usb_device *udev, device_t *ppdev,
 		if (device_is_attached(dev)) {
 			if (udev->flags.peer_suspended) {
 				err = DEVICE_RESUME(dev);
-				if (err) {
+				if (err)
 					device_printf(dev, "Resume failed\n");
-				}
 			}
-			if (device_detach(dev)) {
+			if (device_detach(dev))
 				goto error;
-			}
 		}
-		if (device_delete_child(udev->parent_dev, dev)) {
+		if (device_delete_child(udev->parent_dev, dev))
 			goto error;
-		}
 	}
 	return;
 
@@ -1196,9 +1177,8 @@ usbd_set_parent_iface(struct usb_device *udev, uint8_t iface_index,
 	struct usb_interface *iface;
 
 	iface = usbd_get_iface(udev, iface_index);
-	if (iface) {
+	if (iface)
 		iface->parent_iface_index = parent_index;
-	}
 }
 
 static void
@@ -1308,23 +1288,20 @@ usb_probe_and_attach(struct usb_device *udev, uint8_t iface_index)
 		    uaa.info.bIfaceNum);
 
 		/* try specific interface drivers first */
-		if (usb_probe_and_attach_sub(udev, &uaa)) {
-			/* ignore */
-		}
+		if (usb_probe_and_attach_sub(udev, &uaa))
+			;	/* ignore */
 		/* try generic interface drivers last */
 		uaa.use_generic = 1;
 		uaa.driver_info = 0;	/* reset driver_info */
 
-		if (usb_probe_and_attach_sub(udev, &uaa)) {
-			/* ignore */
-		}
+		if (usb_probe_and_attach_sub(udev, &uaa))
+			;	/* ignore */
 	}
 
 	if (uaa.temp_dev) {
 		/* remove the last created child; it is unused */
-		if (device_delete_child(udev->parent_dev, uaa.temp_dev)) {
+		if (device_delete_child(udev->parent_dev, uaa.temp_dev))
 			DPRINTFN(0, "device delete child failed\n");
-		}
 	}
 done:
 	if (do_unlock)
@@ -1344,17 +1321,14 @@ usb_suspend_resume_sub(struct usb_device *udev, device_t dev, uint8_t do_suspend
 {
 	int err;
 
-	if (dev == NULL) {
+	if (dev == NULL)
 		return;
-	}
-	if (!device_is_attached(dev)) {
+	if (!device_is_attached(dev))
 		return;
-	}
-	if (do_suspend) {
+	if (do_suspend)
 		err = DEVICE_SUSPEND(dev);
-	} else {
+	else
 		err = DEVICE_RESUME(dev);
-	}
 	if (err) {
 		device_printf(dev, "%s failed\n",
 		    do_suspend ? "Suspend" : "Resume");
@@ -1481,9 +1455,8 @@ usb_alloc_device(device_t parent_dev, struct usb_bus *bus,
 		return (NULL);
 	}
 	udev = malloc(sizeof(*udev), M_USB, M_WAITOK | M_ZERO);
-	if (udev == NULL) {
+	if (udev == NULL)
 		return (NULL);
-	}
 	/* initialise our SX-lock */
 	sx_init_flags(&udev->ctrl_sx, "USB device SX lock", SX_DUPOK);
 
@@ -1628,9 +1601,8 @@ usb_alloc_device(device_t parent_dev, struct usb_bus *bus,
 		    usbd_errstr(err));
 		/* XXX try to re-enumerate the device */
 		err = usbd_req_re_enumerate(udev, NULL);
-		if (err) {
+		if (err)
 			goto done;
-		}
 	}
 	DPRINTF("adding unit addr=%d, rev=%02x, class=%d, "
 	    "subclass=%d, protocol=%d, maxpacket=%d, len=%d, speed=%d\n",
@@ -1655,12 +1627,10 @@ usb_alloc_device(device_t parent_dev, struct usb_bus *bus,
 	 */
 	usb_init_attach_arg(udev, &uaa);
 
-	if (usb_test_quirk(&uaa, UQ_BUS_POWERED)) {
+	if (usb_test_quirk(&uaa, UQ_BUS_POWERED))
 		udev->flags.uq_bus_powered = 1;
-	}
-	if (usb_test_quirk(&uaa, UQ_NO_STRINGS)) {
+	if (usb_test_quirk(&uaa, UQ_NO_STRINGS))
 		udev->flags.no_strings = 1;
-	}
 	/*
 	 * Workaround for buggy USB devices.
 	 *
@@ -1681,9 +1651,8 @@ usb_alloc_device(device_t parent_dev, struct usb_bus *bus,
 		/* read out the language ID string */
 		err = usbd_req_get_string_desc(udev, NULL,
 		    (char *)scratch_ptr, 4, 0, USB_LANGUAGE_TABLE);
-	} else {
+	} else
 		err = USB_ERR_INVAL;
-	}
 
 	if (err || (scratch_ptr[0] < 4)) {
 		udev->flags.no_strings = 1;
@@ -1945,6 +1914,7 @@ usb_cdev_free(struct usb_device *udev)
 static void
 usb_cdev_cleanup(void* arg)
 {
+
 	free(arg, M_USBDEV);
 }
 #endif
@@ -1994,9 +1964,8 @@ usb_free_device(struct usb_device *udev, uint8_t flag)
 	/* wait for all pending references to go away: */
 	mtx_lock(&usb_ref_lock);
 	udev->refcount--;
-	while (udev->refcount != 0) {
+	while (udev->refcount != 0)
 		cv_wait(&udev->ref_cv, &usb_ref_lock);
-	}
 	mtx_unlock(&usb_ref_lock);
 
 	destroy_dev_sched_cb(udev->ctrl_dev, usb_cdev_cleanup,
@@ -2087,29 +2056,24 @@ usbd_find_descriptor(struct usb_device *udev, void *id, uint8_t iface_index,
 	struct usb_interface *iface;
 
 	cd = usbd_get_config_descriptor(udev);
-	if (cd == NULL) {
+	if (cd == NULL)
 		return (NULL);
-	}
 	if (id == NULL) {
 		iface = usbd_get_iface(udev, iface_index);
-		if (iface == NULL) {
+		if (iface == NULL)
 			return (NULL);
-		}
 		id = usbd_get_interface_descriptor(iface);
-		if (id == NULL) {
+		if (id == NULL)
 			return (NULL);
-		}
 	}
 	desc = (void *)id;
 
 	while ((desc = usb_desc_foreach(cd, desc))) {
-		if (desc->bDescriptorType == UDESC_INTERFACE) {
+		if (desc->bDescriptorType == UDESC_INTERFACE)
 			break;
-		}
 		if (((desc->bDescriptorType & type_mask) == type) &&
-		    ((desc->bDescriptorSubtype & subtype_mask) == subtype)) {
+		    ((desc->bDescriptorSubtype & subtype_mask) == subtype))
 			return (desc);
-		}
 	}
 	return (NULL);
 }
@@ -2509,9 +2473,8 @@ usb_fifo_free_wrap(struct usb_device *udev,
 	 */
 	for (i = 0; i != USB_FIFO_MAX; i++) {
 		f = udev->fifo[i];
-		if (f == NULL) {
+		if (f == NULL)
 			continue;
-		}
 		/* Check if the interface index matches */
 		if (iface_index == f->iface_index) {
 			if (f->methods != &usb_ugen_methods) {
@@ -2557,9 +2520,8 @@ usb_peer_can_wakeup(struct usb_device *udev)
 	const struct usb_config_descriptor *cdp;
 
 	cdp = udev->cdesc;
-	if ((cdp != NULL) && (udev->flags.usb_mode == USB_MODE_HOST)) {
+	if ((cdp != NULL) && (udev->flags.usb_mode == USB_MODE_HOST))
 		return (cdp->bmAttributes & UC_REMOTE_WAKEUP);
-	}
 	return (0);			/* not supported */
 }
 

@@ -204,9 +204,8 @@ urio_probe(device_t dev)
 {
 	struct usb_attach_arg *uaa = device_get_ivars(dev);
 
-	if (uaa->usb_mode != USB_MODE_HOST) {
+	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	}
 	if ((((uaa->info.idVendor == USB_VENDOR_DIAMOND) &&
 	    (uaa->info.idProduct == USB_PRODUCT_DIAMOND_RIO500USB)) ||
 	    ((uaa->info.idVendor == USB_VENDOR_DIAMOND2) &&
@@ -244,9 +243,8 @@ urio_attach(device_t dev)
 	    &urio_fifo_methods, &sc->sc_fifo,
 	    device_get_unit(dev), 0 - 1, uaa->info.bIfaceIndex,
 	    UID_ROOT, GID_OPERATOR, 0644);
-	if (error) {
+	if (error)
 		goto detach;
-	}
 	return (0);			/* success */
 
 detach:
@@ -396,9 +394,8 @@ urio_open(struct usb_fifo *fifo, int fflags)
 
 		if (usb_fifo_alloc_buffer(fifo,
 		    usbd_xfer_max_len(sc->sc_xfer[URIO_T_RD]),
-		    URIO_IFQ_MAXLEN)) {
+		    URIO_IFQ_MAXLEN))
 			return (ENOMEM);
-		}
 	}
 	if (fflags & FWRITE) {
 		/* clear stall first */
@@ -406,9 +403,8 @@ urio_open(struct usb_fifo *fifo, int fflags)
 
 		if (usb_fifo_alloc_buffer(fifo,
 		    usbd_xfer_max_len(sc->sc_xfer[URIO_T_WR]),
-		    URIO_IFQ_MAXLEN)) {
+		    URIO_IFQ_MAXLEN))
 			return (ENOMEM);
-		}
 	}
 	return (0);			/* success */
 }
@@ -416,9 +412,8 @@ urio_open(struct usb_fifo *fifo, int fflags)
 static void
 urio_close(struct usb_fifo *fifo, int fflags)
 {
-	if (fflags & (FREAD | FWRITE)) {
+	if (fflags & (FREAD | FWRITE))
 		usb_fifo_free_buffer(fifo);
-	}
 }
 
 static int

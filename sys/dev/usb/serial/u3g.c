@@ -516,10 +516,8 @@ u3g_sierra_init(struct usb_device *udev)
 	USETW(req.wIndex, UHF_PORT_CONNECTION);
 	USETW(req.wLength, 0);
 
-	if (usbd_do_request_flags(udev, NULL, &req,
-	    NULL, 0, NULL, USB_MS_HZ)) {
-		/* ignore any errors */
-	}
+	(void)usbd_do_request_flags(udev, NULL, &req,
+	    NULL, 0, NULL, USB_MS_HZ);	/* ignore any errors */
 	return (0);
 }
 
@@ -534,10 +532,8 @@ u3g_huawei_init(struct usb_device *udev)
 	USETW(req.wIndex, UHF_PORT_SUSPEND);
 	USETW(req.wLength, 0);
 
-	if (usbd_do_request_flags(udev, NULL, &req,
-	    NULL, 0, NULL, USB_MS_HZ)) {
-		/* ignore any errors */
-	}
+	(void)usbd_do_request_flags(udev, NULL, &req,
+	    NULL, 0, NULL, USB_MS_HZ);	/* ignore any errors */
 	return (0);
 }
 
@@ -706,15 +702,12 @@ u3g_probe(device_t self)
 {
 	struct usb_attach_arg *uaa = device_get_ivars(self);
 
-	if (uaa->usb_mode != USB_MODE_HOST) {
+	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	}
-	if (uaa->info.bConfigIndex != U3G_CONFIG_INDEX) {
+	if (uaa->info.bConfigIndex != U3G_CONFIG_INDEX)
 		return (ENXIO);
-	}
-	if (uaa->info.bInterfaceClass != UICLASS_VENDOR) {
+	if (uaa->info.bInterfaceClass != UICLASS_VENDOR)
 		return (ENXIO);
-	}
 	return (usbd_lookup_id_by_uaa(u3g_devs, sizeof(u3g_devs), uaa));
 }
 

@@ -938,9 +938,8 @@ zyd_rfmd_init(struct zyd_rf *rf)
 	int i, error;
 
 	/* init RF-dependent PHY registers */
-	for (i = 0; i < N(phyini); i++) {
+	for (i = 0; i < N(phyini); i++)
 		zyd_write16_m(sc, phyini[i].reg, phyini[i].val);
-	}
 
 	/* init RFMD radio */
 	for (i = 0; i < N(rfini); i++) {

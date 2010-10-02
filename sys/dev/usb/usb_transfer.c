@@ -138,9 +138,8 @@ usbd_update_max_frame_size(struct usb_xfer *xfer)
 		xfer->max_frame_size = 2 * xfer->max_packet_size;
 	} else if (xfer->max_packet_count == 3) {
 		xfer->max_frame_size = 3 * xfer->max_packet_size;
-	} else {
+	} else
 		xfer->max_frame_size = xfer->max_packet_size;
-	}
 }
 
 /*------------------------------------------------------------------------*
@@ -205,9 +204,8 @@ usbd_transfer_setup_sub_malloc(struct usb_setup_params *parm,
 	    align));
 	USB_ASSERT(size > 0, ("Invalid size = 0\n"));
 
-	if (count == 0) {
+	if (count == 0)
 		return (0);		/* nothing to allocate */
-	}
 	/*
 	 * Make sure that the size is aligned properly.
 	 */
@@ -249,9 +247,8 @@ usbd_transfer_setup_sub_malloc(struct usb_setup_params *parm,
 		    &parm->curr_xfer->xroot->dma_parent_tag;
 	}
 
-	if (ppc) {
+	if (ppc)
 		*ppc = parm->xfer_page_cache_ptr;
-	}
 	r = count;			/* set remainder count */
 	z = n_obj * size;		/* set allocation size */
 	pc = parm->xfer_page_cache_ptr;
@@ -264,9 +261,8 @@ usbd_transfer_setup_sub_malloc(struct usb_setup_params *parm,
 			n_obj = r;
 		}
 		if (usb_pc_alloc_mem(parm->dma_page_cache_ptr,
-		    pg, z, align)) {
+		    pg, z, align))
 			return (1);	/* failure */
-		}
 		/* Set beginning of current buffer */
 		buf = parm->dma_page_cache_ptr->buffer;
 		/* Make room for one DMA page cache and one page */
@@ -275,9 +271,8 @@ usbd_transfer_setup_sub_malloc(struct usb_setup_params *parm,
 
 		for (y = 0; (y != n_obj); y++, r--, pc++, pg++) {
 			/* Load sub-chunk into DMA */
-			if (usb_pc_dmamap_create(pc, size)) {
+			if (usb_pc_dmamap_create(pc, size))
 				return (1);	/* failure */
-			}
 			pc->buffer = USB_ADD_BYTES(buf, y * size);
 			pc->buflen = size;
 			pc->page_start = pg;
@@ -355,24 +350,20 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 		xfer->max_packet_size &= 0x7FF;
 	}
 	/* range check "max_packet_count" */
-	if (xfer->max_packet_count > parm->hc_max_packet_count) {
+	if (xfer->max_packet_count > parm->hc_max_packet_count)
 		xfer->max_packet_count = parm->hc_max_packet_count;
-	}
 	/* filter "wMaxPacketSize" according to HC capabilities */
 	if ((xfer->max_packet_size > parm->hc_max_packet_size) ||
-	    (xfer->max_packet_size == 0)) {
+	    (xfer->max_packet_size == 0))
 		xfer->max_packet_size = parm->hc_max_packet_size;
-	}
 	/* filter "wMaxPacketSize" according to standard sizes */
 	usbd_get_std_packet_size(&std_size, type, parm->speed);
 
 	if (std_size.range.min || std_size.range.max) {
-		if (xfer->max_packet_size < std_size.range.min) {
+		if (xfer->max_packet_size < std_size.range.min)
 			xfer->max_packet_size = std_size.range.min;
-		}
-		if (xfer->max_packet_size > std_size.range.max) {
+		if (xfer->max_packet_size > std_size.range.max)
 			xfer->max_packet_size = std_size.range.max;
-		}
 	} else {
 		if (xfer->max_packet_size >= std_size.fixed[3]) {
 			xfer->max_packet_size = std_size.fixed[3];
@@ -497,9 +488,8 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 			goto done;
 		}
 
-	} else {
+	} else
 		zmps = 0;
-	}
 
 	/*
 	 * check if we should setup a default
@@ -509,9 +499,8 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 	if (parm->bufsize == 0) {
 		parm->bufsize = xfer->max_frame_size;
 
-		if (type == UE_ISOCHRONOUS) {
+		if (type == UE_ISOCHRONOUS)
 			parm->bufsize *= xfer->nframes;
-		}
 	}
 	/*
 	 * check if we are about to setup a proxy
@@ -531,9 +520,8 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 		parm->bufsize -= (parm->bufsize % xfer->max_frame_size);
 
 		/* add length of USB device request structure, if any */
-		if (type == UE_CONTROL) {
+		if (type == UE_CONTROL)
 			parm->bufsize += REQ_SIZE;	/* SETUP message */
-		}
 	}
 	xfer->max_data_length = parm->bufsize;
 
@@ -551,14 +539,12 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 					 * stage
 					 */
 					xfer->nframes = 1;
-				} else {
+				} else
 					xfer->nframes = 2;
-				}
 			}
 		} else {
-			if (xfer->nframes == 0) {
+			if (xfer->nframes == 0)
 				xfer->nframes = 1;
-			}
 		}
 
 		n_frlengths = xfer->nframes;
@@ -605,9 +591,8 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 
 			usbd_xfer_set_frame_offset(xfer, 0, 0);
 
-			if ((type == UE_CONTROL) && (n_frbuffers > 1)) {
+			if ((type == UE_CONTROL) && (n_frbuffers > 1))
 				usbd_xfer_set_frame_offset(xfer, REQ_SIZE, 1);
-			}
 		}
 		parm->size[0] += parm->bufsize;
 
@@ -618,9 +603,8 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 	 * Compute maximum buffer size
 	 */
 
-	if (parm->bufsize_max < parm->bufsize) {
+	if (parm->bufsize_max < parm->bufsize)
 		parm->bufsize_max = parm->bufsize;
-	}
 #if USB_HAVE_BUSDMA
 	if ((xfer->status & XFER_STATUS_DMAENABLE) != 0) {
 		/*
@@ -760,9 +744,8 @@ usbd_transfer_setup(struct usb_device *udev,
 		ppxfer[n] = NULL;
 	}
 
-	if (parm.err) {
+	if (parm.err)
 		goto done;
-	}
 	bzero(&parm, sizeof(parm));
 
 	parm.udev = udev;
@@ -834,9 +817,8 @@ usbd_transfer_setup(struct usb_device *udev,
 		for (setup = setup_start, n = 0;
 		    setup != setup_end; setup++, n++) {
 			/* skip USB transfers without callbacks: */
-			if (setup->callback == NULL) {
+			if (setup->callback == NULL)
 				continue;
-			}
 			/* see if there is a matching endpoint */
 			ep = usbd_get_endpoint(udev,
 			    ifaces[setup->if_index], setup);
@@ -938,9 +920,8 @@ usbd_transfer_setup(struct usb_device *udev,
 				goto done;
 		}
 
-		if (buf || parm.err) {
+		if (buf || parm.err)
 			goto done;
-		}
 		if (refcount == 0) {
 			/* no transfers - nothing to do ! */
 			goto done;
@@ -1037,9 +1018,8 @@ done:
 			usbd_transfer_unsetup_sub(info, 0);
 		}
 	}
-	if (parm.err) {
+	if (parm.err)
 		usbd_transfer_unsetup(ppxfer, n_setup);
-	}
 	return (parm.err);
 }
 
@@ -1171,9 +1151,8 @@ usbd_transfer_unsetup(struct usb_xfer **pxfer, uint16_t n_setup)
 		if (info->setup_refcount == 0) {
 			usbd_transfer_unsetup_sub(info,
 			    needs_delay);
-		} else {
+		} else
 			USB_BUS_UNLOCK(info->bus);
-		}
 	}
 }
 
@@ -1255,9 +1234,8 @@ usbd_setup_ctrl_transfer(struct usb_xfer *xfer)
 			xfer->status &= ~XFER_STATUS_CTRLHDR;
 
 			/* setup control transfer */
-			if (xfer->usb_mode == USB_MODE_DEVICE) {
+			if (xfer->usb_mode == USB_MODE_DEVICE)
 				usbd_control_transfer_init(xfer);
-			}
 		}
 		/* get data length */
 		len = xfer->sumlen;
@@ -1652,9 +1630,8 @@ usbd_transfer_stop(struct usb_xfer *xfer)
 			(xfer->endpoint->methods->close) (xfer);
 			/* only close once */
 			xfer->status |= XFER_STATUS_CLOSED;
-		} else {
-			/* need to wait for the next done callback */
-		}
+		} else
+			; /* need to wait for the next done callback */
 	} else {
 		DPRINTF("close\n");
 
@@ -1676,9 +1653,8 @@ usbd_transfer_stop(struct usb_xfer *xfer)
 		 * If the current USB transfer is completing we need
 		 * to start the next one:
 		 */
-		if (ep->endpoint_q.curr == xfer) {
+		if (ep->endpoint_q.curr == xfer)
 			usb_command_wrapper(&ep->endpoint_q, NULL);
-		}
 	}
 
 	USB_BUS_UNLOCK(xfer->xroot->bus);
@@ -1745,9 +1721,8 @@ usbd_transfer_drain(struct usb_xfer *xfer)
 		/* transfer is gone */
 		return;
 	}
-	if (xfer->xroot->xfer_mtx != &Giant) {
+	if (xfer->xroot->xfer_mtx != &Giant)
 		USB_XFER_LOCK_ASSERT(xfer, MA_NOTOWNED);
-	}
 	USB_XFER_LOCK(xfer);
 
 	usbd_transfer_stop(xfer);
@@ -1969,9 +1944,8 @@ usbd_callback_ss_done_defer(struct usb_xfer *xfer)
 
 	USB_BUS_LOCK_ASSERT(xfer->xroot->bus, MA_OWNED);
 
-	if (pq->curr != xfer) {
+	if (pq->curr != xfer)
 		usbd_transfer_enqueue(pq, xfer);
-	}
 	if (!pq->recurse_1) {
 		/*
 	         * We have to postpone the callback due to the fact we
@@ -2064,9 +2038,8 @@ usbd_callback_wrapper(struct usb_xfer_queue *pq)
 #if USB_HAVE_BUSDMA
 			/* sync DMA memory, if any */
 			if ((xfer->status & XFER_STATUS_DMAENABLE) != 0 &&
-			    (xfer->status & XFER_STATUS_DMA_NOPOSTSYNC) == 0) {
+			    (xfer->status & XFER_STATUS_DMA_NOPOSTSYNC) == 0)
 				usb_bdma_post_sync(xfer);
-			}
 #endif
 		}
 	}
@@ -2203,9 +2176,8 @@ usbd_transfer_done(struct usb_xfer *xfer, usb_error_t error)
 		return;
 	}
 	/* only set transfer error if not already set */
-	if (!xfer->error) {
+	if (!xfer->error)
 		xfer->error = error;
-	}
 	/* stop any callouts */
 	usb_callout_stop(&xfer->timeout_handle);
 
@@ -2347,9 +2319,8 @@ usbd_pipe_start(struct usb_xfer_queue *pq)
 	/*
 	 * If the endpoint is already stalled we do nothing !
 	 */
-	if (ep->is_stalled) {
+	if (ep->is_stalled)
 		return;
-	}
 	/*
 	 * Check if we are supposed to stall the endpoint:
 	 */
@@ -2406,9 +2377,8 @@ usbd_pipe_start(struct usb_xfer_queue *pq)
 			 * endpoint FIFO through the clear stall
 			 * method.
 			 */
-			if (udev->flags.usb_mode == USB_MODE_DEVICE) {
+			if (udev->flags.usb_mode == USB_MODE_DEVICE)
 				(udev->bus->methods->clear_stall) (udev, ep);
-			}
 		}
 	}
 	/* Set or clear stall complete - special case */
@@ -2547,18 +2517,16 @@ usbd_callback_wrapper_sub(struct usb_xfer *xfer)
 	/* compute actual length */
 	xfer->actlen = 0;
 
-	for (x = 0; x != xfer->aframes; x++) {
+	for (x = 0; x != xfer->aframes; x++)
 		xfer->actlen += xfer->frlengths[x];
-	}
 
 	/*
 	 * Frames that were not transferred get zero actual length in
 	 * case the USB device driver does not check the actual number
 	 * of frames transferred, "xfer->aframes":
 	 */
-	for (; x < xfer->nframes; x++) {
+	for (; x < xfer->nframes; x++)
 		usbd_xfer_set_frame_len(xfer, x, 0);
-	}
 
 	/* check actual length */
 	if (xfer->actlen > xfer->sumlen) {
@@ -2678,9 +2646,8 @@ usb_command_wrapper(struct usb_xfer_queue *pq, struct usb_xfer *xfer)
 					    wait_entry);
 					xfer->wait_queue = NULL;
 					pq->curr = xfer;
-				} else {
+				} else
 					break;
-				}
 			}
 			DPRINTFN(6, "cb %p (enter)\n", pq->curr);
 			(pq->command) (pq);
@@ -2733,9 +2700,8 @@ repeat:
 			}
 		}
 		USB_XFER_UNLOCK(xfer);
-	} else {
+	} else
 		no_resetup = 0;
-	}
 
 	if (no_resetup) {
 		/*
@@ -2765,9 +2731,8 @@ repeat:
 	    &udev->device_mtx)) {
 		DPRINTFN(0, "could not setup default "
 		    "USB transfer\n");
-	} else {
+	} else
 		goto repeat;
-	}
 }
 
 /*------------------------------------------------------------------------*
@@ -2868,9 +2833,8 @@ usbd_clear_stall_callback(struct usb_xfer *xfer1,
 		break;
 
 	default:			/* Error */
-		if (xfer1->error == USB_ERR_CANCELLED) {
+		if (xfer1->error == USB_ERR_CANCELLED)
 			return (0);
-		}
 		break;
 	}
 	return (1);			/* Clear Stall Finished */

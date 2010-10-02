@@ -340,9 +340,8 @@ usb_bus_attach(void *arg, int npending)
 	  USB_HW_POWER_NON_ROOT_HUB;
 
 	/* make sure power is set at least once */
-	if (bus->methods->set_hw_power != NULL) {
+	if (bus->methods->set_hw_power != NULL)
 		(bus->methods->set_hw_power) (bus);
-	}
 
 	/* Allocate the Root USB device */
 	child = usb_alloc_device(bus->bdev, bus, NULL, 0, 0, 1,
@@ -352,13 +351,11 @@ usb_bus_attach(void *arg, int npending)
 		    USB_IFACE_INDEX_ANY);
 		if (!err) {
 			if ((bus->devices[USB_ROOT_HUB_ADDR] == NULL) ||
-			    (bus->devices[USB_ROOT_HUB_ADDR]->hub == NULL)) {
+			    (bus->devices[USB_ROOT_HUB_ADDR]->hub == NULL))
 				err = USB_ERR_NO_ROOT_HUB;
-			}
 		}
-	} else {
+	} else
 		err = USB_ERR_NOMEM;
-	}
 
 	if (err) {
 		device_printf(bus->bdev, "Root HUB problem, error=%s\n",

@@ -120,13 +120,11 @@ atmegadci_attach(device_t dev)
 	rid = 0;
 	sc->sc_otg.sc_irq_res =
 	    bus_alloc_resource_any(dev, SYS_RES_IRQ, &rid, RF_ACTIVE);
-	if (!(sc->sc_otg.sc_irq_res)) {
+	if (!(sc->sc_otg.sc_irq_res))
 		goto error;
-	}
 	sc->sc_otg.sc_bus.bdev = device_add_child(dev, "usbus", -1);
-	if (!(sc->sc_otg.sc_bus.bdev)) {
+	if (!(sc->sc_otg.sc_bus.bdev))
 		goto error;
-	}
 	device_set_ivars(sc->sc_otg.sc_bus.bdev, &sc->sc_otg.sc_bus);
 
 	err = bus_setup_intr(dev, sc->sc_otg.sc_irq_res, INTR_TYPE_BIO | INTR_MPSAFE,
@@ -136,12 +134,10 @@ atmegadci_attach(device_t dev)
 		goto error;
 	}
 	err = atmegadci_init(&sc->sc_otg);
-	if (!err) {
+	if (!err)
 		err = device_probe_and_attach(sc->sc_otg.sc_bus.bdev);
-	}
-	if (err) {
+	if (err)
 		goto error;
-	}
 	return (0);
 
 error:

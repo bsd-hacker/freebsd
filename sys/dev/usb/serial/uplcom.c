@@ -333,15 +333,12 @@ uplcom_probe(device_t dev)
 
 	DPRINTFN(11, "\n");
 
-	if (uaa->usb_mode != USB_MODE_HOST) {
+	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	}
-	if (uaa->info.bConfigIndex != UPLCOM_CONFIG_INDEX) {
+	if (uaa->info.bConfigIndex != UPLCOM_CONFIG_INDEX)
 		return (ENXIO);
-	}
-	if (uaa->info.bIfaceIndex != UPLCOM_IFACE_INDEX) {
+	if (uaa->info.bIfaceIndex != UPLCOM_IFACE_INDEX)
 		return (ENXIO);
-	}
 	return (usbd_lookup_id_by_uaa(uplcom_devs, sizeof(uplcom_devs), uaa));
 }
 
@@ -429,9 +426,8 @@ uplcom_attach(device_t dev)
 	mtx_unlock(&sc->sc_mtx);
 
 	error = ucom_attach(&sc->sc_ucom, 1, sc, &uplcom_callback, &sc->sc_mtx);
-	if (error) {
+	if (error)
 		goto detach;
-	}
 	/*
 	 * do the initialization during attach so that the system does not
 	 * sleep during open:
@@ -657,19 +653,16 @@ uplcom_cfg_param(struct ucom_softc *ucom, struct termios *t)
 
 	if (t->c_cflag & CSTOPB) {
 		ls.bCharFormat = UCDC_STOP_BIT_2;
-	} else {
+	} else
 		ls.bCharFormat = UCDC_STOP_BIT_1;
-	}
 
 	if (t->c_cflag & PARENB) {
 		if (t->c_cflag & PARODD) {
 			ls.bParityType = UCDC_PARITY_ODD;
-		} else {
+		} else
 			ls.bParityType = UCDC_PARITY_EVEN;
-		}
-	} else {
+	} else
 		ls.bParityType = UCDC_PARITY_NONE;
-	}
 
 	switch (t->c_cflag & CSIZE) {
 	case CS5:
@@ -800,15 +793,12 @@ uplcom_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 			sc->sc_lsr = 0;
 			sc->sc_msr = 0;
 
-			if (buf[8] & RSAQ_STATUS_CTS) {
+			if (buf[8] & RSAQ_STATUS_CTS)
 				sc->sc_msr |= SER_CTS;
-			}
-			if (buf[8] & RSAQ_STATUS_DSR) {
+			if (buf[8] & RSAQ_STATUS_DSR)
 				sc->sc_msr |= SER_DSR;
-			}
-			if (buf[8] & RSAQ_STATUS_DCD) {
+			if (buf[8] & RSAQ_STATUS_DCD)
 				sc->sc_msr |= SER_DCD;
-			}
 			ucom_status_change(&sc->sc_ucom);
 		}
 	case USB_ST_SETUP:

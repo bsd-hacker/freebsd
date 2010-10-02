@@ -188,9 +188,8 @@ ucom_units_alloc(uint32_t sub_units, uint32_t *p_root_unit)
 		for (o = 0; o < sub_units; o++) {
 			x = n + o;
 
-			if (ucom_bitmap[x / 8] & (1 << (x % 8))) {
+			if (ucom_bitmap[x / 8] & (1 << (x % 8)))
 				goto skip;
-			}
 		}
 
 		/* allocate */
@@ -254,14 +253,12 @@ ucom_attach(struct ucom_softc *sc, uint32_t sub_units, void *parent,
 	if ((sc == NULL) ||
 	    (sub_units == 0) ||
 	    (sub_units > UCOM_SUB_UNIT_MAX) ||
-	    (callback == NULL)) {
+	    (callback == NULL))
 		return (EINVAL);
-	}
 
 	/* XXX unit management does not really belong here */
-	if (ucom_units_alloc(sub_units, &root_unit)) {
+	if (ucom_units_alloc(sub_units, &root_unit))
 		return (ENOMEM);
-	}
 
 	for (n = 0; n != sub_units; n++, sc++) {
 		sc->sc_unit = root_unit + n;
@@ -329,14 +326,12 @@ ucom_attach_tty(struct ucom_softc *sc, uint32_t sub_units)
 			/* multiple modems in one */
 			if (snprintf(buf, sizeof(buf), "U%u.%u",
 			    sc->sc_unit - sc->sc_local_unit,
-			    sc->sc_local_unit)) {
-				/* ignore */
-			}
+			    sc->sc_local_unit))
+				;	/* ignore */
 		} else {
 			/* single modem */
-			if (snprintf(buf, sizeof(buf), "U%u", sc->sc_unit)) {
-				/* ignore */
-			}
+			if (snprintf(buf, sizeof(buf), "U%u", sc->sc_unit))
+				;	/* ignore */
 		}
 	}
 	tty_makedev(tp, NULL, "%s", buf);
@@ -405,12 +400,10 @@ ucom_detach_tty(struct ucom_softc *sc)
 		/*
 		 * make sure that read and write transfers are stopped
 		 */
-		if (sc->sc_callback->ucom_stop_read) {
+		if (sc->sc_callback->ucom_stop_read)
 			(sc->sc_callback->ucom_stop_read) (sc);
-		}
-		if (sc->sc_callback->ucom_stop_write) {
+		if (sc->sc_callback->ucom_stop_write)
 			(sc->sc_callback->ucom_stop_write) (sc);
-		}
 		UCOM_UNLOCK(sc);
 	}
 	cv_destroy(&sc->sc_cv);
@@ -428,48 +421,41 @@ ucom_shutdown(struct ucom_softc *sc)
 	/*
 	 * Hang up if necessary:
 	 */
-	if (tp->t_termios.c_cflag & HUPCL) {
+	if (tp->t_termios.c_cflag & HUPCL)
 		ucom_modem(tp, 0, SER_DTR);
-	}
 }
 
 static void
 ucom_cfg_start_transfers(struct ucom_softc *sc)
 {
 
-	if (!(sc->sc_flag & UCOM_FLAG_LL_READY)) {
+	if (!(sc->sc_flag & UCOM_FLAG_LL_READY))
 		return;
-	}
 	if (!(sc->sc_flag & UCOM_FLAG_HL_READY)) {
 		/* TTY device closed */
 		return;
 	}
 
 	sc->sc_flag |= UCOM_FLAG_GP_DATA;
-	if (sc->sc_callback->ucom_start_read) {
+	if (sc->sc_callback->ucom_start_read)
 		(sc->sc_callback->ucom_start_read) (sc);
-	}
-	if (sc->sc_callback->ucom_start_write) {
+	if (sc->sc_callback->ucom_start_write)
 		(sc->sc_callback->ucom_start_write) (sc);
-	}
 }
 
 static void
 ucom_start_transfers(struct ucom_softc *sc)
 {
-	if (!(sc->sc_flag & UCOM_FLAG_HL_READY)) {
+	if (!(sc->sc_flag & UCOM_FLAG_HL_READY))
 		return;
-	}
 	/*
 	 * Make sure that data transfers are started in both
 	 * directions:
 	 */
-	if (sc->sc_callback->ucom_start_read) {
+	if (sc->sc_callback->ucom_start_read)
 		(sc->sc_callback->ucom_start_read) (sc);
-	}
-	if (sc->sc_callback->ucom_start_write) {
+	if (sc->sc_callback->ucom_start_write)
 		(sc->sc_callback->ucom_start_write) (sc);
-	}
 }
 
 static void
@@ -500,9 +486,8 @@ ucom_open(struct tty *tp)
 
 	mtx_assert(sc->sc_mtx, MA_OWNED);
 
-	if (sc->sc_flag & UCOM_FLAG_GONE) {
+	if (sc->sc_flag & UCOM_FLAG_GONE)
 		return (ENXIO);
-	}
 	if (sc->sc_flag & UCOM_FLAG_HL_READY) {
 		/* already opened */
 		return (0);
@@ -515,9 +500,8 @@ ucom_open(struct tty *tp)
 		 * example if the device is not present:
 		 */
 		error = (sc->sc_callback->ucom_pre_open) (sc);
-		if (error) {
+		if (error)
 			return (error);
-		}
 	}
 	sc->sc_flag |= UCOM_FLAG_HL_READY;
 
@@ -557,9 +541,8 @@ ucom_cfg_close(struct ucom_softc *sc)
 		sc->sc_flag &= ~UCOM_FLAG_LL_READY;
 		if (sc->sc_callback->ucom_cfg_close)
 			(sc->sc_callback->ucom_cfg_close) (sc);
-	} else {
-		/* already closed */
-	}
+	} else
+		;	/* already closed */
 }
 
 static void
@@ -580,9 +563,8 @@ ucom_close(struct tty *tp)
 
 	sc->sc_flag &= ~(UCOM_FLAG_HL_READY | UCOM_FLAG_RTS_IFLOW);
 
-	if (sc->sc_callback->ucom_stop_read) {
+	if (sc->sc_callback->ucom_stop_read)
 		(sc->sc_callback->ucom_stop_read) (sc);
-	}
 }
 
 static int
@@ -593,9 +575,8 @@ ucom_ioctl(struct tty *tp, u_long cmd, caddr_t data, struct thread *td)
 
 	mtx_assert(sc->sc_mtx, MA_OWNED);
 
-	if (!(sc->sc_flag & UCOM_FLAG_HL_READY)) {
+	if (!(sc->sc_flag & UCOM_FLAG_HL_READY))
 		return (EIO);
-	}
 	DPRINTF("cmd = 0x%08lx\n", cmd);
 
 	switch (cmd) {
@@ -621,9 +602,8 @@ ucom_ioctl(struct tty *tp, u_long cmd, caddr_t data, struct thread *td)
 		if (sc->sc_callback->ucom_ioctl) {
 			error = (sc->sc_callback->ucom_ioctl)
 			    (sc, cmd, data, 0, td);
-		} else {
+		} else
 			error = ENOIOCTL;
-		}
 		break;
 	}
 	return (error);
@@ -637,42 +617,31 @@ ucom_modem(struct tty *tp, int sigon, int sigoff)
 
 	mtx_assert(sc->sc_mtx, MA_OWNED);
 
-	if (!(sc->sc_flag & UCOM_FLAG_HL_READY)) {
+	if (!(sc->sc_flag & UCOM_FLAG_HL_READY))
 		return (0);
-	}
 	if ((sigon == 0) && (sigoff == 0)) {
-		if (sc->sc_mcr & SER_DTR) {
+		if (sc->sc_mcr & SER_DTR)
 			sigon |= SER_DTR;
-		}
-		if (sc->sc_mcr & SER_RTS) {
+		if (sc->sc_mcr & SER_RTS)
 			sigon |= SER_RTS;
-		}
-		if (sc->sc_msr & SER_CTS) {
+		if (sc->sc_msr & SER_CTS)
 			sigon |= SER_CTS;
-		}
-		if (sc->sc_msr & SER_DCD) {
+		if (sc->sc_msr & SER_DCD)
 			sigon |= SER_DCD;
-		}
-		if (sc->sc_msr & SER_DSR) {
+		if (sc->sc_msr & SER_DSR)
 			sigon |= SER_DSR;
-		}
-		if (sc->sc_msr & SER_RI) {
+		if (sc->sc_msr & SER_RI)
 			sigon |= SER_RI;
-		}
 		return (sigon);
 	}
-	if (sigon & SER_DTR) {
+	if (sigon & SER_DTR)
 		sc->sc_mcr |= SER_DTR;
-	}
-	if (sigoff & SER_DTR) {
+	if (sigoff & SER_DTR)
 		sc->sc_mcr &= ~SER_DTR;
-	}
-	if (sigon & SER_RTS) {
+	if (sigon & SER_RTS)
 		sc->sc_mcr |= SER_RTS;
-	}
-	if (sigoff & SER_RTS) {
+	if (sigoff & SER_RTS)
 		sc->sc_mcr &= ~SER_RTS;
-	}
 	onoff = (sc->sc_mcr & SER_DTR) ? 1 : 0;
 	ucom_dtr(sc, onoff);
 
@@ -691,9 +660,8 @@ ucom_cfg_line_state(struct ucom_softc *sc)
 	uint8_t last_value;
 	uint8_t mask;
 
-	if (!(sc->sc_flag & UCOM_FLAG_LL_READY)) {
+	if (!(sc->sc_flag & UCOM_FLAG_LL_READY))
 		return;
-	}
 
 	mask = 0;
 	/* compute callback mask */
@@ -753,9 +721,8 @@ ucom_line_state(struct ucom_softc *sc,
 
 	mtx_assert(sc->sc_mtx, MA_OWNED);
 
-	if (!(sc->sc_flag & UCOM_FLAG_HL_READY)) {
+	if (!(sc->sc_flag & UCOM_FLAG_HL_READY))
 		return;
-	}
 
 	DPRINTF("on=0x%02x, off=0x%02x\n", set_bits, clear_bits);
 
@@ -828,12 +795,10 @@ ucom_cfg_status_change(struct ucom_softc *sc)
 
 	mtx_assert(sc->sc_mtx, MA_OWNED);
 
-	if (!(sc->sc_flag & UCOM_FLAG_LL_READY)) {
+	if (!(sc->sc_flag & UCOM_FLAG_LL_READY))
 		return;
-	}
-	if (sc->sc_callback->ucom_cfg_get_status == NULL) {
+	if (sc->sc_callback->ucom_cfg_get_status == NULL)
 		return;
-	}
 	/* get status */
 	new_msr = 0;
 	new_lsr = 0;
@@ -866,9 +831,8 @@ ucom_status_change(struct ucom_softc *sc)
 	if (sc->sc_flag & UCOM_FLAG_CONSOLE)
 		return;		/* not supported */
 
-	if (!(sc->sc_flag & UCOM_FLAG_HL_READY)) {
+	if (!(sc->sc_flag & UCOM_FLAG_HL_READY))
 		return;
-	}
 	DPRINTF("\n");
 
 	ucom_cfg_status_change(sc);
@@ -878,12 +842,10 @@ static void
 ucom_cfg_param(struct ucom_softc *sc, struct termios *t)
 {
 
-	if (!(sc->sc_flag & UCOM_FLAG_LL_READY)) {
+	if (!(sc->sc_flag & UCOM_FLAG_LL_READY))
 		return;
-	}
-	if (sc->sc_callback->ucom_cfg_param == NULL) {
+	if (sc->sc_callback->ucom_cfg_param == NULL)
 		return;
-	}
 
 	(sc->sc_callback->ucom_cfg_param) (sc, t);
 
@@ -906,9 +868,8 @@ ucom_param(struct tty *tp, struct termios *t)
 	if (!(sc->sc_flag & UCOM_FLAG_HL_READY)) {
 		/* XXX the TTY layer should call "open()" first! */
 		error = ucom_open(tp);
-		if (error) {
+		if (error)
 			goto done;
-		}
 		opened = 1;
 	}
 	DPRINTF("sc = %p\n", sc);
@@ -949,9 +910,8 @@ ucom_param(struct tty *tp, struct termios *t)
 	}
 done:
 	if (error) {
-		if (opened) {
+		if (opened)
 			ucom_close(tp);
-		}
 	}
 	return (error);
 }
@@ -1027,9 +987,8 @@ ucom_get_data(struct ucom_softc *sc, struct usb_page_cache *pc,
 	while (len != 0) {
 		usbd_get_page(pc, offset, &res);
 
-		if (res.length > len) {
+		if (res.length > len)
 			res.length = len;
-		}
 		/* copy data directly into USB buffer */
 		cnt = ttydisc_getc(tp, res.buffer, res.length);
 
@@ -1046,9 +1005,8 @@ ucom_get_data(struct ucom_softc *sc, struct usb_page_cache *pc,
 
 	DPRINTF("cnt=%d\n", actlen[0]);
 
-	if (actlen[0] == 0) {
+	if (actlen[0] == 0)
 		return (0);
-	}
 	return (1);
 }
 
@@ -1097,9 +1055,8 @@ ucom_put_data(struct ucom_softc *sc, struct usb_page_cache *pc,
 	while (len > 0) {
 		usbd_get_page(pc, offset, &res);
 
-		if (res.length > len) {
+		if (res.length > len)
 			res.length = len;
-		}
 		len -= res.length;
 		offset += res.length;
 
@@ -1109,9 +1066,8 @@ ucom_put_data(struct ucom_softc *sc, struct usb_page_cache *pc,
 
 		/* first check if we can pass the buffer directly */
 		if (ttydisc_can_bypass(tp)) {
-			if (ttydisc_rint_bypass(tp, buf, cnt) != cnt) {
+			if (ttydisc_rint_bypass(tp, buf, cnt) != cnt)
 				DPRINTF("tp=%p, data lost\n", tp);
-			}
 			continue;
 		}
 		/* need to loop */
@@ -1182,9 +1138,8 @@ ucom_cngetc(struct consdev *cd)
 		c = ucom_cons_rx_buf[ucom_cons_rx_low];
 		ucom_cons_rx_low ++;
 		ucom_cons_rx_low %= UCOM_CONS_BUFSIZE;
-	} else {
+	} else
 		c = -1;
-	}
 
 	/* start USB transfers */
 	ucom_outwakeup(sc->sc_tty);

@@ -162,9 +162,8 @@ ugen_transfer_setup(struct usb_fifo *f,
 			    f->xfer[0]->max_frame_size,
 			    2 * f->xfer[0]->nframes);
 		}
-		if (error) {
+		if (error)
 			usbd_transfer_unsetup(f->xfer, n_setup);
-		}
 	}
 	mtx_lock(f->priv_mtx);
 
@@ -194,9 +193,8 @@ ugen_open(struct usb_fifo *f, int fflags)
 	}
 
 	type = ed->bmAttributes & UE_XFERTYPE;
-	if (type == UE_INTERRUPT) {
+	if (type == UE_INTERRUPT)
 		f->bufsize = 0;		/* use "wMaxPacketSize" */
-	}
 	f->timeout = USB_NO_TIMEOUT;
 	f->flag_short = 0;
 	f->fifo_zlp = 0;
@@ -259,16 +257,14 @@ ugen_open_pipe_write(struct usb_fifo *f)
 	switch (ed->bmAttributes & UE_XFERTYPE) {
 	case UE_INTERRUPT:
 	case UE_BULK:
-		if (f->flag_short) {
+		if (f->flag_short)
 			usb_config[0].flags.force_short_xfer = 1;
-		}
 		usb_config[0].callback = &ugen_ctrl_write_callback;
 		usb_config[0].timeout = f->timeout;
 		usb_config[0].frames = 1;
 		usb_config[0].bufsize = f->bufsize;
-		if (ugen_transfer_setup(f, usb_config, 2)) {
+		if (ugen_transfer_setup(f, usb_config, 2))
 			return (EIO);
-		}
 		/* first transfer does not clear stall */
 		f->flag_stall = 0;
 		break;
@@ -283,9 +279,8 @@ ugen_open_pipe_write(struct usb_fifo *f)
 		/* clone configuration */
 		usb_config[1] = usb_config[0];
 
-		if (ugen_transfer_setup(f, usb_config, 2)) {
+		if (ugen_transfer_setup(f, usb_config, 2))
 			return (EIO);
-		}
 		break;
 	default:
 		return (EINVAL);
@@ -327,17 +322,15 @@ ugen_open_pipe_read(struct usb_fifo *f)
 	switch (ed->bmAttributes & UE_XFERTYPE) {
 	case UE_INTERRUPT:
 	case UE_BULK:
-		if (f->flag_short) {
+		if (f->flag_short)
 			usb_config[0].flags.short_xfer_ok = 1;
-		}
 		usb_config[0].timeout = f->timeout;
 		usb_config[0].frames = 1;
 		usb_config[0].callback = &ugen_ctrl_read_callback;
 		usb_config[0].bufsize = f->bufsize;
 
-		if (ugen_transfer_setup(f, usb_config, 2)) {
+		if (ugen_transfer_setup(f, usb_config, 2))
 			return (EIO);
-		}
 		/* first transfer does not clear stall */
 		f->flag_stall = 0;
 		break;
@@ -352,9 +345,8 @@ ugen_open_pipe_read(struct usb_fifo *f)
 		/* clone configuration */
 		usb_config[1] = usb_config[0];
 
-		if (ugen_transfer_setup(f, usb_config, 2)) {
+		if (ugen_transfer_setup(f, usb_config, 2))
 			return (EIO);
-		}
 		break;
 
 	default:
@@ -556,9 +548,8 @@ tr_setup:
 		break;
 
 	default:			/* Error */
-		if (xfer->error == USB_ERR_CANCELLED) {
+		if (xfer->error == USB_ERR_CANCELLED)
 			break;
-		}
 		goto tr_setup;
 	}
 }
@@ -583,9 +574,8 @@ tr_setup:
 			    xfer->max_frame_size, &actlen, 1)) {
 				usbd_xfer_set_frame_len(xfer, n, actlen);
 				offset += actlen;
-			} else {
+			} else
 				break;
-			}
 		}
 
 		for (; n != xfer->nframes; n++) {
@@ -596,9 +586,8 @@ tr_setup:
 		break;
 
 	default:			/* Error */
-		if (xfer->error == USB_ERR_CANCELLED) {
+		if (xfer->error == USB_ERR_CANCELLED)
 			break;
-		}
 		goto tr_setup;
 	}
 }
@@ -624,13 +613,11 @@ ugen_set_config(struct usb_fifo *f, uint8_t index)
 		DPRINTFN(6, "no FIFOs\n");
 	}
 	/* change setting - will free generic FIFOs, if any */
-	if (usbd_set_config_index(f->udev, index)) {
+	if (usbd_set_config_index(f->udev, index))
 		return (EIO);
-	}
 	/* probe and attach */
-	if (usb_probe_and_attach(f->udev, USB_IFACE_INDEX_ANY)) {
+	if (usb_probe_and_attach(f->udev, USB_IFACE_INDEX_ANY))
 		return (EIO);
-	}
 	return (0);
 }
 
@@ -652,13 +639,11 @@ ugen_set_interface(struct usb_fifo *f,
 		DPRINTFN(6, "no FIFOs\n");
 	}
 	/* change setting - will free generic FIFOs, if any */
-	if (usbd_set_alt_interface_index(f->udev, iface_index, alt_index)) {
+	if (usbd_set_alt_interface_index(f->udev, iface_index, alt_index))
 		return (EIO);
-	}
 	/* probe and attach */
-	if (usb_probe_and_attach(f->udev, iface_index)) {
+	if (usb_probe_and_attach(f->udev, iface_index))
 		return (EIO);
-	}
 	return (0);
 }
 
@@ -686,24 +671,21 @@ ugen_get_cdesc(struct usb_fifo *f, struct usb_gen_descriptor *ugd)
 	if ((ugd->ugd_config_index == USB_UNCONFIG_INDEX) ||
 	    (ugd->ugd_config_index == udev->curr_config_index)) {
 		cdesc = usbd_get_config_descriptor(udev);
-		if (cdesc == NULL) {
+		if (cdesc == NULL)
 			return (ENXIO);
-		}
 		free_data = 0;
 
 	} else {
 		if (usbd_req_get_config_desc_full(udev,
 		    NULL, &cdesc, M_USBDEV,
-		    ugd->ugd_config_index)) {
+		    ugd->ugd_config_index))
 			return (ENXIO);
-		}
 		free_data = 1;
 	}
 
 	len = UGETW(cdesc->wTotalLength);
-	if (len > ugd->ugd_maxlen) {
+	if (len > ugd->ugd_maxlen)
 		len = ugd->ugd_maxlen;
-	}
 	DPRINTFN(6, "len=%u\n", len);
 
 	ugd->ugd_actlen = len;
@@ -711,9 +693,8 @@ ugen_get_cdesc(struct usb_fifo *f, struct usb_gen_descriptor *ugd)
 
 	error = copyout(cdesc, ugd->ugd_data, len);
 
-	if (free_data) {
+	if (free_data)
 		free(cdesc, M_USBDEV);
-	}
 	return (error);
 }
 
@@ -728,12 +709,10 @@ ugen_get_sdesc(struct usb_fifo *f, struct usb_gen_descriptor *ugd)
 	    size, ugd->ugd_lang_id, ugd->ugd_string_index)) {
 		error = EINVAL;
 	} else {
-		if (size > ((uint8_t *)ptr)[0]) {
+		if (size > ((uint8_t *)ptr)[0])
 			size = ((uint8_t *)ptr)[0];
-		}
-		if (size > ugd->ugd_maxlen) {
+		if (size > ugd->ugd_maxlen)
 			size = ugd->ugd_maxlen;
-		}
 		ugd->ugd_actlen = size;
 		ugd->ugd_offset = 0;
 
@@ -879,22 +858,19 @@ ugen_check_request(struct usb_device *udev, struct usb_device_request *req)
 		 * These requests can be useful for testing USB drivers.
 		 */
 		error = priv_check(curthread, PRIV_DRIVER);
-		if (error) {
+		if (error)
 			return (error);
-		}
 	}
 	/*
 	 * Special case - handle clearing of stall
 	 */
 	if (req->bmRequestType == UT_WRITE_ENDPOINT) {
 		ep = usbd_get_ep_by_addr(udev, req->wIndex[0]);
-		if (ep == NULL) {
+		if (ep == NULL)
 			return (EINVAL);
-		}
 		if ((req->bRequest == UR_CLEAR_FEATURE) &&
-		    (UGETW(req->wValue) == UF_ENDPOINT_HALT)) {
+		    (UGETW(req->wValue) == UF_ENDPOINT_HALT))
 			usbd_clear_data_toggle(udev, ep);
-		}
 	}
 	/* TODO: add more checks to verify the interface index */
 	return (0);
@@ -907,16 +883,14 @@ ugen_do_request(struct usb_fifo *f, struct usb_ctl_request *ur)
 	uint16_t len;
 	uint16_t actlen;
 
-	if (ugen_check_request(f->udev, &ur->ucr_request)) {
+	if (ugen_check_request(f->udev, &ur->ucr_request))
 		return (EPERM);
-	}
 	len = UGETW(ur->ucr_request.wLength);
 
 	/* check if "ucr_data" is valid */
 	if (len != 0) {
-		if (ur->ucr_data == NULL) {
+		if (ur->ucr_data == NULL)
 			return (EFAULT);
-		}
 	}
 	/* do the USB request */
 	error = usbd_do_request_flags
@@ -927,9 +901,8 @@ ugen_do_request(struct usb_fifo *f, struct usb_ctl_request *ur)
 
 	ur->ucr_actlen = actlen;
 
-	if (error) {
+	if (error)
 		error = EIO;
-	}
 	return (error);
 }
 
@@ -946,27 +919,23 @@ ugen_re_enumerate(struct usb_fifo *f)
 	 * This request can be useful for testing USB drivers:
 	 */
 	error = priv_check(curthread, PRIV_DRIVER);
-	if (error) {
+	if (error)
 		return (error);
-	}
 	/* get the device unconfigured */
 	error = ugen_set_config(f, USB_UNCONFIG_INDEX);
-	if (error) {
+	if (error)
 		return (error);
-	}
 	/* do a bus-reset */
 	mtx_lock(f->priv_mtx);
 	error = usbd_req_re_enumerate(udev, f->priv_mtx);
 	mtx_unlock(f->priv_mtx);
 
-	if (error) {
+	if (error)
 		return (ENXIO);
-	}
 	/* restore configuration to index 0 */
 	error = ugen_set_config(f, 0);
-	if (error) {
+	if (error)
 		return (error);
-	}
 	return (0);
 }
 
@@ -974,9 +943,8 @@ int
 ugen_fs_uninit(struct usb_fifo *f)
 {
 
-	if (f->fs_xfer == NULL) {
+	if (f->fs_xfer == NULL)
 		return (EINVAL);
-	}
 	usbd_transfer_unsetup(f->fs_xfer, f->fs_ep_max);
 	free(f->fs_xfer, M_USB);
 	f->fs_xfer = NULL;
@@ -1046,13 +1014,11 @@ ugen_fs_copy_in(struct usb_fifo *f, uint8_t ep_index)
 	int error;
 	uint8_t isread;
 
-	if (ep_index >= f->fs_ep_max) {
+	if (ep_index >= f->fs_ep_max)
 		return (EINVAL);
-	}
 	xfer = f->fs_xfer[ep_index];
-	if (xfer == NULL) {
+	if (xfer == NULL)
 		return (EINVAL);
-	}
 	mtx_lock(f->priv_mtx);
 	if (usbd_transfer_pending(xfer)) {
 		mtx_unlock(f->priv_mtx);
@@ -1062,9 +1028,8 @@ ugen_fs_copy_in(struct usb_fifo *f, uint8_t ep_index)
 
 	error = copyin(f->fs_ep_ptr +
 	    ep_index, &fs_ep, sizeof(fs_ep));
-	if (error) {
+	if (error)
 		return (error);
-	}
 	/* security checks */
 	if (fs_ep.nFrames > xfer->max_frame_count) {
 		xfer->error = USB_ERR_INVAL;
@@ -1076,9 +1041,8 @@ ugen_fs_copy_in(struct usb_fifo *f, uint8_t ep_index)
 	}
 	error = copyin(fs_ep.ppBuffer,
 	    &uaddr, sizeof(uaddr));
-	if (error) {
+	if (error)
 		return (error);
-	}
 	/* reset first frame */
 	usbd_xfer_set_frame_offset(xfer, 0, 0);
 
@@ -1087,18 +1051,16 @@ ugen_fs_copy_in(struct usb_fifo *f, uint8_t ep_index)
 
 		error = copyin(fs_ep.pLength,
 		    &length, sizeof(length));
-		if (error) {
+		if (error)
 			return (error);
-		}
 		if (length != sizeof(*req)) {
 			xfer->error = USB_ERR_INVAL;
 			goto complete;
 		}
 		if (length != 0) {
 			error = copyin(uaddr, req, length);
-			if (error) {
+			if (error)
 				return (error);
-			}
 		}
 		if (ugen_check_request(f->udev, req)) {
 			xfer->error = USB_ERR_INVAL;
@@ -1108,21 +1070,19 @@ ugen_fs_copy_in(struct usb_fifo *f, uint8_t ep_index)
 
 		/* Host mode only ! */
 		if ((req->bmRequestType &
-		    (UT_READ | UT_WRITE)) == UT_READ) {
+		    (UT_READ | UT_WRITE)) == UT_READ)
 			isread = 1;
-		} else {
+		else
 			isread = 0;
-		}
 		n = 1;
 		offset = sizeof(*req);
 
 	} else {
 		/* Device and Host mode */
-		if (USB_GET_DATA_ISREAD(xfer)) {
+		if (USB_GET_DATA_ISREAD(xfer))
 			isread = 1;
-		} else {
+		else
 			isread = 0;
-		}
 		n = 0;
 		offset = 0;
 	}
@@ -1130,9 +1090,8 @@ ugen_fs_copy_in(struct usb_fifo *f, uint8_t ep_index)
 	rem = usbd_xfer_max_len(xfer);
 	xfer->nframes = fs_ep.nFrames;
 	xfer->timeout = fs_ep.timeout;
-	if (xfer->timeout > 65535) {
+	if (xfer->timeout > 65535)
 		xfer->timeout = 65535;
-	}
 	if (fs_ep.flags & USB_FS_FLAG_SINGLE_SHORT_OK)
 		xfer->flags.short_xfer_ok = 1;
 	else
@@ -1156,9 +1115,8 @@ ugen_fs_copy_in(struct usb_fifo *f, uint8_t ep_index)
 	for (; n != xfer->nframes; n++) {
 		error = copyin(fs_ep.pLength + n,
 		    &length, sizeof(length));
-		if (error) {
+		if (error)
 			break;
-		}
 		usbd_xfer_set_frame_len(xfer, n, length);
 
 		if (length > rem) {
@@ -1171,9 +1129,8 @@ ugen_fs_copy_in(struct usb_fifo *f, uint8_t ep_index)
 			/* we need to know the source buffer */
 			error = copyin(fs_ep.ppBuffer + n,
 			    &uaddr, sizeof(uaddr));
-			if (error) {
+			if (error)
 				break;
-			}
 			if ((xfer->status & XFER_STATUS_ISOCXFER) != 0) {
 				/* get kernel buffer address */
 				kaddr = xfer->frbuffers[0].buffer;
@@ -1188,9 +1145,8 @@ ugen_fs_copy_in(struct usb_fifo *f, uint8_t ep_index)
 
 			/* move data */
 			error = copyin(uaddr, kaddr, length);
-			if (error) {
+			if (error)
 				break;
-			}
 		}
 		offset += length;
 	}
@@ -1236,35 +1192,31 @@ ugen_fs_copy_out(struct usb_fifo *f, uint8_t ep_index)
 
 	fs_ep_uptr = f->fs_ep_ptr + ep_index;
 	error = copyin(fs_ep_uptr, &fs_ep, sizeof(fs_ep));
-	if (error) {
+	if (error)
 		return (error);
-	}
 	fs_ep.status = xfer->error;
 	fs_ep.aFrames = xfer->aframes;
 	fs_ep.isoc_time_complete = xfer->isoc_time_complete;
-	if (xfer->error) {
+	if (xfer->error)
 		goto complete;
-	}
 	if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
 		req = xfer->frbuffers[0].buffer;
 
 		/* Host mode only ! */
-		if ((req->bmRequestType & (UT_READ | UT_WRITE)) == UT_READ) {
+		if ((req->bmRequestType & (UT_READ | UT_WRITE)) == UT_READ)
 			isread = 1;
-		} else {
+		else
 			isread = 0;
-		}
 		if (xfer->nframes == 0)
 			n = 0;		/* should never happen */
 		else
 			n = 1;
 	} else {
 		/* Device and Host mode */
-		if (USB_GET_DATA_ISREAD(xfer)) {
+		if (USB_GET_DATA_ISREAD(xfer))
 			isread = 1;
-		} else {
+		else
 			isread = 0;
-		}
 		n = 0;
 	}
 
@@ -1276,9 +1228,8 @@ ugen_fs_copy_out(struct usb_fifo *f, uint8_t ep_index)
 		/* get initial length into "temp" */
 		error = copyin(fs_ep.pLength + n,
 		    &temp, sizeof(temp));
-		if (error) {
+		if (error)
 			return (error);
-		}
 		if (temp > rem) {
 			/* the userland length has been corrupted */
 			DPRINTF("corrupt userland length "
@@ -1301,9 +1252,8 @@ ugen_fs_copy_out(struct usb_fifo *f, uint8_t ep_index)
 			/* we need to know the destination buffer */
 			error = copyin(fs_ep.ppBuffer + n,
 			    &uaddr, sizeof(uaddr));
-			if (error) {
+			if (error)
 				return (error);
-			}
 			if ((xfer->status & XFER_STATUS_ISOCXFER) != 0) {
 				/* only one frame buffer */
 				kaddr = USB_ADD_BYTES(
@@ -1315,9 +1265,8 @@ ugen_fs_copy_out(struct usb_fifo *f, uint8_t ep_index)
 
 			/* move data */
 			error = copyout(kaddr, uaddr, length);
-			if (error) {
+			if (error)
 				return (error);
-			}
 		}
 		/*
 		 * Update offset according to initial length, which is
@@ -1328,9 +1277,8 @@ ugen_fs_copy_out(struct usb_fifo *f, uint8_t ep_index)
 		/* update length */
 		error = copyout(&length,
 		    fs_ep.pLength + n, sizeof(length));
-		if (error) {
+		if (error)
 			return (error);
-		}
 	}
 
 complete:
@@ -1363,13 +1311,11 @@ ugen_fifo_in_use(struct usb_fifo *f, int fflags)
 	f_tx = f->udev->fifo[(f->fifo_index & ~1) + USB_FIFO_TX];
 
 	if ((fflags & FREAD) && f_rx &&
-	    (f_rx->xfer[0] || f_rx->xfer[1])) {
+	    (f_rx->xfer[0] || f_rx->xfer[1]))
 		return (1);		/* RX FIFO in use */
-	}
 	if ((fflags & FWRITE) && f_tx &&
-	    (f_tx->xfer[0] || f_tx->xfer[1])) {
+	    (f_tx->xfer[0] || f_tx->xfer[1]))
 		return (1);		/* TX FIFO in use */
-	}
 	return (0);			/* not in use */
 }
 
@@ -1414,9 +1360,8 @@ ugen_ioctl(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 
 	case USB_FS_START:
 		error = ugen_fs_copy_in(f, u.pstart->ep_index);
-		if (error) {
+		if (error)
 			break;
-		}
 		mtx_lock(f->priv_mtx);
 		usbd_transfer_start(f->fs_xfer[u.pstart->ep_index]);
 		mtx_unlock(f->priv_mtx);
@@ -1441,9 +1386,8 @@ ugen_ioctl(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 			error = EBUSY;
 			break;
 		}
-		if (u.popen->max_bufsize > USB_FS_MAX_BUFSIZE) {
+		if (u.popen->max_bufsize > USB_FS_MAX_BUFSIZE)
 			u.popen->max_bufsize = USB_FS_MAX_BUFSIZE;
-		}
 		if (u.popen->max_frames > USB_FS_MAX_FRAMES) {
 			u.popen->max_frames = USB_FS_MAX_FRAMES;
 			break;
@@ -1486,9 +1430,8 @@ ugen_ioctl(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 			isread = ((usb_config[0].endpoint &
 			    (UE_DIR_IN | UE_DIR_OUT)) == UE_DIR_IN);
 
-			if (f->udev->flags.usb_mode != USB_MODE_HOST) {
+			if (f->udev->flags.usb_mode != USB_MODE_HOST)
 				isread = !isread;
-			}
 			/* check permissions */
 			if (isread) {
 				if (!(fflags & FREAD)) {
@@ -1513,9 +1456,8 @@ ugen_ioctl(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 			    f->fs_xfer[u.popen->ep_index]->max_data_length;
 			f->fs_xfer[u.popen->ep_index]->priv_fifo =
 			    ((uint8_t *)0) + u.popen->ep_index;
-		} else {
+		} else
 			error = ENOMEM;
-		}
 		break;
 
 	case USB_FS_CLOSE:
@@ -1547,9 +1489,8 @@ ugen_ioctl(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 		error = usbd_transfer_pending(f->fs_xfer[u.pstall->ep_index]);
 		mtx_unlock(f->priv_mtx);
 
-		if (error) {
+		if (error)
 			return (EBUSY);
-		}
 		ep = f->fs_xfer[u.pstall->ep_index]->endpoint;
 
 		/* setup a clear-stall packet */
@@ -1561,11 +1502,10 @@ ugen_ioctl(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 		USETW(req.wLength, 0);
 
 		error = usbd_do_request(f->udev, NULL, &req, NULL);
-		if (error == 0) {
+		if (error == 0)
 			usbd_clear_data_toggle(f->udev, ep);
-		} else {
+		else
 			error = ENXIO;
-		}
 		break;
 
 	default:
@@ -1616,11 +1556,10 @@ static int
 ugen_get_frame_size(struct usb_fifo *f, void *addr)
 {
 
-	if (f->xfer[0]) {
+	if (f->xfer[0])
 		*(int *)addr = f->xfer[0]->max_frame_size;
-	} else {
+	else
 		return (EINVAL);
-	}
 	return (0);
 }
 
@@ -1663,11 +1602,10 @@ ugen_get_iface_desc(struct usb_fifo *f,
 	struct usb_interface *iface;
 
 	iface = usbd_get_iface(f->udev, f->iface_index);
-	if (iface && iface->idesc) {
+	if (iface && iface->idesc)
 		*idesc = *(iface->idesc);
-	} else {
+	else
 		return (EIO);
-	}
 	return (0);
 }
 
@@ -1679,11 +1617,10 @@ ugen_get_endpoint_desc(struct usb_fifo *f,
 
 	ep = usb_fifo_softc(f);
 
-	if (ep && ep->edesc) {
+	if (ep && ep->edesc)
 		*ed = *ep->edesc;
-	} else {
+	else
 		return (EINVAL);
-	}
 	return (0);
 }
 
@@ -1695,9 +1632,8 @@ ugen_set_power_mode(struct usb_fifo *f, int mode)
 	uint8_t old_mode;
 
 	if ((udev == NULL) ||
-	    (udev->parent_hub == NULL)) {
+	    (udev->parent_hub == NULL))
 		return (EINVAL);
-	}
 	err = priv_check(curthread, PRIV_DRIVER);
 	if (err)
 		return (err);
@@ -1799,21 +1735,17 @@ ugen_do_port_feature(struct usb_fifo *f, uint8_t port_no,
 	int err;
 
 	err = priv_check(curthread, PRIV_DRIVER);
-	if (err) {
+	if (err)
 		return (err);
-	}
-	if (port_no == 0) {
+	if (port_no == 0)
 		return (EINVAL);
-	}
 	if ((udev == NULL) ||
-	    (udev->hub == NULL)) {
+	    (udev->hub == NULL))
 		return (EINVAL);
-	}
 	hub = udev->hub;
 
-	if (port_no > hub->nports) {
+	if (port_no > hub->nports)
 		return (EINVAL);
-	}
 	if (set)
 		err = usbd_req_set_port_feature(udev,
 		    NULL, port_no, feature);
@@ -1839,127 +1771,111 @@ ugen_iface_ioctl(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 
 	switch (cmd) {
 	case USB_SET_RX_SHORT_XFER:
-		if (fflags & FREAD) {
+		if (fflags & FREAD)
 			error = ugen_set_short_xfer(f_rx, addr);
-		} else {
+		else
 			error = EINVAL;
-		}
 		break;
 
 	case USB_SET_TX_FORCE_SHORT:
-		if (fflags & FWRITE) {
+		if (fflags & FWRITE)
 			error = ugen_set_short_xfer(f_tx, addr);
-		} else {
+		else
 			error = EINVAL;
-		}
 		break;
 
 	case USB_SET_RX_TIMEOUT:
-		if (fflags & FREAD) {
+		if (fflags & FREAD)
 			error = ugen_set_timeout(f_rx, addr);
-		} else {
+		else
 			error = EINVAL;
-		}
 		break;
 
 	case USB_SET_TX_TIMEOUT:
-		if (fflags & FWRITE) {
+		if (fflags & FWRITE)
 			error = ugen_set_timeout(f_tx, addr);
-		} else {
+		else
 			error = EINVAL;
-		}
 		break;
 
 	case USB_GET_RX_FRAME_SIZE:
-		if (fflags & FREAD) {
+		if (fflags & FREAD)
 			error = ugen_get_frame_size(f_rx, addr);
-		} else {
+		else
 			error = EINVAL;
-		}
 		break;
 
 	case USB_GET_TX_FRAME_SIZE:
-		if (fflags & FWRITE) {
+		if (fflags & FWRITE)
 			error = ugen_get_frame_size(f_tx, addr);
-		} else {
+		else
 			error = EINVAL;
-		}
 		break;
 
 	case USB_SET_RX_BUFFER_SIZE:
-		if (fflags & FREAD) {
+		if (fflags & FREAD)
 			error = ugen_set_buffer_size(f_rx, addr);
-		} else {
+		else
 			error = EINVAL;
-		}
 		break;
 
 	case USB_SET_TX_BUFFER_SIZE:
-		if (fflags & FWRITE) {
+		if (fflags & FWRITE)
 			error = ugen_set_buffer_size(f_tx, addr);
-		} else {
+		else
 			error = EINVAL;
-		}
 		break;
 
 	case USB_GET_RX_BUFFER_SIZE:
-		if (fflags & FREAD) {
+		if (fflags & FREAD)
 			error = ugen_get_buffer_size(f_rx, addr);
-		} else {
+		else
 			error = EINVAL;
-		}
 		break;
 
 	case USB_GET_TX_BUFFER_SIZE:
-		if (fflags & FWRITE) {
+		if (fflags & FWRITE)
 			error = ugen_get_buffer_size(f_tx, addr);
-		} else {
+		else
 			error = EINVAL;
-		}
 		break;
 
 	case USB_GET_RX_INTERFACE_DESC:
-		if (fflags & FREAD) {
+		if (fflags & FREAD)
 			error = ugen_get_iface_desc(f_rx, addr);
-		} else {
+		else
 			error = EINVAL;
-		}
 		break;
 
 	case USB_GET_TX_INTERFACE_DESC:
-		if (fflags & FWRITE) {
+		if (fflags & FWRITE)
 			error = ugen_get_iface_desc(f_tx, addr);
-		} else {
+		else
 			error = EINVAL;
-		}
 		break;
 
 	case USB_GET_RX_ENDPOINT_DESC:
-		if (fflags & FREAD) {
+		if (fflags & FREAD)
 			error = ugen_get_endpoint_desc(f_rx, addr);
-		} else {
+		else
 			error = EINVAL;
-		}
 		break;
 
 	case USB_GET_TX_ENDPOINT_DESC:
-		if (fflags & FWRITE) {
+		if (fflags & FWRITE)
 			error = ugen_get_endpoint_desc(f_tx, addr);
-		} else {
+		else
 			error = EINVAL;
-		}
 		break;
 
 	case USB_SET_RX_STALL_FLAG:
-		if ((fflags & FREAD) && (*(int *)addr)) {
+		if ((fflags & FREAD) && (*(int *)addr))
 			f_rx->flag_stall = 1;
-		}
 		break;
 
 	case USB_SET_TX_STALL_FLAG:
-		if ((fflags & FWRITE) && (*(int *)addr)) {
+		if ((fflags & FWRITE) && (*(int *)addr))
 			f_tx->flag_stall = 1;
-		}
 		break;
 
 	default:
@@ -2022,11 +1938,10 @@ ugen_ioctl_post(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 	case USB_GET_ALTINTERFACE:
 		iface = usbd_get_iface(f->udev,
 		    u.ai->uai_interface_index);
-		if (iface && iface->idesc) {
+		if (iface && iface->idesc)
 			u.ai->uai_alt_index = iface->alt_index;
-		} else {
+		else
 			error = EINVAL;
-		}
 		break;
 
 	case USB_SET_ALTINTERFACE:
@@ -2179,9 +2094,8 @@ ugen_ioctl_post(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 			break;
 		}
 		error = usb_fifo_alloc_buffer(f, 1, u.pinit->ep_index_max);
-		if (error) {
+		if (error)
 			break;
-		}
 		f->fs_xfer = malloc(sizeof(f->fs_xfer[0]) *
 		    u.pinit->ep_index_max, M_USB, M_WAITOK | M_ZERO);
 		if (f->fs_xfer == NULL) {

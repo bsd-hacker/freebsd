@@ -124,13 +124,11 @@ ufm_probe(device_t dev)
 {
 	struct usb_attach_arg *uaa = device_get_ivars(dev);
 
-	if (uaa->usb_mode != USB_MODE_HOST) {
+	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	}
 	if ((uaa->info.idVendor == USB_VENDOR_CYPRESS) &&
-	    (uaa->info.idProduct == USB_PRODUCT_CYPRESS_FMRADIO)) {
+	    (uaa->info.idProduct == USB_PRODUCT_CYPRESS_FMRADIO))
 		return (0);
-	}
 	return (ENXIO);
 }
 
@@ -153,9 +151,8 @@ ufm_attach(device_t dev)
 	    &ufm_fifo_methods, &sc->sc_fifo,
 	    device_get_unit(dev), 0 - 1, uaa->info.bIfaceIndex,
 	    UID_ROOT, GID_OPERATOR, 0644);
-	if (error) {
+	if (error)
 		goto detach;
-	}
 	return (0);			/* success */
 
 detach:
@@ -192,12 +189,10 @@ ufm_do_req(struct ufm_softc *sc, uint8_t request,
 
 	error = usbd_do_request(sc->sc_udev, NULL, &req, buf);
 
-	if (retbuf) {
+	if (retbuf)
 		*retbuf = buf[0];
-	}
-	if (error) {
+	if (error)
 		return (ENXIO);
-	}
 	return (0);
 }
 
@@ -221,14 +216,12 @@ ufm_set_freq(struct ufm_softc *sc, void *addr)
 
 	/* This appears to set the frequency */
 	if (ufm_do_req(sc, UFM_CMD_SET_FREQ,
-	    freq >> 8, freq, NULL) != 0) {
+	    freq >> 8, freq, NULL) != 0)
 		return (EIO);
-	}
 	/* Not sure what this does */
 	if (ufm_do_req(sc, UFM_CMD0,
-	    0x96, 0xb7, NULL) != 0) {
+	    0x96, 0xb7, NULL) != 0)
 		return (EIO);
-	}
 	return (0);
 }
 
@@ -249,16 +242,13 @@ ufm_start(struct ufm_softc *sc, void *addr)
 	uint8_t ret;
 
 	if (ufm_do_req(sc, UFM_CMD0,
-	    0x00, 0xc7, &ret)) {
+	    0x00, 0xc7, &ret))
 		return (EIO);
-	}
 	if (ufm_do_req(sc, UFM_CMD2,
-	    0x01, 0x00, &ret)) {
+	    0x01, 0x00, &ret))
 		return (EIO);
-	}
-	if (ret & 0x1) {
+	if (ret & 0x1)
 		return (EIO);
-	}
 	return (0);
 }
 
@@ -266,13 +256,11 @@ static int
 ufm_stop(struct ufm_softc *sc, void *addr)
 {
 	if (ufm_do_req(sc, UFM_CMD0,
-	    0x16, 0x1C, NULL)) {
+	    0x16, 0x1C, NULL))
 		return (EIO);
-	}
 	if (ufm_do_req(sc, UFM_CMD2,
-	    0x00, 0x00, NULL)) {
+	    0x00, 0x00, NULL))
 		return (EIO);
-	}
 	return (0);
 }
 
@@ -288,9 +276,8 @@ ufm_get_stat(struct ufm_softc *sc, void *addr)
 	usb_pause_mtx(NULL, hz / 4);
 
 	if (ufm_do_req(sc, UFM_CMD0,
-	    0x00, 0x24, &ret)) {
+	    0x00, 0x24, &ret))
 		return (EIO);
-	}
 	*(int *)addr = ret;
 
 	return (0);
@@ -303,9 +290,8 @@ ufm_ioctl(struct usb_fifo *fifo, u_long cmd, void *addr,
 	struct ufm_softc *sc = usb_fifo_softc(fifo);
 	int error = 0;
 
-	if ((fflags & (FWRITE | FREAD)) != (FWRITE | FREAD)) {
+	if ((fflags & (FWRITE | FREAD)) != (FWRITE | FREAD))
 		return (EACCES);
-	}
 
 	switch (cmd) {
 	case FM_SET_FREQ:

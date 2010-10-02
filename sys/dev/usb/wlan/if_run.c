@@ -1025,9 +1025,8 @@ run_load_microcode(struct run_softc *sc)
 
 	/* wait until microcontroller is ready */
 	for (ntries = 0; ntries < 1000; ntries++) {
-		if ((error = run_read(sc, RT2860_SYS_CTRL, &tmp)) != 0) {
+		if ((error = run_read(sc, RT2860_SYS_CTRL, &tmp)) != 0)
 			goto fail;
-		}
 		if (tmp & RT2860_MCU_READY)
 			break;
 		run_delay(sc, 10);
@@ -2504,9 +2503,8 @@ run_rx_frame(struct run_softc *sc, struct mbuf *m, uint32_t dmalen)
 	if (ni != NULL) {
 		(void)ieee80211_input(ni, m, rssi, nf);
 		ieee80211_free_node(ni);
-	} else {
+	} else
 		(void)ieee80211_input_all(ic, m, rssi, nf);
-	}
 
 	if (__predict_false(ieee80211_radiotap_active(ic))) {
 		struct run_rx_radiotap_header *tap = &sc->sc_rxtap;
@@ -3203,9 +3201,8 @@ run_sendprot(struct run_softc *sc,
 		dur += ieee80211_ack_duration(ic->ic_rt, rate, isshort);
 		xflags |= RT2860_TX_ACK;
 		mprot = ieee80211_alloc_rts(ic, wh->i_addr1, wh->i_addr2, dur);
-	} else {
+	} else
 		mprot = ieee80211_alloc_cts(ic, ni->ni_vap->iv_myaddr, dur);
-	}
 	if (mprot == NULL) {
 		sc->sc_ifp->if_oerrors++;
 		DPRINTF("could not allocate mbuf\n");
@@ -3421,9 +3418,8 @@ run_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 				run_update_promisc_locked(ifp);
 		} else {
 			if (ifp->if_drv_flags & IFF_DRV_RUNNING &&
-			    (ic->ic_nrunning == 0 || sc->rvp_cnt <= 1)) {
+			    (ic->ic_nrunning == 0 || sc->rvp_cnt <= 1))
 					run_stop(sc);
-			}
 		}
 		RUN_UNLOCK(sc);
 		if (startall)

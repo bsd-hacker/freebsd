@@ -231,9 +231,8 @@ usb_uiomove(struct usb_page_cache *pc, struct uio *uio,
 		 * exiting the mutex and checking things
 		 */
 		error = uiomove(res.buffer, res.length, uio);
-		if (error) {
+		if (error)
 			break;
-		}
 		pc_offset += res.length;
 		len -= res.length;
 	}
@@ -374,9 +373,8 @@ usb_dma_tag_create(struct usb_dma_tag *udt,
 	     /* flags     */ BUS_DMA_KEEP_PG_OFFSET,
 	     /* lockfn    */ &usb_dma_lock_cb,
 	     /* lockarg   */ NULL,
-	    &tag)) {
+	    &tag))
 		tag = NULL;
-	}
 	udt->tag = tag;
 }
 

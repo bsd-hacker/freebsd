@@ -1001,9 +1001,8 @@ axe_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 
 				pos += len + (len % 2);
 			}
-		} else {
+		} else
 			err = axe_rxbuf(sc, pc, 0, actlen);
-		}
 
 		if (err != 0)
 			ifp->if_ierrors++;
@@ -1067,9 +1066,8 @@ tr_setup:
 					break;	/* send out data */
 				return;
 			}
-			if (m->m_pkthdr.len > MCLBYTES) {
+			if (m->m_pkthdr.len > MCLBYTES)
 				m->m_pkthdr.len = MCLBYTES;
-			}
 			if (sc->sc_flags & (AXE_FLAG_772 | AXE_FLAG_178)) {
 				hdr.len = htole16(m->m_pkthdr.len);
 				hdr.ilen = ~hdr.len;
@@ -1217,9 +1215,8 @@ axe_init_locked(struct axe_softc *sc)
 		 */
 		rxmode |= AXE_178_RXCMD_MFB_16384;
 #endif
-	} else {
+	} else
 		rxmode |= AXE_172_RXCMD_UNICAST;
-	}
 
 	/* If we want promiscuous mode, set the allframes bit. */
 	if (ifp->if_flags & IFF_PROMISC)
@@ -1252,9 +1249,8 @@ axe_setpromisc(struct axe_softc *sc)
 
 	if (ifp->if_flags & IFF_PROMISC) {
 		rxmode |= AXE_RXCMD_PROMISC;
-	} else {
+	} else
 		rxmode &= ~AXE_RXCMD_PROMISC;
-	}
 
 	axe_cmd(sc, AXE_CMD_RXCTL_WRITE, 0, rxmode, NULL);
 

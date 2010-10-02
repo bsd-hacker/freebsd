@@ -1058,9 +1058,8 @@ rum_sendprot(struct rum_softc *sc,
 		dur += ieee80211_ack_duration(ic->ic_rt, rate, isshort);
 		flags |= RT2573_TX_NEED_ACK;
 		mprot = ieee80211_alloc_rts(ic, wh->i_addr1, wh->i_addr2, dur);
-	} else {
+	} else
 		mprot = ieee80211_alloc_cts(ic, ni->ni_vap->iv_myaddr, dur);
-	}
 	if (mprot == NULL) {
 		/* XXX stat + msg */
 		return (ENOBUFS);
@@ -1600,9 +1599,8 @@ rum_select_band(struct rum_softc *sc, struct ieee80211_channel *c)
 		bbp35 += 0x10; bbp97 += 0x10; bbp98  += 0x10;
 	}
 	if ((IEEE80211_IS_CHAN_2GHZ(c) && sc->ext_2ghz_lna) ||
-	    (IEEE80211_IS_CHAN_5GHZ(c) && sc->ext_5ghz_lna)) {
+	    (IEEE80211_IS_CHAN_5GHZ(c) && sc->ext_5ghz_lna))
 		bbp17 += 0x10; bbp96 += 0x10; bbp104 += 0x10;
-	}
 
 	sc->bbp17 = bbp17;
 	rum_bbp_write(sc,  17, bbp17);
@@ -2123,9 +2121,8 @@ rum_prepare_beacon(struct rum_softc *sc, struct ieee80211vap *vap)
 	struct mbuf *m0;
 
 	m0 = ieee80211_beacon_alloc(vap->iv_bss, &RUM_VAP(vap)->bo);
-	if (m0 == NULL) {
+	if (m0 == NULL)
 		return ENOBUFS;
-	}
 
 	tp = &vap->iv_txparms[ieee80211_chan2mode(ic->ic_bsschan)];
 	rum_setup_tx_desc(sc, &desc, RT2573_TX_TIMESTAMP, RT2573_TX_HWSEQ,

@@ -293,15 +293,12 @@ uchcom_probe(device_t dev)
 
 	DPRINTFN(11, "\n");
 
-	if (uaa->usb_mode != USB_MODE_HOST) {
+	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	}
-	if (uaa->info.bConfigIndex != UCHCOM_CONFIG_INDEX) {
+	if (uaa->info.bConfigIndex != UCHCOM_CONFIG_INDEX)
 		return (ENXIO);
-	}
-	if (uaa->info.bIfaceIndex != UCHCOM_IFACE_INDEX) {
+	if (uaa->info.bIfaceIndex != UCHCOM_IFACE_INDEX)
 		return (ENXIO);
-	}
 	return (usbd_lookup_id_by_uaa(uchcom_devs, sizeof(uchcom_devs), uaa));
 }
 
@@ -346,9 +343,8 @@ uchcom_attach(device_t dev)
 	mtx_unlock(&sc->sc_mtx);
 
 	error = ucom_attach(&sc->sc_ucom, 1, sc, &uchcom_callback, &sc->sc_mtx);
-	if (error) {
+	if (error)
 		goto detach;
-	}
 	return (0);
 
 detach:
@@ -651,9 +647,8 @@ uchcom_pre_param(struct ucom_softc *ucom, struct termios *t)
 		return (EIO);
 	}
 
-	if (uchcom_calc_divider_settings(&dv, t->c_ospeed)) {
+	if (uchcom_calc_divider_settings(&dv, t->c_ospeed))
 		return (EIO);
-	}
 	return (0);			/* success */
 }
 

@@ -165,15 +165,12 @@ ugensa_probe(device_t dev)
 {
 	struct usb_attach_arg *uaa = device_get_ivars(dev);
 
-	if (uaa->usb_mode != USB_MODE_HOST) {
+	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	}
-	if (uaa->info.bConfigIndex != UGENSA_CONFIG_INDEX) {
+	if (uaa->info.bConfigIndex != UGENSA_CONFIG_INDEX)
 		return (ENXIO);
-	}
-	if (uaa->info.bIfaceIndex != 0) {
+	if (uaa->info.bIfaceIndex != 0)
 		return (ENXIO);
-	}
 	return (usbd_lookup_id_by_uaa(ugensa_devs, sizeof(ugensa_devs), uaa));
 }
 
@@ -258,9 +255,8 @@ ugensa_detach(device_t dev)
 
 	ucom_detach(sc->sc_ucom, sc->sc_niface);
 
-	for (x = 0; x < sc->sc_niface; x++) {
+	for (x = 0; x < sc->sc_niface; x++)
 		usbd_transfer_unsetup(sc->sc_sub[x].sc_xfer, UGENSA_N_TRANSFER);
-	}
 	mtx_destroy(&sc->sc_mtx);
 
 	return (0);

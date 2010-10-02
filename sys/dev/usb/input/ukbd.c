@@ -315,12 +315,10 @@ ukbd_put_key(struct ukbd_softc *sc, uint32_t key)
 		sc->sc_input[sc->sc_inputtail] = key;
 		++(sc->sc_inputs);
 		++(sc->sc_inputtail);
-		if (sc->sc_inputtail >= UKBD_IN_BUF_SIZE) {
+		if (sc->sc_inputtail >= UKBD_IN_BUF_SIZE)
 			sc->sc_inputtail = 0;
-		}
-	} else {
+	} else
 		DPRINTF("input buffer is full\n");
-	}
 }
 
 static void
@@ -387,9 +385,8 @@ ukbd_get_key(struct ukbd_softc *sc, uint8_t wait)
 		c = sc->sc_input[sc->sc_inputhead];
 		--(sc->sc_inputs);
 		++(sc->sc_inputhead);
-		if (sc->sc_inputhead >= UKBD_IN_BUF_SIZE) {
+		if (sc->sc_inputhead >= UKBD_IN_BUF_SIZE)
 			sc->sc_inputhead = 0;
-		}
 	}
 	return (c);
 }
@@ -423,16 +420,13 @@ ukbd_interrupt(struct ukbd_softc *sc)
 	/* Check for released keys. */
 	for (i = 0; i < UKBD_NKEYCODE; i++) {
 		key = sc->sc_odata.keycode[i];
-		if (key == 0) {
+		if (key == 0)
 			continue;
-		}
 		for (j = 0; j < UKBD_NKEYCODE; j++) {
-			if (sc->sc_ndata.keycode[j] == 0) {
+			if (sc->sc_ndata.keycode[j] == 0)
 				continue;
-			}
-			if (key == sc->sc_ndata.keycode[j]) {
+			if (key == sc->sc_ndata.keycode[j])
 				goto rfound;
-			}
 		}
 		ukbd_put_key(sc, key | KEY_RELEASE);
 rfound:	;
@@ -441,14 +435,12 @@ rfound:	;
 	/* Check for pressed keys. */
 	for (i = 0; i < UKBD_NKEYCODE; i++) {
 		key = sc->sc_ndata.keycode[i];
-		if (key == 0) {
+		if (key == 0)
 			continue;
-		}
 		sc->sc_ntime[i] = now + sc->sc_kbd.kb_delay1;
 		for (j = 0; j < UKBD_NKEYCODE; j++) {
-			if (sc->sc_odata.keycode[j] == 0) {
+			if (sc->sc_odata.keycode[j] == 0)
 				continue;
-			}
 			if (key == sc->sc_odata.keycode[j]) {
 				/* key is still pressed */
 				sc->sc_ntime[i] = sc->sc_otime[j];
@@ -523,9 +515,8 @@ ukbd_timeout(void *arg)
 
 	if (ukbd_any_key_pressed(sc) || (sc->sc_inputs != 0)) {
 		ukbd_start_timer(sc);
-	} else {
+	} else
 		sc->sc_flags &= ~UKBD_FLAG_TIMER_RUNNING;
-	}
 }
 
 static uint8_t
@@ -583,13 +574,11 @@ ukbd_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 			}
 			offset = 1;
 			len--;
-		} else {
+		} else
 			offset = 0;
-		}
 
-		if (len > sizeof(sc->sc_ndata)) {
+		if (len > sizeof(sc->sc_ndata))
 			len = sizeof(sc->sc_ndata);
-		}
 
 		if (len) {
 			memset(&sc->sc_ndata, 0, sizeof(sc->sc_ndata));
@@ -612,13 +601,11 @@ ukbd_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 			DPRINTF("apple_eject=%u apple_fn=%u\n",
 			    apple_eject, apple_fn);
 
-			if (sc->sc_ndata.modifiers) {
+			if (sc->sc_ndata.modifiers)
 				DPRINTF("mod: 0x%04x\n", sc->sc_ndata.modifiers);
-			}
 			for (i = 0; i < UKBD_NKEYCODE; i++) {
-				if (sc->sc_ndata.keycode[i]) {
+				if (sc->sc_ndata.keycode[i])
 					DPRINTF("[%d] = %d\n", i, sc->sc_ndata.keycode[i]);
-				}
 			}
 #endif					/* USB_DEBUG */
 
@@ -639,9 +626,8 @@ ukbd_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 			ukbd_interrupt(sc);
 
 			if (!(sc->sc_flags & UKBD_FLAG_TIMER_RUNNING)) {
-				if (ukbd_any_key_pressed(sc)) {
+				if (ukbd_any_key_pressed(sc))
 					ukbd_start_timer(sc);
-				}
 			}
 		}
 	case USB_ST_SETUP:
@@ -649,9 +635,8 @@ tr_setup:
 		if (sc->sc_inputs < UKBD_IN_BUF_FULL) {
 			usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
 			usbd_transfer_submit(xfer);
-		} else {
+		} else
 			DPRINTF("input queue is full!\n");
-		}
 		break;
 
 	default:			/* Error */
@@ -752,12 +737,10 @@ ukbd_probe(device_t dev)
 
 	DPRINTFN(11, "\n");
 
-	if (sw == NULL) {
+	if (sw == NULL)
 		return (ENXIO);
-	}
-	if (uaa->usb_mode != USB_MODE_HOST) {
+	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	}
 
 	if (uaa->info.bInterfaceClass != UICLASS_HID)
 		return (ENXIO);
@@ -833,9 +816,8 @@ ukbd_attach(device_t dev)
 	/* setup default keyboard maps */
 	sc->sc_keymap = key_map;
 	sc->sc_accmap = accent_map;
-	for (n = 0; n < UKBD_NFKEY; n++) {
+	for (n = 0; n < UKBD_NFKEY; n++)
 		sc->sc_fkeymap[n] = fkey_tab[n];
-	}
 
 	kbd_set_maps(kbd, &sc->sc_keymap, &sc->sc_accmap,
 	    sc->sc_fkeymap, UKBD_NFKEY);
@@ -917,23 +899,20 @@ ukbd_attach(device_t dev)
 
 	mtx_unlock(&Giant);
 
-	if (kbd_register(kbd) < 0) {
+	if (kbd_register(kbd) < 0)
 		goto detach;
-	}
 	KBD_CONFIG_DONE(kbd);
 
 	ukbd_enable(kbd);
 
 #ifdef KBD_INSTALL_CDEV
-	if (kbd_attach(kbd)) {
+	if (kbd_attach(kbd))
 		goto detach;
-	}
 #endif
 	sc->sc_flags |= UKBD_FLAG_ATTACHED;
 
-	if (bootverbose) {
+	if (bootverbose)
 		genkbd_diag(kbd, bootverbose);
-	}
 	/* lock keyboard mutex */
 	mtx_lock(&Giant);
 
@@ -1126,13 +1105,11 @@ ukbd_check(keyboard_t *kbd)
 		ukbd_do_poll(sc, 0);
 
 #ifdef UKBD_EMULATE_ATSCANCODE
-	if (sc->sc_buffered_char[0]) {
+	if (sc->sc_buffered_char[0])
 		return (1);
-	}
 #endif
-	if (sc->sc_inputs > 0) {
+	if (sc->sc_inputs > 0)
 		return (1);
-	}
 	return (0);
 }
 
@@ -1165,9 +1142,8 @@ ukbd_check_char(keyboard_t *kbd)
 		return (0);
 
 	if ((sc->sc_composed_char > 0) &&
-	    (!(sc->sc_flags & UKBD_FLAG_COMPOSE))) {
+	    (!(sc->sc_flags & UKBD_FLAG_COMPOSE)))
 		return (1);
-	}
 	return (ukbd_check(kbd));
 }
 
@@ -1228,9 +1204,8 @@ ukbd_read(keyboard_t *kbd, int wait)
 
 #ifdef UKBD_EMULATE_ATSCANCODE
 	keycode = ukbd_trtab[KEY_INDEX(usbcode)];
-	if (keycode == NN) {
+	if (keycode == NN)
 		return -1;
-	}
 	return (ukbd_key2scan(sc, keycode, sc->sc_ndata.modifiers,
 	    (usbcode & KEY_RELEASE)));
 #else					/* !UKBD_EMULATE_ATSCANCODE */
@@ -1282,9 +1257,8 @@ next_code:
 		action = sc->sc_composed_char;
 		sc->sc_composed_char = 0;
 
-		if (action > 0xFF) {
+		if (action > 0xFF)
 			goto errkey;
-		}
 		goto done;
 	}
 #ifdef UKBD_EMULATE_ATSCANCODE
@@ -1307,17 +1281,15 @@ next_code:
 	/* see if there is something in the keyboard port */
 	/* XXX */
 	usbcode = ukbd_get_key(sc, (wait == FALSE) ? 0 : 1);
-	if (usbcode == -1) {
+	if (usbcode == -1)
 		return (NOKEY);
-	}
 	++kbd->kb_count;
 
 #ifdef UKBD_EMULATE_ATSCANCODE
 	/* USB key index -> key code -> AT scan code */
 	keycode = ukbd_trtab[KEY_INDEX(usbcode)];
-	if (keycode == NN) {
+	if (keycode == NN)
 		return (NOKEY);
-	}
 	/* return an AT scan code for the K_RAW mode */
 	if (sc->sc_mode == K_RAW) {
 		return (ukbd_key2scan(sc, keycode, sc->sc_ndata.modifiers,
@@ -1326,14 +1298,12 @@ next_code:
 #else					/* !UKBD_EMULATE_ATSCANCODE */
 
 	/* return the byte as is for the K_RAW mode */
-	if (sc->sc_mode == K_RAW) {
+	if (sc->sc_mode == K_RAW)
 		return (usbcode);
-	}
 	/* USB key index -> key code */
 	keycode = ukbd_trtab[KEY_INDEX(usbcode)];
-	if (keycode == NN) {
+	if (keycode == NN)
 		return (NOKEY);
-	}
 #endif					/* UKBD_EMULATE_ATSCANCODE */
 
 	switch (keycode) {
@@ -1342,9 +1312,8 @@ next_code:
 			if (sc->sc_flags & UKBD_FLAG_COMPOSE) {
 				sc->sc_flags &= ~UKBD_FLAG_COMPOSE;
 
-				if (sc->sc_composed_char > 0xFF) {
+				if (sc->sc_composed_char > 0xFF)
 					sc->sc_composed_char = 0;
-				}
 			}
 		} else {
 			if (!(sc->sc_flags & UKBD_FLAG_COMPOSE)) {
@@ -1355,24 +1324,20 @@ next_code:
 		break;
 		/* XXX: I don't like these... */
 	case 0x5c:			/* print screen */
-		if (sc->sc_flags & ALTS) {
+		if (sc->sc_flags & ALTS)
 			keycode = 0x54;	/* sysrq */
-		}
 		break;
 	case 0x68:			/* pause/break */
-		if (sc->sc_flags & CTLS) {
+		if (sc->sc_flags & CTLS)
 			keycode = 0x6c;	/* break */
-		}
 		break;
 	}
 
 	/* return the key code in the K_CODE mode */
-	if (usbcode & KEY_RELEASE) {
+	if (usbcode & KEY_RELEASE)
 		keycode |= SCAN_RELEASE;
-	}
-	if (sc->sc_mode == K_CODE) {
+	if (sc->sc_mode == K_CODE)
 		return (keycode);
-	}
 	/* compose a character code */
 	if (sc->sc_flags & UKBD_FLAG_COMPOSE) {
 		switch (keycode) {
@@ -1431,16 +1396,14 @@ next_code:
 	action = genkbd_keyaction(kbd, SCAN_CHAR(keycode),
 	    (keycode & SCAN_RELEASE),
 	    &sc->sc_state, &sc->sc_accents);
-	if (action == NOKEY) {
+	if (action == NOKEY)
 		goto next_code;
-	}
 done:
 	return (action);
 
 check_composed:
-	if (sc->sc_composed_char <= 0xFF) {
+	if (sc->sc_composed_char <= 0xFF)
 		goto next_code;
-	}
 errkey:
 	return (ERRKEY);
 }
@@ -1528,9 +1491,8 @@ ukbd_ioctl(keyboard_t *kbd, u_long cmd, caddr_t arg)
 #endif
 	case KDSETLED:			/* set keyboard LED */
 		/* NOTE: lock key state in "sc_state" won't be changed */
-		if (*(int *)arg & ~LOCK_MASK) {
+		if (*(int *)arg & ~LOCK_MASK)
 			return (EINVAL);
-		}
 		i = *(int *)arg;
 		/* replace CAPS LED with ALTGR LED for ALTGR keyboards */
 		if (sc->sc_mode == K_XLATE &&
@@ -1540,9 +1502,8 @@ ukbd_ioctl(keyboard_t *kbd, u_long cmd, caddr_t arg)
 			else
 				i &= ~CLKED;
 		}
-		if (KBD_HAS_DEVICE(kbd)) {
+		if (KBD_HAS_DEVICE(kbd))
 			ukbd_set_leds(sc, ledmap[i & LED_MASK]);
-		}
 		KBD_LED_VAL(kbd) = *(int *)arg;
 		break;
 	case KDGKBSTATE:		/* get lock key state */
@@ -1556,9 +1517,8 @@ ukbd_ioctl(keyboard_t *kbd, u_long cmd, caddr_t arg)
 		/* FALLTHROUGH */
 #endif
 	case KDSKBSTATE:		/* set lock key state */
-		if (*(int *)arg & ~LOCK_MASK) {
+		if (*(int *)arg & ~LOCK_MASK)
 			return (EINVAL);
-		}
 		sc->sc_state &= ~LOCK_MASK;
 		sc->sc_state |= *(int *)arg;
 
@@ -1567,15 +1527,12 @@ ukbd_ioctl(keyboard_t *kbd, u_long cmd, caddr_t arg)
 
 	case KDSETREPEAT:		/* set keyboard repeat rate (new
 					 * interface) */
-		if (!KBD_HAS_DEVICE(kbd)) {
+		if (!KBD_HAS_DEVICE(kbd))
 			return (0);
-		}
-		if (((int *)arg)[1] < 0) {
+		if (((int *)arg)[1] < 0)
 			return (EINVAL);
-		}
-		if (((int *)arg)[0] < 0) {
+		if (((int *)arg)[0] < 0)
 			return (EINVAL);
-		}
 		if (((int *)arg)[0] < 200)	/* fastest possible value */
 			kbd->kb_delay1 = 200;
 		else
@@ -1720,9 +1677,8 @@ ukbd_set_typematic(keyboard_t *kbd, int code)
 		136, 152, 168, 184, 200, 220, 236, 252,
 	272, 304, 336, 368, 400, 440, 472, 504};
 
-	if (code & ~0x7f) {
+	if (code & ~0x7f)
 		return (EINVAL);
-	}
 	kbd->kb_delay1 = delays[(code >> 5) & 3];
 	kbd->kb_delay2 = rates[code & 0x1f];
 	return (0);
@@ -1784,16 +1740,13 @@ ukbd_key2scan(struct ukbd_softc *sc, int code, int shift, int up)
 		0x5c,	/* Keyboard Intl' 6 (Keypad ,) (For PC-9821 layout) */
 	};
 
-	if ((code >= 89) && (code < (89 + (sizeof(scan) / sizeof(scan[0]))))) {
+	if ((code >= 89) && (code < (89 + (sizeof(scan) / sizeof(scan[0])))))
 		code = scan[code - 89];
-	}
 	/* Pause/Break */
-	if ((code == 104) && (!(shift & (MOD_CONTROL_L | MOD_CONTROL_R)))) {
+	if ((code == 104) && (!(shift & (MOD_CONTROL_L | MOD_CONTROL_R))))
 		code = (0x45 | SCAN_PREFIX_E1 | SCAN_PREFIX_CTL);
-	}
-	if (shift & (MOD_SHIFT_L | MOD_SHIFT_R)) {
+	if (shift & (MOD_SHIFT_L | MOD_SHIFT_R))
 		code &= ~SCAN_PREFIX_SHIFT;
-	}
 	code |= (up ? SCAN_RELEASE : SCAN_PRESS);
 
 	if (code & SCAN_PREFIX) {

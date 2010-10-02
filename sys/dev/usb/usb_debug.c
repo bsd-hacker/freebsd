@@ -78,9 +78,8 @@ usb_dump_iface(struct usb_interface *iface)
 {
 
 	printf("usb_dump_iface: iface=%p\n", iface);
-	if (iface == NULL) {
+	if (iface == NULL)
 		return;
-	}
 	printf(" iface=%p idesc=%p altindex=%d\n",
 	    iface, iface->idesc, iface->alt_index);
 }
@@ -95,9 +94,8 @@ usb_dump_device(struct usb_device *udev)
 {
 
 	printf("usb_dump_device: dev=%p\n", udev);
-	if (udev == NULL) {
+	if (udev == NULL)
 		return;
-	}
 	printf(" bus=%p \n"
 	    " address=%d config=%d depth=%d speed=%d self_powered=%d\n"
 	    " power=%d langid=%d\n",
@@ -117,9 +115,8 @@ usb_dump_queue(struct usb_endpoint *ep)
 	struct usb_xfer *xfer;
 
 	printf("usb_dump_queue: endpoint=%p xfer: ", ep);
-	TAILQ_FOREACH(xfer, &ep->endpoint_q.head, wait_entry) {
+	TAILQ_FOREACH(xfer, &ep->endpoint_q.head, wait_entry)
 		printf(" %p", xfer);
-	}
 	printf("\n");
 }
 
@@ -144,9 +141,8 @@ usb_dump_endpoint(struct usb_endpoint *ep)
 		}
 		printf("\n");
 		usb_dump_queue(ep);
-	} else {
+	} else
 		printf("usb_dump_endpoint: endpoint=NULL\n");
-	}
 }
 
 /*------------------------------------------------------------------------*
@@ -160,9 +156,8 @@ usb_dump_xfer(struct usb_xfer *xfer)
 	struct usb_device *udev;
 
 	printf("usb_dump_xfer: xfer=%p\n", xfer);
-	if (xfer == NULL) {
+	if (xfer == NULL)
 		return;
-	}
 	if (xfer->endpoint == NULL) {
 		printf("xfer %p: endpoint=NULL\n",
 		    xfer);

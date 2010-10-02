@@ -218,9 +218,8 @@ ubser_probe(device_t dev)
 {
 	struct usb_attach_arg *uaa = device_get_ivars(dev);
 
-	if (uaa->usb_mode != USB_MODE_HOST) {
+	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	}
 	/* check if this is a BWCT vendor specific ubser interface */
 	if ((strcmp(usb_get_manufacturer(uaa->device), "BWCT") == 0) &&
 	    (uaa->info.bInterfaceClass == 0xff) &&
@@ -272,9 +271,8 @@ ubser_attach(device_t dev)
 
 	error = usbd_transfer_setup(uaa->device, &sc->sc_iface_index,
 	    sc->sc_xfer, ubser_config, UBSER_N_TRANSFER, sc, &sc->sc_mtx);
-	if (error) {
+	if (error)
 		goto detach;
-	}
 	sc->sc_tx_size = usbd_xfer_max_len(sc->sc_xfer[UBSER_BULK_DT_WR]);
 
 	if (sc->sc_tx_size == 0) {
@@ -282,15 +280,13 @@ ubser_attach(device_t dev)
 		goto detach;
 	}
 	/* initialize port numbers */
-	for (n = 0; n < sc->sc_numser; n++) {
+	for (n = 0; n < sc->sc_numser; n++)
 		sc->sc_ucom[n].sc_portno = n;
-	}
 
 	error = ucom_attach(sc->sc_ucom, sc->sc_numser, sc, &ubser_callback,
 	    &sc->sc_mtx);
-	if (error) {
+	if (error)
 		goto detach;
-	}
 
 	mtx_lock(&sc->sc_mtx);
 	usbd_xfer_set_stall(sc->sc_xfer[UBSER_BULK_DT_WR]);
@@ -373,9 +369,8 @@ static __inline void
 ubser_inc_tx_unit(struct ubser_softc *sc)
 {
 	sc->sc_curr_tx_unit++;
-	if (sc->sc_curr_tx_unit >= sc->sc_numser) {
+	if (sc->sc_curr_tx_unit >= sc->sc_numser)
 		sc->sc_curr_tx_unit = 0;
-	}
 }
 
 static void

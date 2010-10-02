@@ -255,12 +255,10 @@ uftdi_probe(device_t dev)
 {
 	struct usb_attach_arg *uaa = device_get_ivars(dev);
 
-	if (uaa->usb_mode != USB_MODE_HOST) {
+	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	}
-	if (uaa->info.bConfigIndex != UFTDI_CONFIG_INDEX) {
+	if (uaa->info.bConfigIndex != UFTDI_CONFIG_INDEX)
 		return (ENXIO);
-	}
 	/* attach to all present interfaces */
 	return (usbd_lookup_id_by_uaa(uftdi_devs, sizeof(uftdi_devs), uaa));
 }
@@ -320,9 +318,8 @@ uftdi_attach(device_t dev)
 	    FTDI_SIO_SET_DATA_BITS(8));
 
 	error = ucom_attach(&sc->sc_ucom, 1, sc, &uftdi_callback, &sc->sc_mtx);
-	if (error) {
+	if (error)
 		goto detach;
-	}
 	return (0);			/* success */
 
 detach:
@@ -428,9 +425,8 @@ uftdi_read_callback(struct usb_xfer *xfer, usb_error_t error)
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
 
-		if (actlen < 2) {
+		if (actlen < 2)
 			goto tr_setup;
-		}
 		pc = usbd_xfer_get_frame(xfer, 0);
 		usbd_copy_out(pc, 0, buf, 2);
 
@@ -460,9 +456,8 @@ uftdi_read_callback(struct usb_xfer *xfer, usb_error_t error)
 		}
 		actlen -= 2;
 
-		if (actlen > 0) {
+		if (actlen > 0)
 			ucom_put_data(&sc->sc_ucom, pc, 2, actlen);
-		}
 	case USB_ST_SETUP:
 tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
@@ -527,9 +522,8 @@ uftdi_cfg_set_break(struct ucom_softc *ucom, uint8_t onoff)
 
 	if (onoff) {
 		sc->sc_last_lcr |= FTDI_SIO_SET_BREAK;
-	} else {
+	} else
 		sc->sc_last_lcr &= ~FTDI_SIO_SET_BREAK;
-	}
 
 	wValue = sc->sc_last_lcr;
 
@@ -587,9 +581,8 @@ uftdi_set_parm_soft(struct termios *t,
 		break;
 
 	case UFTDI_TYPE_8U232AM:
-		if (uftdi_8u232am_getrate(t->c_ospeed, &cfg->rate)) {
+		if (uftdi_8u232am_getrate(t->c_ospeed, &cfg->rate))
 			return (EINVAL);
-		}
 		break;
 	}
 
@@ -601,12 +594,10 @@ uftdi_set_parm_soft(struct termios *t,
 	if (t->c_cflag & PARENB) {
 		if (t->c_cflag & PARODD) {
 			cfg->lcr |= FTDI_SIO_SET_DATA_PARITY_ODD;
-		} else {
+		} else
 			cfg->lcr |= FTDI_SIO_SET_DATA_PARITY_EVEN;
-		}
-	} else {
+	} else
 		cfg->lcr |= FTDI_SIO_SET_DATA_PARITY_NONE;
-	}
 
 	switch (t->c_cflag & CSIZE) {
 	case CS5:
@@ -632,9 +623,8 @@ uftdi_set_parm_soft(struct termios *t,
 		cfg->v_flow = FTDI_SIO_XON_XOFF_HS;
 		cfg->v_start = t->c_cc[VSTART];
 		cfg->v_stop = t->c_cc[VSTOP];
-	} else {
+	} else
 		cfg->v_flow = FTDI_SIO_DISABLE_FLOW_CTRL;
-	}
 
 	return (0);
 }

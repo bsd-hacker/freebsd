@@ -391,9 +391,8 @@ cdce_ncm_init(struct cdce_softc *sc)
 
 	err = usbd_do_request_flags(sc->sc_udev, NULL, &req,
 	    NULL, 0, NULL, 1000 /* ms */);
-	if (err) {
+	if (err)
 		DPRINTFN(1, "Setting CRC mode to off failed.\n");
-	}
 
 	req.bmRequestType = UT_WRITE_CLASS_INTERFACE;
 	req.bRequest = UCDC_NCM_SET_NTB_FORMAT;
@@ -404,9 +403,8 @@ cdce_ncm_init(struct cdce_softc *sc)
 
 	err = usbd_do_request_flags(sc->sc_udev, NULL, &req,
 	    NULL, 0, NULL, 1000 /* ms */);
-	if (err) {
+	if (err)
 		DPRINTFN(1, "Setting NTB format to 16-bit failed.\n");
-	}
 
 	return (0);		/* success */
 }
@@ -709,9 +707,8 @@ tr_setup:
 				}
 				m = mt;
 			}
-			if (m->m_pkthdr.len > MCLBYTES) {
+			if (m->m_pkthdr.len > MCLBYTES)
 				m->m_pkthdr.len = MCLBYTES;
-			}
 			sc->sc_tx_buf[x] = m;
 			usbd_xfer_set_frame_data(xfer, x, m->m_data, m->m_len);
 
@@ -858,9 +855,8 @@ cdce_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 				if (m == NULL)
 					goto tr_stall;
 				sc->sc_rx_buf[x] = m;
-			} else {
+			} else
 				m = sc->sc_rx_buf[x];
-			}
 
 			usbd_xfer_set_frame_data(xfer, x, m->m_data, m->m_len);
 		}
@@ -1240,9 +1236,8 @@ cdce_ncm_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 				continue;
 			} else if (temp > (MHLEN - ETHER_ALIGN)) {
 				m = m_getcl(M_DONTWAIT, MT_DATA, M_PKTHDR);
-			} else {
+			} else
 				m = m_gethdr(M_DONTWAIT, MT_DATA);
-			}
 
 			DPRINTFN(16, "frame %u, offset = %u, length = %u \n",
 			    x, offset, temp);
@@ -1257,9 +1252,8 @@ cdce_ncm_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 				cdce_rxmbuf(sc, m, temp);
 
 				sumdata += temp;
-			} else {
+			} else
 				ifp->if_ierrors++;
-			}
 		}
 
 		DPRINTFN(1, "Efficiency: %u/%u bytes\n", sumdata, actlen);

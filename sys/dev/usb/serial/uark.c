@@ -177,15 +177,12 @@ uark_probe(device_t dev)
 {
 	struct usb_attach_arg *uaa = device_get_ivars(dev);
 
-	if (uaa->usb_mode != USB_MODE_HOST) {
+	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	}
-	if (uaa->info.bConfigIndex != 0) {
+	if (uaa->info.bConfigIndex != 0)
 		return (ENXIO);
-	}
-	if (uaa->info.bIfaceIndex != UARK_IFACE_INDEX) {
+	if (uaa->info.bIfaceIndex != UARK_IFACE_INDEX)
 		return (ENXIO);
-	}
 	return (usbd_lookup_id_by_uaa(uark_devs, sizeof(uark_devs), uaa));
 }
 

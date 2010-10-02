@@ -175,9 +175,8 @@ usb_edesc_foreach(struct usb_config_descriptor *cd,
 	desc = ((struct usb_descriptor *)ped);
 
 	while ((desc = usb_desc_foreach(cd, desc))) {
-		if (desc->bDescriptorType == UDESC_INTERFACE) {
+		if (desc->bDescriptorType == UDESC_INTERFACE)
 			break;
-		}
 		if (desc->bDescriptorType == UDESC_ENDPOINT) {
 			if (desc->bLength < sizeof(*ped)) {
 				/* endpoint index is invalid */

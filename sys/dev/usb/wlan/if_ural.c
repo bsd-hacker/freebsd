@@ -1169,9 +1169,8 @@ ural_sendprot(struct ural_softc *sc,
 		dur += ieee80211_ack_duration(ic->ic_rt, rate, isshort);
 		flags |= RAL_TX_ACK;
 		mprot = ieee80211_alloc_rts(ic, wh->i_addr1, wh->i_addr2, dur);
-	} else {
+	} else
 		mprot = ieee80211_alloc_cts(ic, ni->ni_vap->iv_myaddr, dur);
-	}
 	if (mprot == NULL) {
 		/* XXX stat + msg */
 		return ENOBUFS;

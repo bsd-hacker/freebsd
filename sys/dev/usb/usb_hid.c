@@ -259,9 +259,8 @@ hid_get_item(struct hid_data *s, struct hid_item *h)
 			if (dval == s->usages_max[s->iusage]) {
 				s->iusage ++;
 				s->ousage = 0;
-			} else {
+			} else
 				s->ousage ++;
-			}
 		} else {
 			DPRINTFN(1, "Using last usage\n");
 			dval = s->usage_last;
@@ -359,9 +358,8 @@ hid_get_item(struct hid_data *s, struct hid_item *h)
 					 * one and one item:
 					 */
 					c->loc.count = 1;
-				} else {
+				} else
 					s->ncount = 1;
-				}
 				goto top;
 
 			case 9:	/* Output */
@@ -477,9 +475,8 @@ hid_get_item(struct hid_data *s, struct hid_item *h)
 					s->usages_min[s->nusage] = dval;
 					s->usages_max[s->nusage] = dval;
 					s->nusage ++;
-				} else {
+				} else
 					DPRINTFN(0, "max usage reached\n");
-				}
 
 				/* clear any pending usage sets */
 				s->susage = 0;
@@ -512,9 +509,8 @@ hid_get_item(struct hid_data *s, struct hid_item *h)
 					s->usages_max[s->nusage] = 
 					    c->usage_maximum;
 					s->nusage ++;
-				} else {
+				} else
 					DPRINTFN(0, "Usage set dropped\n");
-				}
 				s->susage = 0;
 				break;
 			case 3:
@@ -738,17 +734,14 @@ hid_get_descriptor_from_usb(struct usb_config_descriptor *cd,
 {
 	struct usb_descriptor *desc = (void *)id;
 
-	if (desc == NULL) {
+	if (desc == NULL)
 		return (NULL);
-	}
 	while ((desc = usb_desc_foreach(cd, desc))) {
 		if ((desc->bDescriptorType == UDESC_HID) &&
-		    (desc->bLength >= USB_HID_DESCRIPTOR_SIZE(0))) {
+		    (desc->bLength >= USB_HID_DESCRIPTOR_SIZE(0)))
 			return (void *)desc;
-		}
-		if (desc->bDescriptorType == UDESC_INTERFACE) {
+		if (desc->bDescriptorType == UDESC_INTERFACE)
 			break;
-		}
 	}
 	return (NULL);
 }
@@ -772,19 +765,16 @@ usbd_req_get_hid_desc(struct usb_device *udev, struct mtx *mtx,
 	struct usb_hid_descriptor *hid;
 	usb_error_t err;
 
-	if ((iface == NULL) || (iface->idesc == NULL)) {
+	if ((iface == NULL) || (iface->idesc == NULL))
 		return (USB_ERR_INVAL);
-	}
 	hid = hid_get_descriptor_from_usb
 	    (usbd_get_config_descriptor(udev), iface->idesc);
 
-	if (hid == NULL) {
+	if (hid == NULL)
 		return (USB_ERR_IOERROR);
-	}
 	*sizep = UGETW(hid->descrs[0].wDescriptorLength);
-	if (*sizep == 0) {
+	if (*sizep == 0)
 		return (USB_ERR_IOERROR);
-	}
 	if (mtx)
 		mtx_unlock(mtx);
 
@@ -793,9 +783,8 @@ usbd_req_get_hid_desc(struct usb_device *udev, struct mtx *mtx,
 	if (mtx)
 		mtx_lock(mtx);
 
-	if (*descp == NULL) {
+	if (*descp == NULL)
 		return (USB_ERR_NOMEM);
-	}
 	err = usbd_req_get_report_descriptor
 	    (udev, mtx, *descp, *sizep, iface_index);
 

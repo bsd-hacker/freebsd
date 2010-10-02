@@ -645,9 +645,8 @@ atp_softc_unpopulate(struct atp_softc *sc)
 {
 	const struct atp_dev_params *params = sc->sc_params;
 
-	if (params == NULL) {
+	if (params == NULL)
 		return;
-	}
 	if (params->n_xsensors != 0) {
 		if (sc->base_x != NULL) {
 			free(sc->base_x, M_USB);
@@ -1050,12 +1049,10 @@ atp_update_strokes(struct atp_softc *sc, atp_pspan *pspans_x,
 	}
 
 	/* Add new strokes for pairs of unmatched pspans */
-	for (i = 0; i < n_xpspans; i++) {
+	for (i = 0; i < n_xpspans; i++)
 		if (pspans_x[i].matched == FALSE) break;
-	}
-	for (j = 0; j < n_ypspans; j++) {
+	for (j = 0; j < n_ypspans; j++)
 		if (pspans_y[j].matched == FALSE) break;
-	}
 	if ((i < n_xpspans) && (j < n_ypspans)) {
 #ifdef USB_DEBUG
 		if (atp_debug >= ATP_LLEVEL_INFO) {
@@ -1347,9 +1344,8 @@ atp_terminate_stroke(struct atp_softc *sc,
 
 	atp_stroke *s = &sc->sc_strokes[index];
 
-	if (s->flags & ATSF_ZOMBIE) {
+	if (s->flags & ATSF_ZOMBIE)
 		return;
-	}
 
 	if ((s->type == ATP_STROKE_TOUCH) &&
 	    (s->age > atp_stroke_maturity_threshold)) {
@@ -1569,9 +1565,8 @@ atp_reap_zombies(struct atp_softc *sc, u_int *n_reaped, u_int *reaped_xlocs)
 
 		if ((tdiff.tv_sec > (ATP_COINCIDENCE_THRESHOLD / 1000000)) ||
 		    ((tdiff.tv_sec == (ATP_COINCIDENCE_THRESHOLD / 1000000)) &&
-		     (tdiff.tv_usec > (ATP_COINCIDENCE_THRESHOLD % 1000000)))) {
+		     (tdiff.tv_usec > (ATP_COINCIDENCE_THRESHOLD % 1000000))))
 			continue; /* Skip non-siblings. */
-		}
 
 		/*
 		 * Reap this sibling zombie stroke.
@@ -1695,9 +1690,8 @@ atp_attach(device_t dev)
 	if (usb_fifo_attach(sc->sc_usb_device, sc, &sc->sc_mutex,
 		&atp_fifo_methods, &sc->sc_fifo,
 		device_get_unit(dev), 0 - 1, uaa->info.bIfaceIndex,
-		UID_ROOT, GID_OPERATOR, 0644)) {
+		UID_ROOT, GID_OPERATOR, 0644))
 		goto detach;
-	}
 
 	sc->sc_params           = &atp_dev_params[uaa->driver_info];
 
@@ -1859,9 +1853,8 @@ atp_intr(struct usb_xfer *xfer, usb_error_t error)
 			/* Ignore single-finger taps at the edges. */
 			if ((tap_fingers == 1) &&
 			    ((reaped_xlocs[0] <= sc->sc_left_margin) ||
-				(reaped_xlocs[0] > sc->sc_right_margin))) {
+				(reaped_xlocs[0] > sc->sc_right_margin)))
 				tap_fingers = 0;
-			}
 			DPRINTFN(ATP_LLEVEL_INFO,
 			    "tap_fingers: %u\n", tap_fingers);
 		}
@@ -1939,9 +1932,8 @@ atp_intr(struct usb_xfer *xfer, usb_error_t error)
 				sc->sc_idlecount = 0;
 				usbd_transfer_start(sc->sc_xfer[ATP_RESET]);
 			}
-		} else {
+		} else
 			sc->sc_idlecount = 0;
-		}
 
 	case USB_ST_SETUP:
 	tr_setup:
@@ -2059,9 +2051,8 @@ atp_open(struct usb_fifo *fifo, int fflags)
 			return (EBUSY);
 
 		if (usb_fifo_alloc_buffer(fifo,
-			ATP_FIFO_BUF_SIZE, ATP_FIFO_QUEUE_MAXLEN)) {
+			ATP_FIFO_BUF_SIZE, ATP_FIFO_QUEUE_MAXLEN))
 			return (ENOMEM);
-		}
 
 		rc = atp_enable(sc);
 		if (rc != 0) {

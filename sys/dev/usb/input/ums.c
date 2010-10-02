@@ -229,9 +229,8 @@ ums_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 		} else {
 			id = 0;
 			if (sc->sc_info[0].sc_flags & UMS_FLAG_SBU) {
-				if ((*buf == 0x14) || (*buf == 0x15)) {
+				if ((*buf == 0x14) || (*buf == 0x15))
 					goto tr_setup;
-				}
 			}
 		}
 
@@ -399,15 +398,13 @@ ums_hid_parse(struct ums_softc *sc, device_t dev, const uint8_t *buf,
 
 	if (hid_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_X),
 	    hid_input, index, &info->sc_loc_x, &flags, &info->sc_iid_x)) {
-		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS) {
+		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS)
 			info->sc_flags |= UMS_FLAG_X_AXIS;
-		}
 	}
 	if (hid_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP, HUG_Y),
 	    hid_input, index, &info->sc_loc_y, &flags, &info->sc_iid_y)) {
-		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS) {
+		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS)
 			info->sc_flags |= UMS_FLAG_Y_AXIS;
-		}
 	}
 	/* Try the wheel first as the Z activator since it's tradition. */
 	if (hid_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP,
@@ -416,9 +413,8 @@ ums_hid_parse(struct ums_softc *sc, device_t dev, const uint8_t *buf,
 	    hid_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP,
 	    HUG_TWHEEL), hid_input, index, &info->sc_loc_z, &flags,
 	    &info->sc_iid_z)) {
-		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS) {
+		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS)
 			info->sc_flags |= UMS_FLAG_Z_AXIS;
-		}
 		/*
 		 * We might have both a wheel and Z direction, if so put
 		 * put the Z on the W coordinate.
@@ -426,16 +422,14 @@ ums_hid_parse(struct ums_softc *sc, device_t dev, const uint8_t *buf,
 		if (hid_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP,
 		    HUG_Z), hid_input, index, &info->sc_loc_w, &flags,
 		    &info->sc_iid_w)) {
-			if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS) {
+			if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS)
 				info->sc_flags |= UMS_FLAG_W_AXIS;
-			}
 		}
 	} else if (hid_locate(buf, len, HID_USAGE2(HUP_GENERIC_DESKTOP,
 	    HUG_Z), hid_input, index, &info->sc_loc_z, &flags, 
 	    &info->sc_iid_z)) {
-		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS) {
+		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS)
 			info->sc_flags |= UMS_FLAG_Z_AXIS;
-		}
 	}
 	/*
 	 * The Microsoft Wireless Intellimouse 2.0 reports it's wheel
@@ -449,9 +443,8 @@ ums_hid_parse(struct ums_softc *sc, device_t dev, const uint8_t *buf,
 	    &flags, &info->sc_iid_t)) {
 		info->sc_loc_t.pos += 8;
 
-		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS) {
+		if ((flags & MOUSE_FLAGS_MASK) == MOUSE_FLAGS)
 			info->sc_flags |= UMS_FLAG_T_AXIS;
-		}
 	} else if (hid_locate(buf, len, HID_USAGE2(HUP_CONSUMER,
 		HUC_AC_PAN), hid_input, index, &info->sc_loc_t,
 		&flags, &info->sc_iid_t)) {
@@ -462,18 +455,16 @@ ums_hid_parse(struct ums_softc *sc, device_t dev, const uint8_t *buf,
 	for (i = 0; i < UMS_BUTTON_MAX; i++) {
 		if (!hid_locate(buf, len, HID_USAGE2(HUP_BUTTON, (i + 1)),
 		    hid_input, index, &info->sc_loc_btn[i], NULL, 
-		    &info->sc_iid_btn[i])) {
+		    &info->sc_iid_btn[i]))
 			break;
-		}
 	}
 
 	/* detect other buttons */
 	for (j = 0; (i < UMS_BUTTON_MAX) && (j < 2); i++, j++) {
 		if (!hid_locate(buf, len, HID_USAGE2(HUP_MICROSOFT, (j + 1)),
 		    hid_input, index, &info->sc_loc_btn[i], NULL, 
-		    &info->sc_iid_btn[i])) {
+		    &info->sc_iid_btn[i]))
 			break;
-		}
 	}
 
 	info->sc_buttons = i;
@@ -581,9 +572,8 @@ ums_attach(device_t dev)
 
 	} else {
 		/* Search the HID descriptor and announce device */
-		for (i = 0; i < UMS_INFO_MAX; i++) {
+		for (i = 0; i < UMS_INFO_MAX; i++)
 			ums_hid_parse(sc, dev, d_ptr, d_len, i);
-		}
 	}
 
 	if (usb_test_quirk(uaa, UQ_MS_REVZ)) {
@@ -647,9 +637,8 @@ ums_attach(device_t dev)
 	    &ums_fifo_methods, &sc->sc_fifo,
 	    device_get_unit(dev), 0 - 1, uaa->info.bIfaceIndex,
   	    UID_ROOT, GID_OPERATOR, 0644);
-	if (err) {
+	if (err)
 		goto detach;
-	}
 	SYSCTL_ADD_PROC(device_get_sysctl_ctx(dev),
 	    SYSCTL_CHILDREN(device_get_sysctl_tree(dev)),
 	    OID_AUTO, "parseinfo", CTLTYPE_STRING|CTLFLAG_RD,
@@ -659,9 +648,8 @@ ums_attach(device_t dev)
 	return (0);
 
 detach:
-	if (d_ptr) {
+	if (d_ptr)
 		free(d_ptr, M_TEMP);
-	}
 	ums_detach(dev);
 	return (ENOMEM);
 }
@@ -763,9 +751,8 @@ ums_put_queue(struct ums_softc *sc, int32_t dx, int32_t dy,
 		usb_fifo_put_data_linear(sc->sc_fifo.fp[USB_FIFO_RX], buf,
 		    sc->sc_mode.packetsize, 1);
 
-	} else {
+	} else
 		DPRINTF("Buffer full, discarded packet\n");
-	}
 }
 
 static void
@@ -793,9 +780,8 @@ ums_open(struct usb_fifo *fifo, int fflags)
 		sc->sc_status.dz = 0;
 		/* sc->sc_status.dt = 0; */
 		if (usb_fifo_alloc_buffer(fifo,
-		    UMS_BUF_SIZE, UMS_IFQ_MAXLEN)) {
+		    UMS_BUF_SIZE, UMS_IFQ_MAXLEN))
 			return (ENOMEM);
-		}
 	}
 	return (0);
 }
@@ -803,9 +789,8 @@ ums_open(struct usb_fifo *fifo, int fflags)
 static void
 ums_close(struct usb_fifo *fifo, int fflags)
 {
-	if (fflags & FREAD) {
+	if (fflags & FREAD)
 		usb_fifo_free_buffer(fifo);
-	}
 }
 
 static int
@@ -836,9 +821,8 @@ ums_ioctl(struct usb_fifo *fifo, u_long cmd, void *addr, int fflags)
 		} else if ((mode.level < 0) || (mode.level > 1)) {
 			error = EINVAL;
 			goto done;
-		} else {
+		} else
 			sc->sc_mode.level = mode.level;
-		}
 
 		/* store polling rate */
 		sc->sc_pollrate = mode.rate;
@@ -908,12 +892,10 @@ ums_ioctl(struct usb_fifo *fifo, u_long cmd, void *addr, int fflags)
 			sc->sc_status.dy = 0;
 			sc->sc_status.dz = 0;
 			/* sc->sc_status.dt = 0; */
-			if (status->dx || status->dy || status->dz /* || status->dt */ ) {
+			if (status->dx || status->dy || status->dz /* || status->dt */ )
 				status->flags |= MOUSE_POSCHANGED;
-			}
-			if (status->button != status->obutton) {
+			if (status->button != status->obutton)
 				status->flags |= MOUSE_BUTTONSCHANGED;
-			}
 			break;
 		}
 	default:

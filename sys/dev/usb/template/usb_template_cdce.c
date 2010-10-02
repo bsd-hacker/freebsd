@@ -297,14 +297,11 @@ eth_get_string_desc(uint16_t lang_id, uint8_t string_index)
 		[STRING_ETH_SERIAL_INDEX] = &string_eth_serial,
 	};
 
-	if (string_index == 0) {
+	if (string_index == 0)
 		return (&string_lang);
-	}
-	if (lang_id != 0x0409) {
+	if (lang_id != 0x0409)
 		return (NULL);
-	}
-	if (string_index < STRING_ETH_MAX) {
+	if (string_index < STRING_ETH_MAX)
 		return (ptr[string_index]);
-	}
 	return (NULL);
 }
