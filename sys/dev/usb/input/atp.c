@@ -486,7 +486,7 @@ atp_set_device_mode(device_t dev, interface_mode mode)
 	usb_device_request_t  req;
 	usb_error_t           err;
 
-	if ((mode != RAW_SENSOR_MODE) && (mode != HID_MODE))
+	if (mode != RAW_SENSOR_MODE && mode != HID_MODE)
 		return (ENXIO);
 
 	sc = device_get_softc(dev);
@@ -850,8 +850,8 @@ atp_detect_pspans(int *p, u_int num_sensors,
 	/* post-process the spans */
 	for (i = 0; i < num_spans; i++) {
 		/* filter away unwanted pressure spans */
-		if ((spans[i].cum < atp_pspan_min_cum_pressure) ||
-		    (spans[i].width > atp_pspan_max_width)) {
+		if (spans[i].cum < atp_pspan_min_cum_pressure ||
+		    spans[i].width > atp_pspan_max_width) {
 			if ((i + 1) < num_spans) {
 				memcpy(&spans[i], &spans[i + 1],
 				    (num_spans - i - 1) * sizeof(atp_pspan));
@@ -954,7 +954,7 @@ atp_match_strokes_against_pspans(struct atp_softc *sc, atp_axis axis,
 				stroke->components[axis].matched = TRUE;
 
 				/* Take care to repeat at the multi-span. */
-				if ((repeat_count > 0) && (j == repeat_index))
+				if (repeat_count > 0 && j == repeat_index)
 					repeat_count--;
 				else
 					pspans[j].matched = TRUE;
@@ -1049,7 +1049,7 @@ atp_update_strokes(struct atp_softc *sc, atp_pspan *pspans_x,
 		if (pspans_x[i].matched == FALSE) break;
 	for (j = 0; j < n_ypspans; j++)
 		if (pspans_y[j].matched == FALSE) break;
-	if ((i < n_xpspans) && (j < n_ypspans)) {
+	if (i < n_xpspans && j < n_ypspans) {
 #ifdef USB_DEBUG
 		if (atp_debug >= ATP_LLEVEL_INFO) {
 			printf("unmatched pspans:");
@@ -1068,7 +1068,7 @@ atp_update_strokes(struct atp_softc *sc, atp_pspan *pspans_x,
 			printf("\n");
 		}
 #endif /* USB_DEBUG */
-		if ((n_xpspans == 1) && (n_ypspans == 1))
+		if (n_xpspans == 1 && n_ypspans == 1)
 			/* The common case of a single pair of new pspans. */
 			atp_add_stroke(sc, &pspans_x[0], &pspans_y[0]);
 		else
@@ -1204,12 +1204,12 @@ atp_add_new_strokes(struct atp_softc *sc, atp_pspan *pspans_x,
 
 			/* Take care to repeat at the multi-pspan. */
 			if (repeat_count > 0) {
-				if ((repeat_axis == X) &&
-				    (repeat_index == i)) {
+				if (repeat_axis == X &&
+				    repeat_index == i) {
 					i--; /* counter loop increment */
 					repeat_count--;
-				} else if ((repeat_axis == Y) &&
-				    (repeat_index == j)) {
+				} else if (repeat_axis == Y &&
+				    repeat_index == j) {
 					j--; /* counter loop increment */
 					repeat_count--;
 				}
@@ -1269,8 +1269,8 @@ atp_advance_stroke_state(struct atp_softc *sc, atp_stroke *stroke,
 
 		u_int i;
 		for (i = 0; i < sc->sc_n_strokes; i++) {
-			if ((&sc->sc_strokes[i] == stroke) ||
-			    (sc->sc_strokes[i].type != ATP_STROKE_TOUCH))
+			if (&sc->sc_strokes[i] == stroke ||
+			    sc->sc_strokes[i].type != ATP_STROKE_TOUCH)
 				continue;
 
 			if (timevalcmp(&sc->sc_strokes[i].ctime,
@@ -1312,8 +1312,8 @@ atp_convert_to_slide(struct atp_softc *sc, atp_stroke *stroke)
 	stroke->type = ATP_STROKE_SLIDE;
 
 	/* Are we at the beginning of a double-click-n-drag? */
-	if ((sc->sc_n_strokes == 1) &&
-	    ((sc->sc_state & ATP_ZOMBIES_EXIST) == 0) &&
+	if (sc->sc_n_strokes == 1 &&
+	    (sc->sc_state & ATP_ZOMBIES_EXIST) == 0 &&
 	    timevalcmp(&stroke->ctime, &sc->sc_reap_time, >)) {
 		struct timeval delta;
 		struct timeval window = {
@@ -1343,8 +1343,8 @@ atp_terminate_stroke(struct atp_softc *sc,
 	if (s->flags & ATSF_ZOMBIE)
 		return;
 
-	if ((s->type == ATP_STROKE_TOUCH) &&
-	    (s->age > atp_stroke_maturity_threshold)) {
+	if (s->type == ATP_STROKE_TOUCH &&
+	    s->age > atp_stroke_maturity_threshold) {
 		s->flags |= ATSF_ZOMBIE;
 
 		/* If no zombies exist, then prepare to reap zombies later. */
@@ -1453,7 +1453,7 @@ atp_compute_smoothening_scale_ratio(atp_stroke *stroke, int *numerator,
 	vel_squared = dxdt * dxdt + dydt * dydt;
 	vel_squared_smooth = (3 * stroke->velocity_squared + vel_squared) >> 2;
 	stroke->velocity_squared = vel_squared_smooth; /* retained as history */
-	if ((vel_squared == 0) || (vel_squared_smooth == 0))
+	if (vel_squared == 0 || vel_squared_smooth == 0)
 		return; /* returning (numerator == 0) will imply zero movement*/
 
 	/*
@@ -1465,7 +1465,7 @@ atp_compute_smoothening_scale_ratio(atp_stroke *stroke, int *numerator,
 	 */
 
 	/* Keep within the bounds of the square-root table. */
-	while ((vel_squared > N) || (vel_squared_smooth > N)) {
+	while (vel_squared > N || vel_squared_smooth > N) {
 		/* Dividing uniformly by 2 won't disturb the final ratio. */
 		vel_squared        >>= 1;
 		vel_squared_smooth >>= 1;
@@ -1502,7 +1502,7 @@ atp_compute_stroke_movement(atp_stroke *stroke)
 
 	/* Get the scale ratio and smoothen movement. */
 	atp_compute_smoothening_scale_ratio(stroke, &num, &denom);
-	if ((num == 0) || (denom == 0)) {
+	if (num == 0 || denom == 0) {
 		stroke->components[X].movement = 0;
 		stroke->components[Y].movement = 0;
 		stroke->velocity_squared >>= 1; /* Erode velocity_squared. */
@@ -1630,8 +1630,8 @@ atp_probe(device_t self)
 	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
 
-	if ((uaa->info.bInterfaceClass != UICLASS_HID) ||
-	    (uaa->info.bInterfaceProtocol != UIPROTO_MOUSE))
+	if (uaa->info.bInterfaceClass != UICLASS_HID ||
+	    uaa->info.bInterfaceProtocol != UIPROTO_MOUSE)
 		return (ENXIO);
 
 	return (usbd_lookup_id_by_uaa(atp_devs, sizeof(atp_devs), uaa));
@@ -1840,13 +1840,13 @@ atp_intr(struct usb_xfer *xfer, usb_error_t error)
 			DPRINTFN(ATP_LLEVEL_INFO, "button %s\n",
 			    ((sc->sc_status.button & MOUSE_BUTTON1DOWN) ?
 				"pressed" : "released"));
-		} else if ((sc->sc_status.obutton == 0) &&
-		    (sc->sc_status.button == 0) &&
-		    (tap_fingers != 0)) {
+		} else if (sc->sc_status.obutton == 0 &&
+		    sc->sc_status.button == 0 &&
+		    tap_fingers != 0) {
 			/* Ignore single-finger taps at the edges. */
-			if ((tap_fingers == 1) &&
-			    ((reaped_xlocs[0] <= sc->sc_left_margin) ||
-				(reaped_xlocs[0] > sc->sc_right_margin)))
+			if (tap_fingers == 1 &&
+			    (reaped_xlocs[0] <= sc->sc_left_margin ||
+			     reaped_xlocs[0] > sc->sc_right_margin))
 				tap_fingers = 0;
 			DPRINTFN(ATP_LLEVEL_INFO,
 			    "tap_fingers: %u\n", tap_fingers);
@@ -1861,8 +1861,8 @@ atp_intr(struct usb_xfer *xfer, usb_error_t error)
 			for (u_int i = 0; i < sc->sc_n_strokes; i++) {
 				atp_stroke *stroke = &sc->sc_strokes[i];
 
-				if ((stroke->components[X].movement) ||
-				    (stroke->components[Y].movement)) {
+				if (stroke->components[X].movement ||
+				    stroke->components[Y].movement) {
 					dx += stroke->components[X].movement;
 					dy += stroke->components[Y].movement;
 					n_movements++;
@@ -1901,9 +1901,9 @@ atp_intr(struct usb_xfer *xfer, usb_error_t error)
 		 * remained idle beyond a threshold, we reinitialize
 		 * it to silence the interrupts.
 		 */
-		if ((sc->sc_status.flags  == 0) &&
-		    (sc->sc_n_strokes     == 0) &&
-		    (sc->sc_status.button == 0)) {
+		if (sc->sc_status.flags  == 0 &&
+		    sc->sc_n_strokes     == 0 &&
+		    sc->sc_status.button == 0) {
 			sc->sc_idlecount++;
 			if (sc->sc_idlecount >= ATP_IDLENESS_THRESHOLD) {
 				DPRINTFN(ATP_LLEVEL_INFO, "idle\n");
@@ -2008,7 +2008,7 @@ atp_start_read(struct usb_fifo *fifo)
 	if (rate > 1000)
 		rate = 1000;
 	/* Check for set rate */
-	if ((rate > 0) && (sc->sc_xfer[ATP_INTR_DT] != NULL)) {
+	if (rate > 0 && sc->sc_xfer[ATP_INTR_DT] != NULL) {
 		/* Stop current transfer, if any */
 		usbd_transfer_stop(sc->sc_xfer[ATP_INTR_DT]);
 		/* Set new interval */
@@ -2089,7 +2089,7 @@ atp_ioctl(struct usb_fifo *fifo, u_long cmd, void *addr, int fflags)
 		if (mode.level == -1)
 			/* Don't change the current setting */
 			;
-		else if ((mode.level < 0) || (mode.level > 1)) {
+		else if (mode.level < 0 || mode.level > 1) {
 			error = EINVAL;
 			goto done;
 		}

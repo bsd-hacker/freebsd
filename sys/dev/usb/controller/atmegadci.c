@@ -289,8 +289,8 @@ atmegadci_setup_rx(struct atmegadci_td *td)
 	td->remainder = 0;
 
 	/* sneak peek the set address */
-	if ((req.bmRequestType == UT_WRITE_DEVICE) &&
-	    (req.bRequest == UR_SET_ADDRESS)) {
+	if (req.bmRequestType == UT_WRITE_DEVICE &&
+	    req.bRequest == UR_SET_ADDRESS) {
 		sc->sc_dv_addr = req.wValue[0] & 0x7F;
 		/* must write address before ZLP */
 		ATMEGA_WRITE_1(sc, ATMEGA_UDADDR, sc->sc_dv_addr);
@@ -415,7 +415,7 @@ repeat:
 	ATMEGA_WRITE_1(sc, ATMEGA_UEINTX, ATMEGA_UEINTX_FIFOCON ^ 0xFF);
 
 	/* check if we are complete */
-	if ((td->remainder == 0) || got_short) {
+	if (td->remainder == 0 || got_short) {
 		if (td->short_pkt) {
 			/* we are complete */
 			return (0);
@@ -1415,8 +1415,8 @@ atmegadci_device_isoc_fs_enter(struct usb_xfer *xfer)
 	 */
 	temp = (nframes - xfer->endpoint->isoc_next) & ATMEGA_FRAME_MASK;
 
-	if ((xfer->endpoint->is_synced == 0) ||
-	    (temp < xfer->nframes)) {
+	if (xfer->endpoint->is_synced == 0 ||
+	    temp < xfer->nframes) {
 		/*
 		 * If there is data underflow or the pipe queue is
 		 * empty we schedule the transfer a few frames ahead

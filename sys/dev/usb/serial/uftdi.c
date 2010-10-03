@@ -441,7 +441,7 @@ uftdi_read_callback(struct usb_xfer *xfer, usb_error_t error)
 		if (ftdi_msr & FTDI_SIO_RLSD_MASK)
 			msr |= SER_DCD;
 
-		if ((sc->sc_msr != msr) ||
+		if (sc->sc_msr != msr ||
 		    ((sc->sc_lsr & FTDI_LSR_MASK) != (lsr & FTDI_LSR_MASK))) {
 			DPRINTF("status change msr=0x%02x (0x%02x) "
 			    "lsr=0x%02x (0x%02x)\n", msr, sc->sc_msr,
@@ -738,17 +738,17 @@ uftdi_8u232am_getrate(uint32_t speed, uint16_t *rate)
 	uint32_t freq;
 	uint16_t result;
 
-	if ((speed < 178) || (speed > ((3000000 * 100) / 97)))
+	if (speed < 178 || speed > ((3000000 * 100) / 97))
 		return (1);		/* prevent numerical overflow */
 
 	/* Special cases for 2M and 3M. */
-	if ((speed >= ((3000000 * 100) / 103)) &&
-	    (speed <= ((3000000 * 100) / 97))) {
+	if (speed >= ((3000000 * 100) / 103) &&
+	    speed <= ((3000000 * 100) / 97)) {
 		result = 0;
 		goto done;
 	}
-	if ((speed >= ((2000000 * 100) / 103)) &&
-	    (speed <= ((2000000 * 100) / 97))) {
+	if (speed >= ((2000000 * 100) / 103) &&
+	    speed <= ((2000000 * 100) / 97)) {
 		result = 1;
 		goto done;
 	}
@@ -766,8 +766,8 @@ uftdi_8u232am_getrate(uint32_t speed, uint16_t *rate)
 	 * 3% of this.
 	 */
 	freq = (speed * d);
-	if ((freq < ((FTDI_8U232AM_FREQ * 1600ULL) / 103)) ||
-	    (freq > ((FTDI_8U232AM_FREQ * 1600ULL) / 97)))
+	if (freq < ((FTDI_8U232AM_FREQ * 1600ULL) / 103) ||
+	    freq > ((FTDI_8U232AM_FREQ * 1600ULL) / 97))
 		return (1);
 
 	/*

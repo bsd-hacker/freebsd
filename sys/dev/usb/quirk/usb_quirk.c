@@ -545,9 +545,9 @@ usb_test_quirk_by_info(const struct usbd_lookup_info *info, uint16_t quirk)
 
 	for (x = 0; x != USB_DEV_QUIRKS_MAX; x++) {
 		/* see if quirk information does not match */
-		if ((usb_quirks[x].vid != info->idVendor) ||
-		    (usb_quirks[x].lo_rev > info->bcdDevice) ||
-		    (usb_quirks[x].hi_rev < info->bcdDevice))
+		if (usb_quirks[x].vid != info->idVendor ||
+		    usb_quirks[x].lo_rev > info->bcdDevice ||
+		    usb_quirks[x].hi_rev < info->bcdDevice)
 			continue;
 		/* see if quirk only should match vendor ID */
 		if (usb_quirks[x].pid != info->idProduct) {
@@ -591,10 +591,10 @@ usb_quirk_get_entry(uint16_t vid, uint16_t pid,
 	/* search for an existing entry */
 	for (x = 0; x != USB_DEV_QUIRKS_MAX; x++) {
 		/* see if quirk information does not match */
-		if ((usb_quirks[x].vid != vid) ||
-		    (usb_quirks[x].pid != pid) ||
-		    (usb_quirks[x].lo_rev != lo_rev) ||
-		    (usb_quirks[x].hi_rev != hi_rev))
+		if (usb_quirks[x].vid != vid ||
+		    usb_quirks[x].pid != pid ||
+		    usb_quirks[x].lo_rev != lo_rev ||
+		    usb_quirks[x].hi_rev != hi_rev)
 			continue;
 		return (usb_quirks + x);
 	}

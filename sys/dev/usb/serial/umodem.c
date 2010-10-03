@@ -300,12 +300,12 @@ umodem_attach(device_t dev)
 	/* get the data interface number */
 	cmd = umodem_get_desc(uaa, UDESC_CS_INTERFACE, UDESCSUB_CDC_CM);
 
-	if ((cmd == NULL) || (cmd->bLength < sizeof(*cmd))) {
+	if (cmd == NULL || cmd->bLength < sizeof(*cmd)) {
 		cud = usbd_find_descriptor(uaa->device, NULL,
 		    uaa->info.bIfaceIndex, UDESC_CS_INTERFACE,
 		    0 - 1, UDESCSUB_CDC_UNION, 0 - 1);
 
-		if ((cud == NULL) || (cud->bLength < sizeof(*cud))) {
+		if (cud == NULL || cud->bLength < sizeof(*cud)) {
 			device_printf(dev, "Missing descriptor. "
 			    "Assuming data interface is next.\n");
 			if (sc->sc_ctrl_iface_no == 0xFF)
@@ -429,14 +429,14 @@ umodem_get_caps(struct usb_attach_arg *uaa, uint8_t *cm, uint8_t *acm)
 	struct usb_cdc_acm_descriptor *cad;
 
 	cmd = umodem_get_desc(uaa, UDESC_CS_INTERFACE, UDESCSUB_CDC_CM);
-	if ((cmd == NULL) || (cmd->bLength < sizeof(*cmd))) {
+	if (cmd == NULL || cmd->bLength < sizeof(*cmd)) {
 		DPRINTF("no CM desc (faking one)\n");
 		*cm = USB_CDC_CM_DOES_CM | USB_CDC_CM_OVER_DATA;
 	} else
 		*cm = cmd->bmCapabilities;
 
 	cad = umodem_get_desc(uaa, UDESC_CS_INTERFACE, UDESCSUB_CDC_ACM);
-	if ((cad == NULL) || (cad->bLength < sizeof(*cad))) {
+	if (cad == NULL || cad->bLength < sizeof(*cad)) {
 		DPRINTF("no ACM desc\n");
 		*acm = 0;
 	} else

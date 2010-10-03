@@ -128,9 +128,9 @@ usb_make_raw_desc(struct usb_temp_setup *temp,
 			bcopy(raw, dst, len);
 
 			/* check if we have got a CDC union descriptor */
-			if ((raw[0] >= sizeof(struct usb_cdc_union_descriptor)) &&
-			    (raw[1] == UDESC_CS_INTERFACE) &&
-			    (raw[2] == UDESCSUB_CDC_UNION)) {
+			if (raw[0] >= sizeof(struct usb_cdc_union_descriptor) &&
+			    raw[1] == UDESC_CS_INTERFACE &&
+			    raw[2] == UDESCSUB_CDC_UNION) {
 				struct usb_cdc_union_descriptor *ud = (void *)dst;
 
 				/* update the interface numbers */
@@ -642,9 +642,9 @@ usb_hw_ep_get_needs(struct usb_hw_ep_scratch *ues,
 
 repeat:
 
-	while ((desc = usb_desc_foreach(ues->cd, desc))) {
-		if ((desc->bDescriptorType == UDESC_INTERFACE) &&
-		    (desc->bLength >= sizeof(*id))) {
+	while ((desc = usb_desc_foreach(ues->cd, desc)) != NULL) {
+		if (desc->bDescriptorType == UDESC_INTERFACE &&
+		    desc->bLength >= sizeof(*id)) {
 			id = (void *)desc;
 
 			if (id->bAlternateSetting == 0) {
@@ -655,8 +655,8 @@ repeat:
 				ep_curr = ep_iface;
 			}
 		}
-		if ((desc->bDescriptorType == UDESC_ENDPOINT) &&
-		    (desc->bLength >= sizeof(*ed))) {
+		if (desc->bDescriptorType == UDESC_ENDPOINT &&
+		    desc->bLength >= sizeof(*ed)) {
 			ed = (void *)desc;
 
 			goto handle_endpoint_desc;
@@ -674,8 +674,8 @@ handle_endpoint_desc:
 			return (1);	/* failure */
 		}
 		wMaxPacketSize = UGETW(ed->wMaxPacketSize);
-		if ((wMaxPacketSize & 0xF800) &&
-		    (speed == USB_SPEED_HIGH)) {
+		if ((wMaxPacketSize & 0xF800) != 0 &&
+		    speed == USB_SPEED_HIGH) {
 			/* handle packet multiplier */
 			temp = (wMaxPacketSize >> 11) & 3;
 			wMaxPacketSize &= 0x7FF;
@@ -705,8 +705,8 @@ handle_endpoint_desc:
 				    (1 << (ep_no % 8));
 				ues->bmOutAlloc[ep_no / 8] |=
 				    (1 << (ep_no % 8));
-				if ((pf->max_in_frame_size < wMaxPacketSize) ||
-				    (pf->max_out_frame_size < wMaxPacketSize)) {
+				if (pf->max_in_frame_size < wMaxPacketSize ||
+				    pf->max_out_frame_size < wMaxPacketSize) {
 					DPRINTFN(0, "Endpoint profile %u "
 					    "has too small buffer\n", ep_no);
 					return (1);

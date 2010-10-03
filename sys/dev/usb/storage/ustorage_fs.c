@@ -339,10 +339,10 @@ ustorage_fs_probe(device_t dev)
 	}
 	/* Check for a standards compliant device */
 	id = usbd_get_interface_descriptor(uaa->iface);
-	if ((id == NULL) ||
-	    (id->bInterfaceClass != UICLASS_MASS) ||
-	    (id->bInterfaceSubClass != UISUBCLASS_SCSI) ||
-	    (id->bInterfaceProtocol != UIPROTO_MASS_BBB))
+	if (id == NULL ||
+	    id->bInterfaceClass != UICLASS_MASS ||
+	    id->bInterfaceSubClass != UISUBCLASS_SCSI ||
+	    id->bInterfaceProtocol != UIPROTO_MASS_BBB)
 		return (ENXIO);
 	return (0);
 }
@@ -476,8 +476,8 @@ ustorage_fs_handle_request(device_t dev,
 	uint8_t is_complete = *pstate;
 
 	if (!is_complete) {
-		if ((req->bmRequestType == UT_WRITE_CLASS_INTERFACE) &&
-		    (req->bRequest == UR_BBB_RESET)) {
+		if (req->bmRequestType == UT_WRITE_CLASS_INTERFACE &&
+		    req->bRequest == UR_BBB_RESET) {
 			*plen = 0;
 			mtx_lock(&sc->sc_mtx);
 			ustorage_fs_transfer_stop(sc);
@@ -486,8 +486,8 @@ ustorage_fs_handle_request(device_t dev,
 			    USTORAGE_FS_T_BBB_COMMAND);
 			mtx_unlock(&sc->sc_mtx);
 			return (0);
-		} else if ((req->bmRequestType == UT_READ_CLASS_INTERFACE) &&
-			   (req->bRequest == UR_BBB_GET_MAX_LUN)) {
+		} else if (req->bmRequestType == UT_READ_CLASS_INTERFACE &&
+		    req->bRequest == UR_BBB_GET_MAX_LUN) {
 			if (offset == 0) {
 				*plen = 1;
 				*pptr = &sc->sc_last_lun;
@@ -546,8 +546,8 @@ ustorage_fs_t_bbb_command_callback(struct usb_xfer *xfer, usb_error_t error)
 		}
 
 		sc->sc_transfer.cmd_len = sc->sc_cbw.bCDBLength;
-		if ((sc->sc_transfer.cmd_len > sizeof(sc->sc_cbw.CBWCDB)) ||
-		    (sc->sc_transfer.cmd_len == 0)) {
+		if (sc->sc_transfer.cmd_len > sizeof(sc->sc_cbw.CBWCDB) ||
+		    sc->sc_transfer.cmd_len == 0) {
 			/* just halt - this is invalid */
 			DPRINTF("invalid command length %d bytes\n",
 			    sc->sc_transfer.cmd_len);
@@ -560,8 +560,8 @@ ustorage_fs_t_bbb_command_callback(struct usb_xfer *xfer, usb_error_t error)
 			DPRINTF("command failed\n");
 			break;
 		}
-		if ((sc->sc_transfer.data_rem > 0) &&
-		    (sc->sc_transfer.cbw_dir != sc->sc_transfer.cmd_dir)) {
+		if (sc->sc_transfer.data_rem > 0 &&
+		    sc->sc_transfer.cbw_dir != sc->sc_transfer.cmd_dir) {
 			/* contradicting data transfer direction */
 			err = 1;
 			DPRINTF("data direction mismatch\n");
@@ -872,7 +872,7 @@ static uint32_t
 get_be32(uint8_t *buf)
 {
 	return ((uint32_t)buf[0] << 24) | ((uint32_t)buf[1] << 16) |
-	((uint32_t)buf[2] << 8) | ((uint32_t)buf[3]);
+	    ((uint32_t)buf[2] << 8) | ((uint32_t)buf[3]);
 }
 
 static void
@@ -934,9 +934,9 @@ ustorage_fs_verify(struct ustorage_fs_softc *sc)
 	/* Range check */
 	vlen += lba;
 
-	if ((vlen < lba) ||
-	    (vlen > currlun->num_sectors) ||
-	    (lba >= currlun->num_sectors)) {
+	if (vlen < lba ||
+	    vlen > currlun->num_sectors ||
+	    lba >= currlun->num_sectors) {
 		currlun->sense_data = SS_LOGICAL_BLOCK_ADDRESS_OUT_OF_RANGE;
 		return (1);
 	}
@@ -1071,7 +1071,7 @@ ustorage_fs_read_capacity(struct ustorage_fs_softc *sc)
 	uint8_t pmi = sc->sc_cmd_data[8];
 
 	/* Check the PMI and LBA fields */
-	if ((pmi > 1) || ((pmi == 0) && (lba != 0))) {
+	if (pmi > 1 || (pmi == 0 && lba != 0)) {
 		currlun->sense_data = SS_INVALID_FIELD_IN_CDB;
 		return (1);
 	}
@@ -1148,7 +1148,7 @@ ustorage_fs_mode_sense(struct ustorage_fs_softc *sc)
 	/*
 	 * The mode pages, in numerical order.
 	 */
-	if ((page_code == 0x08) || all_pages) {
+	if (page_code == 0x08 || all_pages) {
 		buf[0] = 0x08;
 		/* Page code */
 		buf[1] = 10;
@@ -1358,9 +1358,9 @@ ustorage_fs_read(struct ustorage_fs_softc *sc)
 	len = sc->sc_transfer.data_rem >> 9;
 	len += lba;
 
-	if ((len < lba) ||
-	    (len > currlun->num_sectors) ||
-	    (lba >= currlun->num_sectors)) {
+	if (len < lba ||
+	    len > currlun->num_sectors ||
+	    lba >= currlun->num_sectors) {
 		currlun->sense_data = SS_LOGICAL_BLOCK_ADDRESS_OUT_OF_RANGE;
 		return (1);
 	}
@@ -1422,9 +1422,9 @@ ustorage_fs_write(struct ustorage_fs_softc *sc)
 	len = sc->sc_transfer.data_rem >> 9;
 	len += lba;
 
-	if ((len < lba) ||
-	    (len > currlun->num_sectors) ||
-	    (lba >= currlun->num_sectors)) {
+	if (len < lba ||
+	    len > currlun->num_sectors ||
+	    lba >= currlun->num_sectors) {
 		currlun->sense_data = SS_LOGICAL_BLOCK_ADDRESS_OUT_OF_RANGE;
 		return (1);
 	}
@@ -1517,9 +1517,9 @@ ustorage_fs_check_cmd(struct ustorage_fs_softc *sc, uint8_t min_cmd_size,
 		 * and REQUEST SENSE commands are allowed. Anything
 		 * else must fail!
 		 */
-		if ((currlun->unit_attention_data != SS_NO_SENSE) &&
-		    (sc->sc_cmd_data[0] != SC_INQUIRY) &&
-		    (sc->sc_cmd_data[0] != SC_REQUEST_SENSE)) {
+		if (currlun->unit_attention_data != SS_NO_SENSE &&
+		    sc->sc_cmd_data[0] != SC_INQUIRY &&
+		    sc->sc_cmd_data[0] != SC_REQUEST_SENSE) {
 			currlun->sense_data = currlun->unit_attention_data;
 			currlun->unit_attention_data = SS_NO_SENSE;
 			return (1);
@@ -1531,8 +1531,8 @@ ustorage_fs_check_cmd(struct ustorage_fs_softc *sc, uint8_t min_cmd_size,
 		 * INQUIRY and REQUEST SENSE commands are explicitly allowed
 		 * to use unsupported LUNs; all others may not.
 		 */
-		if ((sc->sc_cmd_data[0] != SC_INQUIRY) &&
-		    (sc->sc_cmd_data[0] != SC_REQUEST_SENSE))
+		if (sc->sc_cmd_data[0] != SC_INQUIRY &&
+		    sc->sc_cmd_data[0] != SC_REQUEST_SENSE)
 			return (1);
 	}
 

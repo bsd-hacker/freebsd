@@ -321,8 +321,8 @@ uss820dci_setup_rx(struct uss820dci_td *td)
 	td->remainder = 0;
 
 	/* sneak peek the set address */
-	if ((req.bmRequestType == UT_WRITE_DEVICE) &&
-	    (req.bRequest == UR_SET_ADDRESS))
+	if (req.bmRequestType == UT_WRITE_DEVICE &&
+	    req.bRequest == UR_SET_ADDRESS)
 		sc->sc_dv_addr = req.wValue[0] & 0x7F;
 	else
 		sc->sc_dv_addr = 0xFF;
@@ -485,7 +485,7 @@ repeat:
 	    USS820_RXCON, rx_cntl);
 
 	/* check if we are complete */
-	if ((td->remainder == 0) || got_short) {
+	if (td->remainder == 0 || got_short) {
 		if (td->short_pkt) {
 			/* we are complete */
 			return (0);
@@ -543,9 +543,8 @@ repeat:
 		if (tx_flag & USS820_TXFLG_TXFIF1)
 			return (1);	/* not complete */
 	}
-	if ((!td->support_multi_buffer) &&
-	    (tx_flag & (USS820_TXFLG_TXFIF0 |
-	    USS820_TXFLG_TXFIF1)))
+	if (!td->support_multi_buffer &&
+	    (tx_flag & (USS820_TXFLG_TXFIF0 | USS820_TXFLG_TXFIF1)))
 		return (1);		/* not complete */
 	count = td->max_packet_size;
 	if (td->remainder < count) {
@@ -1387,15 +1386,15 @@ uss820dci_init(struct uss820dci_softc *sc)
 				    USS820_TXCON_ATM);
 			}
 		} else {
-			if ((pf->max_in_frame_size <= 8) &&
-			    (sc->sc_flags.mcsr_feat)) {
+			if (pf->max_in_frame_size <= 8 &&
+			    sc->sc_flags.mcsr_feat) {
 				temp = (USS820_TXCON_FFSZ_8_512 |
 				    USS820_TXCON_ATM);
 			} else if (pf->max_in_frame_size <= 16) {
 				temp = (USS820_TXCON_FFSZ_16_64 |
 				    USS820_TXCON_ATM);
-			} else if ((pf->max_in_frame_size <= 32) &&
-			    (sc->sc_flags.mcsr_feat)) {
+			} else if (pf->max_in_frame_size <= 32 &&
+			    sc->sc_flags.mcsr_feat) {
 				temp = (USS820_TXCON_FFSZ_32_1024 |
 				    USS820_TXCON_ATM);
 			} else {	/* 64 bytes */
@@ -1623,8 +1622,8 @@ uss820dci_device_isoc_fs_enter(struct usb_xfer *xfer)
 	 */
 	temp = (nframes - xfer->endpoint->isoc_next) & USS820_SOFL_MASK;
 
-	if ((xfer->endpoint->is_synced == 0) ||
-	    (temp < xfer->nframes)) {
+	if (xfer->endpoint->is_synced == 0 ||
+	    temp < xfer->nframes) {
 		/*
 		 * If there is data underflow or the pipe queue is
 		 * empty we schedule the transfer a few frames ahead

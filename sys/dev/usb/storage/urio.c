@@ -207,11 +207,11 @@ urio_probe(device_t dev)
 
 	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	if ((((uaa->info.idVendor == USB_VENDOR_DIAMOND) &&
-	    (uaa->info.idProduct == USB_PRODUCT_DIAMOND_RIO500USB)) ||
-	    ((uaa->info.idVendor == USB_VENDOR_DIAMOND2) &&
-	    ((uaa->info.idProduct == USB_PRODUCT_DIAMOND2_RIO600USB) ||
-	    (uaa->info.idProduct == USB_PRODUCT_DIAMOND2_RIO800USB)))))
+	if ((uaa->info.idVendor == USB_VENDOR_DIAMOND &&
+	     uaa->info.idProduct == USB_PRODUCT_DIAMOND_RIO500USB) ||
+	    (uaa->info.idVendor == USB_VENDOR_DIAMOND2 &&
+	     (uaa->info.idProduct == USB_PRODUCT_DIAMOND2_RIO600USB ||
+	      uaa->info.idProduct == USB_PRODUCT_DIAMOND2_RIO800USB)))
 		return (0);
 	else
 		return (ENXIO);

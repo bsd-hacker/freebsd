@@ -727,8 +727,7 @@ umass_get_proto(struct usb_interface *iface)
 
 	/* Check for a standards compliant device */
 	id = usbd_get_interface_descriptor(iface);
-	if ((id == NULL) ||
-	    (id->bInterfaceClass != UICLASS_MASS))
+	if (id == NULL || id->bInterfaceClass != UICLASS_MASS)
 		goto done;
 	switch (id->bInterfaceSubClass) {
 	case UISUBCLASS_SCSI:

@@ -637,8 +637,8 @@ uhub_probe(device_t dev)
 	 * The subclass for USB HUBs is ignored because it is 0 for
 	 * some and 1 for others.
 	 */
-	if ((uaa->info.bConfigIndex == 0) &&
-	    (uaa->info.bDeviceClass == UDCLASS_HUB))
+	if (uaa->info.bConfigIndex == 0 &&
+	    uaa->info.bDeviceClass == UDCLASS_HUB)
 		return (0);
 	return (ENXIO);
 }
@@ -1200,8 +1200,7 @@ usb_hs_bandwidth_alloc(struct usb_xfer *xfer)
 		xfer->endpoint->usb_uframe = slot;
 		xfer->endpoint->usb_smask = mask << slot;
 
-		if ((speed != USB_SPEED_FULL) &&
-		    (speed != USB_SPEED_LOW))
+		if (speed != USB_SPEED_FULL && speed != USB_SPEED_LOW)
 			xfer->endpoint->usb_cmask = 0x00 ;
 		else
 			xfer->endpoint->usb_cmask = (-(0x04 << slot)) & 0xFE;
@@ -1468,7 +1467,7 @@ struct usb_device *
 usb_bus_port_get_device(struct usb_bus *bus, struct usb_port *up)
 {
 
-	if ((bus == NULL) || (up == NULL)) {
+	if (bus == NULL || up == NULL) {
 		/* be NULL safe */
 		return (NULL);
 	}
@@ -1555,8 +1554,8 @@ usb_needs_explore_locked(struct usb_bus *bus, uint8_t do_probe)
 
 	USB_BUS_LOCK_ASSERT(bus, MA_OWNED);
 
-	if ((bus->devices == NULL) ||
-	    (bus->devices[USB_ROOT_HUB_ADDR] == NULL)) {
+	if (bus->devices == NULL ||
+	    bus->devices[USB_ROOT_HUB_ADDR] == NULL) {
 		DPRINTF("No root HUB\n");
 		return;
 	}
@@ -1761,9 +1760,9 @@ usb_bus_powerd(struct usb_bus *bus)
 				usb_dev_resume_peer(udev);
 				USB_BUS_LOCK(bus);
 			}
-		} else if ((temp >= limit) &&
-		    (udev->flags.usb_mode == USB_MODE_HOST) &&
-		    (udev->flags.self_suspended == 0)) {
+		} else if (temp >= limit &&
+		    udev->flags.usb_mode == USB_MODE_HOST &&
+		    udev->flags.self_suspended == 0) {
 			/* try to do suspend */
 			USB_BUS_UNLOCK(bus);
 			usb_dev_suspend_peer(udev);
@@ -1858,8 +1857,8 @@ usb_dev_resume_peer(struct usb_device *udev)
 
 	DPRINTF("udev=%p\n", udev);
 
-	if ((udev->flags.usb_mode == USB_MODE_DEVICE) &&
-	    (udev->flags.remote_wakeup == 0)) {
+	if (udev->flags.usb_mode == USB_MODE_DEVICE &&
+	    udev->flags.remote_wakeup == 0) {
 		/*
 		 * If the host did not set the remote wakeup feature, we can
 		 * not wake it up either!
@@ -2070,8 +2069,8 @@ usbd_set_power_mode(struct usb_device *udev, uint8_t power_mode)
 {
 
 	/* filter input argument */
-	if ((power_mode != USB_POWER_MODE_ON) &&
-	    (power_mode != USB_POWER_MODE_OFF))
+	if (power_mode != USB_POWER_MODE_ON &&
+	    power_mode != USB_POWER_MODE_OFF)
 		power_mode = USB_POWER_MODE_SAVE;
 
 	power_mode = usbd_filter_power_mode(udev, power_mode);

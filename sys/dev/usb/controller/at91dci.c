@@ -344,8 +344,8 @@ at91dci_setup_rx(struct at91dci_td *td)
 	sc = AT9100_DCI_PC2SC(td->pc);
 
 	/* sneak peek the set address */
-	if ((req.bmRequestType == UT_WRITE_DEVICE) &&
-	    (req.bRequest == UR_SET_ADDRESS))
+	if (req.bmRequestType == UT_WRITE_DEVICE &&
+	    req.bRequest == UR_SET_ADDRESS)
 		sc->sc_dv_addr = req.wValue[0] & 0x7F;
 	else
 		sc->sc_dv_addr = 0xFF;
@@ -492,7 +492,7 @@ repeat:
 	 */
 
 	/* check if we are complete */
-	if ((td->remainder == 0) || got_short) {
+	if (td->remainder == 0 || got_short) {
 		if (td->short_pkt) {
 			/* we are complete */
 			return (0);
@@ -1568,8 +1568,8 @@ at91dci_device_isoc_fs_enter(struct usb_xfer *xfer)
 	 */
 	temp = (nframes - xfer->endpoint->isoc_next) & AT91_UDP_FRM_MASK;
 
-	if ((xfer->endpoint->is_synced == 0) ||
-	    (temp < xfer->nframes)) {
+	if (xfer->endpoint->is_synced == 0 ||
+	    temp < xfer->nframes) {
 		/*
 		 * If there is data underflow or the endpoint queue is
 		 * empty we schedule the transfer a few frames ahead

@@ -171,8 +171,8 @@ uhid_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 		 * If the ID byte is non zero we allow descriptors
 		 * having multiple sizes:
 		 */
-		if ((actlen >= sc->sc_isize) ||
-		    ((actlen > 0) && (sc->sc_iid != 0))) {
+		if (actlen >= sc->sc_isize ||
+		    (actlen > 0 && sc->sc_iid != 0)) {
 			/* limit report length to the maximum */
 			if (actlen > sc->sc_isize)
 				actlen = sc->sc_isize;
@@ -594,9 +594,9 @@ uhid_probe(device_t dev)
 	}
 	if (uaa->info.bInterfaceClass != UICLASS_HID) {
 		/* the Xbox 360 gamepad doesn't use the HID class */
-		if ((uaa->info.bInterfaceClass != UICLASS_VENDOR) ||
-		    (uaa->info.bInterfaceSubClass != UISUBCLASS_XBOX360_CONTROLLER) ||
-		    (uaa->info.bInterfaceProtocol != UIPROTO_XBOX360_GAMEPAD))
+		if (uaa->info.bInterfaceClass != UICLASS_VENDOR ||
+		    uaa->info.bInterfaceSubClass != UISUBCLASS_XBOX360_CONTROLLER ||
+		    uaa->info.bInterfaceProtocol != UIPROTO_XBOX360_GAMEPAD)
 			return (ENXIO);
 	}
 	if (usb_test_quirk(uaa, UQ_HID_IGNORE))
@@ -656,9 +656,9 @@ uhid_attach(device_t dev)
 			sc->sc_repdesc_ptr = &uhid_graphire3_4x5_report_descr;
 			sc->sc_flags |= UHID_FLAG_STATIC_DESC;
 		}
-	} else if ((uaa->info.bInterfaceClass == UICLASS_VENDOR) &&
-		    (uaa->info.bInterfaceSubClass == UISUBCLASS_XBOX360_CONTROLLER) &&
-	    (uaa->info.bInterfaceProtocol == UIPROTO_XBOX360_GAMEPAD)) {
+	} else if (uaa->info.bInterfaceClass == UICLASS_VENDOR &&
+	    uaa->info.bInterfaceSubClass == UISUBCLASS_XBOX360_CONTROLLER &&
+	    uaa->info.bInterfaceProtocol == UIPROTO_XBOX360_GAMEPAD) {
 		/* the Xbox 360 gamepad has no report descriptor */
 		sc->sc_repdesc_size = sizeof(uhid_xb360gp_report_descr);
 		sc->sc_repdesc_ptr = &uhid_xb360gp_report_descr;

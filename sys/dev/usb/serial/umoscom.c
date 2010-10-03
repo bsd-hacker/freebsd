@@ -424,7 +424,7 @@ umoscom_cfg_set_rts(struct ucom_softc *ucom, uint8_t onoff)
 static int
 umoscom_pre_param(struct ucom_softc *ucom, struct termios *t)
 {
-	if ((t->c_ospeed <= 1) || (t->c_ospeed > 115200))
+	if (t->c_ospeed <= 1 || t->c_ospeed > 115200)
 		return (EINVAL);
 
 	return (0);

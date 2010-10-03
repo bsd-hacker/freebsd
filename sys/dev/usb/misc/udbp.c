@@ -300,21 +300,21 @@ udbp_probe(device_t dev)
 	 * compare the revision id in the device descriptor with 0x101 Or go
 	 * search the file usbdevs.h. Maybe the device is already in there.
 	 */
-	if (((uaa->info.idVendor == USB_VENDOR_NETCHIP) &&
-	    (uaa->info.idProduct == USB_PRODUCT_NETCHIP_TURBOCONNECT)))
+	if (uaa->info.idVendor == USB_VENDOR_NETCHIP &&
+	    uaa->info.idProduct == USB_PRODUCT_NETCHIP_TURBOCONNECT)
 		return (0);
 
-	if (((uaa->info.idVendor == USB_VENDOR_PROLIFIC) &&
-	    ((uaa->info.idProduct == USB_PRODUCT_PROLIFIC_PL2301) ||
-	    (uaa->info.idProduct == USB_PRODUCT_PROLIFIC_PL2302))))
+	if (uaa->info.idVendor == USB_VENDOR_PROLIFIC &&
+	    (uaa->info.idProduct == USB_PRODUCT_PROLIFIC_PL2301 ||
+	     uaa->info.idProduct == USB_PRODUCT_PROLIFIC_PL2302))
 		return (0);
 
-	if ((uaa->info.idVendor == USB_VENDOR_ANCHOR) &&
-	    (uaa->info.idProduct == USB_PRODUCT_ANCHOR_EZLINK))
+	if (uaa->info.idVendor == USB_VENDOR_ANCHOR &&
+	    uaa->info.idProduct == USB_PRODUCT_ANCHOR_EZLINK)
 		return (0);
 
-	if ((uaa->info.idVendor == USB_VENDOR_GENESYS) &&
-	    (uaa->info.idProduct == USB_PRODUCT_GENESYS_GL620USB))
+	if (uaa->info.idVendor == USB_VENDOR_GENESYS &&
+	    uaa->info.idProduct == USB_PRODUCT_GENESYS_GL620USB)
 		return (0);
 
 	return (ENXIO);
@@ -479,8 +479,7 @@ udbp_bulk_read_complete(node_p node, hook_p hook, void *arg1, int arg2)
 	if (m) {
 		sc->sc_bulk_in_buffer = NULL;
 
-		if ((sc->sc_hook == NULL) ||
-		    NG_HOOK_NOT_VALID(sc->sc_hook)) {
+		if (sc->sc_hook == NULL || NG_HOOK_NOT_VALID(sc->sc_hook)) {
 			DPRINTF("No upstream hook\n");
 			goto done;
 		}
@@ -832,8 +831,8 @@ ng_udbp_disconnect(hook_p hook)
 
 		mtx_unlock(&sc->sc_mtx);
 	}
-	if ((NG_NODE_NUMHOOKS(NG_HOOK_NODE(hook)) == 0)
-	    && (NG_NODE_IS_VALID(NG_HOOK_NODE(hook))))
+	if (NG_NODE_NUMHOOKS(NG_HOOK_NODE(hook)) == 0 &&
+	    NG_NODE_IS_VALID(NG_HOOK_NODE(hook)))
 		ng_rmnode_self(NG_HOOK_NODE(hook));
 
 	return (error);

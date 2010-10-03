@@ -468,7 +468,7 @@ usb_fifo_create(struct usb_cdev_privdata *cpd,
 		}
 	}
 
-	if ((e != 0) && is_busy) {
+	if (e != 0 && is_busy) {
 		/*
 		 * Only the default control endpoint is allowed to be
 		 * opened multiple times!
@@ -560,9 +560,9 @@ usb_fifo_free(struct usb_fifo *f)
 	mtx_lock(&usb_ref_lock);
 
 	/* delink ourselves to stop calls from userland */
-	if ((f->fifo_index < USB_FIFO_MAX) &&
-	    (f->udev != NULL) &&
-	    (f->udev->fifo[f->fifo_index] == f))
+	if (f->fifo_index < USB_FIFO_MAX &&
+	    f->udev != NULL &&
+	    f->udev->fifo[f->fifo_index] == f)
 		f->udev->fifo[f->fifo_index] = NULL;
 	else
 		DPRINTFN(0, "USB FIFO %p has not been linked\n", f);
@@ -1371,8 +1371,8 @@ usb_write(struct cdev *dev, struct uio *uio, int ioflag)
 		}
 
 		/* check if the buffer is ready to be transmitted */
-		if ((f->flag_write_defrag == 0) ||
-		    (m->cur_data_len == m->max_data_len)) {
+		if (f->flag_write_defrag == 0 ||
+		    m->cur_data_len == m->max_data_len) {
 			f->flag_have_fragment = 0;
 
 			/*
@@ -1617,7 +1617,7 @@ usb_fifo_attach(struct usb_device *udev, void *priv_sc,
 	f_tx = usb_fifo_alloc();
 	f_rx = usb_fifo_alloc();
 
-	if ((f_tx == NULL) || (f_rx == NULL)) {
+	if (f_tx == NULL || f_rx == NULL) {
 		usb_fifo_free(f_tx);
 		usb_fifo_free(f_rx);
 		return (ENOMEM);
@@ -1719,7 +1719,7 @@ usb_fifo_alloc_buffer(struct usb_fifo *f, usb_size_t bufsize,
 	f->queue_data = usb_alloc_mbufs(
 	    M_USBDEV, &f->free_q, bufsize, nbuf);
 
-	if ((f->queue_data == NULL) && bufsize && nbuf)
+	if (f->queue_data == NULL && bufsize && nbuf)
 		return (ENOMEM);
 	return (0);			/* success */
 }
@@ -1815,13 +1815,13 @@ usb_fifo_put_data(struct usb_fifo *f, struct usb_page_cache *pc,
 			offset += io_len;
 			len -= io_len;
 
-			if ((len == 0) && (what == 1))
+			if (len == 0 && what == 1)
 				m->last_packet = 1;
 			USB_IF_ENQUEUE(&f->used_q, m);
 
 			usb_fifo_wakeup(f);
 
-			if ((len == 0) || (what == 1))
+			if (len == 0 || what == 1)
 				break;
 		} else
 			break;
@@ -1849,13 +1849,13 @@ usb_fifo_put_data_linear(struct usb_fifo *f, void *ptr,
 			ptr = USB_ADD_BYTES(ptr, io_len);
 			len -= io_len;
 
-			if ((len == 0) && (what == 1))
+			if (len == 0 && what == 1)
 				m->last_packet = 1;
 			USB_IF_ENQUEUE(&f->used_q, m);
 
 			usb_fifo_wakeup(f);
 
-			if ((len == 0) || (what == 1))
+			if (len == 0 || what == 1)
 				break;
 		} else
 			break;
@@ -1925,7 +1925,7 @@ usb_fifo_get_data(struct usb_fifo *f, struct usb_page_cache *pc,
 			m->cur_data_ptr += io_len;
 			m->cur_data_len -= io_len;
 
-			if ((m->cur_data_len == 0) || (what == 1)) {
+			if (m->cur_data_len == 0 || what == 1) {
 				USB_IF_ENQUEUE(&f->free_q, m);
 
 				usb_fifo_wakeup(f);
@@ -1984,7 +1984,7 @@ usb_fifo_get_data_linear(struct usb_fifo *f, void *ptr,
 			m->cur_data_ptr += io_len;
 			m->cur_data_len -= io_len;
 
-			if ((m->cur_data_len == 0) || (what == 1)) {
+			if (m->cur_data_len == 0 || what == 1) {
 				USB_IF_ENQUEUE(&f->free_q, m);
 
 				usb_fifo_wakeup(f);
@@ -2164,7 +2164,7 @@ usb_read_symlink(uint8_t *user_ptr, uint32_t startentry, uint32_t user_len)
 	}
 
 	/* a zero length entry indicates the end */
-	if ((user_len != 0) && (error == 0)) {
+	if (user_len != 0 && error == 0) {
 		len = 0;
 
 		error = copyout(&len,

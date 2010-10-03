@@ -549,8 +549,8 @@ ehci_suspend(ehci_softc_t *sc)
 
 	for (i = 1; i <= sc->sc_noport; i++) {
 		cmd = EOREAD4(sc, EHCI_PORTSC(i));
-		if (((cmd & EHCI_PS_PO) == 0) &&
-		    ((cmd & EHCI_PS_PE) == EHCI_PS_PE)) {
+		if ((cmd & EHCI_PS_PO) == 0 &&
+		    (cmd & EHCI_PS_PE) == EHCI_PS_PE) {
 			EOWRITE4(sc, EHCI_PORTSC(i),
 			    cmd | EHCI_PS_SUSP);
 		}
@@ -613,8 +613,8 @@ ehci_resume(ehci_softc_t *sc)
 	hcr = 0;
 	for (i = 1; i <= sc->sc_noport; i++) {
 		cmd = EOREAD4(sc, EHCI_PORTSC(i));
-		if (((cmd & EHCI_PS_PO) == 0) &&
-		    ((cmd & EHCI_PS_SUSP) == EHCI_PS_SUSP)) {
+		if ((cmd & EHCI_PS_PO) == 0 &&
+		    (cmd & EHCI_PS_SUSP) == EHCI_PS_SUSP) {
 			EOWRITE4(sc, EHCI_PORTSC(i),
 			    cmd | EHCI_PS_FPR);
 			hcr = 1;
@@ -627,8 +627,8 @@ ehci_resume(ehci_softc_t *sc)
 
 		for (i = 1; i <= sc->sc_noport; i++) {
 			cmd = EOREAD4(sc, EHCI_PORTSC(i));
-			if (((cmd & EHCI_PS_PO) == 0) &&
-			    ((cmd & EHCI_PS_SUSP) == EHCI_PS_SUSP)) {
+			if ((cmd & EHCI_PS_PO) == 0 &&
+			    (cmd & EHCI_PS_SUSP) == EHCI_PS_SUSP) {
 				EOWRITE4(sc, EHCI_PORTSC(i),
 				    cmd & ~EHCI_PS_FPR);
 			}
@@ -2120,7 +2120,7 @@ ehci_isoc_hs_done(ehci_softc_t *sc, struct usb_xfer *xfer)
 
 		td_no++;
 
-		if ((td_no == 8) || (nframes == 0)) {
+		if (td_no == 8 || nframes == 0) {
 			/* remove HS-TD from schedule */
 			EHCI_REMOVE_HS_TD(td, *pp_last);
 			pp_last++;
@@ -2146,8 +2146,8 @@ ehci_device_done(struct usb_xfer *xfer, usb_error_t error)
 	DPRINTFN(2, "xfer=%p, endpoint=%p, error=%d\n",
 	    xfer, xfer->endpoint, error);
 
-	if ((methods == &ehci_device_bulk_methods) ||
-	    (methods == &ehci_device_ctrl_methods)) {
+	if (methods == &ehci_device_bulk_methods ||
+	    methods == &ehci_device_ctrl_methods) {
 #ifdef USB_DEBUG
 		if (ehcidebug > 8) {
 			DPRINTF("nexttog=%d; data after transfer:\n",
@@ -2443,8 +2443,8 @@ ehci_device_isoc_fs_enter(struct usb_xfer *xfer)
 	buf_offset = (nframes - xfer->endpoint->isoc_next) &
 	    (EHCI_VIRTUAL_FRAMELIST_COUNT - 1);
 
-	if ((xfer->endpoint->is_synced == 0) ||
-	    (buf_offset < xfer->nframes)) {
+	if (xfer->endpoint->is_synced == 0 ||
+	    buf_offset < xfer->nframes) {
 		/*
 		 * If there is data underflow or the pipe queue is empty we
 		 * schedule the transfer a few frames ahead of the current
@@ -2725,8 +2725,8 @@ ehci_device_isoc_hs_enter(struct usb_xfer *xfer)
 	buf_offset = (nframes - xfer->endpoint->isoc_next) &
 	    (EHCI_VIRTUAL_FRAMELIST_COUNT - 1);
 
-	if ((xfer->endpoint->is_synced == 0) ||
-	    (buf_offset < (((xfer->nframes << shift) + 7) / 8))) {
+	if (xfer->endpoint->is_synced == 0 ||
+	    buf_offset < (((xfer->nframes << shift) + 7) / 8)) {
 		/*
 		 * If there is data underflow or the pipe queue is empty we
 		 * schedule the transfer a few frames ahead of the current
@@ -2808,7 +2808,7 @@ ehci_device_isoc_hs_enter(struct usb_xfer *xfer)
 
 		td_no++;
 
-		if ((td_no == 8) || (nframes == 0)) {
+		if (td_no == 8 || nframes == 0) {
 			/* the rest of the transfers are not active, if any */
 			for (x = td_no; x != 8; x++)
 				td->itd_status[x] = 0;	/* not active */
@@ -3135,8 +3135,7 @@ ehci_roothub_exec(struct usb_device *udev,
 	case C(UR_CLEAR_FEATURE, UT_WRITE_CLASS_OTHER):
 		DPRINTFN(9, "UR_CLEAR_PORT_FEATURE\n");
 
-		if ((index < 1) ||
-		    (index > sc->sc_noport)) {
+		if (index < 1 || index > sc->sc_noport) {
 			err = USB_ERR_IOERROR;
 			goto done;
 		}
@@ -3225,8 +3224,7 @@ ehci_roothub_exec(struct usb_device *udev,
 	case C(UR_GET_STATUS, UT_READ_CLASS_OTHER):
 		DPRINTFN(9, "get port status i=%d\n",
 		    index);
-		if ((index < 1) ||
-		    (index > sc->sc_noport)) {
+		if (index < 1 || index > sc->sc_noport) {
 			err = USB_ERR_IOERROR;
 			goto done;
 		}
@@ -3274,8 +3272,7 @@ ehci_roothub_exec(struct usb_device *udev,
 	case C(UR_SET_FEATURE, UT_WRITE_CLASS_DEVICE):
 		break;
 	case C(UR_SET_FEATURE, UT_WRITE_CLASS_OTHER):
-		if ((index < 1) ||
-		    (index > sc->sc_noport)) {
+		if (index < 1 || index > sc->sc_noport) {
 			err = USB_ERR_IOERROR;
 			goto done;
 		}
@@ -3639,11 +3636,11 @@ ehci_ep_init(struct usb_device *udev, struct usb_endpoint_descriptor *edesc,
 		return;
 	}
 	if (udev->device_index != sc->sc_addr) {
-		if ((udev->speed != USB_SPEED_HIGH) &&
-		    ((udev->hs_hub_addr == 0) ||
-		    (udev->hs_port_no == 0) ||
-		    (udev->parent_hs_hub == NULL) ||
-		    (udev->parent_hs_hub->hub == NULL))) {
+		if (udev->speed != USB_SPEED_HIGH &&
+		    (udev->hs_hub_addr == 0 ||
+		     udev->hs_port_no == 0 ||
+		     udev->parent_hs_hub == NULL ||
+		     udev->parent_hs_hub->hub == NULL)) {
 			/* We need a transaction translator */
 			goto done;
 		}
@@ -3698,8 +3695,8 @@ ehci_device_resume(struct usb_device *udev)
 		if (xfer->xroot->udev == udev) {
 			methods = xfer->endpoint->methods;
 
-			if ((methods == &ehci_device_bulk_methods) ||
-			    (methods == &ehci_device_ctrl_methods)) {
+			if (methods == &ehci_device_bulk_methods ||
+			    methods == &ehci_device_ctrl_methods) {
 				EHCI_APPEND_QH(xfer->qh_start[xfer->curr_dma_set],
 				    sc->sc_async_p_last);
 			}
@@ -3730,8 +3727,8 @@ ehci_device_suspend(struct usb_device *udev)
 		if (xfer->xroot->udev == udev) {
 			methods = xfer->endpoint->methods;
 
-			if ((methods == &ehci_device_bulk_methods) ||
-			    (methods == &ehci_device_ctrl_methods)) {
+			if (methods == &ehci_device_bulk_methods ||
+			    methods == &ehci_device_ctrl_methods) {
 				EHCI_REMOVE_QH(xfer->qh_start[xfer->curr_dma_set],
 				    sc->sc_async_p_last);
 			}

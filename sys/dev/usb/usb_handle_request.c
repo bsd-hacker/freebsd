@@ -236,8 +236,7 @@ usb_handle_iface_request(struct usb_xfer *xfer,
 
 tr_repeat:
 	iface = usbd_get_iface(udev, iface_index);
-	if ((iface == NULL) ||
-	    (iface->idesc == NULL)) {
+	if (iface == NULL || iface->idesc == NULL) {
 		/* end of interfaces non-existing interface */
 		goto tr_stalled;
 	}
@@ -245,9 +244,9 @@ tr_repeat:
 	temp_state = state;
 
 	/* forward request to interface, if any */
-	if ((error != 0) &&
-	    (error != ENOTTY) &&
-	    (iface->subdev != NULL) &&
+	if (error != 0 &&
+	    error != ENOTTY &&
+	    iface->subdev != NULL &&
 	    device_is_attached(iface->subdev)) {
 #if 0
 		DEVMETHOD(usb_handle_request, NULL);	/* dummy */
@@ -258,18 +257,17 @@ tr_repeat:
 	}
 	iface_parent = usbd_get_iface(udev, iface->parent_iface_index);
 
-	if ((iface_parent == NULL) ||
-	    (iface_parent->idesc == NULL)) {
+	if (iface_parent == NULL || iface_parent->idesc == NULL) {
 		/* non-existing interface */
 		iface_parent = NULL;
 	}
 	/* forward request to parent interface, if any */
-	if ((error != 0) &&
-	    (error != ENOTTY) &&
-	    (iface_parent != NULL) &&
-	    (iface_parent->subdev != NULL) &&
-	    ((req.bmRequestType & 0x1F) == UT_INTERFACE) &&
-	    (iface_parent->subdev != iface->subdev) &&
+	if (error != 0 &&
+	    error != ENOTTY &&
+	    iface_parent != NULL &&
+	    iface_parent->subdev != NULL &&
+	    (req.bmRequestType & 0x1F) == UT_INTERFACE &&
+	    iface_parent->subdev != iface->subdev &&
 	    device_is_attached(iface_parent->subdev)) {
 		error = USB_HANDLE_REQUEST(iface_parent->subdev,
 		    &req, ppdata, plen, off, &temp_state);
@@ -279,8 +277,8 @@ tr_repeat:
 		*ppdata = ((uint8_t *)(*ppdata)) - off;
 		*plen += off;
 
-		if ((state == USB_HR_NOT_COMPLETE) &&
-		    (temp_state == USB_HR_COMPLETE_OK))
+		if (state == USB_HR_NOT_COMPLETE &&
+		    temp_state == USB_HR_COMPLETE_OK)
 			goto tr_short;
 		else
 			goto tr_valid;
@@ -724,7 +722,7 @@ tr_valid:
 	 */
 	if (rem > xfer->max_data_length)
 		rem = usbd_xfer_max_len(xfer);
-	if ((rem != max_len) && (is_complete != 0)) {
+	if (rem != max_len && is_complete != 0) {
 		/*
 		 * If we don't transfer the data we can transfer, then
 		 * the transfer is short !

@@ -346,8 +346,8 @@ usb_bus_attach(void *arg, int npending)
 		err = usb_probe_and_attach(child,
 		    USB_IFACE_INDEX_ANY);
 		if (!err) {
-			if ((bus->devices[USB_ROOT_HUB_ADDR] == NULL) ||
-			    (bus->devices[USB_ROOT_HUB_ADDR]->hub == NULL))
+			if (bus->devices[USB_ROOT_HUB_ADDR] == NULL ||
+			    bus->devices[USB_ROOT_HUB_ADDR]->hub == NULL)
 				err = USB_ERR_NO_ROOT_HUB;
 		}
 	} else

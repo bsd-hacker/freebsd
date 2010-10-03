@@ -221,9 +221,9 @@ ubser_probe(device_t dev)
 	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
 	/* check if this is a BWCT vendor specific ubser interface */
-	if ((strcmp(usb_get_manufacturer(uaa->device), "BWCT") == 0) &&
-	    (uaa->info.bInterfaceClass == 0xff) &&
-	    (uaa->info.bInterfaceSubClass == 0x00))
+	if (strcmp(usb_get_manufacturer(uaa->device), "BWCT") == 0 &&
+	    uaa->info.bInterfaceClass == 0xff &&
+	    uaa->info.bInterfaceSubClass == 0x00)
 		return (0);
 
 	return (ENXIO);

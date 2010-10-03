@@ -228,9 +228,9 @@ ehci_pci_match(device_t self)
 		break;
 	}
 
-	if ((pci_get_class(self) == PCIC_SERIALBUS)
-	    && (pci_get_subclass(self) == PCIS_SERIALBUS_USB)
-	    && (pci_get_progif(self) == PCI_INTERFACE_EHCI))
+	if (pci_get_class(self) == PCIC_SERIALBUS &&
+	    pci_get_subclass(self) == PCIS_SERIALBUS_USB &&
+	    pci_get_progif(self) == PCI_INTERFACE_EHCI)
 		return ("EHCI (generic) USB 2.0 controller");
 	return (NULL);			/* dunno */
 }
@@ -280,8 +280,8 @@ ehci_pci_via_quirk(device_t self)
 {
 	uint32_t val;
 
-	if ((pci_get_device(self) == 0x3104) && 
-	    ((pci_get_revid(self) & 0xf0) == 0x60)) {
+	if (pci_get_device(self) == 0x3104 && 
+	    (pci_get_revid(self) & 0xf0) == 0x60) {
 		/* Correct schedule sleep time to 10us */
 		val = pci_read_config(self, 0x4b, 1);
 		if (val & 0x20)

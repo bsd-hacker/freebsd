@@ -86,12 +86,12 @@ usb_desc_foreach(struct usb_config_descriptor *cd,
 		desc = desc + desc[0];
 
 	/* Check that the next USB descriptor is within the range. */
-	if ((desc < start) || (desc >= end))
+	if (desc < start || desc >= end)
 		return (NULL);		/* out of range, or EOD */
 
 	/* Check that the second next USB descriptor is within range. */
 	desc_next = desc + desc[0];
-	if ((desc_next < start) || (desc_next > end))
+	if (desc_next < start || desc_next > end)
 		return (NULL);		/* out of range */
 
 	/* Check minimum descriptor length. */
@@ -130,8 +130,8 @@ usb_idesc_foreach(struct usb_config_descriptor *cd,
 		    usb_desc_foreach(cd, (struct usb_descriptor *)id);
 		if (id == NULL)
 			break;
-		if ((id->bDescriptorType == UDESC_INTERFACE) &&
-		    (id->bLength >= sizeof(*id))) {
+		if (id->bDescriptorType == UDESC_INTERFACE &&
+		    id->bLength >= sizeof(*id)) {
 			if (ps->iface_no_last == id->bInterfaceNumber)
 				new_iface = 0;
 			ps->iface_no_last = id->bInterfaceNumber;
@@ -174,7 +174,7 @@ usb_edesc_foreach(struct usb_config_descriptor *cd,
 
 	desc = ((struct usb_descriptor *)ped);
 
-	while ((desc = usb_desc_foreach(cd, desc))) {
+	while ((desc = usb_desc_foreach(cd, desc)) != NULL) {
 		if (desc->bDescriptorType == UDESC_INTERFACE)
 			break;
 		if (desc->bDescriptorType == UDESC_ENDPOINT) {
@@ -200,7 +200,7 @@ usbd_get_no_descriptors(struct usb_config_descriptor *cd, uint8_t type)
 	struct usb_descriptor *desc = NULL;
 	uint8_t count = 0;
 
-	while ((desc = usb_desc_foreach(cd, desc))) {
+	while ((desc = usb_desc_foreach(cd, desc)) != NULL) {
 		if (desc->bDescriptorType == type) {
 			count++;
 			if (count == 0xFF)
@@ -234,9 +234,9 @@ usbd_get_no_alts(struct usb_config_descriptor *cd,
 
 	/* Iterate all the USB descriptors */
 	desc = NULL;
-	while ((desc = usb_desc_foreach(cd, desc))) {
-		if ((desc->bDescriptorType == UDESC_INTERFACE) &&
-		    (desc->bLength >= sizeof(*id))) {
+	while ((desc = usb_desc_foreach(cd, desc)) != NULL) {
+		if (desc->bDescriptorType == UDESC_INTERFACE &&
+		    desc->bLength >= sizeof(*id)) {
 			id = (struct usb_interface_descriptor *)desc;
 			if (id->bInterfaceNumber == ifaceno) {
 				n++;

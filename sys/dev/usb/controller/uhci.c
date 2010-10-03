@@ -2853,9 +2853,9 @@ alloc_dma_set:
 			td = page_info.buffer;
 
 			/* init TD */
-			if ((parm->methods == &uhci_device_bulk_methods) ||
-			    (parm->methods == &uhci_device_ctrl_methods) ||
-			    (parm->methods == &uhci_device_intr_methods)) {
+			if (parm->methods == &uhci_device_bulk_methods ||
+			    parm->methods == &uhci_device_ctrl_methods ||
+			    parm->methods == &uhci_device_intr_methods) {
 				/* set depth first bit */
 				td->td_self = htole32(page_info.physaddr |
 				    UHCI_PTR_TD | UHCI_PTR_VF);

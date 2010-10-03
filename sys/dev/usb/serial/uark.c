@@ -330,7 +330,7 @@ uark_stop_write(struct ucom_softc *ucom)
 static int
 uark_pre_param(struct ucom_softc *ucom, struct termios *t)
 {
-	if ((t->c_ospeed < 300) || (t->c_ospeed > 115200))
+	if (t->c_ospeed < 300 || t->c_ospeed > 115200)
 		return (EINVAL);
 	return (0);
 }

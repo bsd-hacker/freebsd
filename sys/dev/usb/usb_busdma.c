@@ -754,7 +754,7 @@ usb_dma_tag_find(struct usb_dma_parent_tag *udpt,
 			udt->size = size;
 			return (udt);
 		}
-		if ((udt->align == align) && (udt->size == size))
+		if (udt->align == align && udt->size == size)
 			return (udt);
 		udt++;
 	}

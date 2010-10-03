@@ -322,9 +322,9 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 	 * Sanity check. The following parameters must be initialized before
 	 * calling this function.
 	 */
-	if ((parm->hc_max_packet_size == 0) ||
-	    (parm->hc_max_packet_count == 0) ||
-	    (parm->hc_max_frame_size == 0)) {
+	if (parm->hc_max_packet_size == 0 ||
+	    parm->hc_max_packet_count == 0 ||
+	    parm->hc_max_frame_size == 0) {
 		parm->err = USB_ERR_INVAL;
 		goto done;
 	}
@@ -353,8 +353,8 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 	if (xfer->max_packet_count > parm->hc_max_packet_count)
 		xfer->max_packet_count = parm->hc_max_packet_count;
 	/* filter "wMaxPacketSize" according to HC capabilities */
-	if ((xfer->max_packet_size > parm->hc_max_packet_size) ||
-	    (xfer->max_packet_size == 0))
+	if (xfer->max_packet_size > parm->hc_max_packet_size ||
+	    xfer->max_packet_size == 0)
 		xfer->max_packet_size = parm->hc_max_packet_size;
 	/* filter "wMaxPacketSize" according to standard sizes */
 	usbd_get_std_packet_size(&std_size, type, parm->speed);
@@ -470,13 +470,11 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 	 * this leads to alot of extra code in the USB kernel.
 	 */
 
-	if ((xfer->max_frame_size == 0) ||
-	    (xfer->max_packet_size == 0)) {
+	if (xfer->max_frame_size == 0 || xfer->max_packet_size == 0) {
 		zmps = 1;
 
-		if ((parm->bufsize <= MIN_PKT) &&
-		    (type != UE_CONTROL) &&
-		    (type != UE_BULK)) {
+		if (parm->bufsize <= MIN_PKT &&
+		    type != UE_CONTROL && type != UE_BULK) {
 			/* workaround */
 			xfer->max_packet_size = MIN_PKT;
 			xfer->max_packet_count = 1;
@@ -591,7 +589,7 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 
 			usbd_xfer_set_frame_offset(xfer, 0, 0);
 
-			if ((type == UE_CONTROL) && (n_frbuffers > 1))
+			if (type == UE_CONTROL && n_frbuffers > 1)
 				usbd_xfer_set_frame_offset(xfer, REQ_SIZE, 1);
 		}
 		parm->size[0] += parm->bufsize;
@@ -655,7 +653,7 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 			    &xfer->xroot->dma_parent_tag;
 #if USB_HAVE_BUSDMA
 			if ((xfer->status & XFER_STATUS_DMAENABLE) != 0 &&
-			    (parm->bufsize_max > 0)) {
+			    parm->bufsize_max > 0) {
 				if (usb_pc_dmamap_create(
 				    xfer->frbuffers + x,
 				    parm->bufsize_max)) {
@@ -823,11 +821,11 @@ usbd_transfer_setup(struct usb_device *udev,
 			ep = usbd_get_endpoint(udev,
 			    ifaces[setup->if_index], setup);
 
-			if ((ep == NULL) || (ep->methods == NULL)) {
+			if (ep == NULL || ep->methods == NULL) {
 				if ((setup->flags & USBD_NO_PIPE_OK) != 0)
 					continue;
-				if ((setup->usb_mode != USB_MODE_DUAL) &&
-				    (setup->usb_mode != udev->flags.usb_mode))
+				if (setup->usb_mode != USB_MODE_DUAL &&
+				    setup->usb_mode != udev->flags.usb_mode)
 					continue;
 				parm.err = USB_ERR_NO_PIPE;
 				goto done;
@@ -2339,8 +2337,8 @@ usbd_pipe_start(struct usb_xfer_queue *pq)
 		 * Only stall BULK and INTERRUPT endpoints.
 		 */
 		type = (ep->edesc->bmAttributes & UE_XFERTYPE);
-		if ((type == UE_BULK) ||
-		    (type == UE_INTERRUPT)) {
+		if (type == UE_BULK ||
+		    type == UE_INTERRUPT) {
 			uint8_t did_stall;
 
 			did_stall = 1;
@@ -2401,8 +2399,8 @@ usbd_pipe_start(struct usb_xfer_queue *pq)
 	 */
 	if (xfer->interval > 0) {
 		type = (ep->edesc->bmAttributes & UE_XFERTYPE);
-		if ((type == UE_BULK) ||
-		    (type == UE_CONTROL)) {
+		if (type == UE_BULK ||
+		    type == UE_CONTROL) {
 			usbd_transfer_timeout_ms(xfer,
 			    &usbd_transfer_start_cb,
 			    xfer->interval);
@@ -2479,8 +2477,8 @@ usbd_callback_wrapper_sub(struct usb_xfer *xfer)
 	 * If we have a non-hardware induced error we
 	 * need to do the DMA delay!
 	 */
-	if (((xfer->error == USB_ERR_CANCELLED) ||
-	    (xfer->error == USB_ERR_TIMEOUT)) &&
+	if ((xfer->error == USB_ERR_CANCELLED ||
+	     xfer->error == USB_ERR_TIMEOUT) &&
 	    (xfer->status & XFER_STATUS_DMADELAYED) == 0) {
 		usb_timeout_t temp;
 
@@ -2549,7 +2547,7 @@ usbd_callback_wrapper_sub(struct usb_xfer *xfer)
 		xfer->status &= ~XFER_STATUS_CTRLACTIVE;
 
 		/* check if we should block the execution queue */
-		if ((xfer->error != USB_ERR_CANCELLED) &&
+		if (xfer->error != USB_ERR_CANCELLED &&
 		    (xfer->flags & USBD_PIPE_BOF) != 0) {
 			DPRINTFN(2, "xfer=%p: Block On Failure "
 			    "on endpoint=%p\n", xfer, xfer->endpoint);
@@ -2990,8 +2988,7 @@ usbd_get_std_packet_size(struct usb_std_packet_size *ptr,
 			ptr->fixed[2] = 32;
 			ptr->fixed[3] = 64;
 		}
-		if ((speed == USB_SPEED_VARIABLE) &&
-		    (type == UE_BULK)) {
+		if (speed == USB_SPEED_VARIABLE && type == UE_BULK) {
 			/* multiple sizes */
 			ptr->fixed[2] = 1024;
 			ptr->fixed[3] = 1536;

@@ -313,8 +313,8 @@ avr32dci_setup_rx(struct avr32dci_td *td)
 	td->remainder = 0;
 
 	/* sneak peek the set address */
-	if ((req.bmRequestType == UT_WRITE_DEVICE) &&
-	    (req.bRequest == UR_SET_ADDRESS)) {
+	if (req.bmRequestType == UT_WRITE_DEVICE &&
+	    req.bRequest == UR_SET_ADDRESS) {
 		sc->sc_dv_addr = req.wValue[0] & 0x7F;
 		/* must write address before ZLP */
 		avr32dci_mod_ctrl(sc, 0, AVR32_CTRL_DEV_FADDR_EN |
@@ -427,7 +427,7 @@ repeat:
 	AVR32_WRITE_4(sc, AVR32_EPTCLRSTA(td->ep_no), AVR32_EPTSTA_RX_BK_RDY);
 
 	/* check if we are complete */
-	if ((td->remainder == 0) || got_short) {
+	if (td->remainder == 0 || got_short) {
 		if (td->short_pkt) {
 			/* we are complete */
 			return (0);
@@ -1348,8 +1348,8 @@ avr32dci_device_isoc_fs_enter(struct usb_xfer *xfer)
 	 */
 	temp = (nframes - xfer->pipe->isoc_next) & AVR32_FRAME_MASK;
 
-	if ((xfer->pipe->is_synced == 0) ||
-	    (temp < xfer->nframes)) {
+	if (xfer->pipe->is_synced == 0 ||
+	    temp < xfer->nframes) {
 		/*
 		 * If there is data underflow or the pipe queue is
 		 * empty we schedule the transfer a few frames ahead
@@ -1989,8 +1989,8 @@ avr32dci_ep_init(struct usb_device *udev, struct usb_endpoint_descriptor *edesc,
 			/* not supported */
 			return;
 		}
-		if ((udev->speed != USB_SPEED_FULL) &&
-		    (udev->speed != USB_SPEED_HIGH)) {
+		if (udev->speed != USB_SPEED_FULL &&
+		    udev->speed != USB_SPEED_HIGH) {
 			/* not supported */
 			return;
 		}

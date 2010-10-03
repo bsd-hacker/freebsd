@@ -229,26 +229,26 @@ ums_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 		} else {
 			id = 0;
 			if (sc->sc_info[0].sc_flags & UMS_FLAG_SBU) {
-				if ((*buf == 0x14) || (*buf == 0x15))
+				if (*buf == 0x14 || *buf == 0x15)
 					goto tr_setup;
 			}
 		}
 
 	repeat:
-		if ((info->sc_flags & UMS_FLAG_W_AXIS) &&
-		    (id == info->sc_iid_w))
+		if (info->sc_flags & UMS_FLAG_W_AXIS &&
+		    id == info->sc_iid_w)
 			dw += hid_get_data(buf, len, &info->sc_loc_w);
 
-		if ((info->sc_flags & UMS_FLAG_X_AXIS) && 
-		    (id == info->sc_iid_x))
+		if (info->sc_flags & UMS_FLAG_X_AXIS && 
+		    id == info->sc_iid_x)
 			dx += hid_get_data(buf, len, &info->sc_loc_x);
 
-		if ((info->sc_flags & UMS_FLAG_Y_AXIS) &&
-		    (id == info->sc_iid_y))
+		if (info->sc_flags & UMS_FLAG_Y_AXIS &&
+		    id == info->sc_iid_y)
 			dy = -hid_get_data(buf, len, &info->sc_loc_y);
 
-		if ((info->sc_flags & UMS_FLAG_Z_AXIS) &&
-		    (id == info->sc_iid_z)) {
+		if (info->sc_flags & UMS_FLAG_Z_AXIS &&
+		    id == info->sc_iid_z) {
 			int32_t temp;
 			temp = hid_get_data(buf, len, &info->sc_loc_z);
 			if (info->sc_flags & UMS_FLAG_REVZ)
@@ -256,8 +256,8 @@ ums_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 			dz -= temp;
 		}
 
-		if ((info->sc_flags & UMS_FLAG_T_AXIS) &&
-		    (id == info->sc_iid_t))
+		if (info->sc_flags & UMS_FLAG_T_AXIS &&
+		    id == info->sc_iid_t)
 			dt -= hid_get_data(buf, len, &info->sc_loc_t);
 
 		for (i = 0; i < info->sc_buttons; i++) {
@@ -367,8 +367,8 @@ ums_probe(device_t dev)
 	if (uaa->info.bInterfaceClass != UICLASS_HID)
 		return (ENXIO);
 
-	if ((uaa->info.bInterfaceSubClass == UISUBCLASS_BOOT) &&
-	    (uaa->info.bInterfaceProtocol == UIPROTO_MOUSE))
+	if (uaa->info.bInterfaceSubClass == UISUBCLASS_BOOT &&
+	    uaa->info.bInterfaceProtocol == UIPROTO_MOUSE)
 		return (BUS_PROBE_GENERIC);
 
 	error = usbd_req_get_hid_desc(uaa->device, NULL,
@@ -684,7 +684,7 @@ ums_start_read(struct usb_fifo *fifo)
 	if (rate > 1000)
 		rate = 1000;
 	/* Check for set rate */
-	if ((rate > 0) && (sc->sc_xfer[UMS_INTR_DT] != NULL)) {
+	if (rate > 0 && sc->sc_xfer[UMS_INTR_DT] != NULL) {
 		DPRINTF("Setting pollrate = %d\n", rate);
 		/* Stop current transfer, if any */
 		usbd_transfer_stop(sc->sc_xfer[UMS_INTR_DT]);
@@ -816,7 +816,7 @@ ums_ioctl(struct usb_fifo *fifo, u_long cmd, void *addr, int fflags)
 
 		if (mode.level == -1)
 			;	/* don't change the current setting */
-		else if ((mode.level < 0) || (mode.level > 1)) {
+		else if (mode.level < 0 || mode.level > 1) {
 			error = EINVAL;
 			goto done;
 		} else

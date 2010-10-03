@@ -187,9 +187,9 @@ ohci_pci_match(device_t self)
 	default:
 		break;
 	}
-	if ((pci_get_class(self) == PCIC_SERIALBUS) &&
-	    (pci_get_subclass(self) == PCIS_SERIALBUS_USB) &&
-	    (pci_get_progif(self) == PCI_INTERFACE_OHCI))
+	if (pci_get_class(self) == PCIC_SERIALBUS &&
+	    pci_get_subclass(self) == PCIS_SERIALBUS_USB &&
+	    pci_get_progif(self) == PCI_INTERFACE_OHCI)
 		return ("OHCI (generic) USB controller");
 	return (NULL);
 }

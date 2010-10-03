@@ -500,8 +500,8 @@ hid_get_item(struct hid_data *s, struct hid_item *h)
 					break;
 
 				/* sanity check */
-				if ((s->nusage < MAXUSAGE) &&
-				    (c->usage_minimum <= c->usage_maximum)) {
+				if (s->nusage < MAXUSAGE &&
+				    c->usage_minimum <= c->usage_maximum) {
 					/* add usage range */
 					s->usages_min[s->nusage] =
 					    c->usage_minimum;
@@ -737,8 +737,8 @@ hid_get_descriptor_from_usb(struct usb_config_descriptor *cd,
 	if (desc == NULL)
 		return (NULL);
 	while ((desc = usb_desc_foreach(cd, desc))) {
-		if ((desc->bDescriptorType == UDESC_HID) &&
-		    (desc->bLength >= USB_HID_DESCRIPTOR_SIZE(0)))
+		if (desc->bDescriptorType == UDESC_HID &&
+		    desc->bLength >= USB_HID_DESCRIPTOR_SIZE(0))
 			return (void *)desc;
 		if (desc->bDescriptorType == UDESC_INTERFACE)
 			break;
@@ -765,7 +765,7 @@ usbd_req_get_hid_desc(struct usb_device *udev, struct mtx *mtx,
 	struct usb_hid_descriptor *hid;
 	usb_error_t err;
 
-	if ((iface == NULL) || (iface->idesc == NULL))
+	if (iface == NULL || iface->idesc == NULL)
 		return (USB_ERR_INVAL);
 	hid = hid_get_descriptor_from_usb
 	    (usbd_get_config_descriptor(udev), iface->idesc);

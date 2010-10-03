@@ -126,8 +126,8 @@ ufm_probe(device_t dev)
 
 	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	if ((uaa->info.idVendor == USB_VENDOR_CYPRESS) &&
-	    (uaa->info.idProduct == USB_PRODUCT_CYPRESS_FMRADIO))
+	if (uaa->info.idVendor == USB_VENDOR_CYPRESS &&
+	    uaa->info.idProduct == USB_PRODUCT_CYPRESS_FMRADIO)
 		return (0);
 	return (ENXIO);
 }

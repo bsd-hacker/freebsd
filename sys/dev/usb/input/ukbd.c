@@ -744,8 +744,8 @@ ukbd_probe(device_t dev)
 	if (uaa->info.bInterfaceClass != UICLASS_HID)
 		return (ENXIO);
 
-	if ((uaa->info.bInterfaceSubClass == UISUBCLASS_BOOT) &&
-	    (uaa->info.bInterfaceProtocol == UIPROTO_BOOT_KEYBOARD)) {
+	if (uaa->info.bInterfaceSubClass == UISUBCLASS_BOOT &&
+	    uaa->info.bInterfaceProtocol == UIPROTO_BOOT_KEYBOARD) {
 		if (usb_test_quirk(uaa, UQ_KBD_IGNORE))
 			return (ENXIO);
 		else
@@ -1140,8 +1140,7 @@ ukbd_check_char(keyboard_t *kbd)
 	if (ukbd_polls_other_thread(sc))
 		return (0);
 
-	if ((sc->sc_composed_char > 0) &&
-	    (!(sc->sc_flags & UKBD_FLAG_COMPOSE)))
+	if (sc->sc_composed_char > 0 && !(sc->sc_flags & UKBD_FLAG_COMPOSE))
 		return (1);
 	return (ukbd_check(kbd));
 }
@@ -1251,8 +1250,8 @@ ukbd_read_char(keyboard_t *kbd, int wait)
 next_code:
 
 	/* do we have a composed char to return ? */
-	if ((sc->sc_composed_char > 0) &&
-	    (!(sc->sc_flags & UKBD_FLAG_COMPOSE))) {
+	if (sc->sc_composed_char > 0 &&
+	    !(sc->sc_flags & UKBD_FLAG_COMPOSE)) {
 		action = sc->sc_composed_char;
 		sc->sc_composed_char = 0;
 
@@ -1604,7 +1603,7 @@ ukbd_is_polling(struct ukbd_softc *sc)
 		return (1);	/* polling */
 
 	delta = ticks - sc->sc_poll_tick_last;
-	if ((delta < 0) || (delta >= hz)) {
+	if (delta < 0 || delta >= hz) {
 		sc->sc_poll_detected = 0;
 		return (0);		/* not polling */
 	}
@@ -1729,10 +1728,10 @@ ukbd_key2scan(struct ukbd_softc *sc, int code, int shift, int up)
 		0x5c,	/* Keyboard Intl' 6 (Keypad ,) (For PC-9821 layout) */
 	};
 
-	if ((code >= 89) && (code < (89 + (sizeof(scan) / sizeof(scan[0])))))
+	if (code >= 89 && code < (89 + (sizeof(scan) / sizeof(scan[0]))))
 		code = scan[code - 89];
 	/* Pause/Break */
-	if ((code == 104) && (!(shift & (MOD_CONTROL_L | MOD_CONTROL_R))))
+	if (code == 104 && !(shift & (MOD_CONTROL_L | MOD_CONTROL_R)))
 		code = (0x45 | SCAN_PREFIX_E1 | SCAN_PREFIX_CTL);
 	if (shift & (MOD_SHIFT_L | MOD_SHIFT_R))
 		code &= ~SCAN_PREFIX_SHIFT;

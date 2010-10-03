@@ -663,8 +663,8 @@ ugen_get_cdesc(struct usb_fifo *f, struct usb_gen_descriptor *ugd)
 		/* userland pointer should not be zero */
 		return (EINVAL);
 	}
-	if ((ugd->ugd_config_index == USB_UNCONFIG_INDEX) ||
-	    (ugd->ugd_config_index == udev->curr_config_index)) {
+	if (ugd->ugd_config_index == USB_UNCONFIG_INDEX ||
+	    ugd->ugd_config_index == udev->curr_config_index) {
 		cdesc = usbd_get_config_descriptor(udev);
 		if (cdesc == NULL)
 			return (ENXIO);
@@ -739,22 +739,22 @@ ugen_get_iface_driver(struct usb_fifo *f, struct usb_gen_descriptor *ugd)
 
 	DPRINTFN(6, "\n");
 
-	if ((ugd->ugd_data == NULL) || (ugd->ugd_maxlen == 0)) {
+	if (ugd->ugd_data == NULL || ugd->ugd_maxlen == 0) {
 		/* userland pointer should not be zero */
 		return (EINVAL);
 	}
 
 	iface = usbd_get_iface(udev, ugd->ugd_iface_index);
-	if ((iface == NULL) || (iface->idesc == NULL)) {
+	if (iface == NULL || iface->idesc == NULL) {
 		/* invalid interface index */
 		return (EINVAL);
 	}
 
 	/* read out device nameunit string, if any */
-	if ((iface->subdev != NULL) &&
+	if (iface->subdev != NULL &&
 	    device_is_attached(iface->subdev) &&
-	    (ptr = device_get_nameunit(iface->subdev)) &&
-	    (desc = device_get_desc(iface->subdev))) {
+	    (ptr = device_get_nameunit(iface->subdev)) != NULL &&
+	    (desc = device_get_desc(iface->subdev)) != NULL) {
 		/* print description */
 		snprintf(buf, sizeof(buf), "%s: <%s>", ptr, desc);
 
@@ -845,12 +845,12 @@ ugen_check_request(struct usb_device *udev, struct usb_device_request *req)
 	/*
 	 * Avoid requests that would damage the bus integrity:
 	 */
-	if (((req->bmRequestType == UT_WRITE_DEVICE) &&
-	    (req->bRequest == UR_SET_ADDRESS)) ||
-	    ((req->bmRequestType == UT_WRITE_DEVICE) &&
-	    (req->bRequest == UR_SET_CONFIG)) ||
-	    ((req->bmRequestType == UT_WRITE_INTERFACE) &&
-	    (req->bRequest == UR_SET_INTERFACE))) {
+	if ((req->bmRequestType == UT_WRITE_DEVICE &&
+	     req->bRequest == UR_SET_ADDRESS) ||
+	    (req->bmRequestType == UT_WRITE_DEVICE &&
+	     req->bRequest == UR_SET_CONFIG) ||
+	    (req->bmRequestType == UT_WRITE_INTERFACE &&
+	     req->bRequest == UR_SET_INTERFACE)) {
 		/*
 		 * These requests can be useful for testing USB drivers.
 		 */
@@ -865,8 +865,8 @@ ugen_check_request(struct usb_device *udev, struct usb_device_request *req)
 		ep = usbd_get_ep_by_addr(udev, req->wIndex[0]);
 		if (ep == NULL)
 			return (EINVAL);
-		if ((req->bRequest == UR_CLEAR_FEATURE) &&
-		    (UGETW(req->wValue) == UF_ENDPOINT_HALT))
+		if (req->bRequest == UR_CLEAR_FEATURE &&
+		    UGETW(req->wValue) == UF_ENDPOINT_HALT)
 			usbd_clear_data_toggle(udev, ep);
 	}
 	/* TODO: add more checks to verify the interface index */
@@ -1066,8 +1066,7 @@ ugen_fs_copy_in(struct usb_fifo *f, uint8_t ep_index)
 		usbd_xfer_set_frame_len(xfer, 0, length);
 
 		/* Host mode only ! */
-		if ((req->bmRequestType &
-		    (UT_READ | UT_WRITE)) == UT_READ)
+		if ((req->bmRequestType & (UT_READ | UT_WRITE)) == UT_READ)
 			isread = 1;
 		else
 			isread = 0;
@@ -1623,8 +1622,7 @@ ugen_set_power_mode(struct usb_fifo *f, int mode)
 	int err;
 	uint8_t old_mode;
 
-	if ((udev == NULL) ||
-	    (udev->parent_hub == NULL))
+	if (udev == NULL || udev->parent_hub == NULL)
 		return (EINVAL);
 	err = priv_check(curthread, PRIV_DRIVER);
 	if (err)
@@ -1727,8 +1725,7 @@ ugen_do_port_feature(struct usb_fifo *f, uint8_t port_no,
 		return (err);
 	if (port_no == 0)
 		return (EINVAL);
-	if ((udev == NULL) ||
-	    (udev->hub == NULL))
+	if (udev == NULL || udev->hub == NULL)
 		return (EINVAL);
 	hub = udev->hub;
 

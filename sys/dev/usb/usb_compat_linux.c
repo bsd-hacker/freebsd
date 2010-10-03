@@ -143,41 +143,41 @@ usb_linux_lookup_id(const struct usb_device_id *id, struct usb_attach_arg *uaa)
 	 * array:
 	 */
 	for (; id->match_flags; id++) {
-		if ((id->match_flags & USB_DEVICE_ID_MATCH_VENDOR) &&
-		    (id->idVendor != uaa->info.idVendor))
+		if (id->match_flags & USB_DEVICE_ID_MATCH_VENDOR &&
+		    id->idVendor != uaa->info.idVendor)
 			continue;
-		if ((id->match_flags & USB_DEVICE_ID_MATCH_PRODUCT) &&
-		    (id->idProduct != uaa->info.idProduct))
+		if (id->match_flags & USB_DEVICE_ID_MATCH_PRODUCT &&
+		    id->idProduct != uaa->info.idProduct)
 			continue;
-		if ((id->match_flags & USB_DEVICE_ID_MATCH_DEV_LO) &&
-		    (id->bcdDevice_lo > uaa->info.bcdDevice))
+		if (id->match_flags & USB_DEVICE_ID_MATCH_DEV_LO &&
+		    id->bcdDevice_lo > uaa->info.bcdDevice)
 			continue;
-		if ((id->match_flags & USB_DEVICE_ID_MATCH_DEV_HI) &&
-		    (id->bcdDevice_hi < uaa->info.bcdDevice))
+		if (id->match_flags & USB_DEVICE_ID_MATCH_DEV_HI &&
+		    id->bcdDevice_hi < uaa->info.bcdDevice)
 			continue;
-		if ((id->match_flags & USB_DEVICE_ID_MATCH_DEV_CLASS) &&
-		    (id->bDeviceClass != uaa->info.bDeviceClass))
+		if (id->match_flags & USB_DEVICE_ID_MATCH_DEV_CLASS &&
+		    id->bDeviceClass != uaa->info.bDeviceClass)
 			continue;
-		if ((id->match_flags & USB_DEVICE_ID_MATCH_DEV_SUBCLASS) &&
-		    (id->bDeviceSubClass != uaa->info.bDeviceSubClass))
+		if (id->match_flags & USB_DEVICE_ID_MATCH_DEV_SUBCLASS &&
+		    id->bDeviceSubClass != uaa->info.bDeviceSubClass)
 			continue;
-		if ((id->match_flags & USB_DEVICE_ID_MATCH_DEV_PROTOCOL) &&
-		    (id->bDeviceProtocol != uaa->info.bDeviceProtocol))
+		if (id->match_flags & USB_DEVICE_ID_MATCH_DEV_PROTOCOL &&
+		    id->bDeviceProtocol != uaa->info.bDeviceProtocol)
 			continue;
-		if ((uaa->info.bDeviceClass == 0xFF) &&
+		if (uaa->info.bDeviceClass == 0xFF &&
 		    !(id->match_flags & USB_DEVICE_ID_MATCH_VENDOR) &&
 		    (id->match_flags & (USB_DEVICE_ID_MATCH_INT_CLASS |
 		    USB_DEVICE_ID_MATCH_INT_SUBCLASS |
 		    USB_DEVICE_ID_MATCH_INT_PROTOCOL)))
 			continue;
-		if ((id->match_flags & USB_DEVICE_ID_MATCH_INT_CLASS) &&
-		    (id->bInterfaceClass != uaa->info.bInterfaceClass))
+		if (id->match_flags & USB_DEVICE_ID_MATCH_INT_CLASS &&
+		    id->bInterfaceClass != uaa->info.bInterfaceClass)
 			continue;
-		if ((id->match_flags & USB_DEVICE_ID_MATCH_INT_SUBCLASS) &&
-		    (id->bInterfaceSubClass != uaa->info.bInterfaceSubClass))
+		if (id->match_flags & USB_DEVICE_ID_MATCH_INT_SUBCLASS &&
+		    id->bInterfaceSubClass != uaa->info.bInterfaceSubClass)
 			continue;
-		if ((id->match_flags & USB_DEVICE_ID_MATCH_INT_PROTOCOL) &&
-		    (id->bInterfaceProtocol != uaa->info.bInterfaceProtocol))
+		if (id->match_flags & USB_DEVICE_ID_MATCH_INT_PROTOCOL &&
+		    id->bInterfaceProtocol != uaa->info.bInterfaceProtocol)
 			continue;
 		/* we found a match! */
 		return (id);
@@ -866,8 +866,8 @@ usb_linux_create_usb_device(struct usb_device *udev, device_t dev)
 				break;
 			case UDESC_ENDPOINT:
 				ed = (void *)desc;
-				if ((ed->bLength < sizeof(*ed)) ||
-				    (iface_index == 0))
+				if (ed->bLength < sizeof(*ed) ||
+				    iface_index == 0)
 					break;
 				if (p_uhe) {
 					bcopy(ed, &p_uhe->desc,
@@ -1025,14 +1025,14 @@ usb_find_host_endpoint(struct usb_device *dev, uint8_t type, uint8_t ep)
 				ea = uhe->desc.bEndpointAddress;
 				at = uhe->desc.bmAttributes;
 
-				if (((ea & mask) == ep) &&
-				    ((at & UE_XFERTYPE) == type))
+				if ((ea & mask) == ep &&
+				    (at & UE_XFERTYPE) == type)
 					return (uhe);
 			}
 		}
 	}
 
-	if ((type == UE_CONTROL) && ((ep & UE_ADDR) == 0))
+	if (type == UE_CONTROL && (ep & UE_ADDR) == 0)
 		return (&dev->ep0);
 	return (NULL);
 }
@@ -1069,8 +1069,8 @@ usb_ifnum_to_if(struct usb_device *dev, uint8_t iface_no)
 	for (p_ui = dev->linux_iface_start;
 	    p_ui != dev->linux_iface_end;
 	    p_ui++) {
-		if ((p_ui->num_altsetting > 0) &&
-		    (p_ui->altsetting->desc.bInterfaceNumber == iface_no))
+		if (p_ui->num_altsetting > 0 &&
+		    p_ui->altsetting->desc.bInterfaceNumber == iface_no)
 			return (p_ui);
 	}
 	return (NULL);
@@ -1574,8 +1574,8 @@ setup_bulk:
 			max_bulk = urb->bsd_length_rem;
 		/* check if we need to force a short transfer */
 
-		if ((max_bulk == urb->bsd_length_rem) &&
-		    (urb->transfer_flags & URB_ZERO_PACKET) &&
+		if (max_bulk == urb->bsd_length_rem &&
+		    (urb->transfer_flags & URB_ZERO_PACKET) != 0 &&
 		    (xfer->status & XFER_STATUS_CTRLXFER) == 0)
 			xfer->flags |= USBD_FORCE_SHORT_XFER;
 		/* check if we need to copy in data */

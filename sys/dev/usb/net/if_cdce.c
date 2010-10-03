@@ -451,7 +451,7 @@ cdce_attach(device_t dev)
 	    (uaa->device, NULL, uaa->info.bIfaceIndex,
 	    UDESC_CS_INTERFACE, 0 - 1, UDESCSUB_CDC_UNION, 0 - 1);
 
-	if ((ud == NULL) || (ud->bLength < sizeof(*ud)) ||
+	if (ud == NULL || ud->bLength < sizeof(*ud) ||
 	    (sc->sc_flags & CDCE_FLAG_NO_UNION)) {
 		DPRINTFN(1, "No union descriptor!\n");
 		sc->sc_ifaces_index[0] = uaa->info.bIfaceIndex;
@@ -512,7 +512,7 @@ alloc_transfers:
 		if (error)
 			break;
 #if CDCE_HAVE_NCM
-		if ((i == 0) && (cdce_ncm_init(sc) == 0))
+		if (i == 0 && cdce_ncm_init(sc) == 0)
 			pcfg = cdce_ncm_config;
 #endif
 		error = usbd_transfer_setup(uaa->device,
@@ -533,7 +533,7 @@ alloc_transfers:
 	    (uaa->device, NULL, uaa->info.bIfaceIndex,
 	    UDESC_CS_INTERFACE, 0 - 1, UDESCSUB_CDC_ENF, 0 - 1);
 
-	if ((ued == NULL) || (ued->bLength < sizeof(*ued)))
+	if (ued == NULL || ued->bLength < sizeof(*ued))
 		error = USB_ERR_INVAL;
 	else {
 		error = usbd_req_get_string_any(uaa->device, NULL, 
@@ -1151,10 +1151,10 @@ cdce_ncm_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 		usbd_copy_out(pc, 0, &(sc->sc_ncm.hdr),
 		    sizeof(sc->sc_ncm.hdr));
 
-		if ((sc->sc_ncm.hdr.dwSignature[0] != 'N') ||
-		    (sc->sc_ncm.hdr.dwSignature[1] != 'C') ||
-		    (sc->sc_ncm.hdr.dwSignature[2] != 'M') ||
-		    (sc->sc_ncm.hdr.dwSignature[3] != 'H')) {
+		if (sc->sc_ncm.hdr.dwSignature[0] != 'N' ||
+		    sc->sc_ncm.hdr.dwSignature[1] != 'C' ||
+		    sc->sc_ncm.hdr.dwSignature[2] != 'M' ||
+		    sc->sc_ncm.hdr.dwSignature[3] != 'H') {
 			DPRINTFN(1, "invalid HDR signature: "
 			    "0x%02x:0x%02x:0x%02x:0x%02x\n",
 			    sc->sc_ncm.hdr.dwSignature[0],
@@ -1177,10 +1177,10 @@ cdce_ncm_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 		usbd_copy_out(pc, temp, &(sc->sc_ncm.dpt),
 		    sizeof(sc->sc_ncm.dpt));
 
-		if ((sc->sc_ncm.dpt.dwSignature[0] != 'N') ||
-		    (sc->sc_ncm.dpt.dwSignature[1] != 'C') ||
-		    (sc->sc_ncm.dpt.dwSignature[2] != 'M') ||
-		    (sc->sc_ncm.dpt.dwSignature[3] != '0')) {
+		if (sc->sc_ncm.dpt.dwSignature[0] != 'N' ||
+		    sc->sc_ncm.dpt.dwSignature[1] != 'C' ||
+		    sc->sc_ncm.dpt.dwSignature[2] != 'M' ||
+		    sc->sc_ncm.dpt.dwSignature[3] != '0') {
 			DPRINTFN(1, "invalid DPT signature"
 			    "0x%02x:0x%02x:0x%02x:0x%02x\n",
 			    sc->sc_ncm.dpt.dwSignature[0],
@@ -1217,9 +1217,9 @@ cdce_ncm_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 			offset = UGETW(sc->sc_ncm.dp[x].wFrameIndex);
 			temp = UGETW(sc->sc_ncm.dp[x].wFrameLength);
 
-			if ((offset == 0) ||
-			    (temp < sizeof(struct ether_header)) ||
-			    (temp > (MCLBYTES - ETHER_ALIGN))) {
+			if (offset == 0 ||
+			    temp < sizeof(struct ether_header) ||
+			    temp > (MCLBYTES - ETHER_ALIGN)) {
 				DPRINTFN(1, "NULL frame detected at %d\n", x);
 				m = NULL;
 				/* silently ignore this frame */

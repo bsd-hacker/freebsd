@@ -221,10 +221,10 @@ mtp_get_vendor_desc(const struct usb_device_request *req, uint16_t *plen)
 		0, 0, 0, 0, 0, 0, 0, 0,
 	};
 
-	if ((req->bmRequestType == UT_READ_VENDOR_DEVICE) &&
-	    (req->bRequest == MTP_BREQUEST) && (req->wValue[0] == 0) &&
-	    (req->wValue[1] == 0) && (req->wIndex[1] == 0) &&
-	    ((req->wIndex[0] == 4) || (req->wIndex[0] == 5))) {
+	if (req->bmRequestType == UT_READ_VENDOR_DEVICE &&
+	    req->bRequest == MTP_BREQUEST && req->wValue[0] == 0 &&
+	    req->wValue[1] == 0 && req->wIndex[1] == 0 &&
+	    (req->wIndex[0] == 4 || req->wIndex[0] == 5)) {
 		/*
 		 * By returning this descriptor LibMTP will
 		 * automatically pickup our device.

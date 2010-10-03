@@ -250,10 +250,10 @@ ucom_attach(struct ucom_softc *sc, uint32_t sub_units, void *parent,
 	uint32_t root_unit;
 	int error = 0;
 
-	if ((sc == NULL) ||
-	    (sub_units == 0) ||
-	    (sub_units > UCOM_SUB_UNIT_MAX) ||
-	    (callback == NULL))
+	if (sc == NULL ||
+	    sub_units == 0 ||
+	    sub_units > UCOM_SUB_UNIT_MAX ||
+	    callback == NULL)
 		return (EINVAL);
 
 	/* XXX unit management does not really belong here */
@@ -342,8 +342,8 @@ ucom_attach_tty(struct ucom_softc *sc, uint32_t sub_units)
 	cv_init(&sc->sc_cv, "ucom");
 
 	/* Check if this device should be a console */
-	if ((ucom_cons_softc == NULL) && 
-	    (sc->sc_unit == ucom_cons_unit)) {
+	if (ucom_cons_softc == NULL && 
+	    sc->sc_unit == ucom_cons_unit) {
 		struct termios t;
 
 		ucom_cons_softc = sc;
@@ -619,7 +619,7 @@ ucom_modem(struct tty *tp, int sigon, int sigoff)
 
 	if (!(sc->sc_flag & UCOM_FLAG_HL_READY))
 		return (0);
-	if ((sigon == 0) && (sigoff == 0)) {
+	if (sigon == 0 && sigoff == 0) {
 		if (sc->sc_mcr & SER_DTR)
 			sigon |= SER_DTR;
 		if (sc->sc_mcr & SER_RTS)

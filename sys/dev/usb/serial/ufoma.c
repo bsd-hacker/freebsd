@@ -337,17 +337,16 @@ ufoma_probe(device_t dev)
 	id = usbd_get_interface_descriptor(uaa->iface);
 	cd = usbd_get_config_descriptor(uaa->device);
 
-	if ((id == NULL) ||
-	    (cd == NULL) ||
-	    (id->bInterfaceClass != UICLASS_CDC) ||
-	    (id->bInterfaceSubClass != UISUBCLASS_MCPC))
+	if (id == NULL || cd == NULL ||
+	    id->bInterfaceClass != UICLASS_CDC ||
+	    id->bInterfaceSubClass != UISUBCLASS_MCPC)
 		return (ENXIO);
 	mad = ufoma_get_intconf(cd, id, UDESC_VS_INTERFACE, UDESCSUB_MCPC_ACM);
 	if (mad == NULL)
 		return (ENXIO);
 #ifndef UFOMA_HANDSFREE
-	if ((mad->bType == UMCPC_ACM_TYPE_AB5) ||
-	    (mad->bType == UMCPC_ACM_TYPE_AB6))
+	if (mad->bType == UMCPC_ACM_TYPE_AB5 ||
+	    mad->bType == UMCPC_ACM_TYPE_AB6)
 		return (ENXIO);
 #endif
 	return (0);
@@ -401,8 +400,8 @@ ufoma_attach(device_t dev)
 		device_printf(dev, "invalid MAD descriptor\n");
 		goto detach;
 	}
-	if ((mad->bType == UMCPC_ACM_TYPE_AB5) ||
-	    (mad->bType == UMCPC_ACM_TYPE_AB6))
+	if (mad->bType == UMCPC_ACM_TYPE_AB5 ||
+	    mad->bType == UMCPC_ACM_TYPE_AB6)
 		sc->sc_nobulk = 1;
 	else {
 		sc->sc_nobulk = 0;
@@ -483,11 +482,11 @@ ufoma_get_intconf(struct usb_config_descriptor *cd, struct usb_interface_descrip
 {
 	struct usb_descriptor *desc = (void *)id;
 
-	while ((desc = usb_desc_foreach(cd, desc))) {
+	while ((desc = usb_desc_foreach(cd, desc)) != NULL) {
 		if (desc->bDescriptorType == UDESC_INTERFACE)
 			return (NULL);
-		if ((desc->bDescriptorType == type) &&
-		    (desc->bDescriptorSubtype == subtype))
+		if (desc->bDescriptorType == type &&
+		    desc->bDescriptorSubtype == subtype)
 			break;
 	}
 	return (desc);
@@ -662,8 +661,8 @@ ufoma_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 		wLen = UGETW(pkt.wLength);
 		if (actlen > wLen)
 			actlen = wLen;
-		if ((pkt.bmRequestType == UT_READ_VENDOR_INTERFACE) &&
-		    (pkt.bNotification == UMCPC_REQUEST_ACKNOWLEDGE)) {
+		if (pkt.bmRequestType == UT_READ_VENDOR_INTERFACE &&
+		    pkt.bNotification == UMCPC_REQUEST_ACKNOWLEDGE) {
 			temp = UGETW(pkt.wValue);
 			sc->sc_currentmode = (temp >> 8);
 			if (!(temp & 0xff))
@@ -972,16 +971,14 @@ ufoma_modem_setup(device_t dev, struct ufoma_softc *sc,
 
 	cmd = ufoma_get_intconf(cd, id, UDESC_CS_INTERFACE, UDESCSUB_CDC_CM);
 
-	if ((cmd == NULL) ||
-	    (cmd->bLength < sizeof(*cmd)))
+	if (cmd == NULL || cmd->bLength < sizeof(*cmd))
 		return (EINVAL);
 	sc->sc_cm_cap = cmd->bmCapabilities;
 	sc->sc_data_iface_no = cmd->bDataInterface;
 
 	acm = ufoma_get_intconf(cd, id, UDESC_CS_INTERFACE, UDESCSUB_CDC_ACM);
 
-	if ((acm == NULL) ||
-	    (acm->bLength < sizeof(*acm)))
+	if (acm == NULL || acm->bLength < sizeof(*acm))
 		return (EINVAL);
 	sc->sc_acm_cap = acm->bmCapabilities;
 

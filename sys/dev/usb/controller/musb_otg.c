@@ -321,8 +321,8 @@ musbotg_setup_rx(struct musbotg_td *td)
 	sc->sc_ep0_busy = 1;
 
 	/* sneak peek the set address */
-	if ((req.bmRequestType == UT_WRITE_DEVICE) &&
-	    (req.bRequest == UR_SET_ADDRESS))
+	if (req.bmRequestType == UT_WRITE_DEVICE &&
+	    req.bRequest == UR_SET_ADDRESS)
 		sc->sc_dv_addr = req.wValue[0] & 0x7F;
 	else
 		sc->sc_dv_addr = 0xFF;
@@ -465,7 +465,7 @@ musbotg_setup_data_rx(struct musbotg_td *td)
 	}
 
 	/* check if we are complete */
-	if ((td->remainder == 0) || got_short) {
+	if (td->remainder == 0 || got_short) {
 		if (td->short_pkt) {
 			/* we are complete */
 			sc->sc_ep0_cmd = MUSB2_MASK_CSR0L_RXPKTRDY_CLR;
@@ -749,7 +749,7 @@ repeat:
 	MUSB2_WRITE_1(sc, MUSB2_REG_RXCSRL, 0);
 
 	/* check if we are complete */
-	if ((td->remainder == 0) || got_short) {
+	if (td->remainder == 0 || got_short) {
 		if (td->short_pkt) {
 			/* we are complete */
 			return (0);
@@ -2023,8 +2023,7 @@ musbotg_device_isoc_enter(struct usb_xfer *xfer)
 	else
 		fs_frames = xfer->nframes;
 
-	if ((xfer->endpoint->is_synced == 0) ||
-	    (temp < fs_frames)) {
+	if (xfer->endpoint->is_synced == 0 || temp < fs_frames) {
 		/*
 		 * If there is data underflow or the pipe queue is
 		 * empty we schedule the transfer a few frames ahead
@@ -2554,8 +2553,8 @@ musbotg_xfer_setup(struct usb_setup_params *parm)
 	parm->hc_max_packet_size = 0x400;
 	parm->hc_max_frame_size = 0x400;
 
-	if ((parm->methods == &musbotg_device_isoc_methods) ||
-	    (parm->methods == &musbotg_device_intr_methods))
+	if (parm->methods == &musbotg_device_isoc_methods ||
+	    parm->methods == &musbotg_device_intr_methods)
 		parm->hc_max_packet_count = 3;
 	else
 		parm->hc_max_packet_count = 1;
@@ -2651,8 +2650,8 @@ musbotg_ep_init(struct usb_device *udev, struct usb_endpoint_descriptor *edesc,
 			/* not supported */
 			return;
 		}
-		if ((udev->speed != USB_SPEED_FULL) &&
-		    (udev->speed != USB_SPEED_HIGH)) {
+		if (udev->speed != USB_SPEED_FULL &&
+		    udev->speed != USB_SPEED_HIGH) {
 			/* not supported */
 			return;
 		}

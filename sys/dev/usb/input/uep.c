@@ -296,13 +296,13 @@ uep_probe(device_t dev)
 	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
 
-	if ((uaa->info.idVendor == USB_VENDOR_EGALAX) &&
-	    ((uaa->info.idProduct == USB_PRODUCT_EGALAX_TPANEL) ||
-	    (uaa->info.idProduct == USB_PRODUCT_EGALAX_TPANEL2)))
+	if (uaa->info.idVendor == USB_VENDOR_EGALAX &&
+	    (uaa->info.idProduct == USB_PRODUCT_EGALAX_TPANEL ||
+	     uaa->info.idProduct == USB_PRODUCT_EGALAX_TPANEL2))
 		return (BUS_PROBE_SPECIFIC);
 
-	if ((uaa->info.idVendor == USB_VENDOR_EGALAX2) &&
-	    (uaa->info.idProduct == USB_PRODUCT_EGALAX2_TPANEL))
+	if (uaa->info.idVendor == USB_VENDOR_EGALAX2 &&
+	    uaa->info.idProduct == USB_PRODUCT_EGALAX2_TPANEL)
 		return (BUS_PROBE_SPECIFIC);
 
 	return (ENXIO);

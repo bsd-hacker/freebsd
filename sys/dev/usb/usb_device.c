@@ -290,12 +290,12 @@ usbd_get_endpoint(struct usb_device *udev, uint8_t iface_index,
 	 * the endpoints from the beginning of the "udev->endpoints" array.
 	 */
 	for (; ep != ep_end; ep++) {
-		if ((ep->edesc == NULL) ||
-		    (ep->iface_index != iface_index))
+		if (ep->edesc == NULL ||
+		    ep->iface_index != iface_index)
 			continue;
 		/* do the masks and check the values */
-		if (((ep->edesc->bEndpointAddress & ea_mask) == ea_val) &&
-		    ((ep->edesc->bmAttributes & type_mask) == type_val)) {
+		if ((ep->edesc->bEndpointAddress & ea_mask) == ea_val &&
+		    (ep->edesc->bmAttributes & type_mask) == type_val) {
 			if (!index--)
 				goto found;
 		}
@@ -306,10 +306,10 @@ usbd_get_endpoint(struct usb_device *udev, uint8_t iface_index,
 	 * address" and "any direction" returns the first endpoint of the
 	 * interface. "iface_index" and "direction" is ignored:
 	 */
-	if ((udev->ctrl_ep.edesc) &&
-	    ((udev->ctrl_ep.edesc->bEndpointAddress & ea_mask) == ea_val) &&
-	    ((udev->ctrl_ep.edesc->bmAttributes & type_mask) == type_val) &&
-	    (!index)) {
+	if (udev->ctrl_ep.edesc &&
+	    (udev->ctrl_ep.edesc->bEndpointAddress & ea_mask) == ea_val &&
+	    (udev->ctrl_ep.edesc->bmAttributes & type_mask) == type_val &&
+	    !index) {
 		ep = &udev->ctrl_ep;
 		goto found;
 	}
@@ -533,9 +533,9 @@ usbd_set_config_index(struct usb_device *udev, uint8_t index)
 
 	/* Figure out if the device is self or bus powered. */
 	selfpowered = 0;
-	if ((!udev->flags.uq_bus_powered) &&
-	    (cdp->bmAttributes & UC_SELF_POWERED) &&
-	    (udev->flags.usb_mode == USB_MODE_HOST)) {
+	if (!udev->flags.uq_bus_powered &&
+	    (cdp->bmAttributes & UC_SELF_POWERED) != 0 &&
+	    udev->flags.usb_mode == USB_MODE_HOST) {
 		/* May be self powered. */
 		if (cdp->bmAttributes & UC_BUS_POWERED) {
 			/* Must ask device. */
@@ -662,8 +662,8 @@ usb_config_parse(struct usb_device *udev, uint8_t iface_index, uint8_t cmd)
 		ep_max = udev->endpoints_max;
 		while (ep_max--) {
 			/* look for matching endpoints */
-			if ((iface_index == USB_IFACE_INDEX_ANY) ||
-			    (iface_index == ep->iface_index)) {
+			if (iface_index == USB_IFACE_INDEX_ANY ||
+			    iface_index == ep->iface_index) {
 				if (ep->refcount_alloc != 0) {
 					/*
 					 * This typically indicates a
@@ -692,7 +692,7 @@ usb_config_parse(struct usb_device *udev, uint8_t iface_index, uint8_t cmd)
 	ep_curr = 0;
 	ep_max = 0;
 
-	while ((id = usb_idesc_foreach(udev->cdesc, &ips))) {
+	while ((id = usb_idesc_foreach(udev->cdesc, &ips)) != NULL) {
 		/* check for interface overflow */
 		if (ips.iface_index == USB_IFACE_MAX)
 			break;			/* crazy */
@@ -700,8 +700,8 @@ usb_config_parse(struct usb_device *udev, uint8_t iface_index, uint8_t cmd)
 
 		/* check for specific interface match */
 		if (cmd == USB_CFG_INIT) {
-			if ((iface_index != USB_IFACE_INDEX_ANY) &&
-			    (iface_index != ips.iface_index)) {
+			if (iface_index != USB_IFACE_INDEX_ANY &&
+			    iface_index != ips.iface_index) {
 				/* wrong interface */
 				do_init = 0;
 			} else if (alt_index != ips.iface_index_alt) {
@@ -736,7 +736,7 @@ usb_config_parse(struct usb_device *udev, uint8_t iface_index, uint8_t cmd)
 		temp = ep_curr;
 
 		/* iterate all the endpoint descriptors */
-		while ((ed = usb_edesc_foreach(udev->cdesc, ed))) {
+		while ((ed = usb_edesc_foreach(udev->cdesc, ed)) != NULL) {
 			if (temp == USB_EP_MAX)
 				break;			/* crazy */
 			ep = udev->endpoints + temp;
@@ -908,8 +908,7 @@ usbd_set_endpoint_stall(struct usb_device *udev, struct usb_endpoint *ep,
 	}
 	et = (ep->edesc->bmAttributes & UE_XFERTYPE);
 
-	if ((et != UE_BULK) &&
-	    (et != UE_INTERRUPT)) {
+	if (et != UE_BULK && et != UE_INTERRUPT) {
 		/*
 		 * Should not stall control
 		 * nor isochronous endpoints.
@@ -972,8 +971,7 @@ usb_reset_iface_endpoints(struct usb_device *udev, uint8_t iface_index)
 	ep_end = udev->endpoints + udev->endpoints_max;
 
 	for (; ep != ep_end; ep++) {
-		if ((ep->edesc == NULL) ||
-		    (ep->iface_index != iface_index))
+		if (ep->edesc == NULL || ep->iface_index != iface_index)
 			continue;
 		/* simulate a clear stall from the peer */
 		usbd_set_endpoint_stall(udev, ep, 0);
@@ -1757,7 +1755,7 @@ repeat_set_config:
 	}
 	if (!config_quirk &&
 	    config_index + 1 < udev->ddesc.bNumConfigurations) {
-		if ((udev->cdesc->bNumInterface < 2) &&
+		if (udev->cdesc->bNumInterface < 2 &&
 		    usbd_get_no_descriptors(udev->cdesc, UDESC_ENDPOINT) == 0) {
 			DPRINTFN(0, "Found no endpoints, trying next config\n");
 			config_index++;
@@ -1869,10 +1867,10 @@ usb_cdev_create(struct usb_device *udev)
 	 * generating 16 static endpoints.
 	 */
 	cd = usbd_get_config_descriptor(udev);
-	while ((desc = usb_desc_foreach(cd, desc))) {
+	while ((desc = usb_desc_foreach(cd, desc)) != NULL) {
 		/* filter out all endpoint descriptors */
-		if ((desc->bDescriptorType == UDESC_ENDPOINT) &&
-		    (desc->bLength >= sizeof(*ed))) {
+		if (desc->bDescriptorType == UDESC_ENDPOINT &&
+		    desc->bLength >= sizeof(*ed)) {
 			ed = (struct usb_endpoint_descriptor *)desc;
 
 			/* update masks */
@@ -2073,11 +2071,11 @@ usbd_find_descriptor(struct usb_device *udev, void *id, uint8_t iface_index,
 	}
 	desc = (void *)id;
 
-	while ((desc = usb_desc_foreach(cd, desc))) {
+	while ((desc = usb_desc_foreach(cd, desc)) != NULL) {
 		if (desc->bDescriptorType == UDESC_INTERFACE)
 			break;
-		if (((desc->bDescriptorType & type_mask) == type) &&
-		    ((desc->bDescriptorSubtype & subtype_mask) == subtype))
+		if ((desc->bDescriptorType & type_mask) == type &&
+		    (desc->bDescriptorSubtype & subtype_mask) == subtype)
 			return (desc);
 	}
 	return (NULL);
@@ -2489,16 +2487,15 @@ usb_fifo_free_wrap(struct usb_device *udev,
 				 */
 				continue;
 			}
-			if ((f->dev_ep_index == 0) &&
-			    (f->fs_xfer == NULL)) {
+			if (f->dev_ep_index == 0 && f->fs_xfer == NULL) {
 				/* no need to free this FIFO */
 				continue;
 			}
 		} else if (iface_index == USB_IFACE_INDEX_ANY) {
-			if ((f->methods == &usb_ugen_methods) &&
-			    (f->dev_ep_index == 0) &&
-			    (!(flag & USB_UNCFG_FLAG_FREE_EP0)) &&
-			    (f->fs_xfer == NULL)) {
+			if (f->methods == &usb_ugen_methods &&
+			    f->dev_ep_index == 0 &&
+			    !(flag & USB_UNCFG_FLAG_FREE_EP0) &&
+			    f->fs_xfer == NULL) {
 				/* no need to free this FIFO */
 				continue;
 			}
@@ -2525,7 +2522,7 @@ usb_peer_can_wakeup(struct usb_device *udev)
 	const struct usb_config_descriptor *cdp;
 
 	cdp = udev->cdesc;
-	if ((cdp != NULL) && (udev->flags.usb_mode == USB_MODE_HOST))
+	if (cdp != NULL && udev->flags.usb_mode == USB_MODE_HOST)
 		return (cdp->bmAttributes & UC_REMOTE_WAKEUP);
 	return (0);			/* not supported */
 }

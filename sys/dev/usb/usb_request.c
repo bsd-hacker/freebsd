@@ -163,12 +163,12 @@ usbd_get_debug_bits(struct usb_device *udev, struct usb_device_request *req,
 
 	temp = usb_ctrl_debug.bmRequestType_value;
 
-	if ((temp != req->bmRequestType) && (temp >= 0) && (temp <= 255))
+	if (temp != req->bmRequestType && temp >= 0 && temp <= 255)
 		return;
 
 	temp = usb_ctrl_debug.bRequest_value;
 
-	if ((temp != req->bRequest) && (temp >= 0) && (temp <= 255))
+	if (temp != req->bRequest && temp >= 0 && temp <= 255)
 		return;
 
 	temp = usb_ctrl_debug.ds_fail;
@@ -249,7 +249,7 @@ usb_do_clear_stall_callback(struct usb_xfer *xfer, usb_error_t error)
 tr_setup:
 		if (to == 0)
 			break;		/* no endpoints - nothing to do */
-		if ((ep < ep_first) || (ep >= ep_end))
+		if (ep < ep_first || ep >= ep_end)
 			ep = ep_first;	/* endpoint wrapped around */
 		if (ep->edesc &&
 		    ep->is_stalled) {
@@ -412,7 +412,7 @@ usbd_do_request_flags(struct usb_device *udev, struct mtx *mtx,
 	if (flags & USB_USER_DATA_PTR)
 		return (USB_ERR_INVAL);
 #endif
-	if ((mtx != NULL) && (mtx != &Giant)) {
+	if (mtx != NULL && mtx != &Giant) {
 		mtx_unlock(mtx);
 		mtx_assert(mtx, MA_NOTOWNED);
 	}
@@ -666,7 +666,7 @@ done:
 	if (enum_locked)
 		usbd_sr_lock(udev);
 
-	if ((mtx != NULL) && (mtx != &Giant))
+	if (mtx != NULL && mtx != &Giant)
 		mtx_lock(mtx);
 
 	return ((usb_error_t)err);
@@ -804,7 +804,7 @@ usbd_req_get_desc(struct usb_device *udev,
 	USETW(req.wIndex, id);
 
 	while (1) {
-		if ((min_len < 2) || (max_len < 2)) {
+		if (min_len < 2 || max_len < 2) {
 			err = USB_ERR_INVAL;
 			goto done;
 		}
@@ -826,7 +826,7 @@ usbd_req_get_desc(struct usb_device *udev,
 
 		if (min_len == max_len) {
 			/* enforce correct length */
-			if ((buf[0] > min_len) && (actlen == NULL))
+			if (buf[0] > min_len && actlen == NULL)
 				buf[0] = min_len;
 
 			/* enforce correct type */
@@ -942,7 +942,7 @@ usbd_req_get_string_any(struct usb_device *udev, struct mtx *mtx, char *buf,
 		 * Filter by default - we don't allow greater and less than
 		 * signs because they might confuse the dmesg printouts!
 		 */
-		if ((*s == '<') || (*s == '>') || (!isprint(*s))) {
+		if (*s == '<' || *s == '>' || !isprint(*s)) {
 			/* silently skip bad character */
 			continue;
 		}
@@ -1129,7 +1129,7 @@ usbd_req_get_alt_interface_no(struct usb_device *udev, struct mtx *mtx,
 	struct usb_interface *iface = usbd_get_iface(udev, iface_index);
 	struct usb_device_request req;
 
-	if ((iface == NULL) || (iface->idesc == NULL))
+	if (iface == NULL || iface->idesc == NULL)
 		return (USB_ERR_INVAL);
 
 	req.bmRequestType = UT_READ_INTERFACE;
@@ -1155,7 +1155,7 @@ usbd_req_set_alt_interface_no(struct usb_device *udev, struct mtx *mtx,
 	struct usb_interface *iface = usbd_get_iface(udev, iface_index);
 	struct usb_device_request req;
 
-	if ((iface == NULL) || (iface->idesc == NULL))
+	if (iface == NULL || iface->idesc == NULL)
 		return (USB_ERR_INVAL);
 
 	req.bmRequestType = UT_WRITE_INTERFACE;
@@ -1382,7 +1382,7 @@ usbd_req_set_protocol(struct usb_device *udev, struct mtx *mtx,
 	struct usb_interface *iface = usbd_get_iface(udev, iface_index);
 	struct usb_device_request req;
 
-	if ((iface == NULL) || (iface->idesc == NULL))
+	if (iface == NULL || iface->idesc == NULL)
 		return (USB_ERR_INVAL);
 	DPRINTFN(5, "iface=%p, report=%d, endpt=%d\n",
 	    iface, report, iface->idesc->bInterfaceNumber);
@@ -1410,7 +1410,7 @@ usbd_req_set_report(struct usb_device *udev, struct mtx *mtx,
 	struct usb_interface *iface = usbd_get_iface(udev, iface_index);
 	struct usb_device_request req;
 
-	if ((iface == NULL) || (iface->idesc == NULL))
+	if (iface == NULL || iface->idesc == NULL)
 		return (USB_ERR_INVAL);
 	DPRINTFN(5, "len=%d\n", len);
 
@@ -1437,7 +1437,7 @@ usbd_req_get_report(struct usb_device *udev, struct mtx *mtx, void *data,
 	struct usb_interface *iface = usbd_get_iface(udev, iface_index);
 	struct usb_device_request req;
 
-	if ((iface == NULL) || (iface->idesc == NULL) || (id == 0))
+	if (iface == NULL || iface->idesc == NULL || id == 0)
 		return (USB_ERR_INVAL);
 	DPRINTFN(5, "len=%d\n", len);
 
@@ -1464,7 +1464,7 @@ usbd_req_set_idle(struct usb_device *udev, struct mtx *mtx,
 	struct usb_interface *iface = usbd_get_iface(udev, iface_index);
 	struct usb_device_request req;
 
-	if ((iface == NULL) || (iface->idesc == NULL))
+	if (iface == NULL || iface->idesc == NULL)
 		return (USB_ERR_INVAL);
 	DPRINTFN(5, "%d %d\n", duration, id);
 
@@ -1491,7 +1491,7 @@ usbd_req_get_report_descriptor(struct usb_device *udev, struct mtx *mtx,
 	struct usb_interface *iface = usbd_get_iface(udev, iface_index);
 	struct usb_device_request req;
 
-	if ((iface == NULL) || (iface->idesc == NULL))
+	if (iface == NULL || iface->idesc == NULL)
 		return (USB_ERR_INVAL);
 	req.bmRequestType = UT_READ_INTERFACE;
 	req.bRequest = UR_GET_DESCRIPTOR;

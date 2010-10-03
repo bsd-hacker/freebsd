@@ -476,11 +476,11 @@ ulpt_probe(device_t dev)
 
 	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	if ((uaa->info.bInterfaceClass == UICLASS_PRINTER) &&
-	    (uaa->info.bInterfaceSubClass == UISUBCLASS_PRINTER) &&
-	    ((uaa->info.bInterfaceProtocol == UIPROTO_PRINTER_UNI) ||
-	    (uaa->info.bInterfaceProtocol == UIPROTO_PRINTER_BI) ||
-	    (uaa->info.bInterfaceProtocol == UIPROTO_PRINTER_1284)))
+	if (uaa->info.bInterfaceClass == UICLASS_PRINTER &&
+	    uaa->info.bInterfaceSubClass == UISUBCLASS_PRINTER &&
+	    (uaa->info.bInterfaceProtocol == UIPROTO_PRINTER_UNI ||
+	     uaa->info.bInterfaceProtocol == UIPROTO_PRINTER_BI ||
+	     uaa->info.bInterfaceProtocol == UIPROTO_PRINTER_1284))
 		return (0);
 	return (ENXIO);
 }
@@ -511,15 +511,15 @@ ulpt_attach(device_t dev)
 	while (1) {
 		if (id == NULL)
 			break;
-		if ((id->bDescriptorType == UDESC_INTERFACE) &&
-		    (id->bLength >= sizeof(*id))) {
+		if (id->bDescriptorType == UDESC_INTERFACE &&
+		    id->bLength >= sizeof(*id)) {
 			if (id->bInterfaceNumber != uaa->info.bIfaceNum)
 				break;
 			else {
 				alt_index++;
-				if ((id->bInterfaceClass == UICLASS_PRINTER) &&
-				    (id->bInterfaceSubClass == UISUBCLASS_PRINTER) &&
-				    (id->bInterfaceProtocol == UIPROTO_PRINTER_BI))
+				if (id->bInterfaceClass == UICLASS_PRINTER &&
+				    id->bInterfaceSubClass == UISUBCLASS_PRINTER &&
+				    id->bInterfaceProtocol == UIPROTO_PRINTER_BI)
 					goto found;
 			}
 		}

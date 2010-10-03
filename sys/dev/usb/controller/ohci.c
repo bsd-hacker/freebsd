@@ -987,7 +987,7 @@ ohci_check_transfer_sub(struct usb_xfer *xfer)
 	         * Check if we reached the last packet
 	         * or if there is a short packet:
 	         */
-		if (((td_next & (~0xF)) == OHCI_TD_NEXT_END) || phy_start) {
+		if ((td_next & (~0xF)) == OHCI_TD_NEXT_END || phy_start) {
 			/* follow alt next */
 			td = td->alt_next;
 			break;
@@ -1335,7 +1335,7 @@ restart:
 			temp->len -= average;
 		}
 
-		if ((td_next == td_alt_next) && temp->setup_alt_next) {
+		if (td_next == td_alt_next && temp->setup_alt_next) {
 			/* we need to receive these frames one by one ! */
 			td->td_flags &= htole32(~OHCI_TD_INTR_MASK);
 			td->td_flags |= htole32(OHCI_TD_SET_DI(1));
