@@ -1148,7 +1148,6 @@ umass_t_bbb_reset1_callback(struct usb_xfer *xfer, usb_error_t error)
 	case USB_ST_TRANSFERRED:
 		umass_transfer_start(sc, UMASS_T_BBB_RESET2);
 		return;
-
 	case USB_ST_SETUP:
 		/*
 		 * Reset recovery (5.3.4 in Universal Serial Bus Mass Storage Class)
@@ -1180,11 +1179,9 @@ umass_t_bbb_reset1_callback(struct usb_xfer *xfer, usb_error_t error)
 		usbd_xfer_set_frames(xfer, 1);
 		usbd_transfer_submit(xfer);
 		return;
-
 	default:			/* Error */
 		umass_tr_error(xfer, error);
 		return;
-
 	}
 }
 
@@ -1213,16 +1210,13 @@ umass_t_bbb_data_clear_stall_callback(struct usb_xfer *xfer,
 tr_transferred:
 		umass_transfer_start(sc, next_xfer);
 		return;
-
 	case USB_ST_SETUP:
 		if (usbd_clear_stall_callback(xfer, sc->sc_xfer[stall_xfer]))
 			goto tr_transferred;
 		return;
-
 	default:			/* Error */
 		umass_tr_error(xfer, error);
 		return;
-
 	}
 }
 
@@ -1241,9 +1235,7 @@ umass_t_bbb_command_callback(struct usb_xfer *xfer, usb_error_t error)
 		    (sc->sc_transfer.dir == DIR_OUT) ? UMASS_T_BBB_DATA_WRITE :
 		    UMASS_T_BBB_STATUS));
 		return;
-
 	case USB_ST_SETUP:
-
 		sc->sc_status_try = 0;
 
 		if (ccb) {
@@ -1301,7 +1293,6 @@ umass_t_bbb_command_callback(struct usb_xfer *xfer, usb_error_t error)
 			usbd_transfer_submit(xfer);
 		}
 		return;
-
 	default:			/* Error */
 		umass_tr_error(xfer, error);
 		return;
@@ -1335,6 +1326,7 @@ umass_t_bbb_data_read_callback(struct usb_xfer *xfer, usb_error_t error)
 			/* short transfer */
 			sc->sc_transfer.data_rem = 0;
 		}
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 		DPRINTF(sc, UDMASS_BBB, "max_bulk=%d, data_rem=%d\n",
 		    max_bulk, sc->sc_transfer.data_rem);
@@ -1355,20 +1347,19 @@ umass_t_bbb_data_read_callback(struct usb_xfer *xfer, usb_error_t error)
 #endif
 		usbd_transfer_submit(xfer);
 		return;
-
 	default:			/* Error */
 		if (error == USB_ERR_CANCELLED)
 			umass_tr_error(xfer, error);
 		else
 			umass_transfer_start(sc, UMASS_T_BBB_DATA_RD_CS);
 		return;
-
 	}
 }
 
 static void
 umass_t_bbb_data_rd_cs_callback(struct usb_xfer *xfer, usb_error_t error)
 {
+
 	umass_t_bbb_data_clear_stall_callback(xfer, UMASS_T_BBB_STATUS,
 	    UMASS_T_BBB_DATA_READ, error);
 }
@@ -1395,6 +1386,7 @@ umass_t_bbb_data_write_callback(struct usb_xfer *xfer, usb_error_t error)
 			/* short transfer */
 			sc->sc_transfer.data_rem = 0;
 		}
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 		DPRINTF(sc, UDMASS_BBB, "max_bulk=%d, data_rem=%d\n",
 		    max_bulk, sc->sc_transfer.data_rem);
@@ -1418,20 +1410,19 @@ umass_t_bbb_data_write_callback(struct usb_xfer *xfer, usb_error_t error)
 
 		usbd_transfer_submit(xfer);
 		return;
-
 	default:			/* Error */
 		if (error == USB_ERR_CANCELLED)
 			umass_tr_error(xfer, error);
 		else
 			umass_transfer_start(sc, UMASS_T_BBB_DATA_WR_CS);
 		return;
-
 	}
 }
 
 static void
 umass_t_bbb_data_wr_cs_callback(struct usb_xfer *xfer, usb_error_t error)
 {
+
 	umass_t_bbb_data_clear_stall_callback(xfer, UMASS_T_BBB_STATUS,
 	    UMASS_T_BBB_DATA_WRITE, error);
 }
@@ -1449,7 +1440,6 @@ umass_t_bbb_status_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
-
 		/*
 		 * Do a full reset if there is something wrong with the CSW:
 		 */
@@ -1528,12 +1518,10 @@ umass_t_bbb_status_callback(struct usb_xfer *xfer, usb_error_t error)
 			    (sc, ccb, residue, STATUS_CMD_OK);
 		}
 		return;
-
 	case USB_ST_SETUP:
 		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
 		usbd_transfer_submit(xfer);
 		return;
-
 	default:
 tr_error:
 		DPRINTF(sc, UDMASS_BBB, "Failed to read CSW: %s, try %d\n",
@@ -1547,7 +1535,6 @@ tr_error:
 			umass_transfer_start(sc, UMASS_T_BBB_DATA_RD_CS);
 		}
 		return;
-
 	}
 }
 
@@ -1557,6 +1544,7 @@ umass_command_start(struct umass_softc *sc, uint8_t dir,
     uint32_t data_timeout, umass_callback_t *callback,
     union ccb *ccb)
 {
+
 	sc->sc_transfer.lun = ccb->ccb_h.target_lun;
 
 	/*
@@ -1645,7 +1633,6 @@ umass_t_cbi_reset1_callback(struct usb_xfer *xfer, usb_error_t error)
 	case USB_ST_TRANSFERRED:
 		umass_transfer_start(sc, UMASS_T_CBI_RESET2);
 		break;
-
 	case USB_ST_SETUP:
 		/*
 		 * Command Block Reset Protocol
@@ -1691,14 +1678,12 @@ umass_t_cbi_reset1_callback(struct usb_xfer *xfer, usb_error_t error)
 		usbd_xfer_set_frames(xfer, 2);
 		usbd_transfer_submit(xfer);
 		break;
-
 	default:			/* Error */
 		if (error == USB_ERR_CANCELLED)
 			umass_tr_error(xfer, error);
 		else
 			umass_transfer_start(sc, UMASS_T_CBI_RESET2);
 		break;
-
 	}
 }
 
@@ -1742,12 +1727,10 @@ tr_transferred:
 		else
 			umass_transfer_start(sc, next_xfer);
 		break;
-
 	case USB_ST_SETUP:
 		if (usbd_clear_stall_callback(xfer, sc->sc_xfer[stall_xfer]))
 			goto tr_transferred;	/* should not happen */
 		break;
-
 	default:			/* Error */
 		umass_tr_error(xfer, error);
 		break;
@@ -1765,7 +1748,6 @@ umass_t_cbi_command_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
-
 		if (sc->sc_transfer.dir == DIR_NONE)
 			umass_cbi_start_status(sc);
 		else {
@@ -1774,9 +1756,7 @@ umass_t_cbi_command_callback(struct usb_xfer *xfer, usb_error_t error)
 			    UMASS_T_CBI_DATA_READ : UMASS_T_CBI_DATA_WRITE);
 		}
 		break;
-
 	case USB_ST_SETUP:
-
 		if (ccb) {
 			/*
 		         * do a CBI transfer with cmd_len bytes from
@@ -1812,7 +1792,6 @@ umass_t_cbi_command_callback(struct usb_xfer *xfer, usb_error_t error)
 			usbd_transfer_submit(xfer);
 		}
 		break;
-
 	default:			/* Error */
 		umass_tr_error(xfer, error);
 		/* skip reset */
@@ -1847,6 +1826,7 @@ umass_t_cbi_data_read_callback(struct usb_xfer *xfer, usb_error_t error)
 			/* short transfer */
 			sc->sc_transfer.data_rem = 0;
 		}
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 		DPRINTF(sc, UDMASS_CBI, "max_bulk=%d, data_rem=%d\n",
 		    max_bulk, sc->sc_transfer.data_rem);
@@ -1867,7 +1847,6 @@ umass_t_cbi_data_read_callback(struct usb_xfer *xfer, usb_error_t error)
 #endif
 		usbd_transfer_submit(xfer);
 		break;
-
 	default:			/* Error */
 		if ((error == USB_ERR_CANCELLED) ||
 		    (sc->sc_transfer.callback != &umass_cam_cb))
@@ -1875,13 +1854,13 @@ umass_t_cbi_data_read_callback(struct usb_xfer *xfer, usb_error_t error)
 		else
 			umass_transfer_start(sc, UMASS_T_CBI_DATA_RD_CS);
 		break;
-
 	}
 }
 
 static void
 umass_t_cbi_data_rd_cs_callback(struct usb_xfer *xfer, usb_error_t error)
 {
+
 	umass_t_cbi_data_clear_stall_callback(xfer, UMASS_T_CBI_STATUS,
 	    UMASS_T_CBI_DATA_READ, error);
 }
@@ -1908,6 +1887,7 @@ umass_t_cbi_data_write_callback(struct usb_xfer *xfer, usb_error_t error)
 			/* short transfer */
 			sc->sc_transfer.data_rem = 0;
 		}
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 		DPRINTF(sc, UDMASS_CBI, "max_bulk=%d, data_rem=%d\n",
 		    max_bulk, sc->sc_transfer.data_rem);
@@ -1931,7 +1911,6 @@ umass_t_cbi_data_write_callback(struct usb_xfer *xfer, usb_error_t error)
 
 		usbd_transfer_submit(xfer);
 		break;
-
 	default:			/* Error */
 		if ((error == USB_ERR_CANCELLED) ||
 		    (sc->sc_transfer.callback != &umass_cam_cb))
@@ -1939,7 +1918,6 @@ umass_t_cbi_data_write_callback(struct usb_xfer *xfer, usb_error_t error)
 		else
 			umass_transfer_start(sc, UMASS_T_CBI_DATA_WR_CS);
 		break;
-
 	}
 }
 
@@ -1964,7 +1942,6 @@ umass_t_cbi_status_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
-
 		if (actlen < sizeof(sc->sbl))
 			goto tr_setup;
 		pc = usbd_xfer_get_frame(xfer, 0);
@@ -1997,7 +1974,6 @@ umass_t_cbi_status_callback(struct usb_xfer *xfer, usb_error_t error)
 			    (sc, ccb, residue, status);
 
 			break;
-
 		} else {
 			/* Command Interrupt Data Block */
 			DPRINTF(sc, UDMASS_CBI, "type=0x%02x, value=0x%02x\n",
@@ -2021,20 +1997,17 @@ umass_t_cbi_status_callback(struct usb_xfer *xfer, usb_error_t error)
 				break;
 			}
 		}
-
-		/* fallthrough */
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
 		usbd_transfer_submit(xfer);
 		break;
-
 	default:			/* Error */
 		DPRINTF(sc, UDMASS_CBI, "Failed to read CSW: %s\n",
 		    usbd_errstr(error));
 		umass_tr_error(xfer, error);
 		break;
-
 	}
 }
 
@@ -2516,7 +2489,6 @@ umass_cam_cb(struct umass_softc *sc, union ccb *ccb, uint32_t residue,
 		}
 		xpt_done(ccb);
 		break;
-
 	case STATUS_CMD_UNKNOWN:
 	case STATUS_CMD_FAILED:
 
@@ -2537,7 +2509,6 @@ umass_cam_cb(struct umass_softc *sc, union ccb *ccb, uint32_t residue,
 			    &umass_cam_sense_cb, ccb);
 		}
 		break;
-
 	default:
 		/*
 		 * The wire protocol failed and will hopefully have
@@ -2571,7 +2542,6 @@ umass_cam_sense_cb(struct umass_softc *sc, union ccb *ccb, uint32_t residue,
 	case STATUS_CMD_OK:
 	case STATUS_CMD_UNKNOWN:
 	case STATUS_CMD_FAILED:
-
 		if (ccb->csio.ccb_h.flags & CAM_CDB_POINTER)
 			cmd = (uint8_t *)(ccb->csio.cdb_io.cdb_ptr);
 		else
@@ -2636,7 +2606,6 @@ umass_cam_sense_cb(struct umass_softc *sc, union ccb *ccb, uint32_t residue,
 		}
 		xpt_done(ccb);
 		break;
-
 	default:
 		DPRINTF(sc, UDMASS_SCSI, "Autosense failed, "
 		    "status %d\n", status);
@@ -2691,7 +2660,6 @@ umass_scsi_transform(struct umass_softc *sc, uint8_t *cmd_ptr,
 			return (1);
 		}
 		break;
-
 	case INQUIRY:
 		/*
 		 * some drives wedge when asked for full inquiry
@@ -2739,7 +2707,6 @@ umass_rbc_transform(struct umass_softc *sc, uint8_t *cmd_ptr, uint8_t cmd_len)
 		 */
 	case REQUEST_SENSE:
 	case PREVENT_ALLOW:
-
 		bcopy(cmd_ptr, sc->sc_transfer.cmd_data, cmd_len);
 
 		if ((sc->sc_quirks & RBC_PAD_TO_12) && (cmd_len < 12)) {
@@ -2748,7 +2715,6 @@ umass_rbc_transform(struct umass_softc *sc, uint8_t *cmd_ptr, uint8_t cmd_len)
 		}
 		sc->sc_transfer.cmd_len = cmd_len;
 		return (1);		/* sucess */
-
 		/* All other commands are not legal in RBC */
 	default:
 		DPRINTF(sc, UDMASS_SCSI, "Unsupported RBC "
@@ -2793,7 +2759,6 @@ umass_ufi_transform(struct umass_softc *sc, uint8_t *cmd_ptr,
 			return (1);
 		}
 		break;
-
 	case REZERO_UNIT:
 	case REQUEST_SENSE:
 	case FORMAT_UNIT:
@@ -2869,7 +2834,6 @@ umass_atapi_transform(struct umass_softc *sc, uint8_t *cmd_ptr,
 			return (1);
 		}
 		break;
-
 	case TEST_UNIT_READY:
 		if (sc->sc_quirks & NO_TEST_UNIT_READY) {
 			DPRINTF(sc, UDMASS_SCSI, "Converted TEST_UNIT_READY "
@@ -2879,7 +2843,6 @@ umass_atapi_transform(struct umass_softc *sc, uint8_t *cmd_ptr,
 			return (1);
 		}
 		break;
-
 	case REZERO_UNIT:
 	case REQUEST_SENSE:
 	case START_STOP_UNIT:
@@ -2914,7 +2877,6 @@ umass_atapi_transform(struct umass_softc *sc, uint8_t *cmd_ptr,
 	case 0xbb:			/* SET_CD_SPEED */
 	case 0xe5:			/* READ_TRACK_INFO_PHILIPS */
 		break;
-
 	case READ_12:
 	case WRITE_12:
 	default:

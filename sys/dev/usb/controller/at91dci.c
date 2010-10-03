@@ -1738,7 +1738,6 @@ at91dci_roothub_exec(struct usb_device *udev,
 			goto tr_stalled;
 		}
 		break;
-
 	case UT_WRITE_DEVICE:
 		switch (req->bRequest) {
 		case UR_SET_ADDRESS:
@@ -1754,7 +1753,6 @@ at91dci_roothub_exec(struct usb_device *udev,
 			goto tr_stalled;
 		}
 		break;
-
 	case UT_WRITE_ENDPOINT:
 		switch (req->bRequest) {
 		case UR_CLEAR_FEATURE:
@@ -1783,7 +1781,6 @@ at91dci_roothub_exec(struct usb_device *udev,
 			goto tr_stalled;
 		}
 		break;
-
 	case UT_READ_ENDPOINT:
 		switch (req->bRequest) {
 		case UR_GET_STATUS:
@@ -1792,7 +1789,6 @@ at91dci_roothub_exec(struct usb_device *udev,
 			goto tr_stalled;
 		}
 		break;
-
 	case UT_WRITE_INTERFACE:
 		switch (req->bRequest) {
 		case UR_SET_INTERFACE:
@@ -1804,7 +1800,6 @@ at91dci_roothub_exec(struct usb_device *udev,
 			goto tr_stalled;
 		}
 		break;
-
 	case UT_READ_INTERFACE:
 		switch (req->bRequest) {
 		case UR_GET_INTERFACE:
@@ -1815,17 +1810,14 @@ at91dci_roothub_exec(struct usb_device *udev,
 			goto tr_stalled;
 		}
 		break;
-
 	case UT_WRITE_CLASS_INTERFACE:
 	case UT_WRITE_VENDOR_INTERFACE:
 		/* XXX forward */
 		break;
-
 	case UT_READ_CLASS_INTERFACE:
 	case UT_READ_VENDOR_INTERFACE:
 		/* XXX forward */
 		break;
-
 	case UT_WRITE_CLASS_DEVICE:
 		switch (req->bRequest) {
 		case UR_CLEAR_FEATURE:
@@ -1837,7 +1829,6 @@ at91dci_roothub_exec(struct usb_device *udev,
 			goto tr_stalled;
 		}
 		break;
-
 	case UT_WRITE_CLASS_OTHER:
 		switch (req->bRequest) {
 		case UR_CLEAR_FEATURE:
@@ -1853,7 +1844,6 @@ at91dci_roothub_exec(struct usb_device *udev,
 			goto tr_stalled;
 		}
 		break;
-
 	case UT_READ_CLASS_OTHER:
 		switch (req->bRequest) {
 		case UR_GET_TT_STATE:
@@ -1864,7 +1854,6 @@ at91dci_roothub_exec(struct usb_device *udev,
 			goto tr_stalled;
 		}
 		break;
-
 	case UT_READ_CLASS_DEVICE:
 		switch (req->bRequest) {
 		case UR_GET_DESCRIPTOR:
@@ -1971,11 +1960,9 @@ tr_handle_clear_port_feature:
 	case UHF_PORT_SUSPEND:
 		at91dci_wakeup_peer(sc);
 		break;
-
 	case UHF_PORT_ENABLE:
 		sc->sc_flags.port_enabled = 0;
 		break;
-
 	case UHF_PORT_TEST:
 	case UHF_PORT_INDICATOR:
 	case UHF_C_PORT_ENABLE:

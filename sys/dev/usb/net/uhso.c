@@ -1094,7 +1094,6 @@ uhso_mux_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 		    sc->sc_tty[mux].ht_xfer[UHSO_CTRL_READ],
 		    &sc->sc_tty[mux]);
 		usbd_transfer_start(sc->sc_tty[mux].ht_xfer[UHSO_CTRL_READ]);
-
 		break;
 	case USB_ST_SETUP:
 tr_setup:
@@ -1387,6 +1386,7 @@ uhso_bs_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 
 			ucom_status_change(&sc->sc_ucom[0]);
 		}
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
 	default:
@@ -1596,7 +1596,7 @@ uhso_ifnet_read_callback(struct usb_xfer *xfer, usb_error_t error)
 			    !callout_active(&sc->sc_c))
 				callout_schedule(&sc->sc_c, 1);
 		}
-	/* FALLTHROUGH */
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
@@ -1769,6 +1769,7 @@ uhso_ifnet_write_callback(struct usb_xfer *xfer, usb_error_t error)
 	case USB_ST_TRANSFERRED:
 		ifp->if_opackets++;
 		ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
 		IFQ_DRV_DEQUEUE(&ifp->if_snd, m);

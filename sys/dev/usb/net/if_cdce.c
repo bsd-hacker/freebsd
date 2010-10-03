@@ -731,7 +731,6 @@ tr_setup:
 			usbd_transfer_submit(xfer);
 		}
 		break;
-
 	default:			/* Error */
 		DPRINTFN(11, "transfer error, %s\n",
 		    usbd_errstr(error));
@@ -830,7 +829,6 @@ cdce_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
-
 		DPRINTF("received %u bytes in %u frames\n", actlen, aframes);
 
 		for (x = 0; x != aframes; x++) {
@@ -849,7 +847,6 @@ cdce_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 			/* queue up mbuf */
 			cdce_rxmbuf(sc, m, len);
 		}
-
 		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 		/* 
@@ -873,7 +870,6 @@ cdce_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 		/* flush any received frames */
 		cdce_rxflush(sc);
 		break;
-
 	default:			/* Error */
 		DPRINTF("error = %s\n",
 		    usbd_errstr(error));
@@ -902,7 +898,6 @@ cdce_intr_read_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
-
 		DPRINTF("Received %d bytes\n", actlen);
 
 		/* TODO: decode some indications */
@@ -912,7 +907,6 @@ tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
 		usbd_transfer_submit(xfer);
 		break;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* start clear stall */
@@ -932,7 +926,6 @@ cdce_intr_write_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
-
 		DPRINTF("Transferred %d bytes\n", actlen);
 
 		/* FALLTHROUGH */
@@ -943,7 +936,6 @@ tr_setup:
 		usbd_transfer_submit(xfer);
 #endif
 		break;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* start clear stall */
@@ -1095,12 +1087,11 @@ cdce_ncm_bulk_write_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
-
 		usbd_xfer_status(xfer, &actlen, NULL, &aframes, NULL);
 
 		DPRINTFN(10, "transfer complete: "
 		    "%u bytes in %u frames\n", actlen, aframes);
-
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 		for (x = 0; x != CDCE_NCM_TX_FRAMES_MAX; x++) {
 			if (cdce_ncm_fill_tx_frames(xfer, x))
@@ -1112,7 +1103,6 @@ cdce_ncm_bulk_write_callback(struct usb_xfer *xfer, usb_error_t error)
 			usbd_transfer_submit(xfer);
 		}
 		break;
-
 	default:			/* Error */
 		DPRINTFN(10, "Transfer error: %s\n",
 		    usbd_errstr(error));
@@ -1148,7 +1138,6 @@ cdce_ncm_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
-
 		usbd_xfer_status(xfer, &actlen, &sumlen, &aframes, NULL);
 
 		DPRINTFN(1, "received %u bytes in %u frames\n",
@@ -1264,7 +1253,7 @@ cdce_ncm_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 		}
 
 		DPRINTFN(1, "Efficiency: %u/%u bytes\n", sumdata, actlen);
-
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, sc->sc_ncm.rx_max);
@@ -1272,7 +1261,6 @@ tr_setup:
 		usbd_transfer_submit(xfer);
 		cdce_rxflush(sc);	/* must be last */
 		break;
-
 	default:			/* Error */
 		DPRINTFN(1, "error = %s\n",
 		    usbd_errstr(error));

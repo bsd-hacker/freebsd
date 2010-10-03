@@ -222,7 +222,6 @@ tr_setup:
 			usbd_transfer_submit(xfer);
 		}
 		break;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
@@ -252,7 +251,6 @@ ulpt_read_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
-
 		if (actlen == 0) {
 			if (sc->sc_zlps == 4) {
 				/* enable BULK throttle */
@@ -267,7 +265,7 @@ ulpt_read_callback(struct usb_xfer *xfer, usb_error_t error)
 
 		pc = usbd_xfer_get_frame(xfer, 0);
 		usb_fifo_put_data(f, pc, 0, actlen, 1);
-
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
 		if (usb_fifo_put_bytes_max(f) != 0) {
@@ -275,7 +273,6 @@ tr_setup:
 			usbd_transfer_submit(xfer);
 		}
 		break;
-
 	default:			/* Error */
 		/* disable BULK throttle */
 		usbd_xfer_set_interval(xfer, 0);
@@ -319,7 +316,6 @@ ulpt_status_callback(struct usb_xfer *xfer, usb_error_t error)
 			log(LOG_NOTICE, "%s: output error\n",
 			    device_get_nameunit(sc->sc_dev));
 		break;
-
 	case USB_ST_SETUP:
 		req.bmRequestType = UT_READ_CLASS_INTERFACE;
 		req.bRequest = UR_GET_PORT_STATUS;
@@ -336,7 +332,6 @@ ulpt_status_callback(struct usb_xfer *xfer, usb_error_t error)
 		usbd_xfer_set_frames(xfer, 2);
 		usbd_transfer_submit(xfer);
 		break;
-
 	default:			/* Error */
 		DPRINTF("error=%s\n", usbd_errstr(error));
 		if (error != USB_ERR_CANCELLED)

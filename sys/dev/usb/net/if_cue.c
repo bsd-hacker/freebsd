@@ -483,7 +483,6 @@ cue_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
-
 		if (actlen <= (2 + sizeof(struct ether_header))) {
 			ifp->if_ierrors++;
 			goto tr_setup;
@@ -502,7 +501,6 @@ tr_setup:
 		usbd_transfer_submit(xfer);
 		cue_rxflush(sc);
 		return;
-
 	default:			/* Error */
 		DPRINTF("bulk read error, %s\n",
 		    usbd_errstr(error));
@@ -513,7 +511,6 @@ tr_setup:
 			goto tr_setup;
 		}
 		return;
-
 	}
 }
 
@@ -530,7 +527,6 @@ cue_bulk_write_callback(struct usb_xfer *xfer, usb_error_t error)
 	case USB_ST_TRANSFERRED:
 		DPRINTFN(11, "transfer complete\n");
 		ifp->if_opackets++;
-
 		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
@@ -559,9 +555,7 @@ tr_setup:
 		m_freem(m);
 
 		usbd_transfer_submit(xfer);
-
 		return;
-
 	default:			/* Error */
 		DPRINTFN(11, "transfer error, %s\n",
 		    usbd_errstr(error));

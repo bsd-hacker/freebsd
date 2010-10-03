@@ -275,7 +275,6 @@ urio_write_callback(struct usb_xfer *xfer, usb_error_t error)
 			usbd_transfer_submit(xfer);
 		}
 		return;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
@@ -313,7 +312,7 @@ urio_read_callback(struct usb_xfer *xfer, usb_error_t error)
 	case USB_ST_TRANSFERRED:
 		pc = usbd_xfer_get_frame(xfer, 0);
 		usb_fifo_put_data(f, pc, 0, actlen, 1);
-
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 		if (sc->sc_flags & URIO_FLAG_READ_STALL) {
 			usbd_transfer_start(sc->sc_xfer[URIO_T_RD_CS]);
@@ -324,7 +323,6 @@ urio_read_callback(struct usb_xfer *xfer, usb_error_t error)
 			usbd_transfer_submit(xfer);
 		}
 		return;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
@@ -436,7 +434,6 @@ urio_ioctl(struct usb_fifo *fifo, u_long cmd, void *addr,
 		ur.ucr_request.bmRequestType =
 		    rio_cmd->requesttype | UT_READ_VENDOR_DEVICE;
 		break;
-
 	case RIO_SEND_COMMAND:
 		if (!(fflags & FWRITE)) {
 			error = EPERM;
@@ -447,7 +444,6 @@ urio_ioctl(struct usb_fifo *fifo, u_long cmd, void *addr,
 		ur.ucr_request.bmRequestType =
 		    rio_cmd->requesttype | UT_WRITE_VENDOR_DEVICE;
 		break;
-
 	default:
 		error = EINVAL;
 		goto done;
@@ -464,7 +460,6 @@ urio_ioctl(struct usb_fifo *fifo, u_long cmd, void *addr,
 
 	/* reuse generic USB code */
 	error = ugen_do_request(fifo, &ur);
-
 done:
 	return (error);
 }

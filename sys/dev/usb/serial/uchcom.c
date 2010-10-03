@@ -724,7 +724,6 @@ uchcom_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
-
 		DPRINTF("actlen = %u\n", actlen);
 
 		if (actlen >= UCHCOM_INTR_LEAST) {
@@ -738,12 +737,12 @@ uchcom_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 			uchcom_convert_status(sc, buf[UCHCOM_INTR_STAT1]);
 			ucom_status_change(&sc->sc_ucom);
 		}
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
 		usbd_transfer_submit(xfer);
 		break;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
@@ -774,7 +773,6 @@ tr_setup:
 			usbd_transfer_submit(xfer);
 		}
 		break;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
@@ -796,18 +794,16 @@ uchcom_read_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
-
 		if (actlen > 0) {
 			pc = usbd_xfer_get_frame(xfer, 0);
 			ucom_put_data(&sc->sc_ucom, pc, 0, actlen);
 		}
-
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
 		usbd_transfer_submit(xfer);
 		break;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */

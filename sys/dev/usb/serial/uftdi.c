@@ -398,7 +398,6 @@ tr_setup:
 			usbd_transfer_submit(xfer);
 		}
 		return;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
@@ -424,7 +423,6 @@ uftdi_read_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
-
 		if (actlen < 2)
 			goto tr_setup;
 		pc = usbd_xfer_get_frame(xfer, 0);
@@ -458,12 +456,12 @@ uftdi_read_callback(struct usb_xfer *xfer, usb_error_t error)
 
 		if (actlen > 0)
 			ucom_put_data(&sc->sc_ucom, pc, 2, actlen);
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
 		usbd_transfer_submit(xfer);
 		return;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
@@ -579,7 +577,6 @@ uftdi_set_parm_soft(struct termios *t,
 			return (EINVAL);
 		}
 		break;
-
 	case UFTDI_TYPE_8U232AM:
 		if (uftdi_8u232am_getrate(t->c_ospeed, &cfg->rate))
 			return (EINVAL);
@@ -603,15 +600,12 @@ uftdi_set_parm_soft(struct termios *t,
 	case CS5:
 		cfg->lcr |= FTDI_SIO_SET_DATA_BITS(5);
 		break;
-
 	case CS6:
 		cfg->lcr |= FTDI_SIO_SET_DATA_BITS(6);
 		break;
-
 	case CS7:
 		cfg->lcr |= FTDI_SIO_SET_DATA_BITS(7);
 		break;
-
 	case CS8:
 		cfg->lcr |= FTDI_SIO_SET_DATA_BITS(8);
 		break;

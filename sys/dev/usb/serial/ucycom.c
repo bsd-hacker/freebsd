@@ -346,7 +346,6 @@ ucycom_ctrl_write_callback(struct usb_xfer *xfer, usb_error_t error)
 	case USB_ST_TRANSFERRED:
 tr_transferred:
 	case USB_ST_SETUP:
-
 		switch (sc->sc_model) {
 		case MODEL_CY7C63743:
 			offset = 1;
@@ -389,7 +388,6 @@ tr_transferred:
 			usbd_transfer_submit(xfer);
 		}
 		return;
-
 	default:			/* Error */
 		if (error == USB_ERR_CANCELLED)
 			return;
@@ -523,7 +521,6 @@ ucycom_intr_read_callback(struct usb_xfer *xfer, usb_error_t error)
 			offset = 1;
 
 			break;
-
 		case MODEL_CY7C64013:
 			if (actlen < 2)
 				goto tr_setup;
@@ -536,7 +533,6 @@ ucycom_intr_read_callback(struct usb_xfer *xfer, usb_error_t error)
 			offset = 2;
 
 			break;
-
 		default:
 			DPRINTFN(0, "unsupported model number\n");
 			goto tr_setup;
@@ -552,7 +548,6 @@ tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, sc->sc_ilen);
 		usbd_transfer_submit(xfer);
 		return;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */

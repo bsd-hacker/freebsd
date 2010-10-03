@@ -277,7 +277,6 @@ bbb_command_callback(struct usb_xfer *xfer, usb_error_t error)
 		    (sc->dir == DIR_OUT) ? ST_DATA_WR :
 		    ST_STATUS));
 		break;
-
 	case USB_ST_SETUP:
 		sc->status_try = 0;
 		tag = UGETDW(sc->cbw.dCBWTag) + 1;
@@ -295,7 +294,6 @@ bbb_command_callback(struct usb_xfer *xfer, usb_error_t error)
 		usbd_xfer_set_frame_data(xfer, 0, &sc->cbw, sizeof(sc->cbw));
 		usbd_transfer_submit(xfer);
 		break;
-
 	default:			/* Error */
 		bbb_done(sc, error);
 		break;
@@ -321,6 +319,7 @@ bbb_data_read_callback(struct usb_xfer *xfer, usb_error_t error)
 			/* short transfer */
 			sc->data_rem = 0;
 		}
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 		DPRINTF("max_bulk=%d, data_rem=%d\n",
 		    max_bulk, sc->data_rem);
@@ -335,7 +334,6 @@ bbb_data_read_callback(struct usb_xfer *xfer, usb_error_t error)
 		usbd_xfer_set_frame_data(xfer, 0, sc->data_ptr, max_bulk);
 		usbd_transfer_submit(xfer);
 		break;
-
 	default:			/* Error */
 		if (error == USB_ERR_CANCELLED)
 			bbb_done(sc, error);
@@ -372,6 +370,7 @@ bbb_data_write_callback(struct usb_xfer *xfer, usb_error_t error)
 			/* short transfer */
 			sc->data_rem = 0;
 		}
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 		DPRINTF("max_bulk=%d, data_rem=%d\n",
 		    max_bulk, sc->data_rem);
@@ -386,7 +385,6 @@ bbb_data_write_callback(struct usb_xfer *xfer, usb_error_t error)
 		usbd_xfer_set_frame_data(xfer, 0, sc->data_ptr, max_bulk);
 		usbd_transfer_submit(xfer);
 		return;
-
 	default:			/* Error */
 		if (error == USB_ERR_CANCELLED)
 			bbb_done(sc, error);
@@ -423,12 +421,10 @@ bbb_status_callback(struct usb_xfer *xfer, usb_error_t error)
 		else
 			bbb_done(sc, ERR_CSW_FAILED);	/* error */
 		break;
-
 	case USB_ST_SETUP:
 		usbd_xfer_set_frame_data(xfer, 0, &sc->csw, sizeof(sc->csw));
 		usbd_transfer_submit(xfer);
 		break;
-
 	default:
 		DPRINTF("Failed to read CSW: %s, try %d\n",
 		    usbd_errstr(error), sc->status_try);

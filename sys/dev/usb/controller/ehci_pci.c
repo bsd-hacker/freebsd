@@ -316,7 +316,7 @@ ehci_pci_attach(device_t self)
 		 * some common cases.
 		 */
 		device_printf(self, "pre-2.0 USB revision (ignored)\n");
-		/* fallthrough */
+		/* FALLTHROUGH */
 	case PCI_USB_REV_2_0:
 		break;
 	default:
@@ -429,11 +429,9 @@ ehci_pci_attach(device_t self)
 			break;
 		}
 		break;
-
 	case PCI_EHCI_VENDORID_VIA:
 		ehci_pci_via_quirk(self);
 		break;
-
 	default:
 		break;
 	}

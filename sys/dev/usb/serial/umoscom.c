@@ -610,7 +610,6 @@ tr_setup:
 			usbd_transfer_submit(xfer);
 		}
 		return;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			DPRINTFN(0, "transfer failed\n");
@@ -636,7 +635,7 @@ umoscom_read_callback(struct usb_xfer *xfer, usb_error_t error)
 		DPRINTF("got %d bytes\n", actlen);
 		pc = usbd_xfer_get_frame(xfer, 0);
 		ucom_put_data(&sc->sc_ucom, pc, 0, actlen);
-
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
 		DPRINTF("\n");
@@ -644,7 +643,6 @@ tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
 		usbd_transfer_submit(xfer);
 		return;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			DPRINTFN(0, "transfer failed\n");
@@ -671,13 +669,12 @@ umoscom_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 			goto tr_setup;
 		}
 		ucom_status_change(&sc->sc_ucom);
-
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
 		usbd_transfer_submit(xfer);
 		return;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			DPRINTFN(0, "transfer failed\n");

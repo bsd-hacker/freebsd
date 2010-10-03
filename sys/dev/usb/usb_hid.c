@@ -361,7 +361,6 @@ hid_get_item(struct hid_data *s, struct hid_item *h)
 				} else
 					s->ncount = 1;
 				goto top;
-
 			case 9:	/* Output */
 				c->kind = hid_output;
 				c->flags = dval;

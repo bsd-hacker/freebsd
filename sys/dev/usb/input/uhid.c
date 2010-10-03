@@ -182,7 +182,7 @@ uhid_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 			/* ignore it */
 			DPRINTF("ignored transfer, %d bytes\n", actlen);
 		}
-
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 re_submit:
 		if (usb_fifo_put_bytes_max(
@@ -191,7 +191,6 @@ re_submit:
 			usbd_transfer_submit(xfer);
 		}
 		return;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
@@ -273,7 +272,6 @@ uhid_write_callback(struct usb_xfer *xfer, usb_error_t error)
 			usbd_transfer_submit(xfer);
 		}
 		return;
-
 	default:
 tr_error:
 		/* bomb out */
@@ -296,9 +294,7 @@ uhid_read_callback(struct usb_xfer *xfer, usb_error_t error)
 		usb_fifo_put_data(sc->sc_fifo.fp[USB_FIFO_RX], pc, sizeof(req),
 		    sc->sc_isize, 1);
 		return;
-
 	case USB_ST_SETUP:
-
 		if (usb_fifo_put_bytes_max(sc->sc_fifo.fp[USB_FIFO_RX]) > 0) {
 			uhid_fill_get_report
 			    (&req, sc->sc_iface_no, UHID_INPUT_REPORT,
@@ -312,7 +308,6 @@ uhid_read_callback(struct usb_xfer *xfer, usb_error_t error)
 			usbd_transfer_submit(xfer);
 		}
 		return;
-
 	default:			/* Error */
 		/* bomb out */
 		usb_fifo_put_data_error(sc->sc_fifo.fp[USB_FIFO_RX]);
@@ -504,7 +499,6 @@ uhid_ioctl(struct usb_fifo *fifo, u_long cmd, void *addr,
 			break;		/* descriptor length only */
 		error = copyout(sc->sc_repdesc_ptr, ugd->ugd_data, size);
 		break;
-
 	case USB_SET_IMMED:
 		if (!(fflags & FREAD)) {
 			error = EPERM;
@@ -525,7 +519,6 @@ uhid_ioctl(struct usb_fifo *fifo, u_long cmd, void *addr,
 			mtx_unlock(&sc->sc_mtx);
 		}
 		break;
-
 	case USB_GET_REPORT:
 		if (!(fflags & FREAD)) {
 			error = EPERM;
@@ -551,7 +544,6 @@ uhid_ioctl(struct usb_fifo *fifo, u_long cmd, void *addr,
 		error = uhid_get_report(sc, ugd->ugd_report_type, id,
 		    NULL, ugd->ugd_data, size);
 		break;
-
 	case USB_SET_REPORT:
 		if (!(fflags & FWRITE)) {
 			error = EPERM;
@@ -577,11 +569,9 @@ uhid_ioctl(struct usb_fifo *fifo, u_long cmd, void *addr,
 		error = uhid_set_report(sc, ugd->ugd_report_type, id,
 		    NULL, ugd->ugd_data, size);
 		break;
-
 	case USB_GET_REPORT_ID:
 		*(int *)addr = 0;	/* XXX: we only support reportid 0? */
 		break;
-
 	default:
 		error = EINVAL;
 		break;

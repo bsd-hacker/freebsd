@@ -2800,12 +2800,10 @@ usbd_clear_stall_callback(struct usb_xfer *xfer1,
 
 	switch (USB_GET_STATE(xfer1)) {
 	case USB_ST_SETUP:
-
 		/*
 		 * pre-clear the data toggle to DATA0 ("umass.c" and
 		 * "ata-usb.c" depends on this)
 		 */
-
 		usbd_clear_data_toggle(xfer2->xroot->udev, xfer2->endpoint);
 
 		/* setup a clear-stall packet */
@@ -2831,10 +2829,8 @@ usbd_clear_stall_callback(struct usb_xfer *xfer1,
 
 		usbd_transfer_submit(xfer1);
 		return (0);
-
 	case USB_ST_TRANSFERRED:
 		break;
-
 	default:			/* Error */
 		if (xfer1->error == USB_ERR_CANCELLED)
 			return (0);
@@ -3037,18 +3033,18 @@ usbd_xfer_set_flag(struct usb_xfer *xfer, int flag)
 {
 
 	switch (flag) {
-		case USB_FORCE_SHORT_XFER:
-			xfer->flags |= USBD_FORCE_SHORT_XFER;
-			break;
-		case USB_SHORT_XFER_OK:
-			xfer->flags |= USBD_SHORT_XFER_OK;
-			break;
-		case USB_MULTI_SHORT_OK:
-			xfer->flags |= USBD_SHORT_FRAME_OK;
-			break;
-		case USB_MANUAL_STATUS:
-			xfer->flags |= USBD_MANUSL_STATUS;
-			break;
+	case USB_FORCE_SHORT_XFER:
+		xfer->flags |= USBD_FORCE_SHORT_XFER;
+		break;
+	case USB_SHORT_XFER_OK:
+		xfer->flags |= USBD_SHORT_XFER_OK;
+		break;
+	case USB_MULTI_SHORT_OK:
+		xfer->flags |= USBD_SHORT_FRAME_OK;
+		break;
+	case USB_MANUAL_STATUS:
+		xfer->flags |= USBD_MANUSL_STATUS;
+		break;
 	}
 }
 
@@ -3057,18 +3053,18 @@ usbd_xfer_clr_flag(struct usb_xfer *xfer, int flag)
 {
 
 	switch (flag) {
-		case USB_FORCE_SHORT_XFER:
-			xfer->flags &= ~USBD_FORCE_SHORT_XFER;
-			break;
-		case USB_SHORT_XFER_OK:
-			xfer->flags &= ~USBD_SHORT_XFER_OK;
-			break;
-		case USB_MULTI_SHORT_OK:
-			xfer->flags &= ~USBD_SHORT_FRAME_OK;
-			break;
-		case USB_MANUAL_STATUS:
-			xfer->flags &= ~USBD_MANUSL_STATUS;
-			break;
+	case USB_FORCE_SHORT_XFER:
+		xfer->flags &= ~USBD_FORCE_SHORT_XFER;
+		break;
+	case USB_SHORT_XFER_OK:
+		xfer->flags &= ~USBD_SHORT_XFER_OK;
+		break;
+	case USB_MULTI_SHORT_OK:
+		xfer->flags &= ~USBD_SHORT_FRAME_OK;
+		break;
+	case USB_MANUAL_STATUS:
+		xfer->flags &= ~USBD_MANUSL_STATUS;
+		break;
 	}
 }
 

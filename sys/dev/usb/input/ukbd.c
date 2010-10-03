@@ -630,6 +630,7 @@ ukbd_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 					ukbd_start_timer(sc);
 			}
 		}
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
 		if (sc->sc_inputs < UKBD_IN_BUF_FULL) {
@@ -638,7 +639,6 @@ tr_setup:
 		} else
 			DPRINTF("input queue is full!\n");
 		break;
-
 	default:			/* Error */
 		DPRINTF("error=%s\n", usbd_errstr(error));
 
@@ -699,7 +699,6 @@ ukbd_set_leds_callback(struct usb_xfer *xfer, usb_error_t error)
 			usbd_transfer_submit(xfer);
 		}
 		break;
-
 	default:			/* Error */
 		DPRINTFN(1, "error=%s\n", usbd_errstr(error));
 		break;
@@ -1348,25 +1347,21 @@ next_code:
 			sc->sc_composed_char *= 10;
 			sc->sc_composed_char += keycode - 0x40;
 			goto check_composed;
-
 		case 0x4B:
 		case 0x4C:
 		case 0x4D:		/* keypad 4,5,6 */
 			sc->sc_composed_char *= 10;
 			sc->sc_composed_char += keycode - 0x47;
 			goto check_composed;
-
 		case 0x4F:
 		case 0x50:
 		case 0x51:		/* keypad 1,2,3 */
 			sc->sc_composed_char *= 10;
 			sc->sc_composed_char += keycode - 0x4E;
 			goto check_composed;
-
 		case 0x52:		/* keypad 0 */
 			sc->sc_composed_char *= 10;
 			goto check_composed;
-
 			/* key released, no interest here */
 		case SCAN_RELEASE | 0x47:
 		case SCAN_RELEASE | 0x48:
@@ -1379,10 +1374,8 @@ next_code:
 		case SCAN_RELEASE | 0x51:	/* keypad 1,2,3 */
 		case SCAN_RELEASE | 0x52:	/* keypad 0 */
 			goto next_code;
-
 		case 0x38:		/* left alt key */
 			break;
-
 		default:
 			if (sc->sc_composed_char > 0) {
 				sc->sc_flags &= ~UKBD_FLAG_COMPOSE;
@@ -1478,7 +1471,6 @@ ukbd_ioctl(keyboard_t *kbd, u_long cmd, caddr_t arg)
 			return (EINVAL);
 		}
 		break;
-
 	case KDGETLED:			/* get keyboard LED */
 		*(int *)arg = KBD_LED_VAL(kbd);
 		break;
@@ -1524,7 +1516,6 @@ ukbd_ioctl(keyboard_t *kbd, u_long cmd, caddr_t arg)
 
 		/* set LEDs and quit */
 		return (ukbd_ioctl(kbd, KDSETLED, arg));
-
 	case KDSETREPEAT:		/* set keyboard repeat rate (new
 					 * interface) */
 		if (!KBD_HAS_DEVICE(kbd))
@@ -1539,7 +1530,6 @@ ukbd_ioctl(keyboard_t *kbd, u_long cmd, caddr_t arg)
 			kbd->kb_delay1 = ((int *)arg)[0];
 		kbd->kb_delay2 = ((int *)arg)[1];
 		return (0);
-
 #if defined(COMPAT_FREEBSD6) || defined(COMPAT_FREEBSD5) || \
     defined(COMPAT_FREEBSD4) || defined(COMPAT_43)
 	case _IO('K', 67):
@@ -1550,7 +1540,6 @@ ukbd_ioctl(keyboard_t *kbd, u_long cmd, caddr_t arg)
 	case KDSETRAD:			/* set keyboard repeat rate (old
 					 * interface) */
 		return (ukbd_set_typematic(kbd, *(int *)arg));
-
 	case PIO_KEYMAP:		/* set keyboard translation table */
 	case PIO_KEYMAPENT:		/* set keyboard translation table
 					 * entry */

@@ -257,6 +257,7 @@ uep_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 			len -= pkt_len;
 		}
 	    }
+	    /* FALLTHROUGH */
 	case USB_ST_SETUP:
 	tr_setup:
 		/* check if we can put more data into the FIFO */
@@ -266,7 +267,6 @@ uep_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 			usbd_transfer_submit(xfer);
                 }
 		break;
-
 	default:
 		if (error != USB_ERR_CANCELLED) {
 			/* try clear stall first */

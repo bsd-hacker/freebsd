@@ -864,7 +864,6 @@ usb_linux_create_usb_device(struct usb_device *udev, device_t dev)
 			switch (desc->bDescriptorType) {
 			case UDESC_DEVICE:
 				break;
-
 			case UDESC_ENDPOINT:
 				ed = (void *)desc;
 				if ((ed->bLength < sizeof(*ed)) ||
@@ -882,7 +881,6 @@ usb_linux_create_usb_device(struct usb_device *udev, device_t dev)
 					(p_uhi - 1)->desc.bNumEndpoints++;
 				nedesc++;
 				break;
-
 			case UDESC_INTERFACE:
 				id = (void *)desc;
 				if (id->bLength < sizeof(*id))
@@ -916,7 +914,6 @@ usb_linux_create_usb_device(struct usb_device *udev, device_t dev)
 						(p_ui - 1)->num_altsetting++;
 				}
 				break;
-
 			default:
 				break;
 			}
@@ -1370,10 +1367,9 @@ usb_linux_isoc_callback(struct usb_xfer *xfer, usb_error_t error)
 
 		/* call callback */
 		usb_linux_complete(xfer);
-
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
-
 		if (xfer->priv_fifo == NULL) {
 			/* get next transfer */
 			urb = TAILQ_FIRST(&uhe->bsd_urb_list);
@@ -1440,7 +1436,6 @@ tr_setup:
 		xfer->nframes = urb->number_of_packets;
 		usbd_transfer_submit(xfer);
 		return;
-
 	default:			/* Error */
 		if (xfer->error == USB_ERR_CANCELLED)
 			urb->status = -ECONNRESET;
@@ -1464,7 +1459,6 @@ tr_setup:
 			return;
 		}
 		goto tr_setup;
-
 	}
 }
 
@@ -1493,7 +1487,6 @@ usb_linux_non_isoc_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
-
 		if ((xfer->status & XFER_STATUS_CTRLXFER) != 0) {
 			/* don't transfer the setup packet again: */
 
@@ -1528,7 +1521,7 @@ usb_linux_non_isoc_callback(struct usb_xfer *xfer, usb_error_t error)
 
 		/* call callback */
 		usb_linux_complete(xfer);
-
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
 		/* get next transfer */
@@ -1606,7 +1599,6 @@ setup_bulk:
 			xfer->nframes = 1;
 		usbd_transfer_submit(xfer);
 		return;
-
 	default:
 		if (xfer->error == USB_ERR_CANCELLED)
 			urb->status = -ECONNRESET;

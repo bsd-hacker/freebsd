@@ -3057,7 +3057,6 @@ ehci_roothub_exec(struct usb_device *udev,
 			len = sizeof(ehci_odevd);
 			ptr = (const void *)&ehci_odevd;
 			break;
-
 		case UDESC_CONFIG:
 			if ((value & 0xff) != 0) {
 				err = USB_ERR_IOERROR;
@@ -3066,21 +3065,17 @@ ehci_roothub_exec(struct usb_device *udev,
 			len = sizeof(ehci_confd);
 			ptr = (const void *)&ehci_confd;
 			break;
-
 		case UDESC_STRING:
 			switch (value & 0xff) {
 			case 0:	/* Language table */
 				str_ptr = "\001";
 				break;
-
 			case 1:	/* Vendor */
 				str_ptr = sc->sc_vendor;
 				break;
-
 			case 2:	/* Product */
 				str_ptr = "EHCI root HUB";
 				break;
-
 			default:
 				str_ptr = "";
 				break;
@@ -3345,21 +3340,17 @@ ehci_roothub_exec(struct usb_device *udev,
 			DPRINTF("ehci port %d reset, status = 0x%08x\n",
 			    index, v);
 			break;
-
 		case UHF_PORT_POWER:
 			DPRINTFN(3, "set port power %d\n", index);
 			EOWRITE4(sc, port, v | EHCI_PS_PP);
 			break;
-
 		case UHF_PORT_TEST:
 			DPRINTFN(3, "set port test %d\n", index);
 			break;
-
 		case UHF_PORT_INDICATOR:
 			DPRINTFN(3, "set port ind %d\n", index);
 			EOWRITE4(sc, port, v | EHCI_PS_PIC);
 			break;
-
 		default:
 			err = USB_ERR_IOERROR;
 			goto done;

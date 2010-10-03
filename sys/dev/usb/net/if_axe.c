@@ -875,7 +875,6 @@ tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
 		usbd_transfer_submit(xfer);
 		return;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
@@ -1006,7 +1005,6 @@ axe_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 
 		if (err != 0)
 			ifp->if_ierrors++;
-
 		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
@@ -1014,7 +1012,6 @@ tr_setup:
 		usbd_transfer_submit(xfer);
 		axe_rxflush(sc);
 		return;
-
 	default:			/* Error */
 		DPRINTF("bulk read error, %s\n", usbd_errstr(error));
 
@@ -1024,7 +1021,6 @@ tr_setup:
 			goto tr_setup;
 		}
 		return;
-
 	}
 }
 
@@ -1109,7 +1105,6 @@ tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, pos);
 		usbd_transfer_submit(xfer);
 		return;
-
 	default:			/* Error */
 		DPRINTFN(11, "transfer error, %s\n",
 		    usbd_errstr(error));
@@ -1122,7 +1117,6 @@ tr_setup:
 			goto tr_setup;
 		}
 		return;
-
 	}
 }
 

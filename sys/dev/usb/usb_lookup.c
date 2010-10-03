@@ -115,7 +115,6 @@ usbd_lookup_id_by_info(const struct usb_device_id *id, usb_size_t sizeof_id,
 		/* We found a match! */
 		return (id);
 	}
-
 done:
 	return (NULL);
 }

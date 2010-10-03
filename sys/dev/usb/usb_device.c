@@ -203,7 +203,6 @@ usbd_get_ep_by_addr(struct usb_device *udev, uint8_t ea_val)
 		goto found;
 	}
 	return (NULL);
-
 found:
 	return (ep);
 }
@@ -315,7 +314,6 @@ usbd_get_endpoint(struct usb_device *udev, uint8_t iface_index,
 		goto found;
 	}
 	return (NULL);
-
 found:
 	return (ep);
 }

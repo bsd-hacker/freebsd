@@ -531,7 +531,6 @@ atp_reset_callback(struct usb_xfer *xfer, usb_error_t error)
 		usbd_xfer_set_frames(xfer, 2);
 		usbd_transfer_submit(xfer);
 		break;
-
 	case USB_ST_TRANSFERRED:
 	default:
 		break;
@@ -730,7 +729,6 @@ atp_interpret_sensor_data(const int8_t *sensor_data, u_int num, atp_axis axis,
 			if (axis == X && num > 16)
 				arr[i+16] = sensor_data[di+40];
 		}
-
 		break;
 	case ATP_PROT_GEYSER2:
 	case ATP_PROT_GEYSER3:
@@ -814,14 +812,12 @@ atp_detect_pspans(int *p, u_int num_sensors,
 				state = ATP_PSPAN_INCREASING;
 				maxp  = p[i];
 				break;
-
 			case ATP_PSPAN_INCREASING:
 				if (p[i] > maxp)
 					maxp = p[i];
 				else if (p[i] <= (maxp >> 1))
 					state = ATP_PSPAN_DECREASING;
 				break;
-
 			case ATP_PSPAN_DECREASING:
 				if (p[i] > p[i - 1]) {
 					/*
@@ -1931,7 +1927,7 @@ atp_intr(struct usb_xfer *xfer, usb_error_t error)
 			}
 		} else
 			sc->sc_idlecount = 0;
-
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 	tr_setup:
 		/* check if we can put more data into the FIFO */
@@ -1942,7 +1938,6 @@ atp_intr(struct usb_xfer *xfer, usb_error_t error)
 			usbd_transfer_submit(xfer);
 		}
 		break;
-
 	default:                        /* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try clear stall first */

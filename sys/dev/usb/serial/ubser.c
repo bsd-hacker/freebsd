@@ -405,9 +405,7 @@ tr_setup:
 			ubser_inc_tx_unit(sc);
 
 		} while (sc->sc_curr_tx_unit != first_unit);
-
 		return;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
@@ -415,7 +413,6 @@ tr_setup:
 			goto tr_setup;
 		}
 		return;
-
 	}
 }
 
@@ -443,13 +440,12 @@ ubser_read_callback(struct usb_xfer *xfer, usb_error_t error)
 			goto tr_setup;
 		}
 		ucom_put_data(sc->sc_ucom + buf[0], pc, 1, actlen - 1);
-
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
 		usbd_transfer_submit(xfer);
 		return;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
@@ -457,7 +453,6 @@ tr_setup:
 			goto tr_setup;
 		}
 		return;
-
 	}
 }
 

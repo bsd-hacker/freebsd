@@ -207,6 +207,7 @@ ugen_open(struct usb_fifo *f, int fflags)
 static void
 ugen_close(struct usb_fifo *f, int fflags)
 {
+
 	DPRINTFN(6, "flag=0x%x\n", fflags);
 
 	/* cleanup */
@@ -269,7 +270,6 @@ ugen_open_pipe_write(struct usb_fifo *f)
 		/* first transfer does not clear stall */
 		f->flag_stall = 0;
 		break;
-
 	case UE_ISOCHRONOUS:
 		usb_config[0].flags |= USBD_SHORT_XFER_OK;
 		usb_config[0].bufsize = 0;	/* use default */
@@ -335,7 +335,6 @@ ugen_open_pipe_read(struct usb_fifo *f)
 		/* first transfer does not clear stall */
 		f->flag_stall = 0;
 		break;
-
 	case UE_ISOCHRONOUS:
 		usb_config[0].flags |= USBD_SHORT_XFER_OK;
 		usb_config[0].bufsize = 0;	/* use default */
@@ -349,7 +348,6 @@ ugen_open_pipe_read(struct usb_fifo *f)
 		if (ugen_transfer_setup(f, usb_config, 2))
 			return (EIO);
 		break;
-
 	default:
 		return (EINVAL);
 	}
@@ -420,7 +418,7 @@ ugen_ctrl_read_callback(struct usb_xfer *xfer, usb_error_t error)
 		}
 		usb_fifo_put_data(f, xfer->frbuffers, 0,
 		    xfer->actlen, 1);
-
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 		if (f->flag_stall) {
 			usbd_transfer_start(f->xfer[1]);
@@ -433,7 +431,6 @@ ugen_ctrl_read_callback(struct usb_xfer *xfer, usb_error_t error)
 			usbd_transfer_submit(xfer);
 		}
 		break;
-
 	default:			/* Error */
 		if (xfer->error != USB_ERR_CANCELLED) {
 			/* send a zero length packet to userland */
@@ -474,7 +471,6 @@ ugen_ctrl_write_callback(struct usb_xfer *xfer, usb_error_t error)
 			usbd_transfer_submit(xfer);
 		}
 		break;
-
 	default:			/* Error */
 		if (xfer->error != USB_ERR_CANCELLED) {
 			f->flag_stall = 1;
@@ -529,7 +525,6 @@ ugen_isoc_read_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
-
 		DPRINTFN(6, "actlen=%d\n", xfer->actlen);
 
 		offset = 0;
@@ -539,7 +534,7 @@ ugen_isoc_read_callback(struct usb_xfer *xfer, usb_error_t error)
 			    xfer->frlengths[n], 1);
 			offset += xfer->max_frame_size;
 		}
-
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
 		for (n = 0; n != xfer->nframes; n++) {
@@ -548,7 +543,6 @@ tr_setup:
 		}
 		usbd_transfer_submit(xfer);
 		break;
-
 	default:			/* Error */
 		if (xfer->error == USB_ERR_CANCELLED)
 			break;
@@ -586,7 +580,6 @@ tr_setup:
 		}
 		usbd_transfer_submit(xfer);
 		break;
-
 	default:			/* Error */
 		if (xfer->error == USB_ERR_CANCELLED)
 			break;
@@ -1361,7 +1354,6 @@ ugen_ioctl(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 		u.pcomp->ep_index = ep_index;
 		error = ugen_fs_copy_out(f, u.pcomp->ep_index);
 		break;
-
 	case USB_FS_START:
 		error = ugen_fs_copy_in(f, u.pstart->ep_index);
 		if (error)
@@ -1370,7 +1362,6 @@ ugen_ioctl(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 		usbd_transfer_start(f->fs_xfer[u.pstart->ep_index]);
 		mtx_unlock(f->priv_mtx);
 		break;
-
 	case USB_FS_STOP:
 		if (u.pstop->ep_index >= f->fs_ep_max) {
 			error = EINVAL;
@@ -1380,7 +1371,6 @@ ugen_ioctl(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 		usbd_transfer_stop(f->fs_xfer[u.pstop->ep_index]);
 		mtx_unlock(f->priv_mtx);
 		break;
-
 	case USB_FS_OPEN:
 		if (u.popen->ep_index >= f->fs_ep_max) {
 			error = EINVAL;
@@ -1464,7 +1454,6 @@ ugen_ioctl(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 		} else
 			error = ENOMEM;
 		break;
-
 	case USB_FS_CLOSE:
 		if (u.pclose->ep_index >= f->fs_ep_max) {
 			error = EINVAL;
@@ -1476,7 +1465,6 @@ ugen_ioctl(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 		}
 		usbd_transfer_unsetup(f->fs_xfer + u.pclose->ep_index, 1);
 		break;
-
 	case USB_FS_CLEAR_STALL_SYNC:
 		if (u.pstall->ep_index >= f->fs_ep_max) {
 			error = EINVAL;
@@ -1512,7 +1500,6 @@ ugen_ioctl(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 		else
 			error = ENXIO;
 		break;
-
 	default:
 		error = ENOIOCTL;
 		break;
@@ -1663,11 +1650,9 @@ ugen_set_power_mode(struct usb_fifo *f, int mode)
 		err = usbd_req_clear_port_feature(udev->parent_hub,
 		    NULL, udev->port_no, UHF_PORT_ENABLE);
 		break;
-
 	case USB_POWER_MODE_ON:
 	case USB_POWER_MODE_SAVE:
 		break;
-
 	case USB_POWER_MODE_RESUME:
 #if USB_HAVE_POWERD
 		/* let USB-powerd handle resume */
@@ -1689,7 +1674,6 @@ ugen_set_power_mode(struct usb_fifo *f, int mode)
 #endif
 		mode = USB_POWER_MODE_SAVE;
 		break;
-
 	case USB_POWER_MODE_SUSPEND:
 #if USB_HAVE_POWERD
 		/* let USB-powerd handle suspend */
@@ -1699,7 +1683,6 @@ ugen_set_power_mode(struct usb_fifo *f, int mode)
 #endif
 		mode = USB_POWER_MODE_SAVE;
 		break;
-
 	default:
 		return (EINVAL);
 	}
@@ -1781,108 +1764,92 @@ ugen_iface_ioctl(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 		else
 			error = EINVAL;
 		break;
-
 	case USB_SET_TX_FORCE_SHORT:
 		if (fflags & FWRITE)
 			error = ugen_set_short_xfer(f_tx, addr);
 		else
 			error = EINVAL;
 		break;
-
 	case USB_SET_RX_TIMEOUT:
 		if (fflags & FREAD)
 			error = ugen_set_timeout(f_rx, addr);
 		else
 			error = EINVAL;
 		break;
-
 	case USB_SET_TX_TIMEOUT:
 		if (fflags & FWRITE)
 			error = ugen_set_timeout(f_tx, addr);
 		else
 			error = EINVAL;
 		break;
-
 	case USB_GET_RX_FRAME_SIZE:
 		if (fflags & FREAD)
 			error = ugen_get_frame_size(f_rx, addr);
 		else
 			error = EINVAL;
 		break;
-
 	case USB_GET_TX_FRAME_SIZE:
 		if (fflags & FWRITE)
 			error = ugen_get_frame_size(f_tx, addr);
 		else
 			error = EINVAL;
 		break;
-
 	case USB_SET_RX_BUFFER_SIZE:
 		if (fflags & FREAD)
 			error = ugen_set_buffer_size(f_rx, addr);
 		else
 			error = EINVAL;
 		break;
-
 	case USB_SET_TX_BUFFER_SIZE:
 		if (fflags & FWRITE)
 			error = ugen_set_buffer_size(f_tx, addr);
 		else
 			error = EINVAL;
 		break;
-
 	case USB_GET_RX_BUFFER_SIZE:
 		if (fflags & FREAD)
 			error = ugen_get_buffer_size(f_rx, addr);
 		else
 			error = EINVAL;
 		break;
-
 	case USB_GET_TX_BUFFER_SIZE:
 		if (fflags & FWRITE)
 			error = ugen_get_buffer_size(f_tx, addr);
 		else
 			error = EINVAL;
 		break;
-
 	case USB_GET_RX_INTERFACE_DESC:
 		if (fflags & FREAD)
 			error = ugen_get_iface_desc(f_rx, addr);
 		else
 			error = EINVAL;
 		break;
-
 	case USB_GET_TX_INTERFACE_DESC:
 		if (fflags & FWRITE)
 			error = ugen_get_iface_desc(f_tx, addr);
 		else
 			error = EINVAL;
 		break;
-
 	case USB_GET_RX_ENDPOINT_DESC:
 		if (fflags & FREAD)
 			error = ugen_get_endpoint_desc(f_rx, addr);
 		else
 			error = EINVAL;
 		break;
-
 	case USB_GET_TX_ENDPOINT_DESC:
 		if (fflags & FWRITE)
 			error = ugen_get_endpoint_desc(f_tx, addr);
 		else
 			error = EINVAL;
 		break;
-
 	case USB_SET_RX_STALL_FLAG:
 		if ((fflags & FREAD) && (*(int *)addr))
 			f_rx->flag_stall = 1;
 		break;
-
 	case USB_SET_TX_STALL_FLAG:
 		if ((fflags & FWRITE) && (*(int *)addr))
 			f_tx->flag_stall = 1;
 		break;
-
 	default:
 		error = ENOIOCTL;
 		break;
@@ -1919,7 +1886,6 @@ ugen_ioctl_post(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 	case USB_DISCOVER:
 		usb_needs_explore_all();
 		break;
-
 	case USB_SETDEBUG:
 		if (!(fflags & FWRITE)) {
 			error = EPERM;
@@ -1927,11 +1893,9 @@ ugen_ioctl_post(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 		}
 		usb_debug = *(int *)addr;
 		break;
-
 	case USB_GET_CONFIG:
 		*(int *)addr = f->udev->curr_config_index;
 		break;
-
 	case USB_SET_CONFIG:
 		if (!(fflags & FWRITE)) {
 			error = EPERM;
@@ -1939,7 +1903,6 @@ ugen_ioctl_post(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 		}
 		error = ugen_set_config(f, *(int *)addr);
 		break;
-
 	case USB_GET_ALTINTERFACE:
 		iface = usbd_get_iface(f->udev,
 		    u.ai->uai_interface_index);
@@ -1948,7 +1911,6 @@ ugen_ioctl_post(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 		else
 			error = EINVAL;
 		break;
-
 	case USB_SET_ALTINTERFACE:
 		if (!(fflags & FWRITE)) {
 			error = EPERM;
@@ -1957,7 +1919,6 @@ ugen_ioctl_post(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 		error = ugen_set_interface(f,
 		    u.ai->uai_interface_index, u.ai->uai_alt_index);
 		break;
-
 	case USB_GET_DEVICE_DESC:
 		dtemp = usbd_get_device_descriptor(f->udev);
 		if (!dtemp) {
@@ -1966,7 +1927,6 @@ ugen_ioctl_post(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 		}
 		*u.ddesc = *dtemp;
 		break;
-
 	case USB_GET_CONFIG_DESC:
 		ctemp = usbd_get_config_descriptor(f->udev);
 		if (!ctemp) {
@@ -1975,19 +1935,15 @@ ugen_ioctl_post(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 		}
 		*u.cdesc = *ctemp;
 		break;
-
 	case USB_GET_FULL_DESC:
 		error = ugen_get_cdesc(f, addr);
 		break;
-
 	case USB_GET_STRING_DESC:
 		error = ugen_get_sdesc(f, addr);
 		break;
-
 	case USB_GET_IFACE_DRIVER:
 		error = ugen_get_iface_driver(f, addr);
 		break;
-
 	case USB_REQUEST:
 	case USB_DO_REQUEST:
 		if (!(fflags & FWRITE)) {
@@ -1996,12 +1952,10 @@ ugen_ioctl_post(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 		}
 		error = ugen_do_request(f, addr);
 		break;
-
 	case USB_DEVICEINFO:
 	case USB_GET_DEVICEINFO:
 		error = usb_gen_fill_deviceinfo(f, addr);
 		break;
-
 	case USB_DEVICESTATS:
 		for (n = 0; n != 4; n++) {
 			u.stat->uds_requests_fail[n] =
@@ -2011,20 +1965,16 @@ ugen_ioctl_post(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 			    f->udev->bus->stats_ok.uds_requests[n];
 		}
 		break;
-
 	case USB_DEVICEENUMERATE:
 		error = ugen_re_enumerate(f);
 		break;
-
 	case USB_GET_PLUGTIME:
 		*u.ptime = f->udev->plugtime;
 		break;
-
 	case USB_CLAIM_INTERFACE:
 	case USB_RELEASE_INTERFACE:
 		/* TODO */
 		break;
-
 	case USB_IFACE_DRIVER_ACTIVE:
 
 		n = *u.pint & 0xFF;
@@ -2036,9 +1986,7 @@ ugen_ioctl_post(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 		else
 			error = ENXIO;
 		break;
-
 	case USB_IFACE_DRIVER_DETACH:
-
 		error = priv_check(curthread, PRIV_DRIVER);
 
 		if (error)
@@ -2053,25 +2001,20 @@ ugen_ioctl_post(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 
 		usb_detach_device(f->udev, n, 0);
 		break;
-
 	case USB_SET_POWER_MODE:
 		error = ugen_set_power_mode(f, *u.pint);
 		break;
-
 	case USB_GET_POWER_MODE:
 		*u.pint = ugen_get_power_mode(f);
 		break;
-
 	case USB_SET_PORT_ENABLE:
 		error = ugen_do_port_feature(f,
 		    *u.pint, 1, UHF_PORT_ENABLE);
 		break;
-
 	case USB_SET_PORT_DISABLE:
 		error = ugen_do_port_feature(f,
 		    *u.pint, 0, UHF_PORT_ENABLE);
 		break;
-
 	case USB_FS_INIT:
 		/* verify input parameters */
 		if (u.pinit->pEndpoints == NULL) {
@@ -2111,7 +2054,6 @@ ugen_ioctl_post(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 		f->fs_ep_max = u.pinit->ep_index_max;
 		f->fs_ep_ptr = u.pinit->pEndpoints;
 		break;
-
 	case USB_FS_UNINIT:
 		if (u.puninit->dummy != 0) {
 			error = EINVAL;
@@ -2119,7 +2061,6 @@ ugen_ioctl_post(struct usb_fifo *f, u_long cmd, void *addr, int fflags)
 		}
 		error = ugen_fs_uninit(f);
 		break;
-
 	default:
 		mtx_lock(f->priv_mtx);
 		error = ugen_iface_ioctl(f, cmd, addr, fflags);

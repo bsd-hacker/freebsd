@@ -658,7 +658,6 @@ usb_quirk_ioctl(unsigned long cmd, caddr_t data,
 		    sizeof(pgq->quirkname));
 		mtx_unlock(&usb_quirk_mtx);
 		return (0);		/* success */
-
 	case USB_QUIRK_NAME_GET:
 		pgq = (void *)data;
 		x = pgq->index;
@@ -667,7 +666,6 @@ usb_quirk_ioctl(unsigned long cmd, caddr_t data,
 		strlcpy(pgq->quirkname,
 		    usb_quirkstr(x), sizeof(pgq->quirkname));
 		return (0);		/* success */
-
 	case USB_DEV_QUIRK_ADD:
 		pgq = (void *)data;
 
@@ -701,7 +699,6 @@ usb_quirk_ioctl(unsigned long cmd, caddr_t data,
 		if (x == USB_SUB_QUIRKS_MAX)
 			return (ENOMEM);
 		return (0);		/* success */
-
 	case USB_DEV_QUIRK_REMOVE:
 		pgq = (void *)data;
 		/* check privileges */
@@ -744,7 +741,6 @@ usb_quirk_ioctl(unsigned long cmd, caddr_t data,
 		}
 		mtx_unlock(&usb_quirk_mtx);
 		return (0);		/* success */
-
 	default:
 		break;
 	}

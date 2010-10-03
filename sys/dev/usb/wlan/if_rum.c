@@ -716,7 +716,6 @@ rum_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 			rum_write(sc, RT2573_TXRX_CSR9, tmp & ~0x00ffffff);
 		}
 		break;
-
 	case IEEE80211_S_RUN:
 		ni = ieee80211_ref_node(vap->iv_bss);
 
@@ -824,7 +823,6 @@ tr_setup:
 		rum_start(ifp);
 		RUM_LOCK(sc);
 		break;
-
 	default:			/* Error */
 		DPRINTFN(11, "transfer error, %s\n",
 		    usbd_errstr(error));
@@ -869,7 +867,6 @@ rum_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
-
 		DPRINTFN(15, "rx done, actlen=%d\n", len);
 
 		if (len < RT2573_RX_DESC_SIZE + IEEE80211_MIN_LEN) {
@@ -949,7 +946,6 @@ tr_setup:
 			rum_start(ifp);
 		RUM_LOCK(sc);
 		return;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */

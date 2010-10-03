@@ -851,7 +851,6 @@ usb_bdma_work_loop(struct usb_xfer_queue *pq)
 		xfer->status |= XFER_STATUS_DMASETUP;
 
 		/* reset BUS-DMA load state */
-
 		info->dma_error = 0;
 
 		if ((xfer->status & XFER_STATUS_ISOCXFER) != 0) {

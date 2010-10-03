@@ -244,7 +244,7 @@ usb_do_clear_stall_callback(struct usb_xfer *xfer, usb_error_t error)
 			    ep->endpoint_q.curr);
 		}
 		ep++;
-
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
 		if (to == 0)
@@ -277,7 +277,6 @@ tr_setup:
 		ep++;
 		to--;
 		goto tr_setup;
-
 	default:
 		if (xfer->error == USB_ERR_CANCELLED)
 			break;

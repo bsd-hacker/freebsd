@@ -795,7 +795,6 @@ aue_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
-
 		if ((ifp->if_drv_flags & IFF_DRV_RUNNING) &&
 		    actlen >= sizeof(pkt)) {
 			pc = usbd_xfer_get_frame(xfer, 0);
@@ -813,7 +812,6 @@ tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
 		usbd_transfer_submit(xfer);
 		return;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
@@ -866,7 +864,6 @@ aue_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 			actlen -= (sizeof(stat) + ETHER_CRC_LEN);
 		}
 		aue_rxbuf(sc, pc, 0, actlen);
-
 		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
@@ -874,7 +871,6 @@ tr_setup:
 		usbd_transfer_submit(xfer);
 		aue_rxflush(sc);
 		return;
-
 	default:			/* Error */
 		DPRINTF("bulk read error, %s\n",
 		    usbd_errstr(error));
@@ -905,7 +901,6 @@ aue_bulk_write_callback(struct usb_xfer *xfer, usb_error_t error)
 	case USB_ST_TRANSFERRED:
 		DPRINTFN(11, "transfer of %d bytes complete\n", actlen);
 		ifp->if_opackets++;
-
 		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
@@ -954,7 +949,6 @@ tr_setup:
 
 		usbd_transfer_submit(xfer);
 		return;
-
 	default:			/* Error */
 		DPRINTFN(11, "transfer error, %s\n",
 		    usbd_errstr(error));

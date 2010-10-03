@@ -186,12 +186,11 @@ uhub_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 		 * to be explored again:
 		 */
 		usb_needs_explore(sc->sc_udev->bus, 0);
-
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
 		usbd_transfer_submit(xfer);
 		break;
-
 	default:			/* Error */
 		if (xfer->error != USB_ERR_CANCELLED) {
 			/*
@@ -1207,7 +1206,6 @@ usb_hs_bandwidth_alloc(struct usb_xfer *xfer)
 		else
 			xfer->endpoint->usb_cmask = (-(0x04 << slot)) & 0xFE;
 		break;
-
 	case UE_ISOCHRONOUS:
 		switch (usbd_xfer_get_fps_shift(xfer)) {
 		case 0:
@@ -1232,7 +1230,6 @@ usb_hs_bandwidth_alloc(struct usb_xfer *xfer)
 		xfer->endpoint->usb_cmask = 0;
 		xfer->endpoint->usb_smask = mask << slot;
 		break;
-
 	default:
 		xfer->endpoint->usb_uframe = 0;
 		xfer->endpoint->usb_cmask = 0;
@@ -1269,7 +1266,6 @@ usb_hs_bandwidth_free(struct usb_xfer *xfer)
 	switch (xfer->endpoint->edesc->bmAttributes & UE_XFERTYPE) {
 	case UE_INTERRUPT:
 	case UE_ISOCHRONOUS:
-
 		slot = xfer->endpoint->usb_uframe;
 		mask = xfer->endpoint->usb_smask;
 
@@ -1284,7 +1280,6 @@ usb_hs_bandwidth_free(struct usb_xfer *xfer)
 		xfer->endpoint->usb_cmask = 0;
 		xfer->endpoint->usb_smask = 0;
 		break;
-
 	default:
 		break;
 	}
@@ -1958,11 +1953,9 @@ repeat:
 	/* be NULL safe */
 	if (udev == NULL)
 		return;
-
 	/* check if already suspended */
 	if (udev->flags.self_suspended)
 		return;
-
 	/* we need a parent HUB to do suspend */
 	if (udev->parent_hub == NULL)
 		return;

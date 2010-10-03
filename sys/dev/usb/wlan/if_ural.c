@@ -708,7 +708,6 @@ ural_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 			ural_write(sc, RAL_MAC_CSR20, 0);
 		}
 		break;
-
 	case IEEE80211_S_RUN:
 		ni = ieee80211_ref_node(vap->iv_bss);
 
@@ -757,7 +756,6 @@ ural_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 			ural_ratectl_start(sc, ni);
 		ieee80211_free_node(ni);
 		break;
-
 	default:
 		break;
 	}
@@ -838,7 +836,6 @@ tr_setup:
 		ural_start(ifp);
 		RAL_LOCK(sc);
 		break;
-
 	default:			/* Error */
 		DPRINTFN(11, "transfer error, %s\n",
 		    usbd_errstr(error));
@@ -1641,21 +1638,18 @@ ural_set_chan(struct ural_softc *sc, struct ieee80211_channel *c)
 		ural_rf_write(sc, RAL_RF2, ural_rf2522_r2[chan - 1]);
 		ural_rf_write(sc, RAL_RF3, power << 7 | 0x00040);
 		break;
-
 	case RAL_RF_2523:
 		ural_rf_write(sc, RAL_RF1, 0x08804);
 		ural_rf_write(sc, RAL_RF2, ural_rf2523_r2[chan - 1]);
 		ural_rf_write(sc, RAL_RF3, power << 7 | 0x38044);
 		ural_rf_write(sc, RAL_RF4, (chan == 14) ? 0x00280 : 0x00286);
 		break;
-
 	case RAL_RF_2524:
 		ural_rf_write(sc, RAL_RF1, 0x0c808);
 		ural_rf_write(sc, RAL_RF2, ural_rf2524_r2[chan - 1]);
 		ural_rf_write(sc, RAL_RF3, power << 7 | 0x00040);
 		ural_rf_write(sc, RAL_RF4, (chan == 14) ? 0x00280 : 0x00286);
 		break;
-
 	case RAL_RF_2525:
 		ural_rf_write(sc, RAL_RF1, 0x08808);
 		ural_rf_write(sc, RAL_RF2, ural_rf2525_hi_r2[chan - 1]);
@@ -1667,14 +1661,12 @@ ural_set_chan(struct ural_softc *sc, struct ieee80211_channel *c)
 		ural_rf_write(sc, RAL_RF3, power << 7 | 0x18044);
 		ural_rf_write(sc, RAL_RF4, (chan == 14) ? 0x00280 : 0x00286);
 		break;
-
 	case RAL_RF_2525E:
 		ural_rf_write(sc, RAL_RF1, 0x08808);
 		ural_rf_write(sc, RAL_RF2, ural_rf2525e_r2[chan - 1]);
 		ural_rf_write(sc, RAL_RF3, power << 7 | 0x18044);
 		ural_rf_write(sc, RAL_RF4, (chan == 14) ? 0x00286 : 0x00282);
 		break;
-
 	case RAL_RF_2526:
 		ural_rf_write(sc, RAL_RF2, ural_rf2526_hi_r2[chan - 1]);
 		ural_rf_write(sc, RAL_RF4, (chan & 1) ? 0x00386 : 0x00381);
@@ -1684,7 +1676,6 @@ ural_set_chan(struct ural_softc *sc, struct ieee80211_channel *c)
 		ural_rf_write(sc, RAL_RF3, power << 7 | 0x18044);
 		ural_rf_write(sc, RAL_RF4, (chan & 1) ? 0x00386 : 0x00381);
 		break;
-
 	/* dual-band RF */
 	case RAL_RF_5222:
 		for (i = 0; ural_rf5222[i].chan != chan; i++);

@@ -275,11 +275,9 @@ udbp_modload(module_t mod, int event, void *data)
 			    NG_UDBP_NODE_TYPE, error);
 		}
 		break;
-
 	case MOD_UNLOAD:
 		error = ng_rmtype(&ng_udbp_typestruct);
 		break;
-
 	default:
 		error = EOPNOTSUPP;
 		break;
@@ -409,7 +407,6 @@ udbp_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
-
 		/* allocate new mbuf */
 		MGETHDR(m, M_DONTWAIT, MT_DATA);
 
@@ -429,7 +426,7 @@ udbp_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 		sc->sc_bulk_in_buffer = m;
 
 		DPRINTF("received package %d bytes\n", actlen);
-
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
 		if (sc->sc_bulk_in_buffer) {
@@ -443,7 +440,6 @@ tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
 		usbd_transfer_submit(xfer);
 		return;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
@@ -451,7 +447,6 @@ tr_setup:
 			usbd_transfer_start(sc->sc_xfer[UDBP_T_RD_CS]);
 		}
 		return;
-
 	}
 }
 
@@ -513,9 +508,8 @@ udbp_bulk_write_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
-
 		sc->sc_packets_out++;
-
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 		if (sc->sc_flags & UDBP_FLAG_WRITE_STALL) {
 			usbd_transfer_start(sc->sc_xfer[UDBP_T_WR_CS]);
@@ -547,7 +541,6 @@ udbp_bulk_write_callback(struct usb_xfer *xfer, usb_error_t error)
 
 		usbd_transfer_submit(xfer);
 		return;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
@@ -555,7 +548,6 @@ udbp_bulk_write_callback(struct usb_xfer *xfer, usb_error_t error)
 			usbd_transfer_start(sc->sc_xfer[UDBP_T_WR_CS]);
 		}
 		return;
-
 	}
 }
 
@@ -584,6 +576,7 @@ udbp_bulk_write_clear_stall_callback(struct usb_xfer *xfer, usb_error_t error)
 static int
 ng_udbp_constructor(node_p node)
 {
+
 	return (EINVAL);
 }
 

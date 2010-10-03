@@ -2080,10 +2080,8 @@ uath_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 			uath_set_ledstate(sc, 0);
 		}
 		break;
-
 	case IEEE80211_S_SCAN:
 		break;
-
 	case IEEE80211_S_AUTH:
 		/* XXX good place?  set RTS threshold  */
 		uath_config(sc, CFG_USER_RTS_THRESHOLD, vap->iv_rtsthreshold);
@@ -2104,7 +2102,6 @@ uath_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 			break;
 		}
 		break;
-
 	case IEEE80211_S_ASSOC:
 		if (uath_set_rates(sc, &ni->ni_rates) != 0) {
 			device_printf(sc->sc_dev,
@@ -2112,7 +2109,6 @@ uath_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 			break;
 		}
 		break;
-
 	case IEEE80211_S_RUN:
 		/* XXX monitor mode doesn't be tested  */
 		if (ic->ic_opmode == IEEE80211_M_MONITOR) {
@@ -2359,7 +2355,6 @@ uath_cmdeof(struct uath_softc *sc, struct uath_cmd *cmd)
 		}
 		wakeup_one(cmd);		/* wake up caller */
 		break;
-
 	case WDCMSG_TARGET_START:
 		if (hdr->msgid >= UATH_CMD_LIST_COUNT) {
 			/* XXX */
@@ -2376,13 +2371,11 @@ uath_cmdeof(struct uath_softc *sc, struct uath_cmd *cmd)
 		cmd->olen = sizeof(uint32_t);
 		wakeup_one(cmd);		/* wake up caller */
 		break;
-
 	case WDCMSG_SEND_COMPLETE:
 		/* this notification is sent when UATH_TX_NOTIFY is set */
 		DPRINTF(sc, UATH_DEBUG_RX_PROC | UATH_DEBUG_RECV_ALL,
 		    "%s: received Tx notification\n", __func__);
 		break;
-
 	case WDCMSG_TARGET_GET_STATS:
 		DPRINTF(sc, UATH_DEBUG_RX_PROC | UATH_DEBUG_RECV_ALL,
 		    "%s: received device statistics\n", __func__);
@@ -2418,6 +2411,7 @@ uath_intr_rx_callback(struct usb_xfer *xfer, usb_error_t error)
 		pc = usbd_xfer_get_frame(xfer, 0);
 		usbd_copy_out(pc, 0, cmd->buf, actlen);
 		uath_cmdeof(sc, cmd);
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 setup:
 		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));

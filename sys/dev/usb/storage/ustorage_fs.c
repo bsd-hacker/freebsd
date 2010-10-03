@@ -510,7 +510,6 @@ ustorage_fs_t_bbb_command_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
-
 		tag = UGETDW(sc->sc_cbw.dCBWSignature);
 
 		if (tag != CBWSIGNATURE) {
@@ -581,7 +580,6 @@ ustorage_fs_t_bbb_command_callback(struct usb_xfer *xfer, usb_error_t error)
 			break;
 		}
 		break;
-
 	case USB_ST_SETUP:
 tr_setup:
 		if (sc->sc_transfer.data_error) {
@@ -594,7 +592,6 @@ tr_setup:
 		    sizeof(sc->sc_cbw));
 		usbd_transfer_submit(xfer);
 		break;
-
 	default:			/* Error */
 		DPRINTF("error\n");
 		if (error == USB_ERR_CANCELLED)
@@ -647,7 +644,7 @@ ustorage_fs_t_bbb_data_dump_callback(struct usb_xfer *xfer, usb_error_t error)
 			    USTORAGE_FS_T_BBB_STATUS);
 			break;
 		}
-		/* Fallthrough */
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
 		if (max_bulk > sc->sc_transfer.data_rem)
@@ -659,7 +656,6 @@ tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, max_bulk);
 		usbd_transfer_submit(xfer);
 		break;
-
 	default:			/* Error */
 		if (error == USB_ERR_CANCELLED)
 			break;
@@ -697,7 +693,7 @@ ustorage_fs_t_bbb_data_read_callback(struct usb_xfer *xfer, usb_error_t error)
 			    USTORAGE_FS_T_BBB_STATUS);
 			break;
 		}
-		/* Fallthrough */
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
 		if (max_bulk > sc->sc_transfer.data_rem)
@@ -711,7 +707,6 @@ tr_setup:
 		    max_bulk);
 		usbd_transfer_submit(xfer);
 		break;
-
 	default:			/* Error */
 		if (error == USB_ERR_CANCELLED)
 			break;
@@ -747,6 +742,7 @@ ustorage_fs_t_bbb_data_write_callback(struct usb_xfer *xfer, usb_error_t error)
 			    USTORAGE_FS_T_BBB_STATUS);
 			break;
 		}
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
 		if (max_bulk >= sc->sc_transfer.data_rem) {
@@ -767,7 +763,6 @@ tr_setup:
 		    max_bulk);
 		usbd_transfer_submit(xfer);
 		break;
-
 	default:			/* Error */
 		if (error == USB_ERR_CANCELLED)
 			break;
@@ -794,7 +789,6 @@ ustorage_fs_t_bbb_status_callback(struct usb_xfer *xfer, usb_error_t error)
 	case USB_ST_TRANSFERRED:
 		ustorage_fs_transfer_start(sc, USTORAGE_FS_T_BBB_COMMAND);
 		break;
-
 	case USB_ST_SETUP:
 tr_setup:
 		USETDW(sc->sc_csw.dCSWSignature, CSWSIGNATURE);
@@ -809,7 +803,6 @@ tr_setup:
 		    sizeof(sc->sc_csw));
 		usbd_transfer_submit(xfer);
 		break;
-
 	default:
 		if (error == USB_ERR_CANCELLED)
 			break;
@@ -1600,7 +1593,6 @@ ustorage_fs_do_cmd(struct ustorage_fs_softc *sc)
 		error = ustorage_fs_inquiry(sc);
 
 		break;
-
 	case SC_MODE_SELECT_6:
 		sc->sc_transfer.cmd_dir = DIR_READ;
 		error = ustorage_fs_min_len(sc, sc->sc_cmd_data[4], 0 - 1);
@@ -1613,7 +1605,6 @@ ustorage_fs_do_cmd(struct ustorage_fs_softc *sc)
 		error = ustorage_fs_mode_select(sc);
 
 		break;
-
 	case SC_MODE_SELECT_10:
 		sc->sc_transfer.cmd_dir = DIR_READ;
 		error = ustorage_fs_min_len(sc,
@@ -1627,7 +1618,6 @@ ustorage_fs_do_cmd(struct ustorage_fs_softc *sc)
 		error = ustorage_fs_mode_select(sc);
 
 		break;
-
 	case SC_MODE_SENSE_6:
 		sc->sc_transfer.cmd_dir = DIR_WRITE;
 		error = ustorage_fs_min_len(sc, sc->sc_cmd_data[4], 0 - 1);
@@ -1640,7 +1630,6 @@ ustorage_fs_do_cmd(struct ustorage_fs_softc *sc)
 		error = ustorage_fs_mode_sense(sc);
 
 		break;
-
 	case SC_MODE_SENSE_10:
 		sc->sc_transfer.cmd_dir = DIR_WRITE;
 		error = ustorage_fs_min_len(sc,
@@ -1654,7 +1643,6 @@ ustorage_fs_do_cmd(struct ustorage_fs_softc *sc)
 		error = ustorage_fs_mode_sense(sc);
 
 		break;
-
 	case SC_PREVENT_ALLOW_MEDIUM_REMOVAL:
 		error = ustorage_fs_min_len(sc, 0, 0 - 1);
 		if (error)
@@ -1666,7 +1654,6 @@ ustorage_fs_do_cmd(struct ustorage_fs_softc *sc)
 		error = ustorage_fs_prevent_allow(sc);
 
 		break;
-
 	case SC_READ_6:
 		i = sc->sc_cmd_data[4];
 		sc->sc_transfer.cmd_dir = DIR_WRITE;
@@ -1681,7 +1668,6 @@ ustorage_fs_do_cmd(struct ustorage_fs_softc *sc)
 		error = ustorage_fs_read(sc);
 
 		break;
-
 	case SC_READ_10:
 		sc->sc_transfer.cmd_dir = DIR_WRITE;
 		temp = get_be16(&sc->sc_cmd_data[7]);
@@ -1695,7 +1681,6 @@ ustorage_fs_do_cmd(struct ustorage_fs_softc *sc)
 		error = ustorage_fs_read(sc);
 
 		break;
-
 	case SC_READ_12:
 		sc->sc_transfer.cmd_dir = DIR_WRITE;
 		temp = get_be32(&sc->sc_cmd_data[6]);
@@ -1715,7 +1700,6 @@ ustorage_fs_do_cmd(struct ustorage_fs_softc *sc)
 		error = ustorage_fs_read(sc);
 
 		break;
-
 	case SC_READ_CAPACITY:
 		sc->sc_transfer.cmd_dir = DIR_WRITE;
 		error = ustorage_fs_check_cmd(sc, 10,
@@ -1725,7 +1709,6 @@ ustorage_fs_do_cmd(struct ustorage_fs_softc *sc)
 		error = ustorage_fs_read_capacity(sc);
 
 		break;
-
 	case SC_READ_FORMAT_CAPACITIES:
 		sc->sc_transfer.cmd_dir = DIR_WRITE;
 		error = ustorage_fs_min_len(sc,
@@ -1739,7 +1722,6 @@ ustorage_fs_do_cmd(struct ustorage_fs_softc *sc)
 		error = ustorage_fs_read_format_capacities(sc);
 
 		break;
-
 	case SC_REQUEST_SENSE:
 		sc->sc_transfer.cmd_dir = DIR_WRITE;
 		error = ustorage_fs_min_len(sc, sc->sc_cmd_data[4], 0 - 1);
@@ -1752,7 +1734,6 @@ ustorage_fs_do_cmd(struct ustorage_fs_softc *sc)
 		error = ustorage_fs_request_sense(sc);
 
 		break;
-
 	case SC_START_STOP_UNIT:
 		error = ustorage_fs_min_len(sc, 0, 0 - 1);
 		if (error)
@@ -1764,7 +1745,6 @@ ustorage_fs_do_cmd(struct ustorage_fs_softc *sc)
 		error = ustorage_fs_start_stop(sc);
 
 		break;
-
 	case SC_SYNCHRONIZE_CACHE:
 		error = ustorage_fs_min_len(sc, 0, 0 - 1);
 		if (error)
@@ -1776,7 +1756,6 @@ ustorage_fs_do_cmd(struct ustorage_fs_softc *sc)
 		error = ustorage_fs_synchronize_cache(sc);
 
 		break;
-
 	case SC_TEST_UNIT_READY:
 		error = ustorage_fs_min_len(sc, 0, 0 - 1);
 		if (error)
@@ -1800,7 +1779,6 @@ ustorage_fs_do_cmd(struct ustorage_fs_softc *sc)
 		error = ustorage_fs_verify(sc);
 
 		break;
-
 	case SC_WRITE_6:
 		i = sc->sc_cmd_data[4];
 		sc->sc_transfer.cmd_dir = DIR_READ;
@@ -1815,7 +1793,6 @@ ustorage_fs_do_cmd(struct ustorage_fs_softc *sc)
 		error = ustorage_fs_write(sc);
 
 		break;
-
 	case SC_WRITE_10:
 		sc->sc_transfer.cmd_dir = DIR_READ;
 		temp = get_be16(&sc->sc_cmd_data[7]);
@@ -1829,7 +1806,6 @@ ustorage_fs_do_cmd(struct ustorage_fs_softc *sc)
 		error = ustorage_fs_write(sc);
 
 		break;
-
 	case SC_WRITE_12:
 		sc->sc_transfer.cmd_dir = DIR_READ;
 		temp = get_be32(&sc->sc_cmd_data[6]);

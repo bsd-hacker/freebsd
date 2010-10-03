@@ -320,6 +320,7 @@ ums_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 				ums_put_queue(sc, dx, dy, dz, dt, buttons);
 			}
 		}
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
 		/* check if we can put more data into the FIFO */
@@ -329,7 +330,6 @@ tr_setup:
 			usbd_transfer_submit(xfer);
 		}
 		break;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try clear stall first */
@@ -808,11 +808,9 @@ ums_ioctl(struct usb_fifo *fifo, u_long cmd, void *addr, int fflags)
 	case MOUSE_GETHWINFO:
 		*(mousehw_t *)addr = sc->sc_hw;
 		break;
-
 	case MOUSE_GETMODE:
 		*(mousemode_t *)addr = sc->sc_mode;
 		break;
-
 	case MOUSE_SETMODE:
 		mode = *(mousemode_t *)addr;
 
@@ -848,11 +846,9 @@ ums_ioctl(struct usb_fifo *fifo, u_long cmd, void *addr, int fflags)
 		}
 		ums_reset_buf(sc);
 		break;
-
 	case MOUSE_GETLEVEL:
 		*(int *)addr = sc->sc_mode.level;
 		break;
-
 	case MOUSE_SETLEVEL:
 		if (*(int *)addr < 0 || *(int *)addr > 1) {
 			error = EINVAL;
@@ -881,7 +877,6 @@ ums_ioctl(struct usb_fifo *fifo, u_long cmd, void *addr, int fflags)
 		}
 		ums_reset_buf(sc);
 		break;
-
 	case MOUSE_GETSTATUS:{
 			mousestatus_t *status = (mousestatus_t *)addr;
 

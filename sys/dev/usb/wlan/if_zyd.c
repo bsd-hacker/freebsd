@@ -710,7 +710,6 @@ tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
 		usbd_transfer_submit(xfer);
 		break;
-
 	default:			/* Error */
 		DPRINTF(sc, ZYD_DEBUG_CMD, "error = %s\n",
 		    usbd_errstr(error));
@@ -759,7 +758,6 @@ tr_setup:
 			break;
 		}
 		break;
-
 	default:			/* Error */
 		DPRINTF(sc, ZYD_DEBUG_ANY, "error = %s\n",
 		    usbd_errstr(error));
@@ -2310,7 +2308,6 @@ tr_setup:
 			zyd_start(ifp);
 		ZYD_LOCK(sc);
 		break;
-
 	default:			/* Error */
 		DPRINTF(sc, ZYD_DEBUG_ANY, "frame error: %s\n", usbd_errstr(error));
 
@@ -2422,7 +2419,6 @@ tr_setup:
 		zyd_start(ifp);
 		ZYD_LOCK(sc);
 		break;
-
 	default:			/* Error */
 		DPRINTF(sc, ZYD_DEBUG_ANY, "transfer error, %s\n",
 		    usbd_errstr(error));

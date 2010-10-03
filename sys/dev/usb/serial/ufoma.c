@@ -575,7 +575,6 @@ tr_setup:
 			usbd_transfer_submit(xfer);
 		}
 		return;
-
 	default:			/* Error */
 		DPRINTF("error = %s\n",
 		    usbd_errstr(error));
@@ -620,7 +619,6 @@ tr_setup:
 			usbd_transfer_submit(xfer);
 		}
 		return;
-
 	default:			/* Error */
 		DPRINTF("error = %s\n", usbd_errstr(error));
 
@@ -684,7 +682,6 @@ ufoma_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 				sc->sc_num_msg++;
 			usbd_transfer_start(sc->sc_ctrl_xfer[UFOMA_CTRL_ENDPT_READ]);
 			break;
-
 		case UCDC_N_SERIAL_STATE:
 			if (sc->sc_nobulk) {
 				DPRINTF("Wrong serial state!\n");
@@ -716,17 +713,15 @@ ufoma_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 				sc->sc_msr |= SER_DCD;
 			ucom_status_change(&sc->sc_ucom);
 			break;
-
 		default:
 			break;
 		}
-
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
 		usbd_transfer_submit(xfer);
 		return;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
@@ -755,7 +750,6 @@ tr_setup:
 			usbd_transfer_submit(xfer);
 		}
 		return;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
@@ -779,13 +773,12 @@ ufoma_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 	case USB_ST_TRANSFERRED:
 		pc = usbd_xfer_get_frame(xfer, 0);
 		ucom_put_data(&sc->sc_ucom, pc, 0, actlen);
-
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
 		usbd_transfer_submit(xfer);
 		return;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */

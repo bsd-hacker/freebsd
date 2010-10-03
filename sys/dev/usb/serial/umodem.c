@@ -523,12 +523,10 @@ umodem_ioctl(struct ucom_softc *ucom, uint32_t cmd, caddr_t data,
 	case USB_GET_CM_OVER_DATA:
 		*(int *)data = sc->sc_cm_over_data;
 		break;
-
 	case USB_SET_CM_OVER_DATA:
 		if (*(int *)data != sc->sc_cm_over_data)
 			;	/* XXX change it */
 		break;
-
 	default:
 		DPRINTF("unknown\n");
 		error = ENOIOCTL;
@@ -623,7 +621,6 @@ umodem_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
-
 		if (actlen < 8) {
 			DPRINTF("received short packet, "
 			    "%d bytes\n", actlen);
@@ -674,19 +671,17 @@ umodem_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 				sc->sc_msr |= SER_DCD;
 			ucom_status_change(&sc->sc_ucom);
 			break;
-
 		default:
 			DPRINTF("unknown notify message: 0x%02x\n",
 			    pkt.bNotification);
 			break;
 		}
-
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
 		usbd_transfer_submit(xfer);
 		return;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
@@ -694,7 +689,6 @@ tr_setup:
 			goto tr_setup;
 		}
 		return;
-
 	}
 }
 
@@ -716,7 +710,6 @@ tr_setup:
 			usbd_transfer_submit(xfer);
 		}
 		return;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
@@ -738,18 +731,16 @@ umodem_read_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
-
 		DPRINTF("actlen=%d\n", actlen);
 
 		pc = usbd_xfer_get_frame(xfer, 0);
 		ucom_put_data(&sc->sc_ucom, pc, 0, actlen);
-
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
 		usbd_transfer_submit(xfer);
 		return;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
@@ -763,6 +754,7 @@ tr_setup:
 static void *
 umodem_get_desc(struct usb_attach_arg *uaa, uint8_t type, uint8_t subtype)
 {
+
 	return (usbd_find_descriptor(uaa->device, NULL, uaa->info.bIfaceIndex,
 	    type, 0 - 1, subtype, 0 - 1));
 }

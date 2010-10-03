@@ -310,22 +310,18 @@ usb_bus_attach(void *arg, int npending)
 		speed = USB_SPEED_FULL;
 		device_printf(bus->bdev, "12Mbps Full Speed USB v1.0\n");
 		break;
-
 	case USB_REV_1_1:
 		speed = USB_SPEED_FULL;
 		device_printf(bus->bdev, "12Mbps Full Speed USB v1.1\n");
 		break;
-
 	case USB_REV_2_0:
 		speed = USB_SPEED_HIGH;
 		device_printf(bus->bdev, "480Mbps High Speed USB v2.0\n");
 		break;
-
 	case USB_REV_2_5:
 		speed = USB_SPEED_VARIABLE;
 		device_printf(bus->bdev, "480Mbps Wireless USB v2.5\n");
 		break;
-
 	default:
 		device_printf(bus->bdev, "Unsupported USB revision\n");
 		return;

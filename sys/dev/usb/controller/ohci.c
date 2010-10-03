@@ -2107,7 +2107,6 @@ ohci_roothub_exec(struct usb_device *udev,
 			len = sizeof(ohci_devd);
 			ptr = (const void *)&ohci_devd;
 			break;
-
 		case UDESC_CONFIG:
 			if ((value & 0xff) != 0) {
 				err = USB_ERR_IOERROR;
@@ -2116,21 +2115,17 @@ ohci_roothub_exec(struct usb_device *udev,
 			len = sizeof(ohci_confd);
 			ptr = (const void *)&ohci_confd;
 			break;
-
 		case UDESC_STRING:
 			switch (value & 0xff) {
 			case 0:	/* Language table */
 				str_ptr = "\001";
 				break;
-
 			case 1:	/* Vendor */
 				str_ptr = sc->sc_vendor;
 				break;
-
 			case 2:	/* Product */
 				str_ptr = "OHCI root HUB";
 				break;
-
 			default:
 				str_ptr = "";
 				break;
@@ -2141,7 +2136,6 @@ ohci_roothub_exec(struct usb_device *udev,
 			    sizeof(sc->sc_hub_desc.temp),
 			    str_ptr);
 			break;
-
 		default:
 			err = USB_ERR_IOERROR;
 			goto done;
@@ -2268,7 +2262,6 @@ ohci_roothub_exec(struct usb_device *udev,
 		    8 + ((sc->sc_noport + 7) / 8);
 		len = sc->sc_hub_desc.hubd.bDescLength;
 		break;
-
 	case C(UR_GET_STATUS, UT_READ_CLASS_DEVICE):
 		len = 16;
 		bzero(sc->sc_hub_desc.temp, 16);

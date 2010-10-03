@@ -760,7 +760,7 @@ run_vap_create(struct ieee80211com *ic,
 	case IEEE80211_M_STA:
 		/* enable s/w bmiss handling for sta mode */
 		flags |= IEEE80211_CLONE_NOBEACONS; 
-		/* fall though */
+		/* FALLTHOUGH */
 	case IEEE80211_M_IBSS:
 	case IEEE80211_M_MONITOR:
 	case IEEE80211_M_HOSTAP:
@@ -1782,8 +1782,6 @@ run_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 			    RT2860_TBTT_TIMER_EN));
 		}
 		break;
-
-
 	case IEEE80211_S_RUN:
 		if (!(sc->runbmap & bid)) {
 			if(sc->running++)
@@ -2558,7 +2556,6 @@ run_bulk_rx_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
-
 		DPRINTFN(15, "rx done, actlen=%d\n", xferlen);
 
 		if (xferlen < sizeof (uint32_t) +
@@ -2594,7 +2591,6 @@ tr_setup:
 		}
 		usbd_transfer_submit(xfer);
 		break;
-
 	default:	/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
@@ -2781,7 +2777,6 @@ tr_setup:
 		RUN_LOCK(sc);
 
 		break;
-
 	default:
 		DPRINTF("USB transfer error, %s\n",
 		    usbd_errstr(error));
@@ -2824,36 +2819,42 @@ tr_setup:
 static void
 run_bulk_tx_callback0(struct usb_xfer *xfer, usb_error_t error)
 {
+
 	run_bulk_tx_callbackN(xfer, error, 0);
 }
 
 static void
 run_bulk_tx_callback1(struct usb_xfer *xfer, usb_error_t error)
 {
+
 	run_bulk_tx_callbackN(xfer, error, 1);
 }
 
 static void
 run_bulk_tx_callback2(struct usb_xfer *xfer, usb_error_t error)
 {
+
 	run_bulk_tx_callbackN(xfer, error, 2);
 }
 
 static void
 run_bulk_tx_callback3(struct usb_xfer *xfer, usb_error_t error)
 {
+
 	run_bulk_tx_callbackN(xfer, error, 3);
 }
 
 static void
 run_bulk_tx_callback4(struct usb_xfer *xfer, usb_error_t error)
 {
+
 	run_bulk_tx_callbackN(xfer, error, 4);
 }
 
 static void
 run_bulk_tx_callback5(struct usb_xfer *xfer, usb_error_t error)
 {
+
 	run_bulk_tx_callbackN(xfer, error, 5);
 }
 

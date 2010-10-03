@@ -279,7 +279,6 @@ usb_ref_device(struct usb_cdev_privdata *cpd,
 	mtx_unlock(&usb_ref_lock);
 
 	return (0);
-
 error:
 	if (crd->is_uref) {
 		usbd_enum_unlock(cpd->udev);
@@ -1418,25 +1417,25 @@ usb_static_ioctl(struct cdev *dev, u_long cmd, caddr_t data, int fflag,
 
 	u.data = data;
 	switch (cmd) {
-		case USB_READ_DIR:
-			err = usb_read_symlink(u.urd->urd_data,
-			    u.urd->urd_startentry, u.urd->urd_maxlen);
+	case USB_READ_DIR:
+		err = usb_read_symlink(u.urd->urd_data,
+		    u.urd->urd_startentry, u.urd->urd_maxlen);
+		break;
+	case USB_DEV_QUIRK_GET:
+	case USB_QUIRK_NAME_GET:
+	case USB_DEV_QUIRK_ADD:
+	case USB_DEV_QUIRK_REMOVE:
+		err = usb_quirk_ioctl_p(cmd, data, fflag, td);
+		break;
+	case USB_GET_TEMPLATE:
+		*(int *)data = usb_template;
+		break;
+	case USB_SET_TEMPLATE:
+		err = priv_check(curthread, PRIV_DRIVER);
+		if (err)
 			break;
-		case USB_DEV_QUIRK_GET:
-		case USB_QUIRK_NAME_GET:
-		case USB_DEV_QUIRK_ADD:
-		case USB_DEV_QUIRK_REMOVE:
-			err = usb_quirk_ioctl_p(cmd, data, fflag, td);
-			break;
-		case USB_GET_TEMPLATE:
-			*(int *)data = usb_template;
-			break;
-		case USB_SET_TEMPLATE:
-			err = priv_check(curthread, PRIV_DRIVER);
-			if (err)
-				break;
-			usb_template = *(int *)data;
-			break;
+		usb_template = *(int *)data;
+		break;
 	}
 	return (err);
 }

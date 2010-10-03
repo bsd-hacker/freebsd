@@ -89,7 +89,6 @@ usb_handle_request_callback(struct usb_xfer *xfer, usb_error_t error)
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_SETUP:
 	case USB_ST_TRANSFERRED:
-
 		/* handle the request */
 		err = usb_handle_request(xfer);
 
@@ -103,7 +102,6 @@ usb_handle_request_callback(struct usb_xfer *xfer, usb_error_t error)
 		}
 		usbd_transfer_submit(xfer);
 		break;
-
 	default:
 		/* check if a control transfer is active */
 		if (xfer->control_rem != 0xFFFF) {
@@ -323,19 +321,16 @@ tr_repeat:
 			/* update the current alternate setting */
 			iface->alt_index = req.wValue[0];
 			break;
-
 		default:
 			goto tr_stalled;
 		}
 		break;
-
 	case UT_READ_INTERFACE:
 		switch (req.bRequest) {
 		case UR_GET_INTERFACE:
 			*ppdata = &iface->alt_index;
 			*plen = 1;
 			break;
-
 		default:
 			goto tr_stalled;
 		}
@@ -539,7 +534,6 @@ usb_handle_request(struct usb_xfer *xfer)
 			goto tr_stalled;
 		}
 		break;
-
 	case UT_WRITE_DEVICE:
 		switch (req.bRequest) {
 		case UR_SET_ADDRESS:
@@ -566,7 +560,6 @@ usb_handle_request(struct usb_xfer *xfer)
 			goto tr_stalled;
 		}
 		break;
-
 	case UT_WRITE_ENDPOINT:
 		switch (req.bRequest) {
 		case UR_CLEAR_FEATURE:
@@ -589,7 +582,6 @@ usb_handle_request(struct usb_xfer *xfer)
 			goto tr_stalled;
 		}
 		break;
-
 	case UT_READ_ENDPOINT:
 		switch (req.bRequest) {
 		case UR_GET_STATUS:

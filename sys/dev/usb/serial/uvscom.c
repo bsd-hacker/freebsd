@@ -360,7 +360,6 @@ tr_setup:
 			usbd_transfer_submit(xfer);
 		}
 		return;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
@@ -384,13 +383,12 @@ uvscom_read_callback(struct usb_xfer *xfer, usb_error_t error)
 	case USB_ST_TRANSFERRED:
 		pc = usbd_xfer_get_frame(xfer, 0);
 		ucom_put_data(&sc->sc_ucom, pc, 0, actlen);
-
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
 		usbd_transfer_submit(xfer);
 		return;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
@@ -437,12 +435,12 @@ uvscom_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 			 */
 			ucom_status_change(&sc->sc_ucom);
 		}
+		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
 		usbd_transfer_submit(xfer);
 		return;
-
 	default:			/* Error */
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
@@ -502,18 +500,18 @@ static int
 uvscom_pre_param(struct ucom_softc *ucom, struct termios *t)
 {
 	switch (t->c_ospeed) {
-		case B150:
-		case B300:
-		case B600:
-		case B1200:
-		case B2400:
-		case B4800:
-		case B9600:
-		case B19200:
-		case B38400:
-		case B57600:
-		case B115200:
-		default:
+	case B150:
+	case B300:
+	case B600:
+	case B1200:
+	case B2400:
+	case B4800:
+	case B9600:
+	case B19200:
+	case B38400:
+	case B57600:
+	case B115200:
+	default:
 		return (EINVAL);
 	}
 	return (0);
