@@ -1557,7 +1557,6 @@ tr_setup:
 			/* setup data transfer direction and length */
 			urb->bsd_isread = (ptr[0] & UT_READ) ? 1 : 0;
 			urb->bsd_length_rem = ptr[6] | (ptr[7] << 8);
-
 		} else {
 			/* setup data transfer direction */
 

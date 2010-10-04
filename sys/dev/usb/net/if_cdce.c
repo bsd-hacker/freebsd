@@ -546,7 +546,6 @@ alloc_transfers:
 		sc->sc_eaddr[0] = 0x2a;
 		memcpy(&sc->sc_eaddr[1], &ticks, sizeof(uint32_t));
 		sc->sc_eaddr[5] = device_get_unit(dev);
-
 	} else {
 		bzero(sc->sc_eaddr, sizeof(sc->sc_eaddr));
 

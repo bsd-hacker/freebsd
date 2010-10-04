@@ -1492,7 +1492,6 @@ uhso_ucom_start_write(struct ucom_softc *ucom)
 		    &sc->sc_tty[ucom->sc_local_unit]);
 		usbd_transfer_start(
 		    sc->sc_tty[ucom->sc_local_unit].ht_xfer[UHSO_CTRL_WRITE]);
-
 	}
 	else if (UHSO_IFACE_USB_TYPE(sc->sc_type) & UHSO_IF_BULK)
 		usbd_transfer_start(sc->sc_xfer[UHSO_BULK_ENDPT_WRITE]);

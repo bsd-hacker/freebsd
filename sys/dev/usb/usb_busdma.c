@@ -908,7 +908,6 @@ usb_bdma_work_loop(struct usb_xfer_queue *pq)
 			pg += (xfer->frlengths[nframes] / USB_PAGE_SIZE);
 			pg += 2;
 		}
-
 	}
 	if (info->dma_error) {
 		USB_BUS_LOCK(info->bus);

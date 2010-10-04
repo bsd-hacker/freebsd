@@ -267,7 +267,6 @@ static const struct usb_device_id atp_devs[] = {
 
 	/* 17 inch PowerBook */
 	{ USB_VPI(USB_VENDOR_APPLE, 0x020d, ATP_DEV_PARAMS_PBOOK_17) },
-
 };
 
 /*

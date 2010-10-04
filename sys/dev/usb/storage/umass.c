@@ -965,7 +965,6 @@ umass_attach(device_t dev)
 
 		/* skip reset first time */
 		sc->sc_last_xfer_index = UMASS_T_BBB_COMMAND;
-
 	} else if (sc->sc_proto & (UMASS_PROTO_CBI | UMASS_PROTO_CBI_I)) {
 		err = usbd_transfer_setup(uaa->device,
 		    &uaa->info.bIfaceIndex, sc->sc_xfer, umass_cbi_config,
@@ -973,7 +972,6 @@ umass_attach(device_t dev)
 
 		/* skip reset first time */
 		sc->sc_last_xfer_index = UMASS_T_CBI_COMMAND;
-
 	} else
 		err = USB_ERR_INVAL;
 
@@ -1295,7 +1293,6 @@ umass_t_bbb_command_callback(struct usb_xfer *xfer, usb_error_t error)
 	default:			/* Error */
 		umass_tr_error(xfer, error);
 		return;
-
 	}
 }
 
@@ -1733,7 +1730,6 @@ tr_transferred:
 	default:			/* Error */
 		umass_tr_error(xfer, error);
 		break;
-
 	}
 }
 

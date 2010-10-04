@@ -2256,7 +2256,6 @@ rum_scan_start(struct ieee80211com *ic)
 	rum_write(sc, RT2573_TXRX_CSR9, tmp & ~0x00ffffff);
 	rum_set_bssid(sc, ifp->if_broadcastaddr);
 	RUM_UNLOCK(sc);
-
 }
 
 static void
@@ -2268,7 +2267,6 @@ rum_scan_end(struct ieee80211com *ic)
 	rum_enable_tsf_sync(sc);
 	rum_set_bssid(sc, sc->sc_bssid);
 	RUM_UNLOCK(sc);
-
 }
 
 static void

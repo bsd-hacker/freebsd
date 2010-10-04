@@ -1403,7 +1403,6 @@ usbd_fs_isoc_schedule_isoc_time_expand(struct usb_device *udev,
 			usbd_fs_isoc_schedule_init_sub(fss_a);
 			fss_a++;
 		}
-
 	} else {
 		*pp_start = NULL;
 		*pp_end = NULL;
@@ -2044,7 +2043,6 @@ repeat:
 		temp = usbd_get_dma_delay(udev);
 		if (temp != 0)
 			usb_pause_mtx(NULL, USB_MS_TO_TICKS(temp));
-
 	}
 	/* suspend current port */
 	err = usbd_req_set_port_feature(udev->parent_hub,

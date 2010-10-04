@@ -246,7 +246,6 @@ uhid_write_callback(struct usb_xfer *xfer, usb_error_t error)
 				if (actlen != 1)
 					goto tr_error;
 				usbd_copy_out(pc, 0, &id, 1);
-
 			} else
 				return;
 			if (size)
@@ -635,7 +634,6 @@ uhid_attach(device_t dev)
 			sc->sc_repdesc_size = sizeof(uhid_graphire_report_descr);
 			sc->sc_repdesc_ptr = &uhid_graphire_report_descr;
 			sc->sc_flags |= UHID_FLAG_STATIC_DESC;
-
 		} else if (uaa->info.idProduct == USB_PRODUCT_WACOM_GRAPHIRE3_4X5) {
 			static uint8_t reportbuf[] = {2, 2, 2};
 

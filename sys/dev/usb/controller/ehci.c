@@ -1612,7 +1612,6 @@ restart:
 			/* send a Zero Length Packet, ZLP, last */
 			temp->shortpkt = 1;
 			average = 0;
-
 		} else {
 			average = temp->average;
 
@@ -1655,7 +1654,6 @@ restart:
 
 			td->qtd_buffer[1] = 0;
 			td->qtd_buffer_hi[1] = 0;
-
 		} else {
 			uint8_t x;
 
@@ -1857,7 +1855,6 @@ ehci_setup_standard_chain(struct usb_xfer *xfer, ehci_qh_t **qh_last)
 		if (temp.len == 0) {
 			/* make sure that we send an USB packet */
 			temp.shortpkt = 0;
-
 		} else {
 			/* regular data transfer */
 			if ((xfer->flags & USBD_FORCE_SHORT_XFER) != 0)
@@ -3434,7 +3431,6 @@ ehci_xfer_setup(struct usb_setup_params *parm)
 		nqh = 1;
 		nqtd = ((2 * xfer->nframes) + 1	/* STATUS */
 		    + (xfer->max_data_length / xfer->max_hc_frame_size));
-
 	} else if (parm->methods == &ehci_device_bulk_methods) {
 		parm->hc_max_packet_size = 0x400;
 		parm->hc_max_packet_count = 1;
@@ -3446,7 +3442,6 @@ ehci_xfer_setup(struct usb_setup_params *parm)
 		nqh = 1;
 		nqtd = ((2 * xfer->nframes)
 		    + (xfer->max_data_length / xfer->max_hc_frame_size));
-
 	} else if (parm->methods == &ehci_device_intr_methods) {
 		if (parm->speed == USB_SPEED_HIGH) {
 			parm->hc_max_packet_size = 0x400;
@@ -3467,7 +3462,6 @@ ehci_xfer_setup(struct usb_setup_params *parm)
 		nqh = 1;
 		nqtd = ((2 * xfer->nframes)
 		    + (xfer->max_data_length / xfer->max_hc_frame_size));
-
 	} else if (parm->methods == &ehci_device_isoc_fs_methods) {
 		parm->hc_max_packet_size = 0x3FF;
 		parm->hc_max_packet_count = 1;
@@ -3477,7 +3471,6 @@ ehci_xfer_setup(struct usb_setup_params *parm)
 		usbd_transfer_setup_sub(parm);
 
 		nsitd = xfer->nframes;
-
 	} else if (parm->methods == &ehci_device_isoc_hs_methods) {
 		parm->hc_max_packet_size = 0x400;
 		parm->hc_max_packet_count = 3;
@@ -3488,7 +3481,6 @@ ehci_xfer_setup(struct usb_setup_params *parm)
 
 		nitd = ((xfer->nframes + 7) / 8) <<
 		    usbd_xfer_get_fps_shift(xfer);
-
 	} else {
 		parm->hc_max_packet_size = 0x400;
 		parm->hc_max_packet_count = 1;

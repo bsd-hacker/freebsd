@@ -480,12 +480,10 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 			xfer->max_packet_count = 1;
 			parm->bufsize = 0;	/* automatic setup length */
 			usbd_update_max_frame_size(xfer);
-
 		} else {
 			parm->err = USB_ERR_ZERO_MAXP;
 			goto done;
 		}
-
 	} else
 		zmps = 0;
 
@@ -1237,7 +1235,6 @@ usbd_setup_ctrl_transfer(struct usb_xfer *xfer)
 		}
 		/* get data length */
 		len = xfer->sumlen;
-
 	} else {
 		/* the size of the SETUP structure is hardcoded ! */
 		if (xfer->frlengths[0] != sizeof(struct usb_device_request)) {
@@ -1956,7 +1953,6 @@ usbd_callback_ss_done_defer(struct usb_xfer *xfer)
 		pq->recurse_2 = 0;
 	}
 	return;
-
 }
 
 /*------------------------------------------------------------------------*
@@ -2653,12 +2649,10 @@ usb_command_wrapper(struct usb_xfer_queue *pq, struct usb_xfer *xfer)
 			DPRINTFN(6, "cb %p (enter)\n", pq->curr);
 			(pq->command) (pq);
 			DPRINTFN(6, "cb %p (leave)\n", pq->curr);
-
 		} while (!pq->recurse_2);
 
 		/* clear first recurse flag */
 		pq->recurse_1 = 0;
-
 	} else {
 		/* clear second recurse flag */
 		pq->recurse_2 = 0;

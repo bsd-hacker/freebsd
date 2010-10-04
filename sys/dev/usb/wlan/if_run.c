@@ -2171,7 +2171,6 @@ run_key_delete(struct ieee80211vap *vap, struct ieee80211_key *k)
 	k0->wk_pad = k->wk_pad;
 	ieee80211_runtask(ic, &sc->cmdq_task);
 	return (1);	/* return fake success */
-
 }
 
 static void
@@ -4279,7 +4278,6 @@ run_rt3070_rf_init(struct run_softc *sc)
 		run_read(sc, RT3070_LDO_CFG0, &tmp);
 		tmp = (tmp & ~0x0f000000) | 0x0d000000;
 		run_write(sc, RT3070_LDO_CFG0, tmp);
-
 	} else if (sc->mac_ver == 0x3071) {
 		run_rt3070_rf_read(sc, 6, &rf);
 		run_rt3070_rf_write(sc, 6, rf | 0x40);
@@ -4296,7 +4294,6 @@ run_rt3070_rf_init(struct run_softc *sc)
 		/* patch LNA_PE_G1 */
 		run_read(sc, RT3070_GPIO_SWITCH, &tmp);
 		run_write(sc, RT3070_GPIO_SWITCH, tmp & ~0x20);
-
 	} else if (sc->mac_ver == 0x3572) {
 		run_rt3070_rf_read(sc, 6, &rf);
 		run_rt3070_rf_write(sc, 6, rf | 0x40);
@@ -4479,7 +4476,6 @@ run_rt3070_rf_setup(struct run_softc *sc)
 		run_rt3070_rf_read(sc, 16, &rf);
 		rf = (rf & ~0x07) | sc->txmixgain_2ghz;
 		run_rt3070_rf_write(sc, 16, rf);
-
 	} else if (sc->mac_ver == 0x3071) {
 		/* enable DC filter */
 		if (sc->mac_rev >= 0x0201)
@@ -4504,7 +4500,6 @@ run_rt3070_rf_setup(struct run_softc *sc)
 			    sc->patch_dac ? 0x2c : 0x0f);
 		} else
 			run_write(sc, RT2860_TX_SW_CFG2, 0);
-
 	} else if (sc->mac_ver == 0x3070) {
 		if (sc->mac_rev >= 0x0201) {
 			/* enable DC filter */

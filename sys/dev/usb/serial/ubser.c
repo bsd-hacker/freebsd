@@ -403,7 +403,6 @@ tr_setup:
 				break;
 			}
 			ubser_inc_tx_unit(sc);
-
 		} while (sc->sc_curr_tx_unit != first_unit);
 		return;
 	default:			/* Error */

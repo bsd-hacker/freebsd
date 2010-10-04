@@ -1597,7 +1597,6 @@ ural_scan_end(struct ieee80211com *ic)
 	ural_enable_tsf_sync(sc);
 	ural_set_bssid(sc, sc->sc_bssid);
 	RAL_UNLOCK(sc);
-
 }
 
 static void

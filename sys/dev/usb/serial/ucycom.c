@@ -555,7 +555,6 @@ tr_setup:
 			goto tr_setup;
 		}
 		return;
-
 	}
 }
 

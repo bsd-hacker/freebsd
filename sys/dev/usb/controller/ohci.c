@@ -1281,7 +1281,6 @@ restart:
 			/* send a Zero Length Packet, ZLP, last */
 			temp->shortpkt = 1;
 			average = 0;
-
 		} else {
 			average = temp->average;
 
@@ -1319,7 +1318,6 @@ restart:
 			td->td_cbp = 0;
 			td->td_be = 0;
 			td->len = 0;
-
 		} else {
 			usbd_get_page(temp->pc, buf_offset, &buf_res);
 			td->td_cbp = htole32(buf_res.physaddr);
@@ -1473,7 +1471,6 @@ ohci_setup_standard_chain(struct usb_xfer *xfer, ohci_ed_t **ed_last)
 		if (temp.len == 0) {
 			/* make sure that we send an USB packet */
 			temp.shortpkt = 0;
-
 		} else {
 			/* regular data transfer */
 			if ((xfer->flags & USBD_FORCE_SHORT_XFER) != 0)
@@ -2368,7 +2365,6 @@ ohci_xfer_setup(struct usb_setup_params *parm)
 		ntd = ((2 * xfer->nframes) + 1	/* STATUS */
 		    + (xfer->max_data_length / xfer->max_hc_frame_size));
 		nqh = 1;
-
 	} else if (parm->methods == &ohci_device_bulk_methods) {
 		xfer->status |= XFER_STATUS_DMAENABLE;
 
@@ -2378,7 +2374,6 @@ ohci_xfer_setup(struct usb_setup_params *parm)
 		ntd = ((2 * xfer->nframes)
 		    + (xfer->max_data_length / xfer->max_hc_frame_size));
 		nqh = 1;
-
 	} else if (parm->methods == &ohci_device_intr_methods) {
 		xfer->status |= XFER_STATUS_DMAENABLE;
 
@@ -2388,7 +2383,6 @@ ohci_xfer_setup(struct usb_setup_params *parm)
 		ntd = ((2 * xfer->nframes)
 		    + (xfer->max_data_length / xfer->max_hc_frame_size));
 		nqh = 1;
-
 	} else if (parm->methods == &ohci_device_isoc_methods) {
 		xfer->status |= XFER_STATUS_DMAENABLE;
 
@@ -2399,7 +2393,6 @@ ohci_xfer_setup(struct usb_setup_params *parm)
 		    1 /* EXTRA */ );
 		ntd = 0;
 		nqh = 1;
-
 	} else {
 		usbd_transfer_setup_sub(parm);
 

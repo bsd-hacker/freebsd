@@ -238,7 +238,6 @@ uhci_mem_layout_fixup(struct uhci_mem_layout *ml, struct uhci_td *td)
 		    htole32(UHCI_TD_PID_IN)) {
 			td->fix_pc = ml->fix_pc;
 			usb_pc_cpu_invalidate(ml->fix_pc);
-
 		} else {
 			td->fix_pc = NULL;
 
@@ -251,7 +250,6 @@ uhci_mem_layout_fixup(struct uhci_mem_layout *ml, struct uhci_td *td)
 
 		/* prepare next fixup */
 		ml->fix_pc++;
-
 	} else {
 		td->td_buffer = htole32(ml->buf_res.physaddr);
 		td->fix_pc = NULL;
@@ -1076,7 +1074,6 @@ uhci_non_isoc_done_sub(struct usb_xfer *xfer)
 			DPRINTF("Invalid status length, "
 			    "0x%04x/0x%04x bytes\n", len, td->len);
 			status |= UHCI_TD_STALLED;
-
 		} else if ((xfer->aframes != xfer->nframes) && (len > 0)) {
 			if (td->fix_pc) {
 				usbd_get_page(td->fix_pc, 0, &res);
@@ -1504,7 +1501,6 @@ restart:
 			temp->shortpkt = 1;
 			temp->td_token |= htole32(UHCI_TD_SET_MAXLEN(0));
 			average = 0;
-
 		} else {
 			average = temp->average;
 
@@ -1540,7 +1536,6 @@ restart:
 			td->len = 0;
 			td->td_buffer = 0;
 			td->fix_pc = NULL;
-
 		} else {
 			/* update remaining length */
 			temp->len -= average;
@@ -1688,7 +1683,6 @@ uhci_setup_standard_chain(struct usb_xfer *xfer)
 		if (temp.len == 0) {
 			/* make sure that we send an USB packet */
 			temp.shortpkt = 0;
-
 		} else {
 			/* regular data transfer */
 			if ((xfer->flags & USBD_FORCE_SHORT_XFER) != 0)
@@ -2137,11 +2131,9 @@ uhci_device_isoc_enter(struct usb_xfer *xfer)
 			 */
 			td->td_buffer = 0;
 			td->fix_pc = NULL;
-
 		} else {
 			/* fill out buffer pointer and do fixup, if any */
 			uhci_mem_layout_fixup(&ml, td);
-
 		}
 
 		/* update status */
@@ -2622,7 +2614,6 @@ uhci_roothub_exec(struct usb_device *udev,
 			usb_pause_mtx(&sc->sc_bus.bus_mtx, hz / 500);
 
 			sc->sc_isresumed |= (1 << index);
-
 		} else if (x & UHCI_PORTSC_SUSP)
 			status |= UPS_SUSPEND;
 		status |= UPS_PORT_POWER;
@@ -2752,7 +2743,6 @@ uhci_xfer_setup(struct usb_setup_params *parm)
 		nqh = 1;
 		ntd = ((2 * xfer->nframes) + 1	/* STATUS */
 		    + (xfer->max_data_length / xfer->max_frame_size));
-
 	} else if (parm->methods == &uhci_device_bulk_methods) {
 		xfer->status |= XFER_STATUS_DMAENABLE;
 		xfer->status |= XFER_STATUS_DMA_NOPOSTSYNC;
@@ -2762,7 +2752,6 @@ uhci_xfer_setup(struct usb_setup_params *parm)
 		nqh = 1;
 		ntd = ((2 * xfer->nframes)
 		    + (xfer->max_data_length / xfer->max_frame_size));
-
 	} else if (parm->methods == &uhci_device_intr_methods) {
 		xfer->status |= XFER_STATUS_DMAENABLE;
 		xfer->status |= XFER_STATUS_DMA_NOPOSTSYNC;
@@ -2772,7 +2761,6 @@ uhci_xfer_setup(struct usb_setup_params *parm)
 		nqh = 1;
 		ntd = ((2 * xfer->nframes)
 		    + (xfer->max_data_length / xfer->max_frame_size));
-
 	} else if (parm->methods == &uhci_device_isoc_methods) {
 		xfer->status |= XFER_STATUS_DMAENABLE;
 		xfer->status |= XFER_STATUS_DMA_NOPOSTSYNC;
@@ -2781,7 +2769,6 @@ uhci_xfer_setup(struct usb_setup_params *parm)
 
 		nqh = 0;
 		ntd = xfer->nframes;
-
 	} else {
 		usbd_transfer_setup_sub(parm);
 

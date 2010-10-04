@@ -926,7 +926,6 @@ at91dci_setup_standard_chain(struct usb_xfer *xfer)
 		if (temp.len == 0) {
 			/* make sure that we send an USB packet */
 			temp.short_pkt = 0;
-
 		} else {
 			/* regular data transfer */
 			if ((xfer->flags & USBD_FORCE_SHORT_XFER) != 0)
@@ -1104,7 +1103,6 @@ at91dci_standard_done_sub(struct usb_xfer *xfer)
 		/* this USB frame is complete */
 		error = 0;
 		break;
-
 	} while (0);
 
 	/* update transfer cache */
@@ -2103,16 +2101,12 @@ at91dci_xfer_setup(struct usb_setup_params *parm)
 	if (parm->methods == &at91dci_device_ctrl_methods) {
 		ntd = xfer->nframes + 1 /* STATUS */ + 1	/* SYNC 1 */
 		    + 1 /* SYNC 2 */ ;
-
 	} else if (parm->methods == &at91dci_device_bulk_methods) {
 		ntd = xfer->nframes + 1 /* SYNC */ ;
-
 	} else if (parm->methods == &at91dci_device_intr_methods) {
 		ntd = xfer->nframes + 1 /* SYNC */ ;
-
 	} else if (parm->methods == &at91dci_device_isoc_fs_methods) {
 		ntd = xfer->nframes + 1 /* SYNC */ ;
-
 	} else
 		ntd = 0;
 

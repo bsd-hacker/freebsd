@@ -839,7 +839,6 @@ atmegadci_setup_standard_chain(struct usb_xfer *xfer)
 		if (temp.len == 0) {
 			/* make sure that we send an USB packet */
 			temp.short_pkt = 0;
-
 		} else {
 			/* regular data transfer */
 			if ((xfer->flags & USBD_FORCE_SHORT_XFER) != 0)
@@ -997,7 +996,6 @@ atmegadci_standard_done_sub(struct usb_xfer *xfer)
 		/* this USB frame is complete */
 		error = 0;
 		break;
-
 	} while (0);
 
 	/* update transfer cache */

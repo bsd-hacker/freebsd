@@ -920,7 +920,6 @@ tr_setup:
 			usbd_xfer_set_frame_len(xfer, 0, m->m_pkthdr.len);
 
 			usbd_m_copy_in(pc, 0, m, 0, m->m_pkthdr.len);
-
 		} else {
 			usbd_xfer_set_frame_len(xfer, 0, (m->m_pkthdr.len + 2));
 

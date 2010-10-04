@@ -225,7 +225,6 @@ ums_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 
 			len--;
 			buf++;
-
 		} else {
 			id = 0;
 			if (sc->sc_info[0].sc_flags & UMS_FLAG_SBU) {
@@ -569,7 +568,6 @@ ums_attach(device_t dev)
 		/* Announce device */
 		device_printf(dev, "3 buttons and [XYZ] "
 		    "coordinates ID=0\n");
-
 	} else {
 		/* Search the HID descriptor and announce device */
 		for (i = 0; i < UMS_INFO_MAX; i++)
@@ -750,7 +748,6 @@ ums_put_queue(struct ums_softc *sc, int32_t dx, int32_t dy,
 		}
 		usb_fifo_put_data_linear(sc->sc_fifo.fp[USB_FIFO_RX], buf,
 		    sc->sc_mode.packetsize, 1);
-
 	} else
 		DPRINTF("Buffer full, discarded packet\n");
 }

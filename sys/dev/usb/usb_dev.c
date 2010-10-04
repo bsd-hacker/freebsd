@@ -1395,7 +1395,6 @@ usb_write(struct cdev *dev, struct uio *uio, int ioflag)
 			f->flag_have_fragment = 1;
 			USB_IF_PREPEND(&f->free_q, m);
 		}
-
 	} while (uio->uio_resid > 0);
 done:
 	mtx_unlock(f->priv_mtx);

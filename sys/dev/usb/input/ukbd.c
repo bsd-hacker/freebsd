@@ -1753,7 +1753,6 @@ ukbd_key2scan(struct ukbd_softc *sc, int code, int shift, int up)
 		return ((code & SCAN_PREFIX_E0) ? 0xe0 : 0xe1);
 	}
 	return (code);
-
 }
 
 #endif					/* UKBD_EMULATE_ATSCANCODE */

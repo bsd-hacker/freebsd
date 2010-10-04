@@ -669,7 +669,6 @@ ugen_get_cdesc(struct usb_fifo *f, struct usb_gen_descriptor *ugd)
 		if (cdesc == NULL)
 			return (ENXIO);
 		free_data = 0;
-
 	} else {
 		if (usbd_req_get_config_desc_full(udev,
 		    NULL, &cdesc, M_USBDEV,
@@ -1072,7 +1071,6 @@ ugen_fs_copy_in(struct usb_fifo *f, uint8_t ep_index)
 			isread = 0;
 		n = 1;
 		offset = sizeof(*req);
-
 	} else {
 		/* Device and Host mode */
 		if (USB_GET_DATA_ISREAD(xfer))

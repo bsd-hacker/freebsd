@@ -740,7 +740,6 @@ handle_endpoint_desc:
 				ed->bEndpointAddress =
 				    ep_curr->hw_endpoint_out;
 			}
-
 		} else {
 			/* compute the maximum frame size */
 			if (ep_curr->max_frame_size < wMaxPacketSize)
@@ -825,7 +824,6 @@ usb_hw_ep_resolve(struct usb_device *udev,
 			}
 
 			dd->bMaxPacketSize = mps;
-
 		} else {
 			/* We only have one choice */
 			if (mps == 255)

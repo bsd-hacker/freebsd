@@ -391,7 +391,6 @@ bbb_data_write_callback(struct usb_xfer *xfer, usb_error_t error)
 		else
 			bbb_transfer_start(sc, ST_DATA_WR_CS);
 		return;
-
 	}
 }
 
