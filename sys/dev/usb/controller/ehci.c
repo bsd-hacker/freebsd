@@ -829,7 +829,7 @@ ehci_dump_sqtds(ehci_softc_t *sc, ehci_qtd_t *sqtd)
 	stop = 0;
 	for (i = 0; sqtd && (i < 20) && !stop; sqtd = sqtd->obj_next, i++)
 		stop = ehci_dump_sqtd(sc, sqtd);
-	if (sqtd)
+	if (sqtd != NULL && stop == 0)
 		printf("dump aborted, too many TDs\n");
 }
 
