@@ -34,16 +34,18 @@
 
 . ../default.cfg
 
-mount | grep $mntpoint | grep -q /dev/md && umount $mntpoint
+mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
+mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 mdconfig -a -t swap -s 1g -u $mdstart
 bsdlabel -w md$mdstart auto
 newfs -U md${mdstart}$part > /dev/null
 tunefs -j enable /dev/md${mdstart}$part
 mount /dev/md${mdstart}$part $mntpoint
+chmod 777 $mntpoint
 
 export RUNDIR=$mntpoint/stressX
 export runRUNTIME=20m
-(cd ..; ./run.sh rw.cfg)
+su $testuser -c "cd ..; ./run.sh rw.cfg"
 
 while mount | grep $mntpoint | grep -q /dev/md; do
 	umount $mntpoint || sleep 1
