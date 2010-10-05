@@ -90,7 +90,16 @@ struct usb_setup_params {
 	void   *buf;
 	usb_frlength_t *xfer_length_ptr;
 
-	usb_size_t size[7];
+	usb_size_t needbufsize;
+#define	USB_SETUP_DMA_TAG		0
+#define	USB_SETUP_DMA_PAGECACHE		1
+#define	USB_SETUP_DMA_PAGE		2
+#define	USB_SETUP_XFER_PAGECACHE	3
+#define	USB_SETUP_XFER_PAGECACHE_END	4
+#define	USB_SETUP_XFERLEN		5
+#define	USB_SETUP_MAX			6
+	usb_size_t bufoffset[USB_SETUP_MAX];
+
 	usb_frlength_t bufsize;
 	usb_frlength_t bufsize_max;
 

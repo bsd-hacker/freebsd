@@ -578,11 +578,11 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 
 	if ((xfer->flags & USBD_EXT_BUFFER) == 0) {
 		/* align data */
-		parm->size[0] += ((-parm->size[0]) & (USB_HOST_ALIGN - 1));
+		parm->needbufsize = roundup(parm->needbufsize, USB_HOST_ALIGN);
 
 		if (parm->buf) {
 			xfer->local_buffer =
-			    USB_ADD_BYTES(parm->buf, parm->size[0]);
+			    USB_ADD_BYTES(parm->buf, parm->needbufsize);
 			xfer->local_buflen = parm->bufsize;
 
 			usbd_xfer_set_frame_offset(xfer, 0, 0);
@@ -590,10 +590,10 @@ usbd_transfer_setup_sub(struct usb_setup_params *parm)
 			if (type == UE_CONTROL && n_frbuffers > 1)
 				usbd_xfer_set_frame_offset(xfer, REQ_SIZE, 1);
 		}
-		parm->size[0] += parm->bufsize;
+		parm->needbufsize += parm->bufsize;
 
 		/* align data again */
-		parm->size[0] += ((-parm->size[0]) & (USB_HOST_ALIGN - 1));
+		parm->needbufsize = roundup(parm->needbufsize, USB_HOST_ALIGN);
 	}
 	/*
 	 * Compute maximum buffer size
@@ -762,14 +762,18 @@ usbd_transfer_setup(struct usb_device *udev,
 			info = USB_ADD_BYTES(buf, 0);
 
 			info->memory_base = buf;
-			info->memory_size = parm.size[0];
+			info->memory_size = parm.needbufsize;
 
 #if USB_HAVE_BUSDMA
-			info->dma_page_cache_start = USB_ADD_BYTES(buf, parm.size[4]);
-			info->dma_page_cache_end = USB_ADD_BYTES(buf, parm.size[5]);
+			info->dma_page_cache_start = USB_ADD_BYTES(buf,
+			    parm.bufoffset[USB_SETUP_DMA_PAGECACHE]);
+			info->dma_page_cache_end = USB_ADD_BYTES(buf,
+			    parm.bufoffset[USB_SETUP_XFER_PAGECACHE]);
 #endif
-			info->xfer_page_cache_start = USB_ADD_BYTES(buf, parm.size[5]);
-			info->xfer_page_cache_end = USB_ADD_BYTES(buf, parm.size[2]);
+			info->xfer_page_cache_start = USB_ADD_BYTES(buf,
+			    parm.bufoffset[USB_SETUP_XFER_PAGECACHE]);
+			info->xfer_page_cache_end = USB_ADD_BYTES(buf,
+			    parm.bufoffset[USB_SETUP_XFER_PAGECACHE_END]);
 
 			cv_init(&info->cv_drain, "WDRAIN");
 
@@ -806,9 +810,9 @@ usbd_transfer_setup(struct usb_device *udev,
 				    udev->bus->non_giant_callback_tq;
 		}
 		/* reset sizes */
-		parm.size[0] = 0;
+		parm.needbufsize = 0;
 		parm.buf = buf;
-		parm.size[0] += sizeof(info[0]);
+		parm.needbufsize += sizeof(info[0]);
 
 		for (setup = setup_start, n = 0;
 		    setup != setup_end; setup++, n++) {
@@ -830,7 +834,8 @@ usbd_transfer_setup(struct usb_device *udev,
 			}
 
 			/* align data properly */
-			parm.size[0] += ((-parm.size[0]) & (USB_HOST_ALIGN - 1));
+			parm.needbufsize = roundup(parm.needbufsize,
+			    USB_HOST_ALIGN);
 
 			/* store current setup pointer */
 			parm.curr_setup = setup;
@@ -840,7 +845,7 @@ usbd_transfer_setup(struct usb_device *udev,
 				 * Common initialization of the
 				 * "usb_xfer" structure.
 				 */
-				xfer = USB_ADD_BYTES(buf, parm.size[0]);
+				xfer = USB_ADD_BYTES(buf, parm.needbufsize);
 				xfer->address = udev->address;
 				xfer->priv_sc = priv_sc;
 				xfer->xroot = info;
@@ -863,7 +868,7 @@ usbd_transfer_setup(struct usb_device *udev,
 			/* set transfer endpoint pointer */
 			xfer->endpoint = ep;
 
-			parm.size[0] += sizeof(xfer[0]);
+			parm.needbufsize += sizeof(xfer[0]);
 			parm.methods = xfer->endpoint->methods;
 			parm.curr_xfer = xfer;
 
@@ -923,10 +928,10 @@ usbd_transfer_setup(struct usb_device *udev,
 			goto done;
 		}
 		/* align data properly */
-		parm.size[0] += ((-parm.size[0]) & (USB_HOST_ALIGN - 1));
+		parm.needbufsize = roundup(parm.needbufsize, USB_HOST_ALIGN);
 
 		/* store offset temporarily */
-		parm.size[1] = parm.size[0];
+		parm.bufoffset[USB_SETUP_DMA_TAG] = parm.needbufsize;
 
 		/*
 		 * The number of DMA tags required depends on
@@ -943,62 +948,67 @@ usbd_transfer_setup(struct usb_device *udev,
 
 		parm.dma_tag_p += parm.dma_tag_max;
 
-		parm.size[0] += ((uint8_t *)parm.dma_tag_p) -
+		parm.needbufsize += ((uint8_t *)parm.dma_tag_p) -
 		    ((uint8_t *)0);
 
 		/* align data properly */
-		parm.size[0] += ((-parm.size[0]) & (USB_HOST_ALIGN - 1));
+		parm.needbufsize = roundup(parm.needbufsize, USB_HOST_ALIGN);
 
 		/* store offset temporarily */
-		parm.size[3] = parm.size[0];
+		parm.bufoffset[USB_SETUP_DMA_PAGE] = parm.needbufsize;
 
-		parm.size[0] += ((uint8_t *)parm.dma_page_ptr) -
+		parm.needbufsize += ((uint8_t *)parm.dma_page_ptr) -
 		    ((uint8_t *)0);
 
 		/* align data properly */
-		parm.size[0] += ((-parm.size[0]) & (USB_HOST_ALIGN - 1));
+		parm.needbufsize = roundup(parm.needbufsize, USB_HOST_ALIGN);
 
 		/* store offset temporarily */
-		parm.size[4] = parm.size[0];
+		parm.bufoffset[USB_SETUP_DMA_PAGECACHE] = parm.needbufsize;
 
-		parm.size[0] += ((uint8_t *)parm.dma_page_cache_ptr) -
+		parm.needbufsize += ((uint8_t *)parm.dma_page_cache_ptr) -
 		    ((uint8_t *)0);
 
 		/* store end offset temporarily */
-		parm.size[5] = parm.size[0];
+		parm.bufoffset[USB_SETUP_XFER_PAGECACHE] = parm.needbufsize;
 
-		parm.size[0] += ((uint8_t *)parm.xfer_page_cache_ptr) -
+		parm.needbufsize += ((uint8_t *)parm.xfer_page_cache_ptr) -
 		    ((uint8_t *)0);
 
 		/* store end offset temporarily */
-		parm.size[2] = parm.size[0];
+		parm.bufoffset[USB_SETUP_XFER_PAGECACHE_END] = parm.needbufsize;
 
 		/* align data properly */
-		parm.size[0] += ((-parm.size[0]) & (USB_HOST_ALIGN - 1));
+		parm.needbufsize = roundup(parm.needbufsize, USB_HOST_ALIGN);
 
-		parm.size[6] = parm.size[0];
+		parm.bufoffset[USB_SETUP_XFERLEN] = parm.needbufsize;
 
-		parm.size[0] += ((uint8_t *)parm.xfer_length_ptr) -
+		parm.needbufsize += ((uint8_t *)parm.xfer_length_ptr) -
 		    ((uint8_t *)0);
 
 		/* align data properly */
-		parm.size[0] += ((-parm.size[0]) & (USB_HOST_ALIGN - 1));
+		parm.needbufsize = roundup(parm.needbufsize, USB_HOST_ALIGN);
 
 		/* allocate zeroed memory */
-		buf = malloc(parm.size[0], M_USB, M_WAITOK | M_ZERO);
+		buf = malloc(parm.needbufsize, M_USB, M_WAITOK | M_ZERO);
 
 		if (buf == NULL) {
 			parm.err = USB_ERR_NOMEM;
 			DPRINTFN(0, "cannot allocate memory block for "
 			    "configuration (%d bytes)\n",
-			    parm.size[0]);
+			    parm.needbufsize);
 			goto done;
 		}
-		parm.dma_tag_p = USB_ADD_BYTES(buf, parm.size[1]);
-		parm.dma_page_ptr = USB_ADD_BYTES(buf, parm.size[3]);
-		parm.dma_page_cache_ptr = USB_ADD_BYTES(buf, parm.size[4]);
-		parm.xfer_page_cache_ptr = USB_ADD_BYTES(buf, parm.size[5]);
-		parm.xfer_length_ptr = USB_ADD_BYTES(buf, parm.size[6]);
+		parm.dma_tag_p = USB_ADD_BYTES(buf,
+		    parm.bufoffset[USB_SETUP_DMA_TAG]);
+		parm.dma_page_ptr = USB_ADD_BYTES(buf,
+		    parm.bufoffset[USB_SETUP_DMA_PAGE]);
+		parm.dma_page_cache_ptr = USB_ADD_BYTES(buf,
+		    parm.bufoffset[USB_SETUP_DMA_PAGECACHE]);
+		parm.xfer_page_cache_ptr = USB_ADD_BYTES(buf,
+		    parm.bufoffset[USB_SETUP_XFER_PAGECACHE]);
+		parm.xfer_length_ptr = USB_ADD_BYTES(buf,
+		    parm.bufoffset[USB_SETUP_XFERLEN]);
 	}
 
 done:

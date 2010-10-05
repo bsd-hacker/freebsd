@@ -2600,13 +2600,13 @@ musbotg_xfer_setup(struct usb_setup_params *parm)
 	}
 
 	/* align data */
-	parm->size[0] += ((-parm->size[0]) & (USB_HOST_ALIGN - 1));
+	parm->needbufsize = roundup(parm->needbufsize, USB_HOST_ALIGN);
 
 	for (n = 0; n != ntd; n++) {
 		struct musbotg_td *td;
 
 		if (parm->buf) {
-			td = USB_ADD_BYTES(parm->buf, parm->size[0]);
+			td = USB_ADD_BYTES(parm->buf, parm->needbufsize);
 
 			/* init TD */
 			td->max_frame_size = xfer->max_frame_size;
@@ -2615,7 +2615,7 @@ musbotg_xfer_setup(struct usb_setup_params *parm)
 
 			last_obj = td;
 		}
-		parm->size[0] += sizeof(*td);
+		parm->needbufsize += sizeof(*td);
 	}
 
 	xfer->td_start[0] = last_obj;

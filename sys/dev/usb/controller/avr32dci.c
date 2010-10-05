@@ -1936,7 +1936,7 @@ avr32dci_xfer_setup(struct usb_setup_params *parm)
 		return;
 	}
 	/* align data */
-	parm->size[0] += ((-parm->size[0]) & (USB_HOST_ALIGN - 1));
+	parm->needbufsize = roundup(parm->needbufsize, USB_HOST_ALIGN);
 
 	for (n = 0; n != ntd; n++) {
 		struct avr32dci_td *td;
@@ -1944,7 +1944,7 @@ avr32dci_xfer_setup(struct usb_setup_params *parm)
 		if (parm->buf) {
 			uint32_t temp;
 
-			td = USB_ADD_BYTES(parm->buf, parm->size[0]);
+			td = USB_ADD_BYTES(parm->buf, parm->needbufsize);
 
 			/* init TD */
 			td->max_packet_size = xfer->max_packet_size;
@@ -1959,7 +1959,7 @@ avr32dci_xfer_setup(struct usb_setup_params *parm)
 
 			last_obj = td;
 		}
-		parm->size[0] += sizeof(*td);
+		parm->needbufsize += sizeof(*td);
 	}
 
 	xfer->td_start[0] = last_obj;
