@@ -115,6 +115,11 @@ struct usb_dma_parent_tag {
 	uint8_t	dma_error;		/* set if DMA load operation failed */
 	uint8_t	dma_bits;		/* number of DMA address lines */
 	uint8_t	utag_max;		/* number of USB DMA tags */
+	/*
+	 * pointer to struct usb_xfer_root.  But it'd be NULL if
+	 * `struct usb_dma_parent_tag' is for controller/usb_controller.c
+	 */
+	void *priv;
 };
 #else
 struct usb_dma_parent_tag {};		/* empty struct */
@@ -151,7 +156,8 @@ void	usb_bdma_pre_sync(struct usb_xfer *xfer);
 void	usb_bdma_work_loop(struct usb_xfer_queue *pq);
 void	usb_dma_tag_setup(struct usb_dma_parent_tag *udpt,
 	    struct usb_dma_tag *udt, bus_dma_tag_t dmat, struct mtx *mtx,
-	    usb_dma_callback_t *func, uint8_t ndmabits, uint8_t nudt);
+	    usb_dma_callback_t *func, uint8_t ndmabits, uint8_t nudt,
+	    void *priv);
 void	usb_dma_tag_unsetup(struct usb_dma_parent_tag *udpt);
 void	usb_pc_cpu_flush(struct usb_page_cache *pc);
 void	usb_pc_cpu_invalidate(struct usb_page_cache *pc);

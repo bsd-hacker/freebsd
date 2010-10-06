@@ -29,10 +29,7 @@
 
 #include <sys/taskqueue.h>
 
-#define	USB_DMATAG_TO_XROOT(dpt)				\
-  ((struct usb_xfer_root *)(					\
-   ((uint8_t *)(dpt)) -						\
-   ((uint8_t *)&((struct usb_xfer_root *)0)->dma_parent_tag)))
+#define	USB_DMATAG_TO_XROOT(dpt)	((struct usb_xfer_root *)(dpt)->priv)
 
 /*
  * The following structure is used to keep information about memory

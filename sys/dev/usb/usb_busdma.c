@@ -767,7 +767,7 @@ usb_dma_tag_find(struct usb_dma_parent_tag *udpt,
 void
 usb_dma_tag_setup(struct usb_dma_parent_tag *udpt, struct usb_dma_tag *udt,
     bus_dma_tag_t dmat, struct mtx *mtx, usb_dma_callback_t *func,
-    uint8_t ndmabits, uint8_t nudt)
+    uint8_t ndmabits, uint8_t nudt, void *priv)
 {
 
 	bzero(udpt, sizeof(*udpt));
@@ -786,6 +786,7 @@ usb_dma_tag_setup(struct usb_dma_parent_tag *udpt, struct usb_dma_tag *udt,
 	udpt->utag_first = udt;
 	udpt->utag_max = nudt;
 	udpt->dma_bits = ndmabits;
+	udpt->priv = priv;
 
 	while (nudt--) {
 		bzero(udt, sizeof(*udt));
