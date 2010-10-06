@@ -84,9 +84,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/controller/ehci.h>
 #include <dev/usb/controller/ehcireg.h>
 
-#define	EHCI_BUS2SC(bus) \
-   ((ehci_softc_t *)(((uint8_t *)(bus)) - \
-    ((uint8_t *)&(((ehci_softc_t *)0)->sc_bus))))
+#define	EHCI_BUS2SC(bus)	(device_get_softc((bus)->parent))
 
 #ifdef USB_DEBUG
 static int ehcidebug = 0;

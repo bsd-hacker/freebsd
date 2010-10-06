@@ -77,9 +77,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/controller/uhcireg.h>
 
 #define	alt_next next
-#define	UHCI_BUS2SC(bus) \
-   ((uhci_softc_t *)(((uint8_t *)(bus)) - \
-    ((uint8_t *)&(((uhci_softc_t *)0)->sc_bus))))
+#define	UHCI_BUS2SC(bus)	(device_get_softc((bus)->parent))
 
 #ifdef USB_DEBUG
 static int uhcidebug = 0;

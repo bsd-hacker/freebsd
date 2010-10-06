@@ -81,9 +81,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/usb_bus.h>
 #include <dev/usb/controller/at91dci.h>
 
-#define	AT9100_DCI_BUS2SC(bus) \
-   ((struct at91dci_softc *)(((uint8_t *)(bus)) - \
-    ((uint8_t *)&(((struct at91dci_softc *)0)->sc_bus))))
+#define	AT9100_DCI_BUS2SC(bus)	(device_get_softc((bus)->parent))
 
 #define	AT9100_DCI_PC2SC(pc) \
    AT9100_DCI_BUS2SC(USB_DMATAG_TO_XROOT((pc)->tag_parent)->bus)

@@ -69,9 +69,7 @@
 #include <dev/usb/usb_bus.h>
 #include <dev/usb/controller/uss820dci.h>
 
-#define	USS820_DCI_BUS2SC(bus) \
-   ((struct uss820dci_softc *)(((uint8_t *)(bus)) - \
-    ((uint8_t *)&(((struct uss820dci_softc *)0)->sc_bus))))
+#define	USS820_DCI_BUS2SC(bus)	(device_get_softc((bus)->parent))
 
 #define	USS820_DCI_PC2SC(pc) \
    USS820_DCI_BUS2SC(USB_DMATAG_TO_XROOT((pc)->tag_parent)->bus)
