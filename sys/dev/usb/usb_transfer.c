@@ -700,20 +700,16 @@ usbd_transfer_setup(struct usb_device *udev,
 	const struct usb_config *setup_end = setup_start + n_setup;
 	const struct usb_config *setup;
 	struct usb_endpoint *ep;
-	struct usb_xfer_root *info;
+	struct usb_xfer_root *info = NULL;
 	struct usb_xfer *xfer;
+	enum usb_dev_speed speed = usbd_get_speed(udev);
 	void *buf = NULL;
 	uint16_t n;
-	uint16_t refcount;
-
-	parm.err = 0;
-	refcount = 0;
-	info = NULL;
+	uint16_t refcount = 0;
 
 	WITNESS_WARN(WARN_GIANTOK | WARN_SLEEPOK, NULL,
 	    "usbd_transfer_setup can sleep!");
 
-	/* do some checking first */
 	if (n_setup == 0) {
 		DPRINTFN(6, "setup array has zero length!\n");
 		return (USB_ERR_INVAL);
@@ -722,293 +718,312 @@ usbd_transfer_setup(struct usb_device *udev,
 		DPRINTFN(6, "ifaces array is NULL!\n");
 		return (USB_ERR_INVAL);
 	}
+	if (speed >= USB_SPEED_MAX) {
+		DPRINTFN(6, "invalid USB speed (%d)\n", speed);
+		return (USB_ERR_INVAL);
+	}
 	if (xfer_mtx == NULL) {
 		DPRINTFN(6, "using global lock\n");
 		xfer_mtx = &Giant;
 	}
-	/* sanity checks */
-	for (setup = setup_start, n = 0;
-	    setup != setup_end; setup++, n++) {
+
+	/*
+	 * To set up USB xfer structures, usbd_transfer_setup() has TWO step
+	 * approach.  In step 1 it handles exceptional cases, calculates
+	 * the buffer size and set `struct usb_setup_params' structure
+	 * properly before going into step 2.  In step 2 it's doing real job
+	 * to set up a xfer.
+	 */
+
+	bzero(&parm, sizeof(parm));
+	parm.udev = udev;
+	parm.speed = speed;
+	parm.hc_max_packet_count = 1;
+	parm.buf = NULL;
+	parm.needbufsize = sizeof(info[0]);
+
+	/*
+	 * Step 1: handle exceptional cases and calculate the buffer size.
+	 *
+	 * Please see parm.needbufsize and parm.bufoffset[] carefully to set
+	 * up the buffer layout.  It'd finally allocate just one virtually
+	 * linear kernel buffer which has several sections for DMA page
+	 * structures, xfer page structures and etc.
+	 */
+
+	for (setup = setup_start, n = 0; setup != setup_end; setup++, n++) {
 		if (setup->bufsize == (usb_frlength_t)-1) {
-			parm.err = USB_ERR_BAD_BUFSIZE;
 			DPRINTF("invalid bufsize\n");
+			parm.err = USB_ERR_BAD_BUFSIZE;
+			goto done;
 		}
 		if (setup->callback == NULL) {
-			parm.err = USB_ERR_NO_CALLBACK;
 			DPRINTF("no callback\n");
+			parm.err = USB_ERR_NO_CALLBACK;
+			goto done;
 		}
-		ppxfer[n] = NULL;
-	}
+		USB_ASSERT(ppxfer[n] == NULL, ("ppxfer[%d] != NULL", n));
 
-	if (parm.err)
-		goto done;
-	bzero(&parm, sizeof(parm));
-
-	parm.udev = udev;
-	parm.speed = usbd_get_speed(udev);
-	parm.hc_max_packet_count = 1;
-
-	if (parm.speed >= USB_SPEED_MAX) {
-		parm.err = USB_ERR_INVAL;
-		goto done;
-	}
-	/* setup all transfers */
-	while (1) {
-		if (buf) {
-			/*
-			 * Initialize the "usb_xfer_root" structure,
-			 * which is common for all our USB transfers.
-			 */
-			info = USB_ADD_BYTES(buf, 0);
-
-			info->memory_base = buf;
-			info->memory_size = parm.needbufsize;
-
-#if USB_HAVE_BUSDMA
-			info->dma_page_cache_start = USB_ADD_BYTES(buf,
-			    parm.bufoffset[USB_SETUP_DMA_PAGECACHE]);
-			info->dma_page_cache_end = USB_ADD_BYTES(buf,
-			    parm.bufoffset[USB_SETUP_XFER_PAGECACHE]);
-#endif
-			info->xfer_page_cache_start = USB_ADD_BYTES(buf,
-			    parm.bufoffset[USB_SETUP_XFER_PAGECACHE]);
-			info->xfer_page_cache_end = USB_ADD_BYTES(buf,
-			    parm.bufoffset[USB_SETUP_XFER_PAGECACHE_END]);
-
-			cv_init(&info->cv_drain, "WDRAIN");
-
-			info->xfer_mtx = xfer_mtx;
-#if USB_HAVE_BUSDMA
-			usb_dma_tag_setup(&info->dma_parent_tag,
-			    parm.dma_tag_p, udev->bus->dma_parent_tag[0].tag,
-			    xfer_mtx, &usb_bdma_done_event, 32, parm.dma_tag_max);
-#endif
-
-			info->bus = udev->bus;
-			info->udev = udev;
-
-			TAILQ_INIT(&info->done_q.head);
-			info->done_q.command = &usbd_callback_wrapper;
-#if USB_HAVE_BUSDMA
-			TAILQ_INIT(&info->dma_q.head);
-			info->dma_q.command = &usb_bdma_work_loop;
-#endif
-			TASK_INIT(&info->done_task, 0, usb_callback_proc, info);
-
-			/* 
-			 * In device side mode control endpoint
-			 * requests need to run from a separate
-			 * context, else there is a chance of
-			 * deadlock!
-			 */
-			if (setup_start == usb_control_ep_cfg)
-				info->done_tq = udev->bus->control_xfer_tq;
-			else if (xfer_mtx == &Giant)
-				info->done_tq = udev->bus->giant_callback_tq;
-			else
-				info->done_tq =
-				    udev->bus->non_giant_callback_tq;
-		}
-		/* reset sizes */
-		parm.needbufsize = 0;
-		parm.buf = buf;
-		parm.needbufsize += sizeof(info[0]);
-
-		for (setup = setup_start, n = 0;
-		    setup != setup_end; setup++, n++) {
-			/* skip USB transfers without callbacks: */
-			if (setup->callback == NULL)
+		/* see if there is a matching endpoint */
+		ep = usbd_get_endpoint(udev, ifaces[setup->if_index], setup);
+		if (ep == NULL || ep->methods == NULL) {
+			if ((setup->flags & USBD_NO_PIPE_OK) != 0)
 				continue;
-			/* see if there is a matching endpoint */
-			ep = usbd_get_endpoint(udev,
-			    ifaces[setup->if_index], setup);
-
-			if (ep == NULL || ep->methods == NULL) {
-				if ((setup->flags & USBD_NO_PIPE_OK) != 0)
-					continue;
-				if (setup->usb_mode != USB_MODE_DUAL &&
-				    setup->usb_mode != udev->flags.usb_mode)
-					continue;
-				parm.err = USB_ERR_NO_PIPE;
-				goto done;
-			}
-
-			/* align data properly */
-			parm.needbufsize = roundup(parm.needbufsize,
-			    USB_HOST_ALIGN);
-
-			/* store current setup pointer */
-			parm.curr_setup = setup;
-
-			if (buf) {
-				/*
-				 * Common initialization of the
-				 * "usb_xfer" structure.
-				 */
-				xfer = USB_ADD_BYTES(buf, parm.needbufsize);
-				xfer->address = udev->address;
-				xfer->priv_sc = priv_sc;
-				xfer->xroot = info;
-
-				usb_callout_init_mtx(&xfer->timeout_handle,
-				    &udev->bus->bus_mtx, 0);
-			} else {
-				/*
-				 * Setup a dummy xfer, hence we are
-				 * writing to the "usb_xfer"
-				 * structure pointed to by "xfer"
-				 * before we have allocated any
-				 * memory:
-				 */
-				xfer = &dummy;
-				bzero(&dummy, sizeof(dummy));
-				refcount++;
-			}
-
-			/* set transfer endpoint pointer */
-			xfer->endpoint = ep;
-
-			parm.needbufsize += sizeof(xfer[0]);
-			parm.methods = xfer->endpoint->methods;
-			parm.curr_xfer = xfer;
-
-			/*
-			 * Call the Host or Device controller transfer
-			 * setup routine:
-			 */
-			(udev->bus->methods->xfer_setup) (&parm);
-
-			/* check for error */
-			if (parm.err)
-				goto done;
-
-			if (buf) {
-				/*
-				 * Increment the endpoint refcount. This
-				 * basically prevents setting a new
-				 * configuration and alternate setting
-				 * when USB transfers are in use on
-				 * the given interface. Search the USB
-				 * code for "endpoint->refcount_alloc" if you
-				 * want more information.
-				 */
-				USB_BUS_LOCK(info->bus);
-				if (xfer->endpoint->refcount_alloc >= USB_EP_REF_MAX)
-					parm.err = USB_ERR_INVAL;
-
-				xfer->endpoint->refcount_alloc++;
-
-				if (xfer->endpoint->refcount_alloc == 0)
-					panic("usbd_transfer_setup(): Refcount wrapped to zero\n");
-				USB_BUS_UNLOCK(info->bus);
-
-				/*
-				 * Whenever we set ppxfer[] then we
-				 * also need to increment the
-				 * "setup_refcount":
-				 */
-				info->setup_refcount++;
-
-				/*
-				 * Transfer is successfully setup and
-				 * can be used:
-				 */
-				ppxfer[n] = xfer;
-			}
-
-			/* check for error */
-			if (parm.err)
-				goto done;
-		}
-
-		if (buf || parm.err)
-			goto done;
-		if (refcount == 0) {
-			/* no transfers - nothing to do ! */
+			if (setup->usb_mode != USB_MODE_DUAL &&
+			    setup->usb_mode != udev->flags.usb_mode)
+				continue;
+			parm.err = USB_ERR_NO_PIPE;
 			goto done;
 		}
+
 		/* align data properly */
 		parm.needbufsize = roundup(parm.needbufsize, USB_HOST_ALIGN);
 
-		/* store offset temporarily */
-		parm.bufoffset[USB_SETUP_DMA_TAG] = parm.needbufsize;
+		/* store current setup pointer */
+		parm.curr_setup = setup;
 
 		/*
-		 * The number of DMA tags required depends on
-		 * the number of endpoints. The current estimate
-		 * for maximum number of DMA tags per endpoint
-		 * is two.
+		 * Setup a dummy xfer, hence we are writing to the "usb_xfer"
+		 * structure pointed to by "xfer" before we have allocated any
+		 * memory:
 		 */
-		parm.dma_tag_max += 2 * MIN(n_setup, USB_EP_MAX);
+		xfer = &dummy;
+		bzero(&dummy, sizeof(dummy));
+		refcount++;
+
+		/* set transfer endpoint pointer */
+		xfer->endpoint = ep;
+
+		parm.needbufsize += sizeof(xfer[0]);
+		parm.methods = xfer->endpoint->methods;
+		parm.curr_xfer = xfer;
 
 		/*
-		 * DMA tags for QH, TD, Data and more.
+		 * Call the Host or Device controller transfer
+		 * setup routine:
 		 */
-		parm.dma_tag_max += 8;
+		(udev->bus->methods->xfer_setup) (&parm);
+		if (parm.err)
+			goto done;
+	}
+	USB_ASSERT(refcount != 0, ("refcount == 0"));
 
-		parm.dma_tag_p += parm.dma_tag_max;
+	/* align data properly */
+	parm.needbufsize = roundup(parm.needbufsize, USB_HOST_ALIGN);
 
-		parm.needbufsize += ((uint8_t *)parm.dma_tag_p) -
-		    ((uint8_t *)0);
+	/* store offset temporarily */
+	parm.bufoffset[USB_SETUP_DMA_TAG] = parm.needbufsize;
+
+	/*
+	 * The number of DMA tags required depends on the number of endpoints.
+	 * The current estimate for maximum number of DMA tags per endpoint
+	 * is two.
+	 */
+	parm.dma_tag_max += 2 * MIN(n_setup, USB_EP_MAX);
+
+	/*
+	 * DMA tags for QH, TD, Data and more.
+	 */
+	parm.dma_tag_max += 8;
+
+	parm.dma_tag_p += parm.dma_tag_max;
+
+	parm.needbufsize += ((uint8_t *)parm.dma_tag_p) - ((uint8_t *)0);
+
+	/* align data properly */
+	parm.needbufsize = roundup(parm.needbufsize, USB_HOST_ALIGN);
+
+	/* store offset temporarily */
+	parm.bufoffset[USB_SETUP_DMA_PAGE] = parm.needbufsize;
+
+	parm.needbufsize += ((uint8_t *)parm.dma_page_ptr) - ((uint8_t *)0);
+
+	/* align data properly */
+	parm.needbufsize = roundup(parm.needbufsize, USB_HOST_ALIGN);
+
+	/* store offset temporarily */
+	parm.bufoffset[USB_SETUP_DMA_PAGECACHE] = parm.needbufsize;
+
+	parm.needbufsize += ((uint8_t *)parm.dma_page_cache_ptr) -
+	    ((uint8_t *)0);
+
+	/* store end offset temporarily */
+	parm.bufoffset[USB_SETUP_XFER_PAGECACHE] = parm.needbufsize;
+
+	parm.needbufsize += ((uint8_t *)parm.xfer_page_cache_ptr) -
+		((uint8_t *)0);
+
+	/* store end offset temporarily */
+	parm.bufoffset[USB_SETUP_XFER_PAGECACHE_END] = parm.needbufsize;
+
+	/* align data properly */
+	parm.needbufsize = roundup(parm.needbufsize, USB_HOST_ALIGN);
+
+	parm.bufoffset[USB_SETUP_XFERLEN] = parm.needbufsize;
+
+	parm.needbufsize += ((uint8_t *)parm.xfer_length_ptr) - ((uint8_t *)0);
+
+	/* align data properly */
+	parm.needbufsize = roundup(parm.needbufsize, USB_HOST_ALIGN);
+
+	/* allocate zeroed memory */
+	buf = malloc(parm.needbufsize, M_USB, M_WAITOK | M_ZERO);
+
+	if (buf == NULL) {
+		parm.err = USB_ERR_NOMEM;
+		DPRINTFN(0, "cannot allocate memory block for "
+		    "configuration (%d bytes)\n", parm.needbufsize);
+		goto done;
+	}
+	parm.dma_tag_p = USB_ADD_BYTES(buf, parm.bufoffset[USB_SETUP_DMA_TAG]);
+	parm.dma_page_ptr = USB_ADD_BYTES(buf,
+	    parm.bufoffset[USB_SETUP_DMA_PAGE]);
+	parm.dma_page_cache_ptr = USB_ADD_BYTES(buf,
+	    parm.bufoffset[USB_SETUP_DMA_PAGECACHE]);
+	parm.xfer_page_cache_ptr = USB_ADD_BYTES(buf,
+	    parm.bufoffset[USB_SETUP_XFER_PAGECACHE]);
+	parm.xfer_length_ptr = USB_ADD_BYTES(buf,
+	    parm.bufoffset[USB_SETUP_XFERLEN]);
+
+	/*
+	 * Step 2: fills the allocated buffer with valid values.
+	 *
+	 * The allocated buffer at above would have all informations and
+	 * USB buffers to send or receive USB transfers.
+	 */
+
+	/*
+	 * Initialize the "usb_xfer_root" structure, which is common for all
+	 * our USB transfers.
+	 */
+	info = USB_ADD_BYTES(buf, 0);
+
+	info->memory_base = buf;
+	info->memory_size = parm.needbufsize;
+
+#if USB_HAVE_BUSDMA
+	info->dma_page_cache_start = USB_ADD_BYTES(buf,
+	    parm.bufoffset[USB_SETUP_DMA_PAGECACHE]);
+	info->dma_page_cache_end = USB_ADD_BYTES(buf,
+	    parm.bufoffset[USB_SETUP_XFER_PAGECACHE]);
+#endif
+	info->xfer_page_cache_start = USB_ADD_BYTES(buf,
+	    parm.bufoffset[USB_SETUP_XFER_PAGECACHE]);
+	info->xfer_page_cache_end = USB_ADD_BYTES(buf,
+	    parm.bufoffset[USB_SETUP_XFER_PAGECACHE_END]);
+
+	cv_init(&info->cv_drain, "WDRAIN");
+
+	info->xfer_mtx = xfer_mtx;
+#if USB_HAVE_BUSDMA
+	usb_dma_tag_setup(&info->dma_parent_tag,
+	    parm.dma_tag_p, udev->bus->dma_parent_tag[0].tag,
+	    xfer_mtx, &usb_bdma_done_event, 32, parm.dma_tag_max);
+#endif
+
+	info->bus = udev->bus;
+	info->udev = udev;
+
+	TAILQ_INIT(&info->done_q.head);
+	info->done_q.command = &usbd_callback_wrapper;
+#if USB_HAVE_BUSDMA
+	TAILQ_INIT(&info->dma_q.head);
+	info->dma_q.command = &usb_bdma_work_loop;
+#endif
+	TASK_INIT(&info->done_task, 0, usb_callback_proc, info);
+
+	/* 
+	 * In device side mode control endpoint requests need to run from
+	 * a separate context, else there is a chance of deadlock!
+	 */
+	if (setup_start == usb_control_ep_cfg)
+		info->done_tq = udev->bus->control_xfer_tq;
+	else if (xfer_mtx == &Giant)
+		info->done_tq = udev->bus->giant_callback_tq;
+	else
+		info->done_tq = udev->bus->non_giant_callback_tq;
+
+	/* reset sizes */
+	parm.needbufsize = 0;
+	parm.buf = buf;
+	parm.needbufsize += sizeof(info[0]);
+
+	for (setup = setup_start, n = 0; setup != setup_end; setup++, n++) {
+		/* see if there is a matching endpoint */
+		ep = usbd_get_endpoint(udev, ifaces[setup->if_index], setup);
+		if (ep == NULL || ep->methods == NULL) {
+			if ((setup->flags & USBD_NO_PIPE_OK) != 0)
+				continue;
+			if (setup->usb_mode != USB_MODE_DUAL &&
+			    setup->usb_mode != udev->flags.usb_mode)
+				continue;
+			/* never happen */
+			panic("no pipe");
+		}
 
 		/* align data properly */
 		parm.needbufsize = roundup(parm.needbufsize, USB_HOST_ALIGN);
 
-		/* store offset temporarily */
-		parm.bufoffset[USB_SETUP_DMA_PAGE] = parm.needbufsize;
+		/* store current setup pointer */
+		parm.curr_setup = setup;
 
-		parm.needbufsize += ((uint8_t *)parm.dma_page_ptr) -
-		    ((uint8_t *)0);
+		/* Common initialization of the "usb_xfer" structure. */
+		xfer = USB_ADD_BYTES(buf, parm.needbufsize);
+		xfer->address = udev->address;
+		xfer->priv_sc = priv_sc;
+		xfer->xroot = info;
 
-		/* align data properly */
-		parm.needbufsize = roundup(parm.needbufsize, USB_HOST_ALIGN);
+		usb_callout_init_mtx(&xfer->timeout_handle,
+		    &udev->bus->bus_mtx, 0);
 
-		/* store offset temporarily */
-		parm.bufoffset[USB_SETUP_DMA_PAGECACHE] = parm.needbufsize;
+		/* set transfer endpoint pointer */
+		xfer->endpoint = ep;
 
-		parm.needbufsize += ((uint8_t *)parm.dma_page_cache_ptr) -
-		    ((uint8_t *)0);
+		parm.needbufsize += sizeof(xfer[0]);
+		parm.methods = xfer->endpoint->methods;
+		parm.curr_xfer = xfer;
 
-		/* store end offset temporarily */
-		parm.bufoffset[USB_SETUP_XFER_PAGECACHE] = parm.needbufsize;
+		/*
+		 * Call the Host or Device controller transfer
+		 * setup routine:
+		 */
+		(udev->bus->methods->xfer_setup) (&parm);
 
-		parm.needbufsize += ((uint8_t *)parm.xfer_page_cache_ptr) -
-		    ((uint8_t *)0);
+		/* check for error */
+		if (parm.err)
+			goto done;
 
-		/* store end offset temporarily */
-		parm.bufoffset[USB_SETUP_XFER_PAGECACHE_END] = parm.needbufsize;
-
-		/* align data properly */
-		parm.needbufsize = roundup(parm.needbufsize, USB_HOST_ALIGN);
-
-		parm.bufoffset[USB_SETUP_XFERLEN] = parm.needbufsize;
-
-		parm.needbufsize += ((uint8_t *)parm.xfer_length_ptr) -
-		    ((uint8_t *)0);
-
-		/* align data properly */
-		parm.needbufsize = roundup(parm.needbufsize, USB_HOST_ALIGN);
-
-		/* allocate zeroed memory */
-		buf = malloc(parm.needbufsize, M_USB, M_WAITOK | M_ZERO);
-
-		if (buf == NULL) {
-			parm.err = USB_ERR_NOMEM;
-			DPRINTFN(0, "cannot allocate memory block for "
-			    "configuration (%d bytes)\n",
-			    parm.needbufsize);
+		/*
+		 * Increment the endpoint refcount. This basically prevents
+		 * setting a new configuration and alternate setting
+		 * when USB transfers are in use on the given interface.
+		 * Search the USB code for "endpoint->refcount_alloc" if you
+		 * want more information.
+		 */
+		USB_BUS_LOCK(info->bus);
+		if (xfer->endpoint->refcount_alloc >= USB_EP_REF_MAX) {
+			USB_BUS_UNLOCK(info->bus);
+			parm.err = USB_ERR_INVAL;
 			goto done;
 		}
-		parm.dma_tag_p = USB_ADD_BYTES(buf,
-		    parm.bufoffset[USB_SETUP_DMA_TAG]);
-		parm.dma_page_ptr = USB_ADD_BYTES(buf,
-		    parm.bufoffset[USB_SETUP_DMA_PAGE]);
-		parm.dma_page_cache_ptr = USB_ADD_BYTES(buf,
-		    parm.bufoffset[USB_SETUP_DMA_PAGECACHE]);
-		parm.xfer_page_cache_ptr = USB_ADD_BYTES(buf,
-		    parm.bufoffset[USB_SETUP_XFER_PAGECACHE]);
-		parm.xfer_length_ptr = USB_ADD_BYTES(buf,
-		    parm.bufoffset[USB_SETUP_XFERLEN]);
+
+		xfer->endpoint->refcount_alloc++;
+
+		if (xfer->endpoint->refcount_alloc == 0)
+			panic("usbd_transfer_setup(): Refcount wrapped"
+			    " to zero\n");
+		USB_BUS_UNLOCK(info->bus);
+
+		/*
+		 * Whenever we set ppxfer[] then we also need to increment the
+		 * "setup_refcount":
+		 */
+		info->setup_refcount++;
+
+		/*
+		 * Transfer is successfully setup and can be used:
+		 */
+		ppxfer[n] = xfer;
 	}
 
 done:
