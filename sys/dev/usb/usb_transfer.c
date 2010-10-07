@@ -1964,18 +1964,15 @@ usbd_callback_ss_done_defer(struct usb_xfer *xfer)
 
 	if (pq->curr != xfer)
 		usbd_transfer_enqueue(pq, xfer);
-	if (!pq->recurse_1) {
+	if ((pq->status & USB_XFER_QUEUE_HOLD) == 0) {
 		/*
 		 * We have to postpone the callback due to the fact we
 		 * will have a Lock Order Reversal, LOR, if we try to
 		 * proceed !
 		 */
 		taskqueue_enqueue(info->done_tq, &info->done_task);
-	} else {
-		/* clear second recurse flag */
-		pq->recurse_2 = 0;
-	}
-	return;
+	} else
+		pq->status |= USB_XFER_QUEUE_CONTINUE;
 }
 
 /*------------------------------------------------------------------------*
@@ -2653,11 +2650,10 @@ usb_command_wrapper(struct usb_xfer_queue *pq, struct usb_xfer *xfer)
 		pq->curr = NULL;
 	}
 
-	if (!pq->recurse_1) {
+	if ((pq->status & USB_XFER_QUEUE_HOLD) == 0) {
 		do {
-			/* set both recurse flags */
-			pq->recurse_1 = 1;
-			pq->recurse_2 = 1;
+			pq->status |= USB_XFER_QUEUE_HOLD;
+			pq->status &= ~USB_XFER_QUEUE_CONTINUE;
 
 			if (pq->curr == NULL) {
 				xfer = TAILQ_FIRST(&pq->head);
@@ -2672,14 +2668,11 @@ usb_command_wrapper(struct usb_xfer_queue *pq, struct usb_xfer *xfer)
 			DPRINTFN(6, "cb %p (enter)\n", pq->curr);
 			(pq->command) (pq);
 			DPRINTFN(6, "cb %p (leave)\n", pq->curr);
-		} while (!pq->recurse_2);
+		} while ((pq->status & USB_XFER_QUEUE_CONTINUE) != 0);
 
-		/* clear first recurse flag */
-		pq->recurse_1 = 0;
-	} else {
-		/* clear second recurse flag */
-		pq->recurse_2 = 0;
-	}
+		pq->status &= ~USB_XFER_QUEUE_HOLD;
+	} else
+		pq->status |= USB_XFER_QUEUE_CONTINUE;
 }
 
 /*------------------------------------------------------------------------*

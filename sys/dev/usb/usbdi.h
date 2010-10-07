@@ -122,8 +122,16 @@ struct usb_xfer_queue {
 	TAILQ_HEAD(, usb_xfer) head;
 	struct usb_xfer *curr;		/* current USB transfer processed */
 	void    (*command) (struct usb_xfer_queue *pq);
-	uint8_t	recurse_1:1;
-	uint8_t	recurse_2:1;
+	int status;
+/*
+ * During this status is set any `info->done_task' wouldn't queued and
+ * `command' callback at above wouldn't called.  It's to avoid recursive calls.
+ *
+ * XXX need another approach to make easy to understand?
+ */
+#define	USB_XFER_QUEUE_HOLD	(1 << 0)
+/* If set, processing the xfer queue would be continue. */
+#define	USB_XFER_QUEUE_CONTINUE	(1 << 1)
 };
 
 /*
