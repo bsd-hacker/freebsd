@@ -799,8 +799,9 @@ usbd_transfer_setup(struct usb_device *udev,
 		parm.curr_xfer = xfer;
 
 		/*
-		 * Call the Host or Device controller transfer
-		 * setup routine:
+		 * Call the Host or Device controller transfer setup routine
+		 * that at this point it'd calculate the buffer size only
+		 * because parm->buf is NULL.
 		 */
 		(udev->bus->methods->xfer_setup) (&parm);
 		if (parm.err)
