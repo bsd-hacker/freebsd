@@ -1163,6 +1163,7 @@ aue_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 		break;
 	case SIOCADDMULTI:
 	case SIOCDELMULTI:
+		/* To avoid LOR by in_multi_mtx (netinet/in_mcast.c) */
 		if (ifp->if_flags & IFF_UP &&
 		    ifp->if_drv_flags & IFF_DRV_RUNNING)
 			SLEEPOUT_RUNTASK(&sc->sc_sleepout, &sc->sc_setmulti);
