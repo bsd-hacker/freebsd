@@ -849,8 +849,8 @@ axe_detach(device_t dev)
 	struct ifnet *ifp = sc->sc_ifp;
 
 	sleepout_drain(&sc->sc_watchdog);
-	SLEEPOUT_DRAIN_TASK(&sc->sc_sleepout, &sc->sc_setpromisc);
-	SLEEPOUT_DRAIN_TASK(&sc->sc_sleepout, &sc->sc_setmulti);
+	SLEEPOUT_DRAINTASK(&sc->sc_sleepout, &sc->sc_setpromisc);
+	SLEEPOUT_DRAINTASK(&sc->sc_sleepout, &sc->sc_setmulti);
 	usbd_transfer_unsetup(sc->sc_xfer, AXE_N_TRANSFER);
 
 	if (sc->sc_miibus != NULL)
@@ -1300,7 +1300,7 @@ axe_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 		AXE_LOCK(sc);
 		if (ifp->if_flags & IFF_UP) {
 			if (ifp->if_drv_flags & IFF_DRV_RUNNING)
-				SLEEPOUT_RUN_TASK(&sc->sc_sleepout,
+				SLEEPOUT_RUNTASK(&sc->sc_sleepout,
 				    &sc->sc_setpromisc);
 			else
 				axe_init_locked(sc);
@@ -1312,7 +1312,7 @@ axe_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 	case SIOCDELMULTI:
 		if (ifp->if_flags & IFF_UP &&
 		    ifp->if_drv_flags & IFF_DRV_RUNNING)
-			SLEEPOUT_RUN_TASK(&sc->sc_sleepout, &sc->sc_setmulti);
+			SLEEPOUT_RUNTASK(&sc->sc_sleepout, &sc->sc_setmulti);
 		break;
 	case SIOCGIFMEDIA:
 	case SIOCSIFMEDIA:
