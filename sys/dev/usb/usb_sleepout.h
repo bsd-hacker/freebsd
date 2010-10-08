@@ -35,6 +35,9 @@ struct sleepout_task {
 	void			*st_arg;
 };
 
+#define	SLEEPOUT_RUN_TASK(_so, _task)	\
+	taskqueue_enqueue((_so)->s_taskqueue, (_task))
+
 void	sleepout_create(struct sleepout *, const char *);
 void	sleepout_free(struct sleepout *);
 void	sleepout_init(struct sleepout *, struct sleepout_task *, int);

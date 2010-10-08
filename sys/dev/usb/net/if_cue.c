@@ -777,8 +777,7 @@ cue_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 	case SIOCDELMULTI:
 		if (ifp->if_flags & IFF_UP &&
 		    ifp->if_drv_flags & IFF_DRV_RUNNING)
-			taskqueue_enqueue(sc->sc_sleepout.s_taskqueue,
-			    &sc->sc_setmulti);
+			SLEEPOUT_RUN_TASK(&sc->sc_sleepout, &sc->sc_setmulti);
 		break;
 	default:
 		error = ether_ioctl(ifp, command, data);
