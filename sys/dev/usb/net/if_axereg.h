@@ -201,6 +201,7 @@ struct axe_softc {
 	device_t		sc_miibus;
 	struct usb_device	*sc_udev; /* used by uether_do_request() */
 	struct mtx		sc_mtx;
+	struct sx		sc_sx;
 	struct usb_xfer		*sc_xfer[AXE_N_TRANSFER];
 
 	/* ethernet address from eeprom */
@@ -221,6 +222,8 @@ struct axe_softc {
 	uint8_t			sc_phyaddrs[2];
 };
 
+#define	AXE_SXLOCK(_sc)		sx_xlock(&(_sc)->sc_sx)
+#define	AXE_SXUNLOCK(_sc)	sx_xunlock(&(_sc)->sc_sx)
 #define	AXE_LOCK(_sc)		mtx_lock(&(_sc)->sc_mtx)
 #define	AXE_UNLOCK(_sc)		mtx_unlock(&(_sc)->sc_mtx)
 #define	AXE_LOCK_ASSERT(_sc, t)	mtx_assert(&(_sc)->sc_mtx, t)

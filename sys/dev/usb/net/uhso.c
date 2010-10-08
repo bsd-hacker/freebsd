@@ -78,6 +78,7 @@ struct uhso_softc {
 	device_t		sc_dev;
 	struct usb_device	*sc_udev;
 	struct mtx		sc_mtx;
+	struct sx		sc_sx;
 	uint32_t		sc_type;	/* Interface definition */
 	int			sc_radio;
 
@@ -105,6 +106,9 @@ struct uhso_softc {
 	int			sc_lsr;
 	int			sc_line;
 };
+
+#define	UHSO_SXLOCK(_sc)	sx_xlock(&(_sc)->sc_sx)
+#define	UHSO_SXUNLOCK(_sc)	sx_xunlock(&(_sc)->sc_sx)
 
 #define UHSO_MAX_MTU		2048
 
@@ -461,6 +465,7 @@ static void uhso_ucom_cfg_set_rts(struct ucom_softc *, uint8_t);
 static void uhso_if_init(void *);
 static void uhso_if_start(struct ifnet *);
 static void uhso_if_stop(struct uhso_softc *);
+static void uhso_if_stop_locked(struct uhso_softc *);
 static int  uhso_if_ioctl(struct ifnet *, u_long, caddr_t);
 static int  uhso_if_output(struct ifnet *, struct mbuf *, struct sockaddr *,
     struct route *);
@@ -548,6 +553,7 @@ uhso_attach(device_t self)
 	sc->sc_dev = self;
 	sc->sc_udev = uaa->device;
 	mtx_init(&sc->sc_mtx, "uhso", NULL, MTX_DEF);
+	sx_init(&sc->sc_sx, "uhso sxlock");
 
 	sc->sc_ucom = NULL;
 	sc->sc_ttys = 0;
@@ -681,7 +687,7 @@ uhso_detach(device_t self)
 		callout_drain(&sc->sc_c);
 		free_unr(uhso_ifnet_unit, sc->sc_ifp->if_dunit);
 		mtx_lock(&sc->sc_mtx);
-		uhso_if_stop(sc);
+		uhso_if_stop_locked(sc);
 		bpfdetach(sc->sc_ifp);
 		if_detach(sc->sc_ifp);
 		if_free(sc->sc_ifp);
@@ -689,6 +695,7 @@ uhso_detach(device_t self)
 		usbd_transfer_unsetup(sc->sc_if_xfer, UHSO_IFNET_MAX);
 	}
 
+	sx_destroy(&sc->sc_sx);
 	mtx_destroy(&sc->sc_mtx);
 	return (0);
 }
@@ -1801,21 +1808,25 @@ static int
 uhso_if_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 {
 	struct uhso_softc *sc;
+	int drv_flags, flags;
 
 	sc = ifp->if_softc;
 
 	switch (cmd) {
 	case SIOCSIFFLAGS:
-		if (ifp->if_flags & IFF_UP) {
-			if (!(ifp->if_drv_flags & IFF_DRV_RUNNING))
+		/* Avoids race and LOR between mutex and sx lock. */
+		mtx_lock(&sc->sc_mtx);
+		flags = ifp->if_flags;
+		drv_flags = ifp->if_drv_flags;
+		mtx_unlock(&sc->sc_mtx);
+		/* device up and down is synchronous using sx(9) lock */
+		if (flags & IFF_UP) {
+			if (!(drv_flags & IFF_DRV_RUNNING))
 				uhso_if_init(sc);
 		}
 		else {
-			if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
-				mtx_lock(&sc->sc_mtx);
+			if (drv_flags & IFF_DRV_RUNNING)
 				uhso_if_stop(sc);
-				mtx_unlock(&sc->sc_mtx);
-			}
 		}
 		break;
 	case SIOCSIFADDR:
@@ -1835,12 +1846,14 @@ uhso_if_init(void *priv)
 	struct uhso_softc *sc = priv;
 	struct ifnet *ifp = sc->sc_ifp;
 
+	UHSO_SXLOCK(sc);
 	mtx_lock(&sc->sc_mtx);
-	uhso_if_stop(sc);
+	uhso_if_stop_locked(sc);
 	ifp = sc->sc_ifp;
 	ifp->if_flags |= IFF_UP;
 	ifp->if_drv_flags |= IFF_DRV_RUNNING;
 	mtx_unlock(&sc->sc_mtx);
+	UHSO_SXUNLOCK(sc);
 
 	UHSO_DPRINTF(2, "ifnet initialized\n");
 }
@@ -1887,6 +1900,17 @@ uhso_if_start(struct ifnet *ifp)
 
 static void
 uhso_if_stop(struct uhso_softc *sc)
+{
+
+	UHSO_SXLOCK(sc);
+	mtx_lock(&sc->sc_mtx);
+	uhso_if_stop_locked(sc);
+	mtx_unlock(&sc->sc_mtx);
+	UHSO_SXUNLOCK(sc);
+}
+
+static void
+uhso_if_stop_locked(struct uhso_softc *sc)
 {
 
 	usbd_transfer_stop(sc->sc_if_xfer[UHSO_IFNET_READ]);

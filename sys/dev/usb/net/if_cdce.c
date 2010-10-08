@@ -111,6 +111,7 @@ static void	cdce_start(struct ifnet *);
 static void	cdce_start_locked(struct ifnet *);
 static void	cdce_init(void *);
 static void	cdce_init_locked(struct cdce_softc *);
+static void	cdce_stop_locked(struct cdce_softc *);
 static int	cdce_rxmbuf(struct cdce_softc *, struct mbuf *, unsigned int);
 static struct mbuf *cdce_newbuf(void);
 static void	cdce_rxflush(struct cdce_softc *);
@@ -446,6 +447,7 @@ cdce_attach(device_t dev)
 	sc->sc_flags = USB_GET_DRIVER_INFO(uaa);
 
 	mtx_init(&sc->sc_mtx, device_get_nameunit(dev), NULL, MTX_DEF);
+	sx_init(&sc->sc_sx, "cdce sxlock");
 
 	ud = usbd_find_descriptor
 	    (uaa->device, NULL, uaa->info.bIfaceIndex,
@@ -615,6 +617,7 @@ cdce_detach(device_t dev)
 		ether_ifdetach(ifp);
 		if_free(ifp);
 	}
+	sx_destroy(&sc->sc_sx);
 	mtx_destroy(&sc->sc_mtx);
 	return (0);
 }
@@ -773,9 +776,11 @@ cdce_init(void *arg)
 {
 	struct cdce_softc *sc = arg;
 
+	CDCE_SXLOCK(sc);
 	CDCE_LOCK(sc);
 	cdce_init_locked(sc);
 	CDCE_UNLOCK(sc);
+	CDCE_SXUNLOCK(sc);
 }
 
 static void
@@ -800,6 +805,17 @@ cdce_init_locked(struct cdce_softc *sc)
 
 static void
 cdce_stop(struct cdce_softc *sc)
+{
+
+	CDCE_SXLOCK(sc);
+	CDCE_LOCK(sc);
+	cdce_stop_locked(sc);
+	CDCE_UNLOCK(sc);
+	CDCE_SXUNLOCK(sc);
+}
+
+static void
+cdce_stop_locked(struct cdce_softc *sc)
 {
 	struct ifnet *ifp = sc->sc_ifp;
 
@@ -1333,17 +1349,21 @@ static int
 cdce_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 {
 	struct cdce_softc *sc = ifp->if_softc;
-	int error = 0;
+	int error = 0, drv_flags, flags;
 
 	switch (command) {
 	case SIOCSIFFLAGS:
+		/* Avoids race and LOR between mutex and sx lock. */
 		CDCE_LOCK(sc);
-		if (ifp->if_flags & IFF_UP) {
-			if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0)
-				cdce_init_locked(sc);
+		flags = ifp->if_flags;
+		drv_flags = ifp->if_drv_flags;
+		CDCE_UNLOCK(sc);
+		/* device up and down is synchronous using sx(9) lock */
+		if (flags & IFF_UP) {
+			if ((drv_flags & IFF_DRV_RUNNING) == 0)
+				cdce_init(sc);
 		} else
 			cdce_stop(sc);
-		CDCE_UNLOCK(sc);
 		break;
 	default:
 		error = ether_ioctl(ifp, command, data);

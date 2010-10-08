@@ -158,6 +158,7 @@ struct udav_softc {
 	struct usb_device	*sc_udev;
 	struct usb_xfer		*sc_xfer[UDAV_N_TRANSFER];
 	struct mtx		sc_mtx;
+	struct sx		sc_sx;
 	struct sleepout		sc_sleepout;
 	struct sleepout_task	sc_watchdog;
 	struct task		sc_setmulti;
@@ -170,6 +171,8 @@ struct udav_softc {
 #define	UDAV_FLAG_EXT_PHY	0x0040
 };
 
+#define	UDAV_SXLOCK(_sc)		sx_xlock(&(_sc)->sc_sx)
+#define	UDAV_SXUNLOCK(_sc)		sx_xunlock(&(_sc)->sc_sx)
 #define	UDAV_LOCK(_sc)			mtx_lock(&(_sc)->sc_mtx)
 #define	UDAV_UNLOCK(_sc)		mtx_unlock(&(_sc)->sc_mtx)
 #define	UDAV_LOCK_ASSERT(_sc, t)	mtx_assert(&(_sc)->sc_mtx, t)

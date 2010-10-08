@@ -159,6 +159,7 @@ static int	rue_ioctl(struct ifnet *, u_long, caddr_t);
 static void	rue_start(struct ifnet *);
 static void	rue_start_locked(struct ifnet *);
 static void	rue_stop(struct rue_softc *);
+static void	rue_stop_locked(struct rue_softc *);
 static void	rue_watchdog(void *);
 static void	rue_setpromisc(void *, int);
 static void	rue_setpromisc_locked(struct rue_softc *);
@@ -942,9 +943,11 @@ rue_init(void *arg)
 {
 	struct rue_softc *sc = arg;
 
+	RUE_SXLOCK(sc);
 	RUE_LOCK(sc);
 	rue_init_locked(sc);
 	RUE_UNLOCK(sc);
+	RUE_SXUNLOCK(sc);
 }
 
 static void
@@ -962,7 +965,7 @@ rue_init_locked(struct rue_softc *sc)
 	/* Set MAC address */
 	rue_write_mem(sc, RUE_IDR0, IF_LLADDR(ifp), ETHER_ADDR_LEN);
 
-	rue_stop(sc);
+	rue_stop_locked(sc);
 
 	/*
 	 * Set the initial TX and RX configuration.
@@ -1026,6 +1029,17 @@ rue_ifmedia_sts(struct ifnet *ifp, struct ifmediareq *ifmr)
 static void
 rue_stop(struct rue_softc *sc)
 {
+
+	RUE_SXLOCK(sc);
+	RUE_LOCK(sc);
+	rue_stop_locked(sc);
+	RUE_UNLOCK(sc);
+	RUE_SXUNLOCK(sc);
+}
+
+static void
+rue_stop_locked(struct rue_softc *sc)
+{
 	struct ifnet *ifp = sc->sc_ifp;
 
 	RUE_LOCK_ASSERT(sc, MA_OWNED);
@@ -1051,20 +1065,24 @@ rue_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 	struct rue_softc *sc = ifp->if_softc;
 	struct ifreq *ifr = (struct ifreq *)data;
 	struct mii_data *mii = GET_MII(sc);
-	int error = 0;
+	int error = 0, drv_flags, flags;
 
 	switch (command) {
 	case SIOCSIFFLAGS:
+		/* Avoids race and LOR between mutex and sx lock. */
 		RUE_LOCK(sc);
-		if (ifp->if_flags & IFF_UP) {
-			if (ifp->if_drv_flags & IFF_DRV_RUNNING)
+		flags = ifp->if_flags;
+		drv_flags = ifp->if_drv_flags;
+		RUE_UNLOCK(sc);
+		/* device up and down is synchronous using sx(9) lock */
+		if (flags & IFF_UP) {
+			if (drv_flags & IFF_DRV_RUNNING)
 				SLEEPOUT_RUNTASK(&sc->sc_sleepout,
 				    &sc->sc_setpromisc);
 			else
-				rue_init_locked(sc);
+				rue_init(sc);
 		} else
 			rue_stop(sc);
-		RUE_UNLOCK(sc);
 		break;
 	case SIOCADDMULTI:
 	case SIOCDELMULTI:

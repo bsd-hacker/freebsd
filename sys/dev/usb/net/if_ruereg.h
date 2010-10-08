@@ -174,6 +174,7 @@ struct rue_softc {
 	device_t		sc_dev;
 	device_t		sc_miibus;
 	struct mtx		sc_mtx;
+	struct sx		sc_sx;
 	struct usb_device	*sc_udev; /* used by uether_do_request() */
 	struct usb_xfer		*sc_xfer[RUE_N_TRANSFER];
 	struct sleepout		sc_sleepout;
@@ -187,6 +188,8 @@ struct rue_softc {
 #define	RUE_FLAG_LINK		0x0001
 };
 
+#define	RUE_SXLOCK(_sc)		sx_xlock(&(_sc)->sc_sx)
+#define	RUE_SXUNLOCK(_sc)	sx_xunlock(&(_sc)->sc_sx)
 #define	RUE_LOCK(_sc)		mtx_lock(&(_sc)->sc_mtx)
 #define	RUE_UNLOCK(_sc)		mtx_unlock(&(_sc)->sc_mtx)
 #define	RUE_LOCK_ASSERT(_sc, t)	mtx_assert(&(_sc)->sc_mtx, t)

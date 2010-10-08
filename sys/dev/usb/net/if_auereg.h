@@ -208,6 +208,7 @@ struct aue_softc {
 	struct usb_device	*sc_udev; /* used by uether_do_request() */
 	struct usb_xfer		*sc_xfer[AUE_N_TRANSFER];
 	struct mtx		sc_mtx;
+	struct sx		sc_sx;
 	struct ifqueue		sc_rxq;
 	/* ethernet address from eeprom */
 	uint8_t			sc_eaddr[ETHER_ADDR_LEN];
@@ -225,6 +226,8 @@ struct aue_softc {
 	struct task		sc_setpromisc;
 };
 
+#define	AUE_SXLOCK(_sc)		sx_xlock(&(_sc)->sc_sx)
+#define	AUE_SXUNLOCK(_sc)	sx_xunlock(&(_sc)->sc_sx)
 #define	AUE_LOCK(_sc)		mtx_lock(&(_sc)->sc_mtx)
 #define	AUE_UNLOCK(_sc)		mtx_unlock(&(_sc)->sc_mtx)
 #define	AUE_LOCK_ASSERT(_sc, t)	mtx_assert(&(_sc)->sc_mtx, t)

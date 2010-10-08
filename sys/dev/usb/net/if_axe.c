@@ -205,6 +205,7 @@ static void	axe_start(struct ifnet *);
 static void	axe_start_locked(struct ifnet *);
 static void	axe_tick(struct axe_softc *);
 static void	axe_stop(struct axe_softc *);
+static void	axe_stop_locked(struct axe_softc *);
 static void	axe_setmulti_locked(struct axe_softc *);
 static void	axe_setpromisc(void *, int);
 static void	axe_setpromisc_locked(struct axe_softc *);
@@ -786,6 +787,7 @@ axe_attach(device_t dev)
 	sc->sc_udev = uaa->device;
 
 	mtx_init(&sc->sc_mtx, device_get_nameunit(dev), NULL, MTX_DEF);
+	sx_init(&sc->sc_sx, "axe sxlock");
 	sleepout_create(&sc->sc_sleepout, "axe sleepout");
 	sleepout_init_mtx(&sc->sc_sleepout, &sc->sc_watchdog, &sc->sc_mtx, 0);
 	TASK_INIT(&sc->sc_setmulti, 0, axe_setmulti, sc);
@@ -863,6 +865,7 @@ axe_detach(device_t dev)
 		if_free(ifp);
 	}
 	sleepout_free(&sc->sc_sleepout);
+	sx_destroy(&sc->sc_sx);
 	mtx_destroy(&sc->sc_mtx);
 
 	return (0);
@@ -1169,9 +1172,11 @@ axe_init(void *arg)
 {
 	struct axe_softc *sc = arg;
 
+	AXE_SXLOCK(sc);
 	AXE_LOCK(sc);
 	axe_init_locked(sc);
 	AXE_UNLOCK(sc);
+	AXE_SXUNLOCK(sc);
 }
 
 static void
@@ -1183,7 +1188,7 @@ axe_init_locked(struct axe_softc *sc)
 	AXE_LOCK_ASSERT(sc, MA_OWNED);
 
 	/* Cancel pending I/O */
-	axe_stop(sc);
+	axe_stop_locked(sc);
 
 	/* Set MAC address. */
 	if (sc->sc_flags & (AXE_FLAG_178 | AXE_FLAG_772))
@@ -1268,6 +1273,17 @@ axe_setpromisc_locked(struct axe_softc *sc)
 static void
 axe_stop(struct axe_softc *sc)
 {
+
+	AXE_SXLOCK(sc);
+	AXE_LOCK(sc);
+	axe_stop_locked(sc);
+	AXE_UNLOCK(sc);
+	AXE_SXUNLOCK(sc);
+}
+
+static void
+axe_stop_locked(struct axe_softc *sc)
+{
 	struct ifnet *ifp = sc->sc_ifp;
 
 	AXE_LOCK_ASSERT(sc, MA_OWNED);
@@ -1293,20 +1309,24 @@ axe_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 	struct axe_softc *sc = ifp->if_softc;
 	struct ifreq *ifr = (struct ifreq *)data;
 	struct mii_data *mii = GET_MII(sc);
-	int error = 0;
+	int error = 0, drv_flags, flags;
 
 	switch (command) {
 	case SIOCSIFFLAGS:
+		/* Avoids race and LOR between mutex and sx lock. */
 		AXE_LOCK(sc);
-		if (ifp->if_flags & IFF_UP) {
-			if (ifp->if_drv_flags & IFF_DRV_RUNNING)
+		flags = ifp->if_flags;
+		drv_flags = ifp->if_drv_flags;
+		AXE_UNLOCK(sc);
+		/* device up and down is synchronous using sx(9) lock */
+		if (flags & IFF_UP) {
+			if (drv_flags & IFF_DRV_RUNNING)
 				SLEEPOUT_RUNTASK(&sc->sc_sleepout,
 				    &sc->sc_setpromisc);
 			else
-				axe_init_locked(sc);
+				axe_init(sc);
 		} else
 			axe_stop(sc);
-		AXE_UNLOCK(sc);
 		break;
 	case SIOCADDMULTI:
 	case SIOCDELMULTI:

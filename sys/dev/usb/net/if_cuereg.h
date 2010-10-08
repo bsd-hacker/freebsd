@@ -121,6 +121,7 @@ enum {
 struct cue_softc {
 	struct ifnet		*sc_ifp;
 	struct mtx		sc_mtx;
+	struct sx		sc_sx;
 	device_t		sc_dev;
 	struct usb_device	*sc_udev; /* used by uether_do_request() */
 	struct usb_xfer		*sc_xfer[CUE_N_TRANSFER];
@@ -135,6 +136,8 @@ struct cue_softc {
 #define	CUE_FLAG_LINK		0x0001	/* got a link */
 };
 
+#define	CUE_SXLOCK(_sc)		sx_xlock(&(_sc)->sc_sx)
+#define	CUE_SXUNLOCK(_sc)	sx_xunlock(&(_sc)->sc_sx)
 #define	CUE_LOCK(_sc)		mtx_lock(&(_sc)->sc_mtx)
 #define	CUE_UNLOCK(_sc)		mtx_unlock(&(_sc)->sc_mtx)
 #define	CUE_LOCK_ASSERT(_sc, t)	mtx_assert(&(_sc)->sc_mtx, t)

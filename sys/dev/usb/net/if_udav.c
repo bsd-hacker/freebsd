@@ -111,6 +111,7 @@ static int	udav_ifmedia_upd(struct ifnet *);
 static void	udav_ifmedia_status(struct ifnet *, struct ifmediareq *);
 static void	udav_init(void *);
 static void	udav_init_locked(struct udav_softc *);
+static void	udav_stop_locked(struct udav_softc *);
 static int	udav_ioctl(struct ifnet *, u_long, caddr_t);
 static void	udav_start(struct ifnet *);
 static void	udav_start_locked(struct ifnet *);
@@ -248,6 +249,7 @@ udav_attach(device_t dev)
 	sc->sc_udev = uaa->device;
 	sc->sc_flags = USB_GET_DRIVER_INFO(uaa);
 	mtx_init(&sc->sc_mtx, device_get_nameunit(dev), NULL, MTX_DEF);
+	sx_init(&sc->sc_sx, "udav sxlock");
 	sleepout_create(&sc->sc_sleepout, "axe sleepout");
 	sleepout_init_mtx(&sc->sc_sleepout, &sc->sc_watchdog, &sc->sc_mtx, 0);
 	TASK_INIT(&sc->sc_setmulti, 0, udav_setmulti, sc);
@@ -320,6 +322,7 @@ udav_detach(device_t dev)
 		if_free(ifp);
 	}
 	sleepout_free(&sc->sc_sleepout);
+	sx_destroy(&sc->sc_sx);
 	mtx_destroy(&sc->sc_mtx);
 
 	return (0);
@@ -443,9 +446,11 @@ udav_init(void *arg)
 {
 	struct udav_softc *sc = arg;
 
+	UDAV_SXLOCK(sc);
 	UDAV_LOCK(sc);
 	udav_init_locked(sc);
 	UDAV_UNLOCK(sc);
+	UDAV_SXUNLOCK(sc);
 }
 
 static void
@@ -458,7 +463,7 @@ udav_init_locked(struct udav_softc *sc)
 	/*
 	 * Cancel pending I/O
 	 */
-	udav_stop(sc);
+	udav_stop_locked(sc);
 
 	/* set MAC address */
 	udav_csr_write(sc, UDAV_PAR, IF_LLADDR(ifp), ETHER_ADDR_LEN);
@@ -832,6 +837,17 @@ tr_setup:
 static void
 udav_stop(struct udav_softc *sc)
 {
+
+	UDAV_SXLOCK(sc);
+	UDAV_LOCK(sc);
+	udav_stop_locked(sc);
+	UDAV_UNLOCK(sc);
+	UDAV_SXUNLOCK(sc);
+}
+
+static void
+udav_stop_locked(struct udav_softc *sc)
+{
 	struct ifnet *ifp = sc->sc_ifp;
 
 	UDAV_LOCK_ASSERT(sc, MA_OWNED);
@@ -988,20 +1004,24 @@ udav_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 	struct udav_softc *sc = ifp->if_softc;
 	struct ifreq *ifr = (struct ifreq *)data;
 	struct mii_data *mii = GET_MII(sc);
-	int error = 0;
+	int error = 0, drv_flags, flags;
 
 	switch (command) {
 	case SIOCSIFFLAGS:
+		/* Avoids race and LOR between mutex and sx lock. */
 		UDAV_LOCK(sc);
-		if (ifp->if_flags & IFF_UP) {
-			if (ifp->if_drv_flags & IFF_DRV_RUNNING)
+		flags = ifp->if_flags;
+		drv_flags = ifp->if_drv_flags;
+		UDAV_UNLOCK(sc);
+		/* device up and down is synchronous using sx(9) lock */
+		if (flags & IFF_UP) {
+			if (drv_flags & IFF_DRV_RUNNING)
 				SLEEPOUT_RUNTASK(&sc->sc_sleepout,
 				    &sc->sc_setpromisc);
 			else
-				udav_init_locked(sc);
+				udav_init(sc);
 		} else
 			udav_stop(sc);
-		UDAV_UNLOCK(sc);
 		break;
 	case SIOCADDMULTI:
 	case SIOCDELMULTI:

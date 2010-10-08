@@ -225,6 +225,7 @@ static int	aue_ioctl(struct ifnet *, u_long, caddr_t);
 static void	aue_start(struct ifnet *);
 static void	aue_start_locked(struct ifnet *);
 static void	aue_init(void *);
+static void	aue_stop_locked(struct aue_softc *);
 static void	aue_setmulti(void *, int);
 static void	aue_setmulti_locked(struct aue_softc *);
 static void	aue_rxflush(struct aue_softc *);
@@ -707,6 +708,7 @@ aue_attach(device_t dev)
 	sc->sc_udev = uaa->device;
 
 	mtx_init(&sc->sc_mtx, device_get_nameunit(dev), NULL, MTX_DEF);
+	sx_init(&sc->sc_sx, "aue sxlock");
 	sleepout_create(&sc->sc_sleepout, "aue sleepout");
 	sleepout_init_mtx(&sc->sc_sleepout, &sc->sc_watchdog, &sc->sc_mtx, 0);
 	TASK_INIT(&sc->sc_setmulti, 0, aue_setmulti, sc);
@@ -780,6 +782,7 @@ aue_detach(device_t dev)
 		if_free(ifp);
 	}
 	sleepout_free(&sc->sc_sleepout);
+	sx_destroy(&sc->sc_sx);
 	mtx_destroy(&sc->sc_mtx);
 
 	return (0);
@@ -1012,9 +1015,11 @@ aue_init(void *arg)
 {
 	struct aue_softc *sc = arg;
 
+	AUE_SXLOCK(sc);
 	AUE_LOCK(sc);
 	aue_init_locked(sc);
 	AUE_UNLOCK(sc);
+	AUE_SXUNLOCK(sc);
 }
 
 static void
@@ -1121,6 +1126,17 @@ aue_ifmedia_sts(struct ifnet *ifp, struct ifmediareq *ifmr)
 static void
 aue_stop(struct aue_softc *sc)
 {
+
+	AUE_SXLOCK(sc);
+	AUE_LOCK(sc);
+	aue_stop_locked(sc);
+	AUE_UNLOCK(sc);
+	AUE_SXUNLOCK(sc);
+}
+
+static void
+aue_stop_locked(struct aue_softc *sc)
+{
 	struct ifnet *ifp = sc->sc_ifp;
 
 	AUE_LOCK_ASSERT(sc, MA_OWNED);
@@ -1146,20 +1162,24 @@ aue_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 	struct aue_softc *sc = ifp->if_softc;
 	struct ifreq *ifr = (struct ifreq *)data;
 	struct mii_data *mii = GET_MII(sc);
-	int error = 0;
+	int error = 0, drv_flags, flags;
 
 	switch (command) {
 	case SIOCSIFFLAGS:
+		/* Avoids race and LOR between mutex and sx lock. */
 		AUE_LOCK(sc);
-		if (ifp->if_flags & IFF_UP) {
-			if (ifp->if_drv_flags & IFF_DRV_RUNNING)
+		flags = ifp->if_flags;
+		drv_flags = ifp->if_drv_flags;
+		AUE_UNLOCK(sc);
+		/* device up and down is synchronous using sx(9) lock */
+		if (flags & IFF_UP) {
+			if (drv_flags & IFF_DRV_RUNNING)
 				SLEEPOUT_RUNTASK(&sc->sc_sleepout,
 				    &sc->sc_setpromisc);
 			else
-				aue_init_locked(sc);
+				aue_init(sc);
 		} else
 			aue_stop(sc);
-		AUE_UNLOCK(sc);
 		break;
 	case SIOCADDMULTI:
 	case SIOCDELMULTI:

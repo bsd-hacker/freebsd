@@ -130,6 +130,7 @@ static int	cue_rxbuf(struct cue_softc *, struct usb_page_cache *,
 		    unsigned int, unsigned int);
 static void	cue_rxflush(struct cue_softc *);
 static void	cue_stop(struct cue_softc *);
+static void	cue_stop_locked(struct cue_softc *);
 static void	cue_watchdog(void *);
 static void	cue_setpromisc(void *, int);
 static void	cue_setpromisc_locked(struct cue_softc *);
@@ -416,6 +417,7 @@ cue_attach(device_t dev)
 	sc->sc_dev = dev;
 	sc->sc_udev = uaa->device;
 	mtx_init(&sc->sc_mtx, device_get_nameunit(dev), NULL, MTX_DEF);
+	sx_init(&sc->sc_sx, "cue sxlock");
 	sleepout_create(&sc->sc_sleepout, "cue sleepout");
 	sleepout_init_mtx(&sc->sc_sleepout, &sc->sc_watchdog, &sc->sc_mtx, 0);
 	TASK_INIT(&sc->sc_setpromisc, 0, cue_setpromisc, sc);
@@ -478,6 +480,7 @@ cue_detach(device_t dev)
 		if_free(ifp);
 	}
 	sleepout_free(&sc->sc_sleepout);
+	sx_destroy(&sc->sc_sx);
 	mtx_destroy(&sc->sc_mtx);
 
 	return (0);
@@ -629,9 +632,11 @@ cue_init(void *arg)
 {
 	struct cue_softc *sc = arg;
 
+	CUE_SXLOCK(sc);
 	CUE_LOCK(sc);
 	cue_init_locked(sc);
 	CUE_UNLOCK(sc);
+	CUE_SXUNLOCK(sc);
 }
 
 static void
@@ -645,7 +650,7 @@ cue_init_locked(struct cue_softc *sc)
 	/*
 	 * Cancel pending I/O and free all RX/TX buffers.
 	 */
-	cue_stop(sc);
+	cue_stop_locked(sc);
 #if 0
 	cue_reset(sc);
 #endif
@@ -686,6 +691,17 @@ cue_init_locked(struct cue_softc *sc)
  */
 static void
 cue_stop(struct cue_softc *sc)
+{
+
+	CUE_SXLOCK(sc);
+	CUE_LOCK(sc);
+	cue_stop_locked(sc);
+	CUE_UNLOCK(sc);
+	CUE_SXUNLOCK(sc);
+}
+
+static void
+cue_stop_locked(struct cue_softc *sc)
 {
 	struct ifnet *ifp = sc->sc_ifp;
 
@@ -773,20 +789,24 @@ static int
 cue_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 {
 	struct cue_softc *sc = ifp->if_softc;
-	int error = 0;
+	int error = 0, drv_flags, flags;
 
 	switch (command) {
 	case SIOCSIFFLAGS:
+		/* Avoids race and LOR between mutex and sx lock. */
 		CUE_LOCK(sc);
-		if (ifp->if_flags & IFF_UP) {
-			if (ifp->if_drv_flags & IFF_DRV_RUNNING)
+		flags = ifp->if_flags;
+		drv_flags = ifp->if_drv_flags;
+		CUE_UNLOCK(sc);
+		/* device up and down is synchronous using sx(9) lock */
+		if (flags & IFF_UP) {
+			if (drv_flags & IFF_DRV_RUNNING)
 				SLEEPOUT_RUNTASK(&sc->sc_sleepout,
 				    &sc->sc_setpromisc);
 			else
-				cue_init_locked(sc);
+				cue_init(sc);
 		} else
 			cue_stop(sc);
-		CUE_UNLOCK(sc);
 		break;
 	case SIOCADDMULTI:
 	case SIOCDELMULTI:

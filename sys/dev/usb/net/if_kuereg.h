@@ -129,6 +129,7 @@ struct kue_softc {
 	struct usb_device	*sc_udev; /* used by uether_do_request() */
 	struct usb_xfer		*sc_xfer[KUE_N_TRANSFER];
 	struct mtx		sc_mtx;
+	struct sx		sc_sx;
 	struct sleepout		sc_sleepout;
 	struct task		sc_setmulti;
 	struct ifqueue		sc_rxq;
@@ -141,6 +142,8 @@ struct kue_softc {
 	uint16_t		sc_rxfilt;
 };
 
+#define	KUE_SXLOCK(_sc)		sx_xlock(&(_sc)->sc_sx)
+#define	KUE_SXUNLOCK(_sc)	sx_xunlock(&(_sc)->sc_sx)
 #define	KUE_LOCK(_sc)		mtx_lock(&(_sc)->sc_mtx)
 #define	KUE_UNLOCK(_sc)		mtx_unlock(&(_sc)->sc_mtx)
 #define	KUE_LOCK_ASSERT(_sc, t)	mtx_assert(&(_sc)->sc_mtx, t)

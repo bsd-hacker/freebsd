@@ -75,6 +75,7 @@ struct cdce_softc {
 	device_t		sc_dev;
 	struct usb_device	*sc_udev; /* used by uether_do_request() */
 	struct mtx		sc_mtx;
+	struct sx		sc_sx;
 	struct usb_xfer		*sc_xfer[CDCE_N_TRANSFER];
 	struct ifqueue		sc_rxq;
 	/* ethernet address from eeprom */
@@ -92,6 +93,8 @@ struct cdce_softc {
 	uint8_t			sc_ifaces_index[2];
 };
 
+#define	CDCE_SXLOCK(_sc)		sx_xlock(&(_sc)->sc_sx)
+#define	CDCE_SXUNLOCK(_sc)		sx_xunlock(&(_sc)->sc_sx)
 #define	CDCE_LOCK(_sc)			mtx_lock(&(_sc)->sc_mtx)
 #define	CDCE_UNLOCK(_sc)		mtx_unlock(&(_sc)->sc_mtx)
 #define	CDCE_LOCK_ASSERT(_sc, t)	mtx_assert(&(_sc)->sc_mtx, t)

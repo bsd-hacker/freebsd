@@ -166,6 +166,7 @@ static int	kue_load_fw(struct kue_softc *);
 static void	kue_reset(struct kue_softc *);
 static void	kue_init(void *);
 static void	kue_init_locked(struct kue_softc *);
+static void	kue_stop_locked(struct kue_softc *);
 static int	kue_ioctl(struct ifnet *, u_long, caddr_t);
 static void	kue_start(struct ifnet *);
 static void	kue_start_locked(struct ifnet *);
@@ -472,6 +473,7 @@ kue_attach(device_t dev)
 	sc->sc_dev = dev;
 	sc->sc_udev = uaa->device;
 	mtx_init(&sc->sc_mtx, device_get_nameunit(dev), NULL, MTX_DEF);
+	sx_init(&sc->sc_sx, "kue sxlock");
 	sleepout_create(&sc->sc_sleepout, "kue sleepout");
 	TASK_INIT(&sc->sc_setmulti, 0, kue_setmulti, sc);
 
@@ -537,6 +539,7 @@ kue_detach(device_t dev)
 		if_free(ifp);
 	}
 	sleepout_free(&sc->sc_sleepout);
+	sx_destroy(&sc->sc_sx);
 	mtx_destroy(&sc->sc_mtx);
 	free(sc->sc_mcfilters, M_USBDEV);
 
@@ -750,9 +753,11 @@ kue_init(void *arg)
 {
 	struct kue_softc *sc = arg;
 
+	KUE_SXLOCK(sc);
 	KUE_LOCK(sc);
 	kue_init_locked(sc);
 	KUE_UNLOCK(sc);
+	KUE_SXUNLOCK(sc);
 }
 
 static void
@@ -788,6 +793,17 @@ kue_init_locked(struct kue_softc *sc)
 static void
 kue_stop(struct kue_softc *sc)
 {
+
+	KUE_SXLOCK(sc);
+	KUE_LOCK(sc);
+	kue_stop_locked(sc);
+	KUE_UNLOCK(sc);
+	KUE_SXUNLOCK(sc);
+}
+
+static void
+kue_stop_locked(struct kue_softc *sc)
+{
 	struct ifnet *ifp = sc->sc_ifp;
 
 	KUE_LOCK_ASSERT(sc, MA_OWNED);
@@ -805,17 +821,21 @@ static int
 kue_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 {
 	struct kue_softc *sc = ifp->if_softc;
-	int error = 0;
+	int error = 0, drv_flags, flags;
 
 	switch (command) {
 	case SIOCSIFFLAGS:
+		/* Avoids race and LOR between mutex and sx lock. */
 		KUE_LOCK(sc);
-		if (ifp->if_flags & IFF_UP) {
-			if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0)
-				kue_init_locked(sc);
+		flags = ifp->if_flags;
+		drv_flags = ifp->if_drv_flags;
+		KUE_UNLOCK(sc);
+		/* device up and down is synchronous using sx(9) lock */
+		if (flags & IFF_UP) {
+			if ((drv_flags & IFF_DRV_RUNNING) == 0)
+				kue_init(sc);
 		} else
 			kue_stop(sc);
-		KUE_UNLOCK(sc);
 		break;
 	case SIOCADDMULTI:
 	case SIOCDELMULTI:
