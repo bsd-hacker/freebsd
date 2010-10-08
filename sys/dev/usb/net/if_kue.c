@@ -527,7 +527,7 @@ kue_detach(device_t dev)
 	struct kue_softc *sc = device_get_softc(dev);
 	struct ifnet *ifp = sc->sc_ifp;
 
-	taskqueue_drain(sc->sc_sleepout.s_taskqueue, &sc->sc_setmulti);
+	SLEEPOUT_DRAIN_TASK(&sc->sc_sleepout, &sc->sc_setmulti);
 	usbd_transfer_unsetup(sc->sc_xfer, KUE_N_TRANSFER);
 	if (ifp != NULL) {
 		KUE_LOCK(sc);

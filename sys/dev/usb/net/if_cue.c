@@ -131,6 +131,8 @@ static int	cue_rxbuf(struct cue_softc *, struct usb_page_cache *,
 static void	cue_rxflush(struct cue_softc *);
 static void	cue_stop(struct cue_softc *);
 static void	cue_watchdog(void *);
+static void	cue_setpromisc(void *, int);
+static void	cue_setpromisc_locked(struct cue_softc *);
 
 #ifdef USB_DEBUG
 static int cue_debug = 0;
@@ -286,7 +288,17 @@ cue_mchash(const uint8_t *addr)
 }
 
 static void
-cue_setpromisc(struct cue_softc *sc)
+cue_setpromisc(void *arg, int npending)
+{
+	struct cue_softc *sc = arg;
+
+	CUE_LOCK(sc);
+	cue_setpromisc_locked(sc);
+	CUE_UNLOCK(sc);
+}
+
+static void
+cue_setpromisc_locked(struct cue_softc *sc)
 {
 	struct ifnet *ifp = sc->sc_ifp;
 
@@ -406,6 +418,7 @@ cue_attach(device_t dev)
 	mtx_init(&sc->sc_mtx, device_get_nameunit(dev), NULL, MTX_DEF);
 	sleepout_create(&sc->sc_sleepout, "cue sleepout");
 	sleepout_init_mtx(&sc->sc_sleepout, &sc->sc_watchdog, &sc->sc_mtx, 0);
+	TASK_INIT(&sc->sc_setpromisc, 0, cue_setpromisc, sc);
 	TASK_INIT(&sc->sc_setmulti, 0, cue_setmulti, sc);
 
 	iface_index = CUE_IFACE_IDX;
@@ -454,7 +467,8 @@ cue_detach(device_t dev)
 	struct ifnet *ifp = sc->sc_ifp;
 
 	sleepout_drain(&sc->sc_watchdog);
-	taskqueue_drain(sc->sc_sleepout.s_taskqueue, &sc->sc_setmulti);
+	SLEEPOUT_DRAIN_TASK(&sc->sc_sleepout, &sc->sc_setpromisc);
+	SLEEPOUT_DRAIN_TASK(&sc->sc_sleepout, &sc->sc_setmulti);
 	usbd_transfer_unsetup(sc->sc_xfer, CUE_N_TRANSFER);
 	if (ifp != NULL) {
 		CUE_LOCK(sc);
@@ -643,7 +657,7 @@ cue_init_locked(struct cue_softc *sc)
 	cue_csr_write_1(sc, CUE_ETHCTL, CUE_ETHCTL_RX_ON | CUE_ETHCTL_MCAST_ON);
 
 	/* Load the multicast filter */
-	cue_setpromisc(sc);
+	cue_setpromisc_locked(sc);
 
 	/*
 	 * Set the number of RX and TX buffers that we want
@@ -766,7 +780,8 @@ cue_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 		CUE_LOCK(sc);
 		if (ifp->if_flags & IFF_UP) {
 			if (ifp->if_drv_flags & IFF_DRV_RUNNING)
-				cue_setpromisc(sc);
+				SLEEPOUT_RUN_TASK(&sc->sc_sleepout,
+				    &sc->sc_setpromisc);
 			else
 				cue_init_locked(sc);
 		} else

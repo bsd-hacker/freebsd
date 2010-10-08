@@ -206,6 +206,8 @@ static void	axe_start_locked(struct ifnet *);
 static void	axe_tick(struct axe_softc *);
 static void	axe_stop(struct axe_softc *);
 static void	axe_setmulti_locked(struct axe_softc *);
+static void	axe_setpromisc(void *, int);
+static void	axe_setpromisc_locked(struct axe_softc *);
 
 static const struct usb_config axe_config[AXE_N_TRANSFER] = {
 	[AXE_BULK_DT_WR] = {
@@ -787,6 +789,7 @@ axe_attach(device_t dev)
 	sleepout_create(&sc->sc_sleepout, "axe sleepout");
 	sleepout_init_mtx(&sc->sc_sleepout, &sc->sc_watchdog, &sc->sc_mtx, 0);
 	TASK_INIT(&sc->sc_setmulti, 0, axe_setmulti, sc);
+	TASK_INIT(&sc->sc_setpromisc, 0, axe_setpromisc, sc);
 
 	iface_index = AXE_IFACE_IDX;
 	error = usbd_transfer_setup(uaa->device, &iface_index, sc->sc_xfer,
@@ -846,7 +849,8 @@ axe_detach(device_t dev)
 	struct ifnet *ifp = sc->sc_ifp;
 
 	sleepout_drain(&sc->sc_watchdog);
-	taskqueue_drain(sc->sc_sleepout.s_taskqueue, &sc->sc_setmulti);
+	SLEEPOUT_DRAIN_TASK(&sc->sc_sleepout, &sc->sc_setpromisc);
+	SLEEPOUT_DRAIN_TASK(&sc->sc_sleepout, &sc->sc_setmulti);
 	usbd_transfer_unsetup(sc->sc_xfer, AXE_N_TRANSFER);
 
 	if (sc->sc_miibus != NULL)
@@ -1232,7 +1236,17 @@ axe_init_locked(struct axe_softc *sc)
 }
 
 static void
-axe_setpromisc(struct axe_softc *sc)
+axe_setpromisc(void *arg, int npending)
+{
+	struct axe_softc *sc = arg;
+
+	AXE_LOCK(sc);
+	axe_setpromisc_locked(sc);
+	AXE_UNLOCK(sc);
+}
+
+static void
+axe_setpromisc_locked(struct axe_softc *sc)
 {
 	struct ifnet *ifp = sc->sc_ifp;
 	uint16_t rxmode;
@@ -1286,7 +1300,8 @@ axe_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 		AXE_LOCK(sc);
 		if (ifp->if_flags & IFF_UP) {
 			if (ifp->if_drv_flags & IFF_DRV_RUNNING)
-				axe_setpromisc(sc);
+				SLEEPOUT_RUN_TASK(&sc->sc_sleepout,
+				    &sc->sc_setpromisc);
 			else
 				axe_init_locked(sc);
 		} else

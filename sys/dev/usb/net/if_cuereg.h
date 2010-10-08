@@ -126,6 +126,7 @@ struct cue_softc {
 	struct usb_xfer		*sc_xfer[CUE_N_TRANSFER];
 	struct sleepout		sc_sleepout;
 	struct sleepout_task	sc_watchdog;
+	struct task		sc_setpromisc;
 	struct task		sc_setmulti;
 	struct ifqueue		sc_rxq;
 	/* ethernet address from eeprom */

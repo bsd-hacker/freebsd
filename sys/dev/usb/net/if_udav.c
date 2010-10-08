@@ -116,7 +116,8 @@ static void	udav_start(struct ifnet *);
 static void	udav_start_locked(struct ifnet *);
 static void	udav_setmulti(void *, int);
 static void	udav_stop(struct udav_softc *);
-static void	udav_setpromisc(struct udav_softc *);
+static void	udav_setpromisc(void *, int);
+static void	udav_setpromisc_locked(struct udav_softc *);
 static void	udav_watchdog(void *);
 
 static miibus_readreg_t udav_miibus_readreg;
@@ -250,6 +251,7 @@ udav_attach(device_t dev)
 	sleepout_create(&sc->sc_sleepout, "axe sleepout");
 	sleepout_init_mtx(&sc->sc_sleepout, &sc->sc_watchdog, &sc->sc_mtx, 0);
 	TASK_INIT(&sc->sc_setmulti, 0, udav_setmulti, sc);
+	TASK_INIT(&sc->sc_setpromisc, 0, udav_setpromisc, sc);
 
 	iface_index = UDAV_IFACE_INDEX;
 	error = usbd_transfer_setup(uaa->device, &iface_index,
@@ -304,7 +306,8 @@ udav_detach(device_t dev)
 	struct ifnet *ifp = sc->sc_ifp;
 
 	sleepout_drain(&sc->sc_watchdog);
-	taskqueue_drain(sc->sc_sleepout.s_taskqueue, &sc->sc_setmulti);
+	SLEEPOUT_DRAIN_TASK(&sc->sc_sleepout, &sc->sc_setpromisc);
+	SLEEPOUT_DRAIN_TASK(&sc->sc_sleepout, &sc->sc_setmulti);
 	usbd_transfer_unsetup(sc->sc_xfer, UDAV_N_TRANSFER);
 
 	if (sc->sc_miibus != NULL)
@@ -469,7 +472,7 @@ udav_init_locked(struct udav_softc *sc)
 	UDAV_SETBIT(sc, UDAV_RCR, UDAV_RCR_DIS_LONG | UDAV_RCR_DIS_CRC);
 
 	/* load multicast filter and update promiscious mode bit */
-	udav_setpromisc(sc);
+	udav_setpromisc_locked(sc);
 
 	/* enable RX */
 	UDAV_SETBIT(sc, UDAV_RCR, UDAV_RCR_RXEN);
@@ -557,7 +560,17 @@ udav_setmulti(void *arg, int npending)
 }
 
 static void
-udav_setpromisc(struct udav_softc *sc)
+udav_setpromisc(void *arg, int npending)
+{
+	struct udav_softc *sc = arg;
+
+	UDAV_LOCK(sc);
+	udav_setpromisc_locked(sc);
+	UDAV_UNLOCK(sc);
+}
+
+static void
+udav_setpromisc_locked(struct udav_softc *sc)
 {
 	struct ifnet *ifp = sc->sc_ifp;
 	uint8_t rxmode;
@@ -982,7 +995,8 @@ udav_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 		UDAV_LOCK(sc);
 		if (ifp->if_flags & IFF_UP) {
 			if (ifp->if_drv_flags & IFF_DRV_RUNNING)
-				udav_setpromisc(sc);
+				SLEEPOUT_RUN_TASK(&sc->sc_sleepout,
+				    &sc->sc_setpromisc);
 			else
 				udav_init_locked(sc);
 		} else

@@ -160,6 +160,8 @@ static void	rue_start(struct ifnet *);
 static void	rue_start_locked(struct ifnet *);
 static void	rue_stop(struct rue_softc *);
 static void	rue_watchdog(void *);
+static void	rue_setpromisc(void *, int);
+static void	rue_setpromisc_locked(struct rue_softc *);
 
 static const struct usb_config rue_config[RUE_N_TRANSFER] = {
 	[RUE_BULK_DT_WR] = {
@@ -451,7 +453,17 @@ rue_miibus_statchg(device_t dev)
 }
 
 static void
-rue_setpromisc(struct rue_softc *sc)
+rue_setpromisc(void *arg, int npending)
+{
+	struct rue_softc *sc = arg;
+
+	RUE_LOCK(sc);
+	rue_setpromisc_locked(sc);
+	RUE_UNLOCK(sc);
+}
+
+static void
+rue_setpromisc_locked(struct rue_softc *sc)
 {
 	struct ifnet *ifp = sc->sc_ifp;
 
@@ -588,6 +600,7 @@ rue_attach(device_t dev)
 	mtx_init(&sc->sc_mtx, device_get_nameunit(dev), NULL, MTX_DEF);
 	sleepout_create(&sc->sc_sleepout, "rue sleepout");
 	sleepout_init_mtx(&sc->sc_sleepout, &sc->sc_watchdog, &sc->sc_mtx, 0);
+	TASK_INIT(&sc->sc_setpromisc, 0, rue_setpromisc, sc);
 	TASK_INIT(&sc->sc_setmulti, 0, rue_setmulti, sc);
 
 	iface_index = RUE_IFACE_IDX;
@@ -644,7 +657,8 @@ rue_detach(device_t dev)
 	struct ifnet *ifp = sc->sc_ifp;
 
 	sleepout_drain(&sc->sc_watchdog);
-	taskqueue_drain(sc->sc_sleepout.s_taskqueue, &sc->sc_setmulti);
+	SLEEPOUT_DRAIN_TASK(&sc->sc_sleepout, &sc->sc_setpromisc);
+	SLEEPOUT_DRAIN_TASK(&sc->sc_sleepout, &sc->sc_setmulti);
 	usbd_transfer_unsetup(sc->sc_xfer, RUE_N_TRANSFER);
 	if (sc->sc_miibus != NULL)
 		device_delete_child(sc->sc_dev, sc->sc_miibus);
@@ -957,7 +971,7 @@ rue_init_locked(struct rue_softc *sc)
 	rue_csr_write_2(sc, RUE_RCR, RUE_RCR_CONFIG|RUE_RCR_AB);
 
 	/* Load the multicast filter */
-	rue_setpromisc(sc);
+	rue_setpromisc_locked(sc);
 	/* Load the multicast filter. */
 	rue_setmulti(sc, 0);
 
@@ -1044,7 +1058,8 @@ rue_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 		RUE_LOCK(sc);
 		if (ifp->if_flags & IFF_UP) {
 			if (ifp->if_drv_flags & IFF_DRV_RUNNING)
-				rue_setpromisc(sc);
+				SLEEPOUT_RUN_TASK(&sc->sc_sleepout,
+				    &sc->sc_setpromisc);
 			else
 				rue_init_locked(sc);
 		} else

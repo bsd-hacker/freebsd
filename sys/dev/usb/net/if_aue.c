@@ -230,7 +230,8 @@ static void	aue_setmulti_locked(struct aue_softc *);
 static void	aue_rxflush(struct aue_softc *);
 static int	aue_rxbuf(struct aue_softc *, struct usb_page_cache *, 
 		    unsigned int, unsigned int);
-static void	aue_setpromisc(struct aue_softc *);
+static void	aue_setpromisc(void *, int);
+static void	aue_setpromisc_locked(struct aue_softc *);
 static void	aue_init_locked(struct aue_softc *);
 static void	aue_watchdog(void *);
 
@@ -709,6 +710,7 @@ aue_attach(device_t dev)
 	sleepout_create(&sc->sc_sleepout, "aue sleepout");
 	sleepout_init_mtx(&sc->sc_sleepout, &sc->sc_watchdog, &sc->sc_mtx, 0);
 	TASK_INIT(&sc->sc_setmulti, 0, aue_setmulti, sc);
+	TASK_INIT(&sc->sc_setpromisc, 0, aue_setpromisc, sc);
 
 	iface_index = AUE_IFACE_IDX;
 	error = usbd_transfer_setup(uaa->device, &iface_index,
@@ -764,7 +766,8 @@ aue_detach(device_t dev)
 	struct ifnet *ifp = sc->sc_ifp;
 
 	sleepout_drain(&sc->sc_watchdog);
-	taskqueue_drain(sc->sc_sleepout.s_taskqueue, &sc->sc_setmulti);
+	SLEEPOUT_DRAIN_TASK(&sc->sc_sleepout, &sc->sc_setpromisc);
+	SLEEPOUT_DRAIN_TASK(&sc->sc_sleepout, &sc->sc_setmulti);
 	usbd_transfer_unsetup(sc->sc_xfer, AUE_N_TRANSFER);
 
 	if (sc->sc_miibus != NULL)
@@ -1032,7 +1035,7 @@ aue_init_locked(struct aue_softc *sc)
 		aue_csr_write_1(sc, AUE_PAR0 + i, IF_LLADDR(ifp)[i]);
 
 	/* update promiscuous setting */
-	aue_setpromisc(sc);
+	aue_setpromisc_locked(sc);
 
 	/* Load the multicast filter. */
 	aue_setmulti_locked(sc);
@@ -1050,7 +1053,17 @@ aue_init_locked(struct aue_softc *sc)
 }
 
 static void
-aue_setpromisc(struct aue_softc *sc)
+aue_setpromisc(void *arg, int npending)
+{
+	struct aue_softc *sc = arg;
+
+	AUE_LOCK(sc);
+	aue_setpromisc_locked(sc);
+	AUE_UNLOCK(sc);
+}
+
+static void
+aue_setpromisc_locked(struct aue_softc *sc)
 {
 	struct ifnet *ifp = sc->sc_ifp;
 
@@ -1140,7 +1153,8 @@ aue_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 		AUE_LOCK(sc);
 		if (ifp->if_flags & IFF_UP) {
 			if (ifp->if_drv_flags & IFF_DRV_RUNNING)
-				aue_setpromisc(sc);
+				SLEEPOUT_RUN_TASK(&sc->sc_sleepout,
+				    &sc->sc_setpromisc);
 			else
 				aue_init_locked(sc);
 		} else

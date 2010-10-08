@@ -210,6 +210,7 @@ struct axe_softc {
 	struct sleepout		sc_sleepout;
 	struct sleepout_task	sc_watchdog;
 	struct task		sc_setmulti;
+	struct task		sc_setpromisc;
 
 	int			sc_phyno;
 	int			sc_flags;

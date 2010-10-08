@@ -161,6 +161,7 @@ struct udav_softc {
 	struct sleepout		sc_sleepout;
 	struct sleepout_task	sc_watchdog;
 	struct task		sc_setmulti;
+	struct task		sc_setpromisc;
 	struct ifqueue		sc_rxq;
 	/* ethernet address from eeprom */
 	uint8_t			sc_eaddr[ETHER_ADDR_LEN];
