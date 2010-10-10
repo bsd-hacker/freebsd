@@ -72,6 +72,8 @@ static void	usb_bus_mem_free_all(struct usb_bus *);
 
 /* static variables */
 
+static TAILQ_HEAD(, usb_bus)	usb_bus_head;
+
 #ifdef USB_DEBUG
 static int usb_ctrl_debug = 0;
 
@@ -540,6 +542,9 @@ usb_bus_struct_init(struct usb_bus *bus, device_t dev,
 	/* get all DMA memory */
 	if (usb_bus_mem_alloc_all(bus, USB_GET_DMA_TAG(dev)))
 		return (ENOMEM);
+
+	TAILQ_INSERT_TAIL(&usb_bus_head, bus, bus_link);
+
 	return (0);
 }
 
@@ -547,6 +552,31 @@ void
 usb_bus_struct_fini(struct usb_bus *bus)
 {
 
+	TAILQ_REMOVE(&usb_bus_head, bus, bus_link);
+
 	usb_bus_mem_free_all(bus);
 	mtx_destroy(&bus->bus_mtx);
 }
+
+struct usb_bus *
+usb_bus_find(const char *name)
+{
+	struct usb_bus *bus;
+	const char *nameunit;
+
+	TAILQ_FOREACH(bus, &usb_bus_head, bus_link) {
+		nameunit = device_get_nameunit(bus->bdev);
+		if (!strncmp(nameunit, name, strlen(nameunit)))
+			return (bus);
+	}
+	return (NULL);
+}
+
+static void
+usb_bus_first(void *arg)
+{
+
+	TAILQ_INIT(&usb_bus_head);
+}
+
+SYSINIT(usb_bus_first, SI_SUB_KLD, SI_ORDER_FIRST, usb_bus_first, NULL);
