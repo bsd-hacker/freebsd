@@ -103,8 +103,6 @@ struct usb_bus {
 		struct usb_temp_setup temp_setup[1];
 		uint8_t	data[255];
 	}	scratch[1];
-
-	TAILQ_ENTRY(usb_bus)	bus_link;
 };
 
 #endif					/* _USB_BUS_H_ */

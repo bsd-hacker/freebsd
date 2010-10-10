@@ -199,7 +199,6 @@ int		usb_bus_struct_init(struct usb_bus *bus, device_t dev,
 		    void (*busmem_func)(struct usb_bus *,
 			usb_bus_mem_callback_t *));
 void		usb_bus_struct_fini(struct usb_bus *bus);
-struct usb_bus *usb_bus_find(const char *name);
 void		usb_bus_mem_flush_all(struct usb_bus *bus);
 uint16_t	usb_isoc_time_expand(struct usb_bus *bus,
 		    uint16_t isoc_time_curr);
