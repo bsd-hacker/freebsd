@@ -74,18 +74,18 @@ MALLOC_DEFINE(M_USBPF, "USBPktFilter", "USB Packet Filter");
 } while (0)
 
 #ifndef __i386__
-#define USBPF_ALIGN
+#define	USBPF_ALIGN
 #endif
 
 #ifndef USBPF_ALIGN
-#define USBPF_EXTRACT_SHORT(p)	((u_int16_t)ntohs(*(u_int16_t *)p))
-#define USBPF_EXTRACT_LONG(p)	(ntohl(*(u_int32_t *)p))
+#define	USBPF_EXTRACT_SHORT(p)	((u_int16_t)ntohs(*(u_int16_t *)p))
+#define	USBPF_EXTRACT_LONG(p)	(ntohl(*(u_int32_t *)p))
 #else
-#define USBPF_EXTRACT_SHORT(p)						\
+#define	USBPF_EXTRACT_SHORT(p)						\
 	((u_int16_t)							\
 	    ((u_int16_t)*((u_char *)p+0)<<8|				\
 		(u_int16_t)*((u_char *)p+1)<<0))
-#define USBPF_EXTRACT_LONG(p)						\
+#define	USBPF_EXTRACT_LONG(p)						\
 	((u_int32_t)*((u_char *)p+0)<<24|				\
 	    (u_int32_t)*((u_char *)p+1)<<16|				\
 	    (u_int32_t)*((u_char *)p+2)<<8|				\
@@ -97,7 +97,7 @@ MALLOC_DEFINE(M_USBPF, "USBPktFilter", "USB Packet Filter");
  */
 
 /* instruction classes */
-#define USBPF_CLASS(code) ((code) & 0x07)
+#define	USBPF_CLASS(code) ((code) & 0x07)
 #define		USBPF_LD	0x00
 #define		USBPF_LDX	0x01
 #define		USBPF_ST	0x02
@@ -108,11 +108,11 @@ MALLOC_DEFINE(M_USBPF, "USBPktFilter", "USB Packet Filter");
 #define		USBPF_MISC	0x07
 
 /* ld/ldx fields */
-#define USBPF_SIZE(code)	((code) & 0x18)
+#define	USBPF_SIZE(code)	((code) & 0x18)
 #define		USBPF_W		0x00
 #define		USBPF_H		0x08
 #define		USBPF_B		0x10
-#define USBPF_MODE(code)	((code) & 0xe0)
+#define	USBPF_MODE(code)	((code) & 0xe0)
 #define		USBPF_IMM 	0x00
 #define		USBPF_ABS	0x20
 #define		USBPF_IND	0x40
@@ -121,7 +121,7 @@ MALLOC_DEFINE(M_USBPF, "USBPktFilter", "USB Packet Filter");
 #define		USBPF_MSH	0xa0
 
 /* alu/jmp fields */
-#define USBPF_OP(code)	((code) & 0xf0)
+#define	USBPF_OP(code)	((code) & 0xf0)
 #define		USBPF_ADD	0x00
 #define		USBPF_SUB	0x10
 #define		USBPF_MUL	0x20
@@ -136,28 +136,28 @@ MALLOC_DEFINE(M_USBPF, "USBPktFilter", "USB Packet Filter");
 #define		USBPF_JGT	0x20
 #define		USBPF_JGE	0x30
 #define		USBPF_JSET	0x40
-#define USBPF_SRC(code)	((code) & 0x08)
+#define	USBPF_SRC(code)	((code) & 0x08)
 #define		USBPF_K		0x00
 #define		USBPF_X		0x08
 
 /* ret - USBPF_K and USBPF_X also apply */
-#define USBPF_RVAL(code)	((code) & 0x18)
+#define	USBPF_RVAL(code)	((code) & 0x18)
 #define		USBPF_A		0x10
 
 /* misc */
-#define USBPF_MISCOP(code) ((code) & 0xf8)
+#define	USBPF_MISCOP(code) ((code) & 0xf8)
 #define		USBPF_TAX	0x00
 #define		USBPF_TXA	0x80
 
 /*
  * Number of scratch memory words (for USBPF_LD|USBPF_MEM and USBPF_ST).
  */
-#define USBPF_MEMWORDS		 16
+#define	USBPF_MEMWORDS		 16
 
 /* Values for ud_state */
-#define USBPF_IDLE		0	/* no select in progress */
-#define USBPF_WAITING		1	/* waiting for read timeout in select */
-#define USBPF_TIMED_OUT		2	/* read timeout has expired in select */
+#define	USBPF_IDLE		0	/* no select in progress */
+#define	USBPF_WAITING		1	/* waiting for read timeout in select */
+#define	USBPF_TIMED_OUT		2	/* read timeout has expired in select */
 
 #define	PRIUSB			26	/* interruptible */
 
@@ -199,10 +199,10 @@ static struct mtx	usbpf_mtx;		/* global lock */
 static int usbpf_uifd_cnt;
 
 static int usbpf_bufsize = 4096;
-#define USBPF_MINBUFSIZE 32
-#define USBPF_MAXBUFSIZE 0x80000
+#define	USBPF_MINBUFSIZE 32
+#define	USBPF_MAXBUFSIZE 0x80000
 static int usbpf_maxbufsize = USBPF_MAXBUFSIZE;
-#define USBPF_MAXINSNS 512
+#define	USBPF_MAXINSNS 512
 static int usbpf_maxinsns = USBPF_MAXINSNS;
 
 static void
@@ -379,7 +379,7 @@ usbpf_validate(const struct usbpf_insn *f, int len)
 }
 
 #ifdef _KERNEL
-#define MINDEX(m, k) \
+#define	MINDEX(m, k) \
 { \
 	register int len = m->m_len; \
  \
@@ -1508,8 +1508,8 @@ usbpf_buf_reclaimed(struct usbpf_d *ud)
  * Alignment macros.  USBPF_WORDALIGN rounds up to the next
  * even multiple of USBPF_ALIGNMENT.
  */
-#define USBPF_ALIGNMENT sizeof(long)
-#define USBPF_WORDALIGN(x) (((x)+(USBPF_ALIGNMENT-1))&~(USBPF_ALIGNMENT-1))
+#define	USBPF_ALIGNMENT sizeof(long)
+#define	USBPF_WORDALIGN(x) (((x)+(USBPF_ALIGNMENT-1))&~(USBPF_ALIGNMENT-1))
 
 #define	SIZEOF_USBPF_HDR(type)	\
     (offsetof(type, uh_hdrlen) + sizeof(((type *)0)->uh_hdrlen))

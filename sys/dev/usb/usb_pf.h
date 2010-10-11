@@ -77,14 +77,14 @@ struct usbpf_d {
 	caddr_t		ud_sbuf;	/* store slot */
 	caddr_t		ud_hbuf;	/* hold slot */
 	caddr_t		ud_fbuf;	/* free slot */
-	int 		ud_slen;	/* current length of store buffer */
-	int 		ud_hlen;	/* current length of hold buffer */
+	int		ud_slen;	/* current length of store buffer */
+	int		ud_hlen;	/* current length of hold buffer */
 
 	int		ud_bufsize;	/* absolute length of buffers */
 
 	struct usbpf_if *ud_bif;	/* interface descriptor */
 	u_long		ud_rtout;	/* Read timeout in 'ticks' */
-	struct usbpf_insn *ud_rfilter; 	/* read filter code */
+	struct usbpf_insn *ud_rfilter;	/* read filter code */
 	struct usbpf_insn *ud_wfilter;	/* write filter code */
 	void		*ud_bfilter;	/* binary filter code */
 	u_int64_t	ud_rcount;	/* number of packets received */
@@ -115,9 +115,9 @@ struct usbpf_d {
 	u_char		ud_compat32;	/* 32-bit stream on LP64 system */
 };
 
-#define USBPFD_LOCK(ud)		mtx_lock(&(ud)->ud_mtx)
-#define USBPFD_UNLOCK(ud)	mtx_unlock(&(ud)->ud_mtx)
-#define USBPFD_LOCK_ASSERT(ud)	mtx_assert(&(ud)->ud_mtx, MA_OWNED)
+#define	USBPFD_LOCK(ud)		mtx_lock(&(ud)->ud_mtx)
+#define	USBPFD_UNLOCK(ud)	mtx_unlock(&(ud)->ud_mtx)
+#define	USBPFD_LOCK_ASSERT(ud)	mtx_assert(&(ud)->ud_mtx, MA_OWNED)
 
 /*
  * Descriptor associated with each attached hardware interface.
@@ -130,8 +130,8 @@ struct usbpf_if {
 	struct mtx	uif_mtx;	/* mutex for interface */
 };
 
-#define USBPFIF_LOCK(uif)	mtx_lock(&(uif)->uif_mtx)
-#define USBPFIF_UNLOCK(uif)	mtx_unlock(&(uif)->uif_mtx)
+#define	USBPFIF_LOCK(uif)	mtx_lock(&(uif)->uif_mtx)
+#define	USBPFIF_UNLOCK(uif)	mtx_unlock(&(uif)->uif_mtx)
 
 /*
  * Structure prepended to each packet.
