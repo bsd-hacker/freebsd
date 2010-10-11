@@ -60,6 +60,7 @@
 
 #include <dev/usb/usb_controller.h>
 #include <dev/usb/usb_bus.h>
+#include <dev/usb/usb_pf.h>
 
 /* function prototypes  */
 
@@ -540,6 +541,9 @@ usb_bus_struct_init(struct usb_bus *bus, device_t dev,
 	/* get all DMA memory */
 	if (usb_bus_mem_alloc_all(bus, USB_GET_DMA_TAG(dev)))
 		return (ENOMEM);
+
+	usbpf_attach(bus, &bus->uif);
+
 	return (0);
 }
 
@@ -547,6 +551,35 @@ void
 usb_bus_struct_fini(struct usb_bus *bus)
 {
 
+	usbpf_detach(bus);
+
 	usb_bus_mem_free_all(bus);
 	mtx_destroy(&bus->bus_mtx);
+}
+
+struct usb_bus *
+usb_bus_find(const char *name)
+{
+	struct usb_bus *ubus;
+	devclass_t dc;
+	device_t *devlist;
+	int devcount, error, i;
+	const char *nameunit;
+
+	dc = devclass_find("usbus");
+	if (dc == NULL)
+		return (NULL);
+	error = devclass_get_devices(dc, &devlist, &devcount);
+	if (error != 0)
+		return (NULL);
+	for (i = 0; i < devcount; i++) {
+		nameunit = device_get_nameunit(devlist[i]);
+		if (!strncmp(name, nameunit, strlen(nameunit))) {
+			ubus = device_get_ivars(devlist[i]);
+			free(devlist, M_TEMP);
+			return (ubus);
+		}
+	}
+	free(devlist, M_TEMP);
+	return (NULL);
 }
