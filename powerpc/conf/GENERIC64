@@ -26,8 +26,9 @@ machine		powerpc	powerpc64
 makeoptions	DEBUG=-g		#Build kernel with gdb(1) debug symbols
 
 # Platform support
-options 	POWERMAC		#NewWorld Apple PowerMacs
 options		MAMBO			#IBM Mambo Full System Simulator
+options 	POWERMAC		#NewWorld Apple PowerMacs
+options		PS3			#Sony PlayStation 3
 
 options 	SCHED_ULE		#ULE scheduler
 options 	INET			#InterNETworking
@@ -126,6 +127,7 @@ device		bge		# Broadcom BCM570xx Gigabit Ethernet
 device		gem		# Sun GEM/Sun ERI/Apple GMAC
 device		dc		# DEC/Intel 21143 and various workalikes
 device		fxp		# Intel EtherExpress PRO/100B (82557, 82558)
+device		glc		# Playstation 3 Ethernet
 
 # Pseudo devices.
 device		loop		# Network loopback

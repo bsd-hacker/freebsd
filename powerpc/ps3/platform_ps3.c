@@ -49,8 +49,6 @@ __FBSDID("$FreeBSD: user/nwhitehorn/ps3/powerpc/booke/platform_ps3.c 193492 2009
 #include <machine/spr.h>
 #include <machine/vmparam.h>
 
-#include <dev/ofw/openfirm.h>
-
 #include "platform_if.h"
 #include "ps3-hvcall.h"
 
@@ -105,22 +103,8 @@ PLATFORM_DEF(ps3_platform);
 static int
 ps3_probe(platform_t plat)
 {
-#if 0
-	phandle_t root;
-	char compatible[64];
 
-	root = OF_finddevice("/");
-
-	if (OF_getprop(root, "compatible", compatible, sizeof(compatible)) <= 0)
-		return (ENXIO);
-
-	if (strncmp(compatible, "sony,ps3", sizeof(compatible)) == 0)
-		return (BUS_PROBE_SPECIFIC);
-
-	return (ENXIO);
-#else
 	return (BUS_PROBE_NOWILDCARD);
-#endif
 }
 
 #define MEM_REGIONS	2

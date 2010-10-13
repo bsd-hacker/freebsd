@@ -101,6 +101,7 @@ main(void)
 	env_setenv("currdev", EV_VOLATILE, "net", ps3_setcurrdev, env_nounset);
 	env_setenv("loaddev", EV_VOLATILE, "net", env_noset, env_nounset);
 	setenv("LINES", "24", 1);
+	setenv("hw.platform", "ps3", 1);
 
 	interact();			/* doesn't return */
 
@@ -204,7 +205,7 @@ ps3_readin(const int fd, vm_offset_t dest, const size_t len)
 int
 ps3_autoload(void)
 {
-	/* XXX Load PS3 FDT? */
+
 	return (0);
 }
 
