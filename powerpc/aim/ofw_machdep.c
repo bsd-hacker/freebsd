@@ -367,7 +367,7 @@ OF_bootstrap()
 		 * background processes.
 		 */
 		ofw_quiesce();
-	} else {
+	} else if (fdt != NULL) {
 		ofw_real_mode = 1;  /* XXX: don't use special virt mode code */
 		status = OF_install(OFW_FDT, 0);
 
@@ -691,18 +691,5 @@ OF_decode_addr(phandle_t dev, int regno, bus_space_tag_t *tag,
 
 	*tag = &bs_le_tag;
 	return (bus_space_map(*tag, addr, size, 0, handle));
-}
-
-int
-mem_valid(vm_offset_t addr, int len)
-{
-	int i;
-
-	for (i = 0; i < nOFmem; i++)
-		if ((addr >= OFmem[i].mr_start) 
-		    && (addr + len < OFmem[i].mr_start + OFmem[i].mr_size))
-			return (0);
-
-	return (EFAULT);
 }
 

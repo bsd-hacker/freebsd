@@ -48,6 +48,7 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_page.h>
 
 #include <machine/cpu.h>
+#include <machine/md_var.h>
 #include <machine/platform.h>
 #include <machine/platformvar.h>
 #include <machine/smp.h>
@@ -63,11 +64,39 @@ static char plat_name[64] = "";
 SYSCTL_STRING(_hw, OID_AUTO, platform, CTLFLAG_RD | CTLFLAG_TUN,
     plat_name, 0, "Platform currently in use");
 
+static struct mem_region *pregions = NULL;
+static struct mem_region *aregions = NULL;
+static int npregions, naregions;
+
 void
 mem_regions(struct mem_region **phys, int *physsz, struct mem_region **avail,
     int *availsz)
 {
-	PLATFORM_MEM_REGIONS(plat_obj, phys, physsz, avail, availsz);
+	if (pregions == NULL)
+		PLATFORM_MEM_REGIONS(plat_obj, &pregions, &npregions,
+		    &aregions, &naregions);
+
+	*phys = pregions;
+	*avail = aregions;
+	*physsz = npregions;
+	*availsz = naregions;
+}
+
+int
+mem_valid(vm_offset_t addr, int len)
+{
+	int i;
+
+	if (pregions == NULL)
+		PLATFORM_MEM_REGIONS(plat_obj, &pregions, &npregions,
+		    &aregions, &naregions);
+
+	for (i = 0; i < npregions; i++)
+		if ((addr >= pregions[i].mr_start) 
+		   && (addr + len < pregions[i].mr_start + pregions[i].mr_size))
+			return (0);
+
+	return (EFAULT);
 }
 
 vm_offset_t
