@@ -1134,7 +1134,9 @@ moea64_late_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernelend
 	 * mode.
 	 */
 
-	if (!ofw_real_mode) {
+	chosen = OF_finddevice("/chosen");
+
+	if (chosen != -1 && OF_getprop(chosen, "mmu", &mmui, 4) != -1) {
 	    #ifndef __powerpc64__
 	    moea64_pinit(mmup, &ofw_pmap);
 
