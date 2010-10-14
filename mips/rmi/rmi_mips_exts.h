@@ -39,7 +39,7 @@
 #define	CPU_BLOCKID_MMU		4
 #define	CPU_BLOCKID_PRF		5
 
-#define	LSU_CERRLOG_REGID    9
+#define	LSU_CERRLOG_REGID	9
 
 #if defined(__mips_n64) || defined(__mips_n32)
 static __inline uint64_t
@@ -309,7 +309,6 @@ xlr_thr_id(void)
 /* Additional registers on the XLR */
 #define	MIPS_COP_0_OSSCRATCH	22
 #define	XLR_CACHELINE_SIZE	32
-#define	XLR_MAX_CORES		8
 
 /* functions to write to and read from the extended
  * cp0 registers.
@@ -348,7 +347,7 @@ write_c0_eimr64(uint64_t val)
 	write_c0_register64(9, 7, val);
 }
 
-static __inline__ int 
+static __inline int 
 xlr_test_and_set(int *lock)
 {
 	int oldval = 0;
@@ -367,10 +366,10 @@ xlr_test_and_set(int *lock)
 	    : "$8", "$9"
 	);
 
-	return (oldval == 0 ? 1 /* success */ : 0 /* failure */ );
+	return (oldval == 0 ? 1 /* success */ : 0 /* failure */);
 }
 
-static __inline__ uint32_t 
+static __inline uint32_t 
 xlr_mfcr(uint32_t reg)
 {
 	uint32_t val;
@@ -385,7 +384,7 @@ xlr_mfcr(uint32_t reg)
 	return val;
 }
 
-static __inline__ void 
+static __inline void 
 xlr_mtcr(uint32_t reg, uint32_t val)
 {
 	__asm__ __volatile__(
@@ -396,8 +395,29 @@ xlr_mtcr(uint32_t reg, uint32_t val)
 	    : "$8", "$9");
 }
 
+/*
+ * Atomic increment a unsigned  int
+ */
+static __inline unsigned int
+xlr_ldaddwu(unsigned int value, unsigned int *addr)
+{
+	__asm__	 __volatile__(
+	    ".set	push\n"
+	    ".set	noreorder\n"
+	    "move	$8, %2\n"
+	    "move	$9, %3\n"
+	    ".word	0x71280011\n"  /* ldaddwu $8, $9 */
+	    "move	%0, $8\n"
+	    ".set	pop\n"
+	    : "=&r"(value), "+m"(*addr)
+	    : "0"(value), "r" ((unsigned long)addr)
+	    :  "$8", "$9");
+
+	return (value);
+}
+
 #if defined(__mips_n64)
-static __inline__ uint32_t
+static __inline uint32_t
 xlr_paddr_lw(uint64_t paddr)
 {
 	
@@ -405,8 +425,16 @@ xlr_paddr_lw(uint64_t paddr)
 	return (*(uint32_t *)(uintptr_t)paddr);
 }
 
+static __inline uint64_t
+xlr_paddr_ld(uint64_t paddr)
+{
+	
+	paddr |= 0x9800000000000000ULL;
+	return (*(uint64_t *)(uintptr_t)paddr);
+}
+
 #elif defined(__mips_n32)
-static __inline__ uint32_t
+static __inline uint32_t
 xlr_paddr_lw(uint64_t paddr)
 {
 	uint32_t val;
@@ -422,32 +450,128 @@ xlr_paddr_lw(uint64_t paddr)
 
 	return (val);
 }
-#else
-static __inline__ uint32_t
+
+static __inline uint64_t
+xlr_paddr_ld(uint64_t paddr)
+{
+	uint64_t val;
+
+	paddr |= 0x9800000000000000ULL;
+	__asm__ __volatile__(
+	    ".set	push		\n\t"
+	    ".set	mips64		\n\t"
+	    "ld		%0, 0(%1)	\n\t"
+	    ".set	pop		\n"
+	    : "=r"(val)
+	    : "r"(paddr));
+
+	return (val);
+}
+
+#else   /* o32 compilation */
+static __inline uint32_t
 xlr_paddr_lw(uint64_t paddr)
 {
-	uint32_t high, low, tmp;
+	uint32_t addrh, addrl;
+       	uint32_t val;
 
-	high = 0x98000000 | (paddr >> 32);
-	low = paddr & 0xffffffff;
+	addrh = 0x98000000 | (paddr >> 32);
+	addrl = paddr & 0xffffffff;
 
 	__asm__ __volatile__(
-	    ".set push         \n\t"
-	    ".set mips64       \n\t"
-	    "dsll32 %1, %1, 0  \n\t"
-	    "dsll32 %2, %2, 0  \n\t"  /* get rid of the */
-	    "dsrl32 %2, %2, 0  \n\t"  /* sign extend */
-	    "or     %1, %1, %2 \n\t"
-	    "lw     %0, 0(%1)  \n\t"
-	    ".set pop           \n"
-	    :       "=r"(tmp)
-	    :       "r"(high), "r"(low));
+	    ".set	push		\n\t"
+	    ".set	mips64		\n\t"
+	    "dsll32	$8, %1, 0	\n\t"
+	    "dsll32	$9, %2, 0	\n\t"  /* get rid of the */
+	    "dsrl32	$9, $9, 0	\n\t"  /* sign extend */
+	    "or		$9, $8, $8	\n\t"
+	    "lw		%0, 0($9)	\n\t"
+	    ".set	pop		\n"
+	    :	"=r"(val)
+	    :	"r"(addrh), "r"(addrl)
+	    :	"$8", "$9");
 
-	return tmp;
+	return (val);
+}
+
+static __inline uint64_t
+xlr_paddr_ld(uint64_t paddr)
+{
+	uint32_t addrh, addrl;
+       	uint32_t valh, vall;
+
+	addrh = 0x98000000 | (paddr >> 32);
+	addrl = paddr & 0xffffffff;
+
+	__asm__ __volatile__(
+	    ".set	push		\n\t"
+	    ".set	mips64		\n\t"
+	    "dsll32	%0, %2, 0	\n\t"
+	    "dsll32	%1, %3, 0	\n\t"  /* get rid of the */
+	    "dsrl32	%1, %1, 0	\n\t"  /* sign extend */
+	    "or		%0, %0, %1	\n\t"
+	    "lw		%1, 4(%0)	\n\t"
+	    "lw		%0, 0(%0)	\n\t"
+	    ".set	pop		\n"
+	    :       "=&r"(valh), "=&r"(vall)
+	    :       "r"(addrh), "r"(addrl));
+
+	return (((uint64_t)valh << 32) | vall);
 }
 #endif
 
-/* for cpuid to hardware thread id mapping */
+/*
+ * XXX: Not really needed in n32 or n64, retain for now
+ */
+#if defined(__mips_n64) || defined(__mips_n32)
+static __inline uint32_t
+xlr_enable_kx(void)
+{
+
+	return (0);
+}
+
+static __inline void
+xlr_restore_kx(uint32_t sr)
+{
+}
+
+#else /* !defined(__mips_n64) && !defined(__mips_n32) */
+/*
+ * o32 compilation, we will disable interrupts and enable
+ * the KX bit so that we can use XKPHYS to access any 40bit
+ * physical address
+ */
+static __inline uint32_t 
+xlr_enable_kx(void)
+{
+	uint32_t sr = mips_rd_status();
+
+	mips_wr_status((sr & ~MIPS_SR_INT_IE) | MIPS_SR_KX);
+	return (sr);
+}
+
+static __inline void
+xlr_restore_kx(uint32_t sr)
+{
+
+	mips_wr_status(sr);
+}
+#endif /* defined(__mips_n64) || defined(__mips_n32) */
+
+/*
+ * XLR/XLS processors have maximum 8 cores, and maximum 4 threads
+ * per core
+ */
+#define	XLR_MAX_CORES		8
+#define	XLR_NTHREADS		4
+
+/*
+ * FreeBSD can be started with few threads and cores turned off,
+ * so have a hardware thread id to FreeBSD cpuid mapping.
+ */
+extern int xlr_ncores;
+extern int xlr_threads_per_core;
 extern uint32_t xlr_hw_thread_mask;
 extern int xlr_cpuid_to_hwtid[];
 extern int xlr_hwtid_to_cpuid[];

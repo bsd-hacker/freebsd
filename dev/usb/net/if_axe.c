@@ -155,7 +155,9 @@ static const struct usb_device_id axe_devs[] = {
 	AXE_DEV(JVC, MP_PRX1, 0),
 	AXE_DEV(LINKSYS2, USB200M, 0),
 	AXE_DEV(LINKSYS4, USB1000, AXE_FLAG_178),
+	AXE_DEV(LOGITEC, LAN_GTJU2A, AXE_FLAG_178),
 	AXE_DEV(MELCO, LUAU2KTX, 0),
+	AXE_DEV(MELCO, LUA3U2AGT, AXE_FLAG_178),
 	AXE_DEV(NETGEAR, FA120, 0),
 	AXE_DEV(OQO, ETHER01PLUS, AXE_FLAG_772),
 	AXE_DEV(PLANEX3, GU1000T, AXE_FLAG_178),
@@ -169,7 +171,6 @@ static device_probe_t axe_probe;
 static device_attach_t axe_attach;
 static device_detach_t axe_detach;
 
-static usb_callback_t axe_intr_callback;
 static usb_callback_t axe_bulk_read_callback;
 static usb_callback_t axe_bulk_write_callback;
 
@@ -212,15 +213,6 @@ static const struct usb_config axe_config[AXE_N_TRANSFER] = {
 		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
 		.callback = axe_bulk_read_callback,
 		.timeout = 0,	/* no timeout */
-	},
-
-	[AXE_INTR_DT_RD] = {
-		.type = UE_INTERRUPT,
-		.endpoint = UE_ADDR_ANY,
-		.direction = UE_DIR_IN,
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
-		.bufsize = 0,	/* use wMaxPacketSize */
-		.callback = axe_intr_callback,
 	},
 };
 
@@ -794,27 +786,6 @@ axe_detach(device_t dev)
 	return (0);
 }
 
-static void
-axe_intr_callback(struct usb_xfer *xfer, usb_error_t error)
-{
-	switch (USB_GET_STATE(xfer)) {
-	case USB_ST_TRANSFERRED:
-	case USB_ST_SETUP:
-tr_setup:
-		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
-		usbd_transfer_submit(xfer);
-		return;
-
-	default:			/* Error */
-		if (error != USB_ERR_CANCELLED) {
-			/* try to clear stall first */
-			usbd_xfer_set_stall(xfer);
-			goto tr_setup;
-		}
-		return;
-	}
-}
-
 #if (AXE_BULK_BUF_SIZE >= 0x10000)
 #error "Please update axe_bulk_read_callback()!"
 #endif
@@ -861,13 +832,12 @@ axe_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 					err = EINVAL;
 					break;
 				}
-				err = uether_rxbuf(ue, pc, pos, len);
+				uether_rxbuf(ue, pc, pos, len);
 
 				pos += len + (len % 2);
 			}
-		} else {
-			err = uether_rxbuf(ue, pc, 0, actlen);
-		}
+		} else
+			uether_rxbuf(ue, pc, 0, actlen);
 
 		if (err != 0)
 			ifp->if_ierrors++;
@@ -910,13 +880,15 @@ axe_bulk_write_callback(struct usb_xfer *xfer, usb_error_t error)
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
 		DPRINTFN(11, "transfer complete\n");
-		ifp->if_opackets++;
+		ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
 		/* FALLTHROUGH */
 	case USB_ST_SETUP:
 tr_setup:
-		if ((sc->sc_flags & AXE_FLAG_LINK) == 0) {
+		if ((sc->sc_flags & AXE_FLAG_LINK) == 0 ||
+		    (ifp->if_drv_flags & IFF_DRV_OACTIVE) != 0) {
 			/*
-			 * don't send anything if there is no link !
+			 * Don't send anything if there is no link or
+			 * controller is busy.
 			 */
 			return;
 		}
@@ -956,6 +928,17 @@ tr_setup:
 			pos += m->m_pkthdr.len;
 
 			/*
+			 * XXX
+			 * Update TX packet counter here. This is not
+			 * correct way but it seems that there is no way
+			 * to know how many packets are sent at the end
+			 * of transfer because controller combines
+			 * multiple writes into single one if there is
+			 * room in TX buffer of controller.
+			 */
+			ifp->if_opackets++;
+
+			/*
 			 * if there's a BPF listener, bounce a copy
 			 * of this frame to him:
 			 */
@@ -976,6 +959,7 @@ tr_setup:
 
 		usbd_xfer_set_frame_len(xfer, 0, pos);
 		usbd_transfer_submit(xfer);
+		ifp->if_drv_flags |= IFF_DRV_OACTIVE;
 		return;
 
 	default:			/* Error */
@@ -983,6 +967,7 @@ tr_setup:
 		    usbd_errstr(error));
 
 		ifp->if_oerrors++;
+		ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
 
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
@@ -1018,7 +1003,6 @@ axe_start(struct usb_ether *ue)
 	/*
 	 * start the USB transfers, if not already started:
 	 */
-	usbd_transfer_start(sc->sc_xfer[AXE_INTR_DT_RD]);
 	usbd_transfer_start(sc->sc_xfer[AXE_BULK_DT_RD]);
 	usbd_transfer_start(sc->sc_xfer[AXE_BULK_DT_WR]);
 }
@@ -1115,7 +1099,7 @@ axe_stop(struct usb_ether *ue)
 
 	AXE_LOCK_ASSERT(sc, MA_OWNED);
 
-	ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
+	ifp->if_drv_flags &= ~(IFF_DRV_RUNNING | IFF_DRV_OACTIVE);
 	sc->sc_flags &= ~AXE_FLAG_LINK;
 
 	/*
@@ -1123,7 +1107,6 @@ axe_stop(struct usb_ether *ue)
 	 */
 	usbd_transfer_stop(sc->sc_xfer[AXE_BULK_DT_WR]);
 	usbd_transfer_stop(sc->sc_xfer[AXE_BULK_DT_RD]);
-	usbd_transfer_stop(sc->sc_xfer[AXE_INTR_DT_RD]);
 
 	axe_reset(sc);
 }

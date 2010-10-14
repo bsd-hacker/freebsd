@@ -189,9 +189,9 @@ static char	*aac_describe_code(struct aac_code_lookup *table,
 
 /* Management Interface */
 static d_open_t		aac_open;
-static d_close_t	aac_close;
 static d_ioctl_t	aac_ioctl;
 static d_poll_t		aac_poll;
+static void		aac_cdevpriv_dtor(void *arg);
 static int		aac_ioctl_sendfib(struct aac_softc *sc, caddr_t ufib);
 static int		aac_ioctl_send_raw_srb(struct aac_softc *sc, caddr_t arg);
 static void		aac_handle_aif(struct aac_softc *sc,
@@ -212,9 +212,8 @@ static struct aac_mntinforesp *
 
 static struct cdevsw aac_cdevsw = {
 	.d_version =	D_VERSION,
-	.d_flags =	D_NEEDGIANT | D_TRACKCLOSE,
+	.d_flags =	D_NEEDGIANT,
 	.d_open =	aac_open,
-	.d_close =	aac_close,
 	.d_ioctl =	aac_ioctl,
 	.d_poll =	aac_poll,
 	.d_name =	"aac",
@@ -392,7 +391,7 @@ aac_get_container_info(struct aac_softc *sc, struct aac_fib *fib, int cid)
 
 	if (aac_sync_fib(sc, ContainerCommand, 0, fib,
 			 sizeof(struct aac_mntinfo))) {
-		printf("Error probing container %d\n", cid);
+		device_printf(sc->aac_dev, "Error probing container %d\n", cid);
 		return (NULL);
 	}
 
@@ -2802,18 +2801,7 @@ aac_open(struct cdev *dev, int flags, int fmt, struct thread *td)
 	sc = dev->si_drv1;
 	fwprintf(sc, HBA_FLAGS_DBG_FUNCTION_ENTRY_B, "");
 	device_busy(sc->aac_dev);
-
-	return 0;
-}
-
-static int
-aac_close(struct cdev *dev, int flags, int fmt, struct thread *td)
-{
-	struct aac_softc *sc;
-
-	sc = dev->si_drv1;
-	fwprintf(sc, HBA_FLAGS_DBG_FUNCTION_ENTRY_B, "");
-	device_unbusy(sc->aac_dev);
+	devfs_set_cdevpriv(sc, aac_cdevpriv_dtor);
 
 	return 0;
 }
@@ -3201,6 +3189,21 @@ out:
 }
 
 /*
+ * cdevpriv interface private destructor.
+ */
+static void
+aac_cdevpriv_dtor(void *arg)
+{
+	struct aac_softc *sc;
+
+	sc = arg;
+	fwprintf(sc, HBA_FLAGS_DBG_FUNCTION_ENTRY_B, "");
+	mtx_lock(&Giant);
+	device_unbusy(sc->aac_dev);
+	mtx_unlock(&Giant);
+}
+
+/*
  * Handle an AIF sent to us by the controller; queue it for later reference.
  * If the queue fills up, then drop the older entries.
  */
@@ -3213,6 +3216,7 @@ aac_handle_aif(struct aac_softc *sc, struct aac_fib *fib)
 	struct aac_mntinforesp *mir;
 	int next, current, found;
 	int count = 0, added = 0, i = 0;
+	uint32_t channel;
 
 	fwprintf(sc, HBA_FLAGS_DBG_FUNCTION_ENTRY_B, "");
 
@@ -3319,6 +3323,27 @@ aac_handle_aif(struct aac_softc *sc, struct aac_fib *fib)
 				mtx_lock(&sc->aac_io_lock);
 			}
 
+			break;
+
+		case AifEnEnclosureManagement:
+			switch (aif->data.EN.data.EEE.eventType) {
+			case AIF_EM_DRIVE_INSERTION:
+			case AIF_EM_DRIVE_REMOVAL:
+				channel = aif->data.EN.data.EEE.unitID;
+				if (sc->cam_rescan_cb != NULL)
+					sc->cam_rescan_cb(sc,
+					    (channel >> 24) & 0xF,
+					    (channel & 0xFFFF));
+				break;
+			}
+			break;
+
+		case AifEnAddJBOD:
+		case AifEnDeleteJBOD:
+			channel = aif->data.EN.data.ECE.container;
+			if (sc->cam_rescan_cb != NULL)
+				sc->cam_rescan_cb(sc, (channel >> 24) & 0xF,
+				    AAC_CAM_TARGET_WILDCARD);
 			break;
 
 		default:

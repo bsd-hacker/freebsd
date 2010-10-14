@@ -203,7 +203,7 @@ static void rl_read_eeprom(struct rl_softc *, uint8_t *, int, int, int);
 static void rl_reset(struct rl_softc *);
 static int rl_resume(device_t);
 static int rl_rxeof(struct rl_softc *);
-static void rl_setmulti(struct rl_softc *);
+static void rl_rxfilter(struct rl_softc *);
 static int rl_shutdown(device_t);
 static void rl_start(struct ifnet *);
 static void rl_start_locked(struct ifnet *);
@@ -655,54 +655,51 @@ rl_miibus_statchg(device_t dev)
  * Program the 64-bit multicast hash filter.
  */
 static void
-rl_setmulti(struct rl_softc *sc)
+rl_rxfilter(struct rl_softc *sc)
 {
 	struct ifnet		*ifp = sc->rl_ifp;
 	int			h = 0;
 	uint32_t		hashes[2] = { 0, 0 };
 	struct ifmultiaddr	*ifma;
 	uint32_t		rxfilt;
-	int			mcnt = 0;
 
 	RL_LOCK_ASSERT(sc);
 
 	rxfilt = CSR_READ_4(sc, RL_RXCFG);
-
+	rxfilt &= ~(RL_RXCFG_RX_ALLPHYS | RL_RXCFG_RX_BROAD |
+	    RL_RXCFG_RX_MULTI);
+	/* Always accept frames destined for this host. */
+	rxfilt |= RL_RXCFG_RX_INDIV;
+	/* Set capture broadcast bit to capture broadcast frames. */
+	if (ifp->if_flags & IFF_BROADCAST)
+		rxfilt |= RL_RXCFG_RX_BROAD;
 	if (ifp->if_flags & IFF_ALLMULTI || ifp->if_flags & IFF_PROMISC) {
 		rxfilt |= RL_RXCFG_RX_MULTI;
-		CSR_WRITE_4(sc, RL_RXCFG, rxfilt);
-		CSR_WRITE_4(sc, RL_MAR0, 0xFFFFFFFF);
-		CSR_WRITE_4(sc, RL_MAR4, 0xFFFFFFFF);
-		return;
+		if (ifp->if_flags & IFF_PROMISC)
+			rxfilt |= RL_RXCFG_RX_ALLPHYS;
+		hashes[0] = 0xFFFFFFFF;
+		hashes[1] = 0xFFFFFFFF;
+	} else {
+		/* Now program new ones. */
+		if_maddr_rlock(ifp);
+		TAILQ_FOREACH(ifma, &ifp->if_multiaddrs, ifma_link) {
+			if (ifma->ifma_addr->sa_family != AF_LINK)
+				continue;
+			h = ether_crc32_be(LLADDR((struct sockaddr_dl *)
+			    ifma->ifma_addr), ETHER_ADDR_LEN) >> 26;
+			if (h < 32)
+				hashes[0] |= (1 << h);
+			else
+				hashes[1] |= (1 << (h - 32));
+		}
+		if_maddr_runlock(ifp);
+		if (hashes[0] != 0 || hashes[1] != 0)
+			rxfilt |= RL_RXCFG_RX_MULTI;
 	}
 
-	/* first, zot all the existing hash bits */
-	CSR_WRITE_4(sc, RL_MAR0, 0);
-	CSR_WRITE_4(sc, RL_MAR4, 0);
-
-	/* now program new ones */
-	if_maddr_rlock(ifp);
-	TAILQ_FOREACH(ifma, &ifp->if_multiaddrs, ifma_link) {
-		if (ifma->ifma_addr->sa_family != AF_LINK)
-			continue;
-		h = ether_crc32_be(LLADDR((struct sockaddr_dl *)
-		    ifma->ifma_addr), ETHER_ADDR_LEN) >> 26;
-		if (h < 32)
-			hashes[0] |= (1 << h);
-		else
-			hashes[1] |= (1 << (h - 32));
-		mcnt++;
-	}
-	if_maddr_runlock(ifp);
-
-	if (mcnt)
-		rxfilt |= RL_RXCFG_RX_MULTI;
-	else
-		rxfilt &= ~RL_RXCFG_RX_MULTI;
-
-	CSR_WRITE_4(sc, RL_RXCFG, rxfilt);
 	CSR_WRITE_4(sc, RL_MAR0, hashes[0]);
 	CSR_WRITE_4(sc, RL_MAR4, hashes[1]);
+	CSR_WRITE_4(sc, RL_RXCFG, rxfilt);
 }
 
 static void
@@ -1623,6 +1620,7 @@ rl_intr(void *arg)
 	struct rl_softc		*sc = arg;
 	struct ifnet		*ifp = sc->rl_ifp;
 	uint16_t		status;
+	int			count;
 
 	RL_LOCK(sc);
 
@@ -1634,30 +1632,41 @@ rl_intr(void *arg)
 		goto done_locked;
 #endif
 
-	for (;;) {
+	if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0)
+		goto done_locked2;
+	status = CSR_READ_2(sc, RL_ISR);
+	if (status == 0xffff || (status & RL_INTRS) == 0)
+		goto done_locked;
+	/*
+	 * Ours, disable further interrupts.
+	 */
+	CSR_WRITE_2(sc, RL_IMR, 0);
+	for (count = 16; count > 0; count--) {
+		CSR_WRITE_2(sc, RL_ISR, status);
+		if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
+			if (status & (RL_ISR_RX_OK | RL_ISR_RX_ERR))
+				rl_rxeof(sc);
+			if (status & (RL_ISR_TX_OK | RL_ISR_TX_ERR))
+				rl_txeof(sc);
+			if (status & RL_ISR_SYSTEM_ERR) {
+				ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
+				rl_init_locked(sc);
+				RL_UNLOCK(sc);
+				return;
+			}
+		}
 		status = CSR_READ_2(sc, RL_ISR);
 		/* If the card has gone away, the read returns 0xffff. */
-		if (status == 0xffff)
+		if (status == 0xffff || (status & RL_INTRS) == 0)
 			break;
-		if (status != 0)
-			CSR_WRITE_2(sc, RL_ISR, status);
-		if ((status & RL_INTRS) == 0)
-			break;
-		if (status & RL_ISR_RX_OK)
-			rl_rxeof(sc);
-		if (status & RL_ISR_RX_ERR)
-			rl_rxeof(sc);
-		if ((status & RL_ISR_TX_OK) || (status & RL_ISR_TX_ERR))
-			rl_txeof(sc);
-		if (status & RL_ISR_SYSTEM_ERR) {
-			ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
-			rl_init_locked(sc);
-		}
 	}
 
 	if (!IFQ_DRV_IS_EMPTY(&ifp->if_snd))
 		rl_start_locked(ifp);
 
+done_locked2:
+	if (ifp->if_drv_flags & IFF_DRV_RUNNING)
+		CSR_WRITE_2(sc, RL_IMR, RL_INTRS);
 done_locked:
 	RL_UNLOCK(sc);
 }
@@ -1807,7 +1816,6 @@ rl_init_locked(struct rl_softc *sc)
 {
 	struct ifnet		*ifp = sc->rl_ifp;
 	struct mii_data		*mii;
-	uint32_t		rxcfg = 0;
 	uint32_t		eaddr[2];
 
 	RL_LOCK_ASSERT(sc);
@@ -1864,30 +1872,8 @@ rl_init_locked(struct rl_softc *sc)
 	CSR_WRITE_4(sc, RL_TXCFG, RL_TXCFG_CONFIG);
 	CSR_WRITE_4(sc, RL_RXCFG, RL_RXCFG_CONFIG);
 
-	/* Set the individual bit to receive frames for this host only. */
-	rxcfg = CSR_READ_4(sc, RL_RXCFG);
-	rxcfg |= RL_RXCFG_RX_INDIV;
-
-	/* If we want promiscuous mode, set the allframes bit. */
-	if (ifp->if_flags & IFF_PROMISC) {
-		rxcfg |= RL_RXCFG_RX_ALLPHYS;
-		CSR_WRITE_4(sc, RL_RXCFG, rxcfg);
-	} else {
-		rxcfg &= ~RL_RXCFG_RX_ALLPHYS;
-		CSR_WRITE_4(sc, RL_RXCFG, rxcfg);
-	}
-
-	/* Set capture broadcast bit to capture broadcast frames. */
-	if (ifp->if_flags & IFF_BROADCAST) {
-		rxcfg |= RL_RXCFG_RX_BROAD;
-		CSR_WRITE_4(sc, RL_RXCFG, rxcfg);
-	} else {
-		rxcfg &= ~RL_RXCFG_RX_BROAD;
-		CSR_WRITE_4(sc, RL_RXCFG, rxcfg);
-	}
-
-	/* Program the multicast filter, if necessary. */
-	rl_setmulti(sc);
+	/* Set RX filter. */
+	rl_rxfilter(sc);
 
 #ifdef DEVICE_POLLING
 	/* Disable interrupts if we are polling. */
@@ -1966,20 +1952,22 @@ rl_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 	case SIOCSIFFLAGS:
 		RL_LOCK(sc);
 		if (ifp->if_flags & IFF_UP) {
-			rl_init_locked(sc);
-		} else {
-			if (ifp->if_drv_flags & IFF_DRV_RUNNING)
-				rl_stop(sc);
-		}
+			if (ifp->if_drv_flags & IFF_DRV_RUNNING &&
+			    ((ifp->if_flags ^ sc->rl_if_flags) &
+                            (IFF_PROMISC | IFF_ALLMULTI)))
+				rl_rxfilter(sc);
+                        else
+				rl_init_locked(sc);
+                } else if (ifp->if_drv_flags & IFF_DRV_RUNNING)
+			rl_stop(sc);
+		sc->rl_if_flags = ifp->if_flags;
 		RL_UNLOCK(sc);
-		error = 0;
 		break;
 	case SIOCADDMULTI:
 	case SIOCDELMULTI:
 		RL_LOCK(sc);
-		rl_setmulti(sc);
+		rl_rxfilter(sc);
 		RL_UNLOCK(sc);
-		error = 0;
 		break;
 	case SIOCGIFMEDIA:
 	case SIOCSIFMEDIA:

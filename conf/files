@@ -221,6 +221,7 @@ contrib/dev/acpica/executer/exsystem.c		optional acpi
 contrib/dev/acpica/executer/exutils.c		optional acpi
 contrib/dev/acpica/hardware/hwacpi.c		optional acpi
 contrib/dev/acpica/hardware/hwgpe.c		optional acpi
+contrib/dev/acpica/hardware/hwpci.c		optional acpi
 contrib/dev/acpica/hardware/hwregs.c		optional acpi
 contrib/dev/acpica/hardware/hwsleep.c		optional acpi
 contrib/dev/acpica/hardware/hwtimer.c		optional acpi
@@ -289,6 +290,7 @@ contrib/dev/acpica/utilities/utosi.c		optional acpi
 contrib/dev/acpica/utilities/utresrc.c		optional acpi
 contrib/dev/acpica/utilities/utstate.c		optional acpi
 contrib/dev/acpica/utilities/utxface.c		optional acpi
+contrib/dev/acpica/utilities/utxferror.c	optional acpi
 contrib/ipfilter/netinet/fil.c	optional ipfilter inet \
 	compile-with "${NORMAL_C} -I$S/contrib/ipfilter"
 contrib/ipfilter/netinet/ip_auth.c optional ipfilter inet \
@@ -1008,6 +1010,14 @@ dev/fxp/if_fxp.c		optional fxp inet
 dev/gem/if_gem.c		optional gem
 dev/gem/if_gem_pci.c		optional gem pci
 dev/gem/if_gem_sbus.c		optional gem sbus
+dev/gpio/gpiobus.c		optional gpio				\
+	dependency	"gpiobus_if.h"
+dev/gpio/gpioc.c		optional gpio				\
+	dependency	"gpio_if.h"
+dev/gpio/gpioiic.c		optional gpioiic
+dev/gpio/gpioled.c		optional gpioled
+dev/gpio/gpio_if.m		optional gpio
+dev/gpio/gpiobus_if.m		optional gpio
 dev/hatm/if_hatm.c		optional hatm pci
 dev/hatm/if_hatm_intr.c		optional hatm pci
 dev/hatm/if_hatm_ioctl.c	optional hatm pci
@@ -1738,6 +1748,8 @@ dev/usb/controller/ohci_atmelarm.c	optional ohci at91rm9200
 dev/usb/controller/ohci_pci.c		optional ohci pci
 dev/usb/controller/uhci.c		optional uhci
 dev/usb/controller/uhci_pci.c		optional uhci pci
+dev/usb/controller/xhci.c		optional xhci
+dev/usb/controller/xhci_pci.c		optional xhci pci
 dev/usb/controller/uss820dci.c		optional uss820dci
 dev/usb/controller/uss820dci_atmelarm.c	optional uss820dci at91rm9200
 dev/usb/controller/usb_controller.c	optional usb
@@ -1778,6 +1790,7 @@ dev/usb/net/if_aue.c		optional aue
 dev/usb/net/if_axe.c		optional axe
 dev/usb/net/if_cdce.c		optional cdce
 dev/usb/net/if_cue.c		optional cue
+dev/usb/net/if_ipheth.c		optional ipheth
 dev/usb/net/if_kue.c		optional kue
 dev/usb/net/if_rue.c		optional rue
 dev/usb/net/if_udav.c		optional udav
@@ -1888,6 +1901,7 @@ fs/coda/coda_vfsops.c		optional vcoda
 fs/coda/coda_vnops.c		optional vcoda
 fs/deadfs/dead_vnops.c		standard
 fs/devfs/devfs_devs.c		standard
+fs/devfs/devfs_dir.c		standard
 fs/devfs/devfs_rule.c		standard
 fs/devfs/devfs_vfsops.c		standard
 fs/devfs/devfs_vnops.c		standard
@@ -2253,6 +2267,7 @@ kern/vfs_hash.c			standard
 kern/vfs_init.c			standard
 kern/vfs_lookup.c		standard
 kern/vfs_mount.c		standard
+kern/vfs_mountroot.c		standard
 kern/vfs_subr.c			standard
 kern/vfs_syscalls.c		standard
 kern/vfs_vnops.c		standard
@@ -2326,6 +2341,8 @@ libkern/iconv_xlat16.c		optional libiconv
 libkern/index.c			standard
 libkern/inet_aton.c		standard
 libkern/inet_ntoa.c		standard
+libkern/inet_ntop.c		standard
+libkern/inet_pton.c		standard
 libkern/mcount.c		optional profiling-routine
 libkern/memcmp.c		standard
 libkern/qsort.c			standard
@@ -2733,8 +2750,6 @@ rpc/clnt_dg.c			optional krpc | nfslockd | nfsclient | nfscl | nfsd
 rpc/clnt_rc.c			optional krpc | nfslockd | nfsclient | nfscl | nfsd
 rpc/clnt_vc.c			optional krpc | nfslockd | nfsclient | nfsserver | nfscl | nfsd
 rpc/getnetconfig.c		optional krpc | nfslockd | nfsclient | nfsserver | nfscl | nfsd
-rpc/inet_ntop.c			optional krpc | nfslockd | nfsclient | nfsserver | nfscl | nfsd
-rpc/inet_pton.c			optional krpc | nfslockd | nfsclient | nfsserver | nfscl | nfsd
 rpc/replay.c			optional krpc | nfslockd | nfsserver | nfscl | nfsd
 rpc/rpc_callmsg.c		optional krpc | nfslockd | nfsclient | nfsserver | nfscl | nfsd
 rpc/rpc_generic.c		optional krpc | nfslockd | nfsclient | nfsserver | nfscl | nfsd

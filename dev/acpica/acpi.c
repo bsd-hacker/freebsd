@@ -494,29 +494,6 @@ acpi_attach(device_t dev)
     acpi_enable_pcie();
 #endif
 
-    /* Install the default address space handlers. */
-    status = AcpiInstallAddressSpaceHandler(ACPI_ROOT_OBJECT,
-		ACPI_ADR_SPACE_SYSTEM_MEMORY, ACPI_DEFAULT_HANDLER, NULL, NULL);
-    if (ACPI_FAILURE(status)) {
-	device_printf(dev, "Could not initialise SystemMemory handler: %s\n",
-		      AcpiFormatException(status));
-	goto out;
-    }
-    status = AcpiInstallAddressSpaceHandler(ACPI_ROOT_OBJECT,
-		ACPI_ADR_SPACE_SYSTEM_IO, ACPI_DEFAULT_HANDLER, NULL, NULL);
-    if (ACPI_FAILURE(status)) {
-	device_printf(dev, "Could not initialise SystemIO handler: %s\n",
-		      AcpiFormatException(status));
-	goto out;
-    }
-    status = AcpiInstallAddressSpaceHandler(ACPI_ROOT_OBJECT,
-		ACPI_ADR_SPACE_PCI_CONFIG, ACPI_DEFAULT_HANDLER, NULL, NULL);
-    if (ACPI_FAILURE(status)) {
-	device_printf(dev, "could not initialise PciConfig handler: %s\n",
-		      AcpiFormatException(status));
-	goto out;
-    }
-
     /*
      * Note that some systems (specifically, those with namespace evaluation
      * issues that require the avoidance of parts of the namespace) must
@@ -609,6 +586,10 @@ acpi_attach(device_t dev)
 	    sc->acpi_verbose = 1;
 	freeenv(env);
     }
+
+    /* Only enable reboot by default if the FADT says it is available. */
+    if (AcpiGbl_FADT.Flags & ACPI_FADT_RESET_REGISTER)
+	sc->acpi_handle_reboot = 1;
 
     /* Only enable S4BIOS by default if the FACS says it is available. */
     if (AcpiGbl_FACS->Flags & ACPI_FACS_S4_BIOS_PRESENT)
@@ -1842,19 +1823,15 @@ acpi_shutdown_final(void *arg, int howto)
 	    DELAY(1000000);
 	    device_printf(sc->acpi_dev, "power-off failed - timeout\n");
 	}
-    } else if ((howto & RB_HALT) == 0 &&
-	(AcpiGbl_FADT.Flags & ACPI_FADT_RESET_REGISTER) &&
-	sc->acpi_handle_reboot) {
+    } else if ((howto & RB_HALT) == 0 && sc->acpi_handle_reboot) {
 	/* Reboot using the reset register. */
-	status = AcpiWrite(
-	    AcpiGbl_FADT.ResetValue, &AcpiGbl_FADT.ResetRegister);
-	if (ACPI_FAILURE(status))
-	    device_printf(sc->acpi_dev, "reset failed - %s\n",
-		AcpiFormatException(status));
-	else {
+	status = AcpiReset();
+	if (ACPI_SUCCESS(status)) {
 	    DELAY(1000000);
 	    device_printf(sc->acpi_dev, "reset failed - timeout\n");
-	}
+	} else if (status != AE_NOT_EXIST)
+	    device_printf(sc->acpi_dev, "reset failed - %s\n",
+		AcpiFormatException(status));
     } else if (sc->acpi_do_disable && panicstr == NULL) {
 	/*
 	 * Only disable ACPI if the user requested.  On some systems, writing

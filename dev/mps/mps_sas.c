@@ -135,9 +135,16 @@ static void mpssas_probe_device_complete(struct mps_softc *sc,
 static void mpssas_scsiio_timeout(void *data);
 static void mpssas_abort_complete(struct mps_softc *sc, struct mps_command *cm);
 static void mpssas_recovery(struct mps_softc *, struct mps_command *);
+static int mpssas_map_tm_request(struct mps_softc *sc, struct mps_command *cm);
+static void mpssas_issue_tm_request(struct mps_softc *sc,
+				    struct mps_command *cm);
+static void mpssas_tm_complete(struct mps_softc *sc, struct mps_command *cm,
+			       int error);
+static int mpssas_complete_tm_request(struct mps_softc *sc,
+				      struct mps_command *cm, int free_cm);
 static void mpssas_action_scsiio(struct mpssas_softc *, union ccb *);
 static void mpssas_scsiio_complete(struct mps_softc *, struct mps_command *);
-static int mpssas_resetdev(struct mpssas_softc *, struct mps_command *);
+static void mpssas_resetdev(struct mpssas_softc *, struct mps_command *);
 static void mpssas_action_resetdev(struct mpssas_softc *, union ccb *);
 static void mpssas_resetdev_complete(struct mps_softc *, struct mps_command *);
 static void mpssas_freeze_device(struct mpssas_softc *, struct mpssas_target *);
@@ -438,7 +445,7 @@ mpssas_prepare_remove(struct mpssas_softc *sassc, MPI2_EVENT_SAS_TOPO_PHY_ENTRY 
 	cm->cm_desc.Default.RequestFlags = MPI2_REQ_DESCRIPT_FLAGS_DEFAULT_TYPE;
 	cm->cm_complete = mpssas_remove_device;
 	cm->cm_targ = targ;
-	mps_map_command(sc, cm);
+	mpssas_issue_tm_request(sc, cm);
 }
 
 static void
@@ -453,6 +460,9 @@ mpssas_remove_device(struct mps_softc *sc, struct mps_command *cm)
 
 	reply = (MPI2_SCSI_TASK_MANAGE_REPLY *)cm->cm_reply;
 	handle = cm->cm_targ->handle;
+
+	mpssas_complete_tm_request(sc, cm, /*free_cm*/ 0);
+
 	if (reply->IOCStatus != MPI2_IOCSTATUS_SUCCESS) {
 		mps_printf(sc, "Failure 0x%x reseting device 0x%04x\n", 
 		   reply->IOCStatus, handle);
@@ -594,6 +604,7 @@ mps_attach_sas(struct mps_softc *sc)
 {
 	struct mpssas_softc *sassc;
 	int error = 0;
+	int num_sim_reqs;
 
 	mps_dprint(sc, MPS_TRACE, "%s\n", __func__);
 
@@ -603,15 +614,30 @@ mps_attach_sas(struct mps_softc *sc)
 	sc->sassc = sassc;
 	sassc->sc = sc;
 
-	if ((sassc->devq = cam_simq_alloc(sc->num_reqs)) == NULL) {
+	/*
+	 * Tell CAM that we can handle 5 fewer requests than we have
+	 * allocated.  If we allow the full number of requests, all I/O
+	 * will halt when we run out of resources.  Things work fine with
+	 * just 1 less request slot given to CAM than we have allocated.
+	 * We also need a couple of extra commands so that we can send down
+	 * abort, reset, etc. requests when commands time out.  Otherwise
+	 * we could wind up in a situation with sc->num_reqs requests down
+	 * on the card and no way to send an abort.
+	 *
+	 * XXX KDM need to figure out why I/O locks up if all commands are
+	 * used.
+	 */
+	num_sim_reqs = sc->num_reqs - 5;
+
+	if ((sassc->devq = cam_simq_alloc(num_sim_reqs)) == NULL) {
 		mps_dprint(sc, MPS_FAULT, "Cannot allocate SIMQ\n");
 		error = ENOMEM;
 		goto out;
 	}
 
 	sassc->sim = cam_sim_alloc(mpssas_action, mpssas_poll, "mps", sassc,
-	    device_get_unit(sc->mps_dev), &sc->mps_mtx, sc->num_reqs, sc->num_reqs,
-	    sassc->devq);
+	    device_get_unit(sc->mps_dev), &sc->mps_mtx, num_sim_reqs,
+	    num_sim_reqs, sassc->devq);
 	if (sassc->sim == NULL) {
 		mps_dprint(sc, MPS_FAULT, "Cannot allocate SIM\n");
 		error = EINVAL;
@@ -928,6 +954,9 @@ mpssas_scsiio_timeout(void *data)
 	struct mps_softc *sc;
 	struct mps_command *cm;
 	struct mpssas_target *targ;
+#if 0
+	char cdb_str[(SCSI_MAX_CDBLEN * 3) + 1];
+#endif
 
 	cm = (struct mps_command *)data;
 	sc = cm->cm_sc;
@@ -952,6 +981,22 @@ mpssas_scsiio_timeout(void *data)
 
 	xpt_print(ccb->ccb_h.path, "SCSI command timeout on device handle "
 		  "0x%04x SMID %d\n", targ->handle, cm->cm_desc.Default.SMID);
+	/*
+	 * XXX KDM this is useful for debugging purposes, but the existing
+	 * scsi_op_desc() implementation can't handle a NULL value for
+	 * inq_data.  So this will remain commented out until I bring in
+	 * those changes as well.
+	 */
+#if 0
+	xpt_print(ccb->ccb_h.path, "Timed out command: %s. CDB %s\n",
+		  scsi_op_desc((ccb->ccb_h.flags & CAM_CDB_POINTER) ?
+		  		ccb->csio.cdb_io.cdb_ptr[0] :
+				ccb->csio.cdb_io.cdb_bytes[0], NULL),
+		  scsi_cdb_string((ccb->ccb_h.flags & CAM_CDB_POINTER) ?
+				   ccb->csio.cdb_io.cdb_ptr :
+				   ccb->csio.cdb_io.cdb_bytes, cdb_str,
+		  		   sizeof(cdb_str)));
+#endif
 
 	/* Inform CAM about the timeout and that recovery is starting. */
 #if 0
@@ -983,7 +1028,7 @@ mpssas_abort_complete(struct mps_softc *sc, struct mps_command *cm)
 	mps_printf(sc, "%s: abort request on handle %#04x SMID %d "
 		   "complete\n", __func__, req->DevHandle, req->TaskMID);
 
-	mps_free_command(sc, cm);
+	mpssas_complete_tm_request(sc, cm, /*free_cm*/ 1);
 }
 
 static void
@@ -991,7 +1036,6 @@ mpssas_recovery(struct mps_softc *sc, struct mps_command *abort_cm)
 {
 	struct mps_command *cm;
 	MPI2_SCSI_TASK_MANAGE_REQUEST *req, *orig_req;
-	int error;
 
 	cm = mps_alloc_command(sc);
 	if (cm == NULL) {
@@ -1013,25 +1057,204 @@ mpssas_recovery(struct mps_softc *sc, struct mps_command *abort_cm)
 	cm->cm_data = NULL;
 	cm->cm_desc.Default.RequestFlags = MPI2_REQ_DESCRIPT_FLAGS_DEFAULT_TYPE;
 
+	mpssas_issue_tm_request(sc, cm);
+
+}
+
+/*
+ * Can return 0 or EINPROGRESS on success.  Any other value means failure.
+ */
+static int
+mpssas_map_tm_request(struct mps_softc *sc, struct mps_command *cm)
+{
+	int error;
+
+	error = 0;
+
+	cm->cm_flags |= MPS_CM_FLAGS_ACTIVE;
 	error = mps_map_command(sc, cm);
+	if ((error == 0)
+	 || (error == EINPROGRESS))
+		sc->tm_cmds_active++;
 
-	if (error != 0) {
-		mps_printf(sc, "%s: error mapping abort request!\n", __func__);
+	return (error);
+}
+
+static void
+mpssas_issue_tm_request(struct mps_softc *sc, struct mps_command *cm)
+{
+	int freeze_queue, send_command, error;
+
+	freeze_queue = 0;
+	send_command = 0;
+	error = 0;
+
+	mtx_assert(&sc->mps_mtx, MA_OWNED);
+
+	/*
+	 * If there are no other pending task management commands, go
+	 * ahead and send this one.  There is a small amount of anecdotal
+	 * evidence that sending lots of task management commands at once
+	 * may cause the controller to lock up.  Or, if the user has
+	 * configured the driver (via the allow_multiple_tm_cmds variable) to
+	 * not serialize task management commands, go ahead and send the
+	 * command if even other task management commands are pending.
+	 */
+	if (TAILQ_FIRST(&sc->tm_list) == NULL) {
+		send_command = 1;
+		freeze_queue = 1;
+	} else if (sc->allow_multiple_tm_cmds != 0)
+		send_command = 1;
+
+	TAILQ_INSERT_TAIL(&sc->tm_list, cm, cm_link);
+	if (send_command != 0) {
+		/*
+		 * Freeze the SIM queue while we issue the task management
+		 * command.  According to the Fusion-MPT 2.0 spec, task
+		 * management requests are serialized, and so the host
+		 * should not send any I/O requests while task management
+		 * requests are pending.
+		 */
+		if (freeze_queue != 0)
+			xpt_freeze_simq(sc->sassc->sim, 1);
+
+		error = mpssas_map_tm_request(sc, cm);
+
+		/*
+		 * At present, there is no error path back from
+		 * mpssas_map_tm_request() (which calls mps_map_command())
+		 * when cm->cm_data == NULL.  But since there is a return
+		 * value, we check it just in case the implementation
+		 * changes later.
+		 */
+		if ((error != 0)
+		 && (error != EINPROGRESS))
+			mpssas_tm_complete(sc, cm,
+			    MPI2_SCSITASKMGMT_RSP_TM_FAILED);
 	}
-#if 0
-	error = mpssas_reset(sc, targ, &resetcm);
-	if ((error != 0) && (error != EBUSY)) {
-		mps_printf(sc, "Error resetting device!\n");
-		mps_unlock(sc);
-		return;
+}
+
+static void
+mpssas_tm_complete(struct mps_softc *sc, struct mps_command *cm, int error)
+{
+	MPI2_SCSI_TASK_MANAGE_REPLY *resp;
+
+	resp = (MPI2_SCSI_TASK_MANAGE_REPLY *)cm->cm_reply;
+
+	resp->ResponseCode = error;
+
+	/*
+	 * Call the callback for this command, it will be
+	 * removed from the list and freed via the callback.
+	 */
+	cm->cm_complete(sc, cm);
+}
+
+/*
+ * Complete a task management request.  The basic completion operation will
+ * always succeed.  Returns status for sending any further task management
+ * commands that were queued.
+ */
+static int
+mpssas_complete_tm_request(struct mps_softc *sc, struct mps_command *cm,
+			   int free_cm)
+{
+	int error;
+
+	error = 0;
+
+	mtx_assert(&sc->mps_mtx, MA_OWNED);
+
+	TAILQ_REMOVE(&sc->tm_list, cm, cm_link);
+	cm->cm_flags &= ~MPS_CM_FLAGS_ACTIVE;
+	sc->tm_cmds_active--;
+
+	if (free_cm != 0)
+		mps_free_command(sc, cm);
+
+	if (TAILQ_FIRST(&sc->tm_list) == NULL) {
+		/*
+		 * Release the SIM queue, we froze it when we sent the first
+		 * task management request.
+		 */
+		xpt_release_simq(sc->sassc->sim, 1);
+	} else if ((sc->tm_cmds_active == 0)
+		|| (sc->allow_multiple_tm_cmds != 0)) {
+		int error;
+		struct mps_command *cm2;
+
+restart_traversal:
+
+		/*
+		 * We don't bother using TAILQ_FOREACH_SAFE here, but
+		 * rather use the standard version and just restart the
+		 * list traversal if we run into the error case.
+		 * TAILQ_FOREACH_SAFE allows safe removal of the current
+		 * list element, but if you have a queue of task management
+		 * commands, all of which have mapping errors, you'll end
+		 * up with recursive calls to this routine and so you could
+		 * wind up removing more than just the current list element.
+		 */
+		TAILQ_FOREACH(cm2, &sc->tm_list, cm_link) {
+			MPI2_SCSI_TASK_MANAGE_REQUEST *req;
+
+			/* This command is active, no need to send it again */
+			if (cm2->cm_flags & MPS_CM_FLAGS_ACTIVE)
+				continue;
+
+			req = (MPI2_SCSI_TASK_MANAGE_REQUEST *)cm2->cm_req;
+
+			mps_printf(sc, "%s: sending deferred task management "
+			    "request for handle %#04x SMID %d\n", __func__,
+			    req->DevHandle, req->TaskMID);
+
+			error = mpssas_map_tm_request(sc, cm2);
+
+			/*
+			 * Check for errors.  If we had an error, complete
+			 * this command with an error, and keep going through
+			 * the list until we are able to send at least one
+			 * command or all of them are completed with errors.
+			 *
+			 * We don't want to wind up in a situation where
+			 * we're stalled out with no way for queued task
+			 * management commands to complete.
+			 *
+			 * Note that there is not currently an error path
+			 * back from mpssas_map_tm_request() (which calls
+			 * mps_map_command()) when cm->cm_data == NULL.
+			 * But we still want to check for errors here in
+			 * case the implementation changes, or in case
+			 * there is some reason for a data payload here.
+			 */
+			if ((error != 0)
+			 && (error != EINPROGRESS)) {
+				mpssas_tm_complete(sc, cm,
+				    MPI2_SCSITASKMGMT_RSP_TM_FAILED);
+
+				/*
+				 * If we don't currently have any commands
+				 * active, go back to the beginning and see
+				 * if there are any more that can be started.
+				 * Otherwise, we're done here.
+				 */
+				if (sc->tm_cmds_active == 0)
+					goto restart_traversal;
+				else
+					break;
+			}
+
+			/*
+			 * If the user only wants one task management command
+			 * active at a time, we're done, since we've
+			 * already successfully sent a command at this point.
+			 */
+			if (sc->allow_multiple_tm_cmds == 0)
+				break;
+		}
 	}
 
-	targ->flags |= MPSSAS_TARGET_INRESET;
-
-	cm->cm_complete = mpssas_resettimeout_complete;
-	cm->cm_complete_data = cm;
-	mps_map_command(sassc->sc, cm);
-#endif
+	return (error);
 }
 
 static void
@@ -1308,7 +1531,6 @@ mpssas_action_resetdev(struct mpssas_softc *sassc, union ccb *ccb)
 	struct mps_softc *sc;
 	struct mps_command *cm;
 	struct mpssas_target *targ;
-	int error;
 
 	sc = sassc->sc;
 	targ = &sassc->targets[ccb->ccb_h.target_id];
@@ -1321,7 +1543,7 @@ mpssas_action_resetdev(struct mpssas_softc *sassc, union ccb *ccb)
 
 	cm = mps_alloc_command(sc);
 	if (cm == NULL) {
-		mps_printf(sc, "mpssas_action_resetdev: cannot alloc command\n");
+		mps_printf(sc, "%s: cannot alloc command\n", __func__);
 		ccb->ccb_h.status = CAM_RESRC_UNAVAIL;
 		xpt_done(ccb);
 		return;
@@ -1331,20 +1553,14 @@ mpssas_action_resetdev(struct mpssas_softc *sassc, union ccb *ccb)
 	cm->cm_complete = mpssas_resetdev_complete;
 	cm->cm_complete_data = ccb;
 
-	error = mpssas_resetdev(sassc, cm);
-	if (error) {
-		ccb->ccb_h.status = CAM_RESRC_UNAVAIL;
-		xpt_done(ccb);
-		return;
-	}
+	mpssas_resetdev(sassc, cm);
 }
 
-static int
+static void
 mpssas_resetdev(struct mpssas_softc *sassc, struct mps_command *cm)
 {
 	MPI2_SCSI_TASK_MANAGE_REQUEST *req;
 	struct mps_softc *sc;
-	int error;
 
 	mps_dprint(sassc->sc, MPS_TRACE, "%s\n", __func__);
 
@@ -1361,8 +1577,7 @@ mpssas_resetdev(struct mpssas_softc *sassc, struct mps_command *cm)
 	cm->cm_data = NULL;
 	cm->cm_desc.Default.RequestFlags = MPI2_REQ_DESCRIPT_FLAGS_DEFAULT_TYPE;
 
-	error = mps_map_command(sassc->sc, cm);
-	return (error);
+	mpssas_issue_tm_request(sc, cm);
 }
 
 static void
@@ -1384,7 +1599,8 @@ mpssas_resetdev_complete(struct mps_softc *sc, struct mps_command *cm)
 	else
 		ccb->ccb_h.status = CAM_REQ_CMP_ERR;
 
-	mps_free_command(sc, cm);
+	mpssas_complete_tm_request(sc, cm, /*free_cm*/ 1);
+
 	xpt_done(ccb);
 }
 

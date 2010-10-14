@@ -358,8 +358,7 @@ static caddr_t
 zfs_map_page(vm_page_t pp, struct sf_buf **sfp)
 {
 
-	sched_pin();
-	*sfp = sf_buf_alloc(pp, SFB_CPUPRIVATE);
+	*sfp = sf_buf_alloc(pp, 0);
 	return ((caddr_t)sf_buf_kva(*sfp));
 }
 
@@ -368,7 +367,6 @@ zfs_unmap_page(struct sf_buf *sf)
 {
 
 	sf_buf_free(sf);
-	sched_unpin();
 }
 
 
@@ -491,6 +489,8 @@ again:
 			 * but it pessimize performance of sendfile/UFS, that's
 			 * why I handle this special case in ZFS code.
 			 */
+			KASSERT(off == 0,
+			    ("unexpected offset in mappedread for sendfile"));
 			if ((m->oflags & VPO_BUSY) != 0) {
 				/*
 				 * Reference the page before unlocking and
@@ -510,21 +510,21 @@ again:
 				dirbytes = 0;
 			}
 			if (error == 0) {
-				sched_pin();
-				sf = sf_buf_alloc(m, SFB_CPUPRIVATE);
-				va = (caddr_t)sf_buf_kva(sf);
-				error = dmu_read(os, zp->z_id, start + off,
-				    bytes, (void *)(va + off),
+				va = zfs_map_page(m, &sf);
+				error = dmu_read(os, zp->z_id, start, bytes, va,
 				    DMU_READ_PREFETCH);
-				sf_buf_free(sf);
-				sched_unpin();
+				if (bytes != PAGE_SIZE)
+					bzero(va + bytes, PAGE_SIZE - bytes);
+				zfs_unmap_page(sf);
 			}
 			VM_OBJECT_LOCK(obj);
 			if (error == 0)
-				vm_page_set_valid(m, off, bytes);
+				m->valid = VM_PAGE_BITS_ALL;
 			vm_page_wakeup(m);
-			if (error == 0)
+			if (error == 0) {
 				uio->uio_resid -= bytes;
+				uio->uio_offset += bytes;
+			}
 		} else {
 			dirbytes += bytes;
 		}
@@ -708,7 +708,7 @@ zfs_prefault_write(ssize_t n, struct uio *uio)
  *	IN:	vp	- vnode of file to be written to.
  *		uio	- structure supplying write location, range info,
  *			  and data buffer.
- *		ioflag	- IO_APPEND flag set if in append mode.
+ *		ioflag	- FAPPEND flag set if in append mode.
  *		cr	- credentials of caller.
  *		ct	- caller context (NFS/CIFS fem monitor only)
  *
@@ -775,7 +775,7 @@ zfs_write(vnode_t *vp, uio_t *uio, int ioflag, cred_t *cr, caller_context_t *ct)
 	/*
 	 * If in append mode, set the io offset pointer to eof.
 	 */
-	if (ioflag & IO_APPEND) {
+	if (ioflag & FAPPEND) {
 		/*
 		 * Range lock for a file append:
 		 * The value for the start of range will be determined by
@@ -4184,6 +4184,21 @@ zfs_setsecattr(vnode_t *vp, vsecattr_t *vsecp, int flag, cred_t *cr,
 }
 
 static int
+ioflags(int ioflags)
+{
+	int flags = 0;
+
+	if (ioflags & IO_APPEND)
+		flags |= FAPPEND;
+	if (ioflags & IO_NDELAY)
+        	flags |= FNONBLOCK;
+	if (ioflags & IO_SYNC)
+		flags |= (FSYNC | FDSYNC | FRSYNC);
+
+	return (flags);
+}
+
+static int
 zfs_freebsd_open(ap)
 	struct vop_open_args /* {
 		struct vnode *a_vp;
@@ -4241,7 +4256,8 @@ zfs_freebsd_read(ap)
 	} */ *ap;
 {
 
-	return (zfs_read(ap->a_vp, ap->a_uio, ap->a_ioflag, ap->a_cred, NULL));
+	return (zfs_read(ap->a_vp, ap->a_uio, ioflags(ap->a_ioflag),
+	    ap->a_cred, NULL));
 }
 
 static int
@@ -4257,7 +4273,8 @@ zfs_freebsd_write(ap)
 	if (vn_rlimit_fsize(ap->a_vp, ap->a_uio, ap->a_uio->uio_td))
 		return (EFBIG);
 
-	return (zfs_write(ap->a_vp, ap->a_uio, ap->a_ioflag, ap->a_cred, NULL));
+	return (zfs_write(ap->a_vp, ap->a_uio, ioflags(ap->a_ioflag),
+	    ap->a_cred, NULL));
 }
 
 static int

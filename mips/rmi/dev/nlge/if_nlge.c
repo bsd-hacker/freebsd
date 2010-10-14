@@ -155,6 +155,7 @@ static void	nlna_config_pde(struct nlna_softc *);
 static void	nlna_config_parser(struct nlna_softc *);
 static void	nlna_config_classifier(struct nlna_softc *);
 static void	nlna_config_fifo_spill_area(struct nlna_softc *sc);
+static void	nlna_config_translate_table(struct nlna_softc *sc);
 static void	nlna_config_common(struct nlna_softc *);
 static void	nlna_disable_ports(struct nlna_softc *sc);
 static void	nlna_enable_intr(struct nlna_softc *sc);
@@ -188,7 +189,7 @@ static void 	nlge_mii_write_internal(xlr_reg_t *mii_base, int phyaddr,
     int regidx, int regval);
 void 		nlge_msgring_handler(int bucket, int size, int code,
     int stid, struct msgrng_msg *msg, void *data);
-static void 	nlge_port_disable(int id, xlr_reg_t *base, int port_type);
+static void 	nlge_port_disable(struct nlge_softc *sc);
 static void 	nlge_port_enable(struct nlge_softc *sc);
 static void 	nlge_read_mac_addr(struct nlge_softc *sc);
 static void	nlge_sc_init(struct nlge_softc *sc, device_t dev,
@@ -196,6 +197,7 @@ static void	nlge_sc_init(struct nlge_softc *sc, device_t dev,
 static void 	nlge_set_mac_addr(struct nlge_softc *sc);
 static void	nlge_set_port_attribs(struct nlge_softc *,
     struct xlr_gmac_port *);
+static void	nlge_mac_set_rx_mode(struct nlge_softc *sc);
 static void 	nlge_sgmii_init(struct nlge_softc *sc);
 static void	nlge_start_locked(struct ifnet *ifp, struct nlge_softc *sc);
 
@@ -206,6 +208,9 @@ static int	prepare_fmn_message(struct nlge_softc *sc,
 static void 	release_tx_desc(vm_paddr_t phy_addr);
 static int	send_fmn_msg_tx(struct nlge_softc *, struct msgrng_msg *,
     uint32_t n_entries);
+
+static void
+nl_tx_q_wakeup(void *addr);
 
 //#define DEBUG
 #ifdef DEBUG
@@ -300,31 +305,17 @@ DRIVER_MODULE(miibus, nlge, miibus_driver, miibus_devclass, 0, 0);
 
 static uma_zone_t nl_tx_desc_zone;
 
-/* Function to atomically increment an integer with the given value. */
-static __inline__ unsigned int
-ldadd_wu(unsigned int value, unsigned long *addr)
-{
-	__asm__	 __volatile__( ".set push\n"
-			       ".set noreorder\n"
-			       "move $8, %2\n"
-			       "move $9, %3\n"
-			       /* "ldaddwu $8, $9\n" */
-			       ".word 0x71280011\n"
-			       "move %0, $8\n"
-			       ".set pop\n"
-			       : "=&r"(value), "+m"(*addr)
-			       : "0"(value), "r" ((unsigned long)addr)
-			       :  "$8", "$9");
-	return value;
-}
+/* Tunables. */
+static int flow_classification = 0;
+TUNABLE_INT("hw.nlge.flow_classification", &flow_classification);
 
-static __inline__ uint32_t
-xlr_enable_kx(void)
+static __inline void
+atomic_incr_long(unsigned long *addr)
 {
-	uint32_t sr = mips_rd_status();
+	/* XXX: fix for 64 bit */
+	unsigned int *iaddr = (unsigned int *)addr;
 
-	mips_wr_status((sr & ~MIPS_SR_INT_IE) | MIPS_SR_KX);
-	return sr;
+	xlr_ldaddwu(1, iaddr);
 }
 
 static int
@@ -396,8 +387,6 @@ nlna_attach(device_t dev)
 #ifdef DEBUG
 	dump_board_info(&xlr_board_info);
 #endif
-	block_info->baseaddr += DEFAULT_XLR_IO_BASE;
-
 	/* Initialize nlna state in softc structure */
 	sc = nlna_sc_init(dev, block_info);
 
@@ -441,6 +430,10 @@ nlna_attach(device_t dev)
 		    sizeof(struct nlge_tx_desc), NULL, NULL, NULL, NULL,
 		    XLR_CACHELINE_SIZE, 0);
 	}
+
+	/* Other per NA s/w initialization */
+	callout_init(&sc->tx_thr, CALLOUT_MPSAFE);
+	callout_reset(&sc->tx_thr, hz, nl_tx_q_wakeup, sc);
 
 	/* Enable NA interrupts */
 	nlna_setup_intr(sc);
@@ -507,7 +500,7 @@ nlge_probe(device_t dev)
 	sc = device_get_softc(dev);
 	nlge_sc_init(sc, dev, port_info);
 
-	nlge_port_disable(sc->id, sc->base, sc->port_type);
+	nlge_port_disable(sc);
 
 	return (0);
 }
@@ -544,8 +537,7 @@ nlge_detach(device_t dev)
 	ifp = sc->nlge_if;
 
 	if (device_is_attached(dev)) {
-		ifp->if_drv_flags &= ~(IFF_DRV_OACTIVE | IFF_DRV_RUNNING);
-		nlge_port_disable(sc->id, sc->base, sc->port_type);
+		nlge_port_disable(sc);
 		nlge_irq_fini(sc);
 		ether_ifdetach(ifp);
 		bus_generic_detach(dev);
@@ -580,7 +572,7 @@ nlge_init(void *addr)
 	if (ifp->if_drv_flags & IFF_DRV_RUNNING)
 		return;
 
-	nlge_gmac_config_speed(sc, 0);
+	nlge_gmac_config_speed(sc, 1);
 	ifp->if_drv_flags |= IFF_DRV_RUNNING;
 	ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
 	nlge_port_enable(sc);
@@ -603,9 +595,33 @@ nlge_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 	sc = ifp->if_softc;
 	error = 0;
 	ifr = (struct ifreq *)data;
+
 	switch(command) {
 	case SIOCSIFFLAGS:
+		NLGE_LOCK(sc);
+		if (ifp->if_flags & IFF_UP) {
+			if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0) {
+				nlge_init(sc);
+			}
+			if (ifp->if_flags & IFF_PROMISC &&
+			    !(sc->if_flags & IFF_PROMISC)) {
+				sc->if_flags |= IFF_PROMISC;
+				nlge_mac_set_rx_mode(sc);
+			} else if (!(ifp->if_flags & IFF_PROMISC) &&
+			    sc->if_flags & IFF_PROMISC) {
+				sc->if_flags &= IFF_PROMISC;
+				nlge_mac_set_rx_mode(sc);
+			}
+		} else {
+			if (ifp->if_drv_flags & IFF_DRV_RUNNING) {
+				nlge_port_disable(sc);
+			}
+		}
+		sc->if_flags = ifp->if_flags;
+		NLGE_UNLOCK(sc);
+		error = 0;
 		break;
+		
 	case SIOCSIFMEDIA:
 	case SIOCGIFMEDIA:
 		if (sc->mii_bus != NULL) {
@@ -614,9 +630,7 @@ nlge_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
 			    command);
 		}
 		break;
-	case SIOCSIFADDR:
-			// intentional fall thru
-	case SIOCSIFMTU:
+	
 	default:
 		error = ether_ioctl(ifp, command, data);
 		break;
@@ -632,21 +646,15 @@ nlge_msgring_handler(int bucket, int size, int code, int stid,
 {
 	struct nlna_softc *na_sc;
 	struct nlge_softc *sc;
-	struct ifnet   *ifp;
+	struct ifnet	*ifp;
+	struct mbuf	*m;
 	vm_paddr_t	phys_addr;
-	unsigned long	addr;
 	uint32_t	length;
 	int		ctrl;
-	int		cpu;
 	int		tx_error;
 	int		port;
-	int 		vcpu;
 	int		is_p2p;
 
-	cpu = xlr_core_id();
-	vcpu = (cpu << 2) + xlr_thr_id();
-
-	addr = 0;
 	is_p2p = 0;
 	tx_error = 0;
 	length = (msg->msg0 >> 40) & 0x3fff;
@@ -673,24 +681,38 @@ nlge_msgring_handler(int bucket, int size, int code, int stid,
 	}
 
 	if (ctrl == CTRL_REG_FREE || ctrl == CTRL_JUMBO_FREE) {
-		if (is_p2p) {
-			release_tx_desc(phys_addr);
-		} else {
-			m_freem((struct mbuf *)(uintptr_t)phys_addr);
-		}
-
 		ifp = sc->nlge_if;
-		if (ifp->if_drv_flags & IFF_DRV_OACTIVE){
-			ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
+		if (!tx_error) {
+			if (is_p2p) {
+				release_tx_desc(phys_addr);
+			} else {
+#ifdef __mips_n64
+				m = (struct mbuf *)(uintptr_t)xlr_paddr_ld(phys_addr);
+				m->m_nextpkt = NULL;
+#else
+				m = (struct mbuf *)(uintptr_t)phys_addr;
+#endif
+				m_freem(m);
+			}
+			NLGE_LOCK(sc);
+			if (ifp->if_drv_flags & IFF_DRV_OACTIVE){
+				ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
+				callout_reset(&na_sc->tx_thr, hz,
+				    nl_tx_q_wakeup, na_sc);
+			}
+			NLGE_UNLOCK(sc);
+		} else {
+			printf("ERROR: Tx fb error (%d) on port %d\n", tx_error,
+			    port);
 		}
-		ldadd_wu(1, (tx_error) ? &ifp->if_oerrors: &ifp->if_opackets);
+		atomic_incr_long((tx_error) ? &ifp->if_oerrors: &ifp->if_opackets);
 	} else if (ctrl == CTRL_SNGL || ctrl == CTRL_START) {
 		/* Rx Packet */
 
 		nlge_rx(sc, phys_addr, length);
 		nlna_submit_rx_free_desc(na_sc, 1);	/* return free descr to NA */
 	} else {
-		printf("[%s]: unrecognized ctrl=%d!\n", __FUNCTION__, ctrl);
+		printf("[%s]: unrecognized ctrl=%d!\n", __func__, ctrl);
 	}
 
 }
@@ -705,7 +727,24 @@ nlge_start(struct ifnet *ifp)
 	nlge_start_locked(ifp, sc);
 	//NLGE_UNLOCK(sc);
 }
-	
+
+static void
+nl_tx_q_wakeup(void *addr)
+{
+	struct nlna_softc *na_sc;
+	struct nlge_softc *sc;
+	int i;
+
+	na_sc = (struct nlna_softc *) addr;
+	for (i = 0; i < XLR_MAX_MACS; i++) { 
+		sc = na_sc->child_sc[i];
+		if (sc == NULL)
+			continue;
+		nlge_start_locked(sc->nlge_if, sc);
+	}
+	callout_reset(&na_sc->tx_thr, 5 * hz, nl_tx_q_wakeup, na_sc);
+}
+
 static void
 nlge_start_locked(struct ifnet *ifp, struct nlge_softc *sc)
 {
@@ -714,33 +753,43 @@ nlge_start_locked(struct ifnet *ifp, struct nlge_softc *sc)
 	struct nlge_tx_desc 	*tx_desc;
 	uint64_t		fr_stid;
 	uint32_t		cpu;	
-	uint32_t		n_entries;	
+	uint32_t		n_entries;
 	uint32_t		tid;
 	int 			ret;
-	int 			sent;
 
 	cpu = xlr_core_id();	
 	tid = xlr_thr_id();
-	fr_stid = cpu * 8 + tid + 4;
+	/* H/w threads [0, 2] --> bucket 6 and [1, 3] --> bucket 7 */
+	fr_stid = cpu * 8 + 6 + (tid % 2); 
 
 	if (!(ifp->if_drv_flags & IFF_DRV_RUNNING)) {
 		return;
 	}
 
 	do {
+		/*
+		 * First, remove some freeback messages before transmitting
+		 * any new packets. However, cap the number of messages
+		 * drained to permit this thread to continue with its
+		 * transmission.
+		 *
+		 * Mask for buckets {6, 7} is 0xc0
+		 */
+		xlr_msgring_handler(0xc0, 4);
+
 		/* Grab a packet off the queue. */
 		IF_DEQUEUE(&ifp->if_snd, m);
 		if (m == NULL) {
 			return;
 		}
-
+		
 		tx_desc = NULL;
 		ret = prepare_fmn_message(sc, &msg, &n_entries, m, fr_stid, &tx_desc);
 		if (ret) {
 			goto fail;
 		}
-		sent = send_fmn_msg_tx(sc, &msg, n_entries);
-		if (sent != 0) {
+		ret = send_fmn_msg_tx(sc, &msg, n_entries);
+		if (ret != 0) {
 			goto fail;
 		}
 	} while(1);
@@ -752,21 +801,11 @@ fail:
 		uma_zfree(nl_tx_desc_zone, tx_desc);
 	}
 	if (m != NULL) {
-		/*
-		 * TBD: It is observed that only when both of the statements
-		 * below are not enabled, traffic continues till the end.
-		 * Otherwise, the port locks up in the middle and never
-		 * recovers from it. The current theory for this behavior
-		 * is that the queue is full and the upper layer is neither
-		 * able to add to it not invoke nlge_start to drian the
-		 * queue. The driver may have to do something in addition
-		 * to reset'ing the OACTIVE bit when a trasnmit free-back
-		 * is received.
-		 */
-		//ifp->if_drv_flags |= IFF_DRV_OACTIVE;
-		//IF_PREPEND(&ifp->if_snd, m);
-		m_freem(m);
-		ldadd_wu(1, &ifp->if_iqdrops);
+		NLGE_LOCK(sc);
+		ifp->if_drv_flags |= IFF_DRV_OACTIVE;
+		NLGE_UNLOCK(sc);
+		IF_PREPEND(&ifp->if_snd, m);
+		atomic_incr_long(&ifp->if_iqdrops);
 	}
 	return;
 }
@@ -774,30 +813,32 @@ fail:
 static void
 nlge_rx(struct nlge_softc *sc, vm_paddr_t paddr, int len)
 {
-	struct ifnet   *ifp;
-	struct mbuf    *m;
-	uint32_t tm, mag, sr;
+	struct ifnet	*ifp;
+	struct mbuf	*m;
+	uint64_t	tm, mag;
+	uint32_t	sr;
 
 	sr = xlr_enable_kx();
-	tm = xlr_paddr_lw(paddr - XLR_CACHELINE_SIZE);
-	mag = xlr_paddr_lw(paddr - XLR_CACHELINE_SIZE + sizeof(uint32_t));
-	mips_wr_status(sr);
+	tm = xlr_paddr_ld(paddr - XLR_CACHELINE_SIZE);
+	mag = xlr_paddr_ld(paddr - XLR_CACHELINE_SIZE + sizeof(uint64_t));
+	xlr_restore_kx(sr);
 
 	m = (struct mbuf *)(intptr_t)tm;
 	if (mag != 0xf00bad) {
 		/* somebody else's packet. Error - FIXME in intialization */
-		printf("cpu %d: *ERROR* Not my packet paddr %llx\n",
-		    xlr_core_id(), (uint64_t) paddr);
+		printf("cpu %d: *ERROR* Not my packet paddr %jx\n",
+		    xlr_core_id(), (uintmax_t)paddr);
 		return;
 	}
 
 	ifp = sc->nlge_if;
+
 	/* align the data */
 	m->m_data += BYTE_OFFSET;
 	m->m_pkthdr.len = m->m_len = len;
 	m->m_pkthdr.rcvif = ifp;
 
-	ldadd_wu(1, &ifp->if_ipackets);
+	atomic_incr_long(&ifp->if_ipackets);
 	(*ifp->if_input)(ifp, m);
 }
 
@@ -867,7 +908,7 @@ nlna_sc_init(device_t dev, struct xlr_gmac_block_t *blk)
 	sc = device_get_softc(dev);
 	memset(sc, 0, sizeof(*sc));
 	sc->nlna_dev = dev;
-	sc->base = (xlr_reg_t *) blk->baseaddr;
+	sc->base = xlr_io_mmio(blk->baseaddr);
 	sc->rfrbucket = blk->station_rfr;
 	sc->station_id = blk->station_id;
 	sc->na_type = blk->type;
@@ -889,11 +930,12 @@ nlna_hw_init(struct nlna_softc *sc)
 {
 
 	/*
-	 * It is seen that this is a critical function in bringing up FreeBSD.
-	 * When it is not invoked, FreeBSD panics and fails during the
-	 * multi-processor init (SI_SUB_SMP of * mi_startup). The key function
-	 * in this sequence seems to be platform_prep_smp_launch. */
-	if (register_msgring_handler(sc->station_id, nlge_msgring_handler, sc)) {
+	 * Register message ring handler for the NA block, messages from
+	 * the GMAC will have source station id to the first bucket of the 
+	 * NA FMN station, so register just that station id.
+	 */
+	if (register_msgring_handler(sc->station_id, sc->station_id + 1,
+	    nlge_msgring_handler, sc)) {
 		panic("Couldn't register msgring handler\n");
 	}
 	nlna_config_fifo_spill_area(sc);
@@ -1037,7 +1079,7 @@ nlna_submit_rx_free_desc(struct nlna_softc *sc, uint32_t n_desc)
 			msgrng_flags = msgrng_access_enable();
 			ret = message_send(1, code, stid, &msg);
 			msgrng_restore(msgrng_flags);
-			KASSERT(n++ < 100000, ("Too many credit fails\n"));
+			KASSERT(n++ < 100000, ("Too many credit fails in rx path\n"));
 		} while (ret != 0);
 	}
 }
@@ -1130,15 +1172,16 @@ nlna_config_pde(struct nlna_softc *sc)
 	if (smp_started)
 		cpumask = xlr_hw_thread_mask;
 #endif
-
 	bucket_map = 0;
 	for (i = 0; i < 32; i++) {
 		if (cpumask & (1 << i)) {
 			cpu = i;
-			bucket = ((cpu >> 2) << 3);
-			bucket_map |= (1ULL << bucket);
+			/* use bucket 0 and 1 on every core for NA msgs */
+			bucket = cpu/4 * 8;
+			bucket_map |= (3ULL << bucket);
 		}
 	}
+
 	NLGE_WRITE(sc->base, R_PDE_CLASS_0, (bucket_map & 0xffffffff));
 	NLGE_WRITE(sc->base, R_PDE_CLASS_0 + 1, ((bucket_map >> 32) & 0xffffffff));
 
@@ -1152,6 +1195,11 @@ nlna_config_pde(struct nlna_softc *sc)
 	NLGE_WRITE(sc->base, R_PDE_CLASS_3 + 1, ((bucket_map >> 32) & 0xffffffff));
 }
 
+/*
+ * Update the network accelerator packet distribution engine for SMP.
+ * On bootup, we have just the boot hw thread handling all packets, on SMP
+ * start, we can start distributing packets across all the cores which are up.
+ */
 static void
 nlna_smp_update_pde(void *dummy __unused)
 {
@@ -1169,6 +1217,7 @@ nlna_smp_update_pde(void *dummy __unused)
 			continue;
 		nlna_disable_ports(na_sc[i]);
 		nlna_config_pde(na_sc[i]);
+		nlna_config_translate_table(na_sc[i]);
 		nlna_enable_ports(na_sc[i]);
 	}
 }
@@ -1177,14 +1226,79 @@ SYSINIT(nlna_smp_update_pde, SI_SUB_SMP, SI_ORDER_ANY, nlna_smp_update_pde,
     NULL);
 
 static void
+nlna_config_translate_table(struct nlna_softc *sc)
+{
+	uint32_t cpu_mask;
+	uint32_t val;
+	int bkts[32]; /* one bucket is assumed for each cpu */
+	int b1, b2, c1, c2, i, j, k;
+	int use_bkt;
+
+	if (!flow_classification)
+		return;
+
+	use_bkt = 1;
+	if (smp_started)
+		cpu_mask = xlr_hw_thread_mask;
+	else
+		return;
+
+	printf("Using %s-based distribution\n", (use_bkt) ? "bucket" : "class");
+
+	j = 0;
+	for(i = 0; i < 32; i++) {
+		if ((1 << i) & cpu_mask){
+		/* for each cpu, mark the 4+threadid bucket */
+			bkts[j] = ((i / 4) * 8) + (i % 4);
+			j++;
+		}
+	}
+
+	/*configure the 128 * 9 Translation table to send to available buckets*/
+	k = 0;
+	c1 = 3;
+	c2 = 0;
+	for(i = 0; i < 64; i++) {
+		/* Get the next 2 pairs of (class, bucket):
+		   (c1, b1), (c2, b2). 
+
+		   c1, c2 limited to {0, 1, 2, 3} 
+		       i.e, the 4 classes defined by h/w
+		   b1, b2 limited to { bkts[i], where 0 <= i < j}
+		       i.e, the set of buckets computed in the
+		       above loop.
+		*/
+
+		c1 = (c1 + 1) & 3;
+		c2 = (c1 + 1) & 3;
+		b1 = bkts[k];
+		k = (k + 1) % j;
+		b2 = bkts[k];
+		k = (k + 1) % j;
+		PDEBUG("Translation table[%d] b1=%d b2=%d c1=%d c2=%d\n",
+		    i, b1, b2, c1, c2);
+		val = ((c1 << 23) | (b1 << 17) | (use_bkt << 16) |
+		    (c2 << 7) | (b2 << 1) | (use_bkt << 0));
+		NLGE_WRITE(sc->base, R_TRANSLATETABLE + i, val);
+		c1 = c2;
+	}
+}
+
+static void
 nlna_config_parser(struct nlna_softc *sc)
 {
+	uint32_t val;
+
 	/*
-	 * Mark it as no classification. The parser extract is gauranteed to
-	 * be zero with no classfication
+	 * Mark it as ETHERNET type.
 	 */
-	NLGE_WRITE(sc->base, R_L2TYPE_0, 0x00);
 	NLGE_WRITE(sc->base, R_L2TYPE_0, 0x01);
+
+	if (!flow_classification)
+		return;
+
+	/* Use 7bit CRChash for flow classification with 127 as CRC polynomial*/
+	NLGE_WRITE(sc->base, R_PARSERCONFIGREG, ((0x7f << 8) | (1 << 1)));
 
 	/* configure the parser : L2 Type is configured in the bootloader */
 	/* extract IP: src, dest protocol */
@@ -1192,7 +1306,14 @@ nlna_config_parser(struct nlna_softc *sc)
 	    (9 << 20) | (1 << 19) | (1 << 18) | (0x01 << 16) |
 	    (0x0800 << 0));
 	NLGE_WRITE(sc->base, R_L3CTABLE + 1,
-	    (12 << 25) | (4 << 21) | (16 << 14) | (4 << 10));
+	    (9 << 25) | (1 << 21) | (12 << 14) | (4 << 10) | (16 << 4) | 4);
+
+	/* Configure to extract SRC port and Dest port for TCP and UDP pkts */
+	NLGE_WRITE(sc->base, R_L4CTABLE, 6);
+	NLGE_WRITE(sc->base, R_L4CTABLE+2, 17);
+	val = ((0 << 21) | (2 << 17) | (2 << 11) | (2 << 7));
+	NLGE_WRITE(sc->base, R_L4CTABLE+1, val);
+	NLGE_WRITE(sc->base, R_L4CTABLE+3, val);
 }
 
 static void
@@ -1222,11 +1343,9 @@ nlna_config_common(struct nlna_softc *sc)
 {
 	struct xlr_gmac_block_t *block_info;
 	struct stn_cc 		*gmac_cc_config;
-	int			i, id;
+	int			i;
 
 	block_info = device_get_ivars(sc->nlna_dev);
-
-	id = device_get_unit(sc->nlna_dev);
 	gmac_cc_config = block_info->credit_config;
 	for (i = 0; i < MAX_NUM_MSGRNG_STN_CC; i++) {
 		NLGE_WRITE(sc->base, R_CC_CPU0_0 + i,
@@ -1287,10 +1406,7 @@ nlna_reset_ports(struct nlna_softc *sc, struct xlr_gmac_block_t *blk)
 	/* Refer Section 13.9.3 in the PRM for the reset sequence */
 
 	for (i = 0; i < sc->num_ports; i++) {
-		uint32_t base = (uint32_t)DEFAULT_XLR_IO_BASE;
-
-		base += blk->gmac_port[i].base_addr;
-		addr = (xlr_reg_t *) base;
+		addr = xlr_io_mmio(blk->gmac_port[i].base_addr);
 
 		/* 1. Reset RxEnable in MAC_CONFIG */
 		switch (sc->mac_type) {
@@ -1338,17 +1454,11 @@ nlna_reset_ports(struct nlna_softc *sc, struct xlr_gmac_block_t *blk)
 static void
 nlna_disable_ports(struct nlna_softc *sc)
 {
-	struct xlr_gmac_block_t *blk;
-	xlr_reg_t *addr;
 	int i;
 
-	blk = device_get_ivars(sc->nlna_dev);
 	for (i = 0; i < sc->num_ports; i++) {
-		uint32_t base = (uint32_t)DEFAULT_XLR_IO_BASE;
-
-		base += blk->gmac_port[i].base_addr;
-		addr = (xlr_reg_t *) base;
-		nlge_port_disable(i, addr, blk->gmac_port[i].type);
+		if (sc->child_sc[i] != NULL)
+			nlge_port_disable(sc->child_sc[i]);
 	}
 }
 
@@ -1387,9 +1497,17 @@ nlna_get_all_softc(device_t iodi_dev, struct nlna_softc **sc_vec,
 }
 
 static void
-nlge_port_disable(int id, xlr_reg_t *base, int port_type)
+nlge_port_disable(struct nlge_softc *sc)
 {
+	struct ifnet *ifp;
+	xlr_reg_t *base;
 	uint32_t rd;
+	int id, port_type;
+
+	id = sc->id;
+	port_type = sc->port_type;
+	base = sc->base;
+	ifp = sc->nlge_if;
 
 	NLGE_UPDATE(base, R_RX_CONTROL, 0x0, 1 << O_RX_CONTROL__RxEnable);
 	do {
@@ -1416,6 +1534,10 @@ nlge_port_disable(int id, xlr_reg_t *base, int port_type)
 		break;
 	default:
 		panic("Unknown MAC type on port %d\n", id);
+	}
+
+	if (ifp) {
+		ifp->if_drv_flags &= ~(IFF_DRV_RUNNING | IFF_DRV_OACTIVE);
 	}
 }
 
@@ -1455,10 +1577,29 @@ nlge_port_enable(struct nlge_softc *sc)
 }
 
 static void
+nlge_mac_set_rx_mode(struct nlge_softc *sc)
+{
+	uint32_t regval;
+
+	regval = NLGE_READ(sc->base, R_MAC_FILTER_CONFIG);
+
+	if (sc->if_flags & IFF_PROMISC) {
+		regval |= (1 << O_MAC_FILTER_CONFIG__BROADCAST_EN) |
+		    (1 << O_MAC_FILTER_CONFIG__PAUSE_FRAME_EN) |
+		    (1 << O_MAC_FILTER_CONFIG__ALL_MCAST_EN) |
+		    (1 << O_MAC_FILTER_CONFIG__ALL_UCAST_EN);
+	} else {
+		regval &= ~((1 << O_MAC_FILTER_CONFIG__PAUSE_FRAME_EN) |
+		    (1 << O_MAC_FILTER_CONFIG__ALL_UCAST_EN));
+	}
+
+	NLGE_WRITE(sc->base, R_MAC_FILTER_CONFIG, regval);
+}
+
+static void
 nlge_sgmii_init(struct nlge_softc *sc)
 {
 	xlr_reg_t *mmio_gpio;
-	int i;
 	int phy;
 
 	if (sc->port_type != XLR_SGMII)
@@ -1476,12 +1617,26 @@ nlge_sgmii_init(struct nlge_softc *sc)
 	nlge_mii_write_internal(sc->serdes_addr, 26, 9, 0x0000);
 	nlge_mii_write_internal(sc->serdes_addr, 26,10, 0x0000);
 
-	for(i=0;i<10000000;i++){}	/* delay */
 	/* program  GPIO values for serdes init parameters */
-	mmio_gpio = (xlr_reg_t *) (DEFAULT_XLR_IO_BASE + XLR_IO_GPIO_OFFSET);
-	mmio_gpio[0x20] = 0x7e6802;
-	mmio_gpio[0x10] = 0x7104;
-	for(i=0;i<100000000;i++){}
+	DELAY(100);
+	mmio_gpio = xlr_io_mmio(XLR_IO_GPIO_OFFSET);
+	xlr_write_reg(mmio_gpio, 0x20, 0x7e6802);
+	xlr_write_reg(mmio_gpio, 0x10, 0x7104);
+	DELAY(100);
+
+	/* 
+	 * This kludge is needed to setup serdes (?) clock correctly on some
+	 * XLS boards
+	 */
+	if ((xlr_boot1_info.board_major_version == RMI_XLR_BOARD_ARIZONA_XI ||
+	    xlr_boot1_info.board_major_version == RMI_XLR_BOARD_ARIZONA_XII) &&
+	    xlr_boot1_info.board_minor_version == 4) {
+		/* use 125 Mhz instead of 156.25Mhz ref clock */
+		DELAY(100);
+		xlr_write_reg(mmio_gpio, 0x10, 0x7103);
+		xlr_write_reg(mmio_gpio, 0x21, 0x7103);
+		DELAY(100);
+	}
 
 	/* enable autoneg - more magic */
 	phy = sc->phy_addr % 4 + 27;
@@ -1535,7 +1690,7 @@ nlge_intr(void *arg)
 
 			if (intr_status & 0x2410) {
 				/* update link status for port */
-				nlge_gmac_config_speed(port_sc, 0);
+				nlge_gmac_config_speed(port_sc, 1);
 			} else {
 				printf("%s: Unsupported phy interrupt"
 				    " (0x%08x)\n",
@@ -1721,7 +1876,7 @@ nlge_if_init(struct nlge_softc *sc)
 	ifp->if_softc = sc;
 	if_initname(ifp, device_get_name(dev), device_get_unit(dev));
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
-	ifp->if_capabilities = IFCAP_TXCSUM | IFCAP_VLAN_HWTAGGING;
+	ifp->if_capabilities = 0;
 	ifp->if_capenable = ifp->if_capabilities;
 	ifp->if_ioctl = nlge_ioctl;
 	ifp->if_start = nlge_start;
@@ -1873,14 +2028,14 @@ prepare_fmn_message(struct nlge_softc *sc, struct msgrng_msg *fmn_msg,
 	struct mbuf     *m;
 	struct nlge_tx_desc *p2p;
 	uint64_t        *cur_p2d;
+	uint64_t        fbpaddr;
 	vm_offset_t	buf;
 	vm_paddr_t      paddr;
-	int             msg_sz, p2p_sz, is_p2p;
-	int             len, frag_sz;
+	int             msg_sz, p2p_sz, len, frag_sz;
 	/* Num entries per FMN msg is 4 for XLR/XLS */
 	const int       FMN_SZ = sizeof(*fmn_msg) / sizeof(uint64_t);
 
-	msg_sz = p2p_sz = is_p2p = 0;
+	msg_sz = p2p_sz = 0;
 	p2p = NULL;
 	cur_p2d = &fmn_msg->msg0;
 
@@ -1892,23 +2047,18 @@ prepare_fmn_message(struct nlge_softc *sc, struct msgrng_msg *fmn_msg,
 			if (msg_sz == (FMN_SZ - 1)) {
 				p2p = uma_zalloc(nl_tx_desc_zone, M_NOWAIT);
 				if (p2p == NULL) {
-					return 2;
+					return (2);
 				}
 				/*
-				 * As we currently use xlr_paddr_lw on a 32-bit
-				 * OS, both the pointers are laid out in one
-				 * 64-bit location - this makes it easy to
-				 * retrieve the pointers when processing the
-				 * tx free-back descriptor.
+				 * Save the virtual address in the descriptor,
+				 * it makes freeing easy.
 				 */
 				p2p->frag[XLR_MAX_TX_FRAGS] =
-				    (((uint64_t) (vm_offset_t) p2p) << 32) |
-				    ((vm_offset_t) mbuf_chain);
+				    (uint64_t)(vm_offset_t)p2p;
 				cur_p2d = &p2p->frag[0];
-				is_p2p = 1;
 			} else if (msg_sz == (FMN_SZ - 2 + XLR_MAX_TX_FRAGS)) {
 				uma_zfree(nl_tx_desc_zone, p2p);
-				return 1;
+				return (1);
 			}
 			paddr = vtophys(buf);
 			frag_sz = PAGE_SIZE - (buf & PAGE_MASK);
@@ -1917,7 +2067,7 @@ prepare_fmn_message(struct nlge_softc *sc, struct msgrng_msg *fmn_msg,
 			*cur_p2d++ = (127ULL << 54) | ((uint64_t)frag_sz << 40)
 			    | paddr;
 			msg_sz++;
-			if (is_p2p)
+			if (p2p != NULL)
 				p2p_sz++;
 			len -= frag_sz;
 			buf += frag_sz;
@@ -1927,15 +2077,28 @@ prepare_fmn_message(struct nlge_softc *sc, struct msgrng_msg *fmn_msg,
 	if (msg_sz ==  0) {
 		printf("Zero-length mbuf chain ??\n");
 		*n_entries = msg_sz ;
-		return 0;
+		return (0);
 	}
 
-	cur_p2d[-1] |= (1ULL << 63); /* set eop in most-recent p2d */
-	*cur_p2d = (1ULL << 63) | ((uint64_t)fb_stn_id << 54) |
-	     (vm_offset_t) mbuf_chain;
+	/* set eop in most-recent p2d */
+	cur_p2d[-1] |= (1ULL << 63);
+
+#ifdef __mips_n64
+	/* 
+	 * On n64, we cannot store our mbuf pointer(64 bit) in the freeback
+	 * message (40bit available), so we put the mbuf in m_nextpkt and 
+	 * use the physical addr of that in freeback message.
+	 */ 
+	mbuf_chain->m_nextpkt = mbuf_chain;
+	fbpaddr = vtophys(&mbuf_chain->m_nextpkt);
+#else
+	/* Careful, don't sign extend when going to 64bit */
+	fbpaddr = (uint64_t)(uintptr_t)mbuf_chain; 
+#endif
+	*cur_p2d = (1ULL << 63) | ((uint64_t)fb_stn_id << 54) | fbpaddr;
 	*tx_desc = p2p;
 
-	if (is_p2p) {
+	if (p2p != NULL) {
 		paddr = vtophys(p2p);
 		p2p_sz++;
 		fmn_msg->msg3 = (1ULL << 62) | ((uint64_t)fb_stn_id << 54) |
@@ -1954,18 +2117,21 @@ send_fmn_msg_tx(struct nlge_softc *sc, struct msgrng_msg *msg,
 {
 	uint32_t msgrng_flags;
 	int ret;
-#ifdef INVARIANTS
 	int i = 0;
-#endif
 
 	do {
 		msgrng_flags = msgrng_access_enable();
 		ret = message_send(n_entries, MSGRNG_CODE_MAC,
 		    sc->tx_bucket_id, msg);
 		msgrng_restore(msgrng_flags);
-		KASSERT(i++ < 100000, ("Too many credit fails\n"));
-	} while (ret != 0);
-	return (0);
+		if (ret == 0)
+			return (0);
+		i++;
+	} while (i < 100000);
+
+	device_printf(sc->nlge_dev, "Too many credit fails in tx path\n");
+
+	return (1);
 }
 
 static void
@@ -1973,39 +2139,41 @@ release_tx_desc(vm_paddr_t paddr)
 {
 	struct nlge_tx_desc *tx_desc;
 	uint32_t 	sr;
-	uint32_t	val1, val2;
+	uint64_t	vaddr;
 
 	paddr += (XLR_MAX_TX_FRAGS * sizeof(uint64_t));
 	sr = xlr_enable_kx();
-	val1 = xlr_paddr_lw(paddr);
-	paddr += sizeof(void *);
-	val2 = xlr_paddr_lw(paddr);
-	mips_wr_status(sr);
+	vaddr = xlr_paddr_ld(paddr);
+	xlr_restore_kx(sr);
 
-	tx_desc = (struct nlge_tx_desc*)(intptr_t) val1;
+	tx_desc = (struct nlge_tx_desc*)(intptr_t)vaddr;
 	uma_zfree(nl_tx_desc_zone, tx_desc);
 }
 
 static void *
 get_buf(void)
 {
-	struct mbuf    *m_new;
-	vm_paddr_t 	temp1, temp2;
-	unsigned int 	*md;
+	struct mbuf	*m_new;
+	uint64_t 	*md;
+#ifdef INVARIANTS
+	vm_paddr_t	temp1, temp2;
+#endif
 
 	if ((m_new = m_getcl(M_DONTWAIT, MT_DATA, M_PKTHDR)) == NULL)
-		return NULL;
+		return (NULL);
 	m_new->m_len = m_new->m_pkthdr.len = MCLBYTES;
-	m_adj(m_new, XLR_CACHELINE_SIZE - ((unsigned int)m_new->m_data & 0x1f));
-	md = (unsigned int *)m_new->m_data;
-	md[0] = (unsigned int)m_new;	/* Back Ptr */
+	m_adj(m_new, XLR_CACHELINE_SIZE - ((uintptr_t)m_new->m_data & 0x1f));
+	md = (uint64_t *)m_new->m_data;
+	md[0] = (intptr_t)m_new;	/* Back Ptr */
 	md[1] = 0xf00bad;
 	m_adj(m_new, XLR_CACHELINE_SIZE);
 
+#ifdef INVARIANTS
 	temp1 = vtophys((vm_offset_t) m_new->m_data);
 	temp2 = vtophys((vm_offset_t) m_new->m_data + 1536);
 	if ((temp1 + 1536) != temp2)
 		panic("ALLOCED BUFFER IS NOT CONTIGUOUS\n");
+#endif
 
 	return ((void *)m_new->m_data);
 }
@@ -2071,7 +2239,7 @@ nlge_gmac_config_speed(struct nlge_softc *sc, int quick)
 	if_link_state_change(sc->nlge_if, link_state);
 	printf("%s: [%sMbps]\n", device_get_nameunit(sc->nlge_dev),
 	    speed_str[sc->speed]);
-		
+
 	return (0);
 }
 
@@ -2089,16 +2257,12 @@ nlge_set_port_attribs(struct nlge_softc *sc,
 {
 	sc->instance = port_info->instance % 4;	/* TBD: will not work for SPI-4 */
 	sc->port_type = port_info->type;
-	sc->base = (xlr_reg_t *) (port_info->base_addr +
-	    (uint32_t)DEFAULT_XLR_IO_BASE);
-	sc->mii_base = (xlr_reg_t *) (port_info->mii_addr +
-	    (uint32_t)DEFAULT_XLR_IO_BASE);
+	sc->base = xlr_io_mmio(port_info->base_addr);
+	sc->mii_base = xlr_io_mmio(port_info->mii_addr);
 	if (port_info->pcs_addr != 0)
-		sc->pcs_addr = (xlr_reg_t *) (port_info->pcs_addr +
-		    (uint32_t)DEFAULT_XLR_IO_BASE);
+		sc->pcs_addr = xlr_io_mmio(port_info->pcs_addr);
 	if (port_info->serdes_addr != 0)
-		sc->serdes_addr = (xlr_reg_t *) (port_info->serdes_addr +
-		    (uint32_t)DEFAULT_XLR_IO_BASE);
+		sc->serdes_addr = xlr_io_mmio(port_info->serdes_addr);
 	sc->phy_addr = port_info->phy_addr;
 
 	PDEBUG("Port%d: base=%p, mii_base=%p, phy_addr=%d\n", sc->id, sc->base,

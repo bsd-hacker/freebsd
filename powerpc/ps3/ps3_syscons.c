@@ -299,7 +299,8 @@ ps3fb_remap(void)
 	    L1GPU_CONTEXT_ATTRIBUTE_DISPLAY_FLIP, 1, 0, 0, 0);
 
 	for (va = 0; va < PS3FB_SIZE; va += PAGE_SIZE)
-		pmap_kenter(0x10000000 + va, fb_paddr + va); 
+		pmap_kenter_attr(0x10000000 + va, fb_paddr + va,
+		    VM_MEMATTR_WRITE_COMBINING); 
 }
 
 static int

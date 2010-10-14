@@ -76,51 +76,13 @@ static struct lpte *mps3_pvo_to_pte(const struct pvo_entry *pvo);
 
 
 static mmu_method_t mps3_methods[] = {
-        MMUMETHOD(mmu_change_wiring,    moea64_change_wiring),
-        MMUMETHOD(mmu_clear_modify,     moea64_clear_modify),
-        MMUMETHOD(mmu_clear_reference,  moea64_clear_reference),
-        MMUMETHOD(mmu_copy_page,        moea64_copy_page),
-        MMUMETHOD(mmu_enter,            moea64_enter),
-        MMUMETHOD(mmu_enter_object,     moea64_enter_object),
-        MMUMETHOD(mmu_enter_quick,      moea64_enter_quick),
-        MMUMETHOD(mmu_extract,          moea64_extract),
-        MMUMETHOD(mmu_extract_and_hold, moea64_extract_and_hold),
-        MMUMETHOD(mmu_init,             moea64_init),
-        MMUMETHOD(mmu_is_modified,      moea64_is_modified),
-        MMUMETHOD(mmu_is_referenced,    moea64_is_referenced),
-        MMUMETHOD(mmu_ts_referenced,    moea64_ts_referenced),
-        MMUMETHOD(mmu_map,              moea64_map),
-        MMUMETHOD(mmu_page_exists_quick,moea64_page_exists_quick),
-        MMUMETHOD(mmu_page_wired_mappings,moea64_page_wired_mappings),
-        MMUMETHOD(mmu_pinit,            moea64_pinit),
-        MMUMETHOD(mmu_pinit0,           moea64_pinit0),
-        MMUMETHOD(mmu_protect,          moea64_protect),
-        MMUMETHOD(mmu_qenter,           moea64_qenter),
-        MMUMETHOD(mmu_qremove,          moea64_qremove),
-        MMUMETHOD(mmu_release,          moea64_release),
-        MMUMETHOD(mmu_remove,           moea64_remove),
-        MMUMETHOD(mmu_remove_all,       moea64_remove_all),
-        MMUMETHOD(mmu_remove_write,     moea64_remove_write),
-        MMUMETHOD(mmu_sync_icache,      moea64_sync_icache),
-        MMUMETHOD(mmu_zero_page,        moea64_zero_page),
-        MMUMETHOD(mmu_zero_page_area,   moea64_zero_page_area),
-        MMUMETHOD(mmu_zero_page_idle,   moea64_zero_page_idle),
-        MMUMETHOD(mmu_activate,         moea64_activate),
-        MMUMETHOD(mmu_deactivate,       moea64_deactivate),
- 
-        /* Internal interfaces */
         MMUMETHOD(mmu_bootstrap,        mps3_bootstrap),
         MMUMETHOD(mmu_cpu_bootstrap,    mps3_cpu_bootstrap),
-        MMUMETHOD(mmu_mapdev,           moea64_mapdev),
-        MMUMETHOD(mmu_unmapdev,         moea64_unmapdev),
-        MMUMETHOD(mmu_kextract,         moea64_kextract),
-        MMUMETHOD(mmu_kenter,           moea64_kenter),
-        MMUMETHOD(mmu_dev_direct_mapped,moea64_dev_direct_mapped),
 
         { 0, 0 }
 };
 
-MMU_DEF(ps3_mmu, "mmu_ps3", mps3_methods, 0);
+MMU_DEF_INHERIT(ps3_mmu, "mmu_ps3", mps3_methods, 0, oea64_mmu);
 
 static void
 mps3_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernelend)
