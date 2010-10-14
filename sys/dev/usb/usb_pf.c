@@ -1185,6 +1185,34 @@ usbpf_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 		error = usbpf_setf(ud, (struct usbpf_program *)addr, cmd);
 		break;
 
+	/*
+	 * Set read timeout.
+	 */
+	case UIOCSRTIMEOUT:
+		{
+			struct timeval *tv = (struct timeval *)addr;
+
+			/*
+			 * Subtract 1 tick from tvtohz() since this isn't
+			 * a one-shot timer.
+			 */
+			if ((error = itimerfix(tv)) == 0)
+				ud->ud_rtout = tvtohz(tv) - 1;
+			break;
+		}
+
+	/*
+	 * Get read timeout.
+	 */
+	case UIOCGRTIMEOUT:
+		{
+			struct timeval *tv = (struct timeval *)addr;
+
+			tv->tv_sec = ud->ud_rtout / hz;
+			tv->tv_usec = (ud->ud_rtout % hz) * tick;
+			break;
+		}
+
 	case UIOCVERSION:
 		{
 			struct usbpf_version *uv = (struct usbpf_version *)addr;

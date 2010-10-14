@@ -260,10 +260,12 @@ struct usbpf_program {
 
 #define	UIOCGBLEN	_IOR('U', 102, u_int)
 #define	UIOCSBLEN	_IOWR('U', 102, u_int)
-#define	UIOCSETF	_IOW('B', 103, struct usbpf_program)
+#define	UIOCSETF	_IOW('U', 103, struct usbpf_program)
 #define	UIOCSETIF	_IOW('U', 108, struct usbpf_ifreq)
+#define	UIOCSRTIMEOUT	_IOW('U', 109, struct timeval)
+#define	UIOCGRTIMEOUT	_IOR('U', 110, struct timeval)
 #define	UIOCVERSION	_IOR('U', 113, struct usbpf_version)
-#define	UIOCSETWF	_IOW('B', 123, struct usbpf_program)
+#define	UIOCSETWF	_IOW('U', 123, struct usbpf_program)
 
 #define	USBPF_XFERTAP_SUBMIT	0
 #define	USBPF_XFERTAP_DONE	1
