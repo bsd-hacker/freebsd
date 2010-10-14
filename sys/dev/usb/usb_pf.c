@@ -1680,6 +1680,7 @@ usbpf_xfertap(struct usb_xfer *xfer, int type)
 	}
 	end = buf + sizeof(struct usbpf_pkthdr) + (USB_PAGE_SIZE * 5);
 
+	/* XXX need to care big/little endians. */
 	bzero(ptr, sizeof(struct usbpf_pkthdr));
 	up = (struct usbpf_pkthdr *)ptr;
 	up->up_busunit = device_get_unit(bus->bdev);
