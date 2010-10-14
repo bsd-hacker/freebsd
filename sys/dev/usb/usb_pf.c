@@ -1694,7 +1694,6 @@ usbpf_tap(struct usbpf_if *uif, u_char *pkt, u_int pktlen)
 void
 usbpf_xfertap(struct usb_xfer *xfer, int type)
 {
-#define	USBPF_PAGE_SIZE	(4 * 1024)
 	struct usb_endpoint *ep = xfer->endpoint;
 	struct usb_page_search res;
 	struct usb_xfer_root *info = xfer->xroot;
@@ -1709,13 +1708,13 @@ usbpf_xfertap(struct usb_xfer *xfer, int type)
 	 * really inefficient. Copying usbpf_pkthdr and data is for USB packet
 	 * read filter to pass a virtually linear buffer.
 	 */
-	buf = ptr = malloc(sizeof(struct usbpf_pkthdr) + (USBPF_PAGE_SIZE * 5),
+	buf = ptr = malloc(sizeof(struct usbpf_pkthdr) + (USB_PAGE_SIZE * 5),
 	    M_USBPF, M_NOWAIT);
 	if (buf == NULL) {
 		printf("usbpf_xfertap: out of memory\n");	/* XXX */
 		return;
 	}
-	end = buf + sizeof(struct usbpf_pkthdr) + (USBPF_PAGE_SIZE * 5);
+	end = buf + sizeof(struct usbpf_pkthdr) + (USB_PAGE_SIZE * 5);
 
 	bzero(ptr, sizeof(struct usbpf_pkthdr));
 	up = (struct usbpf_pkthdr *)ptr;
