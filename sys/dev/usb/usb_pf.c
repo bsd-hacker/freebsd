@@ -1737,7 +1737,7 @@ usbpf_xfertap(struct usb_xfer *xfer, int type)
 	default:
 		panic("wrong usbpf type (%d)", type);
 	}
-	
+
 	up->up_error = xfer->error;
 	up->up_interval = xfer->interval;
 	ptr += sizeof(struct usbpf_pkthdr);
