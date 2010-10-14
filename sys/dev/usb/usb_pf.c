@@ -95,63 +95,6 @@ MALLOC_DEFINE(M_USBPF, "USBPktFilter", "USB Packet Filter");
 #endif
 
 /*
- * The instruction encodings.
- */
-
-/* instruction classes */
-#define	USBPF_CLASS(code) ((code) & 0x07)
-#define		USBPF_LD	0x00
-#define		USBPF_LDX	0x01
-#define		USBPF_ST	0x02
-#define		USBPF_STX	0x03
-#define		USBPF_ALU	0x04
-#define		USBPF_JMP	0x05
-#define		USBPF_RET	0x06
-#define		USBPF_MISC	0x07
-
-/* ld/ldx fields */
-#define	USBPF_SIZE(code)	((code) & 0x18)
-#define		USBPF_W		0x00
-#define		USBPF_H		0x08
-#define		USBPF_B		0x10
-#define	USBPF_MODE(code)	((code) & 0xe0)
-#define		USBPF_IMM 	0x00
-#define		USBPF_ABS	0x20
-#define		USBPF_IND	0x40
-#define		USBPF_MEM	0x60
-#define		USBPF_LEN	0x80
-#define		USBPF_MSH	0xa0
-
-/* alu/jmp fields */
-#define	USBPF_OP(code)	((code) & 0xf0)
-#define		USBPF_ADD	0x00
-#define		USBPF_SUB	0x10
-#define		USBPF_MUL	0x20
-#define		USBPF_DIV	0x30
-#define		USBPF_OR	0x40
-#define		USBPF_AND	0x50
-#define		USBPF_LSH	0x60
-#define		USBPF_RSH	0x70
-#define		USBPF_NEG	0x80
-#define		USBPF_JA	0x00
-#define		USBPF_JEQ	0x10
-#define		USBPF_JGT	0x20
-#define		USBPF_JGE	0x30
-#define		USBPF_JSET	0x40
-#define	USBPF_SRC(code)	((code) & 0x08)
-#define		USBPF_K		0x00
-#define		USBPF_X		0x08
-
-/* ret - USBPF_K and USBPF_X also apply */
-#define	USBPF_RVAL(code)	((code) & 0x18)
-#define		USBPF_A		0x10
-
-/* misc */
-#define	USBPF_MISCOP(code) ((code) & 0xf8)
-#define		USBPF_TAX	0x00
-#define		USBPF_TXA	0x80
-
-/*
  * Number of scratch memory words (for USBPF_LD|USBPF_MEM and USBPF_ST).
  */
 #define	USBPF_MEMWORDS		 16
