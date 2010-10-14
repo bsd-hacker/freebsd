@@ -1449,13 +1449,6 @@ usbpf_buf_reclaimed(struct usbpf_d *ud)
 	}
 }
 
-/*
- * Alignment macros.  USBPF_WORDALIGN rounds up to the next
- * even multiple of USBPF_ALIGNMENT.
- */
-#define	USBPF_ALIGNMENT sizeof(long)
-#define	USBPF_WORDALIGN(x) (((x)+(USBPF_ALIGNMENT-1))&~(USBPF_ALIGNMENT-1))
-
 #define	SIZEOF_USBPF_HDR(type)	\
     (offsetof(type, uh_hdrlen) + sizeof(((type *)0)->uh_hdrlen))
 

@@ -52,6 +52,13 @@ typedef	u_int64_t usbpf_u_int64;
 struct usbpf_if;
 
 /*
+ * Alignment macros.  USBPF_WORDALIGN rounds up to the next
+ * even multiple of USBPF_ALIGNMENT.
+ */
+#define	USBPF_ALIGNMENT sizeof(long)
+#define	USBPF_WORDALIGN(x) (((x)+(USBPF_ALIGNMENT-1))&~(USBPF_ALIGNMENT-1))
+
+/*
  * The instruction encodings.
  */
 
