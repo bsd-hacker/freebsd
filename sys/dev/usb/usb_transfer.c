@@ -59,6 +59,7 @@
 
 #include <dev/usb/usb_controller.h>
 #include <dev/usb/usb_bus.h>
+#include <dev/usb/usb_pf.h>
 
 struct usb_std_packet_size {
 	struct {
@@ -2059,6 +2060,9 @@ usbd_callback_wrapper(struct usb_xfer_queue *pq)
 		}
 	}
 
+	if (xfer->usb_state != USB_ST_SETUP)
+		usbpf_xfertap(xfer, USBPF_XFERTAP_DONE);
+
 	/* call processing routine */
 	(xfer->callback) (xfer, xfer->error);
 
@@ -2425,6 +2429,8 @@ usbd_pipe_start(struct usb_xfer_queue *pq)
 		}
 	}
 	DPRINTF("start\n");
+
+	usbpf_xfertap(xfer, USBPF_XFERTAP_SUBMIT);
 
 	/* start USB transfer */
 	(ep->methods->start) (xfer);

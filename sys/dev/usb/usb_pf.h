@@ -151,6 +151,22 @@ struct usbpf_xhdr {
 #define	USBPF_BUFMODE_BUFFER	1	/* Kernel buffers with read(). */
 #define	USBPF_BUFMODE_ZBUF	2	/* Zero-copy buffers. */
 
+struct usbpf_pkthdr {
+	int		up_busunit;	/* Host controller unit number */
+	u_char		up_address;	/* USB device address */
+	u_char		up_endpoint;	/* USB endpoint */
+	u_char		up_type;	/* points SUBMIT / DONE */
+	u_char		up_xfertype;	/* Transfer type */
+	u_int32_t	up_flags;	/* Transfer flags */
+	u_int32_t	up_status;	/* Transfer status */
+	u_int32_t	up_length;	/* Total data length (submit/actual) */
+	u_int32_t	up_frames;	/* USB frame number (submit/actual) */
+	u_int32_t	up_error;	/* usb_error_t */
+	u_int32_t	up_interval;	/* for interrupt and isoc */
+	/* sizeof(struct usbpf_pkthdr) == 128 bytes */
+	u_char		up_reserved[96];
+} __packed;
+
 struct usbpf_version {
 	u_short		uv_major;
 	u_short		uv_minor;
@@ -181,6 +197,8 @@ struct usbpf_program {
 
 void	usbpf_attach(struct usb_bus *, struct usbpf_if **);
 void	usbpf_detach(struct usb_bus *);
-void	usbpf_tap(struct usbpf_if *, u_char *, u_int);
+#define	USBPF_XFERTAP_SUBMIT	0
+#define	USBPF_XFERTAP_DONE	1
+void	usbpf_xfertap(struct usb_xfer *, int);
 
 #endif

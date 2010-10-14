@@ -47,9 +47,11 @@ __FBSDID("$FreeBSD$");
 #include <dev/usb/usbdi.h>
 #include <dev/usb/usb_busdma.h>
 #include <dev/usb/usb_controller.h>
+#include <dev/usb/usb_core.h>
 #include <dev/usb/usb_device.h>
 #include <dev/usb/usb_bus.h>
 #include <dev/usb/usb_pf.h>
+#include <dev/usb/usb_transfer.h>
 
 /*
  * All usbpf implementations are extracted from bpf(9) APIs and it's
@@ -1663,7 +1665,7 @@ catchpacket(struct usbpf_d *ud, u_char *pkt, u_int pktlen, u_int snaplen,
  * by each process' filter, and if accepted, stashed into the corresponding
  * buffer.
  */
-void
+static void
 usbpf_tap(struct usbpf_if *uif, u_char *pkt, u_int pktlen)
 {
 	struct bintime bt;
@@ -1687,6 +1689,76 @@ usbpf_tap(struct usbpf_if *uif, u_char *pkt, u_int pktlen)
 		USBPFD_UNLOCK(ud);
 	}
 	USBPFIF_UNLOCK(uif);
+}
+
+void
+usbpf_xfertap(struct usb_xfer *xfer, int type)
+{
+#define	USBPF_PAGE_SIZE	(4 * 1024)
+	struct usb_endpoint *ep = xfer->endpoint;
+	struct usb_page_search res;
+	struct usb_xfer_root *info = xfer->xroot;
+	struct usb_bus *bus = info->bus;
+	struct usbpf_pkthdr *up;
+	int i;
+	char *buf, *ptr, *end;
+
+	/*
+	 * XXX TODO
+	 * Allocating the buffer here causes copy operations twice what's
+	 * really inefficient. Copying usbpf_pkthdr and data is for USB packet
+	 * read filter to pass a virtually linear buffer.
+	 */
+	buf = ptr = malloc(sizeof(struct usbpf_pkthdr) + (USBPF_PAGE_SIZE * 5),
+	    M_USBPF, M_NOWAIT);
+	if (buf == NULL) {
+		printf("usbpf_xfertap: out of memory\n");	/* XXX */
+		return;
+	}
+	end = buf + sizeof(struct usbpf_pkthdr) + (USBPF_PAGE_SIZE * 5);
+
+	bzero(ptr, sizeof(struct usbpf_pkthdr));
+	up = (struct usbpf_pkthdr *)ptr;
+	up->up_busunit = device_get_unit(bus->bdev);
+	up->up_type = type;
+	up->up_xfertype = ep->edesc->bmAttributes & UE_XFERTYPE;
+	up->up_address = xfer->address;
+	up->up_endpoint = xfer->endpointno;
+	up->up_flags = xfer->flags;
+	up->up_status = xfer->status;
+	switch (type) {
+	case USBPF_XFERTAP_SUBMIT:
+		up->up_length = xfer->sumlen;
+		up->up_frames = xfer->nframes;
+		break;
+	case USBPF_XFERTAP_DONE:
+		up->up_length = xfer->actlen;
+		up->up_frames = xfer->aframes;
+		break;
+	default:
+		panic("wrong usbpf type (%d)", type);
+	}
+	
+	up->up_error = xfer->error;
+	up->up_interval = xfer->interval;
+	ptr += sizeof(struct usbpf_pkthdr);
+
+	for (i = 0; i < up->up_frames; i++) {
+		if (ptr + sizeof(u_int32_t) >= end)
+			goto done;
+		*((u_int32_t *)ptr) = xfer->frlengths[i];
+		ptr += sizeof(u_int32_t);
+
+		if (ptr + xfer->frlengths[i] >= end)
+			goto done;
+		usbd_get_page(&xfer->frbuffers[i], 0, &res);
+		bcopy(res.buffer, ptr, xfer->frlengths[i]);
+		ptr += xfer->frlengths[i];
+	}
+
+	usbpf_tap(bus->uif, buf, ptr - buf);
+done:
+	free(buf, M_USBPF);
 }
 
 static void
