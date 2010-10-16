@@ -1213,6 +1213,19 @@ usbpf_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 			break;
 		}
 
+	/*
+	 * Get packet stats.
+	 */
+	case UIOCGSTATS:
+		{
+			struct usbpf_stat *us = (struct usbpf_stat *)addr;
+
+			/* XXXCSJP overflow */
+			us->us_recv = ud->ud_rcount;
+			us->us_drop = ud->ud_dcount;
+			break;
+		}
+
 	case UIOCVERSION:
 		{
 			struct usbpf_version *uv = (struct usbpf_version *)addr;

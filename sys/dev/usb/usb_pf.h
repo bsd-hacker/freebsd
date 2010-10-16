@@ -258,12 +258,21 @@ struct usbpf_program {
 	struct usbpf_insn	*uf_insns;
 };
 
+/*
+ * Struct returned by UIOCGSTATS.
+ */
+struct usbpf_stat {
+	u_int us_recv;		/* number of packets received */
+	u_int us_drop;		/* number of packets dropped */
+};
+
 #define	UIOCGBLEN	_IOR('U', 102, u_int)
 #define	UIOCSBLEN	_IOWR('U', 102, u_int)
 #define	UIOCSETF	_IOW('U', 103, struct usbpf_program)
 #define	UIOCSETIF	_IOW('U', 108, struct usbpf_ifreq)
 #define	UIOCSRTIMEOUT	_IOW('U', 109, struct timeval)
 #define	UIOCGRTIMEOUT	_IOR('U', 110, struct timeval)
+#define	UIOCGSTATS	_IOR('U', 111, struct usbpf_stat)
 #define	UIOCVERSION	_IOR('U', 113, struct usbpf_version)
 #define	UIOCSETWF	_IOW('U', 123, struct usbpf_program)
 
