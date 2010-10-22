@@ -45,6 +45,7 @@ __FBSDID("$FreeBSD$");
 
 static const char *class_name = "PART";
 static const char *sade_flags = "sade";
+static const char *arg0_name = "arg0";
 static char de_errstr[BUFSIZ];
 
 char*
@@ -267,7 +268,7 @@ de_dev_scheme_destroy(struct de_device *pdev)
 
 	gctl_ro_param(req, "verb", -1, "destroy");
 	gctl_ro_param(req, "class", -1, class_name);
-	gctl_ro_param(req, "geom", -1, pdev->de_name);
+	gctl_ro_param(req, arg0_name, -1, pdev->de_name);
 	gctl_ro_param(req, "flags", -1, sade_flags);
 
 	error = de_gpart_issue(req);
@@ -351,7 +352,7 @@ de_dev_bootcode(struct de_device *pdev, const char *path)
 
 	gctl_ro_param(req, "verb", -1, "bootcode");
 	gctl_ro_param(req, "class", -1, class_name);
-	gctl_ro_param(req, "geom", -1, pdev->de_name);
+	gctl_ro_param(req, arg0_name, -1, pdev->de_name);
 	gctl_ro_param(req, "bootcode", size, code);
 	gctl_ro_param(req, "flags", -1, sade_flags);
 
@@ -377,7 +378,7 @@ de_dev_undo(struct de_device *pdev)
 
 	gctl_ro_param(req, "verb", -1, "undo");
 	gctl_ro_param(req, "class", -1, class_name);
-	gctl_ro_param(req, "geom", -1, pdev->de_name);
+	gctl_ro_param(req, arg0_name, -1, pdev->de_name);
 
 	error = de_gpart_issue(req);
 	gctl_free(req);
@@ -399,7 +400,7 @@ de_dev_commit(struct de_device *pdev)
 
 	gctl_ro_param(req, "verb", -1, "commit");
 	gctl_ro_param(req, "class", -1, class_name);
-	gctl_ro_param(req, "geom", -1, pdev->de_name);
+	gctl_ro_param(req, arg0_name, -1, pdev->de_name);
 
 	error = de_gpart_issue(req);
 	gctl_free(req);
@@ -562,7 +563,7 @@ de_part_add(struct de_device *pdev, const char *type, off_t start, off_t size,
 
 	gctl_ro_param(req, "verb", -1, "add");
 	gctl_ro_param(req, "class", -1, class_name);
-	gctl_ro_param(req, "geom", -1, pdev->de_name);
+	gctl_ro_param(req, arg0_name, -1, pdev->de_name);
 	gctl_ro_param(req, "type", -1, type);
 	gctl_ro_param(req, "start", -1, sstart);
 	gctl_ro_param(req, "size", -1, ssize);
@@ -603,7 +604,7 @@ de_part_del(struct de_device *pdev, int idx)
 
 	gctl_ro_param(req, "verb", -1, "delete");
 	gctl_ro_param(req, "class", -1, class_name);
-	gctl_ro_param(req, "geom", -1, pdev->de_name);
+	gctl_ro_param(req, arg0_name, -1, pdev->de_name);
 	gctl_ro_param(req, "index", -1, sindex);
 	gctl_ro_param(req, "flags", -1, sade_flags);
 
@@ -637,7 +638,7 @@ de_part_attr(struct de_device *pdev, int act, const char *name, int idx)
 
 	gctl_ro_param(req, "verb", -1, cmdstr);
 	gctl_ro_param(req, "class", -1, class_name);
-	gctl_ro_param(req, "geom", -1, pdev->de_name);
+	gctl_ro_param(req, arg0_name, -1, pdev->de_name);
 	gctl_ro_param(req, "attrib", -1, name);
 	gctl_ro_param(req, "index", -1, sindex);
 	gctl_ro_param(req, "flags", -1, sade_flags);
@@ -686,7 +687,7 @@ de_part_mod(struct de_device *pdev, const char *type, const char *label,
 
 	gctl_ro_param(req, "verb", -1, "modify");
 	gctl_ro_param(req, "class", -1, class_name);
-	gctl_ro_param(req, "geom", -1, pdev->de_name);
+	gctl_ro_param(req, arg0_name, -1, pdev->de_name);
 	gctl_ro_param(req, "index", -1, sindex);
 	gctl_ro_param(req, "flags", -1, sade_flags);
 	if (label)
@@ -785,7 +786,7 @@ de_part_resize(struct de_device *pdev, const char *size, int idx)
 
 	gctl_ro_param(req, "class", -1, class_name);
 	gctl_ro_param(req, "verb", -1, "resize");
-	gctl_ro_param(req, "geom", -1, pdev->de_name);
+	gctl_ro_param(req, arg0_name, -1, pdev->de_name);
 	gctl_ro_param(req, "size", -1, size);
 	gctl_ro_param(req, "index", -1, sindex);
 	gctl_ro_param(req, "flags", -1, sade_flags);
