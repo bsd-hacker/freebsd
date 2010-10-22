@@ -245,7 +245,7 @@ de_dev_scheme_create(struct de_device *pdev, const char *scheme)
 	gctl_ro_param(req, "verb", -1, "create");
 	gctl_ro_param(req, "class", -1, class_name);
 	gctl_ro_param(req, "scheme", -1, scheme);
-	gctl_ro_param(req, "provider", -1, pdev->de_name);
+	gctl_ro_param(req, arg0_name, -1, pdev->de_name);
 	gctl_ro_param(req, "flags", -1, sade_flags);
 
 	error = de_gpart_issue(req);
@@ -528,10 +528,10 @@ int
 de_part_add(struct de_device *pdev, const char *type, off_t start, off_t size,
     const char* label, int idx)
 {
-	int error;
 	struct gctl_req *req;
-	char *sindex = NULL;
 	char *sstart = NULL, *ssize = NULL;
+	intmax_t index;
+	int error;
 
 	assert(pdev != NULL);
 	assert(pdev->de_name != NULL);
@@ -544,11 +544,6 @@ de_part_add(struct de_device *pdev, const char *type, off_t start, off_t size,
 		    &size);
 		if (error)
 			return (error);
-	}
-	if (idx > 0) {
-		asprintf(&sindex, "%d", idx);
-		if (sindex == NULL)
-			return (ENOMEM);
 	}
 	error = ENOMEM;
 	asprintf(&sstart, "%jd", (intmax_t)start);
@@ -568,15 +563,16 @@ de_part_add(struct de_device *pdev, const char *type, off_t start, off_t size,
 	gctl_ro_param(req, "start", -1, sstart);
 	gctl_ro_param(req, "size", -1, ssize);
 	gctl_ro_param(req, "flags", -1, sade_flags);
-	if (idx > 0)
-		gctl_ro_param(req, "index", -1, sindex);
+	if (idx > 0) {
+		index = (intmax_t)idx;
+		gctl_ro_param(req, "index", sizeof(index), &index);
+	}
 	if (label)
 		gctl_ro_param(req, "label", -1, label);
 
 	error = de_gpart_issue(req);
 	gctl_free(req);
 fail:
-	free(sindex);
 	free(sstart);
 	free(ssize);
 	return (error);
@@ -585,68 +581,60 @@ fail:
 int
 de_part_del(struct de_device *pdev, int idx)
 {
-	int error;
 	struct gctl_req *req;
-	char *sindex;
+	intmax_t index;
+	int error;
 
 	assert(pdev != NULL);
 	assert(pdev->de_name != NULL);
 
 	if (idx <= 0)
 		return (EINVAL);
-	asprintf(&sindex, "%d", idx);
-	if (sindex == NULL)
-		return (ENOMEM);
+	index = (intmax_t)idx;
 
 	req = gctl_get_handle();
 	if (req == NULL)
-		goto fail;
+		return (ENOMEM);
 
 	gctl_ro_param(req, "verb", -1, "delete");
 	gctl_ro_param(req, "class", -1, class_name);
 	gctl_ro_param(req, arg0_name, -1, pdev->de_name);
-	gctl_ro_param(req, "index", -1, sindex);
+	gctl_ro_param(req, "index", sizeof(index), &index);
 	gctl_ro_param(req, "flags", -1, sade_flags);
 
 	error = de_gpart_issue(req);
 	gctl_free(req);
-fail:
-	free(sindex);
 	return (error);
 }
 
 static int
 de_part_attr(struct de_device *pdev, int act, const char *name, int idx)
 {
-	int error;
 	struct gctl_req *req;
 	const char *cmdstr = act ? "set": "unset";
-	char *sindex;
+	intmax_t index;
+	int error;
 
 	assert(pdev != NULL);
 	assert(pdev->de_name != NULL);
 
 	if (idx <= 0)
 		return (EINVAL);
-	asprintf(&sindex, "%d", idx);
-	if (sindex == NULL)
-		return (ENOMEM);
+	index = (intmax_t)idx;
 
 	req = gctl_get_handle();
 	if (req == NULL)
-		goto fail;
+		return (ENOMEM);
 
 	gctl_ro_param(req, "verb", -1, cmdstr);
 	gctl_ro_param(req, "class", -1, class_name);
 	gctl_ro_param(req, arg0_name, -1, pdev->de_name);
 	gctl_ro_param(req, "attrib", -1, name);
-	gctl_ro_param(req, "index", -1, sindex);
+	gctl_ro_param(req, "index", sizeof(index), &index);
 	gctl_ro_param(req, "flags", -1, sade_flags);
 
 	error = de_gpart_issue(req);
 	gctl_free(req);
-fail:
-	free(sindex);
 	return (error);
 }
 
@@ -666,9 +654,9 @@ int
 de_part_mod(struct de_device *pdev, const char *type, const char *label,
     int idx)
 {
-	int error;
 	struct gctl_req *req;
-	char *sindex = NULL;
+	intmax_t index;
+	int error;
 
 	assert(pdev != NULL);
 	assert(pdev->de_name != NULL);
@@ -677,18 +665,16 @@ de_part_mod(struct de_device *pdev, const char *type, const char *label,
 		return (EINVAL);
 	if (type == NULL && label == NULL)
 		return (EINVAL);
-	asprintf(&sindex, "%d", idx);
-	if (sindex == NULL)
-		return (ENOMEM);
+	index = (intmax_t)idx;
 
 	req = gctl_get_handle();
 	if (req == NULL)
-		goto fail;
+		return (ENOMEM);
 
 	gctl_ro_param(req, "verb", -1, "modify");
 	gctl_ro_param(req, "class", -1, class_name);
 	gctl_ro_param(req, arg0_name, -1, pdev->de_name);
-	gctl_ro_param(req, "index", -1, sindex);
+	gctl_ro_param(req, "index", sizeof(index), &index);
 	gctl_ro_param(req, "flags", -1, sade_flags);
 	if (label)
 		gctl_ro_param(req, "label", -1, label);
@@ -697,8 +683,6 @@ de_part_mod(struct de_device *pdev, const char *type, const char *label,
 
 	error = de_gpart_issue(req);
 	gctl_free(req);
-fail:
-	free(sindex);
 	return (error);
 }
 
