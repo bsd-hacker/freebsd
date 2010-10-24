@@ -268,9 +268,9 @@ ehci_init(ehci_softc_t *sc)
 	}
 #endif
 
-	sc->sc_offs = EREAD1(sc, EHCI_CAPLENGTH);
+	sc->sc_offs = EREAD4(sc, EHCI_CAPLENGTH) & 0xff;
 
-	version = EREAD2(sc, EHCI_HCIVERSION);
+	version = EREAD4(sc, EHCI_HCIVERSION & ~3) >> 16;
 	device_printf(sc->sc_bus.bdev, "EHCI version %x.%x\n",
 	    version >> 8, version & 0xff);
 
