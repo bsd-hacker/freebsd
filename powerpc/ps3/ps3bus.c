@@ -478,7 +478,6 @@ ps3bus_get_dma_tag(device_t dev, device_t child)
 		mtx_unlock(&dinfo->iommu_mtx);
 		return (dinfo->dma_tag);
 	}
-printf("Allocating tag for device %d.%d:\n", dinfo->bus, dinfo->dev);
 
 	for (i = 0; i < sc->rcount; i++) {
 		err = lv1_allocate_device_dma_region(dinfo->bus, dinfo->dev,
@@ -499,7 +498,6 @@ printf("Allocating tag for device %d.%d:\n", dinfo->bus, dinfo->dev);
 			    "could not map DMA region %d: %d\n", i, err);
 			goto fail;
 		}
-printf("\tPhys mem %#lx mapped to %#lx\n", sc->regions[i].mr_start, dinfo->dma_base[i]);
 	}
 
 	err = bus_dma_tag_create(bus_get_dma_tag(dev),
