@@ -37,6 +37,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/proc.h>
 #include <sys/posix4.h>
 #include <sys/resourcevar.h>
+#include <sys/rwlock.h>
 #include <sys/sched.h>
 #include <sys/sysctl.h>
 #include <sys/smp.h>
@@ -45,7 +46,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/sysproto.h>
 #include <sys/signalvar.h>
-#include <sys/sx.h>
 #include <sys/ucontext.h>
 #include <sys/thr.h>
 #include <sys/rtprio.h>
@@ -285,23 +285,23 @@ thr_exit(struct thread *td, struct thr_exit_args *uap)
 		kern_umtx_wake(td, uap->state, INT_MAX, 0);
 	}
 
-	tidhash_remove(td);
-
+	rw_wlock(&tidhash_lock);
 	PROC_LOCK(p);
-	tdsigcleanup(td);
-	PROC_SLOCK(p);
-
 	/*
 	 * Shutting down last thread in the proc.  This will actually
 	 * call exit() in the trampoline when it returns.
 	 */
 	if (p->p_numthreads != 1) {
+		LIST_REMOVE(td, td_hash);
+		rw_wunlock(&tidhash_lock);
+		tdsigcleanup(td);
+		PROC_SLOCK(p);
 		thread_stopped(p);
 		thread_exit();
 		/* NOTREACHED */
 	}
-	PROC_SUNLOCK(p);
 	PROC_UNLOCK(p);
+	rw_wunlock(&tidhash_lock);
 	return (0);
 }
 
@@ -431,40 +431,40 @@ thr_suspend(struct thread *td, struct thr_suspend_args *uap)
 int
 kern_thr_suspend(struct thread *td, struct timespec *tsp)
 {
+	struct proc *p = td->td_proc;
 	struct timeval tv;
 	int error = 0;
 	int timo = 0;
-
-	if (tsp != NULL) {
-		if (tsp->tv_nsec < 0 || tsp->tv_nsec > 1000000000)
-			return (EINVAL);
-	}
 
 	if (td->td_pflags & TDP_WAKEUP) {
 		td->td_pflags &= ~TDP_WAKEUP;
 		return (0);
 	}
 
-	PROC_LOCK(td->td_proc);
-	if ((td->td_flags & TDF_THRWAKEUP) == 0) {
+	if (tsp != NULL) {
+		if (tsp->tv_nsec < 0 || tsp->tv_nsec > 1000000000)
+			return (EINVAL);
 		if (tsp->tv_sec == 0 && tsp->tv_nsec == 0)
 			error = EWOULDBLOCK;
 		else {
 			TIMESPEC_TO_TIMEVAL(&tv, tsp);
 			timo = tvtohz(&tv);
-			error = msleep((void *)td, &td->td_proc->p_mtx,
-				 PCATCH, "lthr", timo);
 		}
 	}
+
+	PROC_LOCK(p);
+	if (error == 0 && (td->td_flags & TDF_THRWAKEUP) == 0)
+		error = msleep((void *)td, &p->p_mtx,
+			 PCATCH, "lthr", timo);
 
 	if (td->td_flags & TDF_THRWAKEUP) {
 		thread_lock(td);
 		td->td_flags &= ~TDF_THRWAKEUP;
 		thread_unlock(td);
-		PROC_UNLOCK(td->td_proc);
+		PROC_UNLOCK(p);
 		return (0);
 	}
-	PROC_UNLOCK(td->td_proc);
+	PROC_UNLOCK(p);
 	if (error == EWOULDBLOCK)
 		error = ETIMEDOUT;
 	else if (error == ERESTART) {

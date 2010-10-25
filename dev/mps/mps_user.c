@@ -322,6 +322,21 @@ mps_user_write_cfg_page(struct mps_softc *sc,
 	return (0);
 }
 
+static void
+mpi_init_sge(struct mps_command *cm, void *req, void *sge)
+{
+	int off, space;
+
+	space = (int)cm->cm_sc->facts->IOCRequestFrameSize * 4;
+	off = (uintptr_t)sge - (uintptr_t)req;
+
+	KASSERT(off < space, ("bad pointers %p %p, off %d, space %d",
+            req, sge, off, space));
+
+	cm->cm_sge = sge;
+	cm->cm_sglsize = space - off;
+}
+
 /*
  * Prepare the mps_command for an IOC_FACTS request.
  */
@@ -368,15 +383,50 @@ mpi_pre_fw_download(struct mps_command *cm, struct mps_usr_command *cmd)
 {
 	MPI2_FW_DOWNLOAD_REQUEST *req = (void *)cm->cm_req;
 	MPI2_FW_DOWNLOAD_REPLY *rpl;
+	MPI2_FW_DOWNLOAD_TCSGE tc;
+	int error;
+
+	/*
+	 * This code assumes there is room in the request's SGL for
+	 * the TransactionContext plus at least a SGL chain element.
+	 */
+	CTASSERT(sizeof req->SGL >= sizeof tc + MPS_SGC_SIZE);
 
 	if (cmd->req_len != sizeof *req)
 		return (EINVAL);
 	if (cmd->rpl_len != sizeof *rpl)
 		return (EINVAL);
 
-	cm->cm_sge = (MPI2_SGE_IO_UNION *)&req->SGL;
-	cm->cm_sglsize = sizeof req->SGL;
-	return (0);
+	if (cmd->len == 0)
+		return (EINVAL);
+
+	error = copyin(cmd->buf, cm->cm_data, cmd->len);
+	if (error != 0)
+		return (error);
+
+	mpi_init_sge(cm, req, &req->SGL);
+	bzero(&tc, sizeof tc);
+
+	/*
+	 * For now, the F/W image must be provided in a single request.
+	 */
+	if ((req->MsgFlags & MPI2_FW_DOWNLOAD_MSGFLGS_LAST_SEGMENT) == 0)
+		return (EINVAL);
+	if (req->TotalImageSize != cmd->len)
+		return (EINVAL);
+
+	/*
+	 * The value of the first two elements is specified in the
+	 * Fusion-MPT Message Passing Interface document.
+	 */
+	tc.ContextSize = 0;
+	tc.DetailsLength = 12;
+	tc.ImageOffset = 0;
+	tc.ImageSize = cmd->len;
+
+	cm->cm_flags |= MPS_CM_FLAGS_DATAOUT;
+
+	return (mps_push_sge(cm, &tc, sizeof tc, 0));
 }
 
 /*
@@ -387,45 +437,41 @@ mpi_pre_fw_upload(struct mps_command *cm, struct mps_usr_command *cmd)
 {
 	MPI2_FW_UPLOAD_REQUEST *req = (void *)cm->cm_req;
 	MPI2_FW_UPLOAD_REPLY *rpl;
-	MPI2_FW_UPLOAD_TCSGE *tc;
+	MPI2_FW_UPLOAD_TCSGE tc;
 
 	/*
 	 * This code assumes there is room in the request's SGL for
 	 * the TransactionContext plus at least a SGL chain element.
 	 */
-	CTASSERT(sizeof req->SGL >= sizeof *tc + MPS_SGC_SIZE);
+	CTASSERT(sizeof req->SGL >= sizeof tc + MPS_SGC_SIZE);
 
 	if (cmd->req_len != sizeof *req)
 		return (EINVAL);
 	if (cmd->rpl_len != sizeof *rpl)
 		return (EINVAL);
 
-	cm->cm_sglsize = sizeof req->SGL;
+	mpi_init_sge(cm, req, &req->SGL);
 	if (cmd->len == 0) {
 		/* Perhaps just asking what the size of the fw is? */
-		cm->cm_sge = (MPI2_SGE_IO_UNION *)&req->SGL;
 		return (0);
 	}
 
-	tc = (void *)&req->SGL;
-	bzero(tc, sizeof *tc);
+	bzero(&tc, sizeof tc);
 
 	/*
 	 * The value of the first two elements is specified in the
 	 * Fusion-MPT Message Passing Interface document.
 	 */
-	tc->ContextSize = 0;
-	tc->DetailsLength = 12;
+	tc.ContextSize = 0;
+	tc.DetailsLength = 12;
 	/*
 	 * XXX Is there any reason to fetch a partial image?  I.e. to
 	 * set ImageOffset to something other than 0?
 	 */
-	tc->ImageOffset = 0;
-	tc->ImageSize = cmd->len;
-	cm->cm_sge = (MPI2_SGE_IO_UNION *)(tc + 1);
-	cm->cm_sglsize -= sizeof *tc;
+	tc.ImageOffset = 0;
+	tc.ImageSize = cmd->len;
 
-	return (0);
+	return (mps_push_sge(cm, &tc, sizeof tc, 0));
 }
 
 /*
@@ -442,8 +488,7 @@ mpi_pre_sata_passthrough(struct mps_command *cm, struct mps_usr_command *cmd)
 	if (cmd->rpl_len != sizeof *rpl)
 		return (EINVAL);
 
-	cm->cm_sge = (MPI2_SGE_IO_UNION *)&req->SGL;
-	cm->cm_sglsize = sizeof req->SGL;
+	mpi_init_sge(cm, req, &req->SGL);
 	return (0);
 }
 
@@ -461,8 +506,7 @@ mpi_pre_smp_passthrough(struct mps_command *cm, struct mps_usr_command *cmd)
 	if (cmd->rpl_len != sizeof *rpl)
 		return (EINVAL);
 
-	cm->cm_sge = (MPI2_SGE_IO_UNION *)&req->SGL;
-	cm->cm_sglsize = sizeof req->SGL;
+	mpi_init_sge(cm, req, &req->SGL);
 	return (0);
 }
 
@@ -480,8 +524,7 @@ mpi_pre_config(struct mps_command *cm, struct mps_usr_command *cmd)
 	if (cmd->rpl_len != sizeof *rpl)
 		return (EINVAL);
 
-	cm->cm_sge = (MPI2_SGE_IO_UNION *)&req->PageBufferSGE;
-	cm->cm_sglsize = sizeof req->PageBufferSGE;
+	mpi_init_sge(cm, req, &req->PageBufferSGE);
 	return (0);
 }
 
@@ -536,7 +579,7 @@ mps_user_command(struct mps_softc *sc, struct mps_usr_command *cmd)
 	MPI2_REQUEST_HEADER *hdr;	
 	MPI2_DEFAULT_REPLY *rpl;
 	void *buf = NULL;
-	struct mps_command *cm;
+	struct mps_command *cm = NULL;
 	int err = 0;
 	int sz;
 
@@ -588,11 +631,12 @@ mps_user_command(struct mps_softc *sc, struct mps_usr_command *cmd)
 	mps_lock(sc);
 	err = mps_map_command(sc, cm);
 
-	if (err != 0) {
-		mps_printf(sc, "mps_user_command: request timed out\n");
+	if (err != 0 && err != EINPROGRESS) {
+		mps_printf(sc, "%s: invalid request: error %d\n",
+		    __func__, err);
 		goto Ret;
 	}
-	msleep(cm, &sc->mps_mtx, 0, "mpsuser", 0); /* 30 seconds */
+	msleep(cm, &sc->mps_mtx, 0, "mpsuser", 0);
 
 	rpl = (MPI2_DEFAULT_REPLY *)cm->cm_reply;
 	sz = rpl->MsgLength * 4;
@@ -609,22 +653,14 @@ mps_user_command(struct mps_softc *sc, struct mps_usr_command *cmd)
 	copyout(rpl, cmd->rpl, sz);
 	if (buf != NULL)
 		copyout(buf, cmd->buf, cmd->len);
-	mps_lock(sc);
-
 	mps_dprint(sc, MPS_INFO, "mps_user_command: reply size %d\n", sz );
-
-	mps_free_command(sc, cm);
-Ret:
-	mps_unlock(sc);
-	if (buf != NULL)
-		free(buf, M_MPSUSER);
-	return (err);
 
 RetFreeUnlocked:
 	mps_lock(sc);
-	mps_free_command(sc, cm);
+	if (cm != NULL)
+		mps_free_command(sc, cm);
+Ret:
 	mps_unlock(sc);
-
 	if (buf != NULL)
 		free(buf, M_MPSUSER);
 	return (err);
