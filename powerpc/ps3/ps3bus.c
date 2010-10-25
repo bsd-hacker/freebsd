@@ -45,6 +45,7 @@
 
 #include "ps3bus.h"
 #include "ps3-hvcall.h"
+#include "iommu_if.h"
 
 static void	ps3bus_identify(driver_t *, device_t);
 static int	ps3bus_probe(device_t);
@@ -57,6 +58,11 @@ static struct resource *ps3bus_alloc_resource(device_t bus, device_t child,
 		    u_long count, u_int flags);
 static int	ps3bus_activate_resource(device_t bus, device_t child, int type,
 		    int rid, struct resource *res);
+static bus_dma_tag_t ps3bus_get_dma_tag(device_t dev, device_t child);
+static int	ps3_iommu_map(device_t dev, bus_dma_segment_t *segs, int *nsegs,		    bus_addr_t min, bus_addr_t max, bus_size_t alignment,
+		    bus_size_t boundary, void *cookie);
+static int	ps3_iommu_unmap(device_t dev, bus_dma_segment_t *segs,
+		    int nsegs, void *cookie);
 
 struct ps3bus_devinfo {
 	int bus;
@@ -65,6 +71,10 @@ struct ps3bus_devinfo {
 	uint64_t devtype;
 
 	struct resource_list resources;
+	bus_dma_tag_t dma_tag;
+
+	struct mtx iommu_mtx;
+	bus_addr_t dma_base[4];
 };
 
 static MALLOC_DEFINE(M_PS3BUS, "ps3bus", "PS3 system bus device information");
@@ -84,6 +94,7 @@ static device_method_t ps3bus_methods[] = {
 	/* Bus interface */
 	DEVMETHOD(bus_driver_added,	bus_generic_driver_added),
 	DEVMETHOD(bus_add_child,	bus_generic_add_child),
+	DEVMETHOD(bus_get_dma_tag,	ps3bus_get_dma_tag),
 	DEVMETHOD(bus_print_child,	ps3bus_print_child),
 	DEVMETHOD(bus_read_ivar,	ps3bus_read_ivar),
 	DEVMETHOD(bus_alloc_resource,	ps3bus_alloc_resource),
@@ -91,11 +102,17 @@ static device_method_t ps3bus_methods[] = {
 	DEVMETHOD(bus_setup_intr,	bus_generic_setup_intr),
 	DEVMETHOD(bus_teardown_intr,	bus_generic_teardown_intr),
 
+	/* IOMMU interface */
+	DEVMETHOD(iommu_map,		ps3_iommu_map),
+	DEVMETHOD(iommu_unmap,		ps3_iommu_unmap),
+
 	{ 0, 0 }
 };
 
 struct ps3bus_softc {
 	struct rman sc_mem_rman;
+	struct mem_region *regions;
+	int rcount;
 };
 
 static driver_t ps3bus_driver = {
@@ -226,6 +243,9 @@ ps3bus_attach(device_t self)
 	sc->sc_mem_rman.rm_descr = "PS3Bus Memory Mapped I/O";
 	rman_init(&sc->sc_mem_rman);
 
+	/* Get memory regions for DMA */
+	mem_regions(&sc->regions, &sc->rcount, &sc->regions, &sc->rcount);
+
 	/*
 	 * Probe all the PS3's buses.
 	 */
@@ -287,6 +307,8 @@ ps3bus_attach(device_t self)
 				free(dinfo, M_PS3BUS);
 				continue;
 			}
+
+			mtx_init(&dinfo->iommu_mtx, "iommu", NULL, MTX_DEF);
 			device_set_ivars(cdev, dinfo);
 		}
 	}
@@ -442,5 +464,92 @@ ps3bus_activate_resource(device_t bus, device_t child, int type, int rid,
 	}
 
 	return (rman_activate_resource(res));
+}
+
+static bus_dma_tag_t
+ps3bus_get_dma_tag(device_t dev, device_t child)
+{
+	struct ps3bus_devinfo *dinfo = device_get_ivars(child);
+	struct ps3bus_softc *sc = device_get_softc(dev);
+	int i, err;
+
+	mtx_lock(&dinfo->iommu_mtx);
+	if (dinfo->dma_tag != NULL) {
+		mtx_unlock(&dinfo->iommu_mtx);
+		return (dinfo->dma_tag);
+	}
+printf("Allocating tag for device %d.%d:\n", dinfo->bus, dinfo->dev);
+
+	for (i = 0; i < sc->rcount; i++) {
+		err = lv1_allocate_device_dma_region(dinfo->bus, dinfo->dev,
+		    sc->regions[i].mr_size, 24 /* log_2(16 MB) */,
+		    0 /* 32-bit transfers */, &dinfo->dma_base[i]);
+		if (err != 0) {
+			device_printf(child,
+			    "could not allocate DMA region %d: %d\n", i, err);
+			goto fail;
+		}
+
+		err = lv1_map_device_dma_region(dinfo->bus, dinfo->dev,
+		    sc->regions[i].mr_start, dinfo->dma_base[i],
+		    sc->regions[i].mr_size,
+		    0xf800000000000000UL /* see Cell IO/MMU docs */);
+		if (err != 0) {
+			device_printf(child,
+			    "could not map DMA region %d: %d\n", i, err);
+			goto fail;
+		}
+printf("\tPhys mem %#lx mapped to %#lx\n", sc->regions[i].mr_start, dinfo->dma_base[i]);
+	}
+
+	err = bus_dma_tag_create(bus_get_dma_tag(dev),
+	    1, 0, BUS_SPACE_MAXADDR, BUS_SPACE_MAXADDR,
+	    NULL, NULL, BUS_SPACE_MAXSIZE_32BIT, 0, BUS_SPACE_MAXSIZE_32BIT,
+	    0, NULL, NULL, &dinfo->dma_tag);
+
+	bus_dma_tag_set_iommu(dinfo->dma_tag, dev, dinfo);
+
+fail:
+	mtx_unlock(&dinfo->iommu_mtx);
+
+	if (err)
+		return (NULL);
+
+	return (dinfo->dma_tag);
+}
+
+static int
+ps3_iommu_map(device_t dev, bus_dma_segment_t *segs, int *nsegs,
+    bus_addr_t min, bus_addr_t max, bus_size_t alignment, bus_size_t boundary,
+    void *cookie)
+{
+	struct ps3bus_devinfo *dinfo = cookie;
+	struct ps3bus_softc *sc = device_get_softc(dev);
+	int i, j;
+
+	for (i = 0; i < *nsegs; i++) {
+		for (j = 0; j < sc->rcount; j++) {
+			if (segs[i].ds_addr >= sc->regions[j].mr_start &&
+			    segs[i].ds_addr < sc->regions[j].mr_start +
+			      sc->regions[j].mr_size)
+				break;
+		}
+		KASSERT(j < sc->rcount,
+		    ("Trying to map address %#lx not in physical memory",
+		    segs[i].ds_addr));
+
+		segs[i].ds_addr = dinfo->dma_base[j] +
+		    (segs[i].ds_addr - sc->regions[j].mr_start);
+	}
+
+	return (0);
+}
+
+
+static int
+ps3_iommu_unmap(device_t dev, bus_dma_segment_t *segs, int nsegs, void *cookie)
+{
+
+	return (0);
 }
 

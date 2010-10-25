@@ -116,36 +116,13 @@ glc_getphys(void *xaddr, bus_dma_segment_t *segs, int nsegs, int error)
 	*(bus_addr_t *)xaddr = segs[0].ds_addr;
 }
 
-static bus_addr_t
-glc_map_addr(struct glc_softc *sc, bus_addr_t lpar_addr)
-{
-	static struct mem_region *regions = NULL;
-	static int rcount;
-	int i;
-
-	if (regions == NULL)
-		mem_regions(&regions, &rcount, &regions, &rcount);
-
-	for (i = 0; i < rcount; i++) {
-		if (lpar_addr >= regions[i].mr_start &&
-		    lpar_addr < regions[i].mr_start + regions[i].mr_size)
-			break;
-	}
-
-	if (i == rcount)
-		panic("glc: unable to map address %#lx", lpar_addr);
-
-	return (sc->sc_dma_base[i] + (lpar_addr - regions[i].mr_start));
-}
-
 static int 
 glc_attach(device_t dev) 
 {
 	struct glc_softc *sc;
 	struct glc_txsoft *txs;
-	struct mem_region *regions;
 	uint64_t mac64, val, junk;
-	int i, err, rcount;
+	int i, err;
 
 	sc = device_get_softc(dev);
 
@@ -213,28 +190,6 @@ glc_attach(device_t dev)
 	/*
 	 * Set up DMA.
 	 */
-
-	/* XXX: following should be integrated to busdma */
-	mem_regions(&regions, &rcount, &regions, &rcount);
-	for (i = 0; i < rcount; i++) {
-		err = lv1_allocate_device_dma_region(sc->sc_bus, sc->sc_dev,
-		    regions[i].mr_size, 24 /* log_2(16 MB) */,
-		    0 /* 32-bit transfers */, &sc->sc_dma_base[i]);
-		if (err != 0) {
-			device_printf(dev,
-			    "could not allocate DMA region %d: %d\n", i, err);
-			goto fail;
-		}
-
-		err = lv1_map_device_dma_region(sc->sc_bus, sc->sc_dev,
-		    regions[i].mr_start, sc->sc_dma_base[i], regions[i].mr_size,
-		    0xf800000000000000UL /* see Cell IO/MMU docs */);
-		if (err != 0) {
-			device_printf(dev,
-			    "could not map DMA region %d: %d\n", i, err);
-			goto fail;
-		}
-	}
 
 	err = bus_dma_tag_create(bus_get_dma_tag(dev), 32, 0,
 	    BUS_SPACE_MAXADDR, BUS_SPACE_MAXADDR, NULL, NULL,
@@ -326,7 +281,6 @@ glc_attach(device_t dev)
 
 	return (0);
 
-fail:
 	mtx_destroy(&sc->sc_mtx);
 	if_free(sc->sc_ifp);
 	return (ENXIO);
@@ -367,8 +321,8 @@ glc_init_locked(struct glc_softc *sc)
 	txs = STAILQ_FIRST(&sc->sc_txdirtyq);
 	if (txs != NULL) {
 		lv1_net_start_tx_dma(sc->sc_bus, sc->sc_dev,
-		    glc_map_addr(sc, sc->sc_txdmadesc_phys +
-		    txs->txs_firstdesc*sizeof(struct glc_dmadesc)), 0);
+		    sc->sc_txdmadesc_phys +
+		    txs->txs_firstdesc*sizeof(struct glc_dmadesc), 0);
 	}
 
 	lv1_net_start_rx_dma(sc->sc_bus, sc->sc_dev,
@@ -613,15 +567,14 @@ glc_add_rxbuf_dma(struct glc_softc *sc, int idx)
 	struct glc_rxsoft *rxs = &sc->sc_rxsoft[idx];
 	
 	bzero(&sc->sc_rxdmadesc[idx], sizeof(sc->sc_rxdmadesc[idx]));
-	sc->sc_rxdmadesc[idx].paddr = glc_map_addr(sc, rxs->segment.ds_addr);
+	sc->sc_rxdmadesc[idx].paddr = rxs->segment.ds_addr;
 	sc->sc_rxdmadesc[idx].len = rxs->segment.ds_len;
-	sc->sc_rxdmadesc[idx].next = glc_map_addr(sc, sc->sc_rxdmadesc_phys +
-	    ((idx + 1) % GLC_MAX_RX_PACKETS)*sizeof(sc->sc_rxdmadesc[idx]));
+	sc->sc_rxdmadesc[idx].next = sc->sc_rxdmadesc_phys +
+	    ((idx + 1) % GLC_MAX_RX_PACKETS)*sizeof(sc->sc_rxdmadesc[idx]);
 	sc->sc_rxdmadesc[idx].cmd_stat = GELIC_DESCR_OWNED;
 
 	rxs->rxs_desc_slot = idx;
-	rxs->rxs_desc = glc_map_addr(sc, sc->sc_rxdmadesc_phys +
-	    idx*sizeof(struct glc_dmadesc));
+	rxs->rxs_desc = sc->sc_rxdmadesc_phys + idx*sizeof(struct glc_dmadesc);
 
         return (0);
 }
@@ -684,16 +637,15 @@ glc_encap(struct glc_softc *sc, struct mbuf **m_head, bus_addr_t *pktdesc)
 	txs->txs_firstdesc = sc->next_txdma_slot;
 
 	idx = txs->txs_firstdesc;
-	firstslotphys = glc_map_addr(sc, sc->sc_txdmadesc_phys +
-	    txs->txs_firstdesc*sizeof(struct glc_dmadesc));
+	firstslotphys = sc->sc_txdmadesc_phys +
+	    txs->txs_firstdesc*sizeof(struct glc_dmadesc);
 
 	for (i = 0; i < nsegs; i++) {
 		bzero(&sc->sc_txdmadesc[idx], sizeof(sc->sc_txdmadesc[idx]));
-		sc->sc_txdmadesc[idx].paddr = glc_map_addr(sc, segs[i].ds_addr);
+		sc->sc_txdmadesc[idx].paddr = segs[i].ds_addr;
 		sc->sc_txdmadesc[idx].len = segs[i].ds_len;
-		sc->sc_txdmadesc[idx].next = glc_map_addr(sc,
-		    sc->sc_txdmadesc_phys +
-		    ((idx + 1) % GLC_MAX_TX_PACKETS)*sizeof(struct glc_dmadesc));
+		sc->sc_txdmadesc[idx].next = sc->sc_txdmadesc_phys +
+		    ((idx + 1) % GLC_MAX_TX_PACKETS)*sizeof(struct glc_dmadesc);
 		sc->sc_txdmadesc[idx].cmd_stat |= GELIC_CMDSTAT_NOIPSEC;
 
 		if (i+1 == nsegs) {
@@ -836,8 +788,8 @@ glc_txintr(struct glc_softc *sc)
 
 	if (kickstart && txs != NULL) {
 		lv1_net_start_tx_dma(sc->sc_bus, sc->sc_dev,
-		    glc_map_addr(sc, sc->sc_txdmadesc_phys +
-		    txs->txs_firstdesc*sizeof(struct glc_dmadesc)), 0);
+		    sc->sc_txdmadesc_phys +
+		    txs->txs_firstdesc*sizeof(struct glc_dmadesc), 0);
 	}
 
 	if (progress) {
