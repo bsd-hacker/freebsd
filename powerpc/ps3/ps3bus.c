@@ -471,7 +471,7 @@ ps3bus_get_dma_tag(device_t dev, device_t child)
 {
 	struct ps3bus_devinfo *dinfo = device_get_ivars(child);
 	struct ps3bus_softc *sc = device_get_softc(dev);
-	int i, err;
+	int i, err, flags;
 
 	mtx_lock(&dinfo->iommu_mtx);
 	if (dinfo->dma_tag != NULL) {
@@ -479,10 +479,15 @@ ps3bus_get_dma_tag(device_t dev, device_t child)
 		return (dinfo->dma_tag);
 	}
 
+	flags = 0; /* 32-bit mode */
+	if (dinfo->bustype == PS3_BUSTYPE_SYSBUS &&
+	    dinfo->devtype == PS3_DEVTYPE_USB)
+		flags = 2; /* 8-bit mode */
+
 	for (i = 0; i < sc->rcount; i++) {
 		err = lv1_allocate_device_dma_region(dinfo->bus, dinfo->dev,
-		    sc->regions[i].mr_size, 24 /* log_2(16 MB) */,
-		    0 /* 32-bit transfers */, &dinfo->dma_base[i]);
+		    sc->regions[i].mr_size, 24 /* log_2(16 MB) */, flags,
+		    &dinfo->dma_base[i]);
 		if (err != 0) {
 			device_printf(child,
 			    "could not allocate DMA region %d: %d\n", i, err);
