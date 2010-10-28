@@ -340,11 +340,10 @@ again:
 			} else
 				dlg_focus_next(&dlg);
 		case KEY_UP:
+			dlg_focus_prev(&dlg);
+			break;
 		case KEY_DOWN:
-			if (item == btnCancel)
-				dlg_focus_prev(&dlg);
-			if (item == btnOk)
-				dlg_focus_next(&dlg);
+			dlg_focus_next(&dlg);
 			break;
 		}
 	} while (q == 0);
