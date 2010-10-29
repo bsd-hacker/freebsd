@@ -63,7 +63,7 @@ void	dmenu_open_errormsg(char *msg);
 int	dmenu_open_yesno(char *msg);
 int	dmenu_open_noyes(char *msg);
 int	parted_open(struct de_device *pdev, int level);
-int	fsed_open(void);
+int	ufsed_open(void);
 WINDOW *savescr(void);
 void	restorescr(WINDOW *win);
 char	*hscroll_str(char *buf, int w, const char *str, int sc, int flag);

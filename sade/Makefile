@@ -6,9 +6,9 @@ SRCPATH?=	../../../../head
 PROG=	sade
 NO_MAN=
 
-LIBSADE=devices.c parts.c util.c fs.c
+LIBSADE=devices.c parts.c util.c
 
-SRCS=	main.c parted.c menus.c customdlg.c history.c fsed.c \
+SRCS=	main.c parted.c menus.c customdlg.c history.c ufsed.c \
 	getmntopts.c
 SRCS+=	${LIBSADE}
 

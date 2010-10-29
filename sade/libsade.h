@@ -33,16 +33,10 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/queue.h>
-#include <sys/mount.h>
-#include <ufs/ufs/ufsmount.h>
-#include <ufs/ufs/dinode.h>
-#include <ufs/ffs/fs.h>
-#include <libufs.h>
 #include <libgeom.h>
 
 TAILQ_HEAD(de_devlist, de_device);
 TAILQ_HEAD(de_partlist, de_part);
-TAILQ_HEAD(de_fslist, de_fs);
 
 struct de_device {
 	char			*de_name;	/* device name */
@@ -73,46 +67,6 @@ struct de_part {
 
 	u_int			de_flags;	/* partition flags */
 	void			*de_private;	/* partition private data */
-};
-
-enum de_fstype {
-	UNKNOWN, EMPTY, SWAP, UFS, ZFS
-};
-
-struct de_fs {
-	TAILQ_ENTRY(de_fs)	de_fs;		/* file system list entry */
-	enum de_fstype		de_type;	/* file system type */
-	char			*de_parttype;	/* partition type */
-	char			*de_partname;	/* partition name */
-	char			*de_mntfrom;	/* device name */
-	char			*de_mntto;	/* file system mount path */
-	char			*de_mounted;	/* where it is mounted now */
-	char			*de_mntops;	/* mount options */
-	off_t			de_size;	/* file system size */
-	int			de_freq;	/* dump frequency */
-	int			de_pass;	/* pass number on parallel fsck */
-
-	char			*de_devname;	/* parent device name */
-	char			*de_scheme;	/* partition scheme name */
-
-	u_int			de_flags;	/* file system flags */
-	void			*de_private;	/* file system private data */
-};
-
-struct de_ufs_priv {
-	char			de_volname[MAXVOLLEN];	/* Volume label */
-	int32_t			de_id[2];	/* unique filesystem id */
-#define	HAS_UFSID(ppriv) \
-	((ppriv)->de_id[0] != 0 || (ppriv)->de_id[1] != 0)
-
-	int			de_ufs1:1;	/* UFS1 fs type */
-	int			de_su:1;	/* Soft Updates enabled */
-	int			de_suj:1;	/* Journalled Soft Updates enabled */
-	int			de_gj:1;	/* GEOM Journal enabled */
-
-	int			de_acl:1;	/* POSIX.1e ACL enabled */
-	int			de_nfs4acl:1;	/* NFSv4 ACL enabled */
-	int			de_mac:1;	/* MAC multilabel enabled */
 };
 
 /* device related functions */
@@ -147,13 +101,6 @@ int	de_part_del(struct de_device *pdev, int idx);
 int	de_part_mod(struct de_device *pdev, const char *type,
     const char *label, int idx);
 int	de_part_bootcode(struct de_part *ppart, const char *path);
-
-/* file system related */
-const char *de_fstypestr(enum de_fstype type);
-int	de_fslist_get(struct de_fslist *fslist);
-void	de_fslist_free(struct de_fslist *fslist);
-int	de_fslist_count(struct de_fslist *fslist);
-
 
 /* geom helpers */
 struct gclass	*find_class(struct gmesh *mesh, const char *name);

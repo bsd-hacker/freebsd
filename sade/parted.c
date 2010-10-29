@@ -333,12 +333,13 @@ again:
 				q = 1;
 			else if (item == btnOk)
 				q = 2;
-			else if (item == ltType) {
-				dlg_edit_set_value(&dlg, eType,
-				    dlg_list_get_choice(&dlg, ltType));
+			else {
+				if (item == ltType)
+					dlg_edit_set_value(&dlg, eType,
+					    dlg_list_get_choice(&dlg, ltType));
 				dlg_focus_next(&dlg);
-			} else
-				dlg_focus_next(&dlg);
+			}
+			break;
 		case KEY_UP:
 			dlg_focus_prev(&dlg);
 			break;
@@ -426,18 +427,18 @@ again:
 				q = 1;
 			else if (item == btnOk)
 				q = 2;
-			else if (item == ltType) {
-				dlg_edit_set_value(&dlg, eType,
-				    dlg_list_get_choice(&dlg, ltType));
+			else {
+				if (item == ltType)
+					dlg_edit_set_value(&dlg, eType,
+					    dlg_list_get_choice(&dlg, ltType));
 				dlg_focus_next(&dlg);
-			} else
-				dlg_focus_next(&dlg);
+			}
+			break;
 		case KEY_UP:
+			dlg_focus_prev(&dlg);
+			break;
 		case KEY_DOWN:
-			if (item == btnCancel)
-				dlg_focus_prev(&dlg);
-			if (item == btnOk)
-				dlg_focus_next(&dlg);
+			dlg_focus_next(&dlg);
 			break;
 		}
 	} while (q == 0);

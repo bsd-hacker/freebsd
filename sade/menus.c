@@ -289,7 +289,7 @@ open_parts(dialogMenuItem *pitem)
 static int
 open_fs(dialogMenuItem *pitem)
 {
-	fsed_open();
+	ufsed_open();
 	return (DITEM_SUCCESS);
 }
 
