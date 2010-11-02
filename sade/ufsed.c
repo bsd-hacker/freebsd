@@ -258,6 +258,113 @@ ufslist_reread(struct ufslist *fslist)
 	return (error);
 }
 
+static int
+tunefs_keyhndl(int key)
+{
+	switch (key) {
+	case ' ':
+	case KEY_UP:
+	case KEY_DOWN:
+	case KEY_LEFT:
+	case KEY_RIGHT:
+		return (key);
+	}
+	return (0);
+}
+
+static void
+ufsed_tunefs(history_t hist, struct ufsinfo *pfs)
+{
+	struct custom_dlg dlg;
+	struct dlg_item *item;
+	DLG_BUTTON *btnOk, *btnCancel, *btnCustom;
+	DLG_EDIT *eLabel;
+	WINDOW *win;
+	uint32_t flags;
+	int q, h, w, ret, i;
+	char *title_buf;
+	struct {
+		DLG_CHECKBOX	*item;
+		uint32_t	flag;
+		const char	*label;
+		const char	*arg;
+	} checkbox[] = {
+		{ NULL, FS_DOSOFTDEP, "Soft Updates", "-n" },
+		{ NULL, FS_SUJ, "SU journaling", "-j" },
+		{ NULL, FS_ACLS, "POSIX.1e ACL", "-a" },
+		{ NULL, FS_MULTILABEL, "MAC multilabel", "-l" },
+		{ NULL, FS_GJOURNAL, "GEOM journaling", "-J" },
+		{ NULL, FS_NFS4ACLS, "NFSv4 ALC", "-N" }
+	};
+
+	win = savescr();
+	dlg_init(&dlg);
+	asprintf(&title_buf, "Change a file system parameters for \"%s\":",
+	    pfs->partname);
+	dlg_add_label(&dlg, 1, 2, 55, 2, title_buf);
+	eLabel = dlg_add_edit(&dlg, 3, 2, 24, "Volume Label:",
+	    MAXVOLLEN, pfs->volname);
+	for (i = 0; i < sizeof(checkbox) / sizeof(checkbox[0]); i++)
+		checkbox[i].item = dlg_add_checkbox(&dlg,
+		    (i < 1) ? 7: 2 + i, (i < 1) ? 2: 30, 24, 1,
+		    (checkbox[i].flag & pfs->flags) != 0,
+		    checkbox[i].label);
+	btnOk = dlg_add_button(&dlg, 9, 14, "  Ok  ");
+	btnCancel = dlg_add_button(&dlg, 9, 26, "Cancel");
+	btnCustom = dlg_add_button(&dlg, 9, 38, "Custom");
+	use_helpline("Press F1 for help");
+	dlg_autosize(&dlg, &w, &h);
+	dlg_open_dialog(&dlg, w + 1, h + 1, "Change File System");
+	q = 0;
+	do {
+		ret = dlg_proc(&dlg, tunefs_keyhndl);
+		if (ret == DE_ESC) {
+			q = 1;
+			break;
+		}
+		item = dlg_focus_get(&dlg);
+		switch (ret) {
+		case DE_CR:
+			if (item == btnCancel)
+				q = 1;
+			else if (item == btnOk)
+				q = 2;
+			else if (item == btnCustom)
+				q = 3;
+			else
+				dlg_focus_next(&dlg);
+			break;
+		case KEY_UP:
+		case KEY_LEFT:
+			dlg_focus_prev(&dlg);
+			break;
+		case KEY_DOWN:
+		case KEY_RIGHT:
+			dlg_focus_next(&dlg);
+			break;
+		case ' ':
+			if (item->type == CHECKBOX)
+				dlg_checkbox_toggle(&dlg, item);
+		};
+	} while (q == 0);
+
+	flags = 0;
+	for (i = 0; i < sizeof(checkbox) / sizeof(checkbox[0]); i++) {
+		if (dlg_checkbox_checked(&dlg, checkbox[i].item))
+			flags |= checkbox[i].flag;
+		else
+			flags &= ~checkbox[i].flag;
+	}
+	if (flags != pfs->flags) {
+		/* something changed */
+	}
+	restorescr(win);
+	dlg_close_dialog(&dlg);
+	dlg_free(&dlg);
+	free(title_buf);
+}
+
+
 #define	FSED_MENU_TOP		4
 #define	FSED_BOTTOM_HEIGHT	7
 #define	LABEL(l)		((l) ? (l): "-")
@@ -345,8 +452,9 @@ resize:
 			tmps = "unknown";
 		}
 		mvprintw(FSED_MENU_TOP, 30, "%-20s%s", "File System:", tmps);
-		if (selected->magic == FS_UFS1_MAGIC ||
-		    selected->magic == FS_UFS2_MAGIC) {
+#define	IS_UFS(pfs) \
+	((pfs)->magic == FS_UFS1_MAGIC || (pfs)->magic == FS_UFS2_MAGIC)
+		if (IS_UFS(selected)) {
 			mvprintw(FSED_MENU_TOP + 1, 30, "%-20s%s",
 			    "last mountpoint:",
 			    LABEL(selected->fsmnt));
@@ -386,8 +494,13 @@ resize:
 
 		key = toupper(getch());
 		switch (key) {
-		case '\r':
-		case '\n':
+		case 'M':
+			if (!IS_UFS(selected)) {
+				msg = "Can not modify 'unknown' file system. "
+				    "First create an UFS file system.";
+				break;
+			}
+			ufsed_tunefs(hist, selected);
 			break;
 		case KEY_ESC:
 		case 'Q':
