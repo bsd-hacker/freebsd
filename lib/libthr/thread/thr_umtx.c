@@ -297,6 +297,19 @@ _thr_rwl_unlock(struct urwlock *rwlock)
 		PANIC("unlock error");
 }
 
+int
+__thr_umtx_lock(volatile umtx_t *mtx)
+{
+	int v;
+  
+	do {
+		v = *mtx;
+		if (v == 2 || atomic_cmpset_acq_int(mtx, 1, 2))
+			_thr_umtx_wait_uint(mtx, 2, NULL, 0);
+	} while (!atomic_cmpset_acq_int(mtx, 0, 2));
+	return (0);
+}
+
 #define LOOPS 500
 
 int
