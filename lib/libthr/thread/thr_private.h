@@ -145,6 +145,9 @@ struct sleepqueue {
 #define MX              0
 #define CV              1
 
+#define MTX_LOCKED		0x01
+#define MTX_CONTESTED		0x02
+
 struct pthread_mutex {
 	/*
 	 * Lock for accesses to this structure.
@@ -885,7 +888,7 @@ _sleepq_first(struct sleepqueue *sq)
 static inline void
 _mutex_set_contested(struct pthread_mutex *m)
 {
-	atomic_set_32(&m->m_lock.m_owner, UMUTEX_CONTESTED);
+	atomic_set_32(&m->m_lock.m_owner, MTX_CONTESTED);
 }
 
 __END_DECLS
