@@ -165,6 +165,8 @@ _thr_alloc(struct pthread *curthread)
 	if (tcb != NULL) {
 		memset(thread, 0, sizeof(*thread));
 		thread->tcb = tcb;
+		thread->wake_addr = _thr_alloc_wake_addr();
+		thread->sleepqueue = _sleepq_alloc();
 	} else {
 		thr_destroy(curthread, thread);
 		atomic_fetchadd_int(&total_threads, -1);
@@ -193,6 +195,8 @@ _thr_free(struct pthread *curthread, struct pthread *thread)
 	thread->tcb = NULL;
 	if ((curthread == NULL) || (free_thread_count >= MAX_CACHED_THREADS)) {
 		thr_destroy(curthread, thread);
+		_thr_release_wake_addr(thread->wake_addr);
+		_sleepq_free(thread->sleepqueue);
 		atomic_fetchadd_int(&total_threads, -1);
 	} else {
 		/*

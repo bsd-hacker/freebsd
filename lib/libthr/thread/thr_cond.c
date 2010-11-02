@@ -45,7 +45,10 @@ int	__pthread_cond_timedwait(pthread_cond_t *cond, pthread_mutex_t *mutex,
 static int cond_init(pthread_cond_t *cond, const pthread_condattr_t *attr);
 static int cond_wait_common(pthread_cond_t *cond, pthread_mutex_t *mutex,
 		    const struct timespec *abstime, int cancel);
-static int cond_signal_common(pthread_cond_t *cond, int broadcast);
+static int cond_signal_common(pthread_cond_t *cond);
+static int cond_broadcast_common(pthread_cond_t *cond);
+
+#define CV_PSHARED(cv)	(((cv)->c_kerncv.c_flags & USYNC_PROCESS_SHARED) != 0)
 
 /*
  * Double underscore versions are cancellation points.  Single underscore
@@ -74,13 +77,12 @@ cond_init(pthread_cond_t *cond, const pthread_condattr_t *cond_attr)
 		 * Initialise the condition variable structure:
 		 */
 		if (cond_attr == NULL || *cond_attr == NULL) {
-			pcond->c_pshared = 0;
 			pcond->c_clockid = CLOCK_REALTIME;
 		} else {
-			pcond->c_pshared = (*cond_attr)->c_pshared;
+			if ((*cond_attr)->c_pshared)
+				pcond->c_kerncv.c_flags |= USYNC_PROCESS_SHARED;
 			pcond->c_clockid = (*cond_attr)->c_clockid;
 		}
-		_thr_umutex_init(&pcond->c_lock);
 		*cond = pcond;
 	}
 	/* Return the completion status: */
@@ -128,7 +130,6 @@ _pthread_cond_init(pthread_cond_t *cond, const pthread_condattr_t *cond_attr)
 int
 _pthread_cond_destroy(pthread_cond_t *cond)
 {
-	struct pthread		*curthread = _get_curthread();
 	struct pthread_cond	*cv;
 	int			rval = 0;
 
@@ -138,10 +139,10 @@ _pthread_cond_destroy(pthread_cond_t *cond)
 		rval = EINVAL;
 	else {
 		cv = *cond;
-		THR_UMUTEX_LOCK(curthread, &cv->c_lock);
+		if (cv->c_mutex != NULL)
+			return (EBUSY);
+		_thr_ucond_broadcast(&cv->c_kerncv);
 		*cond = THR_COND_DESTROYED;
-		THR_UMUTEX_UNLOCK(curthread, &cv->c_lock);
-
 		/*
 		 * Free the memory allocated for the condition
 		 * variable structure:
@@ -155,54 +156,36 @@ struct cond_cancel_info
 {
 	pthread_mutex_t	*mutex;
 	pthread_cond_t	*cond;
-	int		count;
+	int		recurse;
 };
 
 static void
 cond_cancel_handler(void *arg)
 {
-	struct pthread *curthread = _get_curthread();
 	struct cond_cancel_info *info = (struct cond_cancel_info *)arg;
-	pthread_cond_t  cv;
-
-	if (info->cond != NULL) {
-		cv = *(info->cond);
-		THR_UMUTEX_UNLOCK(curthread, &cv->c_lock);
-	}
-	_mutex_cv_lock(info->mutex, info->count);
+  
+	_mutex_cv_lock(info->mutex, info->recurse, 1);
 }
 
 /*
- * Cancellation behaivor:
- *   Thread may be canceled at start, if thread is canceled, it means it
- *   did not get a wakeup from pthread_cond_signal(), otherwise, it is
- *   not canceled.
- *   Thread cancellation never cause wakeup from pthread_cond_signal()
- *   to be lost.
+ * Wait on kernel based condition variable.
  */
 static int
-cond_wait_common(pthread_cond_t *cond, pthread_mutex_t *mutex,
+cond_wait_kernel(pthread_cond_t *cond, pthread_mutex_t *mutex,
 	const struct timespec *abstime, int cancel)
 {
 	struct pthread	*curthread = _get_curthread();
 	struct timespec ts, ts2, *tsp;
+	struct pthread_mutex *m;
 	struct cond_cancel_info info;
 	pthread_cond_t  cv;
-	int		ret;
-
-	/*
-	 * If the condition variable is statically initialized,
-	 * perform the dynamic initialization:
-	 */
-	CHECK_AND_INIT_COND
+	int		error, error2;
 
 	cv = *cond;
-	THR_UMUTEX_LOCK(curthread, &cv->c_lock);
-	ret = _mutex_cv_unlock(mutex, &info.count);
-	if (__predict_false(ret != 0)) {
-		THR_UMUTEX_UNLOCK(curthread, &cv->c_lock);
-		return (ret);
-	}
+	m = *mutex;
+	error = _mutex_cv_detach(mutex, &info.recurse);
+	if (__predict_false(error != 0))
+		return (error);
 
 	info.mutex = mutex;
 	info.cond  = cond;
@@ -217,17 +200,129 @@ cond_wait_common(pthread_cond_t *cond, pthread_mutex_t *mutex,
 	if (cancel) {
 		THR_CLEANUP_PUSH(curthread, cond_cancel_handler, &info);
 		_thr_cancel_enter2(curthread, 0);
-		ret = _thr_ucond_wait(&cv->c_kerncv, &cv->c_lock, tsp, 1);
+		error = _thr_ucond_wait(&cv->c_kerncv, &m->m_lock, tsp, 1);
 		info.cond = NULL;
-		_thr_cancel_leave(curthread, (ret != 0));
+		_thr_cancel_leave(curthread, (error != 0));
 		THR_CLEANUP_POP(curthread, 0);
 	} else {
-		ret = _thr_ucond_wait(&cv->c_kerncv, &cv->c_lock, tsp, 0);
+		error = _thr_ucond_wait(&cv->c_kerncv, &m->m_lock, tsp, 0);
 	}
-	if (ret == EINTR)
-		ret = 0;
-	_mutex_cv_lock(mutex, info.count);
-	return (ret);
+	if (error == EINTR)
+		error = 0;
+	error2 = _mutex_cv_lock(mutex, info.recurse, 1);
+	return (error || error2);
+}
+
+/*
+ * Cancellation behaivor:
+ *   Thread may be canceled at start, if thread is canceled, it means it
+ *   did not get a wakeup from pthread_cond_signal(), otherwise, it is
+ *   not canceled.
+ *   Thread cancellation never cause wakeup from pthread_cond_signal()
+ *   to be lost.
+ */
+static int
+cond_wait_queue(pthread_cond_t *cond, pthread_mutex_t *mutex,
+	const struct timespec *abstime, int cancel)
+{
+	struct pthread	*curthread = _get_curthread();
+	struct pthread_mutex *m;
+	struct sleepqueue *sq;
+	pthread_cond_t	cv;
+	int		recurse;
+	int		error;
+
+	cv = *cond;
+	/*
+	 * Enqueue thread before unlocking mutex, so we can avoid
+	 * sleep lock in pthread_cond_signal whenever possible.
+	 */
+	if ((error = _mutex_owned(curthread, mutex)) != 0)
+		return (error);
+	sq = _sleepq_lock(cv, CV);
+	if (cv->c_mutex != NULL && cv->c_mutex != mutex) {
+		_sleepq_unlock(sq);
+		return (EINVAL);
+	}
+	cv->c_mutex = mutex;
+	_sleepq_add(sq, curthread);
+	_thr_clear_wake(curthread);
+	_sleepq_unlock(sq);
+	(void)_mutex_cv_unlock(mutex, &recurse);
+	m = *mutex;
+	for (;;) {
+		if (cancel) {
+			_thr_cancel_enter2(curthread, 0);
+			error = _thr_sleep(curthread, abstime, cv->c_clockid);
+			_thr_cancel_leave(curthread, 0);
+		} else {
+			error = _thr_sleep(curthread, abstime, cv->c_clockid);
+		}
+		_thr_clear_wake(curthread);
+
+		sq = _sleepq_lock(cv, CV);
+		if (curthread->wchan == NULL) {
+			/*
+			 * This must be signaled by mutex unlocking,
+			 * they remove us from mutex queue.
+			 */
+			_sleepq_unlock(sq);
+			error = 0;
+			break;
+		} if (curthread->wchan == m) {
+			_sleepq_unlock(sq);
+			/*
+			 * This must be signaled by cond_signal and there
+			 * is no owner for the mutex.
+			 */
+			sq = _sleepq_lock(m, MX);
+			if (curthread->wchan == m)
+				_sleepq_remove(sq, curthread);
+			_sleepq_unlock(sq);
+			error = 0;
+			break;
+		} if (abstime != NULL && error == ETIMEDOUT) {
+			_sleepq_remove(sq, curthread);
+			if (_sleepq_empty(sq))
+				cv->c_mutex = NULL;
+			_sleepq_unlock(sq);
+			break;
+		} else if (SHOULD_CANCEL(curthread)) {
+			_sleepq_remove(sq, curthread);
+			if (_sleepq_empty(sq))
+				cv->c_mutex = NULL;
+			_sleepq_unlock(sq);
+			(void)_mutex_cv_lock(mutex, recurse, 0);
+			_pthread_exit(PTHREAD_CANCELED);
+		}
+		_sleepq_unlock(sq);
+	}
+	_mutex_cv_lock(mutex, recurse, 0);
+	return (error);
+}
+
+static int
+cond_wait_common(pthread_cond_t *cond, pthread_mutex_t *mutex,
+	const struct timespec *abstime, int cancel)
+{
+	pthread_cond_t	cv;
+	struct pthread_mutex	*m;
+
+	/*
+	 * If the condition variable is statically initialized,
+	 * perform the dynamic initialization:
+	 */
+	CHECK_AND_INIT_COND
+	if ((m = *mutex) == NULL || m < THR_MUTEX_DESTROYED)
+		return (EINVAL);
+	if (IS_SIMPLE_MUTEX(m)) {
+		if (!CV_PSHARED(cv))
+			return cond_wait_queue(cond, mutex, abstime, cancel);
+		else
+			return (EINVAL);
+	} else {
+		return cond_wait_kernel(cond, mutex, abstime, cancel);
+	}
 }
 
 int
@@ -269,11 +364,14 @@ __pthread_cond_timedwait(pthread_cond_t *cond, pthread_mutex_t *mutex,
 }
 
 static int
-cond_signal_common(pthread_cond_t *cond, int broadcast)
+cond_signal_common(pthread_cond_t *cond)
 {
-	struct pthread	*curthread = _get_curthread();
-	pthread_cond_t	cv;
-	int		ret = 0;
+	pthread_mutex_t *mutex;
+	struct pthread_mutex *m;
+	struct pthread  *td;
+	struct pthread_cond *cv;
+	struct sleepqueue *cv_sq, *mx_sq;
+	unsigned	*waddr = NULL;
 
 	/*
 	 * If the condition variable is statically initialized, perform dynamic
@@ -281,25 +379,118 @@ cond_signal_common(pthread_cond_t *cond, int broadcast)
 	 */
 	CHECK_AND_INIT_COND
 
-	THR_UMUTEX_LOCK(curthread, &cv->c_lock);
-	if (!broadcast)
-		ret = _thr_ucond_signal(&cv->c_kerncv);
-	else
-		ret = _thr_ucond_broadcast(&cv->c_kerncv);
-	THR_UMUTEX_UNLOCK(curthread, &cv->c_lock);
-	return (ret);
+	_thr_ucond_signal(&cv->c_kerncv);
+
+	if (CV_PSHARED(cv))
+		return (0);
+
+	/* There is no waiter. */
+	if (cv->c_mutex == NULL)
+		return (0);
+
+	cv_sq = _sleepq_lock(cv, CV);
+	if (_sleepq_empty(cv_sq)) {
+		_sleepq_unlock(cv_sq);
+		return (0);
+	} 
+	/*
+	 * Check if we owned the temporarily binding mutex,
+	 * if owned, we can migrate thread to mutex wait
+	 * queue without waking up thread.
+	 */
+	if ((mutex = cv->c_mutex) != NULL)
+		m = *mutex;
+	else {
+		_sleepq_unlock(cv_sq);
+		PANIC("mutex == NULL");
+	}
+
+	td = _sleepq_first(cv_sq);
+	if (m->m_owner == NULL)
+		waddr = WAKE_ADDR(td);
+	_sleepq_remove(cv_sq, td);
+	mx_sq = _sleepq_lock(m, MX);
+	_sleepq_add(mx_sq, td);
+	_mutex_set_contested(m);
+	_sleepq_unlock(mx_sq);
+	if (_sleepq_empty(cv_sq))
+		cv->c_mutex = NULL;
+	_sleepq_unlock(cv_sq);
+	if (waddr != NULL) {
+		_thr_set_wake(waddr);
+		_thr_umtx_wake(waddr, INT_MAX, 0);
+	}
+	return (0);
+}
+
+static int
+cond_broadcast_common(pthread_cond_t *cond)
+{
+	pthread_mutex_t *mutex;
+	struct pthread_mutex *m;
+	struct pthread  *td;
+	struct pthread_cond *cv;
+	struct sleepqueue *cv_sq, *mx_sq;
+	unsigned	*waddr = NULL;
+
+	/*
+	 * If the condition variable is statically initialized, perform dynamic
+	 * initialization.
+	 */
+	CHECK_AND_INIT_COND
+
+	_thr_ucond_broadcast(&cv->c_kerncv);
+
+	if (CV_PSHARED(cv))
+		return (0);
+
+	/* There is no waiter. */
+	if (cv->c_mutex == NULL)
+		return (0);
+
+	cv_sq = _sleepq_lock(cv, CV);
+	if (_sleepq_empty(cv_sq)) {
+		_sleepq_unlock(cv_sq);
+		return (0);
+	} 
+	/*
+	 * Check if we owned the temporarily binding mutex,
+	 * if owned, we can migrate thread to mutex wait
+	 * queue without waking up thread.
+	 */
+	if ((mutex = cv->c_mutex) != NULL)
+		m = *mutex;
+	else {
+		_sleepq_unlock(cv_sq);
+		PANIC("mutex == NULL");
+	}
+
+	td = _sleepq_first(cv_sq);
+	if (m->m_owner == NULL)
+		waddr = WAKE_ADDR(td);
+	mx_sq = _sleepq_lock(m, MX);
+	_sleepq_concat(mx_sq, cv_sq);
+	_mutex_set_contested(m);
+	_sleepq_unlock(mx_sq);
+	cv->c_mutex = NULL;
+	_sleepq_unlock(cv_sq);
+	if (waddr != NULL) {
+		_thr_set_wake(waddr);
+		_thr_umtx_wake(waddr, INT_MAX, 0);
+	}
+	return (0);
 }
 
 int
 _pthread_cond_signal(pthread_cond_t * cond)
 {
 
-	return (cond_signal_common(cond, 0));
+	return (cond_signal_common(cond));
 }
 
 int
 _pthread_cond_broadcast(pthread_cond_t * cond)
 {
 
-	return (cond_signal_common(cond, 1));
+	return (cond_broadcast_common(cond));
 }

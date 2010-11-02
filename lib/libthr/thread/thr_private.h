@@ -135,14 +135,25 @@ TAILQ_HEAD(mutex_queue, pthread_mutex);
 #define	THR_RWLOCK_INITIALIZER		((struct pthread_rwlock *)NULL)
 #define	THR_RWLOCK_DESTROYED		((struct pthread_rwlock *)1)
 
+struct sleepqueue {
+	TAILQ_HEAD(, pthread)	sq_blocked;
+	LIST_ENTRY(sleepqueue)	sq_hash;
+	void			*sq_wchan;
+	int			sq_type;
+};
+
+#define MX              0
+#define CV              1
+
 struct pthread_mutex {
 	/*
 	 * Lock for accesses to this structure.
 	 */
 	struct umutex			m_lock;
+#define m_lockword	m_lock.m_owner
 	enum pthread_mutextype		m_type;
-	struct pthread			*m_owner;
-	int				m_count;
+	struct pthread	*volatile 	m_owner;
+	int				m_recurse;
 	int				m_refcount;
 	int				m_spinloops;
 	int				m_yieldloops;
@@ -152,6 +163,11 @@ struct pthread_mutex {
 	 */
 	TAILQ_ENTRY(pthread_mutex)	m_qe;
 };
+
+
+#define IS_SIMPLE_MUTEX(m)						\
+    (((m)->m_lock.m_flags & (UMUTEX_PRIO_INHERIT|UMUTEX_PRIO_PROTECT|	\
+	USYNC_PROCESS_SHARED)) == 0)
 
 struct pthread_mutex_attr {
 	enum pthread_mutextype	m_type;
@@ -163,10 +179,9 @@ struct pthread_mutex_attr {
 	{ PTHREAD_MUTEX_DEFAULT, PTHREAD_PRIO_NONE, 0, MUTEX_FLAGS_PRIVATE }
 
 struct pthread_cond {
-	struct umutex	c_lock;
 	struct ucond	c_kerncv;
-	int		c_pshared;
 	int		c_clockid;
+	pthread_mutex_t *c_mutex;
 };
 
 struct pthread_cond_attr {
@@ -243,6 +258,11 @@ struct pthread_attr {
 #define pthread_attr_end_copy	cpuset
 	cpuset_t	*cpuset;
 	size_t	cpusetsize;
+};
+
+struct wake_addr {
+        struct wake_addr *link;
+        unsigned          value;
 };
 
 /*
@@ -355,6 +375,13 @@ struct pthread {
 
 	/* Hash queue entry. */
 	LIST_ENTRY(pthread)	hle;
+
+	TAILQ_ENTRY(pthread)	wle;	/* Sleep queue entry */
+
+	struct wake_addr	*wake_addr;
+#define WAKE_ADDR(td)           (&(td)->wake_addr->value)
+	struct sleepqueue	*sleepqueue;
+	void			*wchan;
 
 	/* Threads reference count. */
 	int			refcount;
@@ -507,6 +534,9 @@ struct pthread {
 #define	THR_UMUTEX_LOCK(thrd, lck)			\
 	_thr_umutex_lock((lck), TID(thrd))
 
+#define	THR_UMUTEX_LOCK_SPIN(thrd, lck)			\
+	_thr_umutex_lock_spin((lck), TID(thrd))
+
 #define	THR_UMUTEX_TIMEDLOCK(thrd, lck, timo)		\
 	_thr_umutex_timedlock((lck), TID(thrd), (timo))
 
@@ -519,6 +549,11 @@ do {							\
 	_thr_umutex_lock(lck, TID(thrd));		\
 } while (0)
 
+#define	THR_LOCK_ACQUIRE_SPIN(thrd, lck)		\
+do {							\
+	(thrd)->locklevel++;				\
+	_thr_umutex_lock_spin(lck, TID(thrd));		\
+} while (0)
 #ifdef	_PTHREADS_INVARIANTS
 #define	THR_ASSERT_LOCKLEVEL(thrd)			\
 do {							\
@@ -671,8 +706,10 @@ extern struct umutex	_thr_event_lock __hidden;
  */
 __BEGIN_DECLS
 int	_thr_setthreaded(int) __hidden;
-int	_mutex_cv_lock(pthread_mutex_t *, int count) __hidden;
-int	_mutex_cv_unlock(pthread_mutex_t *, int *count) __hidden;
+int	_mutex_owned(struct pthread *, const pthread_mutex_t *) __hidden;
+int	_mutex_cv_lock(pthread_mutex_t *, int count, int)__hidden;
+int	_mutex_cv_unlock(pthread_mutex_t *, int *count)__hidden;
+int	_mutex_cv_detach(pthread_mutex_t *, int *count)__hidden;
 int	_mutex_reinit(pthread_mutex_t *) __hidden;
 void	_mutex_fork(struct pthread *curthread) __hidden;
 void	_libpthread_init(struct pthread *) __hidden;
@@ -801,6 +838,55 @@ struct dl_phdr_info;
 void __pthread_cxa_finalize(struct dl_phdr_info *phdr_info);
 void _thr_tsd_unload(struct dl_phdr_info *phdr_info) __hidden;
 void _thr_sigact_unload(struct dl_phdr_info *phdr_info) __hidden;
+
+struct wake_addr *_thr_alloc_wake_addr(void);
+void	_thr_release_wake_addr(struct wake_addr *);
+int	_thr_sleep(struct pthread *, const struct timespec *, int);
+
+void			_sleepq_init(void);
+struct sleepqueue *	_sleepq_alloc(void);
+void			_sleepq_free(struct sleepqueue *sq);
+struct sleepqueue *	_sleepq_lock(void *wchan, int type);
+void			_sleepq_unlock(struct sleepqueue *);
+void			_sleepq_add(struct sleepqueue *, struct pthread *);
+void			_sleepq_remove(struct sleepqueue *, struct pthread *);
+void			_sleepq_concat(struct sleepqueue *, struct sleepqueue *);
+
+static inline void
+_thr_clear_wake(struct pthread *td)
+{
+	td->wake_addr->value = 0;
+}
+
+static inline void
+_thr_set_wake(unsigned int *waddr)
+{
+	*waddr = 1;
+}
+
+static inline int
+_thr_is_woken(struct pthread *td)
+{
+	return td->wake_addr->value != 0;
+}
+
+static inline int
+_sleepq_empty(struct sleepqueue *sq)
+{
+	return TAILQ_EMPTY(&sq->sq_blocked);
+}
+
+static inline struct pthread *
+_sleepq_first(struct sleepqueue *sq)
+{
+	return TAILQ_FIRST(&sq->sq_blocked);
+}
+
+static inline void
+_mutex_set_contested(struct pthread_mutex *m)
+{
+	atomic_set_32(&m->m_lock.m_owner, UMUTEX_CONTESTED);
+}
 
 __END_DECLS
 

@@ -444,6 +444,7 @@ init_private(void)
 	_thr_once_init();
 	_thr_spinlock_init();
 	_thr_list_init();
+	_sleepq_init();
 
 	/*
 	 * Avoid reinitializing some things if they don't need to be,
