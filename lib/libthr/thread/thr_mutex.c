@@ -317,6 +317,7 @@ set_lockword(struct pthread_mutex *m)
 	while ((old & MTX_LOCKED) == 0) {
 		if (atomic_cmpset_acq_32(&m->m_lockword, old, old|MTX_LOCKED))
 			return (0);
+		old = m->m_lockword;
 	}
 	return (EBUSY);
 }
