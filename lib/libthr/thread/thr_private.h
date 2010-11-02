@@ -77,7 +77,13 @@
 
 typedef TAILQ_HEAD(pthreadlist, pthread) pthreadlist;
 typedef TAILQ_HEAD(atfork_head, pthread_atfork) atfork_head;
-TAILQ_HEAD(mutex_queue, pthread_mutex);
+
+struct mutex_link {
+	TAILQ_ENTRY(mutex_link)	qe;
+	struct pthread_mutex	*mutexp;
+};
+
+TAILQ_HEAD(mutex_queue, mutex_link);
 
 /* Signal to do cancellation */
 #define	SIGCANCEL		32
@@ -161,10 +167,6 @@ struct pthread_mutex {
 	int				m_spinloops;
 	int				m_yieldloops;
 	int				m_private;
-	/*
-	 * Link for all mutexes a thread currently owns.
-	 */
-	TAILQ_ENTRY(pthread_mutex)	m_qe;
 };
 
 
@@ -845,6 +847,9 @@ void _thr_sigact_unload(struct dl_phdr_info *phdr_info) __hidden;
 struct wake_addr *_thr_alloc_wake_addr(void);
 void	_thr_release_wake_addr(struct wake_addr *);
 int	_thr_sleep(struct pthread *, const struct timespec *, int);
+void	_thr_mutex_link_init(void);
+struct mutex_link	*_thr_mutex_link_alloc(void);
+void	_thr_mutex_link_free(struct mutex_link *);
 
 void			_sleepq_init(void);
 struct sleepqueue *	_sleepq_alloc(void);

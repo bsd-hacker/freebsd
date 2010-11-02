@@ -45,6 +45,8 @@
 static struct umutex addr_lock;
 static struct wake_addr *wake_addr_head;
 static struct wake_addr default_wake_addr;
+static struct umutex mutex_link_lock;
+static struct mutex_queue mutex_link_freeq;
 
 struct wake_addr *
 _thr_alloc_wake_addr(void)
@@ -87,6 +89,44 @@ _thr_release_wake_addr(struct wake_addr *wa)
 	wa->link = wake_addr_head;
 	wake_addr_head = wa;
 	THR_UMUTEX_UNLOCK(curthread, &addr_lock);
+}
+
+void
+_thr_mutex_link_init(void)
+{
+	TAILQ_INIT(&mutex_link_freeq);
+	_thr_umutex_init(&mutex_link_lock);
+}
+
+struct mutex_link *
+_thr_mutex_link_alloc(void)
+{
+	struct pthread *curthread = _get_curthread();
+	struct mutex_link *p;
+
+	THR_LOCK_ACQUIRE(curthread, &mutex_link_lock);
+	p = TAILQ_FIRST(&mutex_link_freeq);
+	if (p == NULL) {
+		unsigned i;
+		unsigned pagesize = getpagesize();
+		struct mutex_link *pp = (struct mutex_link *)mmap(NULL, getpagesize(),
+			 PROT_READ|PROT_WRITE, MAP_ANON, -1, 0);
+		for (i = 1; i < pagesize/sizeof(struct mutex_link); ++i)
+			TAILQ_INSERT_TAIL(&mutex_link_freeq, &pp[i], qe);
+		p = &pp[0];
+	}
+	THR_LOCK_RELEASE(curthread, &mutex_link_lock);
+	return (p);
+}
+
+void
+_thr_mutex_link_free(struct mutex_link *p)
+{
+	struct pthread *curthread = _get_curthread();
+
+	THR_LOCK_ACQUIRE(curthread, &mutex_link_lock);
+	TAILQ_INSERT_TAIL(&mutex_link_freeq, p, qe);
+	THR_LOCK_RELEASE(curthread, &mutex_link_lock);
 }
 
 /*
