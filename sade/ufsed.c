@@ -230,12 +230,17 @@ set_statusline(char *msg)
 static int
 ufsed_history_rollback(void *pentry)
 {
+
+	free(pentry);
 	return (0);
 }
 
 static int
 ufsed_history_play(void *pentry)
 {
+
+	/* system(pentry); */
+	free(pentry);
 	return (0);
 }
 
@@ -248,8 +253,21 @@ ufslist_reread(struct ufslist *fslist)
 }
 
 static int
+ufsed_history_add(history_t hist, const char *cmd)
+{
+	char *entry;
+
+	entry = strdup(cmd);
+	if (entry == NULL)
+		return (ENOMEM);
+
+	return (history_add_entry(hist, entry));
+}
+
+static int
 tunefs_keyhndl(int key)
 {
+
 	switch (key) {
 	case ' ':
 	case KEY_UP:
@@ -366,7 +384,7 @@ again:
 	}
 	if (flags != pfs->flags || ret != 0) {	/* something changed */
 		snprintf(buf, sizeof(buf), "%s -L \"%s\"", PATH_TUNEFS,
-		    (s != NULL && *s != '\0') ? s: "");
+		    (s != NULL) ? s: "");
 		for (i = 0; i < sizeof(checkbox) / sizeof(checkbox[0]); i++) {
 			snprintf(buf, sizeof(buf), "%s %s %s", buf,
 			    checkbox[i].arg,
@@ -376,6 +394,17 @@ again:
 		snprintf(buf, sizeof(buf), "%s %s%s", buf, _PATH_DEV,
 		    pfs->partname);
 		/* add command to history */
+		ret = ufsed_history_add(hist, buf);
+		if (ret)
+			dmenu_open_errormsg("Operation failed.");
+		else {	/* do fake changes to update current view */
+			pfs->flags = flags;
+			free(pfs->volname);
+			if (s != NULL && *s != '\0')
+				pfs->volname = strndup(s, MAXVOLLEN);
+			else
+				pfs->volname = NULL;
+		}
 	}
 done:
 	restorescr(win);
