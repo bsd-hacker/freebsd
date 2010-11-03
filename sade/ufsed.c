@@ -53,6 +53,8 @@ __FBSDID("$FreeBSD$");
 #include "customdlg.h"
 #include "mntopts.h"
 
+#define	CMDLEN_MAX	256
+#define	PATH_TUNEFS	"/sbin/tunefs"
 
 static char *ask_recreate_msg =
 	"WARNING: Selected partition already contains a file system!\n\n"
@@ -225,16 +227,6 @@ set_statusline(char *msg)
 	}
 }
 
-enum hist_cmd_type {
-	NEWFS, TUNEFS
-};
-
-struct hist_cmd_entry {
-	enum hist_cmd_type	type;
-	struct de_fs		*pfs;
-	char			*args;
-};
-
 static int
 ufsed_history_rollback(void *pentry)
 {
@@ -250,12 +242,9 @@ ufsed_history_play(void *pentry)
 static int
 ufslist_reread(struct ufslist *fslist)
 {
-	int error;
 
 	ufslist_free(fslist);
-	error = ufslist_get(fslist);
-
-	return (error);
+	return (ufslist_get(fslist));
 }
 
 static int
@@ -277,12 +266,12 @@ ufsed_tunefs(history_t hist, struct ufsinfo *pfs)
 {
 	struct custom_dlg dlg;
 	struct dlg_item *item;
-	DLG_BUTTON *btnOk, *btnCancel, *btnCustom;
+	DLG_BUTTON *btnOk, *btnCancel, *btnAdvanced;
 	DLG_EDIT *eLabel;
 	WINDOW *win;
 	uint32_t flags;
 	int q, h, w, ret, i;
-	char *title_buf;
+	char buf[CMDLEN_MAX], *s;
 	struct {
 		DLG_CHECKBOX	*item;
 		uint32_t	flag;
@@ -294,14 +283,14 @@ ufsed_tunefs(history_t hist, struct ufsinfo *pfs)
 		{ NULL, FS_ACLS, "POSIX.1e ACL", "-a" },
 		{ NULL, FS_MULTILABEL, "MAC multilabel", "-l" },
 		{ NULL, FS_GJOURNAL, "GEOM journaling", "-J" },
-		{ NULL, FS_NFS4ACLS, "NFSv4 ALC", "-N" }
+		{ NULL, FS_NFS4ACLS, "NFSv4 ACL", "-N" }
 	};
 
 	win = savescr();
 	dlg_init(&dlg);
-	asprintf(&title_buf, "Change a file system parameters for \"%s\":",
-	    pfs->partname);
-	dlg_add_label(&dlg, 1, 2, 55, 2, title_buf);
+	snprintf(buf, sizeof(buf),
+	    "Change a file system parameters for \"%s\":", pfs->partname);
+	dlg_add_label(&dlg, 1, 2, 55, 2, buf);
 	eLabel = dlg_add_edit(&dlg, 3, 2, 24, "Volume Label:",
 	    MAXVOLLEN, pfs->volname);
 	for (i = 0; i < sizeof(checkbox) / sizeof(checkbox[0]); i++)
@@ -311,10 +300,11 @@ ufsed_tunefs(history_t hist, struct ufsinfo *pfs)
 		    checkbox[i].label);
 	btnOk = dlg_add_button(&dlg, 9, 14, "  Ok  ");
 	btnCancel = dlg_add_button(&dlg, 9, 26, "Cancel");
-	btnCustom = dlg_add_button(&dlg, 9, 38, "Custom");
+	btnAdvanced = dlg_add_button(&dlg, 9, 38, "Advanced");
 	use_helpline("Press F1 for help");
 	dlg_autosize(&dlg, &w, &h);
 	dlg_open_dialog(&dlg, w + 1, h + 1, "Change File System");
+again:
 	q = 0;
 	do {
 		ret = dlg_proc(&dlg, tunefs_keyhndl);
@@ -329,7 +319,7 @@ ufsed_tunefs(history_t hist, struct ufsinfo *pfs)
 				q = 1;
 			else if (item == btnOk)
 				q = 2;
-			else if (item == btnCustom)
+			else if (item == btnAdvanced)
 				q = 3;
 			else
 				dlg_focus_next(&dlg);
@@ -348,20 +338,49 @@ ufsed_tunefs(history_t hist, struct ufsinfo *pfs)
 		};
 	} while (q == 0);
 
-	flags = 0;
+	if (q != 2)
+		goto done;
+
+	flags = ret = 0;
+	s = dlg_edit_get_value(&dlg, eLabel);
+	if (s != NULL && *s != '\0') {	/* volname has been specified */
+		i = 0;
+		while (isalnum(s[i++]));
+		if (s[i] != '\0') {
+			dmenu_open_errormsg("Invalid character in volume "
+			    "label. Only alphanumerics characters are "
+			    "allowed.");
+			goto again;
+		}
+		/* check for volname changes */
+		if (pfs->volname == NULL ||
+		    strncmp(pfs->volname, s, MAXVOLLEN) != 0)
+			ret = 1;
+	} else if (pfs->volname != NULL) /* we want to reset volume label */
+		ret = 1;
 	for (i = 0; i < sizeof(checkbox) / sizeof(checkbox[0]); i++) {
 		if (dlg_checkbox_checked(&dlg, checkbox[i].item))
 			flags |= checkbox[i].flag;
 		else
 			flags &= ~checkbox[i].flag;
 	}
-	if (flags != pfs->flags) {
-		/* something changed */
+	if (flags != pfs->flags || ret != 0) {	/* something changed */
+		snprintf(buf, sizeof(buf), "%s -L \"%s\"", PATH_TUNEFS,
+		    (s != NULL && *s != '\0') ? s: "");
+		for (i = 0; i < sizeof(checkbox) / sizeof(checkbox[0]); i++) {
+			snprintf(buf, sizeof(buf), "%s %s %s", buf,
+			    checkbox[i].arg,
+			    dlg_checkbox_checked(&dlg, checkbox[i].item) ?
+			    "enable": "disable");
+		}
+		snprintf(buf, sizeof(buf), "%s %s%s", buf, _PATH_DEV,
+		    pfs->partname);
+		/* add command to history */
 	}
+done:
 	restorescr(win);
 	dlg_close_dialog(&dlg);
 	dlg_free(&dlg);
-	free(title_buf);
 }
 
 

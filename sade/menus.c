@@ -135,12 +135,8 @@ restorescr(WINDOW *win)
 void
 dmenu_open_errormsg(char *msg)
 {
-	char buf[80];
-	int width;
 	WINDOW *win = savescr();
-	snprintf(buf, sizeof(buf), "An error occured: %s", msg);
-	width = (strlen(buf) + 5) % 70;
-	dialog_msgbox("Error", buf, 5, width, 1);
+	dialog_mesgbox("Error", msg, -1, -1);
 	restorescr(win);
 }
 
