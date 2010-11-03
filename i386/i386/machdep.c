@@ -115,7 +115,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/cpu.h>
 #include <machine/cputypes.h>
 #include <machine/intr_machdep.h>
-#include <machine/mca.h>
+#include <x86/mca.h>
 #include <machine/md_var.h>
 #include <machine/metadata.h>
 #include <machine/pc/bios.h>
@@ -1970,7 +1970,7 @@ add_smap_entry(struct bios_smap *smap, vm_paddr_t *physmap, int *physmap_idxp)
 		return (1);
 
 #ifndef PAE
-	if (smap->base >= 0xffffffff) {
+	if (smap->base > 0xffffffff) {
 		printf("%uK of memory above 4GB ignored\n",
 		    (u_int)(smap->length / 1024));
 		return (1);
