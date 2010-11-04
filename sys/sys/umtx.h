@@ -83,6 +83,9 @@
 #define	UMTX_OP_SEM_WAKE	20
 #define	UMTX_OP_MAX		21
 
+/* flags for UMUTEX_LOCK */
+#define UMUTEX_ABSTIME		0x01
+
 /* flags for UMTX_OP_CV_WAIT */
 #define CVWAIT_CHECK_UNPARKING	0x01
 #define CVWAIT_ABSTIME		0x02

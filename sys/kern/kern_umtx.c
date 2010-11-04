@@ -2369,9 +2369,9 @@ _do_lock_umutex(struct thread *td, struct umutex *m, int flags, int timo,
  */
 static int
 do_lock_umutex(struct thread *td, struct umutex *m,
-	struct timespec *timeout, int mode)
+	struct timespec *timeout, int mode, int wflags)
 {
-	struct timespec ts, ts2, ts3;
+	struct timespec cts, ets, tts;
 	struct timeval tv;
 	uint32_t flags;
 	int error;
@@ -2386,21 +2386,30 @@ do_lock_umutex(struct thread *td, struct umutex *m,
 		if (error == EINTR && mode != _UMUTEX_WAIT)
 			error = ERESTART;
 	} else {
-		getnanouptime(&ts);
-		timespecadd(&ts, timeout);
-		TIMESPEC_TO_TIMEVAL(&tv, timeout);
+		const clockid_t clockid = CLOCK_REALTIME;
+		if ((wflags & UMUTEX_ABSTIME) == 0) {
+			kern_clock_gettime(td, clockid, &ets);
+			timespecadd(&ets, timeout);
+			tts = *timeout;
+		} else { /* absolute time */
+			ets = *timeout;
+			tts = *timeout;
+			kern_clock_gettime(td, clockid, &cts);
+			timespecsub(&tts, &cts);
+		}
+		TIMESPEC_TO_TIMEVAL(&tv, &tts);
 		for (;;) {
 			error = _do_lock_umutex(td, m, flags, tvtohz(&tv), mode);
 			if (error != ETIMEDOUT)
 				break;
-			getnanouptime(&ts2);
-			if (timespeccmp(&ts2, &ts, >=)) {
+			kern_clock_gettime(td, clockid, &cts);
+			if (timespeccmp(&cts, &ets, >=)) {
 				error = ETIMEDOUT;
 				break;
 			}
-			ts3 = ts;
-			timespecsub(&ts3, &ts2);
-			TIMESPEC_TO_TIMEVAL(&tv, &ts3);
+			tts = ets;
+			timespecsub(&tts, &cts);
+			TIMESPEC_TO_TIMEVAL(&tv, &tts);
 		}
 		/* Timed-locking is not restarted. */
 		if (error == ERESTART)
@@ -3513,13 +3522,13 @@ __umtx_op_lock_umutex(struct thread *td, struct _umtx_op_args *uap)
 		}
 		ts = &timeout;
 	}
-	return do_lock_umutex(td, uap->obj, ts, 0);
+	return do_lock_umutex(td, uap->obj, ts, 0, uap->val);
 }
 
 static int
 __umtx_op_trylock_umutex(struct thread *td, struct _umtx_op_args *uap)
 {
-	return do_lock_umutex(td, uap->obj, NULL, _UMUTEX_TRY);
+	return do_lock_umutex(td, uap->obj, NULL, _UMUTEX_TRY, 0);
 }
 
 static int
@@ -3542,7 +3551,7 @@ __umtx_op_wait_umutex(struct thread *td, struct _umtx_op_args *uap)
 		}
 		ts = &timeout;
 	}
-	return do_lock_umutex(td, uap->obj, ts, _UMUTEX_WAIT);
+	return do_lock_umutex(td, uap->obj, ts, _UMUTEX_WAIT, uap->val);
 }
 
 static int

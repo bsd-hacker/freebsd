@@ -66,7 +66,8 @@ __thr_umutex_lock(struct umutex *mtx, uint32_t id)
 
 			owner = mtx->m_owner;
 			if ((owner & ~UMUTEX_CONTESTED) == 0 &&
-			     atomic_cmpset_acq_32(&mtx->m_owner, owner, id|owner))
+			     atomic_cmpset_acq_32(&mtx->m_owner, owner,
+				id|owner))
 				return (0);
 		}
 	}
@@ -78,40 +79,32 @@ int
 __thr_umutex_timedlock(struct umutex *mtx, uint32_t id,
 	const struct timespec *ets)
 {
-	struct timespec timo, cts;
 	uint32_t owner;
 	int ret;
 
-	clock_gettime(CLOCK_REALTIME, &cts);
-	TIMESPEC_SUB(&timo, ets, &cts);
-
-	if (timo.tv_sec < 0)
-		return (ETIMEDOUT);
-
 	for (;;) {
-		if ((mtx->m_flags & (UMUTEX_PRIO_PROTECT | UMUTEX_PRIO_INHERIT)) == 0) {
+		if ((mtx->m_flags &
+		     (UMUTEX_PRIO_PROTECT | UMUTEX_PRIO_INHERIT)) == 0) {
 
 			/* wait in kernel */
-			ret = _umtx_op_err(mtx, UMTX_OP_MUTEX_WAIT, 0, 0, &timo);
+			ret = _umtx_op_err(mtx, UMTX_OP_MUTEX_WAIT,
+				UMUTEX_ABSTIME, NULL, __DECONST(void*, ets));
 
 			/* now try to lock it */
 			owner = mtx->m_owner;
 			if ((owner & ~UMUTEX_CONTESTED) == 0 &&
-			     atomic_cmpset_acq_32(&mtx->m_owner, owner, id|owner))
+			    atomic_cmpset_acq_32(&mtx->m_owner, owner,
+				 id|owner)) {
 				return (0);
+			}
 		} else {
-			ret = _umtx_op_err(mtx, UMTX_OP_MUTEX_LOCK, 0, 0, &timo);
+			ret = _umtx_op_err(mtx, UMTX_OP_MUTEX_LOCK,
+				UMUTEX_ABSTIME, NULL, __DECONST(void *, ets));
 			if (ret == 0)
 				break;
 		}
 		if (ret == ETIMEDOUT)
 			break;
-		clock_gettime(CLOCK_REALTIME, &cts);
-		TIMESPEC_SUB(&timo, ets, &cts);
-		if (timo.tv_sec < 0 || (timo.tv_sec == 0 && timo.tv_nsec == 0)) {
-			ret = ETIMEDOUT;
-			break;
-		}
 	}
 	return (ret);
 }
@@ -122,7 +115,8 @@ __thr_umutex_unlock(struct umutex *mtx, uint32_t id)
 #ifndef __ia64__
 	/* XXX this logic has a race-condition on ia64. */
 	if ((mtx->m_flags & (UMUTEX_PRIO_PROTECT | UMUTEX_PRIO_INHERIT)) == 0) {
-		atomic_cmpset_rel_32(&mtx->m_owner, id | UMUTEX_CONTESTED, UMUTEX_CONTESTED);
+		atomic_cmpset_rel_32(&mtx->m_owner, id | UMUTEX_CONTESTED,
+		    UMUTEX_CONTESTED);
 		return _umtx_op_err(mtx, UMTX_OP_MUTEX_WAKE, 0, 0, 0);
 	}
 #endif /* __ia64__ */
@@ -159,15 +153,16 @@ _thr_umtx_wait_uint(volatile u_int *mtx, u_int id, const struct timespec *timeou
 		timeout->tv_nsec <= 0)))
 		return (ETIMEDOUT);
 	return _umtx_op_err(__DEVOLATILE(void *, mtx), 
-			shared ? UMTX_OP_WAIT_UINT : UMTX_OP_WAIT_UINT_PRIVATE, id, 0,
+		shared ? UMTX_OP_WAIT_UINT : UMTX_OP_WAIT_UINT_PRIVATE, id, 0,
 			__DECONST(void*, timeout));
 }
 
 int
 _thr_umtx_wake(volatile void *mtx, int nr_wakeup, int shared)
 {
-	return _umtx_op_err(__DEVOLATILE(void *, mtx), shared ? UMTX_OP_WAKE : UMTX_OP_WAKE_PRIVATE,
-		nr_wakeup, 0, 0);
+	return _umtx_op_err(__DEVOLATILE(void *, mtx),
+		 shared ? UMTX_OP_WAKE : UMTX_OP_WAKE_PRIVATE,
+		 nr_wakeup, 0, 0);
 }
 
 void
