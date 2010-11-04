@@ -54,6 +54,8 @@
 #define URWLOCK_MAX_READERS	0x1fffffffU
 #define URWLOCK_READER_COUNT(c)	((c) & URWLOCK_MAX_READERS)
 
+#define UCOND_BIND_MUTEX	0x0002
+
 /* _usem flags */
 #define SEM_NAMED	0x0002
 
@@ -83,7 +85,6 @@
 
 /* flags for UMTX_OP_CV_WAIT */
 #define CVWAIT_CHECK_UNPARKING	0x01
-#define CVWAIT_BIND_MUTEX	0x02
 #define UMTX_CHECK_UNPARKING	_CVWAIT_CHECK_UNPARKING
 
 #ifndef _KERNEL

@@ -80,6 +80,7 @@ cond_init(pthread_cond_t *cond, const pthread_condattr_t *cond_attr)
 			pcond->c_pshared = (*cond_attr)->c_pshared;
 			pcond->c_clockid = (*cond_attr)->c_clockid;
 		}
+		pcond->c_kerncv.c_flags |= UCOND_BIND_MUTEX;
 		*cond = pcond;
 	}
 	/* Return the completion status: */
@@ -188,10 +189,10 @@ cond_wait_common(pthread_cond_t *cond, pthread_mutex_t *mutex,
 
 	if (cancel) {
 		_thr_cancel_enter2(curthread, 0);
-		ret = _thr_ucond_wait(&cv->c_kerncv, &m->m_lock, tsp, CVWAIT_BIND_MUTEX);
+		ret = _thr_ucond_wait(&cv->c_kerncv, &m->m_lock, tsp, 0);
 		_thr_cancel_leave(curthread, 0);
 	} else {
-		ret = _thr_ucond_wait(&cv->c_kerncv, &m->m_lock, tsp, CVWAIT_BIND_MUTEX);
+		ret = _thr_ucond_wait(&cv->c_kerncv, &m->m_lock, tsp, 0);
 	}
 
 	if (ret == 0) {

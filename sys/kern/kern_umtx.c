@@ -2495,9 +2495,9 @@ do_cv_wait(struct thread *td, struct ucond *cv, struct umutex *m,
 	if (error != 0)
 		return (error);
 	savekey = uq->uq_key;
-	if ((wflags & CVWAIT_BIND_MUTEX) != 0) {
+	if ((flags & UCOND_BIND_MUTEX) != 0) {
 		if ((mflags & UMUTEX_PRIO_INHERIT) != 0)
-			return (EINVAL);
+			goto ignore;
 		error = umtx_key_get(m, TYPE_NORMAL_UMUTEX,
 				GET_SHARE(mflags), &mkey);
 		if (error != 0) {
@@ -2510,6 +2510,7 @@ do_cv_wait(struct thread *td, struct ucond *cv, struct umutex *m,
 			bind_mutex = NULL;
 		mkeyp = &mkey;
 	} else {
+ignore:
 		bind_mutex = NULL;
 		mkeyp = NULL;
 	}
