@@ -74,39 +74,6 @@ __thr_umutex_lock(struct umutex *mtx, uint32_t id)
 	return	_umtx_op_err(mtx, UMTX_OP_MUTEX_LOCK, 0, 0, 0);
 }
 
-#define SPINLOOPS 2000
-
-int
-__thr_umutex_lock_spin(struct umutex *mtx, uint32_t id)
-{
-	uint32_t owner;
-
-	if (!_thr_is_smp)
-		return __thr_umutex_lock(mtx, id);
-
-	if ((mtx->m_flags & (UMUTEX_PRIO_PROTECT | UMUTEX_PRIO_INHERIT)) == 0) {
-		for (;;) {
-			int count = SPINLOOPS;
-			while (count--) {
-				owner = mtx->m_owner;
-				if ((owner & ~UMUTEX_CONTESTED) == 0) {
-					if (atomic_cmpset_acq_32(
-					    &mtx->m_owner,
-					    owner, id|owner)) {
-						return (0);
-					}
-				}
-				CPU_SPINWAIT;
-			}
-
-			/* wait in kernel */
-			_umtx_op_err(mtx, UMTX_OP_MUTEX_WAIT, 0, 0, 0);
-		}
-	}
-
-	return	_umtx_op_err(mtx, UMTX_OP_MUTEX_LOCK, 0, 0, 0);
-}
-
 int
 __thr_umutex_timedlock(struct umutex *mtx, uint32_t id,
 	const struct timespec *ets)
@@ -211,7 +178,7 @@ _thr_ucond_init(struct ucond *cv)
 
 int
 _thr_ucond_wait(struct ucond *cv, struct umutex *m,
-	const struct timespec *timeout, int check_unparking)
+	const struct timespec *timeout, int flags)
 {
 	if (timeout && (timeout->tv_sec < 0 || (timeout->tv_sec == 0 &&
 	    timeout->tv_nsec <= 0))) {
@@ -219,8 +186,7 @@ _thr_ucond_wait(struct ucond *cv, struct umutex *m,
 		_thr_umutex_unlock(m, TID(curthread));
                 return (ETIMEDOUT);
 	}
-	return _umtx_op_err(cv, UMTX_OP_CV_WAIT,
-		     check_unparking ? UMTX_CHECK_UNPARKING : 0, 
+	return _umtx_op_err(cv, UMTX_OP_CV_WAIT, flags,
 		     m, __DECONST(void*, timeout));
 }
  
@@ -295,58 +261,4 @@ _thr_rwl_unlock(struct urwlock *rwlock)
 {
 	if (_thr_rwlock_unlock(rwlock))
 		PANIC("unlock error");
-}
-
-int
-__thr_umtx_lock(volatile umtx_t *mtx)
-{
-	int v;
-  
-	do {
-		v = *mtx;
-		if (v == 2 || atomic_cmpset_acq_int(mtx, 1, 2))
-			_thr_umtx_wait_uint(mtx, 2, NULL, 0);
-	} while (!atomic_cmpset_acq_int(mtx, 0, 2));
-	return (0);
-}
-
-#define LOOPS 500
-
-int
-__thr_umtx_lock_spin(volatile umtx_t *mtx)
-{
-	int v;
-	int i;
-
-	if (!_thr_is_smp)
-		return _thr_umtx_lock(mtx);
-
-	do {
-		i = LOOPS;
-		while (i-- > 0) {
-			if (*mtx == 0)
-				break;
-			CPU_SPINWAIT;
-		}
-		v = *mtx;
-		if (v == 2 || atomic_cmpset_acq_int(mtx, 1, 2))
-			_thr_umtx_wait_uint(mtx, 2, NULL, 0);
-	} while (!atomic_cmpset_acq_int(mtx, 0, 2));
-	return (0);
-}
-void
-__thr_umtx_unlock(volatile umtx_t *mtx)
-{
-	int v;
-
-	for (;;) {
-		v = *mtx;
-		if (atomic_cmpset_acq_int(mtx, v, v-1)) {
-			if (v != 1) {
-				*mtx = 0;
-				_thr_umtx_wake(mtx, 1, 0);
-			}
-			break;
-		}
-	}
 }

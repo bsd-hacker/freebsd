@@ -31,7 +31,6 @@
 #include <sys/signalvar.h>
 #include <sys/rtprio.h>
 #include <pthread.h>
-#include <sys/mman.h>
 
 #include "thr_private.h"
 
@@ -41,93 +40,6 @@
 #else
 #define DBG_MSG(x...)
 #endif
-
-static struct umutex addr_lock;
-static struct wake_addr *wake_addr_head;
-static struct wake_addr default_wake_addr;
-static struct umutex mutex_link_lock;
-static struct mutex_queue mutex_link_freeq;
-
-struct wake_addr *
-_thr_alloc_wake_addr(void)
-{
-	struct pthread *curthread;
-	struct wake_addr *p;
-
-	if (_thr_initial == NULL) {
-		return &default_wake_addr;
-	}
-
-	curthread = _get_curthread();
-
-	THR_UMUTEX_LOCK(curthread, &addr_lock);
-	if (wake_addr_head == NULL) {
-		unsigned i;
-		unsigned pagesize = getpagesize();
-		struct wake_addr *pp = (struct wake_addr *)mmap(NULL, getpagesize(), PROT_READ|PROT_WRITE, MAP_ANON, -1, 0);
-		for (i = 1; i < pagesize/sizeof(struct wake_addr); ++i)
-			pp[i].link = &pp[i+1];
-		pp[i-1].link = NULL;	
-		wake_addr_head = &pp[1];
-		p = &pp[0];
-	} else {
-		p = wake_addr_head;
-		wake_addr_head = p->link;
-	}
-	THR_UMUTEX_UNLOCK(curthread, &addr_lock);
-	return (p);
-}
-
-void
-_thr_release_wake_addr(struct wake_addr *wa)
-{
-	struct pthread *curthread = _get_curthread();
-
-	if (wa == &default_wake_addr)
-		return;
-	THR_UMUTEX_LOCK(curthread, &addr_lock);
-	wa->link = wake_addr_head;
-	wake_addr_head = wa;
-	THR_UMUTEX_UNLOCK(curthread, &addr_lock);
-}
-
-void
-_thr_mutex_link_init(void)
-{
-	TAILQ_INIT(&mutex_link_freeq);
-	_thr_umutex_init(&mutex_link_lock);
-}
-
-struct mutex_link *
-_thr_mutex_link_alloc(void)
-{
-	struct pthread *curthread = _get_curthread();
-	struct mutex_link *p;
-
-	THR_LOCK_ACQUIRE(curthread, &mutex_link_lock);
-	p = TAILQ_FIRST(&mutex_link_freeq);
-	if (p == NULL) {
-		unsigned i;
-		unsigned pagesize = getpagesize();
-		struct mutex_link *pp = (struct mutex_link *)mmap(NULL, getpagesize(),
-			 PROT_READ|PROT_WRITE, MAP_ANON, -1, 0);
-		for (i = 1; i < pagesize/sizeof(struct mutex_link); ++i)
-			TAILQ_INSERT_TAIL(&mutex_link_freeq, &pp[i], qe);
-		p = &pp[0];
-	}
-	THR_LOCK_RELEASE(curthread, &mutex_link_lock);
-	return (p);
-}
-
-void
-_thr_mutex_link_free(struct mutex_link *p)
-{
-	struct pthread *curthread = _get_curthread();
-
-	THR_LOCK_ACQUIRE(curthread, &mutex_link_lock);
-	TAILQ_INSERT_TAIL(&mutex_link_freeq, p, qe);
-	THR_LOCK_RELEASE(curthread, &mutex_link_lock);
-}
 
 /*
  * This is called when the first thread (other than the initial
@@ -217,30 +129,4 @@ _thr_setscheduler(lwpid_t lwpid, int policy, const struct sched_param *param)
 
 	_schedparam_to_rtp(policy, param, &rtp);
 	return (rtprio_thread(RTP_SET, lwpid, &rtp));
-}
-
-/* Sleep on thread wakeup address */
-int
-_thr_sleep(struct pthread *curthread, const struct timespec *abstime, int clockid)
-{
-	struct timespec *tsp, ts, ts2;
-	int error;
-
-	if (abstime != NULL) {
-		if (abstime->tv_sec < 0 || abstime->tv_nsec < 0 ||
-            		abstime->tv_nsec >= 1000000000) {
-			return (EINVAL);
-		}
-		clock_gettime(clockid, &ts);
-		TIMESPEC_SUB(&ts2, abstime, &ts);
-		if (ts2.tv_sec < 0 || ts2.tv_nsec <= 0)
-			return (ETIMEDOUT);
-		tsp = &ts2;
-	} else {
-		tsp = NULL;
-	}
-
-	error = _thr_umtx_wait_uint(&curthread->wake_addr->value,
-		 0, tsp, 0);
-	return (error);
 }
