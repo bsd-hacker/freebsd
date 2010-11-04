@@ -193,11 +193,16 @@ cond_wait_common(pthread_cond_t *cond, pthread_mutex_t *mutex,
 	} else {
 		ret = _thr_ucond_wait(&cv->c_kerncv, &m->m_lock, tsp, CVWAIT_BIND_MUTEX);
 	}
-	if (ret == EINTR)
-		ret = 0;
-	if (ret == 0 || ret == ETIMEDOUT)
-		return _mutex_cv_lock(mutex, recurse);
-	else {
+
+	if (ret == 0) {
+		_mutex_cv_lock(mutex, recurse);
+	} else if (ret == EINTR || ret == ETIMEDOUT) {
+		_mutex_cv_lock(mutex, recurse);
+		if (cancel)
+			_thr_testcancel(curthread);
+		if (ret == EINTR)
+			ret = 0;
+	} else {
 		/* We know that it didn't unlock the mutex. */
 		_mutex_cv_attach(mutex, recurse);
 		if (cancel)
