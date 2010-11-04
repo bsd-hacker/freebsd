@@ -180,12 +180,6 @@ int
 _thr_ucond_wait(struct ucond *cv, struct umutex *m,
 	const struct timespec *timeout, int flags)
 {
-	if (timeout && (timeout->tv_sec < 0 || (timeout->tv_sec == 0 &&
-	    timeout->tv_nsec <= 0))) {
-		struct pthread *curthread = _get_curthread();
-		_thr_umutex_unlock(m, TID(curthread));
-                return (ETIMEDOUT);
-	}
 	return _umtx_op_err(cv, UMTX_OP_CV_WAIT, flags,
 		     m, __DECONST(void*, timeout));
 }

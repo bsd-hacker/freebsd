@@ -169,8 +169,6 @@ struct pthread_mutex_attr {
 
 struct pthread_cond {
 	struct ucond	c_kerncv;
-	int		c_pshared;
-	int		c_clockid;
 };
 
 struct pthread_cond_attr {

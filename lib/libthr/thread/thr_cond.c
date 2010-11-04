@@ -74,11 +74,11 @@ cond_init(pthread_cond_t *cond, const pthread_condattr_t *cond_attr)
 		 * Initialise the condition variable structure:
 		 */
 		if (cond_attr == NULL || *cond_attr == NULL) {
-			pcond->c_pshared = 0;
-			pcond->c_clockid = CLOCK_REALTIME;
+			pcond->c_kerncv.c_clockid = CLOCK_REALTIME;
 		} else {
-			pcond->c_pshared = (*cond_attr)->c_pshared;
-			pcond->c_clockid = (*cond_attr)->c_clockid;
+			if ((*cond_attr)->c_pshared)
+				pcond->c_kerncv.c_flags |= USYNC_PROCESS_SHARED;
+			pcond->c_kerncv.c_clockid = (*cond_attr)->c_clockid;
 		}
 		pcond->c_kerncv.c_flags |= UCOND_BIND_MUTEX;
 		*cond = pcond;
@@ -162,7 +162,6 @@ cond_wait_common(pthread_cond_t *cond, pthread_mutex_t *mutex,
 	const struct timespec *abstime, int cancel)
 {
 	struct pthread	*curthread = _get_curthread();
-	struct timespec ts, ts2, *tsp;
 	pthread_cond_t  cv;
 	struct pthread_mutex *m;
 	int	recurse;
@@ -180,19 +179,14 @@ cond_wait_common(pthread_cond_t *cond, pthread_mutex_t *mutex,
 		return (ret);
 	m = *mutex;
 
-	if (abstime != NULL) {
-		clock_gettime(cv->c_clockid, &ts);
-		TIMESPEC_SUB(&ts2, abstime, &ts);
-		tsp = &ts2;
-	} else
-		tsp = NULL;
-
 	if (cancel) {
 		_thr_cancel_enter2(curthread, 0);
-		ret = _thr_ucond_wait(&cv->c_kerncv, &m->m_lock, tsp, 0);
+		ret = _thr_ucond_wait(&cv->c_kerncv, &m->m_lock, abstime,
+			CVWAIT_ABSTIME|CVWAIT_CLOCKID);
 		_thr_cancel_leave(curthread, 0);
 	} else {
-		ret = _thr_ucond_wait(&cv->c_kerncv, &m->m_lock, tsp, 0);
+		ret = _thr_ucond_wait(&cv->c_kerncv, &m->m_lock, abstime,
+			CVWAIT_ABSTIME|CVWAIT_CLOCKID);
 	}
 
 	if (ret == 0) {

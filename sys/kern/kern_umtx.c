@@ -43,6 +43,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysent.h>
 #include <sys/systm.h>
 #include <sys/sysproto.h>
+#include <sys/syscallsubr.h>
 #include <sys/eventhandler.h>
 #include <sys/umtx.h>
 
@@ -2486,6 +2487,7 @@ do_cv_wait(struct thread *td, struct ucond *cv, struct umutex *m,
 	struct timespec cts, ets, tts;
 	struct umtxq_chain *old_chain;
 	uint32_t flags, mflags;
+	uint32_t clockid;
 	int error;
 
 	uq = td->td_umtxq;
@@ -2494,6 +2496,18 @@ do_cv_wait(struct thread *td, struct ucond *cv, struct umutex *m,
 	error = umtx_key_get(cv, TYPE_CV, GET_SHARE(flags), &uq->uq_key);
 	if (error != 0)
 		return (error);
+
+	if ((wflags & CVWAIT_CLOCKID) != 0) {
+		clockid = fuword32(&cv->c_clockid);
+		if (clockid < CLOCK_REALTIME ||
+		    clockid >= CLOCK_THREAD_CPUTIME_ID) {
+			/* hmm, only HW clock id will work. */
+			return (EINVAL);
+		}
+	} else {
+		clockid = CLOCK_REALTIME;
+	}
+
 	savekey = uq->uq_key;
 	if ((flags & UCOND_BIND_MUTEX) != 0) {
 		if ((mflags & UMUTEX_PRIO_INHERIT) != 0)
@@ -2549,14 +2563,22 @@ ignore:
 		if (timeout == NULL) {
 			error = umtxq_sleep(uq, "ucond", 0);
 		} else {
-			getnanouptime(&ets);
-			timespecadd(&ets, timeout);
-			TIMESPEC_TO_TIMEVAL(&tv, timeout);
+			if ((wflags & CVWAIT_ABSTIME) == 0) {
+				kern_clock_gettime(td, clockid, &ets);
+				timespecadd(&ets, timeout);
+				tts = *timeout;
+			} else { /* absolute time */
+				ets = *timeout;
+				tts = *timeout;
+				kern_clock_gettime(td, clockid, &cts);
+				timespecsub(&tts, &cts);
+			}
+			TIMESPEC_TO_TIMEVAL(&tv, &tts);
 			for (;;) {
 				error = umtxq_sleep(uq, "ucond", tvtohz(&tv));
 				if (error != ETIMEDOUT)
 					break;
-				getnanouptime(&cts);
+				kern_clock_gettime(td, clockid, &cts);
 				if (timespeccmp(&cts, &ets, >=)) {
 					error = ETIMEDOUT;
 					break;
