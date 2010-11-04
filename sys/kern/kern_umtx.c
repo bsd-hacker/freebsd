@@ -227,13 +227,30 @@ static uma_zone_t		umtx_pi_zone;
 static struct umtxq_chain	umtxq_chains[2][UMTX_CHAINS];
 static MALLOC_DEFINE(M_UMTX, "umtx", "UMTX queue memory");
 static int			umtx_pi_allocated;
-static int			umtx_cv_migrated;
 
 SYSCTL_NODE(_debug, OID_AUTO, umtx, CTLFLAG_RW, 0, "umtx debug");
 SYSCTL_INT(_debug_umtx, OID_AUTO, umtx_pi_allocated, CTLFLAG_RD,
     &umtx_pi_allocated, 0, "Allocated umtx_pi");
-SYSCTL_INT(_debug_umtx, OID_AUTO, umtx_cv_migrated, CTLFLAG_RD,
-    &umtx_cv_migrated, 0, "Thread migrated");
+
+#define UMTX_STATE
+#ifdef UMTX_STATE
+static int			umtx_cv_broadcast_migrate;
+static int			umtx_cv_signal_migrate;
+static int			umtx_cv_insert_failure;
+static int			umtx_cv_unlock_failure;
+SYSCTL_INT(_debug_umtx, OID_AUTO, umtx_cv_broadcast_migrate, CTLFLAG_RD,
+    &umtx_cv_broadcast_migrate, 0, "cv_broadcast thread migrated");
+SYSCTL_INT(_debug_umtx, OID_AUTO, umtx_cv_signal_migrate, CTLFLAG_RD,
+    &umtx_cv_signal_migrate, 0, "cv_signal  thread migrated");
+SYSCTL_INT(_debug_umtx, OID_AUTO, umtx_cv_insert_failure, CTLFLAG_RD,
+    &umtx_cv_insert_failure, 0, "cv_wait failure");
+SYSCTL_INT(_debug_umtx, OID_AUTO, umtx_cv_unlock_failure, CTLFLAG_RD,
+    &umtx_cv_unlock_failure, 0, "cv_wait unlock mutex failure");
+#define UMTX_STATE_INC(var)		umtx_##var++
+#define UMTX_STATE_ADD(var, val)	(umtx_##var += (val))
+#else
+#define UMTX_STATE_INC(var)
+#endif
 
 static void umtxq_sysinit(void *);
 static void umtxq_hash(struct umtx_key *key);
@@ -2416,8 +2433,7 @@ do_unlock_umutex(struct thread *td, struct umutex *m)
 }
 
 static int
-set_contested_bit(struct umtx_key *mkey, struct umutex *m,
-	struct umtxq_queue *uhm, int repair)
+set_contested_bit(struct umutex *m, struct umtxq_queue *uhm, int repair)
 {
 	int do_wake;
 	int qlen = uhm->length;
@@ -2464,7 +2480,7 @@ do_cv_wait(struct thread *td, struct ucond *cv, struct umutex *m,
 	struct timespec *timeout, u_long wflags)
 {
 	struct umtx_q *uq;
-	struct umtx_key mkey, *mkeyp;
+	struct umtx_key mkey, *mkeyp, savekey;
 	struct umutex *bind_mutex;
 	struct timeval tv;
 	struct timespec cts, ets, tts;
@@ -2478,6 +2494,7 @@ do_cv_wait(struct thread *td, struct ucond *cv, struct umutex *m,
 	error = umtx_key_get(cv, TYPE_CV, GET_SHARE(flags), &uq->uq_key);
 	if (error != 0)
 		return (error);
+	savekey = uq->uq_key;
 	if ((wflags & CVWAIT_BIND_MUTEX) != 0) {
 		if ((mflags & UMUTEX_PRIO_INHERIT) != 0)
 			return (EINVAL);
@@ -2502,6 +2519,7 @@ do_cv_wait(struct thread *td, struct ucond *cv, struct umutex *m,
 	umtxq_busy(&uq->uq_key);
 	error = umtxq_insert_queue2(uq, UMTX_SHARED_QUEUE, bind_mutex, mkeyp);
 	if (error != 0) {
+		UMTX_STATE_INC(cv_insert_failure);
 		umtxq_unbusy(&uq->uq_key);
 		umtxq_unlock(&uq->uq_key);
 		return (error);
@@ -2520,6 +2538,8 @@ do_cv_wait(struct thread *td, struct ucond *cv, struct umutex *m,
 	umtxq_unlock(&uq->uq_key);
 
 	error = do_unlock_umutex(td, m);
+	if (error)
+		UMTX_STATE_INC(cv_unlock_failure);
 	
 	umtxq_lock(&uq->uq_key);
 	if (error == 0) {
@@ -2587,7 +2607,7 @@ do_cv_wait(struct thread *td, struct ucond *cv, struct umutex *m,
 				uhm = umtxq_queue_lookup(mkeyp,
 					UMTX_SHARED_QUEUE);
 				if (uhm != NULL)
-					set_contested_bit(mkeyp, m, uhm, 1);
+					set_contested_bit(m, uhm, 1);
 				umtxq_unbusy(mkeyp);
 				umtxq_unlock(mkeyp);
 			}
@@ -2595,7 +2615,12 @@ do_cv_wait(struct thread *td, struct ucond *cv, struct umutex *m,
 
 		error = 0;
 	}
-	umtx_key_release(&uq->uq_key);
+	/*
+	 * Note that we should release a saved key, because if we
+	 * were migrated, the vmobject reference is no the original,
+	 * however, we should release the original.
+	 */
+	umtx_key_release(&savekey);
 	if (mkeyp != NULL)
 		umtx_key_release(mkeyp);
 	uq->uq_spare_queue->bind_mutex = NULL;
@@ -2605,14 +2630,64 @@ do_cv_wait(struct thread *td, struct ucond *cv, struct umutex *m,
 }
 
 /*
+ * Entered with queue busied but not locked, exits with queue locked.
+ */
+static void
+cv_after_migration(int oldlen, struct umutex *bind_mutex,
+	struct umtxq_queue *uhm)
+{
+	struct umtx_q *uq;
+	int do_wake = 0;
+	int shared = uhm->key.shared;
+
+	/*
+	 * Wake one thread when necessary. if before the queue
+	 * migration, there is thread on mutex queue, we don't
+	 * need to wake up a thread, because the mutex contention
+	 * bit should have already been set by other mutex locking
+	 * code.
+	 * For pshared mutex, because different process has different
+	 * address even for same process-shared mutex!
+	 * we don't know where the mutex is in our address space.
+	 * In this situation, we let a thread resumed from cv_wait
+	 * to repair the mutex contention bit.
+	 * XXX Fixme! we should make the repairing thread runs as
+	 * soon as possible, boost its priority.
+	 */
+
+	if (oldlen == 0) {
+		if (!shared) {
+			do_wake = set_contested_bit(bind_mutex, uhm, 0);
+		} else {
+			do_wake = 1;
+		}
+	} else {
+		do_wake = 0;
+	}
+
+	umtxq_lock(&uhm->key);
+	if (do_wake) {
+		uq = TAILQ_FIRST(&uhm->head);
+		if (uq != NULL) {
+			if (shared)
+				uq->uq_repair_mutex = 1;
+			umtxq_signal_thread(uq);
+		}
+	}
+}
+
+/*
  * Signal a userland condition variable.
  */
 static int
 do_cv_signal(struct thread *td, struct ucond *cv)
 {
+	struct umtxq_queue *uh, *uhm;
+	struct umtxq_chain *uc, *ucm;
+	struct umtx_q *uq;
 	struct umtx_key key;
-	int error, cnt, nwake;
-	uint32_t flags;
+	int error, len;
+	uint32_t flags, owner;
 
 	flags = fuword32(&cv->c_flags);
 	if ((error = umtx_key_get(cv, TYPE_CV, GET_SHARE(flags), &key)) != 0)
@@ -2620,18 +2695,90 @@ do_cv_signal(struct thread *td, struct ucond *cv)
 
 	umtxq_lock(&key);
 	umtxq_busy(&key);
-	cnt = umtxq_count(&key);
-	nwake = umtxq_signal(&key, 1);
-	if (cnt <= nwake) {
+	uh = umtxq_queue_lookup(&key, UMTX_SHARED_QUEUE);
+	if (uh == NULL) {
+		int has_waiters = fuword32(__DEVOLATILE(uint32_t *,
+		 	&cv->c_has_waiters));
+		if (has_waiters) {
+			suword32(__DEVOLATILE(uint32_t *,
+			 	&cv->c_has_waiters), 0);
+		}
+		umtxq_unbusy(&key);
 		umtxq_unlock(&key);
-		error = suword32(
-		    __DEVOLATILE(uint32_t *, &cv->c_has_waiters), 0);
-		umtxq_lock(&key);
+		umtx_key_release(&key);
+		return (0);
 	}
+
+	len = uh->length;
+
+	if (uh->binding) {
+		struct umutex *bind_mutex = uh->bind_mutex;
+		struct umtx_key mkey;
+		int oldlen;
+
+		mkey = uh->bind_mkey;
+		umtxq_unlock(&key);
+
+		if (!mkey.shared) {
+			owner = fuword32(__DEVOLATILE(void *,
+				&bind_mutex->m_owner));
+			 /*If mutex is not locked, wake up one */
+			if ((owner & ~UMUTEX_CONTESTED) == 0) {
+				goto wake_one;
+			}
+		}
+
+		/* Try to move thread between mutex and cv queues. */
+		uc = umtxq_getchain(&key);
+		ucm = umtxq_getchain(&mkey);
+
+		umtxq_lock(&mkey);
+		umtxq_busy(&mkey);
+		umtxq_unlock(&mkey);
+		umtxq_lock(&key);
+		umtxq_lock(&mkey);
+		uhm = umtxq_queue_lookup(&mkey, UMTX_SHARED_QUEUE);
+		if (uhm == NULL)
+			oldlen = 0;
+		else
+			oldlen = uhm->length;
+		uq = TAILQ_FIRST(&uh->head);
+		umtxq_remove_queue(uq, UMTX_SHARED_QUEUE);
+		umtx_key_copy(&uq->uq_key, &mkey);
+		umtxq_insert(uq);
+		if (uhm == NULL)
+			uhm = uq->uq_cur_queue;
+		umtxq_unlock(&mkey);
+		umtxq_unlock(&key);
+		UMTX_STATE_INC(cv_signal_migrate);
+		if (len == 1)
+			suword32(__DEVOLATILE(uint32_t *,
+				&cv->c_has_waiters), 0);
+
+		umtxq_lock(&key);
+		umtxq_unbusy(&key);
+		umtxq_unlock(&key);
+		umtx_key_release(&key);
+
+		cv_after_migration(oldlen, bind_mutex, uhm);
+
+		umtxq_unbusy(&mkey);
+		umtxq_unlock(&mkey);
+		return (0);
+	} else {
+		umtxq_unlock(&key);
+	}
+
+wake_one:
+	if (len == 1)
+		suword32(__DEVOLATILE(uint32_t *, &cv->c_has_waiters), 0);
+	umtxq_lock(&key);
+	uq = TAILQ_FIRST(&uh->head);
+	umtxq_signal_thread(uq);
 	umtxq_unbusy(&key);
 	umtxq_unlock(&key);
 	umtx_key_release(&key);
-	return (error);
+	return (0);
 }
 
 static int
@@ -2658,7 +2805,6 @@ do_cv_broadcast(struct thread *td, struct ucond *cv)
 		struct umutex *bind_mutex = uh->bind_mutex;
 		struct umtx_key mkey;
 		struct umtx_q *uq;
-		int do_wake;
 		int len, oldlen;
 
 		len = uh->length;
@@ -2711,6 +2857,8 @@ do_cv_broadcast(struct thread *td, struct ucond *cv)
 			LIST_INSERT_HEAD(&ucm->uc_spare_queue, uh, link);
 		}
 
+		UMTX_STATE_ADD(cv_broadcast_migrate, len);
+
 		/*
 		 * At this point, cv's queue no longer needs to be accessed,
 		 * NULL it.
@@ -2738,40 +2886,8 @@ do_cv_broadcast(struct thread *td, struct ucond *cv)
 		umtxq_unlock(&key);
 		umtx_key_release(&key);
 
-		/*
-		 * Wake one thread when necessary. if before the queue
-		 * migration, there is thread on mutex queue, we don't
-		 * need to wake up a thread, because the mutex contention
-		 * bit should have already been set by other mutex locking
-		 * code.
-		 * For pshared mutex, because different process has different
-		 * address even for same process-shared mutex!
-		 * we don't know where the mutex is in our address space.
-		 * In this situation, we let a thread resumed from cv_wait
-		 * to repair the mutex contention bit.
-		 * XXX Fixme! we should make the repairing thread runs as
-		 * soon as possible, boost its priority.
-		 */
-		if (oldlen == 0) {
-			if (!mkey.shared) {
-				do_wake = set_contested_bit(&mkey, bind_mutex,
-					uhm, 0);
-			} else {
-				do_wake = 1;
-			}
-		} else {
-			do_wake = 0;
-		}
+		cv_after_migration(oldlen, bind_mutex, uhm);
 
-		umtxq_lock(&mkey);
-		if (do_wake) {
-			uq = TAILQ_FIRST(&uhm->head);
-			if (uq != NULL) {
-				if (mkey.shared)
-					uq->uq_repair_mutex = 1;
-				umtxq_signal_thread(uq);
-			}
-		}
 		umtxq_unbusy(&mkey);
 		umtxq_unlock(&mkey);
 		return (0);
