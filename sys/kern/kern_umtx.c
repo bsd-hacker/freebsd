@@ -2538,8 +2538,10 @@ do_cv_wait(struct thread *td, struct ucond *cv, struct umutex *m,
 	umtxq_unlock(&uq->uq_key);
 
 	error = do_unlock_umutex(td, m);
-	if (error)
+	if (error) {
 		UMTX_STATE_INC(cv_unlock_failure);
+		error = 0; /* ignore the error */
+	}
 	
 	umtxq_lock(&uq->uq_key);
 	if (error == 0) {
@@ -2617,7 +2619,7 @@ do_cv_wait(struct thread *td, struct ucond *cv, struct umutex *m,
 	}
 	/*
 	 * Note that we should release a saved key, because if we
-	 * were migrated, the vmobject reference is no the original,
+	 * were migrated, the vmobject reference is no longer the original,
 	 * however, we should release the original.
 	 */
 	umtx_key_release(&savekey);
@@ -2722,7 +2724,7 @@ do_cv_signal(struct thread *td, struct ucond *cv)
 		if (!mkey.shared) {
 			owner = fuword32(__DEVOLATILE(void *,
 				&bind_mutex->m_owner));
-			 /*If mutex is not locked, wake up one */
+			 /* If mutex is not locked, wake up one. */
 			if ((owner & ~UMUTEX_CONTESTED) == 0) {
 				goto wake_one;
 			}
