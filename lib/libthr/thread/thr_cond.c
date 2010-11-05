@@ -60,6 +60,8 @@ __weak_reference(_pthread_cond_destroy, pthread_cond_destroy);
 __weak_reference(_pthread_cond_signal, pthread_cond_signal);
 __weak_reference(_pthread_cond_broadcast, pthread_cond_broadcast);
 
+#define CV_PSHARED(cv)	(((cv)->c_kerncv.c_flags & USYNC_PROCESS_SHARED) != 0)
+
 static int
 cond_init(pthread_cond_t *cond, const pthread_condattr_t *cond_attr)
 {
@@ -238,11 +240,11 @@ cond_wait_user(pthread_cond_t *cond, pthread_mutex_t *mutex,
 		if (cancel) {
 			_thr_cancel_enter2(curthread, 0);
 			ret = _thr_umtx_wait_uint((u_int *)&cv->c_seq,
-				(u_int)seq, tsp, 0);
+				(u_int)seq, tsp, CV_PSHARED(cv));
 			_thr_cancel_leave(curthread, 0);
 		} else {
 			ret = _thr_umtx_wait_uint((u_int *)&cv->c_seq,
-				(u_int)seq, tsp, 0);
+				(u_int)seq, tsp, CV_PSHARED(cv));
 		}
 
 		_thr_umtx_lock_spin(&cv->c_lock);
@@ -371,13 +373,13 @@ cond_signal_common(pthread_cond_t *cond, int broadcast)
 			cv->c_seq++;
 			cv->c_signaled++;
 			cv->c_waiters--;
-			_thr_umtx_wake(&cv->c_seq, 1, 0);
+			_thr_umtx_wake(&cv->c_seq, 1, CV_PSHARED(cv));
 		} else {
 			cv->c_seq++;
 			cv->c_broadcast_seq++;
 			cv->c_waiters = 0;
 			cv->c_signaled = 0;
-			_thr_umtx_wake(&cv->c_seq, INT_MAX, 0);
+			_thr_umtx_wake(&cv->c_seq, INT_MAX, CV_PSHARED(cv));
 		}
 	}
 	_thr_umtx_unlock(&cv->c_lock);
