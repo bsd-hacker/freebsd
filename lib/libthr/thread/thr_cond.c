@@ -264,9 +264,6 @@ cond_wait_user(pthread_cond_t *cond, pthread_mutex_t *mutex,
 		}
 	}
 	THR_UMUTEX_UNLOCK(curthread, &cv->c_lock);
-
-	if (ret == EINTR)
-		ret = 0;
 	_mutex_cv_lock(mutex, recurse);
 	return (ret);
 }
