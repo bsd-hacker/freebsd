@@ -228,10 +228,18 @@ static uma_zone_t		umtx_pi_zone;
 static struct umtxq_chain	umtxq_chains[2][UMTX_CHAINS];
 static MALLOC_DEFINE(M_UMTX, "umtx", "UMTX queue memory");
 static int			umtx_pi_allocated;
+#ifdef SMP
+static int			umtx_cvsig_migrate = 0;
+#else
+static int			umtx_cvsig_migrate = 1;
+#endif
 
 SYSCTL_NODE(_debug, OID_AUTO, umtx, CTLFLAG_RW, 0, "umtx debug");
 SYSCTL_INT(_debug_umtx, OID_AUTO, umtx_pi_allocated, CTLFLAG_RD,
     &umtx_pi_allocated, 0, "Allocated umtx_pi");
+
+SYSCTL_INT(_debug_umtx, OID_AUTO, umtx_cvsig_migrate, CTLFLAG_RW,
+    &umtx_cvsig_migrate, 0, "cvsig migrate");
 
 #define UMTX_STATE
 #ifdef UMTX_STATE
@@ -239,6 +247,7 @@ static int			umtx_cv_broadcast_migrate;
 static int			umtx_cv_signal_migrate;
 static int			umtx_cv_insert_failure;
 static int			umtx_cv_unlock_failure;
+static int			umtx_timedlock_count;
 SYSCTL_INT(_debug_umtx, OID_AUTO, umtx_cv_broadcast_migrate, CTLFLAG_RD,
     &umtx_cv_broadcast_migrate, 0, "cv_broadcast thread migrated");
 SYSCTL_INT(_debug_umtx, OID_AUTO, umtx_cv_signal_migrate, CTLFLAG_RD,
@@ -247,6 +256,8 @@ SYSCTL_INT(_debug_umtx, OID_AUTO, umtx_cv_insert_failure, CTLFLAG_RD,
     &umtx_cv_insert_failure, 0, "cv_wait failure");
 SYSCTL_INT(_debug_umtx, OID_AUTO, umtx_cv_unlock_failure, CTLFLAG_RD,
     &umtx_cv_unlock_failure, 0, "cv_wait unlock mutex failure");
+SYSCTL_INT(_debug_umtx, OID_AUTO, umtx_timedlock_count, CTLFLAG_RD,
+    &umtx_timedlock_count, 0, "umutex timedlock count");
 #define UMTX_STATE_INC(var)		umtx_##var++
 #define UMTX_STATE_ADD(var, val)	(umtx_##var += (val))
 #else
@@ -1202,7 +1213,10 @@ _do_lock_normal(struct thread *td, struct umutex *m, uint32_t flags, int timo,
 	uint32_t owner, old, id;
 	int error = 0;
 
-	id = td->td_tid;
+	if (flags & UMUTEX_SIMPLE)
+		id = UMUTEX_SIMPLE_OWNER;
+	else
+		id = td->td_tid;
 	uq = td->td_umtxq;
 
 	/*
@@ -1321,7 +1335,10 @@ do_unlock_normal(struct thread *td, struct umutex *m, uint32_t flags)
 	int error;
 	int count;
 
-	id = td->td_tid;
+	if (flags & UMUTEX_SIMPLE)
+		id = UMUTEX_SIMPLE_OWNER;
+	else
+		id = td->td_tid;
 	/*
 	 * Make sure we own this mtx.
 	 */
@@ -2066,7 +2083,10 @@ _do_lock_pp(struct thread *td, struct umutex *m, uint32_t flags, int timo,
 	uint32_t owner, id;
 	int error, pri, old_inherited_pri, su;
 
-	id = td->td_tid;
+	if (flags & UMUTEX_SIMPLE)
+		id = UMUTEX_SIMPLE_OWNER;
+	else
+		id = td->td_tid;
 	uq = td->td_umtxq;
 	if ((error = umtx_key_get(m, TYPE_PP_UMUTEX, GET_SHARE(flags),
 	    &uq->uq_key)) != 0)
@@ -2196,7 +2216,10 @@ do_unlock_pp(struct thread *td, struct umutex *m, uint32_t flags)
 	uint32_t rceiling;
 	int error, pri, new_inherited_pri, su;
 
-	id = td->td_tid;
+	if (flags & UMUTEX_SIMPLE)
+		id = UMUTEX_SIMPLE_OWNER;
+	else
+		id = td->td_tid;
 	uq = td->td_umtxq;
 	su = (priv_check(td, PRIV_SCHED_RTPRIO) == 0);
 
@@ -2284,7 +2307,10 @@ do_set_ceiling(struct thread *td, struct umutex *m, uint32_t ceiling,
 		return (EINVAL);
 	if (ceiling > RTP_PRIO_MAX)
 		return (EINVAL);
-	id = td->td_tid;
+	if (flags & UMUTEX_SIMPLE)
+		id = UMUTEX_SIMPLE_OWNER;
+	else
+		id = td->td_tid;
 	uq = td->td_umtxq;
 	if ((error = umtx_key_get(m, TYPE_PP_UMUTEX, GET_SHARE(flags),
 	   &uq->uq_key)) != 0)
@@ -2387,6 +2413,9 @@ do_lock_umutex(struct thread *td, struct umutex *m,
 			error = ERESTART;
 	} else {
 		const clockid_t clockid = CLOCK_REALTIME;
+
+		UMTX_STATE_INC(timedlock_count);
+
 		if ((wflags & UMUTEX_ABSTIME) == 0) {
 			kern_clock_gettime(td, clockid, &ets);
 			timespecadd(&ets, timeout);
@@ -2720,7 +2749,7 @@ do_cv_signal(struct thread *td, struct ucond *cv)
 	struct umtxq_chain *uc, *ucm;
 	struct umtx_q *uq;
 	struct umtx_key key;
-	int error, len;
+	int error, len, migrate;
 	uint32_t flags, owner;
 
 	flags = fuword32(&cv->c_flags);
@@ -2744,8 +2773,17 @@ do_cv_signal(struct thread *td, struct ucond *cv)
 	}
 
 	len = uh->length;
-
-	if (uh->binding) {
+	switch(umtx_cvsig_migrate) {
+	case 1: /* auto */
+		migrate = (mp_ncpus == 1);
+		break;
+	case 0: /* disable */
+		migrate = 0;
+		break;
+	default: /* always */
+		migrate = 1;
+	}
+	if (migrate && uh->binding) {
 		struct umutex *bind_mutex = uh->bind_mutex;
 		struct umtx_key mkey;
 		int oldlen;

@@ -40,10 +40,14 @@
 
 #define	UMUTEX_UNOWNED		0x0
 #define	UMUTEX_CONTESTED	0x80000000U
+#define	UMUTEX_OWNER_MASK	0x7FFFFFFFU
 
 #define	UMUTEX_ERROR_CHECK	0x0002	/* Error-checking mutex */
 #define	UMUTEX_PRIO_INHERIT	0x0004	/* Priority inherited mutex */
 #define	UMUTEX_PRIO_PROTECT	0x0008	/* Priority protect mutex */
+#define UMUTEX_SIMPLE		0x0010  /* Use simple lock id. */
+
+#define UMUTEX_SIMPLE_OWNER	1	/* The simple mutex's lock bit. */
 
 /* urwlock flags */
 #define URWLOCK_PREFER_READER	0x0002
