@@ -279,6 +279,7 @@ exit_thread(void)
 
 	/* Tell malloc that the thread is exiting. */
 	_malloc_thread_cleanup();
+	_thr_mutex_link_exit(curthread);
 
 	THR_LOCK(curthread);
 	curthread->state = PS_DEAD;
