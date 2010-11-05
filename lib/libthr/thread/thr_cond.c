@@ -224,17 +224,17 @@ cond_wait_user(pthread_cond_t *cond, pthread_mutex_t *mutex,
 		return (ret);
 	}
 
-	if (abstime != NULL) {
-		clock_gettime(cv->c_kerncv.c_clockid, &ts);
-		TIMESPEC_SUB(&ts2, abstime, &ts);
-		tsp = &ts2;
-	} else
-		tsp = NULL;
-
 	bseq = cv->c_broadcast_seq;
 	for(;;) {
 		seq = cv->c_seq;
 		THR_UMUTEX_UNLOCK(curthread, &cv->c_lock);
+
+		if (abstime != NULL) {
+			clock_gettime(cv->c_kerncv.c_clockid, &ts);
+			TIMESPEC_SUB(&ts2, abstime, &ts);
+			tsp = &ts2;
+		} else
+			tsp = NULL;
 
 		if (cancel) {
 			_thr_cancel_enter2(curthread, 0);
@@ -255,10 +255,12 @@ cond_wait_user(pthread_cond_t *cond, pthread_mutex_t *mutex,
 			cv->c_signaled--;
 			ret = 0;
 			break;
+		} else if (ret == ETIMEDOUT) {
+			break;
 		} else if (cancel && SHOULD_CANCEL(curthread) &&
 			   !THR_IN_CRITICAL(curthread)) {
-				THR_UMUTEX_UNLOCK(curthread, &cv->c_lock);
-				_pthread_exit(PTHREAD_CANCELED);
+			THR_UMUTEX_UNLOCK(curthread, &cv->c_lock);
+			_pthread_exit(PTHREAD_CANCELED);
 		}
 	}
 	THR_UMUTEX_UNLOCK(curthread, &cv->c_lock);
@@ -289,6 +291,7 @@ cond_wait_common(pthread_cond_t *cond, pthread_mutex_t *mutex,
 		return (err);
 
 	m = *mutex;
+
 	if ((m->m_lock.m_flags & USYNC_PROCESS_SHARED) !=
 	    (cv->c_kerncv.c_flags & USYNC_PROCESS_SHARED))
 		return (EINVAL);
