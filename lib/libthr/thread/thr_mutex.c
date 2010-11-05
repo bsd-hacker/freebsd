@@ -548,12 +548,10 @@ mutex_self_lock(struct pthread_mutex *m, const struct timespec *abstime)
 	return (ret);
 }
 
-static int
-mutex_unlock_common(pthread_mutex_t *mutex)
+int
+_mutex_owned(struct pthread *curthread, const pthread_mutex_t *mutex)
 {
-	struct pthread *curthread = _get_curthread();
 	struct pthread_mutex *m;
-	uint32_t id;
 
 	m = *mutex;
 	if (__predict_false(m <= THR_MUTEX_DESTROYED)) {
@@ -561,12 +559,26 @@ mutex_unlock_common(pthread_mutex_t *mutex)
 			return (EINVAL);
 		return (EPERM);
 	}
-
 	/*
 	 * Check if the running thread is not the owner of the mutex.
 	 */
 	if (__predict_false(m->m_owner != curthread))
 		return (EPERM);
+	return (0);
+}
+
+static int
+mutex_unlock_common(pthread_mutex_t *mutex)
+{
+	struct pthread *curthread = _get_curthread();
+	struct pthread_mutex *m;
+	uint32_t id;
+	int err;
+
+	if ((err = _mutex_owned(curthread, mutex)) != 0)
+		return (err);
+
+	m = *mutex;
 
 	id = TID(curthread);
 	if (__predict_false(
@@ -607,6 +619,41 @@ _mutex_cv_lock(pthread_mutex_t *mutex, int count)
 }
 
 int
+_mutex_cv_unlock(pthread_mutex_t *mutex, int *count)
+{
+	struct pthread *curthread = _get_curthread();
+	struct pthread_mutex *m;
+	int err;
+
+	if ((err = _mutex_owned(curthread, mutex)) != 0)
+		return (err);
+
+	m = *mutex;
+
+	/*
+	 * Clear the count in case this is a recursive mutex.
+	 */
+	*count = m->m_count;
+	m->m_refcount++;
+	m->m_count = 0;
+	m->m_owner = NULL;
+	/* Remove the mutex from the threads queue. */
+	MUTEX_ASSERT_IS_OWNED(m);
+	if (__predict_true((m->m_lock.m_flags & UMUTEX_PRIO_PROTECT) == 0))
+		TAILQ_REMOVE(&curthread->mutexq, m, m_qe);
+	else {
+		TAILQ_REMOVE(&curthread->pp_mutexq, m, m_qe);
+		set_inherited_priority(curthread, m);
+	}
+	MUTEX_INIT_LINK(m);
+	_thr_umutex_unlock(&m->m_lock, TID(curthread));
+
+	if (m->m_private)
+		THR_CRITICAL_LEAVE(curthread);
+	return (0);
+}
+
+int
 _mutex_cv_attach(pthread_mutex_t *mutex, int count)
 {
 	struct pthread *	curthread = _get_curthread();
@@ -625,19 +672,12 @@ _mutex_cv_detach(pthread_mutex_t *mutex, int *count)
 {
 	struct pthread *curthread = _get_curthread();
 	struct pthread_mutex *m;
+	int err;
+
+	if ((err = _mutex_owned(curthread, mutex)) != 0)
+		return (err);
 
 	m = *mutex;
-	if (__predict_false(m <= THR_MUTEX_DESTROYED)) {
-		if (m == THR_MUTEX_DESTROYED)
-			return (EINVAL);
-		return (EPERM);
-	}
-
-	/*
-	 * Check if the running thread is not the owner of the mutex.
-	 */
-	if (__predict_false(m->m_owner != curthread))
-		return (EPERM);
 
 	/*
 	 * Clear the count in case this is a recursive mutex.

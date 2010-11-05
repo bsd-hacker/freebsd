@@ -169,6 +169,15 @@ struct pthread_mutex_attr {
 
 struct pthread_cond {
 	struct ucond	c_kerncv;
+	/*
+	 * Following is userlevel condition variable which is
+	 * used for time-sharing scheduling, it is a bit fast.
+	 */
+	struct umutex	c_lock;
+	int		c_waiters;
+	int		c_signaled;
+	uint32_t	c_seq;
+	uint64_t	c_broadcast_seq;
 };
 
 struct pthread_cond_attr {
@@ -674,8 +683,10 @@ extern struct umutex	_thr_event_lock __hidden;
 __BEGIN_DECLS
 int	_thr_setthreaded(int) __hidden;
 int	_mutex_cv_lock(pthread_mutex_t *, int count) __hidden;
+int	_mutex_cv_unlock(pthread_mutex_t *, int *count) __hidden;
 int	_mutex_cv_attach(pthread_mutex_t *, int count) __hidden;
 int	_mutex_cv_detach(pthread_mutex_t *, int *count) __hidden;
+int	_mutex_owned(struct pthread *, const pthread_mutex_t *) __hidden;
 int	_mutex_reinit(pthread_mutex_t *) __hidden;
 void	_mutex_fork(struct pthread *curthread) __hidden;
 void	_libpthread_init(struct pthread *) __hidden;

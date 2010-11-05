@@ -80,6 +80,7 @@ cond_init(pthread_cond_t *cond, const pthread_condattr_t *cond_attr)
 				pcond->c_kerncv.c_flags |= USYNC_PROCESS_SHARED;
 			pcond->c_kerncv.c_clockid = (*cond_attr)->c_clockid;
 		}
+		_thr_umutex_init(&pcond->c_lock);
 		pcond->c_kerncv.c_flags |= UCOND_BIND_MUTEX;
 		*cond = pcond;
 	}
@@ -137,6 +138,8 @@ _pthread_cond_destroy(pthread_cond_t *cond)
 		rval = EINVAL;
 	else {
 		cv = *cond;
+		if (cv->c_waiters != 0)
+			return (EBUSY);
 		_thr_ucond_broadcast(&cv->c_kerncv);
 		*cond = THR_COND_DESTROYED;
 
@@ -158,7 +161,7 @@ _pthread_cond_destroy(pthread_cond_t *cond)
  *   to be lost.
  */
 static int
-cond_wait_common(pthread_cond_t *cond, pthread_mutex_t *mutex,
+cond_wait_kernel(pthread_cond_t *cond, pthread_mutex_t *mutex,
 	const struct timespec *abstime, int cancel)
 {
 	struct pthread	*curthread = _get_curthread();
@@ -166,12 +169,6 @@ cond_wait_common(pthread_cond_t *cond, pthread_mutex_t *mutex,
 	struct pthread_mutex *m;
 	int	recurse;
 	int	ret;
-
-	/*
-	 * If the condition variable is statically initialized,
-	 * perform the dynamic initialization:
-	 */
-	CHECK_AND_INIT_COND
 
 	cv = *cond;
 	ret = _mutex_cv_detach(mutex, &recurse);
@@ -204,6 +201,102 @@ cond_wait_common(pthread_cond_t *cond, pthread_mutex_t *mutex,
 			_thr_testcancel(curthread);
 	}
 	return (ret);
+}
+
+static int
+cond_wait_user(pthread_cond_t *cond, pthread_mutex_t *mutex,
+	const struct timespec *abstime, int cancel)
+{
+	struct pthread	*curthread = _get_curthread();
+	struct timespec ts, ts2, *tsp;
+	int		recurse;
+	pthread_cond_t  cv;
+	int		ret;
+	uint64_t	seq, bseq;
+
+	cv = *cond;
+	THR_UMUTEX_LOCK(curthread, &cv->c_lock);
+	cv->c_waiters++;
+	ret = _mutex_cv_unlock(mutex, &recurse);
+	if (__predict_false(ret != 0)) {
+		cv->c_waiters--;
+		THR_UMUTEX_UNLOCK(curthread, &cv->c_lock);
+		return (ret);
+	}
+
+	if (abstime != NULL) {
+		clock_gettime(cv->c_kerncv.c_clockid, &ts);
+		TIMESPEC_SUB(&ts2, abstime, &ts);
+		tsp = &ts2;
+	} else
+		tsp = NULL;
+
+	bseq = cv->c_broadcast_seq;
+	for(;;) {
+		seq = cv->c_seq;
+		THR_UMUTEX_UNLOCK(curthread, &cv->c_lock);
+
+		if (cancel) {
+			_thr_cancel_enter2(curthread, 0);
+			ret = _thr_umtx_wait_uint((u_int *)&cv->c_seq,
+				(u_int)seq, tsp, 0);
+			_thr_cancel_leave(curthread, 0);
+		} else {
+			ret = _thr_umtx_wait_uint((u_int *)&cv->c_seq,
+				(u_int)seq, tsp, 0);
+		}
+
+		THR_UMUTEX_LOCK(curthread, &cv->c_lock);
+		if (cv->c_broadcast_seq != bseq) {
+			ret = 0;
+			break;
+		}
+		if (cv->c_signaled > 0) {
+			cv->c_signaled--;
+			ret = 0;
+			break;
+		} else if (cancel && SHOULD_CANCEL(curthread) &&
+			   !THR_IN_CRITICAL(curthread)) {
+				THR_UMUTEX_UNLOCK(curthread, &cv->c_lock);
+				_pthread_exit(PTHREAD_CANCELED);
+		}
+	}
+	THR_UMUTEX_UNLOCK(curthread, &cv->c_lock);
+
+	if (ret == EINTR)
+		ret = 0;
+	_mutex_cv_lock(mutex, recurse);
+	return (ret);
+}
+
+
+static int
+cond_wait_common(pthread_cond_t *cond, pthread_mutex_t *mutex,
+	const struct timespec *abstime, int cancel)
+{
+	struct pthread	*curthread = _get_curthread();
+	struct pthread_mutex *m;
+	pthread_cond_t  cv;
+	int err;
+
+	/*
+	 * If the condition variable is statically initialized,
+	 * perform the dynamic initialization:
+	 */
+	CHECK_AND_INIT_COND
+
+	if ((err = _mutex_owned(curthread, mutex)) != 0)
+		return (err);
+
+	m = *mutex;
+	if ((m->m_lock.m_flags & USYNC_PROCESS_SHARED) !=
+	    (cv->c_kerncv.c_flags & USYNC_PROCESS_SHARED))
+		return (EINVAL);
+
+	if (m->m_lock.m_flags & (UMUTEX_PRIO_PROTECT|UMUTEX_PRIO_INHERIT)) 
+		return cond_wait_kernel(cond, mutex, abstime, cancel);
+	else
+		return cond_wait_user(cond, mutex, abstime, cancel);
 }
 
 int
@@ -247,8 +340,8 @@ __pthread_cond_timedwait(pthread_cond_t *cond, pthread_mutex_t *mutex,
 static int
 cond_signal_common(pthread_cond_t *cond, int broadcast)
 {
+	struct pthread	*curthread = _get_curthread();
 	pthread_cond_t	cv;
-	int		ret = 0;
 
 	/*
 	 * If the condition variable is statically initialized, perform dynamic
@@ -257,10 +350,30 @@ cond_signal_common(pthread_cond_t *cond, int broadcast)
 	CHECK_AND_INIT_COND
 
 	if (!broadcast)
-		ret = _thr_ucond_signal(&cv->c_kerncv);
+		_thr_ucond_signal(&cv->c_kerncv);
 	else
-		ret = _thr_ucond_broadcast(&cv->c_kerncv);
-	return (ret);
+		_thr_ucond_broadcast(&cv->c_kerncv);
+
+	if (cv->c_waiters == 0)
+		return (0);
+
+	THR_UMUTEX_LOCK(curthread, &cv->c_lock);
+	if (cv->c_waiters > 0) {
+		if (!broadcast) {
+			cv->c_seq++;
+			cv->c_signaled++;
+			cv->c_waiters--;
+			_thr_umtx_wake(&cv->c_seq, 1, 0);
+		} else {
+			cv->c_seq++;
+			cv->c_broadcast_seq++;
+			cv->c_waiters = 0;
+			cv->c_signaled = 0;
+			_thr_umtx_wake(&cv->c_seq, INT_MAX, 0);
+		}
+	}
+	THR_UMUTEX_UNLOCK(curthread, &cv->c_lock);
+	return (0);
 }
 
 int
