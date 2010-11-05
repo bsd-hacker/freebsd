@@ -259,6 +259,7 @@ cond_wait_user(pthread_cond_t *cond, pthread_mutex_t *mutex,
 		} else if (cancel && SHOULD_CANCEL(curthread) &&
 			   !THR_IN_CRITICAL(curthread)) {
 			_thr_umtx_unlock(&cv->c_lock);
+			_mutex_cv_lock(mutex, recurse);
 			_pthread_exit(PTHREAD_CANCELED);
 		}
 	}
@@ -292,7 +293,15 @@ cond_wait_common(pthread_cond_t *cond, pthread_mutex_t *mutex,
 	    (cv->c_kerncv.c_flags & USYNC_PROCESS_SHARED))
 		return (EINVAL);
 
+	/*
+	 * If the thread is real-time thread or if it holds priority mutex,
+	 * it should use kernel based cv, because the cv internal lock
+	 * does not protect priority, it can cause priority inversion.
+	 * Note that if it is robust type of mutex, we should not use
+	 * the internal lock too, because it is not robust.
+	 */
 	if (curthread->attr.sched_policy != SCHED_OTHER ||
+	    curthread->priority_mutex_count != 0  ||
 	    (m->m_lock.m_flags & (UMUTEX_PRIO_PROTECT|UMUTEX_PRIO_INHERIT)) != 0)
 		return cond_wait_kernel(cond, mutex, abstime, cancel);
 	else
