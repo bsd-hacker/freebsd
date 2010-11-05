@@ -847,26 +847,24 @@ enqueue_mutex(struct pthread *curthread, struct pthread_mutex *m)
 	 * mutex is unlocked, so we should remember every PP mutex.
 	 */
 	if ((m->m_lock.m_flags & UMUTEX_PRIO_PROTECT) != 0) {
+		curthread->priority_mutex_count++;
 		ml = _thr_mutex_link_alloc();
 		ml->mutexp = m;
 		TAILQ_INSERT_TAIL(&curthread->pp_mutexq, ml, qe);
-	} else if ((m->m_lock.m_flags & (UMUTEX_PRIO_INHERIT |
-			USYNC_PROCESS_SHARED)) == UMUTEX_PRIO_INHERIT) {
+	} else if ((m->m_lock.m_flags & UMUTEX_PRIO_INHERIT) != 0) {
+		curthread->priority_mutex_count++;
 		/*
 		 * To make unlocking after fork() work, we need to link it,
 		 * because we still use TID as lock-word for PI mutex.
 		 * However, processs-shared mutex only has one copy, it should
-		 * not be unlockable for child process, so we don't link it.
+		 * not be unlockable for child process, so we don't link it,
+		 * and _mutex_fork() won't find it.
 		 */
-		if ((m->m_lock.m_flags & USYNC_PROCESS_SHARED) == 0) {
-			ml = _thr_mutex_link_alloc();
-			ml->mutexp = m;
-			TAILQ_INSERT_TAIL(&curthread->pi_mutexq, ml, qe);
-		}
-	}
-	if ((m->m_lock.m_flags &
-	    (UMUTEX_PRIO_PROTECT|UMUTEX_PRIO_PROTECT)) != 0) {
-		curthread->priority_mutex_count++;
+		if ((m->m_lock.m_flags & USYNC_PROCESS_SHARED) != 0)
+			return;
+		ml = _thr_mutex_link_alloc();
+		ml->mutexp = m;
+		TAILQ_INSERT_TAIL(&curthread->pi_mutexq, ml, qe);
 	}
 }
 
@@ -879,29 +877,25 @@ dequeue_mutex(struct pthread *curthread, struct pthread_mutex *m)
 		m->m_ownertd = NULL;
 
 	if ((m->m_lock.m_flags & UMUTEX_PRIO_PROTECT) != 0) {
+		curthread->priority_mutex_count--;
 		TAILQ_FOREACH(ml, &curthread->pp_mutexq, qe) {
 			if (ml->mutexp == m) {
 				TAILQ_REMOVE(&curthread->pp_mutexq, ml, qe);
 				set_inherited_priority(curthread, m);
 				_thr_mutex_link_free(ml);
-				goto out;
+				break;
 			}
 		}
-	} else if ((m->m_lock.m_flags & (UMUTEX_PRIO_INHERIT | 
-			USYNC_PROCESS_SHARED)) == UMUTEX_PRIO_INHERIT) {
+	} else if ((m->m_lock.m_flags & UMUTEX_PRIO_INHERIT) != 0) {
+		curthread->priority_mutex_count--;
+		if ((m->m_lock.m_flags & USYNC_PROCESS_SHARED) != 0)
+			return;
 		TAILQ_FOREACH(ml, &curthread->pi_mutexq, qe) {
 			if (ml->mutexp == m) {
 				TAILQ_REMOVE(&curthread->pi_mutexq, ml, qe);
 				_thr_mutex_link_free(ml);
-				goto out;
+				break;
 			}
 		}
-	}
-	return;
-
-out:
-	if ((m->m_lock.m_flags &
-	    (UMUTEX_PRIO_PROTECT|UMUTEX_PRIO_PROTECT)) != 0) {
-		curthread->priority_mutex_count--;
 	}
 }
