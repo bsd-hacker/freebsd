@@ -865,6 +865,11 @@ enqueue_mutex(struct pthread *curthread, struct pthread_mutex *m)
 			TAILQ_INSERT_TAIL(&curthread->pi_mutexq, ml, qe);
 		}
 	}
+	if ((m->m_lock.m_flags &
+	    (UMUTEX_PRIO_PROTECT|UMUTEX_PRIO_PROTECT)) != 0) {
+		curthread->priority_mutex_count++;
+		_thread_printf(2, "priority mutex ++\n");
+	}
 }
 
 static void
@@ -881,7 +886,7 @@ dequeue_mutex(struct pthread *curthread, struct pthread_mutex *m)
 				TAILQ_REMOVE(&curthread->pp_mutexq, ml, qe);
 				set_inherited_priority(curthread, m);
 				_thr_mutex_link_free(ml);
-				break;
+				goto out;
 			}
 		}
 	} else if ((m->m_lock.m_flags & (UMUTEX_PRIO_INHERIT | 
@@ -890,8 +895,16 @@ dequeue_mutex(struct pthread *curthread, struct pthread_mutex *m)
 			if (ml->mutexp == m) {
 				TAILQ_REMOVE(&curthread->pi_mutexq, ml, qe);
 				_thr_mutex_link_free(ml);
-				break;
+				goto out;
 			}
 		}
+	}
+	return;
+
+out:
+	if ((m->m_lock.m_flags &
+	    (UMUTEX_PRIO_PROTECT|UMUTEX_PRIO_PROTECT)) != 0) {
+		_thread_printf(2, "priority mutex --\n");
+		curthread->priority_mutex_count--;
 	}
 }

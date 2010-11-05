@@ -440,7 +440,7 @@ struct pthread {
 #define	TLFLAGS_IN_TDLIST	0x0002	/* thread in all thread list */
 #define	TLFLAGS_IN_GCLIST	0x0004	/* thread in gc list */
 
-	/* Queue of currently owned NORMAL or PRIO_INHERIT type mutexes. */
+	/* Queue of currently owned PRIO_INHERIT type mutexes. */
 	struct mutex_link_list	pi_mutexq;
 
 	/* Queue of all owned PRIO_PROTECT mutexes. */
@@ -452,6 +452,9 @@ struct pthread {
 	void				*ret;
 	struct pthread_specific_elem	*specific;
 	int				specific_data_count;
+
+	/* Number of priority mutex held. */
+	int			priority_mutex_count;
 
 	/* Number rwlocks rdlocks held. */
 	int			rdlock_count;
