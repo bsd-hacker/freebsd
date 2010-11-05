@@ -80,7 +80,6 @@ cond_init(pthread_cond_t *cond, const pthread_condattr_t *cond_attr)
 				pcond->c_kerncv.c_flags |= USYNC_PROCESS_SHARED;
 			pcond->c_kerncv.c_clockid = (*cond_attr)->c_clockid;
 		}
-		_thr_umutex_init(&pcond->c_lock);
 		pcond->c_kerncv.c_flags |= UCOND_BIND_MUTEX;
 		*cond = pcond;
 	}
@@ -215,19 +214,19 @@ cond_wait_user(pthread_cond_t *cond, pthread_mutex_t *mutex,
 	uint64_t	seq, bseq;
 
 	cv = *cond;
-	THR_UMUTEX_LOCK(curthread, &cv->c_lock);
+	THR_UMTX_ACQUIRE(curthread, &cv->c_lock);
 	cv->c_waiters++;
 	ret = _mutex_cv_unlock(mutex, &recurse);
 	if (__predict_false(ret != 0)) {
 		cv->c_waiters--;
-		THR_UMUTEX_UNLOCK(curthread, &cv->c_lock);
+		THR_UMTX_RELEASE(curthread, &cv->c_lock);
 		return (ret);
 	}
 
 	bseq = cv->c_broadcast_seq;
 	for(;;) {
 		seq = cv->c_seq;
-		THR_UMUTEX_UNLOCK(curthread, &cv->c_lock);
+		THR_UMTX_RELEASE(curthread, &cv->c_lock);
 
 		if (abstime != NULL) {
 			clock_gettime(cv->c_kerncv.c_clockid, &ts);
@@ -246,7 +245,7 @@ cond_wait_user(pthread_cond_t *cond, pthread_mutex_t *mutex,
 				(u_int)seq, tsp, 0);
 		}
 
-		THR_UMUTEX_LOCK(curthread, &cv->c_lock);
+		THR_UMTX_ACQUIRE(curthread, &cv->c_lock);
 		if (cv->c_broadcast_seq != bseq) {
 			ret = 0;
 			break;
@@ -259,11 +258,11 @@ cond_wait_user(pthread_cond_t *cond, pthread_mutex_t *mutex,
 			break;
 		} else if (cancel && SHOULD_CANCEL(curthread) &&
 			   !THR_IN_CRITICAL(curthread)) {
-			THR_UMUTEX_UNLOCK(curthread, &cv->c_lock);
+			THR_UMTX_RELEASE(curthread, &cv->c_lock);
 			_pthread_exit(PTHREAD_CANCELED);
 		}
 	}
-	THR_UMUTEX_UNLOCK(curthread, &cv->c_lock);
+	THR_UMTX_RELEASE(curthread, &cv->c_lock);
 	_mutex_cv_lock(mutex, recurse);
 	return (ret);
 }
@@ -293,7 +292,8 @@ cond_wait_common(pthread_cond_t *cond, pthread_mutex_t *mutex,
 	    (cv->c_kerncv.c_flags & USYNC_PROCESS_SHARED))
 		return (EINVAL);
 
-	if (m->m_lock.m_flags & (UMUTEX_PRIO_PROTECT|UMUTEX_PRIO_INHERIT)) 
+	if (curthread->attr.sched_policy != SCHED_OTHER ||
+	    (m->m_lock.m_flags & (UMUTEX_PRIO_PROTECT|UMUTEX_PRIO_INHERIT)) != 0)
 		return cond_wait_kernel(cond, mutex, abstime, cancel);
 	else
 		return cond_wait_user(cond, mutex, abstime, cancel);
@@ -340,7 +340,7 @@ __pthread_cond_timedwait(pthread_cond_t *cond, pthread_mutex_t *mutex,
 static int
 cond_signal_common(pthread_cond_t *cond, int broadcast)
 {
-	struct pthread	*curthread = _get_curthread();
+	struct pthread *curthread = _get_curthread();
 	pthread_cond_t	cv;
 
 	/*
@@ -357,7 +357,7 @@ cond_signal_common(pthread_cond_t *cond, int broadcast)
 	if (cv->c_waiters == 0)
 		return (0);
 
-	THR_UMUTEX_LOCK(curthread, &cv->c_lock);
+	THR_UMTX_ACQUIRE(curthread, &cv->c_lock);
 	if (cv->c_waiters > 0) {
 		if (!broadcast) {
 			cv->c_seq++;
@@ -372,7 +372,7 @@ cond_signal_common(pthread_cond_t *cond, int broadcast)
 			_thr_umtx_wake(&cv->c_seq, INT_MAX, 0);
 		}
 	}
-	THR_UMUTEX_UNLOCK(curthread, &cv->c_lock);
+	THR_UMTX_RELEASE(curthread, &cv->c_lock);
 	return (0);
 }
 

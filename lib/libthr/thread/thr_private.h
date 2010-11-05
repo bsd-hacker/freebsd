@@ -173,7 +173,7 @@ struct pthread_cond {
 	 * Following is userlevel condition variable which is
 	 * used for time-sharing scheduling, it is a bit fast.
 	 */
-	struct umutex	c_lock;
+	uint32_t	c_lock;
 	int		c_waiters;
 	int		c_signaled;
 	uint32_t	c_seq;
@@ -552,6 +552,22 @@ do {							\
 #define	THR_UNLOCK(curthrd)		THR_LOCK_RELEASE(curthrd, &(curthrd)->lock)
 #define	THR_THREAD_LOCK(curthrd, thr)	THR_LOCK_ACQUIRE(curthrd, &(thr)->lock)
 #define	THR_THREAD_UNLOCK(curthrd, thr)	THR_LOCK_RELEASE(curthrd, &(thr)->lock)
+
+
+#define	THR_UMTX_ACQUIRE(thrd, lck)		\
+do {						\
+	(thrd)->locklevel++;			\
+	_thr_umtx_lock_spin(lck);		\
+} while (0)
+
+#define	THR_UMTX_RELEASE(thrd, lck)		\
+do {						\
+	THR_ASSERT_LOCKLEVEL(thrd);		\
+	_thr_umtx_unlock((lck));		\
+	(thrd)->locklevel--;			\
+	_thr_ast(thrd);				\
+} while (0)
+
 
 #define	THREAD_LIST_RDLOCK(curthrd)				\
 do {								\

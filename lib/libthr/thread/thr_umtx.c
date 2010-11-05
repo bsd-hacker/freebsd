@@ -251,3 +251,58 @@ _thr_rwl_unlock(struct urwlock *rwlock)
 	if (_thr_rwlock_unlock(rwlock))
 		PANIC("unlock error");
 }
+
+int
+__thr_umtx_lock(volatile umtx_t *mtx)
+{
+	int v;
+  
+	do {
+		v = *mtx;
+		if (v == 2 || atomic_cmpset_acq_int(mtx, 1, 2))
+			_thr_umtx_wait_uint(mtx, 2, NULL, 0);
+	} while (!atomic_cmpset_acq_int(mtx, 0, 2));
+	return (0);
+}
+
+#define LOOPS 500
+
+int
+__thr_umtx_lock_spin(volatile umtx_t *mtx)
+{
+	int v;
+	int i;
+
+	if (!_thr_is_smp)
+		return _thr_umtx_lock(mtx);
+
+	do {
+		i = LOOPS;
+		while (i-- > 0) {
+			if (*mtx == 0)
+				break;
+			CPU_SPINWAIT;
+		}
+		v = *mtx;
+		if (v == 2 || atomic_cmpset_acq_int(mtx, 1, 2))
+			_thr_umtx_wait_uint(mtx, 2, NULL, 0);
+	} while (!atomic_cmpset_acq_int(mtx, 0, 2));
+	return (0);
+}
+
+void
+__thr_umtx_unlock(volatile umtx_t *mtx)
+{
+	int v;
+
+	for (;;) {
+		v = *mtx;
+		if (atomic_cmpset_acq_int(mtx, v, v-1)) {
+			if (v != 1) {
+				*mtx = 0;
+				_thr_umtx_wake(mtx, 1, 0);
+			}
+			break;
+		}
+	}
+}
