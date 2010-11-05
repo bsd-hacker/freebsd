@@ -82,7 +82,7 @@ struct mutex_link {
 	struct pthread_mutex    *mutexp;
 };
 
-TAILQ_HEAD(mutex_queue, pthread_mutex);
+TAILQ_HEAD(mutex_link_list, mutex_link);
 
 /* Signal to do cancellation */
 #define	SIGCANCEL		32
@@ -141,31 +141,22 @@ TAILQ_HEAD(mutex_queue, pthread_mutex);
 #define	THR_RWLOCK_DESTROYED		((struct pthread_rwlock *)1)
 
 struct pthread_mutex {
-	/*
-	 * Lock for accesses to this structure.
-	 */
-	struct umutex			m_lock;
-	enum pthread_mutextype		m_type;
-	struct pthread			*m_owner;
-	int				m_count;
-	int				m_refcount;
-	int				m_spinloops;
-	int				m_yieldloops;
-	int				m_private;
-	/*
-	 * Link for all mutexes a thread currently owns.
-	 */
-	TAILQ_ENTRY(pthread_mutex)	m_qe;
+	struct umutex		m_lock;
+	enum pthread_mutextype	m_type;
+	struct pthread		*m_ownertd;
+	int			m_count;
+	int			m_refcount;
+	int			m_spinloops;
+	int			m_yieldloops;
+	int			m_private;
 };
 
 struct pthread_mutex_attr {
 	enum pthread_mutextype	m_type;
 	int			m_protocol;
 	int			m_ceiling;
+	int			m_pshared;
 };
-
-#define PTHREAD_MUTEXATTR_STATIC_INITIALIZER \
-	{ PTHREAD_MUTEX_DEFAULT, PTHREAD_PRIO_NONE, 0, MUTEX_FLAGS_PRIVATE }
 
 struct pthread_cond {
 	struct ucond	c_kerncv;
@@ -450,10 +441,13 @@ struct pthread {
 #define	TLFLAGS_IN_GCLIST	0x0004	/* thread in gc list */
 
 	/* Queue of currently owned NORMAL or PRIO_INHERIT type mutexes. */
-	struct mutex_queue	mutexq;
+	struct mutex_link_list	pi_mutexq;
 
 	/* Queue of all owned PRIO_PROTECT mutexes. */
-	struct mutex_queue	pp_mutexq;
+	struct mutex_link_list	pp_mutexq;
+
+	struct mutex_link_list	mutex_link_freeq;
+	struct mutex_link_list	mutex_link_pages;
 
 	void				*ret;
 	struct pthread_specific_elem	*specific;
@@ -756,6 +750,10 @@ int	_schedparam_to_rtp(int policy, const struct sched_param *param,
 void	_thread_bp_create(void);
 void	_thread_bp_death(void);
 int	_sched_yield(void);
+void	_thr_mutex_link_init(struct pthread *);
+struct mutex_link	*_thr_mutex_link_alloc(void);
+void	_thr_mutex_link_free(struct mutex_link *);
+void	_thr_mutex_link_exit(struct pthread *);
 
 void	_pthread_cleanup_push(void (*)(void *), void *);
 void	_pthread_cleanup_pop(int);
@@ -831,10 +829,6 @@ struct dl_phdr_info;
 void __pthread_cxa_finalize(struct dl_phdr_info *phdr_info);
 void _thr_tsd_unload(struct dl_phdr_info *phdr_info) __hidden;
 void _thr_sigact_unload(struct dl_phdr_info *phdr_info) __hidden;
-
-void _thr_mutex_link_init(void);
-struct mutex_link * _thr_mutex_link_alloc(void);
-void _thr_mutex_link_free(struct mutex_link *p);
 __END_DECLS
 
 #endif  /* !_THR_PRIVATE_H */

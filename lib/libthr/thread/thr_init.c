@@ -89,13 +89,15 @@ struct pthread_attr _pthread_attr_default = {
 struct pthread_mutex_attr _pthread_mutexattr_default = {
 	.m_type = PTHREAD_MUTEX_DEFAULT,
 	.m_protocol = PTHREAD_PRIO_NONE,
-	.m_ceiling = 0
+	.m_ceiling = 0,
+	.m_pshared = 0
 };
 
 struct pthread_mutex_attr _pthread_mutexattr_adaptive_default = {
 	.m_type = PTHREAD_MUTEX_ADAPTIVE_NP,
 	.m_protocol = PTHREAD_PRIO_NONE,
-	.m_ceiling = 0
+	.m_ceiling = 0,
+	.m_pshared = 0
 };
 
 /* Default condition variable attributes: */
@@ -412,8 +414,7 @@ init_main_thread(struct pthread *thread)
 	thr_set_name(thread->tid, "initial thread");
 
 	/* Initialize the mutex queue: */
-	TAILQ_INIT(&thread->mutexq);
-	TAILQ_INIT(&thread->pp_mutexq);
+	_thr_mutex_link_init(thread);
 
 	thread->state = PS_RUNNING;
 

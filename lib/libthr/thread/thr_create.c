@@ -111,8 +111,7 @@ _pthread_create(pthread_t * thread, const pthread_attr_t * attr,
 	new_thread->cancel_enable = 1;
 	new_thread->cancel_async = 0;
 	/* Initialize the mutex queue: */
-	TAILQ_INIT(&new_thread->mutexq);
-	TAILQ_INIT(&new_thread->pp_mutexq);
+	_thr_mutex_link_init(new_thread);
 
 	/* Initialise hooks in the thread structure: */
 	if (new_thread->attr.suspend == THR_CREATE_SUSPENDED) {
