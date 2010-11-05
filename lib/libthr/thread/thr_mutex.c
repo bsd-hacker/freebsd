@@ -799,7 +799,6 @@ _thr_mutex_link_alloc(void)
 		TAILQ_INSERT_HEAD(&curthread->mutex_link_pages, &pp[0], qe);
 		p = &pp[1];
 	}
-	_thread_printf(2, "%s alloc p=%x\n", __func__, p);
 	return (p);
 }
 
@@ -868,7 +867,6 @@ enqueue_mutex(struct pthread *curthread, struct pthread_mutex *m)
 	if ((m->m_lock.m_flags &
 	    (UMUTEX_PRIO_PROTECT|UMUTEX_PRIO_PROTECT)) != 0) {
 		curthread->priority_mutex_count++;
-		_thread_printf(2, "priority mutex ++\n");
 	}
 }
 
@@ -904,7 +902,6 @@ dequeue_mutex(struct pthread *curthread, struct pthread_mutex *m)
 out:
 	if ((m->m_lock.m_flags &
 	    (UMUTEX_PRIO_PROTECT|UMUTEX_PRIO_PROTECT)) != 0) {
-		_thread_printf(2, "priority mutex --\n");
 		curthread->priority_mutex_count--;
 	}
 }
