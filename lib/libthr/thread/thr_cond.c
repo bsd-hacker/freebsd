@@ -257,9 +257,11 @@ cond_wait_user(pthread_cond_t *cond, pthread_mutex_t *mutex,
 			ret = 0;
 			break;
 		} else if (ret == ETIMEDOUT) {
+			cv->c_waiters--;
 			break;
 		} else if (cancel && SHOULD_CANCEL(curthread) &&
 			   !THR_IN_CRITICAL(curthread)) {
+			cv->c_waiters--;
 			_thr_umtx_unlock(&cv->c_lock);
 			_mutex_cv_lock(mutex, recurse);
 			_pthread_exit(PTHREAD_CANCELED);
