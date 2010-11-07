@@ -177,8 +177,10 @@ __END_DECLS
 #define	ENOTCAPABLE	93		/* Capabilities insufficient */
 #endif /* _POSIX_SOURCE */
 
+#define	EOWNERDEAD	94
+#define	ENOTRECOVERABLE	95
 #ifndef _POSIX_SOURCE
-#define	ELAST		93		/* Must be equal largest errno */
+#define	ELAST		95		/* Must be equal largest errno */
 #endif /* _POSIX_SOURCE */
 
 #ifdef _KERNEL
