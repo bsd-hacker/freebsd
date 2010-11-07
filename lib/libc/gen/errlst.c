@@ -151,5 +151,7 @@ const char *const sys_errlist[] = {
 	"Link has been severed",		/* 91 - ENOLINK */
 	"Protocol error",			/* 92 - EPROTO */
 	"Capabilities insufficient",		/* 93 - ENOTCAPABLE */
+	"Previous owning thread terminated",	/* 94 - EOWNERDEAD */
+	"State is not recoverable"		/* 95 - ENOTRECOVERABLE */
 };
 const int sys_nerr = sizeof(sys_errlist) / sizeof(sys_errlist[0]);
