@@ -32,7 +32,7 @@
 #include <strings.h>
 #include <sys/umtx.h>
 
-#define DEFAULT_UMUTEX	{0,0,{0,0},{0,0,0,0}}
+#define DEFAULT_UMUTEX	{0,0,{0,0},0,{0,0,0},{0,0,0}}
 #define DEFAULT_URWLOCK {0,0,0,0,{0,0,0,0}}
 
 typedef uint32_t	umtx_t;
@@ -72,6 +72,10 @@ int __thr_umtx_lock(volatile umtx_t *mtx);
 int __thr_umtx_lock_spin(volatile umtx_t *mtx);
 void __thr_umtx_unlock(volatile umtx_t *mtx);
 
+/*
+ * These functions are used by the library for internal locking
+ * it is not used to implement POSIX mutex which is very complex.
+ */
 static inline int
 _thr_umutex_trylock(struct umutex *mtx, uint32_t id)
 {
@@ -119,6 +123,9 @@ _thr_umutex_unlock(struct umutex *mtx, uint32_t id)
     return (__thr_umutex_unlock(mtx, id));
 }
 
+/*
+ *  pthread rwlock depends on these functions.
+ */
 static inline int
 _thr_rwlock_tryrdlock(struct urwlock *rwlock, int flags)
 {

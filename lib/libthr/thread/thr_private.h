@@ -144,8 +144,7 @@ struct pthread_mutex {
 	struct umutex		m_lock;
 	enum pthread_mutextype	m_type;
 	struct pthread		*m_ownertd;
-	int			m_count;
-	int			m_refcount;
+	int			m_recurse;
 	int			m_spinloops;
 	int			m_yieldloops;
 	int			m_private;

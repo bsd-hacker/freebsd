@@ -59,7 +59,8 @@ __thr_umutex_lock(struct umutex *mtx, uint32_t id)
 {
 	uint32_t owner;
 
-	if ((mtx->m_flags & (UMUTEX_PRIO_PROTECT | UMUTEX_PRIO_INHERIT)) == 0) {
+	if ((mtx->m_flags & (UMUTEX_PRIO_PROTECT |
+	     UMUTEX_PRIO_INHERIT | UMUTEX_ROBUST)) == 0) {
 		for (;;) {
 			/* wait in kernel */
 			_umtx_op_err(mtx, UMTX_OP_MUTEX_WAIT, 0, 0, 0);
@@ -71,7 +72,6 @@ __thr_umutex_lock(struct umutex *mtx, uint32_t id)
 				return (0);
 		}
 	}
-
 	return	_umtx_op_err(mtx, UMTX_OP_MUTEX_LOCK, 0, 0, 0);
 }
 
@@ -84,7 +84,7 @@ __thr_umutex_timedlock(struct umutex *mtx, uint32_t id,
 
 	for (;;) {
 		if ((mtx->m_flags &
-		     (UMUTEX_PRIO_PROTECT | UMUTEX_PRIO_INHERIT)) == 0) {
+		     (UMUTEX_PRIO_PROTECT | UMUTEX_PRIO_INHERIT | UMUTEX_ROBUST)) == 0) {
 
 			/* wait in kernel */
 			ret = _umtx_op_err(mtx, UMTX_OP_MUTEX_WAIT,
@@ -114,7 +114,7 @@ __thr_umutex_unlock(struct umutex *mtx, uint32_t id)
 {
 #ifndef __ia64__
 	/* XXX this logic has a race-condition on ia64. */
-	if ((mtx->m_flags & (UMUTEX_PRIO_PROTECT | UMUTEX_PRIO_INHERIT)) == 0) {
+	if ((mtx->m_flags & (UMUTEX_PRIO_PROTECT | UMUTEX_PRIO_INHERIT | UMUTEX_ROBUST)) == 0) {
 		atomic_cmpset_rel_32(&mtx->m_owner, id | UMUTEX_CONTESTED,
 		    UMUTEX_CONTESTED);
 		return _umtx_op_err(mtx, UMTX_OP_MUTEX_WAKE, 0, 0, 0);
