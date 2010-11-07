@@ -92,27 +92,27 @@ cond_init(pthread_cond_t *cond, const pthread_condattr_t *cond_attr)
 static int
 init_static(struct pthread *thread, pthread_cond_t *cond)
 {
-	int ret;
+	int error;
 
 	THR_LOCK_ACQUIRE(thread, &_cond_static_lock);
 
 	if (*cond == NULL)
-		ret = cond_init(cond, NULL);
+		error = cond_init(cond, NULL);
 	else
-		ret = 0;
+		error = 0;
 
 	THR_LOCK_RELEASE(thread, &_cond_static_lock);
 
-	return (ret);
+	return (error);
 }
 
 #define CHECK_AND_INIT_COND							\
 	if (__predict_false((cv = (*cond)) <= THR_COND_DESTROYED)) {		\
 		if (cv == THR_COND_INITIALIZER) {				\
-			int ret;						\
-			ret = init_static(_get_curthread(), cond);		\
-			if (ret)						\
-				return (ret);					\
+			int error;						\
+			error = init_static(_get_curthread(), cond);		\
+			if (error)						\
+				return (error);					\
 		} else if (cv == THR_COND_DESTROYED) {				\
 			return (EINVAL);					\
 		}								\
@@ -169,39 +169,43 @@ cond_wait_kernel(pthread_cond_t *cond, pthread_mutex_t *mutex,
 	pthread_cond_t  cv;
 	struct pthread_mutex *m;
 	int	recurse;
-	int	ret;
+	int	error, error2 = 0;
 
 	cv = *cond;
-	ret = _mutex_cv_detach(mutex, &recurse);
-	if (__predict_false(ret != 0))
-		return (ret);
+	error = _mutex_cv_detach(mutex, &recurse);
+	if (__predict_false(error != 0))
+		return (error);
 	m = *mutex;
 
 	if (cancel) {
 		_thr_cancel_enter2(curthread, 0);
-		ret = _thr_ucond_wait(&cv->c_kerncv, &m->m_lock, abstime,
+		error = _thr_ucond_wait(&cv->c_kerncv, &m->m_lock, abstime,
 			CVWAIT_ABSTIME|CVWAIT_CLOCKID);
 		_thr_cancel_leave(curthread, 0);
 	} else {
-		ret = _thr_ucond_wait(&cv->c_kerncv, &m->m_lock, abstime,
+		error = _thr_ucond_wait(&cv->c_kerncv, &m->m_lock, abstime,
 			CVWAIT_ABSTIME|CVWAIT_CLOCKID);
 	}
 
-	if (ret == 0) {
-		_mutex_cv_lock(mutex, recurse);
-	} else if (ret == EINTR || ret == ETIMEDOUT) {
-		_mutex_cv_lock(mutex, recurse);
-		if (cancel)
+	/*
+	 * Note that PP mutex and ROBUST mutex may return
+	 * interesting error codes.
+	 */
+	if (error == 0) {
+		error2 = _mutex_cv_lock(mutex, recurse);
+	} else if (error == EINTR || error == ETIMEDOUT) {
+		error2 = _mutex_cv_lock(mutex, recurse);
+		if (error2 == 0 && cancel)
 			_thr_testcancel(curthread);
-		if (ret == EINTR)
-			ret = 0;
+		if (error2 == EINTR)
+			error = 0;
 	} else {
 		/* We know that it didn't unlock the mutex. */
-		_mutex_cv_attach(mutex, recurse);
-		if (cancel)
+		error2 = _mutex_cv_attach(mutex, recurse);
+		if (error2 == 0 && cancel)
 			_thr_testcancel(curthread);
 	}
-	return (ret);
+	return (error2 != 0 ? error2 : error);
 }
 
 static int
@@ -212,17 +216,17 @@ cond_wait_user(pthread_cond_t *cond, pthread_mutex_t *mutex,
 	struct timespec ts, ts2, *tsp;
 	int		recurse;
 	pthread_cond_t  cv;
-	int		ret;
+	int		error;
 	uint64_t	seq, bseq;
 
 	cv = *cond;
 	_thr_umtx_lock_spin(&cv->c_lock);
 	cv->c_waiters++;
-	ret = _mutex_cv_unlock(mutex, &recurse);
-	if (__predict_false(ret != 0)) {
+	error = _mutex_cv_unlock(mutex, &recurse);
+	if (__predict_false(error != 0)) {
 		cv->c_waiters--;
 		_thr_umtx_unlock(&cv->c_lock);
-		return (ret);
+		return (error);
 	}
 
 	bseq = cv->c_broadcast_seq;
@@ -239,24 +243,24 @@ cond_wait_user(pthread_cond_t *cond, pthread_mutex_t *mutex,
 
 		if (cancel) {
 			_thr_cancel_enter2(curthread, 0);
-			ret = _thr_umtx_wait_uint((u_int *)&cv->c_seq,
+			error = _thr_umtx_wait_uint((u_int *)&cv->c_seq,
 				(u_int)seq, tsp, CV_PSHARED(cv));
 			_thr_cancel_leave(curthread, 0);
 		} else {
-			ret = _thr_umtx_wait_uint((u_int *)&cv->c_seq,
+			error = _thr_umtx_wait_uint((u_int *)&cv->c_seq,
 				(u_int)seq, tsp, CV_PSHARED(cv));
 		}
 
 		_thr_umtx_lock_spin(&cv->c_lock);
 		if (cv->c_broadcast_seq != bseq) {
-			ret = 0;
+			error = 0;
 			break;
 		}
 		if (cv->c_signaled > 0) {
 			cv->c_signaled--;
-			ret = 0;
+			error = 0;
 			break;
-		} else if (ret == ETIMEDOUT) {
+		} else if (error == ETIMEDOUT) {
 			cv->c_waiters--;
 			break;
 		} else if (cancel && SHOULD_CANCEL(curthread) &&
@@ -269,7 +273,7 @@ cond_wait_user(pthread_cond_t *cond, pthread_mutex_t *mutex,
 	}
 	_thr_umtx_unlock(&cv->c_lock);
 	_mutex_cv_lock(mutex, recurse);
-	return (ret);
+	return (error);
 }
 
 
@@ -306,7 +310,8 @@ cond_wait_common(pthread_cond_t *cond, pthread_mutex_t *mutex,
 	 */
 	if (curthread->attr.sched_policy != SCHED_OTHER ||
 	    curthread->priority_mutex_count != 0  ||
-	    (m->m_lock.m_flags & (UMUTEX_PRIO_PROTECT|UMUTEX_PRIO_INHERIT)) != 0)
+	    (m->m_lock.m_flags & (UMUTEX_PRIO_PROTECT|UMUTEX_PRIO_INHERIT|
+		UMUTEX_ROBUST)) != 0)
 		return cond_wait_kernel(cond, mutex, abstime, cancel);
 	else
 		return cond_wait_user(cond, mutex, abstime, cancel);
