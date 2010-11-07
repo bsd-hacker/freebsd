@@ -138,12 +138,14 @@
 #undef		pthread_mutexattr_getprioceiling
 #undef		pthread_mutexattr_getprotocol
 #undef		pthread_mutexattr_getpshared
+#undef		pthread_mutexattr_getrobust
 #undef		pthread_mutexattr_gettype
 #undef		pthread_mutexattr_init
 #undef		pthread_mutexattr_setkind_np
 #undef		pthread_mutexattr_setprioceiling
 #undef		pthread_mutexattr_setprotocol
 #undef		pthread_mutexattr_setpshared
+#undef		pthread_mutexattr_setrobust
 #undef		pthread_mutexattr_settype
 #undef		pthread_once
 #undef		pthread_resume_all_np

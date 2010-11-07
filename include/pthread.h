@@ -135,6 +135,9 @@ enum pthread_mutextype {
 
 #define PTHREAD_MUTEX_DEFAULT		PTHREAD_MUTEX_ERRORCHECK
 
+#define	PTHREAD_MUTEX_STALLED	0
+#define	PTHREAD_MUTEX_ROBUST	1
+
 enum pthread_rwlocktype_np
 {
 	PTHREAD_RWLOCK_PREFER_READER_NP,
@@ -214,13 +217,17 @@ int		pthread_join(pthread_t, void **);
 int		pthread_key_create(pthread_key_t *,
 			void (*) (void *));
 int		pthread_key_delete(pthread_key_t);
-int		pthread_mutexattr_init(pthread_mutexattr_t *);
 int		pthread_mutexattr_destroy(pthread_mutexattr_t *);
+int		pthread_mutexattr_getrobust(const pthread_mutexattr_t *__restrict,
+			int *__restrict);
 int		pthread_mutexattr_getpshared(const pthread_mutexattr_t *,
 			int *);
 int		pthread_mutexattr_gettype(pthread_mutexattr_t *, int *);
+int		pthread_mutexattr_init(pthread_mutexattr_t *);
 int		pthread_mutexattr_settype(pthread_mutexattr_t *, int);
 int		pthread_mutexattr_setpshared(pthread_mutexattr_t *, int);
+int		pthread_mutexattr_setrobust(pthread_mutexattr_t *,
+			int);
 int		pthread_mutex_destroy(pthread_mutex_t *);
 int		pthread_mutex_init(pthread_mutex_t *,
 			const pthread_mutexattr_t *);

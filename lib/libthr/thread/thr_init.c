@@ -90,7 +90,8 @@ struct pthread_mutex_attr _pthread_mutexattr_default = {
 	.m_type = PTHREAD_MUTEX_DEFAULT,
 	.m_protocol = PTHREAD_PRIO_NONE,
 	.m_ceiling = 0,
-	.m_pshared = 0
+	.m_pshared = 0,
+	.m_robust = PTHREAD_MUTEX_STALLED
 };
 
 struct pthread_mutex_attr _pthread_mutexattr_adaptive_default = {

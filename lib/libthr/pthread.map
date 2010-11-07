@@ -297,12 +297,14 @@ FBSDprivate_1.0 {
 	_pthread_mutexattr_getprioceiling;
 	_pthread_mutexattr_getprotocol;
 	_pthread_mutexattr_getpshared;
+	_pthread_mutexattr_getrobust;
 	_pthread_mutexattr_gettype;
 	_pthread_mutexattr_init;
 	_pthread_mutexattr_setkind_np;
 	_pthread_mutexattr_setprioceiling;
 	_pthread_mutexattr_setprotocol;
 	_pthread_mutexattr_setpshared;
+	_pthread_mutexattr_setrobust;
 	_pthread_mutexattr_settype;
 	_pthread_once;
 	_pthread_resume_all_np;
@@ -403,4 +405,6 @@ FBSD_1.2 {
 	openat;
 	setcontext;
 	swapcontext;
+	pthread_mutexattr_getrobust;
+	pthread_mutexattr_setrobust;
 };

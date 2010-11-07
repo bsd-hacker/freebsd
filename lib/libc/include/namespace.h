@@ -157,12 +157,14 @@
 #define		pthread_mutexattr_getprioceiling _pthread_mutexattr_getprioceiling
 #define		pthread_mutexattr_getprotocol	_pthread_mutexattr_getprotocol
 #define		pthread_mutexattr_getpshared	_pthread_mutexattr_getpshared
+#define		pthread_mutexattr_getrobust	_pthread_mutexattr_getrobust
 #define		pthread_mutexattr_gettype	_pthread_mutexattr_gettype
 #define		pthread_mutexattr_init		_pthread_mutexattr_init
 #define		pthread_mutexattr_setkind_np	_pthread_mutexattr_setkind_np
 #define		pthread_mutexattr_setprioceiling _pthread_mutexattr_setprioceiling
 #define		pthread_mutexattr_setprotocol	_pthread_mutexattr_setprotocol
 #define		pthread_mutexattr_setpshared	_pthread_mutexattr_setpshared
+#define		pthread_mutexattr_setrobust	_pthread_mutexattr_setrobust
 #define		pthread_mutexattr_settype	_pthread_mutexattr_settype
 #define		pthread_once			_pthread_once
 #define		pthread_resume_all_np		_pthread_resume_all_np

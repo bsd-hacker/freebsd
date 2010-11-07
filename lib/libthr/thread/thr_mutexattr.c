@@ -81,6 +81,8 @@ __weak_reference(_pthread_mutexattr_getprotocol, pthread_mutexattr_getprotocol);
 __weak_reference(_pthread_mutexattr_setprotocol, pthread_mutexattr_setprotocol);
 __weak_reference(_pthread_mutexattr_getprioceiling, pthread_mutexattr_getprioceiling);
 __weak_reference(_pthread_mutexattr_setprioceiling, pthread_mutexattr_setprioceiling);
+__weak_reference(_pthread_mutexattr_getrobust, pthread_mutexattr_getrobust);
+__weak_reference(_pthread_mutexattr_setrobust, pthread_mutexattr_setrobust);
 
 int
 _pthread_mutexattr_init(pthread_mutexattr_t *attr)
@@ -253,3 +255,35 @@ _pthread_mutexattr_setprioceiling(pthread_mutexattr_t *mattr, int prioceiling)
 	return(ret);
 }
 
+int
+_pthread_mutexattr_getrobust(const pthread_mutexattr_t *mattr,
+       int *robust)
+{
+	int error;
+
+	if ((mattr == NULL) || (*mattr == NULL))
+		error = EINVAL;
+	else {
+		*robust =(*mattr)->m_robust;
+		error = 0;
+	}
+	return (error);
+}
+
+int
+_pthread_mutexattr_setrobust(pthread_mutexattr_t *mattr,
+       int robust)
+{
+	int error;
+
+	if ((mattr == NULL) || (*mattr == NULL))
+		error = EINVAL;
+	else if (robust == PTHREAD_MUTEX_STALLED ||
+		 robust == PTHREAD_MUTEX_ROBUST) {
+		(*mattr)->m_robust = robust;
+		error = 0;
+	} else{
+		error = EINVAL;
+	}
+	return (error);
+}

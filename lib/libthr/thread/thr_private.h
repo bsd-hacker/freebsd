@@ -156,6 +156,7 @@ struct pthread_mutex_attr {
 	int			m_protocol;
 	int			m_ceiling;
 	int			m_pshared;
+	int			m_robust;
 };
 
 struct pthread_cond {
