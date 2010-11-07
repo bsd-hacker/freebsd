@@ -116,6 +116,16 @@ struct umtx_pi {
 	struct umtx_key		pi_key;
 };
 
+struct robust_info {
+	struct thread			*ownertd;
+	SLIST_ENTRY(robust_info)	hash_qe;
+	LIST_ENTRY(robust_info)		td_qe;
+	struct umutex			*umtxp;
+};
+
+SLIST_HEAD(robust_hashlist, robust_info);
+LIST_HEAD(robust_list, robust_info);
+
 /* A userland synchronous object user. */
 struct umtx_q {
 	/* Linked list for the hash. */
@@ -154,6 +164,8 @@ struct umtx_q {
 	struct umtxq_queue	*uq_cur_queue;
 
 	int			uq_repair_mutex;
+
+	struct	robust_list	uq_rob_list;
 };
 
 TAILQ_HEAD(umtxq_head, umtx_q);
@@ -195,6 +207,13 @@ struct umtxq_chain {
 
 };
 
+struct robust_chain {
+	/* Lock for this chain. */
+	struct mtx		lock;
+	struct robust_hashlist	rob_list;
+};
+
+
 #define	UMTXQ_LOCKED_ASSERT(uc)		mtx_assert(&(uc)->uc_lock, MA_OWNED)
 #define	UMTXQ_BUSY_ASSERT(uc)	KASSERT(&(uc)->uc_busy, ("umtx chain is not busy"))
 
@@ -224,7 +243,11 @@ struct umtxq_chain {
 
 #define BUSY_SPINS		200
 
+#define	ROBUST_CHAINS		128
+#define	ROBUST_SHIFTS		(__WORD_BIT - 7)
+
 static uma_zone_t		umtx_pi_zone;
+static uma_zone_t		robust_zone;
 static struct umtxq_chain	umtxq_chains[2][UMTX_CHAINS];
 static MALLOC_DEFINE(M_UMTX, "umtx", "UMTX queue memory");
 static int			umtx_pi_allocated;
@@ -233,6 +256,8 @@ static int			umtx_cvsig_migrate = 0;
 #else
 static int			umtx_cvsig_migrate = 1;
 #endif
+
+static struct robust_chain	robust_chains[ROBUST_CHAINS];
 
 SYSCTL_NODE(_debug, OID_AUTO, umtx, CTLFLAG_RW, 0, "umtx debug");
 SYSCTL_INT(_debug_umtx, OID_AUTO, umtx_pi_allocated, CTLFLAG_RD,
@@ -284,10 +309,17 @@ static void umtx_key_release(struct umtx_key *key);
 static struct umtx_pi *umtx_pi_alloc(int);
 static void umtx_pi_free(struct umtx_pi *pi);
 static void umtx_pi_adjust_locked(struct thread *td, u_char oldpri);
-static int do_unlock_pp(struct thread *td, struct umutex *m, uint32_t flags);
-static void umtx_thread_cleanup(struct thread *td);
+static int do_unlock_pp(struct thread *, struct umutex *, uint32_t, int);
+static void umtx_thread_cleanup(struct thread *);
 static void umtx_exec_hook(void *arg __unused, struct proc *p __unused,
 	struct image_params *imgp __unused);
+static void umtx_exit_hook(void *arg __unused, struct proc *p __unused);
+static struct robust_info *robust_alloc(void);
+static void robust_free(struct robust_info *);
+static int robust_insert(struct thread *, struct robust_info *);
+static void robust_remove(struct thread *, struct umutex *);
+static int do_unlock_umutex(struct thread *, struct umutex *, int);
+
 SYSINIT(umtx, SI_SUB_EVENTHANDLER+1, SI_ORDER_MIDDLE, umtxq_sysinit, NULL);
 
 #define umtxq_signal(key, nwake)	umtxq_signal_queue((key), (nwake), UMTX_SHARED_QUEUE)
@@ -303,6 +335,8 @@ umtxq_sysinit(void *arg __unused)
 
 	umtx_pi_zone = uma_zcreate("umtx pi", sizeof(struct umtx_pi),
 		NULL, NULL, NULL, NULL, UMA_ALIGN_PTR, 0);
+	robust_zone = uma_zcreate("robust umtx", sizeof(struct robust_info),
+		NULL, NULL, NULL, NULL, UMA_ALIGN_PTR, 0);
 	for (i = 0; i < 2; ++i) {
 		for (j = 0; j < UMTX_CHAINS; ++j) {
 			mtx_init(&umtxq_chains[i][j].uc_lock, "umtxql", NULL,
@@ -315,8 +349,17 @@ umtxq_sysinit(void *arg __unused)
 			umtxq_chains[i][j].uc_waiters = 0;
 		}
 	}
+
+	for (i = 0; i < ROBUST_CHAINS; ++i) {
+		mtx_init(&robust_chains[i].lock, "robql", NULL,
+			 MTX_DEF | MTX_DUPOK);
+		SLIST_INIT(&robust_chains[i].rob_list);
+	}
+
 	mtx_init(&umtx_lock, "umtx lock", NULL, MTX_SPIN);
 	EVENTHANDLER_REGISTER(process_exec, umtx_exec_hook, NULL,
+	    EVENTHANDLER_PRI_ANY);
+	EVENTHANDLER_REGISTER(process_exit, umtx_exit_hook, NULL,
 	    EVENTHANDLER_PRI_ANY);
 }
 
@@ -326,9 +369,11 @@ umtxq_alloc(void)
 	struct umtx_q *uq;
 
 	uq = malloc(sizeof(struct umtx_q), M_UMTX, M_WAITOK | M_ZERO);
-	uq->uq_spare_queue = malloc(sizeof(struct umtxq_queue), M_UMTX, M_WAITOK | M_ZERO);
+	uq->uq_spare_queue = malloc(sizeof(struct umtxq_queue), M_UMTX,
+		M_WAITOK | M_ZERO);
 	TAILQ_INIT(&uq->uq_spare_queue->head);
 	TAILQ_INIT(&uq->uq_pi_contested);
+	LIST_INIT(&uq->uq_rob_list);
 	uq->uq_inherited_pri = PRI_MAX;
 	return (uq);
 }
@@ -1321,6 +1366,19 @@ _do_lock_normal(struct thread *td, struct umutex *m, uint32_t flags, int timo,
 	return (0);
 }
 
+static void
+update_robst(struct umutex *m, int td_exit)
+{
+	uint32_t robst = fubyte(&m->m_robstate);
+
+	if (robst == UMUTEX_ROBST_NORMAL) {
+		if (td_exit)
+			subyte(&m->m_robstate, UMUTEX_ROBST_OWNERDEAD);
+	} else if (!td_exit && robst == UMUTEX_ROBST_INCONSISTENT) {
+		subyte(&m->m_robstate, UMUTEX_ROBST_NOTRECOVERABLE);
+	}
+}
+
 /*
  * Lock PTHREAD_PRIO_NONE protocol POSIX mutex.
  */
@@ -1328,7 +1386,8 @@ _do_lock_normal(struct thread *td, struct umutex *m, uint32_t flags, int timo,
  * Unlock PTHREAD_PRIO_NONE protocol POSIX mutex.
  */
 static int
-do_unlock_normal(struct thread *td, struct umutex *m, uint32_t flags)
+do_unlock_normal(struct thread *td, struct umutex *m, uint32_t flags, 
+	int td_exit)
 {
 	struct umtx_key key;
 	uint32_t owner, old, id;
@@ -1348,6 +1407,9 @@ do_unlock_normal(struct thread *td, struct umutex *m, uint32_t flags)
 
 	if ((owner & ~UMUTEX_CONTESTED) != id)
 		return (EPERM);
+
+	if ((flags & UMUTEX_ROBUST) != 0)
+		update_robst(m, td_exit);
 
 	if ((owner & UMUTEX_CONTESTED) == 0) {
 		old = casuword32(&m->m_owner, owner, UMUTEX_UNOWNED);
@@ -1974,7 +2036,8 @@ _do_lock_pi(struct thread *td, struct umutex *m, uint32_t flags, int timo,
  * Unlock a PI mutex.
  */
 static int
-do_unlock_pi(struct thread *td, struct umutex *m, uint32_t flags)
+do_unlock_pi(struct thread *td, struct umutex *m, uint32_t flags,
+	int td_exit)
 {
 	struct umtx_key key;
 	struct umtx_q *uq_first, *uq_first2, *uq_me;
@@ -1994,6 +2057,9 @@ do_unlock_pi(struct thread *td, struct umutex *m, uint32_t flags)
 
 	if ((owner & ~UMUTEX_CONTESTED) != id)
 		return (EPERM);
+
+	if ((flags & UMUTEX_ROBUST) != 0)
+		update_robst(m, td_exit);
 
 	/* This should be done in userland */
 	if ((owner & UMUTEX_CONTESTED) == 0) {
@@ -2207,7 +2273,8 @@ out:
  * Unlock a PP mutex.
  */
 static int
-do_unlock_pp(struct thread *td, struct umutex *m, uint32_t flags)
+do_unlock_pp(struct thread *td, struct umutex *m, uint32_t flags,
+	int td_exit)
 {
 	struct umtx_key key;
 	struct umtx_q *uq, *uq2;
@@ -2236,6 +2303,9 @@ do_unlock_pp(struct thread *td, struct umutex *m, uint32_t flags)
 	error = copyin(&m->m_ceilings[1], &rceiling, sizeof(uint32_t));
 	if (error != 0)
 		return (error);
+
+	if ((flags & UMUTEX_ROBUST) != 0)
+		update_robst(m, td_exit);
 
 	if (rceiling == -1)
 		new_inherited_pri = PRI_MAX;
@@ -2398,6 +2468,7 @@ do_lock_umutex(struct thread *td, struct umutex *m,
 	struct timespec *timeout, int mode, int wflags)
 {
 	struct timespec cts, ets, tts;
+	struct robust_info *rob = NULL;
 	struct timeval tv;
 	uint32_t flags;
 	int error;
@@ -2405,6 +2476,12 @@ do_lock_umutex(struct thread *td, struct umutex *m,
 	flags = fuword32(&m->m_flags);
 	if (flags == -1)
 		return (EFAULT);
+
+	if ((flags & UMUTEX_ROBUST) != 0 && mode != _UMUTEX_WAIT) {
+		rob = robust_alloc();
+		rob->ownertd = td;
+		rob->umtxp = m;
+	}
 
 	if (timeout == NULL) {
 		error = _do_lock_umutex(td, m, flags, 0, mode);
@@ -2444,6 +2521,31 @@ do_lock_umutex(struct thread *td, struct umutex *m,
 		if (error == ERESTART)
 			error = EINTR;
 	}
+
+	if (error == 0) {
+		if ((flags & UMUTEX_ROBUST) != 0 && mode != _UMUTEX_WAIT) {
+			uint32_t robst = fubyte(&m->m_robstate);
+
+			if (robst == UMUTEX_ROBST_OWNERDEAD) {
+				subyte(&m->m_robstate,
+					UMUTEX_ROBST_INCONSISTENT);
+				error = EOWNERDEAD;
+			} else if (robst == UMUTEX_ROBST_INCONSISTENT) {
+				error = EOWNERDEAD;
+			} else if (robst == UMUTEX_ROBST_NOTRECOVERABLE) {
+				error = ENOTRECOVERABLE;
+				if (rob != NULL)
+					robust_free(rob);
+				do_unlock_umutex(td, m, 0);
+				goto out;
+			}
+			if (rob != NULL && robust_insert(td, rob))
+				robust_free(rob);
+		}
+	} else if (rob != NULL) {
+		robust_free(rob);
+	}
+out:
 	return (error);
 }
 
@@ -2451,9 +2553,13 @@ do_lock_umutex(struct thread *td, struct umutex *m,
  * Unlock a userland POSIX mutex.
  */
 static int
-do_unlock_umutex(struct thread *td, struct umutex *m)
+do_unlock_umutex(struct thread *td, struct umutex *m, int td_exit)
 {
 	uint32_t flags;
+	int error;
+
+	if (td_exit)
+		robust_remove(td, m);
 
 	flags = fuword32(&m->m_flags);
 	if (flags == -1)
@@ -2461,14 +2567,20 @@ do_unlock_umutex(struct thread *td, struct umutex *m)
 
 	switch(flags & (UMUTEX_PRIO_INHERIT | UMUTEX_PRIO_PROTECT)) {
 	case 0:
-		return (do_unlock_normal(td, m, flags));
+		error = do_unlock_normal(td, m, flags, td_exit);
+		break;
 	case UMUTEX_PRIO_INHERIT:
-		return (do_unlock_pi(td, m, flags));
+		error = do_unlock_pi(td, m, flags, td_exit);
+		break;
 	case UMUTEX_PRIO_PROTECT:
-		return (do_unlock_pp(td, m, flags));
+		error = do_unlock_pp(td, m, flags, td_exit);
+		break;
+	default:
+		error = EINVAL;
 	}
-
-	return (EINVAL);
+	if ((flags & UMUTEX_ROBUST) != 0 && !td_exit)
+		robust_remove(td, m);
+	return (error);
 }
 
 static int
@@ -2590,7 +2702,7 @@ ignore:
 	umtxq_unbusy(&uq->uq_key);
 	umtxq_unlock(&uq->uq_key);
 
-	error = do_unlock_umutex(td, m);
+	error = do_unlock_umutex(td, m, 0);
 	if (error) {
 		UMTX_STATE_INC(cv_unlock_failure);
 		error = 0; /* ignore the error */
@@ -3601,7 +3713,7 @@ __umtx_op_wake_umutex(struct thread *td, struct _umtx_op_args *uap)
 static int
 __umtx_op_unlock_umutex(struct thread *td, struct _umtx_op_args *uap)
 {
-	return do_unlock_umutex(td, uap->obj);
+	return do_unlock_umutex(td, uap->obj, 0);
 }
 
 static int
@@ -4027,6 +4139,79 @@ freebsd32_umtx_op(struct thread *td, struct freebsd32_umtx_op_args *uap)
 }
 #endif
 
+struct robust_info *
+robust_alloc(void)
+{
+	struct robust_info *rb;
+
+	rb = uma_zalloc(robust_zone, M_ZERO|M_WAITOK);
+	return (rb);
+}
+
+static void
+robust_free(struct robust_info *rb)
+{
+	uma_zfree(robust_zone, rb);
+}
+
+static unsigned int
+robust_hash(struct umutex *m)
+{
+	unsigned n = (uintptr_t)m;
+	return ((n * GOLDEN_RATIO_PRIME) >> ROBUST_SHIFTS) % ROBUST_CHAINS;
+}
+
+static int
+robust_insert(struct thread *td, struct robust_info *rob)
+{
+	struct umtx_q *uq = td->td_umtxq;
+	struct robust_info *rob2;
+	int hash = robust_hash(rob->umtxp);
+	struct robust_chain *robc = &robust_chains[hash];
+
+	mtx_lock(&robc->lock);
+	SLIST_FOREACH(rob2, &robc->rob_list, hash_qe) {
+		if (rob2->ownertd == td &&
+		    rob2->umtxp == rob->umtxp) {
+			mtx_unlock(&robc->lock);
+			return (EEXIST);
+		}
+	}
+	rob->ownertd = td;
+	SLIST_INSERT_HEAD(&robc->rob_list, rob, hash_qe);
+	mtx_unlock(&robc->lock);
+	LIST_INSERT_HEAD(&uq->uq_rob_list, rob, td_qe);
+	return (0);
+}
+
+static void
+robust_remove(struct thread *td, struct umutex *umtxp)
+{
+	struct robust_info *rob, *rob2;
+	int hash = robust_hash(umtxp);
+	struct robust_chain *robc = &robust_chains[hash];
+
+	rob2 = NULL;
+	mtx_lock(&robc->lock);
+	SLIST_FOREACH(rob, &robc->rob_list, hash_qe) {
+		if (rob->ownertd == td &&
+		    rob->umtxp == umtxp) {
+			if (rob2 == NULL) {
+				SLIST_REMOVE_HEAD(&robc->rob_list, hash_qe);
+			} else {
+				SLIST_REMOVE_AFTER(rob2, hash_qe); 
+			}
+			break;
+		}
+		rob2 = rob;
+	}
+	mtx_unlock(&robc->lock);
+	if (rob != NULL) {
+		LIST_REMOVE(rob, td_qe);
+		robust_free(rob);
+	}
+}
+
 void
 umtx_thread_init(struct thread *td)
 {
@@ -4058,11 +4243,20 @@ umtx_thread_alloc(struct thread *td)
 }
 
 /*
- * exec() hook.
+ * exec() hook, clean up lastest thread's umtx info.
  */
 static void
 umtx_exec_hook(void *arg __unused, struct proc *p __unused,
 	struct image_params *imgp __unused)
+{
+	umtx_thread_cleanup(curthread);
+}
+
+/*
+ * exit1() hook, clean up lastest thread's umtx info.
+ */
+static void
+umtx_exit_hook(void *arg __unused, struct proc *p __unused)
 {
 	umtx_thread_cleanup(curthread);
 }
@@ -4084,9 +4278,13 @@ umtx_thread_cleanup(struct thread *td)
 {
 	struct umtx_q *uq;
 	struct umtx_pi *pi;
+	struct robust_info *rob;
 
 	if ((uq = td->td_umtxq) == NULL)
 		return;
+
+	while ((rob = LIST_FIRST(&uq->uq_rob_list)) != NULL)
+		do_unlock_umutex(td, rob->umtxp, 1);
 
 	mtx_lock_spin(&umtx_lock);
 	uq->uq_inherited_pri = PRI_MAX;

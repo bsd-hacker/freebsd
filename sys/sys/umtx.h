@@ -45,20 +45,26 @@
 #define	UMUTEX_ERROR_CHECK	0x0002	/* Error-checking mutex */
 #define	UMUTEX_PRIO_INHERIT	0x0004	/* Priority inherited mutex */
 #define	UMUTEX_PRIO_PROTECT	0x0008	/* Priority protect mutex */
-#define UMUTEX_SIMPLE		0x0010  /* Use simple lock id. */
+#define	UMUTEX_SIMPLE		0x0010  /* Use simple lock id. */
+#define	UMUTEX_ROBUST		0x0020
 
-#define UMUTEX_SIMPLE_OWNER	1	/* The simple mutex's lock bit. */
+#define	UMUTEX_SIMPLE_OWNER	1	/* The simple mutex's lock bit. */
+
+#define	UMUTEX_ROBST_NORMAL		0
+#define	UMUTEX_ROBST_OWNERDEAD		1
+#define	UMUTEX_ROBST_INCONSISTENT	2
+#define	UMUTEX_ROBST_NOTRECOVERABLE	3
 
 /* urwlock flags */
-#define URWLOCK_PREFER_READER	0x0002
+#define	URWLOCK_PREFER_READER	0x0002
 
-#define URWLOCK_WRITE_OWNER	0x80000000U
-#define URWLOCK_WRITE_WAITERS	0x40000000U
-#define URWLOCK_READ_WAITERS	0x20000000U
-#define URWLOCK_MAX_READERS	0x1fffffffU
-#define URWLOCK_READER_COUNT(c)	((c) & URWLOCK_MAX_READERS)
+#define	URWLOCK_WRITE_OWNER	0x80000000U
+#define	URWLOCK_WRITE_WAITERS	0x40000000U
+#define	URWLOCK_READ_WAITERS	0x20000000U
+#define	URWLOCK_MAX_READERS	0x1fffffffU
+#define	URWLOCK_READER_COUNT(c)	((c) & URWLOCK_MAX_READERS)
 
-#define UCOND_BIND_MUTEX	0x0002
+#define	UCOND_BIND_MUTEX	0x0002
 
 /* _usem flags */
 #define SEM_NAMED	0x0002
