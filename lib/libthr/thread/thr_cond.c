@@ -140,6 +140,8 @@ _pthread_cond_destroy(pthread_cond_t *cond)
 		rval = EINVAL;
 	else {
 		cv = *cond;
+		if (cv->c_refcount == 0)
+			goto next;
 		_thr_umtx_lock_spin(&cv->c_lock);
 		while (cv->c_refcount != 0) {
 			cv->c_destroying = 1;
@@ -156,6 +158,7 @@ _pthread_cond_destroy(pthread_cond_t *cond)
 			_thr_umtx_lock_spin(&cv->c_lock);
 		}
 		_thr_umtx_unlock(&cv->c_lock);
+	next:
 		_thr_ucond_broadcast(&cv->c_kerncv);
 		*cond = THR_COND_DESTROYED;
 
