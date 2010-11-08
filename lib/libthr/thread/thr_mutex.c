@@ -140,7 +140,7 @@ mutex_init(pthread_mutex_t *mutex,
 		calloc_cb(1, sizeof(struct pthread_mutex))) == NULL)
 		return (ENOMEM);
 
-	pmutex->m_type = attr->m_type;
+	pmutex->m_mtxflags = attr->m_type;
 	pmutex->m_ownertd = NULL;
 	pmutex->m_recurse = 0;
 	pmutex->m_spinloops = 0;
@@ -167,7 +167,7 @@ mutex_init(pthread_mutex_t *mutex,
 		pmutex->m_lock.m_flags |= USYNC_PROCESS_SHARED;
 	if (attr->m_robust != 0)
 		pmutex->m_lock.m_flags |= UMUTEX_ROBUST;
-	if (pmutex->m_type == PTHREAD_MUTEX_ADAPTIVE_NP) {
+	if (PMUTEX_TYPE(pmutex->m_mtxflags) == PTHREAD_MUTEX_ADAPTIVE_NP) {
 		pmutex->m_spinloops =
 		    _thr_spinloops ? _thr_spinloops: MUTEX_ADAPTIVE_SPINS;
 		pmutex->m_yieldloops = _thr_yieldloops;
@@ -217,7 +217,7 @@ _pthread_mutex_init_calloc_cb(pthread_mutex_t *mutex,
 
 	ret = mutex_init(mutex, &attr, calloc_cb);
 	if (ret == 0)
-		(*mutex)->m_private = 1;
+		(*mutex)->m_mtxflags |= PMUTEX_FLAG_PRIVATE;
 	return (ret);
 }
 
@@ -322,7 +322,7 @@ __pthread_mutex_trylock(pthread_mutex_t *mutex)
 
 	CHECK_AND_INIT_MUTEX
 
-	if (!m->m_private)
+	if (!(m->m_mtxflags & PMUTEX_FLAG_PRIVATE))
 		return mutex_trylock_common(m);
 	THR_CRITICAL_ENTER(curthread);
 	error = mutex_trylock_common(m);
@@ -461,9 +461,9 @@ mutex_lock_common(struct pthread_mutex *m,
 	struct pthread *curthread = _get_curthread();
 	int error;
 
-	if (cvattach || m->m_private == 0)
+	if (cvattach || (m->m_mtxflags & PMUTEX_FLAG_PRIVATE) == 0)
 		return _mutex_lock_common(m, abstime);
-	if (m->m_private)
+	if (m->m_mtxflags & PMUTEX_FLAG_PRIVATE)
 		THR_CRITICAL_ENTER(curthread);
 	error = _mutex_lock_common(m, abstime);
 	if (error && error != EOWNERDEAD)
@@ -506,7 +506,7 @@ mutex_self_trylock(struct pthread_mutex *m)
 {
 	int	ret;
 
-	switch (m->m_type) {
+	switch (PMUTEX_TYPE(m->m_mtxflags)) {
 	case PTHREAD_MUTEX_ERRORCHECK:
 	case PTHREAD_MUTEX_NORMAL:
 		ret = EBUSY; 
@@ -535,7 +535,7 @@ mutex_self_lock(struct pthread_mutex *m, const struct timespec *abstime)
 	struct timespec	ts1, ts2;
 	int	ret;
 
-	switch (m->m_type) {
+	switch (PMUTEX_TYPE(m->m_mtxflags)) {
 	case PTHREAD_MUTEX_ERRORCHECK:
 	case PTHREAD_MUTEX_ADAPTIVE_NP:
 		if (abstime) {
@@ -633,10 +633,10 @@ _mutex_unlock_common(pthread_mutex_t *mutex)
 	m = *mutex;
 
 	if (__predict_false(
-		m->m_type == PTHREAD_MUTEX_RECURSIVE &&
+		PMUTEX_TYPE(m->m_mtxflags) == PTHREAD_MUTEX_RECURSIVE &&
 		m->m_recurse > 0)) {
 		m->m_recurse--;
-		if (m->m_private)
+		if (m->m_mtxflags & PMUTEX_FLAG_PRIVATE)
 			THR_CRITICAL_LEAVE(curthread);
 		return (0);
 	}
@@ -664,7 +664,7 @@ _mutex_unlock_common(pthread_mutex_t *mutex)
 	}
 	__thr_umutex_unlock(&m->m_lock, id);
 out:
-	if (m->m_private)
+	if (m->m_mtxflags & PMUTEX_FLAG_PRIVATE)
 		THR_CRITICAL_LEAVE(curthread);
 	return (0);
 }

@@ -140,14 +140,17 @@ TAILQ_HEAD(mutex_link_list, mutex_link);
 #define	THR_RWLOCK_INITIALIZER		((struct pthread_rwlock *)NULL)
 #define	THR_RWLOCK_DESTROYED		((struct pthread_rwlock *)1)
 
+#define PMUTEX_FLAG_TYPE_MASK	0x0ff
+#define PMUTEX_FLAG_PRIVATE	0x100
+#define PMUTEX_TYPE(mtxflags)	((mtxflags) & PMUTEX_FLAG_TYPE_MASK)
+
 struct pthread_mutex {
 	struct umutex		m_lock;
-	enum pthread_mutextype	m_type;
 	struct pthread		*m_ownertd;
 	int			m_recurse;
-	int			m_spinloops;
-	int			m_yieldloops;
-	int			m_private;
+	int			m_mtxflags;
+	uint16_t		m_spinloops;
+	uint16_t		m_yieldloops;
 };
 
 struct pthread_mutex_attr {
