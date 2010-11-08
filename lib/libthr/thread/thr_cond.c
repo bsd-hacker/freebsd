@@ -45,7 +45,8 @@ int	__pthread_cond_timedwait(pthread_cond_t *cond, pthread_mutex_t *mutex,
 static int cond_init(pthread_cond_t *cond, const pthread_condattr_t *attr);
 static int cond_wait_common(pthread_cond_t *cond, pthread_mutex_t *mutex,
 		    const struct timespec *abstime, int cancel);
-static int cond_signal_common(pthread_cond_t *cond, int broadcast);
+static int cond_signal_common(struct pthread_cond *cond);
+static int cond_broadcast_common(struct pthread_cond *cond);
 
 /*
  * Double underscore versions are cancellation points.  Single underscore
@@ -139,8 +140,22 @@ _pthread_cond_destroy(pthread_cond_t *cond)
 		rval = EINVAL;
 	else {
 		cv = *cond;
-		if (cv->c_waiters != 0)
-			return (EBUSY);
+		_thr_umtx_lock_spin(&cv->c_lock);
+		while (cv->c_refcount != 0) {
+			cv->c_destroying = 1;
+			if (cv->c_waiters > 0) {
+				cv->c_seq++;
+				cv->c_broadcast_seq++;
+				cv->c_waiters = 0;
+				cv->c_signals = 0;
+				_thr_umtx_wake(&cv->c_seq, INT_MAX, CV_PSHARED(cv));
+			}
+			_thr_umtx_unlock(&cv->c_lock);
+			_thr_umtx_wait_uint((u_int *)&cv->c_destroying,
+				1, NULL, CV_PSHARED(cv));
+			_thr_umtx_lock_spin(&cv->c_lock);
+		}
+		_thr_umtx_unlock(&cv->c_lock);
 		_thr_ucond_broadcast(&cv->c_kerncv);
 		*cond = THR_COND_DESTROYED;
 
@@ -221,6 +236,10 @@ cond_wait_user(pthread_cond_t *cond, pthread_mutex_t *mutex,
 
 	cv = *cond;
 	_thr_umtx_lock_spin(&cv->c_lock);
+	if (cv->c_destroying) {
+		_thr_umtx_unlock(&cv->c_lock);
+		return (EINVAL);
+	}
 	cv->c_waiters++;
 	error = _mutex_cv_unlock(mutex, &recurse);
 	if (__predict_false(error != 0)) {
@@ -230,6 +249,7 @@ cond_wait_user(pthread_cond_t *cond, pthread_mutex_t *mutex,
 	}
 
 	bseq = cv->c_broadcast_seq;
+	cv->c_refcount++;
 	for(;;) {
 		seq = cv->c_seq;
 		_thr_umtx_unlock(&cv->c_lock);
@@ -253,29 +273,40 @@ cond_wait_user(pthread_cond_t *cond, pthread_mutex_t *mutex,
 
 		_thr_umtx_lock_spin(&cv->c_lock);
 		if (cv->c_broadcast_seq != bseq) {
+			cv->c_refcount--;
 			error = 0;
 			break;
 		}
-		if (cv->c_signaled > 0) {
-			cv->c_signaled--;
+		if (cv->c_signals > 0) {
+			cv->c_refcount--;
+			cv->c_signals--;
 			error = 0;
 			break;
 		} else if (error == ETIMEDOUT) {
+			cv->c_refcount--;
 			cv->c_waiters--;
 			break;
 		} else if (cancel && SHOULD_CANCEL(curthread) &&
 			   !THR_IN_CRITICAL(curthread)) {
 			cv->c_waiters--;
+			cv->c_refcount--;
+			if (cv->c_destroying && cv->c_refcount == 0) {
+				cv->c_destroying = 2;
+				_thr_umtx_wake(&cv->c_destroying, INT_MAX, CV_PSHARED(cv));
+			}
 			_thr_umtx_unlock(&cv->c_lock);
 			_mutex_cv_lock(mutex, recurse);
 			_pthread_exit(PTHREAD_CANCELED);
 		}
 	}
+	if (cv->c_destroying && cv->c_refcount == 0) {
+		cv->c_destroying = 2;
+		_thr_umtx_wake(&cv->c_destroying, INT_MAX, CV_PSHARED(cv));
+	}
 	_thr_umtx_unlock(&cv->c_lock);
 	_mutex_cv_lock(mutex, recurse);
 	return (error);
 }
-
 
 static int
 cond_wait_common(pthread_cond_t *cond, pthread_mutex_t *mutex,
@@ -356,7 +387,47 @@ __pthread_cond_timedwait(pthread_cond_t *cond, pthread_mutex_t *mutex,
 }
 
 static int
-cond_signal_common(pthread_cond_t *cond, int broadcast)
+cond_signal_common(struct pthread_cond *cv)
+{
+
+	_thr_ucond_signal(&cv->c_kerncv);
+
+	if (cv->c_waiters == 0)
+		return (0);
+
+	_thr_umtx_lock_spin(&cv->c_lock);
+	if (cv->c_waiters > 0) {
+		cv->c_seq++;
+		cv->c_signals++;
+		cv->c_waiters--;
+		_thr_umtx_wake(&cv->c_seq, 1, CV_PSHARED(cv));
+	}
+	_thr_umtx_unlock(&cv->c_lock);
+	return (0);
+}
+
+static int
+cond_broadcast_common(struct pthread_cond *cv)
+{
+	_thr_ucond_broadcast(&cv->c_kerncv);
+
+	if (cv->c_waiters == 0)
+		return (0);
+
+	_thr_umtx_lock_spin(&cv->c_lock);
+	if (cv->c_waiters > 0) {
+		cv->c_seq++;
+		cv->c_broadcast_seq++;
+		cv->c_waiters = 0;
+		cv->c_signals = 0;
+		_thr_umtx_wake(&cv->c_seq, INT_MAX, CV_PSHARED(cv));
+	}
+	_thr_umtx_unlock(&cv->c_lock);
+	return (0);
+}
+
+int
+_pthread_cond_signal(pthread_cond_t * cond)
 {
 	pthread_cond_t	cv;
 
@@ -366,43 +437,19 @@ cond_signal_common(pthread_cond_t *cond, int broadcast)
 	 */
 	CHECK_AND_INIT_COND
 
-	if (!broadcast)
-		_thr_ucond_signal(&cv->c_kerncv);
-	else
-		_thr_ucond_broadcast(&cv->c_kerncv);
-
-	if (cv->c_waiters == 0)
-		return (0);
-
-	_thr_umtx_lock_spin(&cv->c_lock);
-	if (cv->c_waiters > 0) {
-		if (!broadcast) {
-			cv->c_seq++;
-			cv->c_signaled++;
-			cv->c_waiters--;
-			_thr_umtx_wake(&cv->c_seq, 1, CV_PSHARED(cv));
-		} else {
-			cv->c_seq++;
-			cv->c_broadcast_seq++;
-			cv->c_waiters = 0;
-			cv->c_signaled = 0;
-			_thr_umtx_wake(&cv->c_seq, INT_MAX, CV_PSHARED(cv));
-		}
-	}
-	_thr_umtx_unlock(&cv->c_lock);
-	return (0);
-}
-
-int
-_pthread_cond_signal(pthread_cond_t * cond)
-{
-
-	return (cond_signal_common(cond, 0));
+	return (cond_signal_common(cv));
 }
 
 int
 _pthread_cond_broadcast(pthread_cond_t * cond)
 {
+	pthread_cond_t	cv;
 
-	return (cond_signal_common(cond, 1));
+	/*
+	 * If the condition variable is statically initialized, perform dynamic
+	 * initialization.
+	 */
+	CHECK_AND_INIT_COND
+
+	return (cond_broadcast_common(cv));
 }

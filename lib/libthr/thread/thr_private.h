@@ -166,9 +166,11 @@ struct pthread_cond {
 	 */
 	uint32_t	c_lock;
 	int		c_waiters;
-	int		c_signaled;
+	int		c_signals;
 	uint32_t	c_seq;
 	uint64_t	c_broadcast_seq;
+	int		c_refcount;
+	int		c_destroying;
 };
 
 struct pthread_cond_attr {
