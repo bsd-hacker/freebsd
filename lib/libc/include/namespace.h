@@ -143,6 +143,7 @@
 #define		pthread_kill			_pthread_kill
 #define		pthread_main_np			_pthread_main_np
 #define		pthread_multi_np		_pthread_multi_np
+#define		pthread_mutex_consistent	_pthread_mutex_consistent
 #define		pthread_mutex_destroy		_pthread_mutex_destroy
 #define		pthread_mutex_getprioceiling	_pthread_mutex_getprioceiling
 #define		pthread_mutex_init		_pthread_mutex_init

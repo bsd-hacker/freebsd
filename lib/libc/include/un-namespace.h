@@ -124,6 +124,7 @@
 #undef		pthread_kill
 #undef		pthread_main_np
 #undef		pthread_multi_np
+#undef		pthread_mutex_consistent
 #undef		pthread_mutex_destroy
 #undef		pthread_mutex_getprioceiling
 #undef		pthread_mutex_init

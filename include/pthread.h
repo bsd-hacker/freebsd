@@ -228,6 +228,7 @@ int		pthread_mutexattr_settype(pthread_mutexattr_t *, int);
 int		pthread_mutexattr_setpshared(pthread_mutexattr_t *, int);
 int		pthread_mutexattr_setrobust(pthread_mutexattr_t *,
 			int);
+int		pthread_mutex_consistent(pthread_mutex_t *);
 int		pthread_mutex_destroy(pthread_mutex_t *);
 int		pthread_mutex_init(pthread_mutex_t *,
 			const pthread_mutexattr_t *);

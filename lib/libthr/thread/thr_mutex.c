@@ -115,6 +115,7 @@ __weak_reference(__pthread_mutex_setyieldloops_np, pthread_mutex_setyieldloops_n
 __strong_reference(__pthread_mutex_setyieldloops_np, _pthread_mutex_setyieldloops_np);
 __weak_reference(_pthread_mutex_getyieldloops_np, pthread_mutex_getyieldloops_np);
 __weak_reference(_pthread_mutex_isowned_np, pthread_mutex_isowned_np);
+__weak_reference(_pthread_mutex_consistent, pthread_mutex_consistent);
 
 static int
 mutex_init(pthread_mutex_t *mutex,
@@ -855,6 +856,21 @@ int
 _pthread_mutex_isowned_np(pthread_mutex_t *mutex)
 {
 	return (_mutex_owned(_get_curthread(), mutex) == 0);
+}
+
+int
+_pthread_mutex_consistent(pthread_mutex_t *mutex)
+{
+
+	if (_mutex_owned(_get_curthread(), mutex) == 0) {
+		struct pthread_mutex	*m = *mutex;
+		if (m->m_lock.m_flags & UMUTEX_ROBUST) {
+			m->m_lock.m_robstate = UMUTEX_ROBST_NORMAL;
+			m->m_recurse = 0;
+			return (0);
+		}
+	}
+	return (EINVAL);
 }
 
 void
