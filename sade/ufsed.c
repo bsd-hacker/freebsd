@@ -317,8 +317,8 @@ ufsed_tunefs(history_t hist, struct ufsinfo *pfs)
 		    (checkbox[i].flag & pfs->flags) != 0,
 		    checkbox[i].label);
 	btnOk = dlg_add_button(&dlg, 9, 14, "  Ok  ");
-	btnCancel = dlg_add_button(&dlg, 9, 26, "Cancel");
-	btnAdvanced = dlg_add_button(&dlg, 9, 38, "Advanced");
+	btnAdvanced = dlg_add_button(&dlg, 9, 25, "Advanced");
+	btnCancel = dlg_add_button(&dlg, 9, 38, "Cancel");
 	use_helpline("Press F1 for help");
 	dlg_autosize(&dlg, &w, &h);
 	dlg_open_dialog(&dlg, w + 1, h + 1, "Change File System");
@@ -356,6 +356,7 @@ again:
 		};
 	} while (q == 0);
 
+	/* TODO: handle advanced button */
 	if (q != 2)
 		goto done;
 
@@ -404,6 +405,204 @@ again:
 				pfs->volname = strndup(s, MAXVOLLEN);
 			else
 				pfs->volname = NULL;
+		}
+	}
+done:
+	restorescr(win);
+	dlg_close_dialog(&dlg);
+	dlg_free(&dlg);
+}
+
+static void
+ufsed_newfs(history_t hist, struct ufsinfo *pfs)
+{
+	struct custom_dlg dlg;
+	struct dlg_item *item;
+	struct de_devlist devlist;
+	struct de_device *pdev;
+	DLG_BUTTON *btnCreate, *btnCancel, *btnAdvanced;
+	DLG_EDIT *eLabel, *eBlock, *eFrag, *eSector;
+	WINDOW *win;
+	uint64_t num, tmp;
+	int q, h, w, ret, i;
+	char buf[CMDLEN_MAX], *s, *volname;
+	struct {
+		DLG_CHECKBOX	*item;
+		uint32_t	flag;
+		const char	*label;
+		const char	*arg;
+	} checkbox[] = {
+		{ NULL, 0, "Erase content", "-E" },
+		{ NULL, FS_DOSOFTDEP, "Soft Updates", "-U" },
+		{ NULL, FS_GJOURNAL, "GEOM journaling", "-J" },
+		{ NULL, FS_MULTILABEL, "MAC multilabel", "-l" },
+#define	NEWFSOPS_COUNT	4
+		{ NULL, FS_SUJ, "SU journaling", "-j" },
+		{ NULL, FS_ACLS, "POSIX.1e ACL", "-a" },
+		{ NULL, FS_NFS4ACLS, "NFSv4 ACL", "-N"}
+	};
+
+	win = savescr();
+	dlg_init(&dlg);
+	snprintf(buf, sizeof(buf),
+	    "Create new file system on \"%s\":", pfs->partname);
+	dlg_add_label(&dlg, 1, 2, 55, 2, buf);
+	eLabel = dlg_add_edit(&dlg, 3, 2, 24, "Volume Label:",
+	    MAXVOLLEN, NULL);
+	eBlock = dlg_add_edit(&dlg, 7, 2, 24, "Block Size:", 8, "16384");
+	eFrag = dlg_add_edit(&dlg, 11, 2, 24, "Fragment Size:", 8, "2048");
+
+	ret = de_devlist_get(&devlist);
+	if (ret == 0) {
+		pdev = de_dev_find(&devlist, pfs->devname);
+		if (pdev)
+			num = pdev->de_sectorsize;
+		else
+			num = 512;
+		de_devlist_free(&devlist);
+	}
+	snprintf(buf, sizeof(buf), "%u", (uint32_t)num);
+	eSector = dlg_add_edit(&dlg, 3, 30, 24, "Sector Size:", 8, buf);
+	for (i = 0; i < sizeof(checkbox) / sizeof(checkbox[0]); i++)
+		checkbox[i].item = dlg_add_checkbox(&dlg,
+		    8 + i, 30, 24, 1, 0, checkbox[i].label);
+	btnCreate = dlg_add_button(&dlg, 16, 14, "Create");
+	btnAdvanced = dlg_add_button(&dlg, 16, 25, "Advanced");
+	btnCancel = dlg_add_button(&dlg, 16, 38, "Cancel");
+	use_helpline("Press F1 for help");
+	dlg_autosize(&dlg, &w, &h);
+	dlg_open_dialog(&dlg, w + 1, h + 1, "Create File System");
+again:
+	q = 0;
+	do {
+		ret = dlg_proc(&dlg, tunefs_keyhndl);
+		if (ret == DE_ESC) {
+			q = 1;
+			break;
+		}
+		item = dlg_focus_get(&dlg);
+		switch (ret) {
+		case DE_CR:
+			if (item == btnCancel)
+				q = 1;
+			else if (item == btnCreate)
+				q = 2;
+			else if (item == btnAdvanced)
+				q = 3;
+			else
+				dlg_focus_next(&dlg);
+			break;
+		case KEY_UP:
+		case KEY_LEFT:
+			dlg_focus_prev(&dlg);
+			break;
+		case KEY_DOWN:
+		case KEY_RIGHT:
+			dlg_focus_next(&dlg);
+			break;
+		case ' ':
+			if (item->type == CHECKBOX)
+				dlg_checkbox_toggle(&dlg, item);
+		};
+	} while (q == 0);
+
+	if (q != 2)
+		goto done;
+
+	snprintf(buf, sizeof(buf), "%s", _PATH_NEWFS);
+	/* Volume Label */
+	volname = s = dlg_edit_get_value(&dlg, eLabel);
+	if (s != NULL && *s != '\0') {
+		i = 0;
+		while (isalnum(s[i++]));
+		if (s[i] != '\0') {
+			dmenu_open_errormsg("Invalid character in volume "
+			    "label. Only alphanumerics characters are "
+			    "allowed.");
+			goto again;
+		}
+		snprintf(buf, sizeof(buf), "%s -L \"%s\"", buf, s);
+	}
+	/* Block Size */
+	s = dlg_edit_get_value(&dlg, eBlock);
+	if (s != NULL && *s != '\0') {
+		ret = expand_number(s, &num);
+		if (ret < 0 || num < MINBSIZE || num > MAXBSIZE ||
+		    (num & (num - 1)) != 0) {
+			dmenu_open_errormsg("Invalid block size.");
+			goto again;
+		}
+	} else
+		num = 16384;
+	snprintf(buf, sizeof(buf), "%s -b %u", buf, (uint32_t)num);
+	/* Fragment size */
+	s = dlg_edit_get_value(&dlg, eFrag);
+	if (s != NULL && *s != '\0') {
+		ret = expand_number(s, &tmp);
+		if (ret < 0 || tmp > num || tmp == 0 ||
+		    (tmp & (tmp - 1)) != 0) {
+			dmenu_open_errormsg("Invalid fragment size.");
+			goto again;
+		}
+		num = tmp;
+	} else
+		num = 2048;
+	snprintf(buf, sizeof(buf), "%s -f %u", buf, (uint32_t)num);
+	/* Sector size */
+	s = dlg_edit_get_value(&dlg, eSector);
+	if (s != NULL && *s != '\0') {
+		ret = expand_number(s, &tmp);
+		if (ret < 0 || tmp >= pfs->size || tmp < 512 ||
+		    (tmp & (tmp - 1)) != 0) {
+			dmenu_open_errormsg("Invalid sector size.");
+			goto again;
+		}
+		num = tmp;
+	} else
+		num = 512;
+	snprintf(buf, sizeof(buf), "%s -S %u", buf, (uint32_t)num);
+	for (i = 0, tmp = 0; i < NEWFSOPS_COUNT; i++) {
+		if (dlg_checkbox_checked(&dlg, checkbox[i].item)) {
+			snprintf(buf, sizeof(buf), "%s %s", buf,
+			    checkbox[i].arg);
+			tmp |= checkbox[i].flag;
+		}
+	}
+	snprintf(buf, sizeof(buf), "%s %s%s", buf, _PATH_DEV, pfs->partname);
+	/* add newfs command to history */
+	ret = ufsed_history_add(hist, buf);
+	if (ret)
+		dmenu_open_errormsg("Operation failed.");
+	else {	/* do fake changes to update current view */
+		pfs->magic = FS_UFS2_MAGIC;
+		pfs->flags = (uint32_t)tmp;
+		pfs->id[0] = 0;
+		pfs->id[1] = 0;
+		free(pfs->volname);
+		if (volname != NULL && *volname != '\0')
+			pfs->volname = strndup(volname, MAXVOLLEN);
+		else
+			pfs->volname = NULL;
+		free(pfs->fsmnt);
+		pfs->fsmnt = NULL;
+	}
+	snprintf(buf, sizeof(buf), "%s", PATH_TUNEFS);
+	for (i = NEWFSOPS_COUNT, num = 0;
+	    i < sizeof(checkbox) / sizeof(checkbox[0]); i++) {
+		if (dlg_checkbox_checked(&dlg, checkbox[i].item)) {
+			snprintf(buf, sizeof(buf), "%s %s enable", buf,
+			    checkbox[i].arg);
+			num |= checkbox[i].flag;
+		}
+	}
+	if (num > 0) {
+		snprintf(buf, sizeof(buf), "%s %s%s", buf, _PATH_DEV,
+		    pfs->partname);
+		ret = ufsed_history_add(hist, buf);
+		if (ret)
+			dmenu_open_errormsg("Operation failed.");
+		else {	/* do fake changes to update current view */
+			pfs->flags |= num;
 		}
 	}
 done:
@@ -506,8 +705,10 @@ resize:
 			mvprintw(FSED_MENU_TOP + 1, 30, "%-20s%s",
 			    "last mountpoint:",
 			    LABEL(selected->fsmnt));
-			mvprintw(FSED_MENU_TOP + 2, 30, "%-20s%08x%08x",
-			    "UFS id:", selected->id[0], selected->id[1]);
+			if (HAS_UFSID(selected))
+				mvprintw(FSED_MENU_TOP + 2, 30,
+				    "%-20s%08x%08x", "UFS id:",
+				    selected->id[0], selected->id[1]);
 			mvprintw(FSED_MENU_TOP + 3, 30, "%-20s%s",
 			    "volume label:", LABEL(selected->volname));
 #define	FS_STATUS(pfs, flag) \
@@ -550,8 +751,20 @@ resize:
 			}
 			ufsed_tunefs(hist, selected);
 			break;
+		case 'C':
+			if (IS_UFS(selected)) {
+				if (dmenu_open_noyes(ask_recreate_msg))
+					break;
+			}
+			ufsed_newfs(hist, selected);
+			break;
 		case KEY_ESC:
 		case 'Q':
+			if (!history_isempty(hist) &&
+			    !dmenu_open_noyes(pending_write_msg)) {
+				error = history_play(hist, ufsed_history_play);
+				/* XXX */
+			}
 			q = 1;
 			break;
 		case 'W':
