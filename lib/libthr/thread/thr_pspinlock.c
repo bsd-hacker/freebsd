@@ -34,105 +34,135 @@
 
 #include "thr_private.h"
 
-#define SPIN_COUNT 100000
-
 __weak_reference(_pthread_spin_init, pthread_spin_init);
 __weak_reference(_pthread_spin_destroy, pthread_spin_destroy);
 __weak_reference(_pthread_spin_trylock, pthread_spin_trylock);
 __weak_reference(_pthread_spin_lock, pthread_spin_lock);
 __weak_reference(_pthread_spin_unlock, pthread_spin_unlock);
 
-int
-_pthread_spin_init(pthread_spinlock_t *lock, int pshared)
-{
-	struct pthread_spinlock	*lck;
-	int ret;
+typedef pthread_spinlock_t *pthread_spinlock_old_t;
+int _pthread_spin_destroy_1_0(pthread_spinlock_old_t *);
+int _pthread_spin_init_1_0(pthread_spinlock_old_t *, int);
+int _pthread_spin_lock_1_0(pthread_spinlock_old_t *);
+int _pthread_spin_trylock_1_0(pthread_spinlock_old_t *);
+int _pthread_spin_unlock_1_0(pthread_spinlock_old_t *);
 
-	if (lock == NULL || pshared != PTHREAD_PROCESS_PRIVATE)
-		ret = EINVAL;
-	else if ((lck = malloc(sizeof(struct pthread_spinlock))) == NULL)
-		ret = ENOMEM;
-	else {
-		_thr_umutex_init(&lck->s_lock);
-		*lock = lck;
-		ret = 0;
+int
+_pthread_spin_init(pthread_spinlock_t *lckp, int pshared)
+{
+	if (pshared != PTHREAD_PROCESS_PRIVATE &&
+	    pshared != PTHREAD_PROCESS_SHARED)
+		return (EINVAL);
+	lckp->__lock = 0;
+	return (0);
+}
+
+int
+_pthread_spin_destroy(pthread_spinlock_t *lckp)
+{
+	/* Nothing to do. */
+	return (0);
+}
+
+int
+_pthread_spin_trylock(pthread_spinlock_t *lckp)
+{
+	if (atomic_cmpset_acq_32(&lckp->__lock, 0, 1))
+		return (0);
+	return (EBUSY);
+}
+
+int
+_pthread_spin_lock(pthread_spinlock_t *lckp)
+{
+	/* 
+	 * Nothing has been checked, the lock should be
+	 * as fast as possible.
+	 */
+	if (atomic_cmpset_acq_32(&lckp->__lock, 0, 1))
+		return (0);
+	for (;;) {
+		if (*(volatile int32_t *)&(lckp->__lock) == 0)
+			if (atomic_cmpset_acq_32(&lckp->__lock, 0, 1))
+				break;
+		if (!_thr_is_smp)
+			_pthread_yield();
+		else
+			CPU_SPINWAIT;
 	}
-
-	return (ret);
+	return (0);
 }
 
 int
-_pthread_spin_destroy(pthread_spinlock_t *lock)
+_pthread_spin_unlock(pthread_spinlock_t *lckp)
 {
-	int ret;
-
-	if (lock == NULL || *lock == NULL)
-		ret = EINVAL;
-	else {
-		free(*lock);
-		*lock = NULL;
-		ret = 0;
-	}
-
-	return (ret);
+	lckp->__lock = 0;
+	wmb();
+	return (0);
 }
 
 int
-_pthread_spin_trylock(pthread_spinlock_t *lock)
+_pthread_spin_init_1_0(pthread_spinlock_old_t *lckpp, int pshared)
 {
-	struct pthread *curthread = _get_curthread();
-	struct pthread_spinlock	*lck;
-	int ret;
+	pthread_spinlock_t *lckp;
 
-	if (lock == NULL || (lck = *lock) == NULL)
-		ret = EINVAL;
-	else
-		ret = THR_UMUTEX_TRYLOCK(curthread, &lck->s_lock);
-	return (ret);
+	if (pshared != PTHREAD_PROCESS_PRIVATE &&
+	    pshared != PTHREAD_PROCESS_SHARED)
+		return (EINVAL);
+	
+	lckp = malloc(sizeof(pthread_spinlock_t));
+	if (lckp == NULL)
+		return (ENOMEM);
+	lckp->__lock = 0;
+	*lckpp = lckp;
+	return (0);
 }
 
 int
-_pthread_spin_lock(pthread_spinlock_t *lock)
+_pthread_spin_destroy_1_0(pthread_spinlock_old_t *lckpp)
 {
-	struct pthread *curthread = _get_curthread();
-	struct pthread_spinlock	*lck;
-	int ret, count;
+	pthread_spinlock_t *lckp = *lckpp;
 
-	if (lock == NULL || (lck = *lock) == NULL)
-		ret = EINVAL;
-	else {
-		count = SPIN_COUNT;
-		while ((ret = THR_UMUTEX_TRYLOCK(curthread, &lck->s_lock)) != 0) {
-			while (lck->s_lock.m_owner) {
-				if (!_thr_is_smp) {
-					_pthread_yield();
-				} else {
-					CPU_SPINWAIT;
-
-					if (--count <= 0) {
-						count = SPIN_COUNT;
-						_pthread_yield();
-					}
-				}
-			}
-		}
-		ret = 0;
-	}
-
-	return (ret);
+	if (lckp != NULL) {
+		free(lckp);
+		*lckpp = NULL;
+		return (0);
+	} else
+		return (EINVAL);
 }
 
 int
-_pthread_spin_unlock(pthread_spinlock_t *lock)
+_pthread_spin_trylock_1_0(pthread_spinlock_old_t *lckpp)
 {
-	struct pthread *curthread = _get_curthread();
-	struct pthread_spinlock	*lck;
-	int ret;
+	pthread_spinlock_t *lckp = *lckpp;
 
-	if (lock == NULL || (lck = *lock) == NULL)
-		ret = EINVAL;
-	else {
-		ret = THR_UMUTEX_UNLOCK(curthread, &lck->s_lock);
-	}
-	return (ret);
+	if (lckp == NULL)
+		return (EINVAL);
+	return _pthread_spin_trylock(lckp);
 }
+
+int
+_pthread_spin_lock_1_0(pthread_spinlock_old_t *lckpp)
+{
+	pthread_spinlock_t *lckp = *lckpp;
+
+	if (lckp == NULL)
+		return (EINVAL);
+	return _pthread_spin_lock(lckp);
+}
+
+int
+_pthread_spin_unlock_1_0(pthread_spinlock_old_t *lckpp)
+{
+	pthread_spinlock_t *lckp = *lckpp;
+
+	if (lckp == NULL)
+		return (EINVAL);
+	return _pthread_spin_unlock(lckp);
+}
+
+FB10_COMPAT(_pthread_spin_destroy_1_0, pthread_spin_destroy);
+FB10_COMPAT(_pthread_spin_init_1_0, pthread_spin_init);
+FB10_COMPAT(_pthread_spin_lock_1_0, pthread_spin_lock);
+FB10_COMPAT(_pthread_spin_trylock_1_0, pthread_spin_trylock);
+FB10_COMPAT(_pthread_spin_unlock_1_0, pthread_spin_unlock);

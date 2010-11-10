@@ -203,6 +203,10 @@ struct pthread_barrier {
 	__uint32_t	__waiters;
 };
 
+struct pthread_spinlock {
+	__uint32_t	__lock;
+};
+
 /*
  * Thread function prototype definitions:
  */

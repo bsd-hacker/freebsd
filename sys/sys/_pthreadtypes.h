@@ -76,7 +76,7 @@ typedef struct	pthread_rwlock		pthread_rwlock_t;
 typedef struct	pthread_rwlockattr	*pthread_rwlockattr_t;
 typedef struct	pthread_barrier		pthread_barrier_t;
 typedef struct	pthread_barrierattr	*pthread_barrierattr_t;
-typedef struct	pthread_spinlock	*pthread_spinlock_t;
+typedef struct	pthread_spinlock	pthread_spinlock_t;
 
 /*
  * Additional type definitions:

@@ -167,10 +167,6 @@ struct pthread_barrierattr {
 	int		pshared;
 };
 
-struct pthread_spinlock {
-	struct umutex	s_lock;
-};
-
 /*
  * Cleanup definitions.
  */

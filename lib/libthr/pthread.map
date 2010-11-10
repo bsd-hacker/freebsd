@@ -101,11 +101,6 @@ FBSD_1.0 {
 	pthread_setspecific;
 	pthread_sigmask;
 	pthread_single_np;
-	pthread_spin_destroy;
-	pthread_spin_init;
-	pthread_spin_lock;
-	pthread_spin_trylock;
-	pthread_spin_unlock;
 	pthread_suspend_all_np;
 	pthread_suspend_np;
 	pthread_switch_add_np;
@@ -398,6 +393,11 @@ FBSD_1.2 {
 	pthread_mutex_timedlock;
 	pthread_mutex_trylock;
 	pthread_mutex_unlock;
+	pthread_spin_destroy;
+	pthread_spin_init;
+	pthread_spin_lock;
+	pthread_spin_trylock;
+	pthread_spin_unlock;
 	pthread_rwlock_destroy;
 	pthread_rwlock_init;
 	pthread_rwlock_rdlock;
