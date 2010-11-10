@@ -163,14 +163,6 @@ struct pthread_cond_attr {
 	int		c_clockid;
 };
 
-struct pthread_barrier {
-	struct umutex		b_lock;
-	struct ucond		b_cv;
-	volatile int64_t	b_cycle;
-	volatile int		b_count;
-	volatile int		b_waiters;
-};
-
 struct pthread_barrierattr {
 	int		pshared;
 };
@@ -178,13 +170,6 @@ struct pthread_barrierattr {
 struct pthread_spinlock {
 	struct umutex	s_lock;
 };
-
-/*
- * Flags for condition variables.
- */
-#define COND_FLAGS_PRIVATE	0x01
-#define COND_FLAGS_INITED	0x02
-#define COND_FLAGS_BUSY		0x04
 
 /*
  * Cleanup definitions.

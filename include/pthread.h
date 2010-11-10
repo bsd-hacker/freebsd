@@ -195,6 +195,14 @@ struct pthread_rwlock {
 	__uint32_t	__blocked_writers;
 };
 
+struct pthread_barrier {
+	pthread_mutex_t		__lock;
+	pthread_cond_t		__cond;
+	__uint64_t		__cycle;
+	__uint32_t		__count;
+	__uint32_t		__waiters;
+};
+
 /*
  * Thread function prototype definitions:
  */

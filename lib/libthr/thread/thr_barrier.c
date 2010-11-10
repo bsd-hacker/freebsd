@@ -29,6 +29,7 @@
 #include "namespace.h"
 #include <errno.h>
 #include <stdlib.h>
+#include <string.h>
 #include <pthread.h>
 #include "un-namespace.h"
 
@@ -38,76 +39,111 @@ __weak_reference(_pthread_barrier_init,		pthread_barrier_init);
 __weak_reference(_pthread_barrier_wait,		pthread_barrier_wait);
 __weak_reference(_pthread_barrier_destroy,	pthread_barrier_destroy);
 
+typedef struct pthread_barrier *pthread_barrier_old_t;
+int	_pthread_barrier_destroy_1_0(pthread_barrier_old_t *);
+int	_pthread_barrier_wait_1_0(pthread_barrier_old_t *);
+int	_pthread_barrier_init_1_0(pthread_barrier_old_t *,
+	const pthread_barrierattr_t *, unsigned);
+
 int
-_pthread_barrier_destroy(pthread_barrier_t *barrier)
+_pthread_barrier_destroy(pthread_barrier_t *barp)
 {
-	pthread_barrier_t	bar;
-
-	if (barrier == NULL || *barrier == NULL)
-		return (EINVAL);
-
-	bar = *barrier;
-	if (bar->b_waiters > 0)
-		return (EBUSY);
-	*barrier = NULL;
-	free(bar);
+	(void)_pthread_cond_destroy(&barp->__cond);
+	(void)_pthread_mutex_destroy(&barp->__lock);
+	memset(barp, -1, sizeof(*barp));
 	return (0);
 }
 
 int
-_pthread_barrier_init(pthread_barrier_t *barrier,
+_pthread_barrier_init(pthread_barrier_t *barp,
 		      const pthread_barrierattr_t *attr, unsigned count)
 {
-	pthread_barrier_t	bar;
-
-	(void)attr;
-
-	if (barrier == NULL || count <= 0)
+	if (count == 0)
 		return (EINVAL);
 
-	bar = malloc(sizeof(struct pthread_barrier));
-	if (bar == NULL)
-		return (ENOMEM);
-
-	_thr_umutex_init(&bar->b_lock);
-	_thr_ucond_init(&bar->b_cv);
-	bar->b_cycle	= 0;
-	bar->b_waiters	= 0;
-	bar->b_count	= count;
-	*barrier	= bar;
-
+	_pthread_mutex_init(&barp->__lock, NULL);
+	_pthread_cond_init(&barp->__cond, NULL);
+	if (attr != NULL && *attr != NULL) {
+		if ((*attr)->pshared == PTHREAD_PROCESS_SHARED) {
+			barp->__lock.__lockflags |= USYNC_PROCESS_SHARED;
+			barp->__cond.__flags |= USYNC_PROCESS_SHARED;
+		} else if ((*attr)->pshared != PTHREAD_PROCESS_PRIVATE) {
+			return (EINVAL);
+		}
+	}
+	barp->__cycle	= 0;
+	barp->__waiters	= 0;
+	barp->__count	= count;
 	return (0);
 }
 
 int
-_pthread_barrier_wait(pthread_barrier_t *barrier)
+_pthread_barrier_wait(pthread_barrier_t *barp)
 {
-	struct pthread *curthread = _get_curthread();
-	pthread_barrier_t bar;
-	int64_t cycle;
-	int ret;
+	uint64_t cycle;
+	int error;
 
-	if (barrier == NULL || *barrier == NULL)
-		return (EINVAL);
-
-	bar = *barrier;
-	THR_UMUTEX_LOCK(curthread, &bar->b_lock);
-	if (++bar->b_waiters == bar->b_count) {
-		/* Current thread is lastest thread */
-		bar->b_waiters = 0;
-		bar->b_cycle++;
-		_thr_ucond_broadcast(&bar->b_cv);
-		THR_UMUTEX_UNLOCK(curthread, &bar->b_lock);
-		ret = PTHREAD_BARRIER_SERIAL_THREAD;
+	_pthread_mutex_lock(&barp->__lock);
+	if (++barp->__waiters == barp->__count) {
+		/* Current thread is lastest thread. */
+		barp->__waiters = 0;
+		barp->__cycle++;
+		_pthread_cond_broadcast(&barp->__cond);
+		_pthread_mutex_unlock(&barp->__lock);
+		error = PTHREAD_BARRIER_SERIAL_THREAD;
 	} else {
-		cycle = bar->b_cycle;
+		cycle = barp->__cycle;
 		do {
-			_thr_ucond_wait(&bar->b_cv, &bar->b_lock, NULL, 0);
-			THR_UMUTEX_LOCK(curthread, &bar->b_lock);
+			_pthread_cond_wait(&barp->__cond, &barp->__lock);
 			/* test cycle to avoid bogus wakeup */
-		} while (cycle == bar->b_cycle);
-		THR_UMUTEX_UNLOCK(curthread, &bar->b_lock);
-		ret = 0;
+		} while (cycle == barp->__cycle);
+		_pthread_mutex_unlock(&barp->__lock);
+		error = 0;
 	}
-	return (ret);
+	return (error);
 }
+
+int
+_pthread_barrier_destroy_1_0(pthread_barrier_old_t *barpp)
+{
+	struct pthread_barrier *barp;
+
+	if ((barp = *barpp) == NULL)
+		return (EINVAL);
+	_pthread_barrier_destroy(barp);
+	free(barp);
+	return (0);
+}
+
+int
+_pthread_barrier_init_1_0(pthread_barrier_old_t *barpp,
+	const pthread_barrierattr_t *attr, unsigned count)
+{
+	struct pthread_barrier	*barp;
+	int error;
+
+	barp = malloc(sizeof(struct pthread_barrier));
+	if (barp == NULL)
+		return (ENOMEM);
+	error = _pthread_barrier_init(barp, attr, count);
+	if (error) {
+		free(barp);
+		return (error);
+	}
+	*barpp = barp;
+	return (0);
+}
+
+int
+_pthread_barrier_wait_1_0(pthread_barrier_old_t *barpp)
+{
+	struct pthread_barrier *barp;
+
+	if ((barp = *barpp) == NULL)
+		return (EINVAL);
+	return _pthread_barrier_wait(barp);
+}
+
+FB10_COMPAT(_pthread_barrier_destroy_1_0, pthread_barrier_destroy);
+FB10_COMPAT(_pthread_barrier_init_1_0, pthread_barrier_init);
+FB10_COMPAT(_pthread_barrier_wait_1_0, pthread_barrier_wait);

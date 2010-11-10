@@ -23,9 +23,6 @@ FBSD_1.0 {
 	poll;
 	pselect;
 	pthread_atfork;
-	pthread_barrier_destroy;
-	pthread_barrier_init;
-	pthread_barrier_wait;
 	pthread_barrierattr_destroy;
 	pthread_barrierattr_getpshared;
 	pthread_barrierattr_init;
@@ -376,6 +373,9 @@ FBSD_1.1 {
 
 FBSD_1.2 {
 	openat;
+	pthread_barrier_destroy;
+	pthread_barrier_init;
+	pthread_barrier_wait;
 	pthread_cond_broadcast;
 	pthread_cond_destroy;
 	pthread_cond_init;
