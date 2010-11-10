@@ -108,6 +108,12 @@ static char *mbr_bootmgr_msg =
 	"Press \"YES\" to install boot manager or \"NO\" to use standard MBR.";
 static char *gpt_bootcode_msg =
 	"Would you like to use a ZFS aware bootstrap code?";
+static char *corrupt_scheme_msg =
+	"WARNING: This partition table marked as corrupt. Any changes are\n"
+	"prohibited until it will be recovered. Would you like to recover it?";
+static char *destroy_corrupt_scheme_msg =
+	"WARNING: This partition table marked as corrupt. You can not\n"
+	"modify it. Would you like to destroy it?";
 
 static char *add_slice_title =
 	"Please specify the slice type (or select it from the list),\n"
@@ -620,6 +626,18 @@ reload:
 				error = de_dev_commit(pdev);
 			ret = 1; /* any way we are exiting */
 		}
+	} else if (pdev->de_state != 0) {
+		if (dmenu_open_yesno(corrupt_scheme_msg) == 0) {
+			error = de_dev_scheme_recover(pdev);
+			if (error == 0) {
+				changed = 1;
+				pdev->de_state = 0;
+			} else {
+				dmenu_open_errormsg((error < 0) ? de_error():
+				    strerror(error));
+				error = 0;
+			}
+		}
 	}
 	if (ret == 0 && error == 0) {
 		WINDOW *win;
@@ -808,8 +826,14 @@ resize:
 				}
 				break;
 			case 'D':
-				if (count == 1 && selected->de_type == NULL) {
-					if (dmenu_open_noyes(
+				/* Ask to destroy partition scheme when:
+				 * 1. Partition table is corrupt;
+				 * 2. Partition table is empty;
+				 */
+				if (pdev->de_state != 0 || (count == 1 &&
+				    selected->de_type == NULL)) {
+					if (dmenu_open_noyes(pdev->de_state ?
+					    destroy_corrupt_scheme_msg:
 					    destroy_scheme_msg))
 						break;
 					error = de_dev_scheme_destroy(pdev);

@@ -133,7 +133,8 @@ de_partlist_get(struct de_device *pdev)
 	}
 	s = find_geomcfg(gp, "scheme");
 	pdev->de_scheme = strdup(s);
-
+	s = find_geomcfg(gp, "state");
+	pdev->de_state = (strcmp(s, "OK") != 0);
         s = find_geomcfg(gp, "first");
         first = (off_t)strtoimax(s, NULL, 0);
         s = find_geomcfg(gp, "last");
@@ -267,6 +268,31 @@ de_dev_scheme_destroy(struct de_device *pdev)
 		return (ENOMEM);
 
 	gctl_ro_param(req, "verb", -1, "destroy");
+	gctl_ro_param(req, "class", -1, class_name);
+	gctl_ro_param(req, arg0_name, -1, pdev->de_name);
+	gctl_ro_param(req, "flags", -1, sade_flags);
+	error = 1;
+	gctl_ro_param(req, "force", sizeof(int), &error);
+
+	error = de_gpart_issue(req);
+	gctl_free(req);
+	return (error);
+}
+
+int
+de_dev_scheme_recover(struct de_device *pdev)
+{
+	int error;
+	struct gctl_req *req;
+
+	assert(pdev != NULL);
+	assert(pdev->de_name != NULL);
+
+	req = gctl_get_handle();
+	if (req == NULL)
+		return (ENOMEM);
+
+	gctl_ro_param(req, "verb", -1, "recover");
 	gctl_ro_param(req, "class", -1, class_name);
 	gctl_ro_param(req, arg0_name, -1, pdev->de_name);
 	gctl_ro_param(req, "flags", -1, sade_flags);

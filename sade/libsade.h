@@ -78,6 +78,7 @@ struct de_device *
 	de_dev_find(struct de_devlist *pd, const char *name);
 int	de_dev_scheme_create(struct de_device *pdev, const char *scheme);
 int	de_dev_scheme_destroy(struct de_device *pdev);
+int	de_dev_scheme_recover(struct de_device *pdev);
 int	de_dev_bootcode(struct de_device *pdev, const char *path);
 int	de_dev_undo(struct de_device *pdev);
 int	de_dev_commit(struct de_device *pdev);

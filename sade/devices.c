@@ -59,6 +59,7 @@ de_device_add(struct de_devlist *pd, struct gprovider *pp,
     const char *classname, const char *classdesc)
 {
 	struct de_device *pdev;
+	const char *s;
 
 	pdev = malloc(sizeof(struct de_device));
 	if (pdev == NULL)
