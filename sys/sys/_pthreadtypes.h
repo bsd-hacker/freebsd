@@ -66,13 +66,13 @@ typedef struct	pthread			*pthread_t;
 #define	_PTHREAD_T_DECLARED
 #endif
 typedef struct	pthread_attr		*pthread_attr_t;
-typedef struct	pthread_mutex		*pthread_mutex_t;
+typedef struct	pthread_mutex		pthread_mutex_t;
 typedef struct	pthread_mutex_attr	*pthread_mutexattr_t;
-typedef struct	pthread_cond		*pthread_cond_t;
+typedef struct	pthread_cond		pthread_cond_t;
 typedef struct	pthread_cond_attr	*pthread_condattr_t;
 typedef int     			pthread_key_t;
 typedef struct	pthread_once		pthread_once_t;
-typedef struct	pthread_rwlock		*pthread_rwlock_t;
+typedef struct	pthread_rwlock		pthread_rwlock_t;
 typedef struct	pthread_rwlockattr	*pthread_rwlockattr_t;
 typedef struct	pthread_barrier		*pthread_barrier_t;
 typedef struct	pthread_barrierattr	*pthread_barrierattr_t;
@@ -92,7 +92,6 @@ typedef void	*(*pthread_startroutine_t)(void *);
  */
 struct pthread_once {
 	int		state;
-	pthread_mutex_t	mutex;
 };
 
 #endif /* ! _SYS__PTHREADTYPES_H_ */

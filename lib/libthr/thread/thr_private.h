@@ -278,11 +278,6 @@ struct pthread_rwlockattr {
 	int		pshared;
 };
 
-struct pthread_rwlock {
-	struct urwlock 	lock;
-	struct pthread	*owner;
-};
-
 /*
  * Thread states.
  */

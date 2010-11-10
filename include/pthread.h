@@ -105,7 +105,7 @@
 
 #define PTHREAD_COND_INITIALIZER				\
 	{0, 0, 0, 0, 0, 0, 0, 0, 0, CLOCK_REALTIME}
-#define PTHREAD_RWLOCK_INITIALIZER	NULL
+#define PTHREAD_RWLOCK_INITIALIZER { .__owner.__ownertd = 0, 0, 0, 0, 0}
 
 /*
  * Default attribute arguments (draft 4, deprecated).
@@ -181,6 +181,18 @@ struct pthread_cond {
 	__uint32_t	__kern_has_waiters;
 	__uint32_t	__flags;
 	__uint32_t	__clock_id;
+};
+
+struct pthread_rwlock {
+	union {
+		__uint32_t	__ownertid;
+		struct pthread *__ownertd;
+		char		__pad[8];
+	} __owner;
+	__uint32_t	__state;
+	__uint32_t	__flags;
+	__uint32_t	__blocked_readers;
+	__uint32_t	__blocked_writers;
 };
 
 /*

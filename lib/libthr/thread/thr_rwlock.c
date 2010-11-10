@@ -29,6 +29,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "namespace.h"
 #include <pthread.h>
@@ -45,89 +46,66 @@ __weak_reference(_pthread_rwlock_unlock, pthread_rwlock_unlock);
 __weak_reference(_pthread_rwlock_wrlock, pthread_rwlock_wrlock);
 __weak_reference(_pthread_rwlock_timedwrlock, pthread_rwlock_timedwrlock);
 
-#define CHECK_AND_INIT_RWLOCK							\
-	if (__predict_false((prwlock = (*rwlock)) <= THR_RWLOCK_DESTROYED)) {	\
-		if (prwlock == THR_RWLOCK_INITIALIZER) {			\
-			int ret;						\
-			ret = init_static(_get_curthread(), rwlock);		\
-			if (ret)						\
-				return (ret);					\
-		} else if (prwlock == THR_RWLOCK_DESTROYED) {			\
-			return (EINVAL);					\
-		}								\
-		prwlock = *rwlock;						\
-	}
+typedef struct pthread_rwlock *pthread_rwlock_old_t;
+
+int _pthread_rwlock_destroy_1_0(pthread_rwlock_old_t *);
+int _pthread_rwlock_init_1_0(pthread_rwlock_old_t *,
+	const pthread_rwlockattr_t *);
+int _pthread_rwlock_timedrdlock_1_0(pthread_rwlock_old_t *,
+	const struct timespec *);
+int _pthread_rwlock_tryrdlock_1_0(pthread_rwlock_old_t *);
+int _pthread_rwlock_trywrlock_1_0(pthread_rwlock_old_t *);
+int _pthread_rwlock_rdlock_1_0(pthread_rwlock_old_t *, const struct timespec *);
+int _pthread_rwlock_unlock_1_0(pthread_rwlock_old_t *);
+
+#define RWL_PSHARED(rwp)	((rwp->__flags & USYNC_PROCESS_SHARED) != 0)
 
 /*
  * Prototypes
  */
 
 static int
-rwlock_init(pthread_rwlock_t *rwlock, const pthread_rwlockattr_t *attr __unused)
+rwlock_init(struct pthread_rwlock *rwp, const pthread_rwlockattr_t *attr)
 {
-	pthread_rwlock_t prwlock;
 
-	prwlock = (pthread_rwlock_t)calloc(1, sizeof(struct pthread_rwlock));
-	if (prwlock == NULL)
-		return (ENOMEM);
-	*rwlock = prwlock;
+	memset(rwp, 0, sizeof(*rwp));
+	if (attr == NULL || *attr == NULL)
+		return (0);
+	else {
+		if ((*attr)->pshared)
+			rwp->__flags |= USYNC_PROCESS_SHARED;
+	}
+
+	return (0);
+}
+
+static int
+rwlock_destroy_common(struct pthread_rwlock *rwp)
+{
+	if (rwp->__state != 0)
+		return (EBUSY);
 	return (0);
 }
 
 int
-_pthread_rwlock_destroy (pthread_rwlock_t *rwlock)
+_pthread_rwlock_destroy (pthread_rwlock_t *rwp)
 {
-	pthread_rwlock_t prwlock;
-	int ret;
-
-	prwlock = *rwlock;
-	if (prwlock == THR_RWLOCK_INITIALIZER)
-		ret = 0;
-	else if (prwlock == THR_RWLOCK_DESTROYED)
-		ret = EINVAL;
-	else {
-		*rwlock = THR_RWLOCK_DESTROYED;
-
-		free(prwlock);
-		ret = 0;
-	}
-	return (ret);
-}
-
-static int
-init_static(struct pthread *thread, pthread_rwlock_t *rwlock)
-{
-	int ret;
-
-	THR_LOCK_ACQUIRE(thread, &_rwlock_static_lock);
-
-	if (*rwlock == THR_RWLOCK_INITIALIZER)
-		ret = rwlock_init(rwlock, NULL);
-	else
-		ret = 0;
-
-	THR_LOCK_RELEASE(thread, &_rwlock_static_lock);
-
-	return (ret);
+	return rwlock_destroy_common(rwp);
 }
 
 int
-_pthread_rwlock_init (pthread_rwlock_t *rwlock, const pthread_rwlockattr_t *attr)
+_pthread_rwlock_init(pthread_rwlock_t *rwp, const pthread_rwlockattr_t *attr)
 {
-	*rwlock = NULL;
-	return (rwlock_init(rwlock, attr));
+	return (rwlock_init(rwp, attr));
 }
 
 static int
-rwlock_rdlock_common(pthread_rwlock_t *rwlock, const struct timespec *abstime)
+rwlock_rdlock_common(struct pthread_rwlock *rwlp, const struct timespec *abstime)
 {
 	struct pthread *curthread = _get_curthread();
-	pthread_rwlock_t prwlock;
 	struct timespec ts, ts2, *tsp;
 	int flags;
-	int ret;
-
-	CHECK_AND_INIT_RWLOCK
+	int error;
 
 	if (curthread->rdlock_count) {
 		/*
@@ -148,13 +126,13 @@ rwlock_rdlock_common(pthread_rwlock_t *rwlock, const struct timespec *abstime)
 	}
 
 	/*
-	 * POSIX said the validity of the abstimeout parameter need
+	 * POSIX said the validity of the abstime parameter need
 	 * not be checked if the lock can be immediately acquired.
 	 */
-	ret = _thr_rwlock_tryrdlock(&prwlock->lock, flags);
-	if (ret == 0) {
+	error = _thr_rwlock_tryrdlock((struct urwlock *)&rwlp->__state, flags);
+	if (error == 0) {
 		curthread->rdlock_count++;
-		return (ret);
+		return (error);
 	}
 
 	if (__predict_false(abstime && 
@@ -173,43 +151,40 @@ rwlock_rdlock_common(pthread_rwlock_t *rwlock, const struct timespec *abstime)
 			tsp = NULL;
 
 		/* goto kernel and lock it */
-		ret = __thr_rwlock_rdlock(&prwlock->lock, flags, tsp);
-		if (ret != EINTR)
+		error = __thr_rwlock_rdlock((struct urwlock *)&rwlp->__state, flags, tsp);
+		if (error != EINTR)
 			break;
 
 		/* if interrupted, try to lock it in userland again. */
-		if (_thr_rwlock_tryrdlock(&prwlock->lock, flags) == 0) {
-			ret = 0;
+		if (_thr_rwlock_tryrdlock((struct urwlock *)&rwlp->__state, flags) == 0) {
+			error = 0;
 			break;
 		}
 	}
-	if (ret == 0)
+	if (error == 0)
 		curthread->rdlock_count++;
-	return (ret);
+	return (error);
 }
 
 int
-_pthread_rwlock_rdlock (pthread_rwlock_t *rwlock)
+_pthread_rwlock_rdlock (pthread_rwlock_t *rwlp)
 {
-	return (rwlock_rdlock_common(rwlock, NULL));
+	return (rwlock_rdlock_common(rwlp, NULL));
 }
 
 int
-_pthread_rwlock_timedrdlock (pthread_rwlock_t *rwlock,
-	 const struct timespec *abstime)
+_pthread_rwlock_timedrdlock (pthread_rwlock_t *rwlp,
+	const struct timespec *abstime)
 {
-	return (rwlock_rdlock_common(rwlock, abstime));
+	return (rwlock_rdlock_common(rwlp, abstime));
 }
 
 int
-_pthread_rwlock_tryrdlock (pthread_rwlock_t *rwlock)
+_pthread_rwlock_tryrdlock (pthread_rwlock_t *rwlp)
 {
 	struct pthread *curthread = _get_curthread();
-	pthread_rwlock_t prwlock;
 	int flags;
-	int ret;
-
-	CHECK_AND_INIT_RWLOCK
+	int error;
 
 	if (curthread->rdlock_count) {
 		/*
@@ -229,45 +204,48 @@ _pthread_rwlock_tryrdlock (pthread_rwlock_t *rwlock)
 		flags = 0;
 	}
 
-	ret = _thr_rwlock_tryrdlock(&prwlock->lock, flags);
-	if (ret == 0)
+	error = _thr_rwlock_tryrdlock((struct urwlock *)&rwlp->__state, flags);
+	if (error == 0)
 		curthread->rdlock_count++;
-	return (ret);
+	return (error);
+}
+
+static void
+rwlock_setowner(struct pthread_rwlock *rwlp, struct pthread *td)
+{
+	if (!RWL_PSHARED(rwlp))
+		rwlp->__owner.__ownertd = td;
+	else
+		rwlp->__owner.__ownertid = TID(td);
 }
 
 int
-_pthread_rwlock_trywrlock (pthread_rwlock_t *rwlock)
+_pthread_rwlock_trywrlock (pthread_rwlock_t *rwlp)
 {
 	struct pthread *curthread = _get_curthread();
-	pthread_rwlock_t prwlock;
-	int ret;
+	int error;
 
-	CHECK_AND_INIT_RWLOCK
-
-	ret = _thr_rwlock_trywrlock(&prwlock->lock);
-	if (ret == 0)
-		prwlock->owner = curthread;
-	return (ret);
+	error = _thr_rwlock_trywrlock((struct urwlock *)&rwlp->__state);
+	if (error == 0)
+		rwlock_setowner(rwlp, curthread);
+	return (error);
 }
 
 static int
-rwlock_wrlock_common (pthread_rwlock_t *rwlock, const struct timespec *abstime)
+rwlock_wrlock_common(pthread_rwlock_t *rwlp, const struct timespec *abstime)
 {
 	struct pthread *curthread = _get_curthread();
-	pthread_rwlock_t prwlock;
 	struct timespec ts, ts2, *tsp;
-	int ret;
-
-	CHECK_AND_INIT_RWLOCK
+	int error;
 
 	/*
-	 * POSIX said the validity of the abstimeout parameter need
+	 * POSIX said the validity of the abstime parameter need
 	 * not be checked if the lock can be immediately acquired.
 	 */
-	ret = _thr_rwlock_trywrlock(&prwlock->lock);
-	if (ret == 0) {
-		prwlock->owner = curthread;
-		return (ret);
+	error = _thr_rwlock_trywrlock((struct urwlock *)&rwlp->__state);
+	if (error == 0) {
+		rwlock_setowner(rwlp, curthread);
+		return (error);
 	}
 
 	if (__predict_false(abstime && 
@@ -286,61 +264,196 @@ rwlock_wrlock_common (pthread_rwlock_t *rwlock, const struct timespec *abstime)
 			tsp = NULL;
 
 		/* goto kernel and lock it */
-		ret = __thr_rwlock_wrlock(&prwlock->lock, tsp);
-		if (ret == 0) {
-			prwlock->owner = curthread;
+		error = __thr_rwlock_wrlock((struct urwlock *)&rwlp->__state, tsp);
+		if (error == 0) {
+			rwlock_setowner(rwlp, curthread);
 			break;
 		}
 
-		if (ret != EINTR)
+		if (error != EINTR)
 			break;
 
 		/* if interrupted, try to lock it in userland again. */
-		if (_thr_rwlock_trywrlock(&prwlock->lock) == 0) {
-			ret = 0;
-			prwlock->owner = curthread;
+		if (_thr_rwlock_trywrlock((struct urwlock *)&rwlp->__state) == 0) {
+			error = 0;
+			rwlock_setowner(rwlp, curthread);
 			break;
 		}
 	}
-	return (ret);
+	return (error);
 }
 
 int
-_pthread_rwlock_wrlock (pthread_rwlock_t *rwlock)
+_pthread_rwlock_wrlock (pthread_rwlock_t *rwlp)
 {
-	return (rwlock_wrlock_common (rwlock, NULL));
+	return (rwlock_wrlock_common(rwlp, NULL));
 }
 
 int
-_pthread_rwlock_timedwrlock (pthread_rwlock_t *rwlock,
-    const struct timespec *abstime)
+_pthread_rwlock_timedwrlock(pthread_rwlock_t *rwlp,
+	const struct timespec *abstime)
 {
-	return (rwlock_wrlock_common (rwlock, abstime));
+	return (rwlock_wrlock_common(rwlp, abstime));
 }
 
 int
-_pthread_rwlock_unlock (pthread_rwlock_t *rwlock)
+_pthread_rwlock_unlock(pthread_rwlock_t *rwlp)
 {
 	struct pthread *curthread = _get_curthread();
-	pthread_rwlock_t prwlock;
-	int ret;
-	int32_t state;
+	int error;
+	uint32_t state;
 
-	prwlock = *rwlock;
-
-	if (__predict_false(prwlock <= THR_RWLOCK_DESTROYED))
-		return (EINVAL);
-
-	state = prwlock->lock.rw_state;
+	state = rwlp->__state;
 	if (state & URWLOCK_WRITE_OWNER) {
-		if (__predict_false(prwlock->owner != curthread))
+		if (RWL_PSHARED(rwlp) &&
+		    rwlp->__owner.__ownertid == TID(curthread)) {
+			rwlp->__owner.__ownertid = 0;
+		} else if (!RWL_PSHARED(rwlp) &&
+		         rwlp->__owner.__ownertd == curthread) {
+			rwlp->__owner.__ownertd = NULL;
+		} else
 			return (EPERM);
-		prwlock->owner = NULL;
+	}
+	error = _thr_rwlock_unlock((struct urwlock *)&rwlp->__state);
+	if (error == 0 && (state & URWLOCK_WRITE_OWNER) == 0)
+		curthread->rdlock_count--;
+	return (error);
+}
+
+#define CHECK_AND_INIT_RWLOCK							\
+	if (__predict_false((rwlp = (*rwlpp)) <= THR_RWLOCK_DESTROYED)) {	\
+		if (rwlp == THR_RWLOCK_INITIALIZER) {				\
+			int error;						\
+			error = init_static(_get_curthread(), rwlpp);		\
+			if (error)						\
+				return (error);					\
+		} else if (rwlp == THR_RWLOCK_DESTROYED) {			\
+			return (EINVAL);					\
+		}								\
+		*rwlpp = rwlp;							\
 	}
 
-	ret = _thr_rwlock_unlock(&prwlock->lock);
-	if (ret == 0 && (state & URWLOCK_WRITE_OWNER) == 0)
-		curthread->rdlock_count--;
+static int
+rwlock_init_old(pthread_rwlock_old_t *rwlpp, const pthread_rwlockattr_t *attr)
+{
+	struct pthread_rwlock *rwlp;
+	int error;
 
-	return (ret);
+	rwlp = (struct pthread_rwlock *)malloc(sizeof(struct pthread_rwlock));
+	if (rwlp == NULL)
+		return (ENOMEM);
+	error = rwlock_init(rwlp, attr);
+	if (error) {
+		free(rwlp);
+		return (error);
+	}
+	*rwlpp = rwlp;
+	return (0);
 }
+
+static int
+init_static(struct pthread *thread, pthread_rwlock_old_t *rwlpp)
+{
+	int	error;
+
+	THR_LOCK_ACQUIRE(thread, &_rwlock_static_lock);
+
+	if (*rwlpp == THR_RWLOCK_INITIALIZER)
+		error = rwlock_init_old(rwlpp, NULL);
+	else
+		error = 0;
+
+	THR_LOCK_RELEASE(thread, &_rwlock_static_lock);
+
+	return (error);
+}
+
+int
+_pthread_rwlock_destroy_1_0(pthread_rwlock_old_t *rwlpp)
+{
+	struct pthread_rwlock	*rwlp;
+	int	error;
+
+	rwlp = *rwlpp;
+	if (rwlp == THR_RWLOCK_INITIALIZER)
+		error = 0;
+	else if (rwlp == THR_RWLOCK_DESTROYED)
+		error = EINVAL;
+	else {
+		error = rwlock_destroy_common(rwlp);
+		if (error)
+			return (error);
+		*rwlpp = THR_RWLOCK_DESTROYED;
+		free(rwlp);
+	}
+	return (error);
+}
+
+int
+_pthread_rwlock_init_1_0(pthread_rwlock_old_t *rwlpp, const pthread_rwlockattr_t *attr)
+{
+	*rwlpp = NULL;
+	return (rwlock_init_old(rwlpp, attr));
+}
+
+int
+_pthread_rwlock_timedrdlock_1_0(pthread_rwlock_old_t *rwlpp,
+	 const struct timespec *abstime)
+{
+	struct pthread_rwlock *rwlp;
+
+	CHECK_AND_INIT_RWLOCK
+	
+	return (rwlock_rdlock_common(rwlp, abstime));
+}
+
+int
+_pthread_rwlock_tryrdlock_1_0(pthread_rwlock_old_t *rwlpp)
+{
+	struct pthread_rwlock *rwlp;
+
+	CHECK_AND_INIT_RWLOCK
+	
+	return _pthread_rwlock_tryrdlock(rwlp);
+}
+
+int
+_pthread_rwlock_trywrlock_1_0(pthread_rwlock_old_t *rwlpp)
+{
+	struct pthread_rwlock *rwlp;
+
+	CHECK_AND_INIT_RWLOCK
+	
+	return _pthread_rwlock_trywrlock(rwlp);
+}
+
+int
+_pthread_rwlock_rdlock_1_0(pthread_rwlock_old_t *rwlpp, const struct timespec *abstime)
+{
+	struct pthread_rwlock *rwlp;
+
+	CHECK_AND_INIT_RWLOCK
+	
+	return rwlock_rdlock_common(rwlp, abstime);
+}
+
+int
+_pthread_rwlock_unlock_1_0(pthread_rwlock_old_t *rwlpp)
+{
+	struct pthread_rwlock *rwlp;
+
+	rwlp = *rwlpp;
+	if (__predict_false(rwlp <= THR_RWLOCK_DESTROYED))
+		return (EINVAL);
+	return _pthread_rwlock_unlock(rwlp);
+}
+
+FB10_COMPAT(_pthread_rwlock_destroy_1_0, pthread_rwlock_destroy);
+FB10_COMPAT(_pthread_rwlock_init_1_0, pthread_rwlock_init);
+FB10_COMPAT(_pthread_rwlock_rdlock_1_0, pthread_rwlock_rdlock);
+FB10_COMPAT(_pthread_rwlock_timedrdlock_1_0, pthread_rwlock_timedrdlock);
+FB10_COMPAT(_pthread_rwlock_tryrdlock_1_0, pthread_rwlock_tryrdlock);
+FB10_COMPAT(_pthread_rwlock_trywrlock_1_0, pthread_rwlock_trywrlock);
+FB10_COMPAT(_pthread_rwlock_unlock_1_0, pthread_rwlock_unlock);
+FB10_COMPAT(_pthread_rwlock_wrlock_1_0, pthread_rwlock_wrlock);
+FB10_COMPAT(_pthread_rwlock_timedwrlock_1_0, pthread_rwlock_timedwrlock);
