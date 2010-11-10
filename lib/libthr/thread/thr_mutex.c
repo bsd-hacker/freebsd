@@ -1101,12 +1101,9 @@ _pthread_mutex_init_calloc_cb(pthread_mutex_t *mp,
 		.m_robust = PTHREAD_MUTEX_STALLED
 	};
 	int	error;
-	_thread_printf(2, "%s mp=%p\n", __func__, mp);
 	error = mutex_init(mp, &attr);
-	if (error == 0) {
+	if (error == 0)
 		mp->__flags |= PMUTEX_FLAG_PRIVATE;
-	}
-	_thread_printf(2, "%s init erro=%dr\n", __func__, error);
 	return (error);
 }
 

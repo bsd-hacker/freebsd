@@ -97,23 +97,20 @@ _pthread_cond_init(pthread_cond_t *cond, const pthread_condattr_t *cond_attr)
 	return (cond_init(cond, cond_attr));
 }
 
-int
-_pthread_cond_destroy(pthread_cond_t *cvp)
+static int
+cond_destroy_common(pthread_cond_t *cvp)
 {
 	int	error = 0;
 
 	if (cvp->__refcount == 0)
 		goto next;
 	_thr_umtx_lock_spin(&cvp->__lock);
+	if (cvp->__waiters > 0) {
+		_thr_umtx_unlock(&cvp->__lock);
+		return (EBUSY);
+	}
 	while (cvp->__refcount != 0) {
 		cvp->__destroying = 1;
-		if (cvp->__waiters > 0) {
-			cvp->__seq++;
-			cvp->__broadcast_seq++;
-			cvp->__waiters = 0;
-			cvp->__signals = 0;
-			_thr_umtx_wake(&cvp->__seq, INT_MAX, CV_PSHARED(cvp));
-		}
 		_thr_umtx_unlock(&cvp->__lock);
 		_thr_umtx_wait_uint((u_int *)&cvp->__destroying,
 				1, NULL, CV_PSHARED(cvp));
@@ -123,6 +120,12 @@ _pthread_cond_destroy(pthread_cond_t *cvp)
 next:
 	_thr_ucond_broadcast((struct ucond *)&cvp->__kern_has_waiters);
 	return (error);
+}
+
+int
+_pthread_cond_destroy(pthread_cond_t *cvp)
+{
+	return cond_destroy_common(cvp);
 }
 
 /*
@@ -282,7 +285,7 @@ cond_wait_common(struct pthread_cond *cvp, struct pthread_mutex *mp,
 	 * Note that if it is robust type of mutex, we should not use
 	 * the internal lock too, because it is not robust.
 	 */
-	if (1 || curthread->attr.sched_policy != SCHED_OTHER ||
+	if (curthread->attr.sched_policy != SCHED_OTHER ||
 	    curthread->priority_mutex_count != 0  ||
 	    (mp->__lockflags & (UMUTEX_PRIO_PROTECT|UMUTEX_PRIO_INHERIT|
 		UMUTEX_ROBUST)) != 0)
@@ -451,13 +454,10 @@ _pthread_cond_destroy_1_0(pthread_cond_old_t *cond)
 		error = EINVAL;
 	else {
 		cvp = *cond;
-		/* XXX */
+		error = cond_destroy_common(cvp);
+		if (error)
+			return (error);
 		*cond = THR_COND_DESTROYED;
-
-		/*
-		 * Free the memory allocated for the condition
-		 * variable structure:
-		 */
 		free(cvp);
 	}
 	return (error);
