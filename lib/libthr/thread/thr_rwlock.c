@@ -1,4 +1,5 @@
 /*-
+ * Copyright (c) 2010 David Xu <davidxu@FreeBSD.org>
  * Copyright (c) 1998 Alex Nash
  * All rights reserved.
  *
@@ -53,9 +54,12 @@ int _pthread_rwlock_init_1_0(pthread_rwlock_old_t *,
 	const pthread_rwlockattr_t *);
 int _pthread_rwlock_timedrdlock_1_0(pthread_rwlock_old_t *,
 	const struct timespec *);
+int _pthread_rwlock_timedwrlock_1_0(pthread_rwlock_old_t *,
+	const struct timespec *);
 int _pthread_rwlock_tryrdlock_1_0(pthread_rwlock_old_t *);
 int _pthread_rwlock_trywrlock_1_0(pthread_rwlock_old_t *);
-int _pthread_rwlock_rdlock_1_0(pthread_rwlock_old_t *, const struct timespec *);
+int _pthread_rwlock_rdlock_1_0(pthread_rwlock_old_t *);
+int _pthread_rwlock_wrlock_1_0(pthread_rwlock_old_t *);
 int _pthread_rwlock_unlock_1_0(pthread_rwlock_old_t *);
 
 #define RWL_PSHARED(rwp)	((rwp->__flags & USYNC_PROCESS_SHARED) != 0)
@@ -408,6 +412,17 @@ _pthread_rwlock_timedrdlock_1_0(pthread_rwlock_old_t *rwlpp,
 }
 
 int
+_pthread_rwlock_timedwrlock_1_0(pthread_rwlock_old_t *rwlpp,
+	 const struct timespec *abstime)
+{
+	struct pthread_rwlock *rwlp;
+
+	CHECK_AND_INIT_RWLOCK
+	
+	return (rwlock_wrlock_common(rwlp, abstime));
+}
+
+int
 _pthread_rwlock_tryrdlock_1_0(pthread_rwlock_old_t *rwlpp)
 {
 	struct pthread_rwlock *rwlp;
@@ -428,13 +443,23 @@ _pthread_rwlock_trywrlock_1_0(pthread_rwlock_old_t *rwlpp)
 }
 
 int
-_pthread_rwlock_rdlock_1_0(pthread_rwlock_old_t *rwlpp, const struct timespec *abstime)
+_pthread_rwlock_rdlock_1_0(pthread_rwlock_old_t *rwlpp)
 {
 	struct pthread_rwlock *rwlp;
 
 	CHECK_AND_INIT_RWLOCK
 	
-	return rwlock_rdlock_common(rwlp, abstime);
+	return rwlock_rdlock_common(rwlp, NULL);
+}
+
+int
+_pthread_rwlock_wrlock_1_0(pthread_rwlock_old_t *rwlpp)
+{
+	struct pthread_rwlock *rwlp;
+
+	CHECK_AND_INIT_RWLOCK
+
+	return (rwlock_wrlock_common(rwlp, NULL));
 }
 
 int
