@@ -152,3 +152,4 @@ SSP_CFLAGS:=	${SSP_CFLAGS:S/^-fstack-protector-all$/-fstack-protector/}
 SSP_CFLAGS:=	${.IMPSRC:N*/stack_protector.c:C/^.+$/${SSP_CFLAGS}/}
 # Generate stack unwinding tables for cancellation points
 CANCELPOINTS_CFLAGS:=	${.IMPSRC:Mcancelpoints_*:C/^.+$/${CANCELPOINTS_CFLAGS}/:C/^$//}
+CFLAGS+=-g -O0

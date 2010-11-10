@@ -67,7 +67,7 @@ _flockfile(FILE *fp)
 		 * Make sure this mutex is treated as a private
 		 * internal mutex:
 		 */
-		_pthread_mutex_lock(&fp->_fl_mutex);
+		_pthread_mutex_lock(fp->_fl_mutex);
 		fp->_fl_owner = curthread;
 		fp->_fl_count = 1;
 	}
@@ -94,7 +94,7 @@ _ftrylockfile(FILE *fp)
 	 * Make sure this mutex is treated as a private
 	 * internal mutex:
 	 */
-	else if (_pthread_mutex_trylock(&fp->_fl_mutex) == 0) {
+	else if (_pthread_mutex_trylock(fp->_fl_mutex) == 0) {
 		fp->_fl_owner = curthread;
 		fp->_fl_count = 1;
 	}
@@ -130,7 +130,7 @@ _funlockfile(FILE *fp)
 			 */
 			fp->_fl_count = 0;
 			fp->_fl_owner = NULL;
-			_pthread_mutex_unlock(&fp->_fl_mutex);
+			_pthread_mutex_unlock(fp->_fl_mutex);
 		}
 	}
 }

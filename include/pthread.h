@@ -92,14 +92,19 @@
 /*
  * Static once initialization values. 
  */
-#define PTHREAD_ONCE_INIT   { PTHREAD_NEEDS_INIT, NULL }
+#define PTHREAD_ONCE_INIT   { PTHREAD_NEEDS_INIT }
 
 /*
  * Static initialization values. 
  */
-#define PTHREAD_MUTEX_INITIALIZER	NULL
-#define PTHREAD_ADAPTIVE_MUTEX_INITIALIZER_NP	((pthread_mutex_t)1)
-#define PTHREAD_COND_INITIALIZER	NULL
+#define PTHREAD_MUTEX_INITIALIZER				\
+	{PTHREAD_MUTEX_DEFAULT, 0, 0, NULL, 0, 0x0010, {0, 0}, 0, 0}
+
+#define PTHREAD_ADAPTIVE_MUTEX_INITIALIZER_NP			\
+	{PTHREAD_MUTEX_DEFAULT, 2000, 0, NULL, 0, 0x0010, {0, 0}, 0, 0}
+
+#define PTHREAD_COND_INITIALIZER				\
+	{0, 0, 0, 0, 0, 0, 0, 0, 0, CLOCK_REALTIME}
 #define PTHREAD_RWLOCK_INITIALIZER	NULL
 
 /*
@@ -148,7 +153,34 @@ enum pthread_rwlocktype_np
 };
 
 struct _pthread_cleanup_info {
-	__uintptr_t	pthread_cleanup_pad[8];
+	__uintptr_t	__pthread_cleanup_pad[8];
+};
+
+struct pthread_mutex {
+	__int16_t	__flags;
+	__int16_t	__spinloops;
+	__int32_t	__recurse;
+	struct pthread	*__ownertd;
+	/* kernel umtx part */
+	volatile __uint32_t	__lockword;
+	__uint32_t	__lockflags;
+	__uint32_t	__ceilings[2];
+	__uint8_t		__robstate;
+	__uint8_t		__pad1;
+};
+
+struct pthread_cond {
+	__uint32_t	__lock;
+	int		__waiters;
+	int		__signals;
+	__uint32_t	__seq;
+	__uint64_t	__broadcast_seq;
+	int		__refcount;
+	int		__destroying;
+	/* kernel part */
+	__uint32_t	__kern_has_waiters;
+	__uint32_t	__flags;
+	__uint32_t	__clock_id;
 };
 
 /*

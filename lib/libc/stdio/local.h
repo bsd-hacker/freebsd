@@ -114,7 +114,7 @@ extern int	__sdidinit;
  */
 #define	FAKE_FILE {				\
 	._file = -1,				\
-	._fl_mutex = PTHREAD_MUTEX_INITIALIZER, \
+	._fl_mutex = NULL,			\
 }
 
 /*

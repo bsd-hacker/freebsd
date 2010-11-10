@@ -53,7 +53,9 @@
 #include <pthread.h>
 
 #define	SYM_FB10(sym)			__CONCAT(sym, _fb10)
+#define	SYM_FB11(sym)			__CONCAT(sym, _fb11)
 #define	SYM_FBP10(sym)			__CONCAT(sym, _fbp10)
+#define	SYM_FBP11(sym)			__CONCAT(sym, _fbp11)
 #define	WEAK_REF(sym, alias)		__weak_reference(sym, alias)
 #define	SYM_COMPAT(sym, impl, ver)	__sym_compat(sym, impl, ver)
 #define	SYM_DEFAULT(sym, impl, ver)	__sym_default(sym, impl, ver)
@@ -61,6 +63,10 @@
 #define	FB10_COMPAT(func, sym)				\
 	WEAK_REF(func, SYM_FB10(sym));			\
 	SYM_COMPAT(sym, SYM_FB10(sym), FBSD_1.0)
+
+#define	FB11_COMPAT(func, sym)				\
+	WEAK_REF(func, SYM_FB10(sym));			\
+	SYM_COMPAT(sym, SYM_FB10(sym), FBSD_1.1)
 
 #define	FB10_COMPAT_PRIVATE(func, sym)			\
 	WEAK_REF(func, SYM_FBP10(sym));			\
@@ -144,36 +150,12 @@ TAILQ_HEAD(mutex_link_list, mutex_link);
 #define PMUTEX_FLAG_PRIVATE	0x100
 #define PMUTEX_TYPE(mtxflags)	((mtxflags) & PMUTEX_FLAG_TYPE_MASK)
 
-struct pthread_mutex {
-	struct umutex		m_lock;
-	struct pthread		*m_ownertd;
-	int			m_recurse;
-	int			m_mtxflags;
-	uint16_t		m_spinloops;
-	uint16_t		m_yieldloops;
-};
-
 struct pthread_mutex_attr {
 	enum pthread_mutextype	m_type;
 	int			m_protocol;
 	int			m_ceiling;
 	int			m_pshared;
 	int			m_robust;
-};
-
-struct pthread_cond {
-	struct ucond	c_kerncv;
-	/*
-	 * Following is userlevel condition variable which is
-	 * used for time-sharing scheduling, it is a bit fast.
-	 */
-	uint32_t	c_lock;
-	int		c_waiters;
-	int		c_signals;
-	uint32_t	c_seq;
-	uint64_t	c_broadcast_seq;
-	int		c_refcount;
-	int		c_destroying;
 };
 
 struct pthread_cond_attr {
@@ -837,6 +819,11 @@ struct dl_phdr_info;
 void __pthread_cxa_finalize(struct dl_phdr_info *phdr_info);
 void _thr_tsd_unload(struct dl_phdr_info *phdr_info) __hidden;
 void _thr_sigact_unload(struct dl_phdr_info *phdr_info) __hidden;
+
+typedef struct pthread_mutex *pthread_mutex_old_t;
+typedef struct pthread_cond *pthread_cond_old_t;
+int _mutex_owned_old(struct pthread *, pthread_mutex_old_t *);
+
 __END_DECLS
 
 #endif  /* !_THR_PRIVATE_H */

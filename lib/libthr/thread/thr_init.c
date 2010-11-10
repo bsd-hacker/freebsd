@@ -237,9 +237,9 @@ static pthread_func_t jmp_table[][2] = {
 	{DUAL_ENTRY(_pthread_mutexattr_settype)}, /* PJT_MUTEXATTR_SETTYPE */
 	{DUAL_ENTRY(_pthread_mutex_destroy)},	/* PJT_MUTEX_DESTROY */
 	{DUAL_ENTRY(_pthread_mutex_init)},	/* PJT_MUTEX_INIT */
-	{(pthread_func_t)__pthread_mutex_lock,
+	{(pthread_func_t)_pthread_mutex_lock,
 	 (pthread_func_t)_pthread_mutex_lock},	/* PJT_MUTEX_LOCK */
-	{(pthread_func_t)__pthread_mutex_trylock,
+	{(pthread_func_t)_pthread_mutex_trylock,
 	 (pthread_func_t)_pthread_mutex_trylock},/* PJT_MUTEX_TRYLOCK */
 	{DUAL_ENTRY(_pthread_mutex_unlock)},	/* PJT_MUTEX_UNLOCK */
 	{DUAL_ENTRY(_pthread_once)},		/* PJT_ONCE */

@@ -41,6 +41,7 @@ __FBSDID("$FreeBSD$");
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -297,7 +298,8 @@ __opendir_common(int fd, const char *name, int flags)
 	dirp->dd_loc = 0;
 	dirp->dd_fd = fd;
 	dirp->dd_flags = flags;
-	dirp->dd_lock = NULL;
+	dirp->dd_lock = malloc(sizeof(struct pthread_mutex));
+	_pthread_mutex_init(dirp->dd_lock, NULL);
 
 	/*
 	 * Set up seek point for rewinddir.

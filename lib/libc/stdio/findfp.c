@@ -36,6 +36,7 @@ static char sccsid[] = "@(#)findfp.c	8.2 (Berkeley) 1/4/94";
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include "namespace.h"
 #include <sys/param.h>
 #include <machine/atomic.h>
 #include <unistd.h>
@@ -48,12 +49,14 @@ __FBSDID("$FreeBSD$");
 #include "libc_private.h"
 #include "local.h"
 #include "glue.h"
+#include "un-namespace.h"
 
 int	__sdidinit;
 
 #define	NDYNAMIC 10		/* add ten more whenever necessary */
 
-#define	std(flags, file) {		\
+
+#define	std(flags, file, lock) {		\
 	._flags = (flags),		\
 	._file = (file),		\
 	._cookie = __sF + (file),	\
@@ -61,16 +64,21 @@ int	__sdidinit;
 	._read = __sread,		\
 	._seek = __sseek,		\
 	._write = __swrite,		\
-	._fl_mutex = PTHREAD_MUTEX_INITIALIZER, \
+	._fl_mutex = &lock,		\
 }
 				/* the usual - (stdin + stdout + stderr) */
 static FILE usual[FOPEN_MAX - 3];
 static struct glue uglue = { NULL, FOPEN_MAX - 3, usual };
+static pthread_mutex_t sfLOCK[3] = {
+	PTHREAD_MUTEX_INITIALIZER,
+	PTHREAD_MUTEX_INITIALIZER,
+	PTHREAD_MUTEX_INITIALIZER
+};
 
 static FILE __sF[3] = {
-	std(__SRD, STDIN_FILENO),
-	std(__SWR, STDOUT_FILENO),
-	std(__SWR|__SNBF, STDERR_FILENO)
+	std(__SRD, STDIN_FILENO, sfLOCK[0]),
+	std(__SWR, STDOUT_FILENO, sfLOCK[1]),
+	std(__SWR|__SNBF, STDERR_FILENO, sfLOCK[2])
 };
 
 FILE *__stdinp = &__sF[0];
@@ -97,7 +105,7 @@ moreglue(n)
 	int n;
 {
 	struct glue *g;
-	static FILE empty = { ._fl_mutex = PTHREAD_MUTEX_INITIALIZER };
+	static FILE empty = { ._fl_mutex = NULL };
 	FILE *p;
 
 	g = (struct glue *)malloc(sizeof(*g) + ALIGNBYTES + n * sizeof(FILE));
@@ -155,7 +163,10 @@ found:
 	fp->_ub._size = 0;
 	fp->_lb._base = NULL;	/* no line buffer */
 	fp->_lb._size = 0;
-/*	fp->_fl_mutex = NULL; */ /* once set always set (reused) */
+	if (fp->_fl_mutex == NULL) { /* once set always set (reused) */
+		fp->_fl_mutex = malloc(sizeof(struct pthread_mutex));
+		_pthread_mutex_init(fp->_fl_mutex, NULL);
+	}
 	fp->_orientation = 0;
 	memset(&fp->_mbstate, 0, sizeof(mbstate_t));
 	return (fp);
