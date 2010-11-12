@@ -1677,6 +1677,11 @@ usbpf_xfertap(struct usb_xfer *xfer, int type)
 	char *buf, *ptr, *end;
 
 	/*
+	 * XXX check first whether there are any descriptors waiting.  If no
+	 * we don't need to handle this xfer.
+	 */
+
+	/*
 	 * XXX TODO
 	 * Allocating the buffer here causes copy operations twice what's
 	 * really inefficient. Copying usbpf_pkthdr and data is for USB packet
