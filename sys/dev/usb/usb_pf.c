@@ -1317,10 +1317,7 @@ usbpf_attach(struct usb_bus *ubus, struct usbpf_if **driverp)
 {
 	struct usbpf_if *uif;
 
-	uif = malloc(sizeof(*uif), M_USBPF, M_NOWAIT | M_ZERO);
-	if (uif == NULL)
-		panic("usbpf_attach");
-
+	uif = malloc(sizeof(*uif), M_USBPF, M_WAITOK | M_ZERO);
 	LIST_INIT(&uif->uif_dlist);
 	uif->uif_ubus = ubus;
 	mtx_init(&uif->uif_mtx, "usbpf interface lock", NULL, MTX_DEF);
