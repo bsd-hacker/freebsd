@@ -222,8 +222,6 @@ mutex_trylock_common(struct pthread_mutex *mp)
 			      TID(curthread))
 				return mutex_self_trylock(mp);
 		}
-		if ((mp->__lockword & UMUTEX_OWNER_MASK) != 0)
-			return (EBUSY);
 		error = __thr_umutex_trylock((struct umutex *)&mp->__lockword);
 		if (error == 0 || error == EOWNERDEAD)
 			enqueue_mutex(curthread, mp);
