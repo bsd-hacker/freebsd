@@ -105,7 +105,7 @@ int xlr_hwtid_to_cpuid[MAXCPU];
 static void 
 xlr_setup_mmu_split(void)
 {
-	int mmu_setup;
+	uint64_t mmu_setup;
 	int val = 0;
 
 	if (xlr_threads_per_core == 4 && xlr_shtlb_enabled == 0)
@@ -120,7 +120,7 @@ xlr_setup_mmu_split(void)
 		val = 3; break;
 	}
 	
-	mmu_setup = read_32bit_phnx_ctrl_reg(4, 0);
+	mmu_setup = read_xlr_ctrl_register(4, 0);
 	mmu_setup = mmu_setup & ~0x06;
 	mmu_setup |= (val << 1);
 
@@ -128,7 +128,7 @@ xlr_setup_mmu_split(void)
 	if (xlr_shtlb_enabled)
 		mmu_setup |= 0x01;
 
-	write_32bit_phnx_ctrl_reg(4, 0, mmu_setup);
+	write_xlr_ctrl_register(4, 0, mmu_setup);
 }
 
 static void
@@ -167,6 +167,14 @@ xlr_parse_mmu_options(void)
 	 */
 	xlr_ncores = 1;
 	cpu_map = xlr_boot1_info.cpu_online_map;
+
+#ifndef SMP /* Uniprocessor! */
+	if (cpu_map != 0x1) {
+		printf("WARNING: Starting uniprocessor kernel on cpumask [0x%lx]!\n"
+		   "WARNING: Other CPUs will be unused.\n", (u_long)cpu_map);
+		cpu_map = 0x1;
+	}
+#endif
 	core0_thr_mask = cpu_map & 0xf;
 	switch (core0_thr_mask) {
 	case 1:
@@ -188,9 +196,9 @@ xlr_parse_mmu_options(void)
 			xlr_ncores++;
 		}
 	}
+	xlr_hw_thread_mask = cpu_map;
 
 	/* setup hardware processor id to cpu id mapping */
-	xlr_hw_thread_mask = xlr_boot1_info.cpu_online_map;
 	for (i = 0; i< MAXCPU; i++)
 		xlr_cpuid_to_hwtid[i] = 
 		    xlr_hwtid_to_cpuid [i] = -1;
@@ -596,7 +604,6 @@ platform_ipi_send(int cpuid)
 {
 
 	pic_send_ipi(xlr_cpuid_to_hwtid[cpuid], platform_ipi_intrnum());
-
 }
 
 void

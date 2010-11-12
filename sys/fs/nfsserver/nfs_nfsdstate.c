@@ -1085,8 +1085,11 @@ nfsrv_freeopen(struct nfsstate *stp, vnode_t vp, int cansleep, NFSPROC_T *p)
 	 * associated with the open.
 	 * If there are locks associated with the open, the
 	 * nfslockfile structure can be freed via nfsrv_freelockowner().
-	 * (That is why the call must be here instead of after the loop.)
+	 * Acquire the state mutex to avoid races with calls to
+	 * nfsrv_getlockfile().
 	 */
+	if (cansleep != 0)
+		NFSLOCKSTATE();
 	if (lfp != NULL && LIST_EMPTY(&lfp->lf_open) &&
 	    LIST_EMPTY(&lfp->lf_deleg) && LIST_EMPTY(&lfp->lf_lock) &&
 	    LIST_EMPTY(&lfp->lf_locallock) && LIST_EMPTY(&lfp->lf_rollback) &&
@@ -1096,6 +1099,8 @@ nfsrv_freeopen(struct nfsstate *stp, vnode_t vp, int cansleep, NFSPROC_T *p)
 		ret = 1;
 	} else
 		ret = 0;
+	if (cansleep != 0)
+		NFSUNLOCKSTATE();
 	FREE((caddr_t)stp, M_NFSDSTATE);
 	newnfsstats.srvopens--;
 	nfsrv_openpluslock--;
@@ -1132,6 +1137,7 @@ nfsrv_freeallnfslocks(struct nfsstate *stp, vnode_t vp, int cansleep,
 	struct nfslockfile *lfp = NULL;
 	int gottvp = 0;
 	vnode_t tvp = NULL;
+	uint64_t first, end;
 
 	lop = LIST_FIRST(&stp->ls_lock);
 	while (lop != LIST_END(&stp->ls_lock)) {
@@ -1162,14 +1168,16 @@ nfsrv_freeallnfslocks(struct nfsstate *stp, vnode_t vp, int cansleep,
 		if (tvp != NULL) {
 			if (cansleep == 0)
 				panic("allnfs2");
-			nfsrv_localunlock(tvp, lfp, lop->lo_first,
-			    lop->lo_end, p);
+			first = lop->lo_first;
+			end = lop->lo_end;
+			nfsrv_freenfslock(lop);
+			nfsrv_localunlock(tvp, lfp, first, end, p);
 			LIST_FOREACH_SAFE(rlp, &lfp->lf_rollback, rlck_list,
 			    nrlp)
 				free(rlp, M_NFSDROLLBACK);
 			LIST_INIT(&lfp->lf_rollback);
-		}
-		nfsrv_freenfslock(lop);
+		} else
+			nfsrv_freenfslock(lop);
 		lop = nlop;
 	}
 	if (vp == NULL && tvp != NULL)
@@ -4949,31 +4957,56 @@ nfsrv_locallock(vnode_t vp, struct nfslockfile *lfp, int flags,
 
 /*
  * Local lock unlock. Unlock all byte ranges that are no longer locked
- * by NFSv4.
+ * by NFSv4. To do this, unlock any subranges of first-->end that
+ * do not overlap with the byte ranges of any lock in the lfp->lf_lock
+ * list. This list has all locks for the file held by other
+ * <clientid, lockowner> tuples. The list is ordered by increasing
+ * lo_first value, but may have entries that overlap each other, for
+ * the case of read locks.
  */
 static void
 nfsrv_localunlock(vnode_t vp, struct nfslockfile *lfp, uint64_t init_first,
     uint64_t init_end, NFSPROC_T *p)
 {
 	struct nfslock *lop;
-
-	uint64_t first, end;
+	uint64_t first, end, prevfirst;
 
 	first = init_first;
 	end = init_end;
 	while (first < init_end) {
 		/* Loop through all nfs locks, adjusting first and end */
+		prevfirst = 0;
 		LIST_FOREACH(lop, &lfp->lf_lock, lo_lckfile) {
+			KASSERT(prevfirst <= lop->lo_first,
+			    ("nfsv4 locks out of order"));
+			KASSERT(lop->lo_first < lop->lo_end,
+			    ("nfsv4 bogus lock"));
+			prevfirst = lop->lo_first;
 			if (first >= lop->lo_first &&
 			    first < lop->lo_end)
-				/* Overlaps initial part */
+				/*
+				 * Overlaps with initial part, so trim
+				 * off that initial part by moving first past
+				 * it.
+				 */
 				first = lop->lo_end;
 			else if (end > lop->lo_first &&
-			    lop->lo_first >= first)
-				/* Begins before end and past first */
+			    lop->lo_first > first) {
+				/*
+				 * This lock defines the end of the
+				 * segment to unlock, so set end to the
+				 * start of it and break out of the loop.
+				 */
 				end = lop->lo_first;
+				break;
+			}
 			if (first >= end)
-				/* shrunk to 0 so this iteration is done */
+				/*
+				 * There is no segment left to do, so
+				 * break out of this loop and then exit
+				 * the outer while() since first will be set
+				 * to end, which must equal init_end here.
+				 */
 				break;
 		}
 		if (first < end) {
@@ -4983,7 +5016,10 @@ nfsrv_localunlock(vnode_t vp, struct nfslockfile *lfp, uint64_t init_first,
 			nfsrv_locallock_commit(lfp, NFSLCK_UNLOCK,
 			    first, end);
 		}
-		/* and move on to the rest of the range */
+		/*
+		 * Now move past this segment and look for any further
+		 * segment in the range, if there is one.
+		 */
 		first = end;
 		end = init_end;
 	}

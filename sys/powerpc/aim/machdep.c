@@ -245,6 +245,9 @@ extern void	*dsitrap, *dsisize;
 extern void	*decrint, *decrsize;
 extern void     *extint, *extsize;
 extern void	*dblow, *dbsize;
+extern void	*imisstrap, *imisssize;
+extern void	*dlmisstrap, *dlmisssize;
+extern void	*dsmisstrap, *dsmisssize;
 
 uintptr_t
 powerpc_init(vm_offset_t startkernel, vm_offset_t endkernel,
@@ -258,6 +261,7 @@ powerpc_init(vm_offset_t startkernel, vm_offset_t endkernel,
         char		*env;
 	register_t	msr, scratch;
 	uint8_t		*cache_check;
+	int		cacheline_warn;
 	#ifndef __powerpc64__
 	int		ppc64;
 	#endif
@@ -265,6 +269,7 @@ powerpc_init(vm_offset_t startkernel, vm_offset_t endkernel,
 	end = 0;
 	kmdp = NULL;
 	trap_offset = 0;
+	cacheline_warn = 0;
 
 	/*
 	 * Parse metadata if present and fetch parameters.  Must be done
@@ -360,7 +365,8 @@ powerpc_init(vm_offset_t startkernel, vm_offset_t endkernel,
 
 	/*
 	 * Disable translation in case the vector area hasn't been
-	 * mapped (G5).
+	 * mapped (G5). Note that no OFW calls can be made until
+	 * translation is re-enabled.
 	 */
 
 	msr = mfmsr();
@@ -387,7 +393,7 @@ powerpc_init(vm_offset_t startkernel, vm_offset_t endkernel,
 
 	/* Work around psim bug */
 	if (cacheline_size == 0) {
-		printf("WARNING: cacheline size undetermined, setting to 32\n");
+		cacheline_warn = 1;
 		cacheline_size = 32;
 	}
 
@@ -486,8 +492,14 @@ powerpc_init(vm_offset_t startkernel, vm_offset_t endkernel,
 	bcopy(generictrap, (void *)EXC_SC,   (size_t)&trapsize);
 	bcopy(generictrap, (void *)EXC_FPA,  (size_t)&trapsize);
 	bcopy(generictrap, (void *)EXC_VEC,  (size_t)&trapsize);
-	bcopy(generictrap, (void *)EXC_VECAST, (size_t)&trapsize);
-	bcopy(generictrap, (void *)EXC_THRM, (size_t)&trapsize);
+	bcopy(generictrap, (void *)EXC_VECAST_G4, (size_t)&trapsize);
+	bcopy(generictrap, (void *)EXC_VECAST_G5, (size_t)&trapsize);
+	#ifndef __powerpc64__
+	/* G2-specific TLB miss helper handlers */
+	bcopy(&imisstrap, (void *)EXC_IMISS,  (size_t)&imisssize);
+	bcopy(&dlmisstrap, (void *)EXC_DLMISS,  (size_t)&dlmisssize);
+	bcopy(&dsmisstrap, (void *)EXC_DSMISS,  (size_t)&dsmisssize);
+	#endif
 	__syncicache(EXC_RSVD, EXC_LAST - EXC_RSVD);
 
 	/*
@@ -496,6 +508,11 @@ powerpc_init(vm_offset_t startkernel, vm_offset_t endkernel,
 	mtmsr(msr);
 	isync();
 	
+	/* Warn if cachline size was not determined */
+	if (cacheline_warn == 1) {
+		printf("WARNING: cacheline size undetermined, setting to 32\n");
+	}
+
 	/*
 	 * Choose a platform module so we can get the physical memory map.
 	 */
@@ -609,8 +626,7 @@ cpu_initclocks(void)
 {
 
 	decr_tc_init();
-	stathz = hz;
-	profhz = hz;
+	cpu_initclocks_bsp();
 }
 
 /*
@@ -639,7 +655,13 @@ cpu_idle(int busy)
 		panic("ints disabled in idleproc!");
 	}
 #endif
+	CTR2(KTR_SPARE2, "cpu_idle(%d) at %d",
+	    busy, curcpu);
 	if (powerpc_pow_enabled) {
+		if (!busy) {
+			critical_enter();
+			cpu_idleclock();
+		}
 		switch (vers) {
 		case IBM970:
 		case IBM970FX:
@@ -659,7 +681,13 @@ cpu_idle(int busy)
 			isync();
 			break;
 		}
+		if (!busy) {
+			cpu_activeclock();
+			critical_exit();
+		}
 	}
+	CTR2(KTR_SPARE2, "cpu_idle(%d) at %d done",
+	    busy, curcpu);
 }
 
 int
@@ -732,11 +760,15 @@ void
 spinlock_enter(void)
 {
 	struct thread *td;
+	register_t msr;
 
 	td = curthread;
-	if (td->td_md.md_spinlock_count == 0)
-		td->td_md.md_saved_msr = intr_disable();
-	td->td_md.md_spinlock_count++;
+	if (td->td_md.md_spinlock_count == 0) {
+		msr = intr_disable();
+		td->td_md.md_spinlock_count = 1;
+		td->td_md.md_saved_msr = msr;
+	} else
+		td->td_md.md_spinlock_count++;
 	critical_enter();
 }
 
@@ -744,12 +776,14 @@ void
 spinlock_exit(void)
 {
 	struct thread *td;
+	register_t msr;
 
 	td = curthread;
 	critical_exit();
+	msr = td->td_md.md_saved_msr;
 	td->td_md.md_spinlock_count--;
 	if (td->td_md.md_spinlock_count == 0)
-		intr_restore(td->td_md.md_saved_msr);
+		intr_restore(msr);
 }
 
 /*

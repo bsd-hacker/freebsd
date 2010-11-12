@@ -58,6 +58,7 @@ __FBSDID("$FreeBSD$");
 
 #define HPET_VENDID_AMD		0x4353
 #define HPET_VENDID_INTEL	0x8086
+#define HPET_VENDID_NVIDIA	0x10de
 
 ACPI_SERIAL_DECL(hpet, "ACPI HPET support");
 
@@ -74,6 +75,7 @@ struct hpet_softc {
 	int			irq;
 	int			useirq;
 	int			legacy_route;
+	int			per_cpu;
 	uint32_t		allowed_irqs;
 	struct resource		*mem_res;
 	struct resource		*intr_res;
@@ -89,6 +91,8 @@ struct hpet_softc {
 		int			mode;
 		int			intr_rid;
 		int			irq;
+		int			pcpu_cpu;
+		int			pcpu_misrouted;
 		int			pcpu_master;
 		int			pcpu_slaves[MAXCPU];
 		struct resource		*intr_res;
@@ -96,7 +100,7 @@ struct hpet_softc {
 		uint32_t		caps;
 		uint32_t		vectors;
 		uint32_t		div;
-		uint32_t		last;
+		uint32_t		next;
 		char			name[8];
 	} 			t[32];
 	int			num_timers;
@@ -147,7 +151,7 @@ hpet_start(struct eventtimer *et,
 	struct hpet_timer *mt = (struct hpet_timer *)et->et_priv;
 	struct hpet_timer *t;
 	struct hpet_softc *sc = mt->sc;
-	uint32_t fdiv, cmp;
+	uint32_t fdiv, now;
 
 	t = (mt->pcpu_master < 0) ? mt : &sc->t[mt->pcpu_slaves[curcpu]];
 	if (period != NULL) {
@@ -168,24 +172,28 @@ hpet_start(struct eventtimer *et,
 	if (t->irq < 0)
 		bus_write_4(sc->mem_res, HPET_ISR, 1 << t->num);
 	t->caps |= HPET_TCNF_INT_ENB;
-	t->last = bus_read_4(sc->mem_res, HPET_MAIN_COUNTER);
+	now = bus_read_4(sc->mem_res, HPET_MAIN_COUNTER);
 restart:
-	cmp = t->last + fdiv;
+	t->next = now + fdiv;
 	if (t->mode == 1 && (t->caps & HPET_TCAP_PER_INT)) {
 		t->caps |= HPET_TCNF_TYPE;
 		bus_write_4(sc->mem_res, HPET_TIMER_CAP_CNF(t->num),
 		    t->caps | HPET_TCNF_VAL_SET);
-		bus_write_4(sc->mem_res, HPET_TIMER_COMPARATOR(t->num), cmp);
-		bus_write_4(sc->mem_res, HPET_TIMER_COMPARATOR(t->num), t->div);
+		bus_write_4(sc->mem_res, HPET_TIMER_COMPARATOR(t->num),
+		    t->next);
+		bus_write_4(sc->mem_res, HPET_TIMER_COMPARATOR(t->num),
+		    t->div);
 	} else {
 		t->caps &= ~HPET_TCNF_TYPE;
-		bus_write_4(sc->mem_res, HPET_TIMER_CAP_CNF(t->num), t->caps);
-		bus_write_4(sc->mem_res, HPET_TIMER_COMPARATOR(t->num), cmp);
+		bus_write_4(sc->mem_res, HPET_TIMER_CAP_CNF(t->num),
+		    t->caps);
+		bus_write_4(sc->mem_res, HPET_TIMER_COMPARATOR(t->num),
+		    t->next);
 	}
 	if (fdiv < 5000) {
 		bus_read_4(sc->mem_res, HPET_TIMER_COMPARATOR(t->num));
-		t->last = bus_read_4(sc->mem_res, HPET_MAIN_COUNTER);
-		if ((int32_t)(t->last - cmp) < 0) {
+		now = bus_read_4(sc->mem_res, HPET_MAIN_COUNTER);
+		if ((int32_t)(now - t->next) >= 0) {
 			fdiv *= 2;
 			goto restart;
 		}
@@ -215,14 +223,37 @@ hpet_intr_single(void *arg)
 	struct hpet_softc *sc = t->sc;
 	uint32_t now;
 
+	if (t->mode == 0)
+		return (FILTER_STRAY);
+	/* Check that per-CPU timer interrupt reached right CPU. */
+	if (t->pcpu_cpu >= 0 && t->pcpu_cpu != curcpu) {
+		if ((++t->pcpu_misrouted) % 32 == 0) {
+			printf("HPET interrupt routed to the wrong CPU"
+			    " (timer %d CPU %d -> %d)!\n",
+			    t->num, t->pcpu_cpu, curcpu);
+		}
+
+		/*
+		 * Reload timer, hoping that next time may be more lucky
+		 * (system will manage proper interrupt binding).
+		 */
+		if ((t->mode == 1 && (t->caps & HPET_TCAP_PER_INT) == 0) ||
+		    t->mode == 2) {
+			t->next = bus_read_4(sc->mem_res, HPET_MAIN_COUNTER) +
+			    sc->freq / 8;
+			bus_write_4(sc->mem_res, HPET_TIMER_COMPARATOR(t->num),
+			    t->next);
+		}
+		return (FILTER_HANDLED);
+	}
 	if (t->mode == 1 &&
 	    (t->caps & HPET_TCAP_PER_INT) == 0) {
-		t->last += t->div;
+		t->next += t->div;
 		now = bus_read_4(sc->mem_res, HPET_MAIN_COUNTER);
-		if ((int32_t)(now - (t->last + t->div / 2)) > 0)
-			t->last = now - t->div / 2;
+		if ((int32_t)((now + t->div / 2) - t->next) > 0)
+			t->next = now + t->div / 2;
 		bus_write_4(sc->mem_res,
-		    HPET_TIMER_COMPARATOR(t->num), t->last + t->div);
+		    HPET_TIMER_COMPARATOR(t->num), t->next);
 	} else if (t->mode == 2)
 		t->mode = 0;
 	mt = (t->pcpu_master < 0) ? t : &sc->t[t->pcpu_master];
@@ -394,6 +425,8 @@ hpet_attach(device_t dev)
 		t->mode = 0;
 		t->intr_rid = -1;
 		t->irq = -1;
+		t->pcpu_cpu = -1;
+		t->pcpu_misrouted = 0;
 		t->pcpu_master = -1;
 		t->caps = bus_read_4(sc->mem_res, HPET_TIMER_CAP_CNF(i));
 		t->vectors = bus_read_4(sc->mem_res, HPET_TIMER_CAP_CNF(i) + 4);
@@ -460,6 +493,12 @@ hpet_attach(device_t dev)
 	if (vendor == HPET_VENDID_AMD)
 		sc->allowed_irqs = 0x00000000;
 	/*
+	 * NVidia MCP5x chipsets have number of unexplained interrupt
+	 * problems. For some reason, using HPET interrupts breaks HDA sound.
+	 */
+	if (vendor == HPET_VENDID_NVIDIA && rev <= 0x01)
+		sc->allowed_irqs = 0x00000000;
+	/*
 	 * Neither QEMU nor VirtualBox report supported IRQs correctly.
 	 * The only way to use HPET there is to specify IRQs manually
 	 * and/or use legacy_route. Legacy_route mode work on both.
@@ -469,6 +508,11 @@ hpet_attach(device_t dev)
 	/* Let user override. */
 	resource_int_value(device_get_name(dev), device_get_unit(dev),
 	     "allowed_irqs", &sc->allowed_irqs);
+
+	/* Get how much per-CPU timers we should try to provide. */
+	sc->per_cpu = 1;
+	resource_int_value(device_get_name(dev), device_get_unit(dev),
+	     "per_cpu", &sc->per_cpu);
 
 	num_msi = 0;
 	sc->useirq = 0;
@@ -525,7 +569,7 @@ hpet_attach(device_t dev)
 	if (sc->legacy_route)
 		hpet_enable(sc);
 	/* Group timers for per-CPU operation. */
-	num_percpu_et = min(num_msi / mp_ncpus, 1);
+	num_percpu_et = min(num_msi / mp_ncpus, sc->per_cpu);
 	num_percpu_t = num_percpu_et * mp_ncpus;
 	pcpu_master = 0;
 	cur_cpu = CPU_FIRST();
@@ -534,6 +578,7 @@ hpet_attach(device_t dev)
 		if (t->irq >= 0 && num_percpu_t > 0) {
 			if (cur_cpu == CPU_FIRST())
 				pcpu_master = i;
+			t->pcpu_cpu = cur_cpu;
 			t->pcpu_master = pcpu_master;
 			sc->t[pcpu_master].
 			    pcpu_slaves[cur_cpu] = i;
@@ -645,15 +690,15 @@ hpet_detach(device_t dev)
 static int
 hpet_suspend(device_t dev)
 {
-	struct hpet_softc *sc;
+//	struct hpet_softc *sc;
 
 	/*
 	 * Disable the timer during suspend.  The timer will not lose
 	 * its state in S1 or S2, but we are required to disable
 	 * it.
 	 */
-	sc = device_get_softc(dev);
-	hpet_disable(sc);
+//	sc = device_get_softc(dev);
+//	hpet_disable(sc);
 
 	return (0);
 }
@@ -688,19 +733,21 @@ hpet_resume(device_t dev)
 #endif
 		if (t->mode == 0)
 			continue;
-		t->last = bus_read_4(sc->mem_res, HPET_MAIN_COUNTER);
+		t->next = bus_read_4(sc->mem_res, HPET_MAIN_COUNTER);
 		if (t->mode == 1 && (t->caps & HPET_TCAP_PER_INT)) {
 			t->caps |= HPET_TCNF_TYPE;
+			t->next += t->div;
 			bus_write_4(sc->mem_res, HPET_TIMER_CAP_CNF(t->num),
 			    t->caps | HPET_TCNF_VAL_SET);
 			bus_write_4(sc->mem_res, HPET_TIMER_COMPARATOR(t->num),
-			    t->last + t->div);
+			    t->next);
 			bus_read_4(sc->mem_res, HPET_TIMER_COMPARATOR(t->num));
 			bus_write_4(sc->mem_res, HPET_TIMER_COMPARATOR(t->num),
 			    t->div);
 		} else {
+			t->next += sc->freq / 1024;
 			bus_write_4(sc->mem_res, HPET_TIMER_COMPARATOR(t->num),
-			    t->last + sc->freq / 1024);
+			    t->next);
 		}
 		bus_write_4(sc->mem_res, HPET_ISR, 1 << t->num);
 		bus_write_4(sc->mem_res, HPET_TIMER_CAP_CNF(t->num), t->caps);

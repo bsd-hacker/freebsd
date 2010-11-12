@@ -26,10 +26,11 @@
  */
 
 enum ieee80211_ratealgs {
-	IEEE80211_RATECTL_AMRR 		= 0,
+	IEEE80211_RATECTL_AMRR		= 0,
 	IEEE80211_RATECTL_RSSADAPT	= 1,
 	IEEE80211_RATECTL_ONOE		= 2,
 	IEEE80211_RATECTL_SAMPLE	= 3,
+	IEEE80211_RATECTL_NONE		= 4,
 	IEEE80211_RATECTL_MAX
 };
 
@@ -56,15 +57,10 @@ struct ieee80211_ratectl {
 
 void	ieee80211_ratectl_register(int, const struct ieee80211_ratectl *);
 void	ieee80211_ratectl_unregister(int);
+void	ieee80211_ratectl_init(struct ieee80211vap *);
 void	ieee80211_ratectl_set(struct ieee80211vap *, int);
 
 MALLOC_DECLARE(M_80211_RATECTL);
-
-static void __inline
-ieee80211_ratectl_init(struct ieee80211vap *vap)
-{
-	vap->iv_rate->ir_init(vap);
-}
 
 static void __inline
 ieee80211_ratectl_deinit(struct ieee80211vap *vap)

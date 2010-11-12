@@ -122,20 +122,23 @@ static unsigned int ucom_cons_tx_low = 0;
 static unsigned int ucom_cons_tx_high = 0;
 
 static int ucom_cons_unit = -1;
+static int ucom_cons_subunit = 0;
 static int ucom_cons_baud = 9600;
 static struct ucom_softc *ucom_cons_softc = NULL;
 
 TUNABLE_INT("hw.usb.ucom.cons_unit", &ucom_cons_unit);
 SYSCTL_INT(_hw_usb_ucom, OID_AUTO, cons_unit, CTLFLAG_RW,
     &ucom_cons_unit, 0, "console unit number");
-
+TUNABLE_INT("hw.usb.ucom.cons_subunit", &ucom_cons_subunit);
+SYSCTL_INT(_hw_usb_ucom, OID_AUTO, cons_subunit, CTLFLAG_RW,
+    &ucom_cons_subunit, 0, "console subunit number");
 TUNABLE_INT("hw.usb.ucom.cons_baud", &ucom_cons_baud);
 SYSCTL_INT(_hw_usb_ucom, OID_AUTO, cons_baud, CTLFLAG_RW,
     &ucom_cons_baud, 0, "console baud rate");
 
-static uint8_t	ucom_units_alloc(uint32_t, uint32_t *);
-static void	ucom_units_free(uint32_t, uint32_t);
-static int	ucom_attach_tty(struct ucom_softc *, uint32_t);
+static int	ucom_unit_alloc(void);
+static void	ucom_unit_free(int);
+static int	ucom_attach_tty(struct ucom_super_softc *, struct ucom_softc *);
 static void	ucom_detach_tty(struct ucom_softc *);
 static void	ucom_shutdown(struct ucom_softc *);
 static void	ucom_ring(struct ucom_softc *, uint8_t);
@@ -165,116 +168,98 @@ static struct ttydevsw ucom_class = {
 MODULE_DEPEND(ucom, usb, 1, 1, 1);
 MODULE_VERSION(ucom, 1);
 
-#define	UCOM_UNIT_MAX 0x200		/* exclusive */
-#define	UCOM_SUB_UNIT_MAX 0x100		/* exclusive */
+#define	UCOM_UNIT_MAX 		128	/* limits size of ucom_bitmap */
 
 static uint8_t ucom_bitmap[(UCOM_UNIT_MAX + 7) / 8];
 static struct mtx ucom_bitmap_mtx;
 MTX_SYSINIT(ucom_bitmap_mtx, &ucom_bitmap_mtx, "ucom bitmap", MTX_DEF);
 
-static uint8_t
-ucom_units_alloc(uint32_t sub_units, uint32_t *p_root_unit)
+#define UCOM_TTY_PREFIX		"U"
+
+/*
+ * Mark a unit number (the X in cuaUX) as in use.
+ *
+ * Note that devices using a different naming scheme (see ucom_tty_name()
+ * callback) still use this unit allocation.
+ */
+static int
+ucom_unit_alloc(void)
 {
-	uint32_t n;
-	uint32_t o;
-	uint32_t x;
-	uint32_t max = UCOM_UNIT_MAX - (UCOM_UNIT_MAX % sub_units);
-	uint8_t error = 1;
+	int unit;
 
 	mtx_lock(&ucom_bitmap_mtx);
 
-	for (n = 0; n < max; n += sub_units) {
-		/* check for free consecutive bits */
-		for (o = 0; o < sub_units; o++) {
-			x = n + o;
-
-			if (ucom_bitmap[x / 8] & (1 << (x % 8)))
-				goto skip;
+	for (unit = 0; unit < UCOM_UNIT_MAX; unit++) {
+		if ((ucom_bitmap[unit / 8] & (1 << (unit % 8))) == 0) {
+			ucom_bitmap[unit / 8] |= (1 << (unit % 8));
+			break;
 		}
-
-		/* allocate */
-		for (o = 0; o < sub_units; o++) {
-			x = n + o;
-
-			ucom_bitmap[x / 8] |= (1 << (x % 8));
-		}
-
-		error = 0;
-
-		break;
-
-skip:		;
 	}
 
 	mtx_unlock(&ucom_bitmap_mtx);
 
-	/*
-	 * Always set the variable pointed to by "p_root_unit" so that
-	 * the compiler does not think that it is used uninitialised:
-	 */
-	*p_root_unit = n;
-
-	return (error);
+	if (unit == UCOM_UNIT_MAX)
+		return -1;
+	else
+		return unit;
 }
 
+/*
+ * Mark the unit number as not in use.
+ */
 static void
-ucom_units_free(uint32_t root_unit, uint32_t sub_units)
+ucom_unit_free(int unit)
 {
-	uint32_t x;
-
 	mtx_lock(&ucom_bitmap_mtx);
 
-	while (sub_units--) {
-		x = root_unit + sub_units;
-		ucom_bitmap[x / 8] &= ~(1 << (x % 8));
-	}
+	ucom_bitmap[unit / 8] &= ~(1 << (unit % 8));
 
 	mtx_unlock(&ucom_bitmap_mtx);
 }
 
 /*
- * "N" sub_units are setup at a time. All sub-units will
- * be given sequential unit numbers. The number of
- * sub-units can be used to differentiate among
- * different types of devices.
+ * Setup a group of one or more serial ports.
  *
  * The mutex pointed to by "mtx" is applied before all
  * callbacks are called back. Also "mtx" must be applied
  * before calling into the ucom-layer!
  */
 int
-ucom_attach(struct ucom_softc *sc, uint32_t sub_units, void *parent,
+ucom_attach(struct ucom_super_softc *ssc, struct ucom_softc *sc,
+    uint32_t subunits, void *parent,
     const struct ucom_callback *callback, struct mtx *mtx)
 {
-	uint32_t n;
-	uint32_t root_unit;
+	uint32_t subunit;
 	int error = 0;
 
-	if (sc == NULL ||
-	    sub_units == 0 ||
-	    sub_units > UCOM_SUB_UNIT_MAX ||
-	    callback == NULL)
+	if ((sc == NULL) ||
+	    (subunits == 0) ||
+	    (callback == NULL))
 		return (EINVAL);
 
-	/* XXX unit management does not really belong here */
-	if (ucom_units_alloc(sub_units, &root_unit))
+	ssc->sc_unit = ucom_unit_alloc();
+	if (ssc->sc_unit == -1)
 		return (ENOMEM);
+	ssc->sc_subunits = subunits;
 
-	for (n = 0; n != sub_units; n++, sc++) {
-		sc->sc_unit = root_unit + n;
-		sc->sc_local_unit = n;
-		sc->sc_mtx = mtx;
-		sc->sc_parent = parent;
-		sc->sc_callback = callback;
+	for (subunit = 0; subunit < ssc->sc_subunits; subunit++) {
+		sc[subunit].sc_subunit = subunit;
+		sc[subunit].sc_super = ssc;
+		sc[subunit].sc_mtx = mtx;
+		sc[subunit].sc_parent = parent;
+		sc[subunit].sc_callback = callback;
 
-		error = ucom_attach_tty(sc, sub_units);
+		error = ucom_attach_tty(ssc, &sc[subunit]);
 		if (error) {
-			ucom_detach(sc - n, n);
-			ucom_units_free(root_unit + n, sub_units - n);
+			ucom_detach(ssc, &sc[0]);
 			return (error);
 		}
-		sc->sc_flag |= UCOM_FLAG_ATTACHED;
+		sc[subunit].sc_flag |= UCOM_FLAG_ATTACHED;
 	}
+
+	DPRINTF("tp = %p, unit = %d, subunits = %d\n",
+		sc->sc_tty, ssc->sc_unit, ssc->sc_subunits);
+
 	return (0);
 }
 
@@ -283,55 +268,47 @@ ucom_attach(struct ucom_softc *sc, uint32_t sub_units, void *parent,
  * the structure pointed to by "ssc" and "sc" is zero.
  */
 void
-ucom_detach(struct ucom_softc *sc, uint32_t sub_units)
+ucom_detach(struct ucom_super_softc *ssc, struct ucom_softc *sc)
 {
-	uint32_t n;
+	uint32_t subunit;
 
-	for (n = 0; n != sub_units; n++, sc++) {
-		if (sc->sc_flag & UCOM_FLAG_ATTACHED) {
-			ucom_detach_tty(sc);
+	for (subunit = 0; subunit < ssc->sc_subunits; subunit++) {
+		if (sc[subunit].sc_flag & UCOM_FLAG_ATTACHED) {
+			ucom_detach_tty(&sc[subunit]);
 
-			ucom_units_free(sc->sc_unit, 1);
-
-			/* avoid duplicate detach: */
-			sc->sc_flag &= ~UCOM_FLAG_ATTACHED;
+			/* avoid duplicate detach */
+			sc[subunit].sc_flag &= ~UCOM_FLAG_ATTACHED;
 		}
 	}
+	ucom_unit_free(ssc->sc_unit);
 }
 
 static int
-ucom_attach_tty(struct ucom_softc *sc, uint32_t sub_units)
+ucom_attach_tty(struct ucom_super_softc *ssc, struct ucom_softc *sc)
 {
 	struct tty *tp;
-	int error = 0;
 	char buf[32];			/* temporary TTY device name buffer */
 
 	tp = tty_alloc_mutex(&ucom_class, sc, sc->sc_mtx);
-	if (tp == NULL) {
-		error = ENOMEM;
-		goto done;
-	}
-	DPRINTF("tp = %p, unit = %d\n", tp, sc->sc_unit);
-
-	buf[0] = 0;			/* set some default value */
+	if (tp == NULL)
+		return (ENOMEM);
 
 	/* Check if the client has a custom TTY name */
+	buf[0] = '\0';
 	if (sc->sc_callback->ucom_tty_name) {
 		sc->sc_callback->ucom_tty_name(sc, buf,
-		    sizeof(buf), sc->sc_local_unit);
+		    sizeof(buf), ssc->sc_unit, sc->sc_subunit);
 	}
 	if (buf[0] == 0) {
 		/* Use default TTY name */
-		if (sub_units > 1) {
+		if (ssc->sc_subunits > 1) {
 			/* multiple modems in one */
-			if (snprintf(buf, sizeof(buf), "U%u.%u",
-			    sc->sc_unit - sc->sc_local_unit,
-			    sc->sc_local_unit))
-				;	/* ignore */
+			snprintf(buf, sizeof(buf), UCOM_TTY_PREFIX "%u.%u",
+			    ssc->sc_unit, sc->sc_subunit);
 		} else {
 			/* single modem */
-			if (snprintf(buf, sizeof(buf), "U%u", sc->sc_unit))
-				;	/* ignore */
+			snprintf(buf, sizeof(buf), UCOM_TTY_PREFIX "%u",
+			    ssc->sc_unit);
 		}
 	}
 	tty_makedev(tp, NULL, "%s", buf);
@@ -342,9 +319,13 @@ ucom_attach_tty(struct ucom_softc *sc, uint32_t sub_units)
 	cv_init(&sc->sc_cv, "ucom");
 
 	/* Check if this device should be a console */
-	if (ucom_cons_softc == NULL && 
-	    sc->sc_unit == ucom_cons_unit) {
+	if ((ucom_cons_softc == NULL) && 
+	    (ssc->sc_unit == ucom_cons_unit) &&
+	    (sc->sc_subunit == ucom_cons_subunit)) {
 		struct termios t;
+
+		DPRINTF("unit %d subunit %d is console", ssc->sc_unit,
+		    sc->sc_subunit);
 
 		ucom_cons_softc = sc;
 
@@ -363,8 +344,8 @@ ucom_attach_tty(struct ucom_softc *sc, uint32_t sub_units)
 		ucom_param(ucom_cons_softc->sc_tty, &t);
 		mtx_unlock(ucom_cons_softc->sc_mtx);
 	}
-done:
-	return (error);
+
+	return (0);
 }
 
 static void
@@ -377,6 +358,7 @@ ucom_detach_tty(struct ucom_softc *sc)
 	if (sc->sc_flag & UCOM_FLAG_CONSOLE) {
 		mtx_lock(ucom_cons_softc->sc_mtx);
 		ucom_close(ucom_cons_softc->sc_tty);
+		sc->sc_flag &= ~UCOM_FLAG_CONSOLE;
 		mtx_unlock(ucom_cons_softc->sc_mtx);
 		ucom_cons_softc = NULL;
 	}
@@ -407,6 +389,24 @@ ucom_detach_tty(struct ucom_softc *sc)
 		UCOM_UNLOCK(sc);
 	}
 	cv_destroy(&sc->sc_cv);
+}
+
+void
+ucom_set_pnpinfo_usb(struct ucom_super_softc *ssc, device_t dev)
+{
+    char buf[64];
+    uint8_t iface_index;
+    struct usb_attach_arg *uaa;
+
+    snprintf(buf, sizeof(buf), "ttyname=%s%d ttyports=%d",
+	     UCOM_TTY_PREFIX, ssc->sc_unit, ssc->sc_subunits);
+
+    /* Store the PNP info in the first interface for the dev */
+    uaa = device_get_ivars(dev);
+    iface_index = uaa->info.bIfaceIndex;
+    
+    if (usbd_set_pnpinfo(uaa->device, iface_index, buf) != 0)
+	device_printf(dev, "Could not set PNP info\n");
 }
 
 static void
@@ -790,6 +790,7 @@ ucom_cfg_status_change(struct ucom_softc *sc)
 	uint8_t new_msr;
 	uint8_t new_lsr;
 	uint8_t onoff;
+	uint8_t lsr_delta;
 
 	tp = sc->sc_tty;
 
@@ -810,6 +811,7 @@ ucom_cfg_status_change(struct ucom_softc *sc)
 		return;
 	}
 	onoff = ((sc->sc_msr ^ new_msr) & SER_DCD);
+	lsr_delta = (sc->sc_lsr ^ new_lsr);
 
 	sc->sc_msr = new_msr;
 	sc->sc_lsr = new_lsr;
@@ -820,6 +822,30 @@ ucom_cfg_status_change(struct ucom_softc *sc)
 		DPRINTF("DCD changed to %d\n", onoff);
 
 		ttydisc_modem(tp, onoff);
+	}
+
+	if ((lsr_delta & ULSR_BI) && (sc->sc_lsr & ULSR_BI)) {
+
+		DPRINTF("BREAK detected\n");
+
+		ttydisc_rint(tp, 0, TRE_BREAK);
+		ttydisc_rint_done(tp);
+	}
+
+	if ((lsr_delta & ULSR_FE) && (sc->sc_lsr & ULSR_FE)) {
+
+		DPRINTF("Frame error detected\n");
+
+		ttydisc_rint(tp, 0, TRE_FRAMING);
+		ttydisc_rint_done(tp);
+	}
+
+	if ((lsr_delta & ULSR_PE) && (sc->sc_lsr & ULSR_PE)) {
+
+		DPRINTF("Parity error detected\n");
+
+		ttydisc_rint(tp, 0, TRE_PARITY);
+		ttydisc_rint_done(tp);
 	}
 }
 

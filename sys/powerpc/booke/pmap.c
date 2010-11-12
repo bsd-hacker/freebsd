@@ -162,8 +162,6 @@ unsigned int kernel_ptbls;	/* Number of KVA ptbls. */
 #define PMAP_REMOVE_DONE(pmap) \
 	((pmap) != kernel_pmap && (pmap)->pm_stats.resident_count == 0)
 
-extern void tlb_lock(uint32_t *);
-extern void tlb_unlock(uint32_t *);
 extern void tid_flush(tlbtid_t);
 
 /**************************************************************************/
@@ -384,12 +382,7 @@ static mmu_method_t mmu_booke_methods[] = {
 	{ 0, 0 }
 };
 
-static mmu_def_t booke_mmu = {
-	MMU_TYPE_BOOKE,
-	mmu_booke_methods,
-	0
-};
-MMU_DEF(booke_mmu);
+MMU_DEF(booke_mmu, MMU_TYPE_BOOKE, mmu_booke_methods, 0);
 
 static inline void
 tlb_miss_lock(void)

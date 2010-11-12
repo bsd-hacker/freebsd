@@ -44,9 +44,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/mutex.h>
 
 #include <sys/callout.h>
-#if __FreeBSD_version > 502113
 #include <sys/kdb.h>
-#endif
 #include <sys/kernel.h>
 #include <sys/proc.h>
 #include <sys/condvar.h>
@@ -274,7 +272,6 @@ ntoskrnl_libinit()
 	kdpc_queue		*kq;
 	callout_entry		*e;
 	int			i;
-	char			name[64];
 
 	mtx_init(&ntoskrnl_dispatchlock,
 	    "ntoskrnl dispatch lock", MTX_NDIS_LOCK, MTX_DEF|MTX_RECURSE);
@@ -321,9 +318,8 @@ ntoskrnl_libinit()
 #endif
 		kq = kq_queues + i;
 		kq->kq_cpu = i;
-		sprintf(name, "Windows DPC %d", i);
 		error = kproc_create(ntoskrnl_dpc_thread, kq, &p,
-		    RFHIGHPID, NDIS_KSTACK_PAGES, name);
+		    RFHIGHPID, NDIS_KSTACK_PAGES, "Windows DPC %d", i);
 		if (error)
 			panic("failed to launch DPC thread");
 	}
@@ -334,9 +330,8 @@ ntoskrnl_libinit()
 
 	for (i = 0; i < WORKITEM_THREADS; i++) {
 		kq = wq_queues + i;
-		sprintf(name, "Windows Workitem %d", i);
 		error = kproc_create(ntoskrnl_workitem_thread, kq, &p,
-		    RFHIGHPID, NDIS_KSTACK_PAGES, name);
+		    RFHIGHPID, NDIS_KSTACK_PAGES, "Windows Workitem %d", i);
 		if (error)
 			panic("failed to launch workitem thread");
 	}
@@ -2431,12 +2426,9 @@ MmAllocateContiguousMemorySpecifyCache(size, lowest, highest,
 	uint64_t		boundary;
 	uint32_t		cachetype;
 {
-	void *addr;
-	size_t pagelength = roundup(size, PAGE_SIZE);
 
-	addr = ExAllocatePoolWithTag(NonPagedPool, pagelength, 0);
-
-	return (addr);
+	return (contigmalloc(size, M_DEVBUF, M_ZERO|M_NOWAIT, lowest,
+	    highest, PAGE_SIZE, boundary));
 }
 
 static void
@@ -2452,7 +2444,7 @@ MmFreeContiguousMemorySpecifyCache(base, size, cachetype)
 	uint32_t		size;
 	uint32_t		cachetype;
 {
-	ExFreePool(base);
+	contigfree(base, size, M_DEVBUF);
 }
 
 static uint32_t
@@ -2605,11 +2597,7 @@ ntoskrnl_finddev(dev, paddr, res)
 
 	rl = BUS_GET_RESOURCE_LIST(device_get_parent(dev), dev);
 	if (rl != NULL) {
-#if __FreeBSD_version < 600022
-		SLIST_FOREACH(rle, rl, link) {
-#else
 		STAILQ_FOREACH(rle, rl, link) {
-#endif
 			r = rle->res;
 
 			if (r == NULL)
@@ -2701,9 +2689,6 @@ ntoskrnl_workitem_thread(arg)
 		KeReleaseSpinLock(&kq->kq_lock, irql);
 	}
 
-#if __FreeBSD_version < 502113
-	mtx_lock(&Giant);
-#endif
 	kproc_exit(0);
 	return; /* notreached */
 }
@@ -3382,7 +3367,6 @@ PsCreateSystemThread(handle, reqaccess, objattrs, phandle,
 	void			*thrctx;
 {
 	int			error;
-	char			tname[128];
 	thread_context		*tc;
 	struct proc		*p;
 
@@ -3393,9 +3377,8 @@ PsCreateSystemThread(handle, reqaccess, objattrs, phandle,
 	tc->tc_thrctx = thrctx;
 	tc->tc_thrfunc = thrfunc;
 
-	sprintf(tname, "windows kthread %d", ntoskrnl_kth);
 	error = kproc_create(ntoskrnl_thrfunc, tc, &p,
-	    RFHIGHPID, NDIS_KSTACK_PAGES, tname);
+	    RFHIGHPID, NDIS_KSTACK_PAGES, "Windows Kthread %d", ntoskrnl_kth);
 
 	if (error) {
 		free(tc, M_TEMP);
@@ -3434,9 +3417,6 @@ PsTerminateSystemThread(status)
 
 	ntoskrnl_kth--;
 
-#if __FreeBSD_version < 502113
-	mtx_lock(&Giant);
-#endif
 	kproc_exit(0);
 	return (0);	/* notreached */
 }
@@ -3458,11 +3438,7 @@ static void
 DbgBreakPoint(void)
 {
 
-#if __FreeBSD_version < 502113
-	Debugger("DbgBreakPoint(): breakpoint");
-#else
 	kdb_enter(KDB_WHY_NDIS, "DbgBreakPoint(): breakpoint");
-#endif
 }
 
 static void
@@ -3702,14 +3678,9 @@ ntoskrnl_dpc_thread(arg)
 
 	thread_lock(curthread);
 #ifdef NTOSKRNL_MULTIPLE_DPCS
-#if __FreeBSD_version >= 502102
 	sched_bind(curthread, kq->kq_cpu);
 #endif
-#endif
 	sched_prio(curthread, PRI_MIN_KERN);
-#if __FreeBSD_version < 600000
-	curthread->td_base_pri = PRI_MIN_KERN;
-#endif
 	thread_unlock(curthread);
 
 	while (1) {
@@ -3742,9 +3713,6 @@ ntoskrnl_dpc_thread(arg)
 		KeSetEvent(&kq->kq_done, IO_NO_INCREMENT, FALSE);
 	}
 
-#if __FreeBSD_version < 502113
-	mtx_lock(&Giant);
-#endif
 	kproc_exit(0);
 	return; /* notreached */
 }

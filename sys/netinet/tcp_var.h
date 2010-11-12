@@ -44,10 +44,6 @@
 VNET_DECLARE(int, tcp_do_rfc1323);
 #define	V_tcp_do_rfc1323	VNET(tcp_do_rfc1323)
 
-VNET_DECLARE(int, tcp_reass_qsize);
-VNET_DECLARE(struct uma_zone *, tcp_reass_zone);
-#define	V_tcp_reass_qsize	VNET(tcp_reass_qsize)
-#define	V_tcp_reass_zone	VNET(tcp_reass_zone)
 #endif /* _KERNEL */
 
 /* TCP segment queue entry */
@@ -135,12 +131,12 @@ struct tcpcb {
 
 	u_long	snd_wnd;		/* send window */
 	u_long	snd_cwnd;		/* congestion-controlled window */
-	u_long	snd_bwnd;		/* bandwidth-controlled window */
+	u_long	snd_spare1;		/* unused */
 	u_long	snd_ssthresh;		/* snd_cwnd size threshold for
 					 * for slow start exponential to
 					 * linear switch
 					 */
-	u_long	snd_bandwidth;		/* calculated bandwidth or 0 */
+	u_long	snd_spare2;		/* unused */
 	tcp_seq	snd_recover;		/* for use in NewReno Fast Recovery */
 
 	u_int	t_maxopd;		/* mss plus options */
@@ -150,8 +146,8 @@ struct tcpcb {
 	u_int	t_rtttime;		/* RTT measurement start time */
 	tcp_seq	t_rtseq;		/* sequence number being timed */
 
-	u_int	t_bw_rtttime;		/* used for bandwidth calculation */
-	tcp_seq	t_bw_rtseq;		/* used for bandwidth calculation */
+	u_int	t_bw_spare1;		/* unused */
+	tcp_seq	t_bw_spare2;		/* unused */
 
 	int	t_rxtcur;		/* current retransmit value (ticks) */
 	u_int	t_maxseg;		/* maximum segment size */
@@ -617,6 +613,7 @@ char	*tcp_log_vain(struct in_conninfo *, struct tcphdr *, void *,
 	    const void *);
 int	 tcp_reass(struct tcpcb *, struct tcphdr *, int *, struct mbuf *);
 void	 tcp_reass_init(void);
+void	 tcp_reass_flush(struct tcpcb *);
 #ifdef VIMAGE
 void	 tcp_reass_destroy(void);
 #endif
@@ -654,7 +651,6 @@ void	 tcpip_fillheaders(struct inpcb *, void *, void *);
 void	 tcp_timer_activate(struct tcpcb *, int, u_int);
 int	 tcp_timer_active(struct tcpcb *, int);
 void	 tcp_trace(short, short, struct tcpcb *, void *, struct tcphdr *, int);
-void	 tcp_xmit_bandwidth_limit(struct tcpcb *tp, tcp_seq ack_seq);
 /*
  * All tcp_hc_* functions are IPv4 and IPv6 (via in_conninfo)
  */

@@ -83,6 +83,7 @@ static void bswap(int8_t *, int);
 static void btrim(int8_t *, int);
 static void bpack(int8_t *, int8_t *, int);
 static void ata_interrupt_locked(void *data);
+static void ata_periodic_poll(void *data);
 
 /* global vars */
 MALLOC_DEFINE(M_ATA, "ata_generic", "ATA driver generic layer");
@@ -173,6 +174,7 @@ ata_attach(device_t dev)
 		ch->curr[i] = ch->user[i];
 	}
 #endif
+	callout_init(&ch->poll_callout, 1);
 
     /* reset the controller HW, the channel and device(s) */
     while (ATA_LOCKING(dev, ATA_LF_LOCK) != ch->unit)
@@ -200,6 +202,8 @@ ata_attach(device_t dev)
 	device_printf(dev, "unable to setup interrupt\n");
 	return error;
     }
+    if (ch->flags & ATA_PERIODIC_POLL)
+	callout_reset(&ch->poll_callout, hz, ata_periodic_poll, ch);
 
 #ifndef ATA_CAM
     /* probe and attach devices on this channel unless we are in early boot */
@@ -246,6 +250,8 @@ err2:
 err1:
 	bus_release_resource(dev, SYS_RES_IRQ, rid, ch->r_irq);
 	mtx_unlock(&ch->state_mtx);
+	if (ch->flags & ATA_PERIODIC_POLL)
+		callout_drain(&ch->poll_callout);
 	return (error);
 #endif
 }
@@ -267,6 +273,8 @@ ata_detach(device_t dev)
     mtx_lock(&ch->state_mtx);
     ch->state |= ATA_STALL_QUEUE;
     mtx_unlock(&ch->state_mtx);
+    if (ch->flags & ATA_PERIODIC_POLL)
+	callout_drain(&ch->poll_callout);
 
 #ifndef ATA_CAM
     /* detach & delete all children */
@@ -454,6 +462,8 @@ ata_suspend(device_t dev)
     if (!dev || !(ch = device_get_softc(dev)))
 	return ENXIO;
 
+    if (ch->flags & ATA_PERIODIC_POLL)
+	callout_drain(&ch->poll_callout);
 #ifdef ATA_CAM
 	mtx_lock(&ch->state_mtx);
 	xpt_freeze_simq(ch->sim, 1);
@@ -498,6 +508,8 @@ ata_resume(device_t dev)
     /* kick off requests on the queue */
     ata_start(dev);
 #endif
+    if (ch->flags & ATA_PERIODIC_POLL)
+	callout_reset(&ch->poll_callout, hz, ata_periodic_poll, ch);
     return error;
 }
 
@@ -562,6 +574,15 @@ ata_interrupt_locked(void *data)
 #ifndef ATA_CAM
     mtx_unlock(&ch->state_mtx);
 #endif
+}
+
+static void
+ata_periodic_poll(void *data)
+{
+    struct ata_channel *ch = (struct ata_channel *)data;
+
+    callout_reset(&ch->poll_callout, hz, ata_periodic_poll, ch);
+    ata_interrupt(ch);
 }
 
 void
@@ -1495,6 +1516,15 @@ ata_cam_end_transaction(device_t dev, struct ata_request *request)
 		res->lba_high_exp = request->u.ata.lba >> 40;
 		res->sector_count = request->u.ata.count;
 		res->sector_count_exp = request->u.ata.count >> 8;
+	}
+	if ((ccb->ccb_h.flags & CAM_DIR_MASK) != CAM_DIR_NONE) {
+		if (ccb->ccb_h.func_code == XPT_ATA_IO) {
+			ccb->ataio.resid =
+			    ccb->ataio.dxfer_len - request->donecount;
+		} else {
+			ccb->csio.resid =
+			    ccb->csio.dxfer_len - request->donecount;
+		}
 	}
 	ata_free_request(request);
 	xpt_done(ccb);

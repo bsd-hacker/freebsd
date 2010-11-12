@@ -165,7 +165,7 @@ static struct td_sched td_sched0;
  *		before throttling back.
  * SLP_RUN_FORK:	Maximum slp+run time to inherit at fork time.
  * INTERACT_MAX:	Maximum interactivity value.  Smaller is better.
- * INTERACT_THRESH:	Threshhold for placement on the current runq.
+ * INTERACT_THRESH:	Threshold for placement on the current runq.
  */
 #define	SCHED_SLP_RUN_MAX	((hz * 5) << SCHED_TICK_SHIFT)
 #define	SCHED_SLP_RUN_FORK	((hz / 2) << SCHED_TICK_SHIFT)
@@ -196,7 +196,7 @@ static int preempt_thresh = 0;
 #endif
 static int static_boost = PRI_MIN_TIMESHARE;
 static int sched_idlespins = 10000;
-static int sched_idlespinthresh = 4;
+static int sched_idlespinthresh = 16;
 
 /*
  * tdq - per processor runqs and statistics.  All fields are protected by the
@@ -208,6 +208,7 @@ struct tdq {
 	struct mtx	tdq_lock;		/* run queue lock. */
 	struct cpu_group *tdq_cg;		/* Pointer to cpu topology. */
 	volatile int	tdq_load;		/* Aggregate load. */
+	volatile int	tdq_cpu_idle;		/* cpu_idle() is active. */
 	int		tdq_sysload;		/* For loadavg, !ITHD load. */
 	int		tdq_transferable;	/* Transferable thread count. */
 	short		tdq_switchcnt;		/* Switches this tick. */
@@ -966,7 +967,7 @@ tdq_notify(struct tdq *tdq, struct thread *td)
 		 * If the MD code has an idle wakeup routine try that before
 		 * falling back to IPI.
 		 */
-		if (cpu_idle_wakeup(cpu))
+		if (!tdq->tdq_cpu_idle || cpu_idle_wakeup(cpu))
 			return;
 	}
 	tdq->tdq_ipipending = 1;
@@ -2162,7 +2163,7 @@ sched_clock(struct thread *td)
  * is easier than trying to scale based on stathz.
  */
 void
-sched_tick(void)
+sched_tick(int cnt)
 {
 	struct td_sched *ts;
 
@@ -2174,11 +2175,11 @@ sched_tick(void)
 	if (ts->ts_incrtick == ticks)
 		return;
 	/* Adjust ticks for pctcpu */
-	ts->ts_ticks += 1 << SCHED_TICK_SHIFT;
+	ts->ts_ticks += cnt << SCHED_TICK_SHIFT;
 	ts->ts_ltick = ticks;
 	ts->ts_incrtick = ticks;
 	/*
-	 * Update if we've exceeded our desired tick threshhold by over one
+	 * Update if we've exceeded our desired tick threshold by over one
 	 * second.
 	 */
 	if (ts->ts_ftick + SCHED_TICK_MAX < ts->ts_ltick)
@@ -2403,12 +2404,12 @@ sched_affinity(struct thread *td)
 	}
 	if (!TD_IS_RUNNING(td))
 		return;
-	td->td_flags |= TDF_NEEDRESCHED;
 	/*
 	 * Force a switch before returning to userspace.  If the
 	 * target thread is not running locally send an ipi to force
 	 * the issue.
 	 */
+	td->td_flags |= TDF_NEEDRESCHED;
 	if (td != curthread)
 		ipi_cpu(ts->ts_cpu, IPI_PREEMPT);
 #endif
@@ -2545,8 +2546,14 @@ sched_idletd(void *dummy)
 			}
 		}
 		switchcnt = tdq->tdq_switchcnt + tdq->tdq_oldswitchcnt;
-		if (tdq->tdq_load == 0)
-			cpu_idle(switchcnt > 1);
+		if (tdq->tdq_load == 0) {
+			tdq->tdq_cpu_idle = 1;
+			if (tdq->tdq_load == 0) {
+				cpu_idle(switchcnt > sched_idlespinthresh * 4);
+				tdq->tdq_switchcnt++;
+			}
+			tdq->tdq_cpu_idle = 0;
+		}
 		if (tdq->tdq_load) {
 			thread_lock(td);
 			mi_switch(SW_VOL | SWT_IDLE, NULL);
@@ -2641,7 +2648,7 @@ sysctl_kern_sched_topology_spec_internal(struct sbuf *sb, struct cpu_group *cg,
 	int i, first;
 
 	sbuf_printf(sb, "%*s<group level=\"%d\" cache-level=\"%d\">\n", indent,
-	    "", indent, cg->cg_level);
+	    "", 1 + indent / 2, cg->cg_level);
 	sbuf_printf(sb, "%*s <cpu count=\"%d\" mask=\"0x%x\">", indent, "",
 	    cg->cg_count, cg->cg_mask);
 	first = TRUE;
@@ -2705,6 +2712,7 @@ sysctl_kern_sched_topology_spec(SYSCTL_HANDLER_ARGS)
 	sbuf_delete(topo);
 	return (err);
 }
+
 #endif
 
 SYSCTL_NODE(_kern, OID_AUTO, sched, CTLFLAG_RW, 0, "Scheduler");
@@ -2741,6 +2749,7 @@ SYSCTL_INT(_kern_sched, OID_AUTO, steal_thresh, CTLFLAG_RW, &steal_thresh, 0,
 SYSCTL_PROC(_kern_sched, OID_AUTO, topology_spec, CTLTYPE_STRING |
     CTLFLAG_RD, NULL, 0, sysctl_kern_sched_topology_spec, "A", 
     "XML dump of detected CPU topology");
+
 #endif
 
 /* ps compat.  All cpu percentages from ULE are weighted. */

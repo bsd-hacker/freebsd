@@ -152,6 +152,7 @@ enum {
 #define	UMODEM_MODVER			1	/* module version */
 
 struct umodem_softc {
+	struct ucom_super_softc sc_super_ucom;
 	struct ucom_softc sc_ucom;
 
 	struct usb_xfer *sc_xfer[UMODEM_N_TRANSFER];
@@ -372,9 +373,12 @@ umodem_attach(device_t dev)
 	usbd_xfer_set_stall(sc->sc_xfer[UMODEM_BULK_RD]);
 	mtx_unlock(&sc->sc_mtx);
 
-	error = ucom_attach(&sc->sc_ucom, 1, sc, &umodem_callback, &sc->sc_mtx);
+	error = ucom_attach(&sc->sc_super_ucom, &sc->sc_ucom, 1, sc,
+	    &umodem_callback, &sc->sc_mtx);
 	if (error)
 		goto detach;
+	ucom_set_pnpinfo_usb(&sc->sc_super_ucom, dev);
+
 	return (0);
 
 detach:
@@ -787,7 +791,7 @@ umodem_detach(device_t dev)
 
 	DPRINTF("sc=%p\n", sc);
 
-	ucom_detach(&sc->sc_ucom, 1);
+	ucom_detach(&sc->sc_super_ucom, &sc->sc_ucom);
 	usbd_transfer_unsetup(sc->sc_xfer, UMODEM_N_TRANSFER);
 	mtx_destroy(&sc->sc_mtx);
 

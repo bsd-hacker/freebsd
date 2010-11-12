@@ -99,6 +99,7 @@ struct uhso_softc {
 	struct callout		sc_c;
 
 	/* TTY related structures */
+	struct ucom_super_softc sc_super_ucom;
 	int			sc_ttys;
 	struct uhso_tty		*sc_tty;
 	struct ucom_softc	*sc_ucom;
@@ -637,11 +638,10 @@ uhso_attach(device_t self)
 
 		ht->ht_name[0] = 0;
 		if (sc->sc_ttys == 1)
-			snprintf(ht->ht_name, 32, "cuaU%d", ucom->sc_unit);
+			snprintf(ht->ht_name, 32, "cuaU%d", ucom->sc_super->sc_unit);
 		else {
 			snprintf(ht->ht_name, 32, "cuaU%d.%d",
-			    ucom->sc_unit - ucom->sc_local_unit,
-			    ucom->sc_local_unit);
+			    ucom->sc_super->sc_unit, ucom->sc_subunit);
 		}
 
 		desc = uhso_port_type[port];
@@ -670,7 +670,7 @@ uhso_detach(device_t self)
 	usbd_transfer_unsetup(sc->sc_xfer, 3);
 	usbd_transfer_unsetup(sc->sc_ctrl_xfer, UHSO_CTRL_MAX);
 	if (sc->sc_ttys > 0) {
-		ucom_detach(sc->sc_ucom, sc->sc_ttys);
+		ucom_detach(&sc->sc_super_ucom, sc->sc_ucom);
 
 		for (i = 0; i < sc->sc_ttys; i++) {
 			if (sc->sc_tty[i].ht_muxport != -1) {
@@ -902,12 +902,13 @@ uhso_probe_iface(struct uhso_softc *sc, int index,
 		UHSO_DPRINTF(1, "Trying to attach mux. serial\n");
 		error = uhso_attach_muxserial(sc, iface, type);
 		if (error == 0 && sc->sc_ttys > 0) {
-			error = ucom_attach(sc->sc_ucom, sc->sc_ttys, sc,
-			    &uhso_ucom_callback, &sc->sc_mtx);
+			error = ucom_attach(&sc->sc_super_ucom, sc->sc_ucom,
+			    sc->sc_ttys, sc, &uhso_ucom_callback, &sc->sc_mtx);
 			if (error) {
 				device_printf(sc->sc_dev, "ucom_attach failed\n");
 				return (ENXIO);
 			}
+			ucom_set_pnpinfo_usb(&sc->sc_super_ucom, sc->sc_dev);
 
 			mtx_lock(&sc->sc_mtx);
 			usbd_transfer_start(sc->sc_xfer[UHSO_MUX_ENDPT_INTR]);
@@ -919,12 +920,13 @@ uhso_probe_iface(struct uhso_softc *sc, int index,
 		if (error)
 			return (ENXIO);
 
-		error = ucom_attach(sc->sc_ucom, sc->sc_ttys, sc,
-		    &uhso_ucom_callback, &sc->sc_mtx);
+		error = ucom_attach(&sc->sc_super_ucom, sc->sc_ucom,
+		    sc->sc_ttys, sc, &uhso_ucom_callback, &sc->sc_mtx);
 		if (error) {
 			device_printf(sc->sc_dev, "ucom_attach failed\n");
 			return (ENXIO);
 		}
+		ucom_set_pnpinfo_usb(&sc->sc_super_ucom, sc->sc_dev);
 	}
 	else {
 		UHSO_DPRINTF(0, "Unknown type %x\n", type);
@@ -1450,11 +1452,11 @@ uhso_ucom_start_read(struct ucom_softc *ucom)
 {
 	struct uhso_softc *sc = ucom->sc_parent;
 
-	UHSO_DPRINTF(3, "unit=%d, local_unit=%d\n",
-	    ucom->sc_unit, ucom->sc_local_unit);
+	UHSO_DPRINTF(3, "unit=%d, subunit=%d\n",
+	    ucom->sc_super->sc_unit, ucom->sc_subunit);
 
 	if (UHSO_IFACE_USB_TYPE(sc->sc_type) & UHSO_IF_MUX) {
-		sc->sc_tty[ucom->sc_local_unit].ht_open = 1;
+		sc->sc_tty[ucom->sc_subunit].ht_open = 1;
 		usbd_transfer_start(sc->sc_xfer[UHSO_MUX_ENDPT_INTR]);
 	}
 	else if (UHSO_IFACE_USB_TYPE(sc->sc_type) & UHSO_IF_BULK) {
@@ -1472,9 +1474,9 @@ uhso_ucom_stop_read(struct ucom_softc *ucom)
 	struct uhso_softc *sc = ucom->sc_parent;
 
 	if (UHSO_IFACE_USB_TYPE(sc->sc_type) & UHSO_IF_MUX) {
-		sc->sc_tty[ucom->sc_local_unit].ht_open = 0;
+		sc->sc_tty[ucom->sc_subunit].ht_open = 0;
 		usbd_transfer_stop(
-		    sc->sc_tty[ucom->sc_local_unit].ht_xfer[UHSO_CTRL_READ]);
+		    sc->sc_tty[ucom->sc_subunit].ht_xfer[UHSO_CTRL_READ]);
 	}
 	else if (UHSO_IFACE_USB_TYPE(sc->sc_type) & UHSO_IF_BULK) {
 		sc->sc_tty[0].ht_open = 0;
@@ -1490,15 +1492,15 @@ uhso_ucom_start_write(struct ucom_softc *ucom)
 	struct uhso_softc *sc = ucom->sc_parent;
 
 	if (UHSO_IFACE_USB_TYPE(sc->sc_type) & UHSO_IF_MUX) {
-		UHSO_DPRINTF(3, "local unit %d\n", ucom->sc_local_unit);
+		UHSO_DPRINTF(3, "local unit %d\n", ucom->sc_subunit);
 
 		usbd_transfer_start(sc->sc_xfer[UHSO_MUX_ENDPT_INTR]);
 
 		usbd_xfer_set_priv(
-		    sc->sc_tty[ucom->sc_local_unit].ht_xfer[UHSO_CTRL_WRITE],
-		    &sc->sc_tty[ucom->sc_local_unit]);
+		    sc->sc_tty[ucom->sc_subunit].ht_xfer[UHSO_CTRL_WRITE],
+		    &sc->sc_tty[ucom->sc_subunit]);
 		usbd_transfer_start(
-		    sc->sc_tty[ucom->sc_local_unit].ht_xfer[UHSO_CTRL_WRITE]);
+		    sc->sc_tty[ucom->sc_subunit].ht_xfer[UHSO_CTRL_WRITE]);
 	}
 	else if (UHSO_IFACE_USB_TYPE(sc->sc_type) & UHSO_IF_BULK)
 		usbd_transfer_start(sc->sc_xfer[UHSO_BULK_ENDPT_WRITE]);
@@ -1511,7 +1513,7 @@ uhso_ucom_stop_write(struct ucom_softc *ucom)
 
 	if (UHSO_IFACE_USB_TYPE(sc->sc_type) & UHSO_IF_MUX) {
 		usbd_transfer_stop(
-		    sc->sc_tty[ucom->sc_local_unit].ht_xfer[UHSO_CTRL_WRITE]);
+		    sc->sc_tty[ucom->sc_subunit].ht_xfer[UHSO_CTRL_WRITE]);
 	}
 	else if (UHSO_IFACE_USB_TYPE(sc->sc_type) & UHSO_IF_BULK)
 		usbd_transfer_stop(sc->sc_xfer[UHSO_BULK_ENDPT_WRITE]);
@@ -1559,7 +1561,7 @@ uhso_attach_ifnet(struct uhso_softc *sc, struct usb_interface *iface, int type)
 	ifp->if_init = uhso_if_init;
 	ifp->if_start = uhso_if_start;
 	ifp->if_output = uhso_if_output;
-	ifp->if_flags = 0;
+	ifp->if_flags = IFF_BROADCAST | IFF_MULTICAST | IFF_NOARP;
 	ifp->if_softc = sc;
 	IFQ_SET_MAXLEN(&ifp->if_snd, ifqmaxlen);
 	ifp->if_snd.ifq_drv_maxlen = ifqmaxlen;

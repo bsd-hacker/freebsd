@@ -87,6 +87,7 @@ enum {
 };
 
 struct uipaq_softc {
+	struct ucom_super_softc sc_super_ucom;
 	struct ucom_softc sc_ucom;
 
 	struct usb_xfer *sc_xfer[UIPAQ_N_TRANSFER];
@@ -1148,9 +1149,12 @@ uipaq_attach(device_t dev)
 	usbd_xfer_set_stall(sc->sc_xfer[UIPAQ_BULK_DT_RD]);
 	mtx_unlock(&sc->sc_mtx);
 
-	error = ucom_attach(&sc->sc_ucom, 1, sc, &uipaq_callback, &sc->sc_mtx);
+	error = ucom_attach(&sc->sc_super_ucom, &sc->sc_ucom, 1, sc,
+	    &uipaq_callback, &sc->sc_mtx);
 	if (error)
 		goto detach;
+	ucom_set_pnpinfo_usb(&sc->sc_super_ucom, dev);
+
 	return (0);
 
 detach:
@@ -1163,7 +1167,7 @@ uipaq_detach(device_t dev)
 {
 	struct uipaq_softc *sc = device_get_softc(dev);
 
-	ucom_detach(&sc->sc_ucom, 1);
+	ucom_detach(&sc->sc_super_ucom, &sc->sc_ucom);
 	usbd_transfer_unsetup(sc->sc_xfer, UIPAQ_N_TRANSFER);
 	mtx_destroy(&sc->sc_mtx);
 

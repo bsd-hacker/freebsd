@@ -291,7 +291,6 @@ rt2560_attach(device_t dev, int id)
 #ifdef notyet
 		| IEEE80211_C_TXFRAG		/* handle tx frags */
 #endif
-		| IEEE80211_C_RATECTL		/* use ratectl */
 		;
 
 	bands = 0;
@@ -2667,8 +2666,7 @@ rt2560_init_locked(struct rt2560_softc *sc)
 	RAL_WRITE(sc, RT2560_CSR1, RT2560_HOST_READY);
 
 	if (rt2560_bbp_init(sc) != 0) {
-		rt2560_stop(sc);
-		RAL_UNLOCK(sc);
+		rt2560_stop_locked(sc);
 		return;
 	}
 

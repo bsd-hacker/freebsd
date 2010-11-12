@@ -104,10 +104,15 @@ static driver_t usb_driver = {
 	.size = 0,
 };
 
+/* Host Only Drivers */
 DRIVER_MODULE(usbus, ohci, usb_driver, usb_devclass, 0, 0);
 DRIVER_MODULE(usbus, uhci, usb_driver, usb_devclass, 0, 0);
 DRIVER_MODULE(usbus, ehci, usb_driver, usb_devclass, 0, 0);
+DRIVER_MODULE(usbus, xhci, usb_driver, usb_devclass, 0, 0);
+
+/* Device Only Drivers */
 DRIVER_MODULE(usbus, at91_udp, usb_driver, usb_devclass, 0, 0);
+DRIVER_MODULE(usbus, musbotg, usb_driver, usb_devclass, 0, 0);
 DRIVER_MODULE(usbus, uss820, usb_driver, usb_devclass, 0, 0);
 
 /*------------------------------------------------------------------------*
@@ -121,6 +126,16 @@ usb_probe(device_t dev)
 
 	DPRINTF("\n");
 	return (0);
+}
+
+static void
+usb_root_mount_rel(struct usb_bus *bus)
+{
+	if (bus->bus_roothold != NULL) {
+		DPRINTF("Releasing root mount hold %p\n", bus->bus_roothold);
+		root_mount_rel(bus->bus_roothold);
+		bus->bus_roothold = NULL;
+	}
 }
 
 /*------------------------------------------------------------------------*
@@ -166,10 +181,7 @@ usb_detach(device_t dev)
 	usb_callout_drain(&bus->power_wdog);
 
 	/* Let the USB explore process detach all devices. */
-	if (bus->bus_roothold != NULL) {
-		root_mount_rel(bus->bus_roothold);
-		bus->bus_roothold = NULL;
-	}
+	usb_root_mount_rel(bus);
 
 	taskqueue_enqueue(bus->explore_tq, &bus->detach_task);
 	taskqueue_drain(bus->explore_tq, &bus->detach_task);
@@ -223,10 +235,7 @@ usb_bus_explore(void *arg, int npending)
 		(udev->hub->explore) (udev);
 		USB_BUS_LOCK(bus);
 	}
-	if (bus->bus_roothold != NULL) {
-		root_mount_rel(bus->bus_roothold);
-		bus->bus_roothold = NULL;
-	}
+	usb_root_mount_rel(bus);
 	USB_BUS_UNLOCK(bus);
 }
 
@@ -323,8 +332,14 @@ usb_bus_attach(void *arg, int npending)
 		speed = USB_SPEED_VARIABLE;
 		device_printf(bus->bdev, "480Mbps Wireless USB v2.5\n");
 		break;
+	case USB_REV_3_0:
+		speed = USB_SPEED_SUPER;
+		device_printf(bus->bdev, "4.8Gbps Super Speed USB v3.0\n");
+		break;
+
 	default:
 		device_printf(bus->bdev, "Unsupported USB revision\n");
+		usb_root_mount_rel(bus);
 		return;
 	}
 
@@ -357,6 +372,7 @@ usb_bus_attach(void *arg, int npending)
 	if (err) {
 		device_printf(bus->bdev, "Root HUB problem, error=%s\n",
 		    usbd_errstr(err));
+		usb_root_mount_rel(bus);
 	}
 
 	USB_BUS_LOCK(bus);

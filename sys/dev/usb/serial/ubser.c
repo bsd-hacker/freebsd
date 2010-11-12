@@ -128,6 +128,7 @@ enum {
 };
 
 struct ubser_softc {
+	struct ucom_super_softc sc_super_ucom;
 	struct ucom_softc sc_ucom[UBSER_UNIT_MAX];
 
 	struct usb_xfer *sc_xfer[UBSER_N_TRANSFER];
@@ -283,10 +284,11 @@ ubser_attach(device_t dev)
 	for (n = 0; n < sc->sc_numser; n++)
 		sc->sc_ucom[n].sc_portno = n;
 
-	error = ucom_attach(sc->sc_ucom, sc->sc_numser, sc, &ubser_callback,
-	    &sc->sc_mtx);
+	error = ucom_attach(&sc->sc_super_ucom, sc->sc_ucom,
+	    sc->sc_numser, sc, &ubser_callback, &sc->sc_mtx);
 	if (error)
 		goto detach;
+	ucom_set_pnpinfo_usb(&sc->sc_super_ucom, dev);
 
 	mtx_lock(&sc->sc_mtx);
 	usbd_xfer_set_stall(sc->sc_xfer[UBSER_BULK_DT_WR]);
@@ -308,7 +310,7 @@ ubser_detach(device_t dev)
 
 	DPRINTF("\n");
 
-	ucom_detach(sc->sc_ucom, sc->sc_numser);
+	ucom_detach(&sc->sc_super_ucom, sc->sc_ucom);
 	usbd_transfer_unsetup(sc->sc_xfer, UBSER_N_TRANSFER);
 	mtx_destroy(&sc->sc_mtx);
 

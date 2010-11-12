@@ -247,7 +247,7 @@ struct sysmaps {
 	caddr_t	CADDR2;
 };
 static struct sysmaps sysmaps_pcpu[MAXCPU];
-pt_entry_t *CMAP1 = 0, *KPTmap;
+pt_entry_t *CMAP1 = 0;
 static pt_entry_t *CMAP3;
 static pd_entry_t *KPTD;
 caddr_t CADDR1 = 0, ptvmmap = 0;
@@ -362,12 +362,11 @@ pmap_bootstrap(vm_paddr_t firstaddr)
 	int i;
 
 	/*
-	 * XXX The calculation of virtual_avail is wrong. It's NKPT*PAGE_SIZE too
-	 * large. It should instead be correctly calculated in locore.s and
-	 * not based on 'first' (which is a physical address, not a virtual
-	 * address, for the start of unused physical memory). The kernel
-	 * page tables are NOT double mapped and thus should not be included
-	 * in this calculation.
+	 * Initialize the first available kernel virtual address.  However,
+	 * using "firstaddr" may waste a few pages of the kernel virtual
+	 * address space, because locore may not have mapped every physical
+	 * page that it allocated.  Preferably, locore would provide a first
+	 * unused virtual address in addition to "firstaddr".
 	 */
 	virtual_avail = (vm_offset_t) KERNBASE + firstaddr;
 
@@ -437,6 +436,10 @@ pmap_bootstrap(vm_paddr_t firstaddr)
 
 	/*
 	 * KPTmap is used by pmap_kextract().
+	 *
+	 * KPTmap is first initialized by locore.  However, that initial
+	 * KPTmap can only support NKPT page table pages.  Here, a larger
+	 * KPTmap is created that can support KVA_PAGES page table pages.
 	 */
 	SYSMAP(pt_entry_t *, KPTD, KPTmap, KVA_PAGES)
 
@@ -1386,6 +1389,8 @@ retry:
 /*
  * Add a wired page to the kva.
  * Note: not SMP coherent.
+ *
+ * This function may be used before pmap_bootstrap() is called.
  */
 PMAP_INLINE void 
 pmap_kenter(vm_offset_t va, vm_paddr_t pa)
@@ -1408,6 +1413,8 @@ pmap_kenter_attr(vm_offset_t va, vm_paddr_t pa, int mode)
 /*
  * Remove a page from the kernel pagetables.
  * Note: not SMP coherent.
+ *
+ * This function may be used before pmap_bootstrap() is called.
  */
 PMAP_INLINE void
 pmap_kremove(vm_offset_t va)
@@ -1671,11 +1678,19 @@ pmap_unuse_pt(pmap_t pmap, vm_offset_t va, vm_page_t *free)
 	return (pmap_unwire_pte_hold(pmap, mpte, free));
 }
 
+/*
+ * Initialize the pmap for the swapper process.
+ */
 void
 pmap_pinit0(pmap_t pmap)
 {
 
 	PMAP_LOCK_INIT(pmap);
+	/*
+	 * Since the page table directory is shared with the kernel pmap,
+	 * which is already included in the list "allpmaps", this pmap does
+	 * not need to be inserted into that list.
+	 */
 	pmap->pm_pdir = (pd_entry_t *)(KERNBASE + (vm_offset_t)IdlePTD);
 #ifdef PAE
 	pmap->pm_pdpt = (pdpt_entry_t *)(KERNBASE + (vm_offset_t)IdlePDPT);
@@ -1685,9 +1700,6 @@ pmap_pinit0(pmap_t pmap)
 	PCPU_SET(curpmap, pmap);
 	TAILQ_INIT(&pmap->pm_pvchunk);
 	bzero(&pmap->pm_stats, sizeof pmap->pm_stats);
-	mtx_lock_spin(&allpmaps_lock);
-	LIST_INSERT_HEAD(&allpmaps, pmap, pm_list);
-	mtx_unlock_spin(&allpmaps_lock);
 }
 
 /*
@@ -1752,9 +1764,9 @@ pmap_pinit(pmap_t pmap)
 
 	mtx_lock_spin(&allpmaps_lock);
 	LIST_INSERT_HEAD(&allpmaps, pmap, pm_list);
-	mtx_unlock_spin(&allpmaps_lock);
-	/* Wire in kernel global address entries. */
+	/* Copy the kernel page table directory entries. */
 	bcopy(PTD + KPTDI, pmap->pm_pdir + KPTDI, nkpt * sizeof(pd_entry_t));
+	mtx_unlock_spin(&allpmaps_lock);
 
 	/* install self-referential address mapping entry(s) */
 	for (i = 0; i < NPGPTD; i++) {

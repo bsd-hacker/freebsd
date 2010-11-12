@@ -76,6 +76,7 @@ enum {
 };
 
 struct ucycom_softc {
+	struct ucom_super_softc sc_super_ucom;
 	struct ucom_softc sc_ucom;
 
 	struct usb_device *sc_udev;
@@ -261,12 +262,15 @@ ucycom_attach(device_t dev)
 		    "transfers failed\n");
 		goto detach;
 	}
-	error = ucom_attach(&sc->sc_ucom, 1, sc, &ucycom_callback, &sc->sc_mtx);
-
+	error = ucom_attach(&sc->sc_super_ucom, &sc->sc_ucom, 1, sc,
+	    &ucycom_callback, &sc->sc_mtx);
 	if (error)
 		goto detach;
+	ucom_set_pnpinfo_usb(&sc->sc_super_ucom, dev);
+
 	if (urd_ptr)
 		free(urd_ptr, M_USBDEV);
+
 	return (0);			/* success */
 
 detach:
@@ -281,7 +285,7 @@ ucycom_detach(device_t dev)
 {
 	struct ucycom_softc *sc = device_get_softc(dev);
 
-	ucom_detach(&sc->sc_ucom, 1);
+	ucom_detach(&sc->sc_super_ucom, &sc->sc_ucom);
 	usbd_transfer_unsetup(sc->sc_xfer, UCYCOM_N_TRANSFER);
 	mtx_destroy(&sc->sc_mtx);
 

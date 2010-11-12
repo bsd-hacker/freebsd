@@ -745,8 +745,9 @@ aue_attach(device_t dev)
 	ifp->if_snd.ifq_drv_maxlen = ifqmaxlen;
 	IFQ_SET_READY(&ifp->if_snd);
 
-	error = mii_phy_probe(sc->sc_dev, &sc->sc_miibus,
-	    aue_ifmedia_upd, aue_ifmedia_sts);
+	error = mii_attach(sc->sc_dev, &sc->sc_miibus, ifp,
+	    aue_ifmedia_upd, aue_ifmedia_sts,
+	    BMSR_DEFCAPMASK, MII_PHY_ANY, MII_OFFSET_ANY, 0);
 	if (error) {
 		device_printf(sc->sc_dev, "MII without any PHY\n");
 		goto detach;

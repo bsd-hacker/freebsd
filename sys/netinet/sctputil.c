@@ -50,8 +50,6 @@ __FBSDID("$FreeBSD$");
 #include <netinet/sctp_cc_functions.h>
 #include <netinet/sctp_bsd_addr.h>
 
-#define NUMBER_OF_MTU_SIZES 18
-
 
 #ifndef KTR_SCTP
 #define KTR_SCTP KTR_SUBSYS
@@ -725,30 +723,10 @@ sctp_audit_log(uint8_t ev, uint8_t fd)
 #endif
 
 /*
- * a list of sizes based on typical mtu's, used only if next hop size not
- * returned.
+ * sctp_stop_timers_for_shutdown() should be called
+ * when entering the SHUTDOWN_SENT or SHUTDOWN_ACK_SENT
+ * state to make sure that all timers are stopped.
  */
-static int sctp_mtu_sizes[] = {
-	68,
-	296,
-	508,
-	512,
-	544,
-	576,
-	1006,
-	1492,
-	1500,
-	1536,
-	2002,
-	2048,
-	4352,
-	4464,
-	8166,
-	17914,
-	32000,
-	65535
-};
-
 void
 sctp_stop_timers_for_shutdown(struct sctp_tcb *stcb)
 {
@@ -769,25 +747,67 @@ sctp_stop_timers_for_shutdown(struct sctp_tcb *stcb)
 	}
 }
 
-int
-find_next_best_mtu(int totsz)
-{
-	int i, perfer;
+/*
+ * a list of sizes based on typical mtu's, used only if next hop size not
+ * returned.
+ */
+static uint32_t sctp_mtu_sizes[] = {
+	68,
+	296,
+	508,
+	512,
+	544,
+	576,
+	1006,
+	1492,
+	1500,
+	1536,
+	2002,
+	2048,
+	4352,
+	4464,
+	8166,
+	17914,
+	32000,
+	65535
+};
 
-	/*
-	 * if we are in here we must find the next best fit based on the
-	 * size of the dg that failed to be sent.
-	 */
-	perfer = 0;
-	for (i = 0; i < NUMBER_OF_MTU_SIZES; i++) {
-		if (totsz < sctp_mtu_sizes[i]) {
-			perfer = i - 1;
-			if (perfer < 0)
-				perfer = 0;
+/*
+ * Return the largest MTU smaller than val. If there is no
+ * entry, just return val.
+ */
+uint32_t
+sctp_get_prev_mtu(uint32_t val)
+{
+	uint32_t i;
+
+	if (val <= sctp_mtu_sizes[0]) {
+		return (val);
+	}
+	for (i = 1; i < (sizeof(sctp_mtu_sizes) / sizeof(uint32_t)); i++) {
+		if (val <= sctp_mtu_sizes[i]) {
 			break;
 		}
 	}
-	return (sctp_mtu_sizes[perfer]);
+	return (sctp_mtu_sizes[i - 1]);
+}
+
+/*
+ * Return the smallest MTU larger than val. If there is no
+ * entry, just return val.
+ */
+uint32_t
+sctp_get_next_mtu(struct sctp_inpcb *inp, uint32_t val)
+{
+	/* select another MTU that is just bigger than this one */
+	uint32_t i;
+
+	for (i = 0; i < (sizeof(sctp_mtu_sizes) / sizeof(uint32_t)); i++) {
+		if (val < sctp_mtu_sizes[i]) {
+			return (sctp_mtu_sizes[i]);
+		}
+	}
+	return (val);
 }
 
 void
@@ -1004,10 +1024,6 @@ sctp_init_asoc(struct sctp_inpcb *m, struct sctp_tcb *stcb,
 	asoc->peers_rwnd = SCTP_SB_LIMIT_RCV(m->sctp_socket);
 
 	asoc->smallest_mtu = m->sctp_frag_point;
-#ifdef SCTP_PRINT_FOR_B_AND_M
-	SCTP_PRINTF("smallest_mtu init'd with asoc to :%d\n",
-	    asoc->smallest_mtu);
-#endif
 	asoc->minrto = m->sctp_ep.sctp_minrto;
 	asoc->maxrto = m->sctp_ep.sctp_maxrto;
 
@@ -2488,10 +2504,6 @@ sctp_mtu_size_reset(struct sctp_inpcb *inp,
 	struct sctp_tmit_chunk *chk;
 	unsigned int eff_mtu, ovh;
 
-#ifdef SCTP_PRINT_FOR_B_AND_M
-	SCTP_PRINTF("sctp_mtu_size_reset(%p, asoc:%p mtu:%d\n",
-	    inp, asoc, mtu);
-#endif
 	asoc->smallest_mtu = mtu;
 	if (inp->sctp_flags & SCTP_PCB_FLAGS_BOUND_V6) {
 		ovh = SCTP_MIN_OVERHEAD;
@@ -2500,7 +2512,6 @@ sctp_mtu_size_reset(struct sctp_inpcb *inp,
 	}
 	eff_mtu = mtu - ovh;
 	TAILQ_FOREACH(chk, &asoc->send_queue, sctp_next) {
-
 		if (chk->send_size > eff_mtu) {
 			chk->flags |= CHUNK_FLAGS_FRAGMENT_OK;
 		}
@@ -2815,6 +2826,7 @@ sctp_notify_assoc_change(uint32_t event, struct sctp_tcb *stcb,
 			}
 		}
 #endif
+		socantrcvmore(stcb->sctp_socket);
 		sorwakeup(stcb->sctp_socket);
 		sowwakeup(stcb->sctp_socket);
 #if defined (__APPLE__) || defined(SCTP_SO_LOCK_TESTING)
@@ -3763,9 +3775,10 @@ sctp_report_all_outbound(struct sctp_tcb *stcb, int holds_lock, int so_locked
 					sp->data = NULL;
 				}
 			}
-			if (sp->net)
+			if (sp->net) {
 				sctp_free_remote_addr(sp->net);
-			sp->net = NULL;
+				sp->net = NULL;
+			}
 			/* Free the chunk */
 			sctp_free_a_strmoq(stcb, sp);
 			/* sa_ignore FREED_MEMORY */
@@ -4818,7 +4831,10 @@ next_on_sent:
 					chk->rec.data.payloadtype = sp->ppid;
 					chk->rec.data.context = sp->context;
 					chk->flags = sp->act_flags;
-					chk->whoTo = sp->net;
+					if (sp->net)
+						chk->whoTo = sp->net;
+					else
+						chk->whoTo = stcb->asoc.primary_destination;
 					atomic_add_int(&chk->whoTo->ref_count, 1);
 					chk->rec.data.TSN_seq = atomic_fetchadd_int(&stcb->asoc.sending_seq, 1);
 					stcb->asoc.pr_sctp_cnt++;
@@ -5132,7 +5148,7 @@ sctp_sorecvmsg(struct socket *so,
 	int my_len = 0;
 	int cp_len = 0, error = 0;
 	struct sctp_queued_to_read *control = NULL, *ctl = NULL, *nxt = NULL;
-	struct mbuf *m = NULL, *embuf = NULL;
+	struct mbuf *m = NULL;
 	struct sctp_tcb *stcb = NULL;
 	int wakeup_read_socket = 0;
 	int freecnt_applied = 0;
@@ -5728,7 +5744,6 @@ get_more_data:
 						sctp_sblog(&so->so_rcv,
 						    control->do_not_ref_stcb ? NULL : stcb, SCTP_LOG_SBRESULT, 0);
 					}
-					embuf = m;
 					copied_so_far += cp_len;
 					freed_so_far += cp_len;
 					freed_so_far += MSIZE;
@@ -5780,7 +5795,6 @@ get_more_data:
 						atomic_subtract_int(&stcb->asoc.sb_cc, cp_len);
 					}
 					copied_so_far += cp_len;
-					embuf = m;
 					freed_so_far += cp_len;
 					freed_so_far += MSIZE;
 					if (SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_SB_LOGGING_ENABLE) {

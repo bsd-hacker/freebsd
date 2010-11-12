@@ -229,6 +229,7 @@ TUNABLE_INT("hw.usb.umass.debug", &umass_debug);
 /* Approximate maximum transfer speeds (assumes 33% overhead). */
 #define	UMASS_FULL_TRANSFER_SPEED	1000
 #define	UMASS_HIGH_TRANSFER_SPEED	40000
+#define	UMASS_SUPER_TRANSFER_SPEED	400000
 #define	UMASS_FLOPPY_TRANSFER_SPEED	20
 
 #define	UMASS_TIMEOUT			5000	/* ms */
@@ -2330,13 +2331,22 @@ umass_cam_action(struct cam_sim *sim, union ccb *ccb)
 				if (sc->sc_quirks & FLOPPY_SPEED) {
 					cpi->base_transfer_speed =
 					    UMASS_FLOPPY_TRANSFER_SPEED;
-				} else if (usbd_get_speed(sc->sc_udev) ==
-				    USB_SPEED_HIGH) {
-					cpi->base_transfer_speed =
-					    UMASS_HIGH_TRANSFER_SPEED;
 				} else {
-					cpi->base_transfer_speed =
-					    UMASS_FULL_TRANSFER_SPEED;
+					switch (usbd_get_speed(sc->sc_udev)) {
+					case USB_SPEED_SUPER:
+						cpi->base_transfer_speed =
+						    UMASS_SUPER_TRANSFER_SPEED;
+						cpi->maxio = MAXPHYS;
+						break;
+					case USB_SPEED_HIGH:
+						cpi->base_transfer_speed =
+						    UMASS_HIGH_TRANSFER_SPEED;
+						break;
+					default:
+						cpi->base_transfer_speed =
+						    UMASS_FULL_TRANSFER_SPEED;
+						break;
+					}
 				}
 				cpi->max_lun = sc->sc_maxlun;
 			}

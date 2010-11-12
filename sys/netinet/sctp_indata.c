@@ -708,9 +708,10 @@ protocol_error:
 					control->data = NULL;
 					asoc->size_on_all_streams -= control->length;
 					sctp_ucount_decr(asoc->cnt_on_all_streams);
-					if (control->whoFrom)
+					if (control->whoFrom) {
 						sctp_free_remote_addr(control->whoFrom);
-					control->whoFrom = NULL;
+						control->whoFrom = NULL;
+					}
 					sctp_free_a_readq(stcb, control);
 					return;
 				} else {
@@ -1775,6 +1776,10 @@ sctp_process_a_data_chunk(struct sctp_tcb *stcb, struct sctp_association *asoc,
 		if (control == NULL) {
 			goto failed_express_del;
 		}
+		SCTP_SET_TSN_PRESENT(asoc->nr_mapping_array, gap);
+		if (compare_with_wrap(tsn, asoc->highest_tsn_inside_nr_map, MAX_TSN)) {
+			asoc->highest_tsn_inside_nr_map = tsn;
+		}
 		sctp_add_to_readq(stcb->sctp_ep, stcb,
 		    control, &stcb->sctp_socket->so_rcv,
 		    1, SCTP_READ_LOCK_NOT_HELD, SCTP_SO_NOT_LOCKED);
@@ -1790,10 +1795,6 @@ sctp_process_a_data_chunk(struct sctp_tcb *stcb, struct sctp_association *asoc,
 		}
 		control = NULL;
 
-		SCTP_SET_TSN_PRESENT(asoc->nr_mapping_array, gap);
-		if (compare_with_wrap(tsn, asoc->highest_tsn_inside_nr_map, MAX_TSN)) {
-			asoc->highest_tsn_inside_nr_map = tsn;
-		}
 		goto finish_express_del;
 	}
 failed_express_del:
@@ -3299,13 +3300,7 @@ sctp_strike_gap_ack_chunks(struct sctp_tcb *stcb, struct sctp_association *asoc,
 		if (stcb->asoc.peer_supports_prsctp) {
 			if ((PR_SCTP_TTL_ENABLED(tp1->flags)) && tp1->sent < SCTP_DATAGRAM_ACKED) {
 				/* Is it expired? */
-				if (
-				/*
-				 * TODO sctp_constants.h needs alternative
-				 * time macros when _KERNEL is undefined.
-				 */
-				    (timevalcmp(&now, &tp1->rec.data.timetodrop, >))
-				    ) {
+				if (timevalcmp(&now, &tp1->rec.data.timetodrop, >)) {
 					/* Yes so drop it */
 					if (tp1->data != NULL) {
 						(void)sctp_release_pr_sctp_chunk(stcb, tp1,
@@ -4374,7 +4369,7 @@ again:
 			SCTP_CLEAR_SUBSTATE(asoc, SCTP_STATE_SHUTDOWN_PENDING);
 			sctp_send_shutdown_ack(stcb,
 			    stcb->asoc.primary_destination);
-
+			sctp_stop_timers_for_shutdown(stcb);
 			sctp_timer_start(SCTP_TIMER_TYPE_SHUTDOWNACK,
 			    stcb->sctp_ep, stcb, asoc->primary_destination);
 		}
@@ -4845,7 +4840,7 @@ sctp_handle_sack(struct mbuf *m, int offset_seg, int offset_dup,
 			if (asoc->pr_sctp_cnt != 0)
 				asoc->pr_sctp_cnt--;
 		}
-		if ((TAILQ_FIRST(&asoc->sent_queue) == NULL) &&
+		if (TAILQ_EMPTY(&asoc->sent_queue) &&
 		    (asoc->total_flight > 0)) {
 #ifdef INVARIANTS
 			panic("Warning flight size is postive and should be 0");
@@ -5086,7 +5081,7 @@ done_with_it:
 			SCTP_CLEAR_SUBSTATE(asoc, SCTP_STATE_SHUTDOWN_PENDING);
 			sctp_send_shutdown_ack(stcb,
 			    stcb->asoc.primary_destination);
-
+			sctp_stop_timers_for_shutdown(stcb);
 			sctp_timer_start(SCTP_TIMER_TYPE_SHUTDOWNACK,
 			    stcb->sctp_ep, stcb, asoc->primary_destination);
 			return;
@@ -5818,7 +5813,7 @@ sctp_handle_forward_tsn(struct sctp_tcb *stcb,
 	 */
 	sctp_slide_mapping_arrays(stcb);
 
-	if (TAILQ_FIRST(&asoc->reasmqueue)) {
+	if (!TAILQ_EMPTY(&asoc->reasmqueue)) {
 		/* now lets kick out and check for more fragmented delivery */
 		/* sa_ignore NO_NULL_CHK */
 		sctp_deliver_reasm_check(stcb, &stcb->asoc);

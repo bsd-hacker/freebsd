@@ -144,6 +144,8 @@ extern vm_offset_t physmem_desc[PHYS_AVAIL_ENTRIES + 2];
 extern vm_offset_t virtual_avail;
 extern vm_offset_t virtual_end;
 
+extern vm_paddr_t dump_avail[PHYS_AVAIL_ENTRIES + 2];
+
 #define	pmap_page_get_memattr(m)	VM_MEMATTR_DEFAULT
 #define	pmap_page_is_mapped(m)	(!TAILQ_EMPTY(&(m)->md.pv_list))
 #define	pmap_page_set_memattr(m, ma)	(void)0
@@ -154,6 +156,7 @@ void pmap_unmapdev(vm_offset_t, vm_size_t);
 vm_offset_t pmap_steal_memory(vm_size_t size);
 int page_is_managed(vm_offset_t pa);
 void pmap_kenter(vm_offset_t va, vm_paddr_t pa);
+void pmap_kenter_attr(vm_offset_t va, vm_paddr_t pa, int attr);
 void pmap_kremove(vm_offset_t va);
 void *pmap_kenter_temporary(vm_paddr_t pa, int i);
 void pmap_kenter_temporary_free(vm_paddr_t pa);

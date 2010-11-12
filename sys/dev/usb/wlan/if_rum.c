@@ -118,6 +118,8 @@ static const struct usb_device_id rum_devs[] = {
     RUM_DEV(HUAWEI3COM, WUB320G),
     RUM_DEV(MELCO, G54HP),
     RUM_DEV(MELCO, SG54HP),
+    RUM_DEV(MELCO, WLRUCG),
+    RUM_DEV(MELCO, WLRUCGAOSS),
     RUM_DEV(MSI, RT2573_1),
     RUM_DEV(MSI, RT2573_2),
     RUM_DEV(MSI, RT2573_3),
@@ -493,7 +495,6 @@ rum_attach(device_t self)
 	    | IEEE80211_C_SHSLOT	/* short slot time supported */
 	    | IEEE80211_C_BGSCAN	/* bg scanning supported */
 	    | IEEE80211_C_WPA		/* 802.11i */
-	    | IEEE80211_C_RATECTL	/* use ratectl */
 	    ;
 
 	bands = 0;
@@ -1813,8 +1814,12 @@ rum_update_promisc(struct ifnet *ifp)
 static void
 rum_update_mcast(struct ifnet *ifp)
 {
+	static int warning_printed;
 
-	/* XXX do nothing? */
+	if (warning_printed == 0) {
+		if_printf(ifp, "need to implement %s\n", __func__);
+		warning_printed = 1;
+	}
 }
 
 static const char *

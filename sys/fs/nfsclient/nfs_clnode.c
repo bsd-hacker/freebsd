@@ -37,6 +37,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/fcntl.h>
 #include <sys/lock.h>
 #include <sys/malloc.h>
 #include <sys/mount.h>
@@ -53,12 +54,13 @@ __FBSDID("$FreeBSD$");
 #include <fs/nfsclient/nfsmount.h>
 #include <fs/nfsclient/nfs.h>
 
+#include <nfs/nfs_lock.h>
+
 extern struct vop_vector newnfs_vnodeops;
 extern struct buf_ops buf_ops_newnfs;
 MALLOC_DECLARE(M_NEWNFSREQ);
 
 uma_zone_t newnfsnode_zone;
-vop_reclaim_t	*ncl_reclaim_p = NULL;
 
 void
 ncl_nhinit(void)
@@ -234,12 +236,21 @@ ncl_reclaim(struct vop_reclaim_args *ap)
 	if (prtactive && vrefcnt(vp) != 0)
 		vprint("ncl_reclaim: pushing active", vp);
 
+	if (NFS_ISV4(vp) && vp->v_type == VREG)
+		/*
+		 * Since mmap()'d files do I/O after VOP_CLOSE(), the NFSv4
+		 * Close operations are delayed until ncl_inactive().
+		 * However, since VOP_INACTIVE() is not guaranteed to be
+		 * called, we need to do it again here.
+		 */
+		(void) nfsrpc_close(vp, 1, ap->a_td);
+
 	/*
 	 * If the NLM is running, give it a chance to abort pending
 	 * locks.
 	 */
-	if (ncl_reclaim_p)
-		ncl_reclaim_p(ap);
+	if (nfs_reclaim_p != NULL)
+		nfs_reclaim_p(ap);
 
 	/*
 	 * Destroy the vm object and flush associated pages.

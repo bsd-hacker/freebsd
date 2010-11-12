@@ -1033,20 +1033,45 @@ usb_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int fflag,
 		err = usb_ioctl_f_sub(f, cmd, addr, td);
 	}
 	KASSERT(f != NULL, ("fifo not found"));
-	if (err == ENOIOCTL) {
-		err = (f->methods->f_ioctl) (f, cmd, addr, fflags);
-		DPRINTFN(2, "f_ioctl cmd 0x%lx = %d\n", cmd, err);
-		if (err == ENOIOCTL) {
-			if (usb_usb_ref_device(cpd, &refs)) {
-				err = ENXIO;
-				goto done;
-			}
-			err = (f->methods->f_ioctl_post) (f, cmd, addr, fflags);
-			DPRINTFN(2, "f_ioctl_post cmd 0x%lx = %d\n", cmd, err);
-		}
+	if (err != ENOIOCTL)
+		goto done;
+
+	err = (f->methods->f_ioctl) (f, cmd, addr, fflags);
+
+	DPRINTFN(2, "f_ioctl cmd 0x%lx = %d\n", cmd, err);
+
+	if (err != ENOIOCTL)
+		goto done;
+
+	if (usb_usb_ref_device(cpd, &refs)) {
+		err = ENXIO;
+		goto done;
 	}
+
+	err = (f->methods->f_ioctl_post) (f, cmd, addr, fflags);
+
+	DPRINTFN(2, "f_ioctl_post cmd 0x%lx = %d\n", cmd, err);
+
 	if (err == ENOIOCTL)
 		err = ENOTTY;
+
+	if (err)
+		goto done;
+
+	/* Wait for re-enumeration, if any */
+
+	while (f->udev->re_enumerate_wait != 0) {
+
+		usb_unref_device(cpd, &refs);
+
+		usb_pause_mtx(NULL, hz / 128);
+
+		if (usb_ref_device(cpd, &refs, 1 /* need uref */)) {
+			err = ENXIO;
+			goto done;
+		}
+	}
+
 done:
 	usb_unref_device(cpd, &refs);
 	return (err);
@@ -1412,7 +1437,7 @@ usb_static_ioctl(struct cdev *dev, u_long cmd, caddr_t data, int fflag,
 		struct usb_read_dir *urd;
 		void* data;
 	} u;
-	int err = ENOTTY;
+	int err;
 
 	u.data = data;
 	switch (cmd) {
@@ -1428,12 +1453,16 @@ usb_static_ioctl(struct cdev *dev, u_long cmd, caddr_t data, int fflag,
 		break;
 	case USB_GET_TEMPLATE:
 		*(int *)data = usb_template;
+		err = 0;
 		break;
 	case USB_SET_TEMPLATE:
 		err = priv_check(curthread, PRIV_DRIVER);
 		if (err)
 			break;
 		usb_template = *(int *)data;
+		break;
+	default:
+		err = ENOTTY;
 		break;
 	}
 	return (err);

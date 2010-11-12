@@ -167,6 +167,7 @@ enum {
 };
 
 struct uvisor_softc {
+	struct ucom_super_softc sc_super_ucom;
 	struct ucom_softc sc_ucom;
 
 	struct usb_xfer *sc_xfer[UVISOR_N_TRANSFER];
@@ -334,11 +335,14 @@ uvisor_attach(device_t dev)
 		goto detach;
 	}
 
-	error = ucom_attach(&sc->sc_ucom, 1, sc, &uvisor_callback, &sc->sc_mtx);
+	error = ucom_attach(&sc->sc_super_ucom, &sc->sc_ucom, 1, sc,
+	    &uvisor_callback, &sc->sc_mtx);
 	if (error) {
 		DPRINTF("ucom_attach failed\n");
 		goto detach;
 	}
+	ucom_set_pnpinfo_usb(&sc->sc_super_ucom, dev);
+
 	return (0);
 
 detach:
@@ -353,7 +357,7 @@ uvisor_detach(device_t dev)
 
 	DPRINTF("sc=%p\n", sc);
 
-	ucom_detach(&sc->sc_ucom, 1);
+	ucom_detach(&sc->sc_super_ucom, &sc->sc_ucom);
 	usbd_transfer_unsetup(sc->sc_xfer, UVISOR_N_TRANSFER);
 	mtx_destroy(&sc->sc_mtx);
 

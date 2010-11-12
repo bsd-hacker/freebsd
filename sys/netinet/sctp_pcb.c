@@ -107,7 +107,7 @@ sctp_fill_pcbinfo(struct sctp_pcbinfo *spcb)
  *    ...   +--ifa-> ifa -> ifa
  *   vrf
  *
- * We keep these seperate lists since the SCTP subsystem will
+ * We keep these separate lists since the SCTP subsystem will
  * point to these from its source address selection nets structure.
  * When an address is deleted it does not happen right away on
  * the SCTP side, it gets scheduled. What we do when a
@@ -191,7 +191,7 @@ sctp_find_ifn(void *ifn, uint32_t ifn_index)
 	struct sctp_ifnlist *hash_ifn_head;
 
 	/*
-	 * We assume the lock is held for the addresses if thats wrong
+	 * We assume the lock is held for the addresses if that's wrong
 	 * problems could occur :-)
 	 */
 	hash_ifn_head = &SCTP_BASE_INFO(vrf_ifn_hash)[(ifn_index & SCTP_BASE_INFO(vrf_ifn_hashmark))];
@@ -327,7 +327,7 @@ sctp_mark_ifa_addr_down(uint32_t vrf_id, struct sockaddr *addr,
 		len1 = strlen(if_name);
 		len2 = strlen(sctp_ifap->ifn_p->ifn_name);
 		if (len1 != len2) {
-			SCTPDBG(SCTP_DEBUG_PCB4, "IFN of ifa names different lenght %d vs %d - ignored\n",
+			SCTPDBG(SCTP_DEBUG_PCB4, "IFN of ifa names different length %d vs %d - ignored\n",
 			    len1, len2);
 			goto out;
 		}
@@ -380,7 +380,7 @@ sctp_mark_ifa_addr_up(uint32_t vrf_id, struct sockaddr *addr,
 		len1 = strlen(if_name);
 		len2 = strlen(sctp_ifap->ifn_p->ifn_name);
 		if (len1 != len2) {
-			SCTPDBG(SCTP_DEBUG_PCB4, "IFN of ifa names different lenght %d vs %d - ignored\n",
+			SCTPDBG(SCTP_DEBUG_PCB4, "IFN of ifa names different length %d vs %d - ignored\n",
 			    len1, len2);
 			goto out;
 		}
@@ -567,8 +567,8 @@ sctp_add_addr_to_vrf(uint32_t vrf_id, void *ifn, uint32_t ifn_index,
 		} else {
 			if (sctp_ifap->ifn_p) {
 				/*
-				 * The last IFN gets the address, removee
-				 * the old one
+				 * The last IFN gets the address, remove the
+				 * old one
 				 */
 				SCTPDBG(SCTP_DEBUG_PCB4, "Moving ifa %p from %s (0x%x) to %s (0x%x)\n",
 				    sctp_ifap, sctp_ifap->ifn_p->ifn_name,
@@ -849,7 +849,7 @@ sctp_tcb_special_locate(struct sctp_inpcb **inp_p, struct sockaddr *from,
 	} else {
 		return NULL;
 	}
-	ephead = &SCTP_BASE_INFO(sctp_tcpephash)[SCTP_PCBHASH_ALLADDR((lport), SCTP_BASE_INFO(hashtcpmark))];
+	ephead = &SCTP_BASE_INFO(sctp_tcpephash)[SCTP_PCBHASH_ALLADDR((lport | rport), SCTP_BASE_INFO(hashtcpmark))];
 	/*
 	 * Ok now for each of the guys in this bucket we must look and see:
 	 * - Does the remote port match. - Does there single association's
@@ -1515,7 +1515,7 @@ sctp_endpoint_probe(struct sockaddr *nam, struct sctppcbhead *head,
 	int fnd;
 
 	/*
-	 * Endpoing probe expects that the INP_INFO is locked.
+	 * Endpoint probe expects that the INP_INFO is locked.
 	 */
 	sin = NULL;
 #ifdef INET6
@@ -1771,6 +1771,7 @@ sctp_pcb_findep(struct sockaddr *nam, int find_tcp_pool, int have_lock,
 	struct sockaddr_in *sin;
 	struct sockaddr_in6 *sin6;
 	int lport;
+	unsigned int i;
 
 	if (nam->sa_family == AF_INET) {
 		sin = (struct sockaddr_in *)nam;
@@ -1797,17 +1798,22 @@ sctp_pcb_findep(struct sockaddr *nam, int find_tcp_pool, int have_lock,
 
 	/*
 	 * If the TCP model exists it could be that the main listening
-	 * endpoint is gone but there exists a connected socket for this guy
-	 * yet. If so we can return the first one that we find. This may NOT
-	 * be the correct one so the caller should be wary on the return
-	 * INP. Currently the onlyc caller that sets this flag is in bindx
-	 * where we are verifying that a user CAN bind the address. He
-	 * either has bound it already, or someone else has, or its open to
-	 * bind, so this is good enough.
+	 * endpoint is gone but there still exists a connected socket for
+	 * this guy. If so we can return the first one that we find. This
+	 * may NOT be the correct one so the caller should be wary on the
+	 * returned INP. Currently the only caller that sets find_tcp_pool
+	 * is in bindx where we are verifying that a user CAN bind the
+	 * address. He either has bound it already, or someone else has, or
+	 * its open to bind, so this is good enough.
 	 */
 	if (inp == NULL && find_tcp_pool) {
-		head = &SCTP_BASE_INFO(sctp_tcpephash)[SCTP_PCBHASH_ALLADDR(lport, SCTP_BASE_INFO(hashtcpmark))];
-		inp = sctp_endpoint_probe(nam, head, lport, vrf_id);
+		for (i = 0; i < SCTP_BASE_INFO(hashtcpmark) + 1; i++) {
+			head = &SCTP_BASE_INFO(sctp_tcpephash)[i];
+			inp = sctp_endpoint_probe(nam, head, lport, vrf_id);
+			if (inp) {
+				break;
+			}
+		}
 	}
 	if (inp) {
 		SCTP_INP_INCR_REF(inp);
@@ -2005,7 +2011,7 @@ sctp_findassoc_by_vtag(struct sockaddr *from, struct sockaddr *to, uint32_t vtag
 			}
 			if (remote_tag) {
 				/*
-				 * If we have both vtags thats all we match
+				 * If we have both vtags that's all we match
 				 * on
 				 */
 				if (stcb->asoc.peer_vtag == remote_tag) {
@@ -2183,7 +2189,7 @@ sctp_findassociation_addr(struct mbuf *m, int iphlen, int offset,
 			 * association that is linked to an existing
 			 * association that is under the TCP pool (i.e. no
 			 * listener exists). The endpoint finding routine
-			 * will always find a listner before examining the
+			 * will always find a listener before examining the
 			 * TCP pool.
 			 */
 			if (inp->sctp_flags & SCTP_PCB_FLAGS_IN_TCPPOOL) {
@@ -2603,8 +2609,7 @@ sctp_move_pcb_and_assoc(struct sctp_inpcb *old_inp, struct sctp_inpcb *new_inp,
 		LIST_REMOVE(stcb, sctp_tcbasocidhash);
 	}
 	/* Now insert the new_inp into the TCP connected hash */
-	head = &SCTP_BASE_INFO(sctp_tcpephash)[SCTP_PCBHASH_ALLADDR((lport),
-	    SCTP_BASE_INFO(hashtcpmark))];
+	head = &SCTP_BASE_INFO(sctp_tcpephash)[SCTP_PCBHASH_ALLADDR((lport | rport), SCTP_BASE_INFO(hashtcpmark))];
 
 	LIST_INSERT_HEAD(head, new_inp, sctp_hash);
 	/* Its safe to access */
@@ -3089,12 +3094,10 @@ continue_anyway:
 	/* find the bucket */
 	if (port_reuse_active) {
 		/* Put it into tcp 1-2-1 hash */
-		head = &SCTP_BASE_INFO(sctp_tcpephash)[SCTP_PCBHASH_ALLADDR((lport),
-		    SCTP_BASE_INFO(hashtcpmark))];
+		head = &SCTP_BASE_INFO(sctp_tcpephash)[SCTP_PCBHASH_ALLADDR(lport, SCTP_BASE_INFO(hashtcpmark))];
 		inp->sctp_flags |= SCTP_PCB_FLAGS_IN_TCPPOOL;
 	} else {
-		head = &SCTP_BASE_INFO(sctp_ephash)[SCTP_PCBHASH_ALLADDR(lport,
-		    SCTP_BASE_INFO(hashmark))];
+		head = &SCTP_BASE_INFO(sctp_ephash)[SCTP_PCBHASH_ALLADDR(lport, SCTP_BASE_INFO(hashmark))];
 	}
 	/* put it in the bucket */
 	LIST_INSERT_HEAD(head, inp, sctp_hash);
@@ -3554,7 +3557,7 @@ sctp_inpcb_free(struct sctp_inpcb *inp, int immediate, int from)
 	SCTP_INP_INFO_WUNLOCK();
 	/*
 	 * Now we release all locks. Since this INP cannot be found anymore
-	 * except possbily by the kill timer that might be running. We call
+	 * except possibly by the kill timer that might be running. We call
 	 * the drain function here. It should hit the case were it sees the
 	 * ACTIVE flag cleared and exit out freeing us to proceed and
 	 * destroy everything.
@@ -3716,8 +3719,8 @@ sctp_add_remote_addr(struct sctp_tcb *stcb, struct sockaddr *newaddr,
 {
 	/*
 	 * The following is redundant to the same lines in the
-	 * sctp_aloc_assoc() but is needed since other's call the add
-	 * address function
+	 * sctp_aloc_assoc() but is needed since others call the add address
+	 * function
 	 */
 	struct sctp_nets *net, *netfirst;
 	int addr_inscope;
@@ -3916,9 +3919,6 @@ sctp_add_remote_addr(struct sctp_tcb *stcb, struct sockaddr *newaddr,
 		} else {
 			net->mtu = 0;
 		}
-#ifdef SCTP_PRINT_FOR_B_AND_M
-		SCTP_PRINTF("We have found an interface mtu of %d\n", net->mtu);
-#endif
 		if (net->mtu == 0) {
 			/* Huh ?? */
 			net->mtu = SCTP_DEFAULT_MTU;
@@ -3926,9 +3926,6 @@ sctp_add_remote_addr(struct sctp_tcb *stcb, struct sockaddr *newaddr,
 			uint32_t rmtu;
 
 			rmtu = SCTP_GATHER_MTU_FROM_ROUTE(net->ro._s_addr, &net->ro._l_addr.sa, net->ro.ro_rt);
-#ifdef SCTP_PRINT_FOR_B_AND_M
-			SCTP_PRINTF("The route mtu is %d\n", rmtu);
-#endif
 			if (rmtu == 0) {
 				/*
 				 * Start things off to match mtu of
@@ -3946,9 +3943,6 @@ sctp_add_remote_addr(struct sctp_tcb *stcb, struct sockaddr *newaddr,
 			}
 		}
 		if (from == SCTP_ALLOC_ASOC) {
-#ifdef SCTP_PRINT_FOR_B_AND_M
-			SCTP_PRINTF("New assoc sets mtu to :%d\n", net->mtu);
-#endif
 			stcb->asoc.smallest_mtu = net->mtu;
 		}
 	} else {
@@ -3966,10 +3960,6 @@ sctp_add_remote_addr(struct sctp_tcb *stcb, struct sockaddr *newaddr,
 		net->mtu -= sizeof(struct udphdr);
 	}
 	if (stcb->asoc.smallest_mtu > net->mtu) {
-#ifdef SCTP_PRINT_FOR_B_AND_M
-		SCTP_PRINTF("new address mtu:%d smaller than smallest:%d\n",
-		    net->mtu, stcb->asoc.smallest_mtu);
-#endif
 		stcb->asoc.smallest_mtu = net->mtu;
 	}
 	/* JRS - Use the congestion control given in the CC module */
@@ -4047,7 +4037,7 @@ sctp_add_remote_addr(struct sctp_tcb *stcb, struct sockaddr *newaddr,
 	    (stcb->asoc.primary_destination)) {
 		/*
 		 * first one on the list is NOT the primary sctp_cmpaddr()
-		 * is much more efficent if the primary is the first on the
+		 * is much more efficient if the primary is the first on the
 		 * list, make it so.
 		 */
 		TAILQ_REMOVE(&stcb->asoc.nets,
@@ -4189,7 +4179,7 @@ sctp_aloc_assoc(struct sctp_inpcb *inp, struct sockaddr *firstaddr,
 	if (inp->sctp_flags & SCTP_PCB_FLAGS_UNBOUND) {
 		/*
 		 * If you have not performed a bind, then we need to do the
-		 * ephemerial bind for you.
+		 * ephemeral bind for you.
 		 */
 		if ((err = sctp_inpcb_bind(inp->sctp_socket,
 		    (struct sockaddr *)NULL,
@@ -4835,7 +4825,7 @@ sctp_free_assoc(struct sctp_inpcb *inp, struct sctp_tcb *stcb, int from_inpcbfre
 					/* Still an open socket - report */
 					sctp_ulp_notify(SCTP_NOTIFY_SPECIAL_SP_FAIL, stcb,
 					    SCTP_NOTIFY_DATAGRAM_UNSENT,
-					    (void *)sp, 0);
+					    (void *)sp, SCTP_SO_LOCKED);
 				}
 				if (sp->data) {
 					sctp_m_freem(sp->data);
@@ -4843,7 +4833,10 @@ sctp_free_assoc(struct sctp_inpcb *inp, struct sctp_tcb *stcb, int from_inpcbfre
 					sp->tail_mbuf = NULL;
 				}
 			}
-			sctp_free_remote_addr(sp->net);
+			if (sp->net) {
+				sctp_free_remote_addr(sp->net);
+				sp->net = NULL;
+			}
 			sctp_free_spbufspace(stcb, asoc, sp);
 			if (sp->holds_key_ref)
 				sctp_auth_key_release(stcb, sp->auth_keyid);
@@ -4904,7 +4897,7 @@ sctp_free_assoc(struct sctp_inpcb *inp, struct sctp_tcb *stcb, int from_inpcbfre
 				if (so) {
 					/* Still a socket? */
 					sctp_ulp_notify(SCTP_NOTIFY_DG_FAIL, stcb,
-					    SCTP_NOTIFY_DATAGRAM_UNSENT, chk, 0);
+					    SCTP_NOTIFY_DATAGRAM_UNSENT, chk, SCTP_SO_LOCKED);
 				}
 				if (chk->data) {
 					sctp_m_freem(chk->data);
@@ -4914,7 +4907,10 @@ sctp_free_assoc(struct sctp_inpcb *inp, struct sctp_tcb *stcb, int from_inpcbfre
 			if (chk->holds_key_ref)
 				sctp_auth_key_release(stcb, chk->auth_keyid);
 			ccnt++;
-			sctp_free_remote_addr(chk->whoTo);
+			if (chk->whoTo) {
+				sctp_free_remote_addr(chk->whoTo);
+				chk->whoTo = NULL;
+			}
 			SCTP_ZONE_FREE(SCTP_BASE_INFO(ipi_zone_chunk), chk);
 			SCTP_DECR_CHK_COUNT();
 			/* sa_ignore FREED_MEMORY */
@@ -4936,7 +4932,7 @@ sctp_free_assoc(struct sctp_inpcb *inp, struct sctp_tcb *stcb, int from_inpcbfre
 				if (so) {
 					/* Still a socket? */
 					sctp_ulp_notify(SCTP_NOTIFY_DG_FAIL, stcb,
-					    SCTP_NOTIFY_DATAGRAM_SENT, chk, 0);
+					    SCTP_NOTIFY_DATAGRAM_SENT, chk, SCTP_SO_LOCKED);
 				}
 				if (chk->data) {
 					sctp_m_freem(chk->data);
@@ -5166,10 +5162,10 @@ sctp_free_assoc(struct sctp_inpcb *inp, struct sctp_tcb *stcb, int from_inpcbfre
 			SCTP_INP_RUNLOCK(inp);
 			/*
 			 * This will start the kill timer (if we are the
-			 * lastone) since we hold an increment yet. But this
-			 * is the only safe way to do this since otherwise
-			 * if the socket closes at the same time we are here
-			 * we might collide in the cleanup.
+			 * last one) since we hold an increment yet. But
+			 * this is the only safe way to do this since
+			 * otherwise if the socket closes at the same time
+			 * we are here we might collide in the cleanup.
 			 */
 			sctp_inpcb_free(inp,
 			    SCTP_FREE_SHOULD_USE_GRACEFUL_CLOSE,
@@ -6468,7 +6464,7 @@ sctp_set_primary_addr(struct sctp_tcb *stcb, struct sockaddr *sa,
 		if (net != stcb->asoc.primary_destination) {
 			/*
 			 * first one on the list is NOT the primary
-			 * sctp_cmpaddr() is much more efficent if the
+			 * sctp_cmpaddr() is much more efficient if the
 			 * primary is the first on the list, make it so.
 			 */
 			TAILQ_REMOVE(&stcb->asoc.nets, stcb->asoc.primary_destination, sctp_next);
@@ -6683,12 +6679,12 @@ sctp_drain_mbufs(struct sctp_inpcb *inp, struct sctp_tcb *stcb)
 	}
 	/*
 	 * Another issue, in un-setting the TSN's in the mapping array we
-	 * DID NOT adjust the higest_tsn marker.  This will cause one of two
-	 * things to occur. It may cause us to do extra work in checking for
-	 * our mapping array movement. More importantly it may cause us to
-	 * SACK every datagram. This may not be a bad thing though since we
-	 * will recover once we get our cum-ack above and all this stuff we
-	 * dumped recovered.
+	 * DID NOT adjust the highest_tsn marker.  This will cause one of
+	 * two things to occur. It may cause us to do extra work in checking
+	 * for our mapping array movement. More importantly it may cause us
+	 * to SACK every datagram. This may not be a bad thing though since
+	 * we will recover once we get our cum-ack above and all this stuff
+	 * we dumped recovered.
 	 */
 }
 

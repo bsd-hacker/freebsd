@@ -19,8 +19,7 @@
  * CDDL HEADER END
  */
 /*
- * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
- * Use is subject to license terms.
+ * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
  */
 
 /*
@@ -150,6 +149,17 @@ zfsctl_init(void)
 void
 zfsctl_fini(void)
 {
+}
+
+boolean_t
+zfsctl_is_node(vnode_t *vp)
+{
+	return (vn_matchops(vp, zfsctl_ops_root) ||
+	    vn_matchops(vp, zfsctl_ops_snapdir) ||
+	    vn_matchops(vp, zfsctl_ops_snapshot) ||
+	    vn_matchops(vp, zfsctl_ops_shares) ||
+	    vn_matchops(vp, zfsctl_ops_shares_dir));
+
 }
 
 /*
@@ -1101,8 +1111,9 @@ zfsctl_shares_readdir(ap)
 		return (ENOTSUP);
 	}
 	if ((error = zfs_zget(zfsvfs, zfsvfs->z_shares_dir, &dzp)) == 0) {
+		vn_lock(ZTOV(dzp), LK_SHARED | LK_RETRY);
 		error = VOP_READDIR(ZTOV(dzp), uiop, cr, eofp, ap->a_ncookies, ap->a_cookies);
-		VN_RELE(ZTOV(dzp));
+		VN_URELE(ZTOV(dzp));
 	} else {
 		*eofp = 1;
 		error = ENOENT;
@@ -1149,6 +1160,7 @@ zfsctl_mknode_shares(vnode_t *pvp)
 	    NULL, NULL);
 	sdp = vp->v_data;
 	sdp->zc_cmtime = ((zfsctl_node_t *)pvp->v_data)->zc_cmtime;
+	VOP_UNLOCK(vp, 0);
 	return (vp);
 
 }
@@ -1176,8 +1188,9 @@ zfsctl_shares_getattr(ap)
 		return (ENOTSUP);
 	}
 	if ((error = zfs_zget(zfsvfs, zfsvfs->z_shares_dir, &dzp)) == 0) {
+		vn_lock(ZTOV(dzp), LK_SHARED | LK_RETRY);
 		error = VOP_GETATTR(ZTOV(dzp), vap, cr);
-		VN_RELE(ZTOV(dzp));
+		VN_URELE(ZTOV(dzp));
 	}
 	ZFS_EXIT(zfsvfs);
 	return (error);
@@ -1251,6 +1264,20 @@ static struct vop_vector zfsctl_ops_snapdir = {
 	.vop_inactive =	zfsctl_snapdir_inactive,
 	.vop_reclaim =	zfsctl_common_reclaim,
 	.vop_fid =	zfsctl_common_fid,
+};
+
+static struct vop_vector zfsctl_ops_shares = {
+	.vop_default =	&default_vnodeops,
+	.vop_open =	zfsctl_common_open,
+	.vop_close =	zfsctl_common_close,
+	.vop_ioctl =	VOP_EINVAL,
+	.vop_getattr =	zfsctl_shares_getattr,
+	.vop_access =	zfsctl_common_access,
+	.vop_readdir =	zfsctl_shares_readdir,
+	.vop_lookup =	zfsctl_shares_lookup,
+	.vop_inactive =	gfs_vop_inactive,
+	.vop_reclaim =	zfsctl_common_reclaim,
+	.vop_fid =	zfsctl_shares_fid,
 };
 
 /*

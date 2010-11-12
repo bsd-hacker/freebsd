@@ -917,21 +917,20 @@ ugen_re_enumerate(struct usb_fifo *f)
 	error = priv_check(curthread, PRIV_DRIVER);
 	if (error)
 		return (error);
-	/* get the device unconfigured */
-	error = ugen_set_config(f, USB_UNCONFIG_INDEX);
-	if (error)
-		return (error);
-	/* do a bus-reset */
-	mtx_lock(f->priv_mtx);
-	error = usbd_req_re_enumerate(udev, f->priv_mtx);
-	mtx_unlock(f->priv_mtx);
-
-	if (error)
-		return (ENXIO);
-	/* restore configuration to index 0 */
-	error = ugen_set_config(f, 0);
-	if (error)
-		return (error);
+	if (udev->flags.usb_mode != USB_MODE_HOST) {
+		/* not possible in device side mode */
+		return (ENOTTY);
+	}
+	/* make sure all FIFO's are gone */
+	/* else there can be a deadlock */
+	if (ugen_fs_uninit(f)) {
+		/* ignore any errors */
+		DPRINTFN(6, "no FIFOs\n");
+	}
+	if (udev->re_enumerate_wait == 0) {
+		udev->re_enumerate_wait = 1;
+		usb_needs_explore(udev->bus, 0);
+	}
 	return (0);
 }
 
@@ -1688,9 +1687,11 @@ ugen_set_power_mode(struct usb_fifo *f, int mode)
 
 	/* if we are powered off we need to re-enumerate first */
 	if (old_mode == USB_POWER_MODE_OFF) {
-		err = ugen_re_enumerate(f);
-		if (err)
-			return (err);
+		if (udev->flags.usb_mode == USB_MODE_HOST) {
+			if (udev->re_enumerate_wait == 0)
+				udev->re_enumerate_wait = 1;
+		}
+		/* set power mode will wake up the explore thread */
 	}
 
 	/* set new power mode */

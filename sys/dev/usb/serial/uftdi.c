@@ -93,6 +93,7 @@ enum {
 };
 
 struct uftdi_softc {
+	struct ucom_super_softc sc_super_ucom;
 	struct ucom_softc sc_ucom;
 
 	struct usb_device *sc_udev;
@@ -223,6 +224,7 @@ static struct usb_device_id uftdi_devs[] = {
 	UFTDI_DEV(FTDI, CFA_633, 8U232AM),
 	UFTDI_DEV(FTDI, CFA_634, 8U232AM),
 	UFTDI_DEV(FTDI, CFA_635, 8U232AM),
+	UFTDI_DEV(FTDI, USB_UIRT, 8U232AM),
 	UFTDI_DEV(FTDI, USBSERIAL, 8U232AM),
 	UFTDI_DEV(FTDI, KBS, 8U232AM),
 	UFTDI_DEV(FTDI, MX2_3, 8U232AM),
@@ -244,6 +246,7 @@ static struct usb_device_id uftdi_devs[] = {
 	UFTDI_DEV(INTREPIDCS, VALUECAN, 8U232AM),
 	UFTDI_DEV(INTREPIDCS, NEOVI, 8U232AM),
 	UFTDI_DEV(BBELECTRONICS, USOTL4, 8U232AM),
+	UFTDI_DEV(MATRIXORBITAL, MOUA, 8U232AM),
 	UFTDI_DEV(MARVELL, SHEEVAPLUG, 8U232AM),
 	UFTDI_DEV(MELCO, PCOPRS1, 8U232AM),
 	UFTDI_DEV(RATOC, REXUSB60F, 8U232AM),
@@ -317,9 +320,12 @@ uftdi_attach(device_t dev)
 	    FTDI_SIO_SET_DATA_PARITY_NONE |
 	    FTDI_SIO_SET_DATA_BITS(8));
 
-	error = ucom_attach(&sc->sc_ucom, 1, sc, &uftdi_callback, &sc->sc_mtx);
+	error = ucom_attach(&sc->sc_super_ucom, &sc->sc_ucom, 1, sc,
+	    &uftdi_callback, &sc->sc_mtx);
 	if (error)
 		goto detach;
+	ucom_set_pnpinfo_usb(&sc->sc_super_ucom, dev);
+
 	return (0);			/* success */
 
 detach:
@@ -332,7 +338,7 @@ uftdi_detach(device_t dev)
 {
 	struct uftdi_softc *sc = device_get_softc(dev);
 
-	ucom_detach(&sc->sc_ucom, 1);
+	ucom_detach(&sc->sc_super_ucom, &sc->sc_ucom);
 	usbd_transfer_unsetup(sc->sc_xfer, UFTDI_N_TRANSFER);
 	mtx_destroy(&sc->sc_mtx);
 

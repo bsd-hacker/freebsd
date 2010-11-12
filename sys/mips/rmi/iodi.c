@@ -213,6 +213,7 @@ iodi_attach(device_t dev)
 	device_add_child(dev, "uart", 0);
 	device_add_child(dev, "xlr_i2c", 0);
 	device_add_child(dev, "pcib", 0);
+	device_add_child(dev, "rmisec", -1);
 
 	if (xlr_board_info.usb)
 		device_add_child(dev, "ehci", 0);
@@ -305,6 +306,7 @@ static device_method_t iodi_methods[] = {
 	DEVMETHOD(device_identify, iodi_identify),
 	DEVMETHOD(bus_alloc_resource, iodi_alloc_resource),
 	DEVMETHOD(bus_activate_resource, iodi_activate_resource),
+	DEVMETHOD(bus_add_child, bus_generic_add_child),
 	DEVMETHOD(bus_setup_intr, iodi_setup_intr),
 	{0, 0},
 };
