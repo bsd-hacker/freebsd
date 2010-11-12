@@ -229,7 +229,7 @@ ofw_fdt_instance_to_package(ofw_t ofw, ihandle_t instance)
 	 */
 	offset = fdt_node_offset_by_phandle(fdtp, instance);
 	if (offset < 0)
-		return (0);
+		return (-1);
 
 	p = (phandle_t)(uintptr_t)fdt_offset_ptr(fdtp, offset,
 	    sizeof(phandle_t));
@@ -245,7 +245,7 @@ ofw_fdt_getproplen(ofw_t ofw, phandle_t package, const char *propname)
 
 	offset = fdt_phandle_offset(package);
 	if (offset < 0)
-		return (0);
+		return (-1);
 
 	if (strcmp(propname, "name") == 0) {
 		/* Emulate the 'name' property */
@@ -253,7 +253,7 @@ ofw_fdt_getproplen(ofw_t ofw, phandle_t package, const char *propname)
 		return (len + 1);
 	}
 
-	len = 0;
+	len = -1;
 	prop = fdt_get_property(fdtp, offset, propname, &len);
 
 	return (len);
@@ -270,7 +270,7 @@ ofw_fdt_getprop(ofw_t ofw, phandle_t package, const char *propname, void *buf,
 
 	offset = fdt_phandle_offset(package);
 	if (offset < 0)
-		return (0);
+		return (-1);
 
 	if (strcmp(propname, "name") == 0) {
 		/* Emulate the 'name' property */
@@ -283,7 +283,7 @@ ofw_fdt_getprop(ofw_t ofw, phandle_t package, const char *propname, void *buf,
 
 	prop = fdt_getprop(fdtp, offset, propname, &len);
 	if (prop == NULL)
-		return (0);
+		return (-1);
 
 	if (len > buflen)
 		len = buflen;
@@ -323,7 +323,7 @@ fdt_nextprop(int offset, char *buf, size_t size)
 			depth = -1;
 	} while (depth >= 0);
 
-	return (0);
+	return (-1);
 }
 
 /*
@@ -339,7 +339,7 @@ ofw_fdt_nextprop(ofw_t ofw, phandle_t package, const char *previous, char *buf,
 
 	offset = fdt_phandle_offset(package);
 	if (offset < 0)
-		return (0);
+		return (-1);
 
 	if (previous == NULL)
 		/* Find the first prop in the node */
@@ -350,7 +350,7 @@ ofw_fdt_nextprop(ofw_t ofw, phandle_t package, const char *previous, char *buf,
 	 */
 	prop = fdt_get_property(fdtp, offset, previous, NULL);
 	if (prop == NULL)
-		return (0);
+		return (-1);
 
 	offset = fdt_phandle_offset((phandle_t)(uintptr_t)prop);
 	rv = fdt_nextprop(offset, buf, size);

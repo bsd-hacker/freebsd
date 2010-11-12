@@ -226,9 +226,8 @@ nexus_attach(device_t dev)
 	    rman_manage_region(&sc->sc_rman, start, end))
 		panic("nexus_probe IRQ rman");
 
-	if ((root = OF_peer(0)) == -1)
+	if ((root = OF_peer(0)) == 0)
 		return (bus_generic_attach(dev));
-
 		
 	/*
 	 * Now walk the OFW tree to locate top-level devices

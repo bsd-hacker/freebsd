@@ -497,6 +497,9 @@ OF_exit()
 	if (ofw_def_impl == NULL)
 		panic("OF_exit: Open Firmware not available");
 
+	if (ofw_def_impl == NULL)
+		panic("OF_exit: Open Firmware not available");
+
 	/* Should not return */
 	OFW_EXIT(ofw_obj);
 
