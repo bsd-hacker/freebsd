@@ -4251,6 +4251,7 @@ robust_alloc(struct robust_info **robpp)
 				&max_robust_lock, 0, "maxrob", 0);
 			if (error != 0) {
 				mtx_unlock(&max_robust_lock);
+				atomic_fetchadd_int(&p->p_robustcount, -1);
 				return (error);
 			}
 		}
