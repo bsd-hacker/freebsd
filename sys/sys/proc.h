@@ -524,6 +524,7 @@ struct proc {
 	int		p_boundary_count;/* (c) Num threads at user boundary */
 	int		p_pendingcnt;	/* how many signals are pending */
 	struct itimers	*p_itimers;	/* (c) POSIX interval timers. */
+	int		p_robustcount;	/* (*) Total number of robust mutex. */
 /* End area that is zeroed on creation. */
 #define	p_endzero	p_magic
 

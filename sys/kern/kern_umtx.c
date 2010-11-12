@@ -258,6 +258,7 @@ static int			umtx_cvsig_migrate = 1;
 #endif
 
 static struct robust_chain	robust_chains[ROBUST_CHAINS];
+static int	set_max_robust(SYSCTL_HANDLER_ARGS);
 
 SYSCTL_NODE(_debug, OID_AUTO, umtx, CTLFLAG_RW, 0, "umtx debug");
 SYSCTL_INT(_debug_umtx, OID_AUTO, umtx_pi_allocated, CTLFLAG_RD,
@@ -265,6 +266,15 @@ SYSCTL_INT(_debug_umtx, OID_AUTO, umtx_pi_allocated, CTLFLAG_RD,
 
 SYSCTL_INT(_debug_umtx, OID_AUTO, umtx_cvsig_migrate, CTLFLAG_RW,
     &umtx_cvsig_migrate, 0, "cvsig migrate");
+
+SYSCTL_PROC(_debug_umtx, OID_AUTO, max_robust_per_proc,
+	CTLTYPE_INT | CTLFLAG_RW, 0, sizeof(int), set_max_robust, "I",
+	"Set maximum number of robust mutex");
+
+static int		max_robust_per_proc = 1500;
+static struct mtx	max_robust_lock;
+static struct timeval	max_robust_lasttime;
+static struct timeval	max_robust_interval;
 
 #define UMTX_STATE
 #ifdef UMTX_STATE
@@ -314,7 +324,7 @@ static void umtx_thread_cleanup(struct thread *);
 static void umtx_exec_hook(void *arg __unused, struct proc *p __unused,
 	struct image_params *imgp __unused);
 static void umtx_exit_hook(void *arg __unused, struct proc *p __unused);
-static struct robust_info *robust_alloc(void);
+static int robust_alloc(struct robust_info **);
 static void robust_free(struct robust_info *);
 static int robust_insert(struct thread *, struct robust_info *);
 static void robust_remove(struct thread *, struct umutex *);
@@ -357,10 +367,14 @@ umtxq_sysinit(void *arg __unused)
 	}
 
 	mtx_init(&umtx_lock, "umtx lock", NULL, MTX_SPIN);
+	mtx_init(&max_robust_lock, "max robust lock", NULL, MTX_DEF);
 	EVENTHANDLER_REGISTER(process_exec, umtx_exec_hook, NULL,
 	    EVENTHANDLER_PRI_ANY);
 	EVENTHANDLER_REGISTER(process_exit, umtx_exit_hook, NULL,
 	    EVENTHANDLER_PRI_ANY);
+
+	max_robust_interval.tv_sec = 10;
+	max_robust_interval.tv_usec = 0;
 }
 
 struct umtx_q *
@@ -2374,7 +2388,7 @@ do_unlock_pp(struct thread *td, struct umutex *m, uint32_t flags,
 	umtxq_unlock(&key);
 
 	owner = fuword32(__DEVOLATILE(uint32_t *, &m->m_owner));
-	newval = calc_lockword(owner, flags, count, td_exit, &nwake)
+	newval = calc_lockword(owner, flags, count, td_exit, &nwake);
 
 	if (flags & UMUTEX_PRIO_PROTECT) {
 		/*
@@ -2569,7 +2583,16 @@ do_lock_umutex(struct thread *td, struct umutex *m,
 		return (EFAULT);
 
 	if ((flags & UMUTEX_ROBUST) != 0 && mode != _UMUTEX_WAIT) {
-		rob = robust_alloc();
+		error = robust_alloc(&rob);
+		if (error != 0) {
+			if (timeout == NULL) {
+				if (error == EINTR && mode != _UMUTEX_WAIT)
+					error = ERESTART;
+			} else if (error == ERESTART) {
+				error = EINTR;
+			}
+			return (error);
+		}
 		rob->ownertd = td;
 		rob->umtxp = m;
 	}
@@ -4208,19 +4231,42 @@ freebsd32_umtx_op(struct thread *td, struct freebsd32_umtx_op_args *uap)
 }
 #endif
 
-struct robust_info *
-robust_alloc(void)
+int
+robust_alloc(struct robust_info **robpp)
 {
-	struct robust_info *rb;
+	struct proc *p = curproc;
+	int error;
 
-	rb = uma_zalloc(robust_zone, M_ZERO|M_WAITOK);
-	return (rb);
+	atomic_fetchadd_int(&p->p_robustcount, 1);
+	if (p->p_robustcount > max_robust_per_proc) {
+		mtx_lock(&max_robust_lock);
+		while (p->p_robustcount >= max_robust_per_proc) {
+			if (ratecheck(&max_robust_lasttime,
+				 &max_robust_interval)) {
+				printf("Process %lu (%s) exceeded maximum"
+				  "number of robust mutexes\n",
+				   (u_long)p->p_pid, p->p_comm);
+			}
+			error = msleep(&max_robust_per_proc,
+				&max_robust_lock, 0, "maxrob", 0);
+			if (error != 0) {
+				mtx_unlock(&max_robust_lock);
+				return (error);
+			}
+		}
+		mtx_unlock(&max_robust_lock);
+	}
+	*robpp = uma_zalloc(robust_zone, M_ZERO|M_WAITOK);
+	return (0);
 }
 
 static void
-robust_free(struct robust_info *rb)
+robust_free(struct robust_info *robp)
 {
-	uma_zfree(robust_zone, rb);
+	struct proc *p = curproc;
+
+	atomic_fetchadd_int(&p->p_robustcount, -1);
+	uma_zfree(robust_zone, robp);
 }
 
 static unsigned int
@@ -4365,4 +4411,24 @@ umtx_thread_cleanup(struct thread *td)
 	td->td_flags &= ~TDF_UBORROWING;
 	thread_unlock(td);
 	mtx_unlock_spin(&umtx_lock);
+}
+
+static int
+set_max_robust(SYSCTL_HANDLER_ARGS)
+{
+	int error, v;
+
+	v = max_robust_per_proc;
+	error = sysctl_handle_int(oidp, &v, 0, req);
+	if (error)
+		return (error);
+	if (req->newptr == NULL)
+		return (error);
+	if (v <= 0)
+		return (EINVAL);
+	mtx_lock(&max_robust_lock);
+	max_robust_per_proc = v;
+	wakeup(&max_robust_per_proc);
+	mtx_unlock(&max_robust_lock);
+	return (0);
 }
