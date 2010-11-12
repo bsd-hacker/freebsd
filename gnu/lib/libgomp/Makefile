@@ -7,7 +7,7 @@ SRCDIR=	${GCCLIB}/libgomp
 .PATH: ${SRCDIR} ${SRCDIR}/config/posix
 
 LIB=		gomp
-SHLIB_MAJOR=	3
+SHLIB_MAJOR=	2
 
 SRCS=	alloc.c barrier.c critical.c env.c \
 	error.c iter.c loop.c ordered.c parallel.c sections.c \
