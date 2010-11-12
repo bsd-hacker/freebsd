@@ -7,7 +7,7 @@ SRCDIR=	${GCCLIB}/libgomp
 .PATH: ${SRCDIR} ${SRCDIR}/config/posix
 
 LIB=		gomp
-SHLIB_MAJOR=	1
+SHLIB_MAJOR=	3
 
 SRCS=	alloc.c barrier.c critical.c env.c \
 	error.c iter.c loop.c ordered.c parallel.c sections.c \
@@ -28,18 +28,18 @@ VERSION_MAP=	${SRCDIR}/libgomp.map
     (${MACHINE_CPUARCH} == mips && \
 	(!defined(TARGET_ABI) || ${TARGET_ABI} != "n64"))
 OMP_LOCK_ALIGN	=	4
-OMP_LOCK_KIND=		4
-OMP_LOCK_SIZE=		4
+OMP_LOCK_KIND=		8
+OMP_LOCK_SIZE=		24
 OMP_NEST_LOCK_ALIGN=	4
 OMP_NEST_LOCK_KIND=	8
-OMP_NEST_LOCK_SIZE=	8
+OMP_NEST_LOCK_SIZE=	28
 .else
 OMP_LOCK_ALIGN	=	8
 OMP_LOCK_KIND=		8
-OMP_LOCK_SIZE=		8
+OMP_LOCK_SIZE=		24
 OMP_NEST_LOCK_ALIGN=	8
 OMP_NEST_LOCK_KIND=	8
-OMP_NEST_LOCK_SIZE=	16
+OMP_NEST_LOCK_SIZE=	32
 .endif
 
 gstdint.h:
