@@ -11,7 +11,7 @@ SUPDIR=	${SRCDIR}/libsupc++
        ${SRCDIR}/include ${SUPDIR} ${GCCDIR} ${GCCLIB}/libiberty
 
 LIB=		stdc++
-SHLIB_MAJOR=	6
+SHLIB_MAJOR=	7
 
 CFLAGS+=	-DIN_GLIBCPP_V3 -DHAVE_CONFIG_H
 .if ${MACHINE_CPUARCH} == "arm"
