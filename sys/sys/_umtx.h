@@ -38,11 +38,14 @@ struct umtx {
 
 struct umutex {
 	volatile __lwpid_t	m_owner;	/* Owner of the mutex */
-	__uint32_t		m_flags;	/* Flags of the mutex */
-	__uint32_t		m_ceilings[2];	/* Priority protect ceiling */
-	__uint8_t		m_robstate;
-	__uint8_t		m_spare1[3];
-	__uint32_t		m_spare2[3];
+#if BYTE_ORDER == LITTLE_ENDIAN
+	__uint16_t		m_flags;	/* Flags of the mutex */
+	__uint8_t		m_ceilings[2];	/* Priority protect ceiling */
+#else
+	__uint8_t		m_ceilings[2];	/* Priority protect ceiling */
+	__uint16_t		m_flags;	/* Flags of the mutex */
+#endif
+	__uint8_t		m_spare[4];
 };
 
 struct ucond {

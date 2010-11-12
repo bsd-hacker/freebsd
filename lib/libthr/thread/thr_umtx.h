@@ -32,7 +32,7 @@
 #include <strings.h>
 #include <sys/umtx.h>
 
-#define DEFAULT_UMUTEX	{0,0,{0,0},0,{0,0,0},{0,0,0}}
+#define DEFAULT_UMUTEX	{0,0, {0, 0}, {0, 0, 0, 0}}
 #define DEFAULT_URWLOCK {0,0,0,0,{0,0,0,0}}
 
 typedef uint32_t	umtx_t;
@@ -81,7 +81,7 @@ _thr_umutex_trylock(struct umutex *mtx, uint32_t id)
 {
     if (atomic_cmpset_acq_32(&mtx->m_owner, UMUTEX_UNOWNED, id))
 	return (0);
-    if ((mtx->m_flags & UMUTEX_PRIO_PROTECT) == 0)
+    if ((mtx->m_flags & UMUTEX_PRIO_PROTECT2) == 0)
     	return (EBUSY);
     return (__thr_umutex_trylock(mtx));
 }
@@ -92,7 +92,7 @@ _thr_umutex_trylock2(struct umutex *mtx, uint32_t id)
     if (atomic_cmpset_acq_32(&mtx->m_owner, UMUTEX_UNOWNED, id) != 0)
 	return (0);
     if ((uint32_t)mtx->m_owner == UMUTEX_CONTESTED &&
-        __predict_true((mtx->m_flags & (UMUTEX_PRIO_PROTECT | UMUTEX_PRIO_INHERIT)) == 0))
+        __predict_true((mtx->m_flags & (UMUTEX_PRIO_PROTECT2 | UMUTEX_PRIO_INHERIT)) == 0))
     	if (atomic_cmpset_acq_32(&mtx->m_owner, UMUTEX_CONTESTED, id | UMUTEX_CONTESTED))
 		return (0);
     return (EBUSY);

@@ -41,7 +41,7 @@
 #include <sys/cdefs.h>
 #include <sys/_pthreadtypes.h>
 #include <machine/_limits.h>
-#include <machine/_types.h>
+#include <machine/endian.h>
 #include <sys/_sigset.h>
 #include <sched.h>
 #include <time.h>
@@ -97,15 +97,23 @@
 /*
  * Static initialization values. 
  */
-#define PTHREAD_MUTEX_INITIALIZER				\
-	{PTHREAD_MUTEX_DEFAULT, 0, 0, NULL, 0, 0x0010, {0, 0}, 0, 0}
+#if BYTE_ORDER == LITTLE_ENDIAN	
+#define PTHREAD_MUTEX_INITIALIZER					\
+	{PTHREAD_MUTEX_DEFAULT, 0, 0, {NULL}, 0, 0x0020,		\
+		{0, 0}}
+#else
+#define PTHREAD_MUTEX_INITIALIZER					\
+	{PTHREAD_MUTEX_DEFAULT, 0, 0, {NULL}, 0, {0, 0},		\
+		0x0020}
+#endif
 
 #define PTHREAD_ADAPTIVE_MUTEX_INITIALIZER_NP			\
-	{PTHREAD_MUTEX_DEFAULT, 2000, 0, NULL, 0, 0x0010, {0, 0}, 0, 0}
+	{PTHREAD_MUTEX_DEFAULT, 2000, 0, {NULL}, 0, 0x0010, {0, 0}}
 
 #define PTHREAD_COND_INITIALIZER				\
 	{0, 0, 0, 0, 0, 0, 0, 0, 0, CLOCK_REALTIME}
-#define PTHREAD_RWLOCK_INITIALIZER { .__owner.__ownertd = 0, 0, 0, 0, 0}
+
+#define PTHREAD_RWLOCK_INITIALIZER { {NULL}, 0, 0, 0, 0}
 
 /*
  * Default attribute arguments (draft 4, deprecated).
@@ -154,57 +162,6 @@ enum pthread_rwlocktype_np
 
 struct _pthread_cleanup_info {
 	__uintptr_t	__pthread_cleanup_pad[8];
-};
-
-struct pthread_mutex {
-	__int16_t	__flags;
-	__int16_t	__spinloops;
-	__int32_t	__recurse;
-	struct pthread	*__ownertd;
-	/* kernel umtx part */
-	volatile __uint32_t	__lockword;
-	__uint32_t	__lockflags;
-	__uint32_t	__ceilings[2];
-	__uint8_t		__robstate;
-	__uint8_t		__pad1;
-};
-
-struct pthread_cond {
-	__uint32_t	__lock;
-	int		__waiters;
-	int		__signals;
-	__uint32_t	__seq;
-	__uint64_t	__broadcast_seq;
-	int		__refcount;
-	int		__destroying;
-	/* kernel part */
-	__uint32_t	__kern_has_waiters;
-	__uint32_t	__flags;
-	__uint32_t	__clock_id;
-};
-
-struct pthread_rwlock {
-	union {
-		__uint32_t	__ownertid;
-		struct pthread *__ownertd;
-		char		__pad[8];
-	} __owner;
-	__uint32_t	__state;
-	__uint32_t	__flags;
-	__uint32_t	__blocked_readers;
-	__uint32_t	__blocked_writers;
-};
-
-struct pthread_barrier {
-	pthread_mutex_t	__lock;
-	pthread_cond_t	__cond;
-	__uint64_t	__cycle;
-	__uint32_t	__count;
-	__uint32_t	__waiters;
-};
-
-struct pthread_spinlock {
-	__uint32_t	__lock;
 };
 
 /*

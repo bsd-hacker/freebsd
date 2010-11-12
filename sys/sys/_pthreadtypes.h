@@ -36,6 +36,9 @@
 #ifndef _SYS__PTHREADTYPES_H_
 #define _SYS__PTHREADTYPES_H_
 
+#include <machine/_types.h>
+#include <machine/endian.h>
+
 /*
  * Forward structure definitions.
  *
@@ -77,6 +80,63 @@ typedef struct	pthread_rwlockattr	*pthread_rwlockattr_t;
 typedef struct	pthread_barrier		pthread_barrier_t;
 typedef struct	pthread_barrierattr	*pthread_barrierattr_t;
 typedef struct	pthread_spinlock	pthread_spinlock_t;
+
+struct pthread_mutex {
+	__int16_t	__flags;
+	__int16_t	__spinloops;
+	__int32_t	__recurse;
+	union {
+		struct pthread	*__ownertd;
+		char	__ownerpad[8];
+	} __ownerdata;
+	/* kernel umtx part */
+	volatile __uint32_t	__lockword;
+#if BYTE_ORDER == LITTLE_ENDIAN
+	__uint16_t		__lockflags;
+	__uint8_t		__ceilings[2];
+#else
+	__uint8_t		__ceilings[2];
+	__uint16_t		__lockflags;
+#endif
+};
+
+struct pthread_cond {
+	__uint32_t	__lock;
+	int		__waiters;
+	int		__signals;
+	__uint32_t	__seq;
+	__uint64_t	__broadcast_seq;
+	int		__refcount;
+	int		__destroying;
+	/* kernel part */
+	__uint32_t	__kern_has_waiters;
+	__uint32_t	__flags;
+	__uint32_t	__clock_id;
+};
+
+struct pthread_rwlock {
+	union {
+		struct pthread *__ownertd;
+		__uint32_t	__ownertid;
+		char		__ownerpad[8];
+	} __ownerdata;
+	__uint32_t	__state;
+	__uint32_t	__flags;
+	__uint32_t	__blocked_readers;
+	__uint32_t	__blocked_writers;
+};
+
+struct pthread_barrier {
+	pthread_mutex_t	__lock;
+	pthread_cond_t	__cond;
+	__uint64_t	__cycle;
+	__uint32_t	__count;
+	__uint32_t	__waiters;
+};
+
+struct pthread_spinlock {
+	__uint32_t	__lock;
+};
 
 /*
  * Additional type definitions:

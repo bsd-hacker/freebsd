@@ -39,21 +39,20 @@
 #define USYNC_PROCESS_SHARED	0x0001	/* Process shared sync objs */
 
 #define	UMUTEX_UNOWNED		0x0
+#define UMUTEX_OWNER_DEAD	0x40000000U
 #define	UMUTEX_CONTESTED	0x80000000U
-#define	UMUTEX_OWNER_MASK	0x7FFFFFFFU
+#define	UMUTEX_OWNER_MASK	0x3FFFFFFFU
 
 #define	UMUTEX_ERROR_CHECK	0x0002	/* Error-checking mutex */
 #define	UMUTEX_PRIO_INHERIT	0x0004	/* Priority inherited mutex */
-#define	UMUTEX_PRIO_PROTECT	0x0008	/* Priority protect mutex */
-#define	UMUTEX_SIMPLE		0x0010  /* Use simple lock id. */
-#define	UMUTEX_ROBUST		0x0020
+#define	UMUTEX_PRIO_PROTECT	0x0008	/* Deprecated */
+#define	UMUTEX_PRIO_PROTECT2	0x0010	/* Priority protect mutex */
+#define	UMUTEX_SIMPLE		0x0020  /* Use simple lock id. */
+#define	UMUTEX_ROBUST		0x0040
 
+/* Speficial owner ids */
 #define	UMUTEX_SIMPLE_OWNER	1	/* The simple mutex's lock bit. */
-
-#define	UMUTEX_ROBST_NORMAL		0
-#define	UMUTEX_ROBST_OWNERDEAD		1
-#define	UMUTEX_ROBST_INCONSISTENT	2
-#define	UMUTEX_ROBST_NOTRECOVERABLE	3
+#define	UMUTEX_INCONSISTENT	2	/* The mutex is unusable */
 
 /* urwlock flags */
 #define	URWLOCK_PREFER_READER	0x0002

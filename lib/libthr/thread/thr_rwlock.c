@@ -218,9 +218,9 @@ static void
 rwlock_setowner(struct pthread_rwlock *rwlp, struct pthread *td)
 {
 	if (!RWL_PSHARED(rwlp))
-		rwlp->__owner.__ownertd = td;
+		rwlp->__ownerdata.__ownertd = td;
 	else
-		rwlp->__owner.__ownertid = TID(td);
+		rwlp->__ownerdata.__ownertid = TID(td);
 }
 
 int
@@ -310,11 +310,11 @@ _pthread_rwlock_unlock(pthread_rwlock_t *rwlp)
 	state = rwlp->__state;
 	if (state & URWLOCK_WRITE_OWNER) {
 		if (RWL_PSHARED(rwlp) &&
-		    rwlp->__owner.__ownertid == TID(curthread)) {
-			rwlp->__owner.__ownertid = 0;
+		    rwlp->__ownerdata.__ownertid == TID(curthread)) {
+			rwlp->__ownerdata.__ownertid = 0;
 		} else if (!RWL_PSHARED(rwlp) &&
-		         rwlp->__owner.__ownertd == curthread) {
-			rwlp->__owner.__ownertd = NULL;
+		         rwlp->__ownerdata.__ownertd == curthread) {
+			rwlp->__ownerdata.__ownertd = NULL;
 		} else
 			return (EPERM);
 	}

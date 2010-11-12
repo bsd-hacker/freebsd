@@ -170,7 +170,7 @@ cond_wait_kernel(struct pthread_cond *cvp, struct pthread_mutex *mp,
 		error2 = _mutex_cv_lock(mp, recurse);
 		if (error2 == 0 && cancel)
 			_thr_testcancel(curthread);
-		if (error2 == EINTR)
+		if (error == EINTR)
 			error = 0;
 	} else {
 		/* We know that it didn't unlock the mutex. */
@@ -229,17 +229,14 @@ cond_wait_user(struct pthread_cond *cvp, struct pthread_mutex *mp,
 
 		_thr_umtx_lock_spin(&cvp->__lock);
 		if (cvp->__broadcast_seq != bseq) {
-			cvp->__refcount--;
 			error = 0;
 			break;
 		}
 		if (cvp->__signals > 0) {
-			cvp->__refcount--;
 			cvp->__signals--;
 			error = 0;
 			break;
 		} else if (error == ETIMEDOUT) {
-			cvp->__refcount--;
 			cvp->__waiters--;
 			break;
 		} else if (cancel && SHOULD_CANCEL(curthread) &&
@@ -255,6 +252,7 @@ cond_wait_user(struct pthread_cond *cvp, struct pthread_mutex *mp,
 			_pthread_exit(PTHREAD_CANCELED);
 		}
 	}
+	cvp->__refcount--;
 	if (cvp->__destroying && cvp->__refcount == 0) {
 		cvp->__destroying = 2;
 		_thr_umtx_wake(&cvp->__destroying, INT_MAX, CV_PSHARED(cvp));
@@ -280,14 +278,14 @@ cond_wait_common(struct pthread_cond *cvp, struct pthread_mutex *mp,
 
 	/*
 	 * If the thread is real-time thread or if it holds priority mutex,
-	 * it should use kernel based cv, because the cv internal lock
-	 * does not protect priority, it can cause priority inversion.
-	 * Note that if it is robust type of mutex, we should not use
-	 * the internal lock too, because it is not robust.
+	 * it should use kernel based cv, because the user cv's internal lock
+	 * does not protect priority inversion, note that if mutex is robust
+	 * type of mutex, we should not use user cv too, because the internal
+	 * lock is not robust.
 	 */
 	if (curthread->attr.sched_policy != SCHED_OTHER ||
 	    curthread->priority_mutex_count != 0  ||
-	    (mp->__lockflags & (UMUTEX_PRIO_PROTECT|UMUTEX_PRIO_INHERIT|
+	    (mp->__lockflags & (UMUTEX_PRIO_PROTECT2|UMUTEX_PRIO_INHERIT|
 		UMUTEX_ROBUST)) != 0)
 		return cond_wait_kernel(cvp, mp, abstime, cancel);
 	else
@@ -405,7 +403,7 @@ cond_init_old(pthread_cond_old_t *cond, const pthread_condattr_t *cond_attr)
 	int	error = 0;
 
 	if ((cvp = (struct pthread_cond *)
-	    calloc(1, sizeof(struct pthread_cond))) == NULL) {
+		malloc(sizeof(struct pthread_cond))) == NULL) {
 		error = ENOMEM;
 	} else {
 		error = cond_init(cvp, cond_attr);
