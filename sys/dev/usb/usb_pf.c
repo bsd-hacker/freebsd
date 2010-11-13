@@ -1698,37 +1698,36 @@ usbpf_xfertap(struct usb_xfer *xfer, int type)
 	}
 	end = buf + sizeof(struct usbpf_pkthdr) + (USB_PAGE_SIZE * 5);
 
-	/* XXX need to care big/little endians. */
 	bzero(ptr, sizeof(struct usbpf_pkthdr));
 	up = (struct usbpf_pkthdr *)ptr;
-	up->up_busunit = device_get_unit(bus->bdev);
+	up->up_busunit = htole32(device_get_unit(bus->bdev));
 	up->up_type = type;
 	up->up_xfertype = ep->edesc->bmAttributes & UE_XFERTYPE;
 	up->up_address = xfer->address;
 	up->up_endpoint = xfer->endpointno;
-	up->up_flags = xfer->flags;
-	up->up_status = xfer->status;
+	up->up_flags = htole32(xfer->flags);
+	up->up_status = htole32(xfer->status);
 	switch (type) {
 	case USBPF_XFERTAP_SUBMIT:
-		up->up_length = xfer->sumlen;
-		up->up_frames = xfer->nframes;
+		up->up_length = htole32(xfer->sumlen);
+		up->up_frames = htole32(xfer->nframes);
 		break;
 	case USBPF_XFERTAP_DONE:
-		up->up_length = xfer->actlen;
-		up->up_frames = xfer->aframes;
+		up->up_length = htole32(xfer->actlen);
+		up->up_frames = htole32(xfer->aframes);
 		break;
 	default:
 		panic("wrong usbpf type (%d)", type);
 	}
 
-	up->up_error = xfer->error;
-	up->up_interval = xfer->interval;
+	up->up_error = htole32(xfer->error);
+	up->up_interval = htole32(xfer->interval);
 	ptr += sizeof(struct usbpf_pkthdr);
 
 	for (i = 0; i < up->up_frames; i++) {
 		if (ptr + sizeof(u_int32_t) >= end)
 			goto done;
-		*((u_int32_t *)ptr) = xfer->frlengths[i];
+		*((u_int32_t *)ptr) = htole32(xfer->frlengths[i]);
 		ptr += sizeof(u_int32_t);
 
 		if (ptr + xfer->frlengths[i] >= end)
