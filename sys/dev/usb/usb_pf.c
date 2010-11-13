@@ -1678,9 +1678,11 @@ usbpf_xfertap(struct usb_xfer *xfer, int type)
 	char *buf, *ptr, *end;
 
 	/*
-	 * XXX check first whether there are any descriptors waiting.  If no
-	 * we don't need to handle this xfer.
+	 * NB: usbpf_uifd_cnt isn't protected by USBPFIF_LOCK() because it's
+	 * not harmful.
 	 */
+	if (usbpf_uifd_cnt == 0)
+		return
 
 	/*
 	 * XXX TODO
