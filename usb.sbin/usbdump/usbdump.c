@@ -256,6 +256,15 @@ print_apacket(const struct usbpf_xhdr *hdr, const struct usbpf_pkthdr *up,
 	const char *ptr = payload;
 	char buf[64];
 
+	/* A packet from the kernel is based on little endian byte order. */
+	up->up_busunit = le32toh(up->up_busunit);
+	up->up_flags = le32toh(up->up_flags);
+	up->up_status = le32toh(up->up_status);
+	up->up_length = le32toh(up->up_length);
+	up->up_frames = le32toh(up->up_frames);
+	up->up_error = le32toh(up->up_error);
+	up->up_interval = le32toh(up->up_interval);
+
 	tv.tv_sec = hdr->uh_tstamp.ut_sec;
 	tv.tv_usec = hdr->uh_tstamp.ut_frac;
 	tm = localtime(&tv.tv_sec);
@@ -275,7 +284,7 @@ print_apacket(const struct usbpf_xhdr *hdr, const struct usbpf_pkthdr *up,
 
 	if (verbose >= 1) {
 		for (x = 0; x < up->up_frames; x++) {
-			framelen = *((const u_int32_t *)ptr);
+			framelen = le32toh(*((const u_int32_t *)ptr));
 			ptr += sizeof(u_int32_t);
 			printf(" frame[%u] len %d\n", x, framelen);
 			assert(framelen < (1024 * 4));
@@ -308,7 +317,7 @@ print_packets(const char *data, const int datalen)
 			print_apacket(hdr, up, ptr);
 		pkt_captured++;
 		for (x = 0; x < up->up_frames; x++) {
-			framelen = *((const u_int32_t *)ptr);
+			framelen = le32toh(*((const u_int32_t *)ptr));
 			ptr += sizeof(u_int32_t) + framelen;
 		}
 	}
