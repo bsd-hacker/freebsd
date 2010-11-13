@@ -338,6 +338,7 @@ read_file(struct usbcap *p)
 		ret = read(p->rfd, data, datalen);
 		assert(ret == datalen);
 		print_packets(data, datalen);
+		free(data);
 	}
 	if (ret == -1)
 		fprintf(stderr, "read: %s\n", strerror(errno));
