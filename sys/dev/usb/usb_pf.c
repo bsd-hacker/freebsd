@@ -1673,6 +1673,7 @@ usbpf_xfertap(struct usb_xfer *xfer, int type)
 	struct usb_xfer_root *info = xfer->xroot;
 	struct usb_bus *bus = info->bus;
 	struct usbpf_pkthdr *up;
+	usb_frlength_t isoc_offset = 0;
 	int i;
 	char *buf, *ptr, *end;
 
@@ -1730,7 +1731,11 @@ usbpf_xfertap(struct usb_xfer *xfer, int type)
 
 		if (ptr + xfer->frlengths[i] >= end)
 			goto done;
-		usbd_get_page(&xfer->frbuffers[i], 0, &res);
+		if ((xfer->status & XFER_STATUS_ISOCXFER) != 0) {
+			usbd_get_page(&xfer->frbuffers[0], isoc_offset, &res);
+			isoc_offset += xfer->frlengths[i];
+		} else
+			usbd_get_page(&xfer->frbuffers[i], 0, &res);
 		bcopy(res.buffer, ptr, xfer->frlengths[i]);
 		ptr += xfer->frlengths[i];
 	}
