@@ -1682,7 +1682,7 @@ usbpf_xfertap(struct usb_xfer *xfer, int type)
 	 * not harmful.
 	 */
 	if (usbpf_uifd_cnt == 0)
-		return
+		return;
 
 	/*
 	 * XXX TODO
