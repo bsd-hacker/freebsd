@@ -108,7 +108,13 @@ sleepout_pending(struct sleepout_task *st)
 int
 sleepout_stop(struct sleepout_task *st)
 {
+	struct sleepout *s = st->st_sleepout;
 
+	/*
+	 * XXX the return value is ignored but one thing clear is that the task
+	 * isn't on the task queue list after this moment.
+	 */
+	(void)taskqueue_cancel(s->s_taskqueue, &st->st_task, NULL);
 	return (callout_stop(&st->st_callout));
 }
 
