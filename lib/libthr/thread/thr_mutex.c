@@ -650,37 +650,34 @@ _pthread_mutex_setprioceiling(pthread_mutex_t *mp,
 {
 	struct pthread *curthread = _get_curthread();
 	struct mutex_link *ml, *ml1, *ml2;
-	int	error;
 
 	if ((mp->__lockflags & UMUTEX_PRIO_PROTECT2) == 0)
 		return (EINVAL);
 
-	error = __thr_umutex_set_ceiling((struct umutex *)&mp->__lockword,
-		ceiling, old_ceiling);
-	if (error != 0)
-		return (error);
-	if (((mp->__lockflags & UMUTEX_SIMPLE) &&
-	     (mp->__ownerdata.__ownertd == curthread)) || 
-           (mp->__lockword & UMUTEX_OWNER_MASK) == TID(curthread)) {
-		TAILQ_FOREACH(ml, &curthread->pp_mutexq, qe) {
-			if (ml->mutexp == mp)
-				break;
-		}
-		if (ml == NULL) /* howto ? */
-			return (0);
-		ml1 = TAILQ_PREV(ml, mutex_link_list, qe);
-		ml2 = TAILQ_NEXT(ml, qe);
-		if ((ml1 != NULL && ml1->mutexp->__ceilings[0] > (u_int)ceiling) ||
-		    (ml2 != NULL && ml2->mutexp->__ceilings[0] < (u_int)ceiling)) {
-			TAILQ_REMOVE(&curthread->pp_mutexq, ml, qe);
-			TAILQ_FOREACH(ml2, &curthread->pp_mutexq, qe) {
-				if (ml2->mutexp->__ceilings[0] > (u_int)ceiling) {
-					TAILQ_INSERT_BEFORE(ml2, ml, qe);
-					return (0);
-				}
+	if (!_mutex_owned(curthread, mp))
+		return __thr_umutex_set_ceiling((struct umutex *)&mp->__lockword,
+			ceiling, old_ceiling);
+	if (old_ceiling != NULL)
+		*old_ceiling = mp->__ceilings[0];
+	mp->__ceilings[0] = ceiling;
+	TAILQ_FOREACH(ml, &curthread->pp_mutexq, qe) {
+		if (ml->mutexp == mp)
+			break;
+	}
+	if (ml == NULL) /* howto ? */
+		return (0);
+	ml1 = TAILQ_PREV(ml, mutex_link_list, qe);
+	ml2 = TAILQ_NEXT(ml, qe);
+	if ((ml1 != NULL && ml1->mutexp->__ceilings[0] < (u_int)ceiling) ||
+	    (ml2 != NULL && ml2->mutexp->__ceilings[0] > (u_int)ceiling)) {
+		TAILQ_REMOVE(&curthread->pp_mutexq, ml, qe);
+		TAILQ_FOREACH(ml2, &curthread->pp_mutexq, qe) {
+			if (ml2->mutexp->__ceilings[0] < (u_int)ceiling) {
+				TAILQ_INSERT_BEFORE(ml2, ml, qe);
+				return (0);
 			}
-			TAILQ_INSERT_TAIL(&curthread->pp_mutexq, ml, qe);
 		}
+		TAILQ_INSERT_HEAD(&curthread->pp_mutexq, ml, qe);
 	}
 	return (0);
 }
@@ -788,7 +785,7 @@ set_inherited_priority(struct pthread *curthread, struct pthread_mutex *mp)
 {
 	struct mutex_link *ml2;
 
-	ml2 = TAILQ_LAST(&curthread->pp_mutexq, mutex_link_list);
+	ml2 = TAILQ_FIRST(&curthread->pp_mutexq);
 	if (ml2 != NULL)
 		mp->__ceilings[1] = ml2->mutexp->__ceilings[0];
 	else
@@ -825,7 +822,7 @@ enqueue_mutex(struct pthread *curthread, struct pthread_mutex *mp)
 			return;
 		ml = _thr_mutex_link_alloc();
 		ml->mutexp = mp;
-		TAILQ_INSERT_TAIL(&curthread->pi_mutexq, ml, qe);
+		TAILQ_INSERT_HEAD(&curthread->pi_mutexq, ml, qe);
 	}
 }
 
