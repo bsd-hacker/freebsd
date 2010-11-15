@@ -109,20 +109,31 @@ int
 sleepout_stop(struct sleepout_task *st)
 {
 	struct sleepout *s = st->st_sleepout;
+	int ret;
+
+	ret = callout_stop(&st->st_callout);
 
 	/*
 	 * XXX the return value is ignored but one thing clear is that the task
 	 * isn't on the task queue list after this moment.
 	 */
 	(void)taskqueue_cancel(s->s_taskqueue, &st->st_task, NULL);
-	return (callout_stop(&st->st_callout));
+
+	return (ret);
 }
 
 int
 sleepout_drain(struct sleepout_task *st)
 {
 	struct sleepout *s = st->st_sleepout;
+	int ret;
 
+	/*
+	 * Always the sequence to stop / drain a sleepout is that callout(9)
+	 * should be handled first to make sure that it's not enqueued at
+	 * the task list.
+	 */
+	ret = callout_drain(&st->st_callout);
 	taskqueue_drain(s->s_taskqueue, &st->st_task);
-	return (callout_drain(&st->st_callout));
+	return (ret);
 }
