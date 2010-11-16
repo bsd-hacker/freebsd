@@ -165,7 +165,11 @@ struct umtx_q {
 
 	int			uq_repair_mutex;
 
+	/* Robust mutex list */
 	struct	robust_list	uq_rob_list;
+
+	/* Thread is exiting. */
+	char			uq_exiting;
 };
 
 TAILQ_HEAD(umtxq_head, umtx_q);
@@ -324,6 +328,8 @@ static void umtx_thread_cleanup(struct thread *);
 static void umtx_exec_hook(void *arg __unused, struct proc *p __unused,
 	struct image_params *imgp __unused);
 static void umtx_exit_hook(void *arg __unused, struct proc *p __unused);
+static void umtx_fork_hook(void *arg __unused, struct proc *p1 __unused,
+	struct proc *p2, int flags __unused);
 static int robust_alloc(struct robust_info **);
 static void robust_free(struct robust_info *);
 static int robust_insert(struct thread *, struct robust_info *);
@@ -371,6 +377,8 @@ umtxq_sysinit(void *arg __unused)
 	EVENTHANDLER_REGISTER(process_exec, umtx_exec_hook, NULL,
 	    EVENTHANDLER_PRI_ANY);
 	EVENTHANDLER_REGISTER(process_exit, umtx_exit_hook, NULL,
+	    EVENTHANDLER_PRI_ANY);
+	EVENTHANDLER_REGISTER(process_fork, umtx_fork_hook, NULL,
 	    EVENTHANDLER_PRI_ANY);
 
 	max_robust_interval.tv_sec = 10;
@@ -1791,11 +1799,14 @@ umtxq_sleep_pi(struct umtx_q *uq, struct umtx_pi *pi,
 		/* XXX Only look up thread in current process. */
 		td1 = tdfind(owner, curproc->p_pid);
 		mtx_lock_spin(&umtx_lock);
-		if (td1 != NULL && pi->pi_owner == NULL) {
-			uq1 = td1->td_umtxq;
-			umtx_pi_setowner(pi, td1);
+		if (td1 != NULL) {
+			if((uq1 = td1->td_umtxq) != NULL &&
+			    uq1->uq_exiting == 0) {
+				if (pi->pi_owner == NULL)
+					umtx_pi_setowner(pi, td1);
+			}
+			PROC_UNLOCK(td1->td_proc);
 		}
-		PROC_UNLOCK(td1->td_proc);
 	}
 
 	TAILQ_FOREACH(uq1, &pi->pi_blocked, uq_lockq) {
@@ -4351,6 +4362,7 @@ umtx_thread_alloc(struct thread *td)
 
 	uq = td->td_umtxq;
 	uq->uq_inherited_pri = PRI_MAX;
+	uq->uq_exiting = 0;
 
 	KASSERT(uq->uq_flags == 0, ("uq_flags != 0"));
 	KASSERT(uq->uq_thread == td, ("uq_thread != td"));
@@ -4374,7 +4386,27 @@ umtx_exec_hook(void *arg __unused, struct proc *p __unused,
 static void
 umtx_exit_hook(void *arg __unused, struct proc *p __unused)
 {
-	umtx_thread_cleanup(curthread);
+	struct umtx_q *uq = curthread->td_umtxq;
+
+	if (uq != NULL) {
+		uq->uq_exiting = 1;
+		umtx_thread_cleanup(curthread);
+	}
+}
+
+/*
+ * fork() hook. First thread of process never call umtx_thread_alloc()
+ * again, we should clear uq_exiting here.
+ */
+void
+umtx_fork_hook(void *arg __unused, struct proc *p1 __unused,
+	struct proc *p2, int flags __unused)
+{
+	struct thread *td = FIRST_THREAD_IN_PROC(p2);
+	struct umtx_q *uq = td->td_umtxq;
+
+	if (uq != NULL)
+		uq->uq_exiting = 0;
 }
 
 /*
