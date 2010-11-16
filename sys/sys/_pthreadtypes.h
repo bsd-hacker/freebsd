@@ -102,12 +102,12 @@ struct pthread_mutex {
 
 struct pthread_cond {
 	__uint32_t	__lock;
-	int		__waiters;
-	int		__signals;
+	__uint32_t	__waiters;
+	__uint32_t	__signals;
 	__uint32_t	__seq;
 	__uint64_t	__broadcast_seq;
-	int		__refcount;
-	int		__destroying;
+	__int32_t	__refcount;
+	__int32_t	__destroying;
 	/* kernel part */
 	__uint32_t	__kern_has_waiters;
 	__uint32_t	__flags;
