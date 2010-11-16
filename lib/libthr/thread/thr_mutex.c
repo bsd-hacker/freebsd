@@ -342,9 +342,6 @@ _mutex_lock_common(struct pthread_mutex *mp,
 			enqueue_mutex(curthread, mp);
 			return (0);
 		}
-		if ((mp->__lockword & UMUTEX_OWNER_MASK) == id)
-			return mutex_self_lock(mp, abstime);
-		return (EBUSY);
 	}
 
 	if (abstime != NULL && (abstime->tv_sec < 0 || abstime->tv_nsec < 0 ||
