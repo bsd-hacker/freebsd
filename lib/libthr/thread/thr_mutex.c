@@ -152,7 +152,7 @@ mutex_init(struct pthread_mutex *mp,
 	}
 	if (attr->m_pshared != 0)
 		mp->__lockflags |= USYNC_PROCESS_SHARED;
-	if (attr->m_robust != PTHREAD_MUTEX_STALLED)
+	if (attr->m_robust == PTHREAD_MUTEX_ROBUST)
 		mp->__lockflags |= UMUTEX_ROBUST;
 	if (PMUTEX_TYPE(mp->__flags) == PTHREAD_MUTEX_ADAPTIVE_NP) {
 		mp->__spinloops =
@@ -213,18 +213,22 @@ mutex_trylock_common(struct pthread_mutex *mp)
 				return (0);
 			}
 		}
+		if (_mutex_owned(curthread, mp) == 0)
+			return mutex_self_trylock(mp);
+		return (EBUSY);
 	} else if (mp->__lockflags & (UMUTEX_ROBUST | UMUTEX_PRIO_PROTECT2)) {
-		if (mp->__lockflags & UMUTEX_SIMPLE) {
-			if (mp->__ownerdata.__ownertd == curthread)
-				return mutex_self_trylock(mp);
-		} else {
-			if ((mp->__lockword & UMUTEX_OWNER_MASK) ==
-			      TID(curthread))
-				return mutex_self_trylock(mp);
-		}
+		if (_mutex_owned(curthread, mp) == 0)
+			return mutex_self_trylock(mp);
 		error = __thr_umutex_trylock((struct umutex *)&mp->__lockword);
-		if (error == 0 || error == EOWNERDEAD)
+		if (error == 0)
 			enqueue_mutex(curthread, mp);
+		else if (error == EOWNERDEAD) {
+			/*
+			 * Fix inconsistent recursive count for robust mutex.
+			 */
+			mp->__recurse = 0;
+			enqueue_mutex(curthread, mp);
+		}
 		return (error);
 	} else if (mp->__lockflags & UMUTEX_PRIO_INHERIT) {
 		id = TID(curthread);
@@ -232,7 +236,7 @@ mutex_trylock_common(struct pthread_mutex *mp)
 			enqueue_mutex(curthread, mp);
 			return (0);
 		}
-		if ((mp->__lockflags & UMUTEX_OWNER_MASK) == id)
+		if (_mutex_owned(curthread, mp) == 0)
 			return mutex_self_trylock(mp);
 		return (EBUSY);
 	}
@@ -303,8 +307,15 @@ sleep_in_kernel:
 		error = __thr_umutex_timedlock((struct umutex *)&mp->__lockword, id, abstime);
 	}
 done:
-	if (error == 0 || error == EOWNERDEAD)
+	if (error == 0)
 		enqueue_mutex(curthread, mp);
+	else if (error == EOWNERDEAD) {
+		/*
+		 * Fix inconsistent recursive count for robust mutex.
+		 */
+		mp->__recurse = 0;
+		enqueue_mutex(curthread, mp);
+	}
 
 	return (error);
 }
@@ -344,17 +355,12 @@ _mutex_lock_common(struct pthread_mutex *mp,
 		}
 	}
 
+	if (_mutex_owned(curthread, mp) == 0)
+		return mutex_self_lock(mp, abstime);
+
 	if (abstime != NULL && (abstime->tv_sec < 0 || abstime->tv_nsec < 0 ||
 	    abstime->tv_nsec >= 1000000000))
 		return (EINVAL);
-
-	if (mp->__lockflags & UMUTEX_SIMPLE) {
-		if (mp->__ownerdata.__ownertd == curthread)
-			return mutex_self_lock(mp, abstime);
-	} else {
-		if ((mp->__lockword & UMUTEX_OWNER_MASK) == TID(curthread))
-			return mutex_self_lock(mp, abstime);
-	}
 
 	return mutex_lock_sleep(mp, abstime);
 }
@@ -520,7 +526,7 @@ _mutex_unlock_common(struct pthread_mutex *mp)
 	uint32_t id;
 
 	if (__predict_false(
-		PMUTEX_TYPE(mp->__lockflags) == PTHREAD_MUTEX_RECURSIVE &&
+		PMUTEX_TYPE(mp->__flags) == PTHREAD_MUTEX_RECURSIVE &&
 		mp->__recurse > 0)) {
 		mp->__recurse--;
 		if (mp->__flags & PMUTEX_FLAG_PRIVATE)
@@ -573,7 +579,7 @@ _mutex_cv_lock(pthread_mutex_t *mp, int count)
 	int	error;
 
 	error = mutex_lock_common(mp, NULL, 1);
-	if (error == 0)
+	if (error == 0 || error == EOWNERDEAD)
 		mp->__recurse += count;
 	return (error);
 }
@@ -721,7 +727,6 @@ _pthread_mutex_consistent(pthread_mutex_t *mp)
 	if (_mutex_owned(_get_curthread(), mp) == 0) {
 		if (mp->__lockflags & UMUTEX_ROBUST) {
 			atomic_clear_32(&mp->__lockword, UMUTEX_OWNER_DEAD);
-			mp->__recurse = 0;
 			return (0);
 		}
 	}
@@ -1000,7 +1005,7 @@ _pthread_mutex_unlock_1_0(pthread_mutex_old_t *mutex)
 			return (EINVAL);
 		return (EPERM);
 	}
-	return _pthread_mutex_unlock(mp);
+	return mutex_unlock_common(mp);
 }
 
 int
