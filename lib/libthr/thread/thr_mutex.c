@@ -657,7 +657,7 @@ _pthread_mutex_setprioceiling(pthread_mutex_t *mp,
 	if ((mp->__lockflags & UMUTEX_PRIO_PROTECT2) == 0)
 		return (EINVAL);
 
-	if (!_mutex_owned(curthread, mp))
+	if (_mutex_owned(curthread, mp) != 0)
 		return __thr_umutex_set_ceiling((struct umutex *)&mp->__lockword,
 			ceiling, old_ceiling);
 	if (old_ceiling != NULL)
