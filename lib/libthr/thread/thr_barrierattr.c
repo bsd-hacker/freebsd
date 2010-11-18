@@ -43,6 +43,10 @@ __weak_reference(_pthread_barrierattr_setpshared,
 __weak_reference(_pthread_barrierattr_getpshared,
 	pthread_barrierattr_getpshared);
 
+int _pthread_barrierattr_setpshared_1_0(pthread_barrierattr_t *, int);
+
+FB10_COMPAT(_pthread_barrierattr_setpshared_1_0, pthread_barrierattr_setpshared);
+
 int
 _pthread_barrierattr_destroy(pthread_barrierattr_t *attr)
 {
@@ -82,6 +86,22 @@ _pthread_barrierattr_init(pthread_barrierattr_t *attr)
 
 int
 _pthread_barrierattr_setpshared(pthread_barrierattr_t *attr, int pshared)
+{
+
+	if (attr == NULL || *attr == NULL)
+		return (EINVAL);
+
+	/* Only PTHREAD_PROCESS_PRIVATE is supported. */
+	if (pshared != PTHREAD_PROCESS_PRIVATE &&
+	    pshared != PTHREAD_PROCESS_SHARED)
+		return (EINVAL);
+
+	(*attr)->pshared = pshared;
+	return (0);
+}
+
+int
+_pthread_barrierattr_setpshared_1_0(pthread_barrierattr_t *attr, int pshared)
 {
 
 	if (attr == NULL || *attr == NULL)

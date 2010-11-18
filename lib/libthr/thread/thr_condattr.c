@@ -45,6 +45,9 @@ __weak_reference(_pthread_condattr_setclock, pthread_condattr_setclock);
 __weak_reference(_pthread_condattr_getpshared, pthread_condattr_getpshared);
 __weak_reference(_pthread_condattr_setpshared, pthread_condattr_setpshared);
 
+int	_pthread_condattr_setpshared_1_0(pthread_condattr_t *, int);
+FB10_COMPAT(_pthread_condattr_setpshared_1_0, pthread_condattr_setpshared);
+
 int
 _pthread_condattr_init(pthread_condattr_t *attr)
 {
@@ -108,7 +111,7 @@ _pthread_condattr_getpshared(const pthread_condattr_t *attr, int *pshared)
 	if (attr == NULL || *attr == NULL)
 		return (EINVAL);
 
-	*pshared = PTHREAD_PROCESS_PRIVATE;
+	*pshared = (*attr)->c_pshared;
 	return (0);
 }
 
@@ -118,7 +121,23 @@ _pthread_condattr_setpshared(pthread_condattr_t *attr, int pshared)
 	if (attr == NULL || *attr == NULL)
 		return (EINVAL);
 
+	if  (pshared != PTHREAD_PROCESS_PRIVATE &&
+	     pshared != PTHREAD_PROCESS_SHARED)
+		return (EINVAL);
+
+	(*attr)->c_pshared = pshared;
+	return (0);
+}
+
+int
+_pthread_condattr_setpshared_1_0(pthread_condattr_t *attr, int pshared)
+{
+	if (attr == NULL || *attr == NULL)
+		return (EINVAL);
+
 	if  (pshared != PTHREAD_PROCESS_PRIVATE)
 		return (EINVAL);
+
+	(*attr)->c_pshared = pshared;
 	return (0);
 }

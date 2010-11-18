@@ -84,6 +84,9 @@ __weak_reference(_pthread_mutexattr_setprioceiling, pthread_mutexattr_setpriocei
 __weak_reference(_pthread_mutexattr_getrobust, pthread_mutexattr_getrobust);
 __weak_reference(_pthread_mutexattr_setrobust, pthread_mutexattr_setrobust);
 
+int _pthread_mutexattr_setpshared_1_0(pthread_mutexattr_t *attr, int pshared);
+FB10_COMPAT(_pthread_mutexattr_setpshared_1_0, pthread_mutexattr_setpshared);
+
 int
 _pthread_mutexattr_init(pthread_mutexattr_t *attr)
 {
@@ -179,7 +182,7 @@ _pthread_mutexattr_getpshared(const pthread_mutexattr_t *attr,
 	if (attr == NULL || *attr == NULL)
 		return (EINVAL);
 
-	*pshared = PTHREAD_PROCESS_PRIVATE;
+	*pshared = (*attr)->m_pshared;
 	return (0);
 }
 
@@ -191,9 +194,11 @@ _pthread_mutexattr_setpshared(pthread_mutexattr_t *attr, int pshared)
 		return (EINVAL);
 
 	/* Only PTHREAD_PROCESS_PRIVATE is supported. */
-	if (pshared != PTHREAD_PROCESS_PRIVATE)
+	if (pshared != PTHREAD_PROCESS_PRIVATE &&
+	    pshared != PTHREAD_PROCESS_SHARED)
 		return (EINVAL);
 
+	(*attr)->m_pshared = pshared;
 	return (0);
 }
 
@@ -286,4 +291,18 @@ _pthread_mutexattr_setrobust(pthread_mutexattr_t *mattr,
 		error = EINVAL;
 	}
 	return (error);
+}
+
+int
+_pthread_mutexattr_setpshared_1_0(pthread_mutexattr_t *attr, int pshared)
+{
+	if (attr == NULL || *attr == NULL)
+		return (EINVAL);
+
+	/* Only PTHREAD_PROCESS_PRIVATE is supported. */
+	if (pshared != PTHREAD_PROCESS_PRIVATE)
+		return (EINVAL);
+
+	(*attr)->m_pshared = pshared;
+	return (0);
 }
