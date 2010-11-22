@@ -3565,9 +3565,8 @@ do_sem_wait(struct thread *td, struct _usem *sem, struct timespec *timeout)
 	umtxq_insert(uq);
 	umtxq_unlock(&uq->uq_key);
 
-	/* Don't modify cacheline when unnecessary. */
 	if (fuword32(__DEVOLATILE(uint32_t *, &sem->_has_waiters)) == 0)
-		suword32(__DEVOLATILE(uint32_t *, &sem->_has_waiters), 1);
+		casuword32(__DEVOLATILE(uint32_t *, &sem->_has_waiters), 0, 1);
 
 	count = fuword32(__DEVOLATILE(uint32_t *, &sem->_count));
 	if (count != 0) {
