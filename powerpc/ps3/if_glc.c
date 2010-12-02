@@ -184,8 +184,8 @@ glc_attach(device_t dev)
 	lv1_net_set_interrupt_status_indicator(sc->sc_bus, sc->sc_dev,
 	    vtophys(sc->sc_hwirq_status), 0);
 	lv1_net_set_interrupt_mask(sc->sc_bus, sc->sc_dev,
-	    GELIC_INT_RXDONE | GELIC_INT_TXDONE | GELIC_INT_RXFRAME |
-	    GELIC_INT_PHY | GELIC_INT_TX_CHAIN_END, 0);
+	    GELIC_INT_RXDONE | GELIC_INT_RXFRAME | GELIC_INT_PHY |
+	    GELIC_INT_TX_CHAIN_END, 0);
 
 	/*
 	 * Set up DMA.
@@ -289,7 +289,7 @@ glc_attach(device_t dev)
 static void
 glc_init_locked(struct glc_softc *sc)
 {
-	int i;
+	int i, error;
 	struct glc_rxsoft *rxs;
 	struct glc_txsoft *txs;
 
@@ -318,15 +318,26 @@ glc_init_locked(struct glc_softc *sc)
 		    BUS_DMASYNC_PREREAD);
 	}
 
-	txs = STAILQ_FIRST(&sc->sc_txdirtyq);
-	if (txs != NULL) {
-		lv1_net_start_tx_dma(sc->sc_bus, sc->sc_dev,
-		    sc->sc_txdmadesc_phys +
-		    txs->txs_firstdesc*sizeof(struct glc_dmadesc), 0);
-	}
+	/* Clear TX dirty queue */
+	while ((txs = STAILQ_FIRST(&sc->sc_txdirtyq)) != NULL) {
+		STAILQ_REMOVE_HEAD(&sc->sc_txdirtyq, txs_q);
+		bus_dmamap_unload(sc->sc_txdma_tag, txs->txs_dmamap);
 
-	lv1_net_start_rx_dma(sc->sc_bus, sc->sc_dev,
+		if (txs->txs_mbuf != NULL) {
+			m_freem(txs->txs_mbuf);
+			txs->txs_mbuf = NULL;
+		}
+
+		STAILQ_INSERT_TAIL(&sc->sc_txfreeq, txs, txs_q);
+	}
+	sc->first_used_txdma_slot = -1;
+	sc->bsy_txdma_slots = 0;
+
+	error = lv1_net_start_rx_dma(sc->sc_bus, sc->sc_dev,
 	    sc->sc_rxsoft[0].rxs_desc, 0);
+	if (error != 0)
+		device_printf(sc->sc_self,
+		    "lv1_net_start_rx_dma error: %d\n", error);
 
 	sc->sc_ifp->if_drv_flags |= IFF_DRV_RUNNING;
 	sc->sc_ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
@@ -381,6 +392,7 @@ glc_start_locked(struct ifnet *ifp)
 	struct glc_softc *sc = ifp->if_softc;
 	bus_addr_t first, pktdesc;
 	int kickstart = 0;
+	int error;
 	struct mbuf *mb_head;
 
 	mtx_assert(&sc->sc_mtx, MA_OWNED);
@@ -422,7 +434,10 @@ glc_start_locked(struct ifnet *ifp)
 	}
 
 	if (kickstart && first != 0) {
-		lv1_net_start_tx_dma(sc->sc_bus, sc->sc_dev, first, 0);
+		error = lv1_net_start_tx_dma(sc->sc_bus, sc->sc_dev, first, 0);
+		if (error != 0)
+			device_printf(sc->sc_self,
+			    "lv1_net_start_tx_dma error: %d\n", error);
 		sc->sc_wdog_timer = 5;
 	}
 }
@@ -687,7 +702,7 @@ glc_encap(struct glc_softc *sc, struct mbuf **m_head, bus_addr_t *pktdesc)
 static void
 glc_rxintr(struct glc_softc *sc)
 {
-	int i, restart_rxdma;
+	int i, restart_rxdma, error;
 	struct mbuf *m;
 	struct ifnet *ifp = sc->sc_ifp;
 
@@ -738,9 +753,13 @@ glc_rxintr(struct glc_softc *sc)
 		if (sc->sc_rxdmadesc[i].cmd_stat & GELIC_CMDSTAT_CHAIN_END)
 			restart_rxdma = 1;
 		glc_add_rxbuf_dma(sc, i);	
-		if (restart_rxdma)
-			lv1_net_start_rx_dma(sc->sc_bus, sc->sc_dev,
+		if (restart_rxdma) {
+			error = lv1_net_start_rx_dma(sc->sc_bus, sc->sc_dev,
 			    sc->sc_rxsoft[i].rxs_desc, 0);
+			if (error != 0)
+				device_printf(sc->sc_self,
+				    "lv1_net_start_rx_dma error: %d\n", error);
+		}
 	}
 }
 
@@ -749,7 +768,7 @@ glc_txintr(struct glc_softc *sc)
 {
 	struct ifnet *ifp = sc->sc_ifp;
 	struct glc_txsoft *txs;
-	int progress = 0, kickstart = 0;
+	int progress = 0, kickstart = 0, error;
 
 	while ((txs = STAILQ_FIRST(&sc->sc_txdirtyq)) != NULL) {
 		if (sc->sc_txdmadesc[txs->txs_lastdesc].cmd_stat
@@ -787,9 +806,12 @@ glc_txintr(struct glc_softc *sc)
 		sc->first_used_txdma_slot = -1;
 
 	if (kickstart && txs != NULL) {
-		lv1_net_start_tx_dma(sc->sc_bus, sc->sc_dev,
+		error = lv1_net_start_tx_dma(sc->sc_bus, sc->sc_dev,
 		    sc->sc_txdmadesc_phys +
 		    txs->txs_firstdesc*sizeof(struct glc_dmadesc), 0);
+		if (error != 0)
+			device_printf(sc->sc_self,
+			    "lv1_net_start_tx_dma error: %d\n", error);
 	}
 
 	if (progress) {
