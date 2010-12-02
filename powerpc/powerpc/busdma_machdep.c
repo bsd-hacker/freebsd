@@ -160,10 +160,14 @@ run_filter(bus_dma_tag_t dmat, bus_addr_t paddr)
 	retval = 0;
 
 	do {
-		if (((paddr > dmat->lowaddr && paddr <= dmat->highaddr)
-		 || ((paddr & (dmat->alignment - 1)) != 0))
-		 && (dmat->filter == NULL
-		  || (*dmat->filter)(dmat->filterarg, paddr) != 0))
+		if (dmat->filter == NULL && dmat->iommu == NULL &&
+		    paddr > dmat->lowaddr && paddr <= dmat->highaddr)
+			retval = 1;
+		if (dmat->filter == NULL &&
+		    (paddr & (dmat->alignment - 1)) != 0)
+			retval = 1;
+		if (dmat->filter != NULL &&
+		    (*dmat->filter)(dmat->filterarg, paddr) != 0)
 			retval = 1;
 
 		dmat = dmat->parent;		
@@ -287,8 +291,10 @@ bus_dma_tag_create(bus_dma_tag_t parent, bus_size_t alignment,
 		newtag->iommu_cookie = parent->iommu_cookie;
 	}
 
-	if (newtag->lowaddr < ptoa((vm_paddr_t)Maxmem)
-	 || newtag->alignment > 1)
+	if (newtag->lowaddr < ptoa((vm_paddr_t)Maxmem) && newtag->iommu == NULL)
+		newtag->flags |= BUS_DMA_COULD_BOUNCE;
+
+	if (newtag->alignment > 1)
 		newtag->flags |= BUS_DMA_COULD_BOUNCE;
 
 	if (((newtag->flags & BUS_DMA_COULD_BOUNCE) != 0) &&
