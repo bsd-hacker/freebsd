@@ -500,7 +500,7 @@ ps3bus_get_dma_tag(device_t dev, device_t child)
 		err = lv1_map_device_dma_region(dinfo->bus, dinfo->dev,
 		    sc->regions[i].mr_start, dinfo->dma_base[i],
 		    sc->regions[i].mr_size,
-		    0xf800000000000000UL /* see Cell IO/MMU docs */);
+		    0xf800000000000800UL /* Cell Handbook Figure 7.3.4.1 */);
 		if (err != 0) {
 			device_printf(child,
 			    "could not map DMA region %d: %d\n", i, err);
@@ -510,7 +510,7 @@ ps3bus_get_dma_tag(device_t dev, device_t child)
 
 	err = bus_dma_tag_create(bus_get_dma_tag(dev),
 	    1, 0, BUS_SPACE_MAXADDR, BUS_SPACE_MAXADDR,
-	    NULL, NULL, BUS_SPACE_MAXSIZE_32BIT, 0, BUS_SPACE_MAXSIZE_32BIT,
+	    NULL, NULL, BUS_SPACE_MAXSIZE, 0, BUS_SPACE_MAXSIZE,
 	    0, NULL, NULL, &dinfo->dma_tag);
 
 	bus_dma_tag_set_iommu(dinfo->dma_tag, dev, dinfo);
