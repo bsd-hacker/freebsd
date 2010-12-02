@@ -60,19 +60,5 @@ extern int		moea64_large_page_shift;
 extern u_int		moea64_pteg_count;
 extern u_int		moea64_pteg_mask;
 
-/*
- * Page table manipulation hooks
- */
-
-extern void	(*moea64_pte_synch_hook)(struct lpte *pt, struct lpte *pvo_pt);
-extern void	(*moea64_pte_clear_hook)(struct lpte *pt, struct lpte *pvo_pt,
-		    uint64_t vpn, u_int64_t ptebit);
-extern void	(*moea64_pte_unset_hook)(struct lpte *pt, struct lpte *pvo_pt,
-		    uint64_t vpn);
-extern void	(*moea64_pte_change_hook)(struct lpte *pt, struct lpte *pvo_pt,
-		    uint64_t vpn);
-extern int	(*moea64_pte_insert_hook)(u_int ptegidx, struct lpte *pvo_pt);
-extern struct lpte *(*moea64_pvo_to_pte_hook)(const struct pvo_entry *pvo);
-
 #endif /* _POWERPC_AIM_MMU_OEA64_H */
 

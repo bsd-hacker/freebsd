@@ -48,6 +48,7 @@
 #include <powerpc/aim/mmu_oea64.h>
 
 #include "mmu_if.h"
+#include "moea64_if.h"
 #include "ps3-hvcall.h"
 
 #define VSID_HASH_MASK		0x0000007fffffffffUL
@@ -64,20 +65,27 @@ static uint64_t mps3_vas_id;
 static void	mps3_bootstrap(mmu_t mmup, vm_offset_t kernelstart,
 		    vm_offset_t kernelend);
 static void	mps3_cpu_bootstrap(mmu_t mmup, int ap);
-static void	mps3_pte_synch(struct lpte *pt, struct lpte *pvo_pt);
-static void	mps3_pte_clear(struct lpte *pt, struct lpte *pvo_pt,
-		    uint64_t vpn, u_int64_t ptebit);
-static void	mps3_pte_unset(struct lpte *pt, struct lpte *pvo_pt,
+static void	mps3_pte_synch(mmu_t, uintptr_t pt, struct lpte *pvo_pt);
+static void	mps3_pte_clear(mmu_t, uintptr_t pt, struct lpte *pvo_pt,
+		    uint64_t vpn, uint64_t ptebit);
+static void	mps3_pte_unset(mmu_t, uintptr_t pt, struct lpte *pvo_pt,
 		    uint64_t vpn);
-static void	mps3_pte_change(struct lpte *pt, struct lpte *pvo_pt,
+static void	mps3_pte_change(mmu_t, uintptr_t pt, struct lpte *pvo_pt,
 		    uint64_t vpn);
-static int	mps3_pte_insert(u_int ptegidx, struct lpte *pvo_pt);
-static struct lpte *mps3_pvo_to_pte(const struct pvo_entry *pvo);
+static int	mps3_pte_insert(mmu_t, u_int ptegidx, struct lpte *pvo_pt);
+static uintptr_t mps3_pvo_to_pte(mmu_t, const struct pvo_entry *pvo);
 
 
 static mmu_method_t mps3_methods[] = {
-        MMUMETHOD(mmu_bootstrap,        mps3_bootstrap),
-        MMUMETHOD(mmu_cpu_bootstrap,    mps3_cpu_bootstrap),
+        MMUMETHOD(mmu_bootstrap,	mps3_bootstrap),
+        MMUMETHOD(mmu_cpu_bootstrap,	mps3_cpu_bootstrap),
+
+	MMUMETHOD(moea64_pte_synch,	mps3_pte_synch),
+	MMUMETHOD(moea64_pte_clear,	mps3_pte_clear),
+	MMUMETHOD(moea64_pte_unset,	mps3_pte_unset),
+	MMUMETHOD(moea64_pte_change,	mps3_pte_change),
+	MMUMETHOD(moea64_pte_insert,	mps3_pte_insert),
+	MMUMETHOD(moea64_pvo_to_pte,	mps3_pvo_to_pte),
 
         { 0, 0 }
 };
@@ -88,16 +96,6 @@ static void
 mps3_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernelend)
 {
 	uint64_t final_pteg_count;
-
-	/*
-	 * Set our page table override functions
-	 */
-	moea64_pte_synch_hook = mps3_pte_synch;
-	moea64_pte_clear_hook = mps3_pte_clear;
-	moea64_pte_unset_hook = mps3_pte_unset;
-	moea64_pte_change_hook = mps3_pte_change;
-	moea64_pte_insert_hook = mps3_pte_insert;
-	moea64_pvo_to_pte_hook = mps3_pvo_to_pte;
 
 	moea64_early_bootstrap(mmup, kernelstart, kernelend);
 
@@ -151,10 +149,9 @@ mps3_cpu_bootstrap(mmu_t mmup, int ap)
 }
 
 static void
-mps3_pte_synch(struct lpte *pt, struct lpte *pvo_pt)
+mps3_pte_synch(mmu_t mmu, uintptr_t slot, struct lpte *pvo_pt)
 {
 	uint64_t halfbucket[4], rcbits;
-	uint64_t slot = (uint64_t)(pt)-1;
 	
 	PTESYNC();
 	lv1_read_htab_entries(mps3_vas_id, slot & ~0x3UL, &halfbucket[0],
@@ -175,38 +172,35 @@ mps3_pte_synch(struct lpte *pt, struct lpte *pvo_pt)
 }
 
 static void
-mps3_pte_clear(struct lpte *pt, struct lpte *pvo_pt, uint64_t vpn,
+mps3_pte_clear(mmu_t mmu, uintptr_t slot, struct lpte *pvo_pt, uint64_t vpn,
     u_int64_t ptebit)
 {
-	uint64_t slot = (uint64_t)(pt)-1;
 
 	lv1_write_htab_entry(mps3_vas_id, slot, pvo_pt->pte_hi,
 	    pvo_pt->pte_lo & ~ptebit);
 }
 
 static void
-mps3_pte_unset(struct lpte *pt, struct lpte *pvo_pt, uint64_t vpn)
+mps3_pte_unset(mmu_t mmu, uintptr_t slot, struct lpte *pvo_pt, uint64_t vpn)
 {
-	uint64_t slot = (uint64_t)(pt)-1;
 
-	mps3_pte_synch(pt, pvo_pt);
+	mps3_pte_synch(mmu, slot, pvo_pt);
 	pvo_pt->pte_hi &= ~LPTE_VALID;
 	lv1_write_htab_entry(mps3_vas_id, slot, 0, 0);
 	moea64_pte_valid--;
 }
 
 static void
-mps3_pte_change(struct lpte *pt, struct lpte *pvo_pt, uint64_t vpn)
+mps3_pte_change(mmu_t mmu, uintptr_t slot, struct lpte *pvo_pt, uint64_t vpn)
 {
-	uint64_t slot = (uint64_t)(pt)-1;
  
-	mps3_pte_synch(pt, pvo_pt);
+	mps3_pte_synch(mmu, slot, pvo_pt);
 	lv1_write_htab_entry(mps3_vas_id, slot, pvo_pt->pte_hi,
 	    pvo_pt->pte_lo);
 }
 
 static int
-mps3_pte_insert(u_int ptegidx, struct lpte *pvo_pt)
+mps3_pte_insert(mmu_t mmu, u_int ptegidx, struct lpte *pvo_pt)
 {
 	int result;
 	struct lpte evicted;
@@ -287,15 +281,15 @@ va_to_pteg(uint64_t vsid, vm_offset_t addr, int large)
 	return (hash & moea64_pteg_mask);
 }
 
-static struct lpte *
-mps3_pvo_to_pte(const struct pvo_entry *pvo)
+uintptr_t
+mps3_pvo_to_pte(mmu_t mmu, const struct pvo_entry *pvo)
 {
-	uint64_t slot, vsid;
+	uint64_t vsid;
 	u_int ptegidx;
 
 	/* If the PTEG index is not set, then there is no page table entry */
 	if (!PVO_PTEGIDX_ISSET(pvo))
-		return (NULL);
+		return (-1);
 
 	vsid = PVO_VSID(pvo);
 	ptegidx = va_to_pteg(vsid, PVO_VADDR(pvo), pvo->pvo_vaddr & PVO_LARGE);
@@ -308,8 +302,6 @@ mps3_pvo_to_pte(const struct pvo_entry *pvo)
 	if (pvo->pvo_pte.lpte.pte_hi & LPTE_HID)
 		ptegidx ^= moea64_pteg_mask;
 
-	slot = (ptegidx << 3) | PVO_PTEGIDX_GET(pvo);
-
-	return ((struct lpte *)(slot + 1));
+	return ((ptegidx << 3) | PVO_PTEGIDX_GET(pvo));
 }
 
