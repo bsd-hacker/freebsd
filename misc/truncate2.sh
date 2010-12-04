@@ -28,7 +28,6 @@
 # $FreeBSD$
 #
 
-
 . ../default.cfg
 
 here=`pwd`
