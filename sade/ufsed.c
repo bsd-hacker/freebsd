@@ -91,6 +91,11 @@ struct ufsinfo {
 	char			*mntonname;	/* current mountpoint */
 };
 
+struct ufsed_history_entry {
+	char	*title;
+	char	*cmd;
+};
+
 static int ufslist_add(struct ufslist *, struct de_device *, struct de_part *);
 static void ufslist_free(struct ufslist *);
 static int ufslist_count(struct ufslist *);
@@ -227,11 +232,20 @@ set_statusline(char *msg)
 	}
 }
 
+static void
+ufsed_history_free(struct ufsed_history_entry *entry)
+{
+
+	free(entry->title);
+	free(entry->cmd);
+	free(entry);
+}
+
 static int
 ufsed_history_rollback(void *pentry)
 {
 
-	free(pentry);
+	ufsed_history_free((struct ufsed_history_entry *)pentry);
 	return (0);
 }
 
@@ -240,7 +254,7 @@ ufsed_history_play(void *pentry)
 {
 
 	/* system(pentry); */
-	free(pentry);
+	ufsed_history_free((struct ufsed_history_entry *)pentry);
 	return (0);
 }
 
@@ -253,14 +267,17 @@ ufslist_reread(struct ufslist *fslist)
 }
 
 static int
-ufsed_history_add(history_t hist, const char *cmd)
+ufsed_history_add(history_t hist, const char *title, const char *cmd)
 {
-	char *entry;
+	struct ufsed_history_entry *entry;
 
-	entry = strdup(cmd);
+	entry = malloc(sizeof(*entry));
 	if (entry == NULL)
 		return (ENOMEM);
-
+	entry->title = strdup(title);
+	entry->cmd = strdup(cmd);
+	if (entry->cmd == NULL || entry->title == NULL)
+		ufsed_history_free(entry);
 	return (history_add_entry(hist, entry));
 }
 
@@ -289,7 +306,7 @@ ufsed_tunefs(history_t hist, struct ufsinfo *pfs)
 	WINDOW *win;
 	uint32_t flags;
 	int q, h, w, ret, i;
-	char buf[CMDLEN_MAX], *s;
+	char buf[CMDLEN_MAX], *s, *prompt;
 	struct {
 		DLG_CHECKBOX	*item;
 		uint32_t	flag;
@@ -306,9 +323,9 @@ ufsed_tunefs(history_t hist, struct ufsinfo *pfs)
 
 	win = savescr();
 	dlg_init(&dlg);
-	snprintf(buf, sizeof(buf),
-	    "Change a file system parameters for \"%s\":", pfs->partname);
-	dlg_add_label(&dlg, 1, 2, 55, 2, buf);
+	asprintf(&prompt, "Change file system parameters for \"%s\":",
+	    pfs->partname);
+	dlg_add_label(&dlg, 1, 2, 55, 2, prompt);
 	eLabel = dlg_add_edit(&dlg, 3, 2, 24, "Volume Label:",
 	    MAXVOLLEN, pfs->volname);
 	for (i = 0; i < sizeof(checkbox) / sizeof(checkbox[0]); i++)
@@ -395,7 +412,7 @@ again:
 		snprintf(buf, sizeof(buf), "%s %s%s", buf, _PATH_DEV,
 		    pfs->partname);
 		/* add command to history */
-		ret = ufsed_history_add(hist, buf);
+		ret = ufsed_history_add(hist, prompt, buf);
 		if (ret)
 			dmenu_open_errormsg("Operation failed.");
 		else {	/* do fake changes to update current view */
@@ -411,6 +428,7 @@ done:
 	restorescr(win);
 	dlg_close_dialog(&dlg);
 	dlg_free(&dlg);
+	free(prompt);
 }
 
 static void
@@ -425,7 +443,7 @@ ufsed_newfs(history_t hist, struct ufsinfo *pfs)
 	WINDOW *win;
 	uint64_t num, tmp;
 	int q, h, w, ret, i;
-	char buf[CMDLEN_MAX], *s, *volname;
+	char buf[CMDLEN_MAX], *s, *volname, *prompt;
 	struct {
 		DLG_CHECKBOX	*item;
 		uint32_t	flag;
@@ -444,9 +462,8 @@ ufsed_newfs(history_t hist, struct ufsinfo *pfs)
 
 	win = savescr();
 	dlg_init(&dlg);
-	snprintf(buf, sizeof(buf),
-	    "Create new file system on \"%s\":", pfs->partname);
-	dlg_add_label(&dlg, 1, 2, 55, 2, buf);
+	asprintf(&prompt, "Create new file system on \"%s\":", pfs->partname);
+	dlg_add_label(&dlg, 1, 2, 55, 2, prompt);
 	eLabel = dlg_add_edit(&dlg, 3, 2, 24, "Volume Label:",
 	    MAXVOLLEN, NULL);
 	eBlock = dlg_add_edit(&dlg, 7, 2, 24, "Block Size:", 8, "16384");
@@ -570,7 +587,7 @@ again:
 	}
 	snprintf(buf, sizeof(buf), "%s %s%s", buf, _PATH_DEV, pfs->partname);
 	/* add newfs command to history */
-	ret = ufsed_history_add(hist, buf);
+	ret = ufsed_history_add(hist, prompt, buf);
 	if (ret)
 		dmenu_open_errormsg("Operation failed.");
 	else {	/* do fake changes to update current view */
@@ -598,7 +615,10 @@ again:
 	if (num > 0) {
 		snprintf(buf, sizeof(buf), "%s %s%s", buf, _PATH_DEV,
 		    pfs->partname);
-		ret = ufsed_history_add(hist, buf);
+		free(prompt);
+		asprintf(&prompt, "Change file system parameters for \"%s\":",
+		    pfs->partname);
+		ret = ufsed_history_add(hist, prompt, buf);
 		if (ret)
 			dmenu_open_errormsg("Operation failed.");
 		else {	/* do fake changes to update current view */
@@ -609,6 +629,7 @@ done:
 	restorescr(win);
 	dlg_close_dialog(&dlg);
 	dlg_free(&dlg);
+	free(prompt);
 }
 
 
