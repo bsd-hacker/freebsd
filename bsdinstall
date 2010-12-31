@@ -1,6 +1,6 @@
 #!/bin/sh
 
-DISTRIBUTIONS="kernel world distribution"; export DISTRIBUTIONS
+DISTRIBUTIONS="kernel.tgz world.tgz distribution.tgz"; export DISTRIBUTIONS
 BSDINSTALL_LOG="/tmp/bsdinstall_log"; export BSDINSTALL_LOG
 PATH_FSTAB="/tmp/fstab"; export PATH_FSTAB
 BSDINSTALL_DISTDIR="/var/dist"; export BSDINSTALL_DISTDIR

@@ -8,7 +8,7 @@ bsdinstall hostname
 
 FETCH_DISTRIBUTIONS=""
 for dist in $DISTRIBUTIONS; do
-	if [ ! -f $BSDINSTALL_DISTDIR/$dist.tgz ]; then
+	if [ ! -f $BSDINSTALL_DISTDIR/$dist ]; then
 		FETCH_DISTRIBUTIONS="$FETCH_DISTRIBUTIONS $dist"
 	fi
 done

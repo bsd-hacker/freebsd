@@ -70,8 +70,7 @@ extract_files(int nfiles, const char **files)
 		archive = archive_read_new();
 		archive_read_support_format_all(archive);
 		archive_read_support_compression_all(archive);
-		sprintf(path, "%s/%s.tgz", getenv("BSDINSTALL_DISTDIR"),
-		    files[i]);
+		sprintf(path, "%s/%s", getenv("BSDINSTALL_DISTDIR"), files[i]);
 		err = archive_read_open_filename(archive, path, 4096);
 		if (err != ARCHIVE_OK) {
 			snprintf(errormsg, sizeof(errormsg),
@@ -101,8 +100,7 @@ extract_files(int nfiles, const char **files)
 		archive = archive_read_new();
 		archive_read_support_format_all(archive);
 		archive_read_support_compression_all(archive);
-		sprintf(path, "%s/%s.tgz", getenv("BSDINSTALL_DISTDIR"),
-		    files[i]);
+		sprintf(path, "%s/%s", getenv("BSDINSTALL_DISTDIR"), files[i]);
 		err = archive_read_open_filename(archive, path, 4096);
 
 		items[i*2 + 1] = "In Progress";

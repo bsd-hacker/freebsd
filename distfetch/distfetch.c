@@ -4,16 +4,37 @@
 #include <fetch.h>
 #include <cdialog/dialog.h>
 
-static int fetch_files(int nfiles, const char **urls);
+static int fetch_files(int nfiles, char **urls);
 
 int
 main(void)
 {
-	return (fetch_files(argc - 1, &argv[1]));
+	char *diststring = strdup(getenv("DISTRIBUTIONS"));
+	char **urls;
+	int i, retval, ndists = 0;
+	for (i = 0; diststring[i] != 0; i++)
+		if (isspace(diststring[i]) && !isspace(diststring[i+1]))
+			ndists++;
+	ndists++; /* Last one */
+
+	urls = calloc(ndists, sizeof(const char *));
+	for (i = 0; i < ndists; i++) {
+		urls[i] = malloc(PATH_MAX);
+		sprintf(urls[i], "%s/%s", getenv("BSDINSTALL_DISTSITE"),
+		    strsep(&diststring, " \t"));
+	}
+
+	chdir(getenv("BSDINSTALL_DISTDIR"));
+	retval = fetch_files(ndists, urls);
+
+	free(diststring);
+	for (i = 0; i < ndists; i++) 
+		free(urls[i]);
+	free(urls);
 }
 
 static int
-fetch_files(int nfiles, const char **urls)
+fetch_files(int nfiles, char **urls)
 {
 	const char **items;
 	FILE *fetch_out, *file_out;

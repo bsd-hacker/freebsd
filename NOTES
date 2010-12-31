@@ -1,3 +1,15 @@
 Targets for tarballs: installkernel installworld (distrib-dirs distribution)
 
 Tools used in scripts: dialog sh awk sort cp dd ifconfig sysctl xargs mkdir mount cat uname netstat newfs
+
+Environment variables affecting modules:
+- DISTRIBUTIONS: List of tarballs to unpack, including .tgz extension
+- BSDINSTALL_DISTDIR: Files system location at which to download distfiles and
+   from which to extract them
+- BSDINSTALL_DISTSITE: Base URL for downloading distfiles. Will be downloaded
+   from $BSDINSTALL_DISTSITE/$DIST
+- BSDINSTALL_LOG: Log file path for installation log
+- PATH_FSTAB: fstab file to use. Need not exist yet.
+- BSDINSTALL_CHROOT: Destination location for the installation. File systems
+   are mounted here and files installed to this path.
+

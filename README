@@ -21,7 +21,7 @@ Missing features:
 
 Goals:
 - Reinvent as few wheels as possible
-- Extensability
+- Extensibility
 - Scriptability without a scripting language -- the installer itself should
   be a script a user can modify
 - Minimal grubbing around in outputs of shell commands with awk, sed, etc.
