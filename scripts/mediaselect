@@ -1,0 +1,39 @@
+#!/bin/sh
+
+: ${DIALOG_OK=0}
+: ${DIALOG_CANCEL=1}
+: ${DIALOG_HELP=2}
+: ${DIALOG_EXTRA=3}
+: ${DIALOG_ITEM_HELP=4}
+: ${DIALOG_ESC=255}
+
+exec 3>&1
+SOURCE=`cdialog --backtitle 'FreeBSD Installer' --title 'Installation Media' --nocancel --menu \
+	'Please choose the desired installation media. Installation using a network source requires a working wired network connection.' 0 0 0 \
+	CDROM 'Inserted Compact Disc' \
+	Network 'Download from the Internet' \
+	FS 'Mounted File System' \
+2>&1 1>&3`
+if [ $? -eq $DIALOG_CANCEL ]; then exec $0; fi
+exec 3>&-
+
+case $SOURCE in
+	"CDROM")
+		echo HAVE_DISTFILES=yes
+		echo DISTFILES_PATH="/install"
+		exit 0
+		;;
+	"Network")
+		echo NEED_NETCONFIG=yes
+		exit 0
+		;;
+	"FS")
+		exec 3>&1
+		SOURCE=`cdialog --backtitle 'FreeBSD Installer' --title 'Select Installation Files Directory' --dselect / 0 0 2>&1 1>&3`
+		if [ $? -eq $DIALOG_CANCEL ]; then exec $0; fi
+		exec 3>&-
+		echo HAVE_DISTFILES=yes
+		echo DISTFILES_PATH="$SOURCE"
+		;;
+esac
+		

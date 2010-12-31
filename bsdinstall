@@ -1,0 +1,12 @@
+#!/bin/sh
+
+DISTRIBUTIONS="kernel world distribution"; export DISTRIBUTIONS
+BSDINSTALL_LOG="/tmp/bsdinstall_log"; export BSDINSTALL_LOG
+PATH_FSTAB="/tmp/fstab"; export PATH_FSTAB
+BSDINSTALL_DISTDIR="/var/dist"; export BSDINSTALL_DISTDIR
+BSDINSTALL_CHROOT="/mnt"; export BSDINSTALL_CHROOT
+
+VERB=$1
+
+$(dirname $0)/libexec/$VERB
+

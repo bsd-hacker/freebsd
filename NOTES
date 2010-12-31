@@ -1,0 +1,3 @@
+Targets for tarballs: installkernel installworld (distrib-dirs distribution)
+
+Tools used in scripts: dialog sh awk sort cp dd ifconfig sysctl xargs mkdir mount cat uname netstat newfs

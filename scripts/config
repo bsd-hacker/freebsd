@@ -1,0 +1,5 @@
+#!/bin/sh
+
+cp $PATH_FSTAB $BSDINSTALL_CHROOT/etc/fstab
+cp /tmp/rc.conf $BSDINSTALL_CHROOT/etc/rc.conf
+cp /tmp/resolv.conf $BSDINSTALL_CHROOT/etc/resolv.conf
