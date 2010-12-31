@@ -41,7 +41,7 @@ gpart_show_error(const char *title, const char *explanation, const char *errstr)
 }
 
 static int
-gpart_partition(struct gprovider *pp, const char *scheme)
+gpart_partition(const char *lg_name, const char *scheme)
 {
 	int cancel, choice;
 	struct gctl_req *r;
@@ -88,7 +88,7 @@ schememenu:
 
 	r = gctl_get_handle();
 	gctl_ro_param(r, "class", -1, "PART");
-	gctl_ro_param(r, "arg0", -1, pp->lg_geom->lg_name);
+	gctl_ro_param(r, "arg0", -1, lg_name);
 	gctl_ro_param(r, "flags", -1, GPART_FLAGS);
 	gctl_ro_param(r, "scheme", -1, scheme);
 	gctl_ro_param(r, "verb", -1, "create");
@@ -103,8 +103,55 @@ schememenu:
 	gctl_free(r);
 
 	if (bootcode_path(scheme) != NULL)
-		get_part_metadata(pp->lg_geom->lg_name, 1)->bootcode = 1;
+		get_part_metadata(lg_name, 1)->bootcode = 1;
 	return (0);
+}
+
+static void
+gpart_activate(struct gprovider *pp)
+{
+	struct gconfig *gc;
+	struct gctl_req *r;
+	const char *errstr, *scheme;
+	const char *attribute = NULL;
+	intmax_t index;
+
+	/*
+	 * Some partition scemes need this partition to be marked 'active'
+	 * for it to be bootable.
+	 */
+	LIST_FOREACH(gc, &pp->lg_geom->lg_config, lg_config) {
+		if (strcmp(gc->lg_name, "scheme") == 0) {
+			scheme = gc->lg_val;
+			break;
+		}
+	}
+
+	if (strcmp(scheme, "MBR") == 0 || strcmp(scheme, "EBR") == 0 ||
+	    strcmp(scheme, "PC98") == 0)
+		attribute = "active";
+	else
+		return;
+
+	LIST_FOREACH(gc, &pp->lg_config, lg_config) {
+		if (strcmp(gc->lg_name, "index") == 0) {
+			index = atoi(gc->lg_val);
+			break;
+		}
+	}
+
+	r = gctl_get_handle();
+	gctl_ro_param(r, "class", -1, "PART");
+	gctl_ro_param(r, "arg0", -1, pp->lg_geom->lg_name);
+	gctl_ro_param(r, "verb", -1, "set");
+	gctl_ro_param(r, "attrib", -1, attribute);
+	gctl_ro_param(r, "index", sizeof(index), &index);
+
+	errstr = gctl_issue(r);
+	if (errstr != NULL && errstr[0] != '\0') 
+		gpart_show_error("Error", "Error marking partition active:",
+		    errstr);
+	gctl_free(r);
 }
 
 static void
@@ -270,7 +317,7 @@ gpart_edit(struct gprovider *pp)
 			delete_part_metadata(cp->lg_geom->lg_name);
 
 			/* Now re-partition and return */
-			gpart_partition(pp, NULL);
+			gpart_partition(cp->lg_geom->lg_name, NULL);
 			return;
 		}
 
@@ -279,7 +326,7 @@ gpart_edit(struct gprovider *pp)
 
 	if (geom == NULL) {
 		/* Disk not partitioned, so partition it */
-		gpart_partition(pp, NULL);
+		gpart_partition(pp->lg_geom->lg_name, NULL);
 		return;
 	}
 
@@ -375,6 +422,8 @@ set_part_metadata(const char *name, const char *type, const char *mountpoint,
 
 	if (strcmp(type, "freebsd-swap") == 0)
 		mountpoint = "none";
+	if (strcmp(type, "freebsd-boot") == 0)
+		md->bootcode = 1;
 	
 	if (mountpoint != NULL && mountpoint[0] != '\0') {
 		if (md->fstab == NULL) {
@@ -461,7 +510,7 @@ gpart_create(struct gprovider *pp)
 		geom = pp->lg_geom;
 
 	if (geom == NULL) {
-		if (gpart_partition(pp, NULL) == 0)
+		if (gpart_partition(pp->lg_geom->lg_name, NULL) == 0)
 			dialog_msgbox("",
 			    "The partition table has been successfully created."
 			    " Please press Create again to create partitions.",
@@ -522,7 +571,7 @@ gpart_create(struct gprovider *pp)
 	items[1].text = sizestr;
 
 	/* Special-case the MBR default type for nested partitions */
-	if (strcmp("scheme", "MBR") == 0)
+	if (strcmp(scheme, "MBR") == 0)
 		items[0].text = "freebsd";
 
 addpartform:
@@ -611,6 +660,8 @@ addpartform:
 
 	if (strcmp(items[0].text, "freebsd-boot") == 0)
 		get_part_metadata(strtok(output, " "), 1)->bootcode = 1;
+	else if (strcmp(items[0].text, "freebsd") == 0)
+		gpart_partition(strtok(output, " "), "BSD");
 	else
 		set_part_metadata(strtok(output, " "), items[0].text,
 		    items[3].text, 1);
@@ -734,6 +785,7 @@ gpart_commit(struct gmesh *mesh)
 	struct partition_metadata *md;
 	struct gclass *classp;
 	struct ggeom *gp;
+	struct gconsumer *cp;
 	struct gprovider *pp;
 	struct gctl_req *r;
 	const char *errstr;
@@ -754,6 +806,25 @@ gpart_commit(struct gmesh *mesh)
 		if (md != NULL && md->bootcode)
 			gpart_bootcode(gp);
 
+		/* Now install partcode on its partitions, if necessary */
+		LIST_FOREACH(pp, &gp->lg_provider, lg_provider) {
+			md = get_part_metadata(pp->lg_name, 0);
+			if (md == NULL || !md->bootcode)
+				continue;
+		
+			/* Mark this partition active if that's required */
+			gpart_activate(pp);
+
+			/* Check if the partition has sub-partitions */
+			LIST_FOREACH(cp, &pp->lg_consumers, lg_consumers)
+				if (strcmp(cp->lg_geom->lg_class->lg_name,
+				    "PART") == 0)
+					break;
+
+			if (cp == NULL) /* No sub-partitions */
+				gpart_partcode(pp);
+		}
+
 		r = gctl_get_handle();
 		gctl_ro_param(r, "class", -1, "PART");
 		gctl_ro_param(r, "arg0", -1, gp->lg_name);
@@ -763,13 +834,6 @@ gpart_commit(struct gmesh *mesh)
 		if (errstr != NULL && errstr[0] != '\0') 
 			gpart_show_error("Error", NULL, errstr);
 		gctl_free(r);
-
-		/* Now install partcode on its partitions, if necessary */
-		LIST_FOREACH(pp, &gp->lg_provider, lg_provider) {
-			md = get_part_metadata(pp->lg_name, 0);
-			if (md != NULL && md->bootcode)
-				gpart_partcode(pp);
-		}
 	}
 }
 
