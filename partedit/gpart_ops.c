@@ -353,7 +353,7 @@ gpart_edit(struct gprovider *pp)
 		}
 	}
 
-	humanize_number(sizestr, 6, pp->lg_mediasize, "B", HN_AUTOSCALE,
+	humanize_number(sizestr, 7, pp->lg_mediasize, "B", HN_AUTOSCALE,
 	    HN_NOSPACE | HN_DECIMAL);
 	items[1].text = sizestr;
 
@@ -566,7 +566,7 @@ gpart_create(struct gprovider *pp)
 	if (size*sector >= 1024*1024)
 		size -= 1024*1024/sector;
 
-	humanize_number(sizestr, 6, size*sector, "B", HN_AUTOSCALE,
+	humanize_number(sizestr, 7, size*sector, "B", HN_AUTOSCALE,
 	    HN_NOSPACE | HN_DECIMAL);
 	items[1].text = sizestr;
 

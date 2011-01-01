@@ -1,7 +1,9 @@
+#include <inttypes.h>
+
 struct partedit_item {
 	int indentation;
 	const char *name;
-	size_t size;
+	intmax_t size;
 	const char *type;
 	char *mountpoint;
 
