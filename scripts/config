@@ -1,5 +1,20 @@
 #!/bin/sh
 
+exec 3>&1
+DAEMONS=$(cdialog --backtitle "FreeBSD Installer" \
+    --title "System Configuration" --nocancel --separate-output \
+    --checklist "Choose the services you would like to be started at boot:" \
+    0 0 0 \
+	sshd	"Secure shell daemon" on \
+	ntpd	"Synchronize system and network time" off \
+	powerd	"Adjust CPU frequency dynamically" off \
+2>&1 1>&3)
+exec 3>&-
+
+for daemon in $DAEMONS; do
+	echo ${daemon}_enable=\"YES\" >> /tmp/rc.conf
+done
+
 cp $PATH_FSTAB $BSDINSTALL_CHROOT/etc/fstab
 cp /tmp/rc.conf $BSDINSTALL_CHROOT/etc/rc.conf
 cp /tmp/resolv.conf $BSDINSTALL_CHROOT/etc/resolv.conf

@@ -4,6 +4,7 @@ echo "Begun Installation at $(date)" > $BSDINSTALL_LOG
 
 cdialog --backtitle "FreeBSD Installer" --title "Welcome" --msgbox "Welcome to the FreeBSD Installer." 0 0
 
+rm /tmp/rc.conf
 bsdinstall hostname
 
 FETCH_DISTRIBUTIONS=""
@@ -19,7 +20,6 @@ if [ ! -z "$FETCH_DISTRIBUTIONS" ]; then
 fi
 
 rm $PATH_FSTAB
-rm /tmp/rc.conf
 bsdinstall partedit
 bsdinstall mount 
 
@@ -31,8 +31,9 @@ if [ ! -z $FETCH_DISTRIBUTIONS ]; then
 fi
 
 bsdinstall distextract
+bsdinstall rootpass
+bsdinstall adduser
 bsdinstall config 
-#bsdinstall rootpass
 
 cdialog --backtitle "FreeBSD Installer" --title "Welcome" --msgbox "Installation of FreeBSD complete!" 0 0
 
