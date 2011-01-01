@@ -1,7 +1,7 @@
 # $FreeBSD $
 
 PROG=	partedit
-LDADD=	-lgeom -lncursesw -lutil -L/usr/local/lib -lcdialog
+LDADD=	-lgeom -lncursesw -lutil -L/usr/local/lib -lcdialog -lm
 CFLAGS= -I/usr/local/include
 
 PARTEDIT_ARCH= ${MACHINE}

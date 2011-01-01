@@ -116,7 +116,7 @@ fetch_files(int nfiles, char **urls)
 			}
 
 			if (ustat.size > 0) {
-				sprintf(status, "-%ld", (fsize*100)/ustat.size);
+				sprintf(status, "-%jd", (fsize*100)/ustat.size);
 				items[i*2 + 1] = status;
 			}
 

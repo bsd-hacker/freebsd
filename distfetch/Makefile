@@ -1,7 +1,7 @@
 # $FreeBSD $
 
 PROG=	distfetch
-LDADD=	-lfetch -lncursesw -L/usr/local/lib -lcdialog
+LDADD=	-lfetch -lncursesw -L/usr/local/lib -lcdialog -lm
 CFLAGS= -I/usr/local/include
 
 WARNS?=	6

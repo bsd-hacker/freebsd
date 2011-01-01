@@ -1,7 +1,7 @@
 # $FreeBSD $
 
 PROG=	distextract
-LDADD=	-larchive -lncursesw -L/usr/local/lib -lcdialog
+LDADD=	-larchive -lncursesw -L/usr/local/lib -lcdialog -lm
 CFLAGS= -I/usr/local/include
 
 WARNS?=	6

@@ -117,7 +117,7 @@ gpart_activate(struct gprovider *pp)
 	intmax_t index;
 
 	/*
-	 * Some partition scemes need this partition to be marked 'active'
+	 * Some partition schemes need this partition to be marked 'active'
 	 * for it to be bootable.
 	 */
 	LIST_FOREACH(gc, &pp->lg_geom->lg_config, lg_config) {
@@ -615,7 +615,7 @@ addpartform:
 			gctl_ro_param(r, "flags", -1, GPART_FLAGS);
 			gctl_ro_param(r, "verb", -1, "add");
 			gctl_ro_param(r, "type", -1, "freebsd-boot");
-			snprintf(sizestr, sizeof(sizestr), "%zd",
+			snprintf(sizestr, sizeof(sizestr), "%jd",
 			    partcode_size(scheme) / sector);
 			gctl_ro_param(r, "size", -1, sizestr);
 			snprintf(startstr, sizeof(startstr), "%jd", firstfree);
