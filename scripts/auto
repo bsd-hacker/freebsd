@@ -35,7 +35,7 @@ bsdinstall rootpass
 bsdinstall adduser
 bsdinstall config 
 
-cdialog --backtitle "FreeBSD Installer" --title "Welcome" --msgbox "Installation of FreeBSD complete!" 0 0
+cdialog --backtitle "FreeBSD Installer" --title "Complete" --msgbox "Installation of FreeBSD complete!" 0 0
 
 echo "Installation Completed at $(date)" >> $BSDINSTALL_LOG
 
