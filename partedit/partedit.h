@@ -31,6 +31,6 @@ void gpart_commit(struct gmesh *mesh);
 
 /* machine-dependent bootability checks */
 int is_scheme_bootable(const char *part_type);
-size_t partcode_size(const char *part_type);
+size_t bootpart_size(const char *part_type);
 const char *bootcode_path(const char *part_type);
 const char *partcode_path(const char *part_type);

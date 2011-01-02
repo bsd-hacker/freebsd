@@ -11,8 +11,8 @@
 
 #define GPART_FLAGS "x" /* Do not commit changes by default */
 
-static void set_part_metadata(const char *name, const char *type,
-    const char *mountpoint, int newfs);
+static void set_part_metadata(const char *name, const char *scheme,
+    const char *type, const char *mountpoint, int newfs);
 
 static void
 gpart_show_error(const char *title, const char *explanation, const char *errstr)
@@ -223,6 +223,10 @@ gpart_partcode(struct gprovider *pp)
 		}
 	}
 
+	/* Make sure this partition scheme needs partcode on this platform */
+	if (partcode_path(scheme) == NULL)
+		return;
+
 	LIST_FOREACH(gc, &pp->lg_config, lg_config) {
 		if (strcmp(gc->lg_name, "index") == 0) {
 			indexstr = gc->lg_val;
@@ -248,7 +252,7 @@ gpart_edit(struct gprovider *pp)
 	struct gconsumer *cp;
 	struct gprovider *spp;
 	struct ggeom *geom;
-	const char *errstr, *oldtype;
+	const char *errstr, *oldtype, *scheme;
 	struct partition_metadata *md;
 	char sizestr[32];
 	intmax_t index;
@@ -330,6 +334,13 @@ gpart_edit(struct gprovider *pp)
 		return;
 	}
 
+	LIST_FOREACH(gc, &geom->lg_config, lg_config) {
+		if (strcmp(gc->lg_name, "scheme") == 0) {
+			scheme = gc->lg_val;
+			break;
+		}
+	}
+
 	/* Edit editable parameters of a partition */
 	hadlabel = 0;
 	LIST_FOREACH(gc, &pp->lg_config, lg_config) {
@@ -391,7 +402,7 @@ editpart:
 	}
 	gctl_free(r);
 
-	set_part_metadata(pp->lg_name, items[0].text, items[3].text,
+	set_part_metadata(pp->lg_name, scheme, items[0].text, items[3].text,
 	    strcmp(oldtype, items[0].text) != 0);
 
 	for (i = 0; i < (sizeof(items) / sizeof(items[0])); i++)
@@ -400,8 +411,8 @@ editpart:
 }
 
 static void
-set_part_metadata(const char *name, const char *type, const char *mountpoint,
-    int newfs)
+set_part_metadata(const char *name, const char *scheme, const char *type,
+    const char *mountpoint, int newfs)
 {
 	struct partition_metadata *md;
 
@@ -423,6 +434,10 @@ set_part_metadata(const char *name, const char *type, const char *mountpoint,
 	if (strcmp(type, "freebsd-swap") == 0)
 		mountpoint = "none";
 	if (strcmp(type, "freebsd-boot") == 0)
+		md->bootcode = 1;
+
+	/* VTOC8 needs partcode in UFS partitions */
+	if (strcmp(scheme, "VTOC8") == 0 && strcmp(type, "freebsd-ufs") == 0)
 		md->bootcode = 1;
 	
 	if (mountpoint != NULL && mountpoint[0] != '\0') {
@@ -571,7 +586,7 @@ gpart_create(struct gprovider *pp)
 	items[1].text = sizestr;
 
 	/* Special-case the MBR default type for nested partitions */
-	if (strcmp(scheme, "MBR") == 0)
+	if (strcmp(scheme, "MBR") == 0 || strcmp(scheme, "PC98") == 0)
 		items[0].text = "freebsd";
 
 addpartform:
@@ -602,8 +617,11 @@ addpartform:
 			goto addpartform;
 	}
 
-	/* If this is the root partition, and we need partcode, ask the user */
-	if (strcmp(items[3].text, "/") == 0 && partcode_size(scheme) > 0) {
+	/*
+	 * If this is the root partition, and we need a boot partition, ask
+	 * the user to add one.
+	 */
+	if (strcmp(items[3].text, "/") == 0 && bootpart_size(scheme) > 0) {
 		choice = dialog_yesno("Boot Partition", "This partition scheme "
 		    "requires a boot partition for the disk to be bootable. "
 		    "Would you like to make one now?", 0, 0);
@@ -616,7 +634,7 @@ addpartform:
 			gctl_ro_param(r, "verb", -1, "add");
 			gctl_ro_param(r, "type", -1, "freebsd-boot");
 			snprintf(sizestr, sizeof(sizestr), "%jd",
-			    partcode_size(scheme) / sector);
+			    bootpart_size(scheme) / sector);
 			gctl_ro_param(r, "size", -1, sizestr);
 			snprintf(startstr, sizeof(startstr), "%jd", firstfree);
 			gctl_ro_param(r, "start", -1, startstr);
@@ -629,7 +647,7 @@ addpartform:
 			get_part_metadata(strtok(output, " "), 1)->bootcode = 1;
 
 			/* Now adjust the part we are really adding forward */
-			firstfree += partcode_size(scheme) / sector;
+			firstfree += bootpart_size(scheme) / sector;
 			if (stripe > 0 && (firstfree*sector % stripe) != 0) 
 				firstfree += (stripe - ((firstfree*sector) %
 				    stripe)) / sector;
@@ -663,7 +681,7 @@ addpartform:
 	else if (strcmp(items[0].text, "freebsd") == 0)
 		gpart_partition(strtok(output, " "), "BSD");
 	else
-		set_part_metadata(strtok(output, " "), items[0].text,
+		set_part_metadata(strtok(output, " "), scheme, items[0].text,
 		    items[3].text, 1);
 
 	for (i = 0; i < (sizeof(items) / sizeof(items[0])); i++)

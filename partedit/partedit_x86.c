@@ -15,7 +15,7 @@ is_scheme_bootable(const char *part_type) {
 }
 
 size_t
-partcode_size(const char *part_type) {
+bootpart_size(const char *part_type) {
 	if (strcmp(part_type, "GPT") == 0)
 		return (64*1024);
 

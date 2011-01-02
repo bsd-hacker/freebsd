@@ -8,6 +8,9 @@ PARTEDIT_ARCH= ${MACHINE}
 .if ${MACHINE} == "i386" || ${MACHINE} == "amd64"
 PARTEDIT_ARCH= x86
 .endif
+.if ${MACHINE} == "sun4v"
+PARTEDIT_ARCH= sparc64
+.endif
 .if !exists(partedit_${PARTEDIT_ARCH}.c)
 PARTEDIT_ARCH= generic
 .endif
