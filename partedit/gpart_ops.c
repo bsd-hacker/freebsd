@@ -439,8 +439,18 @@ set_part_metadata(const char *name, const char *scheme, const char *type,
 	/* VTOC8 needs partcode in UFS partitions */
 	if (strcmp(scheme, "VTOC8") == 0 && strcmp(type, "freebsd-ufs") == 0)
 		md->bootcode = 1;
-	
-	if (mountpoint != NULL && mountpoint[0] != '\0') {
+
+	if (mountpoint == NULL || mountpoint[0] == '\0') {
+		if (md->fstab != NULL) {
+			free(md->fstab->fs_spec);
+			free(md->fstab->fs_file);
+			free(md->fstab->fs_vfstype);
+			free(md->fstab->fs_mntops);
+			free(md->fstab->fs_type);
+			free(md->fstab);
+			md->fstab = NULL;
+		}
+	} else {
 		if (md->fstab == NULL) {
 			md->fstab = malloc(sizeof(struct fstab));
 		} else {
