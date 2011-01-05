@@ -26,6 +26,15 @@ exec 3>&-
 cdialog --backtitle 'FreeBSD Installer' --title 'Network Configuration' --yesno 'Would you like to use DHCP to configure this interface?' 0 0
 if [ $? -eq $DIALOG_OK ]; then
 	echo ifconfig_$INTERFACE=\"DHCP\" >> /tmp/rc.conf
+
+	if [ ! -z $BSDINSTALL_CONFIGCURRENT ]; then
+		cdialog --backtitle 'FreeBSD Installer' --infobox "Acquiring DHCP lease..." 0 0
+		dhclient $INTERFACE 2>> $BSDINSTALL_LOG
+		if [ $? -ne 0 ]; then
+			cdialog --backtitle 'FreeBSD Installer' --msgbox "DHCP lease acquisition failed." 0 0
+			exec $0
+		fi
+	fi
 	exit 0
 fi
 
@@ -51,6 +60,14 @@ echo $INTERFACE $IF_CONFIG |
 	printf("defaultrouter=\"%s\"\n", $4);
     }' >> /tmp/rc.conf
 
+if [ ! -z $BSDINSTALL_CONFIGCURRENT ]; then
+	. /tmp/rc.conf
+	ifconfig $INTERFACE `eval echo \\\$ifconfig_$INTERFACE`
+	route delete default
+	route add default $defaultrouter
+fi
+
+
 echo $IF_CONFIG | 
     awk '{
 	if ($4 != "")
@@ -59,3 +76,6 @@ echo $IF_CONFIG |
 		printf("search %s\n", $5);
     }' > /tmp/resolv.conf
 
+if [ ! -z $BSDINSTALL_CONFIGCURRENT ]; then
+	cp /tmp/resolv.conf /etc/resolv.conf
+fi
