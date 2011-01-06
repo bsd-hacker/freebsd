@@ -113,7 +113,7 @@ main(void) {
 	free(items);
 	end_dialog();
 
-	return (0);
+	return (error);
 }
 
 struct partition_metadata *
