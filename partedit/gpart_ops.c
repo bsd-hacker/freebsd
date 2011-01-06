@@ -744,9 +744,11 @@ void
 gpart_revert_all(struct gmesh *mesh)
 {
 	struct gclass *classp;
+	struct gconfig *gc;
 	struct ggeom *gp;
 	struct gctl_req *r;
 	const char *errstr;
+	const char *modified;
 
 	LIST_FOREACH(classp, &mesh->lg_class, lg_class) {
 		if (strcmp(classp->lg_name, "PART") == 0)
@@ -759,6 +761,18 @@ gpart_revert_all(struct gmesh *mesh)
 	}
 
 	LIST_FOREACH(gp, &classp->lg_geom, lg_geom) {
+		modified = "true"; /* XXX: If we don't know (kernel too old),
+				    * assume there are modifications. */
+		LIST_FOREACH(gc, &gp->lg_config, lg_config) {
+			if (strcmp(gc->lg_name, "modified") == 0) {
+				modified = gc->lg_val;
+				break;
+			}
+		}
+
+		if (strcmp(modified, "false") == 0)
+			continue;
+
 		r = gctl_get_handle();
 		gctl_ro_param(r, "class", -1, "PART");
 		gctl_ro_param(r, "arg0", -1, gp->lg_name);
@@ -772,51 +786,17 @@ gpart_revert_all(struct gmesh *mesh)
 }
 
 void
-gpart_revert(struct gprovider *pp)
-{
-	struct gctl_req *r;
-	struct ggeom *geom;
-	struct gconsumer *cp;
-	const char *errstr;
-
-	/*
-	 * Find the PART geom we are manipulating. This may be a consumer of
-	 * this provider, or its parent. Check the consumer case first.
-	 */
-	geom = NULL;
-	LIST_FOREACH(cp, &pp->lg_consumers, lg_consumers)
-		if (strcmp(cp->lg_geom->lg_class->lg_name, "PART") == 0) {
-			geom = cp->lg_geom;
-			break;
-		}
-
-	if (geom == NULL && strcmp(pp->lg_geom->lg_class->lg_name, "PART") == 0)
-		geom = pp->lg_geom;
-
-	if (geom == NULL) /* Things that aren't gpart we can't have changed */
-		return;
-
-	r = gctl_get_handle();
-	gctl_ro_param(r, "class", -1, "PART");
-	gctl_ro_param(r, "arg0", -1, geom->lg_name);
-	gctl_ro_param(r, "verb", -1, "undo");
-
-	errstr = gctl_issue(r);
-	if (errstr != NULL && errstr[0] != '\0') 
-		gpart_show_error("Error", NULL, errstr);
-	gctl_free(r);
-}
-
-void
 gpart_commit(struct gmesh *mesh)
 {
 	struct partition_metadata *md;
 	struct gclass *classp;
 	struct ggeom *gp;
+	struct gconfig *gc;
 	struct gconsumer *cp;
 	struct gprovider *pp;
 	struct gctl_req *r;
 	const char *errstr;
+	const char *modified;
 
 	LIST_FOREACH(classp, &mesh->lg_class, lg_class) {
 		if (strcmp(classp->lg_name, "PART") == 0)
@@ -829,6 +809,16 @@ gpart_commit(struct gmesh *mesh)
 	}
 
 	LIST_FOREACH(gp, &classp->lg_geom, lg_geom) {
+		LIST_FOREACH(gc, &gp->lg_config, lg_config) {
+			if (strcmp(gc->lg_name, "modified") == 0) {
+				modified = gc->lg_val;
+				break;
+			}
+		}
+
+		if (strcmp(modified, "false") == 0)
+			continue;
+
 		/* Add bootcode if necessary, before the commit */
 		md = get_part_metadata(gp->lg_name, 0);
 		if (md != NULL && md->bootcode)
