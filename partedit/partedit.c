@@ -99,6 +99,7 @@ main(void) {
 				error = apply_changes(&mesh);
 				break;
 			} else if (op == 3) { /* Don't save => Quit */
+				gpart_revert_all(&mesh);
 				error =	-1;
 				break;
 			}
