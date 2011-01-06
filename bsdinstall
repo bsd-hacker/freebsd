@@ -8,5 +8,5 @@ BSDINSTALL_CHROOT="/mnt"; export BSDINSTALL_CHROOT
 
 VERB=$1
 
-$(dirname $0)/libexec/$VERB
+exec $(dirname $0)/libexec/$VERB
 

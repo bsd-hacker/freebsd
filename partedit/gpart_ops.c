@@ -809,6 +809,8 @@ gpart_commit(struct gmesh *mesh)
 	}
 
 	LIST_FOREACH(gp, &classp->lg_geom, lg_geom) {
+		modified = "true"; /* XXX: If we don't know (kernel too old),
+				    * assume there are modifications. */
 		LIST_FOREACH(gc, &gp->lg_config, lg_config) {
 			if (strcmp(gc->lg_name, "modified") == 0) {
 				modified = gc->lg_val;

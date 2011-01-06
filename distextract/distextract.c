@@ -165,6 +165,7 @@ extract_files(int nfiles, const char **files)
 		archive_read_free(archive);
 	}
 
+	err = 0;
 exit:
 	end_dialog();
 
