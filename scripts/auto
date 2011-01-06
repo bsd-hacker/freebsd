@@ -4,22 +4,19 @@ echo "Begun Installation at $(date)" > $BSDINSTALL_LOG
 
 cdialog --backtitle "FreeBSD Installer" --title "Welcome" --msgbox "Welcome to the FreeBSD Installer." 0 0
 
-checkerror() {
+error() {
+	cdialog --backtitle "FreeBSD Installer" --title "Abort" \
+	    --no-label "Exit" --yes-label "Restart" --yesno \
+	    "You have canceled an installation step. Would you like to restart the installation or exit the installer?" 0 0
 	if [ $? -ne 0 ]; then
-		cdialog --backtitle "FreeBSD Installer" --title "Abort" \
-		    --no-label "Exit" --yes-label "Restart" --yesno \
-		    "You have canceled an installation step. Would you like to restart the installation or exit the installer?" 0 0
-		if [ $? -ne 0 ]; then
-			exit
-		else
-			exec $0 $@
-		fi
+		exit
+	else
+		exec $0
 	fi
 }
 
 rm /tmp/rc.conf
-bsdinstall hostname
-checkerror
+bsdinstall hostname || error
 
 FETCH_DISTRIBUTIONS=""
 for dist in $DISTRIBUTIONS; do
@@ -30,31 +27,24 @@ done
 
 if [ ! -z "$FETCH_DISTRIBUTIONS" ]; then
 	cdialog --backtitle "FreeBSD Installer" --title "Network Installation" --msgbox "No installation files were found on the boot volume. The next few screens will allow you to configure networking so that they can be downloaded from the Internet." 0 0
-	bsdinstall netconfig
-	checkerror
+	bsdinstall netconfig || error
 fi
 
 rm $PATH_FSTAB
-bsdinstall partedit
-checkerror
-bsdinstall mount 
+bsdinstall partedit || error
+bsdinstall mount || error
 
 if [ ! -z $FETCH_DISTRIBUTIONS ]; then
 	ALL_DISTRIBUTIONS=$DISTRIBUTIONS
 	DISTRIBUTIONS=$FETCH_DISTRIBUTIONS
-	bsdinstall distfetch
-	checkerror
+	bsdinstall distfetch || error
 	DISTRIBUTIONS=$ALL_DISTRIBUTIONS
 fi
 
-bsdinstall distextract
-checkerror
-bsdinstall rootpass
-checkerror
-bsdinstall adduser
-checkerror
-bsdinstall config 
-checkerror
+bsdinstall distextract || error
+bsdinstall rootpass || error
+bsdinstall adduser || error
+bsdinstall config  || error
 
 cdialog --backtitle "FreeBSD Installer" --title "Complete" --msgbox "Installation of FreeBSD complete!" 0 0
 
