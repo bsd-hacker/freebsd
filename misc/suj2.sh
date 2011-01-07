@@ -40,9 +40,9 @@
 odir=`pwd`
 
 cd /tmp
-sed '1,/^EOF/d' < $odir/$0 > rename5.c
-cc -o rename5 -Wall -Wextra -O2 rename5.c
-rm -f rename5.c
+sed '1,/^EOF/d' < $odir/$0 > suj2.c
+cc -o suj2 -Wall -Wextra -O2 suj2.c
+rm -f suj2.c
 
 mount | grep "$mntpoint" | grep -q /dev/md && umount -f $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
@@ -55,14 +55,14 @@ cd $mntpoint
 
 rm -rf foo bar
 
-/tmp/rename5
+/tmp/suj2
 
 cd /
 while mount | grep "$mntpoint" | grep -q /dev/md; do
 	umount $mntpoint || sleep 1
 done
 mdconfig -d -u $mdstart
-rm -rf foo bar /tmp/rename5
+rm -rf foo bar /tmp/suj2
 exit
 EOF
 #include <sys/stat.h>
