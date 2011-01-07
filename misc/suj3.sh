@@ -30,28 +30,32 @@
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
-# Sectorsize != 512 test
+# Sector size > 512 test.
 
 . ../default.cfg
 
 mount | grep $mntpoint | grep -q /dev/md && umount -f $mntpoint
 mdconfig -l | grep -q md$mdstart &&  mdconfig -d -u $mdstart
 mdconfig -a -t swap -s 1g -u $mdstart
-bsdlabel -w md$mdstart auto
-newfs -U -S 1024 md${mdstart}$part > /dev/null
-tunefs -j enable /dev/md${mdstart}$part
-mount /dev/md${mdstart}$part $mntpoint
+
+dd if=/dev/random of=/tmp/suj3.key bs=64 count=1 > /dev/null 2>&1
+echo test | geli init -s 4096 -J - -K /tmp/suj3.key /dev/md$mdstart > /dev/null
+echo test | geli attach -j - -k /tmp/suj3.key /dev/md$mdstart
+newfs /dev/md$mdstart.eli > /dev/null
+
+tunefs -j enable /dev/md${mdstart}.eli
+mount /dev/md${mdstart}.eli $mntpoint
 chmod 777 $mntpoint
 
 export RUNDIR=$mntpoint/stressX
-export runRUNTIME=20m
-set `df -ik /mnt | tail -1 | awk '{print $4,$7}'`
-export KBLOCKS=$(($1 / 2))
-export INODES=$(($2 / 2))
+export runRUNTIME=5m
 
-su $testuser -c "cd ..; ./run.sh rw.cfg"
+mount | grep -q md${mdstart}.eli && \
+	su $testuser -c "cd ..; ./run.sh rw.cfg"
 
 while mount | grep $mntpoint | grep -q /dev/md; do
 	umount $mntpoint || sleep 1
 done
+geli kill /dev/md$mdstart.eli
 mdconfig -d -u $mdstart
+rm -f /tmp/suj3.key
