@@ -1,0 +1,3 @@
+#!/bin/sh
+
+chroot $BSDINSTALL_CHROOT tzsetup

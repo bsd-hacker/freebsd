@@ -43,6 +43,8 @@ fi
 
 bsdinstall distextract || error
 bsdinstall rootpass || error
+bsdinstall time || error
+bsdinstall services || error
 bsdinstall adduser || error
 bsdinstall config  || error
 
