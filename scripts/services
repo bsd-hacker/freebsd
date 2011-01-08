@@ -12,6 +12,6 @@ DAEMONS=$(cdialog --backtitle "FreeBSD Installer" \
 exec 3>&-
 
 for daemon in $DAEMONS; do
-	echo ${daemon}_enable=\"YES\" >> /tmp/rc.conf
+	echo ${daemon}_enable=\"YES\" >> $BSDINSTALL_TMPETC/rc.conf
 done
 

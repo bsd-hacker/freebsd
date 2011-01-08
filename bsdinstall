@@ -2,7 +2,8 @@
 
 DISTRIBUTIONS="kernel.tgz world.tgz distribution.tgz"; export DISTRIBUTIONS
 BSDINSTALL_LOG="/tmp/bsdinstall_log"; export BSDINSTALL_LOG
-PATH_FSTAB="/tmp/fstab"; export PATH_FSTAB
+BSDINSTALL_TMPETC="/tmp/bsdinstall_etc"; export BSDINSTALL_TMPETC
+PATH_FSTAB="$BSDINSTALL_TMPETC/fstab"; export PATH_FSTAB
 BSDINSTALL_DISTDIR="/var/dist"; export BSDINSTALL_DISTDIR
 BSDINSTALL_CHROOT="/mnt"; export BSDINSTALL_CHROOT
 

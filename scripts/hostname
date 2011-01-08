@@ -16,4 +16,4 @@ If you are running on a managed network, please ask your network administrator f
 if [ $? -eq $DIALOG_CANCEL ]; then exec $0; fi
 exec 3>&-
 
-echo "hostname=\"$HOSTNAME\"" >> /tmp/rc.conf
+echo "hostname=\"$HOSTNAME\"" >> $BSDINSTALL_TMPETC/rc.conf

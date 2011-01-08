@@ -15,7 +15,8 @@ error() {
 	fi
 }
 
-rm /tmp/rc.conf
+rm -rf $BSDINSTALL_TMPETC
+mkdir $BSDINSTALL_TMPETC
 bsdinstall hostname || error
 
 FETCH_DISTRIBUTIONS=""
