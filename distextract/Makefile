@@ -1,5 +1,6 @@
 # $FreeBSD $
 
+BINDIR= /usr/libexec/bsdinstall
 PROG=	distextract
 LDADD=	-larchive -lncursesw -L/usr/local/lib -lcdialog -lm
 CFLAGS= -I/usr/local/include

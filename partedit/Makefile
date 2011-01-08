@@ -1,5 +1,6 @@
 # $FreeBSD $
 
+BINDIR= /usr/libexec/bsdinstall
 PROG=	partedit
 LDADD=	-lgeom -lncursesw -lutil -L/usr/local/lib -lcdialog -lm
 CFLAGS= -I/usr/local/include

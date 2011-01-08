@@ -7,7 +7,11 @@ PATH_FSTAB="$BSDINSTALL_TMPETC/fstab"; export PATH_FSTAB
 BSDINSTALL_DISTDIR="/var/dist"; export BSDINSTALL_DISTDIR
 BSDINSTALL_CHROOT="/mnt"; export BSDINSTALL_CHROOT
 
-VERB=$1
+VERB=$1; shift
 
-exec $(dirname $0)/libexec/$VERB
+if [ -z $VERB ]; then
+	VERB=auto
+fi
+
+exec /usr/libexec/bsdinstall/$VERB $@
 

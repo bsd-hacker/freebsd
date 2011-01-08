@@ -13,3 +13,9 @@ Environment variables affecting modules:
 - BSDINSTALL_CHROOT: Destination location for the installation. File systems
    are mounted here and files installed to this path.
 
+Install CD environment:
+- Distfiles in /var/dist
+- tmpmfs and varmfs turn on automatically due to read-only media
+- /etc/resolv.conf symlink to /tmp/etc/resolv.conf (propagates to new system)
+- /boot/loader.conf set to run installer
+
