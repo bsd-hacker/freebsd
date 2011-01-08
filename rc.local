@@ -1,0 +1,28 @@
+#!/bin/sh
+
+: ${DIALOG_OK=0}
+: ${DIALOG_CANCEL=1}
+: ${DIALOG_HELP=2}
+: ${DIALOG_EXTRA=3}
+: ${DIALOG_ITEM_HELP=4}
+: ${DIALOG_ESC=255}
+
+TERM=xterm; export TERM # XXX: serial consoles
+
+cdialog --backtitle "FreeBSD Installer" --title "Welcome" --extra-button --extra-label "Shell" --ok-label "Installer" --cancel-label "Live CD" --yesno "Welcome to FreeBSD! Would you like to begin an installation or use the live CD?" 0 0
+
+case $? in
+$DIALOG_OK)	# Installer
+	BSDINSTALL_CONFIGCURRENT=yes; export BSDINSTALL_CONFIGCURRENT
+	bsdinstall
+	reboot
+	;;
+$DIALOG_CANCEL)	# Live CD
+	exit 0
+	;;
+$DIALOG_EXTRA)	# Shell
+	/bin/sh
+	. /etc/rc.local
+	;;
+esac
+
