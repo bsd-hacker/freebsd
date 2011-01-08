@@ -1,7 +1,7 @@
 FreeBSD Stopgap Installer
 =========================
 Nathan Whitehorn
-December 30, 2010
+January 8, 2010
 
 This is designed to be a lightweight replacement for sysinstall until future
 installers show up, but more modular and easily extended. It is scriptable
@@ -11,13 +11,10 @@ bsdinstall must be in PATH. In addition to base tools, Thomas Dickey's new
 dialog must be installed (devel/cdialog).
 
 Status:
-- Installs working, bootable systems on powerpc, amd64, and i386
+- Installs working, bootable systems on powerpc, amd64, i386, and sparc64
 
 Missing features:
 - Distfile fetching not entirely hooked up
-- Root password configuration and user adding not yet added
-- Network configuration sets up networking for the new system, but not (yet)
-  the current one
 
 Goals:
 - Reinvent as few wheels as possible
