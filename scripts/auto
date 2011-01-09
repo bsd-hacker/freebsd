@@ -2,7 +2,7 @@
 
 echo "Begun Installation at $(date)" > $BSDINSTALL_LOG
 
-cdialog --backtitle "FreeBSD Installer" --title "Welcome" --msgbox "Welcome to the FreeBSD Installer." 0 0
+trap "" SIGINT	# Ignore cntrl-C here
 
 error() {
 	cdialog --backtitle "FreeBSD Installer" --title "Abort" \
