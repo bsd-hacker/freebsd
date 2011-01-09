@@ -604,7 +604,7 @@ gpart_create(struct gprovider *pp)
 	if (stripe > 0 && (firstfree*sector % stripe) != 0) 
 		firstfree += (stripe - ((firstfree*sector) % stripe)) / sector;
 
-	size = maxsize = end - firstfree;
+	size = end - firstfree;
 	if (size <= 0) {
 		dialog_msgbox("Error", "No free space left on device.", 0, 0,
 		    TRUE);
@@ -614,6 +614,7 @@ gpart_create(struct gprovider *pp)
 	/* Leave a free megabyte in case we need to write a boot partition */
 	if (size*sector >= 1024*1024)
 		size -= 1024*1024/sector;
+	maxsize = size;
 
 	humanize_number(sizestr, 7, size*sector, "B", HN_AUTOSCALE,
 	    HN_NOSPACE | HN_DECIMAL);
