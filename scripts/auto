@@ -44,13 +44,13 @@ if [ ! -z $FETCH_DISTRIBUTIONS ]; then
 fi
 
 bsdinstall distextract || error
-bsdinstall rootpass || error
+bsdinstall rootpass
 if [ "$NETCONFIG_DONE" != yes ]; then
 	bsdinstall netconfig	# Don't check for errors -- the user may cancel
 fi
-bsdinstall time || error
-bsdinstall services || error
-bsdinstall adduser || error
+bsdinstall time
+bsdinstall services
+bsdinstall adduser
 bsdinstall config  || error
 
 cdialog --backtitle "FreeBSD Installer" --title "Complete" --msgbox "Installation of FreeBSD complete!" 0 0
