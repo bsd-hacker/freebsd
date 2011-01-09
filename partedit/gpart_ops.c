@@ -244,13 +244,49 @@ gpart_partcode(struct gprovider *pp)
 	}
 }
 
+static void
+gpart_destroy(struct ggeom *lg_geom, int force)
+{
+	struct gprovider *pp;
+	struct gctl_req *r;
+	const char *errstr;
+
+	/* Begin with the hosing: delete all partitions */
+	LIST_FOREACH(pp, &lg_geom->lg_provider, lg_provider)
+		gpart_delete(pp);
+
+	/* Now destroy the geom itself */
+	r = gctl_get_handle();
+	gctl_ro_param(r, "class", -1, "PART");
+	gctl_ro_param(r, "arg0", -1, lg_geom->lg_name);
+	gctl_ro_param(r, "flags", -1, GPART_FLAGS);
+	gctl_ro_param(r, "verb", -1, "destroy");
+	errstr = gctl_issue(r);
+	if (errstr != NULL && errstr[0] != '\0') 
+		gpart_show_error("Error", NULL, errstr);
+	gctl_free(r);
+
+	/* If asked, commit the change */
+	r = gctl_get_handle();
+	gctl_ro_param(r, "class", -1, "PART");
+	gctl_ro_param(r, "arg0", -1, lg_geom->lg_name);
+	gctl_ro_param(r, "flags", -1, GPART_FLAGS);
+	gctl_ro_param(r, "verb", -1, "commit");
+	errstr = gctl_issue(r);
+	if (errstr != NULL && errstr[0] != '\0') 
+		gpart_show_error("Error", NULL, errstr);
+	gctl_free(r);
+
+	/* And any metadata associated with the partition scheme itself */
+	delete_part_metadata(lg_geom->lg_name);
+}
+
 void
 gpart_edit(struct gprovider *pp)
 {
 	struct gctl_req *r;
 	struct gconfig *gc;
 	struct gconsumer *cp;
-	struct gprovider *spp;
 	struct ggeom *geom;
 	const char *errstr, *oldtype, *scheme;
 	struct partition_metadata *md;
@@ -301,24 +337,8 @@ gpart_edit(struct gprovider *pp)
 			if (choice == 1) /* cancel */
 				return;
 
-			/* Begin with the hosing: delete all partitions */
-			LIST_FOREACH(spp, &cp->lg_geom->lg_provider,
-			    lg_provider)
-				gpart_delete(spp);
-
-			/* Now destroy the geom itself */
-			r = gctl_get_handle();
-			gctl_ro_param(r, "class", -1, "PART");
-			gctl_ro_param(r, "arg0", -1, cp->lg_geom->lg_name);
-			gctl_ro_param(r, "flags", -1, GPART_FLAGS);
-			gctl_ro_param(r, "verb", -1, "destroy");
-			errstr = gctl_issue(r);
-			if (errstr != NULL && errstr[0] != '\0') 
-				gpart_show_error("Error", NULL, errstr);
-			gctl_free(r);
-
-			/* And any metadata */
-			delete_part_metadata(cp->lg_geom->lg_name);
+			/* Destroy the geom and all sub-partitions */
+			gpart_destroy(cp->lg_geom, 0);
 
 			/* Now re-partition and return */
 			gpart_partition(cp->lg_geom->lg_name, NULL);
@@ -732,13 +752,59 @@ void
 gpart_delete(struct gprovider *pp)
 {
 	struct gconfig *gc;
+	struct ggeom *geom;
+	struct gconsumer *cp;
 	struct gctl_req *r;
 	const char *errstr;
 	intmax_t index;
+	int choice, is_partition;
 
-	if (strcmp(pp->lg_geom->lg_class->lg_name, "PART") != 0) {
-		dialog_msgbox("Error", "Only partitions can be deleted.", 0, 0,
-		    TRUE);
+	/* Is it a partition? */
+	is_partition = (strcmp(pp->lg_geom->lg_class->lg_name, "PART") == 0);
+
+	/* Find out if this is the root of a gpart geom */
+	geom = NULL;
+	LIST_FOREACH(cp, &pp->lg_consumers, lg_consumers)
+		if (strcmp(cp->lg_geom->lg_class->lg_name, "PART") == 0) {
+			geom = cp->lg_geom;
+			break;
+		}
+
+	/* Destroy all consumers */
+	if (geom != NULL) {
+		if (is_partition) {
+			char message[512];
+			/*
+			 * We have to actually really delete the sub-partition
+			 * tree so that the consumers will go away and the
+			 * partition can be deleted. Warn the user.
+			 */
+
+			sprintf(message, "Deleting this partition (%s) "
+			    "requires deleting all existing sub-partitions. "
+			    "This will PERMANENTLY ERASE any data stored here "
+			    "and CANNOT BE REVERTED. Are you sure you want to "
+			    "proceed?", cp->lg_geom->lg_name);
+			dialog_vars.defaultno = TRUE;
+			choice = dialog_yesno("Warning", message, 0, 0);
+			dialog_vars.defaultno = FALSE;
+
+			if (choice == 1) /* cancel */
+				return;
+		}
+
+		gpart_destroy(geom, is_partition);
+	}
+ 
+	/*
+	 * If this is not a partition, see if that is a problem, complain if
+	 * necessary, and return always, since we need not do anything further,
+	 * error or no.
+	 */
+	if (!is_partition) {
+		if (geom == NULL)
+			dialog_msgbox("Error",
+			    "Only partitions can be deleted.", 0, 0, TRUE);
 		return;
 	}
 
