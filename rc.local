@@ -9,10 +9,10 @@
 
 TERM=xterm; export TERM # XXX: serial consoles
 
-cdialog --backtitle "FreeBSD Installer" --title "Welcome" --extra-button --extra-label "Shell" --ok-label "Installer" --cancel-label "Live CD" --yesno "Welcome to FreeBSD! Would you like to begin an installation or use the live CD?" 0 0
+cdialog --backtitle "FreeBSD Installer" --title "Welcome" --extra-button --extra-label "Shell" --ok-label "Install" --cancel-label "Live CD" --yesno "Welcome to FreeBSD! Would you like to begin an installation or use the live CD?" 0 0
 
 case $? in
-$DIALOG_OK)	# Installer
+$DIALOG_OK)	# Install
 	BSDINSTALL_CONFIGCURRENT=yes; export BSDINSTALL_CONFIGCURRENT
 	trap "" SIGINT	# Ignore cntrl-C here
 	bsdinstall
