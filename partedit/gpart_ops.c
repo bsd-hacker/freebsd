@@ -256,7 +256,7 @@ gpart_edit(struct gprovider *pp)
 	struct partition_metadata *md;
 	char sizestr[32];
 	intmax_t index;
-	int hadlabel, choice, junk;
+	int hadlabel, choice, junk, nitems;
 	unsigned i;
 
 	DIALOG_FORMITEM items[] = {
@@ -266,12 +266,12 @@ gpart_edit(struct gprovider *pp)
 		{0, "Size:", 5, 1, 0, FALSE, "", 11, 1, 12, 0, 0,
 		    FALSE, "Partition size. Append K, M, G for kilobytes, "
 		    "megabytes or gigabytes.", FALSE},
-		{0, "Label:", 7, 2, 0, FALSE, "", 11, 2, 12, 15, 0, FALSE,
-		    "Partition name. Not all partition schemes support this.",
-		    FALSE},
-		{0, "Mountpoint:", 11, 3, 0, FALSE, "", 11, 3, 12, 15, 0,
+		{0, "Mountpoint:", 11, 2, 0, FALSE, "", 11, 2, 12, 15, 0,
 		    FALSE, "Path at which to mount this partition (leave blank "
 		    "for swap)", FALSE},
+		{0, "Label:", 7, 3, 0, FALSE, "", 11, 3, 12, 15, 0, FALSE,
+		    "Partition name. Not all partition schemes support this.",
+		    FALSE},
 	};
 
 	/*
@@ -341,6 +341,12 @@ gpart_edit(struct gprovider *pp)
 		}
 	}
 
+	/* Labels only supported on GPT and APM */
+	if (strcmp(scheme, "GPT") == 0 || strcmp(scheme, "APM") == 0)
+		nitems = 4;
+	else
+		nitems = 3;
+
 	/* Edit editable parameters of a partition */
 	hadlabel = 0;
 	LIST_FOREACH(gc, &pp->lg_config, lg_config) {
@@ -350,7 +356,7 @@ gpart_edit(struct gprovider *pp)
 		}
 		if (strcmp(gc->lg_name, "label") == 0) {
 			hadlabel = 1;
-			items[2].text = gc->lg_val;
+			items[3].text = gc->lg_val;
 		}
 		if (strcmp(gc->lg_name, "index") == 0)
 			index = atoi(gc->lg_val);
@@ -359,7 +365,7 @@ gpart_edit(struct gprovider *pp)
 	TAILQ_FOREACH(md, &part_metadata, metadata) {
 		if (md->name != NULL && strcmp(md->name, pp->lg_name) == 0) {
 			if (md->fstab != NULL)
-				items[3].text = md->fstab->fs_file;
+				items[2].text = md->fstab->fs_file;
 			break;
 		}
 	}
@@ -369,8 +375,7 @@ gpart_edit(struct gprovider *pp)
 	items[1].text = sizestr;
 
 editpart:
-	choice = dlg_form("Edit Partition", "", 0, 0, 0,
-	    sizeof(items) / sizeof(items[0]), items, &junk);
+	choice = dlg_form("Edit Partition", "", 0, 0, 0, nitems, items, &junk);
 
 	if (choice) /* Cancel pressed */
 		return;
@@ -391,8 +396,8 @@ editpart:
 	gctl_ro_param(r, "flags", -1, GPART_FLAGS);
 	gctl_ro_param(r, "verb", -1, "modify");
 	gctl_ro_param(r, "index", sizeof(index), &index);
-	if (hadlabel || items[2].text[0] != '\0')
-		gctl_ro_param(r, "label", -1, items[2].text);
+	if (hadlabel || items[3].text[0] != '\0')
+		gctl_ro_param(r, "label", -1, items[3].text);
 	gctl_ro_param(r, "type", -1, items[0].text);
 	errstr = gctl_issue(r);
 	if (errstr != NULL && errstr[0] != '\0') {
@@ -402,7 +407,7 @@ editpart:
 	}
 	gctl_free(r);
 
-	set_part_metadata(pp->lg_name, scheme, items[0].text, items[3].text,
+	set_part_metadata(pp->lg_name, scheme, items[0].text, items[2].text,
 	    strcmp(oldtype, items[0].text) != 0);
 
 	for (i = 0; i < (sizeof(items) / sizeof(items[0])); i++)
@@ -496,9 +501,9 @@ gpart_create(struct gprovider *pp)
 	struct ggeom *geom;
 	const char *errstr, *scheme;
 	char sizestr[32], startstr[32], output[64];
-	intmax_t size, start, end, sector, firstfree, stripe;
+	intmax_t maxsize, size, start, end, sector, firstfree, stripe;
 	uint64_t bytes;
-	int choice, junk;
+	int nitems, choice, junk;
 	unsigned i;
 
 	DIALOG_FORMITEM items[] = {
@@ -508,12 +513,12 @@ gpart_create(struct gprovider *pp)
 		{0, "Size:", 5, 1, 0, FALSE, "", 11, 1, 12, 15, 0,
 		    FALSE, "Partition size. Append K, M, G for kilobytes, "
 		    "megabytes or gigabytes.", FALSE},
-		{0, "Label:", 7, 2, 0, FALSE, "", 11, 2, 12, 15, 0, FALSE,
-		    "Partition name. Not all partition schemes support this.",
-		    FALSE},
-		{0, "Mountpoint:", 11, 3, 0, FALSE, "", 11, 3, 12, 15, 0,
+		{0, "Mountpoint:", 11, 2, 0, FALSE, "", 11, 2, 12, 15, 0,
 		    FALSE, "Path at which to mount this partition (leave blank "
 		    "for swap)", FALSE},
+		{0, "Label:", 7, 3, 0, FALSE, "", 11, 3, 12, 15, 0, FALSE,
+		    "Partition name. Not all partition schemes support this.",
+		    FALSE},
 	};
 
 	/* Record sector and stripe sizes */
@@ -580,7 +585,7 @@ gpart_create(struct gprovider *pp)
 	if (stripe > 0 && (firstfree*sector % stripe) != 0) 
 		firstfree += (stripe - ((firstfree*sector) % stripe)) / sector;
 
-	size = end - firstfree;
+	size = maxsize = end - firstfree;
 	if (size <= 0) {
 		dialog_msgbox("Error", "No free space left on device.", 0, 0,
 		    TRUE);
@@ -599,23 +604,32 @@ gpart_create(struct gprovider *pp)
 	if (strcmp(scheme, "MBR") == 0 || strcmp(scheme, "PC98") == 0)
 		items[0].text = "freebsd";
 
+	/* Labels only supported on GPT and APM */
+	if (strcmp(scheme, "GPT") == 0 || strcmp(scheme, "APM") == 0)
+		nitems = 4;
+	else
+		nitems = 3;
+
 addpartform:
-	choice = dlg_form("Add Partition", "", 0, 0, 0,
-	    sizeof(items) / sizeof(items[0]), items, &junk);
+	choice = dlg_form("Add Partition", "", 0, 0, 0, nitems, items, &junk);
 
 	if (choice) /* Cancel pressed */
 		return;
 
-	if (expand_number(items[1].text, &bytes) != 0) {
-		char error[512];
-		sprintf(error, "Invalid size: %s\n", strerror(errno));
-		dialog_msgbox("Error", error, 0, 0, TRUE);
-		goto addpartform;
+	size = maxsize;
+	if (strlen(items[1].text) > 0) {
+		if (expand_number(items[1].text, &bytes) != 0) {
+			char error[512];
+
+			sprintf(error, "Invalid size: %s\n", strerror(errno));
+			dialog_msgbox("Error", error, 0, 0, TRUE);
+			goto addpartform;
+		}
+		size = MIN((intmax_t)(bytes/sector), maxsize);
 	}
-	size = bytes/sector;
 
 	/* If this is the root partition, check that this scheme is bootable */
-	if (strcmp(items[3].text, "/") == 0 && !is_scheme_bootable(scheme)) {
+	if (strcmp(items[2].text, "/") == 0 && !is_scheme_bootable(scheme)) {
 		char message[512];
 		sprintf(message, "This partition scheme (%s) is not bootable "
 		    "on this platform. Are you sure you want to proceed?",
@@ -631,7 +645,7 @@ addpartform:
 	 * If this is the root partition, and we need a boot partition, ask
 	 * the user to add one.
 	 */
-	if (strcmp(items[3].text, "/") == 0 && bootpart_size(scheme) > 0) {
+	if (strcmp(items[2].text, "/") == 0 && bootpart_size(scheme) > 0) {
 		choice = dialog_yesno("Boot Partition", "This partition scheme "
 		    "requires a boot partition for the disk to be bootable. "
 		    "Would you like to make one now?", 0, 0);
@@ -675,8 +689,8 @@ addpartform:
 	gctl_ro_param(r, "size", -1, sizestr);
 	snprintf(startstr, sizeof(startstr), "%jd", firstfree);
 	gctl_ro_param(r, "start", -1, startstr);
-	if (items[2].text[0] != '\0')
-		gctl_ro_param(r, "label", -1, items[2].text);
+	if (items[3].text[0] != '\0')
+		gctl_ro_param(r, "label", -1, items[3].text);
 	gctl_rw_param(r, "output", sizeof(output), output);
 
 	errstr = gctl_issue(r);
@@ -692,7 +706,7 @@ addpartform:
 		gpart_partition(strtok(output, " "), "BSD");
 	else
 		set_part_metadata(strtok(output, " "), scheme, items[0].text,
-		    items[3].text, 1);
+		    items[2].text, 1);
 
 	for (i = 0; i < (sizeof(items) / sizeof(items[0])); i++)
 		if (items[i].text_free)
