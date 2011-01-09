@@ -19,6 +19,7 @@ static void add_geom_children(struct ggeom *gp, int recurse,
     struct partedit_item **items, int *nitems);
 static void init_fstab_metadata(void);
 static void get_mount_points(struct partedit_item *items, int nitems);
+static int validate_setup(void);
 
 int
 main(void) {
@@ -84,7 +85,7 @@ main(void) {
 		}
 
 		error = 0;
-		if (op == 4) { /* Finished */
+		if (op == 4 && validate_setup()) { /* Finished */
 			dialog_vars.extra_button = TRUE;
 			dialog_vars.extra_label = "Don't Save";
 			dialog_vars.ok_label = "Save";
@@ -159,7 +160,30 @@ delete_part_metadata(const char *name) {
 		}
 	}
 }
-	
+
+static int
+validate_setup(void)
+{
+	struct partition_metadata *md;
+	int root_found = FALSE;
+
+	TAILQ_FOREACH(md, &part_metadata, metadata) {
+		if (md->fstab != NULL && strcmp(md->fstab->fs_file, "/") == 0)
+			root_found = TRUE;
+
+		/* XXX: Check for duplicate mountpoints */
+	}
+
+	if (!root_found) {
+		dialog_msgbox("Error", "No root partition was found. "
+		    "The root FreeBSD partition must have a mountpoint of '/'.",
+		0, 0, TRUE);
+		return (FALSE);
+	}
+
+	return (TRUE);
+}
+
 static int
 apply_changes(struct gmesh *mesh)
 {

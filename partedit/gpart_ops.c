@@ -268,7 +268,7 @@ gpart_edit(struct gprovider *pp)
 		    "megabytes or gigabytes.", FALSE},
 		{0, "Mountpoint:", 11, 2, 0, FALSE, "", 11, 2, 12, 15, 0,
 		    FALSE, "Path at which to mount this partition (leave blank "
-		    "for swap)", FALSE},
+		    "for swap, set to / for root filesystem)", FALSE},
 		{0, "Label:", 7, 3, 0, FALSE, "", 11, 3, 12, 15, 0, FALSE,
 		    "Partition name. Not all partition schemes support this.",
 		    FALSE},
@@ -514,8 +514,8 @@ gpart_create(struct gprovider *pp)
 		    FALSE, "Partition size. Append K, M, G for kilobytes, "
 		    "megabytes or gigabytes.", FALSE},
 		{0, "Mountpoint:", 11, 2, 0, FALSE, "", 11, 2, 12, 15, 0,
-		    FALSE, "Path at which to mount this partition (leave blank "
-		    "for swap)", FALSE},
+		    FALSE, "Path at which to mount partition (blank for "
+		    "swap, / for root filesystem)", FALSE},
 		{0, "Label:", 7, 3, 0, FALSE, "", 11, 3, 12, 15, 0, FALSE,
 		    "Partition name. Not all partition schemes support this.",
 		    FALSE},
@@ -575,13 +575,12 @@ gpart_create(struct gprovider *pp)
 				intmax_t partend;
 				partend = strtoimax(gc->lg_val, NULL, 0);
 				if (partend > firstfree)
-					firstfree = partend;
+					firstfree = partend + 1;
 			}
 		}
 	}
 
 	/* Compute beginning of new partition and maximum available space */
-	firstfree++;
 	if (stripe > 0 && (firstfree*sector % stripe) != 0) 
 		firstfree += (stripe - ((firstfree*sector) % stripe)) / sector;
 
@@ -626,6 +625,21 @@ addpartform:
 			goto addpartform;
 		}
 		size = MIN((intmax_t)(bytes/sector), maxsize);
+	}
+
+	/* Warn if no mountpoint set */
+	if (strcmp(items[0].text, "freebsd-ufs") == 0 &&
+	    items[2].text[0] != '/') {
+		dialog_vars.defaultno = TRUE;
+		choice = dialog_yesno("Warning",
+		    "This partition does not have a valid mountpoint "
+		    "(for the partition from which you intend to boot the "
+		    "operating system, the mountpoint should be /). Are you "
+		    "sure you want to continue?"
+		, 0, 0);
+		dialog_vars.defaultno = FALSE;
+		if (choice == 1) /* cancel */
+			goto addpartform;
 	}
 
 	/* If this is the root partition, check that this scheme is bootable */
