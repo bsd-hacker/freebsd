@@ -2,8 +2,6 @@
 
 echo "Begun Installation at $(date)" > $BSDINSTALL_LOG
 
-trap "" SIGINT	# Ignore cntrl-C here
-
 error() {
 	cdialog --backtitle "FreeBSD Installer" --title "Abort" \
 	    --no-label "Exit" --yes-label "Restart" --yesno \
@@ -14,6 +12,8 @@ error() {
 		exec $0
 	fi
 }
+
+trap error SIGINT	# Catch cntrl-C here
 
 rm -rf $BSDINSTALL_TMPETC
 mkdir $BSDINSTALL_TMPETC
@@ -44,13 +44,17 @@ if [ ! -z $FETCH_DISTRIBUTIONS ]; then
 fi
 
 bsdinstall distextract || error
-bsdinstall rootpass
+bsdinstall rootpass || error
+
+trap true SIGINT	# This section is optional
 if [ "$NETCONFIG_DONE" != yes ]; then
 	bsdinstall netconfig	# Don't check for errors -- the user may cancel
 fi
 bsdinstall time
 bsdinstall services
 bsdinstall adduser
+
+trap error SIGINT	# SIGINT is bad again
 bsdinstall config  || error
 
 cdialog --backtitle "FreeBSD Installer" --title "Complete" --msgbox "Installation of FreeBSD complete!" 0 0

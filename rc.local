@@ -14,7 +14,7 @@ cdialog --backtitle "FreeBSD Installer" --title "Welcome" --extra-button --extra
 case $? in
 $DIALOG_OK)	# Install
 	BSDINSTALL_CONFIGCURRENT=yes; export BSDINSTALL_CONFIGCURRENT
-	trap "" SIGINT	# Ignore cntrl-C here
+	trap true SIGINT	# Ignore cntrl-C here
 	bsdinstall
 	reboot
 	;;
