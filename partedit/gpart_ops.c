@@ -400,6 +400,13 @@ editpart:
 	if (choice) /* Cancel pressed */
 		return;
 
+	/* Check if the label has a / in it */
+	if (strchr(items[3].text, '/') != NULL) {
+		dialog_msgbox("Error", "Label contains a /, which is not an "
+		    "allowed character.", 0, 0, TRUE);
+		goto editpart;
+	}
+
 	if (strncmp(items[0].text, "freebsd-", 8) != 0 &&
 	    items[0].text[0] != '\0') {
 		char message[512];
@@ -646,6 +653,13 @@ addpartform:
 			goto addpartform;
 		}
 		size = MIN((intmax_t)(bytes/sector), maxsize);
+	}
+
+	/* Check if the label has a / in it */
+	if (strchr(items[3].text, '/') != NULL) {
+		dialog_msgbox("Error", "Label contains a /, which is not an "
+		    "allowed character.", 0, 0, TRUE);
+		goto addpartform;
 	}
 
 	/* Warn if no mountpoint set */
