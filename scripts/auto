@@ -9,6 +9,7 @@ error() {
 	if [ $? -ne 0 ]; then
 		exit
 	else
+		test -f $PATH_FSTAB && bsdinstall umount
 		exec $0
 	fi
 }
