@@ -41,7 +41,4 @@ ln -s /tmp/bsdinstall_etc/resolv.conf $1/etc/resolv.conf
 echo kernel_options=\"-C\" > $1/boot/loader.conf
 echo sendmail_enable=\"NONE\" > $1/etc/rc.conf
 
-# cdialog is not called dialog yet, except here
-ln -s /usr/bin/dialog $1/usr/bin/cdialog
-
 #mkisoimages.sh -b FreeBSD_Install $3 $1

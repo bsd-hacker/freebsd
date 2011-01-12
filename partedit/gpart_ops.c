@@ -4,8 +4,8 @@
 #include <inttypes.h>
 
 #include <libgeom.h>
-#include <cdialog/dialog.h>
-#include <cdialog/dlg_keys.h>
+#include <dialog.h>
+#include <dlg_keys.h>
 
 #include "partedit.h"
 

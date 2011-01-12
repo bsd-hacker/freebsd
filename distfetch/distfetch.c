@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <fetch.h>
-#include <cdialog/dialog.h>
+#include <dialog.h>
 
 static int fetch_files(int nfiles, char **urls);
 
@@ -31,6 +31,8 @@ main(void)
 	for (i = 0; i < ndists; i++) 
 		free(urls[i]);
 	free(urls);
+
+	return (retval);
 }
 
 static int
@@ -45,6 +47,8 @@ fetch_files(int nfiles, char **urls)
 	uint8_t block[4096];
 	size_t chunk, fsize;
 	int i, progress, last_progress;
+
+	progress = 0;
 	
 	/* Make the transfer list for dialog */
 	items = calloc(sizeof(char *), nfiles * 2);

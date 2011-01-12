@@ -2,8 +2,7 @@
 
 BINDIR= /usr/libexec/bsdinstall
 PROG=	partedit
-LDADD=	-lgeom -lncursesw -lutil -L/usr/local/lib -lcdialog -lm
-CFLAGS= -I/usr/local/include
+LDADD=	-lgeom -lncursesw -lutil -ldialog -lm
 
 PARTEDIT_ARCH= ${MACHINE}
 .if ${MACHINE} == "i386" || ${MACHINE} == "amd64"

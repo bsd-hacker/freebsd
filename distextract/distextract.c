@@ -2,7 +2,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <archive.h>
-#include <cdialog/dialog.h>
+#include <dialog.h>
 
 static int extract_files(int nfiles, const char **files);
 
@@ -47,6 +47,7 @@ extract_files(int nfiles, const char **files)
 	int i, err, progress, last_progress;
 
 	err = 0;
+	progress = 0;
 	
 	/* Make the transfer list for dialog */
 	for (i = 0; i < nfiles; i++) {

@@ -2,8 +2,7 @@
 
 BINDIR= /usr/libexec/bsdinstall
 PROG=	distfetch
-LDADD=	-lfetch -lncursesw -L/usr/local/lib -lcdialog -lm
-CFLAGS= -I/usr/local/include
+LDADD=	-lfetch -lncursesw -ldialog -lm
 
 WARNS?=	6
 NO_MAN=	true

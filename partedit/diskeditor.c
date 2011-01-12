@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <libutil.h>
-#include <cdialog/dialog.h>
-#include <cdialog/dlg_keys.h>
+#include <dialog.h>
+#include <dlg_keys.h>
 
 #include "diskeditor.h"
 
