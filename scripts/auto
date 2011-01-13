@@ -14,10 +14,14 @@ error() {
 	fi
 }
 
-trap error SIGINT	# Catch cntrl-C here
 
 rm -rf $BSDINSTALL_TMPETC
 mkdir $BSDINSTALL_TMPETC
+
+trap true SIGINT	# This section is optional
+bsdinstall keymap
+
+trap error SIGINT	# Catch cntrl-C here
 bsdinstall hostname || error
 
 FETCH_DISTRIBUTIONS=""
