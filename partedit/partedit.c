@@ -26,7 +26,7 @@ main(void) {
 	struct partition_metadata *md;
 	struct partedit_item *items;
 	struct gmesh mesh;
-	int i, op, nitems, scroll;
+	int i, op, nitems, nscroll;
 	int error;
 
 	TAILQ_INIT(&part_metadata);
@@ -36,7 +36,7 @@ main(void) {
 	init_dialog(stdin, stdout);
 	dialog_vars.backtitle = __DECONST(char *, "FreeBSD Installer");
 	dialog_vars.item_help = TRUE;
-	scroll = i = 0;
+	nscroll = i = 0;
 
 	while (1) {
 		error = geom_gettree(&mesh);
@@ -50,7 +50,7 @@ main(void) {
 		op = diskeditor_show("Partition Editor",
 		    "Create partitions for FreeBSD. No changes will be made "
 		    "until you select Finished.",
-		    items, nitems, &i, &scroll);
+		    items, nitems, &i, &nscroll);
 
 		switch (op) {
 		case 0: /* Create */
@@ -87,8 +87,9 @@ main(void) {
 		error = 0;
 		if (op == 4 && validate_setup()) { /* Finished */
 			dialog_vars.extra_button = TRUE;
-			dialog_vars.extra_label = "Don't Save";
-			dialog_vars.ok_label = "Save";
+			dialog_vars.extra_label =
+			    __DECONST(char *, "Don't Save");
+			dialog_vars.ok_label = __DECONST(char *, "Save");
 			op = dialog_yesno("Confirmation", "Your changes will "
 			    "now be written to disk. If you have chosen to "
 			    "overwrite existing data, it will be PERMANENTLY "

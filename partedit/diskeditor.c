@@ -8,11 +8,11 @@
 
 static void
 print_partedit_item(WINDOW *partitions, struct partedit_item *items,
-    int item, int scroll, int selected)
+    int item, int nscroll, int selected)
 {
 	chtype attr = A_NORMAL;
 	char sizetext[16];
-	int y = item - scroll + 1;
+	int y = item - nscroll + 1;
 
 	wattrset(partitions, selected ? item_selected_attr : item_attr);
 	wmove(partitions, y, MARGIN + items[item].indentation*2);
@@ -32,7 +32,7 @@ print_partedit_item(WINDOW *partitions, struct partedit_item *items,
 
 int
 diskeditor_show(const char *title, const char *cprompt,
-    struct partedit_item *items, int nitems, int *selected, int *scroll)
+    struct partedit_item *items, int nitems, int *selected, int *nscroll)
 {
 	WINDOW *dialog, *partitions;
 	char *prompt;
@@ -103,8 +103,8 @@ diskeditor_show(const char *title, const char *cprompt,
 
 	if (selected != NULL)
 		cur_part = *selected;
-	if (scroll != NULL)
-		cur_scroll = *scroll;
+	if (nscroll != NULL)
+		cur_scroll = *nscroll;
 	if (cur_part - cur_scroll >= partlist_height - 2 ||
 	    cur_part - cur_scroll < 0)
 		cur_scroll = cur_part;
@@ -221,8 +221,8 @@ repaint:
 done:
 	if (selected != NULL)
 		*selected = cur_part;
-	if (scroll != NULL)
-		*scroll = cur_scroll;
+	if (nscroll != NULL)
+		*nscroll = cur_scroll;
 
 	dlg_del_window(partitions);
 	dlg_del_window(dialog);

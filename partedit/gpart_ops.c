@@ -11,9 +11,6 @@
 
 #define GPART_FLAGS "x" /* Do not commit changes by default */
 
-static void set_part_metadata(const char *name, const char *scheme,
-    const char *type, const char *mountpoint, int newfs);
-
 static void
 gpart_show_error(const char *title, const char *explanation, const char *errstr)
 {
@@ -114,7 +111,7 @@ gpart_activate(struct gprovider *pp)
 	struct gctl_req *r;
 	const char *errstr, *scheme;
 	const char *attribute = NULL;
-	intmax_t index;
+	intmax_t idx;
 
 	/*
 	 * Some partition schemes need this partition to be marked 'active'
@@ -135,7 +132,7 @@ gpart_activate(struct gprovider *pp)
 
 	LIST_FOREACH(gc, &pp->lg_config, lg_config) {
 		if (strcmp(gc->lg_name, "index") == 0) {
-			index = atoi(gc->lg_val);
+			idx = atoi(gc->lg_val);
 			break;
 		}
 	}
@@ -145,7 +142,7 @@ gpart_activate(struct gprovider *pp)
 	gctl_ro_param(r, "arg0", -1, pp->lg_geom->lg_name);
 	gctl_ro_param(r, "verb", -1, "set");
 	gctl_ro_param(r, "attrib", -1, attribute);
-	gctl_ro_param(r, "index", sizeof(index), &index);
+	gctl_ro_param(r, "index", sizeof(idx), &idx);
 
 	errstr = gctl_issue(r);
 	if (errstr != NULL && errstr[0] != '\0') 
@@ -267,15 +264,16 @@ gpart_destroy(struct ggeom *lg_geom, int force)
 	gctl_free(r);
 
 	/* If asked, commit the change */
-	r = gctl_get_handle();
-	gctl_ro_param(r, "class", -1, "PART");
-	gctl_ro_param(r, "arg0", -1, lg_geom->lg_name);
-	gctl_ro_param(r, "flags", -1, GPART_FLAGS);
-	gctl_ro_param(r, "verb", -1, "commit");
-	errstr = gctl_issue(r);
-	if (errstr != NULL && errstr[0] != '\0') 
-		gpart_show_error("Error", NULL, errstr);
-	gctl_free(r);
+	if (force) {
+		r = gctl_get_handle();
+		gctl_ro_param(r, "class", -1, "PART");
+		gctl_ro_param(r, "arg0", -1, lg_geom->lg_name);
+		gctl_ro_param(r, "verb", -1, "commit");
+		errstr = gctl_issue(r);
+		if (errstr != NULL && errstr[0] != '\0') 
+			gpart_show_error("Error", NULL, errstr);
+		gctl_free(r);
+	}
 
 	/* And any metadata associated with the partition scheme itself */
 	delete_part_metadata(lg_geom->lg_name);
@@ -291,7 +289,7 @@ gpart_edit(struct gprovider *pp)
 	const char *errstr, *oldtype, *scheme;
 	struct partition_metadata *md;
 	char sizestr[32];
-	intmax_t index;
+	intmax_t idx;
 	int hadlabel, choice, junk, nitems;
 	unsigned i;
 
@@ -379,7 +377,7 @@ gpart_edit(struct gprovider *pp)
 			items[3].text = gc->lg_val;
 		}
 		if (strcmp(gc->lg_name, "index") == 0)
-			index = atoi(gc->lg_val);
+			idx = atoi(gc->lg_val);
 	}
 
 	TAILQ_FOREACH(md, &part_metadata, metadata) {
@@ -422,7 +420,7 @@ editpart:
 	gctl_ro_param(r, "arg0", -1, geom->lg_name);
 	gctl_ro_param(r, "flags", -1, GPART_FLAGS);
 	gctl_ro_param(r, "verb", -1, "modify");
-	gctl_ro_param(r, "index", sizeof(index), &index);
+	gctl_ro_param(r, "index", sizeof(idx), &idx);
 	if (hadlabel || items[3].text[0] != '\0')
 		gctl_ro_param(r, "label", -1, items[3].text);
 	gctl_ro_param(r, "type", -1, items[0].text);
@@ -434,17 +432,17 @@ editpart:
 	}
 	gctl_free(r);
 
-	set_part_metadata(pp->lg_name, scheme, items[0].text, items[2].text,
-	    strcmp(oldtype, items[0].text) != 0);
+	set_default_part_metadata(pp->lg_name, scheme, items[0].text,
+	    items[2].text, strcmp(oldtype, items[0].text) != 0);
 
 	for (i = 0; i < (sizeof(items) / sizeof(items[0])); i++)
 		if (items[i].text_free)
 			free(items[i].text);
 }
 
-static void
-set_part_metadata(const char *name, const char *scheme, const char *type,
-    const char *mountpoint, int newfs)
+void
+set_default_part_metadata(const char *name, const char *scheme,
+    const char *type, const char *mountpoint, int newfs)
 {
 	struct partition_metadata *md;
 
@@ -754,8 +752,8 @@ addpartform:
 	else if (strcmp(items[0].text, "freebsd") == 0)
 		gpart_partition(strtok(output, " "), "BSD");
 	else
-		set_part_metadata(strtok(output, " "), scheme, items[0].text,
-		    items[2].text, 1);
+		set_default_part_metadata(strtok(output, " "), scheme,
+		    items[0].text, items[2].text, 1);
 
 	for (i = 0; i < (sizeof(items) / sizeof(items[0])); i++)
 		if (items[i].text_free)
@@ -771,7 +769,7 @@ gpart_delete(struct gprovider *pp)
 	struct gconsumer *cp;
 	struct gctl_req *r;
 	const char *errstr;
-	intmax_t index;
+	intmax_t idx;
 	int choice, is_partition;
 
 	/* Is it a partition? */
@@ -831,8 +829,8 @@ gpart_delete(struct gprovider *pp)
 
 	LIST_FOREACH(gc, &pp->lg_config, lg_config) {
 		if (strcmp(gc->lg_name, "index") == 0) {
-			index = atoi(gc->lg_val);
-			gctl_ro_param(r, "index", sizeof(index), &index);
+			idx = atoi(gc->lg_val);
+			gctl_ro_param(r, "index", sizeof(idx), &idx);
 			break;
 		}
 	}

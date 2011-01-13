@@ -28,6 +28,8 @@ void gpart_create(struct gprovider *pp);
 void gpart_revert(struct gprovider *pp);
 void gpart_revert_all(struct gmesh *mesh);
 void gpart_commit(struct gmesh *mesh);
+void set_default_part_metadata(const char *name, const char *scheme,
+    const char *type, const char *mountpoint, int newfs);
 
 /* machine-dependent bootability checks */
 int is_scheme_bootable(const char *part_type);
