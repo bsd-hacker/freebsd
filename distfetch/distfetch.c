@@ -11,7 +11,7 @@ main(void)
 {
 	char *diststring = strdup(getenv("DISTRIBUTIONS"));
 	char **urls;
-	int i, retval, ndists = 0;
+	int i, nfetched, ndists = 0;
 	for (i = 0; diststring[i] != 0; i++)
 		if (isspace(diststring[i]) && !isspace(diststring[i+1]))
 			ndists++;
@@ -25,14 +25,14 @@ main(void)
 	}
 
 	chdir(getenv("BSDINSTALL_DISTDIR"));
-	retval = fetch_files(ndists, urls);
+	nfetched = fetch_files(ndists, urls);
 
 	free(diststring);
 	for (i = 0; i < ndists; i++) 
 		free(urls[i]);
 	free(urls);
 
-	return (retval);
+	return ((nfetched == ndists) ? 0 : 1);
 }
 
 static int
@@ -47,6 +47,7 @@ fetch_files(int nfiles, char **urls)
 	uint8_t block[4096];
 	size_t chunk, fsize;
 	int i, progress, last_progress;
+	int nsuccess = 0; /* Number of files successfully downloaded */
 
 	progress = 0;
 	
@@ -131,8 +132,6 @@ fetch_files(int nfiles, char **urls)
 				    __DECONST(char **, items));
 		}
 
-		items[i*2 + 1] = "Done";
-
 		if (ustat.size > 0 && fsize < (size_t)ustat.size) {
 			if (fetchLastErrCode == 0) 
 				snprintf(errormsg, sizeof(errormsg),
@@ -145,6 +144,9 @@ fetch_files(int nfiles, char **urls)
 			items[i*2 + 1] = "Failed";
 			dialog_msgbox("Fetch Error", errormsg, 0, 0,
 				    TRUE);
+		} else {
+			items[i*2 + 1] = "Done";
+			nsuccess++;
 		}
 
 		fclose(fetch_out);
@@ -153,5 +155,5 @@ fetch_files(int nfiles, char **urls)
 	end_dialog();
 
 	free(items);
-	return (0);
+	return (nsuccess);
 }
