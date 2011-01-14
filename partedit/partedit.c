@@ -44,7 +44,7 @@ main(void) {
 	dialog_vars.no_label = "Manual";
 	op = dialog_yesno("Partitioning", "Would you like to use the guided "
 	    "partitioning tool (recommended for beginners) or to set up "
-	    "partitions manual (experts)?", 0, 0);
+	    "partitions manually (experts)?", 0, 0);
 	dialog_vars.yes_label = NULL;
 	dialog_vars.no_label = NULL;
 	if (op == 0) /* Guided */
