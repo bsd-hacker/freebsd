@@ -202,7 +202,8 @@ query:
 		struct gmesh submesh;
 		geom_gettree(&submesh);
 		gpart_create(provider_for_name(&submesh, disk),
-		    "freebsd", NULL, NULL, &retval, choice);
+		    "freebsd", NULL, NULL, &retval,
+		    choice /* Non-interactive for "Entire Disk" */);
 		geom_deletetree(&submesh);
 	} else {
 		retval = strdup(disk);
