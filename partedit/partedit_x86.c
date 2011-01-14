@@ -2,6 +2,11 @@
 
 #include "partedit.h"
 
+const char *
+default_scheme(void) {
+	return ("GPT");
+}
+
 int
 is_scheme_bootable(const char *part_type) {
 	if (strcmp(part_type, "BSD") == 0)

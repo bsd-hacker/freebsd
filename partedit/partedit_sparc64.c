@@ -2,6 +2,11 @@
 
 #include "partedit.h"
 
+const char *
+default_scheme(void) {
+	return ("VTOC8");
+}
+
 int
 is_scheme_bootable(const char *part_type) {
 	if (strcmp(part_type, "VTOC8") == 0)

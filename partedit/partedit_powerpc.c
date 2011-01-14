@@ -2,6 +2,11 @@
 
 #include "partedit.h"
 
+const char *
+default_scheme(void) {
+	return ("APM");
+}
+
 int
 is_scheme_bootable(const char *part_type) {
 	if (strcmp(part_type, "APM") == 0)

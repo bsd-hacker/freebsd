@@ -15,7 +15,8 @@ PARTEDIT_ARCH= sparc64
 PARTEDIT_ARCH= generic
 .endif
 
-SRCS=	diskeditor.c partedit.c gpart_ops.c partedit_${PARTEDIT_ARCH}.c
+SRCS=	diskeditor.c partedit.c gpart_ops.c partedit_${PARTEDIT_ARCH}.c \
+	part_wizard.c
 
 WARNS?=	3
 NO_MAN=	true

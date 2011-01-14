@@ -37,7 +37,7 @@ gpart_show_error(const char *title, const char *explanation, const char *errstr)
 	dialog_msgbox(title, message, 0, 0, TRUE);
 }
 
-static int
+int
 gpart_partition(const char *lg_name, const char *scheme)
 {
 	int cancel, choice;
@@ -241,7 +241,7 @@ gpart_partcode(struct gprovider *pp)
 	}
 }
 
-static void
+void
 gpart_destroy(struct ggeom *lg_geom, int force)
 {
 	struct gprovider *pp;
@@ -518,7 +518,8 @@ set_default_part_metadata(const char *name, const char *scheme,
 }
 
 void
-gpart_create(struct gprovider *pp)
+gpart_create(struct gprovider *pp, char *default_type, char *default_size,
+     char *default_mountpoint, char **partname, int interactive)
 {
 	struct gctl_req *r;
 	struct gconfig *gc;
@@ -545,6 +546,9 @@ gpart_create(struct gprovider *pp)
 		    "Partition name. Not all partition schemes support this.",
 		    FALSE},
 	};
+
+	if (partname != NULL)
+		*partname = NULL;
 
 	/* Record sector and stripe sizes */
 	sector = pp->lg_sectorsize;
@@ -635,11 +639,20 @@ gpart_create(struct gprovider *pp)
 	else
 		nitems = 3;
 
-addpartform:
-	choice = dlg_form("Add Partition", "", 0, 0, 0, nitems, items, &junk);
+	if (default_type != NULL)
+		items[0].text = default_type;
+	if (default_size != NULL)
+		items[1].text = default_size;
+	if (default_mountpoint != NULL)
+		items[2].text = default_mountpoint;
 
-	if (choice) /* Cancel pressed */
-		return;
+addpartform:
+	if (interactive) {
+		choice = dlg_form("Add Partition", "", 0, 0, 0, nitems,
+		    items, &junk);
+		if (choice) /* Cancel pressed */
+			return;
+	}
 
 	size = maxsize;
 	if (strlen(items[1].text) > 0) {
@@ -693,9 +706,13 @@ addpartform:
 	 * the user to add one.
 	 */
 	if (strcmp(items[2].text, "/") == 0 && bootpart_size(scheme) > 0) {
-		choice = dialog_yesno("Boot Partition", "This partition scheme "
-		    "requires a boot partition for the disk to be bootable. "
-		    "Would you like to make one now?", 0, 0);
+		if (interactive)
+			choice = dialog_yesno("Boot Partition",
+			    "This partition scheme requires a boot partition "
+			    "for the disk to be bootable. Would you like to "
+			    "make one now?", 0, 0);
+		else
+			choice = 0;
 
 		if (choice == 0) { /* yes */
 			r = gctl_get_handle();
@@ -759,6 +776,9 @@ addpartform:
 		if (items[i].text_free)
 			free(items[i].text);
 	gctl_free(r);
+
+	if (partname != NULL)
+		*partname = strdup(strtok(output, " "));
 }
 	
 void

@@ -38,6 +38,19 @@ main(void) {
 	dialog_vars.item_help = TRUE;
 	nscroll = i = 0;
 
+	/* Ask about guided vs. manual partitioning */
+	dlg_put_backtitle();
+	dialog_vars.yes_label = "Guided";
+	dialog_vars.no_label = "Manual";
+	op = dialog_yesno("Partitioning", "Would you like to use the guided "
+	    "partitioning tool (recommended for beginners) or to set up "
+	    "partitions manual (experts)?", 0, 0);
+	dialog_vars.yes_label = NULL;
+	dialog_vars.no_label = NULL;
+	if (op == 0) /* Guided */
+		part_wizard();
+
+	/* Show the part editor either immediately, or to confirm wizard */
 	while (1) {
 		error = geom_gettree(&mesh);
 		items = read_geom_mesh(&mesh, &nitems);
@@ -54,7 +67,8 @@ main(void) {
 
 		switch (op) {
 		case 0: /* Create */
-			gpart_create((struct gprovider *)(items[i].cookie));
+			gpart_create((struct gprovider *)(items[i].cookie),
+			    NULL, NULL, NULL, NULL, 1);
 			break;
 		case 1: /* Delete */
 			gpart_delete((struct gprovider *)(items[i].cookie));

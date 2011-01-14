@@ -2,6 +2,11 @@
 
 #include "partedit.h"
 
+const char *
+default_scheme(void) {
+	return ("PC98");
+}
+
 int
 is_scheme_bootable(const char *part_type) {
 	if (strcmp(part_type, "PC98") == 0)
