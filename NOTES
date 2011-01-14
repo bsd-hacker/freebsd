@@ -14,8 +14,9 @@ Environment variables affecting modules:
    are mounted here and files installed to this path.
 
 Install CD environment:
-- Distfiles in /var/dist
+- Distfiles in /usr/bsdinstall-dist
 - tmpmfs and varmfs turn on automatically due to read-only media
-- /etc/resolv.conf symlink to /tmp/etc/resolv.conf (propagates to new system)
-- /boot/loader.conf set to run installer
+- /etc/resolv.conf symlink to /tmp/bsdinstall_etc/resolv.conf
+  (propagates to new system)
+- rc.local script to run installer
 

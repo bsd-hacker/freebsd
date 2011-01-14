@@ -2,6 +2,8 @@
 
 # testsystem.sh <scratch directory> <dists directory> <output iso>
 
+BSDINSTALL=`pwd`/..
+
 mkdir $2
 
 # Kernel package
@@ -40,6 +42,10 @@ cp $2/kernel.tgz $2/world.tgz $2/distribution.tgz $1/usr/bsdinstall-dist
 ln -s /tmp/bsdinstall_etc/resolv.conf $1/etc/resolv.conf
 echo kernel_options=\"-C\" > $1/boot/loader.conf
 echo sendmail_enable=\"NONE\" > $1/etc/rc.conf
-cp rc.local $1/etc
 
-#mkisoimages.sh -b FreeBSD_Install $3 $1
+cd $BSDINSTALL
+cp release/rc.local $1/etc
+mkdir $1/usr/libexec/bsdinstall
+make install DESTDIR=$1
+
+sh /usr/src/release/i386/mkisoimages.sh -b FreeBSD_Install $3 $1
