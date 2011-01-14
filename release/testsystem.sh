@@ -33,12 +33,13 @@ tar cvzf $2/world.tgz .
 # Make system
 cd /usr/src
 make installkernel distribution DESTDIR=$1
-mkdir $1/var/dist
-cp $2/kernel.tgz $2/world.tgz $2/distribution.tgz $1/var/dist
+mkdir $1/usr/bsdinstall-dist
+cp $2/kernel.tgz $2/world.tgz $2/distribution.tgz $1/usr/bsdinstall-dist
 
 # Things for the CD environment
 ln -s /tmp/bsdinstall_etc/resolv.conf $1/etc/resolv.conf
 echo kernel_options=\"-C\" > $1/boot/loader.conf
 echo sendmail_enable=\"NONE\" > $1/etc/rc.conf
+cp rc.local $1/etc
 
 #mkisoimages.sh -b FreeBSD_Install $3 $1
