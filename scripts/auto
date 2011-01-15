@@ -38,8 +38,29 @@ if [ ! -z "$FETCH_DISTRIBUTIONS" ]; then
 fi
 
 rm $PATH_FSTAB
-bsdinstall partedit || error
-bsdinstall mount || error
+
+dialog --backtitle "FreeBSD Installer" --title "Partitioning" --extra-button \
+    --extra-label "Manual" --ok-label "Guided" --cancel-label "Shell" \
+    --yesno "Would you like to use the guided partitioning tool (recommended for beginners) or to set up partitions manually (experts)? You can also open a shell and set up partitions entirely by hand." 0 0
+
+case $? in
+0)	# Guided
+	bsdinstall autopart || error
+	bsdinstall mount || error
+	;;
+1)	# Shell
+	clear
+	echo "Use this shell to set up partitions for the new system. When finished, mount the system at $BSDINSTALL_CHROOT and place an fstab file for the new system at $PATH_FSTAB. Then type 'exit'. You can also enter the partition editor at any time by entering 'bsdinstall partedit'."
+	sh
+	;;
+3)	# Manual
+	bsdinstall partedit || error
+	bsdinstall mount || error
+	;;
+*)
+	error
+	;;
+esac
 
 if [ ! -z $FETCH_DISTRIBUTIONS ]; then
 	ALL_DISTRIBUTIONS=$DISTRIBUTIONS

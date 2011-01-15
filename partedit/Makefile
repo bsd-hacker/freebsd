@@ -2,6 +2,7 @@
 
 BINDIR= /usr/libexec/bsdinstall
 PROG=	partedit
+LINKS= ${BINDIR}/partedit ${BINDIR}/autopart
 LDADD=	-lgeom -lncursesw -lutil -ldialog -lm
 
 PARTEDIT_ARCH= ${MACHINE}

@@ -1,4 +1,5 @@
 #include <sys/param.h>
+#include <libgen.h>
 #include <libutil.h>
 #include <inttypes.h>
 #include <errno.h>
@@ -22,7 +23,7 @@ static void get_mount_points(struct partedit_item *items, int nitems);
 static int validate_setup(void);
 
 int
-main(void) {
+main(int argc, const char **argv) {
 	struct partition_metadata *md;
 	struct partedit_item *items;
 	struct gmesh mesh;
@@ -34,20 +35,12 @@ main(void) {
 	init_fstab_metadata();
 
 	init_dialog(stdin, stdout);
-	dialog_vars.backtitle = __DECONST(char *, "FreeBSD Installer");
+	if (strcmp(basename(argv[0]), "sade") != 0)
+		dialog_vars.backtitle = __DECONST(char *, "FreeBSD Installer");
 	dialog_vars.item_help = TRUE;
 	nscroll = i = 0;
 
-	/* Ask about guided vs. manual partitioning */
-	dlg_put_backtitle();
-	dialog_vars.yes_label = "Guided";
-	dialog_vars.no_label = "Manual";
-	op = dialog_yesno("Partitioning", "Would you like to use the guided "
-	    "partitioning tool (recommended for beginners) or to set up "
-	    "partitions manually (experts)?", 0, 0);
-	dialog_vars.yes_label = NULL;
-	dialog_vars.no_label = NULL;
-	if (op == 0) /* Guided */
+	if (strcmp(basename(argv[0]), "autopart") == 0) /* Guided */
 		part_wizard();
 
 	/* Show the part editor either immediately, or to confirm wizard */
