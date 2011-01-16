@@ -149,7 +149,7 @@ wizard_partition(struct gmesh *mesh, const char *disk)
 	struct ggeom *gpart = NULL;
 	struct gconfig *gc;
 	char message[512];
-	const char *scheme;
+	const char *scheme = NULL;
 	char *retval = NULL;
 	int choice;
 
@@ -188,7 +188,7 @@ query:
 	dialog_vars.no_label = NULL;
 	dialog_vars.defaultno = FALSE;
 
-	if (choice == 0) { /* Entire disk */
+	if (scheme == NULL || choice == 0) { /* Entire disk */
 		if (gpart != NULL) { /* Erase partitioned disk */
 			choice = dialog_yesno("Confirmation", "This will erase "
 			   "the disk. Are you sure you want to proceed?", 0, 0);
