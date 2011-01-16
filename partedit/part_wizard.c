@@ -9,11 +9,12 @@
 
 #include "partedit.h"
 
-#define GPART_FLAGS "x" /* Do not commit changes by default */
+#define MIN_FREE_SPACE		(1024*1024*1024) /* 1 GB */
+#define SWAP_SIZE(available)	MIN(available/20, 4*1024*1024*1024LL)
 
 static char *boot_disk(struct gmesh *mesh);
 static char *wizard_partition(struct gmesh *mesh, const char *disk);
-static void wizard_makeparts(struct gmesh *mesh, const char *disk);
+static int wizard_makeparts(struct gmesh *mesh, const char *disk);
 
 int
 part_wizard(void) {
@@ -21,6 +22,7 @@ part_wizard(void) {
 	struct gmesh mesh;
 	char *disk, *schemeroot;
 
+startwizard:
 	error = geom_gettree(&mesh);
 
 	dlg_put_backtitle();
@@ -40,7 +42,9 @@ part_wizard(void) {
 	geom_deletetree(&mesh);
 	error = geom_gettree(&mesh);
 
-	wizard_makeparts(&mesh, schemeroot);
+	error = wizard_makeparts(&mesh, schemeroot);
+	if (error)
+		goto startwizard;
 	free(schemeroot);
 	
 	geom_deletetree(&mesh);
@@ -212,7 +216,7 @@ query:
 	return (retval);
 }
 
-static void
+static int
 wizard_makeparts(struct gmesh *mesh, const char *disk)
 {
 	struct gmesh submesh;
@@ -221,9 +225,9 @@ wizard_makeparts(struct gmesh *mesh, const char *disk)
 	struct gconfig *gc;
 	const char *scheme;
 	struct gprovider *pp;
-	intmax_t start, end;
-	intmax_t swapsize;
+	intmax_t swapsize, available;
 	char swapsizestr[10], rootsizestr[10];
+	int retval;
 
 	LIST_FOREACH(classp, &mesh->lg_class, lg_class)
 		if (strcmp(classp->lg_name, "PART") == 0)
@@ -233,23 +237,37 @@ wizard_makeparts(struct gmesh *mesh, const char *disk)
 		if (strcmp(gp->lg_name, disk) == 0)
 			break;
 
-	LIST_FOREACH(gc, &gp->lg_config, lg_config) {
-		if (strcmp(gc->lg_name, "first") == 0)
-			start = strtoimax(gc->lg_val, NULL, 0);
-		if (strcmp(gc->lg_name, "last") == 0)
-			end = strtoimax(gc->lg_val, NULL, 0);
+	LIST_FOREACH(gc, &gp->lg_config, lg_config) 
 		if (strcmp(gc->lg_name, "scheme") == 0) 
 			scheme = gc->lg_val;
-	}
 
 	pp = provider_for_name(mesh, disk);
 
-	swapsize = MIN((end - start)*pp->lg_sectorsize/50,
-	    4*1024*1024*(intmax_t)(1024));
+	available = gpart_max_free(gp, NULL)*pp->lg_sectorsize;
+	if (available < MIN_FREE_SPACE) {
+		char availablestr[10], neededstr[10], message[512];
+		humanize_number(availablestr, 7, available, "B", HN_AUTOSCALE,
+		    HN_DECIMAL);
+		humanize_number(neededstr, 7, MIN_FREE_SPACE, "B", HN_AUTOSCALE,
+		    HN_DECIMAL);
+		sprintf(message, "There is not enough free space on %s to "
+		    "install FreeBSD (%s free, %s required). Would you like "
+		    "to choose another disk or to open the partition editor?",
+		    disk, availablestr, neededstr);
+
+		dialog_vars.yes_label = "Another Disk";
+		dialog_vars.no_label = "Editor";
+		retval = dialog_yesno("Warning", message, 0, 0);
+		dialog_vars.yes_label = NULL;
+		dialog_vars.no_label = NULL;
+
+		return (!retval); /* Editor -> return 0 */
+	}
+
+	swapsize = SWAP_SIZE(available);
 	humanize_number(swapsizestr, 7, swapsize, "B", HN_AUTOSCALE,
 	    HN_NOSPACE | HN_DECIMAL);
-	humanize_number(rootsizestr, 7,
-	    (end - start)*pp->lg_sectorsize - swapsize - 1024*1024,
+	humanize_number(rootsizestr, 7, available - swapsize - 1024*1024,
 	    "B", HN_AUTOSCALE, HN_NOSPACE | HN_DECIMAL);
 
 	geom_gettree(&submesh);
@@ -261,4 +279,7 @@ wizard_makeparts(struct gmesh *mesh, const char *disk)
 	pp = provider_for_name(&submesh, disk);
 	gpart_create(pp, "freebsd-swap", swapsizestr, NULL, NULL, 0);
 	geom_deletetree(&submesh);
+
+	return (0);
 }
+

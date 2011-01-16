@@ -25,6 +25,7 @@ static int validate_setup(void);
 int
 main(int argc, const char **argv) {
 	struct partition_metadata *md;
+	const char *prompt;
 	struct partedit_item *items;
 	struct gmesh mesh;
 	int i, op, nitems, nscroll;
@@ -40,8 +41,14 @@ main(int argc, const char **argv) {
 	dialog_vars.item_help = TRUE;
 	nscroll = i = 0;
 
-	if (strcmp(basename(argv[0]), "autopart") == 0) /* Guided */
+	if (strcmp(basename(argv[0]), "autopart") == 0) { /* Guided */
+		prompt = "Please review the disk setup. When complete, press "
+		    "the Finished button.";
 		part_wizard();
+	} else {
+		prompt = "Create partitions for FreeBSD. No changes will be "
+		    "made until you select Finished.";
+	}
 
 	/* Show the part editor either immediately, or to confirm wizard */
 	while (1) {
@@ -53,9 +60,7 @@ main(int argc, const char **argv) {
 
 		if (i >= nitems)
 			i = nitems - 1;
-		op = diskeditor_show("Partition Editor",
-		    "Create partitions for FreeBSD. No changes will be made "
-		    "until you select Finished.",
+		op = diskeditor_show("Partition Editor", prompt,
 		    items, nitems, &i, &nscroll);
 
 		switch (op) {
@@ -95,7 +100,7 @@ main(int argc, const char **argv) {
 		if (op == 4 && validate_setup()) { /* Finished */
 			dialog_vars.extra_button = TRUE;
 			dialog_vars.extra_label =
-			    __DECONST(char *, "Don't Save");
+			    __DECONST(char *, "Abort");
 			dialog_vars.ok_label = __DECONST(char *, "Save");
 			op = dialog_yesno("Confirmation", "Your changes will "
 			    "now be written to disk. If you have chosen to "

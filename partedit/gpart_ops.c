@@ -517,6 +517,105 @@ set_default_part_metadata(const char *name, const char *scheme,
 	}
 }
 
+static
+int part_compare(const void *xa, const void *xb)
+{
+	struct gprovider **a = (struct gprovider **)xa;
+	struct gprovider **b = (struct gprovider **)xb;
+	intmax_t astart, bstart;
+	struct gconfig *gc;
+	
+	astart = bstart = 0;
+	LIST_FOREACH(gc, &(*a)->lg_config, lg_config)
+		if (strcmp(gc->lg_name, "start") == 0) {
+			astart = strtoimax(gc->lg_val, NULL, 0);
+			break;
+		}
+	LIST_FOREACH(gc, &(*b)->lg_config, lg_config)
+		if (strcmp(gc->lg_name, "start") == 0) {
+			bstart = strtoimax(gc->lg_val, NULL, 0);
+			break;
+		}
+
+	if (astart < bstart)
+		return -1;
+	else if (astart > bstart)
+		return 1;
+	else
+		return 0;
+}
+
+intmax_t
+gpart_max_free(struct ggeom *geom, intmax_t *npartstart)
+{
+	struct gconfig *gc;
+	struct gprovider *pp, **providers;
+	intmax_t lastend;
+	intmax_t start, end;
+	intmax_t maxsize, maxstart;
+	intmax_t partstart, partend;
+	int i, nparts;
+
+	/* Now get the maximum free size and free start */
+	start = end = 0;
+	LIST_FOREACH(gc, &geom->lg_config, lg_config) {
+		if (strcmp(gc->lg_name, "first") == 0)
+			start = strtoimax(gc->lg_val, NULL, 0);
+		if (strcmp(gc->lg_name, "last") == 0)
+			end = strtoimax(gc->lg_val, NULL, 0);
+	}
+
+	i = nparts = 0;
+	LIST_FOREACH(pp, &geom->lg_provider, lg_provider)
+		nparts++;
+	providers = calloc(nparts, sizeof(providers[0]));
+	LIST_FOREACH(pp, &geom->lg_provider, lg_provider)
+		providers[i++] = pp;
+	qsort(providers, nparts, sizeof(providers[0]), part_compare);
+
+	lastend = start - 1;
+	maxsize = 0;
+	for (i = 0; i < nparts; i++) {
+		pp = providers[i];
+
+		LIST_FOREACH(gc, &pp->lg_config, lg_config) {
+			if (strcmp(gc->lg_name, "start") == 0)
+				partstart = strtoimax(gc->lg_val, NULL, 0);
+			if (strcmp(gc->lg_name, "end") == 0)
+				partend = strtoimax(gc->lg_val, NULL, 0);
+		}
+
+		if (partstart - lastend > maxsize) {
+			maxsize = partstart - lastend - 1;
+			maxstart = lastend + 1;
+		}
+
+		lastend = partend;
+	}
+
+	if (end - lastend > maxsize) {
+		maxsize = end - lastend - 1;
+		maxstart = lastend + 1;
+	}
+
+	pp = LIST_FIRST(&geom->lg_consumer)->lg_provider;
+
+	/* Compute beginning of new partition and maximum available space */
+	if (pp->lg_stripesize > 0 &&
+	    (maxstart*pp->lg_sectorsize % pp->lg_stripesize) != 0) {
+		intmax_t offset = (pp->lg_stripesize -
+		    ((maxstart*pp->lg_sectorsize) % pp->lg_stripesize)) /
+		    pp->lg_sectorsize;
+		maxstart += offset;
+		maxsize -= offset;
+	}
+
+	if (npartstart != NULL)
+		*npartstart = maxstart;
+
+	return (maxsize);
+}
+
 void
 gpart_create(struct gprovider *pp, char *default_type, char *default_size,
      char *default_mountpoint, char **partname, int interactive)
@@ -527,7 +626,7 @@ gpart_create(struct gprovider *pp, char *default_type, char *default_size,
 	struct ggeom *geom;
 	const char *errstr, *scheme;
 	char sizestr[32], startstr[32], output[64];
-	intmax_t maxsize, size, start, end, sector, firstfree, stripe;
+	intmax_t maxsize, size, sector, firstfree, stripe;
 	uint64_t bytes;
 	int nitems, choice, junk;
 	unsigned i;
@@ -586,34 +685,12 @@ gpart_create(struct gprovider *pp, char *default_type, char *default_size,
 	if (geom == NULL)
 		return;
 
-	/* Now get the maximum free size and free start */
-	start = end = 0;
-	LIST_FOREACH(gc, &geom->lg_config, lg_config) {
-		if (strcmp(gc->lg_name, "first") == 0)
-			start = strtoimax(gc->lg_val, NULL, 0);
-		if (strcmp(gc->lg_name, "last") == 0)
-			end = strtoimax(gc->lg_val, NULL, 0);
+	/* Now get the partition scheme */
+	LIST_FOREACH(gc, &geom->lg_config, lg_config) 
 		if (strcmp(gc->lg_name, "scheme") == 0)
 			scheme = gc->lg_val;
-	}
 
-	firstfree = start;
-	LIST_FOREACH(pp, &geom->lg_provider, lg_provider) {
-		LIST_FOREACH(gc, &pp->lg_config, lg_config) {
-			if (strcmp(gc->lg_name, "end") == 0) {
-				intmax_t partend;
-				partend = strtoimax(gc->lg_val, NULL, 0);
-				if (partend > firstfree)
-					firstfree = partend + 1;
-			}
-		}
-	}
-
-	/* Compute beginning of new partition and maximum available space */
-	if (stripe > 0 && (firstfree*sector % stripe) != 0) 
-		firstfree += (stripe - ((firstfree*sector) % stripe)) / sector;
-
-	size = end - firstfree;
+	size = gpart_max_free(geom, &firstfree);
 	if (size <= 0) {
 		dialog_msgbox("Error", "No free space left on device.", 0, 0,
 		    TRUE);
@@ -621,8 +698,8 @@ gpart_create(struct gprovider *pp, char *default_type, char *default_size,
 	}
 
 	/* Leave a free megabyte in case we need to write a boot partition */
-	if (size*sector >= 1024*1024)
-		size -= 1024*1024/sector;
+	if (size*sector >= (intmax_t)bootpart_size(scheme))
+		size -= bootpart_size(scheme)/sector;
 	maxsize = size;
 
 	humanize_number(sizestr, 7, size*sector, "B", HN_AUTOSCALE,

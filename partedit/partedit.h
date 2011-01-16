@@ -1,4 +1,5 @@
 #include <sys/queue.h>
+#include <inttypes.h>
 #include <fstab.h>
 
 struct gprovider;
@@ -30,6 +31,7 @@ void gpart_destroy(struct ggeom *lg_geom, int force);
 void gpart_edit(struct gprovider *pp);
 void gpart_create(struct gprovider *pp, char *default_type, char *default_size,
     char *default_mountpoint, char **output, int interactive);
+intmax_t gpart_max_free(struct ggeom *gp, intmax_t *start);
 void gpart_revert(struct gprovider *pp);
 void gpart_revert_all(struct gmesh *mesh);
 void gpart_commit(struct gmesh *mesh);
