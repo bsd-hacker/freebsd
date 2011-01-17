@@ -30,7 +30,7 @@
 
 # Test scenario by kib@freebsd.org
 
-# Test of 
+# Test of patch for Giant trick in cdevsw
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
@@ -58,7 +58,7 @@ for i in `jot 10`; do
 done
 
 export runRUNTIME=2m
-cd /home/pho/stress2; ./run.sh pty.cfg 
+cd ..; ./run.sh pty.cfg 
 
 for i in `jot 10`; do
 	wait
@@ -79,13 +79,6 @@ EOF2
 #include <sys/conf.h>
 #include <sys/uio.h>
 #include <sys/malloc.h>
-
-typedef       void (*cdevpriv_dtr_t)(void *data);
-int   devfs_get_cdevpriv(void **datap);
-int   devfs_set_cdevpriv(void *priv, cdevpriv_dtr_t dtr);
-void  devfs_clear_cdevpriv(void);
-void  devfs_fpdrop(struct file *fp);  /* XXX This is not public KPI */
-
 
 static d_open_t		fpclone_open;
 static d_close_t	fpclone_close;
