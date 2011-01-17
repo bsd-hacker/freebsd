@@ -667,7 +667,15 @@ gpart_create(struct gprovider *pp, char *default_type, char *default_size,
 	if (geom == NULL && strcmp(pp->lg_geom->lg_class->lg_name, "PART") == 0)
 		geom = pp->lg_geom;
 
-	if (geom == NULL) {
+	/* Now get the partition scheme */
+	scheme = NULL;
+	if (geom != NULL) {
+		LIST_FOREACH(gc, &geom->lg_config, lg_config) 
+			if (strcmp(gc->lg_name, "scheme") == 0)
+				scheme = gc->lg_val;
+	}
+
+	if (geom == NULL || scheme == NULL || strcmp(scheme, "(none)") == 0) {
 		if (gpart_partition(pp->lg_geom->lg_name, NULL) == 0)
 			dialog_msgbox("",
 			    "The partition table has been successfully created."
@@ -684,11 +692,6 @@ gpart_create(struct gprovider *pp, char *default_type, char *default_size,
 	 */
 	if (geom == NULL)
 		return;
-
-	/* Now get the partition scheme */
-	LIST_FOREACH(gc, &geom->lg_config, lg_config) 
-		if (strcmp(gc->lg_name, "scheme") == 0)
-			scheme = gc->lg_val;
 
 	size = gpart_max_free(geom, &firstfree);
 	if (size <= 0) {

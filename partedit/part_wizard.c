@@ -188,7 +188,7 @@ query:
 	dialog_vars.no_label = NULL;
 	dialog_vars.defaultno = FALSE;
 
-	if (scheme == NULL || choice == 0) { /* Entire disk */
+	if (scheme == NULL || strcmp(scheme, "(none)") == 0 || choice == 0) {
 		if (gpart != NULL) { /* Erase partitioned disk */
 			choice = dialog_yesno("Confirmation", "This will erase "
 			   "the disk. Are you sure you want to proceed?", 0, 0);
