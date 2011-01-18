@@ -204,6 +204,7 @@ apply_changes(struct gmesh *mesh)
 	char message[512];
 	int i, nitems, error;
 	const char **items;
+	const char *fstab_path;
 	FILE *fstab;
 
 	nitems = 1; /* Partition table changes */
@@ -259,7 +260,11 @@ apply_changes(struct gmesh *mesh)
 		free(__DECONST(char *, items[i*2]));
 	free(items);
 
-	fstab = fopen(getenv("PATH_FSTAB"), "w+");
+	if (getenv("PATH_FSTAB") != NULL)
+		fstab_path = getenv("PATH_FSTAB");
+	else
+		fstab_path = "/etc/fstab";
+	fstab = fopen(fstab_path, "w+");
 	if (fstab == NULL) {
 		sprintf(message, "Cannot open fstab file %s for writing (%s)\n",
 		    getenv("PATH_FSTAB"), strerror(errno));
