@@ -84,7 +84,5 @@ bsdinstall adduser
 trap error SIGINT	# SIGINT is bad again
 bsdinstall config  || error
 
-dialog --backtitle "FreeBSD Installer" --title "Complete" --msgbox "Installation of FreeBSD complete!" 0 0
-
 echo "Installation Completed at $(date)" >> $BSDINSTALL_LOG
 
