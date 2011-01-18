@@ -37,9 +37,10 @@ startwizard:
 	free(disk);
 	if (schemeroot == NULL)
 		return (1);
-	dlg_clear();
 
 	geom_deletetree(&mesh);
+	dlg_clear();
+	dlg_put_backtitle();
 	error = geom_gettree(&mesh);
 
 	error = wizard_makeparts(&mesh, schemeroot);
