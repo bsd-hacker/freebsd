@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2009 Peter Holm <pho@FreeBSD.org>
+# Copyright (c) 2009-2011 Peter Holm <pho@FreeBSD.org>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -40,7 +40,7 @@ mount -t tmpfs tmpfs  $mntpoint
 export RUNDIR=$mntpoint/stressX
 export runRUNTIME=10m            # Run tests for 10 minutes
 
-(cd /home/pho/stress2; ./run.sh marcus.cfg) 
+(cd ..; ./run.sh marcus.cfg) 
 
 umount $mntpoint
 mount | grep "$mntpoint" | grep -q tmpfs && umount -f $mntpoint

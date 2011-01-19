@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2008-2009 Peter Holm
+# Copyright (c) 2008-2011 Peter Holm
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -41,7 +41,7 @@ for i in `jot 2`; do
 done
 
 export runRUNTIME=5m
-(cd /home/pho/stress2; ./run.sh vfs.cfg)
+(cd ..; ./run.sh vfs.cfg)
 
 for i in `jot 2`; do
 	wait

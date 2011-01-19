@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2008 Peter Holm <pho@FreeBSD.org>
+# Copyright (c) 2008-2011 Peter Holm <pho@FreeBSD.org>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -35,7 +35,7 @@ saved=`sysctl vfs.lookup_shared | awk '{print $NF}'`
 export runRUNTIME=10m            # Run tests for 10 minutes
 for i in 1 0; do
    sysctl vfs.lookup_shared=$i
-   (cd /home/pho/stress2; ./run.sh disk.cfg) 
+   (cd ..; ./run.sh disk.cfg) 
 done
 
 sysctl vfs.lookup_shared=$saved 

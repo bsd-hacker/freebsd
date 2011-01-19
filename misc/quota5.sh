@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2008 Peter Holm <pho@FreeBSD.org>
+# Copyright (c) 2008-2011 Peter Holm <pho@FreeBSD.org>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -39,6 +39,6 @@ edquota -g -f /tmp -e /tmp:1500000:1400000:200000:180000 pho
 quotaon /tmp
 
 #su pho -c "export runRUNTIME=60m; cd /home/pho/stress2; ./run.sh disk.cfg"
-su pho -c "export runRUNTIME=60m; cd /home/pho/stress2/testcases/mkdir; ./mkdir -t 1h -i 200 -v -v"
+su pho -c "export runRUNTIME=60m; cd ..; ./mkdir -t 1h -i 200 -v -v"
 
 quotaoff /tmp

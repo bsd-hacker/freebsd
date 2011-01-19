@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2008 Peter Holm <pho@FreeBSD.org>
+# Copyright (c) 2008-2011 Peter Holm <pho@FreeBSD.org>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -46,7 +46,7 @@ mount /dev/md0c /mnt
 mount -t unionfs -o noatime /mnt /tmp
 export RUNDIR=/tmp/stressX
 export runRUNTIME=10m            # Run tests for 10 minutes
-(cd /home/pho/stress2; ./run.sh disk.cfg) 
+(cd ..; ./run.sh disk.cfg) 
 mount | grep "/mnt" | grep md0c > /dev/null && umount    /mnt
 mount | grep "/mnt" | grep md0c > /dev/null && umount -f /mnt
 mdconfig -d -u 0

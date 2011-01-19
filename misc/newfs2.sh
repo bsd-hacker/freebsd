@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2008 Peter Holm <pho@FreeBSD.org>
+# Copyright (c) 2008-2011 Peter Holm <pho@FreeBSD.org>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -49,7 +49,7 @@ while [ $size -le $((900 * 1024 * 1024)) ]; do
 	df -i $mntpoint
 	export RUNDIR=$mntpoint/stressX
 	export runRUNTIME=10m            # Run tests for 10 minutes
-	(cd /home/pho/stress2; ./run.sh disk.cfg) 
+	(cd ..; ./run.sh disk.cfg) 
 	while mount | grep "$mntpoint" | grep -q md${mdstart}${part}; do
 		umount $mntpoint > /dev/null 2>&1
 	done
