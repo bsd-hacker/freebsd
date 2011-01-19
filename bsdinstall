@@ -1,11 +1,11 @@
 #!/bin/sh
 
-DISTRIBUTIONS="kernel.tgz world.tgz distribution.tgz"; export DISTRIBUTIONS
-BSDINSTALL_LOG="/tmp/bsdinstall_log"; export BSDINSTALL_LOG
-BSDINSTALL_TMPETC="/tmp/bsdinstall_etc"; export BSDINSTALL_TMPETC
-PATH_FSTAB="$BSDINSTALL_TMPETC/fstab"; export PATH_FSTAB
-BSDINSTALL_DISTDIR="/usr/bsdinstall-dist"; export BSDINSTALL_DISTDIR
-BSDINSTALL_CHROOT="/mnt"; export BSDINSTALL_CHROOT
+[ -z "$DISTRIBUTIONS" ] && export DISTRIBUTIONS="kernel.tgz world.tgz distribution.tgz"
+[ -z "$BSDINSTALL_LOG" ] && export BSDINSTALL_LOG="/tmp/bsdinstall_log"
+[ -z "$BSDINSTALL_TMPETC" ] && export BSDINSTALL_TMPETC="/tmp/bsdinstall_etc"
+[ -z "$PATH_FSTAB" ] && export PATH_FSTAB="$BSDINSTALL_TMPETC/fstab"
+[ -z "$BSDINSTALL_DISTDIR" ] && export BSDINSTALL_DISTDIR="/usr/bsdinstall-dist"
+[ -z "$BSDINSTALL_CHROOT" ] && export BSDINSTALL_CHROOT="/mnt"
 
 VERB=$1; shift
 
