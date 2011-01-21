@@ -3,7 +3,7 @@
 bin_PROGRAMS = svnsup-apply
 
 svnsup_apply_SOURCES = \
-	main.c
+	apply.c
 
 svnsup_apply_CPPFLAGS = \
 	-I$(top_srcdir)/include

@@ -27,8 +27,49 @@
  * $Id$
  */
 
-int
-main(void)
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+#include "apply.h"
+
+int debug;			/* print debugging information */
+int verbose;			/* show meta-information from delta */
+
+static void
+usage(void)
 {
+
+	fprintf(stderr, "usage: svnsup-apply [-dv]\n");
+	exit(1);
+}
+
+int
+main(int argc, char *argv[])
+{
+	int opt;
+
+	while ((opt = getopt(argc, argv, "dv")) != -1)
+		switch (opt) {
+		case 'd':
+			++debug;
+			break;
+		case 'v':
+			++verbose;
+			break;
+		default:
+			usage();
+		}
+
+	argc -= optind;
+	argv += optind;
+
+	if (argc != 0)
+		usage();
+
 	return (0);
 }
