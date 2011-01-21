@@ -163,13 +163,16 @@ svnsup_delta_meta(svnsup_delta_t sd, const char *key, const char *fmt, ...)
 {
 	va_list ap;
 	char *value;
+	int ret;
 
 	assert(sd != NULL);
 	assert(key != NULL);
 	assert(fmt != NULL);
 	va_start(ap, fmt);
-	vasprintf(&value, fmt, ap);
+	ret = vasprintf(&value, fmt, ap);
 	va_end(ap);
+	if (ret == -1)
+		return (SVNSUP_ERR_MEMORY);
 	fprintf(sd->f, "@meta ");
 	svnsup_string_fencode(sd->f, key);
 	fprintf(sd->f, " ");
