@@ -40,40 +40,24 @@ log_entry_receiver(void *baton,
     svn_log_entry_t *log_entry,
     apr_pool_t *pool)
 {
-#if 0
-	apr_hash_index_t *hash_index;
-	const void *key;
-	void *value;
-	apr_ssize_t keylen;
-#else
+	static const char *revprops[] = { "svn:author", "svn:date", "svn:log", NULL };
+	svnsup_delta_t sd = (svnsup_delta_t)baton;
 	svn_string_t *value;
-#endif
+	const char **p;
+	int ret;
 
 	(void)pool;
-	(void)baton;
 	SVNSUP_DEBUG("%s(r%lu)\n", __func__, (long)log_entry->revision);
 
-	if (!debug)
+	if (!extended)
 		return (SVN_NO_ERROR);
 
-	fprintf(stderr, "revision properties:\n");
-#if 0
-	for (hash_index = apr_hash_first(pool, log_entry->revprops);
-	     hash_index != NULL; hash_index = apr_hash_next(hash_index)) {
-		apr_hash_this(hash_index, &key, &keylen, &value);
-		fprintf(stderr, "  %s: %s\n", (const char *)key,
-		    ((svn_string_t *)value)->data);
-	}
-#else
-	do {
-		const char *props[] = { "svn:author", "svn:date", NULL };
-		const char **p;
-		for (p = props; *p != NULL; ++p) {
-			value = apr_hash_get(log_entry->revprops, *p, APR_HASH_KEY_STRING);
-			SVNSUP_ASSERT(value != NULL, "revision has no %s property", *p);
-			fprintf(stderr, "  %s: %s\n", *p, value->data);
+	for (p = revprops; *p != NULL; ++p) {
+		value = apr_hash_get(log_entry->revprops, *p, APR_HASH_KEY_STRING);
+		if (value != NULL) {
+			ret = svnsup_delta_meta(sd, *p, "%s", value->data);
+			SVNSUP_SVNSUP_ERROR(ret, "svnsup_delta_meta()");
 		}
-	} while (0);
-#endif
+	}
 	return (SVN_NO_ERROR);
 }

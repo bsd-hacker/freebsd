@@ -46,6 +46,7 @@
 #include "svnsup/svnsup.h"
 
 extern int debug;
+extern int extended;
 extern int verbose;
 
 typedef struct svnsup_where {

@@ -38,8 +38,9 @@
 
 #include "distill.h"
 
-int debug;
-int verbose;
+int debug;			/* print debugging information */
+int extended;			/* generated extended delta */
+int verbose;			/* show messages from libsvn */
 
 static int
 distill(const char *url, unsigned long revision)
@@ -104,7 +105,7 @@ distill(const char *url, unsigned long revision)
 
 	/* get revision metadata */
 	error = svn_ra_get_log2(ra_session, NULL, revision, revision, 0,
-	    TRUE, TRUE, FALSE, NULL, log_entry_receiver, NULL, pool);
+	    TRUE, TRUE, FALSE, NULL, log_entry_receiver, sd, pool);
 	SVNSUP_SVN_ERROR(error, "svn_ra_get_log()");
 
 	/* replay the requested revision */
@@ -125,7 +126,7 @@ static void
 usage(void)
 {
 
-	fprintf(stderr, "usage: svnsup-distill [-v] url rev\n");
+	fprintf(stderr, "usage: svnsup-distill [-dev] url rev\n");
 	exit(1);
 }
 
@@ -138,10 +139,13 @@ main(int argc, char *argv[])
 	unsigned long rev;
 	int opt, ret;
 
-	while ((opt = getopt(argc, argv, "dv")) != -1)
+	while ((opt = getopt(argc, argv, "dev")) != -1)
 		switch (opt) {
 		case 'd':
 			++debug;
+			break;
+		case 'e':
+			++extended;
 			break;
 		case 'v':
 			++verbose;
