@@ -5,7 +5,7 @@ echo "Begun Installation at $(date)" > $BSDINSTALL_LOG
 error() {
 	dialog --backtitle "FreeBSD Installer" --title "Abort" \
 	    --no-label "Exit" --yes-label "Restart" --yesno \
-	    "You have canceled an installation step. Would you like to restart the installation or exit the installer?" 0 0
+	    "An installation step has been aborted. Would you like to restart the installation or exit the installer?" 0 0
 	if [ $? -ne 0 ]; then
 		exit
 	else
@@ -31,7 +31,7 @@ for dist in $DISTRIBUTIONS; do
 	fi
 done
 
-if [ ! -z "$FETCH_DISTRIBUTIONS" ]; then
+if [ ! -z "$FETCH_DISTRIBUTIONS" -a ! -z $BSDINSTALL_CONFIGCURRENT ]; then
 	dialog --backtitle "FreeBSD Installer" --title "Network Installation" --msgbox "No installation files were found on the boot volume. The next few screens will allow you to configure networking so that they can be downloaded from the Internet." 0 0
 	bsdinstall netconfig || error
 	NETCONFIG_DONE=yes
@@ -63,11 +63,25 @@ case $? in
 	;;
 esac
 
-if [ ! -z $FETCH_DISTRIBUTIONS ]; then
-	ALL_DISTRIBUTIONS=$DISTRIBUTIONS
-	DISTRIBUTIONS=$FETCH_DISTRIBUTIONS
+if [ ! -z "$FETCH_DISTRIBUTIONS" ]; then
+	ALL_DISTRIBUTIONS="$DISTRIBUTIONS"
+
+	# Download to a directory in the new system as scratch space
+	BSDINSTALL_FETCHDEST="$BSDINSTALL_CHROOT/usr/bsdinstall-dist"
+	mkdir -p "$BSDINSTALL_FETCHDEST" || error
+
+	export DISTRIBUTIONS="$FETCH_DISTRIBUTIONS"
+	# Try to use any existing distfiles
+	[ -d $BSDINSTALL_DISTDIR -a "$FETCH_DISTRIBUTIONS" != "$ALL_DISTRIBUTIONS" ] && mount_unionfs "$BSDINSTALL_FETCHDEST" "$BSDINSTALL_DISTDIR"
+
+	# Otherwise, fetch everything
+	if [ $? -ne 0 ]; then
+		export DISTRIBUTIONS="$ALL_DISTRIBUTIONS"
+		export BSDINSTALL_DISTDIR="$BSDINSTALL_FETCHDEST"
+	fi
+		
 	bsdinstall distfetch || error
-	DISTRIBUTIONS=$ALL_DISTRIBUTIONS
+	export DISTRIBUTIONS="$ALL_DISTRIBUTIONS"
 fi
 
 bsdinstall distextract || error
@@ -83,6 +97,12 @@ bsdinstall adduser
 
 trap error SIGINT	# SIGINT is bad again
 bsdinstall config  || error
+
+if [ ! -z "$BSDINSTALL_FETCHDEST" ]; then
+	[ "$BSDINSTALL_FETCHDEST" != "$BSDINSTALL_DISTDIR" ] && \
+	    umount "$BSDINSTALL_DISTDIR"
+	rm -rf "$BSDINSTALL_FETCHDEST"
+fi
 
 echo "Installation Completed at $(date)" >> $BSDINSTALL_LOG
 
