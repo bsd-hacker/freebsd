@@ -41,11 +41,11 @@ fetch_files(int nfiles, char **urls)
 	const char **items;
 	FILE *fetch_out, *file_out;
 	struct url_stat ustat;
-	off_t total_bytes, current_bytes;
+	off_t total_bytes, current_bytes, fsize;
 	char status[8];
 	char errormsg[512];
 	uint8_t block[4096];
-	size_t chunk, fsize;
+	size_t chunk;
 	int i, progress, last_progress;
 	int nsuccess = 0; /* Number of files successfully downloaded */
 
