@@ -1,6 +1,6 @@
 #!/bin/sh
 
-[ -z "$DISTRIBUTIONS" ] && export DISTRIBUTIONS="kernel.tgz world.tgz distribution.tgz"
+[ -z "$DISTRIBUTIONS" ] && export DISTRIBUTIONS="kernel.tgz world.tgz"
 [ -z "$BSDINSTALL_LOG" ] && export BSDINSTALL_LOG="/tmp/bsdinstall_log"
 [ -z "$BSDINSTALL_TMPETC" ] && export BSDINSTALL_TMPETC="/tmp/bsdinstall_etc"
 [ -z "$PATH_FSTAB" ] && export PATH_FSTAB="$BSDINSTALL_TMPETC/fstab"
