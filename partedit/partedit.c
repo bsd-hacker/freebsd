@@ -294,7 +294,7 @@ read_geom_mesh(struct gmesh *mesh, int *nitems) {
 	items = NULL;
 
 	/*
-	 * Built the device table. First add all disks (and CDs).
+	 * Build the device table. First add all disks (and CDs).
 	 */
 	
 	LIST_FOREACH(classp, &mesh->lg_class, lg_class) {
@@ -346,6 +346,12 @@ add_geom_children(struct ggeom *gp, int recurse, struct partedit_item **items,
 			if (strcmp(gc->lg_name, "type") == 0)
 				(*items)[*nitems].type = gc->lg_val;
 		}
+
+		/* Skip swap-backed MD devices */
+		if (strcmp(gp->lg_class->lg_name, "MD") == 0 &&
+		    strcmp((*items)[*nitems].type, "swap") == 0)
+			continue;
+
 		(*nitems)++;
 
 		LIST_FOREACH(cp, &pp->lg_consumers, lg_consumers)

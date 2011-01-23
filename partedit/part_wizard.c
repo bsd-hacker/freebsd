@@ -57,9 +57,11 @@ static char *
 boot_disk(struct gmesh *mesh)
 {
 	struct gclass *classp;
+	struct gconfig *gc;
 	struct ggeom *gp;
 	struct gprovider *pp;
 	DIALOG_LISTITEM *disks = NULL;
+	const char *type;
 	char diskdesc[512];
 	char *chosen;
 	int i, err, selected, n = 0;
@@ -74,6 +76,16 @@ boot_disk(struct gmesh *mesh)
 				continue;
 
 			LIST_FOREACH(pp, &gp->lg_provider, lg_provider) {
+				type = NULL;
+				LIST_FOREACH(gc, &pp->lg_config, lg_config) 
+					if (strcmp(gc->lg_name, "type") == 0) 
+						type = gc->lg_val;
+
+				/* Skip swap-backed md devices */
+				if (strcmp(classp->lg_name, "MD") == 0 &&
+				    type != NULL && strcmp(type, "swap") == 0)
+					continue;
+
 				disks = realloc(disks, (++n)*sizeof(disks[0]));
 				disks[n-1].name = pp->lg_name;
 				humanize_number(diskdesc, 7, pp->lg_mediasize,
