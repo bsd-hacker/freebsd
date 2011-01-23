@@ -37,13 +37,10 @@ extract_files(int nfiles, const char **files)
 	char path[PATH_MAX];
 	int archive_files[nfiles];
 	int total_files, current_files, archive_file;
-	struct archive *archive, *disk;
+	struct archive *archive;
 	struct archive_entry *entry;
 	char errormsg[512];
 	char status[8];
-	const void *block;
-	size_t bsize;
-	off_t offset;
 	int i, err, progress, last_progress;
 
 	err = 0;
@@ -90,12 +87,6 @@ extract_files(int nfiles, const char **files)
 	}
 
 	current_files = 0;
-	disk = archive_write_disk_new();
-	archive_write_disk_set_options(disk, ARCHIVE_EXTRACT_TIME |
-	    ARCHIVE_EXTRACT_PERM | ARCHIVE_EXTRACT_ACL |
-	    ARCHIVE_EXTRACT_FFLAGS | ARCHIVE_EXTRACT_OWNER |
-	    ARCHIVE_EXTRACT_XATTR);
-	archive_write_disk_set_standard_lookup(disk);
 
 	for (i = 0; i < nfiles; i++) {
 		archive = archive_read_new();
@@ -122,24 +113,13 @@ extract_files(int nfiles, const char **files)
 				    progress, nfiles,
 				    __DECONST(char **, items));
 
-			err = archive_write_header(disk, entry);
+			err = archive_read_extract(archive, entry,
+			    ARCHIVE_EXTRACT_TIME | ARCHIVE_EXTRACT_OWNER |
+			    ARCHIVE_EXTRACT_PERM | ARCHIVE_EXTRACT_ACL |
+			    ARCHIVE_EXTRACT_XATTR | ARCHIVE_EXTRACT_FFLAGS);
+
 			if (err != ARCHIVE_OK)
 				break;
-
-			while (1) {
-				err = archive_read_data_block(archive,
-				    &block, &bsize, &offset);
-				if (err != ARCHIVE_OK)
-					break;
-				err = archive_write_data_block(disk,
-				    block, bsize, offset);
-				if (err != ARCHIVE_OK)
-					break;
-			}
-
-			if (err != ARCHIVE_EOF)
-				break;
-			archive_write_finish_entry(disk);
 
 			archive_file++;
 			current_files++;
@@ -148,15 +128,9 @@ extract_files(int nfiles, const char **files)
 		items[i*2 + 1] = "Done";
 
 		if (err != ARCHIVE_EOF) {
-			const char *errstring;
-			if (archive_errno(archive) != 0)
-				errstring = archive_error_string(archive);
-			else
-				errstring = archive_error_string(disk);
-
 			snprintf(errormsg, sizeof(errormsg),
 			    "Error while extracting %s: %s\n", items[i*2],
-			    errstring);
+			    archive_error_string(archive));
 			items[i*2 + 1] = "Failed";
 			dialog_msgbox("Extract Error", errormsg, 0, 0,
 			    TRUE);
