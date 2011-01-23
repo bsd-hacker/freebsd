@@ -61,9 +61,11 @@ gpart_partition(const char *lg_name, const char *scheme)
 
 schememenu:
 	if (scheme == NULL) {
+		dialog_vars.default_item = __DECONST(char *, default_scheme());
 		cancel = dlg_menu("Partition Scheme",
 		    "Select a partition scheme for this volume:", 0, 0, 0,
 		    sizeof(items) / sizeof(items[0]), items, &choice, NULL);
+		dialog_vars.default_item = NULL;
 
 		if (cancel)
 			return (-1);
