@@ -132,7 +132,7 @@ fetch_files(int nfiles, char **urls)
 				    __DECONST(char **, items));
 		}
 
-		if (ustat.size > 0 && fsize < (size_t)ustat.size) {
+		if (ustat.size > 0 && fsize < ustat.size) {
 			if (fetchLastErrCode == 0) 
 				snprintf(errormsg, sizeof(errormsg),
 				    "Error while fetching %s: %s\n",
