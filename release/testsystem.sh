@@ -19,6 +19,12 @@ rm -rf $1
 cd /usr/src
 mkdir $1
 make installworld distribution DESTDIR=$1
+
+# Install BSDinstall as though it were part of world
+mkdir $1/usr/libexec/bsdinstall
+cd $BSDINSTALL
+make install DESTDIR=$1
+
 cd $1
 tar cvzf $2/world.tgz .
 # Keep world around
@@ -35,10 +41,7 @@ echo kernel_options=\"-C\" > $1/boot/loader.conf
 echo sendmail_enable=\"NONE\" > $1/etc/rc.conf
 echo hostid_enable=\"NO\" >> $1/etc/rc.conf
 touch $1/etc/fstab
-
 cd $BSDINSTALL
 cp release/rc.local $1/etc
-mkdir $1/usr/libexec/bsdinstall
-make install DESTDIR=$1
 
 sh /usr/src/release/i386/mkisoimages.sh -b FreeBSD_Install $3 $1
