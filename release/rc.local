@@ -23,6 +23,8 @@ $DIALOG_CANCEL)	# Live CD
 	exit 0
 	;;
 $DIALOG_EXTRA)	# Shell
+	clear
+	echo "When fixed, type 'exit' to return to the installer."
 	/bin/sh
 	. /etc/rc.local
 	;;
