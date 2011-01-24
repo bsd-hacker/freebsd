@@ -201,6 +201,24 @@ query:
 	dialog_vars.no_label = NULL;
 	dialog_vars.defaultno = FALSE;
 
+	if (choice == 1 && scheme != NULL && !is_scheme_bootable(scheme)) {
+		char warning[512];
+		int subchoice;
+
+		sprintf(warning, "The existing partition scheme on this "
+		    "disk (%s) is not bootable on this platform. To install "
+		    "FreeBSD, it must be repartitioned. This will destroy all "
+		    "data on the disk. Are you sure you want to proceed?",
+		    scheme);
+		subchoice = dialog_yesno("Non-bootable Disk", warning, 0, 0);
+		if (subchoice != 0)
+			goto query;
+
+		gpart_destroy(gpart, 1);
+		gpart_partition(disk, default_scheme());
+		scheme = default_scheme();
+	}
+
 	if (scheme == NULL || strcmp(scheme, "(none)") == 0 || choice == 0) {
 		if (gpart != NULL) { /* Erase partitioned disk */
 			choice = dialog_yesno("Confirmation", "This will erase "
