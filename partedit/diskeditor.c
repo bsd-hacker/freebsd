@@ -37,7 +37,7 @@ diskeditor_show(const char *title, const char *cprompt,
 	WINDOW *dialog, *partitions;
 	char *prompt;
 	const char *buttons[] =
-	    { "Create", "Delete", "Edit", "Revert", "Finished", NULL };
+	    { "Create", "Delete", "Modify", "Revert", "Auto", "Exit", NULL };
 	int x, y;
 	int i;
 	int height, width, min_width;

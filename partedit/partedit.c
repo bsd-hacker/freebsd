@@ -43,11 +43,11 @@ main(int argc, const char **argv) {
 
 	if (strcmp(basename(argv[0]), "autopart") == 0) { /* Guided */
 		prompt = "Please review the disk setup. When complete, press "
-		    "the Finished button.";
+		    "the Exit button.";
 		part_wizard();
 	} else {
 		prompt = "Create partitions for FreeBSD. No changes will be "
-		    "made until you select Finished.";
+		    "made until you select Exit.";
 	}
 
 	/* Show the part editor either immediately, or to confirm wizard */
@@ -71,7 +71,7 @@ main(int argc, const char **argv) {
 		case 1: /* Delete */
 			gpart_delete((struct gprovider *)(items[i].cookie));
 			break;
-		case 2: /* Edit */
+		case 2: /* Modify */
 			gpart_edit((struct gprovider *)(items[i].cookie));
 			break;
 		case 3: /* Revert */
@@ -94,10 +94,13 @@ main(int argc, const char **argv) {
 			}
 			init_fstab_metadata();
 			break;
+		case 4: /* Auto */
+			part_wizard();
+			break;
 		}
 
 		error = 0;
-		if (op == 4 && validate_setup()) { /* Finished */
+		if (op == 5 && validate_setup()) { /* Finished */
 			dialog_vars.extra_button = TRUE;
 			dialog_vars.extra_label =
 			    __DECONST(char *, "Abort");
