@@ -299,7 +299,6 @@ read_geom_mesh(struct gmesh *mesh, int *nitems) {
 	
 	LIST_FOREACH(classp, &mesh->lg_class, lg_class) {
 		if (strcmp(classp->lg_name, "DISK") != 0 &&
-		     strcmp(classp->lg_name, "ACD") != 0 &&
 		     strcmp(classp->lg_name, "MD") != 0)
 			continue;
 
@@ -331,6 +330,10 @@ add_geom_children(struct ggeom *gp, int recurse, struct partedit_item **items,
 
 	LIST_FOREACH(pp, &gp->lg_provider, lg_provider) {
 		if (strcmp(gp->lg_class->lg_name, "LABEL") == 0)
+			continue;
+
+		/* Skip WORM media */
+		if (strncmp(pp->lg_name, "cd", 2) == 0)
 			continue;
 
 		*items = realloc(*items,
