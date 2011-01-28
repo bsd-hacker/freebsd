@@ -1,3 +1,6 @@
 #!/bin/sh
 
+cat $BSDINSTALL_TMPETC/rc.conf.* >> $BSDINSTALL_TMPETC/rc.conf
+rm $BSDINSTALL_TMPETC/rc.conf.*
+
 cp $BSDINSTALL_TMPETC/* $BSDINSTALL_CHROOT/etc

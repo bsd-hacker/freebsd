@@ -2,5 +2,5 @@
 
 kbdcontrol -d >/dev/null 2>&1
 if [ $? -eq 0 ]; then
-	kbdmap 3>&2 2>&1 1>&3 | grep 'keymap=' >> $BSDINSTALL_TMPETC/rc.conf
+	kbdmap 3>&2 2>&1 1>&3 | grep 'keymap=' > $BSDINSTALL_TMPETC/rc.conf.keymap
 fi
