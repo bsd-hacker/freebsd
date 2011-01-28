@@ -43,7 +43,10 @@ bsdinstall rootpass || error
 trap true SIGINT	# This section is optional
 bsdinstall time
 bsdinstall services
-bsdinstall adduser
+
+dialog --backtitle "FreeBSD Installer" --title "Add User Accounts" --yesno \
+    "Would you like to add users to the installed system now?" 0 0 && \
+    bsdinstall adduser
 
 trap error SIGINT	# SIGINT is bad again
 bsdinstall config  || error
