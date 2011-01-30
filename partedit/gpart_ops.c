@@ -695,17 +695,12 @@ gpart_create(struct gprovider *pp, char *default_type, char *default_size,
 	if (geom == NULL)
 		return;
 
-	size = gpart_max_free(geom, &firstfree);
+	maxsize = size = gpart_max_free(geom, &firstfree);
 	if (size <= 0) {
 		dialog_msgbox("Error", "No free space left on device.", 0, 0,
 		    TRUE);
 		return;
 	}
-
-	/* Leave a free megabyte in case we need to write a boot partition */
-	if (size*sector >= (intmax_t)bootpart_size(scheme))
-		size -= bootpart_size(scheme)/sector;
-	maxsize = size;
 
 	humanize_number(sizestr, 7, size*sector, "B", HN_AUTOSCALE,
 	    HN_NOSPACE | HN_DECIMAL);
@@ -818,6 +813,7 @@ addpartform:
 
 			/* Now adjust the part we are really adding forward */
 			firstfree += bootpart_size(scheme) / sector;
+			size -= (bootpart_size(scheme) + stripe)/sector;
 			if (stripe > 0 && (firstfree*sector % stripe) != 0) 
 				firstfree += (stripe - ((firstfree*sector) %
 				    stripe)) / sector;
