@@ -374,7 +374,7 @@ gpart_edit(struct gprovider *pp)
 			oldtype = gc->lg_val;
 			items[0].text = gc->lg_val;
 		}
-		if (strcmp(gc->lg_name, "label") == 0) {
+		if (strcmp(gc->lg_name, "label") == 0 && gc->lg_val != NULL) {
 			hadlabel = 1;
 			items[3].text = gc->lg_val;
 		}
