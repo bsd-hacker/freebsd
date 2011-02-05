@@ -13,11 +13,11 @@ DIALOG_TAGS=""
 echo -n > $BSDINSTALL_TMPETC/rc.conf.net
 
 for IF in `ifconfig -l`; do
-	if [ $IF != "lo0" ]; then
-		INTERFACES="$INTERFACES $IF"
-		DESC=`sysctl -n dev.$(echo $IF | sed -E 's/([[:alpha:]]*)([[:digit:]]*)/\1.\2/g').%desc`
-		DIALOG_TAGS="$DIALOG_TAGS $IF \"$DESC\""
-	fi
+	test "$IF" = "lo0" && continue
+	(ifconfig -g wlan | egrep -wq $IF) && continue
+	INTERFACES="$INTERFACES $IF"
+	DESC=`sysctl -n dev.$(echo $IF | sed -E 's/([[:alpha:]]*)([[:digit:]]*)/\1.\2/g').%desc`
+	DIALOG_TAGS="$DIALOG_TAGS $IF \"$DESC\""
 done
 
 exec 3>&1
