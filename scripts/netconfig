@@ -25,9 +25,24 @@ INTERFACE=`echo $DIALOG_TAGS | xargs dialog --backtitle 'FreeBSD Installer' --ti
 if [ $? -eq $DIALOG_CANCEL ]; then exit 1; fi
 exec 3>&-
 
+# Do a dirty check to see if this a wireless interface -- there should be a
+# better way
+IFCONFIG_PREFIX=""
+if ifconfig $INTERFACE | grep -q 'media: IEEE 802.11 Wireless'; then
+	NEXT_WLAN_IFACE=wlan0	# XXX
+	echo wlans_$INTERFACE=\"$NEXT_WLAN_IFACE\" >> $BSDINSTALL_TMPETC/rc.conf.net
+	IFCONFIG_PREFIX="WPA "
+	if [ ! -z $BSDINSTALL_CONFIGCURRENT ]; then
+		ifconfig $NEXT_WLAN_IFACE create wlandev $INTERFACE
+		ifconfig $NEXT_WLAN_IFACE up
+	fi
+	bsdinstall wlanconfig $NEXT_WLAN_IFACE || exec $0
+	INTERFACE="$NEXT_WLAN_IFACE"
+fi
+
 dialog --backtitle 'FreeBSD Installer' --title 'Network Configuration' --yesno 'Would you like to use DHCP to configure this interface?' 0 0
 if [ $? -eq $DIALOG_OK ]; then
-	echo ifconfig_$INTERFACE=\"DHCP\" >> $BSDINSTALL_TMPETC/rc.conf.net
+	echo ifconfig_$INTERFACE=\"${IFCONFIG_PREFIX}DHCP\" >> $BSDINSTALL_TMPETC/rc.conf.net
 
 	if [ ! -z $BSDINSTALL_CONFIGCURRENT ]; then
 		dialog --backtitle 'FreeBSD Installer' --infobox "Acquiring DHCP lease..." 0 0
@@ -57,8 +72,8 @@ if [ $? -eq $DIALOG_CANCEL ]; then exec $0; fi
 exec 3>&-
 
 echo $INTERFACE $IF_CONFIG | 
-    awk '{
-	printf("ifconfig_%s=\"%s netmask %s\"\n", $1, $2, $3);
+    awk -v prefix="$IFCONFIG_PREFIX" '{
+	printf("ifconfig_%s=\"%s%s netmask %s\"\n", $1, prefix, $2, $3);
 	printf("defaultrouter=\"%s\"\n", $4);
     }' >> $BSDINSTALL_TMPETC/rc.conf.net
 
