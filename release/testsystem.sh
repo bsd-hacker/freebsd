@@ -33,8 +33,8 @@ tar cvzf $2/world.tgz .
 cd /usr/src
 make installkernel DESTDIR=$1
 rm $1/boot/kernel/*.symbols # Kernel symbols bloat the live CD
-mkdir $1/usr/bsdinstall-dist
-cp $2/kernel.tgz $2/world.tgz $1/usr/bsdinstall-dist
+mkdir $1/usr/freebsd-dist
+cp $2/kernel.tgz $2/world.tgz $1/usr/freebsd-dist
 
 # Things for the CD environment
 ln -s /tmp/bsdinstall_etc/resolv.conf $1/etc/resolv.conf
