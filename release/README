@@ -1,0 +1,16 @@
+This files should be copied to /usr/src/release.
+
+Options
+- NOPORTS: Does not include a ports tree on the install media
+- NOSRC: Does not include documentation
+
+Targets:
+- release: Sets up installation media for a prebuilt world and kernel
+- packagesystem: Builds distributions and tars them
+- system: Sets up a bootable system that runs the installer at boot
+- cdrom: Makes an ISO image from the output of system
+
+Missing features:
+- Release documentation build
+- Memstick images
+- FTP area prep
