@@ -42,7 +42,7 @@ system:
 
 cdrom:
 	echo kernel_options=\"-C\" > ${DISTDIR}/release/boot/loader.conf
-	sh /usr/src/release/${TARGET}/mkisoimages.sh -b FreeBSD_Install ${DISTDIR}/release.iso ${DISTDIR}/release
+	sh ${WORLDDIR}/release/${TARGET}/mkisoimages.sh -b FreeBSD_Install ${DISTDIR}/release.iso ${DISTDIR}/release
 	rm ${DISTDIR}/release/boot/loader.conf
 
 release: packagesystem system cdrom
