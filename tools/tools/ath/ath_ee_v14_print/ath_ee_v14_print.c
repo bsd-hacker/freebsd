@@ -87,10 +87,11 @@ eeprom_v14_base_print(uint16_t *buf)
 {
 	HAL_EEPROM_v14 *eep = (HAL_EEPROM_v14 *) buf;
 	BASE_EEP_HEADER *eh = &eep->ee_base.baseEepHeader;
+	int i;
 
 	printf("| Version: 0x%.4x   | Length: 0x%.4x | Checksum: 0x%.4x ",
 	    eh->version, eh->length, eh->checksum);
-	printf("| CapFlags: 0x%.2x  | eepMisc: 0x%.2x | RegDomain: 0x%.2x 0x%.2x | \n",
+	printf("| CapFlags: 0x%.2x  | eepMisc: 0x%.2x | RegDomain: 0x%.4x 0x%.4x | \n",
 	    eh->opCapFlags, eh->eepMisc, eh->regDmn[0], eh->regDmn[1]);
 	printf("| MAC: %.2x:%.2x:%.2x:%.2x:%.2x:%.2x ",
 	    eh->macAddr[0], eh->macAddr[1], eh->macAddr[2],
@@ -104,14 +105,22 @@ eeprom_v14_base_print(uint16_t *buf)
 	    (int) eh->pwdclkind, (int) eh->fastClk5g, (int) eh->divChain,
 	    (int) eh->rxGainType);
 
-	printf("| dacHiPwrMode: 0x%.2x | openLoopPwrCntl: 0x%.2x | dacLpMode: 0x%.2x ",
-	    (int) eh->dacHiPwrMode, (int) eh->openLoopPwrCntl, (int) eh->dacLpMode);
+	printf("| dacHiPwrMode_5G: 0x%.2x | openLoopPwrCntl: 0x%.2x | dacLpMode: 0x%.2x ",
+	    (int) eh->dacHiPwrMode_5G, (int) eh->openLoopPwrCntl, (int) eh->dacLpMode);
 	printf("| txGainType: 0x%.2x | rcChainMask: 0x%.2x |\n",
 	    (int) eh->txGainType, (int) eh->rcChainMask);
+
+	printf("| desiredScaleCCK: 0x%.2x | pwr_table_offset: 0x%.2x | frac_n_5g: %.2x\n",
+	    (int) eh->desiredScaleCCK, (int) eh->pwr_table_offset, (int) eh->frac_n_5g);
 
 	/* because it's convienent */
 	printf("| antennaGainMax[0]: 0x%.2x antennaGainMax[1]: 0x%.2x |\n",
 	    eep->ee_antennaGainMax[0], eep->ee_antennaGainMax[1]);
+
+	printf(" | futureBase:");
+	for (i = 0; i < sizeof(eh->futureBase) / sizeof(uint8_t); i++) 
+		printf(" %.2x", (int) eh->futureBase[i]);
+	printf("\n");
 }
 
 static void
@@ -209,6 +218,20 @@ eeprom_v14_modal_print(uint16_t *buf, int m)
 }
 
 static void
+eeprom_v14_print_caldata_perfreq_op_loop(CAL_DATA_PER_FREQ_OP_LOOP *f)
+{
+	int i, j;
+	for (i = 0; i < 2; i++) {
+		printf("    Gain: %d:\n", i);
+		for (j = 0; j < 5; j++) {
+			printf("      %d: pwrPdg: %d, vpdPdg: %d, pcdac: %d, empty: %d\n",
+			    j, f->pwrPdg[i][j], f->vpdPdg[i][j], f->pcdac[i][j], f->empty[i][j]);
+		}
+		printf("\n");
+	}
+}
+
+static void
 eeprom_v14_print_caldata_perfreq(CAL_DATA_PER_FREQ *f)
 {
 	int i, j;
@@ -243,7 +266,10 @@ eeprom_v14_calfreqpiers_print(uint16_t *buf)
 		printf("2Ghz Cal Pier %d\n", i);
 		for (n = 0; n < AR5416_MAX_CHAINS; n++) {
 			printf("  Chain %d:\n", n);
-			eeprom_v14_print_caldata_perfreq(&eep->ee_base.calPierData2G[n][i]);
+			if (eep->ee_base.baseEepHeader.openLoopPwrCntl)
+				eeprom_v14_print_caldata_perfreq_op_loop((void *) (&eep->ee_base.calPierData2G[n][i]));
+			else
+				eeprom_v14_print_caldata_perfreq(&eep->ee_base.calPierData2G[n][i]);
 		}
 	}
 
@@ -261,7 +287,10 @@ eeprom_v14_calfreqpiers_print(uint16_t *buf)
 		printf("5Ghz Cal Pier %d\n", i);
 		for (n = 0; n < AR5416_MAX_CHAINS; n++) {
 			printf("  Chain %d:\n", n);
-			eeprom_v14_print_caldata_perfreq(&eep->ee_base.calPierData5G[n][i]);
+			if (eep->ee_base.baseEepHeader.openLoopPwrCntl)
+				eeprom_v14_print_caldata_perfreq_op_loop((void *) (&eep->ee_base.calPierData2G[n][i]));
+			else
+				eeprom_v14_print_caldata_perfreq(&eep->ee_base.calPierData2G[n][i]);
 		}
 	}
 }

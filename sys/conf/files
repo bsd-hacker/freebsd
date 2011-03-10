@@ -161,6 +161,8 @@ contrib/dev/acpica/debugger/dbexec.c	optional acpi acpi_debug
 contrib/dev/acpica/debugger/dbfileio.c	optional acpi acpi_debug
 contrib/dev/acpica/debugger/dbhistry.c	optional acpi acpi_debug
 contrib/dev/acpica/debugger/dbinput.c	optional acpi acpi_debug
+contrib/dev/acpica/debugger/dbmethod.c	optional acpi acpi_debug
+contrib/dev/acpica/debugger/dbnames.c	optional acpi acpi_debug
 contrib/dev/acpica/debugger/dbstats.c	optional acpi acpi_debug
 contrib/dev/acpica/debugger/dbutils.c	optional acpi acpi_debug
 contrib/dev/acpica/debugger/dbxface.c	optional acpi acpi_debug
@@ -173,6 +175,8 @@ contrib/dev/acpica/disassembler/dmresrcl.c	optional acpi acpi_debug
 contrib/dev/acpica/disassembler/dmresrcs.c	optional acpi acpi_debug
 contrib/dev/acpica/disassembler/dmutils.c	optional acpi acpi_debug
 contrib/dev/acpica/disassembler/dmwalk.c	optional acpi acpi_debug
+contrib/dev/acpica/dispatcher/dsargs.c		optional acpi
+contrib/dev/acpica/dispatcher/dscontrol.c	optional acpi
 contrib/dev/acpica/dispatcher/dsfield.c		optional acpi
 contrib/dev/acpica/dispatcher/dsinit.c		optional acpi
 contrib/dev/acpica/dispatcher/dsmethod.c	optional acpi
@@ -182,6 +186,7 @@ contrib/dev/acpica/dispatcher/dsopcode.c	optional acpi
 contrib/dev/acpica/dispatcher/dsutils.c		optional acpi
 contrib/dev/acpica/dispatcher/dswexec.c		optional acpi
 contrib/dev/acpica/dispatcher/dswload.c		optional acpi
+contrib/dev/acpica/dispatcher/dswload2.c	optional acpi
 contrib/dev/acpica/dispatcher/dswscope.c	optional acpi
 contrib/dev/acpica/dispatcher/dswstate.c	optional acpi
 contrib/dev/acpica/events/evevent.c		optional acpi
@@ -278,6 +283,7 @@ contrib/dev/acpica/utilities/utalloc.c		optional acpi
 contrib/dev/acpica/utilities/utcache.c		optional acpi
 contrib/dev/acpica/utilities/utcopy.c		optional acpi
 contrib/dev/acpica/utilities/utdebug.c		optional acpi
+contrib/dev/acpica/utilities/utdecode.c		optional acpi
 contrib/dev/acpica/utilities/utdelete.c		optional acpi
 contrib/dev/acpica/utilities/uteval.c		optional acpi
 contrib/dev/acpica/utilities/utglobal.c		optional acpi
@@ -568,9 +574,13 @@ dev/ath/if_ath.c		optional ath \
 	compile-with "${NORMAL_C} -I$S/dev/ath"
 dev/ath/if_ath_debug.c		optional ath \
 	compile-with "${NORMAL_C} -I$S/dev/ath"
+dev/ath/if_ath_keycache.c	optional ath \
+	compile-with "${NORMAL_C} -I$S/dev/ath"
 dev/ath/if_ath_tx.c		optional ath \
 	compile-with "${NORMAL_C} -I$S/dev/ath"
 dev/ath/if_ath_tx_ht.c		optional ath \
+	compile-with "${NORMAL_C} -I$S/dev/ath"
+dev/ath/if_ath_sysctl.c		optional ath \
 	compile-with "${NORMAL_C} -I$S/dev/ath"
 dev/ath/if_ath_pci.c		optional ath pci \
 	compile-with "${NORMAL_C} -I$S/dev/ath"
@@ -749,6 +759,9 @@ dev/ath/ath_hal/ar9001/ar9160_attach.c optional ath_hal | ath_ar9160 \
 dev/ath/ath_hal/ar9002/ar9280_attach.c optional ath_hal | ath_ar9280 | \
 	ath_ar9285 \ 
 	compile-with "${NORMAL_C} -I$S/dev/ath -I$S/dev/ath/ath_hal"
+dev/ath/ath_hal/ar9002/ar9280_olc.c optional ath_hal | ath_ar9280 | \
+	ath_ar9285 \ 
+	compile-with "${NORMAL_C} -I$S/dev/ath -I$S/dev/ath/ath_hal"
 # ar9285 (depends on ar5416 and ar9280)
 dev/ath/ath_hal/ar9002/ar9285_attach.c optional ath_hal | ath_ar9285 \ 
 	compile-with "${NORMAL_C} -I$S/dev/ath -I$S/dev/ath/ath_hal"
@@ -847,6 +860,12 @@ dev/cxgb/sys/uipc_mvec.c	optional cxgb pci \
 	compile-with "${NORMAL_C} -I$S/dev/cxgb"
 dev/cxgb/cxgb_t3fw.c		optional cxgb cxgb_t3fw \
 	compile-with "${NORMAL_C} -I$S/dev/cxgb"
+dev/cxgbe/t4_main.c		optional cxgbe pci \
+	compile-with "${NORMAL_C} -I$S/dev/cxgbe"
+dev/cxgbe/t4_sge.c		optional cxgbe pci \
+	compile-with "${NORMAL_C} -I$S/dev/cxgbe"
+dev/cxgbe/common/t4_hw.c	optional cxgbe pci \
+	compile-with "${NORMAL_C} -I$S/dev/cxgbe"
 dev/cy/cy.c			optional cy
 dev/cy/cy_isa.c			optional cy isa
 dev/cy/cy_pci.c			optional cy pci
@@ -1809,10 +1828,11 @@ dev/usb/net/if_cdce.c		optional cdce
 dev/usb/net/if_cue.c		optional cue
 dev/usb/net/if_ipheth.c		optional ipheth
 dev/usb/net/if_kue.c		optional kue
+dev/usb/net/if_mos.c		optional mos
 dev/usb/net/if_rue.c		optional rue
 dev/usb/net/if_udav.c		optional udav
-dev/usb/net/usb_ethernet.c	optional aue | axe | cdce | cue | kue | rue | \
-					 udav
+dev/usb/net/usb_ethernet.c	optional aue | axe | cdce | cue | kue | mos | \
+					 rue | udav
 dev/usb/net/uhso.c		optional uhso
 #
 # USB WLAN drivers
@@ -1861,7 +1881,7 @@ dev/usb/serial/uvisor.c		optional uvisor
 dev/usb/serial/uvscom.c		optional uvscom
 dev/usb/serial/usb_serial.c 	optional ucom | u3g | uark | ubsa | ubser | \
 					 uchcom | ucycom | ufoma | uftdi | \
-					 ugensa | uipaq | ulpt | umct | \
+					 ugensa | uipaq | umct | \
 					 umodem | umoscom | uplcom | uslcom | \
 					 uvisor | uvscom
 #
@@ -2173,6 +2193,7 @@ kern/kern_linker.c		standard
 kern/kern_lock.c		standard
 kern/kern_lockf.c		standard
 kern/kern_lockstat.c		optional kdtrace_hooks
+kern/kern_loginclass.c		standard
 kern/kern_malloc.c		standard
 kern/kern_mbuf.c		standard
 kern/kern_mib.c			standard
@@ -2259,6 +2280,7 @@ kern/subr_turnstile.c		standard
 kern/subr_uio.c			standard
 kern/subr_unit.c		standard
 kern/subr_witness.c		optional witness
+kern/sys_capability.c		standard
 kern/sys_generic.c		standard
 kern/sys_pipe.c			standard
 kern/sys_process.c		standard
@@ -2540,6 +2562,7 @@ netgraph/bluetooth/socket/ng_btsocket_l2cap_raw.c optional netgraph_bluetooth_so
 netgraph/bluetooth/socket/ng_btsocket_rfcomm.c optional netgraph_bluetooth_socket
 netgraph/bluetooth/socket/ng_btsocket_sco.c optional netgraph_bluetooth_socket
 netgraph/netflow/netflow.c	optional netgraph_netflow
+netgraph/netflow/netflow_v9.c	optional netgraph_netflow
 netgraph/netflow/ng_netflow.c	optional netgraph_netflow
 netgraph/ng_UI.c		optional netgraph_UI
 netgraph/ng_async.c		optional netgraph_async

@@ -485,7 +485,7 @@ sctp_process_init_ack(struct mbuf *m, int iphlen, int offset,
 
 	/* calculate the RTO */
 	net->RTO = sctp_calculate_rto(stcb, asoc, net, &asoc->time_entered, sctp_align_safe_nocopy,
-	    SCTP_DETERMINE_LL_NOTOK);
+	    SCTP_RTT_FROM_NON_DATA);
 
 	retval = sctp_send_cookie_echo(m, offset, stcb, net);
 	if (retval < 0) {
@@ -630,7 +630,7 @@ sctp_handle_heartbeat_ack(struct sctp_heartbeat_chunk *cp,
 	}
 	/* Now lets do a RTO with this */
 	r_net->RTO = sctp_calculate_rto(stcb, &stcb->asoc, r_net, &tv, sctp_align_safe_nocopy,
-	    SCTP_DETERMINE_LL_OK);
+	    SCTP_RTT_FROM_NON_DATA);
 	/* Mobility adaptation */
 	if (req_prim) {
 		if ((sctp_is_mobility_feature_on(stcb->sctp_ep,
@@ -1547,7 +1547,7 @@ sctp_process_cookie_existing(struct mbuf *m, int iphlen, int offset,
 			net->RTO = sctp_calculate_rto(stcb, asoc, net,
 			    &cookie->time_entered,
 			    sctp_align_unsafe_makecopy,
-			    SCTP_DETERMINE_LL_NOTOK);
+			    SCTP_RTT_FROM_NON_DATA);
 
 			if (stcb->asoc.sctp_autoclose_ticks &&
 			    (sctp_is_feature_on(inp, SCTP_PCB_FLAGS_AUTOCLOSE))) {
@@ -2251,7 +2251,7 @@ sctp_process_cookie_new(struct mbuf *m, int iphlen, int offset,
 	if ((netp) && (*netp)) {
 		(*netp)->RTO = sctp_calculate_rto(stcb, asoc, *netp,
 		    &cookie->time_entered, sctp_align_unsafe_makecopy,
-		    SCTP_DETERMINE_LL_NOTOK);
+		    SCTP_RTT_FROM_NON_DATA);
 	}
 	/* respond with a COOKIE-ACK */
 	sctp_send_cookie_ack(stcb);
@@ -2675,8 +2675,10 @@ sctp_handle_cookie_echo(struct mbuf *m, int iphlen, int offset,
 			oso = (*inp_p)->sctp_socket;
 			atomic_add_int(&(*stcb)->asoc.refcnt, 1);
 			SCTP_TCB_UNLOCK((*stcb));
+			CURVNET_SET(oso->so_vnet);
 			so = sonewconn(oso, 0
 			    );
+			CURVNET_RESTORE();
 			SCTP_TCB_LOCK((*stcb));
 			atomic_subtract_int(&(*stcb)->asoc.refcnt, 1);
 
@@ -2847,7 +2849,7 @@ sctp_handle_cookie_ack(struct sctp_cookie_ack_chunk *cp,
 		if (asoc->overall_error_count == 0) {
 			net->RTO = sctp_calculate_rto(stcb, asoc, net,
 			    &asoc->time_entered, sctp_align_safe_nocopy,
-			    SCTP_DETERMINE_LL_NOTOK);
+			    SCTP_RTT_FROM_NON_DATA);
 		}
 		(void)SCTP_GETTIME_TIMEVAL(&asoc->time_entered);
 		sctp_ulp_notify(SCTP_NOTIFY_ASSOC_UP, stcb, 0, NULL, SCTP_SO_NOT_LOCKED);
@@ -2865,23 +2867,30 @@ sctp_handle_cookie_ack(struct sctp_cookie_ack_chunk *cp,
 			SCTP_SOCKET_LOCK(so, 1);
 			SCTP_TCB_LOCK(stcb);
 			atomic_subtract_int(&stcb->asoc.refcnt, 1);
-			if (stcb->asoc.state & SCTP_STATE_CLOSED_SOCKET) {
-				SCTP_SOCKET_UNLOCK(so, 1);
-				return;
-			}
 #endif
-			soisconnected(stcb->sctp_socket);
+			if ((stcb->asoc.state & SCTP_STATE_CLOSED_SOCKET) == 0) {
+				soisconnected(stcb->sctp_socket);
+			}
 #if defined (__APPLE__) || defined(SCTP_SO_LOCK_TESTING)
 			SCTP_SOCKET_UNLOCK(so, 1);
 #endif
 		}
-		sctp_timer_start(SCTP_TIMER_TYPE_HEARTBEAT, stcb->sctp_ep,
-		    stcb, net);
 		/*
 		 * since we did not send a HB make sure we don't double
 		 * things
 		 */
 		net->hb_responded = 1;
+
+		if (stcb->asoc.state & SCTP_STATE_CLOSED_SOCKET) {
+			/*
+			 * We don't need to do the asconf thing, nor hb or
+			 * autoclose if the socket is closed.
+			 */
+			goto closed_socket;
+		}
+		sctp_timer_start(SCTP_TIMER_TYPE_HEARTBEAT, stcb->sctp_ep,
+		    stcb, net);
+
 
 		if (stcb->asoc.sctp_autoclose_ticks &&
 		    sctp_is_feature_on(stcb->sctp_ep, SCTP_PCB_FLAGS_AUTOCLOSE)) {
@@ -2906,6 +2915,7 @@ sctp_handle_cookie_ack(struct sctp_cookie_ack_chunk *cp,
 #endif
 		}
 	}
+closed_socket:
 	/* Toss the cookie if I can */
 	sctp_toss_old_cookies(stcb, asoc);
 	if (!TAILQ_EMPTY(&asoc->sent_queue)) {
@@ -3208,6 +3218,9 @@ process_chunk_drop(struct sctp_tcb *stcb, struct sctp_chunk_desc *desc,
 					 * this guy had a RTO calculation
 					 * pending on it, cancel it
 					 */
+					if (tp1->whoTo->rto_needed == 0) {
+						tp1->whoTo->rto_needed = 1;
+					}
 					tp1->do_rtt = 0;
 				}
 				SCTP_STAT_INCR(sctps_pdrpmark);

@@ -125,6 +125,8 @@ static arith_t do_binop(int op, arith_t a, arith_t b)
 	case ARITH_DIV:
 		if (!b)
 			yyerror("division by zero");
+		if (a == ARITH_MIN && b == -1)
+			yyerror("divide error");
 		return op == ARITH_REM ? a % b : a / b;
 	case ARITH_MUL:
 		return a * b;
@@ -196,7 +198,7 @@ again:
 	}
 }
 
-static arith_t binop2(arith_t a, int op, int prec, int noeval)
+static arith_t binop2(arith_t a, int op, int precedence, int noeval)
 {
 	for (;;) {
 		union yystype val;
@@ -219,7 +221,7 @@ static arith_t binop2(arith_t a, int op, int prec, int noeval)
 		a = noeval ? b : do_binop(op, a, b);
 
 		if (op2 < ARITH_BINOP_MIN || op2 >= ARITH_BINOP_MAX ||
-		    arith_prec(op2) >= prec)
+		    arith_prec(op2) >= precedence)
 			return a;
 
 		op = op2;

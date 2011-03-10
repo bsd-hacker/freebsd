@@ -58,7 +58,20 @@ ar5416AniSetup(struct ath_hal *ah)
 		.period			= 100,
 	};
 	/* NB: ANI is not enabled yet */
-	ar5212AniAttach(ah, &aniparams, &aniparams, AH_FALSE);
+	ar5416AniAttach(ah, &aniparams, &aniparams, AH_FALSE);
+}
+
+/*
+ * AR5416 doesn't do OLC or temperature compensation.
+ */
+static void
+ar5416olcInit(struct ath_hal *ah)
+{
+}
+
+static void
+ar5416olcTempCompensation(struct ath_hal *ah)
+{
 }
 
 /*
@@ -161,13 +174,23 @@ ar5416InitState(struct ath_hal_5416 *ahp5416, uint16_t devid, HAL_SOFTC sc,
 #endif
 	ahp->ah_priv.ah_getChipPowerLimits = ar5416GetChipPowerLimits;
 
+	/* Internal ops */
 	AH5416(ah)->ah_writeIni		= ar5416WriteIni;
 	AH5416(ah)->ah_spurMitigate	= ar5416SpurMitigate;
+
+	/* Internal TX power control related operations */
+	AH5416(ah)->ah_olcInit = ar5416olcInit;
+	AH5416(ah)->ah_olcTempCompensation	= ar5416olcTempCompensation;
+	AH5416(ah)->ah_setPowerCalTable	= ar5416SetPowerCalTable;
+
 	/*
 	 * Start by setting all Owl devices to 2x2
 	 */
 	AH5416(ah)->ah_rx_chainmask = AR5416_DEFAULT_RXCHAINMASK;
 	AH5416(ah)->ah_tx_chainmask = AR5416_DEFAULT_TXCHAINMASK;
+
+	/* Enable all ANI functions to begin with */
+	AH5416(ah)->ah_ani_function = HAL_ANI_ALL;
 }
 
 uint32_t

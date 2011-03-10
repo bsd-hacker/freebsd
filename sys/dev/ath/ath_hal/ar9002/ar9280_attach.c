@@ -30,6 +30,7 @@
 
 #include "ar9002/ar9280v1.ini"
 #include "ar9002/ar9280v2.ini"
+#include "ar9002/ar9280_olc.h"
 
 static const HAL_PERCAL_DATA ar9280_iq_cal = {		/* single sample */
 	.calName = "IQ", .calType = IQ_MISMATCH_CAL,
@@ -68,8 +69,34 @@ static void ar9280WriteIni(struct ath_hal *ah,
 static void
 ar9280AniSetup(struct ath_hal *ah)
 {
-	/* NB: disable ANI for reliable RIFS rx */
-	ar5416AniAttach(ah, AH_NULL, AH_NULL, AH_FALSE);
+	/*
+	 * These are the parameters from the AR5416 ANI code;
+	 * they likely need quite a bit of adjustment for the
+	 * AR9280.
+	 */
+        static const struct ar5212AniParams aniparams = {
+                .maxNoiseImmunityLevel  = 4,    /* levels 0..4 */
+                .totalSizeDesired       = { -55, -55, -55, -55, -62 },
+                .coarseHigh             = { -14, -14, -14, -14, -12 },
+                .coarseLow              = { -64, -64, -64, -64, -70 },
+                .firpwr                 = { -78, -78, -78, -78, -80 },
+                .maxSpurImmunityLevel   = 2,
+                .cycPwrThr1             = { 2, 4, 6 },
+                .maxFirstepLevel        = 2,    /* levels 0..2 */
+                .firstep                = { 0, 4, 8 },
+                .ofdmTrigHigh           = 500,
+                .ofdmTrigLow            = 200,
+                .cckTrigHigh            = 200,
+                .cckTrigLow             = 100,
+                .rssiThrHigh            = 40,
+                .rssiThrLow             = 7,
+                .period                 = 100,
+        };
+	/* NB: disable ANI noise immmunity for reliable RIFS rx */
+	AH5416(ah)->ah_ani_function &= ~ HAL_ANI_NOISE_IMMUNITY_LEVEL;
+
+        /* NB: ANI is not enabled yet */
+        ar5416AniAttach(ah, &aniparams, &aniparams, AH_FALSE);
 }
 
 /*
@@ -86,6 +113,8 @@ ar9280Attach(uint16_t devid, HAL_SOFTC sc,
 	uint32_t val;
 	HAL_STATUS ecode;
 	HAL_BOOL rfStatus;
+	int8_t pwr_table_offset;
+	uint8_t pwr;
 
 	HALDEBUG(AH_NULL, HAL_DEBUG_ATTACH, "%s: sc %p st %p sh %p\n",
 	    __func__, sc, (void*) st, (void*) sh);
@@ -116,6 +145,10 @@ ar9280Attach(uint16_t devid, HAL_SOFTC sc,
 
 	AH5416(ah)->ah_spurMitigate	= ar9280SpurMitigate;
 	AH5416(ah)->ah_writeIni		= ar9280WriteIni;
+	AH5416(ah)->ah_olcInit		= ar9280olcInit;
+	AH5416(ah)->ah_olcTempCompensation = ar9280olcTemperatureCompensation;
+	AH5416(ah)->ah_setPowerCalTable	= ar9280SetPowerCalTable;
+
 	AH5416(ah)->ah_rx_chainmask	= AR9280_DEFAULT_RXCHAINMASK;
 	AH5416(ah)->ah_tx_chainmask	= AR9280_DEFAULT_TXCHAINMASK;
 
@@ -213,6 +246,29 @@ ar9280Attach(uint16_t devid, HAL_SOFTC sc,
 		    __func__, ecode);
 		goto bad;
 	}
+
+	/* Enable fixup for AR_AN_TOP2 if necessary */
+	/*
+	 * The v14 EEPROM layer returns HAL_EIO if PWDCLKIND isn't supported
+	 * by the EEPROM version.
+	 *
+	 * ath9k checks the EEPROM minor version is >= 0x0a here, instead of
+	 * the abstracted EEPROM access layer.
+	 */
+	ecode = ath_hal_eepromGet(ah, AR_EEP_PWDCLKIND, &pwr);
+	if (AR_SREV_MERLIN_20_OR_LATER(ah) && ecode == HAL_OK && pwr == 0) {
+		printf("[ath] enabling AN_TOP2_FIXUP\n");
+		AH5416(ah)->ah_need_an_top2_fixup = 1;
+	}
+
+        /*
+         * Check whether the power table offset isn't the default.
+         * This can occur with eeprom minor V21 or greater on Merlin.
+         */
+	(void) ath_hal_eepromGet(ah, AR_EEP_PWR_TABLE_OFFSET, &pwr_table_offset);
+	if (pwr_table_offset != AR5416_PWR_TABLE_OFFSET_DB)
+		ath_hal_printf(ah, "[ath]: default pwr offset: %d dBm != EEPROM pwr offset: %d dBm; curves will be adjusted.\n",
+		    AR5416_PWR_TABLE_OFFSET_DB, (int) pwr_table_offset);
 
 	if (AR_SREV_MERLIN_20_OR_LATER(ah)) {
 		/* setup rxgain table */
@@ -318,6 +374,8 @@ ar9280WriteIni(struct ath_hal *ah, const struct ieee80211_channel *chan)
 {
 	u_int modesIndex, freqIndex;
 	int regWrites = 0;
+	int i;
+	const HAL_INI_ARRAY *ia;
 
 	/* Setup the indices for the next set of register array writes */
 	/* XXX Ignore 11n dynamic mode on the AR5416 for the moment */
@@ -342,10 +400,33 @@ ar9280WriteIni(struct ath_hal *ah, const struct ieee80211_channel *chan)
 	OS_REG_WRITE(ah, AR_PHY(0), 0x00000007);
 	OS_REG_WRITE(ah, AR_PHY_ADC_SERIAL_CTL, AR_PHY_SEL_INTERNAL_ADDAC);
 
-	/* XXX Merlin ini fixups */
-	/* XXX Merlin 100us delay for shift registers */
+	/*
+	 * This is unwound because at the moment, there's a requirement
+	 * for Merlin (and later, perhaps) to have a specific bit fixed
+	 * in the AR_AN_TOP2 register before writing it.
+	 */
+	ia = &AH5212(ah)->ah_ini_modes;
+#if 0
 	regWrites = ath_hal_ini_write(ah, &AH5212(ah)->ah_ini_modes,
 	    modesIndex, regWrites);
+#endif
+	HALASSERT(modesIndex < ia->cols);
+	for (i = 0; i < ia->rows; i++) {
+		uint32_t reg = HAL_INI_VAL(ia, i, 0);
+		uint32_t val = HAL_INI_VAL(ia, i, modesIndex);
+
+		if (reg == AR_AN_TOP2 && AH5416(ah)->ah_need_an_top2_fixup)
+			val &= ~AR_AN_TOP2_PWDCLKIND;
+
+		OS_REG_WRITE(ah, reg, val);
+
+		/* Analog shift register delay seems needed for Merlin - PR kern/154220 */
+		if (reg >= 0x7800 && reg < 0x78a0)
+			OS_DELAY(100);
+
+		DMA_YIELD(regWrites);
+	}
+
 	if (AR_SREV_MERLIN_20_OR_LATER(ah)) {
 		regWrites = ath_hal_ini_write(ah, &AH9280(ah)->ah_ini_rxgain,
 		    modesIndex, regWrites);
@@ -705,11 +786,18 @@ ar9280FillCapabilityInfo(struct ath_hal *ah)
 	return AH_TRUE;
 }
 
+/*
+ * This has been disabled - having the HAL flip chainmasks on/off
+ * when attempting to implement 11n disrupts things. For now, just
+ * leave this flipped off and worry about implementing TX diversity
+ * for legacy and MCS0-7 when 11n is fully functioning.
+ */
 HAL_BOOL
 ar9280SetAntennaSwitch(struct ath_hal *ah, HAL_ANT_SETTING settings)
 {
 #define ANTENNA0_CHAINMASK    0x1
 #define ANTENNA1_CHAINMASK    0x2
+#if 0
 	struct ath_hal_5416 *ahp = AH5416(ah);
 
 	/* Antenna selection is done by setting the tx/rx chainmasks approp. */
@@ -736,6 +824,7 @@ ar9280SetAntennaSwitch(struct ath_hal *ah, HAL_ANT_SETTING settings)
 	HALDEBUG(ah, HAL_DEBUG_ANY, "%s: settings=%d, tx/rx chainmask=%d/%d\n",
 	    __func__, settings, ahp->ah_tx_chainmask, ahp->ah_rx_chainmask);
 
+#endif
 	return AH_TRUE;
 #undef ANTENNA0_CHAINMASK
 #undef ANTENNA1_CHAINMASK
