@@ -52,7 +52,7 @@ char *home;
 static	pid_t *r;
 
 void
-handler(int i)
+handler(int i __unused)
 {
 	int j;
 
@@ -77,14 +77,14 @@ handler(int i)
 }
 
 void
-run_test_handler(int i)
+run_test_handler(int i __unused)
 {
 
 	done_testing = 1;
 }
 
 void
-exit_handler(int i)
+exit_handler(int i __unused)
 {
 
 	exit(1);
@@ -106,6 +106,7 @@ run_tests(int i)
 	signal(SIGHUP, run_test_handler);
 	signal(SIGINT, exit_handler);
 	atexit(callcleanup);
+	arc4random_stir();
 	setup(i);
 	if ((strcmp(getprogname(), "run") != 0) && (op->nodelay == 0))
 		sleep(random_int(1,10));
