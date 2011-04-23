@@ -1,0 +1,242 @@
+#!/usr/bin/env python
+
+# queue manager client
+
+# TODO:
+#  * pretty-print command output
+
+import socket, os, sys
+
+from optparse import OptionParser
+from qmanagerclient import *
+
+def error(msg):
+    print >>sys.stderr, "%s: %s" % (sys.argv[0], msg.rstrip())
+    sys.exit(1)
+
+def buildquery(option, opt, values, parser):
+    """
+    Turn command line options into a query description
+
+    Modifies:
+    query global
+
+    Raises:
+    ValueError if bogus arguments to numeric operators
+
+    """
+    global query
+
+    numopt = False
+    if opt in ("-m", "--machine"):
+        key="name"
+
+    if opt in ("-a", "--arch"):
+        key = "arch"
+
+    if opt in ("-A", "--acl"):
+        key = "acl"
+
+    if opt in ("-d", "--domain"):
+        key = "domain"
+
+    if opt in ("-j", "--maxjobs"):
+        key = "maxjobs"
+        numopt = True
+
+    if opt in ("-p", "--pool"):
+        key = "primarypool"
+
+    if opt in ("-P", "--pools"):
+        key = "pools"
+
+    if opt in ("-o", "--osversion"):
+        key = "osversion"
+        numopt = True
+
+    if opt in ("-n", "--ncpus"):
+        key = "numcpus"
+        numopt = True
+
+    if opt in ("-z", "--zfs"):
+        key = "haszfs"
+
+    if opt in ("-O", "--online"):
+        key = "online"
+
+    if numopt:
+        try:
+            if values[0] in '<>':
+                if values[1] == '=':
+                    val = int(values[2:])
+                    operator = values[0:2]
+                else:
+                    val = int(values[1:])
+                    operator = values[0]
+            elif values[0] == '=':
+                val = int(values[1:])
+                operator = '='
+            else:
+                val = int(values[0:])
+                operator = '='
+        except TypeError:
+            raise ValueError
+    else:
+        operator = '='
+        val = values
+
+    query.append("%s %s %s" % (key, operator, val))
+
+
+SOCKLOCAL = '/tmp/.qmgr'
+
+conn = QManagerClientConn(stderr = sys.stderr)
+conn.connect(SOCKLOCAL)
+
+query=[]
+
+parser = OptionParser()
+#parser.add_option("-h", "--help", action="store_true", dest="help")
+
+parser.add_option("-m", "--machine", action="callback", type = "string", callback=buildquery)
+parser.add_option("-j", "--maxjobs", action="callback", type = "string", callback=buildquery)
+parser.add_option("-a", "--arch", action="callback", type = "string", callback=buildquery)
+parser.add_option("-A", "--acl", action="callback", type = "string", callback=buildquery)
+parser.add_option("-d", "--domain", action="callback", type = "string", callback=buildquery)
+parser.add_option("-p", "--pool", action="callback", type = "string", callback=buildquery)
+parser.add_option("-P", "--pools", action="callback", type = "string", callback=buildquery)
+parser.add_option("-o", "--osversion", action="callback", type = "string", callback=buildquery)
+parser.add_option("-n", "--ncpus", action="callback", type = "string", callback=buildquery)
+parser.add_option("-z", "--zfs", action="callback", type = "string", callback=buildquery)
+parser.add_option("-O", "--online", action="callback", type = "string", callback=buildquery)
+
+try:
+    (options, args) = parser.parse_args()
+except ValueError:
+    error("Value error")
+
+#if options.help:
+#    do_help()
+
+try:
+    cmd = args[0]
+except IndexError:
+    # XXX
+    raise
+
+try:
+    keys = list(conn.CS.getargs(cmd))
+    keys.extend(conn.CS.getoptargs(cmd))
+
+except KeyError:
+    error("Invalid command %s" % cmd)
+
+need_mdl = ('mdl' in keys)
+
+if need_mdl:
+    keys = [i for i in keys if i != 'mdl']
+else:
+    if query:
+        error("Command %s does not accept a machine description" % cmd)
+
+vars={}
+namedarg=False
+for (n, arg) in enumerate(args[1:]):
+    if "=" in arg:
+        namedarg = True
+        (key, dummy, val) = arg.partition("=")
+        if not key in keys:
+            error("Invalid argument: %s" % key)
+    else:
+        val = arg
+        if namedarg:
+            error("Positional argument after named argument: %s" % key)
+        else:
+            key = keys[n]
+
+    vars[key] = val
+
+if need_mdl:
+    vars['mdl'] = query
+
+def generic_display(code, vars):
+    if code[0] == "2":
+        for (k, v) in vars.iteritems():
+            print "%s=%s" % (k, v)
+    else:
+        error(conn.SC.getstatus(e.value))
+
+def display_status(code, vars):
+
+    if code[0] == "2":
+        status = vars['body']
+        mlist = status.keys()
+        if not mlist:
+            return
+        mlen = max(len(m) for m in mlist)
+
+        print "%s JOBS  UP KERNEL ARCH" % "NAME".ljust(mlen)
+        for m in mlist:
+            v = status[m]
+            print "%s %02s/%02s %2s %6s %s" % (m.ljust(mlen), v['curjobs'], v['maxjobs'], 1 if v['online'] else 0, v['osversion'], v['arch'])
+
+def display_jobs(code, vars):
+
+    if code[0] == "2":
+        jobs = vars['body']
+        jlist = jobs.keys()
+
+        if not jlist:
+            return
+        l={}
+        for i in ["name", "type", "priority", "owner"]:
+            l[i] = max(len(str(j[i])) for j in jobs.itervalues())
+
+        
+        l['id'] = max(len(str(id)) for id in jlist)
+
+        print "%s %s %s  %s %s %s %s" % ("ID".ljust(l['id']),
+                                        "NAME".ljust(l['name']),
+                                        "TYPE".ljust(l['type']),
+                                        "PR".ljust(l['priority']),
+                                        "UID".ljust(l['owner']), "RUN",
+                                        "MACHINES")
+        for (id, job) in jobs.iteritems():
+            print "%s %s %s  %s %s %s   %s" % \
+                (str(id).ljust(l['id']),
+                 job['name'].ljust(l['name']),
+                 job['type'].ljust(l['type']),
+                 str(job['priority']).ljust(l['priority']),
+                 str(job['owner']).ljust(l['owner']),
+                 1 if job['running'] else 0,
+                 " ".join(job['machines']))
+
+
+display={'status':display_status,
+         'try':generic_display,
+         'acquire':generic_display,
+         'release':generic_display,
+         'reconnect':generic_display,
+         'jobs':display_jobs,
+         'add':generic_display,
+         'delete':generic_display,
+         'update':generic_display,
+         'add_acl':generic_display,
+         'update_acl':generic_display,
+         'del_acl':generic_display
+         }
+
+try:
+    (code, vars) = conn.command(cmd, vars)
+    display[cmd](code, vars)
+
+except KeyError:
+    error("No such command")
+except UnknownArgumentError, e:
+    error("Unknown arguments: %s" % e)
+except MissingArgumentError, e:
+    error("Missing argument: %s" % e)
+except RequestError, e:
+    error(conn.SC.getstatus(e.value))
+except ServerError:
+    error("Unexpected reply from server")
