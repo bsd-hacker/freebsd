@@ -21,7 +21,11 @@ doarch() {
 	if [ ${quiet} -eq 0 ]; then
 	    echo "[$i]"
 	fi
-	su ports-${arch} -c "ssh ${client_user}@$i ${sudo_cmd} $@"
+	lockf -t 60 ${pb}/${arch}/lockfiles/lock.$i su ports-${arch} -c "ssh ${client_user}@$i ${sudo_cmd} $@"
+	result=$?
+	if [ $result -ne 0 ]; then
+	    echo "could not execute command $@ on $i: $result"
+	fi
     done
 }
 
