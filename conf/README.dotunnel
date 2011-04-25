@@ -7,8 +7,7 @@ do <hardcoded-tunnel-stuff>; done".  Other than the magic hardcoding,
 there's a problem with this.  When the tunnel command exits, such as if
 the host suddenly becoming unreachable, it doesn't send mail -- instead
 it just accumulates a huge file in /var/spool/clientmqueue which never
-gets sent.  To add insult to injury, /var is on the root partition on
-pointyhat.
+gets sent.  To add insult to injury, /var is on our root partition.
 
 To cure these problems, we now have
 
