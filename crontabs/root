@@ -1,0 +1,33 @@
+PATH=/root/bin:/sbin:/bin:/usr/sbin:/usr/bin:/usr/games:/usr/local/sbin:/usr/local/bin:/var/portbuild/scripts
+TERM=xterm
+
+#
+# Update logs
+#
+2,12,22,32,42,52 * * * * su ports-i386 -c "lockf -k -t 0 /var/portbuild/errorlogs/lock /var/portbuild/scripts/dologs i386" > /dev/null 2>&1
+5,15,25,35,45,55 * * * * su ports-sparc64 -c "lockf -k -t 0 /var/portbuild/errorlogs/lock /var/portbuild/scripts/dologs sparc64" > /dev/null 2>&1
+6,16,26,36,46,56 * * * * su ports-ia64 -c "lockf -k -t 0 /var/portbuild/errorlogs/lock /var/portbuild/scripts/dologs ia64" > /dev/null 2>&1
+8,18,28,38,48,58 * * * * su ports-amd64 -c "lockf -k -t 0 /var/portbuild/errorlogs/lock /var/portbuild/scripts/dologs amd64" > /dev/null 2>&1
+0,10,20,30,40,50 * * * * su ports-powerpc -c "lockf -k -t 0 /var/portbuild/errorlogs/lock /var/portbuild/scripts/dologs powerpc" > /dev/null 2>&1
+#
+# Compress old logs to save space
+#
+# XXX MCL this is totally naive and livelocks the machine.  XXX TODO
+50 5 * * * lockf -t 0 -k /var/run/busybusybusy.lock find /var/portbuild/*/archive/ -name \*.log -mtime +7 | xargs bzip2 -9f
+#
+# Clean up old chroots on client machines
+30 * * * * /var/portbuild/scripts/do-cleanup-chroots
+
+# Backup ZFS filesystems
+# XXX MCL script not yet converted
+#50 4 * * * lockf -t 0 -k /var/run/busybusybusy.lock /var/portbuild/scripts/zbackup
+
+# Expire old ZFS snapshots
+# XXX MCL script not yet converted
+#50 3 * * * lockf -t 0 -k /var/run/busybusybusy.lock /var/portbuild/scripts/zexpire
+
+# CVS update of ports
+0 */3 * * * lockf -t 0 -k /var/run/updatesnap.ports.lock /var/portbuild/scripts/updatesnap.ports
+# CVS update of src
+# NOTE: temporarily halt this whenever RELENG_X is being tagged
+0 2 * * * lockf -t 0 -k /var/run/updatesnap.lock /var/portbuild/scripts/updatesnap
