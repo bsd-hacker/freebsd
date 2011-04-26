@@ -676,6 +676,9 @@ if [ "$nobuild" = 0 ]; then
     else
 	cp duds.orig duds
     fi
+
+    # Compile ptimeout.
+    /usr/bin/gcc -o ${builddir}/ptimeout -Wall ${pbc}/sources/ptimeout.c
     
     dobuild ${pb} ${arch} ${branch} ${builddir}
     

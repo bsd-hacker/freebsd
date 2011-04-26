@@ -67,7 +67,7 @@ setup() {
 
     if [ "${norsync}" -eq 0 ]; then
 
-	rsync ${rsync_gzip} -e "${ssh_cmd}" -r -l -p --delete ${pb}/scripts \
+	rsync ${rsync_gzip} -e "${ssh_cmd}" -r -l -p --delete ${pb}/scripts ${pb}/sources \
 	    ${client_user}@${node}:${pb}/
 	checkerror $? || (echo "Copying scripts to ${node} failed"; return 1)
 

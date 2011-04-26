@@ -299,15 +299,23 @@ while [ $# -gt 0 ]; do
 done
 
 cp -p ${pb}/scripts/buildscript ${chroot}
-cp -p ${pb}/scripts/pnohang.${arch} ${chroot}/pnohang
+cp -p ${pb}/sources/pnohang.c ${chroot}
 
+# phase 0, compile pnohang
+chroot ${chroot} /usr/bin/gcc -o /pnohang -Wall /pnohang.c 2>&1 | tee -a ${chroot}/tmp/${pkgname}.log
+if [ $? -ne 0 ]; then
+  error=255
+fi
+
+if [ "${error}" = 0 ]; then
 # phase 1, make checksum
 # Needs to be chroot not jail so that port can be fetched
-chroot ${chroot} /buildscript ${dirname} 1 "$ED" "$PD" "$FD" "$BD" "$RD" 2>&1 | tee -a ${chroot}/tmp/${pkgname}.log
-if [ -f ${chroot}/tmp/status ]; then
-  error=$(cat ${chroot}/tmp/status)
-else
-  error=255
+  chroot ${chroot} /buildscript ${dirname} 1 "$ED" "$PD" "$FD" "$BD" "$RD" 2>&1 | tee -a ${chroot}/tmp/${pkgname}.log
+  if [ -f ${chroot}/tmp/status ]; then
+    error=$(cat ${chroot}/tmp/status)
+  else
+    error=255
+  fi
 fi
 
 if [ "${error}" = 0 ]; then

@@ -134,7 +134,7 @@ test -f ${pb}/${arch}/portbuild.${host} && . ${pb}/${arch}/portbuild.${host}
 rm -f ${builddir}/logs/${pkgname}.log ${builddir}/logs/${pkgname}.log.bz2
 rm -f ${builddir}/errors/${pkgname}.log ${builddir}/errors/${pkgname}.log.bz2
     
-${pb}/scripts/ptimeout.host $timeout ${ssh_cmd} -a -n ${client_user}@${host} ${sudo_cmd} ${command} ${arch} ${branch} ${buildid} ${chroot} ${flags} \"$ED\" \"$PD\" \"$FD\" \"$BD\" \"$RD\" ${args} 2>&1
+${builddir}/ptimeout $timeout ${ssh_cmd} -a -n ${client_user}@${host} ${sudo_cmd} ${command} ${arch} ${branch} ${buildid} ${chroot} ${flags} \"$ED\" \"$PD\" \"$FD\" \"$BD\" \"$RD\" ${args} 2>&1
 error=$?
 
 # Pull in the results of the build from the client

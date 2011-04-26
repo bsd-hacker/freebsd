@@ -61,7 +61,7 @@ def getallsubprocs(pids):
 	return ppids
 
 def dosubprocs(data):
-	""" recursively get list of subprocesses (ptimeout.host, sleep 15, ...) and fill in data """
+	""" recursively get list of subprocesses (ptimeout, sleep 15, ...) and fill in data """
 
 	ppid_map = { }
 	idlers = { }
@@ -74,7 +74,7 @@ def dosubprocs(data):
 		ppid = fields.pop(0)
 		time = fields.pop(0)
 		command = ' '.join(fields)
-		if command.count('ptimeout.host'):
+		if command.count('ptimeout'):
 			command = "building"
 		elif command == 'sleep 15':
 			command = "waiting for idle node"
