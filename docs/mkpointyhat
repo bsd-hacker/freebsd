@@ -1,0 +1,181 @@
+#!/bin/sh
+#
+# how to set up a new pointyhat.
+#
+# NOTE: wasn't done exactly this way, but should work.
+#
+# copy /etc/make.conf from pointyhat, modify to taste
+# but add SENDMAIL_MC=/etc/mail/<hostname>.mc
+#
+# create /etc/mail/<hostname>.mc, with the following additions just before
+# the MAILER lines:
+#
+# define(`SMART_HOST', `hub.FreeBSD.org')
+# MASQUERADE_AS(`FreeBSD.org')
+# FEATURE(`masquerade_envelope')
+#
+# in /etc/mail: make all;make install
+#
+# install the following packages, or their successors:
+#
+#    apache-2.2.15_9
+#        with EXT_FILTER
+#        with THREADS
+#    bonnie++-1.96
+#    ccache-2.4_9
+#    ganglia-monitor-core-3.1.1_6
+#        without GMETAD (otherwise you get all of x11!)
+#    nc-1.0.1_1
+#    pkg_cutleaves-20090810
+#    pkg_tree-1.1_2
+#    portaudit-0.5.15
+#    py26-pysqlite-2.3.5
+#    py26-setuptools-0.6c11
+#    py26-sqlalchemy-0.5.7
+#    rsync-3.0.7
+#    screen-4.0.3_7
+#    smartmontools-5.39.1
+#    subversion-freebsd-1.6.11_2
+#    sudo-1.7.2.6
+#    unzip-6.0
+#
+# the following will probably come over with them:
+#
+#    libtool-2.2.6b
+#    perl-5.10.1_1
+#    pkg-config-0.23_1
+#    python26-2.6.5
+#    sqlite3-3.6.23.1_1
+#
+# mkdir -p /a/pointyhat
+#
+# mkdir /a/pointyhat/amd64
+# mkdir /a/pointyhat/i386
+# mkdir /a/pointyhat/ia64
+# mkdir /a/pointyhat/powerpc
+# mkdir /a/pointyhat/sparc64
+# mkdir /a/pointyhat/sun4v
+#
+# cd /a/pointyhat
+#
+# chmod 775 .
+#
+# chown ports-amd64:portmgr amd64
+# chown ports-i386:portmgr i386
+# chown ports-ia64:portmgr ia64
+# chown ports-powerpc:portmgr powerpc
+# chown ports-sparc64:portmgr sparc64
+# chown ports-sun4v:portmgr sun4v
+#
+# chmod 775 *
+#
+# create an amd64/.profile that is just
+#    export PATH=${PATH}:/var/portbuild/scripts:/var/portbuild/evil/qmanager
+# copy it to all the other <arch> dirs, chown ports-<arch>:portmgr, chmod g+w
+#
+# zfs create -o mountpoint=/a/portbuild a/portbuild
+# zfs create -o mountpoint=/a/portbuild/amd64 a/portbuild/amd64
+# zfs create -o mountpoint=/a/portbuild/i386 a/portbuild/i386
+# zfs create -o mountpoint=/a/portbuild/ia64 a/portbuild/ia64
+# zfs create -o mountpoint=/a/portbuild/powerpc a/portbuild/powerpc
+# zfs create -o mountpoint=/a/portbuild/sparc64 a/portbuild/sparc64
+# zfs create -o mountpoint=/a/portbuild/sun4v a/portbuild/sun4v
+#
+# at this point you want to bring over conf/, ecvs/, clinet.conf, <arch>/.ssh,
+#     <arch>mlist, and <arch>/portbuild.*
+#
+. /a/portbuild/conf/server.conf
+#
+#pb=/var/portbuild
+#cd ${pb}
+#
+#for arch in $SUPPORTED_ARCHS sun4v; do
+#  echo $arch
+#  cd ${pb}/${arch}
+#  mkdir -p clients
+#  mkdir -p loads
+#  mkdir -p lockfiles
+#  if [ ! -e make.conf ]; then
+#    ln -s ../conf/make.conf make.conf
+#  fi
+#  ln -s ../conf/client.conf client.conf
+#  chown ports-$arch:portmgr *
+#done
+#
+# compiled pnohang.* copied over manually to save time XXX
+#
+# mkdir -p /var/portbuild/evil
+# chown -R portmgr:portmgr /var/portbuild/evil
+# chmod -R g+w /var/portbuild/evil
+# cd /var/portbuild
+# cvs -d /var/portbuild/ecvs co evil/qmanager
+# rm evil/qmanager/qmgr
+#
+# XXX MCL QMANAGER ITSELF IS NOT CHECKED IN!!!!!!!!!!
+#
+# copy stupid freebsd.py over manually to save time; put it in site-packages
+# copy stupid freebsd_config.py over manually to save time; put it in site-packages
+# copy stupid zfs.py over manually to save time; put it in site-packages
+#
+# for arch in $SUPPORTED_ARCHS sun4v; do
+#   python /var/portbuild/evil/qmanager/qclient add_acl name=ports-$arch uidlist=ports-$arch gidlist=portmgr sense=1
+# done
+#
+# zfs create ${ZFS_VOLUME}/${SNAP_DIRECTORY}
+# zfs create ${ZFS_VOLUME}/${SNAP_PORTS_DIRECTORY}
+# zfs create ${ZFS_VOLUME}/${SNAP_PORTS_DIRECTORY}/ports
+# for branch in $SRC_BRANCHES; do
+#   zfs create ${ZFS_VOLUME}/${SNAP_SRC_DIRECTORY_PREFIX}$branch
+#   zfs create ${ZFS_VOLUME}/${SNAP_SRC_DIRECTORY_PREFIX}$branch/src
+# done
+# chown -R portmgr:portmgr ${ZFS_VOLUME}/${SNAP_DIRECTORY}
+# chmod -R g+w ${ZFS_VOLUME}/${SNAP_DIRECTORY}
+#
+## XXX MCL this does not work.
+## XXX MCL convert to svn!
+##
+##echo ${SRC_BRANCH_$branch_TAG}
+##cvs -Rq -d $NCVS_DIRECTORY co -r RELENG-$branch
+##
+##branch=8
+##fake_releng_tag=RELENG_8_0
+##cvs -Rq -d $NCVS_DIRECTORY co -r $fake_releng_tag
+#
+# XXX MCL TODO /a/obj?
+#
+# python /var/portbuild/scripts/pollmachine -daemon amd64 i386 ia64 powerpc sparc64 &
+# python /var/portbuild/scripts/buildproxy &
+# python /var/portbuild/evil/qmanager/qmanager &
+#
+# now start initializing the database
+#
+# python /var/portbuild/evil/qmanager/qclient add_acl name=deny_all uidlist= gidlist= sense=0
+# for arch in amd64 ia64 i386 powerpc sparc64 sun4v; do
+#   python /var/portbuild/evil/qmanager/qclient add_acl name=ports-${arch} uidlist=ports-${arch} gidlist=portmgr sense=1
+# done
+#
+# now add machines, e.g.:
+#
+# python /var/portbuild/evil/qmanager/qclient add name=poweredge6650_1.lonesome.com arch=i386 osversion=800073 numcpus=4 haszfs=0 online=0 domain=lonesome.com primarypool=package pools="package all" maxjobs=1 acl="ports-i386,deny_all"
+#
+# ~linimon/bin/online poweredge6650_1.lonesome.com
+#
+# modify httpd.conf XXX MCL to document
+# cd /usr/local/www
+# ln -s apache22/data data
+# cd apache22/data
+# ln -s /var/portbuild/errorlogs errorlogs
+# bring over robots.txt and favicon.ico
+# mkdir /var/portbuild/errorlogs
+# cd /var/portbuild/errorlogs
+# chown portmgr:portmgr .
+# chmod 775 .
+# bring over index.shtml images/
+# chown portmgr:portmgr *
+# chmod 775 *
+# make the appropriate links:
+# ~linimon/bin/mklinks
+#
+# bring over linimon crontab from pointyhat and install it
+# install root crontab and uncomment things if necessary
+# XXX MCL except zbackup and zexpire because they aren't done yet.

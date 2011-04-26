@@ -1,0 +1,9 @@
+there are other notes, lost, somewhere.
+
+for ganglia web display, have to install:
+
+$ pwd
+/home/pcvs/ports/sysutils/ganglia-webfrontend
+$ make -D WITHOUT_X11 install
+
+bring over changes to /usr/local/www/ganglia/conf.php
