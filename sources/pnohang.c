@@ -1,5 +1,5 @@
-/* pnohang: executes command ($4-) with output in file ($3)
- * kills command if no output with $1 seconds with message in $2
+/* pnohang: executes command ($4-) with output in file ($2)
+ * kills command if no output with $1 seconds with message in $3
  * usage: pnohang timeout file command args ...
  */
 
@@ -11,17 +11,23 @@
 #include <unistd.h>
 #include <time.h>
 #include <errno.h>
+#include <err.h>
 #include <fcntl.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+
+#if defined(DEBUG)
+# define DPRINTF(fmt, ...) printf(fmt, __VA_ARGS__)
+#else
+# define DPRINTF(fmt, ...)
+#endif
 
 int
 main(int argc, char *argv[])
 {
     	int timeout, status, i, result, ofd;
 	char *command, *outfile, *message, args[MAXPATHLEN + 1];
-	char logstr[BUFSIZ + 1];
 	pid_t pid, pid1, pid2, child;
 	time_t now;
 	struct stat st;
@@ -46,10 +52,10 @@ main(int argc, char *argv[])
 
 	pid = getpid();
 
-	/*printf("timeout is %d\n", timeout);
-	printf("outfile is %s\n", outfile);
-	printf("message is %s\n", message);
-	printf("arguments are %s", args);*/
+	DPRINTF("timeout is %d\n", timeout);
+	DPRINTF("outfile is %s\n", outfile);
+	DPRINTF("message is %s\n", message);
+	DPRINTF("command is %s\n", args);
 
 	if ((ofd = open(outfile, O_CREAT|O_TRUNC|O_WRONLY, 0600)) == -1)
 		err(1, "open");
@@ -68,13 +74,13 @@ main(int argc, char *argv[])
 
 		    /* parent */
 		    child = wait(&status);
-		    /*printf("exited child is %d, status is %d\n", child, status);*/
+		    DPRINTF("exited child is %d, status is %d\n", child, status);
 
-		    if (pid1 = child) {
-			/*printf("killing process %d (second child)\n", pid2);*/
+		    if (pid1 == child) {
+			DPRINTF("killing process %d (second child)\n", pid2);
 			kill(pid2, SIGTERM);
 		    } else {
-			/*printf("killing process %d (first child)\n", pid1);*/
+			DPRINTF("killing process %d (first child)\n", pid1);
 			kill(pid1, SIGTERM);
 		    }
 		    /* exit status in upper 8 bits, killed signal (if any) in
@@ -88,8 +94,6 @@ main(int argc, char *argv[])
 			now = time(NULL);
 			stat(outfile, &st);
 			if ((now - st.st_mtime) > timeout) {
-			    /*snprintf(logstr, BUFSIZ, "logger -t %s killing %s %s, pid %d since no output in %d seconds", argv[0], args, message, pid, timeout);
-			    system(logstr);*/
 			    printf("%s: killing %s (%s, pid %d and %d) since no output in %d seconds since %s", argv[0], args, message, pid1, pid, timeout, ctime(&now));
 			    printf("ps jgx before the signal\n");
 			    system("ps jgxww");
@@ -105,7 +109,7 @@ main(int argc, char *argv[])
 		}
 	} else {
 	    	/* first child */
-		/*printf("executing %s\n", args);*/
+		DPRINTF("executing %s\n", args);
 		result = execvp(command, argv + 4);
 		if (result < 0) {
 		    printf("Failed to exec %s: %s\n", args, strerror(errno));

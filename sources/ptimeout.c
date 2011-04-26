@@ -14,6 +14,12 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#if defined(DEBUG)
+# define DPRINTF(fmt, ...) printf(fmt, __VA_ARGS__)
+#else
+# define DPRINTF(fmt, ...)
+#endif
+
 int
 main(int argc, char *argv[])
 {
@@ -36,20 +42,20 @@ main(int argc, char *argv[])
 		strlcat(args, " ", MAXPATHLEN - strlen(args));
 	}
 
-	/*printf("timeout is %d\n", timeout);
-	printf("arguments are %s\n", args);*/
+	DPRINTF("timeout is %d\n", timeout);
+	DPRINTF("arguments are %s\n", args);
 
 	if ((pid1 = fork()) > 0) {
 	    	if ((pid2 = fork()) > 0) {
 		    /* parent */
-		    /*printf("child pids are %d %d\n", pid1, pid2);*/
+		    DPRINTF("child pids are %d %d\n", pid1, pid2);
 		    child = wait(&status);
-		    /*printf("exited child is %d, status is %d\n", child, status);*/
-		    if (pid1 = child) {
-			/*printf("killing process %d\n", pid2);*/
+		    DPRINTF("exited child is %d, status is %d\n", child, status);
+		    if (pid1 == child) {
+			DPRINTF("killing process %d\n", pid2);
 			kill(pid2, SIGKILL);
 		    } else {
-			/*printf("killing process %d\n", pid1);*/
+			DPRINTF("killing process %d\n", pid1);
 			kill(pid1, SIGTERM);
 		    }
 		    /* exit status in upper 8 bits, killed signal (if any)
@@ -66,7 +72,7 @@ main(int argc, char *argv[])
 		}
 	} else {
 	    	/* first child */
-		/*printf("executing %s\n", args);*/
+		DPRINTF("executing %s\n", args);
 		execvp(command, argv + 2);
 	}
 
