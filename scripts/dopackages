@@ -14,7 +14,7 @@ umask 002
 journalname="journal"
 
 usage () {
-    echo "usage: arch branch buildid datestamp [-incremental] [-continue] [-restart] [-nofinish] [-finish] [-nocleanup] [-keep] [-nobuild] [-noindex] [-noduds] [-norestr] [-nochecksubdirs] [-nosrc] [-srccvs] [-noports] [-portscvs] [-noplistcheck] [-nodistfiles] [-fetch-original] [-cdrom] [-trybroken]"
+    echo "usage: arch branch buildid datestamp [-incremental] [-continue] [-restart] [-nofinish] [-finish] [-nocleanup] [-keep] [-nobuild] [-noindex] [-noduds] [-norestr] [-nochecksubdirs] [-nosrc] [-srcvcs] [-noports] [-portsvcs] [-noplistcheck] [-nodistfiles] [-fetch-original] [-cdrom] [-trybroken]"
 # XXX MCL I think it's going to be too hard to move the create in here, now.
     echo "       -incremental     : Start a new incremental build"
     echo "       -continue        : Restart an interrupted build, skipping failed ports"
@@ -29,9 +29,9 @@ usage () {
     echo "       -nochecksubdirs  : Do not check the SUBDIRS"
     echo "       -norestr         : Do not build the restricted.sh file"
     echo "       -nosrc           : Do not update the src tree"
-    echo "       -srccvs          : Update the src tree via CVS, don't use a pre-existing snapshot"
+    echo "       -srcvcs          : Update the src tree via CVS, don't use a pre-existing snapshot"
     echo "       -noports         : Do not update the ports tree"
-    echo "       -portscvs        : Update the ports tree via CVS, don't use a pre-existing snapshot"
+    echo "       -portsvcs        : Update the ports tree via CVS, don't use a pre-existing snapshot"
     echo "       -noplistcheck    : Don't check the plist during the build"
     echo "       -nodistfiles     : Don't collect distfiles"
     echo "       -fetch-original  : Fetch from original MASTER_SITE"
@@ -272,9 +272,9 @@ nobuild=0
 noindex=0
 noduds=0
 nosrc=0
-srccvs=0
+srcvcs=0
 noports=0
-portscvs=0
+portsvcs=0
 norestr=0
 nochecksubdirs=0
 noplistcheck=0
@@ -308,14 +308,14 @@ while [ $# -gt 0 ]; do
 	x-nosrc)
 	    nosrc=1
 	    ;;
-	x-srccvs)
-	    srccvs=1
+	x-srccvs|x-srcvcs)
+	    srcvcs=1
 	    ;;
 	x-noports)
 	    noports=1
 	    ;;
-	x-portscvs)
-	    portscvs=1
+	x-portscvs|x-portsvcs)
+	    portsvcs=1
 	    ;;
 	x-norestr)
 	    norestr=1
@@ -370,7 +370,7 @@ else
     skipstart=0
 fi
 
-# XXX check for conflict between -noports and -portscvs etc
+# XXX check for conflict between -noports and -portsvcs etc
 
 # We have valid options, start the build
 
@@ -447,14 +447,14 @@ if [ "$skipstart" = 0 ]; then
     fi
 
     if [ ${noports} -eq 0 ]; then
-	if [ -L ${builddir}/ports -o ${portscvs} -eq 1 ]; then
+	if [ -L ${builddir}/ports -o ${portsvcs} -eq 1 ]; then
 	    echo "================================================"
-	    echo "running cvs update -PAd on ${PORTSDIR}"
+	    echo "updating ${PORTSDIR} from ${VCS}"
 	    echo "================================================"
 	    cd ${PORTSDIR}
-	    updated=$(date)
+	    updated=$(date '+%Y/%m/%d %H:%M')
 	    echo ${updated} > ${builddir}/.updated
-	    cvs -Rq update -PdA -D "${updated}"
+	    ${VCS} ${VCS_UPDATE_DATE} "${updated}"
 	    # XXX Check for conflicts
 	else
 	    # echo "XXX at build portsupdate portsupdate ${arch} ${branch} ${buildid} $@ "
@@ -474,13 +474,13 @@ if [ "$skipstart" = 0 ]; then
     # Create tarballs for distributing to clients.  Should not cause
     # much extra delay because we will do this in conjunction with
     # recursing over the ports tree anyway just below, and might have
-    # just finished cvs updating, so it is likely to be in cache.
+    # just finished vcs updating, so it is likely to be in cache.
     portstar &
 
     if [ ${nosrc} -eq 0 ]; then
-	if [ -L ${builddir}/src -o ${srccvs} -eq 1 ]; then
+	if [ -L ${builddir}/src -o ${srcvcs} -eq 1 ]; then
 	    echo "================================================"
-	    echo "running cvs update -PAd on ${SRC_BASE}"
+	    echo "updating ${SRC_BASE} from ${VCS}"
 	    echo "================================================"
 	    cd ${SRC_BASE}
 	    if [ -z "${updated}" ]; then
@@ -488,7 +488,7 @@ if [ "$skipstart" = 0 ]; then
 		# with the ports update
 		updated=$(date)
 	    fi
-	    cvs -Rq update -PdA -D "${updated}"
+	    ${VCS} ${VCS_UPDATE_ARGS} "${updated}"
 	    # XXX Check for conflicts
 	else
 	    build srcupdate ${arch} ${branch} ${buildid} $@ 

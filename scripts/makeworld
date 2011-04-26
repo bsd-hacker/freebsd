@@ -29,7 +29,7 @@ export TARGET_ARCH=${arch}
 export NO_FSCHG=1
 
 client=0
-nocvs=0
+novcs=0
 
 # optional arguments
 while [ $# -gt 0 ]; do
@@ -37,8 +37,8 @@ while [ $# -gt 0 ]; do
     -client)
       client=1
       ;;
-    -nocvs)
-      nocvs=1
+    -nocvs|-novcs)
+      novcs=1
       ;;
     *)
       args="$1 ${args}"
@@ -57,10 +57,10 @@ else
 fi
 cd ${SRC_BASE}
 
-if [ "$nocvs" = "0" ]; then
+if [ "$novcs" = "0" ]; then
 	echo "==> Updating source tree"
 	eval tag=\$SRC_BRANCH_${branch}_TAG
-  	cvs -Rq update -PdA -r ${tag} || exit $?
+  	${VCS} ${VCS_UPDATE_TAG} ${tag} || exit $?
 fi
 
 echo "==> Starting make buildworld"
