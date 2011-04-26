@@ -1,10 +1,10 @@
 #!/bin/sh
 
 usage () {
-  echo "usage: makerestr arch branch buildid"
+  echo "usage: makerestr arch branch buildid [target]"
   exit 1
 }
-if [ $# -ne 3 ]; then
+if [ $# -lt 3 ]; then
   usage
 fi
 
@@ -13,7 +13,7 @@ pb=/var/portbuild
 arch=$1
 branch=$2
 buildid=$3
-shift
+target=$4
 
 . ${pb}/conf/server.conf
 . ${pb}/conf/common.conf
@@ -32,8 +32,20 @@ export LINUXBASE=/nonexistentlinux
 export PKG_DBDIR=/nonexistentpkg
 export PORT_DBDIR=/nonexistentport
 
+RESTR_PORTS=.
+if [ -n "$target" ]; then
+  if [ -f "$target" ]; then
+    RESTR_PORTS=$(cat $target | tr '\n' ' ')
+  else
+    echo "File $target doesn't exist. Exiting."
+    exit 1
+  fi
+fi
+
 cd ${PORTSDIR}
-make -j4 ECHO_MSG=true clean-restricted-list \
-  | sed -e "s!/usr/ports/packages/!${builddir}/packages/!g" \
-  -e "s!/usr/ports/!${builddir}/ports/!g" \
-  > ${builddir}/restricted.sh 2> /dev/null
+(for i in ${RESTR_PORTS}; do
+    cd ${PORTSDIR}/$i
+    make -j4 ECHO_MSG=true clean-restricted-list \
+      | sed -e "s!/usr/ports/packages/!${builddir}/packages/!g" \
+      -e "s!/usr/ports/!${builddir}/ports/!g"
+done) > ${builddir}/restricted.sh 2> /dev/null

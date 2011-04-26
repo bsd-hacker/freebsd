@@ -16,18 +16,18 @@ export INDEX_JOBS=6
 pb=/var/portbuild
 
 usage () {
-  echo "usage: makeindex arch branch buildid"
+  echo "usage: makeindex arch branch buildid [target]"
   exit 1
 }
 
-if [ $# -ne 3 ]; then
+if [ $# -lt 3 ]; then
   usage
 fi
 
 arch=$1
 branch=$2
 buildid=$3
-shift 3
+target=$4
 
 builddir=${pb}/${arch}/${branch}/builds/${buildid}
 
@@ -44,8 +44,17 @@ unset DISPLAY
 # Don't pick up installed packages from the host
 export LOCALBASE=/nonexistentlocal
 
+if [ -n "$target" ]; then
+  if [ -f "$target" ]; then
+    INDEX_PORTS=$(cat $target | tr '\n' ' ')
+  else
+    echo "File $target doesn't exist. Exiting."
+    exit 1
+  fi
+fi
+
 cd ${PORTSDIR}
-make index
+make index INDEX_PORTS="${INDEX_PORTS}"
 if [ ! -e ${INDEXFILE} ]; then
   echo "makeindex: failed to make ${INDEXFILE}"
   exit 1

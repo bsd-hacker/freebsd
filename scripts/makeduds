@@ -1,11 +1,11 @@
 #!/bin/sh
 
 usage () {
-  echo "usage: makeduds arch branch buildid"
+  echo "usage: makeduds arch branch buildid [target]"
   exit 1
 }
 
-if [ $# -ne 3 ]; then
+if [ $# -lt 3 ]; then
   usage
 fi
 
@@ -14,7 +14,7 @@ pb=/var/portbuild
 arch=$1
 branch=$2
 buildid=$3
-shift 3
+target=$4
 
 builddir=${pb}/${arch}/${branch}/builds/${buildid}
 
@@ -39,8 +39,21 @@ export LINUXBASE=/nonexistentlinux
 export PKG_DBDIR=/nonexistentpkg
 export PORT_DBDIR=/nonexistentport
 
+DUDS_PORTS=.
+if [ -n "$target" ]; then
+  if [ -f "$target" ]; then
+    DUDS_PORTS=$(cat $target | tr '\n' ' ')
+  else
+    echo "File $target doesn't exist. Exiting."
+    exit 1
+  fi
+fi
+
 cd ${PORTSDIR}
-make -j${DUDSJOBS} ignorelist-verbose ECHO_MSG=true > ${duds}.verbose 2> /dev/null || exit 1
+(for i in ${DUDS_PORTS}; do
+    cd ${PORTSDIR}/$i
+    make -j${DUDSJOBS} ignorelist-verbose ECHO_MSG=true 
+done) > ${duds}.verbose 2> /dev/null || exit 1
 sort ${duds}.verbose > ${duds}.verbose.tmp
 mv -f ${duds}.verbose.tmp ${duds}.verbose
 cut -f 1 -d \| ${duds}.verbose > ${duds}

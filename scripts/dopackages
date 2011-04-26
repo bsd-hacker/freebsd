@@ -14,7 +14,7 @@ umask 002
 journalname="journal"
 
 usage () {
-    echo "usage: arch branch buildid datestamp [-incremental] [-continue] [-restart] [-nofinish] [-finish] [-nocleanup] [-keep] [-nobuild] [-noindex] [-noduds] [-norestr] [-nochecksubdirs] [-nosrc] [-srcvcs] [-noports] [-portsvcs] [-noplistcheck] [-nodistfiles] [-fetch-original] [-cdrom] [-trybroken]"
+    echo "usage: arch branch buildid datestamp [-incremental] [-continue] [-restart] [-nofinish] [-finish] [-nocleanup] [-keep] [-nobuild] [-noindex] [-noduds] [-norestr] [-nochecksubdirs] [-nosrc] [-srcvcs] [-noports] [-portsvcs] [-noplistcheck] [-nodistfiles] [-fetch-original] [-cdrom] [-trybroken] [-target <file>]"
 # XXX MCL I think it's going to be too hard to move the create in here, now.
     echo "       -incremental     : Start a new incremental build"
     echo "       -continue        : Restart an interrupted build, skipping failed ports"
@@ -37,6 +37,7 @@ usage () {
     echo "       -fetch-original  : Fetch from original MASTER_SITE"
     echo "       -cdrom           : Prepare a build for distribution on CDROM "
     echo "       -trybroken       : Try to build BROKEN ports"
+    echo "       -target <file>   : Build ports listed in file, rather than the whole ports tree"
 
     exit 1
 }
@@ -93,7 +94,7 @@ portstar() {
     md5 ${builddir}/ports-${buildid}.tbz > ${builddir}/ports-${buildid}.tbz.md5
 }
 
-# usage: makeindex pb arch branch builddir
+# usage: makeindex pb arch branch builddir [target]
 # note: can take ~24 minutes!
 makeindex () {
     pb=$1
@@ -101,13 +102,14 @@ makeindex () {
     branch=$3
     buildid=$4
     builddir=$5
+    target=$6
 
     cd ${builddir}/ports
     echo "================================================"
     echo "generating index"
     echo "================================================"
     echo "index generation started at $(date)"
-    ${pb}/scripts/makeindex ${arch} ${branch} ${buildid} || return 1
+    ${pb}/scripts/makeindex ${arch} ${branch} ${buildid} ${target} || return 1
     echo "index generation ended at $(date)"
     echo $(wc -l ${INDEXFILE} | awk '{print $1}') "lines in INDEX"
 
@@ -137,7 +139,7 @@ checkindex () {
     fi
 }
 
-# usage: makeduds pb arch branch builddir
+# usage: makeduds pb arch branch builddir [target]
 # note: can take ~21 minutes!
 makeduds () {
     pb=$1
@@ -145,6 +147,7 @@ makeduds () {
     branch=$3
     buildid=$4
     builddir=$5
+    target=$6
 
     cd ${builddir}/ports
     echo "================================================"
@@ -154,7 +157,7 @@ makeduds () {
     if [ -e ${builddir}/duds ]; then
 	cp -p ${builddir}/duds ${builddir}/duds.old
     fi
-    if ! ${pb}/scripts/makeduds ${arch} ${branch} ${buildid}; then
+    if ! ${pb}/scripts/makeduds ${arch} ${branch} ${buildid} ${target}; then
 	echo "error(s) detected, exiting script at $(date).  Failed duds list was:"
 	cat ${builddir}/duds
 	mailexit 1
@@ -170,7 +173,7 @@ makeduds () {
     cp -p ${builddir}/duds ${builddir}/duds.orig
 }
 
-# usage: restrictedlist pb arch branch builddir
+# usage: restrictedlist pb arch branch builddir [target]
 # note: can take ~25 minutes!
 restrictedlist () {
     pb=$1
@@ -178,13 +181,14 @@ restrictedlist () {
     branch=$3
     buildid=$4
     builddir=$5
+    target=$6
     
     cd ${builddir}/ports
     echo "================================================"
     echo "creating restricted list"
     echo "================================================"
     echo "restricted list generation started at $(date)"
-    ${pb}/scripts/makerestr ${arch} ${branch} ${buildid} || return 1
+    ${pb}/scripts/makerestr ${arch} ${branch} ${buildid} ${target} || return 1
     echo "restricted list generation ended at $(date)"
     echo $(grep -c '^#' ${builddir}/restricted.sh) "ports in ${builddir}/restricted.sh"
 }
@@ -357,6 +361,10 @@ while [ $# -gt 0 ]; do
 	x-nocleanup)
 	    nocleanup=1
 	    ;;
+        x-target)
+            shift
+            target=$(realpath $1)
+            ;;
 	*)
 	    usage
 	    ;;
@@ -510,11 +518,11 @@ if [ "$skipstart" = 0 ]; then
     # XXX MCL could background these?
     # not run in background to check return status
     if [ "$noindex" = 0 ]; then
-	makeindex ${pb} ${arch} ${branch} ${buildid} ${builddir} || mailexit 1
+	makeindex ${pb} ${arch} ${branch} ${buildid} ${builddir} ${target} || mailexit 1
     fi
     checkindex ${builddir} || mailexit 1
     if [ "$noduds" = 0 ]; then
-	makeduds ${pb} ${arch} ${branch} ${buildid} ${builddir} || mailexit 1
+	makeduds ${pb} ${arch} ${branch} ${buildid} ${builddir} ${target} || mailexit 1
     fi
 
     wait # for tar creation
@@ -539,7 +547,7 @@ if [ "$skipstart" = 0 ]; then
 
     # XXX These can happen after build start
     if [ "$norestr" = 0 ]; then
-	restrictedlist ${pb} ${arch} ${branch} ${buildid} ${builddir} &
+	restrictedlist ${pb} ${arch} ${branch} ${buildid} ${builddir} ${target} &
 	job_restrictedlist=$!
     fi
     
