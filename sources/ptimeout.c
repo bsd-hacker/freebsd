@@ -56,7 +56,7 @@ main(int argc, char *argv[])
 			kill(pid2, SIGKILL);
 		    } else {
 			DPRINTF("killing process %d\n", pid1);
-			kill(pid1, SIGTERM);
+			kill(pid1, SIGKILL);
 		    }
 		    /* exit status in upper 8 bits, killed signal (if any)
 		     * in lower 8 bits
@@ -67,7 +67,7 @@ main(int argc, char *argv[])
 		    sleep(timeout);
 		    t = time(NULL);
 		    printf("ptimeout: killing %s (pid %d) since timeout of %d expired at %s", args, pid1, timeout, ctime(&t));
-		    kill(pid1, SIGTERM);
+		    kill(pid1, SIGKILL);
 		    exit(1);
 		}
 	} else {

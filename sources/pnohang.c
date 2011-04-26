@@ -70,7 +70,7 @@ main(int argc, char *argv[])
 		    sv.sa_handler = SIG_IGN;
 		    sigemptyset(&sv.sa_mask);
 		    sv.sa_flags = 0;
-		    sigaction(SIGTERM, &sv, 0);
+		    sigaction(SIGKILL, &sv, 0);
 
 		    /* parent */
 		    child = wait(&status);
@@ -78,10 +78,10 @@ main(int argc, char *argv[])
 
 		    if (pid1 == child) {
 			DPRINTF("killing process %d (second child)\n", pid2);
-			kill(pid2, SIGTERM);
+			kill(pid2, SIGKILL);
 		    } else {
 			DPRINTF("killing process %d (first child)\n", pid1);
-			kill(pid1, SIGTERM);
+			kill(pid1, SIGKILL);
 		    }
 		    /* exit status in upper 8 bits, killed signal (if any) in
 		     * lower 8 bits
@@ -98,9 +98,9 @@ main(int argc, char *argv[])
 			    printf("ps jgx before the signal\n");
 			    system("ps jgxww");
 			    sleep(1); /* give it a chance to output the message */
-			    kill(pid1, SIGTERM);
+			    kill(pid1, SIGKILL);
 			    sleep(1);
-			    kill(pid, SIGTERM);
+			    kill(pid, SIGKILL);
 			    sleep(1);
 			    system("ps jgxww");
 			    exit(1);
