@@ -1,13 +1,16 @@
 #
 # try doing some SQL reads as a test
 #
-from freebsd_config import *
 
-import os, threading, socket, Queue
+import sys, os, threading, socket, Queue 
 
 from signal import *
 from sys import exc_info
 from itertools import chain
+
+sys.path.insert(0, '/var/portbuild/lib/python')
+
+from freebsd_config import *
 
 from qmanagerobj import *
 

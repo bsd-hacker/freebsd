@@ -49,9 +49,13 @@
 #     - OR, NOT job description entries
 #     - query jobs.machine properties
 
+import sys
+
+sys.path.insert(0, '/var/portbuild/lib/python')
+
 from freebsd_config import *
 
-import os, socket, sys, threading, time, Queue
+import os, socket, threading, time, Queue
 
 from signal import *
 from itertools import chain
@@ -109,7 +113,7 @@ class Worker(object):
                 # ignore EPIPE
                 # XXX MCL why?
                 if error.errno != 32:
-                    print exc_info()
+                    print sys.exc_info()
                 else:
                     print "EPIPE"
 

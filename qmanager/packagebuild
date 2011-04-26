@@ -32,11 +32,15 @@
 # * check mtime for package staleness (cf make)
 # * option to skip phase 2
 
+import sys
+
+sys.path.insert(0, '/var/portbuild/lib/python')
+
 from qmanagerclient import *
 
 from freebsd_config import *
 
-import os, string, sys, threading, time, subprocess
+import os, string, threading, time, subprocess
 #import random
 from itertools import chain
 #import gc

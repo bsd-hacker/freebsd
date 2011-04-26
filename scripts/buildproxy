@@ -6,6 +6,8 @@
 
 import sys, socket, os, commands
 
+sys.path.insert(0, '/var/portbuild/lib/python')
+
 from freebsd import *
 from freebsd_config import *
 

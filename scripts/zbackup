@@ -3,9 +3,12 @@
 # Back up a list of ZFS filesystems, doing a full backup periodically
 # and using incremental diffs in between
 
-import zfs, commands, datetime, sys, os, bz2
-
+import commands, datetime, sys, os, bz2
 from signal import *
+
+sys.path.insert(0, '/var/portbuild/lib/python')
+
+import zfs
 
 # List of filesystems to backup
 # XXX MCL

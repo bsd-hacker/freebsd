@@ -2,7 +2,11 @@
 #
 # Expire old snapshots
 
-import zfs, commands, datetime, os
+import sys, commands, datetime, os
+
+sys.path.insert(0, '/var/portbuild/lib/python')
+
+import zfs
 
 # List of filesystems to expire
 expirelist=(("a", 14), 
