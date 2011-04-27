@@ -678,7 +678,7 @@ if [ "$nobuild" = 0 ]; then
     fi
 
     # Compile ptimeout.
-    /usr/bin/gcc -o ${builddir}/ptimeout -Wall ${pbc}/sources/ptimeout.c
+    /usr/bin/gcc -o ${builddir}/ptimeout -Wall ${pb}/sources/ptimeout.c
     
     dobuild ${pb} ${arch} ${branch} ${builddir}
     
