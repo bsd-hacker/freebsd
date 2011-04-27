@@ -109,9 +109,9 @@ setup() {
     ${client_setup} post-copy ${args} || (echo "post-copy for ${node} failed"; return 1)
 
     if [ "${queue}" -eq 1 ]; then
-	jobs=$(python /var/portbuild/evil/qmanager/qclient jobs | grep "${node}" | grep "${arch}/${branch}/${buildid} package" | awk '{print $1}' | tail +1)
+	jobs=$(python /var/portbuild/qmanager/qclient jobs | grep "${node}" | grep "${arch}/${branch}/${buildid} package" | awk '{print $1}' | tail +1)
 	for j in ${jobs}; do
-	    python /var/portbuild/evil/qmanager/qclient release $j
+	    python /var/portbuild/qmanager/qclient release $j
 	done
     fi
 
