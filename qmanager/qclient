@@ -8,7 +8,22 @@
 import socket, os, sys
 
 from optparse import OptionParser
+
+pbc = os.getenv('PORTBUILD_CHECKOUT') \
+    if os.getenv('PORTBUILD_CHECKOUT') else "/var/portbuild"
+pbd = os.getenv('PORTBUILD_DATA') \
+    if os.getenv('PORTBUILD_DATA') else "/var/portbuild"
+
+sys.path.insert(0, '%s/lib/python' % pbc)
+
 from qmanagerclient import *
+from freebsd_config import *
+
+CONFIG_SUBDIR="conf"
+CONFIG_FILENAME="server.conf"
+
+config = getConfig( pbc, CONFIG_SUBDIR, CONFIG_FILENAME )
+QMANAGER_SOCKET_FILE = config.get( 'QMANAGER_SOCKET_FILE' )
 
 def error(msg):
     print >>sys.stderr, "%s: %s" % (sys.argv[0], msg.rstrip())
@@ -88,10 +103,8 @@ def buildquery(option, opt, values, parser):
     query.append("%s %s %s" % (key, operator, val))
 
 
-SOCKLOCAL = '/tmp/.qmgr'
-
 conn = QManagerClientConn(stderr = sys.stderr)
-conn.connect(SOCKLOCAL)
+conn.connect(QMANAGER_SOCKET_FILE)
 
 query=[]
 
