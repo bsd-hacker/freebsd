@@ -18,7 +18,7 @@
 # could use a lockf lock, and be able to tell if the setup process was
 # still running or died prematurely
 
-pb=/var/portbuild
+pbd=${PORTBUILD_DATA:-/var/portbuild}
 
 usage () {
     echo "usage: claim-chroot arch branch buildid"
@@ -48,7 +48,7 @@ fi
 # provide mutual exclusion against other callers, since we only want
 # one of them to perform setup
 
-builddir=${pb}/${arch}/${branch}/builds/${buildid}
+builddir=${pbd}/${arch}/${branch}/builds/${buildid}
 
 # Is the build environment populated?  Again we only want a single
 # instance to gain setup rights if not.
@@ -64,10 +64,10 @@ if [ ! -f ${builddir}/.ready ]; then
     exit 1
 fi
 
-. ${pb}/${arch}/client.conf
-. ${pb}/${arch}/common.conf
-. ${pb}/${arch}/portbuild.conf
-. ${pb}/${arch}/portbuild.$(hostname)
+. ${pbd}/${arch}/client.conf
+. ${pbd}/${arch}/common.conf
+. ${pbd}/${arch}/portbuild.conf
+. ${pbd}/${arch}/portbuild.$(hostname)
 
 buildroot=${scratchdir}
 pkgname=${pkgname%.${PKGSUFFIX}}
@@ -109,7 +109,7 @@ for dir in ${chrootdir}/*; do
 	mkdir ${dir}/used 2>/dev/null || continue
 	touch ${dir}/used/${pkgname}
 	if [ -f ${dir}/.dirty ]; then
-	    ${pb}/scripts/clean-chroot ${arch} ${branch} ${buildid} ${dir} 2 >/dev/null 2>/dev/null &
+	    ${builddir}/scripts/clean-chroot ${arch} ${branch} ${buildid} ${dir} 2 >/dev/null 2>/dev/null &
 	    continue
 	fi
 	found=1

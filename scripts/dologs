@@ -4,21 +4,22 @@
 arch=$1
 versions="latest full"
 
-pb=/var/portbuild
+pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
+pbd=${PORTBUILD_DATA:-/var/portbuild}
 
-. ${pb}/conf/server.conf
-. ${pb}/${arch}/portbuild.conf
+. ${pbc}/conf/server.conf
+. ${pbd}/${arch}/portbuild.conf
 
-home=${pb}/errorlogs
-scripts=${pb}/scripts
+home=${pbd}/errorlogs
+scripts=${pbc}/scripts
 
-branches=`cd ${pb}/${arch} && ls -d [1-9]* 2> /dev/null`
+branches=`cd ${pbd}/${arch} && ls -d [1-9]* 2> /dev/null`
 
 for version in ${versions}; do
   for branch in ${branches}; do
     dir=$home/$arch-$branch-$version
     test -d $dir && cd $dir && ${scripts}/processlogs ${arch}
-    dir=${pb}/${arch}/${branch}
+    dir=${pbd}/${arch}/${branch}
     test -d $dir && cd $dir && ${scripts}/processfail ${arch} ${branch}
   done
   for branch in ${branches}; do

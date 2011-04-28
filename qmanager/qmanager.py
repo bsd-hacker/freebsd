@@ -49,24 +49,28 @@
 #     - OR, NOT job description entries
 #     - query jobs.machine properties
 
+import os
 import sys
 
-sys.path.insert(0, '/var/portbuild/lib/python')
+pbc = os.getenv('PORTBUILD_CHECKOUT') \
+    if os.getenv('PORTBUILD_CHECKOUT') else "/var/portbuild"
+pbd = os.getenv('PORTBUILD_DATA') \
+    if os.getenv('PORTBUILD_DATA') else "/var/portbuild"
 
-from freebsd_config import *
+sys.path.insert(0, '%s/lib/python' % pbc)
 
-import os, socket, threading, time, Queue
+import socket, threading, time, Queue
 
 from signal import *
 from itertools import chain
 
 from qmanagerobj import *
+from freebsd_config import *
 
-CONFIG_DIR="/var/portbuild"
 CONFIG_SUBDIR="conf"
 CONFIG_FILENAME="server.conf"
 
-config = getConfig( CONFIG_DIR, CONFIG_SUBDIR, CONFIG_FILENAME )
+config = getConfig( pbc, CONFIG_SUBDIR, CONFIG_FILENAME )
 QMANAGER_SOCKET_FILE = config.get( 'QMANAGER_SOCKET_FILE' )
 
 DEBUG = True

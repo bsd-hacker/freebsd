@@ -4,9 +4,10 @@
 # main server-side script to run a package build
 
 # configurable variables
-pb=/var/portbuild
+pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
+pbd=${PORTBUILD_DATA:-/var/portbuild}
 
-PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:${pb}/scripts
+PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:${pbc}/scripts
 
 # writable by portmgr
 umask 002
@@ -52,26 +53,26 @@ buildid=$3
 datestamp=$4
 shift 4
 
-. ${pb}/conf/server.conf
-. ${pb}/conf/common.conf
-. ${pb}/scripts/buildenv
+. ${pbc}/conf/server.conf
+. ${pbc}/conf/common.conf
+. ${pbc}/scripts/buildenv
 validate_env ${arch} ${branch} || usage
 
 # XXX MCL too early to do this here.
-buildid=$(resolve ${pb} ${arch} ${branch} ${buildid})
+buildid=$(resolve ${pbd} ${arch} ${branch} ${buildid})
 if [ -z "${buildid}" ]; then
     echo "Invalid build ID ${buildid}"
     exit 1
 fi
 
-if [ -f ${pb}/${arch}/portbuild.conf ]; then
-    . ${pb}/conf/server.conf
-    . ${pb}/${arch}/portbuild.conf
+if [ -f ${pbd}/${arch}/portbuild.conf ]; then
+    . ${pbc}/conf/server.conf
+    . ${pbd}/${arch}/portbuild.conf
 else
     usage
 fi
 
-pbab=${pb}/${arch}/${branch}
+pbab=${pbd}/${arch}/${branch}
 
 trap "exit 1" 1 2 3 9 10 11 15
 
@@ -97,7 +98,7 @@ portstar() {
 # usage: makeindex pb arch branch builddir [target]
 # note: can take ~24 minutes!
 makeindex () {
-    pb=$1
+    pbc=$1
     arch=$2
     branch=$3
     buildid=$4
@@ -109,7 +110,7 @@ makeindex () {
     echo "generating index"
     echo "================================================"
     echo "index generation started at $(date)"
-    ${pb}/scripts/makeindex ${arch} ${branch} ${buildid} ${target} || return 1
+    ${pbc}/scripts/makeindex ${arch} ${branch} ${buildid} ${target} || return 1
     echo "index generation ended at $(date)"
     echo $(wc -l ${INDEXFILE} | awk '{print $1}') "lines in INDEX"
 
@@ -142,7 +143,7 @@ checkindex () {
 # usage: makeduds pb arch branch builddir [target]
 # note: can take ~21 minutes!
 makeduds () {
-    pb=$1
+    pbc=$1
     arch=$2
     branch=$3
     buildid=$4
@@ -157,7 +158,7 @@ makeduds () {
     if [ -e ${builddir}/duds ]; then
 	cp -p ${builddir}/duds ${builddir}/duds.old
     fi
-    if ! ${pb}/scripts/makeduds ${arch} ${branch} ${buildid} ${target}; then
+    if ! ${pbc}/scripts/makeduds ${arch} ${branch} ${buildid} ${target}; then
 	echo "error(s) detected, exiting script at $(date).  Failed duds list was:"
 	cat ${builddir}/duds
 	mailexit 1
@@ -176,7 +177,7 @@ makeduds () {
 # usage: restrictedlist pb arch branch builddir [target]
 # note: can take ~25 minutes!
 restrictedlist () {
-    pb=$1
+    pbc=$1
     arch=$2
     branch=$3
     buildid=$4
@@ -188,7 +189,7 @@ restrictedlist () {
     echo "creating restricted list"
     echo "================================================"
     echo "restricted list generation started at $(date)"
-    ${pb}/scripts/makerestr ${arch} ${branch} ${buildid} ${target} || return 1
+    ${pbc}/scripts/makerestr ${arch} ${branch} ${buildid} ${target} || return 1
     echo "restricted list generation ended at $(date)"
     echo $(grep -c '^#' ${builddir}/restricted.sh) "ports in ${builddir}/restricted.sh"
 }
@@ -196,7 +197,7 @@ restrictedlist () {
 # usage: cdromlist pb arch branch builddir
 # note: can take ~48 minutes!
 cdromlist () {
-    pb=$1
+    pbc=$1
     arch=$2
     branch=$3
     builddir=$4
@@ -218,7 +219,7 @@ cdromlist () {
 # XXX Should generate these as the packages are copied in, instead of all at once at the end
 # usage: generatemd5 pb arch branch builddir
 generatemd5 () {
-    pb=$1
+    pbc=$1
     arch=$2
     branch=$3
     builddir=$4
@@ -231,7 +232,7 @@ generatemd5 () {
 
 
 dobuild() {
-    pb=$1
+    pbc=$1
     arch=$2
     branch=$3
     builddir=$4
@@ -241,7 +242,7 @@ dobuild() {
     echo "================================================"
     echo "started at $(date)"
     start=$(date +%s)
-    ${QMANAGER_PATH}/packagebuild ${arch} ${branch} ${buildid} > ${builddir}/${journalname} 2>&1 < /dev/null
+    ${pbc}/qmanager/packagebuild ${arch} ${branch} ${buildid} > ${builddir}/${journalname} 2>&1 < /dev/null
     result=$?
     if [ $result -ne 0 ]; then
         echo "ERROR: packagebuild ${arch} ${branch} ${buildid} failed: see ${builddir}/${journalname} for details"
@@ -422,7 +423,7 @@ if [ ! -d ${builddir} ]; then
 fi
 
 # Set up our environment variables
-buildenv ${pb} ${arch} ${branch} ${builddir}
+buildenv ${pbd} ${arch} ${branch} ${builddir}
 
 # XXX MCL might not return 'latest' ???
 echo | mail -s "$(basename $0) started for ${arch}-${branch} ${buildid} at $(date)" ${mailto}
@@ -439,7 +440,7 @@ fi
 touch ${builddir}/.active
 
 # Update link to current logfile created by dopackages.wrapper
-ln -sf ${pb}/${arch}/archive/buildlogs/log.${branch}.${datestamp} \
+ln -sf ${pbd}/${arch}/archive/buildlogs/log.${branch}.${datestamp} \
     ${builddir}/build.log
 
 if [ "$skipstart" = 0 ]; then
@@ -518,11 +519,11 @@ if [ "$skipstart" = 0 ]; then
     # XXX MCL could background these?
     # not run in background to check return status
     if [ "$noindex" = 0 ]; then
-	makeindex ${pb} ${arch} ${branch} ${buildid} ${builddir} ${target} || mailexit 1
+	makeindex ${pbc} ${arch} ${branch} ${buildid} ${builddir} ${target} || mailexit 1
     fi
     checkindex ${builddir} || mailexit 1
     if [ "$noduds" = 0 ]; then
-	makeduds ${pb} ${arch} ${branch} ${buildid} ${builddir} ${target} || mailexit 1
+	makeduds ${pbc} ${arch} ${branch} ${buildid} ${builddir} ${target} || mailexit 1
     fi
 
     wait # for tar creation
@@ -542,17 +543,17 @@ if [ "$skipstart" = 0 ]; then
 	if [ -f ${pbab}/newfailure ]; then
 	    cp ${pbab}/newfailure ${builddir}/bak/
 	fi
-	lockf -k ${pbab}/failure.lock ${pb}/scripts/prunefailure ${arch} ${branch} ${builddir}
+	lockf -k ${pbab}/failure.lock ${pbc}/scripts/prunefailure ${arch} ${branch} ${builddir}
     fi
 
     # XXX These can happen after build start
     if [ "$norestr" = 0 ]; then
-	restrictedlist ${pb} ${arch} ${branch} ${buildid} ${builddir} ${target} &
+	restrictedlist ${pbc} ${arch} ${branch} ${buildid} ${builddir} ${target} &
 	job_restrictedlist=$!
     fi
     
     if [ "$cdrom" = 1 ]; then
-	cdromlist ${pb} ${arch} ${branch} ${builddir} &
+	cdromlist ${pbc} ${arch} ${branch} ${builddir} &
 	job_cdromlist=$!
     fi
     
@@ -567,8 +568,8 @@ if [ "$skipstart" = 0 ]; then
     oldlogs=$(readlink ${builddir}/logs)
     
     # XXX MCL hardcoding of archive/errorlogs
-    newerrors=${pb}/${arch}/archive/errorlogs/e.${branch}.${buildid}
-    newlogs=${pb}/${arch}/archive/errorlogs/a.${branch}.${buildid}
+    newerrors=${pbd}/${arch}/archive/errorlogs/e.${branch}.${buildid}
+    newlogs=${pbd}/${arch}/archive/errorlogs/a.${branch}.${buildid}
     
     # Cycle out the previous symlinks
     rm -f bak/errors
@@ -637,7 +638,7 @@ if [ "$skipstart" = 0 ]; then
 	sed "s,$,${PKGSUFFIX}," ${builddir}/.oldports | xargs rm -f
 	# XXX MCL takes an unknown period of time.
 	# XXX MCL return value not checked.
-	${pb}/scripts/prunepkgs ${PORTSDIR}/${INDEXFILE} ${PACKAGES}
+	${pbc}/scripts/prunepkgs ${PORTSDIR}/${INDEXFILE} ${PACKAGES}
 	
 	cd ${builddir}/errors/
 	sed "s,\$,.log," ${builddir}/.oldports | xargs rm -f
@@ -678,9 +679,9 @@ if [ "$nobuild" = 0 ]; then
     fi
 
     # Compile ptimeout.
-    /usr/bin/gcc -o ${builddir}/ptimeout -Wall ${pb}/sources/ptimeout.c
+    /usr/bin/gcc -o ${builddir}/ptimeout -Wall ${pbc}/sources/ptimeout.c
     
-    dobuild ${pb} ${arch} ${branch} ${builddir}
+    dobuild ${pbc} ${arch} ${branch} ${builddir}
     
 fi
 
@@ -696,7 +697,7 @@ if [ "$nofinish" = 0 ]; then
     if [ "$norestr" = 0 ]; then
         # Before deleting restricted packages, save a copy so we don't
         # have to rebuild them next time
-	${pb}/scripts/keeprestr ${arch} ${branch} ${buildid}
+	${pbc}/scripts/keeprestr ${arch} ${branch} ${buildid}
     else
 	rm -rf ${builddir}/bak/restricted/
     fi
@@ -712,7 +713,7 @@ if [ "$nofinish" = 0 ]; then
     fi
     
     # Remove packages not listed in INDEX
-    ${pb}/scripts/prunepkgs ${builddir}/ports/${INDEXFILE} ${builddir}/packages
+    ${pbc}/scripts/prunepkgs ${builddir}/ports/${INDEXFILE} ${builddir}/packages
 fi
 
 # XXX Checking for bad packages should be done after the package is uploaded
@@ -729,10 +730,10 @@ fi
 #done
 
 if [ "$nofinish" = 0 ]; then
-    generatemd5 ${pb} ${arch} ${branch} ${builddir} &
+    generatemd5 ${pbc} ${arch} ${branch} ${builddir} &
     
     # Remove INDEX entries for packages that do not exist
-    ${pb}/scripts/chopindex ${builddir}/ports/${INDEXFILE} ${builddir}/packages > ${builddir}/packages/INDEX
+    ${pbc}/scripts/chopindex ${builddir}/ports/${INDEXFILE} ${builddir}/packages > ${builddir}/packages/INDEX
 
     # Copy UPDATING and MOVED into the packages folder
     cp ${builddir}/ports/UPDATING ${builddir}/packages/UPDATING
@@ -751,7 +752,7 @@ if [ "$nofinish" = 0 ]; then
     echo "================================================"
     echo "started at $(date)"
     cd ${builddir}
-    ${pb}/scripts/dodistfiles ${arch} ${branch} ${buildid}
+    ${pbc}/scripts/dodistfiles ${arch} ${branch} ${buildid}
     
     # Always delete restricted distfiles
     echo "deleting restricted distfiles"
@@ -767,9 +768,9 @@ fi
 
 if [ "${nocleanup}" -eq 1 ]; then
     echo "Not cleaning up build, when you are finished be sure to run:"
-    echo "   ${pb}/scripts/build cleanup ${arch} ${branch} ${buildid} -full"
+    echo "   ${pbc}/scripts/build cleanup ${arch} ${branch} ${buildid} -full"
 else
-    ${pb}/scripts/build cleanup ${arch} ${branch} ${buildid} -full
+    ${pbc}/scripts/build cleanup ${arch} ${branch} ${buildid} -full
 fi
 
 endtime=$(date +%s)

@@ -4,7 +4,8 @@
 # server-side script to handle various commands common to builds
 
 # configurable variables
-pb=/var/portbuild
+pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
+pbd=${PORTBUILD_DATA:-/var/portbuild}
 
 # subdirectories to process.  yes, this is a hack, but it saves code
 # duplication.
@@ -25,7 +26,7 @@ do_list() {
     arch=$1
     branch=$2
 
-    buildpar=/var/portbuild/${arch}/${branch}/builds
+    buildpar=${pbd}/${arch}/${branch}/builds
 
     if [ -d ${buildpar} ]; then
 	snaps=$(cd ${buildpar}; ls -1d 2* 2> /dev/null)
@@ -51,7 +52,7 @@ do_create() {
     buildid=$3
     shift 3
 
-    archivedir=${pb}/${arch}/archive
+    archivedir=${pbd}/${arch}/archive
 
     # create directory for all build logs
     buildlogsdir=${archivedir}/buildlogs
@@ -93,8 +94,7 @@ do_create() {
     ln -sf ${builddir} ${pbab}/builds/latest
 
     # create the links for the webserver
-    # XXX MCL hardcoding
-    errorlogs=/var/portbuild/errorlogs
+    errorlogs=${pbd}/errorlogs
 
     ln -s ${buildsdir}/latest/bak/errors ${errorlogs}/${arch}-${branch}-previous
     ln -s ${buildsdir}/latest/bak/logs ${errorlogs}/${arch}-${branch}-previous-logs
@@ -148,7 +148,7 @@ do_clone() {
 
     if [ -d ${newbuilddir} ]; then
 	if [ ! -f ${pbab}/builds/previous/.keep ]; then
-	    /var/portbuild/scripts/build destroy ${arch} ${branch} previous
+	    ${pbc}/scripts/build destroy ${arch} ${branch} previous
 	fi
         rm -f ${pbab}/builds/previous
 	mv ${pbab}/builds/latest ${pbab}/builds/previous
@@ -251,10 +251,10 @@ cleanup_client() {
 
     echo "Started cleaning up ${arch}/${branch} build ID ${buildid} on ${mach}"
 
-    test -f ${pb}/${arch}/portbuild.${mach} && . ${pb}/${arch}/portbuild.${mach}
+    test -f ${pbd}/${arch}/portbuild.${mach} && . ${pbd}/${arch}/portbuild.${mach}
 
     # Kill off builds and clean up chroot
-    ${pb}/scripts/dosetupnode ${arch} ${branch} ${buildid} ${mach} -nocopy -queue -full
+    ${pbc}/scripts/dosetupnode ${arch} ${branch} ${buildid} ${mach} -nocopy -queue -full
 
     echo "Finished cleaning up ${arch}/${branch} build ID ${buildid} on ${mach}"
 }
@@ -267,7 +267,7 @@ do_cleanup() {
     arg=$5
     shift 5
 
-    for i in `cat ${pb}/${arch}/mlist`; do
+    for i in `cat ${pbd}/${arch}/mlist`; do
 	cleanup_client ${arch} ${branch} ${buildid} ${i} ${arg} &
     done
     wait
@@ -394,7 +394,7 @@ do_destroy() {
     shift 4
 
     echo
-    buildid=$(resolve ${pb} ${arch} ${branch} ${buildid})
+    buildid=$(resolve ${pbd} ${arch} ${branch} ${buildid})
     if [ -z "${buildid}" ]; then
 	echo "Invalid build ID ${buildid}"
 	exit 1
@@ -435,7 +435,7 @@ proxy_root() {
 
     id=$(id -u)
     if [ ${id} != "0" ]; then
-	/var/portbuild/scripts/buildproxy-client "build ${cmd} ${arch} ${branch} ${buildid} ${args}"
+	${pbc}/scripts/buildproxy-client "build ${cmd} ${arch} ${branch} ${buildid} ${args}"
 	error=$?
 	if [ ${error} -eq 254 ]; then
 	    echo "Proxy error"
@@ -463,7 +463,7 @@ proxy_user() {
 	eval "do_${cmd} ${arch} ${branch} ${buildid} \"${builddir}\" ${args}"
 	error=$?
     else
-	su ports-${arch} -c "/var/portbuild/scripts/build ${cmd} ${arch} ${branch} ${buildid} \"${builddir}\" ${args}"
+	su ports-${arch} -c "${pbc}/scripts/build ${cmd} ${arch} ${branch} ${buildid} \"${builddir}\" ${args}"
 	error=$?
     fi
 
@@ -486,11 +486,11 @@ arch=$2
 branch=$3
 shift 3
 
-. ${pb}/conf/server.conf
-. ${pb}/${arch}/portbuild.conf
-. ${pb}/scripts/buildenv
+. ${pbc}/conf/server.conf
+. ${pbd}/${arch}/portbuild.conf
+. ${pbc}/scripts/buildenv
 
-pbab=${pb}/${arch}/${branch}
+pbab=${pbd}/${arch}/${branch}
 
 validate_env ${arch} ${branch} || exit 1
 
@@ -505,7 +505,7 @@ if [ $# -ge 1 ]; then
     case "$cmd" in
 	cleanup)
 	    # Resolve symlinks but don't bail if the build doesn't exist.
-	    newbuildid=$(resolve ${pb} ${arch} ${branch} ${buildid})
+	    newbuildid=$(resolve ${pbd} ${arch} ${branch} ${buildid})
 	    if [ ! -z "${newbuildid}" -a "${newbuildid}" != "${buildid}" ]; then
 		echo "Resolved ${buildid} to ${newbuildid}"
 		buildid=${newbuildid}
@@ -527,7 +527,7 @@ if [ $# -ge 1 ]; then
 	    # We can't rely on buildenv for this code path
 	    ;;
 	*)
-	    newbuildid=$(resolve ${pb} ${arch} ${branch} ${buildid})
+	    newbuildid=$(resolve ${pbd} ${arch} ${branch} ${buildid})
 	    if [ -z "${newbuildid}" ]; then
 		echo "Build ID ${buildid} does not exist"
 		exit 1
@@ -539,7 +539,7 @@ if [ $# -ge 1 ]; then
 
 	    builddir=$(realpath ${pbab}/builds/${buildid}/)
 
-	    buildenv ${pb} ${arch} ${branch} ${builddir}
+	    buildenv ${pbd} ${arch} ${branch} ${builddir}
 	    ;;
     esac
 fi

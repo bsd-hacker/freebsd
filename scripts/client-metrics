@@ -6,7 +6,7 @@
 #       - max vnodes
 #       - number of packages built in the past hour
 
-pb=/var/portbuild
+pbd=${PORTBUILD_DATA:-/var/portbuild}
 
 arch=$(uname -m)
 me=$(hostname)
@@ -16,10 +16,10 @@ export PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin
 gmetric --name="maxvnodes" --value=`sysctl -n kern.maxvnodes` --tmax=120 --dmax=0 --type=uint32 --units="# vnodes"
 gmetric --name="vnodes" --value=`sysctl -n vfs.numvnodes` --tmax=120 --dmax=0 --type=uint32 --units="# vnodes"
 
-if [ -f ${pb}/${arch}/portbuild.conf -a -f ${pb}/${arch}/portbuild.${me} ]; then
-    . ${pb}/${arch}/client.conf
-    . ${pb}/${arch}/portbuild.conf 
-    . ${pb}/${arch}/portbuild.${me}
+if [ -f ${pbd}/${arch}/portbuild.conf -a -f ${pbd}/${arch}/portbuild.${me} ]; then
+    . ${pbd}/${arch}/client.conf
+    . ${pbd}/${arch}/portbuild.conf 
+    . ${pbd}/${arch}/portbuild.${me}
 else
     exit 1
 fi

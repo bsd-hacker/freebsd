@@ -16,18 +16,19 @@ arch=$1
 branch=$2
 buildid=$3
 
-pb=/var/portbuild
+pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
+pbd=${PORTBUILD_DATA:-/var/portbuild}
 
-. ${pb}/conf/server.conf
-. ${pb}/scripts/buildenv
+. ${pbc}/conf/server.conf
+. ${pbc}/scripts/buildenv
 
-buildid=$(resolve ${pb} ${arch} ${branch} ${buildid})
+buildid=$(resolve ${pbd} ${arch} ${branch} ${buildid})
 if [ -z "${buildid}" ]; then
     echo "Invalid build ID ${buildid}"
     exit 1
 fi
 
-builddir=${pb}/${arch}/${branch}/builds/${buildid}
+builddir=${pbd}/${arch}/${branch}/builds/${buildid}
 cd ${builddir}
 
 rm -rf bak/restricted

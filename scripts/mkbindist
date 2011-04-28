@@ -25,18 +25,20 @@ branch=$2
 buildid=$3
 shift 3
 
-pb=/var/portbuild
-. ${pb}/conf/server.conf
-. ${pb}/${arch}/portbuild.conf
+pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
+pbd=${PORTBUILD_DATA:-/var/portbuild}
 
-. ${pb}/scripts/buildenv
+. ${pbc}/conf/server.conf
+. ${pbd}/${arch}/portbuild.conf
+
+. ${pbc}/scripts/buildenv
 
 if ! validate_env ${arch} ${branch}; then
     echo "Invalid build environment ${arch}/${branch}"
     exit 1
 fi
 
-here=${pb}/${arch}/${branch}/builds/${buildid}
+here=${pbd}/${arch}/${branch}/builds/${buildid}
 if [ ! -d ${here} ]; then
     echo "Invalid build ID ${buildid}"
     exit 1

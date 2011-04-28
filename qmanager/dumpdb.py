@@ -4,17 +4,21 @@
 
 import sys, os, threading, socket, Queue 
 
+pbc = os.getenv('PORTBUILD_CHECKOUT') \
+    if os.getenv('PORTBUILD_CHECKOUT') else "/var/portbuild"
+pbd = os.getenv('PORTBUILD_DATA') \
+    if os.getenv('PORTBUILD_DATA') else "/var/portbuild"
+
+sys.path.insert(0, '%s/lib/python' % pbc)
+
 from signal import *
 from sys import exc_info
 from itertools import chain
-
-sys.path.insert(0, '/var/portbuild/lib/python')
 
 from freebsd_config import *
 
 from qmanagerobj import *
 
-CONFIG_DIR="/var/portbuild"
 CONFIG_SUBDIR="conf"
 CONFIG_FILENAME="server.conf"
 
@@ -127,7 +131,7 @@ def show_machines_for_arch( engine, arch ):
 if __name__ == '__main__':
 
     print "acquiring engine and session"
-    config = getConfig( CONFIG_DIR, CONFIG_SUBDIR, CONFIG_FILENAME )
+    config = getConfig( pbc, CONFIG_SUBDIR, CONFIG_FILENAME )
     QMANAGER_PATH = config.get( 'QMANAGER_PATH' )
     QMANAGER_DATABASE_FILE = config.get( 'QMANAGER_DATABASE_FILE' )
     (engine, session) = obj_startup( \

@@ -5,8 +5,10 @@
 # accessible to the web server.
 #
 
-pb=/var/portbuild
-. ${pb}/conf/server.conf
+pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
+pbd=${PORTBUILD_DATA:-/var/portbuild}
+
+. ${pbc}/conf/server.conf
 
 here=`pwd`
 tmp=`basename $0 | sed -e "s/^do//"`".html"
@@ -59,7 +61,7 @@ write_row () {
 
     arch=$1
     build=$2
-    directory=${pb}/${arch}/${build}/builds/latest
+    directory=${pbd}/${arch}/${build}/builds/latest
     journal=${directory}/${journalname}
 
     branch=`echo $build | awk -F '-' '{print $1}'`
@@ -176,7 +178,7 @@ write_row () {
     running_processes_for_build=`ps axww | \
       grep "pdispatch $arch $build " | \
       grep -v grep | \
-      sed -e "s@.*pdispatch @@;s@ /var/portbuild/scripts/.*@@;s@ @-@g" | \
+      sed -e "s@.*pdispatch @@;s@ ${pbc}/scripts/.*@@;s@ @-@g" | \
       grep "^$arch-$build-2"`
     if [ ! -z "$running_processes_for_build" ]; then
       running_flag="Y"
@@ -335,7 +337,7 @@ write_header
 #     (i.e. where build = branch, e.g. "7", "10")
 for arch in ${SUPPORTED_ARCHS}; do
 
-  cd ${pb}/${arch}
+  cd ${pbd}/${arch}
   builds=`ls | \
     grep "${SRC_BRANCHES_PATTERN}$" | \
     sort -n`
@@ -355,7 +357,7 @@ done
 #   examples: 8.1; 8-exp; 8-exp-gettext; 8.1R
 for arch in ${SUPPORTED_ARCHS}; do
 
-  cd ${pb}/${arch}
+  cd ${pbd}/${arch}
   branches=`ls | \
     grep "${SRC_BRANCHES_PATTERN}[-\.]" | \
     sed -e "s@[-\.].*@@" | \

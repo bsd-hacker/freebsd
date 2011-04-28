@@ -3,8 +3,9 @@
 # Update the master source trees that are used by package builds
 # and other consumers
 
-pb=/var/portbuild
-. ${pb}/conf/server.conf
+pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
+
+. ${pbc}/conf/server.conf
 
 base=${ZFS_MOUNTPOINT}/${SNAP_SRC_DIRECTORY_PREFIX}
 zbase=${ZFS_VOLUME}/${SNAP_SRC_DIRECTORY_PREFIX}

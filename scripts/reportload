@@ -3,15 +3,16 @@
 
 # client script to report load to the server.
 
-pb=/var/portbuild
+pbd=${PORTBUILD_DATA:-/var/portbuild}
+
 # note: uname is not being overridden
 arch=$(uname -m)
 osver=$(sysctl -n kern.osreldate)
 
-. ${pb}/${arch}/client.conf
-. ${pb}/${arch}/portbuild.conf
-if [ -f ${pb}/${arch}/portbuild.$(hostname) ]; then
-    . ${pb}/${arch}/portbuild.$(hostname)
+. ${pbd}/${arch}/client.conf
+. ${pbd}/${arch}/portbuild.conf
+if [ -f ${pbd}/${arch}/portbuild.$(hostname) ]; then
+    . ${pbd}/${arch}/portbuild.$(hostname)
 fi
 
 # Look for exceptional conditions
@@ -35,7 +36,7 @@ echo "arch=${arch}"
 echo "osversion=${osver}"
 echo "jobs=${num}"
 
-cd /var/portbuild/${arch}
+cd ${pbd}/${arch}
 for i in */builds/*; do
     buildenv=${arch}/${i%%/*}/${i##*/}
     if [ -f ${i}/.ready ]; then

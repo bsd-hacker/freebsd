@@ -6,14 +6,16 @@ if [ $# -lt 3 ]; then
 fi
 
 # configurable variables
-pb=/var/portbuild
-. ${pb}/conf/server.conf
+pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
+pbd=${PORTBUILD_DATA:-/var/portbuild}
+
+. ${pbc}/conf/server.conf
 
 arch=$1
 branch=$2
 buildid=$3
 
-builddir=${pb}/${arch}/${branch}/builds/${buildid}
+builddir=${pbd}/${arch}/${branch}/builds/${buildid}
 
 yesreally=0
 dryrun=-n

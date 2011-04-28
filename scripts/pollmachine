@@ -28,6 +28,13 @@ import sys, threading, socket
 from time import sleep
 import os, subprocess, logging
 
+pbc = os.getenv('PORTBUILD_CHECKOUT') \
+    if os.getenv('PORTBUILD_CHECKOUT') else "/var/portbuild"
+pbd = os.getenv('PORTBUILD_DATA') \
+    if os.getenv('PORTBUILD_DATA') else "/var/portbuild"
+
+sys.path.insert(0, '%s/lib/python' % pbc)
+
 if len(sys.argv) < 1:
     print "Usage: %s <arch> [<arch> ...]" % sys.argv[0]
     sys.exit(1)
@@ -51,8 +58,6 @@ for i in sys.argv[1:]:
             mlist[arch] = set((mach,))
     else:
         arches.add(i)
-
-pb="/var/portbuild"
 
 # set of machines for each arch
 machines={}
@@ -181,8 +186,8 @@ class MachinePoll(threading.Thread):
             envs = self.vars['buildenvs']
             for e in envs.split():
                 (arch, branch, buildid) = e.split("/")
-                f = "/var/portbuild/%s/%s/builds/%s/.active" % \
-                    (arch, branch, buildid)
+                f = "%s/%s/%s/builds/%s/.active" % \
+                    (pbd, arch, branch, buildid)
                 if os.path.exists(f):
                     continue
                 # Clean up a stale buildenv
@@ -219,7 +224,7 @@ class MachinePoll(threading.Thread):
 
         # Record current system load
         try:
-            f = file("%s/%s/loads/%s" % (pb, self.arch, self.mach), "w")
+            f = file("%s/%s/loads/%s" % (pbd, self.arch, self.mach), "w")
         except:
             return
         try:
@@ -229,8 +234,8 @@ class MachinePoll(threading.Thread):
         f.close()
 
     def setup(self, branch, buildid, args = ""):
-        cmd = "su ports-%s -c \"/var/portbuild/scripts/dosetupnode %s %s %s %s %s\""\
-            % (self.arch, self.arch, branch, buildid, self.mach, args)
+        cmd = "su ports-%s -c \"%s/scripts/dosetupnode %s %s %s %s %s\""\
+            % (pbc, self.arch, self.arch, branch, buildid, self.mach, args)
         child = subprocess.Popen(cmd, shell=True, stderr = subprocess.STDOUT,
                                  stdout = subprocess.PIPE)
         err = child.wait()
@@ -254,7 +259,7 @@ while True:
         try:
             now = mlist[arch]
         except KeyError:
-            mlistfile="%s/%s/mlist" % (pb, arch)
+            mlistfile="%s/%s/mlist" % (pbd, arch)
             try:
                 f = file(mlistfile, "r")
             except OSError, error:
@@ -278,8 +283,8 @@ while True:
             logging.info("Adding machine %s/%s" % (arch, mach))
             # XXX set up qmgr
 
-            pc="%s/%s/portbuild.conf" % (pb, arch)
-            pch="%s/%s/portbuild.%s" % (pb, arch, mach)
+            pc="%s/%s/portbuild.conf" % (pbd, arch)
+            pch="%s/%s/portbuild.%s" % (pbd, arch, mach)
             cmd = "test -f %s && . %s; test -f %s && . %s; echo $infoseek_host; echo $infoseek_port" % (pc, pc, pch, pch)
             config = subprocess.Popen(cmd, shell = True,
                                       stdout = subprocess.PIPE)

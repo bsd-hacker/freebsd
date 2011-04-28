@@ -8,7 +8,7 @@
 
 # usage: $0 ARCH BRANCH BUILDID CHROOT [-noclean] [-norestr] [-noplistcheck] [-distfiles] [-fetch-original] [-trybroken] PKGNAME.tgz DIRNAME [DEPENDENCY.tgz ...]
 
-pb=/var/portbuild
+pbd=${PORTBUILD_DATA:-/var/portbuild}
 
 mount_fs()
 {
@@ -25,14 +25,14 @@ mount_fs()
 
 copypkg()
 {
-    pb=$1
+    pbd=$1
     host=$2
     from=$3
     to=$4
     http_proxy=$5
 
     if [ ${host} = $(hostname) ]; then
-	cp ${pb}/${arch}/${branch}/packages/All/${from} ${to}
+	cp ${pbd}/${arch}/${branch}/packages/All/${from} ${to}
     else
 	if [ ! -z "${http_proxy}" ]; then
 	    env HTTP_PROXY=${http_proxy} fetch -m -o ${to} http://${host}/errorlogs/${arch}-${branch}-packages-latest/All/${from}
@@ -64,12 +64,12 @@ shift 4
 # Default niceness value
 nice=0
 
-. ${pb}/${arch}/client.conf
-. ${pb}/${arch}/common.conf
+. ${pbd}/${arch}/client.conf
+. ${pbd}/${arch}/common.conf
 # note: should NOT need anything from server.conf
-. ${pb}/${arch}/portbuild.conf
-. ${pb}/${arch}/portbuild.$(hostname)
-. ${pb}/scripts/buildenv
+. ${pbd}/${arch}/portbuild.conf
+. ${pbd}/${arch}/portbuild.$(hostname)
+. ${pbd}/scripts/buildenv
 
 buildroot=${scratchdir}
 error=0
@@ -117,7 +117,7 @@ FD=$3
 BD=$4
 RD=$5
 
-builddir=${pb}/${arch}/${branch}/builds/${buildid}
+builddir=${pbd}/${arch}/${branch}/builds/${buildid}
 
 buildenv.common
 
@@ -286,7 +286,7 @@ while [ $# -gt 0 ]; do
   # XXX MCL more hard-coding
   if [ ! -f ${chroot}/tmp/depends/$1 ]; then
     echo "copying package $1 for ${pkgname}"
-    copypkg ${pb} ${CLIENT_UPLOAD_HOST} $1 ${chroot}/tmp/depends "${http_proxy}"
+    copypkg ${pbd} ${CLIENT_UPLOAD_HOST} $1 ${chroot}/tmp/depends "${http_proxy}"
 
     # Test for copy failure and bail
     # XXX MCL more hard-coding
@@ -298,8 +298,8 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-cp -p ${pb}/scripts/buildscript ${chroot}
-cp -p ${pb}/sources/pnohang.c ${chroot}
+cp -p ${builddir}/scripts/buildscript ${chroot}
+cp -p ${builddir}/sources/pnohang.c ${chroot}
 
 # phase 0, compile pnohang
 chroot ${chroot} /usr/bin/gcc -o /pnohang -Wall /pnohang.c 2>&1 | tee -a ${chroot}/tmp/${pkgname}.log

@@ -4,13 +4,14 @@
 #
 # This must be called via:
 #
-#   lockf -k ${pb}/${arch}/${branch}/failure.lock ${pb}/scripts/prunefailure ${arch} ${branch} ${buildid}
+#   lockf -k ${pbd}/${arch}/${branch}/failure.lock ${pbc}/scripts/prunefailure ${arch} ${branch} ${buildid}
 #
 # to avoid racing with any package builds in progress that might try to append to
 # these files.
 
 # configurable variables
-pb=/var/portbuild
+pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
+pbd=${PORTBUILD_DATA:-/var/portbuild}
 
 cleanup() {
     echo "Problem writing new failure file!"
@@ -28,16 +29,16 @@ branch=$2
 buildid=$3
 shift 3
 
-. ${pb}/conf/server.conf
-. ${pb}/conf/common.conf
-. ${pb}/${arch}/portbuild.conf
-. ${pb}/scripts/buildenv
+. ${pbc}/conf/server.conf
+. ${pbc}/conf/common.conf
+. ${pbd}/${arch}/portbuild.conf
+. ${pbc}/scripts/buildenv
 
-builddir=${pb}/${arch}/${branch}/builds/${buildid}
+builddir=${pbd}/${arch}/${branch}/builds/${buildid}
 
-buildenv ${pb} ${arch} ${branch} ${builddir}
+buildenv ${pbd} ${arch} ${branch} ${builddir}
 
-home=${pb}/${arch}/${branch}
+home=${pbd}/${arch}/${branch}
 cd $home
 
 pkgdir=${builddir}/packages/All
@@ -57,14 +58,14 @@ while read dir name ver olddate date count; do
     if [ -z "$dir" -o -z "$name" -o -z "$ver" -o -z "$olddate" -o -z "$date" -o -z "$count" ]; then
 	echo Malformed entry "$dir|$name|$ver|$olddate|$date|$count"
 	# Clean up the 'latest error log' symlink
-	rm -f ${pb}/${arch}/${branch}/latest/${dir}
+	rm -f ${pbd}/${arch}/${branch}/latest/${dir}
 	continue
     fi
 
     entry=$(grep "|/usr/ports/$dir|" $index)
     if [ -z "$entry" ]; then
 	echo $dir not in index
-	rm -f ${pb}/${arch}/${branch}/latest/${dir}
+	rm -f ${pbd}/${arch}/${branch}/latest/${dir}
 	continue
     fi
 
@@ -72,13 +73,13 @@ while read dir name ver olddate date count; do
 
     if [ -e "${builddir}/packages/All/$newver${PKGSUFFIX}" ]; then
 	echo "$newver package exists, should not still be here!"
-	rm -f ${pb}/${arch}/${branch}/latest/${dir}
+	rm -f ${pbd}/${arch}/${branch}/latest/${dir}
 	continue
     fi
 
     if grep -qxF $newver ${builddir}/duds.full; then
 	echo "$newver listed in duds, should not be here"
-	rm -f ${pb}/${arch}/${branch}/latest/${dir}
+	rm -f ${pbd}/${arch}/${branch}/latest/${dir}
 	continue
     fi
 

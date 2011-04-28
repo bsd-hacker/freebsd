@@ -39,9 +39,11 @@ scriptdir=$(dirname $0)
 errorscript=$scriptdir/processonelog
 
 # Figure out which arch we're building for
-pb=/var/portbuild
-. ${pb}/conf/server.conf
-. ${pb}/${arch}/portbuild.conf
+pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
+pbd=${PORTBUILD_DATA:-/var/portbuild}
+
+. ${pbc}/conf/server.conf
+. ${pbd}/${arch}/portbuild.conf
 
 # get the list of buildlogs.
 

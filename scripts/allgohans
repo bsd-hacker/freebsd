@@ -1,30 +1,46 @@
 #!/bin/sh
 
+pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
+pbd=${PORTBUILD_DATA:-/var/portbuild}
+
+. ${pbc}/conf/server.conf
+
 doarch() {
     arch=$1
     shift
 
-    if [ -f "${pb}/${arch}/portbuild.conf" ]; then
-	. ${pb}/${arch}/portbuild.conf
+    if [ -f "${pbd}/${arch}/portbuild.conf" ]; then
+	. ${pbd}/${arch}/portbuild.conf
     else
 	echo "Invalid arch"
 	exit 1
     fi
 
-    machines=$(awk '{print $1}' ${pb}/${arch}/mlist)
+    machines=$(awk '{print $1}' ${pbd}/${arch}/mlist)
 
     for i in ${machines}; do
-	. ${pb}/${arch}/portbuild.conf
-	if [ -f "${pb}/${arch}/portbuild.${i}" ]; then
-	    . ${pb}/${arch}/portbuild.${i}
+	. ${pbd}/${arch}/portbuild.conf
+	if [ -f "${pbd}/${arch}/portbuild.${i}" ]; then
+	    . ${pbd}/${arch}/portbuild.${i}
 	fi
 	if [ ${quiet} -eq 0 ]; then
 	    echo "[$i]"
 	fi
-	lockf -t 60 ${pb}/${arch}/lockfiles/lock.$i su ports-${arch} -c "ssh ${client_user}@$i ${sudo_cmd} $@"
+	cmdpath=${cmd}
+	if [ ${scpfirst} -ne 0 ]; then
+	    # If we need to scp first, the command given in the parameters is the local
+	    # path, which we need to upload first. The command will return the remote
+	    # temporary file, which we can subsequently execute. So this isn't really scp.
+	    cmdpath=$(su ports-${arch} -c "cat ${cmd} | ssh ${client_user}@$i 't=\$(mktemp -t ${cmd##*/}); cat >\$t; echo \$t; chmod 755 \$t'")
+	    case ${cmdpath} in /tmp/*) ;; *) echo "Failed to scp ${cmd} to $i."; return 1;; esac
+	fi
+	lockf -t 60 ${pbd}/${arch}/lockfiles/lock.$i su ports-${arch} -c "ssh ${client_user}@$i ${sudo_cmd} ${cmdpath} $@"
 	result=$?
 	if [ $result -ne 0 ]; then
-	    echo "could not execute command $@ on $i: $result"
+	    echo "could not execute command ${cmdpath} $@ on $i: $result"
+	fi
+	if [ ${scpfirst} -ne 0 ]; then
+	    su ports-${arch} -c "ssh ${client_user}@$i 'rm -f ${cmdpath}'"
 	fi
     done
 }
@@ -39,6 +55,7 @@ else
 	root=0
 fi
 
+# XXX - Have to convert this to getopt().
 if [ "$1" = "-q" ]; then
 	quiet=1
 	shift
@@ -46,11 +63,18 @@ else
 	quiet=0
 fi
 
-pb=/var/portbuild
-. ${pb}/conf/server.conf
+if [ "$1" = "-scp" ]; then
+	scpfirst=1
+	shift
+else
+	scpfirst=0
+fi
+
+cmd=$1
+shift
 
 if [ "${arch}" = "all" ]; then
-    arches=$(find ${pb}/*/portbuild.conf)
+    arches=$(find ${pbd}/*/portbuild.conf)
     for i in ${arches}; do
 	arch=$(basename $(dirname $i))
 	doarch $arch "$@"

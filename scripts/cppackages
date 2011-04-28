@@ -1,11 +1,11 @@
 #!/bin/sh
 
 # configurable variables
-pb=/var/portbuild
+pbd=${PORTBUILD_DATA:-/var/portbuild}
 
-. ${pb}/portbuild.conf
+. ${pbd}/portbuild.conf
 
-lock=${pb}/cppackages.lock
+lock=${pbd}/cppackages.lock
 
 unset DISPLAY
 

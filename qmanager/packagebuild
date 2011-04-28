@@ -32,31 +32,33 @@
 # * check mtime for package staleness (cf make)
 # * option to skip phase 2
 
+import os
 import sys
 
-sys.path.insert(0, '/var/portbuild/lib/python')
+pbc = os.getenv('PORTBUILD_CHECKOUT') \
+    if os.getenv('PORTBUILD_CHECKOUT') else "/var/portbuild"
+pbd = os.getenv('PORTBUILD_DATA') \
+    if os.getenv('PORTBUILD_DATA') else "/var/portbuild"
+
+sys.path.insert(0, '%s/lib/python' % pbc)
 
 from qmanagerclient import *
-
 from freebsd_config import *
 
-import os, string, threading, time, subprocess
-#import random
+import string, threading, time, subprocess
 from itertools import chain
-#import gc
 from stat import *
 
 from Queue import Queue
 from heapq import *
 
-CONFIG_DIR="/var/portbuild"
 CONFIG_SUBDIR="conf"
 CONFIG_FILENAME="server.conf"
 
-config = getConfig( CONFIG_DIR, CONFIG_SUBDIR, CONFIG_FILENAME )
+config = getConfig( pbc, CONFIG_SUBDIR, CONFIG_FILENAME )
 QMANAGER_MAX_JOB_ATTEMPTS   = int( \
     config.get( 'QMANAGER_MAX_JOB_ATTEMPTS' ) )
-QMANAGER_PRIORITY_PACKAGES  = string.split( \
+QMANAGER_PRIORITY_PACKAGES = string.split( \
     config.get( 'QMANAGER_PRIORITY_PACKAGES' ) )
 QMANAGER_RUNAWAY_PERCENTAGE = float( \
     config.get( 'QMANAGER_RUNAWAY_PERCENTAGE' ) )
@@ -323,8 +325,8 @@ they still need to know about us as dependencies etc """
     def packagename(self, arch, branch, buildid):
         """ Return the path where a package may be found"""
 
-        return "/var/portbuild/%s/%s/builds/%s/packages/All/%s.tbz" \
-            % (arch, branch, buildid, self.name)
+        return "%s/%s/%s/builds/%s/packages/All/%s.tbz" \
+            % (pbd, arch, branch, buildid, self.name)
 
     def is_stale(self, arch, branch, buildid):
         """ Does a package need to be (re)-built?
@@ -409,6 +411,7 @@ class worker(threading.Thread):
         self.branch = branch
         self.buildid = buildid
         self.queue = queue
+        self.basedir = pbd+"/"+arch+"/"+branch+"/builds/"+buildid
 
         self.setDaemon(True)
 
@@ -422,19 +425,19 @@ class worker(threading.Thread):
             print
         try:
             runenv={'HOME':"/root",
-                 'PATH':'/sbin:/bin:/usr/sbin:/usr/bin:/usr/games:/usr/local/sbin:/usr/local/bin:/var/portbuild/scripts',
+                 'PATH':'/sbin:/bin:/usr/sbin:/usr/bin:/usr/games:/usr/local/sbin:/usr/local/bin:%s/scripts' + pbc,
                  'FD':" ".join(["%s.tbz" % p.name for p in pkg.fdep]),
                  'ED':" ".join(["%s.tbz" % p.name for p in pkg.edep]),
                  'PD':" ".join(["%s.tbz" % p.name for p in pkg.pdep]),
                  'BD':" ".join(["%s.tbz" % p.name for p in pkg.bdep]),
                  'RD':" ".join(["%s.tbz" % p.name for p in pkg.rdep])}
-	    for var in ["NOCLEAN", "NO_RESTRICTED", "NOPLISTCHECK", "NO_DISTFILES", "FETCH_ORIGINAL", "TRYBROKEN" ]:
+	    for var in ["NOCLEAN", "NO_RESTRICTED", "NOPLISTCHECK", "NO_DISTFILES", "FETCH_ORIGINAL", "TRYBROKEN", "PORTBUILD_CHECKOUT", "PORTBUILD_DATA" ]:
 	         if var in os.environ:
 		     runenv[var] = os.environ.get(var)
             build = subprocess.Popen(
-                ["/bin/sh", "/var/portbuild/scripts/pdispatch",
+                ["/bin/sh", "%s/scripts/pdispatch" % pbc,
                  self.arch, self.branch, self.buildid, self.machine,
-                 "/var/portbuild/scripts/portbuild", "%s.tbz" % pkg.name,
+                 "%s/scripts/portbuild" % self.basedir, "%s.tbz" % pkg.name,
                  pkg.path],
 		 env=runenv,    
                 stderr=subprocess.STDOUT, stdout=subprocess.PIPE, bufsize=0)
@@ -506,7 +509,7 @@ class worker(threading.Thread):
 def main(arch, branch, buildid, args):
     global index
 
-    basedir="/var/portbuild/"+arch+"/"+branch+"/builds/"+buildid
+    basedir=pbd+"/"+arch+"/"+branch+"/builds/"+buildid
     portsdir=basedir+"/ports"
 
     # get the major branch number.

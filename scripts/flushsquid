@@ -5,12 +5,14 @@
 
 # note: uname is not being overridden
 arch=$(uname -m)
-pb=/var/portbuild
-. ${pb}/${arch}/client.conf
-. ${pb}/${arch}/portbuild.conf
+
+pbd=${PORTBUILD_DATA:-/var/portbuild}
+
+. ${pbd}/${arch}/client.conf
+. ${pbd}/${arch}/portbuild.conf
 
 host=$(hostname)
-test -f ${pb}/${arch}/portbuild.${host} && . ${pb}/${arch}/portbuild.${host}
+test -f ${pbd}/${arch}/portbuild.${host} && . ${pbd}/${arch}/portbuild.${host}
 
 if [ ! -z "${squid_dir}" ] ; then
 	/usr/local/etc/rc.d/squid stop 

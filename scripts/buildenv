@@ -40,7 +40,7 @@ validate_env() {
 
 # only used on server side
 resolve() {
-    pb=$1
+    pbd=$1
     arch=$2
     branch=$3
     buildid=$4
@@ -48,7 +48,7 @@ resolve() {
     # Resolve a possibly symlinked buildid (e.g. "latest") to the
     # underlying physical directory
 
-    pbab=${pb}/${arch}/${branch}
+    pbab=${pbd}/${arch}/${branch}
     builddir=${pbab}/builds/${buildid}/
 
     if [ ! -d ${builddir} ]; then
@@ -83,7 +83,7 @@ export_src_metadata() {
 # establish commonly-used environment variables (server-side)
 #
 buildenv () {
-    pb=$1
+    pbd=$1
     arch=$2
     branch=$3
     builddir=$4
@@ -139,7 +139,7 @@ buildenv () {
     fi
 
     # probably only used in mkbindist
-    export __MAKE_CONF=${pb}/${arch}/make.conf
+    export __MAKE_CONF=${pbd}/${arch}/make.conf
 }
 
 #

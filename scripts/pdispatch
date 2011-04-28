@@ -6,7 +6,8 @@
 #
 # server-side script to dispatch the job to a host via the ptimeout script.
 
-pb=/var/portbuild
+pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
+pbd=${PORTBUILD_DATA:-/var/portbuild}
 
 arch=$1
 branch=$2
@@ -15,25 +16,25 @@ host=$4
 command=$5
 shift 5
 
-pbab=${pb}/${arch}/${branch}
+pbab=${pbd}/${arch}/${branch}
 
-. ${pb}/conf/server.conf
-. ${pb}/conf/common.conf
-. ${pb}/${arch}/portbuild.conf
-. ${pb}/scripts/buildenv
+. ${pbc}/conf/server.conf
+. ${pbc}/conf/common.conf
+. ${pbd}/${arch}/portbuild.conf
+. ${pbc}/scripts/buildenv
 
 timeout=${PDISPATCH_TIMEOUT}
 loglength=${PDISPATCH_LOGLENGTH}
 hdrlength=${PDISPATCH_HDRLENGTH}
 
-buildid=$(resolve ${pb} ${arch} ${branch} ${buildid})
+buildid=$(resolve ${pbd} ${arch} ${branch} ${buildid})
 if [ -z "${buildid}" ]; then
     echo "Invalid build ID ${buildid}"
     exit 1
 fi
 
 builddir=${pbab}/builds/${buildid}
-buildenv ${pb} ${arch} ${branch} ${builddir}
+buildenv ${pbd} ${arch} ${branch} ${builddir}
 
 # XXX needed still?
 unset DISPLAY
@@ -77,16 +78,22 @@ if [ "x$TRYBROKEN" != "x" ]; then
 fi
 
 chroot=
-. ${pb}/${arch}/portbuild.conf
-test -f ${pb}/${arch}/portbuild.${host} && . ${pb}/${arch}/portbuild.${host}
-chrootdata=$(${ssh_cmd} -a -n ${client_user}@${host} ${sudo_cmd} ${pb}/scripts/claim-chroot ${arch} ${branch} ${buildid} ${pkgname} 2>&1)
+. ${pbd}/${arch}/portbuild.conf
+test -f ${pbd}/${arch}/portbuild.${host} && . ${pbd}/${arch}/portbuild.${host}
+
+# Upload scripts/claim-chroot as per-build scripts aren't in place yet.
+cmdpath=$(cat ${pbc}/scripts/claim-chroot | ssh -a ${client_user}@${host} 't=$(mktemp -t claim-chroot); cat >$t; echo $t; chmod 755 $t')
+case ${cmdpath} in /tmp/*) ;; *) echo "Failed to scp claim-chroot to ${host}."; exit 254;; esac
+chrootdata=$(${ssh_cmd} -a -n ${client_user}@${host} ${sudo_cmd} ${cmdpath} ${arch} ${branch} ${buildid} ${pkgname} 2>&1)
+${ssh_cmd} -a ${client_user}@${host} "rm -f ${cmdpath}"
+
 if [ -z "${chrootdata}" ]; then
     echo "Failed to claim chroot on ${host}"
     exit 254
 fi
 
 case "${chrootdata}" in
-    */var/portbuild/scripts/claim-chroot*)
+    *${cmdpath}*)
 	# Error executing script, assume system is booting
 	chrootdata="wait boot"
 	;;
@@ -111,7 +118,7 @@ if [ $# -ge 2 ]; then
 	    # Make sure to close stdin/stderr in the child
 	    # or make will hang until the child process
 	    # exits
-	    ${pb}/scripts/dosetupnode ${arch} ${branch} ${buildid} ${host} > /tmp/setupnode.$$ 2>&1 &
+	    ${pbc}/scripts/dosetupnode ${arch} ${branch} ${buildid} ${host} > /tmp/setupnode.$$ 2>&1 &
 	    exit 253
 	    ;;
 	error)
@@ -128,8 +135,8 @@ if [ -z "${chroot}" ]; then
     exit 254
 fi
 
-. ${pb}/${arch}/portbuild.conf
-test -f ${pb}/${arch}/portbuild.${host} && . ${pb}/${arch}/portbuild.${host}
+. ${pbd}/${arch}/portbuild.conf
+test -f ${pbd}/${arch}/portbuild.${host} && . ${pbd}/${arch}/portbuild.${host}
     
 rm -f ${builddir}/logs/${pkgname}.log ${builddir}/logs/${pkgname}.log.bz2
 rm -f ${builddir}/errors/${pkgname}.log ${builddir}/errors/${pkgname}.log.bz2
@@ -162,7 +169,7 @@ if [ "${error}" = 0 ]; then
 	# Force rebuild of html page to remove this package from list
 	touch ${builddir}/errors/.force
     fi
-    lockf -k ${pbab}/failure.lock ${pb}/scripts/buildsuccess ${arch} ${branch} ${buildid} ${pkgname}
+    lockf -k ${pbab}/failure.lock ${pbc}/scripts/buildsuccess ${arch} ${branch} ${buildid} ${pkgname}
     log=${builddir}/logs/$pkgname.log
     if grep -q "even though it is marked BROKEN" ${log}; then
 	echo | mail -s "${pkgname} BROKEN but built on ${arch} ${branch}" ${mailto}
@@ -188,11 +195,11 @@ else
 		(echo "Excerpt from the build log at"; echo; echo "  http://${MASTER_URL}/errorlogs/${arch}-errorlogs/${baselogdir}/$(basename $log)";echo;sed -e '/^build started/,$d' $log;echo;echo "  [... lines trimmed ...]";echo;tail -${loglength} ${log}) | mail -s "${pkgname} failed on ${arch} ${branch}" ${mailto}
 	    fi
 	fi
-	lockf -k ${pbab}/failure.lock ${pb}/scripts/buildfailure ${arch} ${branch} ${buildid} ${pkgname}
+	lockf -k ${pbab}/failure.lock ${pbc}/scripts/buildfailure ${arch} ${branch} ${buildid} ${pkgname}
     fi
 fi
 
-${ssh_cmd} -a -n ${client_user}@${host} ${sudo_cmd} ${pb}/scripts/clean-chroot ${arch} ${branch} ${buildid} ${chroot} ${clean}
+${ssh_cmd} -a -n ${client_user}@${host} ${sudo_cmd} ${builddir}/scripts/clean-chroot ${arch} ${branch} ${buildid} ${chroot} ${clean}
 
   # XXX Set a dirty variable earlier and check here
 if grep -q "^build of .*ended at" ${builddir}/logs/${pkgname}.log; then

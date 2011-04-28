@@ -7,7 +7,7 @@
 # port builds that have timed out or shut down uncleanly) and prunes
 # them to reclaim space.
 
-pb=/var/portbuild
+pbd=${PORTBUILD_DATA:-/var/portbuild}
 
 kill_procs()
 {
@@ -44,9 +44,9 @@ cleanup_mount() {
 # note: uname is not being overridden (should not need client.conf here)
 arch=$(uname -m)
 
-. ${pb}/${arch}/client.conf
-. ${pb}/${arch}/portbuild.conf
-. ${pb}/${arch}/portbuild.$(hostname)
+. ${pbd}/${arch}/client.conf
+. ${pbd}/${arch}/portbuild.conf
+. ${pbd}/${arch}/portbuild.$(hostname)
 
 if [ "${use_zfs}" = "1" ]; then
     old=$(find ${scratchdir}/*/*/* -prune -mmin +60 2> /dev/null)

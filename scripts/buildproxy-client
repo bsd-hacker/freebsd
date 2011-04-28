@@ -5,16 +5,20 @@
 
 import sys, socket, os, commands
 
-sys.path.insert(0, '/var/portbuild/lib/python')
+pbc = os.getenv('PORTBUILD_CHECKOUT') \
+    if os.getenv('PORTBUILD_CHECKOUT') else "/var/portbuild"
+pbd = os.getenv('PORTBUILD_DATA') \
+    if os.getenv('PORTBUILD_DATA') else "/var/portbuild"
+
+sys.path.insert(0, '%s/lib/python' % pbc)
 
 from freebsd import *
 from freebsd_config import *
 
-CONFIG_DIR="/var/portbuild"
 CONFIG_SUBDIR="conf"
 CONFIG_FILENAME="server.conf"
 
-config = getConfig( CONFIG_DIR, CONFIG_SUBDIR, CONFIG_FILENAME )
+config = getConfig( pbc, CONFIG_SUBDIR, CONFIG_FILENAME )
 BUILDPROXY_SOCKET_FILE = config.get( 'BUILDPROXY_SOCKET_FILE' )
 
 try:

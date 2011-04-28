@@ -10,7 +10,7 @@ if [ $# -lt 8 ]; then
     exit 1
 fi
 
-pb=$1
+pbd=$1
 arch=$2
 branch=$3
 buildid=$4
@@ -29,7 +29,7 @@ precopy() {
 
     # Prepare all directories, they will be populated by a rsync
     # push from the master
-    mkdir -p ${pb}/scripts ${pb}/${arch}/clients/
+    mkdir -p ${pbd}/${arch}/clients/
 
     if [ "${buildid}" != "-" -a "${branch}" != "-" ]; then
 	if [ ${nocopy} -eq 0 ]; then
@@ -96,10 +96,10 @@ postcopy() {
         # Clean up the tmpdir
         # By now the portbuild.conf files are in place so we can source them
 
-	. ${pb}/${arch}/portbuild.conf
+	. ${pbd}/${arch}/portbuild.conf
 	me=$(hostname)
-	if [ -f ${pb}/${arch}/portbuild.${me} ] ; then
-	    . ${pb}/${arch}/portbuild.${me}
+	if [ -f ${pbd}/${arch}/portbuild.${me} ] ; then
+	    . ${pbd}/${arch}/portbuild.${me}
 	fi
 
 	if [ "${buildid}" != "-" -a "${branch}" != "-" ]; then
@@ -111,20 +111,20 @@ postcopy() {
 		zfs create ${zbase}/${branch}/${buildid}/world || true
 		zfs create ${zbase}/${branch}/${buildid}/chroot || true
 		tar xfpC ${builddir}/bindist.tar ${scratchdir}/${branch}/${buildid}/world
-		tar xfpC ${pb}/${arch}/clients/bindist-$(hostname).tar ${scratchdir}/${branch}/${buildid}/world
+		tar xfpC ${pbd}/${arch}/clients/bindist-$(hostname).tar ${scratchdir}/${branch}/${buildid}/world
 		zfs snapshot ${zbase}/${branch}/${buildid}/world@base
 
 	    else
 		mkdir -p ${wrkdir}/tarballs
 		if [ ${nocopy} -eq 0 ]; then
 		    ln -sf ${pbab}/builds/${buildid}/bindist.tar ${wrkdir}/tarballs
-		    ln -sf ${pb}/${arch}/clients/bindist-$(hostname).tar ${wrkdir}/tarballs
+		    ln -sf ${pbd}/${arch}/clients/bindist-$(hostname).tar ${wrkdir}/tarballs
 		fi
 	    fi
 	fi
 
 	for i in ${wrkdir}/chroot/*; do
-	    ${sudo_cmd} ${pb}/scripts/clean-chroot ${arch} ${branch} ${buildid} ${i} 2
+	    ${sudo_cmd} ${builddir}/scripts/clean-chroot ${arch} ${branch} ${buildid} ${i} 2
 	done
 	wait
     else
@@ -136,7 +136,7 @@ postcopy() {
 }
 
 if [ "${branch}" != "-" -a "${buildid}" != "-" ]; then
-    pbab=${pb}/${arch}/${branch}
+    pbab=${pbd}/${arch}/${branch}
     builddir=${pbab}/builds/${buildid}
 
     wrkdir=${tmpdir}/${branch}/${buildid}

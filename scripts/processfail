@@ -5,19 +5,21 @@
 arch=$1
 branch=$2
 
-pb=/var/portbuild
-. ${pb}/conf/server.conf
+pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
+pbd=${PORTBUILD_DATA:-/var/portbuild}
+
+. ${pbc}/conf/server.conf
 
 ERRORLOGS_DIRECTORY="${WWW_DIRECTORY}/errorlogs"
 of=${ERRORLOGS_DIRECTORY}/.${arch}-${branch}-failure.html
 
-cd ${pb}/${arch}/${branch}
+cd ${pbd}/${arch}/${branch}
 
 if [ -e .newfailure.stamp -a $(echo $(find . -maxdepth 1 -newer .newfailure.stamp -name newfailure 2>&1 /dev/null | wc -l)) = "0" ]; then exit; fi
 
 touch .newfailure.stamp
 
-newfailure=${pb}/${arch}/${branch}/newfailure
+newfailure=${pbd}/${arch}/${branch}/newfailure
 num=0
 if [ -e ${newfailure} ]; then
   num=$(wc -l ${newfailure} | awk '{print $1}')
@@ -59,8 +61,8 @@ IFS='|'
 while read dir name ver date last count; do
     echo "<tr>" >> $of
     echo "<td><a href=\"${VCSWEB}/ports/$dir\">$dir</a></td>" >> $of
-    if [ -L ${pb}/${arch}/${branch}/latest/${dir} ]; then
-      err=$(readlink ${pb}/${arch}/${branch}/latest/${dir})
+    if [ -L ${pbd}/${arch}/${branch}/latest/${dir} ]; then
+      err=$(readlink ${pbd}/${arch}/${branch}/latest/${dir})
       echo "<td><a href=\"${arch}-errorlogs/$(basename $(dirname ${err}))/$(basename ${err})\">$ver</a></td>" >> $of
     else
       echo "<td><a href=\"${arch}-${branch}-latest/$ver.log\">$ver</a></td>" >> $of

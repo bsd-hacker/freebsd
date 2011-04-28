@@ -2,4 +2,7 @@
 # 
 # clean up stale chroots on all client machines.  MCL 20081216.
 #
-/var/portbuild/scripts/allgohans all -q /var/portbuild/scripts/cleanup-chroots
+
+pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
+
+${pbc}/scripts/allgohans all -q -scp ${pbc}/scripts/cleanup-chroots

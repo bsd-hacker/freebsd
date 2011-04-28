@@ -30,8 +30,9 @@ arch=$1
 branch=$2
 buildid=$3
 
-pb=/var/portbuild
-builddir=${pb}/${arch}/${branch}/builds/${buildid}
+pbd=${PORTBUILD_DATA:-/var/portbuild}
+
+builddir=${pbd}/${arch}/${branch}/builds/${buildid}
 
 distdir=${builddir}/distfiles
 
