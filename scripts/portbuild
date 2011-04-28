@@ -298,8 +298,8 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-cp -p ${builddir}/scripts/buildscript ${chroot}
-cp -p ${builddir}/sources/pnohang.c ${chroot}
+cp -p /tmp/${buildid}/scripts/buildscript ${chroot}
+cp -p /tmp/${buildid}/sources/pnohang.c ${chroot}
 
 # phase 0, compile pnohang
 chroot ${chroot} /usr/bin/gcc -o /pnohang -Wall /pnohang.c 2>&1 | tee -a ${chroot}/tmp/${pkgname}.log

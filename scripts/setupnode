@@ -124,7 +124,7 @@ postcopy() {
 	fi
 
 	for i in ${wrkdir}/chroot/*; do
-	    ${sudo_cmd} ${builddir}/scripts/clean-chroot ${arch} ${branch} ${buildid} ${i} 2
+	    ${sudo_cmd} /tmp/${buildid}/scripts/clean-chroot ${arch} ${branch} ${buildid} ${i} 2
 	done
 	wait
     else

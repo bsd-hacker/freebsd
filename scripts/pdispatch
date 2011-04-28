@@ -199,7 +199,7 @@ else
     fi
 fi
 
-${ssh_cmd} -a -n ${client_user}@${host} ${sudo_cmd} ${builddir}/scripts/clean-chroot ${arch} ${branch} ${buildid} ${chroot} ${clean}
+${ssh_cmd} -a -n ${client_user}@${host} ${sudo_cmd} /tmp/${buildid}/scripts/clean-chroot ${arch} ${branch} ${buildid} ${chroot} ${clean}
 
   # XXX Set a dirty variable earlier and check here
 if grep -q "^build of .*ended at" ${builddir}/logs/${pkgname}.log; then
