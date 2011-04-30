@@ -411,7 +411,6 @@ class worker(threading.Thread):
         self.branch = branch
         self.buildid = buildid
         self.queue = queue
-        self.basedir = pbd+"/"+arch+"/"+branch+"/builds/"+buildid
 
         self.setDaemon(True)
 
@@ -437,7 +436,7 @@ class worker(threading.Thread):
             build = subprocess.Popen(
                 ["/bin/sh", "%s/scripts/pdispatch" % pbc,
                  self.arch, self.branch, self.buildid, self.machine,
-                 "%s/scripts/portbuild" % self.basedir, "%s.tbz" % pkg.name,
+                 "/tmp/%s/scripts/portbuild" % self.buildid, "%s.tbz" % pkg.name,
                  pkg.path],
 		 env=runenv,    
                 stderr=subprocess.STDOUT, stdout=subprocess.PIPE, bufsize=0)
@@ -509,7 +508,8 @@ class worker(threading.Thread):
 def main(arch, branch, buildid, args):
     global index
 
-    basedir=pbd+"/"+arch+"/"+branch+"/builds/"+buildid
+    basedir=os.path.realpath(pbd+"/"+arch+"/"+branch+"/builds/"+buildid)
+    buildid=basedir.split("/")[-1]
     portsdir=basedir+"/ports"
 
     # get the major branch number.
