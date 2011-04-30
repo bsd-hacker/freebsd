@@ -67,7 +67,7 @@ setup() {
     fi
 
     cmdpath=$(cat ${pbc}/scripts/setupnode | ssh -a ${client_user}@${node} 't=$(mktemp -t setupnode); cat >$t; echo $t; chmod 755 $t')
-    case ${cmdpath} in /tmp/*) ;; *) echo "Failed to scp claim-chroot to ${host}."; return 1;; esac
+    case ${cmdpath} in /tmp/*) ;; *) echo "Failed to run dosetupnode on ${host}."; return 1;; esac
 
     client_setup="${ssh_cmd} -n ${client_user}@${node} ${cmdpath} ${pbd} ${arch} ${branch} ${buildid} ${scratchdir} \"${portsmd5}\" \"${srcmd5}\" \"${bindistmd5}\""
     args="${nocopy} ${force}"
