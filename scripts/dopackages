@@ -403,6 +403,14 @@ if [ "$trybroken" = 1 ]; then
     export TRYBROKEN=1
 fi
 
+builddir=${pbab}/builds/${buildid}
+
+# bomb out if there are no bindist files
+if [ ! -f ${builddir}/bindist.tbz -o ! -f ${builddir}/bindist.tbz.md5 ]; then
+    echo "missing bindist.tbz and/or bindist.tbz.md5; exiting script at $(date)."
+    mailexit 1
+fi
+
 # Start setting up build environment
 
 if [ "${skipstart}" -eq 0 ]; then
@@ -413,9 +421,8 @@ if [ "${skipstart}" -eq 0 ]; then
     # MCL dopackages: "build create arch branch"
     build clone ${arch} ${branch} ${buildid} ${newbuildid}
     buildid=${newbuildid}
+    builddir=${pbab}/builds/${buildid}
 fi
-
-builddir=${pbab}/builds/${buildid}
 
 # bomb out if build clone failed
 if [ ! -d ${builddir} ]; then
@@ -692,8 +699,6 @@ fi
 
 cd ${builddir}/packages/All
 if [ "$nofinish" = 0 ]; then
-    rm -f Makefile
-    
     if [ "$norestr" = 0 ]; then
         # Before deleting restricted packages, save a copy so we don't
         # have to rebuild them next time
