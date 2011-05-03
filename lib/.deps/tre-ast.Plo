@@ -1,0 +1,65 @@
+tre-ast.lo .libs/tre-ast.o: tre-ast.c ../config.h /usr/include/assert.h \
+  /usr/include/sys/cdefs.h tre-ast.h tre-mem.h /usr/include/stdlib.h \
+  /usr/include/sys/_null.h /usr/include/sys/_types.h \
+  /usr/include/machine/_types.h tre-internal.h /usr/include/wchar.h \
+  /usr/include/machine/_limits.h /usr/include/_ctype.h \
+  /usr/include/runetype.h /usr/include/wctype.h /usr/include/ctype.h \
+  tre.h tre-config.h /usr/include/sys/types.h \
+  /usr/include/machine/endian.h /usr/include/sys/_pthreadtypes.h \
+  /usr/include/sys/select.h /usr/include/sys/_sigset.h \
+  /usr/include/sys/_timeval.h /usr/include/sys/timespec.h \
+  /usr/include/sys/_timespec.h tre-compile.h
+
+../config.h:
+
+/usr/include/assert.h:
+
+/usr/include/sys/cdefs.h:
+
+tre-ast.h:
+
+tre-mem.h:
+
+/usr/include/stdlib.h:
+
+/usr/include/sys/_null.h:
+
+/usr/include/sys/_types.h:
+
+/usr/include/machine/_types.h:
+
+tre-internal.h:
+
+/usr/include/wchar.h:
+
+/usr/include/machine/_limits.h:
+
+/usr/include/_ctype.h:
+
+/usr/include/runetype.h:
+
+/usr/include/wctype.h:
+
+/usr/include/ctype.h:
+
+tre.h:
+
+tre-config.h:
+
+/usr/include/sys/types.h:
+
+/usr/include/machine/endian.h:
+
+/usr/include/sys/_pthreadtypes.h:
+
+/usr/include/sys/select.h:
+
+/usr/include/sys/_sigset.h:
+
+/usr/include/sys/_timeval.h:
+
+/usr/include/sys/timespec.h:
+
+/usr/include/sys/_timespec.h:
+
+tre-compile.h:
