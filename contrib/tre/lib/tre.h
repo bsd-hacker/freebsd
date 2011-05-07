@@ -9,59 +9,14 @@
 #ifndef TRE_H
 #define TRE_H 1
 
-#include "tre-config.h"
-
-#ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
-#endif /* HAVE_SYS_TYPES_H */
 
-#ifdef HAVE_LIBUTF8_H
-#include <libutf8.h>
-#endif /* HAVE_LIBUTF8_H */
-
-#ifdef TRE_USE_SYSTEM_REGEX_H
-/* Include the system regex.h to make TRE ABI compatible with the
-   system regex. */
-#include TRE_SYSTEM_REGEX_H_PATH
-#define tre_regcomp  regcomp
-#define tre_regexec  regexec
-#define tre_regerror regerror
-#define tre_regfree  regfree
-#endif /* TRE_USE_SYSTEM_REGEX_H */
+#define TRE_WCHAR 1
+#define TRE_APPROX 1
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#ifdef TRE_USE_SYSTEM_REGEX_H
-
-#ifndef REG_OK
-#define REG_OK 0
-#endif /* !REG_OK */
-
-#ifndef HAVE_REG_ERRCODE_T
-typedef int reg_errcode_t;
-#endif /* !HAVE_REG_ERRCODE_T */
-
-#if !defined(REG_NOSPEC) && !defined(REG_LITERAL)
-#define REG_LITERAL 0x1000
-#endif
-
-/* Extra tre_regcomp() flags. */
-#ifndef REG_BASIC
-#define REG_BASIC	0
-#endif /* !REG_BASIC */
-#define REG_RIGHT_ASSOC (REG_LITERAL << 1)
-#define REG_UNGREEDY    (REG_RIGHT_ASSOC << 1)
-
-/* Extra tre_regexec() flags. */
-#define REG_APPROX_MATCHER	 0x1000
-#define REG_BACKTRACKING_MATCHER (REG_APPROX_MATCHER << 1)
-
-#else /* !TRE_USE_SYSTEM_REGEX_H */
-
-/* If the we're not using system regex.h, we need to define the
-   structs and enums ourselves. */
 
 typedef int regoff_t;
 typedef struct {
@@ -114,8 +69,6 @@ typedef enum {
 #define REG_APPROX_MATCHER	 (REG_NOTEOL << 1)
 #define REG_BACKTRACKING_MATCHER (REG_APPROX_MATCHER << 1)
 
-#endif /* !TRE_USE_SYSTEM_REGEX_H */
-
 /* REG_NOSPEC and REG_LITERAL mean the same thing. */
 #if defined(REG_LITERAL) && !defined(REG_NOSPEC)
 #define REG_NOSPEC	REG_LITERAL
@@ -143,9 +96,7 @@ extern void
 tre_regfree(regex_t *preg);
 
 #ifdef TRE_WCHAR
-#ifdef HAVE_WCHAR_H
 #include <wchar.h>
-#endif /* HAVE_WCHAR_H */
 
 /* Wide character versions (not in POSIX.2). */
 extern int
