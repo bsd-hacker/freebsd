@@ -109,6 +109,15 @@ enum VM_GUEST { VM_GUEST_NO = 0, VM_GUEST_VM, VM_GUEST_XEN };
 	    ((uintptr_t)&(var) & (sizeof(void *) - 1)) == 0, msg)
 
 /*
+ * If we have already panic'd and this is the thread that called
+ * panic(), then don't block on any mutexes but silently succeed.
+ * Otherwise, the kernel will deadlock since the scheduler isn't
+ * going to run the thread that holds the lock we need.
+ */
+#define	IS_PANIC_THREAD()	\
+	(panicstr != NULL && (curthread->td_flags & TDF_INPANIC) != 0)
+
+/*
  * XXX the hints declarations are even more misplaced than most declarations
  * in this file, since they are needed in one file (per arch) and only used
  * in two files.
