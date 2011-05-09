@@ -533,7 +533,7 @@ smp_rendezvous_wait(void)
  */
 void
 smp_rendezvous_cpus(cpumask_t map,
-	void (* setup_func)(void *), 
+	void (* setup_func)(void *),
 	void (* action_func)(void *),
 	void (* teardown_func)(void *),
 	void *arg)
@@ -616,12 +616,13 @@ smp_rendezvous_cpus(cpumask_t map,
 }
 
 void
-smp_rendezvous(void (* setup_func)(void *), 
+smp_rendezvous(void (* setup_func)(void *),
 	       void (* action_func)(void *),
 	       void (* teardown_func)(void *),
 	       void *arg)
 {
-	smp_rendezvous_cpus(all_cpus, setup_func, action_func, teardown_func, arg);
+	smp_rendezvous_cpus(all_cpus, setup_func, action_func,
+	    teardown_func, arg);
 }
 
 static struct cpu_group group[MAXCPU];
