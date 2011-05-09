@@ -311,7 +311,7 @@ kern_reboot(int howto)
 	 */
 	EVENTHANDLER_INVOKE(shutdown_pre_sync, howto);
 
-	/* 
+	/*
 	 * Now sync filesystems
 	 */
 	if (!cold && (howto & RB_NOSYNC) == 0 && waittime < 0) {
@@ -433,7 +433,7 @@ kern_reboot(int howto)
 	 */
 	EVENTHANDLER_INVOKE(shutdown_post_sync, howto);
 
-	if ((howto & (RB_HALT|RB_DUMP)) == RB_DUMP && !cold && !dumping) 
+	if ((howto & (RB_HALT|RB_DUMP)) == RB_DUMP && !cold && !dumping)
 		doadump();
 
 	/* Now that we're going to really halt the system... */
