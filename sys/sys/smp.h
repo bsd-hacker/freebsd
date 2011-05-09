@@ -68,7 +68,7 @@ struct cpu_group *smp_topo_2level(int l2share, int l2count, int l1share,
     int l1count, int l1flags);
 struct cpu_group *smp_topo_find(struct cpu_group *top, int cpu);
 
-extern void (*cpustop_restartfunc)(void);
+extern void (* volatile cpustop_hook)(void);
 extern int smp_active;
 extern int smp_cpus;
 extern volatile cpumask_t started_cpus;

@@ -63,7 +63,7 @@ cpumask_t idle_cpus_mask;
 cpumask_t hlt_cpus_mask;
 cpumask_t logical_cpus_mask;
 
-void (*cpustop_restartfunc)(void);
+void (* volatile cpustop_hook)(void);
 #endif
 /* This is used in modules that need to work in both SMP and UP. */
 cpumask_t all_cpus;

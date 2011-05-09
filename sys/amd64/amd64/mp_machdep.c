@@ -1435,16 +1435,17 @@ cpustop_handler(void)
 	atomic_set_int(&stopped_cpus, cpumask);
 
 	/* Wait for restart */
-	while (!(started_cpus & cpumask))
-	    ia32_pause();
+	while ((started_cpus & cpumask) == 0) {
+		if (cpu == 0 && cpustop_hook != NULL) {
+			cpustop_hook();
+			cpustop_hook = NULL;
+		}
+		ia32_pause();
+	}
 
 	atomic_clear_int(&started_cpus, cpumask);
 	atomic_clear_int(&stopped_cpus, cpumask);
-
-	if (cpu == 0 && cpustop_restartfunc != NULL) {
-		cpustop_restartfunc();
-		cpustop_restartfunc = NULL;
-	}
+	return;
 }
 
 /*
