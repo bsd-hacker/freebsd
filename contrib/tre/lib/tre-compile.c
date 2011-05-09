@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <string.h>
+#include <tre.h>
 
 #include "tre-internal.h"
 #include "tre-mem.h"
@@ -26,7 +27,6 @@
 #include "tre-ast.h"
 #include "tre-parse.h"
 #include "tre-compile.h"
-#include "tre.h"
 #include "xmalloc.h"
 
 /*

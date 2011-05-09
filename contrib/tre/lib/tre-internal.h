@@ -18,7 +18,7 @@
 #endif /* !HAVE_WCTYPE_H */
 
 #include <ctype.h>
-#include "tre.h"
+#include <tre.h>
 
 #ifdef TRE_DEBUG
 #include <stdio.h>

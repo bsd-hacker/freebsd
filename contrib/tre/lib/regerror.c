@@ -11,6 +11,7 @@
 #endif /* HAVE_CONFIG_H */
 
 #include <string.h>
+#include <tre.h>
 #ifdef HAVE_WCHAR_H
 #include <wchar.h>
 #endif /* HAVE_WCHAR_H */
@@ -19,7 +20,6 @@
 #endif /* HAVE_WCTYPE_H */
 
 #include "tre-internal.h"
-#include "tre.h"
 
 #ifdef HAVE_GETTEXT
 #include <libintl.h>

@@ -30,6 +30,7 @@ char *alloca ();
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <tre.h>
 #ifdef HAVE_WCHAR_H
 #include <wchar.h>
 #endif /* HAVE_WCHAR_H */
@@ -45,7 +46,6 @@ char *alloca ();
 #include <limits.h>
 
 #include "tre-internal.h"
-#include "tre.h"
 #include "xmalloc.h"
 
 
