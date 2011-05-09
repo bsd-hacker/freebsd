@@ -309,7 +309,7 @@ restart_cpus(cpumask_t map)
 	while ((stopped_cpus & map) != 0)
 		cpu_spinwait();
 
-	return 1;
+	return (1);
 }
 
 void
