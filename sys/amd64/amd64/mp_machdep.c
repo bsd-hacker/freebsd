@@ -1411,7 +1411,7 @@ ipi_nmi_handler(void)
 	cpuhardstop_handler();
 	return (0);
 }
-     
+
 /*
  * Handle an IPI_STOP by saving our current context and spinning until we
  * are resumed.
