@@ -120,7 +120,7 @@ static volatile int smp_rv_waiters[3];
  * Shared mutex to restrict busywaits between smp_rendezvous() and
  * smp(_targeted)_tlb_shootdown().  A deadlock occurs if both of these
  * functions trigger at once and cause multiple CPUs to busywait with
- * interrupts disabled. 
+ * interrupts disabled.
  */
 struct mtx smp_ipi_mtx;
 
@@ -281,7 +281,7 @@ suspend_cpus(cpumask_t map)
 #endif
 
 /*
- * Called by a CPU to restart stopped CPUs. 
+ * Called by a CPU to restart stopped CPUs.
  *
  * Usually (but not necessarily) called with 'stopped_cpus' as its arg.
  *
@@ -389,7 +389,7 @@ unstop_cpus_hard(void)
 }
 
 /*
- * All-CPU rendezvous.  CPUs are signalled, all execute the setup function 
+ * All-CPU rendezvous.  CPUs are signalled, all execute the setup function
  * (if specified), rendezvous, execute the action function (if specified),
  * rendezvous again, execute the teardown function (if specified), and then
  * resume.
