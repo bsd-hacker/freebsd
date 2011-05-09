@@ -556,7 +556,7 @@ panic(const char *fmt, ...)
 
 	bootopt = RB_AUTOBOOT | RB_DUMP;
 	newpanic = 0;
-	if (panicstr)
+	if (panicstr != NULL)
 		bootopt |= RB_NOSYNC;
 	else {
 		panicstr = fmt;
