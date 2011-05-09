@@ -1087,67 +1087,66 @@ SYSCTL_UINT(_debug_xhits, OID_AUTO, ipi_masked_range_size, CTLFLAG_RW,
     &ipi_masked_range_size, 0, "");
 #endif /* COUNT_XINVLTLB_HITS */
 
+struct tlb_shootdown_params {
+	u_int type;
+	vm_offset_t addr1;
+	vm_offset_t addr2;
+};
+
+static void
+tlb_shootdown_action(void *arg)
+{
+	struct tlb_shootdown_params *params;
+	vm_offset_t addr;
+
+	params = (struct tlb_shootdown_params *)arg;
+	switch (params->type) {
+	case IPI_INVLCACHE:
+		wbinvd();
+		break;
+	case IPI_INVLTLB:
+		invltlb();
+		break;
+	case IPI_INVLPG:
+		invlpg(params->addr1);
+		break;
+	case IPI_INVLRNG:
+		for (addr = params->addr1; addr < params->addr2;
+		    addr += PAGE_SIZE)
+			invlpg(addr);
+		break;
+	default:
+		panic("Unknown TLB shootdown type %u", params->type);
+	}
+}
+
+static void
+smp_targeted_tlb_shootdown(cpumask_t mask, u_int vector,
+    vm_offset_t addr1, vm_offset_t addr2)
+{
+	struct tlb_shootdown_params params;
+
+#if 0
+	if (!(read_rflags() & PSL_I))
+		panic("%s: interrupts disabled", __func__);
+#endif
+	params.type = vector;
+	params.addr1 = addr1;
+	params.addr2 = addr2;
+	smp_rendezvous_cpus(mask & all_cpus & ~(1 << curcpu),
+	    smp_no_rendevous_barrier, tlb_shootdown_action,
+	    smp_no_rendevous_barrier, &params);
+}
+
 /*
  * Flush the TLB on all other CPU's
  */
 static void
 smp_tlb_shootdown(u_int vector, vm_offset_t addr1, vm_offset_t addr2)
 {
-	u_int ncpu;
 
-	ncpu = mp_ncpus - 1;	/* does not shootdown self */
-	if (ncpu < 1)
-		return;		/* no other cpus */
-	if (!(read_rflags() & PSL_I))
-		panic("%s: interrupts disabled", __func__);
-	mtx_lock_spin(&smp_ipi_mtx);
-	smp_tlb_addr1 = addr1;
-	smp_tlb_addr2 = addr2;
-	atomic_store_rel_int(&smp_tlb_wait, 0);
-	ipi_all_but_self(vector);
-	while (smp_tlb_wait < ncpu)
-		ia32_pause();
-	mtx_unlock_spin(&smp_ipi_mtx);
-}
-
-static void
-smp_targeted_tlb_shootdown(cpumask_t mask, u_int vector, vm_offset_t addr1, vm_offset_t addr2)
-{
-	int ncpu, othercpus;
-
-	othercpus = mp_ncpus - 1;
-	if (mask == (cpumask_t)-1) {
-		ncpu = othercpus;
-		if (ncpu < 1)
-			return;
-	} else {
-		mask &= ~PCPU_GET(cpumask);
-		if (mask == 0)
-			return;
-		ncpu = bitcount32(mask);
-		if (ncpu > othercpus) {
-			/* XXX this should be a panic offence */
-			printf("SMP: tlb shootdown to %d other cpus (only have %d)\n",
-			    ncpu, othercpus);
-			ncpu = othercpus;
-		}
-		/* XXX should be a panic, implied by mask == 0 above */
-		if (ncpu < 1)
-			return;
-	}
-	if (!(read_rflags() & PSL_I))
-		panic("%s: interrupts disabled", __func__);
-	mtx_lock_spin(&smp_ipi_mtx);
-	smp_tlb_addr1 = addr1;
-	smp_tlb_addr2 = addr2;
-	atomic_store_rel_int(&smp_tlb_wait, 0);
-	if (mask == (cpumask_t)-1)
-		ipi_all_but_self(vector);
-	else
-		ipi_selected(mask, vector);
-	while (smp_tlb_wait < ncpu)
-		ia32_pause();
-	mtx_unlock_spin(&smp_ipi_mtx);
+	smp_targeted_tlb_shootdown(all_cpus & ~(1 << curcpu),
+	    vector, addr1, addr2);
 }
 
 /*
