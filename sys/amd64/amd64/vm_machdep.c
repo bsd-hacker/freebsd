@@ -517,7 +517,7 @@ cpu_reset_proxy()
 	cpu_reset_proxy_active = 1;
 	while (cpu_reset_proxy_active == 1)
 		;	/* Wait for other cpu to see that we've started */
-	stop_cpus((1<<cpu_reset_proxyid));
+	stop_cpus((1 << cpu_reset_proxyid));
 	printf("cpu_reset_proxy: Stopped CPU %d\n", cpu_reset_proxyid);
 	DELAY(1000000);
 	cpu_reset_real();
