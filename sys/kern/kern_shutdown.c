@@ -127,7 +127,7 @@ SYSCTL_NODE(_kern, OID_AUTO, shutdown, CTLFLAG_RW, 0, "Shutdown environment");
  * Variable panicstr contains argument to first call to panic; used as flag
  * to indicate that the kernel has already called panic.
  */
-const char *panicstr;
+const char * volatile panicstr;
 
 int dumping;				/* system is dumping */
 int rebooting;				/* system is rebooting */
