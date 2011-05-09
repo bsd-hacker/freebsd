@@ -548,7 +548,7 @@ cpu_reset()
 			cpustop_hook = cpu_reset_proxy;
 
 			cnt = 0;
-			while (cpu_reset_proxy_active == 0 && cnt < 10000000)
+			while (cpu_reset_proxy_active == 0 && cnt < 100000000)
 				cnt++;	/* Wait for BSP to announce restart */
 			if (cpu_reset_proxy_active == 0)
 				printf("cpu_reset: Failed to restart BSP\n");
