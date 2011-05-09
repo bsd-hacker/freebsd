@@ -55,6 +55,9 @@ __FBSDID("$FreeBSD$");
 #ifdef SMP
 volatile cpumask_t stopped_cpus;
 volatile cpumask_t started_cpus;
+volatile cpumask_t hard_stopped_cpus;
+volatile cpumask_t hard_started_cpus;
+volatile cpumask_t hard_stopping_cpus;
 cpumask_t idle_cpus_mask;
 cpumask_t hlt_cpus_mask;
 cpumask_t logical_cpus_mask;
@@ -207,9 +210,9 @@ generic_stop_cpus(cpumask_t map, u_int type)
 
 	KASSERT(
 #if defined(__amd64__)
-	    type == IPI_STOP || type == IPI_STOP_HARD || type == IPI_SUSPEND,
+	    type == IPI_STOP || type == IPI_SUSPEND,
 #else
-	    type == IPI_STOP || type == IPI_STOP_HARD,
+	    type == IPI_STOP
 #endif
 	    ("%s: invalid stop type", __func__));
 
@@ -247,13 +250,6 @@ stop_cpus(cpumask_t map)
 {
 
 	return (generic_stop_cpus(map, IPI_STOP));
-}
-
-int
-stop_cpus_hard(cpumask_t map)
-{
-
-	return (generic_stop_cpus(map, IPI_STOP_HARD));
 }
 
 #if defined(__amd64__)
@@ -295,6 +291,82 @@ restart_cpus(cpumask_t map)
 		cpu_spinwait();
 
 	return 1;
+}
+
+void
+stop_cpus_hard(void)
+{
+	static volatile u_int hard_stopper_cpu = NOCPU;
+	cpumask_t map;
+	cpumask_t mask;
+	u_int cpu;
+	int i;
+
+	if (!smp_started)
+		return;
+
+	/* Ensure non-preemtable context, just in case. */
+	spinlock_enter();
+
+	map = PCPU_GET(other_cpus);
+	mask = PCPU_GET(cpumask);
+	cpu = PCPU_GET(cpuid);
+
+	CTR2(KTR_SMP, "stop_cpus(%x) with %u type", map, IPI_STOP_HARD);
+
+	if (cpu != hard_stopper_cpu) {
+		while (atomic_cmpset_int(&hard_stopper_cpu, NOCPU, cpu) == 0)
+			while (hard_stopper_cpu != NOCPU) {
+				if ((mask & hard_stopping_cpus) != 0)
+					cpuhardstop_handler();
+				else
+					cpu_spinwait();
+			}
+	} else {
+		/*
+		 * Recursion here is not expected.
+		 */
+		atomic_store_rel_int(&hard_stopper_cpu, NOCPU);
+		panic("hard stop recursion\n");
+	}
+
+	atomic_set_int(&hard_stopping_cpus, map);
+	ipi_all_but_self(IPI_STOP_HARD);
+
+	i = 0;
+	while ((hard_stopped_cpus & map) != map) {
+		cpu_spinwait();
+		i++;
+		if (i == 10000000) {
+			/* Should not happen; other CPU stuck in NMI handler? */
+			printf("timeout stopping cpus\n");
+			break;
+		}
+	}
+
+	atomic_store_rel_int(&hard_stopper_cpu, NOCPU);
+
+	spinlock_exit();
+	return;
+}
+
+void
+unstop_cpus_hard(void)
+{
+	cpumask_t map;
+
+	if (!smp_started)
+		return;
+
+	map = PCPU_GET(other_cpus);
+	CTR1(KTR_SMP, "restart_cpus(%x)", map);
+
+	/* signal other cpus to restart */
+	atomic_store_rel_int(&hard_started_cpus, map);
+
+	/* wait for each to clear its bit */
+	while ((hard_stopped_cpus & map) != 0)
+		cpu_spinwait();
 }
 
 /*

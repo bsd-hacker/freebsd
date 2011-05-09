@@ -73,6 +73,9 @@ extern int smp_active;
 extern int smp_cpus;
 extern volatile cpumask_t started_cpus;
 extern volatile cpumask_t stopped_cpus;
+extern volatile cpumask_t hard_started_cpus;
+extern volatile cpumask_t hard_stopped_cpus;
+extern volatile cpumask_t hard_stopping_cpus;
 extern cpumask_t idle_cpus_mask;
 extern cpumask_t hlt_cpus_mask;
 extern cpumask_t logical_cpus_mask;
@@ -161,10 +164,12 @@ void	cpu_mp_start(void);
 void	forward_signal(struct thread *);
 int	restart_cpus(cpumask_t);
 int	stop_cpus(cpumask_t);
-int	stop_cpus_hard(cpumask_t);
 #if defined(__amd64__)
 int	suspend_cpus(cpumask_t);
 #endif
+void	stop_cpus_hard(void);
+void	unstop_cpus_hard(void);
+void	cpuhardstop_handler(void);
 void	smp_rendezvous_action(void);
 extern	struct mtx smp_ipi_mtx;
 

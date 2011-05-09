@@ -53,6 +53,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/buf.h>
 #include <sys/kernel.h>
 #include <sys/ktr.h>
+#include <sys/kdb.h>
 #include <sys/lock.h>
 #include <sys/malloc.h>
 #include <sys/mbuf.h>
@@ -531,12 +532,13 @@ cpu_reset()
 	u_int cnt;
 
 	if (smp_active) {
-		map = PCPU_GET(other_cpus) & ~stopped_cpus;
-		if (map != 0) {
-			printf("cpu_reset: Stopping other CPUs\n");
-			stop_cpus(map);
+		if (panicstr == NULL && !kdb_active) {
+			map = PCPU_GET(other_cpus) & ~stopped_cpus;
+			if (map != 0) {
+				printf("cpu_reset: Stopping other CPUs\n");
+				stop_cpus(map);
+			}
 		}
-
 		if (PCPU_GET(cpuid) != 0) {
 			cpu_reset_proxyid = PCPU_GET(cpuid);
 			cpustop_restartfunc = cpu_reset_proxy;

@@ -348,6 +348,9 @@ _mtx_lock_sleep(struct mtx *m, uintptr_t tid, int opts, const char *file,
 		return;
 	}
 
+	if (IS_PANIC_THREAD())
+		return;
+
 	lock_profile_obtain_lock_failed(&m->lock_object,
 		    &contested, &waittime);
 	if (LOCK_LOG_TEST(&m->lock_object, opts))
@@ -507,6 +510,9 @@ _mtx_lock_spin(struct mtx *m, uintptr_t tid, int opts, const char *file,
 	uint64_t waittime = 0;
 #endif
 
+	if (IS_PANIC_THREAD())
+		return;
+
 	if (LOCK_LOG_TEST(&m->lock_object, opts))
 		CTR1(KTR_LOCK, "_mtx_lock_spin: %p spinning", m);
 
@@ -577,6 +583,10 @@ retry:
 				m->mtx_recurse++;
 				break;
 			}
+
+			if (IS_PANIC_THREAD())
+				return;
+
 			lock_profile_obtain_lock_failed(&m->lock_object,
 			    &contested, &waittime);
 			/* Give interrupts a chance while we spin. */
@@ -662,6 +672,9 @@ _mtx_unlock_sleep(struct mtx *m, int opts, const char *file, int line)
 			CTR1(KTR_LOCK, "_mtx_unlock_sleep: %p unrecurse", m);
 		return;
 	}
+
+	if (IS_PANIC_THREAD())
+		return;
 
 	/*
 	 * We have to lock the chain before the turnstile so this turnstile

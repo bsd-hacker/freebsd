@@ -158,7 +158,7 @@ _sleep(void *ident, struct lock_object *lock, int priority,
 	else
 		class = NULL;
 
-	if (cold) {
+	if (cold || IS_PANIC_THREAD()) {
 		/*
 		 * During autoconfiguration, just return;
 		 * don't run any other threads or panic below,
@@ -260,7 +260,7 @@ msleep_spin(void *ident, struct mtx *mtx, const char *wmesg, int timo)
 	KASSERT(p != NULL, ("msleep1"));
 	KASSERT(ident != NULL && TD_IS_RUNNING(td), ("msleep"));
 
-	if (cold) {
+	if (cold || IS_PANIC_THREAD()) {
 		/*
 		 * During autoconfiguration, just return;
 		 * don't run any other threads or panic below,

@@ -121,6 +121,13 @@ SYSCTL_INT(_kern, OID_AUTO, sync_on_panic, CTLFLAG_RW | CTLFLAG_TUN,
 	&sync_on_panic, 0, "Do a sync before rebooting from a panic");
 TUNABLE_INT("kern.sync_on_panic", &sync_on_panic);
 
+#ifdef SMP
+static int stop_cpus_on_panic = 1;
+SYSCTL_INT(_kern, OID_AUTO, stop_cpus_on_panic, CTLFLAG_RW | CTLFLAG_TUN,
+    &stop_cpus_on_panic, 0, "stop other CPUs when entering the debugger");
+TUNABLE_INT("kern.stop_cpus_on_panic", &stop_cpus_on_panic);
+#endif
+
 SYSCTL_NODE(_kern, OID_AUTO, shutdown, CTLFLAG_RW, 0, "Shutdown environment");
 
 /*
@@ -283,10 +290,12 @@ kern_reboot(int howto)
 	 * systems don't shutdown properly (i.e., ACPI power off) if we
 	 * run on another processor.
 	 */
-	thread_lock(curthread);
-	sched_bind(curthread, 0);
-	thread_unlock(curthread);
-	KASSERT(PCPU_GET(cpuid) == 0, ("%s: not running on cpu 0", __func__));
+	if (panicstr == NULL) {
+		thread_lock(curthread);
+		sched_bind(curthread, 0);
+		thread_unlock(curthread);
+		KASSERT(PCPU_GET(cpuid) == 0, ("boot: not running on cpu 0"));
+	}
 #endif
 	/* We're in the process of rebooting. */
 	rebooting = 1;
@@ -530,27 +539,19 @@ shutdown_reset(void *junk, int howto)
 void
 panic(const char *fmt, ...)
 {
-#ifdef SMP
-	static volatile u_int panic_cpu = NOCPU;
-#endif
 	struct thread *td = curthread;
 	int bootopt, newpanic;
+	int did_stop_cpus;
 	va_list ap;
 	static char buf[256];
 
-	critical_enter();
+	spinlock_enter();
 #ifdef SMP
-	/*
-	 * We don't want multiple CPU's to panic at the same time, so we
-	 * use panic_cpu as a simple spinlock.  We have to keep checking
-	 * panic_cpu if we are spinning in case the panic on the first
-	 * CPU is canceled.
-	 */
-	if (panic_cpu != PCPU_GET(cpuid))
-		while (atomic_cmpset_int(&panic_cpu, NOCPU,
-		    PCPU_GET(cpuid)) == 0)
-			while (panic_cpu != NOCPU)
-				; /* nothing */
+	if (stop_cpus_on_panic && panicstr == NULL && !kdb_active) {
+		stop_cpus_hard();
+		did_stop_cpus = 1;
+	} else
+		did_stop_cpus = 0;
 #endif
 
 	bootopt = RB_AUTOBOOT | RB_DUMP;
@@ -586,8 +587,13 @@ panic(const char *fmt, ...)
 	/* See if the user aborted the panic, in which case we continue. */
 	if (panicstr == NULL) {
 #ifdef SMP
-		atomic_store_rel_int(&panic_cpu, NOCPU);
+		if (did_stop_cpus)
+			unstop_cpus_hard();
+		else
+			atomic_store_rel_int(&panic_cpu, NOCPU);
 #endif
+
+		spinlock_exit();
 		return;
 	}
 #endif
@@ -595,9 +601,10 @@ panic(const char *fmt, ...)
 	/*thread_lock(td); */
 	td->td_flags |= TDF_INPANIC;
 	/* thread_unlock(td); */
+
 	if (!sync_on_panic)
 		bootopt |= RB_NOSYNC;
-	critical_exit();
+
 	kern_reboot(bootopt);
 }
 

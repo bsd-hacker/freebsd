@@ -493,6 +493,9 @@ _sx_xlock_hard(struct sx *sx, uintptr_t tid, int opts, const char *file,
 		return (0);
 	}
 
+	if (IS_PANIC_THREAD())
+		return (0);
+
 	if (LOCK_LOG_TEST(&sx->lock_object, 0))
 		CTR5(KTR_LOCK, "%s: %s contested (lock=%p) at %s:%d", __func__,
 		    sx->lock_object.lo_name, (void *)sx->sx_lock, file, line);
@@ -691,6 +694,10 @@ _sx_xunlock_hard(struct sx *sx, uintptr_t tid, const char *file, int line)
 			CTR2(KTR_LOCK, "%s: %p unrecursing", __func__, sx);
 		return;
 	}
+
+	if (IS_PANIC_THREAD())
+		return;
+
 	MPASS(sx->sx_lock & (SX_LOCK_SHARED_WAITERS |
 	    SX_LOCK_EXCLUSIVE_WAITERS));
 	if (LOCK_LOG_TEST(&sx->lock_object, 0))
@@ -752,6 +759,9 @@ _sx_slock_hard(struct sx *sx, int opts, const char *file, int line)
 	uint64_t sleep_cnt = 0;
 	int64_t sleep_time = 0;
 #endif
+
+	if (IS_PANIC_THREAD())
+		return (0);
 
 	/*
 	 * As with rwlocks, we don't make any attempt to try to block
@@ -918,6 +928,9 @@ _sx_sunlock_hard(struct sx *sx, const char *file, int line)
 {
 	uintptr_t x;
 	int wakeup_swapper;
+
+	if (IS_PANIC_THREAD())
+		return;
 
 	for (;;) {
 		x = sx->sx_lock;

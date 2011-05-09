@@ -323,6 +323,9 @@ _rw_rlock(struct rwlock *rw, const char *file, int line)
 	    rw->lock_object.lo_name, file, line));
 	WITNESS_CHECKORDER(&rw->lock_object, LOP_NEWORDER, file, line, NULL);
 
+	if (IS_PANIC_THREAD())
+		return;
+
 	for (;;) {
 #ifdef KDTRACE_HOOKS
 		spin_cnt++;
@@ -532,6 +535,9 @@ _rw_runlock(struct rwlock *rw, const char *file, int line)
 	WITNESS_UNLOCK(&rw->lock_object, 0, file, line);
 	LOCK_LOG_LOCK("RUNLOCK", &rw->lock_object, 0, 0, file, line);
 
+	if (IS_PANIC_THREAD())
+		return;
+
 	/* TODO: drop "owner of record" here. */
 
 	for (;;) {
@@ -658,6 +664,9 @@ _rw_wlock_hard(struct rwlock *rw, uintptr_t tid, const char *file, int line)
 			CTR2(KTR_LOCK, "%s: %p recursing", __func__, rw);
 		return;
 	}
+
+	if (IS_PANIC_THREAD())
+		return;
 
 	if (LOCK_LOG_TEST(&rw->lock_object, 0))
 		CTR5(KTR_LOCK, "%s: %s contested (lock=%p) at %s:%d", __func__,
@@ -819,6 +828,9 @@ _rw_wunlock_hard(struct rwlock *rw, uintptr_t tid, const char *file, int line)
 			CTR2(KTR_LOCK, "%s: %p unrecursing", __func__, rw);
 		return;
 	}
+
+	if (IS_PANIC_THREAD())
+		return;
 
 	KASSERT(rw->rw_lock & (RW_LOCK_READ_WAITERS | RW_LOCK_WRITE_WAITERS),
 	    ("%s: neither of the waiter flags are set", __func__));

@@ -1360,8 +1360,40 @@ ipi_all_but_self(u_int ipi)
 	lapic_ipi_vectored(ipi, APIC_IPI_DEST_OTHERS);
 }
 
+void
+cpuhardstop_handler(void)
+{
+	cpumask_t cpumask;
+	u_int cpu;
+
+	cpumask = PCPU_GET(cpumask);
+
+	/* Just return if this is a belated NMI */
+	if ((hard_stopping_cpus & cpumask) == 0)
+		return;
+
+	cpu = PCPU_GET(cpuid);
+	savectx(&stoppcbs[cpu]);
+
+	/* Indicate that we are stopped */
+	atomic_set_int(&hard_stopped_cpus, cpumask);
+	atomic_clear_int(&hard_stopping_cpus, cpumask);
+
+	/* Wait for restart */
+	while ((hard_started_cpus & cpumask) == 0) {
+		/* BSP can be asked to reset system while spinning here. */
+		if (cpu == 0 && cpustop_hook != NULL) {
+			cpustop_hook();
+			cpustop_hook = NULL;
+		}
+		ia32_pause();
+	}
+	atomic_clear_int(&hard_started_cpus, cpumask);
+	atomic_clear_int(&hard_stopped_cpus, cpumask);
+}
+
 int
-ipi_nmi_handler()
+ipi_nmi_handler(void)
 {
 	cpumask_t cpumask;
 
@@ -1376,7 +1408,7 @@ ipi_nmi_handler()
 		return (1);
 
 	atomic_clear_int(&ipi_nmi_pending, cpumask);
-	cpustop_handler();
+	cpuhardstop_handler();
 	return (0);
 }
      

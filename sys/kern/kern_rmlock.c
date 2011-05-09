@@ -279,6 +279,9 @@ _rm_rlock_hard(struct rmlock *rm, struct rm_priotracker *tracker, int trylock)
 		return (1);
 	}
 
+	if (IS_PANIC_THREAD())
+		return (1);
+
 	/*
 	 * We allow readers to aquire a lock even if a writer is blocked if
 	 * the lock is recursive and the reader already holds the lock.
@@ -385,6 +388,9 @@ _rm_unlock_hard(struct thread *td,struct rm_priotracker *tracker)
 	if (!tracker->rmp_flags)
 		return;
 
+	if (IS_PANIC_THREAD())
+		return;
+
 	mtx_lock_spin(&rm_spinlock);
 	LIST_REMOVE(tracker, rmp_qentry);
 
@@ -435,6 +441,9 @@ _rm_wlock(struct rmlock *rm)
 		sx_xlock(&rm->rm_lock_sx);
 	else
 		mtx_lock(&rm->rm_lock_mtx);
+
+	if (IS_PANIC_THREAD())
+		return;
 
 	if (rm->rm_writecpus != all_cpus) {
 		/* Get all read tokens back */
