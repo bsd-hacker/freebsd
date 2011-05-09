@@ -55,6 +55,7 @@ __FBSDID("$FreeBSD$");
 #ifdef SMP
 volatile cpumask_t stopped_cpus;
 volatile cpumask_t started_cpus;
+volatile cpumask_t stopping_cpus;
 volatile cpumask_t hard_stopped_cpus;
 volatile cpumask_t hard_started_cpus;
 volatile cpumask_t hard_stopping_cpus;
@@ -205,7 +206,9 @@ forward_signal(struct thread *td)
 static int
 generic_stop_cpus(cpumask_t map, u_int type)
 {
-	static volatile u_int stopping_cpu = NOCPU;
+	static volatile u_int stopper_cpu = NOCPU;
+	cpumask_t mask;
+	int cpu;
 	int i;
 
 	KASSERT(
@@ -221,13 +224,29 @@ generic_stop_cpus(cpumask_t map, u_int type)
 
 	CTR2(KTR_SMP, "stop_cpus(%x) with %u type", map, type);
 
-	if (stopping_cpu != PCPU_GET(cpuid))
-		while (atomic_cmpset_int(&stopping_cpu, NOCPU,
-		    PCPU_GET(cpuid)) == 0)
-			while (stopping_cpu != NOCPU)
-				cpu_spinwait(); /* spin */
+	/* Ensure non-preemtable context, just in case. */
+	spinlock_enter();
+
+	mask = PCPU_GET(cpumask);
+	cpu = PCPU_GET(cpuid);
+
+	if (cpu != stopper_cpu) {
+		while (atomic_cmpset_int(&stopper_cpu, NOCPU, cpu) == 0)
+			while (stopper_cpu != NOCPU) {
+				if ((mask & stopping_cpus) != 0)
+					cpustop_handler();
+				else
+					cpu_spinwait();
+			}
+	} else {
+		/*
+		 * Recursion here is not expected.
+		 */
+		panic("cpu stop recursion\n");
+	}
 
 	/* send the stop IPI to all CPUs in map */
+	stopping_cpus = map;
 	ipi_selected(map, type);
 
 	i = 0;
@@ -241,7 +260,7 @@ generic_stop_cpus(cpumask_t map, u_int type)
 		}
 	}
 
-	stopping_cpu = NOCPU;
+	spinlock_exit();
 	return (1);
 }
 

@@ -1422,9 +1422,13 @@ cpustop_handler(void)
 	cpumask_t cpumask;
 	u_int cpu;
 
-	cpu = PCPU_GET(cpuid);
 	cpumask = PCPU_GET(cpumask);
 
+	/* Just return if this is a belated NMI */
+	if ((stopping_cpus & cpumask) == 0)
+		return;
+
+	cpu = PCPU_GET(cpuid);
 	savectx(&stoppcbs[cpu]);
 
 	/* Indicate that we are stopped */
