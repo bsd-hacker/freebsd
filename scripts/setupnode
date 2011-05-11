@@ -97,6 +97,9 @@ postcopy() {
         # By now the portbuild.conf files are in place so we can source them
 
 	. ${pbd}/${arch}/portbuild.conf
+	if [ -f ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf ]; then
+	    . ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf
+	fi
 	me=$(hostname)
 	if [ -f ${pbd}/${arch}/portbuild.${me} ] ; then
 	    . ${pbd}/${arch}/portbuild.${me}

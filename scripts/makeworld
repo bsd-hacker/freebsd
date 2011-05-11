@@ -22,6 +22,9 @@ builddir=${pbd}/${arch}/${branch}/builds/${buildid}
 . ${pbc}/conf/server.conf
 . ${pbc}/conf/common.conf
 . ${pbd}/${arch}/portbuild.conf
+if [ -f ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf ]; then
+    . ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf
+fi
 # NB: we can't use buildenv because it sets ARCH and MACHINE_ARCH that
 # confuses cross-builds
 

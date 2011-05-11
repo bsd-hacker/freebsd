@@ -31,6 +31,9 @@ else
     echo "Invalid arch ${arch}"
     exit 1
 fi
+if [ -f ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf ]; then
+    . ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf
+fi
 . ${pbc}/scripts/buildenv
 
 # Check for non-fatal rsync errors
@@ -58,6 +61,7 @@ setup() {
     echo "setting up of $node started at $(date)"
 
     . ${pbd}/${arch}/portbuild.conf
+    . ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf
     . ${pbd}/${arch}/portbuild.${node}
 
     if [ "${buildid}" != "-" ]; then
@@ -101,6 +105,14 @@ setup() {
 	    rsync ${rsync_gzip} -e "${ssh_cmd}" -r -l -p --delete ${pbc}/scripts ${pbc}/sources \
 		${client_user}@${node}:${builddir}/
 	    checkerror $? || (echo "Copying scripts to ${node} failed"; return 1)
+
+	    if [ -f ${builddir}/portbuild.conf ]; then
+		rsync ${rsync_gzip} -e "${ssh_cmd}" -r -L -p --delete ${builddir}/portbuild.conf \
+		    ${client_user}@${node}:${builddir}/
+		checkerror $? || (echo "Copying custom portbuild.conf to ${node} failed"; return 1)
+	    else
+		echo "No custom portbuild.conf."
+	    fi
 
 	    rsync ${rsync_gzip} -e "${ssh_cmd}" -r -L -p \
 		${builddir}/ports-${buildid}.tbz \

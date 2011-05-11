@@ -68,6 +68,9 @@ nice=0
 . ${pbd}/${arch}/common.conf
 # note: should NOT need anything from server.conf
 . ${pbd}/${arch}/portbuild.conf
+if [ -f ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf ]; then
+    . ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf
+fi
 . ${pbd}/${arch}/portbuild.$(hostname)
 . ${pbd}/scripts/buildenv
 

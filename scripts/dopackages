@@ -450,6 +450,12 @@ touch ${builddir}/.active
 ln -sf ${pbd}/${arch}/archive/buildlogs/log.${branch}.${datestamp} \
     ${builddir}/build.log
 
+# Update build-specific portbuild.conf.
+if [ -f ${pbd}/${arch}/${branch}/portbuild.conf ]; then
+    ln -sf ${pbd}/${arch}/${branch}/portbuild.conf ${builddir}/portbuild.conf
+    . ${builddir}/portbuild.conf
+fi
+
 if [ "$skipstart" = 0 ]; then
 
     # Update build

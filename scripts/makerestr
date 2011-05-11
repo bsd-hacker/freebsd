@@ -20,6 +20,9 @@ target=$4
 . ${pbc}/conf/server.conf
 . ${pbc}/conf/common.conf
 . ${pbd}/${arch}/portbuild.conf
+if [ -f ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf ]; then
+    . ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf
+fi
 . ${pbc}/scripts/buildenv
 
 builddir=${pbd}/${arch}/${branch}/builds/${buildid}

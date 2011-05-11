@@ -30,6 +30,9 @@ pbd=${PORTBUILD_DATA:-/var/portbuild}
 
 . ${pbc}/conf/server.conf
 . ${pbd}/${arch}/portbuild.conf
+if [ -f ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf ]; then
+    . ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf
+fi
 
 . ${pbc}/scripts/buildenv
 

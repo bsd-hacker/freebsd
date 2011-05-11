@@ -67,6 +67,9 @@ fi
 . ${pbd}/${arch}/client.conf
 . ${pbd}/${arch}/common.conf
 . ${pbd}/${arch}/portbuild.conf
+if [ -f ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf ]; then
+    . ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf
+fi
 . ${pbd}/${arch}/portbuild.$(hostname)
 
 buildroot=${scratchdir}

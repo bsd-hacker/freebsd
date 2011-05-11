@@ -544,6 +544,12 @@ if [ $# -ge 1 ]; then
     esac
 fi
 
+if [ -n "${buildid}" ]; then
+    if [ -f ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf ]; then
+	. ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf
+    fi
+fi
+
 # Unprivileged commands
 case "$cmd" in
     list)
