@@ -1,17 +1,17 @@
 #	from @(#)Makefile.inc	8.1 (Berkeley) 6/4/93
 # $FreeBSD$
 
-# regex sources
-.PATH: ${.CURDIR}/regex
+.PATH: ${.CURDIR}/../../contrib/tre/lib ${.CURDIR}/regex
 
-CFLAGS+=-DPOSIX_MISTAKE
+CFLAGS+=-DHAVE_CONFIG_H -I${.CURDIR}/../../contrib/tre
 
-SRCS+=	regcomp.c regerror.c regexec.c regfree.c
+SRCS+=	regcomp.c regerror.c regexec.c tre-ast.c tre-compile.c \
+	tre-match-approx.c tre-match-backtrack.c tre-match-parallel.c \
+	tre-mem.c tre-parse.c tre-stack.c xmalloc.c
+
+MAN+=	regex.3 re_format.7
+
+MLINKS+=regex.3 regcomp.3 regex.3 regexec.3 regex.3 regerror.3 \
+	regexec.3 regfree.3
 
 SYM_MAPS+=${.CURDIR}/regex/Symbol.map
-
-MAN+=	regex.3
-MAN+=	re_format.7
-
-MLINKS+=regex.3 regcomp.3 regex.3 regexec.3 regex.3 regerror.3
-MLINKS+=regexec.3 regfree.3

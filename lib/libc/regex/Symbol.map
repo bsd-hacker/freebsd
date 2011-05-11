@@ -3,8 +3,20 @@
  */
 
 FBSD_1.0 {
-	regcomp;
-	regerror;
-	regexec;
-	regfree;
+	tre_regacomp;
+	tre_regaexec;
+	tre_regancomp;
+	tre_reganexec;
+	tre_regawncomp;
+	tre_regawnexec;
+	tre_regcomp;
+	tre_regerror;
+	tre_regexec;
+	tre_regfree;
+	tre_regncomp;
+	tre_regnexec;
+	tre_regwcomp;
+	tre_regwexec;
+	tre_regwncomp;
+	tre_regwnexec;
 };
