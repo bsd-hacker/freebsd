@@ -74,7 +74,7 @@ while read dir name ver olddate date count; do
 
     newver=$(echo $entry | awk '{print $1}')
 
-    if [ -e "${builddir}/packages/All/$newver${PKGSUFFIX}" ]; then
+    if [ -e "${builddir}/packages/All/$newver${pkg_sufx}" ]; then
 	echo "$newver package exists, should not still be here!"
 	rm -f ${pbd}/${arch}/${branch}/latest/${dir}
 	continue

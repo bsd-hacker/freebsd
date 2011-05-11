@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import os, sys
+import re
 
 if len(sys.argv) != 3:
     print "%s: <index> <pkgdir>" % sys.argv[0]
@@ -12,7 +13,7 @@ pkgdir = sys.argv[2]
 if not pkgdir.endswith("/All"):
     pkgdir = pkgdir + "/All"
 
-packages = [pkg for (pkg, ext) in map(os.path.splitext, os.listdir(pkgdir)) if ext == ".tbz"]
+packages = [pkg for (pkg, ext) in map(os.path.splitext, os.listdir(pkgdir)) if re.match('[.]t[bgx]z', ext)]
 
 index=[]
 pkgs=[]

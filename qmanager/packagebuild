@@ -70,6 +70,8 @@ DEBUG = False
 categories = {}
 ports = {}
 
+pkg_sufx = None
+
 # When a build fails we requeue it with a lower priority such that it
 # will never preempt a phase 1 build but will build when spare
 # capacity is available.
@@ -164,6 +166,7 @@ class Port(object):
         self.descr = descr
         self.maintainer = maintainer
         self.www = www
+        self.sufx = pkg_sufx
 
         # Populated later
         self.bdep = []
@@ -325,8 +328,8 @@ they still need to know about us as dependencies etc """
     def packagename(self, arch, branch, buildid):
         """ Return the path where a package may be found"""
 
-        return "%s/%s/%s/builds/%s/packages/All/%s.tbz" \
-            % (pbd, arch, branch, buildid, self.name)
+        return "%s/%s/%s/builds/%s/packages/All/%s%s" \
+            % (pbd, arch, branch, buildid, self.name, self.sufx)
 
     def is_stale(self, arch, branch, buildid):
         """ Does a package need to be (re)-built?
@@ -377,8 +380,8 @@ def gettargets(targets):
         if i.endswith("-all"):
             cat = i.rpartition("-")[0]
             plist.update(p.name for p in categories[cat].ports)
-        elif i.rstrip(".tbz") in ports:
-            plist.update([ports[i.rstrip(".tbz")].name])
+        elif i.rstrip(pkg_sufx) in ports:
+            plist.update([ports[i.rstrip(pkg_sufx)].name])
         else:
             raise KeyError, i
 
@@ -425,18 +428,18 @@ class worker(threading.Thread):
         try:
             runenv={'HOME':"/root",
                  'PATH':'/sbin:/bin:/usr/sbin:/usr/bin:/usr/games:/usr/local/sbin:/usr/local/bin:%s/scripts' + pbc,
-                 'FD':" ".join(["%s.tbz" % p.name for p in pkg.fdep]),
-                 'ED':" ".join(["%s.tbz" % p.name for p in pkg.edep]),
-                 'PD':" ".join(["%s.tbz" % p.name for p in pkg.pdep]),
-                 'BD':" ".join(["%s.tbz" % p.name for p in pkg.bdep]),
-                 'RD':" ".join(["%s.tbz" % p.name for p in pkg.rdep])}
+                 'FD':" ".join([p.name + p.sufx for p in pkg.fdep]),
+                 'ED':" ".join([p.name + p.sufx for p in pkg.edep]),
+                 'PD':" ".join([p.name + p.sufx for p in pkg.pdep]),
+                 'BD':" ".join([p.name + p.sufx for p in pkg.bdep]),
+                 'RD':" ".join([p.name + p.sufx for p in pkg.rdep])}
 	    for var in ["NOCLEAN", "NO_RESTRICTED", "NOPLISTCHECK", "NO_DISTFILES", "FETCH_ORIGINAL", "TRYBROKEN", "PORTBUILD_CHECKOUT", "PORTBUILD_DATA" ]:
 	         if var in os.environ:
 		     runenv[var] = os.environ.get(var)
             build = subprocess.Popen(
                 ["/bin/sh", "%s/scripts/pdispatch" % pbc,
                  self.arch, self.branch, self.buildid, self.machine,
-                 "/tmp/%s/scripts/portbuild" % self.buildid, "%s.tbz" % pkg.name,
+                 "/tmp/%s/scripts/portbuild" % self.buildid, pkg.name + pkg.sufx,
                  pkg.path],
 		 env=runenv,    
                 stderr=subprocess.STDOUT, stdout=subprocess.PIPE, bufsize=0)
@@ -506,7 +509,7 @@ class worker(threading.Thread):
         wrk.start()
 
 def main(arch, branch, buildid, args):
-    global index
+    global index, pkg_sufx
 
     basedir=os.path.realpath(pbd+"/"+arch+"/"+branch+"/builds/"+buildid)
     buildid=basedir.split("/")[-1]
@@ -517,6 +520,18 @@ def main(arch, branch, buildid, args):
     # XXX ERWLA - Ugly hack
     branchbase = branchbase.split(".")[ 0 ]
     indexfile=portsdir+"/INDEX-"+branchbase
+
+    archconfig = getConfig(pbd, arch, "portbuild.conf")
+    try:
+        branchconfig = getConfig(pbd, "%s/%s" % (arch, branch), "portbuild.conf")
+        archconfig.merge(branchconfig)
+    except:
+        pass
+
+    pkg_sufx = archconfig.get('pkg_sufx')
+    if not pkg_sufx:
+        print "error: pkg_sufx not defined in portbuild.conf"
+        sys.exit(1)
 
     print "[MASTER] parseindex..."
     index = Index(indexfile)

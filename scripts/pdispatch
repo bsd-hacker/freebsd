@@ -2,7 +2,7 @@
 # $FreeBSD: ports/Tools/portbuild/scripts/pdispatch,v 1.40 2011/01/26 10:41:53 linimon Exp $
 
 #
-# pdispatch <arch> <branch> <buildid> <host> <command> <package.tbz> [<args> ...]
+# pdispatch <arch> <branch> <buildid> <host> <command> <package> [<args> ...]
 #
 # server-side script to dispatch the job to a host via the ptimeout script.
 
@@ -50,7 +50,7 @@ if [ -z "${scp_cmd}" ]; then
     scp_cmd=scp
 fi
 
-pkgname=$(basename $1 ${PKGSUFFIX})
+pkgname=$(basename $1 ${pkg_sufx})
 
 if [ -z "${pkgname}" ]; then
     echo "null packagename"
@@ -150,7 +150,7 @@ error=$?
 # Pull in the results of the build from the client
     
 ${scp_cmd} ${client_user}@${host}:${chroot}/tmp/${pkgname}.log ${builddir}/logs/${pkgname}.log
-(${ssh_cmd} -a -n ${client_user}@${host} test -f ${chroot}/tmp/work.tbz ) && ${scp_cmd} ${client_user}@${host}:${chroot}/tmp/work.tbz ${builddir}/wrkdirs/${pkgname}.tbz
+(${ssh_cmd} -a -n ${client_user}@${host} test -f ${chroot}/tmp/work.tbz ) && ${scp_cmd} ${client_user}@${host}:${chroot}/tmp/work.tbz ${builddir}/wrkdirs/${pkgname}${pkg_sufx}
     
 # XXX Set dirty flag if any of the scp's fail
     
@@ -164,8 +164,8 @@ if [ "${error}" = 0 ]; then
 	tar --unlink -C ${builddir} -xvf -
 
     # XXX why is this needed? 
-    test -f ${builddir}/packages/All/${pkgname}${PKGSUFFIX} && \
-	touch ${builddir}/packages/All/${pkgname}${PKGSUFFIX}
+    test -f ${builddir}/packages/All/${pkgname}${pkg_sufx} && \
+	touch ${builddir}/packages/All/${pkgname}${pkg_sufx}
 
     if [ -f ${builddir}/errors/${pkgname}.log ]; then
 	rm -f ${builddir}/errors/${pkgname}.log

@@ -15,7 +15,7 @@ branch=$1
 for i in ${SUPPORTED_ARCHS}; do
 	all=${pbd}/$i/${branch}/builds/latest/packages/All
 	if [ -d ${all} ]; then
-		count=$(find ${all} -name \*.tbz -o -name \*.tgz |wc -l)
+		count=$(find ${all} -name '*.t[bgx]z' | wc -l)
 		echo -n "$i: ${count}  "
 	fi
 done

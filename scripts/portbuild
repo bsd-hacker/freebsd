@@ -130,7 +130,7 @@ unset __MAKE_CONF
 # set overrides for make.conf
 export BACKUP_FTP_SITE=${CLIENT_BACKUP_FTP_SITE}
 
-pkgname=$(basename $6 ${PKGSUFFIX})
+pkgname=$(basename $6 ${pkg_sufx})
 dirname=$7
 shift 2
 
@@ -143,6 +143,7 @@ export DISTDIR=${CLIENT_DISTDIR}
 export LOCALBASE=${LOCALBASE}
 export PACKAGES=${CLIENT_PACKAGES_LOCATION}
 export SRC_BASE=${CLIENT_SRCBASE}
+export PKG_SUFX=${pkg_sufx}
 
 # to catch missing dependencies
 #export DEPENDS_TARGET=/usr/bin/true

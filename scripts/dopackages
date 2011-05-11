@@ -226,7 +226,7 @@ generatemd5 () {
     
     echo "started generating CHECKSUM.MD5 at $(date)"
     cd ${builddir}/packages/All
-    find . -name '*.tbz' | sort | sed -e 's/^..//' | xargs md5 > CHECKSUM.MD5
+    find . -name "*${pkg_sufx}" | sort | sed -e 's/^..//' | xargs md5 > CHECKSUM.MD5
     echo "ended generating CHECKSUM.MD5 at $(date)"
 }
 
@@ -250,7 +250,7 @@ dobuild() {
     echo "ended at $(date)"
     end=$(date +%s)
     echo "Build took $(date -u -j -r $((end - start)) | awk '{print $4}')"
-    echo $(ls -1 ${builddir}/packages/All | grep tbz | wc -l) "packages built"
+    echo $(ls -1 ${builddir}/packages/All | grep ${pkg_sufx} | wc -l) "packages built"
     
     echo $(wc -l ${PORTSDIR}/${INDEXFILE} | awk '{print $1}') "lines in INDEX"
     
@@ -648,7 +648,7 @@ if [ "$skipstart" = 0 ]; then
 	rm ${INDEXFILE}.old1 ${INDEXFILE}.1
 	
 	cd ${PACKAGES}/All
-	sed "s,$,${PKGSUFFIX}," ${builddir}/.oldports | xargs rm -f
+	sed "s,$,${pkg_sufx}," ${builddir}/.oldports | xargs rm -f
 	# XXX MCL takes an unknown period of time.
 	# XXX MCL return value not checked.
 	${pbc}/scripts/prunepkgs ${PORTSDIR}/${INDEXFILE} ${PACKAGES}
@@ -731,7 +731,7 @@ fi
 #rm -rf ${builddir}/bad
 #mkdir -p ${builddir}/bad
 #echo "checking packages"
-#for i in *${PKGSUFFIX}; do
+#for i in *${pkg_sufx}; do
 #  if ! ${PKGZIPCMD} -t $i; then
 #    echo "Warning: package $i is bad, moving to ${builddir}/bad"
 #    # the latest link will be left behind...

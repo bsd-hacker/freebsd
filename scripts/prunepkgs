@@ -30,7 +30,7 @@ trap "rm -rf $tmpdir; exit 1" 1 2 3 5 10 13 15
 
 # Check for non-package files
 
-extras=$(find ${pkgdir} -type f \! \( -name INDEX -o -name CHECKSUM.MD5 -o -name \*.tgz -o -name \*.tbz \) )
+extras=$(find ${pkgdir} -type f \! \( -name INDEX -o -name CHECKSUM.MD5 -o -name '*.t[bgx]z' \) )
 echo "==> Removing extra files"
 echo $extras
 if [ "x${extras}" != "x" ]; then
@@ -42,14 +42,14 @@ fi
 # Check for files not present in INDEX
 echo "==> Removing extra package files"
 
-find $pkgdir/All -type f -name \*.tgz -o -name \*.tbz | sed -e "s,${pkgdir}/All/,," -e 's,\.tbz$,,' -e 's,\.tgz$,,' |sort > ${tmpdir}/files
+find $pkgdir/All -type f -name '*.t[bgx]z' | sed -e "s,${pkgdir}/All/,," -e 's,\.t[bgx]z$,,' |sort > ${tmpdir}/files
 cut -f 1 -d '|' ${index} |sort > ${tmpdir}/packages
 
 extras=$(comm -2 -3 ${tmpdir}/files ${tmpdir}/packages)
 echo $extras
 if [ "${dummy}" = "0" ]; then
   for i in $extras; do
-    rm -f $pkgdir/All/${i}.tgz $pkgdir/All/${i}.tbz
+    rm -f $pkgdir/All/${i}.t[bgx]z
   done
 fi
 

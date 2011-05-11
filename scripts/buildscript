@@ -51,8 +51,7 @@ add_pkg() {
     echo "adding dependencies"
     for i in $pkgs; do
       echo "pkg_add $i"
-      base=$(basename $i .tgz)
-      base=$(basename $base .tbz)
+      base=$(basename $i ${pkg_sufx})
       if pkg_info -q -e $base; then
         echo "skipping $base, already added"
       else
@@ -78,8 +77,7 @@ del_pkg() {
       unset delpkg nextpkg
       recursion=0
       for i in $pkgs; do
-        base=$(basename $i .tgz)
-        base=$(basename $base .tbz)
+        base=$(basename $i ${pkg_sufx})
         if [ -s /var/db/pkg/${base}/+REQUIRED_BY ]; then
           recursion=1
           nextpkg="${base} ${nextpkg}"
@@ -126,6 +124,9 @@ Z=`ident ${dir}/Makefile | grep 'FreeBSD:' | sed 's/^[ \t]*//'`
 
 cd $dir || exit 1
 restr=$(make -V RESTRICTED)
+
+# Inherit from environment set by portbuild.
+pkg_sufx=${PKG_SUFX}
 
 # Keep restricted distfiles in a subdirectory for extra protection
 # against leakage

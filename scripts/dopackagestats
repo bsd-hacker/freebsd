@@ -123,7 +123,7 @@ write_row () {
     n_packages=0
     if [ -d $directory/packages/All ]; then
       # MCL removed 20090808 -- this takes way too long
-      # n_packages=`find $directory/packages/All -name \*.tbz -or -name \*.tgz |wc -l`
+      # n_packages=`find $directory/packages/All -name '*.t[bgx]z' | wc -l`
       n_packages=`ls $directory/packages/All | grep -v CHECKSUM.MD5 | wc -l`
       have_packages="yes"
     fi
