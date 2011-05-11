@@ -27,6 +27,7 @@ char *alloca ();
 #endif
 #endif /* TRE_USE_ALLOCA */
 
+#include <stdio.h>
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
@@ -206,7 +207,28 @@ tre_regnexec(const regex_t *preg, const char *str, size_t len,
   tre_tnfa_t *tnfa = (void *)preg->TRE_REGEX_T_FIELD;
   tre_str_type_t type = (TRE_MB_CUR_MAX == 1) ? STR_BYTE : STR_MBS;
 
-  return tre_match(tnfa, str, len, type, nmatch, pmatch, eflags);
+  if (eflags & REG_STARTEND)
+  {
+    off_t s_off = pmatch[0].rm_so;
+    off_t e_off = pmatch[0].rm_eo;
+    size_t slen = e_off - s_off;
+    char *sstr = xmalloc(slen);
+    strncpy(sstr, &str[s_off], slen);
+    int ret = tre_match(tnfa, sstr, slen, type, nmatch, pmatch, eflags);
+    if (!(eflags & REG_NOSUB))
+    {
+      for (unsigned i = 0; i < nmatch; i++)
+      {
+	pmatch[i].rm_so += slen;
+        pmatch[i].rm_eo += slen;
+      }
+    }
+    return ret;
+  }
+  else
+  {
+    return tre_match(tnfa, str, len, type, nmatch, pmatch, eflags);
+  }
 }
 
 int
