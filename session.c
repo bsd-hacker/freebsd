@@ -2271,10 +2271,17 @@ session_set_fds(Session *s, int fdin, int fdout, int fderr, int ignore_fderr,
 	 */
 	if (s->chanid == -1)
 		fatal("no channel for session %d", s->self);
-	channel_set_fds(s->chanid,
-	    fdout, fdin, fderr,
-	    ignore_fderr ? CHAN_EXTENDED_IGNORE : CHAN_EXTENDED_READ,
-	    1, is_tty, CHAN_SES_WINDOW_DEFAULT);
+	if (options.hpn_disabled) {
+		channel_set_fds(s->chanid,
+		    fdout, fdin, fderr,
+		    ignore_fderr ? CHAN_EXTENDED_IGNORE : CHAN_EXTENDED_READ,
+		    1, is_tty, CHAN_SES_WINDOW_DEFAULT);
+	} else {
+		channel_set_fds(s->chanid,
+		    fdout, fdin, fderr,
+		    ignore_fderr ? CHAN_EXTENDED_IGNORE : CHAN_EXTENDED_READ,
+		    1, is_tty, options.hpn_buffer_size);
+	}
 }
 
 /*

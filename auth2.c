@@ -49,6 +49,7 @@
 #include "dispatch.h"
 #include "pathnames.h"
 #include "buffer.h"
+#include "canohost.h"
 
 #ifdef GSSAPI
 #include "ssh-gss.h"
@@ -217,6 +218,7 @@ input_userauth_request(int type, u_int32_t seq, void *ctxt)
 	Authmethod *m = NULL;
 	char *user, *service, *method, *style = NULL;
 	int authenticated = 0;
+	static int log_flag = 0;
 
 	if (authctxt == NULL)
 		fatal("input_userauth_request: no authctxt");
@@ -225,6 +227,11 @@ input_userauth_request(int type, u_int32_t seq, void *ctxt)
 	service = packet_get_cstring(NULL);
 	method = packet_get_cstring(NULL);
 	debug("userauth-request for user %s service %s method %s", user, service, method);
+	if (!log_flag) {
+		logit("SSH: Server;Ltype: Authname;Remote: %s-%d;Name: %s", 
+		      get_remote_ipaddr(), get_remote_port(), user);
+		log_flag = 1;
+	}
 	debug("attempt %d failures %d", authctxt->attempt, authctxt->failures);
 
 	if ((style = strchr(user, ':')) != NULL)

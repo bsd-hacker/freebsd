@@ -111,6 +111,18 @@
 # override default of no subsystems
 Subsystem	sftp	/usr/libexec/sftp-server
 
+# allow the use of the none cipher
+#NoneEnabled no
+
+# tcp receive buffer polling. disable in non autotuning kernels
+#TcpRcvBufPoll yes
+ 
+# disable hpn performance boosts. 
+#HPNDisabled no
+
+# buffer size for hpn to non-hpn connections
+#HPNBufferSize 2048
+
 # Example of overriding settings on a per-user basis
 #Match User anoncvs
 #	X11Forwarding no
