@@ -118,7 +118,7 @@ struct smp_rendezvous_data {
 	void (*smp_rv_action_func)(void *arg);
 	void (*smp_rv_teardown_func)(void *arg);
 	void *smp_rv_func_arg;
-	volatile int smp_rv_waiters[2];
+	volatile int smp_rv_waiters[3];
 	int smp_rv_ncpus;
 };
 
@@ -439,17 +439,19 @@ smp_rendezvous_action_body(int cpu)
 	if (local_action_func != NULL)
 		local_action_func(local_func_arg);
 
-	atomic_add_int(&rv->smp_rv_waiters[1], 1);
-	if (local_teardown_func == smp_no_rendevous_barrier)
-                return;
+	if (local_teardown_func != smp_no_rendevous_barrier) {
+		/* spin on exit rendezvous */
+		atomic_add_int(&rv->smp_rv_waiters[1], 1);
+		while (rv->smp_rv_waiters[1] < ncpus)
+			cpu_spinwait();
 
-	/* spin on exit rendezvous */
-	while (rv->smp_rv_waiters[1] < ncpus)
-		cpu_spinwait();
+		atomic_add_int(&rv->smp_rv_waiters[2], 1);
 
-	/* teardown function */
-	if (local_teardown_func != NULL)
-		local_teardown_func(local_func_arg);
+		/* teardown function */
+		if (local_teardown_func != NULL)
+			local_teardown_func(local_func_arg);
+	} else
+		atomic_add_int(&rv->smp_rv_waiters[2], 1);
 }
 
 void
@@ -492,7 +494,7 @@ smp_rendezvous_wait(void)
 	rv = DPCPU_PTR(smp_rv_data);
 	ncpus = rv->smp_rv_ncpus;
 
-	while (atomic_load_acq_int(&rv->smp_rv_waiters[1]) < ncpus) {
+	while (atomic_load_acq_int(&rv->smp_rv_waiters[2]) < ncpus) {
 		/* check for incoming events */
 		if ((stopping_cpus & (1 << curcpu)) != 0)
 			cpustop_handler();
@@ -580,6 +582,7 @@ smp_rendezvous_cpus(cpumask_t map,
 	rv->smp_rv_teardown_func = teardown_func;
 	rv->smp_rv_func_arg = arg;
 	rv->smp_rv_waiters[1] = 0;
+	rv->smp_rv_waiters[2] = 0;
 	atomic_store_rel_int(&rv->smp_rv_waiters[0], 0);
 
 	/* signal other CPUs, which will enter the IPI with interrupts off */
