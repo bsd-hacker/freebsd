@@ -2,7 +2,7 @@
  * $FreeBSD$
  */
 
-FBSD_1.0 {
+FBSD_1.2 {
 	tre_regacomp;
 	tre_regaexec;
 	tre_regancomp;
