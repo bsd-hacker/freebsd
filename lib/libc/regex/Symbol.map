@@ -3,10 +3,12 @@
  */
 
 FBSD_1.2 {
+	tre_config;
 	tre_regacomp;
 	tre_regaexec;
 	tre_regancomp;
 	tre_reganexec;
+	tre_regaparams_default;
 	tre_regawncomp;
 	tre_regawnexec;
 	tre_regcomp;

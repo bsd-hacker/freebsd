@@ -9,7 +9,8 @@
 # Moved to secure: bdes
 #
 
-SUBDIR=	alias \
+SUBDIR=	agrep \
+	alias \
 	apply \
 	asa \
 	awk \

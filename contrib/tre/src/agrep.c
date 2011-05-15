@@ -23,7 +23,7 @@
 #ifdef HAVE_GETOPT_H
 #include <getopt.h>
 #endif /* HAVE_GETOPT_H */
-#include "regex.h"
+#include <regex.h>
 
 #ifdef HAVE_GETTEXT
 #include <libintl.h>

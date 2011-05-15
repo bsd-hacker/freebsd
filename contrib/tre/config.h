@@ -154,3 +154,5 @@
 
 /* Version number of package */
 #define VERSION "0.8.0"
+
+#define PACKAGE_BUGREPORT "tre-general@lists.laurikari.net"
