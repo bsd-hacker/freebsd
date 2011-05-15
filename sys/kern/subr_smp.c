@@ -114,15 +114,13 @@ SYSCTL_INT(_kern_smp, OID_AUTO, forward_signal_enabled, CTLFLAG_RW,
 
 /* Variables needed for SMP rendezvous. */
 struct smp_rendezvous_data {
-	void (*smp_rv_setup_func)(void *arg);
 	void (*smp_rv_action_func)(void *arg);
-	void (*smp_rv_teardown_func)(void *arg);
 	void *smp_rv_func_arg;
-	volatile int smp_rv_waiters[3];
+	int smp_rv_waiters;
 	int smp_rv_ncpus;
 };
 
-static DPCPU_DEFINE(struct smp_rendezvous_data, smp_rv_data);
+volatile static DPCPU_DEFINE(struct smp_rendezvous_data, smp_rv_data);
 static volatile DPCPU_DEFINE(cpumask_t, smp_rv_senders);
 static volatile DPCPU_DEFINE(cpumask_t, smp_rv_count);
 
@@ -412,98 +410,158 @@ static void
 smp_rendezvous_action_body(int cpu)
 {
 	volatile struct smp_rendezvous_data *rv;
-	void *local_func_arg;
-	void (*local_setup_func)(void*);
-	void (*local_action_func)(void*);
-	void (*local_teardown_func)(void*);
-	int ncpus;
+	void *func_arg;
+	void (*action_func)(void*);
 
 	rv = DPCPU_ID_PTR(cpu, smp_rv_data);
-	local_func_arg = rv->smp_rv_func_arg;
-	local_setup_func = rv->smp_rv_setup_func;
-	local_action_func = rv->smp_rv_action_func;
-	local_teardown_func = rv->smp_rv_teardown_func;
-	ncpus = rv->smp_rv_ncpus;
+	func_arg = rv->smp_rv_func_arg;
+	action_func = rv->smp_rv_action_func;
 
-	/* setup function */
-	if (local_setup_func != smp_no_rendevous_barrier) {
-		if (local_setup_func != NULL)
-			local_setup_func(local_func_arg);
+	if (action_func != NULL)
+		action_func(func_arg);
 
-		/* spin on entry rendezvous */
-		atomic_add_int(&rv->smp_rv_waiters[0], 1);
-		while (rv->smp_rv_waiters[0] < ncpus)
-			cpu_spinwait();
-	}
+	atomic_add_int(&rv->smp_rv_waiters, 1);
+}
 
-	/* action function */
-	if (local_action_func != NULL)
-		local_action_func(local_func_arg);
+static int
+smp_rendezvous_action_pass(void)
+{
+	cpumask_t mask;
+	int count;
+	int cpu;
 
-	if (local_teardown_func != smp_no_rendevous_barrier) {
-		/* spin on exit rendezvous */
-		atomic_add_int(&rv->smp_rv_waiters[1], 1);
-		while (rv->smp_rv_waiters[1] < ncpus)
-			cpu_spinwait();
+	count = 0;
+	mask = DPCPU_GET(smp_rv_senders);
+	if (mask == 0)
+		return (count);
 
-		atomic_add_int(&rv->smp_rv_waiters[2], 1);
+	atomic_clear_acq_int(DPCPU_PTR(smp_rv_senders), mask);
+	do {
+		count++;
+		cpu = ffs(mask) - 1;
+		mask &= ~(1 << cpu);
+		smp_rendezvous_action_body(cpu);
+	} while (mask != 0);
 
-		/* teardown function */
-		if (local_teardown_func != NULL)
-			local_teardown_func(local_func_arg);
-	} else
-		atomic_add_int(&rv->smp_rv_waiters[2], 1);
+	return (count);
 }
 
 void
 smp_rendezvous_action(void)
 {
-	cpumask_t mask;
 	int pending;
 	int count;
-	int cpu;
 
 	pending = DPCPU_GET(smp_rv_count);
 	while (pending != 0) {
 		KASSERT(pending > 0, ("negative pending rendezvous count"));
-		mask = DPCPU_GET(smp_rv_senders);
-		if (mask == 0) {
+		count = smp_rendezvous_action_pass();
+		if (count == 0) {
 			cpu_spinwait();
 			continue;
 		}
-
-		atomic_clear_acq_int(DPCPU_PTR(smp_rv_senders), mask);
-		count = 0;
-		do {
-			count++;
-			cpu = ffs(mask) - 1;
-			mask &= ~(1 << cpu);
-			smp_rendezvous_action_body(cpu);
-		} while (mask != 0);
-
 		pending = atomic_fetchadd_int(DPCPU_PTR(smp_rv_count), -count);
 		pending -= count;
 	}
 }
 
 static void
-smp_rendezvous_wait(void)
+smp_rendezvous_wait(volatile struct smp_rendezvous_data *rv)
 {
-	volatile struct smp_rendezvous_data *rv;
 	int ncpus;
+	int count;
 
-	rv = DPCPU_PTR(smp_rv_data);
 	ncpus = rv->smp_rv_ncpus;
 
-	while (atomic_load_acq_int(&rv->smp_rv_waiters[2]) < ncpus) {
+	while (atomic_load_acq_int(&rv->smp_rv_waiters) < ncpus) {
 		/* check for incoming events */
 		if ((stopping_cpus & (1 << curcpu)) != 0)
 			cpustop_handler();
-		else if (DPCPU_GET(smp_rv_senders) != 0)
-			smp_rendezvous_action();
+
+		count = smp_rendezvous_action_pass();
+		if (count != 0)
+			atomic_add_int(DPCPU_PTR(smp_rv_count), -count);
 		else
 			cpu_spinwait();
 	}
+}
+
+
+static void
+smp_rendezvous_notify(int cpu, int nhold)
+{
+	int send_ipi;
+	int x;
+
+	if (cpu == curcpu)
+		return;
+
+	KASSERT((DPCPU_ID_GET(cpu, smp_rv_senders) & (1 << curcpu)) == 0,
+	    ("curcpu bit is set in target cpu's senders map"));
+
+	/*
+	 * If this is a first action of a rendezvous invocation
+	 * and we are the first to send an event, then send an ipi.
+	 */
+	send_ipi = 0;
+	if (nhold != 0) {
+		x = atomic_fetchadd_int(DPCPU_ID_PTR(cpu, smp_rv_count), nhold);
+		send_ipi = (x == 0);
+		if (!send_ipi)
+			coalesced_ipi_count++;
+	}
+
+	atomic_set_rel_int(DPCPU_ID_PTR(cpu, smp_rv_senders), 1 << curcpu);
+	if (send_ipi)
+		ipi_cpu(cpu, IPI_RENDEZVOUS);
+}
+
+static void
+smp_rendezvous_cpus_oneaction(cpumask_t map,
+	volatile struct smp_rendezvous_data *rv,
+	int nhold,
+	void (*action_func)(void *),
+	void *arg)
+{
+	cpumask_t tmp;
+	int ncpus;
+	int cpu;
+
+	/*
+	 * If nhold != 0, then this is the first call of a more complex
+	 * rendezvous invocation, so we need to setup some common data
+	 * for all calls and possibly send IPIs to target CPUs.
+	 * Otherwise, we just need to set action_func and the incoming
+	 * rendezvous bits.
+	 */
+	if (nhold != 0) {
+		ncpus = 0;
+		map &= all_cpus;
+		tmp = map;
+		while (tmp != 0) {
+			cpu = ffs(tmp) - 1;
+			tmp &= ~(1 << cpu);
+			ncpus++;
+		}
+
+		rv->smp_rv_ncpus = ncpus;
+		rv->smp_rv_func_arg = arg;
+	}
+
+	rv->smp_rv_action_func = action_func;
+	atomic_store_rel_int(&rv->smp_rv_waiters, 0);
+
+	tmp = map;
+	while (tmp != 0) {
+		cpu = ffs(tmp) - 1;
+		tmp &= ~(1 << cpu);
+
+		smp_rendezvous_notify(cpu, nhold);
+	}
+
+	/* Check if the current CPU is in the map */
+	if ((map & (1 << curcpu)) != 0)
+		smp_rendezvous_action_body(curcpu);
 }
 
 /*
@@ -542,9 +600,7 @@ smp_rendezvous_cpus(cpumask_t map,
 	void *arg)
 {
 	volatile struct smp_rendezvous_data *rv;
-	cpumask_t tmp;
-	int ncpus;
-	int cpu;
+	int nhold;
 
 	if (!smp_started) {
 		if (setup_func != NULL)
@@ -556,65 +612,55 @@ smp_rendezvous_cpus(cpumask_t map,
 		return;
 	}
 
-	map &= all_cpus;
-	tmp = map;
-	ncpus = 0;
-	while (tmp != 0) {
-		cpu = ffs(tmp) - 1;
-		tmp &= ~(1 << cpu);
-		ncpus++;
-	}
+	nhold = 1;
+	if (setup_func != smp_no_rendevous_barrier)
+		nhold++;
+	if (teardown_func != smp_no_rendevous_barrier)
+		nhold++;
 
 	spinlock_enter();
+	rv = DPCPU_PTR(smp_rv_data);
+
+	/* Let other CPUs know that we are here, no need to IPI us. */
+	atomic_add_int(DPCPU_PTR(smp_rv_count), 1);
 
 	/*
-	 * First wait for an event previously posted by us to complete (if any),
-	 * this is done in case the event was asynchronous.
+	 * First wait for an event previously posted by us, if any, to complete.
 	 * In the future we could have a queue of outgoing events instead
 	 * of a single item.
 	 */
-	smp_rendezvous_wait();
+	smp_rendezvous_wait(rv);
 
-	/* set static function pointers */
-	rv = DPCPU_PTR(smp_rv_data);
-	rv->smp_rv_ncpus = ncpus;
-	rv->smp_rv_setup_func = setup_func;
-	rv->smp_rv_action_func = action_func;
-	rv->smp_rv_teardown_func = teardown_func;
-	rv->smp_rv_func_arg = arg;
-	rv->smp_rv_waiters[1] = 0;
-	rv->smp_rv_waiters[2] = 0;
-	atomic_store_rel_int(&rv->smp_rv_waiters[0], 0);
-
-	/* signal other CPUs, which will enter the IPI with interrupts off */
-	tmp = map;
-	while (tmp != 0) {
-		cpu = ffs(tmp) - 1;
-		tmp &= ~(1 << cpu);
-
-		if (cpu == curcpu)
-			continue;
-
-		KASSERT(
-		    (DPCPU_ID_GET(cpu, smp_rv_senders) & (1 << curcpu)) == 0,
-		    ("curcpu bit is set in target cpu's senders map"));
-
-		/* if we are the first to send an event, then send an ipi */
-		if (atomic_fetchadd_int(DPCPU_ID_PTR(cpu, smp_rv_count), 1)
-		    == 0)
-			ipi_cpu(cpu, IPI_RENDEZVOUS);
-		else
-			coalesced_ipi_count++;
-
-		atomic_set_rel_int(DPCPU_ID_PTR(cpu, smp_rv_senders),
-		    1 << curcpu);
+	if (setup_func != smp_no_rendevous_barrier) {
+		smp_rendezvous_cpus_oneaction(map, rv, nhold, setup_func, arg);
+		smp_rendezvous_wait(rv);
+		nhold = 0;
 	}
 
-	/* Check if the current CPU is in the map */
-	if ((map & (1 << curcpu)) != 0)
-		smp_rendezvous_action_body(curcpu);
-	if (teardown_func == smp_no_rendevous_barrier)
-		smp_rendezvous_wait();
+	smp_rendezvous_cpus_oneaction(map, rv, nhold, action_func, arg);
+
+	/*
+	 * For now be compatible with historic smp_rendezvous semantics:
+	 * if teardown_func is smp_no_rendevous_barrier, then the master
+	 * CPU waits for target CPUs to complete main action.
+	 * This means that we do not support completely async semantics
+	 * (where the master CPU "fires and forgets" for time being..
+	 */
+#ifdef notyet
+	if (teardown_func != smp_no_rendevous_barrier) {
+		smp_rendezvous_wait(rv);
+		smp_rendezvous_cpus_oneaction(map, rv, 0, teardown_func, arg);
+	}
+#else
+	smp_rendezvous_wait(rv);
+	if (teardown_func != smp_no_rendevous_barrier)
+		smp_rendezvous_cpus_oneaction(map, rv, 0, teardown_func, arg);
+#endif
+	/* We are done with out work. */
+	atomic_add_int(DPCPU_PTR(smp_rv_count), -1);
+
+	/* Process all pending incoming actions. */
+	smp_rendezvous_action();
 
 	spinlock_exit();
 }
