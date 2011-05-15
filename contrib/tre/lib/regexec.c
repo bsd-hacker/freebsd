@@ -246,7 +246,29 @@ tre_regwnexec(const regex_t *preg, const wchar_t *str, size_t len,
 	  size_t nmatch, regmatch_t pmatch[], int eflags)
 {
   tre_tnfa_t *tnfa = (void *)preg->TRE_REGEX_T_FIELD;
-  return tre_match(tnfa, str, len, STR_WIDE, nmatch, pmatch, eflags);
+
+  if (eflags & REG_STARTEND)
+  {
+    off_t s_off = pmatch[0].rm_so;
+    off_t e_off = pmatch[0].rm_eo;
+    size_t slen = e_off - s_off;
+    wchar_t *sstr = xmalloc(slen * sizeof(wint_t));
+    wcsncpy(sstr, &str[s_off], slen);
+    int ret = tre_match(tnfa, sstr, slen, STR_WIDE, nmatch, pmatch, eflags);
+    if (!(eflags & REG_NOSUB))
+    {
+      for (unsigned i = 0; i < nmatch; i++)
+      {
+        pmatch[i].rm_so += slen;
+        pmatch[i].rm_eo += slen;
+      }
+    }
+    return ret;
+  }
+  else
+  {
+    return tre_match(tnfa, str, len, STR_WIDE, nmatch, pmatch, eflags);
+  }
 }
 
 int
