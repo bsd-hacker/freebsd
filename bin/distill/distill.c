@@ -43,7 +43,7 @@ int extended;			/* generated extended delta */
 int verbose;			/* show messages from libsvn */
 
 static int
-distill(const char *url, unsigned long revision)
+distill(const char *url, unsigned long revision, const char *ofn)
 {
 	apr_hash_t *config;
 	apr_pool_t *pool;
@@ -94,7 +94,7 @@ distill(const char *url, unsigned long revision)
 		++subdir;
 
 	/* XXX create delta */
-	err = svnsup_create_delta(&sd);
+	err = svnsup_create_delta(&sd, ofn);
 	SVNSUP_SVNSUP_ERROR(err, "svnsup_delta_create()");
 	err = svnsup_delta_root(sd, root);
 	SVNSUP_SVNSUP_ERROR(err, "svnsup_delta_root()");
@@ -126,7 +126,7 @@ static void
 usage(void)
 {
 
-	fprintf(stderr, "usage: svnsup-distill [-dev] url rev\n");
+	fprintf(stderr, "usage: svnsup-distill [-dev] [-o file] url rev\n");
 	exit(1);
 }
 
@@ -134,18 +134,22 @@ int
 main(int argc, char *argv[])
 {
 	apr_status_t status;
+	const char *ofn = NULL;
 	const char *url;
 	char *end, *revstr;
 	unsigned long rev;
 	int opt, ret;
 
-	while ((opt = getopt(argc, argv, "dev")) != -1)
+	while ((opt = getopt(argc, argv, "deo:v")) != -1)
 		switch (opt) {
 		case 'd':
 			++debug;
 			break;
 		case 'e':
 			++extended;
+			break;
+		case 'o':
+			ofn = optarg;
 			break;
 		case 'v':
 			++verbose;
@@ -172,7 +176,7 @@ main(int argc, char *argv[])
 	if (status != APR_SUCCESS)
 		return (1);
 
-	ret = distill(url, rev);
+	ret = distill(url, rev, ofn);
 
 	apr_terminate();
 	return (ret);

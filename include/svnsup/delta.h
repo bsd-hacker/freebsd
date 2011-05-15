@@ -33,7 +33,7 @@
 typedef struct svnsup_delta *svnsup_delta_t;
 typedef struct svnsup_delta_file *svnsup_delta_file_t;
 
-int svnsup_create_delta(svnsup_delta_t *);
+int svnsup_create_delta(svnsup_delta_t *, const char *);
 int svnsup_close_delta(svnsup_delta_t);
 
 int svnsup_delta_root(svnsup_delta_t, const char *);

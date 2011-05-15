@@ -90,6 +90,10 @@ static const char *
 svnsup_delta_shorten_path(svnsup_delta_t sd, const char *pn)
 {
 
+	assert(sd->path != NULL);
+	assert(pn != NULL);
+	if (*sd->path == '\0')
+		return (pn);
 	assert(strstr(pn, sd->path) == pn);
 	pn += strlen(sd->path);
 	assert(*pn == '/' || *pn == '\0');
@@ -102,13 +106,18 @@ svnsup_delta_shorten_path(svnsup_delta_t sd, const char *pn)
  * Create an svnsup delta.
  */
 int
-svnsup_create_delta(svnsup_delta_t *sdp)
+svnsup_create_delta(svnsup_delta_t *sdp, const char *ofn)
 {
 	svnsup_delta_t sd;
 
 	if ((sd = calloc(1, sizeof *sd)) == NULL)
 		return (SVNSUP_ERR_MEMORY);
-	sd->f = stdout;
+	if (ofn == NULL) {
+		sd->f = stdout;
+	} else if ((sd->f = fopen(ofn, "w")) == NULL) {
+		free(sd);
+		return (SVNSUP_ERR_FILE);
+	}
 	*sdp = sd;
 	return (SVNSUP_ERR_NONE);
 }
