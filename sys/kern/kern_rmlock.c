@@ -279,7 +279,7 @@ _rm_rlock_hard(struct rmlock *rm, struct rm_priotracker *tracker, int trylock)
 		return (1);
 	}
 
-	if (IS_PANIC_THREAD())
+	if (THREAD_PANICED())
 		return (1);
 
 	/*
@@ -388,7 +388,7 @@ _rm_unlock_hard(struct thread *td,struct rm_priotracker *tracker)
 	if (!tracker->rmp_flags)
 		return;
 
-	if (IS_PANIC_THREAD())
+	if (THREAD_PANICED())
 		return;
 
 	mtx_lock_spin(&rm_spinlock);
@@ -442,7 +442,7 @@ _rm_wlock(struct rmlock *rm)
 	else
 		mtx_lock(&rm->rm_lock_mtx);
 
-	if (IS_PANIC_THREAD())
+	if (THREAD_PANICED())
 		return;
 
 	if (rm->rm_writecpus != all_cpus) {

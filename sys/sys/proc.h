@@ -775,6 +775,16 @@ MALLOC_DECLARE(M_SUBPROC);
 	curthread->td_pflags &= ~TDP_NOSLEEPING;			\
 } while (0)
 
+/*
+ * If we have already panic'd and this is the thread that called
+ * panic(), then don't block on any mutexes but silently succeed.
+ * Otherwise, the kernel will deadlock since the scheduler isn't
+ * going to run the thread that holds the lock we need.
+ */
+#define	THREAD_PANICED()	\
+	(panicstr != NULL && (curthread->td_flags & TDF_INPANIC) != 0)
+
+
 #define	PIDHASH(pid)	(&pidhashtbl[(pid) & pidhash])
 extern LIST_HEAD(pidhashhead, proc) *pidhashtbl;
 extern u_long pidhash;
