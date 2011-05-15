@@ -270,6 +270,7 @@ generic_stop_cpus(cpumask_t map, u_int type)
 		}
 	}
 
+	stopper_cpu = NOCPU;
 	spinlock_exit();
 	return (1);
 }
