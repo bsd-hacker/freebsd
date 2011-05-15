@@ -120,7 +120,7 @@ struct smp_rendezvous_data {
 	int smp_rv_ncpus;
 };
 
-volatile static DPCPU_DEFINE(struct smp_rendezvous_data, smp_rv_data);
+static volatile DPCPU_DEFINE(struct smp_rendezvous_data, smp_rv_data);
 static volatile DPCPU_DEFINE(cpumask_t, smp_rv_senders);
 static volatile DPCPU_DEFINE(cpumask_t, smp_rv_count);
 
