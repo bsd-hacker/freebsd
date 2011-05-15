@@ -50,6 +50,7 @@ struct svnsup_delta {
 	const char *root;
 	const char *uuid;
 	const char *path;
+	unsigned long revision;
 	struct svnsup_delta_file *sdf;
 	unsigned int ntxt;
 };
@@ -240,6 +241,20 @@ svnsup_delta_path(svnsup_delta_t sd, const char *path)
 	fprintf(sd->f, "\n");
 	return (SVNSUP_ERR_NONE);
 }
+
+/*
+ * Revision
+ */
+int
+svnsup_delta_revision(svnsup_delta_t sd, unsigned long revision)
+{
+
+	assert(sd->revision == 0);
+	sd->revision = revision;
+	fprintf(sd->f, "@revision %lu\n", sd->revision);
+	return (SVNSUP_ERR_NONE);
+}
+
 
 /*
  * Create a directory

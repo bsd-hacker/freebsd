@@ -102,6 +102,8 @@ distill(const char *url, unsigned long revision, const char *ofn)
 	SVNSUP_SVNSUP_ERROR(err, "svnsup_delta_uuid()");
 	err = svnsup_delta_path(sd, subdir);
 	SVNSUP_SVNSUP_ERROR(err, "svnsup_delta_path()");
+	err = svnsup_delta_revision(sd, revision);
+	SVNSUP_SVNSUP_ERROR(err, "svnsup_delta_revision()");
 
 	/* get revision metadata */
 	error = svn_ra_get_log2(ra_session, NULL, revision, revision, 0,

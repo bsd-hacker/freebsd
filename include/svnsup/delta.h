@@ -39,6 +39,7 @@ int svnsup_close_delta(svnsup_delta_t);
 int svnsup_delta_root(svnsup_delta_t, const char *);
 int svnsup_delta_uuid(svnsup_delta_t, const char *);
 int svnsup_delta_path(svnsup_delta_t, const char *);
+int svnsup_delta_revision(svnsup_delta_t, unsigned long);
 int svnsup_delta_comment(svnsup_delta_t, const char *, ...);
 int svnsup_delta_meta(svnsup_delta_t, const char *, const char *, ...);
 int svnsup_delta_create_directory(svnsup_delta_t, const char *);
