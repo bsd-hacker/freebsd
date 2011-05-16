@@ -218,11 +218,45 @@ mphyp_pte_change(mmu_t mmu, uintptr_t slot, struct lpte *pvo_pt, uint64_t vpn)
 		panic("mphyp_pte_change() insertion failure: %ld\n", result);
 }
 
+static __inline int
+mphyp_pte_spillable_ident(u_int ptegidx, struct lpte *to_evict)
+{
+	uint64_t slot, junk, k;
+	struct lpte pt;
+	int     i, j;
+
+	/* Start at a random slot */
+	i = mftb() % 8;
+	k = -1;
+	for (j = 0; j < 8; j++) {
+		slot = (ptegidx << 3) + (i + j) % 8;
+		phyp_pft_hcall(H_READ, 0, slot, 0, 0, &pt.pte_hi, &pt.pte_lo,
+		    &junk);
+		
+		if (pt.pte_hi & (LPTE_LOCKED | LPTE_WIRED))
+			continue;
+
+		/* This is a candidate, so remember it */
+		k = slot;
+
+		/* Try to get a page that has not been used lately */
+		if (!(pt.pte_lo & LPTE_REF)) {
+			memcpy(to_evict, &pt, sizeof(struct lpte));
+			return (k);
+		}
+	}
+
+	phyp_pft_hcall(H_READ, 0, slot, 0, 0, &to_evict->pte_hi,
+	    &to_evict->pte_lo, &junk);
+	return (k);
+}
+
 static int
 mphyp_pte_insert(mmu_t mmu, u_int ptegidx, struct lpte *pvo_pt)
 {
 	int64_t result;
 	struct lpte evicted;
+	struct pvo_entry *pvo;
 	uint64_t index, junk;
 	u_int pteg_bktidx;
 
@@ -238,9 +272,12 @@ mphyp_pte_insert(mmu_t mmu, u_int ptegidx, struct lpte *pvo_pt)
 	    pvo_pt->pte_lo, &index, &evicted.pte_lo, &junk);
 	if (result == H_SUCCESS)
 		return (index & 0x07);
+	KASSERT(result == H_PTEG_FULL, ("Page insertion error: %ld "
+	    "(ptegidx: %#x/%#x, PTE %#lx/%#lx", result, ptegidx,
+	    moea64_pteg_count, pvo_pt->pte_hi, pvo_pt->pte_lo));
 
 	/*
-	 * First try primary hash.
+	 * Next try secondary hash.
 	 */
 	pteg_bktidx ^= moea64_pteg_mask;
 	pvo_pt->pte_hi |= LPTE_HID;
@@ -248,8 +285,62 @@ mphyp_pte_insert(mmu_t mmu, u_int ptegidx, struct lpte *pvo_pt)
 	    pvo_pt->pte_hi, pvo_pt->pte_lo, &index, &evicted.pte_lo, &junk);
 	if (result == H_SUCCESS)
 		return (index & 0x07);
+	KASSERT(result == H_PTEG_FULL, ("Secondary page insertion error: %ld",
+	    result));
 
-	panic("OVERFLOW (%ld)", result);
+	/*
+	 * Out of luck. Find a PTE to sacrifice.
+	 */
+	pteg_bktidx = ptegidx;
+	index = mphyp_pte_spillable_ident(pteg_bktidx, &evicted);
+	if (index == -1L) {
+		pteg_bktidx ^= moea64_pteg_mask;
+		index = mphyp_pte_spillable_ident(pteg_bktidx, &evicted);
+	}
+
+	if (index == -1L) {
+		/* No freeable slots in either PTEG? We're hosed. */
+		panic("mphyp_pte_insert: overflow");
+		return (-1);
+	}
+
+	if (pteg_bktidx == ptegidx)
+                pvo_pt->pte_hi &= ~LPTE_HID;
+        else
+                pvo_pt->pte_hi |= LPTE_HID;
+
+	/*
+	 * Synchronize the sacrifice PTE with its PVO, then mark both
+	 * invalid. The PVO will be reused when/if the VM system comes
+	 * here after a fault.
+	 */
+
+	if (evicted.pte_hi & LPTE_HID)
+		pteg_bktidx ^= moea64_pteg_mask; /* PTEs indexed by primary */
+
+	LIST_FOREACH(pvo, &moea64_pvo_table[pteg_bktidx], pvo_olink) {
+		if (pvo->pvo_pte.lpte.pte_hi == evicted.pte_hi) {
+			KASSERT(pvo->pvo_pte.lpte.pte_hi & LPTE_VALID,
+			    ("Invalid PVO for valid PTE!"));
+			phyp_hcall(H_REMOVE, 0, index, 0);
+			PVO_PTEGIDX_CLR(pvo);
+			moea64_pte_overflow++;
+			break;
+		}
+	}
+
+	KASSERT(pvo->pvo_pte.lpte.pte_hi == evicted.pte_hi,
+	   ("Unable to find PVO for spilled PTE"));
+
+	/*
+	 * Set the new PTE.
+	 */
+	result = phyp_pft_hcall(H_ENTER, H_EXACT, index, pvo_pt->pte_hi,
+	    pvo_pt->pte_lo, &index, &evicted.pte_lo, &junk);
+	if (result == H_SUCCESS)
+		return (index & 0x07);
+
+	panic("Page replacement error: %ld", result);
 	return (-1);
 }
 
