@@ -55,10 +55,13 @@ __FBSDID("$FreeBSD$");
 extern void *ap_pcpu;
 #endif
 
+static vm_offset_t realmaxaddr = VM_MAX_ADDRESS;
+
 static int chrp_probe(platform_t);
 static int chrp_attach(platform_t);
 void chrp_mem_regions(platform_t, struct mem_region **phys, int *physsz,
     struct mem_region **avail, int *availsz);
+static vm_offset_t chrp_real_maxaddr(platform_t);
 static u_long chrp_timebase_freq(platform_t, struct cpuref *cpuref);
 static int chrp_smp_first_cpu(platform_t, struct cpuref *cpuref);
 static int chrp_smp_next_cpu(platform_t, struct cpuref *cpuref);
@@ -70,6 +73,7 @@ static platform_method_t chrp_methods[] = {
 	PLATFORMMETHOD(platform_probe, 		chrp_probe),
 	PLATFORMMETHOD(platform_attach,		chrp_attach),
 	PLATFORMMETHOD(platform_mem_regions,	chrp_mem_regions),
+	PLATFORMMETHOD(platform_real_maxaddr,	chrp_real_maxaddr),
 	PLATFORMMETHOD(platform_timebase_freq,	chrp_timebase_freq),
 	
 	PLATFORMMETHOD(platform_smp_first_cpu,	chrp_smp_first_cpu),
@@ -104,8 +108,14 @@ chrp_attach(platform_t plat)
 {
 #ifdef __powerpc64__
 	/* XXX: check for /rtas/ibm,hypertas-functions? */
-	if (!(mfmsr() & PSL_HV))
+	if (!(mfmsr() & PSL_HV)) {
+		struct mem_region *phys, *avail;
+		int nphys, navail;
+		mem_regions(&phys, &nphys, &avail, &navail);
+		realmaxaddr = phys[0].mr_size;
+
 		pmap_mmu_install("mmu_phyp", BUS_PROBE_SPECIFIC);
+	}
 #endif
 
 	return (0);
@@ -116,6 +126,12 @@ chrp_mem_regions(platform_t plat, struct mem_region **phys, int *physsz,
     struct mem_region **avail, int *availsz)
 {
 	ofw_mem_regions(phys,physsz,avail,availsz);
+}
+
+static vm_offset_t
+chrp_real_maxaddr(platform_t plat)
+{
+	return (realmaxaddr);
 }
 
 static u_long
