@@ -63,7 +63,6 @@ __FBSDID("$FreeBSD$");
 #define	OFMEM_REGIONS	32
 static struct mem_region OFmem[OFMEM_REGIONS + 1], OFavail[OFMEM_REGIONS + 3];
 static struct mem_region OFfree[OFMEM_REGIONS + 3];
-static int nOFmem;
 
 extern register_t ofmsr[5];
 static int	(*ofwcall)(void *);
@@ -269,17 +268,28 @@ ofw_mem_regions(struct mem_region **memp, int *memsz,
 		phandle = OF_finddevice("/memory@0");
 
 	msz = parse_ofw_memory(phandle, "reg", OFmem);
-	nOFmem = msz / sizeof(struct mem_region);
+	msz /= sizeof(struct mem_region);
 	asz = parse_ofw_memory(phandle, "available", OFavail);
+	asz /= sizeof(struct mem_region);
 
 	*memp = OFmem;
-	*memsz = nOFmem;
-	
+	*memsz = msz;
+
+	/*
+	 * On some firmwares (SLOF), some memory may be marked available that
+	 * doesn't actually exist. This manifests as an extension of the last
+	 * available segment past the end of physical memory, so truncate that
+	 * one.
+	 */
+	if (OFavail[asz - 1].mr_start + OFavail[asz - 1].mr_size >
+	    OFmem[msz - 1].mr_start + OFmem[msz - 1].mr_size)
+		OFavail[asz - 1].mr_size = (OFmem[msz - 1].mr_start +
+		    OFmem[msz - 1].mr_size) - OFavail[asz - 1].mr_start;
+
 	/*
 	 * OFavail may have overlapping regions - collapse these
 	 * and copy out remaining regions to OFfree
 	 */
-	asz /= sizeof(struct mem_region);
 	do {
 		still_merging = FALSE;
 		for (i = 0; i < asz; i++) {
