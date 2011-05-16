@@ -102,7 +102,6 @@ chrp_probe(platform_t plat)
 static int
 chrp_attach(platform_t plat)
 {
-printf("Attaching CHRP\n");
 #ifdef __powerpc64__
 	/* XXX: check for /rtas/ibm,hypertas-functions? */
 	if (!(mfmsr() & PSL_HV))

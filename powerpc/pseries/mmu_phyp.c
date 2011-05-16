@@ -100,10 +100,7 @@ mphyp_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernelend)
         phandle_t dev, node, root;
         int res;
 
-	printf("%s: %d\n", __FILE__, __LINE__);
-
 	moea64_early_bootstrap(mmup, kernelstart, kernelend);
-	printf("%s: %d\n", __FILE__, __LINE__);
 
 	root = OF_peer(0);
 
@@ -128,15 +125,10 @@ mphyp_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernelend)
 	if (prop != NULL)
 		final_pteg_count = 1 << prop[1];
 
-	printf("final_pteg_count: %#x\n", (u_int)final_pteg_count);
-
 	moea64_pteg_count = final_pteg_count / sizeof(struct lpteg);
 
-	printf("%s: %d\n", __FILE__, __LINE__);
 	moea64_mid_bootstrap(mmup, kernelstart, kernelend);
-	printf("%s: %d\n", __FILE__, __LINE__);
 	moea64_late_bootstrap(mmup, kernelstart, kernelend);
-	printf("%s: %d\n", __FILE__, __LINE__);
 }
 
 static void
@@ -150,10 +142,8 @@ mphyp_cpu_bootstrap(mmu_t mmup, int ap)
 	 * Install kernel SLB entries
 	 */
 
-	printf("%s: %d\n", __FILE__, __LINE__);
         __asm __volatile ("slbia");
         __asm __volatile ("slbmfee %0,%1; slbie %0;" : "=r"(seg0) : "r"(0));
-	printf("%s: %d\n", __FILE__, __LINE__);
 	for (i = 0; i < 64; i++) {
 		if (!(slb[i].slbe & SLBE_VALID))
 			continue;
@@ -161,7 +151,6 @@ mphyp_cpu_bootstrap(mmu_t mmup, int ap)
 		__asm __volatile ("slbmte %0, %1" ::
 		    "r"(slb[i].slbv), "r"(slb[i].slbe));
 	}
-	printf("%s: %d\n", __FILE__, __LINE__);
 }
 
 static void
