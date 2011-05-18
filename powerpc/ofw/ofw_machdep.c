@@ -444,7 +444,6 @@ openfirmware_core(void *args)
 #endif
 
 	result = ofwcall(args);
-	//result = ((int (*)(void *))(openfirmware_entry))(args);
 	ofw_sprg_restore();
 
 	intr_restore(oldmsr);
