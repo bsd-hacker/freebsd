@@ -473,7 +473,7 @@ smp_rendezvous_wait(volatile struct smp_rendezvous_data *rv)
 
 	ncpus = rv->smp_rv_ncpus;
 
-	while (atomic_load_acq_int(&rv->smp_rv_waiters) < ncpus) {
+	while (rv->smp_rv_waiters < ncpus) {
 		/* check for incoming events */
 		if ((stopping_cpus & (1 << curcpu)) != 0)
 			cpustop_handler();
@@ -549,7 +549,7 @@ smp_rendezvous_cpus_oneaction(cpumask_t map,
 	}
 
 	rv->smp_rv_action_func = action_func;
-	atomic_store_rel_int(&rv->smp_rv_waiters, 0);
+	rv->smp_rv_waiters = 0;
 
 	tmp = map;
 	while (tmp != 0) {
