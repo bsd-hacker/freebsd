@@ -65,11 +65,12 @@ static struct mem_region OFmem[OFMEM_REGIONS + 1], OFavail[OFMEM_REGIONS + 3];
 static struct mem_region OFfree[OFMEM_REGIONS + 3];
 
 extern register_t ofmsr[5];
-static int	(*ofwcall)(void *);
+extern void	*openfirmware_entry;
 static void	*fdt;
 int		ofw_real_mode;
 
-int		ofw_32bit_mode_entry(void *);
+int		ofwcall(void *);
+int		rtascall(void *);
 static void	ofw_quiesce(void);
 static int	openfirmware(void *args);
 
@@ -254,6 +255,7 @@ ofw_mem_regions(struct mem_region **memp, int *memsz,
 		struct mem_region **availp, int *availsz)
 {
 	phandle_t phandle;
+	vm_offset_t maxphysaddr;
 	int asz, msz, fsz;
 	int i, j;
 	int still_merging;
@@ -281,10 +283,14 @@ ofw_mem_regions(struct mem_region **memp, int *memsz,
 	 * available segment past the end of physical memory, so truncate that
 	 * one.
 	 */
-	if (OFavail[asz - 1].mr_start + OFavail[asz - 1].mr_size >
-	    OFmem[msz - 1].mr_start + OFmem[msz - 1].mr_size)
-		OFavail[asz - 1].mr_size = (OFmem[msz - 1].mr_start +
-		    OFmem[msz - 1].mr_size) - OFavail[asz - 1].mr_start;
+	maxphysaddr = 0;
+	for (i = 0; i < msz; i++)
+		if (OFmem[i].mr_start + OFmem[i].mr_size > maxphysaddr)
+			maxphysaddr = OFmem[i].mr_start + OFmem[i].mr_size;
+
+	if (OFavail[asz - 1].mr_start + OFavail[asz - 1].mr_size > maxphysaddr)
+		OFavail[asz - 1].mr_size = maxphysaddr -
+		    OFavail[asz - 1].mr_start;
 
 	/*
 	 * OFavail may have overlapping regions - collapse these
@@ -328,19 +334,6 @@ OF_initial_setup(void *fdt_ptr, void *junk, int (*openfirm)(void *))
 	else
 		ofw_real_mode = 1;
 
-	ofwcall = NULL;
-
-	#ifdef __powerpc64__
-		/*
-		 * For PPC64, we need to use some hand-written
-		 * asm trampolines to get to OF.
-		 */
-		if (openfirm != NULL)
-			ofwcall = ofw_32bit_mode_entry;
-	#else
-		ofwcall = openfirm;
-	#endif
-
 	fdt = fdt_ptr;
 
 	#ifdef FDT_DTB_STATIC
@@ -355,7 +348,7 @@ OF_bootstrap()
 {
 	boolean_t status = FALSE;
 
-	if (ofwcall != NULL) {
+	if (openfirmware_entry != NULL) {
 		if (ofw_real_mode) {
 			status = OF_install(OFW_STD_REAL, 0);
 		} else {
@@ -376,6 +369,10 @@ OF_bootstrap()
 		 * background processes.
 		 */
 		ofw_quiesce();
+
+		/*
+		 * If available, we need to instantiate RTAS.
+		 */
 	} else if (fdt != NULL) {
 		status = OF_install(OFW_FDT, 0);
 
@@ -447,6 +444,7 @@ openfirmware_core(void *args)
 #endif
 
 	result = ofwcall(args);
+	//result = ((int (*)(void *))(openfirmware_entry))(args);
 	ofw_sprg_restore();
 
 	intr_restore(oldmsr);
