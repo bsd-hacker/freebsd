@@ -348,7 +348,7 @@ _mtx_lock_sleep(struct mtx *m, uintptr_t tid, int opts, const char *file,
 		return;
 	}
 
-	if (THREAD_PANICKED())
+	if (TD_IS_INPANIC())
 		return;
 
 	lock_profile_obtain_lock_failed(&m->lock_object,
@@ -510,7 +510,7 @@ _mtx_lock_spin(struct mtx *m, uintptr_t tid, int opts, const char *file,
 	uint64_t waittime = 0;
 #endif
 
-	if (THREAD_PANICKED())
+	if (TD_IS_INPANIC())
 		return;
 
 	if (LOCK_LOG_TEST(&m->lock_object, opts))
@@ -584,7 +584,7 @@ retry:
 				break;
 			}
 
-			if (THREAD_PANICKED())
+			if (TD_IS_INPANIC())
 				return;
 
 			lock_profile_obtain_lock_failed(&m->lock_object,
@@ -673,7 +673,7 @@ _mtx_unlock_sleep(struct mtx *m, int opts, const char *file, int line)
 		return;
 	}
 
-	if (THREAD_PANICKED())
+	if (TD_IS_INPANIC())
 		return;
 
 	/*

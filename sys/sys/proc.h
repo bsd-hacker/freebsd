@@ -781,7 +781,7 @@ MALLOC_DECLARE(M_SUBPROC);
  * Otherwise, the kernel will deadlock since the scheduler isn't
  * going to run the thread that holds the lock we need.
  */
-#define	THREAD_PANICED()	\
+#define	TD_IS_INPANIC()	\
 	(panicstr != NULL && (curthread->td_flags & TDF_INPANIC) != 0)
 
 

@@ -323,7 +323,7 @@ _rw_rlock(struct rwlock *rw, const char *file, int line)
 	    rw->lock_object.lo_name, file, line));
 	WITNESS_CHECKORDER(&rw->lock_object, LOP_NEWORDER, file, line, NULL);
 
-	if (THREAD_PANICKED())
+	if (TD_IS_INPANIC())
 		return;
 
 	for (;;) {
@@ -535,7 +535,7 @@ _rw_runlock(struct rwlock *rw, const char *file, int line)
 	WITNESS_UNLOCK(&rw->lock_object, 0, file, line);
 	LOCK_LOG_LOCK("RUNLOCK", &rw->lock_object, 0, 0, file, line);
 
-	if (THREAD_PANICKED())
+	if (TD_IS_INPANIC())
 		return;
 
 	/* TODO: drop "owner of record" here. */
@@ -665,7 +665,7 @@ _rw_wlock_hard(struct rwlock *rw, uintptr_t tid, const char *file, int line)
 		return;
 	}
 
-	if (THREAD_PANICKED())
+	if (TD_IS_INPANIC())
 		return;
 
 	if (LOCK_LOG_TEST(&rw->lock_object, 0))
@@ -829,7 +829,7 @@ _rw_wunlock_hard(struct rwlock *rw, uintptr_t tid, const char *file, int line)
 		return;
 	}
 
-	if (THREAD_PANICKED())
+	if (TD_IS_INPANIC())
 		return;
 
 	KASSERT(rw->rw_lock & (RW_LOCK_READ_WAITERS | RW_LOCK_WRITE_WAITERS),
