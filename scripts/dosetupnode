@@ -61,7 +61,9 @@ setup() {
     echo "setting up of $node started at $(date)"
 
     . ${pbd}/${arch}/portbuild.conf
-    . ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf
+    if [ -f ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf ]; then
+        . ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf
+    fi
     . ${pbd}/${arch}/portbuild.${node}
 
     if [ "${buildid}" != "-" ]; then
