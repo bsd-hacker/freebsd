@@ -390,7 +390,7 @@ rtaspci_read_ivar(device_t dev, device_t child, int which, uintptr_t *result)
 
 	switch (which) {
 	case PCIB_IVAR_DOMAIN:
-		*result = 0;
+		*result = device_get_unit(dev);
 		return (0);
 	case PCIB_IVAR_BUS:
 		*result = sc->sc_bus;
