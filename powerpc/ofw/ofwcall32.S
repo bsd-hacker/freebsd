@@ -46,8 +46,10 @@ GLOBAL(rtas_entry)
 	.long	0			/* RTAS entry point */
 
 	.align	4
-GLOBAL(ofwstk)
-	.space  OFWSTKSZ
+ofwstk:
+	.space	OFWSTKSZ
+rtas_regsave:
+	.space	4
 
 /*
  * Open Firmware Entry Point. May need to enter real mode.
@@ -118,9 +120,10 @@ ASENTRY(rtascall)
 	mflr	%r0
 	stw	%r0,4(%r1)
 
-	/* Record the old MSR just below the bottom of the stack */
+	/* Record the old MSR to real-mode-accessible area */
 	mfmsr	%r0
-	stw	%r0,-4(%r1)
+	lis	%r5,rtas_regsave@ha
+	stw	%r0,rtas_regsave@l(%r5)
 
 	/* read client interface handler */
 	lis	%r5,rtas_entry@ha
@@ -137,7 +140,8 @@ ASENTRY(rtascall)
 	bctrl
 
 	/* Now set the MSR back */
-	lwz	%r6,-4(%r1)
+	lis	%r6,rtas_regsave@ha
+	lwz	%r6,rtas_regsave@l(%r6)
 	mtmsr	%r6
 	isync
 

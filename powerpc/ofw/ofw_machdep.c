@@ -70,7 +70,6 @@ static void	*fdt;
 int		ofw_real_mode;
 
 int		ofwcall(void *);
-int		rtascall(void *);
 static void	ofw_quiesce(void);
 static int	openfirmware(void *args);
 

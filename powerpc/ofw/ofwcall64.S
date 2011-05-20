@@ -37,9 +37,9 @@
  */
 	.data
 	.align	4
-GLOBAL(ofwstk)
+ofwstk:
 	.space	OFWSTKSZ
-GLOBAL(rtas_regsave)
+rtas_regsave:
 	.space	24 /* 3 * sizeof(register_t) */
 GLOBAL(ofmsr)
 	.llong  0, 0, 0, 0, 0		/* msr/sprg0-3 used in Open Firmware */
@@ -170,7 +170,7 @@ ASENTRY(ofwcall)
  * RTAS 32-bit Entry Point. Similar to the OF one, but simpler (no separate
  * stack)
  *
- * C prototype: int rtas_32bit_entry(void *callbuffer, void *rtas_privdat);
+ * C prototype: int rtascall(void *callbuffer, void *rtas_privdat);
  */
 
 ASENTRY(rtascall)
