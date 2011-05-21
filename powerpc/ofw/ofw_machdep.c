@@ -368,10 +368,6 @@ OF_bootstrap()
 		 * background processes.
 		 */
 		ofw_quiesce();
-
-		/*
-		 * If available, we need to instantiate RTAS.
-		 */
 	} else if (fdt != NULL) {
 		status = OF_install(OFW_FDT, 0);
 
