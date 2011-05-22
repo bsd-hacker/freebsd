@@ -73,11 +73,15 @@ rtas_setup(void *junk)
 {
 	ihandle_t rtasi;
 	cell_t rtas_size = 0, rtas_ptr;
+	char path[31];
 	int result;
 
-	rtasi = OF_open("/rtas");
 	rtas = OF_finddevice("/rtas");
-	if (rtasi == 0 || rtas == -1)
+	if (rtas == -1)
+		return;
+	OF_package_to_path(rtas, path, sizeof(path));
+	rtasi = OF_open(path);
+	if (rtasi == -1 || rtasi == 0)
 		return;
 
 	mtx_init(&rtas_mtx, "RTAS", MTX_DEF, 0);
@@ -116,7 +120,7 @@ rtas_setup(void *junk)
 	    (cell_t)rtas_private_data, &rtas_ptr);
 	OF_close(rtasi);
 
-	if (result == -1) {
+	if (result != 0) {
 		rtas = 0;
 		rtas_ptr = 0;
 		printf("Error initializing RTAS\n");
@@ -188,7 +192,7 @@ rtas_call_method(cell_t token, int nargs, int nreturns, ...)
 	} args;
 	int n, result;
 
-	if (!rtas_exists() || nargs > 6)
+	if (!rtas_exists() || nargs + nreturns > 12)
 		return (-1);
 
 	args.token = token;
