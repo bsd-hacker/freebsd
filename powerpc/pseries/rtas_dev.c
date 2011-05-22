@@ -118,12 +118,12 @@ rtas_gettime(device_t dev, struct timespec *ts) {
 	if (tod[0] != 0)
 		return ((tod[0] == -1) ? ENXIO : EAGAIN);
 
-        ct.year = tod[1];
-        ct.mon  = tod[2];
-        ct.day  = tod[3];
-        ct.hour = tod[4];
-        ct.min  = tod[5];
-        ct.sec  = tod[6];
+	ct.year = tod[1];
+	ct.mon  = tod[2];
+	ct.day  = tod[3];
+	ct.hour = tod[4];
+	ct.min  = tod[5];
+	ct.sec  = tod[6];
 	ct.nsec = tod[7];
 
 	return (clock_ct_to_ts(&ct, ts));
@@ -142,7 +142,7 @@ rtas_settime(device_t dev, struct timespec *ts)
 
 	clock_ts_to_ct(ts, &ct);
 	error = rtas_call_method(token, 7, 1, ct.year, ct.mon, ct.day, ct.hour,
-	    ct.min, ct.min, ct.sec, ct.nsec, &status);
+	    ct.min, ct.sec, ct.nsec, &status);
 	if (error < 0)
 		return (ENXIO);
 	if (status != 0)
