@@ -69,6 +69,9 @@ static int chrp_smp_first_cpu(platform_t, struct cpuref *cpuref);
 static int chrp_smp_next_cpu(platform_t, struct cpuref *cpuref);
 static int chrp_smp_get_bsp(platform_t, struct cpuref *cpuref);
 static int chrp_smp_start_cpu(platform_t, struct pcpu *cpu);
+#ifdef SMP
+static struct cpu_group *chrp_smp_topo(platform_t plat);
+#endif
 static void chrp_reset(platform_t);
 
 static platform_method_t chrp_methods[] = {
@@ -82,6 +85,9 @@ static platform_method_t chrp_methods[] = {
 	PLATFORMMETHOD(platform_smp_next_cpu,	chrp_smp_next_cpu),
 	PLATFORMMETHOD(platform_smp_get_bsp,	chrp_smp_get_bsp),
 	PLATFORMMETHOD(platform_smp_start_cpu,	chrp_smp_start_cpu),
+#ifdef SMP
+	PLATFORMMETHOD(platform_smp_topo,	chrp_smp_topo),
+#endif
 
 	PLATFORMMETHOD(platform_reset,		chrp_reset),
 
@@ -311,6 +317,39 @@ chrp_smp_start_cpu(platform_t plat, struct pcpu *pc)
 
 	return ((pc->pc_awake) ? 0 : EBUSY);
 }
+
+#ifdef SMP
+static struct cpu_group *
+chrp_smp_topo(platform_t plat)
+{
+	struct pcpu *pc, *last_pc;
+	int i, ncores, ncpus;
+
+	ncores = ncpus = 0;
+	last_pc = NULL;
+	for (i = 0; i <= mp_maxid; i++) {
+		pc = pcpu_find(i);
+		if (pc == NULL)
+			continue;
+		if (last_pc == NULL || pc->pc_hwref != last_pc->pc_hwref)
+			ncores++;
+		last_pc = pc;
+		ncpus++;
+	}
+
+	if (ncpus % ncores != 0) {
+		printf("WARNING: Irregular SMP topology. Performance may be "
+		     "suboptimal (%d CPUS, %d cores)\n", ncpus, ncores);
+		return (smp_topo_none());
+	}
+
+	/* Don't do anything fancier for non-threaded SMP */
+	if (ncpus == ncores)
+		return (smp_topo_none());
+
+	return (smp_topo_1level(CG_SHARE_L1, ncpus / ncores, CG_FLAG_SMT));
+}
+#endif
 
 static void
 chrp_reset(platform_t platform)
