@@ -43,8 +43,10 @@ __FBSDID("$FreeBSD$");
 #include <machine/hid.h>
 #include <machine/platformvar.h>
 #include <machine/pmap.h>
+#include <machine/rtas.h>
 #include <machine/smp.h>
 #include <machine/spr.h>
+#include <machine/trap_aim.h>
 
 #include <dev/ofw/openfirm.h>
 #include <machine/ofw_machdep.h>
@@ -150,33 +152,12 @@ chrp_timebase_freq(platform_t plat, struct cpuref *cpuref)
 	return (ticks);
 }
 
-
-static int
-chrp_smp_fill_cpuref(struct cpuref *cpuref, phandle_t cpu)
-{
-	cell_t cpuid, res;
-
-	cpuref->cr_hwref = cpu;
-	res = OF_getprop(cpu, "reg", &cpuid, sizeof(cpuid));
-
-	/*
-	 * psim doesn't have a reg property, so assume 0 as for the
-	 * uniprocessor case in the CHRP spec. 
-	 */
-	if (res < 0) {
-		cpuid = 0;
-	}
-
-	cpuref->cr_cpuid = cpuid & 0xff;
-	return (0);
-}
-
 static int
 chrp_smp_first_cpu(platform_t plat, struct cpuref *cpuref)
 {
 	char buf[8];
 	phandle_t cpu, dev, root;
-	int res;
+	int res, cpuid;
 
 	root = OF_peer(0);
 
@@ -208,7 +189,16 @@ chrp_smp_first_cpu(platform_t plat, struct cpuref *cpuref)
 	if (cpu == 0)
 		return (ENOENT);
 
-	return (chrp_smp_fill_cpuref(cpuref, cpu));
+	cpuref->cr_hwref = cpu;
+	res = OF_getprop(cpu, "ibm,ppc-interrupt-server#s", &cpuid,
+	    sizeof(cpuid));
+	if (res <= 0)
+		res = OF_getprop(cpu, "reg", &cpuid, sizeof(cpuid));
+	if (res <= 0)
+		cpuid = 0;
+	cpuref->cr_cpuid = cpuid;
+
+	return (0);
 }
 
 static int
@@ -216,8 +206,23 @@ chrp_smp_next_cpu(platform_t plat, struct cpuref *cpuref)
 {
 	char buf[8];
 	phandle_t cpu;
-	int res;
+	int i, res, cpuid;
 
+	/* Check for whether it should be the next thread */
+	res = OF_getproplen(cpuref->cr_hwref, "ibm,ppc-interrupt-server#s");
+	if (res > 0) {
+		cell_t interrupt_servers[res/sizeof(cell_t)];
+		OF_getprop(cpuref->cr_hwref, "ibm,ppc-interrupt-server#s",
+		    interrupt_servers, res);
+		for (i = 0; i < res/sizeof(cell_t) - 1; i++) {
+			if (interrupt_servers[i] == cpuref->cr_cpuid) {
+				cpuref->cr_cpuid = interrupt_servers[i+1];
+				return (0);
+			}
+		}
+	}
+
+	/* Next CPU core/package */
 	cpu = OF_peer(cpuref->cr_hwref);
 	while (cpu != 0) {
 		res = OF_getprop(cpu, "device_type", buf, sizeof(buf));
@@ -228,7 +233,16 @@ chrp_smp_next_cpu(platform_t plat, struct cpuref *cpuref)
 	if (cpu == 0)
 		return (ENOENT);
 
-	return (chrp_smp_fill_cpuref(cpuref, cpu));
+	cpuref->cr_hwref = cpu;
+	res = OF_getprop(cpu, "ibm,ppc-interrupt-server#s", &cpuid,
+	    sizeof(cpuid));
+	if (res <= 0)
+		res = OF_getprop(cpu, "reg", &cpuid, sizeof(cpuid));
+	if (res <= 0)
+		cpuid = 0;
+	cpuref->cr_cpuid = cpuid;
+
+	return (0);
 }
 
 static int
@@ -236,7 +250,7 @@ chrp_smp_get_bsp(platform_t plat, struct cpuref *cpuref)
 {
 	ihandle_t inst;
 	phandle_t bsp, chosen;
-	int res;
+	int res, cpuid;
 
 	chosen = OF_finddevice("/chosen");
 	if (chosen == 0)
@@ -247,14 +261,55 @@ chrp_smp_get_bsp(platform_t plat, struct cpuref *cpuref)
 		return (ENXIO);
 
 	bsp = OF_instance_to_package(inst);
-	return (chrp_smp_fill_cpuref(cpuref, bsp));
+
+	/* Pick the primary thread. Can it be any other? */
+	cpuref->cr_hwref = bsp;
+	res = OF_getprop(bsp, "ibm,ppc-interrupt-server#s", &cpuid,
+	    sizeof(cpuid));
+	if (res <= 0)
+		res = OF_getprop(bsp, "reg", &cpuid, sizeof(cpuid));
+	if (res <= 0)
+		cpuid = 0;
+	cpuref->cr_cpuid = cpuid;
+
+	return (0);
 }
 
 static int
 chrp_smp_start_cpu(platform_t plat, struct pcpu *pc)
 {
-	/* XXX: Uses RTAS call, will add later */
-	return (ENXIO);
+	cell_t start_cpu;
+	int result, err, timeout;
+
+	if (!rtas_exists()) {
+		printf("RTAS unitialized: unable to start AP %d\n",
+		    pc->pc_cpuid);
+		return (ENXIO);
+	}
+
+	start_cpu = rtas_token_lookup("start-cpu");
+	if (start_cpu == -1) {
+		printf("RTAS unknown method: unable to start AP %d\n",
+		    pc->pc_cpuid);
+		return (ENXIO);
+	}
+
+	ap_pcpu = pc;
+	powerpc_sync();
+
+	result = rtas_call_method(start_cpu, 3, 1, pc->pc_cpuid, EXC_RST, pc,
+	    &err);
+	if (result < 0 || err != 0) {
+		printf("RTAS error (%d/%d): unable to start AP %d\n",
+		    result, err, pc->pc_cpuid);
+		return (ENXIO);
+	}
+
+	timeout = 10000;
+	while (!pc->pc_awake && timeout--)
+		DELAY(100);
+
+	return ((pc->pc_awake) ? 0 : EBUSY);
 }
 
 static void
