@@ -288,7 +288,7 @@ chrp_smp_start_cpu(platform_t plat, struct pcpu *pc)
 	int result, err, timeout;
 
 	if (!rtas_exists()) {
-		printf("RTAS unitialized: unable to start AP %d\n",
+		printf("RTAS uninitialized: unable to start AP %d\n",
 		    pc->pc_cpuid);
 		return (ENXIO);
 	}
