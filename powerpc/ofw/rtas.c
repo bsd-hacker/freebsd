@@ -77,12 +77,17 @@ rtas_setup(void *junk)
 	int result;
 
 	rtas = OF_finddevice("/rtas");
-	if (rtas == -1)
+	if (rtas == -1) {
+		rtas = 0;
 		return;
+	}
 	OF_package_to_path(rtas, path, sizeof(path));
 	rtasi = OF_open(path);
-	if (rtasi == -1 || rtasi == 0)
+	if (rtasi == -1 || rtasi == 0) {
+		rtas = 0;
+		printf("Error initializing RTAS: could not open node\n");
 		return;
+	}
 
 	mtx_init(&rtas_mtx, "RTAS", MTX_DEF, 0);
 
@@ -123,7 +128,7 @@ rtas_setup(void *junk)
 	if (result != 0) {
 		rtas = 0;
 		rtas_ptr = 0;
-		printf("Error initializing RTAS\n");
+		printf("Error initializing RTAS (%d)\n", result);
 		return;
 	}
 
