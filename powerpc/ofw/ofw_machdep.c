@@ -483,12 +483,7 @@ openfirmware(void *args)
 	int result;
 	#ifdef SMP
 	struct ofw_rv_args rv_args;
-	#endif
 
-	if (pmap_bootstrapped && ofw_real_mode)
-		args = (void *)pmap_kextract((vm_offset_t)args);
-
-	#ifdef SMP
 	rv_args.args = args;
 	rv_args.in_progress = 1;
 	smp_rendezvous(smp_no_rendevous_barrier, ofw_rendezvous_dispatch,
