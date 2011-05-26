@@ -473,24 +473,7 @@ moea64_calc_wimg(vm_offset_t pa, vm_memattr_t ma)
 /*
  * Quick sort callout for comparing memory regions.
  */
-static int	mr_cmp(const void *a, const void *b);
 static int	om_cmp(const void *a, const void *b);
-
-static int
-mr_cmp(const void *a, const void *b)
-{
-	const struct	mem_region *regiona;
-	const struct	mem_region *regionb;
-
-	regiona = a;
-	regionb = b;
-	if (regiona->mr_start < regionb->mr_start)
-		return (-1);
-	else if (regiona->mr_start > regionb->mr_start)
-		return (1);
-	else
-		return (0);
-}
 
 static int
 om_cmp(const void *a, const void *b)
@@ -707,10 +690,9 @@ moea64_early_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernelen
 	mem_regions(&pregions, &pregions_sz, &regions, &regions_sz);
 	CTR0(KTR_PMAP, "moea64_bootstrap: physical memory");
 
-	qsort(pregions, pregions_sz, sizeof(*pregions), mr_cmp);
 	if (sizeof(phys_avail)/sizeof(phys_avail[0]) < regions_sz)
 		panic("moea64_bootstrap: phys_avail too small");
-	qsort(regions, regions_sz, sizeof(*regions), mr_cmp);
+
 	phys_avail_count = 0;
 	physsz = 0;
 	hwphyssz = 0;

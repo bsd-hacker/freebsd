@@ -60,9 +60,8 @@ __FBSDID("$FreeBSD$");
 #include <machine/platform.h>
 #include <machine/ofw_machdep.h>
 
-#define	OFMEM_REGIONS	32
-static struct mem_region OFmem[OFMEM_REGIONS + 1], OFavail[OFMEM_REGIONS + 3];
-static struct mem_region OFfree[OFMEM_REGIONS + 3];
+static struct mem_region OFmem[PHYS_AVAIL_SZ], OFavail[PHYS_AVAIL_SZ];
+static struct mem_region OFfree[PHYS_AVAIL_SZ];
 
 extern register_t ofmsr[5];
 extern void	*openfirmware_entry;
@@ -133,11 +132,32 @@ memr_merge(struct mem_region *from, struct mem_region *to)
 	to->mr_size = end - to->mr_start;
 }
 
+/*
+ * Quick sort callout for comparing memory regions.
+ */
+static int	mr_cmp(const void *a, const void *b);
+
+static int
+mr_cmp(const void *a, const void *b)
+{
+	const struct	mem_region *regiona;
+	const struct	mem_region *regionb;
+
+	regiona = a;
+	regionb = b;
+	if (regiona->mr_start < regionb->mr_start)
+		return (-1);
+	else if (regiona->mr_start > regionb->mr_start)
+		return (1);
+	else
+		return (0);
+}
+
 static int
 parse_ofw_memory(phandle_t node, const char *prop, struct mem_region *output)
 {
 	cell_t address_cells, size_cells;
-	cell_t OFmem[4*(OFMEM_REGIONS + 1)];
+	cell_t OFmem[4 * PHYS_AVAIL_SZ];
 	int sz, i, j;
 	int apple_hack_mode;
 	phandle_t phandle;
@@ -174,7 +194,7 @@ parse_ofw_memory(phandle_t node, const char *prop, struct mem_region *output)
 	 * Get memory.
 	 */
 	if ((node == -1) || (sz = OF_getprop(node, prop,
-	    OFmem, sizeof(OFmem[0]) * 4 * OFMEM_REGIONS)) <= 0)
+	    OFmem, sizeof(OFmem[0]) * 4 * PHYS_AVAIL_SZ)) <= 0)
 		panic("Physical memory map not found");
 
 	i = 0;
@@ -224,7 +244,7 @@ parse_ofw_memory(phandle_t node, const char *prop, struct mem_region *output)
 	#ifdef __powerpc64__
 	if (apple_hack_mode) {
 		/* Add in regions above 4 GB to the available list */
-		struct mem_region himem[OFMEM_REGIONS];
+		struct mem_region himem[PHYS_AVAIL_SZ];
 		int hisz;
 
 		hisz = parse_ofw_memory(node, "reg", himem);
@@ -242,6 +262,81 @@ parse_ofw_memory(phandle_t node, const char *prop, struct mem_region *output)
 	return (sz);
 }
 
+static int
+parse_drconf_memory(int *msz, int *asz, struct mem_region *ofmem,
+		    struct mem_region *ofavail)
+{
+	phandle_t phandle;
+	vm_offset_t base;
+	int i, idx, len, lasz, lmsz, res;
+	uint32_t lmb_size[2];
+	unsigned long *dmem, flags;
+
+	lmsz = *msz;
+	lasz = *asz;
+
+	phandle = OF_finddevice("/ibm,dynamic-reconfiguration-memory");
+	if (phandle == -1)
+		/* No drconf node, return. */
+		return (0);
+
+	res = OF_getprop(phandle, "ibm,lmb-size", lmb_size, sizeof(lmb_size));
+	if (res == -1)
+		return (0);
+
+	/* Parse the /ibm,dynamic-memory.
+	   The first position gives the # of entries. The next two words
+ 	   reflect the address of the memory block. The next four words are
+	   the DRC index, reserved, list index and flags.
+	   (see PAPR C.6.6.2 ibm,dynamic-reconfiguration-memory)
+	   
+	    #el  Addr   DRC-idx  res   list-idx  flags
+	   -------------------------------------------------
+	   | 4 |   8   |   4   |   4   |   4   |   4   |....
+	   -------------------------------------------------
+	*/
+
+	len = OF_getproplen(phandle, "ibm,dynamic-memory");
+	if (len > 0) {
+
+		/* We have to use a variable length array on the stack
+		   since we have very limited stack space.
+		*/
+		cell_t arr[len/sizeof(cell_t)];
+
+		res = OF_getprop(phandle, "ibm,dynamic-memory", &arr,
+				 sizeof(arr));
+		if (res == -1)
+			return (0);
+
+		/* Number of elements */
+		idx = arr[0];
+
+		/* First address. */
+		dmem = (void*)&arr[1];
+	
+		for (i = 0; i < idx; i++) {
+			base = *dmem;
+			dmem += 2;
+			flags = *dmem;
+			/* Use region only if available and not reserved. */
+			if ((flags & 0x8) && !(flags & 0x80)) {
+				ofmem[lmsz].mr_start = base;
+				ofmem[lmsz].mr_size = (vm_size_t)lmb_size[1];
+				ofavail[lasz].mr_start = base;
+				ofavail[lasz].mr_size = (vm_size_t)lmb_size[1];
+				lmsz++;
+				lasz++;
+			}
+			dmem++;
+		}
+	}
+
+	*msz = lmsz;
+	*asz = lasz;
+
+	return (1);
+}
 /*
  * This is called during powerpc_init, before the system is really initialized.
  * It shall provide the total and the available regions of RAM.
@@ -256,7 +351,7 @@ ofw_mem_regions(struct mem_region **memp, int *memsz,
 	phandle_t phandle;
 	vm_offset_t maxphysaddr;
 	int asz, msz, fsz;
-	int i, j;
+	int i, j, res;
 	int still_merging;
 
 	asz = msz = 0;
@@ -272,6 +367,14 @@ ofw_mem_regions(struct mem_region **memp, int *memsz,
 	msz /= sizeof(struct mem_region);
 	asz = parse_ofw_memory(phandle, "available", OFavail);
 	asz /= sizeof(struct mem_region);
+
+	res = parse_drconf_memory(&msz, &asz, OFmem, OFavail);
+	if (res == 0)
+		/* tbd. */
+		printf("no ibm machine\n");
+
+	qsort(OFmem, msz, sizeof(*OFmem), mr_cmp);
+	qsort(OFavail, asz, sizeof(*OFavail), mr_cmp);
 
 	*memp = OFmem;
 	*memsz = msz;
