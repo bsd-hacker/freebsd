@@ -72,7 +72,7 @@ setup() {
 	checkerror $? || (echo "Copying scripts to ${node} failed"; return 1)
     fi
 
-    cmdpath=$(cat ${pbc}/scripts/setupnode | ssh -a ${client_user}@${node} 't=$(mktemp -t setupnode); cat >$t; echo $t; chmod 755 $t')
+    cmdpath=$(cat ${pbc}/scripts/setupnode | ${ssh_cmd} -a ${client_user}@${node} 't=$(mktemp -t setupnode); cat >$t; echo $t; chmod 755 $t')
     case ${cmdpath} in /tmp/*) ;; *) echo "Failed to upload or run setupnode on ${node}."; return 1;; esac
 
     client_setup="${ssh_cmd} -n ${client_user}@${node} ${cmdpath} ${pbd} ${arch} ${branch} ${buildid} ${scratchdir} \"${portsmd5}\" \"${srcmd5}\" \"${bindistmd5}\""

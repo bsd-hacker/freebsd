@@ -85,7 +85,7 @@ chroot=
 test -f ${pbd}/${arch}/portbuild.${host} && . ${pbd}/${arch}/portbuild.${host}
 
 # Upload scripts/claim-chroot as per-build scripts aren't in place yet.
-cmdpath=$(cat ${pbc}/scripts/claim-chroot | ssh -a ${client_user}@${host} 't=$(mktemp -t claim-chroot); cat >$t; echo $t; chmod 755 $t')
+cmdpath=$(cat ${pbc}/scripts/claim-chroot | ${ssh_cmd} -a ${client_user}@${host} 't=$(mktemp -t claim-chroot); cat >$t; echo $t; chmod 755 $t')
 case ${cmdpath} in /tmp/*) ;; *) echo "Failed to scp claim-chroot to ${host}."; exit 254;; esac
 chrootdata=$(${ssh_cmd} -a -n ${client_user}@${host} ${sudo_cmd} ${cmdpath} ${arch} ${branch} ${buildid} ${pkgname} 2>&1)
 ${ssh_cmd} -a ${client_user}@${host} "rm -f ${cmdpath}"
