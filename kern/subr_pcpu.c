@@ -82,6 +82,7 @@ struct cpuhead cpuhead = SLIST_HEAD_INITIALIZER(cpuhead);
 void
 pcpu_init(struct pcpu *pcpu, int cpuid, size_t size)
 {
+	struct pcpu *tail;
 
 	bzero(pcpu, size);
 	KASSERT(cpuid >= 0 && cpuid < MAXCPU,
@@ -89,7 +90,17 @@ pcpu_init(struct pcpu *pcpu, int cpuid, size_t size)
 	pcpu->pc_cpuid = cpuid;
 	pcpu->pc_cpumask = 1 << cpuid;
 	cpuid_to_pcpu[cpuid] = pcpu;
-	SLIST_INSERT_HEAD(&cpuhead, pcpu, pc_allcpu);
+	/*
+	 * It may be important that the CPU list stay ordered, so try to
+	 * install this PCPU at the end of the list instead of the beginnig.
+	 */
+	for (tail = SLIST_FIRST(&cpuhead); tail != NULL &&
+	    SLIST_NEXT(tail, pc_allcpu) != NULL;
+	    tail = SLIST_NEXT(tail, pc_allcpu)) {}
+	if (tail != NULL)
+		SLIST_INSERT_AFTER(tail, pcpu, pc_allcpu);
+	else
+		SLIST_INSERT_HEAD(&cpuhead, pcpu, pc_allcpu);
 	cpu_pcpu_init(pcpu, cpuid, size);
 	pcpu->pc_rm_queue.rmq_next = &pcpu->pc_rm_queue;
 	pcpu->pc_rm_queue.rmq_prev = &pcpu->pc_rm_queue;
