@@ -50,12 +50,21 @@ add_pkg() {
     arch=$(uname -m)
     echo "adding dependencies"
     for i in $pkgs; do
-      echo "pkg_add $i"
+      echo "adding package $i"
       base=$(basename $i ${pkg_sufx})
-      if pkg_info -q -e $base; then
+      if [ $use_pkgng = "no" ]; then
+        pkg_cmd_info="pkg_info -qe"
+        pkg_cmd_add="pkg_add"
+      else
+        pkg_cmd_info="pkg info -qeO"
+        pkg_cmd_add="pkg add"
+      fi
+      eval $pkg_cmd_info $base >/dev/null 2>&1
+      if [ $? -eq 0 ]; then
         echo "skipping $base, already added"
       else
-        if ! pkg_add $i; then
+        eval $pkg_cmd_add $i >/dev/null 2>&1
+        if [ $? -ne 0 ]; then
           echo "error in dependency $i, exiting"
           cleanup 0
         fi
@@ -78,24 +87,45 @@ del_pkg() {
       recursion=0
       for i in $pkgs; do
         base=$(basename $i ${pkg_sufx})
-        if [ -s /var/db/pkg/${base}/+REQUIRED_BY ]; then
+        if [ $use_pkgng = "no" ]; then
+          dependents=$(cat /var/db/pkg/${base}/+REQUIRED_BY 2>/dev/null)
+          pkg_cmd_check="cd /var/db/pkg && test -d"
+        else
+          dependents=$(pkg info -qOr $base)
+          pkg_cmd_check="pkg info -qO"
+        fi
+        if [ -n "$dependents" ]; then
           recursion=1
           nextpkg="${base} ${nextpkg}"
-        elif [ -d /var/db/pkg/${base}/ ]; then
-          delpkg="${base} ${delpkg}"
+        else
+          eval $pkg_cmd_check $base >/dev/null 2>&1
+          if [ $? -eq 0 ]; then
+            delpkg="${base} ${delpkg}"
+          fi
         fi
       done
       pkgs="${nextpkg}"
       if [ "$dellist" != "" -a "$dellist" = "$delpkg" ]; then
+        if [ $use_pkgng = "no" ]; then
+          leftover=$(cd /var/db/pkg && find * -type d -maxdepth 1)
+        else
+          leftover=$(pkg info -qa)
+        fi
         echo "deleted list =\""$dellist"\", packages to delete ="\"$delpkg\"
         echo "The following packages were left behind (perhaps your dependency list is incomplete):"
-        ls /var/db/pkg
-        echo "error in pkg_delete, exiting"
+        echo $leftover
+        echo "error while removing package, exiting"
         cleanup 0
       else 
         for j in ${delpkg}; do
           echo "Deleting ${j}"
-          if ! (pkg_delete -f $j); then
+          if [ $use_pkgng = "no" ]; then
+            pkg_delete -f ${j}
+          else
+            jorig=$(pkg info -qOo ${j})
+            pkg delete -f ${jorig}
+          fi
+          if [ $? -ne 0 ]; then
             echo "--> error in pkg_delete, exiting"
             cleanup 0
           fi
@@ -127,6 +157,13 @@ restr=$(make -V RESTRICTED)
 
 # Inherit from environment set by portbuild.
 pkg_sufx=${PKG_SUFX}
+
+# Use pkgng if available.
+if [ -x /usr/sbin/pkg ]; then
+  use_pkgng="yes"
+else
+  use_pkgng="no"
+fi
 
 # Keep restricted distfiles in a subdirectory for extra protection
 # against leakage
@@ -358,10 +395,17 @@ EOF
   # Concatenate and remove duplicates
   BRD=$(echo $BD $RD | tr ' ' '\n' | sort -u | tr '\n' ' ')
   del_pkg ${BRD}
-  cd /var/db/pkg
-  if [ $(echo $(echo * | wc -c)) != 2 ]; then
-    echo "leftover packages:" *
-    del_pkg *
+
+  if [ $use_pkgng = "no" ]; then
+    cd /var/db/pkg
+    leftover=$(find * -type d -maxdepth 1)
+  else
+    leftover=$(pkg info -qa)
+  fi
+
+  if [ -n "$leftover" ]; then
+    echo "leftover packages:" $leftover
+    del_pkg $leftover
     echo "1" > /tmp/status
     cleanup 0
   fi
