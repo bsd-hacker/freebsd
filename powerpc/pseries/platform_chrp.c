@@ -68,8 +68,8 @@ static u_long chrp_timebase_freq(platform_t, struct cpuref *cpuref);
 static int chrp_smp_first_cpu(platform_t, struct cpuref *cpuref);
 static int chrp_smp_next_cpu(platform_t, struct cpuref *cpuref);
 static int chrp_smp_get_bsp(platform_t, struct cpuref *cpuref);
-static int chrp_smp_start_cpu(platform_t, struct pcpu *cpu);
 #ifdef SMP
+static int chrp_smp_start_cpu(platform_t, struct pcpu *cpu);
 static struct cpu_group *chrp_smp_topo(platform_t plat);
 #endif
 static void chrp_reset(platform_t);
@@ -84,8 +84,8 @@ static platform_method_t chrp_methods[] = {
 	PLATFORMMETHOD(platform_smp_first_cpu,	chrp_smp_first_cpu),
 	PLATFORMMETHOD(platform_smp_next_cpu,	chrp_smp_next_cpu),
 	PLATFORMMETHOD(platform_smp_get_bsp,	chrp_smp_get_bsp),
-	PLATFORMMETHOD(platform_smp_start_cpu,	chrp_smp_start_cpu),
 #ifdef SMP
+	PLATFORMMETHOD(platform_smp_start_cpu,	chrp_smp_start_cpu),
 	PLATFORMMETHOD(platform_smp_topo,	chrp_smp_topo),
 #endif
 
@@ -281,6 +281,7 @@ chrp_smp_get_bsp(platform_t plat, struct cpuref *cpuref)
 	return (0);
 }
 
+#ifdef SMP
 static int
 chrp_smp_start_cpu(platform_t plat, struct pcpu *pc)
 {
@@ -300,9 +301,7 @@ chrp_smp_start_cpu(platform_t plat, struct pcpu *pc)
 		return (ENXIO);
 	}
 
-#ifdef SMP
 	ap_pcpu = pc;
-#endif
 	powerpc_sync();
 
 	result = rtas_call_method(start_cpu, 3, 1, pc->pc_cpuid, EXC_RST, pc,
@@ -320,7 +319,6 @@ chrp_smp_start_cpu(platform_t plat, struct pcpu *pc)
 	return ((pc->pc_awake) ? 0 : EBUSY);
 }
 
-#ifdef SMP
 static struct cpu_group *
 chrp_smp_topo(platform_t plat)
 {
