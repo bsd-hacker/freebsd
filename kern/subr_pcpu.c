@@ -92,7 +92,7 @@ pcpu_init(struct pcpu *pcpu, int cpuid, size_t size)
 	cpuid_to_pcpu[cpuid] = pcpu;
 	/*
 	 * It may be important that the CPU list stay ordered, so try to
-	 * install this PCPU at the end of the list instead of the beginnig.
+	 * install this PCPU at the end of the list instead of the beginning.
 	 */
 	for (tail = SLIST_FIRST(&cpuhead); tail != NULL &&
 	    SLIST_NEXT(tail, pc_allcpu) != NULL;
