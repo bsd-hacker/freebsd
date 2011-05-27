@@ -300,7 +300,9 @@ chrp_smp_start_cpu(platform_t plat, struct pcpu *pc)
 		return (ENXIO);
 	}
 
+#ifdef SMP
 	ap_pcpu = pc;
+#endif
 	powerpc_sync();
 
 	result = rtas_call_method(start_cpu, 3, 1, pc->pc_cpuid, EXC_RST, pc,
