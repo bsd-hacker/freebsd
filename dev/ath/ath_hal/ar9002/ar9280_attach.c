@@ -93,7 +93,7 @@ ar9280AniSetup(struct ath_hal *ah)
                 .period                 = 100,
         };
 	/* NB: disable ANI noise immmunity for reliable RIFS rx */
-	AH5416(ah)->ah_ani_function &= ~ HAL_ANI_NOISE_IMMUNITY_LEVEL;
+	AH5416(ah)->ah_ani_function &= ~(1 << HAL_ANI_NOISE_IMMUNITY_LEVEL);
 
         /* NB: ANI is not enabled yet */
         ar5416AniAttach(ah, &aniparams, &aniparams, AH_TRUE);
@@ -430,7 +430,7 @@ ar9280WriteIni(struct ath_hal *ah, const struct ieee80211_channel *chan)
 		OS_REG_WRITE(ah, reg, val);
 
 		/* Analog shift register delay seems needed for Merlin - PR kern/154220 */
-		if (reg >= 0x7800 && reg < 0x78a0)
+		if (reg >= 0x7800 && reg < 0x7900)
 			OS_DELAY(100);
 
 		DMA_YIELD(regWrites);

@@ -656,6 +656,12 @@ const struct puc_cfg puc_pci_devices[] = {
 	    PUC_PORT_4S, 0x10, 0, 8,
 	},
 
+	{   0x1415, 0x950a, 0x131f, 0x2030,
+	    "SIIG Cyber 2S PCIe",
+	    DEFAULT_RCLK * 10,
+	    PUC_PORT_2S, 0x10, 0, 8,
+	},
+
 	{   0x1415, 0x950a, 0xffff, 0,
 	    "Oxford Semiconductor OX16PCI954 UARTs",
 	    DEFAULT_RCLK,
@@ -1286,6 +1292,12 @@ puc_config_timedia(struct puc_softc *sc, enum puc_cfg_cmd cmd, int port,
 	uint16_t subdev;
 
 	switch (cmd) {
+	case PUC_CFG_GET_CLOCK:
+		if (port < 2)
+			*res = DEFAULT_RCLK * 8;
+		else
+			*res = DEFAULT_RCLK;
+		return (0);
 	case PUC_CFG_GET_DESC:
 		snprintf(desc, sizeof(desc),
 		    "Timedia technology %d Port Serial", (int)sc->sc_cfg_data);

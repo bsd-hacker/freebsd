@@ -79,6 +79,7 @@ FEATURE(nfscl, "NFSv4 client");
 extern int nfscl_ticks;
 extern struct timeval nfsboottime;
 extern struct nfsstats	newnfsstats;
+extern int nfsrv_useacl;
 
 MALLOC_DEFINE(M_NEWNFSREQ, "newnfsclient_req", "New NFS request header");
 MALLOC_DEFINE(M_NEWNFSMNT, "newnfsmnt", "New NFS mount struct");
@@ -1079,15 +1080,21 @@ nfs_mount(struct mount *mp)
 		dirpath[0] = '\0';
 	dirlen = strlen(dirpath);
 
-	if (has_nfs_args_opt == 0 && vfs_getopt(mp->mnt_optnew, "addr",
-	    (void **)&args.addr, &args.addrlen) == 0) {
-		if (args.addrlen > SOCK_MAXADDRLEN) {
-			error = ENAMETOOLONG;
+	if (has_nfs_args_opt == 0) {
+		if (vfs_getopt(mp->mnt_optnew, "addr",
+		    (void **)&args.addr, &args.addrlen) == 0) {
+			if (args.addrlen > SOCK_MAXADDRLEN) {
+				error = ENAMETOOLONG;
+				goto out;
+			}
+			nam = malloc(args.addrlen, M_SONAME, M_WAITOK);
+			bcopy(args.addr, nam, args.addrlen);
+			nam->sa_len = args.addrlen;
+		} else {
+			vfs_mount_error(mp, "No server address");
+			error = EINVAL;
 			goto out;
 		}
-		nam = malloc(args.addrlen, M_SONAME, M_WAITOK);
-		bcopy(args.addr, nam, args.addrlen);
-		nam->sa_len = args.addrlen;
 	}
 
 	args.fh = nfh;
@@ -1325,6 +1332,15 @@ mountnfs(struct nfs_args *argp, struct mount *mp, struct sockaddr *nam,
 		if (argp->flags & NFSMNT_NFSV3)
 			ncl_fsinfo(nmp, *vpp, cred, td);
 	
+		/* Mark if the mount point supports NFSv4 ACLs. */
+		if ((argp->flags & NFSMNT_NFSV4) != 0 && nfsrv_useacl != 0 &&
+		    ret == 0 &&
+		    NFSISSET_ATTRBIT(&nfsva.na_suppattr, NFSATTRBIT_ACL)) {
+			MNT_ILOCK(mp);
+			mp->mnt_flag |= MNT_NFS4ACLS;
+			MNT_IUNLOCK(mp);
+		}
+	
 		/*
 		 * Lose the lock but keep the ref.
 		 */
@@ -1442,10 +1458,20 @@ nfs_sync(struct mount *mp, int waitfor)
 
 	td = curthread;
 
+	MNT_ILOCK(mp);
+	/*
+	 * If a forced dismount is in progress, return from here so that
+	 * the umount(2) syscall doesn't get stuck in VFS_SYNC() before
+	 * calling VFS_UNMOUNT().
+	 */
+	if ((mp->mnt_kern_flag & MNTK_UNMOUNTF) != 0) {
+		MNT_IUNLOCK(mp);
+		return (EBADF);
+	}
+
 	/*
 	 * Force stale buffer cache information to be flushed.
 	 */
-	MNT_ILOCK(mp);
 loop:
 	MNT_VNODE_FOREACH(vp, mp, mvp) {
 		VI_LOCK(vp);
