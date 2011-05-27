@@ -353,25 +353,32 @@ ofw_mem_regions(struct mem_region **memp, int *memsz,
 	int asz, msz, fsz;
 	int i, j, res;
 	int still_merging;
+	char name[31];
 
 	asz = msz = 0;
 
 	/*
-	 * Get memory.
+	 * Get memory from all the /memory nodes.
 	 */
-	phandle = OF_finddevice("/memory");
-	if (phandle == -1)
-		phandle = OF_finddevice("/memory@0");
+	for (phandle = OF_child(OF_peer(0)); phandle != 0;
+	    phandle = OF_peer(phandle)) {
+		if (OF_getprop(phandle, "name", name, sizeof(name)) <= 0)
+			continue;
+		if (strncmp(name, "memory", sizeof(name)) != 0)
+			continue;
 
-	msz = parse_ofw_memory(phandle, "reg", OFmem);
-	msz /= sizeof(struct mem_region);
-	asz = parse_ofw_memory(phandle, "available", OFavail);
-	asz /= sizeof(struct mem_region);
+		res = parse_ofw_memory(phandle, "reg", &OFmem[msz]);
+		msz += res/sizeof(struct mem_region);
+		if (OF_getproplen(phandle, "available") >= 0)
+			res = parse_ofw_memory(phandle, "available",
+			    &OFavail[asz]);
+		else
+			res = parse_ofw_memory(phandle, "reg", &OFavail[asz]);
+		asz += res/sizeof(struct mem_region);
+	}
 
-	res = parse_drconf_memory(&msz, &asz, OFmem, OFavail);
-	if (res == 0)
-		/* tbd. */
-		printf("no ibm machine\n");
+	/* Check for memory in ibm,dynamic-reconfiguration-memory */
+	parse_drconf_memory(&msz, &asz, OFmem, OFavail);
 
 	qsort(OFmem, msz, sizeof(*OFmem), mr_cmp);
 	qsort(OFavail, asz, sizeof(*OFavail), mr_cmp);
