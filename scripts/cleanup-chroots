@@ -9,6 +9,8 @@
 
 pbd=${PORTBUILD_DATA:-/var/portbuild}
 
+VERBOSE=1
+
 kill_procs()
 {
     dir=$1
@@ -25,6 +27,7 @@ kill_procs()
     done
 }
 
+# clean up a single mount
 cleanup_mount() {
     chroot=$1
     mount=$2
@@ -41,60 +44,114 @@ cleanup_mount() {
     fi
 }
 
+# cleanup all mounts (old NFS, devfs, linux), as well as mds
+cleanup_all() {
+    chroot=$1
+
+    mounts=$(mount | grep ${chroot} | awk '{print $3}')
+    if [ ! -z "${mounts}" ]; then
+	for j in ${mounts}; do
+	    umount ${j} || cleanup_mount ${j}
+	done
+	# XXX MCL is this redundant with the above?
+	umount ${chroot}/compat/linux/proc || cleanup_mount ${chroot}/compat/linux/proc
+    fi
+    if [ "${use_zfs}" != "1" -a "${use_md_swap}" = "1" ]; then
+	chrootnum=$(basename ${chroot})
+	umount -f /dev/md${chroot}
+	mdconfig -d -u ${chrootnum}
+    fi
+}
+
 # note: uname is not being overridden (should not need client.conf here)
 arch=$(uname -m)
 
+# note: if any are missing, the script exits here.
 . ${pbd}/${arch}/client.conf
 . ${pbd}/${arch}/portbuild.conf
 . ${pbd}/${arch}/portbuild.$(hostname)
 
 if [ "${use_zfs}" = "1" ]; then
-    old=$(find ${scratchdir}/*/*/* -prune -mmin +60 2> /dev/null)
+    old_chroots=$(find ${scratchdir}/*/*/* -prune -mmin +60 2> /dev/null)
 else 
-    old=$(find ${scratchdir}/*/*/chroot/* -prune -mmin +60 2> /dev/null)
+    old_chroots=$(find ${scratchdir}/*/*/chroot/* -prune -mmin +60 2> /dev/null)
 fi
 
-if [ -z "${old}" ]; then
-    exit 0
+if [ $VERBOSE ]; then
+    echo "non-empty chroots > 1 hr old found on $(hostname):"
+    echo ${old_chroots}
 fi
 
-# Prune out chroots with active builds
-for i in ${old}; do
-    if [ ! -d ${i}/used ]; then
-	old2="${i} ${old2}"
-	# Also remove "in use" chroots that were set up more than 5 days ago
-    elif [ ! -z "`find $i/used -prune -mmin +7200`" ]; then
-	echo "cleanup-chroots: Found old files on `hostname`:"
-	ls -l ${i}/tmp ${i}/used
-	echo "${i} allegedly in use but >5 days old"
-	old2="${i} ${old2}"
+if [ ! -z "${old_chroots}" ]; then
+    # Flag non-empty chroots with no active builds
+    for chroot in ${old_chroots}; do
+	if [ ! -d ${chroot}/used ]; then
+	    stale_chroots="${chroot} ${stale_chroots}"
+	# Also flag "in use" chroots that were set up more than 5 days ago
+	elif [ ! -z "`find ${chroot}/used -prune -mmin +7200`" ]; then
+	    echo "cleanup-chroots: Found old files on $(hostname):"
+	    ls -l ${chroot}/tmp ${chroot}/used
+	    echo "${chroot} allegedly in use but >5 days old"
+	    stale_chroots="${chroot} ${stale_chroots}"
+	fi
+    done
+fi
+
+if [ $VERBOSE ]; then
+    echo "non-empty, >1 hr old stale chroots found on $(hostname):"
+    echo ${stale_chroots}
+fi
+
+# save off non-empty, stale chroots for possible examination
+if [ -z "${stale_chroots}" ]; then
+    mkdir -p ${scratchdir}/old
+    for chroot in ${stale_chroots}; do
+	mv ${chroot} ${scratchdir}/old
+    done
+    rm -rf ${scratchdir}/old 2> /dev/null
+    if [ -d ${scratchdir}/old ]; then
+	chflags -R noschg ${scratchdir}/old
+	rm -rf ${scratchdir}/old
+    fi
+fi
+
+# cleanup old NFS and devfs mounts for stale chroots
+if [ ! -z "${stale_chroots}" ]; then
+    for chroot in ${stale_chroots}; do
+	cleanup_all ${chroot}
+    done
+fi
+
+# now look for empty stale builds
+if [ "${use_zfs}" = "1" ]; then
+    builds=$(find ${scratchdir}/[0-9]*/* -prune -mmin +7200 2> /dev/null)
+else 
+    builds=$(find ${scratchdir}/[0-9]*/* -prune -mmin +7200 2> /dev/null)
+fi
+
+for build in ${builds}; do
+    if [ -e ${build} ]; then
+	stale_builds="${build} ${stale_builds}"
     fi
 done
 
-if [ -z "${old2}" ]; then
-    exit 0
+if [ $VERBOSE ]; then
+    echo "empty stale builds found on $(hostname):"
+    echo ${stale_builds}
 fi
 
-# cleanup old NFS and devfs mounts
-for i in ${old2}; do
-    mounts=$(mount | grep $i | awk '{print $3}')
-    if [ ! -z "${mounts}" ]; then
-	for j in ${mounts}; do
-	    umount ${j} || cleanup_mount ${j}
-	done
-	umount ${i}/compat/linux/proc || cleanup_mount ${i}/compat/linux/proc
-    fi
-    if [ "${use_zfs}" != "1" -a "${use_md_swap}" = "1" ]; then
-	chrootnum=$(basename $i)
-	umount -f /dev/md${i}
-	mdconfig -d -u ${chrootnum}
-    fi
-done
-
-mkdir -p ${scratchdir}/old
-mv ${old2} ${scratchdir}/old
-rm -rf ${scratchdir}/old 2> /dev/null
-if [ -d ${scratchdir}/old ]; then
-  chflags -R noschg ${scratchdir}/old
-  rm -rf ${scratchdir}/old
+# cleanup old NFS and devfs mounts for vanished chroots in stale builds
+if [ ! -z "${stale_builds}" ]; then
+    for build in ${stale_builds}; do
+	# XXX MCL HACK! what I really want is "give me the next 2 subdirs after $build"
+	mounts=$(mount | grep "${build}" | awk '{print $3}' | grep -E "/dev$")
+	if [ ! -z "${mounts}" ]; then
+	    for mount in ${mounts}; do
+		target=`echo ${mount} | sed -e "s@/dev@@"`
+		cleanup_all ${target}
+	    done
+	fi
+	rm -rf ${build}
+    done
 fi
+
