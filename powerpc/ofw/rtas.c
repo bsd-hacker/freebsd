@@ -83,7 +83,7 @@ rtas_setup(void *junk)
 	}
 	OF_package_to_path(rtas, path, sizeof(path));
 	rtasi = OF_open(path);
-	if (rtasi == -1 || rtasi == 0) {
+	if (rtasi == 0) {
 		rtas = 0;
 		printf("Error initializing RTAS: could not open node\n");
 		return;
