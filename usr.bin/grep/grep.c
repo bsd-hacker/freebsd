@@ -83,7 +83,6 @@ bool		 matchall;
 unsigned int	 patterns, pattern_sz;
 char		**pattern;
 regex_t		*r_pattern;
-fastgrep_t	*fg_pattern;
 
 /* Filename exclusion/inclusion patterns */
 unsigned int	 fpatterns, fpattern_sz;
@@ -638,6 +637,8 @@ main(int argc, char *argv[])
 
 	switch (grepbehave) {
 	case GREP_FIXED:
+		cflags |= REG_LITERAL;
+		break;
 	case GREP_BASIC:
 		break;
 	case GREP_EXTENDED:
@@ -648,27 +649,14 @@ main(int argc, char *argv[])
 		usage();
 	}
 
-	fg_pattern = grep_calloc(patterns, sizeof(*fg_pattern));
 	r_pattern = grep_calloc(patterns, sizeof(*r_pattern));
-/*
- * XXX: fgrepcomp() and fastcomp() are workarounds for regexec() performance.
- * Optimizations should be done there.
- */
-		/* Check if cheating is allowed (always is for fgrep). */
-	if (grepbehave == GREP_FIXED) {
-		for (i = 0; i < patterns; ++i)
-			fgrepcomp(&fg_pattern[i], pattern[i]);
-	} else {
-		for (i = 0; i < patterns; ++i) {
-			if (fastcomp(&fg_pattern[i], pattern[i])) {
-				/* Fall back to full regex library */
-				c = regcomp(&r_pattern[i], pattern[i], cflags);
-				if (c != 0) {
-					regerror(c, &r_pattern[i], re_error,
-					    RE_ERROR_BUF);
-					errx(2, "%s", re_error);
-				}
-			}
+
+	for (i = 0; i < patterns; ++i) {
+		c = regcomp(&r_pattern[i], pattern[i], cflags);
+		if (c != 0) {
+			regerror(c, &r_pattern[i], re_error,
+			    RE_ERROR_BUF);
+			errx(2, "%s", re_error);
 		}
 	}
 

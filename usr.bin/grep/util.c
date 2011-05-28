@@ -297,22 +297,10 @@ procline(struct str *l, int nottext)
 
 			/* Loop to compare with all the patterns */
 			for (i = 0; i < patterns; i++) {
-/*
- * XXX: grep_search() is a workaround for speed up and should be
- * removed in the future.  See fastgrep.c.
- */
-				if (fg_pattern[i].pattern) {
-					r = grep_search(&fg_pattern[i],
-					    (unsigned char *)l->dat,
-					    l->len, &pmatch);
-					r = (r == 0) ? 0 : REG_NOMATCH;
-					st = pmatch.rm_eo;
-				} else {
-					r = regexec(&r_pattern[i], l->dat, 1,
-					    &pmatch, eflags);
-					r = (r == 0) ? 0 : REG_NOMATCH;
-					st = pmatch.rm_eo;
-				}
+				r = regexec(&r_pattern[i], l->dat, 1,
+				    &pmatch, eflags);
+				r = (r == 0) ? 0 : REG_NOMATCH;
+				st = pmatch.rm_eo;
 				if (r == REG_NOMATCH)
 					continue;
 				/* Check for full match */
@@ -321,7 +309,7 @@ procline(struct str *l, int nottext)
 					    (size_t)pmatch.rm_eo != l->len)
 						r = REG_NOMATCH;
 				/* Check for whole word match */
-				if (r == 0 && fg_pattern[i].word &&
+				if (r == 0 && wflag &&
 				    pmatch.rm_so != 0) {
 					wint_t wbegin, wend;
 
