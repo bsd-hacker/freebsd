@@ -48,6 +48,7 @@ unset DISPLAY
 # Don't pick up installed packages from the host
 export LOCALBASE=/nonexistentlocal
 
+INDEX_PORTS=.
 if [ -n "$target" ]; then
   if [ -f "$target" ]; then
     INDEX_PORTS=$(cat $target | tr '\n' ' ')
