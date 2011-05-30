@@ -74,7 +74,7 @@ static TAILQ_HEAD(, dpcpu_free) dpcpu_head = TAILQ_HEAD_INITIALIZER(dpcpu_head);
 static struct sx dpcpu_lock;
 uintptr_t dpcpu_off[MAXCPU];
 struct pcpu *cpuid_to_pcpu[MAXCPU];
-struct cpuhead cpuhead = SLIST_HEAD_INITIALIZER(cpuhead);
+struct cpuhead cpuhead = STAILQ_HEAD_INITIALIZER(cpuhead);
 
 /*
  * Initialize the MI portions of a struct pcpu.
@@ -82,7 +82,6 @@ struct cpuhead cpuhead = SLIST_HEAD_INITIALIZER(cpuhead);
 void
 pcpu_init(struct pcpu *pcpu, int cpuid, size_t size)
 {
-	struct pcpu *tail;
 
 	bzero(pcpu, size);
 	KASSERT(cpuid >= 0 && cpuid < MAXCPU,
@@ -90,17 +89,7 @@ pcpu_init(struct pcpu *pcpu, int cpuid, size_t size)
 	pcpu->pc_cpuid = cpuid;
 	pcpu->pc_cpumask = 1 << cpuid;
 	cpuid_to_pcpu[cpuid] = pcpu;
-	/*
-	 * It may be important that the CPU list stay ordered, so try to
-	 * install this PCPU at the end of the list instead of the beginning.
-	 */
-	for (tail = SLIST_FIRST(&cpuhead); tail != NULL &&
-	    SLIST_NEXT(tail, pc_allcpu) != NULL;
-	    tail = SLIST_NEXT(tail, pc_allcpu)) {}
-	if (tail != NULL)
-		SLIST_INSERT_AFTER(tail, pcpu, pc_allcpu);
-	else
-		SLIST_INSERT_HEAD(&cpuhead, pcpu, pc_allcpu);
+	STAILQ_INSERT_TAIL(&cpuhead, pcpu, pc_allcpu);
 	cpu_pcpu_init(pcpu, cpuid, size);
 	pcpu->pc_rm_queue.rmq_next = &pcpu->pc_rm_queue;
 	pcpu->pc_rm_queue.rmq_prev = &pcpu->pc_rm_queue;
@@ -256,7 +245,7 @@ void
 pcpu_destroy(struct pcpu *pcpu)
 {
 
-	SLIST_REMOVE(&cpuhead, pcpu, pcpu, pc_allcpu);
+	STAILQ_REMOVE(&cpuhead, pcpu, pcpu, pc_allcpu);
 	cpuid_to_pcpu[pcpu->pc_cpuid] = NULL;
 	dpcpu_off[pcpu->pc_cpuid] = 0;
 }
