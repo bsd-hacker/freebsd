@@ -132,6 +132,7 @@ extern vm_offset_t ksym_start, ksym_end;
 
 int cold = 1;
 #ifdef __powerpc64__
+extern int n_slbs;
 int cacheline_size = 128;
 #else
 int cacheline_size = 32;
@@ -337,13 +338,13 @@ powerpc_init(vm_offset_t startkernel, vm_offset_t endkernel,
 
 	kdb_init();
 
-	/*
-	 * PowerPC 970 CPUs have a misfeature requested by Apple that makes
-	 * them pretend they have a 32-byte cacheline. Turn this off
-	 * before we measure the cacheline size.
-	 */
-
+	/* Various very early CPU fix ups */
 	switch (mfpvr() >> 16) {
+		/*
+		 * PowerPC 970 CPUs have a misfeature requested by Apple that
+		 * makes them pretend they have a 32-byte cacheline. Turn this
+		 * off before we measure the cacheline size.
+		 */
 		case IBM970:
 		case IBM970FX:
 		case IBM970MP:
@@ -352,6 +353,12 @@ powerpc_init(vm_offset_t startkernel, vm_offset_t endkernel,
 			scratch &= ~HID5_970_DCBZ_SIZE_HI;
 			mtspr(SPR_HID5, scratch);
 			break;
+	#ifdef __powerpc64__
+		case IBMPOWER7:
+			/* XXX: get from ibm,slb-size in device tree */
+			n_slbs = 32;
+			break;
+	#endif
 	}
 
 	/*
