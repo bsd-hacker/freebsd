@@ -102,7 +102,18 @@ tre_regncomp(regex_t *preg, const char *regex, size_t n, int cflags)
 int
 tre_regcomp(regex_t *preg, const char *regex, int cflags)
 {
-  return tre_regncomp(preg, regex, regex ? strlen(regex) : 0, cflags);
+ size_t len;
+
+ if (cflags & REG_PEND)
+   {
+     if (preg->re_endp >= regex)
+       len = preg->re_endp - regex;
+     else
+       len = 0;
+     return tre_regncomp(preg, regex, len, cflags);
+   }
+  else
+    return tre_regncomp(preg, regex, regex ? strlen(regex) : 0, cflags);
 }
 
 
@@ -116,7 +127,18 @@ tre_regwncomp(regex_t *preg, const wchar_t *regex, size_t n, int cflags)
 int
 tre_regwcomp(regex_t *preg, const wchar_t *regex, int cflags)
 {
-  return tre_compile(preg, regex, regex ? wcslen(regex) : 0, cflags);
+ size_t len;
+
+ if (cflags & REG_PEND)
+   {
+     if (preg->re_endp >= regex)
+       len = preg->re_endp - regex;
+     else
+       len = 0;
+     return tre_compilepreg, regex, len, cflags);
+   }
+  else
+    return tre_compile(preg, regex, regex ? wcslen(regex) : 0, cflags);
 }
 #endif /* TRE_WCHAR */
 
