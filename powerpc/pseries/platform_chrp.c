@@ -73,6 +73,10 @@ static int chrp_smp_start_cpu(platform_t, struct pcpu *cpu);
 static struct cpu_group *chrp_smp_topo(platform_t plat);
 #endif
 static void chrp_reset(platform_t);
+#ifdef __powerpc64__
+#include "phyp-hvcall.h"
+static void phyp_cpu_idle(void);
+#endif
 
 static platform_method_t chrp_methods[] = {
 	PLATFORMMETHOD(platform_probe, 		chrp_probe),
@@ -123,6 +127,7 @@ chrp_attach(platform_t plat)
 		realmaxaddr = phys[0].mr_size;
 
 		pmap_mmu_install("mmu_phyp", BUS_PROBE_SPECIFIC);
+		cpu_idle_hook = phyp_cpu_idle;
 	}
 #endif
 
@@ -357,3 +362,10 @@ chrp_reset(platform_t platform)
 	OF_reboot();
 }
 
+#ifdef __powerpc64__
+static void
+phyp_cpu_idle(void)
+{
+	phyp_hcall(H_CEDE);
+}
+#endif

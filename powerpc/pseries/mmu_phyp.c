@@ -55,6 +55,8 @@
 
 #include "phyp-hvcall.h"
 
+extern int n_slbs;
+
 /*
  * Kernel MMU interface
  */
@@ -122,8 +124,12 @@ mphyp_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernelend)
         }
 	
 	res = OF_getprop(node, "ibm,pft-size", prop, sizeof(prop));
-	if (prop != NULL)
-		final_pteg_count = 1 << prop[1];
+	if (res <= 0)
+		panic("mmu_phyp: unknown PFT size");
+	final_pteg_count = 1 << prop[1];
+	res = OF_getprop(node, "ibm,slb-size", prop, sizeof(prop[0]));
+	if (res > 0)
+		n_slbs = prop[0];
 
 	moea64_pteg_count = final_pteg_count / sizeof(struct lpteg);
 
