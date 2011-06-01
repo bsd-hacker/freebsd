@@ -374,7 +374,6 @@ powerpc_init(vm_offset_t startkernel, vm_offset_t endkernel,
 
 	msr = mfmsr();
 	mtmsr((msr & ~(PSL_IR | PSL_DR)) | PSL_RI);
-	isync();
 
 	/*
 	 * Measure the cacheline size using dcbz
@@ -509,7 +508,6 @@ powerpc_init(vm_offset_t startkernel, vm_offset_t endkernel,
 	 * Restore MSR
 	 */
 	mtmsr(msr);
-	isync();
 	
 	/* Warn if cachline size was not determined */
 	if (cacheline_warn == 1) {
@@ -533,8 +531,7 @@ powerpc_init(vm_offset_t startkernel, vm_offset_t endkernel,
 		pmap_mmu_install(MMU_TYPE_OEA, BUS_PROBE_GENERIC);
 
 	pmap_bootstrap(startkernel, endkernel);
-	mtmsr(mfmsr() | PSL_IR|PSL_DR|PSL_ME|PSL_RI);
-	isync();
+	mtmsr(PSL_KERNSET & ~PSL_EE);
 
 	/*
 	 * Initialize params/tunables that are derived from memsize

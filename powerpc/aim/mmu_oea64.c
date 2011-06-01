@@ -162,8 +162,8 @@ __FBSDID("$FreeBSD$");
 void moea64_release_vsid(uint64_t vsid);
 uintptr_t moea64_get_unique_vsid(void); 
 
-#define DISABLE_TRANS(msr)	msr = mfmsr(); mtmsr(msr & ~PSL_DR); isync()
-#define ENABLE_TRANS(msr)	mtmsr(msr); isync()
+#define DISABLE_TRANS(msr)	msr = mfmsr(); mtmsr(msr & ~PSL_DR)
+#define ENABLE_TRANS(msr)	mtmsr(msr)
 
 #define	VSID_MAKE(sr, hash)	((sr) | (((hash) & 0xfffff) << 4))
 #define	VSID_TO_HASH(vsid)	(((vsid) >> 4) & 0xfffff)
@@ -877,7 +877,7 @@ moea64_late_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernelend
 	 * Initialize MMU and remap early physical mappings
 	 */
 	MMU_CPU_BOOTSTRAP(mmup,0);
-	mtmsr(mfmsr() | PSL_DR | PSL_IR); isync();
+	mtmsr(mfmsr() | PSL_DR | PSL_IR);
 	pmap_bootstrapped++;
 	bs_remap_earlyboot();
 
