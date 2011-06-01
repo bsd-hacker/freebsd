@@ -535,6 +535,10 @@ parse_flag:
 		intptr = &options->tcp_rcv_buf_poll;
 		goto parse_flag;
 
+	case oTcpRcvBuf:
+		intptr = &options->tcp_rcv_buf;
+		goto parse_int;
+
 	case oVerifyHostKeyDNS:
 		intptr = &options->verify_host_key_dns;
 		goto parse_yesnoask;
@@ -711,10 +715,6 @@ parse_int:
 
 	case oConnectionAttempts:
 		intptr = &options->connection_attempts;
-		goto parse_int;
-
-	case oTcpRcvBuf:
-		intptr = &options->tcp_rcv_buf;
 		goto parse_int;
 
 	case oCipher:
@@ -1351,12 +1351,8 @@ fill_default_options(Options * options)
 		/* if a user tries to set the size to 0 set it to 1KB */
 		if (options->hpn_buffer_size == 0)
 			options->hpn_buffer_size = 1024;
-		/* XXX: BUFFER_SIZE */
-		if (options->hpn_buffer_size > 65536) {
-			options->hpn_buffer_size = 65536*1024;
-			debug("User requested buffer larger than 64MB.  "
-			    "Request reverted to 64MB");
-		}
+		if (options->hpn_buffer_size > BUFFER_MAX_LEN/1024)
+			options->hpn_buffer_size = BUFFER_MAX_LEN;
 		debug("hpn_buffer_size set to %d", options->hpn_buffer_size);
 	}
 	if (options->tcp_rcv_buf == 0)

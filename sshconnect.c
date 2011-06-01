@@ -195,7 +195,8 @@ ssh_set_socket_recvbuf(int sock)
 	int socksize;
 	int socksizelen = sizeof(int);
 
-	debug("setsockopt Attempting to set SO_RCVBUF to %d", options.tcp_rcv_buf);
+	debug("setsockopt Attempting to set SO_RCVBUF to %d",
+	    options.tcp_rcv_buf);
 	if (setsockopt(sock, SOL_SOCKET, SO_RCVBUF, buf, sz) >= 0) {
 		getsockopt(sock, SOL_SOCKET, SO_RCVBUF,
 		    &socksize, &socksizelen);

@@ -311,17 +311,16 @@ fill_default_server_options(ServerOptions *options)
 		} 
 	} else {
 		/*
-                 * In the case that the user sets both values in
-                 * a contradictory manner hpn_disabled overrrides
-                 * hpn_buffer_size.
+		 * In the case that the user sets both values in
+		 * a contradictory manner hpn_disabled overrrides
+		 * hpn_buffer_size.
 		 */
 		if (options->hpn_disabled <= 0) {
 			if (options->hpn_buffer_size == 0)
 				options->hpn_buffer_size = 1;
-			/* XXX: MAX_BUFFER_SIZE */
 			/* limit the maximum buffer to 64MB */
-			if (options->hpn_buffer_size > 64*1024)
-				options->hpn_buffer_size = 64*1024*1024;
+			if (options->hpn_buffer_size > BUFFER_MAX_LEN/1024)
+				options->hpn_buffer_size = BUFFER_MAX_LEN;
 			else
 				options->hpn_buffer_size *= 1024;
 		} else

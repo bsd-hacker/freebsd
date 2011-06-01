@@ -427,10 +427,10 @@ ssh_userauth2(const char *local_user, const char *server_user, char *host,
 	dispatch_range(SSH2_MSG_USERAUTH_MIN, SSH2_MSG_USERAUTH_MAX, NULL);
 
 	/*
-         * If the user wants to use the none cipher, do it post
-         * authentication and only if the right conditions are met.
-         * Both of the NONE commands must be true and there must be no
-         * tty allocated.
+	 * If the user wants to use the none cipher, do it post
+	 * authentication and only if the right conditions are met.
+	 * Both of the NONE commands must be true and there must be no
+	 * tty allocated.
 	 */
 	if ((options.none_switch == 1) && (options.none_enabled == 1)) {
 		if (!tty_flag) /* no null on tty sessions */ {

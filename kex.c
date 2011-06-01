@@ -450,7 +450,6 @@ kex_choose_conf(Kex *kex)
 		choose_enc (&newkeys->enc,  cprop[nenc],  sprop[nenc]);
 		choose_mac (&newkeys->mac,  cprop[nmac],  sprop[nmac]);
 		choose_comp(&newkeys->comp, cprop[ncomp], sprop[ncomp]);
-		debug("REQUESTED ENC.NAME is '%s'", newkeys->enc.name);
 		if (strcmp(newkeys->enc.name, "none") == 0) {
 			debug("Requesting NONE. Authflag is %d", auth_flag);			
 			if (auth_flag == 1)

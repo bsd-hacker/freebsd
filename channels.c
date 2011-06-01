@@ -821,12 +821,12 @@ int channel_tcpwinsz () {
 	if (!packet_connection_is_on_socket()) 
 		return(128*1024);
 	ret = getsockopt(packet_get_connection_in(),
-	     SOL_SOCKET, SO_RCVBUF, &tcpwinsz, &optsz);
+	    SOL_SOCKET, SO_RCVBUF, &tcpwinsz, &optsz);
 	/* return no more than 64MB */
-	if ((ret == 0) && tcpwinsz > BUFFER_MAX_LEN_HPN)
-		tcpwinsz = BUFFER_MAX_LEN_HPN;
+	if ((ret == 0) && tcpwinsz > BUFFER_MAX_LEN)
+		tcpwinsz = BUFFER_MAX_LEN;
 	debug2("tcpwinsz: %d for connection: %d", tcpwinsz, 
-		packet_get_connection_in());
+	    packet_get_connection_in());
 	return(tcpwinsz);
 }
 
@@ -2679,7 +2679,8 @@ channel_set_hpn(int external_hpn_disabled, int external_hpn_buffer_size)
 {
       	hpn_disabled = external_hpn_disabled;
 	hpn_buffer_size = external_hpn_buffer_size;
-	debug("HPN Disabled: %d, HPN Buffer Size: %d", hpn_disabled, hpn_buffer_size);
+	debug("HPN Disabled: %d, HPN Buffer Size: %d",
+	    hpn_disabled, hpn_buffer_size);
 }
 
 static int
@@ -2835,7 +2836,6 @@ channel_setup_fwd_listener(int type, const char *listen_addr,
 		}
 
 		/* Allocate a channel number for the socket. */
-		/* explicitly test for hpn disabled option. if true use smaller window size */
 		if (hpn_disabled) {
 			c = channel_new("port listener", type, sock, sock, -1,
 			    CHAN_TCP_WINDOW_DEFAULT, CHAN_TCP_PACKET_DEFAULT,
@@ -3389,7 +3389,6 @@ x11_create_display_inet(int x11_display_offset, int x11_use_localhost,
 	*chanids = xcalloc(num_socks + 1, sizeof(**chanids));
 	for (n = 0; n < num_socks; n++) {
 		sock = socks[n];
-		/* Is this really necassary? */
 		if (hpn_disabled) {
 			nc = channel_new("x11 listener",
 			    SSH_CHANNEL_X11_LISTENER, sock, sock, -1,

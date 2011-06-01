@@ -25,7 +25,6 @@
 #include "log.h"
 
 #define	BUFFER_MAX_CHUNK	0x100000
-#define	BUFFER_MAX_LEN		0xa00000
 #define	BUFFER_ALLOCSZ		0x008000
 
 /* Initializes the buffer structure. */
@@ -127,7 +126,7 @@ restart:
 
 	/* Increase the size of the buffer and retry. */
 	newlen = roundup(buffer->alloc + len, BUFFER_ALLOCSZ);
-	if (newlen > BUFFER_MAX_LEN_HPN)
+	if (newlen > BUFFER_MAX_LEN)
 		fatal("buffer_append_space: alloc %u not supported",
 		    newlen);
 	buffer->buf = xrealloc(buffer->buf, 1, newlen);

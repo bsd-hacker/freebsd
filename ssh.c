@@ -548,7 +548,7 @@ main(int ac, char **av)
 			/*
 			 * Ensure that the user does not try to backdoor
 			 * a null cipher switch on an interactive session
-			 * so explicitly disable it if the user asks for
+			 * by explicitly disabling it if the user asks for
 			 * a session without a tty.
 			 */
 			options.none_switch=0;
@@ -1421,7 +1421,6 @@ ssh_session2_open(void)
 				    options.hpn_buffer_size);
 			}
  		}
-		
 	}
 
 	debug("Final hpn_buffer_size = %d", options.hpn_buffer_size);
