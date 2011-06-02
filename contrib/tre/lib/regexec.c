@@ -209,18 +209,16 @@ tre_regnexec(const regex_t *preg, const char *str, size_t len,
 
   if (eflags & REG_STARTEND)
   {
-    off_t s_off = pmatch[0].rm_so;
-    off_t e_off = pmatch[0].rm_eo;
-    size_t slen = e_off - s_off;
-    char *sstr = xmalloc(slen);
-    strncpy(sstr, &str[s_off], slen);
-    int ret = tre_match(tnfa, sstr, slen, type, nmatch, pmatch, eflags);
+    size_t slen = (size_t)(pmatch[0].rm_eo - pmatch[0].rm_so);
+    size_t offset = pmatch[0].rm_so;
+    str = &str[offset];
+    int ret = tre_match(tnfa, str, slen, type, nmatch, pmatch, eflags);
     if (!(eflags & REG_NOSUB))
     {
       for (unsigned i = 0; i < nmatch; i++)
       {
-	pmatch[i].rm_so += slen;
-        pmatch[i].rm_eo += slen;
+	pmatch[i].rm_so += offset;
+        pmatch[i].rm_eo += offset;
       }
     }
     return ret;
@@ -249,18 +247,16 @@ tre_regwnexec(const regex_t *preg, const wchar_t *str, size_t len,
 
   if (eflags & REG_STARTEND)
   {
-    off_t s_off = pmatch[0].rm_so;
-    off_t e_off = pmatch[0].rm_eo;
-    size_t slen = e_off - s_off;
-    wchar_t *sstr = xmalloc(slen * sizeof(wint_t));
-    wcsncpy(sstr, &str[s_off], slen);
-    int ret = tre_match(tnfa, sstr, slen, STR_WIDE, nmatch, pmatch, eflags);
+    size_t slen = (size_t)(pmatch[0].rm_eo - pmatch[0].rm_so);
+    size_t offset = pmatch[0].rm_so;
+    str = &str[offset];
+    int ret = tre_match(tnfa, str, slen, STR_WIDE, nmatch, pmatch, eflags);
     if (!(eflags & REG_NOSUB))
     {
       for (unsigned i = 0; i < nmatch; i++)
       {
-        pmatch[i].rm_so += slen;
-        pmatch[i].rm_eo += slen;
+        pmatch[i].rm_so += offset;
+        pmatch[i].rm_eo += offset;
       }
     }
     return ret;
