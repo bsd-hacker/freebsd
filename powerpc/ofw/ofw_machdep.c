@@ -194,7 +194,7 @@ parse_ofw_memory(phandle_t node, const char *prop, struct mem_region *output)
 	 * Get memory.
 	 */
 	if ((node == -1) || (sz = OF_getprop(node, prop,
-	    OFmem, sizeof(OFmem[0]) * 4 * PHYS_AVAIL_SZ)) <= 0)
+	    OFmem, sizeof(OFmem)) <= 0)
 		panic("Physical memory map not found");
 
 	i = 0;
@@ -244,7 +244,7 @@ parse_ofw_memory(phandle_t node, const char *prop, struct mem_region *output)
 	#ifdef __powerpc64__
 	if (apple_hack_mode) {
 		/* Add in regions above 4 GB to the available list */
-		struct mem_region himem[PHYS_AVAIL_SZ];
+		struct mem_region himem[16];
 		int hisz;
 
 		hisz = parse_ofw_memory(node, "reg", himem);
