@@ -193,8 +193,8 @@ parse_ofw_memory(phandle_t node, const char *prop, struct mem_region *output)
 	/*
 	 * Get memory.
 	 */
-	if ((node == -1) || (sz = OF_getprop(node, prop,
-	    OFmem, sizeof(OFmem)) <= 0)
+	if (node == -1 || (sz = OF_getprop(node, prop,
+	    OFmem, sizeof(OFmem))) <= 0)
 		panic("Physical memory map not found");
 
 	i = 0;
