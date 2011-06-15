@@ -194,11 +194,20 @@ extern	uint32_t ar5416Get11nExtBusy(struct ath_hal *ah);
 extern	void ar5416Set11nMac2040(struct ath_hal *ah, HAL_HT_MACMODE mode);
 extern	HAL_HT_RXCLEAR ar5416Get11nRxClear(struct ath_hal *ah);
 extern	void ar5416Set11nRxClear(struct ath_hal *ah, HAL_HT_RXCLEAR rxclear);
+extern	HAL_STATUS ar5416SetQuiet(struct ath_hal *ah, uint32_t period,
+	    uint32_t duration, uint32_t nextStart, HAL_QUIET_FLAG flag);
 extern	HAL_STATUS ar5416GetCapability(struct ath_hal *ah,
 	    HAL_CAPABILITY_TYPE type, uint32_t capability, uint32_t *result);
 extern	HAL_BOOL ar5416GetDiagState(struct ath_hal *ah, int request,
 	    const void *args, uint32_t argsize,
 	    void **result, uint32_t *resultsize);
+extern	HAL_BOOL ar5416SetRifsDelay(struct ath_hal *ah,
+	    const struct ieee80211_channel *chan, HAL_BOOL enable);
+extern	void ar5416EnableDfs(struct ath_hal *ah, HAL_PHYERR_PARAM *pe);
+extern	void ar5416GetDfsThresh(struct ath_hal *ah, HAL_PHYERR_PARAM *pe);
+extern	HAL_BOOL ar5416ProcessRadarEvent(struct ath_hal *ah,
+	    struct ath_rx_status *rxs, uint64_t fulltsf, const char *buf,
+	    HAL_DFS_EVENT *event);
 
 extern	HAL_BOOL ar5416SetPowerMode(struct ath_hal *ah, HAL_POWER_MODE mode,
 		int setChip);
@@ -236,6 +245,15 @@ extern	HAL_BOOL ar5416GetChipPowerLimits(struct ath_hal *ah,
 		struct ieee80211_channel *chan);
 extern	void ar5416GetChannelCenters(struct ath_hal *,
 		const struct ieee80211_channel *chan, CHAN_CENTERS *centers);
+extern	void ar5416SetRatesArrayFromTargetPower(struct ath_hal *ah,
+		const struct ieee80211_channel *chan,
+		int16_t *ratesArray,
+		const CAL_TARGET_POWER_LEG *targetPowerCck,
+		const CAL_TARGET_POWER_LEG *targetPowerCckExt,
+		const CAL_TARGET_POWER_LEG *targetPowerOfdm,
+		const CAL_TARGET_POWER_LEG *targetPowerOfdmExt,
+		const CAL_TARGET_POWER_HT *targetPowerHt20,
+		const CAL_TARGET_POWER_HT *targetPowerHt40);
 extern	void ar5416GetTargetPowers(struct ath_hal *ah, 
 		const struct ieee80211_channel *chan,
 		CAL_TARGET_POWER_HT *powInfo,

@@ -76,16 +76,16 @@ static int nfs_commit_miss;
 extern int nfsrv_issuedelegs;
 extern int nfsrv_dolocallocks;
 
-SYSCTL_DECL(_vfs_newnfs);
-SYSCTL_INT(_vfs_newnfs, OID_AUTO, mirrormnt, CTLFLAG_RW,
+SYSCTL_NODE(_vfs, OID_AUTO, nfsd, CTLFLAG_RW, 0, "New NFS server");
+SYSCTL_INT(_vfs_nfsd, OID_AUTO, mirrormnt, CTLFLAG_RW,
     &nfsrv_enable_crossmntpt, 0, "Enable nfsd to cross mount points");
-SYSCTL_INT(_vfs_newnfs, OID_AUTO, commit_blks, CTLFLAG_RW, &nfs_commit_blks,
+SYSCTL_INT(_vfs_nfsd, OID_AUTO, commit_blks, CTLFLAG_RW, &nfs_commit_blks,
     0, "");
-SYSCTL_INT(_vfs_newnfs, OID_AUTO, commit_miss, CTLFLAG_RW, &nfs_commit_miss,
+SYSCTL_INT(_vfs_nfsd, OID_AUTO, commit_miss, CTLFLAG_RW, &nfs_commit_miss,
     0, "");
-SYSCTL_INT(_vfs_newnfs, OID_AUTO, issue_delegations, CTLFLAG_RW,
+SYSCTL_INT(_vfs_nfsd, OID_AUTO, issue_delegations, CTLFLAG_RW,
     &nfsrv_issuedelegs, 0, "Enable nfsd to issue delegations");
-SYSCTL_INT(_vfs_newnfs, OID_AUTO, enable_locallocks, CTLFLAG_RW,
+SYSCTL_INT(_vfs_nfsd, OID_AUTO, enable_locallocks, CTLFLAG_RW,
     &nfsrv_dolocallocks, 0, "Enable nfsd to acquire local locks on files");
 
 #define	NUM_HEURISTIC		1017
@@ -1280,8 +1280,23 @@ nfsvno_fsync(struct vnode *vp, u_int64_t off, int cnt, struct ucred *cred,
 int
 nfsvno_statfs(struct vnode *vp, struct statfs *sf)
 {
+	int error;
 
-	return (VFS_STATFS(vp->v_mount, sf));
+	error = VFS_STATFS(vp->v_mount, sf);
+	if (error == 0) {
+		/*
+		 * Since NFS handles these values as unsigned on the
+		 * wire, there is no way to represent negative values,
+		 * so set them to 0. Without this, they will appear
+		 * to be very large positive values for clients like
+		 * Solaris10.
+		 */
+		if (sf->f_bavail < 0)
+			sf->f_bavail = 0;
+		if (sf->f_ffree < 0)
+			sf->f_ffree = 0;
+	}
+	return (error);
 }
 
 /*
@@ -2536,7 +2551,7 @@ nfsvno_fhtovp(struct mount *mp, fhandle_t *fhp, struct sockaddr *nam,
 	if (VFS_NEEDSGIANT(mp))
 		error = ESTALE;
 	else
-		error = VFS_FHTOVP(mp, &fhp->fh_fid, vpp);
+		error = VFS_FHTOVP(mp, &fhp->fh_fid, LK_EXCLUSIVE, vpp);
 	if (error != 0)
 		/* Make sure the server replies ESTALE to the client. */
 		error = ESTALE;
@@ -2577,6 +2592,36 @@ nfsvno_pathconf(struct vnode *vp, int flag, register_t *retf,
 	int error;
 
 	error = VOP_PATHCONF(vp, flag, retf);
+	if (error == EOPNOTSUPP || error == EINVAL) {
+		/*
+		 * Some file systems return EINVAL for name arguments not
+		 * supported and some return EOPNOTSUPP for this case.
+		 * So the NFSv3 Pathconf RPC doesn't fail for these cases,
+		 * just fake them.
+		 */
+		switch (flag) {
+		case _PC_LINK_MAX:
+			*retf = LINK_MAX;
+			break;
+		case _PC_NAME_MAX:
+			*retf = NAME_MAX;
+			break;
+		case _PC_CHOWN_RESTRICTED:
+			*retf = 1;
+			break;
+		case _PC_NO_TRUNC:
+			*retf = 1;
+			break;
+		default:
+			/*
+			 * Only happens if a _PC_xxx is added to the server,
+			 * but this isn't updated.
+			 */
+			*retf = 0;
+			printf("nfsrvd pathconf flag=%d not supp\n", flag);
+		};
+		error = 0;
+	}
 	return (error);
 }
 
@@ -2819,7 +2864,7 @@ nfsvno_getvp(fhandle_t *fhp)
 	mp = vfs_busyfs(&fhp->fh_fsid);
 	if (mp == NULL)
 		return (NULL);
-	error = VFS_FHTOVP(mp, &fhp->fh_fid, &vp);
+	error = VFS_FHTOVP(mp, &fhp->fh_fid, LK_EXCLUSIVE, &vp);
 	vfs_unbusy(mp);
 	if (error)
 		return (NULL);

@@ -689,6 +689,9 @@ zfs_secpolicy_destroy(zfs_cmd_t *zc, cred_t *cr)
  * and destroying snapshots requires descendent permissions, a successfull
  * check of the top level snapshot applies to snapshots of all descendent
  * datasets as well.
+ *
+ * The top level snapshot may not exist when doing a recursive destroy.
+ * In this case fallback to permissions of the parent dataset.
  */
 static int
 zfs_secpolicy_destroy_snaps(zfs_cmd_t *zc, cred_t *cr)
@@ -699,6 +702,9 @@ zfs_secpolicy_destroy_snaps(zfs_cmd_t *zc, cred_t *cr)
 	dsname = kmem_asprintf("%s@%s", zc->zc_name, zc->zc_value);
 
 	error = zfs_secpolicy_destroy_perms(dsname, cr);
+
+ 	if (error == ENOENT)
+ 		error = zfs_secpolicy_destroy_perms(zc->zc_name, cr);
 
 	strfree(dsname);
 	return (error);
@@ -4068,9 +4074,9 @@ zfs_ioc_userspace_many(zfs_cmd_t *zc)
 	    buf, &zc->zc_nvlist_dst_size);
 
 	if (error == 0) {
-		error = xcopyout(buf,
+		error = ddi_copyout(buf,
 		    (void *)(uintptr_t)zc->zc_nvlist_dst,
-		    zc->zc_nvlist_dst_size);
+		    zc->zc_nvlist_dst_size, zc->zc_iflags);
 	}
 	kmem_free(buf, bufsize);
 	zfsvfs_rele(zfsvfs, FTAG);

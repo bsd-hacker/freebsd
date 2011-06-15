@@ -49,6 +49,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_isa.h"
 #include "opt_kstack_pages.h"
 #include "opt_maxmem.h"
+#include "opt_mp_watchdog.h"
 #include "opt_npx.h"
 #include "opt_perfmon.h"
 #include "opt_xbox.h"
@@ -118,6 +119,7 @@ __FBSDID("$FreeBSD$");
 #include <x86/mca.h>
 #include <machine/md_var.h>
 #include <machine/metadata.h>
+#include <machine/mp_watchdog.h>
 #include <machine/pc/bios.h>
 #include <machine/pcb.h>
 #include <machine/pcb_ext.h>
@@ -1351,14 +1353,16 @@ void (*cpu_idle_fn)(int) = cpu_idle_acpi;
 void
 cpu_idle(int busy)
 {
+#ifndef XEN
 	uint64_t msr;
+#endif
 
 	CTR2(KTR_SPARE2, "cpu_idle(%d) at %d",
 	    busy, curcpu);
-#if defined(SMP) && !defined(XEN)
-	if (mp_grab_cpu_hlt())
-		return;
+#if defined(MP_WATCHDOG) && !defined(XEN)
+	ap_watchdog(PCPU_GET(cpuid));
 #endif
+#ifndef XEN
 	/* If we are busy - try to use fast methods. */
 	if (busy) {
 		if ((cpu_feature2 & CPUID2_MON) && idle_mwait) {
@@ -1366,37 +1370,34 @@ cpu_idle(int busy)
 			goto out;
 		}
 	}
+#endif
 
-#ifndef XEN
 	/* If we have time - switch timers into idle mode. */
 	if (!busy) {
 		critical_enter();
 		cpu_idleclock();
 	}
-#endif
 
-	/* Apply AMD APIC timer C1E workaround. */
-	if (cpu_ident_amdc1e
 #ifndef XEN
-	    && cpu_disable_deep_sleep
-#endif
-	    ) {
+	/* Apply AMD APIC timer C1E workaround. */
+	if (cpu_ident_amdc1e && cpu_disable_deep_sleep) {
 		msr = rdmsr(MSR_AMDK8_IPM);
 		if (msr & AMDK8_CMPHALT)
 			wrmsr(MSR_AMDK8_IPM, msr & ~AMDK8_CMPHALT);
 	}
+#endif
 
 	/* Call main idle method. */
 	cpu_idle_fn(busy);
 
-#ifndef XEN
 	/* Switch timers mack into active mode. */
 	if (!busy) {
 		cpu_activeclock();
 		critical_exit();
 	}
-#endif
+#ifndef XEN
 out:
+#endif
 	CTR2(KTR_SPARE2, "cpu_idle(%d) at %d done",
 	    busy, curcpu);
 }

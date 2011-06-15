@@ -852,6 +852,21 @@ rescan:
 		    flags, &clearobjflags);
 		if (object->generation != curgeneration)
 			goto rescan;
+
+		/*
+		 * If the VOP_PUTPAGES() did a truncated write, so
+		 * that even the first page of the run is not fully
+		 * written, vm_pageout_flush() returns 0 as the run
+		 * length.  Since the condition that caused truncated
+		 * write may be permanent, e.g. exhausted free space,
+		 * accepting n == 0 would cause an infinite loop.
+		 *
+		 * Forwarding the iterator leaves the unwritten page
+		 * behind, but there is not much we can do there if
+		 * filesystem refuses to write it.
+		 */
+		if (n == 0)
+			n = 1;
 		np = vm_page_find_least(object, pi + n);
 	}
 #if 0
@@ -1467,6 +1482,24 @@ vm_object_backing_scan(vm_object_t object, int op)
 			}
 
 			pp = vm_page_lookup(object, new_pindex);
+			if (
+			    (op & OBSC_COLLAPSE_NOWAIT) != 0 &&
+			    (pp != NULL && pp->valid == 0)
+			) {
+				/*
+				 * The page in the parent is not (yet) valid.
+				 * We don't know anything about the state of
+				 * the original page.  It might be mapped,
+				 * so we must avoid the next if here.
+				 *
+				 * This is due to a race in vm_fault() where
+				 * we must unbusy the original (backing_obj)
+				 * page before we can (re)lock the parent.
+				 * Hence we can get here.
+				 */
+				p = next;
+				continue;
+			}
 			if (
 			    pp != NULL ||
 			    vm_pager_has_page(object, new_pindex, NULL, NULL)

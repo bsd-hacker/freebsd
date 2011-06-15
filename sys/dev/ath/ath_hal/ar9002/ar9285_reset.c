@@ -37,6 +37,7 @@
 #include "ar5416/ar5416phy.h"
 #include "ar9002/ar9002phy.h"
 #include "ar9002/ar9285phy.h"
+#include "ar9002/ar9285an.h"
 
 /* Eeprom versioning macros. Returns true if the version is equal or newer than the ver specified */ 
 #define	EEP_MINOR(_ah) \
@@ -237,8 +238,6 @@ ar9285SetBoardValues(struct ath_hal *ah, const struct ieee80211_channel *chan)
 	const MODAL_EEP4K_HEADER *pModal;
 	uint8_t txRxAttenLocal;
 	uint8_t ob[5], db1[5], db2[5];
-	uint8_t ant_div_control1, ant_div_control2;
-	uint32_t regVal;
 
 	pModal = &eep->modalHeader;
 	txRxAttenLocal = 23;
@@ -248,36 +247,10 @@ ar9285SetBoardValues(struct ath_hal *ah, const struct ieee80211_channel *chan)
 	/* Single chain for 4K EEPROM*/
 	ar9285SetBoardGain(ah, pModal, eep, txRxAttenLocal);
 
-	/* Initialize Ant Diversity settings from EEPROM */
-	if (pModal->version >= 3) {
-		ant_div_control1 = pModal->antdiv_ctl1;
-		ant_div_control2 = pModal->antdiv_ctl2;
+	/* Initialize Ant Diversity settings if supported */
+	(void) ar9285SetAntennaSwitch(ah, AH5212(ah)->ah_antControl);
 
-		regVal = OS_REG_READ(ah, AR_PHY_MULTICHAIN_GAIN_CTL);
-		regVal &= (~(AR_PHY_9285_ANT_DIV_CTL_ALL));
-
-		regVal |= SM(ant_div_control1,
-			     AR_PHY_9285_ANT_DIV_CTL);
-		regVal |= SM(ant_div_control2,
-			     AR_PHY_9285_ANT_DIV_ALT_LNACONF);
-		regVal |= SM((ant_div_control2 >> 2),
-			     AR_PHY_9285_ANT_DIV_MAIN_LNACONF);
-		regVal |= SM((ant_div_control1 >> 1),
-			     AR_PHY_9285_ANT_DIV_ALT_GAINTB);
-		regVal |= SM((ant_div_control1 >> 2),
-			     AR_PHY_9285_ANT_DIV_MAIN_GAINTB);
-
-		OS_REG_WRITE(ah, AR_PHY_MULTICHAIN_GAIN_CTL, regVal);
-		regVal = OS_REG_READ(ah, AR_PHY_MULTICHAIN_GAIN_CTL);
-		regVal = OS_REG_READ(ah, AR_PHY_CCK_DETECT);
-		regVal &= (~AR_PHY_CCK_DETECT_BB_ENABLE_ANT_FAST_DIV);
-		regVal |= SM((ant_div_control1 >> 3),
-			     AR_PHY_CCK_DETECT_BB_ENABLE_ANT_FAST_DIV);
-
-		OS_REG_WRITE(ah, AR_PHY_CCK_DETECT, regVal);
-		regVal = OS_REG_READ(ah, AR_PHY_CCK_DETECT);
-	}
-
+	/* Configure TX power calibration */
 	if (pModal->version >= 2) {
 		ob[0] = pModal->ob_0;
 		ob[1] = pModal->ob_1;
@@ -379,6 +352,7 @@ ar9285SetBoardValues(struct ath_hal *ah, const struct ieee80211_channel *chan)
 	if (AR_SREV_9271(ah) || AR_SREV_KITE(ah)) {
 		uint8_t bb_desired_scale = (pModal->bb_scale_smrt_antenna & EEP_4K_BB_DESIRED_SCALE_MASK);
 		if ((eep->baseEepHeader.txGainType == 0) && (bb_desired_scale != 0)) {
+			ath_hal_printf(ah, "[ath]: adjusting cck tx gain factor\n");
 			uint32_t pwrctrl, mask, clr;
 
 			mask = (1<<0) | (1<<5) | (1<<10) | (1<<15) | (1<<20) | (1<<25);
@@ -559,32 +533,15 @@ ar9285SetPowerPerRateTable(struct ath_hal *ah, struct ar5416eeprom_4k *pEepData,
 		}
 	} /* end ctl mode checking */
 
-	/* Set rates Array from collected data */
-	ratesArray[rate6mb] = ratesArray[rate9mb] = ratesArray[rate12mb] = ratesArray[rate18mb] = ratesArray[rate24mb] = targetPowerOfdm.tPow2x[0];
-	ratesArray[rate36mb] = targetPowerOfdm.tPow2x[1];
-	ratesArray[rate48mb] = targetPowerOfdm.tPow2x[2];
-	ratesArray[rate54mb] = targetPowerOfdm.tPow2x[3];
-	ratesArray[rateXr] = targetPowerOfdm.tPow2x[0];
+        /* Set rates Array from collected data */
+	ar5416SetRatesArrayFromTargetPower(ah, chan, ratesArray,
+	    &targetPowerCck,
+	    &targetPowerCckExt,
+	    &targetPowerOfdm,
+	    &targetPowerOfdmExt,
+	    &targetPowerHt20,
+	    &targetPowerHt40);
 
-	for (i = 0; i < N(targetPowerHt20.tPow2x); i++) {
-		ratesArray[rateHt20_0 + i] = targetPowerHt20.tPow2x[i];
-	}
-
-	ratesArray[rate1l]  = targetPowerCck.tPow2x[0];
-	ratesArray[rate2s] = ratesArray[rate2l]  = targetPowerCck.tPow2x[1];
-	ratesArray[rate5_5s] = ratesArray[rate5_5l] = targetPowerCck.tPow2x[2];
-	ratesArray[rate11s] = ratesArray[rate11l] = targetPowerCck.tPow2x[3];
-	if (IEEE80211_IS_CHAN_HT40(chan)) {
-		for (i = 0; i < N(targetPowerHt40.tPow2x); i++) {
-			ratesArray[rateHt40_0 + i] = targetPowerHt40.tPow2x[i];
-		}
-		ratesArray[rateDupOfdm] = targetPowerHt40.tPow2x[0];
-		ratesArray[rateDupCck]  = targetPowerHt40.tPow2x[0];
-		ratesArray[rateExtOfdm] = targetPowerOfdmExt.tPow2x[0];
-		if (IEEE80211_IS_CHAN_2GHZ(chan)) {
-			ratesArray[rateExtCck]  = targetPowerCckExt.tPow2x[0];
-		}
-	}
 	return AH_TRUE;
 #undef EXT_ADDITIVE
 #undef CTL_11G_EXT
@@ -648,7 +605,7 @@ ar9285SetPowerCalTable(struct ath_hal *ah, struct ar5416eeprom_4k *pEepData,
                                              &tMinCalPower, gainBoundaries,
                                              pdadcValues, numXpdGain);
 
-            if ((i == 0) || AR_SREV_OWL_20_OR_LATER(ah)) {
+            if ((i == 0) || AR_SREV_5416_V20_OR_LATER(ah)) {
                 /*
                  * Note the pdadc table may not start at 0 dBm power, could be
                  * negative or greater than 0.  Need to offset the power
@@ -762,7 +719,7 @@ ar9285GetGainBoundariesAndPdadcs(struct ath_hal *ah,
         pPdGainBoundaries[i] = (uint16_t)AH_MIN(AR5416_MAX_RATE_POWER, pPdGainBoundaries[i]);
 
 	/* NB: only applies to owl 1.0 */
-        if ((i == 0) && !AR_SREV_OWL_20_OR_LATER(ah) ) {
+        if ((i == 0) && !AR_SREV_5416_V20_OR_LATER(ah) ) {
 	    /*
              * fix the gain delta, but get a delta that can be applied to min to
              * keep the upper power values accurate, don't think max needs to

@@ -2489,6 +2489,7 @@ flags_out:
 				paddri->spinfo_srtt = net->lastsa >> SCTP_RTT_SHIFT;
 				paddri->spinfo_rto = net->RTO;
 				paddri->spinfo_assoc_id = sctp_get_associd(stcb);
+				paddri->spinfo_mtu = net->mtu;
 				SCTP_TCB_UNLOCK(stcb);
 			} else {
 				if (stcb) {
@@ -2992,18 +2993,22 @@ sctp_setopt(struct socket *so, int optname, void *optval, size_t optsize,
 			SCTP_CHECK_AND_CAST(av, optval, struct sctp_assoc_value, optsize);
 			SCTP_FIND_STCB(inp, stcb, av->assoc_id);
 			if (stcb) {
-				stcb->asoc.sctp_cmt_on_off = av->assoc_value;
-				if (stcb->asoc.sctp_cmt_on_off > 2) {
-					stcb->asoc.sctp_cmt_on_off = 2;
+				if (av->assoc_value > SCTP_CMT_MAX) {
+					SCTP_LTRACE_ERR_RET(inp, NULL, NULL, SCTP_FROM_SCTP_USRREQ, EINVAL);
+					error = EINVAL;
+				} else {
+					stcb->asoc.sctp_cmt_on_off = av->assoc_value;
 				}
 				SCTP_TCB_UNLOCK(stcb);
 			} else {
-				SCTP_INP_WLOCK(inp);
-				inp->sctp_cmt_on_off = av->assoc_value;
-				if (inp->sctp_cmt_on_off > 2) {
-					inp->sctp_cmt_on_off = 2;
+				if (av->assoc_value > SCTP_CMT_MAX) {
+					SCTP_LTRACE_ERR_RET(inp, NULL, NULL, SCTP_FROM_SCTP_USRREQ, EINVAL);
+					error = EINVAL;
+				} else {
+					SCTP_INP_WLOCK(inp);
+					inp->sctp_cmt_on_off = av->assoc_value;
+					SCTP_INP_WUNLOCK(inp);
 				}
-				SCTP_INP_WUNLOCK(inp);
 			}
 		} else {
 			SCTP_LTRACE_ERR_RET(inp, NULL, NULL, SCTP_FROM_SCTP_USRREQ, ENOPROTOOPT);
@@ -3993,7 +3998,7 @@ sctp_setopt(struct socket *so, int optname, void *optval, size_t optsize,
 					/************************NET SPECIFIC SET ******************/
 					if (paddrp->spp_flags & SPP_HB_DEMAND) {
 						/* on demand HB */
-						if (sctp_send_hb(stcb, 1, net) < 0) {
+						if (sctp_send_hb(stcb, 1, net, SCTP_SO_LOCKED) < 0) {
 							/* asoc destroyed */
 							SCTP_LTRACE_ERR_RET(inp, NULL, NULL, SCTP_FROM_SCTP_USRREQ, EINVAL);
 							error = EINVAL;

@@ -2395,7 +2395,7 @@ pmap_bootstrap(vm_offset_t firstaddr, vm_offset_t lastaddr, struct pv_addr *l1pt
 	cpu_cpwait();
 
 	PMAP_LOCK_INIT(kernel_pmap);
-	kernel_pmap->pm_active = -1;
+	CPU_FILL(&kernel_pmap->pm_active);
 	kernel_pmap->pm_domain = PMAP_DOMAIN_KERNEL;
 	TAILQ_INIT(&kernel_pmap->pm_pvlist);
 	
@@ -3646,7 +3646,7 @@ pmap_change_wiring(pmap_t pmap, vm_offset_t va, boolean_t wired)
 	pte = *ptep;
 	pg = PHYS_TO_VM_PAGE(l2pte_pa(pte));
 	if (pg) 
-		pmap_modify_pv(pg, pmap, va, PVF_WIRED, wired);
+		pmap_modify_pv(pg, pmap, va, PVF_WIRED, wired ? PVF_WIRED : 0);
 	vm_page_unlock_queues();
  	PMAP_UNLOCK(pmap);
 }
@@ -3826,7 +3826,7 @@ pmap_pinit(pmap_t pmap)
 	pmap_alloc_l1(pmap);
 	bzero(pmap->pm_l2, sizeof(pmap->pm_l2));
 
-	pmap->pm_active = 0;
+	CPU_ZERO(&pmap->pm_active);
 		
 	TAILQ_INIT(&pmap->pm_pvlist);
 	bzero(&pmap->pm_stats, sizeof pmap->pm_stats);

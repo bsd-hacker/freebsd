@@ -64,6 +64,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/in_systm.h>
 #include <netinet/in_pcb.h>
 #include <netinet/in_var.h>
+#include <netinet/if_ether.h>
 #include <netinet/ip.h>
 #include <netinet/ip_var.h>
 #include <netinet/ip_mroute.h>
@@ -204,7 +205,8 @@ rip_init(void)
 {
 
 	in_pcbinfo_init(&V_ripcbinfo, "rip", &V_ripcb, INP_PCBHASH_RAW_SIZE,
-	    1, "ripcb", rip_inpcb_init, NULL, UMA_ZONE_NOFREE);
+	    1, "ripcb", rip_inpcb_init, NULL, UMA_ZONE_NOFREE,
+	    IPI_HASHFIELDS_NONE);
 	EVENTHANDLER_REGISTER(maxsockets_change, rip_zone_change, NULL,
 	    EVENTHANDLER_PRI_ANY);
 }
@@ -225,7 +227,7 @@ rip_append(struct inpcb *last, struct ip *ip, struct mbuf *n,
 {
 	int policyfail = 0;
 
-	INP_RLOCK_ASSERT(last);
+	INP_LOCK_ASSERT(last);
 
 #ifdef IPSEC
 	/* check AH/ESP integrity. */
@@ -721,7 +723,7 @@ rip_ctlinput(int cmd, struct sockaddr *sa, void *vip)
 				/*
 				 * in_ifscrub kills the interface route.
 				 */
-				in_ifscrub(ia->ia_ifp, ia);
+				in_ifscrub(ia->ia_ifp, ia, 0);
 				/*
 				 * in_ifadown gets rid of all the rest of the
 				 * routes.  This is not quite the right thing
@@ -756,12 +758,18 @@ rip_ctlinput(int cmd, struct sockaddr *sa, void *vip)
 		    || (ifp->if_flags & IFF_POINTOPOINT))
 			flags |= RTF_HOST;
 
+		err = ifa_del_loopback_route((struct ifaddr *)ia, sa);
+		if (err == 0)
+			ia->ia_flags &= ~IFA_RTSELF;
+
 		err = rtinit(&ia->ia_ifa, RTM_ADD, flags);
 		if (err == 0)
 			ia->ia_flags |= IFA_ROUTE;
+
 		err = ifa_add_loopback_route((struct ifaddr *)ia, sa);
 		if (err == 0)
 			ia->ia_flags |= IFA_RTSELF;
+
 		ifa_free(&ia->ia_ifa);
 		break;
 	}
@@ -827,16 +835,19 @@ rip_detach(struct socket *so)
 static void
 rip_dodisconnect(struct socket *so, struct inpcb *inp)
 {
+	struct inpcbinfo *pcbinfo;
 
-	INP_INFO_WLOCK_ASSERT(inp->inp_pcbinfo);
-	INP_WLOCK_ASSERT(inp);
-
+	pcbinfo = inp->inp_pcbinfo;
+	INP_INFO_WLOCK(pcbinfo);
+	INP_WLOCK(inp);
 	rip_delhash(inp);
 	inp->inp_faddr.s_addr = INADDR_ANY;
 	rip_inshash(inp);
 	SOCK_LOCK(so);
 	so->so_state &= ~SS_ISCONNECTED;
 	SOCK_UNLOCK(so);
+	INP_WUNLOCK(inp);
+	INP_INFO_WUNLOCK(pcbinfo);
 }
 
 static void
@@ -847,11 +858,7 @@ rip_abort(struct socket *so)
 	inp = sotoinpcb(so);
 	KASSERT(inp != NULL, ("rip_abort: inp == NULL"));
 
-	INP_INFO_WLOCK(&V_ripcbinfo);
-	INP_WLOCK(inp);
 	rip_dodisconnect(so, inp);
-	INP_WUNLOCK(inp);
-	INP_INFO_WUNLOCK(&V_ripcbinfo);
 }
 
 static void
@@ -862,11 +869,7 @@ rip_close(struct socket *so)
 	inp = sotoinpcb(so);
 	KASSERT(inp != NULL, ("rip_close: inp == NULL"));
 
-	INP_INFO_WLOCK(&V_ripcbinfo);
-	INP_WLOCK(inp);
 	rip_dodisconnect(so, inp);
-	INP_WUNLOCK(inp);
-	INP_INFO_WUNLOCK(&V_ripcbinfo);
 }
 
 static int
@@ -880,11 +883,7 @@ rip_disconnect(struct socket *so)
 	inp = sotoinpcb(so);
 	KASSERT(inp != NULL, ("rip_disconnect: inp == NULL"));
 
-	INP_INFO_WLOCK(&V_ripcbinfo);
-	INP_WLOCK(inp);
 	rip_dodisconnect(so, inp);
-	INP_WUNLOCK(inp);
-	INP_INFO_WUNLOCK(&V_ripcbinfo);
 	return (0);
 }
 
@@ -1070,9 +1069,9 @@ rip_pcblist(SYSCTL_HANDLER_ARGS)
 	INP_INFO_WLOCK(&V_ripcbinfo);
 	for (i = 0; i < n; i++) {
 		inp = inp_list[i];
-		INP_WLOCK(inp);
-		if (!in_pcbrele(inp))
-			INP_WUNLOCK(inp);
+		INP_RLOCK(inp);
+		if (!in_pcbrele_rlocked(inp))
+			INP_RUNLOCK(inp);
 	}
 	INP_INFO_WUNLOCK(&V_ripcbinfo);
 

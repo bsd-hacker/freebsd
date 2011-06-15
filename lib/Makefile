@@ -89,9 +89,9 @@ SUBDIR=	${SUBDIR_ORDERED} \
 	libopie \
 	libpam \
 	libpcap \
-	${_libpkg} \
 	${_libpmc} \
 	${_libproc} \
+	libprocstat \
 	librt \
 	${_librtld_db} \
 	${_libsdp} \
@@ -212,10 +212,6 @@ _libmp=		libmp
 
 .if ${MK_PMC} != "no"
 _libpmc=	libpmc
-.endif
-
-.if ${MK_PKGTOOLS} != "no"
-_libpkg=	libpkg
 .endif
 
 .if ${MK_SENDMAIL} != "no"

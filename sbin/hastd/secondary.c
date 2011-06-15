@@ -436,7 +436,7 @@ hastd_secondary(struct hast_resource *res, struct nv *nvin)
 	init_local(res);
 	init_environment();
 
-	if (drop_privs(true) != 0)
+	if (drop_privs(res) != 0)
 		exit(EX_CONFIG);
 	pjdlog_info("Privileges successfully dropped.");
 
@@ -514,6 +514,7 @@ requnpack(struct hast_resource *res, struct hio *hio)
 		goto end;
 	}
 	switch (hio->hio_cmd) {
+	case HIO_FLUSH:
 	case HIO_KEEPALIVE:
 		break;
 	case HIO_READ:
@@ -610,6 +611,20 @@ recv_thread(void *arg)
 			    hio);
 			QUEUE_INSERT(send, hio);
 			continue;
+		}
+		switch (hio->hio_cmd) {
+		case HIO_READ:
+			res->hr_stat_read++;
+			break;
+		case HIO_WRITE:
+			res->hr_stat_write++;
+			break;
+		case HIO_DELETE:
+			res->hr_stat_delete++;
+			break;
+		case HIO_FLUSH:
+			res->hr_stat_flush++;
+			break;
 		}
 		reqlog(LOG_DEBUG, 2, -1, hio,
 		    "recv: (%p) Got request header: ", hio);

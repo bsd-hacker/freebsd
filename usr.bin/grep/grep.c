@@ -73,7 +73,7 @@ const char	*errstr[] = {
 };
 
 /* Flags passed to regcomp() and regexec() */
-int		 cflags = 0;
+int		 cflags = REG_NOSUB;
 int		 eflags = REG_STARTEND;
 
 /* Shortcut for matching all cases like empty regex */
@@ -518,6 +518,7 @@ main(int argc, char *argv[])
 			break;
 		case 'o':
 			oflag = true;
+			cflags &= ~REG_NOSUB;
 			break;
 		case 'p':
 			linkbehave = LINK_SKIP;
@@ -551,9 +552,11 @@ main(int argc, char *argv[])
 			break;
 		case 'w':
 			wflag = true;
+			cflags &= ~REG_NOSUB;
 			break;
 		case 'x':
 			xflag = true;
+			cflags &= ~REG_NOSUB;
 			break;
 		case 'Z':
 			filebehave = FILE_GZIP;
@@ -587,6 +590,7 @@ main(int argc, char *argv[])
 			    strcasecmp("none", optarg) != 0 &&
 			    strcasecmp("no", optarg) != 0)
 				errx(2, getstr(3), "--color");
+			cflags &= ~REG_NOSUB;
 			break;
 		case LABEL_OPT:
 			label = optarg;

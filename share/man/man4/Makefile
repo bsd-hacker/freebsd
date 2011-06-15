@@ -46,7 +46,9 @@ MAN=	aac.4 \
 	atapicam.4 \
 	ataraid.4 \
 	ath.4 \
+	ath_ahb.4 \
 	ath_hal.4 \
+	ath_pci.4 \
 	atkbd.4 \
 	atkbdc.4 \
 	${_atp.4} \
@@ -134,6 +136,7 @@ MAN=	aac.4 \
 	geom.4 \
 	geom_fox.4 \
 	geom_linux_lvm.4 \
+	geom_map.4 \
 	geom_uzip.4 \
 	gif.4 \
 	gpib.4 \
@@ -472,6 +475,7 @@ MAN=	aac.4 \
 	ukbd.4 \
 	ulpt.4 \
 	umass.4 \
+	umcs.4 \
 	umct.4 \
 	umodem.4 \
 	ums.4 \

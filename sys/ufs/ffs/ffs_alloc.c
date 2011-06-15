@@ -217,7 +217,7 @@ nospace:
 	(void) chkdq(ip, -btodb(size), cred, FORCE);
 	UFS_LOCK(ump);
 #endif
-	if (reclaimed == 0) {
+	if (reclaimed == 0 && (flags & IO_BUFLOCKED) == 0) {
 		reclaimed = 1;
 		softdep_request_cleanup(fs, ITOV(ip), cred, FLUSH_BLOCKS_WAIT);
 		goto retry;
@@ -418,15 +418,15 @@ nospace:
 	/*
 	 * no space available
 	 */
-	if (reclaimed == 0) {
+	if (reclaimed == 0 && (flags & IO_BUFLOCKED) == 0) {
 		reclaimed = 1;
-		softdep_request_cleanup(fs, vp, cred, FLUSH_BLOCKS_WAIT);
 		UFS_UNLOCK(ump);
 		if (bp) {
 			brelse(bp);
 			bp = NULL;
 		}
 		UFS_LOCK(ump);
+		softdep_request_cleanup(fs, vp, cred, FLUSH_BLOCKS_WAIT);
 		goto retry;
 	}
 	UFS_UNLOCK(ump);
@@ -1022,7 +1022,7 @@ dup_alloc:
 		(*vpp)->v_op = &ffs_vnodeops1;
 	return (0);
 noinodes:
-	if (fs->fs_pendinginodes > 0 && reclaimed == 0) {
+	if (reclaimed == 0) {
 		reclaimed = 1;
 		softdep_request_cleanup(fs, pvp, cred, FLUSH_INODES_WAIT);
 		goto retry;
@@ -1873,10 +1873,7 @@ ffs_blkfree_cg(ump, fs, devvp, bno, size, inum, dephd)
 		/* devvp is a normal disk device */
 		dev = devvp->v_rdev;
 		cgblkno = fsbtodb(fs, cgtod(fs, cg));
-		ASSERT_VOP_LOCKED(devvp, "ffs_blkfree");
-		if ((devvp->v_vflag & VV_COPYONWRITE) &&
-		    ffs_snapblkfree(fs, devvp, bno, size, inum))
-			return;
+		ASSERT_VOP_LOCKED(devvp, "ffs_blkfree_cg");
 	}
 #ifdef INVARIANTS
 	if ((u_int)size > fs->fs_bsize || fragoff(fs, size) != 0 ||
@@ -2030,6 +2027,17 @@ ffs_blkfree(ump, fs, devvp, bno, size, inum, dephd)
 	struct bio *bip;
 	struct ffs_blkfree_trim_params *tp;
 
+	/*
+	 * Check to see if a snapshot wants to claim the block.
+	 * Check that devvp is a normal disk device, not a snapshot,
+	 * it has a snapshot(s) associated with it, and one of the
+	 * snapshots wants to claim the block.
+	 */
+	if (devvp->v_type != VREG &&
+	    (devvp->v_vflag & VV_COPYONWRITE) &&
+	    ffs_snapblkfree(fs, devvp, bno, size, inum, dephd)) {
+		return;
+	}
 	if (!ump->um_candelete) {
 		ffs_blkfree_cg(ump, fs, devvp, bno, size, inum, dephd);
 		return;
@@ -2348,8 +2356,8 @@ ffs_fserr(fs, inum, cp)
  *	specified inode by the specified amount. Under normal
  *	operation the count should always go down. Decrementing
  *	the count to zero will cause the inode to be freed.
- * adjblkcnt(inode, amt) - adjust the number of blocks used to
- *	by the specifed amount.
+ * adjblkcnt(inode, amt) - adjust the number of blocks used by the
+ *	inode by the specified amount.
  * adjndir, adjbfree, adjifree, adjffree, adjnumclusters(amt) -
  *	adjust the superblock summary.
  * freedirs(inode, count) - directory inodes [inode..inode + count - 1]

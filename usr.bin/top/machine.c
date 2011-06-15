@@ -35,6 +35,7 @@
 #include <sys/user.h>
 #include <sys/vmmeter.h>
 
+#include <err.h>
 #include <kvm.h>
 #include <math.h>
 #include <nlist.h>
@@ -623,6 +624,7 @@ get_process_info(struct system_info *si, struct process_select *sel,
 	int show_system;
 	int show_uid;
 	int show_command;
+	int show_kidle;
 
 	/*
 	 * Save the previous process info.
@@ -663,6 +665,7 @@ get_process_info(struct system_info *si, struct process_select *sel,
 	show_system = sel->system;
 	show_uid = sel->uid != -1;
 	show_command = sel->command != NULL;
+	show_kidle = sel->kidle;
 
 	/* count up process states and get pointers to interesting procs */
 	total_procs = 0;
@@ -704,6 +707,11 @@ get_process_info(struct system_info *si, struct process_select *sel,
 			/* skip idle or non-running processes */
 			continue;
 
+		if (displaymode == DISP_CPU && !show_kidle &&
+		    pp->ki_tdflags & TDF_IDLETD)
+			/* skip kernel idle process */
+			continue;
+		    
 		if (displaymode == DISP_IO && !show_idle && p_io == 0)
 			/* skip processes that aren't doing I/O */
 			continue;

@@ -2022,7 +2022,8 @@ sctp_add_addr_to_mbuf(struct mbuf *m, struct sctp_ifa *ifa)
 
 
 struct mbuf *
-sctp_add_addresses_to_i_ia(struct sctp_inpcb *inp, struct sctp_scoping *scope,
+sctp_add_addresses_to_i_ia(struct sctp_inpcb *inp, struct sctp_tcb *stcb,
+    struct sctp_scoping *scope,
     struct mbuf *m_at, int cnt_inits_to)
 {
 	struct sctp_vrf *vrf = NULL;
@@ -2056,6 +2057,9 @@ sctp_add_addresses_to_i_ia(struct sctp_inpcb *inp, struct sctp_scoping *scope,
 				continue;
 			}
 			LIST_FOREACH(sctp_ifap, &sctp_ifnp->ifalist, next_ifa) {
+				if (sctp_is_addr_restricted(stcb, sctp_ifap)) {
+					continue;
+				}
 				if (sctp_is_address_in_scope(sctp_ifap,
 				    scope->ipv4_addr_legal,
 				    scope->ipv6_addr_legal,
@@ -2088,6 +2092,9 @@ skip_count:
 					continue;
 				}
 				LIST_FOREACH(sctp_ifap, &sctp_ifnp->ifalist, next_ifa) {
+					if (sctp_is_addr_restricted(stcb, sctp_ifap)) {
+						continue;
+					}
 					if (sctp_is_address_in_scope(sctp_ifap,
 					    scope->ipv4_addr_legal,
 					    scope->ipv6_addr_legal,
@@ -2203,26 +2210,26 @@ sctp_is_ifa_addr_preferred(struct sctp_ifa *ifa,
 	 * means it is the same scope or higher scope then the destination.
 	 * L = loopback, P = private, G = global
 	 * -----------------------------------------
-         *    src    |  dest | result
-         *  ----------------------------------------
-         *     L     |    L  |    yes
-         *  -----------------------------------------
-         *     P     |    L  |    yes-v4 no-v6
-         *  -----------------------------------------
-         *     G     |    L  |    yes-v4 no-v6
-         *  -----------------------------------------
-         *     L     |    P  |    no
-         *  -----------------------------------------
-         *     P     |    P  |    yes
-         *  -----------------------------------------
-         *     G     |    P  |    no
-         *   -----------------------------------------
-         *     L     |    G  |    no
-         *   -----------------------------------------
-         *     P     |    G  |    no
-         *    -----------------------------------------
-         *     G     |    G  |    yes
-         *    -----------------------------------------
+	 *    src    |  dest | result
+	 *  ----------------------------------------
+	 *     L     |    L  |    yes
+	 *  -----------------------------------------
+	 *     P     |    L  |    yes-v4 no-v6
+	 *  -----------------------------------------
+	 *     G     |    L  |    yes-v4 no-v6
+	 *  -----------------------------------------
+	 *     L     |    P  |    no
+	 *  -----------------------------------------
+	 *     P     |    P  |    yes
+	 *  -----------------------------------------
+	 *     G     |    P  |    no
+	 *   -----------------------------------------
+	 *     L     |    G  |    no
+	 *   -----------------------------------------
+	 *     P     |    G  |    no
+	 *    -----------------------------------------
+	 *     G     |    G  |    yes
+	 *    -----------------------------------------
 	 */
 
 	if (ifa->address.sa.sa_family != fam) {
@@ -2295,32 +2302,46 @@ sctp_is_ifa_addr_acceptable(struct sctp_ifa *ifa,
 {
 	uint8_t dest_is_global = 0;
 
-	/*
+	/**
 	 * Here we determine if its a acceptable address. A acceptable
 	 * address means it is the same scope or higher scope but we can
 	 * allow for NAT which means its ok to have a global dest and a
 	 * private src.
-	 * 
+	 *
 	 * L = loopback, P = private, G = global
-	 * ----------------------------------------- src    |  dest | result
-	 * ----------------------------------------- L     |   L   |    yes
-	 * ----------------------------------------- P     |   L   |
-	 * yes-v4 no-v6 ----------------------------------------- G     |
-	 * L   |    yes ----------------------------------------- L     |
-	 * P   |    no ----------------------------------------- P     |   P
-	 * |    yes ----------------------------------------- G     |   P
-	 * |    yes - May not work -----------------------------------------
-	 * L     |   G   |    no ----------------------------------------- P
-	 * |   G   |    yes - May not work
-	 * ----------------------------------------- G     |   G   |    yes
+	 * -----------------------------------------
+	 *  src    |  dest | result
+	 * -----------------------------------------
+	 *   L     |   L   |    yes
+	 *  -----------------------------------------
+	 *   P     |   L   |    yes-v4 no-v6
+	 *  -----------------------------------------
+	 *   G     |   L   |    yes
+	 * -----------------------------------------
+	 *   L     |   P   |    no
+	 * -----------------------------------------
+	 *   P     |   P   |    yes
+	 * -----------------------------------------
+	 *   G     |   P   |    yes - May not work
+	 * -----------------------------------------
+	 *   L     |   G   |    no
+	 * -----------------------------------------
+	 *   P     |   G   |    yes - May not work
+	 * -----------------------------------------
+	 *   G     |   G   |    yes
 	 * -----------------------------------------
 	 */
 
 	if (ifa->address.sa.sa_family != fam) {
 		/* forget non matching family */
+		SCTPDBG(SCTP_DEBUG_OUTPUT3, "ifa_fam:%d fam:%d\n",
+		    ifa->address.sa.sa_family, fam);
 		return (NULL);
 	}
 	/* Ok the address may be ok */
+	SCTPDBG_ADDR(SCTP_DEBUG_OUTPUT3, &ifa->address.sa);
+	SCTPDBG(SCTP_DEBUG_OUTPUT3, "dst_is_loop:%d dest_is_priv:%d\n",
+	    dest_is_loop, dest_is_priv);
 	if ((dest_is_loop == 0) && (dest_is_priv == 0)) {
 		dest_is_global = 1;
 	}
@@ -2342,12 +2363,19 @@ sctp_is_ifa_addr_acceptable(struct sctp_ifa *ifa,
 	 * theory be done slicker (it used to be), but this is
 	 * straightforward and easier to validate :-)
 	 */
+	SCTPDBG(SCTP_DEBUG_OUTPUT3, "ifa->src_is_loop:%d dest_is_priv:%d\n",
+	    ifa->src_is_loop,
+	    dest_is_priv);
 	if ((ifa->src_is_loop == 1) && (dest_is_priv)) {
 		return (NULL);
 	}
+	SCTPDBG(SCTP_DEBUG_OUTPUT3, "ifa->src_is_loop:%d dest_is_glob:%d\n",
+	    ifa->src_is_loop,
+	    dest_is_global);
 	if ((ifa->src_is_loop == 1) && (dest_is_global)) {
 		return (NULL);
 	}
+	SCTPDBG(SCTP_DEBUG_OUTPUT3, "address is acceptable\n");
 	/* its an acceptable address */
 	return (ifa);
 }
@@ -2854,6 +2882,10 @@ sctp_choose_boundall(struct sctp_inpcb *inp,
 	uint32_t ifn_index;
 	struct sctp_vrf *vrf;
 
+#ifdef INET
+	int retried = 0;
+
+#endif
 	/*-
 	 * For boundall we can use any address in the association.
 	 * If non_asoc_addr_ok is set we can use any address (at least in
@@ -2874,6 +2906,7 @@ sctp_choose_boundall(struct sctp_inpcb *inp,
 
 	ifn = SCTP_GET_IFN_VOID_FROM_ROUTE(ro);
 	ifn_index = SCTP_GET_IF_INDEX_FROM_ROUTE(ro);
+	SCTPDBG(SCTP_DEBUG_OUTPUT2, "ifn from route:%p ifn_index:%d\n", ifn, ifn_index);
 	emit_ifn = looked_at = sctp_ifn = sctp_find_ifn(ifn, ifn_index);
 	if (sctp_ifn == NULL) {
 		/* ?? We don't have this guy ?? */
@@ -2982,22 +3015,30 @@ bound_all_plan_b:
 		}
 		atomic_add_int(&sifa->refcount, 1);
 		return (sifa);
-
 	}
-
+#ifdef INET
+again_with_private_addresses_allowed:
+#endif
 	/* plan_c: do we have an acceptable address on the emit interface */
+	sifa = NULL;
 	SCTPDBG(SCTP_DEBUG_OUTPUT2, "Trying Plan C: find acceptable on interface\n");
 	if (emit_ifn == NULL) {
+		SCTPDBG(SCTP_DEBUG_OUTPUT2, "Jump to Plan D - no emit_ifn\n");
 		goto plan_d;
 	}
 	LIST_FOREACH(sctp_ifa, &emit_ifn->ifalist, next_ifa) {
+		SCTPDBG(SCTP_DEBUG_OUTPUT2, "ifa:%p\n", sctp_ifa);
 		if ((sctp_ifa->localifa_flags & SCTP_ADDR_DEFER_USE) &&
-		    (non_asoc_addr_ok == 0))
+		    (non_asoc_addr_ok == 0)) {
+			SCTPDBG(SCTP_DEBUG_OUTPUT2, "Defer\n");
 			continue;
+		}
 		sifa = sctp_is_ifa_addr_acceptable(sctp_ifa, dest_is_loop,
 		    dest_is_priv, fam);
-		if (sifa == NULL)
+		if (sifa == NULL) {
+			SCTPDBG(SCTP_DEBUG_OUTPUT2, "IFA not acceptable\n");
 			continue;
+		}
 		if (stcb) {
 			if (sctp_is_address_in_scope(sifa,
 			    stcb->asoc.ipv4_addr_legal,
@@ -3006,6 +3047,8 @@ bound_all_plan_b:
 			    stcb->asoc.ipv4_local_scope,
 			    stcb->asoc.local_scope,
 			    stcb->asoc.site_scope, 0) == 0) {
+				SCTPDBG(SCTP_DEBUG_OUTPUT2, "NOT in scope\n");
+				sifa = NULL;
 				continue;
 			}
 			if (((non_asoc_addr_ok == 0) &&
@@ -3017,11 +3060,15 @@ bound_all_plan_b:
 				 * It is restricted for some reason..
 				 * probably not yet added.
 				 */
+				SCTPDBG(SCTP_DEBUG_OUTPUT2, "Its resticted\n");
+				sifa = NULL;
 				continue;
 			}
+		} else {
+			printf("Stcb is null - no print\n");
 		}
 		atomic_add_int(&sifa->refcount, 1);
-		return (sifa);
+		goto out;
 	}
 plan_d:
 	/*
@@ -3030,16 +3077,12 @@ plan_d:
 	 * out and see if we can find an acceptable address somewhere
 	 * amongst all interfaces.
 	 */
-	SCTPDBG(SCTP_DEBUG_OUTPUT2, "Trying Plan D\n");
+	SCTPDBG(SCTP_DEBUG_OUTPUT2, "Trying Plan D looked_at is %p\n", looked_at);
 	LIST_FOREACH(sctp_ifn, &vrf->ifnlist, next_ifn) {
 		if (dest_is_loop == 0 && SCTP_IFN_IS_IFT_LOOP(sctp_ifn)) {
 			/* wrong base scope */
 			continue;
 		}
-		if ((sctp_ifn == looked_at) && looked_at)
-			/* already looked at this guy */
-			continue;
-
 		LIST_FOREACH(sctp_ifa, &sctp_ifn->ifalist, next_ifa) {
 			if ((sctp_ifa->localifa_flags & SCTP_ADDR_DEFER_USE) &&
 			    (non_asoc_addr_ok == 0))
@@ -3057,6 +3100,7 @@ plan_d:
 				    stcb->asoc.ipv4_local_scope,
 				    stcb->asoc.local_scope,
 				    stcb->asoc.site_scope, 0) == 0) {
+					sifa = NULL;
 					continue;
 				}
 				if (((non_asoc_addr_ok == 0) &&
@@ -3068,19 +3112,81 @@ plan_d:
 					 * It is restricted for some
 					 * reason.. probably not yet added.
 					 */
+					sifa = NULL;
 					continue;
 				}
 			}
-			atomic_add_int(&sifa->refcount, 1);
-			return (sifa);
+			goto out;
 		}
 	}
-	/*
-	 * Ok we can find NO address to source from that is not on our
-	 * restricted list and non_asoc_address is NOT ok, or it is on our
-	 * restricted list. We can't source to it :-(
-	 */
-	return (NULL);
+#ifdef INET
+	if ((retried == 0) && (stcb->asoc.ipv4_local_scope == 0)) {
+		stcb->asoc.ipv4_local_scope = 1;
+		retried = 1;
+		goto again_with_private_addresses_allowed;
+	} else if (retried == 1) {
+		stcb->asoc.ipv4_local_scope = 0;
+	}
+#endif
+out:
+#ifdef INET
+	if (sifa) {
+		if (retried == 1) {
+			LIST_FOREACH(sctp_ifn, &vrf->ifnlist, next_ifn) {
+				if (dest_is_loop == 0 && SCTP_IFN_IS_IFT_LOOP(sctp_ifn)) {
+					/* wrong base scope */
+					continue;
+				}
+				LIST_FOREACH(sctp_ifa, &sctp_ifn->ifalist, next_ifa) {
+					struct sctp_ifa *tmp_sifa;
+
+					if ((sctp_ifa->localifa_flags & SCTP_ADDR_DEFER_USE) &&
+					    (non_asoc_addr_ok == 0))
+						continue;
+					tmp_sifa = sctp_is_ifa_addr_acceptable(sctp_ifa,
+					    dest_is_loop,
+					    dest_is_priv, fam);
+					if (tmp_sifa == NULL) {
+						continue;
+					}
+					if (tmp_sifa == sifa) {
+						continue;
+					}
+					if (stcb) {
+						if (sctp_is_address_in_scope(tmp_sifa,
+						    stcb->asoc.ipv4_addr_legal,
+						    stcb->asoc.ipv6_addr_legal,
+						    stcb->asoc.loopback_scope,
+						    stcb->asoc.ipv4_local_scope,
+						    stcb->asoc.local_scope,
+						    stcb->asoc.site_scope, 0) == 0) {
+							continue;
+						}
+						if (((non_asoc_addr_ok == 0) &&
+						    (sctp_is_addr_restricted(stcb, tmp_sifa))) ||
+						    (non_asoc_addr_ok &&
+						    (sctp_is_addr_restricted(stcb, tmp_sifa)) &&
+						    (!sctp_is_addr_pending(stcb, tmp_sifa)))) {
+							/*
+							 * It is restricted
+							 * for some reason..
+							 * probably not yet
+							 * added.
+							 */
+							continue;
+						}
+					}
+					if ((tmp_sifa->address.sin.sin_family == AF_INET) &&
+					    (IN4_ISPRIVATE_ADDRESS(&(tmp_sifa->address.sin.sin_addr)))) {
+						sctp_add_local_addr_restricted(stcb, tmp_sifa);
+					}
+				}
+			}
+		}
+		atomic_add_int(&sifa->refcount, 1);
+	}
+#endif
+	return (sifa);
 }
 
 
@@ -3106,7 +3212,7 @@ sctp_source_address_selection(struct sctp_inpcb *inp,
 
 #endif
 
-	/*-
+	/**
 	 * Rules: - Find the route if needed, cache if I can. - Look at
 	 * interface address in route, Is it in the bound list. If so we
 	 * have the best source. - If not we must rotate amongst the
@@ -3509,15 +3615,17 @@ sctp_lowlevel_chunk_output(struct sctp_inpcb *inp,
 )
 /* nofragment_flag to tell if IP_DF should be set (IPv4 only) */
 {
-	/*
-	 * Given a mbuf chain (via SCTP_BUF_NEXT()) that holds a packet
-	 * header WITH an SCTPHDR but no IP header, endpoint inp and sa
-	 * structure: - fill in the HMAC digest of any AUTH chunk in the
-	 * packet. - calculate and fill in the SCTP checksum. - prepend an
-	 * IP address header. - if boundall use INADDR_ANY. - if
-	 * boundspecific do source address selection. - set fragmentation
-	 * option for ipV4. - On return from IP output, check/adjust mtu
-	 * size of output interface and smallest_mtu size as well.
+	/**
+	 * Given a mbuf chain (via SCTP_BUF_NEXT()) that holds a packet header
+	 * WITH an SCTPHDR but no IP header, endpoint inp and sa structure:
+	 * - fill in the HMAC digest of any AUTH chunk in the packet.
+	 * - calculate and fill in the SCTP checksum.
+	 * - prepend an IP address header.
+	 * - if boundall use INADDR_ANY.
+	 * - if boundspecific do source address selection.
+	 * - set fragmentation option for ipV4.
+	 * - On return from IP output, check/adjust mtu size of output
+	 *   interface and smallest_mtu size as well.
 	 */
 	/* Will need ifdefs around this */
 	struct mbuf *o_pak;
@@ -4409,7 +4517,7 @@ sctp_send_initiate(struct sctp_inpcb *inp, struct sctp_tcb *stcb, int so_locked
 		scp.local_scope = stcb->asoc.local_scope;
 		scp.site_scope = stcb->asoc.site_scope;
 
-		m_at = sctp_add_addresses_to_i_ia(inp, &scp, m_at, cnt_inits_to);
+		m_at = sctp_add_addresses_to_i_ia(inp, stcb, &scp, m_at, cnt_inits_to);
 	}
 
 	/* calulate the size and update pkt header and chunk header */
@@ -5538,7 +5646,7 @@ do_a_abort:
 		scp.ipv4_local_scope = stc.ipv4_scope;
 		scp.local_scope = stc.local_scope;
 		scp.site_scope = stc.site_scope;
-		m_at = sctp_add_addresses_to_i_ia(inp, &scp, m_at, cnt_inits_to);
+		m_at = sctp_add_addresses_to_i_ia(inp, stcb, &scp, m_at, cnt_inits_to);
 	}
 
 	/* tack on the operational error if present */
@@ -6178,7 +6286,7 @@ sctp_sendall_iterator(struct sctp_inpcb *inp, struct sctp_tcb *stcb, void *ptr,
 			/* shutdown this assoc */
 			int cnt;
 
-			cnt = sctp_is_there_unsent_data(stcb);
+			cnt = sctp_is_there_unsent_data(stcb, SCTP_SO_NOT_LOCKED);
 
 			if (TAILQ_EMPTY(&asoc->send_queue) &&
 			    TAILQ_EMPTY(&asoc->sent_queue) &&
@@ -6425,7 +6533,7 @@ sctp_toss_old_cookies(struct sctp_tcb *stcb, struct sctp_association *asoc)
 				chk->data = NULL;
 			}
 			asoc->ctrl_queue_cnt--;
-			sctp_free_a_chunk(stcb, chk);
+			sctp_free_a_chunk(stcb, chk, SCTP_SO_NOT_LOCKED);
 		}
 	}
 }
@@ -6454,7 +6562,7 @@ sctp_toss_old_asconf(struct sctp_tcb *stcb)
 				chk->data = NULL;
 			}
 			asoc->ctrl_queue_cnt--;
-			sctp_free_a_chunk(stcb, chk);
+			sctp_free_a_chunk(stcb, chk, SCTP_SO_NOT_LOCKED);
 		}
 	}
 }
@@ -6553,7 +6661,11 @@ all_done:
 }
 
 static void
-sctp_clean_up_ctl(struct sctp_tcb *stcb, struct sctp_association *asoc)
+sctp_clean_up_ctl(struct sctp_tcb *stcb, struct sctp_association *asoc, int so_locked
+#if !defined(__APPLE__) && !defined(SCTP_SO_LOCK_TESTING)
+    SCTP_UNUSED
+#endif
+)
 {
 	struct sctp_tmit_chunk *chk, *nchk;
 
@@ -6580,7 +6692,7 @@ sctp_clean_up_ctl(struct sctp_tcb *stcb, struct sctp_association *asoc)
 			asoc->ctrl_queue_cnt--;
 			if (chk->rec.chunk_id.id == SCTP_FORWARD_CUM_TSN)
 				asoc->fwd_tsn_cnt--;
-			sctp_free_a_chunk(stcb, chk);
+			sctp_free_a_chunk(stcb, chk, so_locked);
 		} else if (chk->rec.chunk_id.id == SCTP_STREAM_RESET) {
 			/* special handling, we must look into the param */
 			if (chk != asoc->str_reset) {
@@ -6660,7 +6772,12 @@ sctp_move_to_outqueue(struct sctp_tcb *stcb,
     int *locked,
     int *giveup,
     int eeor_mode,
-    int *bail)
+    int *bail,
+    int so_locked
+#if !defined(__APPLE__) && !defined(SCTP_SO_LOCK_TESTING)
+    SCTP_UNUSED
+#endif
+)
 {
 	/* Move from the stream to the send_queue keeping track of the total */
 	struct sctp_association *asoc;
@@ -6731,7 +6848,7 @@ one_more_time:
 				sctp_m_freem(sp->data);
 				sp->data = NULL;
 			}
-			sctp_free_a_strmoq(stcb, sp);
+			sctp_free_a_strmoq(stcb, sp, so_locked);
 			/* we can't be locked to it */
 			*locked = 0;
 			stcb->asoc.locked_on_sending = NULL;
@@ -6897,7 +7014,7 @@ dont_do_it:
 		chk->last_mbuf = NULL;
 		if (chk->data == NULL) {
 			sp->some_taken = some_taken;
-			sctp_free_a_chunk(stcb, chk);
+			sctp_free_a_chunk(stcb, chk, so_locked);
 			*bail = 1;
 			to_move = 0;
 			goto out_of;
@@ -7001,7 +7118,7 @@ dont_do_it:
 			atomic_add_int(&sp->length, to_move);
 			chk->data = NULL;
 			*bail = 1;
-			sctp_free_a_chunk(stcb, chk);
+			sctp_free_a_chunk(stcb, chk, so_locked);
 			to_move = 0;
 			goto out_of;
 		} else {
@@ -7018,7 +7135,7 @@ dont_do_it:
 		panic("prepend failes HELP?");
 #else
 		SCTP_PRINTF("prepend fails HELP?\n");
-		sctp_free_a_chunk(stcb, chk);
+		sctp_free_a_chunk(stcb, chk, so_locked);
 #endif
 		*bail = 1;
 		to_move = 0;
@@ -7140,7 +7257,7 @@ dont_do_it:
 			sctp_m_freem(sp->data);
 			sp->data = NULL;
 		}
-		sctp_free_a_strmoq(stcb, sp);
+		sctp_free_a_strmoq(stcb, sp, so_locked);
 
 		/* we can't be locked to it */
 		*locked = 0;
@@ -7163,7 +7280,11 @@ out_of:
 
 static void
 sctp_fill_outqueue(struct sctp_tcb *stcb,
-    struct sctp_nets *net, int frag_point, int eeor_mode, int *quit_now)
+    struct sctp_nets *net, int frag_point, int eeor_mode, int *quit_now, int so_locked
+#if !defined(__APPLE__) && !defined(SCTP_SO_LOCK_TESTING)
+    SCTP_UNUSED
+#endif
+)
 {
 	struct sctp_association *asoc;
 	struct sctp_stream_out *strq, *strqn;
@@ -7200,7 +7321,7 @@ sctp_fill_outqueue(struct sctp_tcb *stcb,
 		giveup = 0;
 		bail = 0;
 		moved_how_much = sctp_move_to_outqueue(stcb, strq, goal_mtu, frag_point, &locked,
-		    &giveup, eeor_mode, &bail);
+		    &giveup, eeor_mode, &bail, so_locked);
 		if (moved_how_much)
 			stcb->asoc.ss_functions.sctp_ss_scheduled(stcb, net, asoc, strq, moved_how_much);
 
@@ -7440,7 +7561,7 @@ nothing_to_send:
 			if (SCTP_BASE_SYSCTL(sctp_logging_level) & SCTP_CWND_LOGGING_ENABLE) {
 				sctp_log_cwnd(stcb, net, 4, SCTP_CWND_LOG_FILL_OUTQ_CALLED);
 			}
-			sctp_fill_outqueue(stcb, net, frag_point, eeor_mode, &quit_now);
+			sctp_fill_outqueue(stcb, net, frag_point, eeor_mode, &quit_now, so_locked);
 			if (quit_now) {
 				/* memory alloc failure */
 				no_data_chunks = 1;
@@ -8378,7 +8499,7 @@ no_data_fill:
 	} else {
 		*reason_code = 5;
 	}
-	sctp_clean_up_ctl(stcb, asoc);
+	sctp_clean_up_ctl(stcb, asoc, so_locked);
 	return (0);
 }
 
@@ -8403,7 +8524,7 @@ sctp_queue_op_err(struct sctp_tcb *stcb, struct mbuf *op_err)
 	chk->copy_by_ref = 0;
 	SCTP_BUF_PREPEND(op_err, sizeof(struct sctp_chunkhdr), M_DONTWAIT);
 	if (op_err == NULL) {
-		sctp_free_a_chunk(stcb, chk);
+		sctp_free_a_chunk(stcb, chk, SCTP_SO_NOT_LOCKED);
 		return;
 	}
 	chk->send_size = 0;
@@ -8992,7 +9113,7 @@ sctp_chunk_retransmission(struct sctp_inpcb *inp,
 			return (0);
 		} else {
 			/* Clean up the fwd-tsn list */
-			sctp_clean_up_ctl(stcb, asoc);
+			sctp_clean_up_ctl(stcb, asoc, so_locked);
 			return (0);
 		}
 	}
@@ -9446,7 +9567,7 @@ sctp_chunk_output(struct sctp_inpcb *inp,
 	 * running, if so piggy-back the sack.
 	 */
 	if (SCTP_OS_TIMER_PENDING(&stcb->asoc.dack_timer.timer)) {
-		sctp_send_sack(stcb);
+		sctp_send_sack(stcb, so_locked);
 		(void)SCTP_OS_TIMER_STOP(&stcb->asoc.dack_timer.timer);
 	}
 	while (asoc->sent_queue_retran_cnt) {
@@ -9730,7 +9851,7 @@ send_forward_tsn(struct sctp_tcb *stcb,
 	chk->whoTo = NULL;
 	chk->data = sctp_get_mbuf_for_msg(MCLBYTES, 0, M_DONTWAIT, 1, MT_DATA);
 	if (chk->data == NULL) {
-		sctp_free_a_chunk(stcb, chk);
+		sctp_free_a_chunk(stcb, chk, SCTP_SO_NOT_LOCKED);
 		return;
 	}
 	SCTP_BUF_RESV_UF(chk->data, SCTP_MIN_OVERHEAD);
@@ -9875,7 +9996,11 @@ sctp_fill_in_rest:
 }
 
 void
-sctp_send_sack(struct sctp_tcb *stcb)
+sctp_send_sack(struct sctp_tcb *stcb, int so_locked
+#if !defined(__APPLE__) && !defined(SCTP_SO_LOCK_TESTING)
+    SCTP_UNUSED
+#endif
+)
 {
 	/*-
 	 * Queue up a SACK or NR-SACK in the control queue.
@@ -10017,7 +10142,7 @@ sctp_send_sack(struct sctp_tcb *stcb)
 			sctp_m_freem(a_chk->data);
 			a_chk->data = NULL;
 		}
-		sctp_free_a_chunk(stcb, a_chk);
+		sctp_free_a_chunk(stcb, a_chk, so_locked);
 		/* sa_ignore NO_NULL_CHK */
 		if (stcb->asoc.delayed_ack) {
 			sctp_timer_stop(SCTP_TIMER_TYPE_RECV,
@@ -10691,7 +10816,11 @@ sctp_select_hb_destination(struct sctp_tcb *stcb, struct timeval *now)
 }
 
 int
-sctp_send_hb(struct sctp_tcb *stcb, int user_req, struct sctp_nets *u_net)
+sctp_send_hb(struct sctp_tcb *stcb, int user_req, struct sctp_nets *u_net, int so_locked
+#if !defined(__APPLE__) && !defined(SCTP_SO_LOCK_TESTING)
+    SCTP_UNUSED
+#endif
+)
 {
 	struct sctp_tmit_chunk *chk;
 	struct sctp_nets *net;
@@ -10747,7 +10876,7 @@ sctp_send_hb(struct sctp_tcb *stcb, int user_req, struct sctp_nets *u_net)
 
 	chk->data = sctp_get_mbuf_for_msg(chk->send_size, 0, M_DONTWAIT, 1, MT_HEADER);
 	if (chk->data == NULL) {
-		sctp_free_a_chunk(stcb, chk);
+		sctp_free_a_chunk(stcb, chk, so_locked);
 		return (0);
 	}
 	SCTP_BUF_RESV_UF(chk->data, SCTP_MIN_OVERHEAD);
@@ -10836,7 +10965,7 @@ sctp_send_hb(struct sctp_tcb *stcb, int user_req, struct sctp_nets *u_net)
 				sctp_free_remote_addr(chk->whoTo);
 				chk->whoTo = NULL;
 			}
-			sctp_free_a_chunk((struct sctp_tcb *)NULL, chk);
+			sctp_free_a_chunk((struct sctp_tcb *)NULL, chk, so_locked);
 			return (-1);
 		}
 	}
@@ -10892,7 +11021,7 @@ sctp_send_ecn_echo(struct sctp_tcb *stcb, struct sctp_nets *net,
 	chk->send_size = sizeof(struct sctp_ecne_chunk);
 	chk->data = sctp_get_mbuf_for_msg(chk->send_size, 0, M_DONTWAIT, 1, MT_HEADER);
 	if (chk->data == NULL) {
-		sctp_free_a_chunk(stcb, chk);
+		sctp_free_a_chunk(stcb, chk, SCTP_SO_NOT_LOCKED);
 		return;
 	}
 	SCTP_BUF_RESV_UF(chk->data, SCTP_MIN_OVERHEAD);
@@ -10955,7 +11084,7 @@ sctp_send_packet_dropped(struct sctp_tcb *stcb, struct sctp_nets *net,
 	chk->copy_by_ref = 0;
 	iph = mtod(m, struct ip *);
 	if (iph == NULL) {
-		sctp_free_a_chunk(stcb, chk);
+		sctp_free_a_chunk(stcb, chk, SCTP_SO_NOT_LOCKED);
 		return;
 	}
 	switch (iph->ip_v) {
@@ -10995,7 +11124,7 @@ sctp_send_packet_dropped(struct sctp_tcb *stcb, struct sctp_nets *net,
 			 * INIT-ACK, because we can't know if the initiation
 			 * tag is correct or not.
 			 */
-			sctp_free_a_chunk(stcb, chk);
+			sctp_free_a_chunk(stcb, chk, SCTP_SO_NOT_LOCKED);
 			return;
 		default:
 			break;
@@ -11018,7 +11147,7 @@ sctp_send_packet_dropped(struct sctp_tcb *stcb, struct sctp_nets *net,
 	chk->data = sctp_get_mbuf_for_msg(MCLBYTES, 0, M_DONTWAIT, 1, MT_DATA);
 	if (chk->data == NULL) {
 jump_out:
-		sctp_free_a_chunk(stcb, chk);
+		sctp_free_a_chunk(stcb, chk, SCTP_SO_NOT_LOCKED);
 		return;
 	}
 	SCTP_BUF_RESV_UF(chk->data, SCTP_MIN_OVERHEAD);
@@ -11129,7 +11258,7 @@ sctp_send_cwr(struct sctp_tcb *stcb, struct sctp_nets *net, uint32_t high_tsn, u
 	chk->send_size = sizeof(struct sctp_cwr_chunk);
 	chk->data = sctp_get_mbuf_for_msg(chk->send_size, 0, M_DONTWAIT, 1, MT_HEADER);
 	if (chk->data == NULL) {
-		sctp_free_a_chunk(stcb, chk);
+		sctp_free_a_chunk(stcb, chk, SCTP_SO_NOT_LOCKED);
 		return;
 	}
 	SCTP_BUF_RESV_UF(chk->data, SCTP_MIN_OVERHEAD);
@@ -11418,7 +11547,7 @@ sctp_send_str_reset_req(struct sctp_tcb *stcb,
 
 	chk->data = sctp_get_mbuf_for_msg(MCLBYTES, 0, M_DONTWAIT, 1, MT_DATA);
 	if (chk->data == NULL) {
-		sctp_free_a_chunk(stcb, chk);
+		sctp_free_a_chunk(stcb, chk, SCTP_SO_LOCKED);
 		SCTP_LTRACE_ERR_RET(NULL, stcb, NULL, SCTP_FROM_SCTP_OUTPUT, ENOMEM);
 		return (ENOMEM);
 	}
@@ -12108,7 +12237,7 @@ sctp_copy_it_in(struct sctp_tcb *stcb,
 	*error = sctp_copy_one(sp, uio, resv_in_first);
 skip_copy:
 	if (*error) {
-		sctp_free_a_strmoq(stcb, sp);
+		sctp_free_a_strmoq(stcb, sp, SCTP_SO_LOCKED);
 		sp = NULL;
 	} else {
 		if (sp->sinfo_flags & SCTP_ADDR_OVER) {
@@ -13206,7 +13335,7 @@ dataless_eof:
 			SCTP_TCB_LOCK(stcb);
 			hold_tcblock = 1;
 		}
-		cnt = sctp_is_there_unsent_data(stcb);
+		cnt = sctp_is_there_unsent_data(stcb, SCTP_SO_LOCKED);
 		if (TAILQ_EMPTY(&asoc->send_queue) &&
 		    TAILQ_EMPTY(&asoc->sent_queue) &&
 		    (cnt == 0)) {

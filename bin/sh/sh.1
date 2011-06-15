@@ -32,7 +32,7 @@
 .\"	from: @(#)sh.1	8.6 (Berkeley) 5/4/95
 .\" $FreeBSD$
 .\"
-.Dd March 20, 2011
+.Dd June 12, 2011
 .Dt SH 1
 .Os
 .Sh NAME
@@ -124,8 +124,8 @@ If the environment variable
 .Ev ENV
 is set on entry to a shell, or is set in the
 .Pa .profile
-of a login shell, the shell then reads commands from the file named in
-.Ev ENV .
+of a login shell, the shell then subjects its value to parameter expansion
+and arithmetic expansion and reads commands from the named file.
 Therefore, a user should place commands that are to be executed only
 at login time in the
 .Pa .profile
@@ -324,7 +324,7 @@ Useful for debugging.
 Write each command
 (preceded by the value of the
 .Va PS4
-variable)
+variable subjected to parameter expansion and arithmetic expansion)
 to standard error before it is executed.
 Useful for debugging.
 .El
@@ -396,13 +396,82 @@ Quoting is used to remove the special meaning of certain characters
 or words to the shell, such as operators, whitespace, keywords,
 or alias names.
 .Pp
-There are three types of quoting: matched single quotes,
+There are four types of quoting: matched single quotes,
+dollar-single quotes,
 matched double quotes, and backslash.
 .Bl -tag -width indent
 .It Single Quotes
 Enclosing characters in single quotes preserves the literal
 meaning of all the characters (except single quotes, making
 it impossible to put single-quotes in a single-quoted string).
+.It Dollar-Single Quotes
+Enclosing characters between
+.Li $'
+and
+.Li '
+preserves the literal meaning of all characters
+except backslashes and single quotes.
+A backslash introduces a C-style escape sequence:
+.Bl -tag -width xUnnnnnnnn
+.It \ea
+Alert (ring the terminal bell)
+.It \eb
+Backspace
+.It \ec Ns Ar c
+The control character denoted by
+.Li ^ Ns Ar c
+in
+.Xr stty 1 .
+If
+.Ar c
+is a backslash, it must be doubled.
+.It \ee
+The ESC character
+.Tn ( ASCII
+0x1b)
+.It \ef
+Formfeed
+.It \en
+Newline
+.It \er
+Carriage return
+.It \et
+Horizontal tab
+.It \ev
+Vertical tab
+.It \e\e
+Literal backslash
+.It \e\&'
+Literal single-quote
+.It \e\&"
+Literal double-quote
+.It \e Ns Ar nnn
+The byte whose octal value is
+.Ar nnn
+(one to three digits)
+.It \ex Ns Ar nn
+The byte whose hexadecimal value is
+.Ar nn
+(one or more digits only the last two of which are used)
+.It \eu Ns Ar nnnn
+The Unicode code point
+.Ar nnnn
+(four hexadecimal digits)
+.It \eU Ns Ar nnnnnnnn
+The Unicode code point
+.Ar nnnnnnnn
+(eight hexadecimal digits)
+.El
+.Pp
+The sequences for Unicode code points are currently only useful with
+UTF-8 locales.
+They reject code point 0 and UTF-16 surrogates.
+.Pp
+If an escape sequence would produce a byte with value 0,
+that byte and the rest of the string until the matching single-quote
+are ignored.
+.Pp
+Any other string starting with a backslash is an error.
 .It Double Quotes
 Enclosing characters within double quotes preserves the literal
 meaning of all characters except dollar sign
@@ -437,8 +506,8 @@ The following are keywords:
 An alias is a name and corresponding value set using the
 .Ic alias
 built-in command.
-Whenever a keyword may occur (see above),
-and after checking for keywords, the shell
+Wherever the command word of a simple command may occur,
+and after checking for keywords if a keyword may occur, the shell
 checks the word to see if it matches an alias.
 If it does, it replaces it in the input stream with its value.
 For example, if there is an alias called
@@ -1467,10 +1536,7 @@ except that the built-in commands
 and
 .Ic trap
 return information about the main shell environment
-if they are the only command in a command substitution
-and the substitutions in the command cannot cause side effects
-(such as from assigning values to variables or referencing
-.Li $! ).
+if they are the only command in a command substitution.
 .Ss Arithmetic Expansion
 Arithmetic expansion provides a mechanism for evaluating an arithmetic
 expression and substituting its value.
@@ -1660,7 +1726,7 @@ Execute the specified built-in command,
 .Ar cmd .
 This is useful when the user wishes to override a shell function
 with the same name as a built-in command.
-.It Ic cd Oo Fl L | P Oc Op Ar directory
+.It Ic cd Oo Fl L | P Oc Oo Fl e Oc Op Ar directory
 Switch to the specified
 .Ar directory ,
 or to the directory specified in the
@@ -1709,6 +1775,15 @@ option is specified,
 .Pa ..
 is handled logically.
 This is the default.
+.Pp
+The
+.Fl e
+option causes
+.Ic cd
+to return exit status 1 if the full pathname of the new directory
+cannot be determined reliably or at all.
+Normally this is not considered an error,
+although a warning is printed.
 .It Ic chdir
 A synonym for the
 .Ic cd
@@ -2522,4 +2597,9 @@ was originally written by
 .Sh BUGS
 The
 .Nm
-utility does not recognize multibyte characters.
+utility does not recognize multibyte characters other than UTF-8.
+Splitting using
+.Va IFS
+and the line editing library
+.Xr editline 3
+do not recognize multibyte characters.

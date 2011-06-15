@@ -69,7 +69,7 @@ __FBSDID("$FreeBSD$");
 #include <nfs/nfsproto.h>
 #include <nfsclient/nfs.h>
 #include <nfsclient/nfsnode.h>
-#include <nfsclient/nfs_kdtrace.h>
+#include <nfs/nfs_kdtrace.h>
 #include <nfs/xdr_subs.h>
 #include <nfsclient/nfsm_subs.h>
 #include <nfsclient/nfsmount.h>
@@ -653,9 +653,9 @@ out:
 
 #ifdef NFS_ACDEBUG
 #include <sys/sysctl.h>
-SYSCTL_DECL(_vfs_nfs);
+SYSCTL_DECL(_vfs_oldnfs);
 static int nfs_acdebug;
-SYSCTL_INT(_vfs_nfs, OID_AUTO, acdebug, CTLFLAG_RW, &nfs_acdebug, 0,
+SYSCTL_INT(_vfs_oldnfs, OID_AUTO, acdebug, CTLFLAG_RW, &nfs_acdebug, 0,
     "Toggle acdebug (attribute cache debug) flag");
 #endif
 

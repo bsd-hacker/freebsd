@@ -500,7 +500,7 @@ nfscl_fillclid(u_int64_t clval, char *uuid, u_int8_t *cp, u_int16_t idlen)
  * Fill in a lock owner name. For now, pid + the process's creation time.
  */
 void
-nfscl_filllockowner(struct thread *td, u_int8_t *cp)
+nfscl_filllockowner(void *id, u_int8_t *cp, int flags)
 {
 	union {
 		u_int32_t	lval;
@@ -508,37 +508,35 @@ nfscl_filllockowner(struct thread *td, u_int8_t *cp)
 	} tl;
 	struct proc *p;
 
-if (td == NULL) {
-	printf("NULL td\n");
-	bzero(cp, 12);
-	return;
-}
-	p = td->td_proc;
-if (p == NULL) {
-	printf("NULL pid\n");
-	bzero(cp, 12);
-	return;
-}
-	tl.lval = p->p_pid;
-	*cp++ = tl.cval[0];
-	*cp++ = tl.cval[1];
-	*cp++ = tl.cval[2];
-	*cp++ = tl.cval[3];
-if (p->p_stats == NULL) {
-	printf("pstats null\n");
-	bzero(cp, 8);
-	return;
-}
-	tl.lval = p->p_stats->p_start.tv_sec;
-	*cp++ = tl.cval[0];
-	*cp++ = tl.cval[1];
-	*cp++ = tl.cval[2];
-	*cp++ = tl.cval[3];
-	tl.lval = p->p_stats->p_start.tv_usec;
-	*cp++ = tl.cval[0];
-	*cp++ = tl.cval[1];
-	*cp++ = tl.cval[2];
-	*cp = tl.cval[3];
+	if (id == NULL) {
+		printf("NULL id\n");
+		bzero(cp, NFSV4CL_LOCKNAMELEN);
+		return;
+	}
+	if ((flags & F_POSIX) != 0) {
+		p = (struct proc *)id;
+		tl.lval = p->p_pid;
+		*cp++ = tl.cval[0];
+		*cp++ = tl.cval[1];
+		*cp++ = tl.cval[2];
+		*cp++ = tl.cval[3];
+		tl.lval = p->p_stats->p_start.tv_sec;
+		*cp++ = tl.cval[0];
+		*cp++ = tl.cval[1];
+		*cp++ = tl.cval[2];
+		*cp++ = tl.cval[3];
+		tl.lval = p->p_stats->p_start.tv_usec;
+		*cp++ = tl.cval[0];
+		*cp++ = tl.cval[1];
+		*cp++ = tl.cval[2];
+		*cp = tl.cval[3];
+	} else if ((flags & F_FLOCK) != 0) {
+		bcopy(&id, cp, sizeof(id));
+		bzero(&cp[sizeof(id)], NFSV4CL_LOCKNAMELEN - sizeof(id));
+	} else {
+		printf("nfscl_filllockowner: not F_POSIX or F_FLOCK\n");
+		bzero(cp, NFSV4CL_LOCKNAMELEN);
+	}
 }
 
 /*
@@ -838,21 +836,33 @@ void
 nfscl_loadsbinfo(struct nfsmount *nmp, struct nfsstatfs *sfp, void *statfs)
 {
 	struct statfs *sbp = (struct statfs *)statfs;
-	nfsquad_t tquad;
 
 	if (nmp->nm_flag & (NFSMNT_NFSV3 | NFSMNT_NFSV4)) {
 		sbp->f_bsize = NFS_FABLKSIZE;
-		tquad.qval = sfp->sf_tbytes;
-		sbp->f_blocks = (long)(tquad.qval / ((u_quad_t)NFS_FABLKSIZE));
-		tquad.qval = sfp->sf_fbytes;
-		sbp->f_bfree = (long)(tquad.qval / ((u_quad_t)NFS_FABLKSIZE));
-		tquad.qval = sfp->sf_abytes;
-		sbp->f_bavail = (long)(tquad.qval / ((u_quad_t)NFS_FABLKSIZE));
-		tquad.qval = sfp->sf_tfiles;
-		sbp->f_files = (tquad.lval[0] & 0x7fffffff);
-		tquad.qval = sfp->sf_ffiles;
-		sbp->f_ffree = (tquad.lval[0] & 0x7fffffff);
+		sbp->f_blocks = sfp->sf_tbytes / NFS_FABLKSIZE;
+		sbp->f_bfree = sfp->sf_fbytes / NFS_FABLKSIZE;
+		/*
+		 * Although sf_abytes is uint64_t and f_bavail is int64_t,
+		 * the value after dividing by NFS_FABLKSIZE is small
+		 * enough that it will fit in 63bits, so it is ok to
+		 * assign it to f_bavail without fear that it will become
+		 * negative.
+		 */
+		sbp->f_bavail = sfp->sf_abytes / NFS_FABLKSIZE;
+		sbp->f_files = sfp->sf_tfiles;
+		/* Since f_ffree is int64_t, clip it to 63bits. */
+		if (sfp->sf_ffiles > INT64_MAX)
+			sbp->f_ffree = INT64_MAX;
+		else
+			sbp->f_ffree = sfp->sf_ffiles;
 	} else if ((nmp->nm_flag & NFSMNT_NFSV4) == 0) {
+		/*
+		 * The type casts to (int32_t) ensure that this code is
+		 * compatible with the old NFS client, in that it will
+		 * propagate bit31 to the high order bits. This may or may
+		 * not be correct for NFSv2, but since it is a legacy
+		 * environment, I'd rather retain backwards compatibility.
+		 */
 		sbp->f_bsize = (int32_t)sfp->sf_bsize;
 		sbp->f_blocks = (int32_t)sfp->sf_blocks;
 		sbp->f_bfree = (int32_t)sfp->sf_bfree;
@@ -931,6 +941,7 @@ nfscl_getmyip(struct nfsmount *nmp, int *isinet6p)
 		sad.sin_family = AF_INET;
 		sad.sin_len = sizeof (struct sockaddr_in);
 		sad.sin_addr.s_addr = sin->sin_addr.s_addr;
+		CURVNET_SET(CRED_TO_VNET(nmp->nm_sockreq.nr_cred));
 		rt = rtalloc1((struct sockaddr *)&sad, 0, 0UL);
 		if (rt != NULL) {
 			if (rt->rt_ifp != NULL &&
@@ -944,6 +955,7 @@ nfscl_getmyip(struct nfsmount *nmp, int *isinet6p)
 			}
 			RTFREE_LOCKED(rt);
 		}
+		CURVNET_RESTORE();
 #ifdef INET6
 	} else if (nmp->nm_nam->sa_family == AF_INET6) {
 		struct sockaddr_in6 sad6, *sin6;
@@ -954,6 +966,7 @@ nfscl_getmyip(struct nfsmount *nmp, int *isinet6p)
 		sad6.sin6_family = AF_INET6;
 		sad6.sin6_len = sizeof (struct sockaddr_in6);
 		sad6.sin6_addr = sin6->sin6_addr;
+		CURVNET_SET(CRED_TO_VNET(nmp->nm_sockreq.nr_cred));
 		rt = rtalloc1((struct sockaddr *)&sad6, 0, 0UL);
 		if (rt != NULL) {
 			if (rt->rt_ifp != NULL &&
@@ -968,6 +981,7 @@ nfscl_getmyip(struct nfsmount *nmp, int *isinet6p)
 			}
 			RTFREE_LOCKED(rt);
 		}
+		CURVNET_RESTORE();
 #endif
 	}
 	return (retp);

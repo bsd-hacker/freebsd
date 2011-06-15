@@ -654,7 +654,7 @@ bufinit(void)
  * To support extreme low-memory systems, make sure hidirtybuffers cannot
  * eat up all available buffer space.  This occurs when our minimum cannot
  * be met.  We try to size hidirtybuffers to 3/4 our buffer space assuming
- * BKVASIZE'd (8K) buffers.
+ * BKVASIZE'd buffers.
  */
 	while ((long)hidirtybuffers * BKVASIZE > 3 * hibufspace / 4) {
 		hidirtybuffers >>= 1;
@@ -2234,7 +2234,7 @@ buf_daemon()
 		while (numdirtybuffers > lodirtybuffers) {
 			if (buf_do_flush(NULL) == 0)
 				break;
-			kern_yield(-1);
+			kern_yield(PRI_UNCHANGED);
 		}
 		lodirtybuffers = lodirtysave;
 
@@ -3999,10 +3999,11 @@ DB_SHOW_COMMAND(buffer, db_show_buffer)
 	db_printf("b_flags = 0x%b\n", (u_int)bp->b_flags, PRINT_BUF_FLAGS);
 	db_printf(
 	    "b_error = %d, b_bufsize = %ld, b_bcount = %ld, b_resid = %ld\n"
-	    "b_bufobj = (%p), b_data = %p, b_blkno = %jd, b_dep = %p\n",
+	    "b_bufobj = (%p), b_data = %p, b_blkno = %jd, b_lblkno = %jd, "
+	    "b_dep = %p\n",
 	    bp->b_error, bp->b_bufsize, bp->b_bcount, bp->b_resid,
 	    bp->b_bufobj, bp->b_data, (intmax_t)bp->b_blkno,
-	    bp->b_dep.lh_first);
+	    (intmax_t)bp->b_lblkno, bp->b_dep.lh_first);
 	if (bp->b_npages) {
 		int i;
 		db_printf("b_npages = %d, pages(OBJ, IDX, PA): ", bp->b_npages);

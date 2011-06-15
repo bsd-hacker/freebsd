@@ -904,7 +904,7 @@ hastd_primary(struct hast_resource *res)
 	init_ggate(res);
 	init_environment(res);
 
-	if (drop_privs(true) != 0) {
+	if (drop_privs(res) != 0) {
 		cleanup(res);
 		exit(EX_CONFIG);
 	}
@@ -1117,6 +1117,7 @@ ggate_recv_thread(void *arg)
 		 */
 		switch (ggio->gctl_cmd) {
 		case BIO_READ:
+			res->hr_stat_read++;
 			pjdlog_debug(2,
 			    "ggate_recv: (%p) Moving request to the send queue.",
 			    hio);
@@ -1145,6 +1146,7 @@ ggate_recv_thread(void *arg)
 			QUEUE_INSERT1(hio, send, ncomp);
 			break;
 		case BIO_WRITE:
+			res->hr_stat_write++;
 			if (res->hr_resuid == 0) {
 				/*
 				 * This is first write, initialize localcnt and
@@ -1183,12 +1185,21 @@ ggate_recv_thread(void *arg)
 			mtx_lock(&res->hr_amp_lock);
 			if (activemap_write_start(res->hr_amp,
 			    ggio->gctl_offset, ggio->gctl_length)) {
+				res->hr_stat_activemap_update++;
 				(void)hast_activemap_flush(res);
 			}
 			mtx_unlock(&res->hr_amp_lock);
 			/* FALLTHROUGH */
 		case BIO_DELETE:
 		case BIO_FLUSH:
+			switch (ggio->gctl_cmd) {
+			case BIO_DELETE:
+				res->hr_stat_delete++;
+				break;
+			case BIO_FLUSH:
+				res->hr_stat_flush++;
+				break;
+			}
 			pjdlog_debug(2,
 			    "ggate_recv: (%p) Moving request to the send queues.",
 			    hio);
@@ -1232,7 +1243,7 @@ local_send_thread(void *arg)
 			    ggio->gctl_offset + res->hr_localoff);
 			if (ret == ggio->gctl_length)
 				hio->hio_errors[ncomp] = 0;
-			else {
+			else if (!ISSYNCREQ(hio)) {
 				/*
 				 * If READ failed, try to read from remote node.
 				 */

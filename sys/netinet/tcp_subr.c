@@ -224,7 +224,6 @@ VNET_DEFINE(uma_zone_t, sack_hole_zone);
 VNET_DEFINE(struct hhook_head *, tcp_hhh[HHOOK_TCP_LAST+1]);
 
 static struct inpcb *tcp_notify(struct inpcb *, int);
-static void	tcp_isn_tick(void *);
 static char *	tcp_log_addr(struct in_conninfo *inc, struct tcphdr *th,
 		    void *ip4hdr, const void *ip6hdr);
 
@@ -255,7 +254,6 @@ static VNET_DEFINE(uma_zone_t, tcpcb_zone);
 #define	V_tcpcb_zone			VNET(tcpcb_zone)
 
 MALLOC_DEFINE(M_TCPLOG, "tcplog", "TCP address and flags print buffers");
-struct callout isn_callout;
 static struct mtx isn_mtx;
 
 #define	ISN_LOCK_INIT()	mtx_init(&isn_mtx, "isn_mtx", NULL, MTX_DEF)
@@ -302,7 +300,8 @@ tcp_init(void)
 		hashsize = 512; /* safe default */
 	}
 	in_pcbinfo_init(&V_tcbinfo, "tcp", &V_tcb, hashsize, hashsize,
-	    "tcp_inpcb", tcp_inpcb_init, NULL, UMA_ZONE_NOFREE);
+	    "tcp_inpcb", tcp_inpcb_init, NULL, UMA_ZONE_NOFREE,
+	    IPI_HASHFIELDS_4TUPLE);
 
 	/*
 	 * These have to be type stable for the benefit of the timers.
@@ -358,8 +357,6 @@ tcp_init(void)
 #undef TCP_MINPROTOHDR
 
 	ISN_LOCK_INIT();
-	callout_init(&isn_callout, CALLOUT_MPSAFE);
-	callout_reset(&isn_callout, hz/100, tcp_isn_tick, NULL);
 	EVENTHANDLER_REGISTER(shutdown_pre_sync, tcp_fini, NULL,
 		SHUTDOWN_PRI_DEFAULT);
 	EVENTHANDLER_REGISTER(maxsockets_change, tcp_zone_change, NULL,
@@ -385,7 +382,6 @@ void
 tcp_fini(void *xtp)
 {
 
-	callout_stop(&isn_callout);
 }
 
 /*
@@ -1189,9 +1185,9 @@ tcp_pcblist(SYSCTL_HANDLER_ARGS)
 	INP_INFO_WLOCK(&V_tcbinfo);
 	for (i = 0; i < n; i++) {
 		inp = inp_list[i];
-		INP_WLOCK(inp);
-		if (!in_pcbrele(inp))
-			INP_WUNLOCK(inp);
+		INP_RLOCK(inp);
+		if (!in_pcbrele_rlocked(inp))
+			INP_RUNLOCK(inp);
 	}
 	INP_INFO_WUNLOCK(&V_tcbinfo);
 
@@ -1233,12 +1229,9 @@ tcp_getcred(SYSCTL_HANDLER_ARGS)
 	error = SYSCTL_IN(req, addrs, sizeof(addrs));
 	if (error)
 		return (error);
-	INP_INFO_RLOCK(&V_tcbinfo);
-	inp = in_pcblookup_hash(&V_tcbinfo, addrs[1].sin_addr,
-	    addrs[1].sin_port, addrs[0].sin_addr, addrs[0].sin_port, 0, NULL);
+	inp = in_pcblookup(&V_tcbinfo, addrs[1].sin_addr, addrs[1].sin_port,
+	    addrs[0].sin_addr, addrs[0].sin_port, INPLOOKUP_RLOCKPCB, NULL);
 	if (inp != NULL) {
-		INP_RLOCK(inp);
-		INP_INFO_RUNLOCK(&V_tcbinfo);
 		if (inp->inp_socket == NULL)
 			error = ENOENT;
 		if (error == 0)
@@ -1246,10 +1239,8 @@ tcp_getcred(SYSCTL_HANDLER_ARGS)
 		if (error == 0)
 			cru2x(inp->inp_cred, &xuc);
 		INP_RUNLOCK(inp);
-	} else {
-		INP_INFO_RUNLOCK(&V_tcbinfo);
+	} else
 		error = ENOENT;
-	}
 	if (error == 0)
 		error = SYSCTL_OUT(req, &xuc, sizeof(struct xucred));
 	return (error);
@@ -1291,23 +1282,20 @@ tcp6_getcred(SYSCTL_HANDLER_ARGS)
 			return (EINVAL);
 	}
 
-	INP_INFO_RLOCK(&V_tcbinfo);
 #ifdef INET
 	if (mapped == 1)
-		inp = in_pcblookup_hash(&V_tcbinfo,
+		inp = in_pcblookup(&V_tcbinfo,
 			*(struct in_addr *)&addrs[1].sin6_addr.s6_addr[12],
 			addrs[1].sin6_port,
 			*(struct in_addr *)&addrs[0].sin6_addr.s6_addr[12],
-			addrs[0].sin6_port,
-			0, NULL);
+			addrs[0].sin6_port, INPLOOKUP_RLOCKPCB, NULL);
 	else
 #endif
-		inp = in6_pcblookup_hash(&V_tcbinfo,
+		inp = in6_pcblookup(&V_tcbinfo,
 			&addrs[1].sin6_addr, addrs[1].sin6_port,
-			&addrs[0].sin6_addr, addrs[0].sin6_port, 0, NULL);
+			&addrs[0].sin6_addr, addrs[0].sin6_port,
+			INPLOOKUP_RLOCKPCB, NULL);
 	if (inp != NULL) {
-		INP_RLOCK(inp);
-		INP_INFO_RUNLOCK(&V_tcbinfo);
 		if (inp->inp_socket == NULL)
 			error = ENOENT;
 		if (error == 0)
@@ -1315,10 +1303,8 @@ tcp6_getcred(SYSCTL_HANDLER_ARGS)
 		if (error == 0)
 			cru2x(inp->inp_cred, &xuc);
 		INP_RUNLOCK(inp);
-	} else {
-		INP_INFO_RUNLOCK(&V_tcbinfo);
+	} else
 		error = ENOENT;
-	}
 	if (error == 0)
 		error = SYSCTL_OUT(req, &xuc, sizeof(struct xucred));
 	return (error);
@@ -1379,10 +1365,9 @@ tcp_ctlinput(int cmd, struct sockaddr *sa, void *vip)
 		th = (struct tcphdr *)((caddr_t)ip
 				       + (ip->ip_hl << 2));
 		INP_INFO_WLOCK(&V_tcbinfo);
-		inp = in_pcblookup_hash(&V_tcbinfo, faddr, th->th_dport,
-		    ip->ip_src, th->th_sport, 0, NULL);
+		inp = in_pcblookup(&V_tcbinfo, faddr, th->th_dport,
+		    ip->ip_src, th->th_sport, INPLOOKUP_WLOCKPCB, NULL);
 		if (inp != NULL)  {
-			INP_WLOCK(inp);
 			if (!(inp->inp_flags & INP_TIMEWAIT) &&
 			    !(inp->inp_flags & INP_DROPPED) &&
 			    !(inp->inp_socket == NULL)) {
@@ -1571,11 +1556,13 @@ tcp6_ctlinput(int cmd, struct sockaddr *sa, void *d)
 #define ISN_RANDOM_INCREMENT (4096 - 1)
 
 static VNET_DEFINE(u_char, isn_secret[32]);
+static VNET_DEFINE(int, isn_last);
 static VNET_DEFINE(int, isn_last_reseed);
 static VNET_DEFINE(u_int32_t, isn_offset);
 static VNET_DEFINE(u_int32_t, isn_offset_old);
 
 #define	V_isn_secret			VNET(isn_secret)
+#define	V_isn_last			VNET(isn_last)
 #define	V_isn_last_reseed		VNET(isn_last_reseed)
 #define	V_isn_offset			VNET(isn_offset)
 #define	V_isn_offset_old		VNET(isn_offset_old)
@@ -1586,6 +1573,7 @@ tcp_new_isn(struct tcpcb *tp)
 	MD5_CTX isn_ctx;
 	u_int32_t md5_buffer[4];
 	tcp_seq new_isn;
+	u_int32_t projected_offset;
 
 	INP_WLOCK_ASSERT(tp->t_inpcb);
 
@@ -1621,38 +1609,17 @@ tcp_new_isn(struct tcpcb *tp)
 	new_isn = (tcp_seq) md5_buffer[0];
 	V_isn_offset += ISN_STATIC_INCREMENT +
 		(arc4random() & ISN_RANDOM_INCREMENT);
+	if (ticks != V_isn_last) {
+		projected_offset = V_isn_offset_old +
+		    ISN_BYTES_PER_SECOND / hz * (ticks - V_isn_last);
+		if (SEQ_GT(projected_offset, V_isn_offset))
+			V_isn_offset = projected_offset;
+		V_isn_offset_old = V_isn_offset;
+		V_isn_last = ticks;
+	}
 	new_isn += V_isn_offset;
 	ISN_UNLOCK();
 	return (new_isn);
-}
-
-/*
- * Increment the offset to the next ISN_BYTES_PER_SECOND / 100 boundary
- * to keep time flowing at a relatively constant rate.  If the random
- * increments have already pushed us past the projected offset, do nothing.
- */
-static void
-tcp_isn_tick(void *xtp)
-{
-	VNET_ITERATOR_DECL(vnet_iter);
-	u_int32_t projected_offset;
-
-	VNET_LIST_RLOCK_NOSLEEP();
-	ISN_LOCK();
-	VNET_FOREACH(vnet_iter) {
-		CURVNET_SET(vnet_iter); /* XXX appease INVARIANTS */
-		projected_offset =
-		    V_isn_offset_old + ISN_BYTES_PER_SECOND / 100;
-
-		if (SEQ_GT(projected_offset, V_isn_offset))
-			V_isn_offset = projected_offset;
-
-		V_isn_offset_old = V_isn_offset;
-		CURVNET_RESTORE();
-	}
-	ISN_UNLOCK();
-	VNET_LIST_RUNLOCK_NOSLEEP();
-	callout_reset(&isn_callout, hz/100, tcp_isn_tick, NULL);
 }
 
 /*
@@ -2177,20 +2144,19 @@ sysctl_drop(SYSCTL_HANDLER_ARGS)
 	switch (addrs[0].ss_family) {
 #ifdef INET6
 	case AF_INET6:
-		inp = in6_pcblookup_hash(&V_tcbinfo, &fin6->sin6_addr,
-		    fin6->sin6_port, &lin6->sin6_addr, lin6->sin6_port, 0,
-		    NULL);
+		inp = in6_pcblookup(&V_tcbinfo, &fin6->sin6_addr,
+		    fin6->sin6_port, &lin6->sin6_addr, lin6->sin6_port,
+		    INPLOOKUP_WLOCKPCB, NULL);
 		break;
 #endif
 #ifdef INET
 	case AF_INET:
-		inp = in_pcblookup_hash(&V_tcbinfo, fin->sin_addr,
-		    fin->sin_port, lin->sin_addr, lin->sin_port, 0, NULL);
+		inp = in_pcblookup(&V_tcbinfo, fin->sin_addr, fin->sin_port,
+		    lin->sin_addr, lin->sin_port, INPLOOKUP_WLOCKPCB, NULL);
 		break;
 #endif
 	}
 	if (inp != NULL) {
-		INP_WLOCK(inp);
 		if (inp->inp_flags & INP_TIMEWAIT) {
 			/*
 			 * XXXRW: There currently exists a state where an

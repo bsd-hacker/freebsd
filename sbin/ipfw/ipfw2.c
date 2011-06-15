@@ -1121,8 +1121,11 @@ show_ipfw(struct ip_fw *rule, int pcwidth, int bcwidth)
 			break;
 
 		case O_NAT:
-			PRINT_UINT_ARG("nat ", cmd->arg1);
- 			break;
+			if (cmd->arg1 != 0)
+				PRINT_UINT_ARG("nat ", cmd->arg1);
+			else
+				printf("nat global");
+			break;
 
 		case O_SETFIB:
 			PRINT_UINT_ARG("setfib ", cmd->arg1);
@@ -2738,9 +2741,14 @@ ipfw_add(char *av[])
 		break;
 
 	case TOK_NAT:
- 		action->opcode = O_NAT;
- 		action->len = F_INSN_SIZE(ipfw_insn_nat);
-		goto chkarg;
+		action->opcode = O_NAT;
+		action->len = F_INSN_SIZE(ipfw_insn_nat);
+		if (_substrcmp(*av, "global") == 0) {
+			action->arg1 = 0;
+			av++;
+			break;
+		} else
+			goto chkarg;
 
 	case TOK_QUEUE:
 		action->opcode = O_QUEUE;
@@ -2835,14 +2843,19 @@ chkarg:
 		size_t intsize = sizeof(int);
 
 		action->opcode = O_SETFIB;
- 		NEED1("missing fib number");
- 		action->arg1 = strtoul(*av, NULL, 10);
-		if (sysctlbyname("net.fibs", &numfibs, &intsize, NULL, 0) == -1)
-			errx(EX_DATAERR, "fibs not suported.\n");
-		if (action->arg1 >= numfibs)  /* Temporary */
-			errx(EX_DATAERR, "fib too large.\n");
- 		av++;
- 		break;
+		NEED1("missing fib number");
+		if (_substrcmp(*av, "tablearg") == 0) {
+			action->arg1 = IP_FW_TABLEARG;
+		} else {
+		        action->arg1 = strtoul(*av, NULL, 10);
+			if (sysctlbyname("net.fibs", &numfibs, &intsize,
+			    NULL, 0) == -1)
+				errx(EX_DATAERR, "fibs not suported.\n");
+			if (action->arg1 >= numfibs)  /* Temporary */
+				errx(EX_DATAERR, "fib too large.\n");
+		}
+		av++;
+		break;
 	    }
 
 	case TOK_REASS:

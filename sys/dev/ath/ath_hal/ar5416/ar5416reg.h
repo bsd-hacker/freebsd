@@ -78,27 +78,6 @@
 #define	AR_RTC_DERIVED_CLK_PERIOD_S	1
 #endif	/* AH_SUPPORT_AR9130 */
 
-/* AR9280: rf long shift registers */
-#define	AR_AN_RF2G1_CH0         0x7810
-#define	AR_AN_RF5G1_CH0         0x7818
-#define	AR_AN_RF2G1_CH1         0x7834
-#define	AR_AN_RF5G1_CH1         0x783C
-#define	AR_AN_TOP2		0x7894
-#define	AR_AN_SYNTH9            0x7868
-#define	AR9285_AN_RF2G1		0x7820
-#define	AR9285_AN_RF2G2		0x7824
-#define	AR9285_AN_RF2G3		0x7828
-#define	AR9285_AN_RF2G4		0x782C
-#define	AR9285_AN_RF2G6		0x7834
-#define	AR9285_AN_RF2G7		0x7838
-#define	AR9285_AN_RF2G8		0x783C
-#define	AR9285_AN_RF2G9		0x7840
-#define	AR9285_AN_RXTXBB1	0x7854
-#define	AR9285_AN_TOP2		0x7868
-#define	AR9285_AN_TOP3		0x786c
-#define	AR9285_AN_TOP4		0x7870
-#define	AR9285_AN_TOP4_DEFAULT	0x10142c00
-
 #define	AR_RESET_TSF		0x8020
 #define	AR_RXFIFO_CFG		0x8114
 #define	AR_PHY_ERR_1		0x812c
@@ -199,6 +178,12 @@
 #define	AR_RXCFG_DMASZ_512B	7
 
 /* MAC Led registers */
+#define	AR_CFG_SCLK_RATE_IND	0x00000003 /* sleep clock indication */
+#define	AR_CFG_SCLK_RATE_IND_S	0
+#define	AR_CFG_SCLK_32MHZ	0x00000000 /* Sleep clock rate */
+#define	AR_CFG_SCLK_4MHZ	0x00000001 /* Sleep clock rate */
+#define	AR_CFG_SCLK_1MHZ	0x00000002 /* Sleep clock rate */
+#define	AR_CFG_SCLK_32KHZ	0x00000003 /* Sleep clock rate */
 #define	AR_MAC_LED_BLINK_SLOW	0x00000008	/* LED slowest blink rate mode */
 #define	AR_MAC_LED_BLINK_THRESH_SEL 0x00000070	/* LED blink threshold select */
 #define	AR_MAC_LED_MODE		0x00000380	/* LED mode select */
@@ -234,6 +219,10 @@
 #define	AR_AHB_PAGE_SIZE_1K	0x00000000	/* set page-size as 1k */
 #define	AR_AHB_PAGE_SIZE_2K	0x00000008	/* set page-size as 2k */
 #define	AR_AHB_PAGE_SIZE_4K	0x00000010	/* set page-size as 4k */
+/* Kiwi */
+#define	AR_AHB_CUSTOM_BURST_EN	0x000000C0      /* set Custom Burst Mode */
+#define	AR_AHB_CUSTOM_BURST_EN_S		6	/* set Custom Burst Mode */
+#define	AR_AHB_CUSTOM_BURST_ASYNC_FIFO_VAL	3	/* set both bits in Async FIFO mode */
 
 /* MAC PCU Registers */
 #define	AR_STA_ID1_PRESERVE_SEQNUM	0x20000000 /* Don't replace seq num */
@@ -368,6 +357,13 @@
 #define	AR_RTC_PLL_CLKSEL_S	8
 
 /* AR9280: rf long shift registers */
+#define	AR_AN_RF2G1_CH0         0x7810
+#define	AR_AN_RF5G1_CH0         0x7818
+#define	AR_AN_RF2G1_CH1         0x7834
+#define	AR_AN_RF5G1_CH1         0x783C
+#define	AR_AN_TOP2		0x7894
+#define	AR_AN_SYNTH9            0x7868
+
 #define	AR_AN_RF2G1_CH0_OB      0x03800000
 #define	AR_AN_RF2G1_CH0_OB_S    23
 #define	AR_AN_RF2G1_CH0_DB      0x1C000000
@@ -402,84 +398,8 @@
 #define	AR_AN_SYNTH9_REFDIVA    0xf8000000
 #define	AR_AN_SYNTH9_REFDIVA_S  27
 
-/* AR9285 Analog registers */
-#define	AR9285_AN_RF2G1_ENPACAL      0x00000800
-#define	AR9285_AN_RF2G1_ENPACAL_S    11
-#define	AR9285_AN_RF2G1_PDPADRV1     0x02000000
-#define	AR9285_AN_RF2G1_PDPADRV1_S   25
-#define	AR9285_AN_RF2G1_PDPADRV2     0x01000000
-#define	AR9285_AN_RF2G1_PDPADRV2_S   24
-#define	AR9285_AN_RF2G1_PDPAOUT      0x00800000
-#define	AR9285_AN_RF2G1_PDPAOUT_S    23
-
-#define	AR9285_AN_RF2G2_OFFCAL       0x00001000
-#define	AR9285_AN_RF2G2_OFFCAL_S     12
-
-#define	AR9285_AN_RF2G3_PDVCCOMP	0x02000000
-#define	AR9285_AN_RF2G3_PDVCCOMP_S	25
-#define	AR9285_AN_RF2G3_OB_0	0x00E00000
-#define	AR9285_AN_RF2G3_OB_0_S	21
-#define	AR9285_AN_RF2G3_OB_1	0x001C0000
-#define	AR9285_AN_RF2G3_OB_1_S	18
-#define	AR9285_AN_RF2G3_OB_2	0x00038000
-#define	AR9285_AN_RF2G3_OB_2_S	15
-#define	AR9285_AN_RF2G3_OB_3	0x00007000
-#define	AR9285_AN_RF2G3_OB_3_S	12
-#define	AR9285_AN_RF2G3_OB_4	0x00000E00
-#define	AR9285_AN_RF2G3_OB_4_S	9
-
-#define	AR9285_AN_RF2G3_DB1_0	0x000001C0
-#define	AR9285_AN_RF2G3_DB1_0_S	6
-#define	AR9285_AN_RF2G3_DB1_1	0x00000038
-#define	AR9285_AN_RF2G3_DB1_1_S	3
-#define	AR9285_AN_RF2G3_DB1_2	0x00000007
-#define	AR9285_AN_RF2G3_DB1_2_S	0
-
-#define	AR9285_AN_RF2G4_DB1_3	0xE0000000
-#define	AR9285_AN_RF2G4_DB1_3_S	29
-#define	AR9285_AN_RF2G4_DB1_4	0x1C000000
-#define	AR9285_AN_RF2G4_DB1_4_S	26
-
-#define	AR9285_AN_RF2G4_DB2_0	0x03800000
-#define	AR9285_AN_RF2G4_DB2_0_S	23
-#define	AR9285_AN_RF2G4_DB2_1	0x00700000
-#define	AR9285_AN_RF2G4_DB2_1_S	20
-#define	AR9285_AN_RF2G4_DB2_2	0x000E0000
-#define	AR9285_AN_RF2G4_DB2_2_S	17
-#define	AR9285_AN_RF2G4_DB2_3	0x0001C000
-#define	AR9285_AN_RF2G4_DB2_3_S	14
-#define	AR9285_AN_RF2G4_DB2_4	0x00003800
-#define	AR9285_AN_RF2G4_DB2_4_S	11
-
-#define	AR9285_AN_RF2G6_CCOMP	0x00007800
-#define	AR9285_AN_RF2G6_CCOMP_S	11
-#define	AR9285_AN_RF2G6_OFFS	0x03f00000
-#define	AR9285_AN_RF2G6_OFFS_S	20
-
 #define	AR9271_AN_RF2G6_OFFS	0x07f00000
 #define	AR9271_AN_RF2G6_OFFS_S	20
-
-#define	AR9285_AN_RF2G7_PWDDB	0x00000002
-#define	AR9285_AN_RF2G7_PWDDB_S	1
-#define	AR9285_AN_RF2G7_PADRVGN2TAB0	0xE0000000
-#define	AR9285_AN_RF2G7_PADRVGN2TAB0_S	29
-
-#define	AR9285_AN_RF2G8_PADRVGN2TAB0	0x0001C000
-#define	AR9285_AN_RF2G8_PADRVGN2TAB0_S	14
-
-#define	AR9285_AN_RXTXBB1_PDRXTXBB1    0x00000020
-#define	AR9285_AN_RXTXBB1_PDRXTXBB1_S  5
-#define	AR9285_AN_RXTXBB1_PDV2I        0x00000080
-#define	AR9285_AN_RXTXBB1_PDV2I_S      7
-#define	AR9285_AN_RXTXBB1_PDDACIF      0x00000100
-#define	AR9285_AN_RXTXBB1_PDDACIF_S    8
-#define	AR9285_AN_RXTXBB1_SPARE9       0x00000001
-#define	AR9285_AN_RXTXBB1_SPARE9_S     0
-
-#define	AR9285_AN_TOP3_XPABIAS_LVL      0x0000000C
-#define	AR9285_AN_TOP3_XPABIAS_LVL_S    2
-#define	AR9285_AN_TOP3_PWDDAC		0x00800000
-#define	AR9285_AN_TOP3_PWDDAC_S		23
 
 /* Sleep control */
 #define	AR5416_SLEEP1_CAB_TIMEOUT	0xFFE00000	/* Cab timeout (TU) */
@@ -529,8 +449,28 @@
 
 #define	AR_PCU_MISC_MODE2_MGMT_CRYPTO_ENABLE		0x00000002
 #define	AR_PCU_MISC_MODE2_NO_CRYPTO_FOR_NON_DATA_PKT	0x00000004
+/*
+ * This bit enables the Multicast search based on both MAC Address and Key ID. 
+ * If bit is 0, then Multicast search is based on MAC address only.
+ * For Merlin and above only.
+ */
+#define	AR_PCU_MISC_MODE2_ADHOC_MCAST_KEYID_ENABLE	0x00000040
+#define	AR_PCU_MISC_MODE2_ENABLE_AGGWEP	0x00020000	/* Kiwi or later? */
 #define	AR_PCU_MISC_MODE2_HWWAR1	0x00100000
 #define	AR_PCU_MISC_MODE2_HWWAR2	0x02000000
+
+/* For Kiwi */
+#define	AR_MAC_PCU_ASYNC_FIFO_REG3		0x8358
+#define	AR_MAC_PCU_ASYNC_FIFO_REG3_DATAPATH_SEL	0x00000400
+#define	AR_MAC_PCU_ASYNC_FIFO_REG3_SOFT_RESET	0x80000000
+
+/* TSF2. For Kiwi only */
+#define	AR_TSF2_L32			0x8390
+#define	AR_TSF2_U32			0x8394
+
+/* MAC Direct Connect Control. For Kiwi only */
+#define	AR_DIRECT_CONNECT		0x83A0
+#define	AR_DC_AP_STA_EN			0x00000001
 
 /* GPIO Interrupt */
 #define	AR_INTR_GPIO		0x3FF00000	/* gpio interrupted */
@@ -566,6 +506,17 @@
 #define	AR_PCU_TXBUF_CTRL_USABLE_SIZE	0x700
 #define	AR_9285_PCU_TXBUF_CTRL_USABLE_SIZE 0x380
 
+/* IFS, SIFS, slot, etc for Async FIFO mode (Kiwi) */
+#define	AR_D_GBL_IFS_SIFS_ASYNC_FIFO_DUR	0x000003AB
+#define	AR_TIME_OUT_ACK_CTS_ASYNC_FIFO_DUR	0x16001D56
+#define	AR_USEC_ASYNC_FIFO_DUR			0x12e00074
+#define	AR_D_GBL_IFS_SLOT_ASYNC_FIFO_DUR	0x00000420
+#define	AR_D_GBL_IFS_EIFS_ASYNC_FIFO_DUR	0x0000A5EB
+
+/* Used by Kiwi Async FIFO */
+#define	AR_MAC_PCU_LOGIC_ANALYZER		0x8264
+#define	AR_MAC_PCU_LOGIC_ANALYZER_DISBUG20768	0x20000000
+
 /* Eeprom defines */
 #define	AR_EEPROM_STATUS_DATA_VAL           0x0000ffff
 #define	AR_EEPROM_STATUS_DATA_VAL_S         0
@@ -574,6 +525,17 @@
 #define	AR_EEPROM_STATUS_DATA_PROT_ACCESS   0x00040000
 #define	AR_EEPROM_STATUS_DATA_ABSENT_ACCESS 0x00080000
 
+/*
+ * AR5212 defines the MAC revision mask as 0xF, but both ath9k and
+ * the Atheros HAL define it as 0x7. 
+ *
+ * What this means however is AR5416 silicon revisions have
+ * changed. The below macros are for what is contained in the
+ * lower four bits; if the lower three bits are taken into account
+ * the revisions become 1.0 => 0x0, 2.0 => 0x1, 2.2 => 0x2.
+ */
+
+/* These are the legacy revisions, with a four bit AR_SREV_REVISION mask */
 #define	AR_SREV_REVISION_OWL_10		0x08
 #define	AR_SREV_REVISION_OWL_20		0x09
 #define	AR_SREV_REVISION_OWL_22		0x0a
@@ -584,9 +546,13 @@
 #define	AR_RAD2122_SREV_MAJOR		0xf0	/* Fowl: 2+5G/2x2 */
 
 /* Test macro for owl 1.0 */
-#define	IS_5416V1(_ah)	((_ah)->ah_macRev == AR_SREV_REVISION_OWL_10)  
-#define	IS_5416V2(_ah)	((_ah)->ah_macRev >= AR_SREV_REVISION_OWL_20)
-#define	IS_5416V2_2(_ah)	((_ah)->ah_macRev == AR_SREV_REVISION_OWL_22) 
+#define	IS_5416V1(_ah)	(AR_SREV_OWL((_ah)) && AH_PRIVATE((_ah))->ah_macRev == AR_SREV_REVISION_OWL_10)
+#define	IS_5416V2(_ah)	(AR_SREV_OWL((_ah)) && AH_PRIVATE((_ah))->ah_macRev >= AR_SREV_REVISION_OWL_20)
+#define	IS_5416V2_2(_ah)	(AR_SREV_OWL((_ah)) && AH_PRIVATE((_ah))->ah_macRev == AR_SREV_REVISION_OWL_22)
+
+/* Misc; compatibility with Atheros HAL */
+#define	AR_SREV_5416_V20_OR_LATER(_ah)	(AR_SREV_HOWL((_ah)) || AR_SREV_OWL_20_OR_LATER(_ah))
+#define	AR_SREV_5416_V22_OR_LATER(_ah)	(AR_SREV_HOWL((_ah)) || AR_SREV_OWL_22_OR_LATER(_ah)) 
 
 /* Expanded Mac Silicon Rev (16 bits starting with Sowl) */
 #define	AR_XSREV_ID		0xFFFFFFFF	/* Chip ID */
@@ -603,9 +569,20 @@
 
 #define	AR_XSREV_VERSION_OWL_PCI	0x0D
 #define	AR_XSREV_VERSION_OWL_PCIE	0x0C
+
+
+/*
+ * These are from ath9k/Atheros and assume an AR_SREV version mask
+ * of 0x07, rather than 0x0F which is being used in the FreeBSD HAL.
+ * Thus, don't use these values as they're incorrect here; use
+ * AR_SREV_REVISION_OWL_{10,20,22}.
+ */
+#if 0
 #define	AR_XSREV_REVISION_OWL_10	0	/* Owl 1.0 */
 #define	AR_XSREV_REVISION_OWL_20	1	/* Owl 2.0/2.1 */
 #define	AR_XSREV_REVISION_OWL_22	2	/* Owl 2.2 */
+#endif
+
 #define	AR_XSREV_VERSION_HOWL		0x14	/* Howl (AR9130) */
 #define	AR_XSREV_VERSION_SOWL		0x40	/* Sowl (AR9160) */
 #define	AR_XSREV_REVISION_SOWL_10	0	/* Sowl 1.0 */
@@ -618,63 +595,118 @@
 #define	AR_XSREV_REVISION_KITE_10	0	/* Kite 1.0 */
 #define	AR_XSREV_REVISION_KITE_11	1	/* Kite 1.1 */
 #define	AR_XSREV_REVISION_KITE_12	2	/* Kite 1.2 */
+#define	AR_XSREV_VERSION_KIWI		0x180	/* Kiwi (AR9287) */
+#define	AR_XSREV_REVISION_KIWI_10	0
+#define	AR_XSREV_REVISION_KIWI_11	1
+#define	AR_XSREV_REVISION_KIWI_12	2
+#define	AR_XSREV_REVISION_KIWI_13	3
 
+/* Owl (AR5416) */
 #define	AR_SREV_OWL(_ah) \
 	((AH_PRIVATE((_ah))->ah_macVersion == AR_XSREV_VERSION_OWL_PCI) || \
 	 (AH_PRIVATE((_ah))->ah_macVersion == AR_XSREV_VERSION_OWL_PCIE))
 
 #define	AR_SREV_OWL_20_OR_LATER(_ah) \
-	((AR_SREV_OWL(_ah) && AH_PRIVATE((_ah))->ah_macRev >= AR_XSREV_REVISION_OWL_20) || \
-	AH_PRIVATE((_ah))->ah_macVersion >= AR_XSREV_VERSION_HOWL)
+	((AR_SREV_OWL(_ah) &&						\
+	 AH_PRIVATE((_ah))->ah_macRev >= AR_SREV_REVISION_OWL_20) ||	\
+	 AH_PRIVATE((_ah))->ah_macVersion >= AR_XSREV_VERSION_HOWL)
+
 #define	AR_SREV_OWL_22_OR_LATER(_ah) \
-	((AR_SREV_OWL(_ah) && AH_PRIVATE((_ah))->ah_macRev >= AR_XSREV_REVISION_OWL_22) || \
-	AH_PRIVATE((_ah))->ah_macVersion >= AR_XSREV_VERSION_HOWL)
+	((AR_SREV_OWL(_ah) &&						\
+	 AH_PRIVATE((_ah))->ah_macRev >= AR_SREV_REVISION_OWL_22) ||	\
+	 AH_PRIVATE((_ah))->ah_macVersion >= AR_XSREV_VERSION_HOWL)
+
+/* Howl (AR9130) */
 
 #define AR_SREV_HOWL(_ah) \
 	(AH_PRIVATE((_ah))->ah_macVersion == AR_XSREV_VERSION_HOWL)
+
 #define	AR_SREV_9100(_ah)	AR_SREV_HOWL(_ah)
+
+/* Sowl (AR9160) */
 
 #define	AR_SREV_SOWL(_ah) \
 	(AH_PRIVATE((_ah))->ah_macVersion == AR_XSREV_VERSION_SOWL)
+
 #define	AR_SREV_SOWL_10_OR_LATER(_ah) \
 	(AH_PRIVATE((_ah))->ah_macVersion >= AR_XSREV_VERSION_SOWL)
+
 #define	AR_SREV_SOWL_11(_ah) \
 	(AR_SREV_SOWL(_ah) && \
 	 AH_PRIVATE((_ah))->ah_macRev == AR_XSREV_REVISION_SOWL_11)
 
+/* Merlin (AR9280) */
+
 #define	AR_SREV_MERLIN(_ah) \
 	(AH_PRIVATE((_ah))->ah_macVersion == AR_XSREV_VERSION_MERLIN)
+
 #define	AR_SREV_MERLIN_10_OR_LATER(_ah)	\
 	(AH_PRIVATE((_ah))->ah_macVersion >= AR_XSREV_VERSION_MERLIN)
+
 #define	AR_SREV_MERLIN_20(_ah) \
 	(AR_SREV_MERLIN(_ah) && \
-	 AH_PRIVATE((_ah))->ah_macRev == AR_XSREV_REVISION_MERLIN_20)
+	 AH_PRIVATE((_ah))->ah_macRev >= AR_XSREV_REVISION_MERLIN_20)
+
 #define	AR_SREV_MERLIN_20_OR_LATER(_ah) \
-	(AR_SREV_MERLIN_20(_ah) || \
-	 AH_PRIVATE((_ah))->ah_macVersion >= AR_XSREV_VERSION_MERLIN)
+	((AH_PRIVATE((_ah))->ah_macVersion > AR_XSREV_VERSION_MERLIN) ||	\
+	 (AR_SREV_MERLIN((_ah)) &&						\
+	 AH_PRIVATE((_ah))->ah_macRev >= AR_XSREV_REVISION_MERLIN_20))
+
+/* Kite (AR9285) */
 
 #define	AR_SREV_KITE(_ah) \
 	(AH_PRIVATE((_ah))->ah_macVersion == AR_XSREV_VERSION_KITE)
+
 #define	AR_SREV_KITE_10_OR_LATER(_ah) \
 	(AH_PRIVATE((_ah))->ah_macVersion >= AR_XSREV_VERSION_KITE)
+
 #define	AR_SREV_KITE_11(_ah) \
 	(AR_SREV_KITE(ah) && \
 	 AH_PRIVATE((_ah))->ah_macRev == AR_XSREV_REVISION_KITE_11)
+
 #define	AR_SREV_KITE_11_OR_LATER(_ah) \
-	(AR_SREV_KITE_11(_ah) || \
-	 AH_PRIVATE((_ah))->ah_macRev >= AR_XSREV_REVISION_KITE_11)
+	((AH_PRIVATE((_ah))->ah_macVersion > AR_XSREV_VERSION_KITE) ||	\
+	 (AR_SREV_KITE((_ah)) &&					\
+	 AH_PRIVATE((_ah))->ah_macRev >= AR_XSREV_REVISION_KITE_11))
+
 #define	AR_SREV_KITE_12(_ah) \
 	(AR_SREV_KITE(ah) && \
 	 AH_PRIVATE((_ah))->ah_macRev == AR_XSREV_REVISION_KITE_12)
+
 #define	AR_SREV_KITE_12_OR_LATER(_ah) \
-	(AR_SREV_KITE_12(_ah) || \
-	 AH_PRIVATE((_ah))->ah_macRev >= AR_XSREV_REVISION_KITE_12)
+	((AH_PRIVATE((_ah))->ah_macVersion > AR_XSREV_VERSION_KITE) ||	\
+	 (AR_SREV_KITE((_ah)) &&					\
+	 AH_PRIVATE((_ah))->ah_macRev >= AR_XSREV_REVISION_KITE_12))
+
 #define	AR_SREV_9285E_20(_ah) \
 	(AR_SREV_KITE_12_OR_LATER(_ah) && \
 	((OS_REG_READ(_ah, AR_AN_SYNTH9) & 0x7) == 0x1))
 
+#define AR_SREV_KIWI(_ah) \
+	(AH_PRIVATE((_ah))->ah_macVersion == AR_XSREV_VERSION_KIWI)
+
+#define AR_SREV_KIWI_11_OR_LATER(_ah) \
+	(AR_SREV_KIWI(_ah) && \
+	 AH_PRIVATE((_ah))->ah_macRev >= AR_XSREV_REVISION_KIWI_11)
+
+#define AR_SREV_KIWI_11(_ah) \
+	(AR_SREV_KIWI(_ah) && \
+	 AH_PRIVATE((_ah))->ah_macRev == AR_XSREV_REVISION_KIWI_11)
+
+#define AR_SREV_KIWI_12(_ah) \
+	(AR_SREV_KIWI(_ah) && \
+	 AH_PRIVATE((_ah))->ah_macRev == AR_XSREV_REVISION_KIWI_12)
+
+#define	AR_SREV_KIWI_12_OR_LATER(_ah) \
+	(AR_SREV_KIWI(_ah) && \
+	 AH_PRIVATE((_ah))->ah_macRev >= AR_XSREV_REVISION_KIWI_12)
+
+#define	AR_SREV_KIWI_13_OR_LATER(_ah) \
+	(AR_SREV_KIWI(_ah) && \
+	 AH_PRIVATE((_ah))->ah_macRev >= AR_XSREV_REVISION_KIWI_13)
+
+
 /* Not yet implemented chips */
 #define	AR_SREV_9271(_ah)	0
-#define	AR_SREV_9287_11_OR_LATER(_ah)	0
 
 #endif /* _DEV_ATH_AR5416REG_H */

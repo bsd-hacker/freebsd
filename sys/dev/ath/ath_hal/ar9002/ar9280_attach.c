@@ -93,11 +93,15 @@ ar9280AniSetup(struct ath_hal *ah)
                 .period                 = 100,
         };
 	/* NB: disable ANI noise immmunity for reliable RIFS rx */
-	AH5416(ah)->ah_ani_function &= ~ HAL_ANI_NOISE_IMMUNITY_LEVEL;
+	AH5416(ah)->ah_ani_function &= ~(1 << HAL_ANI_NOISE_IMMUNITY_LEVEL);
 
         /* NB: ANI is not enabled yet */
         ar5416AniAttach(ah, &aniparams, &aniparams, AH_TRUE);
 }
+
+/* XXX shouldn't be here! */
+#define	EEP_MINOR(_ah) \
+	(AH_PRIVATE(_ah)->ah_eeversion & AR5416_EEP_VER_MINOR_MASK)
 
 /*
  * Attach for an AR9280 part.
@@ -270,7 +274,8 @@ ar9280Attach(uint16_t devid, HAL_SOFTC sc,
 		ath_hal_printf(ah, "[ath]: default pwr offset: %d dBm != EEPROM pwr offset: %d dBm; curves will be adjusted.\n",
 		    AR5416_PWR_TABLE_OFFSET_DB, (int) pwr_table_offset);
 
-	if (AR_SREV_MERLIN_20_OR_LATER(ah)) {
+	/* XXX check for >= minor ver 17 */
+	if (AR_SREV_MERLIN_20(ah)) {
 		/* setup rxgain table */
 		switch (ath_hal_eepromGet(ah, AR_EEP_RXGAIN_TYPE, AH_NULL)) {
 		case AR5416_EEP_RXGAIN_13dB_BACKOFF:
@@ -290,7 +295,9 @@ ar9280Attach(uint16_t devid, HAL_SOFTC sc,
 			goto bad;		/* XXX ? try to continue */
 		}
 	}
-	if (AR_SREV_MERLIN_20_OR_LATER(ah)) {
+
+	/* XXX check for >= minor ver 19 */
+	if (AR_SREV_MERLIN_20(ah)) {
 		/* setp txgain table */
 		switch (ath_hal_eepromGet(ah, AR_EEP_TXGAIN_TYPE, AH_NULL)) {
 		case AR5416_EEP_TXGAIN_HIGH_POWER:
@@ -325,6 +332,8 @@ ar9280Attach(uint16_t devid, HAL_SOFTC sc,
 	/* Read Reg Domain */
 	AH_PRIVATE(ah)->ah_currentRD =
 	    ath_hal_eepromGet(ah, AR_EEP_REGDMN_0, AH_NULL);
+	AH_PRIVATE(ah)->ah_currentRDext =
+	    ath_hal_eepromGet(ah, AR_EEP_REGDMN_1, AH_NULL);
 
 	/*
 	 * ah_miscMode is populated by ar5416FillCapabilityInfo()
@@ -421,7 +430,7 @@ ar9280WriteIni(struct ath_hal *ah, const struct ieee80211_channel *chan)
 		OS_REG_WRITE(ah, reg, val);
 
 		/* Analog shift register delay seems needed for Merlin - PR kern/154220 */
-		if (reg >= 0x7800 && reg < 0x78a0)
+		if (reg >= 0x7800 && reg < 0x7900)
 			OS_DELAY(100);
 
 		DMA_YIELD(regWrites);
@@ -774,6 +783,7 @@ ar9280FillCapabilityInfo(struct ath_hal *ah)
 	pCap->halRifsTxSupport = AH_TRUE;
 	pCap->halRtsAggrLimit = 64*1024;	/* 802.11n max */
 	pCap->halExtChanDfsSupport = AH_TRUE;
+	pCap->halUseCombinedRadarRssi = AH_TRUE;
 #if 0
 	/* XXX bluetooth */
 	pCap->halBtCoexSupport = AH_TRUE;
@@ -782,10 +792,20 @@ ar9280FillCapabilityInfo(struct ath_hal *ah)
 	pCap->hal4kbSplitTransSupport = AH_FALSE;
 	/* Disable this so Block-ACK works correctly */
 	pCap->halHasRxSelfLinkedTail = AH_FALSE;
-	if (AR_SREV_MERLIN_20_OR_LATER(ah))
-		pCap->halHasPsPollSupport = AH_TRUE;
+	pCap->halMbssidAggrSupport = AH_TRUE;
+	pCap->hal4AddrAggrSupport = AH_TRUE;
+
+	if (AR_SREV_MERLIN_20(ah)) {
+		pCap->halPSPollBroken = AH_FALSE;
+		/*
+		 * This just enables the support; it doesn't
+		 * state 5ghz fast clock will always be used.
+		 */
+		pCap->halSupportsFastClock5GHz = AH_TRUE;
+	}
 	pCap->halRxStbcSupport = 1;
 	pCap->halTxStbcSupport = 1;
+	pCap->halEnhancedDfsSupport = AH_TRUE;
 
 	return AH_TRUE;
 }

@@ -628,6 +628,7 @@ vendor OQO		0x1557	OQO
 vendor UMEDIA		0x157e	U-MEDIA Communications
 vendor FIBERLINE	0x1582	Fiberline
 vendor SPARKLAN		0x15a9	SparkLAN
+vendor SOUNDGRAPH 	0x15c2	Soundgraph, Inc.
 vendor AMIT2		0x15c5	AMIT
 vendor SOHOWARE		0x15e8	SOHOware
 vendor UMAX		0x1606	UMAX Data Systems
@@ -681,6 +682,7 @@ vendor HAUPPAUGE2	0x2040	Hauppauge Computer Works
 vendor TLAYTECH		0x20b9	Tlay Tech
 vendor ENCORE		0x203d	Encore
 vendor PARA		0x20b8	PARA Industrial
+vendor SIMTEC		0x20df	Simtec Electronics
 vendor ERICSSON		0x2282	Ericsson
 vendor MOTOROLA2	0x22b8	Motorola
 vendor TRIPPLITE	0x2478	Tripp-Lite
@@ -1565,6 +1567,7 @@ product FALCOM TWIST		0x0001	USB GSM/GPRS Modem
 
 /* FEIYA products */
 product FEIYA 5IN1		0x1132	5-in-1 Card Reader
+product FEIYA AC110		0x6300	AC-110 Card Reader
 
 /* Fiberline */
 product FIBERLINE WL430U	0x6003	WL-430U
@@ -2270,7 +2273,9 @@ product MOBILITY EASIDOCK	0x0304	EasiDock Ethernet
 /* MosChip products */
 product MOSCHIP MCS7703		0x7703	MCS7703 Serial Port Adapter
 product MOSCHIP MCS7730		0x7730  MCS7730 Ethernet
+product MOSCHIP MCS7820		0x7820	MCS7820 Serial Port Adapter
 product MOSCHIP MCS7830		0x7830	MCS7830 Ethernet
+product MOSCHIP MCS7840		0x7840	MCS7840 Serial Port Adapter
 
 /* Motorola products */
 product MOTOROLA MC141555	0x1555	MC141555 hub controller
@@ -2511,6 +2516,9 @@ product PANASONIC TYTP50P6S	0x3900	TY-TP50P6-S 50in Touch Panel
 
 /* PARA Industrial products */
 product PARA RT3070		0x8888	RT3070
+
+/* Simtec Electronics products */
+product SIMTEC ENTROPYKEY	0x0001	Entropy Key
 
 /* Pegatron products */
 product PEGATRON RT2870		0x0002	RT2870
@@ -3135,6 +3143,10 @@ product SOURCENEXT KEIKAI8_CHG	0x012e	KeikaiDenwa 8 with charger
 product SPARKLAN RT2573		0x0004	RT2573
 product SPARKLAN RT2870_1	0x0006	RT2870
 product SPARKLAN RT3070		0x0010	RT3070
+
+/* Soundgraph products */
+product SOUNDGRAPH IMON_VFD	0x0044	Antec Veris Elite VFD Panel, Knob, and Remote
+product SOUNDGRAPH SSTONE_LC16	0xffdc	Silverstone LC16 VFD Panel, Knob, and Remote
 
 /* Speed Dragon Multimedia products */
 product SPEEDDRAGON MS3303H	0x110b	MS3303H Serial

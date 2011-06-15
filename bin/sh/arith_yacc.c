@@ -97,6 +97,8 @@ static arith_t arith_lookupvarint(char *varname)
 	arith_t result;
 
 	str = lookupvar(varname);
+	if (uflag && str == NULL)
+		yyerror("variable not set");
 	if (str == NULL || *str == '\0')
 		str = "0";
 	errno = 0;
@@ -342,7 +344,7 @@ arith_t arith(const char *s)
  *  The exp(1) builtin.
  */
 int
-expcmd(int argc, char **argv)
+letcmd(int argc, char **argv)
 {
 	const char *p;
 	char *concat;

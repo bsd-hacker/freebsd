@@ -63,7 +63,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/signalvar.h>
 
 #include <vm/vm.h>
-#include <vm/vm_object.h>
 #include <vm/vm_extern.h>
 #include <vm/vm_object.h>
 
@@ -199,27 +198,27 @@ static int nfs_renameit(struct vnode *sdvp, struct vnode *svp,
  */
 #define	DIRHDSIZ	(sizeof (struct dirent) - (MAXNAMLEN + 1))
 
-SYSCTL_DECL(_vfs_newnfs);
+SYSCTL_DECL(_vfs_nfs);
 
 static int	nfsaccess_cache_timeout = NFS_MAXATTRTIMO;
-SYSCTL_INT(_vfs_newnfs, OID_AUTO, access_cache_timeout, CTLFLAG_RW,
+SYSCTL_INT(_vfs_nfs, OID_AUTO, access_cache_timeout, CTLFLAG_RW,
 	   &nfsaccess_cache_timeout, 0, "NFS ACCESS cache timeout");
 
 static int	nfs_prime_access_cache = 0;
-SYSCTL_INT(_vfs_newnfs, OID_AUTO, prime_access_cache, CTLFLAG_RW,
+SYSCTL_INT(_vfs_nfs, OID_AUTO, prime_access_cache, CTLFLAG_RW,
 	   &nfs_prime_access_cache, 0,
 	   "Prime NFS ACCESS cache when fetching attributes");
 
 static int	newnfs_commit_on_close = 0;
-SYSCTL_INT(_vfs_newnfs, OID_AUTO, commit_on_close, CTLFLAG_RW,
+SYSCTL_INT(_vfs_nfs, OID_AUTO, commit_on_close, CTLFLAG_RW,
     &newnfs_commit_on_close, 0, "write+commit on close, else only write");
 
 static int	nfs_clean_pages_on_close = 1;
-SYSCTL_INT(_vfs_newnfs, OID_AUTO, clean_pages_on_close, CTLFLAG_RW,
+SYSCTL_INT(_vfs_nfs, OID_AUTO, clean_pages_on_close, CTLFLAG_RW,
 	   &nfs_clean_pages_on_close, 0, "NFS clean dirty pages on close");
 
 int newnfs_directio_enable = 0;
-SYSCTL_INT(_vfs_newnfs, OID_AUTO, nfs_directio_enable, CTLFLAG_RW,
+SYSCTL_INT(_vfs_nfs, OID_AUTO, nfs_directio_enable, CTLFLAG_RW,
 	   &newnfs_directio_enable, 0, "Enable NFS directio");
 
 /*
@@ -234,14 +233,14 @@ SYSCTL_INT(_vfs_newnfs, OID_AUTO, nfs_directio_enable, CTLFLAG_RW,
  * meaningful.
  */
 int newnfs_directio_allow_mmap = 1;
-SYSCTL_INT(_vfs_newnfs, OID_AUTO, nfs_directio_allow_mmap, CTLFLAG_RW,
+SYSCTL_INT(_vfs_nfs, OID_AUTO, nfs_directio_allow_mmap, CTLFLAG_RW,
 	   &newnfs_directio_allow_mmap, 0, "Enable mmaped IO on file with O_DIRECT opens");
 
 #if 0
-SYSCTL_INT(_vfs_newnfs, OID_AUTO, access_cache_hits, CTLFLAG_RD,
+SYSCTL_INT(_vfs_nfs, OID_AUTO, access_cache_hits, CTLFLAG_RD,
 	   &newnfsstats.accesscache_hits, 0, "NFS ACCESS cache hit count");
 
-SYSCTL_INT(_vfs_newnfs, OID_AUTO, access_cache_misses, CTLFLAG_RD,
+SYSCTL_INT(_vfs_nfs, OID_AUTO, access_cache_misses, CTLFLAG_RD,
 	   &newnfsstats.accesscache_misses, 0, "NFS ACCESS cache miss count");
 #endif
 
@@ -1026,7 +1025,8 @@ nfs_lookup(struct vop_lookup_args *ap)
 		 */
 		newvp = *vpp;
 		newnp = VTONFS(newvp);
-		if ((flags & (ISLASTCN | ISOPEN)) == (ISLASTCN | ISOPEN) &&
+		if (!(nmp->nm_flag & NFSMNT_NOCTO) &&
+		    (flags & (ISLASTCN | ISOPEN)) == (ISLASTCN | ISOPEN) &&
 		    !(newnp->n_flag & NMODIFIED)) {
 			mtx_lock(&newnp->n_mtx);
 			newnp->n_attrstamp = 0;
@@ -1332,19 +1332,9 @@ ncl_writerpc(struct vnode *vp, struct uio *uiop, struct ucred *cred,
 {
 	struct nfsvattr nfsva;
 	int error = 0, attrflag, ret;
-	u_char verf[NFSX_VERF];
-	struct nfsmount *nmp = VFSTONFS(vp->v_mount);
 
-	*must_commit = 0;
-	error = nfsrpc_write(vp, uiop, iomode, verf, cred,
+	error = nfsrpc_write(vp, uiop, iomode, must_commit, cred,
 	    uiop->uio_td, &nfsva, &attrflag, NULL, called_from_strategy);
-	NFSLOCKMNT(nmp);
-	if (!error && NFSHASWRITEVERF(nmp) &&
-	    NFSBCMP(verf, nmp->nm_verf, NFSX_VERF)) {
-		*must_commit = 1;
-		NFSBCOPY(verf, nmp->nm_verf, NFSX_VERF);
-	}
-	NFSUNLOCKMNT(nmp);
 	if (attrflag) {
 		if (VTONFS(vp)->n_flag & ND_NFSV4)
 			ret = nfscl_loadattrcache(&vp, &nfsva, NULL, NULL, 1,
@@ -2480,10 +2470,12 @@ ncl_commit(struct vnode *vp, u_quad_t offset, int cnt, struct ucred *cred,
 	error = nfsrpc_commit(vp, offset, cnt, cred, td, verf, &nfsva,
 	    &attrflag, NULL);
 	if (!error) {
+		mtx_lock(&nmp->nm_mtx);
 		if (NFSBCMP((caddr_t)nmp->nm_verf, verf, NFSX_VERF)) {
 			NFSBCOPY(verf, (caddr_t)nmp->nm_verf, NFSX_VERF);
 			error = NFSERR_STALEWRITEVERF;
 		}
+		mtx_unlock(&nmp->nm_mtx);
 		if (!error && attrflag)
 			(void) nfscl_loadattrcache(&vp, &nfsva, NULL, NULL,
 			    0, 1);
@@ -2892,8 +2884,11 @@ nfs_advlock(struct vop_advlock_args *ap)
 	int ret, error = EOPNOTSUPP;
 	u_quad_t size;
 	
-	if (NFS_ISV4(vp) && (ap->a_flags & F_POSIX)) {
-		cred = p->p_ucred;
+	if (NFS_ISV4(vp) && (ap->a_flags & (F_POSIX | F_FLOCK)) != 0) {
+		if ((ap->a_flags & F_POSIX) != 0)
+			cred = p->p_ucred;
+		else
+			cred = td->td_ucred;
 		vn_lock(vp, LK_EXCLUSIVE | LK_RETRY);
 		if (vp->v_iflag & VI_DOOMED) {
 			VOP_UNLOCK(vp, 0);
@@ -2906,7 +2901,8 @@ nfs_advlock(struct vop_advlock_args *ap)
 		 * RFC3530 Sec. 9.3.2.
 		 */
 		if (ap->a_op == F_UNLCK &&
-		    nfscl_checkwritelocked(vp, ap->a_fl, cred, td))
+		    nfscl_checkwritelocked(vp, ap->a_fl, cred, td, ap->a_id,
+		    ap->a_flags))
 			(void) ncl_flush(vp, MNT_WAIT, cred, td, 1, 0);
 
 		/*
@@ -2915,7 +2911,7 @@ nfs_advlock(struct vop_advlock_args *ap)
 		 */
 		do {
 			ret = nfsrpc_advlock(vp, np->n_size, ap->a_op,
-			    ap->a_fl, 0, cred, td);
+			    ap->a_fl, 0, cred, td, ap->a_id, ap->a_flags);
 			if (ret == NFSERR_DENIED && (ap->a_flags & F_WAIT) &&
 			    ap->a_op == F_SETLK) {
 				VOP_UNLOCK(vp, 0);
@@ -3301,7 +3297,13 @@ nfs_pathconf(struct vop_pathconf_args *ap)
 	struct thread *td = curthread;
 	int attrflag, error;
 
-	if (NFS_ISV34(vp)) {
+	if (NFS_ISV4(vp) || (NFS_ISV3(vp) && (ap->a_name == _PC_LINK_MAX ||
+	    ap->a_name == _PC_NAME_MAX || ap->a_name == _PC_CHOWN_RESTRICTED ||
+	    ap->a_name == _PC_NO_TRUNC))) {
+		/*
+		 * Since only the above 4 a_names are returned by the NFSv3
+		 * Pathconf RPC, there is no point in doing it for others.
+		 */
 		error = nfsrpc_pathconf(vp, &pc, td->td_ucred, td, &nfsva,
 		    &attrflag, NULL);
 		if (attrflag != 0)
@@ -3310,7 +3312,10 @@ nfs_pathconf(struct vop_pathconf_args *ap)
 		if (error != 0)
 			return (error);
 	} else {
-		/* For NFSv2, just fake them. */
+		/*
+		 * For NFSv2 (or NFSv3 when not one of the above 4 a_names),
+		 * just fake them.
+		 */
 		pc.pc_linkmax = LINK_MAX;
 		pc.pc_namemax = NFS_MAXNAMLEN;
 		pc.pc_notrunc = 1;

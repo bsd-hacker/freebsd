@@ -1634,7 +1634,7 @@ sctp_timeout_handler(void *t)
 		} {
 			SCTP_STAT_INCR(sctps_timosack);
 			stcb->asoc.timosack++;
-			sctp_send_sack(stcb);
+			sctp_send_sack(stcb, SCTP_SO_NOT_LOCKED);
 		}
 #ifdef SCTP_AUDITING_ENABLED
 		sctp_auditing(4, inp, stcb, net);
@@ -3656,7 +3656,7 @@ sctp_report_all_outbound(struct sctp_tcb *stcb, int holds_lock, int so_locked
 				chk->data = NULL;
 			}
 		}
-		sctp_free_a_chunk(stcb, chk);
+		sctp_free_a_chunk(stcb, chk, so_locked);
 		/* sa_ignore FREED_MEMORY */
 	}
 	/* pending send queue SHOULD be empty */
@@ -3672,7 +3672,7 @@ sctp_report_all_outbound(struct sctp_tcb *stcb, int holds_lock, int so_locked
 				chk->data = NULL;
 			}
 		}
-		sctp_free_a_chunk(stcb, chk);
+		sctp_free_a_chunk(stcb, chk, so_locked);
 		/* sa_ignore FREED_MEMORY */
 	}
 	for (i = 0; i < asoc->streamoutcnt; i++) {
@@ -3697,7 +3697,7 @@ sctp_report_all_outbound(struct sctp_tcb *stcb, int holds_lock, int so_locked
 				sp->net = NULL;
 			}
 			/* Free the chunk */
-			sctp_free_a_strmoq(stcb, sp);
+			sctp_free_a_strmoq(stcb, sp, so_locked);
 			/* sa_ignore FREED_MEMORY */
 		}
 	}
@@ -3850,8 +3850,6 @@ sctp_abort_an_association(struct sctp_inpcb *inp, struct sctp_tcb *stcb,
 #endif
 )
 {
-	uint32_t vtag;
-
 #if defined (__APPLE__) || defined(SCTP_SO_LOCK_TESTING)
 	struct socket *so;
 
@@ -3872,7 +3870,6 @@ sctp_abort_an_association(struct sctp_inpcb *inp, struct sctp_tcb *stcb,
 	} else {
 		stcb->asoc.state |= SCTP_STATE_WAS_ABORTED;
 	}
-	vtag = stcb->asoc.peer_vtag;
 	/* notify the ulp */
 	if ((inp->sctp_flags & SCTP_PCB_FLAGS_SOCKET_GONE) == 0)
 		sctp_abort_notification(stcb, error, so_locked);
@@ -5036,7 +5033,7 @@ sctp_user_rcvd(struct sctp_tcb *stcb, uint32_t * freed_so_far, int hold_rlock,
 			goto out;
 		}
 		SCTP_STAT_INCR(sctps_wu_sacks_sent);
-		sctp_send_sack(stcb);
+		sctp_send_sack(stcb, SCTP_SO_LOCKED);
 
 		sctp_chunk_output(stcb->sctp_ep, stcb,
 		    SCTP_OUTPUT_FROM_USR_RCVD, SCTP_SO_LOCKED);
@@ -6185,71 +6182,6 @@ sctp_soreceive(struct socket *so,
 	}
 	return (error);
 }
-
-
-int 
-sctp_l_soreceive(struct socket *so,
-    struct sockaddr **name,
-    struct uio *uio,
-    char **controlp,
-    int *controllen,
-    int *flag)
-{
-	int error, fromlen;
-	uint8_t sockbuf[256];
-	struct sockaddr *from;
-	struct sctp_extrcvinfo sinfo;
-	int filling_sinfo = 1;
-	struct sctp_inpcb *inp;
-
-	inp = (struct sctp_inpcb *)so->so_pcb;
-	/* pickup the assoc we are reading from */
-	if (inp == NULL) {
-		SCTP_LTRACE_ERR_RET(inp, NULL, NULL, SCTP_FROM_SCTPUTIL, EINVAL);
-		return (EINVAL);
-	}
-	if ((sctp_is_feature_off(inp,
-	    SCTP_PCB_FLAGS_RECVDATAIOEVNT)) ||
-	    (controlp == NULL)) {
-		/* user does not want the sndrcv ctl */
-		filling_sinfo = 0;
-	}
-	if (name) {
-		from = (struct sockaddr *)sockbuf;
-		fromlen = sizeof(sockbuf);
-		from->sa_len = 0;
-	} else {
-		from = NULL;
-		fromlen = 0;
-	}
-
-	error = sctp_sorecvmsg(so, uio,
-	    (struct mbuf **)NULL,
-	    from, fromlen, flag,
-	    (struct sctp_sndrcvinfo *)&sinfo,
-	    filling_sinfo);
-	if ((controlp) && (filling_sinfo)) {
-		/*
-		 * copy back the sinfo in a CMSG format note that the caller
-		 * has reponsibility for freeing the memory.
-		 */
-		if (filling_sinfo)
-			*controlp = sctp_build_ctl_cchunk(inp,
-			    controllen,
-			    (struct sctp_sndrcvinfo *)&sinfo);
-	}
-	if (name) {
-		/* copy back the address info */
-		if (from && from->sa_len) {
-			*name = sodupsockaddr(from, M_WAIT);
-		} else {
-			*name = NULL;
-		}
-	}
-	return (error);
-}
-
-
 
 
 

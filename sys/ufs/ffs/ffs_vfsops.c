@@ -269,6 +269,8 @@ ffs_mount(struct mount *mp)
 				vfs_write_resume(mp);
 				return (error);
 			}
+			if (mp->mnt_flag & MNT_SOFTDEP)
+				softdep_unmount(mp);
 			DROP_GIANT();
 			g_topology_lock();
 			g_access(ump->um_cp, 0, -1, 0);
@@ -1640,9 +1642,10 @@ ffs_vgetf(mp, ino, flags, vpp, ffs_flags)
  *   those rights via. exflagsp and credanonp
  */
 static int
-ffs_fhtovp(mp, fhp, vpp)
+ffs_fhtovp(mp, fhp, flags, vpp)
 	struct mount *mp;
 	struct fid *fhp;
+	int flags;
 	struct vnode **vpp;
 {
 	struct ufid *ufhp;
@@ -1653,7 +1656,7 @@ ffs_fhtovp(mp, fhp, vpp)
 	if (ufhp->ufid_ino < ROOTINO ||
 	    ufhp->ufid_ino >= fs->fs_ncg * fs->fs_ipg)
 		return (ESTALE);
-	return (ufs_fhtovp(mp, ufhp, vpp));
+	return (ufs_fhtovp(mp, ufhp, flags, vpp));
 }
 
 /*
@@ -2033,12 +2036,10 @@ ffs_geom_strategy(struct bufobj *bo, struct buf *bp)
 static void
 db_print_ffs(struct ufsmount *ump)
 {
-	db_printf("mp %p %s devvp %p fs %p su_wl %d su_wl_in %d su_deps %d "
-		  "su_req %d\n",
+	db_printf("mp %p %s devvp %p fs %p su_wl %d su_deps %d su_req %d\n",
 	    ump->um_mountp, ump->um_mountp->mnt_stat.f_mntonname,
 	    ump->um_devvp, ump->um_fs, ump->softdep_on_worklist,
-	    ump->softdep_on_worklist_inprogress, ump->softdep_deps,
-	    ump->softdep_req);
+	    ump->softdep_deps, ump->softdep_req);
 }
 
 DB_SHOW_COMMAND(ffs, db_show_ffs)

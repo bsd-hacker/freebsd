@@ -181,6 +181,18 @@ ata_intel_probe(device_t dev)
      { ATA_PBG_R1,       0, INTEL_AHCI, 0, ATA_SA300, "Patsburg" },
      { ATA_PBG_R2,       0, INTEL_AHCI, 0, ATA_SA300, "Patsburg" },
      { ATA_PBG_S2,       0, INTEL_6CH2, 0, ATA_SA300, "Patsburg" },
+     { ATA_PPT_S1,       0, INTEL_6CH,  0, ATA_SA300, "Panther Point" },
+     { ATA_PPT_S2,       0, INTEL_6CH,  0, ATA_SA300, "Panther Point" },
+     { ATA_PPT_AH1,      0, INTEL_AHCI, 0, ATA_SA300, "Panther Point" },
+     { ATA_PPT_AH2,      0, INTEL_AHCI, 0, ATA_SA300, "Panther Point" },
+     { ATA_PPT_R1,       0, INTEL_AHCI, 0, ATA_SA300, "Panther Point" },
+     { ATA_PPT_R2,       0, INTEL_AHCI, 0, ATA_SA300, "Panther Point" },
+     { ATA_PPT_R3,       0, INTEL_AHCI, 0, ATA_SA300, "Panther Point" },
+     { ATA_PPT_R4,       0, INTEL_AHCI, 0, ATA_SA300, "Panther Point" },
+     { ATA_PPT_S3,       0, INTEL_6CH2, 0, ATA_SA300, "Panther Point" },
+     { ATA_PPT_S4,       0, INTEL_6CH2, 0, ATA_SA300, "Panther Point" },
+     { ATA_PPT_R5,       0, INTEL_AHCI, 0, ATA_SA300, "Panther Point" },
+     { ATA_PPT_R6,       0, INTEL_AHCI, 0, ATA_SA300, "Panther Point" },
      { ATA_I31244,       0,          0, 2, ATA_SA150, "31244" },
      { ATA_ISCH,         0,          0, 1, ATA_UDMA5, "SCH" },
      { ATA_DH89XXCC,     0, INTEL_AHCI, 0, ATA_SA300, "DH89xxCC" },
@@ -276,7 +288,9 @@ ata_intel_chipinit(device_t dev)
 			ATA_OUTL(ctlr->r_res2, 0x0C,
 			    ATA_INL(ctlr->r_res2, 0x0C) | 0xf);
 		}
-	} else {
+	/* Skip BAR(5) on ICH8M Apples, system locks up on access. */
+	} else if (ctlr->chip->chipid != ATA_I82801HBM_S1 ||
+	    pci_get_subvendor(dev) != 0x106b) {
 		ctlr->r_type2 = SYS_RES_IOPORT;
 		ctlr->r_rid2 = PCIR_BAR(5);
 		ctlr->r_res2 = bus_alloc_resource_any(dev, ctlr->r_type2,
