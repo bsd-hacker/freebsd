@@ -49,7 +49,6 @@
 #include "dispatch.h"
 #include "pathnames.h"
 #include "buffer.h"
-#include "canohost.h"
 
 #ifdef GSSAPI
 #include "ssh-gss.h"

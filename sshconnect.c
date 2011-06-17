@@ -183,29 +183,25 @@ ssh_kill_proxy_command(void)
 
 /*
  * Set TCP receive buffer if requested.
- * Note: tuning needs to happen after the socket is
- * created but before the connection happens
- * so winscale is negotiated properly -cjr
+ * Note: tuning needs to happen after the socket is created but before the
+ * connection happens so winscale is negotiated properly.
  */
 static void
 ssh_set_socket_recvbuf(int sock)
 {
 	void *buf = (void *)&options.tcp_rcv_buf;
-	int sz = sizeof(options.tcp_rcv_buf);
-	int socksize;
-	int socksizelen = sizeof(int);
+	int socksize, sz = sizeof(options.tcp_rcv_buf);
+	socklen_t len = sizeof(int);
 
-	debug("setsockopt Attempting to set SO_RCVBUF to %d",
+	debug("setsockopt attempting to set SO_RCVBUF to %d",
 	    options.tcp_rcv_buf);
 	if (setsockopt(sock, SOL_SOCKET, SO_RCVBUF, buf, sz) >= 0) {
-		getsockopt(sock, SOL_SOCKET, SO_RCVBUF,
-		    &socksize, &socksizelen);
-		debug("setsockopt SO_RCVBUF: %.100s %d",
-		    strerror(errno), socksize);
-	} else {
+		getsockopt(sock, SOL_SOCKET, SO_RCVBUF, &socksize, &len);
+		debug("setsockopt SO_RCVBUF: %.100s %d", strerror(errno),
+		    socksize);
+	} else
 		error("Couldn't set socket receive buffer to %d: %.100s",
 		    options.tcp_rcv_buf, strerror(errno));
-	}
 }
 
 /*

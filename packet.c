@@ -195,6 +195,7 @@ struct session_state {
 };
 
 static struct session_state *active_state, *backup_state;
+static int rekey_requested = 0;
 
 static struct session_state *
 alloc_session_state(void)
@@ -1012,6 +1013,7 @@ packet_send2(void)
 void
 packet_send(void)
 {
+
 	if (compat20)
 		packet_send2();
 	else
@@ -1861,7 +1863,6 @@ packet_send_ignore(int nbytes)
 	}
 }
 
-int rekey_requested = 0;
 void
 packet_request_rekeying(void)
 {
@@ -1971,7 +1972,7 @@ packet_restore_state(void)
 }
 
 int
-packet_authentication_state(void)
+packet_get_authentication_state(void)
 {
-	return(active_state->after_authentication);
+	return (active_state->after_authentication);
 }

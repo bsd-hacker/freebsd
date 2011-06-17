@@ -171,15 +171,14 @@ compat_datafellows(const char *version)
 			debug("match: %s pat %s", version, check[i].pat);
 			datafellows = check[i].bugs;
 			/*
-			 * Check to see if the remote side is OpenSSH and
-			 * not HPN.
-			 * XXX: Using the version to do this is bizzare.
+			 * Check to see if the remote side is OpenSSH and not
+			 * HPN.  It is utterly strange to check it from the
+			 * version string and expose the option that way.
 			 */
-			if(strstr(version,"OpenSSH") != NULL) {
-				if (strstr(version,"hpn") == NULL) {
-					datafellows |= SSH_BUG_LARGEWINDOW;
-					debug("Remote is NON-HPN aware");
-				}
+			if (strstr(version,"OpenSSH") != NULL &&
+			    strstr(version,"hpn") == NULL) {
+				datafellows |= SSH_BUG_LARGEWINDOW;
+				debug("Remote is not HPN-aware");
 			}
 			return;
 		}

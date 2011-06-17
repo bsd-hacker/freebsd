@@ -90,8 +90,7 @@ kex_names_valid(const char *names)
 	return 1;
 }
 
-/* put algorithm proposal into buffer */
-/* used in sshconnect.c as well as kex.c */
+/* Put algorithm proposal into buffer.  Also used in sshconnect2.c. */
 void
 kex_prop2buf(Buffer *b, char *proposal[PROPOSAL_MAX])
 {
@@ -408,12 +407,7 @@ kex_choose_conf(Kex *kex)
 	int nenc, nmac, ncomp;
 	u_int mode, ctos, need;
 	int first_kex_follows, type;
-
 	int auth_flag;
-
-	auth_flag = packet_authentication_state();
-
-	debug ("AUTH STATE IS %d", auth_flag);
 
 	my   = kex_buf2prop(&kex->my, NULL);
 	peer = kex_buf2prop(&kex->peer, &first_kex_follows);
@@ -437,6 +431,8 @@ kex_choose_conf(Kex *kex)
 	}
 
 	/* Algorithm Negotiation */
+	auth_flag = packet_get_authentication_state();
+	debug ("AUTH STATE is %d", auth_flag);
 	for (mode = 0; mode < MODE_MAX; mode++) {
 		newkeys = xcalloc(1, sizeof(*newkeys));
 		kex->newkeys[mode] = newkeys;
@@ -448,13 +444,14 @@ kex_choose_conf(Kex *kex)
 		choose_enc (&newkeys->enc,  cprop[nenc],  sprop[nenc]);
 		choose_mac (&newkeys->mac,  cprop[nmac],  sprop[nmac]);
 		choose_comp(&newkeys->comp, cprop[ncomp], sprop[ncomp]);
+		debug("REQUESTED ENC.NAME is '%s'", newkeys->enc.name);
 		if (strcmp(newkeys->enc.name, "none") == 0) {
 			debug("Requesting NONE. Authflag is %d", auth_flag);			
 			if (auth_flag == 1)
 				debug("None requested post authentication.");
 			else
-				fatal("Pre-authentication none cipher "
-				    "requests are not allowed.");
+				fatal("Pre-authentication none cipher requests "
+				    "are not allowed.");
 		} 
 		debug("kex: %s %s %s %s",
 		    ctos ? "client->server" : "server->client",

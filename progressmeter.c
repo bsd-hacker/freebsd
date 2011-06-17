@@ -175,7 +175,7 @@ refresh_progress_meter(void)
 		percent = ((float)cur_pos / end_pos) * 100;
 	else
 		percent = 100;
-	snprintf(buf + strlen(buf), win_size - strlen(buf-8),
+	snprintf(buf + strlen(buf), win_size - strlen(buf),
 	    " %3d%% ", percent);
 
 	/* amount transferred */

@@ -151,13 +151,6 @@ typedef struct {
 	char   *adm_forced_command;
 
 	int	use_pam;		/* Enable auth via PAM */
-	int	none_enabled;		/* enable NONE cipher switch */
-	int	tcp_rcv_buf_poll;	/*
-					 * Poll tcp rcv window in
-					 * autotuning kernels
-					 */
-	int	hpn_disabled;		/* Disable hpn functionality */
-	int	hpn_buffer_size;	/* Set the hpn buffer size */
 
 	int	permit_tun;
 
@@ -167,6 +160,13 @@ typedef struct {
 	char   *revoked_keys_file;
 	char   *trusted_user_ca_keys;
 	char   *authorized_principals_file;
+
+	int	hpn_disabled;		/* Disable HPN functionality. */
+	int	hpn_buffer_size;	/* Set HPN buffer size - default 2MB.*/
+	int	tcp_rcv_buf_poll;	/* Poll TCP rcv window in autotuning
+					 * kernels. */
+
+	int	none_enabled;		/* Enable NONE cipher switch. */
 }       ServerOptions;
 
 void	 initialize_server_options(ServerOptions *);

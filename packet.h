@@ -23,9 +23,6 @@
 #include <openssl/ec.h>
 #endif
 
-void
-packet_request_rekeying(void);
-
 void     packet_set_connection(int, int);
 void     packet_set_timeout(int, int);
 void     packet_set_nonblocking(void);
@@ -41,7 +38,7 @@ void     packet_set_interactive(int, int, int);
 int      packet_is_interactive(void);
 void     packet_set_server(void);
 void     packet_set_authenticated(void);
-int      packet_authentication_state(void);
+int      packet_get_authentication_state(void);
 
 void     packet_start(u_char);
 void     packet_put_char(int ch);
@@ -55,7 +52,7 @@ void     packet_put_ecpoint(const EC_GROUP *, const EC_POINT *);
 void     packet_put_string(const void *buf, u_int len);
 void     packet_put_cstring(const char *str);
 void     packet_put_raw(const void *buf, u_int len);
-void      packet_send(void);
+void     packet_send(void);
 
 int      packet_read(void);
 void     packet_read_expect(int type);
@@ -121,6 +118,7 @@ do { \
 } while (0)
 
 int	 packet_need_rekeying(void);
+void	 packet_request_rekeying(void);
 void	 packet_set_rekey_limit(u_int32_t);
 
 void	 packet_backup_state(void);

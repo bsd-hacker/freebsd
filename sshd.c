@@ -1001,7 +1001,7 @@ server_listen(void)
 	struct addrinfo *ai;
 	char ntop[NI_MAXHOST], strport[NI_MAXSERV];
 	int socksize;
-	int socksizelen = sizeof(int);
+	socklen_t len;
 
 	for (ai = options.listen_addrs; ai; ai = ai->ai_next) {
 		if (ai->ai_family != AF_INET && ai->ai_family != AF_INET6)
@@ -1042,8 +1042,8 @@ server_listen(void)
 
 		debug("Bind to port %s on %s.", strport, ntop);
 
-		getsockopt(listen_sock, SOL_SOCKET, SO_RCVBUF, 
-		    &socksize, &socksizelen);
+		len = sizeof(socksize);
+		getsockopt(listen_sock, SOL_SOCKET, SO_RCVBUF, &socksize, &len);
 		debug("Server TCP RWIN socket size: %d", socksize);
 		debug("HPN Buffer Size: %d", options.hpn_buffer_size);
 
@@ -1929,7 +1929,7 @@ main(int ac, char **av)
 	/* Log the connection. */
 	verbose("Connection from %.500s port %d", remote_ip, remote_port);
 
-	/* set the HPN options for the child */
+	/* Set HPN options for the child. */
 	channel_set_hpn(options.hpn_disabled, options.hpn_buffer_size);
 
 	/*

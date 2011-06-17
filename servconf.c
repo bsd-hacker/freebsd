@@ -137,21 +137,17 @@ initialize_server_options(ServerOptions *options)
 	options->revoked_keys_file = NULL;
 	options->trusted_user_ca_keys = NULL;
 	options->authorized_principals_file = NULL;
-	options->none_enabled = -1;
-	options->tcp_rcv_buf_poll = -1;
-	options->hpn_disabled = -1;
-	options->hpn_buffer_size = -1;
 	options->ip_qos_interactive = -1;
 	options->ip_qos_bulk = -1;
+	options->hpn_disabled = -1;
+	options->hpn_buffer_size = -1;
+	options->tcp_rcv_buf_poll = -1;
+	options->none_enabled = -1;
 }
 
 void
 fill_default_server_options(ServerOptions *options)
 {
-	int sock;
-	int socksize;
-	int socksizelen = sizeof(int);
-
 	/* Portable-specific options */
 	if (options->use_pam == -1)
 		options->use_pam = 0;
@@ -289,38 +285,32 @@ fill_default_server_options(ServerOptions *options)
 		options->ip_qos_interactive = IPTOS_LOWDELAY;
 	if (options->ip_qos_bulk == -1)
 		options->ip_qos_bulk = IPTOS_THROUGHPUT;
-
 	if (options->hpn_disabled == -1) 
 		options->hpn_disabled = 0;
-
 	if (options->hpn_buffer_size == -1) {
-		/* 
-		 * Option not explicitly set.  Now we have to figure out
-		 * what value to use.
+		/*
+		 * HPN buffer size option not explicitly set.  Try to figure
+		 * out what value to use or resort to default.
 		 */
-		if (options->hpn_disabled == 1) {
-			options->hpn_buffer_size = CHAN_SES_WINDOW_DEFAULT;
-		} else {
-			/* Get the current RCV size and set it to that. */
-			sock = socket(AF_INET, SOCK_STREAM, 0);
-			getsockopt(sock, SOL_SOCKET, SO_RCVBUF, 
-			    &socksize, &socksizelen);
-			close(sock);
-			options->hpn_buffer_size = socksize;
+		options->hpn_buffer_size = CHAN_SES_WINDOW_DEFAULT;
+		if (!options->hpn_disabled) {
+			sock_get_rcvbuf(&options->hpn_buffer_size, 0);
 			debug ("HPN Buffer Size: %d", options->hpn_buffer_size);
-		} 
+		}
 	} else {
 		/*
-		 * In the case that the user sets both values in
-		 * a contradictory manner hpn_disabled overrrides
-		 * hpn_buffer_size.
+		 * In the case that the user sets both values in a
+		 * contradictory manner hpn_disabled overrrides hpn_buffer_size.
 		 */
 		if (options->hpn_disabled <= 0) {
+			u_int maxlen;
+
+			maxlen = buffer_get_max_len();
 			if (options->hpn_buffer_size == 0)
 				options->hpn_buffer_size = 1;
-			/* limit the maximum buffer to 64MB */
-			if (options->hpn_buffer_size > BUFFER_MAX_LEN/1024)
-				options->hpn_buffer_size = BUFFER_MAX_LEN;
+			/* Limit the maximum buffer to BUFFER_MAX_LEN. */
+			if (options->hpn_buffer_size > maxlen / 1024)
+				options->hpn_buffer_size = maxlen;
 			else
 				options->hpn_buffer_size *= 1024;
 		} else
@@ -372,9 +362,9 @@ typedef enum {
 	sUsePrivilegeSeparation, sAllowAgentForwarding,
 	sZeroKnowledgePasswordAuthentication, sHostCertificate,
 	sRevokedKeys, sTrustedUserCAKeys, sAuthorizedPrincipalsFile,
-	sNoneEnabled,
-	sTcpRcvBufPoll, sHPNDisabled, sHPNBufferSize,
 	sKexAlgorithms, sIPQoS,
+	sHPNDisabled, sHPNBufferSize, sTcpRcvBufPoll, 
+	sNoneEnabled,
 	sDeprecated, sUnsupported
 } ServerOpCodes;
 
@@ -497,12 +487,12 @@ static struct {
 	{ "revokedkeys", sRevokedKeys, SSHCFG_ALL },
 	{ "trustedusercakeys", sTrustedUserCAKeys, SSHCFG_ALL },
 	{ "authorizedprincipalsfile", sAuthorizedPrincipalsFile, SSHCFG_ALL },
-	{ "noneenabled", sNoneEnabled, SSHCFG_ALL },
+	{ "kexalgorithms", sKexAlgorithms, SSHCFG_GLOBAL },
+	{ "ipqos", sIPQoS, SSHCFG_ALL },
 	{ "hpndisabled", sHPNDisabled, SSHCFG_ALL },
 	{ "hpnbuffersize", sHPNBufferSize, SSHCFG_ALL },
 	{ "tcprcvbufpoll", sTcpRcvBufPoll, SSHCFG_ALL },
-	{ "kexalgorithms", sKexAlgorithms, SSHCFG_GLOBAL },
-	{ "ipqos", sIPQoS, SSHCFG_ALL },
+	{ "noneenabled", sNoneEnabled, SSHCFG_ALL },
 	{ NULL, sBadOption, 0 }
 };
 
@@ -950,22 +940,6 @@ process_server_config_line(ServerOptions *options, char *line,
 		if (*activep && *intptr == -1)
 			*intptr = value;
 		break;
-
-	case sNoneEnabled:
-		intptr = &options->none_enabled;
-		goto parse_flag;
-
-	case sTcpRcvBufPoll:
-		intptr = &options->tcp_rcv_buf_poll;
-		goto parse_flag;
-
-	case sHPNDisabled:
-		intptr = &options->hpn_disabled;
-		goto parse_flag;
-
-	case sHPNBufferSize:
-		intptr = &options->hpn_buffer_size;
-		goto parse_int;
 
 	case sIgnoreUserKnownHosts:
 		intptr = &options->ignore_user_known_hosts;
@@ -1464,6 +1438,22 @@ process_server_config_line(ServerOptions *options, char *line,
 			options->ip_qos_bulk = value2;
 		}
 		break;
+
+	case sHPNDisabled:
+		intptr = &options->hpn_disabled;
+		goto parse_flag;
+
+	case sHPNBufferSize:
+		intptr = &options->hpn_buffer_size;
+		goto parse_int;
+
+	case sTcpRcvBufPoll:
+		intptr = &options->tcp_rcv_buf_poll;
+		goto parse_flag;
+
+	case sNoneEnabled:
+		intptr = &options->none_enabled;
+		goto parse_flag;
 
 	case sDeprecated:
 		logit("%s line %d: Deprecated option %s",

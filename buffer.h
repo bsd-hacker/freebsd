@@ -16,8 +16,6 @@
 #ifndef BUFFER_H
 #define BUFFER_H
 
-#define BUFFER_MAX_LEN		0x4000000 /* 64MB */
-
 typedef struct {
 	u_char	*buf;		/* Buffer for data. */
 	u_int	 alloc;		/* Number of bytes allocated for data. */
@@ -47,6 +45,8 @@ void     buffer_dump(const Buffer *);
 int	 buffer_get_ret(Buffer *, void *, u_int);
 int	 buffer_consume_ret(Buffer *, u_int);
 int	 buffer_consume_end_ret(Buffer *, u_int);
+
+u_int	 buffer_get_max_len(void);
 
 #include <openssl/bn.h>
 

@@ -726,7 +726,8 @@ server_loop(pid_t pid, int fdin_arg, int fdout_arg, int fderr_arg)
 	/* Wait until all output has been sent to the client. */
 	drain_output();
 
-	debug("End of interactive session; stdin %ld, stdout (read %ld, sent %ld), stderr %ld bytes.",
+	debug("End of interactive session; stdin %lu, stdout (read %lu, "
+	    "sent %lu), stderr %ld bytes.",
 	    stdin_bytes, fdout_bytes, stdout_bytes, stderr_bytes);
 
 	/* Free and clear the buffers. */
@@ -998,15 +999,14 @@ server_request_tun(void)
 	sock = tun_open(tun, mode);
 	if (sock < 0)
 		goto done;
-	if (options.hpn_disabled) {
+	if (options.hpn_disabled)
 		c = channel_new("tun", SSH_CHANNEL_OPEN, sock, sock, -1,
-		    CHAN_TCP_WINDOW_DEFAULT, CHAN_TCP_PACKET_DEFAULT,
-		    0, "tun", 1);
-	} else {
+		    CHAN_TCP_WINDOW_DEFAULT, CHAN_TCP_PACKET_DEFAULT, 0,
+		    "tun", 1);
+	else
 		c = channel_new("tun", SSH_CHANNEL_OPEN, sock, sock, -1,
-		    options.hpn_buffer_size, CHAN_TCP_PACKET_DEFAULT,
-		    0, "tun", 1);
-	}
+		    options.hpn_buffer_size, CHAN_TCP_PACKET_DEFAULT, 0,
+		    "tun", 1);
 	c->datagram = 1;
 #if defined(SSH_TUN_FILTER)
 	if (mode == SSH_TUNMODE_POINTOPOINT)
@@ -1042,7 +1042,7 @@ server_request_session(void)
 	c = channel_new("session", SSH_CHANNEL_LARVAL,
 	    -1, -1, -1, /*window size*/0, CHAN_SES_PACKET_DEFAULT,
 	    0, "server-session", 1);
-	if ((options.tcp_rcv_buf_poll) && (!options.hpn_disabled))
+	if (!options.hpn_disabled && options.tcp_rcv_buf_poll)
 		c->dynamic_window = 1;
 	if (session_open(the_authctxt, c->self) != 1) {
 		debug("session open failed, free channel %d", c->self);
