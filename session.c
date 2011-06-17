@@ -233,7 +233,7 @@ auth_input_request_forwarding(struct passwd * pw)
 
 	/*
 	 * Allocate a channel for the authentication agent socket.
-	 * Ignore HPN on that one given no improvement expeccted.
+	 * Ignore HPN on that one given no improvement expected.
 	 */
 	nc = channel_new("auth socket",
 	    SSH_CHANNEL_AUTH_SOCKET, sock, sock, -1,
