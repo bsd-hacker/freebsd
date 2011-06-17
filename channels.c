@@ -2856,7 +2856,7 @@ channel_setup_fwd_listener(int type, const char *listen_addr,
 			    0, "port listener", 1);
  		else
  			c = channel_new("port listener", type, sock, sock, -1,
- 		    	    hpn_buffer_size, CHAN_TCP_PACKET_DEFAULT,
+ 		    	    buffer_size, CHAN_TCP_PACKET_DEFAULT,
  		    	    0, "port listener", 1); 
 		c->path = xstrdup(host);
 		c->host_port = port_to_connect;
@@ -3410,7 +3410,7 @@ x11_create_display_inet(int x11_display_offset, int x11_use_localhost,
 		else
 			nc = channel_new("x11 listener",
 			    SSH_CHANNEL_X11_LISTENER, sock, sock, -1,
-			    hpn_buffer_size, CHAN_X11_PACKET_DEFAULT,
+			    buffer_size, CHAN_X11_PACKET_DEFAULT,
 			    0, "X11 inet listener", 1);
 		nc->single_connection = single_connection;
 		(*chanids)[n] = nc->self;
