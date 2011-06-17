@@ -81,6 +81,7 @@
 extern char *client_version_string;
 extern char *server_version_string;
 extern Options options;
+#ifdef	NONE_CIPHER_ENABLED
 extern Kex *xxx_kex;
 
 /*
@@ -89,6 +90,7 @@ extern Kex *xxx_kex;
  */
 
 extern int tty_flag;
+#endif
 
 /*
  * SSH2 key exchange
@@ -427,6 +429,7 @@ ssh_userauth2(const char *local_user, const char *server_user, char *host,
 	pubkey_cleanup(&authctxt);
 	dispatch_range(SSH2_MSG_USERAUTH_MIN, SSH2_MSG_USERAUTH_MAX, NULL);
 
+#ifdef	NONE_CIPHER_ENABLED
 	/*
 	 * If the user explicitly requests to use the none cipher enable it
 	 * post authentication and only if the right conditions are met: both
@@ -448,6 +451,7 @@ ssh_userauth2(const char *local_user, const char *server_user, char *host,
 			    "a TTY is allocated\n");
 		}
 	}
+#endif
 	debug("Authentication succeeded (%s).", authctxt.method->name);
 }
 

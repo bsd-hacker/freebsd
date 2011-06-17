@@ -142,7 +142,9 @@ initialize_server_options(ServerOptions *options)
 	options->hpn_disabled = -1;
 	options->hpn_buffer_size = -1;
 	options->tcp_rcv_buf_poll = -1;
+#ifdef	NONE_CIPHER_ENABLED
 	options->none_enabled = -1;
+#endif
 }
 
 void
@@ -492,7 +494,9 @@ static struct {
 	{ "hpndisabled", sHPNDisabled, SSHCFG_ALL },
 	{ "hpnbuffersize", sHPNBufferSize, SSHCFG_ALL },
 	{ "tcprcvbufpoll", sTcpRcvBufPoll, SSHCFG_ALL },
+#ifdef	NONE_CIPHER_ENABLED
 	{ "noneenabled", sNoneEnabled, SSHCFG_ALL },
+#endif
 	{ NULL, sBadOption, 0 }
 };
 
@@ -1451,9 +1455,11 @@ process_server_config_line(ServerOptions *options, char *line,
 		intptr = &options->tcp_rcv_buf_poll;
 		goto parse_flag;
 
+#ifdef	NONE_CIPHER_ENABLED
 	case sNoneEnabled:
 		intptr = &options->none_enabled;
 		goto parse_flag;
+#endif
 
 	case sDeprecated:
 		logit("%s line %d: Deprecated option %s",

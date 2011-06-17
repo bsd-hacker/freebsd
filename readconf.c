@@ -136,7 +136,9 @@ typedef enum {
 	oVisualHostKey, oUseRoaming, oZeroKnowledgePasswordAuthentication,
 	oKexAlgorithms, oIPQoS,
 	oHPNDisabled, oHPNBufferSize, oTcpRcvBufPoll, oTcpRcvBuf,
+#ifdef	NONE_CIPHER_ENABLED
 	oNoneEnabled, oNoneSwitch,
+#endif
 	oDeprecated, oUnsupported
 } OpCodes;
 
@@ -251,8 +253,10 @@ static struct {
 	{ "hpnbuffersize", oHPNBufferSize },
 	{ "tcprcvbufpoll", oTcpRcvBufPoll },
 	{ "tcprcvbuf", oTcpRcvBuf },
+#ifdef	NONE_CIPHER_ENABLED
 	{ "noneenabled", oNoneEnabled },
 	{ "noneswitch", oNoneSwitch },
+#endif
 
 	{ NULL, oBadOption }
 };
@@ -1021,6 +1025,7 @@ parse_int:
 		intptr = &options->tcp_rcv_buf;
 		goto parse_int;
 
+#ifdef	NONE_CIPHER_ENABLED
 	case oNoneEnabled:
 		intptr = &options->none_enabled;
 		goto parse_flag;
@@ -1043,6 +1048,7 @@ parse_int:
 			error("Continuing...");
 			return 0;
 	        }
+#endif
 
 	case oDeprecated:
 		debug("%s line %d: Deprecated option \"%s\"",
@@ -1208,8 +1214,10 @@ initialize_options(Options * options)
 	options->hpn_buffer_size = -1;
 	options->tcp_rcv_buf_poll = -1;
 	options->tcp_rcv_buf = -1;
+#ifdef NONE_CIPHER_ENABLED
 	options->none_enabled = -1;
 	options->none_switch = -1;
+#endif
 }
 
 /*
@@ -1399,9 +1407,11 @@ fill_default_options(Options * options)
 		options->tcp_rcv_buf *= 1024;
 	if (options->tcp_rcv_buf_poll == -1)
 		options->tcp_rcv_buf_poll = 1;
+#ifdef	NONE_CIPHER_ENABLED
 	/* options->none_enabled must not be set by default */
 	if (options->none_switch == -1)
 		options->none_switch = 0;
+#endif
 }
 
 /*

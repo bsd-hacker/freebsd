@@ -545,6 +545,7 @@ main(int ac, char **av)
 			break;
 		case 'T':
 			no_tty_flag = 1;
+#ifdef	NONE_CIPHER_ENABLED
 			/*
 			 * Ensure that the user does not try to backdoor a
 			 * NONE cipher switch on an interactive session by
@@ -552,6 +553,7 @@ main(int ac, char **av)
 			 * session without a tty.
 			 */
 			options.none_switch = 0;
+#endif
 			break;
 		case 'o':
 			dummy = 1;

@@ -139,9 +139,10 @@ typedef struct {
 					 * transfer. */
 	int	tcp_rcv_buf;	/* User switch to set tcp recv buffer. */
 
+#ifdef	NONE_CIPHER_ENABLED
 	int	none_enabled;	/* Allow none to be used */
 	int	none_switch;	/* Use none cipher */
-
+#endif
 }       Options;
 
 #define SSHCTL_MASTER_NO	0

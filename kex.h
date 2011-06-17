@@ -140,7 +140,9 @@ struct Kex {
 
 int	 kex_names_valid(const char *);
 
+#ifdef	NONE_CIPHER_ENABLED
 void	 kex_prop2buf(Buffer *, char *[PROPOSAL_MAX]);
+#endif
 
 Kex	*kex_setup(char *[PROPOSAL_MAX]);
 void	 kex_finish(Kex *);

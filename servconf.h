@@ -166,7 +166,9 @@ typedef struct {
 	int	tcp_rcv_buf_poll;	/* Poll TCP rcv window in autotuning
 					 * kernels. */
 
+#ifdef	NONE_CIPHER_ENABLED
 	int	none_enabled;		/* Enable NONE cipher switch. */
+#endif
 }       ServerOptions;
 
 void	 initialize_server_options(ServerOptions *);

@@ -195,7 +195,9 @@ struct session_state {
 };
 
 static struct session_state *active_state, *backup_state;
+#ifdef	NONE_CIPHER_ENABLED
 static int rekey_requested = 0;
+#endif
 
 static struct session_state *
 alloc_session_state(void)
@@ -1862,11 +1864,13 @@ packet_send_ignore(int nbytes)
 	}
 }
 
+#ifdef	NONE_CIPHER_ENABLED
 void
 packet_request_rekeying(void)
 {
 	rekey_requested = 1;
 }
+#endif
 
 #define MAX_PACKETS	(1U<<31)
 int
@@ -1874,10 +1878,12 @@ packet_need_rekeying(void)
 {
 	if (datafellows & SSH_BUG_NOREKEY)
 		return 0;
+#ifdef	NONE_CIPHER_ENABLED
 	if (rekey_requested == 1) {
 		rekey_requested = 0;
 		return 1;
 	}
+#endif
 	return
 	    (active_state->p_send.packets > MAX_PACKETS) ||
 	    (active_state->p_read.packets > MAX_PACKETS) ||
@@ -1970,8 +1976,10 @@ packet_restore_state(void)
 	}
 }
 
+#ifdef	NONE_CIPHER_ENABLED
 int
 packet_get_authentication_state(void)
 {
 	return (active_state->after_authentication);
 }
+#endif
