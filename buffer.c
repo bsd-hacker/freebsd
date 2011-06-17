@@ -24,9 +24,9 @@
 #include "buffer.h"
 #include "log.h"
 
-#define	BUFFER_ALLOCSZ		0x008000
 #define	BUFFER_MAX_CHUNK	0x100000
 #define	BUFFER_MAX_LEN		0x4000000	/* 64MB */
+#define	BUFFER_ALLOCSZ		0x008000
 
 /* Initializes the buffer structure. */
 

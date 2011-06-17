@@ -1013,7 +1013,6 @@ packet_send2(void)
 void
 packet_send(void)
 {
-
 	if (compat20)
 		packet_send2();
 	else

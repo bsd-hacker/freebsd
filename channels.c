@@ -2857,7 +2857,7 @@ channel_setup_fwd_listener(int type, const char *listen_addr,
  		else
  			c = channel_new("port listener", type, sock, sock, -1,
  		    	    buffer_size, CHAN_TCP_PACKET_DEFAULT,
- 		    	    0, "port listener", 1); 
+ 		    	    0, "port listener", 1);
 		c->path = xstrdup(host);
 		c->host_port = port_to_connect;
 		c->listening_port = listen_port;

@@ -94,10 +94,10 @@ static int fdin;		/* Descriptor for stdin (for writing) */
 static int fdout;		/* Descriptor for stdout (for reading);
 				   May be same number as fdin. */
 static int fderr;		/* Descriptor for stderr.  May be -1. */
-static int stdin_bytes = 0;	/* Number of bytes written to stdin. */
-static int stdout_bytes = 0;	/* Number of stdout bytes sent to client. */
-static int stderr_bytes = 0;	/* Number of stderr bytes sent to client. */
-static int fdout_bytes = 0;	/* Number of stdout bytes read from program. */
+static long stdin_bytes = 0;	/* Number of bytes written to stdin. */
+static long stdout_bytes = 0;	/* Number of stdout bytes sent to client. */
+static long stderr_bytes = 0;	/* Number of stderr bytes sent to client. */
+static long fdout_bytes = 0;	/* Number of stdout bytes read from program. */
 static int stdin_eof = 0;	/* EOF message received from client. */
 static int fdout_eof = 0;	/* EOF encountered reading from fdout. */
 static int fderr_eof = 0;	/* EOF encountered readung from fderr. */
@@ -726,8 +726,7 @@ server_loop(pid_t pid, int fdin_arg, int fdout_arg, int fderr_arg)
 	/* Wait until all output has been sent to the client. */
 	drain_output();
 
-	debug("End of interactive session; stdin %lu, stdout (read %lu, "
-	    "sent %lu), stderr %ld bytes.",
+	debug("End of interactive session; stdin %ld, stdout (read %ld, " "sent %ld), stderr %ld bytes.",
 	    stdin_bytes, fdout_bytes, stdout_bytes, stderr_bytes);
 
 	/* Free and clear the buffers. */
