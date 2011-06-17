@@ -2691,7 +2691,8 @@ channel_set_hpn(int disabled, u_int buf_size)
 {
       	hpn_disabled = disabled;
 	buffer_size = buf_size;
-	debug("HPN Disabled: %d, HPN Buffer Size: %d", hpn_disabled, buffer_size);
+	debug("HPN Disabled: %d, HPN Buffer Size: %d",
+	    hpn_disabled, buffer_size);
 }
 
 static int
