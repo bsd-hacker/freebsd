@@ -13,10 +13,16 @@
 #include <string.h>
 #include <errno.h>
 #include <stdlib.h>
-#include <tre.h>
 
 #include "tre-internal.h"
+#include "tre.h"
 #include "xmalloc.h"
+
+__weak_reference(tre_regcomp, regcomp);
+__weak_reference(tre_regncomp, regncomp);
+__weak_reference(tre_regwcomp, regwcomp);
+__weak_reference(tre_regwncomp, regwncomp);
+__weak_reference(tre_regfree, regfree);
 
 int
 tre_regncomp(regex_t *preg, const char *regex, size_t n, int cflags)

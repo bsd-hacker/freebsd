@@ -27,11 +27,9 @@ char *alloca ();
 #endif
 #endif /* TRE_USE_ALLOCA */
 
-#include <stdio.h>
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
-#include <tre.h>
 #ifdef HAVE_WCHAR_H
 #include <wchar.h>
 #endif /* HAVE_WCHAR_H */
@@ -47,8 +45,18 @@ char *alloca ();
 #include <limits.h>
 
 #include "tre-internal.h"
+#include "tre.h"
 #include "xmalloc.h"
 
+__weak_reference(tre_regexec, regexec);
+__weak_reference(tre_regnexec, regnexec);
+__weak_reference(tre_regwexec, regwexec);
+__weak_reference(tre_regwnexec, regwnexec);
+__weak_reference(tre_reguexec, reguexec);
+__weak_reference(tre_regaexec, regaexec);
+__weak_reference(tre_reganexec, reganexec);
+__weak_reference(tre_regawexec, regawexec);
+__weak_reference(tre_regawnexec, regawnexec);
 
 /* Fills the POSIX.2 regmatch_t array according to the TNFA tag and match
    endpoint values. */

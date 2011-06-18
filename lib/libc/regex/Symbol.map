@@ -3,12 +3,28 @@
  */
 
 FBSD_1.2 {
+	regacomp;
+	regaexec;
+	regancomp;
+	reganexec;
+	regawncomp;
+	regawnexec;
+	regcomp;
+	regerror;
+	regexec;
+	regfree;
+	regncomp;
+	regnexec;
+	regwcomp;
+	regwexec;
+	regwncomp;
+	regwnexec;
 	tre_config;
 	tre_regacomp;
 	tre_regaexec;
+	tre_regaparams_default;
 	tre_regancomp;
 	tre_reganexec;
-	tre_regaparams_default;
 	tre_regawncomp;
 	tre_regawnexec;
 	tre_regcomp;
