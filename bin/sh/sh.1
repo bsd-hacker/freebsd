@@ -32,7 +32,7 @@
 .\"	from: @(#)sh.1	8.6 (Berkeley) 5/4/95
 .\" $FreeBSD$
 .\"
-.Dd June 12, 2011
+.Dd June 17, 2011
 .Dt SH 1
 .Os
 .Sh NAME
@@ -372,7 +372,7 @@ The following is a list of valid operators:
 .It Control operators:
 .Bl -column "XXX" "XXX" "XXX" "XXX" "XXX" -offset center -compact
 .It Li & Ta Li && Ta Li ( Ta Li ) Ta Li \en
-.It Li ;; Ta Li ; Ta Li | Ta Li ||
+.It Li ;; Ta Li ;& Ta Li ; Ta Li | Ta Li ||
 .El
 .It Redirection operators:
 .Bl -column "XXX" "XXX" "XXX" "XXX" "XXX" -offset center -compact
@@ -990,6 +990,11 @@ described later),
 separated by
 .Ql \&|
 characters.
+If the selected list is terminated by the control operator
+.Ql ;&
+instead of
+.Ql ;; ,
+execution continues with the next list.
 The exit code of the
 .Ic case
 command is the exit code of the last command executed in the list or
@@ -1648,6 +1653,15 @@ matches a
 rather than introducing a character class.
 A character class matches any of the characters between the square brackets.
 A range of characters may be specified using a minus sign.
+A named class of characters (see
+.Xr wctype 3 )
+may be specified by surrounding the name with
+.Ql \&[:
+and
+.Ql :\&] .
+For example,
+.Ql \&[\&[:alpha:\&]\&]
+is a shell pattern that matches a single letter.
 The character class may be complemented by making an exclamation point
 .Pq Ql !\&
 the first character of the character class.
@@ -2572,6 +2586,7 @@ will return the argument.
 .Xr execve 2 ,
 .Xr getrlimit 2 ,
 .Xr umask 2 ,
+.Xr wctype 3 ,
 .Xr editrc 5
 .Sh HISTORY
 A

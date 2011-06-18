@@ -75,7 +75,6 @@ SUBDIR=	agrep \
 	ktrace \
 	ktrdump \
 	lam \
-	last \
 	lastcomm \
 	ldd \
 	leave \
@@ -171,7 +170,6 @@ SUBDIR=	agrep \
 	unzip \
 	units \
 	unvis \
-	users \
 	uudecode \
 	uuencode \
 	vi \
@@ -183,10 +181,8 @@ SUBDIR=	agrep \
 	what \
 	whereis \
 	which \
-	who \
 	whois \
 	write \
-	wtmpcvt \
 	xargs \
 	xinstall \
 	${_xlint} \
@@ -337,6 +333,13 @@ SUBDIR+=	yacc
 .if ${MK_USB} != "no"
 SUBDIR+=	usbhidaction
 SUBDIR+=	usbhidctl
+.endif
+
+.if ${MK_UTMPX} != "no"
+SUBDIR+=	last
+SUBDIR+=	users
+SUBDIR+=	who
+SUBDIR+=	wtmpcvt
 .endif
 
 .include <bsd.arch.inc.mk>
