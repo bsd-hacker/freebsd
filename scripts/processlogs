@@ -121,6 +121,7 @@ fi
 
 header() {
   echo "<html><head><title>Package building errors</title>" >$of
+  echo "<script src=\"/js/sorttable.js\"></script>" >>$of
   echo "</head><body><h1>Package building errors</h1>" >>$of
   echo "<p>View by " >>$of
   echo "[ <a href=\"index.html\">port</a> " >>$of
@@ -141,7 +142,7 @@ header() {
     echo "\"Aff.\" is number of ports that depend on this one<br>" >> $of
     echo "\"<font color=\"red\">[B]</font>\" indicates port is marked BROKEN (Note: BROKEN ports are not frequently rebuilt so they may not be listed here)<br><br>" >> $of
     echo "<p>${n_logs} errors</p>" >> $of
-    echo "<table border=1>" >>$of
+    echo "<table class=sortable border=1>" >>$of
     echo "<tr>$1</tr>" >>$of
   fi
 }
