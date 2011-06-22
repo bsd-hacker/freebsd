@@ -20,9 +20,12 @@ FBSD_1.2 {
 	regwncomp;
 	regwnexec;
 	tre_config;
+	tre_regaparams_default;
+};
+
+FBSDprivate_1.0 {
 	tre_regacomp;
 	tre_regaexec;
-	tre_regaparams_default;
 	tre_regancomp;
 	tre_reganexec;
 	tre_regawncomp;
