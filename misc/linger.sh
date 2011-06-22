@@ -86,12 +86,12 @@ EOF
 #include <unistd.h>
 
 #define PARALLEL 10
-static int size = 14130;	/* 6 free inodes */
+static int size = 6552;	/* 10 free inodes */
 
 int
 test(void)
 {
-	int error = 0, fd, i, j;
+	int fd, i, j;
 	pid_t pid;
 	char file[128];
 
@@ -107,7 +107,6 @@ test(void)
 			if (errno != EINTR) {
 				warn("creat(%s). %s:%d", file, __FILE__, __LINE__);
 				unlink("continue");
-				error = 1;
 				break;
 			}
 		}
@@ -117,12 +116,10 @@ test(void)
 	}
 	sleep(3);
 
-	if (error == 0)
-		j--;
-	for (i = j; i >= 0; i--) {
+	for (i = --j; i >= 0; i--) {
 		sprintf(file,"p%05d.%05d", pid, i);
 		if (unlink(file) == -1)
-			err(3, "unlink(%s)", file);
+			warn("unlink(%s)", file);
 		
 	}
 	return (0);
