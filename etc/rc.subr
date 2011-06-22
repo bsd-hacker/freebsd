@@ -1732,8 +1732,6 @@ check_required_after()
 	return 0
 }
 
-fi
-
 # check_kern_features mib
 #	Return existence of kern.features.* sysctl MIB as true or
 #	false.  The result will be cached in $_rc_cache_kern_features_
@@ -1744,7 +1742,7 @@ check_kern_features()
 	local _v
 
 	[ -n "$1" ] || return 1;
-	_v=`eval echo "\\$_rc_cache_kern_features_$1"`
+	eval _v=\$_rc_cache_kern_features_$1
 	[ -n "$_v" ] && return "$_v";
 
 	if ${SYSCTL_N} kern.features.$1 > /dev/null 2>&1; then
@@ -1774,5 +1772,7 @@ _echoonce()
 	*)	[ -z "$_var" ] && echo -n "$_msg" && eval "$1=finished" ;;
 	esac
 }
+
+fi # [ -z "${_rc_subr_loaded}" ]
 
 _rc_subr_loaded=:
