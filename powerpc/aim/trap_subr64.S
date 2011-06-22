@@ -122,9 +122,9 @@ restore_kernsrs:
 	std	%r30,(savearea+CPUSAVE_SRR1)(%r31);	/* save SRR1 */	\
 	mfmsr	%r30;							\
 	ori	%r30,%r30,(PSL_DR|PSL_IR|PSL_RI)@l; /* relocation on */	\
+	mfsprg1	%r31;			/* get saved SP */		\
 	mtmsr	%r30;			/* stack can now be accessed */	\
 	isync;								\
-	mfsprg1	%r31;			/* get saved SP */		\
 	stdu	%r31,-(FRAMELEN+288)(%r1); /* save it in the callframe */ \
 	std	%r0, FRAME_0+48(%r1);	/* save r0 in the trapframe */	\
 	std	%r31,FRAME_1+48(%r1);	/* save SP   "      "       */	\
@@ -195,7 +195,7 @@ restore_kernsrs:
 	mtctr	%r4;							\
 	mtxer	%r5;							\
 	mtlr	%r6;							\
-	mtsprg1	%r7;			/* save cr */			\
+	mtsprg3	%r7;			/* save cr */			\
 	ld	%r31,FRAME_31+48(%r1);   /* restore r0-31 */		\
 	ld	%r30,FRAME_30+48(%r1);					\
 	ld	%r29,FRAME_29+48(%r1);					\
@@ -229,8 +229,7 @@ restore_kernsrs:
 	ld	%r0, FRAME_0+48(%r1);					\
 	ld	%r1, FRAME_1+48(%r1);					\
 /* Can't touch %r1 from here on */					\
-	mtsprg2	%r2;			/* save r2 & r3 */		\
-	mtsprg3	%r3;							\
+	mtsprg2	%r2;			/* save r2 */			\
 /* Disable translation, machine check and recoverability: */		\
 	mfmsr	%r2;							\
 	andi.	%r2,%r2,~(PSL_DR|PSL_IR|PSL_EE|PSL_ME|PSL_RI)@l;	\
@@ -238,33 +237,33 @@ restore_kernsrs:
 	isync;								\
 /* Decide whether we return to user mode: */				\
 	GET_CPUINFO(%r2);						\
-	ld	%r3,(savearea+CPUSAVE_SRR1)(%r2);			\
-	mtcr	%r3;							\
+	ld	%r2,(savearea+CPUSAVE_SRR1)(%r2);			\
+	mtcr	%r2;							\
 	bf	17,1f;			/* branch if PSL_PR is false */	\
 /* Restore user SRs */							\
-	GET_CPUINFO(%r3);						\
-	std	%r27,(savearea+CPUSAVE_R27)(%r3);			\
-	std	%r28,(savearea+CPUSAVE_R28)(%r3);			\
-	std	%r29,(savearea+CPUSAVE_R29)(%r3);			\
-	std	%r30,(savearea+CPUSAVE_R30)(%r3);			\
-	std	%r31,(savearea+CPUSAVE_R31)(%r3);			\
+	GET_CPUINFO(%r2);						\
+	std	%r27,(savearea+CPUSAVE_R27)(%r2);			\
+	std	%r28,(savearea+CPUSAVE_R28)(%r2);			\
+	std	%r29,(savearea+CPUSAVE_R29)(%r2);			\
+	std	%r30,(savearea+CPUSAVE_R30)(%r2);			\
+	std	%r31,(savearea+CPUSAVE_R31)(%r2);			\
 	mflr	%r27;			/* preserve LR */		\
 	bl	restore_usersrs;	/* uses r28-r31 */		\
 	mtlr	%r27;							\
-	ld	%r31,(savearea+CPUSAVE_R31)(%r3);			\
-	ld	%r30,(savearea+CPUSAVE_R30)(%r3);			\
-	ld	%r29,(savearea+CPUSAVE_R29)(%r3);			\
-	ld	%r28,(savearea+CPUSAVE_R28)(%r3);			\
-	ld	%r27,(savearea+CPUSAVE_R27)(%r3);			\
-1:	mfsprg1	%r2;			/* restore cr */		\
+	ld	%r31,(savearea+CPUSAVE_R31)(%r2);			\
+	ld	%r30,(savearea+CPUSAVE_R30)(%r2);			\
+	ld	%r29,(savearea+CPUSAVE_R29)(%r2);			\
+	ld	%r28,(savearea+CPUSAVE_R28)(%r2);			\
+	ld	%r27,(savearea+CPUSAVE_R27)(%r2);			\
+1:	mfsprg3	%r2;			/* restore cr */		\
 	mtcr	%r2;							\
 	GET_CPUINFO(%r2);						\
-	ld	%r3,(savearea+CPUSAVE_SRR0)(%r2); /* restore srr0 */	\
-	mtsrr0	%r3;							\
-	ld	%r3,(savearea+CPUSAVE_SRR1)(%r2); /* restore srr1 */	\
-	mtsrr1	%r3;							\
-	mfsprg2	%r2;			/* restore r2 & r3 */		\
-	mfsprg3	%r3
+	ld	%r2,(savearea+CPUSAVE_SRR0)(%r2); /* restore srr0 */	\
+	mtsrr0	%r2;							\
+	GET_CPUINFO(%r2);						\
+	ld	%r2,(savearea+CPUSAVE_SRR1)(%r2); /* restore srr1 */	\
+	mtsrr1	%r2;							\
+	mfsprg2	%r2			/* restore r2 */		\
 
 #ifdef SMP
 /*
