@@ -207,7 +207,7 @@ mphyp_pte_change(mmu_t mmu, uintptr_t slot, struct lpte *pvo_pt, uint64_t vpn)
 	result = phyp_hcall(H_REMOVE, 0, slot, vpn);
 	if (result != H_SUCCESS)
 		panic("mphyp_pte_change() invalidation failure: %ld\n", result);
-	phyp_pft_hcall(H_ENTER, H_EXACT, slot, pvo_pt->pte_hi,
+	result = phyp_pft_hcall(H_ENTER, H_EXACT, slot, pvo_pt->pte_hi,
 	    pvo_pt->pte_lo, &index, &evicted.pte_lo, &junk);
 	if (result != H_SUCCESS)
 		panic("mphyp_pte_change() insertion failure: %ld\n", result);
