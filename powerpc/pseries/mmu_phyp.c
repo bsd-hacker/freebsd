@@ -99,8 +99,9 @@ mphyp_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernelend)
 	uint64_t final_pteg_count = 0;
 	char buf[8];
 	uint32_t prop[2];
+	uint32_t nptlp, shift = 0, slb_encoding = 0; 
         phandle_t dev, node, root;
-        int res;
+        int idx, len, res;
 
 	moea64_early_bootstrap(mmup, kernelstart, kernelend);
 
@@ -132,6 +133,37 @@ mphyp_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernelend)
 		n_slbs = prop[0];
 
 	moea64_pteg_count = final_pteg_count / sizeof(struct lpteg);
+
+	/* Scan the large page size property for PAPR compatible machines.
+	   See PAPR D.5 Changes to Section 5.1.4, 'CPU Node Properties'
+	   for the encoding of the property.
+	*/
+
+	len = OF_getproplen(node, "ibm,segment-page-sizes");
+	if (len > 0) {
+		/* We have to use a variable length array on the stack
+		   since we have very limited stack space.
+		*/
+		cell_t arr[len/sizeof(cell_t)];
+		res = OF_getprop(node, "ibm,segment-page-sizes", &arr,
+				 sizeof(arr));
+		len /= 4;
+		idx = 0;
+		while (len > 0) {
+			shift = arr[idx];
+			slb_encoding = arr[idx + 1];
+			nptlp = arr[idx + 2];
+			idx += 3;
+			len -= 3;
+			while (len > 0 && nptlp) {
+				idx += 2;
+				len -= 2;
+				nptlp--;
+			}
+		}
+		moea64_large_page_shift = shift;
+		moea64_large_page_size = 1 << shift;
+	}
 
 	moea64_mid_bootstrap(mmup, kernelstart, kernelend);
 	moea64_late_bootstrap(mmup, kernelstart, kernelend);
@@ -208,7 +240,7 @@ mphyp_pte_change(mmu_t mmu, uintptr_t slot, struct lpte *pvo_pt, uint64_t vpn)
 	if (result != H_SUCCESS)
 		panic("mphyp_pte_change() invalidation failure: %ld\n", result);
 	result = phyp_pft_hcall(H_ENTER, H_EXACT, slot, pvo_pt->pte_hi,
-	    pvo_pt->pte_lo, &index, &evicted.pte_lo, &junk);
+				pvo_pt->pte_lo, &index, &evicted.pte_lo, &junk);
 	if (result != H_SUCCESS)
 		panic("mphyp_pte_change() insertion failure: %ld\n", result);
 }
