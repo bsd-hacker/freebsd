@@ -99,7 +99,7 @@ mphyp_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernelend)
 	uint64_t final_pteg_count = 0;
 	char buf[8];
 	uint32_t prop[2];
-	uint32_t nptlp, shift = 0, slb_encoding = 0; 
+	uint32_t nptlp, shift = 0, slb_encoding = 0;
         phandle_t dev, node, root;
         int idx, len, res;
 
@@ -123,7 +123,7 @@ mphyp_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernelend)
                         break;
                 node = OF_peer(node);
         }
-	
+
 	res = OF_getprop(node, "ibm,pft-size", prop, sizeof(prop));
 	if (res <= 0)
 		panic("mmu_phyp: unknown PFT size");
@@ -134,16 +134,18 @@ mphyp_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernelend)
 
 	moea64_pteg_count = final_pteg_count / sizeof(struct lpteg);
 
-	/* Scan the large page size property for PAPR compatible machines.
-	   See PAPR D.5 Changes to Section 5.1.4, 'CPU Node Properties'
-	   for the encoding of the property.
-	*/
+	/*
+	 * Scan the large page size property for PAPR compatible machines.
+	 * See PAPR D.5 Changes to Section 5.1.4, 'CPU Node Properties'
+	 * for the encoding of the property.
+	 */
 
 	len = OF_getproplen(node, "ibm,segment-page-sizes");
 	if (len > 0) {
-		/* We have to use a variable length array on the stack
-		   since we have very limited stack space.
-		*/
+		/*
+		 * We have to use a variable length array on the stack
+		 * since we have very limited stack space.
+		 */
 		cell_t arr[len/sizeof(cell_t)];
 		res = OF_getprop(node, "ibm,segment-page-sizes", &arr,
 				 sizeof(arr));
