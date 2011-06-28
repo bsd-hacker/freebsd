@@ -56,7 +56,6 @@ hashtable
 int
 hashtable_put(hashtable *tbl, const void *key, const void *value)
 {
-	hashtable_entry *entry;
 	uint32_t hash = 0;
 
 	if (tbl->table_size == tbl->usage)
@@ -149,7 +148,7 @@ hashtable_free(hashtable *tbl)
 	if (tbl == NULL)
 		return;
 
-	for (int i = 0; i < tbl->table_size; i++)
+	for (unsigned int i = 0; i < tbl->table_size; i++)
 		if (tbl->entries[i] != NULL) {
 //			free(tbl->entries[i]->key);
 //			free(tbl->entries[i]->value);

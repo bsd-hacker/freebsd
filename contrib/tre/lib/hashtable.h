@@ -24,6 +24,9 @@
  * SUCH DAMAGE.
  */
 
+#ifndef HASHTABLE_H
+#define HASHTABLE_H 1
+
 #include <sys/types.h>
 
 typedef struct {
@@ -44,3 +47,5 @@ int		 hashtable_get(hashtable *, const void *, void *);
 hashtable	*hashtable_init(size_t, size_t, size_t);
 int		 hashtable_put(hashtable *, const void *, const void *);
 int		 hashtable_remove(hashtable *, const void *);
+
+#endif	/* HASHTABLE.H */
