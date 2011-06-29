@@ -48,6 +48,7 @@ char *alloca ();
 #include "tre.h"
 #include "xmalloc.h"
 
+#ifdef TRE_WEAK_REF
 __weak_reference(tre_regexec, regexec);
 __weak_reference(tre_regnexec, regnexec);
 __weak_reference(tre_regwexec, regwexec);
@@ -57,6 +58,7 @@ __weak_reference(tre_regaexec, regaexec);
 __weak_reference(tre_reganexec, reganexec);
 __weak_reference(tre_regawexec, regawexec);
 __weak_reference(tre_regawnexec, regawnexec);
+#endif
 
 /* Fills the POSIX.2 regmatch_t array according to the TNFA tag and match
    endpoint values. */

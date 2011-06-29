@@ -3,9 +3,10 @@
 
 .PATH: ${.CURDIR}/../../contrib/tre/lib ${.CURDIR}/regex
 
-CFLAGS+=-DHAVE_CONFIG_H -I${.CURDIR}/../../contrib/tre
+CFLAGS+=-DHAVE_CONFIG_H -DTRE_WEAK_REF -I${.CURDIR}/../../contrib/tre
 
-SRCS+=	regcomp.c regerror.c regexec.c tre-ast.c tre-compile.c \
+SRCS+=	fastmatch.c hashtable.c \
+	regcomp.c regerror.c regexec.c tre-ast.c tre-compile.c \
 	tre-match-approx.c tre-match-backtrack.c tre-match-parallel.c \
 	tre-mem.c tre-parse.c tre-stack.c xmalloc.c
 

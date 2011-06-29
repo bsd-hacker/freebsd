@@ -23,6 +23,24 @@
 extern "C" {
 #endif
 
+#ifndef TRE_WEAK_REF
+#define tre_regcomp	regcomp
+#define tre_regerror	regerror
+#define tre_regexec	regexec
+#define tre_regfree	regfree
+#define tre_regaexec	regaexec
+#define tre_reganexec	reganexec
+#define tre_regawexec	regawexec
+#define tre_regawnexec	regawnexec
+#define tre_regncomp	regncomp
+#define tre_regnexec	regnexec
+#define tre_regwcomp	regwcomp
+#define tre_regwexec	regwexec
+#define tre_regwncomp	regwncomp
+#define tre_regwnexec	regwnexec
+#define tre_reguexec	reguexec
+#endif
+
 /* If the we're not using system regex.h, we need to define the
    structs and enums ourselves. */
 

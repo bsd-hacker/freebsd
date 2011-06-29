@@ -28,7 +28,9 @@
 #define gettext(s) s
 #endif
 
+#ifdef TRE_WEAK_REF
 __weak_reference(tre_regerror, regerror);
+#endif
 
 #define _(String) dgettext(PACKAGE, String)
 #define gettext_noop(String) String

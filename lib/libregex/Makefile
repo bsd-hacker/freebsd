@@ -11,7 +11,8 @@ WARNS?=	6
 
 CFLAGS+=-DHAVE_CONFIG_H -I${.CURDIR}/../../contrib/tre/lib \
 	-I${.CURDIR}/../../include
-SRCS=   regcomp.c regerror.c regexec.c tre-ast.c tre-compile.c \
+SRCS=   fastmatch.c hashtable.c \
+	regcomp.c regerror.c regexec.c tre-ast.c tre-compile.c \
 	tre-match-approx.c tre-match-backtrack.c tre-match-parallel.c \
 	tre-mem.c tre-parse.c tre-stack.c xmalloc.c
 

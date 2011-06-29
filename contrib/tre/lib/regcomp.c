@@ -18,11 +18,13 @@
 #include "tre.h"
 #include "xmalloc.h"
 
+#ifdef TRE_WEAK_REF
 __weak_reference(tre_regcomp, regcomp);
 __weak_reference(tre_regncomp, regncomp);
 __weak_reference(tre_regwcomp, regwcomp);
 __weak_reference(tre_regwncomp, regwncomp);
 __weak_reference(tre_regfree, regfree);
+#endif
 
 int
 tre_regncomp(regex_t *preg, const char *regex, size_t n, int cflags)
