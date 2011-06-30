@@ -1878,6 +1878,7 @@ tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
   if (!ret)
     {
       preg->shortcut = &shortcut;
+      preg->re_nsub = 0;
       return REG_OK;
     }
   else
