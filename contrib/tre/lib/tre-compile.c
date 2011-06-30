@@ -20,6 +20,7 @@
 #include <assert.h>
 #include <string.h>
 
+#include "fastmatch.h"
 #include "tre-internal.h"
 #include "tre-mem.h"
 #include "tre-stack.h"
@@ -1858,16 +1859,29 @@ tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
   tre_ast_node_t *tree, *tmp_ast_l, *tmp_ast_r;
   tre_pos_and_tags_t *p;
   int *counts = NULL, *offs = NULL;
-  int i, add = 0;
+  int i, add = 0, ret;
   tre_tnfa_transition_t *transitions, *initial;
   tre_tnfa_t *tnfa = NULL;
   tre_submatch_data_t *submatch_data;
   tre_tag_direction_t *tag_directions = NULL;
   reg_errcode_t errcode;
   tre_mem_t mem;
+  fastmatch_t shortcut;
 
   /* Parse context. */
   tre_parse_ctx_t parse_ctx;
+
+  /* Check if we can cheat with a fixed string algorithm. */
+  ret = (cflags & REG_LITERAL)
+    ? tre_fastcomp_literal(&shortcut, regex, n, cflags)
+    : tre_fastcomp(&shortcut, regex, n, cflags);
+  if (!ret)
+    {
+      preg->shortcut = &shortcut;
+      return REG_OK;
+    }
+  else
+    preg->shortcut = NULL;
 
   /* Allocate a stack used throughout the compilation process for various
      purposes. */

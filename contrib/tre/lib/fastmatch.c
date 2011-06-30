@@ -235,7 +235,7 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n, int cflags)
 
 int
 tre_fastexec(const fastmatch_t *fg, const tre_char_t *data, size_t len,
-    int nmatch, regmatch_t *pmatch)
+    int nmatch, regmatch_t pmatch[])
 {
   unsigned int j;
   int cnt = 0;
@@ -253,8 +253,10 @@ tre_fastexec(const fastmatch_t *fg, const tre_char_t *data, size_t len,
       j = fg->eol ? len - fg->len : 0;
       if (fastcmp(fg->pattern, data + j,
 	  fg->len) == -1) {
-	pmatch->rm_so = j;
-	pmatch->rm_eo = j + fg->len;
+	if (!(fg->cflags & REG_NOSUB) || (nmatch < 1))
+	  return 0;
+	pmatch[cnt].rm_so = j;
+	pmatch[cnt].rm_eo = j + fg->len;
 	ret = 0;
       }
     }
@@ -264,7 +266,7 @@ tre_fastexec(const fastmatch_t *fg, const tre_char_t *data, size_t len,
     do {
       if (fastcmp(fg->pattern, data + j - fg->len,
 	  fg->len) == -1) {
-	if (!(fg->cflags & REG_NOSUB))
+	if (!(fg->cflags & REG_NOSUB) || (nmatch < 1))
 	  return (0);
 	pmatch[cnt++].rm_so = j - fg->len;
 	pmatch[cnt++].rm_eo = j;
@@ -296,7 +298,7 @@ tre_fastexec(const fastmatch_t *fg, const tre_char_t *data, size_t len,
     j = 0;
     do {
       if (fastcmp(fg->pattern, data + j, fg->len) == -1) {
-	if (!(fg->cflags & REG_NOSUB))
+	if (!(fg->cflags & REG_NOSUB) || (nmatch < 1))
 	  return (0);
 	pmatch[cnt++].rm_so = j;
 	pmatch[cnt++].rm_eo = j + fg->len;

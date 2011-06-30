@@ -44,6 +44,7 @@ char *alloca ();
 #endif /* HAVE_MALLOC_H */
 #include <limits.h>
 
+#include "fastmatch.h"
 #include "tre-internal.h"
 #include "tre.h"
 #include "xmalloc.h"
@@ -150,10 +151,16 @@ tre_have_approx(const regex_t *preg)
 static int
 tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
 	  tre_str_type_t type, size_t nmatch, regmatch_t pmatch[],
-	  int eflags)
+	  int eflags, void *shortcut)
 {
   reg_errcode_t status;
   int *tags = NULL, eo;
+
+  /* Check if we can cheat with a fixed string */
+  if (shortcut != NULL)
+    return tre_fastexec((fastmatch_t *)shortcut, (const tre_char_t *)string,
+			len, nmatch, pmatch);
+
   if (tnfa->num_tags > 0 && nmatch > 0)
     {
 #ifdef TRE_USE_ALLOCA
@@ -222,7 +229,8 @@ tre_regnexec(const regex_t *preg, const char *str, size_t len,
     size_t slen = (size_t)(pmatch[0].rm_eo - pmatch[0].rm_so);
     size_t offset = pmatch[0].rm_so;
     str = &str[offset];
-    int ret = tre_match(tnfa, str, slen, type, nmatch, pmatch, eflags);
+    int ret = tre_match(tnfa, str, slen, type, nmatch, pmatch, eflags,
+			preg->shortcut);
     if (!(eflags & REG_NOSUB))
     {
       for (unsigned i = 0; i < nmatch; i++)
@@ -235,7 +243,8 @@ tre_regnexec(const regex_t *preg, const char *str, size_t len,
   }
   else
   {
-    return tre_match(tnfa, str, len, type, nmatch, pmatch, eflags);
+    return tre_match(tnfa, str, len, type, nmatch, pmatch, eflags,
+		     preg->shortcut);
   }
 }
 
@@ -260,7 +269,8 @@ tre_regwnexec(const regex_t *preg, const wchar_t *str, size_t len,
     size_t slen = (size_t)(pmatch[0].rm_eo - pmatch[0].rm_so);
     size_t offset = pmatch[0].rm_so;
     str = &str[offset];
-    int ret = tre_match(tnfa, str, slen, STR_WIDE, nmatch, pmatch, eflags);
+    int ret = tre_match(tnfa, str, slen, STR_WIDE, nmatch, pmatch, eflags,
+			preg->shortcut);
     if (!(eflags & REG_NOSUB))
     {
       for (unsigned i = 0; i < nmatch; i++)
@@ -273,7 +283,8 @@ tre_regwnexec(const regex_t *preg, const wchar_t *str, size_t len,
   }
   else
   {
-    return tre_match(tnfa, str, len, STR_WIDE, nmatch, pmatch, eflags);
+    return tre_match(tnfa, str, len, STR_WIDE, nmatch, pmatch, eflags,
+		     preg->shortcut);
   }
 }
 
@@ -291,7 +302,8 @@ tre_reguexec(const regex_t *preg, const tre_str_source *str,
 	 size_t nmatch, regmatch_t pmatch[], int eflags)
 {
   tre_tnfa_t *tnfa = (void *)preg->TRE_REGEX_T_FIELD;
-  return tre_match(tnfa, str, (unsigned)-1, STR_USER, nmatch, pmatch, eflags);
+  return tre_match(tnfa, str, (unsigned)-1, STR_USER, nmatch, pmatch, eflags,
+		   preg->shortcut);
 }
 
 
@@ -315,7 +327,7 @@ tre_match_approx(const tre_tnfa_t *tnfa, const void *string, size_t len,
   if (params.max_cost == 0 && !tnfa->have_approx
       && !(eflags & REG_APPROX_MATCHER))
     return tre_match(tnfa, string, len, type, match->nmatch, match->pmatch,
-		     eflags);
+		     eflags, NULL);
 
   /* Back references are not supported by the approximate matcher. */
   if (tnfa->have_backrefs)

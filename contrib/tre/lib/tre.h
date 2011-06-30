@@ -48,6 +48,7 @@ typedef int regoff_t;
 typedef struct {
   size_t re_nsub;  /* Number of parenthesized subexpressions. */
   void *value;     /* For internal use only. */
+  void *shortcut;  /* For internal use only. */
   const char *re_endp;
 } regex_t;
 
