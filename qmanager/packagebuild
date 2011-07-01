@@ -125,14 +125,18 @@ class Index(object):
         lines=[]
         print "[MASTER] Phase 1"
         for i in index:
-            (name, path, prefix, comment, descr, maintainer, categories, bdep,
-             rdep, www, edep, pdep, fdep) = i.rstrip().split("|")
+            try:
+                (name, path, prefix, comment, descr, maintainer, categories, bdep,
+                 rdep, www, edep, pdep, fdep) = i.rstrip().split("|")
 
-            if targets is None or name in targets:
-                lines.append((name, bdep, rdep, edep, pdep, fdep))
+                if targets is None or name in targets:
+                    lines.append((name, bdep, rdep, edep, pdep, fdep))
 
-                Port(name, path, "", "", "", "",
-                     categories, "")
+                    Port(name, path, "", "", "", "",
+                         categories, "")
+            except Exception, e:
+                print "packagebuild.parse: bad line in INDEX: "
+                print i
         index = None
         del index
 
