@@ -1866,23 +1866,29 @@ tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
   tre_tag_direction_t *tag_directions = NULL;
   reg_errcode_t errcode;
   tre_mem_t mem;
-  fastmatch_t shortcut;
+  fastmatch_t *shortcut;
 
   /* Parse context. */
   tre_parse_ctx_t parse_ctx;
 
   /* Check if we can cheat with a fixed string algorithm. */
+  shortcut = xmalloc(sizeof(fastmatch_t));
+  if (!shortcut)
+    return REG_ESPACE;
   ret = (cflags & REG_LITERAL)
-    ? tre_fastcomp_literal(&shortcut, regex, n, cflags)
-    : tre_fastcomp(&shortcut, regex, n, cflags);
+    ? tre_fastcomp_literal(shortcut, regex, n, cflags)
+    : tre_fastcomp(shortcut, regex, n, cflags);
   if (!ret)
     {
-      preg->shortcut = &shortcut;
+      preg->shortcut = shortcut;
       preg->re_nsub = 0;
       return REG_OK;
     }
   else
-    preg->shortcut = NULL;
+    {
+      free(shortcut);
+      preg->shortcut = NULL;
+    }
 
   /* Allocate a stack used throughout the compilation process for various
      purposes. */

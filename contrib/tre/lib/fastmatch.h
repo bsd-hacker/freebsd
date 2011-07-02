@@ -32,6 +32,7 @@
 
 #include "hashtable.h"
 #include "tre.h"
+#include "tre-internal.h"
 
 typedef struct {
   size_t len;
@@ -54,8 +55,8 @@ int	tre_fastcomp_literal(fastmatch_t *preg, const tre_char_t *regex,
 	    size_t, int cflags);
 int	tre_fastcomp(fastmatch_t *preg, const tre_char_t *regex, size_t,
 	    int cflags);
-int	tre_fastexec(const fastmatch_t *fg, const tre_char_t *data,
-	    size_t len, int nmatch, regmatch_t pmatch[]);
+int	tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
+	    tre_str_type_t type, int nmatch, regmatch_t pmatch[]);
 void	tre_fastfree(fastmatch_t *preg);
 
 #endif		/* FASTMATCH_H */

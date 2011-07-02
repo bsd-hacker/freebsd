@@ -110,14 +110,13 @@ tre_regncomp(regex_t *preg, const char *regex, size_t n, int cflags)
 int
 tre_regcomp(regex_t *preg, const char *regex, int cflags)
 {
- size_t len;
+  size_t len;
 
- if (cflags & REG_PEND)
-   {
-     if (preg->re_endp >= regex)
-       len = preg->re_endp - regex;
-     else
-       len = 0;
+  if (cflags & REG_PEND)
+    {
+      len = (preg->re_endp >= regex)
+	? preg->re_endp - regex
+	: 0;
      return tre_regncomp(preg, regex, len, cflags);
    }
   else

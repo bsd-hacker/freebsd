@@ -151,15 +151,14 @@ tre_have_approx(const regex_t *preg)
 static int
 tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
 	  tre_str_type_t type, size_t nmatch, regmatch_t pmatch[],
-	  int eflags, void *shortcut)
+	  int eflags, fastmatch_t *shortcut)
 {
   reg_errcode_t status;
   int *tags = NULL, eo;
 
   /* Check if we can cheat with a fixed string */
   if (shortcut != NULL)
-    return tre_fastexec((fastmatch_t *)shortcut, (const tre_char_t *)string,
-			len, nmatch, pmatch);
+      return tre_fastexec(shortcut, string, len, nmatch, pmatch);
 
   if (tnfa->num_tags > 0 && nmatch > 0)
     {
