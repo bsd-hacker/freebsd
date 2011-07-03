@@ -269,7 +269,7 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
   int cnt = 0;
   int ret = REG_NOMATCH;
   const char *str_byte = data;
-  const void *startptr;
+  const void *startptr = NULL;
 #ifdef TRE_WCHAR
   const wchar_t *str_wide = data;
 #endif
@@ -334,14 +334,34 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
         break;
 #ifdef TRE_WCHAR
       {
-	int k, r;
+	int k, r = -1;
+	wint_t wc;
+	const char *ch;
+	const wchar_t *ws;
 
-	r = hashtable_get(fg->qsBc, &data[j - fg->len - 1], &k);
+	SKIP_CHARS(j - fg->len - 1);
+	switch (type)
+	  {
+	    case STR_BYTE:
+	    case STR_MBS:
+	      ch = startptr;
+	      mbrtowc(&wc, ch, MB_CUR_MAX, NULL);
+	      r = hashtable_get(fg->qsBc, &wc, &k);
+	      break;
+	    case STR_WIDE:
+	      ws = startptr;
+	      r = hashtable_get(fg->qsBc, ws, &k);
+	      break;
+	    default:
+	      /* XXX */
+	      break;
+	  }
 	k = (r == 0) ? k : fg->defBc;
-	j -= k;
+	j += k;
       }
 #else
-      j -= fg->qsBc[data[j - fg->len - 1]];
+      SKIP_CHARS(j - fg->len - 1);
+      j += fg->qsBc[startptr[0]];
 #endif
     } while (j >= fg->len);
   } else {
@@ -369,14 +389,34 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
 	break;
 #ifdef TRE_WCHAR
       {
-	int k, r;
+	int k, r = -1;
+	wint_t wc;
+	const char *ch;
+	const wchar_t *ws;
 
-	r = hashtable_get(fg->qsBc, &data[j + fg->len], &k);
+	SKIP_CHARS(j + fg->len);
+	switch (type)
+	  {
+	    case STR_BYTE:
+	    case STR_MBS:
+	      ch = startptr;
+	      mbrtowc(&wc, ch, MB_CUR_MAX, NULL);
+	      r = hashtable_get(fg->qsBc, &wc, &k);
+	      break;
+	    case STR_WIDE:
+	      ws = startptr;
+	      r = hashtable_get(fg->qsBc, ws, &k);
+	      break;
+	    default:
+	      /* XXX */
+	      break;
+	  }
 	k = (r == 0) ? k : fg->defBc;
 	j += k;
       }
 #else
-      j += fg->qsBc[data[j + fg->len]];
+      SKIP_CHARS(j + fg->len);
+      j += fg->qsBc[startptr[0]];
 #endif
     } while (j <= (len - fg->len));
   }

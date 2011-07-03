@@ -158,7 +158,7 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
 
   /* Check if we can cheat with a fixed string */
   if (shortcut != NULL)
-      return tre_fastexec(shortcut, string, len, nmatch, pmatch);
+      return tre_fastexec(shortcut, string, len, type, nmatch, pmatch);
 
   if (tnfa->num_tags > 0 && nmatch > 0)
     {
