@@ -96,7 +96,7 @@ tre_fastcomp_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n, int cflag
   /* Preprocess pattern. */
 #ifdef TRE_WCHAR
   fg->defBc = fg->len;
-  fg->qsBc = hashtable_init(fg->len, sizeof(tre_char_t), sizeof(int));
+  fg->qsBc = hashtable_init(fg->len * 3, sizeof(tre_char_t), sizeof(int));
   if (fg->qsBc == NULL)
     return -1;
   for (unsigned int i = 1; i < fg->len; i++)
