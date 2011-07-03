@@ -41,7 +41,8 @@
 #include "tre-internal.h"
 #include "xmalloc.h"
 
-static int	fastcmp(const tre_char_t *, const void *, size_t, tre_str_type_t);
+static int	fastcmp(const tre_char_t *, const void *, size_t,
+			tre_str_type_t);
 static void	revstr(tre_char_t *, int);
 
 #ifdef TRE_WCHAR
@@ -78,7 +79,8 @@ static void	revstr(tre_char_t *, int);
  * Returns: -1 on failure, 0 on success
  */
 int
-tre_fastcomp_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n, int cflags)
+tre_fastcomp_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n,
+		     int cflags)
 {
 
   /* Initialize. */
@@ -150,7 +152,8 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n, int cflags)
 
   if ((fg->len >= 14) &&
       (memcmp(pat, TRE_CHAR("[[:<:]]"), 7 * sizeof(tre_char_t)) == 0) &&
-      (memcmp(pat + fg->len - 7, TRE_CHAR("[[:>:]]"), 7 * sizeof(tre_char_t)) == 0))
+      (memcmp(pat + fg->len - 7, TRE_CHAR("[[:>:]]"),
+	      7 * sizeof(tre_char_t)) == 0))
   {
     fg->len -= 14;
     pat += 7;
