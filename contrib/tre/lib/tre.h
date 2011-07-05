@@ -82,13 +82,13 @@ typedef enum {
 #define REG_ICASE	(REG_EXTENDED << 1)
 #define REG_NEWLINE	(REG_ICASE << 1)
 #define REG_NOSUB	(REG_NEWLINE << 1)
-#define REG_PEND	(REG_NOSUB << 1)
 
 /* Extra tre_regcomp() flags. */
 #define REG_BASIC	0
 #define REG_LITERAL	(REG_NOSUB << 1)
 #define REG_RIGHT_ASSOC (REG_LITERAL << 1)
 #define REG_UNGREEDY    (REG_RIGHT_ASSOC << 1)
+#define REG_PEND        (REG_UNGREEDY << 1)
 
 /* POSIX tre_regexec() flags. */
 #define REG_NOTBOL 1
