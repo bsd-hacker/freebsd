@@ -36,7 +36,7 @@
  *
  */
 
-#include "opt_capabilities.h"
+#include "opt_capsicum.h"
 
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
@@ -59,16 +59,9 @@ __FBSDID("$FreeBSD$");
 #include <vm/uma.h>
 #include <vm/vm.h>
 
-#ifdef CAPABILITIES
+#ifdef CAPABILITY_MODE
 
 FEATURE(security_capabilities, "Capsicum Capability Mode");
-
-/*
- * We don't currently have any MIB entries for sysctls, but we do expose
- * security.capabilities so that it's easy to tell if options CAPABILITIES is
- * compiled into the kernel.
- */
-SYSCTL_NODE(_security, OID_AUTO, capabilities, CTLFLAG_RW, 0, "Capsicum");
 
 /*
  * System call to enter capability mode for the process.
@@ -106,7 +99,7 @@ cap_getmode(struct thread *td, struct cap_getmode_args *uap)
 	return (copyout(&i, uap->modep, sizeof(i)));
 }
 
-#else /* !CAPABILITIES */
+#else /* !CAPABILITY_MODE */
 
 int
 cap_enter(struct thread *td, struct cap_enter_args *uap)
@@ -122,4 +115,126 @@ cap_getmode(struct thread *td, struct cap_getmode_args *uap)
 	return (ENOSYS);
 }
 
+#endif /* CAPABILITY_MODE */
+
+#ifdef CAPABILITIES
+
+/*
+ * struct capability describes a capability, and is hung off of its struct
+ * file f_data field.  cap_file and cap_rightss are static once hooked up, as
+ * neither the object it references nor the rights it encapsulates are
+ * permitted to change.  cap_filelist may change when other capabilites are
+ * added or removed from the same file, and is currently protected by the
+ * pool mutex for the object file descriptor.
+ */
+struct capability {
+	struct file	*cap_object;	/* Underlying object's file. */
+	struct file	*cap_file;	/* Back-pointer to cap's file. */
+	cap_rights_t	 cap_rights;	/* Mask of rights on object. */
+	LIST_ENTRY(capability)	cap_filelist; /* Object's cap list. */
+};
+
+/*
+ * Test whether a capability grants the requested rights.
+ */
+static int
+cap_check(struct capability *c, cap_rights_t rights)
+{
+
+	if ((c->cap_rights | rights) != c->cap_rights)
+		return (ENOTCAPABLE);
+	return (0);
+}
+
+/*
+ * Given a file descriptor, test it against a capability rights mask and then
+ * return the file descriptor on which to actually perform the requested
+ * operation.  As long as the reference to fp_cap remains valid, the returned
+ * pointer in *fp will remain valid, so no extra reference management is
+ * required, and the caller should fdrop() fp_cap as normal when done with
+ * both.
+ */
+int
+cap_funwrap(struct file *fp_cap, cap_rights_t rights, struct file **fpp)
+{
+	struct capability *c;
+	int error;
+
+	if (fp_cap->f_type != DTYPE_CAPABILITY) {
+		*fpp = fp_cap;
+		return (0);
+	}
+	c = fp_cap->f_data;
+	error = cap_check(c, rights);
+	if (error)
+		return (error);
+	*fpp = c->cap_object;
+	return (0);
+}
+
+/*
+ * Slightly different routine for memory mapping file descriptors: unwrap the
+ * capability and check CAP_MMAP, but also return a bitmask representing the
+ * maximum mapping rights the capability allows on the object.
+ */
+int
+cap_funwrap_mmap(struct file *fp_cap, cap_rights_t rights, u_char *maxprotp,
+    struct file **fpp)
+{
+	struct capability *c;
+	u_char maxprot;
+	int error;
+
+	if (fp_cap->f_type != DTYPE_CAPABILITY) {
+		*fpp = fp_cap;
+		*maxprotp = VM_PROT_ALL;
+		return (0);
+	}
+	c = fp_cap->f_data;
+	error = cap_check(c, rights | CAP_MMAP);
+	if (error)
+		return (error);
+	*fpp = c->cap_object;
+	maxprot = 0;
+	if (c->cap_rights & CAP_READ)
+		maxprot |= VM_PROT_READ;
+	if (c->cap_rights & CAP_WRITE)
+		maxprot |= VM_PROT_WRITE;
+	if (c->cap_rights & CAP_MAPEXEC)
+		maxprot |= VM_PROT_EXECUTE;
+	*maxprotp = maxprot;
+	return (0);
+}
+
+#else /* !CAPABILITIES */
+
+/*
+ * Stub Capability functions for when options CAPABILITIES isn't compiled
+ * into the kernel.
+ */
+int
+cap_funwrap(struct file *fp_cap, cap_rights_t rights, struct file **fpp)
+{
+
+	KASSERT(fp_cap->f_type != DTYPE_CAPABILITY,
+	    ("cap_funwrap: saw capability"));
+
+	*fpp = fp_cap;
+	return (0);
+}
+
+int
+cap_funwrap_mmap(struct file *fp_cap, cap_rights_t rights, u_char *maxprotp,
+    struct file **fpp)
+{
+
+	KASSERT(fp_cap->f_type != DTYPE_CAPABILITY,
+	    ("cap_funwrap_mmap: saw capability"));
+
+	*fpp = fp_cap;
+	*maxprotp = VM_PROT_ALL;
+	return (0);
+}
+
 #endif /* CAPABILITIES */
+

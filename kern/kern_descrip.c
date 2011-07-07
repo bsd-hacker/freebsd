@@ -37,6 +37,7 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include "opt_capsicum.h"
 #include "opt_compat.h"
 #include "opt_ddb.h"
 #include "opt_ktrace.h"
@@ -44,6 +45,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/systm.h>
 
+#include <sys/capability.h>
 #include <sys/conf.h>
 #include <sys/domain.h>
 #include <sys/fcntl.h>
@@ -91,6 +93,7 @@ __FBSDID("$FreeBSD$");
 #include <security/audit/audit.h>
 
 #include <vm/uma.h>
+#include <vm/vm.h>
 
 #include <ddb/ddb.h>
 
@@ -818,6 +821,7 @@ do_dup(struct thread *td, int flags, int old, int new,
 			 * descriptors, just put the limit on the size of the file
 			 * descriptor table.
 			 */
+#ifdef RACCT
 			PROC_LOCK(p);
 			error = racct_set(p, RACCT_NOFILE, new + 1);
 			PROC_UNLOCK(p);
@@ -826,6 +830,7 @@ do_dup(struct thread *td, int flags, int old, int new,
 				fdrop(fp, td);
 				return (EMFILE);
 			}
+#endif
 			fdgrowtable(fdp, new + 1);
 		}
 		if (fdp->fd_ofiles[new] == NULL)
@@ -1473,7 +1478,10 @@ fdalloc(struct thread *td, int minfd, int *result)
 {
 	struct proc *p = td->td_proc;
 	struct filedesc *fdp = p->p_fd;
-	int fd = -1, maxfd, error;
+	int fd = -1, maxfd;
+#ifdef RACCT
+	int error;
+#endif
 
 	FILEDESC_XLOCK_ASSERT(fdp);
 
@@ -1496,11 +1504,13 @@ fdalloc(struct thread *td, int minfd, int *result)
 			return (EMFILE);
 		if (fd < fdp->fd_nfiles)
 			break;
+#ifdef RACCT
 		PROC_LOCK(p);
 		error = racct_set(p, RACCT_NOFILE, min(fdp->fd_nfiles * 2, maxfd));
 		PROC_UNLOCK(p);
 		if (error != 0)
 			return (EMFILE);
+#endif
 		fdgrowtable(fdp, min(fdp->fd_nfiles * 2, maxfd));
 	}
 
@@ -1561,54 +1571,85 @@ fdavail(struct thread *td, int n)
 int
 falloc(struct thread *td, struct file **resultfp, int *resultfd, int flags)
 {
-	struct proc *p = td->td_proc;
 	struct file *fp;
-	int error, i;
+	int error, fd;
+
+	error = falloc_noinstall(td, &fp);
+	if (error)
+		return (error);		/* no reference held on error */
+
+	error = finstall(td, fp, &fd, flags);
+	if (error) {
+		fdrop(fp, td);		/* one reference (fp only) */
+		return (error);
+	}
+
+	if (resultfp != NULL)
+		*resultfp = fp;		/* copy out result */
+	else
+		fdrop(fp, td);		/* release local reference */
+
+	if (resultfd != NULL)
+		*resultfd = fd;
+
+	return (0);
+}
+
+/*
+ * Create a new open file structure without allocating a file descriptor.
+ */
+int
+falloc_noinstall(struct thread *td, struct file **resultfp)
+{
+	struct file *fp;
 	int maxuserfiles = maxfiles - (maxfiles / 20);
 	static struct timeval lastfail;
 	static int curfail;
 
-	fp = uma_zalloc(file_zone, M_WAITOK | M_ZERO);
+	KASSERT(resultfp != NULL, ("%s: resultfp == NULL", __func__));
+
 	if ((openfiles >= maxuserfiles &&
 	    priv_check(td, PRIV_MAXFILES) != 0) ||
 	    openfiles >= maxfiles) {
 		if (ppsratecheck(&lastfail, &curfail, 1)) {
-			printf("kern.maxfiles limit exceeded by uid %i, please see tuning(7).\n",
-				td->td_ucred->cr_ruid);
+			printf("kern.maxfiles limit exceeded by uid %i, "
+			    "please see tuning(7).\n", td->td_ucred->cr_ruid);
 		}
-		uma_zfree(file_zone, fp);
 		return (ENFILE);
 	}
 	atomic_add_int(&openfiles, 1);
-
-	/*
-	 * If the process has file descriptor zero open, add the new file
-	 * descriptor to the list of open files at that point, otherwise
-	 * put it at the front of the list of open files.
-	 */
+	fp = uma_zalloc(file_zone, M_WAITOK | M_ZERO);
 	refcount_init(&fp->f_count, 1);
-	if (resultfp)
-		fhold(fp);
 	fp->f_cred = crhold(td->td_ucred);
 	fp->f_ops = &badfileops;
 	fp->f_data = NULL;
 	fp->f_vnode = NULL;
-	FILEDESC_XLOCK(p->p_fd);
-	if ((error = fdalloc(td, 0, &i))) {
-		FILEDESC_XUNLOCK(p->p_fd);
-		fdrop(fp, td);
-		if (resultfp)
-			fdrop(fp, td);
+	*resultfp = fp;
+	return (0);
+}
+
+/*
+ * Install a file in a file descriptor table.
+ */
+int
+finstall(struct thread *td, struct file *fp, int *fd, int flags)
+{
+	struct filedesc *fdp = td->td_proc->p_fd;
+	int error;
+
+	KASSERT(fd != NULL, ("%s: fd == NULL", __func__));
+	KASSERT(fp != NULL, ("%s: fp == NULL", __func__));
+
+	FILEDESC_XLOCK(fdp);
+	if ((error = fdalloc(td, 0, fd))) {
+		FILEDESC_XUNLOCK(fdp);
 		return (error);
 	}
-	p->p_fd->fd_ofiles[i] = fp;
+	fhold(fp);
+	fdp->fd_ofiles[*fd] = fp;
 	if ((flags & O_CLOEXEC) != 0)
-		p->p_fd->fd_ofileflags[i] |= UF_EXCLOSE;
-	FILEDESC_XUNLOCK(p->p_fd);
-	if (resultfp)
-		*resultfp = fp;
-	if (resultfd)
-		*resultfd = i;
+		fdp->fd_ofileflags[*fd] |= UF_EXCLOSE;
+	FILEDESC_XUNLOCK(fdp);
 	return (0);
 }
 
@@ -1785,9 +1826,11 @@ fdfree(struct thread *td)
 	if (fdp == NULL)
 		return;
 
+#ifdef RACCT
 	PROC_LOCK(td->td_proc);
 	racct_set(td->td_proc, RACCT_NOFILE, 0);
 	PROC_UNLOCK(td->td_proc);
+#endif
 
 	/* Check for special need to clear POSIX style locks */
 	fdtol = td->td_proc->p_fdtol;
@@ -2228,15 +2271,27 @@ fget_unlocked(struct filedesc *fdp, int fd)
  * If the descriptor doesn't exist or doesn't match 'flags', EBADF is
  * returned.
  *
+ * If the FGET_GETCAP flag is set, the capability itself will be returned.
+ * Calling _fget() with FGET_GETCAP on a non-capability will return EINVAL.
+ * Otherwise, if the file is a capability, its rights will be checked against
+ * the capability rights mask, and if successful, the object will be unwrapped.
+ *
  * If an error occured the non-zero error is returned and *fpp is set to
  * NULL.  Otherwise *fpp is held and set and zero is returned.  Caller is
  * responsible for fdrop().
  */
+#define	FGET_GETCAP	0x00000001
 static __inline int
-_fget(struct thread *td, int fd, struct file **fpp, int flags)
+_fget(struct thread *td, int fd, struct file **fpp, int flags,
+    cap_rights_t needrights, cap_rights_t *haverights, u_char *maxprotp,
+    int fget_flags)
 {
 	struct filedesc *fdp;
 	struct file *fp;
+#ifdef CAPABILITIES
+	struct file *fp_fromcap;
+	int error;
+#endif
 
 	*fpp = NULL;
 	if (td == NULL || (fdp = td->td_proc->p_fd) == NULL)
@@ -2247,6 +2302,47 @@ _fget(struct thread *td, int fd, struct file **fpp, int flags)
 		fdrop(fp, td);
 		return (EBADF);
 	}
+
+#ifdef CAPABILITIES
+	/*
+	 * If a capability has been requested, return the capability directly.
+	 * Otherwise, check capability rights, extract the underlying object,
+	 * and check its access flags.
+	 */
+	if (fget_flags & FGET_GETCAP) {
+		if (fp->f_type != DTYPE_CAPABILITY) {
+			fdrop(fp, td);
+			return (EINVAL);
+		}
+	} else {
+		if (maxprotp == NULL)
+			error = cap_funwrap(fp, needrights, &fp_fromcap);
+		else
+			error = cap_funwrap_mmap(fp, needrights, maxprotp,
+			    &fp_fromcap);
+		if (error) {
+			fdrop(fp, td);
+			return (error);
+		}
+
+		/*
+		 * If we've unwrapped a file, drop the original capability
+		 * and hold the new descriptor.  fp after this point refers to
+		 * the actual (unwrapped) object, not the capability.
+		 */
+		if (fp != fp_fromcap) {
+			fhold(fp_fromcap);
+			fdrop(fp, td);
+			fp = fp_fromcap;
+		}
+	}
+#else /* !CAPABILITIES */
+	KASSERT(fp->f_type != DTYPE_CAPABILITY,
+	    ("%s: saw capability", __func__));
+	if (maxprotp != NULL)
+		*maxprotp = VM_PROT_ALL;
+#endif /* CAPABILITIES */
+
 	/*
 	 * FREAD and FWRITE failure return EBADF as per POSIX.
 	 *
@@ -2265,22 +2361,35 @@ int
 fget(struct thread *td, int fd, struct file **fpp)
 {
 
-	return(_fget(td, fd, fpp, 0));
+	return(_fget(td, fd, fpp, 0, 0, NULL, NULL, 0));
 }
 
 int
 fget_read(struct thread *td, int fd, struct file **fpp)
 {
 
-	return(_fget(td, fd, fpp, FREAD));
+	return(_fget(td, fd, fpp, FREAD, 0, NULL, NULL, 0));
 }
 
 int
 fget_write(struct thread *td, int fd, struct file **fpp)
 {
 
-	return(_fget(td, fd, fpp, FWRITE));
+	return(_fget(td, fd, fpp, FWRITE, 0, NULL, NULL, 0));
 }
+
+/*
+ * Unlike the other fget() calls, which will accept and check capability rights
+ * but never return capabilities, fgetcap() returns the capability but doesn't
+ * check capability rights.
+ */
+int
+fgetcap(struct thread *td, int fd, struct file **fpp)
+{
+
+	return (_fget(td, fd, fpp, 0, 0, NULL, NULL, FGET_GETCAP));
+}
+
 
 /*
  * Like fget() but loads the underlying vnode, or returns an error if the
@@ -2296,7 +2405,7 @@ _fgetvp(struct thread *td, int fd, struct vnode **vpp, int flags)
 	int error;
 
 	*vpp = NULL;
-	if ((error = _fget(td, fd, &fp, flags)) != 0)
+	if ((error = _fget(td, fd, &fp, flags, 0, NULL, NULL, 0)) != 0)
 		return (error);
 	if (fp->f_vnode == NULL) {
 		error = EINVAL;
@@ -2352,7 +2461,7 @@ fgetsock(struct thread *td, int fd, struct socket **spp, u_int *fflagp)
 	*spp = NULL;
 	if (fflagp != NULL)
 		*fflagp = 0;
-	if ((error = _fget(td, fd, &fp, 0)) != 0)
+	if ((error = _fget(td, fd, &fp, 0, 0, NULL, NULL, 0)) != 0)
 		return (error);
 	if (fp->f_type != DTYPE_SOCKET) {
 		error = ENOTSOCK;
