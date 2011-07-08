@@ -79,8 +79,7 @@ static void	revstr(tre_char_t *, int);
  * Returns: -1 on failure, 0 on success
  */
 int
-tre_fastcomp_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n,
-		     int cflags)
+tre_fastcomp_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n)
 {
 
   /* Initialize. */
@@ -88,7 +87,6 @@ tre_fastcomp_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n,
   fg->bol = false;
   fg->eol = false;
   fg->reversed = false;
-  fg->cflags = cflags;
   fg->pattern = xmalloc((fg->len + 1) * sizeof(tre_char_t));
   if (fg->pattern == NULL)
     return -1;
@@ -120,7 +118,7 @@ tre_fastcomp_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n,
  * Returns: -1 on failure, 0 on success
  */
 int
-tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n, int cflags)
+tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n)
 {
   int firstHalfDot = -1;
   int firstLastHalfDot = -1;
@@ -133,7 +131,6 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n, int cflags)
   fg->eol = false;
   fg->reversed = false;
   fg->word = false;
-  fg->cflags = cflags;
 
   /* Remove end-of-line character ('$'). */
   if ((fg->len > 0) && (pat[fg->len - 1] == TRE_CHAR('$')))
@@ -166,6 +163,8 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n, int cflags)
    * of the string respectively.
    */
   fg->pattern = xmalloc((fg->len + 1) * sizeof(tre_char_t));
+  if (fg->pattern == NULL)
+    return -1;
   memcpy(fg->pattern, pat, fg->len * sizeof(tre_char_t));
   fg->pattern[fg->len] = TRE_CHAR('\0');
 
@@ -269,7 +268,6 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
 {
   unsigned int j;
   size_t siz, skip;
-  int cnt = 0;
   int ret = REG_NOMATCH;
   const char *str_byte = data;
   const void *startptr = NULL;
@@ -306,10 +304,8 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
       j = fg->eol ? len - fg->len : 0;
       SKIP_CHARS(j);
       if (fastcmp(fg->pattern, startptr, fg->len, type) == -1) {
-	if (!(fg->cflags & REG_NOSUB) || (nmatch < 1))
-	  return REG_OK;
-	pmatch[cnt].rm_so = j;
-	pmatch[cnt].rm_eo = j + fg->len;
+	pmatch[0].rm_so = j;
+	pmatch[0].rm_eo = j + fg->len;
 	return REG_OK;
       }
     }
@@ -319,18 +315,9 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
     do {
       SKIP_CHARS(j - fg->len);
       if (fastcmp(fg->pattern, startptr, fg->len, type) == -1) {
-	if (!(fg->cflags & REG_NOSUB) || (nmatch < 1))
-	  return REG_OK;
-	pmatch[cnt++].rm_so = j - fg->len;
-	pmatch[cnt++].rm_eo = j;
-	nmatch--;
-	ret = REG_OK;
-	if (nmatch < 1)
-	  return ret;
-	else {
-	  j -= 2 * fg->len;
-	  continue;
-	}
+	pmatch[0].rm_so = j - fg->len;
+	pmatch[0].rm_eo = j;
+	return REG_OK;
       }
       /* Shift if within bounds, otherwise, we are done. */
       if (((long)j - (long)fg->len - 1) < 0)
@@ -373,18 +360,9 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
     do {
       SKIP_CHARS(j);
       if (fastcmp(fg->pattern, startptr, fg->len, type) == -1) {
-	if (!(fg->cflags & REG_NOSUB) || (nmatch < 1))
-	  return REG_OK;
-	pmatch[cnt++].rm_so = j;
-	pmatch[cnt++].rm_eo = j + fg->len;
-	nmatch--;
-	ret = REG_OK;
-	if (nmatch < 1)
-	  return ret;
-	else {
-	  j += fg->len;
-	  continue;
-	}
+	pmatch[0].rm_so = j;
+	pmatch[0].rm_eo = j + fg->len;
+	return REG_OK;
       }
 
       /* Shift if within bounds, otherwise, we are done. */
