@@ -100,8 +100,8 @@ mphyp_bootstrap(mmu_t mmup, vm_offset_t kernelstart, vm_offset_t kernelend)
 	char buf[8];
 	uint32_t prop[2];
 	uint32_t nptlp, shift = 0, slb_encoding = 0;
-        phandle_t dev, node, root;
-        int idx, len, res;
+	phandle_t dev, node, root;
+	int idx, len, res;
 
 	moea64_early_bootstrap(mmup, kernelstart, kernelend);
 
