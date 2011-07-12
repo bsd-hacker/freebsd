@@ -1,0 +1,8 @@
+#!/bin/sh
+# 
+# clean up stale /tmp on all client machines.  MCL 20110712.
+#
+
+pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
+
+${pbc}/scripts/allgohans all -q -scp ${pbc}/scripts/cleanup-tmp
