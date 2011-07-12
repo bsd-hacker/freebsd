@@ -1,0 +1,66 @@
+#!/bin/sh
+# $FreeBSD$
+
+# To be run on the client, this script looks for stale stuff in /tmp
+# and cleans them up to reclaim space.
+
+# XXX TODO promote
+# all times are in minutes
+REMOVE_DOTSETUPDIR_TIME=10080
+REMOVE_SCRIPT_CACHE_TIME=282240
+REMOVE_SETUPNODE_TIME=10080
+# 282240 = 28 days
+#  10080 =  7 days
+#   1440 =  1 day
+
+#VERBOSE=1
+
+pbd=${PORTBUILD_DATA:-/var/portbuild}
+
+# note: uname is not being overridden (should not need client.conf here)
+arch=$(uname -m)
+
+## note: if any are missing, the script exits here.
+#. ${pbd}/${arch}/client.conf
+#. ${pbd}/${arch}/portbuild.conf
+#. ${pbd}/${arch}/portbuild.$(hostname)
+
+old_dotsetupdirs=$(find /tmp/.setup*pointyhat* -type d -prune -mmin +${REMOVE_DOTSETUPDIR_TIME} 2> /dev/null)
+old_script_caches=$(find /tmp/2* -type d -prune -mmin +${REMOVE_SCRIPT_CACHE_TIME} 2> /dev/null | grep pointyhat)
+old_setupnodes=$(find /tmp/setupnode.* -type f -prune -mmin +${REMOVE_SETUPNODE_TIME} 2> /dev/null)
+
+if [ ! -z "${old_dotsetupdirs}" ]; then
+    echo "non-empty stale dotsetupdirs found on $(hostname):"
+    echo ${old_dotsetupdirs}
+    echo
+    rm -rf ${old_dotsetupdirs}
+else
+    if [ $VERBOSE ]; then
+	echo "no non-empty stale dotsetupdirs found on $(hostname)."
+	echo
+    fi
+fi
+
+if [ ! -z "${old_script_caches}" ]; then
+    echo "non-empty stale script_caches found on $(hostname):"
+    echo ${old_script_caches}
+    echo
+    rm -rf ${old_script_caches}
+else
+    if [ $VERBOSE ]; then
+	echo "no non-empty stale script_caches found on $(hostname)."
+	echo
+    fi
+fi
+
+if [ ! -z "${old_setupnodes}" ]; then
+    echo "non-empty stale setupnodes found on $(hostname):"
+    echo ${old_setupnodes}
+    echo
+    rm -rf ${old_setupnodes}
+else
+    if [ $VERBOSE ]; then
+	echo "no non-empty stale setupnodes found on $(hostname)."
+	echo
+    fi
+fi
