@@ -155,10 +155,11 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
 {
   reg_errcode_t status;
   int *tags = NULL, eo;
+  int ret;
 
   /* Check if we can cheat with a fixed string */
   if (shortcut != NULL)
-      return tre_fastexec(shortcut, string, len, type, nmatch, pmatch);
+    return tre_fastexec(shortcut, string, len, type, nmatch, pmatch);
 
   if (tnfa->num_tags > 0 && nmatch > 0)
     {
@@ -230,9 +231,11 @@ tre_regnexec(const regex_t *preg, const char *str, size_t len,
     str = &str[offset];
     int ret = tre_match(tnfa, str, slen, type, nmatch, pmatch, eflags,
 			preg->shortcut);
+    pmatch[0].rm_so += offset;
+    pmatch[0].rm_eo += offset;
     if (!(eflags & REG_NOSUB))
     {
-      for (unsigned i = 0; i < nmatch; i++)
+      for (unsigned i = 1; i < nmatch; i++)
       {
 	pmatch[i].rm_so += offset;
         pmatch[i].rm_eo += offset;
@@ -270,6 +273,8 @@ tre_regwnexec(const regex_t *preg, const wchar_t *str, size_t len,
     str = &str[offset];
     int ret = tre_match(tnfa, str, slen, STR_WIDE, nmatch, pmatch, eflags,
 			preg->shortcut);
+    pmatch[0].rm_so += offset;
+    pmatch[0].rm_eo += offset;
     if (!(eflags & REG_NOSUB))
     {
       for (unsigned i = 0; i < nmatch; i++)
