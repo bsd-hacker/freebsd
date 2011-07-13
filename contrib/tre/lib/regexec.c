@@ -155,7 +155,6 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
 {
   reg_errcode_t status;
   int *tags = NULL, eo;
-  int ret;
 
   /* Check if we can cheat with a fixed string */
   if (shortcut != NULL)
