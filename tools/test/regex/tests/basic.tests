@@ -1,3 +1,20 @@
 # $FreeBSD$
 
+# Fixed string and simple expressions
 foo;foobarfoobar;((0,3),(6,9))
+ba.;foobarfoobaz;((3,6),(9,12))
+ba[rz];foobarfoobaz;((3,6),(9,12))
+ba[rz];foobahfoobav;()
+ba[^r];foobarfoobaz;((9,12))
+
+# Collating elements
+[[=a=]];bbbbabbbb;((4,5))
+
+# Character classes
+[[:alnum:]];__a____4_;((2,3),(7,8))
+[[:alpha:]];012345a67890b;((6,7),(12,13))
+[[:blank:]];0123456789abcdefghijklmnopqrstuvwxyz;()
+[[:cntrl:]];012346789;()
+[[:digit:]];abcdefgh1ijklmn2opqrstuv3wxyz4;((8,9),(15,16),(24,25),(29,30))
+#[[:graph:]];"     5   ";((5,6))
+[[:lower:]];ABCDEFg0123456hIJKL;((6,7),(14,15))
