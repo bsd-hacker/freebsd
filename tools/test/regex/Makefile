@@ -11,7 +11,7 @@ test: regmatch
 		str=`echo $${l} | cut -d \; -f 2`; \
 		pat=`echo $${l} | cut -d \; -f 1`; \
 		match=`echo $${l} | cut -d \; -f 3`; \
-		result=`./regmatch/regmatch $${pat} $${str}`; \
+		result=`env LC_ALL=C ./regmatch/regmatch $${pat} $${str}`; \
 		if [ "$${match}" != "$${result}" ]; then \
 			echo "Failed matching pattern $${pat} to string $${str}"; \
 		else \
