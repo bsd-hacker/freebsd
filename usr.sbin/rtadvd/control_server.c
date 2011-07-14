@@ -640,6 +640,8 @@ cmsg_handler_server(int fd)
 					cm->cm_len = sizeof(*cm);
 					cm->cm_len += cmsg_pl2bin(msg, &cp);
 				}
+				if (cp.cp_val != NULL)
+					free(cp.cp_val);
 				break;
 			case CM_TYPE_REQ_SET_PROP:
 				cmsg_bin2pl(msg, &cp);
