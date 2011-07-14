@@ -2,7 +2,7 @@
 
 SUBDIR=	regmatch
 
-TESTS=basic.tests
+TESTS=bre.tests
 
 test: regmatch
 .for t in ${TESTS}
