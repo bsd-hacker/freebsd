@@ -42,7 +42,7 @@ main(int argc, char *argv[])
 			(unsigned long)pmatch.rm_eo);
 		if (pmatch.rm_eo == len)
 			break;
-		pmatch.rm_so = pmatch.rm_eo;
+		pmatch.rm_so = (pmatch.rm_so == pmatch.rm_eo) ? pmatch.rm_eo + 1 : pmatch.rm_eo;
 		pmatch.rm_eo = len;
 		first = false;
 	}
