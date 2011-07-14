@@ -76,9 +76,7 @@ static int cmsg_getprop_rai_timer(struct ctrl_msg_pl *);
 static int cmsg_getprop_pfx(struct ctrl_msg_pl *);
 static int cmsg_getprop_rdnss(struct ctrl_msg_pl *);
 static int cmsg_getprop_dnssl(struct ctrl_msg_pl *);
-#ifdef ROUTEINFO
 static int cmsg_getprop_rti(struct ctrl_msg_pl *);
-#endif
 
 static struct dispatch_table {
 	const char	*dt_comm;
@@ -91,9 +89,7 @@ static struct dispatch_table {
 	DEF_PL_HANDLER(ifi),
 	DEF_PL_HANDLER(rai),
 	DEF_PL_HANDLER(rai_timer),
-#ifdef ROUTEINFO
 	DEF_PL_HANDLER(rti),
-#endif
 	DEF_PL_HANDLER(pfx),
 	DEF_PL_HANDLER(rdnss),
 	DEF_PL_HANDLER(dnssl),
@@ -277,7 +273,6 @@ cmsg_getprop_rai_timer(struct ctrl_msg_pl *cp)
 	return (0);
 }
 
-#ifdef ROUTEINFO
 static int
 cmsg_getprop_rti(struct ctrl_msg_pl *cp)
 {
@@ -326,7 +321,6 @@ cmsg_getprop_rti(struct ctrl_msg_pl *cp)
 
 	return (0);
 }
-#endif
 
 static int
 cmsg_getprop_pfx(struct ctrl_msg_pl *cp)

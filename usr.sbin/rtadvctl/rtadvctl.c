@@ -84,9 +84,7 @@ static int	action_shutdown(int, char **);
 
 static int	action_show(int, char **);
 static int	action_show_prefix(struct prefix *);
-#ifdef ROUTEINFO
 static int	action_show_rtinfo(struct rtinfo *);
-#endif
 static int	action_show_rdnss(void *);
 static int	action_show_dnssl(void *);
 
@@ -366,9 +364,7 @@ action_show(int argc, char **argv)
 	char argv_ifilist[sizeof(":ifilist=")] = ":ifilist=";
 	char argv_ifi[IFNAMSIZ + sizeof(":ifi=")];
 	char argv_rai[IFNAMSIZ + sizeof(":rai=")];
-#ifdef ROUTEINFO
 	char argv_rti[IFNAMSIZ + sizeof(":rti=")];
-#endif
 	char argv_pfx[IFNAMSIZ + sizeof(":pfx=")];
 	char argv_rdnss[IFNAMSIZ + sizeof(":rdnss=")];
 	char argv_dnssl[IFNAMSIZ + sizeof(":dnssl=")];
@@ -420,9 +416,7 @@ action_show(int argc, char **argv)
 	TAILQ_FOREACH(ifi, &ifl, ifi_next) {
 		struct ifinfo *ifi_s;
 		struct rainfo *rai;
-#ifdef ROUTEINFO
 		struct rtinfo *rti;
-#endif
 		struct prefix *pfx;
 		int c;
 		int ra_ifstatus;
@@ -540,7 +534,6 @@ action_show(int argc, char **argv)
 		if (vflag < LOG_WARNING)
 			continue;
 
-#ifdef ROUTEINFO
 		/* route information */
 		sprintf(argv_rti, "%s:rti=", ifi->ifi_ifname);
 		action_argv = argv_rti;
@@ -556,7 +549,7 @@ action_show(int argc, char **argv)
 			for (i = 0; i < len; i++)
 				action_show_rtinfo(&rti[i]);
 		}
-#endif
+
 		/* prefix information */
 		sprintf(argv_pfx, "%s:pfx=", ifi->ifi_ifname);
 		action_argv = argv_pfx;
@@ -631,7 +624,6 @@ action_show(int argc, char **argv)
 	return (0);
 }
 
-#ifdef ROUTEINFO
 static int
 action_show_rtinfo(struct rtinfo *rti)
 {
@@ -648,7 +640,6 @@ action_show_rtinfo(struct rtinfo *rti)
 
 	return (0);
 }
-#endif
 
 static int
 action_show_prefix(struct prefix *pfx)

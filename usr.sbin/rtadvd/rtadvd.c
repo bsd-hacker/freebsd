@@ -67,9 +67,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <syslog.h>
-#ifdef HAVE_POLL_H
 #include <poll.h>
-#endif
 
 #include "pathnames.h"
 #include "rtadvd.h"
@@ -98,12 +96,10 @@ const char *conffile = _PATH_RTADVDCONF;
 static struct pidfh *pfh;
 int dflag = 0, sflag = 0;
 
-#ifdef HAVE_POLL_H
 #define	PFD_RAWSOCK	0
 #define	PFD_RTSOCK	1
 #define	PFD_CSOCK	2
 #define	PFD_MAX		3
-#endif
 
 struct railist_head_t railist =
     TAILQ_HEAD_INITIALIZER(railist);
@@ -171,13 +167,7 @@ static int	check_accept_rtadv(int);
 int
 main(int argc, char *argv[])
 {
-#ifdef HAVE_POLL_H
 	struct pollfd set[PFD_MAX];
-#else
-	fd_set *fdsetp, *selectfdp;
-	int fdmasks;
-	int maxfd = 0;
-#endif
 	struct timeval *timeout;
 	int i, ch;
 	int fflag = 0, logopt;
@@ -281,7 +271,6 @@ main(int argc, char *argv[])
 	pid = getpid();
 	pidfile_write(pfh);
 
-#ifdef HAVE_POLL_H
 	set[PFD_RAWSOCK].fd = sock.si_fd;
 	set[PFD_RAWSOCK].events = POLLIN;
 	if (sflag == 0) {
@@ -292,32 +281,6 @@ main(int argc, char *argv[])
 		set[PFD_RTSOCK].fd = -1;
 	set[PFD_CSOCK].fd = ctrlsock.si_fd;
 	set[PFD_CSOCK].events = POLLIN;
-#else
-	maxfd = sock.si_fd;
-	if (sflag == 0) {
-		rtsock_open();
-		if (rtsock.si_fd > sock.si_fd)
-			maxfd = rtsock.si_fd;
-	} else
-		rtsock.si_fd = -1;
-	if (maxfd < ctrlsock.si_fd)
-		maxfd = ctrlsock.si_fd;
-
-	fdmasks = howmany(maxfd + 1, NFDBITS) * sizeof(fd_mask);
-	if ((fdsetp = malloc(fdmasks)) == NULL) {
-		err(1, "malloc");
-		/*NOTREACHED*/
-	}
-	if ((selectfdp = malloc(fdmasks)) == NULL) {
-		err(1, "malloc");
-		/*NOTREACHED*/
-	}
-	memset(fdsetp, 0, fdmasks);
-	FD_SET(sock.si_fd, fdsetp);
-	if (rtsock.si_fd >= 0)
-		FD_SET(rtsock.si_fd, fdsetp);
-	FD_SET(ctrlsock.si_fd, fdsetp);
-#endif
 	signal(SIGTERM, set_do_die);
 	signal(SIGINT, set_do_die);
 	signal(SIGHUP, set_do_reload);
@@ -332,9 +295,6 @@ main(int argc, char *argv[])
 	set_do_reload(0);
 
 	while (1) {
-#ifndef HAVE_POLL_H
-		memcpy(selectfdp, fdsetp, fdmasks); /* reinitialize */
-#endif
 		if (do_die())
 			die();
 
@@ -362,15 +322,9 @@ main(int argc, char *argv[])
 			    "<%s> there's no timer. waiting for inputs",
 			    __func__);
 		}
-#ifdef HAVE_POLL_H
 		if ((i = poll(set, sizeof(set)/sizeof(set[0]),
 			    timeout ? (timeout->tv_sec * 1000 +
-				timeout->tv_usec / 1000) : INFTIM)) < 0)
-#else
-		if ((i = select(maxfd + 1, selectfdp, NULL, NULL,
-		    timeout)) < 0)
-#endif
-		{
+				timeout->tv_usec / 1000) : INFTIM)) < 0) {
 			/* EINTR would occur upon SIGUSR1 for status dump */
 			if (errno != EINTR)
 				syslog(LOG_ERR, "<%s> select: %s",
@@ -379,24 +333,13 @@ main(int argc, char *argv[])
 		}
 		if (i == 0)	/* timeout */
 			continue;
-#ifdef HAVE_POLL_H
 		if (rtsock.si_fd != -1 && set[PFD_RTSOCK].revents & POLLIN)
-#else
-		if (rtsock.si_fd != -1 && FD_ISSET(rtsock.si_fd, selectfdp))
-#endif
 			rtmsg_input(&rtsock);
-#ifdef HAVE_POLL_H
+
 		if (set[PFD_RAWSOCK].revents & POLLIN)
-#else
-		if (FD_ISSET(sock.si_fd, selectfdp))
-#endif
 			rtadvd_input(&sock);
-#ifdef HAVE_POLL_H
-		if (set[PFD_CSOCK].revents & POLLIN)
-#else
-		if (FD_ISSET(ctrlsock.si_fd, selectfdp))
-#endif
-		{
+
+		if (set[PFD_CSOCK].revents & POLLIN) {
 			int fd;
 			
 			fd = csock_accept(&ctrlsock);

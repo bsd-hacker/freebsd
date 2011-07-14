@@ -316,9 +316,7 @@ getconfig(int idx)
 
 	ELM_MALLOC(rai, exit(1));
 	TAILQ_INIT(&rai->rai_prefix);
-#ifdef ROUTEINFO
 	TAILQ_INIT(&rai->rai_route);
-#endif
 	TAILQ_INIT(&rai->rai_rdnss);
 	TAILQ_INIT(&rai->rai_dnssl);
 	TAILQ_INIT(&rai->rai_soliciter);
@@ -609,7 +607,6 @@ getconfig_free_pfx:
 #endif
 
 	/* route information */
-#ifdef ROUTEINFO
 	rai->rai_routes = 0;
 	for (i = -1; i < MAXROUTE; i++) {
 		struct rtinfo *rti;
@@ -750,7 +747,7 @@ getconfig_free_pfx:
 getconfig_free_rti:
 		free(rti);
 	}
-#endif
+
 	/* DNS server and DNS search list information */
 	for (i = -1; i < MAXRDNSSENT ; i++) {
 		struct rdnss *rdn;
@@ -1192,10 +1189,8 @@ make_packet(struct rainfo *rai)
 	struct nd_router_advert *ra;
 	struct nd_opt_prefix_info *ndopt_pi;
 	struct nd_opt_mtu *ndopt_mtu;
-#ifdef ROUTEINFO
 	struct nd_opt_route_info *ndopt_rti;
 	struct rtinfo *rti;
-#endif
 	struct nd_opt_rdnss *ndopt_rdnss;
 	struct rdnss *rdn;
 	struct nd_opt_dnssl *ndopt_dnssl;
@@ -1221,11 +1216,11 @@ make_packet(struct rainfo *rai)
 		packlen += sizeof(struct nd_opt_prefix_info) * rai->rai_pfxs;
 	if (rai->rai_linkmtu)
 		packlen += sizeof(struct nd_opt_mtu);
-#ifdef ROUTEINFO
+
 	TAILQ_FOREACH(rti, &rai->rai_route, rti_next)
 		packlen += sizeof(struct nd_opt_route_info) +
 			   ((rti->rti_prefixlen + 0x3f) >> 6) * 8;
-#endif
+
 	TAILQ_FOREACH(rdn, &rai->rai_rdnss, rd_next) {
 		struct rdnss_addr *rdna;
 
@@ -1348,7 +1343,6 @@ make_packet(struct rainfo *rai)
 		buf += sizeof(struct nd_opt_prefix_info);
 	}
 
-#ifdef ROUTEINFO
 	TAILQ_FOREACH(rti, &rai->rai_route, rti_next) {
 		u_int8_t psize = (rti->rti_prefixlen + 0x3f) >> 6;
 
@@ -1361,7 +1355,7 @@ make_packet(struct rainfo *rai)
 		memcpy(ndopt_rti + 1, &rti->rti_prefix, psize * 8);
 		buf += sizeof(struct nd_opt_route_info) + psize * 8;
 	}
-#endif
+
 	TAILQ_FOREACH(rdn, &rai->rai_rdnss, rd_next) {
 		struct rdnss_addr *rdna;
 
@@ -1382,6 +1376,7 @@ make_packet(struct rainfo *rai)
 		syslog(LOG_DEBUG, "<%s>: nd_opt_dnss_len = %d", __func__,
 		    ndopt_rdnss->nd_opt_rdnss_len);
 	}
+
 	TAILQ_FOREACH(dns, &rai->rai_dnssl, dn_next) {
 		struct dnssl_addr *dnsa;
 

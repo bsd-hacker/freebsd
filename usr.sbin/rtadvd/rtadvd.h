@@ -125,7 +125,6 @@ struct prefix {
 	struct in6_addr	pfx_prefix;
 };
 
-#ifdef ROUTEINFO
 struct rtinfo {
 	TAILQ_ENTRY(rtinfo)	rti_next;
 
@@ -134,7 +133,6 @@ struct rtinfo {
 	int		rti_prefixlen;
 	struct in6_addr	rti_prefix;
 };
-#endif
 
 struct rdnss_addr {
 	TAILQ_ENTRY(rdnss_addr)	ra_next;
@@ -220,10 +218,8 @@ struct	rainfo {
 
 	TAILQ_HEAD(, rdnss) rai_rdnss;	/* DNS server list */
 	TAILQ_HEAD(, dnssl) rai_dnssl;	/* search domain list */
-#ifdef ROUTEINFO
 	TAILQ_HEAD(, rtinfo) rai_route;	/* route information option (link head) */
 	int	rai_routes;		/* number of route information options */
-#endif
 	/* actual RA packet data and its length */
 	size_t	rai_ra_datalen;
 	u_char	*rai_ra_data;
