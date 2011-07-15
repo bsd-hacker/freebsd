@@ -270,4 +270,4 @@ struct ifinfo		*if_indextoifinfo(int);
 struct prefix		*find_prefix(struct rainfo *,
 			    struct in6_addr *, int);
 void			rtadvd_set_reload(int);
-void			rtadvd_set_die(int);
+void			rtadvd_set_shutdown(int);

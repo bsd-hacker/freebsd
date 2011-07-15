@@ -55,15 +55,18 @@
 #include "control_server.h"
 #include "timer.h"
 
-static sig_atomic_t p_do_reload;
-static sig_atomic_t p_do_die;
+static char *do_reload_ifname;
+static int do_reload;
+static int do_shutdown;
 
-void set_do_reload(int sig __unused)	{ p_do_reload = 1; }
-void set_do_die(int sig __unused)	{ p_do_die = 1; }
-void reset_do_reload(void)	{ p_do_reload = 0; }
-void reset_do_die(void)		{ p_do_die = 0; }
-int do_reload(void)	{ return (p_do_reload); }
-int do_die(void)	{ return (p_do_die); }
+void set_do_reload(int sig __unused)	{ do_reload = 1; }
+void set_do_reload_ifname(char *ifname){ do_reload_ifname = ifname; }
+void set_do_shutdown(int sig __unused)	{ do_shutdown = 1; }
+void reset_do_reload(void)	{ do_reload = 0; do_reload_ifname = NULL; }
+void reset_do_shutdown(void)	{ do_shutdown = 0; }
+int is_do_reload(void)		{ return (do_reload); }
+int is_do_shutdown(void)	{ return (do_shutdown); }
+char *reload_ifname(void)	{ return (do_reload_ifname); }
 
 #define	DEF_PL_HANDLER(key)	{ #key, cmsg_getprop_##key }
 
@@ -77,6 +80,10 @@ static int cmsg_getprop_pfx(struct ctrl_msg_pl *);
 static int cmsg_getprop_rdnss(struct ctrl_msg_pl *);
 static int cmsg_getprop_dnssl(struct ctrl_msg_pl *);
 static int cmsg_getprop_rti(struct ctrl_msg_pl *);
+
+static int cmsg_setprop_reload(struct ctrl_msg_pl *);
+static int cmsg_setprop_enable(struct ctrl_msg_pl *);
+static int cmsg_setprop_disable(struct ctrl_msg_pl *);
 
 static struct dispatch_table {
 	const char	*dt_comm;
@@ -535,14 +542,76 @@ cmsg_setprop(struct ctrl_msg_pl *cp)
 	if (cp == NULL || cp->cp_key == NULL)
 		return (1);
 
-	if (strncmp(cp->cp_key, "reload", 8) == 0)
-		set_do_reload(0);
-	else if (strncmp(cp->cp_key, "shutdown", 8) == 0)
-		set_do_die(0);
+	if (strncmp(cp->cp_key, "reload", sizeof("reload")) == 0)
+		cmsg_setprop_reload(cp);
+	else if (strncmp(cp->cp_key, "shutdown", sizeof("shutdown")) == 0)
+		set_do_shutdown(0);
+	else if (strncmp(cp->cp_key, "enable", sizeof("enable")) == 0)
+		cmsg_setprop_enable(cp);
+	else if (strncmp(cp->cp_key, "disable", sizeof("disable")) == 0)
+		cmsg_setprop_disable(cp);
 	else if (strncmp(cp->cp_key, "echo", 8) == 0)
 		; 		/* do nothing */
 	else
 		return (1);
+
+	return (0);
+}
+
+static int
+cmsg_setprop_reload(struct ctrl_msg_pl *cp)
+{
+
+	syslog(LOG_DEBUG, "<%s> enter", __func__);
+
+	set_do_reload_ifname(cp->cp_ifname);
+	set_do_reload(1);
+
+	return (0);
+}
+
+static int
+cmsg_setprop_enable(struct ctrl_msg_pl *cp)
+{
+	struct ifinfo *ifi;
+
+	syslog(LOG_DEBUG, "<%s> enter", __func__);
+
+	TAILQ_FOREACH(ifi, &ifilist, ifi_next) {
+		if (strcmp(cp->cp_ifname, ifi->ifi_ifname) == 0)
+			break;
+	}
+	if (ifi == NULL) {
+		syslog(LOG_ERR, "<%s> %s not found", __func__,
+		    cp->cp_ifname);
+		return (1);
+	}
+
+	ifi->ifi_persist = 1;
+	set_do_reload_ifname(ifi->ifi_ifname);
+	set_do_reload(0);
+
+	return (0);
+}
+
+static int
+cmsg_setprop_disable(struct ctrl_msg_pl *cp)
+{
+	struct ifinfo *ifi;
+
+	syslog(LOG_DEBUG, "<%s> enter", __func__);
+
+	TAILQ_FOREACH(ifi, &ifilist, ifi_next) {
+		if (strcmp(cp->cp_ifname, ifi->ifi_ifname) == 0)
+			break;
+	}
+	if (ifi == NULL) {
+		syslog(LOG_ERR, "<%s> %s not found", __func__,
+		    cp->cp_ifname);
+		return (1);
+	}
+
+	ifi->ifi_persist = 0;
 
 	return (0);
 }

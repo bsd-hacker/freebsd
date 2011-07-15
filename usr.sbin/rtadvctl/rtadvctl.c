@@ -107,9 +107,9 @@ static struct dispatch_table {
 	{ "show", action_show },
 	{ "reload", action_reload },
 	{ "shutdown", action_shutdown },
-	{ NULL, NULL },
 	{ "enable", action_enable },
 	{ "disable", action_disable },
+	{ NULL, NULL },
 	{ "echo", action_echo },
 	{ "version", action_version },
 	{ NULL, NULL },
@@ -294,33 +294,69 @@ action_propset(char *argv)
 	return (action_plgeneric(CM_TYPE_REQ_SET_PROP, argv, buf));
 }
 
-/* XXX */
-static int
-action_enable(int argc, char **argv)
-{
-	argc = argc;
-	argv = argv;
-
-	return (0);
-}
-
-/* XXX */
 static int
 action_disable(int argc, char **argv)
 {
-	argc = argc;
-	argv = argv;
+	char *action_argv;
+	char argv_disable[IFNAMSIZ + sizeof(":disable=")];
+	int i;
+	int error;
 
-	return (0);
+	if (argc < 1)
+		return (1);
+
+	error = 0;
+	for (i = 0; i < argc; i++) {
+		sprintf(argv_disable, "%s:disable=", argv[i]);
+		action_argv = argv_disable;
+		error += action_propset(action_argv);
+	}
+
+	return(error);
 }
 
 static int
-action_reload(int argc __unused, char **argv __unused)
+action_enable(int argc, char **argv)
 {
 	char *action_argv;
+	char argv_enable[IFNAMSIZ + sizeof(":enable=")];
+	int i;
+	int error;
 
-	action_argv = strdup("reload");
-	return(action_propset(action_argv));
+	if (argc < 1)
+		return (1);
+
+	error = 0;
+	for (i = 0; i < argc; i++) {
+		sprintf(argv_enable, "%s:enable=", argv[i]);
+		action_argv = argv_enable;
+		error += action_propset(action_argv);
+	}
+
+	return(error);
+}
+
+static int
+action_reload(int argc, char **argv)
+{
+	char *action_argv;
+	char argv_reload[IFNAMSIZ + sizeof(":reload=")];
+	int i;
+	int error;
+
+	if (argc == 0) {
+		action_argv = strdup(":reload=");
+		return(action_propset(action_argv));
+	}
+
+	error = 0;
+	for (i = 0; i < argc; i++) {
+		sprintf(argv_reload, "%s:reload=", argv[i]);
+		action_argv = argv_reload;
+		error += action_propset(action_argv);
+	}
+
+	return(error);
 }
 
 static int

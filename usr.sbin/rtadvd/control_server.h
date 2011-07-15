@@ -33,8 +33,10 @@ int	cmsg_setprop(struct ctrl_msg_pl *);
 int	cmsg_handler_server(int);
 
 void	set_do_reload(int);
-void	set_do_die(int);
+void	set_do_reload_ifname(char *);
+void	set_do_shutdown(int);
 void	reset_do_reload(void);
-void	reset_do_die(void);
-int	do_reload(void);
-int	do_die(void);
+void	reset_do_shutdown(void);
+int	is_do_reload(void);
+char	*reload_ifname(void);
+int	is_do_shutdown(void);

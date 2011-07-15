@@ -148,7 +148,7 @@ uint32_t ndopt_flags[] = {
 	[ND_OPT_DNSSL]			= NDOPT_FLAG_DNSSL,
 };
 
-static void	die(void);
+static void	rtadvd_shutdown(void);
 static void	sock_open(struct sockinfo *);
 static void	rtsock_open(struct sockinfo *);
 static void	rtadvd_input(struct sockinfo *);
@@ -282,8 +282,8 @@ main(int argc, char *argv[])
 		set[PFD_RTSOCK].fd = -1;
 	set[PFD_CSOCK].fd = ctrlsock.si_fd;
 	set[PFD_CSOCK].events = POLLIN;
-	signal(SIGTERM, set_do_die);
-	signal(SIGINT, set_do_die);
+	signal(SIGTERM, set_do_shutdown);
+	signal(SIGINT, set_do_shutdown);
 	signal(SIGHUP, set_do_reload);
 
 	error = csock_listen(&ctrlsock);
@@ -296,14 +296,19 @@ main(int argc, char *argv[])
 	set_do_reload(0);
 
 	while (1) {
-		if (do_die())
-			die();
+		if (is_do_shutdown())
+			rtadvd_shutdown();
 
-		if (do_reload()) {
+		if (is_do_reload()) {
+			loadconfig_ifname(reload_ifname());
+			if (reload_ifname() == NULL)
+				syslog(LOG_INFO,
+				    "configuration file reloaded.");
+			else
+				syslog(LOG_INFO,
+				    "configuration file for %s reloaded.",
+				    reload_ifname());
 			reset_do_reload();
-			loadconfig_ifname(NULL);
-			syslog(LOG_INFO,
-			    "configuration file reloaded.");
 		}
 
 		/* timeout handler update for active interfaces */
@@ -354,7 +359,7 @@ main(int argc, char *argv[])
 }
 
 static void
-die(void)
+rtadvd_shutdown(void)
 {
 	struct rainfo *rai;
 	struct rdnss *rdn;

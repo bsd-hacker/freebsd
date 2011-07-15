@@ -25,7 +25,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd July 14, 2011
+.Dd July 15, 2011
 .Dt RTADVCTL 8
 .Os
 .Sh NAME
@@ -61,8 +61,22 @@ inactive interfaces and some statistics.
 The subcommands are as follows:
 .Bl -tag -width indent
 .\"
-.It reload
-Specifies to reload the configuration file.
+.It reload Op interfaces...
+Specifies to reload the configuration file.  If one or more
+.Ar interface
+is specified, configuration entries for the interfaces will be reloaded
+selectively.
+.It enable interfaces...
+Specifies to mark the interface as enable and to try to reload the
+configuration entry.
+This subcommand is useful for dynamically-added interfaces.
+.Pp
+The
+.Xr rtadvd 8
+daemon marks an interface as enable if the interface exists and the
+configuration file has a valid entry for that when it is invoked.
+.It disable interfaces...
+Specifies to mark the interface as disable.
 .It shutdown
 Makes the
 .Xr rtadvd 8
