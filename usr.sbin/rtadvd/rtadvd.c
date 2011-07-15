@@ -975,7 +975,6 @@ static int
 check_accept_rtadv(int idx)
 {
 	struct ifinfo *ifi;
-	int error;
 	
 	TAILQ_FOREACH(ifi, &ifilist, ifi_next) {
 		if (ifi->ifi_ifindex == idx)
@@ -987,15 +986,19 @@ check_accept_rtadv(int idx)
 		    __func__, idx);
 		return (0);
 	}
-	error =update_ifinfo_nd_flags(ifi);
-	if (error) {
+#if (__FreeBSD_version < 900000)
+	return ((getinet6sysctl(IPV6CTL_FORWARDING) == 0) &&
+	    (getinet6sysctl(IPV6CTL_ACCEPT_RTADV) == 1));
+#else
+	if (update_ifinfo_nd_flags(ifi) != 0) {
 		syslog(LOG_ERR,
 		    "<%s> nd6 flags failed (idx=%d)",
 		    __func__, idx);
 		return (0);
 	}
-	
+
 	return (ifi->ifi_nd_flags & ND6_IFF_ACCEPT_RTADV);
+#endif
 }
 
 static void

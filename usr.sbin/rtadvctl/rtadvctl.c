@@ -454,12 +454,22 @@ action_show(int argc, char **argv)
 		ra_ifstatus = RA_IFSTATUS_INACTIVE;
 		if ((ifi_s->ifi_flags & IFF_UP) &&
 		    (ifi_s->ifi_state == IFI_STATE_CONFIGURED)) {
+#if (__FreeBSD_version < 900000)
+			if (getinet6sysctl(IPV6CTL_FORWARDING) == 0) {
+				if (getinet6sysctl(IPV6CTL_ACCEPT_RTADV))
+					ra_ifstatus = RA_IFSTATUS_RA_RECV;
+				else
+					ra_ifstatus = RA_IFSTATUS_INACTIVE;
+			} else
+				ra_ifstatus = RA_IFSTATUS_RA_SEND;
+#else
 			if (ifi_s->ifi_nd_flags & ND6_IFF_ACCEPT_RTADV)
 				ra_ifstatus = RA_IFSTATUS_RA_RECV;
 			else if (getinet6sysctl(IPV6CTL_FORWARDING))
 				ra_ifstatus = RA_IFSTATUS_RA_SEND;
 			else
 				ra_ifstatus = RA_IFSTATUS_INACTIVE;
+#endif
 		}
 
 		c = 0;
