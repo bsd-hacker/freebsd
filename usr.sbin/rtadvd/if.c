@@ -281,24 +281,24 @@ get_prefixlen(char *buf)
 {
 	struct rt_msghdr *rtm = (struct rt_msghdr *)buf;
 	struct sockaddr *sa, *rti_info[RTAX_MAX];
-	u_char *p, *lim;
+	char *p, *lim;
 
 	sa = (struct sockaddr *)(rtm + 1);
 	get_rtaddrs(rtm->rtm_addrs, sa, rti_info);
 	sa = rti_info[RTAX_NETMASK];
 
-	p = (u_char *)(&SIN6(sa)->sin6_addr);
-	lim = (u_char *)sa + sa->sa_len;
+	p = (char *)(&SIN6(sa)->sin6_addr);
+	lim = (char *)sa + sa->sa_len;
 	return prefixlen(p, lim);
 }
 
 int
-prefixlen(u_char *p, u_char *lim)
+prefixlen(char *p, char *lim)
 {
 	int masklen;
 
 	for (masklen = 0; p < lim; p++) {
-		switch (*p) {
+		switch ((int)*p) {
 		case 0xff:
 			masklen += 8;
 			break;
@@ -442,7 +442,7 @@ update_ifinfo(struct ifilist_head_t *ifi_head, int ifindex)
 	     ifm = get_next_msghdr(ifm,(struct if_msghdr *)lim)) {
 		int ifi_new;
 
-		syslog(LOG_DEBUG, "<%s> ifm = %p, lim = %p, diff = %d",
+		syslog(LOG_DEBUG, "<%s> ifm = %p, lim = %p, diff = %zu",
 		    __func__, ifm, lim, (char *)lim - (char *)ifm);
 
 		if (ifm->ifm_version != RTM_VERSION) {

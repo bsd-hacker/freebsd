@@ -61,6 +61,7 @@
 #include <stdio.h>
 #include <err.h>
 #include <errno.h>
+#include <inttypes.h>
 #include <libutil.h>
 #include <netdb.h>
 #include <signal.h>
@@ -83,9 +84,9 @@
 #define RTADV_TYPE2BITMASK(type) (0x1 << type)
 
 struct msghdr rcvmhdr;
-static u_char *rcvcmsgbuf;
+static char *rcvcmsgbuf;
 static size_t rcvcmsgbuflen;
-static u_char *sndcmsgbuf = NULL;
+static char *sndcmsgbuf = NULL;
 static size_t sndcmsgbuflen;
 struct msghdr sndmhdr;
 struct iovec rcviov[2];
@@ -137,7 +138,7 @@ union nd_opt {
 #define NDOPT_FLAG_RDNSS	(1 << 5)
 #define NDOPT_FLAG_DNSSL	(1 << 6)
 
-u_int32_t ndopt_flags[] = {
+uint32_t ndopt_flags[] = {
 	[ND_OPT_SOURCE_LINKADDR]	= NDOPT_FLAG_SRCLINKADDR,
 	[ND_OPT_TARGET_LINKADDR]	= NDOPT_FLAG_TGTLINKADDR,
 	[ND_OPT_PREFIX_INFORMATION]	= NDOPT_FLAG_PREFIXINFO,
@@ -158,7 +159,7 @@ static void	ra_input(int, struct nd_router_advert *,
 static int	prefix_check(struct nd_opt_prefix_info *, struct rainfo *,
 		    struct sockaddr_in6 *);
 static int	nd6_options(struct nd_opt_hdr *, int,
-		    union nd_opt *, u_int32_t);
+		    union nd_opt *, uint32_t);
 static void	free_ndopts(union nd_opt *);
 static void	rtmsg_input(struct sockinfo *);
 static void	set_short_delay(struct rainfo *);
@@ -240,7 +241,7 @@ main(int argc, char *argv[])
 #ifdef __FreeBSD__
 	srandomdev();
 #else
-	srandom((u_long)time(NULL));
+	srandom((unsigned long)time(NULL));
 #endif
 #endif
 	pfh = pidfile_open(pidfilename, 0600, &otherpid);
@@ -395,7 +396,7 @@ rtmsg_input(struct sockinfo *s)
 	int n, type, ifindex = 0, plen;
 	size_t len;
 	char msg[2048], *next, *lim;
-	u_char ifname[IFNAMSIZ];
+	char ifname[IFNAMSIZ];
 	struct if_announcemsghdr *ifan;
 	struct rt_msghdr *rtm;
 	struct prefix *pfx;
@@ -643,7 +644,7 @@ rtadvd_input(struct sockinfo *s)
 	int ifindex = 0;
 	struct cmsghdr *cm;
 	struct in6_pktinfo *pi = NULL;
-	u_char ntopbuf[INET6_ADDRSTRLEN], ifnamebuf[IFNAMSIZ];
+	char ntopbuf[INET6_ADDRSTRLEN], ifnamebuf[IFNAMSIZ];
 	struct in6_addr dst = in6addr_any;
 	struct ifinfo *ifi;
 
@@ -839,8 +840,8 @@ static void
 rs_input(int len, struct nd_router_solicit *rs,
 	 struct in6_pktinfo *pi, struct sockaddr_in6 *from)
 {
-	u_char ntopbuf[INET6_ADDRSTRLEN];
-	u_char ifnamebuf[IFNAMSIZ];
+	char ntopbuf[INET6_ADDRSTRLEN];
+	char ifnamebuf[IFNAMSIZ];
 	union nd_opt ndopts;
 	struct rainfo *rai;
 	struct ifinfo *ifi;
@@ -986,10 +987,7 @@ check_accept_rtadv(int idx)
 		    __func__, idx);
 		return (0);
 	}
-#if (__FreeBSD_version < 900000)
-	return ((getinet6sysctl(IPV6CTL_FORWARDING) == 0) &&
-	    (getinet6sysctl(IPV6CTL_ACCEPT_RTADV) == 1));
-#else
+#if (__FreeBSD_version > 900000)
 	if (update_ifinfo_nd_flags(ifi) != 0) {
 		syslog(LOG_ERR,
 		    "<%s> nd6 flags failed (idx=%d)",
@@ -998,6 +996,9 @@ check_accept_rtadv(int idx)
 	}
 
 	return (ifi->ifi_nd_flags & ND6_IFF_ACCEPT_RTADV);
+#else
+	return ((getinet6sysctl(IPV6CTL_FORWARDING) == 0) &&
+	    (getinet6sysctl(IPV6CTL_ACCEPT_RTADV) == 1));
 #endif
 }
 
@@ -1007,11 +1008,11 @@ ra_input(int len, struct nd_router_advert *nra,
 {
 	struct rainfo *rai;
 	struct ifinfo *ifi;
-	u_char ntopbuf[INET6_ADDRSTRLEN];
-	u_char ifnamebuf[IFNAMSIZ];
+	char ntopbuf[INET6_ADDRSTRLEN];
+	char ifnamebuf[IFNAMSIZ];
 	union nd_opt ndopts;
 	const char *on_off[] = {"OFF", "ON"};
-	u_int32_t reachabletime, retranstimer, mtu;
+	uint32_t reachabletime, retranstimer, mtu;
 	int inconsistent = 0;
 	int error;
 
@@ -1051,7 +1052,7 @@ ra_input(int len, struct nd_router_advert *nra,
 	}
 	rai = ifi->ifi_rainfo;
 	ifi->ifi_rainput++;
-	syslog(LOG_DEBUG, "<%s> ifi->ifi_rainput = %llu\n", __func__,
+	syslog(LOG_DEBUG, "<%s> ifi->ifi_rainput = %" PRIu64 "\n", __func__,
 	    ifi->ifi_rainput);
 	
 	/* Cur Hop Limit value */
@@ -1152,11 +1153,11 @@ prefix_check(struct nd_opt_prefix_info *pinfo,
 	struct rainfo *rai, struct sockaddr_in6 *from)
 {
 	struct ifinfo *ifi;
-	u_int32_t preferred_time, valid_time;
+	uint32_t preferred_time, valid_time;
 	struct prefix *pfx;
 	int inconsistent = 0;
-	u_char ntopbuf[INET6_ADDRSTRLEN];
-	u_char prefixbuf[INET6_ADDRSTRLEN];
+	char ntopbuf[INET6_ADDRSTRLEN];
+	char prefixbuf[INET6_ADDRSTRLEN];
 	struct timeval now;
 
 #if 0				/* impossible */
@@ -1208,7 +1209,7 @@ prefix_check(struct nd_opt_prefix_info *pinfo,
 			syslog(LOG_INFO,
 			    "<%s> preferred lifetime for %s/%d"
 			    " (decr. in real time) inconsistent on %s:"
-			    " %d from %s, %ld from us",
+			    " %" PRIu32 " from %s, %" PRIu32 " from us",
 			    __func__,
 			    inet_ntop(AF_INET6, &pinfo->nd_opt_pi_prefix, prefixbuf,
 				sizeof(prefixbuf)),
@@ -1241,7 +1242,7 @@ prefix_check(struct nd_opt_prefix_info *pinfo,
 			syslog(LOG_INFO,
 			    "<%s> valid lifetime for %s/%d"
 			    " (decr. in real time) inconsistent on %s:"
-			    " %d from %s, %ld from us",
+			    " %d from %s, %" PRIu32 " from us",
 			    __func__,
 			    inet_ntop(AF_INET6, &pinfo->nd_opt_pi_prefix, prefixbuf,
 				sizeof(prefixbuf)),
@@ -1274,7 +1275,7 @@ find_prefix(struct rainfo *rai, struct in6_addr *prefix, int plen)
 {
 	struct prefix *pfx;
 	int bytelen, bitlen;
-	u_char bitmask;
+	char bitmask;
 
 	TAILQ_FOREACH(pfx, &rai->rai_prefix, pfx_next) {
 		if (plen != pfx->pfx_prefixlen)
@@ -1303,7 +1304,7 @@ prefix_match(struct in6_addr *p0, int plen0,
 	struct in6_addr *p1, int plen1)
 {
 	int bytelen, bitlen;
-	u_char bitmask;
+	char bitmask;
 
 	if (plen0 < plen1)
 		return (0);
@@ -1326,7 +1327,7 @@ prefix_match(struct in6_addr *p0, int plen0,
 
 static int
 nd6_options(struct nd_opt_hdr *hdr, int limit,
-	union nd_opt *ndopts, u_int32_t optflags)
+	union nd_opt *ndopts, uint32_t optflags)
 {
 	int optlen = 0;
 
@@ -1456,7 +1457,7 @@ sock_open(struct sockinfo *s)
 	struct icmp6_filter filt;
 	int on;
 	/* XXX: should be max MTU attached to the node */
-	static u_char answer[1500];
+	static char answer[1500];
 
 	syslog(LOG_DEBUG, "<%s> enter", __func__);
 
@@ -1466,7 +1467,7 @@ sock_open(struct sockinfo *s)
 	}
 	rcvcmsgbuflen = CMSG_SPACE(sizeof(struct in6_pktinfo)) +
 	    CMSG_SPACE(sizeof(int));
-	rcvcmsgbuf = (u_char *)malloc(rcvcmsgbuflen);
+	rcvcmsgbuf = (char *)malloc(rcvcmsgbuflen);
 	if (rcvcmsgbuf == NULL) {
 		syslog(LOG_ERR, "<%s> not enough core", __func__);
 		exit(1);
@@ -1474,7 +1475,7 @@ sock_open(struct sockinfo *s)
 
 	sndcmsgbuflen = CMSG_SPACE(sizeof(struct in6_pktinfo)) +
 	    CMSG_SPACE(sizeof(int));
-	sndcmsgbuf = (u_char *)malloc(sndcmsgbuflen);
+	sndcmsgbuf = (char *)malloc(sndcmsgbuflen);
 	if (sndcmsgbuf == NULL) {
 		syslog(LOG_ERR, "<%s> not enough core", __func__);
 		exit(1);

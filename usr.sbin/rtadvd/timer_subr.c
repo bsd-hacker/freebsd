@@ -93,7 +93,7 @@ TIMEVAL_SUB(struct timeval *a, struct timeval *b, struct timeval *result)
 }
 
 char *
-sec2str(u_int32_t s, char *buf)
+sec2str(uint32_t s, char *buf)
 {
 	int day;
 	int hour;

@@ -53,6 +53,7 @@
 #include <stdio.h>
 #include <syslog.h>
 #include <errno.h>
+#include <inttypes.h>
 #include <netdb.h>
 #include <string.h>
 #include <search.h>
@@ -288,7 +289,7 @@ getconfig(int idx)
 	struct rainfo *rai;
 	struct rainfo *rai_old;
 	struct ifinfo *ifi;
-	long val;
+	int32_t val;
 	int64_t val64;
 	char buf[BUFSIZ];
 	char *bp = buf;
@@ -348,24 +349,24 @@ getconfig(int idx)
 	MAYHAVE(val, "maxinterval", DEF_MAXRTRADVINTERVAL);
 	if (val < MIN_MAXINTERVAL || val > MAX_MAXINTERVAL) {
 		syslog(LOG_ERR,
-		    "<%s> maxinterval (%ld) on %s is invalid "
+		    "<%s> maxinterval (%" PRIu32 ") on %s is invalid "
 		    "(must be between %u and %u)", __func__, val,
 		    ifi->ifi_ifname, MIN_MAXINTERVAL, MAX_MAXINTERVAL);
 		goto getconfig_free_rai;
 	}
-	rai->rai_maxinterval = (u_int)val;
+	rai->rai_maxinterval = (uint16_t)val;
 
 	MAYHAVE(val, "mininterval", rai->rai_maxinterval/3);
-	if ((u_int)val < MIN_MININTERVAL ||
-	    (u_int)val > (rai->rai_maxinterval * 3) / 4) {
+	if ((uint16_t)val < MIN_MININTERVAL ||
+	    (uint16_t)val > (rai->rai_maxinterval * 3) / 4) {
 		syslog(LOG_ERR,
-		    "<%s> mininterval (%ld) on %s is invalid "
+		    "<%s> mininterval (%" PRIu32 ") on %s is invalid "
 		    "(must be between %d and %d)",
 		    __func__, val, ifi->ifi_ifname, MIN_MININTERVAL,
 		    (rai->rai_maxinterval * 3) / 4);
 		goto getconfig_free_rai;
 	}
-	rai->rai_mininterval = (u_int)val;
+	rai->rai_mininterval = (uint16_t)val;
 
 	MAYHAVE(val, "chlim", DEF_ADVCURHOPLIMIT);
 	rai->rai_hoplimit = val & 0xff;
@@ -403,10 +404,10 @@ getconfig(int idx)
 	}
 
 	MAYHAVE(val, "rltime", rai->rai_maxinterval * 3);
-	if ((u_int)val && ((u_int)val < rai->rai_maxinterval ||
-	    (u_int)val > MAXROUTERLIFETIME)) {
+	if ((uint16_t)val && ((uint16_t)val < rai->rai_maxinterval ||
+	    (uint16_t)val > MAXROUTERLIFETIME)) {
 		syslog(LOG_ERR,
-		    "<%s> router lifetime (%ld) on %s is invalid "
+		    "<%s> router lifetime (%" PRIu32 ") on %s is invalid "
 		    "(must be 0 or between %d and %d)",
 		    __func__, val, ifi->ifi_ifname, rai->rai_maxinterval,
 		    MAXROUTERLIFETIME);
@@ -417,20 +418,20 @@ getconfig(int idx)
 	MAYHAVE(val, "rtime", DEF_ADVREACHABLETIME);
 	if (val < 0 || val > MAXREACHABLETIME) {
 		syslog(LOG_ERR,
-		    "<%s> reachable time (%ld) on %s is invalid "
+		    "<%s> reachable time (%" PRIu32 ") on %s is invalid "
 		    "(must be no greater than %d)",
 		    __func__, val, ifi->ifi_ifname, MAXREACHABLETIME);
 		goto getconfig_free_rai;
 	}
-	rai->rai_reachabletime = (u_int32_t)val;
+	rai->rai_reachabletime = (uint32_t)val;
 
 	MAYHAVE(val64, "retrans", DEF_ADVRETRANSTIMER);
 	if (val64 < 0 || val64 > 0xffffffff) {
-		syslog(LOG_ERR, "<%s> retrans time (%lld) on %s out of range",
-		    __func__, (long long)val64, ifi->ifi_ifname);
+		syslog(LOG_ERR, "<%s> retrans time (%" PRIu64 ") on %s out of range",
+		    __func__, val64, ifi->ifi_ifname);
 		goto getconfig_free_rai;
 	}
-	rai->rai_retranstimer = (u_int32_t)val64;
+	rai->rai_retranstimer = (uint32_t)val64;
 
 	if (agetnum("hapref") != -1 || agetnum("hatime") != -1) {
 		syslog(LOG_ERR,
@@ -484,7 +485,7 @@ getconfig(int idx)
 		makeentry(entbuf, sizeof(entbuf), i, "prefixlen");
 		MAYHAVE(val, entbuf, 64);
 		if (val < 0 || val > 128) {
-			syslog(LOG_ERR, "<%s> prefixlen (%ld) for %s "
+			syslog(LOG_ERR, "<%s> prefixlen (%" PRIu32 ") for %s "
 			    "on %s out of range",
 			    __func__, val, addr, ifi->ifi_ifname);
 			goto getconfig_free_pfx;
@@ -508,13 +509,13 @@ getconfig(int idx)
 		makeentry(entbuf, sizeof(entbuf), i, "vltime");
 		MAYHAVE(val64, entbuf, DEF_ADVVALIDLIFETIME);
 		if (val64 < 0 || val64 > 0xffffffff) {
-			syslog(LOG_ERR, "<%s> vltime (%lld) for "
+			syslog(LOG_ERR, "<%s> vltime (%" PRIu64 ") for "
 			    "%s/%d on %s is out of range",
-			    __func__, (long long)val64,
+			    __func__, val64,
 			    addr, pfx->pfx_prefixlen, ifi->ifi_ifname);
 			goto getconfig_free_pfx;
 		}
-		pfx->pfx_validlifetime = (u_int32_t)val64;
+		pfx->pfx_validlifetime = (uint32_t)val64;
 
 		makeentry(entbuf, sizeof(entbuf), i, "vltimedecr");
 		if (agetflag(entbuf)) {
@@ -528,13 +529,13 @@ getconfig(int idx)
 		MAYHAVE(val64, entbuf, DEF_ADVPREFERREDLIFETIME);
 		if (val64 < 0 || val64 > 0xffffffff) {
 			syslog(LOG_ERR,
-			    "<%s> pltime (%lld) for %s/%d on %s "
+			    "<%s> pltime (%" PRIu64 ") for %s/%d on %s "
 			    "is out of range",
-			    __func__, (long long)val64,
+			    __func__, val64,
 			    addr, pfx->pfx_prefixlen, ifi->ifi_ifname);
 			goto getconfig_free_pfx;
 		}
-		pfx->pfx_preflifetime = (u_int32_t)val64;
+		pfx->pfx_preflifetime = (uint32_t)val64;
 
 		makeentry(entbuf, sizeof(entbuf), i, "pltimedecr");
 		if (agetflag(entbuf)) {
@@ -553,14 +554,14 @@ getconfig_free_pfx:
 	if (rai->rai_advifprefix && rai->rai_pfxs == 0)
 		get_prefix(rai);
 
-	MAYHAVE(val, "mtu", 0);
-	if (val < 0 || (u_int)val > 0xffffffff) {
+	MAYHAVE(val64, "mtu", 0);
+	if (val < 0 || val64 > 0xffffffff) {
 		syslog(LOG_ERR,
-		    "<%s> mtu (%ld) on %s out of range",
-		    __func__, val, ifi->ifi_ifname);
+		    "<%s> mtu (%" PRIu64 ") on %s out of range",
+		    __func__, val64, ifi->ifi_ifname);
 		goto getconfig_free_rai;
 	}
-	rai->rai_linkmtu = (u_int32_t)val;
+	rai->rai_linkmtu = (uint32_t)val64;
 	if (rai->rai_linkmtu == 0) {
 		char *mtustr;
 
@@ -571,9 +572,9 @@ getconfig_free_pfx:
 	else if (rai->rai_linkmtu < IPV6_MMTU ||
 	    rai->rai_linkmtu > ifi->ifi_phymtu) {
 		syslog(LOG_ERR,
-		    "<%s> advertised link mtu (%lu) on %s is invalid (must "
+		    "<%s> advertised link mtu (%" PRIu32 ") on %s is invalid (must "
 		    "be between least MTU (%d) and physical link MTU (%d)",
-		    __func__, (unsigned long)rai->rai_linkmtu, ifi->ifi_ifname,
+		    __func__, rai->rai_linkmtu, ifi->ifi_ifname,
 		    IPV6_MMTU, ifi->ifi_phymtu);
 		goto getconfig_free_rai;
 	}
@@ -668,7 +669,7 @@ getconfig_free_pfx:
 				val = 64;
 		}
 		if (val < 0 || val > 128) {
-			syslog(LOG_ERR, "<%s> prefixlen (%ld) for %s on %s "
+			syslog(LOG_ERR, "<%s> prefixlen (%" PRIu32 ") for %s on %s "
 			    "out of range",
 			    __func__, val, addr, ifi->ifi_ifname);
 			goto getconfig_free_rti;
@@ -732,13 +733,13 @@ getconfig_free_pfx:
 			}
 		}
 		if (val64 < 0 || val64 > 0xffffffff) {
-			syslog(LOG_ERR, "<%s> route lifetime (%lld) for "
+			syslog(LOG_ERR, "<%s> route lifetime (%" PRIu64 ") for "
 			    "%s/%d on %s out of range", __func__,
-			    (long long)val64, addr, rti->rti_prefixlen,
+			    val64, addr, rti->rti_prefixlen,
 			    ifi->ifi_ifname);
 			goto getconfig_free_rti;
 		}
-		rti->rti_ltime = (u_int32_t)val64;
+		rti->rti_ltime = (uint32_t)val64;
 
 		/* link into chain */
 		TAILQ_INSERT_TAIL(&rai->rai_route, rti, rti_next);
@@ -779,9 +780,9 @@ getconfig_free_rti:
 
 		makeentry(entbuf, sizeof(entbuf), i, "rdnssltime");
 		MAYHAVE(val, entbuf, (rai->rai_maxinterval * 3 / 2));
-		if ((u_int)val < rai->rai_maxinterval ||
-		    (u_int)val > rai->rai_maxinterval * 2) {
-			syslog(LOG_ERR, "%s (%ld) on %s is invalid "
+		if ((uint16_t)val < rai->rai_maxinterval ||
+		    (uint16_t)val > rai->rai_maxinterval * 2) {
+			syslog(LOG_ERR, "%s (%" PRIu16 ") on %s is invalid "
 			    "(must be between %d and %d)",
 			    entbuf, val, ifi->ifi_ifname, rai->rai_maxinterval,
 			    rai->rai_maxinterval * 2);
@@ -828,9 +829,9 @@ getconfig_free_rdn:
 
 		makeentry(entbuf, sizeof(entbuf), i, "dnsslltime");
 		MAYHAVE(val, entbuf, (rai->rai_maxinterval * 3 / 2));
-		if ((u_int)val < rai->rai_maxinterval ||
-		    (u_int)val > rai->rai_maxinterval * 2) {
-			syslog(LOG_ERR, "%s (%ld) on %s is invalid "
+		if ((uint16_t)val < rai->rai_maxinterval ||
+		    (uint16_t)val > rai->rai_maxinterval * 2) {
+			syslog(LOG_ERR, "%s (%" PRIu16 ") on %s is invalid "
 			    "(must be between %d and %d)",
 			    entbuf, val, ifi->ifi_ifname, rai->rai_maxinterval,
 			    rai->rai_maxinterval * 2);
@@ -891,8 +892,8 @@ get_prefix(struct rainfo *rai)
 	struct prefix *pfx;
 	struct in6_addr *a;
 	struct ifinfo *ifi;
-	u_char *p, *ep, *m, *lim;
-	u_char ntopbuf[INET6_ADDRSTRLEN];
+	char *p, *ep, *m, *lim;
+	char ntopbuf[INET6_ADDRSTRLEN];
 
 	if (getifaddrs(&ifap) < 0) {
 		syslog(LOG_ERR,
@@ -913,8 +914,8 @@ get_prefix(struct rainfo *rai)
 		if (IN6_IS_ADDR_LINKLOCAL(a))
 			continue;
 		/* get prefix length */
-		m = (u_char *)&((struct sockaddr_in6 *)ifa->ifa_netmask)->sin6_addr;
-		lim = (u_char *)(ifa->ifa_netmask) + ifa->ifa_netmask->sa_len;
+		m = (char *)&((struct sockaddr_in6 *)ifa->ifa_netmask)->sin6_addr;
+		lim = (char *)(ifa->ifa_netmask) + ifa->ifa_netmask->sa_len;
 		plen = prefixlen(m, lim);
 		if (plen <= 0 || plen > 128) {
 			syslog(LOG_ERR, "<%s> failed to get prefixlen "
@@ -935,8 +936,8 @@ get_prefix(struct rainfo *rai)
 		/* set prefix, sweep bits outside of prefixlen */
 		pfx->pfx_prefixlen = plen;
 		memcpy(&pfx->pfx_prefix, a, sizeof(*a));
-		p = (u_char *)&pfx->pfx_prefix;
-		ep = (u_char *)(&pfx->pfx_prefix + 1);
+		p = (char *)&pfx->pfx_prefix;
+		ep = (char *)(&pfx->pfx_prefix + 1);
 		while (m < lim && p < ep)
 			*p++ &= *m++;
 		while (p < ep)
@@ -990,7 +991,7 @@ add_prefix(struct rainfo *rai, struct in6_prefixreq *ipr)
 {
 	struct prefix *pfx;
 	struct ifinfo *ifi;
-	u_char ntopbuf[INET6_ADDRSTRLEN];
+	char ntopbuf[INET6_ADDRSTRLEN];
 
 	ifi = rai->rai_ifinfo;
 	ELM_MALLOC(pfx, return);
@@ -1025,7 +1026,7 @@ delete_prefix(struct prefix *pfx)
 {
 	struct rainfo *rai;
 	struct ifinfo *ifi;
-	u_char ntopbuf[INET6_ADDRSTRLEN];
+	char ntopbuf[INET6_ADDRSTRLEN];
 
 	rai = pfx->pfx_rainfo;
 	ifi = rai->rai_ifinfo;
@@ -1047,7 +1048,7 @@ invalidate_prefix(struct prefix *pfx)
 	struct timeval timo;
 	struct rainfo *rai;
 	struct ifinfo *ifi;
-	u_char ntopbuf[INET6_ADDRSTRLEN];
+	char ntopbuf[INET6_ADDRSTRLEN];
 
 	rai = pfx->pfx_rainfo;
 	ifi = rai->rai_ifinfo;
@@ -1089,7 +1090,7 @@ update_prefix(struct prefix *pfx)
 {
 	struct rainfo *rai;
 	struct ifinfo *ifi;
-	u_char ntopbuf[INET6_ADDRSTRLEN];
+	char ntopbuf[INET6_ADDRSTRLEN];
 
 	rai = pfx->pfx_rainfo;
 	ifi = rai->rai_ifinfo;
@@ -1137,7 +1138,7 @@ init_prefix(struct in6_prefixreq *ipr)
 		/* omit other field initialization */
 	}
 	else if (ipr->ipr_origin < PR_ORIG_RR) {
-		u_char ntopbuf[INET6_ADDRSTRLEN];
+		char ntopbuf[INET6_ADDRSTRLEN];
 
 		syslog(LOG_WARNING, "<%s> Added prefix(%s)'s origin %d is"
 		    "lower than PR_ORIG_RR(router renumbering)."
@@ -1263,7 +1264,7 @@ make_packet(struct rainfo *rai)
 	ra->nd_ra_type = ND_ROUTER_ADVERT;
 	ra->nd_ra_code = 0;
 	ra->nd_ra_cksum = 0;
-	ra->nd_ra_curhoplimit = (u_int8_t)(0xff & rai->rai_hoplimit);
+	ra->nd_ra_curhoplimit = (uint8_t)(0xff & rai->rai_hoplimit);
 	ra->nd_ra_flags_reserved = 0; /* just in case */
 	/*
 	 * XXX: the router preference field, which is a 2-bit field, should be
@@ -1294,7 +1295,7 @@ make_packet(struct rainfo *rai)
 	}
 
 	TAILQ_FOREACH(pfx, &rai->rai_prefix, pfx_next) {
-		u_int32_t vltime, pltime;
+		uint32_t vltime, pltime;
 		struct timeval now;
 
 		ndopt_pi = (struct nd_opt_prefix_info *)buf;
@@ -1316,7 +1317,7 @@ make_packet(struct rainfo *rai)
 			if (pfx->pfx_vltimeexpire == 0)
 				vltime = pfx->pfx_validlifetime;
 			else
-				vltime = (pfx->pfx_vltimeexpire > now.tv_sec) ?
+				vltime = ((time_t)pfx->pfx_vltimeexpire > now.tv_sec) ?
 				    pfx->pfx_vltimeexpire - now.tv_sec : 0;
 		}
 		if (pfx->pfx_timer)
@@ -1325,7 +1326,7 @@ make_packet(struct rainfo *rai)
 			if (pfx->pfx_pltimeexpire == 0)
 				pltime = pfx->pfx_preflifetime;
 			else
-				pltime = (pfx->pfx_pltimeexpire > now.tv_sec) ?
+				pltime = ((time_t)pfx->pfx_pltimeexpire > now.tv_sec) ?
 				    pfx->pfx_pltimeexpire - now.tv_sec : 0;
 		}
 		if (vltime < pltime) {
@@ -1344,7 +1345,7 @@ make_packet(struct rainfo *rai)
 	}
 
 	TAILQ_FOREACH(rti, &rai->rai_route, rti_next) {
-		u_int8_t psize = (rti->rti_prefixlen + 0x3f) >> 6;
+		uint8_t psize = (rti->rti_prefixlen + 0x3f) >> 6;
 
 		ndopt_rti = (struct nd_opt_route_info *)buf;
 		ndopt_rti->nd_opt_rti_type = ND_OPT_ROUTE_INFO;

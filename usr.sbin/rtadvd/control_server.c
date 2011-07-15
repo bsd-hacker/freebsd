@@ -131,7 +131,7 @@ cmsg_getprop_ifilist(struct ctrl_msg_pl *cp)
 		len += strlen(ifi->ifi_ifname) + 1;
 	}
 
-	syslog(LOG_DEBUG, "<%s> len = %d", __func__, len);
+	syslog(LOG_DEBUG, "<%s> len = %zu", __func__, len);
 
 	p = malloc(len);
 	if (p == NULL)
@@ -175,7 +175,7 @@ cmsg_getprop_ifi(struct ctrl_msg_pl *cp)
 		exit(1);
 	len = cmsg_str2bin(p, ifi, sizeof(*ifi));
 
-	syslog(LOG_DEBUG, "<%s> len = %d", __func__, len);
+	syslog(LOG_DEBUG, "<%s> len = %zu", __func__, len);
 
 	if (len == 0)
 		return (1);
@@ -216,7 +216,7 @@ cmsg_getprop_rai(struct ctrl_msg_pl *cp)
 		exit(1);
 	len = cmsg_str2bin(p, rai, sizeof(*rai));
 
-	syslog(LOG_DEBUG, "<%s> len = %d", __func__, len);
+	syslog(LOG_DEBUG, "<%s> len = %zu", __func__, len);
 
 	if (len == 0)
 		return (1);
@@ -262,7 +262,7 @@ cmsg_getprop_rai_timer(struct ctrl_msg_pl *cp)
 		exit(1);
 	len = cmsg_str2bin(p, rtimer, sizeof(*rtimer));
 
-	syslog(LOG_DEBUG, "<%s> len = %d", __func__, len);
+	syslog(LOG_DEBUG, "<%s> len = %zu", __func__, len);
 
 	if (len == 0)
 		return (1);
@@ -304,7 +304,7 @@ cmsg_getprop_rti(struct ctrl_msg_pl *cp)
 		len += sizeof(*rti);
 	}
 
-	syslog(LOG_DEBUG, "<%s> len = %d", __func__, len);
+	syslog(LOG_DEBUG, "<%s> len = %zu", __func__, len);
 
 	p = malloc(len);
 	if (p == NULL)
@@ -353,7 +353,7 @@ cmsg_getprop_pfx(struct ctrl_msg_pl *cp)
 		len += sizeof(*pfx);
 	}
 
-	syslog(LOG_DEBUG, "<%s> len = %d", __func__, len);
+	syslog(LOG_DEBUG, "<%s> len = %zu", __func__, len);
 
 	p = malloc(len);
 	if (p == NULL)
@@ -380,8 +380,8 @@ cmsg_getprop_rdnss(struct ctrl_msg_pl *cp)
 	struct rdnss_addr *rda;
 	char *p;
 	size_t len;
-	u_int16_t *rdn_cnt;
-	u_int16_t *rda_cnt;
+	uint16_t *rdn_cnt;
+	uint16_t *rda_cnt;
 
 	syslog(LOG_DEBUG, "<%s> enter", __func__);
 
@@ -411,7 +411,7 @@ cmsg_getprop_rdnss(struct ctrl_msg_pl *cp)
 		}
 	}
 
-	syslog(LOG_DEBUG, "<%s> len = %d", __func__, len);
+	syslog(LOG_DEBUG, "<%s> len = %zu", __func__, len);
 
 	p = malloc(len);
 	if (p == NULL)
@@ -419,14 +419,14 @@ cmsg_getprop_rdnss(struct ctrl_msg_pl *cp)
 	memset(p, 0, len);
 	cp->cp_val = p;
 
-	rdn_cnt = (u_int16_t *)p;
+	rdn_cnt = (uint16_t *)p;
 	p += sizeof(*rdn_cnt);
 	TAILQ_FOREACH(rdn, &rai->rai_rdnss, rd_next) {
 		*rdn_cnt += 1;
 		memcpy(p, rdn, sizeof(*rdn));
 		p += sizeof(*rdn);
 
-		rda_cnt = (u_int16_t *)p;
+		rda_cnt = (uint16_t *)p;
 		p += sizeof(*rda_cnt);
 		TAILQ_FOREACH(rda, &rdn->rd_list, ra_next) {
 			*rda_cnt += 1;
@@ -449,8 +449,8 @@ cmsg_getprop_dnssl(struct ctrl_msg_pl *cp)
 	struct dnssl_addr *dna;
 	char *p;
 	size_t len;
-	u_int16_t *dns_cnt;
-	u_int16_t *dna_cnt;
+	uint16_t *dns_cnt;
+	uint16_t *dna_cnt;
 
 	syslog(LOG_DEBUG, "<%s> enter", __func__);
 
@@ -480,7 +480,7 @@ cmsg_getprop_dnssl(struct ctrl_msg_pl *cp)
 		}
 	}
 
-	syslog(LOG_DEBUG, "<%s> len = %d", __func__, len);
+	syslog(LOG_DEBUG, "<%s> len = %zu", __func__, len);
 
 	p = malloc(len);
 	if (p == NULL)
@@ -488,14 +488,14 @@ cmsg_getprop_dnssl(struct ctrl_msg_pl *cp)
 	memset(p, 0, len);
 	cp->cp_val = p;
 
-	dns_cnt = (u_int16_t *)cp->cp_val;
+	dns_cnt = (uint16_t *)cp->cp_val;
 	p += sizeof(*dns_cnt);
 	TAILQ_FOREACH(dns, &rai->rai_dnssl, dn_next) {
 		(*dns_cnt)++;
 		memcpy(p, dns, sizeof(*dns));
 		p += sizeof(*dns);
 
-		dna_cnt = (u_int16_t *)p;
+		dna_cnt = (uint16_t *)p;
 		p += sizeof(*dna_cnt);
 		TAILQ_FOREACH(dna, &dns->dn_list, da_next) {
 			(*dna_cnt)++;
@@ -620,7 +620,7 @@ cmsg_handler_server(int fd)
 			syslog(LOG_DEBUG,
 			    "<%s> cm->cm_type = %d", __func__, cm->cm_type);
 			syslog(LOG_DEBUG,
-			    "<%s> cm->cm_len = %d", __func__, cm->cm_len);
+			    "<%s> cm->cm_len = %zu", __func__, cm->cm_len);
 
 			switch (cm->cm_type) {
 			case CM_TYPE_EOM:

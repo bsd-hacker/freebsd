@@ -54,4 +54,4 @@ void		TIMEVAL_ADD(struct timeval *, struct timeval *,
 		    struct timeval *);
 void		TIMEVAL_SUB(struct timeval *, struct timeval *,
 		    struct timeval *);
-char		*sec2str(u_int32_t, char *buf);
+char		*sec2str(uint32_t, char *buf);

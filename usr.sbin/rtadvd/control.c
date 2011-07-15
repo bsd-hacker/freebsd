@@ -157,12 +157,12 @@ cmsg_send(int fd, char *buf)
 	}
 
 	syslog(LOG_DEBUG,
-	    "<%s> ctrl msg send: type=%d, count=%d, total_len=%d", __func__,
+	    "<%s> ctrl msg send: type=%d, count=%d, total_len=%zd", __func__,
 	    cm->cm_type, iovcnt, iov_len_total);
 
 	len = writev(fd, iov, iovcnt);
 	syslog(LOG_DEBUG,
-	    "<%s> ctrl msg send: length=%d", __func__, len);
+	    "<%s> ctrl msg send: length=%zd", __func__, len);
 
 	if (len == -1) {
 		syslog(LOG_DEBUG,
@@ -173,9 +173,9 @@ cmsg_send(int fd, char *buf)
 	}
 
 	syslog(LOG_DEBUG,
-	    "<%s> write length = %d (actual)", __func__, len);
+	    "<%s> write length = %zd (actual)", __func__, len);
 	syslog(LOG_DEBUG,
-	    "<%s> write length = %d (expected)", __func__, iov_len_total);
+	    "<%s> write length = %zd (expected)", __func__, iov_len_total);
 
 	if (len != iov_len_total) {
 		close(fd);
@@ -317,7 +317,7 @@ cmsg_bin2pl(char *str, struct ctrl_msg_pl *cp)
 	lenp = (size_t *)p;
 	len = *lenp++;
 	p = (char *)lenp;
-	syslog(LOG_DEBUG, "<%s> len(ifname) = %d", __func__, len);
+	syslog(LOG_DEBUG, "<%s> len(ifname) = %zu", __func__, len);
 	if (len > 0) {
 		cp->cp_ifname = malloc(len + 1);
 		if (cp->cp_ifname == NULL) {
@@ -332,7 +332,7 @@ cmsg_bin2pl(char *str, struct ctrl_msg_pl *cp)
 	lenp = (size_t *)p;
 	len = *lenp++;
 	p = (char *)lenp;
-	syslog(LOG_DEBUG, "<%s> len(key) = %d", __func__, len);
+	syslog(LOG_DEBUG, "<%s> len(key) = %zu", __func__, len);
 	if (len > 0) {
 		cp->cp_key = malloc(len + 1);
 		if (cp->cp_key == NULL) {
@@ -347,7 +347,7 @@ cmsg_bin2pl(char *str, struct ctrl_msg_pl *cp)
 	lenp = (size_t *)p;
 	len = *lenp++;
 	p = (char *)lenp;
-	syslog(LOG_DEBUG, "<%s> len(val) = %d", __func__, len);
+	syslog(LOG_DEBUG, "<%s> len(val) = %zu", __func__, len);
 	if (len > 0) {
 		cp->cp_val = malloc(len + 1);
 		if (cp->cp_val == NULL) {
@@ -382,11 +382,11 @@ cmsg_pl2bin(char *str, struct ctrl_msg_pl *cp)
 		len += cp->cp_val_len;
 
 	if (len > CM_MSG_MAXLEN - sizeof(*cm)) {
-		syslog(LOG_DEBUG, "<%s> msg too long (len=%d)",
+		syslog(LOG_DEBUG, "<%s> msg too long (len=%zu)",
 		    __func__, len);
 		return (0);
 	}
-	syslog(LOG_DEBUG, "<%s> msglen=%d", __func__, len);
+	syslog(LOG_DEBUG, "<%s> msglen=%zu", __func__, len);
 	memset(str, 0, len);
 	p = str;
 	lenp = (size_t *)p;
@@ -434,11 +434,11 @@ cmsg_str2bin(char *bin, void *str, size_t len)
 	syslog(LOG_DEBUG, "<%s> enter", __func__);
 
 	if (len > CM_MSG_MAXLEN - sizeof(*cm)) {
-		syslog(LOG_DEBUG, "<%s> msg too long (len=%d)",
+		syslog(LOG_DEBUG, "<%s> msg too long (len=%zu)",
 		    __func__, len);
 		return (0);
 	}
-	syslog(LOG_DEBUG, "<%s> msglen=%d", __func__, len);
+	syslog(LOG_DEBUG, "<%s> msglen=%zu", __func__, len);
 	memcpy(bin, (char *)str, len);
 
 	return (len);

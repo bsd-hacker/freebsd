@@ -46,6 +46,7 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <inttypes.h>
 #include <netdb.h>
 #include <unistd.h>
 #include <string.h>
@@ -538,7 +539,7 @@ action_show(int argc, char **argv)
 		printf("\tAdvIfPrefixes: %s\n",
 		    rai->rai_advifprefix ? "yes" : "no");
 		if (rai->rai_clockskew)
-			printf("\tClock skew: %ldsec\n",
+			printf("\tClock skew: %" PRIu16 "sec\n",
 			    rai->rai_clockskew);
 
 		if (vflag < LOG_WARNING)
@@ -586,7 +587,7 @@ action_show(int argc, char **argv)
 		if (error)
 			continue;
 
-		len = *((u_int16_t *)cp.cp_val);
+		len = *((uint16_t *)cp.cp_val);
 
 		if (len > 0) {
 			printf("\tRDNSS entries:\n");
@@ -601,7 +602,7 @@ action_show(int argc, char **argv)
 		if (error)
 			continue;
 
-		len = *((u_int16_t *)cp.cp_val);
+		len = *((uint16_t *)cp.cp_val);
 
 		if (len > 0) {
 			printf("\tDNSSL entries:\n");
@@ -619,11 +620,12 @@ action_show(int argc, char **argv)
 		printf("\tRA initcounts/waits: %d/%d\n",
 		    rai->rai_initcounter,
 		    rai->rai_waiting);
-		printf("\tRA out/in/inconsistent: %llu/%llu/%llu\n",
+		printf("\tRA out/in/inconsistent: "
+		    "%" PRIu64 "/%" PRIu64 "/%" PRIu64 "\n",
 		    ifi_s->ifi_raoutput,
 		    ifi_s->ifi_rainput,
 		    ifi_s->ifi_rainconsistent);
-		printf("\tRS in: %llu\n",
+		printf("\tRS in: %" PRIu64 "\n",
 		    ifi_s->ifi_rsinput);
 
 		printf("\n");
@@ -727,17 +729,17 @@ action_show_rdnss(void *msg)
 {
 	struct rdnss *rdn;
 	struct rdnss_addr *rda;
-	u_int16_t *rdn_cnt;
-	u_int16_t *rda_cnt;
+	uint16_t *rdn_cnt;
+	uint16_t *rda_cnt;
 	int i;
 	int j;
 	char *p;
-	u_int32_t	ltime;
+	uint32_t	ltime;
 	char ntopbuf[INET6_ADDRSTRLEN];
 	char ssbuf[SSBUFLEN];
 
 	p = msg;
-	rdn_cnt = (u_int16_t *)p;
+	rdn_cnt = (uint16_t *)p;
 	p += sizeof(*rdn_cnt);
 
 	if (*rdn_cnt > 0) {
@@ -746,7 +748,7 @@ action_show_rdnss(void *msg)
 			ltime = rdn->rd_ltime;
 			p += sizeof(*rdn);
 
-			rda_cnt = (u_int16_t *)p;
+			rda_cnt = (uint16_t *)p;
 			p += sizeof(*rda_cnt);
 			if (*rda_cnt > 0)
 				for (j = 0; j < *rda_cnt; j++) {
@@ -770,17 +772,17 @@ action_show_dnssl(void *msg)
 {
 	struct dnssl *dns;
 	struct dnssl_addr *dna;
-	u_int16_t *dns_cnt;
-	u_int16_t *dna_cnt;
+	uint16_t *dns_cnt;
+	uint16_t *dna_cnt;
 	int i;
 	int j;
 	char *p;
-	u_int32_t ltime;
+	uint32_t ltime;
 	char hbuf[NI_MAXHOST];
 	char ssbuf[SSBUFLEN];
 
 	p = msg;
-	dns_cnt = (u_int16_t *)p;
+	dns_cnt = (uint16_t *)p;
 	p += sizeof(*dns_cnt);
 
 	if (*dns_cnt > 0) {
@@ -789,7 +791,7 @@ action_show_dnssl(void *msg)
 			ltime = dns->dn_ltime;
 			p += sizeof(*dns);
 
-			dna_cnt = (u_int16_t *)p;
+			dna_cnt = (uint16_t *)p;
 			p += sizeof(*dna_cnt);
 			if (*dna_cnt > 0)
 				for (j = 0; j < *dna_cnt; j++) {
