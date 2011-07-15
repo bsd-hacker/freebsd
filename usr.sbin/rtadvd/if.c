@@ -293,12 +293,12 @@ get_prefixlen(char *buf)
 }
 
 int
-prefixlen(char *p, char *lim)
+prefixlen(unsigned char *p, unsigned char *lim)
 {
 	int masklen;
 
 	for (masklen = 0; p < lim; p++) {
-		switch ((int)*p) {
+		switch (*p) {
 		case 0xff:
 			masklen += 8;
 			break;

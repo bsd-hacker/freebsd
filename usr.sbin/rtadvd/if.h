@@ -48,7 +48,7 @@ char *get_next_msg(char *, char *, int, size_t *, int);
 struct in6_addr *get_addr(char *);
 int get_rtm_ifindex(char *);
 int get_prefixlen(char *);
-int prefixlen(char *, char *);
+int prefixlen(unsigned char *, unsigned char *);
 
 struct ifinfo	*update_ifinfo(struct ifilist_head_t *, int);
 int		update_ifinfo_nd_flags(struct ifinfo *);
