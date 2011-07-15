@@ -39,36 +39,37 @@
 .Op Ar interface ...
 .Sh DESCRIPTION
 .Nm
-is a utility that communicates
+is a utility that communicates with
 .Xr rtadvd 8
-daemon and displays information on Router Advertisement messages being
-sent on each interfaces.
+daemon and displays information about Router Advertisement messages being
+sent on each interface.
 .Pp
 This utility provides several options and subcommands.
 The options are as follows:
 .Bl -tag -width indent
 .\"
 .It Fl v
-Increase verbose level.  When specified once, the
+Increase verbosity level.
+When specified once, the
 .Nm
-utility shows additional information on prefixes, RDNSS, and DNSSL
+utility shows additional information about prefixes, RDNSS, and DNSSL
 options.
-When twice, it shows information on inactive interfaces and
-some statistics.
+When given twice, it additionally shows information about
+inactive interfaces and some statistics.
 .El
 .Pp
 The subcommands are as follows:
 .Bl -tag -width indent
 .\"
 .It reload
-Specifies reloading the configuration file.
+Specifies to reload the configuration file.
 .It shutdown
-Makes
+Makes the
 .Xr rtadvd 8
 daemon shut down immediately.
 .It show Op interfaces...
 Displays information on Router Advertisement messages being sent
-on each interfaces.
+on each interface.
 .Sh SEE ALSO
 .Xr rtadv 8 ,
 .Xr rtadvd.conf 5
@@ -77,6 +78,10 @@ The
 .Nm
 command first appeared in
 .Fx 9.0 .
+.Sh AUTHORS
+.Nm
+was written by
+.An "Hiroki Sato" Aq hrs@FreeBSD.org .
 .Sh BUGS
 The
 .Xr rtadvd 8
@@ -87,6 +92,6 @@ subcommand.
 This is because in the current implementation it cannot communicate
 with
 .Nm
-during sending some additional RAs for graceful transition from one
+while sending some additional RAs for graceful transition from one
 configuration to another.
 It will take at most nine seconds for each interface.
