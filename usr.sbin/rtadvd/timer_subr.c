@@ -35,6 +35,7 @@
 #include <sys/socket.h>
 #include <syslog.h>
 #include <stdio.h>
+#include <inttypes.h>
 
 #include "timer.h"
 #include "timer_subr.h"
@@ -95,12 +96,12 @@ TIMEVAL_SUB(struct timeval *a, struct timeval *b, struct timeval *result)
 char *
 sec2str(uint32_t s, char *buf)
 {
-	int day;
-	int hour;
-	int min;
-	int sec;
+	uint32_t day;
+	uint32_t hour;
+	uint32_t min;
+	uint32_t sec;
 	char *p;
-	
+
 	min = s / 60;
 	sec = s % 60;
 
@@ -112,15 +113,14 @@ sec2str(uint32_t s, char *buf)
 
 	p = buf;
 	if (day > 0)
-		p += sprintf(p, "%dd", day);
+		p += sprintf(p, "%" PRIu32 "d", day);
 	if (hour > 0)
-		p += sprintf(p, "%dh", hour);
+		p += sprintf(p, "%" PRIu32 "h", hour);
 	if (min > 0)
-		p += sprintf(p, "%dm", min);
+		p += sprintf(p, "%" PRIu32 "m", min);
 
-	if ((sec == 0 && p == buf) ||
-	    (sec > 0 && p > buf))
-		sprintf(p, "%ds", sec);
+	if ((p == buf) || (sec > 0 && p > buf))
+		sprintf(p, "%" PRIu32 "s", sec);
 
 	return (buf);
 }

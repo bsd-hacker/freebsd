@@ -182,15 +182,6 @@ struct	rainfo {
 	/* pointer for list */
 	TAILQ_ENTRY(rainfo)	rai_next;
 
-	/* timer related parameters */
-	struct rtadvd_timer	*rai_timer;
-	/* counter for the first few advertisements */
-	int			rai_initcounter;
-	/* timestamp when the latest RA was sent */
-	struct timeval		rai_lastsent;
-	/* number of RS waiting for RA */
-	int			rai_waiting;
-
 	/* interface information */
 	struct ifinfo *rai_ifinfo;
 
@@ -230,8 +221,35 @@ struct	rainfo {
 /* RA information list */
 extern TAILQ_HEAD(railist_head_t, rainfo) railist;
 
+/*
+ * ifi_state:
+ *
+ *           (INIT)
+ *              |
+ *              | update_ifinfo()
+ *              | update_persist_ifinfo()
+ *              v
+ *         UNCONFIGURED
+ *               |  ^
+ *   loadconfig()|  |rm_ifinfo(), ra_output()
+ *      (MC join)|  |(MC leave)
+ *               |  |
+ *               |  |
+ *               v  |
+ *         TRANSITIVE
+ *               |  ^
+ *    ra_output()|  |getconfig()
+ *               |  |
+ *               |  |
+ *               |  |
+ *               v  |
+ *         CONFIGURED
+ *
+ *
+ */
 #define	IFI_STATE_UNCONFIGURED	0
 #define	IFI_STATE_CONFIGURED	1
+#define	IFI_STATE_TRANSITIVE	2
 
 struct	ifinfo {
 	TAILQ_ENTRY(ifinfo)	ifi_next;
@@ -247,6 +265,13 @@ struct	ifinfo {
 	struct sockaddr_dl	ifi_sdl;
 
 	struct rainfo	*ifi_rainfo;
+	struct rainfo	*ifi_rainfo_trans;
+	uint16_t	ifi_burstcount;
+	uint32_t	ifi_burstinterval;
+	struct rtadvd_timer	*ifi_ra_timer;
+	/* timestamp when the latest RA was sent */
+	struct timeval		ifi_ra_lastsent;
+	uint16_t	ifi_rs_waitcount;
 
 	/* statistics */
 	uint64_t ifi_raoutput;		/* # of RAs sent */
@@ -262,7 +287,7 @@ extern char *mcastif;
 
 struct rtadvd_timer	*ra_timeout(void *);
 void			ra_timer_update(void *, struct timeval *);
-void			ra_output(struct rainfo *);
+void			ra_output(struct ifinfo *);
 
 int			prefix_match(struct in6_addr *, int,
 			    struct in6_addr *, int);

@@ -74,8 +74,8 @@ static int cmsg_getprop_echo(struct ctrl_msg_pl *);
 static int cmsg_getprop_version(struct ctrl_msg_pl *);
 static int cmsg_getprop_ifilist(struct ctrl_msg_pl *);
 static int cmsg_getprop_ifi(struct ctrl_msg_pl *);
+static int cmsg_getprop_ifi_ra_timer(struct ctrl_msg_pl *);
 static int cmsg_getprop_rai(struct ctrl_msg_pl *);
-static int cmsg_getprop_rai_timer(struct ctrl_msg_pl *);
 static int cmsg_getprop_pfx(struct ctrl_msg_pl *);
 static int cmsg_getprop_rdnss(struct ctrl_msg_pl *);
 static int cmsg_getprop_dnssl(struct ctrl_msg_pl *);
@@ -94,8 +94,8 @@ static struct dispatch_table {
 	DEF_PL_HANDLER(version),
 	DEF_PL_HANDLER(ifilist),
 	DEF_PL_HANDLER(ifi),
+	DEF_PL_HANDLER(ifi_ra_timer),
 	DEF_PL_HANDLER(rai),
-	DEF_PL_HANDLER(rai_timer),
 	DEF_PL_HANDLER(rti),
 	DEF_PL_HANDLER(pfx),
 	DEF_PL_HANDLER(rdnss),
@@ -235,7 +235,7 @@ cmsg_getprop_rai(struct ctrl_msg_pl *cp)
 }
 
 static int
-cmsg_getprop_rai_timer(struct ctrl_msg_pl *cp)
+cmsg_getprop_ifi_ra_timer(struct ctrl_msg_pl *cp)
 {
 	struct ifinfo *ifi;
 	struct rainfo *rai;
@@ -259,8 +259,8 @@ cmsg_getprop_rai_timer(struct ctrl_msg_pl *cp)
 		    cp->cp_ifname);
 		return (1);
 	}
-	if ((rtimer = rai->rai_timer) == NULL) {
-		syslog(LOG_ERR, "<%s> %s has no rai_timer", __func__,
+	if ((rtimer = ifi->ifi_ra_timer) == NULL) {
+		syslog(LOG_ERR, "<%s> %s has no ifi_ra_timer", __func__,
 		    cp->cp_ifname);
 		return (1);
 	}

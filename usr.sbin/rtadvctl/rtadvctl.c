@@ -61,6 +61,7 @@
 #include "rtadvd.h"
 #include "if.h"
 #include "timer_subr.h"
+#include "timer.h"
 #include "control.h"
 #include "control_client.h"
 
@@ -114,6 +115,9 @@ static struct dispatch_table {
 	{ "version", action_version },
 	{ NULL, NULL },
 };
+
+static char errmsgbuf[1024];
+static char *errmsg = NULL;
 
 static void
 mysyslog(int priority, const char * restrict fmt, ...)
@@ -176,12 +180,16 @@ main(int argc, char *argv[])
 		}
 	}
 
-	if (action != NULL) {
-		error = (dtable[i].dt_act)(--argc, ++argv);
-		if (error)
-			fprintf(stderr, "%s failed.\n", dtable[i].dt_comm);
-	} else
+	if (action == NULL)
 		usage();
+
+	error = (dtable[i].dt_act)(--argc, ++argv);
+	if (error) {
+		fprintf(stderr, "%s failed", dtable[i].dt_comm);
+		if (errmsg != NULL)
+			fprintf(stderr, ": %s", errmsg);
+		fprintf(stderr, ".\n");
+	}
 
 	return (error);
 }
@@ -312,7 +320,7 @@ action_disable(int argc, char **argv)
 		error += action_propset(action_argv);
 	}
 
-	return(error);
+	return (error);
 }
 
 static int
@@ -333,7 +341,7 @@ action_enable(int argc, char **argv)
 		error += action_propset(action_argv);
 	}
 
-	return(error);
+	return (error);
 }
 
 static int
@@ -346,7 +354,7 @@ action_reload(int argc, char **argv)
 
 	if (argc == 0) {
 		action_argv = strdup(":reload=");
-		return(action_propset(action_argv));
+		return (action_propset(action_argv));
 	}
 
 	error = 0;
@@ -356,7 +364,7 @@ action_reload(int argc, char **argv)
 		error += action_propset(action_argv);
 	}
 
-	return(error);
+	return (error);
 }
 
 static int
@@ -365,7 +373,7 @@ action_echo(int argc __unused, char **argv __unused)
 	char *action_argv;
 
 	action_argv = strdup("echo");
-	return(action_propset(action_argv));
+	return (action_propset(action_argv));
 }
 
 static int
@@ -374,7 +382,7 @@ action_shutdown(int argc __unused, char **argv __unused)
 	char *action_argv;
 
 	action_argv = strdup("shutdown");
-	return(action_propset(action_argv));
+	return (action_propset(action_argv));
 }
 
 /* XXX */
@@ -403,6 +411,7 @@ action_show(int argc, char **argv)
 	char argv_rai[IFNAMSIZ + sizeof(":rai=")];
 	char argv_rti[IFNAMSIZ + sizeof(":rti=")];
 	char argv_pfx[IFNAMSIZ + sizeof(":pfx=")];
+	char argv_ifi_ra_timer[IFNAMSIZ + sizeof(":ifi_ra_timer=")];
 	char argv_rdnss[IFNAMSIZ + sizeof(":rdnss=")];
 	char argv_dnssl[IFNAMSIZ + sizeof(":dnssl=")];
 	char ssbuf[SSBUFLEN];
@@ -427,7 +436,7 @@ action_show(int argc, char **argv)
 		while (p < endp) {
 			ifi = malloc(sizeof(*ifi));
 			if (ifi == NULL)
-				exit(1);
+				return (1);
 			memset(ifi, 0, sizeof(*ifi));
 
 			strcpy(ifi->ifi_ifname, p);
@@ -439,19 +448,25 @@ action_show(int argc, char **argv)
 		for (i = 0; i < argc; i++) {
 			ifi = malloc(sizeof(*ifi));
 			if (ifi == NULL)
-				exit(1);
+				return (1);
 			memset(ifi, 0, sizeof(*ifi));
 
 			strcpy(ifi->ifi_ifname, argv[i]);
 			ifi->ifi_ifindex = if_nametoindex(ifi->ifi_ifname);
-			if (ifi->ifi_ifindex == 0)
-				exit(1);
+			if (ifi->ifi_ifindex == 0) {
+				sprintf(errmsgbuf, "invalid interface %s",
+				    ifi->ifi_ifname);
+				errmsg = errmsgbuf;
+				return (1);
+			}
+
 			TAILQ_INSERT_TAIL(&ifl, ifi, ifi_next);
 		}
 	}
 
 	TAILQ_FOREACH(ifi, &ifl, ifi_next) {
 		struct ifinfo *ifi_s;
+		struct rtadvd_timer *rat;
 		struct rainfo *rai;
 		struct rtinfo *rti;
 		struct prefix *pfx;
@@ -470,28 +485,33 @@ action_show(int argc, char **argv)
 
 		printf("%s: flags=<", ifi->ifi_ifname);
 
-		/*
-		 * RA_RECV = UP + CONFIGURED + ACCEPT_RTADV
-		 * RA_SEND = UP + CONFIGURED + IPV6FORWARDING
-		 */
-
 		c = 0;
 		if (ifi_s->ifi_ifindex == 0)
 			c += printf("NONEXISTENT");
 		else
 			c += printf("%s", (ifi_s->ifi_flags & IFF_UP) ?
 			    "UP" : "DOWN");
-		if (ifi_s->ifi_state == IFI_STATE_CONFIGURED)
+		switch (ifi_s->ifi_state) {
+		case IFI_STATE_CONFIGURED:
 			c += printf("%s%s", (c) ? "," : "", "CONFIGURED");
-
+			break;
+		case IFI_STATE_TRANSITIVE:
+			c += printf("%s%s", (c) ? "," : "", "TRANSITIVE");
+			break;
+		}
 		if (ifi_s->ifi_persist)
 			c += printf("%s%s", (c) ? "," : "", "PERSIST");
 		printf(">");
 
 		ra_ifstatus = RA_IFSTATUS_INACTIVE;
 		if ((ifi_s->ifi_flags & IFF_UP) &&
-		    (ifi_s->ifi_state == IFI_STATE_CONFIGURED)) {
+		    ((ifi_s->ifi_state == IFI_STATE_CONFIGURED) ||
+			(ifi_s->ifi_state == IFI_STATE_TRANSITIVE))) {
 #if (__FreeBSD_version < 900000)
+			/*
+			 * RA_RECV: !ip6.forwarding && ip6.accept_rtadv
+			 * RA_SEND: ip6.forwarding
+			 */
 			if (getinet6sysctl(IPV6CTL_FORWARDING) == 0) {
 				if (getinet6sysctl(IPV6CTL_ACCEPT_RTADV))
 					ra_ifstatus = RA_IFSTATUS_RA_RECV;
@@ -500,6 +520,10 @@ action_show(int argc, char **argv)
 			} else
 				ra_ifstatus = RA_IFSTATUS_RA_SEND;
 #else
+			/*
+			 * RA_RECV: ND6_IFF_ACCEPT_RTADV
+			 * RA_SEND: ip6.forwarding
+			 */
 			if (ifi_s->ifi_nd_flags & ND6_IFF_ACCEPT_RTADV)
 				ra_ifstatus = RA_IFSTATUS_RA_RECV;
 			else if (getinet6sysctl(IPV6CTL_FORWARDING))
@@ -519,7 +543,11 @@ action_show(int argc, char **argv)
 			printf("%s%s", (c) ? "," : "", "RA_SEND");
 		printf("> ");
 
-		if (ifi_s->ifi_state != IFI_STATE_CONFIGURED) {
+		switch (ifi_s->ifi_state) {
+		case IFI_STATE_CONFIGURED:
+		case IFI_STATE_TRANSITIVE:
+			break;
+		default:
 			printf("\n");
 			continue;
 		}
@@ -574,6 +602,26 @@ action_show(int argc, char **argv)
 		    rai->rai_hoplimit);
 		printf("\tAdvIfPrefixes: %s\n",
 		    rai->rai_advifprefix ? "yes" : "no");
+
+		/* RA timer */
+		rat = NULL;
+		if (ifi_s->ifi_ra_timer != NULL) {
+			sprintf(argv_ifi_ra_timer, "%s:ifi_ra_timer=",
+			    ifi->ifi_ifname);
+			action_argv = argv_ifi_ra_timer;
+
+			error = action_propget(action_argv, &cp);
+			if (error)
+				return (error);
+
+			rat = (struct rtadvd_timer *)cp.cp_val;
+		}
+		printf("\tNext RA send: %s",
+		    (rat == NULL) ? "never\n" :
+		    ctime((time_t *)&rat->rat_tm.tv_sec));
+		printf("\tLast RA sent: %s",
+		    (ifi_s->ifi_ra_lastsent.tv_sec == 0) ? "never\n" :
+		    ctime((time_t *)&ifi_s->ifi_ra_lastsent.tv_sec));
 		if (rai->rai_clockskew)
 			printf("\tClock skew: %" PRIu16 "sec\n",
 			    rai->rai_clockskew);
@@ -650,18 +698,22 @@ action_show(int argc, char **argv)
 
 		printf("\n");
 
-		printf("\tLast RA sent: %s",
-		    (rai->rai_lastsent.tv_sec == 0) ? "never\n" :
-		    ctime((time_t *)&rai->rai_lastsent.tv_sec));
-		printf("\tRA initcounts/waits: %d/%d\n",
-		    rai->rai_initcounter,
-		    rai->rai_waiting);
-		printf("\tRA out/in/inconsistent: "
-		    "%" PRIu64 "/%" PRIu64 "/%" PRIu64 "\n",
-		    ifi_s->ifi_raoutput,
+		printf("\tCounters\n"
+		    "\t RA burst counts: %" PRIu16 " (interval: %s)\n"
+		    "\t RS wait counts: %" PRIu16 "\n",
+		    ifi_s->ifi_burstcount,
+		    sec2str(ifi_s->ifi_burstinterval, ssbuf),
+		    ifi_s->ifi_rs_waitcount);
+
+		printf("\tOutputs\n"
+		    "\t RA: %" PRIu64 "\n", ifi_s->ifi_raoutput);
+
+		printf("\tInputs\n"
+		    "\t RA: %" PRIu64 " (normal)\n"
+		    "\t RA: %" PRIu64 " (inconsistent)\n"
+		    "\t RS: %" PRIu64 "\n",
 		    ifi_s->ifi_rainput,
-		    ifi_s->ifi_rainconsistent);
-		printf("\tRS in: %" PRIu64 "\n",
+		    ifi_s->ifi_rainconsistent,
 		    ifi_s->ifi_rsinput);
 
 		printf("\n");

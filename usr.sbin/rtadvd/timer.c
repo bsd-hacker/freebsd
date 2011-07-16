@@ -66,36 +66,33 @@ rtadvd_timer_init(void)
 void
 rtadvd_update_timeout_handler(void)
 {
-	struct rainfo *rai;
 	struct ifinfo *ifi;
 
 	TAILQ_FOREACH(ifi, &ifilist, ifi_next) {
-		rai = ifi->ifi_rainfo;
-		if (rai == NULL)
-			continue;
-
 		switch (ifi->ifi_state) {
 		case IFI_STATE_CONFIGURED:
-			if (rai->rai_timer != NULL)
+		case IFI_STATE_TRANSITIVE:
+			if (ifi->ifi_ra_timer != NULL)
 				continue;
 
 			syslog(LOG_DEBUG, "<%s> add timer for %s (idx=%d)",
 			    __func__, ifi->ifi_ifname, ifi->ifi_ifindex);
-			rai->rai_timer = rtadvd_add_timer(ra_timeout,
-			    ra_timer_update, rai, rai);
-			ra_timer_update((void *)rai,
-			    &rai->rai_timer->rat_tm);
-			rtadvd_set_timer(&rai->rai_timer->rat_tm,
-			    rai->rai_timer);
+			ifi->ifi_ra_timer = rtadvd_add_timer(ra_timeout,
+			    ra_timer_update, ifi, ifi);
+			ra_timer_update((void *)ifi,
+			    &ifi->ifi_ra_timer->rat_tm);
+			rtadvd_set_timer(&ifi->ifi_ra_timer->rat_tm,
+			    ifi->ifi_ra_timer);
 			break;
 		case IFI_STATE_UNCONFIGURED:
-			if (rai->rai_timer == NULL)
+			if (ifi->ifi_ra_timer == NULL)
 				continue;
 
 			syslog(LOG_DEBUG,
 			    "<%s> remove timer for %s (idx=%d)", __func__,
 			    ifi->ifi_ifname, ifi->ifi_ifindex);
-			rtadvd_remove_timer(rai->rai_timer);
+			rtadvd_remove_timer(ifi->ifi_ra_timer);
+			ifi->ifi_ra_timer = NULL;
 			break;
 		}
 	}

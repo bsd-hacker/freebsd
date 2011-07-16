@@ -25,7 +25,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd July 15, 2011
+.Dd July 16, 2011
 .Dt RTADVCTL 8
 .Os
 .Sh NAME
@@ -80,12 +80,17 @@ Specifies to mark the interface as disable.
 .It shutdown
 Makes the
 .Xr rtadvd 8
-daemon shut down immediately.
+daemon shut down.
+Note that the
+.Xr rtadvd 8
+daemon will send several RAs with zero lifetime to invalidate the old
+information on each interface.
+It will take at most nine seconds.
 .It show Op interfaces...
 Displays information on Router Advertisement messages being sent
 on each interface.
 .Sh SEE ALSO
-.Xr rtadv 8 ,
+.Xr rtadvd 8 ,
 .Xr rtadvd.conf 5
 .Sh HISTORY
 The
@@ -96,16 +101,3 @@ command first appeared in
 .Nm
 was written by
 .An "Hiroki Sato" Aq hrs@FreeBSD.org .
-.Sh BUGS
-The
-.Xr rtadvd 8
-daemon stops responding to
-.Nm
-for a while just after reloading the configuration file by the reload
-subcommand.
-This is because in the current implementation it cannot communicate
-with
-.Nm
-while sending some additional RAs for graceful transition from one
-configuration to another.
-It will take at most nine seconds for each interface.

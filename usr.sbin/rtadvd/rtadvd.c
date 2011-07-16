@@ -96,6 +96,7 @@ static const char *pidfilename = _PATH_RTADVDPID;
 const char *conffile = _PATH_RTADVDCONF;
 static struct pidfh *pfh;
 int dflag = 0, sflag = 0;
+static int wait_shutdown;
 
 #define	PFD_RAWSOCK	0
 #define	PFD_RTSOCK	1
@@ -162,7 +163,7 @@ static int	nd6_options(struct nd_opt_hdr *, int,
 		    union nd_opt *, uint32_t);
 static void	free_ndopts(union nd_opt *);
 static void	rtmsg_input(struct sockinfo *);
-static void	set_short_delay(struct rainfo *);
+static void	set_short_delay(struct ifinfo *);
 static int	check_accept_rtadv(int);
 
 int
@@ -313,7 +314,7 @@ main(int argc, char *argv[])
 
 		/* timeout handler update for active interfaces */
 		rtadvd_update_timeout_handler();
-		
+
 		/* timer expiration check and reset the timer */
 		timeout = rtadvd_check_timer();
 
@@ -347,7 +348,7 @@ main(int argc, char *argv[])
 
 		if (set[PFD_CSOCK].revents & POLLIN) {
 			int fd;
-			
+
 			fd = csock_accept(&ctrlsock);
 			if (fd == -1)
 				syslog(LOG_ERR, "<%s> accept", __func__);
@@ -361,14 +362,32 @@ main(int argc, char *argv[])
 static void
 rtadvd_shutdown(void)
 {
+	struct ifinfo *ifi;
 	struct rainfo *rai;
 	struct rdnss *rdn;
 	struct dnssl *dns;
-	int i;
-	const int retrans = MAX_FINAL_RTR_ADVERTISEMENTS;
+
+	if (wait_shutdown) {
+		syslog(LOG_INFO,
+		    "waiting expiration of the all RA timers\n");
+
+		TAILQ_FOREACH(ifi, &ifilist, ifi_next) {
+			if (ifi->ifi_ra_timer != NULL)
+				break;
+		}
+		if (ifi == NULL) {
+			syslog(LOG_INFO, "gracefully terminated.\n");
+			exit(0);
+		}
+
+		sleep(1);
+		return;
+	}
 
 	syslog(LOG_DEBUG, "<%s> cease to be an advertising router\n",
 	    __func__);
+
+	wait_shutdown = 1;
 
 	TAILQ_FOREACH(rai, &railist, rai_next) {
 		rai->rai_lifetime = 0;
@@ -376,23 +395,33 @@ rtadvd_shutdown(void)
 			rdn->rd_ltime = 0;
 		TAILQ_FOREACH(dns, &rai->rai_dnssl, dn_next)
 			dns->dn_ltime = 0;
-		make_packet(rai);
 	}
-	for (i = 0; i < retrans; i++) {
-		syslog(LOG_INFO, "<%s> final RA transmission #%d/%d\n",
-		    __func__, i, retrans - i);
-		TAILQ_FOREACH(rai, &railist, rai_next)
-			if (rai->rai_ifinfo->ifi_state
-			    == IFI_STATE_CONFIGURED)
-				ra_output(rai);
-		syslog(LOG_INFO, "<%s> waiting for %d sec.\n",
-		    __func__, MIN_DELAY_BETWEEN_RAS);
-		sleep(MIN_DELAY_BETWEEN_RAS);
+	TAILQ_FOREACH(ifi, &ifilist, ifi_next) {
+		if (!ifi->ifi_persist)
+			continue;
+		if (ifi->ifi_state == IFI_STATE_UNCONFIGURED)
+			continue;
+		if (ifi->ifi_ra_timer == NULL)
+			continue;
+
+		ifi->ifi_state = IFI_STATE_TRANSITIVE;
+
+		/* Mark as the shut-down state. */
+		ifi->ifi_rainfo_trans = ifi->ifi_rainfo;
+		ifi->ifi_rainfo = NULL;
+
+		ifi->ifi_burstcount = MAX_FINAL_RTR_ADVERTISEMENTS;
+		ifi->ifi_burstinterval = MIN_DELAY_BETWEEN_RAS;
+
+		ra_timer_update(ifi, &ifi->ifi_ra_timer->rat_tm);
+		rtadvd_set_timer(&ifi->ifi_ra_timer->rat_tm,
+		    ifi->ifi_ra_timer);
 	}
+	syslog(LOG_INFO,
+	    "<%s> final RA transmission started.\n", __func__);
+
 	pidfile_remove(pfh);
 	csock_close(&ctrlsock);
-	
-	exit(0);
 }
 
 static void
@@ -489,7 +518,16 @@ rtmsg_input(struct sockinfo *s)
 				syslog(LOG_INFO,
 				    "<%s>: interface removed (idx=%d)",
 				    __func__, ifan->ifan_index);
-				rmconfig(ifan->ifan_index);
+				rm_ifinfo_index(ifan->ifan_index);
+
+				/* Clear ifi_ifindex */
+				TAILQ_FOREACH(ifi, &ifilist, ifi_next) {
+					if (ifi->ifi_ifindex
+					    == ifan->ifan_index) {
+						ifi->ifi_ifindex = 0;
+						break;
+					}
+				}
 				update_ifinfo(&ifilist, ifan->ifan_index);
 				break;
 			}
@@ -526,7 +564,7 @@ rtmsg_input(struct sockinfo *s)
 		case RTM_ADD:
 			if (sflag)
 				break;	/* we aren't interested in prefixes  */
-		       
+
 			addr = get_addr(msg);
 			plen = get_prefixlen(msg);
 			/* sanity check for plen */
@@ -608,29 +646,32 @@ rtmsg_input(struct sockinfo *s)
 			syslog(LOG_INFO,
 			    "<%s> interface %s becomes down. stop timer.",
 			    __func__, ifi->ifi_ifname);
-			rtadvd_remove_timer(rai->rai_timer);
-			rai->rai_timer = NULL;
+			rtadvd_remove_timer(ifi->ifi_ra_timer);
+			ifi->ifi_ra_timer = NULL;
 		} else if (!(oldifflags & IFF_UP) && /* DOWN to UP */
 		    (ifi->ifi_flags & IFF_UP)) {
 			syslog(LOG_INFO,
 			    "<%s> interface %s becomes up. restart timer.",
 			    __func__, ifi->ifi_ifname);
 
-			rai->rai_initcounter = 0; /* reset the counter */
-			rai->rai_waiting = 0; /* XXX */
-			rai->rai_timer = rtadvd_add_timer(ra_timeout,
-			    ra_timer_update, rai, rai);
-			ra_timer_update(rai, &rai->rai_timer->rat_tm);
-			rtadvd_set_timer(&rai->rai_timer->rat_tm,
-			    rai->rai_timer);
+			ifi->ifi_state = IFI_STATE_TRANSITIVE;
+			ifi->ifi_burstcount =
+			    MAX_INITIAL_RTR_ADVERTISEMENTS;
+			ifi->ifi_burstinterval =
+			    MAX_INITIAL_RTR_ADVERT_INTERVAL;
+
+			ifi->ifi_ra_timer = rtadvd_add_timer(ra_timeout,
+			    ra_timer_update, ifi, ifi);
+			ra_timer_update(ifi, &ifi->ifi_ra_timer->rat_tm);
+			rtadvd_set_timer(&ifi->ifi_ra_timer->rat_tm,
+			    ifi->ifi_ra_timer);
 		} else if (prefixchange &&
 		    (ifi->ifi_flags & IFF_UP)) {
 			/*
 			 * An advertised prefix has been added or invalidated.
 			 * Will notice the change in a short delay.
 			 */
-			rai->rai_initcounter = 0;
-			set_short_delay(rai);
+			set_short_delay(ifi);
 		}
 	}
 
@@ -654,7 +695,7 @@ rtadvd_input(struct sockinfo *s)
 	struct ifinfo *ifi;
 
 	syslog(LOG_DEBUG, "<%s> enter", __func__);
-	
+
 	if (s == NULL) {
 		syslog(LOG_ERR, "<%s> internal error", __func__);
 		exit(1);
@@ -922,10 +963,10 @@ rs_input(int len, struct nd_router_solicit *rs,
 	 * If there is already a waiting RS packet, don't
 	 * update the timer.
 	 */
-	if (rai->rai_waiting++)
+	if (ifi->ifi_rs_waitcount++)
 		goto done;
 
-	set_short_delay(rai);
+	set_short_delay(ifi);
 
   done:
 	free_ndopts(&ndopts);
@@ -933,7 +974,7 @@ rs_input(int len, struct nd_router_solicit *rs,
 }
 
 static void
-set_short_delay(struct rainfo *rai)
+set_short_delay(struct ifinfo *ifi)
 {
 	long delay;	/* must not be greater than 1000000 */
 	struct timeval interval, now, min_delay, tm_tmp, *rest;
@@ -952,7 +993,7 @@ set_short_delay(struct rainfo *rai)
 #endif
 	interval.tv_sec = 0;
 	interval.tv_usec = delay;
-	rest = rtadvd_timer_rest(rai->rai_timer);
+	rest = rtadvd_timer_rest(ifi->ifi_ra_timer);
 	if (TIMEVAL_LT(rest, &interval)) {
 		syslog(LOG_DEBUG, "<%s> random delay is larger than "
 		    "the rest of the current timer", __func__);
@@ -967,21 +1008,21 @@ set_short_delay(struct rainfo *rai)
 	 * previous advertisement was sent.
 	 */
 	gettimeofday(&now, NULL);
-	TIMEVAL_SUB(&now, &rai->rai_lastsent, &tm_tmp);
+	TIMEVAL_SUB(&now, &ifi->ifi_ra_lastsent, &tm_tmp);
 	min_delay.tv_sec = MIN_DELAY_BETWEEN_RAS;
 	min_delay.tv_usec = 0;
 	if (TIMEVAL_LT(&tm_tmp, &min_delay)) {
 		TIMEVAL_SUB(&min_delay, &tm_tmp, &min_delay);
 		TIMEVAL_ADD(&min_delay, &interval, &interval);
 	}
-	rtadvd_set_timer(&interval, rai->rai_timer);
+	rtadvd_set_timer(&interval, ifi->ifi_ra_timer);
 }
 
 static int
 check_accept_rtadv(int idx)
 {
 	struct ifinfo *ifi;
-	
+
 	TAILQ_FOREACH(ifi, &ifilist, ifi_next) {
 		if (ifi->ifi_ifindex == idx)
 			break;
@@ -992,7 +1033,18 @@ check_accept_rtadv(int idx)
 		    __func__, idx);
 		return (0);
 	}
-#if (__FreeBSD_version > 900000)
+#if (__FreeBSD_version < 900000)
+	/*
+	 * RA_RECV: !ip6.forwarding && ip6.accept_rtadv
+	 * RA_SEND: ip6.forwarding
+	 */
+	return ((getinet6sysctl(IPV6CTL_FORWARDING) == 0) &&
+	    (getinet6sysctl(IPV6CTL_ACCEPT_RTADV) == 1));
+#else
+	/*
+	 * RA_RECV: ND6_IFF_ACCEPT_RTADV
+	 * RA_SEND: ip6.forwarding
+	 */
 	if (update_ifinfo_nd_flags(ifi) != 0) {
 		syslog(LOG_ERR,
 		    "<%s> nd6 flags failed (idx=%d)",
@@ -1001,9 +1053,6 @@ check_accept_rtadv(int idx)
 	}
 
 	return (ifi->ifi_nd_flags & ND6_IFF_ACCEPT_RTADV);
-#else
-	return ((getinet6sysctl(IPV6CTL_FORWARDING) == 0) &&
-	    (getinet6sysctl(IPV6CTL_ACCEPT_RTADV) == 1));
 #endif
 }
 
@@ -1059,7 +1108,7 @@ ra_input(int len, struct nd_router_advert *nra,
 	ifi->ifi_rainput++;
 	syslog(LOG_DEBUG, "<%s> ifi->ifi_rainput = %" PRIu64 "\n", __func__,
 	    ifi->ifi_rainput);
-	
+
 	/* Cur Hop Limit value */
 	if (nra->nd_ra_curhoplimit && rai->rai_hoplimit &&
 	    nra->nd_ra_curhoplimit != rai->rai_hoplimit) {
@@ -1575,18 +1624,31 @@ if_indextoifinfo(int idx)
 }
 
 void
-ra_output(struct rainfo *rai)
+ra_output(struct ifinfo *ifi)
 {
 	int i;
 	struct cmsghdr *cm;
 	struct in6_pktinfo *pi;
 	struct soliciter *sol;
-	struct ifinfo *ifi;
-	
-	ifi = rai->rai_ifinfo;
+	struct rainfo *rai;
 
-	if (ifi->ifi_state != IFI_STATE_CONFIGURED) {
+	switch (ifi->ifi_state) {
+	case IFI_STATE_CONFIGURED:
+		rai = ifi->ifi_rainfo;
+		break;
+	case IFI_STATE_TRANSITIVE:
+		rai = ifi->ifi_rainfo_trans;
+		break;
+	case IFI_STATE_UNCONFIGURED:
 		syslog(LOG_DEBUG, "<%s> %s is unconfigured.  "
+		    "Skip sending RAs.",
+		    __func__, ifi->ifi_ifname);
+		return;
+	default:
+		rai = NULL;
+	}
+	if (rai == NULL) {
+		syslog(LOG_DEBUG, "<%s> rainfo is NULL on %s."
 		    "Skip sending RAs.",
 		    __func__, ifi->ifi_ifname);
 		return;
@@ -1601,7 +1663,7 @@ ra_output(struct rainfo *rai)
 	 * Check lifetime, ACCEPT_RTADV flag, and ip6.forwarding.
 	 *
 	 * (lifetime == 0) = output
-	 * (lifetime != 0 && (ACCEPT_RTADV || !ip6.forwarding) = no output
+	 * (lifetime != 0 && (check_accept_rtadv()) = no output
 	 *
 	 * Basically, hosts MUST NOT send Router Advertisement
 	 * messages at any time (RFC 4861, Section 6.2.3). However, it
@@ -1612,9 +1674,13 @@ ra_output(struct rainfo *rai)
 	 * zero. (see also the above section)
 	 */
 	syslog(LOG_DEBUG,
-	    "<%s> check lifetime=%d, ACCEPT_RTADV=%d, ip6.forwarding=%d on %s",
-	    __func__, rai->rai_lifetime, check_accept_rtadv(ifi->ifi_ifindex),
-	    getinet6sysctl(IPV6CTL_FORWARDING), ifi->ifi_ifname);
+	    "<%s> check lifetime=%d, ACCEPT_RTADV=%d, ip6.forwarding=%d "
+	    "on %s", __func__,
+	    rai->rai_lifetime,
+	    check_accept_rtadv(ifi->ifi_ifindex),
+	    getinet6sysctl(IPV6CTL_FORWARDING),
+	    ifi->ifi_ifname);
+
 	if (rai->rai_lifetime != 0) {
 		if (check_accept_rtadv(ifi->ifi_ifindex)) {
 			syslog(LOG_INFO,
@@ -1659,8 +1725,8 @@ ra_output(struct rainfo *rai)
 	}
 
 	syslog(LOG_DEBUG,
-	    "<%s> send RA on %s, # of waitings = %d",
-	    __func__, ifi->ifi_ifname, rai->rai_waiting);
+	    "<%s> send RA on %s, # of RS waitings = %d",
+	    __func__, ifi->ifi_ifname, ifi->ifi_rs_waitcount);
 
 	i = sendmsg(sock.si_fd, &sndmhdr, 0);
 
@@ -1671,10 +1737,6 @@ ra_output(struct rainfo *rai)
 			    strerror(errno));
 		}
 	}
-	/* update counter */
-	if (rai->rai_initcounter < MAX_INITIAL_RTR_ADVERTISEMENTS)
-		rai->rai_initcounter++;
-	ifi->ifi_raoutput++;
 
 	/*
 	 * unicast advertisements
@@ -1687,66 +1749,136 @@ ra_output(struct rainfo *rai)
 	}
 
 	/* update timestamp */
-	gettimeofday(&rai->rai_lastsent, NULL);
+	gettimeofday(&ifi->ifi_ra_lastsent, NULL);
 
-	/* reset waiting conter */
-	rai->rai_waiting = 0;
+	/* update counter */
+	ifi->ifi_rs_waitcount = 0;
+	ifi->ifi_raoutput++;
+
+	switch (ifi->ifi_state) {
+	case IFI_STATE_CONFIGURED:
+		if (ifi->ifi_burstcount > 0)
+			ifi->ifi_burstcount--;
+		break;
+	case IFI_STATE_TRANSITIVE:
+		ifi->ifi_burstcount--;
+		if (ifi->ifi_burstcount == 0) {
+			if (ifi->ifi_rainfo == ifi->ifi_rainfo_trans) {
+				/* Inital burst finished. */
+				if (ifi->ifi_rainfo_trans != NULL)
+					ifi->ifi_rainfo_trans = NULL;
+			}
+
+			/* Remove burst RA information */
+			if (ifi->ifi_rainfo_trans != NULL) {
+				rm_rainfo(ifi->ifi_rainfo_trans);
+				ifi->ifi_rainfo_trans = NULL;
+			}
+
+			if (ifi->ifi_rainfo != NULL) {
+				/*
+				 * TRANSITIVE -> CONFIGURED
+				 *
+				 * After initial burst or transition from
+				 * one configuration to another,
+				 * ifi_rainfo always points to the next RA
+				 * information.
+				 */
+				ifi->ifi_state = IFI_STATE_CONFIGURED;
+				syslog(LOG_DEBUG,
+				    "<%s> ifname=%s marked as "
+				    "CONFIGURED.", __func__,
+				    ifi->ifi_ifname);
+			} else {
+				/*
+				 * TRANSITIVE -> UNCONFIGURED
+				 *
+				 * If ifi_rainfo points to NULL, this
+				 * interface is shutting down.
+				 *
+				 */
+				int error;
+
+				ifi->ifi_state = IFI_STATE_UNCONFIGURED;
+				syslog(LOG_DEBUG,
+				    "<%s> ifname=%s marked as "
+				    "UNCONFIGURED.", __func__,
+				    ifi->ifi_ifname);
+				error = sock_mc_leave(&sock,
+				    ifi->ifi_ifindex);
+				if (error)
+					exit(1);
+			}
+		}
+		break;
+	}
 }
 
 /* process RA timer */
 struct rtadvd_timer *
 ra_timeout(void *arg)
 {
-	struct rainfo *rai;
 	struct ifinfo *ifi;
-#ifdef notyet
-	/* if necessary, reconstruct the packet. */
-#endif
-	rai = (struct rainfo *)arg;
-	ifi = rai->rai_ifinfo;
+
+	ifi = (struct ifinfo *)arg;
 	syslog(LOG_DEBUG, "<%s> RA timer on %s is expired",
 	    __func__, ifi->ifi_ifname);
 
-	ra_output(rai);
+	ra_output(ifi);
 
-	return (rai->rai_timer);
+	return (ifi->ifi_ra_timer);
 }
 
 /* update RA timer */
 void
 ra_timer_update(void *arg, struct timeval *tm)
 {
-	long interval;
+	uint16_t interval;
 	struct rainfo *rai;
 	struct ifinfo *ifi;
-	
-	rai = (struct rainfo *)arg;
-	ifi = rai->rai_ifinfo;
-	/*
-	 * Whenever a multicast advertisement is sent from an interface,
-	 * the timer is reset to a uniformly-distributed random value
-	 * between the interface's configured MinRtrAdvInterval and
-	 * MaxRtrAdvInterval (RFC2461 6.2.4).
-	 */
-	interval = rai->rai_mininterval;
-#ifdef HAVE_ARC4RANDOM
-	interval += arc4random_uniform(rai->rai_maxinterval -
-	    rai->rai_mininterval);
-#else
-	interval += random() % (rai->rai_maxinterval -
-	    rai->rai_mininterval);
-#endif
 
-	/*
-	 * For the first few advertisements (up to
-	 * MAX_INITIAL_RTR_ADVERTISEMENTS), if the randomly chosen interval
-	 * is greater than MAX_INITIAL_RTR_ADVERT_INTERVAL, the timer
-	 * SHOULD be set to MAX_INITIAL_RTR_ADVERT_INTERVAL instead.
-	 * (RFC 4861 6.2.4)
-	 */
-	if (rai->rai_initcounter < MAX_INITIAL_RTR_ADVERTISEMENTS &&
-	    interval > MAX_INITIAL_RTR_ADVERT_INTERVAL)
-		interval = MAX_INITIAL_RTR_ADVERT_INTERVAL;
+	ifi = (struct ifinfo *)arg;
+	rai = ifi->ifi_rainfo;
+	interval = 0;
+
+	switch (ifi->ifi_state) {
+	case IFI_STATE_UNCONFIGURED:
+		return;
+		break;
+	case IFI_STATE_CONFIGURED:
+		/*
+		 * Whenever a multicast advertisement is sent from
+		 * an interface, the timer is reset to a
+		 * uniformly-distributed random value between the
+		 * interface's configured MinRtrAdvInterval and
+		 * MaxRtrAdvInterval (RFC4861 6.2.4).
+		 */
+		interval = rai->rai_mininterval;
+#ifdef HAVE_ARC4RANDOM
+		interval += arc4random_uniform(rai->rai_maxinterval -
+		    rai->rai_mininterval);
+#else
+		interval += random() % (rai->rai_maxinterval -
+		    rai->rai_mininterval);
+#endif
+		break;
+	case IFI_STATE_TRANSITIVE:
+		/*
+		 * For the first few advertisements (up to
+		 * MAX_INITIAL_RTR_ADVERTISEMENTS), if the randomly chosen
+		 * interval is greater than
+		 * MAX_INITIAL_RTR_ADVERT_INTERVAL, the timer SHOULD be
+		 * set to MAX_INITIAL_RTR_ADVERT_INTERVAL instead.  (RFC
+		 * 4861 6.2.4)
+		 *
+		 * In such cases, the router SHOULD transmit one or more
+		 * (but not more than MAX_FINAL_RTR_ADVERTISEMENTS) final
+		 * multicast Router Advertisements on the interface with a
+		 * Router Lifetime field of zero.  (RFC 4861 6.2.5)
+		 */
+		interval = ifi->ifi_burstinterval;
+		break;
+	}
 
 	tm->tv_sec = interval;
 	tm->tv_usec = 0;

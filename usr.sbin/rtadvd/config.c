@@ -149,7 +149,6 @@ int
 loadconfig_ifname(char *ifname)
 {
 	struct ifinfo *ifi;
-	int error;
 
 	syslog(LOG_DEBUG, "<%s> enter", __func__);
 
@@ -175,37 +174,21 @@ loadconfig_ifname(char *ifname)
 			    ifi->ifi_ifname);
 			continue;
 		}
-		if (getconfig(ifi->ifi_ifindex) == NULL) {
+		if (getconfig(ifi) == NULL) {
 			syslog(LOG_ERR,
 			    "<%s> invalid configuration for %s.  "
 			    "Ignored at this moment.", __func__,
 			    ifi->ifi_ifname);
 			continue;
 		}
-		ifi->ifi_state = IFI_STATE_CONFIGURED;
-		syslog(LOG_DEBUG,
-		    "<%s> ifname=%s marked as configured.",
-		    __func__, ifi->ifi_ifname);
-
-		error = sock_mc_join(&sock, ifi->ifi_ifindex);
-		if (error)
-			exit(1);
 	}
 	return (0);
 }
 
 int
-rmconfig(int idx)
+rm_ifinfo_index(int idx)
 {
-	struct rainfo *rai;
-	struct prefix *pfx;
-	struct soliciter *sol;
-	struct rdnss *rdn;
-	struct rdnss_addr *rdna;
-	struct dnssl *dns;
-	struct rtinfo *rti;
 	struct ifinfo *ifi;
-	int error;
 
 	ifi = if_indextoifinfo(idx);
 	if (ifi == NULL) {
@@ -213,24 +196,39 @@ rmconfig(int idx)
 		    __func__, idx);
 		return (-1);
 	}
-	rai = ifi->ifi_rainfo;
 
-	if (ifi->ifi_state == IFI_STATE_CONFIGURED) {
+	return (rm_ifinfo(ifi));
+}
+
+int
+rm_ifinfo(struct ifinfo *ifi)
+{
+	int error;
+
+	syslog(LOG_DEBUG, "<%s> enter (%s).", __func__, ifi->ifi_ifname);
+	switch (ifi->ifi_state) {
+	case IFI_STATE_UNCONFIGURED:
+		return (0);
+		break;
+	default:
 		ifi->ifi_state = IFI_STATE_UNCONFIGURED;
 		syslog(LOG_DEBUG,
-		    "<%s> ifname=%s marked as unconfigured.",
+		    "<%s> ifname=%s marked as UNCONFIGURED.",
 		    __func__, ifi->ifi_ifname);
 
-		error = sock_mc_leave(&sock, ifi->ifi_ifindex);
-		if (error)
-			exit(1);
+		/* XXX: No MC leaving here becasue index is disappeared */
+
+		/* Inactivate timer */
+		rtadvd_remove_timer(ifi->ifi_ra_timer);
+		ifi->ifi_ra_timer = NULL;
+		break;
 	}
 
 	/* clean up ifi */
 	if (!ifi->ifi_persist) {
 		TAILQ_REMOVE(&ifilist, ifi, ifi_next);
 		syslog(LOG_DEBUG, "<%s>: ifinfo (idx=%d) removed.",
-		    __func__, idx);
+		    __func__, ifi->ifi_ifindex);
 		free(ifi);
 	} else {
 		/* recreate an empty entry */
@@ -238,16 +236,62 @@ rmconfig(int idx)
 		syslog(LOG_DEBUG, "<%s>: ifname=%s is persistent.",
 		    __func__, ifi->ifi_ifname);
 	}
+
 	/* clean up rai if any */
-	if (rai == NULL)
-		return (0);
+	switch (ifi->ifi_state) {
+	case IFI_STATE_CONFIGURED:
+		if (ifi->ifi_rainfo != NULL) {
+			error = rm_rainfo(ifi->ifi_rainfo);
+			if (error)
+				return (error);
+			ifi->ifi_rainfo = NULL;
+		}
+		break;
+	case IFI_STATE_TRANSITIVE:
+		if (ifi->ifi_rainfo == ifi->ifi_rainfo_trans) {
+			if (ifi->ifi_rainfo != NULL) {
+				error = rm_rainfo(ifi->ifi_rainfo);
+				if (error)
+					return (error);
+				ifi->ifi_rainfo = NULL;
+				ifi->ifi_rainfo_trans = NULL;
+			}
+		} else {
+			if (ifi->ifi_rainfo != NULL) {
+				error = rm_rainfo(ifi->ifi_rainfo);
+				if (error)
+					return (error);
+				ifi->ifi_rainfo = NULL;
+			}
+			if (ifi->ifi_rainfo_trans != NULL) {
+				error = rm_rainfo(ifi->ifi_rainfo_trans);
+				if (error)
+					return (error);
+				ifi->ifi_rainfo_trans = NULL;
+			}
+		}
+	}
+
+	syslog(LOG_DEBUG, "<%s> leave (%s).", __func__, ifi->ifi_ifname);
+	return (0);
+}
+
+int
+rm_rainfo(struct rainfo *rai)
+{
+	struct prefix *pfx;
+	struct soliciter *sol;
+	struct rdnss *rdn;
+	struct rdnss_addr *rdna;
+	struct dnssl *dns;
+	struct rtinfo *rti;
+
+	syslog(LOG_DEBUG, "<%s>: enter",  __func__);
 
 	TAILQ_REMOVE(&railist, rai, rai_next);
-	syslog(LOG_DEBUG, "<%s>: rainfo (idx=%d) removed.",
-	    __func__, idx);
-
-	/* Free all of allocated memories for this entry. */
-	rtadvd_remove_timer(rai->rai_timer);
+	if (rai->rai_ifinfo != NULL)
+		syslog(LOG_DEBUG, "<%s>: rainfo (idx=%d) removed.",
+		    __func__, rai->rai_ifinfo->ifi_ifindex);
 
 	if (rai->rai_ra_data != NULL)
 		free(rai->rai_ra_data);
@@ -277,34 +321,34 @@ rmconfig(int idx)
 		free(rti);
 	}
 	free(rai);
+	syslog(LOG_DEBUG, "<%s>: leave",  __func__);
 
 	return (0);
 }
 
 struct ifinfo *
-getconfig(int idx)
+getconfig(struct ifinfo *ifi)
 {
 	int stat, i;
+	int error;
 	char tbuf[BUFSIZ];
 	struct rainfo *rai;
 	struct rainfo *rai_old;
-	struct ifinfo *ifi;
 	int32_t val;
 	int64_t val64;
 	char buf[BUFSIZ];
 	char *bp = buf;
 	char *addr, *flagstr;
 
-	if (idx == 0)
-		return (NULL);
-	TAILQ_FOREACH(ifi, &ifilist, ifi_next) {
-		if (ifi->ifi_ifindex == idx)
-			break;
-	}
 	if (ifi == NULL)	/* if does not exist */
 		return (NULL);
 
-	rai_old = ifi->ifi_rainfo;
+	if (ifi->ifi_state == IFI_STATE_TRANSITIVE &&
+	    ifi->ifi_rainfo == NULL) {
+		syslog(LOG_INFO, "<%s> %s is shutting down.  Skipped.",
+		    __func__, ifi->ifi_ifname);
+		return (NULL);
+	}
 
 	if ((stat = agetent(tbuf, ifi->ifi_ifname)) <= 0) {
 		memset(tbuf, 0, sizeof(tbuf));
@@ -857,26 +901,102 @@ getconfig_free_dns:
 	 * Before the removal, RDNSS and DNSSL options with
 	 * zero-lifetime will be sent.
 	 */
-	if (rai_old != NULL) {
-		const int retrans = MAX_FINAL_RTR_ADVERTISEMENTS;
-		struct rdnss *rdn;
-		struct dnssl *dns;
+	switch (ifi->ifi_state) {
+	case IFI_STATE_UNCONFIGURED:
+		/* UNCONFIGURED -> TRANSITIVE */
 
-		rai_old->rai_lifetime = 0;
-		TAILQ_FOREACH(rdn, &rai_old->rai_rdnss, rd_next)
-			rdn->rd_ltime = 0;
-		TAILQ_FOREACH(dns, &rai_old->rai_dnssl, dn_next)
-			dns->dn_ltime = 0;
+		error = sock_mc_join(&sock, ifi->ifi_ifindex);
+		if (error)
+			exit(1);
 
-		make_packet(rai_old);
-		for (i = 0; i < retrans; i++) {
-			ra_output(rai_old);
-			sleep(MIN_DELAY_BETWEEN_RAS);
+		ifi->ifi_state = IFI_STATE_TRANSITIVE;
+		ifi->ifi_burstcount = MAX_INITIAL_RTR_ADVERTISEMENTS;
+		ifi->ifi_burstinterval = MAX_INITIAL_RTR_ADVERT_INTERVAL;
+
+		/* The same two rai mean initial burst */
+		ifi->ifi_rainfo = rai;
+		ifi->ifi_rainfo_trans = rai;
+		TAILQ_INSERT_TAIL(&railist, rai, rai_next);
+
+		if (ifi->ifi_ra_timer == NULL)
+			ifi->ifi_ra_timer = rtadvd_add_timer(ra_timeout,
+			    ra_timer_update, ifi, ifi);
+		ra_timer_update(ifi, &ifi->ifi_ra_timer->rat_tm);
+		rtadvd_set_timer(&ifi->ifi_ra_timer->rat_tm,
+		    ifi->ifi_ra_timer);
+
+		syslog(LOG_DEBUG,
+		    "<%s> ifname=%s marked as TRANSITIVE (initial burst).",
+		    __func__, ifi->ifi_ifname);
+		break;
+	case IFI_STATE_CONFIGURED:
+		/* CONFIGURED -> TRANSITIVE */
+		rai_old = ifi->ifi_rainfo;
+		if (rai_old == NULL) {
+			syslog(LOG_ERR,
+			    "<%s> ifi_rainfo is NULL"
+			    " in IFI_STATE_CONFIGURED.", __func__);
+			ifi = NULL;
+			break;
+		} else {
+			struct rdnss *rdn;
+			struct dnssl *dns;
+
+			rai_old->rai_lifetime = 0;
+			TAILQ_FOREACH(rdn, &rai_old->rai_rdnss, rd_next)
+			    rdn->rd_ltime = 0;
+			TAILQ_FOREACH(dns, &rai_old->rai_dnssl, dn_next)
+			    dns->dn_ltime = 0;
+
+			ifi->ifi_rainfo_trans = rai_old;
+			ifi->ifi_state = IFI_STATE_TRANSITIVE;
+			ifi->ifi_burstcount = MAX_FINAL_RTR_ADVERTISEMENTS;
+			ifi->ifi_burstinterval = MIN_DELAY_BETWEEN_RAS;
+
+			ra_timer_update(ifi, &ifi->ifi_ra_timer->rat_tm);
+			rtadvd_set_timer(&ifi->ifi_ra_timer->rat_tm,
+			    ifi->ifi_ra_timer);
+
+			syslog(LOG_DEBUG,
+			    "<%s> ifname=%s marked as TRANSITIVE"
+			    " (transitional burst)",
+			    __func__, ifi->ifi_ifname);
 		}
-		rmconfig(idx);
+		ifi->ifi_rainfo = rai;
+		TAILQ_INSERT_TAIL(&railist, rai, rai_next);
+		break;
+	case IFI_STATE_TRANSITIVE:
+		if (ifi->ifi_rainfo != NULL) {
+			if (ifi->ifi_rainfo == ifi->ifi_rainfo_trans) {
+				/* Reinitialize initial burst */
+				rm_rainfo(ifi->ifi_rainfo);
+				ifi->ifi_rainfo = rai;
+				ifi->ifi_rainfo_trans = rai;
+				ifi->ifi_burstcount =
+				    MAX_INITIAL_RTR_ADVERTISEMENTS;
+				ifi->ifi_burstinterval =
+				    MAX_INITIAL_RTR_ADVERT_INTERVAL;
+			} else {
+				/* Replace ifi_rainfo with the new one */
+				rm_rainfo(ifi->ifi_rainfo);
+				ifi->ifi_rainfo = rai;
+			}
+			TAILQ_INSERT_TAIL(&railist, rai, rai_next);
+
+			ra_timer_update(ifi, &ifi->ifi_ra_timer->rat_tm);
+			rtadvd_set_timer(&ifi->ifi_ra_timer->rat_tm,
+			    ifi->ifi_ra_timer);
+		} else {
+			/* XXX: NOTREACHED.  Being shut down. */
+			syslog(LOG_ERR,
+			    "<%s> %s is shutting down.  Skipped.",
+			    __func__, ifi->ifi_ifname);
+			rm_rainfo(rai);
+
+			return (NULL);
+		}
+		break;
 	}
-	ifi->ifi_rainfo = rai;
-	TAILQ_INSERT_TAIL(&railist, rai, rai_next);
 
 	return (ifi);
 
@@ -913,6 +1033,7 @@ get_prefix(struct rainfo *rai)
 		a = &((struct sockaddr_in6 *)ifa->ifa_addr)->sin6_addr;
 		if (IN6_IS_ADDR_LINKLOCAL(a))
 			continue;
+
 		/* get prefix length */
 		m = (char *)&((struct sockaddr_in6 *)ifa->ifa_netmask)->sin6_addr;
 		lim = (char *)(ifa->ifa_netmask) + ifa->ifa_netmask->sa_len;
@@ -1011,9 +1132,7 @@ add_prefix(struct rainfo *rai, struct in6_prefixreq *ipr)
 	    inet_ntop(AF_INET6, &ipr->ipr_prefix.sin6_addr, ntopbuf,
 		sizeof(ntopbuf)), ipr->ipr_plen, ifi->ifi_ifname);
 
-	/* reconstruct the packet */
 	rai->rai_pfxs++;
-	make_packet(rai);
 }
 
 /*
@@ -1038,8 +1157,8 @@ delete_prefix(struct prefix *pfx)
 	if (pfx->pfx_timer)
 		rtadvd_remove_timer(pfx->pfx_timer);
 	free(pfx);
+
 	rai->rai_pfxs--;
-	make_packet(rai);
 }
 
 void

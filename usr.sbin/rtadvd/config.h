@@ -30,8 +30,10 @@
  * SUCH DAMAGE.
  */
 
-extern struct ifinfo *getconfig(int);
-extern int rmconfig(int);
+extern struct ifinfo *getconfig(struct ifinfo *);
+extern int rm_ifinfo(struct ifinfo *);
+extern int rm_ifinfo_index(int);
+extern int rm_rainfo(struct rainfo *);
 extern int loadconfig_ifname(char *);
 extern int loadconfig_index(int);
 extern void delete_prefix(struct prefix *);
