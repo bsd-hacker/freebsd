@@ -352,8 +352,10 @@ main(int argc, char *argv[])
 			fd = csock_accept(&ctrlsock);
 			if (fd == -1)
 				syslog(LOG_ERR, "<%s> accept", __func__);
-			else
+			else {
 				cmsg_handler_server(fd);
+				close(fd);
+			}
 		}
 	}
 	exit(0);		/* NOTREACHED */
