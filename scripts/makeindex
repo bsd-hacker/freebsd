@@ -8,7 +8,9 @@ export INDEX_PRISTINE=1
 export INDEX_QUIET=1
 
 # Concurrency of index build
-export INDEX_JOBS=6
+#export INDEX_JOBS=6
+# XXX MCL 20110716 this is the only way I can get index to build, now
+export INDEX_JOBS=1
 
 # For debugging purposes only
 #export INDEX_VERBOSE=1
