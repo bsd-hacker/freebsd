@@ -718,7 +718,9 @@ action_show(int argc, char **argv)
 
 		printf("\n");
 
+#if 0	/* Not implemented yet */
 		printf("\tReceived RAs:\n");
+#endif
 	}
 
 	return (0);
