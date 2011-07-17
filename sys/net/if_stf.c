@@ -972,6 +972,7 @@ in_stf_input(struct mbuf *m, int off)
 	 */
 	ifp->if_ipackets++;
 	ifp->if_ibytes += m->m_pkthdr.len;
+	M_SETFIB(m, ifp->if_fib);
 	netisr_dispatch(NETISR_IPV6, m);
 }
 

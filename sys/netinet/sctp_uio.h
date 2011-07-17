@@ -162,6 +162,12 @@ struct sctp_prinfo {
 	uint32_t pr_value;
 };
 
+struct sctp_default_prinfo {
+	uint16_t pr_policy;
+	uint32_t pr_value;
+	sctp_assoc_t pr_assoc_id;
+};
+
 struct sctp_authinfo {
 	uint16_t auth_keyid;
 };
@@ -201,6 +207,7 @@ struct sctp_recvv_rn {
 #define SCTP_RECVV_NXTINFO 2
 #define SCTP_RECVV_RN      3
 
+#define SCTP_SENDV_NOINFO   0
 #define SCTP_SENDV_SNDINFO  1
 #define SCTP_SENDV_PRINFO   2
 #define SCTP_SENDV_AUTHINFO 3
@@ -244,12 +251,13 @@ struct sctp_snd_all_completes {
 /* for the endpoint */
 
 /* The lower byte is an enumeration of PR-SCTP policies */
+#define SCTP_PR_SCTP_NONE 0x0000/* Reliable transfer */
 #define SCTP_PR_SCTP_TTL  0x0001/* Time based PR-SCTP */
 #define SCTP_PR_SCTP_BUF  0x0002/* Buffer based PR-SCTP */
 #define SCTP_PR_SCTP_RTX  0x0003/* Number of retransmissions based PR-SCTP */
 
 #define PR_SCTP_POLICY(x)         ((x) & 0x0f)
-#define PR_SCTP_ENABLED(x)        (PR_SCTP_POLICY(x) != 0)
+#define PR_SCTP_ENABLED(x)        (PR_SCTP_POLICY(x) != SCTP_PR_SCTP_NONE)
 #define PR_SCTP_TTL_ENABLED(x)    (PR_SCTP_POLICY(x) == SCTP_PR_SCTP_TTL)
 #define PR_SCTP_BUF_ENABLED(x)    (PR_SCTP_POLICY(x) == SCTP_PR_SCTP_BUF)
 #define PR_SCTP_RTX_ENABLED(x)    (PR_SCTP_POLICY(x) == SCTP_PR_SCTP_RTX)
@@ -583,6 +591,7 @@ struct sctp_authchunk {
 struct sctp_authkey {
 	sctp_assoc_t sca_assoc_id;
 	uint16_t sca_keynumber;
+	uint16_t sca_keylength;
 	uint8_t sca_key[];
 };
 

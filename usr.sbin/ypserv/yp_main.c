@@ -213,8 +213,9 @@ reaper(int sig)
 static void
 usage(void)
 {
-	fprintf(stderr, "usage: ypserv "
-	    "[-d] [-h hostname] [-n] [-p ypdir] [-P port] [-S]\n");
+	fprintf(stderr,
+	    "usage: ypserv [-h addr] [-d] [-n] [-p path] [-P port] [-S]\n");
+	exit(1);
 }
 
 static void

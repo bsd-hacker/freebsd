@@ -315,13 +315,18 @@ static int
 estimate_redir_addr(int *ac, char ***av)
 {
 	size_t space = sizeof(struct cfg_redir);
-	char *sep;
+	char *sep = **av;
+	u_int c = 0;
 
-	if ((sep = strtok(**av, ",")) != NULL) {
-		space += sizeof(struct cfg_spool);
-		while ((sep = strtok(NULL, ",")) != NULL)
-			space += sizeof(struct cfg_spool);
+	while ((sep = strchr(sep, ',')) != NULL) {
+		c++;
+		sep++;
 	}
+
+	if (c > 0)
+		c++;
+
+	space += c * sizeof(struct cfg_spool);
 
 	return (space);
 }
@@ -370,13 +375,18 @@ static int
 estimate_redir_port(int *ac, char ***av)
 {
 	size_t space = sizeof(struct cfg_redir);
-	char *sep;
+	char *sep = **av;
+	u_int c = 0;
 
-	if ((sep = strtok(**av, ",")) != NULL) {
-		space += sizeof(struct cfg_spool);
-		while ((sep = strtok(NULL, ",")) != NULL)
-			space += sizeof(struct cfg_spool);
+	while ((sep = strchr(sep, ',')) != NULL) {
+		c++;
+		sep++;
 	}
+
+	if (c > 0)
+		c++;
+
+	space += c * sizeof(struct cfg_spool);
 
 	return (space);
 }
@@ -465,10 +475,10 @@ setup_redir_port(char *buf, int *ac, char ***av)
 	 * Extract remote address and optionally port.
 	 */
 	/*
-	 * NB: isalpha(**av) => we've to check that next parameter is really an
+	 * NB: isdigit(**av) => we've to check that next parameter is really an
 	 * option for this redirect entry, else stop here processing arg[cv].
 	 */
-	if (*ac != 0 && !isalpha(***av)) {
+	if (*ac != 0 && isdigit(***av)) {
 		if ((sep = strchr(**av, ':')) != NULL) {
 			if (StrToAddrAndPortRange(**av, &r->raddr, protoName,
 			    &portRange) != 0)
@@ -584,7 +594,7 @@ setup_redir_proto(char *buf, int *ac, char ***av)
 		r->raddr.s_addr = INADDR_ANY;
 	} else {
 		/* see above in setup_redir_port() */
-		if (!isalpha(***av)) {
+		if (isdigit(***av)) {
 			StrToAddr(**av, &r->paddr);
 			(*av)++; (*ac)--;
 
@@ -592,7 +602,7 @@ setup_redir_proto(char *buf, int *ac, char ***av)
 			 * Extract optional remote address.
 			 */
 			/* see above in setup_redir_port() */
-			if (*ac != 0 && !isalpha(***av)) {
+			if (*ac != 0 && isdigit(***av)) {
 				StrToAddr(**av, &r->raddr);
 				(*av)++; (*ac)--;
 			}
@@ -728,7 +738,8 @@ ipfw_config_nat(int ac, char **av)
 	char *id, *buf, **av1, *end;
 	size_t len;
 
-	av++; ac--;
+	av++;
+	ac--;
 	/* Nat id. */
 	if (ac == 0)
 		errx(EX_DATAERR, "missing nat id");
@@ -736,7 +747,8 @@ ipfw_config_nat(int ac, char **av)
 	i = (int)strtol(id, &end, 0);
 	if (i <= 0 || *end != '\0')
 		errx(EX_DATAERR, "illegal nat id: %s", id);
-	av++; ac--;
+	av++;
+	ac--;
 	if (ac == 0)
 		errx(EX_DATAERR, "missing option");
 
@@ -745,11 +757,13 @@ ipfw_config_nat(int ac, char **av)
 	av1 = av;
 	while (ac1 > 0) {
 		tok = match_token(nat_params, *av1);
-		ac1--; av1++;
+		ac1--;
+		av1++;
 		switch (tok) {
 		case TOK_IP:
 		case TOK_IF:
-			ac1--; av1++;
+			ac1--;
+			av1++;
 			break;
 		case TOK_ALOG:
 		case TOK_DENY_INC:
@@ -765,22 +779,40 @@ ipfw_config_nat(int ac, char **av)
 				errx(EX_DATAERR, "redirect_addr: "
 				    "not enough arguments");
 			len += estimate_redir_addr(&ac1, &av1);
-			av1 += 2; ac1 -= 2;
+			av1 += 2;
+			ac1 -= 2;
 			break;
 		case TOK_REDIR_PORT:
 			if (ac1 < 3)
 				errx(EX_DATAERR, "redirect_port: "
 				    "not enough arguments");
-			av1++; ac1--;
+			av1++;
+			ac1--;
 			len += estimate_redir_port(&ac1, &av1);
-			av1 += 2; ac1 -= 2;
+			av1 += 2;
+			ac1 -= 2;
+			/* Skip optional remoteIP/port */
+			if (ac1 != 0 && isdigit(**av1)) {
+				av1++;
+				ac1--;
+			}
 			break;
 		case TOK_REDIR_PROTO:
 			if (ac1 < 2)
 				errx(EX_DATAERR, "redirect_proto: "
 				    "not enough arguments");
 			len += sizeof(struct cfg_redir);
-			av1 += 2; ac1 -= 2;
+			av1 += 2;
+			ac1 -= 2;
+			/* Skip optional remoteIP/port */
+			if (ac1 != 0 && isdigit(**av1)) {
+				av1++;
+				ac1--;
+			}
+			if (ac1 != 0 && isdigit(**av1)) {
+				av1++;
+				ac1--;
+			}
 			break;
 		default:
 			errx(EX_DATAERR, "unrecognised option ``%s''", av1[-1]);
@@ -798,7 +830,8 @@ ipfw_config_nat(int ac, char **av)
 
 	while (ac > 0) {
 		tok = match_token(nat_params, *av);
-		ac--; av++;
+		ac--;
+		av++;
 		switch (tok) {
 		case TOK_IP:
 			if (ac == 0)
@@ -806,13 +839,15 @@ ipfw_config_nat(int ac, char **av)
 			if (!inet_aton(av[0], &(n->ip)))
 				errx(EX_DATAERR, "bad ip address ``%s''",
 				    av[0]);
-			ac--; av++;
+			ac--;
+			av++;
 			break;
 		case TOK_IF:
 			if (ac == 0)
 				errx(EX_DATAERR, "missing option");
 			set_addr_dynamic(av[0], n);
-			ac--; av++;
+			ac--;
+			av++;
 			break;
 		case TOK_ALOG:
 			n->mode |= PKT_ALIAS_LOG;
@@ -891,7 +926,8 @@ ipfw_show_nat(int ac, char **av)
 	data = NULL;
 	frule = 0;
 	lrule = IPFW_DEFAULT_RULE; /* max ipfw rule number */
-	ac--; av++;
+	ac--;
+	av++;
 
 	if (co.test_only)
 		return;
