@@ -56,14 +56,14 @@ add_pkg() {
         pkg_cmd_info="pkg_info -qe"
         pkg_cmd_add="pkg_add"
       else
-        pkg_cmd_info="pkg info -qeO"
+        pkg_cmd_info="pkg info -e"
         pkg_cmd_add="pkg add"
       fi
-      eval $pkg_cmd_info $base >/dev/null 2>&1
+      eval $pkg_cmd_info $base
       if [ $? -eq 0 ]; then
         echo "skipping $base, already added"
       else
-        eval $pkg_cmd_add $i >/dev/null 2>&1
+        eval $pkg_cmd_add $i
         if [ $? -ne 0 ]; then
           echo "error in dependency $i, exiting"
           cleanup 0
@@ -92,7 +92,7 @@ del_pkg() {
           pkg_cmd_check="cd /var/db/pkg && test -d"
         else
           dependents=$(pkg info -qOr $base)
-          pkg_cmd_check="pkg info -qO"
+          pkg_cmd_check="pkg info -qe"
         fi
         if [ -n "$dependents" ]; then
           recursion=1
@@ -120,11 +120,11 @@ del_pkg() {
         for j in ${delpkg}; do
           echo "Deleting ${j}"
           if [ $use_pkgng = "no" ]; then
-            pkg_delete -f ${j}
+            pkg_cmd_delete="pkg_delete -f"
           else
-            jorig=$(pkg info -qOo ${j})
-            pkg delete -f ${jorig}
+            pkg_cmd_delete="pkg delete -f"
           fi
+          eval $pkg_cmd_delete $j
           if [ $? -ne 0 ]; then
             echo "--> error in pkg_delete, exiting"
             cleanup 0
