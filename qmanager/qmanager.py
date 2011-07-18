@@ -73,8 +73,9 @@ CONFIG_FILENAME="server.conf"
 config = getConfig( pbc, CONFIG_SUBDIR, CONFIG_FILENAME )
 QMANAGER_SOCKET_FILE = config.get( 'QMANAGER_SOCKET_FILE' )
 
-DEBUG = True
+DEBUG = False
 VERBOSE = False
+MONITOR = False
 
 class Worker(object):
     """ Execute commands from the queue """
@@ -523,6 +524,11 @@ class Monitor(threading.Thread):
                 threads = threading.enumerate()
                 for thread in threads:
                     print "    %s is alive: %d" % ( thread.name, thread.isAlive() )
+                if session != None:
+                    print "qmanager: engine engine %s, session %s" % (engine, session)
+                    print "session.is_active: " + str( session.is_active )
+                else:
+                    print "session == None!"
             except Exception, e:
                 print "qmanager monitor: Exception:"
                 print e
@@ -541,14 +547,14 @@ if DEBUG:
 
 workqueue = Queue.Queue()
 
-# XXX MCL 20110421 turned this off, it's not telling us what we need to know
-#monitor=Monitor()
-#try:
-#    monitor.start()
-#    print "qmanager: started monitor %s" % monitor
-#except Exception, e:
-#    print "qmanager: could not start monitor %s" % monitor
-#    print e
+if MONITOR:
+    monitor=Monitor()
+    try:
+        monitor.start()
+        print "qmanager: started monitor %s" % monitor
+    except Exception, e:
+        print "qmanager: could not start monitor %s" % monitor
+        print e
 
 listener=Listener(workqueue)
 try:
