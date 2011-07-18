@@ -173,6 +173,9 @@ echo "building ${pkgname} in ${chroot}"
 
 bindist=${buildroot}/${branch}/${buildid}/tarballs/bindist.tar
 bindistlocal=${buildroot}/${branch}/${buildid}/tarballs/bindist-$(hostname).tar
+if [ ! -f $bindist ]; then
+  bailout ${chroot} ${clean} 255 ${pkgname}
+fi
 
 if [ -f ${chroot}/.notready ]; then
   tar -C ${chroot} -xpf ${bindist}
@@ -201,8 +204,8 @@ fi
 trap "bailout ${chroot} ${clean} ${error} ${pkgname}" 1 2 3 9 10 11 15
 
 rm -rf ${chroot}/tmp/*
-cd ${chroot}/tmp
-mkdir -p depends distfiles packages
+cd ${chroot}/tmp || bailout ${chroot} ${clean} 255 ${pkgname}
+mkdir -p depends distfiles packages || bailout ${chroot} ${clean} 255 ${pkgname}
 
 echo "building ${pkgname} on $(hostname)" | tee ${chroot}/tmp/${pkgname}.log
 echo "in directory ${chroot}" | tee -a ${chroot}/tmp/${pkgname}.log
