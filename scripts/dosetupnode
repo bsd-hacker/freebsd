@@ -137,8 +137,9 @@ setup() {
 	done
     fi
 
+    ${ssh_cmd} ${client_user}@${node} ${sudo_cmd} rm -rf ${cmdpath}
     if [ "${full}" -eq 1 ]; then
-	${ssh_cmd} ${client_user}@${node} ${sudo_cmd} rm -rf ${pbd}/${arch}/${branch}/builds/${buildid}/.ready ${pbd}/${arch}/${branch}/builds/${buildid} /tmp/.setup-${buildid}
+	${ssh_cmd} ${client_user}@${node} ${sudo_cmd} rm -rf ${pbd}/${arch}/${branch}/builds/${buildid}/.ready ${pbd}/${arch}/${branch}/builds/${buildid} /tmp/.setup-${buildid} /tmp/${buildid}/
     fi
 
     echo "setting up of $node ended at $(date)"
@@ -208,6 +209,7 @@ if [ "${nodelist}" = "all" ]; then
 fi
 
 for node in ${nodelist}; do
+    # XXX MCL return value not being checked, as always
     setup ${node} &
 done
 wait
