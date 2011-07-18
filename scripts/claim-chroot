@@ -93,15 +93,28 @@ if [ ! -z "${squid_dir}" ]; then
     fi
 fi
 
-# Check for enough disk space
-df=$(df -k ${scratchdir} | tail -1 | awk '{print $4}')
-
-if [ ${df} -lt 102400 ]; then
-    touch ${scratchdir}/.disk
-    echo "error disk"
-    exit 1
+# Check for enough disk space, in gigabytes.  hack xxxm to 1g.
+if [ "${use_md_swap}" = "1" ]; then
+    used=$(swapinfo -g | tail -1 | awk '{print $4}')
+    needed=`echo ${md_size} | sed -e "s/.*m/1/;s/g//"`
+    if [ ${used} -lt ${needed} ]; then
+	touch ${scratchdir}/.swap
+	echo "error swap"
+	exit 1
+    else
+	rm -f ${scratchdir}/.swap
+    fi
 else
-    rm -f ${scratchdir}/.disk
+    used=$(df -g ${scratchdir} | tail -1 | awk '{print $4}')
+    # XXX MCL FIX HARDCODING!
+    needed="8"
+    if [ ${used} -lt ${needed} ]; then
+	touch ${scratchdir}/.disk
+	echo "error disk"
+	exit 1
+    else
+	rm -f ${scratchdir}/.disk
+    fi
 fi
 
 found=0
