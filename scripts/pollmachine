@@ -235,7 +235,7 @@ class MachinePoll(threading.Thread):
 
     def setup(self, branch, buildid, args = ""):
         cmd = "su ports-%s -c \"%s/scripts/dosetupnode %s %s %s %s %s\""\
-            % (pbc, self.arch, self.arch, branch, buildid, self.mach, args)
+            % (self.arch, pbc, self.arch, branch, buildid, self.mach, args)
         child = subprocess.Popen(cmd, shell=True, stderr = subprocess.STDOUT,
                                  stdout = subprocess.PIPE)
         err = child.wait()
