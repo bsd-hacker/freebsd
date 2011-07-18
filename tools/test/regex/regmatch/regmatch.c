@@ -45,9 +45,16 @@ main(int argc, char *argv[])
 {
 	regex_t pattern;
 	regmatch_t pmatch;
+	char *env;
 	ssize_t len;
 	int cflags = 0, ret;
 	int eflags = REG_STARTEND;
+
+	env = getenv("REGTEST_FLAGS");
+	if (strchr(env, 'E') != NULL)
+		cflags |= REG_EXTENDED;
+	if (strchr(env, 'F') != NULL)
+		cflags |= REG_NOSPEC;
 
 	if (argc != 3)
 		usage();
