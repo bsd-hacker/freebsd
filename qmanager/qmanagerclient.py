@@ -294,16 +294,24 @@ class QManagerClientConn(QManagerConnection):
             s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             try:
                 s.connect(path)
-                self.sock = s
-                self.sockfile = self.sock.makefile()
-                return s
-            # XXX MCL 20110421 debugging
+                try:
+                    self.sock = s
+                    self.sockfile = self.sock.makefile()
+                    return s
+                except Exception, e:
+                    if self.stderr:
+                        self.stderr.write("QManagerClientConn: exception in s.makefile(): " + str( e ) + "\n")
+                        self.stderr.write(str( path ) + "\n")
+                        self.stderr.flush()
             except Exception, e:
                 if self.stderr:
-                    self.stderr.write("QManagerClientConn: exception: " + str( e ) + "\n")
+                    self.stderr.write("QManagerClientConn: exception in s.connect(): " + str( e ) + "\n")
+                    self.stderr.write(str( path ) + "\n")
                     self.stderr.flush()
+            try:
                 s.close()
-        # XXX MCL 20110421 debugging
+            except:
+                pass
         else:
             if self.stderr:
                 self.stderr.write("QManagerClientConn: qmanager socket file does not exist!\n")
