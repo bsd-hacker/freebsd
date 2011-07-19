@@ -571,9 +571,9 @@ action_show(int argc, char **argv)
 
 		printf("\n");
 
-		printf("\tMinAdvInterval/MaxAdvInterval: %s/%s\n",
-		    sec2str(rai->rai_mininterval, ssbuf),
-		    sec2str(rai->rai_maxinterval, ssbuf));
+		printf("\tMinAdvInterval/MaxAdvInterval: ");
+		printf("%s/", sec2str(rai->rai_mininterval, ssbuf));
+		printf("%s\n", sec2str(rai->rai_maxinterval, ssbuf));
 		if (rai->rai_linkmtu)
 			printf("\tAdvLinkMTU: %d", rai->rai_linkmtu);
 		else
@@ -593,11 +593,10 @@ action_show(int argc, char **argv)
 		printf("Preference: %s\n",
 		    rtpref_str[(rai->rai_rtpref >> 3) & 0xff]);
 
-		printf("\t"
-		    "ReachableTime: %s, "
-		    "RetransTimer: %s, "
+		printf("\tReachableTime: %s, ",
+		    sec2str(rai->rai_reachabletime, ssbuf));
+		printf("RetransTimer: %s, "
 		    "CurHopLimit: %d\n",
-		    sec2str(rai->rai_reachabletime, ssbuf),
 		    sec2str(rai->rai_retranstimer, ssbuf),
 		    rai->rai_hoplimit);
 		printf("\tAdvIfPrefixes: %s\n",
