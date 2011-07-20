@@ -38,7 +38,7 @@ ba[^r];foobarfoobaz;((9,12))
 [[:upper:]];abcdEfghIjkLmnoPqrstU;((4,5),(8,9),(11,12),(15,16),(20,21))
 [[:xdigit:]];mmmm5mmmfmmmCmmmm3mmmd;((4,5),(8,9),(12,13),(17,18),(21,22))
 
-# Matching multiple character
+# Matching multiple characters
 #a*;aaaabbbaa;((0,4),(7,9))
 a*b;aaaabbbaa;((0,5),(5,6),(6,7))
 #[ab]*;ababab;((0,5))
