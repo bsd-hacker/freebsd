@@ -2,6 +2,38 @@
 
 # FLAGS E
 
+# Fixed string and simple expressions
+foo;foobarfoobar;((0,3),(6,9))
+ba.;foobarfoobaz;((3,6),(9,12))
+\(foo\);zz(foo)barfoo;((2,7))
+ba[rz];foobarfoobaz;((3,6),(9,12))
+ba[rz];foobahfoobav;()
+ba[^r];foobarfoobaz;((9,12))
+
+# Collating ranges
+[a-c]12;a12z12b12u12c12;((0,3),(6,9),(12,15))
+[-a-c]12;a12z12b12u12c12-12;((0,3),(6,9),(12,15),(15,18))
+
+# Collating elements and equivalence classes
+# NOTE: there is not much to check here with LC_ALL=C
+[[.a.]];bbbbabbbb;((4,5))
+[[=a=]];bbbbabbbb;((4,5))
+[][.-.]-0]bcd;.bcdzz;((0,4))
+[][.-.]-0]bcd;-bcdzz;((0,4))
+[][.-.]-0]bcd;0bcdzz;((0,4))
+[][.-.]-0]bcd;]bcdzz;((0,4))
+
+# Character classes
+[[:alnum:]];__a____4_;((2,3),(7,8))
+[[:alpha:]];012345a67890b;((6,7),(12,13))
+[[:blank:]];0123456789abcdefghijklmnopqrstuvwxyz;()
+[[:cntrl:]];012346789;()
+[[:digit:]];abcdefgh1ijklmn2opqrstuv3wxyz4;((8,9),(15,16),(24,25),(29,30))
+[[:lower:]];ABCDEFg0123456hIJKL;((6,7),(14,15))
+[[:punct:]];01234,6789.abcd:efgh_;((5,6),(10,11),(15,16),(20,21))
+[[:upper:]];abcdEfghIjkLmnoPqrstU;((4,5),(8,9),(11,12),(15,16),(20,21))
+[[:xdigit:]];mmmm5mmmfmmmCmmmm3mmmd;((4,5),(8,9),(12,13),(17,18),(21,22))
+
 # Matching multiple characters
 a+;zzazzaazz;((2,3),(5,7))
 (ab)+;zzzabzzzababzz;((3,5),(8,12))
@@ -14,3 +46,59 @@ a?b;zzbzzabzzaabzz;((2,3),(5,7),(10,12))
 a{3};aaabbaabaaaa;((0,3),(8,11))
 a{1,3};abbaaabaaaab;((0,1),(3,6),(7,10),(10,11))
 a{2,};abbaabbaaab;((3,5),(7,10))
+
+# ERE alternation
+(b|c);zzbzzczzbczz;((2,3),(5,6),(8,9),(9,10))
+a((bc)|d);zzabczzadzzaczz;((2,5),(7,9))
+abba|cde;zzabbadezzabbcdezz;((2,6),(13,16))
+
+# BOL and EOL
+^abc;abcdef;((0,3))
+^abcd$;abcdef;()
+^abcd$;abcd;((0,4))
+def$;abcdef;((3,6))
+def$;abcdefg;()
+
+# Special characters when treated as normal
+\*abc;*abczz;((0,4))
+^\*abc;*abczz;((0,4))
+(\*abc);*abczz;((0,4))
+(\*abc)*;*abc*abc;((0,8))
+abc\^;abc^zz;((0,4))
+abc\$d;abc$d;((0,5))
+[]a]bcd;]bcdzz;((0,4))
+[]a]bcd;abcdzz;((0,4))
+[^]a]bcd;]bcdzz;()
+[^]a]bcd;bbcdzz;((0,4))
+[a.]bcd;.bcdzz;((0,4))
+[a.]bcd;abcdzz;((0,4))
+[^a.]bcd;.bcdzz;()
+[^a.]bcd;bbcdzz;((0,4))
+[a[]bcd;[bcdzz;((0,4))
+[a[]bcd;abcdzz;((0,4))
+[^a[]bcd;[bcdzz;()
+[^a[]bcd;bbcdzz;((0,4))
+[a*]bcd;*bcdzz;((0,4))
+[a*]bcd;abcdzz;((0,4))
+[^a*]bcd;*bcdzz;()
+[^a*]bcd;bbcdzz;((0,4))
+[a\]bcd;\bcdzz;((0,4))
+[a\]bcd;abcdzz;((0,4))
+[^a\]bcd;\bcdzz;()
+[^a\]bcd;bbcdzz;((0,4))
+[a^]bcd;abcdzz;((0,4))
+[a^]bcd;^bcdzz;((0,4))
+[^a^]bcd;^bcdzz;()
+[^a^]bcd;bbcdzz;((0,4))
+[-a]bcd;abcdzz;((0,4))
+[-a]bcd;-bcdzz;((0,4))
+[^-a]bcd;-bcdzz;()
+[^-a]bcd;bbcdzz;((0,4))
+[a-]bcd;abcdzz;((0,4))
+[a-]bcd;-bcdzz;((0,4))
+[^a-]bcd;-bcdzz;()
+[^a-]bcd;bbcdzz;((0,4))
+\^abcd;^abcd;((0,5))
+\^abcd;z^abcd;((1,6))
+abcd\$;abcd$;((0,5))
+abcd\$;abcd$z;((0,5))
