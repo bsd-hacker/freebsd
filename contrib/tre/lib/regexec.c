@@ -225,10 +225,13 @@ tre_regnexec(const regex_t *preg, const char *str, size_t len,
 
   if (eflags & REG_STARTEND)
   {
+    if ((len != (unsigned)-1) && (pmatch[0].rm_eo > len))
+      return REG_NOMATCH;
+    if ((long long)pmatch[0].rm_eo - pmatch[0].rm_so < 0)
+      return REG_NOMATCH;
     size_t slen = (size_t)(pmatch[0].rm_eo - pmatch[0].rm_so);
     size_t offset = pmatch[0].rm_so;
-    str = &str[offset];
-    int ret = tre_match(tnfa, str, slen, type, nmatch, pmatch, eflags,
+    int ret = tre_match(tnfa, &str[offset], slen, type, nmatch, pmatch, eflags,
 			preg->shortcut);
     pmatch[0].rm_so += offset;
     pmatch[0].rm_eo += offset;
@@ -267,10 +270,13 @@ tre_regwnexec(const regex_t *preg, const wchar_t *str, size_t len,
 
   if (eflags & REG_STARTEND)
   {
+    if ((len != (unsigned)-1) && (pmatch[0].rm_eo > len))
+      return REG_NOMATCH;
+    if ((long long)pmatch[0].rm_eo - pmatch[0].rm_so < 0)
+      return REG_NOMATCH;
     size_t slen = (size_t)(pmatch[0].rm_eo - pmatch[0].rm_so);
     size_t offset = pmatch[0].rm_so;
-    str = &str[offset];
-    int ret = tre_match(tnfa, str, slen, STR_WIDE, nmatch, pmatch, eflags,
+    int ret = tre_match(tnfa, &str[offset], slen, STR_WIDE, nmatch, pmatch, eflags,
 			preg->shortcut);
     pmatch[0].rm_so += offset;
     pmatch[0].rm_eo += offset;

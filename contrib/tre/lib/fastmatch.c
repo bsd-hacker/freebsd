@@ -333,6 +333,10 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
 	switch (type)
 	  {
 	    case STR_BYTE:
+	      ch = startptr;
+	      wc = btowc(ch[0]);
+	      r = hashtable_get(fg->qsBc, &wc, &k);
+	      break;
 	    case STR_MBS:
 	      ch = startptr;
 	      mbrtowc(&wc, ch, MB_CUR_MAX, NULL);
@@ -379,6 +383,10 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
 	switch (type)
 	  {
 	    case STR_BYTE:
+	      ch = startptr;
+	      wc = btowc(ch[0]);
+	      r = hashtable_get(fg->qsBc, &wc, &k);
+	      break;
 	    case STR_MBS:
 	      ch = startptr;
 	      mbrtowc(&wc, ch, MB_CUR_MAX, NULL);
