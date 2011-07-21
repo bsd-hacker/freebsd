@@ -1878,7 +1878,7 @@ tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
   ret = (cflags & REG_LITERAL)
     ? tre_fastcomp_literal(shortcut, regex, n)
     : tre_fastcomp(shortcut, regex, n);
-  if (!ret)
+  if (ret == REG_OK)
     {
       preg->shortcut = shortcut;
       preg->re_nsub = 0;

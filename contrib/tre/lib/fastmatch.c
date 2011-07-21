@@ -76,7 +76,7 @@ static void	revstr(tre_char_t *, int);
   } while (0);							\
 
 /*
- * Returns: -1 on failure, 0 on success
+ * Returns: REG_OK on success, error code otherwise
  */
 int
 tre_fastcomp_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n)
@@ -87,7 +87,7 @@ tre_fastcomp_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n)
   fg->len = (n == 0) ? tre_strlen(pat) : n;
   fg->pattern = xmalloc((fg->len + 1) * sizeof(tre_char_t));
   if (fg->pattern == NULL)
-    return -1;
+    return REG_ESPACE;
   memcpy(fg->pattern, pat, fg->len * sizeof(tre_char_t));
   fg->pattern[fg->len] = TRE_CHAR('\0');
 
@@ -96,7 +96,7 @@ tre_fastcomp_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n)
   fg->defBc = fg->len;
   fg->qsBc = hashtable_init(fg->len * 3, sizeof(tre_char_t), sizeof(int));
   if (fg->qsBc == NULL)
-    return -1;
+    return REG_ESPACE;
   for (unsigned int i = 1; i < fg->len; i++)
   {
     int k = fg->len - i;
@@ -113,7 +113,7 @@ tre_fastcomp_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n)
 }
 
 /*
- * Returns: -1 on failure, 0 on success
+ * Returns: REG_OK on success, error code otherwise
  */
 int
 tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n)
@@ -159,18 +159,14 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n)
    */
   fg->pattern = xmalloc((fg->len + 1) * sizeof(tre_char_t));
   if (fg->pattern == NULL)
-    return -1;
+    return REG_ESPACE;
   memcpy(fg->pattern, pat, fg->len * sizeof(tre_char_t));
   fg->pattern[fg->len] = TRE_CHAR('\0');
 
   /* Look for ways to cheat...er...avoid the full regex engine. */
   for (unsigned int i = 0; i < fg->len; i++) {
     /* Can still cheat? */
-#ifdef TRE_WCHAR
-    if ((iswalnum(fg->pattern[i])) || iswspace(fg->pattern[i]) ||
-#else
-    if ((isalnum(fg->pattern[i])) || isspace(fg->pattern[i]) ||
-#endif
+    if ((tre_isalnum(fg->pattern[i])) || tre_isspace(fg->pattern[i]) ||
       (fg->pattern[i] == TRE_CHAR('_')) || (fg->pattern[i] == TRE_CHAR(',')) ||
       (fg->pattern[i] == TRE_CHAR('=')) || (fg->pattern[i] == TRE_CHAR('-')) ||
       (fg->pattern[i] == TRE_CHAR(':')) || (fg->pattern[i] == TRE_CHAR('/'))) {
@@ -191,7 +187,7 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n)
 	/* Free memory and let others know this is empty. */
 	free(fg->pattern);
 	fg->pattern = NULL;
-	return -1;
+	return REG_BADPAT;
     }
   }
 
@@ -298,7 +294,7 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
       /* Determine where in data to start search at. */
       j = fg->eol ? len - fg->len : 0;
       SKIP_CHARS(j);
-      if (fastcmp(fg->pattern, startptr, fg->len, type) == -1) {
+      if (fastcmp(fg->pattern, startptr, fg->len, type) == REG_OK) {
 	pmatch[0].rm_so = j;
 	pmatch[0].rm_eo = j + fg->len;
 	return REG_OK;
@@ -309,7 +305,7 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
     j = len;
     do {
       SKIP_CHARS(j - fg->len);
-      if (fastcmp(fg->pattern, startptr, fg->len, type) == -1) {
+      if (fastcmp(fg->pattern, startptr, fg->len, type) == REG_OK) {
 	pmatch[0].rm_so = j - fg->len;
 	pmatch[0].rm_eo = j;
 	return REG_OK;
@@ -334,7 +330,7 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
 	      break;
 	    case STR_MBS:
 	      ch = startptr;
-	      mbrtowc(&wc, ch, MB_CUR_MAX, NULL);
+	      tre_mbrtowc(&wc, ch, MB_CUR_MAX, NULL);
 	      r = hashtable_get(fg->qsBc, &wc, &k);
 	      break;
 	    case STR_WIDE:
@@ -358,7 +354,7 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
     j = 0;
     do {
       SKIP_CHARS(j);
-      if (fastcmp(fg->pattern, startptr, fg->len, type) == -1) {
+      if (fastcmp(fg->pattern, startptr, fg->len, type) == REG_OK) {
 	pmatch[0].rm_so = j;
 	pmatch[0].rm_eo = j + fg->len;
 	return REG_OK;
@@ -384,7 +380,7 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
 	      break;
 	    case STR_MBS:
 	      ch = startptr;
-	      mbrtowc(&wc, ch, MB_CUR_MAX, NULL);
+	      tre_mbrtowc(&wc, ch, MB_CUR_MAX, NULL);
 	      r = hashtable_get(fg->qsBc, &wc, &k);
 	      break;
 	    case STR_WIDE:
@@ -418,8 +414,9 @@ tre_fastfree(fastmatch_t *fg)
 }
 
 /*
- * Returns:	i >= 0 on failure (position that it failed)
- *		-1 on success
+ * Returns:	-i on failure (position that it failed with minus sign)
+ *		error code on error
+ *		REG_OK on success
  */
 static inline int
 fastcmp(const tre_char_t *pat, const void *data, size_t len,
@@ -427,13 +424,21 @@ fastcmp(const tre_char_t *pat, const void *data, size_t len,
 {
   const char *str_byte = data;
   wchar_t *mbs_wide;
+  int ret = REG_OK;
 #ifdef TRE_WCHAR
   const wchar_t *str_wide = data;
 #endif
 
   if (type == STR_MBS)
     {
+#ifdef HAVE_ALLOCA
       mbs_wide = alloca((len + 1) * sizeof(wint_t));
+#elif
+      mbs_wide = xmalloc((len + 1) * sizeof(wint_t));
+      /* XXX */
+      if (mbs_wide == NULL)
+	return REG_ESPACE;
+#endif
       mbstowcs(mbs_wide, str_byte, len);
       type = STR_WIDE;
     }
@@ -455,9 +460,15 @@ fastcmp(const tre_char_t *pat, const void *data, size_t len,
 	  /* XXX */
 	  break;
       }
-    return i;
+    ret = -i;
+    break;
   }
-  return -1;
+#ifndef HAVE_ALLOCA
+    if (mbs_wide != NULL)
+      free(mbs_wide);
+#endif
+
+  return ret;
 }
 
 static inline void
