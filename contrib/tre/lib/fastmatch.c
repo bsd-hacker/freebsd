@@ -61,7 +61,7 @@ static void	revstr(tre_char_t *, int);
 	case STR_MBS:						\
 	  for (skip = j = 0; j < n; j++)			\
 	    {							\
-	      siz = mbrlen(str_byte, MB_CUR_MAX, NULL);		\
+	      siz = mbrlen(str_byte + skip, MB_CUR_MAX, NULL);	\
 	      skip += siz;					\
 	    }							\
 	  startptr = str_byte + skip;				\
@@ -83,10 +83,8 @@ tre_fastcomp_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n)
 {
 
   /* Initialize. */
+  memset(fg, 0, sizeof(*fg));
   fg->len = (n == 0) ? tre_strlen(pat) : n;
-  fg->bol = false;
-  fg->eol = false;
-  fg->reversed = false;
   fg->pattern = xmalloc((fg->len + 1) * sizeof(tre_char_t));
   if (fg->pattern == NULL)
     return -1;
@@ -126,11 +124,8 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n)
   int lastHalfDot = 0;
 
   /* Initialize. */
+  memset(fg, 0, sizeof(*fg));
   fg->len = (n == 0) ? tre_strlen(pat) : n;
-  fg->bol = false;
-  fg->eol = false;
-  fg->reversed = false;
-  fg->word = false;
 
   /* Remove end-of-line character ('$'). */
   if ((fg->len > 0) && (pat[fg->len - 1] == TRE_CHAR('$')))
@@ -180,7 +175,7 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n)
       (fg->pattern[i] == TRE_CHAR('=')) || (fg->pattern[i] == TRE_CHAR('-')) ||
       (fg->pattern[i] == TRE_CHAR(':')) || (fg->pattern[i] == TRE_CHAR('/'))) {
 	continue;
-    } else if (fg->pattern[i] == TRE_CHAR('\0')) {
+    } else if (fg->pattern[i] == TRE_CHAR('.')) {
       hasDot = i;
       if (i < fg->len / 2) {
 	if (firstHalfDot < 0)
@@ -431,28 +426,25 @@ fastcmp(const tre_char_t *pat, const void *data, size_t len,
 	tre_str_type_t type)
 {
   const char *str_byte = data;
+  wchar_t *mbs_wide;
 #ifdef TRE_WCHAR
   const wchar_t *str_wide = data;
-  wint_t wc;
-  size_t s;
 #endif
 
-  for (unsigned int i = 0; i < len; i++) {
+  if (type == STR_MBS)
+    {
+      mbs_wide = alloca((len + 1) * sizeof(wint_t));
+      mbstowcs(mbs_wide, str_byte, len);
+      type = STR_WIDE;
+    }
+
+  for (int i = len - 1; i >= 0; i--) {
     if (pat[i] == TRE_CHAR('.'))
       continue;
     switch (type)
       {
 	case STR_BYTE:
 	  if (pat[i] == btowc(str_byte[i]))
-	    continue;
-	  break;
-	case STR_MBS:
-	  s = mbrtowc(&wc, str_byte, MB_CUR_MAX, NULL);
-	  if (s == (size_t)-1)
-	    return i;
-	  else
-	    str_byte += s;
-	  if (pat[i] == wc)
 	    continue;
 	  break;
 	case STR_WIDE:
