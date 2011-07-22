@@ -4,16 +4,19 @@ SUBDIR=	regmatch
 
 TESTS=	bre.tests
 TESTS+=	ere.tests
+TESTS+=	bre.hu_HU.ISO8859-2.tests
+TESTS+= bre.es_ES.ISO8859-1.tests
 
 test: regmatch
 .for t in ${TESTS}
 	@echo "=== Running test ${t} ==="
 	@flags=`grep '# *FLAGS' tests/${t} | sed 's|# *FLAGS *||g'`; \
+	locale=`grep '# *LOCALE' tests/${t} | sed 's|# *LOCALE *||g'`; \
 	for l in `cat tests/${t} | grep -ve '^#'`; do \
 		str=`echo $${l} | cut -d \; -s -f 2`; \
 		pat=`echo $${l} | cut -d \; -s -f 1`; \
 		match=`echo $${l} | cut -d \; -s -f 3`; \
-		result=`env LC_ALL=C REGTEST_FLAGS=$${flags} ./regmatch/regmatch $${pat} $${str}`; \
+		result=`env LC_ALL=$${locale} REGTEST_FLAGS=$${flags} ./regmatch/regmatch $${pat} $${str}`; \
 		if [ "$${match}" != "$${result}" ]; then \
 			echo "Failed matching pattern $${pat} to string $${str}"; \
 		else \

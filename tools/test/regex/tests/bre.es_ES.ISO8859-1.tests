@@ -1,0 +1,12 @@
+# $FreeBSD$
+
+# LOCALE es_ES.ISO8859-1
+
+# Fixed string and simple expressions
+árbol;árbustoárbolcésped;((7,12))
+riñón;õãriñónôâ;((2,7))
+
+# Collating elements and equivalence classes
+# NOTE: there is not much to check here with LC_ALL=C
+[[.a.]];zzazzázz;((2,3),(5,6))
+[[=a=]];zzazzázz;((2,3),(5,6))

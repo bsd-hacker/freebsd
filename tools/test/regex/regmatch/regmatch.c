@@ -27,6 +27,7 @@
  */
 
 #include <err.h>
+#include <locale.h>
 #include <regex.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -49,6 +50,8 @@ main(int argc, char *argv[])
 	ssize_t len;
 	int cflags = 0, ret;
 	int eflags = REG_STARTEND;
+
+	setlocale(LC_ALL, "");
 
 	env = getenv("REGTEST_FLAGS");
 	if (strchr(env, 'E') != NULL)

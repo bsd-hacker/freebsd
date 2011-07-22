@@ -1,5 +1,7 @@
 # $FreeBSD$
 
+# LOCALE C
+
 # Fixed string and simple expressions
 foo;foobarfoobar;((0,3),(6,9))
 ba.;foobarfoobaz;((3,6),(9,12))

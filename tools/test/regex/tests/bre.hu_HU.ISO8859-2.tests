@@ -1,0 +1,6 @@
+# $FreeBSD$
+
+# LOCALE hu_HU.ISO8859-2
+
+# Fixed string and simple expressions
+szék;asztalszéklámpa;((6,10))
