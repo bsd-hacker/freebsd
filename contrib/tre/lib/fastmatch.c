@@ -302,63 +302,67 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
     }
   } else if (fg->reversed) {
     /* Quick Search algorithm. */
-    j = len;
+    j = len - fg->len;
     do {
-      SKIP_CHARS(j - fg->len);
-      if (fastcmp(fg->pattern, startptr, fg->len, type) == REG_OK) {
+      int mismatch;
+
+      SKIP_CHARS(j);
+      mismatch = fastcmp(fg->pattern, startptr, fg->len, type);
+      if (mismatch == REG_OK) {
 	pmatch[0].rm_so = j - fg->len;
 	pmatch[0].rm_eo = j;
 	return REG_OK;
-      }
+      } else if (mismatch > 0)
+	return mismatch;
+      mismatch = -mismatch - 1;
+
       /* Shift if within bounds, otherwise, we are done. */
-      if (((long)j - (long)fg->len - 1) < 0)
+      if (((long)len - (long)j) > fg->len)
         break;
 #ifdef TRE_WCHAR
       {
 	int k, r = -1;
 	wint_t wc;
-	const char *ch;
-	const wchar_t *ws;
 
-	SKIP_CHARS(j - fg->len - 1);
 	switch (type)
 	  {
 	    case STR_BYTE:
-	      ch = startptr;
-	      wc = btowc(ch[0]);
+	      wc = btowc(((char *)startptr)[mismatch]);
 	      r = hashtable_get(fg->qsBc, &wc, &k);
 	      break;
 	    case STR_MBS:
-	      ch = startptr;
-	      tre_mbrtowc(&wc, ch, MB_CUR_MAX, NULL);
+	      tre_mbrtowc(&wc, &((char *)startptr)[mismatch], MB_CUR_MAX, NULL);
 	      r = hashtable_get(fg->qsBc, &wc, &k);
 	      break;
 	    case STR_WIDE:
-	      ws = startptr;
-	      r = hashtable_get(fg->qsBc, ws, &k);
+	      r = hashtable_get(fg->qsBc, &((char *)startptr)[mismatch], &k);
 	      break;
 	    default:
 	      /* XXX */
 	      break;
 	  }
 	k = (r == 0) ? k : fg->defBc;
-	j += k;
+	j -= k;
       }
 #else
-      SKIP_CHARS(j - fg->len - 1);
-      j += fg->qsBc[startptr[0]];
+      j -= fg->qsBc[((char *)startptr)[mismatch]];
 #endif
     } while (j >= fg->len);
   } else {
     /* Quick Search algorithm. */
     j = 0;
     do {
+      int mismatch;
+
       SKIP_CHARS(j);
-      if (fastcmp(fg->pattern, startptr, fg->len, type) == REG_OK) {
+      mismatch = fastcmp(fg->pattern, startptr, fg->len, type);
+      if (mismatch == REG_OK) {
 	pmatch[0].rm_so = j;
 	pmatch[0].rm_eo = j + fg->len;
 	return REG_OK;
-      }
+      } else if (mismatch > 0)
+        return mismatch;
+      mismatch = -mismatch - 1;
 
       /* Shift if within bounds, otherwise, we are done. */
       if ((j + fg->len) >= len)
@@ -367,25 +371,19 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
       {
 	int k, r = -1;
 	wint_t wc;
-	const char *ch;
-	const wchar_t *ws;
 
-	SKIP_CHARS(j + fg->len);
 	switch (type)
 	  {
 	    case STR_BYTE:
-	      ch = startptr;
-	      wc = btowc(ch[0]);
+	      wc = btowc(((char *)startptr)[mismatch]);
 	      r = hashtable_get(fg->qsBc, &wc, &k);
 	      break;
 	    case STR_MBS:
-	      ch = startptr;
-	      tre_mbrtowc(&wc, ch, MB_CUR_MAX, NULL);
+	      tre_mbrtowc(&wc, &((char *)startptr)[mismatch], MB_CUR_MAX, NULL);
 	      r = hashtable_get(fg->qsBc, &wc, &k);
 	      break;
 	    case STR_WIDE:
-	      ws = startptr;
-	      r = hashtable_get(fg->qsBc, ws, &k);
+	      r = hashtable_get(fg->qsBc, &((char *)startptr)[mismatch], &k);
 	      break;
 	    default:
 	      /* XXX */
@@ -395,8 +393,7 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
 	j += k;
       }
 #else
-      SKIP_CHARS(j + fg->len);
-      j += fg->qsBc[startptr[0]];
+      j += fg->qsBc[((char *)startptr)[mismatch]];
 #endif
     } while (j <= (len - fg->len));
   }
@@ -414,7 +411,7 @@ tre_fastfree(fastmatch_t *fg)
 }
 
 /*
- * Returns:	-i on failure (position that it failed with minus sign)
+ * Returns:	-(i + 1) on failure (position that it failed with minus sign)
  *		error code on error
  *		REG_OK on success
  */
@@ -460,7 +457,7 @@ fastcmp(const tre_char_t *pat, const void *data, size_t len,
 	  /* XXX */
 	  break;
       }
-    ret = -i;
+    ret = -(i + 1);
     break;
   }
 #ifndef HAVE_ALLOCA
