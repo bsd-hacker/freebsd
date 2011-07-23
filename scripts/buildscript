@@ -398,7 +398,7 @@ EOF
 
   if [ $use_pkgng = "no" ]; then
     cd /var/db/pkg
-    leftover=$(find * -type d -maxdepth 1)
+    leftover=$(find * -type d -maxdepth 1 2> /dev/null)
   else
     leftover=$(pkg info -qa)
   fi
