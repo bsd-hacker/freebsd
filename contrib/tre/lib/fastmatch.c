@@ -375,15 +375,15 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
 	switch (type)
 	  {
 	    case STR_BYTE:
-	      wc = btowc(((char *)startptr)[mismatch]);
+	      wc = btowc(((char *)startptr)[mismatch + 1]);
 	      r = hashtable_get(fg->qsBc, &wc, &k);
 	      break;
 	    case STR_MBS:
-	      tre_mbrtowc(&wc, &((char *)startptr)[mismatch], MB_CUR_MAX, NULL);
+	      tre_mbrtowc(&wc, &((char *)startptr)[mismatch + 1], MB_CUR_MAX, NULL);
 	      r = hashtable_get(fg->qsBc, &wc, &k);
 	      break;
 	    case STR_WIDE:
-	      r = hashtable_get(fg->qsBc, &((char *)startptr)[mismatch], &k);
+	      r = hashtable_get(fg->qsBc, &((char *)startptr)[mismatch + 1], &k);
 	      break;
 	    default:
 	      /* XXX */
