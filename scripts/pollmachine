@@ -2,7 +2,7 @@
 #
 # pollmachine
 #
-# Monitors build machines and notifies qmgr of changes
+# Monitors build machines and notifies qmanager of changes
 
 #
 # pollmachine [options] [arch] ...
@@ -16,7 +16,7 @@
 
 #
 # TODO:
-# XXX qmgr notification of new/removed machines
+# XXX qmanager notification of new/removed machines
 # XXX counter before declaring a machine as dead
 # Declares a machine as online if it reports 0 data from infoseek?
 
@@ -27,6 +27,10 @@
 import sys, threading, socket
 from time import sleep
 import os, subprocess, logging
+
+EXPECTED_LINES = 6
+
+DEBUG=False
 
 pbc = os.getenv('PORTBUILD_CHECKOUT') \
     if os.getenv('PORTBUILD_CHECKOUT') else "/var/portbuild"
@@ -122,25 +126,42 @@ class MachinePoll(threading.Thread):
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(60)
-            s.connect((self.host, self.port))
+            retval = s.connect_ex((self.host, self.port))
+            if retval != 0:
+                if self.online:
+                    logging.info("[%s] Connection error: %s" % (self.mach, `retval`))
+                    self.timeouts += 1
+            else:
+                if DEBUG:
+                    logging.info("%s connected to socket for %s" % ( str(self), self.mach ))
 
-            data = ""
-            while len(data) < 65536:
-                chunk = s.recv(8192)
-                if not chunk:
-                    break
-                data += chunk
+                data = ""
+                while len(data) < 65536:
+                    chunk = s.recv(8192)
+                    if not chunk:
+                        break
+                    data += chunk
 
-            nowonline = True
-            self.timeouts = 0
-            lines = data.split("\n")
+                if DEBUG:
+                    logging.info("%s: len(data) = %d" % (self.mach, len(data)))
+                if len(data) > 0:
+                    lines = data.split("\n")
+                    if len(lines) >= EXPECTED_LINES:
+                        nowonline = True
+                        self.timeouts = 0
+                    else:
+                        # XXX MCL
+                        if DEBUG or True:
+                            logging.info("%s: truncated reply: %s" % (self.mach, lines))
         except socket.timeout:
             if self.online:
                 logging.info("[%s] Connection timeout" % self.mach)
             self.timeouts += 1
             if self.timeouts < 3:
                 nowonline = self.online
-        except:
+        except Exception, e:
+            print "pollmachine: exception in poll for %s:" %self.mach
+            print e
             pass
 	finally:
             try:
@@ -153,7 +174,7 @@ class MachinePoll(threading.Thread):
             self.online = nowonline
 	    if self.online:
 		self.timeouts = 0
-            # XXX inform qmgr of state change
+            # XXX inform qmanager of state change
 
         if self.online and not lines and not self.timeouts:
             # reportload script is missing
@@ -180,7 +201,7 @@ class MachinePoll(threading.Thread):
             if old != part[2]:
                 self.vars[part[0]] = part[2]
 #                logging.info("%s@%s: \"%s\" -> \"%s\"" % (part[0], self.mach, old, part[2]))
-                # XXX update qmgr
+                # XXX inform qmanager
 
         try:
             envs = self.vars['buildenvs']
@@ -222,16 +243,31 @@ class MachinePoll(threading.Thread):
         except KeyError:
             pass
 
+        if DEBUG:
+            logging.info("%s recording current system load for %s" % ( str(self), self.mach ))
         # Record current system load
+        # note: can fail on "file system full"
         try:
             f = file("%s/%s/loads/%s" % (pbd, self.arch, self.mach), "w")
-        except:
+        except Exception, e:
+            print "pollmachine: exception in creating %s/%s/loads/%s:" % (pbd, self.arch, self.mach)
+            print e
             return
         try:
-            f.write("%s %s\n" % (self.vars['jobs'], self.vars['load']))
-        except:
-            pass
-        f.close()
+            if 'jobs' in self.vars and 'load' in self.vars:
+                f.write("%s %s\n" % (self.vars['jobs'], self.vars['load']))
+            else:
+                # machine is not responding to poll.
+                # XXX MCL remove from machines
+                # XXX inform qmanager
+                f.write("")
+            f.close()
+        except Exception, e:
+            print "pollmachine: exception in writing %s/%s/loads/%s:" % (pbd, self.arch, self.mach)
+            print self.vars
+            print e
+        if DEBUG:
+            logging.info("%s finished polling for %s" % ( str(self), self.mach ))
 
     def setup(self, branch, buildid, args = ""):
         cmd = "su ports-%s -c \"%s/scripts/dosetupnode %s %s %s %s %s\""\
@@ -275,13 +311,13 @@ while True:
 
         for mach in gone:
             logging.info("Removing machine %s/%s" % (arch, mach))
-            # XXX disable from qmgr
+            # XXX disable from qmanager
             pollthreads[mach].shutdown=True
             del pollthreads[mach]
 
         for mach in new:
             logging.info("Adding machine %s/%s" % (arch, mach))
-            # XXX set up qmgr
+            # XXX set up qmanager
 
             pc="%s/%s/portbuild.conf" % (pbd, arch)
             pch="%s/%s/portbuild.%s" % (pbd, arch, mach)
@@ -303,4 +339,10 @@ while True:
     if not polldelay:
         break
 
+    if DEBUG:
+        logging.info("Ready to sleep")
     sleep(polldelay)
+    if DEBUG:
+        logging.info("Wakeup")
+
+logging.info("pollmachine: exiting.")
