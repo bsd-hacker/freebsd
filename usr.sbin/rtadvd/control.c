@@ -41,6 +41,7 @@
 #include <errno.h>
 #include <netdb.h>
 #include <unistd.h>
+#include <poll.h>
 #include <signal.h>
 #include <string.h>
 #include <stdarg.h>
@@ -53,12 +54,16 @@
 #include "pathnames.h"
 #include "control.h"
 
+#define	CMSG_RECV_TIMEOUT	30
+
 int
 cmsg_recv(int fd, char *buf)
 {
 	int n;
 	struct ctrl_msg_hdr	*cm;
 	char *msg;
+	struct pollfd pfds[1];
+	int i;
 
 	syslog(LOG_DEBUG, "<%s> enter, fd=%d", __func__, fd);
 
@@ -66,14 +71,31 @@ cmsg_recv(int fd, char *buf)
 	cm = (struct ctrl_msg_hdr *)buf;
 	msg = (char *)buf + sizeof(*cm);
 
+	pfds[0].fd = fd;
+	pfds[0].events = POLLIN;
+
 	for (;;) {
-		n = read(fd, cm, sizeof(*cm));
-		if (n < 0 && errno == EAGAIN) {
-			syslog(LOG_DEBUG,
-			    "<%s> waiting...", __func__);
+		i = poll(pfds, sizeof(pfds)/sizeof(pfds[0]),
+		    CMSG_RECV_TIMEOUT);
+
+		if (i == 0)
+			continue;
+
+		if (i < 0) {
+			syslog(LOG_ERR, "<%s> poll error: %s",
+			    __func__, strerror(errno));
 			continue;
 		}
-		break;
+
+		if (pfds[0].revents & POLLIN) {
+			n = read(fd, cm, sizeof(*cm));
+			if (n < 0 && errno == EAGAIN) {
+				syslog(LOG_DEBUG,
+				    "<%s> waiting...", __func__);
+				continue;
+			}
+			break;
+		}
 	}
 
 	if (n != sizeof(*cm)) {
@@ -109,11 +131,25 @@ cmsg_recv(int fd, char *buf)
 		    msglen);
 
 		for (;;) {
-			n = read(fd, msg, msglen);
-			if (n < 0 && errno == EAGAIN) {
-				syslog(LOG_DEBUG,
-				    "<%s> waiting...", __func__);
+			i = poll(pfds, sizeof(pfds)/sizeof(pfds[0]),
+			    CMSG_RECV_TIMEOUT);
+
+			if (i == 0)
 				continue;
+
+			if (i < 0) {
+				syslog(LOG_ERR, "<%s> poll error: %s",
+				    __func__, strerror(errno));
+				continue;
+			}
+
+			if (pfds[0].revents & POLLIN) {
+				n = read(fd, msg, msglen);
+				if (n < 0 && errno == EAGAIN) {
+					syslog(LOG_DEBUG,
+					    "<%s> waiting...", __func__);
+					continue;
+				}
 			}
 			break;
 		}
