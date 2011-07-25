@@ -28,6 +28,7 @@
 #ifndef FASTMATCH_H
 #define FASTMATCH_H 1
 
+#include <limits.h>
 #include <stdbool.h>
 
 #include "hashtable.h"
@@ -35,14 +36,15 @@
 #include "tre-internal.h"
 
 typedef struct {
+  size_t wlen;
   size_t len;
-  tre_char_t *pattern;
+  tre_char_t *wpattern;
+  char *pattern;
 #ifdef TRE_WCHAR
   int defBc;
-  hashtable *qsBc;
-#else
-  int qsBc[UCHAR_MAX + 1];
+  hashtable *qsBc_table;
 #endif
+  int qsBc[UCHAR_MAX + 1];
   /* flags */
   bool bol;
   bool eol;

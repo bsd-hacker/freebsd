@@ -41,9 +41,10 @@
 #include "tre-internal.h"
 #include "xmalloc.h"
 
-static int	fastcmp(const tre_char_t *, const void *, size_t,
+static int	fastcmp(const void *, const void *, size_t,
 			tre_str_type_t);
 static void	revstr(tre_char_t *, int);
+static void	revs(char *str, int len);
 
 #ifdef TRE_WCHAR
 #define TRE_CHAR(n)	L##n
@@ -56,15 +57,8 @@ static void	revstr(tre_char_t *, int);
     switch (type)						\
       {								\
 	case STR_BYTE:						\
-	  startptr = str_byte + n;				\
-	  break;						\
 	case STR_MBS:						\
-	  for (skip = j = 0; j < n; j++)			\
-	    {							\
-	      siz = mbrlen(str_byte + skip, MB_CUR_MAX, NULL);	\
-	      skip += siz;					\
-	    }							\
-	  startptr = str_byte + skip;				\
+	  startptr = str_byte + n;				\
 	  break;						\
 	case STR_WIDE:						\
 	  startptr = str_wide + n;				\
@@ -75,39 +69,144 @@ static void	revstr(tre_char_t *, int);
       }								\
   } while (0);							\
 
+#define STORE_MBS_PAT						\
+  do {								\
+    size_t siz;							\
+								\
+    siz = wcstombs(NULL, fg->wpattern, 0);			\
+    if (siz == (size_t)-1)					\
+      return REG_BADPAT;					\
+    fg->len = siz;						\
+    fg->pattern = xmalloc(siz + 1);				\
+    if (fg->pattern == NULL)					\
+      return REG_ESPACE;					\
+    wcstombs(fg->pattern, fg->wpattern, siz);			\
+    fg->pattern[siz] = '\0';					\
+  } while (0);							\
+
+#define COMPARE								\
+  do {									\
+    switch (type)							\
+      {									\
+	case STR_BYTE:							\
+	case STR_MBS:							\
+	  mismatch = fastcmp(fg->pattern, startptr, fg->len, type);	\
+	  break;							\
+	case STR_WIDE:							\
+	  mismatch = fastcmp(fg->wpattern, startptr, fg->wlen, type);	\
+	default:							\
+	  break;							\
+      }									\
+  } while (0);
+
+#ifdef TRE_WCHAR
+#define IS_OUT_OF_BOUNDS						\
+  ((type == STR_WIDE) ? ((j + fg->wlen) > len) : ((j + fg->len) > len))
+#else
+#define IS_OUT_OF_BOUNDS	((j + fg->len) > len)
+#endif
+
+#define CHECKBOUNDS							\
+  if (IS_OUT_OF_BOUNDS)							\
+    break;								\
+
+#ifdef TRE_WCHAR
+#define SHIFT								\
+      CHECKBOUNDS;							\
+      {									\
+        int k = 0, r = -1;						\
+									\
+        switch (type)							\
+          {								\
+            case STR_BYTE:						\
+	    case STR_MBS:						\
+	      k = fg->qsBc[(unsigned char)((char *)startptr)		\
+		[mismatch + 1]];					\
+              break;							\
+            case STR_WIDE:						\
+              r = hashtable_get(fg->qsBc_table,				\
+		&((wchar_t *)startptr)[mismatch + 1], &k);		\
+	      k = (r == 0) ? k : fg->defBc;				\
+              break;							\
+            default:							\
+              /* XXX */							\
+              break;							\
+          }								\
+        j += k;								\
+      }
+#else
+#define SHIFT								\
+      CHECKBOUNDS;							\
+      j += fg->qsBc[(unsigned char)((char *)startptr)[mismatch + 1]];
+#endif
+
+/*
+ * Normal Quick Search would require a shift based on the position the
+ * next character after the comparison is within the pattern.  With
+ * wildcards, the position of the last dot effects the maximum shift
+ * distance.
+ * The closer to the end the wild card is the slower the search.  A
+ * reverse version of this algorithm would be useful for wildcards near
+ * the end of the string.
+ *
+ * Examples:
+ * Pattern    Max shift
+ * -------    ---------
+ * this               5
+ * .his               4
+ * t.is               3
+ * th.s               2
+ * thi.               1
+ */
+
+#ifdef TRE_WCHAR
+#define FILL_QSBC							\
+  /* Adjust the shift based on location of the last dot ('.'). */	\
+  fg->defBc = fg->wlen - hasDot;					\
+									\
+  /* Preprocess pattern. */						\
+  fg->qsBc_table = hashtable_init(fg->wlen, sizeof(tre_char_t),		\
+    sizeof(int));							\
+  for (unsigned int i = hasDot + 1; i < fg->wlen; i++)			\
+  {									\
+    int k = fg->wlen - i;						\
+    hashtable_put(fg->qsBc_table, &fg->wpattern[i], &k);		\
+  }									\
+									\
+  for (unsigned int i = 0; i <= UCHAR_MAX; i++)				\
+    fg->qsBc[i] = fg->len - hasDot;					\
+  for (int i = hasDot + 1; i < fg->len; i++)				\
+    fg->qsBc[(unsigned)fg->pattern[i]] = fg->len - i;
+#else
+#define FILL_QSBC							\
+  for (unsigned int i = 0; i <= UCHAR_MAX; i++)				\
+    fg->qsBc[i] = fg->wlen - hasDot;					\
+  for (int i = hasDot + 1; i < fg->wlen; i++)				\
+    fg->qsBc[(unsigned)fg->wpattern[i]] = fg->wlen - i;
+#endif
+
+
 /*
  * Returns: REG_OK on success, error code otherwise
  */
 int
-tre_fastcomp_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n)
+tre_fastcomp_literal(fastmatch_t *fg, const tre_char_t *wpat, size_t n)
 {
+  int hasDot = 0;
 
   /* Initialize. */
   memset(fg, 0, sizeof(*fg));
-  fg->len = (n == 0) ? tre_strlen(pat) : n;
-  fg->pattern = xmalloc((fg->len + 1) * sizeof(tre_char_t));
-  if (fg->pattern == NULL)
+  fg->wlen = (n == 0) ? tre_strlen(wpat) : n;
+  fg->wpattern = xmalloc((fg->wlen + 1) * sizeof(tre_char_t));
+  if (fg->wpattern == NULL)
     return REG_ESPACE;
-  memcpy(fg->pattern, pat, fg->len * sizeof(tre_char_t));
-  fg->pattern[fg->len] = TRE_CHAR('\0');
-
-  /* Preprocess pattern. */
+  memcpy(fg->wpattern, wpat, fg->wlen * sizeof(tre_char_t));
+  fg->wpattern[fg->wlen] = TRE_CHAR('\0');
 #ifdef TRE_WCHAR
-  fg->defBc = fg->len;
-  fg->qsBc = hashtable_init(fg->len * 3, sizeof(tre_char_t), sizeof(int));
-  if (fg->qsBc == NULL)
-    return REG_ESPACE;
-  for (unsigned int i = 1; i < fg->len; i++)
-  {
-    int k = fg->len - i;
-    hashtable_put(fg->qsBc, &fg->pattern[i], &k);
-  }
-#else
-  for (i = 0; i <= UCHAR_MAX; i++)
-    fg->qsBc[i] = fg->len;
-  for (i = 1; i < fg->len; i++)
-    fg->qsBc[fg->pattern[i]] = fg->len - i;
+  STORE_MBS_PAT;
 #endif
+
+  FILL_QSBC;
 
   return REG_OK;
 }
@@ -116,7 +215,7 @@ tre_fastcomp_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n)
  * Returns: REG_OK on success, error code otherwise
  */
 int
-tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n)
+tre_fastcomp(fastmatch_t *fg, const tre_char_t *wpat, size_t n)
 {
   int firstHalfDot = -1;
   int firstLastHalfDot = -1;
@@ -125,55 +224,58 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n)
 
   /* Initialize. */
   memset(fg, 0, sizeof(*fg));
-  fg->len = (n == 0) ? tre_strlen(pat) : n;
+  fg->wlen = (n == 0) ? tre_strlen(wpat) : n;
 
   /* Remove end-of-line character ('$'). */
-  if ((fg->len > 0) && (pat[fg->len - 1] == TRE_CHAR('$')))
+  if ((fg->wlen > 0) && (wpat[fg->wlen - 1] == TRE_CHAR('$')))
   {
     fg->eol = true;
-    fg->len--;
+    fg->wlen--;
   }
 
   /* Remove beginning-of-line character ('^'). */
-  if (pat[0] == TRE_CHAR('^'))
+  if (wpat[0] == TRE_CHAR('^'))
   {
     fg->bol = true;
-    fg->len--;
-    pat++;
+    fg->wlen--;
+    wpat++;
   }
 
-  if ((fg->len >= 14) &&
-      (memcmp(pat, TRE_CHAR("[[:<:]]"), 7 * sizeof(tre_char_t)) == 0) &&
-      (memcmp(pat + fg->len - 7, TRE_CHAR("[[:>:]]"),
+  if ((fg->wlen >= 14) &&
+      (memcmp(wpat, TRE_CHAR("[[:<:]]"), 7 * sizeof(tre_char_t)) == 0) &&
+      (memcmp(wpat + fg->wlen - 7, TRE_CHAR("[[:>:]]"),
 	      7 * sizeof(tre_char_t)) == 0))
   {
-    fg->len -= 14;
-    pat += 7;
+    fg->wlen -= 14;
+    wpat += 7;
     fg->word = true;
   }
 
   /*
-   * pat has been adjusted earlier to not include '^', '$' or
+   * wpat has been adjusted earlier to not include '^', '$' or
    * the word match character classes at the beginning and ending
    * of the string respectively.
    */
-  fg->pattern = xmalloc((fg->len + 1) * sizeof(tre_char_t));
-  if (fg->pattern == NULL)
+  fg->wpattern = xmalloc((fg->wlen + 1) * sizeof(tre_char_t));
+  if (fg->wpattern == NULL)
     return REG_ESPACE;
-  memcpy(fg->pattern, pat, fg->len * sizeof(tre_char_t));
-  fg->pattern[fg->len] = TRE_CHAR('\0');
+  memcpy(fg->wpattern, wpat, fg->wlen * sizeof(tre_char_t));
+  fg->wpattern[fg->wlen] = TRE_CHAR('\0');
+#ifdef TRE_WCHAR
+  STORE_MBS_PAT;
+#endif
 
   /* Look for ways to cheat...er...avoid the full regex engine. */
-  for (unsigned int i = 0; i < fg->len; i++) {
+  for (unsigned int i = 0; i < fg->wlen; i++) {
     /* Can still cheat? */
-    if ((tre_isalnum(fg->pattern[i])) || tre_isspace(fg->pattern[i]) ||
-      (fg->pattern[i] == TRE_CHAR('_')) || (fg->pattern[i] == TRE_CHAR(',')) ||
-      (fg->pattern[i] == TRE_CHAR('=')) || (fg->pattern[i] == TRE_CHAR('-')) ||
-      (fg->pattern[i] == TRE_CHAR(':')) || (fg->pattern[i] == TRE_CHAR('/'))) {
+    if ((tre_isalnum(fg->wpattern[i])) || tre_isspace(fg->wpattern[i]) ||
+      (fg->wpattern[i] == TRE_CHAR('_')) || (fg->wpattern[i] == TRE_CHAR(',')) ||
+      (fg->wpattern[i] == TRE_CHAR('=')) || (fg->wpattern[i] == TRE_CHAR('-')) ||
+      (fg->wpattern[i] == TRE_CHAR(':')) || (fg->wpattern[i] == TRE_CHAR('/'))) {
 	continue;
-    } else if (fg->pattern[i] == TRE_CHAR('.')) {
+    } else if (fg->wpattern[i] == TRE_CHAR('.')) {
       hasDot = i;
-      if (i < fg->len / 2) {
+      if (i < fg->wlen / 2) {
 	if (firstHalfDot < 0)
 	  /* Closest dot to the beginning */
 	  firstHalfDot = i;
@@ -185,8 +287,12 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n)
       }
     } else {
 	/* Free memory and let others know this is empty. */
+#ifdef TRE_WCHAR
 	free(fg->pattern);
 	fg->pattern = NULL;
+#endif
+	free(fg->wpattern);
+	fg->wpattern = NULL;
 	return REG_BADPAT;
     }
   }
@@ -197,58 +303,29 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n)
    */
   if ((!(fg->bol || fg->eol)) &&
      (lastHalfDot && ((firstHalfDot < 0) ||
-     ((fg->len - (lastHalfDot + 1)) < (size_t)firstHalfDot)))) {
+     ((fg->wlen - (lastHalfDot + 1)) < (size_t)firstHalfDot)))) {
     fg->reversed = true;
-    hasDot = fg->len - (firstHalfDot < 0 ?
+    hasDot = fg->wlen - (firstHalfDot < 0 ?
 	     firstLastHalfDot : firstHalfDot) - 1;
-    revstr(fg->pattern, fg->len);
-  }
-
-  /*
-   * Normal Quick Search would require a shift based on the position the
-   * next character after the comparison is within the pattern.  With
-   * wildcards, the position of the last dot effects the maximum shift
-   * distance.
-   * The closer to the end the wild card is the slower the search.  A
-   * reverse version of this algorithm would be useful for wildcards near
-   * the end of the string.
-   *
-   * Examples:
-   * Pattern	Max shift
-   * -------	---------
-   * this		5
-   * .his		4
-   * t.is		3
-   * th.s		2
-   * thi.		1
-   */
-
+    revstr(fg->wpattern, fg->wlen);
 #ifdef TRE_WCHAR
-  /* Adjust the shift based on location of the last dot ('.'). */
-  fg->defBc = fg->len - hasDot;
-
-  /* Preprocess pattern. */
-  fg->qsBc = hashtable_init(fg->len, sizeof(tre_char_t), sizeof(int));
-  for (unsigned int i = hasDot + 1; i < fg->len; i++)
-  {
-    int k = fg->len - i;
-    hashtable_put(fg->qsBc, &fg->pattern[i], &k);
-  }
-#else
-  /* Preprocess pattern. */
-  for (unsigned int i = 0; i <= (signed)UCHAR_MAX; i++)
-    fg->qsBc[i] = fg->len - hasDot;
-  for (unsigned int i = hasDot + 1; i < fg->len; i++) {
-    fg->qsBc[fg->pattern[i]] = fg->len - i;
-  }
+    revs(fg->pattern, fg->len);
 #endif
+  }
+
+  FILL_QSBC;
 
   /*
    * Put pattern back to normal after pre-processing to allow for easy
    * comparisons later.
    */
   if (fg->reversed)
-    revstr(fg->pattern, fg->len);
+    {
+      revstr(fg->wpattern, fg->wlen);
+#ifdef TRE_WCHAR
+      revs(fg->pattern, fg->len);
+#endif
+    }
 
   return REG_OK;
 }
@@ -258,8 +335,8 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
     tre_str_type_t type, int nmatch, regmatch_t pmatch[])
 {
   unsigned int j;
-  size_t siz, skip;
   int ret = REG_NOMATCH;
+  int mismatch;
   const char *str_byte = data;
   const void *startptr = NULL;
 #ifdef TRE_WCHAR
@@ -294,7 +371,8 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
       /* Determine where in data to start search at. */
       j = fg->eol ? len - fg->len : 0;
       SKIP_CHARS(j);
-      if (fastcmp(fg->pattern, startptr, fg->len, type) == REG_OK) {
+      COMPARE;
+      if (mismatch == REG_OK) {
 	pmatch[0].rm_so = j;
 	pmatch[0].rm_eo = j + fg->len;
 	return REG_OK;
@@ -304,10 +382,8 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
     /* Quick Search algorithm. */
     j = len - fg->len;
     do {
-      int mismatch;
-
       SKIP_CHARS(j);
-      mismatch = fastcmp(fg->pattern, startptr, fg->len, type);
+      COMPARE;
       if (mismatch == REG_OK) {
 	pmatch[0].rm_so = j - fg->len;
 	pmatch[0].rm_eo = j;
@@ -315,47 +391,14 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
       } else if (mismatch > 0)
 	return mismatch;
       mismatch = -mismatch - 1;
-
-      /* Shift if within bounds, otherwise, we are done. */
-      if (((long)len - (long)j) > fg->len)
-        break;
-#ifdef TRE_WCHAR
-      {
-	int k, r = -1;
-	wint_t wc;
-
-	switch (type)
-	  {
-	    case STR_BYTE:
-	      wc = btowc(((char *)startptr)[mismatch]);
-	      r = hashtable_get(fg->qsBc, &wc, &k);
-	      break;
-	    case STR_MBS:
-	      tre_mbrtowc(&wc, &((char *)startptr)[mismatch], MB_CUR_MAX, NULL);
-	      r = hashtable_get(fg->qsBc, &wc, &k);
-	      break;
-	    case STR_WIDE:
-	      r = hashtable_get(fg->qsBc, &((char *)startptr)[mismatch], &k);
-	      break;
-	    default:
-	      /* XXX */
-	      break;
-	  }
-	k = (r == 0) ? k : fg->defBc;
-	j -= k;
-      }
-#else
-      j -= fg->qsBc[((char *)startptr)[mismatch]];
-#endif
-    } while (j >= fg->len);
+      SHIFT;
+    } while (!IS_OUT_OF_BOUNDS);
   } else {
     /* Quick Search algorithm. */
     j = 0;
     do {
-      int mismatch;
-
       SKIP_CHARS(j);
-      mismatch = fastcmp(fg->pattern, startptr, fg->len, type);
+      COMPARE;
       if (mismatch == REG_OK) {
 	pmatch[0].rm_so = j;
 	pmatch[0].rm_eo = j + fg->len;
@@ -363,39 +406,8 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
       } else if (mismatch > 0)
         return mismatch;
       mismatch = -mismatch - 1;
-
-      /* Shift if within bounds, otherwise, we are done. */
-      if ((j + fg->len) >= len)
-	break;
-#ifdef TRE_WCHAR
-      {
-	int k, r = -1;
-	wint_t wc;
-
-	switch (type)
-	  {
-	    case STR_BYTE:
-	      wc = btowc(((char *)startptr)[mismatch + 1]);
-	      r = hashtable_get(fg->qsBc, &wc, &k);
-	      break;
-	    case STR_MBS:
-	      tre_mbrtowc(&wc, &((char *)startptr)[mismatch + 1], MB_CUR_MAX, NULL);
-	      r = hashtable_get(fg->qsBc, &wc, &k);
-	      break;
-	    case STR_WIDE:
-	      r = hashtable_get(fg->qsBc, &((char *)startptr)[mismatch + 1], &k);
-	      break;
-	    default:
-	      /* XXX */
-	      break;
-	  }
-	k = (r == 0) ? k : fg->defBc;
-	j += k;
-      }
-#else
-      j += fg->qsBc[((char *)startptr)[mismatch]];
-#endif
-    } while (j <= (len - fg->len));
+      SHIFT;
+    } while (!IS_OUT_OF_BOUNDS);
   }
   return ret;
 }
@@ -405,9 +417,10 @@ tre_fastfree(fastmatch_t *fg)
 {
 
 #ifdef TRE_WCHAR
-  hashtable_free(fg->qsBc);
-#endif
+  hashtable_free(fg->qsBc_table);
   free(fg->pattern);
+#endif
+  free(fg->wpattern);
 }
 
 /*
@@ -416,41 +429,29 @@ tre_fastfree(fastmatch_t *fg)
  *		REG_OK on success
  */
 static inline int
-fastcmp(const tre_char_t *pat, const void *data, size_t len,
+fastcmp(const void *pat, const void *data, size_t len,
 	tre_str_type_t type)
 {
   const char *str_byte = data;
-  wchar_t *mbs_wide;
+  const char *pat_byte = pat;
   int ret = REG_OK;
 #ifdef TRE_WCHAR
   const wchar_t *str_wide = data;
+  const wchar_t *pat_wide = pat;
 #endif
-
-  if (type == STR_MBS)
-    {
-#ifdef HAVE_ALLOCA
-      mbs_wide = alloca((len + 1) * sizeof(wint_t));
-#elif
-      mbs_wide = xmalloc((len + 1) * sizeof(wint_t));
-      /* XXX */
-      if (mbs_wide == NULL)
-	return REG_ESPACE;
-#endif
-      mbstowcs(mbs_wide, str_byte, len);
-      type = STR_WIDE;
-    }
 
   for (int i = len - 1; i >= 0; i--) {
-    if (pat[i] == TRE_CHAR('.'))
+    if (pat_wide[i] == TRE_CHAR('.'))
       continue;
     switch (type)
       {
 	case STR_BYTE:
-	  if (pat[i] == btowc(str_byte[i]))
+	case STR_MBS:
+	  if (pat_byte[i] == str_byte[i])
 	    continue;
 	  break;
 	case STR_WIDE:
-	  if (pat[i] == str_wide[i])
+	  if (pat_wide[i] == str_wide[i])
 	    continue;
 	  break;
 	default:
@@ -460,10 +461,6 @@ fastcmp(const tre_char_t *pat, const void *data, size_t len,
     ret = -(i + 1);
     break;
   }
-#ifndef HAVE_ALLOCA
-    if (mbs_wide != NULL)
-      free(mbs_wide);
-#endif
 
   return ret;
 }
@@ -472,6 +469,22 @@ static inline void
 revstr(tre_char_t *str, int len)
 {
   tre_char_t c;
+
+  for (int i = 0; i < len / 2; i++)
+  {
+    c = str[i];
+    str[i] = str[len - i - 1];
+    str[len - i - 1] = c;
+  }
+}
+
+/*
+ * XXX: eliminate code duplication
+ */
+static inline void
+revs(char *str, int len)
+{
+  char c;
 
   for (int i = 0; i < len / 2; i++)
   {
