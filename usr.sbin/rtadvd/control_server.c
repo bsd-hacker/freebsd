@@ -51,6 +51,7 @@
 #include "pathnames.h"
 #include "rtadvd.h"
 #include "if.h"
+#include "config.h"
 #include "control.h"
 #include "control_server.h"
 #include "timer.h"
@@ -611,7 +612,16 @@ cmsg_setprop_disable(struct ctrl_msg_pl *cp)
 		return (1);
 	}
 
-	ifi->ifi_persist = 0;
+	if (ifi->ifi_persist == 1) {
+		ifi->ifi_persist = 0;
+		rm_ifinfo(ifi);
+
+		/* MC leaving needed here */
+		sock_mc_leave(&sock, ifi->ifi_ifindex);
+
+		set_do_reload_ifname(ifi->ifi_ifname);
+		set_do_reload(0);
+	}
 
 	return (0);
 }
