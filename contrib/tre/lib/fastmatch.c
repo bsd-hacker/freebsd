@@ -261,9 +261,6 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *wpat, size_t n)
     return REG_ESPACE;
   memcpy(fg->wpattern, wpat, fg->wlen * sizeof(tre_char_t));
   fg->wpattern[fg->wlen] = TRE_CHAR('\0');
-#ifdef TRE_WCHAR
-  STORE_MBS_PAT;
-#endif
 
   /* Look for ways to cheat...er...avoid the full regex engine. */
   for (unsigned int i = 0; i < fg->wlen; i++) {
@@ -287,15 +284,15 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *wpat, size_t n)
       }
     } else {
 	/* Free memory and let others know this is empty. */
-#ifdef TRE_WCHAR
-	free(fg->pattern);
-	fg->pattern = NULL;
-#endif
 	free(fg->wpattern);
 	fg->wpattern = NULL;
 	return REG_BADPAT;
     }
   }
+
+#ifdef TRE_WCHAR
+  STORE_MBS_PAT;
+#endif
 
   /*
    * Determine if a reverse search would be faster based on the placement
