@@ -42,7 +42,7 @@
 #include "xmalloc.h"
 
 static int	fastcmp(const void *, const void *, size_t,
-			tre_str_type_t);
+			tre_str_type_t, bool);
 static void	revstr(tre_char_t *, int);
 static void	revs(char *str, int len);
 
@@ -90,10 +90,12 @@ static void	revs(char *str, int len);
       {									\
 	case STR_BYTE:							\
 	case STR_MBS:							\
-	  mismatch = fastcmp(fg->pattern, startptr, fg->len, type);	\
+	  mismatch = fastcmp(fg->pattern, startptr, fg->len, type,	\
+			     fg->icase);				\
 	  break;							\
 	case STR_WIDE:							\
-	  mismatch = fastcmp(fg->wpattern, startptr, fg->wlen, type);	\
+	  mismatch = fastcmp(fg->wpattern, startptr, fg->wlen, type,	\
+			     fg->icase);				\
 	default:							\
 	  break;							\
       }									\
@@ -171,31 +173,76 @@ static void	revs(char *str, int len);
   {									\
     int k = fg->wlen - i;						\
     hashtable_put(fg->qsBc_table, &fg->wpattern[i], &k);		\
+    if (fg->icase)							\
+      {									\
+	wint_t wc = iswlower(fg->wpattern[i]) ?				\
+	  towupper(fg->wpattern[i]) : towlower(fg->wpattern[i]);	\
+	hashtable_put(fg->qsBc_table, &wc, &k);				\
+      }									\
   }									\
 									\
   for (unsigned int i = 0; i <= UCHAR_MAX; i++)				\
     fg->qsBc[i] = fg->len - hasDot;					\
   for (int i = hasDot + 1; i < fg->len; i++)				\
-    fg->qsBc[(unsigned)fg->pattern[i]] = fg->len - i;
+    {									\
+      fg->qsBc[(unsigned)fg->pattern[i]] = fg->len - i;			\
+      if (fg->icase)							\
+	{								\
+	  char c = islower(fg->pattern[i]) ? toupper(fg->pattern[i])	\
+	    : tolower(fg->pattern[i]);					\
+	  fg->qsBc[(unsigned)c] = fg->len - i;				\
+	}								\
+    }
 #else
 #define FILL_QSBC							\
   for (unsigned int i = 0; i <= UCHAR_MAX; i++)				\
     fg->qsBc[i] = fg->wlen - hasDot;					\
   for (int i = hasDot + 1; i < fg->wlen; i++)				\
-    fg->qsBc[(unsigned)fg->wpattern[i]] = fg->wlen - i;
+    {									\
+      fg->qsBc[(unsigned)fg->wpattern[i]] = fg->wlen - i;		\
+      if (fg->icase)							\
+	{								\
+	  char c = islower(fg->wpattern[i]) ? toupper(fg->wpattern[i])	\
+	    : tolower(fg->wpattern[i]);					\
+	  fg->qsBc[(unsigned)c] = fg->len - i;				\
+	}								\
+    }
 #endif
+
+#define REVFUNC(name, argtype)						\
+static inline void							\
+name(argtype *str, int len)						\
+{									\
+  argtype c;								\
+									\
+  for (int i = 0; i < len / 2; i++)					\
+  {									\
+    c = str[i];								\
+    str[i] = str[len - i - 1];						\
+    str[len - i - 1] = c;						\
+  }									\
+}
+
+REVFUNC(revstr, tre_char_t)
+REVFUNC(revs, char)
 
 
 /*
  * Returns: REG_OK on success, error code otherwise
  */
 int
-tre_fastcomp_literal(fastmatch_t *fg, const tre_char_t *wpat, size_t n)
+tre_fastcomp_literal(fastmatch_t *fg, const tre_char_t *wpat, size_t n,
+		     int cflags)
 {
   int hasDot = 0;
 
   /* Initialize. */
   memset(fg, 0, sizeof(*fg));
+  fg->icase = (cflags & REG_ICASE);
+  /* XXX */
+  if (fg->icase && (MB_CUR_MAX > 1))
+    return REG_BADPAT;
+
   fg->wlen = (n == 0) ? tre_strlen(wpat) : n;
   fg->wpattern = xmalloc((fg->wlen + 1) * sizeof(tre_char_t));
   if (fg->wpattern == NULL)
@@ -215,7 +262,8 @@ tre_fastcomp_literal(fastmatch_t *fg, const tre_char_t *wpat, size_t n)
  * Returns: REG_OK on success, error code otherwise
  */
 int
-tre_fastcomp(fastmatch_t *fg, const tre_char_t *wpat, size_t n)
+tre_fastcomp(fastmatch_t *fg, const tre_char_t *wpat, size_t n,
+	     int cflags)
 {
   int firstHalfDot = -1;
   int firstLastHalfDot = -1;
@@ -224,6 +272,11 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *wpat, size_t n)
 
   /* Initialize. */
   memset(fg, 0, sizeof(*fg));
+  fg->icase = (cflags & REG_ICASE);
+  /* XXX */
+  if (fg->icase && (MB_CUR_MAX > 1))
+    return REG_BADPAT;
+
   fg->wlen = (n == 0) ? tre_strlen(wpat) : n;
 
   /* Remove end-of-line character ('$'). */
@@ -427,7 +480,7 @@ tre_fastfree(fastmatch_t *fg)
  */
 static inline int
 fastcmp(const void *pat, const void *data, size_t len,
-	tre_str_type_t type)
+	tre_str_type_t type, bool icase)
 {
   const char *str_byte = data;
   const char *pat_byte = pat;
@@ -444,11 +497,13 @@ fastcmp(const void *pat, const void *data, size_t len,
       {
 	case STR_BYTE:
 	case STR_MBS:
-	  if (pat_byte[i] == str_byte[i])
+	  if (icase ? (tolower(pat_byte[i]) == tolower(str_byte[i]))
+	      : (pat_byte[i] == str_byte[i]))
 	    continue;
 	  break;
 	case STR_WIDE:
-	  if (pat_wide[i] == str_wide[i])
+	  if (icase ? (towlower(pat_wide[i]) == towlower(str_wide[i]))
+	      : (pat_wide[i] == str_wide[i]))
 	    continue;
 	  break;
 	default:
@@ -460,33 +515,4 @@ fastcmp(const void *pat, const void *data, size_t len,
   }
 
   return ret;
-}
-
-static inline void
-revstr(tre_char_t *str, int len)
-{
-  tre_char_t c;
-
-  for (int i = 0; i < len / 2; i++)
-  {
-    c = str[i];
-    str[i] = str[len - i - 1];
-    str[len - i - 1] = c;
-  }
-}
-
-/*
- * XXX: eliminate code duplication
- */
-static inline void
-revs(char *str, int len)
-{
-  char c;
-
-  for (int i = 0; i < len / 2; i++)
-  {
-    c = str[i];
-    str[i] = str[len - i - 1];
-    str[len - i - 1] = c;
-  }
 }

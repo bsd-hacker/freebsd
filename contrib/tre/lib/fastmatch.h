@@ -50,11 +50,12 @@ typedef struct {
   bool eol;
   bool reversed;
   bool word;
+  bool icase;
 } fastmatch_t;
 
 int	tre_fastcomp_literal(fastmatch_t *preg, const tre_char_t *regex,
-	    size_t);
-int	tre_fastcomp(fastmatch_t *preg, const tre_char_t *regex, size_t);
+	    size_t, int);
+int	tre_fastcomp(fastmatch_t *preg, const tre_char_t *regex, size_t, int);
 int	tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
 	    tre_str_type_t type, int nmatch, regmatch_t pmatch[]);
 void	tre_fastfree(fastmatch_t *preg);
