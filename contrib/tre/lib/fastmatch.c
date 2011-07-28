@@ -161,6 +161,21 @@ static void	revs(char *str, int len);
  * thi.               1
  */
 
+#define FILL_ARRAY(pat, plen)						\
+  for (unsigned int i = 0; i <= UCHAR_MAX; i++)				\
+    fg->qsBc[i] = plen - hasDot;					\
+  for (int i = hasDot + 1; i < plen; i++)				\
+    {									\
+      fg->qsBc[(unsigned)pat[i]] = plen - i;				\
+      if (fg->icase)							\
+        {								\
+          char c = islower(pat[i]) ? toupper(pat[i])			\
+            : tolower(pat[i]);						\
+          fg->qsBc[(unsigned)c] = plen - i;				\
+        }								\
+    }
+
+
 #ifdef TRE_WCHAR
 #define FILL_QSBC							\
   /* Adjust the shift based on location of the last dot ('.'). */	\
@@ -181,32 +196,9 @@ static void	revs(char *str, int len);
       }									\
   }									\
 									\
-  for (unsigned int i = 0; i <= UCHAR_MAX; i++)				\
-    fg->qsBc[i] = fg->len - hasDot;					\
-  for (int i = hasDot + 1; i < fg->len; i++)				\
-    {									\
-      fg->qsBc[(unsigned)fg->pattern[i]] = fg->len - i;			\
-      if (fg->icase)							\
-	{								\
-	  char c = islower(fg->pattern[i]) ? toupper(fg->pattern[i])	\
-	    : tolower(fg->pattern[i]);					\
-	  fg->qsBc[(unsigned)c] = fg->len - i;				\
-	}								\
-    }
+  FILL_ARRAY(fg->pattern, fg->len);
 #else
-#define FILL_QSBC							\
-  for (unsigned int i = 0; i <= UCHAR_MAX; i++)				\
-    fg->qsBc[i] = fg->wlen - hasDot;					\
-  for (int i = hasDot + 1; i < fg->wlen; i++)				\
-    {									\
-      fg->qsBc[(unsigned)fg->wpattern[i]] = fg->wlen - i;		\
-      if (fg->icase)							\
-	{								\
-	  char c = islower(fg->wpattern[i]) ? toupper(fg->wpattern[i])	\
-	    : tolower(fg->wpattern[i]);					\
-	  fg->qsBc[(unsigned)c] = fg->len - i;				\
-	}								\
-    }
+#define FILL_QSBC	FILL_ARRAY(fg->wpattern, fg->wlen);
 #endif
 
 #define REVFUNC(name, argtype)						\
