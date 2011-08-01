@@ -65,7 +65,8 @@ QMANAGER_RUNAWAY_PERCENTAGE = float( \
 QMANAGER_RUNAWAY_THRESHOLD  = int( \
     config.get( 'QMANAGER_RUNAWAY_THRESHOLD' ) )
 
-DEBUG = False
+DEBUG_PACKAGEBUILD = False
+DEBUG_RETCODE = False
 
 categories = {}
 ports = {}
@@ -480,7 +481,7 @@ class worker(threading.Thread):
         except RequestError, e:
             print "[MASTER] Error releasing job %s (%s): %s" % (pkg.name, pkg.id, e.value)
 
-        if DEBUG:
+        if DEBUG_RETCODE:
             print "[MASTER] got retcode %d from pkg %s" % (retcode, pkg.name)
         if retcode == 254:
             # Requeue soft failure at original priority
@@ -578,7 +579,7 @@ def main(arch, branch, buildid, args):
             print "[MASTER] Remaining ports: %s" % ports.keys()
 
         (prio, job) = queue.get()
-        if DEBUG:
+        if DEBUG_PACKAGEBUILD:
             print "[MASTER] Job %s pulled from queue with prio %d" % ( job.name, prio )
         if prio == SUCCESS_PRIO:
             print "[MASTER] Job %s succeeded" % job.name
@@ -595,7 +596,7 @@ def main(arch, branch, buildid, args):
                 # XXX MCL 20110421
                 completed_jobs = completed_jobs + 1
                 failed_jobs    = failed_jobs + 1
-                if DEBUG:
+                if DEBUG_PACKAGEBUILD:
                     print "[MASTER] jobs: %d failed jobs out of %d:" % \
                         ( failed_jobs, completed_jobs )
                 if completed_jobs > QMANAGER_RUNAWAY_THRESHOLD and \
