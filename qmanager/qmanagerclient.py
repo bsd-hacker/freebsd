@@ -300,12 +300,12 @@ class QManagerClientConn(QManagerConnection):
                     return s
                 except Exception, e:
                     if self.stderr:
-                        self.stderr.write("QManagerClientConn: exception in s.makefile(): " + str( e ) + "\n")
+                        self.stderr.write("\nQManagerClientConn: exception in s.makefile(): " + str( e ) + "\n")
                         self.stderr.write(str( path ) + "\n")
                         self.stderr.flush()
             except Exception, e:
                 if self.stderr:
-                    self.stderr.write("QManagerClientConn: exception in s.connect(): " + str( e ) + "\n")
+                    self.stderr.write("\nQManagerClientConn: exception in s.connect(): " + str( e ) + "\n")
                     self.stderr.write(str( path ) + "\n")
                     self.stderr.flush()
             try:
@@ -314,7 +314,7 @@ class QManagerClientConn(QManagerConnection):
                 pass
         else:
             if self.stderr:
-                self.stderr.write("QManagerClientConn: qmanager socket file does not exist!\n")
+                self.stderr.write("\nQManagerClientConn: qmanager socket file does not exist!\n")
                 self.stderr.flush()
 
         return None
@@ -333,8 +333,9 @@ class QManagerClientConn(QManagerConnection):
         while True:
             try:
                 return self.CS.send(self.sockfile, cmd, vars)
-            except:
+            except Exception, e:
                 if self.stderr:
+                    self.stderr.write("\nQManagerClientConn: exception in self.SC.send(): " + str( e ) + "\n")
                     self.stderr.write("Error sending command...\n")
                     self.stderr.flush()
                 sleep(timeout)
@@ -349,8 +350,9 @@ class QManagerClientConn(QManagerConnection):
         while True:
             try:
                 return self.SC.receive(self.sockfile)
-            except:
+            except Exception, e:
                 if self.stderr:
+                    self.stderr.write("\nQManagerClientConn: exception in self.SC.receive(): " + str( e ) + "\n")
                     self.stderr.write("Error receiving command...\n")
                     self.stderr.flush()
                 sleep(timeout)
@@ -394,7 +396,7 @@ class QManagerClientConn(QManagerConnection):
                 if self.connect():
                     break
                 else:
-                    self.stderr.write("Error connecting to qmanager...\n")
+                    self.stderr.write("\nQManagerClientConn: error connecting to qmanager in command()...\n")
                     self.stderr.flush()
                     sleep(timeout)
                     if timeout < 64:
