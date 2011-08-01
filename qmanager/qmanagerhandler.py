@@ -4,7 +4,7 @@ import SocketServer, threading, freebsd, sys
 from qmanagerclient import *
 from acl import *
 
-DEBUG=False
+DEBUG_HANDLER = False
 
 class ServerReplyException(Exception):
     pass
@@ -140,13 +140,13 @@ class UNIXhandler(SocketServer.StreamRequestHandler):
         conn = QManagerServerConn(self.rfile, self.wfile, self.event)
 
         try:
-            if DEBUG:
+            if DEBUG_HANDLER:
                 print "at UNIXhandler.handle()"
             (conn.cmd, conn.args) = conn.receive()
-            if DEBUG:
+            if DEBUG_HANDLER:
                 print "past conn.receive() for " + conn.cmd + " and " + str( conn.args )
             (conn.uid, conn.gids) = freebsd.getpeerid(self.request)
-            if DEBUG:
+            if DEBUG_HANDLER:
                 print "past freebsd.getpeerid"
             if conn.uid == 0:
                 # Allow root to override uid/gids, when proxying for a user
@@ -159,14 +159,14 @@ class UNIXhandler(SocketServer.StreamRequestHandler):
                 except KeyError, TypeError:
                     pass
         except Exception, e:
-            if DEBUG:
+            if DEBUG_HANDLER:
                 print "UNIXhandler.handle(): exception: " + str( e )
             conn.send(401) # XXX other errors too
             return
             
         self.server.wqueue.put(conn)
-        if DEBUG:
+        if DEBUG_HANDLER:
             print "past wqueue.put() for " + conn.cmd + " and " + str( conn.args )
         self.event.wait() # Don't close socket until the command finishes
-        if DEBUG:
+        if DEBUG_HANDLER:
             print "past event.wait() for " + conn.cmd + " and " + str( conn.args )
