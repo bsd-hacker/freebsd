@@ -405,6 +405,18 @@ rtadvd_shutdown(void)
 			continue;
 		if (ifi->ifi_ra_timer == NULL)
 			continue;
+		if (ifi->ifi_ra_lastsent.tv_sec == 0 &&
+		    ifi->ifi_ra_lastsent.tv_usec == 0 &&
+		    ifi->ifi_ra_timer != NULL) {
+			/*
+			 * When RA configured but never sent,
+			 * ignore the IF immediately.
+			 */
+			rtadvd_remove_timer(ifi->ifi_ra_timer);
+			ifi->ifi_ra_timer = NULL;
+			ifi->ifi_state = IFI_STATE_UNCONFIGURED;
+			continue;
+		}
 
 		ifi->ifi_state = IFI_STATE_TRANSITIVE;
 
