@@ -21,6 +21,8 @@ mount_fs()
     else
 	mount_nfs -o ro -3 -i ${master}:${fs} ${mntpt}
     fi
+
+    return $?
 }
 
 copypkg()
@@ -223,6 +225,7 @@ mkdir -p ${chroot}/${WRKDIRPREFIX}
 # pick up value from <arch>/portbuild.conf
 if [ ! -z "${ccache_dir}" ]; then
   mkdir -p ${chroot}/root/.ccache/
+  # XXX MCL return value not checked
   if [ "${ccache_dir_nfs}" = "1" ]; then
     mount_nfs -o rw -T -3 ${ccache_dir} ${chroot}/root/.ccache/
   else
@@ -230,12 +233,12 @@ if [ ! -z "${ccache_dir}" ]; then
   fi
 fi
 
-mount_fs ${builddir}/ports ${chroot}/a/ports ${CLIENT_NFS_MASTER}
+mount_fs ${builddir}/ports ${chroot}/a/ports ${CLIENT_NFS_MASTER} || bailout ${chroot} ${clean} 255 ${pkgname}
 ln -sf ../a/ports ${chroot}/usr/ports
 
-mkdir -p ${chroot}/usr/src 
+mkdir -p ${chroot}/usr/src || bailout ${chroot} ${clean} 255 ${pkgname}
 
-mount_fs ${builddir}/src ${chroot}${CLIENT_SRCBASE} ${CLIENT_NFS_MASTER}
+mount_fs ${builddir}/src ${chroot}${CLIENT_SRCBASE} ${CLIENT_NFS_MASTER} || bailout ${chroot} ${clean} 255 ${pkgname}
 
 # set overrides for uname
 buildenv.client ${chroot}${CLIENT_SRCBASE}
@@ -266,8 +269,8 @@ mtree -deU -f ${chroot}/a/ports/Templates/BSD.local.dist -p ${chroot}${LOCALBASE
 for i in ${ARCHS_REQUIRING_LINPROCFS}; do
   if [ ${i} = ${arch} ]; then
     # JDK ports need linprocfs :(
-    mkdir -p ${chroot}/compat/linux/proc
-    mount -t linprocfs linprocfs ${chroot}/compat/linux/proc
+    mkdir -p ${chroot}/compat/linux/proc || bailout ${chroot} ${clean} 255 ${pkgname}
+    mount -t linprocfs linprocfs ${chroot}/compat/linux/proc || bailout ${chroot} ${clean} 255 ${pkgname}
     break
   fi
 done
@@ -306,12 +309,19 @@ while [ $# -gt 0 ]; do
 done
 
 cp -p /tmp/${buildid}/scripts/buildscript ${chroot}
-cp -p /tmp/${buildid}/sources/pnohang.c ${chroot}
 
-# phase 0, compile pnohang
-chroot ${chroot} /usr/bin/gcc -o /pnohang -Wall /pnohang.c 2>&1 | tee -a ${chroot}/tmp/${pkgname}.log
-if [ $? -ne 0 ]; then
-  error=255
+# phase 0, compile pnohang if necessary
+if [ ! -f /tmp/${buildid}/sources/pnohang ]; then
+  cp -p /tmp/${buildid}/sources/pnohang.c ${chroot}
+  chroot ${chroot} /usr/bin/gcc -o /pnohang -Wall /pnohang.c 2>&1 | tee -a ${chroot}/tmp/${pkgname}.log
+  if [ $? -ne 0 ]; then
+    error=255
+  else
+    chown ports-${arch} ${chroot}/pnohang
+    cp -p ${chroot}/pnohang /tmp/${buildid}/sources/
+  fi
+else
+  cp -p /tmp/${buildid}/sources/pnohang ${chroot}
 fi
 
 if [ "${error}" = 0 ]; then
