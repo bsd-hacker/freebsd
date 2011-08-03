@@ -54,10 +54,10 @@
 #include "pathnames.h"
 #include "control.h"
 
-#define	CMSG_RECV_TIMEOUT	30
+#define	CM_RECV_TIMEOUT	30
 
 int
-cmsg_recv(int fd, char *buf)
+cm_recv(int fd, char *buf)
 {
 	int n;
 	struct ctrl_msg_hdr	*cm;
@@ -76,7 +76,7 @@ cmsg_recv(int fd, char *buf)
 
 	for (;;) {
 		i = poll(pfds, sizeof(pfds)/sizeof(pfds[0]),
-		    CMSG_RECV_TIMEOUT);
+		    CM_RECV_TIMEOUT);
 
 		if (i == 0)
 			continue;
@@ -101,22 +101,22 @@ cmsg_recv(int fd, char *buf)
 	if (n != sizeof(*cm)) {
 		syslog(LOG_WARNING,
 		    "<%s> received a too small message.", __func__);
-		goto cmsg_recv_err;
+		goto cm_recv_err;
 	}
 	if (cm->cm_len > CM_MSG_MAXLEN) {
 		syslog(LOG_WARNING,
 		    "<%s> received a too large message.", __func__);
-		goto cmsg_recv_err;
+		goto cm_recv_err;
 	}
 	if (cm->cm_version != CM_VERSION) {
 		syslog(LOG_WARNING,
 		    "<%s> version mismatch", __func__);
-		goto cmsg_recv_err;
+		goto cm_recv_err;
 	}
 	if (cm->cm_type >= CM_TYPE_MAX) {
 		syslog(LOG_WARNING,
 		    "<%s> invalid msg type.", __func__);
-		goto cmsg_recv_err;
+		goto cm_recv_err;
 	}
 
 	syslog(LOG_DEBUG,
@@ -132,7 +132,7 @@ cmsg_recv(int fd, char *buf)
 
 		for (;;) {
 			i = poll(pfds, sizeof(pfds)/sizeof(pfds[0]),
-			    CMSG_RECV_TIMEOUT);
+			    CM_RECV_TIMEOUT);
 
 			if (i == 0)
 				continue;
@@ -156,20 +156,20 @@ cmsg_recv(int fd, char *buf)
 		if (n != msglen) {
 			syslog(LOG_WARNING,
 			    "<%s> payload size mismatch.", __func__);
-			goto cmsg_recv_err;
+			goto cm_recv_err;
 		}
 		buf[CM_MSG_MAXLEN - 1] = '\0';
 	}
 
 	return (0);
 
-cmsg_recv_err:
+cm_recv_err:
 	close(fd);
 	return (-1);
 }
 
 int
-cmsg_send(int fd, char *buf)
+cm_send(int fd, char *buf)
 {
 	struct iovec iov[2];
 	int iovcnt;
@@ -340,7 +340,7 @@ csock_open_err:
 }
 
 struct ctrl_msg_pl *
-cmsg_bin2pl(char *str, struct ctrl_msg_pl *cp)
+cm_bin2pl(char *str, struct ctrl_msg_pl *cp)
 {
 	size_t len;
 	size_t *lenp;
@@ -400,7 +400,7 @@ cmsg_bin2pl(char *str, struct ctrl_msg_pl *cp)
 }
 
 size_t
-cmsg_pl2bin(char *str, struct ctrl_msg_pl *cp)
+cm_pl2bin(char *str, struct ctrl_msg_pl *cp)
 {
 	size_t len;
 	size_t *lenp;
@@ -463,7 +463,7 @@ cmsg_pl2bin(char *str, struct ctrl_msg_pl *cp)
 }
 
 size_t
-cmsg_str2bin(char *bin, void *str, size_t len)
+cm_str2bin(char *bin, void *str, size_t len)
 {
 	struct ctrl_msg_hdr *cm;
 
@@ -481,7 +481,7 @@ cmsg_str2bin(char *bin, void *str, size_t len)
 }
 
 void *
-cmsg_bin2str(char *bin, void *str, size_t len)
+cm_bin2str(char *bin, void *str, size_t len)
 {
 
 	syslog(LOG_DEBUG, "<%s> enter", __func__);

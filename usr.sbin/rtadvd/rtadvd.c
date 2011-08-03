@@ -353,7 +353,7 @@ main(int argc, char *argv[])
 			if (fd == -1)
 				syslog(LOG_ERR, "<%s> accept", __func__);
 			else {
-				cmsg_handler_server(fd);
+				cm_handler_server(fd);
 				close(fd);
 			}
 		}
