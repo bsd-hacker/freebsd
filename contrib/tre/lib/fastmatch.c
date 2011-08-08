@@ -624,17 +624,19 @@ fastcmp(const void *pat, const void *data, size_t len,
 #endif
 
   for (int i = len - 1; i >= 0; i--) {
-    if (pat_wide[i] == TRE_CHAR('.'))
-      continue;
     switch (type)
       {
 	case STR_BYTE:
 	case STR_MBS:
+	  if (pat_byte[i] == '.')
+	    continue;
 	  if (icase ? (tolower(pat_byte[i]) == tolower(str_byte[i]))
 	      : (pat_byte[i] == str_byte[i]))
 	    continue;
 	  break;
 	case STR_WIDE:
+	  if (pat_wide[i] == L'.')
+	    continue;
 	  if (icase ? (towlower(pat_wide[i]) == towlower(str_wide[i]))
 	      : (pat_wide[i] == str_wide[i]))
 	    continue;
