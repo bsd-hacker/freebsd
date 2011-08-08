@@ -116,30 +116,85 @@ static void	revs(char *str, int len);
 #define SHIFT								\
       CHECKBOUNDS;							\
       {									\
-        int k = 0, r = -1;						\
+        int bc = 0, gs = 0, ts, r = -1;					\
 									\
         switch (type)							\
           {								\
             case STR_BYTE:						\
 	    case STR_MBS:						\
-	      k = fg->qsBc[(unsigned char)((char *)startptr)		\
+	      if (!fg->hasdot)						\
+		{							\
+		  if (u != 0 && mismatch == fg->len - 1 - shift)	\
+		    mismatch -= u;					\
+		  v = fg->len - 1 - mismatch;				\
+		  gs = fg->sbmGs[mismatch];				\
+		}							\
+	      bc = fg->qsBc[(unsigned char)((char *)startptr)		\
 		[mismatch + 1]];					\
               break;							\
             case STR_WIDE:						\
-              r = hashtable_get(fg->qsBc_table,				\
-		&((wchar_t *)startptr)[mismatch + 1], &k);		\
-	      k = (r == 0) ? k : fg->defBc;				\
+	      if (!fg->hasdot)						\
+		{							\
+		  if (u != 0 && mismatch == fg->wlen - 1 - shift)	\
+		    mismatch -= u;					\
+		  v = fg->wlen - 1 - mismatch;				\
+		  r = hashtable_get(fg->qsBc_table,			\
+		    &((wchar_t *)startptr)[mismatch + 1], &bc);		\
+		  gs = fg->bmGs[mismatch];				\
+		}							\
+	      bc = (r == 0) ? bc : fg->defBc;				\
               break;							\
             default:							\
               /* XXX */							\
               break;							\
           }								\
-        j += k;								\
+	if (fg->hasdot)							\
+	  shift = bc;							\
+	else								\
+	  {								\
+	    ts = u - v;							\
+	    shift = MAX(ts, bc);					\
+	    shift = MAX(shift, gs);					\
+	    if (shift == gs)						\
+	      u = MIN((type == STR_WIDE ? fg->wlen : fg->len) -		\
+		shift, v);						\
+	    else							\
+	      {								\
+		if (ts < bc)						\
+		  shift = MAX(shift, u + 1);				\
+		u = 0;							\
+	      }								\
+	  }								\
+        j += shift;							\
       }
 #else
 #define SHIFT								\
       CHECKBOUNDS;							\
-      j += fg->qsBc[(unsigned char)((char *)startptr)[mismatch + 1]];
+      {									\
+	int bc, gs;							\
+	bc = fg->qsBc[(unsigned char)((char *)startptr)[mismatch + 1]];	\
+	if (fg->hasdot)							\
+	  shift = bc;							\
+	else								\
+	  {								\
+	    gs = fg->bmGs[mismatch];					\
+	    if (u != 0 && mismatch == fg->wlen - 1 - shift)		\
+	      mismatch -= u;						\
+	    v = fg->wlen - 1 - mismatch;				\
+	    ts = u - v;							\
+	    shift = MAX(ts, bc);					\
+	    shift = MAX(shift, gs);					\
+	    if (shift == gs)						\
+	    u = MIN(fg->wlen - shift, v);				\
+	    else							\
+	      {								\
+		if (ts < bc)						\
+		  shift = MAX(shift, u + 1);				\
+		u = 0;							\
+	      }								\
+	  }								\
+	j += shift;							\
+      }
 #endif
 
 /*
@@ -163,8 +218,8 @@ static void	revs(char *str, int len);
 
 #define FILL_ARRAY(pat, plen)						\
   for (unsigned int i = 0; i <= UCHAR_MAX; i++)				\
-    fg->qsBc[i] = plen - hasDot;					\
-  for (int i = hasDot + 1; i < plen; i++)				\
+    fg->qsBc[i] = plen - fg->hasdot;					\
+  for (int i = fg->hasdot + 1; i < plen; i++)				\
     {									\
       fg->qsBc[(unsigned)pat[i]] = plen - i;				\
       if (fg->icase)							\
@@ -179,12 +234,12 @@ static void	revs(char *str, int len);
 #ifdef TRE_WCHAR
 #define FILL_QSBC							\
   /* Adjust the shift based on location of the last dot ('.'). */	\
-  fg->defBc = fg->wlen - hasDot;					\
+  fg->defBc = fg->wlen - fg->hasdot;					\
 									\
   /* Preprocess pattern. */						\
-  fg->qsBc_table = hashtable_init(fg->wlen, sizeof(tre_char_t),		\
+  fg->qsBc_table = hashtable_init(fg->wlen * 4, sizeof(tre_char_t),	\
     sizeof(int));							\
-  for (unsigned int i = hasDot + 1; i < fg->wlen; i++)			\
+  for (unsigned int i = fg->hasdot + 1; i < fg->wlen; i++)		\
   {									\
     int k = fg->wlen - i;						\
     hashtable_put(fg->qsBc_table, &fg->wpattern[i], &k);		\
@@ -200,6 +255,76 @@ static void	revs(char *str, int len);
 #else
 #define FILL_QSBC	FILL_ARRAY(fg->wpattern, fg->wlen);
 #endif
+
+#define FILL_BMGS(arr, pat, plen, wide)					\
+  {									\
+    char *p;								\
+    wchar_t *wp;							\
+									\
+    if (wide)								\
+      {									\
+	if (fg->icase)							\
+	  {								\
+	    wp = alloca(plen * sizeof(wint_t));				\
+	    for (int i = 0; i < plen; i++)				\
+	      wp[i] = towlower(pat[i]);					\
+	    _FILL_BMGS(arr, wp, plen);					\
+	  }								\
+	else								\
+	  _FILL_BMGS(arr, pat, plen);					\
+      }									\
+    else								\
+      {									\
+	if (fg->icase)							\
+	  {								\
+	    p = alloca(plen);						\
+	    for (int i = 0; i < plen; i++)				\
+	      p[i] = tolower(pat[i]);					\
+	    _FILL_BMGS(arr, p, plen);					\
+	  }								\
+	else								\
+	  _FILL_BMGS(arr, pat, plen);					\
+      }									\
+  }
+
+#define _FILL_BMGS(arr, pat, plen)					\
+  {									\
+    int f, g;								\
+									\
+    int *suff = xmalloc(plen * sizeof(int));				\
+    if (suff == NULL)							\
+      return REG_ESPACE;						\
+									\
+    suff[plen - 1] = plen;						\
+    g = plen - 1;							\
+    for (int i = plen - 2; i >= 0; i--)					\
+      {									\
+	if (i > g && suff[i + plen - 1 - f] < i - g)			\
+	  suff[i] = suff[i + plen - 1 - f];				\
+	else								\
+	  {								\
+	    if (i < g)							\
+	      g = i;							\
+	    f = i;							\
+	    while (g >= 0 && pat[g] == pat[g + plen - 1 - f])		\
+	      g--;							\
+	    suff[i] = f - g;						\
+	  }								\
+      }									\
+									\
+    for (int i = 0; i < plen; i++)					\
+      arr[i] = plen;							\
+    g = 0;								\
+    for (int i = plen - 1; i >= 0; i--)					\
+      if (suff[i] == i + 1)						\
+	for(; g < plen - 1 - i; g++)					\
+	  if (arr[g] == plen)						\
+	    arr[g] = plen - 1 - i;					\
+    for (int i = 0; i <= plen - 2; i++)					\
+      arr[plen - 1 - suff[i]] = plen - 1 - i;				\
+									\
+    free(suff);								\
+  }
 
 #define REVFUNC(name, argtype)						\
 static inline void							\
@@ -218,7 +343,6 @@ name(argtype *str, int len)						\
 REVFUNC(revstr, tre_char_t)
 REVFUNC(revs, char)
 
-
 /*
  * Returns: REG_OK on success, error code otherwise
  */
@@ -226,8 +350,6 @@ int
 tre_fastcomp_literal(fastmatch_t *fg, const tre_char_t *wpat, size_t n,
 		     int cflags)
 {
-  int hasDot = 0;
-
   /* Initialize. */
   memset(fg, 0, sizeof(*fg));
   fg->icase = (cflags & REG_ICASE);
@@ -246,6 +368,10 @@ tre_fastcomp_literal(fastmatch_t *fg, const tre_char_t *wpat, size_t n,
 #endif
 
   FILL_QSBC;
+  FILL_BMGS(fg->bmGs, fg->wpattern, fg->wlen, true);
+#ifdef TRE_WCHAR
+  FILL_BMGS(fg->sbmGs, fg->pattern, fg->len, false);
+#endif
 
   return REG_OK;
 }
@@ -259,7 +385,6 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *wpat, size_t n,
 {
   int firstHalfDot = -1;
   int firstLastHalfDot = -1;
-  int hasDot = 0;
   int lastHalfDot = 0;
 
   /* Initialize. */
@@ -316,7 +441,7 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *wpat, size_t n,
       (fg->wpattern[i] == TRE_CHAR(':')) || (fg->wpattern[i] == TRE_CHAR('/'))) {
 	continue;
     } else if (fg->wpattern[i] == TRE_CHAR('.')) {
-      hasDot = i;
+      fg->hasdot = i;
       if (i < fg->wlen / 2) {
 	if (firstHalfDot < 0)
 	  /* Closest dot to the beginning */
@@ -343,19 +468,25 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *wpat, size_t n,
    * Determine if a reverse search would be faster based on the placement
    * of the dots.
    */
-  if ((!(fg->bol || fg->eol)) &&
-     (lastHalfDot && ((firstHalfDot < 0) ||
-     ((fg->wlen - (lastHalfDot + 1)) < (size_t)firstHalfDot)))) {
-    fg->reversed = true;
-    hasDot = fg->wlen - (firstHalfDot < 0 ?
-	     firstLastHalfDot : firstHalfDot) - 1;
-    revstr(fg->wpattern, fg->wlen);
-#ifdef TRE_WCHAR
-    revs(fg->pattern, fg->len);
-#endif
-  }
+//  if ((!(fg->bol || fg->eol)) &&
+//     (lastHalfDot && ((firstHalfDot < 0) ||
+//     ((fg->wlen - (lastHalfDot + 1)) < (size_t)firstHalfDot)))) {
+//    fg->reversed = true;
+//    fg->hasdot = fg->wlen - (firstHalfDot < 0 ?
+//	     firstLastHalfDot : firstHalfDot) - 1;
+//    revstr(fg->wpattern, fg->wlen);
+//#ifdef TRE_WCHAR
+//    revs(fg->pattern, fg->len);
+//#endif
+//  }
 
   FILL_QSBC;
+  if (!fg->hasdot)
+    FILL_BMGS(fg->bmGs, fg->wpattern, fg->wlen, true);
+#ifdef TRE_WCHAR
+  if (!fg->hasdot)
+    FILL_BMGS(fg->sbmGs, fg->pattern, fg->len, false);
+#endif
 
   /*
    * Put pattern back to normal after pre-processing to allow for easy
@@ -378,7 +509,7 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
 {
   unsigned int j;
   int ret = REG_NOMATCH;
-  int mismatch;
+  int mismatch, shift, u = 0, v;
   const char *str_byte = data;
   const void *startptr = NULL;
 #ifdef TRE_WCHAR
@@ -405,6 +536,16 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
   /* No point in going farther if we do not have enough data. */
   if (len < fg->len)
     return ret;
+
+  switch (type)
+    {
+      case STR_WIDE:
+	shift = fg->wlen;
+	break;
+      default:
+	shift = fg->len;
+	break;
+    }
 
   /* Only try once at the beginning or ending of the line. */
   if (fg->bol || fg->eol) {
