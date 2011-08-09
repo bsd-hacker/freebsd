@@ -129,7 +129,7 @@ static void	revs(char *str, int len);
 		  v = fg->len - 1 - mismatch;				\
 		  gs = fg->sbmGs[mismatch];				\
 		}							\
-	      bc = fg->qsBc[(unsigned char)((char *)startptr)		\
+	      bc = fg->qsBc[((unsigned char *)startptr)			\
 		[mismatch + 1]];					\
               break;							\
             case STR_WIDE:						\
@@ -172,7 +172,7 @@ static void	revs(char *str, int len);
       CHECKBOUNDS;							\
       {									\
 	int bc, gs;							\
-	bc = fg->qsBc[(unsigned char)((char *)startptr)[mismatch + 1]];	\
+	bc = fg->qsBc[((unsigned char *)startptr)[mismatch + 1]];	\
 	if (fg->hasdot)							\
 	  shift = bc;							\
 	else								\
