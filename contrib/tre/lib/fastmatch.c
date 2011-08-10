@@ -44,12 +44,22 @@
 static int	fastcmp(const void *, const void *, size_t,
 			tre_str_type_t, bool);
 
+/*
+ * We will work with wide characters if they are supported
+ */
 #ifdef TRE_WCHAR
 #define TRE_CHAR(n)	L##n
 #else
 #define TRE_CHAR(n)	n
 #endif
 
+/*
+ * Skips n characters in the input string and assigns the start
+ * address to startptr. Note: as per IEEE Std 1003.1-2008
+ * matching is based on bit pattern not character representations
+ * so we can handle MB strings as byte sequences just like
+ * SB strings.
+ */
 #define SKIP_CHARS(n)						\
   do {								\
     switch (type)						\
@@ -62,6 +72,11 @@ static int	fastcmp(const void *, const void *, size_t,
       }								\
   } while (0);							\
 
+/*
+ * Converts the wide string pattern to SB/MB string and stores
+ * it in fg->pattern. Sets fg->len to the byte length of the
+ * converted string.
+ */
 #define STORE_MBS_PAT						\
   do {								\
     size_t siz;							\
@@ -77,6 +92,10 @@ static int	fastcmp(const void *, const void *, size_t,
     fg->pattern[siz] = '\0';					\
   } while (0);							\
 
+/*
+ * Compares the pattern to the input string at the position
+ * stored in startptr.
+ */
 #define COMPARE								\
   switch (type)								\
     {									\
@@ -92,10 +111,18 @@ static int	fastcmp(const void *, const void *, size_t,
 #define IS_OUT_OF_BOUNDS						\
   ((type == STR_WIDE) ? ((j + fg->wlen) > len) : ((j + fg->len) > len))
 
+/*
+ * Checks whether the new position after shifting in the input string
+ * is out of the bounds and break out from the loop if so.
+ */
 #define CHECKBOUNDS							\
   if (IS_OUT_OF_BOUNDS)							\
     break;								\
 
+/*
+ * Shifts in the input string after a mismatch. The position of the
+ * mismatch is stored in the mismatch variable.
+ */
 #define SHIFT								\
   CHECKBOUNDS;								\
 									\
@@ -162,6 +189,9 @@ static int	fastcmp(const void *, const void *, size_t,
  * thi.               1
  */
 
+/*
+ * Fills in the bad character shift array for SB/MB strings.
+ */
 #define FILL_QSBC							\
   for (unsigned int i = 0; i <= UCHAR_MAX; i++)				\
     fg->qsBc[i] = fg->len - fg->hasdot;					\
@@ -176,7 +206,15 @@ static int	fastcmp(const void *, const void *, size_t,
         }								\
     }
 
-
+/*
+ * Fills in the bad character shifts into a hastable for wide strings.
+ * With wide characters it is not possible any more to use a normal
+ * array because there are too many characters and we could not
+ * provide enough memory. Fortunately, we only have to store distinct
+ * values for so many characters as the number of distinct characters
+ * in the pattern, so we can store them in a hashtable and store a
+ * default shift value for the rest.
+ */
 #define FILL_QSBC_WIDE							\
   /* Adjust the shift based on location of the last dot ('.'). */	\
   fg->defBc = fg->wlen - fg->hasdot;					\
@@ -196,7 +234,21 @@ static int	fastcmp(const void *, const void *, size_t,
       }									\
   }									\
 
-#define FILL_BMGS(arr, pat, plen, wide)					\
+/*
+ * Fills in the good suffix table for SB/MB strings.
+ */
+#define FILL_BMGS							\
+  if (!fg->hasdot)							\
+    _FILL_BMGS(fg->sbmGs, fg->pattern, fg->len, false);
+
+/*
+ * Fills in the good suffix table for wide strings.
+ */
+#define FILL_BMGS_WIDE							\
+  if (!fg->hasdot)							\
+    _FILL_BMGS(fg->bmGs, fg->wpattern, fg->wlen, true);
+
+#define _FILL_BMGS(arr, pat, plen, wide)				\
   {									\
     char *p;								\
     wchar_t *wp;							\
@@ -208,10 +260,10 @@ static int	fastcmp(const void *, const void *, size_t,
 	    wp = alloca(plen * sizeof(wint_t));				\
 	    for (int i = 0; i < plen; i++)				\
 	      wp[i] = towlower(pat[i]);					\
-	    _FILL_BMGS(arr, wp, plen);					\
+	    _CALC_BMGS(arr, wp, plen);					\
 	  }								\
 	else								\
-	  _FILL_BMGS(arr, pat, plen);					\
+	  _CALC_BMGS(arr, pat, plen);					\
       }									\
     else								\
       {									\
@@ -220,14 +272,14 @@ static int	fastcmp(const void *, const void *, size_t,
 	    p = alloca(plen);						\
 	    for (int i = 0; i < plen; i++)				\
 	      p[i] = tolower(pat[i]);					\
-	    _FILL_BMGS(arr, p, plen);					\
+	    _CALC_BMGS(arr, p, plen);					\
 	  }								\
 	else								\
-	  _FILL_BMGS(arr, pat, plen);					\
+	  _CALC_BMGS(arr, pat, plen);					\
       }									\
   }
 
-#define _FILL_BMGS(arr, pat, plen)					\
+#define _CALC_BMGS(arr, pat, plen)					\
   {									\
     int f, g;								\
 									\
@@ -266,6 +318,15 @@ static int	fastcmp(const void *, const void *, size_t,
     free(suff);								\
   }
 
+#define SAVE_PATTERN(p, l)						\
+  l = (n == 0) ? tre_strlen(pat) : n;					\
+  p = xmalloc((l + 1) * sizeof(tre_char_t));				\
+  if (p == NULL)							\
+    return REG_ESPACE;							\
+  memcpy(p, pat, l * sizeof(tre_char_t));				\
+  p[l] = TRE_CHAR('\0');
+
+
 /*
  * Returns: REG_OK on success, error code otherwise
  */
@@ -282,28 +343,17 @@ tre_fastcomp_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n,
     return REG_BADPAT;
 
 #ifdef TRE_WCHAR
-  fg->wlen = (n == 0) ? tre_strlen(pat) : n;
-  fg->wpattern = xmalloc((fg->wlen + 1) * sizeof(tre_char_t));
-  if (fg->wpattern == NULL)
-    return REG_ESPACE;
-  memcpy(fg->wpattern, pat, fg->wlen * sizeof(tre_char_t));
-  fg->wpattern[fg->wlen] = TRE_CHAR('\0');
-
+  SAVE_PATTERN(fg->wpattern, fg->wlen);
   STORE_MBS_PAT;
 #else
-  fg->len = (n == 0) ? tre_strlen(pat) : n;
-  fg->pattern = xmalloc((fg->len + 1) * sizeof(tre_char_t));
-  if (fg->pattern == NULL)
-    return REG_ESPACE;
-  memcpy(fg->pattern, pat, fg->len * sizeof(tre_char_t));
-  fg->pattern[fg->len] = TRE_CHAR('\0');
+  SAVE_PATTERN(fg->pattern, fg->len);
 #endif
 
   FILL_QSBC;
-  FILL_BMGS(fg->sbmGs, fg->pattern, fg->len, false);
+  FILL_BMGS;
 #ifdef TRE_WCHAR
   FILL_QSBC_WIDE;
-  FILL_BMGS(fg->bmGs, fg->wpattern, fg->wlen, true);
+  FILL_BMGS_WIDE;
 #endif
 
   return REG_OK;
@@ -356,11 +406,7 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n,
    * the word match character classes at the beginning and ending
    * of the string respectively.
    */
-  fg->wpattern = xmalloc((fg->wlen + 1) * sizeof(tre_char_t));
-  if (fg->wpattern == NULL)
-    return REG_ESPACE;
-  memcpy(fg->wpattern, pat, fg->wlen * sizeof(tre_char_t));
-  fg->wpattern[fg->wlen] = TRE_CHAR('\0');
+  SAVE_PATTERN(fg->wpattern, fg->wlen);
 
   /* Look for ways to cheat...er...avoid the full regex engine. */
   for (unsigned int i = 0; i < fg->wlen; i++) {
@@ -388,12 +434,10 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n,
 #endif
 
   FILL_QSBC;
-  if (!fg->hasdot)
-    FILL_BMGS(fg->bmGs, fg->pattern, fg->len, false);
+  FILL_BMGS;
 #ifdef TRE_WCHAR
   FILL_QSBC_WIDE;
-  if (!fg->hasdot)
-    FILL_BMGS(fg->sbmGs, fg->wpattern, fg->wlen, true);
+  FILL_BMGS_WIDE;
 #endif
 
   return REG_OK;
@@ -502,24 +546,19 @@ fastcmp(const void *pat, const void *data, size_t len,
   for (int i = len - 1; i >= 0; i--) {
     switch (type)
       {
-	case STR_BYTE:
-	case STR_MBS:
-	  if (pat_byte[i] == '.')
-	    continue;
-	  if (icase ? (tolower(pat_byte[i]) == tolower(str_byte[i]))
-	      : (pat_byte[i] == str_byte[i]))
-	    continue;
-	  break;
 	case STR_WIDE:
 	  if (pat_wide[i] == L'.')
 	    continue;
 	  if (icase ? (towlower(pat_wide[i]) == towlower(str_wide[i]))
-	      : (pat_wide[i] == str_wide[i]))
+		    : (pat_wide[i] == str_wide[i]))
 	    continue;
 	  break;
 	default:
-	  /* XXX */
-	  break;
+	  if (pat_byte[i] == '.')
+	    continue;
+	  if (icase ? (tolower(pat_byte[i]) == tolower(str_byte[i]))
+		    : (pat_byte[i] == str_byte[i]))
+	  continue;
       }
     ret = -(i + 1);
     break;
