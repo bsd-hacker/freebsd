@@ -475,38 +475,46 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
 	shift = fg->len;
     }
 
-  /* XXX: make wchar-clean */
   /* Only try once at the beginning or ending of the line. */
-  if (fg->bol || fg->eol) {
-    /* Simple text comparison. */
-    if (!((fg->bol && fg->eol) && (len != fg->len))) {
-      /* Determine where in data to start search at. */
-      j = fg->eol ? len - fg->len : 0;
-      SKIP_CHARS(j);
-      COMPARE;
-      if (mismatch == REG_OK) {
-	pmatch[0].rm_so = j;
-	pmatch[0].rm_eo = j + fg->len;
-	return REG_OK;
-      }
+  if (fg->bol || fg->eol)
+    {
+      /* Simple text comparison. */
+      if (!((fg->bol && fg->eol) &&
+	  (type == STR_WIDE ? (wlen != fg->wlen) : (len != fg->len))))
+	{
+	  /* Determine where in data to start search at. */
+	  j = fg->eol ? len - (type == STR_WIDE ? fg->wlen : fg->len) : 0;
+	  SKIP_CHARS(j);
+	  COMPARE;
+	  if (mismatch == REG_OK)
+	    {
+	      pmatch[0].rm_so = j;
+	      pmatch[0].rm_eo = j + (type == STR_WIDE ? fg->wlen : fg->len);
+	      return REG_OK;
+            }
+        }
     }
-  } else {
-    /* Quick Search algorithm. */
-    j = 0;
-    do {
-      SKIP_CHARS(j);
-      COMPARE;
-      if (mismatch == REG_OK) {
-	pmatch[0].rm_so = j;
-	pmatch[0].rm_eo = j + ((type == STR_WIDE) ? fg->wlen : fg->len);
-	return REG_OK;
-      } else if (mismatch > 0)
-        return mismatch;
-      mismatch = -mismatch - 1;
-      SHIFT;
-    } while (!IS_OUT_OF_BOUNDS);
-  }
-  return ret;
+  else
+    {
+      /* Quick Search algorithm. */
+      j = 0;
+      do
+	{
+	  SKIP_CHARS(j);
+	  COMPARE;
+	  if (mismatch == REG_OK)
+	    {
+	      pmatch[0].rm_so = j;
+	      pmatch[0].rm_eo = j + ((type == STR_WIDE) ? fg->wlen : fg->len);
+	      return REG_OK;
+	    }
+	  else if (mismatch > 0)
+	    return mismatch;
+	  mismatch = -mismatch - 1;
+	  SHIFT;
+        } while (!IS_OUT_OF_BOUNDS);
+    }
+    return ret;
 }
 
 void
