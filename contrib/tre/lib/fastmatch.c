@@ -43,8 +43,6 @@
 
 static int	fastcmp(const void *, const void *, size_t,
 			tre_str_type_t, bool);
-static void	revstr(tre_char_t *, int);
-static void	revs(char *str, int len);
 
 #ifdef TRE_WCHAR
 #define TRE_CHAR(n)	L##n
@@ -56,16 +54,11 @@ static void	revs(char *str, int len);
   do {								\
     switch (type)						\
       {								\
-	case STR_BYTE:						\
-	case STR_MBS:						\
-	  startptr = str_byte + n;				\
-	  break;						\
 	case STR_WIDE:						\
 	  startptr = str_wide + n;				\
 	  break;						\
 	default:						\
-	  /* XXX */						\
-	  break;						\
+	  startptr = str_byte + n;				\
       }								\
   } while (0);							\
 
@@ -85,117 +78,72 @@ static void	revs(char *str, int len);
   } while (0);							\
 
 #define COMPARE								\
-  do {									\
-    switch (type)							\
-      {									\
-	case STR_BYTE:							\
-	case STR_MBS:							\
-	  mismatch = fastcmp(fg->pattern, startptr, fg->len, type,	\
-			     fg->icase);				\
-	  break;							\
-	case STR_WIDE:							\
-	  mismatch = fastcmp(fg->wpattern, startptr, fg->wlen, type,	\
-			     fg->icase);				\
-	default:							\
-	  break;							\
+  switch (type)								\
+    {									\
+      case STR_WIDE:							\
+	mismatch = fastcmp(fg->wpattern, startptr, fg->wlen, type,	\
+			   fg->icase);					\
+	break;								\
+      default:								\
+	mismatch = fastcmp(fg->pattern, startptr, fg->len, type,	\
+			   fg->icase);					\
       }									\
-  } while (0);
 
-#ifdef TRE_WCHAR
 #define IS_OUT_OF_BOUNDS						\
   ((type == STR_WIDE) ? ((j + fg->wlen) > len) : ((j + fg->len) > len))
-#else
-#define IS_OUT_OF_BOUNDS	((j + fg->len) > len)
-#endif
 
 #define CHECKBOUNDS							\
   if (IS_OUT_OF_BOUNDS)							\
     break;								\
 
-#ifdef TRE_WCHAR
 #define SHIFT								\
-      CHECKBOUNDS;							\
-      {									\
-        int bc = 0, gs = 0, ts, r = -1;					\
+  CHECKBOUNDS;								\
 									\
-        switch (type)							\
-          {								\
-            case STR_BYTE:						\
-	    case STR_MBS:						\
-	      if (!fg->hasdot)						\
-		{							\
-		  if (u != 0 && mismatch == fg->len - 1 - shift)	\
-		    mismatch -= u;					\
-		  v = fg->len - 1 - mismatch;				\
-		  gs = fg->sbmGs[mismatch];				\
-		}							\
-	      bc = fg->qsBc[((unsigned char *)startptr)			\
-		[mismatch + 1]];					\
-              break;							\
-            case STR_WIDE:						\
-	      if (!fg->hasdot)						\
-		{							\
-		  if (u != 0 && mismatch == fg->wlen - 1 - shift)	\
-		    mismatch -= u;					\
-		  v = fg->wlen - 1 - mismatch;				\
-		  r = hashtable_get(fg->qsBc_table,			\
-		    &((wchar_t *)startptr)[mismatch + 1], &bc);		\
-		  gs = fg->bmGs[mismatch];				\
-		}							\
-	      bc = (r == 0) ? bc : fg->defBc;				\
-              break;							\
-            default:							\
-              /* XXX */							\
-              break;							\
-          }								\
-	if (fg->hasdot)							\
-	  shift = bc;							\
-	else								\
-	  {								\
-	    ts = u - v;							\
-	    shift = MAX(ts, bc);					\
-	    shift = MAX(shift, gs);					\
-	    if (shift == gs)						\
-	      u = MIN((type == STR_WIDE ? fg->wlen : fg->len) -		\
-		shift, v);						\
-	    else							\
-	      {								\
-		if (ts < bc)						\
-		  shift = MAX(shift, u + 1);				\
-		u = 0;							\
-	      }								\
-	  }								\
-        j += shift;							\
-      }
-#else
-#define SHIFT								\
-      CHECKBOUNDS;							\
+  {									\
+    int bc = 0, gs = 0, ts, r = -1;					\
+									\
+    switch (type)							\
       {									\
-	int bc, gs;							\
-	bc = fg->qsBc[((unsigned char *)startptr)[mismatch + 1]];	\
-	if (fg->hasdot)							\
-	  shift = bc;							\
+	case STR_WIDE:							\
+	  if (!fg->hasdot)						\
+	    {								\
+	      if (u != 0 && mismatch == fg->wlen - 1 - shift)		\
+		mismatch -= u;						\
+	      v = fg->wlen - 1 - mismatch;				\
+	      r = hashtable_get(fg->qsBc_table,				\
+		&((wchar_t *)startptr)[mismatch + 1], &bc);		\
+	      gs = fg->bmGs[mismatch];					\
+	    }								\
+	    bc = (r == 0) ? bc : fg->defBc;				\
+            break;							\
+	default:							\
+	  if (!fg->hasdot)						\
+	    {								\
+	      if (u != 0 && mismatch == fg->len - 1 - shift)		\
+		mismatch -= u;						\
+	      v = fg->len - 1 - mismatch;				\
+	      gs = fg->sbmGs[mismatch];					\
+	    }								\
+	  bc = fg->qsBc[((unsigned char *)startptr)[mismatch + 1]];	\
+      }									\
+    if (fg->hasdot)							\
+      shift = bc;							\
+    else								\
+      {									\
+	ts = u - v;							\
+	shift = MAX(ts, bc);						\
+	shift = MAX(shift, gs);						\
+	if (shift == gs)						\
+	  u = MIN((type == STR_WIDE ? fg->wlen : fg->len) - shift, v);	\
 	else								\
 	  {								\
-	    gs = fg->bmGs[mismatch];					\
-	    if (u != 0 && mismatch == fg->wlen - 1 - shift)		\
-	      mismatch -= u;						\
-	    v = fg->wlen - 1 - mismatch;				\
-	    ts = u - v;							\
-	    shift = MAX(ts, bc);					\
-	    shift = MAX(shift, gs);					\
-	    if (shift == gs)						\
-	    u = MIN(fg->wlen - shift, v);				\
-	    else							\
-	      {								\
-		if (ts < bc)						\
-		  shift = MAX(shift, u + 1);				\
-		u = 0;							\
-	      }								\
+	    if (ts < bc)						\
+	      shift = MAX(shift, u + 1);				\
+	    u = 0;							\
 	  }								\
-	j += shift;							\
-      }
-#endif
+      }									\
+      j += shift;							\
+  }
 
 /*
  * Normal Quick Search would require a shift based on the position the
@@ -214,23 +162,22 @@ static void	revs(char *str, int len);
  * thi.               1
  */
 
-#define FILL_ARRAY(pat, plen)						\
+#define FILL_QSBC							\
   for (unsigned int i = 0; i <= UCHAR_MAX; i++)				\
-    fg->qsBc[i] = plen - fg->hasdot;					\
-  for (int i = fg->hasdot + 1; i < plen; i++)				\
+    fg->qsBc[i] = fg->len - fg->hasdot;					\
+  for (int i = fg->hasdot + 1; i < fg->len; i++)			\
     {									\
-      fg->qsBc[(unsigned)pat[i]] = plen - i;				\
+      fg->qsBc[(unsigned)fg->pattern[i]] = fg->len - i;			\
       if (fg->icase)							\
         {								\
-          char c = islower(pat[i]) ? toupper(pat[i])			\
-            : tolower(pat[i]);						\
-          fg->qsBc[(unsigned)c] = plen - i;				\
+          char c = islower(fg->pattern[i]) ? toupper(fg->pattern[i])	\
+            : tolower(fg->pattern[i]);					\
+          fg->qsBc[(unsigned)c] = fg->len - i;				\
         }								\
     }
 
 
-#ifdef TRE_WCHAR
-#define FILL_QSBC							\
+#define FILL_QSBC_WIDE							\
   /* Adjust the shift based on location of the last dot ('.'). */	\
   fg->defBc = fg->wlen - fg->hasdot;					\
 									\
@@ -248,11 +195,6 @@ static void	revs(char *str, int len);
 	hashtable_put(fg->qsBc_table, &wc, &k);				\
       }									\
   }									\
-									\
-  FILL_ARRAY(fg->pattern, fg->len);
-#else
-#define FILL_QSBC	FILL_ARRAY(fg->wpattern, fg->wlen);
-#endif
 
 #define FILL_BMGS(arr, pat, plen, wide)					\
   {									\
@@ -324,51 +266,44 @@ static void	revs(char *str, int len);
     free(suff);								\
   }
 
-#define REVFUNC(name, argtype)						\
-static inline void							\
-name(argtype *str, int len)						\
-{									\
-  argtype c;								\
-									\
-  for (int i = 0; i < len / 2; i++)					\
-  {									\
-    c = str[i];								\
-    str[i] = str[len - i - 1];						\
-    str[len - i - 1] = c;						\
-  }									\
-}
-
-REVFUNC(revstr, tre_char_t)
-REVFUNC(revs, char)
-
 /*
  * Returns: REG_OK on success, error code otherwise
  */
 int
-tre_fastcomp_literal(fastmatch_t *fg, const tre_char_t *wpat, size_t n,
+tre_fastcomp_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n,
 		     int cflags)
 {
   /* Initialize. */
   memset(fg, 0, sizeof(*fg));
   fg->icase = (cflags & REG_ICASE);
-  /* XXX */
+
+  /* Cannot handle REG_ICASE with MB string */
   if (fg->icase && (MB_CUR_MAX > 1))
     return REG_BADPAT;
 
-  fg->wlen = (n == 0) ? tre_strlen(wpat) : n;
+#ifdef TRE_WCHAR
+  fg->wlen = (n == 0) ? tre_strlen(pat) : n;
   fg->wpattern = xmalloc((fg->wlen + 1) * sizeof(tre_char_t));
   if (fg->wpattern == NULL)
     return REG_ESPACE;
-  memcpy(fg->wpattern, wpat, fg->wlen * sizeof(tre_char_t));
+  memcpy(fg->wpattern, pat, fg->wlen * sizeof(tre_char_t));
   fg->wpattern[fg->wlen] = TRE_CHAR('\0');
-#ifdef TRE_WCHAR
+
   STORE_MBS_PAT;
+#else
+  fg->len = (n == 0) ? tre_strlen(pat) : n;
+  fg->pattern = xmalloc((fg->len + 1) * sizeof(tre_char_t));
+  if (fg->pattern == NULL)
+    return REG_ESPACE;
+  memcpy(fg->pattern, pat, fg->len * sizeof(tre_char_t));
+  fg->pattern[fg->len] = TRE_CHAR('\0');
 #endif
 
   FILL_QSBC;
-  FILL_BMGS(fg->bmGs, fg->wpattern, fg->wlen, true);
-#ifdef TRE_WCHAR
   FILL_BMGS(fg->sbmGs, fg->pattern, fg->len, false);
+#ifdef TRE_WCHAR
+  FILL_QSBC_WIDE;
+  FILL_BMGS(fg->bmGs, fg->wpattern, fg->wlen, true);
 #endif
 
   return REG_OK;
@@ -378,52 +313,53 @@ tre_fastcomp_literal(fastmatch_t *fg, const tre_char_t *wpat, size_t n,
  * Returns: REG_OK on success, error code otherwise
  */
 int
-tre_fastcomp(fastmatch_t *fg, const tre_char_t *wpat, size_t n,
+tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n,
 	     int cflags)
 {
   /* Initialize. */
   memset(fg, 0, sizeof(*fg));
   fg->icase = (cflags & REG_ICASE);
-  /* XXX */
+
+  /* Cannot handle REG_ICASE with MB string */
   if (fg->icase && (MB_CUR_MAX > 1))
     return REG_BADPAT;
 
-  fg->wlen = (n == 0) ? tre_strlen(wpat) : n;
+  fg->wlen = (n == 0) ? tre_strlen(pat) : n;
 
   /* Remove end-of-line character ('$'). */
-  if ((fg->wlen > 0) && (wpat[fg->wlen - 1] == TRE_CHAR('$')))
+  if ((fg->wlen > 0) && (pat[fg->wlen - 1] == TRE_CHAR('$')))
   {
     fg->eol = true;
     fg->wlen--;
   }
 
   /* Remove beginning-of-line character ('^'). */
-  if (wpat[0] == TRE_CHAR('^'))
+  if (pat[0] == TRE_CHAR('^'))
   {
     fg->bol = true;
     fg->wlen--;
-    wpat++;
+    pat++;
   }
 
   if ((fg->wlen >= 14) &&
-      (memcmp(wpat, TRE_CHAR("[[:<:]]"), 7 * sizeof(tre_char_t)) == 0) &&
-      (memcmp(wpat + fg->wlen - 7, TRE_CHAR("[[:>:]]"),
+      (memcmp(pat, TRE_CHAR("[[:<:]]"), 7 * sizeof(tre_char_t)) == 0) &&
+      (memcmp(pat + fg->wlen - 7, TRE_CHAR("[[:>:]]"),
 	      7 * sizeof(tre_char_t)) == 0))
   {
     fg->wlen -= 14;
-    wpat += 7;
+    pat += 7;
     fg->word = true;
   }
 
   /*
-   * wpat has been adjusted earlier to not include '^', '$' or
+   * pat has been adjusted earlier to not include '^', '$' or
    * the word match character classes at the beginning and ending
    * of the string respectively.
    */
   fg->wpattern = xmalloc((fg->wlen + 1) * sizeof(tre_char_t));
   if (fg->wpattern == NULL)
     return REG_ESPACE;
-  memcpy(fg->wpattern, wpat, fg->wlen * sizeof(tre_char_t));
+  memcpy(fg->wpattern, pat, fg->wlen * sizeof(tre_char_t));
   fg->wpattern[fg->wlen] = TRE_CHAR('\0');
 
   /* Look for ways to cheat...er...avoid the full regex engine. */
@@ -446,14 +382,18 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *wpat, size_t n,
 
 #ifdef TRE_WCHAR
   STORE_MBS_PAT;
+#else
+  fg->len = fg->wlen;
+  fg->patter = fg->wpattern;
 #endif
 
   FILL_QSBC;
   if (!fg->hasdot)
-    FILL_BMGS(fg->bmGs, fg->wpattern, fg->wlen, true);
+    FILL_BMGS(fg->bmGs, fg->pattern, fg->len, false);
 #ifdef TRE_WCHAR
+  FILL_QSBC_WIDE;
   if (!fg->hasdot)
-    FILL_BMGS(fg->sbmGs, fg->pattern, fg->len, false);
+    FILL_BMGS(fg->sbmGs, fg->wpattern, fg->wlen, true);
 #endif
 
   return REG_OK;
@@ -473,36 +413,31 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
 #endif
 
   if (len == (unsigned)-1)
-    {
-      switch (type)
-	{
-	  case STR_BYTE:
-	  case STR_MBS:
-	    len = strlen(str_byte);
-	    break;
-	  case STR_WIDE:
-	    len = wcslen(str_wide);
-	    break;
-	  default:
-	    /* XXX */
-	    break;
-	}
-    }
+    switch (type)
+      {
+	case STR_WIDE:
+	  len = wcslen(str_wide);
+	  break;
+	default:
+	  len = strlen(str_byte);
+	  break;
+      }
 
   /* No point in going farther if we do not have enough data. */
-  if (len < fg->len)
-    return ret;
-
   switch (type)
     {
       case STR_WIDE:
+	if (len < fg->wlen)
+	  return ret;
 	shift = fg->wlen;
 	break;
       default:
+	if (len < fg->len)
+	  return ret;
 	shift = fg->len;
-	break;
     }
 
+  /* XXX: make wchar-clean */
   /* Only try once at the beginning or ending of the line. */
   if (fg->bol || fg->eol) {
     /* Simple text comparison. */
@@ -525,7 +460,7 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
       COMPARE;
       if (mismatch == REG_OK) {
 	pmatch[0].rm_so = j;
-	pmatch[0].rm_eo = j + fg->len;
+	pmatch[0].rm_eo = j + ((type == STR_WIDE) ? fg->wlen : fg->len);
 	return REG_OK;
       } else if (mismatch > 0)
         return mismatch;
@@ -542,9 +477,9 @@ tre_fastfree(fastmatch_t *fg)
 
 #ifdef TRE_WCHAR
   hashtable_free(fg->qsBc_table);
-  free(fg->pattern);
-#endif
   free(fg->wpattern);
+#endif
+  free(fg->pattern);
 }
 
 /*
