@@ -60,37 +60,37 @@ static int	fastcmp(const void *, const void *, size_t,
  * so we can handle MB strings as byte sequences just like
  * SB strings.
  */
-#define SKIP_CHARS(n)						\
-  do {								\
-    switch (type)						\
-      {								\
-	case STR_WIDE:						\
-	  startptr = str_wide + n;				\
-	  break;						\
-	default:						\
-	  startptr = str_byte + n;				\
-      }								\
-  } while (0);							\
+#define SKIP_CHARS(n)							\
+  do {									\
+    switch (type)							\
+      {									\
+	case STR_WIDE:							\
+	  startptr = str_wide + n;					\
+	  break;							\
+	default:							\
+	  startptr = str_byte + n;					\
+      }									\
+  } while (0);								\
 
 /*
  * Converts the wide string pattern to SB/MB string and stores
  * it in fg->pattern. Sets fg->len to the byte length of the
  * converted string.
  */
-#define STORE_MBS_PAT						\
-  do {								\
-    size_t siz;							\
-								\
-    siz = wcstombs(NULL, fg->wpattern, 0);			\
-    if (siz == (size_t)-1)					\
-      return REG_BADPAT;					\
-    fg->len = siz;						\
-    fg->pattern = xmalloc(siz + 1);				\
-    if (fg->pattern == NULL)					\
-      return REG_ESPACE;					\
-    wcstombs(fg->pattern, fg->wpattern, siz);			\
-    fg->pattern[siz] = '\0';					\
-  } while (0);							\
+#define STORE_MBS_PAT							\
+  do {									\
+    size_t siz;								\
+									\
+    siz = wcstombs(NULL, fg->wpattern, 0);				\
+    if (siz == (size_t)-1)						\
+      return REG_BADPAT;						\
+    fg->len = siz;							\
+    fg->pattern = xmalloc(siz + 1);					\
+    if (fg->pattern == NULL)						\
+      return REG_ESPACE;						\
+    wcstombs(fg->pattern, fg->wpattern, siz);				\
+    fg->pattern[siz] = '\0';						\
+  } while (0);								\
 
 /*
  * Compares the pattern to the input string at the position
@@ -374,31 +374,45 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n,
   if (fg->icase && (MB_CUR_MAX > 1))
     return REG_BADPAT;
 
-  fg->wlen = (n == 0) ? tre_strlen(pat) : n;
+  n = (n == 0) ? tre_strlen(pat) : n;
 
   /* Remove end-of-line character ('$'). */
-  if ((fg->wlen > 0) && (pat[fg->wlen - 1] == TRE_CHAR('$')))
+  if ((n > 0) && (pat[n - 1] == TRE_CHAR('$')))
   {
     fg->eol = true;
-    fg->wlen--;
+    n--;
   }
 
   /* Remove beginning-of-line character ('^'). */
   if (pat[0] == TRE_CHAR('^'))
   {
     fg->bol = true;
-    fg->wlen--;
+    n--;
     pat++;
   }
 
-  if ((fg->wlen >= 14) &&
+  if ((n >= 14) &&
       (memcmp(pat, TRE_CHAR("[[:<:]]"), 7 * sizeof(tre_char_t)) == 0) &&
-      (memcmp(pat + fg->wlen - 7, TRE_CHAR("[[:>:]]"),
+      (memcmp(pat + n - 7, TRE_CHAR("[[:>:]]"),
 	      7 * sizeof(tre_char_t)) == 0))
   {
-    fg->wlen -= 14;
+    n -= 14;
     pat += 7;
     fg->word = true;
+  }
+
+  /* Look for ways to cheat...er...avoid the full regex engine. */
+  for (unsigned int i = 0; i < n; i++) {
+    /* Can still cheat? */
+    if ((tre_isalnum(pat[i])) || tre_isspace(pat[i]) ||
+      (pat[i] == TRE_CHAR('_')) || (pat[i] == TRE_CHAR(',')) ||
+      (pat[i] == TRE_CHAR('=')) || (pat[i] == TRE_CHAR('-')) ||
+      (pat[i] == TRE_CHAR(':')) || (pat[i] == TRE_CHAR('/')))
+	continue;
+    else if (pat[i] == TRE_CHAR('.'))
+      fg->hasdot = i;
+    else
+	return REG_BADPAT;
   }
 
   /*
@@ -406,31 +420,11 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n,
    * the word match character classes at the beginning and ending
    * of the string respectively.
    */
-  SAVE_PATTERN(fg->wpattern, fg->wlen);
-
-  /* Look for ways to cheat...er...avoid the full regex engine. */
-  for (unsigned int i = 0; i < fg->wlen; i++) {
-    /* Can still cheat? */
-    if ((tre_isalnum(fg->wpattern[i])) || tre_isspace(fg->wpattern[i]) ||
-      (fg->wpattern[i] == TRE_CHAR('_')) || (fg->wpattern[i] == TRE_CHAR(',')) ||
-      (fg->wpattern[i] == TRE_CHAR('=')) || (fg->wpattern[i] == TRE_CHAR('-')) ||
-      (fg->wpattern[i] == TRE_CHAR(':')) || (fg->wpattern[i] == TRE_CHAR('/'))) {
-	continue;
-    } else if (fg->wpattern[i] == TRE_CHAR('.'))
-      fg->hasdot = i;
-    else {
-	/* Free memory and let others know this is empty. */
-	free(fg->wpattern);
-	fg->wpattern = NULL;
-	return REG_BADPAT;
-    }
-  }
-
 #ifdef TRE_WCHAR
+  SAVE_PATTERN(fg->wpattern, fg->wlen);
   STORE_MBS_PAT;
 #else
-  fg->len = fg->wlen;
-  fg->patter = fg->wpattern;
+  SAVE_PATTERN(fg->pattern, fg->len);
 #endif
 
   FILL_QSBC;
