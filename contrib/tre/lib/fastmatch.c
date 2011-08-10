@@ -32,8 +32,10 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef TRE_WCHAR
 #include <wchar.h>
 #include <wctype.h>
+#endif
 
 #include "fastmatch.h"
 #include "hashtable.h"
@@ -138,7 +140,7 @@ static int	fastcmp(const void *, const void *, size_t,
 		mismatch -= u;						\
 	      v = fg->wlen - 1 - mismatch;				\
 	      r = hashtable_get(fg->qsBc_table,				\
-		&((wchar_t *)startptr)[mismatch + 1], &bc);		\
+		&((tre_char_t *)startptr)[mismatch + 1], &bc);		\
 	      gs = fg->bmGs[mismatch];					\
 	    }								\
 	    bc = (r == 0) ? bc : fg->defBc;				\
@@ -228,7 +230,7 @@ static int	fastcmp(const void *, const void *, size_t,
     hashtable_put(fg->qsBc_table, &fg->wpattern[i], &k);		\
     if (fg->icase)							\
       {									\
-	wint_t wc = iswlower(fg->wpattern[i]) ?				\
+	tre_char_t wc = iswlower(fg->wpattern[i]) ?			\
 	  towupper(fg->wpattern[i]) : towlower(fg->wpattern[i]);	\
 	hashtable_put(fg->qsBc_table, &wc, &k);				\
       }									\
@@ -251,13 +253,13 @@ static int	fastcmp(const void *, const void *, size_t,
 #define _FILL_BMGS(arr, pat, plen, wide)				\
   {									\
     char *p;								\
-    wchar_t *wp;							\
+    tre_char_t *wp;							\
 									\
     if (wide)								\
       {									\
 	if (fg->icase)							\
 	  {								\
-	    wp = alloca(plen * sizeof(wint_t));				\
+	    wp = alloca(plen * sizeof(tre_char_t));			\
 	    for (int i = 0; i < plen; i++)				\
 	      wp[i] = towlower(pat[i]);					\
 	    _CALC_BMGS(arr, wp, plen);					\
@@ -446,9 +448,7 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
   int mismatch, shift, u = 0, v;
   const char *str_byte = data;
   const void *startptr = NULL;
-#ifdef TRE_WCHAR
-  const wchar_t *str_wide = data;
-#endif
+  const tre_char_t *str_wide = data;
 
   if (len == (unsigned)-1)
     switch (type)
@@ -532,10 +532,8 @@ fastcmp(const void *pat, const void *data, size_t len,
   const char *str_byte = data;
   const char *pat_byte = pat;
   int ret = REG_OK;
-#ifdef TRE_WCHAR
-  const wchar_t *str_wide = data;
-  const wchar_t *pat_wide = pat;
-#endif
+  const tre_char_t *str_wide = data;
+  const tre_char_t *pat_wide = pat;
 
   for (int i = len - 1; i >= 0; i--) {
     switch (type)
