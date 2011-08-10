@@ -53,7 +53,6 @@ typedef struct {
   /* flags */
   bool bol;
   bool eol;
-  bool reversed;
   bool word;
   bool icase;
 } fastmatch_t;

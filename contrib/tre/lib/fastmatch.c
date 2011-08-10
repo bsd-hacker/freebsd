@@ -202,9 +202,7 @@ static void	revs(char *str, int len);
  * next character after the comparison is within the pattern.  With
  * wildcards, the position of the last dot effects the maximum shift
  * distance.
- * The closer to the end the wild card is the slower the search.  A
- * reverse version of this algorithm would be useful for wildcards near
- * the end of the string.
+ * The closer to the end the wild card is the slower the search.
  *
  * Examples:
  * Pattern    Max shift
@@ -383,10 +381,6 @@ int
 tre_fastcomp(fastmatch_t *fg, const tre_char_t *wpat, size_t n,
 	     int cflags)
 {
-  int firstHalfDot = -1;
-  int firstLastHalfDot = -1;
-  int lastHalfDot = 0;
-
   /* Initialize. */
   memset(fg, 0, sizeof(*fg));
   fg->icase = (cflags & REG_ICASE);
@@ -440,19 +434,9 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *wpat, size_t n,
       (fg->wpattern[i] == TRE_CHAR('=')) || (fg->wpattern[i] == TRE_CHAR('-')) ||
       (fg->wpattern[i] == TRE_CHAR(':')) || (fg->wpattern[i] == TRE_CHAR('/'))) {
 	continue;
-    } else if (fg->wpattern[i] == TRE_CHAR('.')) {
+    } else if (fg->wpattern[i] == TRE_CHAR('.'))
       fg->hasdot = i;
-      if (i < fg->wlen / 2) {
-	if (firstHalfDot < 0)
-	  /* Closest dot to the beginning */
-	  firstHalfDot = i;
-      } else {
-	  /* Closest dot to the end of the pattern. */
-	  lastHalfDot = i;
-	  if (firstLastHalfDot < 0)
-	    firstLastHalfDot = i;
-      }
-    } else {
+    else {
 	/* Free memory and let others know this is empty. */
 	free(fg->wpattern);
 	fg->wpattern = NULL;
@@ -464,22 +448,6 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *wpat, size_t n,
   STORE_MBS_PAT;
 #endif
 
-  /*
-   * Determine if a reverse search would be faster based on the placement
-   * of the dots.
-   */
-//  if ((!(fg->bol || fg->eol)) &&
-//     (lastHalfDot && ((firstHalfDot < 0) ||
-//     ((fg->wlen - (lastHalfDot + 1)) < (size_t)firstHalfDot)))) {
-//    fg->reversed = true;
-//    fg->hasdot = fg->wlen - (firstHalfDot < 0 ?
-//	     firstLastHalfDot : firstHalfDot) - 1;
-//    revstr(fg->wpattern, fg->wlen);
-//#ifdef TRE_WCHAR
-//    revs(fg->pattern, fg->len);
-//#endif
-//  }
-
   FILL_QSBC;
   if (!fg->hasdot)
     FILL_BMGS(fg->bmGs, fg->wpattern, fg->wlen, true);
@@ -487,18 +455,6 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *wpat, size_t n,
   if (!fg->hasdot)
     FILL_BMGS(fg->sbmGs, fg->pattern, fg->len, false);
 #endif
-
-  /*
-   * Put pattern back to normal after pre-processing to allow for easy
-   * comparisons later.
-   */
-  if (fg->reversed)
-    {
-      revstr(fg->wpattern, fg->wlen);
-#ifdef TRE_WCHAR
-      revs(fg->pattern, fg->len);
-#endif
-    }
 
   return REG_OK;
 }
@@ -561,21 +517,6 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
 	return REG_OK;
       }
     }
-  } else if (fg->reversed) {
-    /* Quick Search algorithm. */
-    j = len - fg->len;
-    do {
-      SKIP_CHARS(j);
-      COMPARE;
-      if (mismatch == REG_OK) {
-	pmatch[0].rm_so = j - fg->len;
-	pmatch[0].rm_eo = j;
-	return REG_OK;
-      } else if (mismatch > 0)
-	return mismatch;
-      mismatch = -mismatch - 1;
-      SHIFT;
-    } while (!IS_OUT_OF_BOUNDS);
   } else {
     /* Quick Search algorithm. */
     j = 0;
