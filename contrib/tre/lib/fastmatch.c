@@ -44,7 +44,7 @@
 #include "xmalloc.h"
 
 static int	fastcmp(const void *, const void *, size_t,
-			tre_str_type_t, bool);
+			tre_str_type_t, bool, bool);
 
 /*
  * We will work with wide characters if they are supported
@@ -101,11 +101,11 @@ static int	fastcmp(const void *, const void *, size_t,
     {									\
       case STR_WIDE:							\
 	mismatch = fastcmp(fg->wpattern, startptr, fg->wlen, type,	\
-			   fg->icase);					\
+			   fg->icase, fg->newline);			\
 	break;								\
       default:								\
 	mismatch = fastcmp(fg->pattern, startptr, fg->len, type,	\
-			   fg->icase);					\
+			   fg->icase, fg->newline);			\
       }									\
 
 #define IS_OUT_OF_BOUNDS						\
@@ -337,6 +337,7 @@ static int	fastcmp(const void *, const void *, size_t,
   memset(fg, 0, sizeof(*fg));						\
   fg->icase = (cflags & REG_ICASE);					\
   fg->word = (cflags & REG_WORD);					\
+  fg->newline = (cflags & REG_NEWLINE);					\
 									\
   /* Cannot handle REG_ICASE with MB string */				\
   if (fg->icase && (MB_CUR_MAX > 1))					\
@@ -451,6 +452,13 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n,
   return REG_OK;
 }
 
+#define _SHIFT_ONE							\
+  {									\
+    shift = 1;								\
+    j += shift;								\
+    continue;								\
+  }
+
 #define CHECK_WORD_BOUNDARY						\
   {									\
     bool bbound, ebound;						\
@@ -472,12 +480,25 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n,
 	    (str_byte[j + fg->len] == '_'));				\
       }									\
     if (!bbound || !ebound)						\
-      {									\
-	shift = 1;							\
-	j += shift;							\
-	continue;							\
-      }									\
+      _SHIFT_ONE;							\
   }
+
+#define _BOL_COND							\
+  ((j == 0) || ((type == STR_WIDE) ? tre_isspace(str_wide[j - 1]) :	\
+    isspace(str_byte[j - 1])))
+
+#define CHECK_BOL_ANCHOR						\
+    if (!_BOL_COND)							\
+      _SHIFT_ONE;
+
+#define _EOL_COND							\
+  ((type == STR_WIDE) ?							\
+    ((j + fg->wlen == len) || tre_isspace(str_wide[j + fg->wlen])) :	\
+    ((j + fg->len == len) || isspace(str_byte[j + fg->wlen])))
+
+#define CHECK_EOL_ANCHOR						\
+    if (!_EOL_COND)							\
+      _SHIFT_ONE;
 
 /*
  * Executes matching of the precompiled pattern on the input string.
@@ -521,7 +542,7 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
 
   /* XXX: Fix with word boundaries */
   /* Only try once at the beginning or ending of the line. */
-  if (fg->bol || fg->eol)
+  if (!fg->newline && (fg->bol || fg->eol))
     {
       /* Simple text comparison. */
       if (!((fg->bol && fg->eol) &&
@@ -551,6 +572,10 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
 	    {
 	      if (fg->word)
 		CHECK_WORD_BOUNDARY;
+	      if (fg->bol)
+		CHECK_BOL_ANCHOR;
+	      if (fg->eol)
+		CHECK_EOL_ANCHOR;
 	      pmatch[0].rm_so = j;
 	      pmatch[0].rm_eo = j + ((type == STR_WIDE) ? fg->wlen : fg->len);
 	      return REG_OK;
@@ -582,7 +607,7 @@ tre_fastfree(fastmatch_t *fg)
  */
 static inline int
 fastcmp(const void *pat, const void *data, size_t len,
-	tre_str_type_t type, bool icase)
+	tre_str_type_t type, bool icase, bool newline)
 {
   const char *str_byte = data;
   const char *pat_byte = pat;
@@ -594,14 +619,16 @@ fastcmp(const void *pat, const void *data, size_t len,
     switch (type)
       {
 	case STR_WIDE:
-	  if (pat_wide[i] == L'.')
+	  if (pat_wide[i] == TRE_CHAR('.') &&
+	      (!newline || (str_wide[i] != TRE_CHAR('\n'))))
 	    continue;
 	  if (icase ? (towlower(pat_wide[i]) == towlower(str_wide[i]))
 		    : (pat_wide[i] == str_wide[i]))
 	    continue;
 	  break;
 	default:
-	  if (pat_byte[i] == '.')
+	  if (pat_byte[i] == '.' &&
+	      (!newline || (str_byte[i] != '\n')))
 	    continue;
 	  if (icase ? (tolower(pat_byte[i]) == tolower(str_byte[i]))
 		    : (pat_byte[i] == str_byte[i]))

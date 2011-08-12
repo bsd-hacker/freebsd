@@ -55,6 +55,7 @@ typedef struct {
   bool eol;
   bool word;
   bool icase;
+  bool newline;
 } fastmatch_t;
 
 int	tre_fastcomp_literal(fastmatch_t *preg, const tre_char_t *regex,
