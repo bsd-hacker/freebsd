@@ -259,10 +259,13 @@ static int	fastcmp(const void *, const void *, size_t,
       {									\
 	if (fg->icase)							\
 	  {								\
-	    wp = alloca(plen * sizeof(tre_char_t));			\
+	    wp = xmalloc(plen * sizeof(tre_char_t));			\
+	    if (wp == NULL)						\
+	      return REG_ESPACE;					\
 	    for (int i = 0; i < plen; i++)				\
 	      wp[i] = towlower(pat[i]);					\
 	    _CALC_BMGS(arr, wp, plen);					\
+	    free(wp);							\
 	  }								\
 	else								\
 	  _CALC_BMGS(arr, pat, plen);					\
@@ -271,10 +274,13 @@ static int	fastcmp(const void *, const void *, size_t,
       {									\
 	if (fg->icase)							\
 	  {								\
-	    p = alloca(plen);						\
+	    p = xmalloc(plen);						\
+	    if (p == NULL)						\
+	      return REG_ESPACE;					\
 	    for (int i = 0; i < plen; i++)				\
 	      p[i] = tolower(pat[i]);					\
 	    _CALC_BMGS(arr, p, plen);					\
+	    free(p);							\
 	  }								\
 	else								\
 	  _CALC_BMGS(arr, pat, plen);					\
@@ -393,7 +399,8 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n,
     pat++;
   }
 
-  if ((n >= 14) &&
+  /* Handle word-boundary matching when GNU extensions are enabled */
+  if ((cflags & REG_GNU) && (n >= 14) &&
       (memcmp(pat, TRE_CHAR("[[:<:]]"), 7 * sizeof(tre_char_t)) == 0) &&
       (memcmp(pat + n - 7, TRE_CHAR("[[:>:]]"),
 	      7 * sizeof(tre_char_t)) == 0))
@@ -439,6 +446,10 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n,
   return REG_OK;
 }
 
+/*
+ * Executes matching of the precompiled pattern on the input string.
+ * Returns REG_OK or REG_NOMATCH depending on if we find a match or not.
+ */
 int
 tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
     tre_str_type_t type, int nmatch, regmatch_t pmatch[])
@@ -480,7 +491,7 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
     {
       /* Simple text comparison. */
       if (!((fg->bol && fg->eol) &&
-	  (type == STR_WIDE ? (wlen != fg->wlen) : (len != fg->len))))
+	  (type == STR_WIDE ? (len != fg->wlen) : (len != fg->len))))
 	{
 	  /* Determine where in data to start search at. */
 	  j = fg->eol ? len - (type == STR_WIDE ? fg->wlen : fg->len) : 0;
