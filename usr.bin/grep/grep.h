@@ -90,6 +90,11 @@ struct str {
 	int		 line_no;
 };
 
+struct pat {
+	char		*pat;
+	int		 len;
+};
+
 struct epat {
 	char		*pat;
 	int		 mode;
@@ -101,7 +106,7 @@ extern int	 cflags, eflags;
 /* Command line flags */
 extern bool	 Eflag, Fflag, Gflag, Hflag, Lflag,
 		 bflag, cflag, hflag, iflag, lflag, mflag, nflag, oflag,
-		 qflag, sflag, vflag, wflag, xflag;
+		 qflag, sflag, vflag, xflag;
 extern bool	 dexclude, dinclude, fexclude, finclude, lbflag, nullflag;
 extern unsigned long long Aflag, Bflag, mcount;
 extern char	*label;
@@ -111,7 +116,7 @@ extern int	 binbehave, devbehave, dirbehave, filebehave, grepbehave, linkbehave;
 extern bool	 first, matchall, notfound, prev;
 extern int	 tail;
 extern unsigned int dpatterns, fpatterns, patterns;
-extern char    **pattern;
+extern struct pat  *pattern;
 extern struct epat *dpattern, *fpattern;
 extern regex_t	*er_pattern, *r_pattern;
 

@@ -311,25 +311,6 @@ procline(struct str *l, int nottext)
 					if (pmatch.rm_so != 0 ||
 					    (size_t)pmatch.rm_eo != l->len)
 						r = REG_NOMATCH;
-				/* Check for whole word match */
-				if (r == 0 && wflag &&
-				    pmatch.rm_so != 0) {
-					wint_t wbegin, wend;
-
-					wbegin = wend = L' ';
-					if (pmatch.rm_so != 0 &&
-					    sscanf(&l->dat[pmatch.rm_so - 1],
-					    "%lc", &wbegin) != 1)
-						r = REG_NOMATCH;
-					else if ((size_t)pmatch.rm_eo !=
-					    l->len &&
-					    sscanf(&l->dat[pmatch.rm_eo],
-					    "%lc", &wend) != 1)
-						r = REG_NOMATCH;
-					else if (iswword(wbegin) ||
-					    iswword(wend))
-						r = REG_NOMATCH;
-				}
 				if (r == 0) {
 					if (m == 0)
 						c++;

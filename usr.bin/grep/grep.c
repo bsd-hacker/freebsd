@@ -81,7 +81,7 @@ bool		 matchall;
 
 /* Searching patterns */
 unsigned int	 patterns, pattern_sz;
-char		**pattern;
+struct pat	*pattern;
 regex_t		*r_pattern;
 
 /* Filename exclusion/inclusion patterns */
@@ -109,7 +109,6 @@ bool	 oflag;		/* -o: print only matching part */
 bool	 qflag;		/* -q: quiet mode (don't output anything) */
 bool	 sflag;		/* -s: silent mode (ignore errors) */
 bool	 vflag;		/* -v: only show non-matching lines */
-bool	 wflag;		/* -w: pattern must start and end on word boundaries */
 bool	 xflag;		/* -x: pattern must match entire line */
 bool	 lbflag;	/* --line-buffered */
 bool	 nullflag;	/* --null */
@@ -231,14 +230,15 @@ add_pattern(char *pat, size_t len)
 	if (patterns == pattern_sz) {
 		pattern_sz *= 2;
 		pattern = grep_realloc(pattern, ++pattern_sz *
-		    sizeof(*pattern));
+		    sizeof(struct pat));
 	}
 	if (len > 0 && pat[len - 1] == '\n')
 		--len;
 	/* pat may not be NUL-terminated */
-	pattern[patterns] = grep_malloc(len + 1);
-	memcpy(pattern[patterns], pat, len);
-	pattern[patterns][len] = '\0';
+	pattern[patterns].pat = grep_malloc(len + 1);
+	memcpy(pattern[patterns].pat, pat, len);
+	pattern[patterns].pat[len] = '\0';
+	pattern[patterns].len = len;
 	++patterns;
 }
 
@@ -518,7 +518,6 @@ main(int argc, char *argv[])
 			break;
 		case 'o':
 			oflag = true;
-			cflags &= ~REG_NOSUB;
 			break;
 		case 'p':
 			linkbehave = LINK_SKIP;
@@ -551,12 +550,10 @@ main(int argc, char *argv[])
 			vflag = true;
 			break;
 		case 'w':
-			wflag = true;
-			cflags &= ~REG_NOSUB;
+			cflags |= REG_WORD;
 			break;
 		case 'x':
 			xflag = true;
-			cflags &= ~REG_NOSUB;
 			break;
 		case 'Z':
 			filebehave = FILE_GZIP;
@@ -590,7 +587,6 @@ main(int argc, char *argv[])
 			    strcasecmp("none", optarg) != 0 &&
 			    strcasecmp("no", optarg) != 0)
 				errx(2, getstr(3), "--color");
-			cflags &= ~REG_NOSUB;
 			break;
 		case LABEL_OPT:
 			label = optarg;
@@ -656,7 +652,8 @@ main(int argc, char *argv[])
 	r_pattern = grep_calloc(patterns, sizeof(*r_pattern));
 
 	for (i = 0; i < patterns; ++i) {
-		c = regcomp(&r_pattern[i], pattern[i], cflags);
+		c = regncomp(&r_pattern[i], pattern[i].pat,
+		    pattern[i].len, cflags);
 		if (c != 0) {
 			regerror(c, &r_pattern[i], re_error,
 			    RE_ERROR_BUF);
