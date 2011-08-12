@@ -90,6 +90,7 @@ typedef enum {
 #define REG_UNGREEDY    (REG_RIGHT_ASSOC << 1)
 #define REG_PEND        (REG_UNGREEDY << 1)
 #define REG_GNU		(REG_PEND << 1)
+#define REG_WORD	(REG_GNU << 1)
 
 /* POSIX tre_regexec() flags. */
 #define REG_NOTBOL 1

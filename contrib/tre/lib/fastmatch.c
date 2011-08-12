@@ -332,6 +332,18 @@ static int	fastcmp(const void *, const void *, size_t,
   memcpy(p, pat, l * sizeof(tre_char_t));				\
   p[l] = TRE_CHAR('\0');
 
+#define INIT_COMP							\
+  /* Initialize. */							\
+  memset(fg, 0, sizeof(*fg));						\
+  fg->icase = (cflags & REG_ICASE);					\
+  fg->word = (cflags & REG_WORD);					\
+									\
+  /* Cannot handle REG_ICASE with MB string */				\
+  if (fg->icase && (MB_CUR_MAX > 1))					\
+    return REG_BADPAT;							\
+									\
+  /* Calculate length if unspecified */					\
+  n = (n == 0) ? tre_strlen(pat) : n;
 
 /*
  * Returns: REG_OK on success, error code otherwise
@@ -340,12 +352,10 @@ int
 tre_fastcomp_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n,
 		     int cflags)
 {
-  /* Initialize. */
-  memset(fg, 0, sizeof(*fg));
-  fg->icase = (cflags & REG_ICASE);
+  INIT_COMP;
 
-  /* Cannot handle REG_ICASE with MB string */
-  if (fg->icase && (MB_CUR_MAX > 1))
+  /* Cannot handle word boundaries with MB string */
+  if (fg->word && (MB_CUR_MAX > 1))
     return REG_BADPAT;
 
 #ifdef TRE_WCHAR
@@ -372,15 +382,7 @@ int
 tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n,
 	     int cflags)
 {
-  /* Initialize. */
-  memset(fg, 0, sizeof(*fg));
-  fg->icase = (cflags & REG_ICASE);
-
-  /* Cannot handle REG_ICASE with MB string */
-  if (fg->icase && (MB_CUR_MAX > 1))
-    return REG_BADPAT;
-
-  n = (n == 0) ? tre_strlen(pat) : n;
+  INIT_COMP;
 
   /* Remove end-of-line character ('$'). */
   if ((n > 0) && (pat[n - 1] == TRE_CHAR('$')))
@@ -407,6 +409,10 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n,
       pat += 7;
       fg->word = true;
     }
+
+  /* Cannot handle word boundaries with MB string */
+  if (fg->word && (MB_CUR_MAX > 1))
+    return REG_BADPAT;
 
   /* Look for ways to cheat...er...avoid the full regex engine. */
   for (unsigned int i = 0; i < n; i++)
@@ -444,6 +450,34 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n,
 
   return REG_OK;
 }
+
+#define CHECK_WORD_BOUNDARY						\
+  {									\
+    bool bbound, ebound;						\
+									\
+    switch (type)							\
+      {									\
+	case STR_WIDE:							\
+	  bbound = (j == 0) || !(tre_isalnum(str_wide[j - 1]) ||	\
+	    (str_wide[j - 1] == TRE_CHAR('_')));			\
+	  ebound = (j + fg->wlen == len) ||				\
+	     !(tre_isalnum(str_wide[j + fg->wlen]) ||			\
+	     (str_wide[j + fg->wlen] == TRE_CHAR('_')));		\
+	  break;							\
+	default:							\
+	  bbound = (j == 0) || !(tre_isalnum(str_byte[j - 1]) ||	\
+	    (str_byte[j - 1] == '_'));					\
+	  ebound = (j + fg->len == len) ||				\
+	    !(tre_isalnum(str_byte[j + fg->len]) ||			\
+	    (str_byte[j + fg->len] == '_'));				\
+      }									\
+    if (!bbound || !ebound)						\
+      {									\
+	shift = 1;							\
+	j += shift;							\
+	continue;							\
+      }									\
+  }
 
 /*
  * Executes matching of the precompiled pattern on the input string.
@@ -485,6 +519,7 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
 	shift = fg->len;
     }
 
+  /* XXX: Fix with word boundaries */
   /* Only try once at the beginning or ending of the line. */
   if (fg->bol || fg->eol)
     {
@@ -506,7 +541,7 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
     }
   else
     {
-      /* Quick Search algorithm. */
+      /* Quick Search / Turbo Boyer-Moore algorithm. */
       j = 0;
       do
 	{
@@ -514,6 +549,8 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
 	  COMPARE;
 	  if (mismatch == REG_OK)
 	    {
+	      if (fg->word)
+		CHECK_WORD_BOUNDARY;
 	      pmatch[0].rm_so = j;
 	      pmatch[0].rm_eo = j + ((type == STR_WIDE) ? fg->wlen : fg->len);
 	      return REG_OK;
