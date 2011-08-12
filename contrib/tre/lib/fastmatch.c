@@ -63,16 +63,14 @@ static int	fastcmp(const void *, const void *, size_t,
  * SB strings.
  */
 #define SKIP_CHARS(n)							\
-  do {									\
-    switch (type)							\
-      {									\
-	case STR_WIDE:							\
-	  startptr = str_wide + n;					\
-	  break;							\
-	default:							\
-	  startptr = str_byte + n;					\
-      }									\
-  } while (0);								\
+  switch (type)								\
+    {									\
+      case STR_WIDE:							\
+	startptr = str_wide + n;					\
+	break;								\
+      default:								\
+	startptr = str_byte + n;					\
+    }
 
 /*
  * Converts the wide string pattern to SB/MB string and stores
@@ -80,7 +78,7 @@ static int	fastcmp(const void *, const void *, size_t,
  * converted string.
  */
 #define STORE_MBS_PAT							\
-  do {									\
+  {									\
     size_t siz;								\
 									\
     siz = wcstombs(NULL, fg->wpattern, 0);				\
@@ -92,7 +90,7 @@ static int	fastcmp(const void *, const void *, size_t,
       return REG_ESPACE;						\
     wcstombs(fg->pattern, fg->wpattern, siz);				\
     fg->pattern[siz] = '\0';						\
-  } while (0);								\
+  }									\
 
 /*
  * Compares the pattern to the input string at the position
@@ -225,16 +223,16 @@ static int	fastcmp(const void *, const void *, size_t,
   fg->qsBc_table = hashtable_init(fg->wlen * 4, sizeof(tre_char_t),	\
     sizeof(int));							\
   for (unsigned int i = fg->hasdot + 1; i < fg->wlen; i++)		\
-  {									\
-    int k = fg->wlen - i;						\
-    hashtable_put(fg->qsBc_table, &fg->wpattern[i], &k);		\
-    if (fg->icase)							\
-      {									\
-	tre_char_t wc = iswlower(fg->wpattern[i]) ?			\
-	  towupper(fg->wpattern[i]) : towlower(fg->wpattern[i]);	\
-	hashtable_put(fg->qsBc_table, &wc, &k);				\
-      }									\
-  }									\
+    {									\
+      int k = fg->wlen - i;						\
+      hashtable_put(fg->qsBc_table, &fg->wpattern[i], &k);		\
+      if (fg->icase)							\
+	{								\
+	  tre_char_t wc = iswlower(fg->wpattern[i]) ?			\
+	    towupper(fg->wpattern[i]) : towlower(fg->wpattern[i]);	\
+	  hashtable_put(fg->qsBc_table, &wc, &k);			\
+	}								\
+    }
 
 /*
  * Fills in the good suffix table for SB/MB strings.
@@ -386,41 +384,42 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n,
 
   /* Remove end-of-line character ('$'). */
   if ((n > 0) && (pat[n - 1] == TRE_CHAR('$')))
-  {
-    fg->eol = true;
-    n--;
-  }
+    {
+      fg->eol = true;
+      n--;
+    }
 
   /* Remove beginning-of-line character ('^'). */
   if (pat[0] == TRE_CHAR('^'))
-  {
-    fg->bol = true;
-    n--;
-    pat++;
-  }
+    {
+      fg->bol = true;
+      n--;
+      pat++;
+    }
 
   /* Handle word-boundary matching when GNU extensions are enabled */
   if ((cflags & REG_GNU) && (n >= 14) &&
       (memcmp(pat, TRE_CHAR("[[:<:]]"), 7 * sizeof(tre_char_t)) == 0) &&
       (memcmp(pat + n - 7, TRE_CHAR("[[:>:]]"),
 	      7 * sizeof(tre_char_t)) == 0))
-  {
-    n -= 14;
-    pat += 7;
-    fg->word = true;
-  }
+    {
+      n -= 14;
+      pat += 7;
+      fg->word = true;
+    }
 
   /* Look for ways to cheat...er...avoid the full regex engine. */
-  for (unsigned int i = 0; i < n; i++) {
-    /* Can still cheat? */
-    if ((tre_isalnum(pat[i])) || tre_isspace(pat[i]) ||
-      (pat[i] == TRE_CHAR('_')) || (pat[i] == TRE_CHAR(',')) ||
-      (pat[i] == TRE_CHAR('=')) || (pat[i] == TRE_CHAR('-')) ||
-      (pat[i] == TRE_CHAR(':')) || (pat[i] == TRE_CHAR('/')))
+  for (unsigned int i = 0; i < n; i++)
+    {
+      /* Can still cheat? */
+      if ((tre_isalnum(pat[i])) || tre_isspace(pat[i]) ||
+	  (pat[i] == TRE_CHAR('_')) || (pat[i] == TRE_CHAR(',')) ||
+	  (pat[i] == TRE_CHAR('=')) || (pat[i] == TRE_CHAR('-')) ||
+	  (pat[i] == TRE_CHAR(':')) || (pat[i] == TRE_CHAR('/')))
 	continue;
-    else if (pat[i] == TRE_CHAR('.'))
-      fg->hasdot = i;
-    else
+      else if (pat[i] == TRE_CHAR('.'))
+	fg->hasdot = i;
+      else
 	return REG_BADPAT;
   }
 
@@ -574,6 +573,5 @@ fastcmp(const void *pat, const void *data, size_t len,
     ret = -(i + 1);
     break;
   }
-
   return ret;
 }
