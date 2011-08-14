@@ -503,9 +503,9 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n,
  */
 int
 tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
-    tre_str_type_t type, int nmatch, regmatch_t pmatch[])
+    tre_str_type_t type, int nmatch, regmatch_t pmatch[], int eflags)
 {
-  unsigned int j;
+  unsigned int j = 0;
   int ret = REG_NOMATCH;
   int mismatch, shift, u = 0, v;
   const char *str_byte = data;
@@ -537,8 +537,23 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
 	shift = fg->len;
     }
 
+  /*
+   * REG_NOTBOL means not anchoring ^ to the beginning of the line, so we
+   * can shift one because there can't be a match at the beginning.
+   */
+  if (fg->bol && (eflags & REG_NOTBOL))
+    j = 1;
+
+  /*
+   * Like above, we cannot have a match at the very end when anchoring to
+   * the end and REG_NOTEOL is specified.
+   */
+  if (fg->eol && (eflags & REG_NOTEOL))
+    len--;
+
   /* Only try once at the beginning or ending of the line. */
-  if (!fg->newline && (fg->bol || fg->eol))
+  if ((fg->bol || fg->eol) && !fg->newline && !(eflags & REG_NOTBOL) &&
+      !(eflags & REG_NOTEOL))
     {
       /* Simple text comparison. */
       if (!((fg->bol && fg->eol) &&
@@ -561,7 +576,6 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
   else
     {
       /* Quick Search / Turbo Boyer-Moore algorithm. */
-      j = 0;
       do
 	{
 	  SKIP_CHARS(j);
