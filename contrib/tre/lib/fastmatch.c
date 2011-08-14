@@ -459,29 +459,26 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n,
     continue;								\
   }
 
+#define _BBOUND_COND							\
+  ((type == STR_WIDE) ?							\
+    ((j == 0) || !(tre_isalnum(str_wide[j - 1]) ||			\
+      (str_wide[j - 1] == TRE_CHAR('_')))) :				\
+    ((j == 0) || !(tre_isalnum(str_byte[j - 1]) ||			\
+      (str_byte[j - 1] == '_'))))
+
+#define _EBOUND_COND							\
+  ((type == STR_WIDE) ?							\
+    ((j + fg->wlen == len) || !(tre_isalnum(str_wide[j + fg->wlen]) ||	\
+      (str_wide[j + fg->wlen] == TRE_CHAR('_')))) :			\
+    ((j + fg->len == len) || !(tre_isalnum(str_byte[j + fg->len]) ||	\
+      (str_byte[j + fg->len] == '_'))))
+
+#define IS_ON_WORD_BOUNDARY						\
+  (_BBOUND_COND && _EBOUND_COND)
+
 #define CHECK_WORD_BOUNDARY						\
-  {									\
-    bool bbound, ebound;						\
-									\
-    switch (type)							\
-      {									\
-	case STR_WIDE:							\
-	  bbound = (j == 0) || !(tre_isalnum(str_wide[j - 1]) ||	\
-	    (str_wide[j - 1] == TRE_CHAR('_')));			\
-	  ebound = (j + fg->wlen == len) ||				\
-	     !(tre_isalnum(str_wide[j + fg->wlen]) ||			\
-	     (str_wide[j + fg->wlen] == TRE_CHAR('_')));		\
-	  break;							\
-	default:							\
-	  bbound = (j == 0) || !(tre_isalnum(str_byte[j - 1]) ||	\
-	    (str_byte[j - 1] == '_'));					\
-	  ebound = (j + fg->len == len) ||				\
-	    !(tre_isalnum(str_byte[j + fg->len]) ||			\
-	    (str_byte[j + fg->len] == '_'));				\
-      }									\
-    if (!bbound || !ebound)						\
-      _SHIFT_ONE;							\
-  }
+    if (!IS_ON_WORD_BOUNDARY)						\
+      _SHIFT_ONE;
 
 #define _BOL_COND							\
   ((j == 0) || ((type == STR_WIDE) ? tre_isspace(str_wide[j - 1]) :	\
@@ -540,7 +537,6 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
 	shift = fg->len;
     }
 
-  /* XXX: Fix with word boundaries */
   /* Only try once at the beginning or ending of the line. */
   if (!fg->newline && (fg->bol || fg->eol))
     {
@@ -554,6 +550,8 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
 	  COMPARE;
 	  if (mismatch == REG_OK)
 	    {
+	      if (fg->word && !IS_ON_WORD_BOUNDARY)
+		return ret;
 	      pmatch[0].rm_so = j;
 	      pmatch[0].rm_eo = j + (type == STR_WIDE ? fg->wlen : fg->len);
 	      return REG_OK;
