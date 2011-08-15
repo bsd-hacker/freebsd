@@ -18,6 +18,7 @@
 extern "C" {
 #endif
 
+#ifndef TRE_LIBC_BUILD
 #define tre_regcomp     regcomp
 #define tre_regerror    regerror
 #define tre_regexec     regexec
@@ -35,6 +36,29 @@ extern "C" {
 #define tre_regwexec    regwexec
 #define tre_regwncomp   regwncomp
 #define tre_regwnexec   regwnexec
+
+#define FUNC_DECL(f)	f
+#else
+#define regcomp		tre_regcomp
+#define regerror	tre_regerror
+#define regexec		tre_regexec
+#define regfree		tre_regfree
+
+#define regacomp	tre_regacomp
+#define regaexec	tre_regaexec
+#define regancomp	tre_regancomp
+#define reganexec	tre_reganexec
+#define regawncomp	tre_regawncomp
+#define regawnexec	tre_regawnexec
+#define regncomp	tre_regncomp
+#define regnexec	tre_regnexec
+#define regwcomp	tre_regwcomp
+#define regwexec	tre_regwexec
+#define regwncomp	tre_regwncomp
+#define regwnexec	tre_regwnexec
+
+#define FUNC_DECL(f)	tre_##f
+#endif
 
 typedef int regoff_t;
 typedef struct {
@@ -106,46 +130,46 @@ typedef enum {
 
 /* The POSIX.2 regexp functions */
 extern int
-regcomp(regex_t *preg, const char *regex, int cflags);
+FUNC_DECL(regcomp)(regex_t *preg, const char *regex, int cflags);
 
 extern int
-regexec(const regex_t *preg, const char *string, size_t nmatch,
+FUNC_DECL(regexec)(const regex_t *preg, const char *string, size_t nmatch,
 	regmatch_t pmatch[], int eflags);
 
 extern size_t
-regerror(int errcode, const regex_t *preg, char *errbuf,
+FUNC_DECL(regerror)(int errcode, const regex_t *preg, char *errbuf,
 	 size_t errbuf_size);
 
 extern void
-regfree(regex_t *preg);
+FUNC_DECL(regfree)(regex_t *preg);
 
 #ifdef TRE_WCHAR
 #include <wchar.h>
 
 /* Wide character versions (not in POSIX.2). */
 extern int
-regwcomp(regex_t *preg, const wchar_t *regex, int cflags);
+FUNC_DECL(regwcomp)(regex_t *preg, const wchar_t *regex, int cflags);
 
 extern int
-regwexec(const regex_t *preg, const wchar_t *string,
+FUNC_DECL(regwexec)(const regex_t *preg, const wchar_t *string,
 	 size_t nmatch, regmatch_t pmatch[], int eflags);
 #endif /* TRE_WCHAR */
 
 /* Versions with a maximum length argument and therefore the capability to
    handle null characters in the middle of the strings (not in POSIX.2). */
 extern int
-regncomp(regex_t *preg, const char *regex, size_t len, int cflags);
+FUNC_DECL(regncomp)(regex_t *preg, const char *regex, size_t len, int cflags);
 
 extern int
-regnexec(const regex_t *preg, const char *string, size_t len,
+FUNC_DECL(regnexec)(const regex_t *preg, const char *string, size_t len,
 	 size_t nmatch, regmatch_t pmatch[], int eflags);
 
 #ifdef TRE_WCHAR
 extern int
-regwncomp(regex_t *preg, const wchar_t *regex, size_t len, int cflags);
+FUNC_DECL(regwncomp)(regex_t *preg, const wchar_t *regex, size_t len, int cflags);
 
 extern int
-regwnexec(const regex_t *preg, const wchar_t *string, size_t len,
+FUNC_DECL(regwnexec)(const regex_t *preg, const wchar_t *string, size_t len,
 	  size_t nmatch, regmatch_t pmatch[], int eflags);
 #endif /* TRE_WCHAR */
 
@@ -177,20 +201,20 @@ typedef struct {
 
 /* Approximate matching functions. */
 extern int
-regaexec(const regex_t *preg, const char *string,
+FUNC_DECL(regaexec)(const regex_t *preg, const char *string,
 	 regamatch_t *match, regaparams_t params, int eflags);
 
 extern int
-reganexec(const regex_t *preg, const char *string, size_t len,
+FUNC_DECL(reganexec)(const regex_t *preg, const char *string, size_t len,
 	  regamatch_t *match, regaparams_t params, int eflags);
 #ifdef TRE_WCHAR
 /* Wide character approximate matching. */
 extern int
-regawexec(const regex_t *preg, const wchar_t *string,
+FUNC_DECL(regawexec)(const regex_t *preg, const wchar_t *string,
 	  regamatch_t *match, regaparams_t params, int eflags);
 
 extern int
-regawnexec(const regex_t *preg, const wchar_t *string, size_t len,
+FUNC_DECL(regawnexec)(const regex_t *preg, const wchar_t *string, size_t len,
 	   regamatch_t *match, regaparams_t params, int eflags);
 #endif /* TRE_WCHAR */
 
@@ -213,7 +237,7 @@ typedef struct {
 } tre_str_source;
 
 extern int
-reguexec(const regex_t *preg, const tre_str_source *string,
+FUNC_DECL(reguexec)(const regex_t *preg, const tre_str_source *string,
 	 size_t nmatch, regmatch_t pmatch[], int eflags);
 
 /* Returns the version string.	The returned string is static. */

@@ -29,6 +29,7 @@
 #include <config.h>
 #endif /* HAVE_CONFIG_H */
 #include <limits.h>
+#include <regex.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,7 +39,6 @@
 #endif
 
 #include "hashtable.h"
-#include "tre.h"
 #include "tre-fastmatch.h"
 #include "tre-internal.h"
 #include "xmalloc.h"

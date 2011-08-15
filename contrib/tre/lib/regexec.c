@@ -28,6 +28,7 @@ char *alloca ();
 #endif /* TRE_USE_ALLOCA */
 
 #include <assert.h>
+#include <regex.h>
 #include <stdlib.h>
 #include <string.h>
 #ifdef HAVE_WCHAR_H
@@ -46,10 +47,9 @@ char *alloca ();
 
 #include "tre-fastmatch.h"
 #include "tre-internal.h"
-#include "tre.h"
 #include "xmalloc.h"
 
-#ifdef TRE_WEAK_REF
+#ifdef TRE_LIBC_BUILD
 __weak_reference(tre_regexec, regexec);
 __weak_reference(tre_regnexec, regnexec);
 __weak_reference(tre_regwexec, regwexec);

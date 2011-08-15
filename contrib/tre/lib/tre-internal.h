@@ -9,6 +9,8 @@
 #ifndef TRE_INTERNAL_H
 #define TRE_INTERNAL_H 1
 
+#include <regex.h>
+
 #ifdef HAVE_WCHAR_H
 #include <wchar.h>
 #endif /* HAVE_WCHAR_H */
@@ -18,7 +20,6 @@
 #endif /* !HAVE_WCTYPE_H */
 
 #include <ctype.h>
-#include "tre.h"
 
 #ifdef TRE_DEBUG
 #include <stdio.h>

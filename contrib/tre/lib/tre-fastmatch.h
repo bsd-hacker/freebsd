@@ -29,10 +29,10 @@
 #define TRE_FASTMATCH_H 1
 
 #include <limits.h>
+#include <regex.h>
 #include <stdbool.h>
 
 #include "hashtable.h"
-#include "tre.h"
 #include "tre-internal.h"
 
 #define BM_MAX_LEN 1024

@@ -12,13 +12,14 @@
 
 #include <string.h>
 #include <errno.h>
+#include <regex.h>
 #include <stdlib.h>
 
+#include "tre-fastmatch.h"
 #include "tre-internal.h"
-#include "tre.h"
 #include "xmalloc.h"
 
-#ifdef TRE_WEAK_REF
+#ifdef TRE_LIBC_BUILD
 __weak_reference(tre_regcomp, regcomp);
 __weak_reference(tre_regncomp, regncomp);
 __weak_reference(tre_regwcomp, regwcomp);

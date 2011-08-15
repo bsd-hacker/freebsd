@@ -31,6 +31,7 @@ char *alloca ();
 #undef __NO_INLINE__
 
 #include <assert.h>
+#include <regex.h>
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
@@ -49,7 +50,6 @@ char *alloca ();
 
 #include "tre-internal.h"
 #include "tre-match-utils.h"
-#include "tre.h"
 #include "xmalloc.h"
 
 #define TRE_M_COST	0

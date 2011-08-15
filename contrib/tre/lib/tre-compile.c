@@ -18,6 +18,7 @@
 #endif /* HAVE_CONFIG_H */
 #include <stdio.h>
 #include <assert.h>
+#include <regex.h>
 #include <string.h>
 
 #include "tre-fastmatch.h"
@@ -27,7 +28,6 @@
 #include "tre-ast.h"
 #include "tre-parse.h"
 #include "tre-compile.h"
-#include "tre.h"
 #include "xmalloc.h"
 
 /*

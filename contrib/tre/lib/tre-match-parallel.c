@@ -45,6 +45,7 @@ char *alloca ();
 #endif /* TRE_USE_ALLOCA */
 
 #include <assert.h>
+#include <regex.h>
 #include <stdlib.h>
 #include <string.h>
 #ifdef HAVE_WCHAR_H
@@ -62,7 +63,6 @@ char *alloca ();
 
 #include "tre-internal.h"
 #include "tre-match-utils.h"
-#include "tre.h"
 #include "xmalloc.h"
 
 

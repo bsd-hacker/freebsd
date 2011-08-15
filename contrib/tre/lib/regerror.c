@@ -10,6 +10,7 @@
 #include <config.h>
 #endif /* HAVE_CONFIG_H */
 
+#include <regex.h>
 #include <string.h>
 #ifdef HAVE_WCHAR_H
 #include <wchar.h>
@@ -19,7 +20,6 @@
 #endif /* HAVE_WCTYPE_H */
 
 #include "tre-internal.h"
-#include "tre.h"
 
 #ifdef HAVE_GETTEXT
 #include <libintl.h>
@@ -28,7 +28,7 @@
 #define gettext(s) s
 #endif
 
-#ifdef TRE_WEAK_REF
+#ifdef TRE_LIBC_BUILD
 __weak_reference(tre_regerror, regerror);
 #endif
 
