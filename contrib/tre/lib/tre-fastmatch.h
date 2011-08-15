@@ -35,21 +35,17 @@
 #include "hashtable.h"
 #include "tre-internal.h"
 
-#define BM_MAX_LEN 1024
-
 typedef struct {
   size_t wlen;
   size_t len;
   tre_char_t *wpattern;
   int hasdot;
   int qsBc[UCHAR_MAX + 1];
-  int bmGs[BM_MAX_LEN];
-#ifdef TRE_WCHAR
+  int *bmGs;
   char *pattern;
   int defBc;
   hashtable *qsBc_table;
-  int sbmGs[BM_MAX_LEN];
-#endif
+  int *sbmGs;
   /* flags */
   bool bol;
   bool eol;

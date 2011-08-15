@@ -239,14 +239,24 @@ static int	fastcmp(const void *, const void *, size_t,
  */
 #define FILL_BMGS							\
   if (!fg->hasdot)							\
-    _FILL_BMGS(fg->sbmGs, fg->pattern, fg->len, false);
+    {									\
+      fg->sbmGs = xmalloc(fg->len * sizeof(int));			\
+      if (!fg->sbmGs)							\
+	return REG_ESPACE;						\
+      _FILL_BMGS(fg->sbmGs, fg->pattern, fg->len, false);		\
+    }
 
 /*
  * Fills in the good suffix table for wide strings.
  */
 #define FILL_BMGS_WIDE							\
   if (!fg->hasdot)							\
-    _FILL_BMGS(fg->bmGs, fg->wpattern, fg->wlen, true);
+    {									\
+      fg->bmGs = xmalloc(fg->wlen * sizeof(int));			\
+      if (!fg->bmGs)							\
+	return REG_ESPACE;						\
+      _FILL_BMGS(fg->bmGs, fg->wpattern, fg->wlen, true);		\
+    }
 
 #define _FILL_BMGS(arr, pat, plen, wide)				\
   {									\
@@ -634,8 +644,12 @@ tre_free_fast(fastmatch_t *fg)
 
 #ifdef TRE_WCHAR
   hashtable_free(fg->qsBc_table);
+  if (!fg->hasdot)
+    xfree(fg->bmGs);
   xfree(fg->wpattern);
 #endif
+  if (!fg->hasdot)
+    xfree(fg->sbmGs);
   xfree(fg->pattern);
 }
 
