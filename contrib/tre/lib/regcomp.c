@@ -141,6 +141,8 @@ tre_regwcomp(regex_t *preg, const wchar_t *regex, int cflags)
 void
 tre_regfree(regex_t *preg)
 {
+  if (preg->shortcut != NULL)
+    tre_free_fast(preg->shortcut);
   tre_free(preg);
 }
 
