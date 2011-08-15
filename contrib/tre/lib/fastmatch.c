@@ -324,6 +324,10 @@ static int	fastcmp(const void *, const void *, size_t,
     free(suff);								\
   }
 
+/*
+ * Copies the pattern pat having lenght n to p and stores
+ * the size in l.
+ */
 #define SAVE_PATTERN(p, l)						\
   l = (n == 0) ? tre_strlen(pat) : n;					\
   p = xmalloc((l + 1) * sizeof(tre_char_t));				\
@@ -332,6 +336,9 @@ static int	fastcmp(const void *, const void *, size_t,
   memcpy(p, pat, l * sizeof(tre_char_t));				\
   p[l] = TRE_CHAR('\0');
 
+/*
+ * Initializes pattern compiling.
+ */
 #define INIT_COMP							\
   /* Initialize. */							\
   memset(fg, 0, sizeof(*fg));						\
@@ -473,9 +480,17 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n,
     ((j + fg->len == len) || !(tre_isalnum(str_byte[j + fg->len]) ||	\
       (str_byte[j + fg->len] == '_'))))
 
+/*
+ * Condition to check whether the match on position j is on a
+ * word boundary.
+ */
 #define IS_ON_WORD_BOUNDARY						\
   (_BBOUND_COND && _EBOUND_COND)
 
+/*
+ * Checks word boundary and shifts one if match is not on a
+ * boundary.
+ */
 #define CHECK_WORD_BOUNDARY						\
     if (!IS_ON_WORD_BOUNDARY)						\
       _SHIFT_ONE;
@@ -484,6 +499,10 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n,
   ((j == 0) || ((type == STR_WIDE) ? tre_isspace(str_wide[j - 1]) :	\
     isspace(str_byte[j - 1])))
 
+/*
+ * Checks BOL anchor and shifts one if match is not on a
+ * boundary.
+ */
 #define CHECK_BOL_ANCHOR						\
     if (!_BOL_COND)							\
       _SHIFT_ONE;
@@ -493,6 +512,10 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n,
     ((j + fg->wlen == len) || tre_isspace(str_wide[j + fg->wlen])) :	\
     ((j + fg->len == len) || isspace(str_byte[j + fg->wlen])))
 
+/*
+ * Checks EOL anchor and shifts one if match is not on a
+ * boundary.
+ */
 #define CHECK_EOL_ANCHOR						\
     if (!_EOL_COND)							\
       _SHIFT_ONE;
@@ -512,11 +535,12 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
   const void *startptr = NULL;
   const tre_char_t *str_wide = data;
 
+  /* Calculate length if unspecified. */
   if (len == (unsigned)-1)
     switch (type)
       {
 	case STR_WIDE:
-	  len = wcslen(str_wide);
+	  len = tre_strlen(str_wide);
 	  break;
 	default:
 	  len = strlen(str_byte);
@@ -601,6 +625,9 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
     return ret;
 }
 
+/*
+ * Frees the resources that were allocated when the pattern was compiled.
+ */
 void
 tre_fastfree(fastmatch_t *fg)
 {
@@ -627,21 +654,29 @@ fastcmp(const void *pat, const void *data, size_t len,
   const tre_char_t *str_wide = data;
   const tre_char_t *pat_wide = pat;
 
+  /* Compare the pattern and the input char-by-char from the last position. */
   for (int i = len - 1; i >= 0; i--) {
     switch (type)
       {
 	case STR_WIDE:
+
+	  /* Check dot */
 	  if (pat_wide[i] == TRE_CHAR('.') &&
 	      (!newline || (str_wide[i] != TRE_CHAR('\n'))))
 	    continue;
+
+	  /* Compare */
 	  if (icase ? (towlower(pat_wide[i]) == towlower(str_wide[i]))
 		    : (pat_wide[i] == str_wide[i]))
 	    continue;
 	  break;
 	default:
+	  /* Check dot */
 	  if (pat_byte[i] == '.' &&
 	      (!newline || (str_byte[i] != '\n')))
 	    continue;
+
+	  /* Compare */
 	  if (icase ? (tolower(pat_byte[i]) == tolower(str_byte[i]))
 		    : (pat_byte[i] == str_byte[i]))
 	  continue;
