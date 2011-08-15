@@ -25,8 +25,8 @@
  * SUCH DAMAGE.
  */
 
-#ifndef FASTMATCH_H
-#define FASTMATCH_H 1
+#ifndef TRE_FASTMATCH_H
+#define TRE_FASTMATCH_H 1
 
 #include <limits.h>
 #include <stdbool.h>
@@ -65,4 +65,4 @@ int	tre_match_fast(const fastmatch_t *fg, const void *data, size_t len,
 	    tre_str_type_t type, int nmatch, regmatch_t pmatch[], int eflags);
 void	tre_free_fast(fastmatch_t *preg);
 
-#endif		/* FASTMATCH_H */
+#endif		/* TRE_FASTMATCH_H */
