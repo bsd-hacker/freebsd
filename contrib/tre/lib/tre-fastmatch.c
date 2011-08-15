@@ -263,7 +263,7 @@ static int	fastcmp(const void *, const void *, size_t,
 	    for (int i = 0; i < plen; i++)				\
 	      wp[i] = towlower(pat[i]);					\
 	    _CALC_BMGS(arr, wp, plen);					\
-	    free(wp);							\
+	    xfree(wp);							\
 	  }								\
 	else								\
 	  _CALC_BMGS(arr, pat, plen);					\
@@ -278,7 +278,7 @@ static int	fastcmp(const void *, const void *, size_t,
 	    for (int i = 0; i < plen; i++)				\
 	      p[i] = tolower(pat[i]);					\
 	    _CALC_BMGS(arr, p, plen);					\
-	    free(p);							\
+	    xfree(p);							\
 	  }								\
 	else								\
 	  _CALC_BMGS(arr, pat, plen);					\
@@ -321,7 +321,7 @@ static int	fastcmp(const void *, const void *, size_t,
     for (int i = 0; i <= plen - 2; i++)					\
       arr[plen - 1 - suff[i]] = plen - 1 - i;				\
 									\
-    free(suff);								\
+    xfree(suff);							\
   }
 
 /*
@@ -634,9 +634,9 @@ tre_free_fast(fastmatch_t *fg)
 
 #ifdef TRE_WCHAR
   hashtable_free(fg->qsBc_table);
-  free(fg->wpattern);
+  xfree(fg->wpattern);
 #endif
-  free(fg->pattern);
+  xfree(fg->pattern);
 }
 
 /*
