@@ -37,9 +37,9 @@
 #include <wctype.h>
 #endif
 
-#include "fastmatch.h"
 #include "hashtable.h"
 #include "tre.h"
+#include "tre-fastmatch.h"
 #include "tre-internal.h"
 #include "xmalloc.h"
 
@@ -357,8 +357,8 @@ static int	fastcmp(const void *, const void *, size_t,
  * Returns: REG_OK on success, error code otherwise
  */
 int
-tre_fastcomp_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n,
-		     int cflags)
+tre_compile_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n,
+		    int cflags)
 {
   INIT_COMP;
 
@@ -387,8 +387,8 @@ tre_fastcomp_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n,
  * Returns: REG_OK on success, error code otherwise
  */
 int
-tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n,
-	     int cflags)
+tre_compile_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
+		 int cflags)
 {
   INIT_COMP;
 
@@ -525,7 +525,7 @@ tre_fastcomp(fastmatch_t *fg, const tre_char_t *pat, size_t n,
  * Returns REG_OK or REG_NOMATCH depending on if we find a match or not.
  */
 int
-tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
+tre_match_fast(const fastmatch_t *fg, const void *data, size_t len,
     tre_str_type_t type, int nmatch, regmatch_t pmatch[], int eflags)
 {
   unsigned int j = 0;
@@ -629,7 +629,7 @@ tre_fastexec(const fastmatch_t *fg, const void *data, size_t len,
  * Frees the resources that were allocated when the pattern was compiled.
  */
 void
-tre_fastfree(fastmatch_t *fg)
+tre_free_fast(fastmatch_t *fg)
 {
 
 #ifdef TRE_WCHAR

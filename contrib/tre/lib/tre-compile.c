@@ -20,7 +20,7 @@
 #include <assert.h>
 #include <string.h>
 
-#include "fastmatch.h"
+#include "tre-fastmatch.h"
 #include "tre-internal.h"
 #include "tre-mem.h"
 #include "tre-stack.h"
@@ -1876,8 +1876,8 @@ tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
   if (!shortcut)
     return REG_ESPACE;
   ret = (cflags & REG_LITERAL)
-    ? tre_fastcomp_literal(shortcut, regex, n, cflags)
-    : tre_fastcomp(shortcut, regex, n, cflags);
+    ? tre_compile_literal(shortcut, regex, n, cflags)
+    : tre_compile_fast(shortcut, regex, n, cflags);
   if (ret == REG_OK)
     {
       preg->shortcut = shortcut;

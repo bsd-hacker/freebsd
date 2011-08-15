@@ -44,7 +44,7 @@ char *alloca ();
 #endif /* HAVE_MALLOC_H */
 #include <limits.h>
 
-#include "fastmatch.h"
+#include "tre-fastmatch.h"
 #include "tre-internal.h"
 #include "tre.h"
 #include "xmalloc.h"
@@ -158,7 +158,7 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
 
   /* Check if we can cheat with a faster algorithm */
   if (shortcut != NULL)
-    return tre_fastexec(shortcut, string, len, type, nmatch, pmatch, eflags);
+    return tre_match_fast(shortcut, string, len, type, nmatch, pmatch, eflags);
 
   if (tnfa->num_tags > 0 && nmatch > 0)
     {
