@@ -347,7 +347,7 @@ static int	fastcmp(const void *, const void *, size_t,
   fg->newline = (cflags & REG_NEWLINE);					\
 									\
   /* Cannot handle REG_ICASE with MB string */				\
-  if (fg->icase && (MB_CUR_MAX > 1))					\
+  if (fg->icase && (TRE_MB_CUR_MAX > 1))				\
     return REG_BADPAT;							\
 									\
   /* Calculate length if unspecified */					\
@@ -363,7 +363,7 @@ tre_compile_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n,
   INIT_COMP;
 
   /* Cannot handle word boundaries with MB string */
-  if (fg->word && (MB_CUR_MAX > 1))
+  if (fg->word && (TRE_MB_CUR_MAX > 1))
     return REG_BADPAT;
 
 #ifdef TRE_WCHAR
@@ -419,7 +419,7 @@ tre_compile_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
     }
 
   /* Cannot handle word boundaries with MB string */
-  if (fg->word && (MB_CUR_MAX > 1))
+  if (fg->word && (TRE_MB_CUR_MAX > 1))
     return REG_BADPAT;
 
   /* Look for ways to cheat...er...avoid the full regex engine. */
