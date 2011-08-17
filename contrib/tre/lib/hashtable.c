@@ -25,10 +25,9 @@
  */
 
 #include <sys/hash.h>
+#include <hashtable.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include "hashtable.h"
 
 hashtable
 *hashtable_init(size_t table_size, size_t key_size, size_t value_size)

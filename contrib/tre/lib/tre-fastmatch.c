@@ -28,6 +28,7 @@
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif /* HAVE_CONFIG_H */
+#include <hashtable.h>
 #include <limits.h>
 #include <regex.h>
 #include <stdbool.h>

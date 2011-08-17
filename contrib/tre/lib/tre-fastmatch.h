@@ -28,31 +28,14 @@
 #ifndef TRE_FASTMATCH_H
 #define TRE_FASTMATCH_H 1
 
+#include <fastmatch.h>
+#include <hashtable.h>
 #include <limits.h>
 #include <regex.h>
 #include <stdbool.h>
 
 #include "hashtable.h"
 #include "tre-internal.h"
-
-typedef struct {
-  size_t wlen;
-  size_t len;
-  tre_char_t *wpattern;
-  int hasdot;
-  int qsBc[UCHAR_MAX + 1];
-  int *bmGs;
-  char *pattern;
-  int defBc;
-  hashtable *qsBc_table;
-  int *sbmGs;
-  /* flags */
-  bool bol;
-  bool eol;
-  bool word;
-  bool icase;
-  bool newline;
-} fastmatch_t;
 
 int	tre_compile_literal(fastmatch_t *preg, const tre_char_t *regex,
 	    size_t, int);
