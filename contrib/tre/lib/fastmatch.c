@@ -121,13 +121,29 @@ tre_fastncomp(fastmatch_t *preg, const char *regex, size_t n, int cflags)
 int
 tre_fixcomp(fastmatch_t *preg, const char *regex, int cflags)
 {
-  return tre_fixncomp(preg, regex, regex ? strlen(regex) : 0, cflags);
+  if (cflags & REG_PEND)
+    {
+      len = (preg->re_endp >= regex)
+        ? preg->re_endp - regex
+        : 0;
+     return tre_fixncomp(preg, regex, len ? strlen(regex) : 0, cflags);
+   }
+  else
+    return tre_fixncomp(preg, regex, regex ? strlen(regex) : 0, cflags);
 }
 
 int
 tre_fastcomp(fastmatch_t *preg, const char *regex, int cflags)
 {
-  return tre_fastncomp(preg, regex, regex ? strlen(regex) : 0, cflags);
+  if (cflags & REG_PEND)
+    {
+      len = (preg->re_endp >= regex)
+        ? preg->re_endp - regex
+        : 0;
+     return tre_fastncomp(preg, regex, len ? strlen(regex) : 0, cflags);
+   }
+  else
+    return tre_fastncomp(preg, regex, regex ? strlen(regex) : 0, cflags);
 }
 
 int
