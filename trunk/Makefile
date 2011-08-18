@@ -9,7 +9,12 @@ PROG=	grep
 .else
 PROG=	bsdgrep
 .endif
-SRCS=	fastgrep.c file.c grep.c queue.c util.c
+SRCS=	file.c grep.c queue.c util.c
+
+# Extra files ported backported form some regex improvements
+.PATH: ${.CURDIR}/regex
+SRCS+=	fastmatch.c hashtable.c tre-fastmatch.c xmalloc.c
+CFLAGS+=-I${.CURDIR}/regex	
 
 .if ${MK_BSD_GREP} == "yes"
 LINKS=	${BINDIR}/grep ${BINDIR}/egrep \

@@ -36,6 +36,8 @@
 #include <stdio.h>
 #include <zlib.h>
 
+#include "fastmatch.h"
+
 #ifdef WITHOUT_NLS
 #define getstr(n)	 errstr[n]
 #else
@@ -95,17 +97,6 @@ struct epat {
 	int		 mode;
 };
 
-typedef struct {
-	size_t		 len;
-	unsigned char	*pattern;
-	int		 qsBc[UCHAR_MAX + 1];
-	/* flags */
-	bool		 bol;
-	bool		 eol;
-	bool		 reversed;
-	bool		 word;
-} fastgrep_t;
-
 /* Flags passed to regcomp() and regexec() */
 extern int	 cflags, eflags;
 
@@ -125,7 +116,7 @@ extern unsigned int dpatterns, fpatterns, patterns;
 extern char    **pattern;
 extern struct epat *dpattern, *fpattern;
 extern regex_t	*er_pattern, *r_pattern;
-extern fastgrep_t *fg_pattern;
+extern fastmatch_t *fg_pattern;
 
 /* For regex errors  */
 #define RE_ERROR_BUF	512
@@ -150,8 +141,3 @@ void	 clearqueue(void);
 void		 grep_close(struct file *f);
 struct file	*grep_open(const char *path);
 char		*grep_fgetln(struct file *f, size_t *len);
-
-/* fastgrep.c */
-int		 fastcomp(fastgrep_t *, const char *);
-void		 fgrepcomp(fastgrep_t *, const char *);
-int		 grep_search(fastgrep_t *, const unsigned char *, size_t, regmatch_t *);

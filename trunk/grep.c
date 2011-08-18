@@ -48,6 +48,7 @@ __FBSDID("$FreeBSD$");
 #include <string.h>
 #include <unistd.h>
 
+#include "fastmatch.h"
 #include "grep.h"
 
 #ifndef WITHOUT_NLS
@@ -83,7 +84,7 @@ bool		 matchall;
 unsigned int	 patterns, pattern_sz;
 char		**pattern;
 regex_t		*r_pattern;
-fastgrep_t	*fg_pattern;
+fastmatch_t	*fg_pattern;
 
 /* Filename exclusion/inclusion patterns */
 unsigned int	 fpatterns, fpattern_sz;
@@ -662,10 +663,10 @@ main(int argc, char *argv[])
 		/* Check if cheating is allowed (always is for fgrep). */
 	if (grepbehave == GREP_FIXED) {
 		for (i = 0; i < patterns; ++i)
-			fgrepcomp(&fg_pattern[i], pattern[i]);
+			fixcomp(&fg_pattern[i], pattern[i], cflags);
 	} else {
 		for (i = 0; i < patterns; ++i) {
-			if (fastcomp(&fg_pattern[i], pattern[i])) {
+			if (fastcomp(&fg_pattern[i], pattern[i], cflags) != 0) {
 				/* Fall back to full regex library */
 				c = regcomp(&r_pattern[i], pattern[i], cflags);
 				if (c != 0) {

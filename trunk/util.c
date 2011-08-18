@@ -49,6 +49,7 @@ __FBSDID("$FreeBSD$");
 #include <wchar.h>
 #include <wctype.h>
 
+#include "fastmatch.h"
 #include "grep.h"
 
 static int	 linesqueued;
@@ -288,14 +289,9 @@ procline(struct str *l, int nottext)
 
 			/* Loop to compare with all the patterns */
 			for (i = 0; i < patterns; i++) {
-/*
- * XXX: grep_search() is a workaround for speed up and should be
- * removed in the future.  See fastgrep.c.
- */
 				if (fg_pattern[i].pattern)
-					r = grep_search(&fg_pattern[i],
-					    (unsigned char *)l->dat,
-					    l->len, &pmatch);
+					r = fastexec(&fg_pattern[i],
+					    l->dat, 1, &pmatch, eflags);
 				else
 					r = regexec(&r_pattern[i], l->dat, 1,
 					    &pmatch, eflags);
