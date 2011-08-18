@@ -92,6 +92,11 @@ struct str {
 	int		 line_no;
 };
 
+struct pat {
+	char		*pat;
+	int		 len;
+};
+
 struct epat {
 	char		*pat;
 	int		 mode;
@@ -113,7 +118,7 @@ extern int	 binbehave, devbehave, dirbehave, filebehave, grepbehave, linkbehave;
 extern bool	 first, matchall, notfound, prev;
 extern int	 tail;
 extern unsigned int dpatterns, fpatterns, patterns;
-extern char    **pattern;
+extern struct pat *pattern;
 extern struct epat *dpattern, *fpattern;
 extern regex_t	*er_pattern, *r_pattern;
 extern fastmatch_t *fg_pattern;

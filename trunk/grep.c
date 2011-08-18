@@ -82,7 +82,7 @@ bool		 matchall;
 
 /* Searching patterns */
 unsigned int	 patterns, pattern_sz;
-char		**pattern;
+struct pat	*pattern;
 regex_t		*r_pattern;
 fastmatch_t	*fg_pattern;
 
@@ -233,14 +233,15 @@ add_pattern(char *pat, size_t len)
 	if (patterns == pattern_sz) {
 		pattern_sz *= 2;
 		pattern = grep_realloc(pattern, ++pattern_sz *
-		    sizeof(*pattern));
+		    sizeof(struct pat));
 	}
 	if (len > 0 && pat[len - 1] == '\n')
 		--len;
 	/* pat may not be NUL-terminated */
-	pattern[patterns] = grep_malloc(len + 1);
-	memcpy(pattern[patterns], pat, len);
-	pattern[patterns][len] = '\0';
+	pattern[patterns].pat = grep_malloc(len + 1);
+	memcpy(pattern[patterns].pat, pat, len);
+	pattern[patterns].len = len;
+	pattern[patterns].pat[len] = '\0';
 	++patterns;
 }
 
@@ -652,19 +653,18 @@ main(int argc, char *argv[])
 
 	fg_pattern = grep_calloc(patterns, sizeof(*fg_pattern));
 	r_pattern = grep_calloc(patterns, sizeof(*r_pattern));
-/*
- * XXX: fgrepcomp() and fastcomp() are workarounds for regexec() performance.
- * Optimizations should be done there.
- */
-		/* Check if cheating is allowed (always is for fgrep). */
+
+	/* Check if cheating is allowed (always is for fgrep). */
 	if (grepbehave == GREP_FIXED) {
 		for (i = 0; i < patterns; ++i)
-			fixcomp(&fg_pattern[i], pattern[i], cflags);
+			fixncomp(&fg_pattern[i], pattern[i].pat,
+			    pattern[i].len, cflags);
 	} else {
 		for (i = 0; i < patterns; ++i) {
-			if (fastcomp(&fg_pattern[i], pattern[i], cflags) != 0) {
+			if (fastncomp(&fg_pattern[i], pattern[i].pat,
+			    pattern[i].len, cflags) != 0) {
 				/* Fall back to full regex library */
-				c = regcomp(&r_pattern[i], pattern[i], cflags);
+				c = regcomp(&r_pattern[i], pattern[i].pat, cflags);
 				if (c != 0) {
 					regerror(c, &r_pattern[i], re_error,
 					    RE_ERROR_BUF);
