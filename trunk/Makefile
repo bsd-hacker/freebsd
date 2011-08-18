@@ -8,6 +8,10 @@
 PROG=	grep
 .else
 PROG=	bsdgrep
+CLEANFILES+= bsdgrep.1
+
+bsdgrep.1: grep.1
+	cp ${.ALLSRC} ${.TARGET}
 .endif
 SRCS=	file.c grep.c queue.c util.c
 
@@ -29,9 +33,6 @@ MLINKS= grep.1 egrep.1 \
 	grep.1 zegrep.1 \
 	grep.1 zfgrep.1
 .endif
-
-bsdgrep.1: grep.1
-	cp ${.ALLSRC} ${.TARGET}
 
 LDADD=	-lz -lbz2
 DPADD=	${LIBZ} ${LIBBZ2}
