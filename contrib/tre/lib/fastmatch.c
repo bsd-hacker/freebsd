@@ -34,7 +34,7 @@
 #include "tre-internal.h"
 #include "xmalloc.h"
 
-/* XXX: clean up */
+/* XXX: avoid duplication */
 #define CONV_PAT							\
   int ret;								\
   tre_char_t *wregex;							\
@@ -43,6 +43,17 @@
   wregex = xmalloc(sizeof(tre_char_t) * (n + 1));			\
   if (wregex == NULL)							\
     return REG_ESPACE;							\
+									\
+  if (TRE_MB_CUR_MAX == 1)						\
+    {									\
+      unsigned int i;							\
+      const unsigned char *str = (const unsigned char *)regex;		\
+      tre_char_t *wstr = wregex;					\
+									\
+      for (i = 0; i < n; i++)						\
+        *(wstr++) = *(str++);						\
+      wlen = n;								\
+    }									\
   else									\
     {									\
       int consumed;							\
@@ -87,7 +98,7 @@ tre_fixncomp(fastmatch_t *preg, const char *regex, size_t n, int cflags)
 {
   CONV_PAT;
 
-  ret = tre_compile_literal(preg, wregex, n, cflags);
+  ret = tre_compile_literal(preg, wregex, wlen, cflags);
   xfree(wregex);
 
   return ret;
@@ -99,8 +110,8 @@ tre_fastncomp(fastmatch_t *preg, const char *regex, size_t n, int cflags)
   CONV_PAT;
 
   ret = (cflags & REG_LITERAL) ?
-    tre_compile_literal(preg, wregex, n, cflags) :
-    tre_compile_fast(preg, wregex, n, cflags);
+    tre_compile_literal(preg, wregex, wlen, cflags) :
+    tre_compile_fast(preg, wregex, wlen, cflags);
   xfree(wregex);
 
   return ret;
@@ -110,13 +121,13 @@ tre_fastncomp(fastmatch_t *preg, const char *regex, size_t n, int cflags)
 int
 tre_fixcomp(fastmatch_t *preg, const char *regex, int cflags)
 {
-  return tre_fixncomp(preg, regex, 0, cflags);
+  return tre_fixncomp(preg, regex, regex ? strlen(regex) : 0, cflags);
 }
 
 int
 tre_fastcomp(fastmatch_t *preg, const char *regex, int cflags)
 {
-  return tre_fastncomp(preg, regex, 0, cflags);
+  return tre_fastncomp(preg, regex, regex ? strlen(regex) : 0, cflags);
 }
 
 int
@@ -136,13 +147,13 @@ tre_fastwncomp(fastmatch_t *preg, const wchar_t *regex, size_t n, int cflags)
 int
 tre_fixwcomp(fastmatch_t *preg, const wchar_t *regex, int cflags)
 {
-  return tre_fixwncomp(preg, regex, 0, cflags);
+  return tre_fixwncomp(preg, regex, regex ? tre_strlen(regex) : 0, cflags);
 }
 
 int
 tre_fastwcomp(fastmatch_t *preg, const wchar_t *regex, int cflags)
 {
-  return tre_fastwncomp(preg, regex, 0, cflags);
+  return tre_fastwncomp(preg, regex, regex ? tre_strlen(regex) : 0, cflags);
 }
 
 void
