@@ -237,7 +237,6 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
     return ret;								\
   }
 
-
 int
 tre_regnexec(const regex_t *preg, const char *str, size_t len,
 	 size_t nmatch, regmatch_t pmatch[], int eflags)
