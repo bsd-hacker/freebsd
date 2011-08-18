@@ -1,3 +1,5 @@
+/* $FreeBSD$ */
+
 /*
   tre.h - TRE public API definitions
 
