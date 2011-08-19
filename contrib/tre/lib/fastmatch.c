@@ -121,6 +121,8 @@ tre_fastncomp(fastmatch_t *preg, const char *regex, size_t n, int cflags)
 int
 tre_fixcomp(fastmatch_t *preg, const char *regex, int cflags)
 {
+  size_t len;
+
   if (cflags & REG_PEND)
     {
       len = (preg->re_endp >= regex)
@@ -135,6 +137,8 @@ tre_fixcomp(fastmatch_t *preg, const char *regex, int cflags)
 int
 tre_fastcomp(fastmatch_t *preg, const char *regex, int cflags)
 {
+  size_t len;
+
   if (cflags & REG_PEND)
     {
       len = (preg->re_endp >= regex)
