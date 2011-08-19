@@ -48,15 +48,6 @@ static int	fastcmp(const void *, const void *, size_t,
 			tre_str_type_t, bool, bool);
 
 /*
- * We will work with wide characters if they are supported
- */
-#ifdef TRE_WCHAR
-#define TRE_CHAR(n)	L##n
-#else
-#define TRE_CHAR(n)	n
-#endif
-
-/*
  * Skips n characters in the input string and assigns the start
  * address to startptr. Note: as per IEEE Std 1003.1-2008
  * matching is based on bit pattern not character representations

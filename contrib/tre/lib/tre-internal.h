@@ -47,6 +47,9 @@
 /* Define the character types and functions. */
 #ifdef TRE_WCHAR
 
+/* Use wide character constants */
+#define TRE_CHAR(n) L##n
+
 /* Wide characters. */
 typedef wint_t tre_cint_t;
 #define TRE_CHAR_MAX WCHAR_MAX
@@ -77,6 +80,9 @@ typedef wint_t tre_cint_t;
 #define tre_strlen  wcslen
 
 #else /* !TRE_WCHAR */
+
+/* Use single-byte character constants */
+#define TRE_CHAR(n) n
 
 /* 8 bit characters. */
 typedef short tre_cint_t;
