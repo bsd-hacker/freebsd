@@ -1886,7 +1886,7 @@ tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
     }
   else
     {
-      free(shortcut);
+      xfree(shortcut);
       preg->shortcut = NULL;
     }
 
