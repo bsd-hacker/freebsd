@@ -46,6 +46,7 @@ char *alloca ();
 #include <limits.h>
 
 #include "tre-fastmatch.h"
+#include "tre-heuristic.h"
 #include "tre-internal.h"
 #include "xmalloc.h"
 
@@ -151,14 +152,53 @@ tre_have_approx(const regex_t *preg)
 static int
 tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
 	  tre_str_type_t type, size_t nmatch, regmatch_t pmatch[],
-	  int eflags, fastmatch_t *shortcut)
+	  int eflags, fastmatch_t *shortcut, heur_t *heur)
 {
   reg_errcode_t status;
   int *tags = NULL, eo;
 
-  /* Check if we can cheat with a faster algorithm */
+  /* Check if we can cheat with a faster algorithm. */
   if (shortcut != NULL)
-    return tre_match_fast(shortcut, string, len, type, nmatch, pmatch, eflags);
+    return tre_match_fast(shortcut, string, len, type, nmatch,
+			  pmatch, eflags);
+
+  /* Check if we have a heuristic to speed up the search. */
+  if (heur != NULL)
+    {
+      int ret;
+      size_t st = 0, j;
+      const char *data_byte = string;
+      const tre_char_t *data_wide = string;
+      const void *tmp;
+
+      /* Look for the beginning of possibly matching text. */
+      ret = tre_match_fast(heur->start, string, len, type, nmatch,
+			   pmatch, eflags);
+      if (ret != REG_OK)
+	return ret;
+      st = pmatch[0].rm_so;
+      j = pmatch[0].rm_eo;
+      string = (type == STR_WIDE) ? (void *)&data_wide[st] :
+	(void *)&data_byte[st];
+
+      /* When having a fixed-length pattern there is only one heuristic. */
+      if (heur->end == NULL)
+	return tre_match(tnfa, string,
+			 heur->prefix ? (len - st) : (j - st),
+			 type, nmatch, pmatch, eflags, NULL, NULL);
+
+      tmp = (type == STR_WIDE) ? (void *)&data_wide[j] :
+	(void *)&data_byte[j];
+
+      /* Look for the end of possibly matching text. */
+      ret = tre_match_fast(heur->end, tmp, len - j, type, nmatch,
+			   pmatch, eflags);
+      if (ret != REG_OK)
+        return ret;
+
+      return tre_match(tnfa, string, pmatch[0].rm_eo + j - st,
+		       type, nmatch, pmatch, eflags, NULL, NULL);
+    }
 
   if (tnfa->num_tags > 0 && nmatch > 0)
     {
@@ -227,7 +267,7 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
     if ((long long)pmatch[0].rm_eo - pmatch[0].rm_so < 0)		\
       return REG_NOMATCH;						\
     ret = tre_match(tnfa, &str[offset], slen, type, nmatch,		\
-		    pmatch, eflags, preg->shortcut);			\
+		    pmatch, eflags, preg->shortcut, preg->heur);	\
     for (unsigned i = 0; (i == 0) || (!(eflags & REG_NOSUB) &&		\
 	 (i < nmatch)); i++)						\
       {									\
@@ -248,7 +288,7 @@ tre_regnexec(const regex_t *preg, const char *str, size_t len,
     ADJUST_OFFSETS
   else
     return tre_match(tnfa, str, len, type, nmatch, pmatch, eflags,
-		     preg->shortcut);
+		     preg->shortcut, preg->heur);
 }
 
 int
@@ -272,7 +312,7 @@ tre_regwnexec(const regex_t *preg, const wchar_t *str, size_t len,
     ADJUST_OFFSETS
   else
     return tre_match(tnfa, str, len, STR_WIDE, nmatch, pmatch, eflags,
-		     preg->shortcut);
+		     preg->shortcut, preg->heur);
 }
 
 int
@@ -290,7 +330,7 @@ tre_reguexec(const regex_t *preg, const tre_str_source *str,
 {
   tre_tnfa_t *tnfa = (void *)preg->TRE_REGEX_T_FIELD;
   return tre_match(tnfa, str, (unsigned)-1, STR_USER, nmatch, pmatch, eflags,
-		   preg->shortcut);
+		   preg->shortcut, preg->heur);
 }
 
 
@@ -314,7 +354,7 @@ tre_match_approx(const tre_tnfa_t *tnfa, const void *string, size_t len,
   if (params.max_cost == 0 && !tnfa->have_approx
       && !(eflags & REG_APPROX_MATCHER))
     return tre_match(tnfa, string, len, type, match->nmatch, match->pmatch,
-		     eflags, NULL);
+		     eflags, NULL, NULL);
 
   /* Back references are not supported by the approximate matcher. */
   if (tnfa->have_backrefs)

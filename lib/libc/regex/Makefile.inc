@@ -6,7 +6,7 @@
 CFLAGS+=-DHAVE_CONFIG_H -DTRE_LIBC_BUILD -I${.CURDIR}/../../contrib/tre
 
 SRCS+=	fastmatch.c hashtable.c regcomp.c regerror.c regexec.c tre-ast.c \
-	tre-compile.c tre-fastmatch.c tre-match-approx.c \
+	tre-compile.c tre-fastmatch.c tre-heuristic.c tre-match-approx.c \
 	tre-match-backtrack.c tre-match-parallel.c tre-mem.c tre-parse.c \
 	tre-stack.c xmalloc.c
 

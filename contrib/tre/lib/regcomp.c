@@ -16,6 +16,7 @@
 #include <stdlib.h>
 
 #include "tre-fastmatch.h"
+#include "tre-heuristic.h"
 #include "tre-internal.h"
 #include "xmalloc.h"
 
@@ -143,7 +144,15 @@ void
 tre_regfree(regex_t *preg)
 {
   if (preg->shortcut != NULL)
-    tre_free_fast(preg->shortcut);
+    {
+      tre_free_fast(preg->shortcut);
+      xfree(preg->shortcut);
+    }
+  if (preg->heur != NULL)
+    {
+      tre_free_heur(preg->heur);
+      xfree(preg->heur);
+    }
   tre_free(preg);
 }
 

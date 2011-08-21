@@ -22,6 +22,7 @@
 #include <string.h>
 
 #include "tre-fastmatch.h"
+#include "tre-heuristic.h"
 #include "tre-internal.h"
 #include "tre-mem.h"
 #include "tre-stack.h"
@@ -1867,6 +1868,7 @@ tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
   reg_errcode_t errcode;
   tre_mem_t mem;
   fastmatch_t *shortcut;
+  heur_t *heur;
 
   /* Parse context. */
   tre_parse_ctx_t parse_ctx;
@@ -2179,6 +2181,28 @@ tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
   xfree(offs);
 
   preg->TRE_REGEX_T_FIELD = (void *)tnfa;
+
+  /*
+   * If we reach here, the regex is parsed and legal. Now we try to construct
+   * a heuristic to speed up matching.
+   */
+
+  heur = xmalloc(sizeof(heur_t));
+  if (!heur)
+    {
+      errcode = REG_ESPACE;
+      goto error_exit;
+    }
+
+  ret = tre_compile_heur(heur, regex, n, cflags);
+  if (ret != REG_OK)
+    {
+      xfree(heur);
+      preg->heur = NULL;
+    }
+  else
+    preg->heur = heur;
+
   return REG_OK;
 
  error_exit:
