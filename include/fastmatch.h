@@ -20,6 +20,7 @@ typedef struct {
   int		 defBc;
   hashtable	*qsBc_table;
   int		*sbmGs;
+  const char	*re_endp;
 
   /* flags */
   bool		 bol;
