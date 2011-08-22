@@ -221,13 +221,14 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
 	  /* Look for the end of possibly matching text. */
 	  ret = tre_match_fast(heur->end, string, len - st - n, type,
 			       nmatch, pmatch, eflags);
+	  n += pmatch[0].rm_eo;
 
 	  if (ret != REG_OK)
 	    return ret;
 
 	  SEEK_TO(st);
 
-	  ret = tre_match(tnfa, string, pmatch[0].rm_eo + n,
+	  ret = tre_match(tnfa, string, n,
 			  type, nmatch, pmatch, eflags, NULL, NULL);
 
 	  FIX_OFFSETS;
