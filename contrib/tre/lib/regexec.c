@@ -162,42 +162,76 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
     return tre_match_fast(shortcut, string, len, type, nmatch,
 			  pmatch, eflags);
 
+#define FIX_OFFSETS							\
+  if (ret == REG_NOMATCH)						\
+    {									\
+      st += n;								\
+      continue;								\
+    }									\
+  else if ((ret == REG_OK) && !(tnfa->cflags & REG_NOSUB))		\
+    for (int i = 0; i < nmatch; i++)					\
+      {									\
+	pmatch[i].rm_so += st;						\
+	pmatch[i].rm_eo += st;						\
+      }									\
+  return ret;
+
+#define SEEK_TO(off)							\
+  string = (type == STR_WIDE) ? (void *)&data_wide[off] :		\
+    (void *)&data_byte[off];
+
   /* Check if we have a heuristic to speed up the search. */
   if (heur != NULL)
     {
       int ret;
-      size_t st = 0, j;
+      size_t st = 0, n;
       const char *data_byte = string;
       const tre_char_t *data_wide = string;
-      const void *tmp;
 
-      /* Look for the beginning of possibly matching text. */
-      ret = tre_match_fast(heur->start, string, len, type, nmatch,
-			   pmatch, eflags);
-      if (ret != REG_OK)
-	return ret;
-      st = pmatch[0].rm_so;
-      j = pmatch[0].rm_eo;
-      string = (type == STR_WIDE) ? (void *)&data_wide[st] :
-	(void *)&data_byte[st];
+      while (st < len)
+	{
+	  SEEK_TO(st);
 
-      /* When having a fixed-length pattern there is only one heuristic. */
-      if (heur->end == NULL)
-	return tre_match(tnfa, string,
-			 heur->prefix ? (len - st) : (j - st),
-			 type, nmatch, pmatch, eflags, NULL, NULL);
+	  /* Look for the beginning of possibly matching text. */
+	  ret = tre_match_fast(heur->start, string, len - st, type, nmatch,
+			       pmatch, eflags);
+	  if (ret != REG_OK)
+	    return ret;
+	  st += pmatch[0].rm_so;
+	  n = pmatch[0].rm_eo;
 
-      tmp = (type == STR_WIDE) ? (void *)&data_wide[j] :
-	(void *)&data_byte[j];
+	  /*
+	   * When having a fixed-length pattern there is only
+	   * one heuristic.
+	   */
+	  if (heur->end == NULL)
+	    {
+	      SEEK_TO(st);
 
-      /* Look for the end of possibly matching text. */
-      ret = tre_match_fast(heur->end, tmp, len - j, type, nmatch,
-			   pmatch, eflags);
-      if (ret != REG_OK)
-        return ret;
+	      ret = tre_match(tnfa, string,
+			      heur->prefix ? (len - st) :
+			      n, type, nmatch,
+			      pmatch, eflags, NULL, NULL);
 
-      return tre_match(tnfa, string, pmatch[0].rm_eo + j - st,
-		       type, nmatch, pmatch, eflags, NULL, NULL);
+	      FIX_OFFSETS;
+	    }
+
+	  SEEK_TO(st + n);
+
+	  /* Look for the end of possibly matching text. */
+	  ret = tre_match_fast(heur->end, string, len - st - n, type,
+			       nmatch, pmatch, eflags);
+
+	  if (ret != REG_OK)
+	    return ret;
+
+	  SEEK_TO(st);
+
+	  ret = tre_match(tnfa, string, pmatch[0].rm_eo + n,
+			  type, nmatch, pmatch, eflags, NULL, NULL);
+
+	  FIX_OFFSETS;
+	}
     }
 
   if (tnfa->num_tags > 0 && nmatch > 0)
