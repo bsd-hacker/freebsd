@@ -135,57 +135,63 @@ tre_compile_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
 
 	      /*
 	       * If a repetition marker, erases the repeting character
-	       * and terminates the segment.
-	       * Otherwise just terminates the segment (XXX).
+	       * and terminates the segment, otherwise treated as a normal
+	       * character.
 	       */
 	      case TRE_CHAR('{'):
 		PARSE_UNIT('{', '}');
 		if (escaped)
-		  pos--;
-		END_SEGMENT;
+		  {
+		    pos--;
+		    END_SEGMENT;
+		  }
+		heur[pos++] = regex[i];
 		break;
 
 	      /*
-	       * Terminates the current segment whether a subexpression
-	       * marker or not. (XXX)
+	       * Terminates the current segment when escaped,
+	       * otherwise treated as a normal character.
 	       */
 	      case TRE_CHAR('('):
 		PARSE_UNIT('(', ')');
-		END_SEGMENT;
+		if (escaped)
+		  END_SEGMENT;
+		heur[pos++] = regex[i];
 		break;
 
 	      /*
 	       * Sets escaped flag.
-	       * Escaped escape terminates current segment. (XXX)
+	       * Escaped escape is treated as a normal character.
+	       * (This is also the GNU behaviour.)
 	       */
 	      case TRE_CHAR('\\'):
 		if (escaped)
-		  END_SEGMENT;
+		  heur[pos++] = regex[i];
 		escaped = !escaped;
 		continue;
 
 	      /*
-	       * If not the first character, erases the last character
-	       * and terminates the segment.
-	       * Otherwise heuristic construction fails. (XXX)
+	       * If not the first character and not escaped, erases the
+	       * last character and terminates the segment.
+	       * Otherwise treated as a normal character.
 	       */
 	      case TRE_CHAR('*'):
-		if (i != 0)
+		if ((i != 0) && !escaped)
 		  {
 		    pos--;
 		    END_SEGMENT;
 		  }
 		else
-		  goto badpat1;
+		  heur[pos++] = regex[i];
 		break;
 
 	      /*
-	       * If a backreference (escaped digit), terminates segment.
+	       * If escaped, terminates segment.
 	       * Otherwise adds current character to the current segment
 	       * by copying it to the temporary space.
 	       */
 	      default:
-		if (escaped && tre_isdigit(regex[i]))
+		if (escaped)
 		  END_SEGMENT;
 		heur[pos++] = regex[i];
 		continue;
@@ -218,7 +224,7 @@ end_segment:
 	      goto space1;
 	    }
 
-	  ret = tre_compile_fast(h->start, heur, pos, 0);
+	  ret = tre_compile_fast(h->start, heur, pos, _REG_HEUR);
 	  if (ret != REG_OK)
 	    {
 	      errcode = REG_BADPAT;
@@ -248,7 +254,7 @@ end_segment:
 	      goto space2;
 	    }
 	    
-	  ret = tre_compile_fast(h->end, heur, pos, 0);
+	  ret = tre_compile_fast(h->end, heur, pos, _REG_HEUR);
 	  if (ret != REG_OK)
 	    {
 	      xfree(h->end);
