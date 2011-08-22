@@ -40,6 +40,21 @@
 #include "xmalloc.h"
 
 /*
+ * A full regex implementation requires a finite state automaton
+ * and using an automaton is always about a trade-off. A DFA is
+ * fast but complex and requires more memory because of the
+ * high number of states. NFA is slower but simpler and uses less
+ * memory. Regular expression matching is an underlying common task
+ * that is required to be efficient but correctness, clean and
+ * maintanable code are also requirements. So what we do is using
+ * an NFA implementation and heuristically locate the possible matches
+ * with a cheaper algorithm and only apply the heavy one to the
+ * possibly matching segments. This allows us to benefit from the
+ * advantages of an NFA implementation reducing the effect of the
+ * performance impact.
+ */
+
+/*
  * Parses bracket expression seeking to the end of the enclosed text.
  * The parameters are the opening (oe) and closing elements (ce).
  * Can handle nested bracket expressions.
