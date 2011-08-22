@@ -428,10 +428,11 @@ tre_compile_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
   for (unsigned int i = 0; i < n; i++)
     {
       /* Can still cheat? */
-      if ((tre_isalnum(pat[i])) || tre_isspace(pat[i]) ||
+      if (!(cflags & _REG_HEUR) &&
+	  ((tre_isalnum(pat[i])) || tre_isspace(pat[i]) ||
 	  (pat[i] == TRE_CHAR('_')) || (pat[i] == TRE_CHAR(',')) ||
 	  (pat[i] == TRE_CHAR('=')) || (pat[i] == TRE_CHAR('-')) ||
-	  (pat[i] == TRE_CHAR(':')) || (pat[i] == TRE_CHAR('/')))
+	  (pat[i] == TRE_CHAR(':')) || (pat[i] == TRE_CHAR('/'))))
 	continue;
       else if (pat[i] == TRE_CHAR('.'))
 	fg->hasdot = i;
