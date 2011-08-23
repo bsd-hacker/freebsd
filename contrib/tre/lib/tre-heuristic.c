@@ -255,6 +255,8 @@ end_segment:
 	  if (pos <= 1)
 	    {
 	      errcode = REG_BADPAT;
+	      DPRINT("tre_compile_heur: pattern does not have a "
+		     " fixed-length prefix that is long enough\n");
 	      goto badpat1;
 	    }
 
@@ -271,6 +273,8 @@ end_segment:
 	      errcode = REG_BADPAT;
 	      goto badpat2;
 	    }
+	  DPRINT(("tre_compile_heur: fixed-length prefix is %s\n",
+		 h->start->pattern));
 	}
 
       /*
@@ -285,6 +289,8 @@ end_segment:
 	    {
 	      h->prefix = true;
 	      errcode = REG_OK;
+	      DPRINT("tre-compile_heur: using only a fixed-length prefix; "
+		     "no fixed-length suffix is available\n");
 	      goto ok;
 	    }
 
@@ -302,6 +308,8 @@ end_segment:
 	      h->prefix = true;
 	    }
 	  errcode = REG_OK;
+	  DPRINT(("tre_compile_heur: fixed-length suffix is %s\n",
+		 h->end->pattern));
 	  goto ok;
 	}
 
@@ -315,6 +323,7 @@ space2:
     xfree(h->start);
 badpat1:
 space1:
+  DPRINT("tre_compile_heur: compiling a heuristic failed\n");
 ok:
   xfree(heur);
   return errcode;
@@ -330,4 +339,6 @@ tre_free_heur(heur_t *h)
     xfree(h->start);
   if (h->end != NULL)
     xfree(h->end);
+
+  DPRINT("tre_free_heur: resources are freed\n");
 }

@@ -1884,12 +1884,14 @@ tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
     {
       preg->shortcut = shortcut;
       preg->re_nsub = 0;
+      DPRINT("tre_compile: pattern compiled for fast matcher\n");
       return REG_OK;
     }
   else
     {
       xfree(shortcut);
       preg->shortcut = NULL;
+      DPRINT("tre_compile: pattern compilation failed for fast matcher\n");
     }
 
   /* Allocate a stack used throughout the compilation process for various
@@ -2186,7 +2188,6 @@ tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
    * If we reach here, the regex is parsed and legal. Now we try to construct
    * a heuristic to speed up matching.
    */
-
   heur = xmalloc(sizeof(heur_t));
   if (!heur)
     {
@@ -2199,9 +2200,14 @@ tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
     {
       xfree(heur);
       preg->heur = NULL;
+      DPRINT("tre_compile: heuristic compilation failed, NFA will be used "
+	     "entirely\n");
     }
   else
-    preg->heur = heur;
+    {
+      preg->heur = heur;
+      DPRINT("tre_compile: heuristic compiled to speed up the search\n");
+    }
 
   return REG_OK;
 

@@ -134,6 +134,9 @@ static int	fastcmp(const void *, const void *, size_t,
 	      gs = fg->bmGs[mismatch];					\
 	    }								\
 	    bc = (r == 0) ? bc : fg->defBc;				\
+	    DPRINT(("tre_fast_match: mismatch on character %lc,"	\
+		    "BC %d, GS %d\n",					\
+		    ((tre_char_t *)startptr)[mismatch + 1], bc, gs));	\
             break;							\
 	default:							\
 	  if (!fg->hasdot)						\
@@ -144,6 +147,9 @@ static int	fastcmp(const void *, const void *, size_t,
 	      gs = fg->sbmGs[mismatch];					\
 	    }								\
 	  bc = fg->qsBc[((unsigned char *)startptr)[mismatch + 1]];	\
+	  DPRINT(("tre_fast_match: mismatch on character %c,"		\
+		 "BC %d, GS %d\n",					\
+		 ((unsigned char *)startptr)[mismatch + 1], bc, gs));	\
       }									\
     if (fg->hasdot)							\
       shift = bc;							\
@@ -161,6 +167,7 @@ static int	fastcmp(const void *, const void *, size_t,
 	    u = 0;							\
 	  }								\
       }									\
+      DPRINT(("tre_fast_match: shifting %d characters\n", shift));	\
       j += shift;							\
   }
 
@@ -190,6 +197,8 @@ static int	fastcmp(const void *, const void *, size_t,
   for (int i = fg->hasdot + 1; i < fg->len; i++)			\
     {									\
       fg->qsBc[(unsigned)fg->pattern[i]] = fg->len - i;			\
+      DPRINT(("BC shift for char %c is %d\n", fg->pattern[i],		\
+	     fg->len - i));						\
       if (fg->icase)							\
         {								\
           char c = islower(fg->pattern[i]) ? toupper(fg->pattern[i])	\
@@ -218,6 +227,8 @@ static int	fastcmp(const void *, const void *, size_t,
     {									\
       int k = fg->wlen - i;						\
       hashtable_put(fg->qsBc_table, &fg->wpattern[i], &k);		\
+      DPRINT(("BC shift for wide char %lc is %d\n", fg->wpattern[i],	\
+	     fg->wlen - i));						\
       if (fg->icase)							\
 	{								\
 	  tre_char_t wc = iswlower(fg->wpattern[i]) ?			\
@@ -375,6 +386,10 @@ tre_compile_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n,
   SAVE_PATTERN(fg->pattern, fg->len);
 #endif
 
+  DPRINT(("tre_compile_literal: pattern: %s, icase: %c, word: %c, "
+	 "newline %c\n", fg->pattern, fg->icase ? 'y' : 'n',
+	 fg->word ? 'y' : 'n', fg->newline ? 'y' : 'n'));
+
   FILL_QSBC;
   FILL_BMGS;
 #ifdef TRE_WCHAR
@@ -451,6 +466,12 @@ tre_compile_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
 #else
   SAVE_PATTERN(fg->pattern, fg->len);
 #endif
+
+  DPRINT(("tre_compile_fast: pattern: %s, bol %c, eol %c, "
+	 "icase: %c, word: %c, newline %c\n", fg->pattern,
+	 fg->bol ? 'y' : 'n', fg->eol ? 'y' : 'n',
+	 fg->icase ? 'y' : 'n', fg->word ? 'y' : 'n',
+	 fg->newline ? 'y' : 'n'));
 
   FILL_QSBC;
   FILL_BMGS;
@@ -635,6 +656,9 @@ void
 tre_free_fast(fastmatch_t *fg)
 {
 
+  DPRINT(("tre_fast_free: freeing structures for pattern %s\n",
+	 fg->pattern));
+
 #ifdef TRE_WCHAR
   hashtable_free(fg->qsBc_table);
   if (!fg->hasdot)
@@ -688,6 +712,7 @@ fastcmp(const void *pat, const void *data, size_t len,
 		    : (pat_byte[i] == str_byte[i]))
 	  continue;
       }
+    DPRINT(("fastcmp: mismatch at position %d\n", i));
     ret = -(i + 1);
     break;
   }

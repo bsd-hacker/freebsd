@@ -159,8 +159,11 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
 
   /* Check if we can cheat with a faster algorithm. */
   if (shortcut != NULL)
-    return tre_match_fast(shortcut, string, len, type, nmatch,
-			  pmatch, eflags);
+    {
+      DPRINT("tre_match: using tre_match_fast() instead of the full NFA\n");
+      return tre_match_fast(shortcut, string, len, type, nmatch,
+			    pmatch, eflags);
+    }
 
 #define FIX_OFFSETS							\
   if (ret == REG_NOMATCH)						\
@@ -188,6 +191,9 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
       const char *data_byte = string;
       const tre_char_t *data_wide = string;
 
+      DPRINT(("tre_match: using a heuristic [%s/%s] to speed up the "
+	     "search\n", heur->start->pattern, heur->end->pattern));
+
       while (st < len)
 	{
 	  SEEK_TO(st);
@@ -208,6 +214,9 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
 	    {
 	      SEEK_TO(st);
 
+	      DPRINT(("tre_match: calling NFA with offsets [%u/%u]\n",
+		     st, heur->prefix ? len : n + st));
+
 	      ret = tre_match(tnfa, string,
 			      heur->prefix ? (len - st) :
 			      n, type, nmatch,
@@ -227,6 +236,9 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
 	    return ret;
 
 	  SEEK_TO(st);
+
+	  DPRINT(("tre_match: calling NFA with offsets [%u/%u]\n",
+		 st, st + n));
 
 	  ret = tre_match(tnfa, string, n,
 			  type, nmatch, pmatch, eflags, NULL, NULL);
