@@ -39,6 +39,13 @@
 #include "tre-internal.h"
 #include "xmalloc.h"
 
+#ifdef TRE_WCHAR
+#define tre_strnstr(big, s1, little, s2)				\
+  memmem(big, s1 * sizeof(tre_char_t), little, s2 * sizeof(tre_char_t))
+#else
+#define tre_strnstr(big, s1, little, s2) strnstr(big, little, s1)
+#endif
+
 /*
  * A full regex implementation requires a finite state automaton
  * and using an automaton is always about a trade-off. A DFA is
@@ -74,6 +81,40 @@
 	i++;								\
       }									\
   }
+
+#define PARSE_BRACKETS							\
+  {									\
+    tre_char_t *tmp;							\
+									\
+    i++;								\
+    if (regex[i] == TRE_CHAR('^'))					\
+      i++;								\
+    if (regex[i] == TRE_CHAR(']'))					\
+      i++;								\
+									\
+    do									\
+      {									\
+	tmp = tre_strnstr(&regex[i], len - i, TRE_CHAR("[.].]"), 5);	\
+	if (tmp)							\
+	  {								\
+	    i += (tmp - regex);						\
+	    regex = tmp;						\
+	  }								\
+      } while (tmp != NULL);						\
+									\
+    do									\
+      {									\
+	tmp = tre_strnstr(&regex[i], len - i, TRE_CHAR("[=]=]"), 5);	\
+	if (tmp)							\
+	  {								\
+	    i += (tmp - regex);						\
+	    regex = tmp;						\
+	  }								\
+      } while (tmp != NULL);						\
+									\
+    for (; (i != TRE_CHAR(']')) && (i < len); i++);			\
+  }
+
 
 /*
  * Finishes a segment (fixed-length text fragment).
@@ -129,7 +170,7 @@ tre_compile_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
 
 	      /* Bracketed expression is substituted with a dot. */
 	      case TRE_CHAR('['):
-		PARSE_UNIT('[', ']');
+		PARSE_BRACKETS;
 		heur[pos++] = TRE_CHAR('.');
 		continue;
 
