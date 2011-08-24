@@ -910,6 +910,7 @@ rs_input(int len, struct nd_router_solicit *rs,
 
 	/* ND option check */
 	memset(&ndopts, 0, sizeof(ndopts));
+	TAILQ_INIT(&ndopts.opt_list);
 	if (nd6_options((struct nd_opt_hdr *)(rs + 1),
 			len - sizeof(struct nd_router_solicit),
 			&ndopts, NDOPT_FLAG_SRCLINKADDR)) {
@@ -1083,6 +1084,7 @@ ra_input(int len, struct nd_router_advert *nra,
 
 	/* ND option check */
 	memset(&ndopts, 0, sizeof(ndopts));
+	TAILQ_INIT(&ndopts.opt_list);
 	error = nd6_options((struct nd_opt_hdr *)(nra + 1),
 	    len - sizeof(struct nd_router_advert), &ndopts,
 	    NDOPT_FLAG_SRCLINKADDR | NDOPT_FLAG_PREFIXINFO | NDOPT_FLAG_MTU |
