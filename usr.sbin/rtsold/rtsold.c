@@ -225,6 +225,7 @@ main(int argc, char **argv)
 	srandom((u_long)time(NULL));
 #endif
 
+#if (__FreeBSD_version < 900000)
 	if (Fflag) {
 		setinet6sysctl(IPV6CTL_FORWARDING, 0);
 	} else {
@@ -232,6 +233,7 @@ main(int argc, char **argv)
 		if (getinet6sysctl(IPV6CTL_FORWARDING))
 			warnx("kernel is configured as a router, not a host");
 	}
+#endif
 
 #ifndef SMALL
 	/* initialization to dump internal status to a file */
@@ -409,6 +411,32 @@ ifconfig(char *ifname)
 		    "interface %s was already configured", ifname);
 		free(sdl);
 		return (-1);
+	}
+
+	if (Fflag) {
+		struct in6_ndireq nd;
+		int s;
+
+		if ((s = socket(AF_INET6, SOCK_DGRAM, 0)) < 0) {
+			warnmsg(LOG_ERR, __func__, "socket() failed.");
+			return (-1);
+		}
+		memset(&nd, 0, sizeof(nd));
+		strlcpy(nd.ifname, ifname, sizeof(nd.ifname));
+		if (ioctl(s, SIOCGIFINFO_IN6, (caddr_t)&nd) < 0) {
+			warnmsg(LOG_ERR, __func__,
+			    "cannot get accept_rtadv flag");
+			close(s);
+			return (-1);
+		}
+		nd.ndi.flags |= ND6_IFF_ACCEPT_RTADV;
+		if (ioctl(s, SIOCSIFINFO_IN6, (caddr_t)&nd) < 0) {
+			warnmsg(LOG_ERR, __func__,
+			    "cannot set accept_rtadv flag");
+			close(s);
+			return (-1);
+		}
+		close(s);
 	}
 
 	if ((ifi = malloc(sizeof(*ifi))) == NULL) {
