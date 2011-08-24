@@ -25,10 +25,19 @@
  */
 
 #include <sys/hash.h>
-#include <hashtable.h>
+
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "hashtable.h"
+
+/*
+ * Initializes a hash table that can hold table_size number of entries,
+ * each of which has a key of key_size bytes and a value of value_size
+ * bytes. On successful allocation returns a pointer to the hash table.
+ * Otherwise, returns NULL and sets errno to indicate the error.
+ */
 hashtable
 *hashtable_init(size_t table_size, size_t key_size, size_t value_size)
 {
@@ -36,13 +45,11 @@ hashtable
 
 	tbl = malloc(sizeof(hashtable));
 	if (tbl == NULL)
-		return (NULL);
+		goto mem1;
 
 	tbl->entries = calloc(sizeof(hashtable_entry *), table_size);
-	if (tbl->entries == NULL) {
-		free(tbl);
-		return (NULL);
-	}
+	if (tbl->entries == NULL)
+		goto mem2;
 
 	tbl->table_size = table_size;
 	tbl->usage = 0;
@@ -50,96 +57,151 @@ hashtable
 	tbl->value_size = value_size;
 
 	return (tbl);
+
+mem2:
+	free(tbl);
+mem1:
+	errno = ENOMEM;
+	return (NULL);
 }
 
+/*
+ * Places the key-value pair to the hashtable tbl.
+ * Returns:
+ *   HASH_OK:		if the key was not present in the hash table yet
+ *			but the kay-value pair has been successfully added.
+ *   HASH_UPDATED:	if the value for the key has been updated with the
+ *			new value.
+ *   HASH_FULL:		if the hash table is full and the entry could not
+ *			be added.
+ *   HASH_FAIL:		if an error has occurred and errno has been set to
+ *			indicate the error.
+ */
 int
 hashtable_put(hashtable *tbl, const void *key, const void *value)
 {
 	uint32_t hash = 0;
 
-	if (tbl->table_size == tbl->usage)
-		return (-1);
+	if (tbl->table_size == tbl->usage) {
+		return (HASH_FULL);
+	}
 
-	hash = hash32_buf(key, tbl->key_size, hash);
-	hash %= tbl->table_size;
+	hash = hash32_buf(key, tbl->key_size, hash) % tbl->table_size;
+
+	/*
+	 * On hash collision entries are inserted at the next free space,
+	 * so we have to increase the index until we either find an entry
+	 * with the same key (and update it) or we find a free space.
+	 */
+	for(;;) {
+		if (tbl->entries[hash] == NULL)
+			break;
+		else if (memcmp(tbl->entries[hash]->key, key,
+		    tbl->key_size) == 0) {
+			memcpy(tbl->entries[hash]->value, value, tbl->value_size);
+			return (HASH_UPDATED);
+		}
+	}
 
 	while (tbl->entries[hash] != NULL)
 		hash = (hash >= tbl->table_size) ? 0 : hash + 1;
 
 	tbl->entries[hash] = malloc(sizeof(hashtable_entry));
-	if (tbl->entries[hash] == NULL)
-		return (-1);
+	if (tbl->entries[hash] == NULL) {
+		errno = ENOMEM;
+		goto mem1;
+	}
 
 	tbl->entries[hash]->key = malloc(tbl->key_size);
 	if (tbl->entries[hash]->key == NULL) {
-		free(tbl->entries[hash]);
-		return (-1);
+		errno = ENOMEM;
+		goto mem2;
 	}
 
 	tbl->entries[hash]->value = malloc(tbl->value_size);
 	if (tbl->entries[hash]->value == NULL) {
-		free(tbl->entries[hash]->key);
-		free(tbl->entries[hash]);
-		return (-1);
+		errno = ENOMEM;
+		goto mem3;
 	}
 
-	memcpy(&tbl->entries[hash]->key, key, tbl->key_size);
-	memcpy(&tbl->entries[hash]->value, value, tbl->value_size);
+	memcpy(tbl->entries[hash]->key, key, tbl->key_size);
+	memcpy(tbl->entries[hash]->value, value, tbl->value_size);
 	tbl->usage++;
 
-	return (0);
+	return (HASH_OK);
+
+mem3:
+	free(tbl->entries[hash]->key);
+mem2:
+	free(tbl->entries[hash]);
+mem1:
+	return (HASH_FAIL);
 }
 
 static hashtable_entry
-*hashtable_lookup(const hashtable *tbl, const void *key)
+**hashtable_lookup(const hashtable *tbl, const void *key)
 {
 	uint32_t hash = 0;
 
-	hash = hash32_buf(key, tbl->key_size, hash);
-	hash %= tbl->table_size;
+	hash = hash32_buf(key, tbl->key_size, hash) % tbl->table_size;
 
 	for (;;) {
 		if (tbl->entries[hash] == NULL)
 			return (NULL);
-		else if (memcmp(key, &tbl->entries[hash]->key,
+		else if (memcmp(key, tbl->entries[hash]->key,
 		    tbl->key_size) == 0)
-			return (tbl->entries[hash]);
+			return (&tbl->entries[hash]);
 
 		hash = (hash == tbl->table_size) ? 0 : hash + 1;
   	}
 }
 
+/*
+ * Retrieves the value for key from the hash table tbl and places
+ * it to the space indicated by the value argument.
+ * Returns HASH_OK if the value has been found and retrieved or
+ * HASH_NOTFOUND otherwise.
+ */
 int
 hashtable_get(hashtable *tbl, const void *key, void *value)
 {
-	hashtable_entry *entry;
+	hashtable_entry **entry;
 
 	entry = hashtable_lookup(tbl, key);
 	if (entry == NULL)
-		return (-1);
+		return (HASH_NOTFOUND);
 
-	memcpy(value, &entry->value, tbl->value_size);
-	return (0);
+	memcpy(value, (*entry)->value, tbl->value_size);
+	return (HASH_OK);
 }
 
+/*
+ * Removes the entry with the specifified key from the hash table
+ * tbl. Returns HASH_OK if the entry has been found and removed
+ * or HASH_NOTFOUND otherwise.
+ */
 int
 hashtable_remove(hashtable *tbl, const void *key)
 {
-	hashtable_entry *entry;
+	hashtable_entry **entry;
 
 	entry = hashtable_lookup(tbl, key);
 	if (entry == NULL)
-		return (-1);
+		return (HASH_NOTFOUND);
 
-//	free(entry->key);
-//	free(entry->value);
-	free(entry);
+	free((*entry)->key);
+	free((*entry)->value);
+	free(*entry);
+	*entry = NULL;
 
 	tbl->usage--;
 
-	return (0);
+	return (HASH_OK);
 }
 
+/*
+ * Frees the resources associated with the hash table tbl.
+ */
 void
 hashtable_free(hashtable *tbl)
 {
@@ -148,10 +210,9 @@ hashtable_free(hashtable *tbl)
 		return;
 
 	for (unsigned int i = 0; i < tbl->table_size; i++)
-		if (tbl->entries[i] != NULL) {
-//			free(tbl->entries[i]->key);
-//			free(tbl->entries[i]->value);
-//			free(tbl->entries[i]);
-	}
+		if ((tbl->entries[i] != NULL)) {
+			free(tbl->entries[i]->key);
+			free(tbl->entries[i]->value);
+		}
 	free(tbl->entries);
 }

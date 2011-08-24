@@ -3,7 +3,6 @@
 #ifndef FASTMATCH_H
 #define FASTMATCH_H 1
 
-#include <hashtable.h>
 #include <limits.h>
 #include <regex.h>
 #include <stdbool.h>
@@ -18,7 +17,7 @@ typedef struct {
   int		*bmGs;
   char		*pattern;
   int		 defBc;
-  hashtable	*qsBc_table;
+  void		*qsBc_table;
   int		*sbmGs;
   const char	*re_endp;
 

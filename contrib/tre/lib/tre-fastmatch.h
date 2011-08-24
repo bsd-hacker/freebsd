@@ -2,7 +2,6 @@
 #define TRE_FASTMATCH_H 1
 
 #include <fastmatch.h>
-#include <hashtable.h>
 #include <limits.h>
 #include <regex.h>
 #include <stdbool.h>

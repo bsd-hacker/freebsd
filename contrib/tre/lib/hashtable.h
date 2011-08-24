@@ -5,6 +5,12 @@
 
 #include <sys/types.h>
 
+#define HASH_OK		0
+#define HASH_UPDATED	1
+#define HASH_FAIL	2
+#define HASH_FULL	3
+#define HASH_NOTFOUND	4
+
 typedef struct {
 	void		*key;
 	void		*value;

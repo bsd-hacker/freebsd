@@ -28,7 +28,6 @@
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif /* HAVE_CONFIG_H */
-#include <hashtable.h>
 #include <limits.h>
 #include <regex.h>
 #include <stdbool.h>
@@ -133,7 +132,7 @@ static int	fastcmp(const void *, const void *, size_t,
 		&((tre_char_t *)startptr)[mismatch + 1], &bc);		\
 	      gs = fg->bmGs[mismatch];					\
 	    }								\
-	    bc = (r == 0) ? bc : fg->defBc;				\
+	    bc = (r == HASH_OK) ? bc : fg->defBc;			\
 	    DPRINT(("tre_fast_match: mismatch on character %lc,"	\
 		    "BC %d, GS %d\n",					\
 		    ((tre_char_t *)startptr)[mismatch + 1], bc, gs));	\
