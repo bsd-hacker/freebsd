@@ -46,6 +46,18 @@
 static int	fastcmp(const void *, const void *, size_t,
 			tre_str_type_t, bool, bool);
 
+#define FAIL_COMP(errcode)						\
+  {									\
+    if (fg->pattern)							\
+      xfree(fg->pattern);						\
+    if (fg->wpattern)							\
+      xfree(fg->wpattern);						\
+    if (fg->qsBc_table)							\
+      hashtable_free(fg->qsBc_table);					\
+    fg = NULL;								\
+    return errcode;							\
+  }
+
 /*
  * Skips n characters in the input string and assigns the start
  * address to startptr. Note: as per IEEE Std 1003.1-2008
@@ -222,17 +234,25 @@ static int	fastcmp(const void *, const void *, size_t,
   /* Preprocess pattern. */						\
   fg->qsBc_table = hashtable_init(fg->wlen * 4, sizeof(tre_char_t),	\
     sizeof(int));							\
+  if (!fg->qsBc_table)							\
+    FAIL_COMP(REG_ESPACE);						\
   for (unsigned int i = fg->hasdot + 1; i < fg->wlen; i++)		\
     {									\
       int k = fg->wlen - i;						\
-      hashtable_put(fg->qsBc_table, &fg->wpattern[i], &k);		\
+      int r;								\
+									\
+      r = hashtable_put(fg->qsBc_table, &fg->wpattern[i], &k);		\
+      if ((r == HASH_FAIL) || (r == HASH_FULL))				\
+	FAIL_COMP(REG_ESPACE);						\
       DPRINT(("BC shift for wide char %lc is %d\n", fg->wpattern[i],	\
 	     fg->wlen - i));						\
       if (fg->icase)							\
 	{								\
 	  tre_char_t wc = iswlower(fg->wpattern[i]) ?			\
 	    towupper(fg->wpattern[i]) : towlower(fg->wpattern[i]);	\
-	  hashtable_put(fg->qsBc_table, &wc, &k);			\
+	  r = hashtable_put(fg->qsBc_table, &wc, &k);			\
+	  if ((r == HASH_FAIL) || (r == HASH_FULL))			\
+	    FAIL_COMP(REG_ESPACE);					\
 	}								\
     }
 
