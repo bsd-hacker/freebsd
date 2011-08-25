@@ -125,7 +125,15 @@
       st = i + 1;							\
       escaped = false;							\
       goto end_segment;							\
-    } while (0);
+    } while (0)
+
+#define STORE_CHAR							\
+  do									\
+    {									\
+      escaped = false;							\
+      heur[pos++] = regex[i];						\
+    } while (0)
+
 
 /*
  * Parses a regular expression and constructs a heuristic in heur_t and
@@ -139,10 +147,6 @@ tre_compile_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
   int st = 0, pos = 0;
   bool escaped = false;
   int errcode, ret;
-
-  /* XXX: only basic regexes are supported. */
-  if (cflags & REG_EXTENDED)
-    return REG_BADPAT;
 
   /* Temporary space, len will be enough. */
   heur = xmalloc(len);
@@ -168,10 +172,17 @@ tre_compile_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
 	  switch (regex[i])
 	    {
 
-	      /* Bracketed expression is substituted with a dot. */
+	      /*
+	       * Bracketed expression is substituted with a dot or the
+	       * brackets are treated as normal if at least the opening
+	       * bracket is escaped.
+	       */
 	      case TRE_CHAR('['):
 		PARSE_BRACKETS;
-		heur[pos++] = TRE_CHAR('.');
+		if (escaped)
+		  STORE_CHAR;
+		else
+		  heur[pos++] = TRE_CHAR('.');
 		continue;
 
 	      /*
@@ -180,14 +191,22 @@ tre_compile_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
 	       * character.
 	       */
 	      case TRE_CHAR('{'):
+		if (escaped && (i == 1))
+		  STORE_CHAR;
+		else if ((i == 0) && !(cflags & REG_EXTENDED))
+		  STORE_CHAR;
+		else if ((i == 0) && (cflags & REG_EXTENDED))
+		  continue;
+
 		PARSE_UNIT('{', '}');
-		if (escaped)
+		if (escaped ^ (cflags & REG_EXTENDED))
 		  {
 		    pos--;
 		    END_SEGMENT;
 		  }
-		heur[pos++] = regex[i];
-		break;
+		else
+		  STORE_CHAR;
+		continue;
 
 	      /*
 	       * Terminates the current segment when escaped,
@@ -195,10 +214,11 @@ tre_compile_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
 	       */
 	      case TRE_CHAR('('):
 		PARSE_UNIT('(', ')');
-		if (escaped)
+		if (escaped ^ (cflags & REG_EXTENDED))
 		  END_SEGMENT;
-		heur[pos++] = regex[i];
-		break;
+		else
+		  STORE_CHAR;
+		continue;
 
 	      /*
 	       * Sets escaped flag.
@@ -207,24 +227,88 @@ tre_compile_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
 	       */
 	      case TRE_CHAR('\\'):
 		if (escaped)
-		  heur[pos++] = regex[i];
-		escaped = !escaped;
+		  STORE_CHAR;
+		else
+		  escaped = !escaped;
 		continue;
 
 	      /*
-	       * If not the first character and not escaped, erases the
+	       * BRE: If not the first character and not escaped, erases the
 	       * last character and terminates the segment.
 	       * Otherwise treated as a normal character.
+	       * ERE: Skipped if first character (GNU), rest is like in BRE.
 	       */
 	      case TRE_CHAR('*'):
-		if ((i != 0) && !escaped)
+		if (escaped || (!(cflags & REG_EXTENDED) && (i == 0)))
+		  STORE_CHAR;
+		else if ((i != 0))
+		  {
+		    pos--;
+		    END_SEGMENT;
+		  }
+		continue;
+
+	      /*
+	       * In BRE, it is a normal character, behavior is undefined
+	       * when escaped.
+	       * In ERE, it is special unless escaped. Terminate segment
+	       * when not escaped. Last character is not removed because it
+	       * must occur at least once. It is skipped when first
+	       * character (GNU).
+	       */
+	      case TRE_CHAR('+'):
+		if ((cflags & REG_EXTENDED) && (i == 0))
+		  continue;
+		else if ((cflags & REG_EXTENDED) ^ escaped)
+		  END_SEGMENT;
+		else 
+		  STORE_CHAR;
+		continue;
+
+	      /*
+	       * In BRE, it is a normal character, behavior is undefined
+	       * when escaped.
+	       * In ERE, it is special unless escaped. Terminate segment
+	       * when not escaped. Last character is removed. Skipped when
+	       * first character (GNU).
+	       */
+	      case TRE_CHAR('?'):
+		if ((cflags & REG_EXTENDED) && (i == 0))
+		  continue;
+		if ((cflags & REG_EXTENDED) ^ escaped)
 		  {
 		    pos--;
 		    END_SEGMENT;
 		  }
 		else
-		  heur[pos++] = regex[i];
-		break;
+		  STORE_CHAR;
+		continue;
+
+	      /*
+	       * Fail if it is an ERE alternation marker.
+	       */
+	      case TRE_CHAR('|'):
+		if ((cflags & REG_EXTENDED) && !escaped)
+		  {
+		    errcode = REG_BADPAT;
+		    goto badpat2;
+		  }
+		else if (!(cflags & REG_EXTENDED) && escaped)
+		  END_SEGMENT;
+		else
+		  STORE_CHAR;
+		continue;
+
+	      /*
+	       * Cut the segment at an escaped dot because the fast matcher
+	       * cannot handle it.
+	       */
+	      case TRE_CHAR('.'):
+		if (escaped)
+		  END_SEGMENT;
+		else
+		  STORE_CHAR;
+		continue;
 
 	      /*
 	       * If escaped, terminates segment.
@@ -234,7 +318,8 @@ tre_compile_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
 	      default:
 		if (escaped)
 		  END_SEGMENT;
-		heur[pos++] = regex[i];
+		else
+		  STORE_CHAR;
 		continue;
 	    }
 	}
