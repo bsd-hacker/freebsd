@@ -1873,25 +1873,31 @@ tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
   /* Parse context. */
   tre_parse_ctx_t parse_ctx;
 
-  /* Check if we can cheat with a fixed string algorithm. */
-  shortcut = xmalloc(sizeof(fastmatch_t));
-  if (!shortcut)
-    return REG_ESPACE;
-  ret = (cflags & REG_LITERAL)
-	? tre_compile_literal(shortcut, regex, n, cflags)
-	: tre_compile_fast(shortcut, regex, n, cflags);
-  if (ret == REG_OK)
+  /*
+   * Check if we can cheat with a fixed string algorithm
+   * if the pattern is long enough.
+   */
+  if (n >= 2)
     {
-      preg->shortcut = shortcut;
-      preg->re_nsub = 0;
-      DPRINT("tre_compile: pattern compiled for fast matcher\n");
-      return REG_OK;
-    }
-  else
-    {
-      xfree(shortcut);
-      preg->shortcut = NULL;
-      DPRINT("tre_compile: pattern compilation failed for fast matcher\n");
+      shortcut = xmalloc(sizeof(fastmatch_t));
+      if (!shortcut)
+	return REG_ESPACE;
+      ret = (cflags & REG_LITERAL)
+	     ? tre_compile_literal(shortcut, regex, n, cflags)
+	     : tre_compile_fast(shortcut, regex, n, cflags);
+      if (ret == REG_OK)
+	{
+	  preg->shortcut = shortcut;
+	  preg->re_nsub = 0;
+	  DPRINT("tre_compile: pattern compiled for fast matcher\n");
+	  return REG_OK;
+	}
+      else
+	{
+	  xfree(shortcut);
+	  preg->shortcut = NULL;
+	  DPRINT("tre_compile: pattern compilation failed for fast matcher\n");
+	}
     }
 
   /* Allocate a stack used throughout the compilation process for various

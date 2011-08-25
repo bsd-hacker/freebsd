@@ -265,7 +265,10 @@ static int	fastcmp(const void *, const void *, size_t,
       fg->sbmGs = xmalloc(fg->len * sizeof(int));			\
       if (!fg->sbmGs)							\
 	return REG_ESPACE;						\
-      _FILL_BMGS(fg->sbmGs, fg->pattern, fg->len, false);		\
+      if (fg->len == 1)							\
+	fg->sbmGs[0] = 1;						\
+      else								\
+	_FILL_BMGS(fg->sbmGs, fg->pattern, fg->len, false);		\
     }
 
 /*
@@ -277,7 +280,10 @@ static int	fastcmp(const void *, const void *, size_t,
       fg->bmGs = xmalloc(fg->wlen * sizeof(int));			\
       if (!fg->bmGs)							\
 	return REG_ESPACE;						\
-      _FILL_BMGS(fg->bmGs, fg->wpattern, fg->wlen, true);		\
+      if (fg->wlen == 1)						\
+	fg->bmGs[0] = 1;						\
+      else								\
+	_FILL_BMGS(fg->bmGs, fg->wpattern, fg->wlen, true);		\
     }
 
 #define _FILL_BMGS(arr, pat, plen, wide)				\
