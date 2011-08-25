@@ -24,13 +24,28 @@
  * SUCH DAMAGE.
  */
 
-#include <sys/hash.h>
-
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "hashtable.h"
+
+
+/*
+ * Return a 32-bit hash of the given buffer.  The init
+ * value should be 0, or the previous hash value to extend
+ * the previous hash.
+ */
+static uint32_t
+hash32_buf(const void *buf, size_t len, uint32_t hash)
+{
+  const unsigned char *p = buf;
+
+  while (len--)
+    hash = HASHSTEP(hash, *p++);
+
+  return hash;
+}
 
 /*
  * Initializes a hash table that can hold table_size number of entries,
@@ -100,9 +115,6 @@ hashtable_put(hashtable *tbl, const void *key, const void *value)
 	memcpy(tbl->entries[hash]->value, value, tbl->value_size);
 	return (HASH_UPDATED);
       }
-
-  while (tbl->entries[hash] != NULL)
-    hash = (hash >= tbl->table_size) ? 0 : hash + 1;
 
   tbl->entries[hash] = malloc(sizeof(hashtable_entry));
   if (tbl->entries[hash] == NULL)
