@@ -186,33 +186,6 @@ error:
 	return (NULL);
 }
 
-static inline struct file *
-grep_file_init(struct file *f)
-{
-
-	if (filebehave == FILE_GZIP &&
-	    (gzbufdesc = gzdopen(f->fd, "r")) == NULL)
-		goto error;
-
-	if (filebehave == FILE_BZIP &&
-	    (bzbufdesc = BZ2_bzdopen(f->fd, "r")) == NULL)
-		goto error;
-
-	/* Fill read buffer, also catches errors early */
-	if (grep_refill(f) != 0)
-		goto error;
-
-	/* Check for binary stuff, if necessary */
-	if (binbehave != BINFILE_TEXT && memchr(bufpos, '\0', bufrem) != NULL)
-		f->binary = true;
-
-	return (f);
-error:
-	close(f->fd);
-	free(f);
-	return (NULL);
-}
-
 /*
  * Opens a file for processing.
  */
@@ -227,12 +200,32 @@ grep_open(const char *path)
 		/* Processing stdin implies --line-buffered. */
 		lbflag = true;
 		f->fd = STDIN_FILENO;
-	} else if ((f->fd = open(path, O_RDONLY)) == -1) {
-		free(f);
-		return (NULL);
-	}
+	} else if ((f->fd = open(path, O_RDONLY)) == -1)
+		goto error1;
 
-	return (grep_file_init(f));
+	if (filebehave == FILE_GZIP &&
+	    (gzbufdesc = gzdopen(f->fd, "r")) == NULL)
+		goto error2;
+
+	if (filebehave == FILE_BZIP &&
+	    (bzbufdesc = BZ2_bzdopen(f->fd, "r")) == NULL)
+		goto error2;
+
+	/* Fill read buffer, also catches errors early */
+	if (grep_refill(f) != 0)
+		goto error2;
+
+	/* Check for binary stuff, if necessary */
+	if (binbehave != BINFILE_TEXT && memchr(bufpos, '\0', bufrem) != NULL)
+	f->binary = true;
+
+	return (f);
+
+error2:
+	close(f->fd);
+error1:
+	free(f);
+	return (NULL);
 }
 
 /*
