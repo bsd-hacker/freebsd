@@ -15,6 +15,8 @@ bsdgrep.1: grep.1
 .endif
 SRCS=	file.c grep.c queue.c util.c
 
+WARNS=2
+
 # Extra files ported backported form some regex improvements
 .PATH: ${.CURDIR}/regex
 SRCS+=	fastmatch.c hashtable.c tre-fastmatch.c xmalloc.c

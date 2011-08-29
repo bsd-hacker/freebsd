@@ -3,6 +3,8 @@
 #ifndef GLUE_H
 #define GLUE_H
 
+#include <limits.h>
+#undef RE_DUP_MAX
 #include <regex.h>
 
 #define TRE_WCHAR			1

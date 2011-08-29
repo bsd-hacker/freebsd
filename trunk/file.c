@@ -119,13 +119,14 @@ grep_refill(struct file *f)
 		lstrm.next_out = buffer;
 		lstrm.avail_out = MAXBUFSIZ;
 		lstrm.next_in = in_buf;
-		lstrm.avail_in = read(f->fd, in_buf, MAXBUFSIZ);
+		nr = read(f->fd, in_buf, MAXBUFSIZ);
 
-		if (lstrm.avail_in < 0)
+		if (nr < 0)
 			return (-1);
-		else if (lstrm.avail_in == 0)
+		else if (nr == 0)
 			action = LZMA_FINISH;
 
+		lstrm.avail_in = nr;
 		ret = lzma_code(&lstrm, action);
 
 		if (ret != LZMA_OK && ret != LZMA_STREAM_END)
