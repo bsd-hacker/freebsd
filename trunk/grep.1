@@ -35,7 +35,8 @@
 .Os
 .Sh NAME
 .Nm grep , egrep , fgrep ,
-.Nm zgrep , zegrep , zfgrep
+.Nm zgrep , zegrep , zfgrep ,
+.Nm bzgrep , bzegrep , bzfgrep
 .Nd file pattern searcher
 .Sh SYNOPSIS
 .Nm grep
@@ -102,6 +103,19 @@ respectively, but accept input files compressed with the
 or
 .Xr gzip 1
 compression utilities.
+.Pp
+.Nm bzgrep ,
+.Nm bzegrep ,
+and
+.Nm bzfgrep
+act like
+.Nm grep ,
+.Nm egrep ,
+and
+.Nm fgrep ,
+respectively, but accept input files compressed with the
+.Xr bzip2 1
+compression utility.
 .Pp
 The following options are available:
 .Bl -tag -width indent
@@ -457,6 +471,7 @@ looking for either 19, 20, or 25.
 .Xr ed 1 ,
 .Xr ex 1 ,
 .Xr gzip 1 ,
+.Xr bzip2 1 ,
 .Xr sed 1 ,
 .Xr re_format 7
 .Sh STANDARDS

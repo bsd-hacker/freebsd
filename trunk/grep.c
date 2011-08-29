@@ -313,7 +313,7 @@ int
 main(int argc, char *argv[])
 {
 	char **aargv, **eargv, *eopts;
-	char *ep;
+	char *pn, *ep;
 	unsigned long long l;
 	unsigned int aargc, eargc, i;
 	int c, lastc, needpattern, newarg, prevoptind;
@@ -327,29 +327,20 @@ main(int argc, char *argv[])
 	/* Check what is the program name of the binary.  In this
 	   way we can have all the funcionalities in one binary
 	   without the need of scripting and using ugly hacks. */
-	switch (__progname[0]) {
+	pn = __progname;
+	if (pn[0] == 'b' && pn[1] == 'z') {
+		filebehave = FILE_BZIP;
+		pn += 2;
+	} else if (pn[0] == 'z') {
+		filebehave = FILE_GZIP;
+		pn += 1;
+	}
+	switch (pn[0]) {
 	case 'e':
 		grepbehave = GREP_EXTENDED;
 		break;
 	case 'f':
 		grepbehave = GREP_FIXED;
-		break;
-	case 'g':
-		grepbehave = GREP_BASIC;
-		break;
-	case 'z':
-		filebehave = FILE_GZIP;
-		switch(__progname[1]) {
-		case 'e':
-			grepbehave = GREP_EXTENDED;
-			break;
-		case 'f':
-			grepbehave = GREP_FIXED;
-			break;
-		case 'g':
-			grepbehave = GREP_BASIC;
-			break;
-		}
 		break;
 	}
 
