@@ -41,6 +41,7 @@ __FBSDID("$FreeBSD$");
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <lzma.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
@@ -56,6 +57,7 @@ __FBSDID("$FreeBSD$");
 
 static gzFile gzbufdesc;
 static BZFILE* bzbufdesc;
+static lzma_stream lstrm = LZMA_STREAM_INIT;
 
 static unsigned char buffer[MAXBUFSIZ];
 static unsigned char *bufpos;
@@ -101,6 +103,35 @@ grep_refill(struct file *f)
 			/* Make sure we exit with an error */
 			nr = -1;
 		}
+	} else if ((filebehave == FILE_XZ) || (filebehave == FILE_LZMA)) {
+		lzma_action action = LZMA_RUN;
+		uint8_t in_buf[MAXBUFSIZ];
+		lzma_ret ret;
+
+		ret = (filebehave == FILE_XZ) ?
+		    lzma_stream_decoder(&lstrm, UINT64_MAX,
+		    LZMA_CONCATENATED) :
+		    lzma_alone_decoder(&lstrm, UINT64_MAX);
+
+		if (ret != LZMA_OK)
+			return (-1);
+
+		lstrm.next_out = buffer;
+		lstrm.avail_out = MAXBUFSIZ;
+		lstrm.next_in = in_buf;
+		lstrm.avail_in = read(f->fd, in_buf, MAXBUFSIZ);
+
+		if (lstrm.avail_in < 0)
+			return (-1);
+		else if (lstrm.avail_in == 0)
+			action = LZMA_FINISH;
+
+		ret = lzma_code(&lstrm, action);
+
+		if (ret != LZMA_OK && ret != LZMA_STREAM_END)
+			return (-1);
+		bufrem = MAXBUFSIZ - lstrm.avail_out;
+		return (0);
 	} else
 		nr = read(f->fd, buffer, MAXBUFSIZ);
 

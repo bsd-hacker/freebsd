@@ -62,6 +62,8 @@ extern const char		*errstr[];
 #define FILE_STDIO	0
 #define FILE_GZIP	1
 #define FILE_BZIP	2
+#define FILE_XZ		3
+#define FILE_LZMA	4
 
 #define DIR_READ	0
 #define DIR_SKIP	1

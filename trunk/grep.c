@@ -165,7 +165,7 @@ usage(void)
 	exit(2);
 }
 
-static const char	*optstr = "0123456789A:B:C:D:EFGHIJLOPSRUVZabcd:e:f:hilm:nopqrsuvwxy";
+static const char	*optstr = "0123456789A:B:C:D:EFGHIJMLOPSRUVZabcd:e:f:hilm:nopqrsuvwxXy";
 
 struct option long_options[] =
 {
@@ -201,6 +201,7 @@ struct option long_options[] =
 	{"files-with-matches",	no_argument,		NULL, 'l'},
 	{"files-without-match", no_argument,            NULL, 'L'},
 	{"max-count",		required_argument,	NULL, 'm'},
+	{"lzma",		no_argument,		NULL, 'M'},
 	{"line-number",		no_argument,		NULL, 'n'},
 	{"only-matching",	no_argument,		NULL, 'o'},
 	{"quiet",		no_argument,		NULL, 'q'},
@@ -213,6 +214,7 @@ struct option long_options[] =
 	{"version",		no_argument,		NULL, 'V'},
 	{"word-regexp",		no_argument,		NULL, 'w'},
 	{"line-regexp",		no_argument,		NULL, 'x'},
+	{"xz",			no_argument,		NULL, 'X'},
 	{"decompress",          no_argument,            NULL, 'Z'},
 	{NULL,			no_argument,		NULL, 0}
 };
@@ -330,6 +332,12 @@ main(int argc, char *argv[])
 	pn = __progname;
 	if (pn[0] == 'b' && pn[1] == 'z') {
 		filebehave = FILE_BZIP;
+		pn += 2;
+	} else if (pn[0] == 'x' && pn[1] == 'z') {
+		filebehave = FILE_XZ;
+		pn += 2;
+	} else if (pn[0] == 'l' && pn[1] == 'z') {
+		filebehave = FILE_LZMA;
 		pn += 2;
 	} else if (pn[0] == 'z') {
 		filebehave = FILE_GZIP;
@@ -505,6 +513,9 @@ main(int argc, char *argv[])
 				err(2, NULL);
 			}
 			break;
+		case 'M':
+			filebehave = FILE_LZMA;
+			break;
 		case 'n':
 			nflag = true;
 			break;
@@ -552,6 +563,9 @@ main(int argc, char *argv[])
 		case 'x':
 			xflag = true;
 			cflags &= ~REG_NOSUB;
+			break;
+		case 'X':
+			filebehave = FILE_XZ;
 			break;
 		case 'Z':
 			filebehave = FILE_GZIP;
