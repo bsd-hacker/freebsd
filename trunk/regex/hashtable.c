@@ -24,6 +24,8 @@
  * SUCH DAMAGE.
  */
 
+#include "glue.h"
+
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
@@ -58,6 +60,10 @@ hashtable
 {
   hashtable *tbl;
 
+  DPRINT(("hashtable_init: table_size %lu, key_size %lu, value_size %lu\n",
+	(unsigned long)table_size, (unsigned long)key_size,
+	(unsigned long)value_size));
+
   tbl = malloc(sizeof(hashtable));
   if (tbl == NULL)
     goto mem1;
@@ -76,6 +82,7 @@ hashtable
 mem2:
   free(tbl);
 mem1:
+  DPRINT(("hashtable_init: allocation failed\n"));
   errno = ENOMEM;
   return (NULL);
 }
@@ -98,9 +105,13 @@ hashtable_put(hashtable *tbl, const void *key, const void *value)
   uint32_t hash = 0;
 
   if (tbl->table_size == tbl->usage)
-    return (HASH_FULL);
+    {
+      DPRINT(("hashtable_put: hashtable is full\n"));
+      return (HASH_FULL);
+    }
 
   hash = hash32_buf(key, tbl->key_size, hash) % tbl->table_size;
+  DPRINT(("hashtable_put: calculated hash %lu\n", hash));
 
   /*
    * On hash collision entries are inserted at the next free space,
@@ -108,13 +119,21 @@ hashtable_put(hashtable *tbl, const void *key, const void *value)
    * with the same key (and update it) or we find a free space.
    */
   for(;;)
-    if (tbl->entries[hash] == NULL)
-      break;
-    else if (memcmp(tbl->entries[hash]->key, key, tbl->key_size) == 0)
-      {
-	memcpy(tbl->entries[hash]->value, value, tbl->value_size);
-	return (HASH_UPDATED);
-      }
+    {
+      if (tbl->entries[hash] == NULL)
+	break;
+      else if (memcmp(tbl->entries[hash]->key, key, tbl->key_size) == 0)
+	{
+	  memcpy(tbl->entries[hash]->value, value, tbl->value_size);
+	  DPRINT(("hashtable_put: effective location is %lu, "
+		  "entry updated\n", hash));
+	  return (HASH_UPDATED);
+	}
+      if (++hash == tbl->table_size)
+	hash = 0;
+    }
+
+  DPRINT(("hashtable_put: effective location is %lu\n", hash));
 
   tbl->entries[hash] = malloc(sizeof(hashtable_entry));
   if (tbl->entries[hash] == NULL)
@@ -141,6 +160,8 @@ hashtable_put(hashtable *tbl, const void *key, const void *value)
   memcpy(tbl->entries[hash]->value, value, tbl->value_size);
   tbl->usage++;
 
+  DPRINT(("hashtable_put: entry successfully inserted\n"));
+
   return (HASH_OK);
 
 mem3:
@@ -148,6 +169,7 @@ mem3:
 mem2:
   free(tbl->entries[hash]);
 mem1:
+  DPRINT(("hashtable_put: insertion failed\n"));
   return (HASH_FAIL);
 }
 
@@ -163,9 +185,13 @@ static hashtable_entry
       if (tbl->entries[hash] == NULL)
 	return (NULL);
       else if (memcmp(key, tbl->entries[hash]->key, tbl->key_size) == 0)
-	return (&tbl->entries[hash]);
+	{
+	  DPRINT(("hashtable_lookup: entry found at location %lu\n", hash));
+	  return (&tbl->entries[hash]);
+	}
 
-      hash = (hash == tbl->table_size) ? 0 : hash + 1;
+      if (++hash == tbl->table_size)
+	hash = 0;
     }
 }
 
@@ -182,9 +208,13 @@ hashtable_get(hashtable *tbl, const void *key, void *value)
 
   entry = hashtable_lookup(tbl, key);
   if (entry == NULL)
-    return (HASH_NOTFOUND);
+    {
+      DPRINT(("hashtable_get: entry is not available in the hashtable\n"));
+      return (HASH_NOTFOUND);
+    }
 
   memcpy(value, (*entry)->value, tbl->value_size);
+  DPRINT(("hashtable_get: entry successfully copied into output buffer\n"));
   return (HASH_OK);
 }
 
@@ -200,7 +230,10 @@ hashtable_remove(hashtable *tbl, const void *key)
 
   entry = hashtable_lookup(tbl, key);
   if (entry == NULL)
-    return (HASH_NOTFOUND);
+    {
+      DPRINT(("hashtable_remove: entry is not available in the hashtable\n"));
+      return (HASH_NOTFOUND);
+    }
 
   free((*entry)->key);
   free((*entry)->value);
@@ -208,6 +241,7 @@ hashtable_remove(hashtable *tbl, const void *key)
   *entry = NULL;
 
   tbl->usage--;
+  DPRINT(("hashtable_remove: entry successfully removed\n"));
   return (HASH_OK);
 }
 
@@ -228,4 +262,5 @@ hashtable_free(hashtable *tbl)
       }
 
   free(tbl->entries);
+  DPRINT(("hashtable_free: resources are successfully freed\n"));
 }

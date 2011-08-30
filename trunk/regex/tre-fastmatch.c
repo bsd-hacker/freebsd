@@ -144,7 +144,7 @@ static int	fastcmp(const void *, const void *, size_t,
 	      gs = fg->bmGs[mismatch];					\
 	    }								\
 	    bc = (r == HASH_OK) ? bc : fg->defBc;			\
-	    DPRINT(("tre_fast_match: mismatch on character %lc,"	\
+	    DPRINT(("tre_fast_match: mismatch on character %lc, "	\
 		    "BC %d, GS %d\n",					\
 		    ((tre_char_t *)startptr)[mismatch + 1], bc, gs));	\
             break;							\
@@ -157,7 +157,7 @@ static int	fastcmp(const void *, const void *, size_t,
 	      gs = fg->sbmGs[mismatch];					\
 	    }								\
 	  bc = fg->qsBc[((unsigned char *)startptr)[mismatch + 1]];	\
-	  DPRINT(("tre_fast_match: mismatch on character %c,"		\
+	  DPRINT(("tre_fast_match: mismatch on character %c, "		\
 		 "BC %d, GS %d\n",					\
 		 ((unsigned char *)startptr)[mismatch + 1], bc, gs));	\
       }									\
@@ -214,6 +214,7 @@ static int	fastcmp(const void *, const void *, size_t,
           char c = islower(fg->pattern[i]) ? toupper(fg->pattern[i])	\
             : tolower(fg->pattern[i]);					\
           fg->qsBc[(unsigned)c] = fg->len - i;				\
+	  DPRINT(("BC shift for char %c is %d\n", c, fg->len - i));	\
         }								\
     }
 
@@ -231,7 +232,7 @@ static int	fastcmp(const void *, const void *, size_t,
   fg->defBc = fg->wlen - fg->hasdot;					\
 									\
   /* Preprocess pattern. */						\
-  fg->qsBc_table = hashtable_init(fg->wlen * 4, sizeof(tre_char_t),	\
+  fg->qsBc_table = hashtable_init(fg->wlen * 8, sizeof(tre_char_t),	\
     sizeof(int));							\
   if (!fg->qsBc_table)							\
     FAIL_COMP(REG_ESPACE);						\
@@ -252,6 +253,8 @@ static int	fastcmp(const void *, const void *, size_t,
 	  r = hashtable_put(fg->qsBc_table, &wc, &k);			\
 	  if ((r == HASH_FAIL) || (r == HASH_FULL))			\
 	    FAIL_COMP(REG_ESPACE);					\
+	  DPRINT(("BC shift for wide char %lc is %d\n", wc,		\
+		 fg->wlen - i));					\
 	}								\
     }
 

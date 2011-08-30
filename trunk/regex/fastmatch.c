@@ -28,6 +28,7 @@
 
 #include "glue.h"
 
+#include <errno.h>
 #include <fastmatch.h>
 #include <regex.h>
 #include <string.h>

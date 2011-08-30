@@ -6,6 +6,7 @@
 #include <limits.h>
 #undef RE_DUP_MAX
 #include <regex.h>
+#include <stdio.h>
 
 #define TRE_WCHAR			1
 #define TRE_MULTIBYTE			1
@@ -27,7 +28,12 @@
 
 #define TRE_MB_CUR_MAX			MB_CUR_MAX
 
-#define DPRINT(msg)			
+#ifndef _GREP_DEBUG
+#define DPRINT(msg)
+#else			
+#define DPRINT(msg) do {printf msg; fflush(stdout);} while(/*CONSTCOND*/0)
+#endif
+
 #define MIN(a,b)			((a > b) ? (b) : (a))
 #define MAX(a,b)			((a > b) ? (a) : (b))
 
