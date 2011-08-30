@@ -34,8 +34,9 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
-#include <sys/types.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 
 #include <bzlib.h>
 #include <err.h>
@@ -59,9 +60,10 @@ static gzFile gzbufdesc;
 static BZFILE* bzbufdesc;
 static lzma_stream lstrm = LZMA_STREAM_INIT;
 
-static unsigned char buffer[MAXBUFSIZ];
+static unsigned char *buffer;
 static unsigned char *bufpos;
 static size_t bufrem;
+static size_t fsiz;
 
 static unsigned char *lnbuf;
 static size_t lnbuflen;
@@ -71,6 +73,9 @@ grep_refill(struct file *f)
 {
 	ssize_t nr;
 	int bzerr;
+
+	if (filebehave == FILE_MMAP)
+		return (0);
 
 	bufpos = buffer;
 	bufrem = 0;
@@ -235,6 +240,33 @@ grep_open(const char *path)
 	} else if ((f->fd = open(path, O_RDONLY)) == -1)
 		goto error1;
 
+	if (filebehave == FILE_MMAP) {
+		struct stat st;
+
+		if ((fstat(f->fd, &st) == -1) || (st.st_size > OFF_MAX) ||
+		    (!S_ISREG(st.st_mode)))
+			filebehave = FILE_STDIO;
+		else {
+			int flags = MAP_PRIVATE | MAP_NOCORE | MAP_NOSYNC;
+#ifdef MAP_PREFAULT_READ
+			flags |= MAP_PREFAULT_READ;
+#endif
+			fsiz = st.st_size;
+			buffer = mmap(NULL, fsiz, PROT_READ, flags,
+			     f->fd, (off_t)0);
+			if (buffer == MAP_FAILED)
+				filebehave = FILE_STDIO;
+			else {
+				bufrem = st.st_size;
+				bufpos = buffer;
+				madvise(buffer, st.st_size, MADV_SEQUENTIAL);
+			}
+		}
+	}
+
+	if ((buffer == NULL) || (buffer == MAP_FAILED))
+		buffer = grep_malloc(MAXBUFSIZ);
+
 	if (filebehave == FILE_GZIP &&
 	    (gzbufdesc = gzdopen(f->fd, "r")) == NULL)
 		goto error2;
@@ -244,7 +276,7 @@ grep_open(const char *path)
 		goto error2;
 
 	/* Fill read buffer, also catches errors early */
-	if (grep_refill(f) != 0)
+	if (bufrem == 0 && grep_refill(f) != 0)
 		goto error2;
 
 	/* Check for binary stuff, if necessary */
@@ -270,6 +302,10 @@ grep_close(struct file *f)
 	close(f->fd);
 
 	/* Reset read buffer and line buffer */
+	if (filebehave == FILE_MMAP) {
+		munmap(buffer, fsiz);
+		buffer = NULL;
+	}
 	bufpos = buffer;
 	bufrem = 0;
 

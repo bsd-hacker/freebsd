@@ -548,7 +548,7 @@ main(int argc, char *argv[])
 			break;
 		case 'u':
 		case MMAP_OPT:
-			/* noop, compatibility */
+			filebehave = FILE_MMAP;
 			break;
 		case 'V':
 			printf(getstr(9), __progname, VERSION);
