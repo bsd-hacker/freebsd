@@ -10,6 +10,8 @@
 #define TRE_WCHAR			1
 #define TRE_MULTIBYTE			1
 
+#define TRE_CHAR(n) L##n
+
 #define tre_char_t			wchar_t
 #define tre_mbrtowc(pwc, s, n, ps)	(mbrtowc((pwc), (s), (n), (ps)))
 #define tre_strlen			wcslen
@@ -19,6 +21,7 @@
 #define REG_LITERAL			0020
 #define REG_WORD			0100
 #define REG_GNU				0400
+#define _REG_HEUR			1000
 
 #define REG_OK				0
 
