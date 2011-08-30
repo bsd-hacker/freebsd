@@ -289,10 +289,13 @@ add_dpattern(const char *pat, int mode)
 static void
 read_patterns(const char *fn)
 {
+	struct stat st;
 	FILE *f;
 	char *line;
 	size_t len;
 
+	if ((stat(fn, &st) == -1) || !(S_ISREG(st.st_mode)))
+		return;
 	if ((f = fopen(fn, "r")) == NULL)
 		err(2, "%s", fn);
 	while ((line = fgetln(f, &len)) != NULL)
@@ -636,6 +639,10 @@ main(int argc, char *argv[])
 	}
 	aargc -= optind;
 	aargv += optind;
+
+	/* Empty pattern file matches nothing */
+	if (!needpattern && (patterns == 0))
+		exit(1);
 
 	/* Fail if we don't have any pattern */
 	if (aargc == 0 && needpattern)
