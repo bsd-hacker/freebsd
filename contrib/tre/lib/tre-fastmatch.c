@@ -385,12 +385,15 @@ static int	fastcmp(const void *, const void *, size_t,
   fg->word = (cflags & REG_WORD);					\
   fg->newline = (cflags & REG_NEWLINE);					\
 									\
+  if (n == 0)								\
+    {									\
+      fg->matchall = true;						\
+      return REG_OK;							\
+    }
+									\
   /* Cannot handle REG_ICASE with MB string */				\
   if (fg->icase && (TRE_MB_CUR_MAX > 1))				\
     return REG_BADPAT;							\
-									\
-  /* Calculate length if unspecified */					\
-  n = (n == 0) ? tre_strlen(pat) : n;
 
 /*
  * Returns: REG_OK on success, error code otherwise
@@ -596,6 +599,13 @@ tre_match_fast(const fastmatch_t *fg, const void *data, size_t len,
 	  len = strlen(str_byte);
 	  break;
       }
+
+  if (fg->matchall)
+    {
+      pmatch[0].rm_so = 0;
+      pmatch[0].rm_eo = len;
+      return REG_OK;
+    }
 
   /* No point in going farther if we do not have enough data. */
   switch (type)
