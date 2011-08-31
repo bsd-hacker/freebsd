@@ -384,6 +384,7 @@ static int	fastcmp(const void *, const void *, size_t,
   fg->icase = (cflags & REG_ICASE);					\
   fg->word = (cflags & REG_WORD);					\
   fg->newline = (cflags & REG_NEWLINE);					\
+  fg->nosub = (cflags & REG_NOSUB);					\
 									\
   if (n == 0)								\
     {									\
@@ -602,8 +603,11 @@ tre_match_fast(const fastmatch_t *fg, const void *data, size_t len,
 
   if (fg->matchall)
     {
-      pmatch[0].rm_so = 0;
-      pmatch[0].rm_eo = len;
+      if (!fg->nosub)
+	{
+	  pmatch[0].rm_so = 0;
+	  pmatch[0].rm_eo = len;
+	}
       return REG_OK;
     }
 
@@ -651,8 +655,11 @@ tre_match_fast(const fastmatch_t *fg, const void *data, size_t len,
 	    {
 	      if (fg->word && !IS_ON_WORD_BOUNDARY)
 		return ret;
-	      pmatch[0].rm_so = j;
-	      pmatch[0].rm_eo = j + (type == STR_WIDE ? fg->wlen : fg->len);
+	      if (!fg->nosub)
+		{
+		  pmatch[0].rm_so = j;
+		  pmatch[0].rm_eo = j + (type == STR_WIDE ? fg->wlen : fg->len);
+		}
 	      return REG_OK;
             }
         }
@@ -672,8 +679,11 @@ tre_match_fast(const fastmatch_t *fg, const void *data, size_t len,
 		CHECK_BOL_ANCHOR;
 	      if (fg->eol)
 		CHECK_EOL_ANCHOR;
-	      pmatch[0].rm_so = j;
-	      pmatch[0].rm_eo = j + ((type == STR_WIDE) ? fg->wlen : fg->len);
+	      if (!fg->nosub)
+		{
+		  pmatch[0].rm_so = j;
+		  pmatch[0].rm_eo = j + ((type == STR_WIDE) ? fg->wlen : fg->len);
+		}
 	      return REG_OK;
 	    }
 	  else if (mismatch > 0)
