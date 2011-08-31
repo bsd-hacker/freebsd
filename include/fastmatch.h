@@ -27,6 +27,7 @@ typedef struct {
   bool		 word;
   bool		 icase;
   bool		 newline;
+  bool		 matchall;
 } fastmatch_t;
 
 extern int
