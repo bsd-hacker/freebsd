@@ -38,6 +38,7 @@ __FBSDID("$FreeBSD$");
 #include <ctype.h>
 #include <err.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <getopt.h>
 #include <limits.h>
 #include <libgen.h>
@@ -293,13 +294,18 @@ read_patterns(const char *fn)
 	FILE *f;
 	char *line;
 	size_t len;
+	int fd;
 
-	if ((stat(fn, &st) == -1) || !(S_ISREG(st.st_mode)))
+	if ((fd = open(fn, O_RDONLY)) == -1)
 		return;
-	if ((f = fopen(fn, "r")) == NULL)
+	if ((fstat(fd, &st) == -1) || (S_ISDIR(st.st_mode))) {
+		close(fd);
+		return;
+	}
+	if ((f = fdopen(fd, "r")) == NULL)
 		err(2, "%s", fn);
-	while ((line = fgetln(f, &len)) != NULL)
-		add_pattern(line, *line == '\n' ? 0 : len);
+        while ((line = fgetln(f, &len)) != NULL)
+		add_pattern(line, line[0] == '\n' ? 0 : len);
 	if (ferror(f))
 		err(2, "%s", fn);
 	fclose(f);
