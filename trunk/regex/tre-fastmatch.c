@@ -232,8 +232,8 @@ static int	fastcmp(const void *, const void *, size_t,
   fg->defBc = fg->wlen - fg->hasdot;					\
 									\
   /* Preprocess pattern. */						\
-  fg->qsBc_table = hashtable_init(fg->wlen * 8, sizeof(tre_char_t),	\
-    sizeof(int));							\
+  fg->qsBc_table = hashtable_init(fg->wlen * (fg->icase ? 8 : 4),	\
+				  sizeof(tre_char_t), sizeof(int));	\
   if (!fg->qsBc_table)							\
     FAIL_COMP(REG_ESPACE);						\
   for (unsigned int i = fg->hasdot + 1; i < fg->wlen; i++)		\
@@ -385,13 +385,17 @@ static int	fastcmp(const void *, const void *, size_t,
   fg->icase = (cflags & REG_ICASE);					\
   fg->word = (cflags & REG_WORD);					\
   fg->newline = (cflags & REG_NEWLINE);					\
+  fg->nosub = (cflags & REG_NOSUB);					\
+									\
+  if (n == 0)								\
+    {									\
+      fg->matchall = true;						\
+      return REG_OK;							\
+    }									\
 									\
   /* Cannot handle REG_ICASE with MB string */				\
   if (fg->icase && (TRE_MB_CUR_MAX > 1))				\
     return REG_BADPAT;							\
-									\
-  /* Calculate length if unspecified */					\
-  n = (n == 0) ? tre_strlen(pat) : n;
 
 /*
  * Returns: REG_OK on success, error code otherwise
@@ -598,6 +602,16 @@ tre_match_fast(const fastmatch_t *fg, const void *data, size_t len,
 	  break;
       }
 
+  if (fg->matchall)
+    {
+      if (!fg->nosub)
+	{
+	  pmatch[0].rm_so = 0;
+	  pmatch[0].rm_eo = len;
+	}
+      return REG_OK;
+    }
+
   /* No point in going farther if we do not have enough data. */
   switch (type)
     {
@@ -642,8 +656,11 @@ tre_match_fast(const fastmatch_t *fg, const void *data, size_t len,
 	    {
 	      if (fg->word && !IS_ON_WORD_BOUNDARY)
 		return ret;
-	      pmatch[0].rm_so = j;
-	      pmatch[0].rm_eo = j + (type == STR_WIDE ? fg->wlen : fg->len);
+	      if (!fg->nosub)
+		{
+		  pmatch[0].rm_so = j;
+		  pmatch[0].rm_eo = j + (type == STR_WIDE ? fg->wlen : fg->len);
+		}
 	      return REG_OK;
             }
         }
@@ -663,8 +680,11 @@ tre_match_fast(const fastmatch_t *fg, const void *data, size_t len,
 		CHECK_BOL_ANCHOR;
 	      if (fg->eol)
 		CHECK_EOL_ANCHOR;
-	      pmatch[0].rm_so = j;
-	      pmatch[0].rm_eo = j + ((type == STR_WIDE) ? fg->wlen : fg->len);
+	      if (!fg->nosub)
+		{
+		  pmatch[0].rm_so = j;
+		  pmatch[0].rm_eo = j + ((type == STR_WIDE) ? fg->wlen : fg->len);
+		}
 	      return REG_OK;
 	    }
 	  else if (mismatch > 0)
