@@ -296,14 +296,12 @@ read_patterns(const char *fn)
 	size_t len;
 	int fd;
 
-	if ((fd = open(fn, O_RDONLY)) == -1)
-		return;
-	if ((fstat(fd, &st) == -1) || (S_ISDIR(st.st_mode))) {
+	if ((f = fopen(fn, "r")) == NULL)
+		err(2, "%s", fn);
+	if ((fstat(fileno(f), &st) == -1) || (S_ISDIR(st.st_mode))) {
 		close(fd);
 		return;
 	}
-	if ((f = fdopen(fd, "r")) == NULL)
-		err(2, "%s", fn);
         while ((line = fgetln(f, &len)) != NULL)
 		add_pattern(line, line[0] == '\n' ? 0 : len);
 	if (ferror(f))
