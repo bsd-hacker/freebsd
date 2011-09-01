@@ -390,6 +390,8 @@ static int	fastcmp(const void *, const void *, size_t,
   if (n == 0)								\
     {									\
       fg->matchall = true;						\
+      fg->pattern = "";							\
+      fg->wpattern = TRE_CHAR("");					\
       return REG_OK;							\
     }									\
 									\

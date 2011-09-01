@@ -227,9 +227,20 @@ static void
 add_pattern(char *pat, size_t len)
 {
 
+	/* Do not add further pattern is we already match everything */
+	if (matchall)
+	  return;
+
 	/* Check if we can do a shortcut */
-	if (len == 0 || matchall) {
+	if (len == 0) {
 		matchall = true;
+		for (int i = 0; i < patterns; i++) {
+			free(pattern[i].pat);
+		}
+		pattern = grep_realloc(pattern, sizeof(struct pat));
+		pattern[0].pat = NULL;
+		pattern[0].len = 0;
+		patterns = 1;
 		return;
 	}
 	/* Increase size if necessary */
