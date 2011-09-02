@@ -1,3 +1,5 @@
+/* $FreeBSD$ */
+
 /*-
  * Copyright (C) 2011 Gabor Kovesdan <gabor@FreeBSD.org>
  * All rights reserved.
@@ -27,7 +29,9 @@
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif /* HAVE_CONFIG_H */
+#include <errno.h>
 #include <fastmatch.h>
+#include <regex.h>
 #include <string.h>
 
 #include "tre-fastmatch.h"
@@ -36,67 +40,72 @@
 
 /* XXX: avoid duplication */
 #define CONV_PAT							\
-  int ret;								\
-  tre_char_t *wregex;							\
-  size_t wlen;								\
+  {									\
+    wregex = xmalloc(sizeof(tre_char_t) * (n + 1));			\
+    if (wregex == NULL)							\
+      return REG_ESPACE;						\
 									\
-  wregex = xmalloc(sizeof(tre_char_t) * (n + 1));			\
-  if (wregex == NULL)							\
-    return REG_ESPACE;							\
+    if (TRE_MB_CUR_MAX == 1)						\
+      {									\
+	unsigned int i;							\
+	const unsigned char *str = (const unsigned char *)regex;	\
+	tre_char_t *wstr = wregex;					\
 									\
-  if (TRE_MB_CUR_MAX == 1)						\
-    {									\
-      unsigned int i;							\
-      const unsigned char *str = (const unsigned char *)regex;		\
-      tre_char_t *wstr = wregex;					\
+	for (i = 0; i < n; i++)						\
+	  *(wstr++) = *(str++);						\
+	wlen = n;							\
+      }									\
+    else								\
+      {									\
+	int consumed;							\
+	tre_char_t *wcptr = wregex;					\
+	mbstate_t state;						\
+	memset(&state, '\0', sizeof(state));				\
+	while (n > 0)							\
+	  {								\
+	    consumed = tre_mbrtowc(wcptr, regex, n, &state);		\
 									\
-      for (i = 0; i < n; i++)						\
-        *(wstr++) = *(str++);						\
-      wlen = n;								\
-    }									\
-  else									\
-    {									\
-      int consumed;							\
-      tre_char_t *wcptr = wregex;					\
-      mbstate_t state;							\
-      memset(&state, '\0', sizeof(state));				\
-      while (n > 0)							\
-        {								\
-          consumed = tre_mbrtowc(wcptr, regex, n, &state);		\
+	    switch (consumed)						\
+	      {								\
+		case 0:							\
+		  if (*regex == '\0')					\
+		    consumed = 1;					\
+		  else							\
+		    {							\
+		      xfree(wregex);					\
+		      return REG_BADPAT;				\
+		    }							\
+		  break;						\
+		case -1:						\
+		  DPRINT(("mbrtowc: error %d: %s.\n", errno,		\
+		  strerror(errno)));					\
+		  xfree(wregex);					\
+		  return REG_BADPAT;					\
+		case -2:						\
+		  consumed = n;						\
+		  break;						\
+	      }								\
+	    regex += consumed;						\
+	    n -= consumed;						\
+	    wcptr++;							\
+	}								\
+        wlen = wcptr - wregex;						\
+      }									\
 									\
-          switch (consumed)						\
-            {								\
-            case 0:							\
-              if (*regex == '\0')					\
-                consumed = 1;						\
-              else							\
-                {							\
-                  xfree(wregex);					\
-                  return REG_BADPAT;					\
-                }							\
-              break;							\
-            case -1:							\
-              DPRINT(("mbrtowc: error %d: %s.\n", errno,		\
-		strerror(errno)));					\
-              xfree(wregex);						\
-              return REG_BADPAT;					\
-            case -2:							\
-              consumed = n;						\
-              break;							\
-            }								\
-          regex += consumed;						\
-          n -= consumed;						\
-          wcptr++;							\
-        }								\
-      wlen = wcptr - wregex;						\
-    }									\
-									\
-  wregex[wlen] = L'\0';
+    wregex[wlen] = L'\0';						\
+  }
 
 int
 tre_fixncomp(fastmatch_t *preg, const char *regex, size_t n, int cflags)
 {
-  CONV_PAT;
+  int ret;
+  tre_char_t *wregex;
+  size_t wlen;
+
+  if (n != 0)
+    CONV_PAT
+  else
+    return tre_compile_literal(preg, NULL, 0, cflags);
 
   ret = tre_compile_literal(preg, wregex, wlen, cflags);
   xfree(wregex);
@@ -107,7 +116,14 @@ tre_fixncomp(fastmatch_t *preg, const char *regex, size_t n, int cflags)
 int
 tre_fastncomp(fastmatch_t *preg, const char *regex, size_t n, int cflags)
 {
-  CONV_PAT;
+  int ret;
+  tre_char_t *wregex;
+  size_t wlen;
+
+  if (n != 0)
+    CONV_PAT
+  else
+    return tre_compile_literal(preg, NULL, 0, cflags);
 
   ret = (cflags & REG_LITERAL) ?
     tre_compile_literal(preg, wregex, wlen, cflags) :
@@ -121,34 +137,13 @@ tre_fastncomp(fastmatch_t *preg, const char *regex, size_t n, int cflags)
 int
 tre_fixcomp(fastmatch_t *preg, const char *regex, int cflags)
 {
-  size_t len;
-
-  if (cflags & REG_PEND)
-    {
-      if (preg->re_endp >= regex)
-	len = preg->re_endp - regex
-      else
-	len = preg ? strlen(regex) : 0;
-     return tre_fixncomp(preg, regex, len, cflags);
-   }
-  else
-    return tre_fixncomp(preg, regex, regex ? strlen(regex) : 0, cflags);
+  return tre_fixncomp(preg, regex, regex ? strlen(regex) : 0, cflags);
 }
 
 int
 tre_fastcomp(fastmatch_t *preg, const char *regex, int cflags)
 {
-  size_t len;
-
-  if (cflags & REG_PEND)
-    {
-      len = (preg->re_endp >= regex)
-        ? preg->re_endp - regex
-        : 0;
-     return tre_fastncomp(preg, regex, len ? strlen(regex) : 0, cflags);
-   }
-  else
-    return tre_fastncomp(preg, regex, regex ? strlen(regex) : 0, cflags);
+  return tre_fastncomp(preg, regex, regex ? strlen(regex) : 0, cflags);
 }
 
 int
