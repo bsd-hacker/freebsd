@@ -206,14 +206,14 @@ static int	fastcmp(const void *, const void *, size_t,
     fg->qsBc[i] = fg->len - fg->hasdot;					\
   for (int i = fg->hasdot + 1; i < fg->len; i++)			\
     {									\
-      fg->qsBc[(unsigned)fg->pattern[i]] = fg->len - i;			\
+      fg->qsBc[fg->pattern[i]] = fg->len - i;				\
       DPRINT(("BC shift for char %c is %d\n", fg->pattern[i],		\
 	     fg->len - i));						\
       if (fg->icase)							\
         {								\
           char c = islower(fg->pattern[i]) ? toupper(fg->pattern[i])	\
             : tolower(fg->pattern[i]);					\
-          fg->qsBc[(unsigned)c] = fg->len - i;				\
+          fg->qsBc[c] = fg->len - i;					\
 	  DPRINT(("BC shift for char %c is %d\n", c, fg->len - i));	\
         }								\
     }
@@ -397,12 +397,16 @@ static int	fastcmp(const void *, const void *, size_t,
       fg->matchall = true;						\
       fg->pattern = "";							\
       fg->wpattern = TRE_CHAR("");					\
+      DPRINT(("Matching every input\n"));				\
       return REG_OK;							\
     }									\
 									\
   /* Cannot handle REG_ICASE with MB string */				\
   if (fg->icase && (TRE_MB_CUR_MAX > 1))				\
-    return REG_BADPAT;							\
+    {									\
+      DPRINT(("Cannot use fast matcher for MBS with REG_ICASE\n"));	\
+      return REG_BADPAT;						\
+    }
 
 /*
  * Returns: REG_OK on success, error code otherwise
@@ -424,8 +428,8 @@ tre_compile_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n,
   SAVE_PATTERN(pat, n, fg->pattern, fg->len);
 #endif
 
-  DPRINT(("tre_compile_literal: pattern: %s, icase: %c, word: %c, "
-	 "newline %c\n", fg->pattern, fg->icase ? 'y' : 'n',
+  DPRINT(("tre_compile_literal: pattern: %s, len %u, icase: %c, word: %c, "
+	 "newline %c\n", fg->pattern, fg->len, fg->icase ? 'y' : 'n',
 	 fg->word ? 'y' : 'n', fg->newline ? 'y' : 'n'));
 
   FILL_QSBC;
@@ -496,7 +500,7 @@ tre_compile_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
 	switch (pat[i])
 	  {
 	    case TRE_CHAR('.'):
-	      fg->hasdot = true;
+	      fg->hasdot = i;
 	      STORE_CHAR;
 	      break;
 	    case TRE_CHAR('$'):
@@ -606,8 +610,8 @@ badpat:
 
   xfree(tmp);
 
-  DPRINT(("tre_compile_fast: pattern: %s, bol %c, eol %c, "
-	 "icase: %c, word: %c, newline %c\n", fg->pattern,
+  DPRINT(("tre_compile_fast: pattern: %s, len %u, bol %c, eol %c, "
+	 "icase: %c, word: %c, newline %c\n", fg->pattern, fg->len,
 	 fg->bol ? 'y' : 'n', fg->eol ? 'y' : 'n',
 	 fg->icase ? 'y' : 'n', fg->word ? 'y' : 'n',
 	 fg->newline ? 'y' : 'n'));

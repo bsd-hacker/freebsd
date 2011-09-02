@@ -7,6 +7,7 @@
 #undef RE_DUP_MAX
 #include <regex.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #define TRE_WCHAR			1
 #define TRE_MULTIBYTE			1
