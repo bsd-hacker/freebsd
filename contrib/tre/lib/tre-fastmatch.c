@@ -213,8 +213,9 @@ static int	fastcmp(const void *, const void *, size_t,
 	     fg->len - i));						\
       if (fg->icase)							\
         {								\
-          char c = islower(fg->pattern[i]) ? toupper(fg->pattern[i])	\
-            : tolower(fg->pattern[i]);					\
+          char c = islower((unsigned char)fg->pattern[i]) ?		\
+		   toupper((unsigned char)fg->pattern[i]) :		\
+		   tolower((unsigned char)fg->pattern[i]);		\
           fg->qsBc[(unsigned char)c] = fg->len - i;			\
 	  DPRINT(("BC shift for char %c is %d\n", c, fg->len - i));	\
         }								\
