@@ -687,9 +687,15 @@ main(int argc, char *argv[])
 
 	/* Check if cheating is allowed (always is for fgrep). */
 	if (grepbehave == GREP_FIXED) {
-		for (i = 0; i < patterns; ++i)
-			fixncomp(&fg_pattern[i], pattern[i].pat,
+		for (i = 0; i < patterns; ++i) {
+			c = fixncomp(&fg_pattern[i], pattern[i].pat,
 			    pattern[i].len, cflags);
+			if (c != 0) {
+				regerror(c, &r_pattern[i], re_error,
+				    RE_ERROR_BUF);
+				errx(2, "%s", re_error);
+			}
+		}
 	} else {
 		for (i = 0; i < patterns; ++i) {
 			if (fastncomp(&fg_pattern[i], pattern[i].pat,
