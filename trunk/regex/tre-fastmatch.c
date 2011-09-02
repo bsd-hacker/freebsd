@@ -368,13 +368,18 @@ static int	fastcmp(const void *, const void *, size_t,
  * Copies the pattern pat having lenght n to p and stores
  * the size in l.
  */
-#define SAVE_PATTERN(p, l)						\
-  l = (n == 0) ? tre_strlen(pat) : n;					\
-  p = xmalloc((l + 1) * sizeof(tre_char_t));				\
-  if (p == NULL)							\
-    return REG_ESPACE;							\
-  memcpy(p, pat, l * sizeof(tre_char_t));				\
-  p[l] = TRE_CHAR('\0');
+#define SAVE_PATTERN(src, srclen, dst, dstlen)				\
+  dstlen = srclen;							\
+  if (dstlen == 0)							\
+    dst = TRE_CHAR("");							\
+  else									\
+    {									\
+      dst = xmalloc((dstlen + 1) * sizeof(tre_char_t));			\
+      if (dst == NULL)							\
+	return REG_ESPACE;						\
+      memcpy(dst, src, dstlen * sizeof(tre_char_t));			\
+      dst[dstlen] = TRE_CHAR('\0');					\
+    }
 
 /*
  * Initializes pattern compiling.
@@ -413,10 +418,10 @@ tre_compile_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n,
     return REG_BADPAT;
 
 #ifdef TRE_WCHAR
-  SAVE_PATTERN(fg->wpattern, fg->wlen);
+  SAVE_PATTERN(pat, n, fg->wpattern, fg->wlen);
   STORE_MBS_PAT;
 #else
-  SAVE_PATTERN(fg->pattern, fg->len);
+  SAVE_PATTERN(pat, n, fg->pattern, fg->len);
 #endif
 
   DPRINT(("tre_compile_literal: pattern: %s, icase: %c, word: %c, "
@@ -440,14 +445,11 @@ int
 tre_compile_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
 		 int cflags)
 {
-  INIT_COMP;
+  tre_char_t *tmp;
+  size_t pos = 0;
+  bool escaped = false;
 
-  /* Remove end-of-line character ('$'). */
-  if ((n > 0) && (pat[n - 1] == TRE_CHAR('$')))
-    {
-      fg->eol = true;
-      n--;
-    }
+  INIT_COMP;
 
   /* Remove beginning-of-line character ('^'). */
   if (pat[0] == TRE_CHAR('^'))
@@ -472,33 +474,137 @@ tre_compile_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
   if (fg->word && (TRE_MB_CUR_MAX > 1))
     return REG_BADPAT;
 
-  /* Look for ways to cheat...er...avoid the full regex engine. */
-  for (unsigned int i = 0; i < n; i++)
-    {
-      /* Can still cheat? */
-      if (!(cflags & _REG_HEUR) &&
-	  ((tre_isalnum(pat[i])) || tre_isspace(pat[i]) ||
-	  (pat[i] == TRE_CHAR('_')) || (pat[i] == TRE_CHAR(',')) ||
-	  (pat[i] == TRE_CHAR('=')) || (pat[i] == TRE_CHAR('-')) ||
-	  (pat[i] == TRE_CHAR(':')) || (pat[i] == TRE_CHAR('/'))))
-	continue;
-      else if (pat[i] == TRE_CHAR('.'))
-	fg->hasdot = i;
-      else
-	return REG_BADPAT;
-  }
+  tmp = xmalloc((n + 1) * sizeof(tre_char_t));
+  if (tmp == NULL)
+    return REG_ESPACE;
+
+#define STORE_CHAR							\
+  do									\
+    {									\
+      tmp[pos++] = pat[i];						\
+      escaped = false;							\
+      continue;								\
+    } while (0)
 
   /*
-   * pat has been adjusted earlier to not include '^', '$' or
-   * the word match character classes at the beginning and ending
-   * of the string respectively.
+   * Used for heuristic, only beginning ^, trailing $ and . are treated
+   * as special.
+   */
+  if (cflags & _REG_HEUR)
+    {
+      for (int i = 0; i < n; i++)
+	switch (pat[i])
+	  {
+	    case TRE_CHAR('.'):
+	      fg->hasdot = true;
+	      STORE_CHAR;
+	      break;
+	    case TRE_CHAR('$'):
+	      if (i == n - 1)
+		fg->eol = true;
+	      else
+		STORE_CHAR;
+	      break;
+	    default:
+	      STORE_CHAR;
+	  }
+    }
+  else
+    for (int i = 0; i < n; i++)
+      {
+	switch (pat[i])
+	  {
+	    case TRE_CHAR('\\'):
+	      if (escaped)
+		STORE_CHAR;
+	      else
+		escaped = true;
+	      break;
+	    case TRE_CHAR('['):
+	      if (escaped)
+		STORE_CHAR;
+	      else
+		goto badpat;
+	      break;
+	    case TRE_CHAR('*'):
+	      if (escaped || (!(cflags & REG_EXTENDED) && (i == 0)))
+		STORE_CHAR;
+	      else
+		goto badpat;
+	      break;
+	    case TRE_CHAR('+'):
+	    case TRE_CHAR('?'):
+	      if ((cflags & REG_EXTENDED) && (i == 0))
+		continue;
+	      else if ((cflags & REG_EXTENDED) ^ !escaped)
+		STORE_CHAR;
+	      else
+		goto badpat;
+	    case TRE_CHAR('.'):
+	      if (escaped)
+		goto badpat;
+	      else
+		{
+		  fg->hasdot = true;
+		  STORE_CHAR;
+		}
+	      break;
+	    case TRE_CHAR('^'):
+	      STORE_CHAR;
+	      break;
+	    case TRE_CHAR('$'):
+	      if (!escaped && (i == n - 1))
+		fg->eol = true;
+	      else
+		STORE_CHAR;
+	      break;
+	    case TRE_CHAR('('):
+	      if ((cflags & REG_EXTENDED) ^ escaped)
+		goto badpat;
+	      else
+		STORE_CHAR;
+	      break;
+	    case TRE_CHAR('{'):
+	      if (escaped && (i == 0))
+		STORE_CHAR;
+	      else if (!(cflags & REG_EXTENDED) && (i == 0))
+		STORE_CHAR;
+	      else if ((cflags & REG_EXTENDED) && (i == 0))
+		continue;
+	      else
+		goto badpat;
+	      break;
+	    case TRE_CHAR('|'):
+	      if ((cflags & REG_EXTENDED) ^ (!escaped))
+		goto badpat;
+	      else
+		STORE_CHAR;
+	      break;
+	    default:
+	      if (escaped)
+		goto badpat;
+	      else
+		STORE_CHAR;
+	  }
+	continue;
+badpat:
+	xfree(tmp);
+	return REG_BADPAT;
+      }
+
+  /*
+   * The pattern has been processed and copied to tmp as a literal string
+   * with escapes, anchors (^$) and the word boundary match character
+   * classes stripped out.
    */
 #ifdef TRE_WCHAR
-  SAVE_PATTERN(fg->wpattern, fg->wlen);
+  SAVE_PATTERN(tmp, pos, fg->wpattern, fg->wlen);
   STORE_MBS_PAT;
 #else
-  SAVE_PATTERN(fg->pattern, fg->len);
+  SAVE_PATTERN(tmp, pos, fg->pattern, fg->len);
 #endif
+
+  xfree(tmp);
 
   DPRINT(("tre_compile_fast: pattern: %s, bol %c, eol %c, "
 	 "icase: %c, word: %c, newline %c\n", fg->pattern,

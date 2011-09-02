@@ -22,7 +22,7 @@
 #define REG_LITERAL			0020
 #define REG_WORD			0100
 #define REG_GNU				0400
-#define _REG_HEUR			1000
+#define _REG_HEUR			01000
 
 #define REG_OK				0
 
