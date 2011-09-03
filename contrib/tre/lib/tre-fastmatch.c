@@ -44,7 +44,7 @@
 #include "tre-internal.h"
 #include "xmalloc.h"
 
-static int	fastcmp(const void *, const void *, size_t,
+static int	fastcmp(const void *, const bool *, const void *, size_t,
 			tre_str_type_t, bool, bool);
 
 #define FAIL_COMP(errcode)						\
@@ -104,11 +104,13 @@ static int	fastcmp(const void *, const void *, size_t,
   switch (type)								\
     {									\
       case STR_WIDE:							\
-	mismatch = fastcmp(fg->wpattern, startptr, fg->wlen, type,	\
+	mismatch = fastcmp(fg->wpattern, fg->wescmap, startptr,		\
+			   fg->wlen, type,				\
 			   fg->icase, fg->newline);			\
 	break;								\
       default:								\
-	mismatch = fastcmp(fg->pattern, startptr, fg->len, type,	\
+	mismatch = fastcmp(fg->pattern, fg->escmap, startptr,		\
+			   fg->len, type,				\
 			   fg->icase, fg->newline);			\
       }									\
 
@@ -455,6 +457,7 @@ tre_compile_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
   tre_char_t *tmp;
   size_t pos = 0;
   bool escaped = false;
+  bool *_escmap = NULL;
 
   INIT_COMP;
 
@@ -549,10 +552,20 @@ tre_compile_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
 		goto badpat;
 	    case TRE_CHAR('.'):
 	      if (escaped)
-		goto badpat;
+		{
+		  if (!_escmap)
+		    _escmap = xmalloc(n * sizeof(bool));
+		  if (!_escmap)
+		    {
+		      xfree(tmp);
+		      return REG_ESPACE;
+		    }
+		  _escmap[i] = true;
+		  STORE_CHAR;
+		}
 	      else
 		{
-		  fg->hasdot = true;
+		  fg->hasdot = i;
 		  STORE_CHAR;
 		}
 	      break;
@@ -606,9 +619,33 @@ badpat:
    */
 #ifdef TRE_WCHAR
   SAVE_PATTERN(tmp, pos, fg->wpattern, fg->wlen);
+  fg->wescmap = _escmap;
   STORE_MBS_PAT;
+  if (fg->wescmap != NULL)
+    {
+      bool escaped = false;
+
+      fg->escmap = xmalloc(fg->len * sizeof(bool));
+      if (!fg->escmap)
+	{
+	  tre_free_fast(fg);
+	  return REG_ESPACE;
+	}
+
+      for (int i = 0; i < fg->len; i++)
+	if (fg->pattern[i] == '\\')
+	  escaped = ! escaped;
+	else if (fg->pattern[i] == '.' && escaped)
+	  {
+	    fg->escmap[i] = true;
+	    escaped = false;
+	  }
+	else
+	  escaped = false;
+    }
 #else
   SAVE_PATTERN(tmp, pos, fg->pattern, fg->len);
+  fg->escmap = _escmap;
 #endif
 
   xfree(tmp);
@@ -825,10 +862,14 @@ tre_free_fast(fastmatch_t *fg)
   hashtable_free(fg->qsBc_table);
   if (!fg->hasdot)
     xfree(fg->bmGs);
+  if (fg->wescmap)
+    xfree(fg->wescmap);
   xfree(fg->wpattern);
 #endif
   if (!fg->hasdot)
     xfree(fg->sbmGs);
+  if (fg->escmap)
+    xfree(fg->escmap);
   xfree(fg->pattern);
 }
 
@@ -838,7 +879,7 @@ tre_free_fast(fastmatch_t *fg)
  *		REG_OK on success
  */
 static inline int
-fastcmp(const void *pat, const void *data, size_t len,
+fastcmp(const void *pat, const bool *escmap, const void *data, size_t len,
 	tre_str_type_t type, bool icase, bool newline)
 {
   const char *str_byte = data;
@@ -854,7 +895,7 @@ fastcmp(const void *pat, const void *data, size_t len,
 	case STR_WIDE:
 
 	  /* Check dot */
-	  if (pat_wide[i] == TRE_CHAR('.') &&
+	  if (pat_wide[i] == TRE_CHAR('.') && (!escmap || !escmap[i]) &&
 	      (!newline || (str_wide[i] != TRE_CHAR('\n'))))
 	    continue;
 
@@ -865,7 +906,7 @@ fastcmp(const void *pat, const void *data, size_t len,
 	  break;
 	default:
 	  /* Check dot */
-	  if (pat_byte[i] == '.' &&
+	  if (pat_byte[i] == '.' && (!escmap || !escmap[i]) &&
 	      (!newline || (str_byte[i] != '\n')))
 	    continue;
 
