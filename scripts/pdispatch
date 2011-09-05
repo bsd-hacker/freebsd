@@ -102,7 +102,7 @@ case "${chrootdata}" in
 	;;
 esac
 
-#    echo "Got ${chrootdata} from ${host}"
+# echo "Got ${chrootdata} from ${host}"
 
 set -- ${chrootdata}
 if [ $# -ge 2 ]; then
@@ -121,6 +121,7 @@ if [ $# -ge 2 ]; then
 	    # Make sure to close stdin/stderr in the child
 	    # or make will hang until the child process
 	    # exits
+	    # XXX not checking the return value here is why we die with no bindist
 	    ${pbc}/scripts/dosetupnode ${arch} ${branch} ${buildid} ${host} > /tmp/setupnode.$$ 2>&1 &
 	    exit 253
 	    ;;
@@ -204,7 +205,6 @@ fi
 
 ${ssh_cmd} -a -n ${client_user}@${host} ${sudo_cmd} /tmp/${buildid}/scripts/clean-chroot ${arch} ${branch} ${buildid} ${chroot} ${clean}
 
-  # XXX Set a dirty variable earlier and check here
 if grep -q "^build of .*ended at" ${builddir}/logs/${pkgname}.log; then
     exit ${error}
 else
