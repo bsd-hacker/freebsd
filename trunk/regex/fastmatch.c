@@ -183,7 +183,9 @@ tre_fastfree(fastmatch_t *preg)
     size_t offset = pmatch[0].rm_so;					\
     int ret;								\
 									\
-    if ((len != (unsigned)-1) && (pmatch[0].rm_eo > len))		\
+    if ((pmatch[0].rm_so < 0) || (pmatch[0].rm_eo < 0))			\
+      return REG_NOMATCH;						\
+    if ((len != (unsigned)-1) && ((unsigned long)pmatch[0].rm_eo > len))\
       return REG_NOMATCH;						\
     if ((long long)pmatch[0].rm_eo - pmatch[0].rm_so < 0)		\
       return REG_NOMATCH;						\

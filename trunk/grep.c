@@ -234,7 +234,7 @@ add_pattern(char *pat, size_t len)
 	/* Check if we can do a shortcut */
 	if (len == 0) {
 		matchall = true;
-		for (int i = 0; i < patterns; i++) {
+		for (unsigned int i = 0; i < patterns; i++) {
 			free(pattern[i].pat);
 		}
 		pattern = grep_realloc(pattern, sizeof(struct pat));
