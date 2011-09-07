@@ -12,10 +12,12 @@ typedef struct {
   size_t	 wlen;
   size_t	 len;
   wchar_t	*wpattern;
+  bool		*wescmap;
   int		 hasdot;
   int		 qsBc[UCHAR_MAX + 1];
   int		*bmGs;
   char		*pattern;
+  bool		*escmap;
   int		 defBc;
   void		*qsBc_table;
   int		*sbmGs;

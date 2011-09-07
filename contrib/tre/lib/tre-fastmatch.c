@@ -263,6 +263,15 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
 	}								\
     }
 
+#ifdef TRE_DEBUG
+#define DPRINT_BMGS(len, fmt_str, sh)					\
+  for (int i = 0; i < len; i++)						\
+    DPRINT((fmt_str, i, sh[i]));
+#else
+#define DPRINT_BMGS(len, fmt_str, sh)					\
+  do { } while(/*CONSTCOND*/0)
+#endif
+
 /*
  * Fills in the good suffix table for SB/MB strings.
  */
@@ -276,6 +285,7 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
 	fg->sbmGs[0] = 1;						\
       else								\
 	_FILL_BMGS(fg->sbmGs, fg->pattern, fg->len, false);		\
+      DPRINT_BMGS(fg->len, "GS shift for pos %d is %d\n", fg->sbmGs);	\
     }
 
 /*
@@ -291,6 +301,8 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
 	fg->bmGs[0] = 1;						\
       else								\
 	_FILL_BMGS(fg->bmGs, fg->wpattern, fg->wlen, true);		\
+      DPRINT_BMGS(fg->wlen, "GS shift (wide) for pos %d is %d\n",	\
+		  fg->bmGs);						\
     }
 
 #define _FILL_BMGS(arr, pat, plen, wide)				\
@@ -496,121 +508,99 @@ tre_compile_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
       continue;								\
     } while (0)
 
-  /*
-   * Used for heuristic, only beginning ^, trailing $ and . are treated
-   * as special.
-   */
-  if (cflags & _REG_HEUR)
+  for (int i = 0; i < n; i++)
     {
-      for (int i = 0; i < n; i++)
-	switch (pat[i])
-	  {
-	    case TRE_CHAR('.'):
-	      fg->hasdot = i;
+      switch (pat[i])
+	{
+	  case TRE_CHAR('\\'):
+	    if (escaped)
 	      STORE_CHAR;
-	      break;
-	    case TRE_CHAR('$'):
-	      if (i == n - 1)
-		fg->eol = true;
-	      else
-		STORE_CHAR;
-	      break;
-	    default:
+	    else
+	      escaped = true;
+	    continue;
+	  case TRE_CHAR('['):
+	    if (escaped)
 	      STORE_CHAR;
-	  }
-    }
-  else
-    for (int i = 0; i < n; i++)
-      {
-	switch (pat[i])
-	  {
-	    case TRE_CHAR('\\'):
-	      if (escaped)
-		STORE_CHAR;
-	      else
-		escaped = true;
-	      break;
-	    case TRE_CHAR('['):
-	      if (escaped)
-		STORE_CHAR;
-	      else
-		goto badpat;
-	      break;
-	    case TRE_CHAR('*'):
-	      if (escaped || (!(cflags & REG_EXTENDED) && (i == 0)))
-		STORE_CHAR;
-	      else
-		goto badpat;
-	      break;
-	    case TRE_CHAR('+'):
-	    case TRE_CHAR('?'):
-	      if ((cflags & REG_EXTENDED) && (i == 0))
-		continue;
-	      else if ((cflags & REG_EXTENDED) ^ !escaped)
-		STORE_CHAR;
-	      else
-		goto badpat;
-	    case TRE_CHAR('.'):
-	      if (escaped)
-		{
-		  if (!_escmap)
-		    _escmap = xmalloc(n * sizeof(bool));
-		  if (!_escmap)
-		    {
-		      xfree(tmp);
-		      return REG_ESPACE;
-		    }
-		  _escmap[i] = true;
-		  STORE_CHAR;
-		}
-	      else
-		{
-		  fg->hasdot = i;
-		  STORE_CHAR;
-		}
-	      break;
-	    case TRE_CHAR('^'):
+	    else
+	      goto badpat;
+	    continue;
+	  case TRE_CHAR('*'):
+	    if (escaped || (!(cflags & REG_EXTENDED) && (i == 0)))
 	      STORE_CHAR;
-	      break;
-	    case TRE_CHAR('$'):
-	      if (!escaped && (i == n - 1))
-		fg->eol = true;
-	      else
+	    else
+	      goto badpat;
+	    continue;
+	  case TRE_CHAR('+'):
+	  case TRE_CHAR('?'):
+	    if ((cflags & REG_EXTENDED) && (i == 0))
+	      continue;
+	    else if ((cflags & REG_EXTENDED) ^ !escaped)
+	      STORE_CHAR;
+	    else
+	      goto badpat;
+	    continue;
+	  case TRE_CHAR('.'):
+	    if (escaped)
+	      {
+		if (!_escmap)
+		  _escmap = xmalloc(n * sizeof(bool));
+		if (!_escmap)
+		  {
+		    xfree(tmp);
+		    return REG_ESPACE;
+		  }
+		_escmap[i] = true;
 		STORE_CHAR;
-	      break;
-	    case TRE_CHAR('('):
-	      if ((cflags & REG_EXTENDED) ^ escaped)
-		goto badpat;
-	      else
+	      }
+	    else
+	      {
+		fg->hasdot = i;
 		STORE_CHAR;
-	      break;
-	    case TRE_CHAR('{'):
-	      if (escaped && (i == 0))
-		STORE_CHAR;
-	      else if (!(cflags & REG_EXTENDED) && (i == 0))
-		STORE_CHAR;
-	      else if ((cflags & REG_EXTENDED) && (i == 0))
-		continue;
-	      else
-		goto badpat;
-	      break;
-	    case TRE_CHAR('|'):
-	      if ((cflags & REG_EXTENDED) ^ (!escaped))
-		goto badpat;
-	      else
-		STORE_CHAR;
-	      break;
-	    default:
-	      if (escaped)
-		goto badpat;
-	      else
-		STORE_CHAR;
-	  }
-	continue;
+	      }
+	    continue;
+	  case TRE_CHAR('^'):
+	    STORE_CHAR;
+	    continue;
+	  case TRE_CHAR('$'):
+	    if (!escaped && (i == n - 1))
+	      fg->eol = true;
+	    else
+	      STORE_CHAR;
+	    continue;
+	  case TRE_CHAR('('):
+	    if ((cflags & REG_EXTENDED) ^ escaped)
+	      goto badpat;
+	    else
+	      STORE_CHAR;
+	    continue;
+	  case TRE_CHAR('{'):
+	    if (!(cflags & REG_EXTENDED) ^ escaped)
+	      STORE_CHAR;
+	    else if (!(cflags & REG_EXTENDED) && (i == 0))
+	      STORE_CHAR;
+	    else if ((cflags & REG_EXTENDED) && (i == 0))
+	      continue;
+	    else
+	      goto badpat;
+	    continue;
+	  case TRE_CHAR('|'):
+	    if ((cflags & REG_EXTENDED) ^ escaped)
+	      goto badpat;
+	    else
+	      STORE_CHAR;
+	    continue;
+	  default:
+	    if (escaped)
+	      goto badpat;
+	    else
+	      STORE_CHAR;
+	    continue;
+	}
+      continue;
 badpat:
-	xfree(tmp);
-	return REG_BADPAT;
-      }
+      xfree(tmp);
+      return REG_BADPAT;
+    }
 
   /*
    * The pattern has been processed and copied to tmp as a literal string
