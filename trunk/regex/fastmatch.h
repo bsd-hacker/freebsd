@@ -15,12 +15,12 @@ typedef struct {
   bool		*wescmap;
   unsigned int	 hasdot;
   int		 qsBc[UCHAR_MAX + 1];
-  int		*bmGs;
+  unsigned int	*bmGs;
   char		*pattern;
   bool		*escmap;
   int		 defBc;
   void		*qsBc_table;
-  int		*sbmGs;
+  unsigned int	*sbmGs;
   const char	*re_endp;
 
   /* flags */

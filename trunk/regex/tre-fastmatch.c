@@ -315,7 +315,7 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
 	    wp = xmalloc(plen * sizeof(tre_char_t));			\
 	    if (wp == NULL)						\
 	      return REG_ESPACE;					\
-	    for (int i = 0; i < plen; i++)				\
+	    for (unsigned int i = 0; i < plen; i++)			\
 	      wp[i] = towlower(pat[i]);					\
 	    _CALC_BMGS(arr, wp, plen);					\
 	    xfree(wp);							\
@@ -330,7 +330,7 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
 	    p = xmalloc(plen);						\
 	    if (p == NULL)						\
 	      return REG_ESPACE;					\
-	    for (int i = 0; i < plen; i++)				\
+	    for (unsigned int i = 0; i < plen; i++)			\
 	      p[i] = tolower(pat[i]);					\
 	    _CALC_BMGS(arr, p, plen);					\
 	    xfree(p);							\
@@ -365,15 +365,15 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
 	  }								\
       }									\
 									\
-    for (int i = 0; i < plen; i++)					\
+    for (unsigned int i = 0; i < plen; i++)				\
       arr[i] = plen;							\
     g = 0;								\
     for (int i = plen - 1; i >= 0; i--)					\
       if (suff[i] == i + 1)						\
-	for(; g < plen - 1 - i; g++)					\
+	for(; (unsigned long)g < plen - 1 - i; g++)			\
 	  if (arr[g] == plen)						\
 	    arr[g] = plen - 1 - i;					\
-    for (int i = 0; i <= plen - 2; i++)					\
+    for (unsigned int i = 0; i <= plen - 2; i++)			\
       arr[plen - 1 - suff[i]] = plen - 1 - i;				\
 									\
     xfree(suff);							\
@@ -506,7 +506,7 @@ tre_compile_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
       continue;								\
     } while (0)
 
-  for (int i = 0; i < n; i++)
+  for (unsigned int i = 0; i < n; i++)
     {
       switch (pat[i])
 	{
@@ -622,7 +622,7 @@ badpat:
 	  return REG_ESPACE;
 	}
 
-      for (int i = 0; i < fg->len; i++)
+      for (unsigned int i = 0; i < fg->len; i++)
 	if (fg->pattern[i] == '\\')
 	  escaped = ! escaped;
 	else if (fg->pattern[i] == '.' && escaped)
