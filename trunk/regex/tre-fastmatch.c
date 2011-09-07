@@ -142,7 +142,7 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
 		mismatch -= u;						\
 	      v = fg->wlen - 1 - mismatch;				\
 	      r = hashtable_get(fg->qsBc_table,				\
-		&((tre_char_t *)startptr)[mismatch + 1], &bc);		\
+		&str_wide[j + fg->wlen], &bc);				\
 	      gs = fg->bmGs[mismatch];					\
 	    }								\
 	    bc = (r == HASH_OK) ? bc : fg->defBc;			\
@@ -158,7 +158,7 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
 	      v = fg->len - 1 - mismatch;				\
 	      gs = fg->sbmGs[mismatch];					\
 	    }								\
-	  bc = fg->qsBc[((unsigned char *)startptr)[mismatch + 1]];	\
+	  bc = fg->qsBc[((unsigned char *)str_byte)[j + fg->len]];	\
 	  DPRINT(("tre_fast_match: mismatch on character %c, "		\
 		 "BC %d, GS %d\n",					\
 		 ((unsigned char *)startptr)[mismatch + 1], bc, gs));	\
