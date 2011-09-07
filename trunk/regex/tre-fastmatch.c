@@ -42,7 +42,7 @@
 #include "tre-fastmatch.h"
 #include "xmalloc.h"
 
-static int	fastcmp(const void *, const void *, size_t,
+static int	fastcmp(const void *, const bool *, const void *, size_t,
 			tre_str_type_t, bool, bool);
 
 #define FAIL_COMP(errcode)						\
@@ -102,11 +102,13 @@ static int	fastcmp(const void *, const void *, size_t,
   switch (type)								\
     {									\
       case STR_WIDE:							\
-	mismatch = fastcmp(fg->wpattern, startptr, fg->wlen, type,	\
+	mismatch = fastcmp(fg->wpattern, fg->wescmap, startptr,		\
+			   fg->wlen, type,				\
 			   fg->icase, fg->newline);			\
 	break;								\
       default:								\
-	mismatch = fastcmp(fg->pattern, startptr, fg->len, type,	\
+	mismatch = fastcmp(fg->pattern, fg->escmap, startptr,		\
+			   fg->len, type,				\
 			   fg->icase, fg->newline);			\
       }									\
 
@@ -206,15 +208,16 @@ static int	fastcmp(const void *, const void *, size_t,
     fg->qsBc[i] = fg->len - fg->hasdot;					\
   for (int i = fg->hasdot + 1; i < fg->len; i++)			\
     {									\
-      fg->qsBc[fg->pattern[i]] = fg->len - i;				\
-      DPRINT(("BC shift for char %c is %d\n", fg->pattern[i],		\
+      fg->qsBc[(unsigned char)fg->pattern[i]] = fg->len - i;		\
+      DPRINT(("BC shift for char %c is %zu\n", fg->pattern[i],		\
 	     fg->len - i));						\
       if (fg->icase)							\
         {								\
-          char c = islower(fg->pattern[i]) ? toupper(fg->pattern[i])	\
-            : tolower(fg->pattern[i]);					\
-          fg->qsBc[c] = fg->len - i;					\
-	  DPRINT(("BC shift for char %c is %d\n", c, fg->len - i));	\
+          char c = islower((unsigned char)fg->pattern[i]) ?		\
+		   toupper((unsigned char)fg->pattern[i]) :		\
+		   tolower((unsigned char)fg->pattern[i]);		\
+          fg->qsBc[(unsigned char)c] = fg->len - i;			\
+	  DPRINT(("BC shift for char %c is %zu\n", c, fg->len - i));	\
         }								\
     }
 
@@ -244,7 +247,7 @@ static int	fastcmp(const void *, const void *, size_t,
       r = hashtable_put(fg->qsBc_table, &fg->wpattern[i], &k);		\
       if ((r == HASH_FAIL) || (r == HASH_FULL))				\
 	FAIL_COMP(REG_ESPACE);						\
-      DPRINT(("BC shift for wide char %lc is %d\n", fg->wpattern[i],	\
+      DPRINT(("BC shift for wide char %lc is %zu\n", fg->wpattern[i],	\
 	     fg->wlen - i));						\
       if (fg->icase)							\
 	{								\
@@ -253,10 +256,19 @@ static int	fastcmp(const void *, const void *, size_t,
 	  r = hashtable_put(fg->qsBc_table, &wc, &k);			\
 	  if ((r == HASH_FAIL) || (r == HASH_FULL))			\
 	    FAIL_COMP(REG_ESPACE);					\
-	  DPRINT(("BC shift for wide char %lc is %d\n", wc,		\
+	  DPRINT(("BC shift for wide char %lc is %zu\n", wc,		\
 		 fg->wlen - i));					\
 	}								\
     }
+
+#ifdef _GREP_DEBUG
+#define DPRINT_BMGS(len, fmt_str, sh)					\
+  for (int i = 0; i < len; i++)						\
+    DPRINT((fmt_str, i, sh[i]));
+#else
+#define DPRINT_BMGS(len, fmt_str, sh)					\
+  do { } while(/*CONSTCOND*/0)
+#endif
 
 /*
  * Fills in the good suffix table for SB/MB strings.
@@ -271,6 +283,7 @@ static int	fastcmp(const void *, const void *, size_t,
 	fg->sbmGs[0] = 1;						\
       else								\
 	_FILL_BMGS(fg->sbmGs, fg->pattern, fg->len, false);		\
+      DPRINT_BMGS(fg->len, "GS shift for pos %d is %d\n", fg->sbmGs);	\
     }
 
 /*
@@ -286,6 +299,8 @@ static int	fastcmp(const void *, const void *, size_t,
 	fg->bmGs[0] = 1;						\
       else								\
 	_FILL_BMGS(fg->bmGs, fg->wpattern, fg->wlen, true);		\
+      DPRINT_BMGS(fg->wlen, "GS shift (wide) for pos %d is %d\n",	\
+		  fg->bmGs);						\
     }
 
 #define _FILL_BMGS(arr, pat, plen, wide)				\
@@ -428,7 +443,7 @@ tre_compile_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n,
   SAVE_PATTERN(pat, n, fg->pattern, fg->len);
 #endif
 
-  DPRINT(("tre_compile_literal: pattern: %s, len %u, icase: %c, word: %c, "
+  DPRINT(("tre_compile_literal: pattern: %s, len %zu, icase: %c, word: %c, "
 	 "newline %c\n", fg->pattern, fg->len, fg->icase ? 'y' : 'n',
 	 fg->word ? 'y' : 'n', fg->newline ? 'y' : 'n'));
 
@@ -452,6 +467,7 @@ tre_compile_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
   tre_char_t *tmp;
   size_t pos = 0;
   bool escaped = false;
+  bool *_escmap = NULL;
 
   INIT_COMP;
 
@@ -490,111 +506,101 @@ tre_compile_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
       continue;								\
     } while (0)
 
-  /*
-   * Used for heuristic, only beginning ^, trailing $ and . are treated
-   * as special.
-   */
-  if (cflags & _REG_HEUR)
+  for (int i = 0; i < n; i++)
     {
-      for (int i = 0; i < n; i++)
-	switch (pat[i])
-	  {
-	    case TRE_CHAR('.'):
-	      fg->hasdot = i;
+      switch (pat[i])
+	{
+	  case TRE_CHAR('\\'):
+	    if (escaped)
 	      STORE_CHAR;
-	      break;
-	    case TRE_CHAR('$'):
-	      if (i == n - 1)
-		fg->eol = true;
-	      else
-		STORE_CHAR;
-	      break;
-	    default:
+	    else
+	      escaped = true;
+	    continue;
+	  case TRE_CHAR('['):
+	    if (escaped)
 	      STORE_CHAR;
-	  }
-    }
-  else
-    for (int i = 0; i < n; i++)
-      {
-	switch (pat[i])
-	  {
-	    case TRE_CHAR('\\'):
-	      if (escaped)
-		STORE_CHAR;
-	      else
-		escaped = true;
-	      break;
-	    case TRE_CHAR('['):
-	      if (escaped)
-		STORE_CHAR;
-	      else
-		goto badpat;
-	      break;
-	    case TRE_CHAR('*'):
-	      if (escaped || (!(cflags & REG_EXTENDED) && (i == 0)))
-		STORE_CHAR;
-	      else
-		goto badpat;
-	      break;
-	    case TRE_CHAR('+'):
-	    case TRE_CHAR('?'):
-	      if ((cflags & REG_EXTENDED) && (i == 0))
-		continue;
-	      else if ((cflags & REG_EXTENDED) ^ !escaped)
-		STORE_CHAR;
-	      else
-		goto badpat;
-	    case TRE_CHAR('.'):
-	      if (escaped)
-		goto badpat;
-	      else
-		{
-		  fg->hasdot = true;
-		  STORE_CHAR;
-		}
-	      break;
-	    case TRE_CHAR('^'):
+	    else
+	      goto badpat;
+	    continue;
+	  case TRE_CHAR('*'):
+	    if (escaped || (!(cflags & REG_EXTENDED) && (i == 0)))
 	      STORE_CHAR;
-	      break;
-	    case TRE_CHAR('$'):
-	      if (!escaped && (i == n - 1))
-		fg->eol = true;
-	      else
+	    else
+	      goto badpat;
+	    continue;
+	  case TRE_CHAR('+'):
+	  case TRE_CHAR('?'):
+	    if ((cflags & REG_EXTENDED) && (i == 0))
+	      continue;
+	    else if ((cflags & REG_EXTENDED) ^ !escaped)
+	      STORE_CHAR;
+	    else
+	      goto badpat;
+	    continue;
+	  case TRE_CHAR('.'):
+	    if (escaped)
+	      {
+		if (!_escmap)
+		  _escmap = xmalloc(n * sizeof(bool));
+		if (!_escmap)
+		  {
+		    xfree(tmp);
+		    return REG_ESPACE;
+		  }
+		_escmap[i] = true;
 		STORE_CHAR;
-	      break;
-	    case TRE_CHAR('('):
-	      if ((cflags & REG_EXTENDED) ^ escaped)
-		goto badpat;
-	      else
+	      }
+	    else
+	      {
+		fg->hasdot = i;
 		STORE_CHAR;
-	      break;
-	    case TRE_CHAR('{'):
-	      if (escaped && (i == 0))
-		STORE_CHAR;
-	      else if (!(cflags & REG_EXTENDED) && (i == 0))
-		STORE_CHAR;
-	      else if ((cflags & REG_EXTENDED) && (i == 0))
-		continue;
-	      else
-		goto badpat;
-	      break;
-	    case TRE_CHAR('|'):
-	      if ((cflags & REG_EXTENDED) ^ (!escaped))
-		goto badpat;
-	      else
-		STORE_CHAR;
-	      break;
-	    default:
-	      if (escaped)
-		goto badpat;
-	      else
-		STORE_CHAR;
-	  }
-	continue;
+	      }
+	    continue;
+	  case TRE_CHAR('^'):
+	    STORE_CHAR;
+	    continue;
+	  case TRE_CHAR('$'):
+	    if (!escaped && (i == n - 1))
+	      fg->eol = true;
+	    else
+	      STORE_CHAR;
+	    continue;
+	  case TRE_CHAR('('):
+	    if ((cflags & REG_EXTENDED) ^ escaped)
+	      goto badpat;
+	    else
+	      STORE_CHAR;
+	    continue;
+	  case TRE_CHAR('{'):
+	    if (!(cflags & REG_EXTENDED) ^ escaped)
+	      STORE_CHAR;
+	    else if (!(cflags & REG_EXTENDED) && (i == 0))
+	      STORE_CHAR;
+	    else if ((cflags & REG_EXTENDED) && (i == 0))
+	      continue;
+	    else
+	      goto badpat;
+	    continue;
+	  case TRE_CHAR('|'):
+	    if ((cflags & REG_EXTENDED) ^ escaped)
+	      goto badpat;
+	    else
+	      STORE_CHAR;
+	    continue;
+	  default:
+	    if (escaped)
+	      goto badpat;
+	    else
+	      STORE_CHAR;
+	    continue;
+	}
+      continue;
 badpat:
-	xfree(tmp);
-	return REG_BADPAT;
-      }
+      xfree(tmp);
+      DPRINT(("tre_compile_fast: compilation of pattern failed, falling"
+	      "back to NFA\n"));
+      return REG_BADPAT;
+    }
 
   /*
    * The pattern has been processed and copied to tmp as a literal string
@@ -603,14 +609,38 @@ badpat:
    */
 #ifdef TRE_WCHAR
   SAVE_PATTERN(tmp, pos, fg->wpattern, fg->wlen);
+  fg->wescmap = _escmap;
   STORE_MBS_PAT;
+  if (fg->wescmap != NULL)
+    {
+      bool escaped = false;
+
+      fg->escmap = xmalloc(fg->len * sizeof(bool));
+      if (!fg->escmap)
+	{
+	  tre_free_fast(fg);
+	  return REG_ESPACE;
+	}
+
+      for (int i = 0; i < fg->len; i++)
+	if (fg->pattern[i] == '\\')
+	  escaped = ! escaped;
+	else if (fg->pattern[i] == '.' && escaped)
+	  {
+	    fg->escmap[i] = true;
+	    escaped = false;
+	  }
+	else
+	  escaped = false;
+    }
 #else
   SAVE_PATTERN(tmp, pos, fg->pattern, fg->len);
+  fg->escmap = _escmap;
 #endif
 
   xfree(tmp);
 
-  DPRINT(("tre_compile_fast: pattern: %s, len %u, bol %c, eol %c, "
+  DPRINT(("tre_compile_fast: pattern: %s, len %zu, bol %c, eol %c, "
 	 "icase: %c, word: %c, newline %c\n", fg->pattern, fg->len,
 	 fg->bol ? 'y' : 'n', fg->eol ? 'y' : 'n',
 	 fg->icase ? 'y' : 'n', fg->word ? 'y' : 'n',
@@ -703,7 +733,7 @@ tre_match_fast(const fastmatch_t *fg, const void *data, size_t len,
   const tre_char_t *str_wide = data;
 
   /* Calculate length if unspecified. */
-  if (len == (unsigned)-1)
+  if (len == (size_t)-1)
     switch (type)
       {
 	case STR_WIDE:
@@ -822,10 +852,14 @@ tre_free_fast(fastmatch_t *fg)
   hashtable_free(fg->qsBc_table);
   if (!fg->hasdot)
     xfree(fg->bmGs);
+  if (fg->wescmap)
+    xfree(fg->wescmap);
   xfree(fg->wpattern);
 #endif
   if (!fg->hasdot)
     xfree(fg->sbmGs);
+  if (fg->escmap)
+    xfree(fg->escmap);
   xfree(fg->pattern);
 }
 
@@ -835,7 +869,7 @@ tre_free_fast(fastmatch_t *fg)
  *		REG_OK on success
  */
 static inline int
-fastcmp(const void *pat, const void *data, size_t len,
+fastcmp(const void *pat, const bool *escmap, const void *data, size_t len,
 	tre_str_type_t type, bool icase, bool newline)
 {
   const char *str_byte = data;
@@ -851,7 +885,7 @@ fastcmp(const void *pat, const void *data, size_t len,
 	case STR_WIDE:
 
 	  /* Check dot */
-	  if (pat_wide[i] == TRE_CHAR('.') &&
+	  if (pat_wide[i] == TRE_CHAR('.') && (!escmap || !escmap[i]) &&
 	      (!newline || (str_wide[i] != TRE_CHAR('\n'))))
 	    continue;
 
@@ -862,7 +896,7 @@ fastcmp(const void *pat, const void *data, size_t len,
 	  break;
 	default:
 	  /* Check dot */
-	  if (pat_byte[i] == '.' &&
+	  if (pat_byte[i] == '.' && (!escmap || !escmap[i]) &&
 	      (!newline || (str_byte[i] != '\n')))
 	    continue;
 

@@ -27,6 +27,7 @@
 #include "glue.h"
 
 #include <errno.h>
+#include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -60,9 +61,8 @@ hashtable
 {
   hashtable *tbl;
 
-  DPRINT(("hashtable_init: table_size %lu, key_size %lu, value_size %lu\n",
-	(unsigned long)table_size, (unsigned long)key_size,
-	(unsigned long)value_size));
+  DPRINT(("hashtable_init: table_size %zu, key_size %zu, value_size %zu\n",
+	  table_size, key_size, value_size));
 
   tbl = malloc(sizeof(hashtable));
   if (tbl == NULL)
@@ -111,7 +111,7 @@ hashtable_put(hashtable *tbl, const void *key, const void *value)
     }
 
   hash = hash32_buf(key, tbl->key_size, hash) % tbl->table_size;
-  DPRINT(("hashtable_put: calculated hash %lu\n", hash));
+  DPRINT(("hashtable_put: calculated hash %" PRIu32 "\n", hash));
 
   /*
    * On hash collision entries are inserted at the next free space,
@@ -125,15 +125,15 @@ hashtable_put(hashtable *tbl, const void *key, const void *value)
       else if (memcmp(tbl->entries[hash]->key, key, tbl->key_size) == 0)
 	{
 	  memcpy(tbl->entries[hash]->value, value, tbl->value_size);
-	  DPRINT(("hashtable_put: effective location is %lu, "
-		  "entry updated\n", hash));
+	  DPRINT(("hashtable_put: effective location is %" PRIu32
+		  ", entry updated\n", hash));
 	  return (HASH_UPDATED);
 	}
       if (++hash == tbl->table_size)
 	hash = 0;
     }
 
-  DPRINT(("hashtable_put: effective location is %lu\n", hash));
+  DPRINT(("hashtable_put: effective location is %" PRIu32 "\n", hash));
 
   tbl->entries[hash] = malloc(sizeof(hashtable_entry));
   if (tbl->entries[hash] == NULL)
@@ -186,7 +186,7 @@ static hashtable_entry
 	return (NULL);
       else if (memcmp(key, tbl->entries[hash]->key, tbl->key_size) == 0)
 	{
-	  DPRINT(("hashtable_lookup: entry found at location %lu\n", hash));
+	  DPRINT(("hashtable_lookup: entry found at location %" PRIu32 "\n", hash));
 	  return (&tbl->entries[hash]);
 	}
 
