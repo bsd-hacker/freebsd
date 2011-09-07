@@ -13,7 +13,7 @@ typedef struct {
   size_t	 len;
   wchar_t	*wpattern;
   bool		*wescmap;
-  int		 hasdot;
+  unsigned int	 hasdot;
   int		 qsBc[UCHAR_MAX + 1];
   int		*bmGs;
   char		*pattern;

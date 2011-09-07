@@ -206,7 +206,7 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
 #define FILL_QSBC							\
   for (unsigned int i = 0; i <= UCHAR_MAX; i++)				\
     fg->qsBc[i] = fg->len - fg->hasdot;					\
-  for (int i = fg->hasdot + 1; i < fg->len; i++)			\
+  for (unsigned int i = fg->hasdot + 1; i < fg->len; i++)		\
     {									\
       fg->qsBc[(unsigned char)fg->pattern[i]] = fg->len - i;		\
       DPRINT(("BC shift for char %c is %zu\n", fg->pattern[i],		\
