@@ -14,11 +14,11 @@ typedef struct {
   wchar_t	*wpattern;
   bool		*wescmap;
   unsigned int	 hasdot;
-  int		 qsBc[UCHAR_MAX + 1];
+  unsigned int	 qsBc[UCHAR_MAX + 1];
   unsigned int	*bmGs;
   char		*pattern;
   bool		*escmap;
-  int		 defBc;
+  unsigned int	 defBc;
   void		*qsBc_table;
   unsigned int	*sbmGs;
   const char	*re_endp;

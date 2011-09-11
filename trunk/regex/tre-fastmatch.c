@@ -131,14 +131,15 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
   CHECKBOUNDS;								\
 									\
   {									\
-    int bc = 0, gs = 0, ts, r = -1;					\
+    int r = -1;								\
+    unsigned int bc = 0, gs = 0, ts;					\
 									\
     switch (type)							\
       {									\
 	case STR_WIDE:							\
 	  if (!fg->hasdot)						\
 	    {								\
-	      if (u != 0 && mismatch == fg->wlen - 1 - shift)		\
+	      if (u != 0 && (unsigned)mismatch == fg->wlen - 1 - shift)	\
 		mismatch -= u;						\
 	      v = fg->wlen - 1 - mismatch;				\
 	      r = hashtable_get(fg->qsBc_table,				\
@@ -153,7 +154,7 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
 	default:							\
 	  if (!fg->hasdot)						\
 	    {								\
-	      if (u != 0 && mismatch == fg->len - 1 - shift)		\
+	      if (u != 0 && (unsigned)mismatch == fg->len - 1 - shift)	\
 		mismatch -= u;						\
 	      v = fg->len - 1 - mismatch;				\
 	      gs = fg->sbmGs[mismatch];					\
@@ -167,7 +168,7 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
       shift = bc;							\
     else								\
       {									\
-	ts = u - v;							\
+	ts = ((long)u - v < 0) ? 0 : (u - v);				\
 	shift = MAX(ts, bc);						\
 	shift = MAX(shift, gs);						\
 	if (shift == gs)						\
@@ -179,7 +180,7 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
 	    u = 0;							\
 	  }								\
       }									\
-      DPRINT(("tre_fast_match: shifting %d characters\n", shift));	\
+      DPRINT(("tre_fast_match: shifting %u characters\n", shift));	\
       j += shift;							\
   }
 
@@ -263,7 +264,7 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
 
 #ifdef _GREP_DEBUG
 #define DPRINT_BMGS(len, fmt_str, sh)					\
-  for (int i = 0; i < len; i++)						\
+  for (unsigned int i = 0; i < len; i++)				\
     DPRINT((fmt_str, i, sh[i]));
 #else
 #define DPRINT_BMGS(len, fmt_str, sh)					\
@@ -725,9 +726,9 @@ int
 tre_match_fast(const fastmatch_t *fg, const void *data, size_t len,
     tre_str_type_t type, int nmatch, regmatch_t pmatch[], int eflags)
 {
-  unsigned int j = 0;
+  unsigned int j = 0, shift, u = 0, v;
   int ret = REG_NOMATCH;
-  int mismatch, shift, u = 0, v;
+  int mismatch;
   const char *str_byte = data;
   const void *startptr = NULL;
   const tre_char_t *str_wide = data;
