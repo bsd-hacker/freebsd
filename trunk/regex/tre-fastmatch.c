@@ -149,7 +149,8 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
 	    bc = (r == HASH_OK) ? bc : fg->defBc;			\
 	    DPRINT(("tre_fast_match: mismatch on character %lc, "	\
 		    "BC %d, GS %d\n",					\
-		    ((tre_char_t *)startptr)[mismatch + 1], bc, gs));	\
+		    ((const tre_char_t *)startptr)[mismatch + 1],	\
+		    bc, gs));						\
             break;							\
 	default:							\
 	  if (!fg->hasdot)						\
@@ -159,10 +160,11 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
 	      v = fg->len - 1 - mismatch;				\
 	      gs = fg->sbmGs[mismatch];					\
 	    }								\
-	  bc = fg->qsBc[((unsigned char *)str_byte)[j + fg->len]];	\
+	  bc = fg->qsBc[((const unsigned char *)str_byte)[j + fg->len]];\
 	  DPRINT(("tre_fast_match: mismatch on character %c, "		\
 		 "BC %d, GS %d\n",					\
-		 ((unsigned char *)startptr)[mismatch + 1], bc, gs));	\
+		 ((const unsigned char *)startptr)[mismatch + 1],	\
+		 bc, gs));						\
       }									\
     if (fg->hasdot)							\
       shift = bc;							\
@@ -343,7 +345,7 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
 
 #define _CALC_BMGS(arr, pat, plen)					\
   {									\
-    int f, g;								\
+    int f = 0, g;							\
 									\
     int *suff = xmalloc(plen * sizeof(int));				\
     if (suff == NULL)							\
@@ -386,16 +388,12 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
  */
 #define SAVE_PATTERN(src, srclen, dst, dstlen)				\
   dstlen = srclen;							\
-  if (dstlen == 0)							\
-    dst = TRE_CHAR("");							\
-  else									\
-    {									\
-      dst = xmalloc((dstlen + 1) * sizeof(tre_char_t));			\
-      if (dst == NULL)							\
-	return REG_ESPACE;						\
-      memcpy(dst, src, dstlen * sizeof(tre_char_t));			\
-      dst[dstlen] = TRE_CHAR('\0');					\
-    }
+  dst = xmalloc((dstlen + 1) * sizeof(tre_char_t));			\
+  if (dst == NULL)							\
+    return REG_ESPACE;							\
+  if (dstlen > 0)							\
+    memcpy(dst, src, dstlen * sizeof(tre_char_t));			\
+  dst[dstlen] = TRE_CHAR('\0');
 
 /*
  * Initializes pattern compiling.
@@ -411,8 +409,17 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
   if (n == 0)								\
     {									\
       fg->matchall = true;						\
-      fg->pattern = "";							\
-      fg->wpattern = TRE_CHAR("");					\
+      fg->pattern = xmalloc(1);						\
+      if (!fg->pattern)							\
+	return REG_ESPACE;						\
+      fg->pattern[0] = '\0';						\
+      fg->wpattern = xmalloc(sizeof(tre_char_t));			\
+      if (!fg->wpattern)						\
+	{								\
+	  xfree(fg->pattern);						\
+	  return REG_ESPACE;						\
+	}								\
+      fg->wpattern[0] = TRE_CHAR('\0');					\
       DPRINT(("Matching every input\n"));				\
       return REG_OK;							\
     }									\
@@ -614,7 +621,7 @@ badpat:
   STORE_MBS_PAT;
   if (fg->wescmap != NULL)
     {
-      bool escaped = false;
+      escaped = false;
 
       fg->escmap = xmalloc(fg->len * sizeof(bool));
       if (!fg->escmap)
@@ -724,9 +731,9 @@ badpat:
  */
 int
 tre_match_fast(const fastmatch_t *fg, const void *data, size_t len,
-    tre_str_type_t type, int nmatch, regmatch_t pmatch[], int eflags)
+    tre_str_type_t type, int nmatch __unused, regmatch_t pmatch[], int eflags)
 {
-  unsigned int j = 0, shift, u = 0, v;
+  unsigned int j = 0, shift, u = 0, v = 0;
   int ret = REG_NOMATCH;
   int mismatch;
   const char *str_byte = data;
