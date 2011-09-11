@@ -113,7 +113,8 @@ extern bool	 Eflag, Fflag, Gflag, Hflag, Lflag,
 		 bflag, cflag, hflag, iflag, lflag, mflag, nflag, oflag,
 		 qflag, sflag, vflag, wflag, xflag;
 extern bool	 dexclude, dinclude, fexclude, finclude, lbflag, nullflag;
-extern unsigned long long Aflag, Bflag, mcount;
+extern unsigned long long Aflag, Bflag;
+extern long long mcount;
 extern char	*label;
 extern const char *color;
 extern int	 binbehave, devbehave, dirbehave, filebehave, grepbehave, linkbehave;

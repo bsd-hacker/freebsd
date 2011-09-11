@@ -106,7 +106,7 @@ bool	 hflag;		/* -h: don't print filename headers */
 bool	 iflag;		/* -i: ignore case */
 bool	 lflag;		/* -l: only show names of files with matches */
 bool	 mflag;		/* -m x: stop reading the files after x matches */
-unsigned long long mcount;	/* count for -m */
+long long mcount;	/* count for -m */
 bool	 nflag;		/* -n: show line numbers in front of matching lines */
 bool	 oflag;		/* -o: print only matching part */
 bool	 qflag;		/* -q: quiet mode (don't output anything) */
@@ -521,8 +521,8 @@ main(int argc, char *argv[])
 		case 'm':
 			mflag = true;
 			errno = 0;
-			mcount = strtoull(optarg, &ep, 10);
-			if (((errno == ERANGE) && (mcount == ULLONG_MAX)) ||
+			mcount = strtoll(optarg, &ep, 10);
+			if (((errno == ERANGE) && (mcount == LLONG_MAX)) ||
 			    ((errno == EINVAL) && (mcount == 0)))
 				err(2, NULL);
 			else if (ep[0] != '\0') {

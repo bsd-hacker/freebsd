@@ -233,13 +233,8 @@ procfile(const char *fn)
 			linesqueued++;
 		}
 		c += t;
-
-		/* Count the matches if we have a match limit */
-		if (mflag) {
-			mcount -= t;
-			if (mcount <= 0)
-				break;
-		}
+		if (mflag && mcount < 0)
+			break;
 	}
 	if (Bflag > 0)
 		clearqueue();
@@ -347,6 +342,11 @@ procline(struct str *l, int nottext)
 		if (st == (size_t)pmatch.rm_so)
 			break; 	/* No matches */
 	}
+
+
+	/* Count the matches if we have a match limit */
+	if (mflag)
+		mcount -= c;
 
 	if (c && binbehave == BINFILE_BIN && nottext)
 		return (c); /* Binary file */
