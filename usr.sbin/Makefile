@@ -133,7 +133,6 @@ SUBDIR+=	named
 SUBDIR+=	named-checkconf
 SUBDIR+=	named-checkzone
 SUBDIR+=	named-journalprint
-SUBDIR+=	named.reload
 SUBDIR+=	nsec3hash
 SUBDIR+=	rndc
 SUBDIR+=	rndc-confgen
@@ -180,7 +179,6 @@ SUBDIR+=	route6d
 SUBDIR+=	rrenumd
 SUBDIR+=	rtadvctl
 SUBDIR+=	rtadvd
-SUBDIR+=	rtadvctl
 SUBDIR+=	rtsold
 SUBDIR+=	traceroute6
 .endif

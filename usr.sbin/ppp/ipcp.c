@@ -283,11 +283,10 @@ ipcp_LoadDNS(struct ipcp *ipcp)
 int
 ipcp_WriteDNS(struct ipcp *ipcp)
 {
-  int fd[2];
-  const char *scriptpath = "/sbin/resolvconf";
-  pid_t pid;
-  struct stat s;
-  
+  const char *paddr;
+  mode_t mask;
+  FILE *fp;
+
   if (ipcp->ns.dns[0].s_addr == INADDR_ANY &&
       ipcp->ns.dns[1].s_addr == INADDR_ANY) {
     log_Printf(LogIPCP, "%s not modified: All nameservers NAKd\n",
@@ -299,61 +298,6 @@ ipcp_WriteDNS(struct ipcp *ipcp)
     ipcp->ns.dns[0].s_addr = ipcp->ns.dns[1].s_addr;
     ipcp->ns.dns[1].s_addr = INADDR_ANY;
   }
-
-  if (lstat(scriptpath, &s) != 0) {
-	  log_Printf(LogERROR, "resolvconf script %s not found: %s.",
-	      "  %s will be updated directly.\n",
-	      scriptpath, strerror(errno), _RESCONF_PATH);
-	  return(ipcp_WriteDNS_direct(ipcp));
-  }
-  if (s.st_uid != getuid()) {
-	  log_Printf(LogERROR, "resolvconf script %s owner error: %s."
-	      "  %s will be updated directly.\n",
-	      scriptpath, strerror(errno), _RESCONF_PATH);
-	  return(ipcp_WriteDNS_direct(ipcp));
-  }
-
-  return (ipcp_WriteDNS_script(ipcp));
-}
-
-int
-ipcp_WriteDNS_script(struct ipcp *ipcp)
-{
-  mask = umask(022);
-  if ((fp = ID0fopen(_PATH_RESCONF, "w")) != NULL) {
-    umask(mask);
-    if (ipcp->ns.resolv_nons)
-      fputs(ipcp->ns.resolv_nons, fp);
-    paddr = inet_ntoa(ipcp->ns.dns[0]);
-    log_Printf(LogIPCP, "Primary nameserver set to %s\n", paddr);
-    fprintf(fp, "\nnameserver %s\n", paddr);
-    if (ipcp->ns.dns[1].s_addr != INADDR_ANY &&
-        ipcp->ns.dns[1].s_addr != INADDR_NONE &&
-        ipcp->ns.dns[1].s_addr != ipcp->ns.dns[0].s_addr) {
-      paddr = inet_ntoa(ipcp->ns.dns[1]);
-      log_Printf(LogIPCP, "Secondary nameserver set to %s\n", paddr);
-      fprintf(fp, "nameserver %s\n", paddr);
-    }
-    if (fclose(fp) == EOF) {
-      log_Printf(LogERROR, "write(): Failed updating %s: %s\n", _PATH_RESCONF,
-                 strerror(errno));
-      return 0;
-    }
-  } else {
-    umask(mask);
-    log_Printf(LogERROR,"fopen(\"%s\", \"w\") failed: %s\n", _PATH_RESCONF,
-                 strerror(errno));
-  }
-
-  return 1;
-}
-
-int
-ipcp_WriteDNS_direct(struct ipcp *ipcp)
-{
-  const char *paddr;
-  mode_t mask;
-  FILE *fp;
 
   mask = umask(022);
   if ((fp = ID0fopen(_PATH_RESCONF, "w")) != NULL) {

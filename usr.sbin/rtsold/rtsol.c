@@ -776,6 +776,7 @@ call_script(const int argc, const char *const argv[],
 	int fd[2];
 	int error;
 	pid_t pid, wpid;
+	TAILQ_HEAD(, script_msg) *sm_head;
 
 	if ((scriptpath = argv[0]) == NULL)
 		return;

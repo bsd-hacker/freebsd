@@ -78,61 +78,6 @@ __FBSDID("$FreeBSD$");
 
 #include <security/mac/mac_framework.h>
 
-struct mtx	nd6sock_mtx;
-#define ND6SOCK_LOCK_INIT()	\
-	    mtx_init(&nd6sock_mtx, "nd6sock_mtx", NULL, MTX_DEF)
-#define ND6SOCK_LOCK()		mtx_lock(&nd6sock_mtx)
-#define ND6SOCK_UNLOCK()	mtx_unlock(&nd6sock_mtx)
-#define ND6SOCK_LOCK_DESTROY()	mtx_destroy(&nd6sock_mtx)
-
-statuc struct pr_usrreqs nd6_usrreqs = {
-	.pru_attach =	nd6_attach,
-	.pru_send =	nd6_send,
-	.pru_detach =	nd6_close,
-};
-
-static struct protosw nd6_protosw[] = {
-	.pr_type =	SOCK_RAW,
-	.pr_flags =	PR_ATOMIC|PR_ADDR,
-	.pr_ctlinput =	raw_ctlinput,
-	.pr_init =	raw_init,
-	.pr_protocol =	IPPROTO_ND6,
-	.pr_usrreqs =	&nd6_usrreqs,
-};
-
-static int
-nd6_attach(struct socket *so, int proto, struct thread *td)
-{
-	int error;
-
-	ND6SOCK_LOCK();
-	if (V_nd6_so != NULL) {
-		ND6SOCK_UNLOCK();
-		return (EEXIST);
-	}
-
-	error = priv_check(td, PRIV_NETINET_RAW);
-	if (error) {
-		SEND_UNLOCK();
-		return(error);
-	}
-
-	if (proto != IPPROTO_SEND) {
-		SEND_UNLOCK();
-		return (EPROTONOSUPPORT);
-	}
-	error = soreserve(so, send_sendspace, send_recvspace);
-	if (error) {
-		SEND_UNLOCK();
-		return(error);
-	}
-
-	V_send_so = so;
-	SEND_UNLOCK();
-
-	return (0);
-}
-
 #define ND6_SLOWTIMER_INTERVAL (60 * 60) /* 1 hour */
 #define ND6_RECALC_REACHTM_INTERVAL (60 * 120) /* 2 hours */
 
@@ -1382,6 +1327,7 @@ nd6_ioctl(u_long cmd, caddr_t data, struct ifnet *ifp)
 		 * accept_rtadv or auto_linklocal.
 		 */
 		if ((ND_IFINFO(ifp)->flags & ND6_IFF_IFDISABLED) &&
+		    !(ND.flags & ND6_IFF_IFDISABLED) &&
 		    (ND.flags & (ND6_IFF_ACCEPT_RTADV |
 		    ND6_IFF_AUTO_LINKLOCAL)))
 			ND.flags &= ~ND6_IFF_IFDISABLED;
@@ -1443,7 +1389,8 @@ nd6_ioctl(u_long cmd, caddr_t data, struct ifnet *ifp)
 			/* If no link-local address on ifp, configure */
 			ND_IFINFO(ifp)->flags |= ND6_IFF_AUTO_LINKLOCAL;
 			in6_ifattach(ifp, NULL);
-		} else if (ND_IFINFO(ifp)->flags & ND6_IFF_AUTO_LINKLOCAL) {
+		} else if ((ND_IFINFO(ifp)->flags & ND6_IFF_AUTO_LINKLOCAL) && 
+		    !(ND.flags & ND6_IFF_IFDISABLED)) {
 			/*
 			 * When the IF already has
 			 * ND6_IFF_AUTO_LINKLOCAL and no link-local

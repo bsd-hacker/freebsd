@@ -198,24 +198,22 @@ add_new_resolv_conf() {
 	# thus broke the script. This code creates the resolv.conf if either
 	# are provided.
 
-	local buf
+	local tmpres=/var/run/resolv.conf.${interface}
+	rm -f $tmpres
 
-	buf=""
-	NL="
-"
 	if [ -n "$new_domain_name" ]; then
-		buf="${buf}search $new_domain_name${NL}"
+		echo "search $new_domain_name" >>$tmpres
 	fi
 
 	if [ -n "$new_domain_name_servers" ]; then
 		for nameserver in $new_domain_name_servers; do
-			buf="${buf}nameserver $nameserver${NL}"
+			echo "nameserver $nameserver" >>$tmpres
 		done
 	fi
 
-	if [ -n "$buf" ]; then
+	if [ -f $tmpres ]; then
 		if [ -f /etc/resolv.conf.tail ]; then
-			buf="${buf}`cat /etc/resolv.conf.tail`"
+			cat /etc/resolv.conf.tail >>$tmpres
 		fi
 
 		case $resolvconf_enable in
@@ -226,9 +224,10 @@ add_new_resolv_conf() {
 			# If /usr is not mounted yet, we cannot use cmp, then
 			# the following test fails.  In such case, we simply
 			# ignore an error and do update resolv.conf.
-			if [ "$buf" = "`cat /etc/resolv.conf`" ]; then
+			if cmp -s $tmpres /etc/resolv.conf; then
+				rm -f $tmpres
 				return 0
-			fi
+			fi 2>/dev/null
 
 			# In case (e.g. during OpenBSD installs)
 			# /etc/resolv.conf is a symbolic link, take
@@ -238,7 +237,7 @@ add_new_resolv_conf() {
 			if [ -f /etc/resolv.conf ]; then
 				cat /etc/resolv.conf > /etc/resolv.conf.save
 			fi
-			echo "${buf}${NL}" > /etc/resolv.conf
+			cat $tmpres > /etc/resolv.conf
 
 			# Try to ensure correct ownership and permissions.
 			chown -RL root:wheel /etc/resolv.conf
@@ -246,9 +245,11 @@ add_new_resolv_conf() {
 			;;
 
 		*)
-			echo "${buf}${NL}" | /sbin/resolvconf -a ${interface}:dhcp4
+			/sbin/resolvconf -a ${interface}:dhcp4 < $tmpres
 			;;
 		esac
+
+		rm -f $tmpres
 
 		return 0
 	fi
