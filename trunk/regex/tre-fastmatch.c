@@ -406,10 +406,24 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
   fg->newline = (cflags & REG_NEWLINE);					\
   fg->nosub = (cflags & REG_NOSUB);					\
 									\
+  /* Cannot handle REG_ICASE with MB string */				\
+  if (fg->icase && (TRE_MB_CUR_MAX > 1))				\
+    {									\
+      DPRINT(("Cannot use fast matcher for MBS with REG_ICASE\n"));	\
+      return REG_BADPAT;						\
+    }
+
+#define CHECK_MATCHALL(literal)						\
+  if (!literal && n == 1 && pat[0] == TRE_CHAR('$'))			\
+    {									\
+      n--;								\
+      fg->eol = true;							\
+    }									\
+									\
   if (n == 0)								\
     {									\
       fg->matchall = true;						\
-      fg->pattern = xmalloc(1);						\
+      fg->pattern = xmalloc(sizeof(char));				\
       if (!fg->pattern)							\
 	return REG_ESPACE;						\
       fg->pattern[0] = '\0';						\
@@ -422,13 +436,6 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
       fg->wpattern[0] = TRE_CHAR('\0');					\
       DPRINT(("Matching every input\n"));				\
       return REG_OK;							\
-    }									\
-									\
-  /* Cannot handle REG_ICASE with MB string */				\
-  if (fg->icase && (TRE_MB_CUR_MAX > 1))				\
-    {									\
-      DPRINT(("Cannot use fast matcher for MBS with REG_ICASE\n"));	\
-      return REG_BADPAT;						\
     }
 
 /*
@@ -439,6 +446,8 @@ tre_compile_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n,
 		    int cflags)
 {
   INIT_COMP;
+
+  CHECK_MATCHALL(true);
 
   /* Cannot handle word boundaries with MB string */
   if (fg->word && (TRE_MB_CUR_MAX > 1))
@@ -486,6 +495,8 @@ tre_compile_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
       n--;
       pat++;
     }
+
+  CHECK_MATCHALL(false);
 
   /* Handle word-boundary matching when GNU extensions are enabled */
   if ((cflags & REG_GNU) && (n >= 14) &&
@@ -759,7 +770,10 @@ tre_match_fast(const fastmatch_t *fg, const void *data, size_t len,
 	  pmatch[0].rm_so = 0;
 	  pmatch[0].rm_eo = len;
 	}
-      return REG_OK;
+      if (fg->bol && fg->eol)
+	return (len == 0) ? REG_OK : REG_NOMATCH;
+      else
+	return REG_OK;
     }
 
   /* No point in going farther if we do not have enough data. */
