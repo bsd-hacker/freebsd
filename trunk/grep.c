@@ -305,12 +305,11 @@ read_patterns(const char *fn)
 	FILE *f;
 	char *line;
 	size_t len;
-	int fd;
 
 	if ((f = fopen(fn, "r")) == NULL)
 		err(2, "%s", fn);
 	if ((fstat(fileno(f), &st) == -1) || (S_ISDIR(st.st_mode))) {
-		close(fd);
+		fclose(f);
 		return;
 	}
         while ((line = fgetln(f, &len)) != NULL)
