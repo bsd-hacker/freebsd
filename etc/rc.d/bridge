@@ -27,6 +27,7 @@
 
 # PROVIDE: bridge
 # REQUIRE: netif
+# BEFORE: SERVERS
 # KEYWORD: nojail
 
 . /etc/rc.subr
