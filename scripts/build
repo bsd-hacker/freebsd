@@ -516,7 +516,7 @@ if [ $# -ge 1 ]; then
 	    ;;
 	create)
 	    # XXX some way to avoid the latest/previous dance?
-	    if [ -z "${buildid}" -o "${buildid}" = "latest" ]; then
+	    if [ "${buildid}" = "latest" ]; then
 		buildid=$(now)"."`hostname -s`
 	    elif [ "${buildid}" = "previous" ]; then
 		echo "Use build clone latest instead"
@@ -557,7 +557,8 @@ case "$cmd" in
 	;;
     create)
 	if [ -z "${buildid}" ]; then
-	    usage
+	    echo "buildid is empty; forcing to 'latest'"
+	    buildid=$(now)"."`hostname -s`
 	fi
 	proxy_root create ${arch} ${branch} ${buildid} $@ || exit 1
 	;;
