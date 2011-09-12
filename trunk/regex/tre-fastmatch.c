@@ -113,7 +113,10 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
       }									\
 
 #define IS_OUT_OF_BOUNDS						\
-  ((type == STR_WIDE) ? ((j + fg->wlen) > len) : ((j + fg->len) > len))
+  ((!fg->reversed							\
+    ? ((type == STR_WIDE) ? ((j + fg->wlen) > len)			\
+			  : ((j + fg->len) > len))			\
+    : (j < 0)))
 
 /*
  * Checks whether the new position after shifting in the input string
@@ -143,7 +146,8 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
 		mismatch -= u;						\
 	      v = fg->wlen - 1 - mismatch;				\
 	      r = hashtable_get(fg->qsBc_table,				\
-		&str_wide[j + fg->wlen], &bc);				\
+		&str_wide[!fg->reversed ? (size_t)j + fg->wlen		\
+			  : (size_t)j - 1], &bc);			\
 	      gs = fg->bmGs[mismatch];					\
 	    }								\
 	    bc = (r == HASH_OK) ? bc : fg->defBc;			\
@@ -160,7 +164,9 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
 	      v = fg->len - 1 - mismatch;				\
 	      gs = fg->sbmGs[mismatch];					\
 	    }								\
-	  bc = fg->qsBc[((const unsigned char *)str_byte)[j + fg->len]];\
+	  bc = fg->qsBc[((const unsigned char *)str_byte)		\
+			[!fg->reversed ? (size_t)j + fg->len		\
+			 : (size_t)j - 1]];				\
 	  DPRINT(("tre_fast_match: mismatch on character %c, "		\
 		 "BC %d, GS %d\n",					\
 		 ((const unsigned char *)startptr)[mismatch + 1],	\
@@ -183,7 +189,7 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
 	  }								\
       }									\
       DPRINT(("tre_fast_match: shifting %u characters\n", shift));	\
-      j += shift;							\
+      j = !fg->reversed ? j + shift : j - shift;			\
   }
 
 /*
@@ -207,6 +213,16 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
  * Fills in the bad character shift array for SB/MB strings.
  */
 #define FILL_QSBC							\
+  if (fg->reversed)							\
+    {									\
+      _FILL_QSBC_REVERSED						\
+    }									\
+  else									\
+    {									\
+      _FILL_QSBC							\
+    }
+
+#define _FILL_QSBC							\
   for (unsigned int i = 0; i <= UCHAR_MAX; i++)				\
     fg->qsBc[i] = fg->len - fg->hasdot;					\
   for (unsigned int i = fg->hasdot + 1; i < fg->len; i++)		\
@@ -215,12 +231,30 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
       DPRINT(("BC shift for char %c is %zu\n", fg->pattern[i],		\
 	     fg->len - i));						\
       if (fg->icase)							\
+	{								\
+	  char c = islower((unsigned char)fg->pattern[i]) ?		\
+		   toupper((unsigned char)fg->pattern[i]) :		\
+		   tolower((unsigned char)fg->pattern[i]);		\
+	  fg->qsBc[(unsigned char)c] = fg->len - i;			\
+	  DPRINT(("BC shift for char %c is %zu\n", c, fg->len - i));	\
+	}								\
+    }
+
+#define _FILL_QSBC_REVERSED						\
+  for (unsigned int i = 0; i <= UCHAR_MAX; i++)				\
+    fg->qsBc[i] = firstdot + 1;						\
+  for (int i = firstdot - 1; i >= 0; i--)				\
+    {									\
+      fg->qsBc[(unsigned char)fg->pattern[i]] = i + 1;			\
+      DPRINT(("Reverse BC shift for char %c is %d\n", fg->pattern[i],	\
+	     i + 1));							\
+      if (fg->icase)							\
         {								\
           char c = islower((unsigned char)fg->pattern[i]) ?		\
 		   toupper((unsigned char)fg->pattern[i]) :		\
 		   tolower((unsigned char)fg->pattern[i]);		\
-          fg->qsBc[(unsigned char)c] = fg->len - i;			\
-	  DPRINT(("BC shift for char %c is %zu\n", c, fg->len - i));	\
+          fg->qsBc[(unsigned char)c] = i + 1;				\
+	  DPRINT(("Reverse BC shift for char %c is %d\n", c, i + 1));	\
         }								\
     }
 
@@ -234,6 +268,16 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
  * default shift value for the rest.
  */
 #define FILL_QSBC_WIDE							\
+  if (fg->reversed)							\
+    {									\
+      _FILL_QSBC_WIDE_REVERSED						\
+    }									\
+  else									\
+    {									\
+      _FILL_QSBC_WIDE							\
+    }
+
+#define _FILL_QSBC_WIDE							\
   /* Adjust the shift based on location of the last dot ('.'). */	\
   fg->defBc = fg->wlen - fg->hasdot;					\
 									\
@@ -250,8 +294,8 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
       r = hashtable_put(fg->qsBc_table, &fg->wpattern[i], &k);		\
       if ((r == HASH_FAIL) || (r == HASH_FULL))				\
 	FAIL_COMP(REG_ESPACE);						\
-      DPRINT(("BC shift for wide char %lc is %zu\n", fg->wpattern[i],	\
-	     fg->wlen - i));						\
+      DPRINT(("BC shift for wide char %lc is %d\n", fg->wpattern[i],	\
+	     k));							\
       if (fg->icase)							\
 	{								\
 	  tre_char_t wc = iswlower(fg->wpattern[i]) ?			\
@@ -259,8 +303,37 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
 	  r = hashtable_put(fg->qsBc_table, &wc, &k);			\
 	  if ((r == HASH_FAIL) || (r == HASH_FULL))			\
 	    FAIL_COMP(REG_ESPACE);					\
-	  DPRINT(("BC shift for wide char %lc is %zu\n", wc,		\
-		 fg->wlen - i));					\
+	  DPRINT(("BC shift for wide char %lc is %d\n", wc, k));	\
+	}								\
+    }
+
+#define _FILL_QSBC_WIDE_REVERSED					\
+  /* Adjust the shift based on location of the last dot ('.'). */	\
+  fg->defBc = (size_t)firstdot;						\
+									\
+  /* Preprocess pattern. */						\
+  fg->qsBc_table = hashtable_init(fg->wlen * (fg->icase ? 8 : 4),	\
+				  sizeof(tre_char_t), sizeof(int));	\
+  if (!fg->qsBc_table)							\
+    FAIL_COMP(REG_ESPACE);						\
+  for (int i = firstdot - 1; i >= 0; i--)				\
+    {									\
+      int k = i + 1;							\
+      int r;								\
+									\
+      r = hashtable_put(fg->qsBc_table, &fg->wpattern[i], &k);		\
+      if ((r == HASH_FAIL) || (r == HASH_FULL))				\
+	FAIL_COMP(REG_ESPACE);						\
+      DPRINT(("Reverse BC shift for wide char %lc is %d\n",		\
+	     fg->wpattern[i], k));					\
+      if (fg->icase)							\
+	{								\
+	  tre_char_t wc = iswlower(fg->wpattern[i]) ?			\
+	    towupper(fg->wpattern[i]) : towlower(fg->wpattern[i]);	\
+	  r = hashtable_put(fg->qsBc_table, &wc, &k);			\
+	  if ((r == HASH_FAIL) || (r == HASH_FULL))			\
+	    FAIL_COMP(REG_ESPACE);					\
+	  DPRINT(("Reverse BC shift for wide char %lc is %d\n", wc, k));\
 	}								\
     }
 
@@ -445,6 +518,8 @@ int
 tre_compile_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n,
 		    int cflags)
 {
+  ssize_t firstdot = -1;
+
   INIT_COMP;
 
   CHECK_MATCHALL(true);
@@ -483,6 +558,7 @@ tre_compile_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
 {
   tre_char_t *tmp;
   size_t pos = 0;
+  ssize_t firstdot = -1;
   bool escaped = false;
   bool *_escmap = NULL;
 
@@ -572,6 +648,8 @@ tre_compile_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
 	    else
 	      {
 		fg->hasdot = i;
+		if (firstdot == -1)
+			firstdot = i;
 		STORE_CHAR;
 	      }
 	    continue;
@@ -665,6 +743,13 @@ badpat:
 	 fg->icase ? 'y' : 'n', fg->word ? 'y' : 'n',
 	 fg->newline ? 'y' : 'n'));
 
+  if ((firstdot > -1) && (fg->len - fg->hasdot + 1 < (size_t)firstdot) &&
+      fg->nosub)
+    {
+      fg->reversed = true;
+      DPRINT(("tre_compile_fast: using reverse QS algorithm\n"));
+    }
+
   FILL_QSBC;
   FILL_BMGS;
 #ifdef TRE_WCHAR
@@ -678,7 +763,7 @@ badpat:
 #define _SHIFT_ONE							\
   {									\
     shift = 1;								\
-    j += shift;								\
+    j = !fg->reversed ? j + shift : j - shift;				\
     continue;								\
   }
 
@@ -744,7 +829,8 @@ int
 tre_match_fast(const fastmatch_t *fg, const void *data, size_t len,
     tre_str_type_t type, int nmatch __unused, regmatch_t pmatch[], int eflags)
 {
-  unsigned int j = 0, shift, u = 0, v = 0;
+  unsigned int shift, u = 0, v = 0;
+  ssize_t j = 0;
   int ret = REG_NOMATCH;
   int mismatch;
   const char *str_byte = data;
@@ -803,6 +889,10 @@ tre_match_fast(const fastmatch_t *fg, const void *data, size_t len,
    */
   if (fg->eol && (eflags & REG_NOTEOL))
     len--;
+
+  if (fg->reversed)
+    j = len - (type == STR_WIDE ? fg->wlen : fg->len);
+
 
   /* Only try once at the beginning or ending of the line. */
   if ((fg->bol || fg->eol) && !fg->newline && !(eflags & REG_NOTBOL) &&

@@ -31,6 +31,7 @@ typedef struct {
   bool		 newline;
   bool		 nosub;
   bool		 matchall;
+  bool		 reversed;
 } fastmatch_t;
 
 extern int
