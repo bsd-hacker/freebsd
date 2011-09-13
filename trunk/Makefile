@@ -30,7 +30,7 @@ LINKS=	${BINDIR}/grep ${BINDIR}/egrep \
 	${BINDIR}/grep ${BINDIR}/bzegrep \
 	${BINDIR}/grep ${BINDIR}/bzfgrep \
 	${BINDIR}/grep ${BINDIR}/xzgrep \
-	${BINDIR}/grep ${BINDIR}/xzefgrep \
+	${BINDIR}/grep ${BINDIR}/xzegrep \
 	${BINDIR}/grep ${BINDIR}/xzfgrep \
 	${BINDIR}/grep ${BINDIR}/lzgrep \
 	${BINDIR}/grep ${BINDIR}/lzegrep \
