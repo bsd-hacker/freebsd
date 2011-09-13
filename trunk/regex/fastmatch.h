@@ -13,7 +13,6 @@ typedef struct {
   size_t	 len;
   wchar_t	*wpattern;
   bool		*wescmap;
-  unsigned int	 hasdot;
   unsigned int	 qsBc[UCHAR_MAX + 1];
   unsigned int	*bmGs;
   char		*pattern;
@@ -24,6 +23,7 @@ typedef struct {
   const char	*re_endp;
 
   /* flags */
+  bool		 hasdot;
   bool		 bol;
   bool		 eol;
   bool		 word;

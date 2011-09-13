@@ -224,8 +224,8 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
 
 #define _FILL_QSBC							\
   for (unsigned int i = 0; i <= UCHAR_MAX; i++)				\
-    fg->qsBc[i] = fg->len - fg->hasdot;					\
-  for (unsigned int i = fg->hasdot + 1; i < fg->len; i++)		\
+    fg->qsBc[i] = fg->len - hasdot;					\
+  for (unsigned int i = hasdot + 1; i < fg->len; i++)			\
     {									\
       fg->qsBc[(unsigned char)fg->pattern[i]] = fg->len - i;		\
       DPRINT(("BC shift for char %c is %zu\n", fg->pattern[i],		\
@@ -279,14 +279,14 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
 
 #define _FILL_QSBC_WIDE							\
   /* Adjust the shift based on location of the last dot ('.'). */	\
-  fg->defBc = fg->wlen - fg->hasdot;					\
+  fg->defBc = fg->wlen - whasdot;					\
 									\
   /* Preprocess pattern. */						\
   fg->qsBc_table = hashtable_init(fg->wlen * (fg->icase ? 8 : 4),	\
 				  sizeof(tre_char_t), sizeof(int));	\
   if (!fg->qsBc_table)							\
     FAIL_COMP(REG_ESPACE);						\
-  for (unsigned int i = fg->hasdot + 1; i < fg->wlen; i++)		\
+  for (unsigned int i = whasdot + 1; i < fg->wlen; i++)			\
     {									\
       int k = fg->wlen - i;						\
       int r;								\
@@ -309,14 +309,14 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
 
 #define _FILL_QSBC_WIDE_REVERSED					\
   /* Adjust the shift based on location of the last dot ('.'). */	\
-  fg->defBc = (size_t)firstdot;						\
+  fg->defBc = (size_t)wfirstdot;					\
 									\
   /* Preprocess pattern. */						\
   fg->qsBc_table = hashtable_init(fg->wlen * (fg->icase ? 8 : 4),	\
 				  sizeof(tre_char_t), sizeof(int));	\
   if (!fg->qsBc_table)							\
     FAIL_COMP(REG_ESPACE);						\
-  for (int i = firstdot - 1; i >= 0; i--)				\
+  for (int i = wfirstdot - 1; i >= 0; i--)				\
     {									\
       int k = i + 1;							\
       int r;								\
@@ -518,7 +518,8 @@ int
 tre_compile_literal(fastmatch_t *fg, const tre_char_t *pat, size_t n,
 		    int cflags)
 {
-  ssize_t firstdot = -1;
+  size_t hasdot = 0, whasdot = 0;
+  ssize_t firstdot = -1, wfirstdot = -1;
 
   INIT_COMP;
 
@@ -557,8 +558,8 @@ tre_compile_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
 		 int cflags)
 {
   tre_char_t *tmp;
-  size_t pos = 0;
-  ssize_t firstdot = -1;
+  size_t pos = 0, hasdot = 0, whasdot = 0;;
+  ssize_t firstdot = -1, wfirstdot = -1;
   bool escaped = false;
   bool *_escmap = NULL;
 
@@ -647,9 +648,9 @@ tre_compile_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
 	      }
 	    else
 	      {
-		fg->hasdot = i;
-		if (firstdot == -1)
-			firstdot = i;
+		whasdot = i;
+		if (wfirstdot == -1)
+			wfirstdot = i;
 		STORE_CHAR;
 	      }
 	    continue;
@@ -699,6 +700,8 @@ badpat:
       return REG_BADPAT;
     }
 
+  fg->hasdot = whasdot;
+
   /*
    * The pattern has been processed and copied to tmp as a literal string
    * with escapes, anchors (^$) and the word boundary match character
@@ -708,24 +711,32 @@ badpat:
   SAVE_PATTERN(tmp, pos, fg->wpattern, fg->wlen);
   fg->wescmap = _escmap;
   STORE_MBS_PAT;
-  if (fg->wescmap != NULL)
+  if (fg->hasdot || (fg->wescmap != NULL))
     {
-      escaped = false;
-
-      fg->escmap = xmalloc(fg->len * sizeof(bool));
-      if (!fg->escmap)
+      if (fg->wescmap != NULL)
 	{
-	  tre_free_fast(fg);
-	  return REG_ESPACE;
+	  fg->escmap = xmalloc(fg->len * sizeof(bool));
+	  if (!fg->escmap)
+	    {
+	      tre_free_fast(fg);
+	      return REG_ESPACE;
+	    }
 	}
 
+      escaped = false;
       for (unsigned int i = 0; i < fg->len; i++)
 	if (fg->pattern[i] == '\\')
-	  escaped = ! escaped;
+	  escaped = !escaped;
 	else if (fg->pattern[i] == '.' && escaped)
 	  {
 	    fg->escmap[i] = true;
 	    escaped = false;
+	  }
+	else if (fg->pattern[i] == '.' && !escaped)
+	  {
+	    hasdot = i;
+	    if (firstdot == -1)
+	      firstdot = i;
 	  }
 	else
 	  escaped = false;
@@ -743,7 +754,7 @@ badpat:
 	 fg->icase ? 'y' : 'n', fg->word ? 'y' : 'n',
 	 fg->newline ? 'y' : 'n'));
 
-  if ((firstdot > -1) && (fg->len - fg->hasdot + 1 < (size_t)firstdot) &&
+  if ((wfirstdot > -1) && (fg->wlen - whasdot + 1 < (size_t)wfirstdot) &&
       fg->nosub)
     {
       fg->reversed = true;
