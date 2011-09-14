@@ -45,6 +45,9 @@
 static int	fastcmp(const void *, const bool *, const void *, size_t,
 			tre_str_type_t, bool, bool);
 
+/*
+ * Clean up if pattern compilation fails.
+ */
 #define FAIL_COMP(errcode)						\
   {									\
     if (fg->pattern)							\
@@ -486,6 +489,11 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
       return REG_BADPAT;						\
     }
 
+/*
+ * Checks whether we have a 0-length pattern that will match
+ * anything. If literal is set to false, the EOL anchor is also
+ * taken into account.
+ */
 #define CHECK_MATCHALL(literal)						\
   if (!literal && n == 1 && pat[0] == TRE_CHAR('$'))			\
     {									\
@@ -498,14 +506,11 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
       fg->matchall = true;						\
       fg->pattern = xmalloc(sizeof(char));				\
       if (!fg->pattern)							\
-	return REG_ESPACE;						\
+	FAIL_COMP(REG_ESPACE);						\
       fg->pattern[0] = '\0';						\
       fg->wpattern = xmalloc(sizeof(tre_char_t));			\
       if (!fg->wpattern)						\
-	{								\
-	  xfree(fg->pattern);						\
-	  return REG_ESPACE;						\
-	}								\
+	FAIL_COMP(REG_ESPACE);						\
       fg->wpattern[0] = TRE_CHAR('\0');					\
       DPRINT(("Matching every input\n"));				\
       return REG_OK;							\
@@ -594,6 +599,7 @@ tre_compile_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
   if (tmp == NULL)
     return REG_ESPACE;
 
+/* Copies the char into the stored pattern and skips to the next char. */
 #define STORE_CHAR							\
   do									\
     {									\
@@ -602,6 +608,7 @@ tre_compile_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
       continue;								\
     } while (0)
 
+  /* Traverse the input pattern for processing */
   for (unsigned int i = 0; i < n; i++)
     {
       switch (pat[i])
@@ -711,6 +718,12 @@ badpat:
   SAVE_PATTERN(tmp, pos, fg->wpattern, fg->wlen);
   fg->wescmap = _escmap;
   STORE_MBS_PAT;
+
+  /*
+   * The position of dots and escaped dots is different in the MB string
+   * than in to the wide string so traverse the converted string, as well,
+   * to store these positions.
+   */
   if (fg->hasdot || (fg->wescmap != NULL))
     {
       if (fg->wescmap != NULL)
@@ -754,6 +767,7 @@ badpat:
 	 fg->icase ? 'y' : 'n', fg->word ? 'y' : 'n',
 	 fg->newline ? 'y' : 'n'));
 
+  /* Check whether reverse QS algorithm is more efficient */
   if ((wfirstdot > -1) && (fg->wlen - whasdot + 1 < (size_t)wfirstdot) &&
       fg->nosub)
     {
@@ -860,6 +874,7 @@ tre_match_fast(const fastmatch_t *fg, const void *data, size_t len,
 	  break;
       }
 
+  /* Shortcut for empty pattern */
   if (fg->matchall)
     {
       if (!fg->nosub)
