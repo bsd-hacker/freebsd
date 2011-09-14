@@ -822,8 +822,8 @@ badpat:
       _SHIFT_ONE;
 
 #define _BOL_COND							\
-  ((j == 0) || ((type == STR_WIDE) ? tre_isspace(str_wide[j - 1]) :	\
-    isspace(str_byte[j - 1])))
+  ((j == 0) || ((type == STR_WIDE) ? (str_wide[j - 1] == TRE_CHAR('\n'))\
+				   : (str_byte[j - 1] == '\n')))
 
 /*
  * Checks BOL anchor and shifts one if match is not on a
@@ -834,9 +834,10 @@ badpat:
       _SHIFT_ONE;
 
 #define _EOL_COND							\
-  ((type == STR_WIDE) ?							\
-    ((j + fg->wlen == len) || tre_isspace(str_wide[j + fg->wlen])) :	\
-    ((j + fg->len == len) || isspace(str_byte[j + fg->wlen])))
+  ((type == STR_WIDE)							\
+    ? ((j + fg->wlen == len) ||						\
+		(str_wide[j + fg->wlen] == TRE_CHAR('\n')))		\
+    : ((j + fg->len == len) || (str_byte[j + fg->wlen] == '\n')))
 
 /*
  * Checks EOL anchor and shifts one if match is not on a
