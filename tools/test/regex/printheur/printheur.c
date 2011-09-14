@@ -37,40 +37,50 @@ __FBSDID("$FreeBSD$");
 #include "tre-heuristic.h"
 #include "tre-internal.h"
 
+static inline void
+usage(void)
+{
+
+	printf("Usage: %s [-E]\n", getprogname());
+	exit(EXIT_FAILURE);
+}
+
 int
 main(int argc, char *argv[])
 {
-  heur_t h;
-  wchar_t *pat;
-  size_t siz;
-  int cflags, ret;
+	heur_t h;
+	wchar_t *pat;
+	size_t siz;
+	int cflags, ret;
 
-  siz = strlen(argv[1]);
-  pat = malloc(sizeof(wint_t) * (siz + 1));
-  if (pat == NULL)
-	return (EXIT_FAILURE);
-  siz = mbstowcs(pat, argv[1], siz);
+	while ((ret = getopt(argc, argv, "E")) != -1)
+		switch(ret) {
+		case 'E':
+			cflags |= REG_EXTENDED;
+			break;
+		default:
+			usage();
+		}
 
-  while ((ret = getopt(argc, argv, "E")) != -1)
-	switch(ret) {
-	case 'E':
-		cflags |= REG_EXTENDED;
-		break;
-	default:
-		printf("Usage: %s [-E]\n", getprogname());
-		exit(EXIT_FAILURE);
+	if (argc != 2)
+		usage();
+	printf("Input pattern: %s\n", argv[1]);
+	siz = strlen(argv[1]);
+	pat = malloc(sizeof(wint_t) * (siz + 1));
+	if (pat == NULL)
+		return (EXIT_FAILURE);
+	siz = mbstowcs(pat, argv[1], siz);
+
+	ret = tre_compile_heur(&h, pat, siz, 0);
+	if (ret != 0) {
+		printf("No heuristic available.\n");
+		exit (EXIT_SUCCESS);
 	}
 
-  ret = tre_compile_heur(&h, pat, siz, 0);
-  if (ret != 0) {
-	printf("No heuristic available.\n");
-	exit (EXIT_SUCCESS);
-  }
+	printf("%s\n", h.prefix ? "Prefix heuristic" : "Normal heuristic");
+	printf("Start heuristic: %s\n", h.start->pattern);
+	if (!h.prefix)
+		printf("End heuristic: %s\n", h.end->pattern);
 
-  printf("%s\n", h.prefix ? "Prefix heuristic" : "Normal heuristic");
-  printf("Start heuristic: %s\n", h.start->pattern);
-  if (!h.prefix)
-	printf("End heuristic: %s\n", h.end->pattern);
-
-  return (EXIT_SUCCESS);
+	return (EXIT_SUCCESS);
 }
