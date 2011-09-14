@@ -1333,13 +1333,13 @@ variables works.
 .Pp
 If the variable is
 .Dq Li NO ,
-all of interfaces which do not have the corresponding
+all interfaces which do not have a corresponding
 .Va ifconfig_ Ns Ao Ar interface Ac Ns _ipv6
 variable will be marked as
 .Dq Li IFDISABLED
-when it becomes available for security reason.
-This means only IPv6 functionality on that interface
-is completely disabled.
+at creation.
+This means that all of IPv6 functionality on that interface
+is completely disabled to enforce a security policy.
 If the variable is set to
 .Dq YES ,
 the flag will be cleared on all of the interfaces.
@@ -1348,14 +1348,14 @@ In most cases, just defining an
 .Va ifconfig_ Ns Ao Ar interface Ac Ns _ipv6
 for an IPv6-capable interface should be sufficient.
 However, if an interface is added dynamically
-.Pq by some tunneling protocols such as PPP, for example
+.Pq by some tunneling protocols such as PPP, for example ,
 it is often difficult to define the variable in advance.
 In such a case, configuring the
 .Dq Li IFDISABLED
 flag can be disabled by setting this variable to
 .Dq YES .
 .Pp
-For more details of
+For more details of the
 .Dq Li IFDISABLED
 flag and keywords
 .Dq Li inet6 ifdisabled ,
@@ -1451,8 +1451,9 @@ ifconfig_ed0_ipv6="inet6 auto_linklocal"
 .Pp
 A link-local address can also be configured manually.
 This is useful for the default router address of an IPv6 router
-because it is not changed by replacing the network interface
-card, for example:
+so that it does not change when the network interface
+card is replaced.
+For example:
 .Bd -literal
 ifconfig_ed0_ipv6="inet6 fe80::1 prefixlen 64"
 .Ed
