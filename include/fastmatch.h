@@ -13,17 +13,17 @@ typedef struct {
   size_t	 len;
   wchar_t	*wpattern;
   bool		*wescmap;
-  int		 hasdot;
-  int		 qsBc[UCHAR_MAX + 1];
-  int		*bmGs;
+  unsigned int	 qsBc[UCHAR_MAX + 1];
+  unsigned int	*bmGs;
   char		*pattern;
   bool		*escmap;
-  int		 defBc;
+  unsigned int	 defBc;
   void		*qsBc_table;
-  int		*sbmGs;
+  unsigned int	*sbmGs;
   const char	*re_endp;
 
   /* flags */
+  bool		 hasdot;
   bool		 bol;
   bool		 eol;
   bool		 word;
@@ -31,6 +31,7 @@ typedef struct {
   bool		 newline;
   bool		 nosub;
   bool		 matchall;
+  bool		 reversed;
 } fastmatch_t;
 
 extern int
