@@ -1890,7 +1890,6 @@ tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
 	  preg->shortcut = shortcut;
 	  preg->re_nsub = 0;
 	  DPRINT("tre_compile: pattern compiled for fast matcher\n");
-	  return REG_OK;
 	}
       else
 	{
@@ -1904,14 +1903,11 @@ tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
      purposes. */
   stack = tre_stack_new(512, 10240, 128);
   if (!stack)
-    return REG_ESPACE;
+    ERROR_EXIT(REG_ESPACE);
   /* Allocate a fast memory allocator. */
   mem = tre_mem_new();
   if (!mem)
-    {
-      tre_stack_destroy(stack);
-      return REG_ESPACE;
-    }
+    ERROR_EXIT(REG_ESPACE);
 
   /* Parse the regexp. */
   memset(&parse_ctx, 0, sizeof(parse_ctx));
@@ -2196,10 +2192,7 @@ tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
    */
   heur = xmalloc(sizeof(heur_t));
   if (!heur)
-    {
-      errcode = REG_ESPACE;
-      goto error_exit;
-    }
+    ERROR_EXIT(REG_ESPACE);
 
   ret = tre_compile_heur(heur, regex, n, cflags);
   if (ret != REG_OK)
@@ -2219,7 +2212,12 @@ tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags)
 
  error_exit:
   /* Free everything that was allocated and return the error code. */
-  tre_mem_destroy(mem);
+  if (shortcut != NULL)
+    xfree(shortcut);
+  if (heur != NULL)
+    xfree(heur);
+  if (mem != NULL)
+    tre_mem_destroy(mem);
   if (stack != NULL)
     tre_stack_destroy(stack);
   if (counts != NULL)

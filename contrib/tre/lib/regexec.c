@@ -158,7 +158,7 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
   int *tags = NULL, eo;
 
   /* Check if we can cheat with a faster algorithm. */
-  if (shortcut != NULL)
+  if ((shortcut != NULL) && (type != STR_USER))
     {
       DPRINT("tre_match: using tre_match_fast() instead of the full NFA\n");
       return tre_match_fast(shortcut, string, len, type, nmatch,
@@ -184,7 +184,7 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
     (void *)&data_byte[off];
 
   /* Check if we have a heuristic to speed up the search. */
-  if (heur != NULL)
+  if ((heur != NULL) && (type != STR_USER))
     {
       int ret;
       size_t st = 0, n;
