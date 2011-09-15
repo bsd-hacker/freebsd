@@ -69,6 +69,9 @@ typedef struct {
   void *shortcut;  /* For internal use only. */
   void *heur;	   /* For internal use only. */
   const char *re_endp;
+#ifdef TRE_WCHAR
+  const wchar_t *re_wendp;
+#endif
 } regex_t;
 
 typedef struct {
