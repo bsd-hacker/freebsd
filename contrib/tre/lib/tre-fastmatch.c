@@ -855,7 +855,7 @@ badpat:
  */
 int
 tre_match_fast(const fastmatch_t *fg, const void *data, size_t len,
-    tre_str_type_t type, int nmatch __unused, regmatch_t pmatch[], int eflags)
+    tre_str_type_t type, int nmatch, regmatch_t pmatch[], int eflags)
 {
   unsigned int shift, u = 0, v = 0;
   ssize_t j = 0;
@@ -880,7 +880,7 @@ tre_match_fast(const fastmatch_t *fg, const void *data, size_t len,
   /* Shortcut for empty pattern */
   if (fg->matchall)
     {
-      if (!fg->nosub)
+      if (!fg->nosub && nmatch >= 1)
 	{
 	  pmatch[0].rm_so = 0;
 	  pmatch[0].rm_eo = len;
@@ -939,7 +939,7 @@ tre_match_fast(const fastmatch_t *fg, const void *data, size_t len,
 	    {
 	      if (fg->word && !IS_ON_WORD_BOUNDARY)
 		return ret;
-	      if (!fg->nosub)
+	      if (!fg->nosub && nmatch >= 1)
 		{
 		  pmatch[0].rm_so = j;
 		  pmatch[0].rm_eo = j + (type == STR_WIDE ? fg->wlen : fg->len);
@@ -963,7 +963,7 @@ tre_match_fast(const fastmatch_t *fg, const void *data, size_t len,
 		CHECK_BOL_ANCHOR;
 	      if (fg->eol)
 		CHECK_EOL_ANCHOR;
-	      if (!fg->nosub)
+	      if (!fg->nosub && nmatch >= 1)
 		{
 		  pmatch[0].rm_so = j;
 		  pmatch[0].rm_eo = j + ((type == STR_WIDE) ? fg->wlen : fg->len);
