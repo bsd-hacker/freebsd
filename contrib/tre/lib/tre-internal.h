@@ -257,6 +257,13 @@ struct tnfa {
 };
 
 int
+tre_convert_pattern(const char *regex, size_t n, tre_char_t **w,
+		    size_t *wn);
+
+void
+tre_free_pattern(tre_char_t *wregex);
+
+int
 tre_compile(regex_t *preg, const tre_char_t *regex, size_t n, int cflags);
 
 void
