@@ -256,6 +256,26 @@ struct tnfa {
   int params_depth;
 };
 
+#define CALL_WITH_OFFSET(fn)						\
+  do									\
+    {									\
+      size_t slen = (size_t)(pmatch[0].rm_eo - pmatch[0].rm_so);	\
+      size_t offset = pmatch[0].rm_so;					\
+      int ret;								\
+									\
+      if ((len != (unsigned)-1) && (pmatch[0].rm_eo > len))		\
+	return REG_NOMATCH;						\
+      if ((long long)pmatch[0].rm_eo - pmatch[0].rm_so < 0)		\
+	return REG_NOMATCH;						\
+      ret = fn;								\
+      for (unsigned i = 0; (!(eflags & REG_NOSUB) && (i < nmatch)); i++)\
+	{								\
+	  pmatch[i].rm_so += offset;					\
+	  pmatch[i].rm_eo += offset;					\
+	}								\
+      return ret;							\
+    } while (0 /*CONSTCOND*/)
+
 int
 tre_convert_pattern(const char *regex, size_t n, tre_char_t **w,
 		    size_t *wn);

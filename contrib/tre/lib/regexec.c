@@ -303,27 +303,6 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
   return status;
 }
 
-#define ADJUST_OFFSETS							\
-  {									\
-    size_t slen = (size_t)(pmatch[0].rm_eo - pmatch[0].rm_so);		\
-    size_t offset = pmatch[0].rm_so;					\
-    int ret;								\
-									\
-    if ((len != (unsigned)-1) && (pmatch[0].rm_eo > len))		\
-      return REG_NOMATCH;						\
-    if ((long long)pmatch[0].rm_eo - pmatch[0].rm_so < 0)		\
-      return REG_NOMATCH;						\
-    ret = tre_match(tnfa, &str[offset], slen, type, nmatch,		\
-		    pmatch, eflags, preg->shortcut, preg->heur);	\
-    for (unsigned i = 0; (i == 0) || (!(eflags & REG_NOSUB) &&		\
-	 (i < nmatch)); i++)						\
-      {									\
-	pmatch[i].rm_so += offset;					\
-	pmatch[i].rm_eo += offset;					\
-      }									\
-    return ret;								\
-  }
-
 int
 tre_regnexec(const regex_t *preg, const char *str, size_t len,
 	 size_t nmatch, regmatch_t pmatch[], int eflags)
@@ -332,7 +311,8 @@ tre_regnexec(const regex_t *preg, const char *str, size_t len,
   tre_str_type_t type = (TRE_MB_CUR_MAX == 1) ? STR_BYTE : STR_MBS;
 
   if (eflags & REG_STARTEND)
-    ADJUST_OFFSETS
+    CALL_WITH_OFFSET(tre_match(tnfa, &str[offset], slen, type, nmatch,
+		     pmatch, eflags, preg->shortcut, preg->heur));
   else
     return tre_match(tnfa, str, len, type, nmatch, pmatch, eflags,
 		     preg->shortcut, preg->heur);
@@ -356,7 +336,8 @@ tre_regwnexec(const regex_t *preg, const wchar_t *str, size_t len,
   tre_str_type_t type = STR_WIDE;
 
   if (eflags & REG_STARTEND)
-    ADJUST_OFFSETS
+    CALL_WITH_OFFSET(tre_match(tnfa, &str[offset], slen, type, nmatch,
+		     pmatch, eflags, preg->shortcut, preg->heur));
   else
     return tre_match(tnfa, str, len, STR_WIDE, nmatch, pmatch, eflags,
 		     preg->shortcut, preg->heur);

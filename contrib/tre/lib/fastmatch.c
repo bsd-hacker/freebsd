@@ -127,28 +127,6 @@ tre_fastfree(fastmatch_t *preg)
   tre_free_fast(preg);
 }
 
-/* XXX: avoid duplication */
-#define ADJUST_OFFSETS							\
-  {									\
-    size_t slen = (size_t)(pmatch[0].rm_eo - pmatch[0].rm_so);		\
-    size_t offset = pmatch[0].rm_so;					\
-    int ret;								\
-									\
-    if ((len != (unsigned)-1) && (pmatch[0].rm_eo > len))		\
-      return REG_NOMATCH;						\
-    if ((long long)pmatch[0].rm_eo - pmatch[0].rm_so < 0)		\
-      return REG_NOMATCH;						\
-    ret = tre_match_fast(preg, &string[offset], slen, type, nmatch,	\
-			 pmatch, eflags);				\
-    for (unsigned i = 0; (i == 0) || (!(eflags & REG_NOSUB) &&		\
-         (i < nmatch)); i++)						\
-      {									\
-        pmatch[i].rm_so += offset;					\
-        pmatch[i].rm_eo += offset;					\
-      }									\
-    return ret;								\
-  }
-
 int
 tre_fastnexec(const fastmatch_t *preg, const char *string, size_t len,
          size_t nmatch, regmatch_t pmatch[], int eflags)
@@ -156,7 +134,8 @@ tre_fastnexec(const fastmatch_t *preg, const char *string, size_t len,
   tre_str_type_t type = (TRE_MB_CUR_MAX == 1) ? STR_BYTE : STR_MBS;
 
   if (eflags & REG_STARTEND)
-    ADJUST_OFFSETS
+    CALL_WITH_OFFSET(tre_match_fast(preg, &string[offset], slen,
+		     type, nmatch, pmatch, eflags));
   else
     return tre_match_fast(preg, string, len, type, nmatch,
       pmatch, eflags);
@@ -176,7 +155,8 @@ tre_fastwnexec(const fastmatch_t *preg, const wchar_t *string, size_t len,
   tre_str_type_t type = STR_WIDE;
 
   if (eflags & REG_STARTEND)
-    ADJUST_OFFSETS
+    CALL_WITH_OFFSET(tre_match_fast(preg, &string[offset], slen,
+		     type, nmatch, pmatch, eflags));
   else
     return tre_match_fast(preg, string, len, type, nmatch,
       pmatch, eflags);
