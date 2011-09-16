@@ -11,10 +11,14 @@
 #ifndef REGEX_H
 #define REGEX_H 1
 
-#include <sys/types.h>
-
 #define TRE_WCHAR 1
 #define TRE_APPROX 1
+
+#include <sys/types.h>
+
+#ifdef TRE_WCHAR
+#include <wchar.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -69,7 +73,7 @@ typedef struct {
   void *shortcut;  /* For internal use only. */
   void *heur;	   /* For internal use only. */
   const char *re_endp;
-#ifdef TRE_WCHAR
+#if TRE_WCHAR
   const wchar_t *re_wendp;
 #endif
 } regex_t;
