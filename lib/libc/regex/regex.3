@@ -33,7 +33,7 @@
 .\"	@(#)regex.3	8.4 (Berkeley) 3/20/94
 .\" $FreeBSD$
 .\"
-.Dd September 14, 2011
+.Dd September 17, 2011
 .Dt REGEX 3
 .Os
 .Sh NAME
@@ -96,12 +96,12 @@
 .Ft void
 .Fn regfree "regex_t *preg"
 .Sh DESCRIPTION
-These routines implement pattern matchinf of
+These routines implement pattern matching of
 .St -p1003.2
 regular expressions.
 The
 .Xr re_format 7
-manual can be consulted for the syntax and use of these.
+manual can be consulted for their syntax and usage.
 .Pp
 The
 .Fn regcomp
@@ -111,7 +111,7 @@ The
 .Fn regncomp
 function works in the very same way,
 but takes another argument to specify the length of the pattern.
-This function can accept patterns with NUL bytes inside because.
+This function can accept patterns containing NUL bytes.
 The
 .Fn regwcomp
 and
@@ -127,7 +127,7 @@ The
 function works in the same way but takes another argument to specify
 the length of the pattern,
 allowing NUL bytes in the input string.
-Besides,
+Additionally,
 for long inputs strings it is more efficient to call this function if
 the length is already known beause it will not require the matcher to
 calculate the length and read the input bytes one by one.
@@ -195,7 +195,7 @@ Compile with recognition of all special characters turned off.
 All characters are thus considered ordinary,
 so the reqular expression is a literal string.
 .It Dv REG_LITERAL
-Synonim for
+Synonym for
 .Dv REG_NOSPEC.
 .It Dv REG_EXTENDED
 may not be used together with
@@ -273,7 +273,7 @@ see
 .Pp
 The
 .Fn regexec
-family of functions match the compiled regular expression  pointed to by
+family of functions match the compiled regular expression pointed to by
 .Fa preg
 against the
 .Fa string
@@ -281,16 +281,17 @@ against the
 .Fa len
 when using the variants that take the input length),
 subject to the flags in
-.Fa eflags ,
-and reports match through its return value.
+.Fa eflags
+and reports whether the input matches through its return value.
 The
-.Fa nmatch ,
-.Fa pmatch ,
-arguments are also filled in to hold submatches unless the pattern was
+.Fa pmatch
+argument is also filled in to hold submatches unless the pattern was
 compiled using the
 .Dv REG_NOSUB
-falg.
-The regular expression  must have been compiled by a previous invocation of
+flag or the
+.Fa nmatch
+argument was set to 0.
+The regular expression must have been compiled by a previous invocation of
 .Fn regcomp
 or any of its alternative forms.
 The compiled form is not altered during execution of
@@ -356,7 +357,7 @@ or returns an error code different from the above two values
 if an error has occured during the execution.
 See
 .Sx RETURN VALUES
-for the detailed description of error codes.
+for a detailed description of error codes.
 .El
 .Pp
 If
@@ -536,12 +537,12 @@ include the following:
 .Bl -tag -width REG_ECOLLATE -compact
 .It Dv REG_OK
 Operation successfully executed.
-Synonim for 0,
+Synonym for 0,
 to provide better code readability.
 .It Dv REG_NOMATCH
 The
 .Fn regexec
-functions
+function or its variants
 failed to match.
 .It Dv REG_BADPAT
 Invalid regular expression.
@@ -563,15 +564,15 @@ Invalid backreference number.
 .It Dv REG_EBRACK
 Brackets
 .Ql "[ ]"
-not balanced.
+are not balanced.
 .It Dv REG_EPAREN
 Parentheses
 .Ql "( )"
-not balanced.
+are not balanced.
 .It Dv REG_EBRACE
 Braces
 .Ql "{ }"
-not balanced.
+are not balanced.
 .It Dv REG_BADBR
 Invalid repetition count(s) in
 .Ql "{ }" :
