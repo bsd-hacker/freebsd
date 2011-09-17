@@ -146,8 +146,10 @@ typedef enum { STR_WIDE, STR_BYTE, STR_MBS, STR_USER } tre_str_type_t;
 /* Define STRF to the correct printf formatter for strings. */
 #ifdef TRE_WCHAR
 #define STRF "ls"
+#define CHF "lc"
 #else /* !TRE_WCHAR */
 #define STRF "s"
+#define CHF "c"
 #endif /* !TRE_WCHAR */
 
 /* TNFA transition type. A TNFA state is an array of transitions,

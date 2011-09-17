@@ -156,7 +156,7 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
 	      gs = fg->bmGs[mismatch];					\
 	    }								\
 	    bc = (r == HASH_OK) ? bc : fg->defBc;			\
-	    DPRINT(("tre_fast_match: mismatch on character %lc, "	\
+	    DPRINT(("tre_fast_match: mismatch on character" CHF ", "	\
 		    "BC %d, GS %d\n",					\
 		    ((const tre_char_t *)startptr)[mismatch + 1],	\
 		    bc, gs));						\
@@ -299,7 +299,7 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
       r = hashtable_put(fg->qsBc_table, &fg->wpattern[i], &k);		\
       if ((r == HASH_FAIL) || (r == HASH_FULL))				\
 	FAIL_COMP(REG_ESPACE);						\
-      DPRINT(("BC shift for wide char %lc is %d\n", fg->wpattern[i],	\
+      DPRINT(("BC shift for wide char " CHF " is %d\n", fg->wpattern[i],\
 	     k));							\
       if (fg->icase)							\
 	{								\
@@ -308,7 +308,7 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
 	  r = hashtable_put(fg->qsBc_table, &wc, &k);			\
 	  if ((r == HASH_FAIL) || (r == HASH_FULL))			\
 	    FAIL_COMP(REG_ESPACE);					\
-	  DPRINT(("BC shift for wide char %lc is %d\n", wc, k));	\
+	  DPRINT(("BC shift for wide char " CHF " is %d\n", wc, k));	\
 	}								\
     }
 
@@ -329,7 +329,7 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
       r = hashtable_put(fg->qsBc_table, &fg->wpattern[i], &k);		\
       if ((r == HASH_FAIL) || (r == HASH_FULL))				\
 	FAIL_COMP(REG_ESPACE);						\
-      DPRINT(("Reverse BC shift for wide char %lc is %d\n",		\
+      DPRINT(("Reverse BC shift for wide char " CHF " is %d\n",		\
 	     fg->wpattern[i], k));					\
       if (fg->icase)							\
 	{								\
@@ -338,7 +338,8 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
 	  r = hashtable_put(fg->qsBc_table, &wc, &k);			\
 	  if ((r == HASH_FAIL) || (r == HASH_FULL))			\
 	    FAIL_COMP(REG_ESPACE);					\
-	  DPRINT(("Reverse BC shift for wide char %lc is %d\n", wc, k));\
+	  DPRINT(("Reverse BC shift for wide char " CHF " is %d\n", wc,	\
+		 k));							\
 	}								\
     }
 
