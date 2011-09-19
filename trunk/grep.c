@@ -672,6 +672,8 @@ main(int argc, char *argv[])
 	switch (grepbehave) {
 	case GREP_FIXED:
 	case GREP_BASIC:
+		/* XXX: header mess, REG_LITERAL not defined in gnu/regex.h */
+		cflags |= 0020;
 		break;
 	case GREP_EXTENDED:
 		cflags |= REG_EXTENDED;
