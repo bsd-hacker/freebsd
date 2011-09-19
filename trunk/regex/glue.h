@@ -20,12 +20,10 @@
 #define tre_isspace			iswspace
 #define tre_isalnum			iswalnum
 
+#deifne REG_OK				0
 #define REG_LITERAL			0020
 #define REG_WORD			0100
 #define REG_GNU				0400
-#define _REG_HEUR			01000
-
-#define REG_OK				0
 
 #define TRE_MB_CUR_MAX			MB_CUR_MAX
 
