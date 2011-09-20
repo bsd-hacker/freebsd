@@ -1010,7 +1010,8 @@ fastcmp(const fastmatch_t *fg, const void *data, tre_str_type_t type)
 	case STR_WIDE:
 
 	  /* Check dot */
-	  if (pat_wide[i] == TRE_CHAR('.') && (!escmap || !escmap[i]) &&
+	  if (fg->hasdot && pat_wide[i] == TRE_CHAR('.') &&
+	      (!escmap || !escmap[i]) &&
 	      (!fg->newline || (str_wide[i] != TRE_CHAR('\n'))))
 	    continue;
 
@@ -1021,7 +1022,8 @@ fastcmp(const fastmatch_t *fg, const void *data, tre_str_type_t type)
 	  break;
 	default:
 	  /* Check dot */
-	  if (pat_byte[i] == '.' && (!escmap || !escmap[i]) &&
+	  if (fg->hasdot && pat_byte[i] == '.' &&
+	      (!escmap || !escmap[i]) &&
 	      (!fg->newline || (str_byte[i] != '\n')))
 	    continue;
 
