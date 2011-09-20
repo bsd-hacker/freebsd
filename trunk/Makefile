@@ -17,7 +17,7 @@ SRCS=	file.c grep.c queue.c util.c
 
 # Extra files ported backported form some regex improvements
 .PATH: ${.CURDIR}/regex
-SRCS+=	fastmatch.c hashtable.c tre-fastmatch.c xmalloc.c
+SRCS+=	fastmatch.c hashtable.c tre-compile.c tre-fastmatch.c xmalloc.c
 CFLAGS+=-I${.CURDIR}/regex
 
 .if ${MK_BSD_GREP} == "yes"
