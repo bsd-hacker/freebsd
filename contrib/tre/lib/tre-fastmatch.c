@@ -44,8 +44,8 @@
 #include "tre-internal.h"
 #include "xmalloc.h"
 
-static int	fastcmp(const void *, const bool *, const void *, size_t,
-			tre_str_type_t, bool, bool);
+static int	fastcmp(const fastmatch_t *fg, const void *data,
+			tre_str_type_t type);
 
 /*
  * Clean up if pattern compilation fails.
@@ -98,24 +98,6 @@ static int	fastcmp(const void *, const bool *, const void *, size_t,
     wcstombs(fg->pattern, fg->wpattern, siz);				\
     fg->pattern[siz] = '\0';						\
   }									\
-
-/*
- * Compares the pattern to the input string at the position
- * stored in startptr.
- */
-#define COMPARE								\
-  switch (type)								\
-    {									\
-      case STR_WIDE:							\
-	mismatch = fastcmp(fg->wpattern, fg->wescmap, startptr,		\
-			   fg->wlen, type,				\
-			   fg->icase, fg->newline);			\
-	break;								\
-      default:								\
-	mismatch = fastcmp(fg->pattern, fg->escmap, startptr,		\
-			   fg->len, type,				\
-			   fg->icase, fg->newline);			\
-      }									\
 
 #define IS_OUT_OF_BOUNDS						\
   ((!fg->reversed							\
@@ -935,7 +917,7 @@ tre_match_fast(const fastmatch_t *fg, const void *data, size_t len,
 	  /* Determine where in data to start search at. */
 	  j = fg->eol ? len - (type == STR_WIDE ? fg->wlen : fg->len) : 0;
 	  SKIP_CHARS(j);
-	  COMPARE;
+	  mismatch = fastcmp(fg, startptr, type);
 	  if (mismatch == REG_OK)
 	    {
 	      if (fg->word && !IS_ON_WORD_BOUNDARY)
@@ -955,7 +937,7 @@ tre_match_fast(const fastmatch_t *fg, const void *data, size_t len,
       do
 	{
 	  SKIP_CHARS(j);
-	  COMPARE;
+	  mismatch = fastcmp(fg, startptr, type);
 	  if (mismatch == REG_OK)
 	    {
 	      if (fg->word)
@@ -1011,14 +993,15 @@ tre_free_fast(fastmatch_t *fg)
  *		REG_OK on success
  */
 static inline int
-fastcmp(const void *pat, const bool *escmap, const void *data, size_t len,
-	tre_str_type_t type, bool icase, bool newline)
+fastcmp(const fastmatch_t *fg, const void *data, tre_str_type_t type)
 {
   const char *str_byte = data;
-  const char *pat_byte = pat;
-  int ret = REG_OK;
+  const char *pat_byte = fg->pattern;
   const tre_char_t *str_wide = data;
-  const tre_char_t *pat_wide = pat;
+  const tre_char_t *pat_wide = fg->wpattern;
+  const bool *escmap = (type == STR_WIDE) ? fg->wescmap : fg->escmap;
+  size_t len = (type == STR_WIDE) ? fg->wlen : fg->len;
+  int ret = REG_OK;
 
   /* Compare the pattern and the input char-by-char from the last position. */
   for (int i = len - 1; i >= 0; i--) {
@@ -1028,22 +1011,22 @@ fastcmp(const void *pat, const bool *escmap, const void *data, size_t len,
 
 	  /* Check dot */
 	  if (pat_wide[i] == TRE_CHAR('.') && (!escmap || !escmap[i]) &&
-	      (!newline || (str_wide[i] != TRE_CHAR('\n'))))
+	      (!fg->newline || (str_wide[i] != TRE_CHAR('\n'))))
 	    continue;
 
 	  /* Compare */
-	  if (icase ? (towlower(pat_wide[i]) == towlower(str_wide[i]))
+	  if (fg->icase ? (towlower(pat_wide[i]) == towlower(str_wide[i]))
 		    : (pat_wide[i] == str_wide[i]))
 	    continue;
 	  break;
 	default:
 	  /* Check dot */
 	  if (pat_byte[i] == '.' && (!escmap || !escmap[i]) &&
-	      (!newline || (str_byte[i] != '\n')))
+	      (!fg->newline || (str_byte[i] != '\n')))
 	    continue;
 
 	  /* Compare */
-	  if (icase ? (tolower(pat_byte[i]) == tolower(str_byte[i]))
+	  if (fg->icase ? (tolower(pat_byte[i]) == tolower(str_byte[i]))
 		    : (pat_byte[i] == str_byte[i]))
 	  continue;
       }
