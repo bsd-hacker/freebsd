@@ -599,6 +599,8 @@ tre_compile_fast(fastmatch_t *fg, const tre_char_t *pat, size_t n,
 	  case TRE_CHAR('\\'):
 	    if (escaped)
 	      STORE_CHAR;
+	    else if (i == n - 1)
+	      goto badpat;
 	    else
 	      escaped = true;
 	    continue;
