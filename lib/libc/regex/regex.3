@@ -33,7 +33,7 @@
 .\"	@(#)regex.3	8.4 (Berkeley) 3/20/94
 .\" $FreeBSD$
 .\"
-.Dd September 17, 2011
+.Dd September 24, 2011
 .Dt REGEX 3
 .Os
 .Sh NAME
@@ -106,7 +106,7 @@ manual can be consulted for their syntax and usage.
 The
 .Fn regcomp
 function
-compiles a regular expression written as a string into an internal form.
+compiles a regular expression from a string into an internal form.
 The
 .Fn regncomp
 function works in the very same way,
@@ -121,7 +121,8 @@ the wide string form.
 .Pp
 The
 .Fn regexec
-function matches that internal form against a string and reports results.
+function matches the compiled regular expression against a string
+and reports results.
 The
 .Fn regnexec
 function works in the same way but takes another argument to specify
@@ -185,6 +186,12 @@ Compile extended regular expressions
 rather than the obsolete basic regular expressions
 .Pq Dq BREs
 that are the default.
+It may not be used together with
+.Dv REG_NOSPEC
+or
+.Dv REG_LITERAL
+in the same call to
+.Fn regcomp .
 .It Dv REG_BASIC
 This is a synonym for 0,
 provided as a counterpart to
@@ -197,18 +204,11 @@ so the reqular expression is a literal string.
 .It Dv REG_LITERAL
 Synonym for
 .Dv REG_NOSPEC.
-.It Dv REG_EXTENDED
-may not be used together with
-.Dv REG_NOSPEC
-or
-.Dv REG_LITERAL
-in the same call to
-.Fn regcomp .
 .It Dv REG_ICASE
-Compile for matching that ignores upper/lower case distinctions.
+Compile for case insensitive matching.
 .It Dv REG_NOSUB
-Compile for matching that need only report success or failure,
-not what was matched.
+Compile for only reporting match or mismatch´with no regard to
+the matching offset.
 .It Dv REG_NEWLINE
 Compile for newline-sensitive matching.
 By default, newline is a completely ordinary character with no special
@@ -282,7 +282,7 @@ against the
 when using the variants that take the input length),
 subject to the flags in
 .Fa eflags
-and reports whether the input matches through its return value.
+and reports through its return value whether the input matches.
 The
 .Fa pmatch
 argument is also filled in to hold submatches unless the pattern was
@@ -302,7 +302,8 @@ multiple threads,
 and it can be used with any variant of the
 .Fn regexec
 functions.
-(I.e. a multi-byte pattern can be matched to wide string input and
+(That is,
+a multi-byte pattern can be matched to wide string input and
 vice versa.)
 .Pp
 The
@@ -318,7 +319,7 @@ anchor should not match before it.
 This does not affect the behavior of newlines under
 .Dv REG_NEWLINE .
 .It Dv REG_NOTEOL
-The NUL terminating
+The NUL character terminating
 the string
 does not end a line, so the
 .Ql $\&
@@ -330,11 +331,11 @@ The string is considered to start at
 .Fa string
 +
 .Fa pmatch Ns [0]. Ns Va rm_so
-and to have a terminating NUL located at
+and to have a terminating NUL character located at
 .Fa string
 +
 .Fa pmatch Ns [0]. Ns Va rm_eo
-(there need not actually be a NUL at that location),
+(there need not actually be a NUL character at that location),
 regardless of the value of
 .Fa nmatch .
 See below for the definition of
@@ -348,7 +349,7 @@ does not imply
 .Dv REG_STARTEND
 affects only the location of the string,
 not how it is matched.
-.Pp
+.El
 The function indicates a match by returning
 .Dv REG_OK ,
 no match with
@@ -362,7 +363,7 @@ for a detailed description of error codes.
 .Pp
 If
 .Dv REG_NOSUB
-was specified in the compilation of the RE,
+was specified in the compilation of the regular expression,
 or if
 .Fa nmatch
 is 0,
@@ -401,7 +402,7 @@ The 0th member of the
 .Fa pmatch
 array is filled in to indicate what substring of
 .Fa string
-was matched by the entire RE.
+was matched by the entire regular expression.
 Remaining members report what substring was matched by parenthesized
 subexpressions within the regular expression;
 member
@@ -484,11 +485,11 @@ it should have been the result from the most recent
 .Fn regcomp
 using that
 .Ft regex_t .
-The
-.Fn ( regerror
-may be able to supply a more detailed message using information
+(The
+.Fn regerror
+function may be able to supply a more detailed message using information
 from the
-.Ft regex_t . )
+.Ft regex_t .)
 The
 .Fn regerror
 function
@@ -523,9 +524,7 @@ or
 .Fn regerror
 is undefined.
 .Pp
-None of these functions references global variables except for tables
-of constants;
-thus all of them are thread-safe.
+All of the functions described above are thread-safe.
 .Sh RETURN VALUES
 Non-zero error codes from the
 .Fn regcomp
