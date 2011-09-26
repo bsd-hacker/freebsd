@@ -52,6 +52,7 @@ static unsigned int maxsize;
 static unsigned int total;
 
 static int opt_r;
+static int opt_s;
 static int opt_w;
 
 static int tty = 0;
@@ -115,7 +116,7 @@ usage(void)
 {
 
 	fprintf(stderr, "usage: phybs %s\n",
-	    "[-rw] [-l minsize] [-h maxsize] [-t total] device");
+	    "[-rsw] [-l minsize] [-h maxsize] [-t total] device");
 	exit(1);
 }
 
@@ -143,11 +144,11 @@ int
 main(int argc, char *argv[])
 {
 	struct stat st;
-	int fd, opt;
+	int fd, mode, opt;
 
 	tty = isatty(STDOUT_FILENO);
 
-	while ((opt = getopt(argc, argv, "h:l:rt:w")) != -1)
+	while ((opt = getopt(argc, argv, "h:l:rst:w")) != -1)
 		switch (opt) {
 		case 'h':
 			maxsize = poweroftwo(opt, optarg);
@@ -157,6 +158,9 @@ main(int argc, char *argv[])
 			break;
 		case 'r':
 			opt_r = 1;
+			break;
+		case 's':
+			opt_s = 1;
 			break;
 		case 't':
 			total = poweroftwo(opt, optarg);
@@ -178,7 +182,10 @@ main(int argc, char *argv[])
 	if (!opt_r && !opt_w)
 		opt_r = 1;
 
-	if ((fd = open(device, opt_w ? O_RDWR : O_RDONLY)) == -1)
+	mode = opt_w ? O_RDWR : O_RDONLY;
+	if (opt_s)
+		mode |= O_SYNC;
+	if ((fd = open(device, mode)) == -1)
 		err(errno == EPERM ? EX_NOPERM : EX_OSERR, "open(%s)", device);
 
 	if (fstat(fd, &st) != 0)

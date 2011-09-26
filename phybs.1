@@ -34,7 +34,7 @@
 .Nd reveal a storage device's physical block size
 .Sh SYNOPSIS
 .Nm
-.Op Fl rtw
+.Op Fl rsw
 .Op Fl l Ar minsize
 .Op Fl h Ar maxsize
 .Op Fl t Ar total
@@ -48,10 +48,10 @@ large I/O operations at various (mis-)alignments.
 .Pp
 The
 .Nm
-utility makes a series of passes with increasing block sizes.  In each
-pass, it either reads or writes (or both) a number of blocks at
-increasing offsets relative to the ideal alignment, which is assumed
-to be multiples of the block size.
+utility makes a series of passes with increasing block sizes.
+In each pass, it either reads or writes (or both) a number of
+non-consecutive blocks at increasing offsets relative to the ideal
+alignment, which is assumed to be multiples of the block size.
 The results are presented in terms of time elapsed, transactions per
 second and kB per second.
 .Pp
@@ -79,6 +79,8 @@ The default is the device's logical block size.
 .It Fl r
 Perform read operations.
 This is the default.
+.It Fl s
+Open the device in synchronous mode.
 .It Fl t Ar total
 Specify the total amount of data to read or write in each pass.
 This must be a power of two and a multiple of the maximum block size
