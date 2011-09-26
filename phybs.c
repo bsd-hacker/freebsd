@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2010 Dag-Erling Coïdan Smørgrav
+ * Copyright (c) 2010-2011 Dag-Erling Coïdan Smørgrav
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -33,6 +33,7 @@
 #include <sys/disk.h>
 
 #include <err.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <libutil.h>
 #include <limits.h>
@@ -40,6 +41,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sysexits.h>
 #include <unistd.h>
 
 static const char *device;
@@ -68,27 +70,27 @@ scan(int fd, size_t size, off_t offset, off_t step, unsigned int count)
 	    (unsigned long)offset, (unsigned long)step);
 	fflush(stdout);
 	if ((buf = malloc(size)) == NULL)
-		err(1, "malloc()");
+		err(EX_OSERR, "malloc()");
 	memset(buf, 0, size);
 	if (gettimeofday(&t0, NULL) == -1)
-		err(1, "gettimeofday()");
+		err(EX_OSERR, "gettimeofday()");
 	for (unsigned int i = 0; i < count; ++i, offset += step) {
 		if (opt_r) {
 			if (lseek(fd, offset, SEEK_SET) != offset)
-				err(1, "lseek(%lu)", (unsigned long)offset);
+				err(EX_IOERR, "lseek(%lu)", (unsigned long)offset);
 			if ((rlen = read(fd, buf, size)) == -1)
-				err(1, "read(%lu)", (unsigned long)size);
+				err(EX_IOERR, "read(%lu)", (unsigned long)size);
 			if (rlen < (ssize_t)size)
-				errx(1, "short read: %ld < %lu",
+				errx(EX_IOERR, "short read: %ld < %lu",
 				    (long)rlen, (unsigned long)size);
 		}
 		if (opt_w) {
 			if (lseek(fd, offset, SEEK_SET) != offset)
-				err(1, "lseek(%lu)", (unsigned long)offset);
+				err(EX_IOERR, "lseek(%lu)", (unsigned long)offset);
 			if ((wlen = write(fd, buf, size)) == -1)
-				err(1, "write(%lu)", (unsigned long)size);
+				err(EX_IOERR, "write(%lu)", (unsigned long)size);
 			if (wlen < (ssize_t)size)
-				errx(1, "short write: %ld < %lu",
+				errx(EX_IOERR, "short write: %ld < %lu",
 				    (long)wlen, (unsigned long)size);
 		}
 		if (tty && i % 256 == 0) {
@@ -99,7 +101,7 @@ scan(int fd, size_t size, off_t offset, off_t step, unsigned int count)
 		}
 	}
 	if (gettimeofday(&t1, NULL) == -1)
-		err(1, "gettimeofday()");
+		err(EX_OSERR, "gettimeofday()");
 	usec = t1.tv_sec * 1000000 + t1.tv_usec;
 	usec -= t0.tv_sec * 1000000 + t0.tv_usec;
 	printf("%10lu%8ju%8ju\n", usec / 1000,
@@ -112,7 +114,8 @@ static void
 usage(void)
 {
 
-	fprintf(stderr, "usage: phybs [-rw] [-l min] [-h max] device\n");
+	fprintf(stderr, "usage: phybs %s\n",
+	    "[-rw] [-l minsize] [-h maxsize] [-t total] device");
 	exit(1);
 }
 
@@ -176,30 +179,30 @@ main(int argc, char *argv[])
 		errx(1, "must specify -r and / or -w");
 
 	if ((fd = open(device, opt_w ? O_RDWR : O_RDONLY)) == -1)
-		err(1, "open(%s)", device);
+		err(errno == EPERM ? EX_NOPERM : EX_OSERR, "open(%s)", device);
 
 	if (fstat(fd, &st) != 0)
-		err(1, "stat(%s)", device);
+		err(EX_OSERR, "stat(%s)", device);
 	bsize = 512;
 	if (S_ISCHR(st.st_mode) && ioctl(fd, DIOCGSECTORSIZE, &bsize) == -1)
-		err(1, "ioctl(%s, DIOCGSECTORSIZE)", device);
+		err(EX_OSERR, "ioctl(%s, DIOCGSECTORSIZE)", device);
 
 	if (minsize == 0)
 		minsize = bsize * 2;
 	if (minsize % bsize != 0)
-		errx(1, "minsize (%u) is not a multiple of block size (%u)",
+		errx(EX_USAGE, "minsize (%u) is not a multiple of block size (%u)",
 		    minsize, bsize);
 
 	if (maxsize == 0)
 		maxsize = minsize * 8;
 	if (maxsize % minsize != 0)
-		errx(1, "maxsize (%u) is not a multiple of minsize (%u)",
+		errx(EX_USAGE, "maxsize (%u) is not a multiple of minsize (%u)",
 		    maxsize, minsize);
 
 	if (total == 0)
 		total = 128 * 1024 * 1024;
 	if (total % maxsize != 0)
-		errx(1, "total (%u) is not a multiple of maxsize (%u)",
+		errx(EX_USAGE, "total (%u) is not a multiple of maxsize (%u)",
 		    total, maxsize);
 
 	printf("%8s%8s%8s%8s%12s%8s%8s\n",
@@ -214,5 +217,5 @@ main(int argc, char *argv[])
 	}
 
 	close(fd);
-	exit(0);
+	exit(EX_OK);
 }
