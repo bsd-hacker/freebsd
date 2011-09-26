@@ -1,0 +1,130 @@
+.\"-
+.\" Copyright (c) 2010 Dag-Erling Coïdan Smørgrav
+.\" All rights reserved.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer
+.\"    in this position and unchanged.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+.\" ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.\" IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+.\" ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+.\" FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+.\" DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+.\" OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+.\" HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+.\" LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+.\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+.\" SUCH DAMAGE.
+.\"
+.\" $FreeBSD$
+.\"
+.Dd September 26, 2011
+.Dt PHYBS 1
+.Os
+.Sh NAME
+.Nm phybs
+.Nd reveal a storage device's physical block size
+.Sh SYNOPSIS
+.Nm
+.Op Fl rtw
+.Op Fl l Ar minsize
+.Op Fl h Ar maxsize
+.Op Fl t Ar total
+.Ar device
+.Sh DESCRIPTION
+The
+.Nm
+utility runs a series of I/O benchmarks designed to reveal a storage
+device's physical block size by comparing the performance of small and
+large I/O operations at various (mis-)alignments.
+.Pp
+The
+.Nm
+utility makes a series of passes with increasing block sizes.  In each
+pass, it either reads or writes (or both) a number of blocks at
+increasing offsets relative to the ideal alignment, which is assumed
+to be multiples of the block size.
+The results are presented in terms of time elapsed, transactions per
+second and kB per second.
+.Pp
+If the device's physical block size is larger than its logical block
+size, peak performance will be obtained when reading or writing
+multiples of the physical block size at offsets which are also
+multiples of the physical block size, while I/O operations which do
+not meet these criteria will be significantly slower.
+.Pp
+The following options are available:
+.Bl -tag -width Fl
+.It Fl h Ar maxsize
+Specify the maximum block size to test.
+This must be a power of two and a multiple of the minimum block size
+.Po
+see
+.Fl l
+.Pc .
+The default is eight times the minimum block size.
+.It Fl l Ar minsize
+Specify the minimum block size to test.
+This must be a power of two and a multiple of the device's logical
+block size.
+The default is the device's logical block size.
+.It Fl r
+Perform read operations.
+This is the default.
+.It Fl t Ar total
+Specify the total amount of data to read or write in each pass.
+This must be a power of two and a multiple of the maximum block size
+.Po
+see
+.Fl h
+.Pc .
+For best results, it should also be significantly larger than the
+device's on-board cache.
+The default is 128 MB.
+.It Fl w
+Perform write operations.
+.El
+.Sh IMPLEMENTATION NOTES
+The
+.Nm
+utility can be used on files as well as raw devices, but the
+characteristics of the underlying file system will greatly influence
+the results, possibly to the point where they can not reveal anything
+of interest about the actual device.
+.Pp
+The
+.Nm
+utility reports the benchmark results, but makes no attempt at
+interpreting them.
+.Sh EXIT STATUS
+The
+.Nm
+utility returns
+.Va EX_OK
+if the benchmark completed successfully,
+.Va EX_USAGE
+if the parameters specified on the command line were invalid,
+.Va EX_PERM
+if the user does not have permission to open the specified device,
+.Va EX_IOERR
+if it was interrupted by an I/O error, and
+.Va EX_OSERR
+if it was interrupted for any other reason.
+.Sh SEE ALSO
+.Xr recoverdisk 1
+.Xr sysexits 3
+.Xr diskinfo 8
+.Sh AUTHORS
+.An -nosplit
+The
+.Nm
+utility and this manual page were written by
+.An Dag-Erling Sm\(/orgrav Aq des@FreeBSD.org .
