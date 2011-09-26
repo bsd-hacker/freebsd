@@ -176,7 +176,7 @@ main(int argc, char *argv[])
 	device = argv[0];
 
 	if (!opt_r && !opt_w)
-		errx(1, "must specify -r and / or -w");
+		opt_r = 1;
 
 	if ((fd = open(device, opt_w ? O_RDWR : O_RDONLY)) == -1)
 		err(errno == EPERM ? EX_NOPERM : EX_OSERR, "open(%s)", device);
@@ -188,7 +188,7 @@ main(int argc, char *argv[])
 		err(EX_OSERR, "ioctl(%s, DIOCGSECTORSIZE)", device);
 
 	if (minsize == 0)
-		minsize = bsize * 2;
+		minsize = bsize;
 	if (minsize % bsize != 0)
 		errx(EX_USAGE, "minsize (%u) is not a multiple of block size (%u)",
 		    minsize, bsize);
