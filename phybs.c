@@ -56,8 +56,8 @@ static int opt_s;
 static int opt_w;
 
 static int tty = 0;
-static char progress[] = " [----------------]"
-    "\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b";
+static char progress[] = " [-----------------------]"
+    "\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b";
 
 static void
 scan(int fd, size_t size, off_t offset, off_t step, unsigned int count)
@@ -94,10 +94,10 @@ scan(int fd, size_t size, off_t offset, off_t step, unsigned int count)
 				errx(EX_IOERR, "short write: %ld < %lu",
 				    (long)wlen, (unsigned long)size);
 		}
-		if (tty && i % 256 == 0) {
-			progress[2 + (i * 16) / count] = '|';
+		if (tty && i % 16 == 0) {
+			progress[2 + (i * 23) / count] = 'O';
 			fputs(progress, stdout);
-			progress[2 + (i * 16) / count] = '-';
+			progress[2 + (i * 23) / count] = '-';
 			fflush(stdout);
 		}
 	}
