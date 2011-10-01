@@ -14,6 +14,7 @@
 #define HAVE_MBSTATE_T			1
 
 #define TRE_CHAR(n) L##n
+#define CHF "%lc"
 
 #define tre_char_t			wchar_t
 #define tre_mbrtowc(pwc, s, n, ps)	(mbrtowc((pwc), (s), (n), (ps)))
