@@ -18,6 +18,7 @@
 #endif /* HAVE_CONFIG_H */
 #include <stdio.h>
 #include <assert.h>
+#include <errno.h>
 #include <regex.h>
 #include <string.h>
 
@@ -1914,7 +1915,7 @@ tre_convert_pattern(const char *regex, size_t n, tre_char_t **w,
 #endif /* TRE_MULTIBYTE */
   wregex[wlen] = L'\0';
   *w = wregex;
-  *wn = n;
+  *wn = wlen;
   return REG_OK;
 #else /* !TRE_WCHAR */
   {
