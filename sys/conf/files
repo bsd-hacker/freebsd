@@ -1099,6 +1099,7 @@ dev/gpio/gpiobus.c		optional gpio				\
 	dependency	"gpiobus_if.h"
 dev/gpio/gpioc.c		optional gpio				\
 	dependency	"gpio_if.h"
+dev/gpio/gpio1wire.c		optional gpio1w
 dev/gpio/gpioiic.c		optional gpioiic
 dev/gpio/gpioled.c		optional gpioled
 dev/gpio/gpio_if.m		optional gpio
@@ -1526,6 +1527,14 @@ dev/nmdm/nmdm.c			optional nmdm
 dev/nsp/nsp.c			optional nsp
 dev/nsp/nsp_pccard.c		optional nsp pccard
 dev/null/null.c			standard
+dev/onewire/onewire.c		optional onewire
+dev/onewire/onewirebus.c	optional onewire			\
+	dependency	"owbus_if.h"
+dev/onewire/onewirebb.c	optional onewirebb				\
+	dependency	"owbb_if.h"
+dev/onewire/owtemp.c		optional owtemp
+dev/onewire/owbus_if.m		optional onewire
+dev/onewire/owbb_if.m		optional onewirebb
 dev/patm/if_patm.c		optional patm pci
 dev/patm/if_patm_attach.c	optional patm pci
 dev/patm/if_patm_intr.c		optional patm pci
