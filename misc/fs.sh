@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright (c) 2008 Peter Holm <pho@FreeBSD.org>
+# Copyright (c) 2008, 2011 Peter Holm <pho@FreeBSD.org>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -28,30 +28,34 @@
 # $FreeBSD$
 #
 
-# Caused panic: ffs_truncate3
+# Run a simple test on different FS variations, with and without disk full.
 
 [ `id -u ` -ne 0 ] && echo "Must be root!" && exit 1
 
 . ../default.cfg
 
-ftest () {	# fstype, soft update, disk full
-   echo "newfs -O $1 `[ $2 -eq 1 ] && echo \"-U\"` md${mdstart}${part}"
-   newfs -O $1 `[ $2 -eq 1 ] && echo "-U"` md${mdstart}${part} > /dev/null
-   mount /dev/md${mdstart}${part} ${mntpoint}
+ftest () {	# option, disk full
+	[ $2 -eq 1 ] && df=", disk full" || df=""
+	echo "`date '+%T'` newfs $1 md${mdstart}${part}$df"
+	newfs $1 md${mdstart}$part > /dev/null
+	mount /dev/md${mdstart}$part $mntpoint
+	chmod 777 $mntpoint
 
-   export RUNDIR=${mntpoint}/stressX
-   disk=$(($3 + 1))	# 1 or 2
-   set `df -ik ${mntpoint} | tail -1 | awk '{print $4,$7}'`
-   export KBLOCKS=$(($1 * disk))
-   export  INODES=$(($2 * disk))
+	export RUNDIR=${mntpoint}/stressX
+	export runRUNTIME=2m
+	disk=$(($2 + 1))	# 1 or 2
+	set `df -ik $mntpoint | tail -1 | awk '{print $4,$7}'`
+	export KBLOCKS=$(($1 * disk))
+	export  INODES=$(($2 * disk))
 
-   for i in `jot 10`; do
-      (cd ../testcases/rw;./rw -t 2m -i 20)
-   done
+	for i in `jot 2`; do
+		rm -rf /tmp/stressX.control $RUNDIR
+		su $testuser -c "(cd ..; ./run.sh disk.cfg)" > /dev/null 2>&1
+	done
 
-   while mount | grep -q ${mntpoint}; do
-      umount $([ $((`date '+%s'` % 2)) -eq 0 ] && echo "-f") ${mntpoint} > /dev/null 2>&1
-   done
+	while mount | grep $mntpoint | grep -q /dev/md; do
+		umount $mntpoint || sleep 1
+	done
 }
 
 
@@ -61,11 +65,13 @@ mdconfig -l | grep md${mdstart} > /dev/null &&  mdconfig -d -u ${mdstart}
 mdconfig -a -t swap -s 20m -u ${mdstart}
 bsdlabel -w md${mdstart} auto
 
-ftest 1 0 0	# ufs1
-ftest 1 0 1	# ufs1, disk full
-ftest 2 0 0	# ufs2
-ftest 2 0 1	# ufs2, disk full
-ftest 2 1 0	# ufs2 + soft update
-ftest 2 1 1	# ufs2 + soft update, disk full
+ftest "-O 1"  0	# ufs1
+ftest "-O 1"  1	# ufs1, disk full
+ftest "-O 2"  0	# ufs2
+ftest "-O 2"  1	# ufs2, disk full
+ftest "-U"    0	# ufs2 + soft update
+ftest "-U"    1	# ufs2 + soft update, disk full
+ftest "-j"    0	# ufs2 + SU+J
+ftest "-j"    1	# ufs2 + SU+J, disk full
 
 mdconfig -d -u ${mdstart}
