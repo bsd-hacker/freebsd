@@ -507,6 +507,10 @@ main(int argc, char *argv[])
 			cflags |= REG_ICASE;
 			break;
 		case 'J':
+#ifdef WITHOUT_BZIP2
+			errno = EOPNOTSUPP;
+			err(2, "bzip2 support was disabled at compile-time");
+#endif
 			filebehave = FILE_BZIP;
 			break;
 		case 'L':
