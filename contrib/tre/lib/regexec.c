@@ -187,7 +187,7 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
   if ((heur != NULL) && (type != STR_USER))
     {
       int ret;
-      size_t st = 0, n;
+      size_t st = 0, i = 1, n;
       const char *data_byte = string;
       const tre_char_t *data_wide = string;
 
@@ -198,52 +198,50 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
 	{
 	  SEEK_TO(st);
 
-	  /* Look for the beginning of possibly matching text. */
-	  ret = tre_match_fast(heur->start, string, len - st, type, nmatch,
+	  /* Prefix heuristic */
+	  ret = tre_match_fast(heur->heurs[0], string, len - st, type, nmatch,
 			       pmatch, eflags);
 	  if (ret != REG_OK)
 	    return ret;
 	  st += pmatch[0].rm_so;
 	  n = pmatch[0].rm_eo;
 
-	  /*
-	   * When having a fixed-length pattern there is only
-	   * one heuristic.
-	   */
-	  if (heur->end == NULL)
+	  /* Intermediate heuristics */
+	  while (!((heur->heurs[i] == NULL) ||
+		(heur->prefix && heur->heurs[i + 1] == NULL)))
 	    {
-	      SEEK_TO(st);
-
-	      DPRINT(("tre_match: calling NFA with offsets [%u/%u]\n",
-		     st, heur->prefix ? len : n + st));
-
-	      ret = tre_match(tnfa, string,
-			      heur->prefix ? (len - st) :
-			      n, type, nmatch,
-			      pmatch, eflags, NULL, NULL);
-
-	      FIX_OFFSETS;
+	      SEEK_TO(st + n);
+	      ret = tre_match_fast(heur->heurs[i], string, len - st - n, type,
+				   nmatch, pmatch, eflags);
+	      if (ret != REG_OK)
+		return ret;
+	      n += pmatch[0].rm_eo;
+	      i++;
 	    }
 
-	  SEEK_TO(st + n);
+	  /* Suffix heuristic available */
+	  if (heur->prefix && heur->heurs[i] != NULL)
+	    {
+	      SEEK_TO(st + n);
+	      ret = tre_match_fast(heur->heurs[i], string, len - st - n, type,
+				   nmatch, pmatch, eflags);
+	      if (ret != REG_OK)
+		return ret;
+	      n += pmatch[0].rm_eo;
 
-	  /* Look for the end of possibly matching text. */
-	  ret = tre_match_fast(heur->end, string, len - st - n, type,
-			       nmatch, pmatch, eflags);
-	  n += pmatch[0].rm_eo;
-
-	  if (ret != REG_OK)
-	    return ret;
-
-	  SEEK_TO(st);
-
-	  DPRINT(("tre_match: calling NFA with offsets [%u/%u]\n",
-		 st, st + n));
-
-	  ret = tre_match(tnfa, string, n,
-			  type, nmatch, pmatch, eflags, NULL, NULL);
-
-	  FIX_OFFSETS;
+	      SEEK_TO(st);
+	      ret = tre_match(tnfa, string, n, type, nmatch, pmatch,
+			      eflags, NULL, NULL);
+	      FIX_OFFSETS;
+	    }
+	  /* Suffix heuristic not available */
+	  else
+	    {
+	      SEEK_TO(st);
+	      ret = tre_match(tnfa, string, len - st, type, nmatch, pmatch,
+			      eflags, NULL, NULL);
+	      FIX_OFFSETS;
+	    }
 	}
     }
 

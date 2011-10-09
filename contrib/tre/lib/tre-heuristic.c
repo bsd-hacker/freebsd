@@ -54,6 +54,8 @@
  * performance impact.
  */
 
+#define MAX_FRAGMENTS 32
+
 /*
  * Parses bracket expression seeking to the end of the enclosed text.
  * The parameters are the opening (oe) and closing elements (ce).
@@ -122,17 +124,14 @@
 int
 tre_compile_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
 {
-  tre_char_t *heur;
-  int st = 0, pos = 0;
+  tre_char_t *arr[MAX_FRAGMENTS], *heur;
+  size_t length[MAX_FRAGMENTS];
+  int errcode, j = 0, pos = 0, st = 0;
   bool escaped = false;
-  int errcode, ret;
 
-  /* Temporary space, len will be enough. */
-  heur = xmalloc(len);
+  heur = xmalloc(len * sizeof(tre_char_t));
   if (!heur)
     return REG_ESPACE;
-
-  memset(h, 0, sizeof(*h));
 
   while (true)
     {
@@ -274,7 +273,7 @@ tre_compile_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
 		if ((cflags & REG_EXTENDED) && !escaped)
 		  {
 		    errcode = REG_BADPAT;
-		    goto badpat2;
+		    goto err;
 		  }
 		else if (!(cflags & REG_EXTENDED) && escaped)
 		  END_SEGMENT;
@@ -309,87 +308,102 @@ tre_compile_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
  
 end_segment:
 
-      /* If it is not initialized yet, then we just got the first segment. */
-      if (h->start == NULL)
+      if (st == len && pos == 0)
 	{
-
-	  /*
-	   * An empty or a one-char prefix segment is useless,
-	   * better to just fail.
-	   */
-	  if (pos <= 1)
+	  if (j == 0)
 	    {
 	      errcode = REG_BADPAT;
-	      DPRINT("tre_compile_heur: pattern does not have a "
-		     " fixed-length prefix that is long enough\n");
-	      goto badpat1;
+	      goto err;
 	    }
-
-	  h->start = xmalloc(sizeof(fastmatch_t));
-	  if (!h->start)
-	    {
-	      errcode = REG_ESPACE;
-	      goto space1;
-	    }
-
-	  ret = tre_compile_fast(h->start, heur, pos, 0);
-	  if (ret != REG_OK)
-	    {
-	      errcode = REG_BADPAT;
-	      goto badpat2;
-	    }
-	  DPRINT(("tre_compile_heur: fixed-length prefix is %s\n",
-		 h->start->pattern));
-	}
-
-      /*
-       * If true, this is the last segment. We do not care about the
-       * middle ones.
-       */
-      else if (st == len)
-	{
-
-	  /* If empty, we only have a prefix heuristic. */
-	  if (pos == 0)
-	    {
-	      h->prefix = true;
-	      errcode = REG_OK;
-	      DPRINT("tre-compile_heur: using only a fixed-length prefix; "
-		     "no fixed-length suffix is available\n");
-	      goto ok;
-	    }
-
-	  h->end = xmalloc(sizeof(fastmatch_t));
-	  if (!h->end)
-	    {
-	      errcode = REG_ESPACE;
-	      goto space2;
-	    }
-	    
-	  ret = tre_compile_fast(h->end, heur, pos, 0);
-	  if (ret != REG_OK)
-	    {
-	      xfree(h->end);
-	      h->prefix = true;
-	    }
-	  errcode = REG_OK;
-	  DPRINT(("tre_compile_heur: fixed-length suffix is %s\n",
-		 h->end->pattern));
+	  h->prefix = true;
 	  goto ok;
 	}
 
-      /* Just drop middle segments by overwriting the temporary space. */
+      if (j == MAX_FRAGMENTS)
+	{
+	  errcode = REG_BADPAT;
+	  goto err;
+	}
+
+      arr[j] = xmalloc((pos + 1) * sizeof(tre_char_t));
+      if (!arr[j])
+	{
+	  errcode = REG_ESPACE;
+	  goto err;
+	}
+      memcpy(&arr[j], &heur, pos);
+      arr[j][pos] = TRE_CHAR('\0');
+      length[j] = pos;
+      j++;
       pos = 0;
     }
 
-badpat2:
-space2:
-  if (h->start != NULL)
-    xfree(h->start);
-badpat1:
-space1:
-  DPRINT("tre_compile_heur: compiling a heuristic failed\n");
 ok:
+
+  {
+    size_t m = 1;
+    int ret;
+
+    for(int i = 1; i < j; i++)
+      m = (length[i] > length[m]) ? i : m;
+
+    if (!h->heurs)
+      {
+	errcode = REG_ESPACE;
+	goto err;
+      }
+
+    for (int i = 0; i < MIN(3, j + 1); i++)
+      {
+	h->heurs[i] = xmalloc(sizeof(fastmatch_t));
+	if (!h->heurs[i])
+	  {
+	    errcode = REG_ESPACE;
+	    goto err;
+	  }
+      }
+
+#define CHECK_ERR
+  if (ret != REG_OK)
+    {
+      errcode = REG_BADPAT;
+      goto err2;
+    }
+
+    ret = tre_compile_fast(h->heurs[0], arr[0], length[0], 0);
+    CHECK_ERR
+    if (j == 1)
+      {
+	xfree(h->heurs[1]);
+	h->heurs[1] = NULL;
+	goto finish;
+      }
+    else
+      ret = tre_compile_fast(h->heurs[1], arr[m], length[m], 0);
+    CHECK_ERR
+    if (h->prefix)
+      {
+	xfree(h->heurs[2]);
+	h->heurs[2] = NULL;
+	goto finish;
+      }
+    else
+      ret = tre_compile_fast(h->heurs[2], arr[j - 1], length[j - 1], 0);
+    CHECK_ERR
+    h->heurs[3] = NULL;
+
+    errcode = REG_OK;
+    goto finish;
+  }
+
+err2:
+  for (int i = 0; h->heurs[i] != NULL; i++)
+    tre_free_fast(h->heurs[i]);
+  xfree(h->heurs);
+err:
+finish:
+  for (int i = 0; i < j; i++)
+    xfree(arr[i]);
   xfree(heur);
   return errcode;
 }
@@ -400,10 +414,8 @@ ok:
 void
 tre_free_heur(heur_t *h)
 {
-  if (h->start != NULL)
-    xfree(h->start);
-  if (h->end != NULL)
-    xfree(h->end);
+  for (int i = 0; h->heurs[i] != NULL; i++)
+    tre_free_fast(h->heurs[i]);
 
   DPRINT("tre_free_heur: resources are freed\n");
 }

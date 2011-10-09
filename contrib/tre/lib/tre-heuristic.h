@@ -8,11 +8,10 @@
 #include "tre-internal.h"
 
 typedef struct {
-  fastmatch_t *start;
-  fastmatch_t *end;
+  fastmatch_t *heurs[4];
   bool prefix;
+  bool newline;
 } heur_t;
-
 
 extern int tre_compile_heur(heur_t *h, const tre_char_t *regex,
 			    size_t len, int cflags);
