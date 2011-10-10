@@ -214,6 +214,8 @@ static struct _s_x rule_actions[] = {
 	{ "nat",		TOK_NAT },
 	{ "reass",		TOK_REASS },
 	{ "setfib",		TOK_SETFIB },
+	{ "call",		TOK_CALL },
+	{ "return",		TOK_RETURN },
 	{ NULL, 0 }	/* terminator */
 };
 
@@ -1109,6 +1111,18 @@ show_ipfw(struct ip_fw *rule, int pcwidth, int bcwidth)
 		    }
 			break;
 
+		case O_FORWARD_IP6:
+		    {
+			char buf[4 + INET6_ADDRSTRLEN + 1];
+			ipfw_insn_sa6 *s = (ipfw_insn_sa6 *)cmd;
+
+			printf("fwd %s", inet_ntop(AF_INET6, &s->sa.sin6_addr,
+			    buf, sizeof(buf)));
+			if (s->sa.sin6_port)
+				printf(",%d", s->sa.sin6_port);
+		    }
+			break;
+
 		case O_LOG: /* O_LOG is printed last */
 			logptr = (ipfw_insn_log *)cmd;
 			break;
@@ -1134,6 +1148,13 @@ show_ipfw(struct ip_fw *rule, int pcwidth, int bcwidth)
 
 		case O_REASS:
 			printf("reass");
+			break;
+
+		case O_CALLRETURN:
+			if (cmd->len & F_NOT)
+				printf("return");
+			else
+				PRINT_UINT_ARG("call ", cmd->arg1);
 			break;
 
 		default:
@@ -1273,6 +1294,8 @@ show_ipfw(struct ip_fw *rule, int pcwidth, int bcwidth)
 				HAVE_PROTO | HAVE_SRCIP |
 				HAVE_DSTIP | HAVE_IP, 0);
 		case O_IP_SRCPORT:
+			if (flags & HAVE_DSTIP)
+				flags |= HAVE_IP;
 			show_prerequisites(&flags,
 				HAVE_PROTO | HAVE_SRCIP, 0);
 			if ((cmd->len & F_OR) && !or_block)
@@ -2771,6 +2794,9 @@ ipfw_add(char *av[])
 		goto chkarg;
 	case TOK_TEE:
 		action->opcode = O_TEE;
+		goto chkarg;
+	case TOK_CALL:
+		action->opcode = O_CALLRETURN;
 chkarg:
 		if (!av[0])
 			errx(EX_USAGE, "missing argument for %s", *(av - 1));
@@ -2795,40 +2821,96 @@ chkarg:
 		break;
 
 	case TOK_FORWARD: {
-		ipfw_insn_sa *p = (ipfw_insn_sa *)action;
+		/*
+		 * Locate the address-port separator (':' or ',').
+		 * Could be one of the following:
+		 *	hostname:port
+		 *	IPv4 a.b.c.d,port
+		 *	IPv4 a.b.c.d:port
+		 *	IPv6 w:x:y::z,port
+		 * The ':' can only be used with hostname and IPv4 address.
+		 * XXX-BZ Should we also support [w:x:y::z]:port?
+		 */
+		struct sockaddr_storage result;
+		struct addrinfo *res;
 		char *s, *end;
+		int family;
+		u_short port_number;
 
 		NEED1("missing forward address[:port]");
 
-		action->opcode = O_FORWARD_IP;
-		action->len = F_INSN_SIZE(ipfw_insn_sa);
-
-		/*
-		 * In the kernel we assume AF_INET and use only
-		 * sin_port and sin_addr. Remember to set sin_len as
-		 * the routing code seems to use it too.
-		 */
-		p->sa.sin_family = AF_INET;
-		p->sa.sin_len = sizeof(struct sockaddr_in);
-		p->sa.sin_port = 0;
 		/*
 		 * locate the address-port separator (':' or ',')
 		 */
-		s = strchr(*av, ':');
-		if (s == NULL)
-			s = strchr(*av, ',');
+		s = strchr(*av, ',');
+		if (s == NULL) {
+			/* Distinguish between IPv4:port and IPv6 cases. */
+			s = strchr(*av, ':');
+			if (s && strchr(s+1, ':'))
+				s = NULL; /* no port */
+		}
+
+		port_number = 0;
 		if (s != NULL) {
+			/* Terminate host portion and set s to start of port. */
 			*(s++) = '\0';
 			i = strtoport(s, &end, 0 /* base */, 0 /* proto */);
 			if (s == end)
 				errx(EX_DATAERR,
 				    "illegal forwarding port ``%s''", s);
-			p->sa.sin_port = (u_short)i;
+			port_number = (u_short)i;
 		}
-		if (_substrcmp(*av, "tablearg") == 0)
-			p->sa.sin_addr.s_addr = INADDR_ANY;
-		else
-			lookup_host(*av, &(p->sa.sin_addr));
+
+		if (_substrcmp(*av, "tablearg") == 0) {
+			family = PF_INET;
+			((struct sockaddr_in*)&result)->sin_addr.s_addr =
+			    INADDR_ANY;
+		} else {
+			/* 
+			 * Resolve the host name or address to a family and a
+			 * network representation of the addres.
+			 */
+			if (getaddrinfo(*av, NULL, NULL, &res))
+				errx(EX_DATAERR, NULL);
+			/* Just use the first host in the answer. */
+			family = res->ai_family;
+			memcpy(&result, res->ai_addr, res->ai_addrlen);
+			freeaddrinfo(res);
+		}
+
+ 		if (family == PF_INET) {
+			ipfw_insn_sa *p = (ipfw_insn_sa *)action;
+
+			action->opcode = O_FORWARD_IP;
+			action->len = F_INSN_SIZE(ipfw_insn_sa);
+
+			/*
+			 * In the kernel we assume AF_INET and use only
+			 * sin_port and sin_addr. Remember to set sin_len as
+			 * the routing code seems to use it too.
+			 */
+			p->sa.sin_len = sizeof(struct sockaddr_in);
+			p->sa.sin_family = AF_INET;
+			p->sa.sin_port = port_number;
+			p->sa.sin_addr.s_addr =
+			     ((struct sockaddr_in *)&result)->sin_addr.s_addr;
+		} else if (family == PF_INET6) {
+			ipfw_insn_sa6 *p = (ipfw_insn_sa6 *)action;
+
+			action->opcode = O_FORWARD_IP6;
+			action->len = F_INSN_SIZE(ipfw_insn_sa6);
+
+			p->sa.sin6_len = sizeof(struct sockaddr_in6);
+			p->sa.sin6_family = AF_INET6;
+			p->sa.sin6_port = port_number;
+			p->sa.sin6_flowinfo = 0;
+			p->sa.sin6_scope_id = 0;
+			/* No table support for v6 yet. */
+			bcopy(&((struct sockaddr_in6*)&result)->sin6_addr,
+			    &p->sa.sin6_addr, sizeof(p->sa.sin6_addr));
+		} else {
+			errx(EX_DATAERR, "Invalid address family in forward action");
+		}
 		av++;
 		break;
 	    }
@@ -2861,6 +2943,10 @@ chkarg:
 
 	case TOK_REASS:
 		action->opcode = O_REASS;
+		break;
+
+	case TOK_RETURN:
+		fill_cmd(action, O_CALLRETURN, F_NOT, 0);
 		break;
 
 	default:

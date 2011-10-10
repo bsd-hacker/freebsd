@@ -38,6 +38,7 @@ __FBSDID("$FreeBSD$");
 #include <ctype.h>
 #include <err.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <getopt.h>
 #include <limits.h>
 #include <libgen.h>
@@ -48,6 +49,7 @@ __FBSDID("$FreeBSD$");
 #include <string.h>
 #include <unistd.h>
 
+#include "fastmatch.h"
 #include "grep.h"
 
 #ifndef WITHOUT_NLS
@@ -83,6 +85,7 @@ bool		 matchall;
 unsigned int	 patterns, pattern_sz;
 struct pat	*pattern;
 regex_t		*r_pattern;
+fastmatch_t	*fg_pattern;
 
 /* Filename exclusion/inclusion patterns */
 unsigned int	 fpatterns, fpattern_sz;
@@ -103,7 +106,7 @@ bool	 hflag;		/* -h: don't print filename headers */
 bool	 iflag;		/* -i: ignore case */
 bool	 lflag;		/* -l: only show names of files with matches */
 bool	 mflag;		/* -m x: stop reading the files after x matches */
-unsigned long long mcount;	/* count for -m */
+long long mcount;	/* count for -m */
 bool	 nflag;		/* -n: show line numbers in front of matching lines */
 bool	 oflag;		/* -o: print only matching part */
 bool	 qflag;		/* -q: quiet mode (don't output anything) */
@@ -162,7 +165,7 @@ usage(void)
 	exit(2);
 }
 
-static const char	*optstr = "0123456789A:B:C:D:EFGHIJLOPSRUVZabcd:e:f:hilm:nopqrsuvwxy";
+static const char	*optstr = "0123456789A:B:C:D:EFGHIJMLOPSRUVZabcd:e:f:hilm:nopqrsuvwxXy";
 
 struct option long_options[] =
 {
@@ -198,6 +201,7 @@ struct option long_options[] =
 	{"files-with-matches",	no_argument,		NULL, 'l'},
 	{"files-without-match", no_argument,            NULL, 'L'},
 	{"max-count",		required_argument,	NULL, 'm'},
+	{"lzma",		no_argument,		NULL, 'M'},
 	{"line-number",		no_argument,		NULL, 'n'},
 	{"only-matching",	no_argument,		NULL, 'o'},
 	{"quiet",		no_argument,		NULL, 'q'},
@@ -210,6 +214,7 @@ struct option long_options[] =
 	{"version",		no_argument,		NULL, 'V'},
 	{"word-regexp",		no_argument,		NULL, 'w'},
 	{"line-regexp",		no_argument,		NULL, 'x'},
+	{"xz",			no_argument,		NULL, 'X'},
 	{"decompress",          no_argument,            NULL, 'Z'},
 	{NULL,			no_argument,		NULL, 0}
 };
@@ -221,9 +226,20 @@ static void
 add_pattern(char *pat, size_t len)
 {
 
+	/* Do not add further pattern is we already match everything */
+	if (matchall)
+	  return;
+
 	/* Check if we can do a shortcut */
-	if (len == 0 || matchall) {
+	if (len == 0) {
 		matchall = true;
+		for (unsigned int i = 0; i < patterns; i++) {
+			free(pattern[i].pat);
+		}
+		pattern = grep_realloc(pattern, sizeof(struct pat));
+		pattern[0].pat = NULL;
+		pattern[0].len = 0;
+		patterns = 1;
 		return;
 	}
 	/* Increase size if necessary */
@@ -237,8 +253,8 @@ add_pattern(char *pat, size_t len)
 	/* pat may not be NUL-terminated */
 	pattern[patterns].pat = grep_malloc(len + 1);
 	memcpy(pattern[patterns].pat, pat, len);
-	pattern[patterns].pat[len] = '\0';
 	pattern[patterns].len = len;
+	pattern[patterns].pat[len] = '\0';
 	++patterns;
 }
 
@@ -284,14 +300,19 @@ add_dpattern(const char *pat, int mode)
 static void
 read_patterns(const char *fn)
 {
+	struct stat st;
 	FILE *f;
 	char *line;
 	size_t len;
 
 	if ((f = fopen(fn, "r")) == NULL)
 		err(2, "%s", fn);
-	while ((line = fgetln(f, &len)) != NULL)
-		add_pattern(line, *line == '\n' ? 0 : len);
+	if ((fstat(fileno(f), &st) == -1) || (S_ISDIR(st.st_mode))) {
+		fclose(f);
+		return;
+	}
+        while ((line = fgetln(f, &len)) != NULL)
+		add_pattern(line, line[0] == '\n' ? 0 : len);
 	if (ferror(f))
 		err(2, "%s", fn);
 	fclose(f);
@@ -303,14 +324,14 @@ init_color(const char *d)
 	char *c;
 
 	c = getenv("GREP_COLOR");
-	return (c != NULL ? c : d);
+	return (c != NULL && c[0] != '\0' ? c : d);
 }
 
 int
 main(int argc, char *argv[])
 {
 	char **aargv, **eargv, *eopts;
-	char *ep;
+	char *pn, *ep;
 	unsigned long long l;
 	unsigned int aargc, eargc, i;
 	int c, lastc, needpattern, newarg, prevoptind;
@@ -324,29 +345,26 @@ main(int argc, char *argv[])
 	/* Check what is the program name of the binary.  In this
 	   way we can have all the funcionalities in one binary
 	   without the need of scripting and using ugly hacks. */
-	switch (__progname[0]) {
+	pn = __progname;
+	if (pn[0] == 'b' && pn[1] == 'z') {
+		filebehave = FILE_BZIP;
+		pn += 2;
+	} else if (pn[0] == 'x' && pn[1] == 'z') {
+		filebehave = FILE_XZ;
+		pn += 2;
+	} else if (pn[0] == 'l' && pn[1] == 'z') {
+		filebehave = FILE_LZMA;
+		pn += 2;
+	} else if (pn[0] == 'z') {
+		filebehave = FILE_GZIP;
+		pn += 1;
+	}
+	switch (pn[0]) {
 	case 'e':
 		grepbehave = GREP_EXTENDED;
 		break;
 	case 'f':
 		grepbehave = GREP_FIXED;
-		break;
-	case 'g':
-		grepbehave = GREP_BASIC;
-		break;
-	case 'z':
-		filebehave = FILE_GZIP;
-		switch(__progname[1]) {
-		case 'e':
-			grepbehave = GREP_EXTENDED;
-			break;
-		case 'f':
-			grepbehave = GREP_FIXED;
-			break;
-		case 'g':
-			grepbehave = GREP_BASIC;
-			break;
-		}
 		break;
 	}
 
@@ -359,7 +377,7 @@ main(int argc, char *argv[])
 
 	/* support for extra arguments in GREP_OPTIONS */
 	eargc = 0;
-	if (eopts != NULL) {
+	if (eopts != NULL && eopts[0] != '\0') {
 		char *str;
 
 		/* make an estimation of how many extra arguments we have */
@@ -372,7 +390,8 @@ main(int argc, char *argv[])
 		eargc = 0;
 		/* parse extra arguments */
 		while ((str = strsep(&eopts, " ")) != NULL)
-			eargv[eargc++] = grep_strdup(str);
+			if (str[0] != '\0')
+				eargv[eargc++] = grep_strdup(str);
 
 		aargv = (char **)grep_calloc(eargc + argc + 1,
 		    sizeof(char *));
@@ -501,14 +520,17 @@ main(int argc, char *argv[])
 		case 'm':
 			mflag = true;
 			errno = 0;
-			mcount = strtoull(optarg, &ep, 10);
-			if (((errno == ERANGE) && (mcount == ULLONG_MAX)) ||
+			mcount = strtoll(optarg, &ep, 10);
+			if (((errno == ERANGE) && (mcount == LLONG_MAX)) ||
 			    ((errno == EINVAL) && (mcount == 0)))
 				err(2, NULL);
 			else if (ep[0] != '\0') {
 				errno = EINVAL;
 				err(2, NULL);
 			}
+			break;
+		case 'M':
+			filebehave = FILE_LZMA;
 			break;
 		case 'n':
 			nflag = true;
@@ -542,7 +564,7 @@ main(int argc, char *argv[])
 			break;
 		case 'u':
 		case MMAP_OPT:
-			/* noop, compatibility */
+			filebehave = FILE_MMAP;
 			break;
 		case 'V':
 			printf(getstr(9), __progname, VERSION);
@@ -557,6 +579,9 @@ main(int argc, char *argv[])
 		case 'x':
 			xflag = true;
 			cflags &= ~REG_NOSUB;
+			break;
+		case 'X':
+			filebehave = FILE_XZ;
 			break;
 		case 'Z':
 			filebehave = FILE_GZIP;
@@ -628,6 +653,10 @@ main(int argc, char *argv[])
 	aargc -= optind;
 	aargv += optind;
 
+	/* Empty pattern file matches nothing */
+	if (!needpattern && (patterns == 0))
+		exit(1);
+
 	/* Fail if we don't have any pattern */
 	if (aargc == 0 && needpattern)
 		usage();
@@ -640,10 +669,13 @@ main(int argc, char *argv[])
 	}
 
 	switch (grepbehave) {
-	case GREP_FIXED:
 		cflags |= REG_LITERAL;
 		break;
 	case GREP_BASIC:
+		break;
+	case GREP_FIXED:
+		/* XXX: header mess, REG_LITERAL not defined in gnu/regex.h */
+		cflags |= 0020;
 		break;
 	case GREP_EXTENDED:
 		cflags |= REG_EXTENDED;
@@ -655,13 +687,17 @@ main(int argc, char *argv[])
 
 	r_pattern = grep_calloc(patterns, sizeof(*r_pattern));
 
+	/* Check if cheating is allowed (always is for fgrep). */
 	for (i = 0; i < patterns; ++i) {
-		c = regncomp(&r_pattern[i], pattern[i].pat,
-		    pattern[i].len, cflags);
-		if (c != 0) {
-			regerror(c, &r_pattern[i], re_error,
-			    RE_ERROR_BUF);
-			errx(2, "%s", re_error);
+		if (fastncomp(&fg_pattern[i], pattern[i].pat,
+		    pattern[i].len, cflags) != 0) {
+			/* Fall back to full regex library */
+			c = regcomp(&r_pattern[i], pattern[i].pat, cflags);
+			if (c != 0) {
+				regerror(c, &r_pattern[i], re_error,
+				    RE_ERROR_BUF);
+				errx(2, "%s", re_error);
+			}
 		}
 	}
 

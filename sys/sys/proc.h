@@ -166,6 +166,7 @@ struct mqueue_notifier;
 struct nlminfo;
 struct p_sched;
 struct proc;
+struct procdesc;
 struct racct;
 struct sleepqueue;
 struct td_sched;
@@ -393,7 +394,7 @@ do {									\
 #define	TDP_COWINPROGRESS 0x00000010 /* Snapshot copy-on-write in progress. */
 #define	TDP_ALTSTACK	0x00000020 /* Have alternate signal stack. */
 #define	TDP_DEADLKTREAT	0x00000040 /* Lock aquisition - deadlock treatment. */
-#define	TDP_UNUSED80	0x00000080 /* available. */
+#define	TDP_NOFAULTING	0x00000080 /* Do not handle page faults. */
 #define	TDP_NOSLEEPING	0x00000100 /* Thread is not allowed to sleep on a sq. */
 #define	TDP_OWEUPC	0x00000200 /* Call addupc() at next AST. */
 #define	TDP_ITHREAD	0x00000400 /* Thread is an interrupt thread. */
@@ -534,6 +535,7 @@ struct proc {
 	int		p_boundary_count;/* (c) Num threads at user boundary */
 	int		p_pendingcnt;	/* how many signals are pending */
 	struct itimers	*p_itimers;	/* (c) POSIX interval timers. */
+	struct procdesc	*p_procdesc;	/* (e) Process descriptor, if any. */
 /* End area that is zeroed on creation. */
 #define	p_endzero	p_magic
 
@@ -822,7 +824,7 @@ int	enterpgrp(struct proc *p, pid_t pgid, struct pgrp *pgrp,
 int	enterthispgrp(struct proc *p, struct pgrp *pgrp);
 void	faultin(struct proc *p);
 void	fixjobc(struct proc *p, struct pgrp *pgrp, int entering);
-int	fork1(struct thread *, int, int, struct proc **);
+int	fork1(struct thread *, int, int, struct proc **, int *, int);
 void	fork_exit(void (*)(void *, struct trapframe *), void *,
 	    struct trapframe *);
 void	fork_return(struct thread *, struct trapframe *);
@@ -844,6 +846,8 @@ void	pargs_hold(struct pargs *pa);
 void	procinit(void);
 void	proc_linkup0(struct proc *p, struct thread *td);
 void	proc_linkup(struct proc *p, struct thread *td);
+void	proc_reap(struct thread *td, struct proc *p, int *status, int options,
+	    struct rusage *rusage);
 void	proc_reparent(struct proc *child, struct proc *newparent);
 struct	pstats *pstats_alloc(void);
 void	pstats_fork(struct pstats *src, struct pstats *dst);
@@ -869,9 +873,6 @@ void	cpu_switch(struct thread *, struct thread *, struct mtx *);
 void	cpu_throw(struct thread *, struct thread *) __dead2;
 void	unsleep(struct thread *);
 void	userret(struct thread *, struct trapframe *);
-struct syscall_args;
-int	syscallenter(struct thread *, struct syscall_args *);
-void	syscallret(struct thread *, int, struct syscall_args *);
 
 void	cpu_exit(struct thread *);
 void	exit1(struct thread *, int) __dead2;
@@ -912,6 +913,25 @@ int	thread_unsuspend_one(struct thread *td);
 void	thread_unthread(struct thread *td);
 void	thread_wait(struct proc *p);
 struct thread	*thread_find(struct proc *p, lwpid_t tid);
+
+static __inline int
+curthread_pflags_set(int flags)
+{
+	struct thread *td;
+	int save;
+
+	td = curthread;
+	save = ~flags | (td->td_pflags & flags);
+	td->td_pflags |= flags;
+	return (save);
+}
+
+static __inline void
+curthread_pflags_restore(int save)
+{
+
+	curthread->td_pflags &= save;
+}
 
 #endif	/* _KERNEL */
 

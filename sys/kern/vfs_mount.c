@@ -51,6 +51,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/proc.h>
 #include <sys/filedesc.h>
 #include <sys/reboot.h>
+#include <sys/sbuf.h>
 #include <sys/syscallsubr.h>
 #include <sys/sysproto.h>
 #include <sys/sx.h>
@@ -364,7 +365,7 @@ vfs_mergeopts(struct vfsoptlist *toopts, struct vfsoptlist *oldopts)
  * Mount a filesystem.
  */
 int
-nmount(td, uap)
+sys_nmount(td, uap)
 	struct thread *td;
 	struct nmount_args /* {
 		struct iovec *iovp;
@@ -681,7 +682,7 @@ struct mount_args {
 #endif
 /* ARGSUSED */
 int
-mount(td, uap)
+sys_mount(td, uap)
 	struct thread *td;
 	struct mount_args /* {
 		char *type;
@@ -1096,7 +1097,7 @@ struct unmount_args {
 #endif
 /* ARGSUSED */
 int
-unmount(td, uap)
+sys_unmount(td, uap)
 	struct thread *td;
 	register struct unmount_args /* {
 		char *path;
@@ -1495,7 +1496,8 @@ vfs_getopts(struct vfsoptlist *opts, const char *name, int *error)
 }
 
 int
-vfs_flagopt(struct vfsoptlist *opts, const char *name, u_int *w, u_int val)
+vfs_flagopt(struct vfsoptlist *opts, const char *name, uint64_t *w,
+	uint64_t val)
 {
 	struct vfsopt *opt;
 

@@ -284,7 +284,7 @@ struct shmdt_args {
 };
 #endif
 int
-shmdt(td, uap)
+sys_shmdt(td, uap)
 	struct thread *td;
 	struct shmdt_args *uap;
 {
@@ -434,7 +434,7 @@ done2:
 }
 
 int
-shmat(td, uap)
+sys_shmat(td, uap)
 	struct thread *td;
 	struct shmat_args *uap;
 {
@@ -559,7 +559,7 @@ struct shmctl_args {
 };
 #endif
 int
-shmctl(td, uap)
+sys_shmctl(td, uap)
 	struct thread *td;
 	struct shmctl_args *uap;
 {
@@ -672,6 +672,7 @@ shmget_allocate_segment(td, uap, mode)
 		shm_last_free = -1;
 	}
 	shmseg = &shmsegs[segnum];
+#ifdef RACCT
 	PROC_LOCK(td->td_proc);
 	if (racct_add(td->td_proc, RACCT_NSHM, 1)) {
 		PROC_UNLOCK(td->td_proc);
@@ -683,6 +684,7 @@ shmget_allocate_segment(td, uap, mode)
 		return (ENOMEM);
 	}
 	PROC_UNLOCK(td->td_proc);
+#endif
 	/*
 	 * In case we sleep in malloc(), mark the segment present but deleted
 	 * so that noone else tries to create the same key.
@@ -699,10 +701,12 @@ shmget_allocate_segment(td, uap, mode)
 	shm_object = vm_pager_allocate(shm_use_phys ? OBJT_PHYS : OBJT_SWAP,
 	    0, size, VM_PROT_DEFAULT, 0, cred);
 	if (shm_object == NULL) {
+#ifdef RACCT
 		PROC_LOCK(td->td_proc);
 		racct_sub(td->td_proc, RACCT_NSHM, 1);
 		racct_sub(td->td_proc, RACCT_SHMSIZE, size);
 		PROC_UNLOCK(td->td_proc);
+#endif
 		return (ENOMEM);
 	}
 	VM_OBJECT_LOCK(shm_object);
@@ -746,7 +750,7 @@ struct shmget_args {
 };
 #endif
 int
-shmget(td, uap)
+sys_shmget(td, uap)
 	struct thread *td;
 	struct shmget_args *uap;
 {
@@ -847,7 +851,7 @@ static struct syscall_helper_data shm_syscalls[] = {
 	SYSCALL_INIT_HELPER(shmget),
 #if defined(COMPAT_FREEBSD4) || defined(COMPAT_FREEBSD5) || \
     defined(COMPAT_FREEBSD6) || defined(COMPAT_FREEBSD7)
-	SYSCALL_INIT_HELPER(freebsd7_shmctl),
+	SYSCALL_INIT_HELPER_COMPAT(freebsd7_shmctl),
 #endif
 #if defined(__i386__) && (defined(COMPAT_FREEBSD4) || defined(COMPAT_43))
 	SYSCALL_INIT_HELPER(shmsys),
@@ -864,9 +868,9 @@ static struct syscall_helper_data shm_syscalls[] = {
 #include <compat/freebsd32/freebsd32_util.h>
 
 static struct syscall_helper_data shm32_syscalls[] = {
-	SYSCALL32_INIT_HELPER(shmat),
-	SYSCALL32_INIT_HELPER(shmdt),
-	SYSCALL32_INIT_HELPER(shmget),
+	SYSCALL32_INIT_HELPER_COMPAT(shmat),
+	SYSCALL32_INIT_HELPER_COMPAT(shmdt),
+	SYSCALL32_INIT_HELPER_COMPAT(shmget),
 	SYSCALL32_INIT_HELPER(freebsd32_shmsys),
 	SYSCALL32_INIT_HELPER(freebsd32_shmctl),
 #if defined(COMPAT_FREEBSD4) || defined(COMPAT_FREEBSD5) || \
@@ -1036,13 +1040,13 @@ done2:
 
 /* XXX casting to (sy_call_t *) is bogus, as usual. */
 static sy_call_t *shmcalls[] = {
-	(sy_call_t *)shmat, (sy_call_t *)oshmctl,
-	(sy_call_t *)shmdt, (sy_call_t *)shmget,
+	(sy_call_t *)sys_shmat, (sy_call_t *)oshmctl,
+	(sy_call_t *)sys_shmdt, (sy_call_t *)sys_shmget,
 	(sy_call_t *)freebsd7_shmctl
 };
 
 int
-shmsys(td, uap)
+sys_shmsys(td, uap)
 	struct thread *td;
 	/* XXX actually varargs. */
 	struct shmsys_args /* {

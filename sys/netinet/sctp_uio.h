@@ -251,12 +251,13 @@ struct sctp_snd_all_completes {
 /* for the endpoint */
 
 /* The lower byte is an enumeration of PR-SCTP policies */
+#define SCTP_PR_SCTP_NONE 0x0000/* Reliable transfer */
 #define SCTP_PR_SCTP_TTL  0x0001/* Time based PR-SCTP */
 #define SCTP_PR_SCTP_BUF  0x0002/* Buffer based PR-SCTP */
 #define SCTP_PR_SCTP_RTX  0x0003/* Number of retransmissions based PR-SCTP */
 
 #define PR_SCTP_POLICY(x)         ((x) & 0x0f)
-#define PR_SCTP_ENABLED(x)        (PR_SCTP_POLICY(x) != 0)
+#define PR_SCTP_ENABLED(x)        (PR_SCTP_POLICY(x) != SCTP_PR_SCTP_NONE)
 #define PR_SCTP_TTL_ENABLED(x)    (PR_SCTP_POLICY(x) == SCTP_PR_SCTP_TTL)
 #define PR_SCTP_BUF_ENABLED(x)    (PR_SCTP_POLICY(x) == SCTP_PR_SCTP_BUF)
 #define PR_SCTP_RTX_ENABLED(x)    (PR_SCTP_POLICY(x) == SCTP_PR_SCTP_RTX)
@@ -328,7 +329,8 @@ struct sctp_paddr_change {
 #define SCTP_ADDR_CONFIRMED	0x0006
 
 #define SCTP_ACTIVE		0x0001	/* SCTP_ADDR_REACHABLE */
-#define SCTP_INACTIVE		0x0002	/* SCTP_ADDR_NOT_REACHABLE */
+#define SCTP_INACTIVE		0x0002	/* neither SCTP_ADDR_REACHABLE nor
+					 * SCTP_ADDR_UNCONFIRMED */
 #define SCTP_UNCONFIRMED	0x0200	/* SCTP_ADDR_UNCONFIRMED */
 
 /* remote error events */
@@ -503,8 +505,10 @@ struct sctp_paddrparams {
 	uint32_t spp_flags;
 	uint32_t spp_ipv6_flowlabel;
 	uint16_t spp_pathmaxrxt;
-	uint8_t spp_ipv4_tos;
+	uint8_t spp_dscp;
 };
+
+#define spp_ipv4_tos spp_dscp
 
 #define SPP_HB_ENABLE		0x00000001
 #define SPP_HB_DISABLE		0x00000002
@@ -513,7 +517,15 @@ struct sctp_paddrparams {
 #define SPP_PMTUD_DISABLE	0x00000010
 #define SPP_HB_TIME_IS_ZERO     0x00000080
 #define SPP_IPV6_FLOWLABEL      0x00000100
-#define SPP_IPV4_TOS            0x00000200
+#define SPP_DSCP                0x00000200
+#define SPP_IPV4_TOS            SPP_DSCP
+
+struct sctp_paddrthlds {
+	sctp_assoc_t spt_assoc_id;
+	struct sockaddr_storage spt_address;
+	uint16_t spt_pathmaxrxt;
+	uint16_t spt_pathpfthld;
+};
 
 struct sctp_paddrinfo {
 	struct sockaddr_storage spinfo_address;
@@ -590,6 +602,7 @@ struct sctp_authchunk {
 struct sctp_authkey {
 	sctp_assoc_t sca_assoc_id;
 	uint16_t sca_keynumber;
+	uint16_t sca_keylength;
 	uint8_t sca_key[];
 };
 
@@ -976,18 +989,8 @@ struct sctpstat {
 					 * fired */
 	uint32_t sctps_timoassockill;	/* Number of asoc free timers expired */
 	uint32_t sctps_timoinpkill;	/* Number of inp free timers expired */
-	/* Early fast retransmission counters */
-	uint32_t sctps_earlyfrstart;
-	uint32_t sctps_earlyfrstop;
-	uint32_t sctps_earlyfrmrkretrans;
-	uint32_t sctps_earlyfrstpout;
-	uint32_t sctps_earlyfrstpidsck1;
-	uint32_t sctps_earlyfrstpidsck2;
-	uint32_t sctps_earlyfrstpidsck3;
-	uint32_t sctps_earlyfrstpidsck4;
-	uint32_t sctps_earlyfrstrid;
-	uint32_t sctps_earlyfrstrout;
-	uint32_t sctps_earlyfrstrtmr;
+	/* former early FR counters */
+	uint32_t sctps_spare[11];
 	/* others */
 	uint32_t sctps_hdrops;	/* packet shorter than header */
 	uint32_t sctps_badsum;	/* checksum error             */
@@ -1160,9 +1163,11 @@ struct xsctp_raddr {
 	uint8_t active;		/* sctpAssocLocalRemEntry 3   */
 	uint8_t confirmed;	/* */
 	uint8_t heartbeat_enabled;	/* sctpAssocLocalRemEntry 4   */
+	uint8_t potentially_failed;
 	struct sctp_timeval start_time;	/* sctpAssocLocalRemEntry 8   */
 	uint32_t rtt;
-	uint32_t extra_padding[32];	/* future */
+	uint32_t heartbeat_interval;
+	uint32_t extra_padding[31];	/* future */
 };
 
 #define SCTP_MAX_LOGGING_SIZE 30000

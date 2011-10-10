@@ -1037,7 +1037,7 @@ in_addprefix(struct in_ifaddr *target, int flags)
 	IN_IFADDR_RLOCK();
 	TAILQ_FOREACH(ia, &V_in_ifaddrhead, ia_link) {
 		if (rtinitflags(ia)) {
-			p = ia->ia_addr.sin_addr;
+			p = ia->ia_dstaddr.sin_addr;
 
 			if (prefix.s_addr != p.s_addr)
 				continue;
@@ -1126,8 +1126,10 @@ in_scrubprefix(struct in_ifaddr *target, u_int flags)
 			RT_LOCK(ia_ro.ro_rt);
 			if (ia_ro.ro_rt->rt_refcnt <= 1)
 				freeit = 1;
-			else
+			else if (flags & LLE_STATIC) {
 				RT_REMREF(ia_ro.ro_rt);
+				target->ia_flags &= ~IFA_RTSELF;
+			}
 			RTFREE_LOCKED(ia_ro.ro_rt);
 		}
 		if (freeit && (flags & LLE_STATIC)) {
@@ -1136,7 +1138,8 @@ in_scrubprefix(struct in_ifaddr *target, u_int flags)
 			if (error == 0)
 				target->ia_flags &= ~IFA_RTSELF;
 		}
-		if (flags & LLE_STATIC)
+		if ((flags & LLE_STATIC) &&
+			!(target->ia_ifp->if_flags & IFF_NOARP))
 			/* remove arp cache */
 			arp_ifscrub(target->ia_ifp, IA_SIN(target)->sin_addr.s_addr);
 	}
@@ -1163,7 +1166,8 @@ in_scrubprefix(struct in_ifaddr *target, u_int flags)
 			p.s_addr &= ia->ia_sockmask.sin_addr.s_addr;
 		}
 
-		if (prefix.s_addr != p.s_addr)
+		if ((prefix.s_addr != p.s_addr) ||
+		    !(ia->ia_ifp->if_flags & IFF_UP))
 			continue;
 
 		/*
@@ -1410,25 +1414,73 @@ static int
 in_lltable_rtcheck(struct ifnet *ifp, u_int flags, const struct sockaddr *l3addr)
 {
 	struct rtentry *rt;
+	struct ifnet *xifp;
+	int error = 0;
 
 	KASSERT(l3addr->sa_family == AF_INET,
 	    ("sin_family %d", l3addr->sa_family));
 
 	/* XXX rtalloc1 should take a const param */
 	rt = rtalloc1(__DECONST(struct sockaddr *, l3addr), 0, 0);
-	if (rt == NULL || (!(flags & LLE_PUB) &&
-			   ((rt->rt_flags & RTF_GATEWAY) || 
-			    (rt->rt_ifp != ifp)))) {
-#ifdef DIAGNOSTIC
-		log(LOG_INFO, "IPv4 address: \"%s\" is not on the network\n",
-		    inet_ntoa(((const struct sockaddr_in *)l3addr)->sin_addr));
-#endif
-		if (rt != NULL)
-			RTFREE_LOCKED(rt);
+
+	if (rt == NULL)
+		return (EINVAL);
+
+	/*
+	 * If the gateway for an existing host route matches the target L3
+	 * address, which is a special route inserted by some implementation
+	 * such as MANET, and the interface is of the correct type, then
+	 * allow for ARP to proceed.
+	 */
+	if (rt->rt_flags & (RTF_GATEWAY | RTF_HOST)) {
+		xifp = rt->rt_ifp;
+		
+		if (xifp && (xifp->if_type != IFT_ETHER ||
+		     (xifp->if_flags & (IFF_NOARP | IFF_STATICARP)) != 0))
+			error = EINVAL;
+
+		if (memcmp(rt->rt_gateway->sa_data, l3addr->sa_data,
+		    sizeof(in_addr_t)) != 0)
+			error = EINVAL;
+	}
+
+	if (rt->rt_flags & RTF_GATEWAY) {
+		RTFREE_LOCKED(rt);
 		return (EINVAL);
 	}
+
+	/*
+	 * Make sure that at least the destination address is covered 
+	 * by the route. This is for handling the case where 2 or more 
+	 * interfaces have the same prefix. An incoming packet arrives
+	 * on one interface and the corresponding outgoing packet leaves
+	 * another interface.
+	 * 
+	 */
+	if (rt->rt_ifp != ifp) {
+		char *sa, *mask, *addr, *lim;
+		int len;
+
+		sa = (char *)rt_key(rt);
+		mask = (char *)rt_mask(rt);
+		addr = (char *)__DECONST(struct sockaddr *, l3addr);
+		len = ((struct sockaddr_in *)__DECONST(struct sockaddr *, l3addr))->sin_len;
+		lim = addr + len;
+
+		for ( ; addr < lim; sa++, mask++, addr++) {
+			if ((*sa ^ *addr) & *mask) {
+				error = EINVAL;
+#ifdef DIAGNOSTIC
+				log(LOG_INFO, "IPv4 address: \"%s\" is not on the network\n",
+				    inet_ntoa(((const struct sockaddr_in *)l3addr)->sin_addr));
+#endif
+				break;
+			}
+		}
+	}
+
 	RTFREE_LOCKED(rt);
-	return 0;
+	return (error);
 }
 
 /*
@@ -1599,10 +1651,8 @@ in_domifattach(struct ifnet *ifp)
 
 	llt = lltable_init(ifp, AF_INET);
 	if (llt != NULL) {
-		llt->llt_new = in_lltable_new;
 		llt->llt_free = in_lltable_free;
 		llt->llt_prefix_free = in_lltable_prefix_free;
-		llt->llt_rtcheck = in_lltable_rtcheck;
 		llt->llt_lookup = in_lltable_lookup;
 		llt->llt_dump = in_lltable_dump;
 	}

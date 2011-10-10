@@ -43,7 +43,6 @@ MAN=	accept_filter.9 \
 	BUS_SETUP_INTR.9 \
 	bus_space.9 \
 	byteorder.9 \
-	cc.9 \
 	cd.9 \
 	condvar.9 \
 	config_intrhook.9 \
@@ -169,6 +168,7 @@ MAN=	accept_filter.9 \
 	microtime.9 \
 	microuptime.9 \
 	mi_switch.9 \
+	mod_cc.9 \
 	module.9 \
 	MODULE_DEPEND.9 \
 	MODULE_VERSION.9 \
@@ -296,7 +296,6 @@ MAN=	accept_filter.9 \
 	vm_fault_prefault.9 \
 	vm_map.9 \
 	vm_map_check_protection.9 \
-	vm_map_clean.9 \
 	vm_map_create.9 \
 	vm_map_delete.9 \
 	vm_map_entry_resize_free.9 \
@@ -314,26 +313,24 @@ MAN=	accept_filter.9 \
 	vm_map_simplify_entry.9 \
 	vm_map_stack.9 \
 	vm_map_submap.9 \
+	vm_map_sync.9 \
 	vm_map_wire.9 \
 	vm_page_alloc.9 \
 	vm_page_bits.9 \
 	vm_page_cache.9 \
-	vm_page_copy.9 \
 	vm_page_deactivate.9 \
 	vm_page_dontneed.9 \
-	vm_page_flag.9 \
+	vm_page_aflag.9 \
 	vm_page_free.9 \
 	vm_page_grab.9 \
 	vm_page_hold.9 \
 	vm_page_insert.9 \
 	vm_page_io.9 \
 	vm_page_lookup.9 \
-	vm_page_protect.9 \
 	vm_page_rename.9 \
 	vm_page_sleep_if_busy.9 \
 	vm_page_wakeup.9 \
 	vm_page_wire.9 \
-	vm_page_zero_fill.9 \
 	vm_set_page_size.9 \
 	vn_fullpath.9 \
 	vn_isdisk.9 \
@@ -551,8 +548,10 @@ MLINKS+=config_intrhook.9 config_intrhook_disestablish.9 \
 	config_intrhook.9 config_intrhook_establish.9
 MLINKS+=contigmalloc.9 contigfree.9
 MLINKS+=copy.9 copyin.9 \
+	copy.9 copyin_nofault.9 \
 	copy.9 copyinstr.9 \
 	copy.9 copyout.9 \
+	copy.9 copyout_nofault.9 \
 	copy.9 copystr.9
 MLINKS+=critical_enter.9 critical.9 \
 	critical_enter.9 critical_exit.9
@@ -606,7 +605,6 @@ MLINKS+=domain.9 DOMAIN_SET.9 \
 	domain.9 pfctlinput2.9 \
 	domain.9 pffindproto.9 \
 	domain.9 pffindtype.9
-MLINKS+=DRIVER_MODULE.9 MULTI_DRIVER_MODULE.9
 MLINKS+=EVENTHANDLER.9 EVENTHANDLER_DECLARE.9 \
 	EVENTHANDLER.9 EVENTHANDLER_DEREGISTER.9 \
 	EVENTHANDLER.9 eventhandler_deregister.9 \
@@ -974,7 +972,8 @@ MLINKS+=printf.9 log.9 \
 MLINKS+=priv.9 priv_check.9 \
 	priv.9 priv_check_cred.9
 MLINKS+=psignal.9 gsignal.9 \
-	psignal.9 pgsignal.9
+	psignal.9 pgsignal.9 \
+	psignal.9 tdsignal.9
 MLINKS+=random.9 arc4rand.9 \
 	random.9 arc4random.9 \
 	random.9 read_random.9 \
@@ -1076,7 +1075,8 @@ MLINKS+=scheduler.9 curpriority_cmp.9 \
 	scheduler.9 setrunnable.9 \
 	scheduler.9 updatepri.9
 MLINKS+=securelevel_gt.9 securelevel_ge.9
-MLINKS+=selrecord.9 selwakeup.9
+MLINKS+=selrecord.9 seldrain.9 \
+	selrecord.9 selwakeup.9
 MLINKS+=sema.9 sema_destroy.9 \
 	sema.9 sema_init.9 \
 	sema.9 sema_post.9 \
@@ -1284,7 +1284,8 @@ MLINKS+=uidinfo.9 uifind.9 \
 	uidinfo.9 uifree.9 \
 	uidinfo.9 uihashinit.9 \
 	uidinfo.9 uihold.9
-MLINKS+=uio.9 uiomove.9
+MLINKS+=uio.9 uiomove.9 \
+	uio.9 uiomove_nofault.9
 MLINKS+=usbdi.9 usbd_do_request.9 \
 	usbdi.9 usbd_do_request_flags.9 \
 	usbdi.9 usbd_errstr.9 \
@@ -1372,8 +1373,9 @@ MLINKS+=vm_page_bits.9 vm_page_clear_dirty.9 \
 	vm_page_bits.9 vm_page_test_dirty.9 \
 	vm_page_bits.9 vm_page_undirty.9 \
 	vm_page_bits.9 vm_page_zero_invalid.9
-MLINKS+=vm_page_flag.9 vm_page_flag_clear.9 \
-	vm_page_flag.9 vm_page_flag_set.9
+MLINKS+=vm_page_aflag.9 vm_page_aflag_clear.9 \
+	vm_page_aflag.9 vm_page_aflag_set.9 \
+	vm_page_aflag.9 vm_page_reference.9
 MLINKS+=vm_page_free.9 vm_page_free_toq.9 \
 	vm_page_free.9 vm_page_free_zero.9 \
 	vm_page_free.9 vm_page_try_to_free.9

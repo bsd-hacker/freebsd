@@ -241,6 +241,7 @@ SUBDIR=	${_3dfx} \
 	pcn \
 	${_pf} \
 	${_pflog} \
+	${_pfsync} \
 	plip \
 	${_pmc} \
 	portalfs \
@@ -301,6 +302,7 @@ SUBDIR=	${_3dfx} \
 	trm \
 	${_twa} \
 	twe \
+	tws \
 	tx \
 	txp \
 	uart \
@@ -318,6 +320,7 @@ SUBDIR=	${_3dfx} \
 	vr \
 	vte \
 	vx \
+	${_vxge} \
 	wb \
 	${_wi} \
 	wlan \
@@ -382,6 +385,9 @@ _netgraph=	netgraph
 	${MK_INET6_SUPPORT} != "no")) || defined(ALL_MODULES)
 _pf=		pf
 _pflog=		pflog
+.if ${MK_INET_SUPPORT} != "no"
+_pfsync=	pfsync
+.endif
 .endif
 
 .if ${MACHINE_CPUARCH} == "i386"
@@ -468,6 +474,7 @@ _sppp=		sppp
 _stg=		stg
 _streams=	streams
 _svr4=		svr4
+_vxge=  	vxge
 _wi=		wi
 _xe=		xe
 .if ${MK_ZFS} != "no" || defined(ALL_MODULES)
@@ -621,6 +628,7 @@ _sppp=		sppp
 _tpm=		tpm
 _twa=		twa
 _vesa=		vesa
+_vxge=  	vxge
 _x86bios=	x86bios
 _wi=		wi
 _wpi=		wpi

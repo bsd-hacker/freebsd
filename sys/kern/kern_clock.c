@@ -842,7 +842,7 @@ watchdog_fire(void)
 	curintr = intrcnt;
 	curname = intrnames;
 	inttotal = 0;
-	nintr = eintrcnt - intrcnt;
+	nintr = sintrcnt / sizeof(u_long);
 
 	printf("interrupt                   total\n");
 	while (--nintr >= 0) {

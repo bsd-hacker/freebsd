@@ -146,8 +146,6 @@ struct rm_queue {
 	struct rm_queue* volatile rmq_prev;
 };
 
-#define	PCPU_NAME_LEN (sizeof("CPU ") + sizeof(__XSTRING(MAXCPU) + 1))
-
 /*
  * This structure maps out the global data that needs to be kept on a
  * per-cpu basis.  The members are accessed via the PCPU_GET/SET/PTR
@@ -165,9 +163,6 @@ struct pcpu {
 	u_int		pc_cpuid;		/* This cpu number */
 	STAILQ_ENTRY(pcpu) pc_allcpu;
 	struct lock_list_entry *pc_spinlocks;
-#ifdef KTR
-	char		pc_name[PCPU_NAME_LEN];	/* String name for KTR */
-#endif
 	struct vmmeter	pc_cnt;			/* VM stats counters */
 	long		pc_cp_time[CPUSTATES];	/* statclock ticks */
 	struct device	*pc_device;
@@ -196,18 +191,6 @@ struct pcpu {
 	 * if only to make kernel debugging easier.
 	 */
 	PCPU_MD_FIELDS;
-
-	/*
-	 * XXX
-	 * For the time being, keep the cpuset_t objects as the very last
-	 * members of the structure.
-	 * They are actually tagged to be removed soon, but as long as this
-	 * does not happen, it is necessary to find a way to implement
-	 * easilly interfaces to userland and leaving them last makes that
-	 * possible.
-	 */
-	cpuset_t	pc_cpumask;		/* This cpu mask */
-	cpuset_t	pc_other_cpus;		/* Mask of all other cpus */
 } __aligned(CACHE_LINE_SIZE);
 
 #ifdef _KERNEL
@@ -215,7 +198,7 @@ struct pcpu {
 STAILQ_HEAD(cpuhead, pcpu);
 
 extern struct cpuhead cpuhead;
-extern struct pcpu *cpuid_to_pcpu[MAXCPU];
+extern struct pcpu *cpuid_to_pcpu[];
 
 #define	curcpu		PCPU_GET(cpuid)
 #define	curproc		(curthread->td_proc)

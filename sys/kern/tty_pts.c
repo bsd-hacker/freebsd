@@ -295,7 +295,7 @@ ptsdev_ioctl(struct file *fp, u_long cmd, void *data,
 			return (EINVAL);
 		return copyout(p, fgn->buf, i);
 	}
-	
+
 	/*
 	 * We need to implement TIOCGPGRP and TIOCGSID here again. When
 	 * called on the pseudo-terminal master, it should not check if
@@ -563,7 +563,7 @@ ptsdev_stat(struct file *fp, struct stat *sb, struct ucred *active_cred,
 	sb->st_uid = dev->si_uid;
 	sb->st_gid = dev->si_gid;
 	sb->st_mode = dev->si_mode | S_IFCHR;
-	
+
 	return (0);
 }
 
@@ -597,6 +597,8 @@ static struct fileops ptsdev_ops = {
 	.fo_kqfilter	= ptsdev_kqfilter,
 	.fo_stat	= ptsdev_stat,
 	.fo_close	= ptsdev_close,
+	.fo_chmod	= invfo_chmod,
+	.fo_chown	= invfo_chown,
 	.fo_flags	= DFLAG_PASSABLE,
 };
 
@@ -686,6 +688,8 @@ ptsdrv_free(void *softc)
 	racct_sub_cred(psc->pts_cred, RACCT_NPTS, 1);
 	crfree(psc->pts_cred);
 
+	seldrain(&psc->pts_inpoll);
+	seldrain(&psc->pts_outpoll);
 	knlist_destroy(&psc->pts_inpoll.si_note);
 	knlist_destroy(&psc->pts_outpoll.si_note);
 
@@ -812,7 +816,7 @@ pts_alloc_external(int fflags, struct thread *td, struct file *fp,
 #endif /* PTS_EXTERNAL */
 
 int
-posix_openpt(struct thread *td, struct posix_openpt_args *uap)
+sys_posix_openpt(struct thread *td, struct posix_openpt_args *uap)
 {
 	int error, fd;
 	struct file *fp;
@@ -823,7 +827,7 @@ posix_openpt(struct thread *td, struct posix_openpt_args *uap)
 	 */
 	if (uap->flags & ~(O_RDWR|O_NOCTTY))
 		return (EINVAL);
-	
+
 	error = falloc(td, &fp, &fd, 0);
 	if (error)
 		return (error);

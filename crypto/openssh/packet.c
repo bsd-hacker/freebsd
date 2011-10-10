@@ -1,4 +1,5 @@
-/* $OpenBSD: packet.c,v 1.172 2010/11/13 23:27:50 djm Exp $ */
+/* $OpenBSD: packet.c,v 1.173 2011/05/06 21:14:05 djm Exp $ */
+/* $FreeBSD$ */
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
  * Copyright (c) 1995 Tatu Ylonen <ylo@cs.hut.fi>, Espoo, Finland
@@ -195,6 +196,9 @@ struct session_state {
 };
 
 static struct session_state *active_state, *backup_state;
+#ifdef	NONE_CIPHER_ENABLED
+static int rekey_requested = 0;
+#endif
 
 static struct session_state *
 alloc_session_state(void)
@@ -422,10 +426,8 @@ packet_set_state(int mode, u_int32_t seqnr, u_int64_t blocks, u_int32_t packets,
 	state->bytes = bytes;
 }
 
-/* returns 1 if connection is via ipv4 */
-
-int
-packet_connection_is_ipv4(void)
+static int
+packet_connection_af(void)
 {
 	struct sockaddr_storage to;
 	socklen_t tolen = sizeof(to);
@@ -439,9 +441,9 @@ packet_connection_is_ipv4(void)
 #ifdef IPV4_IN_IPV6
 	if (to.ss_family == AF_INET6 &&
 	    IN6_IS_ADDR_V4MAPPED(&((struct sockaddr_in6 *)&to)->sin6_addr))
-		return 1;
+		return AF_INET;
 #endif
-	return 0;
+	return to.ss_family;
 }
 
 /* Sets the connection into non-blocking mode. */
@@ -1752,16 +1754,30 @@ packet_not_very_much_data_to_write(void)
 static void
 packet_set_tos(int tos)
 {
-#if defined(IP_TOS) && !defined(IP_TOS_IS_BROKEN)
-	if (!packet_connection_is_on_socket() ||
-	    !packet_connection_is_ipv4())
+#ifndef IP_TOS_IS_BROKEN
+	if (!packet_connection_is_on_socket())
 		return;
-	debug3("%s: set IP_TOS 0x%02x", __func__, tos);
-	if (setsockopt(active_state->connection_in, IPPROTO_IP, IP_TOS, &tos,
-	    sizeof(tos)) < 0)
-		error("setsockopt IP_TOS %d: %.100s:",
-		    tos, strerror(errno));
-#endif
+	switch (packet_connection_af()) {
+# ifdef IP_TOS
+	case AF_INET:
+		debug3("%s: set IP_TOS 0x%02x", __func__, tos);
+		if (setsockopt(active_state->connection_in,
+		    IPPROTO_IP, IP_TOS, &tos, sizeof(tos)) < 0)
+			error("setsockopt IP_TOS %d: %.100s:",
+			    tos, strerror(errno));
+		break;
+# endif /* IP_TOS */
+# ifdef IPV6_TCLASS
+	case AF_INET6:
+		debug3("%s: set IPV6_TCLASS 0x%02x", __func__, tos);
+		if (setsockopt(active_state->connection_in,
+		    IPPROTO_IPV6, IPV6_TCLASS, &tos, sizeof(tos)) < 0)
+			error("setsockopt IPV6_TCLASS %d: %.100s:",
+			    tos, strerror(errno));
+		break;
+# endif /* IPV6_TCLASS */
+	}
+#endif /* IP_TOS_IS_BROKEN */
 }
 
 /* Informs that the current session is interactive.  Sets IP flags for that. */
@@ -1861,12 +1877,26 @@ packet_send_ignore(int nbytes)
 	}
 }
 
+#ifdef	NONE_CIPHER_ENABLED
+void
+packet_request_rekeying(void)
+{
+	rekey_requested = 1;
+}
+#endif
+
 #define MAX_PACKETS	(1U<<31)
 int
 packet_need_rekeying(void)
 {
 	if (datafellows & SSH_BUG_NOREKEY)
 		return 0;
+#ifdef	NONE_CIPHER_ENABLED
+	if (rekey_requested == 1) {
+		rekey_requested = 0;
+		return 1;
+	}
+#endif
 	return
 	    (active_state->p_send.packets > MAX_PACKETS) ||
 	    (active_state->p_read.packets > MAX_PACKETS) ||
@@ -1958,3 +1988,11 @@ packet_restore_state(void)
 		add_recv_bytes(len);
 	}
 }
+
+#ifdef	NONE_CIPHER_ENABLED
+int
+packet_get_authentication_state(void)
+{
+	return (active_state->after_authentication);
+}
+#endif

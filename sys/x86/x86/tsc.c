@@ -452,6 +452,7 @@ init_TSC_tc(void)
 	if (cpu_can_deep_sleep && cpu_vendor_id == CPU_VENDOR_INTEL &&
 	    (amd_pminfo & AMDPM_TSC_INVARIANT) == 0) {
 		tsc_timecounter.tc_quality = -1000;
+		tsc_timecounter.tc_flags |= TC_FLAGS_C3STOP;
 		if (bootverbose)
 			printf("TSC timecounter disabled: C3 enabled.\n");
 		goto init;
@@ -463,11 +464,16 @@ init_TSC_tc(void)
 	 * synchronized.  If the user is sure that the system has synchronized
 	 * TSCs, set kern.timecounter.smp_tsc tunable to a non-zero value.
 	 * We also limit the frequency even lower to avoid "temporal anomalies"
-	 * as much as possible.
+	 * as much as possible.  The TSC seems unreliable in virtualized SMP
+	 * environments, so it is set to a negative quality in those cases.
 	 */
 	if (smp_cpus > 1) {
-		tsc_timecounter.tc_quality = test_smp_tsc();
-		max_freq >>= 8;
+		if (vm_guest != 0) {
+			tsc_timecounter.tc_quality = -100;
+		} else {
+			tsc_timecounter.tc_quality = test_smp_tsc();
+			max_freq >>= 8;
+		}
 	} else
 #endif
 	if (tsc_is_invariant)

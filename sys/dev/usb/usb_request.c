@@ -67,6 +67,11 @@
 #include <dev/usb/usb_bus.h>
 #include <sys/ctype.h>
 
+static int usb_no_cs_fail;
+
+SYSCTL_INT(_hw_usb, OID_AUTO, no_cs_fail, CTLFLAG_RW,
+    &usb_no_cs_fail, 0, "USB clear stall failures are ignored, if set");
+
 #ifdef USB_DEBUG
 static int usb_pr_poll_delay = USB_PORT_RESET_DELAY;
 static int usb_pr_recovery_delay = USB_PORT_RESET_RECOVERY;
@@ -238,7 +243,7 @@ usb_do_clear_stall_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
-
+tr_transferred:
 		/* reset error counter */
 		udev->clear_stall_errors = 0;
 
@@ -297,6 +302,13 @@ tr_setup:
 			break;
 
 		DPRINTF("Clear stall failed.\n");
+
+		/*
+		 * Some VMs like VirtualBox always return failure on
+		 * clear-stall which we sometimes should just ignore.
+		 */
+		if (usb_no_cs_fail)
+			goto tr_transferred;
 		if (udev->clear_stall_errors == USB_CS_RESET_LIMIT)
 			goto tr_setup;
 
@@ -779,10 +791,17 @@ usbd_req_reset_port(struct usb_device *udev, struct mtx *mtx, uint8_t port)
 	uint16_t pr_recovery_delay;
 
 #endif
-	err = usbd_req_set_port_feature(udev, mtx, port, UHF_PORT_RESET);
-	if (err) {
+	/* clear any leftover port reset changes first */
+	usbd_req_clear_port_feature(
+	    udev, mtx, port, UHF_C_PORT_RESET);
+
+	/* assert port reset on the given port */
+	err = usbd_req_set_port_feature(
+	    udev, mtx, port, UHF_PORT_RESET);
+
+	/* check for errors */
+	if (err)
 		goto done;
-	}
 #ifdef USB_DEBUG
 	/* range check input parameters */
 	pr_poll_delay = usb_pr_poll_delay;
@@ -798,6 +817,9 @@ usbd_req_reset_port(struct usb_device *udev, struct mtx *mtx, uint8_t port)
 #endif
 	n = 0;
 	while (1) {
+		uint16_t status;
+		uint16_t change;
+
 #ifdef USB_DEBUG
 		/* wait for the device to recover from reset */
 		usb_pause_mtx(mtx, USB_MS_TO_TICKS(pr_poll_delay));
@@ -811,14 +833,25 @@ usbd_req_reset_port(struct usb_device *udev, struct mtx *mtx, uint8_t port)
 		if (err) {
 			goto done;
 		}
+		status = UGETW(ps.wPortStatus);
+		change = UGETW(ps.wPortChange);
+
 		/* if the device disappeared, just give up */
-		if (!(UGETW(ps.wPortStatus) & UPS_CURRENT_CONNECT_STATUS)) {
+		if (!(status & UPS_CURRENT_CONNECT_STATUS))
 			goto done;
-		}
+
 		/* check if reset is complete */
-		if (UGETW(ps.wPortChange) & UPS_C_PORT_RESET) {
+		if (change & UPS_C_PORT_RESET)
 			break;
-		}
+
+		/*
+		 * Some Virtual Machines like VirtualBox 4.x fail to
+		 * generate a port reset change event. Check if reset
+		 * is no longer asserted.
+		 */
+		if (!(status & UPS_RESET))
+			break;
+
 		/* check for timeout */
 		if (n > 1000) {
 			n = 0;
@@ -1748,7 +1781,7 @@ usbd_req_get_report(struct usb_device *udev, struct mtx *mtx, void *data,
 	struct usb_interface *iface = usbd_get_iface(udev, iface_index);
 	struct usb_device_request req;
 
-	if ((iface == NULL) || (iface->idesc == NULL) || (id == 0)) {
+	if ((iface == NULL) || (iface->idesc == NULL)) {
 		return (USB_ERR_INVAL);
 	}
 	DPRINTFN(5, "len=%d\n", len);

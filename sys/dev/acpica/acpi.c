@@ -574,7 +574,7 @@ acpi_attach(device_t dev)
 	&sc->acpi_suspend_sx, 0, acpi_sleep_state_sysctl, "A", "");
     SYSCTL_ADD_INT(&sc->acpi_sysctl_ctx, SYSCTL_CHILDREN(sc->acpi_sysctl_tree),
 	OID_AUTO, "sleep_delay", CTLFLAG_RW, &sc->acpi_sleep_delay, 0,
-	"sleep delay");
+	"sleep delay in seconds");
     SYSCTL_ADD_INT(&sc->acpi_sysctl_ctx, SYSCTL_CHILDREN(sc->acpi_sysctl_tree),
 	OID_AUTO, "s4bios", CTLFLAG_RW, &sc->acpi_s4bios, 0, "S4BIOS mode");
     SYSCTL_ADD_INT(&sc->acpi_sysctl_ctx, SYSCTL_CHILDREN(sc->acpi_sysctl_tree),
@@ -1244,7 +1244,7 @@ acpi_alloc_resource(device_t bus, device_t child, int type, int *rid,
     /*
      * First attempt at allocating the resource.  For direct children,
      * use resource_list_alloc() to handle reserved resources.  For
-     * other dveices, pass the request up to our parent.
+     * other devices, pass the request up to our parent.
      */
     if (bus == device_get_parent(child)) {
 	ad = device_get_ivars(child);

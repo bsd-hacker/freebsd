@@ -1,4 +1,5 @@
-/* $OpenBSD: packet.h,v 1.55 2010/11/13 23:27:50 djm Exp $ */
+/* $OpenBSD: packet.h,v 1.56 2011/05/06 21:14:05 djm Exp $ */
+/* $FreeBSD$ */
 
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
@@ -38,6 +39,9 @@ void     packet_set_interactive(int, int, int);
 int      packet_is_interactive(void);
 void     packet_set_server(void);
 void     packet_set_authenticated(void);
+#ifdef	NONE_CIPHER_ENABLED
+int      packet_get_authentication_state(void);
+#endif
 
 void     packet_start(u_char);
 void     packet_put_char(int ch);
@@ -92,7 +96,6 @@ int      packet_have_data_to_write(void);
 int      packet_not_very_much_data_to_write(void);
 
 int	 packet_connection_is_on_socket(void);
-int	 packet_connection_is_ipv4(void);
 int	 packet_remaining(void);
 void	 packet_send_ignore(int);
 void	 packet_add_padding(u_char);
@@ -117,6 +120,9 @@ do { \
 } while (0)
 
 int	 packet_need_rekeying(void);
+#ifdef	NONE_CIPHER_ENABLED
+void	 packet_request_rekeying(void);
+#endif
 void	 packet_set_rekey_limit(u_int32_t);
 
 void	 packet_backup_state(void);

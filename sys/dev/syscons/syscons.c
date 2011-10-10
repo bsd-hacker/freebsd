@@ -1450,6 +1450,8 @@ sctty_ioctl(struct tty *tp, u_long cmd, caddr_t data, struct thread *td)
 
     case GIO_KEYMAP:		/* get keyboard translation table */
     case PIO_KEYMAP:		/* set keyboard translation table */
+    case OGIO_KEYMAP:		/* get keyboard translation table (compat) */
+    case OPIO_KEYMAP:		/* set keyboard translation table (compat) */
     case GIO_DEADKEYMAP:	/* get accent key translation table */
     case PIO_DEADKEYMAP:	/* set accent key translation table */
     case GETFKEY:		/* get function key string */
@@ -2506,7 +2508,7 @@ signal_vt_rel(scr_stat *scp)
 	return FALSE;
     scp->status |= SWITCH_WAIT_REL;
     PROC_LOCK(scp->proc);
-    psignal(scp->proc, scp->smode.relsig);
+    kern_psignal(scp->proc, scp->smode.relsig);
     PROC_UNLOCK(scp->proc);
     DPRINTF(5, ("sending relsig to %d\n", scp->pid));
     return TRUE;
@@ -2521,7 +2523,7 @@ signal_vt_acq(scr_stat *scp)
 	cnavailable(sc_consptr,  FALSE);
     scp->status |= SWITCH_WAIT_ACQ;
     PROC_LOCK(scp->proc);
-    psignal(scp->proc, scp->smode.acqsig);
+    kern_psignal(scp->proc, scp->smode.acqsig);
     PROC_UNLOCK(scp->proc);
     DPRINTF(5, ("sending acqsig to %d\n", scp->pid));
     return TRUE;
@@ -3512,7 +3514,7 @@ next_code:
 	    case DBG:
 #ifndef SC_DISABLE_KDBKEY
 		if (enable_kdbkey)
-			kdb_enter(KDB_WHY_BREAK, "manual escape to debugger");
+			kdb_break();
 #endif
 		break;
 
@@ -3560,6 +3562,10 @@ next_code:
 	    /* goto next_code */
 	} else {
 	    /* regular keys (maybe MKEY is set) */
+#if !defined(SC_DISABLE_KDBKEY) && defined(KDB)
+	    if (enable_kdbkey)
+		kdb_alt_break(c, &sc->sc_altbrk);
+#endif
 	    if (!(sc->flags & SC_SCRN_BLANKED))
 		return c;
 	}

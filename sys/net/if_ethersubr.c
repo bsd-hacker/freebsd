@@ -499,6 +499,7 @@ ether_ipfw_chk(struct mbuf **m0, struct ifnet *dst, int shared)
 	args.m = m;		/* the packet we are looking at		*/
 	args.oif = dst;		/* destination, if any			*/
 	args.next_hop = NULL;	/* we do not support forward yet	*/
+	args.next_hop6 = NULL;	/* we do not support forward yet	*/
 	args.eh = &save_eh;	/* MAC header for bridged/MAC packets	*/
 	args.inp = NULL;	/* used by ipfw uid/gid/jail rules	*/
 	i = V_ip_fw_chk_ptr(&args);
@@ -691,6 +692,8 @@ ether_input_internal(struct ifnet *ifp, struct mbuf *m)
 		    ETHER_HDR_LEN - ETHER_TYPE_LEN);
 		m_adj(m, ETHER_VLAN_ENCAP_LEN);
 	}
+
+	M_SETFIB(m, ifp->if_fib);
 
 	/* Allow ng_ether(4) to claim this frame. */
 	if (IFP2AC(ifp)->ac_netgraph != NULL) {

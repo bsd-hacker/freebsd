@@ -89,6 +89,7 @@ static const struct iwn_ident iwn_ident_table[] = {
 	{ 0x8086, 0x008b, "Intel(R) Centrino(R) Wireless-N 1030"	 },
 	{ 0x8086, 0x0090, "Intel(R) Centrino(R) Advanced-N 6230"	 },
 	{ 0x8086, 0x0091, "Intel(R) Centrino(R) Advanced-N 6230"	 },
+	{ 0x8086, 0x0896, "Intel(R) Centrino(R) Wireless-N 130"		 },
 	{ 0x8086, 0x4229, "Intel(R) Wireless WiFi Link 4965"		 },
 	{ 0x8086, 0x422b, "Intel(R) Centrino(R) Ultimate-N 6300"	 },
 	{ 0x8086, 0x422c, "Intel(R) Centrino(R) Advanced-N 6200"	 },
@@ -6952,12 +6953,24 @@ iwn_set_channel(struct ieee80211com *ic)
 	const struct ieee80211_channel *c = ic->ic_curchan;
 	struct ifnet *ifp = ic->ic_ifp;
 	struct iwn_softc *sc = ifp->if_softc;
+	int error;
 
 	IWN_LOCK(sc);
 	sc->sc_rxtap.wr_chan_freq = htole16(c->ic_freq);
 	sc->sc_rxtap.wr_chan_flags = htole16(c->ic_flags);
 	sc->sc_txtap.wt_chan_freq = htole16(c->ic_freq);
 	sc->sc_txtap.wt_chan_flags = htole16(c->ic_flags);
+
+	/*
+	 * Only need to set the channel in Monitor mode. AP scanning and auth
+	 * are already taken care of by their respective firmware commands.
+	 */
+	if (ic->ic_opmode == IEEE80211_M_MONITOR) {
+		error = iwn_config(sc);
+		if (error != 0)
+		device_printf(sc->sc_dev,
+		    "%s: error %d settting channel\n", __func__, error);
+	}
 	IWN_UNLOCK(sc);
 }
 

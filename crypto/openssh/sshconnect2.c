@@ -1,4 +1,5 @@
-/* $OpenBSD: sshconnect2.c,v 1.186 2010/11/29 23:45:51 djm Exp $ */
+/* $OpenBSD: sshconnect2.c,v 1.188 2011/05/24 07:15:47 djm Exp $ */
+/* $FreeBSD$ */
 /*
  * Copyright (c) 2000 Markus Friedl.  All rights reserved.
  * Copyright (c) 2008 Damien Miller.  All rights reserved.
@@ -81,6 +82,16 @@
 extern char *client_version_string;
 extern char *server_version_string;
 extern Options options;
+#ifdef	NONE_CIPHER_ENABLED
+extern Kex *xxx_kex;
+
+/*
+ * tty_flag is set in ssh.c so we can use it here.  If set then prevent
+ * the switch to the null cipher.
+ */
+
+extern int tty_flag;
+#endif
 
 /*
  * SSH2 key exchange
@@ -109,14 +120,15 @@ order_hostkeyalgs(char *host, struct sockaddr *hostaddr, u_short port)
 	size_t maxlen;
 	struct hostkeys *hostkeys;
 	int ktype;
+	u_int i;
 
 	/* Find all hostkeys for this hostname */
 	get_hostfile_hostname_ipaddr(host, hostaddr, port, &hostname, NULL);
 	hostkeys = init_hostkeys();
-	load_hostkeys(hostkeys, hostname, options.user_hostfile2);
-	load_hostkeys(hostkeys, hostname, options.system_hostfile2);
-	load_hostkeys(hostkeys, hostname, options.user_hostfile);
-	load_hostkeys(hostkeys, hostname, options.system_hostfile);
+	for (i = 0; i < options.num_user_hostfiles; i++)
+		load_hostkeys(hostkeys, hostname, options.user_hostfiles[i]);
+	for (i = 0; i < options.num_system_hostfiles; i++)
+		load_hostkeys(hostkeys, hostname, options.system_hostfiles[i]);
 
 	oavail = avail = xstrdup(KEX_DEFAULT_PK_ALG);
 	maxlen = strlen(avail) + 1;
@@ -419,6 +431,29 @@ ssh_userauth2(const char *local_user, const char *server_user, char *host,
 	pubkey_cleanup(&authctxt);
 	dispatch_range(SSH2_MSG_USERAUTH_MIN, SSH2_MSG_USERAUTH_MAX, NULL);
 
+#ifdef	NONE_CIPHER_ENABLED
+	/*
+	 * If the user explicitly requests to use the none cipher enable it
+	 * post authentication and only if the right conditions are met: both
+	 * of the NONE switches must be true and there must be no tty allocated.
+	 */
+	if (options.none_switch == 1 && options.none_enabled == 1) {
+		if (!tty_flag) {
+			debug("Requesting none cipher re-keying...");
+			myproposal[PROPOSAL_ENC_ALGS_STOC] = "none";
+			myproposal[PROPOSAL_ENC_ALGS_CTOS] = "none";
+			kex_prop2buf(&xxx_kex->my, myproposal);
+			packet_request_rekeying();
+			fprintf(stderr, "WARNING: enabled NONE cipher\n");
+		} else {
+			/* Requested NONE cipher on an interactive session. */
+			debug("Cannot switch to NONE cipher with tty "
+			    "allocated");
+			fprintf(stderr, "NONE cipher switch disabled given "
+			    "a TTY is allocated\n");
+		}
+	}
+#endif
 	debug("Authentication succeeded (%s).", authctxt.method->name);
 }
 
@@ -1888,9 +1923,12 @@ authmethod_get(char *authlist)
 		    authmethod_is_enabled(current)) {
 			debug3("authmethod_is_enabled %s", name);
 			debug("Next authentication method: %s", name);
+			xfree(name);
 			return current;
 		}
 	}
+	if (name != NULL)
+		xfree(name);
 }
 
 static char *

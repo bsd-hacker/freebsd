@@ -137,6 +137,8 @@ ar9287Attach(uint16_t devid, HAL_SOFTC sc,
 
 	/* XXX override with 9280 specific state */
 	/* override 5416 methods for our needs */
+	AH5416(ah)->ah_initPLL = ar9280InitPLL;
+
 	ah->ah_setAntennaSwitch		= ar9287SetAntennaSwitch;
 	ah->ah_configPCIE		= ar9287ConfigPCIE;
 
@@ -320,6 +322,7 @@ ar9287Attach(uint16_t devid, HAL_SOFTC sc,
 	/* Read Reg Domain */
 	AH_PRIVATE(ah)->ah_currentRD =
 	    ath_hal_eepromGet(ah, AR_EEP_REGDMN_0, AH_NULL);
+	AH_PRIVATE(ah)->ah_currentRDext = AR9287_RDEXT_DEFAULT;
 
 	/*
 	 * ah_miscMode is populated by ar5416FillCapabilityInfo()

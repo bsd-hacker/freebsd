@@ -47,6 +47,8 @@ TWA_DEBUG		opt_twa.h
 TWA_FLASH_FIRMWARE	opt_twa.h
 
 # Debugging options.
+ALT_BREAK_TO_DEBUGGER	opt_kdb.h
+BREAK_TO_DEBUGGER	opt_kdb.h
 DDB
 DDB_BUFR_SIZE	opt_ddb.h
 DDB_CAPTURE_DEFAULTBUFSIZE	opt_ddb.h
@@ -63,7 +65,8 @@ SYSCTL_DEBUG	opt_sysctl.h
 ADAPTIVE_LOCKMGRS
 ALQ
 AUDIT		opt_global.h
-CAPABILITIES	opt_capabilities.h
+CAPABILITIES	opt_capsicum.h
+CAPABILITY_MODE	opt_capsicum.h
 CODA_COMPAT_5	opt_coda.h
 COMPAT_43	opt_compat.h
 COMPAT_43TTY	opt_compat.h
@@ -148,11 +151,11 @@ PPC_DEBUG	opt_ppc.h
 PPC_PROBE_CHIPSET	opt_ppc.h
 PPS_SYNC	opt_ntp.h
 PREEMPTION	opt_sched.h
+PROCDESC	opt_procdesc.h
 QUOTA
 SCHED_4BSD	opt_sched.h
 SCHED_STATS	opt_sched.h
 SCHED_ULE	opt_sched.h
-SHOW_BUSYBUFS
 SLEEPQUEUE_PROFILING
 SLHCI_DEBUG	opt_slhci.h
 SPX_HACK
@@ -163,7 +166,6 @@ MSGMNI		opt_sysvipc.h
 MSGSEG		opt_sysvipc.h
 MSGSSZ		opt_sysvipc.h
 MSGTQL		opt_sysvipc.h
-SEMMAP		opt_sysvipc.h
 SEMMNI		opt_sysvipc.h
 SEMMNS		opt_sysvipc.h
 SEMMNU		opt_sysvipc.h
@@ -426,7 +428,6 @@ SLIP_IFF_OPTS		opt_slip.h
 TCPDEBUG
 TCP_OFFLOAD_DISABLE	opt_inet.h #Disable code to dispatch tcp offloading
 TCP_SIGNATURE		opt_inet.h
-TCP_SORECEIVE_STREAM	opt_inet.h
 VLAN_ARRAY		opt_vlan.h
 XBONEHACK
 FLOWTABLE		opt_route.h
@@ -571,6 +572,7 @@ DFLTPHYS		opt_global.h
 DIAGNOSTIC		opt_global.h
 INVARIANT_SUPPORT	opt_global.h
 INVARIANTS		opt_global.h
+MAXCPU			opt_global.h
 MAXPHYS			opt_global.h
 MCLSHIFT		opt_global.h
 MUTEX_DEBUG		opt_global.h
@@ -579,7 +581,6 @@ LOCK_PROFILING		opt_global.h
 LOCK_PROFILING_FAST	opt_global.h
 MSIZE			opt_global.h
 REGRESSION		opt_global.h
-RESTARTABLE_PANICS	opt_global.h
 RWLOCK_NOINLINE		opt_global.h
 SX_NOINLINE		opt_global.h
 VFS_BIO_DEBUG		opt_global.h
@@ -636,9 +637,6 @@ BKTR_430_FX_MODE		opt_bktr.h
 BKTR_SIS_VIA_MODE		opt_bktr.h
 BKTR_USE_FREEBSD_SMBUS		opt_bktr.h
 BKTR_NEW_MSP34XX_DRIVER		opt_bktr.h
-
-BREAK_TO_DEBUGGER	opt_comconsole.h
-ALT_BREAK_TO_DEBUGGER	opt_comconsole.h
 
 # Options to support PPS
 UART_PPS_ON_CTS		opt_uart.h
@@ -773,7 +771,8 @@ ATH_TXBUF		opt_ath.h
 ATH_RXBUF		opt_ath.h
 ATH_DIAGAPI		opt_ath.h
 ATH_TX99_DIAG		opt_ath.h
-ATH_ENABLE_11N		opt_ah.h
+ATH_ENABLE_11N		opt_ath.h
+ATH_ENABLE_DFS		opt_ath.h
 
 # options for the Atheros hal
 AH_SUPPORT_AR5416	opt_ah.h

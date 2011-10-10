@@ -100,6 +100,9 @@ void	(*ip_divert_ptr)(struct mbuf *, int);
 int	(*ng_ipfw_input_p)(struct mbuf **, int,
 			struct ip_fw_args *, int);
 
+/* Hook for telling pf that the destination address changed */
+void	(*m_addr_chg_pf_p)(struct mbuf *m);
+
 #ifdef INET
 /*
  * Hooks for multicast routing. They all default to NULL, so leave them not
@@ -286,6 +289,13 @@ rip_input(struct mbuf *m, int off)
 	last = NULL;
 
 	ifp = m->m_pkthdr.rcvif;
+	/*
+	 * Add back the IP header length which was
+	 * removed by ip_input().  Raw sockets do
+	 * not modify the packet except for some
+	 * byte order swaps.
+	 */
+	ip->ip_len += off;
 
 	hash = INP_PCBHASH_RAW(proto, ip->ip_src.s_addr,
 	    ip->ip_dst.s_addr, V_ripcbinfo.ipi_hashmask);

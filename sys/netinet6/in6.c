@@ -1810,9 +1810,9 @@ in6_ifinit(struct ifnet *ifp, struct in6_ifaddr *ia,
 	/*
 	 * add a loopback route to self
 	 */
-	if (!(ia->ia_flags & IFA_ROUTE)
+	if (!(ia->ia_flags & IFA_RTSELF)
 	    && (V_nd6_useloopback
-		|| (ifp->if_flags & IFF_LOOPBACK))) {
+		&& !(ifp->if_flags & IFF_LOOPBACK))) {
 		error = ifa_add_loopback_route((struct ifaddr *)ia,
 				       (struct sockaddr *)&ia->ia_addr);
 		if (error == 0)
@@ -2016,6 +2016,27 @@ in6_localaddr(struct in6_addr *in6)
 
 	return (0);
 }
+
+/*
+ * Return 1 if an internet address is for the local host and configured
+ * on one of its interfaces.
+ */
+int
+in6_localip(struct in6_addr *in6)
+{
+	struct in6_ifaddr *ia;
+
+	IN6_IFADDR_RLOCK();
+	TAILQ_FOREACH(ia, &V_in6_ifaddrhead, ia_link) {
+		if (IN6_ARE_ADDR_EQUAL(in6, &ia->ia_addr.sin6_addr)) {
+			IN6_IFADDR_RUNLOCK();
+			return (1);
+		}
+	}
+	IN6_IFADDR_RUNLOCK();
+	return (0);
+}
+
 
 int
 in6_is_addr_deprecated(struct sockaddr_in6 *sa6)
@@ -2636,10 +2657,8 @@ in6_domifattach(struct ifnet *ifp)
 	ext->scope6_id = scope6_ifattach(ifp);
 	ext->lltable = lltable_init(ifp, AF_INET6);
 	if (ext->lltable != NULL) {
-		ext->lltable->llt_new = in6_lltable_new;
 		ext->lltable->llt_free = in6_lltable_free;
 		ext->lltable->llt_prefix_free = in6_lltable_prefix_free;
-		ext->lltable->llt_rtcheck = in6_lltable_rtcheck;
 		ext->lltable->llt_lookup = in6_lltable_lookup;
 		ext->lltable->llt_dump = in6_lltable_dump;
 	}

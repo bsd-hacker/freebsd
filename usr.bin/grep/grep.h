@@ -36,6 +36,8 @@
 #include <stdio.h>
 #include <zlib.h>
 
+#include "fastmatch.h"
+
 #ifdef WITHOUT_NLS
 #define getstr(n)	 errstr[n]
 #else
@@ -58,8 +60,11 @@ extern const char		*errstr[];
 #define BINFILE_TEXT	2
 
 #define FILE_STDIO	0
-#define FILE_GZIP	1
-#define FILE_BZIP	2
+#define FILE_MMAP	1
+#define FILE_GZIP	2
+#define FILE_BZIP	3
+#define FILE_XZ		4
+#define FILE_LZMA	5
 
 #define DIR_READ	0
 #define DIR_SKIP	1
@@ -108,7 +113,8 @@ extern bool	 Eflag, Fflag, Gflag, Hflag, Lflag,
 		 bflag, cflag, hflag, iflag, lflag, mflag, nflag, oflag,
 		 qflag, sflag, vflag, xflag;
 extern bool	 dexclude, dinclude, fexclude, finclude, lbflag, nullflag;
-extern unsigned long long Aflag, Bflag, mcount;
+extern unsigned long long Aflag, Bflag;
+extern long long mcount;
 extern char	*label;
 extern const char *color;
 extern int	 binbehave, devbehave, dirbehave, filebehave, grepbehave, linkbehave;
@@ -119,6 +125,7 @@ extern unsigned int dpatterns, fpatterns, patterns;
 extern struct pat  *pattern;
 extern struct epat *dpattern, *fpattern;
 extern regex_t	*er_pattern, *r_pattern;
+extern fastmatch_t *fg_pattern;
 
 /* For regex errors  */
 #define RE_ERROR_BUF	512

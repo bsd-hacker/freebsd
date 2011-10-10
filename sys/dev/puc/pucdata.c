@@ -524,6 +524,12 @@ const struct puc_cfg puc_pci_devices[] = {
 	    PUC_PORT_4S, 0x18, 0, 8,
 	},
 
+	{   0x1393, 0x1120, 0xffff, 0,
+	    "Moxa Technologies, CP-112UL",
+	    DEFAULT_RCLK * 8,
+	    PUC_PORT_2S, 0x18, 0, 8,
+	},
+
 	{   0x1393, 0x1141, 0xffff, 0,
 	    "Moxa Technologies, Industio CP-114",
 	    DEFAULT_RCLK * 8,
@@ -726,6 +732,13 @@ const struct puc_cfg puc_pci_devices[] = {
 	 * StarTech.com PEX4S952 (4 port) and PEX8S952 (8 port)
 	 * <URL:http://www.startech.com>
 	 */
+
+	{   0x1415, 0xc138, 0xffff, 0,
+	    "Oxford Semiconductor OXPCIe952 UARTs",
+	    DEFAULT_RCLK * 0x22,
+	    PUC_PORT_NONSTANDARD, 0x10, 0, -1,
+	    .config_function = puc_config_oxford_pcie
+	},
 
 	{   0x1415, 0xc158, 0xffff, 0,
 	    "Oxford Semiconductor OXPCIe952 UARTs",

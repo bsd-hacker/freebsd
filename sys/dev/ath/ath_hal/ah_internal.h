@@ -208,7 +208,8 @@ typedef struct {
 			halBssidMatchSupport		: 1,
 			hal4kbSplitTransSupport		: 1,
 			halHasRxSelfLinkedTail		: 1,
-			halSupportsFastClock5GHz	: 1;	/* Hardware supports 5ghz fast clock; check eeprom/channel before using */
+			halSupportsFastClock5GHz	: 1,	/* Hardware supports 5ghz fast clock; check eeprom/channel before using */
+			halHasLongRxDescTsf		: 1;
 	uint32_t	halWirelessModes;
 	uint16_t	halTotalQueues;
 	uint16_t	halKeyCacheSize;
@@ -303,6 +304,7 @@ struct ath_hal_private {
 	 */
 	HAL_REG_DOMAIN	ah_currentRD;		/* EEPROM regulatory domain */
 	HAL_REG_DOMAIN	ah_currentRDext;	/* EEPROM extended regdomain flags */
+	HAL_DFS_DOMAIN	ah_dfsDomain;		/* current DFS domain */
 	HAL_CHANNEL_INTERNAL ah_channels[AH_MAXCHAN]; /* private chan state */
 	u_int		ah_nchan;		/* valid items in ah_channels */
 	const struct regDomain *ah_rd2GHz;	/* reg state for 2G band */
@@ -475,12 +477,6 @@ isBigEndian(void)
 #define	OS_A_REG_RMW_FIELD(_a, _r, _f, _v) \
 	do { OS_REG_WRITE(_a, _r, (OS_REG_READ(_a, _r) &~ (_f)) | (((_v) << _f##_S) & (_f))) ; OS_DELAY(100); } while (0)
 
-/* system-configurable parameters */
-extern	int ath_hal_dma_beacon_response_time;	/* in TU's */
-extern	int ath_hal_sw_beacon_response_time;	/* in TU's */
-extern	int ath_hal_additional_swba_backoff;	/* in TU's */
-extern	int ath_hal_ar5416_biasadj;		/* 1 or 0 */
-
 /* wait for the register contents to have the specified value */
 extern	HAL_BOOL ath_hal_wait(struct ath_hal *, u_int reg,
 		uint32_t mask, uint32_t val);
@@ -504,11 +500,18 @@ extern	void ath_hal_free(void *);
 /* common debugging interfaces */
 #ifdef AH_DEBUG
 #include "ah_debug.h"
-extern	int ath_hal_debug;
+extern	int ath_hal_debug;	/* Global debug flags */
+
+/*
+ * The typecast is purely because some callers will pass in
+ * AH_NULL directly rather than using a NULL ath_hal pointer.
+ */
 #define	HALDEBUG(_ah, __m, ...) \
 	do {							\
 		if ((__m) == HAL_DEBUG_UNMASKABLE ||		\
-		    (ath_hal_debug & (__m))) {			\
+		    ath_hal_debug & (__m) ||			\
+		    ((_ah) != NULL &&				\
+		      ((struct ath_hal *) (_ah))->ah_config.ah_debug & (__m))) {	\
 			DO_HALDEBUG((_ah), (__m), __VA_ARGS__);	\
 		}						\
 	} while(0);
@@ -516,7 +519,7 @@ extern	int ath_hal_debug;
 extern	void DO_HALDEBUG(struct ath_hal *ah, u_int mask, const char* fmt, ...)
 	__printflike(3,4);
 #else
-#define HALDEBUG(_ah, __m, _fmt, ...)
+#define HALDEBUG(_ah, __m, ...)
 #endif /* AH_DEBUG */
 
 /*
