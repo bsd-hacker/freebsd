@@ -50,12 +50,38 @@ __FBSDID("$FreeBSD$");
 
 char file[128];
 int fd;
+int freespace;
 
 int
 setup(int nb)
 {
+	int64_t bl;
+	int64_t in;
+	int64_t reserve_bl;
+	int64_t reserve_in;
 	int i;
 	char buf[1024];
+
+	if (nb == 0) {
+		getdf(&bl, &in);
+
+		/* Resource requirements: */
+		reserve_in =       1 * op->incarnations + 2;
+		reserve_bl = 1064960 * op->incarnations + 2048;
+		freespace = (reserve_bl <= bl && reserve_in <= in);
+		if (!freespace)
+			reserve_bl = reserve_in = 0;
+
+		if (op->verbose > 1)
+			printf("lockf2(incarnations=%d). Free(%jdk, %jd), reserve(%jdk, %jd)\n",
+			    op->incarnations, bl/1024, in, reserve_bl/1024, reserve_in);
+		reservedf(reserve_bl, reserve_in);
+		putval(freespace);
+	} else {
+		freespace = getval();
+	}
+	if (!freespace)
+		_exit (0);
 
 	sprintf(file, "lockf.%d", getpid());
 	if ((fd = open(file,O_CREAT | O_TRUNC | O_RDWR, 0600)) == -1) 
@@ -84,7 +110,7 @@ test(void)
 	if ((fd = open(file, O_RDWR, 0600)) == -1)
 		err(1, "open(%s)", file);
 	
-	for (i = 0; i < 1024; i++) {
+	for (i = 0; i < 1024 && done_testing == 0; i++) {
 		pos = random_int(0, 1024 * 1024 - 1);
 		if (lseek(fd, pos, SEEK_SET) == -1)
 			err(1, "lseek");
