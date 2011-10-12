@@ -44,7 +44,7 @@ __FBSDID("$FreeBSD$");
 volatile int done = 0;
 
 int
-setup(int nb)
+setup(int nb __unused)
 {
 	return (0);
 }
@@ -55,13 +55,13 @@ cleanup(void)
 }
 
 void *
-thr1(void *arg)
+thr1(void *arg __unused)
 {
 	return (0);
 }
 
 void *
-thr2(void *arg)
+thr2(void *arg __unused)
 {
 	while (done == 0)
 		pthread_yield();

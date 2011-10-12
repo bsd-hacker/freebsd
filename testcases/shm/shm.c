@@ -57,7 +57,7 @@ size_t	pgsize;
 pid_t	pid;
 
 int
-setup(int nb)
+setup(int nb __unused)
 {
 	int seed;
 

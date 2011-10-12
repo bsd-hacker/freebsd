@@ -45,7 +45,7 @@ static unsigned long size;
 int
 setup(int nb)
 {
-	int pct;
+	int pct = 0;
 	unsigned long mem;
 	int64_t  swapinfo = 0;
 	struct rlimit rlp;
@@ -101,8 +101,8 @@ int
 test(void)
 {
 	char *c;
-	int i, page;
-	unsigned long oldsize = size;
+	int page;
+	unsigned long i, oldsize = size;
 	time_t start;
 
 	c = malloc(size);
@@ -118,7 +118,7 @@ test(void)
 	while (done_testing == 0 &&
 			(time(NULL) - start) < op->run_time) {
 		i = 0;
-		while (i < size && done_testing == 0) {
+		while (i < (int)size && done_testing == 0) {
 			c[i] = 0;
 			i += page;
 		}

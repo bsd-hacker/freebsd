@@ -42,7 +42,7 @@ __FBSDID("$FreeBSD$");
 #define NTHREADS 256
 
 int
-setup(int nb)
+setup(int nb __unused)
 {
 	return (0);
 }
@@ -53,7 +53,7 @@ cleanup(void)
 }
 
 void *
-thr_routine(void *arg)
+thr_routine(void *arg __unused)
 {
 	(void) getpid();
 	return (0);

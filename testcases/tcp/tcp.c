@@ -134,7 +134,7 @@ writer(void) {
 
 	if ((buf = malloc(bufsize)) == NULL)
 			err(1, "malloc(%d), %s:%d", bufsize, __FILE__, __LINE__);
-	for (i = 0; i < bufsize / sizeof(int); i++)
+	for (i = 0; i < bufsize / (int)sizeof(int); i++)
 		buf[i] = i;
 
 	for (;;) {

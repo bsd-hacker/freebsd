@@ -44,7 +44,7 @@ __FBSDID("$FreeBSD$");
 #define TXT "Hello, world!"
 
 int
-setup(int nb)
+setup(int nb __unused)
 {
         return (0);
 }

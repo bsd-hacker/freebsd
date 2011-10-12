@@ -65,7 +65,7 @@ static int ignore[] = {
 };
 
 int
-setup(int nb)
+setup(int nb __unused)
 {
 	int i;
 	struct rlimit rl;
@@ -80,7 +80,7 @@ setup(int nb)
 
 	if (op->argc == 1) {
 		num = atoi(op->argv[0]);
-		for (i = 0; i < sizeof(ignore) / sizeof(ignore[0]); i++)
+		for (i = 0; i < (int)sizeof(ignore) / (int)sizeof(ignore[0]); i++)
 			if (num == ignore[i]) {
 				printf("syscall %d is marked a no test!\n", num);
 				exit(1);
@@ -89,7 +89,7 @@ setup(int nb)
 		num = 0;
 		while (num == 0) {
 			num = random_int(0, SYS_MAXSYSCALL);
-			for (i = 0; i < sizeof(ignore) / sizeof(ignore[0]); i++)
+			for (i = 0; i < (int)sizeof(ignore) / (int)sizeof(ignore[0]); i++)
 				if (num == ignore[i]) {
 					num = 0;
 					break;

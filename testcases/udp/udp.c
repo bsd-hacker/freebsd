@@ -46,7 +46,7 @@ __FBSDID("$FreeBSD$");
 static int bufsize;
 
 int
-setup(int nb)
+setup(int nb __unused)
 {
 	bufsize = 2 << random_int(1, 12);
 	return (0);
@@ -86,7 +86,7 @@ test(void)
 	} else {
 		sock_in.sin_family = AF_INET;
 		sock_in.sin_addr.s_addr = inet_addr(hostname);
-		if (sock_in.sin_addr.s_addr == -1) {
+		if (sock_in.sin_addr.s_addr == INADDR_NONE) {
 			err(1, "host: %s", hostname);
 		}
 	}

@@ -38,7 +38,7 @@ __FBSDID("$FreeBSD$");
 #include "stress.h"
 
 int
-setup(int nb)
+setup(int nb __unused)
 {
 	return (0);
 }
