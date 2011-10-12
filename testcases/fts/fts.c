@@ -44,7 +44,7 @@ __FBSDID("$FreeBSD$");
 #include "stress.h"
 
 int
-setup(int nb)
+setup(int nb __unused)
 {
 	return (0);
 }
@@ -70,7 +70,7 @@ test(void)
 	if ((fts = fts_open(args, ftsoptions, NULL)) == NULL)
 		err(1, "fts_open");
 
-	while ((p = fts_read(fts)) != NULL) {
+	while ((p = fts_read(fts)) != NULL && done_testing == 0) {
 		if (op->verbose > 1)
 			(void) printf("%s\n", p->fts_path);
 		switch (p->fts_info) {
