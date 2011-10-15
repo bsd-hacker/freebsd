@@ -65,7 +65,9 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_inet.h"
 #include "opt_inet6.h"
+#include "opt_ipfw.h"
 #include "opt_ipsec.h"
+#include "opt_route.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -90,6 +92,7 @@ __FBSDID("$FreeBSD$");
 #include <net/vnet.h>
 
 #include <netinet/in.h>
+#include <netinet/ip_var.h>
 #include <netinet/in_systm.h>
 #include <net/if_llatbl.h>
 #ifdef INET
@@ -112,6 +115,12 @@ __FBSDID("$FreeBSD$");
 #endif /* IPSEC */
 
 #include <netinet6/ip6protosw.h>
+
+#ifdef FLOWTABLE
+#include <net/flowtable.h>
+VNET_DECLARE(int, ip6_output_flowtable_size);
+#define	V_ip6_output_flowtable_size	VNET(ip6_output_flowtable_size)
+#endif
 
 extern struct domain inet6domain;
 
@@ -169,6 +178,24 @@ ip6_init(void)
 	nd6_init();
 	frag6_init();
 
+#ifdef FLOWTABLE
+	if (TUNABLE_INT_FETCH("net.inet6.ip6.output_flowtable_size",
+		&V_ip6_output_flowtable_size)) {
+		if (V_ip6_output_flowtable_size < 256)
+			V_ip6_output_flowtable_size = 256;
+		if (!powerof2(V_ip6_output_flowtable_size)) {
+			printf("flowtable must be power of 2 size\n");
+			V_ip6_output_flowtable_size = 2048;
+		}
+	} else {
+		/*
+		 * round up to the next power of 2
+		 */
+		V_ip6_output_flowtable_size = 1 << fls((1024 + maxusers * 64)-1);
+	}
+	V_ip6_ft = flowtable_alloc("ipv6", V_ip6_output_flowtable_size, FL_IPV6|FL_PCPU);
+#endif	
+	
 	V_ip6_desync_factor = arc4random() % MAX_TEMP_DESYNC_FACTOR;
 
 	/* Skip global initialization stuff for non-default instances. */
@@ -200,6 +227,64 @@ ip6_init(void)
 		}
 
 	netisr_register(&ip6_nh);
+}
+
+/*
+ * The protocol to be inserted into ip6_protox[] must be already registered
+ * in inet6sw[], either statically or through pf_proto_register().
+ */
+int
+ip6proto_register(short ip6proto)
+{
+	struct ip6protosw *pr;
+
+	/* Sanity checks. */
+	if (ip6proto <= 0 || ip6proto >= IPPROTO_MAX)
+		return (EPROTONOSUPPORT);
+
+	/*
+	 * The protocol slot must not be occupied by another protocol
+	 * already.  An index pointing to IPPROTO_RAW is unused.
+	 */
+	pr = (struct ip6protosw *)pffindproto(PF_INET6, IPPROTO_RAW, SOCK_RAW);
+	if (pr == NULL)
+		return (EPFNOSUPPORT);
+	if (ip6_protox[ip6proto] != pr - inet6sw)	/* IPPROTO_RAW */
+		return (EEXIST);
+
+	/*
+	 * Find the protocol position in inet6sw[] and set the index.
+	 */
+	for (pr = (struct ip6protosw *)inet6domain.dom_protosw;
+	    pr < (struct ip6protosw *)inet6domain.dom_protoswNPROTOSW; pr++) {
+		if (pr->pr_domain->dom_family == PF_INET6 &&
+		    pr->pr_protocol && pr->pr_protocol == ip6proto) {
+			ip6_protox[pr->pr_protocol] = pr - inet6sw;
+			return (0);
+		}
+	}
+	return (EPROTONOSUPPORT);
+}
+
+int
+ip6proto_unregister(short ip6proto)
+{
+	struct ip6protosw *pr;
+
+	/* Sanity checks. */
+	if (ip6proto <= 0 || ip6proto >= IPPROTO_MAX)
+		return (EPROTONOSUPPORT);
+
+	/* Check if the protocol was indeed registered. */
+	pr = (struct ip6protosw *)pffindproto(PF_INET6, IPPROTO_RAW, SOCK_RAW);
+	if (pr == NULL)
+		return (EPFNOSUPPORT);
+	if (ip6_protox[ip6proto] == pr - inet6sw)	/* IPPROTO_RAW */
+		return (ENOENT);
+
+	/* Reset the protocol slot to IPPROTO_RAW. */
+	ip6_protox[ip6proto] = pr - inet6sw;
+	return (0);
 }
 
 #ifdef VIMAGE
@@ -273,6 +358,17 @@ ip6_input(struct mbuf *m)
 	 * make sure we don't have onion peering information into m_tag.
 	 */
 	ip6_delaux(m);
+
+	if (m->m_flags & M_FASTFWD_OURS) {
+		/*
+		 * Firewall changed destination to local.
+		 */
+		m->m_flags &= ~M_FASTFWD_OURS;
+		ours = 1;
+		deliverifp = m->m_pkthdr.rcvif;
+		ip6 = mtod(m, struct ip6_hdr *);
+		goto hbhcheck;
+	}
 
 	/*
 	 * mbuf statistics
@@ -421,6 +517,13 @@ ip6_input(struct mbuf *m)
 		goto bad;
 	}
 #endif
+#ifdef IPSEC
+	/*
+	 * Bypass packet filtering for packets previously handled by IPsec.
+	 */
+	if (ip6_ipsec_filtertunnel(m))
+		goto passin;
+#endif /* IPSEC */
 
 	/*
 	 * Run through list of hooks for input packets.
@@ -442,6 +545,24 @@ ip6_input(struct mbuf *m)
 		return;
 	ip6 = mtod(m, struct ip6_hdr *);
 	srcrt = !IN6_ARE_ADDR_EQUAL(&odst, &ip6->ip6_dst);
+
+#ifdef IPFIREWALL_FORWARD
+	if (m->m_flags & M_FASTFWD_OURS) {
+		m->m_flags &= ~M_FASTFWD_OURS;
+		ours = 1;
+		deliverifp = m->m_pkthdr.rcvif;
+		goto hbhcheck;
+	}
+	if (m_tag_find(m, PACKET_TAG_IPFORWARD, NULL) != NULL) {
+		/*
+		 * Directly ship the packet on.  This allows forwarding
+		 * packets originally destined to us to some other directly
+		 * connected host.
+		 */
+		ip6_forward(m, 1);
+		goto out;
+	}
+#endif /* IPFIREWALL_FORWARD */
 
 passin:
 	/*
@@ -489,10 +610,54 @@ passin:
 	     (struct sockaddr *)&dst6);
 	IF_AFDATA_UNLOCK(ifp);
 	if ((lle != NULL) && (lle->la_flags & LLE_IFADDR)) {
-		ours = 1;
-		deliverifp = ifp;
+		struct ifaddr *ifa;
+		struct in6_ifaddr *ia6;
+		int bad;
+
+		bad = 1;
+#define	sa_equal(a1, a2)						\
+	(bcmp((a1), (a2), ((a1))->sin6_len) == 0)
+		IF_ADDR_LOCK(ifp);
+		TAILQ_FOREACH(ifa, &ifp->if_addrhead, ifa_link) {
+			if (ifa->ifa_addr->sa_family != dst6.sin6_family)
+				continue;
+			if (sa_equal(&dst6, ifa->ifa_addr))
+				break;
+		}
+		KASSERT(ifa != NULL, ("%s: ifa not found for lle %p",
+		    __func__, lle));
+#undef sa_equal
+
+		ia6 = (struct in6_ifaddr *)ifa;
+		if (!(ia6->ia6_flags & IN6_IFF_NOTREADY)) {
+			/* Count the packet in the ip address stats */
+			ia6->ia_ifa.if_ipackets++;
+			ia6->ia_ifa.if_ibytes += m->m_pkthdr.len;
+
+			/*
+			 * record address information into m_tag.
+			 */
+			(void)ip6_setdstifaddr(m, ia6);
+
+			bad = 0;
+		} else {
+			char ip6bufs[INET6_ADDRSTRLEN];
+			char ip6bufd[INET6_ADDRSTRLEN];
+			/* address is not ready, so discard the packet. */
+			nd6log((LOG_INFO,
+			    "ip6_input: packet to an unready address %s->%s\n",
+			    ip6_sprintf(ip6bufs, &ip6->ip6_src),
+			    ip6_sprintf(ip6bufd, &ip6->ip6_dst)));
+		}
+		IF_ADDR_UNLOCK(ifp);
 		LLE_RUNLOCK(lle);
-		goto hbhcheck;
+		if (bad)
+			goto bad;
+		else {
+			ours = 1;
+			deliverifp = ifp;
+			goto hbhcheck;
+		}
 	}
 	if (lle != NULL)
 		LLE_RUNLOCK(lle);
@@ -931,7 +1096,7 @@ ip6_hopopts_input(u_int32_t *plenp, u_int32_t *rtalertp,
  *
  * The function assumes that hbh header is located right after the IPv6 header
  * (RFC2460 p7), opthead is pointer into data content in m, and opthead to
- * opthead + hbhlen is located in continuous memory region.
+ * opthead + hbhlen is located in contiguous memory region.
  */
 int
 ip6_process_hopopts(struct mbuf *m, u_int8_t *opthead, int hbhlen,
@@ -1064,7 +1229,7 @@ ip6_process_hopopts(struct mbuf *m, u_int8_t *opthead, int hbhlen,
  * Unknown option processing.
  * The third argument `off' is the offset from the IPv6 header to the option,
  * which is necessary if the IPv6 header the and option header and IPv6 header
- * is not continuous in order to return an ICMPv6 error.
+ * is not contiguous in order to return an ICMPv6 error.
  */
 int
 ip6_unknown_opt(u_int8_t *optp, struct mbuf *m, int off)

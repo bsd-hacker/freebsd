@@ -65,8 +65,10 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_inet.h"
 #include "opt_inet6.h"
+#include "opt_ipfw.h"
 #include "opt_ipsec.h"
 #include "opt_sctp.h"
+#include "opt_route.h"
 
 #include <sys/param.h>
 #include <sys/kernel.h>
@@ -89,6 +91,7 @@ __FBSDID("$FreeBSD$");
 
 #include <netinet/in.h>
 #include <netinet/in_var.h>
+#include <netinet/ip_var.h>
 #include <netinet6/in6_var.h>
 #include <netinet/ip6.h>
 #include <netinet/icmp6.h>
@@ -110,6 +113,10 @@ __FBSDID("$FreeBSD$");
 
 #include <netinet6/ip6protosw.h>
 #include <netinet6/scope6_var.h>
+
+#ifdef FLOWTABLE
+#include <net/flowtable.h>
+#endif
 
 extern int in6_mcast_loop;
 
@@ -211,6 +218,7 @@ ip6_output(struct mbuf *m0, struct ip6_pktopts *opt,
 	struct in6_addr finaldst, src0, dst0;
 	u_int32_t zone;
 	struct route_in6 *ro_pmtu = NULL;
+	int flevalid = 0;
 	int hdrsplit = 0;
 	int needipsec = 0;
 #ifdef SCTP
@@ -223,6 +231,9 @@ ip6_output(struct mbuf *m0, struct ip6_pktopts *opt,
 	int segleft_org = 0;
 	struct secpolicy *sp = NULL;
 #endif /* IPSEC */
+#ifdef IPFIREWALL_FORWARD
+	struct m_tag *fwd_tag;
+#endif
 
 	ip6 = mtod(m, struct ip6_hdr *);
 	if (ip6 == NULL) {
@@ -231,9 +242,7 @@ ip6_output(struct mbuf *m0, struct ip6_pktopts *opt,
 	}
 
 	finaldst = ip6->ip6_dst;
-
 	bzero(&exthdrs, sizeof(exthdrs));
-
 	if (opt) {
 		/* Hop-by-Hop options header */
 		MAKE_EXTHDR(opt->ip6po_hbh, &exthdrs.ip6e_hbh);
@@ -470,7 +479,23 @@ skip_ipsec2:;
 	if (opt && opt->ip6po_rthdr)
 		ro = &opt->ip6po_route;
 	dst = (struct sockaddr_in6 *)&ro->ro_dst;
-
+#ifdef FLOWTABLE
+	if (ro == &ip6route) {
+		struct flentry *fle;
+		
+		/*
+		 * The flow table returns route entries valid for up to 30
+		 * seconds; we rely on the remainder of ip_output() taking no
+		 * longer than that long for the stability of ro_rt.  The
+		 * flow ID assignment must have happened before this point.
+		 */
+		if ((fle = flowtable_lookup_mbuf(V_ip6_ft, m, AF_INET6)) != NULL) {
+			flow_to_route_in6(fle, ro);
+			if (ro->ro_rt != NULL && ro->ro_lle != NULL)
+				flevalid = 1;
+		}
+	}
+#endif	
 again:
 	/*
 	 * if specified, try to fill in the traffic class field.
@@ -576,7 +601,10 @@ again:
 	dst_sa.sin6_family = AF_INET6;
 	dst_sa.sin6_len = sizeof(dst_sa);
 	dst_sa.sin6_addr = ip6->ip6_dst;
-	if ((error = in6_selectroute(&dst_sa, opt, im6o, ro,
+	if (flevalid) {
+		rt = ro->ro_rt;
+		ifp = ro->ro_rt->rt_ifp;
+	} else if ((error = in6_selectroute(&dst_sa, opt, im6o, ro,
 	    &ifp, &rt)) != 0) {
 		switch (error) {
 		case EHOSTUNREACH:
@@ -791,13 +819,13 @@ again:
 
 #ifdef DIAGNOSTIC
 		if ((hbh->ip6h_len + 1) << 3 > exthdrs.ip6e_hbh->m_len)
-			panic("ip6e_hbh is not continuous");
+			panic("ip6e_hbh is not contiguous");
 #endif
 		/*
 		 *  XXX: if we have to send an ICMPv6 error to the sender,
 		 *       we need the M_LOOP flag since icmp6_error() expects
 		 *       the IPv6 and the hop-by-hop options header are
-		 *       continuous unless the flag is set.
+		 *       contiguous unless the flag is set.
 		 */
 		m->m_flags |= M_LOOP;
 		m->m_pkthdr.rcvif = ifp;
@@ -827,7 +855,8 @@ again:
 	if (!IN6_ARE_ADDR_EQUAL(&odst, &ip6->ip6_dst)) {
 		m->m_flags |= M_SKIP_FIREWALL;
 		/* If destination is now ourself drop to ip6_input(). */
-		if (in6_localaddr(&ip6->ip6_dst)) {
+		if (in6_localip(&ip6->ip6_dst)) {
+			m->m_flags |= M_FASTFWD_OURS;
 			if (m->m_pkthdr.rcvif == NULL)
 				m->m_pkthdr.rcvif = V_loif;
 			if (m->m_pkthdr.csum_flags & CSUM_DELAY_DATA) {
@@ -847,7 +876,33 @@ again:
 			goto again;	/* Redo the routing table lookup. */
 	}
 
-	/* XXX: IPFIREWALL_FORWARD */
+#ifdef IPFIREWALL_FORWARD
+	/* See if local, if yes, send it to netisr. */
+	if (m->m_flags & M_FASTFWD_OURS) {
+		if (m->m_pkthdr.rcvif == NULL)
+			m->m_pkthdr.rcvif = V_loif;
+		if (m->m_pkthdr.csum_flags & CSUM_DELAY_DATA) {
+			m->m_pkthdr.csum_flags |=
+			    CSUM_DATA_VALID | CSUM_PSEUDO_HDR;
+			m->m_pkthdr.csum_data = 0xffff;
+		}
+#ifdef SCTP
+		if (m->m_pkthdr.csum_flags & CSUM_SCTP)
+		m->m_pkthdr.csum_flags |= CSUM_SCTP_VALID;
+#endif   
+		error = netisr_queue(NETISR_IPV6, m);
+		goto done;
+	}
+	/* Or forward to some other address? */
+	fwd_tag = m_tag_find(m, PACKET_TAG_IPFORWARD, NULL);
+	if (fwd_tag) {
+		dst = (struct sockaddr_in6 *)&ro->ro_dst;
+		bcopy((fwd_tag+1), dst, sizeof(struct sockaddr_in6));
+		m->m_flags |= M_SKIP_FIREWALL;
+		m_tag_delete(m, fwd_tag);
+		goto again;
+	}
+#endif /* IPFIREWALL_FORWARD */
 
 passout:
 	/*
@@ -1071,9 +1126,11 @@ sendorfree:
 		V_ip6stat.ip6s_fragmented++;
 
 done:
-	if (ro == &ip6route && ro->ro_rt) { /* brace necessary for RTFREE */
+	if (ro == &ip6route && ro->ro_rt && flevalid == 0) {
+                /* brace necessary for RTFREE */
 		RTFREE(ro->ro_rt);
-	} else if (ro_pmtu == &ip6route && ro_pmtu->ro_rt) {
+	} else if (ro_pmtu == &ip6route && ro_pmtu->ro_rt &&
+	    ((flevalid == 0) || (ro_pmtu != ro))) {
 		RTFREE(ro_pmtu->ro_rt);
 	}
 #ifdef IPSEC
@@ -1798,6 +1855,7 @@ do { \
 			case IPV6_PORTRANGE:
 			case IPV6_RECVTCLASS:
 			case IPV6_AUTOFLOWLABEL:
+			case IPV6_BINDANY:
 				switch (optname) {
 
 				case IPV6_RECVHOPOPTS:
@@ -2309,6 +2367,8 @@ copypktopts(struct ip6_pktopts *dst, struct ip6_pktopts *src, int canwait)
 	dst->ip6po_hlim = src->ip6po_hlim;
 	dst->ip6po_tclass = src->ip6po_tclass;
 	dst->ip6po_flags = src->ip6po_flags;
+	dst->ip6po_minmtu = src->ip6po_minmtu;
+	dst->ip6po_prefer_tempaddr = src->ip6po_prefer_tempaddr;
 	if (src->ip6po_pktinfo) {
 		dst->ip6po_pktinfo = malloc(sizeof(*dst->ip6po_pktinfo),
 		    M_IP6OPT, canwait);

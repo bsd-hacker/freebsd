@@ -59,6 +59,7 @@ dev/syscons/scterm-teken.c	optional	sc
 dev/syscons/scvtb.c		optional	sc
 dev/uart/uart_cpu_sparc64.c	optional	uart
 dev/uart/uart_kbd_sun.c		optional	uart sc
+kern/kern_clocksource.c		standard
 kern/syscalls.c			optional	ktr
 libkern/ffs.c			standard
 libkern/ffsl.c			standard
@@ -78,13 +79,14 @@ sparc64/pci/fire.c		optional	pci
 sparc64/pci/ofw_pcib.c		optional	pci
 sparc64/pci/ofw_pcib_subr.c	optional	pci
 sparc64/pci/ofw_pcibus.c	optional	pci
+sparc64/pci/ofw_pci_if.m	optional	pci
 sparc64/pci/psycho.c		optional	pci
 sparc64/pci/sbbc.c		optional	sbbc uart
 sparc64/pci/schizo.c		optional	pci
 sparc64/sbus/dma_sbus.c		optional	sbus
 sparc64/sbus/sbus.c		optional	sbus
 sparc64/sbus/lsi64854.c		optional	sbus
-sparc64/sparc64/ata_machdep.c	optional	atadisk
+sparc64/sparc64/ata_machdep.c	optional	ada | atadisk | da
 sparc64/sparc64/autoconf.c	standard
 sparc64/sparc64/bus_machdep.c	standard
 sparc64/sparc64/cache.c		standard
@@ -103,7 +105,7 @@ sparc64/sparc64/eeprom.c	optional	eeprom ebus | eeprom fhc | \
 						eeprom sbus
 sparc64/sparc64/gdb_machdep.c	optional	gdb
 sparc64/sparc64/identcpu.c	standard
-sparc64/sparc64/in_cksum.c	optional	inet
+sparc64/sparc64/in_cksum.c	optional	inet | inet6
 sparc64/sparc64/interrupt.S	standard	no-obj			\
 	compile-with "${NORMAL_S} -mcpu=ultrasparc"
 sparc64/sparc64/intr_machdep.c	standard

@@ -27,11 +27,6 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include <sys/param.h>
-#include <machine/cpuregs.h>
-
-#include <mips/sentry5/s5reg.h>
-
 #include "opt_ddb.h"
 
 #include <sys/param.h>
@@ -75,6 +70,8 @@ __FBSDID("$FreeBSD$");
 #include <machine/trap.h>
 #include <machine/vmparam.h>
 
+#include <mips/sentry5/s5reg.h>
+
 #ifdef CFE
 #include <dev/cfe/cfe_api.h>
 #endif
@@ -91,7 +88,7 @@ platform_cpu_init()
 static void
 mips_init(void)
 {
-	int i;
+	int i, j;
 
 	printf("entry: mips_init()\n");
 
@@ -127,6 +124,9 @@ mips_init(void)
 
 	realmem = btoc(physmem);
 #endif
+
+	for (j = 0; j < i; j++)
+		dump_avail[j] = phys_avail[j];
 
 	physmem = realmem;
 

@@ -91,6 +91,9 @@ vm_map_t exec_map=0;
 vm_map_t pipe_map;
 vm_map_t buffer_map=0;
 
+const void *zero_region;
+CTASSERT((ZERO_REGION_SIZE & PAGE_MASK) == 0);
+
 /*
  *	kmem_alloc_nofault:
  *
@@ -207,7 +210,7 @@ kmem_alloc(map, size)
 		mem = vm_page_grab(kernel_object, OFF_TO_IDX(offset + i),
 		    VM_ALLOC_NOBUSY | VM_ALLOC_ZERO | VM_ALLOC_RETRY);
 		mem->valid = VM_PAGE_BITS_ALL;
-		KASSERT((mem->flags & PG_UNMANAGED) != 0,
+		KASSERT((mem->oflags & VPO_UNMANAGED) != 0,
 		    ("kmem_alloc: page %p is managed", mem));
 	}
 	VM_OBJECT_UNLOCK(kernel_object);
@@ -301,11 +304,8 @@ kmem_malloc(map, size, flags)
 	vm_size_t size;
 	int flags;
 {
-	vm_offset_t offset, i;
-	vm_map_entry_t entry;
 	vm_offset_t addr;
-	vm_page_t m;
-	int pflags;
+	int i, rv;
 
 	size = round_page(size);
 	addr = vm_map_min(map);
@@ -338,10 +338,42 @@ kmem_malloc(map, size, flags)
 			return (0);
 		}
 	}
+
+	rv = kmem_back(map, addr, size, flags);
+	vm_map_unlock(map);
+	return (rv == KERN_SUCCESS ? addr : 0);
+}
+
+/*
+ *	kmem_back:
+ *
+ *	Allocate physical pages for the specified virtual address range.
+ */
+int
+kmem_back(vm_map_t map, vm_offset_t addr, vm_size_t size, int flags)
+{
+	vm_offset_t offset, i;
+	vm_map_entry_t entry;
+	vm_page_t m;
+	int pflags;
+	boolean_t found;
+
+	KASSERT(vm_map_locked(map), ("kmem_back: map %p is not locked", map));
 	offset = addr - VM_MIN_KERNEL_ADDRESS;
 	vm_object_reference(kmem_object);
 	vm_map_insert(map, kmem_object, offset, addr, addr + size,
-		VM_PROT_ALL, VM_PROT_ALL, 0);
+	    VM_PROT_ALL, VM_PROT_ALL, 0);
+
+	/*
+	 * Assert: vm_map_insert() will never be able to extend the
+	 * previous entry so vm_map_lookup_entry() will find a new
+	 * entry exactly corresponding to this address range and it
+	 * will have wired_count == 0.
+	 */
+	found = vm_map_lookup_entry(map, addr, &entry);
+	KASSERT(found && entry->start == addr && entry->end == addr + size &&
+	    entry->wired_count == 0 && (entry->eflags & MAP_ENTRY_IN_TRANSITION)
+	    == 0, ("kmem_back: entry not found or misaligned"));
 
 	if ((flags & (M_NOWAIT|M_USE_RESERVE)) == M_NOWAIT)
 		pflags = VM_ALLOC_INTERRUPT | VM_ALLOC_WIRED;
@@ -364,9 +396,15 @@ retry:
 		if (m == NULL) {
 			if ((flags & M_NOWAIT) == 0) {
 				VM_OBJECT_UNLOCK(kmem_object);
+				entry->eflags |= MAP_ENTRY_IN_TRANSITION;
 				vm_map_unlock(map);
 				VM_WAIT;
 				vm_map_lock(map);
+				KASSERT(
+(entry->eflags & (MAP_ENTRY_IN_TRANSITION | MAP_ENTRY_NEEDS_WAKEUP)) ==
+				    MAP_ENTRY_IN_TRANSITION,
+				    ("kmem_back: volatile entry"));
+				entry->eflags &= ~MAP_ENTRY_IN_TRANSITION;
 				VM_OBJECT_LOCK(kmem_object);
 				goto retry;
 			}
@@ -385,27 +423,22 @@ retry:
 			}
 			VM_OBJECT_UNLOCK(kmem_object);
 			vm_map_delete(map, addr, addr + size);
-			vm_map_unlock(map);
-			return (0);
+			return (KERN_NO_SPACE);
 		}
 		if (flags & M_ZERO && (m->flags & PG_ZERO) == 0)
 			pmap_zero_page(m);
 		m->valid = VM_PAGE_BITS_ALL;
-		KASSERT((m->flags & PG_UNMANAGED) != 0,
+		KASSERT((m->oflags & VPO_UNMANAGED) != 0,
 		    ("kmem_malloc: page %p is managed", m));
 	}
 	VM_OBJECT_UNLOCK(kmem_object);
 
 	/*
-	 * Mark map entry as non-pageable. Assert: vm_map_insert() will never
-	 * be able to extend the previous entry so there will be a new entry
-	 * exactly corresponding to this address range and it will have
-	 * wired_count == 0.
+	 * Mark map entry as non-pageable.  Repeat the assert.
 	 */
-	if (!vm_map_lookup_entry(map, addr, &entry) ||
-	    entry->start != addr || entry->end != addr + size ||
-	    entry->wired_count != 0)
-		panic("kmem_malloc: entry not found or misaligned");
+	KASSERT(entry->start == addr && entry->end == addr + size &&
+	    entry->wired_count == 0,
+	    ("kmem_back: entry not found or misaligned after allocation"));
 	entry->wired_count = 1;
 
 	/*
@@ -429,9 +462,8 @@ retry:
 		vm_page_wakeup(m);
 	}
 	VM_OBJECT_UNLOCK(kmem_object);
-	vm_map_unlock(map);
 
-	return (addr);
+	return (KERN_SUCCESS);
 }
 
 /*
@@ -498,6 +530,32 @@ kmem_free_wakeup(map, addr, size)
 	vm_map_unlock(map);
 }
 
+static void
+kmem_init_zero_region(void)
+{
+	vm_offset_t addr, i;
+	vm_page_t m;
+	int error;
+
+	/*
+	 * Map a single physical page of zeros to a larger virtual range.
+	 * This requires less looping in places that want large amounts of
+	 * zeros, while not using much more physical resources.
+	 */
+	addr = kmem_alloc_nofault(kernel_map, ZERO_REGION_SIZE);
+	m = vm_page_alloc(NULL, OFF_TO_IDX(addr - VM_MIN_KERNEL_ADDRESS),
+	    VM_ALLOC_NOOBJ | VM_ALLOC_WIRED | VM_ALLOC_ZERO);
+	if ((m->flags & PG_ZERO) == 0)
+		pmap_zero_page(m);
+	for (i = 0; i < ZERO_REGION_SIZE; i += PAGE_SIZE)
+		pmap_qenter(addr + i, &m, 1);
+	error = vm_map_protect(kernel_map, addr, addr + ZERO_REGION_SIZE,
+	    VM_PROT_READ, TRUE);
+	KASSERT(error == 0, ("error=%d", error));
+
+	zero_region = (const void *)addr;
+}
+
 /*
  * 	kmem_init:
  *
@@ -526,6 +584,8 @@ kmem_init(start, end)
 	    start, VM_PROT_ALL, VM_PROT_ALL, MAP_NOFAULT);
 	/* ... and ending with the completion of the above `insert' */
 	vm_map_unlock(m);
+
+	kmem_init_zero_region();
 }
 
 #ifdef DIAGNOSTIC

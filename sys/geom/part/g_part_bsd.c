@@ -40,10 +40,18 @@ __FBSDID("$FreeBSD$");
 #include <sys/queue.h>
 #include <sys/sbuf.h>
 #include <sys/systm.h>
+#include <sys/sysctl.h>
 #include <geom/geom.h>
 #include <geom/part/g_part.h>
 
 #include "g_part_if.h"
+
+#define	BOOT1_SIZE	512
+#define	LABEL_SIZE	512
+#define	BOOT2_OFF	(BOOT1_SIZE + LABEL_SIZE)
+#define	BOOT2_SIZE	(BBSIZE - BOOT2_OFF)
+
+FEATURE(geom_part_bsd, "GEOM partitioning class for BSD disklabels");
 
 struct g_part_bsd_table {
 	struct g_part_table	base;
@@ -99,7 +107,7 @@ static struct g_part_scheme g_part_bsd_scheme = {
 	sizeof(struct g_part_bsd_table),
 	.gps_entrysz = sizeof(struct g_part_bsd_entry),
 	.gps_minent = 8,
-	.gps_maxent = 20,
+	.gps_maxent = 20,	/* Only 22 entries fit in 512 byte sectors */
 	.gps_bootcodesz = BBSIZE,
 };
 G_PART_SCHEME_DECLARE(g_part_bsd);
@@ -167,22 +175,16 @@ g_part_bsd_bootcode(struct g_part_table *basetable, struct g_part_parms *gpp)
 {
 	struct g_part_bsd_table *table;
 	const u_char *codeptr;
-	size_t hdsz, tlsz;
-	size_t codesz, tlofs;
 
-	hdsz = 512;
-	tlofs = hdsz + 148 + basetable->gpt_entries * 16;
-	tlsz = BBSIZE - tlofs;
+	if (gpp->gpp_codesize != BOOT1_SIZE && gpp->gpp_codesize != BBSIZE)
+		return (ENODEV);
+
 	table = (struct g_part_bsd_table *)basetable;
-	bzero(table->bbarea, hdsz);
-	bzero(table->bbarea + tlofs, tlsz);
 	codeptr = gpp->gpp_codeptr;
-	codesz = MIN(hdsz, gpp->gpp_codesize);
-	if (codesz > 0)
-		bcopy(codeptr, table->bbarea, codesz);
-	codesz = MIN(tlsz, gpp->gpp_codesize - tlofs);
-	if (codesz > 0)
-		bcopy(codeptr + tlofs, table->bbarea + tlofs, codesz);
+	bcopy(codeptr, table->bbarea, BOOT1_SIZE);
+	if (gpp->gpp_codesize == BBSIZE)
+		bcopy(codeptr + BOOT2_OFF, table->bbarea + BOOT2_OFF,
+		    BOOT2_SIZE);
 	return (0);
 }
 
@@ -203,7 +205,7 @@ g_part_bsd_create(struct g_part_table *basetable, struct g_part_parms *gpp)
 	if (BBSIZE % pp->sectorsize)
 		return (ENOTBLK);
 
-	msize = MIN(pp->mediasize / pp->sectorsize, 0xffffffff);
+	msize = MIN(pp->mediasize / pp->sectorsize, UINT32_MAX);
 	secpercyl = basetable->gpt_sectors * basetable->gpt_heads;
 	ncyls = msize / secpercyl;
 
@@ -240,6 +242,12 @@ g_part_bsd_create(struct g_part_table *basetable, struct g_part_parms *gpp)
 static int
 g_part_bsd_destroy(struct g_part_table *basetable, struct g_part_parms *gpp)
 {
+	struct g_part_bsd_table *table;
+
+	table = (struct g_part_bsd_table *)basetable;
+	if (table->bbarea != NULL)
+		g_free(table->bbarea);
+	table->bbarea = NULL;
 
 	/* Wipe the second sector to clear the partitioning. */
 	basetable->gpt_smhead |= 2;
@@ -356,7 +364,7 @@ g_part_bsd_read(struct g_part_table *basetable, struct g_consumer *cp)
 
 	pp = cp->provider;
 	table = (struct g_part_bsd_table *)basetable;
-	msize = pp->mediasize / pp->sectorsize;
+	msize = MIN(pp->mediasize / pp->sectorsize, UINT32_MAX);
 
 	table->bbarea = g_read_data(cp, 0, BBSIZE, &error);
 	if (table->bbarea == NULL)
@@ -420,6 +428,8 @@ g_part_bsd_read(struct g_part_table *basetable, struct g_consumer *cp)
 			continue;
 		if (part.p_offset < table->offset)
 			continue;
+		if (part.p_offset - table->offset > basetable->gpt_last)
+			goto invalid_label;
 		baseentry = g_part_new_entry(basetable, index + 1,
 		    part.p_offset - table->offset,
 		    part.p_offset - table->offset + part.p_size - 1);
@@ -434,6 +444,7 @@ g_part_bsd_read(struct g_part_table *basetable, struct g_consumer *cp)
  invalid_label:
 	printf("GEOM: %s: invalid disklabel.\n", pp->name);
 	g_free(table->bbarea);
+	table->bbarea = NULL;
 	return (EINVAL);
 }
 

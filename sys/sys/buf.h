@@ -247,6 +247,7 @@ struct buf {
 #define	BV_SCANNED	0x00000001	/* VOP_FSYNC funcs mark written bufs */
 #define	BV_BKGRDINPROG	0x00000002	/* Background write in progress */
 #define	BV_BKGRDWAIT	0x00000004	/* Background write waiting */
+#define	BV_INFREECNT	0x80000000	/* buf is counted in numfreebufs */
 
 #ifdef _KERNEL
 /*
@@ -308,6 +309,12 @@ extern const char *buf_wmesg;		/* Default buffer lock message */
  */
 #define BUF_LOCKFREE(bp) 						\
 	lockdestroy(&(bp)->b_lock)
+
+/*
+ * Print informations on a buffer lock.
+ */
+#define BUF_LOCKPRINTINFO(bp) 						\
+	lockmgr_printinfo(&(bp)->b_lock)
 
 /*
  * Buffer lock assertions.

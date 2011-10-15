@@ -143,7 +143,7 @@ static __noinline int
 ieee80211_ioctl_getchaninfo(struct ieee80211vap *vap, struct ieee80211req *ireq)
 {
 	struct ieee80211com *ic = vap->iv_ic;
-	int space;
+	uint32_t space;
 
 	space = __offsetof(struct ieee80211req_chaninfo,
 			ic_chans[ic->ic_nchans]);
@@ -207,7 +207,7 @@ ieee80211_ioctl_getstastats(struct ieee80211vap *vap, struct ieee80211req *ireq)
 {
 	struct ieee80211_node *ni;
 	uint8_t macaddr[IEEE80211_ADDR_LEN];
-	const int off = __offsetof(struct ieee80211req_sta_stats, is_stats);
+	const size_t off = __offsetof(struct ieee80211req_sta_stats, is_stats);
 	int error;
 
 	if (ireq->i_len < off)
@@ -323,7 +323,7 @@ ieee80211_ioctl_getscanresults(struct ieee80211vap *vap,
 	if (req.space > ireq->i_len)
 		req.space = ireq->i_len;
 	if (req.space > 0) {
-		size_t space;
+		uint32_t space;
 		void *p;
 
 		space = req.space;
@@ -458,7 +458,7 @@ get_sta_info(void *arg, struct ieee80211_node *ni)
 
 static __noinline int
 getstainfo_common(struct ieee80211vap *vap, struct ieee80211req *ireq,
-	struct ieee80211_node *ni, int off)
+	struct ieee80211_node *ni, size_t off)
 {
 	struct ieee80211com *ic = vap->iv_ic;
 	struct stainforeq req;
@@ -503,7 +503,7 @@ static __noinline int
 ieee80211_ioctl_getstainfo(struct ieee80211vap *vap, struct ieee80211req *ireq)
 {
 	uint8_t macaddr[IEEE80211_ADDR_LEN];
-	const int off = __offsetof(struct ieee80211req_sta_req, info);
+	const size_t off = __offsetof(struct ieee80211req_sta_req, info);
 	struct ieee80211_node *ni;
 	int error;
 
@@ -1518,6 +1518,7 @@ setmlme_assoc_adhoc(struct ieee80211vap *vap,
 	memcpy(vap->iv_des_ssid[0].ssid, ssid, ssid_len);
 	vap->iv_des_nssid = 1;
 
+	memset(&sr, 0, sizeof(sr));
 	sr.sr_flags = IEEE80211_IOC_SCAN_ACTIVE | IEEE80211_IOC_SCAN_ONCE;
 	sr.sr_duration = IEEE80211_IOC_SCAN_FOREVER;
 	memcpy(sr.sr_ssid[0].ssid, ssid, ssid_len);
@@ -1627,8 +1628,10 @@ ieee80211_ioctl_setchanlist(struct ieee80211vap *vap, struct ieee80211req *ireq)
 	if (list == NULL)
 		return ENOMEM;
 	error = copyin(ireq->i_data, list, ireq->i_len);
-	if (error)
+	if (error) {
+		free(list, M_TEMP);
 		return error;
+	}
 	nchan = 0;
 	chanlist = list + ireq->i_len;		/* NB: zero'd already */
 	maxchan = ireq->i_len * NBBY;
@@ -1644,8 +1647,10 @@ ieee80211_ioctl_setchanlist(struct ieee80211vap *vap, struct ieee80211req *ireq)
 			nchan++;
 		}
 	}
-	if (nchan == 0)
+	if (nchan == 0) {
+		free(list, M_TEMP);
 		return EINVAL;
+	}
 	if (ic->ic_bsschan != IEEE80211_CHAN_ANYC &&	/* XXX */
 	    isclr(chanlist, ic->ic_bsschan->ic_ieee))
 		ic->ic_bsschan = IEEE80211_CHAN_ANYC;
@@ -2379,7 +2384,7 @@ ieee80211_scanreq(struct ieee80211vap *vap, struct ieee80211_scan_req *sr)
 	 IEEE80211_IOC_SCAN_NOJOIN | IEEE80211_IOC_SCAN_FLUSH | \
 	 IEEE80211_IOC_SCAN_CHECK)
 	struct ieee80211com *ic = vap->iv_ic;
-	int i;
+	int error, i;
 
 	/* convert duration */
 	if (sr->sr_duration == IEEE80211_IOC_SCAN_FOREVER)
@@ -2453,20 +2458,21 @@ ieee80211_scanreq(struct ieee80211vap *vap, struct ieee80211_scan_req *sr)
 	} else {
 		vap->iv_flags_ext &= ~IEEE80211_FEXT_SCANREQ;
 		IEEE80211_UNLOCK(ic);
-		/* XXX neeed error return codes */
 		if (sr->sr_flags & IEEE80211_IOC_SCAN_CHECK) {
-			(void) ieee80211_check_scan(vap, sr->sr_flags,
+			error = ieee80211_check_scan(vap, sr->sr_flags,
 			    sr->sr_duration, sr->sr_mindwell, sr->sr_maxdwell,
 			    sr->sr_nssid,
 			    /* NB: cheat, we assume structures are compatible */
 			    (const struct ieee80211_scan_ssid *) &sr->sr_ssid[0]);
 		} else {
-			(void) ieee80211_start_scan(vap, sr->sr_flags,
+			error = ieee80211_start_scan(vap, sr->sr_flags,
 			    sr->sr_duration, sr->sr_mindwell, sr->sr_maxdwell,
 			    sr->sr_nssid,
 			    /* NB: cheat, we assume structures are compatible */
 			    (const struct ieee80211_scan_ssid *) &sr->sr_ssid[0]);
 		}
+		if (error == 0)
+			return EINPROGRESS;
 	}
 	return 0;
 #undef IEEE80211_IOC_SCAN_FLAGS

@@ -66,6 +66,7 @@ __FBSDID("$FreeBSD$");
 #include <net/ethernet.h>
 #include <net/if.h>
 #include <net/if_clone.h>
+#include <net/if_media.h>
 #include <net/if_var.h>
 #include <net/if_types.h>
 #include <net/netisr.h>
@@ -78,7 +79,7 @@ SYSCTL_NODE(_net_link, OID_AUTO, epair, CTLFLAG_RW, 0, "epair sysctl");
 
 #ifdef EPAIR_DEBUG
 static int epair_debug = 0;
-SYSCTL_XINT(_net_link_epair, OID_AUTO, epair_debug, CTLFLAG_RW,
+SYSCTL_INT(_net_link_epair, OID_AUTO, epair_debug, CTLFLAG_RW,
     &epair_debug, 0, "if_epair(4) debugging.");
 #define	DPRINTF(fmt, arg...)						\
 	if (epair_debug)						\
@@ -92,6 +93,8 @@ static struct mbuf *epair_nh_m2cpuid(struct mbuf *, uintptr_t, u_int *);
 static void epair_nh_drainedcpu(u_int);
 
 static void epair_start_locked(struct ifnet *);
+static int epair_media_change(struct ifnet *);
+static void epair_media_status(struct ifnet *, struct ifmediareq *);
 
 static int epair_clone_match(struct if_clone *, const char *);
 static int epair_clone_create(struct if_clone *, char *, size_t, caddr_t);
@@ -127,6 +130,7 @@ SYSCTL_PROC(_net_link_epair, OID_AUTO, netisr_maxqlen, CTLTYPE_INT|CTLFLAG_RW,
 struct epair_softc {
 	struct ifnet	*ifp;		/* This ifp. */
 	struct ifnet	*oifp;		/* other ifp of pair. */
+	struct ifmedia	media;		/* Media config (fake). */
 	u_int		refcount;	/* # of mbufs in flight. */
 	u_int		cpuid;		/* CPU ID assigned upon creation. */
 	void		(*if_qflush)(struct ifnet *);
@@ -189,10 +193,7 @@ epair_dpcpu_init(void)
 	struct eid_list *s;
 	u_int cpuid;
 
-	for (cpuid = 0; cpuid <= mp_maxid; cpuid++) {
-		if (CPU_ABSENT(cpuid))
-			continue;
-
+	CPU_FOREACH(cpuid) {
 		epair_dpcpu = DPCPU_ID_PTR(cpuid, epair_dpcpu);
 
 		/* Initialize per-cpu lock. */
@@ -217,10 +218,7 @@ epair_dpcpu_detach(void)
 	struct epair_dpcpu *epair_dpcpu;
 	u_int cpuid;
 
-	for (cpuid = 0; cpuid <= mp_maxid; cpuid++) {
-		if (CPU_ABSENT(cpuid))
-			continue;
-
+	CPU_FOREACH(cpuid) {
 		epair_dpcpu = DPCPU_ID_PTR(cpuid, epair_dpcpu);
 
 		/* Destroy per-cpu lock. */
@@ -311,7 +309,7 @@ epair_nh_drainedcpu(u_int cpuid)
 
 		if ((ifp->if_drv_flags & IFF_DRV_OACTIVE) != 0) {
 			/* Our "hw"q overflew again. */
-			epair_dpcpu->epair_drv_flags |= IFF_DRV_OACTIVE
+			epair_dpcpu->epair_drv_flags |= IFF_DRV_OACTIVE;
 			DPRINTF("hw queue length overflow at %u\n",
 			    epair_nh.nh_qlimit);
 			break;
@@ -330,10 +328,7 @@ epair_remove_ifp_from_draining(struct ifnet *ifp)
 	struct epair_ifp_drain *elm, *tvar;
 	u_int cpuid;
 
-	for (cpuid = 0; cpuid <= mp_maxid; cpuid++) {
-		if (CPU_ABSENT(cpuid))
-			continue;
-
+	CPU_FOREACH(cpuid) {
 		epair_dpcpu = DPCPU_ID_PTR(cpuid, epair_dpcpu);
 		EPAIR_LOCK(epair_dpcpu);
 		STAILQ_FOREACH_SAFE(elm, &epair_dpcpu->epair_ifp_drain_list,
@@ -620,8 +615,25 @@ epair_qflush(struct ifnet *ifp)
 }
 
 static int
+epair_media_change(struct ifnet *ifp __unused)
+{
+
+	/* Do nothing. */
+	return (0);
+}
+
+static void
+epair_media_status(struct ifnet *ifp __unused, struct ifmediareq *imr)
+{
+
+	imr->ifm_status = IFM_AVALID | IFM_ACTIVE;
+	imr->ifm_active = IFM_ETHER | IFM_10G_T | IFM_FDX;
+}
+
+static int
 epair_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 {
+	struct epair_softc *sc;
 	struct ifreq *ifr;
 	int error;
 
@@ -631,6 +643,12 @@ epair_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	case SIOCADDMULTI:
 	case SIOCDELMULTI:
 		error = 0;
+		break;
+
+	case SIOCSIFMEDIA:
+	case SIOCGIFMEDIA:
+		sc = ifp->if_softc;
+		error = ifmedia_ioctl(ifp, ifr, &sc->media, cmd);
 		break;
 
 	case SIOCSIFMTU:
@@ -792,6 +810,8 @@ epair_clone_create(struct if_clone *ifc, char *name, size_t len, caddr_t params)
 	ifp->if_dname = ifc->ifc_name;
 	ifp->if_dunit = unit;
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
+	ifp->if_capabilities = IFCAP_VLAN_MTU;
+	ifp->if_capenable = IFCAP_VLAN_MTU;
 	ifp->if_start = epair_start;
 	ifp->if_ioctl = epair_ioctl;
 	ifp->if_init  = epair_init;
@@ -816,6 +836,8 @@ epair_clone_create(struct if_clone *ifc, char *name, size_t len, caddr_t params)
 	ifp->if_dname = ifc->ifc_name;
 	ifp->if_dunit = unit;
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
+	ifp->if_capabilities = IFCAP_VLAN_MTU;
+	ifp->if_capenable = IFCAP_VLAN_MTU;
 	ifp->if_start = epair_start;
 	ifp->if_ioctl = epair_ioctl;
 	ifp->if_init  = epair_init;
@@ -838,9 +860,19 @@ epair_clone_create(struct if_clone *ifc, char *name, size_t len, caddr_t params)
 	strlcpy(name, sca->ifp->if_xname, len);
 	DPRINTF("name='%s/%db' created sca=%p scb=%p\n", name, unit, sca, scb);
 
+	/* Initialise pseudo media types. */
+	ifmedia_init(&sca->media, 0, epair_media_change, epair_media_status);
+	ifmedia_add(&sca->media, IFM_ETHER | IFM_10G_T, 0, NULL);
+	ifmedia_set(&sca->media, IFM_ETHER | IFM_10G_T);
+	ifmedia_init(&scb->media, 0, epair_media_change, epair_media_status);
+	ifmedia_add(&scb->media, IFM_ETHER | IFM_10G_T, 0, NULL);
+	ifmedia_set(&scb->media, IFM_ETHER | IFM_10G_T);
+
 	/* Tell the world, that we are ready to rock. */
 	sca->ifp->if_drv_flags |= IFF_DRV_RUNNING;
 	scb->ifp->if_drv_flags |= IFF_DRV_RUNNING;
+	if_link_state_change(sca->ifp, LINK_STATE_UP);
+	if_link_state_change(scb->ifp, LINK_STATE_UP);
 
 	return (0);
 }
@@ -868,6 +900,8 @@ epair_clone_destroy(struct if_clone *ifc, struct ifnet *ifp)
 	scb = oifp->if_softc;
 
 	DPRINTF("ifp=%p oifp=%p\n", ifp, oifp);
+	if_link_state_change(ifp, LINK_STATE_DOWN);
+	if_link_state_change(oifp, LINK_STATE_DOWN);
 	ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
 	oifp->if_drv_flags &= ~IFF_DRV_RUNNING;
 	ether_ifdetach(oifp);
@@ -897,9 +931,11 @@ epair_clone_destroy(struct if_clone *ifc, struct ifnet *ifp)
 	 * we need to switch before freeing them.
 	 */
 	CURVNET_SET_QUIET(oifp->if_vnet);
-	if_free_type(oifp, IFT_ETHER);
+	if_free(oifp);
 	CURVNET_RESTORE();
-	if_free_type(ifp, IFT_ETHER);
+	if_free(ifp);
+	ifmedia_removeall(&sca->media);
+	ifmedia_removeall(&scb->media);
 	free(scb, M_EPAIR);
 	free(sca, M_EPAIR);
 	ifc_free_unit(ifc, unit);

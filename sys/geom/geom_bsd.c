@@ -45,6 +45,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/endian.h>
 #include <sys/systm.h>
+#include <sys/sysctl.h>
 #include <sys/kernel.h>
 #include <sys/fcntl.h>
 #include <sys/conf.h>
@@ -56,9 +57,12 @@ __FBSDID("$FreeBSD$");
 #include <sys/errno.h>
 #include <sys/disklabel.h>
 #include <sys/gpt.h>
+#include <sys/sbuf.h>
 #include <sys/uuid.h>
 #include <geom/geom.h>
 #include <geom/geom_slice.h>
+
+FEATURE(geom_bsd, "GEOM BSD disklabels support");
 
 #define	BSD_CLASS_NAME "BSD"
 

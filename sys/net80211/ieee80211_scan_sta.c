@@ -238,6 +238,7 @@ sta_add(struct ieee80211_scan_state *ss,
 	const uint8_t *macaddr = wh->i_addr2;
 	struct ieee80211vap *vap = ss->ss_vap;
 	struct ieee80211com *ic = vap->iv_ic;
+	struct ieee80211_channel *c;
 	struct sta_entry *se;
 	struct ieee80211_scan_entry *ise;
 	int hash;
@@ -300,7 +301,6 @@ found:
 	 * association on the wrong channel.
 	 */
 	if (sp->status & IEEE80211_BPARSE_OFFCHAN) {
-		struct ieee80211_channel *c;
 		/*
 		 * Off-channel, locate the home/bss channel for the sta
 		 * using the value broadcast in the DSPARMS ie.  We know
@@ -317,6 +317,14 @@ found:
 		}
 	} else
 		ise->se_chan = ic->ic_curchan;
+	if (IEEE80211_IS_CHAN_HT(ise->se_chan) && sp->htcap == NULL) {
+		/* Demote legacy networks to a non-HT channel. */
+		c = ieee80211_find_channel(ic, ise->se_chan->ic_freq,
+		    ise->se_chan->ic_flags & ~IEEE80211_CHAN_HT);
+		KASSERT(c != NULL,
+		    ("no legacy channel %u", ise->se_chan->ic_ieee));
+		ise->se_chan = c;
+	}
 	ise->se_fhdwell = sp->fhdwell;
 	ise->se_fhindex = sp->fhindex;
 	ise->se_erp = sp->erp;
@@ -756,26 +764,38 @@ maxrate(const struct ieee80211_scan_entry *se)
 {
 	const struct ieee80211_ie_htcap *htcap =
 	    (const struct ieee80211_ie_htcap *) se->se_ies.htcap_ie;
-	int rmax, r, i;
+	int rmax, r, i, txstream;
 	uint16_t caps;
+	uint8_t txparams;
 
 	rmax = 0;
 	if (htcap != NULL) {
 		/*
 		 * HT station; inspect supported MCS and then adjust
-		 * rate by channel width.  Could also include short GI
-		 * in this if we want to be extra accurate.
+		 * rate by channel width.
 		 */
-		/* XXX assumes MCS15 is max */
-		for (i = 15; i >= 0 && isclr(htcap->hc_mcsset, i); i--)
-			;
+		txparams = htcap->hc_mcsset[12];
+		if (txparams & 0x3) {
+			/*
+			 * TX MCS parameters defined and not equal to RX,
+			 * extract the number of spartial streams and
+			 * map it to the highest MCS rate.
+			 */
+			txstream = ((txparams & 0xc) >> 2) + 1;
+			i = txstream * 8 - 1;
+		} else
+			for (i = 31; i >= 0 && isclr(htcap->hc_mcsset, i); i--);
 		if (i >= 0) {
 			caps = LE_READ_2(&htcap->hc_cap);
-			/* XXX short/long GI */
-			if (caps & IEEE80211_HTCAP_CHWIDTH40)
+			if ((caps & IEEE80211_HTCAP_CHWIDTH40) &&
+			    (caps & IEEE80211_HTCAP_SHORTGI40))
 				rmax = ieee80211_htrates[i].ht40_rate_400ns;
-			else
+			else if (caps & IEEE80211_HTCAP_CHWIDTH40)
 				rmax = ieee80211_htrates[i].ht40_rate_800ns;
+			else if (caps & IEEE80211_HTCAP_SHORTGI20)
+				rmax = ieee80211_htrates[i].ht20_rate_400ns;
+			else
+				rmax = ieee80211_htrates[i].ht20_rate_800ns;
 		}
 	}
 	for (i = 0; i < se->se_rates[1]; i++) {
@@ -1013,7 +1033,7 @@ match_bss(struct ieee80211vap *vap,
 		 */
 		if (se->se_capinfo & (IEEE80211_CAPINFO_IBSS|IEEE80211_CAPINFO_ESS))
 			fail |= MATCH_CAPINFO;
-		else if (se->se_meshid == NULL)
+		else if (se->se_meshid[0] != IEEE80211_ELEMID_MESHID)
 			fail |= MATCH_MESH_NOID;
 		else if (ms->ms_idlen != 0 &&
 		    match_id(se->se_meshid, ms->ms_id, ms->ms_idlen))
@@ -1361,7 +1381,7 @@ sta_age(struct ieee80211_scan_state *ss)
 	KASSERT(vap->iv_opmode == IEEE80211_M_STA,
 		("wrong mode %u", vap->iv_opmode));
 	if (vap->iv_roaming == IEEE80211_ROAMING_AUTO &&
-	    (vap->iv_ic->ic_flags & IEEE80211_F_BGSCAN) &&
+	    (vap->iv_flags & IEEE80211_F_BGSCAN) &&
 	    vap->iv_state >= IEEE80211_S_RUN)
 		/* XXX vap is implicit */
 		sta_roam_check(ss, vap);

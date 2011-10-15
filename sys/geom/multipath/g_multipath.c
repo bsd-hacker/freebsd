@@ -38,12 +38,14 @@ __FBSDID("$FreeBSD$");
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/bio.h>
+#include <sys/sbuf.h>
 #include <sys/sysctl.h>
 #include <sys/kthread.h>
 #include <sys/malloc.h>
 #include <geom/geom.h>
 #include <geom/multipath/g_multipath.h>
 
+FEATURE(geom_multipath, "GEOM multipath support");
 
 SYSCTL_DECL(_kern_geom);
 SYSCTL_NODE(_kern_geom, OID_AUTO, multipath, CTLFLAG_RW, 0,
@@ -197,7 +199,7 @@ g_multipath_done_error(struct bio *bp)
 				break;
 			}
 		}
-		if (sc->cp_active == NULL) {
+		if (sc->cp_active == NULL || sc->cp_active->provider == NULL) {
 			printf("GEOM_MULTIPATH: out of providers for %s\n",
 			    sc->sc_name);
 			g_topology_unlock();
@@ -292,9 +294,6 @@ g_multipath_create(struct g_class *mp, struct g_multipath_metadata *md)
 	}
 
 	gp = g_new_geomf(mp, md->md_name);
-	if (gp == NULL)
-		goto fail;
-
 	sc = g_malloc(sizeof(*sc), M_WAITOK | M_ZERO);
 	gp->softc = sc;
 	gp->start = g_multipath_start;
@@ -304,21 +303,12 @@ g_multipath_create(struct g_class *mp, struct g_multipath_metadata *md)
 	memcpy(sc->sc_name, md->md_name, sizeof (sc->sc_name));
 
 	pp = g_new_providerf(gp, "multipath/%s", md->md_name);
-	if (pp == NULL)
-		goto fail;
 	/* limit the provider to not have it stomp on metadata */
 	pp->mediasize = md->md_size - md->md_sectorsize;
 	pp->sectorsize = md->md_sectorsize;
 	sc->pp = pp;
 	g_error_provider(pp, 0);
 	return (gp);
-fail:
-	if (gp != NULL) {
-		if (gp->softc != NULL)
-			g_free(gp->softc);
-		g_destroy_geom(gp);
-	}
-	return (NULL);
 }
 
 static int
@@ -347,8 +337,6 @@ g_multipath_add_disk(struct g_geom *gp, struct g_provider *pp)
 	}
 	nxtcp = LIST_FIRST(&gp->consumer);
 	cp = g_new_consumer(gp);
-	if (cp == NULL)
-		return (ENOMEM);
 	error = g_attach(cp, pp);
 	if (error != 0) {
 		printf("GEOM_MULTIPATH: cannot attach %s to %s",
@@ -757,7 +745,7 @@ g_multipath_ctl_getactive(struct gctl_req *req, struct g_class *mp)
 		return;
 	}
 	sc = gp->softc;
-	if (sc->cp_active) {
+	if (sc->cp_active && sc->cp_active->provider) {
 		sbuf_printf(sb, "%s\n", sc->cp_active->provider->name);
 	} else {
 		sbuf_printf(sb, "none\n");

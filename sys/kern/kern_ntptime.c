@@ -51,6 +51,10 @@ __FBSDID("$FreeBSD$");
 #include <sys/syscallsubr.h>
 #include <sys/sysctl.h>
 
+#ifdef PPS_SYNC
+FEATURE(pps_sync, "Support usage of external PPS signal by kernel PLL");
+#endif
+
 /*
  * Single-precision macros for 64-bit machines
  */
@@ -270,7 +274,7 @@ struct ntp_gettime_args {
 #endif
 /* ARGSUSED */
 int
-ntp_gettime(struct thread *td, struct ntp_gettime_args *uap)
+sys_ntp_gettime(struct thread *td, struct ntp_gettime_args *uap)
 {	
 	struct ntptimeval ntv;
 
@@ -299,7 +303,8 @@ SYSCTL_PROC(_kern_ntp_pll, OID_AUTO, gettime, CTLTYPE_OPAQUE|CTLFLAG_RD,
 #ifdef PPS_SYNC
 SYSCTL_INT(_kern_ntp_pll, OID_AUTO, pps_shiftmax, CTLFLAG_RW, &pps_shiftmax, 0, "");
 SYSCTL_INT(_kern_ntp_pll, OID_AUTO, pps_shift, CTLFLAG_RW, &pps_shift, 0, "");
-SYSCTL_INT(_kern_ntp_pll, OID_AUTO, time_monitor, CTLFLAG_RD, &time_monitor, 0, "");
+SYSCTL_LONG(_kern_ntp_pll, OID_AUTO, time_monitor, CTLFLAG_RD,
+    &time_monitor, 0, "");
 
 SYSCTL_OPAQUE(_kern_ntp_pll, OID_AUTO, pps_freq, CTLFLAG_RD, &pps_freq, sizeof(pps_freq), "I", "");
 SYSCTL_OPAQUE(_kern_ntp_pll, OID_AUTO, time_freq, CTLFLAG_RD, &time_freq, sizeof(time_freq), "I", "");
@@ -319,7 +324,7 @@ struct ntp_adjtime_args {
 #endif
 
 int
-ntp_adjtime(struct thread *td, struct ntp_adjtime_args *uap)
+sys_ntp_adjtime(struct thread *td, struct ntp_adjtime_args *uap)
 {
 	struct timex ntv;	/* temporary structure */
 	long freq;		/* frequency ns/s) */
@@ -927,7 +932,7 @@ struct adjtime_args {
 #endif
 /* ARGSUSED */
 int
-adjtime(struct thread *td, struct adjtime_args *uap)
+sys_adjtime(struct thread *td, struct adjtime_args *uap)
 {
 	struct timeval delta, olddelta, *deltap;
 	int error;
@@ -1035,5 +1040,5 @@ start_periodic_resettodr(void *arg __unused)
 	    periodic_resettodr, NULL);
 }
 
-SYSINIT(periodic_resettodr, SI_SUB_RUN_SCHEDULER, SI_ORDER_ANY - 1,
+SYSINIT(periodic_resettodr, SI_SUB_RUN_SCHEDULER, SI_ORDER_MIDDLE,
 	start_periodic_resettodr, NULL);

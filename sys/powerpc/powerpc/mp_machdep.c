@@ -32,6 +32,9 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/ktr.h>
 #include <sys/bus.h>
+#include <sys/cpuset.h>
+#include <sys/lock.h>
+#include <sys/mutex.h>
 #include <sys/pcpu.h>
 #include <sys/proc.h>
 #include <sys/sched.h>
@@ -47,6 +50,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/bus.h>
 #include <machine/cpu.h>
 #include <machine/intr_machdep.h>
+#include <machine/pcb.h>
 #include <machine/platform.h>
 #include <machine/md_var.h>
 #include <machine/smp.h>
@@ -57,9 +61,10 @@ extern struct pcpu __pcpu[MAXCPU];
 
 volatile static int ap_awake;
 volatile static u_int ap_letgo;
-volatile static uint32_t ap_decr;
 volatile static u_quad_t ap_timebase;
 static u_int ipi_msg_cnt[32];
+static struct mtx ap_boot_mtx;
+struct pcb stoppcbs[MAXCPU];
 
 void
 machdep_ap_bootstrap(void)
@@ -76,29 +81,26 @@ machdep_ap_bootstrap(void)
 		;
 
 	/* Initialize DEC and TB, sync with the BSP values */
-	decr_ap_init();
+#ifdef __powerpc64__
+	/* Writing to the time base register is hypervisor-privileged */
+	if (mfmsr() & PSL_HV)
+		mttb(ap_timebase);
+#else
 	mttb(ap_timebase);
-	__asm __volatile("mtdec %0" :: "r"(ap_decr));
+#endif
+	decr_ap_init();
 
-	atomic_add_int(&ap_awake, 1);
+	/* Serialize console output and AP count increment */
+	mtx_lock_spin(&ap_boot_mtx);
+	ap_awake++;
 	printf("SMP: AP CPU #%d launched\n", PCPU_GET(cpuid));
+	mtx_unlock_spin(&ap_boot_mtx);
 
-	/* Initialize curthread */
-	PCPU_SET(curthread, PCPU_GET(idlethread));
-	PCPU_SET(curpcb, curthread->td_pcb);
-
-	/* Let the DEC and external interrupts go */
-	mtmsr(mfmsr() | PSL_EE);
+	/* Start per-CPU event timers. */
+	cpu_initclocks_ap();
 
 	/* Announce ourselves awake, and enter the scheduler */
 	sched_throw(NULL);
-}
-
-struct cpu_group *
-cpu_topo(void)
-{
-
-	return (smp_topo_none());
 }
 
 void
@@ -152,7 +154,7 @@ cpu_mp_start(void)
 			    cpu.cr_cpuid);
 			goto next;
 		}
-		if (all_cpus & (1 << cpu.cr_cpuid)) {
+		if (CPU_ISSET(cpu.cr_cpuid, &all_cpus)) {
 			printf("SMP: cpu%d: skipped - duplicate ID\n",
 			    cpu.cr_cpuid);
 			goto next;
@@ -169,9 +171,8 @@ cpu_mp_start(void)
 			pc->pc_cpuid = bsp.cr_cpuid;
 			pc->pc_bsp = 1;
 		}
-		pc->pc_cpumask = 1 << pc->pc_cpuid;
 		pc->pc_hwref = cpu.cr_hwref;
-		all_cpus |= pc->pc_cpumask;
+		CPU_SET(pc->pc_cpuid, &all_cpus);
 next:
 		error = platform_smp_next_cpu(&cpu);
 	}
@@ -187,7 +188,7 @@ cpu_mp_announce(void)
 		pc = pcpu_find(i);
 		if (pc == NULL)
 			continue;
-		printf("cpu%d: dev=%x", i, pc->pc_hwref);
+		printf("cpu%d: dev=%x", i, (int)pc->pc_hwref);
 		if (pc->pc_bsp)
 			printf(" (BSP)");
 		printf("\n");
@@ -203,15 +204,16 @@ cpu_mp_unleash(void *dummy)
 	if (mp_ncpus <= 1)
 		return;
 
+	mtx_init(&ap_boot_mtx, "ap boot", NULL, MTX_SPIN);
+
 	cpus = 0;
 	smp_cpus = 0;
-	SLIST_FOREACH(pc, &cpuhead, pc_allcpu) {
+	STAILQ_FOREACH(pc, &cpuhead, pc_allcpu) {
 		cpus++;
-		pc->pc_other_cpus = all_cpus & ~pc->pc_cpumask;
 		if (!pc->pc_bsp) {
 			if (bootverbose)
 				printf("Waking up CPU %d (dev=%x)\n",
-				    pc->pc_cpuid, pc->pc_hwref);
+				    pc->pc_cpuid, (int)pc->pc_hwref);
 
 			platform_smp_start_cpu(pc);
 			
@@ -229,20 +231,25 @@ cpu_mp_unleash(void *dummy)
 				    pc->pc_cpuid, pc->pc_pir, pc->pc_awake);
 			smp_cpus++;
 		} else
-			stopped_cpus |= (1 << pc->pc_cpuid);
+			CPU_SET(pc->pc_cpuid, &stopped_cpus);
 	}
 
 	ap_awake = 1;
 
 	/* Provide our current DEC and TB values for APs */
-	__asm __volatile("mfdec %0" : "=r"(ap_decr));
 	ap_timebase = mftb() + 10;
 	__asm __volatile("msync; isync");
 	
 	/* Let APs continue */
 	atomic_store_rel_int(&ap_letgo, 1);
 
+#ifdef __powerpc64__
+	/* Writing to the time base register is hypervisor-privileged */
+	if (mfmsr() & PSL_HV)
+		mttb(ap_timebase);
+#else
 	mttb(ap_timebase);
+#endif
 
 	while (ap_awake < smp_cpus)
 		;
@@ -264,7 +271,7 @@ SYSINIT(start_aps, SI_SUB_SMP, SI_ORDER_FIRST, cpu_mp_unleash, NULL);
 int
 powerpc_ipi_handler(void *arg)
 {
-	cpumask_t self;
+	u_int cpuid;
 	uint32_t ipimask;
 	int msg;
 
@@ -296,14 +303,19 @@ powerpc_ipi_handler(void *arg)
 			 */
 			CTR1(KTR_SMP, "%s: IPI_STOP or IPI_STOP_HARD (stop)",
 			    __func__);
-			self = PCPU_GET(cpumask);
+			cpuid = PCPU_GET(cpuid);
+			savectx(&stoppcbs[cpuid]);
 			savectx(PCPU_GET(curpcb));
-			atomic_set_int(&stopped_cpus, self);
-			while ((started_cpus & self) == 0)
+			CPU_SET_ATOMIC(cpuid, &stopped_cpus);
+			while (!CPU_ISSET(cpuid, &started_cpus))
 				cpu_spinwait();
-			atomic_clear_int(&started_cpus, self);
-			atomic_clear_int(&stopped_cpus, self);
+			CPU_CLR_ATOMIC(cpuid, &stopped_cpus);
+			CPU_CLR_ATOMIC(cpuid, &started_cpus);
 			CTR1(KTR_SMP, "%s: IPI_STOP (restart)", __func__);
+			break;
+		case IPI_HARDCLOCK:
+			CTR1(KTR_SMP, "%s: IPI_HARDCLOCK", __func__);
+			hardclockintr();
 			break;
 		}
 	}
@@ -319,21 +331,29 @@ ipi_send(struct pcpu *pc, int ipi)
 	    pc, pc->pc_cpuid, ipi);
 
 	atomic_set_32(&pc->pc_ipimask, (1 << ipi));
-	PIC_IPI(pic, pc->pc_cpuid);
+	PIC_IPI(root_pic, pc->pc_cpuid);
 
 	CTR1(KTR_SMP, "%s: sent", __func__);
 }
 
 /* Send an IPI to a set of cpus. */
 void
-ipi_selected(cpumask_t cpus, int ipi)
+ipi_selected(cpuset_t cpus, int ipi)
 {
 	struct pcpu *pc;
 
-	SLIST_FOREACH(pc, &cpuhead, pc_allcpu) {
-		if (cpus & pc->pc_cpumask)
+	STAILQ_FOREACH(pc, &cpuhead, pc_allcpu) {
+		if (CPU_ISSET(pc->pc_cpuid, &cpus))
 			ipi_send(pc, ipi);
 	}
+}
+
+/* Send an IPI to a specific CPU. */
+void
+ipi_cpu(int cpu, u_int ipi)
+{
+
+	ipi_send(cpuid_to_pcpu[cpu], ipi);
 }
 
 /* Send an IPI to all CPUs EXCEPT myself. */
@@ -342,7 +362,7 @@ ipi_all_but_self(int ipi)
 {
 	struct pcpu *pc;
 
-	SLIST_FOREACH(pc, &cpuhead, pc_allcpu) {
+	STAILQ_FOREACH(pc, &cpuhead, pc_allcpu) {
 		if (pc != pcpup)
 			ipi_send(pc, ipi);
 	}

@@ -62,6 +62,7 @@
 #ifndef LOCORE
 
 #include <sys/queue.h>
+#include <sys/_cpuset.h>
 #include <sys/_lock.h>
 #include <sys/_mutex.h>
 
@@ -134,9 +135,7 @@ struct	pmap {
 	struct l1_ttable	*pm_l1;
 	struct l2_dtable	*pm_l2[L2_SIZE];
 	pd_entry_t		*pm_pdir;	/* KVA of page directory */
-	uint32_t		pm_gen_count;	/* generation count (pmap lock dropped) */
-	u_int			pm_retries;
-	int			pm_active;	/* active on cpus */
+	cpuset_t		pm_active;	/* active on cpus */
 	struct pmap_statistics	pm_stats;	/* pmap statictics */
 	TAILQ_HEAD(,pv_entry)	pm_pvlist;	/* list of mappings in pmap */
 };
@@ -204,7 +203,7 @@ vtopte(vm_offset_t va)
 	return (ptep);
 }
 
-extern vm_offset_t phys_avail[];
+extern vm_paddr_t phys_avail[];
 extern vm_offset_t virtual_avail;
 extern vm_offset_t virtual_end;
 
@@ -336,10 +335,6 @@ extern int pmap_needs_pte_sync;
 
 #endif /* ARM_NMMUS > 1 */
 
-#ifdef SKYEYE_WORKAROUNDS
-#define PMAP_NEEDS_PTE_SYNC     1
-#define PMAP_INCLUDE_PTE_SYNC
-#else
 #if (ARM_MMU_SA1 == 1) && (ARM_NMMUS == 1)
 #define	PMAP_NEEDS_PTE_SYNC	1
 #define	PMAP_INCLUDE_PTE_SYNC
@@ -348,7 +343,6 @@ extern int pmap_needs_pte_sync;
 #define PMAP_INCLUDE_PTE_SYNC
 #elif (ARM_MMU_SA1 == 0)
 #define	PMAP_NEEDS_PTE_SYNC	0
-#endif
 #endif
 
 /*

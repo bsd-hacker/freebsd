@@ -193,20 +193,18 @@ clnt_dg_create(
 	struct rpc_msg call_msg;
 	struct __rpc_sockinfo si;
 	XDR xdrs;
+	int error;
 
 	if (svcaddr == NULL) {
 		rpc_createerr.cf_stat = RPC_UNKNOWNADDR;
 		return (NULL);
 	}
 
-	CURVNET_SET(so->so_vnet);
 	if (!__rpc_socket2sockinfo(so, &si)) {
 		rpc_createerr.cf_stat = RPC_TLIERROR;
 		rpc_createerr.cf_error.re_errno = 0;
-		CURVNET_RESTORE();
 		return (NULL);
 	}
-	CURVNET_RESTORE();
 
 	/*
 	 * Find the receive and the send size
@@ -267,7 +265,12 @@ clnt_dg_create(
 	 */
 	cu->cu_closeit = FALSE;
 	cu->cu_socket = so;
-	soreserve(so, 256*1024, 256*1024);
+	error = soreserve(so, (u_long)sendsz, (u_long)recvsz);
+	if (error != 0) {
+		rpc_createerr.cf_stat = RPC_FAILED;
+		rpc_createerr.cf_error.re_errno = error;
+		goto err2;
+	}
 
 	sb = &so->so_rcv;
 	SOCKBUF_LOCK(&so->so_rcv);
@@ -464,7 +467,10 @@ send_again:
 		    cu->cu_waitflag, "rpccwnd", 0);
 		if (error) {
 			errp->re_errno = error;
-			errp->re_status = stat = RPC_CANTSEND;
+			if (error == EINTR || error == ERESTART)
+				errp->re_status = stat = RPC_INTR;
+			else
+				errp->re_status = stat = RPC_CANTSEND;
 			goto out;
 		}
 	}
@@ -633,7 +639,7 @@ get_reply:
 		 */
 		if (error != EWOULDBLOCK) {
 			errp->re_errno = error;
-			if (error == EINTR)
+			if (error == EINTR || error == ERESTART)
 				errp->re_status = stat = RPC_INTR;
 			else
 				errp->re_status = stat = RPC_CANTRECV;
@@ -1083,15 +1089,16 @@ clnt_dg_soupcall(struct socket *so, void *arg, int waitflag)
 		/*
 		 * The XID is in the first uint32_t of the reply.
 		 */
-		if (m->m_len < sizeof(xid))
-			m = m_pullup(m, sizeof(xid));
-		if (!m)
+		if (m->m_len < sizeof(xid) && m_length(m, NULL) < sizeof(xid)) {
 			/*
 			 * Should never happen.
 			 */
+			m_freem(m);
 			continue;
+		}
 
-		xid = ntohl(*mtod(m, uint32_t *));
+		m_copydata(m, 0, sizeof(xid), (char *)&xid);
+		xid = ntohl(xid);
 
 		/*
 		 * Attempt to match this reply with a pending request.

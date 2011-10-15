@@ -30,6 +30,8 @@ __FBSDID("$FreeBSD$");
 #ifndef	_NET_IF_LLATBL_H_
 #define	_NET_IF_LLATBL_H_
 
+#include "opt_ofed.h"
+
 #include <sys/_rwlock.h>
 #include <netinet/in.h>
 
@@ -57,7 +59,9 @@ struct llentry {
 	struct rwlock		 lle_lock;
 	struct lltable		 *lle_tbl;
 	struct llentries	 *lle_head;
+	void			(*lle_free)(struct lltable *, struct llentry *);
 	struct mbuf		 *la_hold;
+	int     		 la_numheld;  /* # of packets currently held */
 	time_t			 la_expire;
 	uint16_t		 la_flags;    
 	uint16_t		 la_asked;
@@ -71,6 +75,9 @@ struct llentry {
 	union {
 		uint64_t	mac_aligned;
 		uint16_t	mac16[3];
+#ifdef OFED
+		uint8_t		mac8[20];	/* IB needs 20 bytes. */
+#endif
 	} ll_addr;
 
 	/* XXX af-private? */
@@ -115,19 +122,12 @@ struct llentry {
 		LLE_WUNLOCK(lle);				\
 	}							\
 	/* guard against invalid refs */			\
-	lle = 0;						\
+	lle = NULL;						\
 } while (0)
 
 #define	LLE_FREE(lle) do {					\
 	LLE_WLOCK(lle);						\
-	if ((lle)->lle_refcnt <= 1)				\
-		(lle)->lle_tbl->llt_free((lle)->lle_tbl, (lle));\
-	else {							\
-		(lle)->lle_refcnt--;				\
-		LLE_WUNLOCK(lle);				\
-	}							\
-	/* guard against invalid refs */			\
-	lle = NULL;						\
+	LLE_FREE_LOCKED(lle);					\
 } while (0)
 
 
@@ -152,15 +152,13 @@ struct lltable {
 	int			llt_af;
 	struct ifnet		*llt_ifp;
 
-	struct llentry *	(*llt_new)(const struct sockaddr *, u_int);
 	void			(*llt_free)(struct lltable *, struct llentry *);
 	void			(*llt_prefix_free)(struct lltable *,
 				    const struct sockaddr *prefix,
-				    const struct sockaddr *mask);
+				    const struct sockaddr *mask,
+				    u_int flags);
 	struct llentry *	(*llt_lookup)(struct lltable *, u_int flags,
 				    const struct sockaddr *l3addr);
-	int			(*llt_rtcheck)(struct ifnet *, u_int flags,
-				    const struct sockaddr *);
 	int			(*llt_dump)(struct lltable *,
 				     struct sysctl_req *);
 };
@@ -185,11 +183,13 @@ MALLOC_DECLARE(M_LLTABLE);
 struct lltable *lltable_init(struct ifnet *, int);
 void		lltable_free(struct lltable *);
 void		lltable_prefix_free(int, struct sockaddr *, 
-                       struct sockaddr *);
+                       struct sockaddr *, u_int);
+#if 0
 void		lltable_drain(int);
+#endif
 int		lltable_sysctl_dumparp(int, struct sysctl_req *);
 
-void		llentry_free(struct llentry *);
+size_t		llentry_free(struct llentry *);
 int		llentry_update(struct llentry **, struct lltable *,
                        struct sockaddr_storage *, struct ifnet *);
 

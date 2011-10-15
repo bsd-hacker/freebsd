@@ -91,12 +91,10 @@ __FBSDID("$FreeBSD$");
 #include <sys/kdb.h>
 #endif
 
-#include <sys/cdefs.h>
-#include <sys/syslog.h>
-
-
 #ifdef TRAP_DEBUG
-int trap_debug = 1;
+int trap_debug = 0;
+SYSCTL_INT(_machdep, OID_AUTO, trap_debug, CTLFLAG_RW,
+    &trap_debug, 0, "Debug information on all traps");
 #endif
 
 static void log_illegal_instruction(const char *, struct trapframe *);
@@ -259,10 +257,136 @@ static int allow_unaligned_acc = 1;
 SYSCTL_INT(_vm, OID_AUTO, allow_unaligned_acc, CTLFLAG_RW,
     &allow_unaligned_acc, 0, "Allow unaligned accesses");
 
-static int emulate_unaligned_access(struct trapframe *frame);
+static int emulate_unaligned_access(struct trapframe *frame, int mode);
 
-extern char *syscallnames[];
 extern void fswintrberr(void); /* XXX */
+
+int
+cpu_fetch_syscall_args(struct thread *td, struct syscall_args *sa)
+{
+	struct trapframe *locr0 = td->td_frame;
+	struct sysentvec *se;
+	int error, nsaved;
+
+	bzero(sa->args, sizeof(sa->args));
+
+	/* compute next PC after syscall instruction */
+	td->td_pcb->pcb_tpc = sa->trapframe->pc; /* Remember if restart */
+	if (DELAYBRANCH(sa->trapframe->cause))	 /* Check BD bit */
+		locr0->pc = MipsEmulateBranch(locr0, sa->trapframe->pc, 0, 0);
+	else
+		locr0->pc += sizeof(int);
+	sa->code = locr0->v0;
+
+	switch (sa->code) {
+#if defined(__mips_n32) || defined(__mips_n64)
+	case SYS___syscall:
+		/*
+		 * Quads fit in a single register in
+		 * new ABIs.
+		 *
+		 * XXX o64?
+		 */
+#endif
+	case SYS_syscall:
+		/*
+		 * Code is first argument, followed by
+		 * actual args.
+		 */
+		sa->code = locr0->a0;
+		sa->args[0] = locr0->a1;
+		sa->args[1] = locr0->a2;
+		sa->args[2] = locr0->a3;
+		nsaved = 3;
+#if defined(__mips_n32) || defined(__mips_n64)
+		sa->args[3] = locr0->t4;
+		sa->args[4] = locr0->t5;
+		sa->args[5] = locr0->t6;
+		sa->args[6] = locr0->t7;
+		nsaved += 4;
+#endif
+		break;
+
+#if defined(__mips_o32)
+	case SYS___syscall:
+		/*
+		 * Like syscall, but code is a quad, so as
+		 * to maintain quad alignment for the rest
+		 * of the arguments.
+		 */
+		if (_QUAD_LOWWORD == 0)
+			sa->code = locr0->a0;
+		else
+			sa->code = locr0->a1;
+		sa->args[0] = locr0->a2;
+		sa->args[1] = locr0->a3;
+		nsaved = 2;
+		break;
+#endif
+
+	default:
+		sa->args[0] = locr0->a0;
+		sa->args[1] = locr0->a1;
+		sa->args[2] = locr0->a2;
+		sa->args[3] = locr0->a3;
+		nsaved = 4;
+#if defined (__mips_n32) || defined(__mips_n64)
+		sa->args[4] = locr0->t4;
+		sa->args[5] = locr0->t5;
+		sa->args[6] = locr0->t6;
+		sa->args[7] = locr0->t7;
+		nsaved += 4;
+#endif
+		break;
+	}
+#ifdef TRAP_DEBUG
+	if (trap_debug)
+		printf("SYSCALL #%d pid:%u\n", code, p->p_pid);
+#endif
+
+	se = td->td_proc->p_sysent;
+	if (se->sv_mask)
+		sa->code &= se->sv_mask;
+
+	if (sa->code >= se->sv_size)
+		sa->callp = &se->sv_table[0];
+	else
+		sa->callp = &se->sv_table[sa->code];
+
+	sa->narg = sa->callp->sy_narg;
+
+	if (sa->narg > nsaved) {
+#if defined(__mips_n32) || defined(__mips_n64)
+		/*
+		 * XXX
+		 * Is this right for new ABIs?  I think the 4 there
+		 * should be 8, size there are 8 registers to skip,
+		 * not 4, but I'm not certain.
+		 */
+		printf("SYSCALL #%u pid:%u, nargs > nsaved.\n", sa->code,
+		    td->td_proc->p_pid);
+#endif
+		error = copyin((caddr_t)(intptr_t)(locr0->sp +
+		    4 * sizeof(register_t)), (caddr_t)&sa->args[nsaved],
+		   (u_int)(sa->narg - nsaved) * sizeof(register_t));
+		if (error != 0) {
+			locr0->v0 = error;
+			locr0->a3 = 1;
+		}
+	} else
+		error = 0;
+
+	if (error == 0) {
+		td->td_retval[0] = 0;
+		td->td_retval[1] = locr0->v1;
+	}
+
+	return (error);
+}
+
+#undef __FBSDID
+#define __FBSDID(x)
+#include "../../kern/subr_syscall.c"
 
 /*
  * Handle an exception.
@@ -280,7 +404,6 @@ trap(struct trapframe *trapframe)
 	struct thread *td = curthread;
 	struct proc *p = curproc;
 	vm_prot_t ftype;
-	pt_entry_t *pte;
 	pmap_t pmap;
 	int access_type;
 	ksiginfo_t ksi;
@@ -290,7 +413,7 @@ trap(struct trapframe *trapframe)
 
 	trapdebug_enter(trapframe, 0);
 	
-	type = (trapframe->cause & CR_EXC_CODE) >> CR_EXC_CODE_SHIFT;
+	type = (trapframe->cause & MIPS3_CR_EXC_CODE) >> MIPS_CR_EXC_CODE_SHIFT;
 	if (TRAPF_USERMODE(trapframe)) {
 		type |= T_USER;
 		usermode = 1;
@@ -303,8 +426,8 @@ trap(struct trapframe *trapframe)
 	 * was off disable all so we don't accidently enable it when doing a
 	 * return to userland.
 	 */
-	if (trapframe->sr & SR_INT_ENAB) {
-		set_intr_mask(~(trapframe->sr & ALL_INT_MASK));
+	if (trapframe->sr & MIPS_SR_INT_IE) {
+		set_intr_mask(trapframe->sr & MIPS_SR_INT_MASK);
 		intr_enable();
 	} else {
 		intr_disable();
@@ -328,7 +451,7 @@ trap(struct trapframe *trapframe)
 #ifdef SMP
 		printf("cpuid = %d\n", PCPU_GET(cpuid));
 #endif
-		MachTLBGetPID(pid);
+		pid = mips_rd_entryhi() & TLBHI_ASID_MASK;
 		printf("badaddr = %#jx, pc = %#jx, ra = %#jx, sp = %#jx, sr = %jx, pid = %d, ASID = %u\n",
 		    (intmax_t)trapframe->badvaddr, (intmax_t)trapframe->pc, (intmax_t)trapframe->ra,
 		    (intmax_t)trapframe->sp, (intmax_t)trapframe->sr,
@@ -371,82 +494,24 @@ trap(struct trapframe *trapframe)
 	case T_TLB_MOD:
 		/* check for kernel address */
 		if (KERNLAND(trapframe->badvaddr)) {
-			vm_offset_t pa;
-
-			PMAP_LOCK(kernel_pmap);
-			pte = pmap_pte(kernel_pmap, trapframe->badvaddr);
-			if (pte == NULL)
-				panic("trap: ktlbmod: can't find PTE");
-#ifdef SMP
-			/* It is possible that some other CPU changed m-bit */
-			if (!mips_pg_v(*pte) || (*pte & mips_pg_m_bit())) {
-				pmap_update_page(kernel_pmap,
-				    trapframe->badvaddr, *pte);
-				PMAP_UNLOCK(kernel_pmap);
-				return (trapframe->pc);
-			}
-#else
-			if (!mips_pg_v(*pte) || (*pte & mips_pg_m_bit()))
-				panic("trap: ktlbmod: invalid pte");
-#endif
-			if (*pte & mips_pg_ro_bit()) {
-				/* write to read only page in the kernel */
+			if (pmap_emulate_modified(kernel_pmap, 
+			    trapframe->badvaddr) != 0) {
 				ftype = VM_PROT_WRITE;
-				PMAP_UNLOCK(kernel_pmap);
 				goto kernel_fault;
 			}
-			*pte |= mips_pg_m_bit();
-			pmap_update_page(kernel_pmap, trapframe->badvaddr, *pte);
-			pa = mips_tlbpfn_to_paddr(*pte);
-			if (!page_is_managed(pa))
-				panic("trap: ktlbmod: unmanaged page");
-			pmap_set_modified(pa);
-			PMAP_UNLOCK(kernel_pmap);
 			return (trapframe->pc);
 		}
 		/* FALLTHROUGH */
 
 	case T_TLB_MOD + T_USER:
-		{
-			vm_offset_t pa;
-
-			pmap = &p->p_vmspace->vm_pmap;
-
-			PMAP_LOCK(pmap);
-			pte = pmap_pte(pmap, trapframe->badvaddr);
-			if (pte == NULL)
-				panic("trap: utlbmod: can't find PTE");
-#ifdef SMP
-			/* It is possible that some other CPU changed m-bit */
-			if (!mips_pg_v(*pte) || (*pte & mips_pg_m_bit())) {
-				pmap_update_page(pmap, trapframe->badvaddr, *pte);
-				PMAP_UNLOCK(pmap);
-				goto out;
-			}
-#else
-			if (!mips_pg_v(*pte) || (*pte & mips_pg_m_bit()))
-				panic("trap: utlbmod: invalid pte");
-#endif
-
-			if (*pte & mips_pg_ro_bit()) {
-				/* write to read only page */
-				ftype = VM_PROT_WRITE;
-				PMAP_UNLOCK(pmap);
-				goto dofault;
-			}
-			*pte |= mips_pg_m_bit();
-			pmap_update_page(pmap, trapframe->badvaddr, *pte);
-			pa = mips_tlbpfn_to_paddr(*pte);
-			if (!page_is_managed(pa))
-				panic("trap: utlbmod: unmanaged page");
-			pmap_set_modified(pa);
-
-			PMAP_UNLOCK(pmap);
-			if (!usermode) {
-				return (trapframe->pc);
-			}
-			goto out;
+		pmap = &p->p_vmspace->vm_pmap;
+		if (pmap_emulate_modified(pmap, trapframe->badvaddr) != 0) {
+			ftype = VM_PROT_WRITE;
+			goto dofault;
 		}
+		if (!usermode)
+			return (trapframe->pc);
+		goto out;
 
 	case T_TLB_LD_MISS:
 	case T_TLB_ST_MISS:
@@ -556,7 +621,10 @@ dofault:
 
 	case T_ADDR_ERR_LD + T_USER:	/* misaligned or kseg access */
 	case T_ADDR_ERR_ST + T_USER:	/* misaligned or kseg access */
-		if (allow_unaligned_acc) {
+		if (trapframe->badvaddr < 0 ||
+		    trapframe->badvaddr >= VM_MAXUSER_ADDRESS) {
+			msg = "ADDRESS_SPACE_ERR";
+		} else if (allow_unaligned_acc) {
 			int mode;
 
 			if (type == (T_ADDR_ERR_LD + T_USER))
@@ -564,23 +632,13 @@ dofault:
 			else
 				mode = VM_PROT_WRITE;
 
-			/*
-			 * ADDR_ERR faults have higher priority than TLB
-			 * Miss faults.  Therefore, it is necessary to
-			 * verify that the faulting address is a valid
-			 * virtual address within the process' address space
-			 * before trying to emulate the unaligned access.
-			 */
-			if (useracc((caddr_t)
-			    (((vm_offset_t)trapframe->badvaddr) &
-			    ~(sizeof(int) - 1)), sizeof(int) * 2, mode)) {
-				access_type = emulate_unaligned_access(
-				    trapframe);
-				if (access_type != 0)
-					goto out;
-			}
+			access_type = emulate_unaligned_access(trapframe, mode);
+			if (access_type != 0)
+				goto out;
+			msg = "ALIGNMENT_FIX_ERR";
+		} else {
+			msg = "ADDRESS_ERR";
 		}
-		msg = "ADDRESS_ERR";
 
 		/* FALL THROUGH */
 
@@ -596,127 +654,19 @@ dofault:
 
 	case T_SYSCALL + T_USER:
 		{
-			struct trapframe *locr0 = td->td_frame;
-			struct sysent *callp;
-			unsigned int code;
-			int nargs, nsaved;
-			register_t args[8];
+			struct syscall_args sa;
+			int error;
 
-			bzero(args, sizeof args);
-
-			/*
-			 * note: PCPU_LAZY_INC() can only be used if we can
-			 * afford occassional inaccuracy in the count.
-			 */
-			PCPU_LAZY_INC(cnt.v_syscall);
-			if (td->td_ucred != p->p_ucred)
-				cred_update_thread(td);
-#ifdef KSE
-			if (p->p_flag & P_SA)
-				thread_user_enter(td);
-#endif
-			/* compute next PC after syscall instruction */
-			td->td_pcb->pcb_tpc = trapframe->pc;	/* Remember if restart */
-			if (DELAYBRANCH(trapframe->cause)) {	/* Check BD bit */
-				locr0->pc = MipsEmulateBranch(locr0, trapframe->pc, 0,
-				    0);
-			} else {
-				locr0->pc += sizeof(int);
-			}
-			code = locr0->v0;
-
-			switch (code) {
-			case SYS_syscall:
-				/*
-				 * Code is first argument, followed by
-				 * actual args.
-				 */
-				code = locr0->a0;
-				args[0] = locr0->a1;
-				args[1] = locr0->a2;
-				args[2] = locr0->a3;
-				nsaved = 3;
-				break;
-
-			case SYS___syscall:
-				/*
-				 * Like syscall, but code is a quad, so as
-				 * to maintain quad alignment for the rest
-				 * of the arguments.
-				 */
-				if (_QUAD_LOWWORD == 0) {
-					code = locr0->a0;
-				} else {
-					code = locr0->a1;
-				}
-				args[0] = locr0->a2;
-				args[1] = locr0->a3;
-				nsaved = 2;
-				break;
-
-			default:
-				args[0] = locr0->a0;
-				args[1] = locr0->a1;
-				args[2] = locr0->a2;
-				args[3] = locr0->a3;
-				nsaved = 4;
-			}
-#ifdef TRAP_DEBUG
-			printf("SYSCALL #%d pid:%u\n", code, p->p_pid);
-#endif
-
-			if (p->p_sysent->sv_mask)
-				code &= p->p_sysent->sv_mask;
-
-			if (code >= p->p_sysent->sv_size)
-				callp = &p->p_sysent->sv_table[0];
-			else
-				callp = &p->p_sysent->sv_table[code];
-
-			nargs = callp->sy_narg;
-
-			if (nargs > nsaved) {
-				i = copyin((caddr_t)(intptr_t)(locr0->sp +
-				    4 * sizeof(register_t)), (caddr_t)&args[nsaved],
-				    (u_int)(nargs - nsaved) * sizeof(register_t));
-				if (i) {
-					locr0->v0 = i;
-					locr0->a3 = 1;
-#ifdef KTRACE
-					if (KTRPOINT(td, KTR_SYSCALL))
-						ktrsyscall(code, nargs, args);
-#endif
-					goto done;
-				}
-			}
-#ifdef KTRACE
-			if (KTRPOINT(td, KTR_SYSCALL))
-				ktrsyscall(code, nargs, args);
-#endif
-			td->td_retval[0] = 0;
-			td->td_retval[1] = locr0->v1;
+			sa.trapframe = trapframe;
+			error = syscallenter(td, &sa);
 
 #if !defined(SMP) && (defined(DDB) || defined(DEBUG))
 			if (trp == trapdebug)
-				trapdebug[TRAPSIZE - 1].code = code;
+				trapdebug[TRAPSIZE - 1].code = sa.code;
 			else
-				trp[-1].code = code;
+				trp[-1].code = sa.code;
 #endif
-			STOPEVENT(p, S_SCE, nargs);
-
-			PTRACESTOP_SC(p, td, S_PT_SCE);
-			i = (*callp->sy_call) (td, args);
-#if 0
-			/*
-			 * Reinitialize proc pointer `p' as it may be
-			 * different if this is a child returning from fork
-			 * syscall.
-			 */
-			td = curthread;
-			locr0 = td->td_frame;
-#endif
-			trapdebug_enter(locr0, -code);
-			cpu_set_syscall_retval(td, i);
+			trapdebug_enter(td->td_frame, -sa.code);
 
 			/*
 			 * The sync'ing of I & D caches for SYS_ptrace() is
@@ -724,38 +674,7 @@ dofault:
 			 * instead of being done here under a special check
 			 * for SYS_ptrace().
 			 */
-	done:
-			/*
-			 * Check for misbehavior.
-			 */
-			WITNESS_WARN(WARN_PANIC, NULL, "System call %s returning",
-			    (code >= 0 && code < SYS_MAXSYSCALL) ?
-			    syscallnames[code] : "???");
-			KASSERT(td->td_critnest == 0,
-			    ("System call %s returning in a critical section",
-			    (code >= 0 && code < SYS_MAXSYSCALL) ?
-			    syscallnames[code] : "???"));
-			KASSERT(td->td_locks == 0,
-			    ("System call %s returning with %d locks held",
-			    (code >= 0 && code < SYS_MAXSYSCALL) ?
-			    syscallnames[code] : "???",
-			    td->td_locks));
-			userret(td, trapframe);
-#ifdef KTRACE
-			if (KTRPOINT(td, KTR_SYSRET))
-				ktrsysret(code, i, td->td_retval[0]);
-#endif
-			/*
-			 * This works because errno is findable through the
-			 * register set.  If we ever support an emulation
-			 * where this is not the case, this code will need
-			 * to be revisited.
-			 */
-			STOPEVENT(p, S_SCX, code);
-
-			PTRACESTOP_SC(p, td, S_PT_SCX);
-
-			mtx_assert(&Giant, MA_NOTOWNED);
+			syscallret(td, error, &sa);
 			return (trapframe->pc);
 		}
 
@@ -776,13 +695,14 @@ dofault:
 				va += sizeof(int);
 
 			/* read break instruction */
-			instr = fuword((caddr_t)va);
+			instr = fuword32((caddr_t)va);
 #if 0
 			printf("trap: %s (%d) breakpoint %x at %x: (adr %x ins %x)\n",
 			    p->p_comm, p->p_pid, instr, trapframe->pc,
 			    p->p_md.md_ss_addr, p->p_md.md_ss_instr);	/* XXX */
 #endif
-			if (td->td_md.md_ss_addr != va || instr != BREAK_SSTEP) {
+			if (td->td_md.md_ss_addr != va ||
+			    instr != MIPS_BREAK_SSTEP) {
 				i = SIGTRAP;
 				addr = trapframe->pc;
 				break;
@@ -824,7 +744,7 @@ dofault:
 			if (DELAYBRANCH(trapframe->cause))
 				va += sizeof(int);
 			/* read break instruction */
-			instr = fuword((caddr_t)va);
+			instr = fuword32((caddr_t)va);
 
 			if (DELAYBRANCH(trapframe->cause)) {	/* Check BD bit */
 				locr0->pc = MipsEmulateBranch(locr0, trapframe->pc, 0,
@@ -852,13 +772,13 @@ dofault:
 	case T_COP_UNUSABLE + T_USER:
 #if !defined(CPU_HAVEFPU)
 		/* FP (COP1) instruction */
-		if ((trapframe->cause & CR_COP_ERR) == 0x10000000) {
+		if ((trapframe->cause & MIPS_CR_COP_ERR) == 0x10000000) {
 			log_illegal_instruction("COP1_UNUSABLE", trapframe);
 			i = SIGILL;
 			break;
 		}
 #endif
-		if ((trapframe->cause & CR_COP_ERR) != 0x10000000) {
+		if ((trapframe->cause & MIPS_CR_COP_ERR) != 0x10000000) {
 			log_illegal_instruction("COPn_UNUSABLE", trapframe);
 			i = SIGILL;	/* only FPU instructions allowed */
 			break;
@@ -866,7 +786,7 @@ dofault:
 		addr = trapframe->pc;
 		MipsSwitchFPState(PCPU_GET(fpcurthread), td->td_frame);
 		PCPU_SET(fpcurthread, td);
-		td->td_frame->sr |= SR_COP_1_BIT;
+		td->td_frame->sr |= MIPS_SR_COP_1_BIT;
 		td->td_md.md_flags |= MDTD_FPUSED;
 		goto out;
 
@@ -891,8 +811,10 @@ dofault:
 	case T_ADDR_ERR_LD:	/* misaligned access */
 	case T_ADDR_ERR_ST:	/* misaligned access */
 #ifdef TRAP_DEBUG
-		printf("+++ ADDR_ERR: type = %d, badvaddr = %#jx\n", type,
-		    (intmax_t)trapframe->badvaddr);
+		if (trap_debug) {
+			printf("+++ ADDR_ERR: type = %d, badvaddr = %#jx\n", type,
+			    (intmax_t)trapframe->badvaddr);
+		}
 #endif
 		/* Only allow emulation on a user address */
 		if (allow_unaligned_acc &&
@@ -904,22 +826,9 @@ dofault:
 			else
 				mode = VM_PROT_WRITE;
 
-			/*
-			 * ADDR_ERR faults have higher priority than TLB
-			 * Miss faults.  Therefore, it is necessary to
-			 * verify that the faulting address is a valid
-			 * virtual address within the process' address space
-			 * before trying to emulate the unaligned access.
-			 */
-			if (useracc((caddr_t)
-			    (((vm_offset_t)trapframe->badvaddr) &
-			    ~(sizeof(int) - 1)), sizeof(int) * 2, mode)) {
-				access_type = emulate_unaligned_access(
-				    trapframe);
-				if (access_type != 0) {
-					return (trapframe->pc);
-				}
-			}
+			access_type = emulate_unaligned_access(trapframe, mode);
+			if (access_type != 0)
+				return (trapframe->pc);
 		}
 		/* FALLTHROUGH */
 
@@ -951,9 +860,10 @@ err:
 			printf("kernel mode)\n");
 
 #ifdef TRAP_DEBUG
-		printf("badvaddr = %#jx, pc = %#jx, ra = %#jx, sr = %#jxx\n",
-		       (intmax_t)trapframe->badvaddr, (intmax_t)trapframe->pc, (intmax_t)trapframe->ra,
-		       (intmax_t)trapframe->sr);
+		if (trap_debug)
+			printf("badvaddr = %#jx, pc = %#jx, ra = %#jx, sr = %#jxx\n",
+			       (intmax_t)trapframe->badvaddr, (intmax_t)trapframe->pc, (intmax_t)trapframe->ra,
+			       (intmax_t)trapframe->sr);
 #endif
 
 #ifdef KDB
@@ -1002,10 +912,13 @@ trapDump(char *msg)
 			break;
 
 		printf("%s: ADR %jx PC %jx CR %jx SR %jx\n",
-		    trap_type[(trp->cause & CR_EXC_CODE) >> CR_EXC_CODE_SHIFT],
-		    (intmax_t)trp->vadr, (intmax_t)trp->pc, (intmax_t)trp->cause, (intmax_t)trp->status);
+		    trap_type[(trp->cause & MIPS3_CR_EXC_CODE) >> 
+			MIPS_CR_EXC_CODE_SHIFT],
+		    (intmax_t)trp->vadr, (intmax_t)trp->pc,
+		    (intmax_t)trp->cause, (intmax_t)trp->status);
 
-		printf("   RA %jx SP %jx code %d\n", (intmax_t)trp->ra, (intmax_t)trp->sp, (int)trp->code);
+		printf("   RA %jx SP %jx code %d\n", (intmax_t)trp->ra,
+		    (intmax_t)trp->sp, (int)trp->code);
 	}
 	intr_restore(s);
 }
@@ -1133,9 +1046,9 @@ MipsEmulateBranch(struct trapframe *framePtr, uintptr_t instPC, int fpcCSR,
 		case OP_BCx:
 		case OP_BCy:
 			if ((inst.RType.rt & COPz_BC_TF_MASK) == COPz_BC_TRUE)
-				condition = fpcCSR & FPC_COND_BIT;
+				condition = fpcCSR & MIPS_FPU_COND_BIT;
 			else
-				condition = !(fpcCSR & FPC_COND_BIT);
+				condition = !(fpcCSR & MIPS_FPU_COND_BIT);
 			if (condition)
 				retAddr = GetBranchDest(instPC, inst);
 			else
@@ -1297,8 +1210,8 @@ log_illegal_instruction(const char *msg, struct trapframe *frame)
 	if (!(pc & 3) &&
 	    useracc((caddr_t)(intptr_t)pc, sizeof(int) * 4, VM_PROT_READ)) {
 		/* dump page table entry for faulting instruction */
-		log(LOG_ERR, "Page table info for pc address %#jx: pde = %p, pte = %#x\n",
-		    (intmax_t)pc, (void *)(intptr_t)*pdep, ptep ? *ptep : 0);
+		log(LOG_ERR, "Page table info for pc address %#jx: pde = %p, pte = %#jx\n",
+		    (intmax_t)pc, (void *)(intptr_t)*pdep, (uintmax_t)(ptep ? *ptep : 0));
 
 		addr = (unsigned int *)(intptr_t)pc;
 		log(LOG_ERR, "Dumping 4 words starting at pc address %p: \n",
@@ -1306,8 +1219,8 @@ log_illegal_instruction(const char *msg, struct trapframe *frame)
 		log(LOG_ERR, "%08x %08x %08x %08x\n",
 		    addr[0], addr[1], addr[2], addr[3]);
 	} else {
-		log(LOG_ERR, "pc address %#jx is inaccessible, pde = %p, pte = %#x\n",
-		    (intmax_t)pc, (void *)(intptr_t)*pdep, ptep ? *ptep : 0);
+		log(LOG_ERR, "pc address %#jx is inaccessible, pde = %p, pte = %#jx\n",
+		    (intmax_t)pc, (void *)(intptr_t)*pdep, (uintmax_t)(ptep ? *ptep : 0));
 	}
 }
 
@@ -1361,8 +1274,8 @@ log_bad_page_fault(char *msg, struct trapframe *frame, int trap_type)
 	    (trap_type != T_BUS_ERR_IFETCH) &&
 	    useracc((caddr_t)(intptr_t)pc, sizeof(int) * 4, VM_PROT_READ)) {
 		/* dump page table entry for faulting instruction */
-		log(LOG_ERR, "Page table info for pc address %#jx: pde = %p, pte = %#x\n",
-		    (intmax_t)pc, (void *)(intptr_t)*pdep, ptep ? *ptep : 0);
+		log(LOG_ERR, "Page table info for pc address %#jx: pde = %p, pte = %#jx\n",
+		    (intmax_t)pc, (void *)(intptr_t)*pdep, (uintmax_t)(ptep ? *ptep : 0));
 
 		addr = (unsigned int *)(intptr_t)pc;
 		log(LOG_ERR, "Dumping 4 words starting at pc address %p: \n",
@@ -1370,13 +1283,13 @@ log_bad_page_fault(char *msg, struct trapframe *frame, int trap_type)
 		log(LOG_ERR, "%08x %08x %08x %08x\n",
 		    addr[0], addr[1], addr[2], addr[3]);
 	} else {
-		log(LOG_ERR, "pc address %#jx is inaccessible, pde = %p, pte = %#x\n",
-		    (intmax_t)pc, (void *)(intptr_t)*pdep, ptep ? *ptep : 0);
+		log(LOG_ERR, "pc address %#jx is inaccessible, pde = %p, pte = %#jx\n",
+		    (intmax_t)pc, (void *)(intptr_t)*pdep, (uintmax_t)(ptep ? *ptep : 0));
 	}
 
 	get_mapping_info((vm_offset_t)frame->badvaddr, &pdep, &ptep);
-	log(LOG_ERR, "Page table info for bad address %#jx: pde = %p, pte = %#x\n",
-	    (intmax_t)frame->badvaddr, (void *)(intptr_t)*pdep, ptep ? *ptep : 0);
+	log(LOG_ERR, "Page table info for bad address %#jx: pde = %p, pte = %#jx\n",
+	    (intmax_t)frame->badvaddr, (void *)(intptr_t)*pdep, (uintmax_t)(ptep ? *ptep : 0));
 }
 
 
@@ -1384,76 +1297,124 @@ log_bad_page_fault(char *msg, struct trapframe *frame, int trap_type)
  * Unaligned load/store emulation
  */
 static int
-mips_unaligned_load_store(struct trapframe *frame, register_t addr, register_t pc)
+mips_unaligned_load_store(struct trapframe *frame, int mode, register_t addr, register_t pc)
 {
 	register_t *reg = (register_t *) frame;
 	u_int32_t inst = *((u_int32_t *)(intptr_t)pc);
-	u_int32_t value_msb, value;
-	int access_type = 0;
+	register_t value_msb, value;
+	unsigned size;
 
+	/*
+	 * ADDR_ERR faults have higher priority than TLB
+	 * Miss faults.  Therefore, it is necessary to
+	 * verify that the faulting address is a valid
+	 * virtual address within the process' address space
+	 * before trying to emulate the unaligned access.
+	 */
+	switch (MIPS_INST_OPCODE(inst)) {
+	case OP_LHU: case OP_LH:
+	case OP_SH:
+		size = 2;
+		break;
+	case OP_LWU: case OP_LW:
+	case OP_SW:
+		size = 4;
+		break;
+	case OP_LD:
+	case OP_SD:
+		size = 8;
+		break;
+	default:
+		printf("%s: unhandled opcode in address error: %#x\n", __func__, MIPS_INST_OPCODE(inst));
+		return (0);
+	}
+
+	if (!useracc((void *)((vm_offset_t)addr & ~(size - 1)), size * 2, mode))
+		return (0);
+
+	/*
+	 * XXX
+	 * Handle LL/SC LLD/SCD.
+	 */
 	switch (MIPS_INST_OPCODE(inst)) {
 	case OP_LHU:
+		KASSERT(mode == VM_PROT_READ, ("access mode must be read for load instruction."));
 		lbu_macro(value_msb, addr);
 		addr += 1;
 		lbu_macro(value, addr);
 		value |= value_msb << 8;
 		reg[MIPS_INST_RT(inst)] = value;
-		access_type = MIPS_LHU_ACCESS;
-		break;
+		return (MIPS_LHU_ACCESS);
 
 	case OP_LH:
+		KASSERT(mode == VM_PROT_READ, ("access mode must be read for load instruction."));
 		lb_macro(value_msb, addr);
 		addr += 1;
 		lbu_macro(value, addr);
 		value |= value_msb << 8;
 		reg[MIPS_INST_RT(inst)] = value;
-		access_type = MIPS_LH_ACCESS;
-		break;
+		return (MIPS_LH_ACCESS);
 
 	case OP_LWU:
+		KASSERT(mode == VM_PROT_READ, ("access mode must be read for load instruction."));
 		lwl_macro(value, addr);
 		addr += 3;
 		lwr_macro(value, addr);
 		value &= 0xffffffff;
 		reg[MIPS_INST_RT(inst)] = value;
-		access_type = MIPS_LWU_ACCESS;
-		break;
+		return (MIPS_LWU_ACCESS);
 
 	case OP_LW:
+		KASSERT(mode == VM_PROT_READ, ("access mode must be read for load instruction."));
 		lwl_macro(value, addr);
 		addr += 3;
 		lwr_macro(value, addr);
 		reg[MIPS_INST_RT(inst)] = value;
-		access_type = MIPS_LW_ACCESS;
-		break;
+		return (MIPS_LW_ACCESS);
+
+#if defined(__mips_n32) || defined(__mips_n64)
+	case OP_LD:
+		KASSERT(mode == VM_PROT_READ, ("access mode must be read for load instruction."));
+		ldl_macro(value, addr);
+		addr += 7;
+		ldr_macro(value, addr);
+		reg[MIPS_INST_RT(inst)] = value;
+		return (MIPS_LD_ACCESS);
+#endif
 
 	case OP_SH:
+		KASSERT(mode == VM_PROT_WRITE, ("access mode must be write for store instruction."));
 		value = reg[MIPS_INST_RT(inst)];
 		value_msb = value >> 8;
 		sb_macro(value_msb, addr);
 		addr += 1;
 		sb_macro(value, addr);
-		access_type = MIPS_SH_ACCESS;
-		break;
+		return (MIPS_SH_ACCESS);
 
 	case OP_SW:
+		KASSERT(mode == VM_PROT_WRITE, ("access mode must be write for store instruction."));
 		value = reg[MIPS_INST_RT(inst)];
 		swl_macro(value, addr);
 		addr += 3;
 		swr_macro(value, addr);
-		access_type = MIPS_SW_ACCESS;
-		break;
+		return (MIPS_SW_ACCESS);
 
-	default:
-		break;
+#if defined(__mips_n32) || defined(__mips_n64)
+	case OP_SD:
+		KASSERT(mode == VM_PROT_WRITE, ("access mode must be write for store instruction."));
+		value = reg[MIPS_INST_RT(inst)];
+		sdl_macro(value, addr);
+		addr += 7;
+		sdr_macro(value, addr);
+		return (MIPS_SD_ACCESS);
+#endif
 	}
-
-	return access_type;
+	panic("%s: should not be reached.", __func__);
 }
 
 
 static int
-emulate_unaligned_access(struct trapframe *frame)
+emulate_unaligned_access(struct trapframe *frame, int mode)
 {
 	register_t pc;
 	int access_type = 0;
@@ -1474,7 +1435,7 @@ emulate_unaligned_access(struct trapframe *frame)
 		 * Otherwise restore pc and fall through.
 		 */
 		access_type = mips_unaligned_load_store(frame,
-		    frame->badvaddr, pc);
+		    mode, frame->badvaddr, pc);
 
 		if (access_type) {
 			if (DELAYBRANCH(frame->cause))

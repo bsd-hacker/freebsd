@@ -40,6 +40,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/mutex.h>
 #include <sys/sx.h>
 #include <sys/bio.h>
+#include <sys/sbuf.h>
 #include <sys/sysctl.h>
 #include <sys/malloc.h>
 #include <sys/time.h>
@@ -51,6 +52,8 @@ __FBSDID("$FreeBSD$");
 
 #include <geom/virstor/g_virstor.h>
 #include <geom/virstor/g_virstor_md.h>
+
+FEATURE(g_virstor, "GEOM virtual storage support");
 
 /* Declare malloc(9) label */
 static MALLOC_DEFINE(M_GVIRSTOR, "gvirstor", "GEOM_VIRSTOR Data");
@@ -316,8 +319,8 @@ virstor_ctl_add(struct gctl_req *req, struct g_class *cp)
 			g_topology_unlock();
 			return;
 		}
-		if (strncmp(prov_name, _PATH_DEV, strlen(_PATH_DEV)) == 0)
-			prov_name += strlen(_PATH_DEV);
+		if (strncmp(prov_name, _PATH_DEV, sizeof(_PATH_DEV) - 1) == 0)
+			prov_name += sizeof(_PATH_DEV) - 1;
 
 		pp = g_provider_by_name(prov_name);
 		if (pp == NULL) {
@@ -574,8 +577,8 @@ virstor_ctl_remove(struct gctl_req *req, struct g_class *cp)
 			gctl_error(req, "Error fetching argument '%s'", param);
 			return;
 		}
-		if (strncmp(prov_name, _PATH_DEV, strlen(_PATH_DEV)) == 0)
-			prov_name += strlen(_PATH_DEV);
+		if (strncmp(prov_name, _PATH_DEV, sizeof(_PATH_DEV) - 1) == 0)
+			prov_name += sizeof(_PATH_DEV) - 1;
 
 		found = -1;
 		for (j = 0; j < sc->n_components; j++) {
@@ -807,10 +810,9 @@ g_virstor_taste(struct g_class *mp, struct g_provider *pp, int flags)
 	/* If the provider name is hardcoded, use the offered provider only
 	 * if it's been offered with its proper name (the one used in
 	 * the label command). */
-	if (md.provider[0] != '\0') {
-		if (strcmp(md.provider, pp->name) != 0)
-			return (NULL);
-	}
+	if (md.provider[0] != '\0' &&
+	    !g_compare_names(md.provider, pp->name))
+		return (NULL);
 
 	/* Iterate all geoms this class already knows about to see if a new
 	 * geom instance of this class needs to be created (in case the provider

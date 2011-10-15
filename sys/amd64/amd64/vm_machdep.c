@@ -70,6 +70,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/cpu.h>
 #include <machine/md_var.h>
 #include <machine/pcb.h>
+#include <machine/smp.h>
 #include <machine/specialreg.h>
 #include <machine/tss.h>
 
@@ -122,7 +123,7 @@ cpu_fork(td1, p2, td2, flags)
 		return;
 	}
 
-	/* Ensure that p1's pcb is up to date. */
+	/* Ensure that td1's pcb is up to date. */
 	fpuexit(td1);
 
 	/* Point the pcb to the top of the stack */
@@ -130,8 +131,11 @@ cpu_fork(td1, p2, td2, flags)
 	    td2->td_kstack_pages * PAGE_SIZE) - 1;
 	td2->td_pcb = pcb2;
 
-	/* Copy p1's pcb */
+	/* Copy td1's pcb */
 	bcopy(td1->td_pcb, pcb2, sizeof(*pcb2));
+
+	/* Properly initialize pcb_save */
+	pcb2->pcb_save = &pcb2->pcb_user_save;
 
 	/* Point mdproc and then copy over td1's contents */
 	mdp2 = &p2->p_md;
@@ -187,7 +191,7 @@ cpu_fork(td1, p2, td2, flags)
 	pcb2->pcb_tssp = NULL;
 
 	/* New segment registers. */
-	pcb2->pcb_full_iret = 1;
+	set_pcb_flags(pcb2, PCB_FULL_IRET);
 
 	/* Copy the LDT, if necessary. */
 	mdp1 = &td1->td_proc->p_md;
@@ -262,15 +266,17 @@ cpu_thread_exit(struct thread *td)
 {
 	struct pcb *pcb;
 
+	critical_enter();
 	if (td == PCPU_GET(fpcurthread))
 		fpudrop();
+	critical_exit();
 
 	pcb = td->td_pcb;
 
 	/* Disable any hardware breakpoints. */
 	if (pcb->pcb_flags & PCB_DBREGS) {
 		reset_dbregs();
-		pcb->pcb_flags &= ~PCB_DBREGS;
+		clear_pcb_flags(pcb, PCB_DBREGS);
 	}
 }
 
@@ -308,6 +314,7 @@ cpu_thread_alloc(struct thread *td)
 	td->td_pcb = (struct pcb *)(td->td_kstack +
 	    td->td_kstack_pages * PAGE_SIZE) - 1;
 	td->td_frame = (struct trapframe *)td->td_pcb - 1;
+	td->td_pcb->pcb_save = &td->td_pcb->pcb_user_save;
 }
 
 void
@@ -333,15 +340,13 @@ cpu_set_syscall_retval(struct thread *td, int error)
 		 * Reconstruct pc, we know that 'syscall' is 2 bytes,
 		 * lcall $X,y is 7 bytes, int 0x80 is 2 bytes.
 		 * We saved this in tf_err.
-		 * We have to do a full context restore so that %r10
-		 * (which was holding the value of %rcx) is restored
+		 * %r10 (which was holding the value of %rcx) is restored
 		 * for the next iteration.
-		 * r10 restore is only required for freebsd/amd64 processes,
+		 * %r10 restore is only required for freebsd/amd64 processes,
 		 * but shall be innocent for any ia32 ABI.
 		 */
 		td->td_frame->tf_rip -= td->td_frame->tf_err;
 		td->td_frame->tf_r10 = td->td_frame->tf_rcx;
-		td->td_pcb->pcb_flags |= PCB_FULLCTX;
 		break;
 
 	case EJUSTRETURN:
@@ -381,8 +386,9 @@ cpu_set_upcall(struct thread *td, struct thread *td0)
 	 * values here.
 	 */
 	bcopy(td0->td_pcb, pcb2, sizeof(*pcb2));
-	pcb2->pcb_flags &= ~PCB_FPUINITDONE;
-	pcb2->pcb_full_iret = 1;
+	clear_pcb_flags(pcb2, PCB_FPUINITDONE | PCB_USERFPUINITDONE);
+	pcb2->pcb_save = &pcb2->pcb_user_save;
+	set_pcb_flags(pcb2, PCB_FULL_IRET);
 
 	/*
 	 * Create a new fresh stack for the new thread.
@@ -440,7 +446,7 @@ cpu_set_upcall_kse(struct thread *td, void (*entry)(void *), void *arg,
 	cpu_thread_clean(td);
 
 #ifdef COMPAT_FREEBSD32
-	if (td->td_proc->p_sysent->sv_flags & SV_ILP32) {
+	if (SV_PROC_FLAG(td->td_proc, SV_ILP32)) {
 		/*
 	 	 * Set the trap frame to point at the beginning of the uts
 		 * function.
@@ -486,18 +492,20 @@ cpu_set_upcall_kse(struct thread *td, void (*entry)(void *), void *arg,
 int
 cpu_set_user_tls(struct thread *td, void *tls_base)
 {
+	struct pcb *pcb;
 
 	if ((u_int64_t)tls_base >= VM_MAXUSER_ADDRESS)
 		return (EINVAL);
 
+	pcb = td->td_pcb;
 #ifdef COMPAT_FREEBSD32
-	if (td->td_proc->p_sysent->sv_flags & SV_ILP32) {
-		td->td_pcb->pcb_gsbase = (register_t)tls_base;
+	if (SV_PROC_FLAG(td->td_proc, SV_ILP32)) {
+		pcb->pcb_gsbase = (register_t)tls_base;
 		return (0);
 	}
 #endif
-	td->td_pcb->pcb_fsbase = (register_t)tls_base;
-	td->td_pcb->pcb_full_iret = 1;
+	pcb->pcb_fsbase = (register_t)tls_base;
+	set_pcb_flags(pcb, PCB_FULL_IRET);
 	return (0);
 }
 
@@ -505,11 +513,13 @@ cpu_set_user_tls(struct thread *td, void *tls_base)
 static void
 cpu_reset_proxy()
 {
+	cpuset_t tcrp;
 
 	cpu_reset_proxy_active = 1;
 	while (cpu_reset_proxy_active == 1)
 		;	/* Wait for other cpu to see that we've started */
-	stop_cpus((1<<cpu_reset_proxyid));
+	CPU_SETOF(cpu_reset_proxyid, &tcrp);
+	stop_cpus(tcrp);
 	printf("cpu_reset_proxy: Stopped CPU %d\n", cpu_reset_proxyid);
 	DELAY(1000000);
 	cpu_reset_real();
@@ -520,11 +530,14 @@ void
 cpu_reset()
 {
 #ifdef SMP
-	u_int cnt, map;
+	cpuset_t map;
+	u_int cnt;
 
 	if (smp_active) {
-		map = PCPU_GET(other_cpus) & ~stopped_cpus;
-		if (map != 0) {
+		map = all_cpus;
+		CPU_CLR(PCPU_GET(cpuid), &map);
+		CPU_NAND(&map, &stopped_cpus);
+		if (!CPU_EMPTY(&map)) {
 			printf("cpu_reset: Stopping other CPUs\n");
 			stop_cpus(map);
 		}
@@ -536,7 +549,8 @@ cpu_reset()
 			printf("cpu_reset: Restarting BSP\n");
 
 			/* Restart CPU #0. */
-			atomic_store_rel_int(&started_cpus, 1 << 0);
+			CPU_SETOF(0, &started_cpus);
+			wmb();
 
 			cnt = 0;
 			while (cpu_reset_proxy_active == 0 && cnt < 10000000)

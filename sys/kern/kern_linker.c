@@ -70,6 +70,9 @@ SYSCTL_INT(_debug, OID_AUTO, kld_debug, CTLFLAG_RW,
 
 #define	KLD_LOCK()		sx_xlock(&kld_sx)
 #define	KLD_UNLOCK()		sx_xunlock(&kld_sx)
+#define	KLD_DOWNGRADE()		sx_downgrade(&kld_sx)
+#define	KLD_LOCK_READ()		sx_slock(&kld_sx)
+#define	KLD_UNLOCK_READ()	sx_sunlock(&kld_sx)
 #define	KLD_LOCKED()		sx_xlocked(&kld_sx)
 #define	KLD_LOCK_ASSERT() do {						\
 	if (!cold)							\
@@ -924,7 +927,6 @@ linker_debug_search_symbol_name(caddr_t value, char *buf, u_int buflen,
 	return (0);
 }
 
-#ifdef DDB
 /*
  * DDB Helpers.  DDB has to look across multiple files with their own symbol
  * tables and string tables.
@@ -933,12 +935,14 @@ linker_debug_search_symbol_name(caddr_t value, char *buf, u_int buflen,
  * DDB to hang because somebody's got the lock held.  We'll take the chance
  * that the files list is inconsistant instead.
  */
+#ifdef DDB
 int
 linker_ddb_lookup(const char *symstr, c_linker_sym_t *sym)
 {
 
 	return (linker_debug_lookup(symstr, sym));
 }
+#endif
 
 int
 linker_ddb_search_symbol(caddr_t value, c_linker_sym_t *sym, long *diffp)
@@ -961,7 +965,6 @@ linker_ddb_search_symbol_name(caddr_t value, char *buf, u_int buflen,
 
 	return (linker_debug_search_symbol_name(value, buf, buflen, offset));
 }
-#endif
 
 /*
  * stack(9) helper for non-debugging environemnts.  Unlike DDB helpers, we do
@@ -1019,24 +1022,30 @@ kern_kldload(struct thread *td, const char *file, int *fileid)
 
 	KLD_LOCK();
 	error = linker_load_module(kldname, modname, NULL, NULL, &lf);
-	if (error)
-		goto unlock;
-#ifdef HWPMC_HOOKS
-	pkm.pm_file = lf->filename;
-	pkm.pm_address = (uintptr_t) lf->address;
-	PMC_CALL_HOOK(td, PMC_FN_KLD_LOAD, (void *) &pkm);
-#endif
+	if (error) {
+		KLD_UNLOCK();
+		goto done;
+	}
 	lf->userrefs++;
 	if (fileid != NULL)
 		*fileid = lf->id;
-unlock:
+#ifdef HWPMC_HOOKS
+	KLD_DOWNGRADE();
+	pkm.pm_file = lf->filename;
+	pkm.pm_address = (uintptr_t) lf->address;
+	PMC_CALL_HOOK(td, PMC_FN_KLD_LOAD, (void *) &pkm);
+	KLD_UNLOCK_READ();
+#else
 	KLD_UNLOCK();
+#endif
+
+done:
 	CURVNET_RESTORE();
 	return (error);
 }
 
 int
-kldload(struct thread *td, struct kldload_args *uap)
+sys_kldload(struct thread *td, struct kldload_args *uap)
 {
 	char *pathname = NULL;
 	int error, fileid;
@@ -1102,23 +1111,28 @@ kern_kldunload(struct thread *td, int fileid, int flags)
 		error = ENOENT;
 
 #ifdef HWPMC_HOOKS
-	if (error == 0)
+	if (error == 0) {
+		KLD_DOWNGRADE();
 		PMC_CALL_HOOK(td, PMC_FN_KLD_UNLOAD, (void *) &pkm);
-#endif
+		KLD_UNLOCK_READ();
+	} else
+		KLD_UNLOCK();
+#else
 	KLD_UNLOCK();
+#endif
 	CURVNET_RESTORE();
 	return (error);
 }
 
 int
-kldunload(struct thread *td, struct kldunload_args *uap)
+sys_kldunload(struct thread *td, struct kldunload_args *uap)
 {
 
 	return (kern_kldunload(td, uap->fileid, LINKER_UNLOAD_NORMAL));
 }
 
 int
-kldunloadf(struct thread *td, struct kldunloadf_args *uap)
+sys_kldunloadf(struct thread *td, struct kldunloadf_args *uap)
 {
 
 	if (uap->flags != LINKER_UNLOAD_NORMAL &&
@@ -1128,7 +1142,7 @@ kldunloadf(struct thread *td, struct kldunloadf_args *uap)
 }
 
 int
-kldfind(struct thread *td, struct kldfind_args *uap)
+sys_kldfind(struct thread *td, struct kldfind_args *uap)
 {
 	char *pathname;
 	const char *filename;
@@ -1161,7 +1175,7 @@ out:
 }
 
 int
-kldnext(struct thread *td, struct kldnext_args *uap)
+sys_kldnext(struct thread *td, struct kldnext_args *uap)
 {
 	linker_file_t lf;
 	int error = 0;
@@ -1198,32 +1212,42 @@ out:
 }
 
 int
-kldstat(struct thread *td, struct kldstat_args *uap)
+sys_kldstat(struct thread *td, struct kldstat_args *uap)
 {
 	struct kld_file_stat stat;
-	linker_file_t lf;
-	int error, namelen, version, version_num;
+	int error, version;
 
 	/*
 	 * Check the version of the user's structure.
 	 */
-	if ((error = copyin(&uap->stat->version, &version, sizeof(version))) != 0)
+	if ((error = copyin(&uap->stat->version, &version, sizeof(version)))
+	    != 0)
 		return (error);
-	if (version == sizeof(struct kld_file_stat_1))
-		version_num = 1;
-	else if (version == sizeof(struct kld_file_stat))
-		version_num = 2;
-	else
+	if (version != sizeof(struct kld_file_stat_1) &&
+	    version != sizeof(struct kld_file_stat))
 		return (EINVAL);
 
+	error = kern_kldstat(td, uap->fileid, &stat);
+	if (error != 0)
+		return (error);
+	return (copyout(&stat, uap->stat, version));
+}
+
+int
+kern_kldstat(struct thread *td, int fileid, struct kld_file_stat *stat)
+{
+	linker_file_t lf;
+	int namelen;
 #ifdef MAC
+	int error;
+
 	error = mac_kld_check_stat(td->td_ucred);
 	if (error)
 		return (error);
 #endif
 
 	KLD_LOCK();
-	lf = linker_find_file_by_id(uap->fileid);
+	lf = linker_find_file_by_id(fileid);
 	if (lf == NULL) {
 		KLD_UNLOCK();
 		return (ENOENT);
@@ -1233,27 +1257,24 @@ kldstat(struct thread *td, struct kldstat_args *uap)
 	namelen = strlen(lf->filename) + 1;
 	if (namelen > MAXPATHLEN)
 		namelen = MAXPATHLEN;
-	bcopy(lf->filename, &stat.name[0], namelen);
-	stat.refs = lf->refs;
-	stat.id = lf->id;
-	stat.address = lf->address;
-	stat.size = lf->size;
-	if (version_num > 1) {
-		/* Version 2 fields: */
-		namelen = strlen(lf->pathname) + 1;
-		if (namelen > MAXPATHLEN)
-			namelen = MAXPATHLEN;
-		bcopy(lf->pathname, &stat.pathname[0], namelen);
-	}
+	bcopy(lf->filename, &stat->name[0], namelen);
+	stat->refs = lf->refs;
+	stat->id = lf->id;
+	stat->address = lf->address;
+	stat->size = lf->size;
+	/* Version 2 fields: */
+	namelen = strlen(lf->pathname) + 1;
+	if (namelen > MAXPATHLEN)
+		namelen = MAXPATHLEN;
+	bcopy(lf->pathname, &stat->pathname[0], namelen);
 	KLD_UNLOCK();
 
 	td->td_retval[0] = 0;
-
-	return (copyout(&stat, uap->stat, version));
+	return (0);
 }
 
 int
-kldfirstmod(struct thread *td, struct kldfirstmod_args *uap)
+sys_kldfirstmod(struct thread *td, struct kldfirstmod_args *uap)
 {
 	linker_file_t lf;
 	module_t mp;
@@ -1282,7 +1303,7 @@ kldfirstmod(struct thread *td, struct kldfirstmod_args *uap)
 }
 
 int
-kldsym(struct thread *td, struct kldsym_args *uap)
+sys_kldsym(struct thread *td, struct kldsym_args *uap)
 {
 	char *symstr = NULL;
 	c_linker_sym_t sym;
@@ -1584,6 +1605,12 @@ restart:
 				modname = mp->md_cval;
 				verinfo = mp->md_data;
 				mod = modlist_lookup2(modname, verinfo);
+				if (mod == NULL) {
+					printf("KLD file %s - cannot find "
+					    "dependency \"%s\"\n",
+					    lf->filename, modname);
+					goto fail;
+				}
 				/* Don't count self-dependencies */
 				if (lf == mod->container)
 					continue;
@@ -1600,11 +1627,9 @@ restart:
 		 */
 		error = LINKER_LINK_PRELOAD_FINISH(lf);
 		if (error) {
-			TAILQ_REMOVE(&depended_files, lf, loaded);
 			printf("KLD file %s - could not finalize loading\n",
 			    lf->filename);
-			linker_file_unload(lf, LINKER_UNLOAD_FORCE);
-			continue;
+			goto fail;
 		}
 		linker_file_register_modules(lf);
 		if (linker_file_lookup_set(lf, "sysinit_set", &si_start,
@@ -1612,6 +1637,10 @@ restart:
 			sysinit_add(si_start, si_stop);
 		linker_file_register_sysctls(lf);
 		lf->flags |= LINKER_FILE_LINKED;
+		continue;
+fail:
+		TAILQ_REMOVE(&depended_files, lf, loaded);
+		linker_file_unload(lf, LINKER_UNLOAD_FORCE);
 	}
 	/* woohoo! we made it! */
 }
@@ -1917,7 +1946,7 @@ linker_hwpmc_list_objects(void)
 	int i, nmappings;
 
 	nmappings = 0;
-	KLD_LOCK();
+	KLD_LOCK_READ();
 	TAILQ_FOREACH(lf, &linker_files, link)
 		nmappings++;
 
@@ -1932,7 +1961,7 @@ linker_hwpmc_list_objects(void)
 		kobase[i].pm_address = (uintptr_t)lf->address;
 		i++;
 	}
-	KLD_UNLOCK();
+	KLD_UNLOCK_READ();
 
 	KASSERT(i > 0, ("linker_hpwmc_list_objects: no kernel objects?"));
 
@@ -2137,5 +2166,5 @@ sysctl_kern_function_list(SYSCTL_HANDLER_ARGS)
 	return (SYSCTL_OUT(req, "", 1));
 }
 
-SYSCTL_PROC(_kern, OID_AUTO, function_list, CTLFLAG_RD,
+SYSCTL_PROC(_kern, OID_AUTO, function_list, CTLTYPE_OPAQUE | CTLFLAG_RD,
     NULL, 0, sysctl_kern_function_list, "", "kernel function list");

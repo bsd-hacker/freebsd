@@ -82,7 +82,7 @@ static struct resource *
 		    u_long, u_long, u_int);
 static int	nexus_activate_resource(device_t, device_t, int, int,
 		    struct resource *);
-static device_t	nexus_add_child(device_t, int, const char *, int);
+static device_t	nexus_add_child(device_t, u_int, const char *, int);
 static int	nexus_attach(device_t);
 static int	nexus_deactivate_resource(device_t, device_t, int, int,
 		    struct resource *);
@@ -151,7 +151,7 @@ nexus_probe(device_t dev)
 	}
 
 	mem_rman.rm_start = 0;
-	mem_rman.rm_end = ~0u;
+	mem_rman.rm_end = ~0ul;
 	mem_rman.rm_type = RMAN_ARRAY;
 	mem_rman.rm_descr = "Memory addresses";
 	if (rman_init(&mem_rman) != 0 ||
@@ -282,7 +282,7 @@ nexus_hinted_child(device_t bus, const char *dname, int dunit)
 }
 
 static device_t
-nexus_add_child(device_t bus, int order, const char *name, int unit)
+nexus_add_child(device_t bus, u_int order, const char *name, int unit)
 {
 	device_t	child;
 	struct nexus_device *ndev;

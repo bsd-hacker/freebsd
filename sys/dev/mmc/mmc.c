@@ -448,7 +448,7 @@ mmc_send_app_op_cond(struct mmc_softc *sc, uint32_t ocr, uint32_t *rocr)
 	cmd.flags = MMC_RSP_R3 | MMC_CMD_BCR;
 	cmd.data = NULL;
 
-	for (i = 0; i < 100; i++) {
+	for (i = 0; i < 1000; i++) {
 		err = mmc_wait_for_app_cmd(sc, 0, &cmd, CMD_RETRIES);
 		if (err != MMC_ERR_NONE)
 			break;
@@ -475,7 +475,7 @@ mmc_send_op_cond(struct mmc_softc *sc, uint32_t ocr, uint32_t *rocr)
 	cmd.flags = MMC_RSP_R3 | MMC_CMD_BCR;
 	cmd.data = NULL;
 
-	for (i = 0; i < 100; i++) {
+	for (i = 0; i < 1000; i++) {
 		err = mmc_wait_for_cmd(sc, &cmd, CMD_RETRIES);
 		if (err != MMC_ERR_NONE)
 			break;
@@ -749,7 +749,7 @@ mmc_get_bits(uint32_t *bits, int bit_len, int start, int size)
 	uint32_t retval = bits[i] >> shift;
 	if (size + shift > 32)
 		retval |= bits[i - 1] << (32 - shift);
-	return (retval & ((1 << size) - 1));
+	return (retval & ((1llu << size) - 1));
 }
 
 static void
@@ -1445,37 +1445,37 @@ mmc_read_ivar(device_t bus, device_t child, int which, uintptr_t *result)
 	default:
 		return (EINVAL);
 	case MMC_IVAR_DSR_IMP:
-		*(int *)result = ivar->csd.dsr_imp;
+		*result = ivar->csd.dsr_imp;
 		break;
 	case MMC_IVAR_MEDIA_SIZE:
-		*(off_t *)result = ivar->sec_count;
+		*result = ivar->sec_count;
 		break;
 	case MMC_IVAR_RCA:
-		*(int *)result = ivar->rca;
+		*result = ivar->rca;
 		break;
 	case MMC_IVAR_SECTOR_SIZE:
-		*(int *)result = MMC_SECTOR_SIZE;
+		*result = MMC_SECTOR_SIZE;
 		break;
 	case MMC_IVAR_TRAN_SPEED:
-		*(int *)result = mmcbr_get_clock(bus);
+		*result = mmcbr_get_clock(bus);
 		break;
 	case MMC_IVAR_READ_ONLY:
-		*(int *)result = ivar->read_only;
+		*result = ivar->read_only;
 		break;
 	case MMC_IVAR_HIGH_CAP:
-		*(int *)result = ivar->high_cap;
+		*result = ivar->high_cap;
 		break;
 	case MMC_IVAR_CARD_TYPE:
-		*(int *)result = ivar->mode;
+		*result = ivar->mode;
 		break;
 	case MMC_IVAR_BUS_WIDTH:
-		*(int *)result = ivar->bus_width;
+		*result = ivar->bus_width;
 		break;
 	case MMC_IVAR_ERASE_SECTOR:
-		*(int *)result = ivar->erase_sector;
+		*result = ivar->erase_sector;
 		break;
 	case MMC_IVAR_MAX_DATA:
-		*(int *)result = mmcbr_get_max_data(bus);
+		*result = mmcbr_get_max_data(bus);
 		break;
 	}
 	return (0);
@@ -1500,6 +1500,15 @@ mmc_delayed_attach(void *xsc)
 	config_intrhook_disestablish(&sc->config_intrhook);
 }
 
+static int
+mmc_child_location_str(device_t dev, device_t child, char *buf,
+    size_t buflen)
+{
+
+	snprintf(buf, buflen, "rca=0x%04x", mmc_get_rca(child));
+	return (0);
+}
+
 static device_method_t mmc_methods[] = {
 	/* device_if */
 	DEVMETHOD(device_probe, mmc_probe),
@@ -1511,6 +1520,7 @@ static device_method_t mmc_methods[] = {
 	/* Bus interface */
 	DEVMETHOD(bus_read_ivar, mmc_read_ivar),
 	DEVMETHOD(bus_write_ivar, mmc_write_ivar),
+	DEVMETHOD(bus_child_location_str, mmc_child_location_str),
 
 	/* MMC Bus interface */
 	DEVMETHOD(mmcbus_wait_for_request, mmc_wait_for_request),

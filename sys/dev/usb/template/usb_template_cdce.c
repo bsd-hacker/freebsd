@@ -39,7 +39,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/kernel.h>
 #include <sys/bus.h>
-#include <sys/linker_set.h>
 #include <sys/module.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
@@ -265,7 +264,7 @@ static const struct usb_temp_config_desc *eth_configs[] = {
 const struct usb_temp_device_desc usb_template_cdce = {
 	.getStringDesc = &eth_get_string_desc,
 	.ppConfigDesc = eth_configs,
-	.idVendor = 0x0001,
+	.idVendor = USB_TEMPLATE_VENDOR,
 	.idProduct = 0x0001,
 	.bcdDevice = 0x0100,
 	.bDeviceClass = UDCLASS_COMM,

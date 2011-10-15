@@ -59,7 +59,7 @@ __FBSDID("$FreeBSD$");
 #include <nfsclient/nfs.h>
 #include <nfsclient/nfsmount.h>
 #include <nfsclient/nfsnode.h>
-#include <nfsclient/nfs_kdtrace.h>
+#include <nfs/nfs_kdtrace.h>
 
 static struct buf *nfs_getcacheblk(struct vnode *vp, daddr_t bn, int size,
 		    struct thread *td);
@@ -300,7 +300,7 @@ nfs_putpages(struct vop_putpages_args *ap)
 	}
 
 	for (i = 0; i < npages; i++)
-		rtvals[i] = VM_PAGER_AGAIN;
+		rtvals[i] = VM_PAGER_ERROR;
 
 	/*
 	 * When putting pages, do not extend file past EOF.
@@ -344,11 +344,7 @@ nfs_putpages(struct vop_putpages_args *ap)
 	relpbuf(bp, &nfs_pbuf_freecnt);
 
 	if (!error) {
-		int nwritten = round_page(count - uio.uio_resid) / PAGE_SIZE;
-		for (i = 0; i < nwritten; i++) {
-			rtvals[i] = VM_PAGER_OK;
-			vm_page_undirty(pages[i]);
-		}
+		vnode_pager_undirty_pages(pages, rtvals, count - uio.uio_resid);
 		if (must_commit) {
 			nfs_clearcommit(vp->v_mount);
 		}
@@ -449,14 +445,12 @@ nfs_bioread(struct vnode *vp, struct uio *uio, int ioflag, struct ucred *cred)
 	struct thread *td;
 	struct nfsmount *nmp = VFSTONFS(vp->v_mount);
 	daddr_t lbn, rabn;
+	off_t end;
 	int bcount;
 	int seqcount;
 	int nra, error = 0, n = 0, on = 0;
 
-#ifdef DIAGNOSTIC
-	if (uio->uio_rw != UIO_READ)
-		panic("nfs_read mode");
-#endif
+	KASSERT(uio->uio_rw == UIO_READ, ("nfs_read mode"));
 	if (uio->uio_resid == 0)
 		return (0);
 	if (uio->uio_offset < 0)	/* XXX VDIR cookies can be negative */
@@ -471,8 +465,9 @@ nfs_bioread(struct vnode *vp, struct uio *uio, int ioflag, struct ucred *cred)
 	} else
 		mtx_unlock(&nmp->nm_mtx);		
 
+	end = uio->uio_offset + uio->uio_resid;
 	if (vp->v_type != VDIR &&
-	    (uio->uio_offset + uio->uio_resid) > nmp->nm_maxfilesize)
+	    (end > nmp->nm_maxfilesize || end < uio->uio_offset))
 		return (EFBIG);
 
 	if (nfs_directio_enable && (ioflag & IO_DIRECT) && (vp->v_type == VREG))
@@ -872,15 +867,13 @@ nfs_write(struct vop_write_args *ap)
 	struct vattr vattr;
 	struct nfsmount *nmp = VFSTONFS(vp->v_mount);
 	daddr_t lbn;
+	off_t end;
 	int bcount;
 	int n, on, error = 0;
 
-#ifdef DIAGNOSTIC
-	if (uio->uio_rw != UIO_WRITE)
-		panic("nfs_write mode");
-	if (uio->uio_segflg == UIO_USERSPACE && uio->uio_td != curthread)
-		panic("nfs_write proc");
-#endif
+	KASSERT(uio->uio_rw == UIO_WRITE, ("nfs_write mode"));
+	KASSERT(uio->uio_segflg != UIO_USERSPACE || uio->uio_td == curthread,
+	    ("nfs_write proc"));
 	if (vp->v_type != VREG)
 		return (EIO);
 	mtx_lock(&np->n_mtx);
@@ -942,7 +935,8 @@ flush_and_restart:
 
 	if (uio->uio_offset < 0)
 		return (EINVAL);
-	if ((uio->uio_offset + uio->uio_resid) > nmp->nm_maxfilesize)
+	end = uio->uio_offset + uio->uio_resid;
+	if (end > nmp->nm_maxfilesize || end < uio->uio_offset)
 		return (EFBIG);
 	if (uio->uio_resid == 0)
 		return (0);
@@ -1381,13 +1375,9 @@ again:
 	/*
 	 * Try to create one if none are free.
 	 */
-	if (!gotiod) {
-		iod = nfs_nfsiodnew(1);
-		if (iod != -1)
-			gotiod = TRUE;
-	}
-
-	if (gotiod) {
+	if (!gotiod)
+		nfs_nfsiodnew();
+	else {
 		/*
 		 * Found one, so wake it up and tell it which
 		 * mount to process.
@@ -1407,7 +1397,7 @@ again:
 	if (!gotiod) {
 		if (nmp->nm_bufqiods > 0) {
 			NFS_DPF(ASYNCIO,
-				("nfs_asyncio: %d iods are already processing mount %p\n",
+		("nfs_asyncio: %d iods are already processing mount %p\n",
 				 nmp->nm_bufqiods, nmp));
 			gotiod = TRUE;
 		}
@@ -1422,9 +1412,9 @@ again:
 		 * Ensure that the queue never grows too large.  We still want
 		 * to asynchronize so we block rather then return EIO.
 		 */
-		while (nmp->nm_bufqlen >= 2*nfs_numasync) {
+		while (nmp->nm_bufqlen >= 2 * nfs_numasync) {
 			NFS_DPF(ASYNCIO,
-				("nfs_asyncio: waiting for mount %p queue to drain\n", nmp));
+		("nfs_asyncio: waiting for mount %p queue to drain\n", nmp));
 			nmp->nm_bufqwant = TRUE;
  			error = nfs_msleep(td, &nmp->nm_bufq, &nfs_iod_mtx, 
 					   slpflag | PRIBIO,
@@ -1432,7 +1422,7 @@ again:
 			if (error) {
 				error2 = nfs_sigintr(nmp, td);
 				if (error2) {
-					mtx_unlock(&nfs_iod_mtx);					
+					mtx_unlock(&nfs_iod_mtx);
 					return (error2);
 				}
 				if (slpflag == NFS_PCATCH) {
@@ -1444,17 +1434,13 @@ again:
 			 * We might have lost our iod while sleeping,
 			 * so check and loop if nescessary.
 			 */
-			if (nmp->nm_bufqiods == 0) {
-				NFS_DPF(ASYNCIO,
-					("nfs_asyncio: no iods after mount %p queue was drained, looping\n", nmp));
-				goto again;
-			}
+			goto again;
 		}
 
 		/* We might have lost our nfsiod */
 		if (nmp->nm_bufqiods == 0) {
 			NFS_DPF(ASYNCIO,
-				("nfs_asyncio: no iods after mount %p queue was drained, looping\n", nmp));
+("nfs_asyncio: no iods after mount %p queue was drained, looping\n", nmp));
 			goto again;
 		}
 

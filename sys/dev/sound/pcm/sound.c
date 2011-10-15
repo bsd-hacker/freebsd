@@ -51,7 +51,7 @@ int pcm_veto_load = 1;
 int snd_unit = -1;
 TUNABLE_INT("hw.snd.default_unit", &snd_unit);
 
-static int snd_unit_auto = 0;
+static int snd_unit_auto = -1;
 TUNABLE_INT("hw.snd.default_auto", &snd_unit_auto);
 SYSCTL_INT(_hw_snd, OID_AUTO, default_auto, CTLFLAG_RW,
     &snd_unit_auto, 0, "assign default unit to a newly attached device");
@@ -68,7 +68,7 @@ SYSCTL_NODE(_hw, OID_AUTO, snd, CTLFLAG_RD, 0, "Sound driver");
  * XXX I've had enough with people not telling proper version/arch
  *     while reporting problems, not after 387397913213th questions/requests.
  */
-static const char snd_driver_version[] =
+static char snd_driver_version[] =
     __XSTRING(SND_DRV_VERSION)"/"MACHINE_ARCH;
 SYSCTL_STRING(_hw_snd, OID_AUTO, version, CTLFLAG_RD, &snd_driver_version,
     0, "driver version/arch");
@@ -443,6 +443,7 @@ sysctl_hw_snd_default_unit(SYSCTL_HANDLER_ARGS)
 		if (!PCM_REGISTERED(d) || CHN_EMPTY(d, channels.pcm))
 			return EINVAL;
 		snd_unit = unit;
+		snd_unit_auto = 0;
 	}
 	return (error);
 }
@@ -737,6 +738,32 @@ pcm_killchan(device_t dev)
 	return (pcm_chn_destroy(ch));
 }
 
+static int
+pcm_best_unit(int old)
+{
+	struct snddev_info *d;
+	int i, best, bestprio, prio;
+
+	best = -1;
+	bestprio = -100;
+	for (i = 0; pcm_devclass != NULL &&
+	    i < devclass_get_maxunit(pcm_devclass); i++) {
+		d = devclass_get_softc(pcm_devclass, i);
+		if (!PCM_REGISTERED(d))
+			continue;
+		prio = 0;
+		if (d->playcount == 0)
+			prio -= 10;
+		if (d->reccount == 0)
+			prio -= 2;
+		if (prio > bestprio || (prio == bestprio && i == old)) {
+			best = i;
+			bestprio = prio;
+		}
+	}
+	return (best);
+}
+
 int
 pcm_setstatus(device_t dev, char *str)
 {
@@ -770,8 +797,12 @@ pcm_setstatus(device_t dev, char *str)
 
 	PCM_UNLOCK(d);
 
-	if (snd_unit < 0 || snd_unit_auto != 0)
+	if (snd_unit_auto < 0)
+		snd_unit_auto = (snd_unit < 0) ? 1 : 0;
+	if (snd_unit < 0 || snd_unit_auto > 1)
 		snd_unit = device_get_unit(dev);
+	else if (snd_unit_auto == 1)
+		snd_unit = pcm_best_unit(snd_unit);
 
 	return (0);
 }
@@ -1068,7 +1099,7 @@ pcm_register(device_t dev, void *devinfo, int numplay, int numrec)
 	    CTLFLAG_RD, 0, "record channels node");
 	/* XXX: an user should be able to set this with a control tool, the
 	   sysadmin then needs min+max sysctls for this */
-	SYSCTL_ADD_INT(device_get_sysctl_ctx(dev),
+	SYSCTL_ADD_UINT(device_get_sysctl_ctx(dev),
 	    SYSCTL_CHILDREN(device_get_sysctl_tree(dev)),
             OID_AUTO, "buffersize", CTLFLAG_RD, &d->bufsz, 0, "allocated buffer size");
 	SYSCTL_ADD_PROC(device_get_sysctl_ctx(dev),
@@ -1113,7 +1144,6 @@ pcm_unregister(device_t dev)
 	struct snddev_info *d;
 	struct pcm_channel *ch;
 	struct thread *td;
-	int i;
 
 	td = curthread;
 	d = device_get_softc(dev);
@@ -1216,21 +1246,9 @@ pcm_unregister(device_t dev)
 	sndstat_release(td);
 
 	if (snd_unit == device_get_unit(dev)) {
-		/*
-		 * Reassign default unit to the next available dev, but
-		 * first, reset snd_unit to something ridiculous.
-		 */
-		snd_unit = -1;
-		for (i = 0; pcm_devclass != NULL &&
-		    i < devclass_get_maxunit(pcm_devclass); i++) {
-			if (device_get_unit(dev) == i)
-				continue;
-			d = devclass_get_softc(pcm_devclass, i);
-			if (PCM_REGISTERED(d)) {
-				snd_unit = i;
-				break;
-			}
-		}
+		snd_unit = pcm_best_unit(-1);
+		if (snd_unit_auto == 0)
+			snd_unit_auto = 1;
 	}
 
 	return (0);

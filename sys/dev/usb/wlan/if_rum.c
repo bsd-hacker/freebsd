@@ -85,7 +85,7 @@ SYSCTL_INT(_hw_usb_rum, OID_AUTO, debug, CTLFLAG_RW, &rum_debug, 0,
     "Debug level");
 #endif
 
-static const struct usb_device_id rum_devs[] = {
+static const STRUCT_USB_HOST_ID rum_devs[] = {
 #define	RUM_DEV(v,p)  { USB_VP(USB_VENDOR_##v, USB_PRODUCT_##v##_##p) }
     RUM_DEV(ABOCOM, HWU54DM),
     RUM_DEV(ABOCOM, RT2573_2),
@@ -118,6 +118,9 @@ static const struct usb_device_id rum_devs[] = {
     RUM_DEV(HUAWEI3COM, WUB320G),
     RUM_DEV(MELCO, G54HP),
     RUM_DEV(MELCO, SG54HP),
+    RUM_DEV(MELCO, WLIUCG),
+    RUM_DEV(MELCO, WLRUCG),
+    RUM_DEV(MELCO, WLRUCGAOSS),
     RUM_DEV(MSI, RT2573_1),
     RUM_DEV(MSI, RT2573_2),
     RUM_DEV(MSI, RT2573_3),
@@ -138,9 +141,6 @@ static const struct usb_device_id rum_devs[] = {
     RUM_DEV(SURECOM, RT2573),
 #undef RUM_DEV
 };
-
-MODULE_DEPEND(rum, wlan, 1, 1, 1);
-MODULE_DEPEND(rum, usb, 1, 1, 1);
 
 static device_probe_t rum_match;
 static device_attach_t rum_attach;
@@ -208,7 +208,7 @@ static void		rum_init(void *);
 static void		rum_stop(struct rum_softc *);
 static void		rum_load_microcode(struct rum_softc *, const uint8_t *,
 			    size_t);
-static int		rum_prepare_beacon(struct rum_softc *,
+static void		rum_prepare_beacon(struct rum_softc *,
 			    struct ieee80211vap *);
 static int		rum_raw_xmit(struct ieee80211_node *, struct mbuf *,
 			    const struct ieee80211_bpf_params *);
@@ -721,7 +721,7 @@ rum_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 		break;
 
 	case IEEE80211_S_RUN:
-		ni = vap->iv_bss;
+		ni = ieee80211_ref_node(vap->iv_bss);
 
 		if (vap->iv_opmode != IEEE80211_M_MONITOR) {
 			rum_update_slot(ic->ic_ifp);
@@ -745,6 +745,7 @@ rum_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 		tp = &vap->iv_txparms[ieee80211_chan2mode(ic->ic_curchan)];
 		if (tp->ucastrate == IEEE80211_FIXED_RATE_NONE)
 			rum_ratectl_start(sc, ni);
+		ieee80211_free_node(ni);
 		break;
 	default:
 		break;
@@ -1051,7 +1052,7 @@ rum_sendprot(struct rum_softc *sc,
 	ackrate = ieee80211_ack_rate(ic->ic_rt, rate);
 
 	isshort = (ic->ic_flags & IEEE80211_F_SHPREAMBLE) != 0;
-	dur = ieee80211_compute_duration(ic->ic_rt, pktlen, rate, isshort);
+	dur = ieee80211_compute_duration(ic->ic_rt, pktlen, rate, isshort)
 	    + ieee80211_ack_duration(ic->ic_rt, rate, isshort);
 	flags = RT2573_TX_MORE_FRAG;
 	if (prot == IEEE80211_PROT_RTSCTS) {
@@ -1820,8 +1821,12 @@ rum_update_promisc(struct ifnet *ifp)
 static void
 rum_update_mcast(struct ifnet *ifp)
 {
+	static int warning_printed;
 
-	/* XXX do nothing? */
+	if (warning_printed == 0) {
+		if_printf(ifp, "need to implement %s\n", __func__);
+		warning_printed = 1;
+	}
 }
 
 static const char *
@@ -2114,7 +2119,7 @@ rum_load_microcode(struct rum_softc *sc, const uint8_t *ucode, size_t size)
 	rum_pause(sc, hz / 8);
 }
 
-static int
+static void
 rum_prepare_beacon(struct rum_softc *sc, struct ieee80211vap *vap)
 {
 	struct ieee80211com *ic = vap->iv_ic;
@@ -2122,9 +2127,12 @@ rum_prepare_beacon(struct rum_softc *sc, struct ieee80211vap *vap)
 	struct rum_tx_desc desc;
 	struct mbuf *m0;
 
+	if (vap->iv_bss->ni_chan == IEEE80211_CHAN_ANYC)
+		return;
+
 	m0 = ieee80211_beacon_alloc(vap->iv_bss, &RUM_VAP(vap)->bo);
 	if (m0 == NULL) {
-		return ENOBUFS;
+		return;
 	}
 
 	tp = &vap->iv_txparms[ieee80211_chan2mode(ic->ic_bsschan)];
@@ -2139,8 +2147,6 @@ rum_prepare_beacon(struct rum_softc *sc, struct ieee80211vap *vap)
 	    m0->m_pkthdr.len);
 
 	m_freem(m0);
-
-	return 0;
 }
 
 static int
@@ -2202,8 +2208,6 @@ rum_ratectl_start(struct rum_softc *sc, struct ieee80211_node *ni)
 	/* clear statistic registers (STA_CSR0 to STA_CSR5) */
 	rum_read_multi(sc, RT2573_STA_CSR0, sc->sta, sizeof sc->sta);
 
-	ieee80211_ratectl_node_init(ni);
-
 	usb_callout_reset(&rvp->ratectl_ch, hz, rum_ratectl_timeout, rvp);
 }
 
@@ -2225,7 +2229,7 @@ rum_ratectl_task(void *arg, int pending)
 	struct ieee80211com *ic = vap->iv_ic;
 	struct ifnet *ifp = ic->ic_ifp;
 	struct rum_softc *sc = ifp->if_softc;
-	struct ieee80211_node *ni = vap->iv_bss;
+	struct ieee80211_node *ni;
 	int ok, fail;
 	int sum, retrycnt;
 
@@ -2239,8 +2243,10 @@ rum_ratectl_task(void *arg, int pending)
 	sum = ok+fail;
 	retrycnt = (le32toh(sc->sta[5]) & 0xffff) + fail;
 
+	ni = ieee80211_ref_node(vap->iv_bss);
 	ieee80211_ratectl_tx_update(vap, ni, &sum, &ok, &retrycnt);
 	(void) ieee80211_ratectl_rate(ni, NULL, 0);
+	ieee80211_free_node(ni);
 
 	ifp->if_oerrors += fail;	/* count TX retry-fail as Tx errors */
 
@@ -2359,3 +2365,6 @@ static driver_t rum_driver = {
 static devclass_t rum_devclass;
 
 DRIVER_MODULE(rum, uhub, rum_driver, rum_devclass, NULL, 0);
+MODULE_DEPEND(rum, wlan, 1, 1, 1);
+MODULE_DEPEND(rum, usb, 1, 1, 1);
+MODULE_VERSION(rum, 1);

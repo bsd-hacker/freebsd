@@ -65,7 +65,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/kernel.h>
 #include <sys/bus.h>
-#include <sys/linker_set.h>
 #include <sys/module.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
@@ -261,6 +260,7 @@ static driver_t udbp_driver = {
 DRIVER_MODULE(udbp, uhub, udbp_driver, udbp_devclass, udbp_modload, 0);
 MODULE_DEPEND(udbp, netgraph, NG_ABI_VERSION, NG_ABI_VERSION, NG_ABI_VERSION);
 MODULE_DEPEND(udbp, usb, 1, 1, 1);
+MODULE_VERSION(udbp, 1);
 
 static int
 udbp_modload(module_t mod, int event, void *data)
@@ -288,40 +288,27 @@ udbp_modload(module_t mod, int event, void *data)
 	return (error);
 }
 
+static const STRUCT_USB_HOST_ID udbp_devs[] = {
+	{USB_VPI(USB_VENDOR_NETCHIP, USB_PRODUCT_NETCHIP_TURBOCONNECT, 0)},
+	{USB_VPI(USB_VENDOR_PROLIFIC, USB_PRODUCT_PROLIFIC_PL2301, 0)},
+	{USB_VPI(USB_VENDOR_PROLIFIC, USB_PRODUCT_PROLIFIC_PL2302, 0)},
+	{USB_VPI(USB_VENDOR_ANCHOR, USB_PRODUCT_ANCHOR_EZLINK, 0)},
+	{USB_VPI(USB_VENDOR_GENESYS, USB_PRODUCT_GENESYS_GL620USB, 0)},
+};
+
 static int
 udbp_probe(device_t dev)
 {
 	struct usb_attach_arg *uaa = device_get_ivars(dev);
 
-	if (uaa->usb_mode != USB_MODE_HOST) {
+	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	}
-	/*
-	 * XXX Julian, add the id of the device if you have one to test
-	 * things with. run 'usbdevs -v' and note the 3 ID's that appear.
-	 * The Vendor Id and Product Id are in hex and the Revision Id is in
-	 * bcd. But as usual if the revision is 0x101 then you should
-	 * compare the revision id in the device descriptor with 0x101 Or go
-	 * search the file usbdevs.h. Maybe the device is already in there.
-	 */
-	if (((uaa->info.idVendor == USB_VENDOR_NETCHIP) &&
-	    (uaa->info.idProduct == USB_PRODUCT_NETCHIP_TURBOCONNECT)))
-		return (0);
+	if (uaa->info.bConfigIndex != 0)
+		return (ENXIO);
+	if (uaa->info.bIfaceIndex != 0)
+		return (ENXIO);
 
-	if (((uaa->info.idVendor == USB_VENDOR_PROLIFIC) &&
-	    ((uaa->info.idProduct == USB_PRODUCT_PROLIFIC_PL2301) ||
-	    (uaa->info.idProduct == USB_PRODUCT_PROLIFIC_PL2302))))
-		return (0);
-
-	if ((uaa->info.idVendor == USB_VENDOR_ANCHOR) &&
-	    (uaa->info.idProduct == USB_PRODUCT_ANCHOR_EZLINK))
-		return (0);
-
-	if ((uaa->info.idVendor == USB_VENDOR_GENESYS) &&
-	    (uaa->info.idProduct == USB_PRODUCT_GENESYS_GL620USB))
-		return (0);
-
-	return (ENXIO);
+	return (usbd_lookup_id_by_uaa(udbp_devs, sizeof(udbp_devs), uaa));
 }
 
 static int

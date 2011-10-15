@@ -324,8 +324,9 @@ smc_attach(device_t dev)
 	callout_init_mtx(&sc->smc_mii_tick_ch, &sc->smc_mtx,
 	    CALLOUT_RETURNUNLOCKED);
 	if (sc->smc_chip >= REV_CHIP_91110FD) {
-		mii_phy_probe(dev, &sc->smc_miibus, smc_mii_ifmedia_upd,
-		    smc_mii_ifmedia_sts);
+		(void)mii_attach(dev, &sc->smc_miibus, ifp,
+		    smc_mii_ifmedia_upd, smc_mii_ifmedia_sts, BMSR_DEFCAPMASK,
+		    MII_PHY_ANY, MII_OFFSET_ANY, 0);
 		if (sc->smc_miibus != NULL) {
 			sc->smc_mii_tick = smc_mii_tick;
 			sc->smc_mii_mediachg = smc_mii_mediachg;
@@ -537,6 +538,7 @@ smc_task_tx(void *context, int pending)
 	struct smc_softc	*sc;
 	struct mbuf		*m, *m0;
 	u_int			packet, len;
+	int			last_len;
 	uint8_t			*data;
 
 	(void)pending;
@@ -589,16 +591,18 @@ smc_task_tx(void *context, int pending)
 	 * Push the data out to the device.
 	 */
 	data = NULL;
+	last_len = 0;
 	for (; m != NULL; m = m->m_next) {
 		data = mtod(m, uint8_t *);
 		smc_write_multi_2(sc, DATA0, (uint16_t *)data, m->m_len / 2);
+		last_len = m->m_len;
 	}
 
 	/*
 	 * Push out the control byte and and the odd byte if needed.
 	 */
 	if ((len & 1) != 0 && data != NULL)
-		smc_write_2(sc, DATA0, (CTRL_ODD << 8) | data[m->m_len - 1]);
+		smc_write_2(sc, DATA0, (CTRL_ODD << 8) | data[last_len - 1]);
 	else
 		smc_write_2(sc, DATA0, 0);
 

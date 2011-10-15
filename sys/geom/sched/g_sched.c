@@ -111,6 +111,7 @@
 #include <sys/bio.h>
 #include <sys/limits.h>
 #include <sys/hash.h>
+#include <sys/sbuf.h>
 #include <sys/sysctl.h>
 #include <sys/malloc.h>
 #include <sys/proc.h>		/* we access curthread */
@@ -136,6 +137,8 @@ static void g_sched_dumpconf(struct sbuf *sb, const char *indent,
     struct g_geom *gp, struct g_consumer *cp, struct g_provider *pp);
 static void g_sched_init(struct g_class *mp);
 static void g_sched_fini(struct g_class *mp);
+static int g_sched_ioctl(struct g_provider *pp, u_long cmd, void *data,
+    int fflag, struct thread *td);
 
 struct g_class g_sched_class = {
 	.name = G_SCHED_CLASS_NAME,
@@ -144,6 +147,7 @@ struct g_class g_sched_class = {
 	.taste = g_sched_taste,
 	.destroy_geom = g_sched_destroy_geom,
 	.init = g_sched_init,
+	.ioctl = g_sched_ioctl,
 	.fini = g_sched_fini
 };
 
@@ -186,10 +190,10 @@ SYSCTL_DECL(_kern_geom);
 SYSCTL_NODE(_kern_geom, OID_AUTO, sched, CTLFLAG_RW, 0,
     "GEOM_SCHED stuff");
 
-SYSCTL_INT(_kern_geom_sched, OID_AUTO, in_flight_wb, CTLFLAG_RD,
+SYSCTL_UINT(_kern_geom_sched, OID_AUTO, in_flight_wb, CTLFLAG_RD,
     &me.gs_write_bytes_in_flight, 0, "Write bytes in flight");
 
-SYSCTL_INT(_kern_geom_sched, OID_AUTO, in_flight_b, CTLFLAG_RD,
+SYSCTL_UINT(_kern_geom_sched, OID_AUTO, in_flight_b, CTLFLAG_RD,
     &me.gs_bytes_in_flight, 0, "Bytes in flight");
 
 SYSCTL_UINT(_kern_geom_sched, OID_AUTO, in_flight_w, CTLFLAG_RD,
@@ -1001,11 +1005,6 @@ g_sched_create(struct gctl_req *req, struct g_class *mp,
 
 	gp = g_new_geomf(mp, name);
 	dstgp = proxy ? pp->geom : gp; /* where do we link the provider */
-	if (gp == NULL) {
-		gctl_error(req, "Cannot create geom %s.", name);
-		error = ENOMEM;
-		goto fail;
-	}
 
 	sc = g_malloc(sizeof(*sc), M_WAITOK | M_ZERO);
 	sc->sc_gsched = gsp;
@@ -1031,23 +1030,10 @@ g_sched_create(struct gctl_req *req, struct g_class *mp,
 	gp->dumpconf = g_sched_dumpconf;
 
 	newpp = g_new_providerf(dstgp, gp->name);
-	if (newpp == NULL) {
-		gctl_error(req, "Cannot create provider %s.", name);
-		error = ENOMEM;
-		goto fail;
-	}
-
 	newpp->mediasize = pp->mediasize;
 	newpp->sectorsize = pp->sectorsize;
 
 	cp = g_new_consumer(gp);
-	if (cp == NULL) {
-		gctl_error(req, "Cannot create consumer for %s.",
-		    gp->name);
-		error = ENOMEM;
-		goto fail;
-	}
-
 	error = g_attach(cp, proxy ? newpp : pp);
 	if (error != 0) {
 		gctl_error(req, "Cannot attach to provider %s.",
@@ -1073,23 +1059,15 @@ fail:
 			g_detach(cp);
 		g_destroy_consumer(cp);
 	}
-
 	if (newpp != NULL)
 		g_destroy_provider(newpp);
-
-	if (sc && sc->sc_hash) {
+	if (sc->sc_hash)
 		g_sched_hash_fini(gp, sc->sc_hash, sc->sc_mask,
 		    gsp, sc->sc_data);
-	}
-
-	if (sc && sc->sc_data)
+	if (sc->sc_data)
 		gsp->gs_fini(sc->sc_data);
-
-	if (gp != NULL) {
-		if (gp->softc != NULL)
-			g_free(gp->softc);
-		g_destroy_geom(gp);
-	}
+	g_free(gp->softc);
+	g_destroy_geom(gp);
 
 	return (error);
 }
@@ -1601,6 +1579,22 @@ g_sched_fini(struct g_class *mp)
 	mtx_destroy(&me.gs_mtx);
 }
 
+static int
+g_sched_ioctl(struct g_provider *pp, u_long cmd, void *data, int fflag,
+    struct thread *td)
+{
+	struct g_consumer *cp;
+	struct g_geom *gp;
+
+	cp = LIST_FIRST(&pp->geom->consumer);
+	if (cp == NULL)
+		return (ENOIOCTL);
+	gp = cp->provider->geom;
+	if (gp->ioctl == NULL)
+		return (ENOIOCTL);
+	return (gp->ioctl(cp->provider, cmd, data, fflag, td));
+}
+
 /*
  * Read the i-th argument for a request, skipping the /dev/
  * prefix if present.
@@ -1887,7 +1881,7 @@ g_sched_dumpconf(struct sbuf *sb, const char *indent, struct g_geom *gp,
 	if (indent == NULL) {	/* plaintext */
 		sbuf_printf(sb, " algo %s", gsp ? gsp->gs_name : "--");
 	}
-	if (gsp->gs_dumpconf)
+	if (gsp != NULL && gsp->gs_dumpconf)
 		gsp->gs_dumpconf(sb, indent, gp, cp, pp);
 }
 

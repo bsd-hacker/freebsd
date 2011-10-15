@@ -35,7 +35,6 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/ktr.h>
-#include <sys/linker_set.h>
 #include <sys/lock.h>
 #include <sys/lock_profile.h>
 #include <sys/lockmgr.h>
@@ -396,6 +395,34 @@ lockinit(struct lock *lk, int pri, const char *wmesg, int timo, int flags)
 	STACK_ZERO(lk);
 }
 
+/*
+ * XXX: Gross hacks to manipulate external lock flags after
+ * initialization.  Used for certain vnode and buf locks.
+ */
+void
+lockallowshare(struct lock *lk)
+{
+
+	lockmgr_assert(lk, KA_XLOCKED);
+	lk->lock_object.lo_flags &= ~LK_NOSHARE;
+}
+
+void
+lockallowrecurse(struct lock *lk)
+{
+
+	lockmgr_assert(lk, KA_XLOCKED);
+	lk->lock_object.lo_flags |= LO_RECURSABLE;
+}
+
+void
+lockdisablerecurse(struct lock *lk)
+{
+
+	lockmgr_assert(lk, KA_XLOCKED);
+	lk->lock_object.lo_flags &= ~LO_RECURSABLE;
+}
+
 void
 lockdestroy(struct lock *lk)
 {
@@ -450,8 +477,18 @@ __lockmgr_args(struct lock *lk, u_int flags, struct lock_object *ilk,
 		return (0);
 	}
 
-	if (op == LK_SHARED && (lk->lock_object.lo_flags & LK_NOSHARE))
-		op = LK_EXCLUSIVE;
+	if (lk->lock_object.lo_flags & LK_NOSHARE) {
+		switch (op) {
+		case LK_SHARED:
+			op = LK_EXCLUSIVE;
+			break;
+		case LK_UPGRADE:
+		case LK_DOWNGRADE:
+			_lockmgr_assert(lk, KA_XLOCKED | KA_NOTRECURSED,
+			    file, line);
+			return (0);
+		}
+	}
 
 	wakeup_swapper = 0;
 	switch (op) {
@@ -1272,6 +1309,10 @@ lockstatus(struct lock *lk)
 }
 
 #ifdef INVARIANT_SUPPORT
+
+FEATURE(invariant_support,
+    "Support for modules compiled with INVARIANTS option");
+
 #ifndef INVARIANTS
 #undef	_lockmgr_assert
 #endif

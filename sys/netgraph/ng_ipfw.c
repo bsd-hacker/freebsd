@@ -26,6 +26,9 @@
  * $FreeBSD$
  */
 
+#include "opt_inet.h"
+#include "opt_inet6.h"
+
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
@@ -47,6 +50,8 @@
 #include <netinet/ip_fw.h>
 #include <netinet/ipfw/ip_fw_private.h>
 #include <netinet/ip.h>
+#include <netinet/ip6.h>
+#include <netinet6/ip6_var.h>
 
 #include <netgraph/ng_message.h>
 #include <netgraph/ng_parse.h>
@@ -221,35 +226,59 @@ ng_ipfw_findhook1(node_p node, u_int16_t rulenum)
 static int
 ng_ipfw_rcvdata(hook_p hook, item_p item)
 {
-	struct ipfw_rule_ref	*tag;
+	struct m_tag *tag;
+	struct ipfw_rule_ref *r;
 	struct mbuf *m;
+	struct ip *ip;
 
 	NGI_GET_M(item, m);
 	NG_FREE_ITEM(item);
 
-	tag = (struct ipfw_rule_ref *)
-		m_tag_locate(m, MTAG_IPFW_RULE, 0, NULL);
+	tag = m_tag_locate(m, MTAG_IPFW_RULE, 0, NULL);
 	if (tag == NULL) {
 		NG_FREE_M(m);
 		return (EINVAL);	/* XXX: find smth better */
 	};
 
-	if (tag->info & IPFW_INFO_IN) {
-		ip_input(m);
-		return (0);
+	if (m->m_len < sizeof(struct ip) &&
+	    (m = m_pullup(m, sizeof(struct ip))) == NULL)
+		return (ENOBUFS);
+
+	ip = mtod(m, struct ip *);
+
+	r = (struct ipfw_rule_ref *)(tag + 1);
+	if (r->info & IPFW_INFO_IN) {
+		switch (ip->ip_v) {
+#ifdef INET
+		case IPVERSION:
+			ip_input(m);
+			return (0);
+#endif
+#ifdef INET6
+		case IPV6_VERSION >> 4:
+			ip6_input(m);
+			return (0);
+#endif
+		}
 	} else {
-		struct ip *ip;
+		switch (ip->ip_v) {
+#ifdef INET
+		case IPVERSION:
+			SET_HOST_IPLEN(ip);
+			return (ip_output(m, NULL, NULL, IP_FORWARDING,
+			    NULL, NULL));
+#endif
+#ifdef INET6
+		case IPV6_VERSION >> 4:
+			return (ip6_output(m, NULL, NULL, 0, NULL,
+			    NULL, NULL));
+#endif
+		}
+	}
 
-		if (m->m_len < sizeof(struct ip) &&
-		    (m = m_pullup(m, sizeof(struct ip))) == NULL)
-			return (EINVAL);
-
-		ip = mtod(m, struct ip *);
-
-		SET_HOST_IPLEN(ip);
-
-		return ip_output(m, NULL, NULL, IP_FORWARDING, NULL, NULL);
-	}	
+	/* unknown IP protocol version */
+	NG_FREE_M(m);
+	return (EPROTONOSUPPORT);
 }
 
 static int
@@ -264,11 +293,8 @@ ng_ipfw_input(struct mbuf **m0, int dir, struct ip_fw_args *fwa, int tee)
 	 * Node must be loaded and corresponding hook must be present.
 	 */
 	if (fw_node == NULL || 
-	   (hook = ng_ipfw_findhook1(fw_node, fwa->rule.info)) == NULL) {
-		if (tee == 0)
-			m_freem(*m0);
+	   (hook = ng_ipfw_findhook1(fw_node, fwa->rule.info)) == NULL)
 		return (ESRCH);		/* no hook associated with this rule */
-	}
 
 	/*
 	 * We have two modes: in normal mode we add a tag to packet, which is
@@ -289,7 +315,8 @@ ng_ipfw_input(struct mbuf **m0, int dir, struct ip_fw_args *fwa, int tee)
 		}
 		r = (struct ipfw_rule_ref *)(tag + 1);
 		*r = fwa->rule;
-		r->info = dir ? IPFW_INFO_IN : IPFW_INFO_OUT;
+		r->info &= IPFW_ONEPASS;  /* keep this info */
+		r->info |= dir ? IPFW_INFO_IN : IPFW_INFO_OUT;
 		m_tag_prepend(m, tag);
 
 	} else

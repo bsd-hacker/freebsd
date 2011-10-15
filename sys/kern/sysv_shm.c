@@ -77,6 +77,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/mman.h>
 #include <sys/module.h>
 #include <sys/mutex.h>
+#include <sys/racct.h>
 #include <sys/resourcevar.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
@@ -94,6 +95,8 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_map.h>
 #include <vm/vm_page.h>
 #include <vm/vm_pager.h>
+
+FEATURE(sysv_shm, "System V shared memory segments support");
 
 static MALLOC_DEFINE(M_SHM, "shm", "SVID compatible shared memory segments");
 
@@ -133,7 +136,7 @@ static int sysctl_shmsegs(SYSCTL_HANDLER_ARGS);
  * Tuneable values.
  */
 #ifndef SHMMAXPGS
-#define	SHMMAXPGS	8192	/* Note: sysv shared memory is swap backed. */
+#define	SHMMAXPGS	131072	/* Note: sysv shared memory is swap backed. */
 #endif
 #ifndef SHMMAX
 #define	SHMMAX	(SHMMAXPGS*PAGE_SIZE)
@@ -177,7 +180,7 @@ SYSCTL_INT(_kern_ipc, OID_AUTO, shm_use_phys, CTLFLAG_RW,
 SYSCTL_INT(_kern_ipc, OID_AUTO, shm_allow_removed, CTLFLAG_RW,
     &shm_allow_removed, 0,
     "Enable/Disable attachment to attached segments marked for removal");
-SYSCTL_PROC(_kern_ipc, OID_AUTO, shmsegs, CTLFLAG_RD,
+SYSCTL_PROC(_kern_ipc, OID_AUTO, shmsegs, CTLTYPE_OPAQUE | CTLFLAG_RD,
     NULL, 0, sysctl_shmsegs, "",
     "Current number of shared memory segments allocated");
 
@@ -244,6 +247,10 @@ shm_deallocate_segment(shmseg)
 #ifdef MAC
 	mac_sysvshm_cleanup(shmseg);
 #endif
+	racct_sub_cred(shmseg->cred, RACCT_NSHM, 1);
+	racct_sub_cred(shmseg->cred, RACCT_SHMSIZE, size);
+	crfree(shmseg->cred);
+	shmseg->cred = NULL;
 }
 
 static int
@@ -277,7 +284,7 @@ struct shmdt_args {
 };
 #endif
 int
-shmdt(td, uap)
+sys_shmdt(td, uap)
 	struct thread *td;
 	struct shmdt_args *uap;
 {
@@ -427,7 +434,7 @@ done2:
 }
 
 int
-shmat(td, uap)
+sys_shmat(td, uap)
 	struct thread *td;
 	struct shmat_args *uap;
 {
@@ -552,7 +559,7 @@ struct shmctl_args {
 };
 #endif
 int
-shmctl(td, uap)
+sys_shmctl(td, uap)
 	struct thread *td;
 	struct shmctl_args *uap;
 {
@@ -665,6 +672,19 @@ shmget_allocate_segment(td, uap, mode)
 		shm_last_free = -1;
 	}
 	shmseg = &shmsegs[segnum];
+#ifdef RACCT
+	PROC_LOCK(td->td_proc);
+	if (racct_add(td->td_proc, RACCT_NSHM, 1)) {
+		PROC_UNLOCK(td->td_proc);
+		return (ENOSPC);
+	}
+	if (racct_add(td->td_proc, RACCT_SHMSIZE, size)) {
+		racct_sub(td->td_proc, RACCT_NSHM, 1);
+		PROC_UNLOCK(td->td_proc);
+		return (ENOMEM);
+	}
+	PROC_UNLOCK(td->td_proc);
+#endif
 	/*
 	 * In case we sleep in malloc(), mark the segment present but deleted
 	 * so that noone else tries to create the same key.
@@ -680,8 +700,15 @@ shmget_allocate_segment(td, uap, mode)
 	 */
 	shm_object = vm_pager_allocate(shm_use_phys ? OBJT_PHYS : OBJT_SWAP,
 	    0, size, VM_PROT_DEFAULT, 0, cred);
-	if (shm_object == NULL)
+	if (shm_object == NULL) {
+#ifdef RACCT
+		PROC_LOCK(td->td_proc);
+		racct_sub(td->td_proc, RACCT_NSHM, 1);
+		racct_sub(td->td_proc, RACCT_SHMSIZE, size);
+		PROC_UNLOCK(td->td_proc);
+#endif
 		return (ENOMEM);
+	}
 	VM_OBJECT_LOCK(shm_object);
 	vm_object_clear_flag(shm_object, OBJ_ONEMAPPING);
 	vm_object_set_flag(shm_object, OBJ_NOSPLIT);
@@ -692,6 +719,7 @@ shmget_allocate_segment(td, uap, mode)
 	shmseg->u.shm_perm.cgid = shmseg->u.shm_perm.gid = cred->cr_gid;
 	shmseg->u.shm_perm.mode = (shmseg->u.shm_perm.mode & SHMSEG_WANTED) |
 	    (mode & ACCESSPERMS) | SHMSEG_ALLOCATED;
+	shmseg->cred = crhold(cred);
 	shmseg->u.shm_segsz = uap->size;
 	shmseg->u.shm_cpid = td->td_proc->p_pid;
 	shmseg->u.shm_lpid = shmseg->u.shm_nattch = 0;
@@ -722,7 +750,7 @@ struct shmget_args {
 };
 #endif
 int
-shmget(td, uap)
+sys_shmget(td, uap)
 	struct thread *td;
 	struct shmget_args *uap;
 {
@@ -823,7 +851,7 @@ static struct syscall_helper_data shm_syscalls[] = {
 	SYSCALL_INIT_HELPER(shmget),
 #if defined(COMPAT_FREEBSD4) || defined(COMPAT_FREEBSD5) || \
     defined(COMPAT_FREEBSD6) || defined(COMPAT_FREEBSD7)
-	SYSCALL_INIT_HELPER(freebsd7_shmctl),
+	SYSCALL_INIT_HELPER_COMPAT(freebsd7_shmctl),
 #endif
 #if defined(__i386__) && (defined(COMPAT_FREEBSD4) || defined(COMPAT_43))
 	SYSCALL_INIT_HELPER(shmsys),
@@ -840,9 +868,9 @@ static struct syscall_helper_data shm_syscalls[] = {
 #include <compat/freebsd32/freebsd32_util.h>
 
 static struct syscall_helper_data shm32_syscalls[] = {
-	SYSCALL32_INIT_HELPER(shmat),
-	SYSCALL32_INIT_HELPER(shmdt),
-	SYSCALL32_INIT_HELPER(shmget),
+	SYSCALL32_INIT_HELPER_COMPAT(shmat),
+	SYSCALL32_INIT_HELPER_COMPAT(shmdt),
+	SYSCALL32_INIT_HELPER_COMPAT(shmget),
 	SYSCALL32_INIT_HELPER(freebsd32_shmsys),
 	SYSCALL32_INIT_HELPER(freebsd32_shmctl),
 #if defined(COMPAT_FREEBSD4) || defined(COMPAT_FREEBSD5) || \
@@ -878,8 +906,6 @@ shminit()
 
 	shmalloced = shminfo.shmmni;
 	shmsegs = malloc(shmalloced * sizeof(shmsegs[0]), M_SHM, M_WAITOK);
-	if (shmsegs == NULL)
-		panic("cannot allocate initial memory for sysvshm");
 	for (i = 0; i < shmalloced; i++) {
 		shmsegs[i].u.shm_perm.mode = SHMSEG_FREE;
 		shmsegs[i].u.shm_perm.seq = 0;
@@ -907,9 +933,7 @@ shminit()
 static int
 shmunload()
 {
-#ifdef MAC
 	int i;	
-#endif
 
 	if (shm_nused > 0)
 		return (EBUSY);
@@ -919,10 +943,18 @@ shmunload()
 #endif
 	syscall_helper_unregister(shm_syscalls);
 
+	for (i = 0; i < shmalloced; i++) {
 #ifdef MAC
-	for (i = 0; i < shmalloced; i++)
 		mac_sysvshm_destroy(&shmsegs[i]);
 #endif
+		/*
+		 * Objects might be still mapped into the processes
+		 * address spaces.  Actual free would happen on the
+		 * last mapping destruction.
+		 */
+		if (shmsegs[i].u.shm_perm.mode != SHMSEG_FREE)
+			vm_object_deallocate(shmsegs[i].object);
+	}
 	free(shmsegs, M_SHM);
 	shmexit_hook = NULL;
 	shmfork_hook = NULL;
@@ -1008,13 +1040,13 @@ done2:
 
 /* XXX casting to (sy_call_t *) is bogus, as usual. */
 static sy_call_t *shmcalls[] = {
-	(sy_call_t *)shmat, (sy_call_t *)oshmctl,
-	(sy_call_t *)shmdt, (sy_call_t *)shmget,
+	(sy_call_t *)sys_shmat, (sy_call_t *)oshmctl,
+	(sy_call_t *)sys_shmdt, (sy_call_t *)sys_shmget,
 	(sy_call_t *)freebsd7_shmctl
 };
 
 int
-shmsys(td, uap)
+sys_shmsys(td, uap)
 	struct thread *td;
 	/* XXX actually varargs. */
 	struct shmsys_args /* {

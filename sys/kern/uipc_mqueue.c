@@ -52,6 +52,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/limits.h>
 #include <sys/buf.h>
+#include <sys/capability.h>
 #include <sys/dirent.h>
 #include <sys/event.h>
 #include <sys/eventhandler.h>
@@ -81,6 +82,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/unistd.h>
 #include <sys/vnode.h>
 #include <machine/atomic.h>
+
+FEATURE(p1003_1b_mqueue, "POSIX P1003.1B message queues support");
 
 /*
  * Limits and constants
@@ -130,7 +133,7 @@ struct mqfs_node {
 	int			mn_refcount;
 	mqfs_type_t		mn_type;
 	int			mn_deleted;
-	u_int32_t		mn_fileno;
+	uint32_t		mn_fileno;
 	void			*mn_data;
 	struct timespec		mn_birth;
 	struct timespec		mn_ctime;
@@ -1559,6 +1562,8 @@ mqueue_free(struct mqueue *mq)
 	}
 
 	mtx_destroy(&mq->mq_mutex);
+	seldrain(&mq->mq_rsel);
+	seldrain(&mq->mq_wsel);
 	knlist_destroy(&mq->mq_rsel.si_note);
 	knlist_destroy(&mq->mq_wsel.si_note);
 	uma_zfree(mqueue_zone, mq);
@@ -1747,15 +1752,23 @@ static void
 mqueue_send_notification(struct mqueue *mq)
 {
 	struct mqueue_notifier *nt;
+	struct thread *td;
 	struct proc *p;
+	int error;
 
 	mtx_assert(&mq->mq_mutex, MA_OWNED);
 	nt = mq->mq_notifier;
 	if (nt->nt_sigev.sigev_notify != SIGEV_NONE) {
 		p = nt->nt_proc;
-		PROC_LOCK(p);
-		if (!KSI_ONQ(&nt->nt_ksi))
-			psignal_event(p, &nt->nt_sigev, &nt->nt_ksi);
+		error = sigev_findtd(p, &nt->nt_sigev, &td);
+		if (error) {
+			mq->mq_notifier = NULL;
+			return;
+		}
+		if (!KSI_ONQ(&nt->nt_ksi)) {
+			ksiginfo_set_sigev(&nt->nt_ksi, &nt->nt_sigev);
+			tdsendsignal(p, td, nt->nt_ksi.ksi_signo, &nt->nt_ksi);
+		}
 		PROC_UNLOCK(p);
 	}
 	mq->mq_notifier = NULL;
@@ -1964,7 +1977,7 @@ kern_kmq_open(struct thread *td, const char *upath, int flags, mode_t mode,
 	if (len < 2  || path[0] != '/' || index(path + 1, '/') != NULL)
 		return (EINVAL);
 
-	error = falloc(td, &fp, &fd);
+	error = falloc(td, &fp, &fd, 0);
 	if (error)
 		return (error);
 
@@ -2032,7 +2045,7 @@ kern_kmq_open(struct thread *td, const char *upath, int flags, mode_t mode,
  * Syscall to open a message queue.
  */
 int
-kmq_open(struct thread *td, struct kmq_open_args *uap)
+sys_kmq_open(struct thread *td, struct kmq_open_args *uap)
 {
 	struct mq_attr attr;
 	int flags, error;
@@ -2053,7 +2066,7 @@ kmq_open(struct thread *td, struct kmq_open_args *uap)
  * Syscall to unlink a message queue.
  */
 int
-kmq_unlink(struct thread *td, struct kmq_unlink_args *uap)
+sys_kmq_unlink(struct thread *td, struct kmq_unlink_args *uap)
 {
 	char path[MQFS_NAMELEN+1];
 	struct mqfs_node *pn;
@@ -2077,19 +2090,19 @@ kmq_unlink(struct thread *td, struct kmq_unlink_args *uap)
 	return (error);
 }
 
-typedef int (*_fgetf)(struct thread *, int, struct file **);
+typedef int (*_fgetf)(struct thread *, int, cap_rights_t, struct file **);
 
 /*
  * Get message queue by giving file slot
  */
 static int
-_getmq(struct thread *td, int fd, _fgetf func,
+_getmq(struct thread *td, int fd, cap_rights_t rights, _fgetf func,
        struct file **fpp, struct mqfs_node **ppn, struct mqueue **pmq)
 {
 	struct mqfs_node *pn;
 	int error;
 
-	error = func(td, fd, fpp);
+	error = func(td, fd, rights, fpp);
 	if (error)
 		return (error);
 	if (&mqueueops != (*fpp)->f_ops) {
@@ -2108,21 +2121,21 @@ static __inline int
 getmq(struct thread *td, int fd, struct file **fpp, struct mqfs_node **ppn,
 	struct mqueue **pmq)
 {
-	return _getmq(td, fd, fget, fpp, ppn, pmq);
+	return _getmq(td, fd, CAP_POLL_EVENT, fget, fpp, ppn, pmq);
 }
 
 static __inline int
 getmq_read(struct thread *td, int fd, struct file **fpp,
 	 struct mqfs_node **ppn, struct mqueue **pmq)
 {
-	return _getmq(td, fd, fget_read, fpp, ppn, pmq);
+	return _getmq(td, fd, CAP_READ, fget_read, fpp, ppn, pmq);
 }
 
 static __inline int
 getmq_write(struct thread *td, int fd, struct file **fpp,
 	struct mqfs_node **ppn, struct mqueue **pmq)
 {
-	return _getmq(td, fd, fget_write, fpp, ppn, pmq);
+	return _getmq(td, fd, CAP_WRITE, fget_write, fpp, ppn, pmq);
 }
 
 static int
@@ -2156,7 +2169,7 @@ kern_kmq_setattr(struct thread *td, int mqd, const struct mq_attr *attr,
 }
 
 int
-kmq_setattr(struct thread *td, struct kmq_setattr_args *uap)
+sys_kmq_setattr(struct thread *td, struct kmq_setattr_args *uap)
 {
 	struct mq_attr attr, oattr;
 	int error;
@@ -2176,7 +2189,7 @@ kmq_setattr(struct thread *td, struct kmq_setattr_args *uap)
 }
 
 int
-kmq_timedreceive(struct thread *td, struct kmq_timedreceive_args *uap)
+sys_kmq_timedreceive(struct thread *td, struct kmq_timedreceive_args *uap)
 {
 	struct mqueue *mq;
 	struct file *fp;
@@ -2202,7 +2215,7 @@ kmq_timedreceive(struct thread *td, struct kmq_timedreceive_args *uap)
 }
 
 int
-kmq_timedsend(struct thread *td, struct kmq_timedsend_args *uap)
+sys_kmq_timedsend(struct thread *td, struct kmq_timedsend_args *uap)
 {
 	struct mqueue *mq;
 	struct file *fp;
@@ -2227,13 +2240,13 @@ kmq_timedsend(struct thread *td, struct kmq_timedsend_args *uap)
 }
 
 int
-kmq_notify(struct thread *td, struct kmq_notify_args *uap)
+sys_kmq_notify(struct thread *td, struct kmq_notify_args *uap)
 {
 	struct sigevent ev;
 	struct filedesc *fdp;
 	struct proc *p;
 	struct mqueue *mq;
-	struct file *fp;
+	struct file *fp, *fp2;
 	struct mqueue_notifier *nt, *newnt = NULL;
 	int error;
 
@@ -2257,7 +2270,18 @@ kmq_notify(struct thread *td, struct kmq_notify_args *uap)
 		return (error);
 again:
 	FILEDESC_SLOCK(fdp);
-	if (fget_locked(fdp, uap->mqd) != fp) {
+	fp2 = fget_locked(fdp, uap->mqd);
+	if (fp2 == NULL) {
+		FILEDESC_SUNLOCK(fdp);
+		error = EBADF;
+		goto out;
+	}
+	error = cap_funwrap(fp2, CAP_POLL_EVENT, &fp2);
+	if (error) {
+		FILEDESC_SUNLOCK(fdp);
+		goto out;
+	}
+	if (fp2 != fp) {
 		FILEDESC_SUNLOCK(fdp);
 		error = EBADF;
 		goto out;
@@ -2447,6 +2471,7 @@ mqf_stat(struct file *fp, struct stat *st, struct ucred *active_cred,
 	struct mqfs_node *pn = fp->f_data;
 
 	bzero(st, sizeof *st);
+	sx_xlock(&mqfs_data.mi_lock);
 	st->st_atim = pn->mn_atime;
 	st->st_mtim = pn->mn_mtime;
 	st->st_ctim = pn->mn_ctime;
@@ -2454,7 +2479,53 @@ mqf_stat(struct file *fp, struct stat *st, struct ucred *active_cred,
 	st->st_uid = pn->mn_uid;
 	st->st_gid = pn->mn_gid;
 	st->st_mode = S_IFIFO | pn->mn_mode;
+	sx_xunlock(&mqfs_data.mi_lock);
 	return (0);
+}
+
+static int
+mqf_chmod(struct file *fp, mode_t mode, struct ucred *active_cred,
+    struct thread *td)
+{
+	struct mqfs_node *pn;
+	int error;
+
+	error = 0;
+	pn = fp->f_data;
+	sx_xlock(&mqfs_data.mi_lock);
+	error = vaccess(VREG, pn->mn_mode, pn->mn_uid, pn->mn_gid, VADMIN,
+	    active_cred, NULL);
+	if (error != 0)
+		goto out;
+	pn->mn_mode = mode & ACCESSPERMS;
+out:
+	sx_xunlock(&mqfs_data.mi_lock);
+	return (error);
+}
+
+static int
+mqf_chown(struct file *fp, uid_t uid, gid_t gid, struct ucred *active_cred,
+    struct thread *td)
+{
+	struct mqfs_node *pn;
+	int error;
+
+	error = 0;
+	pn = fp->f_data;
+	sx_xlock(&mqfs_data.mi_lock);
+	if (uid == (uid_t)-1)
+		uid = pn->mn_uid;
+	if (gid == (gid_t)-1)
+		gid = pn->mn_gid;
+	if (((uid != pn->mn_uid && uid != active_cred->cr_uid) ||
+	    (gid != pn->mn_gid && !groupmember(gid, active_cred))) &&
+	    (error = priv_check_cred(active_cred, PRIV_VFS_CHOWN, 0)))
+		goto out;
+	pn->mn_uid = uid;
+	pn->mn_gid = gid;
+out:
+	sx_xunlock(&mqfs_data.mi_lock);
+	return (error);
 }
 
 static int
@@ -2513,6 +2584,8 @@ static struct fileops mqueueops = {
 	.fo_poll		= mqf_poll,
 	.fo_kqfilter		= mqf_kqfilter,
 	.fo_stat		= mqf_stat,
+	.fo_chmod		= mqf_chmod,
+	.fo_chown		= mqf_chown,
 	.fo_close		= mqf_close
 };
 
@@ -2697,8 +2770,8 @@ static struct syscall_helper_data mq32_syscalls[] = {
 	SYSCALL32_INIT_HELPER(freebsd32_kmq_setattr),
 	SYSCALL32_INIT_HELPER(freebsd32_kmq_timedsend),
 	SYSCALL32_INIT_HELPER(freebsd32_kmq_timedreceive),
-	SYSCALL32_INIT_HELPER(kmq_notify),
-	SYSCALL32_INIT_HELPER(kmq_unlink),
+	SYSCALL32_INIT_HELPER_COMPAT(kmq_notify),
+	SYSCALL32_INIT_HELPER_COMPAT(kmq_unlink),
 	SYSCALL_INIT_LAST
 };
 #endif

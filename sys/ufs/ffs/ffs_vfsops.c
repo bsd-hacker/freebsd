@@ -124,10 +124,16 @@ static struct buf_ops ffs_ops = {
 #endif
 };
 
+/*
+ * Note that userquota and groupquota options are not currently used
+ * by UFS/FFS code and generally mount(8) does not pass those options
+ * from userland, but they can be passed by loader(8) via
+ * vfs.root.mountfrom.options.
+ */
 static const char *ffs_opts[] = { "acls", "async", "noatime", "noclusterr",
-    "noclusterw", "noexec", "export", "force", "from", "multilabel", 
-    "nfsv4acls", "snapshot", "nosuid", "suiddir", "nosymfollow", "sync",
-    "union", NULL };
+    "noclusterw", "noexec", "export", "force", "from", "groupquota",
+    "multilabel", "nfsv4acls", "fsckpid", "snapshot", "nosuid", "suiddir",
+    "nosymfollow", "sync", "union", "userquota", NULL };
 
 static int
 ffs_mount(struct mount *mp)
@@ -136,6 +142,7 @@ ffs_mount(struct mount *mp)
 	struct thread *td;
 	struct ufsmount *ump = 0;
 	struct fs *fs;
+	pid_t fsckpid = 0;
 	int error, flags;
 	u_int mntorflags;
 	accmode_t accmode;
@@ -157,6 +164,9 @@ ffs_mount(struct mount *mp)
 		    UMA_ALIGN_PTR, 0);
 	}
 
+	vfs_deleteopt(mp->mnt_optnew, "groupquota");
+	vfs_deleteopt(mp->mnt_optnew, "userquota");
+
 	fspec = vfs_getopts(mp->mnt_optnew, "from", &error);
 	if (error)
 		return (error);
@@ -173,6 +183,29 @@ ffs_mount(struct mount *mp)
 		 */
 		vfs_deleteopt(mp->mnt_optnew, "snapshot");
 		vfs_deleteopt(mp->mnt_opt, "snapshot");
+	}
+
+	if (vfs_getopt(mp->mnt_optnew, "fsckpid", NULL, NULL) == 0 &&
+	    vfs_scanopt(mp->mnt_optnew, "fsckpid", "%d", &fsckpid) == 1) {
+		/*
+		 * Once we have set the restricted PID, do not
+		 * persist "fsckpid" in the options list.
+		 */
+		vfs_deleteopt(mp->mnt_optnew, "fsckpid");
+		vfs_deleteopt(mp->mnt_opt, "fsckpid");
+		if (mp->mnt_flag & MNT_UPDATE) {
+			if (VFSTOUFS(mp)->um_fs->fs_ronly == 0 &&
+			     vfs_flagopt(mp->mnt_optnew, "ro", NULL, 0) == 0) {
+				printf("Checker enable: Must be read-only\n");
+				return (EINVAL);
+			}
+		} else if (vfs_flagopt(mp->mnt_optnew, "ro", NULL, 0) == 0) {
+			printf("Checker enable: Must be read-only\n");
+			return (EINVAL);
+		}
+		/* Set to -1 if we are done */
+		if (fsckpid == 0)
+			fsckpid = -1;
 	}
 
 	if (vfs_getopt(mp->mnt_optnew, "nfsv4acls", NULL, NULL) == 0) {
@@ -195,6 +228,20 @@ ffs_mount(struct mount *mp)
 		ump = VFSTOUFS(mp);
 		fs = ump->um_fs;
 		devvp = ump->um_devvp;
+		if (fsckpid == -1 && ump->um_fsckpid > 0) {
+			if ((error = ffs_flushfiles(mp, WRITECLOSE, td)) != 0 ||
+			    (error = ffs_sbupdate(ump, MNT_WAIT, 0)) != 0)
+				return (error);
+			DROP_GIANT();
+			g_topology_lock();
+			/*
+			 * Return to normal read-only mode.
+			 */
+			error = g_access(ump->um_cp, 0, -1, 0);
+			g_topology_unlock();
+			PICKUP_GIANT();
+			ump->um_fsckpid = 0;
+		}
 		if (fs->fs_ronly == 0 &&
 		    vfs_flagopt(mp->mnt_optnew, "ro", NULL, 0)) {
 			/*
@@ -234,7 +281,7 @@ ffs_mount(struct mount *mp)
 			flags = WRITECLOSE;
 			if (mp->mnt_flag & MNT_FORCE)
 				flags |= FORCECLOSE;
-			if (mp->mnt_flag & MNT_SOFTDEP) {
+			if (MOUNTEDSOFTDEP(mp)) {
 				error = softdep_flushfiles(mp, flags, td);
 			} else {
 				error = ffs_flushfiles(mp, flags, td);
@@ -260,9 +307,14 @@ ffs_mount(struct mount *mp)
 				vfs_write_resume(mp);
 				return (error);
 			}
+			if (MOUNTEDSOFTDEP(mp))
+				softdep_unmount(mp);
 			DROP_GIANT();
 			g_topology_lock();
-			g_access(ump->um_cp, 0, -1, 0);
+			/*
+			 * Drop our write and exclusive access.
+			 */
+			g_access(ump->um_cp, 0, -1, -1);
 			g_topology_unlock();
 			PICKUP_GIANT();
 			fs->fs_ronly = 1;
@@ -280,6 +332,13 @@ ffs_mount(struct mount *mp)
 			return (error);
 		if (fs->fs_ronly &&
 		    !vfs_flagopt(mp->mnt_optnew, "ro", NULL, 0)) {
+			/*
+			 * If we are running a checker, do not allow upgrade.
+			 */
+			if (ump->um_fsckpid > 0) {
+				printf("Active checker, cannot rw upgrade\n");
+				return (EINVAL);
+			}
 			/*
 			 * If upgrade to read-write by non-root, then verify
 			 * that user has necessary permissions on the device.
@@ -309,20 +368,16 @@ ffs_mount(struct mount *mp)
 					    fs->fs_fsmnt);
 					if (fs->fs_flags & FS_SUJ)
 						printf(
-"WARNING: Forced mount will invalidated journal contents\n");
+"WARNING: Forced mount will invalidate journal contents\n");
 					return (EPERM);
 				}
 			}
 			DROP_GIANT();
 			g_topology_lock();
 			/*
-			 * If we're the root device, we may not have an E count
-			 * yet, get it now.
+			 * Request exclusive write access.
 			 */
-			if (ump->um_cp->ace == 0)
-				error = g_access(ump->um_cp, 0, 1, 1);
-			else
-				error = g_access(ump->um_cp, 0, 1, 0);
+			error = g_access(ump->um_cp, 0, 1, 1);
 			g_topology_unlock();
 			PICKUP_GIANT();
 			if (error)
@@ -353,10 +408,10 @@ ffs_mount(struct mount *mp)
 		 * Soft updates is incompatible with "async",
 		 * so if we are doing softupdates stop the user
 		 * from setting the async flag in an update.
-		 * Softdep_mount() clears it in an initial mount 
+		 * Softdep_mount() clears it in an initial mount
 		 * or ro->rw remount.
 		 */
-		if (mp->mnt_flag & MNT_SOFTDEP) {
+		if (MOUNTEDSOFTDEP(mp)) {
 			/* XXX: Reset too late ? */
 			MNT_ILOCK(mp);
 			mp->mnt_flag &= ~MNT_ASYNC;
@@ -378,7 +433,40 @@ ffs_mount(struct mount *mp)
 			mp->mnt_flag |= MNT_NFS4ACLS;
 			MNT_IUNLOCK(mp);
 		}
-	
+		/*
+		 * If this is a request from fsck to clean up the filesystem,
+		 * then allow the specified pid to proceed.
+		 */
+		if (fsckpid > 0) {
+			if (ump->um_fsckpid != 0) {
+				printf("Active checker already running on %s\n",
+				    fs->fs_fsmnt);
+				return (EINVAL);
+			}
+			KASSERT(MOUNTEDSOFTDEP(mp) == 0,
+			    ("soft updates enabled on read-only file system"));
+			DROP_GIANT();
+			g_topology_lock();
+			/*
+			 * Request write access.
+			 */
+			error = g_access(ump->um_cp, 0, 1, 0);
+			g_topology_unlock();
+			PICKUP_GIANT();
+			if (error) {
+				printf("Checker activation failed on %s\n",
+				    fs->fs_fsmnt);
+				return (error);
+			}
+			ump->um_fsckpid = fsckpid;
+			if (fs->fs_snapinum[0] != 0)
+				ffs_snapshot_mount(mp);
+			fs->fs_mtime = time_second;
+			fs->fs_fmod = 1;
+			fs->fs_clean = 0;
+			(void) ffs_sbupdate(ump, MNT_WAIT, 0);
+		}
+
 		/*
 		 * If this is a snapshot request, take the snapshot.
 		 */
@@ -441,6 +529,31 @@ ffs_mount(struct mount *mp)
 			vrele(devvp);
 			return (error);
 		}
+		if (fsckpid > 0) {
+			KASSERT(MOUNTEDSOFTDEP(mp) == 0,
+			    ("soft updates enabled on read-only file system"));
+			ump = VFSTOUFS(mp);
+			fs = ump->um_fs;
+			DROP_GIANT();
+			g_topology_lock();
+			/*
+			 * Request write access.
+			 */
+			error = g_access(ump->um_cp, 0, 1, 0);
+			g_topology_unlock();
+			PICKUP_GIANT();
+			if (error) {
+				printf("Checker activation failed on %s\n",
+				    fs->fs_fsmnt);
+			} else { 
+				ump->um_fsckpid = fsckpid;
+				if (fs->fs_snapinum[0] != 0)
+					ffs_snapshot_mount(mp);
+				fs->fs_mtime = time_second;
+				fs->fs_clean = 0;
+				(void) ffs_sbupdate(ump, MNT_WAIT, 0);
+			}
+		}
 	}
 	vfs_mountedfrom(mp, fspec);
 	return (0);
@@ -454,6 +567,7 @@ static int
 ffs_cmount(struct mntarg *ma, void *data, int flags)
 {
 	struct ufs_args args;
+	struct export_args exp;
 	int error;
 
 	if (data == NULL)
@@ -461,9 +575,10 @@ ffs_cmount(struct mntarg *ma, void *data, int flags)
 	error = copyin(data, &args, sizeof args);
 	if (error)
 		return (error);
+	vfs_oexport_conv(&args.export, &exp);
 
 	ma = mount_argsu(ma, "from", args.fspec, MAXPATHLEN);
-	ma = mount_arg(ma, "export", &args.export, sizeof args.export);
+	ma = mount_arg(ma, "export", &exp, sizeof(exp));
 	error = kernel_mount(ma, flags);
 
 	return (error);
@@ -652,13 +767,6 @@ ffs_mountfs(devvp, mp, td)
 	DROP_GIANT();
 	g_topology_lock();
 	error = g_vfs_open(devvp, &cp, "ffs", ronly ? 0 : 1);
-
-	/*
-	 * If we are a root mount, drop the E flag so fsck can do its magic.
-	 * We will pick it up again when we remount R/W.
-	 */
-	if (error == 0 && ronly && (mp->mnt_flag & MNT_ROOTFS))
-		error = g_access(cp, 0, 0, -1);
 	g_topology_unlock();
 	PICKUP_GIANT();
 	VOP_UNLOCK(devvp, 0);
@@ -711,8 +819,7 @@ ffs_mountfs(devvp, mp, td)
 		if (ronly || (mp->mnt_flag & MNT_FORCE) ||
 		    ((fs->fs_flags & (FS_SUJ | FS_NEEDSFSCK)) == 0 &&
 		     (fs->fs_flags & FS_DOSOFTDEP))) {
-			printf(
-"WARNING: %s was not properly dismounted\n",
+			printf("WARNING: %s was not properly dismounted\n",
 			    fs->fs_fsmnt);
 		} else {
 			printf(
@@ -720,7 +827,7 @@ ffs_mountfs(devvp, mp, td)
 			    fs->fs_fsmnt);
 			if (fs->fs_flags & FS_SUJ)
 				printf(
-"WARNING: Forced mount will invalidated journal contents\n");
+"WARNING: Forced mount will invalidate journal contents\n");
 			error = EPERM;
 			goto out;
 		}
@@ -787,6 +894,7 @@ ffs_mountfs(devvp, mp, td)
 	ump->um_vfree = ffs_vfree;
 	ump->um_ifree = ffs_ifree;
 	ump->um_rdonly = ffs_rdonly;
+	ump->um_snapgone = ffs_snapgone;
 	mtx_init(UFS_MTX(ump), "FFS", "FFS Lock", MTX_DEF);
 	bcopy(bp->b_data, ump->um_fs, (u_int)fs->fs_sbsize);
 	if (fs->fs_sbsize < SBLOCKSIZE)
@@ -831,7 +939,7 @@ ffs_mountfs(devvp, mp, td)
 	mp->mnt_stat.f_fsid.val[0] = fs->fs_id[0];
 	mp->mnt_stat.f_fsid.val[1] = fs->fs_id[1];
 	nmp = NULL;
-	if (fs->fs_id[0] == 0 || fs->fs_id[1] == 0 || 
+	if (fs->fs_id[0] == 0 || fs->fs_id[1] == 0 ||
 	    (nmp = vfs_getvfs(&mp->mnt_stat.f_fsid))) {
 		if (nmp)
 			vfs_rel(nmp);
@@ -864,8 +972,7 @@ ffs_mountfs(devvp, mp, td)
 
 		MNT_IUNLOCK(mp);
 #else
-		printf(
-"WARNING: %s: ACLs flag on fs but no ACLs support\n",
+		printf("WARNING: %s: ACLs flag on fs but no ACLs support\n",
 		    mp->mnt_stat.f_mntonname);
 #endif
 	}
@@ -886,6 +993,21 @@ ffs_mountfs(devvp, mp, td)
 		    mp->mnt_stat.f_mntonname);
 #endif
 	}
+	if ((fs->fs_flags & FS_TRIM) != 0) {
+		size = sizeof(int);
+		if (g_io_getattr("GEOM::candelete", cp, &size,
+		    &ump->um_candelete) == 0) {
+			if (!ump->um_candelete)
+				printf(
+"WARNING: %s: TRIM flag on fs but disk does not support TRIM\n",
+				    mp->mnt_stat.f_mntonname);
+		} else {
+			printf(
+"WARNING: %s: TRIM flag on fs but cannot get whether disk supports TRIM\n",
+			    mp->mnt_stat.f_mntonname);
+			ump->um_candelete = 0;
+		}
+	}
 
 	ump->um_mountp = mp;
 	ump->um_dev = dev;
@@ -905,7 +1027,7 @@ ffs_mountfs(devvp, mp, td)
 	strlcpy(fs->fs_fsmnt, mp->mnt_stat.f_mntonname, MAXMNTLEN);
 	mp->mnt_stat.f_iosize = fs->fs_bsize;
 
-	if( mp->mnt_flag & MNT_ROOTFS) {
+	if (mp->mnt_flag & MNT_ROOTFS) {
 		/*
 		 * Root mount; update timestamp in mount structure.
 		 * this will be used by the common root mount code
@@ -919,6 +1041,7 @@ ffs_mountfs(devvp, mp, td)
 		if ((fs->fs_flags & FS_DOSOFTDEP) &&
 		    (error = softdep_mount(devvp, mp, fs, cred)) != 0) {
 			free(fs->fs_csp, M_UFSMNT);
+			ffs_flushfiles(mp, FORCECLOSE, td);
 			goto out;
 		}
 		if (fs->fs_snapinum[0] != 0)
@@ -1124,7 +1247,7 @@ ffs_unmount(mp, mntflags)
 			vn_start_write(NULL, &mp, V_WAIT);
 		}
 	}
-	if (mp->mnt_flag & MNT_SOFTDEP)
+	if (MOUNTEDSOFTDEP(mp))
 		error = softdep_flushfiles(mp, flags, td);
 	else
 		error = ffs_flushfiles(mp, flags, td);
@@ -1141,7 +1264,7 @@ ffs_unmount(mp, mntflags)
 	}
 	UFS_UNLOCK(ump);
 	softdep_unmount(mp);
-	if (fs->fs_ronly == 0) {
+	if (fs->fs_ronly == 0 || ump->um_fsckpid > 0) {
 		fs->fs_clean = fs->fs_flags & (FS_UNCLEAN|FS_NEEDSFSCK) ? 0 : 1;
 		error = ffs_sbupdate(ump, MNT_WAIT, 0);
 		if (error && error != ENXIO) {
@@ -1155,6 +1278,13 @@ ffs_unmount(mp, mntflags)
 	}
 	DROP_GIANT();
 	g_topology_lock();
+	if (ump->um_fsckpid > 0) {
+		/*
+		 * Return to normal read-only mode.
+		 */
+		error = g_access(ump->um_cp, 0, -1, 0);
+		ump->um_fsckpid = 0;
+	}
 	g_vfs_close(ump->um_cp);
 	g_topology_unlock();
 	PICKUP_GIANT();
@@ -1303,7 +1433,7 @@ ffs_sync(mp, waitfor)
 
 	td = curthread;
 	fs = ump->um_fs;
-	if (fs->fs_fmod != 0 && fs->fs_ronly != 0) {		/* XXX */
+	if (fs->fs_fmod != 0 && fs->fs_ronly != 0 && ump->um_fsckpid == 0) {
 		printf("fs = %s\n", fs->fs_fsmnt);
 		panic("ffs_sync: rofs mod");
 	}
@@ -1492,6 +1622,7 @@ ffs_vgetf(mp, ino, flags, vpp, ffs_flags)
 	/*
 	 * FFS supports recursive locking.
 	 */
+	lockmgr(vp->v_vnlock, LK_EXCLUSIVE, NULL);
 	VN_LOCK_AREC(vp);
 	vp->v_data = ip;
 	vp->v_bufobj.bo_bsize = fs->fs_bsize;
@@ -1509,7 +1640,6 @@ ffs_vgetf(mp, ino, flags, vpp, ffs_flags)
 	}
 #endif
 
-	lockmgr(vp->v_vnlock, LK_EXCLUSIVE, NULL);
 	if (ffs_flags & FFSV_FORCEINSMQ)
 		vp->v_vflag |= VV_FORCEINSMQ;
 	error = insmntque(vp, mp);
@@ -1614,9 +1744,10 @@ ffs_vgetf(mp, ino, flags, vpp, ffs_flags)
  *   those rights via. exflagsp and credanonp
  */
 static int
-ffs_fhtovp(mp, fhp, vpp)
+ffs_fhtovp(mp, fhp, flags, vpp)
 	struct mount *mp;
 	struct fid *fhp;
+	int flags;
 	struct vnode **vpp;
 {
 	struct ufid *ufhp;
@@ -1627,7 +1758,7 @@ ffs_fhtovp(mp, fhp, vpp)
 	if (ufhp->ufid_ino < ROOTINO ||
 	    ufhp->ufid_ino >= fs->fs_ncg * fs->fs_ipg)
 		return (ESTALE);
-	return (ufs_fhtovp(mp, ufhp, vpp));
+	return (ufs_fhtovp(mp, ufhp, flags, vpp));
 }
 
 /*
@@ -1660,12 +1791,12 @@ ffs_uninit(vfsp)
  * Write a superblock and associated information back to disk.
  */
 int
-ffs_sbupdate(mp, waitfor, suspended)
-	struct ufsmount *mp;
+ffs_sbupdate(ump, waitfor, suspended)
+	struct ufsmount *ump;
 	int waitfor;
 	int suspended;
 {
-	struct fs *fs = mp->um_fs;
+	struct fs *fs = ump->um_fs;
 	struct buf *sbbp;
 	struct buf *bp;
 	int blks;
@@ -1673,14 +1804,14 @@ ffs_sbupdate(mp, waitfor, suspended)
 	int i, size, error, allerror = 0;
 
 	if (fs->fs_ronly == 1 &&
-	    (mp->um_mountp->mnt_flag & (MNT_RDONLY | MNT_UPDATE)) != 
-	    (MNT_RDONLY | MNT_UPDATE))
+	    (ump->um_mountp->mnt_flag & (MNT_RDONLY | MNT_UPDATE)) !=
+	    (MNT_RDONLY | MNT_UPDATE) && ump->um_fsckpid == 0)
 		panic("ffs_sbupdate: write read-only filesystem");
 	/*
 	 * We use the superblock's buf to serialize calls to ffs_sbupdate().
 	 */
-	sbbp = getblk(mp->um_devvp, btodb(fs->fs_sblockloc), (int)fs->fs_sbsize,
-	    0, 0, 0);
+	sbbp = getblk(ump->um_devvp, btodb(fs->fs_sblockloc),
+	    (int)fs->fs_sbsize, 0, 0, 0);
 	/*
 	 * First write back the summary information.
 	 */
@@ -1690,7 +1821,7 @@ ffs_sbupdate(mp, waitfor, suspended)
 		size = fs->fs_bsize;
 		if (i + fs->fs_frag > blks)
 			size = (blks - i) * fs->fs_fsize;
-		bp = getblk(mp->um_devvp, fsbtodb(fs, fs->fs_csaddr + i),
+		bp = getblk(ump->um_devvp, fsbtodb(fs, fs->fs_csaddr + i),
 		    size, 0, 0, 0);
 		bcopy(space, bp->b_data, (u_int)size);
 		space = (char *)space + size;
@@ -1726,9 +1857,9 @@ ffs_sbupdate(mp, waitfor, suspended)
 	fs->fs_fmod = 0;
 	fs->fs_time = time_second;
 	if (fs->fs_flags & FS_DOSOFTDEP)
-		softdep_setup_sbupdate(mp, (struct fs *)bp->b_data, bp);
+		softdep_setup_sbupdate(ump, (struct fs *)bp->b_data, bp);
 	bcopy((caddr_t)fs, bp->b_data, (u_int)fs->fs_sbsize);
-	ffs_oldfscompat_write((struct fs *)bp->b_data, mp);
+	ffs_oldfscompat_write((struct fs *)bp->b_data, ump);
 	if (suspended)
 		bp->b_flags |= B_VALIDSUSPWRT;
 	if (waitfor != MNT_WAIT)
@@ -1827,7 +1958,7 @@ ffs_backgroundwritedone(struct buf *bp)
  *
  * Note that we set B_CACHE here, indicating that buffer is
  * fully valid and thus cacheable.  This is true even of NFS
- * now so we set it generally.  This could be set either here 
+ * now so we set it generally.  This could be set either here
  * or in biodone() since the I/O is synchronous.  We put it
  * here.
  */
@@ -1876,7 +2007,7 @@ ffs_bufwrite(struct buf *bp)
 	 * This optimization eats a lot of memory.  If we have a page
 	 * or buffer shortfall we can't do it.
 	 */
-	if (dobkgrdwrite && (bp->b_xflags & BX_BKGRDWRITE) && 
+	if (dobkgrdwrite && (bp->b_xflags & BX_BKGRDWRITE) &&
 	    (bp->b_flags & B_ASYNC) &&
 	    !vm_page_count_severe() &&
 	    !buf_dirty_count_severe()) {
@@ -1918,7 +2049,7 @@ ffs_bufwrite(struct buf *bp)
 			bundirty(bp);
 #else
 		bundirty(bp);
-#endif 
+#endif
 
 		/*
 		 * Initiate write on the copy, release the original to
@@ -2007,12 +2138,10 @@ ffs_geom_strategy(struct bufobj *bo, struct buf *bp)
 static void
 db_print_ffs(struct ufsmount *ump)
 {
-	db_printf("mp %p %s devvp %p fs %p su_wl %d su_wl_in %d su_deps %d "
-		  "su_req %d\n",
+	db_printf("mp %p %s devvp %p fs %p su_wl %d su_deps %d su_req %d\n",
 	    ump->um_mountp, ump->um_mountp->mnt_stat.f_mntonname,
 	    ump->um_devvp, ump->um_fs, ump->softdep_on_worklist,
-	    ump->softdep_on_worklist_inprogress, ump->softdep_deps,
-	    ump->softdep_req);
+	    ump->softdep_deps, ump->softdep_req);
 }
 
 DB_SHOW_COMMAND(ffs, db_show_ffs)

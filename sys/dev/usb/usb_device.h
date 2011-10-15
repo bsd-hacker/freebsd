@@ -29,6 +29,7 @@
 
 struct usb_symlink;		/* UGEN */
 struct usb_device;		/* linux compat */
+struct usb_fs_privdata;
 
 #define	USB_CTRL_XFER_MAX 2
 
@@ -115,6 +116,7 @@ struct usb_device {
 						 * messages */
 	struct sx ctrl_sx;
 	struct sx enum_sx;
+	struct sx sr_sx;
 	struct mtx device_mtx;
 	struct cv ctrlreq_cv;
 	struct cv ref_cv;
@@ -134,7 +136,7 @@ struct usb_device {
 #if USB_HAVE_UGEN
 	struct usb_fifo *fifo[USB_FIFO_MAX];
 	struct usb_symlink *ugen_symlink;	/* our generic symlink */
-	struct cdev *ctrl_dev;	/* Control Endpoint 0 device node */
+	struct usb_fs_privdata *ctrl_dev;	/* Control Endpoint 0 device node */
 	LIST_HEAD(,usb_fs_privdata) pd_list;
 	char	ugen_name[20];		/* name of ugenX.X device */
 #endif
@@ -147,9 +149,11 @@ struct usb_device {
 
 	uint16_t power;			/* mA the device uses */
 	uint16_t langid;		/* language for strings */
+	uint16_t autoQuirk[USB_MAX_AUTO_QUIRK];		/* dynamic quirks */
 
 	uint8_t	address;		/* device addess */
 	uint8_t	device_index;		/* device index in "bus->devices" */
+	uint8_t	controller_slot_id;	/* controller specific value */
 	uint8_t	curr_config_index;	/* current configuration index */
 	uint8_t	curr_config_no;		/* current configuration number */
 	uint8_t	depth;			/* distance from root HUB */
@@ -159,6 +163,7 @@ struct usb_device {
 	uint8_t	hs_port_no;		/* high-speed HUB port number */
 	uint8_t	driver_added_refcount;	/* our driver added generation count */
 	uint8_t	power_mode;		/* see USB_POWER_XXX */
+	uint8_t re_enumerate_wait;	/* set if re-enum. is in progress */
 	uint8_t ifaces_max;		/* number of interfaces present */
 	uint8_t endpoints_max;		/* number of endpoints present */
 
@@ -167,11 +172,12 @@ struct usb_device {
 	struct usb_device_flags flags;
 
 	struct usb_endpoint_descriptor ctrl_ep_desc;	/* for endpoint 0 */
+	struct usb_endpoint_ss_comp_descriptor ctrl_ep_comp_desc;	/* for endpoint 0 */
 	struct usb_device_descriptor ddesc;	/* device descriptor */
 
-	char	*serial;		/* serial number */
-	char	*manufacturer;		/* manufacturer string */
-	char	*product;		/* product string */
+	char	*serial;		/* serial number, can be NULL */
+	char	*manufacturer;		/* manufacturer string, can be NULL */
+	char	*product;		/* product string, can be NULL */
 
 #if USB_HAVE_COMPAT_LINUX
 	/* Linux compat */
@@ -183,6 +189,8 @@ struct usb_device {
 	struct usb_host_endpoint *linux_endpoint_end;
 	uint16_t devnum;
 #endif
+
+	uint32_t clear_stall_errors;	/* number of clear-stall failures */
 };
 
 /* globals */
@@ -196,6 +204,11 @@ struct usb_device *usb_alloc_device(device_t parent_dev, struct usb_bus *bus,
 		    struct usb_device *parent_hub, uint8_t depth,
 		    uint8_t port_index, uint8_t port_no,
 		    enum usb_dev_speed speed, enum usb_hc_mode mode);
+#if USB_HAVE_UGEN
+struct usb_fs_privdata *usb_make_dev(struct usb_device *, const char *,
+		    int, int, int, uid_t, gid_t, int);
+void	usb_destroy_dev(struct usb_fs_privdata *);
+#endif
 usb_error_t	usb_probe_and_attach(struct usb_device *udev,
 		    uint8_t iface_index);
 void		usb_detach_device(struct usb_device *, uint8_t, uint8_t);
@@ -211,10 +224,13 @@ void	usb_free_device(struct usb_device *, uint8_t);
 void	usb_linux_free_device(struct usb_device *dev);
 uint8_t	usb_peer_can_wakeup(struct usb_device *udev);
 struct usb_endpoint *usb_endpoint_foreach(struct usb_device *udev, struct usb_endpoint *ep);
-void	usb_set_device_state(struct usb_device *udev,
-	    enum usb_dev_state state);
+void	usb_set_device_state(struct usb_device *, enum usb_dev_state);
+enum usb_dev_state usb_get_device_state(struct usb_device *);
+
 void	usbd_enum_lock(struct usb_device *);
 void	usbd_enum_unlock(struct usb_device *);
+void	usbd_sr_lock(struct usb_device *);
+void	usbd_sr_unlock(struct usb_device *);
 uint8_t usbd_enum_is_locked(struct usb_device *);
 
 #endif					/* _USB_DEVICE_H_ */

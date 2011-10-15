@@ -214,7 +214,9 @@
 #define FFS_SET_CWD		12	/* set current directory */
 #define	FFS_SET_DOTDOT		13	/* set inode number for ".." */
 #define	FFS_UNLINK		14	/* remove a name in the filesystem */
-#define	FFS_MAXID		15	/* number of valid ffs ids */
+#define	FFS_SET_INODE		15	/* update an on-disk inode */
+#define	FFS_SET_BUFOUTPUT	16	/* set buffered writing on descriptor */
+#define	FFS_MAXID		16	/* number of valid ffs ids */
 
 /*
  * Command structure passed in to the filesystem to adjust filesystem values.
@@ -417,6 +419,7 @@ CTASSERT(sizeof(struct fs) == 1376);
 #define FS_FLAGS_UPDATED 0x0080	/* flags have been moved to new location */
 #define FS_NFS4ACLS	0x0100	/* file system has NFSv4 ACLs enabled */
 #define FS_INDEXDIRS	0x0200	/* kernel supports indexed directories */
+#define	FS_TRIM		0x0400	/* issue BIO_DELETE for deleted blocks */
 
 /*
  * Macros to access bits in the fs_active array.
@@ -607,6 +610,11 @@ struct cg {
 	  : (fragroundup(fs, blkoff(fs, (size)))))
 
 /*
+ * Number of indirects in a filesystem block.
+ */
+#define	NINDIR(fs)	((fs)->fs_nindir)
+
+/*
  * Indirect lbns are aligned on NDADDR addresses where single indirects
  * are the negated address of the lowest lbn reachable, double indirects
  * are this lbn - 1 and triple indirects are this lbn - 2.  This yields
@@ -631,16 +639,22 @@ lbn_level(ufs_lbn_t lbn)
 	}
 	return (-1);
 }
+
+static inline ufs_lbn_t
+lbn_offset(struct fs *fs, int level)
+{
+	ufs_lbn_t res;
+
+	for (res = 1; level > 0; level--)
+		res *= NINDIR(fs);
+	return (res);
+}
+
 /*
  * Number of inodes in a secondary storage block/fragment.
  */
 #define	INOPB(fs)	((fs)->fs_inopb)
 #define	INOPF(fs)	((fs)->fs_inopb >> (fs)->fs_fragshift)
-
-/*
- * Number of indirects in a filesystem block.
- */
-#define	NINDIR(fs)	((fs)->fs_nindir)
 
 /*
  * Softdep journal record format.
@@ -652,6 +666,7 @@ lbn_level(ufs_lbn_t lbn)
 #define	JOP_FREEBLK	4	/* Free a block or a tree of blocks. */
 #define	JOP_MVREF	5	/* Move a reference from one off to another. */
 #define	JOP_TRUNC	6	/* Partial truncation record. */
+#define	JOP_SYNC	7	/* fsync() complete record. */
 
 #define	JREC_SIZE	32	/* Record and segment header size. */
 
@@ -661,7 +676,7 @@ lbn_level(ufs_lbn_t lbn)
 
 /*
  * Size of the segment record header.  There is at most one for each disk
- * block n the journal.  The segment header is followed by an array of
+ * block in the journal.  The segment header is followed by an array of
  * records.  fsck depends on the first element in each record being 'op'
  * and the second being 'ino'.  Segments may span multiple disk blocks but
  * the header is present on each.
@@ -670,7 +685,7 @@ struct jsegrec {
 	uint64_t	jsr_seq;	/* Our sequence number */
 	uint64_t	jsr_oldest;	/* Oldest valid sequence number */
 	uint16_t	jsr_cnt;	/* Count of valid records */
-	uint16_t	jsr_blocks;	/* Count of DEV_BSIZE blocks. */
+	uint16_t	jsr_blocks;	/* Count of device bsize blocks. */
 	uint32_t	jsr_crc;	/* 32bit crc of the valid space */
 	ufs_time_t	jsr_time;	/* timestamp for mount instance */
 };
@@ -717,7 +732,7 @@ struct jblkrec {
 
 /*
  * Truncation record.  Records a partial truncation so that it may be
- * completed later.
+ * completed at check time.  Also used for sync records.
  */
 struct jtrncrec {
 	uint32_t	jt_op;

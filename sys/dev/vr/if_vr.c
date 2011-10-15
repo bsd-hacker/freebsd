@@ -114,12 +114,12 @@ MODULE_DEPEND(vr, miibus, 1, 1, 1);
 #define VR_Q_CSUM		(1<<1)
 #define VR_Q_CAM		(1<<2)
 
-static struct vr_type {
+static const struct vr_type {
 	u_int16_t		vr_vid;
 	u_int16_t		vr_did;
 	int			vr_quirks;
-	char			*vr_name;
-} vr_devs[] = {
+	const char		*vr_name;
+} const vr_devs[] = {
 	{ VIA_VENDORID, VIA_DEVICEID_RHINE,
 	    VR_Q_NEEDALIGN,
 	    "VIA VT3043 Rhine I 10/100BaseTX" },
@@ -185,7 +185,6 @@ static int vr_miibus_readreg(device_t, int, int);
 static int vr_miibus_writereg(device_t, int, int, int);
 static void vr_miibus_statchg(device_t);
 
-static void vr_link_task(void *, int);
 static void vr_cam_mask(struct vr_softc *, uint32_t, int);
 static int vr_cam_data(struct vr_softc *, int, int, uint8_t *);
 static void vr_set_filter(struct vr_softc *);
@@ -196,11 +195,11 @@ static void vr_setwol(struct vr_softc *);
 static void vr_clrwol(struct vr_softc *);
 static int vr_sysctl_stats(SYSCTL_HANDLER_ARGS);
 
-static struct vr_tx_threshold_table {
+static const struct vr_tx_threshold_table {
 	int tx_cfg;
 	int bcr_cfg;
 	int value;
-} vr_tx_threshold_tables[] = {
+} const vr_tx_threshold_tables[] = {
 	{ VR_TXTHRESH_64BYTES, VR_BCR1_TXTHRESH64BYTES,	64 },
 	{ VR_TXTHRESH_128BYTES, VR_BCR1_TXTHRESH128BYTES, 128 },
 	{ VR_TXTHRESH_256BYTES, VR_BCR1_TXTHRESH256BYTES, 256 },
@@ -226,7 +225,6 @@ static device_method_t vr_methods[] = {
 	DEVMETHOD(miibus_readreg,	vr_miibus_readreg),
 	DEVMETHOD(miibus_writereg,	vr_miibus_writereg),
 	DEVMETHOD(miibus_statchg,	vr_miibus_statchg),
-	DEVMETHOD(miibus_linkchg,	vr_miibus_statchg),
 
 	{ NULL, NULL }
 };
@@ -249,8 +247,6 @@ vr_miibus_readreg(device_t dev, int phy, int reg)
 	int			i;
 
 	sc = device_get_softc(dev);
-	if (sc->vr_phyaddr != phy)
-		return (0);
 
 	/* Set the register address. */
 	CSR_WRITE_1(sc, VR_MIIADDR, reg);
@@ -274,8 +270,6 @@ vr_miibus_writereg(device_t dev, int phy, int reg, int data)
 	int			i;
 
 	sc = device_get_softc(dev);
-	if (sc->vr_phyaddr != phy)
-		return (0);
 
 	/* Set the register address and data to write. */
 	CSR_WRITE_1(sc, VR_MIIADDR, reg);
@@ -294,22 +288,13 @@ vr_miibus_writereg(device_t dev, int phy, int reg, int data)
 	return (0);
 }
 
-static void
-vr_miibus_statchg(device_t dev)
-{
-	struct vr_softc		*sc;
-
-	sc = device_get_softc(dev);
-	taskqueue_enqueue(taskqueue_swi, &sc->vr_link_task);
-}
-
 /*
  * In order to fiddle with the
  * 'full-duplex' and '100Mbps' bits in the netconfig register, we
  * first have to put the transmit and/or receive logic in the idle state.
  */
 static void
-vr_link_task(void *arg, int pending)
+vr_miibus_statchg(device_t dev)
 {
 	struct vr_softc		*sc;
 	struct mii_data		*mii;
@@ -317,22 +302,25 @@ vr_link_task(void *arg, int pending)
 	int			lfdx, mfdx;
 	uint8_t			cr0, cr1, fc;
 
-	sc = (struct vr_softc *)arg;
-
-	VR_LOCK(sc);
+	sc = device_get_softc(dev);
 	mii = device_get_softc(sc->vr_miibus);
 	ifp = sc->vr_ifp;
 	if (mii == NULL || ifp == NULL ||
-	    (ifp->if_drv_flags & IFF_DRV_RUNNING) == 0) {
-		VR_UNLOCK(sc);
+	    (ifp->if_drv_flags & IFF_DRV_RUNNING) == 0)
 		return;
-	}
 
-	if (mii->mii_media_status & IFM_ACTIVE) {
-		if (IFM_SUBTYPE(mii->mii_media_active) != IFM_NONE)
+	sc->vr_link = 0;
+	if ((mii->mii_media_status & (IFM_ACTIVE | IFM_AVALID)) ==
+	    (IFM_ACTIVE | IFM_AVALID)) {
+		switch (IFM_SUBTYPE(mii->mii_media_active)) {
+		case IFM_10_T:
+		case IFM_100_TX:
 			sc->vr_link = 1;
-	} else
-		sc->vr_link = 0;
+			break;
+		default:
+			break;
+		}
+	}
 
 	if (sc->vr_link != 0) {
 		cr0 = CSR_READ_1(sc, VR_CR0);
@@ -388,11 +376,8 @@ vr_link_task(void *arg, int pending)
 			    "%s: Tx/Rx shutdown error -- resetting\n",
 			    __func__);
 			sc->vr_flags |= VR_F_RESTART;
-			VR_UNLOCK(sc);
-			return;
 		}
 	}
-	VR_UNLOCK(sc);
 }
 
 
@@ -572,10 +557,10 @@ vr_reset(const struct vr_softc *sc)
  * Probe for a VIA Rhine chip. Check the PCI vendor and device
  * IDs against our list and return a match or NULL
  */
-static struct vr_type *
+static const struct vr_type *
 vr_match(device_t dev)
 {
-	struct vr_type	*t = vr_devs;
+	const struct vr_type	*t = vr_devs;
 
 	for (t = vr_devs; t->vr_name != NULL; t++)
 		if ((pci_get_vendor(dev) == t->vr_vid) &&
@@ -591,7 +576,7 @@ vr_match(device_t dev)
 static int
 vr_probe(device_t dev)
 {
-	struct vr_type	*t;
+	const struct vr_type	*t;
 
 	t = vr_match(dev);
 	if (t != NULL) {
@@ -610,10 +595,10 @@ vr_attach(device_t dev)
 {
 	struct vr_softc		*sc;
 	struct ifnet		*ifp;
-	struct vr_type		*t;
+	const struct vr_type	*t;
 	uint8_t			eaddr[ETHER_ADDR_LEN];
 	int			error, rid;
-	int			i, pmc;
+	int			i, phy, pmc;
 
 	sc = device_get_softc(dev);
 	sc->vr_dev = dev;
@@ -625,7 +610,6 @@ vr_attach(device_t dev)
 	mtx_init(&sc->vr_mtx, device_get_nameunit(dev), MTX_NETWORK_LOCK,
 	    MTX_DEF);
 	callout_init_mtx(&sc->vr_stat_callout, &sc->vr_mtx, 0);
-	TASK_INIT(&sc->vr_link_task, 0, vr_link_task, sc);
 	SYSCTL_ADD_PROC(device_get_sysctl_ctx(dev),
 	    SYSCTL_CHILDREN(device_get_sysctl_tree(dev)),
 	    OID_AUTO, "stats", CTLTYPE_INT | CTLFLAG_RW, sc, 0,
@@ -700,7 +684,7 @@ vr_attach(device_t dev)
 	}
 
 	if (sc->vr_revid >= REV_ID_VT6102_A &&
-	    pci_find_extcap(dev, PCIY_PMG, &pmc) == 0)
+	    pci_find_cap(dev, PCIY_PMG, &pmc) == 0)
 		ifp->if_capabilities |= IFCAP_WOL_UCAST | IFCAP_WOL_MAGIC;
 
 	/* Rhine supports oversized VLAN frame. */
@@ -715,7 +699,7 @@ vr_attach(device_t dev)
 	 * shuts down. Be sure to kick it in the head to wake it
 	 * up again.
 	 */
-	if (pci_find_extcap(dev, PCIY_PMG, &pmc) == 0)
+	if (pci_find_cap(dev, PCIY_PMG, &pmc) == 0)
 		VR_CLRBIT(sc, VR_STICKHW, (VR_STICKHW_DS0|VR_STICKHW_DS1));
 
 	/*
@@ -780,17 +764,15 @@ vr_attach(device_t dev)
 		goto fail;
 	}
 
-	/* Save PHY address. */
-	if (sc->vr_revid >= REV_ID_VT6105_A0)
-		sc->vr_phyaddr = 1;
-	else
-		sc->vr_phyaddr = CSR_READ_1(sc, VR_PHYADDR) & VR_PHYADDR_MASK;
-
 	/* Do MII setup. */
-	if (mii_phy_probe(dev, &sc->vr_miibus,
-	    vr_ifmedia_upd, vr_ifmedia_sts)) {
-		device_printf(dev, "MII without any phy!\n");
-		error = ENXIO;
+	if (sc->vr_revid >= REV_ID_VT6105_A0)
+		phy = 1;
+	else
+		phy = CSR_READ_1(sc, VR_PHYADDR) & VR_PHYADDR_MASK;
+	error = mii_attach(dev, &sc->vr_miibus, ifp, vr_ifmedia_upd,
+	    vr_ifmedia_sts, BMSR_DEFCAPMASK, phy, MII_OFFSET_ANY, 0);
+	if (error != 0) {
+		device_printf(dev, "attaching PHYs failed\n");
 		goto fail;
 	}
 
@@ -847,7 +829,6 @@ vr_detach(device_t dev)
 		vr_stop(sc);
 		VR_UNLOCK(sc);
 		callout_drain(&sc->vr_stat_callout);
-		taskqueue_drain(taskqueue_swi, &sc->vr_link_task);
 		ether_ifdetach(ifp);
 	}
 	if (sc->vr_miibus)
@@ -1558,14 +1539,15 @@ vr_tick(void *xsc)
 	if ((sc->vr_flags & VR_F_RESTART) != 0) {
 		device_printf(sc->vr_dev, "restarting\n");
 		sc->vr_stat.num_restart++;
-		vr_stop(sc);
-		vr_reset(sc);
+		sc->vr_ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
 		vr_init_locked(sc);
 		sc->vr_flags &= ~VR_F_RESTART;
 	}
 
 	mii = device_get_softc(sc->vr_miibus);
 	mii_tick(mii);
+	if (sc->vr_link == 0)
+		vr_miibus_statchg(sc->vr_dev);
 	vr_watchdog(sc);
 	callout_reset(&sc->vr_stat_callout, hz, vr_tick, sc);
 }
@@ -2016,6 +1998,9 @@ vr_init_locked(struct vr_softc *sc)
 	ifp = sc->vr_ifp;
 	mii = device_get_softc(sc->vr_miibus);
 
+	if ((ifp->if_drv_flags & IFF_DRV_RUNNING) != 0)
+		return;
+
 	/* Cancel pending I/O and free all RX/TX buffers. */
 	vr_stop(sc);
 	vr_reset(sc);
@@ -2145,10 +2130,8 @@ vr_ifmedia_upd(struct ifnet *ifp)
 	sc = ifp->if_softc;
 	VR_LOCK(sc);
 	mii = device_get_softc(sc->vr_miibus);
-	if (mii->mii_instance) {
-		LIST_FOREACH(miisc, &mii->mii_phys, mii_list)
-			mii_phy_reset(miisc);
-	}
+	LIST_FOREACH(miisc, &mii->mii_phys, mii_list)
+		PHY_RESET(miisc);
 	error = mii_mediachg(mii);
 	VR_UNLOCK(sc);
 
@@ -2167,6 +2150,10 @@ vr_ifmedia_sts(struct ifnet *ifp, struct ifmediareq *ifmr)
 	sc = ifp->if_softc;
 	mii = device_get_softc(sc->vr_miibus);
 	VR_LOCK(sc);
+	if ((ifp->if_flags & IFF_UP) == 0) {
+		VR_UNLOCK(sc);
+		return;
+	}
 	mii_pollstat(mii);
 	VR_UNLOCK(sc);
 	ifmr->ifm_active = mii->mii_media_active;
@@ -2287,6 +2274,7 @@ vr_watchdog(struct vr_softc *sc)
 			if_printf(sc->vr_ifp, "watchdog timeout "
 			   "(missed link)\n");
 		ifp->if_oerrors++;
+		ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
 		vr_init_locked(sc);
 		return;
 	}
@@ -2294,8 +2282,7 @@ vr_watchdog(struct vr_softc *sc)
 	ifp->if_oerrors++;
 	if_printf(ifp, "watchdog timeout\n");
 
-	vr_stop(sc);
-	vr_reset(sc);
+	ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
 	vr_init_locked(sc);
 
 	if (!IFQ_DRV_IS_EMPTY(&ifp->if_snd))
@@ -2498,7 +2485,7 @@ vr_setwol(struct vr_softc *sc)
 	VR_LOCK_ASSERT(sc);
 
 	if (sc->vr_revid < REV_ID_VT6102_A ||
-	    pci_find_extcap(sc->vr_dev, PCIY_PMG, &pmc) != 0)
+	    pci_find_cap(sc->vr_dev, PCIY_PMG, &pmc) != 0)
 		return;
 
 	ifp = sc->vr_ifp;

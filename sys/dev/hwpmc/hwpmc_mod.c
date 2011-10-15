@@ -889,7 +889,7 @@ pmc_unlink_target_process(struct pmc *pm, struct pmc_process *pp)
 	if (LIST_EMPTY(&pm->pm_targets)) {
 		p = pm->pm_owner->po_owner;
 		PROC_LOCK(p);
-		psignal(p, SIGIO);
+		kern_psignal(p, SIGIO);
 		PROC_UNLOCK(p);
 
 		PMCDBG(PRC,SIG,2, "signalling proc=%p signal=%d", p,
@@ -1248,7 +1248,7 @@ pmc_process_csw_in(struct thread *td)
 			continue;
 
 		/* increment PMC runcount */
-		atomic_add_rel_32(&pm->pm_runcount, 1);
+		atomic_add_rel_int(&pm->pm_runcount, 1);
 
 		/* configure the HWPMC we are going to use. */
 		pcd = pmc_ri_to_classdep(md, ri, &adjri);
@@ -1387,7 +1387,7 @@ pmc_process_csw_out(struct thread *td)
 			pcd->pcd_stop_pmc(cpu, adjri);
 
 		/* reduce this PMC's runcount */
-		atomic_subtract_rel_32(&pm->pm_runcount, 1);
+		atomic_subtract_rel_int(&pm->pm_runcount, 1);
 
 		/*
 		 * If this PMC is associated with this process,
@@ -1991,7 +1991,7 @@ pmc_hook_handler(struct thread *td, int function, void *arg)
 		 * had already processed the interrupt).  We don't
 		 * lose the interrupt sample.
 		 */
-		atomic_clear_int(&pmc_cpumask, (1 << PCPU_GET(cpuid)));
+		CPU_CLR_ATOMIC(PCPU_GET(cpuid), &pmc_cpumask);
 		pmc_process_samples(PCPU_GET(cpuid));
 		break;
 
@@ -3252,9 +3252,6 @@ pmc_syscall_handler(struct thread *td, void *syscall_args)
 			}
 		}
 
-		if (error)
-			break;
-
 		/*
 		 * Look for valid values for 'pm_flags'
 		 */
@@ -4045,7 +4042,7 @@ pmc_process_interrupt(int cpu, struct pmc *pm, struct trapframe *tf,
 	    ("[pmc,%d] pm=%p runcount %d", __LINE__, (void *) pm,
 		pm->pm_runcount));
 
-	atomic_add_rel_32(&pm->pm_runcount, 1);	/* hold onto PMC */
+	atomic_add_rel_int(&pm->pm_runcount, 1);	/* hold onto PMC */
 	ps->ps_pmc = pm;
 	if ((td = curthread) && td->td_proc)
 		ps->ps_pid = td->td_proc->p_pid;
@@ -4086,7 +4083,7 @@ pmc_process_interrupt(int cpu, struct pmc *pm, struct trapframe *tf,
 
  done:
 	/* mark CPU as needing processing */
-	atomic_set_rel_int(&pmc_cpumask, (1 << cpu));
+	CPU_SET_ATOMIC(cpu, &pmc_cpumask);
 
 	return (error);
 }
@@ -4196,7 +4193,7 @@ pmc_process_samples(int cpu)
 			break;
 		if (ps->ps_nsamples == PMC_SAMPLE_INUSE) {
 			/* Need a rescan at a later time. */
-			atomic_set_rel_int(&pmc_cpumask, (1 << cpu));
+			CPU_SET_ATOMIC(cpu, &pmc_cpumask);
 			break;
 		}
 
@@ -4246,7 +4243,7 @@ pmc_process_samples(int cpu)
 
 	entrydone:
 		ps->ps_nsamples = 0;	/* mark entry as free */
-		atomic_subtract_rel_32(&pm->pm_runcount, 1);
+		atomic_subtract_rel_int(&pm->pm_runcount, 1);
 
 		/* increment read pointer, modulo sample size */
 		if (++ps == psb->ps_fence)
@@ -4418,7 +4415,7 @@ pmc_process_exit(void *arg __unused, struct proc *p)
 				mtx_pool_unlock_spin(pmc_mtxpool, pm);
 			}
 
-			atomic_subtract_rel_32(&pm->pm_runcount,1);
+			atomic_subtract_rel_int(&pm->pm_runcount,1);
 
 			KASSERT((int) pm->pm_runcount >= 0,
 			    ("[pmc,%d] runcount is %d", __LINE__, ri));
@@ -4785,7 +4782,7 @@ pmc_cleanup(void)
 	PMCDBG(MOD,INI,0, "%s", "cleanup");
 
 	/* switch off sampling */
-	atomic_store_rel_int(&pmc_cpumask, 0);
+	CPU_ZERO(&pmc_cpumask);
 	pmc_intr = NULL;
 
 	sx_xlock(&pmc_sx);
@@ -4815,7 +4812,7 @@ pmc_cleanup(void)
 				    po->po_owner->p_comm);
 
 				PROC_LOCK(po->po_owner);
-				psignal(po->po_owner, SIGBUS);
+				kern_psignal(po->po_owner, SIGBUS);
 				PROC_UNLOCK(po->po_owner);
 
 				pmc_destroy_owner_descriptor(po);

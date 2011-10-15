@@ -73,7 +73,7 @@ int (*nfsd_call_nfsd)(struct thread *, struct nfssvc_args *) = NULL;
  * Nfs server psuedo system call for the nfsd's
  */
 int
-nfssvc(struct thread *td, struct nfssvc_args *uap)
+sys_nfssvc(struct thread *td, struct nfssvc_args *uap)
 {
 	int error;
 
@@ -81,9 +81,12 @@ nfssvc(struct thread *td, struct nfssvc_args *uap)
 
 	AUDIT_ARG_CMD(uap->flag);
 
-	error = priv_check(td, PRIV_NFS_DAEMON);
-	if (error)
-		return (error);
+	/* Allow anyone to get the stats. */
+	if ((uap->flag & ~NFSSVC_GETSTATS) != 0) {
+		error = priv_check(td, PRIV_NFS_DAEMON);
+		if (error != 0)
+			return (error);
+	}
 	error = EINVAL;
 	if ((uap->flag & (NFSSVC_ADDSOCK | NFSSVC_OLDNFSD | NFSSVC_NFSD)) &&
 	    nfsd_call_nfsserver != NULL)
@@ -99,7 +102,7 @@ nfssvc(struct thread *td, struct nfssvc_args *uap)
 	else if ((uap->flag & (NFSSVC_NFSDNFSD | NFSSVC_NFSDADDSOCK |
 	    NFSSVC_PUBLICFH | NFSSVC_V4ROOTEXPORT | NFSSVC_NOPUBLICFH |
 	    NFSSVC_STABLERESTART | NFSSVC_ADMINREVOKE |
-	    NFSSVC_DUMPCLIENTS | NFSSVC_DUMPLOCKS)) &&
+	    NFSSVC_DUMPCLIENTS | NFSSVC_DUMPLOCKS | NFSSVC_BACKUPSTABLE)) &&
 	    nfsd_call_nfsd != NULL)
 		error = (*nfsd_call_nfsd)(td, uap);
 	if (error == EINTR || error == ERESTART)

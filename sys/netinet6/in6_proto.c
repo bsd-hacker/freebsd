@@ -67,9 +67,9 @@ __FBSDID("$FreeBSD$");
 #include "opt_inet6.h"
 #include "opt_ipsec.h"
 #include "opt_ipstealth.h"
-#include "opt_carp.h"
 #include "opt_sctp.h"
 #include "opt_mpath.h"
+#include "opt_route.h"
 
 #include <sys/param.h>
 #include <sys/socket.h>
@@ -111,10 +111,6 @@ __FBSDID("$FreeBSD$");
 #include <netinet6/pim6_var.h>
 #include <netinet6/nd6.h>
 
-#ifdef DEV_CARP
-#include <netinet/ip_carp.h>
-#endif
-
 #ifdef SCTP
 #include <netinet/in_pcb.h>
 #include <netinet/sctp_pcb.h>
@@ -130,15 +126,28 @@ __FBSDID("$FreeBSD$");
 
 #include <netinet6/ip6protosw.h>
 
+#ifdef FLOWTABLE
+#include <net/flowtable.h>
+#endif
+
 /*
  * TCP/IP protocol family: IP6, ICMP6, UDP, TCP.
  */
+FEATURE(inet6, "Internet Protocol version 6");
 
 extern	struct domain inet6domain;
 static	struct pr_usrreqs nousrreqs;
 
 #define PR_LISTEN	0
 #define PR_ABRTACPTDIS	0
+
+/* Spacer for loadable protocols. */
+#define IP6PROTOSPACER   			\
+{						\
+	.pr_domain =		&inet6domain,	\
+	.pr_protocol =		PROTO_SPACER,	\
+	.pr_usrreqs =		&nousrreqs	\
+}
 
 struct ip6protosw inet6sw[] = {
 {
@@ -161,6 +170,9 @@ struct ip6protosw inet6sw[] = {
 	.pr_input =		udp6_input,
 	.pr_ctlinput =		udp6_ctlinput,
 	.pr_ctloutput =		ip6_ctloutput,
+#ifndef INET	/* Do not call initialization twice. */
+	.pr_init =		udp_init,
+#endif
 	.pr_usrreqs =		&udp6_usrreqs,
 },
 {
@@ -180,38 +192,29 @@ struct ip6protosw inet6sw[] = {
 },
 #ifdef SCTP
 {
-	.pr_type =	SOCK_DGRAM,
-	.pr_domain =	&inet6domain,
-        .pr_protocol =	IPPROTO_SCTP,
-        .pr_flags =	PR_WANTRCVD,
-        .pr_input =	sctp6_input,
-        .pr_ctlinput =  sctp6_ctlinput,
-        .pr_ctloutput = sctp_ctloutput,
-        .pr_drain =	sctp_drain,
-        .pr_usrreqs =	&sctp6_usrreqs
+	.pr_type =		SOCK_SEQPACKET,
+	.pr_domain =		&inet6domain,
+	.pr_protocol =		IPPROTO_SCTP,
+	.pr_flags =		PR_WANTRCVD,
+	.pr_input =		sctp6_input,
+	.pr_ctlinput =		sctp6_ctlinput,
+	.pr_ctloutput =	sctp_ctloutput,
+	.pr_drain =		sctp_drain,
+#ifndef INET	/* Do not call initialization twice. */
+	.pr_init =		sctp_init,
+#endif
+	.pr_usrreqs =		&sctp6_usrreqs
 },
 {
-	.pr_type =	SOCK_SEQPACKET,
-	.pr_domain =	&inet6domain,
-        .pr_protocol =	IPPROTO_SCTP,
-        .pr_flags =	PR_WANTRCVD,
-        .pr_input =	sctp6_input,
-        .pr_ctlinput =  sctp6_ctlinput,
-        .pr_ctloutput = sctp_ctloutput,
-        .pr_drain =	sctp_drain,
-        .pr_usrreqs =	&sctp6_usrreqs
-},
-
-{
-	.pr_type =	SOCK_STREAM,
-	.pr_domain =	&inet6domain,
-        .pr_protocol =	IPPROTO_SCTP,
-        .pr_flags =	PR_WANTRCVD,
-        .pr_input =	sctp6_input,
-        .pr_ctlinput =  sctp6_ctlinput,
-        .pr_ctloutput = sctp_ctloutput,
-        .pr_drain =	sctp_drain,
-        .pr_usrreqs =	&sctp6_usrreqs
+	.pr_type =		SOCK_STREAM,
+	.pr_domain =		&inet6domain,
+	.pr_protocol =		IPPROTO_SCTP,
+	.pr_flags =		PR_WANTRCVD,
+	.pr_input =		sctp6_input,
+	.pr_ctlinput =	sctp6_ctlinput,
+	.pr_ctloutput =		sctp_ctloutput,
+	.pr_drain =		sctp_drain,
+	.pr_usrreqs =		&sctp6_usrreqs
 },
 #endif /* SCTP */
 {
@@ -223,6 +226,9 @@ struct ip6protosw inet6sw[] = {
 	.pr_output =		rip6_output,
 	.pr_ctlinput =		rip6_ctlinput,
 	.pr_ctloutput =		rip6_ctloutput,
+#ifndef INET	/* Do not call initialization twice. */
+	.pr_init =		rip_init,
+#endif
 	.pr_usrreqs =		&rip6_usrreqs
 },
 {
@@ -323,18 +329,15 @@ struct ip6protosw inet6sw[] = {
 	.pr_ctloutput =		rip6_ctloutput,
 	.pr_usrreqs =		&rip6_usrreqs
 },
-#ifdef DEV_CARP
-{
-	.pr_type =		SOCK_RAW,
-	.pr_domain =		&inet6domain,
-	.pr_protocol =		IPPROTO_CARP,
-	.pr_flags =		PR_ATOMIC|PR_ADDR,
-	.pr_input =		carp6_input,
-	.pr_output =		rip6_output,
-	.pr_ctloutput =		rip6_ctloutput,
-	.pr_usrreqs =		&rip6_usrreqs
-},
-#endif /* DEV_CARP */
+/* Spacer n-times for loadable protocols. */
+IP6PROTOSPACER,
+IP6PROTOSPACER,
+IP6PROTOSPACER,
+IP6PROTOSPACER,
+IP6PROTOSPACER,
+IP6PROTOSPACER,
+IP6PROTOSPACER,
+IP6PROTOSPACER,
 /* raw wildcard */
 {
 	.pr_type =		SOCK_RAW,
@@ -394,6 +397,9 @@ VNET_DEFINE(int, ip6_sendredirects) = IPV6_SENDREDIRECTS;
 VNET_DEFINE(int, ip6_defhlim) = IPV6_DEFHLIM;
 VNET_DEFINE(int, ip6_defmcasthlim) = IPV6_DEFAULT_MULTICAST_HOPS;
 VNET_DEFINE(int, ip6_accept_rtadv) = 0;
+VNET_DEFINE(int, ip6_no_radr) = 0;
+VNET_DEFINE(int, ip6_norbit_raif) = 0;
+VNET_DEFINE(int, ip6_rfc6204w3) = 0;
 VNET_DEFINE(int, ip6_maxfragpackets);	/* initialized in frag6.c:frag6_init() */
 VNET_DEFINE(int, ip6_maxfrags);		/* initialized in frag6.c:frag6_init() */
 VNET_DEFINE(int, ip6_log_interval) = 5;
@@ -522,6 +528,19 @@ SYSCTL_VNET_INT(_net_inet6_ip6, IPV6CTL_ACCEPT_RTADV, accept_rtadv,
 	CTLFLAG_RW, &VNET_NAME(ip6_accept_rtadv), 0,
 	"Default value of per-interface flag for accepting ICMPv6 Router"
 	"Advertisement messages");
+SYSCTL_VNET_INT(_net_inet6_ip6, IPV6CTL_NO_RADR, no_radr,
+	CTLFLAG_RW, &VNET_NAME(ip6_no_radr), 0,
+	"Default value of per-interface flag to control whether routers "
+	"sending ICMPv6 RA messages on that interface are added into the "
+	"default router list.");
+SYSCTL_VNET_INT(_net_inet6_ip6, IPV6CTL_NORBIT_RAIF, norbit_raif, CTLFLAG_RW,
+	&VNET_NAME(ip6_norbit_raif), 0,
+	"Always set 0 to R flag in ICMPv6 NA messages when accepting RA"
+	" on the interface.");
+SYSCTL_VNET_INT(_net_inet6_ip6, IPV6CTL_RFC6204W3, rfc6204w3,
+	CTLFLAG_RW, &VNET_NAME(ip6_rfc6204w3), 0,
+	"Accept the default router list from ICMPv6 RA messages even "
+	"when packet forwarding enabled.");
 SYSCTL_VNET_INT(_net_inet6_ip6, IPV6CTL_KEEPFAITH, keepfaith, CTLFLAG_RW,
 	&VNET_NAME(ip6_keepfaith), 0, "");
 SYSCTL_VNET_INT(_net_inet6_ip6, IPV6CTL_LOG_INTERVAL, log_interval,
@@ -567,6 +586,16 @@ SYSCTL_VNET_INT(_net_inet6_ip6, IPV6CTL_MCAST_PMTU, mcast_pmtu, CTLFLAG_RW,
 #ifdef IPSTEALTH
 SYSCTL_VNET_INT(_net_inet6_ip6, IPV6CTL_STEALTH, stealth, CTLFLAG_RW,
 	&VNET_NAME(ip6stealth), 0, "");
+#endif
+
+#ifdef FLOWTABLE
+VNET_DEFINE(int, ip6_output_flowtable_size) = 2048;
+VNET_DEFINE(struct flowtable *, ip6_ft);
+#define	V_ip6_output_flowtable_size	VNET(ip6_output_flowtable_size)
+
+SYSCTL_VNET_INT(_net_inet6_ip6, OID_AUTO, output_flowtable_size, CTLFLAG_RDTUN,
+    &VNET_NAME(ip6_output_flowtable_size), 2048,
+    "number of entries in the per-cpu output flow caches");
 #endif
 
 /* net.inet6.icmp6 */

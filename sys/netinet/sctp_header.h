@@ -1,5 +1,7 @@
 /*-
  * Copyright (c) 2001-2007, by Cisco Systems, Inc. All rights reserved.
+ * Copyright (c) 2008-2011, by Randall Stewart. All rights reserved.
+ * Copyright (c) 2008-2011, by Michael Tuexen. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -96,9 +98,10 @@ struct sctp_heartbeat_info_param {
 	uint32_t time_value_2;
 	uint32_t random_value1;
 	uint32_t random_value2;
-	uint16_t user_req;
 	uint8_t addr_family;
 	uint8_t addr_len;
+	/* make sure that this structure is 4 byte aligned */
+	uint8_t padding[2];
 	char address[SCTP_ADDRMAX];
 }                         SCTP_PACKED;
 
@@ -140,12 +143,6 @@ struct sctp_supported_chunk_types_param {
 	struct sctp_paramhdr ph;/* type = 0x8008  len = x */
 	uint8_t chunk_types[];
 }                                SCTP_PACKED;
-
-
-/* ECN Nonce: draft-ladha-sctp-ecn-nonce */
-struct sctp_ecn_nonce_supported_param {
-	struct sctp_paramhdr ph;/* type = 0x8001  len = 4 */
-}                              SCTP_PACKED;
 
 
 /*
@@ -360,9 +357,15 @@ struct sctp_cookie_ack_chunk {
 }                     SCTP_PACKED;
 
 /* Explicit Congestion Notification Echo (ECNE) */
+struct old_sctp_ecne_chunk {
+	struct sctp_chunkhdr ch;
+	uint32_t tsn;
+}                   SCTP_PACKED;
+
 struct sctp_ecne_chunk {
 	struct sctp_chunkhdr ch;
 	uint32_t tsn;
+	uint32_t num_pkts_since_cwr;
 }               SCTP_PACKED;
 
 /* Congestion Window Reduced (CWR) */

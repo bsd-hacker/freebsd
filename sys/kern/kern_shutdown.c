@@ -40,8 +40,8 @@ __FBSDID("$FreeBSD$");
 #include "opt_ddb.h"
 #include "opt_kdb.h"
 #include "opt_panic.h"
-#include "opt_show_busybufs.h"
 #include "opt_sched.h"
+#include "opt_watchdog.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -65,6 +65,10 @@ __FBSDID("$FreeBSD$");
 #include <sys/smp.h>
 #include <sys/sysctl.h>
 #include <sys/sysproto.h>
+#include <sys/vnode.h>
+#ifdef SW_WATCHDOG
+#include <sys/watchdog.h>
+#endif
 
 #include <ddb/ddb.h>
 
@@ -98,23 +102,34 @@ int debugger_on_panic = 0;
 #else
 int debugger_on_panic = 1;
 #endif
-SYSCTL_INT(_debug, OID_AUTO, debugger_on_panic, CTLFLAG_RW,
+SYSCTL_INT(_debug, OID_AUTO, debugger_on_panic, CTLFLAG_RW | CTLFLAG_TUN,
 	&debugger_on_panic, 0, "Run debugger on kernel panic");
+TUNABLE_INT("debug.debugger_on_panic", &debugger_on_panic);
 
 #ifdef KDB_TRACE
-int trace_on_panic = 1;
+static int trace_on_panic = 1;
 #else
-int trace_on_panic = 0;
+static int trace_on_panic = 0;
 #endif
-SYSCTL_INT(_debug, OID_AUTO, trace_on_panic, CTLFLAG_RW,
+SYSCTL_INT(_debug, OID_AUTO, trace_on_panic, CTLFLAG_RW | CTLFLAG_TUN,
 	&trace_on_panic, 0, "Print stack trace on kernel panic");
+TUNABLE_INT("debug.trace_on_panic", &trace_on_panic);
 #endif /* KDB */
 
-int sync_on_panic = 0;
-SYSCTL_INT(_kern, OID_AUTO, sync_on_panic, CTLFLAG_RW,
+static int sync_on_panic = 0;
+SYSCTL_INT(_kern, OID_AUTO, sync_on_panic, CTLFLAG_RW | CTLFLAG_TUN,
 	&sync_on_panic, 0, "Do a sync before rebooting from a panic");
+TUNABLE_INT("kern.sync_on_panic", &sync_on_panic);
 
 SYSCTL_NODE(_kern, OID_AUTO, shutdown, CTLFLAG_RW, 0, "Shutdown environment");
+
+#ifndef DIAGNOSTIC
+static int show_busybufs;
+#else
+static int show_busybufs = 1;
+#endif
+SYSCTL_INT(_kern_shutdown, OID_AUTO, show_busybufs, CTLFLAG_RW,
+	&show_busybufs, 0, "");
 
 /*
  * Variable panicstr contains argument to first call to panic; used as flag
@@ -130,7 +145,6 @@ static struct dumperinfo dumper;	/* our selected dumper */
 static struct pcb dumppcb;		/* Registers. */
 static lwpid_t dumptid;			/* Thread ID. */
 
-static void boot(int) __dead2;
 static void poweroff_wait(void *, int);
 static void shutdown_halt(void *junk, int howto);
 static void shutdown_panic(void *junk, int howto);
@@ -142,7 +156,7 @@ shutdown_conf(void *unused)
 {
 
 	EVENTHANDLER_REGISTER(shutdown_final, poweroff_wait, NULL,
-	    SHUTDOWN_PRI_FIRST + 100);
+	    SHUTDOWN_PRI_FIRST);
 	EVENTHANDLER_REGISTER(shutdown_final, shutdown_halt, NULL,
 	    SHUTDOWN_PRI_LAST + 100);
 	EVENTHANDLER_REGISTER(shutdown_final, shutdown_panic, NULL,
@@ -158,7 +172,7 @@ SYSINIT(shutdown_conf, SI_SUB_INTRINSIC, SI_ORDER_ANY, shutdown_conf, NULL);
  */
 /* ARGSUSED */
 int
-reboot(struct thread *td, struct reboot_args *uap)
+sys_reboot(struct thread *td, struct reboot_args *uap)
 {
 	int error;
 
@@ -170,7 +184,7 @@ reboot(struct thread *td, struct reboot_args *uap)
 		error = priv_check(td, PRIV_REBOOT);
 	if (error == 0) {
 		mtx_lock(&Giant);
-		boot(uap->opt);
+		kern_reboot(uap->opt);
 		mtx_unlock(&Giant);
 	}
 	return (error);
@@ -190,11 +204,11 @@ shutdown_nice(int howto)
 	/* Send a signal to init(8) and have it shutdown the world */
 	if (initproc != NULL) {
 		PROC_LOCK(initproc);
-		psignal(initproc, SIGINT);
+		kern_psignal(initproc, SIGINT);
 		PROC_UNLOCK(initproc);
 	} else {
 		/* No init(8) running, so simply reboot */
-		boot(RB_NOSYNC);
+		kern_reboot(RB_NOSYNC);
 	}
 	return;
 }
@@ -227,30 +241,32 @@ print_uptime(void)
 	printf("%lds\n", (long)ts.tv_sec);
 }
 
-static void
-doadump(void)
+int
+doadump(boolean_t textdump)
 {
+	boolean_t coredump;
 
-	/*
-	 * Sometimes people have to call this from the kernel debugger. 
-	 * (if 'panic' can not dump)
-	 * Give them a clue as to why they can't dump.
-	 */
-	if (dumper.dumper == NULL) {
-		printf("Cannot dump. Device not defined or unavailable.\n");
-		return;
-	}
+	if (dumping)
+		return (EBUSY);
+	if (dumper.dumper == NULL)
+		return (ENXIO);
 
 	savectx(&dumppcb);
 	dumptid = curthread->td_tid;
 	dumping++;
+
+	coredump = TRUE;
 #ifdef DDB
-	if (textdump_pending)
+	if (textdump && textdump_pending) {
+		coredump = FALSE;
 		textdump_dumpsys(&dumper);
-	else
+	}
 #endif
+	if (coredump)
 		dumpsys(&dumper);
+
 	dumping--;
+	return (0);
 }
 
 static int
@@ -266,8 +282,8 @@ isbufbusy(struct buf *bp)
 /*
  * Shutdown the system cleanly to prepare for reboot, halt, or power off.
  */
-static void
-boot(int howto)
+void
+kern_reboot(int howto)
 {
 	static int first_buf_printf = 1;
 
@@ -280,7 +296,7 @@ boot(int howto)
 	thread_lock(curthread);
 	sched_bind(curthread, 0);
 	thread_unlock(curthread);
-	KASSERT(PCPU_GET(cpuid) == 0, ("boot: not running on cpu 0"));
+	KASSERT(PCPU_GET(cpuid) == 0, ("%s: not running on cpu 0", __func__));
 #endif
 	/* We're in the process of rebooting. */
 	rebooting = 1;
@@ -308,7 +324,10 @@ boot(int howto)
 
 		waittime = 0;
 
-		sync(curthread, NULL);
+#ifdef SW_WATCHDOG
+		wdog_kern_pat(WD_LASTVAL);
+#endif
+		sys_sync(curthread, NULL);
 
 		/*
 		 * With soft updates, some buffers that are
@@ -333,7 +352,10 @@ boot(int howto)
 			if (nbusy < pbusy)
 				iter = 0;
 			pbusy = nbusy;
-			sync(curthread, NULL);
+#ifdef SW_WATCHDOG
+			wdog_kern_pat(WD_LASTVAL);
+#endif
+			sys_sync(curthread, NULL);
 
 #ifdef PREEMPTION
 			/*
@@ -375,13 +397,17 @@ boot(int howto)
 				}
 #endif
 				nbusy++;
-#if defined(SHOW_BUSYBUFS) || defined(DIAGNOSTIC)
-				printf(
-			    "%d: bufobj:%p, flags:%0x, blkno:%ld, lblkno:%ld\n",
-				    nbusy, bp->b_bufobj,
-				    bp->b_flags, (long)bp->b_blkno,
-				    (long)bp->b_lblkno);
-#endif
+				if (show_busybufs > 0) {
+					printf(
+	    "%d: buf:%p, vnode:%p, flags:%0x, blkno:%jd, lblkno:%jd, buflock:",
+					    nbusy, bp, bp->b_vp, bp->b_flags,
+					    (intmax_t)bp->b_blkno,
+					    (intmax_t)bp->b_lblkno);
+					BUF_LOCKPRINTINFO(bp);
+					if (show_busybufs > 1)
+						vn_printf(bp->b_vp,
+						    "vnode content: ");
+				}
 			}
 		}
 		if (nbusy) {
@@ -413,7 +439,7 @@ boot(int howto)
 	EVENTHANDLER_INVOKE(shutdown_post_sync, howto);
 
 	if ((howto & (RB_HALT|RB_DUMP)) == RB_DUMP && !cold && !dumping) 
-		doadump();
+		doadump(TRUE);
 
 	/* Now that we're going to really halt the system... */
 	EVENTHANDLER_INVOKE(shutdown_final, howto);
@@ -510,10 +536,6 @@ shutdown_reset(void *junk, int howto)
 	/* NOTREACHED */ /* assuming reset worked */
 }
 
-#ifdef SMP
-static u_int panic_cpu = NOCPU;
-#endif
-
 /*
  * Panic is called on unresolvable fatal errors.  It prints "panic: mesg",
  * and then reboots.  If we are called twice, then we avoid trying to sync
@@ -522,6 +544,9 @@ static u_int panic_cpu = NOCPU;
 void
 panic(const char *fmt, ...)
 {
+#ifdef SMP
+	static volatile u_int panic_cpu = NOCPU;
+#endif
 	struct thread *td = curthread;
 	int bootopt, newpanic;
 	va_list ap;
@@ -542,11 +567,12 @@ panic(const char *fmt, ...)
 				; /* nothing */
 #endif
 
-	bootopt = RB_AUTOBOOT | RB_DUMP;
+	bootopt = RB_AUTOBOOT;
 	newpanic = 0;
 	if (panicstr)
 		bootopt |= RB_NOSYNC;
 	else {
+		bootopt |= RB_DUMP;
 		panicstr = fmt;
 		newpanic = 1;
 	}
@@ -571,15 +597,6 @@ panic(const char *fmt, ...)
 		kdb_backtrace();
 	if (debugger_on_panic)
 		kdb_enter(KDB_WHY_PANIC, "panic");
-#ifdef RESTARTABLE_PANICS
-	/* See if the user aborted the panic, in which case we continue. */
-	if (panicstr == NULL) {
-#ifdef SMP
-		atomic_store_rel_int(&panic_cpu, NOCPU);
-#endif
-		return;
-	}
-#endif
 #endif
 	/*thread_lock(td); */
 	td->td_flags |= TDF_INPANIC;
@@ -587,7 +604,7 @@ panic(const char *fmt, ...)
 	if (!sync_on_panic)
 		bootopt |= RB_NOSYNC;
 	critical_exit();
-	boot(bootopt);
+	kern_reboot(bootopt);
 }
 
 /*
@@ -688,8 +705,11 @@ dump_write(struct dumperinfo *di, void *virtual, vm_offset_t physical,
 
 	if (length != 0 && (offset < di->mediaoffset ||
 	    offset - di->mediaoffset + length > di->mediasize)) {
-		printf("Attempt to write outside dump device boundaries.\n");
-		return (ENXIO);
+		printf("Attempt to write outside dump device boundaries.\n"
+	    "offset(%jd), mediaoffset(%jd), length(%ju), mediasize(%jd).\n",
+		    (intmax_t)offset, (intmax_t)di->mediaoffset,
+		    (uintmax_t)length, (intmax_t)di->mediasize);
+		return (ENOSPC);
 	}
 	return (di->dumper(di->priv, virtual, physical, offset, length));
 }

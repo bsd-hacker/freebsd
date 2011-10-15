@@ -49,7 +49,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/kernel.h>
 #include <sys/bus.h>
-#include <sys/linker_set.h>
 #include <sys/module.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
@@ -567,8 +566,10 @@ uhid_ioctl(struct usb_fifo *fifo, u_long cmd, void *addr,
 		default:
 			return (EINVAL);
 		}
+		if (id != 0)
+			copyin(ugd->ugd_data, &id, 1);
 		error = uhid_get_report(sc, ugd->ugd_report_type, id,
-		    NULL, ugd->ugd_data, size);
+		    NULL, ugd->ugd_data, imin(ugd->ugd_maxlen, size));
 		break;
 
 	case USB_SET_REPORT:
@@ -593,8 +594,10 @@ uhid_ioctl(struct usb_fifo *fifo, u_long cmd, void *addr,
 		default:
 			return (EINVAL);
 		}
+		if (id != 0)
+			copyin(ugd->ugd_data, &id, 1);
 		error = uhid_set_report(sc, ugd->ugd_report_type, id,
-		    NULL, ugd->ugd_data, size);
+		    NULL, ugd->ugd_data, imin(ugd->ugd_maxlen, size));
 		break;
 
 	case USB_GET_REPORT_ID:
@@ -608,33 +611,45 @@ uhid_ioctl(struct usb_fifo *fifo, u_long cmd, void *addr,
 	return (error);
 }
 
+static const STRUCT_USB_HOST_ID uhid_devs[] = {
+	/* generic HID class */
+	{USB_IFACE_CLASS(UICLASS_HID),},
+	/* the Xbox 360 gamepad doesn't use the HID class */
+	{USB_IFACE_CLASS(UICLASS_VENDOR),
+	 USB_IFACE_SUBCLASS(UISUBCLASS_XBOX360_CONTROLLER),
+	 USB_IFACE_PROTOCOL(UIPROTO_XBOX360_GAMEPAD),},
+};
+
 static int
 uhid_probe(device_t dev)
 {
 	struct usb_attach_arg *uaa = device_get_ivars(dev);
+	int error;
 
 	DPRINTFN(11, "\n");
 
-	if (uaa->usb_mode != USB_MODE_HOST) {
+	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	}
-	if (uaa->use_generic == 0) {
-		/* give Mouse and Keyboard drivers a try first */
-		return (ENXIO);
-	}
-	if (uaa->info.bInterfaceClass != UICLASS_HID) {
 
-		/* the Xbox 360 gamepad doesn't use the HID class */
+	error = usbd_lookup_id_by_uaa(uhid_devs, sizeof(uhid_devs), uaa);
+	if (error)
+		return (error);
 
-		if ((uaa->info.bInterfaceClass != UICLASS_VENDOR) ||
-		    (uaa->info.bInterfaceSubClass != UISUBCLASS_XBOX360_CONTROLLER) ||
-		    (uaa->info.bInterfaceProtocol != UIPROTO_XBOX360_GAMEPAD)) {
-			return (ENXIO);
-		}
-	}
-	if (usb_test_quirk(uaa, UQ_HID_IGNORE)) {
+	if (usb_test_quirk(uaa, UQ_HID_IGNORE))
+		return (ENXIO);
+
+	/*
+	 * Don't attach to mouse and keyboard devices, hence then no
+	 * "nomatch" event is generated and then ums and ukbd won't
+	 * attach properly when loaded.
+	 */
+	if ((uaa->info.bInterfaceClass == UICLASS_HID) &&
+	    (uaa->info.bInterfaceSubClass == UISUBCLASS_BOOT) &&
+	    ((uaa->info.bInterfaceProtocol == UIPROTO_BOOT_KEYBOARD) ||
+	     (uaa->info.bInterfaceProtocol == UIPROTO_MOUSE))) {
 		return (ENXIO);
 	}
+
 	return (BUS_PROBE_GENERIC);
 }
 
@@ -672,7 +687,7 @@ uhid_attach(device_t dev)
 		if (uaa->info.idProduct == USB_PRODUCT_WACOM_GRAPHIRE) {
 
 			sc->sc_repdesc_size = sizeof(uhid_graphire_report_descr);
-			sc->sc_repdesc_ptr = &uhid_graphire_report_descr;
+			sc->sc_repdesc_ptr = (void *)&uhid_graphire_report_descr;
 			sc->sc_flags |= UHID_FLAG_STATIC_DESC;
 
 		} else if (uaa->info.idProduct == USB_PRODUCT_WACOM_GRAPHIRE3_4X5) {
@@ -693,7 +708,7 @@ uhid_attach(device_t dev)
 				    usbd_errstr(error));
 			}
 			sc->sc_repdesc_size = sizeof(uhid_graphire3_4x5_report_descr);
-			sc->sc_repdesc_ptr = &uhid_graphire3_4x5_report_descr;
+			sc->sc_repdesc_ptr = (void *)&uhid_graphire3_4x5_report_descr;
 			sc->sc_flags |= UHID_FLAG_STATIC_DESC;
 		}
 	} else if ((uaa->info.bInterfaceClass == UICLASS_VENDOR) &&
@@ -702,7 +717,7 @@ uhid_attach(device_t dev)
 
 		/* the Xbox 360 gamepad has no report descriptor */
 		sc->sc_repdesc_size = sizeof(uhid_xb360gp_report_descr);
-		sc->sc_repdesc_ptr = &uhid_xb360gp_report_descr;
+		sc->sc_repdesc_ptr = (void *)&uhid_xb360gp_report_descr;
 		sc->sc_flags |= UHID_FLAG_STATIC_DESC;
 	}
 	if (sc->sc_repdesc_ptr == NULL) {
@@ -801,3 +816,4 @@ static driver_t uhid_driver = {
 
 DRIVER_MODULE(uhid, uhub, uhid_driver, uhid_devclass, NULL, 0);
 MODULE_DEPEND(uhid, usb, 1, 1, 1);
+MODULE_VERSION(uhid, 1);

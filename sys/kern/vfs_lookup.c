@@ -37,12 +37,14 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include "opt_capsicum.h"
 #include "opt_kdtrace.h"
 #include "opt_ktrace.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/kernel.h>
+#include <sys/capability.h>
 #include <sys/fcntl.h>
 #include <sys/jail.h>
 #include <sys/lock.h>
@@ -68,9 +70,9 @@ __FBSDID("$FreeBSD$");
 #undef NAMEI_DIAGNOSTIC
 
 SDT_PROVIDER_DECLARE(vfs);
-SDT_PROBE_DEFINE3(vfs, namei, lookup, entry, "struct vnode *", "char *",
+SDT_PROBE_DEFINE3(vfs, namei, lookup, entry, entry, "struct vnode *", "char *",
     "unsigned long");
-SDT_PROBE_DEFINE2(vfs, namei, lookup, return, "int", "struct vnode *");
+SDT_PROBE_DEFINE2(vfs, namei, lookup, return, return, "int", "struct vnode *");
 
 /*
  * Allocation zone for namei
@@ -84,14 +86,13 @@ static struct vnode *vp_crossmp;
 static void
 nameiinit(void *dummy __unused)
 {
-	int error;
 
 	namei_zone = uma_zcreate("NAMEI", MAXPATHLEN, NULL, NULL, NULL, NULL,
 	    UMA_ALIGN_PTR, 0);
-	error = getnewvnode("crossmp", NULL, &dead_vnodeops, &vp_crossmp);
-	if (error != 0)
-		panic("nameiinit: getnewvnode");
+	getnewvnode("crossmp", NULL, &dead_vnodeops, &vp_crossmp);
+	vn_lock(vp_crossmp, LK_EXCLUSIVE);
 	VN_LOCK_ASHARE(vp_crossmp);
+	VOP_UNLOCK(vp_crossmp, 0);
 }
 SYSINIT(vfs, SI_SUB_VFS, SI_ORDER_SECOND, nameiinit, NULL);
 
@@ -179,6 +180,18 @@ namei(struct nameidata *ndp)
 	if (!error && *cnp->cn_pnbuf == '\0')
 		error = ENOENT;
 
+#ifdef CAPABILITY_MODE
+	/*
+	 * In capability mode, lookups must be "strictly relative" (i.e.
+	 * not an absolute path, and not containing '..' components) to
+	 * a real file descriptor, not the pseudo-descriptor AT_FDCWD.
+	 */
+	if (IN_CAPABILITY_MODE(td)) {
+		ndp->ni_strictrelative = 1;
+		if (ndp->ni_dirfd == AT_FDCWD)
+			error = ECAPMODE;
+	}
+#endif
 	if (error) {
 		uma_zfree(namei_zone, cnp->cn_pnbuf);
 #ifdef DIAGNOSTIC
@@ -213,7 +226,20 @@ namei(struct nameidata *ndp)
 				AUDIT_ARG_ATFD1(ndp->ni_dirfd);
 			if (cnp->cn_flags & AUDITVNODE2)
 				AUDIT_ARG_ATFD2(ndp->ni_dirfd);
-			error = fgetvp(td, ndp->ni_dirfd, &dp);
+			error = fgetvp_rights(td, ndp->ni_dirfd,
+			    ndp->ni_rightsneeded | CAP_LOOKUP,
+			    &(ndp->ni_baserights), &dp);
+#ifdef CAPABILITIES
+			/*
+			 * Lookups relative to a capability must also be
+			 * strictly relative.
+			 *
+			 * Note that a capability with rights CAP_MASK_VALID
+			 * is treated exactly like a regular file descriptor.
+			 */
+			if (ndp->ni_baserights != CAP_MASK_VALID)
+				ndp->ni_strictrelative = 1;
+#endif
 		}
 		if (error != 0 || dp != NULL) {
 			FILEDESC_SUNLOCK(fdp);
@@ -255,6 +281,8 @@ namei(struct nameidata *ndp)
 		if (*(cnp->cn_nameptr) == '/') {
 			vrele(dp);
 			VFS_UNLOCK_GIANT(vfslocked);
+			if (ndp->ni_strictrelative != 0)
+				return (ENOTCAPABLE);
 			while (*(cnp->cn_nameptr) == '/') {
 				cnp->cn_nameptr++;
 				ndp->ni_pathlen--;
@@ -598,7 +626,10 @@ dirloop:
 	}
 
 	/*
-	 * Handle "..": four special cases.
+	 * Handle "..": five special cases.
+	 * 0. If doing a capability lookup, return ENOTCAPABLE (this is a
+	 *    fairly conservative design choice, but it's the only one that we
+	 *    are satisfied guarantees the property we're looking for).
 	 * 1. Return an error if this is the last component of
 	 *    the name and the operation is DELETE or RENAME.
 	 * 2. If at root directory (e.g. after chroot)
@@ -612,6 +643,10 @@ dirloop:
 	 *    the jail or chroot, don't let them out.
 	 */
 	if (cnp->cn_flags & ISDOTDOT) {
+		if (ndp->ni_strictrelative != 0) {
+			error = ENOTCAPABLE;
+			goto bad;
+		}
 		if ((cnp->cn_flags & ISLASTCN) != 0 &&
 		    (cnp->cn_nameiop == DELETE || cnp->cn_nameiop == RENAME)) {
 			error = EINVAL;

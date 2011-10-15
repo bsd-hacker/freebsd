@@ -154,13 +154,13 @@ struct ispmdvec {
 #define	ISP_QAVAIL(isp)	\
 	ISP_QFREE(isp->isp_reqidx, isp->isp_reqodx, RQUEST_QUEUE_LEN(isp))
 
-#define	ISP_ADD_REQUEST(isp, nxti)					\
-	MEMORYBARRIER(isp, SYNC_REQUEST, isp->isp_reqidx, QENTRY_LEN);	\
-	ISP_WRITE(isp, isp->isp_rqstinrp, nxti);			\
+#define	ISP_ADD_REQUEST(isp, nxti)						\
+	MEMORYBARRIER(isp, SYNC_REQUEST, isp->isp_reqidx, QENTRY_LEN, -1);	\
+	ISP_WRITE(isp, isp->isp_rqstinrp, nxti);				\
 	isp->isp_reqidx = nxti
 
 #define	ISP_SYNC_REQUEST(isp)								\
-	MEMORYBARRIER(isp, SYNC_REQUEST, isp->isp_reqidx, QENTRY_LEN);			\
+	MEMORYBARRIER(isp, SYNC_REQUEST, isp->isp_reqidx, QENTRY_LEN, -1);		\
 	isp->isp_reqidx = ISP_NXT_QENTRY(isp->isp_reqidx, RQUEST_QUEUE_LEN(isp));	\
 	ISP_WRITE(isp, isp->isp_rqstinrp, isp->isp_reqidx)
 
@@ -426,6 +426,7 @@ typedef struct {
 			new_portid	: 24;
 	uint64_t	node_wwn;
 	uint64_t	port_wwn;
+	uint32_t	gone_timer;
 } fcportdb_t;
 
 #define	FC_PORTDB_STATE_NIL		0
@@ -952,6 +953,11 @@ void isp_async(ispsoftc_t *, ispasync_t, ...);
 #define	ISPASYNC_CHANGE_OTHER	2
 
 /*
+ * Platform Independent Error Prinout
+ */
+void isp_prt_endcmd(ispsoftc_t *, XS_T *);
+
+/*
  * Platform Dependent Error and Debug Printout
  *
  * Two required functions for each platform must be provided:
@@ -996,6 +1002,7 @@ void isp_async(ispsoftc_t *, ispasync_t, ...);
  *
  *	ISP_INLINE				___inline or not- depending on how
  *						good your debugger is
+ *	ISP_MIN					shorthand for ((a) < (b))? (a) : (b)
  *
  *	NANOTIME_T				nanosecond time type
  *
@@ -1009,7 +1016,7 @@ void isp_async(ispsoftc_t *, ispasync_t, ...);
  *	MAXISPREQUEST(ispsoftc_t *)		maximum request queue size
  *						for this particular board type
  *
- *	MEMORYBARRIER(ispsoftc_t *, barrier_type, offset, size)
+ *	MEMORYBARRIER(ispsoftc_t *, barrier_type, offset, size, chan)
  *
  *		Function/Macro the provides memory synchronization on
  *		various objects so that the ISP's and the system's view

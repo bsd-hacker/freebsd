@@ -2527,6 +2527,7 @@ lmc_raw_input(struct ifnet *ifp, struct mbuf *mbuf)
   {
   softc_t *sc = IFP2SC(ifp);
 
+  M_SETFIB(mbuf, ifp->if_fib);
 # if INET
   if (mbuf->m_data[0]>>4 == 4)
     netisr_dispatch(NETISR_IP,   mbuf);
@@ -6261,8 +6262,8 @@ int if_lmc_lkmentry(struct lkm_table *lkmtp, int cmd, int ver)
         /* XXX Why isn't there an LKM network interface module?    XXX */
         pa.pa_pc    = NULL;					/* XXX */
         pa.pa_bus   = 0;					/* XXX */
-        pa.pa_iot   = I386_BUS_SPACE_IO;			/* XXX */
-        pa.pa_memt  = I386_BUS_SPACE_MEM;			/* XXX */
+        pa.pa_iot   = X86_BUS_SPACE_IO;				/* XXX */
+        pa.pa_memt  = X86_BUS_SPACE_MEM;			/* XXX */
         pa.pa_dmat  = &pci_bus_dma_tag;				/* XXX */
         for (pa.pa_device=0; pa.pa_device<32; pa.pa_device++)	/* XXX */
           {

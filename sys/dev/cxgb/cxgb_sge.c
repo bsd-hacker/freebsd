@@ -79,12 +79,12 @@ int	multiq_tx_enable = 1;
 extern struct sysctl_oid_list sysctl__hw_cxgb_children;
 int cxgb_txq_buf_ring_size = TX_ETH_Q_SIZE;
 TUNABLE_INT("hw.cxgb.txq_mr_size", &cxgb_txq_buf_ring_size);
-SYSCTL_UINT(_hw_cxgb, OID_AUTO, txq_mr_size, CTLFLAG_RDTUN, &cxgb_txq_buf_ring_size, 0,
+SYSCTL_INT(_hw_cxgb, OID_AUTO, txq_mr_size, CTLFLAG_RDTUN, &cxgb_txq_buf_ring_size, 0,
     "size of per-queue mbuf ring");
 
 static int cxgb_tx_coalesce_force = 0;
 TUNABLE_INT("hw.cxgb.tx_coalesce_force", &cxgb_tx_coalesce_force);
-SYSCTL_UINT(_hw_cxgb, OID_AUTO, tx_coalesce_force, CTLFLAG_RW,
+SYSCTL_INT(_hw_cxgb, OID_AUTO, tx_coalesce_force, CTLFLAG_RW,
     &cxgb_tx_coalesce_force, 0,
     "coalesce small packets into a single work request regardless of ring state");
 
@@ -100,17 +100,17 @@ SYSCTL_UINT(_hw_cxgb, OID_AUTO, tx_coalesce_force, CTLFLAG_RW,
 static int cxgb_tx_coalesce_enable_start = COALESCE_START_DEFAULT;
 TUNABLE_INT("hw.cxgb.tx_coalesce_enable_start",
     &cxgb_tx_coalesce_enable_start);
-SYSCTL_UINT(_hw_cxgb, OID_AUTO, tx_coalesce_enable_start, CTLFLAG_RW,
+SYSCTL_INT(_hw_cxgb, OID_AUTO, tx_coalesce_enable_start, CTLFLAG_RW,
     &cxgb_tx_coalesce_enable_start, 0,
     "coalesce enable threshold");
 static int cxgb_tx_coalesce_enable_stop = COALESCE_STOP_DEFAULT;
 TUNABLE_INT("hw.cxgb.tx_coalesce_enable_stop", &cxgb_tx_coalesce_enable_stop);
-SYSCTL_UINT(_hw_cxgb, OID_AUTO, tx_coalesce_enable_stop, CTLFLAG_RW,
+SYSCTL_INT(_hw_cxgb, OID_AUTO, tx_coalesce_enable_stop, CTLFLAG_RW,
     &cxgb_tx_coalesce_enable_stop, 0,
     "coalesce disable threshold");
 static int cxgb_tx_reclaim_threshold = TX_RECLAIM_DEFAULT;
 TUNABLE_INT("hw.cxgb.tx_reclaim_threshold", &cxgb_tx_reclaim_threshold);
-SYSCTL_UINT(_hw_cxgb, OID_AUTO, tx_reclaim_threshold, CTLFLAG_RW,
+SYSCTL_INT(_hw_cxgb, OID_AUTO, tx_reclaim_threshold, CTLFLAG_RW,
     &cxgb_tx_reclaim_threshold, 0,
     "tx cleaning minimum threshold");
 
@@ -910,6 +910,8 @@ sge_slow_intr_handler(void *arg, int ncount)
 	adapter_t *sc = arg;
 
 	t3_slow_intr_handler(sc);
+	t3_write_reg(sc, A_PL_INT_ENABLE0, sc->slow_intr_mask);
+	(void) t3_read_reg(sc, A_PL_INT_ENABLE0);
 }
 
 /**
@@ -2090,18 +2092,14 @@ t3_free_qset(adapter_t *sc, struct sge_qset *q)
  *	Frees resources used by the SGE queue sets.
  */
 void
-t3_free_sge_resources(adapter_t *sc)
+t3_free_sge_resources(adapter_t *sc, int nqsets)
 {
-	int i, nqsets;
-	
-	for (nqsets = i = 0; i < (sc)->params.nports; i++) 
-		nqsets += sc->port[i].nqsets;
+	int i;
 
 	for (i = 0; i < nqsets; ++i) {
 		TXQ_LOCK(&sc->sge.qs[i]);
 		t3_free_qset(sc, &sc->sge.qs[i]);
 	}
-	
 }
 
 /**
@@ -2961,6 +2959,7 @@ process_responses(adapter_t *adap, struct sge_qset *qs, int budget)
 	struct lro_ctrl *lro_ctrl = &qs->lro.ctrl;
 	struct mbuf *offload_mbufs[RX_BUNDLE_SIZE];
 	int ngathered = 0;
+	struct t3_mbuf_hdr *mh = &rspq->rspq_mh;
 #ifdef DEBUG	
 	static int last_holdoff = 0;
 	if (cxgb_debug && rspq->holdoff_tmr != last_holdoff) {
@@ -2984,9 +2983,9 @@ process_responses(adapter_t *adap, struct sge_qset *qs, int budget)
 			if (cxgb_debug)
 				printf("async notification\n");
 
-			if (rspq->rspq_mh.mh_head == NULL) {
-				rspq->rspq_mh.mh_head = m_gethdr(M_DONTWAIT, MT_DATA);
-				m = rspq->rspq_mh.mh_head;
+			if (mh->mh_head == NULL) {
+				mh->mh_head = m_gethdr(M_DONTWAIT, MT_DATA);
+				m = mh->mh_head;
 			} else {
 				m = m_gethdr(M_DONTWAIT, MT_DATA);
 			}
@@ -3005,27 +3004,28 @@ process_responses(adapter_t *adap, struct sge_qset *qs, int budget)
 
 			DPRINTF("IMM DATA VALID opcode=0x%x rspq->cidx=%d\n",
 			    r->rss_hdr.opcode, rspq->cidx);
-			if (rspq->rspq_mh.mh_head == NULL)
-				rspq->rspq_mh.mh_head = m_gethdr(M_DONTWAIT, MT_DATA);
+			if (mh->mh_head == NULL)
+				mh->mh_head = m_gethdr(M_DONTWAIT, MT_DATA);
                         else 
 				m = m_gethdr(M_DONTWAIT, MT_DATA);
 
-			if (rspq->rspq_mh.mh_head == NULL &&  m == NULL) {	
+			if (mh->mh_head == NULL &&  m == NULL) {	
 		no_mem:
 				rspq->next_holdoff = NOMEM_INTR_DELAY;
 				budget_left--;
 				break;
 			}
-			get_imm_packet(adap, r, rspq->rspq_mh.mh_head);
+			get_imm_packet(adap, r, mh->mh_head);
 			eop = 1;
 			rspq->imm_data++;
 		} else if (r->len_cq) {
 			int drop_thresh = eth ? SGE_RX_DROP_THRES : 0;
 			
-			eop = get_packet(adap, drop_thresh, qs, &rspq->rspq_mh, r);
+			eop = get_packet(adap, drop_thresh, qs, mh, r);
 			if (eop) {
-				rspq->rspq_mh.mh_head->m_flags |= M_FLOWID;
-				rspq->rspq_mh.mh_head->m_pkthdr.flowid = rss_hash;
+				if (r->rss_hdr.hash_type && !adap->timestamp)
+					mh->mh_head->m_flags |= M_FLOWID;
+				mh->mh_head->m_pkthdr.flowid = rss_hash;
 			}
 			
 			ethpad = 2;
@@ -3050,20 +3050,20 @@ process_responses(adapter_t *adap, struct sge_qset *qs, int budget)
 			rspq->credits = 0;
 		}
 		if (!eth && eop) {
-			rspq->rspq_mh.mh_head->m_pkthdr.csum_data = rss_csum;
+			mh->mh_head->m_pkthdr.csum_data = rss_csum;
 			/*
 			 * XXX size mismatch
 			 */
-			m_set_priority(rspq->rspq_mh.mh_head, rss_hash);
+			m_set_priority(mh->mh_head, rss_hash);
 
 			
 			ngathered = rx_offload(&adap->tdev, rspq,
-			    rspq->rspq_mh.mh_head, offload_mbufs, ngathered);
-			rspq->rspq_mh.mh_head = NULL;
+			    mh->mh_head, offload_mbufs, ngathered);
+			mh->mh_head = NULL;
 			DPRINTF("received offload packet\n");
 			
 		} else if (eth && eop) {
-			struct mbuf *m = rspq->rspq_mh.mh_head;
+			struct mbuf *m = mh->mh_head;
 
 			t3_rx_eth(adap, rspq, m, ethpad);
 
@@ -3092,7 +3092,7 @@ process_responses(adapter_t *adap, struct sge_qset *qs, int budget)
 				struct ifnet *ifp = m->m_pkthdr.rcvif;
 				(*ifp->if_input)(ifp, m);
 			}
-			rspq->rspq_mh.mh_head = NULL;
+			mh->mh_head = NULL;
 
 		}
 		__refill_fl_lt(adap, &qs->fl[0], 32);
@@ -3166,8 +3166,11 @@ t3b_intr(void *data)
 	if (!map) 
 		return;
 
-	if (__predict_false(map & F_ERRINTR))
+	if (__predict_false(map & F_ERRINTR)) {
+		t3_write_reg(adap, A_PL_INT_ENABLE0, 0);
+		(void) t3_read_reg(adap, A_PL_INT_ENABLE0);
 		taskqueue_enqueue(adap->tq, &adap->slow_intr_task);
+	}
 
 	mtx_lock(&q0->lock);
 	for_each_port(adap, i)
@@ -3195,8 +3198,11 @@ t3_intr_msi(void *data)
 	    if (process_responses_gts(adap, &adap->sge.qs[i].rspq)) 
 		    new_packets = 1;
 	mtx_unlock(&q0->lock);
-	if (new_packets == 0)
+	if (new_packets == 0) {
+		t3_write_reg(adap, A_PL_INT_ENABLE0, 0);
+		(void) t3_read_reg(adap, A_PL_INT_ENABLE0);
 		taskqueue_enqueue(adap->tq, &adap->slow_intr_task);
+	}
 }
 
 void
@@ -3217,7 +3223,6 @@ t3_dump_rspq(SYSCTL_HANDLER_ARGS)
 	struct sge_rspq *rspq;
 	struct sge_qset *qs;
 	int i, err, dump_end, idx;
-	static int multiplier = 1;
 	struct sbuf *sb;
 	struct rsp_desc *rspd;
 	uint32_t data[4];
@@ -3242,8 +3247,10 @@ t3_dump_rspq(SYSCTL_HANDLER_ARGS)
 	err = t3_sge_read_rspq(qs->port->adapter, rspq->cntxt_id, data);
 	if (err)
 		return (err);
-retry_sbufops:
-	sb = sbuf_new(NULL, NULL, QDUMP_SBUF_SIZE*multiplier, SBUF_FIXEDLEN);
+	err = sysctl_wire_old_buffer(req, 0);
+	if (err)
+		return (err);
+	sb = sbuf_new_for_sysctl(NULL, NULL, QDUMP_SBUF_SIZE, req);
 
 	sbuf_printf(sb, " \n index=%u size=%u MSI-X/RspQ=%u intr enable=%u intr armed=%u\n",
 	    (data[0] & 0xffff), data[0] >> 16, ((data[2] >> 20) & 0x3f),
@@ -3266,13 +3273,11 @@ retry_sbufops:
 		    rspd->rss_hdr.rss_hash_val, be32toh(rspd->flags),
 		    be32toh(rspd->len_cq), rspd->intr_gen);
 	}
-	if (sbuf_overflowed(sb)) {
-		sbuf_delete(sb);
-		multiplier++;
-		goto retry_sbufops;
-	}
-	sbuf_finish(sb);
-	err = SYSCTL_OUT(req, sbuf_data(sb), sbuf_len(sb) + 1);
+
+	err = sbuf_finish(sb);
+	/* Output a trailing NUL. */
+	if (err == 0)
+		err = SYSCTL_OUT(req, "", 1);
 	sbuf_delete(sb);
 	return (err);
 }	
@@ -3283,7 +3288,6 @@ t3_dump_txq_eth(SYSCTL_HANDLER_ARGS)
 	struct sge_txq *txq;
 	struct sge_qset *qs;
 	int i, j, err, dump_end;
-	static int multiplier = 1;
 	struct sbuf *sb;
 	struct tx_desc *txd;
 	uint32_t *WR, wr_hi, wr_lo, gen;
@@ -3310,10 +3314,10 @@ t3_dump_txq_eth(SYSCTL_HANDLER_ARGS)
 	err = t3_sge_read_ecntxt(qs->port->adapter, qs->rspq.cntxt_id, data);
 	if (err)
 		return (err);
-	
-	    
-retry_sbufops:
-	sb = sbuf_new(NULL, NULL, QDUMP_SBUF_SIZE*multiplier, SBUF_FIXEDLEN);
+	err = sysctl_wire_old_buffer(req, 0);
+	if (err)
+		return (err);
+	sb = sbuf_new_for_sysctl(NULL, NULL, QDUMP_SBUF_SIZE, req);
 
 	sbuf_printf(sb, " \n credits=%u GTS=%u index=%u size=%u rspq#=%u cmdq#=%u\n",
 	    (data[0] & 0x7fff), ((data[0] >> 15) & 1), (data[0] >> 16), 
@@ -3340,13 +3344,10 @@ retry_sbufops:
 			    WR[j], WR[j + 1], WR[j + 2], WR[j + 3]);
 
 	}
-	if (sbuf_overflowed(sb)) {
-		sbuf_delete(sb);
-		multiplier++;
-		goto retry_sbufops;
-	}
-	sbuf_finish(sb);
-	err = SYSCTL_OUT(req, sbuf_data(sb), sbuf_len(sb) + 1);
+	err = sbuf_finish(sb);
+	/* Output a trailing NUL. */
+	if (err == 0)
+		err = SYSCTL_OUT(req, "", 1);
 	sbuf_delete(sb);
 	return (err);
 }
@@ -3357,7 +3358,6 @@ t3_dump_txq_ctrl(SYSCTL_HANDLER_ARGS)
 	struct sge_txq *txq;
 	struct sge_qset *qs;
 	int i, j, err, dump_end;
-	static int multiplier = 1;
 	struct sbuf *sb;
 	struct tx_desc *txd;
 	uint32_t *WR, wr_hi, wr_lo, gen;
@@ -3381,8 +3381,10 @@ t3_dump_txq_ctrl(SYSCTL_HANDLER_ARGS)
 		return (EINVAL);
 	}
 
-retry_sbufops:
-	sb = sbuf_new(NULL, NULL, QDUMP_SBUF_SIZE*multiplier, SBUF_FIXEDLEN);
+	err = sysctl_wire_old_buffer(req, 0);
+	if (err != 0)
+		return (err);
+	sb = sbuf_new_for_sysctl(NULL, NULL, QDUMP_SBUF_SIZE, req);
 	sbuf_printf(sb, " qid=%d start=%d -> end=%d\n", qs->idx,
 	    txq->txq_dump_start,
 	    (txq->txq_dump_start + txq->txq_dump_count) & 255);
@@ -3402,13 +3404,10 @@ retry_sbufops:
 			    WR[j], WR[j + 1], WR[j + 2], WR[j + 3]);
 
 	}
-	if (sbuf_overflowed(sb)) {
-		sbuf_delete(sb);
-		multiplier++;
-		goto retry_sbufops;
-	}
-	sbuf_finish(sb);
-	err = SYSCTL_OUT(req, sbuf_data(sb), sbuf_len(sb) + 1);
+	err = sbuf_finish(sb);
+	/* Output a trailing NUL. */
+	if (err == 0)
+		err = SYSCTL_OUT(req, "", 1);
 	sbuf_delete(sb);
 	return (err);
 }
@@ -3459,6 +3458,29 @@ t3_set_coalesce_usecs(SYSCTL_HANDLER_ARGS)
 	return (0);
 }
 
+static int
+t3_pkt_timestamp(SYSCTL_HANDLER_ARGS)
+{
+	adapter_t *sc = arg1;
+	int rc, timestamp;
+
+	if ((sc->flags & FULL_INIT_DONE) == 0)
+		return (ENXIO);
+
+	timestamp = sc->timestamp;
+	rc = sysctl_handle_int(oidp, &timestamp, arg2, req);
+
+	if (rc != 0)
+		return (rc);
+
+	if (timestamp != sc->timestamp) {
+		t3_set_reg_field(sc, A_TP_PC_CONFIG2, F_ENABLERXPKTTMSTPRSS,
+		    timestamp ? F_ENABLERXPKTTMSTPRSS : 0);
+		sc->timestamp = timestamp;
+	}
+
+	return (0);
+}
 
 void
 t3_add_attach_sysctls(adapter_t *sc)
@@ -3474,7 +3496,7 @@ t3_add_attach_sysctls(adapter_t *sc)
 	    "firmware_version",
 	    CTLFLAG_RD, &sc->fw_version,
 	    0, "firmware version");
-	SYSCTL_ADD_INT(ctx, children, OID_AUTO, 
+	SYSCTL_ADD_UINT(ctx, children, OID_AUTO,
 	    "hw_revision",
 	    CTLFLAG_RD, &sc->params.rev,
 	    0, "chip model");
@@ -3486,13 +3508,17 @@ t3_add_attach_sysctls(adapter_t *sc)
 	    "enable_debug",
 	    CTLFLAG_RW, &cxgb_debug,
 	    0, "enable verbose debugging output");
-	SYSCTL_ADD_QUAD(ctx, children, OID_AUTO, "tunq_coalesce",
+	SYSCTL_ADD_UQUAD(ctx, children, OID_AUTO, "tunq_coalesce",
 	    CTLFLAG_RD, &sc->tunq_coalesce,
 	    "#tunneled packets freed");
 	SYSCTL_ADD_INT(ctx, children, OID_AUTO, 
 	    "txq_overrun",
 	    CTLFLAG_RD, &txq_fills,
 	    0, "#times txq overrun");
+	SYSCTL_ADD_UINT(ctx, children, OID_AUTO,
+	    "core_clock",
+	    CTLFLAG_RD, &sc->params.vpd.cclk,
+	    0, "core clock frequency (in KHz)");
 }
 
 
@@ -3518,7 +3544,7 @@ sysctl_handle_macstat(SYSCTL_HANDLER_ARGS)
 	t3_mac_update_stats(&p->mac);
 	PORT_UNLOCK(p);
 
-	return (sysctl_handle_quad(oidp, parg, 0, req));
+	return (sysctl_handle_64(oidp, parg, 0, req));
 }
 
 void
@@ -3537,6 +3563,12 @@ t3_add_configured_sysctls(adapter_t *sc)
 	    0, t3_set_coalesce_usecs,
 	    "I", "interrupt coalescing timer (us)");
 
+	SYSCTL_ADD_PROC(ctx, children, OID_AUTO, 
+	    "pkt_timestamp",
+	    CTLTYPE_INT | CTLFLAG_RW, sc,
+	    0, t3_pkt_timestamp,
+	    "I", "provide packet timestamp instead of connection hash");
+
 	for (i = 0; i < sc->params.nports; i++) {
 		struct port_info *pi = &sc->port[i];
 		struct sysctl_oid *poid;
@@ -3547,7 +3579,7 @@ t3_add_configured_sysctls(adapter_t *sc)
 		poid = SYSCTL_ADD_NODE(ctx, children, OID_AUTO, 
 		    pi->namebuf, CTLFLAG_RD, NULL, "port statistics");
 		poidlist = SYSCTL_CHILDREN(poid);
-		SYSCTL_ADD_INT(ctx, poidlist, OID_AUTO, 
+		SYSCTL_ADD_UINT(ctx, poidlist, OID_AUTO,
 		    "nqsets", CTLFLAG_RD, &pi->nqsets,
 		    0, "#queue sets");
 
@@ -3601,7 +3633,7 @@ t3_add_configured_sysctls(adapter_t *sc)
 			SYSCTL_ADD_UINT(ctx, rspqpoidlist, OID_AUTO, "starved",
 			    CTLFLAG_RD, &qs->rspq.starved,
 			    0, "#times starved");
-			SYSCTL_ADD_XLONG(ctx, rspqpoidlist, OID_AUTO, "phys_addr",
+			SYSCTL_ADD_ULONG(ctx, rspqpoidlist, OID_AUTO, "phys_addr",
 			    CTLFLAG_RD, &qs->rspq.phys_addr,
 			    "physical_address_of the queue");
 			SYSCTL_ADD_UINT(ctx, rspqpoidlist, OID_AUTO, "dump_start",
@@ -3614,10 +3646,10 @@ t3_add_configured_sysctls(adapter_t *sc)
 			    CTLTYPE_STRING | CTLFLAG_RD, &qs->rspq,
 			    0, t3_dump_rspq, "A", "dump of the response queue");
 
-			SYSCTL_ADD_QUAD(ctx, txqpoidlist, OID_AUTO, "dropped",
+			SYSCTL_ADD_UQUAD(ctx, txqpoidlist, OID_AUTO, "dropped",
 			    CTLFLAG_RD, &qs->txq[TXQ_ETH].txq_mr->br_drops,
 			    "#tunneled packets dropped");
-			SYSCTL_ADD_INT(ctx, txqpoidlist, OID_AUTO, "sendqlen",
+			SYSCTL_ADD_UINT(ctx, txqpoidlist, OID_AUTO, "sendqlen",
 			    CTLFLAG_RD, &qs->txq[TXQ_ETH].sendq.qlen,
 			    0, "#tunneled packets waiting to be sent");
 #if 0			
@@ -3628,7 +3660,7 @@ t3_add_configured_sysctls(adapter_t *sc)
 			    CTLFLAG_RD, (uint32_t *)(uintptr_t)&qs->txq[TXQ_ETH].txq_mr.br_cons,
 			    0, "#tunneled packets queue consumer index");
 #endif			
-			SYSCTL_ADD_INT(ctx, txqpoidlist, OID_AUTO, "processed",
+			SYSCTL_ADD_UINT(ctx, txqpoidlist, OID_AUTO, "processed",
 			    CTLFLAG_RD, &qs->txq[TXQ_ETH].processed,
 			    0, "#tunneled packets processed by the card");
 			SYSCTL_ADD_UINT(ctx, txqpoidlist, OID_AUTO, "cleaned",
@@ -3643,7 +3675,7 @@ t3_add_configured_sysctls(adapter_t *sc)
 			SYSCTL_ADD_UINT(ctx, txqpoidlist, OID_AUTO, "skipped",
 			    CTLFLAG_RD, &txq->txq_skipped,
 			    0, "#tunneled packet descriptors skipped");
-			SYSCTL_ADD_QUAD(ctx, txqpoidlist, OID_AUTO, "coalesced",
+			SYSCTL_ADD_UQUAD(ctx, txqpoidlist, OID_AUTO, "coalesced",
 			    CTLFLAG_RD, &txq->txq_coalesced,
 			    "#tunneled packets coalesced");
 			SYSCTL_ADD_UINT(ctx, txqpoidlist, OID_AUTO, "enqueued",
@@ -3652,7 +3684,7 @@ t3_add_configured_sysctls(adapter_t *sc)
 			SYSCTL_ADD_UINT(ctx, txqpoidlist, OID_AUTO, "stopped_flags",
 			    CTLFLAG_RD, &qs->txq_stopped,
 			    0, "tx queues stopped");
-			SYSCTL_ADD_XLONG(ctx, txqpoidlist, OID_AUTO, "phys_addr",
+			SYSCTL_ADD_ULONG(ctx, txqpoidlist, OID_AUTO, "phys_addr",
 			    CTLFLAG_RD, &txq->phys_addr,
 			    "physical_address_of the queue");
 			SYSCTL_ADD_UINT(ctx, txqpoidlist, OID_AUTO, "qgen",
@@ -3712,7 +3744,7 @@ t3_add_configured_sysctls(adapter_t *sc)
 		 * all that here.
 		 */
 #define CXGB_SYSCTL_ADD_QUAD(a)	SYSCTL_ADD_OID(ctx, poidlist, OID_AUTO, #a, \
-    (CTLTYPE_QUAD | CTLFLAG_RD), pi, offsetof(struct mac_stats, a), \
+    (CTLTYPE_U64 | CTLFLAG_RD), pi, offsetof(struct mac_stats, a), \
     sysctl_handle_macstat, "QU", 0)
 		CXGB_SYSCTL_ADD_QUAD(tx_octets);
 		CXGB_SYSCTL_ADD_QUAD(tx_octets_bad);

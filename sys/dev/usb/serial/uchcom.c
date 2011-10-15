@@ -78,7 +78,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/kernel.h>
 #include <sys/bus.h>
-#include <sys/linker_set.h>
 #include <sys/module.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
@@ -205,7 +204,7 @@ static const struct uchcom_divider_record dividers[] =
 
 #define	NUM_DIVIDERS	(sizeof (dividers) / sizeof (dividers[0]))
 
-static const struct usb_device_id uchcom_devs[] = {
+static const STRUCT_USB_HOST_ID uchcom_devs[] = {
 	{USB_VPI(USB_VENDOR_WCH, USB_PRODUCT_WCH_CH341SER, 0)},
 	{USB_VPI(USB_VENDOR_WCH2, USB_PRODUCT_WCH2_CH341SER, 0)},
 };
@@ -354,6 +353,8 @@ uchcom_attach(device_t dev)
 	if (error) {
 		goto detach;
 	}
+	ucom_set_pnpinfo_usb(&sc->sc_super_ucom, dev);
+
 	return (0);
 
 detach:
@@ -368,7 +369,7 @@ uchcom_detach(device_t dev)
 
 	DPRINTFN(11, "\n");
 
-	ucom_detach(&sc->sc_super_ucom, &sc->sc_ucom, 1);
+	ucom_detach(&sc->sc_super_ucom, &sc->sc_ucom);
 	usbd_transfer_unsetup(sc->sc_xfer, UCHCOM_N_TRANSFER);
 	mtx_destroy(&sc->sc_mtx);
 
@@ -855,3 +856,4 @@ static devclass_t uchcom_devclass;
 DRIVER_MODULE(uchcom, uhub, uchcom_driver, uchcom_devclass, NULL, 0);
 MODULE_DEPEND(uchcom, ucom, 1, 1, 1);
 MODULE_DEPEND(uchcom, usb, 1, 1, 1);
+MODULE_VERSION(uchcom, 1);

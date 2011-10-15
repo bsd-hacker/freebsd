@@ -553,7 +553,7 @@ mxge_firmware_probe(mxge_softc_t *sc)
 	 * Verify the max read request size was set to 4KB
 	 * before trying the test with 4KB.
 	 */
-	if (pci_find_extcap(dev, PCIY_EXPRESS, &reg) == 0) {
+	if (pci_find_cap(dev, PCIY_EXPRESS, &reg) == 0) {
 		pectl = pci_read_config(dev, reg + 0x8, 2);
 		if ((pectl & (5 << 12)) != (5 << 12)) {
 			device_printf(dev, "Max Read Req. size != 4k (0x%x\n",
@@ -1855,9 +1855,20 @@ mxge_encap_tso(struct mxge_slice_state *ss, struct mbuf *m,
 
 	tcp = (struct tcphdr *)((char *)ip + (ip->ip_hl << 2));
 	cum_len = -(ip_off + ((ip->ip_hl + tcp->th_off) << 2));
+	cksum_offset = ip_off + (ip->ip_hl << 2);
 
 	/* TSO implies checksum offload on this hardware */
-	cksum_offset = ip_off + (ip->ip_hl << 2);
+	if (__predict_false((m->m_pkthdr.csum_flags & (CSUM_TCP)) == 0)) {
+		/*
+		 * If packet has full TCP csum, replace it with pseudo hdr
+		 * sum that the NIC expects, otherwise the NIC will emit
+		 * packets with bad TCP checksums.
+		 */
+		m->m_pkthdr.csum_flags = CSUM_TCP;
+		m->m_pkthdr.csum_data = offsetof(struct tcphdr, th_sum);
+		tcp->th_sum = in_pseudo(ip->ip_src.s_addr, ip->ip_dst.s_addr,
+			htons(IPPROTO_TCP + (m->m_pkthdr.len - cksum_offset)));		
+	}
 	flags = MXGEFW_FLAGS_TSO_HDR | MXGEFW_FLAGS_FIRST;
 
 	
@@ -2778,7 +2789,8 @@ static struct mxge_media_type mxge_sfp_media_types[] =
 	{0,		(1 << 7),	"Reserved"},
 	{IFM_10G_LRM,	(1 << 6),	"10GBASE-LRM"},
 	{IFM_10G_LR, 	(1 << 5),	"10GBASE-LR"},
-	{IFM_10G_SR,	(1 << 4),	"10GBASE-SR"}
+	{IFM_10G_SR,	(1 << 4),	"10GBASE-SR"},
+	{IFM_10G_TWINAX,(1 << 0),	"10GBASE-Twinax"}
 };
 
 static void
@@ -2822,7 +2834,7 @@ mxge_media_init(mxge_softc_t *sc)
 			return;
 		}
 	}
-	if (*ptr == 'C') {
+	if (*ptr == 'C' || *(ptr +1) == 'C') {
 		/* -C is CX4 */
 		sc->connector = MXGE_CX4;
 		mxge_media_set(sc, IFM_10G_CX4);
@@ -3042,6 +3054,14 @@ mxge_intr(void *arg)
 static void
 mxge_init(void *arg)
 {
+	mxge_softc_t *sc = arg;
+	struct ifnet *ifp = sc->ifp;
+
+
+	mtx_lock(&sc->driver_mtx);
+	if ((ifp->if_drv_flags & IFF_DRV_RUNNING) == 0)
+		(void) mxge_open(sc);
+	mtx_unlock(&sc->driver_mtx);
 }
 
 
@@ -3719,7 +3739,7 @@ mxge_setup_cfg_space(mxge_softc_t *sc)
 	uint16_t cmd, lnk, pectl;
 
 	/* find the PCIe link width and set max read request to 4KB*/
-	if (pci_find_extcap(dev, PCIY_EXPRESS, &reg) == 0) {
+	if (pci_find_cap(dev, PCIY_EXPRESS, &reg) == 0) {
 		lnk = pci_read_config(dev, reg + 0x12, 2);
 		sc->link_width = (lnk >> 4) & 0x3f;
 
@@ -3748,7 +3768,7 @@ mxge_read_reboot(mxge_softc_t *sc)
 	uint32_t vs;
 
 	/* find the vendor specific offset */
-	if (pci_find_extcap(dev, PCIY_VENDOR, &vs) != 0) {
+	if (pci_find_cap(dev, PCIY_VENDOR, &vs) != 0) {
 		device_printf(sc->dev,
 			      "could not find vendor specific offset\n");
 		return (uint32_t)-1;
@@ -4475,6 +4495,8 @@ mxge_add_msix_irqs(mxge_softc_t *sc)
 				      "message %d\n", i);
 			goto abort_with_intr;
 		}
+		bus_describe_intr(sc->dev, sc->msix_irq_res[i],
+				  sc->msix_ih[i], "s%d", i);
 	}
 
 	if (mxge_verbose) {
@@ -4633,9 +4655,8 @@ mxge_attach(device_t dev)
 	mxge_fetch_tunables(sc);
 
 	TASK_INIT(&sc->watchdog_task, 1, mxge_watchdog_task, sc);
-	sc->tq = taskqueue_create_fast("mxge_taskq", M_WAITOK,
-				       taskqueue_thread_enqueue,
-				       &sc->tq);
+	sc->tq = taskqueue_create("mxge_taskq", M_WAITOK,
+				  taskqueue_thread_enqueue, &sc->tq);
 	if (sc->tq == NULL) {
 		err = ENOMEM;
 		goto abort_with_nothing;

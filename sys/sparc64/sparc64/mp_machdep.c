@@ -29,7 +29,7 @@
  */
 /*-
  * Copyright (c) 2002 Jake Burkholder.
- * Copyright (c) 2007 Marius Strobl <marius@FreeBSD.org>
+ * Copyright (c) 2007 - 2010 Marius Strobl <marius@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -89,6 +89,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/smp.h>
 #include <machine/tick.h>
 #include <machine/tlb.h>
+#include <machine/tsb.h>
 #include <machine/tte.h>
 #include <machine/ver.h>
 
@@ -96,6 +97,7 @@ __FBSDID("$FreeBSD$");
 #define	SUNW_STOPSELF		"SUNW,stop-self"
 
 static ih_func_t cpu_ipi_ast;
+static ih_func_t cpu_ipi_hardclock;
 static ih_func_t cpu_ipi_preempt;
 static ih_func_t cpu_ipi_stop;
 
@@ -107,34 +109,35 @@ static ih_func_t cpu_ipi_stop;
  */
 struct	cpu_start_args cpu_start_args = { 0, -1, -1, 0, 0, 0 };
 struct	ipi_cache_args ipi_cache_args;
+struct	ipi_rd_args ipi_rd_args;
 struct	ipi_tlb_args ipi_tlb_args;
 struct	pcb stoppcbs[MAXCPU];
 
 struct	mtx ipi_mtx;
 
 cpu_ipi_selected_t *cpu_ipi_selected;
+cpu_ipi_single_t *cpu_ipi_single;
 
 static vm_offset_t mp_tramp;
 static u_int cpuid_to_mid[MAXCPU];
 static int isjbus;
-static volatile u_int shutdown_cpus;
+static volatile cpuset_t shutdown_cpus;
 
 static void ap_count(phandle_t node, u_int mid, u_int cpu_impl);
 static void ap_start(phandle_t node, u_int mid, u_int cpu_impl);
 static void cpu_mp_unleash(void *v);
 static void foreach_ap(phandle_t node, void (*func)(phandle_t node,
     u_int mid, u_int cpu_impl));
-static void spitfire_ipi_send(u_int mid, u_long d0, u_long d1, u_long d2);
 static void sun4u_startcpu(phandle_t cpu, void *func, u_long arg);
 
 static cpu_ipi_selected_t cheetah_ipi_selected;
+static cpu_ipi_single_t cheetah_ipi_single;
+static cpu_ipi_selected_t jalapeno_ipi_selected;
+static cpu_ipi_single_t jalapeno_ipi_single;
 static cpu_ipi_selected_t spitfire_ipi_selected;
+static cpu_ipi_single_t spitfire_ipi_single;
 
 SYSINIT(cpu_mp_unleash, SI_SUB_SMP, SI_ORDER_FIRST, cpu_mp_unleash, NULL);
-
-CTASSERT(MAXCPU <= IDR_CHEETAH_MAX_BN_PAIRS);
-CTASSERT(MAXCPU <= sizeof(u_int) * NBBY);
-CTASSERT(MAXCPU <= sizeof(int) * NBBY);
 
 void
 mp_init(u_int cpu_impl)
@@ -162,13 +165,18 @@ mp_init(u_int cpu_impl)
 	 * cpu_mp_start() wasn't so initialize these here.
 	 */
 	if (cpu_impl == CPU_IMPL_ULTRASPARCIIIi ||
-	    cpu_impl == CPU_IMPL_ULTRASPARCIIIip)
+	    cpu_impl == CPU_IMPL_ULTRASPARCIIIip) {
 		isjbus = 1;
-	if (cpu_impl == CPU_IMPL_SPARC64V ||
-	    cpu_impl >= CPU_IMPL_ULTRASPARCIII)
+		cpu_ipi_selected = jalapeno_ipi_selected;
+		cpu_ipi_single = jalapeno_ipi_single;
+	} else if (cpu_impl == CPU_IMPL_SPARC64V ||
+	    cpu_impl >= CPU_IMPL_ULTRASPARCIII) {
 		cpu_ipi_selected = cheetah_ipi_selected;
-	else
+		cpu_ipi_single = cheetah_ipi_single;
+	} else {
 		cpu_ipi_selected = spitfire_ipi_selected;
+		cpu_ipi_single = spitfire_ipi_single;
+	}
 }
 
 static void
@@ -179,7 +187,7 @@ foreach_ap(phandle_t node, void (*func)(phandle_t node, u_int mid,
 	phandle_t child;
 	u_int cpuid;
 	uint32_t cpu_impl;
- 
+
 	/* There's no need to traverse the whole OFW tree twice. */
 	if (mp_maxid > 0 && mp_ncpus >= mp_maxid + 1)
 		return;
@@ -199,7 +207,7 @@ foreach_ap(phandle_t node, void (*func)(phandle_t node, u_int mid,
 				panic("%s: couldn't determine CPU "
 				    "implementation", __func__);
 			if (OF_getprop(node, cpu_cpuid_prop(cpu_impl), &cpuid,
-			     sizeof(cpuid)) <= 0)
+			    sizeof(cpuid)) <= 0)
 				panic("%s: couldn't determine CPU module ID",
 				    __func__);
 			if (cpuid == PCPU_GET(mid))
@@ -216,7 +224,7 @@ void
 cpu_mp_setmaxid()
 {
 
-	all_cpus = 1 << curcpu;
+	CPU_SETOF(curcpu, &all_cpus);
 	mp_ncpus = 1;
 	mp_maxid = 0;
 
@@ -279,6 +287,7 @@ cpu_mp_start(void)
 	    -1, NULL, NULL);
 	intr_setup(PIL_STOP, cpu_ipi_stop, -1, NULL, NULL);
 	intr_setup(PIL_PREEMPT, cpu_ipi_preempt, -1, NULL, NULL);
+	intr_setup(PIL_HARDCLOCK, cpu_ipi_hardclock, -1, NULL, NULL);
 
 	cpuid_to_mid[curcpu] = PCPU_GET(mid);
 
@@ -286,7 +295,6 @@ cpu_mp_start(void)
 	KASSERT(!isjbus || mp_ncpus <= IDR_JALAPENO_MAX_BN_PAIRS,
 	    ("%s: can only IPI a maximum of %d JBus-CPUs",
 	    __func__, IDR_JALAPENO_MAX_BN_PAIRS));
-	PCPU_SET(other_cpus, all_cpus & ~(1 << curcpu));
 	smp_active = 1;
 }
 
@@ -306,7 +314,7 @@ ap_start(phandle_t node, u_int mid, u_int cpu_impl)
 	if (OF_getprop(node, "clock-frequency", &clock, sizeof(clock)) <= 0)
 		panic("%s: couldn't determine CPU frequency", __func__);
 	if (clock != PCPU_GET(clock))
-		hardclock_use_stick = 1;
+		tick_et_use_stick = 1;
 
 	csa = &cpu_start_args;
 	csa->csa_state = 0;
@@ -344,7 +352,7 @@ ap_start(phandle_t node, u_int mid, u_int cpu_impl)
 
 	cache_init(pc);
 
-	all_cpus |= 1 << cpuid;
+	CPU_SET(cpuid, &all_cpus);
 	intr_add_cpu(cpuid);
 }
 
@@ -370,7 +378,7 @@ cpu_mp_unleash(void *v)
 	ctx_inc = (TLB_CTX_USER_MAX - 1) / mp_ncpus;
 	csa = &cpu_start_args;
 	csa->csa_count = mp_ncpus;
-	SLIST_FOREACH(pc, &cpuhead, pc_allcpu) {
+	STAILQ_FOREACH(pc, &cpuhead, pc_allcpu) {
 		pc->pc_tlb_ctx = ctx_min;
 		pc->pc_tlb_ctx_min = ctx_min;
 		pc->pc_tlb_ctx_max = ctx_min + ctx_inc;
@@ -413,16 +421,28 @@ cpu_mp_bootstrap(struct pcpu *pc)
 	csa = &cpu_start_args;
 
 	/* Do CPU-specific initialization. */
-	if (pc->pc_impl == CPU_IMPL_SPARC64V ||
-	    pc->pc_impl >= CPU_IMPL_ULTRASPARCIII)
+	if (pc->pc_impl >= CPU_IMPL_ULTRASPARCIII)
 		cheetah_init(pc->pc_impl);
+	else if (pc->pc_impl == CPU_IMPL_SPARC64V)
+		zeus_init(pc->pc_impl);
+
 	/*
 	 * Enable the caches.  Note that his may include applying workarounds.
 	 */
 	cache_enable(pc->pc_impl);
 
-	/* Lock the kernel TSB in the TLB. */
-	pmap_map_tsb();
+	/*
+	 * Clear (S)TICK timer(s) (including NPT) and ensure they are stopped.
+	 */
+	tick_clear(pc->pc_impl);
+	tick_stop(pc->pc_impl);
+
+	/* Set the kernel context. */
+	pmap_set_kctx();
+
+	/* Lock the kernel TSB in the TLB if necessary. */
+	if (tsb_kernel_ldd_phys == 0)
+		pmap_map_tsb();
 
 	/*
 	 * Flush all non-locked TLB entries possibly left over by the
@@ -430,19 +450,15 @@ cpu_mp_bootstrap(struct pcpu *pc)
 	 */
 	tlb_flush_nonlocked();
 
-	/* Initialize global registers. */
-	cpu_setregs(pc);
-
-	/* Enable interrupts. */
-	wrpr(pil, 0, PIL_TICK);
+	/*
+	 * Enable interrupts.
+	 * Note that the PIL we be lowered indirectly via sched_throw(NULL)
+	 * when fake spinlock held by the idle thread eventually is released.
+	 */
 	wrpr(pstate, 0, PSTATE_KERNEL);
-
-	/* Start the (S)TICK interrupts. */
-	tick_start();
 
 	smp_cpus++;
 	KASSERT(curthread != NULL, ("%s: curthread", __func__));
-	PCPU_SET(other_cpus, all_cpus & ~(1 << curcpu));
 	printf("SMP: AP CPU #%d Launched!\n", curcpu);
 
 	csa->csa_count--;
@@ -451,6 +467,9 @@ cpu_mp_bootstrap(struct pcpu *pc)
 	while (csa->csa_count != 0)
 		;
 
+	/* Start per-CPU event timers. */
+	cpu_initclocks_ap();
+
 	/* Ok, now enter the scheduler. */
 	sched_throw(NULL);
 }
@@ -458,14 +477,23 @@ cpu_mp_bootstrap(struct pcpu *pc)
 void
 cpu_mp_shutdown(void)
 {
+	cpuset_t cpus;
 	int i;
 
 	critical_enter();
-	shutdown_cpus = PCPU_GET(other_cpus);
-	if (stopped_cpus != PCPU_GET(other_cpus))	/* XXX */
-		stop_cpus(stopped_cpus ^ PCPU_GET(other_cpus));
+	shutdown_cpus = all_cpus;
+	CPU_CLR(PCPU_GET(cpuid), &shutdown_cpus);
+	cpus = shutdown_cpus;
+
+	/* XXX: Stop all the CPUs which aren't already. */
+	if (CPU_CMP(&stopped_cpus, &cpus)) {
+
+		/* cpus is just a flat "on" mask without curcpu. */
+		CPU_NAND(&cpus, &stopped_cpus);
+		stop_cpus(cpus);
+	}
 	i = 0;
-	while (shutdown_cpus != 0) {
+	while (!CPU_EMPTY(&shutdown_cpus)) {
 		if (i++ > 100000) {
 			printf("timeout shutting down CPUs.\n");
 			break;
@@ -483,20 +511,24 @@ cpu_ipi_ast(struct trapframe *tf)
 static void
 cpu_ipi_stop(struct trapframe *tf)
 {
+	u_int cpuid;
 
 	CTR2(KTR_SMP, "%s: stopped %d", __func__, curcpu);
+	sched_pin();
 	savectx(&stoppcbs[curcpu]);
-	atomic_set_acq_int(&stopped_cpus, PCPU_GET(cpumask));
-	while ((started_cpus & PCPU_GET(cpumask)) == 0) {
-		if ((shutdown_cpus & PCPU_GET(cpumask)) != 0) {
-			atomic_clear_int(&shutdown_cpus, PCPU_GET(cpumask));
+	cpuid = PCPU_GET(cpuid);
+	CPU_SET_ATOMIC(cpuid, &stopped_cpus);
+	while (!CPU_ISSET(cpuid, &started_cpus)) {
+		if (CPU_ISSET(cpuid, &shutdown_cpus)) {
+			CPU_CLR_ATOMIC(cpuid, &shutdown_cpus);
 			(void)intr_disable();
 			for (;;)
 				;
 		}
 	}
-	atomic_clear_rel_int(&started_cpus, PCPU_GET(cpumask));
-	atomic_clear_rel_int(&stopped_cpus, PCPU_GET(cpumask));
+	CPU_CLR_ATOMIC(cpuid, &started_cpus);
+	CPU_CLR_ATOMIC(cpuid, &stopped_cpus);
+	sched_unpin();
 	CTR2(KTR_SMP, "%s: restarted %d", __func__, curcpu);
 }
 
@@ -508,28 +540,46 @@ cpu_ipi_preempt(struct trapframe *tf)
 }
 
 static void
-spitfire_ipi_selected(u_int cpus, u_long d0, u_long d1, u_long d2)
+cpu_ipi_hardclock(struct trapframe *tf)
+{
+	struct trapframe *oldframe;
+	struct thread *td;
+
+	critical_enter();
+	td = curthread;
+	td->td_intr_nesting_level++;
+	oldframe = td->td_intr_frame;
+	td->td_intr_frame = tf;
+	hardclockintr();
+	td->td_intr_frame = oldframe;
+	td->td_intr_nesting_level--;
+	critical_exit();
+}
+
+static void
+spitfire_ipi_selected(cpuset_t cpus, u_long d0, u_long d1, u_long d2)
 {
 	u_int cpu;
 
-	KASSERT((cpus & (1 << curcpu)) == 0,
-	    ("%s: CPU can't IPI itself", __func__));
-	while (cpus) {
-		cpu = ffs(cpus) - 1;
-		cpus &= ~(1 << cpu);
-		spitfire_ipi_send(cpuid_to_mid[cpu], d0, d1, d2);
+	while ((cpu = cpusetobj_ffs(&cpus)) != 0) {
+		cpu--;
+		CPU_CLR(cpu, &cpus);
+		spitfire_ipi_single(cpu, d0, d1, d2);
 	}
 }
 
 static void
-spitfire_ipi_send(u_int mid, u_long d0, u_long d1, u_long d2)
+spitfire_ipi_single(u_int cpu, u_long d0, u_long d1, u_long d2)
 {
 	register_t s;
 	u_long ids;
+	u_int mid;
 	int i;
 
+	KASSERT(cpu != curcpu, ("%s: CPU can't IPI itself", __func__));
 	KASSERT((ldxa(0, ASI_INTR_DISPATCH_STATUS) & IDR_BUSY) == 0,
 	    ("%s: outstanding dispatch", __func__));
+	mid = cpuid_to_mid[cpu];
 	for (i = 0; i < IPI_RETRIES; i++) {
 		s = intr_disable();
 		stxa(AA_SDB_INTR_D0, ASI_SDB_INTR_W, d0);
@@ -570,20 +620,64 @@ spitfire_ipi_send(u_int mid, u_long d0, u_long d1, u_long d2)
 }
 
 static void
-cheetah_ipi_selected(u_int cpus, u_long d0, u_long d1, u_long d2)
+cheetah_ipi_single(u_int cpu, u_long d0, u_long d1, u_long d2)
 {
+	register_t s;
+	u_long ids;
+	u_int mid;
+	int i;
+
+	KASSERT(cpu != curcpu, ("%s: CPU can't IPI itself", __func__));
+	KASSERT((ldxa(0, ASI_INTR_DISPATCH_STATUS) &
+	    IDR_CHEETAH_ALL_BUSY) == 0,
+	    ("%s: outstanding dispatch", __func__));
+	mid = cpuid_to_mid[cpu];
+	for (i = 0; i < IPI_RETRIES; i++) {
+		s = intr_disable();
+		stxa(AA_SDB_INTR_D0, ASI_SDB_INTR_W, d0);
+		stxa(AA_SDB_INTR_D1, ASI_SDB_INTR_W, d1);
+		stxa(AA_SDB_INTR_D2, ASI_SDB_INTR_W, d2);
+		membar(Sync);
+		stxa(AA_INTR_SEND | (mid << IDC_ITID_SHIFT),
+		    ASI_SDB_INTR_W, 0);
+		membar(Sync);
+		while (((ids = ldxa(0, ASI_INTR_DISPATCH_STATUS)) &
+		    IDR_BUSY) != 0)
+			;
+		intr_restore(s);
+		if ((ids & (IDR_BUSY | IDR_NACK)) == 0)
+			return;
+		/*
+		 * Leave interrupts enabled for a bit before retrying
+		 * in order to avoid deadlocks if the other CPU is also
+		 * trying to send an IPI.
+		 */
+		DELAY(2);
+	}
+	if (kdb_active != 0 || panicstr != NULL)
+		printf("%s: couldn't send IPI to module 0x%u\n",
+		    __func__, mid);
+	else
+		panic("%s: couldn't send IPI to module 0x%u",
+		    __func__, mid);
+}
+
+static void
+cheetah_ipi_selected(cpuset_t cpus, u_long d0, u_long d1, u_long d2)
+{
+	char pbuf[CPUSETBUFSIZ];
 	register_t s;
 	u_long ids;
 	u_int bnp;
 	u_int cpu;
 	int i;
 
-	KASSERT((cpus & (1 << curcpu)) == 0,
-	    ("%s: CPU can't IPI itself", __func__));
+	KASSERT(!CPU_ISSET(curcpu, &cpus), ("%s: CPU can't IPI itself",
+	    __func__));
 	KASSERT((ldxa(0, ASI_INTR_DISPATCH_STATUS) &
 	    IDR_CHEETAH_ALL_BUSY) == 0,
 	    ("%s: outstanding dispatch", __func__));
-	if (cpus == 0)
+	if (CPU_EMPTY(&cpus))
 		return;
 	ids = 0;
 	for (i = 0; i < IPI_RETRIES * mp_ncpus; i++) {
@@ -594,37 +688,29 @@ cheetah_ipi_selected(u_int cpus, u_long d0, u_long d1, u_long d2)
 		membar(Sync);
 		bnp = 0;
 		for (cpu = 0; cpu < mp_ncpus; cpu++) {
-			if ((cpus & (1 << cpu)) != 0) {
-				stxa(AA_INTR_SEND |
-				    (cpuid_to_mid[cpu] << IDC_ITID_SHIFT) |
-				    (isjbus ? 0 : bnp << IDC_BN_SHIFT),
+			if (CPU_ISSET(cpu, &cpus)) {
+				stxa(AA_INTR_SEND | (cpuid_to_mid[cpu] <<
+				    IDC_ITID_SHIFT) | bnp << IDC_BN_SHIFT,
 				    ASI_SDB_INTR_W, 0);
 				membar(Sync);
 				bnp++;
+				if (bnp == IDR_CHEETAH_MAX_BN_PAIRS)
+					break;
 			}
 		}
 		while (((ids = ldxa(0, ASI_INTR_DISPATCH_STATUS)) &
 		    IDR_CHEETAH_ALL_BUSY) != 0)
 			;
 		intr_restore(s);
-		if ((ids & (IDR_CHEETAH_ALL_BUSY | IDR_CHEETAH_ALL_NACK)) == 0)
-			return;
 		bnp = 0;
 		for (cpu = 0; cpu < mp_ncpus; cpu++) {
-			if ((cpus & (1 << cpu)) != 0) {
-				if ((ids & (IDR_NACK << (isjbus ?
-				    (2 * cpuid_to_mid[cpu]) :
-				    (2 * bnp)))) == 0)
-					cpus &= ~(1 << cpu);
+			if (CPU_ISSET(cpu, &cpus)) {
+				if ((ids & (IDR_NACK << (2 * bnp))) == 0)
+					CPU_CLR(cpu, &cpus);
 				bnp++;
 			}
 		}
-		/*
-		 * On at least Fire V880 we may receive IDR_NACKs for
-		 * CPUs we actually haven't tried to send an IPI to,
-		 * but which apparently can be safely ignored.
-		 */
-		if (cpus == 0)
+		if (CPU_EMPTY(&cpus))
 			return;
 		/*
 		 * Leave interrupts enabled for a bit before retrying
@@ -634,9 +720,111 @@ cheetah_ipi_selected(u_int cpus, u_long d0, u_long d1, u_long d2)
 		DELAY(2 * mp_ncpus);
 	}
 	if (kdb_active != 0 || panicstr != NULL)
-		printf("%s: couldn't send IPI (cpus=0x%u ids=0x%lu)\n",
-		    __func__, cpus, ids);
+		printf("%s: couldn't send IPI (cpus=%s ids=0x%lu)\n",
+		    __func__, cpusetobj_strprint(pbuf, &cpus), ids);
 	else
-		panic("%s: couldn't send IPI (cpus=0x%u ids=0x%lu)",
-		    __func__, cpus, ids);
+		panic("%s: couldn't send IPI (cpus=%s ids=0x%lu)",
+		    __func__, cpusetobj_strprint(pbuf, &cpus), ids);
+}
+
+static void
+jalapeno_ipi_single(u_int cpu, u_long d0, u_long d1, u_long d2)
+{
+	register_t s;
+	u_long ids;
+	u_int busy, busynack, mid;
+	int i;
+
+	KASSERT(cpu != curcpu, ("%s: CPU can't IPI itself", __func__));
+	KASSERT((ldxa(0, ASI_INTR_DISPATCH_STATUS) &
+	    IDR_CHEETAH_ALL_BUSY) == 0,
+	    ("%s: outstanding dispatch", __func__));
+	mid = cpuid_to_mid[cpu];
+	busy = IDR_BUSY << (2 * mid);
+	busynack = (IDR_BUSY | IDR_NACK) << (2 * mid);
+	for (i = 0; i < IPI_RETRIES; i++) {
+		s = intr_disable();
+		stxa(AA_SDB_INTR_D0, ASI_SDB_INTR_W, d0);
+		stxa(AA_SDB_INTR_D1, ASI_SDB_INTR_W, d1);
+		stxa(AA_SDB_INTR_D2, ASI_SDB_INTR_W, d2);
+		membar(Sync);
+		stxa(AA_INTR_SEND | (mid << IDC_ITID_SHIFT),
+		    ASI_SDB_INTR_W, 0);
+		membar(Sync);
+		while (((ids = ldxa(0, ASI_INTR_DISPATCH_STATUS)) &
+		    busy) != 0)
+			;
+		intr_restore(s);
+		if ((ids & busynack) == 0)
+			return;
+		/*
+		 * Leave interrupts enabled for a bit before retrying
+		 * in order to avoid deadlocks if the other CPU is also
+		 * trying to send an IPI.
+		 */
+		DELAY(2);
+	}
+	if (kdb_active != 0 || panicstr != NULL)
+		printf("%s: couldn't send IPI to module 0x%u\n",
+		    __func__, mid);
+	else
+		panic("%s: couldn't send IPI to module 0x%u",
+		    __func__, mid);
+}
+
+static void
+jalapeno_ipi_selected(cpuset_t cpus, u_long d0, u_long d1, u_long d2)
+{
+	char pbuf[CPUSETBUFSIZ];
+	register_t s;
+	u_long ids;
+	u_int cpu;
+	int i;
+
+	KASSERT(!CPU_ISSET(curcpu, &cpus), ("%s: CPU can't IPI itself",
+	    __func__));
+	KASSERT((ldxa(0, ASI_INTR_DISPATCH_STATUS) &
+	    IDR_CHEETAH_ALL_BUSY) == 0,
+	    ("%s: outstanding dispatch", __func__));
+	if (CPU_EMPTY(&cpus))
+		return;
+	ids = 0;
+	for (i = 0; i < IPI_RETRIES * mp_ncpus; i++) {
+		s = intr_disable();
+		stxa(AA_SDB_INTR_D0, ASI_SDB_INTR_W, d0);
+		stxa(AA_SDB_INTR_D1, ASI_SDB_INTR_W, d1);
+		stxa(AA_SDB_INTR_D2, ASI_SDB_INTR_W, d2);
+		membar(Sync);
+		for (cpu = 0; cpu < mp_ncpus; cpu++) {
+			if (CPU_ISSET(cpu, &cpus)) {
+				stxa(AA_INTR_SEND | (cpuid_to_mid[cpu] <<
+				    IDC_ITID_SHIFT), ASI_SDB_INTR_W, 0);
+				membar(Sync);
+			}
+		}
+		while (((ids = ldxa(0, ASI_INTR_DISPATCH_STATUS)) &
+		    IDR_CHEETAH_ALL_BUSY) != 0)
+			;
+		intr_restore(s);
+		if ((ids &
+		    (IDR_CHEETAH_ALL_BUSY | IDR_CHEETAH_ALL_NACK)) == 0)
+			return;
+		for (cpu = 0; cpu < mp_ncpus; cpu++)
+			if (CPU_ISSET(cpu, &cpus))
+				if ((ids & (IDR_NACK <<
+				    (2 * cpuid_to_mid[cpu]))) == 0)
+					CPU_CLR(cpu, &cpus);
+		/*
+		 * Leave interrupts enabled for a bit before retrying
+		 * in order to avoid deadlocks if the other CPUs are
+		 * also trying to send IPIs.
+		 */
+		DELAY(2 * mp_ncpus);
+	}
+	if (kdb_active != 0 || panicstr != NULL)
+		printf("%s: couldn't send IPI (cpus=%s ids=0x%lu)\n",
+		    __func__, cpusetobj_strprint(pbuf, &cpus), ids);
+	else
+		panic("%s: couldn't send IPI (cpus=%s ids=0x%lu)",
+		    __func__, cpusetobj_strprint(pbuf, &cpus), ids);
 }

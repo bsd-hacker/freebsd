@@ -35,7 +35,6 @@ __FBSDID("$FreeBSD$");
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_ipsec.h"
-#include "opt_carp.h"
 #include "opt_mpath.h"
 
 #include <sys/param.h>
@@ -73,10 +72,8 @@ __FBSDID("$FreeBSD$");
 #include <netinet6/scope6_var.h>
 #include <netinet6/nd6.h>
 #include <netinet/icmp6.h>
-
-#ifdef DEV_CARP
 #include <netinet/ip_carp.h>
-#endif
+#include <netinet6/send.h>
 
 #define SDL(s) ((struct sockaddr_dl *)s)
 
@@ -115,10 +112,14 @@ nd6_ns_input(struct mbuf *m, int off, int icmp6len)
 	int lladdrlen = 0;
 	int anycast = 0, proxy = 0, tentative = 0;
 	int tlladdr;
+	int rflag;
 	union nd_opts ndopts;
-	struct sockaddr_dl *proxydl = NULL;
+	struct sockaddr_dl proxydl;
 	char ip6bufs[INET6_ADDRSTRLEN], ip6bufd[INET6_ADDRSTRLEN];
 
+	rflag = (V_ip6_forwarding) ? ND_NA_FLAG_ROUTER : 0;
+	if (ND_IFINFO(ifp)->flags & ND6_IFF_ACCEPT_RTADV && V_ip6_norbit_raif)
+		rflag = 0;
 #ifndef PULLDOWN_TEST
 	IP6_EXTHDR_CHECK(m, off, icmp6len,);
 	nd_ns = (struct nd_neighbor_solicit *)((caddr_t)ip6 + off);
@@ -222,14 +223,10 @@ nd6_ns_input(struct mbuf *m, int off, int icmp6len)
 	 * (3) "tentative" address on which DAD is being performed.
 	 */
 	/* (1) and (3) check. */
-#ifdef DEV_CARP
 	if (ifp->if_carp)
-		ifa = carp_iamatch6(ifp->if_carp, &taddr6);
+		ifa = (*carp_iamatch6_p)(ifp, &taddr6);
 	if (ifa == NULL)
 		ifa = (struct ifaddr *)in6ifa_ifpwithaddr(ifp, &taddr6);
-#else
-	ifa = (struct ifaddr *)in6ifa_ifpwithaddr(ifp, &taddr6);
-#endif
 
 	/* (2) check. */
 	if (ifa == NULL) {
@@ -255,18 +252,25 @@ nd6_ns_input(struct mbuf *m, int off, int icmp6len)
 #endif
 		need_proxy = (rt && (rt->rt_flags & RTF_ANNOUNCE) != 0 &&
 		    rt->rt_gateway->sa_family == AF_LINK);
-		if (rt)
+		if (rt != NULL) {
+			/*
+			 * Make a copy while we can be sure that rt_gateway
+			 * is still stable before unlocking to avoid lock
+			 * order problems.  proxydl will only be used if
+			 * proxy will be set in the next block.
+			 */
+			if (need_proxy)
+				proxydl = *SDL(rt->rt_gateway);
 			RTFREE_LOCKED(rt);
+		}
 		if (need_proxy) {
 			/*
 			 * proxy NDP for single entry
 			 */
 			ifa = (struct ifaddr *)in6ifa_ifpforlinklocal(ifp,
 				IN6_IFF_NOTREADY|IN6_IFF_ANYCAST);
-			if (ifa) {
+			if (ifa)
 				proxy = 1;
-				proxydl = SDL(rt->rt_gateway);
-			}
 		}
 	}
 	if (ifa == NULL) {
@@ -339,8 +343,7 @@ nd6_ns_input(struct mbuf *m, int off, int icmp6len)
 			goto bad;
 		nd6_na_output(ifp, &in6_all, &taddr6,
 		    ((anycast || proxy || !tlladdr) ? 0 : ND_NA_FLAG_OVERRIDE) |
-		    (V_ip6_forwarding ? ND_NA_FLAG_ROUTER : 0),
-		    tlladdr, (struct sockaddr *)proxydl);
+		    rflag, tlladdr, proxy ? (struct sockaddr *)&proxydl : NULL);
 		goto freeit;
 	}
 
@@ -349,8 +352,8 @@ nd6_ns_input(struct mbuf *m, int off, int icmp6len)
 
 	nd6_na_output(ifp, &saddr6, &taddr6,
 	    ((anycast || proxy || !tlladdr) ? 0 : ND_NA_FLAG_OVERRIDE) |
-	    (V_ip6_forwarding ? ND_NA_FLAG_ROUTER : 0) | ND_NA_FLAG_SOLICITED,
-	    tlladdr, (struct sockaddr *)proxydl);
+	    rflag | ND_NA_FLAG_SOLICITED, tlladdr,
+	    proxy ? (struct sockaddr *)&proxydl : NULL);
  freeit:
 	if (ifa != NULL)
 		ifa_free(ifa);
@@ -387,16 +390,14 @@ nd6_ns_output(struct ifnet *ifp, const struct in6_addr *daddr6,
     const struct in6_addr *taddr6, struct llentry *ln, int dad)
 {
 	struct mbuf *m;
+	struct m_tag *mtag;
 	struct ip6_hdr *ip6;
 	struct nd_neighbor_solicit *nd_ns;
-	struct in6_addr *src, src_in;
 	struct ip6_moptions im6o;
 	int icmp6len;
 	int maxlen;
 	caddr_t mac;
 	struct route_in6 ro;
-
-	bzero(&ro, sizeof(ro));
 
 	if (IN6_IS_ADDR_MULTICAST(taddr6))
 		return;
@@ -423,6 +424,8 @@ nd6_ns_output(struct ifnet *ifp, const struct in6_addr *daddr6,
 	if (m == NULL)
 		return;
 	m->m_pkthdr.rcvif = NULL;
+
+	bzero(&ro, sizeof(ro));
 
 	if (daddr6 == NULL || IN6_IS_ADDR_MULTICAST(daddr6)) {
 		m->m_flags |= M_MCAST;
@@ -473,28 +476,35 @@ nd6_ns_output(struct ifnet *ifp, const struct in6_addr *daddr6,
 		 * - saddr6 belongs to the outgoing interface.
 		 * Otherwise, we perform the source address selection as usual.
 		 */
-		struct ip6_hdr *hip6;		/* hold ip6 */
-		struct in6_addr *hsrc = NULL;
+		struct in6_addr *hsrc;
 
-		if ((ln != NULL) && ln->la_hold) {
-			/*
-			 * assuming every packet in la_hold has the same IP
-			 * header
-			 */
-			hip6 = mtod(ln->la_hold, struct ip6_hdr *);
-			/* XXX pullup? */
-			if (sizeof(*hip6) < ln->la_hold->m_len)
-				hsrc = &hip6->ip6_src;
-			else
-				hsrc = NULL;
+		hsrc = NULL;
+		if (ln != NULL) {
+			LLE_RLOCK(ln);
+			if (ln->la_hold != NULL) {
+				struct ip6_hdr *hip6;		/* hold ip6 */
+
+				/*
+				 * assuming every packet in la_hold has the same IP
+				 * header
+				 */
+				hip6 = mtod(ln->la_hold, struct ip6_hdr *);
+				/* XXX pullup? */
+				if (sizeof(*hip6) < ln->la_hold->m_len) {
+					ip6->ip6_src = hip6->ip6_src;
+					hsrc = &hip6->ip6_src;
+				}
+			}
+			LLE_RUNLOCK(ln);
 		}
 		if (hsrc && (ifa = (struct ifaddr *)in6ifa_ifpwithaddr(ifp,
 		    hsrc)) != NULL) {
-			src = hsrc;
+			/* ip6_src set already. */
 			ifa_free(ifa);
 		} else {
 			int error;
 			struct sockaddr_in6 dst_sa;
+			struct in6_addr src_in;
 
 			bzero(&dst_sa, sizeof(dst_sa));
 			dst_sa.sin6_family = AF_INET6;
@@ -512,7 +522,7 @@ nd6_ns_output(struct ifnet *ifp, const struct in6_addr *daddr6,
 				    error));
 				goto bad;
 			}
-			src = &src_in;
+			ip6->ip6_src = src_in;
 		}
 	} else {
 		/*
@@ -522,10 +532,8 @@ nd6_ns_output(struct ifnet *ifp, const struct in6_addr *daddr6,
 		 * above), but we do so here explicitly to make the intention
 		 * clearer.
 		 */
-		bzero(&src_in, sizeof(src_in));
-		src = &src_in;
+		bzero(&ip6->ip6_src, sizeof(ip6->ip6_src));
 	}
-	ip6->ip6_src = *src;
 	nd_ns = (struct nd_neighbor_solicit *)(ip6 + 1);
 	nd_ns->nd_ns_type = ND_NEIGHBOR_SOLICIT;
 	nd_ns->nd_ns_code = 0;
@@ -564,6 +572,15 @@ nd6_ns_output(struct ifnet *ifp, const struct in6_addr *daddr6,
 	nd_ns->nd_ns_cksum = 0;
 	nd_ns->nd_ns_cksum =
 	    in6_cksum(m, IPPROTO_ICMPV6, sizeof(*ip6), icmp6len);
+
+	if (send_sendso_input_hook != NULL) {
+		mtag = m_tag_get(PACKET_TAG_ND_OUTGOING,
+			sizeof(unsigned short), M_NOWAIT);
+		if (mtag == NULL)
+			goto bad;
+		*(unsigned short *)(mtag + 1) = nd_ns->nd_ns_type;
+		m_tag_prepend(m, mtag);
+	}
 
 	ip6_output(m, NULL, &ro, dad ? IPV6_UNSPECSRC : 0, &im6o, NULL, NULL);
 	icmp6_ifstat_inc(ifp, ifs6_out_msg);
@@ -612,6 +629,7 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 	struct llentry *ln = NULL;
 	union nd_opts ndopts;
 	struct mbuf *chain = NULL;
+	struct m_tag *mtag;
 	struct sockaddr_in6 sin6;
 	char ip6bufs[INET6_ADDRSTRLEN], ip6bufd[INET6_ADDRSTRLEN];
 
@@ -847,7 +865,8 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 			dr = defrouter_lookup(in6, ln->lle_tbl->llt_ifp);
 			if (dr)
 				defrtrlist_del(dr);
-			else if (!V_ip6_forwarding) {
+			else if (ND_IFINFO(ln->lle_tbl->llt_ifp)->flags &
+			    ND6_IFF_ACCEPT_RTADV) {
 				/*
 				 * Even if the neighbor is not in the default
 				 * router list, the neighbor may be used
@@ -881,6 +900,15 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 			 * we assume ifp is not a loopback here, so just set
 			 * the 2nd argument as the 1st one.
 			 */
+
+			if (send_sendso_input_hook != NULL) {
+				mtag = m_tag_get(PACKET_TAG_ND_OUTGOING,
+				    sizeof(unsigned short), M_NOWAIT);
+				if (mtag == NULL)
+					goto bad;
+				m_tag_prepend(m, mtag);
+			}
+
 			nd6_output_lle(ifp, ifp, m_hold, L3_ADDR_SIN6(ln), NULL, ln, &chain);
 		}
 	}
@@ -925,6 +953,7 @@ nd6_na_output(struct ifnet *ifp, const struct in6_addr *daddr6_0,
     struct sockaddr *sdl0)
 {
 	struct mbuf *m;
+	struct m_tag *mtag;
 	struct ip6_hdr *ip6;
 	struct nd_neighbor_advert *nd_na;
 	struct ip6_moptions im6o;
@@ -1029,14 +1058,10 @@ nd6_na_output(struct ifnet *ifp, const struct in6_addr *daddr6_0,
 		 * my address) use lladdr configured for the interface.
 		 */
 		if (sdl0 == NULL) {
-#ifdef DEV_CARP
 			if (ifp->if_carp)
-				mac = carp_macmatch6(ifp->if_carp, m, taddr6);
+				mac = (*carp_macmatch6_p)(ifp, m, taddr6);
 			if (mac == NULL)
 				mac = nd6_ifptomac(ifp);
-#else
-			mac = nd6_ifptomac(ifp);
-#endif
 		} else if (sdl0->sa_family == AF_LINK) {
 			struct sockaddr_dl *sdl;
 			sdl = (struct sockaddr_dl *)sdl0;
@@ -1066,6 +1091,15 @@ nd6_na_output(struct ifnet *ifp, const struct in6_addr *daddr6_0,
 	nd_na->nd_na_cksum = 0;
 	nd_na->nd_na_cksum =
 	    in6_cksum(m, IPPROTO_ICMPV6, sizeof(struct ip6_hdr), icmp6len);
+
+	if (send_sendso_input_hook != NULL) {
+		mtag = m_tag_get(PACKET_TAG_ND_OUTGOING,
+		    sizeof(unsigned short), M_NOWAIT);
+		if (mtag == NULL)
+			goto bad;
+		*(unsigned short *)(mtag + 1) = nd_na->nd_na_type;
+		m_tag_prepend(m, mtag);
+	}
 
 	ip6_output(m, NULL, &ro, 0, &im6o, NULL, NULL);
 	icmp6_ifstat_inc(ifp, ifs6_out_msg);
@@ -1102,6 +1136,7 @@ nd6_ifptomac(struct ifnet *ifp)
 #ifdef IFT_CARP
 	case IFT_CARP:
 #endif
+	case IFT_INFINIBAND:
 	case IFT_BRIDGE:
 	case IFT_ISO88025:
 		return IF_LLADDR(ifp);
@@ -1132,11 +1167,11 @@ nd6_dad_find(struct ifaddr *ifa)
 {
 	struct dadq *dp;
 
-	for (dp = V_dadq.tqh_first; dp; dp = dp->dad_list.tqe_next) {
+	TAILQ_FOREACH(dp, &V_dadq, dad_list)
 		if (dp->dad_ifa == ifa)
-			return dp;
-	}
-	return NULL;
+			return (dp);
+
+	return (NULL);
 }
 
 static void
@@ -1419,6 +1454,7 @@ nd6_dad_duplicated(struct ifaddr *ifa)
 #ifdef IFT_IEEE80211
 		case IFT_IEEE80211:
 #endif
+		case IFT_INFINIBAND:
 			in6 = ia->ia_addr.sin6_addr;
 			if (in6_get_hw_ifid(ifp, &in6) == 0 &&
 			    IN6_ARE_ADDR_EQUAL(&ia->ia_addr.sin6_addr, &in6)) {

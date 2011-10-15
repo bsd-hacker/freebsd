@@ -102,7 +102,7 @@ TUNABLE_INT("hw.usb.urtw.preamble_mode", &urtw_preamble_mode);
 	{ USB_VPI(USB_VENDOR_##v, USB_PRODUCT_##v##_##p, URTW_REV_RTL8187L) }
 #define	URTW_REV_RTL8187B	0
 #define	URTW_REV_RTL8187L	1
-static const struct usb_device_id urtw_devs[] = {
+static const STRUCT_USB_HOST_ID urtw_devs[] = {
 	URTW_DEV_B(NETGEAR, WG111V3),
 	URTW_DEV_B(REALTEK, RTL8187B_0),
 	URTW_DEV_B(REALTEK, RTL8187B_1),
@@ -115,7 +115,7 @@ static const struct usb_device_id urtw_devs[] = {
 	URTW_DEV_L(REALTEK, RTL8187),
 	URTW_DEV_L(SITECOMEU, WL168V1),
 	URTW_DEV_L(SURECOM, EP9001G2A),
-	{ USB_VPI(0x1b75, 0x8187, URTW_REV_RTL8187L) },
+	{ USB_VPI(USB_VENDOR_OVISLINK, 0x8187, URTW_REV_RTL8187L) },
 	{ USB_VPI(USB_VENDOR_DICKSMITH, 0x9401, URTW_REV_RTL8187L) },
 	{ USB_VPI(USB_VENDOR_HP, 0xca02, URTW_REV_RTL8187L) },
 	{ USB_VPI(USB_VENDOR_LOGITEC, 0x010c, URTW_REV_RTL8187L) },
@@ -1830,10 +1830,10 @@ urtw_tx_start(struct urtw_softc *sc, struct ieee80211_node *ni, struct mbuf *m0,
 static int
 urtw_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 {
-	struct ieee80211_node *ni = vap->iv_bss;
 	struct ieee80211com *ic = vap->iv_ic;
 	struct urtw_softc *sc = ic->ic_ifp->if_softc;
 	struct urtw_vap *uvp = URTW_VAP(vap);
+	struct ieee80211_node *ni;
 	usb_error_t error = 0;
 
 	DPRINTF(sc, URTW_DEBUG_STATE, "%s: %s -> %s\n", __func__,
@@ -1854,6 +1854,7 @@ urtw_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 	case IEEE80211_S_ASSOC:
 		break;
 	case IEEE80211_S_RUN:
+		ni = ieee80211_ref_node(vap->iv_bss);
 		/* setting bssid.  */
 		urtw_write32_m(sc, URTW_BSSID, ((uint32_t *)ni->ni_bssid)[0]);
 		urtw_write16_m(sc, URTW_BSSID + 4,
@@ -1868,6 +1869,7 @@ urtw_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 		if (error != 0)
 			device_printf(sc->sc_dev,
 			    "could not control LED (%d)\n", error);
+		ieee80211_free_node(ni);
 		break;
 	default:
 		break;
@@ -4441,3 +4443,4 @@ static devclass_t urtw_devclass;
 DRIVER_MODULE(urtw, uhub, urtw_driver, urtw_devclass, NULL, 0);
 MODULE_DEPEND(urtw, wlan, 1, 1, 1);
 MODULE_DEPEND(urtw, usb, 1, 1, 1);
+MODULE_VERSION(urtw, 1);

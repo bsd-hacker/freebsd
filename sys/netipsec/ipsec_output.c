@@ -165,9 +165,33 @@ ipsec_process_done(struct mbuf *m, struct ipsecrequest *isr)
 	 */
 	if (isr->next) {
 		V_ipsec4stat.ips_out_bundlesa++;
-		return ipsec4_process_packet(m, isr->next, 0, 0);
+		sav = isr->next->sav;
+		saidx = &sav->sah->saidx;
+		switch (saidx->dst.sa.sa_family) {
+#ifdef INET
+		case AF_INET:
+			return ipsec4_process_packet(m, isr->next, 0, 0);
+			/* NOTREACHED */
+#endif
+#ifdef notyet
+#ifdef INET6
+		case AF_INET6:
+			/* XXX */
+			ipsec6_output_trans()
+			ipsec6_output_tunnel()
+			/* NOTREACHED */
+#endif /* INET6 */
+#endif
+		default:
+			DPRINTF(("%s: unknown protocol family %u\n", __func__,
+			    saidx->dst.sa.sa_family));
+			error = ENXIO;
+			goto bad;
+		}
 	}
 	key_sa_recordxfer(sav, m);		/* record data transfer */
+
+	m_addr_changed(m);
 
 	/*
 	 * We're done with IPsec processing, transmit the packet using the
@@ -247,7 +271,6 @@ ipsec_process_done(struct mbuf *m, struct ipsecrequest *isr)
 	panic("ipsec_process_done");
 bad:
 	m_freem(m);
-	KEY_FREESAV(&sav);
 	return (error);
 }
 
@@ -758,7 +781,7 @@ ipsec6_output_tunnel(struct ipsec_output_state *state, struct secpolicy *sp, int
 	struct ipsecrequest *isr;
 	struct secasindex saidx;
 	int error;
-	struct sockaddr_in6* dst6;
+	struct sockaddr_in6 *dst6;
 	struct mbuf *m;
 
 	IPSEC_ASSERT(state != NULL, ("null state"));
@@ -829,7 +852,8 @@ ipsec6_output_tunnel(struct ipsec_output_state *state, struct secpolicy *sp, int
 		}
 		ip6 = mtod(m, struct ip6_hdr *);
 
-		state->ro = &isr->sav->sah->sa_route;
+		state->ro =
+		    (struct route *)&isr->sav->sah->route_cache.sin6_route;
 		state->dst = (struct sockaddr *)&state->ro->ro_dst;
 		dst6 = (struct sockaddr_in6 *)state->dst;
 		if (state->ro->ro_rt
@@ -853,10 +877,8 @@ ipsec6_output_tunnel(struct ipsec_output_state *state, struct secpolicy *sp, int
 		}
 
 		/* adjust state->dst if tunnel endpoint is offlink */
-		if (state->ro->ro_rt->rt_flags & RTF_GATEWAY) {
+		if (state->ro->ro_rt->rt_flags & RTF_GATEWAY)
 			state->dst = (struct sockaddr *)state->ro->ro_rt->rt_gateway;
-			dst6 = (struct sockaddr_in6 *)state->dst;
-		}
 	}
 
 	m = ipsec6_splithdr(m);

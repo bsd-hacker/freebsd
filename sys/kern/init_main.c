@@ -55,11 +55,13 @@ __FBSDID("$FreeBSD$");
 #include <sys/jail.h>
 #include <sys/ktr.h>
 #include <sys/lock.h>
+#include <sys/loginclass.h>
 #include <sys/mount.h>
 #include <sys/mutex.h>
 #include <sys/syscallsubr.h>
 #include <sys/sysctl.h>
 #include <sys/proc.h>
+#include <sys/racct.h>
 #include <sys/resourcevar.h>
 #include <sys/systm.h>
 #include <sys/signalvar.h>
@@ -100,9 +102,11 @@ struct	vmspace vmspace0;
 struct	proc *initproc;
 
 int	boothowto = 0;		/* initialized so that it can be patched */
-SYSCTL_INT(_debug, OID_AUTO, boothowto, CTLFLAG_RD, &boothowto, 0, "");
+SYSCTL_INT(_debug, OID_AUTO, boothowto, CTLFLAG_RD, &boothowto, 0,
+	"Boot control flags, passed from loader");
 int	bootverbose;
-SYSCTL_INT(_debug, OID_AUTO, bootverbose, CTLFLAG_RW, &bootverbose, 0, "");
+SYSCTL_INT(_debug, OID_AUTO, bootverbose, CTLFLAG_RW, &bootverbose, 0,
+	"Control the output of verbose kernel messages");
 
 /*
  * This ensures that there is at least one entry so that the sysinit_set
@@ -177,6 +181,9 @@ mi_startup(void)
 	int last;
 	int verbose;
 #endif
+
+	if (boothowto & RB_VERBOSE)
+		bootverbose++;
 
 	if (sysinit == NULL) {
 		sysinit = SET_BEGIN(sysinit_set);
@@ -325,14 +332,20 @@ SYSINIT(diagwarn2, SI_SUB_RUN_SCHEDULER, SI_ORDER_THIRD + 2,
     print_caddr_t, diag_warn);
 #endif
 
-static void
-set_boot_verbose(void *data __unused)
+static int
+null_fetch_syscall_args(struct thread *td __unused,
+    struct syscall_args *sa __unused)
 {
 
-	if (boothowto & RB_VERBOSE)
-		bootverbose++;
+	panic("null_fetch_syscall_args");
 }
-SYSINIT(boot_verbose, SI_SUB_TUNABLES, SI_ORDER_ANY, set_boot_verbose, NULL);
+
+static void
+null_set_syscall_retval(struct thread *td __unused, int error __unused)
+{
+
+	panic("null_set_syscall_retval");
+}
 
 struct sysentvec null_sysvec = {
 	.sv_size	= 0,
@@ -361,7 +374,12 @@ struct sysentvec null_sysvec = {
 	.sv_copyout_strings	= NULL,
 	.sv_setregs	= NULL,
 	.sv_fixlimit	= NULL,
-	.sv_maxssiz	= NULL
+	.sv_maxssiz	= NULL,
+	.sv_flags	= 0,
+	.sv_set_syscall_retval = null_set_syscall_retval,
+	.sv_fetch_syscall_args = null_fetch_syscall_args,
+	.sv_syscallnames = NULL,
+	.sv_schedtail	= NULL,
 };
 
 /*
@@ -440,12 +458,14 @@ proc0_init(void *dummy __unused)
 	STAILQ_INIT(&p->p_ktr);
 	p->p_nice = NZERO;
 	td->td_tid = PID_MAX + 1;
+	LIST_INSERT_HEAD(TIDHASH(td->td_tid), td, td_hash);
 	td->td_state = TDS_RUNNING;
 	td->td_pri_class = PRI_TIMESHARE;
 	td->td_user_pri = PUSER;
 	td->td_base_user_pri = PUSER;
+	td->td_lend_user_pri = PRI_MAX;
 	td->td_priority = PVM;
-	td->td_base_pri = PUSER;
+	td->td_base_pri = PVM;
 	td->td_oncpu = 0;
 	td->td_flags = TDF_INMEM|TDP_KTHREAD;
 	td->td_cpuset = cpuset_thread0();
@@ -467,6 +487,7 @@ proc0_init(void *dummy __unused)
 	p->p_ucred->cr_uidinfo = uifind(0);
 	p->p_ucred->cr_ruidinfo = uifind(0);
 	p->p_ucred->cr_prison = &prison0;
+	p->p_ucred->cr_loginclass = loginclass_find("default");
 #ifdef AUDIT
 	audit_cred_kproc0(p->p_ucred);
 #endif
@@ -506,6 +527,9 @@ proc0_init(void *dummy __unused)
 	p->p_limit->pl_rlimit[RLIMIT_MEMLOCK].rlim_max = pageablemem;
 	p->p_cpulimit = RLIM_INFINITY;
 
+	/* Initialize resource accounting structures. */
+	racct_create(&p->p_racct);
+
 	p->p_stats = pstats_alloc();
 
 	/* Allocate a prototype map so we have something to fork. */
@@ -520,10 +544,9 @@ proc0_init(void *dummy __unused)
 	vm_map_init(&vmspace0.vm_map, vmspace_pmap(&vmspace0),
 	    p->p_sysent->sv_minuser, p->p_sysent->sv_maxuser);
 
-	/*-
-	 * call the init and ctor for the new thread and proc
-	 * we wait to do this until all other structures
-	 * are fairly sane.
+	/*
+	 * Call the init and ctor for the new thread and proc.  We wait
+	 * to do this until all other structures are fairly sane.
 	 */
 	EVENTHANDLER_INVOKE(process_init, p);
 	EVENTHANDLER_INVOKE(thread_init, td);
@@ -534,6 +557,9 @@ proc0_init(void *dummy __unused)
 	 * Charge root for one process.
 	 */
 	(void)chgproccnt(p->p_ucred->cr_ruidinfo, 1, 0);
+	PROC_LOCK(p);
+	racct_add_force(p, RACCT_NPROC, 1);
+	PROC_UNLOCK(p);
 }
 SYSINIT(p0init, SI_SUB_INTRINSIC, SI_ORDER_FIRST, proc0_init, NULL);
 
@@ -629,7 +655,8 @@ SYSCTL_STRING(_kern, OID_AUTO, init_path, CTLFLAG_RD, init_path, 0,
 #endif
 static int init_shutdown_timeout = INIT_SHUTDOWN_TIMEOUT;
 SYSCTL_INT(_kern, OID_AUTO, init_shutdown_timeout,
-	CTLFLAG_RW, &init_shutdown_timeout, 0, "");
+	CTLFLAG_RW, &init_shutdown_timeout, 0, "Shutdown timeout of init(8). "
+	"Unused within kernel, but used to control init(8)");
 
 /*
  * Start the initial user process; try exec'ing each pathname in init_path.
@@ -738,7 +765,7 @@ start_init(void *dummy)
 		 * Otherwise, return via fork_trampoline() all the way
 		 * to user mode as init!
 		 */
-		if ((error = execve(td, &args)) == 0) {
+		if ((error = sys_execve(td, &args)) == 0) {
 			mtx_unlock(&Giant);
 			return;
 		}
@@ -763,7 +790,8 @@ create_init(const void *udata __unused)
 	struct ucred *newcred, *oldcred;
 	int error;
 
-	error = fork1(&thread0, RFFDG | RFPROC | RFSTOPPED, 0, &initproc);
+	error = fork1(&thread0, RFFDG | RFPROC | RFSTOPPED, 0, &initproc,
+	    NULL, 0);
 	if (error)
 		panic("cannot fork init: %d\n", error);
 	KASSERT(initproc->p_pid == 1, ("create_init: initproc->p_pid != 1"));

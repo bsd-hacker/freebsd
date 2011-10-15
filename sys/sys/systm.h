@@ -46,7 +46,7 @@
 #include <sys/stdint.h>		/* for people using printf mainly */
 
 extern int cold;		/* nonzero if we are doing a cold boot */
-extern int rebooting;		/* boot() has been called. */
+extern int rebooting;		/* kern_reboot() has been called. */
 extern const char *panicstr;	/* panic message */
 extern char version[];		/* system version */
 extern char copyright[];	/* system copyright */
@@ -125,6 +125,8 @@ extern char static_hints[];	/* by config for now */
 
 extern char **kenvp;
 
+extern const void *zero_region;	/* address space maps to a zeroed page	*/
+
 /*
  * General function declarations.
  */
@@ -140,6 +142,7 @@ struct tty;
 struct ucred;
 struct uio;
 struct _jmp_buf;
+struct trapframe;
 
 int	setjmp(struct _jmp_buf *);
 void	longjmp(struct _jmp_buf *, int) __dead2;
@@ -148,7 +151,7 @@ int	nullop(void);
 int	eopnotsupp(void);
 int	ureadc(int, struct uio *);
 void	hashdestroy(void *, struct malloc_type *, u_long);
-void	*hashinit(int count, struct malloc_type *type, u_long *hashmark);
+void	*hashinit(int count, struct malloc_type *type, u_long *hashmask);
 void	*hashinit_flags(int count, struct malloc_type *type,
     u_long *hashmask, int flags);
 #define	HASH_NOWAIT	0x00000001
@@ -157,11 +160,7 @@ void	*hashinit_flags(int count, struct malloc_type *type,
 void	*phashinit(int count, struct malloc_type *type, u_long *nentries);
 void	g_waitidle(void);
 
-#ifdef RESTARTABLE_PANICS
-void	panic(const char *, ...) __printflike(1, 2);
-#else
 void	panic(const char *, ...) __dead2 __printflike(1, 2);
-#endif
 
 void	cpu_boot(int);
 void	cpu_flush_dcache(void *, size_t);
@@ -170,7 +169,6 @@ void	critical_enter(void);
 void	critical_exit(void);
 void	init_param1(void);
 void	init_param2(long physpages);
-void	init_param3(long kmempages);
 void	init_static_kenv(char *, size_t);
 void	tablefull(const char *);
 int	kvprintf(char const *, void (*)(int, void*), void *, int,
@@ -215,7 +213,11 @@ int	copyinstr(const void * __restrict udaddr, void * __restrict kaddr,
 	    __nonnull(1) __nonnull(2);
 int	copyin(const void * __restrict udaddr, void * __restrict kaddr,
 	    size_t len) __nonnull(1) __nonnull(2);
+int	copyin_nofault(const void * __restrict udaddr, void * __restrict kaddr,
+	    size_t len) __nonnull(1) __nonnull(2);
 int	copyout(const void * __restrict kaddr, void * __restrict udaddr,
+	    size_t len) __nonnull(1) __nonnull(2);
+int	copyout_nofault(const void * __restrict kaddr, void * __restrict udaddr,
 	    size_t len) __nonnull(1) __nonnull(2);
 
 int	fubyte(const void *base);
@@ -236,15 +238,23 @@ void	realitexpire(void *);
 int	sysbeep(int hertz, int period);
 
 void	hardclock(int usermode, uintfptr_t pc);
+void	hardclock_anycpu(int cnt, int usermode);
 void	hardclock_cpu(int usermode);
+void	hardclock_sync(int cpu);
 void	softclock(void *);
 void	statclock(int usermode);
 void	profclock(int usermode, uintfptr_t pc);
+
+int	hardclockintr(void);
 
 void	startprofclock(struct proc *);
 void	stopprofclock(struct proc *);
 void	cpu_startprofclock(void);
 void	cpu_stopprofclock(void);
+void	cpu_idleclock(void);
+void	cpu_activeclock(void);
+extern int	cpu_can_deep_sleep;
+extern int	cpu_disable_deep_sleep;
 
 int	cr_cansee(struct ucred *u1, struct ucred *u2);
 int	cr_canseesocket(struct ucred *cred, struct socket *so);
@@ -278,9 +288,12 @@ void	adjust_timeout_calltodo(struct timeval *time_change);
 /* Initialize the world */
 void	consinit(void);
 void	cpu_initclocks(void);
+void	cpu_initclocks_bsp(void);
+void	cpu_initclocks_ap(void);
 void	usrinfoinit(void);
 
 /* Finalize the world */
+void	kern_reboot(int) __dead2;
 void	shutdown_nice(int);
 
 /* Timeouts */
@@ -359,48 +372,13 @@ void delete_unrhdr(struct unrhdr *uh);
 void clean_unrhdr(struct unrhdr *uh);
 void clean_unrhdrl(struct unrhdr *uh);
 int alloc_unr(struct unrhdr *uh);
+int alloc_unr_specific(struct unrhdr *uh, u_int item);
 int alloc_unrl(struct unrhdr *uh);
 void free_unr(struct unrhdr *uh, u_int item);
 
 /*
- * This is about as magic as it gets.  fortune(1) has got similar code
- * for reversing bits in a word.  Who thinks up this stuff??
- *
- * Yes, it does appear to be consistently faster than:
- * while (i = ffs(m)) {
- *	m >>= i;
- *	bits++;
- * }
- * and
- * while (lsb = (m & -m)) {	// This is magic too
- * 	m &= ~lsb;		// or: m ^= lsb
- *	bits++;
- * }
- * Both of these latter forms do some very strange things on gcc-3.1 with
- * -mcpu=pentiumpro and/or -march=pentiumpro and/or -O or -O2.
- * There is probably an SSE or MMX popcnt instruction.
- *
- * I wonder if this should be in libkern?
- *
- * XXX Stop the presses!  Another one:
- * static __inline u_int32_t
- * popcnt1(u_int32_t v)
- * {
- *	v -= ((v >> 1) & 0x55555555);
- *	v = (v & 0x33333333) + ((v >> 2) & 0x33333333);
- *	v = (v + (v >> 4)) & 0x0F0F0F0F;
- *	return (v * 0x01010101) >> 24;
- * }
- * The downside is that it has a multiply.  With a pentium3 with
- * -mcpu=pentiumpro and -march=pentiumpro then gcc-3.1 will use
- * an imull, and in that case it is faster.  In most other cases
- * it appears slightly slower.
- *
- * Another variant (also from fortune):
- * #define BITCOUNT(x) (((BX_(x)+(BX_(x)>>4)) & 0x0F0F0F0F) % 255)
- * #define  BX_(x)     ((x) - (((x)>>1)&0x77777777)            \
- *                          - (((x)>>2)&0x33333333)            \
- *                          - (((x)>>3)&0x11111111))
+ * Population count algorithm using SWAR approach
+ * - "SIMD Within A Register".
  */
 static __inline uint32_t
 bitcount32(uint32_t x)
@@ -411,6 +389,17 @@ bitcount32(uint32_t x)
 	x = (x + (x >> 4)) & 0x0f0f0f0f;
 	x = (x + (x >> 8));
 	x = (x + (x >> 16)) & 0x000000ff;
+	return (x);
+}
+
+static __inline uint16_t
+bitcount16(uint32_t x)
+{
+
+	x = (x & 0x5555) + ((x & 0xaaaa) >> 1);
+	x = (x & 0x3333) + ((x & 0xcccc) >> 2);
+	x = (x + (x >> 4)) & 0x0f0f;
+	x = (x + (x >> 8)) & 0x00ff;
 	return (x);
 }
 

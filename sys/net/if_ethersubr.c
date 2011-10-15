@@ -35,7 +35,6 @@
 #include "opt_inet6.h"
 #include "opt_ipx.h"
 #include "opt_netgraph.h"
-#include "opt_carp.h"
 #include "opt_mbuf_profiling.h"
 
 #include <sys/param.h>
@@ -70,18 +69,13 @@
 #include <netinet/in.h>
 #include <netinet/in_var.h>
 #include <netinet/if_ether.h>
+#include <netinet/ip_carp.h>
 #include <netinet/ip_var.h>
 #include <netinet/ip_fw.h>
 #include <netinet/ipfw/ip_fw_private.h>
 #endif
 #ifdef INET6
 #include <netinet6/nd6.h>
-#endif
-
-#if defined(INET) || defined(INET6)
-#ifdef DEV_CARP
-#include <netinet/ip_carp.h>
-#endif
 #endif
 
 #ifdef IPX
@@ -135,6 +129,9 @@ static const u_char etherbroadcastaddr[ETHER_ADDR_LEN] =
 
 static	int ether_resolvemulti(struct ifnet *, struct sockaddr **,
 		struct sockaddr *);
+#ifdef VIMAGE
+static	void ether_reassign(struct ifnet *, struct vnet *, char *);
+#endif
 
 /* XXX: should be in an arp support file, not here */
 MALLOC_DEFINE(M_ARPCOM, "arpcom", "802.* interface internals");
@@ -399,11 +396,9 @@ ether_output(struct ifnet *ifp, struct mbuf *m,
 	}
 
 #if defined(INET) || defined(INET6)
-#ifdef DEV_CARP
 	if (ifp->if_carp &&
-	    (error = carp_output(ifp, m, dst, NULL)))
+	    (error = (*carp_output_p)(ifp, m, dst, NULL)))
 		goto bad;
-#endif
 #endif
 
 	/* Handle ng_ether(4) processing, if any */
@@ -504,6 +499,7 @@ ether_ipfw_chk(struct mbuf **m0, struct ifnet *dst, int shared)
 	args.m = m;		/* the packet we are looking at		*/
 	args.oif = dst;		/* destination, if any			*/
 	args.next_hop = NULL;	/* we do not support forward yet	*/
+	args.next_hop6 = NULL;	/* we do not support forward yet	*/
 	args.eh = &save_eh;	/* MAC header for bridged/MAC packets	*/
 	args.inp = NULL;	/* used by ipfw uid/gid/jail rules	*/
 	i = V_ip_fw_chk_ptr(&args);
@@ -566,7 +562,7 @@ ether_ipfw_chk(struct mbuf **m0, struct ifnet *dst, int shared)
  * mbuf chain m with the ethernet header at the front.
  */
 static void
-ether_input(struct ifnet *ifp, struct mbuf *m)
+ether_input_internal(struct ifnet *ifp, struct mbuf *m)
 {
 	struct ether_header *eh;
 	u_short etype;
@@ -697,6 +693,8 @@ ether_input(struct ifnet *ifp, struct mbuf *m)
 		m_adj(m, ETHER_VLAN_ENCAP_LEN);
 	}
 
+	M_SETFIB(m, ifp->if_fib);
+
 	/* Allow ng_ether(4) to claim this frame. */
 	if (IFP2AC(ifp)->ac_netgraph != NULL) {
 		KASSERT(ng_ether_input_p != NULL,
@@ -724,7 +722,6 @@ ether_input(struct ifnet *ifp, struct mbuf *m)
 	}
 
 #if defined(INET) || defined(INET6)
-#ifdef DEV_CARP
 	/*
 	 * Clear M_PROMISC on frame so that carp(4) will see it when the
 	 * mbuf flows up to Layer 3.
@@ -735,10 +732,9 @@ ether_input(struct ifnet *ifp, struct mbuf *m)
 	 * TODO: Maintain a hash table of ethernet addresses other than
 	 * ether_dhost which may be active on this ifp.
 	 */
-	if (ifp->if_carp && carp_forus(ifp->if_carp, eh->ether_dhost)) {
+	if (ifp->if_carp && (*carp_forus_p)(ifp, eh->ether_dhost)) {
 		m->m_flags &= ~M_PROMISC;
 	} else
-#endif
 #endif
 	{
 		/*
@@ -759,6 +755,46 @@ ether_input(struct ifnet *ifp, struct mbuf *m)
 
 	ether_demux(ifp, m);
 	CURVNET_RESTORE();
+}
+
+/*
+ * Ethernet input dispatch; by default, direct dispatch here regardless of
+ * global configuration.
+ */
+static void
+ether_nh_input(struct mbuf *m)
+{
+
+	ether_input_internal(m->m_pkthdr.rcvif, m);
+}
+
+static struct netisr_handler	ether_nh = {
+	.nh_name = "ether",
+	.nh_handler = ether_nh_input,
+	.nh_proto = NETISR_ETHER,
+	.nh_policy = NETISR_POLICY_SOURCE,
+	.nh_dispatch = NETISR_DISPATCH_DIRECT,
+};
+
+static void
+ether_init(__unused void *arg)
+{
+
+	netisr_register(&ether_nh);
+}
+SYSINIT(ether, SI_SUB_INIT_IF, SI_ORDER_ANY, ether_init, NULL);
+
+static void
+ether_input(struct ifnet *ifp, struct mbuf *m)
+{
+
+	/*
+	 * We will rely on rcvif being set properly in the deferred context,
+	 * so assert it is correct here.
+	 */
+	KASSERT(m->m_pkthdr.rcvif == ifp, ("%s: ifnet mismatch", __func__));
+
+	netisr_dispatch(NETISR_ETHER, m);
 }
 
 /*
@@ -954,6 +990,9 @@ ether_ifattach(struct ifnet *ifp, const u_int8_t *lla)
 	ifp->if_output = ether_output;
 	ifp->if_input = ether_input;
 	ifp->if_resolvemulti = ether_resolvemulti;
+#ifdef VIMAGE
+	ifp->if_reassign = ether_reassign;
+#endif
 	if (ifp->if_baudrate == 0)
 		ifp->if_baudrate = IF_Mbps(10);		/* just a default */
 	ifp->if_broadcastaddr = etherbroadcastaddr;
@@ -992,6 +1031,25 @@ ether_ifdetach(struct ifnet *ifp)
 	bpfdetach(ifp);
 	if_detach(ifp);
 }
+
+#ifdef VIMAGE
+void
+ether_reassign(struct ifnet *ifp, struct vnet *new_vnet, char *unused __unused)
+{
+
+	if (IFP2AC(ifp)->ac_netgraph != NULL) {
+		KASSERT(ng_ether_detach_p != NULL,
+		    ("ng_ether_detach_p is NULL"));
+		(*ng_ether_detach_p)(ifp);
+	}
+
+	if (ng_ether_attach_p != NULL) {
+		CURVNET_SET_QUIET(new_vnet);
+		(*ng_ether_attach_p)(ifp);
+		CURVNET_RESTORE();
+	}
+}
+#endif
 
 SYSCTL_DECL(_net_link);
 SYSCTL_NODE(_net_link, IFT_ETHER, ether, CTLFLAG_RW, 0, "Ethernet");

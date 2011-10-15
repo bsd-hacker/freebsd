@@ -40,7 +40,7 @@ __FBSDID("$FreeBSD$");
 #include "actbl.h"
 
 /*
- * Detect ACPI and export information about the APCI BIOS into the
+ * Detect ACPI and export information about the ACPI BIOS into the
  * environment.
  */
 
@@ -56,14 +56,12 @@ biosacpi_detect(void)
     char		buf[24];
     int			revision;
 
-    /* XXX check the BIOS datestamp */
-
     /* locate and validate the RSDP */
     if ((rsdp = biosacpi_find_rsdp()) == NULL)
 	return;
 
     /* export values from the RSDP */
-    sprintf(buf, "%p", VTOP(rsdp));
+    sprintf(buf, "%u", VTOP(rsdp));
     setenv("hint.acpi.0.rsdp", buf, 1);
     revision = rsdp->Revision;
     if (revision == 0)
@@ -82,9 +80,6 @@ biosacpi_detect(void)
 	sprintf(buf, "%d", rsdp->Length);
 	setenv("hint.acpi.0.xsdt_length", buf, 1);
     }
-    /* XXX other tables? */
-
-    setenv("acpi_load", "YES", 1);
 }
 
 /*

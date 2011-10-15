@@ -69,6 +69,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/proc.h>
+#include <sys/racct.h>
 #include <sys/resourcevar.h>
 #include <sys/sched.h>
 #include <sys/sf_buf.h>
@@ -93,8 +94,6 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_extern.h>
 #include <vm/vm_pager.h>
 #include <vm/swap_pager.h>
-
-extern int maxslp;
 
 /*
  * System initialization
@@ -184,6 +183,7 @@ int
 vslock(void *addr, size_t len)
 {
 	vm_offset_t end, last, start;
+	unsigned long nsize;
 	vm_size_t npages;
 	int error;
 
@@ -196,9 +196,13 @@ vslock(void *addr, size_t len)
 	if (npages > vm_page_max_wired)
 		return (ENOMEM);
 	PROC_LOCK(curproc);
-	if (ptoa(npages +
-	    pmap_wired_count(vm_map_pmap(&curproc->p_vmspace->vm_map))) >
-	    lim_cur(curproc, RLIMIT_MEMLOCK)) {
+	nsize = ptoa(npages +
+	    pmap_wired_count(vm_map_pmap(&curproc->p_vmspace->vm_map)));
+	if (nsize > lim_cur(curproc, RLIMIT_MEMLOCK)) {
+		PROC_UNLOCK(curproc);
+		return (ENOMEM);
+	}
+	if (racct_set(curproc, RACCT_MEMLOCK, nsize)) {
 		PROC_UNLOCK(curproc);
 		return (ENOMEM);
 	}
@@ -218,6 +222,14 @@ vslock(void *addr, size_t len)
 #endif
 	error = vm_map_wire(&curproc->p_vmspace->vm_map, start, end,
 	    VM_MAP_WIRE_SYSTEM | VM_MAP_WIRE_NOHOLES);
+#ifdef RACCT
+	if (error != KERN_SUCCESS) {
+		PROC_LOCK(curproc);
+		racct_set(curproc, RACCT_MEMLOCK, 
+		    ptoa(pmap_wired_count(vm_map_pmap(&curproc->p_vmspace->vm_map))));
+		PROC_UNLOCK(curproc);
+	}
+#endif
 	/*
 	 * Return EFAULT on error to match copy{in,out}() behaviour
 	 * rather than returning ENOMEM like mlock() would.
@@ -233,6 +245,13 @@ vsunlock(void *addr, size_t len)
 	(void)vm_map_unwire(&curproc->p_vmspace->vm_map,
 	    trunc_page((vm_offset_t)addr), round_page((vm_offset_t)addr + len),
 	    VM_MAP_WIRE_SYSTEM | VM_MAP_WIRE_NOHOLES);
+
+#ifdef RACCT
+	PROC_LOCK(curproc);
+	racct_set(curproc, RACCT_MEMLOCK,
+	    ptoa(pmap_wired_count(vm_map_pmap(&curproc->p_vmspace->vm_map))));
+	PROC_UNLOCK(curproc);
+#endif
 }
 
 /*
@@ -732,7 +751,8 @@ loop:
 	sx_slock(&allproc_lock);
 	FOREACH_PROC_IN_SYSTEM(p) {
 		PROC_LOCK(p);
-		if (p->p_flag & (P_SWAPPINGOUT | P_SWAPPINGIN | P_INMEM)) {
+		if (p->p_state == PRS_NEW ||
+		    p->p_flag & (P_SWAPPINGOUT | P_SWAPPINGIN | P_INMEM)) {
 			PROC_UNLOCK(p);
 			continue;
 		}
@@ -770,7 +790,7 @@ loop:
 	 * Nothing to do, back to sleep.
 	 */
 	if ((p = pp) == NULL) {
-		tsleep(&proc0, PVM, "sched", maxslp * hz / 2);
+		tsleep(&proc0, PVM, "sched", MAXSLP * hz / 2);
 		goto loop;
 	}
 	PROC_LOCK(p);
@@ -819,12 +839,12 @@ SYSCTL_INT(_vm, OID_AUTO, swap_idle_threshold2, CTLFLAG_RW,
     &swap_idle_threshold2, 0, "Time before a process will be swapped out");
 
 /*
- * Swapout is driven by the pageout daemon.  Very simple, we find eligible
- * procs and swap out their stacks.  We try to always "swap" at least one
- * process in case we need the room for a swapin.
- * If any procs have been sleeping/stopped for at least maxslp seconds,
- * they are swapped.  Else, we swap the longest-sleeping or stopped process,
- * if any, otherwise the longest-resident process.
+ * First, if any processes have been sleeping or stopped for at least
+ * "swap_idle_threshold1" seconds, they are swapped out.  If, however,
+ * no such processes exist, then the longest-sleeping or stopped
+ * process is swapped out.  Finally, and only as a last resort, if
+ * there are no sleeping or stopped processes, the longest-resident
+ * process is swapped out.
  */
 void
 swapout_procs(action)

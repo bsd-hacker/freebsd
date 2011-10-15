@@ -51,6 +51,8 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_page.h>
 #include <vm/vm_param.h>
 
+#include <machine/cache.h>
+
 /*
  * Implement uiomove(9) from physical memory using a combination
  * of the direct mapping and sf_bufs to reduce the creation and
@@ -90,17 +92,22 @@ uiomove_fromphys(vm_page_t ma[], vm_offset_t offset, int n, struct uio *uio)
 		cnt = ulmin(cnt, PAGE_SIZE - page_offset);
 		m = ma[offset >> PAGE_SHIFT];
 		pa = VM_PAGE_TO_PHYS(m);
-		if (pa < MIPS_KSEG0_LARGEST_PHYS) {
-			cp = (char *)MIPS_PHYS_TO_KSEG0(pa);
+		if (MIPS_DIRECT_MAPPABLE(pa)) {
 			sf = NULL;
+			cp = (char *)MIPS_PHYS_TO_DIRECT(pa) + page_offset;
+			/*
+			 * flush all mappings to this page, KSEG0 address first
+			 * in order to get it overwritten by correct data
+			 */
+			mips_dcache_wbinv_range((vm_offset_t)cp, cnt);
+			pmap_flush_pvcache(m);
 		} else {
 			sf = sf_buf_alloc(m, 0);
 			cp = (char *)sf_buf_kva(sf) + page_offset;
 		}
 		switch (uio->uio_segflg) {
 		case UIO_USERSPACE:
-			if (ticks - PCPU_GET(switchticks) >= hogticks)
-				uio_yield();
+			maybe_yield();
 			if (uio->uio_rw == UIO_READ)
 				error = copyout(cp, iov->iov_base, cnt);
 			else
@@ -122,6 +129,8 @@ uiomove_fromphys(vm_page_t ma[], vm_offset_t offset, int n, struct uio *uio)
 		}
 		if (sf != NULL)
 			sf_buf_free(sf);
+		else
+			mips_dcache_wbinv_range((vm_offset_t)cp, cnt);
 		iov->iov_base = (char *)iov->iov_base + cnt;
 		iov->iov_len -= cnt;
 		uio->uio_resid -= cnt;

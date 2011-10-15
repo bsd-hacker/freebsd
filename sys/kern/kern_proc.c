@@ -44,6 +44,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/kernel.h>
 #include <sys/limits.h>
 #include <sys/lock.h>
+#include <sys/loginclass.h>
 #include <sys/malloc.h>
 #include <sys/mount.h>
 #include <sys/mutex.h>
@@ -64,10 +65,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/jail.h>
 #include <sys/vnode.h>
 #include <sys/eventhandler.h>
-#ifdef KTRACE
-#include <sys/uio.h>
-#include <sys/ktrace.h>
-#endif
 
 #ifdef DDB
 #include <ddb/ddb.h>
@@ -86,30 +83,30 @@ __FBSDID("$FreeBSD$");
 #endif
 
 SDT_PROVIDER_DEFINE(proc);
-SDT_PROBE_DEFINE(proc, kernel, ctor, entry);
+SDT_PROBE_DEFINE(proc, kernel, ctor, entry, entry);
 SDT_PROBE_ARGTYPE(proc, kernel, ctor, entry, 0, "struct proc *");
 SDT_PROBE_ARGTYPE(proc, kernel, ctor, entry, 1, "int");
 SDT_PROBE_ARGTYPE(proc, kernel, ctor, entry, 2, "void *");
 SDT_PROBE_ARGTYPE(proc, kernel, ctor, entry, 3, "int");
-SDT_PROBE_DEFINE(proc, kernel, ctor, return);
+SDT_PROBE_DEFINE(proc, kernel, ctor, return, return);
 SDT_PROBE_ARGTYPE(proc, kernel, ctor, return, 0, "struct proc *");
 SDT_PROBE_ARGTYPE(proc, kernel, ctor, return, 1, "int");
 SDT_PROBE_ARGTYPE(proc, kernel, ctor, return, 2, "void *");
 SDT_PROBE_ARGTYPE(proc, kernel, ctor, return, 3, "int");
-SDT_PROBE_DEFINE(proc, kernel, dtor, entry);
+SDT_PROBE_DEFINE(proc, kernel, dtor, entry, entry);
 SDT_PROBE_ARGTYPE(proc, kernel, dtor, entry, 0, "struct proc *");
 SDT_PROBE_ARGTYPE(proc, kernel, dtor, entry, 1, "int");
 SDT_PROBE_ARGTYPE(proc, kernel, dtor, entry, 2, "void *");
 SDT_PROBE_ARGTYPE(proc, kernel, dtor, entry, 3, "struct thread *");
-SDT_PROBE_DEFINE(proc, kernel, dtor, return);
+SDT_PROBE_DEFINE(proc, kernel, dtor, return, return);
 SDT_PROBE_ARGTYPE(proc, kernel, dtor, return, 0, "struct proc *");
 SDT_PROBE_ARGTYPE(proc, kernel, dtor, return, 1, "int");
 SDT_PROBE_ARGTYPE(proc, kernel, dtor, return, 2, "void *");
-SDT_PROBE_DEFINE(proc, kernel, init, entry);
+SDT_PROBE_DEFINE(proc, kernel, init, entry, entry);
 SDT_PROBE_ARGTYPE(proc, kernel, init, entry, 0, "struct proc *");
 SDT_PROBE_ARGTYPE(proc, kernel, init, entry, 1, "int");
 SDT_PROBE_ARGTYPE(proc, kernel, init, entry, 2, "int");
-SDT_PROBE_DEFINE(proc, kernel, init, return);
+SDT_PROBE_DEFINE(proc, kernel, init, return, return);
 SDT_PROBE_ARGTYPE(proc, kernel, init, return, 0, "struct proc *");
 SDT_PROBE_ARGTYPE(proc, kernel, init, return, 1, "int");
 SDT_PROBE_ARGTYPE(proc, kernel, init, return, 2, "int");
@@ -148,7 +145,8 @@ struct mtx ppeers_lock;
 uma_zone_t proc_zone;
 
 int kstack_pages = KSTACK_PAGES;
-SYSCTL_INT(_kern, OID_AUTO, kstack_pages, CTLFLAG_RD, &kstack_pages, 0, "");
+SYSCTL_INT(_kern, OID_AUTO, kstack_pages, CTLFLAG_RD, &kstack_pages, 0,
+    "Kernel stack size in pages");
 
 CTASSERT(sizeof(struct kinfo_proc) == KINFO_PROC_SIZE);
 #ifdef COMPAT_FREEBSD32
@@ -233,6 +231,7 @@ proc_init(void *mem, int size, int flags)
 	mtx_init(&p->p_mtx, "process lock", NULL, MTX_DEF | MTX_DUPOK);
 	mtx_init(&p->p_slock, "process slock", NULL, MTX_SPIN | MTX_RECURSE);
 	cv_init(&p->p_pwait, "ppwait");
+	cv_init(&p->p_dbgwait, "dbgwait");
 	TAILQ_INIT(&p->p_threads);	     /* all threads in proc */
 	EVENTHANDLER_INVOKE(process_init, p);
 	p->p_stats = pstats_alloc();
@@ -292,11 +291,11 @@ pfind(pid)
 	sx_slock(&allproc_lock);
 	LIST_FOREACH(p, PIDHASH(pid), p_hash)
 		if (p->p_pid == pid) {
-			if (p->p_state == PRS_NEW) {
-				p = NULL;
-				break;
-			}
 			PROC_LOCK(p);
+			if (p->p_state == PRS_NEW) {
+				PROC_UNLOCK(p);
+				p = NULL;
+			}
 			break;
 		}
 	sx_sunlock(&allproc_lock);
@@ -609,8 +608,8 @@ orphanpg(pg)
 			PROC_UNLOCK(p);
 			LIST_FOREACH(p, &pg->pg_members, p_pglist) {
 				PROC_LOCK(p);
-				psignal(p, SIGHUP);
-				psignal(p, SIGCONT);
+				kern_psignal(p, SIGHUP);
+				kern_psignal(p, SIGCONT);
 				PROC_UNLOCK(p);
 			}
 			return;
@@ -717,9 +716,7 @@ fill_kinfo_proc_only(struct proc *p, struct kinfo_proc *kp)
 	kp->ki_textvp = p->p_textvp;
 #ifdef KTRACE
 	kp->ki_tracep = p->p_tracevp;
-	mtx_lock(&ktrace_mtx);
 	kp->ki_traceflag = p->p_traceflag;
-	mtx_unlock(&ktrace_mtx);
 #endif
 	kp->ki_fd = p->p_fd;
 	kp->ki_vmspace = p->p_vmspace;
@@ -729,7 +726,9 @@ fill_kinfo_proc_only(struct proc *p, struct kinfo_proc *kp)
 		kp->ki_uid = cred->cr_uid;
 		kp->ki_ruid = cred->cr_ruid;
 		kp->ki_svuid = cred->cr_svuid;
-		kp->ki_cr_flags = cred->cr_flags;
+		kp->ki_cr_flags = 0;
+		if (cred->cr_flags & CRED_FLAG_CAPMODE)
+			kp->ki_cr_flags |= KI_CRF_CAPABILITY_MODE;
 		/* XXX bde doesn't like KI_NGROUPS */
 		if (cred->cr_ngroups > KI_NGROUPS) {
 			kp->ki_ngroups = KI_NGROUPS;
@@ -747,6 +746,8 @@ fill_kinfo_proc_only(struct proc *p, struct kinfo_proc *kp)
 			if (cred->cr_prison != curthread->td_ucred->cr_prison)
 				kp->ki_jid = cred->cr_prison->pr_id;
 		}
+		strlcpy(kp->ki_loginclass, cred->cr_loginclass->lc_name,
+		    sizeof(kp->ki_loginclass));
 	}
 	ps = p->p_sigacts;
 	if (ps) {
@@ -755,7 +756,6 @@ fill_kinfo_proc_only(struct proc *p, struct kinfo_proc *kp)
 		kp->ki_sigcatch = ps->ps_sigcatch;
 		mtx_unlock(&ps->ps_mtx);
 	}
-	PROC_SLOCK(p);
 	if (p->p_state != PRS_NEW &&
 	    p->p_state != PRS_ZOMBIE &&
 	    p->p_vmspace != NULL) {
@@ -781,21 +781,18 @@ fill_kinfo_proc_only(struct proc *p, struct kinfo_proc *kp)
 	kp->ki_swtime = (ticks - p->p_swtick) / hz;
 	kp->ki_pid = p->p_pid;
 	kp->ki_nice = p->p_nice;
+	kp->ki_start = p->p_stats->p_start;
+	timevaladd(&kp->ki_start, &boottime);
+	PROC_SLOCK(p);
 	rufetch(p, &kp->ki_rusage);
 	kp->ki_runtime = cputick2usec(p->p_rux.rux_runtime);
+	calcru(p, &kp->ki_rusage.ru_utime, &kp->ki_rusage.ru_stime);
 	PROC_SUNLOCK(p);
-	if ((p->p_flag & P_INMEM) && p->p_stats != NULL) {
-		kp->ki_start = p->p_stats->p_start;
-		timevaladd(&kp->ki_start, &boottime);
-		PROC_SLOCK(p);
-		calcru(p, &kp->ki_rusage.ru_utime, &kp->ki_rusage.ru_stime);
-		PROC_SUNLOCK(p);
-		calccru(p, &kp->ki_childutime, &kp->ki_childstime);
+	calccru(p, &kp->ki_childutime, &kp->ki_childstime);
+	/* Some callers want child times in a single value. */
+	kp->ki_childtime = kp->ki_childstime;
+	timevaladd(&kp->ki_childtime, &kp->ki_childutime);
 
-		/* Some callers want child-times in a single value */
-		kp->ki_childtime = kp->ki_childstime;
-		timevaladd(&kp->ki_childtime, &kp->ki_childutime);
-	}
 	tp = NULL;
 	if (p->p_pgrp) {
 		kp->ki_pgid = p->p_pgrp->pg_id;
@@ -848,14 +845,17 @@ fill_kinfo_thread(struct thread *td, struct kinfo_proc *kp, int preferthread)
 	struct proc *p;
 
 	p = td->td_proc;
+	kp->ki_tdaddr = td;
 	PROC_LOCK_ASSERT(p, MA_OWNED);
 
+	if (preferthread)
+		PROC_SLOCK(p);
 	thread_lock(td);
 	if (td->td_wmesg != NULL)
 		strlcpy(kp->ki_wmesg, td->td_wmesg, sizeof(kp->ki_wmesg));
 	else
 		bzero(kp->ki_wmesg, sizeof(kp->ki_wmesg));
-	strlcpy(kp->ki_ocomm, td->td_name, sizeof(kp->ki_ocomm));
+	strlcpy(kp->ki_tdname, td->td_name, sizeof(kp->ki_tdname));
 	if (TD_ON_LOCK(td)) {
 		kp->ki_kiflag |= KI_LOCKBLOCK;
 		strlcpy(kp->ki_lockname, td->td_lockname,
@@ -901,6 +901,7 @@ fill_kinfo_thread(struct thread *td, struct kinfo_proc *kp, int preferthread)
 	kp->ki_pri.pri_user = td->td_user_pri;
 
 	if (preferthread) {
+		rufetchtd(td, &kp->ki_rusage);
 		kp->ki_runtime = cputick2usec(td->td_rux.rux_runtime);
 		kp->ki_pctcpu = sched_pctcpu(td);
 		kp->ki_estcpu = td->td_estcpu;
@@ -913,6 +914,8 @@ fill_kinfo_thread(struct thread *td, struct kinfo_proc *kp, int preferthread)
 		kp->ki_siglist = td->td_siglist;
 	kp->ki_sigmask = td->td_sigmask;
 	thread_unlock(td);
+	if (preferthread)
+		PROC_SUNLOCK(p);
 }
 
 /*
@@ -1056,12 +1059,13 @@ freebsd32_kinfo_proc_out(const struct kinfo_proc *ki, struct kinfo_proc32 *ki32)
 	CP(*ki, *ki32, ki_rqindex);
 	CP(*ki, *ki32, ki_oncpu);
 	CP(*ki, *ki32, ki_lastcpu);
-	bcopy(ki->ki_ocomm, ki32->ki_ocomm, OCOMMLEN + 1);
+	bcopy(ki->ki_tdname, ki32->ki_tdname, TDNAMLEN + 1);
 	bcopy(ki->ki_wmesg, ki32->ki_wmesg, WMESGLEN + 1);
 	bcopy(ki->ki_login, ki32->ki_login, LOGNAMELEN + 1);
 	bcopy(ki->ki_lockname, ki32->ki_lockname, LOCKNAMELEN + 1);
 	bcopy(ki->ki_comm, ki32->ki_comm, COMMLEN + 1);
 	bcopy(ki->ki_emul, ki32->ki_emul, KI_EMULNAMELEN + 1);
+	bcopy(ki->ki_loginclass, ki32->ki_loginclass, LOGINCLASSLEN + 1);
 	CP(*ki, *ki32, ki_cr_flags);
 	CP(*ki, *ki32, ki_jid);
 	CP(*ki, *ki32, ki_numthreads);
@@ -1212,13 +1216,11 @@ sysctl_kern_proc(SYSCTL_HANDLER_ARGS)
 			/*
 			 * Skip embryonic processes.
 			 */
-			PROC_SLOCK(p);
+			PROC_LOCK(p);
 			if (p->p_state == PRS_NEW) {
-				PROC_SUNLOCK(p);
+				PROC_UNLOCK(p);
 				continue;
 			}
-			PROC_SUNLOCK(p);
-			PROC_LOCK(p);
 			KASSERT(p->p_ucred != NULL,
 			    ("process credential is NULL for non-NEW proc"));
 			/*
@@ -1389,7 +1391,7 @@ sysctl_kern_proc_args(SYSCTL_HANDLER_ARGS)
 	pa = p->p_args;
 	pargs_hold(pa);
 	PROC_UNLOCK(p);
-	if (req->oldptr != NULL && pa != NULL)
+	if (pa != NULL)
 		error = SYSCTL_OUT(req, pa->ar_args, pa->ar_length);
 	pargs_drop(pa);
 	if (error != 0 || req->newptr == NULL)
@@ -1577,6 +1579,8 @@ sysctl_kern_proc_ovmmap(SYSCTL_HANDLER_ARGS)
 			kve->kve_flags |= KVME_FLAG_COW;
 		if (entry->eflags & MAP_ENTRY_NEEDS_COPY)
 			kve->kve_flags |= KVME_FLAG_NEEDS_COPY;
+		if (entry->eflags & MAP_ENTRY_NOCOREDUMP)
+			kve->kve_flags |= KVME_FLAG_NOCOREDUMP;
 
 		last_timestamp = map->timestamp;
 		vm_map_unlock_read(map);
@@ -1752,12 +1756,12 @@ sysctl_kern_proc_vmmap(SYSCTL_HANDLER_ARGS)
 			kve->kve_flags |= KVME_FLAG_COW;
 		if (entry->eflags & MAP_ENTRY_NEEDS_COPY)
 			kve->kve_flags |= KVME_FLAG_NEEDS_COPY;
+		if (entry->eflags & MAP_ENTRY_NOCOREDUMP)
+			kve->kve_flags |= KVME_FLAG_NOCOREDUMP;
 
 		last_timestamp = map->timestamp;
 		vm_map_unlock_read(map);
 
-		kve->kve_fileid = 0;
-		kve->kve_fsid = 0;
 		freepath = NULL;
 		fullpath = "";
 		if (lobj) {
@@ -1799,12 +1803,18 @@ sysctl_kern_proc_vmmap(SYSCTL_HANDLER_ARGS)
 			if (vp != NULL) {
 				vn_fullpath(curthread, vp, &fullpath,
 				    &freepath);
+				kve->kve_vn_type = vntype_to_kinfo(vp->v_type);
 				cred = curthread->td_ucred;
 				vfslocked = VFS_LOCK_GIANT(vp->v_mount);
 				vn_lock(vp, LK_SHARED | LK_RETRY);
 				if (VOP_GETATTR(vp, &va, cred) == 0) {
-					kve->kve_fileid = va.va_fileid;
-					kve->kve_fsid = va.va_fsid;
+					kve->kve_vn_fileid = va.va_fileid;
+					kve->kve_vn_fsid = va.va_fsid;
+					kve->kve_vn_mode =
+					    MAKEIMODE(va.va_type, va.va_mode);
+					kve->kve_vn_size = va.va_size;
+					kve->kve_vn_rdev = va.va_rdev;
+					kve->kve_status = KF_ATTR_VALID;
 				}
 				vput(vp);
 				VFS_UNLOCK_GIANT(vfslocked);

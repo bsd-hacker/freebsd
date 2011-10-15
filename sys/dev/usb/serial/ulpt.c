@@ -46,7 +46,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/kernel.h>
 #include <sys/bus.h>
-#include <sys/linker_set.h>
 #include <sys/module.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
@@ -484,24 +483,39 @@ ulpt_ioctl(struct usb_fifo *fifo, u_long cmd, void *data,
 	return (ENODEV);
 }
 
+static const STRUCT_USB_HOST_ID ulpt_devs[] = {
+	/* Uni-directional USB printer */
+	{USB_IFACE_CLASS(UICLASS_PRINTER),
+	 USB_IFACE_SUBCLASS(UISUBCLASS_PRINTER),
+	 USB_IFACE_PROTOCOL(UIPROTO_PRINTER_UNI)},
+
+	/* Bi-directional USB printer */
+	{USB_IFACE_CLASS(UICLASS_PRINTER),
+	 USB_IFACE_SUBCLASS(UISUBCLASS_PRINTER),
+	 USB_IFACE_PROTOCOL(UIPROTO_PRINTER_BI)},
+
+	/* 1284 USB printer */
+	{USB_IFACE_CLASS(UICLASS_PRINTER),
+	 USB_IFACE_SUBCLASS(UISUBCLASS_PRINTER),
+	 USB_IFACE_PROTOCOL(UIPROTO_PRINTER_1284)},
+};
+
 static int
 ulpt_probe(device_t dev)
 {
 	struct usb_attach_arg *uaa = device_get_ivars(dev);
+	int error;
 
 	DPRINTFN(11, "\n");
 
-	if (uaa->usb_mode != USB_MODE_HOST) {
+	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	}
-	if ((uaa->info.bInterfaceClass == UICLASS_PRINTER) &&
-	    (uaa->info.bInterfaceSubClass == UISUBCLASS_PRINTER) &&
-	    ((uaa->info.bInterfaceProtocol == UIPROTO_PRINTER_UNI) ||
-	    (uaa->info.bInterfaceProtocol == UIPROTO_PRINTER_BI) ||
-	    (uaa->info.bInterfaceProtocol == UIPROTO_PRINTER_1284))) {
-		return (0);
-	}
-	return (ENXIO);
+
+	error = usbd_lookup_id_by_uaa(ulpt_devs, sizeof(ulpt_devs), uaa);
+	if (error)
+		return (error);
+
+	return (BUS_PROBE_GENERIC);
 }
 
 static int
@@ -744,4 +758,4 @@ static driver_t ulpt_driver = {
 
 DRIVER_MODULE(ulpt, uhub, ulpt_driver, ulpt_devclass, NULL, 0);
 MODULE_DEPEND(ulpt, usb, 1, 1, 1);
-MODULE_DEPEND(ulpt, ucom, 1, 1, 1);
+MODULE_VERSION(ulpt, 1);

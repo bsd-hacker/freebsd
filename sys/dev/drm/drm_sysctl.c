@@ -95,7 +95,7 @@ int drm_sysctl_init(struct drm_device *dev)
 			SYSCTL_CHILDREN(top), 
 			OID_AUTO, 
 			drm_sysctl_list[i].name, 
-			CTLTYPE_INT | CTLFLAG_RD, 
+			CTLTYPE_STRING | CTLFLAG_RD, 
 			dev, 
 			0, 
 			drm_sysctl_list[i].f, 
@@ -259,7 +259,7 @@ static int drm_bufs_info DRM_SYSCTL_HANDLER_ARGS
 				       *(1 << dma->bufs[i].page_order),
 				       (dma->bufs[i].seg_count
 					* (1 << dma->bufs[i].page_order))
-				       * PAGE_SIZE / 1024);
+				       * (int)PAGE_SIZE / 1024);
 	}
 	DRM_SYSCTL_PRINT("\n");
 	for (i = 0; i < dma->buf_count; i++) {

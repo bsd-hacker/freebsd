@@ -46,7 +46,6 @@ __FBSDID("$FreeBSD$");
 
 static MALLOC_DEFINE(M_MODULE, "module", "module data structures");
 
-typedef TAILQ_HEAD(, module) modulelist_t;
 struct module {
 	TAILQ_ENTRY(module)	link;	/* chain together all modules */
 	TAILQ_ENTRY(module)	flink;	/* all modules in a file */
@@ -61,7 +60,7 @@ struct module {
 
 #define MOD_EVENT(mod, type)	(mod)->handler((mod), (type), (mod)->arg)
 
-static modulelist_t modules;
+static TAILQ_HEAD(modulelist, module) modules;
 struct sx modules_sx;
 static int nextid = 1;
 static void module_shutdown(void *, int);
@@ -101,7 +100,7 @@ module_shutdown(void *arg1, int arg2)
 		return;
 	mtx_lock(&Giant);
 	MOD_SLOCK;
-	TAILQ_FOREACH(mod, &modules, link)
+	TAILQ_FOREACH_REVERSE(mod, &modules, modulelist, link)
 		MOD_EVENT(mod, MOD_SHUTDOWN);
 	MOD_SUNLOCK;
 	mtx_unlock(&Giant);
@@ -311,7 +310,7 @@ module_file(module_t mod)
  * Syscalls.
  */
 int
-modnext(struct thread *td, struct modnext_args *uap)
+sys_modnext(struct thread *td, struct modnext_args *uap)
 {
 	module_t mod;
 	int error = 0;
@@ -342,7 +341,7 @@ done2:
 }
 
 int
-modfnext(struct thread *td, struct modfnext_args *uap)
+sys_modfnext(struct thread *td, struct modfnext_args *uap)
 {
 	module_t mod;
 	int error;
@@ -372,7 +371,7 @@ struct module_stat_v1 {
 };
 
 int
-modstat(struct thread *td, struct modstat_args *uap)
+sys_modstat(struct thread *td, struct modstat_args *uap)
 {
 	module_t mod;
 	modspecific_t data;
@@ -425,7 +424,7 @@ modstat(struct thread *td, struct modstat_args *uap)
 }
 
 int
-modfind(struct thread *td, struct modfind_args *uap)
+sys_modfind(struct thread *td, struct modfind_args *uap)
 {
 	int error = 0;
 	char name[MAXMODNAME];
@@ -455,9 +454,9 @@ MODULE_VERSION(kernel, __FreeBSD_version);
 
 typedef union modspecific32 {
 	int		intval;
-	u_int32_t	uintval;
+	uint32_t	uintval;
 	int		longval;
-	u_int32_t	ulongval;
+	uint32_t	ulongval;
 } modspecific32_t;
 
 struct module_stat32 {

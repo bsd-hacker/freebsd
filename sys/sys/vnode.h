@@ -75,12 +75,9 @@ struct vpollinfo {
  * Lock reference:
  *	c - namecache mutex
  *	f - freelist mutex
- *	G - Giant
  *	i - interlock
- *	m - mntvnodes mutex
+ *	m - mount point interlock
  *	p - pollinfo lock
- *	s - spechash mutex
- *	S - syncer mutex
  *	u - Only a reference to the vnode is needed to read.
  *	v - vnode lock
  *
@@ -121,7 +118,6 @@ struct vnode {
 		struct socket	*vu_socket;	/* v unix domain net (VSOCK) */
 		struct cdev	*vu_cdev; 	/* v device (VCHR, VBLK) */
 		struct fifoinfo	*vu_fifoinfo;	/* v fifo (VFIFO) */
-		int		vu_yield;	/*   yield count (VMARKER) */
 	} v_un;
 
 	/*
@@ -166,7 +162,7 @@ struct vnode {
 	/*
 	 * Hooks for various subsystems and features.
 	 */
-	struct vpollinfo *v_pollinfo;		/* G Poll events, p for *v_pi */
+	struct vpollinfo *v_pollinfo;		/* i Poll events, p for *v_pi */
 	struct label *v_label;			/* MAC label for vnode */
 	struct lockf *v_lockf;			/* Byte-level lock list */
 };
@@ -177,7 +173,6 @@ struct vnode {
 #define	v_socket	v_un.vu_socket
 #define	v_rdev		v_un.vu_cdev
 #define	v_fifoinfo	v_un.vu_fifoinfo
-#define	v_yield		v_un.vu_yield
 
 /* XXX: These are temporary to avoid a source sweep at this time */
 #define v_object	v_bufobj.bo_object
@@ -243,6 +238,7 @@ struct xvnode {
 #define	VV_ROOT		0x0001	/* root of its filesystem */
 #define	VV_ISTTY	0x0002	/* vnode represents a tty */
 #define	VV_NOSYNC	0x0004	/* unlinked, stop syncing */
+#define	VV_ETERNALDEV	0x0008	/* device that is never destroyed */
 #define	VV_CACHEDLABEL	0x0010	/* Vnode has valid cached MAC label */
 #define	VV_TEXT		0x0020	/* vnode is a pure text prototype */
 #define	VV_COPYONWRITE	0x0040	/* vnode is doing copy-on-write */
@@ -303,6 +299,7 @@ struct vattr {
 #define	IO_EXT		0x0400		/* operate on external attributes */
 #define	IO_NORMAL	0x0800		/* operate on regular data */
 #define	IO_NOMACCHECK	0x1000		/* MAC checks unnecessary */
+#define	IO_BUFLOCKED	0x2000		/* ffs flag; indir buf is locked */
 
 #define IO_SEQMAX	0x7F		/* seq heuristic max value */
 #define IO_SEQSHIFT	16		/* seq heuristic in upper 16 bits */
@@ -409,7 +406,6 @@ extern	struct vnode *rootvnode;	/* root (i.e. "/") vnode */
 extern	int async_io_version;		/* 0 or POSIX version of AIO i'face */
 extern	int desiredvnodes;		/* number of vnodes desired */
 extern	struct uma_zone *namei_zone;
-extern	int prtactive;			/* nonzero to call vprint() */
 extern	struct vattr va_null;		/* predefined null vattr structure */
 
 #define	VI_LOCK(vp)	mtx_lock(&(vp)->v_interlock)
@@ -418,10 +414,8 @@ extern	struct vattr va_null;		/* predefined null vattr structure */
 #define	VI_UNLOCK(vp)	mtx_unlock(&(vp)->v_interlock)
 #define	VI_MTX(vp)	(&(vp)->v_interlock)
 
-#define	VN_LOCK_AREC(vp)						\
-	((vp)->v_vnlock->lock_object.lo_flags |= LO_RECURSABLE)
-#define	VN_LOCK_ASHARE(vp)						\
-	((vp)->v_vnlock->lock_object.lo_flags &= ~LK_NOSHARE)
+#define	VN_LOCK_AREC(vp)	lockallowrecurse((vp)->v_vnlock)
+#define	VN_LOCK_ASHARE(vp)	lockallowshare((vp)->v_vnlock)
 
 #endif /* _KERNEL */
 
@@ -524,17 +518,17 @@ void	assert_vop_unlocked(struct vnode *vp, const char *str);
 
 #else /* !DEBUG_VFS_LOCKS */
 
-#define	ASSERT_VI_LOCKED(vp, str)
-#define	ASSERT_VI_UNLOCKED(vp, str)
-#define	ASSERT_VOP_ELOCKED(vp, str)
+#define	ASSERT_VI_LOCKED(vp, str)	((void)0)
+#define	ASSERT_VI_UNLOCKED(vp, str)	((void)0)
+#define	ASSERT_VOP_ELOCKED(vp, str)	((void)0)
 #if 0
 #define	ASSERT_VOP_ELOCKED_OTHER(vp, str)
 #endif
-#define	ASSERT_VOP_LOCKED(vp, str)
+#define	ASSERT_VOP_LOCKED(vp, str)	((void)0)
 #if 0
 #define	ASSERT_VOP_SLOCKED(vp, str)
 #endif
-#define	ASSERT_VOP_UNLOCKED(vp, str)
+#define	ASSERT_VOP_UNLOCKED(vp, str)	((void)0)
 #endif /* DEBUG_VFS_LOCKS */
 
 
@@ -646,6 +640,7 @@ int	_vn_lock(struct vnode *vp, int flags, char *file, int line);
 int	vn_open(struct nameidata *ndp, int *flagp, int cmode, struct file *fp);
 int	vn_open_cred(struct nameidata *ndp, int *flagp, int cmode,
 	    u_int vn_open_flags, struct ucred *cred, struct file *fp);
+void	vn_pages_remove(struct vnode *vp, vm_pindex_t start, vm_pindex_t end);
 int	vn_pollrecord(struct vnode *vp, struct thread *p, int events);
 int	vn_rdwr(enum uio_rw rw, struct vnode *vp, void *base,
 	    int len, off_t offset, enum uio_seg segflg, int ioflg,
@@ -692,6 +687,8 @@ int	vop_stdaccess(struct vop_access_args *ap);
 int	vop_stdaccessx(struct vop_accessx_args *ap);
 int	vop_stdadvlock(struct vop_advlock_args *ap);
 int	vop_stdadvlockasync(struct vop_advlockasync_args *ap);
+int	vop_stdadvlockpurge(struct vop_advlockpurge_args *ap);
+int	vop_stdallocate(struct vop_allocate_args *ap);
 int	vop_stdpathconf(struct vop_pathconf_args *);
 int	vop_stdpoll(struct vop_poll_args *);
 int	vop_stdvptocnp(struct vop_vptocnp_args *ap);
@@ -782,7 +779,15 @@ void vfs_mark_atime(struct vnode *vp, struct ucred *cred);
 struct dirent;
 int vfs_read_dirent(struct vop_readdir_args *ap, struct dirent *dp, off_t off);
 
-int	vfs_unixify_accmode(accmode_t *accmode);
+int vfs_unixify_accmode(accmode_t *accmode);
+
+int setfmode(struct thread *td, struct ucred *cred, struct vnode *vp, int mode);
+int setfown(struct thread *td, struct ucred *cred, struct vnode *vp, uid_t uid,
+    gid_t gid);
+int vn_chmod(struct file *fp, mode_t mode, struct ucred *active_cred,
+    struct thread *td);
+int vn_chown(struct file *fp, uid_t uid, gid_t gid, struct ucred *active_cred,
+    struct thread *td);
 
 #endif /* _KERNEL */
 

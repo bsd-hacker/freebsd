@@ -129,11 +129,11 @@ SYSCTL_INT(_hw_usb_atp, OID_AUTO, debug, CTLFLAG_RW,
 #endif /* USB_DEBUG */
 
 static u_int atp_touch_timeout = ATP_TOUCH_TIMEOUT;
-SYSCTL_INT(_hw_usb_atp, OID_AUTO, touch_timeout, CTLFLAG_RW, &atp_touch_timeout,
-    125000, "age threshold (in micros) for a touch");
+SYSCTL_UINT(_hw_usb_atp, OID_AUTO, touch_timeout, CTLFLAG_RW,
+    &atp_touch_timeout, 125000, "age threshold (in micros) for a touch");
 
 static u_int atp_double_tap_threshold = ATP_DOUBLE_TAP_N_DRAG_THRESHOLD;
-SYSCTL_INT(_hw_usb_atp, OID_AUTO, double_tap_threshold, CTLFLAG_RW,
+SYSCTL_UINT(_hw_usb_atp, OID_AUTO, double_tap_threshold, CTLFLAG_RW,
     &atp_double_tap_threshold, ATP_DOUBLE_TAP_N_DRAG_THRESHOLD,
     "maximum time (in micros) between a double-tap");
 
@@ -240,7 +240,7 @@ struct atp_dev_params {
 	},
 };
 
-static const struct usb_device_id atp_devs[] = {
+static const STRUCT_USB_HOST_ID atp_devs[] = {
 	/* Core Duo MacBook & MacBook Pro */
 	{ USB_VPI(USB_VENDOR_APPLE, 0x0217, ATP_DEV_PARAMS_0) },
 	{ USB_VPI(USB_VENDOR_APPLE, 0x0218, ATP_DEV_PARAMS_0) },
@@ -2222,3 +2222,4 @@ static devclass_t atp_devclass;
 
 DRIVER_MODULE(atp, uhub, atp_driver, atp_devclass, NULL, 0);
 MODULE_DEPEND(atp, usb, 1, 1, 1);
+MODULE_VERSION(atp, 1);

@@ -37,7 +37,6 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-#include "opt_ffs_broken_fixme.h"
 #include "opt_ufs.h"
 #include "opt_quota.h"
 
@@ -76,6 +75,32 @@ SYSCTL_INT(_debug, OID_AUTO, dircheck, CTLFLAG_RW, &dirchk, 0, "");
 
 /* true if old FS format...*/
 #define OFSFMT(vp)	((vp)->v_mount->mnt_maxsymlinklen <= 0)
+
+#ifdef QUOTA
+static int
+ufs_lookup_upgrade_lock(struct vnode *vp)
+{
+	int error;
+
+	ASSERT_VOP_LOCKED(vp, __FUNCTION__);
+	if (VOP_ISLOCKED(vp) == LK_EXCLUSIVE)
+		return (0);
+
+	error = 0;
+
+	/*
+	 * Upgrade vnode lock, since getinoquota()
+	 * requires exclusive lock to modify inode.
+	 */
+	vhold(vp);
+	vn_lock(vp, LK_UPGRADE | LK_RETRY);
+	VI_LOCK(vp);
+	if (vp->v_iflag & VI_DOOMED)
+		error = ENOENT;
+	vdropl(vp);
+	return (error);
+}
+#endif
 
 static int
 ufs_delete_denied(struct vnode *vdp, struct vnode *tdp, struct ucred *cred,
@@ -222,6 +247,8 @@ ufs_lookup_ino(struct vnode *vdp, struct vnode **vpp, struct componentname *cnp,
 		*vpp = NULL;
 
 	dp = VTOI(vdp);
+	if (dp->i_effnlink == 0)
+		return (ENOENT);
 
 	/*
 	 * Create a vm object if vmiodirenable is enabled.
@@ -232,6 +259,13 @@ ufs_lookup_ino(struct vnode *vdp, struct vnode **vpp, struct componentname *cnp,
 	vnode_create_vobject(vdp, DIP(dp, i_size), cnp->cn_thread);
 
 	bmask = VFSTOUFS(vdp->v_mount)->um_mountp->mnt_stat.f_iosize - 1;
+#ifdef QUOTA
+	if ((nameiop == DELETE || nameiop == RENAME) && (flags & ISLASTCN)) {
+		error = ufs_lookup_upgrade_lock(vdp);
+		if (error != 0)
+			return (error);
+	}
+#endif
 
 restart:
 	bp = NULL;
@@ -933,7 +967,7 @@ ufs_direnter(dvp, tvp, dirp, cnp, newdirbp, isrename)
 				return (0);
 			if (tvp != NULL)
 				VOP_UNLOCK(tvp, 0);
-			error = VOP_FSYNC(dvp, MNT_WAIT, td);
+			(void) VOP_FSYNC(dvp, MNT_WAIT, td);
 			if (tvp != NULL)
 				vn_lock(tvp, LK_EXCLUSIVE | LK_RETRY);
 			return (error);
@@ -1217,10 +1251,8 @@ out:
 	 * drop its snapshot reference so that it will be reclaimed
 	 * when last open reference goes away.
 	 */
-#if defined(FFS) || defined(IFS)
 	if (ip != 0 && (ip->i_flags & SF_SNAPSHOT) != 0 && ip->i_effnlink == 0)
-		ffs_snapgone(ip);
-#endif
+		UFS_SNAPGONE(ip);
 	return (error);
 }
 
@@ -1282,10 +1314,8 @@ ufs_dirrewrite(dp, oip, newinum, newtype, isrmdir)
 	 * drop its snapshot reference so that it will be reclaimed
 	 * when last open reference goes away.
 	 */
-#if defined(FFS) || defined(IFS)
 	if ((oip->i_flags & SF_SNAPSHOT) != 0 && oip->i_effnlink == 0)
-		ffs_snapgone(oip);
-#endif
+		UFS_SNAPGONE(oip);
 	return (error);
 }
 

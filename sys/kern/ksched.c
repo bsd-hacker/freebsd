@@ -41,11 +41,15 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/lock.h>
+#include <sys/sysctl.h>
+#include <sys/kernel.h>
 #include <sys/mutex.h>
 #include <sys/proc.h>
 #include <sys/posix4.h>
 #include <sys/resource.h>
 #include <sys/sched.h>
+
+FEATURE(kposix_priority_scheduling, "POSIX P1003.1B realtime extensions");
 
 /* ksched: Real-time extension to support POSIX priority scheduling.
  */
@@ -202,7 +206,7 @@ ksched_setscheduler(struct ksched *ksched,
 		if (param->sched_priority >= 0 &&
 			param->sched_priority <= (PRI_MAX_TIMESHARE - PRI_MIN_TIMESHARE)) {
 			rtp.type = RTP_PRIO_NORMAL;
-			rtp.prio = p4prio_to_rtpprio(param->sched_priority);
+			rtp.prio = p4prio_to_tsprio(param->sched_priority);
 			rtp_to_pri(&rtp, td);
 		} else
 			e = EINVAL;

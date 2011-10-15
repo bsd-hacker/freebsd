@@ -110,7 +110,7 @@ __FBSDID("$FreeBSD$");
 /*
  * Various supported device vendors/types and their names.
  */
-static struct lge_type lge_devs[] = {
+static const struct lge_type const lge_devs[] = {
 	{ LGE_VENDORID, LGE_DEVICEID, "Level 1 Gigabit Ethernet" },
 	{ 0, 0, NULL }
 };
@@ -442,7 +442,7 @@ static int
 lge_probe(dev)
 	device_t		dev;
 {
-	struct lge_type		*t;
+	const struct lge_type	*t;
 
 	t = lge_devs;
 
@@ -557,10 +557,10 @@ lge_attach(dev)
 	/*
 	 * Do MII setup.
 	 */
-	if (mii_phy_probe(dev, &sc->lge_miibus,
-	    lge_ifmedia_upd, lge_ifmedia_sts)) {
-		device_printf(dev, "MII without any PHY!\n");
-		error = ENXIO;
+	error = mii_attach(dev, &sc->lge_miibus, ifp, lge_ifmedia_upd,
+	    lge_ifmedia_sts, BMSR_DEFCAPMASK, MII_PHY_ANY, MII_OFFSET_ANY, 0);
+	if (error != 0) {
+		device_printf(dev, "attaching PHYs failed\n");
 		goto fail;
 	}
 
@@ -1402,18 +1402,15 @@ lge_ifmedia_upd_locked(ifp)
 {
 	struct lge_softc	*sc;
 	struct mii_data		*mii;
+	struct mii_softc	*miisc;
 
 	sc = ifp->if_softc;
 
 	LGE_LOCK_ASSERT(sc);
 	mii = device_get_softc(sc->lge_miibus);
 	sc->lge_link = 0;
-	if (mii->mii_instance) {
-		struct mii_softc	*miisc;
-		for (miisc = LIST_FIRST(&mii->mii_phys); miisc != NULL;
-		    miisc = LIST_NEXT(miisc, mii_list))
-			mii_phy_reset(miisc);
-	}
+	LIST_FOREACH(miisc, &mii->mii_phys, mii_list)
+		PHY_RESET(miisc);
 	mii_mediachg(mii);
 }
 

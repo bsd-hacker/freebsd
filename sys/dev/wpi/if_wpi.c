@@ -29,7 +29,7 @@ __FBSDID("$FreeBSD$");
  * state and told to load boot firmware. The boot firmware loads an init and a
  * main  binary firmware image into SRAM on the card via DMA.
  * Once the firmware is loaded, the driver/hw then
- * communicate by way of circular dma rings via the the SRAM to the firmware.
+ * communicate by way of circular dma rings via the SRAM to the firmware.
  *
  * There is 6 memory rings. 1 command ring, 1 rx data ring & 4 tx data rings.
  * The 4 tx data rings allow for prioritization QoS.
@@ -174,7 +174,6 @@ static int	wpi_alloc_tx_ring(struct wpi_softc *, struct wpi_tx_ring *,
 		    int, int);
 static void	wpi_reset_tx_ring(struct wpi_softc *, struct wpi_tx_ring *);
 static void	wpi_free_tx_ring(struct wpi_softc *, struct wpi_tx_ring *);
-static void	wpi_newassoc(struct ieee80211_node *, int);
 static int	wpi_newstate(struct ieee80211vap *, enum ieee80211_state, int);
 static void	wpi_mem_lock(struct wpi_softc *);
 static void	wpi_mem_unlock(struct wpi_softc *);
@@ -273,6 +272,8 @@ static driver_t wpi_driver = {
 static devclass_t wpi_devclass;
 
 DRIVER_MODULE(wpi, pci, wpi_driver, wpi_devclass, 0, 0);
+
+MODULE_VERSION(wpi, 1);
 
 static const uint8_t wpi_ridx_to_plcp[] = {
 	/* OFDM: IEEE Std 802.11a-1999, pp. 14 Table 80 */
@@ -668,7 +669,6 @@ wpi_attach(device_t dev)
 	ieee80211_ifattach(ic, macaddr);
 	/* override default methods */
 	ic->ic_raw_xmit = wpi_raw_xmit;
-	ic->ic_newassoc = wpi_newassoc;
 	ic->ic_wme.wme_update = wpi_wme_update;
 	ic->ic_scan_start = wpi_scan_start;
 	ic->ic_scan_end = wpi_scan_end;
@@ -1052,9 +1052,18 @@ wpi_free_rx_ring(struct wpi_softc *sc, struct wpi_rx_ring *ring)
 
 	wpi_dma_contig_free(&ring->desc_dma);
 
-	for (i = 0; i < WPI_RX_RING_COUNT; i++)
-		if (ring->data[i].m != NULL)
-			m_freem(ring->data[i].m);
+	for (i = 0; i < WPI_RX_RING_COUNT; i++) {
+		struct wpi_rx_data *data = &ring->data[i];
+
+		if (data->m != NULL) {
+			bus_dmamap_sync(ring->data_dmat, data->map,
+			    BUS_DMASYNC_POSTREAD);
+			bus_dmamap_unload(ring->data_dmat, data->map);
+			m_freem(data->m);
+		}
+		if (data->map != NULL)
+			bus_dmamap_destroy(ring->data_dmat, data->map);
+	}
 }
 
 static int
@@ -1248,8 +1257,25 @@ wpi_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 
 	IEEE80211_UNLOCK(ic);
 	WPI_LOCK(sc);
-	if (nstate == IEEE80211_S_AUTH) {
-		/* The node must be registered in the firmware before auth */
+	if (nstate == IEEE80211_S_SCAN && vap->iv_state != IEEE80211_S_INIT) {
+		/*
+		 * On !INIT -> SCAN transitions, we need to clear any possible
+		 * knowledge about associations.
+		 */
+		error = wpi_config(sc);
+		if (error != 0) {
+			device_printf(sc->sc_dev,
+			    "%s: device config failed, error %d\n",
+			    __func__, error);
+		}
+	}
+	if (nstate == IEEE80211_S_AUTH ||
+	    (nstate == IEEE80211_S_ASSOC && vap->iv_state == IEEE80211_S_RUN)) {
+		/*
+		 * The node must be registered in the firmware before auth.
+		 * Also the associd must be cleared on RUN -> ASSOC
+		 * transitions.
+		 */
 		error = wpi_auth(sc, vap);
 		if (error != 0) {
 			device_printf(sc->sc_dev,
@@ -1444,6 +1470,7 @@ wpi_rx_intr(struct wpi_softc *sc, struct wpi_rx_desc *desc,
 		return;
 	}
 
+	bus_dmamap_sync(ring->data_dmat, data->map, BUS_DMASYNC_POSTREAD);
 	head = (struct wpi_rx_head *)((caddr_t)(stat + 1) + stat->len);
 	tail = (struct wpi_rx_tail *)((caddr_t)(head + 1) + le16toh(head->len));
 
@@ -1474,6 +1501,8 @@ wpi_rx_intr(struct wpi_softc *sc, struct wpi_rx_desc *desc,
 		ifp->if_ierrors++;
 		return;
 	}
+	bus_dmamap_unload(ring->data_dmat, data->map);
+
 	error = bus_dmamap_load(ring->data_dmat, data->map,
 	    mtod(mnew, caddr_t), MJUMPAGESIZE,
 	    wpi_dma_map_addr, &paddr, BUS_DMA_NOWAIT);
@@ -1628,9 +1657,15 @@ wpi_notif_intr(struct wpi_softc *sc)
 	struct wpi_rx_data *data;
 	uint32_t hw;
 
+	bus_dmamap_sync(sc->shared_dma.tag, sc->shared_dma.map,
+	    BUS_DMASYNC_POSTREAD);
+
 	hw = le32toh(sc->shared->next);
 	while (sc->rxq.cur != hw) {
 		data = &sc->rxq.data[sc->rxq.cur];
+
+		bus_dmamap_sync(sc->rxq.data_dmat, data->map,
+		    BUS_DMASYNC_POSTREAD);
 		desc = (void *)data->m->m_ext.ext_buf;
 
 		DPRINTFN(WPI_DEBUG_NOTIFY,
@@ -2265,7 +2300,7 @@ wpi_mrr_setup(struct wpi_softc *sc)
 	}
 
 	/* setup MRR for control frames */
-	mrr.which = htole32(WPI_MRR_CTL);
+	mrr.which = WPI_MRR_CTL;
 	error = wpi_cmd(sc, WPI_CMD_MRR_SETUP, &mrr, sizeof mrr, 0);
 	if (error != 0) {
 		device_printf(sc->sc_dev,
@@ -2274,7 +2309,7 @@ wpi_mrr_setup(struct wpi_softc *sc)
 	}
 
 	/* setup MRR for data frames */
-	mrr.which = htole32(WPI_MRR_DATA);
+	mrr.which = WPI_MRR_DATA;
 	error = wpi_cmd(sc, WPI_CMD_MRR_SETUP, &mrr, sizeof mrr, 0);
 	if (error != 0) {
 		device_printf(sc->sc_dev,
@@ -2411,6 +2446,9 @@ wpi_auth(struct wpi_softc *sc, struct ieee80211vap *vap)
 	sc->config.chan = ieee80211_chan2ieee(ic, ni->ni_chan);
 	if (IEEE80211_IS_CHAN_2GHZ(ni->ni_chan)) {
 		sc->config.flags |= htole32(WPI_CONFIG_AUTO |
+		    WPI_CONFIG_24GHZ);
+	} else {
+		sc->config.flags &= ~htole32(WPI_CONFIG_AUTO |
 		    WPI_CONFIG_24GHZ);
 	}
 	if (IEEE80211_IS_CHAN_A(ni->ni_chan)) {
@@ -2987,14 +3025,12 @@ wpi_rfkill_resume(struct wpi_softc *sc)
 	if (ntries == 1000) {
 		device_printf(sc->sc_dev,
 		    "timeout waiting for thermal calibration\n");
-		WPI_UNLOCK(sc);
 		return;
 	}
 	DPRINTFN(WPI_DEBUG_TEMP,("temperature %d\n", sc->temp));
 
 	if (wpi_config(sc) != 0) {
 		device_printf(sc->sc_dev, "device config failed\n");
-		WPI_UNLOCK(sc);
 		return;
 	}
 
@@ -3194,14 +3230,6 @@ wpi_stop(struct wpi_softc *sc)
 	WPI_LOCK(sc);
 	wpi_stop_locked(sc);
 	WPI_UNLOCK(sc);
-}
-
-static void
-wpi_newassoc(struct ieee80211_node *ni, int isnew)
-{
-
-	/* XXX move */
-	ieee80211_ratectl_node_init(ni);
 }
 
 static void
@@ -3537,7 +3565,9 @@ wpi_set_channel(struct ieee80211com *ic)
 	 * are already taken care of by their respective firmware commands.
 	 */
 	if (ic->ic_opmode == IEEE80211_M_MONITOR) {
+		WPI_LOCK(sc);
 		error = wpi_config(sc);
+		WPI_UNLOCK(sc);
 		if (error != 0)
 			device_printf(sc->sc_dev,
 			    "error %d settting channel\n", error);

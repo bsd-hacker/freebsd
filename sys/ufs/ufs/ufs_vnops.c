@@ -61,8 +61,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/conf.h>
 #include <sys/acl.h>
 
-#include <machine/mutex.h>
-
 #include <security/mac/mac_framework.h>
 
 #include <sys/file.h>		/* XXX */
@@ -84,7 +82,19 @@ __FBSDID("$FreeBSD$");
 #endif
 #ifdef UFS_GJOURNAL
 #include <ufs/ufs/gjournal.h>
+FEATURE(ufs_gjournal, "Journaling support through GEOM for UFS");
 #endif
+
+#ifdef QUOTA
+FEATURE(ufs_quota, "UFS disk quotas support");
+FEATURE(ufs_quota64, "64bit UFS disk quotas support");
+#endif
+
+#ifdef SUIDDIR
+FEATURE(suiddir,
+    "Give all new files in directory the same ownership as the directory");
+#endif
+
 
 #include <ufs/ffs/ffs_extern.h>
 
@@ -1119,7 +1129,7 @@ ufs_rename(ap)
 	struct direct newdir;
 	off_t endoff;
 	int doingdirectory, newparent;
-	int error = 0, ioflag;
+	int error = 0;
 	struct mount *mp;
 	ino_t ino;
 
@@ -1285,7 +1295,9 @@ relock:
 			newparent = tdp->i_number;
 		doingdirectory = 1;
 	}
-	if (fvp->v_mountedhere != NULL || (tvp && tvp->v_mountedhere != NULL)) {
+	if ((fvp->v_type == VDIR && fvp->v_mountedhere != NULL) ||
+	    (tvp != NULL && tvp->v_type == VDIR &&
+	    tvp->v_mountedhere != NULL)) {
 		error = EXDEV;
 		goto unlockout;
 	}
@@ -1443,8 +1455,8 @@ relock:
 		}
 		if (doingdirectory && !DOINGSOFTDEP(tvp)) {
 			/*
-			 * Truncate inode. The only stuff left in the directory
-			 * is "." and "..". The "." reference is inconsequential
+			 * The only stuff left in the directory is "."
+			 * and "..". The "." reference is inconsequential
 			 * since we are quashing it. We have removed the "."
 			 * reference and the reference in the parent directory,
 			 * but there may be other hard links. The soft
@@ -1461,13 +1473,6 @@ relock:
 			tip->i_nlink--;
 			DIP_SET(tip, i_nlink, tip->i_nlink);
 			tip->i_flag |= IN_CHANGE;
-			ioflag = IO_NORMAL;
-			if (!DOINGASYNC(tvp))
-				ioflag |= IO_SYNC;
-			/* Don't go to bad here as the new link exists. */
-			if ((error = UFS_TRUNCATE(tvp, (off_t)0, ioflag,
-			    tcnp->cn_cred, tcnp->cn_thread)) != 0)
-				goto unlockout;
 		}
 	}
 
@@ -1506,7 +1511,9 @@ relock:
 			/* Don't go to bad here as the new link exists. */
 			if (error)
 				goto unlockout;
-		}
+		} else if (DOINGSUJ(tdvp))
+			/* Journal must account for each new link. */
+			softdep_setup_dotdot_link(tdp, fip);
 		fip->i_offset = mastertemplate.dot_reclen;
 		ufs_dirrewrite(fip, fdp, newparent, DT_DIR, 0);
 		cache_purge(fdvp);
@@ -1831,6 +1838,8 @@ ufs_mkdir(ap)
 #ifdef QUOTA
 		if ((error = getinoquota(ip)) ||
 	    	    (error = chkiq(ip, 1, ucp, 0))) {
+			if (DOINGSOFTDEP(tvp))
+				softdep_revert_link(dp, ip);
 			UFS_VFREE(tvp, ip->i_number, dmode);
 			vput(tvp);
 			return (error);
@@ -1843,6 +1852,8 @@ ufs_mkdir(ap)
 #ifdef QUOTA
 	if ((error = getinoquota(ip)) ||
 	    (error = chkiq(ip, 1, cnp->cn_cred, 0))) {
+		if (DOINGSOFTDEP(tvp))
+			softdep_revert_link(dp, ip);
 		UFS_VFREE(tvp, ip->i_number, dmode);
 		vput(tvp);
 		return (error);
@@ -1993,7 +2004,7 @@ ufs_rmdir(ap)
 	struct vnode *dvp = ap->a_dvp;
 	struct componentname *cnp = ap->a_cnp;
 	struct inode *ip, *dp;
-	int error, ioflag;
+	int error;
 
 	ip = VTOI(vp);
 	dp = VTOI(dvp);
@@ -2049,10 +2060,10 @@ ufs_rmdir(ap)
 	}
 	cache_purge(dvp);
 	/*
-	 * Truncate inode. The only stuff left in the directory is "." and
-	 * "..". The "." reference is inconsequential since we are quashing
-	 * it. The soft dependency code will arrange to do these operations
-	 * after the parent directory entry has been deleted on disk, so
+	 * The only stuff left in the directory is "." and "..". The "."
+	 * reference is inconsequential since we are quashing it. The soft
+	 * dependency code will arrange to do these operations after
+	 * the parent directory entry has been deleted on disk, so
 	 * when running with that code we avoid doing them now.
 	 */
 	if (!DOINGSOFTDEP(vp)) {
@@ -2062,11 +2073,6 @@ ufs_rmdir(ap)
 		ip->i_nlink--;
 		DIP_SET(ip, i_nlink, ip->i_nlink);
 		ip->i_flag |= IN_CHANGE;
-		ioflag = IO_NORMAL;
-		if (!DOINGASYNC(vp))
-			ioflag |= IO_SYNC;
-		error = UFS_TRUNCATE(vp, (off_t)0, ioflag, cnp->cn_cred,
-		    cnp->cn_thread);
 	}
 	cache_purge(vp);
 #ifdef UFS_DIRHASH
@@ -2137,6 +2143,7 @@ ufs_readdir(ap)
 	} */ *ap;
 {
 	struct uio *uio = ap->a_uio;
+	struct inode *ip;
 	int error;
 	size_t count, lost;
 	off_t off;
@@ -2147,6 +2154,9 @@ ufs_readdir(ap)
 		 * the cookies to determine where in the block to start.
 		 */
 		uio->uio_offset &= ~(DIRBLKSIZ - 1);
+	ip = VTOI(ap->a_vp);
+	if (ip->i_effnlink == 0)
+		return (0);
 	off = uio->uio_offset;
 	count = uio->uio_resid;
 	/* Make sure we don't return partial entries. */
@@ -2602,6 +2612,8 @@ ufs_makeinode(mode, dvp, vpp, cnp)
 #ifdef QUOTA
 		if ((error = getinoquota(ip)) ||
 	    	    (error = chkiq(ip, 1, ucp, 0))) {
+			if (DOINGSOFTDEP(tvp))
+				softdep_revert_link(pdir, ip);
 			UFS_VFREE(tvp, ip->i_number, mode);
 			vput(tvp);
 			return (error);
@@ -2614,6 +2626,8 @@ ufs_makeinode(mode, dvp, vpp, cnp)
 #ifdef QUOTA
 	if ((error = getinoquota(ip)) ||
 	    (error = chkiq(ip, 1, cnp->cn_cred, 0))) {
+		if (DOINGSOFTDEP(tvp))
+			softdep_revert_link(pdir, ip);
 		UFS_VFREE(tvp, ip->i_number, mode);
 		vput(tvp);
 		return (error);

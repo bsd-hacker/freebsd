@@ -54,12 +54,9 @@ __FBSDID("$FreeBSD$");
 #include <cam/scsi/scsi_all.h>
 #include <cam/scsi/scsi_message.h>
 
-#include <sys/bus.h>
-#include <sys/conf.h>
 #include <machine/md_var.h>
 #include <machine/bus.h>
 #include <machine/resource.h>
-#include <sys/rman.h>
 
 #include <dev/mfi/mfireg.h>
 #include <dev/mfi/mfi_ioctl.h>
@@ -340,14 +337,14 @@ mfip_done(struct mfi_command *cm)
 		ccbh->status = CAM_REQ_CMP;
 		csio->scsi_status = pt->header.scsi_status;
 		if (ccbh->flags & CAM_CDB_POINTER)
-			command = ccb->csio.cdb_io.cdb_ptr[0];
+			command = csio->cdb_io.cdb_ptr[0];
 		else
-			command = ccb->csio.cdb_io.cdb_bytes[0];
+			command = csio->cdb_io.cdb_bytes[0];
 		if (command == INQUIRY) {
-			device = ccb->csio.data_ptr[0] & 0x1f;
+			device = csio->data_ptr[0] & 0x1f;
 			if ((device == T_DIRECT) || (device == T_PROCESSOR))
 				csio->data_ptr[0] =
-				     (device & 0xe0) | T_NODEVICE;
+				     (csio->data_ptr[0] & 0xe0) | T_NODEVICE;
 		}
 		break;
 	}
@@ -357,7 +354,13 @@ mfip_done(struct mfi_command *cm)
 
 		ccbh->status = CAM_SCSI_STATUS_ERROR | CAM_AUTOSNS_VALID;
 		csio->scsi_status = pt->header.scsi_status;
-		sense_len = min(pt->header.sense_len, sizeof(struct scsi_sense_data));
+		if (pt->header.sense_len < csio->sense_len)
+			csio->sense_resid = csio->sense_len -
+			    pt->header.sense_len;
+		else
+			csio->sense_resid = 0;
+		sense_len = min(pt->header.sense_len,
+		    sizeof(struct scsi_sense_data));
 		bzero(&csio->sense_data, sizeof(struct scsi_sense_data));
 		bcopy(&cm->cm_sense->data[0], &csio->sense_data, sense_len);
 		break;

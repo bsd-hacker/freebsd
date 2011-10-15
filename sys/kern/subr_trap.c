@@ -44,32 +44,41 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include "opt_capsicum.h"
 #include "opt_ktrace.h"
-#ifdef __i386__
-#include "opt_npx.h"
-#endif
+#include "opt_kdtrace.h"
 #include "opt_sched.h"
 
 #include <sys/param.h>
 #include <sys/bus.h>
+#include <sys/capability.h>
 #include <sys/kernel.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/pmckern.h>
 #include <sys/proc.h>
 #include <sys/ktr.h>
+#include <sys/pioctl.h>
+#include <sys/ptrace.h>
 #include <sys/resourcevar.h>
 #include <sys/sched.h>
 #include <sys/signalvar.h>
+#include <sys/syscall.h>
+#include <sys/syscallsubr.h>
+#include <sys/sysent.h>
 #include <sys/systm.h>
 #include <sys/vmmeter.h>
 #ifdef KTRACE
 #include <sys/uio.h>
 #include <sys/ktrace.h>
 #endif
+#include <security/audit/audit.h>
 
 #include <machine/cpu.h>
-#include <machine/pcb.h>
+
+#ifdef VIMAGE
+#include <net/vnet.h>
+#endif
 
 #ifdef XEN
 #include <vm/vm.h>
@@ -90,6 +99,8 @@ userret(struct thread *td, struct trapframe *frame)
 
 	CTR3(KTR_SYSC, "userret: thread %p (pid %d, %s)", td, p->p_pid,
             td->td_name);
+	KASSERT((p->p_flag & P_WEXIT) == 0,
+	    ("Exiting process returns to usermode"));
 #if 0
 #ifdef DIAGNOSTIC
 	/* Check that we called signotify() enough. */
@@ -115,15 +126,21 @@ userret(struct thread *td, struct trapframe *frame)
 	/*
 	 * Charge system time if profiling.
 	 */
-	if (p->p_flag & P_PROFIL) {
+	if (p->p_flag & P_PROFIL)
 		addupc_task(td, TRAPF_PC(frame), td->td_pticks * psratio);
-	}
 	/*
 	 * Let the scheduler adjust our priority etc.
 	 */
 	sched_userret(td);
 	KASSERT(td->td_locks == 0,
 	    ("userret: Returning with %d locks held.", td->td_locks));
+#ifdef VIMAGE
+	/* Unfortunately td_vnet_lpush needs VNET_DEBUG. */
+	VNET_ASSERT(curvnet == NULL,
+	    ("%s: Returning on td %p (pid %d, %s) with vnet %p set in %s",
+	    __func__, td, p->p_pid, td->td_name, curvnet,
+	    (td->td_vnet_lpush != NULL) ? td->td_vnet_lpush : "N/A"));
+#endif
 #ifdef XEN
 	PT_UPDATES_FLUSH();
 #endif
@@ -141,10 +158,6 @@ ast(struct trapframe *framep)
 	struct proc *p;
 	int flags;
 	int sig;
-#if defined(DEV_NPX) && !defined(SMP)
-	int ucode;
-	ksiginfo_t ksi;
-#endif
 
 	td = curthread;
 	p = td->td_proc;
@@ -181,25 +194,12 @@ ast(struct trapframe *framep)
 	}
 	if (flags & TDF_ALRMPEND) {
 		PROC_LOCK(p);
-		psignal(p, SIGVTALRM);
+		kern_psignal(p, SIGVTALRM);
 		PROC_UNLOCK(p);
 	}
-#if defined(DEV_NPX) && !defined(SMP)
-	if (PCPU_GET(curpcb)->pcb_flags & PCB_NPXTRAP) {
-		atomic_clear_int(&PCPU_GET(curpcb)->pcb_flags,
-		    PCB_NPXTRAP);
-		ucode = npxtrap();
-		if (ucode != -1) {
-			ksiginfo_init_trap(&ksi);
-			ksi.ksi_signo = SIGFPE;
-			ksi.ksi_code = ucode;
-			trapsignal(td, &ksi);
-		}
-	}
-#endif
 	if (flags & TDF_PROFPEND) {
 		PROC_LOCK(p);
-		psignal(p, SIGPROF);
+		kern_psignal(p, SIGPROF);
 		PROC_UNLOCK(p);
 	}
 #ifdef MAC
@@ -252,4 +252,16 @@ ast(struct trapframe *framep)
 
 	userret(td, framep);
 	mtx_assert(&Giant, MA_NOTOWNED);
+}
+
+const char *
+syscallname(struct proc *p, u_int code)
+{
+	static const char unknown[] = "unknown";
+	struct sysentvec *sv;
+
+	sv = p->p_sysent;
+	if (sv->sv_syscallnames == NULL || code >= sv->sv_size)
+		return (unknown);
+	return (sv->sv_syscallnames[code]);
 }

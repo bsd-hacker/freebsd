@@ -36,6 +36,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_ipsec.h"
+#include "opt_pcbgroup.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -148,23 +149,23 @@ static VNET_DEFINE(struct tcp_syncache, tcp_syncache);
 
 SYSCTL_NODE(_net_inet_tcp, OID_AUTO, syncache, CTLFLAG_RW, 0, "TCP SYN cache");
 
-SYSCTL_VNET_INT(_net_inet_tcp_syncache, OID_AUTO, bucketlimit, CTLFLAG_RDTUN,
+SYSCTL_VNET_UINT(_net_inet_tcp_syncache, OID_AUTO, bucketlimit, CTLFLAG_RDTUN,
     &VNET_NAME(tcp_syncache.bucket_limit), 0,
     "Per-bucket hash limit for syncache");
 
-SYSCTL_VNET_INT(_net_inet_tcp_syncache, OID_AUTO, cachelimit, CTLFLAG_RDTUN,
+SYSCTL_VNET_UINT(_net_inet_tcp_syncache, OID_AUTO, cachelimit, CTLFLAG_RDTUN,
     &VNET_NAME(tcp_syncache.cache_limit), 0,
     "Overall entry limit for syncache");
 
-SYSCTL_VNET_INT(_net_inet_tcp_syncache, OID_AUTO, count, CTLFLAG_RD,
+SYSCTL_VNET_UINT(_net_inet_tcp_syncache, OID_AUTO, count, CTLFLAG_RD,
     &VNET_NAME(tcp_syncache.cache_count), 0,
     "Current number of entries in syncache");
 
-SYSCTL_VNET_INT(_net_inet_tcp_syncache, OID_AUTO, hashsize, CTLFLAG_RDTUN,
+SYSCTL_VNET_UINT(_net_inet_tcp_syncache, OID_AUTO, hashsize, CTLFLAG_RDTUN,
     &VNET_NAME(tcp_syncache.hashsize), 0,
     "Size of TCP syncache hashtable");
 
-SYSCTL_VNET_INT(_net_inet_tcp_syncache, OID_AUTO, rexmtlimit, CTLFLAG_RW,
+SYSCTL_VNET_UINT(_net_inet_tcp_syncache, OID_AUTO, rexmtlimit, CTLFLAG_RW,
     &VNET_NAME(tcp_syncache.rexmt_limit), 0,
     "Limit on SYN/ACK retransmissions");
 
@@ -524,7 +525,7 @@ syncache_chkrst(struct in_conninfo *inc, struct tcphdr *th)
 	 * used, or we are under memory pressure, a valid RST
 	 * may not find a syncache entry.  In that case we're
 	 * done and no SYN|ACK retransmissions will happen.
-	 * Otherwise the the RST was misdirected or spoofed.
+	 * Otherwise the RST was misdirected or spoofed.
 	 */
 	if (sc == NULL) {
 		if ((s = tcp_log_addrs(inc, th, NULL, NULL)))
@@ -627,6 +628,7 @@ syncache_socket(struct syncache *sc, struct socket *lso, struct mbuf *m)
 	struct inpcb *inp = NULL;
 	struct socket *so;
 	struct tcpcb *tp;
+	int error;
 	char *s;
 
 	INP_INFO_WLOCK_ASSERT(&V_tcbinfo);
@@ -660,6 +662,7 @@ syncache_socket(struct syncache *sc, struct socket *lso, struct mbuf *m)
 	inp = sotoinpcb(so);
 	inp->inp_inc.inc_fibnum = so->so_fibnum;
 	INP_WLOCK(inp);
+	INP_HASH_WLOCK(&V_tcbinfo);
 
 	/* Insert new socket into PCB hash list. */
 	inp->inp_inc.inc_flags = sc->sc_inc.inc_flags;
@@ -674,8 +677,14 @@ syncache_socket(struct syncache *sc, struct socket *lso, struct mbuf *m)
 #ifdef INET6
 	}
 #endif
+
+	/*
+	 * Install in the reservation hash table for now, but don't yet
+	 * install a connection group since the full 4-tuple isn't yet
+	 * configured.
+	 */
 	inp->inp_lport = sc->sc_inc.inc_lport;
-	if (in_pcbinshash(inp) != 0) {
+	if ((error = in_pcbinshash_nopcbgroup(inp)) != 0) {
 		/*
 		 * Undo the assignments above if we failed to
 		 * put the PCB on the hash lists.
@@ -687,6 +696,13 @@ syncache_socket(struct syncache *sc, struct socket *lso, struct mbuf *m)
 #endif
 			inp->inp_laddr.s_addr = INADDR_ANY;
 		inp->inp_lport = 0;
+		if ((s = tcp_log_addrs(&sc->sc_inc, NULL, NULL, NULL))) {
+			log(LOG_DEBUG, "%s; %s: in_pcbinshash failed "
+			    "with error %i\n",
+			    s, __func__, error);
+			free(s, M_TCPLOG);
+		}
+		INP_HASH_WUNLOCK(&V_tcbinfo);
 		goto abort;
 	}
 #ifdef IPSEC
@@ -721,16 +737,27 @@ syncache_socket(struct syncache *sc, struct socket *lso, struct mbuf *m)
 		laddr6 = inp->in6p_laddr;
 		if (IN6_IS_ADDR_UNSPECIFIED(&inp->in6p_laddr))
 			inp->in6p_laddr = sc->sc_inc.inc6_laddr;
-		if (in6_pcbconnect(inp, (struct sockaddr *)&sin6,
-		    thread0.td_ucred)) {
+		if ((error = in6_pcbconnect_mbuf(inp, (struct sockaddr *)&sin6,
+		    thread0.td_ucred, m)) != 0) {
 			inp->in6p_laddr = laddr6;
+			if ((s = tcp_log_addrs(&sc->sc_inc, NULL, NULL, NULL))) {
+				log(LOG_DEBUG, "%s; %s: in6_pcbconnect failed "
+				    "with error %i\n",
+				    s, __func__, error);
+				free(s, M_TCPLOG);
+			}
+			INP_HASH_WUNLOCK(&V_tcbinfo);
 			goto abort;
 		}
 		/* Override flowlabel from in6_pcbconnect. */
 		inp->inp_flow &= ~IPV6_FLOWLABEL_MASK;
 		inp->inp_flow |= sc->sc_flowlabel;
-	} else
+	}
+#endif /* INET6 */
+#if defined(INET) && defined(INET6)
+	else
 #endif
+#ifdef INET
 	{
 		struct in_addr laddr;
 		struct sockaddr_in sin;
@@ -750,12 +777,21 @@ syncache_socket(struct syncache *sc, struct socket *lso, struct mbuf *m)
 		laddr = inp->inp_laddr;
 		if (inp->inp_laddr.s_addr == INADDR_ANY)
 			inp->inp_laddr = sc->sc_inc.inc_laddr;
-		if (in_pcbconnect(inp, (struct sockaddr *)&sin,
-		    thread0.td_ucred)) {
+		if ((error = in_pcbconnect_mbuf(inp, (struct sockaddr *)&sin,
+		    thread0.td_ucred, m)) != 0) {
 			inp->inp_laddr = laddr;
+			if ((s = tcp_log_addrs(&sc->sc_inc, NULL, NULL, NULL))) {
+				log(LOG_DEBUG, "%s; %s: in_pcbconnect failed "
+				    "with error %i\n",
+				    s, __func__, error);
+				free(s, M_TCPLOG);
+			}
+			INP_HASH_WUNLOCK(&V_tcbinfo);
 			goto abort;
 		}
 	}
+#endif /* INET */
+	INP_HASH_WUNLOCK(&V_tcbinfo);
 	tp = intotcpcb(inp);
 	tp->t_state = TCPS_SYN_RECEIVED;
 	tp->iss = sc->sc_iss;
@@ -804,8 +840,9 @@ syncache_socket(struct syncache *sc, struct socket *lso, struct mbuf *m)
 
 	/*
 	 * If the SYN,ACK was retransmitted, reset cwnd to 1 segment.
+	 * NB: sc_rxmits counts all SYN,ACK transmits, not just retransmits.
 	 */
-	if (sc->sc_rxmits)
+	if (sc->sc_rxmits > 1)
 		tp->snd_cwnd = tp->t_maxseg;
 	tcp_timer_activate(tp, TT_KEEP, tcp_keepinit);
 
@@ -990,7 +1027,8 @@ _syncache_add(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 	struct syncache_head *sch;
 	struct mbuf *ipopts = NULL;
 	u_int32_t flowtmp;
-	int win, sb_hiwat, ip_ttl, ip_tos, noopt;
+	u_int ltflags;
+	int win, sb_hiwat, ip_ttl, ip_tos;
 	char *s;
 #ifdef INET6
 	int autoflowlabel = 0;
@@ -1023,7 +1061,7 @@ _syncache_add(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 	ip_tos = inp->inp_ip_tos;
 	win = sbspace(&so->so_rcv);
 	sb_hiwat = so->so_rcv.sb_hiwat;
-	noopt = (tp->t_flags & TF_NOOPT);
+	ltflags = (tp->t_flags & (TF_NOOPT | TF_SIGNATURE));
 
 	/* By the time we drop the lock these should no longer be used. */
 	so = NULL;
@@ -1046,7 +1084,11 @@ _syncache_add(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 #ifdef INET6
 	if (!(inc->inc_flags & INC_ISIPV6))
 #endif
+#ifdef INET
 		ipopts = (m) ? ip_srcroute(m) : NULL;
+#else
+		ipopts = NULL;
+#endif
 
 	/*
 	 * See if we already have an entry for this connection.
@@ -1218,14 +1260,14 @@ _syncache_add(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 	 * XXX: Currently we always record the option by default and will
 	 * attempt to use it in syncache_respond().
 	 */
-	if (to->to_flags & TOF_SIGNATURE)
+	if (to->to_flags & TOF_SIGNATURE || ltflags & TF_SIGNATURE)
 		sc->sc_flags |= SCF_SIGNATURE;
 #endif
 	if (to->to_flags & TOF_SACKPERM)
 		sc->sc_flags |= SCF_SACK;
 	if (to->to_flags & TOF_MSS)
 		sc->sc_peer_mss = to->to_mss;	/* peer mss may be zero */
-	if (noopt)
+	if (ltflags & TF_NOOPT)
 		sc->sc_flags |= SCF_NOOPT;
 	if ((th->th_flags & (TH_ECE|TH_CWR)) && V_tcp_do_ecn)
 		sc->sc_flags |= SCF_ECN;
@@ -1280,8 +1322,8 @@ syncache_respond(struct syncache *sc)
 {
 	struct ip *ip = NULL;
 	struct mbuf *m;
-	struct tcphdr *th;
-	int optlen, error;
+	struct tcphdr *th = NULL;
+	int optlen, error = 0;	/* Make compiler happy */
 	u_int16_t hlen, tlen, mssopt;
 	struct tcpopt to;
 #ifdef INET6
@@ -1329,8 +1371,12 @@ syncache_respond(struct syncache *sc)
 		ip6->ip6_flow |= sc->sc_flowlabel;
 
 		th = (struct tcphdr *)(ip6 + 1);
-	} else
+	}
 #endif
+#if defined(INET6) && defined(INET)
+	else
+#endif
+#ifdef INET
 	{
 		ip = mtod(m, struct ip *);
 		ip->ip_v = IPVERSION;
@@ -1357,6 +1403,7 @@ syncache_respond(struct syncache *sc)
 
 		th = (struct tcphdr *)(ip + 1);
 	}
+#endif /* INET */
 	th->th_sport = sc->sc_inc.inc_lport;
 	th->th_dport = sc->sc_inc.inc_fport;
 
@@ -1424,8 +1471,12 @@ syncache_respond(struct syncache *sc)
 				       tlen + optlen - hlen);
 		ip6->ip6_hlim = in6_selecthlim(NULL, NULL);
 		error = ip6_output(m, NULL, NULL, 0, NULL, NULL, NULL);
-	} else
+	}
 #endif
+#if defined(INET6) && defined(INET)
+	else
+#endif
+#ifdef INET
 	{
 		th->th_sum = in_pseudo(ip->ip_src.s_addr, ip->ip_dst.s_addr,
 		    htons(tlen + optlen - hlen + IPPROTO_TCP));
@@ -1433,6 +1484,7 @@ syncache_respond(struct syncache *sc)
 		m->m_pkthdr.csum_data = offsetof(struct tcphdr, th_sum);
 		error = ip_output(m, sc->sc_ipopts, NULL, 0, NULL, NULL);
 	}
+#endif
 	return (error);
 }
 

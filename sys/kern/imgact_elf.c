@@ -31,10 +31,12 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include "opt_capsicum.h"
 #include "opt_compat.h"
 #include "opt_core.h"
 
 #include <sys/param.h>
+#include <sys/capability.h>
 #include <sys/exec.h>
 #include <sys/fcntl.h>
 #include <sys/imgact.h>
@@ -49,8 +51,10 @@ __FBSDID("$FreeBSD$");
 #include <sys/pioctl.h>
 #include <sys/proc.h>
 #include <sys/procfs.h>
+#include <sys/racct.h>
 #include <sys/resourcevar.h>
 #include <sys/sf_buf.h>
+#include <sys/smp.h>
 #include <sys/systm.h>
 #include <sys/signalvar.h>
 #include <sys/stat.h>
@@ -91,6 +95,8 @@ static boolean_t __elfN(freebsd_trans_osrel)(const Elf_Note *note,
 static boolean_t kfreebsd_trans_osrel(const Elf_Note *note, int32_t *osrel);
 static boolean_t __elfN(check_note)(struct image_params *imgp,
     Elf_Brandnote *checknote, int32_t *osrel);
+static vm_prot_t __elfN(trans_prot)(Elf_Word);
+static Elf_Word __elfN(untrans_prot)(vm_prot_t);
 
 SYSCTL_NODE(_kern, OID_AUTO, __CONCAT(elf, __ELF_WORD_SIZE), CTLFLAG_RW, 0,
     "");
@@ -111,6 +117,11 @@ TUNABLE_INT("kern.elf" __XSTRING(__ELF_WORD_SIZE) ".fallback_brand",
 static int elf_legacy_coredump = 0;
 SYSCTL_INT(_debug, OID_AUTO, __elfN(legacy_coredump), CTLFLAG_RW, 
     &elf_legacy_coredump, 0, "");
+
+static int __elfN(nxstack) = 0;
+SYSCTL_INT(__CONCAT(_kern_elf, __ELF_WORD_SIZE), OID_AUTO,
+    nxstack, CTLFLAG_RW, &__elfN(nxstack), 0,
+    __XSTRING(__CONCAT(ELF, __ELF_WORD_SIZE)) ": enable non-executable stack");
 
 static Elf_Brandinfo *elf_brand_list[MAX_BRANDS];
 
@@ -569,6 +580,15 @@ __elfN(load_file)(struct proc *p, const char *file, u_long *addr,
 	u_long base_addr = 0;
 	int vfslocked, error, i, numsegs;
 
+#ifdef CAPABILITY_MODE
+	/*
+	 * XXXJA: This check can go away once we are sufficiently confident
+	 * that the checks in namei() are correct.
+	 */
+	if (IN_CAPABILITY_MODE(curthread))
+		return (ECAPMODE);
+#endif
+
 	tempdata = malloc(sizeof(*tempdata), M_TEMP, M_WAITOK);
 	nd = &tempdata->nd;
 	attr = &tempdata->attr;
@@ -643,14 +663,7 @@ __elfN(load_file)(struct proc *p, const char *file, u_long *addr,
 	for (i = 0, numsegs = 0; i < hdr->e_phnum; i++) {
 		if (phdr[i].p_type == PT_LOAD && phdr[i].p_memsz != 0) {
 			/* Loadable segment */
-			prot = 0;
-			if (phdr[i].p_flags & PF_X)
-  				prot |= VM_PROT_EXECUTE;
-			if (phdr[i].p_flags & PF_W)
-  				prot |= VM_PROT_WRITE;
-			if (phdr[i].p_flags & PF_R)
-  				prot |= VM_PROT_READ;
-
+			prot = __elfN(trans_prot)(phdr[i].p_flags);
 			if ((error = __elfN(load_section)(vmspace,
 			    imgp->object, phdr[i].p_offset,
 			    (caddr_t)(uintptr_t)phdr[i].p_vaddr + rbase,
@@ -728,19 +741,24 @@ __CONCAT(exec_, __elfN(imgact))(struct image_params *imgp)
 	n = 0;
 	baddr = 0;
 	for (i = 0; i < hdr->e_phnum; i++) {
-		if (phdr[i].p_type == PT_LOAD) {
+		switch (phdr[i].p_type) {
+		case PT_LOAD:
 			if (n == 0)
 				baddr = phdr[i].p_vaddr;
 			n++;
-			continue;
-		}
-		if (phdr[i].p_type == PT_INTERP) {
+			break;
+		case PT_INTERP:
 			/* Path to interpreter */
 			if (phdr[i].p_filesz > MAXPATHLEN ||
 			    phdr[i].p_offset + phdr[i].p_filesz > PAGE_SIZE)
 				return (ENOEXEC);
 			interp = imgp->image_header + phdr[i].p_offset;
-			continue;
+			break;
+		case PT_GNU_STACK:
+			if (__elfN(nxstack))
+				imgp->stack_prot =
+				    __elfN(trans_prot)(phdr[i].p_flags);
+			break;
 		}
 	}
 
@@ -791,13 +809,7 @@ __CONCAT(exec_, __elfN(imgact))(struct image_params *imgp)
 		case PT_LOAD:	/* Loadable segment */
 			if (phdr[i].p_memsz == 0)
 				break;
-			prot = 0;
-			if (phdr[i].p_flags & PF_X)
-  				prot |= VM_PROT_EXECUTE;
-			if (phdr[i].p_flags & PF_W)
-  				prot |= VM_PROT_WRITE;
-			if (phdr[i].p_flags & PF_R)
-  				prot |= VM_PROT_READ;
+			prot = __elfN(trans_prot)(phdr[i].p_flags);
 
 #if defined(__ia64__) && __ELF_WORD_SIZE == 32 && defined(IA32_ME_HARDER)
 			/*
@@ -874,7 +886,9 @@ __CONCAT(exec_, __elfN(imgact))(struct image_params *imgp)
 	PROC_LOCK(imgp->proc);
 	if (data_size > lim_cur(imgp->proc, RLIMIT_DATA) ||
 	    text_size > maxtsiz ||
-	    total_size > lim_cur(imgp->proc, RLIMIT_VMEM)) {
+	    total_size > lim_cur(imgp->proc, RLIMIT_VMEM) ||
+	    racct_set(imgp->proc, RACCT_DATA, data_size) != 0 ||
+	    racct_set(imgp->proc, RACCT_VMEM, total_size) != 0) {
 		PROC_UNLOCK(imgp->proc);
 		return (ENOMEM);
 	}
@@ -972,6 +986,19 @@ __elfN(freebsd_fixup)(register_t **stack_base, struct image_params *imgp)
 	AUXARGS_ENTRY(pos, AT_BASE, args->base);
 	if (imgp->execpathp != 0)
 		AUXARGS_ENTRY(pos, AT_EXECPATH, imgp->execpathp);
+	AUXARGS_ENTRY(pos, AT_OSRELDATE, osreldate);
+	if (imgp->canary != 0) {
+		AUXARGS_ENTRY(pos, AT_CANARY, imgp->canary);
+		AUXARGS_ENTRY(pos, AT_CANARYLEN, imgp->canarylen);
+	}
+	AUXARGS_ENTRY(pos, AT_NCPUS, mp_ncpus);
+	if (imgp->pagesizes != 0) {
+		AUXARGS_ENTRY(pos, AT_PAGESIZES, imgp->pagesizes);
+		AUXARGS_ENTRY(pos, AT_PAGESIZESLEN, imgp->pagesizeslen);
+	}
+	AUXARGS_ENTRY(pos, AT_STACKPROT, imgp->sysent->sv_shared_page_obj
+	    != NULL && imgp->stack_prot != 0 ? imgp->stack_prot :
+	    imgp->sysent->sv_stackprot);
 	AUXARGS_ENTRY(pos, AT_NULL, 0);
 
 	free(imgp->auxargs, M_TEMP);
@@ -1088,6 +1115,15 @@ __elfN(coredump)(struct thread *td, struct vnode *vp, off_t limit, int flags)
 	hdrsize = 0;
 	__elfN(puthdr)(td, (void *)NULL, &hdrsize, seginfo.count);
 
+#ifdef RACCT
+	PROC_LOCK(td->td_proc);
+	error = racct_add(td->td_proc, RACCT_CORE, hdrsize + seginfo.size);
+	PROC_UNLOCK(td->td_proc);
+	if (error != 0) {
+		error = EFAULT;
+		goto done;
+	}
+#endif
 	if (hdrsize + seginfo.size >= limit) {
 		error = EFAULT;
 		goto done;
@@ -1161,13 +1197,7 @@ cb_put_phdr(entry, closure)
 	phdr->p_paddr = 0;
 	phdr->p_filesz = phdr->p_memsz = entry->end - entry->start;
 	phdr->p_align = PAGE_SIZE;
-	phdr->p_flags = 0;
-	if (entry->protection & VM_PROT_READ)
-		phdr->p_flags |= PF_R;
-	if (entry->protection & VM_PROT_WRITE)
-		phdr->p_flags |= PF_W;
-	if (entry->protection & VM_PROT_EXECUTE)
-		phdr->p_flags |= PF_X;
+	phdr->p_flags = __elfN(untrans_prot)(entry->protection);
 
 	phc->offset += phdr->p_filesz;
 	phc->phdr++;
@@ -1305,12 +1335,14 @@ typedef struct prpsinfo32 elf_prpsinfo_t;
 typedef struct fpreg32 elf_prfpregset_t;
 typedef struct fpreg32 elf_fpregset_t;
 typedef struct reg32 elf_gregset_t;
+typedef struct thrmisc32 elf_thrmisc_t;
 #else
 typedef prstatus_t elf_prstatus_t;
 typedef prpsinfo_t elf_prpsinfo_t;
 typedef prfpregset_t elf_prfpregset_t;
 typedef prfpregset_t elf_fpregset_t;
 typedef gregset_t elf_gregset_t;
+typedef thrmisc_t elf_thrmisc_t;
 #endif
 
 static void
@@ -1320,10 +1352,12 @@ __elfN(puthdr)(struct thread *td, void *dst, size_t *off, int numsegs)
 		elf_prstatus_t status;
 		elf_prfpregset_t fpregset;
 		elf_prpsinfo_t psinfo;
+		elf_thrmisc_t thrmisc;
 	} *tempdata;
 	elf_prstatus_t *status;
 	elf_prfpregset_t *fpregset;
 	elf_prpsinfo_t *psinfo;
+	elf_thrmisc_t *thrmisc;
 	struct proc *p;
 	struct thread *thr;
 	size_t ehoff, noteoff, notesz, phoff;
@@ -1346,11 +1380,13 @@ __elfN(puthdr)(struct thread *td, void *dst, size_t *off, int numsegs)
 		status = &tempdata->status;
 		fpregset = &tempdata->fpregset;
 		psinfo = &tempdata->psinfo;
+		thrmisc = &tempdata->thrmisc;
 	} else {
 		tempdata = NULL;
 		status = NULL;
 		fpregset = NULL;
 		psinfo = NULL;
+		thrmisc = NULL;
 	}
 
 	if (dst != NULL) {
@@ -1390,11 +1426,15 @@ __elfN(puthdr)(struct thread *td, void *dst, size_t *off, int numsegs)
 			fill_regs(thr, &status->pr_reg);
 			fill_fpregs(thr, fpregset);
 #endif
+			memset(&thrmisc->_pad, 0, sizeof (thrmisc->_pad));
+			strcpy(thrmisc->pr_tname, thr->td_name);
 		}
 		__elfN(putnote)(dst, off, "FreeBSD", NT_PRSTATUS, status,
 		    sizeof *status);
 		__elfN(putnote)(dst, off, "FreeBSD", NT_FPREGSET, fpregset,
 		    sizeof *fpregset);
+		__elfN(putnote)(dst, off, "FreeBSD", NT_THRMISC, thrmisc,
+		    sizeof *thrmisc);
 		/*
 		 * Allow for MD specific notes, as well as any MD
 		 * specific preparations for writing MI notes.
@@ -1605,10 +1645,45 @@ compress_core (gzFile file, char *inbuf, char *dest_buf, unsigned int len,
 		}
 		inbuf += chunk_len;
 		len -= chunk_len;
-		if (ticks - PCPU_GET(switchticks) >= hogticks)
-			uio_yield();
+		maybe_yield();
 	}
 
 	return (error);
 }
 #endif /* COMPRESS_USER_CORES */
+
+static vm_prot_t
+__elfN(trans_prot)(Elf_Word flags)
+{
+	vm_prot_t prot;
+
+	prot = 0;
+	if (flags & PF_X)
+		prot |= VM_PROT_EXECUTE;
+	if (flags & PF_W)
+		prot |= VM_PROT_WRITE;
+	if (flags & PF_R)
+		prot |= VM_PROT_READ;
+#if __ELF_WORD_SIZE == 32
+#if defined(__amd64__) || defined(__ia64__)
+	if (flags & PF_R)
+		prot |= VM_PROT_EXECUTE;
+#endif
+#endif
+	return (prot);
+}
+
+static Elf_Word
+__elfN(untrans_prot)(vm_prot_t prot)
+{
+	Elf_Word flags;
+
+	flags = 0;
+	if (prot & VM_PROT_EXECUTE)
+		flags |= PF_X;
+	if (prot & VM_PROT_READ)
+		flags |= PF_R;
+	if (prot & VM_PROT_WRITE)
+		flags |= PF_W;
+	return (flags);
+}

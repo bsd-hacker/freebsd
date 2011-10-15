@@ -136,7 +136,7 @@ MODULE_DEPEND(gem, miibus, 1, 1, 1);
 
 #ifdef GEM_DEBUG
 #include <sys/ktr.h>
-#define	KTR_GEM		KTR_CT2
+#define	KTR_GEM		KTR_SPARE2
 #endif
 
 #define	GEM_BANK1_BITWAIT(sc, r, clr, set)				\
@@ -149,7 +149,7 @@ gem_attach(struct gem_softc *sc)
 {
 	struct gem_txsoft *txs;
 	struct ifnet *ifp;
-	int error, i;
+	int error, i, phy;
 	uint32_t v;
 
 	if (bootverbose)
@@ -268,10 +268,17 @@ gem_attach(struct gem_softc *sc)
 		sc->sc_rxsoft[i].rxs_mbuf = NULL;
 	}
 
+	/* Bypass probing PHYs if we already know for sure to use a SERDES. */
+	if ((sc->sc_flags & GEM_SERDES) != 0)
+		goto serdes;
+
 	/* Bad things will happen when touching this register on ERI. */
-	if (sc->sc_variant != GEM_SUN_ERI)
+	if (sc->sc_variant != GEM_SUN_ERI) {
 		GEM_BANK1_WRITE_4(sc, GEM_MII_DATAPATH_MODE,
 		    GEM_MII_DATAPATH_MII);
+		GEM_BANK1_BARRIER(sc, GEM_MII_DATAPATH_MODE, 4,
+		    BUS_SPACE_BARRIER_READ | BUS_SPACE_BARRIER_WRITE);
+	}
 
 	gem_mifinit(sc);
 
@@ -283,16 +290,19 @@ gem_attach(struct gem_softc *sc)
 	if ((v & GEM_MIF_CONFIG_MDI1) != 0) {
 		v |= GEM_MIF_CONFIG_PHY_SEL;
 		GEM_BANK1_WRITE_4(sc, GEM_MIF_CONFIG, v);
+		GEM_BANK1_BARRIER(sc, GEM_MIF_CONFIG, 4,
+		    BUS_SPACE_BARRIER_READ | BUS_SPACE_BARRIER_WRITE);
 		switch (sc->sc_variant) {
 		case GEM_SUN_ERI:
-			sc->sc_phyad = GEM_PHYAD_EXTERNAL;
+			phy = GEM_PHYAD_EXTERNAL;
 			break;
 		default:
-			sc->sc_phyad = -1;
+			phy = MII_PHY_ANY;
 			break;
 		}
-		error = mii_phy_probe(sc->sc_dev, &sc->sc_miibus,
-		    gem_mediachange, gem_mediastatus);
+		error = mii_attach(sc->sc_dev, &sc->sc_miibus, ifp,
+		    gem_mediachange, gem_mediastatus, BMSR_DEFCAPMASK, phy,
+		    MII_OFFSET_ANY, MIIF_DOPAUSE);
 	}
 
 	/*
@@ -304,39 +314,48 @@ gem_attach(struct gem_softc *sc)
 	    ((v & GEM_MIF_CONFIG_MDI0) != 0 || GEM_IS_APPLE(sc))) {
 		v &= ~GEM_MIF_CONFIG_PHY_SEL;
 		GEM_BANK1_WRITE_4(sc, GEM_MIF_CONFIG, v);
+		GEM_BANK1_BARRIER(sc, GEM_MIF_CONFIG, 4,
+		    BUS_SPACE_BARRIER_READ | BUS_SPACE_BARRIER_WRITE);
 		switch (sc->sc_variant) {
 		case GEM_SUN_ERI:
 		case GEM_APPLE_K2_GMAC:
-			sc->sc_phyad = GEM_PHYAD_INTERNAL;
+			phy = GEM_PHYAD_INTERNAL;
 			break;
 		case GEM_APPLE_GMAC:
-			sc->sc_phyad = GEM_PHYAD_EXTERNAL;
+			phy = GEM_PHYAD_EXTERNAL;
 			break;
 		default:
-			sc->sc_phyad = -1;
+			phy = MII_PHY_ANY;
 			break;
 		}
-		error = mii_phy_probe(sc->sc_dev, &sc->sc_miibus,
-		    gem_mediachange, gem_mediastatus);
+		error = mii_attach(sc->sc_dev, &sc->sc_miibus, ifp,
+		    gem_mediachange, gem_mediastatus, BMSR_DEFCAPMASK, phy,
+		    MII_OFFSET_ANY, MIIF_DOPAUSE);
 	}
 
 	/*
 	 * Try the external PCS SERDES if we didn't find any PHYs.
 	 */
 	if (error != 0 && sc->sc_variant == GEM_SUN_GEM) {
+ serdes:
 		GEM_BANK1_WRITE_4(sc, GEM_MII_DATAPATH_MODE,
 		    GEM_MII_DATAPATH_SERDES);
+		GEM_BANK1_BARRIER(sc, GEM_MII_DATAPATH_MODE, 4,
+		    BUS_SPACE_BARRIER_WRITE);
 		GEM_BANK1_WRITE_4(sc, GEM_MII_SLINK_CONTROL,
 		    GEM_MII_SLINK_LOOPBACK | GEM_MII_SLINK_EN_SYNC_D);
+		GEM_BANK1_BARRIER(sc, GEM_MII_SLINK_CONTROL, 4,
+		    BUS_SPACE_BARRIER_WRITE);
 		GEM_BANK1_WRITE_4(sc, GEM_MII_CONFIG, GEM_MII_CONFIG_ENABLE);
+		GEM_BANK1_BARRIER(sc, GEM_MII_CONFIG, 4,
+		    BUS_SPACE_BARRIER_WRITE);
 		sc->sc_flags |= GEM_SERDES;
-		sc->sc_phyad = GEM_PHYAD_EXTERNAL;
-		error = mii_phy_probe(sc->sc_dev, &sc->sc_miibus,
-		    gem_mediachange, gem_mediastatus);
+		error = mii_attach(sc->sc_dev, &sc->sc_miibus, ifp,
+		    gem_mediachange, gem_mediastatus, BMSR_DEFCAPMASK,
+		    GEM_PHYAD_EXTERNAL, MII_OFFSET_ANY, MIIF_DOPAUSE);
 	}
-
 	if (error != 0) {
-		device_printf(sc->sc_dev, "PHY probe failed: %d\n", error);
+		device_printf(sc->sc_dev, "attaching PHYs failed\n");
 		goto fail_rxd;
 	}
 	sc->sc_mii = device_get_softc(sc->sc_miibus);
@@ -607,7 +626,9 @@ gem_reset(struct gem_softc *sc)
 	gem_reset_tx(sc);
 
 	/* Do a full reset. */
-	GEM_BANK2_WRITE_4(sc, GEM_RESET, GEM_RESET_RX | GEM_RESET_TX);
+	GEM_BANK2_WRITE_4(sc, GEM_RESET, GEM_RESET_RX | GEM_RESET_TX |
+	    (sc->sc_variant == GEM_SUN_ERI ? GEM_ERI_CACHE_LINE_SIZE <<
+	    GEM_RESET_CLSZ_SHFT : 0));
 	GEM_BANK2_BARRIER(sc, GEM_RESET, 4,
 	    BUS_SPACE_BARRIER_READ | BUS_SPACE_BARRIER_WRITE);
 	if (!GEM_BANK2_BITWAIT(sc, GEM_RESET, GEM_RESET_RX | GEM_RESET_TX, 0))
@@ -686,22 +707,36 @@ gem_reset_rx(struct gem_softc *sc)
 	 * Resetting while DMA is in progress can cause a bus hang, so we
 	 * disable DMA first.
 	 */
-	gem_disable_rx(sc);
+	(void)gem_disable_rx(sc);
 	GEM_BANK1_WRITE_4(sc, GEM_RX_CONFIG, 0);
 	GEM_BANK1_BARRIER(sc, GEM_RX_CONFIG, 4,
 	    BUS_SPACE_BARRIER_READ | BUS_SPACE_BARRIER_WRITE);
 	if (!GEM_BANK1_BITWAIT(sc, GEM_RX_CONFIG, GEM_RX_CONFIG_RXDMA_EN, 0))
 		device_printf(sc->sc_dev, "cannot disable RX DMA\n");
 
-	/* Finally, reset the ERX. */
-	GEM_BANK2_WRITE_4(sc, GEM_RESET, GEM_RESET_RX);
+	/* Wait 5ms extra. */
+	DELAY(5000);
+
+	/* Reset the ERX. */
+	GEM_BANK2_WRITE_4(sc, GEM_RESET, GEM_RESET_RX |
+	    (sc->sc_variant == GEM_SUN_ERI ? GEM_ERI_CACHE_LINE_SIZE <<
+	    GEM_RESET_CLSZ_SHFT : 0));
 	GEM_BANK2_BARRIER(sc, GEM_RESET, 4,
 	    BUS_SPACE_BARRIER_READ | BUS_SPACE_BARRIER_WRITE);
-	if (!GEM_BANK2_BITWAIT(sc, GEM_RESET, GEM_RESET_RX | GEM_RESET_TX,
-	    0)) {
+	if (!GEM_BANK2_BITWAIT(sc, GEM_RESET, GEM_RESET_RX, 0)) {
 		device_printf(sc->sc_dev, "cannot reset receiver\n");
 		return (1);
 	}
+
+	/* Finally, reset RX MAC. */
+	GEM_BANK1_WRITE_4(sc, GEM_MAC_RXRESET, 1);
+	GEM_BANK1_BARRIER(sc, GEM_MAC_RXRESET, 4,
+	    BUS_SPACE_BARRIER_READ | BUS_SPACE_BARRIER_WRITE);
+	if (!GEM_BANK1_BITWAIT(sc, GEM_MAC_RXRESET, 1, 0)) {
+		device_printf(sc->sc_dev, "cannot reset RX MAC\n");
+		return (1);
+	}
+
 	return (0);
 }
 
@@ -717,8 +752,10 @@ gem_reset_rxdma(struct gem_softc *sc)
 {
 	int i;
 
-	if (gem_reset_rx(sc) != 0)
+	if (gem_reset_rx(sc) != 0) {
+		sc->sc_ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
 		return (gem_init_locked(sc));
+	}
 	for (i = 0; i < GEM_NRXDESC; i++)
 		if (sc->sc_rxsoft[i].rxs_mbuf != NULL)
 			GEM_UPDATE_RXDESC(sc, i);
@@ -735,7 +772,7 @@ gem_reset_rxdma(struct gem_softc *sc)
 	    GEM_RX_CONFIG_CXM_START_SHFT) |
 	    (GEM_THRSH_1024 << GEM_RX_CONFIG_FIFO_THRS_SHIFT) |
 	    (ETHER_ALIGN << GEM_RX_CONFIG_FBOFF_SHFT));
-	/* Adjust for the SBus clock probably isn't worth the fuzz. */
+	/* Adjusting for the SBus clock probably isn't worth the fuzz. */
 	GEM_BANK1_WRITE_4(sc, GEM_RX_BLANKING,
 	    ((6 * (sc->sc_flags & GEM_PCI66) != 0 ? 2 : 1) <<
 	    GEM_RX_BLANKING_TIME_SHIFT) | 6);
@@ -746,8 +783,11 @@ gem_reset_rxdma(struct gem_softc *sc)
 	    GEM_BANK1_READ_4(sc, GEM_RX_CONFIG) | GEM_RX_CONFIG_RXDMA_EN);
 	GEM_BANK1_WRITE_4(sc, GEM_MAC_RX_MASK,
 	    GEM_MAC_RX_DONE | GEM_MAC_RX_FRAME_CNT);
-	GEM_BANK1_WRITE_4(sc, GEM_MAC_RX_CONFIG,
-	    GEM_BANK1_READ_4(sc, GEM_MAC_RX_CONFIG) | GEM_MAC_RX_ENABLE);
+	/*
+	 * Clear the RX filter and reprogram it.  This will also set the
+	 * current RX MAC configuration and enable it.
+	 */
+	gem_setladrf(sc);
 }
 
 static int
@@ -758,19 +798,23 @@ gem_reset_tx(struct gem_softc *sc)
 	 * Resetting while DMA is in progress can cause a bus hang, so we
 	 * disable DMA first.
 	 */
-	gem_disable_tx(sc);
+	(void)gem_disable_tx(sc);
 	GEM_BANK1_WRITE_4(sc, GEM_TX_CONFIG, 0);
 	GEM_BANK1_BARRIER(sc, GEM_TX_CONFIG, 4,
 	    BUS_SPACE_BARRIER_READ | BUS_SPACE_BARRIER_WRITE);
 	if (!GEM_BANK1_BITWAIT(sc, GEM_TX_CONFIG, GEM_TX_CONFIG_TXDMA_EN, 0))
 		device_printf(sc->sc_dev, "cannot disable TX DMA\n");
 
+	/* Wait 5ms extra. */
+	DELAY(5000);
+
 	/* Finally, reset the ETX. */
-	GEM_BANK2_WRITE_4(sc, GEM_RESET, GEM_RESET_TX);
+	GEM_BANK2_WRITE_4(sc, GEM_RESET, GEM_RESET_TX |
+	    (sc->sc_variant == GEM_SUN_ERI ? GEM_ERI_CACHE_LINE_SIZE <<
+	    GEM_RESET_CLSZ_SHFT : 0));
 	GEM_BANK2_BARRIER(sc, GEM_RESET, 4,
 	    BUS_SPACE_BARRIER_READ | BUS_SPACE_BARRIER_WRITE);
-	if (!GEM_BANK2_BITWAIT(sc, GEM_RESET, GEM_RESET_RX | GEM_RESET_TX,
-	    0)) {
+	if (!GEM_BANK2_BITWAIT(sc, GEM_RESET, GEM_RESET_TX, 0)) {
 		device_printf(sc->sc_dev, "cannot reset transmitter\n");
 		return (1);
 	}
@@ -785,8 +829,10 @@ gem_disable_rx(struct gem_softc *sc)
 	    GEM_BANK1_READ_4(sc, GEM_MAC_RX_CONFIG) & ~GEM_MAC_RX_ENABLE);
 	GEM_BANK1_BARRIER(sc, GEM_MAC_RX_CONFIG, 4,
 	    BUS_SPACE_BARRIER_READ | BUS_SPACE_BARRIER_WRITE);
-	return (GEM_BANK1_BITWAIT(sc, GEM_MAC_RX_CONFIG, GEM_MAC_RX_ENABLE,
-	    0));
+	if (GEM_BANK1_BITWAIT(sc, GEM_MAC_RX_CONFIG, GEM_MAC_RX_ENABLE, 0))
+		return (1);
+	device_printf(sc->sc_dev, "cannot disable RX MAC\n");
+	return (0);
 }
 
 static int
@@ -797,8 +843,10 @@ gem_disable_tx(struct gem_softc *sc)
 	    GEM_BANK1_READ_4(sc, GEM_MAC_TX_CONFIG) & ~GEM_MAC_TX_ENABLE);
 	GEM_BANK1_BARRIER(sc, GEM_MAC_TX_CONFIG, 4,
 	    BUS_SPACE_BARRIER_READ | BUS_SPACE_BARRIER_WRITE);
-	return (GEM_BANK1_BITWAIT(sc, GEM_MAC_TX_CONFIG, GEM_MAC_TX_ENABLE,
-	    0));
+	if (GEM_BANK1_BITWAIT(sc, GEM_MAC_TX_CONFIG, GEM_MAC_TX_ENABLE, 0))
+		return (1);
+	device_printf(sc->sc_dev, "cannot disable TX MAC\n");
+	return (0);
 }
 
 static int
@@ -899,6 +947,9 @@ gem_init_locked(struct gem_softc *sc)
 
 	GEM_LOCK_ASSERT(sc, MA_OWNED);
 
+	if ((ifp->if_drv_flags & IFF_DRV_RUNNING) != 0)
+		return;
+
 #ifdef GEM_DEBUG
 	CTR2(KTR_GEM, "%s: %s: calling stop", device_get_name(sc->sc_dev),
 	    __func__);
@@ -918,8 +969,9 @@ gem_init_locked(struct gem_softc *sc)
 	    __func__);
 #endif
 
-	/* Re-initialize the MIF. */
-	gem_mifinit(sc);
+	if ((sc->sc_flags & GEM_SERDES) == 0)
+		/* Re-initialize the MIF. */
+		gem_mifinit(sc);
 
 	/* step 3.  Setup data structures in host memory. */
 	if (gem_meminit(sc) != 0)
@@ -929,7 +981,6 @@ gem_init_locked(struct gem_softc *sc)
 	gem_init_regs(sc);
 
 	/* step 5.  RX MAC registers & counters */
-	gem_setladrf(sc);
 
 	/* step 6 & 7.  Program Descriptor Ring Base Addresses. */
 	/* NOTE: we use only 32-bit DMA addresses here. */
@@ -1001,7 +1052,7 @@ gem_init_locked(struct gem_softc *sc)
 	    (ETHER_ALIGN << GEM_RX_CONFIG_FBOFF_SHFT) |
 	    GEM_RX_CONFIG_RXDMA_EN);
 
-	/* Adjust for the SBus clock probably isn't worth the fuzz. */
+	/* Adjusting for the SBus clock probably isn't worth the fuzz. */
 	GEM_BANK1_WRITE_4(sc, GEM_RX_BLANKING,
 	    ((6 * (sc->sc_flags & GEM_PCI66) != 0 ? 2 : 1) <<
 	    GEM_RX_BLANKING_TIME_SHIFT) | 6);
@@ -1018,27 +1069,24 @@ gem_init_locked(struct gem_softc *sc)
 
 	/* step 12.  RX_MAC Configuration Register */
 	v = GEM_BANK1_READ_4(sc, GEM_MAC_RX_CONFIG);
-	v |= GEM_MAC_RX_ENABLE | GEM_MAC_RX_STRIP_CRC;
-	GEM_BANK1_WRITE_4(sc, GEM_MAC_RX_CONFIG, 0);
-	GEM_BANK1_BARRIER(sc, GEM_MAC_RX_CONFIG, 4,
-	    BUS_SPACE_BARRIER_READ | BUS_SPACE_BARRIER_WRITE);
-	if (!GEM_BANK1_BITWAIT(sc, GEM_MAC_RX_CONFIG, GEM_MAC_RX_ENABLE, 0))
-		device_printf(sc->sc_dev, "cannot configure RX MAC\n");
-	GEM_BANK1_WRITE_4(sc, GEM_MAC_RX_CONFIG, v);
+	v &= ~GEM_MAC_RX_ENABLE;
+	v |= GEM_MAC_RX_STRIP_CRC;
+	sc->sc_mac_rxcfg = v;
+	/*
+	 * Clear the RX filter and reprogram it.  This will also set the
+	 * current RX MAC configuration and enable it.
+	 */
+	gem_setladrf(sc);
 
 	/* step 13.  TX_MAC Configuration Register */
 	v = GEM_BANK1_READ_4(sc, GEM_MAC_TX_CONFIG);
 	v |= GEM_MAC_TX_ENABLE;
-	GEM_BANK1_WRITE_4(sc, GEM_MAC_TX_CONFIG, 0);
-	GEM_BANK1_BARRIER(sc, GEM_MAC_TX_CONFIG, 4,
-	    BUS_SPACE_BARRIER_READ | BUS_SPACE_BARRIER_WRITE);
-	if (!GEM_BANK1_BITWAIT(sc, GEM_MAC_TX_CONFIG, GEM_MAC_TX_ENABLE, 0))
-		device_printf(sc->sc_dev, "cannot configure TX MAC\n");
+	(void)gem_disable_tx(sc);
 	GEM_BANK1_WRITE_4(sc, GEM_MAC_TX_CONFIG, v);
 
 	/* step 14.  Issue Transmit Pending command. */
 
-	/* step 15.  Give the reciever a swift kick. */
+	/* step 15.  Give the receiver a swift kick. */
 	GEM_BANK1_WRITE_4(sc, GEM_RX_KICK, GEM_NRXDESC - 4);
 
 	ifp->if_drv_flags |= IFF_DRV_RUNNING;
@@ -1219,7 +1267,7 @@ gem_init_regs(struct gem_softc *sc)
 		GEM_BANK1_WRITE_4(sc, GEM_MAC_PREAMBLE_LEN, 0x7);
 		GEM_BANK1_WRITE_4(sc, GEM_MAC_JAM_SIZE, 0x4);
 		GEM_BANK1_WRITE_4(sc, GEM_MAC_ATTEMPT_LIMIT, 0x10);
-		GEM_BANK1_WRITE_4(sc, GEM_MAC_CONTROL_TYPE, 0x8088);
+		GEM_BANK1_WRITE_4(sc, GEM_MAC_CONTROL_TYPE, 0x8808);
 
 		/* random number seed */
 		GEM_BANK1_WRITE_4(sc, GEM_MAC_RANDOM_SEED,
@@ -1557,7 +1605,7 @@ gem_rint(struct gem_softc *sc)
 		 * the buffer that's already attached to this descriptor.
 		 */
 		if (gem_add_rxbuf(sc, sc->sc_rxptr) != 0) {
-			ifp->if_ierrors++;
+			ifp->if_iqdrops++;
 			GEM_INIT_RXDESC(sc, sc->sc_rxptr);
 			m = NULL;
 		}
@@ -1736,6 +1784,7 @@ gem_intr(void *v)
 		if ((status2 &
 		    (GEM_MAC_TX_UNDERRUN | GEM_MAC_TX_PKT_TOO_LONG)) != 0) {
 			sc->sc_ifp->if_oerrors++;
+			sc->sc_ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
 			gem_init_locked(sc);
 		}
 	}
@@ -1788,6 +1837,7 @@ gem_watchdog(struct gem_softc *sc)
 	++ifp->if_oerrors;
 
 	/* Try to get more packets going. */
+	ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
 	gem_init_locked(sc);
 	gem_start_locked(ifp);
 	return (EJUSTRETURN);
@@ -1800,6 +1850,8 @@ gem_mifinit(struct gem_softc *sc)
 	/* Configure the MIF in frame mode. */
 	GEM_BANK1_WRITE_4(sc, GEM_MIF_CONFIG,
 	    GEM_BANK1_READ_4(sc, GEM_MIF_CONFIG) & ~GEM_MIF_CONFIG_BB_ENA);
+	GEM_BANK1_BARRIER(sc, GEM_MIF_CONFIG, 4,
+	    BUS_SPACE_BARRIER_READ | BUS_SPACE_BARRIER_WRITE);
 }
 
 /*
@@ -1828,9 +1880,6 @@ gem_mii_readreg(device_t dev, int phy, int reg)
 #endif
 
 	sc = device_get_softc(dev);
-	if (sc->sc_phyad != -1 && phy != sc->sc_phyad)
-		return (0);
-
 	if ((sc->sc_flags & GEM_SERDES) != 0) {
 		switch (reg) {
 		case MII_BMCR:
@@ -1889,9 +1938,6 @@ gem_mii_writereg(device_t dev, int phy, int reg, int val)
 #endif
 
 	sc = device_get_softc(dev);
-	if (sc->sc_phyad != -1 && phy != sc->sc_phyad)
-		return (0);
-
 	if ((sc->sc_flags & GEM_SERDES) != 0) {
 		switch (reg) {
 		case MII_BMSR:
@@ -1914,10 +1960,16 @@ gem_mii_writereg(device_t dev, int phy, int reg, int val)
 			GEM_BANK1_BARRIER(sc, GEM_MII_CONFIG, 4,
 			    BUS_SPACE_BARRIER_WRITE);
 			GEM_BANK1_WRITE_4(sc, GEM_MII_ANAR, val);
+			GEM_BANK1_BARRIER(sc, GEM_MII_ANAR, 4,
+			    BUS_SPACE_BARRIER_WRITE);
 			GEM_BANK1_WRITE_4(sc, GEM_MII_SLINK_CONTROL,
 			    GEM_MII_SLINK_LOOPBACK | GEM_MII_SLINK_EN_SYNC_D);
+			GEM_BANK1_BARRIER(sc, GEM_MII_SLINK_CONTROL, 4,
+			    BUS_SPACE_BARRIER_WRITE);
 			GEM_BANK1_WRITE_4(sc, GEM_MII_CONFIG,
 			    GEM_MII_CONFIG_ENABLE);
+			GEM_BANK1_BARRIER(sc, GEM_MII_CONFIG, 4,
+			    BUS_SPACE_BARRIER_WRITE);
 			return (0);
 		case MII_ANLPAR:
 			reg = GEM_MII_ANLPAR;
@@ -1928,6 +1980,8 @@ gem_mii_writereg(device_t dev, int phy, int reg, int val)
 			return (0);
 		}
 		GEM_BANK1_WRITE_4(sc, reg, val);
+		GEM_BANK1_BARRIER(sc, reg, 4,
+		    BUS_SPACE_BARRIER_READ | BUS_SPACE_BARRIER_WRITE);
 		return (0);
 	}
 
@@ -1964,8 +2018,7 @@ gem_mii_statchg(device_t dev)
 
 #ifdef GEM_DEBUG
 	if ((sc->sc_ifp->if_flags & IFF_DEBUG) != 0)
-		device_printf(sc->sc_dev, "%s: status change: PHY = %d\n",
-		    __func__, sc->sc_phyad);
+		device_printf(sc->sc_dev, "%s: status change\n", __func__);
 #endif
 
 	if ((sc->sc_mii->mii_media_status & IFM_ACTIVE) != 0 &&
@@ -1992,8 +2045,8 @@ gem_mii_statchg(device_t dev)
 	 * the GEM Gigabit Ethernet ASIC Specification.
 	 */
 
-	rxcfg = GEM_BANK1_READ_4(sc, GEM_MAC_RX_CONFIG);
-	rxcfg &= ~(GEM_MAC_RX_CARR_EXTEND | GEM_MAC_RX_ENABLE);
+	rxcfg = sc->sc_mac_rxcfg;
+	rxcfg &= ~GEM_MAC_RX_CARR_EXTEND;
 	txcfg = GEM_MAC_TX_ENA_IPG0 | GEM_MAC_TX_NGU | GEM_MAC_TX_NGU_LIMIT;
 	if ((IFM_OPTIONS(sc->sc_mii->mii_media_active) & IFM_FDX) != 0)
 		txcfg |= GEM_MAC_TX_IGN_CARRIER | GEM_MAC_TX_IGN_COLLIS;
@@ -2001,29 +2054,19 @@ gem_mii_statchg(device_t dev)
 		rxcfg |= GEM_MAC_RX_CARR_EXTEND;
 		txcfg |= GEM_MAC_TX_CARR_EXTEND;
 	}
-	GEM_BANK1_WRITE_4(sc, GEM_MAC_TX_CONFIG, 0);
-	GEM_BANK1_BARRIER(sc, GEM_MAC_TX_CONFIG, 4,
-	    BUS_SPACE_BARRIER_READ | BUS_SPACE_BARRIER_WRITE);
-	if (!GEM_BANK1_BITWAIT(sc, GEM_MAC_TX_CONFIG, GEM_MAC_TX_ENABLE, 0))
-		device_printf(sc->sc_dev, "cannot disable TX MAC\n");
+	(void)gem_disable_tx(sc);
 	GEM_BANK1_WRITE_4(sc, GEM_MAC_TX_CONFIG, txcfg);
-	GEM_BANK1_WRITE_4(sc, GEM_MAC_RX_CONFIG, 0);
-	GEM_BANK1_BARRIER(sc, GEM_MAC_RX_CONFIG, 4,
-	    BUS_SPACE_BARRIER_READ | BUS_SPACE_BARRIER_WRITE);
-	if (!GEM_BANK1_BITWAIT(sc, GEM_MAC_RX_CONFIG, GEM_MAC_RX_ENABLE, 0))
-		device_printf(sc->sc_dev, "cannot disable RX MAC\n");
+	(void)gem_disable_rx(sc);
 	GEM_BANK1_WRITE_4(sc, GEM_MAC_RX_CONFIG, rxcfg);
 
 	v = GEM_BANK1_READ_4(sc, GEM_MAC_CONTROL_CONFIG) &
 	    ~(GEM_MAC_CC_RX_PAUSE | GEM_MAC_CC_TX_PAUSE);
-#ifdef notyet
 	if ((IFM_OPTIONS(sc->sc_mii->mii_media_active) &
 	    IFM_ETH_RXPAUSE) != 0)
 		v |= GEM_MAC_CC_RX_PAUSE;
 	if ((IFM_OPTIONS(sc->sc_mii->mii_media_active) &
 	    IFM_ETH_TXPAUSE) != 0)
 		v |= GEM_MAC_CC_TX_PAUSE;
-#endif
 	GEM_BANK1_WRITE_4(sc, GEM_MAC_CONTROL_CONFIG, v);
 
 	if ((IFM_OPTIONS(sc->sc_mii->mii_media_active) & IFM_FDX) == 0 &&
@@ -2058,6 +2101,7 @@ gem_mii_statchg(device_t dev)
 		v |= GEM_MAC_XIF_FDPLX_LED;
 	GEM_BANK1_WRITE_4(sc, GEM_MAC_XIF_CONFIG, v);
 
+	sc->sc_mac_rxcfg = rxcfg;
 	if ((sc->sc_ifp->if_drv_flags & IFF_DRV_RUNNING) != 0 &&
 	    (sc->sc_flags & GEM_LINK) != 0) {
 		GEM_BANK1_WRITE_4(sc, GEM_MAC_TX_CONFIG,
@@ -2130,7 +2174,8 @@ gem_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	case SIOCADDMULTI:
 	case SIOCDELMULTI:
 		GEM_LOCK(sc);
-		gem_setladrf(sc);
+		if ((ifp->if_drv_flags & IFF_DRV_RUNNING) != 0)
+			gem_setladrf(sc);
 		GEM_UNLOCK(sc);
 		break;
 	case SIOCGIFMEDIA:
@@ -2165,24 +2210,20 @@ gem_setladrf(struct gem_softc *sc)
 
 	GEM_LOCK_ASSERT(sc, MA_OWNED);
 
-	/* Get the current RX configuration. */
-	v = GEM_BANK1_READ_4(sc, GEM_MAC_RX_CONFIG);
-
 	/*
-	 * Turn off promiscuous mode, promiscuous group mode (all multicast),
-	 * and hash filter.  Depending on the case, the right bit will be
-	 * enabled.
+	 * Turn off the RX MAC and the hash filter as required by the Sun GEM
+	 * programming restrictions.
 	 */
-	v &= ~(GEM_MAC_RX_PROMISCUOUS | GEM_MAC_RX_HASH_FILTER |
-	    GEM_MAC_RX_PROMISC_GRP);
-
+	v = sc->sc_mac_rxcfg & ~GEM_MAC_RX_HASH_FILTER;
 	GEM_BANK1_WRITE_4(sc, GEM_MAC_RX_CONFIG, v);
 	GEM_BANK1_BARRIER(sc, GEM_MAC_RX_CONFIG, 4,
 	    BUS_SPACE_BARRIER_READ | BUS_SPACE_BARRIER_WRITE);
-	if (!GEM_BANK1_BITWAIT(sc, GEM_MAC_RX_CONFIG, GEM_MAC_RX_HASH_FILTER,
-	    0))
-		device_printf(sc->sc_dev, "cannot disable RX hash filter\n");
+	if (!GEM_BANK1_BITWAIT(sc, GEM_MAC_RX_CONFIG, GEM_MAC_RX_HASH_FILTER |
+	    GEM_MAC_RX_ENABLE, 0))
+		device_printf(sc->sc_dev,
+		    "cannot disable RX MAC or hash filter\n");
 
+	v &= ~(GEM_MAC_RX_PROMISCUOUS | GEM_MAC_RX_PROMISC_GRP);
 	if ((ifp->if_flags & IFF_PROMISC) != 0) {
 		v |= GEM_MAC_RX_PROMISCUOUS;
 		goto chipit;
@@ -2228,5 +2269,6 @@ gem_setladrf(struct gem_softc *sc)
 		    hash[i]);
 
  chipit:
-	GEM_BANK1_WRITE_4(sc, GEM_MAC_RX_CONFIG, v);
+	sc->sc_mac_rxcfg = v;
+	GEM_BANK1_WRITE_4(sc, GEM_MAC_RX_CONFIG, v | GEM_MAC_RX_ENABLE);
 }

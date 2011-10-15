@@ -30,8 +30,8 @@ __FBSDID("$FreeBSD$");
  * Logging support for ipfw
  */
 
-#if !defined(KLD_MODULE)
 #include "opt_ipfw.h"
+#if !defined(KLD_MODULE)
 #include "opt_ipdivert.h"
 #include "opt_ipdn.h"
 #include "opt_inet.h"
@@ -103,6 +103,24 @@ log_dummy(struct ifnet *ifp, u_long cmd, caddr_t addr)
 	return EINVAL;
 }
 
+static int
+ipfw_log_output(struct ifnet *ifp, struct mbuf *m,
+	struct sockaddr *dst, struct route *ro)
+{
+	if (m != NULL)
+		m_freem(m);
+	return EINVAL;
+}
+
+static void
+ipfw_log_start(struct ifnet* ifp)
+{
+	panic("ipfw_log_start() must not be called");
+}
+
+static const u_char ipfwbroadcastaddr[6] =
+	{ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
+
 void
 ipfw_log_bpf(int onoff)
 {
@@ -119,11 +137,12 @@ ipfw_log_bpf(int onoff)
 		ifp->if_flags = IFF_UP | IFF_SIMPLEX | IFF_MULTICAST;
 		ifp->if_init = (void *)log_dummy;
 		ifp->if_ioctl = log_dummy;
-		ifp->if_start = (void *)log_dummy;
-		ifp->if_output = (void *)log_dummy;
+		ifp->if_start = ipfw_log_start;
+		ifp->if_output = ipfw_log_output;
 		ifp->if_addrlen = 6;
 		ifp->if_hdrlen = 14;
 		if_attach(ifp);
+		ifp->if_broadcastaddr = ipfwbroadcastaddr;
 		ifp->if_baudrate = IF_Mbps(10);
 		bpfattach(ifp, DLT_EN10MB, 14);
 		log_if = ifp;
@@ -148,26 +167,21 @@ ipfw_log(struct ip_fw *f, u_int hlen, struct ip_fw_args *args,
 {
 	char *action;
 	int limit_reached = 0;
-	char action2[40], proto[128], fragment[32];
+	char action2[92], proto[128], fragment[32];
 
 	if (V_fw_verbose == 0) {
 #ifndef WITHOUT_BPF
-		struct m_hdr mh;
 
 		if (log_if == NULL || log_if->if_bpf == NULL)
 			return;
-		/* BPF treats the "mbuf" as read-only */
-		mh.mh_next = m;
-		mh.mh_len = ETHER_HDR_LEN;
-		if (args->eh) { /* layer2, use orig hdr */
-			mh.mh_data = (char *)args->eh;
-		} else {
-			/* add fake header. Later we will store
-			 * more info in the header
+
+		if (args->eh) /* layer2, use orig hdr */
+			BPF_MTAP2(log_if, args->eh, ETHER_HDR_LEN, m);
+		else
+			/* Add fake header. Later we will store
+			 * more info in the header.
 			 */
-			mh.mh_data = "DDDDDDSSSSSS\x08\x00";
-		}
-		BPF_MTAP(log_if, (struct mbuf *)&mh);
+			BPF_MTAP2(log_if, "DDDDDDSSSSSS\x08\x00", ETHER_HDR_LEN, m);
 #endif /* !WITHOUT_BPF */
 		return;
 	}
@@ -276,6 +290,21 @@ ipfw_log(struct ip_fw *f, u_int hlen, struct ip_fw_args *args,
 				    sa->sa.sin_port);
 			}
 			break;
+#ifdef INET6
+		case O_FORWARD_IP6: {
+			char buf[INET6_ADDRSTRLEN];
+			ipfw_insn_sa6 *sa = (ipfw_insn_sa6 *)cmd;
+			int len;
+
+			len = snprintf(SNPARGS(action2, 0), "Forward to [%s]",
+			    ip6_sprintf(buf, &sa->sa.sin6_addr));
+
+			if (sa->sa.sin6_port)
+				snprintf(SNPARGS(action2, len), ":%u",
+				    sa->sa.sin6_port);
+			}
+			break;
+#endif
 		case O_NETGRAPH:
 			snprintf(SNPARGS(action2, 0), "Netgraph %d",
 				cmd->arg1);
@@ -289,6 +318,13 @@ ipfw_log(struct ip_fw *f, u_int hlen, struct ip_fw_args *args,
  			break;
 		case O_REASS:
 			action = "Reass";
+			break;
+		case O_CALLRETURN:
+			if (cmd->len & F_NOT)
+				action = "Return";
+			else
+				snprintf(SNPARGS(action2, 0), "Call %d",
+				    cmd->arg1);
 			break;
 		default:
 			action = "UNKNOWN";
@@ -312,10 +348,14 @@ ipfw_log(struct ip_fw *f, u_int hlen, struct ip_fw_args *args,
 #ifdef INET6
 		struct ip6_hdr *ip6 = NULL;
 		struct icmp6_hdr *icmp6;
+		u_short ip6f_mf;
 #endif
 		src[0] = '\0';
 		dst[0] = '\0';
 #ifdef INET6
+		ip6f_mf = offset & IP6F_MORE_FRAG;
+		offset &= IP6F_OFF_MASK;
+
 		if (IS_IP6_FLOW_ID(&(args->f_id))) {
 			char ip6buf[INET6_ADDRSTRLEN];
 			snprintf(src, sizeof(src), "[%s]",
@@ -397,8 +437,7 @@ ipfw_log(struct ip_fw *f, u_int hlen, struct ip_fw_args *args,
 				    " (frag %08x:%d@%d%s)",
 				    args->f_id.extra,
 				    ntohs(ip6->ip6_plen) - hlen,
-				    ntohs(offset & IP6F_OFF_MASK) << 3,
-				    (offset & IP6F_MORE_FRAG) ? "+" : "");
+				    ntohs(offset) << 3, ip6f_mf ? "+" : "");
 		} else
 #endif
 		{

@@ -90,7 +90,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/kernel.h>
 #include <sys/bus.h>
-#include <sys/linker_set.h>
 #include <sys/module.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
@@ -326,6 +325,12 @@ static driver_t ufoma_driver = {
 DRIVER_MODULE(ufoma, uhub, ufoma_driver, ufoma_devclass, NULL, 0);
 MODULE_DEPEND(ufoma, ucom, 1, 1, 1);
 MODULE_DEPEND(ufoma, usb, 1, 1, 1);
+MODULE_VERSION(ufoma, 1);
+
+static const STRUCT_USB_HOST_ID ufoma_devs[] = {
+	{USB_IFACE_CLASS(UICLASS_CDC),
+	 USB_IFACE_SUBCLASS(UISUBCLASS_MCPC),},
+};
 
 static int
 ufoma_probe(device_t dev)
@@ -334,30 +339,31 @@ ufoma_probe(device_t dev)
 	struct usb_interface_descriptor *id;
 	struct usb_config_descriptor *cd;
 	usb_mcpc_acm_descriptor *mad;
+	int error;
 
-	if (uaa->usb_mode != USB_MODE_HOST) {
+	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
-	}
+
+	error = usbd_lookup_id_by_uaa(ufoma_devs, sizeof(ufoma_devs), uaa);
+	if (error)
+		return (error);
+
 	id = usbd_get_interface_descriptor(uaa->iface);
 	cd = usbd_get_config_descriptor(uaa->device);
 
-	if ((id == NULL) ||
-	    (cd == NULL) ||
-	    (id->bInterfaceClass != UICLASS_CDC) ||
-	    (id->bInterfaceSubClass != UISUBCLASS_MCPC)) {
+	if (id == NULL || cd == NULL)
 		return (ENXIO);
-	}
+
 	mad = ufoma_get_intconf(cd, id, UDESC_VS_INTERFACE, UDESCSUB_MCPC_ACM);
-	if (mad == NULL) {
+	if (mad == NULL)
 		return (ENXIO);
-	}
+
 #ifndef UFOMA_HANDSFREE
 	if ((mad->bType == UMCPC_ACM_TYPE_AB5) ||
-	    (mad->bType == UMCPC_ACM_TYPE_AB6)) {
+	    (mad->bType == UMCPC_ACM_TYPE_AB6))
 		return (ENXIO);
-	}
 #endif
-	return (0);
+	return (BUS_PROBE_GENERIC);
 }
 
 static int
@@ -449,6 +455,8 @@ ufoma_attach(device_t dev)
 		DPRINTF("ucom_attach failed\n");
 		goto detach;
 	}
+	ucom_set_pnpinfo_usb(&sc->sc_super_ucom, dev);
+
 	/*Sysctls*/
 	sctx = device_get_sysctl_ctx(dev);
 	soid = device_get_sysctl_tree(dev);
@@ -465,7 +473,7 @@ ufoma_attach(device_t dev)
 			CTLFLAG_RW|CTLTYPE_STRING, sc, 0, ufoma_sysctl_open,
 			"A", "Mode to transit when port is opened");
 	SYSCTL_ADD_UINT(sctx, SYSCTL_CHILDREN(soid), OID_AUTO, "comunit",
-			CTLFLAG_RD, &(sc->sc_ucom.sc_unit), 0, 
+			CTLFLAG_RD, &(sc->sc_super_ucom.sc_unit), 0, 
 			"Unit number as USB serial");
 
 	return (0);			/* success */
@@ -480,7 +488,7 @@ ufoma_detach(device_t dev)
 {
 	struct ufoma_softc *sc = device_get_softc(dev);
 
-	ucom_detach(&sc->sc_super_ucom, &sc->sc_ucom, 1);
+	ucom_detach(&sc->sc_super_ucom, &sc->sc_ucom);
 	usbd_transfer_unsetup(sc->sc_ctrl_xfer, UFOMA_CTRL_ENDPT_MAX);
 	usbd_transfer_unsetup(sc->sc_bulk_xfer, UFOMA_BULK_ENDPT_MAX);
 

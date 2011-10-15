@@ -74,6 +74,16 @@ struct ath_pci_softc {
 #define	BS_BAR	0x10
 #define	PCIR_RETRY_TIMEOUT	0x41
 
+static void
+ath_pci_setup(device_t dev)
+{
+	/*
+	 * Disable retry timeout to keep PCI Tx retries from
+	 * interfering with C3 CPU state.
+	 */
+	pci_write_config(dev, PCIR_RETRY_TIMEOUT, 0, 1);
+}
+
 static int
 ath_pci_probe(device_t dev)
 {
@@ -103,10 +113,9 @@ ath_pci_attach(device_t dev)
 	pci_enable_busmaster(dev);
 
 	/*
-	 * Disable retry timeout to keep PCI Tx retries from
-	 * interfering with C3 CPU state.
+	 * Setup other PCI bus configuration parameters.
 	 */
-	pci_write_config(dev, PCIR_RETRY_TIMEOUT, 0, 1);
+	ath_pci_setup(dev);
 
 	/* 
 	 * Setup memory-mapping of PCI registers.
@@ -228,6 +237,11 @@ ath_pci_resume(device_t dev)
 {
 	struct ath_pci_softc *psc = device_get_softc(dev);
 
+	/*
+	 * Suspend/resume resets the PCI configuration space.
+	 */
+	ath_pci_setup(dev);
+
 	ath_resume(&psc->sc_sc);
 
 	return (0);
@@ -250,6 +264,7 @@ static driver_t ath_pci_driver = {
 	sizeof (struct ath_pci_softc)
 };
 static	devclass_t ath_devclass;
-DRIVER_MODULE(ath, pci, ath_pci_driver, ath_devclass, 0, 0);
-MODULE_VERSION(ath, 1);
-MODULE_DEPEND(ath, wlan, 1, 1, 1);		/* 802.11 media layer */
+DRIVER_MODULE(ath_pci, pci, ath_pci_driver, ath_devclass, 0, 0);
+MODULE_VERSION(ath_pci, 1);
+MODULE_DEPEND(ath_pci, wlan, 1, 1, 1);		/* 802.11 media layer */
+MODULE_DEPEND(ath_pci, if_ath, 1, 1, 1);	/* if_ath driver */

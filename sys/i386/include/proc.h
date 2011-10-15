@@ -77,6 +77,12 @@ void	user_ldt_deref(struct proc_ldt *pldt);
 
 extern struct mtx dt_lock;
 
+struct syscall_args {
+	u_int code;
+	struct sysent *callp;
+	register_t args[8];
+	int narg;
+};
 #endif	/* _KERNEL */
 
 #endif /* !_MACHINE_PROC_H_ */

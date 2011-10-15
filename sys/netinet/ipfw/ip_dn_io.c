@@ -108,22 +108,62 @@ SYSCTL_NODE(_net_inet_ip, OID_AUTO, dummynet, CTLFLAG_RW, 0, "Dummynet");
 //#define DC(x)	(&(VNET_NAME(_base_dn_cfg).x))
 #define DC(x)	(&(dn_cfg.x))
 /* parameters */
-SYSCTL_INT(_net_inet_ip_dummynet, OID_AUTO, hash_size,
-    CTLFLAG_RW, DC(hash_size), 0, "Default hash table size");
-SYSCTL_LONG(_net_inet_ip_dummynet, OID_AUTO, pipe_slot_limit,
-    CTLFLAG_RW, DC(slot_limit), 0,
-    "Upper limit in slots for pipe queue.");
-SYSCTL_LONG(_net_inet_ip_dummynet, OID_AUTO, pipe_byte_limit,
-    CTLFLAG_RW, DC(byte_limit), 0,
-    "Upper limit in bytes for pipe queue.");
+
+static int
+sysctl_hash_size(SYSCTL_HANDLER_ARGS)
+{
+	int error, value;
+
+	value = dn_cfg.hash_size;
+	error = sysctl_handle_int(oidp, &value, 0, req);
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	if (value < 16 || value > 65536)
+		return (EINVAL);
+	dn_cfg.hash_size = value;
+	return (0);
+}
+
+SYSCTL_PROC(_net_inet_ip_dummynet, OID_AUTO, hash_size,
+    CTLTYPE_INT | CTLFLAG_RW, 0, 0, sysctl_hash_size,
+    "I", "Default hash table size");
+
+static int
+sysctl_limits(SYSCTL_HANDLER_ARGS)
+{
+	int error;
+	long value;
+
+	if (arg2 != 0)
+		value = dn_cfg.slot_limit;
+	else
+		value = dn_cfg.byte_limit;
+	error = sysctl_handle_long(oidp, &value, 0, req);
+
+	if (error != 0 || req->newptr == NULL)
+		return (error);
+	if (arg2 != 0) {
+		if (value < 1)
+			return (EINVAL);
+		dn_cfg.slot_limit = value;
+	} else {
+		if (value < 1500)
+			return (EINVAL);
+		dn_cfg.byte_limit = value;
+	}
+	return (0);
+}
+
+SYSCTL_PROC(_net_inet_ip_dummynet, OID_AUTO, pipe_slot_limit,
+    CTLTYPE_LONG | CTLFLAG_RW, 0, 1, sysctl_limits,
+    "L", "Upper limit in slots for pipe queue.");
+SYSCTL_PROC(_net_inet_ip_dummynet, OID_AUTO, pipe_byte_limit,
+    CTLTYPE_LONG | CTLFLAG_RW, 0, 0, sysctl_limits,
+    "L", "Upper limit in bytes for pipe queue.");
 SYSCTL_INT(_net_inet_ip_dummynet, OID_AUTO, io_fast,
     CTLFLAG_RW, DC(io_fast), 0, "Enable fast dummynet io.");
 SYSCTL_INT(_net_inet_ip_dummynet, OID_AUTO, debug,
     CTLFLAG_RW, DC(debug), 0, "Dummynet debug level");
-SYSCTL_INT(_net_inet_ip_dummynet, OID_AUTO, expire,
-    CTLFLAG_RW, DC(expire), 0, "Expire empty queues/pipes");
-SYSCTL_INT(_net_inet_ip_dummynet, OID_AUTO, expire_cycle,
-    CTLFLAG_RD, DC(expire_cycle), 0, "Expire cycle for queues/pipes");
 
 /* RED parameters */
 SYSCTL_INT(_net_inet_ip_dummynet, OID_AUTO, red_lookup_depth,
@@ -146,6 +186,12 @@ SYSCTL_LONG(_net_inet_ip_dummynet, OID_AUTO, tick_diff,
 SYSCTL_LONG(_net_inet_ip_dummynet, OID_AUTO, tick_lost,
     CTLFLAG_RD, &tick_lost, 0,
     "Number of ticks coalesced by dummynet taskqueue.");
+
+/* Drain parameters */
+SYSCTL_UINT(_net_inet_ip_dummynet, OID_AUTO, expire,
+    CTLFLAG_RW, DC(expire), 0, "Expire empty queues/pipes");
+SYSCTL_UINT(_net_inet_ip_dummynet, OID_AUTO, expire_cycle,
+    CTLFLAG_RD, DC(expire_cycle), 0, "Expire cycle for queues/pipes");
 
 /* statistics */
 SYSCTL_INT(_net_inet_ip_dummynet, OID_AUTO, schk_count,
@@ -463,14 +509,16 @@ serve_sched(struct mq *q, struct dn_sch_inst *si, uint64_t now)
 	done = 0;
 	while (si->credit >= 0 && (m = s->fp->dequeue(si)) != NULL) {
 		uint64_t len_scaled;
+
 		done++;
 		len_scaled = (bw == 0) ? 0 : hz *
-		    (m->m_pkthdr.len * 8 + extra_bits(m, s));
+			(m->m_pkthdr.len * 8 + extra_bits(m, s));
 		si->credit -= len_scaled;
 		/* Move packet in the delay line */
-		dn_tag_get(m)->output_time += s->link.delay ;
+		dn_tag_get(m)->output_time = dn_cfg.curr_time + s->link.delay ;
 		mq_append(&si->dline.mq, m);
 	}
+
 	/*
 	 * If credit >= 0 the instance is idle, mark time.
 	 * Otherwise put back in the heap, and adjust the output
@@ -620,7 +668,6 @@ dummynet_send(struct mbuf *m)
 			break;
 
 		case DIR_OUT | PROTO_IPV6:
-			SET_HOST_IPLEN(mtod(m, struct ip *));
 			ip6_output(m, NULL, NULL, IPV6_FORWARDING, NULL, NULL, NULL);
 			break;
 #endif
@@ -752,8 +799,11 @@ dummynet_io(struct mbuf **m0, int dir, struct ip_fw_args *fwa)
 	}
 
 	/* compute the initial allowance */
-	{
+	if (si->idle_time < dn_cfg.curr_time) {
+	    /* Do this only on the first packet on an idle pipe */
 	    struct dn_link *p = &fs->sched->link;
+
+	    si->sched_time = dn_cfg.curr_time;
 	    si->credit = dn_cfg.io_fast ? p->bandwidth : 0;
 	    if (p->burst) {
 		uint64_t burst = (dn_cfg.curr_time - si->idle_time) * p->bandwidth;

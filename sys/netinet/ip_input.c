@@ -37,11 +37,9 @@ __FBSDID("$FreeBSD$");
 #include "opt_ipstealth.h"
 #include "opt_ipsec.h"
 #include "opt_route.h"
-#include "opt_carp.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
-#include <sys/callout.h>
 #include <sys/mbuf.h>
 #include <sys/malloc.h>
 #include <sys/domain.h>
@@ -74,9 +72,7 @@ __FBSDID("$FreeBSD$");
 #include <netinet/ip_icmp.h>
 #include <netinet/ip_options.h>
 #include <machine/in_cksum.h>
-#ifdef DEV_CARP
 #include <netinet/ip_carp.h>
-#endif
 #ifdef IPSEC
 #include <netinet/ip_ipsec.h>
 #endif /* IPSEC */
@@ -104,11 +100,6 @@ static VNET_DEFINE(int, ipsendredirects) = 1;	/* XXX */
 SYSCTL_VNET_INT(_net_inet_ip, IPCTL_SENDREDIRECTS, redirect, CTLFLAG_RW,
     &VNET_NAME(ipsendredirects), 0,
     "Enable sending IP redirects");
-
-VNET_DEFINE(int, ip_defttl) = IPDEFTTL;
-SYSCTL_VNET_INT(_net_inet_ip, IPCTL_DEFTTL, ttl, CTLFLAG_RW,
-    &VNET_NAME(ip_defttl), 0,
-    "Maximum TTL on IP packets");
 
 static VNET_DEFINE(int, ip_keepfaith);
 #define	V_ip_keepfaith		VNET(ip_keepfaith)
@@ -197,8 +188,6 @@ SYSCTL_VNET_INT(_net_inet_ip, OID_AUTO, maxfragsperpacket, CTLFLAG_RW,
     &VNET_NAME(maxfragsperpacket), 0,
     "Maximum number of IPv4 fragments allowed per packet");
 
-struct callout	ipport_tick_callout;
-
 #ifdef IPCTL_DEFMTU
 SYSCTL_INT(_net_inet_ip, IPCTL_DEFMTU, mtu, CTLFLAG_RW,
     &ip_mtu, 0, "Default MTU");
@@ -220,8 +209,6 @@ SYSCTL_VNET_INT(_net_inet_ip, OID_AUTO, output_flowtable_size, CTLFLAG_RDTUN,
     &VNET_NAME(ip_output_flowtable_size), 2048,
     "number of entries in the per-cpu output flow caches");
 #endif
-
-VNET_DEFINE(int, fw_one_pass) = 1;
 
 static void	ip_freef(struct ipqhead *, struct ipq *);
 
@@ -357,11 +344,6 @@ ip_init(void)
 				ip_protox[pr->pr_protocol] = pr - inetsw;
 		}
 
-	/* Start ipport_tick. */
-	callout_init(&ipport_tick_callout, CALLOUT_MPSAFE);
-	callout_reset(&ipport_tick_callout, 1, ipport_tick, NULL);
-	EVENTHANDLER_REGISTER(shutdown_pre_sync, ip_fini, NULL,
-		SHUTDOWN_PRI_DEFAULT);
 	EVENTHANDLER_REGISTER(nmbclusters_change, ipq_zone_change,
 		NULL, EVENTHANDLER_PRI_ANY);
 
@@ -385,13 +367,6 @@ ip_destroy(void)
 	uma_zdestroy(V_ipq_zone);
 }
 #endif
-
-void
-ip_fini(void *xtp)
-{
-
-	callout_stop(&ipport_tick_callout);
-}
 
 /*
  * Ip input routine.  Checksum and byte swap header.  If fragmented
@@ -513,7 +488,7 @@ tooshort:
 	}
 #ifdef IPSEC
 	/*
-	 * Bypass packet filtering for packets from a tunnel (gif).
+	 * Bypass packet filtering for packets previously handled by IPsec.
 	 */
 	if (ip_ipsec_filtertunnel(m))
 		goto passin;
@@ -606,10 +581,7 @@ passin:
 	 */
 	checkif = V_ip_checkinterface && (V_ipforwarding == 0) && 
 	    ifp != NULL && ((ifp->if_flags & IFF_LOOPBACK) == 0) &&
-#ifdef DEV_CARP
-	    !ifp->if_carp &&
-#endif
-	    (dchg == 0);
+	    ifp->if_carp == NULL && (dchg == 0);
 
 	/*
 	 * Check for exact addresses in the hash bucket.
@@ -1037,7 +1009,7 @@ found:
 	 * segment.  If it provides all of our data, drop us, otherwise
 	 * stick new segment in the proper place.
 	 *
-	 * If some of the data is dropped from the the preceding
+	 * If some of the data is dropped from the preceding
 	 * segment, then it's checksum is invalidated.
 	 */
 	if (p) {
@@ -1293,12 +1265,12 @@ ip_drain(void)
  * in inetsw[], either statically or through pf_proto_register().
  */
 int
-ipproto_register(u_char ipproto)
+ipproto_register(short ipproto)
 {
 	struct protosw *pr;
 
 	/* Sanity checks. */
-	if (ipproto == 0)
+	if (ipproto <= 0 || ipproto >= IPPROTO_MAX)
 		return (EPROTONOSUPPORT);
 
 	/*
@@ -1316,24 +1288,20 @@ ipproto_register(u_char ipproto)
 	     pr < inetdomain.dom_protoswNPROTOSW; pr++) {
 		if (pr->pr_domain->dom_family == PF_INET &&
 		    pr->pr_protocol && pr->pr_protocol == ipproto) {
-			/* Be careful to only index valid IP protocols. */
-			if (pr->pr_protocol < IPPROTO_MAX) {
-				ip_protox[pr->pr_protocol] = pr - inetsw;
-				return (0);
-			} else
-				return (EINVAL);
+			ip_protox[pr->pr_protocol] = pr - inetsw;
+			return (0);
 		}
 	}
 	return (EPROTONOSUPPORT);
 }
 
 int
-ipproto_unregister(u_char ipproto)
+ipproto_unregister(short ipproto)
 {
 	struct protosw *pr;
 
 	/* Sanity checks. */
-	if (ipproto == 0)
+	if (ipproto <= 0 || ipproto >= IPPROTO_MAX)
 		return (EPROTONOSUPPORT);
 
 	/* Check if the protocol was indeed registered. */

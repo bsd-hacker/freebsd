@@ -199,6 +199,8 @@ static devclass_t ipw_devclass;
 
 DRIVER_MODULE(ipw, pci, ipw_driver, ipw_devclass, 0, 0);
 
+MODULE_VERSION(ipw, 1);
+
 static int
 ipw_probe(device_t dev)
 {
@@ -2505,19 +2507,19 @@ ipw_config(struct ipw_softc *sc)
 	if (error != 0)
 		return error;
 
-	data = htole32(0x3); /* 1, 2 */
+	data = htole32(0xf); /* 1, 2, 5.5, 11 */
 	DPRINTF(("Setting basic tx rates to 0x%x\n", le32toh(data)));
 	error = ipw_cmd(sc, IPW_CMD_SET_BASIC_TX_RATES, &data, sizeof data);
 	if (error != 0)
 		return error;
 
-	/* NB: use the same rate set */
+	/* Use the same rate set */
 	DPRINTF(("Setting msdu tx rates to 0x%x\n", le32toh(data)));
 	error = ipw_cmd(sc, IPW_CMD_SET_MSDU_TX_RATES, &data, sizeof data);
 	if (error != 0)
 		return error;
 
-	data = htole32(0xf); /* 1, 2, 5.5, 11 */
+	/* Use the same rate set */
 	DPRINTF(("Setting tx rates to 0x%x\n", le32toh(data)));
 	error = ipw_cmd(sc, IPW_CMD_SET_TX_RATES, &data, sizeof data);
 	if (error != 0)

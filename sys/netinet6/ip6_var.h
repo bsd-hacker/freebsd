@@ -209,7 +209,7 @@ struct	ip6stat {
 	u_quad_t ip6s_m2m[32];		/* two or more mbuf */
 	u_quad_t ip6s_mext1;		/* one ext mbuf */
 	u_quad_t ip6s_mext2m;		/* two or more ext mbuf */
-	u_quad_t ip6s_exthdrtoolong;	/* ext hdr are not continuous */
+	u_quad_t ip6s_exthdrtoolong;	/* ext hdr are not contiguous */
 	u_quad_t ip6s_nogif;		/* no match gif found */
 	u_quad_t ip6s_toomanyhdr;	/* discarded due to too many headers */
 
@@ -316,6 +316,11 @@ VNET_DECLARE(int, ip6_maxfragpackets);	/* Maximum packets in reassembly
 VNET_DECLARE(int, ip6_maxfrags);	/* Maximum fragments in reassembly
 					 * queue */
 VNET_DECLARE(int, ip6_accept_rtadv);	/* Acts as a host not a router */
+VNET_DECLARE(int, ip6_no_radr);		/* No defroute from RA */
+VNET_DECLARE(int, ip6_norbit_raif);	/* Disable R-bit in NA on RA
+					 * receiving IF. */
+VNET_DECLARE(int, ip6_rfc6204w3);	/* Accept defroute from RA even when
+					   forwarding enabled */
 VNET_DECLARE(int, ip6_keepfaith);	/* Firewall Aided Internet Translator */
 VNET_DECLARE(int, ip6_log_interval);
 VNET_DECLARE(time_t, ip6_log_time);
@@ -327,6 +332,9 @@ VNET_DECLARE(int, ip6_dad_count);	/* DupAddrDetectionTransmits */
 #define	V_ip6_maxfragpackets		VNET(ip6_maxfragpackets)
 #define	V_ip6_maxfrags			VNET(ip6_maxfrags)
 #define	V_ip6_accept_rtadv		VNET(ip6_accept_rtadv)
+#define	V_ip6_no_radr			VNET(ip6_no_radr)
+#define	V_ip6_norbit_raif		VNET(ip6_norbit_raif)
+#define	V_ip6_rfc6204w3			VNET(ip6_rfc6204w3)
 #define	V_ip6_keepfaith			VNET(ip6_keepfaith)
 #define	V_ip6_log_interval		VNET(ip6_log_interval)
 #define	V_ip6_log_time			VNET(ip6_log_time)
@@ -368,6 +376,9 @@ void	ip6_init __P((void));
 #ifdef VIMAGE
 void	ip6_destroy __P((void));
 #endif
+int	ip6proto_register(short);
+int	ip6proto_unregister(short);
+
 void	ip6_input __P((struct mbuf *));
 struct in6_ifaddr *ip6_getdstifaddr __P((struct mbuf *));
 void	ip6_freepcbopts __P((struct ip6_pktopts *));

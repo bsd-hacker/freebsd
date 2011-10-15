@@ -92,6 +92,12 @@
 #define	AXE_CMD_SW_PHY_STATUS			0x0021
 #define	AXE_CMD_SW_PHY_SELECT			0x0122
 
+/* AX88772A and AX88772B only. */
+#define	AXE_CMD_READ_VLAN_CTRL			0x4027
+#define	AXE_CMD_WRITE_VLAN_CTRL			0x4028
+
+#define	AXE_772B_CMD_RXCTL_WRITE_CFG		0x012A
+
 #define	AXE_SW_RESET_CLEAR			0x00
 #define	AXE_SW_RESET_RR				0x01
 #define	AXE_SW_RESET_RT				0x02
@@ -128,12 +134,18 @@
 #define	AXE_178_RXCMD_KEEP_INVALID_CRC		0x0004
 #define	AXE_RXCMD_BROADCAST			0x0008
 #define	AXE_RXCMD_MULTICAST			0x0010
+#define	AXE_RXCMD_ACCEPT_RUNT			0x0040	/* AX88772B */
 #define	AXE_RXCMD_ENABLE			0x0080
 #define	AXE_178_RXCMD_MFB_MASK			0x0300
 #define	AXE_178_RXCMD_MFB_2048			0x0000
 #define	AXE_178_RXCMD_MFB_4096			0x0100
 #define	AXE_178_RXCMD_MFB_8192			0x0200
 #define	AXE_178_RXCMD_MFB_16384			0x0300
+#define	AXE_772B_RXCMD_HDR_TYPE_0		0x0000
+#define	AXE_772B_RXCMD_HDR_TYPE_1		0x0100
+#define	AXE_772B_RXCMD_IPHDR_ALIGN		0x0200
+#define	AXE_772B_RXCMD_ADD_CHKSUM		0x0400
+#define	AXE_RXCMD_LOOPBACK			0x1000	/* AX88772A/AX88772B */
 
 #define	AXE_PHY_SEL_PRI		1
 #define	AXE_PHY_SEL_SEC		0
@@ -153,6 +165,40 @@
 
 #define	AXE_772_PHY_NO_EPHY	0x10	/* Embedded 10/100 PHY of AX88772 */
 
+#define	AXE_GPIO0_EN		0x01
+#define	AXE_GPIO0		0x02
+#define	AXE_GPIO1_EN		0x04
+#define	AXE_GPIO1		0x08
+#define	AXE_GPIO2_EN		0x10
+#define	AXE_GPIO2		0x20
+#define	AXE_GPIO_RELOAD_EEPROM	0x80
+
+#define	AXE_PHY_MODE_MARVELL		0x00
+#define	AXE_PHY_MODE_CICADA		0x01
+#define	AXE_PHY_MODE_AGERE		0x02
+#define	AXE_PHY_MODE_CICADA_V2		0x05
+#define	AXE_PHY_MODE_AGERE_GMII		0x06
+#define	AXE_PHY_MODE_CICADA_V2_ASIX	0x09
+#define	AXE_PHY_MODE_REALTEK_8211CL	0x0C
+#define	AXE_PHY_MODE_REALTEK_8211BN	0x0D
+#define	AXE_PHY_MODE_REALTEK_8251CL	0x0E
+#define	AXE_PHY_MODE_ATTANSIC		0x40
+
+/* AX88772A/AX88772B only. */
+#define	AXE_SW_PHY_SELECT_EXT		0x0000
+#define	AXE_SW_PHY_SELECT_EMBEDDED	0x0001
+#define	AXE_SW_PHY_SELECT_AUTO		0x0002
+#define	AXE_SW_PHY_SELECT_SS_MII	0x0004
+#define	AXE_SW_PHY_SELECT_SS_RVRS_MII	0x0008
+#define	AXE_SW_PHY_SELECT_SS_RVRS_RMII	0x000C
+#define	AXE_SW_PHY_SELECT_SS_ENB	0x0010
+
+/* AX88772A/AX88772B VLAN control. */
+#define	AXE_VLAN_CTRL_ENB		0x00001000
+#define	AXE_VLAN_CTRL_STRIP		0x00002000
+#define	AXE_VLAN_CTRL_VID1_MASK		0x00000FFF
+#define	AXE_VLAN_CTRL_VID2_MASK		0x0FFF0000
+
 #define	AXE_BULK_BUF_SIZE	16384	/* bytes */
 
 #define	AXE_CTL_READ		0x01
@@ -160,6 +206,24 @@
 
 #define	AXE_CONFIG_IDX		0	/* config number 1 */
 #define	AXE_IFACE_IDX		0
+
+/* EEPROM Map. */
+#define	AXE_EEPROM_772B_NODE_ID		0x04
+#define	AXE_EEPROM_772B_PHY_PWRCFG	0x18
+
+struct ax88772b_mfb {
+	int	byte_cnt;
+	int	threshold;
+	int	size;
+};
+#define	AX88772B_MFB_2K		0
+#define	AX88772B_MFB_4K		1
+#define	AX88772B_MFB_6K		2
+#define	AX88772B_MFB_8K		3
+#define	AX88772B_MFB_16K	4
+#define	AX88772B_MFB_20K	5
+#define	AX88772B_MFB_24K	6
+#define	AX88772B_MFB_32K	7
 
 struct axe_sframe_hdr {
 	uint16_t len;
@@ -172,7 +236,6 @@ struct axe_sframe_hdr {
 enum {
 	AXE_BULK_DT_WR,
 	AXE_BULK_DT_RD,
-	AXE_INTR_DT_RD,
 	AXE_N_TRANSFER,
 };
 
@@ -185,11 +248,22 @@ struct axe_softc {
 	int			sc_flags;
 #define	AXE_FLAG_LINK		0x0001
 #define	AXE_FLAG_772		0x1000	/* AX88772 */
-#define	AXE_FLAG_178		0x2000	/* AX88178 */
+#define	AXE_FLAG_772A		0x2000	/* AX88772A */
+#define	AXE_FLAG_772B		0x4000	/* AX88772B */
+#define	AXE_FLAG_178		0x8000	/* AX88178 */
 
 	uint8_t			sc_ipgs[3];
 	uint8_t			sc_phyaddrs[2];
+	uint16_t		sc_pwrcfg;
+	int			sc_tx_bufsz;
 };
+
+#define	AXE_IS_178_FAMILY(sc)						  \
+	((sc)->sc_flags & (AXE_FLAG_772 | AXE_FLAG_772A | AXE_FLAG_772B | \
+	AXE_FLAG_178))
+
+#define	AXE_IS_772(sc)							  \
+	((sc)->sc_flags & (AXE_FLAG_772 | AXE_FLAG_772A | AXE_FLAG_772B))
 
 #define	AXE_LOCK(_sc)		mtx_lock(&(_sc)->sc_mtx)
 #define	AXE_UNLOCK(_sc)		mtx_unlock(&(_sc)->sc_mtx)

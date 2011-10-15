@@ -48,7 +48,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/sysctl.h>
 #include <sys/eventhandler.h>
-#include <sys/linker_set.h>
 #include <sys/lock.h>
 #include <sys/malloc.h>
 #include <sys/proc.h>
@@ -79,6 +78,8 @@ __FBSDID("$FreeBSD$");
  *   to register startup/shutdown events to be run for each virtual network
  *   stack instance.
  */
+
+FEATURE(vimage, "VIMAGE kernel virtualization");
 
 MALLOC_DEFINE(M_VNET, "vnet", "network stack control block");
 
@@ -208,11 +209,15 @@ static TAILQ_HEAD(, vnet_data_free) vnet_data_free_head =
 static struct sx vnet_data_free_lock;
 
 SDT_PROVIDER_DEFINE(vnet);
-SDT_PROBE_DEFINE1(vnet, functions, vnet_alloc, entry, "int");
-SDT_PROBE_DEFINE2(vnet, functions, vnet_alloc, alloc, "int", "struct vnet *");
-SDT_PROBE_DEFINE2(vnet, functions, vnet_alloc, return, "int", "struct vnet *");
-SDT_PROBE_DEFINE2(vnet, functions, vnet_destroy, entry, "int", "struct vnet *");
-SDT_PROBE_DEFINE1(vnet, functions, vnet_destroy, return, "int");
+SDT_PROBE_DEFINE1(vnet, functions, vnet_alloc, entry, entry, "int");
+SDT_PROBE_DEFINE2(vnet, functions, vnet_alloc, alloc, alloc, "int",
+    "struct vnet *");
+SDT_PROBE_DEFINE2(vnet, functions, vnet_alloc, return, return,
+    "int", "struct vnet *");
+SDT_PROBE_DEFINE2(vnet, functions, vnet_destroy, entry, entry,
+    "int", "struct vnet *");
+SDT_PROBE_DEFINE1(vnet, functions, vnet_destroy, return, entry,
+    "int");
 
 #ifdef DDB
 static void db_show_vnet_print_vs(struct vnet_sysinit *, int);
@@ -348,7 +353,7 @@ vnet_data_startup(void *dummy __unused)
 
 	df = malloc(sizeof(*df), M_VNET_DATA_FREE, M_WAITOK | M_ZERO);
 	df->vnd_start = (uintptr_t)&VNET_NAME(modspace);
-	df->vnd_len = VNET_MODSIZE;
+	df->vnd_len = VNET_MODMIN;
 	TAILQ_INSERT_HEAD(&vnet_data_free_head, df, vnd_link);
 	sx_init(&vnet_data_free_lock, "vnet_data alloc lock");
 }

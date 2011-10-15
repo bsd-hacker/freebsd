@@ -58,7 +58,13 @@
  *		in the range 5 to 9.
  */
 #undef __FreeBSD_version
-#define __FreeBSD_version 900011	/* Master, propagated to newvers */
+#define __FreeBSD_version 1000000	/* Master, propagated to newvers */
+
+#ifdef _KERNEL
+#define	P_OSREL_SIGWAIT		700000
+#define	P_OSREL_SIGSEGV		700004
+#define	P_OSREL_MAP_ANON	800104
+#endif
 
 #ifndef LOCORE
 #include <sys/types.h>
@@ -69,12 +75,11 @@
  * Redefined constants are from POSIX 1003.1 limits file.
  *
  * MAXCOMLEN should be >= sizeof(ac_comm) (see <acct.h>)
- * MAXLOGNAME should be == UT_NAMESIZE+1 (see <utmp.h>)
  */
 #include <sys/syslimits.h>
 
 #define	MAXCOMLEN	19		/* max command name remembered */
-#define	MAXINTERP	32		/* max interpreter file name length */
+#define	MAXINTERP	PATH_MAX	/* max interpreter file name length */
 #define	MAXLOGNAME	17		/* max login name length (incl. NUL) */
 #define	MAXUPRC		CHILD_MAX	/* max simultaneous processes */
 #define	NCARGS		ARG_MAX		/* max bytes for an exec function */
@@ -314,5 +319,11 @@ __END_DECLS
  */
 #define	member2struct(s, m, x)						\
 	((struct s *)(void *)((char *)(x) - offsetof(struct s, m)))
+
+/*
+ * Access a variable length array that has been declared as a fixed
+ * length array.
+ */
+#define __PAST_END(array, offset) (((typeof(*(array)) *)(array))[offset])
 
 #endif	/* _SYS_PARAM_H_ */

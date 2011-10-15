@@ -38,18 +38,6 @@
 
 #include "assym.s"
 
-	.data
-	ALIGN_DATA
-	.globl	intrcnt, eintrcnt
-intrcnt:
-	.space	INTRCNT_COUNT * 8
-eintrcnt:
-
-	.globl	intrnames, eintrnames
-intrnames:
-	.space	INTRCNT_COUNT * (MAXCOMLEN + 1)
-eintrnames:
-
 	.text
 
 /*
@@ -700,25 +688,6 @@ ENTRY(longjmp)
 END(longjmp)
 
 /*
- * Support for BB-profiling (gcc -a).  The kernbb program will extract
- * the data from the kernel.
- */
-
-	.data
-	ALIGN_DATA
-	.globl bbhead
-bbhead:
-	.quad 0
-
-	.text
-NON_GPROF_ENTRY(__bb_init_func)
-	movq	$1,(%rdi)
-	movq	bbhead,%rax
-	movq	%rax,32(%rdi)
-	movq	%rdi,bbhead
-	NON_GPROF_RET
-
-/*
  * Support for reading MSRs in the safe manner.
  */
 ENTRY(rdmsr_safe)
@@ -729,7 +698,7 @@ ENTRY(rdmsr_safe)
 	rdmsr			/* Read MSR pointed by %ecx. Returns
 				   hi byte in edx, lo in %eax */
 	salq	$32,%rdx	/* sign-shift %rdx left */
-	cltq			/* sign-extend %eax -> %rax */
+	movl	%eax,%eax	/* zero-extend %eax -> %rax */
 	orq	%rdx,%rax
 	movq	%rax,(%rsi)
 	xorq	%rax,%rax

@@ -35,7 +35,6 @@
 #include <sys/systm.h>
 #include <sys/kernel.h>
 #include <sys/bus.h>
-#include <sys/linker_set.h>
 #include <sys/module.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
@@ -182,7 +181,7 @@ usb_loc_fill(struct usb_fs_privdata* pd, struct usb_cdev_privdata *cpd)
  *  0: Success, refcount incremented on the given USB device.
  *  Else: Failure.
  *------------------------------------------------------------------------*/
-usb_error_t
+static usb_error_t
 usb_ref_device(struct usb_cdev_privdata *cpd, 
     struct usb_cdev_refdata *crd, int need_uref)
 {
@@ -327,7 +326,7 @@ usb_usb_ref_device(struct usb_cdev_privdata *cpd,
  * This function will release the reference count by one unit for the
  * given USB device.
  *------------------------------------------------------------------------*/
-void
+static void
 usb_unref_device(struct usb_cdev_privdata *cpd,
     struct usb_cdev_refdata *crd)
 {
@@ -769,7 +768,7 @@ usb_fifo_close(struct usb_fifo *f, int fflags)
 	/* check if a thread wants SIGIO */
 	if (f->async_p != NULL) {
 		PROC_LOCK(f->async_p);
-		psignal(f->async_p, SIGIO);
+		kern_psignal(f->async_p, SIGIO);
 		PROC_UNLOCK(f->async_p);
 		f->async_p = NULL;
 	}
@@ -912,10 +911,23 @@ usb_close(void *arg)
 
 	DPRINTFN(2, "cpd=%p\n", cpd);
 
-	err = usb_ref_device(cpd, &refs, 1);
-	if (err) {
-		free(cpd, M_USBDEV);
-		return;
+	err = usb_ref_device(cpd, &refs, 0);
+	if (err)
+		goto done;
+
+	/*
+	 * If this function is not called directly from the root HUB
+	 * thread, there is usually a need to lock the enumeration
+	 * lock. Check this.
+	 */
+	if (!usbd_enum_is_locked(cpd->udev)) {
+
+		DPRINTFN(2, "Locking enumeration\n");
+
+		/* reference device */
+		err = usb_usb_ref_device(cpd, &refs);
+		if (err)
+			goto done;
 	}
 	if (cpd->fflags & FREAD) {
 		usb_fifo_close(refs.rxfifo, cpd->fflags);
@@ -923,10 +935,9 @@ usb_close(void *arg)
 	if (cpd->fflags & FWRITE) {
 		usb_fifo_close(refs.txfifo, cpd->fflags);
 	}
-
 	usb_unref_device(cpd, &refs);
+done:
 	free(cpd, M_USBDEV);
-	return;
 }
 
 static void
@@ -964,7 +975,6 @@ usb_dev_uninit(void *arg)
 	if (usb_dev != NULL) {
 		destroy_dev(usb_dev);
 		usb_dev = NULL;
-	
 	}
 	mtx_destroy(&usb_ref_lock);
 	sx_destroy(&usb_sym_lock);
@@ -1058,21 +1068,45 @@ usb_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int fflag, struct thread* 
 		err = usb_ioctl_f_sub(f, cmd, addr, td);
 	}
 	KASSERT(f != NULL, ("fifo not found"));
-	if (err == ENOIOCTL) {
-		err = (f->methods->f_ioctl) (f, cmd, addr, fflags);
-		DPRINTFN(2, "f_ioctl cmd 0x%lx = %d\n", cmd, err);
-		if (err == ENOIOCTL) {
-			if (usb_usb_ref_device(cpd, &refs)) {
-				err = ENXIO;
-				goto done;
-			}
-			err = (f->methods->f_ioctl_post) (f, cmd, addr, fflags);
-			DPRINTFN(2, "f_ioctl_post cmd 0x%lx = %d\n", cmd, err);
+	if (err != ENOIOCTL)
+		goto done;
+
+	err = (f->methods->f_ioctl) (f, cmd, addr, fflags);
+
+	DPRINTFN(2, "f_ioctl cmd 0x%lx = %d\n", cmd, err);
+
+	if (err != ENOIOCTL)
+		goto done;
+
+	if (usb_usb_ref_device(cpd, &refs)) {
+		err = ENXIO;
+		goto done;
+	}
+
+	err = (f->methods->f_ioctl_post) (f, cmd, addr, fflags);
+
+	DPRINTFN(2, "f_ioctl_post cmd 0x%lx = %d\n", cmd, err);
+
+	if (err == ENOIOCTL)
+		err = ENOTTY;
+
+	if (err)
+		goto done;
+
+	/* Wait for re-enumeration, if any */
+
+	while (f->udev->re_enumerate_wait != 0) {
+
+		usb_unref_device(cpd, &refs);
+
+		usb_pause_mtx(NULL, hz / 128);
+
+		if (usb_ref_device(cpd, &refs, 1 /* need uref */)) {
+			err = ENXIO;
+			goto done;
 		}
 	}
-	if (err == ENOIOCTL) {
-		err = ENOTTY;
-	}
+
 done:
 	usb_unref_device(cpd, &refs);
 	return (err);
@@ -1456,7 +1490,7 @@ usb_static_ioctl(struct cdev *dev, u_long cmd, caddr_t data, int fflag,
 		struct usb_read_dir *urd;
 		void* data;
 	} u;
-	int err = ENOTTY;
+	int err;
 
 	u.data = data;
 	switch (cmd) {
@@ -1472,12 +1506,16 @@ usb_static_ioctl(struct cdev *dev, u_long cmd, caddr_t data, int fflag,
 			break;
 		case USB_GET_TEMPLATE:
 			*(int *)data = usb_template;
+			err = 0;
 			break;
 		case USB_SET_TEMPLATE:
 			err = priv_check(curthread, PRIV_DRIVER);
 			if (err)
 				break;
 			usb_template = *(int *)data;
+			break;
+		default:
+			err = ENOTTY;
 			break;
 	}
 	return (err);
@@ -1544,7 +1582,7 @@ usb_fifo_wakeup(struct usb_fifo *f)
 	}
 	if (f->async_p != NULL) {
 		PROC_LOCK(f->async_p);
-		psignal(f->async_p, SIGIO);
+		kern_psignal(f->async_p, SIGIO);
 		PROC_UNLOCK(f->async_p);
 	}
 }
@@ -1622,7 +1660,6 @@ usb_fifo_attach(struct usb_device *udev, void *priv_sc,
 	struct usb_fifo *f_rx;
 	char devname[32];
 	uint8_t n;
-	struct usb_fs_privdata* pd;
 
 	f_sc->fp[USB_FIFO_TX] = NULL;
 	f_sc->fp[USB_FIFO_RX] = NULL;
@@ -1720,22 +1757,10 @@ usb_fifo_attach(struct usb_device *udev, void *priv_sc,
 			    usb_alloc_symlink(devname);
 		}
 
-		/*
-		 * Initialize device private data - this is used to find the
-		 * actual USB device itself.
-		 */
-		pd = malloc(sizeof(struct usb_fs_privdata), M_USBDEV, M_WAITOK | M_ZERO);
-		pd->bus_index = device_get_unit(udev->bus->bdev);
-		pd->dev_index = udev->device_index;
-		pd->ep_addr = -1;	/* not an endpoint */
-		pd->fifo_index = f_tx->fifo_index & f_rx->fifo_index;
-		pd->mode = FREAD|FWRITE;
-
-		/* Now, create the device itself */
-		f_sc->dev = make_dev(&usb_devsw, 0, uid, gid, mode,
-		    devname);
-		/* XXX setting si_drv1 and creating the device is not atomic! */
-		f_sc->dev->si_drv1 = pd;
+		/* Create the device */
+		f_sc->dev = usb_make_dev(udev, devname, -1,
+		    f_tx->fifo_index & f_rx->fifo_index,
+		    FREAD|FWRITE, uid, gid, mode);
 	}
 
 	DPRINTFN(2, "attached %p/%p\n", f_tx, f_rx);
@@ -1788,12 +1813,6 @@ usb_fifo_free_buffer(struct usb_fifo *f)
 	bzero(&f->used_q, sizeof(f->used_q));
 }
 
-static void
-usb_fifo_cleanup(void* ptr) 
-{
-	free(ptr, M_USBDEV);
-}
-
 void
 usb_fifo_detach(struct usb_fifo_sc *f_sc)
 {
@@ -1806,11 +1825,9 @@ usb_fifo_detach(struct usb_fifo_sc *f_sc)
 	f_sc->fp[USB_FIFO_TX] = NULL;
 	f_sc->fp[USB_FIFO_RX] = NULL;
 
-	if (f_sc->dev != NULL) {
-		destroy_dev_sched_cb(f_sc->dev, 
-		    usb_fifo_cleanup, f_sc->dev->si_drv1);
-		f_sc->dev = NULL;
-	}
+	usb_destroy_dev(f_sc->dev);
+
+	f_sc->dev = NULL;
 
 	DPRINTFN(2, "detached %p\n", f_sc);
 }

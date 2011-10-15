@@ -22,6 +22,13 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+/*
+ * Since we are compiled outside of the normal kernel build process, we
+ * need to include opt_global.h manually.
+ */
+#include "opt_global.h"
+#include "opt_kernname.h"
+
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 #include <machine/asm.h>
@@ -32,13 +39,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/pte.h>
 #include <machine/cpufunc.h>
 #include <machine/armreg.h>
-
-/*
- * Since we are compiled outside of the normal kernel build process, we
- * need to include opt_global.h manually.
- */
-#include "opt_global.h"
-#include "opt_kernname.h"
 
 extern char kernel_start[];
 extern char kernel_end[];
@@ -159,7 +159,7 @@ _startC(void)
 #if defined(FLASHADDR) && defined(LOADERRAMADDR)
 	unsigned int pc;
 
-	__asm __volatile("adr %0, _start\n"
+	__asm __volatile("mov %0, pc\n"
 	    : "=r" (pc));
 	if ((FLASHADDR > LOADERRAMADDR && pc >= FLASHADDR) ||
 	    (FLASHADDR < LOADERRAMADDR && pc < LOADERRAMADDR)) {
@@ -173,11 +173,13 @@ _startC(void)
 		 */
 		unsigned int target_addr;
 		unsigned int tmp_sp;
+		uint32_t src_addr = (uint32_t)&_start - PHYSADDR + FLASHADDR
+		    + (pc - FLASHADDR - ((uint32_t)&_startC - PHYSADDR)) & 0xfffff000;
 
 		target_addr = (unsigned int)&_start - PHYSADDR + LOADERRAMADDR;
 		tmp_sp = target_addr + 0x100000 +
 		    (unsigned int)&_end - (unsigned int)&_start;
-		memcpy((char *)target_addr, (char *)pc,
+		memcpy((char *)target_addr, (char *)src_addr,
 		    (unsigned int)&_end - (unsigned int)&_start);
 		/* Temporary set the sp and jump to the new location. */
 		__asm __volatile(

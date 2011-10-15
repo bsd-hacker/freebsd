@@ -49,12 +49,13 @@ static long devstat_generation = 1;
 static int devstat_version = DEVSTAT_VERSION;
 static int devstat_current_devnumber;
 static struct mtx devstat_mutex;
+MTX_SYSINIT(devstat_mutex, &devstat_mutex, "devstat", MTX_DEF);
 
-static struct devstatlist device_statq;
+static struct devstatlist device_statq = STAILQ_HEAD_INITIALIZER(device_statq);
 static struct devstat *devstat_alloc(void);
 static void devstat_free(struct devstat *);
 static void devstat_add_entry(struct devstat *ds, const void *dev_name, 
-		       int unit_number, u_int32_t block_size,
+		       int unit_number, uint32_t block_size,
 		       devstat_support_flags flags,
 		       devstat_type_flags device_type,
 		       devstat_priority priority);
@@ -64,19 +65,13 @@ static void devstat_add_entry(struct devstat *ds, const void *dev_name,
  */
 struct devstat *
 devstat_new_entry(const void *dev_name,
-		  int unit_number, u_int32_t block_size,
+		  int unit_number, uint32_t block_size,
 		  devstat_support_flags flags,
 		  devstat_type_flags device_type,
 		  devstat_priority priority)
 {
 	struct devstat *ds;
-	static int once;
 
-	if (!once) {
-		STAILQ_INIT(&device_statq);
-		mtx_init(&devstat_mutex, "devstat", NULL, MTX_DEF);
-		once = 1;
-	}
 	mtx_assert(&devstat_mutex, MA_NOTOWNED);
 
 	ds = devstat_alloc();
@@ -99,7 +94,7 @@ devstat_new_entry(const void *dev_name,
  */
 static void
 devstat_add_entry(struct devstat *ds, const void *dev_name, 
-		  int unit_number, u_int32_t block_size,
+		  int unit_number, uint32_t block_size,
 		  devstat_support_flags flags,
 		  devstat_type_flags device_type,
 		  devstat_priority priority)
@@ -275,7 +270,7 @@ devstat_start_transaction_bio(struct devstat *ds, struct bio *bp)
  * atomic instructions using appropriate memory barriers.
  */
 void
-devstat_end_transaction(struct devstat *ds, u_int32_t bytes, 
+devstat_end_transaction(struct devstat *ds, uint32_t bytes, 
 			devstat_tag_type tag_type, devstat_trans_flags flags,
 			struct bintime *now, struct bintime *then)
 {
@@ -476,8 +471,9 @@ devstat_alloc(void)
 
 	mtx_assert(&devstat_mutex, MA_NOTOWNED);
 	if (!once) {
-		make_dev(&devstat_cdevsw, 0,
-		    UID_ROOT, GID_WHEEL, 0400, DEVSTAT_DEVICE_NAME);
+		make_dev_credf(MAKEDEV_ETERNAL | MAKEDEV_CHECKNAME,
+		    &devstat_cdevsw, 0, NULL, UID_ROOT, GID_WHEEL, 0400,
+		    DEVSTAT_DEVICE_NAME);
 		once = 1;
 	}
 	spp2 = NULL;

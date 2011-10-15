@@ -26,7 +26,6 @@
  * $FreeBSD$
  */
 
-#include "opt_bootp.h"
 #include "opt_isa.h"
 
 #include <sys/param.h>
@@ -39,7 +38,6 @@
 #include <sys/bus.h>
 #include <sys/cons.h>
 
-#include <machine/bootinfo.h>
 #include <machine/intr.h>
 #include <machine/md_var.h>
 
@@ -52,10 +50,6 @@ SYSINIT(configure1, SI_SUB_CONFIGURE, SI_ORDER_FIRST, configure_first, NULL);
 SYSINIT(configure2, SI_SUB_CONFIGURE, SI_ORDER_THIRD, configure, NULL);
 /* SI_ORDER_MIDDLE is hookable */
 SYSINIT(configure3, SI_SUB_CONFIGURE, SI_ORDER_ANY, configure_final, NULL);
-
-#ifdef BOOTP
-void bootpc_init(void);
-#endif
 
 #ifdef DEV_ISA
 #include <isa/isavar.h>

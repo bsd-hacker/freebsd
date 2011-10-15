@@ -19,7 +19,7 @@
  * CDDL HEADER END
  */
 /*
- * Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
+ * Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
@@ -71,9 +71,16 @@
  * 1<<zfs_vdev_cache_bshift byte reads by the vdev_cache (aka software
  * track buffer).  At most zfs_vdev_cache_size bytes will be kept in each
  * vdev's vdev_cache.
+ *
+ * TODO: Note that with the current ZFS code, it turns out that the
+ * vdev cache is not helpful, and in some cases actually harmful.  It
+ * is better if we disable this.  Once some time has passed, we should
+ * actually remove this to simplify the code.  For now we just disable
+ * it by setting the zfs_vdev_cache_size to zero.  Note that Solaris 11
+ * has made these same changes.
  */
 int zfs_vdev_cache_max = 1<<14;			/* 16KB */
-int zfs_vdev_cache_size = 10ULL << 20;		/* 10MB */
+int zfs_vdev_cache_size = 0;
 int zfs_vdev_cache_bshift = 16;
 
 #define	VCBS (1 << zfs_vdev_cache_bshift)	/* 64KB */
@@ -184,7 +191,7 @@ vdev_cache_allocate(zio_t *zio)
 
 	ve = kmem_zalloc(sizeof (vdev_cache_entry_t), KM_SLEEP);
 	ve->ve_offset = offset;
-	ve->ve_lastused = LBOLT;
+	ve->ve_lastused = ddi_get_lbolt();
 	ve->ve_data = zio_buf_alloc(VCBS);
 
 	avl_add(&vc->vc_offset_tree, ve);
@@ -201,9 +208,9 @@ vdev_cache_hit(vdev_cache_t *vc, vdev_cache_entry_t *ve, zio_t *zio)
 	ASSERT(MUTEX_HELD(&vc->vc_lock));
 	ASSERT(ve->ve_fill_io == NULL);
 
-	if (ve->ve_lastused != LBOLT) {
+	if (ve->ve_lastused != ddi_get_lbolt()) {
 		avl_remove(&vc->vc_lastused_tree, ve);
-		ve->ve_lastused = LBOLT;
+		ve->ve_lastused = ddi_get_lbolt();
 		avl_add(&vc->vc_lastused_tree, ve);
 	}
 
@@ -215,23 +222,23 @@ vdev_cache_hit(vdev_cache_t *vc, vdev_cache_entry_t *ve, zio_t *zio)
  * Fill a previously allocated cache entry with data.
  */
 static void
-vdev_cache_fill(zio_t *zio)
+vdev_cache_fill(zio_t *fio)
 {
-	vdev_t *vd = zio->io_vd;
+	vdev_t *vd = fio->io_vd;
 	vdev_cache_t *vc = &vd->vdev_cache;
-	vdev_cache_entry_t *ve = zio->io_private;
-	zio_t *dio;
+	vdev_cache_entry_t *ve = fio->io_private;
+	zio_t *pio;
 
-	ASSERT(zio->io_size == VCBS);
+	ASSERT(fio->io_size == VCBS);
 
 	/*
 	 * Add data to the cache.
 	 */
 	mutex_enter(&vc->vc_lock);
 
-	ASSERT(ve->ve_fill_io == zio);
-	ASSERT(ve->ve_offset == zio->io_offset);
-	ASSERT(ve->ve_data == zio->io_data);
+	ASSERT(ve->ve_fill_io == fio);
+	ASSERT(ve->ve_offset == fio->io_offset);
+	ASSERT(ve->ve_data == fio->io_data);
 
 	ve->ve_fill_io = NULL;
 
@@ -240,20 +247,13 @@ vdev_cache_fill(zio_t *zio)
 	 * any reads that were queued up before the missed update are still
 	 * valid, so we can satisfy them from this line before we evict it.
 	 */
-	for (dio = zio->io_delegate_list; dio; dio = dio->io_delegate_next)
-		vdev_cache_hit(vc, ve, dio);
+	while ((pio = zio_walk_parents(fio)) != NULL)
+		vdev_cache_hit(vc, ve, pio);
 
-	if (zio->io_error || ve->ve_missed_update)
+	if (fio->io_error || ve->ve_missed_update)
 		vdev_cache_evict(vc, ve);
 
 	mutex_exit(&vc->vc_lock);
-
-	while ((dio = zio->io_delegate_list) != NULL) {
-		zio->io_delegate_list = dio->io_delegate_next;
-		dio->io_delegate_next = NULL;
-		dio->io_error = zio->io_error;
-		zio_execute(dio);
-	}
 }
 
 /*
@@ -279,7 +279,7 @@ vdev_cache_read(zio_t *zio)
 	/*
 	 * If the I/O straddles two or more cache blocks, don't cache it.
 	 */
-	if (P2CROSS(zio->io_offset, zio->io_offset + zio->io_size - 1, VCBS))
+	if (P2BOUNDARY(zio->io_offset, zio->io_size, VCBS))
 		return (EXDEV);
 
 	ASSERT(cache_phase + zio->io_size <= VCBS);
@@ -296,9 +296,8 @@ vdev_cache_read(zio_t *zio)
 		}
 
 		if ((fio = ve->ve_fill_io) != NULL) {
-			zio->io_delegate_next = fio->io_delegate_list;
-			fio->io_delegate_list = zio;
 			zio_vdev_io_bypass(zio);
+			zio_add_child(zio, fio);
 			mutex_exit(&vc->vc_lock);
 			VDCSTAT_BUMP(vdc_stat_delegations);
 			return (0);
@@ -308,7 +307,6 @@ vdev_cache_read(zio_t *zio)
 		zio_vdev_io_bypass(zio);
 
 		mutex_exit(&vc->vc_lock);
-		zio_execute(zio);
 		VDCSTAT_BUMP(vdc_stat_hits);
 		return (0);
 	}
@@ -325,8 +323,8 @@ vdev_cache_read(zio_t *zio)
 	    ZIO_FLAG_DONT_CACHE, vdev_cache_fill, ve);
 
 	ve->ve_fill_io = fio;
-	fio->io_delegate_list = zio;
 	zio_vdev_io_bypass(zio);
+	zio_add_child(zio, fio);
 
 	mutex_exit(&vc->vc_lock);
 	zio_nowait(fio);

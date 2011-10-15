@@ -34,11 +34,13 @@ __FBSDID("$FreeBSD$");
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/bio.h>
+#include <sys/sbuf.h>
 #include <sys/sysctl.h>
 #include <sys/malloc.h>
 #include <geom/geom.h>
 #include <geom/concat/g_concat.h>
 
+FEATURE(geom_concat, "GEOM concatenation support");
 
 static MALLOC_DEFINE(M_CONCAT, "concat_data", "GEOM_CONCAT Data");
 
@@ -212,6 +214,39 @@ g_concat_access(struct g_provider *pp, int dr, int dw, int de)
 }
 
 static void
+g_concat_kernel_dump(struct bio *bp)
+{
+	struct g_concat_softc *sc;
+	struct g_concat_disk *disk;
+	struct bio *cbp;
+	struct g_kerneldump *gkd;
+	u_int i;
+
+	sc = bp->bio_to->geom->softc;
+	gkd = (struct g_kerneldump *)bp->bio_data;
+	for (i = 0; i < sc->sc_ndisks; i++) {
+		if (sc->sc_disks[i].d_start <= gkd->offset &&
+		    sc->sc_disks[i].d_end > gkd->offset)
+			break;
+	}
+	if (i == sc->sc_ndisks)
+		g_io_deliver(bp, EOPNOTSUPP);
+	disk = &sc->sc_disks[i];
+	gkd->offset -= disk->d_start;
+	if (gkd->length > disk->d_end - disk->d_start - gkd->offset)
+		gkd->length = disk->d_end - disk->d_start - gkd->offset;
+	cbp = g_clone_bio(bp);
+	if (cbp == NULL) {
+		g_io_deliver(bp, ENOMEM);
+		return;
+	}
+	cbp->bio_done = g_std_done;
+	g_io_request(cbp, disk->d_consumer);
+	G_CONCAT_DEBUG(1, "Kernel dump will go to %s.",
+	    disk->d_consumer->provider->name);
+}
+
+static void
 g_concat_flush(struct g_concat_softc *sc, struct bio *bp)
 {
 	struct bio_queue_head queue;
@@ -280,7 +315,12 @@ g_concat_start(struct bio *bp)
 		g_concat_flush(sc, bp);
 		return;
 	case BIO_GETATTR:
+		if (strcmp("GEOM::kerneldump", bp->bio_attribute) == 0) {
+			g_concat_kernel_dump(bp);
+			return;
+		}
 		/* To which provider it should be delivered? */
+		/* FALLTHROUGH */
 	default:
 		g_io_deliver(bp, EOPNOTSUPP);
 		return;
@@ -508,8 +548,6 @@ g_concat_create(struct g_class *mp, const struct g_concat_metadata *md,
 		}
 	}
 	gp = g_new_geomf(mp, "%s", md->md_name);
-	gp->softc = NULL;	/* for a moment */
-
 	sc = malloc(sizeof(*sc), M_CONCAT, M_WAITOK | M_ZERO);
 	gp->start = g_concat_start;
 	gp->spoiled = g_concat_orphan;
@@ -639,7 +677,8 @@ g_concat_taste(struct g_class *mp, struct g_provider *pp, int flags __unused)
 	if (md.md_version < 4)
 		md.md_provsize = pp->mediasize;
 
-	if (md.md_provider[0] != '\0' && strcmp(md.md_provider, pp->name) != 0)
+	if (md.md_provider[0] != '\0' &&
+	    !g_compare_names(md.md_provider, pp->name))
 		return (NULL);
 	if (md.md_provsize != pp->mediasize)
 		return (NULL);

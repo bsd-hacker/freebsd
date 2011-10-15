@@ -43,17 +43,21 @@
  * Machine-dependent part of the proc structure.
  */
 struct mdthread {
-	int	md_flags;		/* machine-dependent flags */
-	int	md_upte[KSTACK_PAGES];	/* ptes for mapping u pcb */
-	int	md_ss_addr;		/* single step address for ptrace */
-	int	md_ss_instr;		/* single step instruction for ptrace */
+	int		md_flags;	/* machine-dependent flags */
+#if defined(__mips_n64) || defined(__mips_n32) /*  PHYSADDR_64_BIT */
+	uint64_t	md_upte[KSTACK_PAGES];	/* ptes for mapping u pcb */
+#else
+	int		md_upte[KSTACK_PAGES];
+#endif
+	int		md_ss_addr;	/* single step address for ptrace */
+	int		md_ss_instr;	/* single step instruction for ptrace */
 	register_t	md_saved_intr;
-	u_int	md_spinlock_count;
+	u_int		md_spinlock_count;
 /* The following is CPU dependent, but kept in for compatibility */
-	int	md_pc_ctrl;		/* performance counter control */
-	int	md_pc_count;		/* performance counter */
-	int	md_pc_spill;		/* performance counter spill */
-	void	*md_tls;
+	int		md_pc_ctrl;	/* performance counter control */
+	int		md_pc_count;	/* performance counter */
+	int		md_pc_spill;	/* performance counter spill */
+	void		*md_tls;
 };
 
 /* md_flags */
@@ -63,10 +67,20 @@ struct mdproc {
 	/* empty */
 };
 
+#ifdef _KERNEL
 struct thread;
 
 void	mips_cpu_switch(struct thread *, struct thread *, struct mtx *);
 void	mips_cpu_throw(struct thread *, struct thread *);
+
+struct syscall_args {
+	u_int code;
+	struct sysent *callp;
+	register_t args[8];
+	int narg;
+	struct trapframe *trapframe;
+};
+#endif
 
 #ifdef __mips_n64
 #define	KINFO_PROC_SIZE 1088

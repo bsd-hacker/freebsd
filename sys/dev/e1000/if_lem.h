@@ -217,6 +217,10 @@
 #define EM_BAR_MEM_TYPE_64BIT	0x00000004
 #define EM_MSIX_BAR		3	/* On 82575 */
 
+#if !defined(SYSCTL_ADD_UQUAD)
+#define SYSCTL_ADD_UQUAD SYSCTL_ADD_QUAD
+#endif
+
 /* Defines for printing debug information */
 #define DEBUG_INIT  0
 #define DEBUG_IOCTL 0
@@ -328,22 +332,33 @@ struct adapter {
 	struct task     tx_task;
 	struct taskqueue *tq;           /* private task queue */
 
-#if __FreeBSD_version >= 700029
 	eventhandler_tag vlan_attach;
 	eventhandler_tag vlan_detach;
 	u32	num_vlans;
-#endif
 
 	/* Management and WOL features */
 	u32		wol;
 	bool		has_manage;
 	bool		has_amt;
 
-	/* Info about the board itself */
+	/* Multicast array memory */
+	u8		*mta;
+
+	/*
+	** Shadow VFTA table, this is needed because
+	** the real vlan filter table gets cleared during
+	** a soft reset and the driver needs to be able
+	** to repopulate it.
+	*/
+	u32		shadow_vfta[EM_VFTA_SIZE];
+
+	/* Info about the interface */
 	uint8_t		link_active;
 	uint16_t	link_speed;
 	uint16_t	link_duplex;
 	uint32_t	smartspeed;
+	uint32_t	fc_setting;
+
 	struct em_int_delay_info tx_int_delay;
 	struct em_int_delay_info tx_abs_int_delay;
 	struct em_int_delay_info rx_int_delay;

@@ -3071,6 +3071,14 @@ asr_intr(Asr_softc_t *sc)
 				 && (size > ccb->csio.sense_len)) {
 					size = ccb->csio.sense_len;
 				}
+				if (size < ccb->csio.sense_len) {
+					ccb->csio.sense_resid =
+					    ccb->csio.sense_len - size;
+				} else {
+					ccb->csio.sense_resid = 0;
+				}
+				bzero(&(ccb->csio.sense_data),
+				    sizeof(ccb->csio.sense_data));
 				bcopy(Reply->SenseData,
 				      &(ccb->csio.sense_data), size);
 			}
@@ -3566,6 +3574,12 @@ ASR_queue_i(Asr_softc_t	*sc, PI2O_MESSAGE_FRAME	Packet)
 		if (size > sizeof(ccb->csio.sense_data)) {
 			size = sizeof(ccb->csio.sense_data);
 		}
+		if (size < ccb->csio.sense_len) {
+			ccb->csio.sense_resid = ccb->csio.sense_len - size;
+		} else {
+			ccb->csio.sense_resid = 0;
+		}
+		bzero(&(ccb->csio.sense_data), sizeof(ccb->csio.sense_data));
 		bcopy(&(ccb->csio.sense_data), Reply_Ptr->SenseData, size);
 		I2O_SCSI_ERROR_REPLY_MESSAGE_FRAME_setAutoSenseTransferCount(
 		    Reply_Ptr, size);
@@ -3708,9 +3722,9 @@ asr_ioctl(struct cdev *dev, u_long cmd, caddr_t data, int flag, struct thread *t
 		Info.drive1CMOS = j;
 
 		Info.numDrives = *((char *)ptok(0x475));
-#endif /* ASR_IOCTL_COMPAT */
-
+#else /* ASR_IOCTL_COMPAT */
 		bzero(&Info, sizeof(Info));
+#endif /* ASR_IOCTL_COMPAT */
 
 		Info.processorFamily = ASR_sig.dsProcessorFamily;
 #if defined(__i386__)

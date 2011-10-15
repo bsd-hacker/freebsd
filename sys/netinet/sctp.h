@@ -1,5 +1,7 @@
 /*-
  * Copyright (c) 2001-2008, by Cisco Systems, Inc. All rights reserved.
+ * Copyright (c) 2008-2011, by Randall Stewart. All rights reserved.
+ * Copyright (c) 2008-2011, by Michael Tuexen. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -89,7 +91,7 @@ struct sctp_paramhdr {
 #define SCTP_PEER_ADDR_PARAMS 		0x0000000a
 #define SCTP_DEFAULT_SEND_PARAM		0x0000000b
 /* ancillary data/notification interest options */
-#define SCTP_EVENTS			0x0000000c
+#define SCTP_EVENTS			0x0000000c	/* deprecated */
 /* Without this applied we will give V4 and V6 addresses on a V6 socket */
 #define SCTP_I_WANT_MAPPED_V4_ADDR	0x0000000d
 #define SCTP_MAXSEG 			0x0000000e
@@ -108,10 +110,16 @@ struct sctp_paramhdr {
 #define SCTP_MAX_BURST			0x00000019	/* rw */
 /* assoc level context */
 #define SCTP_CONTEXT                    0x0000001a	/* rw */
-/* explict EOR signalling */
+/* explicit EOR signalling */
 #define SCTP_EXPLICIT_EOR               0x0000001b
 #define SCTP_REUSE_PORT                 0x0000001c	/* rw */
 #define SCTP_AUTH_DEACTIVATE_KEY	0x0000001d
+#define SCTP_EVENT                      0x0000001e
+#define SCTP_RECVRCVINFO                0x0000001f
+#define SCTP_RECVNXTINFO                0x00000020
+#define SCTP_DEFAULT_SNDINFO            0x00000021
+#define SCTP_DEFAULT_PRINFO             0x00000022
+#define SCTP_PEER_ADDR_THLDS            0x00000023
 
 /*
  * read-only options
@@ -123,6 +131,7 @@ struct sctp_paramhdr {
 #define SCTP_LOCAL_AUTH_CHUNKS 		0x00000103
 #define SCTP_GET_ASSOC_NUMBER           0x00000104	/* ro */
 #define SCTP_GET_ASSOC_ID_LIST          0x00000105	/* ro */
+#define SCTP_TIMEOUTS                   0x00000106
 
 /*
  * user socket options: BSD implementation specific
@@ -131,9 +140,9 @@ struct sctp_paramhdr {
  * Blocking I/O is enabled on any TCP type socket by default. For the UDP
  * model if this is turned on then the socket buffer is shared for send
  * resources amongst all associations.  The default for the UDP model is that
- * is SS_NBIO is set.  Which means all associations have a seperate send
+ * is SS_NBIO is set.  Which means all associations have a separate send
  * limit BUT they will NOT ever BLOCK instead you will get an error back
- * EAGAIN if you try to send to much. If you want the blocking symantics you
+ * EAGAIN if you try to send too much. If you want the blocking semantics you
  * set this option at the cost of sharing one socket send buffer size amongst
  * all associations. Peeled off sockets turn this option off and block. But
  * since both TCP and peeled off sockets have only one assoc per socket this
@@ -141,7 +150,7 @@ struct sctp_paramhdr {
  * model OR peeled off UDP model, but we do allow you to do so. You just use
  * the normal syscall to toggle SS_NBIO the way you want.
  *
- * Blocking I/O is controled by the SS_NBIO flag on the socket state so_state
+ * Blocking I/O is controlled by the SS_NBIO flag on the socket state so_state
  * field.
  */
 
@@ -155,11 +164,13 @@ struct sctp_paramhdr {
 /* CMT ON/OFF socket option */
 #define SCTP_CMT_ON_OFF                 0x00001200
 #define SCTP_CMT_USE_DAC                0x00001201
-/* EY - NR_SACK on/off socket option */
-#define SCTP_NR_SACK_ON_OFF                 0x00001300
 /* JRS - Pluggable Congestion Control Socket option */
-#define SCTP_PLUGGABLE_CC				0x00001202
-
+#define SCTP_PLUGGABLE_CC               0x00001202
+/* RS - Pluggable Stream Scheduling Socket option */
+#define SCTP_PLUGGABLE_SS		0x00001203
+#define SCTP_SS_VALUE			0x00001204
+#define SCTP_CC_OPTION			0x00001205	/* Options for CC
+							 * modules */
 /* read only */
 #define SCTP_GET_SNDBUF_USE		0x00001101
 #define SCTP_GET_STAT_LOG		0x00001103
@@ -168,7 +179,7 @@ struct sctp_paramhdr {
 
 
 /* Special hook for dynamically setting primary for all assoc's,
- * this is a write only option that requires root privledge.
+ * this is a write only option that requires root privilege.
  */
 #define SCTP_SET_DYNAMIC_PRIMARY        0x00002001
 
@@ -183,7 +194,7 @@ struct sctp_paramhdr {
  * to. The endpoint, before binding, may select
  * the "default" VRF it is in by using a set socket
  * option with SCTP_VRF_ID. This will also
- * get propegated to the default VRF. Once the
+ * get propagated to the default VRF. Once the
  * endpoint binds an address then it CANNOT add
  * additional VRF's to become a Multi-VRF endpoint.
  *
@@ -253,6 +264,35 @@ struct sctp_paramhdr {
 #define SCTP_CC_HSTCP		0x00000001
 /* HTCP Congestion Control */
 #define SCTP_CC_HTCP		0x00000002
+/* RTCC Congestion Control - RFC2581 plus */
+#define SCTP_CC_RTCC            0x00000003
+
+#define SCTP_CC_OPT_RTCC_SETMODE	0x00002000
+#define SCTP_CC_OPT_USE_DCCC_ECN	0x00002001
+#define SCTP_CC_OPT_STEADY_STEP         0x00002002
+
+#define SCTP_CMT_OFF            0
+#define SCTP_CMT_BASE           1
+#define SCTP_CMT_RPV1           2
+#define SCTP_CMT_RPV2           3
+#define SCTP_CMT_MPTCP          4
+#define SCTP_CMT_MAX            SCTP_CMT_MPTCP
+
+/* RS - Supported stream scheduling modules for pluggable
+ * stream scheduling
+ */
+/* Default simple round-robin */
+#define SCTP_SS_DEFAULT			0x00000000
+/* Real round-robin */
+#define SCTP_SS_ROUND_ROBIN		0x00000001
+/* Real round-robin per packet */
+#define SCTP_SS_ROUND_ROBIN_PACKET	0x00000002
+/* Priority */
+#define SCTP_SS_PRIORITY		0x00000003
+/* Fair Bandwidth */
+#define SCTP_SS_FAIR_BANDWITH		0x00000004
+/* First-come, first-serve */
+#define SCTP_SS_FIRST_COME		0x00000005
 
 
 /* fragment interleave constants
@@ -310,7 +350,7 @@ struct sctp_paramhdr {
 #define SCTP_CAUSE_UNSUPPORTED_HMACID	0x0105
 
 /*
- * error cause parameters (user visisble)
+ * error cause parameters (user visible)
  */
 struct sctp_error_cause {
 	uint16_t code;
@@ -399,6 +439,10 @@ struct sctp_error_unrecognized_chunk {
 #define SCTP_BADCRC		0x02
 #define SCTP_PACKET_TRUNCATED	0x04
 
+/* Flag for ECN -CWR */
+#define SCTP_CWR_REDUCE_OVERRIDE 0x01
+#define SCTP_CWR_IN_SAME_WINDOW  0x02
+
 #define SCTP_SAT_NETWORK_MIN	400	/* min ms for RTT to set satellite
 					 * time */
 #define SCTP_SAT_NETWORK_BURST_INCR  2	/* how many times to multiply maxburst
@@ -442,6 +486,7 @@ struct sctp_error_unrecognized_chunk {
 #define SCTP_PCB_FLAGS_BLOCKING_IO	0x08000000
 #define SCTP_PCB_FLAGS_SOCKET_GONE	0x10000000
 #define SCTP_PCB_FLAGS_SOCKET_ALLGONE	0x20000000
+#define SCTP_PCB_FLAGS_SOCKET_CANT_READ	0x40000000
 /* flags to copy to new PCB */
 #define SCTP_PCB_COPY_FLAGS		(SCTP_PCB_FLAGS_BOUNDALL|\
 					 SCTP_PCB_FLAGS_WAKEINPUT|\
@@ -451,7 +496,8 @@ struct sctp_error_unrecognized_chunk {
 /*
  * PCB Features (in sctp_features bitmask)
  */
-#define SCTP_PCB_FLAGS_EXT_RCVINFO      0x00000002
+#define SCTP_PCB_FLAGS_DO_NOT_PMTUD     0x00000001
+#define SCTP_PCB_FLAGS_EXT_RCVINFO      0x00000002	/* deprecated */
 #define SCTP_PCB_FLAGS_DONOT_HEARTBEAT  0x00000004
 #define SCTP_PCB_FLAGS_FRAG_INTERLEAVE  0x00000008
 #define SCTP_PCB_FLAGS_INTERLEAVE_STRMS	0x00000010
@@ -461,7 +507,7 @@ struct sctp_error_unrecognized_chunk {
 /* socket options */
 #define SCTP_PCB_FLAGS_NODELAY		0x00000100
 #define SCTP_PCB_FLAGS_AUTOCLOSE	0x00000200
-#define SCTP_PCB_FLAGS_RECVDATAIOEVNT	0x00000400
+#define SCTP_PCB_FLAGS_RECVDATAIOEVNT	0x00000400	/* deprecated */
 #define SCTP_PCB_FLAGS_RECVASSOCEVNT	0x00000800
 #define SCTP_PCB_FLAGS_RECVPADDREVNT	0x00001000
 #define SCTP_PCB_FLAGS_RECVPEERERR	0x00002000
@@ -477,6 +523,9 @@ struct sctp_error_unrecognized_chunk {
 #define SCTP_PCB_FLAGS_MULTIPLE_ASCONFS	0x01000000
 #define SCTP_PCB_FLAGS_PORTREUSE        0x02000000
 #define SCTP_PCB_FLAGS_DRYEVNT          0x04000000
+#define SCTP_PCB_FLAGS_RECVRCVINFO      0x08000000
+#define SCTP_PCB_FLAGS_RECVNXTINFO      0x10000000
+
 /*-
  * mobility_features parameters (by micchie).Note
  * these features are applied against the
@@ -517,7 +566,6 @@ struct sctp_error_unrecognized_chunk {
 #define SCTP_BLK_LOGGING_ENABLE				0x00000001
 #define SCTP_CWND_MONITOR_ENABLE			0x00000002
 #define SCTP_CWND_LOGGING_ENABLE			0x00000004
-#define SCTP_EARLYFR_LOGGING_ENABLE			0x00000010
 #define SCTP_FLIGHT_LOGGING_ENABLE			0x00000020
 #define SCTP_FR_LOGGING_ENABLE				0x00000040
 #define SCTP_LOCK_LOGGING_ENABLE			0x00000080
@@ -525,23 +573,23 @@ struct sctp_error_unrecognized_chunk {
 #define SCTP_MBCNT_LOGGING_ENABLE			0x00000200
 #define SCTP_MBUF_LOGGING_ENABLE			0x00000400
 #define SCTP_NAGLE_LOGGING_ENABLE			0x00000800
-#define SCTP_RECV_RWND_LOGGING_ENABLE		0x00001000
+#define SCTP_RECV_RWND_LOGGING_ENABLE			0x00001000
 #define SCTP_RTTVAR_LOGGING_ENABLE			0x00002000
 #define SCTP_SACK_LOGGING_ENABLE			0x00004000
-#define SCTP_SACK_RWND_LOGGING_ENABLE		0x00008000
+#define SCTP_SACK_RWND_LOGGING_ENABLE			0x00008000
 #define SCTP_SB_LOGGING_ENABLE				0x00010000
 #define SCTP_STR_LOGGING_ENABLE				0x00020000
 #define SCTP_WAKE_LOGGING_ENABLE			0x00040000
 #define SCTP_LOG_MAXBURST_ENABLE			0x00080000
 #define SCTP_LOG_RWND_ENABLE    			0x00100000
-#define SCTP_LOG_SACK_ARRIVALS_ENABLE       0x00200000
-#define SCTP_LTRACE_CHUNK_ENABLE            0x00400000
-#define SCTP_LTRACE_ERROR_ENABLE            0x00800000
-#define SCTP_LAST_PACKET_TRACING            0x01000000
-#define SCTP_THRESHOLD_LOGGING              0x02000000
-#define SCTP_LOG_AT_SEND_2_SCTP             0x04000000
-#define SCTP_LOG_AT_SEND_2_OUTQ             0x08000000
-#define SCTP_LOG_TRY_ADVANCE                0x10000000
+#define SCTP_LOG_SACK_ARRIVALS_ENABLE			0x00200000
+#define SCTP_LTRACE_CHUNK_ENABLE			0x00400000
+#define SCTP_LTRACE_ERROR_ENABLE			0x00800000
+#define SCTP_LAST_PACKET_TRACING			0x01000000
+#define SCTP_THRESHOLD_LOGGING				0x02000000
+#define SCTP_LOG_AT_SEND_2_SCTP				0x04000000
+#define SCTP_LOG_AT_SEND_2_OUTQ				0x08000000
+#define SCTP_LOG_TRY_ADVANCE				0x10000000
 
 
 #undef SCTP_PACKED

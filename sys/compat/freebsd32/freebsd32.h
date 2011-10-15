@@ -58,7 +58,7 @@ struct timespec32 {
 #define TS_CP(src,dst,fld) do {			\
 	CP((src).fld,(dst).fld,tv_sec);		\
 	CP((src).fld,(dst).fld,tv_nsec);	\
-} while (0);
+} while (0)
 
 struct rusage32 {
 	struct timeval32 ru_utime;
@@ -157,6 +157,24 @@ struct stat32 {
 	unsigned int :(8 / 2) * (16 - (int)sizeof(struct timespec32));
 };
 
+struct ostat32 {
+	__uint16_t st_dev;
+	ino_t	st_ino;
+	mode_t	st_mode;
+	nlink_t	st_nlink;
+	__uint16_t st_uid;
+	__uint16_t st_gid;
+	__uint16_t st_rdev;
+	__int32_t st_size;
+	struct timespec32 st_atim;
+	struct timespec32 st_mtim;
+	struct timespec32 st_ctim;
+	__int32_t st_blksize;
+	__int32_t st_blocks;
+	u_int32_t st_flags;
+	__uint32_t st_gen;
+};
+
 struct jail32_v0 {
 	u_int32_t	version;
 	uint32_t	path;
@@ -220,6 +238,11 @@ struct prpsinfo32 {
         u_int   pr_psinfosz;
         char    pr_fname[PRFNAMESZ+1];
         char    pr_psargs[PRARGSZ+1];
+};
+
+struct thrmisc32 {
+        char    pr_tname[MAXCOMLEN+1];
+        u_int   _pad;
 };
 
 struct mq_attr32 {
@@ -287,13 +310,14 @@ struct kinfo_proc32 {
 	char	ki_rqindex;
 	u_char	ki_oncpu;
 	u_char	ki_lastcpu;
-	char	ki_ocomm[OCOMMLEN+1];
+	char	ki_tdname[TDNAMLEN+1];
 	char	ki_wmesg[WMESGLEN+1];
 	char	ki_login[LOGNAMELEN+1];
 	char	ki_lockname[LOCKNAMELEN+1];
 	char	ki_comm[COMMLEN+1];
 	char	ki_emul[KI_EMULNAMELEN+1];
-	char	ki_sparestrings[68];
+	char	ki_loginclass[LOGINCLASSLEN+1];
+	char	ki_sparestrings[50];
 	int	ki_spareints[KI_NSPARE_INT];
 	u_int	ki_cr_flags;
 	int	ki_jid;
@@ -305,10 +329,30 @@ struct kinfo_proc32 {
 	uint32_t ki_pcb;
 	uint32_t ki_kstack;
 	uint32_t ki_udata;
+	uint32_t ki_tdaddr;
 	uint32_t ki_spareptrs[KI_NSPARE_PTR];	/* spare room for growth */
 	int	ki_sparelongs[KI_NSPARE_LONG];
 	int	ki_sflag;
 	int	ki_tdflags;
+};
+
+struct kld32_file_stat_1 {
+	int	version;	/* set to sizeof(struct kld_file_stat_1) */
+	char	name[MAXPATHLEN];
+	int	refs;
+	int	id;
+	uint32_t address;	/* load address */
+	uint32_t size;		/* size in bytes */
+};
+
+struct kld32_file_stat {
+	int	version;	/* set to sizeof(struct kld_file_stat) */
+	char	name[MAXPATHLEN];
+	int	refs;
+	int	id;
+	uint32_t address;	/* load address */
+	uint32_t size;		/* size in bytes */
+	char	pathname[MAXPATHLEN];
 };
 
 #endif /* !_COMPAT_FREEBSD32_FREEBSD32_H_ */

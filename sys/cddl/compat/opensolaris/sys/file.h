@@ -31,26 +31,37 @@
 
 #include_next <sys/file.h>
 
+#define	FKIOCTL	0x80000000	/* ioctl addresses are from kernel */
+
 #ifdef _KERNEL
 typedef	struct file	file_t;
 
+#include <sys/capability.h>
+
 static __inline file_t *
-getf(int fd, int write)
+getf(int fd)
 {
 	struct file *fp;
 
-	if (write && fget_write(curthread, fd, &fp) == 0)
-		return (fp);
-	else if (!write && fget_read(curthread, fd, &fp) == 0)
+	/*
+	 * We wouldn't need all of these rights on every invocation
+	 * if we had more information about intent.
+	 */
+	if (fget(curthread, fd, CAP_READ | CAP_WRITE | CAP_SEEK, &fp) == 0)
 		return (fp);
 	return (NULL);
 }
 
 static __inline void
-releasef(file_t *fp)
+releasef(int fd)
 {
+	struct file *fp;
 
-	fdrop(fp, curthread);
+	/* No CAP_ rights required, as we're only releasing. */
+	if (fget(curthread, fd, 0, &fp) == 0) {
+		fdrop(fp, curthread);
+		fdrop(fp, curthread);
+	}
 }
 #endif	/* _KERNEL */
 

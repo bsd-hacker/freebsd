@@ -2,7 +2,7 @@
  * Copyright (c) 2001 Takanori Watanabe <takawata@jp.freebsd.org>
  * Copyright (c) 2001 Mitsuru IWASAKI <iwasaki@jp.freebsd.org>
  * Copyright (c) 2003 Peter Wemm
- * Copyright (c) 2008-2009 Jung-uk Kim <jkim@FreeBSD.org>
+ * Copyright (c) 2008-2010 Jung-uk Kim <jkim@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -41,12 +41,13 @@ __FBSDID("$FreeBSD$");
 #include <vm/pmap.h>
 
 #include <machine/intr_machdep.h>
+#include <x86/mca.h>
 #include <machine/pcb.h>
 #include <machine/pmap.h>
 #include <machine/specialreg.h>
 
 #ifdef SMP
-#include <machine/apicreg.h>
+#include <x86/apicreg.h>
 #include <machine/smp.h>
 #include <machine/vmparam.h>
 #endif
@@ -65,20 +66,19 @@ extern int		acpi_resume_beep;
 extern int		acpi_reset_video;
 
 #ifdef SMP
-extern struct xpcb	**stopxpcbs;
+extern struct pcb	**susppcbs;
 #else
-static struct xpcb	**stopxpcbs;
+static struct pcb	**susppcbs;
 #endif
 
-int			acpi_restorecpu(struct xpcb *, vm_offset_t);
-int			acpi_savecpu(struct xpcb *);
+int			acpi_restorecpu(vm_offset_t, struct pcb *);
 
 static void		*acpi_alloc_wakeup_handler(void);
 static void		acpi_stop_beep(void *);
 
 #ifdef SMP
 static int		acpi_wakeup_ap(struct acpi_softc *, int);
-static void		acpi_wakeup_cpus(struct acpi_softc *, cpumask_t);
+static void		acpi_wakeup_cpus(struct acpi_softc *, const cpuset_t *);
 #endif
 
 #define	WAKECODE_VADDR(sc)	((sc)->acpi_wakeaddr + (3 * PAGE_SIZE))
@@ -104,10 +104,10 @@ acpi_wakeup_ap(struct acpi_softc *sc, int cpu)
 	int		apic_id = cpu_apic_ids[cpu];
 	int		ms;
 
-	WAKECODE_FIXUP(wakeup_xpcb, struct xpcb *, stopxpcbs[cpu]);
-	WAKECODE_FIXUP(wakeup_gdt, uint16_t, stopxpcbs[cpu]->xpcb_gdt.rd_limit);
+	WAKECODE_FIXUP(wakeup_pcb, struct pcb *, susppcbs[cpu]);
+	WAKECODE_FIXUP(wakeup_gdt, uint16_t, susppcbs[cpu]->pcb_gdt.rd_limit);
 	WAKECODE_FIXUP(wakeup_gdt + 2, uint64_t,
-	    stopxpcbs[cpu]->xpcb_gdt.rd_base);
+	    susppcbs[cpu]->pcb_gdt.rd_base);
 	WAKECODE_FIXUP(wakeup_cpu, int, cpu);
 
 	/* do an INIT IPI: assert RESET */
@@ -173,10 +173,9 @@ acpi_wakeup_ap(struct acpi_softc *sc, int cpu)
 #define	BIOS_WARM		(0x0a)
 
 static void
-acpi_wakeup_cpus(struct acpi_softc *sc, cpumask_t wakeup_cpus)
+acpi_wakeup_cpus(struct acpi_softc *sc, const cpuset_t *wakeup_cpus)
 {
 	uint32_t	mpbioswarmvec;
-	cpumask_t	map;
 	int		cpu;
 	u_char		mpbiosreason;
 
@@ -193,8 +192,7 @@ acpi_wakeup_cpus(struct acpi_softc *sc, cpumask_t wakeup_cpus)
 
 	/* Wake up each AP. */
 	for (cpu = 1; cpu < mp_ncpus; cpu++) {
-		map = 1ul << cpu;
-		if ((wakeup_cpus & map) != map)
+		if (!CPU_ISSET(cpu, wakeup_cpus))
 			continue;
 		if (acpi_wakeup_ap(sc, cpu) == 0) {
 			/* restore the warmstart vector */
@@ -215,9 +213,8 @@ acpi_wakeup_cpus(struct acpi_softc *sc, cpumask_t wakeup_cpus)
 int
 acpi_sleep_machdep(struct acpi_softc *sc, int state)
 {
-	struct savefpu	*stopfpu;
 #ifdef SMP
-	cpumask_t	wakeup_cpus;
+	cpuset_t	wakeup_cpus;
 #endif
 	register_t	cr3, rf;
 	ACPI_STATUS	status;
@@ -229,7 +226,8 @@ acpi_sleep_machdep(struct acpi_softc *sc, int state)
 		return (ret);
 
 #ifdef SMP
-	wakeup_cpus = PCPU_GET(other_cpus);
+	wakeup_cpus = all_cpus;
+	CPU_CLR(PCPU_GET(cpuid), &wakeup_cpus);
 #endif
 
 	AcpiSetFirmwareWakingVector(WAKECODE_PADDR(sc));
@@ -245,15 +243,11 @@ acpi_sleep_machdep(struct acpi_softc *sc, int state)
 	cr3 = rcr3();
 	load_cr3(KPML4phys);
 
-	stopfpu = &stopxpcbs[0]->xpcb_pcb.pcb_save;
-	if (acpi_savecpu(stopxpcbs[0])) {
-		fpugetregs(curthread, stopfpu);
-
+	if (savectx(susppcbs[0])) {
 #ifdef SMP
-		if (wakeup_cpus != 0 && suspend_cpus(wakeup_cpus) == 0) {
-			device_printf(sc->acpi_dev,
-			    "Failed to suspend APs: CPU mask = 0x%jx\n",
-			    (uintmax_t)(wakeup_cpus & ~stopped_cpus));
+		if (!CPU_EMPTY(&wakeup_cpus) &&
+		    suspend_cpus(wakeup_cpus) == 0) {
+			device_printf(sc->acpi_dev, "Failed to suspend APs\n");
 			goto out;
 		}
 #endif
@@ -261,11 +255,11 @@ acpi_sleep_machdep(struct acpi_softc *sc, int state)
 		WAKECODE_FIXUP(resume_beep, uint8_t, (acpi_resume_beep != 0));
 		WAKECODE_FIXUP(reset_video, uint8_t, (acpi_reset_video != 0));
 
-		WAKECODE_FIXUP(wakeup_xpcb, struct xpcb *, stopxpcbs[0]);
+		WAKECODE_FIXUP(wakeup_pcb, struct pcb *, susppcbs[0]);
 		WAKECODE_FIXUP(wakeup_gdt, uint16_t,
-		    stopxpcbs[0]->xpcb_gdt.rd_limit);
+		    susppcbs[0]->pcb_gdt.rd_limit);
 		WAKECODE_FIXUP(wakeup_gdt + 2, uint64_t,
-		    stopxpcbs[0]->xpcb_gdt.rd_base);
+		    susppcbs[0]->pcb_gdt.rd_base);
 		WAKECODE_FIXUP(wakeup_cpu, int, 0);
 
 		/* Call ACPICA to enter the desired sleep state */
@@ -284,10 +278,12 @@ acpi_sleep_machdep(struct acpi_softc *sc, int state)
 		for (;;)
 			ia32_pause();
 	} else {
-		fpusetregs(curthread, stopfpu);
+		pmap_init_pat();
+		PCPU_SET(switchtime, 0);
+		PCPU_SET(switchticks, ticks);
 #ifdef SMP
-		if (wakeup_cpus != 0)
-			acpi_wakeup_cpus(sc, wakeup_cpus);
+		if (!CPU_EMPTY(&wakeup_cpus))
+			acpi_wakeup_cpus(sc, &wakeup_cpus);
 #endif
 		acpi_resync_clock(sc);
 		ret = 0;
@@ -295,11 +291,12 @@ acpi_sleep_machdep(struct acpi_softc *sc, int state)
 
 out:
 #ifdef SMP
-	if (wakeup_cpus != 0)
+	if (!CPU_EMPTY(&wakeup_cpus))
 		restart_cpus(wakeup_cpus);
 #endif
 
 	load_cr3(cr3);
+	mca_resume();
 	intr_resume();
 	intr_restore(rf);
 
@@ -335,9 +332,9 @@ acpi_alloc_wakeup_handler(void)
 		printf("%s: can't alloc wake memory\n", __func__);
 		return (NULL);
 	}
-	stopxpcbs = malloc(mp_ncpus * sizeof(*stopxpcbs), M_DEVBUF, M_WAITOK);
+	susppcbs = malloc(mp_ncpus * sizeof(*susppcbs), M_DEVBUF, M_WAITOK);
 	for (i = 0; i < mp_ncpus; i++)
-		stopxpcbs[i] = malloc(sizeof(**stopxpcbs), M_DEVBUF, M_WAITOK);
+		susppcbs[i] = malloc(sizeof(**susppcbs), M_DEVBUF, M_WAITOK);
 
 	return (wakeaddr);
 }
@@ -376,7 +373,6 @@ acpi_install_wakeup_handler(struct acpi_softc *sc)
 	WAKECODE_FIXUP(wakeup_ctx, vm_offset_t,
 	    WAKECODE_VADDR(sc) + wakeup_ctx);
 	WAKECODE_FIXUP(wakeup_efer, uint64_t, rdmsr(MSR_EFER));
-	WAKECODE_FIXUP(wakeup_pat, uint64_t, rdmsr(MSR_PAT));
 	WAKECODE_FIXUP(wakeup_star, uint64_t, rdmsr(MSR_STAR));
 	WAKECODE_FIXUP(wakeup_lstar, uint64_t, rdmsr(MSR_LSTAR));
 	WAKECODE_FIXUP(wakeup_cstar, uint64_t, rdmsr(MSR_CSTAR));

@@ -37,6 +37,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/fcntl.h>
 #include <sys/fnv_hash.h>
 #include <sys/lock.h>
 #include <sys/malloc.h>
@@ -46,16 +47,20 @@ __FBSDID("$FreeBSD$");
 #include <sys/proc.h>
 #include <sys/socket.h>
 #include <sys/sysctl.h>
+#include <sys/taskqueue.h>
 #include <sys/vnode.h>
 
 #include <vm/uma.h>
 
 #include <nfs/nfsproto.h>
+#include <nfs/nfs_lock.h>
 #include <nfsclient/nfs.h>
 #include <nfsclient/nfsnode.h>
 #include <nfsclient/nfsmount.h>
 
 static uma_zone_t nfsnode_zone;
+
+static void	nfs_freesillyrename(void *arg, __unused int pending);
 
 #define TRUE	1
 #define	FALSE	0
@@ -150,6 +155,7 @@ nfs_nget(struct mount *mntp, nfsfh_t *fhp, int fhsize, struct nfsnode **npp, int
 	/*
 	 * NFS supports recursive and shared locking.
 	 */
+	lockmgr(vp->v_vnlock, LK_EXCLUSIVE | LK_NOWITNESS, NULL);
 	VN_LOCK_AREC(vp);
 	VN_LOCK_ASHARE(vp);
 	if (fhsize > NFS_SMALLFH) {
@@ -158,7 +164,6 @@ nfs_nget(struct mount *mntp, nfsfh_t *fhp, int fhsize, struct nfsnode **npp, int
 		np->n_fhp = &np->n_fh;
 	bcopy((caddr_t)fhp, (caddr_t)np->n_fhp, fhsize);
 	np->n_fhsize = fhsize;
-	lockmgr(vp->v_vnlock, LK_EXCLUSIVE | LK_NOWITNESS, NULL);
 	error = insmntque(vp, mntp);
 	if (error != 0) {
 		*npp = NULL;
@@ -183,6 +188,20 @@ nfs_nget(struct mount *mntp, nfsfh_t *fhp, int fhsize, struct nfsnode **npp, int
 	return (0);
 }
 
+/*
+ * Do the vrele(sp->s_dvp) as a separate task in order to avoid a
+ * deadlock because of a LOR when vrele() locks the directory vnode.
+ */
+static void
+nfs_freesillyrename(void *arg, __unused int pending)
+{
+	struct sillyrename *sp;
+
+	sp = arg;
+	vrele(sp->s_dvp);
+	free(sp, M_NFSREQ);
+}
+
 int
 nfs_inactive(struct vop_inactive_args *ap)
 {
@@ -191,24 +210,26 @@ nfs_inactive(struct vop_inactive_args *ap)
 	struct thread *td = curthread;	/* XXX */
 
 	np = VTONFS(ap->a_vp);
-	if (prtactive && vrefcnt(ap->a_vp) != 0)
-		vprint("nfs_inactive: pushing active", ap->a_vp);
+	mtx_lock(&np->n_mtx);
 	if (ap->a_vp->v_type != VDIR) {
 		sp = np->n_sillyrename;
 		np->n_sillyrename = NULL;
 	} else
 		sp = NULL;
 	if (sp) {
+		mtx_unlock(&np->n_mtx);
 		(void)nfs_vinvalbuf(ap->a_vp, 0, td, 1);
 		/*
 		 * Remove the silly file that was rename'd earlier
 		 */
 		(sp->s_removeit)(sp);
 		crfree(sp->s_cred);
-		vrele(sp->s_dvp);
-		free((caddr_t)sp, M_NFSREQ);
+		TASK_INIT(&sp->s_task, 0, nfs_freesillyrename, sp);
+		taskqueue_enqueue(taskqueue_thread, &sp->s_task);
+		mtx_lock(&np->n_mtx);
 	}
 	np->n_flag &= NMODIFIED;
+	mtx_unlock(&np->n_mtx);
 	return (0);
 }
 
@@ -221,9 +242,6 @@ nfs_reclaim(struct vop_reclaim_args *ap)
 	struct vnode *vp = ap->a_vp;
 	struct nfsnode *np = VTONFS(vp);
 	struct nfsdmap *dp, *dp2;
-
-	if (prtactive && vrefcnt(vp) != 0)
-		vprint("nfs_reclaim: pushing active", vp);
 
 	/*
 	 * If the NLM is running, give it a chance to abort pending

@@ -193,7 +193,7 @@ MODULE_DEPEND(mpt_cam, cam, 1, 1, 1);
 int mpt_enable_sata_wc = -1;
 TUNABLE_INT("hw.mpt.enable_sata_wc", &mpt_enable_sata_wc);
 
-int
+static int
 mpt_cam_probe(struct mpt_softc *mpt)
 {
 	int role;
@@ -215,7 +215,7 @@ mpt_cam_probe(struct mpt_softc *mpt)
 	return (ENODEV);
 }
 
-int
+static int
 mpt_cam_attach(struct mpt_softc *mpt)
 {
 	struct cam_devq *devq;
@@ -509,7 +509,6 @@ mpt_read_config_info_fc(struct mpt_softc *mpt)
 static int
 mpt_set_initial_config_fc(struct mpt_softc *mpt)
 {
-	
 	CONFIG_PAGE_FC_PORT_1 fc;
 	U32 fl;
 	int r, doit = 0;
@@ -881,8 +880,8 @@ static int
 mpt_sata_pass_reply_handler(struct mpt_softc *mpt, request_t *req,
  uint32_t reply_desc, MSG_DEFAULT_REPLY *reply_frame)
 {
-	if (req != NULL) {
 
+	if (req != NULL) {
 		if (reply_frame != NULL) {
 			req->IOCStatus = le16toh(reply_frame->IOCStatus);
 		}
@@ -1114,7 +1113,7 @@ mpt_set_initial_config_spi(struct mpt_softc *mpt)
 	return (0);
 }
 
-int
+static int
 mpt_cam_enable(struct mpt_softc *mpt)
 {
 	int error;
@@ -1151,9 +1150,10 @@ out:
 	return (error);
 }
 
-void
+static void
 mpt_cam_ready(struct mpt_softc *mpt)
 {
+
 	/*
 	 * If we're in target mode, hang out resources now
 	 * so we don't cause the world to hang talking to us.
@@ -1171,7 +1171,7 @@ mpt_cam_ready(struct mpt_softc *mpt)
 	mpt->ready = 1;
 }
 
-void
+static void
 mpt_cam_detach(struct mpt_softc *mpt)
 {
 	mpt_handler_t handler;
@@ -1205,25 +1205,21 @@ mpt_cam_detach(struct mpt_softc *mpt)
 		free(mpt->sas_portinfo, M_DEVBUF);
 		mpt->sas_portinfo = NULL;
 	}
-	MPT_UNLOCK(mpt);
 
 	if (mpt->sim != NULL) {
 		xpt_free_path(mpt->path);
-		MPT_LOCK(mpt);
 		xpt_bus_deregister(cam_sim_path(mpt->sim));
-		MPT_UNLOCK(mpt);
 		cam_sim_free(mpt->sim, TRUE);
 		mpt->sim = NULL;
 	}
 
 	if (mpt->phydisk_sim != NULL) {
 		xpt_free_path(mpt->phydisk_path);
-		MPT_LOCK(mpt);
 		xpt_bus_deregister(cam_sim_path(mpt->phydisk_sim));
-		MPT_UNLOCK(mpt);
 		cam_sim_free(mpt->phydisk_sim, TRUE);
 		mpt->phydisk_sim = NULL;
 	}
+	MPT_UNLOCK(mpt);
 }
 
 /* This routine is used after a system crash to dump core onto the swap device.
@@ -1846,8 +1842,6 @@ bad:
 		memset(se, 0,sizeof (*se));
 		se->Address = htole32(dm_segs->ds_addr);
 
-
-
 		MPI_pSGE_SET_LENGTH(se, dm_segs->ds_len);
 		tf = flags;
 		if (seg == first_lim - 1) {
@@ -1961,9 +1955,6 @@ bad:
 		while (seg < this_seg_lim) {
 			memset(se, 0, sizeof (*se));
 			se->Address = htole32(dm_segs->ds_addr);
-
-
-
 
 			MPI_pSGE_SET_LENGTH(se, dm_segs->ds_len);
 			tf = flags;
@@ -2547,7 +2538,8 @@ mpt_cam_event(struct mpt_softc *mpt, request_t *req,
 		pqf->CurrentDepth = le16toh(pqf->CurrentDepth);
 		mpt_prt(mpt, "QUEUE FULL EVENT: Bus 0x%02x Target 0x%02x Depth "
 		    "%d\n", pqf->Bus, pqf->TargetID, pqf->CurrentDepth);
-		if (mpt->phydisk_sim) {
+		if (mpt->phydisk_sim && mpt_is_raid_member(mpt,
+		    pqf->TargetID) != 0) {
 			sim = mpt->phydisk_sim;
 		} else {
 			sim = mpt->sim;
@@ -2579,9 +2571,85 @@ mpt_cam_event(struct mpt_softc *mpt, request_t *req,
 		mpt_prt(mpt, "IR resync update %d completed\n",
 		    (data0 >> 16) & 0xff);
 		break;
+	case MPI_EVENT_SAS_DEVICE_STATUS_CHANGE:
+	{
+		union ccb *ccb;
+		struct cam_sim *sim;
+		struct cam_path *tmppath;
+		PTR_EVENT_DATA_SAS_DEVICE_STATUS_CHANGE psdsc;
+
+		psdsc = (PTR_EVENT_DATA_SAS_DEVICE_STATUS_CHANGE)msg->Data;
+		if (mpt->phydisk_sim && mpt_is_raid_member(mpt,
+		    psdsc->TargetID) != 0)
+			sim = mpt->phydisk_sim;
+		else
+			sim = mpt->sim;
+		switch(psdsc->ReasonCode) {
+		case MPI_EVENT_SAS_DEV_STAT_RC_ADDED:
+			MPTLOCK_2_CAMLOCK(mpt);
+			ccb = xpt_alloc_ccb_nowait();
+			if (ccb == NULL) {
+				mpt_prt(mpt,
+				    "unable to alloc CCB for rescan\n");
+				CAMLOCK_2_MPTLOCK(mpt);
+				break;
+			}
+			if (xpt_create_path(&ccb->ccb_h.path, xpt_periph,
+			    cam_sim_path(sim), psdsc->TargetID,
+			    CAM_LUN_WILDCARD) != CAM_REQ_CMP) {
+				CAMLOCK_2_MPTLOCK(mpt);
+				mpt_prt(mpt,
+				    "unable to create path for rescan\n");
+				xpt_free_ccb(ccb);
+				break;
+			}
+			xpt_rescan(ccb);
+			CAMLOCK_2_MPTLOCK(mpt);
+			break;
+		case MPI_EVENT_SAS_DEV_STAT_RC_NOT_RESPONDING:
+			MPTLOCK_2_CAMLOCK(mpt);
+			if (xpt_create_path(&tmppath, NULL, cam_sim_path(sim),
+			    psdsc->TargetID, CAM_LUN_WILDCARD) !=
+			    CAM_REQ_CMP) {
+				mpt_prt(mpt,
+				    "unable to create path for async event");
+				CAMLOCK_2_MPTLOCK(mpt);
+				break;
+			}
+			xpt_async(AC_LOST_DEVICE, tmppath, NULL);
+			xpt_free_path(tmppath);
+			CAMLOCK_2_MPTLOCK(mpt);
+			break;
+		case MPI_EVENT_SAS_DEV_STAT_RC_CMPL_INTERNAL_DEV_RESET:
+		case MPI_EVENT_SAS_DEV_STAT_RC_CMPL_TASK_ABORT_INTERNAL:
+		case MPI_EVENT_SAS_DEV_STAT_RC_INTERNAL_DEVICE_RESET:
+			break;
+		default:
+			mpt_lprt(mpt, MPT_PRT_WARN,
+			    "SAS device status change: Bus: 0x%02x TargetID: "
+			    "0x%02x ReasonCode: 0x%02x\n", psdsc->Bus,
+			    psdsc->TargetID, psdsc->ReasonCode);
+			break;
+		}
+		break;
+	}
+	case MPI_EVENT_SAS_DISCOVERY_ERROR:
+	{
+		PTR_EVENT_DATA_DISCOVERY_ERROR pde;
+
+		pde = (PTR_EVENT_DATA_DISCOVERY_ERROR)msg->Data;
+		pde->DiscoveryStatus = le32toh(pde->DiscoveryStatus);
+		mpt_lprt(mpt, MPT_PRT_WARN,
+		    "SAS discovery error: Port: 0x%02x Status: 0x%08x\n",
+		    pde->Port, pde->DiscoveryStatus);
+		break;
+	}
 	case MPI_EVENT_EVENT_CHANGE:
 	case MPI_EVENT_INTEGRATED_RAID:
-	case MPI_EVENT_SAS_DEVICE_STATUS_CHANGE:
+	case MPI_EVENT_IR2:
+	case MPI_EVENT_LOG_ENTRY_ADDED:
+	case MPI_EVENT_SAS_DISCOVERY:
+	case MPI_EVENT_SAS_PHY_LINK_STATUS:
 	case MPI_EVENT_SAS_SES:
 		break;
 	default:
@@ -2975,7 +3043,7 @@ mpt_fc_els_reply_handler(struct mpt_softc *mpt, request_t *req,
 		}
 		if (tgt_req) {
 			mpt_tgt_state_t *tgt = MPT_TGT_STATE(mpt, tgt_req);
-			union ccb *ccb = tgt->ccb;
+			union ccb *ccb;
 			uint32_t ct_id;
 
 			/*
@@ -3019,7 +3087,7 @@ mpt_fc_els_reply_handler(struct mpt_softc *mpt, request_t *req,
 		elsbuf[1] = htobe32((ox_id << 16) | rx_id);
 		elsbuf[2] = htobe32(0x000ffff);
 		/*
-		 * Dork with the reply frame so that the reponse to it
+		 * Dork with the reply frame so that the response to it
 		 * will be correct.
 		 */
 		rp->Rctl_Did += ((BA_ACC - ABTS) << MPI_FC_RCTL_SHIFT);
@@ -3049,6 +3117,7 @@ mpt_fc_els_reply_handler(struct mpt_softc *mpt, request_t *req,
 static void
 mpt_cam_ioc_reset(struct mpt_softc *mpt, int type)
 {
+
 	/*
 	 * The pending list is already run down by
 	 * the generic handler.  Perform the same
@@ -3098,12 +3167,20 @@ mpt_scsi_reply_frame_handler(struct mpt_softc *mpt, request_t *req,
 
 	if ((sstate & MPI_SCSI_STATE_AUTOSENSE_VALID) != 0
 	 && (ccb->ccb_h.flags & (CAM_SENSE_PHYS | CAM_SENSE_PTR)) == 0) {
+		uint32_t sense_returned;
+
 		ccb->ccb_h.status |= CAM_AUTOSNS_VALID;
-		ccb->csio.sense_resid =
-		    ccb->csio.sense_len - le32toh(scsi_io_reply->SenseCount);
+		
+		sense_returned = le32toh(scsi_io_reply->SenseCount);
+		if (sense_returned < ccb->csio.sense_len)
+			ccb->csio.sense_resid = ccb->csio.sense_len -
+						sense_returned;
+		else
+			ccb->csio.sense_resid = 0;
+
+		bzero(&ccb->csio.sense_data, sizeof(&ccb->csio.sense_data));
 		bcopy(req->sense_vbuf, &ccb->csio.sense_data,
-		    min(ccb->csio.sense_len,
-		    le32toh(scsi_io_reply->SenseCount)));
+		    min(ccb->csio.sense_len, sense_returned));
 	}
 
 	if ((sstate & MPI_SCSI_STATE_QUEUE_TAG_REJECTED) != 0) {
@@ -3146,7 +3223,7 @@ XXXX
 				mpt_set_ccb_status(ccb, CAM_AUTOSENSE_FAIL);
 		} else if ((sstate & MPI_SCSI_STATE_RESPONSE_INFO_VALID) != 0) {
 
-			/* XXX Handle SPI-Packet and FCP-2 reponse info. */
+			/* XXX Handle SPI-Packet and FCP-2 response info. */
 			mpt_set_ccb_status(ccb, CAM_REQ_CMP_ERR);
 		} else
 			mpt_set_ccb_status(ccb, CAM_REQ_CMP);
@@ -3586,6 +3663,7 @@ mpt_action(struct cam_sim *sim, union ccb *ccb)
 		cpi->target_sprt = 0;
 		cpi->hba_eng_cnt = 0;
 		cpi->max_target = mpt->port_facts[0].MaxDevices - 1;
+		cpi->maxio = (mpt->max_cam_seg_cnt - 1) * PAGE_SIZE;
 		/*
 		 * FC cards report MAX_DEVICES of 512, but
 		 * the MSG_SCSI_IO_REQUEST target id field
@@ -3977,6 +4055,7 @@ mpt_spawn_recovery_thread(struct mpt_softc *mpt)
 static void
 mpt_terminate_recovery_thread(struct mpt_softc *mpt)
 {
+
 	if (mpt->recovery_thread == NULL) {
 		return;
 	}
@@ -4226,7 +4305,7 @@ mpt_fc_post_els(struct mpt_softc *mpt, request_t *req, int ioindex)
 	/*
 	 * Okay, set up ELS buffer pointers. ELS buffer pointers
 	 * consist of a TE SGL element (with details length of zero)
-	 * followe by a SIMPLE SGL element which holds the address
+	 * followed by a SIMPLE SGL element which holds the address
 	 * of the buffer.
 	 */
 
@@ -4380,6 +4459,7 @@ mpt_add_target_commands(struct mpt_softc *mpt)
 static int
 mpt_enable_lun(struct mpt_softc *mpt, target_id_t tgt, lun_id_t lun)
 {
+
 	if (tgt == CAM_TARGET_WILDCARD && lun == CAM_LUN_WILDCARD) {
 		mpt->twildcard = 1;
 	} else if (lun >= MPT_MAX_LUNS) {
@@ -4405,6 +4485,7 @@ static int
 mpt_disable_lun(struct mpt_softc *mpt, target_id_t tgt, lun_id_t lun)
 {
 	int i;
+
 	if (tgt == CAM_TARGET_WILDCARD && lun == CAM_LUN_WILDCARD) {
 		mpt->twildcard = 0;
 	} else if (lun >= MPT_MAX_LUNS) {
@@ -5026,15 +5107,6 @@ mpt_scsi_tgt_atio(struct mpt_softc *mpt, request_t *req, uint32_t reply_desc)
 	uint8_t *cdbp;
 
 	/*
-	 * First, DMA sync the received command-
-	 * which is in the *request* * phys area.
-	 *
-	 * XXX: We could optimize this for a range
-	 */
-	bus_dmamap_sync(mpt->request_dmat, mpt->request_dmap,
-	    BUS_DMASYNC_POSTREAD);
-
-	/*
 	 * Stash info for the current command where we can get at it later.
 	 */
 	vbuf = req->req_vbuf;
@@ -5298,6 +5370,7 @@ mpt_tgt_dump_tgt_state(struct mpt_softc *mpt, request_t *req)
 static void
 mpt_tgt_dump_req_state(struct mpt_softc *mpt, request_t *req)
 {
+
 	mpt_prt(mpt, "req %p:%u index %u (%x) state %x\n", req, req->serno,
 	    req->index, req->index, req->state);
 	mpt_tgt_dump_tgt_state(mpt, req);

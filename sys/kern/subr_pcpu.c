@@ -53,7 +53,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/sysctl.h>
-#include <sys/linker_set.h>
 #include <sys/lock.h>
 #include <sys/malloc.h>
 #include <sys/pcpu.h>
@@ -75,7 +74,7 @@ static TAILQ_HEAD(, dpcpu_free) dpcpu_head = TAILQ_HEAD_INITIALIZER(dpcpu_head);
 static struct sx dpcpu_lock;
 uintptr_t dpcpu_off[MAXCPU];
 struct pcpu *cpuid_to_pcpu[MAXCPU];
-struct cpuhead cpuhead = SLIST_HEAD_INITIALIZER(cpuhead);
+struct cpuhead cpuhead = STAILQ_HEAD_INITIALIZER(cpuhead);
 
 /*
  * Initialize the MI portions of a struct pcpu.
@@ -88,15 +87,11 @@ pcpu_init(struct pcpu *pcpu, int cpuid, size_t size)
 	KASSERT(cpuid >= 0 && cpuid < MAXCPU,
 	    ("pcpu_init: invalid cpuid %d", cpuid));
 	pcpu->pc_cpuid = cpuid;
-	pcpu->pc_cpumask = 1 << cpuid;
 	cpuid_to_pcpu[cpuid] = pcpu;
-	SLIST_INSERT_HEAD(&cpuhead, pcpu, pc_allcpu);
+	STAILQ_INSERT_TAIL(&cpuhead, pcpu, pc_allcpu);
 	cpu_pcpu_init(pcpu, cpuid, size);
 	pcpu->pc_rm_queue.rmq_next = &pcpu->pc_rm_queue;
 	pcpu->pc_rm_queue.rmq_prev = &pcpu->pc_rm_queue;
-#ifdef KTR
-	snprintf(pcpu->pc_name, sizeof(pcpu->pc_name), "CPU %d", cpuid);
-#endif
 }
 
 void
@@ -125,7 +120,7 @@ dpcpu_startup(void *dummy __unused)
 
 	df = malloc(sizeof(*df), M_PCPU, M_WAITOK | M_ZERO);
 	df->df_start = (uintptr_t)&DPCPU_NAME(modspace);
-	df->df_len = DPCPU_MODSIZE;
+	df->df_len = DPCPU_MODMIN;
 	TAILQ_INSERT_HEAD(&dpcpu_head, df, df_link);
 	sx_init(&dpcpu_lock, "dpcpu alloc lock");
 }
@@ -246,7 +241,7 @@ void
 pcpu_destroy(struct pcpu *pcpu)
 {
 
-	SLIST_REMOVE(&cpuhead, pcpu, pcpu, pc_allcpu);
+	STAILQ_REMOVE(&cpuhead, pcpu, pcpu, pc_allcpu);
 	cpuid_to_pcpu[pcpu->pc_cpuid] = NULL;
 	dpcpu_off[pcpu->pc_cpuid] = 0;
 }
@@ -317,9 +312,7 @@ DB_SHOW_COMMAND(dpcpu_off, db_show_dpcpu_off)
 {
 	int id;
 
-	for (id = 0; id <= mp_maxid; id++) {
-		if (CPU_ABSENT(id))
-			continue;
+	CPU_FOREACH(id) {
 		db_printf("dpcpu_off[%2d] = 0x%jx (+ DPCPU_START = %p)\n",
 		    id, (uintmax_t)dpcpu_off[id],
 		    (void *)(uintptr_t)(dpcpu_off[id] + DPCPU_START));
@@ -332,7 +325,7 @@ show_pcpu(struct pcpu *pc)
 	struct thread *td;
 
 	db_printf("cpuid        = %d\n", pc->pc_cpuid);
-	db_printf("dynamic pcpu	= %p\n", (void *)pc->pc_dynamic);
+	db_printf("dynamic pcpu = %p\n", (void *)pc->pc_dynamic);
 	db_printf("curthread    = ");
 	td = pc->pc_curthread;
 	if (td != NULL)
@@ -351,19 +344,18 @@ show_pcpu(struct pcpu *pc)
 	db_printf("idlethread   = ");
 	td = pc->pc_idlethread;
 	if (td != NULL)
-		db_printf("%p: pid %d \"%s\"\n", td, td->td_proc->p_pid,
-		    td->td_name);
+		db_printf("%p: tid %d \"%s\"\n", td, td->td_tid, td->td_name);
 	else
 		db_printf("none\n");
 	db_show_mdpcpu(pc);
-		
+
 #ifdef VIMAGE
 	db_printf("curvnet      = %p\n", pc->pc_curthread->td_vnet);
 #endif
 
 #ifdef WITNESS
 	db_printf("spin locks held:\n");
-	witness_list_locks(&pc->pc_spinlocks);
+	witness_list_locks(&pc->pc_spinlocks, db_printf);
 #endif
 }
 

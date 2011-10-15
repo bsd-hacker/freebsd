@@ -53,7 +53,6 @@
 #include <sys/systm.h>
 #include <sys/kernel.h>
 #include <sys/bus.h>
-#include <sys/linker_set.h>
 #include <sys/module.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
@@ -192,9 +191,15 @@ struct uaudio_chan {
 	uint8_t	iface_alt_index;
 };
 
-#define	UMIDI_N_TRANSFER    4		/* units */
 #define	UMIDI_CABLES_MAX   16		/* units */
-#define	UMIDI_BULK_SIZE  1024		/* bytes */
+#define	UMIDI_TX_FRAMES	   256		/* units */
+#define	UMIDI_TX_BUFFER    (UMIDI_TX_FRAMES * 4)	/* bytes */
+
+enum {
+	UMIDI_TX_TRANSFER,
+	UMIDI_RX_TRANSFER,
+	UMIDI_N_TRANSFER,
+};
 
 struct umidi_sub_chan {
 	struct usb_fifo_sc fifo;
@@ -225,16 +230,13 @@ struct umidi_chan {
 	uint8_t	iface_index;
 	uint8_t	iface_alt_index;
 
-	uint8_t	flags;
-#define	UMIDI_FLAG_READ_STALL  0x01
-#define	UMIDI_FLAG_WRITE_STALL 0x02
-
 	uint8_t	read_open_refcount;
 	uint8_t	write_open_refcount;
 
 	uint8_t	curr_cable;
 	uint8_t	max_cable;
 	uint8_t	valid;
+	uint8_t single_command;
 };
 
 struct uaudio_softc {
@@ -265,6 +267,7 @@ struct uaudio_softc {
 	uint8_t	sc_uq_au_inp_async:1;
 	uint8_t	sc_uq_au_no_xu:1;
 	uint8_t	sc_uq_bad_adc:1;
+	uint8_t	sc_uq_au_vendor_class:1;
 };
 
 struct uaudio_search_result {
@@ -337,9 +340,7 @@ static device_detach_t uaudio_detach;
 static usb_callback_t uaudio_chan_play_callback;
 static usb_callback_t uaudio_chan_record_callback;
 static usb_callback_t uaudio_mixer_write_cfg_callback;
-static usb_callback_t umidi_read_clear_stall_callback;
 static usb_callback_t umidi_bulk_read_callback;
-static usb_callback_t umidi_write_clear_stall_callback;
 static usb_callback_t umidi_bulk_write_callback;
 
 static void	uaudio_chan_fill_info_sub(struct uaudio_softc *,
@@ -403,8 +404,8 @@ static int	umidi_open(struct usb_fifo *, int);
 static int	umidi_ioctl(struct usb_fifo *, u_long cmd, void *, int);
 static void	umidi_close(struct usb_fifo *, int);
 static void	umidi_init(device_t dev);
-static int32_t	umidi_probe(device_t dev);
-static int32_t	umidi_detach(device_t dev);
+static int	umidi_probe(device_t dev);
+static int	umidi_detach(device_t dev);
 
 #ifdef USB_DEBUG
 static void	uaudio_chan_dump_ep_desc(
@@ -494,42 +495,21 @@ uint8_t	umidi_cmd_to_len[16] = {
 
 static const struct usb_config
 	umidi_config[UMIDI_N_TRANSFER] = {
-	[0] = {
+	[UMIDI_TX_TRANSFER] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_OUT,
-		.bufsize = UMIDI_BULK_SIZE,
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
+		.bufsize = UMIDI_TX_BUFFER,
 		.callback = &umidi_bulk_write_callback,
 	},
 
-	[1] = {
+	[UMIDI_RX_TRANSFER] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
 		.direction = UE_DIR_IN,
-		.bufsize = UMIDI_BULK_SIZE,
-		.flags = {.pipe_bof = 1,.short_xfer_ok = 1,},
+		.bufsize = 4,	/* bytes */
+		.flags = {.short_xfer_ok = 1,.proxy_buffer = 1,},
 		.callback = &umidi_bulk_read_callback,
-	},
-
-	[2] = {
-		.type = UE_CONTROL,
-		.endpoint = 0x00,	/* Control pipe */
-		.direction = UE_DIR_ANY,
-		.bufsize = sizeof(struct usb_device_request),
-		.callback = &umidi_write_clear_stall_callback,
-		.timeout = 1000,	/* 1 second */
-		.interval = 50,	/* 50ms */
-	},
-
-	[3] = {
-		.type = UE_CONTROL,
-		.endpoint = 0x00,	/* Control pipe */
-		.direction = UE_DIR_ANY,
-		.bufsize = sizeof(struct usb_device_request),
-		.callback = &umidi_read_clear_stall_callback,
-		.timeout = 1000,	/* 1 second */
-		.interval = 50,	/* 50ms */
 	},
 };
 
@@ -552,6 +532,15 @@ static driver_t uaudio_driver = {
 	.size = sizeof(struct uaudio_softc),
 };
 
+static const STRUCT_USB_HOST_ID __used uaudio_devs[] = {
+	/* Generic USB audio class match */
+	{USB_IFACE_CLASS(UICLASS_AUDIO),
+	 USB_IFACE_SUBCLASS(UISUBCLASS_AUDIOCONTROL),},
+	/* Generic USB MIDI class match */
+	{USB_IFACE_CLASS(UICLASS_AUDIO),
+	 USB_IFACE_SUBCLASS(UISUBCLASS_MIDISTREAM),},
+};
+
 static int
 uaudio_probe(device_t dev)
 {
@@ -560,24 +549,29 @@ uaudio_probe(device_t dev)
 	if (uaa->usb_mode != USB_MODE_HOST)
 		return (ENXIO);
 
-	if (uaa->use_generic == 0)
-		return (ENXIO);
+	/* lookup non-standard device */
 
-	/* trigger on the control interface */
+	if (uaa->info.bInterfaceClass != UICLASS_AUDIO) {
+		if (usb_test_quirk(uaa, UQ_AU_VENDOR_CLASS) == 0)
+			return (ENXIO);
+	}
 
-	if ((uaa->info.bInterfaceClass == UICLASS_AUDIO) &&
-	    (uaa->info.bInterfaceSubClass == UISUBCLASS_AUDIOCONTROL)) {
+	/* check for AUDIO control interface */
+
+	if (uaa->info.bInterfaceSubClass == UISUBCLASS_AUDIOCONTROL) {
 		if (usb_test_quirk(uaa, UQ_BAD_AUDIO))
 			return (ENXIO);
 		else
-			return (0);
+			return (BUS_PROBE_GENERIC);
 	}
 
 	/* check for MIDI stream */
 
-	if ((uaa->info.bInterfaceClass == UICLASS_AUDIO) &&
-	    (uaa->info.bInterfaceSubClass == UISUBCLASS_MIDISTREAM)) {
-		return (0);
+	if (uaa->info.bInterfaceSubClass == UISUBCLASS_MIDISTREAM) {
+		if (usb_test_quirk(uaa, UQ_BAD_MIDI))
+			return (ENXIO);
+		else
+			return (BUS_PROBE_GENERIC);
 	}
 	return (ENXIO);
 }
@@ -607,6 +601,9 @@ uaudio_attach(device_t dev)
 
 	if (usb_test_quirk(uaa, UQ_BAD_ADC))
 		sc->sc_uq_bad_adc = 1;
+
+	if (usb_test_quirk(uaa, UQ_AU_VENDOR_CLASS))
+		sc->sc_uq_au_vendor_class = 1;
 
 	umidi_init(dev);
 
@@ -792,11 +789,52 @@ uaudio_chan_dump_ep_desc(const usb_endpoint_descriptor_audio_t *ed)
 		    ed, ed->bLength, ed->bDescriptorType,
 		    ed->bEndpointAddress, ed->bmAttributes,
 		    UGETW(ed->wMaxPacketSize), ed->bInterval,
-		    ed->bRefresh, ed->bSynchAddress);
+		    UEP_HAS_REFRESH(ed) ? ed->bRefresh : 0,
+		    UEP_HAS_SYNCADDR(ed) ? ed->bSynchAddress : 0);
 	}
 }
 
 #endif
+
+/*
+ * The following is a workaround for broken no-name USB audio devices
+ * sold by dealextreme called "3D sound". The problem is that the
+ * manufacturer computed wMaxPacketSize is too small to hold the
+ * actual data sent. In other words the device sometimes sends more
+ * data than it actually reports it can send in a single isochronous
+ * packet.
+ */
+static void
+uaudio_record_fix_fs(usb_endpoint_descriptor_audio_t *ep,
+    uint32_t xps, uint32_t add)
+{
+	uint32_t mps;
+
+	mps = UGETW(ep->wMaxPacketSize);
+
+	/*
+	 * If the device indicates it can send more data than what the
+	 * sample rate indicates, we apply the workaround.
+	 */
+	if (mps > xps) {
+
+		/* allow additional data */
+		xps += add;
+
+		/* check against the maximum USB 1.x length */
+		if (xps > 1023)
+			xps = 1023;
+
+		/* check if we should do an update */
+		if (mps < xps) {
+			/* simply update the wMaxPacketSize field */
+			USETW(ep->wMaxPacketSize, xps);
+			DPRINTF("Workaround: Updated wMaxPacketSize "
+			    "from %d to %d bytes.\n",
+			    (int)mps, (int)xps);
+		}
+	}
+}
 
 static void
 uaudio_chan_fill_info_sub(struct uaudio_softc *sc, struct usb_device *udev,
@@ -806,7 +844,7 @@ uaudio_chan_fill_info_sub(struct uaudio_softc *sc, struct usb_device *udev,
 	const struct usb_audio_streaming_interface_descriptor *asid = NULL;
 	const struct usb_audio_streaming_type1_descriptor *asf1d = NULL;
 	const struct usb_audio_streaming_endpoint_descriptor *sed = NULL;
-	const usb_endpoint_descriptor_audio_t *ed1 = NULL;
+	usb_endpoint_descriptor_audio_t *ed1 = NULL;
 	const usb_endpoint_descriptor_audio_t *ed2 = NULL;
 	struct usb_config_descriptor *cd = usbd_get_config_descriptor(udev);
 	struct usb_interface_descriptor *id;
@@ -817,12 +855,11 @@ uaudio_chan_fill_info_sub(struct uaudio_softc *sc, struct usb_device *udev,
 	uint16_t alt_index = 0;
 	uint16_t wFormat;
 	uint8_t ep_dir;
-	uint8_t ep_type;
-	uint8_t ep_sync;
 	uint8_t bChannels;
 	uint8_t bBitResolution;
 	uint8_t x;
 	uint8_t audio_if = 0;
+	uint8_t uma_if_class;
 
 	while ((desc = usb_desc_foreach(cd, desc))) {
 
@@ -840,19 +877,22 @@ uaudio_chan_fill_info_sub(struct uaudio_softc *sc, struct usb_device *udev,
 				alt_index++;
 			}
 
-			if ((id->bInterfaceClass == UICLASS_AUDIO) &&
-			    (id->bInterfaceSubClass == UISUBCLASS_AUDIOSTREAM)) {
+			uma_if_class =
+			    ((id->bInterfaceClass == UICLASS_AUDIO) ||
+			    ((id->bInterfaceClass == UICLASS_VENDOR) &&
+			    (sc->sc_uq_au_vendor_class != 0)));
+
+			if ((uma_if_class != 0) && (id->bInterfaceSubClass == UISUBCLASS_AUDIOSTREAM)) {
 				audio_if = 1;
 			} else {
 				audio_if = 0;
 			}
 
-			if ((id->bInterfaceClass == UICLASS_AUDIO) &&
+			if ((uma_if_class != 0) &&
 			    (id->bInterfaceSubClass == UISUBCLASS_MIDISTREAM)) {
 
 				/*
 				 * XXX could allow multiple MIDI interfaces
-				 * XXX
 				 */
 
 				if ((sc->sc_midi_chan.valid == 0) &&
@@ -887,8 +927,8 @@ uaudio_chan_fill_info_sub(struct uaudio_softc *sc, struct usb_device *udev,
 					continue;
 				}
 				if (asf1d->bLength < (sizeof(*asf1d) +
-				    (asf1d->bSamFreqType == 0) ? 6 :
-				    (asf1d->bSamFreqType * 3))) {
+				    ((asf1d->bSamFreqType == 0) ? 6 :
+				    (asf1d->bSamFreqType * 3)))) {
 					DPRINTFN(11, "'asf1d' descriptor is too short\n");
 					asf1d = NULL;
 					continue;
@@ -896,33 +936,11 @@ uaudio_chan_fill_info_sub(struct uaudio_softc *sc, struct usb_device *udev,
 			}
 		}
 		if ((desc->bDescriptorType == UDESC_ENDPOINT) &&
-		    (desc->bLength >= sizeof(*ed1))) {
+		    (desc->bLength >= UEP_MINSIZE)) {
 			if (ed1 == NULL) {
 				ed1 = (void *)desc;
 				if (UE_GET_XFERTYPE(ed1->bmAttributes) != UE_ISOCHRONOUS) {
 					ed1 = NULL;
-				}
-			} else {
-				if (ed2 == NULL) {
-					ed2 = (void *)desc;
-					if (UE_GET_XFERTYPE(ed2->bmAttributes) != UE_ISOCHRONOUS) {
-						ed2 = NULL;
-						continue;
-					}
-					if (ed2->bSynchAddress != 0) {
-						DPRINTFN(11, "invalid endpoint: bSynchAddress != 0\n");
-						ed2 = NULL;
-						continue;
-					}
-					if (ed2->bEndpointAddress != ed1->bSynchAddress) {
-						DPRINTFN(11, "invalid endpoint addresses: "
-						    "ep[0]->bSynchAddress=0x%x "
-						    "ep[1]->bEndpointAddress=0x%x\n",
-						    ed1->bSynchAddress,
-						    ed2->bEndpointAddress);
-						ed2 = NULL;
-						continue;
-					}
 				}
 			}
 		}
@@ -936,35 +954,8 @@ uaudio_chan_fill_info_sub(struct uaudio_softc *sc, struct usb_device *udev,
 		if (audio_if && asid && asf1d && ed1 && sed) {
 
 			ep_dir = UE_GET_DIR(ed1->bEndpointAddress);
-			ep_type = UE_GET_ISO_TYPE(ed1->bmAttributes);
-			ep_sync = 0;
 
-			if ((sc->sc_uq_au_inp_async) &&
-			    (ep_dir == UE_DIR_IN) && (ep_type == UE_ISO_ADAPT)) {
-				ep_type = UE_ISO_ASYNC;
-			}
-			if ((ep_dir == UE_DIR_IN) && (ep_type == UE_ISO_ADAPT)) {
-				ep_sync = 1;
-			}
-			if ((ep_dir != UE_DIR_IN) && (ep_type == UE_ISO_ASYNC)) {
-				ep_sync = 1;
-			}
-			/* Ignore sync endpoint information until further. */
-#if 0
-			if (ep_sync && (!ed2)) {
-				continue;
-			}
-			/*
-			 * we can't handle endpoints that need a sync pipe
-			 * yet
-			 */
-
-			if (ep_sync) {
-				DPRINTF("skipped sync interface\n");
-				audio_if = 0;
-				continue;
-			}
-#endif
+			/* We ignore sync endpoint information until further. */
 
 			wFormat = UGETW(asid->wFormatTag);
 			bChannels = UAUDIO_MAX_CHAN(asf1d->bNrChannels);
@@ -1054,6 +1045,13 @@ uaudio_chan_fill_info_sub(struct uaudio_softc *sc, struct usb_device *udev,
 					chan->sample_size = ((
 					    UAUDIO_MAX_CHAN(chan->p_asf1d->bNrChannels) *
 					    chan->p_asf1d->bBitResolution) / 8);
+
+					if (ep_dir == UE_DIR_IN &&
+					    usbd_get_speed(udev) == USB_SPEED_FULL) {
+						uaudio_record_fix_fs(ed1,
+						    chan->sample_size * (rate / 1000),
+						    chan->sample_size * (rate / 4000));
+					}
 
 					if (sc->sc_sndstat_valid) {
 						sbuf_printf(&sc->sc_sndstat, "\n\t"
@@ -1412,14 +1410,14 @@ uaudio_chan_init(struct uaudio_softc *sc, struct snd_dbuf *b,
 		    usbd_errstr(err));
 		goto error;
 	}
-	usbd_set_parent_iface(sc->sc_udev, iface_index, sc->sc_mixer_iface_index);
+	usbd_set_parent_iface(sc->sc_udev, iface_index,
+	    sc->sc_mixer_iface_index);
 
 	/*
-	 * If just one sampling rate is supported,
-	 * no need to call "uaudio_set_speed()".
-	 * Roland SD-90 freezes by a SAMPLING_FREQ_CONTROL request.
+	 * Only set the sample rate if the channel reports that it
+	 * supports the frequency control.
 	 */
-	if (ch->p_asf1d->bSamFreqType != 1) {
+	if (ch->p_sed->bmAttributes & UA_SED_FREQ_CONTROL) {
 		if (uaudio_set_speed(sc->sc_udev, endpoint, ch->sample_rate)) {
 			/*
 			 * If the endpoint is adaptive setting the speed may
@@ -1628,10 +1626,10 @@ static void
 uaudio_mixer_add_ctl_sub(struct uaudio_softc *sc, struct uaudio_mixer_node *mc)
 {
 	struct uaudio_mixer_node *p_mc_new =
-	malloc(sizeof(*p_mc_new), M_USBDEV, M_WAITOK);
+	    malloc(sizeof(*p_mc_new), M_USBDEV, M_WAITOK);
 
-	if (p_mc_new) {
-		bcopy(mc, p_mc_new, sizeof(*p_mc_new));
+	if (p_mc_new != NULL) {
+		memcpy(p_mc_new, mc, sizeof(*p_mc_new));
 		p_mc_new->next = sc->sc_mixer_root;
 		sc->sc_mixer_root = p_mc_new;
 		sc->sc_mixer_count++;
@@ -1773,7 +1771,7 @@ uaudio_mixer_add_mixer(struct uaudio_softc *sc,
 
 	DPRINTFN(3, "ichs=%d ochs=%d\n", ichs, ochs);
 
-	bzero(&mix, sizeof(mix));
+	memset(&mix, 0, sizeof(mix));
 
 	mix.wIndex = MAKE_WORD(d0->bUnitId, sc->sc_mixer_iface_no);
 	uaudio_mixer_determine_class(&iot[id], &mix);
@@ -1833,7 +1831,7 @@ uaudio_mixer_add_selector(struct uaudio_softc *sc,
 	if (d->bNrInPins == 0) {
 		return;
 	}
-	bzero(&mix, sizeof(mix));
+	memset(&mix, 0, sizeof(mix));
 
 	mix.wIndex = MAKE_WORD(d->bUnitId, sc->sc_mixer_iface_no);
 	mix.wValue[0] = MAKE_WORD(0, 0);
@@ -1903,7 +1901,7 @@ uaudio_mixer_add_feature(struct uaudio_softc *sc,
 	if (d->bControlSize == 0) {
 		return;
 	}
-	bzero(&mix, sizeof(mix));
+	memset(&mix, 0, sizeof(mix));
 
 	nchan = (d->bLength - 7) / d->bControlSize;
 	mmask = uaudio_mixer_feature_get_bmaControls(d, 0);
@@ -2037,7 +2035,7 @@ uaudio_mixer_add_processing_updown(struct uaudio_softc *sc,
 		DPRINTF("no mode select\n");
 		return;
 	}
-	bzero(&mix, sizeof(mix));
+	memset(&mix, 0, sizeof(mix));
 
 	mix.wIndex = MAKE_WORD(d0->bUnitId, sc->sc_mixer_iface_no);
 	mix.nchan = 1;
@@ -2063,7 +2061,7 @@ uaudio_mixer_add_processing(struct uaudio_softc *sc,
 	struct uaudio_mixer_node mix;
 	uint16_t ptype;
 
-	bzero(&mix, sizeof(mix));
+	memset(&mix, 0, sizeof(mix));
 
 	ptype = UGETW(d0->wProcessType);
 
@@ -2118,7 +2116,7 @@ uaudio_mixer_add_extension(struct uaudio_softc *sc,
 	}
 	if (d1->bmControls[0] & UA_EXT_ENABLE_MASK) {
 
-		bzero(&mix, sizeof(mix));
+		memset(&mix, 0, sizeof(mix));
 
 		mix.wIndex = MAKE_WORD(d0->bUnitId, sc->sc_mixer_iface_no);
 		mix.nchan = 1;
@@ -2345,7 +2343,7 @@ uaudio_mixer_get_cluster(uint8_t id, const struct uaudio_terminal_node *iot)
 	}
 error:
 	DPRINTF("bad data\n");
-	bzero(&r, sizeof(r));
+	memset(&r, 0, sizeof(r));
 done:
 	return (r);
 }
@@ -3335,25 +3333,12 @@ uaudio_mixer_setrecsrc(struct uaudio_softc *sc, uint32_t src)
  *========================================================================*/
 
 static void
-umidi_read_clear_stall_callback(struct usb_xfer *xfer, usb_error_t error)
-{
-	struct umidi_chan *chan = usbd_xfer_softc(xfer);
-	struct usb_xfer *xfer_other = chan->xfer[1];
-
-	if (usbd_clear_stall_callback(xfer, xfer_other)) {
-		DPRINTF("stall cleared\n");
-		chan->flags &= ~UMIDI_FLAG_READ_STALL;
-		usbd_transfer_start(xfer_other);
-	}
-}
-
-static void
 umidi_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 {
 	struct umidi_chan *chan = usbd_xfer_softc(xfer);
 	struct umidi_sub_chan *sub;
 	struct usb_page_cache *pc;
-	uint8_t buf[1];
+	uint8_t buf[4];
 	uint8_t cmd_len;
 	uint8_t cn;
 	uint16_t pos;
@@ -3366,68 +3351,52 @@ umidi_bulk_read_callback(struct usb_xfer *xfer, usb_error_t error)
 
 		DPRINTF("actlen=%d bytes\n", actlen);
 
-		if (actlen == 0) {
-			/* should not happen */
-			goto tr_error;
-		}
 		pos = 0;
 		pc = usbd_xfer_get_frame(xfer, 0);
 
 		while (actlen >= 4) {
 
-			usbd_copy_out(pc, pos, buf, 1);
-
-			cmd_len = umidi_cmd_to_len[buf[0] & 0xF];	/* command length */
-			cn = buf[0] >> 4;	/* cable number */
+			/* copy out the MIDI data */
+			usbd_copy_out(pc, pos, buf, 4);
+			/* command length */
+			cmd_len = umidi_cmd_to_len[buf[0] & 0xF];
+			/* cable number */
+			cn = buf[0] >> 4;
+			/*
+			 * Lookup sub-channel. The index is range
+			 * checked below.
+			 */
 			sub = &chan->sub[cn];
 
-			if (cmd_len && (cn < chan->max_cable) && sub->read_open) {
-				usb_fifo_put_data(sub->fifo.fp[USB_FIFO_RX], pc,
-				    pos + 1, cmd_len, 1);
-			} else {
-				/* ignore the command */
-			}
+			if ((cmd_len != 0) &&
+			    (cn < chan->max_cable) &&
+			    (sub->read_open != 0)) {
 
+				/* Send data to the application */
+				usb_fifo_put_data_linear(
+				    sub->fifo.fp[USB_FIFO_RX],
+				    buf + 1, cmd_len, 1);
+			}
 			actlen -= 4;
 			pos += 4;
 		}
 
 	case USB_ST_SETUP:
 		DPRINTF("start\n");
-
-		if (chan->flags & UMIDI_FLAG_READ_STALL) {
-			usbd_transfer_start(chan->xfer[3]);
-			return;
-		}
+tr_setup:
 		usbd_xfer_set_frame_len(xfer, 0, usbd_xfer_max_len(xfer));
 		usbd_transfer_submit(xfer);
-		return;
+		break;
 
 	default:
-tr_error:
-
 		DPRINTF("error=%s\n", usbd_errstr(error));
 
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
-			chan->flags |= UMIDI_FLAG_READ_STALL;
-			usbd_transfer_start(chan->xfer[3]);
+			usbd_xfer_set_stall(xfer);
+			goto tr_setup;
 		}
-		return;
-
-	}
-}
-
-static void
-umidi_write_clear_stall_callback(struct usb_xfer *xfer, usb_error_t error)
-{
-	struct umidi_chan *chan = usbd_xfer_softc(xfer);
-	struct usb_xfer *xfer_other = chan->xfer[0];
-
-	if (usbd_clear_stall_callback(xfer, xfer_other)) {
-		DPRINTF("stall cleared\n");
-		chan->flags &= ~UMIDI_FLAG_WRITE_STALL;
-		usbd_transfer_start(xfer_other);
+		break;
 	}
 }
 
@@ -3559,6 +3528,8 @@ umidi_convert_to_usb(struct umidi_sub_chan *sub, uint8_t cn, uint8_t b)
 			sub->temp_cmd = sub->temp_1;
 			sub->state = UMIDI_ST_SYSEX_0;
 			return (1);
+		default:
+			break;
 		}
 	}
 	return (0);
@@ -3571,7 +3542,7 @@ umidi_bulk_write_callback(struct usb_xfer *xfer, usb_error_t error)
 	struct umidi_sub_chan *sub;
 	struct usb_page_cache *pc;
 	uint32_t actlen;
-	uint16_t total_length;
+	uint16_t nframes;
 	uint8_t buf;
 	uint8_t start_cable;
 	uint8_t tr_any;
@@ -3579,19 +3550,19 @@ umidi_bulk_write_callback(struct usb_xfer *xfer, usb_error_t error)
 
 	usbd_xfer_status(xfer, &len, NULL, NULL, NULL);
 
+	/*
+	 * NOTE: Some MIDI devices only accept 4 bytes of data per
+	 * short terminated USB transfer.
+	 */
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
 		DPRINTF("actlen=%d bytes\n", len);
 
 	case USB_ST_SETUP:
-
+tr_setup:
 		DPRINTF("start\n");
 
-		if (chan->flags & UMIDI_FLAG_WRITE_STALL) {
-			usbd_transfer_start(chan->xfer[2]);
-			return;
-		}
-		total_length = 0;	/* reset */
+		nframes = 0;	/* reset */
 		start_cable = chan->curr_cable;
 		tr_any = 0;
 		pc = usbd_xfer_get_frame(xfer, 0);
@@ -3603,54 +3574,53 @@ umidi_bulk_write_callback(struct usb_xfer *xfer, usb_error_t error)
 			sub = &chan->sub[chan->curr_cable];
 
 			if (sub->write_open) {
-				usb_fifo_get_data(sub->fifo.fp[USB_FIFO_TX],
-				    pc, total_length, 1, &actlen, 0);
+				usb_fifo_get_data_linear(sub->fifo.fp[USB_FIFO_TX],
+				    &buf, 1, &actlen, 0);
 			} else {
 				actlen = 0;
 			}
 
 			if (actlen) {
-				usbd_copy_out(pc, total_length, &buf, 1);
 
 				tr_any = 1;
 
-				DPRINTF("byte=0x%02x\n", buf);
+				DPRINTF("byte=0x%02x from FIFO %u\n", buf,
+				    (unsigned int)chan->curr_cable);
 
 				if (umidi_convert_to_usb(sub, chan->curr_cable, buf)) {
 
-					DPRINTF("sub= %02x %02x %02x %02x\n",
+					DPRINTF("sub=0x%02x 0x%02x 0x%02x 0x%02x\n",
 					    sub->temp_cmd[0], sub->temp_cmd[1],
 					    sub->temp_cmd[2], sub->temp_cmd[3]);
 
-					usbd_copy_in(pc, total_length,
-					    sub->temp_cmd, 4);
+					usbd_copy_in(pc, nframes * 4, sub->temp_cmd, 4);
 
-					total_length += 4;
+					nframes++;
 
-					if (total_length >= UMIDI_BULK_SIZE) {
+					if ((nframes >= UMIDI_TX_FRAMES) || (chan->single_command != 0))
 						break;
-					}
 				} else {
 					continue;
 				}
 			}
+
 			chan->curr_cable++;
-			if (chan->curr_cable >= chan->max_cable) {
+			if (chan->curr_cable >= chan->max_cable)
 				chan->curr_cable = 0;
-			}
+
 			if (chan->curr_cable == start_cable) {
-				if (tr_any == 0) {
+				if (tr_any == 0)
 					break;
-				}
 				tr_any = 0;
 			}
 		}
 
-		if (total_length) {
-			usbd_xfer_set_frame_len(xfer, 0, total_length);
+		if (nframes != 0) {
+			DPRINTF("Transferring %d frames\n", (int)nframes);
+			usbd_xfer_set_frame_len(xfer, 0, 4 * nframes);
 			usbd_transfer_submit(xfer);
 		}
-		return;
+		break;
 
 	default:			/* Error */
 
@@ -3658,11 +3628,10 @@ umidi_bulk_write_callback(struct usb_xfer *xfer, usb_error_t error)
 
 		if (error != USB_ERR_CANCELLED) {
 			/* try to clear stall first */
-			chan->flags |= UMIDI_FLAG_WRITE_STALL;
-			usbd_transfer_start(chan->xfer[2]);
+			usbd_xfer_set_stall(xfer);
+			goto tr_setup;
 		}
-		return;
-
+		break;
 	}
 }
 
@@ -3692,7 +3661,7 @@ umidi_start_read(struct usb_fifo *fifo)
 {
 	struct umidi_chan *chan = usb_fifo_softc(fifo);
 
-	usbd_transfer_start(chan->xfer[1]);
+	usbd_transfer_start(chan->xfer[UMIDI_RX_TRANSFER]);
 }
 
 static void
@@ -3719,7 +3688,7 @@ umidi_start_write(struct usb_fifo *fifo)
 {
 	struct umidi_chan *chan = usb_fifo_softc(fifo);
 
-	usbd_transfer_start(chan->xfer[0]);
+	usbd_transfer_start(chan->xfer[UMIDI_TX_TRANSFER]);
 }
 
 static void
@@ -3734,8 +3703,7 @@ umidi_stop_write(struct usb_fifo *fifo)
 
 	if (--(chan->write_open_refcount) == 0) {
 		DPRINTF("(stopping write transfer)\n");
-		usbd_transfer_stop(chan->xfer[2]);
-		usbd_transfer_stop(chan->xfer[0]);
+		usbd_transfer_stop(chan->xfer[UMIDI_TX_TRANSFER]);
 	}
 }
 
@@ -3760,7 +3728,7 @@ umidi_open(struct usb_fifo *fifo, int fflags)
 		}
 		/* clear stall first */
 		mtx_lock(&chan->mtx);
-		chan->flags |= UMIDI_FLAG_WRITE_STALL;
+		usbd_xfer_set_stall(chan->xfer[UMIDI_TX_TRANSFER]);
 		chan->write_open_refcount++;
 		sub->write_open = 1;
 
@@ -3810,7 +3778,7 @@ static struct usb_fifo_methods umidi_fifo_methods = {
 	.basename[0] = "umidi",
 };
 
-static int32_t
+static int
 umidi_probe(device_t dev)
 {
 	struct uaudio_softc *sc = device_get_softc(dev);
@@ -3821,12 +3789,16 @@ umidi_probe(device_t dev)
 	int error;
 	uint32_t n;
 
+	if (usb_test_quirk(uaa, UQ_SINGLE_CMD_MIDI))
+		chan->single_command = 1;
+
 	if (usbd_set_alt_interface_index(sc->sc_udev, chan->iface_index,
 	    chan->iface_alt_index)) {
 		DPRINTF("setting of alternate index failed!\n");
 		goto detach;
 	}
-	usbd_set_parent_iface(sc->sc_udev, chan->iface_index, sc->sc_mixer_iface_index);
+	usbd_set_parent_iface(sc->sc_udev, chan->iface_index,
+	    sc->sc_mixer_iface_index);
 
 	error = usbd_transfer_setup(uaa->device, &chan->iface_index,
 	    chan->xfer, umidi_config, UMIDI_N_TRANSFER,
@@ -3856,13 +3828,15 @@ umidi_probe(device_t dev)
 	mtx_lock(&chan->mtx);
 
 	/* clear stall first */
-	chan->flags |= UMIDI_FLAG_READ_STALL;
+	usbd_xfer_set_stall(chan->xfer[UMIDI_RX_TRANSFER]);
 
 	/*
-	 * NOTE: at least one device will not work properly unless
-	 * the BULK pipe is open all the time.
+	 * NOTE: At least one device will not work properly unless the
+	 * BULK IN pipe is open all the time. This might have to do
+	 * about that the internal queues of the device overflow if we
+	 * don't read them regularly.
 	 */
-	usbd_transfer_start(chan->xfer[1]);
+	usbd_transfer_start(chan->xfer[UMIDI_RX_TRANSFER]);
 
 	mtx_unlock(&chan->mtx);
 
@@ -3872,7 +3846,7 @@ detach:
 	return (ENXIO);			/* failure */
 }
 
-static int32_t
+static int
 umidi_detach(device_t dev)
 {
 	struct uaudio_softc *sc = device_get_softc(dev);
@@ -3885,8 +3859,7 @@ umidi_detach(device_t dev)
 
 	mtx_lock(&chan->mtx);
 
-	usbd_transfer_stop(chan->xfer[3]);
-	usbd_transfer_stop(chan->xfer[1]);
+	usbd_transfer_stop(chan->xfer[UMIDI_RX_TRANSFER]);
 
 	mtx_unlock(&chan->mtx);
 

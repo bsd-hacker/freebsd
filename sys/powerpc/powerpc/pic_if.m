@@ -28,9 +28,16 @@
 #
 
 #include <sys/bus.h>
+#include <sys/cpuset.h>
 #include <machine/frame.h>
 
 INTERFACE pic;
+
+METHOD void bind {
+	device_t	dev;
+	u_int		irq;
+	cpuset_t	cpumask;
+};
 
 METHOD void config {
 	device_t	dev;
@@ -69,3 +76,4 @@ METHOD void unmask {
 	device_t	dev;
 	u_int		irq;
 };
+
