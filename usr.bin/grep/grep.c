@@ -49,7 +49,6 @@ __FBSDID("$FreeBSD$");
 #include <string.h>
 #include <unistd.h>
 
-#include "fastmatch.h"
 #include "grep.h"
 
 #ifndef WITHOUT_NLS
@@ -85,7 +84,6 @@ bool		 matchall;
 unsigned int	 patterns, pattern_sz;
 struct pat	*pattern;
 regex_t		*r_pattern;
-fastmatch_t	*fg_pattern;
 
 /* Filename exclusion/inclusion patterns */
 unsigned int	 fpatterns, fpattern_sz;
@@ -669,13 +667,10 @@ main(int argc, char *argv[])
 	}
 
 	switch (grepbehave) {
-		cflags |= REG_LITERAL;
-		break;
 	case GREP_BASIC:
 		break;
 	case GREP_FIXED:
-		/* XXX: header mess, REG_LITERAL not defined in gnu/regex.h */
-		cflags |= 0020;
+		cflags |= REG_LITERAL;
 		break;
 	case GREP_EXTENDED:
 		cflags |= REG_EXTENDED;
@@ -689,15 +684,12 @@ main(int argc, char *argv[])
 
 	/* Check if cheating is allowed (always is for fgrep). */
 	for (i = 0; i < patterns; ++i) {
-		if (fastncomp(&fg_pattern[i], pattern[i].pat,
-		    pattern[i].len, cflags) != 0) {
-			/* Fall back to full regex library */
-			c = regcomp(&r_pattern[i], pattern[i].pat, cflags);
-			if (c != 0) {
-				regerror(c, &r_pattern[i], re_error,
-				    RE_ERROR_BUF);
-				errx(2, "%s", re_error);
-			}
+		/* Fall back to full regex library */
+		c = regcomp(&r_pattern[i], pattern[i].pat, cflags);
+		if (c != 0) {
+			regerror(c, &r_pattern[i], re_error,
+			    RE_ERROR_BUF);
+			errx(2, "%s", re_error);
 		}
 	}
 
