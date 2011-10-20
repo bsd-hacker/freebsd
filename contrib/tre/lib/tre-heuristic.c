@@ -140,6 +140,7 @@ tre_compile_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
        * Process the pattern char-by-char.
        *
        * i: position in regex
+       * j: number of fragment
        * st: start offset of current segment (fixed-length fragment)
        *     to be processed
        * pos: current position (and length) in the temporary space where
@@ -331,8 +332,8 @@ end_segment:
 	  errcode = REG_ESPACE;
 	  goto err;
 	}
-      memcpy(&arr[j], &heur, pos);
-      arr[j][pos] = TRE_CHAR('\0');
+      heur[pos] = TRE_CHAR('\0');
+      memcpy(arr[j], heur, (pos + 1) * sizeof(tre_char_t));
       length[j] = pos;
       j++;
       pos = 0;
@@ -344,7 +345,7 @@ ok:
     size_t m = 1;
     int ret;
 
-    for(int i = 1; i < j; i++)
+    for (int i = 1; i < j; i++)
       m = (length[i] > length[m]) ? i : m;
 
     if (!h->heurs)
@@ -363,11 +364,11 @@ ok:
 	  }
       }
 
-#define CHECK_ERR
-  if (ret != REG_OK)
-    {
-      errcode = REG_BADPAT;
-      goto err2;
+#define CHECK_ERR							\
+  if (ret != REG_OK)							\
+    {									\
+      errcode = REG_BADPAT;						\
+      goto err2;							\
     }
 
     ret = tre_compile_fast(h->heurs[0], arr[0], length[0], 0);
@@ -381,7 +382,7 @@ ok:
     else
       ret = tre_compile_fast(h->heurs[1], arr[m], length[m], 0);
     CHECK_ERR
-    if (h->prefix)
+    if (h->prefix || (m == j - 1))
       {
 	xfree(h->heurs[2]);
 	h->heurs[2] = NULL;
