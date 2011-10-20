@@ -100,11 +100,8 @@ grep_tree(char **argv)
 	while ((p = fts_read(fts)) != NULL)
 		switch (p->fts_info) {
 		case FTS_DNR:
-			/* FALLTHROUGH */
 		case FTS_ERR:
-			/* FALLTHROUGH */
 		case FTS_D:
-			/* FALLTHROUGH */
 		case FTS_DP:
 			/* FALLTHROUGH */
 		case FTS_DC:
@@ -158,7 +155,7 @@ main(int argc, char *argv[])
 	cflags = REG_NEWLINE;
 	eflags = REG_STARTEND;
 
-	while (((c = getopt(argc, argv, "e:EFr")) != -1))
+	while (((c = getopt(argc, argv, "e:EFNr")) != -1))
 		switch (c) {
 		case 'e':
 			pat = strdup(optarg);
@@ -169,6 +166,9 @@ main(int argc, char *argv[])
 			break;
 		case 'F':
 			cflags |= REG_NOSPEC;
+			break;
+		case 'N':
+			cflags |= REG_NEWLINE;
 			break;
 		case 'r':
 			dir = true;
