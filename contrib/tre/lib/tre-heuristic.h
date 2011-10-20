@@ -7,10 +7,13 @@
 #include "tre-fastmatch.h"
 #include "tre-internal.h"
 
+#define HEUR_ARRAY		0
+#define HEUR_PREFIX_ARRAY	1
+#define HEUR_LONGEST		2
+
 typedef struct {
   fastmatch_t *heurs[4];
-  bool prefix;
-  bool newline;
+  int type;
 } heur_t;
 
 extern int tre_compile_heur(heur_t *h, const tre_char_t *regex,

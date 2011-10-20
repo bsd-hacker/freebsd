@@ -133,6 +133,8 @@ tre_compile_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
   if (!heur)
     return REG_ESPACE;
 
+  h->type = HEUR_ARRAY;
+
   while (true)
     {
 
@@ -316,7 +318,7 @@ end_segment:
 	      errcode = REG_BADPAT;
 	      goto err;
 	    }
-	  h->prefix = true;
+	  h->type = HEUR_PREFIX_ARRAY;
 	  goto ok;
 	}
 
@@ -340,19 +342,12 @@ end_segment:
     }
 
 ok:
-
   {
     size_t m = 1;
     int ret;
 
     for (int i = 1; i < j; i++)
       m = (length[i] > length[m]) ? i : m;
-
-    if (!h->heurs)
-      {
-	errcode = REG_ESPACE;
-	goto err;
-      }
 
     for (int i = 0; i < MIN(3, j + 1); i++)
       {
@@ -371,30 +366,41 @@ ok:
       goto err2;							\
     }
 
-    ret = tre_compile_fast(h->heurs[0], arr[0], length[0], 0);
-    CHECK_ERR
-    if (j == 1)
+    if (cflags & REG_NEWLINE)
       {
-	xfree(h->heurs[1]);
-	h->heurs[1] = NULL;
-	goto finish;
+	ret = tre_compile_fast(h->heurs[0], arr[m], length[m], 0);
+	CHECK_ERR
+	h->type = HEUR_LONGEST;
       }
     else
-      ret = tre_compile_fast(h->heurs[1], arr[m], length[m], 0);
-    CHECK_ERR
-    if (h->prefix || (m == j - 1))
       {
-	xfree(h->heurs[2]);
-	h->heurs[2] = NULL;
-	goto finish;
+	ret = tre_compile_fast(h->heurs[0], arr[0], length[0], 0);
+	CHECK_ERR
+	if (j == 1)
+	  {
+	    free(h->heurs[1]);
+	    h->heurs[1] = NULL;
+	    errcode = REG_OK;
+	    goto finish;
+	  }
+	else
+	  ret = tre_compile_fast(h->heurs[1], arr[m], length[m], 0);
+	CHECK_ERR
+	if ((h->type == HEUR_PREFIX_ARRAY) || (m == j - 1))
+	  {
+	    xfree(h->heurs[2]);
+	    h->heurs[2] = NULL;
+	    errcode = REG_OK;
+	    goto finish;
+	  }
+	else
+	  ret = tre_compile_fast(h->heurs[2], arr[j - 1], length[j - 1], 0);
+	CHECK_ERR
+	h->heurs[3] = NULL;
       }
-    else
-      ret = tre_compile_fast(h->heurs[2], arr[j - 1], length[j - 1], 0);
-    CHECK_ERR
-    h->heurs[3] = NULL;
 
-    errcode = REG_OK;
-    goto finish;
+      errcode = REG_OK;
+      goto finish;
   }
 
 err2:

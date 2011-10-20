@@ -165,10 +165,10 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
 			    pmatch, eflags);
     }
 
-#define FIX_OFFSETS							\
+#define FIX_OFFSETS(adj)						\
   if (ret == REG_NOMATCH)						\
     {									\
-      st += n;								\
+      adj;								\
       continue;								\
     }									\
   else if ((ret == REG_OK) && !(tnfa->cflags & REG_NOSUB))		\
@@ -191,57 +191,94 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
       const char *data_byte = string;
       const tre_char_t *data_wide = string;
 
-      DPRINT(("tre_match: using a heuristic [%s/%s] to speed up the "
-	     "search\n", heur->start->pattern, heur->end->pattern));
-
-      while (st < len)
+      if (heur->type == HEUR_LONGEST)
 	{
-	  SEEK_TO(st);
-
-	  /* Prefix heuristic */
-	  ret = tre_match_fast(heur->heurs[0], string, len - st, type, nmatch,
-			       pmatch, eflags);
-	  if (ret != REG_OK)
-	    return ret;
-	  st += pmatch[0].rm_so;
-	  n = pmatch[0].rm_eo;
-
-	  /* Intermediate heuristics */
-	  while (!((heur->heurs[i] == NULL) ||
-		(heur->prefix && heur->heurs[i + 1] == NULL)))
+	  while (st < len)
 	    {
-	      SEEK_TO(st + n);
-	      ret = tre_match_fast(heur->heurs[i], string, len - st - n, type,
-				   nmatch, pmatch, eflags);
-	      if (ret != REG_OK)
-		return ret;
-	      n += pmatch[0].rm_eo;
-	      i++;
-	    }
-
-	  /* Suffix heuristic available */
-	  if (heur->prefix && heur->heurs[i] != NULL)
-	    {
-	      SEEK_TO(st + n);
-	      ret = tre_match_fast(heur->heurs[i], string, len - st - n, type,
-				   nmatch, pmatch, eflags);
-	      if (ret != REG_OK)
-		return ret;
-	      n += pmatch[0].rm_eo;
+	      size_t eo, so;
 
 	      SEEK_TO(st);
-	      ret = tre_match(tnfa, string, n, type, nmatch, pmatch,
-			      eflags, NULL, NULL);
-	      FIX_OFFSETS;
-	    }
-	  /* Suffix heuristic not available */
-	  else
+	      ret = tre_match_fast(heur->heurs[0], string, len - st, type, nmatch,
+				   pmatch, eflags);
+	      if (ret != REG_OK)
+		return ret;
+
+	      for (so = st + pmatch[0].rm_so - 1; ; so--)
+		{
+		  if ((type == STR_WIDE) ? (data_wide[so] == TRE_CHAR('\n')) :
+		      (data_byte[so] == '\n'))
+		    break;
+		  if (so == 0)
+		    break;
+		}
+
+	      for (eo = st + pmatch[0].rm_eo; st + eo < len; eo++)
+		{
+		  if ((type == STR_WIDE) ? (data_wide[eo] == TRE_CHAR('\n')) :
+		      (data_byte[eo] == '\n'))
+		    break;
+		}
+
+	      SEEK_TO(so);
+	      ret = tre_match(tnfa, string, eo - so, type, nmatch, pmatch, eflags, NULL, NULL);
+	      FIX_OFFSETS(st = eo);
+
+	   }
+	   return REG_NOMATCH;
+	}
+      else
+	{
+	  while (st < len)
 	    {
 	      SEEK_TO(st);
-	      ret = tre_match(tnfa, string, len - st, type, nmatch, pmatch,
-			      eflags, NULL, NULL);
-	      FIX_OFFSETS;
-	    }
+
+	      /* Prefix heuristic */
+	     ret = tre_match_fast(heur->heurs[0], string, len - st,
+				  type, nmatch, pmatch, eflags);
+	     if (ret != REG_OK)
+	       return ret;
+	     st += pmatch[0].rm_so;
+	     n = pmatch[0].rm_eo;
+
+	     /* Intermediate heuristics */
+	     while (!((heur->heurs[i] == NULL) ||
+		    ((heur->type == HEUR_PREFIX_ARRAY) &&
+		    heur->heurs[i + 1] == NULL)))
+		{
+		  SEEK_TO(st + n);
+		  ret = tre_match_fast(heur->heurs[i], string, len - st - n,
+				       type, nmatch, pmatch, eflags);
+		  if (ret != REG_OK)
+		    return ret;
+		  n += pmatch[0].rm_eo;
+		  i++;
+		}
+
+	    /* Suffix heuristic available */
+	    if ((heur->type == HEUR_ARRAY) && heur->heurs[i] != NULL)
+	      {
+		SEEK_TO(st + n);
+		ret = tre_match_fast(heur->heurs[i], string, len - st - n,
+				     type, nmatch, pmatch, eflags);
+		if (ret != REG_OK)
+		  return ret;
+		n += pmatch[0].rm_eo;
+
+		SEEK_TO(st);
+		ret = tre_match(tnfa, string, n, type, nmatch, pmatch,
+				eflags, NULL, NULL);
+		FIX_OFFSETS(st += n);
+	      }
+	    /* Suffix heuristic not available */
+	    else
+	      {
+		SEEK_TO(st);
+		ret = tre_match(tnfa, string, len - st, type, nmatch,
+			        pmatch, eflags, NULL, NULL);
+		FIX_OFFSETS(st += n);
+	      }
+	  }
+	  return REG_NOMATCH;
 	}
     }
 
