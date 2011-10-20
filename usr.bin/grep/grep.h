@@ -120,7 +120,7 @@ extern int	 binbehave, devbehave, dirbehave, filebehave, grepbehave, linkbehave;
 extern bool	 first, matchall, notfound, prev;
 extern int	 tail;
 extern unsigned int dpatterns, fpatterns, patterns;
-extern struct pat  *pattern;
+extern struct pat *pattern;
 extern struct epat *dpattern, *fpattern;
 extern regex_t	*er_pattern, *r_pattern;
 
