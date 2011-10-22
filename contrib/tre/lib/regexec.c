@@ -203,20 +203,29 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
 	      if (ret != REG_OK)
 		return ret;
 
-	      for (so = st + pmatch[0].rm_so - 1; ; so--)
+	      if (heur->tlen == -1)
 		{
-		  if ((type == STR_WIDE) ? (data_wide[so] == TRE_CHAR('\n')) :
-		      (data_byte[so] == '\n'))
-		    break;
-		  if (so == 0)
-		    break;
-		}
+		  for (so = st + pmatch[0].rm_so - 1; ; so--)
+		    {
+		      if ((type == STR_WIDE) ? (data_wide[so] == TRE_CHAR('\n')) :
+		         (data_byte[so] == '\n'))
+		      break;
+		    if (so == 0)
+		      break;
+		    }
 
-	      for (eo = st + pmatch[0].rm_eo; st + eo < len; eo++)
+		  for (eo = st + pmatch[0].rm_eo; st + eo < len; eo++)
+		    {
+		      if ((type == STR_WIDE) ? (data_wide[eo] == TRE_CHAR('\n')) :
+		        (data_byte[eo] == '\n'))
+		      break;
+		    }
+		}
+	      else
 		{
-		  if ((type == STR_WIDE) ? (data_wide[eo] == TRE_CHAR('\n')) :
-		      (data_byte[eo] == '\n'))
-		    break;
+		  size_t rem = heur->tlen - (pmatch[0].rm_eo - pmatch[0].rm_so);
+		  so = st + pmatch[0].rm_so - rem;
+		  eo = st + pmatch[0].rm_eo + rem;
 		}
 
 	      SEEK_TO(so);
@@ -272,8 +281,12 @@ tre_match(const tre_tnfa_t *tnfa, const void *string, size_t len,
 	    /* Suffix heuristic not available */
 	    else
 	      {
+		size_t l = (heur->tlen == -1) ? len - st : heur->tlen;
+
+		if (l < len - st)
+		  return REG_NOMATCH;
 		SEEK_TO(st);
-		ret = tre_match(tnfa, string, len - st, type, nmatch,
+		ret = tre_match(tnfa, string, l, type, nmatch,
 			        pmatch, eflags, NULL, NULL);
 		FIX_OFFSETS(st += n);
 	      }
