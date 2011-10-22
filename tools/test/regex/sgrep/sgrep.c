@@ -135,12 +135,12 @@ procfile(const char *path)
 		ret = regexec(&regex, data, 1, &pmatch, eflags);
 		if (ret == REG_NOMATCH)
 			break;
-		printf("(%ld,%ld)", pmatch.rm_so, pmatch.rm_eo);
+		printf("(%lld,%lld)", (long long)pmatch.rm_so, (long long)pmatch.rm_eo);
 		if (pmatch.rm_so == pmatch.rm_eo)
 			pmatch.rm_eo++;
 		st = pmatch.rm_eo;
 	}
-	putchar(')');
+	printf(")\n");
 }
 
 int
@@ -152,7 +152,6 @@ main(int argc, char *argv[])
 
 	setlocale(LC_ALL, "");
 
-	cflags = REG_NEWLINE;
 	eflags = REG_STARTEND;
 
 	while (((c = getopt(argc, argv, "e:EFNr")) != -1))
@@ -161,6 +160,7 @@ main(int argc, char *argv[])
 			pat = strdup(optarg);
 			if (pat == NULL)
 				return (EXIT_FAILURE);
+			break;
 		case 'E':
 			cflags |= REG_EXTENDED;
 			break;
