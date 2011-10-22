@@ -97,24 +97,26 @@
 /*
  * Finishes a segment (fixed-length text fragment).
  */
-#define END_SEGMENT							\
+#define END_SEGMENT(varlen)						\
   do									\
     {									\
+      if (varlen)							\
+	tlen = -1;							\
       st = i + 1;							\
       escaped = false;							\
       goto end_segment;							\
     } while (0)
 
-#define STORE_CHAR(esc)							\
+#define STORE_CHAR							\
   do									\
     {									\
-      if (esc)								\
-	heur[pos++] = TRE_CHAR('\\');					\
       heur[pos++] = regex[i];						\
       escaped = false;							\
+      tlen = (tlen == -1) ? -1 : tlen + 1;				\
       continue;								\
     } while (0)
 
+#define DEC_POS pos = (pos == 0) ? 0 : pos - 1;
 
 /*
  * Parses a regular expression and constructs a heuristic in heur_t and
@@ -126,6 +128,7 @@ tre_compile_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
 {
   tre_char_t *arr[MAX_FRAGMENTS], *heur;
   size_t length[MAX_FRAGMENTS];
+  ssize_t tlen = 0;
   int errcode, j = 0, pos = 0, st = 0;
   bool escaped = false;
 
@@ -154,17 +157,17 @@ tre_compile_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
 	    {
 
 	      /*
-	       * Bracketed expression is substituted with a dot or the
+	       * Bracketed expression ends the segment or the
 	       * brackets are treated as normal if at least the opening
 	       * bracket is escaped.
 	       */
 	      case TRE_CHAR('['):
 		if (escaped)
-		  STORE_CHAR(true);
+		  STORE_CHAR;
 		else
 		  {
 		    PARSE_BRACKETS;
-		    heur[pos++] = TRE_CHAR('.');
+		    END_SEGMENT(true);
 		  }
 		continue;
 
@@ -175,20 +178,20 @@ tre_compile_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
 	       */
 	      case TRE_CHAR('{'):
 		if (escaped && (i == 1))
-		  STORE_CHAR(true);
+		  STORE_CHAR;
 		else if ((i == 0) && !(cflags & REG_EXTENDED))
-		  STORE_CHAR(true);
+		  STORE_CHAR;
 		else if ((i == 0) && (cflags & REG_EXTENDED))
 		  continue;
 
 		PARSE_UNIT('{', '}');
 		if (escaped ^ (cflags & REG_EXTENDED))
 		  {
-		    pos--;
-		    END_SEGMENT;
+		    DEC_POS;
+		    END_SEGMENT(true);
 		  }
 		else
-		  STORE_CHAR(cflags & REG_EXTENDED);
+		  STORE_CHAR;
 		continue;
 
 	      /*
@@ -199,10 +202,10 @@ tre_compile_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
 		if (escaped ^ (cflags & REG_EXTENDED))
 		  {
 		    PARSE_UNIT('(', ')');
-		    END_SEGMENT;
+		    END_SEGMENT(true);
 		  }
 		else
-		  STORE_CHAR(cflags & REG_EXTENDED);
+		  STORE_CHAR;
 		continue;
 
 	      /*
@@ -212,7 +215,7 @@ tre_compile_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
 	       */
 	      case TRE_CHAR('\\'):
 		if (escaped)
-		  STORE_CHAR(true);
+		  STORE_CHAR;
 		else
 		  escaped = true;
 		continue;
@@ -225,11 +228,11 @@ tre_compile_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
 	       */
 	      case TRE_CHAR('*'):
 		if (escaped || (!(cflags & REG_EXTENDED) && (i == 0)))
-		  STORE_CHAR(true);
+		  STORE_CHAR;
 		else if ((i != 0))
 		  {
-		    pos--;
-		    END_SEGMENT;
+		    DEC_POS;
+		    END_SEGMENT(true);
 		  }
 		continue;
 
@@ -245,9 +248,9 @@ tre_compile_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
 		if ((cflags & REG_EXTENDED) && (i == 0))
 		  continue;
 		else if ((cflags & REG_EXTENDED) ^ escaped)
-		  END_SEGMENT;
-		else 
-		  STORE_CHAR(cflags & REG_EXTENDED);
+		  END_SEGMENT(true);
+		else
+		  STORE_CHAR;
 		continue;
 
 	      /*
@@ -262,11 +265,11 @@ tre_compile_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
 		  continue;
 		if ((cflags & REG_EXTENDED) ^ escaped)
 		  {
-		    pos--;
-		    END_SEGMENT;
+		    DEC_POS;
+		    END_SEGMENT(true);
 		  }
 		else
-		  STORE_CHAR(true);
+		  STORE_CHAR;
 		continue;
 
 	      /*
@@ -279,17 +282,22 @@ tre_compile_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
 		    goto err;
 		  }
 		else if (!(cflags & REG_EXTENDED) && escaped)
-		  END_SEGMENT;
+		  {
+		    errcode = REG_BADPAT;
+		    goto err;
+		  }
 		else
-		  STORE_CHAR(cflags & REG_EXTENDED);
+		  STORE_CHAR;
 		continue;
 
-	      /*
-	       * Cut the segment at an escaped dot because the fast matcher
-	       * cannot handle it.
-	       */
 	      case TRE_CHAR('.'):
-		STORE_CHAR(escaped);
+		if (escaped)
+		  STORE_CHAR;
+		else
+		  {
+		    tlen = (tlen == -1) ? -1 : tlen + 1;
+		    END_SEGMENT(false);
+		  }
 		continue;
 
 	      /*
@@ -299,9 +307,9 @@ tre_compile_heur(heur_t *h, const tre_char_t *regex, size_t len, int cflags)
 	       */
 	      default:
 		if (escaped)
-		  END_SEGMENT;
+		  END_SEGMENT(true);
 		else
-		  STORE_CHAR(false);
+		  STORE_CHAR;
 		continue;
 	    }
 	}
@@ -321,6 +329,8 @@ end_segment:
 	  h->type = HEUR_PREFIX_ARRAY;
 	  goto ok;
 	}
+      else if (pos == 0)
+	continue;
 
       if (j == MAX_FRAGMENTS)
 	{
@@ -346,6 +356,8 @@ ok:
     size_t m = 1;
     int ret;
 
+    h->tlen = tlen;
+
     for (int i = 1; i < j; i++)
       m = (length[i] > length[m]) ? i : m;
 
@@ -368,13 +380,13 @@ ok:
 
     if (cflags & REG_NEWLINE)
       {
-	ret = tre_compile_fast(h->heurs[0], arr[m], length[m], 0);
+	ret = tre_compile_literal(h->heurs[0], arr[m], length[m], 0);
 	CHECK_ERR
 	h->type = HEUR_LONGEST;
       }
     else
       {
-	ret = tre_compile_fast(h->heurs[0], arr[0], length[0], 0);
+	ret = tre_compile_literal(h->heurs[0], arr[0], length[0], 0);
 	CHECK_ERR
 	if (j == 1)
 	  {
@@ -384,7 +396,7 @@ ok:
 	    goto finish;
 	  }
 	else
-	  ret = tre_compile_fast(h->heurs[1], arr[m], length[m], 0);
+	  ret = tre_compile_literal(h->heurs[1], arr[m], length[m], 0);
 	CHECK_ERR
 	if ((h->type == HEUR_PREFIX_ARRAY) || (m == j - 1))
 	  {
@@ -394,7 +406,7 @@ ok:
 	    goto finish;
 	  }
 	else
-	  ret = tre_compile_fast(h->heurs[2], arr[j - 1], length[j - 1], 0);
+	  ret = tre_compile_literal(h->heurs[2], arr[j - 1], length[j - 1], 0);
 	CHECK_ERR
 	h->heurs[3] = NULL;
       }

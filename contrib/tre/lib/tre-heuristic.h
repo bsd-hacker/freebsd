@@ -13,6 +13,7 @@
 
 typedef struct {
   fastmatch_t *heurs[4];
+  ssize_t tlen;
   int type;
 } heur_t;
 
