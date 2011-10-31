@@ -580,6 +580,28 @@ struct freebsd32_posix_fallocate_args {
 	char len1_l_[PADL_(uint32_t)]; uint32_t len1; char len1_r_[PADR_(uint32_t)];
 	char len2_l_[PADL_(uint32_t)]; uint32_t len2; char len2_r_[PADR_(uint32_t)];
 };
+struct freebsd32_varsym_set_args {
+	char scope_l_[PADL_(int)]; int scope; char scope_r_[PADR_(int)];
+	char whichlo_l_[PADL_(uint32_t)]; uint32_t whichlo; char whichlo_r_[PADR_(uint32_t)];
+	char whichhi_l_[PADL_(uint32_t)]; uint32_t whichhi; char whichhi_r_[PADR_(uint32_t)];
+	char name_l_[PADL_(const char *)]; const char * name; char name_r_[PADR_(const char *)];
+	char data_l_[PADL_(const char *)]; const char * data; char data_r_[PADR_(const char *)];
+};
+struct freebsd32_varsym_get_args {
+	char scope_l_[PADL_(int)]; int scope; char scope_r_[PADR_(int)];
+	char whichlo_l_[PADL_(uint32_t)]; uint32_t whichlo; char whichlo_r_[PADR_(uint32_t)];
+	char whichhi_l_[PADL_(uint32_t)]; uint32_t whichhi; char whichhi_r_[PADR_(uint32_t)];
+	char name_l_[PADL_(const char *)]; const char * name; char name_r_[PADR_(const char *)];
+	char buf_l_[PADL_(char *)]; char * buf; char buf_r_[PADR_(char *)];
+	char size_l_[PADL_(uint32_t *)]; uint32_t * size; char size_r_[PADR_(uint32_t *)];
+};
+struct freebsd32_varsym_list_args {
+	char scope_l_[PADL_(int)]; int scope; char scope_r_[PADR_(int)];
+	char whichlo_l_[PADL_(uint32_t)]; uint32_t whichlo; char whichlo_r_[PADR_(uint32_t)];
+	char whichhi_l_[PADL_(uint32_t)]; uint32_t whichhi; char whichhi_r_[PADR_(uint32_t)];
+	char buf_l_[PADL_(char *)]; char * buf; char buf_r_[PADR_(char *)];
+	char size_l_[PADL_(uint32_t *)]; uint32_t * size; char size_r_[PADR_(uint32_t *)];
+};
 #if !defined(PAD64_REQUIRED) && defined(__powerpc__)
 #define PAD64_REQUIRED
 #endif
@@ -690,6 +712,9 @@ int	freebsd32_msgctl(struct thread *, struct freebsd32_msgctl_args *);
 int	freebsd32_shmctl(struct thread *, struct freebsd32_shmctl_args *);
 int	freebsd32_pselect(struct thread *, struct freebsd32_pselect_args *);
 int	freebsd32_posix_fallocate(struct thread *, struct freebsd32_posix_fallocate_args *);
+int	freebsd32_varsym_set(struct thread *, struct freebsd32_varsym_set_args *);
+int	freebsd32_varsym_get(struct thread *, struct freebsd32_varsym_get_args *);
+int	freebsd32_varsym_list(struct thread *, struct freebsd32_varsym_list_args *);
 
 #ifdef COMPAT_43
 
@@ -1065,6 +1090,9 @@ int	freebsd7_freebsd32_shmctl(struct thread *, struct freebsd7_freebsd32_shmctl_
 #define	FREEBSD32_SYS_AUE_freebsd32_shmctl	AUE_SHMCTL
 #define	FREEBSD32_SYS_AUE_freebsd32_pselect	AUE_SELECT
 #define	FREEBSD32_SYS_AUE_freebsd32_posix_fallocate	AUE_NULL
+#define	FREEBSD32_SYS_AUE_freebsd32_varsym_set	AUE_NULL
+#define	FREEBSD32_SYS_AUE_freebsd32_varsym_get	AUE_NULL
+#define	FREEBSD32_SYS_AUE_freebsd32_varsym_list	AUE_NULL
 
 #undef PAD_
 #undef PADL_

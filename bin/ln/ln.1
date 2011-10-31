@@ -212,6 +212,47 @@ No options may be supplied in this simple mode of operation,
 which performs a
 .Xr link 2
 operation using the two passed arguments.
+.Sh VARIANT SYMLINKS
+.Dx
+supports a special kind of dynamic
+symbolic link called a
+.Em variant symlink .
+The
+.Ar source_file
+of a variant symlink may contain one or more
+variable names.  Each of these variable
+names is enclosed in braces and preceded by a
+dollar sign in the style of variable references in
+.Xr sh 1
+and
+.Xr csh 1 .
+.Pp
+Whenever a variant symlink is followed, each
+variable found in
+.Ar source_file
+is replaced by its associated value.
+In this manner, a variant symlink may resolve to different
+paths based on context.  The facility
+supports per-process, per-user, and system-wide varsyms.
+.Pp
+Varsym variables can be set with the
+.Xr varsym 1
+utility.  Regular
+.Xr environ 7
+environment variables are
+not used to resolve variant symlinks.
+.Ss EXAMPLE
+.Bd -literal -offset indent
+sysctl -w vfs.varsym.enable=1
+
+ln -s 'a%{fubar}b' test
+
+echo 'Hello' > axxb
+echo 'Goodbye' > ayyb
+
+varsym fubar=xx cat test
+varsym fubar=yy cat test
+.Ed
 .Sh COMPATIBILITY
 The
 .Fl h ,
@@ -236,7 +277,8 @@ extension and should not be used in portable scripts.
 .Xr readlink 2 ,
 .Xr stat 2 ,
 .Xr symlink 2 ,
-.Xr symlink 7
+.Xr symlink 7 ,
+.Xr varsym 1
 .Sh STANDARDS
 The
 .Nm
@@ -251,4 +293,4 @@ command conforms to
 An
 .Nm
 command appeared in
-.At v1 .
+.At v1 . Variant Symlinks appeared in DragonFly BSD .

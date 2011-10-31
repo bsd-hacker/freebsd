@@ -1,0 +1,205 @@
+.\" Copyright (c) 2008 The Aerospace Corporation
+.\" All rights reserved.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\" 3. Neither the name of the author nor the names of its contributors may
+.\"    be used to endorse or promote products derived from this software
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+.\" ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.\" IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+.\" ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+.\" FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+.\" DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+.\" OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+.\" HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+.\" LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+.\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+.\" SUCH DAMAGE.
+.\"
+.\" $FreeBSD$
+.\"
+.Dd March 29 2008
+.Dt VARSYM 2
+.Os
+.Sh NAME
+.Nm varsym
+.Nd manipulate variant symlink variables
+.Sh LIBRARY
+.Lb libc
+.Sh SYNOPSIS
+.In varsym.h
+.Ft int
+.Fn varsym_set "int scope" "id_t which" "const char *name" "const char *data"
+.Ft int
+.Fn varsym_get "int scope" "id_t which" "const char *name" "const char *buf" "size_t *size"
+.Ft int
+.Fn varsym_list "int scope" "id_t which" "const char *buf" "size_t *size"
+.Sh DESCRIPTION
+The
+.Fn varsym_set
+function
+sets the variable
+.Fa name
+in the object specifed by
+.Fa scope
+and
+.Fa which
+to the value in the null-terminated string pointed to by
+.Fa data .
+If
+.Fa data
+is
+.Dv NULL
+then the variable will be deleted.
+If
+.Fa name
+is
+.Dv NULL
+then all variables will be deleted.
+.Pp
+The
+.Fn varsym_get
+function
+writes the value of the variable
+.Fa name
+in the object specifed by
+.Fa scope
+and
+.Fa which
+to the buffer
+.Fa buf
+as a null-terminated string.
+The number of bytes written to
+.Fa which
+are copied back to the variable pointed to by
+.Fa size.
+.Pp
+The
+.Fn varsym_list
+function
+writes the names and values of variables
+in the object specifed by
+.Fa scope
+and
+.Fa which
+to the buffer
+.Fa buf
+with nulls between each entry and a final null indicating end of list.
+The number of bytes written to
+.Fa which
+are copied back to the variable pointed to by
+.Fa size.
+.Pp
+The
+.Fa scope
+argument may be one of:
+.Bl -tag -width VARSYM_PROC
+.It Dv VARSYM_SYS
+Get or set variables in the global system scope.
+.It Dv VARSYM_PROC
+Get or set variables for the given process.
+.El
+.Pp
+The following
+.Xr sysctl 3
+MIB variables control the operation of variant symlinks:
+.Bl -tag -width vfs.varsym.enable
+.It Va vfs.varsym.enable
+Enables support for variant symlinks when set to a non-zero value.
+Defaults to off.
+.It Va vfs.varsym.allow_default
+If set to a non-zero value, variant symlinks may be created with default
+values to be used if no variable is set.
+These values are specified by placing a colon after the variable name in the
+link.
+For example
+.Va ${VAR:defaultvalue} .
+.Pp
+.Sy WARNING :
+Default values should not be used in any way that will effect the execution
+of setuid programs unless users can not control the values of variant
+symlinks.
+Administrators are advised to disable default value support when user
+control of per-process values is allowed.
+.It Va vfs.varsym.max_proc_setsize
+Limits the number of per-processes variables that can be set.
+The default limit is 32.
+This limit is only enforced if unprivleged control is allowed by
+.Va security.bsd.unprivileged_varsym_set_proc .
+.It Va security.bsd.unprivileged_varsym_set_proc
+If set to a non-zero value, non-root users may set per-process variant symlink
+variables.
+.El
+.Sh RETURN VALUES
+.Rv -std varsym_set varsym_get varsym_list
+.Sh ERRORS
+The
+.Fn varsym_set ,
+.Fn varsym_get ,
+and
+.Fn varsym_list
+functions will fail and take no action if:
+.Bl -tag -width Er
+.It Bq Er EINVAL
+An invalid value is passed for
+.Fa scope
+or
+.Fa which .
+.It Bq Er EPERM
+The
+.Fa which
+variable is set to a value other than 0 or the current processes pid when
+.Fa scope
+is
+.Dv VARSYM_PROC .
+.It Bq Er EOVERFLOW
+The buffer passed to
+.Fn varsym_get
+or
+.Fn varsym_list
+is too small for the data to be returned.
+.It Bq Er E2BIG
+For the
+.Fn varsym_set
+function, the maximum number of variant symlinks for this object has been
+reached.
+.It Bq Er ENOENT
+The requested variant symlink variable does not exist.
+.It Bq Er ENOSYS
+The system does not support variant symlinks or the support has been
+disabled by setting the
+.Xr sysctl 3
+MIB
+.Va vfs.varsym.enable
+to 0.
+.It Bq Er EFAULT
+One of buffers is outside the process's allocated address space.
+.It Bq Er ENAMETOOLONG
+The value of
+.Fa name
+is longer than
+.Dv MAXVARSYM_NAME
+or
+the value of
+.Fa data
+is longer than
+.Dv MAXVARSYM_DATA .
+.El
+.Sh SEE ALSO
+.Xr varsym_clear 3
+.Sh HISTORY
+This version of variant symlinks is derived from variant symlink support that
+first appeared in DragonFlyBSD 1.0.
+.Sh BUGS
+The
+.Fa which
+argument is effectivly unused at this time and must be 0 or the current
+processes pid.

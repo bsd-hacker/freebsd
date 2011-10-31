@@ -446,4 +446,7 @@
 #define	SYS_rctl_add_rule	528
 #define	SYS_rctl_remove_rule	529
 #define	SYS_posix_fallocate	530
-#define	SYS_MAXSYSCALL	532
+#define	SYS_varsym_set	532
+#define	SYS_varsym_get	533
+#define	SYS_varsym_list	534
+#define	SYS_MAXSYSCALL	535

@@ -1,0 +1,203 @@
+.\" Copyright (c) 1980, 1990, 1993
+.\"	The Regents of the University of California.  All rights reserved.
+.\" Copyright (c) 2007-2009 The Aerospace Corporation. All rights reserved.
+.\"
+.\" This code is derived from software contributed to Berkeley by
+.\" the Institute of Electrical and Electronics Engineers, Inc.
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\" 4. Neither the name of the University nor the names of its contributors
+.\"    may be used to endorse or promote products derived from this software
+.\"    without specific prior written permission.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+.\" ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.\" IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+.\" ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+.\" FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+.\" DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+.\" OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+.\" HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+.\" LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+.\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+.\" SUCH DAMAGE.
+.\"
+.\" From @(#)printenv.1	8.1 (Berkeley) 6/6/93
+.\" From FreeBSD: src/usr.bin/printenv/printenv.1,v 1.17 2002/11/26 17:33:35 ru Exp
+.\" $FreeBSD$
+.\"
+.Dd July 27, 2007
+.Dt VARSYM 1
+.Os
+.Sh NAME
+.Nm varsym
+.Nd set variant symlink variables and execute command, or print symlink
+variables
+.Sh SYNOPSIS
+.Nm
+.Op Fl iPps
+.Op Ar name Ns = Ns Ar value ...
+.Op Ar utility Op Ar argument ...
+.Pp
+.Nm
+.Fl d
+.Op Fl Pps
+.Ar Op name ...
+.Pp
+.Nm
+.Fl e
+.Op Fl Pps
+.Op Ar name
+.Pp
+.Nm
+.Fl is
+.Sh DESCRIPTION
+The
+.Nm
+utility executes another
+.Ar utility
+after modifying the process variant symlink variables as
+specified on the command line.
+Each
+.Ar name Ns = Ns Ar value
+option specifies the setting of a process scope variant symlink variable,
+.Ar name ,
+with a value of
+.Ar value .
+All such variant symlink variables are set before the
+.Ar utility
+is executed.
+.Pp
+The options are as follows:
+.Bl -tag -width indent
+.It Fl d
+Delete the supplied variant symlink variables.
+By default or if the
+.Fl p
+argument is given they are removed from process scope.
+If the
+.Fl P
+argument is givent then are removed from privleged process scope. 
+If the
+.Fl s
+option is given they are removed from system scope.
+If no
+.Ar name
+values are given
+.Nm
+does nothing.
+.It Fl i
+Execute the
+.Ar utility
+with only those process scope variant symlink variables specified by
+.Ar name Ns = Ns Ar value
+options.
+The process variables inherited
+by
+.Nm
+are ignored completely.
+If called with
+.Fl s
+and no
+.Ar utility ,
+clear the system varsym set.
+.It Fl e
+If a
+.Ar name
+argument is given, the value if the variable with
+.Ar name
+is printed if it is set in the specified scope.
+If it is not set, nothing is printed and
+.Nm
+returns 1.
+If no
+.Ar name
+argument is given the
+.Fl e
+flag is a no-op.
+.It Fl p
+Identical to operation without
+.Fl p
+except that if no
+.Ar utility
+argument is given,
+only process scope variant symlink variables will be shown.
+.If Fl P
+Identical to operation with
+.Fl p
+except that privleged process scope variant symlink variables will be set
+or shown.
+.It Fl s
+Allows setting and retrieving of system scope variant symlink variables.
+A
+.Ar utility
+argument must not be given.
+.El
+.Pp
+The above options are only recognized when they are specified
+before any
+.Ar name Ns = Ns Ar value
+options.
+.Pp
+If no
+.Ar utility
+is specified,
+.Nm
+prints out the names and values of the variables in the environment,
+with one name/value pair per line.
+By default, process, privleged process, and system scope variables
+are shown and process scope variables with the same name as privleged
+process or system scope variable are ignored as a privleged process
+scope variables with the same name as sysctem scope variales.
+.\"
+.Sh ENVIRONMENT
+The
+.Nm
+utility uses the
+.Ev PATH
+environment variable to locate the requested
+.Ar utility
+if the name contains no
+.Ql /
+characters.
+.Sh EXIT STATUS
+.Ex -std
+An exit status of 126 indicates that
+.Ar utility
+was found, but could not be executed.
+An exit status of 127 indicates that
+.Ar utility
+could not be found.
+.Sh SEE ALSO
+.Xr env 1 ,
+.Xr varsym 2 ,
+.Xr execvp 3
+.Sh HISTORY
+The
+.Nm
+command appeared in
+.Fx 8.0
+and is based on and derived from the
+.Nm env
+command .
+.Sh BUGS
+The
+.Nm
+utility does not handle values of
+.Ar utility
+which have an equals sign
+.Pq Ql =
+in their name, for obvious reasons.
+.Pp
+The
+.Nm
+utility does not take multibyte characters into account when
+processing the
+.Fl S
+option, which may lead to incorrect results in some locales.

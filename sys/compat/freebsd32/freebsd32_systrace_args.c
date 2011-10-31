@@ -3034,6 +3034,40 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		*n_args = 5;
 		break;
 	}
+	/* freebsd32_varsym_set */
+	case 532: {
+		struct freebsd32_varsym_set_args *p = params;
+		iarg[0] = p->scope; /* int */
+		uarg[1] = p->whichlo; /* uint32_t */
+		uarg[2] = p->whichhi; /* uint32_t */
+		uarg[3] = (intptr_t) p->name; /* const char * */
+		uarg[4] = (intptr_t) p->data; /* const char * */
+		*n_args = 5;
+		break;
+	}
+	/* freebsd32_varsym_get */
+	case 533: {
+		struct freebsd32_varsym_get_args *p = params;
+		iarg[0] = p->scope; /* int */
+		uarg[1] = p->whichlo; /* uint32_t */
+		uarg[2] = p->whichhi; /* uint32_t */
+		uarg[3] = (intptr_t) p->name; /* const char * */
+		uarg[4] = (intptr_t) p->buf; /* char * */
+		uarg[5] = (intptr_t) p->size; /* uint32_t * */
+		*n_args = 6;
+		break;
+	}
+	/* freebsd32_varsym_list */
+	case 534: {
+		struct freebsd32_varsym_list_args *p = params;
+		iarg[0] = p->scope; /* int */
+		uarg[1] = p->whichlo; /* uint32_t */
+		uarg[2] = p->whichhi; /* uint32_t */
+		uarg[3] = (intptr_t) p->buf; /* char * */
+		uarg[4] = (intptr_t) p->size; /* uint32_t * */
+		*n_args = 5;
+		break;
+	}
 	default:
 		*n_args = 0;
 		break;
@@ -8088,6 +8122,75 @@ systrace_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		case 4:
 			p = "uint32_t";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* freebsd32_varsym_set */
+	case 532:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "uint32_t";
+			break;
+		case 2:
+			p = "uint32_t";
+			break;
+		case 3:
+			p = "const char *";
+			break;
+		case 4:
+			p = "const char *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* freebsd32_varsym_get */
+	case 533:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "uint32_t";
+			break;
+		case 2:
+			p = "uint32_t";
+			break;
+		case 3:
+			p = "const char *";
+			break;
+		case 4:
+			p = "char *";
+			break;
+		case 5:
+			p = "uint32_t *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* freebsd32_varsym_list */
+	case 534:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "uint32_t";
+			break;
+		case 2:
+			p = "uint32_t";
+			break;
+		case 3:
+			p = "char *";
+			break;
+		case 4:
+			p = "uint32_t *";
 			break;
 		default:
 			break;

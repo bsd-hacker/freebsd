@@ -494,9 +494,17 @@
 #define	PRIV_RCTL_REMOVE_RULE	674
 
 /*
+ * varsym privileges.
+ */
+#define PRIV_VARSYM_SET_SYS	680	/* Set system wide varsym varibles */
+#define PRIV_VARSYM_SET_PROC	681	/* Set per-process varsym varibles */
+#define PRIV_VARSYM_SET_PROC_PRIV	682	/* Set privleged per-process
+						   varsym varibles */
+
+/*
  * Track end of privilege list.
  */
-#define	_PRIV_HIGHEST		675
+#define	_PRIV_HIGHEST		683
 
 /*
  * Validate that a named privilege is known by the privilege system.  Invalid

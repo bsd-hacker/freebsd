@@ -50,7 +50,8 @@
 #define LOGIN_SETMAC		0x0100		/* set user default MAC label */
 #define LOGIN_SETCPUMASK	0x0200		/* set user cpumask */
 #define LOGIN_SETLOGINCLASS	0x0400		/* set login class in the kernel */
-#define LOGIN_SETALL		0x07ff		/* set everything */
+#define LOGIN_SETVARSYM		0x0800		/* set process variant symlink vars */
+#define LOGIN_SETALL		0x0fff		/* set everything */
 
 #define BI_AUTH		"authorize"		/* accepted authentication */
 #define BI_REJECT	"reject"		/* rejected authentication */
@@ -118,6 +119,7 @@ const char *login_setcryptfmt(login_cap_t *, const char *, const char *);
 
 int setclasscontext(const char *, unsigned int);
 void setclasscpumask(login_cap_t *);
+void setclassvarsyms(login_cap_t *, const struct passwd *);
 int setusercontext(login_cap_t *, const struct passwd *, uid_t, unsigned int);
 void setclassresources(login_cap_t *);
 void setclassenvironment(login_cap_t *, const struct passwd *, int);

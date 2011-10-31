@@ -394,4 +394,7 @@ MIASM =  \
 	rctl_get_limits.o \
 	rctl_add_rule.o \
 	rctl_remove_rule.o \
-	posix_fallocate.o
+	posix_fallocate.o \
+	varsym_set.o \
+	varsym_get.o \
+	varsym_list.o

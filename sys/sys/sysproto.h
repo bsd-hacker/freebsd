@@ -1733,6 +1733,25 @@ struct posix_fallocate_args {
 	char offset_l_[PADL_(off_t)]; off_t offset; char offset_r_[PADR_(off_t)];
 	char len_l_[PADL_(off_t)]; off_t len; char len_r_[PADR_(off_t)];
 };
+struct varsym_set_args {
+	char scope_l_[PADL_(int)]; int scope; char scope_r_[PADR_(int)];
+	char which_l_[PADL_(id_t)]; id_t which; char which_r_[PADR_(id_t)];
+	char name_l_[PADL_(const char *)]; const char * name; char name_r_[PADR_(const char *)];
+	char data_l_[PADL_(const char *)]; const char * data; char data_r_[PADR_(const char *)];
+};
+struct varsym_get_args {
+	char scope_l_[PADL_(int)]; int scope; char scope_r_[PADR_(int)];
+	char which_l_[PADL_(id_t)]; id_t which; char which_r_[PADR_(id_t)];
+	char name_l_[PADL_(const char *)]; const char * name; char name_r_[PADR_(const char *)];
+	char buf_l_[PADL_(char *)]; char * buf; char buf_r_[PADR_(char *)];
+	char size_l_[PADL_(size_t *)]; size_t * size; char size_r_[PADR_(size_t *)];
+};
+struct varsym_list_args {
+	char scope_l_[PADL_(int)]; int scope; char scope_r_[PADR_(int)];
+	char which_l_[PADL_(id_t)]; id_t which; char which_r_[PADR_(id_t)];
+	char buf_l_[PADL_(char *)]; char * buf; char buf_r_[PADR_(char *)];
+	char size_l_[PADL_(size_t *)]; size_t * size; char size_r_[PADR_(size_t *)];
+};
 int	nosys(struct thread *, struct nosys_args *);
 void	sys_sys_exit(struct thread *, struct sys_exit_args *);
 int	sys_fork(struct thread *, struct fork_args *);
@@ -2109,6 +2128,9 @@ int	sys_rctl_get_limits(struct thread *, struct rctl_get_limits_args *);
 int	sys_rctl_add_rule(struct thread *, struct rctl_add_rule_args *);
 int	sys_rctl_remove_rule(struct thread *, struct rctl_remove_rule_args *);
 int	sys_posix_fallocate(struct thread *, struct posix_fallocate_args *);
+int	sys_varsym_set(struct thread *, struct varsym_set_args *);
+int	sys_varsym_get(struct thread *, struct varsym_get_args *);
+int	sys_varsym_list(struct thread *, struct varsym_list_args *);
 
 #ifdef COMPAT_43
 
@@ -2799,6 +2821,9 @@ int	freebsd7_shmctl(struct thread *, struct freebsd7_shmctl_args *);
 #define	SYS_AUE_rctl_add_rule	AUE_NULL
 #define	SYS_AUE_rctl_remove_rule	AUE_NULL
 #define	SYS_AUE_posix_fallocate	AUE_NULL
+#define	SYS_AUE_varsym_set	AUE_NULL
+#define	SYS_AUE_varsym_get	AUE_NULL
+#define	SYS_AUE_varsym_list	AUE_NULL
 
 #undef PAD_
 #undef PADL_

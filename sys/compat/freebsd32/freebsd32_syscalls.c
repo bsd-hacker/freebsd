@@ -555,4 +555,7 @@ const char *freebsd32_syscallnames[] = {
 	"rctl_remove_rule",			/* 529 = rctl_remove_rule */
 	"freebsd32_posix_fallocate",			/* 530 = freebsd32_posix_fallocate */
 	"#531",			/* 531 = posix_fadvise */
+	"freebsd32_varsym_set",			/* 532 = freebsd32_varsym_set */
+	"freebsd32_varsym_get",			/* 533 = freebsd32_varsym_get */
+	"freebsd32_varsym_list",			/* 534 = freebsd32_varsym_list */
 };

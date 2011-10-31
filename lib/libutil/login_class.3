@@ -175,6 +175,9 @@ no action will be taken.
 .It LOGIN_SETLOGINCLASS
 Set the login class of the current process using
 .Xr setloginclass 2 .
+.It LOGIN_SETVARSYM
+Set process scope variant symlink variables using the list type capability
+"varsym=var1=val1,var2=val2..,varN=valN".
 .It LOGIN_SETALL
 Enables all of the above settings.
 .El
@@ -214,6 +217,7 @@ with LOG_ERR priority and directed to the currently active facility.
 .Xr setlogin 2 ,
 .Xr setloginclass 2 ,
 .Xr setuid 2 ,
+.Xr varsym 2 ,
 .Xr getcap 3 ,
 .Xr initgroups 3 ,
 .Xr login_cap 3 ,

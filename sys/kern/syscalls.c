@@ -539,4 +539,7 @@ const char *syscallnames[] = {
 	"rctl_remove_rule",			/* 529 = rctl_remove_rule */
 	"posix_fallocate",			/* 530 = posix_fallocate */
 	"#531",			/* 531 = posix_fadvise */
+	"varsym_set",			/* 532 = varsym_set */
+	"varsym_get",			/* 533 = varsym_get */
+	"varsym_list",			/* 534 = varsym_list */
 };

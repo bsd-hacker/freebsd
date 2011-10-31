@@ -114,7 +114,7 @@ MAN+=	sctp_generic_recvmsg.2 sctp_generic_sendmsg.2 sctp_peeloff.2 \
 	swapon.2 symlink.2 sync.2 sysarch.2 syscall.2 \
 	timer_create.2 timer_delete.2 timer_settime.2 \
 	truncate.2 umask.2 undelete.2 \
-	unlink.2 utimes.2 utrace.2 uuidgen.2 vfork.2 wait.2 write.2
+	unlink.2 utimes.2 utrace.2 uuidgen.2 varsym.2 vfork.2 wait.2 write.2
 
 MLINKS+=access.2 eaccess.2 access.2 faccessat.2
 MLINKS+=brk.2 sbrk.2
@@ -210,4 +210,5 @@ MLINKS+=truncate.2 ftruncate.2
 MLINKS+=unlink.2 unlinkat.2
 MLINKS+=utimes.2 futimes.2 utimes.2 futimesat.2 utimes.2 lutimes.2
 MLINKS+=wait.2 wait3.2 wait.2 wait4.2 wait.2 waitpid.2
-MLINKS+=write.2 pwrite.2 write.2 pwritev.2 write.2 writev.2
+MLINKS+=write.2 pwrite.2 write.2 writev.2 write.2 pwritev.2
+MLINKS+=varsym.2 varsym_set.2 varsym.2 varsym_get.2 varsym.2 varsym_list.2

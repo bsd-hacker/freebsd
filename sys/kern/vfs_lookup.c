@@ -370,6 +370,10 @@ namei(struct nameidata *ndp)
 			break;
 		}
 		linklen = MAXPATHLEN - auio.uio_resid;
+#ifdef VARSYM
+		if (varsym_enable)
+			linklen = varsymreplace(cp, linklen, MAXPATHLEN);
+#endif
 		if (linklen == 0) {
 			if (ndp->ni_pathlen > 1)
 				uma_zfree(namei_zone, cp);

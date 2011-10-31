@@ -32,6 +32,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/rtprio.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <sys/varsym.h>
 
 #include <ctype.h>
 #include <err.h>
@@ -136,9 +137,15 @@ static struct login_vars {
 };
 
 static char *
-substvar(const char * var, const struct passwd * pwd, int hlen, int pch, int nlen)
+substvar(const char * var, const struct passwd * pwd)
 {
-    char    *np = NULL;
+    char	*np = NULL;
+    int		hlen = pwd ? strlen(pwd->pw_dir) : 0;
+    int		nlen = pwd ? strlen(pwd->pw_name) : 0;
+    char	pch = 0;
+
+    if (hlen && pwd->pw_dir[hlen-1] != '/')
+	++pch;
 
     if (var != NULL) {
 	int	tildes = 0;
@@ -196,18 +203,12 @@ void
 setclassenvironment(login_cap_t *lc, const struct passwd * pwd, int paths)
 {
     struct login_vars	*vars = paths ? pathvars : envars;
-    int			hlen = pwd ? strlen(pwd->pw_dir) : 0;
-    int			nlen = pwd ? strlen(pwd->pw_name) : 0;
-    char pch = 0;
-
-    if (hlen && pwd->pw_dir[hlen-1] != '/')
-	++pch;
 
     while (vars->tag != NULL) {
 	const char * var = paths ? login_getpath(lc, vars->tag, NULL)
 				 : login_getcapstr(lc, vars->tag, NULL, NULL);
 
-	char * np  = substvar(var, pwd, hlen, pch, nlen);
+	char * np  = substvar(var, pwd);
 
 	if (np != NULL) {
 	    setenv(vars->var, np, vars->overwrite);
@@ -233,7 +234,7 @@ setclassenvironment(login_cap_t *lc, const struct passwd * pwd, int paths)
 		    char	*np;
 
 		    *p++ = '\0';
-		    if ((np = substvar(p, pwd, hlen, pch, nlen)) != NULL) {
+		    if ((np = substvar(p, pwd)) != NULL) {
 			setenv(*set_env, np, 1);
 			free(np);
 		    }
@@ -347,6 +348,31 @@ setclasscpumask(login_cap_t *lc)
 }
 
 
+void
+setclassvarsyms(login_cap_t *lc, const struct passwd * pwd)
+{
+    const char	**varsyms = login_getcaplist(lc, "varsym", ",");
+
+    if (varsyms != NULL) {
+	while (*varsyms != NULL) {
+	    char	*p = strchr(*varsyms, '=');
+
+	    if (p != NULL) {  /* Discard invalid entries */
+		char	*np;
+
+		*p++ = '\0';
+		if ((np = substvar(p, pwd)) != NULL) {
+			/* XXX: should we only ignore ENOSYS? */
+			(void)varsym_set(VARSYM_PROC, 0, *varsyms, np);
+			free(np);
+		}
+	    }
+	    ++varsyms;
+	}
+    }
+}
+
+
 /*
  * setclasscontext()
  *
@@ -400,6 +426,9 @@ setlogincontext(login_cap_t *lc, const struct passwd *pwd,
 	/* Set cpu affinity */
 	if (flags & LOGIN_SETCPUMASK)
 	    setclasscpumask(lc);
+	/* Set variant symlink variables */
+	if (flags & LOGIN_SETVARSYM)
+	    setclassvarsyms(lc, pwd);
     }
     return (mymask);
 }

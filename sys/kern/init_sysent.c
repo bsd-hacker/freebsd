@@ -566,4 +566,7 @@ struct sysent sysent[] = {
 	{ AS(rctl_remove_rule_args), (sy_call_t *)sys_rctl_remove_rule, AUE_NULL, NULL, 0, 0, 0, SY_THR_STATIC },	/* 529 = rctl_remove_rule */
 	{ AS(posix_fallocate_args), (sy_call_t *)sys_posix_fallocate, AUE_NULL, NULL, 0, 0, 0, SY_THR_STATIC },	/* 530 = posix_fallocate */
 	{ 0, (sy_call_t *)nosys, AUE_NULL, NULL, 0, 0, 0, SY_THR_ABSENT },			/* 531 = posix_fadvise */
+	{ AS(varsym_set_args), (sy_call_t *)sys_varsym_set, AUE_NULL, NULL, 0, 0, 0, SY_THR_STATIC },	/* 532 = varsym_set */
+	{ AS(varsym_get_args), (sy_call_t *)sys_varsym_get, AUE_NULL, NULL, 0, 0, 0, SY_THR_STATIC },	/* 533 = varsym_get */
+	{ AS(varsym_list_args), (sy_call_t *)sys_varsym_list, AUE_NULL, NULL, 0, 0, 0, SY_THR_STATIC },	/* 534 = varsym_list */
 };

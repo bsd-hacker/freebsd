@@ -424,4 +424,7 @@
 #define	FREEBSD32_SYS_rctl_add_rule	528
 #define	FREEBSD32_SYS_rctl_remove_rule	529
 #define	FREEBSD32_SYS_freebsd32_posix_fallocate	530
-#define	FREEBSD32_SYS_MAXSYSCALL	532
+#define	FREEBSD32_SYS_freebsd32_varsym_set	532
+#define	FREEBSD32_SYS_freebsd32_varsym_get	533
+#define	FREEBSD32_SYS_freebsd32_varsym_list	534
+#define	FREEBSD32_SYS_MAXSYSCALL	535

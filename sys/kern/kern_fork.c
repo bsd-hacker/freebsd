@@ -426,6 +426,14 @@ do_fork(struct thread *td, int flags, struct proc *p2, struct thread *td2,
 	else
 		newsigacts = sigacts_alloc();
 
+#ifdef VARSYM
+	/*
+	 * Initialize and copy varsyms
+	 */
+	varsymset_init(&p2->p_varsymset, &p1->p_varsymset);
+	varsymset_init(&p2->p_varsymset_priv, &p1->p_varsymset_priv);
+#endif
+
 	/*
 	 * Copy filedesc.
 	 */

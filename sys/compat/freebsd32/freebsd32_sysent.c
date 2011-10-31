@@ -592,4 +592,7 @@ struct sysent freebsd32_sysent[] = {
 	{ AS(rctl_remove_rule_args), (sy_call_t *)sys_rctl_remove_rule, AUE_NULL, NULL, 0, 0, 0, SY_THR_STATIC },	/* 529 = rctl_remove_rule */
 	{ AS(freebsd32_posix_fallocate_args), (sy_call_t *)freebsd32_posix_fallocate, AUE_NULL, NULL, 0, 0, 0, SY_THR_STATIC },	/* 530 = freebsd32_posix_fallocate */
 	{ 0, (sy_call_t *)nosys, AUE_NULL, NULL, 0, 0, 0, SY_THR_ABSENT },			/* 531 = posix_fadvise */
+	{ AS(freebsd32_varsym_set_args), (sy_call_t *)freebsd32_varsym_set, AUE_NULL, NULL, 0, 0, 0, SY_THR_STATIC },	/* 532 = freebsd32_varsym_set */
+	{ AS(freebsd32_varsym_get_args), (sy_call_t *)freebsd32_varsym_get, AUE_NULL, NULL, 0, 0, 0, SY_THR_STATIC },	/* 533 = freebsd32_varsym_get */
+	{ AS(freebsd32_varsym_list_args), (sy_call_t *)freebsd32_varsym_list, AUE_NULL, NULL, 0, 0, 0, SY_THR_STATIC },	/* 534 = freebsd32_varsym_list */
 };

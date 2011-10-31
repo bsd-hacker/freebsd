@@ -3234,6 +3234,37 @@ systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 		*n_args = 3;
 		break;
 	}
+	/* varsym_set */
+	case 532: {
+		struct varsym_set_args *p = params;
+		iarg[0] = p->scope; /* int */
+		iarg[1] = p->which; /* id_t */
+		uarg[2] = (intptr_t) p->name; /* const char * */
+		uarg[3] = (intptr_t) p->data; /* const char * */
+		*n_args = 4;
+		break;
+	}
+	/* varsym_get */
+	case 533: {
+		struct varsym_get_args *p = params;
+		iarg[0] = p->scope; /* int */
+		iarg[1] = p->which; /* id_t */
+		uarg[2] = (intptr_t) p->name; /* const char * */
+		uarg[3] = (intptr_t) p->buf; /* char * */
+		uarg[4] = (intptr_t) p->size; /* size_t * */
+		*n_args = 5;
+		break;
+	}
+	/* varsym_list */
+	case 534: {
+		struct varsym_list_args *p = params;
+		iarg[0] = p->scope; /* int */
+		iarg[1] = p->which; /* id_t */
+		uarg[2] = (intptr_t) p->buf; /* char * */
+		uarg[3] = (intptr_t) p->size; /* size_t * */
+		*n_args = 4;
+		break;
+	}
 	default:
 		*n_args = 0;
 		break;
@@ -8598,6 +8629,66 @@ systrace_setargdesc(int sysnum, int ndx, char *desc, size_t descsz)
 			break;
 		case 2:
 			p = "off_t";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* varsym_set */
+	case 532:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "id_t";
+			break;
+		case 2:
+			p = "const char *";
+			break;
+		case 3:
+			p = "const char *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* varsym_get */
+	case 533:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "id_t";
+			break;
+		case 2:
+			p = "const char *";
+			break;
+		case 3:
+			p = "char *";
+			break;
+		case 4:
+			p = "size_t *";
+			break;
+		default:
+			break;
+		};
+		break;
+	/* varsym_list */
+	case 534:
+		switch(ndx) {
+		case 0:
+			p = "int";
+			break;
+		case 1:
+			p = "id_t";
+			break;
+		case 2:
+			p = "char *";
+			break;
+		case 3:
+			p = "size_t *";
 			break;
 		default:
 			break;

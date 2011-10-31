@@ -63,6 +63,7 @@
 #endif
 #include <sys/ucontext.h>
 #include <sys/ucred.h>
+#include <sys/varsym.h>
 #include <machine/proc.h>		/* Machine-dependent proc substruct. */
 
 /*
@@ -500,6 +501,8 @@ struct proc {
 	struct ksiginfo *p_ksi;	/* Locked by parent proc lock */
 	sigqueue_t	p_sigqueue;	/* (c) Sigs not delivered to a td. */
 #define p_siglist	p_sigqueue.sq_signals
+	struct varsymset p_varsymset;	/* (c) process varsym set */
+	struct varsymset p_varsymset_priv; /* (c) process privleged varsym set */
 
 /* The following fields are all zeroed upon creation in fork. */
 #define	p_startzero	p_oppid

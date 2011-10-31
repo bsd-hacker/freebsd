@@ -1,0 +1,5 @@
+pre-commit:
+- get review, tweak as necessicary
+
+post-commit:
+- add jail or vimage support

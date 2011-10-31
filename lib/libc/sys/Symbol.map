@@ -326,6 +326,9 @@ FBSD_1.0 {
 	pread;
 	pwrite;
 	truncate;
+	varsym_set;
+	varsym_get;
+	varsym_list;
 };
 
 FBSD_1.1 {

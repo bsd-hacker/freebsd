@@ -75,6 +75,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/thr.h>
 #include <sys/unistd.h>
 #include <sys/ucontext.h>
+#include <sys/varsym.h>
 #include <sys/vnode.h>
 #include <sys/wait.h>
 #include <sys/ipc.h>
@@ -2513,6 +2514,92 @@ freebsd32_nmount(struct thread *td,
 	free(auio, M_IOV);
 	return error;
 }
+
+#ifdef VARSYM
+int
+freebsd32_varsym_set(struct thread *td, struct freebsd32_varsym_set_args *uap)
+{
+	struct varsym_set_args ap;
+
+	ap.scope = uap->scope;
+	ap.which = (uap->whichlo | ((id_t)uap->whichhi << 32));
+	ap.name = uap->name;
+	ap.data = uap->data;
+
+	return (varsym_set(td, &ap));
+}
+
+
+int
+freebsd32_varsym_get(struct thread *td, struct freebsd32_varsym_get_args *uap)
+{
+	int error;
+	id_t which;
+	size_t bufsize;
+	uint32_t bufsize32;
+
+	which = (uap->whichlo | ((id_t)uap->whichhi << 32));
+
+	if ((error = copyin(uap->size, &bufsize32, sizeof(bufsize32))) != 0)
+		return(error);
+	bufsize = bufsize32;
+
+	if ((error = kern_varsym_get(td, uap->scope, which, uap->name,
+	    uap->buf, &bufsize)) != 0)
+		return(error);
+
+	bufsize32 = bufsize;
+	error = copyout(&bufsize32, uap->size, sizeof(bufsize32));
+
+	return(error);
+}
+
+int
+freebsd32_varsym_list(struct thread *td, struct freebsd32_varsym_list_args *uap)
+{
+	int error;
+	id_t which;
+	size_t bufsize;
+	uint32_t bufsize32;
+
+	which = (uap->whichlo | ((id_t)uap->whichhi << 32));
+
+	if ((error = copyin(uap->size, &bufsize32, sizeof(bufsize32))) != 0)
+		return(error);
+	bufsize = bufsize32;
+
+	if ((error = kern_varsym_list(td, uap->scope, which, uap->buf,
+	    &bufsize)) != 0)
+		return(error);
+
+	bufsize32 = bufsize;
+	error = copyout(&bufsize32, uap->size, sizeof(bufsize32));
+
+	return(error);
+}
+
+#else /* VARSYM */
+int
+freebsd32_varsym_set(struct thread *td, struct freebsd32_varsym_set_args *uap)
+{
+
+	return (ENOSYS);
+}
+
+int
+freebsd32_varsym_get(struct thread *td, struct freebsd32_varsym_get_args *uap)
+{
+
+	return (ENOSYS);
+}
+
+int
+freebsd32_varsym_list(struct thread *td, struct freebsd32_varsym_list_args *uap)
+{
+
+	return (ENOSYS);
+}
+#endif /* VARSYM */
 
 #if 0
 int

@@ -948,5 +948,13 @@
 530	AUE_NULL	STD	{ int posix_fallocate(int fd, \
 				    off_t offset, off_t len); }
 531	AUE_NULL	UNIMPL	posix_fadvise
+532	AUE_NULL	STD	{ int varsym_set(int scope, id_t which, \
+				    const char *name, \
+				    const char *data); }
+533	AUE_NULL	STD	{ int varsym_get(int scope, id_t which,\
+				    const char *name, \
+				    char *buf, size_t *size); }
+534	AUE_NULL	STD	{ int varsym_list(int scope, id_t which,\
+                                   char *buf, size_t *size); }
 ; Please copy any additions and changes to the following compatability tables:
 ; sys/compat/freebsd32/syscalls.master

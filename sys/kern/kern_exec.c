@@ -729,6 +729,14 @@ interpret:
 		change_svgid(newcred, newcred->cr_gid);
 		p->p_ucred = newcred;
 		newcred = NULL;
+
+#ifdef VARSYM
+		/*
+		 * Clear local varsym variables.
+		 * Do not clear privleged varsym variables.
+		 */
+		varsymset_clean(&p->p_varsymset);
+#endif
 	} else {
 		if (oldcred->cr_uid == oldcred->cr_ruid &&
 		    oldcred->cr_gid == oldcred->cr_rgid)
