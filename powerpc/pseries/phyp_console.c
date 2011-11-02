@@ -25,8 +25,6 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD: projects/pseries/powerpc/phyp/phyp_console.c 214348 2010-10-25 15:41:12Z nwhitehorn $");
 
-#include "opt_comconsole.h"
-
 #include <sys/param.h>
 #include <sys/kdb.h>
 #include <sys/kernel.h>
@@ -39,178 +37,133 @@ __FBSDID("$FreeBSD: projects/pseries/powerpc/phyp/phyp_console.c 214348 2010-10-
 #include <sys/tty.h>
 
 #include <dev/ofw/openfirm.h>
-
-#include <ddb/ddb.h>
+#include <dev/uart/uart.h>
+#include <dev/uart/uart_cpu.h>
+#include <dev/uart/uart_bus.h>
 
 #include "phyp-hvcall.h"
+#include "uart_if.h"
 
-static tsw_outwakeup_t phyptty_outwakeup;
-
-static struct ttydevsw phyp_ttydevsw = {
-	.tsw_flags	= TF_NOPREFIX,
-	.tsw_outwakeup	= phyptty_outwakeup,
-};
-
-static int			polltime;
-static cell_t			termno;
-static struct callout		phyp_callout;
 static union {
 	uint64_t u64[2];
 	char str[16];
 } phyp_inbuf;
 static uint64_t			phyp_inbuflen = 0;
-static struct tty 		*tp = NULL;
 
-#if defined(KDB) && defined(ALT_BREAK_TO_DEBUGGER)
-static int			alt_break_state;
-#endif
+enum {
+	HVTERM1, HVTERMPROT
+};
 
-static void	phyp_timeout(void *);
+/*
+ * Low-level UART interface
+ */
+static int phyp_uart_probe(struct uart_bas *bas);
+static void phyp_uart_init(struct uart_bas *bas, int baudrate, int databits,
+    int stopbits, int parity);
+static void phyp_uart_term(struct uart_bas *bas);
+static void phyp_uart_putc(struct uart_bas *bas, int c);
+static int phyp_uart_rxready(struct uart_bas *bas);
+static int phyp_uart_getc(struct uart_bas *bas, struct mtx *hwmtx);
 
-static cn_probe_t	phyp_cnprobe;
-static cn_init_t	phyp_cninit;
-static cn_term_t	phyp_cnterm;
-static cn_getc_t	phyp_cngetc;
-static cn_putc_t	phyp_cnputc;
+static struct uart_ops phyp_uart_ops = {
+	.probe = phyp_uart_probe,
+	.init = phyp_uart_init,
+	.term = phyp_uart_term,
+	.putc = phyp_uart_putc,
+	.rxready = phyp_uart_rxready,
+	.getc = phyp_uart_getc,
+};
 
-CONSOLE_DRIVER(phyp);
+struct uart_class uart_phyp_class = {
+	"uart",
+	NULL,
+	sizeof(struct uart_softc),
+	.uc_ops = &phyp_uart_ops,
+	.uc_range = 1,
+	.uc_rclk = 0x5bbc
+};
 
-static void
-cn_drvinit(void *unused)
+static int
+phyp_uart_probe(struct uart_bas *bas)
 {
-	phandle_t dev;
+	phandle_t node = bas->chan;
+	char buf[64];
 
-	if (phyp_consdev.cn_pri != CN_DEAD &&
-	    phyp_consdev.cn_name[0] != '\0') {
-		dev = OF_finddevice("/vdevice/vty");
-		if (dev == -1)
-			return;
+	if (OF_getprop(node, "name", buf, sizeof(buf)) <= 0)
+		return (ENXIO);
+	if (strcmp(buf, "vty") != 0)
+		return (ENXIO);
 
-		OF_getprop(dev, "reg", &termno, sizeof(termno));
-		tp = tty_alloc(&phyp_ttydevsw, NULL);
-		tty_init_console(tp, 0);
-		tty_makedev(tp, NULL, "%s", "phypvty");
+	if (OF_getprop(node, "device_type", buf, sizeof(buf)) <= 0)
+		return (ENXIO);
+	if (strcmp(buf, "serial") != 0)
+		return (ENXIO);
 
-		polltime = 1;
-
-		callout_init(&phyp_callout, CALLOUT_MPSAFE);
-		callout_reset(&phyp_callout, polltime, phyp_timeout, NULL);
+	if (OF_getprop(node, "compatible", buf, sizeof(buf)) <= 0)
+		return (ENXIO);
+	if (strcmp(buf, "hvterm1") == 0) {
+		bas->regshft = HVTERM1;
+		return (0);
+	} else if (strcmp(buf, "hvterm-protocol") == 0) {
+		bas->regshft = HVTERMPROT;
+		return (0);
 	}
+		
+	return (ENXIO);
 }
 
-SYSINIT(cndev, SI_SUB_CONFIGURE, SI_ORDER_MIDDLE, cn_drvinit, NULL);
-
 static void
-phyptty_outwakeup(struct tty *tp)
+phyp_uart_init(struct uart_bas *bas, int baudrate __unused,
+    int databits __unused, int stopbits __unused, int parity __unused)
 {
-	int len, err;
-	uint64_t buf[2];
-
-	for (;;) {
-		len = ttydisc_getc(tp, buf, sizeof buf);
-		if (len == 0)
-			break;
-
-		do {
-			err = phyp_hcall(H_PUT_TERM_CHAR, termno,
-			    (register_t)len, buf[0], buf[1]);
-		} while (err == H_BUSY);
-	}
 }
 
 static void
-phyp_timeout(void *v)
-{
-	int 	c;
-
-	tty_lock(tp);
-	while ((c = phyp_cngetc(NULL)) != -1)
-		ttydisc_rint(tp, c, 0);
-	ttydisc_rint_done(tp);
-	tty_unlock(tp);
-
-	callout_reset(&phyp_callout, polltime, phyp_timeout, NULL);
-}
-
-static void
-phyp_cnprobe(struct consdev *cp)
-{
-	phandle_t dev;
-
-	dev = OF_finddevice("/vdevice/vty");
-
-	if (dev == -1) {
-		cp->cn_pri = CN_DEAD;
-		return;
-	}
-
-	OF_getprop(dev, "reg", &termno, sizeof(termno));
-	cp->cn_pri = CN_NORMAL;
-}
-
-static void
-phyp_cninit(struct consdev *cp)
-{
-
-	/* XXX: This is the alias, but that should be good enough */
-	strcpy(cp->cn_name, "phypcons");
-}
-
-static void
-phyp_cnterm(struct consdev *cp)
+phyp_uart_term(struct uart_bas *bas __unused)
 {
 }
 
 static int
-phyp_cngetc(struct consdev *cp)
+phyp_uart_getc(struct uart_bas *bas, struct mtx *hwmtx)
 {
 	int ch, err;
-#if defined(KDB) && defined(ALT_BREAK_TO_DEBUGGER)
-	int kdb_brk;
-#endif
 
-	/* XXX: thread safety */
+	uart_lock(hwmtx);
 	if (phyp_inbuflen == 0) {
-		err = phyp_pft_hcall(H_GET_TERM_CHAR, termno, 0, 0, 0,
-		    &phyp_inbuflen, &phyp_inbuf.u64[0], &phyp_inbuf.u64[1]);
-		if (err != H_SUCCESS)
+		err = phyp_pft_hcall(H_GET_TERM_CHAR, (uint64_t)bas->bsh,
+		    0, 0, 0, &phyp_inbuflen, &phyp_inbuf.u64[0],
+		    &phyp_inbuf.u64[1]);
+		if (err != H_SUCCESS) {
+			uart_unlock(hwmtx);
 			return (-1);
+		}
 	}
 
-	if (phyp_inbuflen == 0)
+	if (phyp_inbuflen == 0) {
+		uart_unlock(hwmtx);
 		return (-1);
+	}
 
 	ch = phyp_inbuf.str[0];
 	phyp_inbuflen--;
 	if (phyp_inbuflen > 0)
 		memcpy(&phyp_inbuf.str[0], &phyp_inbuf.str[1], phyp_inbuflen);
 
-#if defined(KDB) && defined(ALT_BREAK_TO_DEBUGGER)
-	if ((kdb_brk = kdb_alt_break(ch, &alt_break_state)) != 0) {
-		switch (kdb_brk) {
-		case KDB_REQ_DEBUGGER:
-			kdb_enter(KDB_WHY_BREAK,
-			    "Break sequence on console");
-			break;
-		case KDB_REQ_PANIC:
-			kdb_panic("Panic sequence on console");
-			break;
-		case KDB_REQ_REBOOT:
-			kdb_reboot();
-			break;
-
-		}
-	}
-#endif
+	uart_unlock(hwmtx);
 	return (ch);
 }
 
 static void
-phyp_cnputc(struct consdev *cp, int c)
+phyp_uart_putc(struct uart_bas *bas, int c)
 {
 	uint64_t cbuf;
 
 	cbuf = (uint64_t)c << 56;
-	phyp_hcall(H_PUT_TERM_CHAR, termno, 1UL, cbuf, 0);
+	phyp_hcall(H_PUT_TERM_CHAR, (uint64_t)bas->bsh, 1UL, cbuf, 0);
 }
 
+static int
+phyp_uart_rxready(struct uart_bas *bas)
+{
+	return (1);
+}
