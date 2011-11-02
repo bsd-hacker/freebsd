@@ -213,11 +213,13 @@ ofw_pcibus_enum_devtree(device_t dev, u_int domain, u_int busno)
 				icells = 1;
 				OF_getprop(child, "interrupt-parent", &iparent,
 				    sizeof(iparent));
-				OF_getprop(iparent, "#interrupt-cells", &icells,
-				    sizeof(icells));
+				iparent = OF_xref_phandle(iparent);
 
-				if (iparent != 0)
+				if (iparent != 0) {
+					OF_getprop(iparent, "#interrupt-cells",
+					    &icells, sizeof(icells));
 					intr[0] = MAP_IRQ(iparent, intr[0]);
+				}
 
 				if (iparent != 0 && icells > 1) {
 					powerpc_config_intr(intr[0],
@@ -344,6 +346,8 @@ ofw_pcibus_assign_interrupt(device_t dev, device_t child)
 	iparent = -1;
 	if (OF_getprop(node, "interrupt-parent", &iparent, sizeof(iparent)) < 0)
 		iparent = -1;
+	else
+		iparent = OF_xref_phandle(iparent);
 	
 	/*
 	 * Any AAPL,interrupts property gets priority and is
