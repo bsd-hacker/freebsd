@@ -91,6 +91,7 @@ sizes(void)
 	describe(int);
 	describe(long);
 	describe(long long);
+	describe(intmax_t);
 	describe(float);
 	describe(double);
 	describe(long double);
