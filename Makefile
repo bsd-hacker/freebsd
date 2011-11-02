@@ -1,8 +1,12 @@
 # $FreeBSD$
 
-PROG	 = sizes
-CSTD	?= c99
-WARNS	?= 6
-MAN	 = # none
+.POSIX:
 
-.include <bsd.prog.mk>
+PROG	= sizes
+CC	= c99
+CFLAGS	= # none
+
+all: ${PROG}
+
+clean:
+	-rm ${PROG}
