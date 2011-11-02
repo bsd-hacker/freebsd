@@ -96,7 +96,6 @@ sizes(void)
 	describe(long double);
 	describe(size_t);
 	describe(ptrdiff_t);
-	describe(off_t);
 	describe(time_t);
 	describe(void_ptr);
 	describe(func_ptr);
