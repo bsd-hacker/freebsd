@@ -285,6 +285,7 @@ ofw_bus_search_intrmap(void *intr, int intrsz, void *regs, int physsz,
 	i = imapsz;
 	while (i > 0) {
 		bcopy(mptr + physsz + intrsz, &parent, sizeof(parent));
+		parent = OF_xref_phandle(parent);
 		if (OF_searchprop(parent, "#interrupt-cells",
 		    &pintrsz, sizeof(pintrsz)) == -1)
 			pintrsz = 1;	/* default */
@@ -292,7 +293,10 @@ ofw_bus_search_intrmap(void *intr, int intrsz, void *regs, int physsz,
 
 		/* Compute the map stride size. */
 		tsz = physsz + intrsz + sizeof(phandle_t) + pintrsz;
-		KASSERT(i >= tsz, ("ofw_bus_search_intrmap: truncated map"));
+		KASSERT(i >= tsz, ("ofw_bus_search_intrmap: truncated map "
+		    "(imapsz: %d, tsz: %d, physsz: %d, intrsz: %d, "
+		    "sizeof(phandle_t): %zd, pintrsz: %d)", imapsz, tsz,
+		    physsz, intrsz, sizeof(phandle_t), pintrsz));
 
 		/*
 		 * XXX: Apple hardware uses a second cell to set information
