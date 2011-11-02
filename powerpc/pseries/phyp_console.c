@@ -49,10 +49,21 @@ static union {
 	char str[16];
 } phyp_inbuf;
 static uint64_t			phyp_inbuflen = 0;
+static uint8_t			phyp_outseqno = 0;
 
 enum {
 	HVTERM1, HVTERMPROT
 };
+
+#define VS_DATA_PACKET_HEADER		0xff
+#define VS_CONTROL_PACKET_HEADER	0xfe
+#define  VSV_SET_MODEM_CTL		0x01
+#define  VSV_MODEM_CTL_UPDATE		0x02
+#define  VSV_RENEGOTIATE_CONNECTION	0x03
+#define VS_QUERY_PACKET_HEADER		0xfd
+#define  VSV_SEND_VERSION_NUMBER	0x01
+#define  VSV_SEND_MODEM_CTL_STATUS	0x02
+#define VS_QUERY_RESPONSE_PACKET_HEADER	0xfc
 
 /*
  * Low-level UART interface
@@ -156,10 +167,26 @@ phyp_uart_getc(struct uart_bas *bas, struct mtx *hwmtx)
 static void
 phyp_uart_putc(struct uart_bas *bas, int c)
 {
-	uint64_t cbuf;
+	uint16_t seqno;
+	union {
+		uint64_t u64;
+		char bytes[8];
+	} cbuf;
 
-	cbuf = (uint64_t)c << 56;
-	phyp_hcall(H_PUT_TERM_CHAR, (uint64_t)bas->bsh, 1UL, cbuf, 0);
+	switch (bas->regshft) {
+	case HVTERM1:
+		cbuf.bytes[0] = c;
+		break;
+	case HVTERMPROT:
+		seqno = phyp_outseqno++;
+		cbuf.bytes[0] = VS_DATA_PACKET_HEADER;
+		cbuf.bytes[1] = 5; /* total length */
+		cbuf.bytes[2] = (seqno >> 8) & 0xff;
+		cbuf.bytes[3] = seqno & 0xff;
+		cbuf.bytes[4] = c;
+		break;
+	}
+	phyp_hcall(H_PUT_TERM_CHAR, (uint64_t)bas->bsh, 1UL, cbuf.u64, 0);
 }
 
 static int
