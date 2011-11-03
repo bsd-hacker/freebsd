@@ -30,37 +30,37 @@ old_script_caches=$(find /tmp/2* -type d -prune -mmin +${REMOVE_SCRIPT_CACHE_TIM
 old_setupnodes=$(find /tmp/setupnode.* -type f -prune -mmin +${REMOVE_SETUPNODE_TIME} 2> /dev/null)
 
 if [ ! -z "${old_dotsetupdirs}" ]; then
-    echo "non-empty stale dotsetupdirs found on $(hostname):"
+    echo "cleanup-tmp: non-empty stale dotsetupdirs found on $(hostname):"
     echo ${old_dotsetupdirs}
     echo
     rm -rf ${old_dotsetupdirs}
 else
     if [ $VERBOSE ]; then
-	echo "no non-empty stale dotsetupdirs found on $(hostname)."
+	echo "cleanup-tmp: no non-empty stale dotsetupdirs found on $(hostname)."
 	echo
     fi
 fi
 
 if [ ! -z "${old_script_caches}" ]; then
-    echo "non-empty stale script_caches found on $(hostname):"
+    echo "cleanup-tmp: non-empty stale script_caches found on $(hostname):"
     echo ${old_script_caches}
     echo
     rm -rf ${old_script_caches}
 else
     if [ $VERBOSE ]; then
-	echo "no non-empty stale script_caches found on $(hostname)."
+	echo "cleanup-tmp: no non-empty stale script_caches found on $(hostname)."
 	echo
     fi
 fi
 
 if [ ! -z "${old_setupnodes}" ]; then
-    echo "non-empty stale setupnodes found on $(hostname):"
+    echo "cleanup-tmp: non-empty stale setupnodes found on $(hostname):"
     echo ${old_setupnodes}
     echo
     rm -rf ${old_setupnodes}
 else
     if [ $VERBOSE ]; then
-	echo "no non-empty stale setupnodes found on $(hostname)."
+	echo "cleanup-tmp: no non-empty stale setupnodes found on $(hostname)."
 	echo
     fi
 fi
