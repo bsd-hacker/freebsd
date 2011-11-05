@@ -68,6 +68,7 @@ static u_long chrp_timebase_freq(platform_t, struct cpuref *cpuref);
 static int chrp_smp_first_cpu(platform_t, struct cpuref *cpuref);
 static int chrp_smp_next_cpu(platform_t, struct cpuref *cpuref);
 static int chrp_smp_get_bsp(platform_t, struct cpuref *cpuref);
+static void chrp_smp_ap_init(platform_t);
 #ifdef SMP
 static int chrp_smp_start_cpu(platform_t, struct pcpu *cpu);
 static struct cpu_group *chrp_smp_topo(platform_t plat);
@@ -85,6 +86,7 @@ static platform_method_t chrp_methods[] = {
 	PLATFORMMETHOD(platform_real_maxaddr,	chrp_real_maxaddr),
 	PLATFORMMETHOD(platform_timebase_freq,	chrp_timebase_freq),
 	
+	PLATFORMMETHOD(platform_smp_ap_init,	chrp_smp_ap_init),
 	PLATFORMMETHOD(platform_smp_first_cpu,	chrp_smp_first_cpu),
 	PLATFORMMETHOD(platform_smp_next_cpu,	chrp_smp_next_cpu),
 	PLATFORMMETHOD(platform_smp_get_bsp,	chrp_smp_get_bsp),
@@ -128,6 +130,9 @@ chrp_attach(platform_t plat)
 
 		pmap_mmu_install("mmu_phyp", BUS_PROBE_SPECIFIC);
 		cpu_idle_hook = phyp_cpu_idle;
+
+		/* Set interrupt priority */
+		phyp_hcall(H_CPPR, 0xff);
 	}
 #endif
 
@@ -367,5 +372,14 @@ static void
 phyp_cpu_idle(void)
 {
 	phyp_hcall(H_CEDE);
+}
+
+static void
+chrp_smp_ap_init(platform_t platform)
+{
+	if (!(mfmsr() & PSL_HV)) {
+		/* Set interrupt priority */
+		phyp_hcall(H_CPPR, 0xff);
+	}
 }
 #endif
