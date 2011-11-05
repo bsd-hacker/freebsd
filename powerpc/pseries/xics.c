@@ -81,6 +81,8 @@ static device_method_t  xics_methods[] = {
 };
 
 struct xics_softc {
+	struct mtx sc_mtx;
+
 	int ibm_int_on;
 	int ibm_int_off;
 	int ibm_get_xive;
@@ -121,10 +123,11 @@ xics_probe(device_t dev)
 static int
 xics_attach(device_t dev)
 {
-	struct xics_softc *sc;
+	struct xics_softc *sc = device_get_softc(dev);
 
-	sc = device_get_softc(dev);
+	mtx_init(&sc->sc_mtx, "XICS", NULL, MTX_DEF);
 	sc->nintvecs = 0;
+
 	sc->ibm_int_on = rtas_token_lookup("ibm,int-on");
 	sc->ibm_int_off = rtas_token_lookup("ibm,int-off");
 	sc->ibm_set_xive = rtas_token_lookup("ibm,set-xive");
@@ -199,10 +202,12 @@ xics_enable(device_t dev, u_int irq, u_int vector)
 	KASSERT(sc->nintvecs + 1 < sizeof(sc->intvecs)/sizeof(sc->intvecs[0]),
 	    ("Too many XICS interrupts"));
 
-	/* XXX: not thread safe */
+	mtx_lock(&sc->sc_mtx);
 	sc->intvecs[sc->nintvecs].irq = irq;
 	sc->intvecs[sc->nintvecs].vector = vector;
+	mb();
 	sc->nintvecs++;
+	mtx_unlock(&sc->sc_mtx);
 
 	/* IPIs are also enabled */
 	if (irq == MAX_XICS_IRQS)
@@ -246,7 +251,6 @@ xics_mask(device_t dev, u_int irq)
 	if (irq == MAX_XICS_IRQS)
 		return;
 
-	/* XXX: These RTAS calls are problematic, since RTAS needs locks */
 	rtas_call_method(sc->ibm_int_off, 1, 1, (uint64_t)irq, &status);
 }
 
@@ -259,6 +263,5 @@ xics_unmask(device_t dev, u_int irq)
 	if (irq == MAX_XICS_IRQS)
 		return;
 
-	/* XXX: These RTAS calls are problematic, since RTAS needs locks */
 	rtas_call_method(sc->ibm_int_on, 1, 1, (uint64_t)irq, &status);
 }
