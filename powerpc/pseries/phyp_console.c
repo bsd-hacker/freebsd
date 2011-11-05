@@ -186,7 +186,7 @@ phyp_uart_putc(struct uart_bas *bas, int c)
 		cbuf.bytes[4] = c;
 		break;
 	}
-	phyp_hcall(H_PUT_TERM_CHAR, (uint64_t)bas->bsh, 1UL, cbuf.u64, 0);
+	phyp_hcall(H_PUT_TERM_CHAR, (uint64_t)bas->bsh, 5UL, cbuf.u64, 0);
 }
 
 static int
