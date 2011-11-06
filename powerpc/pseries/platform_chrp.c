@@ -57,6 +57,10 @@ __FBSDID("$FreeBSD$");
 extern void *ap_pcpu;
 #endif
 
+#ifdef __powerpc64__
+static uint8_t splpar_vpa[640] __aligned(64);
+#endif
+
 static vm_offset_t realmaxaddr = VM_MAX_ADDRESS;
 
 static int chrp_probe(platform_t);
@@ -131,8 +135,19 @@ chrp_attach(platform_t plat)
 		pmap_mmu_install("mmu_phyp", BUS_PROBE_SPECIFIC);
 		cpu_idle_hook = phyp_cpu_idle;
 
-		/* Set interrupt priority */
-		phyp_hcall(H_CPPR, 0xff);
+		/* Set up important VPA fields */
+		bzero(splpar_vpa, sizeof(splpar_vpa));
+		splpar_vpa[4] = (uint8_t)((sizeof(splpar_vpa) >> 8) & 0xff);
+		splpar_vpa[5] = (uint8_t)(sizeof(splpar_vpa) & 0xff);
+		splpar_vpa[0xba] = 1;			/* Maintain FPRs */
+		splpar_vpa[0xbb] = 1;			/* Maintain PMCs */
+		splpar_vpa[0xfc] = 0xff;		/* Maintain full SLB */
+		splpar_vpa[0xfd] = 0xff;
+		splpar_vpa[0xff] = 1;			/* Maintain Altivec */
+		mb();
+
+		/* Set up hypervisor CPU stuff */
+		chrp_smp_ap_init(plat);
 	}
 #endif
 
@@ -382,6 +397,9 @@ chrp_smp_ap_init(platform_t platform)
 	if (!(mfmsr() & PSL_HV)) {
 		/* Set interrupt priority */
 		phyp_hcall(H_CPPR, 0xff);
+
+		/* Register VPA */
+		phyp_hcall(H_REGISTER_VPA, 1UL, PCPU_GET(cpuid), splpar_vpa);
 	}
 }
 #endif
