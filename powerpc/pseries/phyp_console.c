@@ -168,6 +168,7 @@ static void
 phyp_uart_putc(struct uart_bas *bas, int c)
 {
 	uint16_t seqno;
+	uint64_t len = 0;
 	union {
 		uint64_t u64;
 		char bytes[8];
@@ -176,6 +177,7 @@ phyp_uart_putc(struct uart_bas *bas, int c)
 	switch (bas->regshft) {
 	case HVTERM1:
 		cbuf.bytes[0] = c;
+		len = 1;
 		break;
 	case HVTERMPROT:
 		seqno = phyp_outseqno++;
@@ -184,9 +186,10 @@ phyp_uart_putc(struct uart_bas *bas, int c)
 		cbuf.bytes[2] = (seqno >> 8) & 0xff;
 		cbuf.bytes[3] = seqno & 0xff;
 		cbuf.bytes[4] = c;
+		len = 5;
 		break;
 	}
-	phyp_hcall(H_PUT_TERM_CHAR, (uint64_t)bas->bsh, 5UL, cbuf.u64, 0);
+	phyp_hcall(H_PUT_TERM_CHAR, (uint64_t)bas->bsh, len, cbuf.u64, 0);
 }
 
 static int
