@@ -1468,6 +1468,9 @@ dev/mpt/mpt_pci.c		optional mpt pci
 dev/mpt/mpt_raid.c		optional mpt
 dev/mpt/mpt_user.c		optional mpt
 dev/msk/if_msk.c		optional msk
+dev/mpt2sas/mpt2sas.c		optional mpt2sas
+dev/mpt2sas/mpt2cam.c		optional mpt2sas
+dev/mpt2sas/mpt2pci.c		optional mpt2sas pci
 dev/mvs/mvs.c			optional mvs
 dev/mvs/mvs_if.m		optional mvs
 dev/mvs/mvs_pci.c		optional mvs pci

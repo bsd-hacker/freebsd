@@ -57,10 +57,13 @@ sed -e "s, machine/, ../../include/,g" \
 			print i > "tags.hfiles";
 	}'
 
-ctags -t -d -w `cat tags.cfiles tags.hfiles tags.sfiles`
-egrep "^ENTRY\(.*\)|^ALTENTRY\(.*\)" `cat tags.sfiles` | \
+if [ `which -s exctags` -eq 0 ]; then
+ exctags `cat tags.cfiles tags.hfiles tags.sfiles`
+else
+ ctags -t -d -w `cat tags.cfiles tags.hfiles tags.sfiles`
+ egrep "^ENTRY\(.*\)|^ALTENTRY\(.*\)" `cat tags.sfiles` | \
     sed "s;\([^:]*\):\([^(]*\)(\([^, )]*\)\(.*\);\3	\1	/^\2(\3\4$/;" >> tags
-
+fi
 mv tags tags.tmp
 sort -u tags.tmp > tags
 rm tags.tmp tags.cfiles tags.sfiles tags.hfiles
