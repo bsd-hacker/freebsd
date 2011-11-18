@@ -13,9 +13,9 @@ stop_cmd="mfid_stop"
 
 mfid_start()
 {
-	if [ -x "/etc/bin/mfid" -a -e "/dev/mfi0" ]; then
+	if [ -x "/usr/sbin/mfid" -a -e "/dev/mfi0" ]; then
 	        echo "Starting mfid."
-		/etc/bin/mfid ${raid_alert_mailto}
+		/usr/sbin/mfid ${raid_alert_mailto}
 	fi
 }
 
