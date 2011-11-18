@@ -10,6 +10,8 @@ pbc=${PORTBUILD_CHECKOUT:-/var/portbuild}
 base=${ZFS_MOUNTPOINT}/${SNAP_SRC_DIRECTORY_PREFIX}
 zbase=${ZFS_VOLUME}/${SNAP_SRC_DIRECTORY_PREFIX}
 
+VERBOSE=1
+
 supstamp() {
 	fulldate=$1
         date -j -f %+ "${fulldate}" +%Y.%m.%d.%H.%M.%S
@@ -39,6 +41,7 @@ umask 002
 for branch in $SRC_BRANCHES; do
   mountpoint=${base}${branch}
   if [ ! -d ${mountpoint}/src ]; then
+    echo "creating new source branch under ${mountpoint}"
     mkdir -p ${mountpoint}
     echo "zfs create -o mountpoint=${mountpoint} ${zbase}${branch}"
     zfs create -o mountpoint=${mountpoint} ${zbase}${branch}
@@ -58,13 +61,17 @@ for branch in $SRC_BRANCHES; do
     sed "s|%%DATE%%|${supdate}|;s|%%PREFIX%%|${mountpoint}|;s|%%TAG%%|${tag}|" \
       ${SRC_MASTER_SUPFILE} > ${SRC_SUPFILE}.${branch}.now
     # example destination directory: /a/snap/src-7/src/ (tricky!)
-    echo "csup -L 2 ${SRC_SUPFILE}.${branch}.now > src-csup.${branch}.log"
+    if [ $VERBOSE ]; then
+      echo "csup -L 2 ${SRC_SUPFILE}.${branch}.now > src-csup.${branch}.log"
+    fi
     csup -L 2 ${SRC_SUPFILE}.${branch}.now > src-csup.${branch}.log
     echo ${fulldate} > src/.updated
     # hack for zfs breakiness
     find . -group wheel|xargs chgrp portmgr
     snapdate=$(stamp ${fulldate})
-    echo "zfs snapshot ${zbase}${branch}/src@${snapdate}"
+    if [ $VERBOSE ]; then
+      echo "zfs snapshot ${zbase}${branch}/src@${snapdate}"
+    fi
     zfs snapshot ${zbase}${branch}/src@${snapdate}
   fi
 done
