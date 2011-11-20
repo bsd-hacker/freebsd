@@ -252,6 +252,7 @@ struct ath_hal_5212 {
 	uint8_t		ah_macaddr[IEEE80211_ADDR_LEN];
 	uint8_t		ah_bssid[IEEE80211_ADDR_LEN];
 	uint8_t		ah_bssidmask[IEEE80211_ADDR_LEN];
+	uint16_t	ah_assocId;
 
 	/*
 	 * Runtime state.
@@ -430,6 +431,7 @@ extern	void ar5212BeaconInit(struct ath_hal *ah,
 extern	void ar5212ResetStaBeaconTimers(struct ath_hal *ah);
 extern	void ar5212SetStaBeaconTimers(struct ath_hal *ah,
 		const HAL_BEACON_STATE *);
+extern	uint64_t ar5212GetNextTBTT(struct ath_hal *);
 
 extern	HAL_BOOL ar5212IsInterruptPending(struct ath_hal *ah);
 extern	HAL_BOOL ar5212GetPendingInterrupts(struct ath_hal *ah, HAL_INT *);
@@ -625,5 +627,6 @@ extern	void ar5212GetDfsThresh(struct ath_hal *ah, HAL_PHYERR_PARAM *pe);
 extern	HAL_BOOL ar5212ProcessRadarEvent(struct ath_hal *ah,
 	    struct ath_rx_status *rxs, uint64_t fulltsf, const char *buf,
 	    HAL_DFS_EVENT *event);
+extern	HAL_BOOL ar5212IsFastClockEnabled(struct ath_hal *ah);
 
 #endif	/* _ATH_AR5212_H_ */

@@ -139,7 +139,8 @@ struct mtx vm_object_list_mtx;	/* lock for object list and count */
 struct vm_object kernel_object_store;
 struct vm_object kmem_object_store;
 
-SYSCTL_NODE(_vm_stats, OID_AUTO, object, CTLFLAG_RD, 0, "VM object stats");
+static SYSCTL_NODE(_vm_stats, OID_AUTO, object, CTLFLAG_RD, 0,
+    "VM object stats");
 
 static long object_collapses;
 SYSCTL_LONG(_vm_stats_object, OID_AUTO, collapses, CTLFLAG_RD,
@@ -1087,7 +1088,9 @@ shadowlookup:
 			vm_page_unlock(m);
 			goto unlock_tobject;
 		}
-		KASSERT((m->flags & (PG_FICTITIOUS | PG_UNMANAGED)) == 0,
+		KASSERT((m->flags & PG_FICTITIOUS) == 0,
+		    ("vm_object_madvise: page %p is fictitious", m));
+		KASSERT((m->oflags & VPO_UNMANAGED) == 0,
 		    ("vm_object_madvise: page %p is not managed", m));
 		if ((m->oflags & VPO_BUSY) || m->busy) {
 			if (advise == MADV_WILLNEED) {
@@ -1096,9 +1099,7 @@ shadowlookup:
 				 * sleeping so that the page daemon is less
 				 * likely to reclaim it. 
 				 */
-				vm_page_lock_queues();
-				vm_page_flag_set(m, PG_REFERENCED);
-				vm_page_unlock_queues();
+				vm_page_aflag_set(m, PGA_REFERENCED);
 			}
 			vm_page_unlock(m);
 			if (object != tobject)
@@ -1860,6 +1861,60 @@ again:
 skipmemq:
 	if (__predict_false(object->cache != NULL))
 		vm_page_cache_free(object, start, end);
+}
+
+/*
+ *	vm_object_page_cache:
+ *
+ *	For the given object, attempt to move the specified clean
+ *	pages to the cache queue.  If a page is wired for any reason,
+ *	then it will not be changed.  Pages are specified by the given
+ *	range ["start", "end").  As a special case, if "end" is zero,
+ *	then the range extends from "start" to the end of the object.
+ *	Any mappings to the specified pages are removed before the
+ *	pages are moved to the cache queue.
+ *
+ *	This operation should only be performed on objects that
+ *	contain managed pages.
+ *
+ *	The object must be locked.
+ */
+void
+vm_object_page_cache(vm_object_t object, vm_pindex_t start, vm_pindex_t end)
+{
+	struct mtx *mtx, *new_mtx;
+	vm_page_t p, next;
+
+	VM_OBJECT_LOCK_ASSERT(object, MA_OWNED);
+	KASSERT((object->type != OBJT_DEVICE && object->type != OBJT_SG &&
+	    object->type != OBJT_PHYS),
+	    ("vm_object_page_cache: illegal object %p", object));
+	if (object->resident_page_count == 0)
+		return;
+	p = vm_page_find_least(object, start);
+
+	/*
+	 * Here, the variable "p" is either (1) the page with the least pindex
+	 * greater than or equal to the parameter "start" or (2) NULL. 
+	 */
+	mtx = NULL;
+	for (; p != NULL && (p->pindex < end || end == 0); p = next) {
+		next = TAILQ_NEXT(p, listq);
+
+		/*
+		 * Avoid releasing and reacquiring the same page lock.
+		 */
+		new_mtx = vm_page_lockptr(p);
+		if (mtx != new_mtx) {
+			if (mtx != NULL)
+				mtx_unlock(mtx);
+			mtx = new_mtx;
+			mtx_lock(mtx);
+		}
+		vm_page_try_to_cache(p);
+	}
+	if (mtx != NULL)
+		mtx_unlock(mtx);
 }
 
 /*

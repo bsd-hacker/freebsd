@@ -101,7 +101,7 @@ static void ahci_process_request_sense(device_t dev, union ccb *ccb);
 static void ahciaction(struct cam_sim *sim, union ccb *ccb);
 static void ahcipoll(struct cam_sim *sim);
 
-MALLOC_DEFINE(M_AHCI, "AHCI driver", "AHCI driver data buffers");
+static MALLOC_DEFINE(M_AHCI, "AHCI driver", "AHCI driver data buffers");
 
 static struct {
 	uint32_t	id;
@@ -128,6 +128,7 @@ static struct {
 	{0x43931002, 0x00, "ATI IXP700",	0},
 	{0x43941002, 0x00, "ATI IXP800",	0},
 	{0x43951002, 0x00, "ATI IXP800",	0},
+	{0x06121b21, 0x00, "ASMedia ASM1061",	0},
 	{0x26528086, 0x00, "Intel ICH6",	AHCI_Q_NOFORCE},
 	{0x26538086, 0x00, "Intel ICH6M",	AHCI_Q_NOFORCE},
 	{0x26818086, 0x00, "Intel ESB2",	0},
@@ -196,6 +197,7 @@ static struct {
 	{0x91231b4b, 0x11, "Marvell 88SE912x",	AHCI_Q_NOBSYRES|AHCI_Q_ALTSIG},
 	{0x91231b4b, 0x00, "Marvell 88SE912x",	AHCI_Q_EDGEIS|AHCI_Q_SATA2|AHCI_Q_NOBSYRES},
 	{0x91251b4b, 0x00, "Marvell 88SE9125",	AHCI_Q_NOBSYRES},
+	{0x91281b4b, 0x00, "Marvell 88SE9128",	AHCI_Q_NOBSYRES|AHCI_Q_ALTSIG},
 	{0x91721b4b, 0x00, "Marvell 88SE9172",	AHCI_Q_NOBSYRES},
 	{0x91821b4b, 0x00, "Marvell 88SE9182",	AHCI_Q_NOBSYRES},
 	{0x06201103, 0x00, "HighPoint RocketRAID 620",	AHCI_Q_NOBSYRES},
@@ -264,7 +266,7 @@ static struct {
 	{0x0abe10de, 0x00, "NVIDIA MCP79",	AHCI_Q_NOAA},
 	{0x0abf10de, 0x00, "NVIDIA MCP79",	AHCI_Q_NOAA},
 	{0x0d8410de, 0x00, "NVIDIA MCP89",	AHCI_Q_NOAA},
-	{0x0d8510de, 0x00, "NVIDIA MCP89",	AHCI_Q_NOAA},
+	{0x0d8510de, 0x00, "NVIDIA MCP89",	AHCI_Q_NOFORCE|AHCI_Q_NOAA},
 	{0x0d8610de, 0x00, "NVIDIA MCP89",	AHCI_Q_NOAA},
 	{0x0d8710de, 0x00, "NVIDIA MCP89",	AHCI_Q_NOAA},
 	{0x0d8810de, 0x00, "NVIDIA MCP89",	AHCI_Q_NOAA},
@@ -496,13 +498,14 @@ ahci_attach(device_t dev)
 	}
 	/* Attach all channels on this controller */
 	for (unit = 0; unit < ctlr->channels; unit++) {
-		if ((ctlr->ichannels & (1 << unit)) == 0)
-			continue;
 		child = device_add_child(dev, "ahcich", -1);
-		if (child == NULL)
+		if (child == NULL) {
 			device_printf(dev, "failed to add channel device\n");
-		else
-			device_set_ivars(child, (void *)(intptr_t)unit);
+			continue;
+		}
+		device_set_ivars(child, (void *)(intptr_t)unit);
+		if ((ctlr->ichannels & (1 << unit)) == 0)
+			device_disable(child);
 	}
 	bus_generic_attach(dev);
 	return 0;
@@ -512,15 +515,11 @@ static int
 ahci_detach(device_t dev)
 {
 	struct ahci_controller *ctlr = device_get_softc(dev);
-	device_t *children;
-	int nchildren, i;
+	int i;
 
 	/* Detach & delete all children */
-	if (!device_get_children(dev, &children, &nchildren)) {
-		for (i = 0; i < nchildren; i++)
-			device_delete_child(dev, children[i]);
-		free(children, M_TEMP);
-	}
+	device_delete_all_children(dev);
+
 	/* Free interrupts. */
 	for (i = 0; i < ctlr->numirqs; i++) {
 		if (ctlr->irqs[i].r_irq) {
@@ -1879,12 +1878,13 @@ ahci_execute_transaction(struct ahci_slot *slot)
 			device_printf(dev, "Poll timeout on slot %d port %d\n",
 			    slot->slot, port);
 			device_printf(dev, "is %08x cs %08x ss %08x "
-			    "rs %08x tfd %02x serr %08x\n",
+			    "rs %08x tfd %02x serr %08x cmd %08x\n",
 			    ATA_INL(ch->r_mem, AHCI_P_IS),
 			    ATA_INL(ch->r_mem, AHCI_P_CI),
 			    ATA_INL(ch->r_mem, AHCI_P_SACT), ch->rslots,
 			    ATA_INL(ch->r_mem, AHCI_P_TFD),
-			    ATA_INL(ch->r_mem, AHCI_P_SERR));
+			    ATA_INL(ch->r_mem, AHCI_P_SERR),
+			    ATA_INL(ch->r_mem, AHCI_P_CMD));
 			et = AHCI_ERR_TIMEOUT;
 		}
 
@@ -1960,8 +1960,12 @@ ahci_timeout(struct ahci_slot *slot)
 		ccs = (ATA_INL(ch->r_mem, AHCI_P_CMD) & AHCI_P_CMD_CCS_MASK)
 		    >> AHCI_P_CMD_CCS_SHIFT;
 		if ((sstatus & (1 << slot->slot)) != 0 || ccs == slot->slot ||
-		    ch->fbs_enabled)
+		    ch->fbs_enabled || ch->wrongccs)
 			slot->state = AHCI_SLOT_EXECUTING;
+		else if ((ch->rslots & (1 << ccs)) == 0) {
+			ch->wrongccs = 1;
+			slot->state = AHCI_SLOT_EXECUTING;
+		}
 
 		callout_reset(&slot->timeout,
 		    (int)slot->ccb->ccb_h.timeout * hz / 2000,
@@ -1971,10 +1975,12 @@ ahci_timeout(struct ahci_slot *slot)
 
 	device_printf(dev, "Timeout on slot %d port %d\n",
 	    slot->slot, slot->ccb->ccb_h.target_id & 0x0f);
-	device_printf(dev, "is %08x cs %08x ss %08x rs %08x tfd %02x serr %08x\n",
+	device_printf(dev, "is %08x cs %08x ss %08x rs %08x tfd %02x "
+	    "serr %08x cmd %08x\n",
 	    ATA_INL(ch->r_mem, AHCI_P_IS), ATA_INL(ch->r_mem, AHCI_P_CI),
 	    ATA_INL(ch->r_mem, AHCI_P_SACT), ch->rslots,
-	    ATA_INL(ch->r_mem, AHCI_P_TFD), ATA_INL(ch->r_mem, AHCI_P_SERR));
+	    ATA_INL(ch->r_mem, AHCI_P_TFD), ATA_INL(ch->r_mem, AHCI_P_SERR),
+	    ATA_INL(ch->r_mem, AHCI_P_CMD));
 
 	/* Handle frozen command. */
 	if (ch->frozen) {
@@ -1987,7 +1993,7 @@ ahci_timeout(struct ahci_slot *slot)
 		}
 		xpt_done(fccb);
 	}
-	if (!ch->fbs_enabled) {
+	if (!ch->fbs_enabled && !ch->wrongccs) {
 		/* Without FBS we know real timeout source. */
 		ch->fatalerr = 1;
 		/* Handle command with timeout. */
@@ -2585,6 +2591,7 @@ ahci_reset(device_t dev)
 		xpt_release_simq(ch->sim, TRUE);
 	ch->eslots = 0;
 	ch->toslots = 0;
+	ch->wrongccs = 0;
 	ch->fatalerr = 0;
 	/* Tell the XPT about the event */
 	xpt_async(AC_BUS_RESET, ch->path, NULL);

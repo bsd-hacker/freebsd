@@ -22,6 +22,7 @@ dev/adb/adb_kbd.c		optional	adb
 dev/adb/adb_mouse.c		optional	adb
 dev/adb/adb_hb_if.m		optional	adb
 dev/adb/adb_if.m		optional	adb
+dev/adb/adb_buttons.c		optional	adb
 dev/agp/agp_apple.c		optional	agp powermac
 dev/cfi/cfi_bus_fdt.c		optional	cfi fdt
 dev/fb/fb.c			optional	sc
@@ -93,6 +94,7 @@ powerpc/aim/swtch64.S		optional	aim powerpc64
 powerpc/aim/trap.c		optional	aim
 powerpc/aim/uma_machdep.c	optional	aim
 powerpc/aim/vm_machdep.c	optional	aim
+powerpc/cell/celliic.c		optional	aim
 powerpc/booke/clock.c		optional	e500
 powerpc/booke/copyinout.c	optional	e500
 powerpc/booke/interrupt.c	optional	e500
@@ -207,8 +209,8 @@ powerpc/ps3/ohci_ps3.c		optional	ps3 ohci
 powerpc/ps3/if_glc.c		optional	ps3 glc
 powerpc/ps3/mmu_ps3.c		optional	ps3
 powerpc/ps3/platform_ps3.c	optional	ps3
-powerpc/ps3/ps3ata.c		optional	ps3 ps3ata
 powerpc/ps3/ps3bus.c		optional	ps3
+powerpc/ps3/ps3cdrom.c		optional	ps3 scbus
 powerpc/ps3/ps3disk.c		optional	ps3
 powerpc/ps3/ps3pic.c		optional	ps3
 powerpc/ps3/ps3_syscons.c	optional	ps3 sc

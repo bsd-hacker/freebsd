@@ -40,6 +40,7 @@
 #define	AR_INTR_ASYNC_MASK	0x4030	/* asynchronous interrupt mask */
 #define	AR_INTR_SYNC_MASK	0x4034	/* synchronous interrupt mask */
 #define	AR_INTR_ASYNC_CAUSE	0x4038	/* check pending interrupts */
+#define	AR_INTR_ASYNC_CAUSE_CLR	0x4038	/* clear pending interrupts */
 #define	AR_INTR_ASYNC_ENABLE	0x403c	/* enable interrupts */
 #define	AR5416_PCIE_SERDES	0x4040
 #define	AR5416_PCIE_SERDES2	0x4044
@@ -79,6 +80,13 @@
 #endif	/* AH_SUPPORT_AR9130 */
 
 #define	AR_RESET_TSF		0x8020
+
+/*
+ * AR_SLEEP1 / AR_SLEEP2 are in the same place as in
+ * AR5212, however the fields have changed.
+ */
+#define	AR5416_SLEEP1		0x80d4
+#define	AR5416_SLEEP2		0x80d8
 #define	AR_RXFIFO_CFG		0x8114
 #define	AR_PHY_ERR_1		0x812c
 #define	AR_PHY_ERR_MASK_1	0x8130	/* mask for AR_PHY_ERR_1 */
@@ -242,6 +250,7 @@
 /* Interrupts */
 #define	AR_ISR_TXMINTR		0x00080000	/* Maximum interrupt tx rate */
 #define	AR_ISR_RXMINTR		0x01000000	/* Maximum interrupt rx rate */
+#define	AR_ISR_GENTMR		0x10000000	/* OR of generic timer bits in S5 */
 #define	AR_ISR_TXINTM		0x40000000	/* Tx int after mitigation */
 #define	AR_ISR_RXINTM		0x80000000	/* Rx int after mitigation */
 
@@ -251,7 +260,13 @@
 
 #define	AR_ISR_S5		0x0098
 #define	AR_ISR_S5_S		0x00d8
-#define	AR_ISR_S5_TIM_TIMER	0x00000010
+#define	AR_ISR_S5_GENTIMER7	0x00000080 // Mask for timer 7 trigger
+#define	AR_ISR_S5_TIM_TIMER	0x00000010 // TIM Timer ISR
+#define	AR_ISR_S5_DTIM_TIMER	0x00000020 // DTIM Timer ISR
+#define	AR_ISR_S5_GENTIMER_TRIG	0x0000FF80 // ISR for generic timer trigger 7-15
+#define	AR_ISR_S5_GENTIMER_TRIG_S	0
+#define	AR_ISR_S5_GENTIMER_THRESH	0xFF800000 // ISR for generic timer threshold 7-15
+#define	AR_ISR_S5_GENTIMER_THRESH_S	16
 
 #define	AR_INTR_SPURIOUS	0xffffffff
 #define	AR_INTR_RTC_IRQ		0x00000001	/* rtc in shutdown state */
@@ -402,6 +417,7 @@
 #define	AR9271_AN_RF2G6_OFFS_S	20
 
 /* Sleep control */
+#define	AR5416_SLEEP1_ASSUME_DTIM	0x00080000
 #define	AR5416_SLEEP1_CAB_TIMEOUT	0xFFE00000	/* Cab timeout (TU) */
 #define	AR5416_SLEEP1_CAB_TIMEOUT_S	22
 
@@ -596,10 +612,10 @@
 #define	AR_XSREV_REVISION_KITE_11	1	/* Kite 1.1 */
 #define	AR_XSREV_REVISION_KITE_12	2	/* Kite 1.2 */
 #define	AR_XSREV_VERSION_KIWI		0x180	/* Kiwi (AR9287) */
-#define	AR_XSREV_REVISION_KIWI_10	0
-#define	AR_XSREV_REVISION_KIWI_11	1
-#define	AR_XSREV_REVISION_KIWI_12	2
-#define	AR_XSREV_REVISION_KIWI_13	3
+#define	AR_XSREV_REVISION_KIWI_10	0	/* Kiwi 1.0 */
+#define	AR_XSREV_REVISION_KIWI_11	1	/* Kiwi 1.1 */
+#define	AR_XSREV_REVISION_KIWI_12	2	/* Kiwi 1.2 */
+#define	AR_XSREV_REVISION_KIWI_13	3	/* Kiwi 1.3 */
 
 /* Owl (AR5416) */
 #define	AR_SREV_OWL(_ah) \
@@ -685,6 +701,10 @@
 #define AR_SREV_KIWI(_ah) \
 	(AH_PRIVATE((_ah))->ah_macVersion == AR_XSREV_VERSION_KIWI)
 
+#define AR_SREV_KIWI_10_OR_LATER(_ah) \
+	(AH_PRIVATE((_ah))->ah_macVersion >= AR_XSREV_VERSION_KIWI)
+
+/* XXX TODO: make these handle macVersion > Kiwi */
 #define AR_SREV_KIWI_11_OR_LATER(_ah) \
 	(AR_SREV_KIWI(_ah) && \
 	 AH_PRIVATE((_ah))->ah_macRev >= AR_XSREV_REVISION_KIWI_11)

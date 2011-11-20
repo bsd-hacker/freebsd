@@ -3760,10 +3760,9 @@ tryagain:
 		 * could interfere with paging I/O, no matter which
 		 * process we are.
 		 */
-		p = vm_page_alloc(NULL, pg >> PAGE_SHIFT, VM_ALLOC_NOOBJ |
-		    VM_ALLOC_SYSTEM | VM_ALLOC_WIRED |
-		    VM_ALLOC_COUNT((to - pg) >> PAGE_SHIFT));
-		if (!p) {
+		p = vm_page_alloc(NULL, 0, VM_ALLOC_SYSTEM | VM_ALLOC_NOOBJ |
+		    VM_ALLOC_WIRED | VM_ALLOC_COUNT((to - pg) >> PAGE_SHIFT));
+		if (p == NULL) {
 			VM_WAIT;
 			goto tryagain;
 		}
@@ -4020,7 +4019,7 @@ DB_SHOW_COMMAND(buffer, db_show_buffer)
 		db_printf("\n");
 	}
 	db_printf(" ");
-	lockmgr_printinfo(&bp->b_lock);
+	BUF_LOCKPRINTINFO(bp);
 }
 
 DB_SHOW_COMMAND(lockedbufs, lockedbufs)

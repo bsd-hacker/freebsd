@@ -114,11 +114,15 @@ ath_hal_mac_name(struct ath_hal *ah)
 	case AR_XSREV_VERSION_SOWL:
 		return "9160";
 	case AR_XSREV_VERSION_MERLIN:
-		return "9280";
+		if (AH_PRIVATE(ah)->ah_ispcie)
+			return "9280";
+		return "9220";
 	case AR_XSREV_VERSION_KITE:
 		return "9285";
 	case AR_XSREV_VERSION_KIWI:
-		return "9287";
+		if (AH_PRIVATE(ah)->ah_ispcie)
+			return "9287";
+		return "9227";
 	}
 	return "????";
 }
@@ -522,6 +526,9 @@ ath_hal_getcapability(struct ath_hal *ah, HAL_CAPABILITY_TYPE type,
 	case HAL_CAP_REG_DMN:		/* regulatory domain */
 		*result = AH_PRIVATE(ah)->ah_currentRD;
 		return HAL_OK;
+	case HAL_CAP_DFS_DMN:		/* DFS Domain */
+		*result = AH_PRIVATE(ah)->ah_dfsDomain;
+		return HAL_OK;
 	case HAL_CAP_CIPHER:		/* cipher handled in hardware */
 	case HAL_CAP_TKIP_MIC:		/* handle TKIP MIC in hardware */
 		return HAL_ENOTSUPP;
@@ -654,6 +661,12 @@ ath_hal_getcapability(struct ath_hal *ah, HAL_CAPABILITY_TYPE type,
 		}
 	case HAL_CAP_RXDESC_SELFLINK:	/* hardware supports self-linked final RX descriptors correctly */
 		return pCap->halHasRxSelfLinkedTail ? HAL_OK : HAL_ENOTSUPP;
+	case HAL_CAP_LONG_RXDESC_TSF:		/* 32 bit TSF in RX descriptor? */
+		return pCap->halHasLongRxDescTsf ? HAL_OK : HAL_ENOTSUPP;
+	case HAL_CAP_BB_READ_WAR:		/* Baseband read WAR */
+		return pCap->halHasBBReadWar? HAL_OK : HAL_ENOTSUPP;
+	case HAL_CAP_SERIALISE_WAR:		/* PCI register serialisation */
+		return pCap->halSerialiseRegWar ? HAL_OK : HAL_ENOTSUPP;
 	default:
 		return HAL_EINVAL;
 	}
@@ -1218,4 +1231,38 @@ ath_ee_interpolate(uint16_t target, uint16_t srcLeft, uint16_t srcRight,
               (srcRight - target) * targetLeft) / (srcRight - srcLeft) );
     }
     return rv;
+}
+
+/*
+ * Adjust the TSF.
+ */
+void
+ath_hal_adjusttsf(struct ath_hal *ah, int32_t tsfdelta)
+{
+	/* XXX handle wrap/overflow */
+	OS_REG_WRITE(ah, AR_TSF_L32, OS_REG_READ(ah, AR_TSF_L32) + tsfdelta);
+}
+
+/*
+ * Enable or disable CCA.
+ */
+void
+ath_hal_setcca(struct ath_hal *ah, int ena)
+{
+	/*
+	 * NB: fill me in; this is not provided by default because disabling
+	 *     CCA in most locales violates regulatory.
+	 */
+}
+
+/*
+ * Get CCA setting.
+ */
+int
+ath_hal_getcca(struct ath_hal *ah)
+{
+	u_int32_t diag;
+	if (ath_hal_getcapability(ah, HAL_CAP_DIAG, 0, &diag) != HAL_OK)
+		return 1;
+	return ((diag & 0x500000) == 0);
 }

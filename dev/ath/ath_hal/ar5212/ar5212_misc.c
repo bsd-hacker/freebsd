@@ -218,8 +218,9 @@ ar5212WriteAssocid(struct ath_hal *ah, const uint8_t *bssid, uint16_t assocId)
 {
 	struct ath_hal_5212 *ahp = AH5212(ah);
 
-	/* XXX save bssid for possible re-use on reset */
+	/* save bssid for possible re-use on reset */
 	OS_MEMCPY(ahp->ah_bssid, bssid, IEEE80211_ADDR_LEN);
+	ahp->ah_assocId = assocId;
 	OS_REG_WRITE(ah, AR_BSS_ID0, LE_READ_4(ahp->ah_bssid));
 	OS_REG_WRITE(ah, AR_BSS_ID1, LE_READ_2(ahp->ah_bssid+4) |
 				     ((assocId & 0x3fff)<<AR_BSS_ID1_AID_S));
@@ -1221,4 +1222,14 @@ ar5212ProcessRadarEvent(struct ath_hal *ah, struct ath_rx_status *rxs,
 	event->re_flags = HAL_DFS_EVENT_PRICH;
 
 	return AH_TRUE;
+}
+
+/*
+ * Return whether 5GHz fast-clock (44MHz) is enabled.
+ * It's always disabled for AR5212 series NICs.
+ */
+HAL_BOOL
+ar5212IsFastClockEnabled(struct ath_hal *ah)
+{
+	return AH_FALSE;
 }

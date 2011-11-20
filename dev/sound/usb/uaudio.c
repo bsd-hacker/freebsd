@@ -93,7 +93,7 @@ static int uaudio_default_channels = 0;		/* use default */
 #ifdef USB_DEBUG
 static int uaudio_debug = 0;
 
-SYSCTL_NODE(_hw_usb, OID_AUTO, uaudio, CTLFLAG_RW, 0, "USB uaudio");
+static SYSCTL_NODE(_hw_usb, OID_AUTO, uaudio, CTLFLAG_RW, 0, "USB uaudio");
 
 SYSCTL_INT(_hw_usb_uaudio, OID_AUTO, debug, CTLFLAG_RW,
     &uaudio_debug, 0, "uaudio debug level");
@@ -192,7 +192,7 @@ struct uaudio_chan {
 };
 
 #define	UMIDI_CABLES_MAX   16		/* units */
-#define	UMIDI_TX_FRAMES	   128		/* units */
+#define	UMIDI_TX_FRAMES	   256		/* units */
 #define	UMIDI_TX_BUFFER    (UMIDI_TX_FRAMES * 4)	/* bytes */
 
 enum {
@@ -927,8 +927,8 @@ uaudio_chan_fill_info_sub(struct uaudio_softc *sc, struct usb_device *udev,
 					continue;
 				}
 				if (asf1d->bLength < (sizeof(*asf1d) +
-				    (asf1d->bSamFreqType == 0) ? 6 :
-				    (asf1d->bSamFreqType * 3))) {
+				    ((asf1d->bSamFreqType == 0) ? 6 :
+				    (asf1d->bSamFreqType * 3)))) {
 					DPRINTFN(11, "'asf1d' descriptor is too short\n");
 					asf1d = NULL;
 					continue;

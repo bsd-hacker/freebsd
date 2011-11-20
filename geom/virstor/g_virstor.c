@@ -40,6 +40,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/mutex.h>
 #include <sys/sx.h>
 #include <sys/bio.h>
+#include <sys/sbuf.h>
 #include <sys/sysctl.h>
 #include <sys/malloc.h>
 #include <sys/time.h>
@@ -79,7 +80,8 @@ struct g_class g_virstor_class = {
 
 /* Declare sysctl's and loader tunables */
 SYSCTL_DECL(_kern_geom);
-SYSCTL_NODE(_kern_geom, OID_AUTO, virstor, CTLFLAG_RW, 0, "GEOM_GVIRSTOR information");
+static SYSCTL_NODE(_kern_geom, OID_AUTO, virstor, CTLFLAG_RW, 0,
+    "GEOM_GVIRSTOR information");
 
 static u_int g_virstor_debug = 2; /* XXX: lower to 2 when released to public */
 TUNABLE_INT("kern.geom.virstor.debug", &g_virstor_debug);

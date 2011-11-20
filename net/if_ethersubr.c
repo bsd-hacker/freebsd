@@ -134,7 +134,7 @@ static	void ether_reassign(struct ifnet *, struct vnet *, char *);
 #endif
 
 /* XXX: should be in an arp support file, not here */
-MALLOC_DEFINE(M_ARPCOM, "arpcom", "802.* interface internals");
+static MALLOC_DEFINE(M_ARPCOM, "arpcom", "802.* interface internals");
 
 #define	ETHER_IS_BROADCAST(addr) \
 	(bcmp(etherbroadcastaddr, (addr), ETHER_ADDR_LEN) == 0)
@@ -499,6 +499,7 @@ ether_ipfw_chk(struct mbuf **m0, struct ifnet *dst, int shared)
 	args.m = m;		/* the packet we are looking at		*/
 	args.oif = dst;		/* destination, if any			*/
 	args.next_hop = NULL;	/* we do not support forward yet	*/
+	args.next_hop6 = NULL;	/* we do not support forward yet	*/
 	args.eh = &save_eh;	/* MAC header for bridged/MAC packets	*/
 	args.inp = NULL;	/* used by ipfw uid/gid/jail rules	*/
 	i = V_ip_fw_chk_ptr(&args);

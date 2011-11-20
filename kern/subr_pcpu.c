@@ -61,7 +61,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sx.h>
 #include <ddb/ddb.h>
 
-MALLOC_DEFINE(M_PCPU, "Per-cpu", "Per-cpu resource accouting.");
+static MALLOC_DEFINE(M_PCPU, "Per-cpu", "Per-cpu resource accouting.");
 
 struct dpcpu_free {
 	uintptr_t	df_start;
@@ -92,9 +92,6 @@ pcpu_init(struct pcpu *pcpu, int cpuid, size_t size)
 	cpu_pcpu_init(pcpu, cpuid, size);
 	pcpu->pc_rm_queue.rmq_next = &pcpu->pc_rm_queue;
 	pcpu->pc_rm_queue.rmq_prev = &pcpu->pc_rm_queue;
-#ifdef KTR
-	snprintf(pcpu->pc_name, sizeof(pcpu->pc_name), "CPU %d", cpuid);
-#endif
 }
 
 void

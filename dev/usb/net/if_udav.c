@@ -147,7 +147,6 @@ static device_method_t udav_methods[] = {
 
 	/* bus interface */
 	DEVMETHOD(bus_print_child, bus_generic_print_child),
-	DEVMETHOD(bus_driver_added, bus_generic_driver_added),
 
 	/* MII interface */
 	DEVMETHOD(miibus_readreg, udav_miibus_readreg),
@@ -188,7 +187,7 @@ static const struct usb_ether_methods udav_ue_methods = {
 #ifdef USB_DEBUG
 static int udav_debug = 0;
 
-SYSCTL_NODE(_hw_usb, OID_AUTO, udav, CTLFLAG_RW, 0, "USB udav");
+static SYSCTL_NODE(_hw_usb, OID_AUTO, udav, CTLFLAG_RW, 0, "USB udav");
 SYSCTL_INT(_hw_usb_udav, OID_AUTO, debug, CTLFLAG_RW, &udav_debug, 0,
     "Debug level");
 #endif
@@ -752,9 +751,9 @@ udav_ifmedia_status(struct ifnet *ifp, struct ifmediareq *ifmr)
 
 	UDAV_LOCK(sc);
 	mii_pollstat(mii);
-	UDAV_UNLOCK(sc);
 	ifmr->ifm_active = mii->mii_media_active;
 	ifmr->ifm_status = mii->mii_media_status;
+	UDAV_UNLOCK(sc);
 }
 
 static void

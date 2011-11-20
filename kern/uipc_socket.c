@@ -661,6 +661,8 @@ sofree(struct socket *so)
 	 */
 	sbdestroy(&so->so_snd, so);
 	sbdestroy(&so->so_rcv, so);
+	seldrain(&so->so_snd.sb_sel);
+	seldrain(&so->so_rcv.sb_sel);
 	knlist_destroy(&so->so_rcv.sb_sel.si_note);
 	knlist_destroy(&so->so_snd.sb_sel.si_note);
 	sodealloc(so);
@@ -1915,7 +1917,6 @@ release:
 /*
  * Optimized version of soreceive() for stream (TCP) sockets.
  */
-#ifdef TCP_SORECEIVE_STREAM
 int
 soreceive_stream(struct socket *so, struct sockaddr **psa, struct uio *uio,
     struct mbuf **mp0, struct mbuf **controlp, int *flagsp)
@@ -1955,20 +1956,9 @@ soreceive_stream(struct socket *so, struct sockaddr **psa, struct uio *uio,
 	}
 	oresid = uio->uio_resid;
 
-	/* We will never ever get anything unless we are connected. */
+	/* We will never ever get anything unless we are or were connected. */
 	if (!(so->so_state & (SS_ISCONNECTED|SS_ISDISCONNECTED))) {
-		/* When disconnecting there may be still some data left. */
-		if (sb->sb_cc > 0)
-			goto deliver;
-		if (!(so->so_state & SS_ISDISCONNECTED))
-			error = ENOTCONN;
-		goto out;
-	}
-
-	/* Socket buffer is empty and we shall not block. */
-	if (sb->sb_cc == 0 &&
-	    ((sb->sb_flags & SS_NBIO) || (flags & (MSG_DONTWAIT|MSG_NBIO)))) {
-		error = EAGAIN;
+		error = ENOTCONN;
 		goto out;
 	}
 
@@ -1993,6 +1983,13 @@ restart:
 			goto deliver;
 		else
 			goto out;
+	}
+
+	/* Socket buffer is empty and we shall not block. */
+	if (sb->sb_cc == 0 &&
+	    ((so->so_state & SS_NBIO) || (flags & (MSG_DONTWAIT|MSG_NBIO)))) {
+		error = EAGAIN;
+		goto out;
 	}
 
 	/* Socket buffer got some data that we shall deliver now. */
@@ -2109,7 +2106,6 @@ out:
 	sbunlock(sb);
 	return (error);
 }
-#endif /* TCP_SORECEIVE_STREAM */
 
 /*
  * Optimized version of soreceive() for simple datagram cases from userspace.
@@ -2832,7 +2828,6 @@ bad:
 	return (error);
 }
 
-/* XXX; prepare mbuf for (__FreeBSD__ < 3) routines. */
 int
 soopt_getm(struct sockopt *sopt, struct mbuf **mp)
 {
@@ -2881,7 +2876,6 @@ soopt_getm(struct sockopt *sopt, struct mbuf **mp)
 	return (0);
 }
 
-/* XXX; copyin sopt data into mbuf chain for (__FreeBSD__ < 3) routines. */
 int
 soopt_mcopyin(struct sockopt *sopt, struct mbuf *m)
 {
@@ -2910,7 +2904,6 @@ soopt_mcopyin(struct sockopt *sopt, struct mbuf *m)
 	return (0);
 }
 
-/* XXX; copyout mbuf chain data into soopt for (__FreeBSD__ < 3) routines. */
 int
 soopt_mcopyout(struct sockopt *sopt, struct mbuf *m)
 {

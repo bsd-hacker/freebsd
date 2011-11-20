@@ -37,6 +37,8 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include "opt_vfs_allow_nonmpsafe.h"
+
 #include <sys/param.h>
 #include <sys/conf.h>
 #include <sys/fcntl.h>
@@ -51,6 +53,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/proc.h>
 #include <sys/filedesc.h>
 #include <sys/reboot.h>
+#include <sys/sbuf.h>
 #include <sys/syscallsubr.h>
 #include <sys/sysproto.h>
 #include <sys/sx.h>
@@ -78,7 +81,7 @@ SYSCTL_INT(_vfs, OID_AUTO, usermount, CTLFLAG_RW, &usermount, 0,
     "Unprivileged users may mount and unmount file systems");
 
 MALLOC_DEFINE(M_MOUNT, "mount", "vfs mount structure");
-MALLOC_DEFINE(M_VNODE_MARKER, "vnodemarker", "vnode marker");
+static MALLOC_DEFINE(M_VNODE_MARKER, "vnodemarker", "vnode marker");
 static uma_zone_t mount_zone;
 
 /* List of mounted filesystems. */
@@ -364,7 +367,7 @@ vfs_mergeopts(struct vfsoptlist *toopts, struct vfsoptlist *oldopts)
  * Mount a filesystem.
  */
 int
-nmount(td, uap)
+sys_nmount(td, uap)
 	struct thread *td;
 	struct nmount_args /* {
 		struct iovec *iovp;
@@ -681,7 +684,7 @@ struct mount_args {
 #endif
 /* ARGSUSED */
 int
-mount(td, uap)
+sys_mount(td, uap)
 	struct thread *td;
 	struct mount_args /* {
 		char *type;
@@ -797,6 +800,14 @@ vfs_domount_first(
 	 * get.  No freeing of cn_pnbuf.
 	 */
 	error = VFS_MOUNT(mp);
+#ifndef VFS_ALLOW_NONMPSAFE
+	if (error == 0 && VFS_NEEDSGIANT(mp)) {
+		(void)VFS_UNMOUNT(mp, fsflags);
+		error = ENXIO;
+		printf("%s: Mounting non-MPSAFE fs (%s) is disabled\n",
+		    __func__, mp->mnt_vfc->vfc_name);
+	}
+#endif
 	if (error != 0) {
 		vfs_unbusy(mp);
 		vfs_mount_destroy(mp);
@@ -806,6 +817,11 @@ vfs_domount_first(
 		vrele(vp);
 		return (error);
 	}
+#ifdef VFS_ALLOW_NONMPSAFE
+	if (VFS_NEEDSGIANT(mp))
+		printf("%s: Mounting non-MPSAFE fs (%s) is deprecated\n",
+		    __func__, mp->mnt_vfc->vfc_name);
+#endif
 
 	if (mp->mnt_opt != NULL)
 		vfs_freeopts(mp->mnt_opt);
@@ -1096,7 +1112,7 @@ struct unmount_args {
 #endif
 /* ARGSUSED */
 int
-unmount(td, uap)
+sys_unmount(td, uap)
 	struct thread *td;
 	register struct unmount_args /* {
 		char *path;
@@ -1226,18 +1242,6 @@ dounmount(mp, flags, td)
 		mp->mnt_kern_flag |= MNTK_UNMOUNTF;
 	error = 0;
 	if (mp->mnt_lockref) {
-		if ((flags & MNT_FORCE) == 0) {
-			mp->mnt_kern_flag &= ~(MNTK_UNMOUNT | MNTK_NOINSMNTQ |
-			    MNTK_UNMOUNTF);
-			if (mp->mnt_kern_flag & MNTK_MWAIT) {
-				mp->mnt_kern_flag &= ~MNTK_MWAIT;
-				wakeup(mp);
-			}
-			MNT_IUNLOCK(mp);
-			if (coveredvp)
-				VOP_UNLOCK(coveredvp, 0);
-			return (EBUSY);
-		}
 		mp->mnt_kern_flag |= MNTK_DRAINING;
 		error = msleep(&mp->mnt_lockref, MNT_MTX(mp), PVFS,
 		    "mount drain", 0);
@@ -1495,7 +1499,8 @@ vfs_getopts(struct vfsoptlist *opts, const char *name, int *error)
 }
 
 int
-vfs_flagopt(struct vfsoptlist *opts, const char *name, u_int *w, u_int val)
+vfs_flagopt(struct vfsoptlist *opts, const char *name, uint64_t *w,
+	uint64_t val)
 {
 	struct vfsopt *opt;
 

@@ -45,6 +45,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/bio.h>
 #include <sys/buf.h>
 #include <sys/jail.h>
+#include <sys/limits.h>
 #include <sys/lock.h>
 #include <sys/malloc.h>
 #include <sys/mbuf.h>
@@ -786,7 +787,7 @@ static const char *nfs_opts[] = { "from", "nfs_args",
     "readahead", "readdirsize", "soft", "hard", "mntudp", "tcp", "udp",
     "wsize", "rsize", "retrans", "acregmin", "acregmax", "acdirmin",
     "acdirmax", "deadthresh", "hostname", "timeout", "addr", "fh", "nfsv3",
-    "sec", "maxgroups", "principal", "negnametimeo", "nocto",
+    "sec", "maxgroups", "principal", "negnametimeo", "nocto", "wcommitsize",
     NULL };
 
 /*
@@ -1018,6 +1019,15 @@ nfs_mount(struct mount *mp)
 		}
 		args.flags |= NFSMNT_ACDIRMAX;
 	}
+	if (vfs_getopt(mp->mnt_optnew, "wcommitsize", (void **)&opt, NULL) == 0) {
+		ret = sscanf(opt, "%d", &args.wcommitsize);
+		if (ret != 1 || args.wcommitsize < 0) {
+			vfs_mount_error(mp, "illegal wcommitsize: %s", opt);
+			error = EINVAL;
+			goto out;
+		}
+		args.flags |= NFSMNT_WCOMMITSIZE;
+	}
 	if (vfs_getopt(mp->mnt_optnew, "deadthresh", (void **)&opt, NULL) == 0) {
 		ret = sscanf(opt, "%d", &args.deadthresh);
 		if (ret != 1 || args.deadthresh <= 0) {
@@ -1228,13 +1238,11 @@ mountnfs(struct nfs_args *argp, struct mount *mp, struct sockaddr *nam,
 	 *
 	 * For V3, nfs_fsinfo will adjust this as necessary.  Assume maximum
 	 * that we can handle until we find out otherwise.
-	 * XXX Our "safe" limit on the client is what we can store in our
-	 * buffer cache using signed(!) block numbers.
 	 */
 	if ((argp->flags & NFSMNT_NFSV3) == 0)
 		nmp->nm_maxfilesize = 0xffffffffLL;
 	else
-		nmp->nm_maxfilesize = (u_int64_t)0x80000000 * DEV_BSIZE - 1;
+		nmp->nm_maxfilesize = OFF_MAX;
 
 	nmp->nm_timeo = NFS_TIMEO;
 	nmp->nm_retry = NFS_RETRANS;

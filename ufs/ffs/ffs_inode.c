@@ -90,7 +90,7 @@ ffs_update(vp, waitfor)
 		return (0);
 	ip->i_flag &= ~(IN_LAZYACCESS | IN_LAZYMOD | IN_MODIFIED);
 	fs = ip->i_fs;
-	if (fs->fs_ronly)
+	if (fs->fs_ronly && ip->i_ump->um_fsckpid == 0)
 		return (0);
 	error = bread(ip->i_devvp, fsbtodb(fs, ino_to_fsba(fs, ip->i_number)),
 		(int)fs->fs_bsize, NOCRED, &bp);
@@ -118,18 +118,6 @@ ffs_update(vp, waitfor)
 		bdwrite(bp);
 		return (0);
 	}
-}
-
-void
-ffs_pages_remove(struct vnode *vp, vm_pindex_t start, vm_pindex_t end)
-{
-	vm_object_t object;
-
-	if ((object = vp->v_object) == NULL)
-		return;
-	VM_OBJECT_LOCK(object);
-	vm_object_page_remove(object, start, end, 0);
-	VM_OBJECT_UNLOCK(object);
 }
 
 #define	SINGLE	0	/* index of single indirect block */
@@ -219,7 +207,7 @@ ffs_truncate(vp, length, flags, cred, td)
 			(void) chkdq(ip, -extblocks, NOCRED, 0);
 #endif
 			vinvalbuf(vp, V_ALT, 0, 0);
-			ffs_pages_remove(vp,
+			vn_pages_remove(vp,
 			    OFF_TO_IDX(lblktosize(fs, -extblocks)), 0);
 			osize = ip->i_din2->di_extsize;
 			ip->i_din2->di_blocks -= extblocks;

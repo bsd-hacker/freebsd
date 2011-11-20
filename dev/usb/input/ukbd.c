@@ -59,6 +59,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/callout.h>
 #include <sys/malloc.h>
 #include <sys/priv.h>
+#include <sys/proc.h>
+#include <sys/sched.h>
 #include <sys/kdb.h>
 
 #include <dev/usb/usb.h>
@@ -91,7 +93,7 @@ __FBSDID("$FreeBSD$");
 static int ukbd_debug = 0;
 static int ukbd_no_leds = 0;
 
-SYSCTL_NODE(_hw_usb, OID_AUTO, ukbd, CTLFLAG_RW, 0, "USB ukbd");
+static SYSCTL_NODE(_hw_usb, OID_AUTO, ukbd, CTLFLAG_RW, 0, "USB ukbd");
 SYSCTL_INT(_hw_usb_ukbd, OID_AUTO, debug, CTLFLAG_RW,
     &ukbd_debug, 0, "Debug level");
 SYSCTL_INT(_hw_usb_ukbd, OID_AUTO, no_leds, CTLFLAG_RW,
@@ -386,6 +388,33 @@ ukbd_put_key(struct ukbd_softc *sc, uint32_t key)
 }
 
 static void
+ukbd_yield(void)
+{
+	struct thread *td = curthread;
+	uint32_t old_prio;
+
+	DROP_GIANT();
+
+	thread_lock(td);
+
+	/* get current priority */
+	old_prio = td->td_base_pri;
+
+	/* set new priority */
+	sched_prio(td, td->td_user_pri);
+
+	/* cause a task switch */
+	mi_switch(SW_INVOL | SWT_RELINQUISH, NULL);
+
+	/* restore priority */
+	sched_prio(td, old_prio);
+
+	thread_unlock(td);
+
+	PICKUP_GIANT();
+}
+
+static void
 ukbd_do_poll(struct ukbd_softc *sc, uint8_t wait)
 {
 	DPRINTFN(2, "polling\n");
@@ -396,8 +425,9 @@ ukbd_do_poll(struct ukbd_softc *sc, uint8_t wait)
 
 	if (kdb_active == 0) {
 		while (sc->sc_inputs == 0) {
-			/* make sure the USB code gets a chance to run */
-			pause("UKBD", 1);
+
+			/* give USB threads a chance to run */
+			ukbd_yield();
 
 			/* check if we should wait */
 			if (!wait)
@@ -1899,6 +1929,8 @@ ukbd_ioctl(keyboard_t *kbd, u_long cmd, caddr_t arg)
 		return (ukbd_set_typematic(kbd, *(int *)arg));
 
 	case PIO_KEYMAP:		/* set keyboard translation table */
+	case OPIO_KEYMAP:		/* set keyboard translation table
+					 * (compat) */
 	case PIO_KEYMAPENT:		/* set keyboard translation table
 					 * entry */
 	case PIO_DEADKEYMAP:		/* set accent key translation table */

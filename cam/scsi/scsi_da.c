@@ -606,7 +606,7 @@ static int da_retry_count = DA_DEFAULT_RETRY;
 static int da_default_timeout = DA_DEFAULT_TIMEOUT;
 static int da_send_ordered = DA_DEFAULT_SEND_ORDERED;
 
-SYSCTL_NODE(_kern_cam, OID_AUTO, da, CTLFLAG_RD, 0,
+static SYSCTL_NODE(_kern_cam, OID_AUTO, da, CTLFLAG_RD, 0,
             "CAM Direct Access Disk driver");
 SYSCTL_INT(_kern_cam_da, OID_AUTO, retry_count, CTLFLAG_RW,
            &da_retry_count, 0, "Normal I/O retry count");
@@ -642,7 +642,7 @@ static struct periph_driver dadriver =
 
 PERIPHDRIVER_DECLARE(da, dadriver);
 
-MALLOC_DEFINE(M_SCSIDA, "scsi_da", "scsi_da buffers");
+static MALLOC_DEFINE(M_SCSIDA, "scsi_da", "scsi_da buffers");
 
 static int
 daopen(struct disk *dp)
@@ -753,10 +753,10 @@ daclose(struct disk *dp)
 				int asc, ascq;
 				int sense_key, error_code;
 
-				scsi_extract_sense(&ccb->csio.sense_data,
-						   &error_code,
-						   &sense_key, 
-						   &asc, &ascq);
+				scsi_extract_sense_len(&ccb->csio.sense_data,
+				    ccb->csio.sense_len - ccb->csio.sense_resid,
+				    &error_code, &sense_key, &asc, &ascq,
+				    /*show_errors*/ 1);
 				if (sense_key != SSD_KEY_ILLEGAL_REQUEST)
 					scsi_sense_print(&ccb->csio);
 			} else {
@@ -916,10 +916,10 @@ dadump(void *arg, void *virtual, vm_offset_t physical, off_t offset, size_t leng
 				int asc, ascq;
 				int sense_key, error_code;
 
-				scsi_extract_sense(&csio.sense_data,
-						   &error_code,
-						   &sense_key, 
-						   &asc, &ascq);
+				scsi_extract_sense_len(&csio.sense_data,
+				    csio.sense_len - csio.sense_resid,
+				    &error_code, &sense_key, &asc, &ascq,
+				    /*show_errors*/ 1);
 				if (sense_key != SSD_KEY_ILLEGAL_REQUEST)
 					scsi_sense_print(&csio);
 			} else {
@@ -1802,9 +1802,10 @@ dadone(struct cam_periph *periph, union ccb *done_ccb)
 
 				if (have_sense) {
 					sense = &csio->sense_data;
-					scsi_extract_sense(sense, &error_code,
-							   &sense_key, 
-							   &asc, &ascq);
+					scsi_extract_sense_len(sense,
+					    csio->sense_len - csio->sense_resid,
+					    &error_code, &sense_key, &asc,
+					    &ascq, /*show_errors*/ 1);
 				}
 				/*
 				 * Attach to anything that claims to be a

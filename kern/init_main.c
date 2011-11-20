@@ -641,7 +641,7 @@ static char init_path[MAXPATHLEN] =
 #ifdef	INIT_PATH
     __XSTRING(INIT_PATH);
 #else
-    "/sbin/init:/sbin/oinit:/sbin/init.bak:/rescue/init:/stand/sysinstall";
+    "/sbin/init:/sbin/oinit:/sbin/init.bak:/rescue/init";
 #endif
 SYSCTL_STRING(_kern, OID_AUTO, init_path, CTLFLAG_RD, init_path, 0,
 	"Path used to search the init process");
@@ -765,7 +765,7 @@ start_init(void *dummy)
 		 * Otherwise, return via fork_trampoline() all the way
 		 * to user mode as init!
 		 */
-		if ((error = execve(td, &args)) == 0) {
+		if ((error = sys_execve(td, &args)) == 0) {
 			mtx_unlock(&Giant);
 			return;
 		}
@@ -790,7 +790,8 @@ create_init(const void *udata __unused)
 	struct ucred *newcred, *oldcred;
 	int error;
 
-	error = fork1(&thread0, RFFDG | RFPROC | RFSTOPPED, 0, &initproc);
+	error = fork1(&thread0, RFFDG | RFPROC | RFSTOPPED, 0, &initproc,
+	    NULL, 0);
 	if (error)
 		panic("cannot fork init: %d\n", error);
 	KASSERT(initproc->p_pid == 1, ("create_init: initproc->p_pid != 1"));

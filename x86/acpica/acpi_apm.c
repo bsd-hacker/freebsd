@@ -53,7 +53,7 @@ __FBSDID("$FreeBSD$");
 static int apm_active;
 static struct clonedevs *apm_clones;
 
-MALLOC_DEFINE(M_APMDEV, "apmdev", "APM device emulation");
+static MALLOC_DEFINE(M_APMDEV, "apmdev", "APM device emulation");
 
 static d_open_t		apmopen;
 static d_close_t	apmclose;
@@ -297,6 +297,7 @@ apmclose(struct cdev *dev, int flag, int fmt, struct thread *td)
 	/* Remove this clone's data from the list and free it. */
 	ACPI_LOCK(acpi);
 	STAILQ_REMOVE(&acpi_sc->apm_cdevs, clone, apm_clone_data, entries);
+	seldrain(&clone->sel_read);
 	knlist_destroy(&clone->sel_read.si_note);
 	ACPI_UNLOCK(acpi);
 	free(clone, M_APMDEV);

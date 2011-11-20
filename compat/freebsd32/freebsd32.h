@@ -52,13 +52,13 @@ struct timeval32 {
 } while (0)
 
 struct timespec32 {
-	u_int32_t tv_sec;
-	u_int32_t tv_nsec;
+	int32_t tv_sec;
+	int32_t tv_nsec;
 };
 #define TS_CP(src,dst,fld) do {			\
 	CP((src).fld,(dst).fld,tv_sec);		\
 	CP((src).fld,(dst).fld,tv_nsec);	\
-} while (0);
+} while (0)
 
 struct rusage32 {
 	struct timeval32 ru_utime;
@@ -310,7 +310,7 @@ struct kinfo_proc32 {
 	char	ki_rqindex;
 	u_char	ki_oncpu;
 	u_char	ki_lastcpu;
-	char	ki_ocomm[OCOMMLEN+1];
+	char	ki_tdname[TDNAMLEN+1];
 	char	ki_wmesg[WMESGLEN+1];
 	char	ki_login[LOGNAMELEN+1];
 	char	ki_lockname[LOCKNAMELEN+1];

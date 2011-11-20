@@ -195,8 +195,9 @@ struct ifnet {
 					/* protected by if_addr_mtx */
 	void	*if_pf_kif;
 	void	*if_lagg;		/* lagg glue */
-	u_char	if_alloctype;		/* if_type at time of allocation */
+	char	*if_description;	/* interface description */
 	u_int	if_fib;			/* interface FIB */
+	u_char	if_alloctype;		/* if_type at time of allocation */
 
 	/*
 	 * Spare fields are added so that we can modify sensitive data
@@ -204,9 +205,8 @@ struct ifnet {
 	 * be used with care where binary compatibility is required.
 	 */
 	char	if_cspare[3];
-	char	*if_description;	/* interface description */
-	void	*if_pspare[7];
 	int	if_ispare[4];
+	void	*if_pspare[8];		/* 1 netmap, 7 TDB */
 };
 
 typedef void if_init_f_t(void *);
@@ -318,6 +318,18 @@ void	if_maddr_runlock(struct ifnet *ifp);	/* if_multiaddrs */
 #define IF_DEQUEUE(ifq, m) do { 				\
 	IF_LOCK(ifq); 						\
 	_IF_DEQUEUE(ifq, m); 					\
+	IF_UNLOCK(ifq); 					\
+} while (0)
+
+#define	_IF_DEQUEUE_ALL(ifq, m) do {				\
+	(m) = (ifq)->ifq_head;					\
+	(ifq)->ifq_head = (ifq)->ifq_tail = NULL;		\
+	(ifq)->ifq_len = 0;					\
+} while (0)
+
+#define	IF_DEQUEUE_ALL(ifq, m) do {				\
+	IF_LOCK(ifq); 						\
+	_IF_DEQUEUE_ALL(ifq, m);				\
 	IF_UNLOCK(ifq); 					\
 } while (0)
 

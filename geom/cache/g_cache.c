@@ -37,6 +37,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysctl.h>
 #include <sys/malloc.h>
 #include <sys/queue.h>
+#include <sys/sbuf.h>
 #include <sys/time.h>
 #include <vm/uma.h>
 #include <geom/geom.h>
@@ -47,7 +48,8 @@ FEATURE(geom_cache, "GEOM cache module");
 static MALLOC_DEFINE(M_GCACHE, "gcache_data", "GEOM_CACHE Data");
 
 SYSCTL_DECL(_kern_geom);
-SYSCTL_NODE(_kern_geom, OID_AUTO, cache, CTLFLAG_RW, 0, "GEOM_CACHE stuff");
+static SYSCTL_NODE(_kern_geom, OID_AUTO, cache, CTLFLAG_RW, 0,
+    "GEOM_CACHE stuff");
 static u_int g_cache_debug = 0;
 SYSCTL_UINT(_kern_geom_cache, OID_AUTO, debug, CTLFLAG_RW, &g_cache_debug, 0,
     "Debug level");

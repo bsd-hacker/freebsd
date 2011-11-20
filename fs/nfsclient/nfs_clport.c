@@ -36,6 +36,8 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_kdtrace.h"
 
+#include <sys/capability.h>
+
 /*
  * generally, I don't like #includes inside .h files, but it seems to
  * be the easiest way to handle the port.
@@ -127,7 +129,7 @@ nfscl_nget(struct mount *mntp, struct vnode *dvp, struct nfsfh *nfhp,
 	if (error == 0 && nvp != NULL) {
 		/*
 		 * I believe there is a slight chance that vgonel() could
-		 * get called on this vnode between when vn_lock() drops
+		 * get called on this vnode between when NFSVOPLOCK() drops
 		 * the VI_LOCK() and vget() acquires it again, so that it
 		 * hasn't yet had v_usecount incremented. If this were to
 		 * happen, the VI_DOOMED flag would be set, so check for
@@ -317,7 +319,7 @@ nfscl_ngetreopen(struct mount *mntp, u_int8_t *fhp, int fhsize,
 	error = vfs_hash_get(mntp, hash, (LK_EXCLUSIVE | LK_NOWAIT), td, &nvp,
 	    newnfs_vncmpf, nfhp);
 	if (error == 0 && nvp != NULL) {
-		VOP_UNLOCK(nvp, 0);
+		NFSVOPUNLOCK(nvp, 0);
 	} else if (error == EBUSY) {
 		/*
 		 * The LK_EXCLOTHER lock type tells nfs_lock1() to not try
@@ -1231,7 +1233,13 @@ nfssvc_nfscl(struct thread *td, struct nfssvc_args *uap)
 		error = copyin(uap->argp, (caddr_t)&nfscbdarg, sizeof(nfscbdarg));
 		if (error)
 			return (error);
-		if ((error = fget(td, nfscbdarg.sock, &fp)) != 0) {
+		/*
+		 * Since we don't know what rights might be required,
+		 * pretend that we need them all. It is better to be too
+		 * careful than too reckless.
+		 */
+		if ((error = fget(td, nfscbdarg.sock, CAP_SOCK_ALL, &fp))
+		    != 0) {
 			return (error);
 		}
 		if (fp->f_type != DTYPE_SOCKET) {

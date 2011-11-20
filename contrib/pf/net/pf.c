@@ -1342,42 +1342,42 @@ pf_purge_thread(void *v)
 		tsleep(pf_purge_thread, PWAIT, "pftm", 1 * hz);
 
 #ifdef __FreeBSD__
-	sx_slock(&V_pf_consistency_lock);
-	PF_LOCK();
-	locked = 0;
-
-	if (V_pf_end_threads) {
-		PF_UNLOCK();
-		sx_sunlock(&V_pf_consistency_lock);
-		sx_xlock(&V_pf_consistency_lock);
+		sx_slock(&V_pf_consistency_lock);
 		PF_LOCK();
+		locked = 0;
 
-		pf_purge_expired_states(V_pf_status.states, 1);
-		pf_purge_expired_fragments();
-		pf_purge_expired_src_nodes(1);
-		V_pf_end_threads++;
+		if (V_pf_end_threads) {
+			PF_UNLOCK();
+			sx_sunlock(&V_pf_consistency_lock);
+			sx_xlock(&V_pf_consistency_lock);
+			PF_LOCK();
 
-		sx_xunlock(&V_pf_consistency_lock);
-		PF_UNLOCK();
-		wakeup(pf_purge_thread);
-		kproc_exit(0);
-	}
+			pf_purge_expired_states(V_pf_status.states, 1);
+			pf_purge_expired_fragments();
+			pf_purge_expired_src_nodes(1);
+			V_pf_end_threads++;
+
+			sx_xunlock(&V_pf_consistency_lock);
+			PF_UNLOCK();
+			wakeup(pf_purge_thread);
+			kproc_exit(0);
+		}
 #endif
 		s = splsoftnet();
 
 		/* process a fraction of the state table every second */
 #ifdef __FreeBSD__
-	if (!pf_purge_expired_states(1 + (V_pf_status.states /
-	    V_pf_default_rule.timeout[PFTM_INTERVAL]), 0)) {
-		PF_UNLOCK();
-		sx_sunlock(&V_pf_consistency_lock);
-		sx_xlock(&V_pf_consistency_lock);
-		PF_LOCK();
-		locked = 1;
+		if (!pf_purge_expired_states(1 + (V_pf_status.states /
+		    V_pf_default_rule.timeout[PFTM_INTERVAL]), 0)) {
+			PF_UNLOCK();
+			sx_sunlock(&V_pf_consistency_lock);
+			sx_xlock(&V_pf_consistency_lock);
+			PF_LOCK();
+			locked = 1;
 
-		pf_purge_expired_states(1 + (V_pf_status.states /
-		    V_pf_default_rule.timeout[PFTM_INTERVAL]), 1);
-	}
+			pf_purge_expired_states(1 + (V_pf_status.states /
+			    V_pf_default_rule.timeout[PFTM_INTERVAL]), 1);
+		}
 #else
 		pf_purge_expired_states(1 + (pf_status.states
 		    / pf_default_rule.timeout[PFTM_INTERVAL]));
@@ -1626,8 +1626,8 @@ pf_free_state(struct pf_state *cur)
 
 #if NPFSYNC > 0
 #ifdef __FreeBSD__
-	if (pfsync_state_in_use_ptr != NULL)
-		pfsync_state_in_use_ptr(cur);
+	if (pfsync_state_in_use_ptr != NULL &&
+		pfsync_state_in_use_ptr(cur))
 #else
 	if (pfsync_state_in_use(cur))
 #endif
@@ -6967,7 +6967,8 @@ done:
 		ipfwtag = m_tag_alloc(MTAG_IPFW_RULE, 0,
 				sizeof(struct ipfw_rule_ref), M_NOWAIT | M_ZERO);
 		if (ipfwtag != NULL) {
-			((struct ipfw_rule_ref *)(ipfwtag+1))->info = r->divert.port;
+			((struct ipfw_rule_ref *)(ipfwtag+1))->info =
+			    ntohs(r->divert.port);
 			((struct ipfw_rule_ref *)(ipfwtag+1))->rulenum = dir;
 
 			m_tag_prepend(m, ipfwtag);
@@ -7175,11 +7176,15 @@ pf_test6(int dir, struct ifnet *ifp, struct mbuf **m0,
 	}
 
 #ifdef __FreeBSD__
-	if (pd.pf_mtag->flags & PF_TAG_GENERATED)
+	if (pd.pf_mtag->flags & PF_TAG_GENERATED) {
+		PF_UNLOCK();
 #else
 	if (m->m_pkthdr.pf.flags & PF_TAG_GENERATED)
 #endif
 		return (PF_PASS);
+#ifdef __FreeBSD__
+	}
+#endif
 
 	/* We do IP header normalization and packet reassembly here */
 	if (pf_normalize_ip6(m0, dir, kif, &reason, &pd) != PF_PASS) {

@@ -32,6 +32,7 @@ options		MAMBO			#IBM Mambo Full System Simulator
 options		PSERIES			#PAPR-compliant systems (e.g. IBM p)
 
 options 	SCHED_ULE		#ULE scheduler
+options 	PREEMPTION		#Enable kernel thread preemption
 options 	INET			#InterNETworking
 options 	INET6			#IPv6 communications protocols
 options 	SCTP			#Stream Control Transmission Protocol
@@ -129,6 +130,7 @@ device		glc		# Sony Playstation 3 Ethernet
 device		miibus		# MII bus support
 device		bge		# Broadcom BCM570xx Gigabit Ethernet
 device		gem		# Sun GEM/Sun ERI/Apple GMAC
+device		re
 device		dc		# DEC/Intel 21143 and various workalikes
 device		fxp		# Intel EtherExpress PRO/100B (82557, 82558)
 
@@ -194,3 +196,6 @@ device		sound		# Generic sound driver (required)
 device		snd_ai2s	# Apple I2S audio
 device		snd_uaudio	# USB Audio
 
+#options		MD_ROOT_SIZE=8192
+#makeoptions	MFS_IMAGE=/tmp/mfsroot
+#options		ROOTDEVNAME=\"ufs:/dev/md0\"

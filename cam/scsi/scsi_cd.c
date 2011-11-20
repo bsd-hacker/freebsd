@@ -306,8 +306,9 @@ static int cd_retry_count = CD_DEFAULT_RETRY;
 static int changer_min_busy_seconds = CHANGER_MIN_BUSY_SECONDS;
 static int changer_max_busy_seconds = CHANGER_MAX_BUSY_SECONDS;
 
-SYSCTL_NODE(_kern_cam, OID_AUTO, cd, CTLFLAG_RD, 0, "CAM CDROM driver");
-SYSCTL_NODE(_kern_cam_cd, OID_AUTO, changer, CTLFLAG_RD, 0, "CD Changer");
+static SYSCTL_NODE(_kern_cam, OID_AUTO, cd, CTLFLAG_RD, 0, "CAM CDROM driver");
+static SYSCTL_NODE(_kern_cam_cd, OID_AUTO, changer, CTLFLAG_RD, 0,
+    "CD Changer");
 SYSCTL_INT(_kern_cam_cd, OID_AUTO, retry_count, CTLFLAG_RW,
            &cd_retry_count, 0, "Normal I/O retry count");
 TUNABLE_INT("kern.cam.cd.retry_count", &cd_retry_count);
@@ -336,7 +337,7 @@ static struct mtx changerq_mtx;
 static STAILQ_HEAD(changerlist, cdchanger) changerq;
 static int num_changers;
 
-MALLOC_DEFINE(M_SCSICD, "scsi_cd", "scsi_cd buffers");
+static MALLOC_DEFINE(M_SCSICD, "scsi_cd", "scsi_cd buffers");
 
 static void
 cdinit(void)
@@ -1691,9 +1692,10 @@ cddone(struct cam_periph *periph, union ccb *done_ccb)
 
 				if (have_sense) {
 					sense = &csio->sense_data;
-					scsi_extract_sense(sense, &error_code,
-							   &sense_key, 
-							   &asc, &ascq);
+					scsi_extract_sense_len(sense,
+					    csio->sense_len - csio->sense_resid,
+					    &error_code, &sense_key, &asc,
+					    &ascq, /*show_errors*/ 1);
 				}
 				/*
 				 * Attach to anything that claims to be a
@@ -3126,8 +3128,9 @@ cderror(union ccb *ccb, u_int32_t cam_flags, u_int32_t sense_flags)
 	 && ((ccb->ccb_h.flags & CAM_SENSE_PTR) == 0)) {
 		int sense_key, error_code, asc, ascq;
 
- 		scsi_extract_sense(&ccb->csio.sense_data,
-				   &error_code, &sense_key, &asc, &ascq);
+ 		scsi_extract_sense_len(&ccb->csio.sense_data,
+		    ccb->csio.sense_len - ccb->csio.sense_resid, &error_code,
+		    &sense_key, &asc, &ascq, /*show_errors*/ 1);
 		if (sense_key == SSD_KEY_ILLEGAL_REQUEST)
  			error = cd6byteworkaround(ccb);
 	}

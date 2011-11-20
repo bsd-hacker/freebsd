@@ -423,7 +423,7 @@ DRIVER_MODULE(bxe, pci, bxe_driver, bxe_devclass, 0, 0);
 /*
  * Tunable device values
  */
-SYSCTL_NODE(_hw, OID_AUTO, bxe, CTLFLAG_RD, 0, "bxe driver parameters");
+static SYSCTL_NODE(_hw, OID_AUTO, bxe, CTLFLAG_RD, 0, "bxe driver parameters");
 /* Allowable values are TRUE (1) or FALSE (0). */
 
 static int bxe_dcc_enable = FALSE;
@@ -7188,7 +7188,7 @@ bxe_attn_int(struct bxe_softc* sc)
 /* sum[hi:lo] += add[hi:lo] */
 #define	ADD_64(s_hi, a_hi, s_lo, a_lo) do {			\
 	s_lo += a_lo;						\
-	s_hi += a_hi + (s_lo < a_lo) ? 1 : 0;			\
+	s_hi += a_hi + ((s_lo < a_lo) ? 1 : 0);			\
 } while (0)
 
 /* Subtraction = minuend -= subtrahend */

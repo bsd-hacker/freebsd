@@ -410,6 +410,7 @@ div_output(struct socket *so, struct mbuf *m, struct sockaddr_in *sin,
 			}
 
 			ip6->ip6_plen = ntohs(ip6->ip6_plen);
+			break;
 		    }
 #endif
 		default:
@@ -737,7 +738,8 @@ div_pcblist(SYSCTL_HANDLER_ARGS)
 }
 
 #ifdef SYSCTL_NODE
-SYSCTL_NODE(_net_inet, IPPROTO_DIVERT, divert, CTLFLAG_RW, 0, "IPDIVERT");
+static SYSCTL_NODE(_net_inet, IPPROTO_DIVERT, divert, CTLFLAG_RW, 0,
+    "IPDIVERT");
 SYSCTL_PROC(_net_inet_divert, OID_AUTO, pcblist, CTLTYPE_OPAQUE | CTLFLAG_RD,
     NULL, 0, div_pcblist, "S,xinpcb", "List of active divert sockets");
 #endif

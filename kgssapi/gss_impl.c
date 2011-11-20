@@ -86,7 +86,7 @@ kgss_uninit(void *dummy)
 SYSUNINIT(kgss_uninit, SI_SUB_LOCK, SI_ORDER_FIRST, kgss_uninit, NULL);
 
 int
-gssd_syscall(struct thread *td, struct gssd_syscall_args *uap)
+sys_gssd_syscall(struct thread *td, struct gssd_syscall_args *uap)
 {
         struct sockaddr_un sun;
         struct netconfig *nconf;
@@ -282,7 +282,11 @@ kgssapi_modevent(module_t mod, int type, void *data)
 		    rpc_gss_svc_max_data_length;
 		break;
 	case MOD_UNLOAD:
-		/* Unloading of the kgssapi module isn't supported. */
+		/*
+		 * Unloading of the kgssapi module is not currently supported.
+		 * If somebody wants this, we would need to keep track of
+		 * currently executing threads and make sure the count is 0.
+		 */
 		/* FALLTHROUGH */
 	default:
 		error = EOPNOTSUPP;

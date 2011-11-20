@@ -74,7 +74,7 @@
 #endif
 
 #ifdef NG_SEPARATE_MALLOC
-MALLOC_DEFINE(M_NETGRAPH_MPPC, "netgraph_mppc", "netgraph mppc node ");
+static MALLOC_DEFINE(M_NETGRAPH_MPPC, "netgraph_mppc", "netgraph mppc node");
 #else
 #define M_NETGRAPH_MPPC M_NETGRAPH
 #endif
@@ -404,9 +404,6 @@ ng_mppc_rcvdata(hook_p hook, item_p item)
 
 	/* Oops */
 	panic("%s: unknown hook", __func__);
-#ifdef RESTARTABLE_PANICS
-	return (EINVAL);
-#endif
 }
 
 /*

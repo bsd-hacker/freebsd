@@ -192,41 +192,29 @@ struct ip6protosw inet6sw[] = {
 },
 #ifdef SCTP
 {
-	.pr_type =	SOCK_DGRAM,
-	.pr_domain =	&inet6domain,
-        .pr_protocol =	IPPROTO_SCTP,
-        .pr_flags =	PR_WANTRCVD,
-        .pr_input =	sctp6_input,
-        .pr_ctlinput =  sctp6_ctlinput,
-        .pr_ctloutput = sctp_ctloutput,
-        .pr_drain =	sctp_drain,
+	.pr_type =		SOCK_SEQPACKET,
+	.pr_domain =		&inet6domain,
+	.pr_protocol =		IPPROTO_SCTP,
+	.pr_flags =		PR_WANTRCVD,
+	.pr_input =		sctp6_input,
+	.pr_ctlinput =		sctp6_ctlinput,
+	.pr_ctloutput =	sctp_ctloutput,
+	.pr_drain =		sctp_drain,
 #ifndef INET	/* Do not call initialization twice. */
-	.pr_init =	sctp_init,
+	.pr_init =		sctp_init,
 #endif
-        .pr_usrreqs =	&sctp6_usrreqs
+	.pr_usrreqs =		&sctp6_usrreqs
 },
 {
-	.pr_type =	SOCK_SEQPACKET,
-	.pr_domain =	&inet6domain,
-        .pr_protocol =	IPPROTO_SCTP,
-        .pr_flags =	PR_WANTRCVD,
-        .pr_input =	sctp6_input,
-        .pr_ctlinput =  sctp6_ctlinput,
-        .pr_ctloutput = sctp_ctloutput,
-        .pr_drain =	sctp_drain,
-        .pr_usrreqs =	&sctp6_usrreqs
-},
-
-{
-	.pr_type =	SOCK_STREAM,
-	.pr_domain =	&inet6domain,
-        .pr_protocol =	IPPROTO_SCTP,
-        .pr_flags =	PR_WANTRCVD,
-        .pr_input =	sctp6_input,
-        .pr_ctlinput =  sctp6_ctlinput,
-        .pr_ctloutput = sctp_ctloutput,
-        .pr_drain =	sctp_drain,
-        .pr_usrreqs =	&sctp6_usrreqs
+	.pr_type =		SOCK_STREAM,
+	.pr_domain =		&inet6domain,
+	.pr_protocol =		IPPROTO_SCTP,
+	.pr_flags =		PR_WANTRCVD,
+	.pr_input =		sctp6_input,
+	.pr_ctlinput =	sctp6_ctlinput,
+	.pr_ctloutput =		sctp_ctloutput,
+	.pr_drain =		sctp_drain,
+	.pr_usrreqs =		&sctp6_usrreqs
 },
 #endif /* SCTP */
 {
@@ -411,6 +399,7 @@ VNET_DEFINE(int, ip6_defmcasthlim) = IPV6_DEFAULT_MULTICAST_HOPS;
 VNET_DEFINE(int, ip6_accept_rtadv) = 0;
 VNET_DEFINE(int, ip6_no_radr) = 0;
 VNET_DEFINE(int, ip6_norbit_raif) = 0;
+VNET_DEFINE(int, ip6_rfc6204w3) = 0;
 VNET_DEFINE(int, ip6_maxfragpackets);	/* initialized in frag6.c:frag6_init() */
 VNET_DEFINE(int, ip6_maxfrags);		/* initialized in frag6.c:frag6_init() */
 VNET_DEFINE(int, ip6_log_interval) = 5;
@@ -548,6 +537,10 @@ SYSCTL_VNET_INT(_net_inet6_ip6, IPV6CTL_NORBIT_RAIF, norbit_raif, CTLFLAG_RW,
 	&VNET_NAME(ip6_norbit_raif), 0,
 	"Always set 0 to R flag in ICMPv6 NA messages when accepting RA"
 	" on the interface.");
+SYSCTL_VNET_INT(_net_inet6_ip6, IPV6CTL_RFC6204W3, rfc6204w3,
+	CTLFLAG_RW, &VNET_NAME(ip6_rfc6204w3), 0,
+	"Accept the default router list from ICMPv6 RA messages even "
+	"when packet forwarding enabled.");
 SYSCTL_VNET_INT(_net_inet6_ip6, IPV6CTL_KEEPFAITH, keepfaith, CTLFLAG_RW,
 	&VNET_NAME(ip6_keepfaith), 0, "");
 SYSCTL_VNET_INT(_net_inet6_ip6, IPV6CTL_LOG_INTERVAL, log_interval,

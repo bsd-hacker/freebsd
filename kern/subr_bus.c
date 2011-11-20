@@ -574,7 +574,7 @@ devctl_queue_data_f(char *data, int flags)
 	p = devsoftc.async_proc;
 	if (p != NULL) {
 		PROC_LOCK(p);
-		psignal(p, SIGIO);
+		kern_psignal(p, SIGIO);
 		PROC_UNLOCK(p);
 	}
 	return;
@@ -1881,6 +1881,39 @@ device_delete_child(device_t dev, device_t child)
 }
 
 /**
+ * @brief Delete all children devices of the given device, if any.
+ *
+ * This function deletes all children devices of the given device, if
+ * any, using the device_delete_child() function for each device it
+ * finds. If a child device cannot be deleted, this function will
+ * return an error code.
+ * 
+ * @param dev		the parent device
+ *
+ * @retval 0		success
+ * @retval non-zero	a device would not detach
+ */
+int
+device_delete_all_children(device_t dev)
+{
+	device_t child;
+	int error;
+
+	PDEBUG(("Deleting all children of %s", DEVICENAME(dev)));
+
+	error = 0;
+
+	while ( (child = TAILQ_FIRST(&dev->children)) ) {
+		error = device_delete_child(dev, child);
+		if (error) {
+			PDEBUG(("Failed deleting %s", DEVICENAME(child)));
+			break;
+		}
+	}
+	return (error);
+}
+
+/**
  * @brief Find a device given a unit number
  *
  * This is similar to devclass_get_devices() but only searches for
@@ -2139,6 +2172,11 @@ device_get_children(device_t dev, device_t **devlistp, int *devcountp)
 	count = 0;
 	TAILQ_FOREACH(child, &dev->children, link) {
 		count++;
+	}
+	if (count == 0) {
+		*devlistp = NULL;
+		*devcountp = 0;
+		return (0);
 	}
 
 	list = malloc(count * sizeof(device_t), M_TEMP, M_NOWAIT|M_ZERO);
