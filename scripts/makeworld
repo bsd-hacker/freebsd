@@ -51,13 +51,18 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-# XXX MCL I don't know what this is supposed to do.
+# XXX MCL I don't know what -client is supposed to do.
 if [ "$client" = "1" ]; then
 	SRC_BASE=${pbd}/${arch}/src-client
 	shift 1
 else
 	SRC_BASE=${builddir}/src
-	export __MAKE_CONF=/dev/null
+	# XXX MCL 20110912 allow for per-build make.conf
+	if [ -f ${builddir}/make.conf.server ]; then
+	    export __MAKE_CONF=${builddir}/make.conf.server
+	else
+	    export __MAKE_CONF=/dev/null
+	fi
 fi
 cd ${SRC_BASE}
 
