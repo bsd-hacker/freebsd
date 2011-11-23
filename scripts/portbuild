@@ -74,7 +74,9 @@ if [ -f ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf ]; then
     . ${pbd}/${arch}/${branch}/builds/${buildid}/portbuild.conf
 fi
 . ${pbd}/${arch}/portbuild.$(hostname)
-. ${pbd}/scripts/buildenv
+# if buildenv isn't there, then ${pbd} is probably the default, which for
+# some reason you have not populated.
+. ${pbd}/scripts/buildenv || bailout ${chroot} 0 255 ${pkgname}
 
 buildroot=${scratchdir}
 error=0
@@ -183,6 +185,10 @@ if [ -f ${chroot}/.notready ]; then
   tar -C ${chroot} -xpf ${bindist}
   if [ -f ${bindistlocal} ]; then
     tar -C ${chroot} -xpf ${bindistlocal}
+  fi
+  # XXX MCL 20111117: allow additional (not replacement!) knobs for make.conf
+  if [ -f ${builddir}/make.conf.client ]; then
+      cat ${builddir}/make.conf.client >> ${chroot}/etc/make.conf
   fi
 
   # to be able to run certain kernel-dependent binaries
