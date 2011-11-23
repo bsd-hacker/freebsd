@@ -145,6 +145,9 @@ test -f ${pbd}/${arch}/portbuild.${host} && . ${pbd}/${arch}/portbuild.${host}
 rm -f ${builddir}/logs/${pkgname}.log ${builddir}/logs/${pkgname}.log.bz2
 rm -f ${builddir}/errors/${pkgname}.log ${builddir}/errors/${pkgname}.log.bz2
     
+if [ ! -f ${builddir}/ptimeout ]; then
+  /usr/bin/gcc -o ${builddir}/ptimeout -Wall ${pbc}/sources/ptimeout.c
+fi
 ${builddir}/ptimeout $timeout ${ssh_cmd} -a -n ${client_user}@${host} ${sudo_cmd} ${command} ${arch} ${branch} ${buildid} ${chroot} ${flags} \"$ED\" \"$PD\" \"$FD\" \"$BD\" \"$RD\" ${args} 2>&1
 error=$?
 
