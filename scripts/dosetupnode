@@ -81,14 +81,15 @@ setup() {
     ${client_setup} pre-copy ${args} || (echo "pre-copy for ${node} failed"; return 1)
 
     if [ "${norsync}" -eq 0 ]; then
-	# client.conf and common.conf can be symlinks outside this dir, so
-	# copy the actual files
+	# conf files (e.g. client.conf and common.conf) can be symlinks outside
+	# this dir, so copy the actual files
 	rsync ${rsync_gzip} -e "${ssh_cmd}" -r -L -p --delete ${pbd}/${arch}/*.conf \
 	    ${client_user}@${node}:${pbd}/${arch}
 	checkerror $? || (echo "copying *.conf to ${node} failed"; return 1)
 
 	# portbuild.* can be symlinks outside this dir, so copy the actual
 	# files
+	# XXX MCL really, only have to do portbuild.conf and portbuild.<nodename>.conf
 	rsync ${rsync_gzip} -e "${ssh_cmd}" -r -L -p --delete ${pbd}/${arch}/portbuild* \
 	    ${client_user}@${node}:${pbd}/${arch}
 	checkerror $? || (echo "copying portbuild* files to ${node} failed"; return 1)
@@ -116,6 +117,14 @@ setup() {
 		echo "No custom portbuild.conf."
 	    fi
 
+	    if [ -f ${builddir}/make.conf.client ]; then
+		rsync ${rsync_gzip} -e "${ssh_cmd}" -r -L -p --delete ${builddir}/make.conf.client \
+		    ${client_user}@${node}:${builddir}/
+		checkerror $? || (echo "Copying custom make.conf.client to ${node} failed"; return 1)
+	    else
+		echo "No custom make.conf.client."
+	    fi
+
 	    rsync ${rsync_gzip} -e "${ssh_cmd}" -r -L -p \
 		${builddir}/ports-${buildid}.tbz \
 		${builddir}/ports-${buildid}.tbz.md5 \
@@ -131,6 +140,7 @@ setup() {
     ${client_setup} post-copy ${args} || (echo "post-copy for ${node} failed"; return 1)
 
     if [ "${queue}" -eq 1 ]; then
+        # XXX MCL NEED TIMEOUT HERE
 	jobs=$(python ${pbc}/qmanager/qclient jobs | grep "${node}" | grep "${arch}/${branch}/${buildid} package" | awk '{print $1}' | tail +1)
 	for j in ${jobs}; do
 	    python ${pbc}/qmanager/qclient release $j
