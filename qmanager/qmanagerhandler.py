@@ -114,7 +114,10 @@ class QManagerServerConn(QManagerConnection):
         """ Connection is finished, flush and terminate it """
 
         if self.wfile:
-            self.wfile.flush()
+            try:
+                self.wfile.flush()
+            except:
+                pass
             self.wfile.close()
         if self.event:
             self.event.set()
