@@ -57,7 +57,7 @@ if [ "$client" = "1" ]; then
 	shift 1
 else
 	SRC_BASE=${builddir}/src
-	# XXX MCL 20110912 allow for per-build make.conf
+	# allow for per-build make.conf
 	if [ -f ${builddir}/make.conf.server ]; then
 	    export __MAKE_CONF=${builddir}/make.conf.server
 	else
