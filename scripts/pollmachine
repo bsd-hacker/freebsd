@@ -259,6 +259,7 @@ class MachinePoll(threading.Thread):
             else:
                 # machine is not responding to poll.
                 # XXX MCL remove from machines
+                self.online = False
                 # XXX inform qmanager
                 f.write("")
             f.close()
