@@ -117,12 +117,6 @@ buildenv () {
 	    break
 	fi
     done
-    for i in ${ARCHS_REQUIRING_LINPROCFS}; do
-	if [ ${i} = ${arch} ]; then
-	    export LINUX_OSRELEASE=${DEFAULT_LINUX_OSRELEASE}
-	    break
-	fi
-    done
 
     buildenv.common
 
@@ -138,8 +132,8 @@ buildenv () {
 	export INDEXFILE=INDEX-${branchbase}
     fi
 
-    # probably only used in mkbindist
-    export __MAKE_CONF=${pbd}/${arch}/make.conf
+    # probably only used in mkbindist XXX MCL probably not even there
+    # XXX MCL 20111117 export __MAKE_CONF=${pbd}/${arch}/make.conf
 }
 
 #
@@ -167,4 +161,15 @@ buildenv.common() {
 
     export BATCH=1
     export PACKAGE_BUILDING=1
+
+    for i in ${ARCHS_REQUIRING_LINPROCFS}; do
+	if [ ${i} = ${arch} ]; then
+	    export LINUX_OSRELEASE=${DEFAULT_LINUX_OSRELEASE}
+	    break
+	fi
+    done
+
+    if [ ! -z "${OVERRIDE_LINUX_NONBASE_PORTS}" ]; then
+	export OVERRIDE_LINUX_NONBASE_PORTS
+    fi
 }
