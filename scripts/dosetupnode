@@ -81,18 +81,22 @@ setup() {
     ${client_setup} pre-copy ${args} || (echo "pre-copy for ${node} failed"; return 1)
 
     if [ "${norsync}" -eq 0 ]; then
+	rsync ${rsync_gzip} -e "${ssh_cmd}" -r -l -p --delete ${pbc}/scripts ${pbc}/sources \
+	    ${client_user}@${node}:${pbc}/
+	checkerror $? || (echo "Copying scripts to ${node} failed"; return 1)
+
 	# conf files (e.g. client.conf and common.conf) can be symlinks outside
 	# this dir, so copy the actual files
 	rsync ${rsync_gzip} -e "${ssh_cmd}" -r -L -p --delete ${pbd}/${arch}/*.conf \
 	    ${client_user}@${node}:${pbd}/${arch}
-	checkerror $? || (echo "copying *.conf to ${node} failed"; return 1)
+	checkerror $? || (echo "Copying *.conf to ${node} failed"; return 1)
 
 	# portbuild.* can be symlinks outside this dir, so copy the actual
 	# files
 	# XXX MCL really, only have to do portbuild.conf and portbuild.<nodename>.conf
 	rsync ${rsync_gzip} -e "${ssh_cmd}" -r -L -p --delete ${pbd}/${arch}/portbuild* \
 	    ${client_user}@${node}:${pbd}/${arch}
-	checkerror $? || (echo "copying portbuild* files to ${node} failed"; return 1)
+	checkerror $? || (echo "Copying portbuild* files to ${node} failed"; return 1)
 
 	if [ -f "${pbd}/${arch}/clients/bindist-${node}.tar" ]; then
 	    rsync ${rsync_gzip} -e "${ssh_cmd}" -r -L -p --delete \
