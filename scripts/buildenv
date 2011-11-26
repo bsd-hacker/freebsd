@@ -132,8 +132,19 @@ buildenv () {
 	export INDEXFILE=INDEX-${branchbase}
     fi
 
-    # probably only used in mkbindist XXX MCL probably not even there
-    # XXX MCL 20111117 export __MAKE_CONF=${pbd}/${arch}/make.conf
+    # set make.conf.  Consumed by both 'make index' and 'makeworld'.
+    # First, must explicitly _unset_ pointyhat's native one.
+    export __MAKE_CONF=/dev/null
+    # allow for per-build make.conf
+    if [ -f ${builddir}/make.conf.server ]; then
+	export __MAKE_CONF=${builddir}/make.conf.server
+    else
+	# allow for per-arch make.conf
+	# XXX MCL NOTYET the ones that are there are set up for pxeworld.  WRONG!
+#	if [ -f ${builddir}/make.conf ]; then
+#	    export __MAKE_CONF=${pbd}/${arch}/make.conf
+#	fi
+    fi
 }
 
 #
