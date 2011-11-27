@@ -81,8 +81,9 @@ setup() {
     ${client_setup} pre-copy ${args} || (echo "pre-copy for ${node} failed"; return 1)
 
     if [ "${norsync}" -eq 0 ]; then
+	# create one master copy in the default directory
 	rsync ${rsync_gzip} -e "${ssh_cmd}" -r -l -p --delete ${pbc}/scripts ${pbc}/sources \
-	    ${client_user}@${node}:${pbc}/
+	    ${client_user}@${node}:/var/portbuild/
 	checkerror $? || (echo "Copying scripts to ${node} failed"; return 1)
 
 	# conf files (e.g. client.conf and common.conf) can be symlinks outside
