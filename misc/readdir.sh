@@ -55,7 +55,9 @@ cp -a /usr/include $mntpoint
 umount $mntpoint
 
 echo "Testing fdescfs(5)"
-/tmp/readdir /dev/fs
+mount -t fdescfs null /dev/fd
+/tmp/readdir /dev/fd
+umount /dev/fd
 
 echo "Testing procfs(5)"
 mount -t procfs procfs $mntpoint
