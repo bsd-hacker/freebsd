@@ -1063,9 +1063,15 @@ main(int argc, char **argv)
 #define CHANNEL	63
 	if (recv_data != NULL){
 		if (recvfn == NULL) { /* guess... */
-			recvfn = detect_recv_fn(fd, TAG | CHANNEL);
-			close(fd);
-			fd = -1;
+			snprintf(devbase, sizeof(devbase), "%s%d.0", device_string, current_board);
+			if (open_dev(&fd, devbase) < 0) {
+				err(EX_IOERR, "%s: Error opening firewire controller #%d %s in recv_data detect\n",
+					__func__, current_board, devbase);
+			} else {
+				recvfn = detect_recv_fn(fd, TAG | CHANNEL);
+				close(fd);
+				fd = -1;
+			}
 		}
 		snprintf(devbase, sizeof(devbase), "%s%d.0", device_string, current_board);
 		if (open_dev(&fd, devbase) < 0)
