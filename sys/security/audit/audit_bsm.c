@@ -1611,6 +1611,25 @@ kaudit_to_bsm(struct kaudit_record *kar, struct au_record **pau)
 	case AUE_CAP_GETMODE:
 		break;
 
+	case AUE_VARSYM_SET:
+	case AUE_VARSYM_GET:
+	case AUE_VARSYM_LIST:
+		if (ARG_IS_VALID(kar, ARG_VARSYM)) {
+			tok = au_to_arg32(1, "scope", ar->ar_arg_scope);
+			kau_write(rec, tok);
+			tok = au_to_arg64(1, "which", ar->ar_arg_id);
+			kau_write(rec, tok);
+		}
+		if (ARG_IS_VALID(kar, ARG_TEXT)) {
+			tok = au_to_text(ar->ar_arg_text);
+			kau_write(rec, tok);
+		}
+		if (ARG_IS_VALID(kar, ARG_TEXT2)) {
+			tok = au_to_text(ar->ar_arg_text2);
+			kau_write(rec, tok);
+		}
+		break;
+
 	case AUE_NULL:
 	default:
 		printf("BSM conversion requested for unknown event %d\n",

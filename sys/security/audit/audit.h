@@ -104,6 +104,7 @@ void	 audit_arg_upath2(struct thread *td, char *upath);
 void	 audit_arg_vnode1(struct vnode *vp);
 void	 audit_arg_vnode2(struct vnode *vp);
 void	 audit_arg_text(char *text);
+void	 audit_arg_text2(char *text);
 void	 audit_arg_cmd(int cmd);
 void	 audit_arg_svipc_cmd(int cmd);
 void	 audit_arg_svipc_perm(struct ipc_perm *perm);
@@ -115,6 +116,7 @@ void	 audit_arg_file(struct proc *p, struct file *fp);
 void	 audit_arg_argv(char *argv, int argc, int length);
 void	 audit_arg_envv(char *envv, int envc, int length);
 void	 audit_arg_rights(cap_rights_t rights);
+void	 audit_arg_varsym(int scope, id_t which);
 void	 audit_sysclose(struct thread *td, int fd);
 void	 audit_cred_copy(struct ucred *src, struct ucred *dest);
 void	 audit_cred_destroy(struct ucred *cred);
@@ -271,6 +273,11 @@ void	 audit_thread_free(struct thread *td);
 		audit_arg_text((text));					\
 } while (0)
 
+#define	AUDIT_ARG_TEXT2(text) do {					\
+	if (AUDITING_TD(curthread))					\
+		audit_arg_text2((text));				\
+} while (0)
+
 #define	AUDIT_ARG_UID(uid) do {						\
 	if (AUDITING_TD(curthread))					\
 		audit_arg_uid((uid));					\
@@ -299,6 +306,11 @@ void	 audit_thread_free(struct thread *td);
 #define	AUDIT_ARG_VNODE2(vp) do {					\
 	if (AUDITING_TD(curthread))					\
 		audit_arg_vnode2((vp));					\
+} while (0)
+
+#define	AUDIT_ARG_VARSYM(scope, which) do {				\
+	if (AUDITING_TD(curthread))					\
+		audit_arg_varsym((scope), (which));			\
 } while (0)
 
 #define	AUDIT_SYSCALL_ENTER(code, td)	do {				\

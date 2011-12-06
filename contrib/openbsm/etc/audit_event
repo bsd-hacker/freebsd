@@ -558,6 +558,9 @@
 43194:AUE_FSCTL:fsctl():fm
 43195:AUE_FFSCTL:ffsctl():fm
 43196:AUE_LPATHCONF:lpathconf(2):fa
+43201:AUE_VARSYM_SET:varsym_set(2):ad,fc
+43202:AUE_VARSYM_GET:varsym_get(2):ad,fa
+43203:AUE_VARSYM_LIST:varsym_list(2):ad,fa
 #
 # Solaris userspace events.
 #

@@ -59,6 +59,8 @@
 #include <sys/varsym.h>
 #include <sys/sysproto.h>
 
+#include <security/audit/audit.h>
+
 #ifdef VARSYM
 
 SYSCTL_NODE(_vfs, OID_AUTO, varsym, CTLFLAG_RD, NULL,
@@ -227,11 +229,14 @@ sys_varsym_set(struct thread *td, struct varsym_set_args *uap)
 	if (!varsym_enable)
 		return(ENOSYS);
 
+	AUDIT_ARG_VARSYM(uap->scope, uap->which);
+
 	if (uap->name == NULL)
 		return (varsym_clear(td, uap->scope, uap->which));
 
 	if ((error = copyinstr(uap->name, name, sizeof(name), NULL)) != 0)
 		return(error);
+	AUDIT_ARG_TEXT(name);
 
 	if (uap->data) {
 		buf = malloc(MAXVARSYM_DATA, M_VARSYM, M_WAITOK);
@@ -239,6 +244,7 @@ sys_varsym_set(struct thread *td, struct varsym_set_args *uap)
 		if (error != 0)
 			goto done;
 	}
+	AUDIT_ARG_TEXT2(buf);
 
 	switch(uap->scope) {
 	case VARSYM_PROC:
@@ -358,6 +364,8 @@ sys_varsym_get(struct thread *td, struct varsym_get_args *uap)
 	int error;
 	size_t bufsize;
 
+	AUDIT_ARG_VARSYM(uap->scope, uap->which);
+
 	if ((error = copyin(uap->size, &bufsize, sizeof(bufsize))) != 0)
 		return(error);
 
@@ -384,6 +392,8 @@ kern_varsym_get(struct thread *td, int scope, id_t which, const char *uname,
 
 	if ((error = copyinstr(uname, name, sizeof(name), NULL)) != 0)
 		return(error);
+	AUDIT_ARG_TEXT(name);
+
 	switch (scope) {
 	case VARSYM_PROC:
 	case VARSYM_PROC_PRIV:
@@ -402,6 +412,7 @@ kern_varsym_get(struct thread *td, int scope, id_t which, const char *uname,
 	sym = varsymfind(scope, name, strlen(name));
 	if (sym == NULL)
 		return(ENOENT);
+	AUDIT_ARG_TEXT2(sym->vs_data);
 
 	dlen = strlen(sym->vs_data);
 	if (dlen < *bufsize)
@@ -426,6 +437,8 @@ sys_varsym_list(struct thread *td, struct varsym_list_args *uap)
 {
 	int error;
 	size_t bufsize;
+
+	AUDIT_ARG_VARSYM(uap->scope, uap->which);
 
 	if ((error = copyin(uap->size, &bufsize, sizeof(bufsize))) != 0)
 		return(error);

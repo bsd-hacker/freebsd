@@ -546,6 +546,28 @@ audit_arg_text(char *text)
 }
 
 void
+audit_arg_text2(char *text)
+{
+	struct kaudit_record *ar;
+
+	KASSERT(text != NULL, ("audit_arg_text2: text == NULL"));
+
+	ar = currecord();
+	if (ar == NULL)
+		return;
+
+	/* Invalidate the text string */
+	ar->k_ar.ar_valid_arg &= (ARG_ALL ^ ARG_TEXT2);
+
+	if (ar->k_ar.ar_arg_text2 == NULL)
+		ar->k_ar.ar_arg_text2 = malloc(MAXPATHLEN, M_AUDITTEXT,
+		    M_WAITOK);
+
+	strncpy(ar->k_ar.ar_arg_text2, text, MAXPATHLEN);
+	ARG_SET_VALID(ar, ARG_TEXT2);
+}
+
+void
 audit_arg_cmd(int cmd)
 {
 	struct kaudit_record *ar;
@@ -876,6 +898,20 @@ audit_arg_rights(cap_rights_t rights)
 
 	ar->k_ar.ar_arg_rights = rights;
 	ARG_SET_VALID(ar, ARG_RIGHTS);
+}
+
+void
+audit_arg_varsym(int scope, id_t which)
+{
+	struct kaudit_record *ar;
+
+	ar = currecord();
+	if (ar == NULL)
+		return;
+
+	ar->k_ar.ar_arg_scope = scope;
+	ar->k_ar.ar_arg_id = which;
+	ARG_SET_VALID(ar, ARG_VARSYM);
 }
 
 /*

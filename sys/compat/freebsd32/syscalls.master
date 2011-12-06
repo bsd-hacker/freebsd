@@ -992,13 +992,13 @@
 				    uint32_t offset1, uint32_t offset2,\
 				    uint32_t len1, uint32_t len2); }
 531	AUE_NULL	UNIMPL	posix_fadvise
-532	AUE_NULL	STD	{ int freebsd32_varsym_set(int scope, \
+532	AUE_VARSYM_SET	STD	{ int freebsd32_varsym_set(int scope, \
 				    uint32_t whichlo, uint32_t whichhi, \
 				    const char *name, const char *data); }
-533	AUE_NULL	STD	{ int freebsd32_varsym_get(int scope, \
+533	AUE_VARSYM_GET	STD	{ int freebsd32_varsym_get(int scope, \
 				    uint32_t whichlo, uint32_t whichhi, \
 				    const char *name, \
 				    char *buf, uint32_t *size); }
-534	AUE_NULL	STD	{ int freebsd32_varsym_list(int scope, \
+534	AUE_VARSYM_LIST	STD	{ int freebsd32_varsym_list(int scope, \
 				    uint32_t whichlo, uint32_t whichhi, \
 				    char *buf, uint32_t *size); }
