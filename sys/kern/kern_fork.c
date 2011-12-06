@@ -41,6 +41,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_ktrace.h"
 #include "opt_kstack_pages.h"
 #include "opt_procdesc.h"
+#include "opt_varsym.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>

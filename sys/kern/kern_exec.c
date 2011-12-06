@@ -31,6 +31,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_hwpmc_hooks.h"
 #include "opt_kdtrace.h"
 #include "opt_ktrace.h"
+#include "opt_varsym.h"
 #include "opt_vm.h"
 
 #include <sys/param.h>
