@@ -171,6 +171,7 @@ SUBDIR=	alias \
 	unvis \
 	uudecode \
 	uuencode \
+	varsym \
 	vi \
 	vis \
 	vmstat \
