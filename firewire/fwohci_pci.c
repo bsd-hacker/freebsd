@@ -213,6 +213,10 @@ fwohci_pci_probe( device_t dev )
 		device_set_desc(dev, "Sun PCIO-2");
 		return BUS_PROBE_DEFAULT;
 	}
+	if (id == (FW_VENDORID_JMICRON | FW_DEVICE_JMB381)) {
+		device_set_desc(dev, "JMicron JMB381 1394a");
+		return BUS_PROBE_DEFAULT;
+	}
 #endif
 	if (pci_get_class(dev) == PCIC_SERIALBUS
 			&& pci_get_subclass(dev) == PCIS_SERIALBUS_FW
