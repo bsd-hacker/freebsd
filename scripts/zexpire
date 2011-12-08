@@ -42,7 +42,6 @@ for (fs, maxage) in expirelist:
     if VERBOSE:
         print "fs: " + str(fs)
     try:
-        # XXX MCL 20111205 produces nothing!
         snapdata = zfs.getallsnaps(fs)
         if VERBOSE:
             print "snapdata: " + str(snapdata)
