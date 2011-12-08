@@ -47,8 +47,13 @@ cd $home
 pkgdir=${builddir}/packages/All
 index=${PORTSDIR}/${INDEXFILE}
 
+if [ ! -f $index ]; then
+    echo "INDEX file $index does not exist, terminating!"
+    exit 1
+fi
+
 if [ "`wc -l $index | awk '{print $1}'`" -lt 9000 ]; then
-    echo "INDEX is corrupted, terminating!"
+    echo "INDEX file $index is corrupted, terminating!"
     exit 1
 fi
 
