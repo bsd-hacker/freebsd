@@ -8,23 +8,30 @@ sys.path.insert(0, '/var/portbuild/lib/python')
 
 import zfs
 
+ENABLED	=	True
+VERBOSE=	True
+
 # List of filesystems to expire
 expirelist=(("a", 14), 
-            ("a/nfs", 14),
-            ("a/local", 14),
             ("a/portbuild", 14),
             ("a/portbuild/amd64", 14),
+            ("a/portbuild/arm", 14),
             ("a/portbuild/i386", 14),
             ("a/portbuild/ia64", 14),
             ("a/portbuild/powerpc", 14),
             ("a/portbuild/sparc64", 14),
+            ("a/portbuild/sun4v", 14),
             ("a/snap", 7),
-            ("a/snap/ports", 2),
+            ("a/snap/ports-head", 2),
+            ("a/snap/ports-head/ports", 2),
             ("a/snap/src-7", 2),
+            ("a/snap/src-7/src", 2),
             ("a/snap/src-8", 2),
+            ("a/snap/src-8/src", 2),
             ("a/snap/src-9", 2),
-            ("a/snap/world-amd64-HEAD", 7),
-            ("a/snap/world-i386-HEAD", 7))
+            ("a/snap/src-9/src", 2),
+            ("a/snap/src-10", 2),
+            ("a/snap/src-10/src", 2))
 
 now = datetime.datetime.now()
 print "zexpire: starting at " + now.ctime()
@@ -32,10 +39,15 @@ print "zexpire: starting at " + now.ctime()
 for (fs, maxage) in expirelist:
     print
 
+    if VERBOSE:
+        print "fs: " + str(fs)
     try:
+        # XXX MCL 20111205 produces nothing!
         snapdata = zfs.getallsnaps(fs)
+        if VERBOSE:
+            print "snapdata: " + str(snapdata)
     except zfs.NoSuchFS:
-        print "no such fs %s, skipping" % fs
+        print "zexpire: no such fs %s, skipping" % fs
         continue
 
     snaps = (i[0] for i in snapdata)
@@ -50,12 +62,15 @@ for (fs, maxage) in expirelist:
                 print "zexpire: don't know what to do with snap `" + snap + "'"
                 continue
 
+        if VERBOSE:
+            print "zexpire: examining snapshot %s@%s" % (fs, snap)
         if (now - snapdate) > datetime.timedelta(days=maxage):
-            print "Snapshot %s@%s too old, attempting zfs destroy" % (fs, snap)
-            (err, out) = commands.getstatusoutput("zfs destroy %s@%s" % (fs,snap))
+            print "zexpire: snapshot %s@%s too old, attempting zfs destroy" % (fs, snap)
+            if ENABLED:
+                (err, out) = commands.getstatusoutput("zfs destroy %s@%s" % (fs,snap))
 
-            if err:
-                print "Error deleting snapshot", out
+                if err:
+                    print "zexpire: error deleting snapshot", out
 
 then = datetime.datetime.now()
 print
