@@ -182,7 +182,7 @@ sort .logs/.all | while read line; do
     echo "<td>$mailto</td>" >> $of
     echo "<td>" >> $of
 
-    test "$9" = "yes" && echo "<font color=\"red\">[B]</font>" >> $of
+    test "$9" = "broken" && echo "<font color=\"red\">[B]</font>" >> $of
     reason="$7"
     echo "<a href=\"http://${MASTER_URL}/#$8\">$reason</a>" >> $of
     echo "</td>" >> $of
