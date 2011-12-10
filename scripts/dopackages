@@ -556,7 +556,7 @@ if [ "$skipstart" = 0 ]; then
 	if [ -f ${pbab}/newfailure ]; then
 	    cp ${pbab}/newfailure ${builddir}/bak/
 	fi
-	lockf -k ${pbab}/failure.lock ${pbc}/scripts/prunefailure ${arch} ${branch} ${builddir}
+	lockf -k ${pbab}/failure.lock ${pbc}/scripts/prunefailure ${arch} ${branch} ${buildid}
     fi
 
     # XXX These can happen after build start
