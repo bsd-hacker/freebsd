@@ -72,7 +72,7 @@ while read dir name ver olddate date count; do
 
     entry=$(grep "|/usr/ports/$dir|" $index)
     if [ -z "$entry" ]; then
-	echo $dir not in index
+	echo $dir not in $index
 	rm -f ${pbd}/${arch}/${branch}/latest/${dir}
 	continue
     fi
