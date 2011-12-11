@@ -38,6 +38,7 @@ usage () {
     echo "       -fetch-original  : Fetch from original MASTER_SITE"
     echo "       -cdrom           : Prepare a build for distribution on CDROM "
     echo "       -trybroken       : Try to build BROKEN ports"
+    echo "       -unlimited-errors : Keep building ports no matter what percentage fail"
     echo "       -target <file>   : Build ports listed in file, rather than the whole ports tree"
 
     exit 1
@@ -242,7 +243,11 @@ dobuild() {
     echo "================================================"
     echo "started at $(date)"
     start=$(date +%s)
-    ${pbc}/qmanager/packagebuild ${arch} ${branch} ${buildid} > ${builddir}/${journalname} 2>&1 < /dev/null
+    qm_args=""
+    if [ "${unlimited_errors}" -eq 1 ]; then
+        qm_args=" -unlimited-errors"
+    fi
+    ${pbc}/qmanager/packagebuild ${arch} ${branch} ${buildid} > ${builddir}/${journalname} ${qm_args} 2>&1 < /dev/null
     result=$?
     if [ $result -ne 0 ]; then
         echo "ERROR: packagebuild ${arch} ${branch} ${buildid} failed: see ${builddir}/${journalname} for details"
@@ -294,6 +299,7 @@ trybroken=0
 incremental=0
 keep=0
 nocleanup=0
+unlimited_errors=0
 
 # optional arguments
 while [ $# -gt 0 ]; do
@@ -361,6 +367,9 @@ while [ $# -gt 0 ]; do
 	    ;;
 	x-nocleanup)
 	    nocleanup=1
+	    ;;
+        x-unlimited-errors)
+	    unlimited_errors=1
 	    ;;
         x-target)
             shift
